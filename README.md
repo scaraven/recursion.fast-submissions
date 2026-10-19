@@ -27,9 +27,9 @@ verified root and its registry entry into `main` (§7.7).
 - **Skeleton and documentation only.** There is no entry yet, and `records.json` is empty.
 - **The contract pin.** `.contract` is pinned to the core's `main` at `77e550b`, the **v2**
   contract, which is the newest commit on the core's remote.
-  - The **v3** contract is on the core's branch `v3/s1-contract` (stage S1, in review; its pull
-    request is pending). On this date that branch is not on the remote and holds only the v3
-    documents.
+  - The **v3** contract is on the core's branch `v3/s1-contract`, pull request
+    https://github.com/scaraven/recursion.fast/pull/2 (stage S1, in review). Its Lean names are the
+    ones `AGENTS.md` and `docs/baseline/BASELINE-TASK.md` must be checked against.
   - The pin moves to the S1 commit when S1 lands, and before the baseline is certified
     (`docs/baseline/BASELINE-TASK.md` §8.1).
 - **Next: the baseline** (stage S2), the witness-sending argument: certified, and listed unranked
