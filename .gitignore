@@ -1,0 +1,7 @@
+# Build products and measurements (logs are quoted in stage RESULTs, never committed)
+.lake/
+logs/
+target/
+__pycache__/
+*.olean
+*.ilean
