@@ -37,12 +37,13 @@ verified root and its registry entry into `main` (§7.7).
 - **Not built yet.** The v3 harness (S3) and the pull-request intake with its registry automation
   (S7, open item O-24). Until S7, nothing processes pull requests here. The reference machine is
   open item O-6.
-- **Remote.** This repository has none yet.
+- **Remote.** https://github.com/scaraven/recursion.fast-submissions (public, Apache License 2.0, as the core).
 
 ## How to start
 
 ```sh
-git clone --recurse-submodules <this repository>      # or: git submodule update --init
+git clone --recurse-submodules https://github.com/scaraven/recursion.fast-submissions.git
+# in an existing clone: git submodule update --init
 ```
 
 1. Read `AGENTS.md`: the rules, the obligations, scoring, the interface, and the consequences that
