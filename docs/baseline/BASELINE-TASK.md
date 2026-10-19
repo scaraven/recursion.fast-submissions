@@ -33,11 +33,23 @@ is what calibrates `T_V` (§7.3).
 
 | Dependency | State | What S2 does about it |
 |---|---|---|
-| **S1, the v3 contract** (`Oracle`, `Relation`, `Security`, `Extractor`, `Tree`, `Certificate`) | In review on the core's branch `v3/s1-contract`. The branch's committed head `5ad2115` holds the v3 **documents** only. The Lean contract was being written, uncommitted, in the core's working tree. The branch is **not on the remote**: `git ls-remote` shows only `main` (`77e550b`). | S2 starts when S1's contract is committed. Every Lean name in this brief comes from the design's sketches. Check each against `RecursionFast/Contract/*.lean` at the S1 commit, and record every difference in the RESULT. |
-| **The `.contract` pin** | Pinned to the core's `main`, `77e550b` (v2). | Move it to the S1 commit (§8.1 below) in its own commit. Before this repository is pushed anywhere, the pinned commit must be reachable on the core's remote, or `git submodule update` fails for everyone else. |
-| **S3, the v3 harness** (tree generator, `treeRoot` known-answer test, prover interface, succinctness cap, sample checks, liveness with `prove-lean` and the emulator, gate rule 4's fields, CI) | Not built. | S2 runs the **proof half** with the core's existing `scripts/harness.sh` (comparator, then the gate) on a v3 challenge. It also writes its own local smoke script for the tree, the canaries and the root-check timing (§9). The badge executables and the runner are S3's. The RESULT says what ran under which harness. |
+| **S1, the v3 contract** (`Oracle`, `Relation`, `Security`, `Extractor`, `Tree`, `Certificate`) | On the core's `main` (pull request #2, merged 2026-10-19) and at the pin `15e4ae5`, which also removed the core's v2 tree (pull request #3; the v2 tree is at the core's tag `v2-archive`). | Every Lean name in this brief comes from the design's sketches. Check each against `.contract/RecursionFast/Contract/*.lean`, and record every difference in the RESULT. |
+| **The `.contract` pin** | Pinned to the core's `main`, `15e4ae5` (v3). | Nothing, unless the contract changes: then move it (§8.1 below) in its own commit. Before this repository is pushed anywhere, the pinned commit must be reachable on the core's remote, or `git submodule update` fails for everyone else. |
+| **S3, the v3 harness** (tree generator, `treeRoot` known-answer test, prover interface, succinctness cap, sample checks, liveness with `prove-lean` and the emulator, gate rule 4's fields, CI) | Not built. | S2 runs the **proof half** with the tools at the pin (`scripts/source-rule.py`, `lake exe gate`, `lake exe axiomaudit`) on a v3 challenge; the full v2 order with the comparator (`scripts/harness.sh`) is at the core's tag `v2-archive`, for orientation. It also writes its own local smoke script for the tree, the canaries and the root-check timing (§9). The badge executables and the runner are S3's. The RESULT says what ran under which harness. |
 | **The v3 challenge stub** (`RecursionFast/Challenge/*.lean.in`) | v2 stubs only (`L.lean.in`, `R.lean.in`), and they name v2 types. | Use the stub from S1 if it has one. Otherwise write a minimal v3 stub in the core-side pull request (§2): the rendered `declared` with the image, then `submission : Submission := sorry` and `certified : Certificate … := sorry`. S3 takes it over. |
 | **S7, the intake** | Not built. `records.json` is empty. | Nothing. The baseline's root layout must fit what S7 will fix, so keep it flat (`../../submissions/README.md`). |
+
+**Note added when the pin moved to `15e4ae5` (2026-10-19).** The core's v2 harness is not at the
+pin: `scripts/harness.sh`, `scripts/org-build.sh`, `scripts/render-challenge.py`, the challenge
+stubs `RecursionFast/Challenge/*.lean.in`, `scripts/olean-manifest.sha256`,
+`scripts/import-allowlist.txt` and `scripts/tools.env` are at the core's tag `v2-archive` only,
+and the v3 harness is stage S3. Where this brief names them (the stub row above, §2's allowlist
+and manifest step, §6 step 4, §8.2–§8.3, §10 item 4), S2 either takes the v2 form from the tag and
+says so in its RESULT, or runs the proof half with the tools at the pin (`scripts/source-rule.py`,
+`lake exe gate` with a manifest it generates by `scripts/olean-manifest.py gen` from its own clean
+build, `lake exe axiomaudit`) on a challenge file it writes by hand from the claim. The RESULT
+records which. The definition of done's "Harness ACCEPT" then means: the source rule, the gate
+and the axiom audit pass on that challenge, with the comparator run recorded if it was run.
 
 ## 2. Where the work goes: two halves
 
@@ -204,9 +216,9 @@ design's:
 
 ## 5. The obligations, as the certificate's fields
 
-These are the names of the design's sketches (§3.2, §4.2–4.4). The real field names are in the
-core's `RecursionFast/Contract/*.lean` on branch `v3/s1-contract` once S1 is merged. Check them
-there, and record every difference.
+These are the names of the design's sketches (§3.2, §4.2–4.4). The real field names are in
+`.contract/RecursionFast/Contract/*.lean` at the pin. Check them there, and record every
+difference.
 
 ```lean
 structure Certificate (S : Submission) : Prop where
@@ -296,41 +308,40 @@ and §4 are the best explanation of who checks what.
 ### 8.1 The core at the pin (`.contract`)
 
 ```sh
-git submodule update --init                          # .contract at the pinned commit
-# moving the pin to the S1 commit, while v3/s1-contract is not on the remote:
-git -C .contract fetch /home/devops/Verified-zkEVM/recursion.fast v3/s1-contract
-git -C .contract checkout <S1 commit>                # then: git add .contract && git commit
-# once the branch or main has it: git -C .contract fetch origin && git -C .contract checkout <commit>
+git submodule update --init                          # .contract at the pinned commit (15e4ae5, v3)
+# moving the pin, only with a contract change, in its own commit:
+git -C .contract fetch origin main && git -C .contract checkout <commit>   # then: git add .contract && git commit
 ```
 
-Then the core's fresh-clone set-up (`docs/core/core-CLAUDE.md`, "Toolchain"; measured in v2's S9
-fix pass):
+Then the core's set-up (`.contract/CLAUDE.md`, "Toolchain"):
 
 ```sh
 cd .contract
-scripts/setup-clean.sh /home/devops/Verified-zkEVM/recursion.fast/ext/Clean   # offline; or no argument to clone upstream
 mkdir -p .lake && ln -s /home/devops/CambridgePQ/recursion.fast/contract/.lake/packages .lake/packages
-lake build                                           # default targets
-scripts/org-build.sh .lake/org                       # the organiser package the harness requires
-python3 -I scripts/olean-manifest.py check --org .lake/org scripts/olean-manifest.sha256
+lake build                                           # default targets: contract, library, controls
+lake build gate axiomaudit && lake exe axiomaudit    # the harness tools; the axiom audit
+scripts/ci.sh /home/devops/Verified-zkEVM/riscv-zkvm # vendor, hygiene, source-rule fixtures, build, audit, line budget
 ```
 
 - **The shared package tree** (`…/contract/.lake/packages`) is prebuilt and shared read-only.
   Never run `lake update` or `lake exe cache get` against it. The lake manifest at the pin must
-  match it. At `77e550b` it does: every git package's revision equals the shared tree's `HEAD`,
-  checked on 2026-10-19. Re-check after moving the pin:
+  match it. At `15e4ae5` it does: every git package's revision equals the shared tree's `HEAD`,
+  checked on 2026-10-19 (the pin dropped Clean, which no v3 target requires). Re-check after
+  moving the pin:
 
   ```sh
   python3 -I -c "import json;[print(p['name'],p.get('rev')) for p in json.load(open('lake-manifest.json'))['packages']]"
   ```
 
-  Away from this machine, `lake exe cache get` supplies Mathlib only, and CompPoly's cone and
-  Clean are then built.
-- **The external tools.** The comparator and nanoda are external: `COMPARATOR_HOME` and
-  `COMPARATOR_NANODA`, with defaults and pins in `docs/core/tools.env` (comparator `d03acab` with
-  lean4export `076e8e5`, nanoda `3a24072`).
-- **What these steps write.** They write only gitignored paths inside the submodule (`ext/`,
-  `.lake/`). Keep its tracked files clean: the pin is a commit, not a working tree.
+  Away from this machine, `lake exe cache get` supplies Mathlib only, and CompPoly, ArkLib, VCVio
+  and PolyFun are then built (no v3 module imports them yet).
+- **The organiser package, the olean manifest and the external tools** (the comparator `d03acab`
+  with lean4export `076e8e5`, nanoda `3a24072`) belong to the v2 harness, which is at the core's
+  tag `v2-archive` (`scripts/org-build.sh`, `scripts/olean-manifest.sha256`, `scripts/tools.env`;
+  `docs/core/tools.env` is a copy). The v3 harness is stage S3; until then the proof half runs with
+  the tools at the pin (§1).
+- **What these steps write.** They write only gitignored paths inside the submodule (`.lake/`).
+  Keep its tracked files clean: the pin is a commit, not a working tree.
 
 ### 8.2 Building the entry
 

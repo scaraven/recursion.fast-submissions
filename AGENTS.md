@@ -11,10 +11,11 @@ summarises both. If this file and the design disagree, the design wins. If the d
 contract at the pin disagree, the contract is what is checked, and the disagreement is a bug to
 report.
 
-**Status on 2026-10-19.** The v3 contract (stage S1) is in review on the core's branch
-`v3/s1-contract`. The pin is still the v2 contract on the core's `main`. The v3 harness (S3) and
-the pull-request intake (S7) do not exist yet. Where a rule below says "S3 fixes" or "S7 fixes",
-the rule is not fixed yet, and the v2 form shown is only an indication.
+**Status on 2026-10-19.** The v3 contract (stage S1) is on the core's `main` and is what the pin
+builds (`.contract` at `15e4ae5`). The core's v2 tree is gone from its `main`, archived at the
+core's tag `v2-archive`; the v2 material quoted below is reference, not what the pin builds. The
+v3 harness (S3) and the pull-request intake (S7) do not exist yet. Where a rule below says "S3
+fixes" or "S7 fixes", the rule is not fixed yet, and the v2 form shown is only an indication.
 
 ---
 

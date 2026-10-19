@@ -20,8 +20,8 @@ never edit it here.
 5. `core/core-CLAUDE.md`: the core's toolchain, commands, trust layers, hard rules and stage
    protocol. Then `core/harness-README.md`: the badge path, `scripts/harness.sh`, the source rule,
    the gate rules, the runner and the olean manifest.
-6. The S1 contract itself: `RecursionFast/Contract/*.lean` in the core at the commit `.contract`
-   pins, once S1 is committed. It is not copied here, because it is living code.
+6. The S1 contract itself: `.contract/RecursionFast/Contract/*.lean`, the core at the pinned
+   commit (`15e4ae5`, v3). It is not copied here, because it is living code.
 
 Background, as needed:
 
@@ -38,8 +38,8 @@ Background, as needed:
 
 | Folder | Contents | Source |
 |---|---|---|
-| `design/` | `DESIGN-v3.md` (**authoritative**, v3, 2026-10-19); `DESIGN-v2.md` (superseded, and still what the core's `main` implements: the harness, gate and baseline details v3 keeps); `DESIGN-v0.3.md` (the consolidated v0.3 design behind the report); `DISCUSSION.md` (the user's decisions Q1–Q6); `DESIGN-AMENDMENTS.md` (the core's v2 amendments ledger); `PLAN.md` (the workspace plan and decisions log of 2026-10-10); `recursion-fast-idea-prompt.md` (the original brief); `recursion-fast-idea-diagram.jpg` (the user's hand-drawn sketch of the v3 shape, file dated 2026-10-15) | core `v3/s1-contract` (`DESIGN-v3.md`), core `main` (`DESIGN-v2.md`, `DESIGN-AMENDMENTS.md`), workspace (the rest) |
-| `core/` | `RESULT.md` (the v2 handover); `harness-README.md` (the core's `harness/README.md`); `core-CLAUDE.md` (the core's `CLAUDE.md`); `import-allowlist.txt` (gate rule 6's allowlist, 10,820 modules); `lakefile.toml`, `lean-toolchain`, `tools.env`, `setup-clean.sh` (the pins and the set-up); `stages/` (the v2 stage RESULTs, S1–S8); `reviews/` (the v2 reviews, golf and simplify reports, S1–S9) | core `main` at `77e550b`; `core-CLAUDE.md` from `v3/s1-contract` at `5ad2115`, identical to `main`'s |
+| `design/` | `DESIGN-v3.md` (**authoritative**, v3, 2026-10-19); `DESIGN-v2.md` (superseded; removed from the core's `main` in its pull request #3 and archived at the core's tag `v2-archive`; the harness, gate and baseline details v3 keeps); `DESIGN-v0.3.md` (the consolidated v0.3 design behind the report); `DISCUSSION.md` (the user's decisions Q1–Q6); `DESIGN-AMENDMENTS.md` (the core's v2 amendments ledger); `PLAN.md` (the workspace plan and decisions log of 2026-10-10); `recursion-fast-idea-prompt.md` (the original brief); `recursion-fast-idea-diagram.jpg` (the user's hand-drawn sketch of the v3 shape, file dated 2026-10-15) | core `main` at the pin (`DESIGN-v3.md`), core `v2-archive` (`DESIGN-v2.md`, `DESIGN-AMENDMENTS.md`), workspace (the rest) |
+| `core/` | `RESULT.md` (the v2 handover); `harness-README.md` (the core's `harness/README.md`); `core-CLAUDE.md` (the core's `CLAUDE.md`); `import-allowlist.txt` (gate rule 6's allowlist, 10,820 modules); `lakefile.toml`, `lean-toolchain`, `tools.env`, `setup-clean.sh` (the pins and the set-up); `stages/` (the v2 stage RESULTs, S1–S8); `reviews/` (the v2 reviews, golf and simplify reports, S1–S9) | core `main` at `77e550b`, which is now the core's tag `v2-archive` (v2 reference material; `tools.env`, `setup-clean.sh` and the allowlist no longer exist in the core); `core-CLAUDE.md` and `lakefile.toml` from the pin `15e4ae5` |
 | `reference/` | `neighbouring-competitions.md` and `notes/` (R1 ots.golf, R2 sig.golf, R3 Proximity Prize, R5 leanerVM) | core `v3/s1-contract` at `5ad2115` |
 | `research/` | `notes/` (R1–R8: ots.golf, sig.golf, Proximity Prize, ArkLib, leanerVM, RISC-V, the literature, binary fields in Lean); `reviews/` (A1–A8: incentives, definitions, feasibility, the v0.2 and v0.3 contracts, and three report reviews) | workspace `notes/`, `reviews/` |
 | `report/` | the v1.0 report: the PDF, its LaTeX sources and a README that says which sections are still accurate | workspace `report/` |

@@ -30,21 +30,20 @@ submitter's rulebook.
 
 ## The pin
 
-- `.contract` is pinned to the core's `main` at `77e550b` (v2).
-- The v3 contract is on the core's branch `v3/s1-contract`. Stage S1 is in review and its pull
-  request is pending. On 2026-10-19 the branch was local to `/home/devops/Verified-zkEVM/recursion.fast`
-  and not yet on the remote.
-- **When S1 lands, the pin moves to that commit,** in its own commit, before any v3 entry is
-  certified. To move it before the branch is pushed:
+- `.contract` is pinned to the core's `main` at `15e4ae5` (v3: stage S1, pull request #2, with
+  the v2 tree removed in pull request #3). The core's v2 tree is at the core's tag `v2-archive`
+  (`git -C .contract fetch origin tag v2-archive`, then `git -C .contract show v2-archive:<path>`).
+- **The pin moves only with a contract change,** in its own commit, before any entry is certified
+  against the new commit:
 
   ```sh
-  git -C .contract fetch /home/devops/Verified-zkEVM/recursion.fast v3/s1-contract
+  git -C .contract fetch origin main
   git -C .contract checkout <commit> && git add .contract && git commit
   ```
 
 - Never pin a commit that the core's remote does not have when this repository is pushed.
 - Never commit changes inside `.contract`. Its working tree is the pinned commit plus gitignored
-  build products (`ext/`, `.lake/`).
+  build products (`.lake/`, `ext/`).
 
 ## The task in front of this repository: the baseline (stage S2)
 
@@ -57,25 +56,23 @@ separate pull request to the core, which follows the core's own `CLAUDE.md`
 ## Commands
 
 Toolchain: Lean v4.34.1, Mathlib v4.34.1; CompPoly `572f997`, ArkLib `7653a90`, VCVio
-`a4232d0`, PolyFun `41d3b21`; Clean `42fe4b26`. These are the core's pins.
+`a4232d0`, PolyFun `41d3b21`. These are the core's pins; Clean is no longer required.
 
 ```sh
 git submodule update --init                                   # the core at the pin
 cd .contract
-scripts/setup-clean.sh /home/devops/Verified-zkEVM/recursion.fast/ext/Clean   # offline; no argument clones upstream
-mkdir -p .lake && ln -s /home/devops/CambridgePQ/recursion.fast/contract/.lake/packages .lake/packages
-lake build                                                    # the core's default targets
-scripts/org-build.sh .lake/org                                # the organiser package the harness needs
-python3 -I scripts/olean-manifest.py check --org .lake/org scripts/olean-manifest.sha256
-# the comparator and nanoda: COMPARATOR_HOME, COMPARATOR_NANODA (defaults and pins in scripts/tools.env)
+mkdir -p .lake && ln -s /home/devops/CambridgePQ/recursion.fast/contract/.lake/packages .lake/packages   # local-only; elsewhere `lake exe cache get`
+lake build                                                    # the core's default targets: contract, library, controls
+lake build gate axiomaudit && lake exe axiomaudit             # the harness tools; the axiom audit (PASS)
+scripts/ci.sh /home/devops/Verified-zkEVM/riscv-zkvm          # vendor, hygiene, the source rule's fixtures, build, audit, line budget
+python3 -I scripts/source-rule.py ../submissions/<root>       # the source rule on an entry's sources
+submissions/<root>/check.sh                                   # the entry's own end-to-end check (S2 writes the baseline's)
 
-# an entry (v2 shape; the v3 harness is stage S3):
-python3 -I scripts/source-rule.py ../submissions/<root>
-python3 -I scripts/render-challenge.py RecursionFast/Challenge/<STUB>.lean.in ../submissions/<root>/claim.json CHALLENGE.lean
-scripts/harness.sh --org .lake/org --manifest scripts/olean-manifest.sha256 --work WORK \
-  --gate RecursionFast.Challenge.certified --computable RecursionFast.Challenge.submission \
-  CHALLENGE.lean SOLUTION_DIR COMPARATOR_CONFIG.json
-submissions/<root>/check.sh                                   # the entry's own end-to-end check
+# The entry pipeline (claim rendering, comparator in a fresh sandboxed tree, organiser package and
+# olean manifest, gate, badge build, runner) is stage S3. Its v2 form, for orientation only, is at
+# the core's tag `v2-archive` (`scripts/harness.sh`, `scripts/org-build.sh`,
+# `scripts/render-challenge.py`; the comparator and nanoda pins in `scripts/tools.env`) and in
+# `docs/core/harness-README.md`.
 ```
 
 - **The shared package tree is read-only.** It lives at
