@@ -469,3 +469,12 @@ Logs for this pass are under `logs/f2/fix/` (`run.sh` reruns all of it; `run.log
 
 Not rerun in this pass: the harness smoke and the qemu checks. The field code and the run-time
 dispatch are unchanged since the golf's qemu run (`F2-golf-RESULT.md` §3 item 5).
+
+## Post-fix-pass change (orchestrator, 2026-10-23)
+
+The service at the final pin `01a25b0` accepts at most 32 connections (RF-m20; it was 64 when this
+stage ran). The pool's `MAX_CONNS` is now **31**, so the pool plus the polled Fiat–Shamir
+connection stay within the cap at any thread count. `prover.s` regenerated: 9,238,056 bytes,
+SHA-256 `733b3a30007be7c49c88bd813dcf93d4d86ac40f9be60d218b56f2dbe8495eb2`, identical over two
+clean builds; binary SHA-256 `c5f5e1a8…`. `selftest.py tree stream` against the 01a25b0 service
+passes at 16 and 32 threads with no refusal (`logs/conncap/`).

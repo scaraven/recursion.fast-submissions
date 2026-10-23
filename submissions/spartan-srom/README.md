@@ -172,15 +172,17 @@ timeout 7200 python3 -I "$ORG/harness/evaluate.py" bench --entry submissions/spa
 
 ```sh
 prover/build-asm.sh /some/work/dir      # rewrites prover/prover.s; links WORK/build/prover
-sha256sum prover/prover.s               # 7a30e654… (F2 RESULT, fix pass)
+sha256sum prover/prover.s               # 733b3a30… (the connection-cap fix, logs/conncap/)
 (cd prover && CARGO_TARGET_DIR=/elsewhere cargo test --release --offline)   # the pin applies here
 python3 -I prover/selftest.py --prover /some/work/dir/build/prover \
   --service "$ORG/service/target/release/rf-oracle" --work DIR tree stream sizes
 ```
 
-- The toolchain is pinned by `prover/rust-toolchain.toml` (rustc 1.99.0). Three clean builds gave
-  the same `prover.s`, 9,238,056 bytes, and the same binary, SHA-256 `fecda6a0…`;
-  `build-asm.sh` took 57.8–65.3 s (`logs/f2/fix/build-{a,b,c}.log`, `determinism.log`).
+- The toolchain is pinned by `prover/rust-toolchain.toml` (rustc 1.99.0). The submitted `prover.s`
+  is 9,238,056 bytes, SHA-256 `733b3a30…`, and links to a 2,818,664-byte binary, SHA-256
+  `c5f5e1a8…`; two clean builds gave the same bytes (`logs/conncap/build-{a,b}.log`). It differs
+  from the F2 fix pass's (`7a30e654…`, three identical builds, `logs/f2/fix/`) only by the
+  connection pool's cap, 31 instead of 32, for the service's 32-connection cap at the pin.
 - **The runner's `as` is GNU Binutils 2.42** (`ubuntu-24.04`; `.contract/harness/PROVER.md` §1,
   RF-M2); this VM's is 2.46. `sanitize-asm.py` drops what LLVM 23 emits and 2.42 rejects. The
   core's `harness/tools/asm-compat.py` merges its rules with GCC 15's `.base64`, and it is the

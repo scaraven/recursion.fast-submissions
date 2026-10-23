@@ -166,9 +166,12 @@ Measured at F1 with v3's `scripts/loc.py` rule (code lines are neither blank nor
   and `SPARTAN_REPLAY=1` checks the trace. The tree's leaves are proved at once on a persistent
   thread pool, and a node request is built from its children's files in place while the service
   signs.
-- **The submitted file** (F2 RESULT, fix pass). `prover.s` is 9,238,056 B, SHA-256 `7a30e654…`. The
-  binary is 2,818,664 B, SHA-256 `fecda6a0…`. Three clean builds were identical; `build-asm.sh`
-  took 57.8–65.3 s (`logs/f2/fix/build-{a,b,c}.log`, `determinism.log`). `cargo test`: 32 pass.
+- **The submitted file.** `prover.s` is 9,238,056 B, SHA-256 `733b3a30…`; the binary is
+  2,818,664 B, SHA-256 `c5f5e1a8…`; two clean builds were identical (`logs/conncap/`). It is the F2
+  fix pass's file (`7a30e654…`, three identical builds, `build-asm.sh` 57.8–65.3 s,
+  `logs/f2/fix/`; `cargo test`: 32 pass) with the connection pool capped at 31 instead of 32 (the
+  service at the pin refuses a 33rd connection, and Fiat–Shamir keeps one more); its selftest
+  passes at 16 and 32 threads with no refusal (`logs/conncap/selftest{,-32}.log`).
 
 ## 4. Measurements
 
@@ -546,9 +549,9 @@ needed, because `KS` bounds queries on every input. Its control is now `qbound_f
    - whether the runner's binutils 2.42 assembles `prover.s`: by reading, yes. It is now part of the
      rule (RF-M2), and the confirmation run at the pin checks it (`README.md`, "Status"). The core's
      `harness/tools/asm-compat.py` carries this entry's filter rules;
-   - the service accepts at most 32 connections at the pin (RF-m20). The pool opens up to 32 plus
-     one for Fiat–Shamir, which a machine with 32 or more threads could reach (**paper**); a lower
-     `MAX_CONNS` would remove the risk.
+   - the service accepts at most 32 connections at the pin (RF-m20). The pool opened up to 32 plus
+     one for Fiat–Shamir; it is now capped at 31, so the total stays within the cap at any thread
+     count (selftest at 32 threads, no refusal, `logs/conncap/selftest-32.log`).
 7. **If the rules change** (`docs/v4/FLOCK-BASELINE-FEEDBACK.md`):
    - a vacuous `SigOk` on empty traces (FB-10) would drop 4,776 B per clear slot, worth one more
      frontier notch (`r = 3, n = 8`; a sixth link at `n_f = 16`);

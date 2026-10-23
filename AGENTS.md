@@ -1071,9 +1071,9 @@ in-place reads and a byte-level node reader.
   - At the pin the service accepts at most **32 connections at a time** (RF-m20; it was 64), and a
     further one is refused, which aborts the proof. Count the sockets of a previous request that are
     still closing (F2-m6).
-  - `spartan-srom`'s pool opens connections on demand, up to 32, plus one polled connection for
-    Fiat–Shamir. So it stays under the cap with the 4 threads of a runner, and could reach it only
-    with about 32 threads or more (**paper**; not observed).
+  - `spartan-srom`'s pool opens connections on demand, up to 31, plus one polled connection for
+    Fiat–Shamir, so it never exceeds the cap (its first version allowed 32 + 1, which a 32-thread
+    machine could have hit).
 - **`SIGN` re-hashes the whole trace** (C-m4; PROTOCOL.md §2.2).
   - It re-evaluates every query of the trace and its digest.
   - A σ0-bundle merge asks no `QUERY`, but its one `SIGN` dominates it: 11–21 ms for 7,066–17,665
