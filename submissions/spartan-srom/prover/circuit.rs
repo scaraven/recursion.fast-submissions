@@ -219,6 +219,29 @@ pub fn const_bit(k: usize) -> Option<bool> {
     }
 }
 
+/// Transpose a 64 × 64 bit matrix in place: bit `j` of `a[i]` becomes bit `i` of `a[j]` (each
+/// stage swaps the off-diagonal `w × w` blocks).
+pub fn transpose64(a: &mut [u64; 64]) {
+    const M: [u64; 6] = [
+        0x0000_0000_FFFF_FFFF,
+        0x0000_FFFF_0000_FFFF,
+        0x00FF_00FF_00FF_00FF,
+        0x0F0F_0F0F_0F0F_0F0F,
+        0x3333_3333_3333_3333,
+        0x5555_5555_5555_5555,
+    ];
+    for (s, &m) in M.iter().enumerate() {
+        let w = 32 >> s;
+        for i in 0..64 {
+            if i & w == 0 {
+                let t = ((a[i] >> w) ^ a[i + w]) & m;
+                a[i + w] ^= t;
+                a[i] ^= t << w;
+            }
+        }
+    }
+}
+
 impl Circuit {
     /// `chainBlock`.
     pub fn build() -> Circuit {
@@ -347,6 +370,58 @@ impl Circuit {
         (zw, aw, bw)
     }
 
+    /// `trace` of up to 64 blocks at once, bit-sliced (lane `t` of every word is block `t`): the
+    /// same node program on `u64` lanes, then 64 × 64 bit transposes. Block `t`'s `z`, `Az`, `Bz`
+    /// words go to `zw`, `aw`, `bw` at `[256 t, 256 t + 256)`.
+    pub fn trace64(&self, ds: &[[u8; 32]], vals: &mut Vec<u64>, zw: &mut [u64], aw: &mut [u64], bw: &mut [u64]) {
+        let k = ds.len();
+        assert!(k <= 64 && zw.len() == 256 * k && aw.len() == 256 * k && bw.len() == 256 * k);
+        let mut z = vec![0u64; BLOCK];
+        z[CPOS] = if k == 64 { !0 } else { (1u64 << k) - 1 };
+        for e in 0..32 {
+            for bit in 0..8 {
+                let mut m = 0u64;
+                for (t, d) in ds.iter().enumerate() {
+                    m |= (((d[e] >> bit) & 1) as u64) << t;
+                }
+                z[MSG_IN + 8 * e + bit] = m;
+            }
+        }
+        vals.clear();
+        vals.resize(self.nodes.len(), 0);
+        for (i, nd) in self.nodes.iter().enumerate() {
+            vals[i] = match *nd {
+                Node::Zero => 0,
+                Node::Var(p) => z[p as usize],
+                Node::Xor(a, b) => vals[a as usize] ^ vals[b as usize],
+                Node::Gate(p, a, b) => {
+                    let v = vals[a as usize] & vals[b as usize];
+                    z[p as usize] = v;
+                    v
+                }
+            };
+        }
+        let (mut mz, mut ma, mut mb) = ([0u64; 64], [0u64; 64], [0u64; 64]);
+        for wi in 0..BLOCK / 64 {
+            for j in 0..64 {
+                let p = 64 * wi + j;
+                mz[j] = z[p];
+                (ma[j], mb[j]) = match self.rows[p] {
+                    Some((a, b)) => (vals[a as usize], vals[b as usize]),
+                    None => (0, 0),
+                };
+            }
+            transpose64(&mut mz);
+            transpose64(&mut ma);
+            transpose64(&mut mb);
+            for t in 0..k {
+                zw[256 * t + wi] = mz[t];
+                aw[256 * t + wi] = ma[t];
+                bw[256 * t + wi] = mb[t];
+            }
+        }
+    }
+
     /// Node values over `E` with `var j ↦ wt(j)`.
     fn values(&self, wt: &[E]) -> Vec<E> {
         let mut val = vec![E::ZERO; self.nodes.len()];
@@ -439,6 +514,42 @@ mod tests {
     use super::*;
     use crate::blake2s::chain_step;
     use crate::mle::eq_table;
+
+    #[test]
+    fn transpose64_is_the_transpose() {
+        let mut s = 0x9E37_79B9_7F4A_7C15u64;
+        let a: [u64; 64] = std::array::from_fn(|_| {
+            s ^= s << 13;
+            s ^= s >> 7;
+            s ^= s << 17;
+            s
+        });
+        let mut t = a;
+        transpose64(&mut t);
+        for i in 0..64 {
+            for j in 0..64 {
+                assert_eq!((t[i] >> j) & 1, (a[j] >> i) & 1);
+            }
+        }
+    }
+
+    /// The bit-sliced trace equals `trace` block by block, for 64 lanes and for fewer.
+    #[test]
+    fn trace64_equals_trace() {
+        let c = Circuit::build();
+        let (mut v8, mut v64) = (vec![], vec![]);
+        for k in [64usize, 5, 1] {
+            let ds: Vec<[u8; 32]> = (0..k).map(|t| std::array::from_fn(|i| (i as u8 ^ t as u8).wrapping_mul(29).wrapping_add(k as u8))).collect();
+            let (mut zw, mut aw, mut bw) = (vec![0u64; 256 * k], vec![0u64; 256 * k], vec![0u64; 256 * k]);
+            c.trace64(&ds, &mut v64, &mut zw, &mut aw, &mut bw);
+            for (t, d) in ds.iter().enumerate() {
+                let (z, a, b) = c.trace(d, &mut v8);
+                assert_eq!(&zw[256 * t..256 * t + 256], &z[..], "z, k = {k}, t = {t}");
+                assert_eq!(&aw[256 * t..256 * t + 256], &a[..], "Az, k = {k}, t = {t}");
+                assert_eq!(&bw[256 * t..256 * t + 256], &b[..], "Bz, k = {k}, t = {t}");
+            }
+        }
+    }
 
     #[test]
     fn trace_computes_chain_step_and_satisfies_rows() {

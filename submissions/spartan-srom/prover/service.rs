@@ -47,6 +47,8 @@ pub struct Service {
     dir: Option<(File, String)>,
     pool: Mutex<Pool>,
     cv: Condvar,
+    /// the connection of the sequential queries (`ask`), non-blocking
+    fs: Mutex<Option<UnixStream>>,
     /// requests sent, queries sent (QUERY and SIGN), query bytes sent
     pub requests: AtomicU64,
     pub queries: AtomicU64,
@@ -87,6 +89,7 @@ impl Service {
             dir,
             pool: Mutex::new(Pool { idle: vec![c], open: 1 }),
             cv: Condvar::new(),
+            fs: Mutex::new(None),
             requests: AtomicU64::new(0),
             queries: AtomicU64::new(0),
             query_bytes: AtomicU64::new(0),
@@ -127,17 +130,32 @@ impl Service {
 
     /// Send `req` (a 16-byte header slot followed by the body) and return the response body.
     fn call(&self, conn: &mut UnixStream, op: u8, count: usize, req: &mut [u8]) -> Vec<u8> {
+        Self::send(conn, op, count, req);
+        self.recv(conn, op, count, req.len() - 16)
+    }
+
+    fn what(op: u8) -> &'static str {
+        match op {
+            OP_QUERY => "QUERY",
+            OP_SIGN => "SIGN",
+            _ => "VK",
+        }
+    }
+
+    /// Write the request `req` (header slot filled here).
+    fn send(conn: &mut UnixStream, op: u8, count: usize, req: &mut [u8]) {
         let body_len = req.len() - 16;
         req[0] = op;
         req[1..4].fill(0);
         req[4..8].copy_from_slice(&(count as u32).to_le_bytes());
         req[8..16].copy_from_slice(&(body_len as u64).to_le_bytes());
-        let what = match op {
-            OP_QUERY => "QUERY",
-            OP_SIGN => "SIGN",
-            _ => "VK",
-        };
+        let what = Self::what(op);
         conn.write_all(req).unwrap_or_else(|e| fatal(&format!("{what} ({count} items, {body_len} bytes): write: {e}")));
+    }
+
+    /// Read the response to a request sent with `send`.
+    fn recv(&self, conn: &mut UnixStream, op: u8, count: usize, body_len: usize) -> Vec<u8> {
+        let what = Self::what(op);
         let mut hdr = [0u8; 16];
         conn.read_exact(&mut hdr)
             .unwrap_or_else(|e| fatal(&format!("{what} ({count} items, {body_len} bytes): read: {e}")));
@@ -164,27 +182,39 @@ impl Service {
     /// `SIGN` the queries: their answers (computed by the service) and the signature.
     pub fn sign(&self, qs: &[&[u8]]) -> (Vec<Digest>, Sig) {
         let mut req = vec![0u8; 16];
-        let mut bytes = 0u64;
         for q in qs {
             Self::push_item(&mut req, q);
-            bytes += q.len() as u64;
         }
+        let conn = self.sign_start(&mut req, qs.len());
+        let (body, sig) = self.sign_finish(conn, qs.len(), req.len() - 16);
+        (body.chunks_exact(32).map(|a| a.try_into().unwrap()).collect(), sig)
+    }
+
+    /// Send a `SIGN` of the `count` items in `req[16..]` (each `len:u32 ‖ q`), without waiting for
+    /// the answer (`sign_finish`), so the caller can work while the service hashes.
+    pub fn sign_start(&self, req: &mut [u8], count: usize) -> UnixStream {
         let mut conn = self.take();
-        let body = self.call(&mut conn, OP_SIGN, qs.len(), &mut req);
+        Self::send(&mut conn, OP_SIGN, count, req);
+        conn
+    }
+
+    /// The answer to `sign_start`: the `count` answers (32 bytes each, in order) and the signature.
+    pub fn sign_finish(&self, mut conn: UnixStream, count: usize, body_len: usize) -> (Vec<u8>, Sig) {
+        let mut body = self.recv(&mut conn, OP_SIGN, count, body_len);
         self.put(conn);
         self.signs.fetch_add(1, Ordering::Relaxed);
-        self.queries.fetch_add(qs.len() as u64, Ordering::Relaxed);
-        self.query_bytes.fetch_add(bytes, Ordering::Relaxed);
-        let m = qs.len();
+        self.queries.fetch_add(count as u64, Ordering::Relaxed);
+        self.query_bytes.fetch_add((body_len - 4 * count) as u64, Ordering::Relaxed);
+        let m = count;
         if body.len() != 32 * m + 4772 {
             fatal(&format!("SIGN: response of {} bytes, expected {}", body.len(), 32 * m + 4772));
         }
-        let ans: Vec<Digest> = (0..m).map(|i| body[32 * i..32 * i + 32].try_into().unwrap()).collect();
         let s = &body[32 * m..];
         let idx = u32::from_le_bytes(s[..4].try_into().unwrap()) as u64;
         let d = |k: usize| -> Digest { s[4 + 32 * k..36 + 32 * k].try_into().unwrap() };
         let sig = Sig { idx, ots: (0..133).map(d).collect(), path: (133..149).map(d).collect() };
-        (ans, sig)
+        body.truncate(32 * m);
+        (body, sig)
     }
 
     /// The service's public key.
@@ -210,16 +240,78 @@ impl Service {
 }
 
 impl Oracle for Service {
+    /// One query (a Fiat–Shamir step, sequential): its own connection, kept non-blocking and
+    /// polled, so the answer is taken as soon as it is written (the prover has nothing else to do
+    /// meanwhile); the poll yields the CPU after a short spin.
     fn ask(&self, q: &[u8]) -> Digest {
         let mut req = Vec::with_capacity(20 + q.len());
         req.resize(16, 0);
         Self::push_item(&mut req, q);
-        let mut conn = self.take();
-        let body = self.call(&mut conn, OP_QUERY, 1, &mut req);
-        self.put(conn);
+        let mut g = self.fs.lock().unwrap();
+        if g.is_none() {
+            let c = open_stream(&self.path, &self.dir).unwrap_or_else(|e| fatal(&format!("connect {}: {e}", self.path)));
+            c.set_nonblocking(true).unwrap_or_else(|e| fatal(&format!("socket: {e}")));
+            *g = Some(c);
+        }
+        let conn = g.as_mut().unwrap();
+        let len = req.len();
+        req[4..8].copy_from_slice(&1u32.to_le_bytes());
+        req[8..16].copy_from_slice(&((len - 16) as u64).to_le_bytes());
+        req[0] = OP_QUERY;
+        let mut sent = 0;
+        let mut spins = 0u32;
+        while sent < len {
+            match conn.write(&req[sent..]) {
+                Ok(k) => sent += k,
+                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => std::thread::yield_now(),
+                Err(e) => fatal(&format!("QUERY ({len} bytes): write: {e}")),
+            }
+        }
+        let mut buf = [0u8; 48];
+        let mut got = 0;
+        let mut want = 48;
+        let mut msg = vec![];
+        while got < want {
+            match conn.read(&mut buf[got..want]) {
+                Ok(0) => fatal("QUERY: the service closed the connection"),
+                Ok(k) => {
+                    got += k;
+                    if got >= 16 && buf[0] != 0 {
+                        // a refusal: its message is the body
+                        let n = u64::from_le_bytes(buf[8..16].try_into().unwrap()) as usize;
+                        msg.extend_from_slice(&buf[16..got]);
+                        conn.set_nonblocking(false).ok();
+                        let mut rest = vec![0u8; n.saturating_sub(msg.len())];
+                        conn.read_exact(&mut rest).ok();
+                        msg.extend_from_slice(&rest);
+                        fatal(&format!(
+                            "QUERY ({len} bytes) refused with status {} {}: {}",
+                            buf[0],
+                            status_name(buf[0]),
+                            String::from_utf8_lossy(&msg)
+                        ));
+                    }
+                    want = 48;
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                    spins += 1;
+                    if spins < 2000 {
+                        std::hint::spin_loop();
+                    } else {
+                        std::thread::yield_now();
+                    }
+                }
+                Err(e) => fatal(&format!("QUERY ({len} bytes): read: {e}")),
+            }
+        }
+        drop(g);
+        self.requests.fetch_add(1, Ordering::Relaxed);
         self.queries.fetch_add(1, Ordering::Relaxed);
         self.query_bytes.fetch_add(q.len() as u64, Ordering::Relaxed);
-        body[..32].try_into().unwrap_or_else(|_| fatal("QUERY: short answer"))
+        if u64::from_le_bytes(buf[8..16].try_into().unwrap()) != 32 {
+            fatal("QUERY: short answer");
+        }
+        buf[16..48].try_into().unwrap()
     }
 
     fn ask_many(&self, out: &mut [Digest], build: &Builder) {

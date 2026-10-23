@@ -6,7 +6,7 @@
 
 use crate::blake2s::Digest;
 use crate::field::{ch_e, E};
-use crate::oracle::Oracle;
+use crate::oracle::{Oracle, Trace};
 
 pub type Label = [u8; 31];
 
@@ -18,6 +18,8 @@ pub struct Transcript<'a> {
     pub st: Digest,
     /// `(operation, kind, state after)` when logging
     pub log: Option<Vec<(String, Digest)>>,
+    /// every query with its answer, in order, when recording (`traced`)
+    pub trace: Option<Trace>,
     pub queries: usize,
     o: &'a dyn Oracle,
     buf: Vec<u8>,
@@ -32,9 +34,20 @@ impl<'a> Transcript<'a> {
         buf.extend_from_slice(&n.to_le_bytes());
         buf.extend_from_slice(h);
         let st = o.ask(&buf);
-        let mut t = Transcript { st, log: if logging { Some(vec![]) } else { None }, queries: 1, o, buf };
+        let mut t = Transcript { st, log: if logging { Some(vec![]) } else { None }, trace: None, queries: 1, o, buf };
         t.note("seed".into());
         t
+    }
+    /// Record every query and its answer from now on, starting with the seed (call right after
+    /// `new`).
+    pub fn traced(mut self) -> Self {
+        self.trace = Some(vec![(self.buf.clone(), self.st)]);
+        self
+    }
+    fn rec(&mut self) {
+        if let Some(t) = self.trace.as_mut() {
+            t.push((self.buf.clone(), self.st));
+        }
     }
     fn note(&mut self, what: String) {
         let st = self.st;
@@ -51,6 +64,7 @@ impl<'a> Transcript<'a> {
         self.buf.extend_from_slice(msg);
         self.st = self.o.ask(&self.buf);
         self.queries += 1;
+        self.rec();
         if self.log.is_some() {
             self.note(format!("absorb {:02x} {}", kind, msg.len()));
         }
@@ -62,6 +76,7 @@ impl<'a> Transcript<'a> {
         self.buf.extend_from_slice(&self.st);
         self.st = self.o.ask(&self.buf);
         self.queries += 1;
+        self.rec();
         if self.log.is_some() {
             self.note("squeeze".into());
         }
@@ -110,39 +125,56 @@ pub fn node_label(o: &dyn Oracle, l: &Label, r: &Label) -> Label {
     trunc(&o.ask(&q))
 }
 
-/// A Merkle tree over `2^ln` labels: `levels[0]` the leaves, `levels[ln]` the root.
+/// A Merkle tree over `2^ln` labels: `levels[0]` the leaves' answers, `levels[ln]` the root's;
+/// each label is its answer's first 31 bytes (the whole answers make the verifier's trace,
+/// `open_trace`).
 pub struct Merkle {
-    pub levels: Vec<Vec<Label>>,
+    pub levels: Vec<Vec<Digest>>,
 }
 
 impl Merkle {
-    /// The tree over `leaves`, one batch of node queries per level.
-    pub fn build(o: &dyn Oracle, leaves: Vec<Label>) -> Merkle {
+    /// The tree over the leaves' answers, one batch of node queries per level.
+    pub fn build(o: &dyn Oracle, leaves: Vec<Digest>) -> Merkle {
         let mut levels = vec![leaves];
         while levels.last().unwrap().len() > 1 {
             let prev = levels.last().unwrap();
             let mut ans = vec![[0u8; 32]; prev.len() / 2];
             o.ask_many(&mut ans, &|i, b: &mut Vec<u8>| {
                 b.push(0x01);
-                b.extend_from_slice(&prev[2 * i]);
-                b.extend_from_slice(&prev[2 * i + 1]);
+                b.extend_from_slice(&prev[2 * i][..31]);
+                b.extend_from_slice(&prev[2 * i + 1][..31]);
             });
-            levels.push(ans.iter().map(trunc).collect());
+            levels.push(ans);
         }
         Merkle { levels }
     }
     pub fn root(&self) -> Label {
-        self.levels.last().unwrap()[0]
+        trunc(&self.levels.last().unwrap()[0])
     }
     /// The `ℓ_N` sibling labels of leaf `c`, bottom-up.
     pub fn path(&self, c: usize) -> Vec<Label> {
         let mut out = vec![];
         let mut i = c;
         for l in 0..self.levels.len() - 1 {
-            out.push(self.levels[l][i ^ 1]);
+            out.push(trunc(&self.levels[l][i ^ 1]));
             i >>= 1;
         }
         out
+    }
+    /// The verifier's queries for column `c` (`climb`, the leaf query `leaf_q`) with their answers,
+    /// appended to `tr`: the leaf, then one node query per level, bottom-up.
+    pub fn open_trace(&self, c: usize, leaf_q: Vec<u8>, tr: &mut Trace) {
+        tr.push((leaf_q, self.levels[0][c]));
+        let mut i = c;
+        for l in 0..self.levels.len() - 1 {
+            let p = i & !1;
+            let mut q = Vec::with_capacity(63);
+            q.push(0x01);
+            q.extend_from_slice(&self.levels[l][p][..31]);
+            q.extend_from_slice(&self.levels[l][p + 1][..31]);
+            i >>= 1;
+            tr.push((q, self.levels[l + 1][i]));
+        }
     }
 }
 

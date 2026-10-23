@@ -292,6 +292,14 @@ impl E {
         }
         r
     }
+    /// `a^(2^192 − 2)`, the inverse of a non-zero `a` (0 for 0).
+    pub fn inv(self) -> E {
+        let mut x = self; // a^(2^k − 1), k = 1
+        for _ in 1..191 {
+            x = x.sq() * self;
+        }
+        x.sq()
+    }
     /// The 24 bytes `c0 ‖ c1 ‖ c2`, each 8 little-endian bytes (BLUEPRINT-R1 §7).
     pub fn to_bytes(self) -> [u8; 24] {
         let mut o = [0u8; 24];
@@ -557,6 +565,12 @@ mod tests {
             let k = K(nx());
             assert_eq!(a.mul_k(k), a * E::from_k(k));
         }
+        for _ in 0..50 {
+            let a = E([nx(), nx(), nx()]);
+            assert_eq!(a * a.inv(), E::ONE);
+        }
+        assert_eq!(E::ONE.inv(), E::ONE);
+        assert_eq!(E::ZERO.inv(), E::ZERO);
         // |E| - 1 = 2^192 - 1 divides; a^(2^192) = a: frob 192 is the identity
         let a = E([nx(), nx(), nx()]);
         assert_eq!(a.frob(192), a);

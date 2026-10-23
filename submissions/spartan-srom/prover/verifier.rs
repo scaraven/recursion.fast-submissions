@@ -1,6 +1,7 @@
 //! The native leaf verifier: v3's `leafProg` (BLUEPRINT-R1 §1.3, §3–§6; blueprint §2 branch `L`)
 //! and its SNARK verifier `snarkProg`, over an oracle. Its query sequence is the trace of a leaf
-//! proof (the prover replays it against its own answers, `oracle::Replay`), and `acc.rs` runs it
+//! proof (the prover writes it, `prover::prove_leaf_core`, and can check it by replaying this verifier
+//! against its own answers, `oracle::Replay`), and `acc.rs` runs it
 //! against a trace (`oracle::Seq`). Same decisions, same reads, same queries in the same order as
 //! the Lean `snarkProg` (v3's `SpartanChainVerifier.lean`).
 

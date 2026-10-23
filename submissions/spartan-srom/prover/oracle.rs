@@ -5,10 +5,12 @@
 //!   `service/PROTOCOL.md` §2.1) under a key given on the command line, for known-answer tests and
 //!   local benchmarks; `V3` is v3's `blake2s256(0x52 ‖ q)`, for the v3 known-answer comparisons.
 //! * `service::Service` (`service.rs`): the v4 oracle service over its Unix socket.
-//! * `Recorder`: wraps the prover's oracle and keeps a `(fingerprint of q → answer)` table of every
-//!   query asked while proving.
-//! * `Replay`: answers the native verifier from that table and records the query sequence it asks
-//!   (the trace to `SIGN`); a query missing from the table is counted, never sent to the service.
+//! * `Recorder`: wraps the prover's oracle, counts its queries and (for the replay check) keeps a
+//!   `(fingerprint of q → answer)` table of every query asked while proving.
+//! * `Replay`: answers the native verifier from that table and records the query sequence it asks;
+//!   a query missing from the table is counted, never sent to the service. The prover writes the
+//!   trace to `SIGN` itself (`prover::prove_leaf_core`); `SPARTAN_REPLAY=1` and the tests check it
+//!   against this replay.
 //! * `Seq`: answers the `i`-th query from the `i`-th trace entry and fails on any other query, the
 //!   native `OProg.runSeq` of `acc` (FORMAT.md).
 //!
@@ -148,16 +150,22 @@ impl Table {
     }
 }
 
-/// Records every query asked through it (by fingerprint) with its answer.
+/// Counts the queries asked through it (`stats`) and, when `keep`, records each (by fingerprint)
+/// with its answer.
 pub struct Recorder<'a> {
     inner: &'a dyn Oracle,
+    keep: bool,
     table: Mutex<Vec<(u128, Digest)>>,
     pub stats: Stats,
 }
 
 impl<'a> Recorder<'a> {
     pub fn new(inner: &'a dyn Oracle) -> Recorder<'a> {
-        Recorder { inner, table: Mutex::new(Vec::new()), stats: Stats::default() }
+        Recorder { inner, keep: true, table: Mutex::new(Vec::new()), stats: Stats::default() }
+    }
+    /// Counts only; `into_table` is then empty.
+    pub fn counting(inner: &'a dyn Oracle) -> Recorder<'a> {
+        Recorder { keep: false, ..Recorder::new(inner) }
     }
     pub fn into_table(self) -> Table {
         let mut v = self.table.into_inner().unwrap();
@@ -174,12 +182,27 @@ impl Oracle for Recorder<'_> {
         self.stats.asks.fetch_add(1, Ordering::Relaxed);
         self.stats.queries.fetch_add(1, Ordering::Relaxed);
         self.stats.bytes.fetch_add(q.len() as u64, Ordering::Relaxed);
-        self.table.lock().unwrap().push((fp(q), a));
+        if self.keep {
+            self.table.lock().unwrap().push((fp(q), a));
+        }
         a
     }
     fn ask_many(&self, out: &mut [Digest], build: &Builder) {
         let t = Instant::now();
         let n = out.len();
+        if !self.keep {
+            let bytes = AtomicU64::new(0);
+            self.inner.ask_many(out, &|i, buf: &mut Vec<u8>| {
+                let st = buf.len();
+                build(i, buf);
+                bytes.fetch_add((buf.len() - st) as u64, Ordering::Relaxed);
+            });
+            self.stats.many_ns.fetch_add(t.elapsed().as_nanos() as u64, Ordering::Relaxed);
+            self.stats.manys.fetch_add(1, Ordering::Relaxed);
+            self.stats.queries.fetch_add(n as u64, Ordering::Relaxed);
+            self.stats.bytes.fetch_add(bytes.into_inner(), Ordering::Relaxed);
+            return;
+        }
         let fps: Vec<AtomicU64> = (0..2 * n).map(|_| AtomicU64::new(0)).collect();
         let bytes = AtomicU64::new(0);
         self.inner.ask_many(out, &|i, buf: &mut Vec<u8>| {

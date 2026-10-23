@@ -92,25 +92,49 @@ impl Code {
 
     /// `Enc(msg)` for `msg ∈ K^k`, all `N = 2^ln` points, by the additive FFT on the `N/k` cosets.
     pub fn encode_k(&self, msg: &[K]) -> Vec<K> {
+        self.encode_k_tw(msg, &self.twiddles())
+    }
+
+    /// The FFT's factors `W_i(ω_{off + s})` for every coset `off = c·k`, layer `i` (from `lk − 1`
+    /// down) and block `s`, in the order `fft` uses them: `k − 1` per coset. The same for every
+    /// message, so `encode_k_tw` of many rows computes them once.
+    pub fn twiddles(&self) -> Vec<K> {
+        let k = 1usize << self.lk;
+        let nn = 1usize << self.ln;
+        let mut tw = Vec::with_capacity(nn / k * (k - 1));
+        for off in (0..nn).step_by(k) {
+            for i in (0..self.lk).rev() {
+                for s in (0..k).step_by(2 << i) {
+                    tw.push(self.w_at(i, off + s));
+                }
+            }
+        }
+        tw
+    }
+
+    /// `encode_k` with the factors of `twiddles`.
+    pub fn encode_k_tw(&self, msg: &[K], tw: &[K]) -> Vec<K> {
         let k = 1usize << self.lk;
         let nn = 1usize << self.ln;
         assert_eq!(msg.len(), k);
         let mut out = vec![K::ZERO; nn];
         for (ch, buf) in out.chunks_mut(k).enumerate() {
             buf.copy_from_slice(msg);
-            self.fft(buf, ch * k);
+            self.fft(buf, &tw[ch * (k - 1)..(ch + 1) * (k - 1)]);
         }
         out
     }
 
-    fn fft(&self, a: &mut [K], off: usize) {
+    fn fft(&self, a: &mut [K], tw: &[K]) {
         let k = a.len();
+        let mut p = 0;
         for i in (0..self.lk).rev() {
             let half = 1usize << i;
             let kt = &self.kap_tab[i];
             let mut s = 0;
             while s < k {
-                let w = self.w_at(i, off + s);
+                let w = tw[p];
+                p += 1;
                 let (lo, hi) = a[s..s + 2 * half].split_at_mut(half);
                 for j in 0..half {
                     let h = hi[j];

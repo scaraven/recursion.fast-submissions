@@ -127,21 +127,20 @@ pub fn witness(circ: &Circuit, sh: &Shape, s: &Digest) -> Witness {
         let wc = &mut w[..];
         let ac = &mut a[..words_w];
         let bc = &mut b[..words_w];
-        // fill blocks in parallel: split all three slices into 256-word blocks
+        // fill groups of up to 64 blocks in parallel (`Circuit::trace64`): split the three slices
+        // into groups of 64 · 256 words
         let mut blocks: Vec<(&mut [u64], &mut [u64], &mut [u64])> = wc
-            .chunks_mut(256)
-            .zip(ac.chunks_mut(256))
-            .zip(bc.chunks_mut(256))
+            .chunks_mut(64 * 256)
+            .zip(ac.chunks_mut(64 * 256))
+            .zip(bc.chunks_mut(64 * 256))
             .map(|((x, y), z)| (x, y, z))
             .collect();
-        par::for_each_chunk_mut(&mut blocks, 4, |off, chunk| {
+        par::for_each_chunk_mut(&mut blocks, 1, |off, chunk| {
             let mut vals = Vec::new();
             for (i, (zw, aw, bw)) in chunk.iter_mut().enumerate() {
                 let t = off + i;
-                let (z, az, bz) = circ.trace(&msgs[t], &mut vals);
-                zw.copy_from_slice(&z);
-                aw.copy_from_slice(&az);
-                bw.copy_from_slice(&bz);
+                let k = msgs[64 * t..].len().min(64).min(nb - 64 * t);
+                circ.trace64(&msgs[64 * t..64 * t + k], &mut vals, zw, aw, bw);
             }
         });
     }

@@ -13,8 +13,8 @@ use crate::par;
 use crate::ringswitch::{target, PhiTab, STAGES};
 use crate::rs::Code;
 use crate::sumcheck::{bytes_of, inner, outer, product_sumcheck, slices, KIND_RS};
-use crate::oracle::Oracle;
-use crate::transcript::{trunc, Label, Merkle, Transcript};
+use crate::oracle::{Oracle, Trace};
+use crate::transcript::{Merkle, Transcript};
 
 pub struct Timings(pub Vec<(&'static str, f64)>);
 
@@ -81,6 +81,23 @@ pub fn prove_leaf_traced(
     log: bool,
     trace: Option<&mut LeafTrace>,
 ) -> (Vec<u8>, Timings, Option<Vec<(String, Digest)>>) {
+    prove_leaf_core(circ, o, s, n, log, trace, None)
+}
+
+/// The leaf proof; with `otr`, also the verifier's trace of it (`verifier::verify_snark`'s queries
+/// in order with their answers): the transcript's queries, which the verifier repeats from `π`,
+/// then each opened column's leaf and path queries, with the answers the prover got. Equal to the
+/// replay of the verifier against the prover's answers (`make::prove_traced` checks it with
+/// `SPARTAN_REPLAY=1`; the tests compare both).
+pub fn prove_leaf_core(
+    circ: &Circuit,
+    o: &dyn Oracle,
+    s: &Digest,
+    n: u64,
+    log: bool,
+    trace: Option<&mut LeafTrace>,
+    otr: Option<&mut Trace>,
+) -> (Vec<u8>, Timings, Option<Vec<(String, Digest)>>) {
     let mut tm = vec![];
     if n == 0 {
         return (leaf_header(s, 0, s), Timings(tm), None);
@@ -92,7 +109,7 @@ pub fn prove_leaf_traced(
     };
     let mut t = Instant::now();
     let sh = Shape::new(n);
-    let wit = witness(circ, &sh, s);
+    let mut wit = witness(circ, &sh, s);
     debug_assert_eq!(wit.h, chain_end(s, n));
     debug_assert!(crate::chain::sat_tables(&wit));
     lap("witness", &mut t);
@@ -101,11 +118,12 @@ pub fn prove_leaf_traced(
     let (m, k, nn, ln) = (sh.m, sh.k, sh.nn, sh.ln);
     let q = &wit.w;
     let code = Code::new(sh.lk, ln);
+    let tw = code.twiddles();
     let mut u: Vec<Vec<K>> = vec![vec![]; m];
     par::for_each_chunk_mut(&mut u, 1, |off, rows| {
         for (i, row) in rows.iter_mut().enumerate() {
             let msg: Vec<K> = q[(off + i) * k..(off + i + 1) * k].iter().map(|&x| K(x)).collect();
-            *row = code.encode_k(&msg);
+            *row = code.encode_k_tw(&msg, &tw);
         }
     });
     lap("encode", &mut t);
@@ -123,13 +141,14 @@ pub fn prove_leaf_traced(
             b.extend_from_slice(&row[c].to_bytes());
         }
     });
-    let leaves: Vec<Label> = answers.iter().map(trunc).collect();
-    drop(answers);
-    let tree = Merkle::build(o, leaves);
+    let tree = Merkle::build(o, answers);
     let root = tree.root();
     lap("merkle", &mut t);
 
     let mut tr = Transcript::new(o, s, n, &wit.h, log);
+    if otr.is_some() {
+        tr = tr.traced();
+    }
     tr.absorb(0x01, &root);
     let rcoef: Vec<E> = (0..m).map(|_| tr.squeeze_e()).collect();
     let ubar = combine_rows(q, m, k, &rcoef);
@@ -137,7 +156,9 @@ pub fn prove_leaf_traced(
     let tau: Vec<E> = (0..sh.ell).map(|_| tr.squeeze_e()).collect();
     lap("proximity", &mut t);
 
-    let out = outer(&sh, &wit, &tau, &mut tr);
+    let mut bits = [std::mem::take(&mut wit.a), std::mem::take(&mut wit.b), std::mem::take(&mut wit.c)];
+    let out = outer(&sh, &mut bits, &tau, &mut tr, trace.is_some());
+    [wit.a, wit.b, wit.c] = bits;
     lap("outer", &mut t);
     let [va, vb, vc] = out.v;
     tr.absorb(0x04, &bytes_of(&out.v));
@@ -167,6 +188,7 @@ pub fn prove_leaf_traced(
     let phit = PhiTab::new(&f);
     let tgt = target(&f, &sl);
     let wv = par::collect_vec(eq_hi.len(), 1 << 12, |i| phit.apply(eq_hi[i]));
+    drop(eq_hi);
     let qe = par::collect_vec(q.len(), 1 << 14, |i| E::from_k(K(q[i])));
     let (rs_polys, r2, _wfin, qfin) = product_sumcheck(wv, qe, tgt, KIND_RS, &mut tr);
     lap("ringswitch", &mut t);
@@ -208,6 +230,15 @@ pub fn prove_leaf_traced(
         }
     }
     assert_eq!(bytes.len(), leaf_size(n));
+    if let Some(ot) = otr {
+        *ot = tr.trace.take().unwrap();
+        for &c in &idx {
+            let mut q = Vec::with_capacity(1 + 8 * m);
+            q.push(0x00);
+            q.extend_from_slice(&col_bytes(c));
+            tree.open_trace(c, q, ot);
+        }
+    }
     if let Some(tc) = trace {
         *tc = LeafTrace {
             tau: tau.clone(),

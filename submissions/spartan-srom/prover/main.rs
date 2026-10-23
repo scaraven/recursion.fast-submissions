@@ -19,7 +19,7 @@
 //!                                   its statement
 //!   check-leaf [--oracle O] STMT PI the raw leaf `π` checked by the native leaf verifier under O
 //!   prove-signed START N OUT        a signed `L` file through the service; prints its statement
-//!   bench-leaf [--oracle O] N REPS  prove (and, with the service, replay and SIGN) a leaf REPS
+//!   bench-leaf [--oracle O] N REPS  prove (and, with the service, SIGN) a leaf REPS
 //!                                   times; key=value lines on stdout
 //!   selftest-field [COUNT]          compare the pclmulqdq field products with the portable ones
 //!   dump-field | dump-circuit | dump-walk | dump-encode | dump-mle | dump-phi | dump-sumcheck
@@ -28,8 +28,10 @@
 //!
 //! Oracles O: `v3` (`blake2s256(0x52 ‖ q)`, the default of the dumps), `keyed` / `keyed:HEX`
 //! (keyed BLAKE2s-256 under 32 zero bytes / the given key, the default of `prove-leaf` and
-//! `bench-leaf`), `service` (`$RF_ORACLE`). SPARTAN_VERBOSE=1 prints timings on stderr,
-//! SPARTAN_THREADS bounds the threads, SPARTAN_NO_CLMUL=1 forces the portable field product.
+//! `bench-leaf`), `service` (`$RF_ORACLE`). SPARTAN_VERBOSE=1 prints timings on stderr (2: per
+//! sumcheck round too), SPARTAN_THREADS bounds the threads, SPARTAN_NO_CLMUL=1 forces the portable
+//! field product, SPARTAN_REPLAY=1 replays the native verifier on every leaf and checks the trace,
+//! SPARTAN_TREE_WIDTH sets how many tree leaves are proved at once.
 
 // Some helpers are used only by the tests and the known-answer dumps.
 #![allow(dead_code)]
@@ -246,8 +248,20 @@ fn leaf_signed(circ: &Circuit, svc: &Service, s: &Digest, n: u64) -> Result<Sign
     Ok(p)
 }
 
+/// How many leaves of a tree are proved at once (they share the pool's threads): as many as the
+/// threads, within a memory budget of 8 GiB at `32 MiB + 64 KiB·n` per leaf (a leaf's measured
+/// peak is 40–55 KiB per chain step at `n ≥ 4096`); `SPARTAN_TREE_WIDTH` overrides.
+fn tree_width(n: u64, leaves: usize) -> usize {
+    let w = match std::env::var("SPARTAN_TREE_WIDTH").ok().and_then(|v| v.parse().ok()) {
+        Some(w) => w,
+        None => ((8u64 << 30) / ((32 << 20) + (64 << 10) * n)) as usize,
+    };
+    w.min(par::threads()).clamp(1, leaves)
+}
+
 fn cmd_tree(dir: &Path) -> Result<(), String> {
     let t0 = Instant::now();
+    heap_setup(0);
     let text = std::fs::read_to_string(dir.join("leaves.json")).map_err(|e| format!("leaves.json: {e}"))?;
     let (n, starts) = parse_leaves(&text)?;
     let svc = service_for(dir)?;
@@ -256,16 +270,55 @@ fn cmd_tree(dir: &Path) -> Result<(), String> {
     std::fs::create_dir_all(&pdir).map_err(|e| e.to_string())?;
     let r = starts.len().trailing_zeros();
     let mut level: Vec<(Digest, Signed)> = vec![];
-    for (i, s) in starts.iter().enumerate() {
-        let p = leaf_signed(&circ, &svc, s, n)?;
-        let f = to_file(&p);
-        write(&pdir.join(format!("L{i}.bin")), &f)?;
-        if r == 0 {
-            write(&dir.join("root.bin"), &f)?;
+    // the leaves are proved `w` at a time on the shared pool (`tree_width`) and signed in order,
+    // here, while the later ones are still being proved
+    let k = starts.len();
+    let w = tree_width(n, k);
+    type Proved = Result<(Vec<u8>, oracle::Trace, make::LeafCost, f64), String>;
+    let slots: Vec<std::sync::Mutex<Option<Proved>>> = (0..k).map(|_| std::sync::Mutex::new(None)).collect();
+    let ready = std::sync::Condvar::new();
+    let next = std::sync::atomic::AtomicUsize::new(0);
+    std::thread::scope(|sc| -> Result<(), String> {
+        sc.spawn(|| {
+            par::run(w, &|_| loop {
+                let i = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                if i >= k {
+                    break;
+                }
+                let t = Instant::now();
+                let mut cost = make::LeafCost::default();
+                let p = make::prove_traced(&circ, &svc, &starts[i], n, &mut cost);
+                *slots[i].lock().unwrap() = Some(p.map(|(pi, tr)| (pi, tr, cost, t.elapsed().as_secs_f64())));
+                ready.notify_all();
+            })
+        });
+        for (i, slot) in slots.iter().enumerate() {
+            let mut g = slot.lock().unwrap();
+            while g.is_none() {
+                g = ready.wait(g).unwrap();
+            }
+            let (pi, tr, mut cost, prove_wall) = g.take().unwrap()?;
+            drop(g);
+            let t = Instant::now();
+            let sig = make::sign(&svc, &tr)?;
+            cost.sign_s = t.elapsed().as_secs_f64();
+            let p = Signed { pi, tr, sig };
+            let f = to_file(&p);
+            write(&pdir.join(format!("L{i}.bin")), &f)?;
+            if r == 0 {
+                write(&dir.join("root.bin"), &f)?;
+            }
+            note!(
+                "leaf {i} n={n} prove+trace={prove_wall:.4}s sign={:.4}s (width {w}) | {} | {}",
+                cost.sign_s,
+                cost.phases,
+                cost.oracle
+            );
+            let h: Digest = p.pi[48..80].try_into().unwrap();
+            level.push((leaf_stmt(&h, n), p));
         }
-        let h: Digest = p.pi[48..80].try_into().unwrap();
-        level.push((leaf_stmt(&h, n), p));
-    }
+        Ok(())
+    })?;
     let mut sigma0: Option<Sig> = None;
     for lv in 1..=r {
         let mut next = vec![];
@@ -305,11 +358,41 @@ fn cmd_tree(dir: &Path) -> Result<(), String> {
     Ok(())
 }
 
+extern "C" {
+    /// glibc's `mallopt` (the prover is linked with glibc, `-static`).
+    fn mallopt(param: i32, value: i32) -> i32;
+}
+
+/// Keep the memory the prover frees (one arena, no trimming, the largest heap threshold for
+/// `mmap`), and map `mib` MiB of heap now: a request's allocations then reuse pages that are
+/// already mapped instead of faulting them in while timed. No effect on any result.
+fn heap_setup(mib: usize) {
+    // SAFETY: plain glibc calls with documented parameters (M_ARENA_MAX = -8, M_TRIM_THRESHOLD =
+    // -1, M_MMAP_THRESHOLD = -3, at most 32 MiB on 64-bit); a refused setting is only slower.
+    unsafe {
+        mallopt(-8, 1);
+        mallopt(-1, i32::MAX);
+        mallopt(-3, 32 << 20);
+    }
+    let blocks: Vec<Vec<u8>> = (0..mib.div_ceil(16))
+        .map(|_| {
+            let mut v = vec![0u8; 16 << 20];
+            for i in (0..v.len()).step_by(4096) {
+                v[i] = 1;
+            }
+            std::hint::black_box(v)
+        })
+        .collect();
+    drop(blocks);
+}
+
 /// The start of a stream request: the circuit, the service (connections opened), `ready`, `go`.
 fn stream_start(dir: &Path) -> Result<(Circuit, Service), String> {
+    heap_setup(64);
     let circ = Circuit::build();
     let svc = service_for(dir)?;
     svc.warm(par::threads());
+    par::warm();
     say("ready");
     wait_go()?;
     Ok((circ, svc))
@@ -332,8 +415,10 @@ fn cmd_node(dir: &Path) -> Result<(), String> {
     let t = Instant::now();
     let c1 = read_hex32(&dir.join("child1.stmt"))?;
     let c2 = read_hex32(&dir.join("child2.stmt"))?;
-    let p1 = read_signed(&dir.join("child1.bin"))?;
-    let p2 = read_signed(&dir.join("child2.bin"))?;
+    let (n1, n2) = (dir.join("child1.bin"), dir.join("child2.bin"));
+    let (f1, f2) = (read(&n1)?, read(&n2)?);
+    let bad = |p: &Path| format!("{}: not a signed-proof file", p.display());
+    let (v1, v2) = (make::view(&f1).ok_or_else(|| bad(&n1))?, make::view(&f2).ok_or_else(|| bad(&n2))?);
     let t_read = t.elapsed().as_secs_f64();
     let mut sign0 = 0.0;
     let mut cost = make::NodeCost::default();
@@ -343,19 +428,27 @@ fn cmd_node(dir: &Path) -> Result<(), String> {
         sign0 = t.elapsed().as_secs_f64();
         s
     };
-    let p = make::node(&svc, &c1, &p1, &c2, &p2, sigma0, &mut cost)?;
+    // the bundle straight from the files (written as it is made); the plain node (`n = 0`, mixed
+    // σ0) through `make::node`
+    let out = dir.join("proof.bin");
+    let f = match make::node_files(&svc, &c1, &v1, &c2, &v2, sigma0, &out, &mut cost)? {
+        Some(f) => f,
+        None => {
+            let (p1, p2) = (from_file(&f1).ok_or_else(|| bad(&n1))?, from_file(&f2).ok_or_else(|| bad(&n2))?);
+            let f = to_file(&make::node(&svc, &c1, &p1, &c2, &p2, sigma0, &mut cost)?);
+            write(&out, &f)?;
+            f
+        }
+    };
     let t_made = t.elapsed().as_secs_f64();
-    let f = to_file(&p);
-    write(&dir.join("proof.bin"), &f)?;
     say("done");
     note!(
-        "node request {:.4}s (read+parse {t_read:.4}s, build {:.4}s incl. SIGN [] {sign0:.4}s, SIGN {:.4}s, file+write {:.4}s) {} {}",
+        "node request {:.4}s (read+parse {t_read:.4}s, build+write {:.4}s incl. SIGN [] {sign0:.4}s, SIGN {:.4}s, rest {:.4}s) {}",
         t.elapsed().as_secs_f64(),
         cost.build_s,
         cost.sign_s,
         t.elapsed().as_secs_f64() - t_made,
-        file_summary(&f, &p),
-        svc.report()
+        from_file(&f).map(|p| file_summary(&f, &p)).unwrap_or_default(),
     );
     Ok(())
 }
@@ -493,6 +586,7 @@ fn run(mut args: Vec<String>) -> Result<ExitCode, String> {
             if n == 0 || n > chain::CHAIN_CAP {
                 return Err("N in [1, chainCap]".into());
             }
+            heap_setup(64);
             let circ = Circuit::build();
             let s = kat::kat_rand("bench-leaf", n);
             println!("oracle={ospec} n={n} threads={} clmul={}", par::threads(), field::clmul_on());
@@ -622,7 +716,7 @@ mod tests {
     use crate::acc::{acc, v};
     use crate::chain::leaf_size;
     use crate::format::{toy_sign, trace_digest};
-    use crate::make::{bundle, child, prove_traced, LeafCost};
+    use crate::make::{bundle, child, LeafCost};
     use crate::oracle::Seq;
 
     fn start(i: u8) -> Digest {
@@ -636,7 +730,7 @@ mod tests {
     }
 
     fn leaf(o: &dyn Oracle, circ: &Circuit, s: &Digest, n: u64) -> (Digest, Signed) {
-        let (pi, tr) = prove_traced(circ, o, s, n, &mut LeafCost::default()).unwrap();
+        let (pi, tr) = make::prove_traced_opt(circ, o, s, n, &mut LeafCost::default(), true).unwrap();
         assert_eq!(pi.len(), leaf_size(n));
         let (_, p) = toy(pi, tr);
         (leaf_stmt(&chain_end(s, n), n), p)
