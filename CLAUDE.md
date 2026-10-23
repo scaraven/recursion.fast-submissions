@@ -37,8 +37,10 @@ you work on (for `spartan-srom`, `docs/v4/flock-baseline/BLUEPRINT.md`).
   - the season files `.contract/harness/season.toml` and `smoke.toml`.
 - **The design**, `.contract/docs/DESIGN-v4-srom.md`: §7 lists every decision taken in the user's
   absence. The brief and its decisions and amendments, V4-1 … V4-16 and V4-A1 … A8, are in
-  `.contract/docs/v4/BRIEF.md`. The design attack (C-Mn, C-mn) and the contract review (RA-Mn)
-  are in `.contract/docs/v4/reviews/`, and the stage RESULTs in `.contract/docs/v4/stages/`.
+  `.contract/docs/v4/BRIEF.md`. The design attack (C-Mn, C-mn), the contract review (RA-Mn) and
+  the harness review (RB-Mn, RB-mn) are in `.contract/docs/v4/reviews/`, the stage RESULTs in
+  `.contract/docs/v4/stages/`, and the orchestrator's fix queue in `.contract/docs/v4/FIXLIST.md`.
+  Cite its items as "FIXLIST Qn" (Q1 … Q15): the user's decisions below are also numbered Q1–Q6.
 - **The score**: `.contract/docs/DESIGN-cost-incentive-model.md` (CM-n, CM-Rn).
 - **An entry's own decisions** are in its blueprint: for `spartan-srom`, the D-n of
   `docs/v4/flock-baseline/BLUEPRINT.md`. Where a blueprint and the contract disagree, the contract
@@ -46,19 +48,23 @@ you work on (for `spartan-srom`, `docs/v4/flock-baseline/BLUEPRINT.md`).
 - **The user's decisions** Q1–Q6 are in `docs/design/DISCUSSION.md`.
 - **The v3 record** is in `.contract/docs/v3-*.md`. The copies under `docs/design/`, `docs/core/`
   and `docs/baseline/` are v3-era reference.
-- **Ids** (V4-n, V4-An, C-Mn, C-mn, RA-Mn, CM-n, D-n, F2-Mn, V3-n, O-n, S<n>-A<k>, …) are
-  cross-referenced everywhere. Keep them when you quote.
+- **The baseline's report on the rules** is `docs/v4/FLOCK-BASELINE-FEEDBACK.md` (FB-n, H-n).
+- **Ids** (V4-n, V4-An, C-Mn, C-mn, RA-Mn, RB-Mn, FIXLIST Qn, CM-n, D-n, F1-Mn, F2-Mn, FB-n, H-n,
+  V3-n, O-n, S<n>-A<k>, …) are cross-referenced everywhere. Keep them when you quote.
 - If the contract, the harness documents and `AGENTS.md` disagree, report it. Do not code around
   it.
 
 ## The pin
 
-- **Where it is.** `.contract` is pinned to `a874f87`, on the core's branch `v4/srom-rules`
-  (stages A and B, merged, pushed). It was committed on this branch as `0aaea52`.
-- **The next move.** The core's contract fix pass adds `p.tr.length ≤ S.qV` to `Submission.acc`
-  (review finding RA-M2). That commit moves the pin once more, before the core's pull request.
-  Every entry is then re-certified against it: `spartan-srom` must mirror the new conjunct in
-  `accWith` (`docs/v4/flock-baseline/stages/F1-lean-JOURNAL.md`, last entry).
+- **Where it is.** `.contract` is pinned to **`81e1ebf`**, the head of the core's branch
+  `v4/srom-rules` (pushed). It was committed on this branch as `d77478d`, with the caller workflow.
+  It holds stages A and B, each with its review's fix pass:
+  - the contract fix pass `ea2e8ab`: `acc` checks `decide (p.tr.length ≤ S.qV)` right after the
+    size cap (RA-M2); `Log` is an `abbrev` for `Trace`; `wordBytes w := enc64 w.toNat`;
+  - the harness fix pass `5b2b591` (`.contract/docs/v4/stages/B-harness-RESULT.md` §9).
+- **Every entry is certified against the pin.** An entry that restates `acc` mirrors its conjuncts:
+  `spartan-srom`'s `accWith` gains the trace-length conjunct, and its `Decode` lemmas follow the new
+  `wordBytes` (F1 review F1-m1). That adaptation is part of `spartan-srom`'s F1 fix pass.
 - **The pin moves only with a contract change**, in its own commit, before any entry is certified
   against the new commit (C14):
 
@@ -68,12 +74,10 @@ you work on (for `spartan-srom`, `docs/v4/flock-baseline/BLUEPRINT.md`).
   git add .contract && git commit -m "Pin .contract at <commit>: <what changed>"
   ```
 
-- **Set the caller workflow in the same commit.** When `.github/workflows/evaluate-entry.yml`
-  exists, it is a copy of the core's `harness/ci-template/evaluate-entry.yml`. Its two
-  `CORE_COMMIT_SHA` placeholders, the reusable workflow's `@ref` and `core_ref`, must be set to the
-  same full commit SHA as the pin, in the same commit.
-
-  <!-- TODO(orchestrator): the workflow is not installed yet -->
+- **Set the caller workflow in the same commit.** `.github/workflows/evaluate-entry.yml` is a copy
+  of the core's `harness/ci-template/evaluate-entry.yml`. Its two `CORE_COMMIT_SHA` placeholders,
+  the reusable workflow's `@ref` and `core_ref`, are set to the same full commit SHA as the pin, in
+  the same commit (as `d77478d` did). It has not run on GitHub yet.
 - **Never pin a commit that the core's remote does not have** when this repository is pushed.
 - **Never commit changes inside `.contract`.** Its working tree is the pinned commit plus
   gitignored build products. Build in a private copy (below), not in the submodule.
@@ -96,7 +100,8 @@ package tree:
 git submodule update --init                                  # .contract at the pin
 mkdir -p logs/org && git -C .contract archive HEAD | tar -x -C logs/org     # logs/ is gitignored
 # A built, writable package tree at the manifest's revisions:
-#  - on the development VM, copy stage A's (9.0 GB; about 43 s, A-RESULT §0):
+#  - on the development VM, copy stage A's (9.0 GB; about 43 s, A-RESULT §0; F3 measured 9.2 GB
+#    and 4 min 0 s with `cp -a` on ext4, F3 §1):
 rsync -a /home/devops/Verified-zkEVM/recursion.fast-v4/.lake/pkgs-local/ logs/pkgs/
 #  - elsewhere, let Lake clone into an empty logs/pkgs, then fetch Mathlib's cache inside the copy:
 #      (cd logs/org && lake exe cache get)
@@ -116,13 +121,20 @@ export RF_HARNESS_COMMIT=$(git -C .contract rev-parse HEAD)   # the archived cop
                                                              # without this, the result records this repository's HEAD
 # 1. organiser set-up, before any entry code: build, harness tools, allowlist and olean manifest
 #    (ORG/.lake/rf/), the badge's compiled objects, the service (cargo).
-#    First run 177 s, later runs 65 s (B-RESULT §3); 356 s in F3's run (logs/f3/org-setup.log).
+#    First run 177 s, later runs 65 s (B-RESULT §3); 356 s in F3's run at a874f87
+#    (logs/f3/org-setup.log), and 64 s more to add CompPoly's roots
+#    (logs/f3/org-setup-comppoly.log). At the pin its default roots include CompPoly's BF64.Ext3
+#    and BF64.Bytes (FIXLIST Q2), so RF_ORG_ROOTS is not needed for an entry that imports them.
 timeout 14400 "$ORG/harness/org-setup.sh" "$ORG"
 # 2. the proof checkers:
 source "$ORG/scripts/tools.env"            # this VM's comparator; elsewhere:
 #    "$ORG/harness/ci/build-kernels.sh" DIR, then export the COMPARATOR_* lines it prints
-# 3. the certificate job: source rule, comparator (Lean kernel; add --nanoda only where memory
-#    allows), gate, badge.
+# 3. the certificate job: source rule, comparator (the Lean kernel), the gate tree, gate, badge.
+#    --nanoda adds a separate nanoda run (--nanoda-mem, default 14G). Each kernel run has its own
+#    memory scope and an outcome: ok, rejected, over budget or timeout (Q12). A nanoda run over
+#    budget leaves the Lean kernel's verdict; spartan-srom needs more than 20 GB for nanoda
+#    (F3 §2.4). 14 min 22 s and 4.11 GB peak for spartan-srom at a874f87
+#    (logs/f3/cert-closure.log).
 timeout 7200 python3 -I "$ORG/harness/evaluate.py" cert --entry submissions/<root> --org "$ORG" \
   --work logs/eval/<run>/cert --out logs/eval/<run>/cert.json
 # 4. the benchmark job at the smoke shape (the service and rf-bench default to ORG's builds)
@@ -136,6 +148,11 @@ timeout 7200 python3 -I "$ORG/harness/evaluate.py" bench --entry submissions/<ro
   systemd user manager for the memory cgroups. Where no user manager is reachable, the memory cap
   falls back to `prlimit --as`, and the result says so (`memcap`). On Ubuntu 24.04 the AppArmor
   restriction on user namespaces must be relaxed: `harness/ci/runner-setup.sh` does this on CI.
+- **What the harness builds.** The comparator builds `Challenge` and `Solution`, and the gate tree
+  builds exactly those targets again, so only `Solution`'s import closure is built, compared byte
+  for byte and gated (FIXLIST Q7). An entry module that `Solution` does not import is never built
+  or checked by the harness: import the controls from `Solution` if the harness is to check them.
+  The certificate records `built_modules`.
 - **Iterating on Lean without the harness.** Mirror what `evaluate.py`'s `mkfresh` writes. That is
   a lakefile and a manifest that require `logs/org` by path, with `packagesDir` the private tree,
   and one `[[lean_lib]]` that lists **every** module of `lean/` as a root: Lake's `globs =
@@ -196,11 +213,10 @@ For entries, the harness checks these (`AGENTS.md` §6).
   `computed_field`. **No `unsafe`, `partial` or `opaque`.**
 - **No elaboration-time code.** The source rule refuses `#eval`, `run_cmd`, `elab`, `macro`,
   `initialize`, `import Lean` and the like, comments included.
-- **Imports only from the allowlist closure** (Mathlib, the contract, the library and the controls
-  at the pin), plus the entry's own modules. CompPoly is not in that closure at the pin (see
-  `AGENTS.md` §6).
-
-  <!-- TODO(orchestrator): CompPoly status -->
+- **Imports only from the allowlist closure**, plus the entry's own modules. The closure is that of
+  Mathlib, the contract, the library, the controls and CompPoly's `BF64.Ext3` and `BF64.Bytes`, at
+  the pin (`org-setup.sh`'s default roots, FIXLIST Q2; `AGENTS.md` §6). Other modules of the pinned
+  packages are checked as entry code.
 - **The submission is computable.** The badge compiles the whole `RecursionFast.Challenge.submission`,
   so `ε` and `δ` too (a cast from `ℚ≥0`). Gate rule 4 also requires compiled code for `V`, `P` and
   `ext`.

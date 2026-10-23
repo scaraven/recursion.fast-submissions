@@ -33,44 +33,55 @@ the intake copies the verified root and its registry entry into `main`.
 
 ## Status (2026-10-23)
 
-- **v4 is a proposal, built on the core's branch `v4/srom-rules`.** That branch is pushed but not
-  merged, and the user has not adopted it. Every decision taken in their absence is listed in
-  design §7.
+- **v4 is a proposal, built on the core's branch `v4/srom-rules`.** That branch is pushed, at
+  `81e1ebf`, but not merged, and no pull request is open yet. The user has not adopted it. Every
+  decision taken in their absence is listed in design §7.
 
   <!-- TODO(orchestrator): the core's pull request number for v4/srom-rules -->
-- **The pin.** `.contract` is at `a874f87`: the core's stages A (contract) and B (harness), merged.
-  - One more move is due before the core's pull request: the contract fix-pass commit, which adds
-    `p.tr.length ≤ S.qV` to `acc` (review finding RA-M2).
-  - `CLAUDE.md`, "The pin", says how to move it.
+- **The pin.** `.contract` is at **`81e1ebf`**, committed here as `d77478d` together with the caller
+  workflow. It is the core's stages A (contract) and B (harness), each with its review's fix pass:
+  - the contract fix pass `ea2e8ab`: `acc` checks `p.tr.length ≤ S.qV` right after the size cap
+    (RA-M2); `Log` is an abbreviation for `Trace`; `wordBytes w := enc64 w.toNat`;
+  - the harness fix pass `5b2b591` (B-RESULT §9): CompPoly's field is an organiser root (Q2), the
+    gate tree builds only `Solution`'s closure (Q7), the two kernels run separately (Q12), failure
+    reasons name their cause (Q13, Q14), and `T_V` is best-of-N (RB-M1).
+
+  `CLAUDE.md`, "The pin", says how to move it.
 - **The v4 baseline entry `submissions/spartan-srom`** is on the branch `v4/flock-baseline`. It is
-  v3's Spartan+Ligero leaf SNARK ported to v4, with σ0-bundle nodes.
+  v3's Spartan+Ligero leaf SNARK ported to v4, with σ0-bundle nodes. Its own `README.md` and
+  `NOTES.md` describe it; its records are in `docs/v4/flock-baseline/`.
   - **Lean (stage F1).** It is certified: `SpartanSrom.certificate` is a closed theorem, and
     `Solution.lean` proves the rendered challenge.
-  - **The native prover (stage F2)** is std Rust emitted as one `prover.s`. It passed the smoke
-    shape end to end with a native stand-in badge.
-  - **Its harness run with the real badge (stage F3)** is in progress.
-  - It fits the smoke shape only: no certified entry can yet run the season-1 shape (`AGENTS.md`
-    §7.1).
-  - Its records are in `docs/v4/flock-baseline/`.
+  - **The native prover (stage F2)** is std Rust emitted as one `prover.s`. It was golfed (proofs
+    byte-identical, leaves 2.6–4.5× faster) and fixed after its review.
+  - **The harness run (stage F3)**, with the real Lean badge, ran the frozen commit `8111b71`
+    against the core at `a874f87` (`docs/v4/flock-baseline/stages/F3-harness-RESULT.md`):
+    - **ACCEPT at the smoke shape**, with two workarounds that the pin now makes unnecessary
+      (`Solution` importing every module, Q7; CompPoly among the organiser's roots, Q2);
+    - ACCEPT only where `2^r · n ≤ 4,096`: above that, every root is over `proofCap`;
+    - **REJECT at the season shape**: the tree on the service's `queryCap`, the stream leaf on the
+      11 GiB memory cgroup (the pre-golf prover).
 
-  <!-- TODO(orchestrator): F3's verdict (ACCEPT / PROVISIONAL / REJECT at the smoke shape) once docs/v4/flock-baseline/stages/F3-harness-RESULT.md exists -->
+    No certified entry can yet run the season-1 shape (`AGENTS.md` §7.1).
+  - **The F1 fix pass** (the review's findings, D-6 and the pin's `acc`) is in progress.
+
+    <!-- TODO(orchestrator): the entry's evaluation at the pin 81e1ebf, after the F1 fix pass -->
+  - **The feedback report** on the v4 rules from this entry is
+    `docs/v4/FLOCK-BASELINE-FEEDBACK.md` (a draft, before review).
 - **v3 is frozen.** Its two entries are on this checkout's **local `main` only**, which is not
   pushed: 17 commits ahead of `origin/main`, pinned to the v3 core `15e4ae5`.
   - `submissions/baseline`: the witness-sending argument;
   - `submissions/spartan-chain`: the honest Spartan+Ligero SNARK, `HARNESS: ACCEPT` under v3.
 
   Neither is a v4 entry. The v3 documents copied under `docs/` are reference (`docs/README.md`).
+- **The caller workflow** `.github/workflows/evaluate-entry.yml` is installed on this branch. It is
+  the core's `harness/ci-template/evaluate-entry.yml`, with both `CORE_COMMIT_SHA` placeholders set
+  to the pin. It has not run on GitHub: this branch is not pushed.
 - **Not built yet.**
   - The intake: copying verified roots into `main` and writing `records.json`.
   - The paired (ABBA) record comparison.
-  - The caller workflow `.github/workflows/evaluate-entry.yml`, a copy of the core's
-    `harness/ci-template/evaluate-entry.yml` with its `CORE_COMMIT_SHA` set to the pin.
-
-  The evaluation workflows have not run on GitHub yet.
-
-  <!-- TODO(orchestrator): install the caller workflow when the pin is final -->
 - **Remote.** https://github.com/scaraven/recursion.fast-submissions (public, Apache License 2.0,
-  as the core).
+  as the core). It holds `main` only.
 
 ## How to start
 
@@ -85,8 +96,8 @@ git clone --recurse-submodules https://github.com/scaraven/recursion.fast-submis
 2. Read the design's §0 and §3 (`.contract/docs/DESIGN-v4-srom.md`). Then the normative
    interfaces: `.contract/harness/PROVER.md`, `.contract/harness/FORMAT.md` and
    `.contract/service/PROTOCOL.md`.
-3. Read the first v4 entry: `docs/v4/flock-baseline/BLUEPRINT.md`, its stage RESULTs, and
-   `submissions/spartan-srom/`.
+3. Read the first v4 entry: `submissions/spartan-srom/README.md` and `NOTES.md`, then
+   `docs/v4/flock-baseline/BLUEPRINT.md` and its stage RESULTs.
 4. Agents working in this repository also read `CLAUDE.md`.
 
 ## Layout
@@ -99,6 +110,8 @@ git clone --recurse-submodules https://github.com/scaraven/recursion.fast-submis
 | `records.json` | the registry of standing records, written only by the intake (empty) |
 | `.contract` | the core at the pinned commit (git submodule) |
 | `docs/v4/flock-baseline/` | the v4 baseline entry's blueprint, stage results and reviews (written here) |
+| `docs/v4/FLOCK-BASELINE-FEEDBACK.md` | the baseline team's report on the v4 rules (written here) |
+| `.github/workflows/evaluate-entry.yml` | the caller of the core's evaluation workflow, pinned to the `.contract` commit |
 | `docs/` (the rest) | v3-era reference copies: the v3 design and its predecessors, the core's v2 handover, the research, the v1.0 report (`docs/README.md`) |
 | `LICENSE` | Apache License 2.0, as the core |
 
