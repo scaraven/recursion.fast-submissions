@@ -25,7 +25,7 @@ report on the rules that this entry produced is `docs/v4/FLOCK-BASELINE-FEEDBACK
 - **Certified.** `SpartanSrom.certificate` is a closed theorem on the three allowed axioms (F1
   RESULT §3, §9.3). The entry is the commit `745c7d8`: the Lean fix pass at core `81e1ebf` (D-6,
   the pin's `acc`, the byte-level node reader, the golf), with the prover's golf and fix pass.
-- **The verdict at the pin**: ACCEPT at `81e1ebf`; confirmed at `01a25b0`: <!-- F4b -->
+- **The verdict at the pin**: ACCEPT at `81e1ebf`; confirmed at `01a25b0`: **ACCEPT** (F4b: certificate ok with the Lean kernel in 9 min 51 s; smoke bench of the submitted `prover.s` `733b3a30…`: T_tree 0.142 s, t_link 0.0846 s, S 1.835; `prover.s` assembles with GNU Binutils 2.42 without error or warning; `docs/v4/flock-baseline/stages/F4-final-harness-RESULT.md`, F4b)
 - **Through the fixed harness** (stage F4, `745c7d8` at core `81e1ebf`, no workaround;
   `docs/v4/flock-baseline/stages/F4-final-harness-RESULT.md`):
   - the certificate job: **ok** in 9 min 52 s. With `--nanoda` it is also ok: nanoda ran over its

@@ -105,3 +105,73 @@ runs out of memory at `n_f = 2^16`. nanoda still does not fit 14 GiB on this ent
 more than 20 GB, not finished). With Q12 that costs only the second check, not the verdict. A
 `--nanoda` job now takes 16 min 36 s instead of 9 min 52 s, because the separate nanoda run (396 s,
 until its kill) comes on top of the Lean run.
+
+## F4b: confirmation at the final core `01a25b0` (2026-10-23)
+
+Same discipline as F4: a fresh clone at `01a25b0` with default roots, a fresh private package tree,
+logs in the worktree's `logs/f4b/` (written `I/` below).
+
+| Setup | |
+|---|---|
+| `org-setup.sh` | ok, 4 min 4 s; allowlist 10,816 modules, manifest 34,374 files (`I/org-setup.log`) |
+| entries | `a47250e` (`prover.s` `7a30e654…`) and the branch head `9227005` (`prover.s` `733b3a30…`, the connection pool capped at 31) |
+| entry diff | `lean/` and `claim.json` byte-identical (`diff -r`), so one certificate serves both. The other differences are `prover.s`, `prover/service.rs`, `README.md` and `NOTES.md` |
+
+| Run | Verdict | Numbers | Log |
+|---|---|---|---|
+| `cert` (Lean kernel), `a47250e` | **ok**, 9 min 51 s | Lean-kernel run 359.5 s; binding "byte-identical (134 artifacts)"; gate PASS | `I/cert.{log,json}` |
+| `bench` `smoke.toml`, `a47250e` | **ACCEPT** | binary `fecda6a0…`; `T_tree` 0.152 s, `t_leaf` 0.0696, `t_merge` 0.0159, `t_link` 0.0855, **`S` 1.862**; root `acc` 440 ms; `T_V` max 514 ms; DoS max 394 ms | `I/bench-smoke.{log,json}` |
+| `bench` `smoke.toml`, head `9227005` | **ACCEPT** | binary `c5f5e1a8…`; `T_tree` 0.142 s, `t_leaf` 0.0702, `t_merge` 0.0144, `t_link` 0.0846, **`S` 1.835**; root `acc` 390 ms; `T_V` max 505 ms; DoS max 401 ms | `I/bench-smoke-head.{log,json}` |
+
+Both smoke runs:
+
+- canaries: 76 tree and 20 stream rejected;
+- liveness ok (`ran: true`, 30,820-entry log);
+- `T_V` not enforced: cap 10–12 µs, 19 of 19 checks over it.
+
+Visible harness changes since F4:
+
+- The calibration now runs `threads_16` under the 16-core affinity (F3 friction 11b, fixed).
+- The DoS column is bounded and reports `max_input`, `item_cap_ns` 60 s, `total_s` 300 and
+  `over_T_V` (46 of 64 here).
+
+**binutils 2.42** (the runner's `as`):
+
+- **Source.** `binutils-2.42.tar.xz` from ftp.gnu.org, SHA-256
+  `f6e4d41fd5fc778b06b7891457b3620da5ecea1006c6a4a41ae998109f85a800`. `gpg --verify` against
+  `gnu-keyring.gpg`: "Good signature from Nick Clifton (Chief Binutils Maintainer)", key
+  `3A24 BC1E 8FB4 09FA 9F14 3718 13FC EF89 DD9E 3C4F`, made 2024-01-29. The keyring came from the
+  same server, so the key is uncertified here (`I/binutils-verify.log`).
+- **Build.** Only gas, with the local gcc 15.2: `configure --disable-nls --disable-gdb
+  --disable-gprofng --disable-ld --disable-gold …`, then `make MAKEINFO=true all-gas`. The first
+  `make` failed only on the missing `makeinfo` for bfd's info pages; the second took 23.5 s. It
+  reports "GNU assembler (GNU Binutils) 2.42" (`I/binutils-build/`).
+- **Assembly.** Both `prover.s` files assemble with `as-2.42 --64` with **no error and no warning**
+  (0.7 s).
+- **Objects.** Compared with the local `as` 2.46, the object has one more section,
+  `.note.gnu.property`, which 2.42 emits.
+- **Linked binaries.** Linked with the local gcc 15.2, ld 2.46 and glibc 2.43, as the harness's
+  command line does:
+  - the binary's section table is identical;
+  - `.text` differs in 3,165 bytes for `a47250e`;
+  - the disassemblies have the same 519,705 lines, and all 1,244 differing lines are NOP padding:
+    2.42 orders the long and short NOPs of an alignment fill differently. Every other instruction
+    is identical at the same address;
+  - the 2.46-assembled binary equals the harness-built one (`c5f5e1a8…` / `fecda6a0…`).
+- **Run (head).**
+  - `prover-242 selftest-field`: "pclmulqdq products equal the portable ones on 100000 inputs"
+    under `qemu-x86_64 -cpu Haswell` and `-cpu max`. Natively it exits 1 with "the CPU has no
+    pclmulqdq", which this VM lacks.
+  - A smoke tree `r = 2, n = 16` against the `01a25b0` service, run with the harness's own
+    `Run.tree`, finished ok in 0.128 s with 0 refusals.
+  - The F4b badge accepted all 7 outputs (leaves 87–94 ms, `N1` 186 ms, root 410 ms;
+    `I/asm-head/tree242{,-verify}.log`).
+- **`harness/tools/asm-compat.py prover.s out.s`**: "0 .base64 rewritten, 0 .prefalign rewritten,
+  0 debug lines dropped". The output is byte-identical to the input for both entries.
+
+Not checked here:
+
+- the link with the runner's GCC 13.3, ld 2.42 and glibc 2.39: only the assembler was the
+  runner's;
+- the `a47250e` prover on a machine with more than 31 cores, where its pool could pass the
+  service's 32-connection limit. Both runs here had a 16-core affinity and 0 refusals.

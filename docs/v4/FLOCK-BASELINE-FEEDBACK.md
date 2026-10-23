@@ -104,7 +104,7 @@ through the harness at `81e1ebf` (`F/stages/F4-final-harness-RESULT.md`, §0.2).
   - The tree: "a Fiat–Shamir query of 1572898 bytes is above queryCap = 1048576", now quoted in the
     result.
   - The stream: leaf 0 completed (2.64 GB), and its `π` of 2,791,559 B is above `proofCap`.
-- **At the final pin `01a25b0`:** ACCEPT at 81e1ebf; confirmed at 01a25b0: <!-- F4b -->
+- **At the final pin `01a25b0`:** ACCEPT at 81e1ebf; confirmed at 01a25b0: **ACCEPT** (F4b: certificate ok with the Lean kernel in 9 min 51 s; smoke bench of the submitted `prover.s` `733b3a30…`: T_tree 0.142 s, t_link 0.0846 s, S 1.835; `prover.s` assembles with GNU Binutils 2.42 without error or warning; `docs/v4/flock-baseline/stages/F4-final-harness-RESULT.md`, F4b)
 
 ### 0.3 The top five findings
 

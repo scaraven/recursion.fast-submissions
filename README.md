@@ -70,7 +70,7 @@ the intake copies the verified root and its registry entry into `main`.
     - **F4**, the fixed entry `745c7d8` against `81e1ebf` with no workaround
       (`stages/F4-final-harness-RESULT.md`): certificate ok in 9 min 52 s, **smoke ACCEPT** with
       `S` = 1.794 (from 6.666).
-    - **The verdict at the pin**: ACCEPT at `81e1ebf`; confirmed at `01a25b0`: <!-- F4b -->
+    - **The verdict at the pin**: ACCEPT at `81e1ebf`; confirmed at `01a25b0`: **ACCEPT** (F4b: certificate ok with the Lean kernel in 9 min 51 s; smoke bench of the submitted `prover.s` `733b3a30…`: T_tree 0.142 s, t_link 0.0846 s, S 1.835; `prover.s` assembles with GNU Binutils 2.42 without error or warning; `docs/v4/flock-baseline/stages/F4-final-harness-RESULT.md`, F4b)
     - At every pin, ACCEPT only where `2^r · n ≤ 4,096`: above that, every root is over `proofCap`.
     - **REJECT at the season shape** (F4): the tree because a 1,572,898-byte Fiat–Shamir query is
       above `queryCap`, the stream because its first leaf's `π` (2,791,559 B) is above `proofCap`.
