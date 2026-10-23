@@ -16,14 +16,21 @@ stages:
 - `a874f87`: the harness F3 ran. It predates RA-M2.
 - `ea2e8ab`: the contract the entry builds against. It includes RA-M2 (`acc` checks
   `|tr| ≤ qV`).
-- `81e1ebf`: the repository's pin (`.contract`). Its `RecursionFast/` is `ea2e8ab`'s and its design
-  text is `88d4566`'s. It adds stage B's fix pass, which closed FIXLIST Q2, Q7, Q8, Q10, Q12, Q13,
-  Q14 and RB-M1. That fix pass was checked by reading `.contract/docs/v4/stages/B-harness-RESULT.md`
-  §9 and `harness/evaluate.py`, not by re-running F3.
+- `81e1ebf`: the repository's pin when this report was written, and the harness F4 ran. Its
+  `RecursionFast/` is `ea2e8ab`'s and its design text is `88d4566`'s. It adds stage B's fix pass,
+  which closed FIXLIST Q2, Q7, Q8, Q10, Q12, Q13, Q14 and RB-M1. That fix pass was checked by
+  reading `.contract/docs/v4/stages/B-harness-RESULT.md` §9 and `harness/evaluate.py`, and then by
+  F4.
+
+The final pin is `01a25b0` (the core's pull request #17). Its `RecursionFast/` is still
+`ea2e8ab`'s. Its harness adds the final fix pass (B-RESULT §10–§11), noted below where it bears on a
+finding: the job plan (RF-M1), the bounded DoS column, the reference toolchain with binutils 2.42
+and the `asm-compat.py` helper (RF-M2), the calibration's affinity (RF-m5) and a failed run's
+partial record (RF-m7).
 
 **The entry's state.** F3 measured the frozen commit `8111b71`. The current entry (`745c7d8`,
-`10ad91e`) adds the golfs and fix passes. Its proofs are byte-identical to `8111b71`'s, and it has
-not yet been run through the harness (F4).
+`10ad91e`) adds the golfs and fix passes. Its proofs are byte-identical to `8111b71`'s. F4 ran it
+through the harness at `81e1ebf` (`F/stages/F4-final-harness-RESULT.md`, §0.2).
 
 **Conventions.**
 - **Citations.** Records relative to `docs/v4/flock-baseline/`, written `F/`; logs as the records
@@ -85,7 +92,19 @@ not yet been run through the harness (F4).
 - **`T_V`** is unreachable at every shape the entry can run.
 - **nanoda** needs more than 20 GB and more than 10 min on this entry.
 
-<!-- TODO(orchestrator): F4 -->
+**F4: the fixed entry `745c7d8` at `81e1ebf`, with no workaround**
+(`F/stages/F4-final-harness-RESULT.md`, `logs/f4/`):
+
+- **Certificate: ok** in 9 min 52 s. The comparator took 354 s at a scope peak of 4.25 GB, and the
+  binding was "byte-identical (134 artifacts)". With `--nanoda` the job is also ok: "nanoda: over
+  budget (cap 14G, peak 14.00 GiB); checked by the Lean kernel only".
+- **Smoke: ACCEPT.** `T_tree` 0.140 s, `t_leaf` 0.0689 s, `t_merge` 0.0138 s, `t_link` 0.0827 s,
+  `S` = 1.794 (from 6.666). Root `acc` 416 ms; DoS maximum 312 ms.
+- **Season: REJECT.**
+  - The tree: "a Fiat–Shamir query of 1572898 bytes is above queryCap = 1048576", now quoted in the
+    result.
+  - The stream: leaf 0 completed (2.64 GB), and its `π` of 2,791,559 B is above `proofCap`.
+- **At the final pin `01a25b0`:** ACCEPT at 81e1ebf; confirmed at 01a25b0: <!-- F4b -->
 
 ### 0.3 The top five findings
 
@@ -95,7 +114,7 @@ not yet been run through the harness (F4).
 | FB-2 | `T_V` is microseconds at every shape a SNARK entry runs, so the smoke shape cannot test it. At node size, a √-size PCS misses the season cap by about 10×, with or without `clmul`. Lean-compilation craft moved this entry's times by 2× | high | report every check against the season-scale cap at every shape; a Library kit of proved fast primitives; decide Q11 on runner timings of node-sized proofs | Q11 open (design §7.3); rest proposed |
 | FB-3 | A signed child is `π + trace + σ`, and the trace restates every hashed byte. Two signed `n = 16` leaves sent plainly are 1,089,384 B, over `proofCap`. Every non-recursive entry must design and certify a bundle (about 1,050 Lean lines here) and restate `acc` | high | a Library bundle generalised from this entry, plus `accWith` and `AtMost`; state the arithmetic in the rulebook | proposed |
 | FB-4 | nanoda reached 20.9 GB and was still growing when killed at 10 min 1 s, so records rest on one kernel. Pinning packages by default is a trust decision, and the computability rule is undocumented | medium | Q5 (the user's) on this evidence; roots per package on declared need, with one attribute audit; project `S.V`, `S.P`, `S.ext` in the badge template | Q2, Q7, Q12–Q14 fixed at `81e1ebf`; rest proposed |
-| FB-5 | Crafted proofs built from public parts took `acc` 68–183 s, against `verify_s = 60 s`. The entry fixed its own case (worst now 1.5 s), but the rules bound nothing, and random mutations never find such inputs | medium | a crafted-input column: inputs the entrant ships can fail the entry; inputs reviewers add are published only | open in design §4.3, §7.3; proposed |
+| FB-5 | Crafted proofs built from public parts took `acc` 68–183 s, against `verify_s = 60 s`. The entry fixed its own case (worst now 1.5 s), but the rules bound nothing, and random mutations never find such inputs | medium | a crafted-input column: inputs the entrant ships can fail the entry; inputs reviewers add are published only | open in design §4.3, §7.3; proposed. At `01a25b0` the random DoS column is bounded (10 × `T_V` per input, 1,800 s in all, a breach REJECTs), the design's first step |
 
 The remaining findings: FB-7, the service tax, about 30–100 ms per recursion step (estimate);
 FB-8, the assembly-only build; FB-9, `errorCap` against GF(2^128), with a grinding route; FB-10,
@@ -422,7 +441,12 @@ it. The other columns are `logs/lean/run/attack-after-{1,B-1}.log` and `attack-f
   (F1 §9.3).
 - **The DoS column cannot reach this.** Its random bytes, random `π` with the root's trace, and bit
   flips (`checks.py:131`) never reach `V` with a valid signature. Its maximum at the smoke shape was
-  443 ms.
+  443 ms (F3), and 312 ms after the fix pass (F4).
+- **Since `01a25b0` the DoS column is bounded** (RF-M1, B-RESULT §10): each input may take at most
+  10 × `T_V` (`verify_s` where `T_V` is not enforced), and the column at most 1,800 s per season. A
+  breach REJECTs the entry, and the slow input is kept and named. The design at `01a25b0` calls it
+  the first step towards this finding (§6.2). The inputs are still random, so the crafted inputs
+  above remain outside it.
 
 **Proposed changes.** These concretise the design's open fix, in the runner only.
 1. **A crafted-input column.** The entrant ships its own worst cases and their generator (`dos/`),
@@ -502,6 +526,14 @@ The first two are **estimates**, from measured inputs (Appendix A).
 - **Not tested.** The runner's binutils 2.42. By reading, no newer directive remains (F2 review §3).
   `pclmulqdq` on real hardware: checked under QEMU TCG only. The `x86-64-v2` binary on a pre-AVX2
   CPU: static glibc 2.43 needs AVX2 at start-up (F2 §2).
+- **Since `01a25b0`** (RF-M2, B-RESULT §10), the runner image's toolchain is part of the rule:
+  `ubuntu-24.04`, GCC 13.3, binutils 2.42, glibc 2.39 (`harness/PROVER.md` §1).
+  - The core's CI assembles every committed `.s` of the core with it.
+  - `harness/tools/asm-compat.py` is the organiser's untrusted helper. It merges this entry's
+    `sanitize-asm.py` rules with GCC 15's `.base64`.
+  - That adopts the sanitiser of proposal (2), and proposal (3) for the LLVM-23 directives but not
+    the static-glibc caveat. The reproducibility check is not adopted.
+  - The confirmation run at the pin checks this entry's `prover.s` against binutils 2.42 (§0.2).
 - **Repository cost.** Every prover change rewrites megabytes of a committed, generated file.
 
 **Proposed changes.** Either (1) or (2), and (3) in both cases.
@@ -597,7 +629,8 @@ words, 4,776 B.
 
 Each row's status:
 
-- **fixed** at `81e1ebf` (`B-harness-RESULT.md` §9);
+- **fixed** at `81e1ebf` (`B-harness-RESULT.md` §9), or at the final pin `01a25b0` (§10, its final
+  fix pass), as marked;
 - **queued** in the core's FIXLIST;
 - **proposed** here.
 
@@ -606,12 +639,12 @@ Each row's status:
 | H-1 | The rebuild binding REJECTed a certified entry: gate-only artifacts counted as differences, although all 110 shared artifacts were byte-identical | F3 §2.1, runs 1a, 1f | **fixed** (Q7) |
 | H-2 | CompPoly was not an organiser root, so a pinned dependency was checked as entry code, and the message named a module the entrant cannot change | F3 §2.2, F1-M1 | **fixed** (Q2) for CompPoly; others as in FB-4 (2) |
 | H-3 | A nanoda OOM stopped the comparator's scope, so the Lean kernel never ran, and the result read "certificate does not check" | F3 §2.4 | **fixed** (Q12) |
-| H-4 | A failed tree run dropped the prover's log and the service's refusal | F3 §4.1 | **fixed** (Q13). Proposed: also keep a failed run's `T_tree` and `T_V` block |
+| H-4 | A failed tree run dropped the prover's log and the service's refusal | F3 §4.1 | **fixed** (Q13; F4 saw the reason quoted). A failed run's partial record (status, times, prover output, `T_V` samples so far) is kept as `failed_run`: **fixed at `01a25b0`** (RF-m7) |
 | H-5 | An OOM kill read as "proof.bin: missing; stderr:" | F3 §4.2 | **fixed** (Q14) |
 | H-6 | "rejected by acc" gives no reason; the frontier's size-cap failures were found by hand | F3 friction 6 | proposed: a badge reason code (size, trace length, query cap, signature, `V`). The prover warns since F2-m5 |
 | H-7 | No per-check `acc` times for stream outputs, canaries, DoS or liveness. The comparator's phases are invisible. `lake env` start-up costs 21–29 s per tree. `T_tree` has 50 ms resolution, since `Popen.wait(timeout=…)` polls: three runs gave 0.917036, 0.917041 and 0.917063 s | F3 frictions 7–8; F2 §6.5; `rfh/prover.py:166` at `81e1ebf` | proposed |
 | H-9 | `t_leaf` = Σ of `M + 1` leaves over `M`: 0.2512 s, against a mean of 0.201 s | F2 §6.6 | as specified ([CM] §3.3, design §3.5); label it (Q3, partly) |
-| H-10 | The calibration uses `os.cpu_count()` under a 16-core `taskset`, and reports `threads_32` | F2 §6.7; `rfh/bench.py:209` at `81e1ebf` | proposed: `len(os.sched_getaffinity(0))` |
+| H-10 | The calibration uses `os.cpu_count()` under a 16-core `taskset`, and reports `threads_32` | F2 §6.7; `rfh/bench.py:209` at `81e1ebf` | **fixed at `01a25b0`** (RF-m5: `len(os.sched_getaffinity(0))`) |
 | H-11 | Rust's `UnixStream::connect` fails on a socket path of 108 bytes or more | F2 §6.4 | proposed: a note in `PROTOCOL.md` |
 | H-12 | Setup costs and undocumented steps (see below) | F3 §1, §2.3, frictions 9, 14; F1 RESULT §7.9 | proposed: check the manifest once; document the setup in `evaluate.py`'s header |
 | H-13 | The badges are 142.7 MB each, and their build compiles 986 package objects outside the closure inside the job (73.7 s) | F3 §2.3, friction 10 | proposed: prebuild them in `org-setup` |

@@ -33,41 +33,51 @@ the intake copies the verified root and its registry entry into `main`.
 
 ## Status (2026-10-23)
 
-- **v4 is a proposal, built on the core's branch `v4/srom-rules`.** That branch is pushed, at
-  `81e1ebf`, but not merged, and no pull request is open yet. The user has not adopted it. Every
-  decision taken in their absence is listed in design §7.
-
-  <!-- TODO(orchestrator): the core's pull request number for v4/srom-rules -->
-- **The pin.** `.contract` is at **`81e1ebf`**, committed here as `d77478d` together with the caller
-  workflow. It is the core's stages A (contract) and B (harness), each with its review's fix pass:
-  - the contract fix pass `ea2e8ab`: `acc` checks `p.tr.length ≤ S.qV` right after the size cap
-    (RA-M2); `Log` is an abbreviation for `Trace`; `wordBytes w := enc64 w.toNat`;
-  - the harness fix pass `5b2b591` (B-RESULT §9): CompPoly's field is an organiser root (Q2), the
-    gate tree builds only `Solution`'s closure (Q7), the two kernels run separately (Q12), failure
-    reasons name their cause (Q13, Q14), and `T_V` is best-of-N (RB-M1).
+- **v4 is a proposal, built on the core's branch `v4/srom-rules`.** It is open as the core's pull
+  request #17 (https://github.com/scaraven/recursion.fast/pull/17), not merged, and the user has not
+  adopted it. Every decision taken in their absence is listed in design §6.1.
+- **The pin.** `.contract` is at **`01a25b0`**, the head of that pull request, committed here as
+  `a6ee05c`; the caller workflow was regenerated from its template in `4d2f282`. The core's CI is
+  green on GitHub runners at that commit, the end-to-end smoke included (run 39966237935).
+  - **The contract** (`RecursionFast/`) is unchanged since the contract fix pass `ea2e8ab`: `acc`
+    checks `p.tr.length ≤ S.qV` right after the size cap (RA-M2); `Log` is an abbreviation for
+    `Trace`; `wordBytes w := enc64 w.toNat`.
+  - **The harness** carries stage B's fix pass `5b2b591` (B-RESULT §9) and its final fix pass
+    (B-RESULT §10–§11):
+    - CompPoly's field is an organiser root (Q2);
+    - the gate tree builds only `Solution`'s closure (Q7);
+    - the two kernels run separately (Q12);
+    - failure reasons name their cause (Q13, Q14);
+    - `T_V` is the best-of-N wall time of the pinned check (RB-M1);
+    - the benchmark's parts follow one job plan (RF-M1);
+    - the DoS column is bounded;
+    - the reference toolchain, binutils 2.42 included, is part of the prover rule (RF-M2);
+    - the comparator is built with the organiser's Lean.
 
   `CLAUDE.md`, "The pin", says how to move it.
 - **The v4 baseline entry `submissions/spartan-srom`** is on the branch `v4/flock-baseline`. It is
   v3's Spartan+Ligero leaf SNARK ported to v4, with σ0-bundle nodes. Its own `README.md` and
   `NOTES.md` describe it; its records are in `docs/v4/flock-baseline/`.
   - **Lean (stage F1).** It is certified: `SpartanSrom.certificate` is a closed theorem, and
-    `Solution.lean` proves the rendered challenge.
+    `Solution.lean` proves the rendered challenge. Its fix pass (`745c7d8`) applied the review's
+    findings, D-6, the pin's `acc` and the golf: 66 modules, 17,901 code lines.
   - **The native prover (stage F2)** is std Rust emitted as one `prover.s`. It was golfed (proofs
     byte-identical, leaves 2.6–4.5× faster) and fixed after its review.
-  - **The harness run (stage F3)**, with the real Lean badge, ran the frozen commit `8111b71`
-    against the core at `a874f87` (`docs/v4/flock-baseline/stages/F3-harness-RESULT.md`):
-    - **ACCEPT at the smoke shape**, with two workarounds that the pin now makes unnecessary
-      (`Solution` importing every module, Q7; CompPoly among the organiser's roots, Q2);
-    - ACCEPT only where `2^r · n ≤ 4,096`: above that, every root is over `proofCap`;
-    - **REJECT at the season shape**: the tree on the service's `queryCap`, the stream leaf on the
-      11 GiB memory cgroup (the pre-golf prover).
+  - **The harness runs.**
+    - **F3**, the frozen commit `8111b71` against the core at `a874f87`
+      (`docs/v4/flock-baseline/stages/F3-harness-RESULT.md`): smoke ACCEPT with two workarounds,
+      both since fixed in the core (Q7, Q2).
+    - **F4**, the fixed entry `745c7d8` against `81e1ebf` with no workaround
+      (`stages/F4-final-harness-RESULT.md`): certificate ok in 9 min 52 s, **smoke ACCEPT** with
+      `S` = 1.794 (from 6.666).
+    - **The verdict at the pin**: ACCEPT at `81e1ebf`; confirmed at `01a25b0`: <!-- F4b -->
+    - At every pin, ACCEPT only where `2^r · n ≤ 4,096`: above that, every root is over `proofCap`.
+    - **REJECT at the season shape** (F4): the tree because a 1,572,898-byte Fiat–Shamir query is
+      above `queryCap`, the stream because its first leaf's `π` (2,791,559 B) is above `proofCap`.
 
     No certified entry can yet run the season-1 shape (`AGENTS.md` §7.1).
-  - **The F1 fix pass** (the review's findings, D-6 and the pin's `acc`) is in progress.
-
-    <!-- TODO(orchestrator): the entry's evaluation at the pin 81e1ebf, after the F1 fix pass -->
   - **The feedback report** on the v4 rules from this entry is
-    `docs/v4/FLOCK-BASELINE-FEEDBACK.md` (a draft, before review).
+    `docs/v4/FLOCK-BASELINE-FEEDBACK.md`, revised after its review.
 - **v3 is frozen.** Its two entries are on this checkout's **local `main` only**, which is not
   pushed: 17 commits ahead of `origin/main`, pinned to the v3 core `15e4ae5`.
   - `submissions/baseline`: the witness-sending argument;
@@ -75,8 +85,8 @@ the intake copies the verified root and its registry entry into `main`.
 
   Neither is a v4 entry. The v3 documents copied under `docs/` are reference (`docs/README.md`).
 - **The caller workflow** `.github/workflows/evaluate-entry.yml` is installed on this branch. It is
-  the core's `harness/ci-template/evaluate-entry.yml`, with both `CORE_COMMIT_SHA` placeholders set
-  to the pin. It has not run on GitHub: this branch is not pushed.
+  the core's `harness/ci-template/evaluate-entry.yml` at the pin, with both `CORE_COMMIT_SHA`
+  placeholders set to it. Open: it has not run on GitHub, since this branch is not pushed.
 - **Not built yet.**
   - The intake: copying verified roots into `main` and writing `records.json`.
   - The paired (ABBA) record comparison.

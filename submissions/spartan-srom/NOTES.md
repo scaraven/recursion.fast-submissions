@@ -15,7 +15,7 @@ Dated 2026-10-23. Evidence is tagged as in the core:
 
 Logs are under `logs/` at the repository root (gitignored, kept on the development VM). Every
 measurement is from that VM: 32 vCPU under QEMU, AVX2 and AVX-512F, **no `pclmulqdq`**, shared with
-other agents, so read times as relative. Stage records are cited as F0 … F3:
+other agents, so read times as relative. Stage records are cited as F0 … F4:
 `docs/v4/flock-baseline/stages/F<n>-…-RESULT.md`.
 
 ## 0. In short
@@ -26,11 +26,13 @@ other agents, so read times as relative. Stage records are cited as F0 … F3:
   witness signed once on the empty trace, followed by the leaves' SNARKs.
 - **The result.**
   - The Lean is certified for every key: ε = 2^-129, δ = 0, qV = 2^16.
-  - The harness ACCEPTed the entry at the smoke shape (F3, core `a874f87`).
+  - The harness ACCEPTed the entry at the smoke shape: at core `a874f87` with two workarounds (F3,
+    `S` = 6.666), and at `81e1ebf` with none (F4, `S` = 1.794). The confirmation at the final pin
+    `01a25b0` is in `README.md`, "Status".
   - It is ACCEPTed only where `2^r · n ≤ 4,096` chain steps; the season needs `2^24`.
   - `T_V` is unmeetable at every shape it runs.
-  - The season shape REJECTs it: the tree on `queryCap`, the stream on memory (the pre-golf
-    prover). `proofCap` would stop both anyway.
+  - The season shape REJECTs it. In F4 the tree stopped on `queryCap` and the stream's first leaf
+    on `proofCap`; in F3, with the pre-golf prover, the stream had stopped on memory.
 - **The lesson.** Under v4 a non-recursive entry cannot run the season shape: the next entry must
   recurse, and its leaf needs a polylogarithmic commitment. §7 says what such a node must verify.
 
@@ -130,7 +132,20 @@ Measured at F1 with v3's `scripts/loc.py` rule (code lines are neither blank nor
   - `decodeFront` decodes a node from a prefix, so that a bundle no longer packs `T`;
   - `bundleProg` is `@[inline]`.
 
-<!-- TODO(orchestrator): the F1 fix pass (review F1-M1 … F1-m6, D-6, ea2e8ab's acc conjunct and wordBytes, the golf merged, the byte-level node reader `SpartanSromNodeBytes`): module count and line counts after it; the Lean golf and D-6 badge timings; the re-run of the F1-M2 attack; the build at the final pin 81e1ebf (time, peak RSS, log) -->
+- **The F1 fix pass** (`745c7d8`, F1 §9; core `81e1ebf`, whose `RecursionFast/` is `ea2e8ab`'s):
+  - the golf patch, applied first;
+  - the pin's `acc` conjunct in `accWith`, and `wordBytes` through `enc64` (F1-m1);
+  - D-6 (`clearCap = 2^12`);
+  - `tagWord` and `leafN` read in place;
+  - a byte-level node reader, `SpartanSromNodeBytes` (180 code lines);
+  - the statement-binding negatives (F1-m3);
+  - `Solution` importing `SpartanSrom`, so that the harness builds the controls (Q7).
+
+  The certificate's statement did not change; ten statements changed, all by the review, D-6 or the
+  core (F1 §9.2). After it the Lean is **66 files and 17,901 code lines** (24,940 lines in all; 649
+  code lines over `8111b71`). A clean build takes **2 min 46 s** on 8 cores, peak RSS 4.12 GB
+  (`logs/lean/build-full-fix2.log`). The audit passes on all 3,600 declarations
+  (`logs/lean/axioms-fix.log`).
 
 ### 3.2 The native prover (stage F2, its golf and its fix pass)
 
@@ -234,7 +249,8 @@ prover, 16 threads):
   - `T_tree` fell from 0.879 to **0.131 s** on 16 threads, and from 0.807 to 0.184 s on 4;
   - a leaf request fell from 0.194 to **0.055 s** on 16 threads, and from 0.191 to 0.061 s on 4.
 
-  The harness has not been run with the golfed prover.
+  Through the harness (F4, §4.6), with the harness's `t_leaf` of `Σ` over `M`: `T_tree` 0.140 s,
+  `t_leaf` 0.0689 s, `t_merge` 0.0138 s.
 
 ### 4.4 The compiled Lean verifier (what `T_V` times)
 
@@ -258,7 +274,21 @@ The badge's parse plus `accF`, on one core:
 The Lean `P` takes 15.6 s at `n = 1` and 37.0 s at `n = 16` (F2 §3.5). It is only used for the
 known-answer test.
 
-<!-- TODO(orchestrator): the badge times after the F1 fix pass (golf merged with D-6, ea2e8ab and the byte-level node reader) -->
+**After the F1 fix pass** (`logs/lean/run/timings-fix.log`, F1 §9.3; one core, parse plus `accF`):
+
+| Proof | badge |
+|---|---|
+| `L`, `n = 16` | 89–111 ms |
+| `B` of two leaves | 188–195 ms |
+| `B` of four leaves (the smoke root) | 404–619 ms |
+| `C` | 0.3 ms |
+| `N` of two signed leaves (rejected) | 0.6–0.8 ms |
+
+In F4's harness run (`logs/f4/bench-smoke-reverify.log`):
+
+- the smoke root took 416 ms (403 ms re-run);
+- the leaves took 87–97 ms and the bundles of two 193–196 ms;
+- the stream nodes (bundles of 2–5) took 353, 307, 417 and 488 ms.
 
 ### 4.5 Through the real harness (F3: frozen entry `8111b71`, core `a874f87`; `logs/f3/`)
 
@@ -325,6 +355,30 @@ every module (variant V) and CompPoly among the organiser's roots
 `r = 2, n = 16` the root took 945.9 ms against a cap of 0.015 ms; at `r = 1, n = 1,024`, 1,776 ms
 against 0.194 ms.
 
+### 4.6 Through the fixed harness (F4: entry `745c7d8`, core `81e1ebf`, no workaround; `logs/f4/`)
+
+`docs/v4/flock-baseline/stages/F4-final-harness-RESULT.md`. The VM was lightly loaded this time.
+
+| Run | Verdict | Numbers |
+|---|---|---|
+| `org-setup.sh`, default roots | ok, 4 min 12 s | allowlist 10,816 modules, CompPoly included |
+| `cert` (Lean kernel) | **ok**, 9 min 52 s | comparator 354 s, scope peak 4.25 GB; binding "byte-identical (134 artifacts)"; gate 18 s; badge build 16 s |
+| `cert --nanoda` | **ok**, 16 min 36 s | "nanoda: over budget (cap 14G, peak 14.00 GiB); checked by the Lean kernel only" |
+| `bench`, smoke | **ACCEPT** | `T_tree` 0.140 s, `t_leaf` 0.0689 s, `t_merge` 0.0138 s, `t_link` 0.0827 s, **`S` = 1.794** (from 6.666); root `acc` 416 ms; DoS maximum 312 ms; liveness 17.1 s; 76 + 20 + 32 canaries rejected |
+| frontier `r = 2`, `n = 128` / `256` | ACCEPT / REJECT | as in F3: root `π` 936,916 / 1,166,724 B |
+| `bench`, season tree | **REJECT**, 33 s | "prover tree exit 3; prover output (tail): 'spartan-srom-prover: oracle service: a Fiat–Shamir query of 1572898 bytes is above queryCap = 1048576 (the service refuses it)'" |
+| `bench`, season stream (`--parts calibrate,stream`) | **REJECT**, 34 s | "stream1 leaf 0 rejected by acc": the leaf completed in 14.4 s at 2.64 GB, and its `π` of 2,791,559 B is above `proofCap` |
+
+- **What the fixes changed.** The certificate job needed no workaround, and a nanoda kill no
+  longer touched the verdict. The tree's failure now names its cause. With the golfed prover the
+  stream's stopping rule moved from memory to `proofCap`, as expected.
+- **What is still open** (F4, "Frictions"):
+  - "rejected by acc" gives no reason;
+  - a rejected tree run keeps no `tree` record;
+  - `--parts stream` alone is a harness error when `T_V` is enforced, so the season stream runs as
+    `--parts calibrate,stream`;
+  - a private writable package tree is still needed (4 min 8 s to copy).
+
 ## 5. What is proved, and what is not
 
 **Proved** (**kernel**; F1 §3, review F1 §0: "pass on the Lean content").
@@ -335,11 +389,15 @@ against 0.194 ms.
 - `RecursionFast.Challenge.certified : CertificateR declared submission` against the rendered
   challenge.
 - Axioms: `propext`, `Classical.choice`, `Quot.sound`. The audit of every declaration of the entry,
-  controls included, passed on 3,508 declarations (`logs/lean/axioms-2.log`).
+  controls included, passed on 3,600 declarations after the fix pass (`logs/lean/axioms-fix.log`;
+  3,508 at F1).
 - The controls: v3's, and the format controls of `SpartanSromNodeControls`.
   - Positive: a clear tree under the reference signer is accepted by `acc`.
   - Negative: every bundle check rejects with no query.
   - Canaries: one byte added or removed is rejected in `L`, `C`, `N` and `B`.
+  - Statement binding: a wrong statement is rejected in `C`, `N`, `B` and before a bundled leaf's
+    SNARK (F1-m3).
+  - D-6: a clear or bundled leaf of 4,097 steps is rejected with no query.
   - Claims: `ε = 2^-130`, `qV = 2^16 − 1` and fuel `7 t` are not certified.
 
 **Not proved**:
@@ -348,14 +406,16 @@ against 0.194 ms.
   in the harness, by known-answer tests (the Lean `P` at `n = 1, 16`; v3 at `n = 1, 2, 16, 64`) and
   by selftests against the service;
 - that the compiled code matches the kernel terms (O-12);
-- any bound on `V`'s time. D-6 bounds the clear-leaf recomputation; the nesting cost is §6, item 6;
+- any bound on `V`'s time. D-6 bounds the clear-leaf recomputation, and the nesting cost is
+  measured (§6, item 6), not proved;
 - `acc` on the Lean `P`'s node proofs, which exceed `proofCap` (D-5);
 - the composition across the tree, which uses unforgeability, outside every certificate (design
   §2.4).
 
 Observation (review F1-m5): the static `Σ qBound ≤ 2^16` check is never reached within `proofCap`.
 The cheapest bundle carries at most 10 leaves of `n = 1`, which is `Σ qBound ≤ 29,770`. It is still
-needed, because `KS` bounds queries on every input.
+needed, because `KS` bounds queries on every input. Its control is now `qbound_fourteen`: fourteen
+`2^12`-step leaves, 66,542 queries (F1 §9.1).
 
 ## 6. What did not work, and why
 
@@ -370,24 +430,26 @@ needed, because `KS` bounds queries on every input.
      microseconds: 10.3–15.4 µs at the smoke shape, against a root of 0.9–1 s.
    - At the season scale the cap is 266.8 ms on the VM (F3) and about 178 ms on a GitHub runner
      (design §3.5). One `n = 4,096` leaf alone takes 1,771 ms.
-   - After the Lean golf, one `n = 16` leaf takes 91–136 ms and a two-leaf bundle 193–207 ms, on the
-     VM. So a node checking two Spartan children would sit at about the runner's cap (**estimate**,
-     FB-2).
+   - After the Lean fix pass, one `n = 16` leaf takes 89–111 ms and a two-leaf bundle 188–195 ms,
+     on the VM. So a node checking two Spartan children would sit at about the runner's cap
+     (**estimate**, FB-2).
    - Compiled Lean has no carry-less multiply, and GF(2^64) products were 64 % of the badge's time
      before the golf (F1 golf §2, Q11).
 3. **`queryCap` against a large absorb at `n = 2^18`** (§4.5). The transcript absorbs `ū` whole, and
    at `2^18` that is 1.57 MB, above the service's `2^20`-byte cap. The fix is a chunked absorb (§7).
-   Since the F2 fix pass the client refuses such a query itself, with an explicit message (F2-m5).
+   Since the F2 fix pass the client refuses such a query itself, with an explicit message (F2-m5),
+   and F4's result quotes it.
 4. **Memory before the golf.** v3's leaf prover needed about 15 GiB at `2^16`, and the season
    stream's leaf was OOM-killed at 11.14 GB. The golf's late tables and early frees brought it to
-   2.47 GiB (§4.2). Memory no longer stops this prover below `2^18`; `proofCap` does.
+   2.47 GiB (§4.2), and 2.64 GB through the harness (F4). Memory no longer stops this prover below
+   `2^18`; `proofCap` does.
 5. **The quadratic `.data` trap.** Compiled Lean turns `ByteArray.data` into a boxed copy of the
    whole array on every call. v3's `digestFrom` read `π.data.getD`, 32 times per digest, so F1's
    scratch runner took 87.8 s to parse a 539 KB file and 579 s for 1.08 MB, outside `acc`
    (`logs/f2/lean-check/`; F2 §3.5). The fix reads bytes in place (`byteAt`, equal by `rfl`). The
    harness's own badge parser was always linear. The same trap was in `tagWord`/`leafN`; F1's
-   attempt to read those in place made `split_ifs` time out at `whnf` (F1 journal), and the review
-   suggests a bridge lemma, proved once.
+   attempt to read those in place made `split_ifs` time out at `whnf` (F1 journal). The fix pass
+   reads them through an `@[irreducible]` `u64From`, with bridge lemmas proved once (F1 §9.1).
 6. **The crafted-proof DoS and D-6** (review F1-M2; FB-5).
    - σ0 is public in every bundle, so anyone can sign every query-free slot. The review built a
      depth-100 chain of plain nodes over clear leaves, 970,448 B, on which the compiled `acc` takes
@@ -399,16 +461,30 @@ needed, because `KS` bounds queries on every input.
      `leafSize 4096 = 796,111 ≤ 2^20 < leafSize 8192 = 1,062,591`.
    - The harness's DoS column, which uses random mutations, never reaches such inputs.
 
-   <!-- TODO(orchestrator): the post-fix-pass attack timing (depth-100 chains after D-6, decodeFront and the byte-level node reader) -->
-7. **Harness frictions at `a874f87`**, all fixed at the pin `81e1ebf` (B-RESULT §9). They are listed
-   so that nobody chases them again:
+   - **After the fix pass** (`logs/lean/run/attack-final.log`, F1 §9.3):
+
+     | Proof (≤ 1 MiB, signed with the public σ0) | before | after D-6 and in-place reads | final, with `nodeFast` |
+     |---|---|---|---|
+     | `N` chain, depth 100, `n = 1` | 68.5 s | 54.5 s | **0.46 s** |
+     | `N` chain, depth 100, `n = 2^20`, then 4,096 | 183 s | 60.1 s | **0.69 s** |
+     | `B` whose clear tree is that chain (rejected) | — | 50.8–51.4 s | **1.3–1.5 s** |
+     | one `C` leaf, `n = 2^20` | 0.79 s, accepted | rejected at once | rejected at once |
+
+     D-6 and the in-place reads alone left a minute, because each level still went through the
+     library's list-based decoder at about 1 µs per byte. `nodeFast` parses a node by offsets and
+     accepts the result only if its proved byte-level encoding equals `π` (`nodeFast_sound`), so
+     `V`'s semantics and every statement about it are unchanged. The worst measured case, 1.5 s,
+     is a measurement and an argument, not a theorem.
+7. **Harness frictions at `a874f87`**, all fixed by `81e1ebf` (B-RESULT §9), and F4 found each
+   one gone. They are listed so that nobody chases them again:
    - the rebuild binding rejected modules outside `Solution`'s closure (Q7);
    - CompPoly was not an organiser root, so its `@[csimp]` lemma rejected the entry (Q2;
      `RF_ORG_ROOTS` is no longer needed);
    - a nanoda OOM kill read as "the certificate does not check" (Q12);
    - a service refusal and an OOM kill were invisible in the result (Q13, Q14).
 8. **A false alarm.** Review F1-m4 said that `Batteries.Data.BitVec.Lemmas` was outside the
-   allowlist. It is in the default allowlist (`logs/f3/allowlist-default.txt`, line 171).
+   allowlist. The default allowlist lists it (`logs/f3/allowlist-default.txt`, line 171). F1 §9.1
+   answered the finding on the other reading; no change is needed either way.
 9. **Golf attempts that did not pay** (F2 golf §2.15):
    - writing the leaf file during its `SIGN`;
    - splitting the transposed walk over two threads;
@@ -467,7 +543,12 @@ needed, because `KS` bounds queries on every input.
    - the serial transposed walk, about 1.6 ms per `n = 16` leaf;
    - the 153 sequential Fiat–Shamir round trips, 5.1–7.2 ms per leaf;
    - the `pclmulqdq` path, which has never been timed on hardware that has it;
-   - whether the runner's binutils 2.42 assembles `prover.s` (untested; by reading, yes).
+   - whether the runner's binutils 2.42 assembles `prover.s`: by reading, yes. It is now part of the
+     rule (RF-M2), and the confirmation run at the pin checks it (`README.md`, "Status"). The core's
+     `harness/tools/asm-compat.py` carries this entry's filter rules;
+   - the service accepts at most 32 connections at the pin (RF-m20). The pool opens up to 32 plus
+     one for Fiat–Shamir, which a machine with 32 or more threads could reach (**paper**); a lower
+     `MAX_CONNS` would remove the risk.
 7. **If the rules change** (`docs/v4/FLOCK-BASELINE-FEEDBACK.md`):
    - a vacuous `SigOk` on empty traces (FB-10) would drop 4,776 B per clear slot, worth one more
      frontier notch (`r = 3, n = 8`; a sixth link at `n_f = 16`);
@@ -483,6 +564,6 @@ needed, because `KS` bounds queries on every input.
 | probes: the assembly route, sizes, Flock on the VM | `stages/F0-probes-RESULT.md` |
 | the Lean port, its golf, journal and review | `stages/F1-lean-RESULT.md`, `F1-golf-RESULT.md`, `F1-lean-JOURNAL.md`, `reviews/F1-lean-review.md` |
 | the prover, its golf, journal and review | `stages/F2-prover-RESULT.md` (with its fix pass), `F2-golf-RESULT.md`, `F2-prover-JOURNAL.md`, `reviews/F2-prover-review.md` |
-| the harness run | `stages/F3-harness-RESULT.md` |
+| the harness runs | `stages/F3-harness-RESULT.md` (core `a874f87`), `stages/F4-final-harness-RESULT.md` (core `81e1ebf`) |
 | the report on the rules | `docs/v4/FLOCK-BASELINE-FEEDBACK.md` |
-| logs | `logs/probes/`, `logs/lean/`, `logs/golf-lean/`, `logs/f2/`, `logs/golf/`, `logs/f3/` (gitignored) |
+| logs | `logs/probes/`, `logs/lean/`, `logs/golf-lean/`, `logs/f2/`, `logs/golf/`, `logs/f3/`, `logs/f4/` (gitignored) |

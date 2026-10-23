@@ -17,27 +17,31 @@ honest SNARK entry `spartan-chain`, ported to the v4 contract, with a new node f
 
 The entry's journal, for the next solver, is `NOTES.md`. Its records are in
 `docs/v4/flock-baseline/` (repository root): `BLUEPRINT.md` (normative for this entry: decisions
-D-1 … D-6, formats, the verifier branch by branch), the stage RESULTs F0–F3 and the reviews. The
+D-1 … D-6, formats, the verifier branch by branch), the stage RESULTs F0–F4 and the reviews. The
 report on the rules that this entry produced is `docs/v4/FLOCK-BASELINE-FEEDBACK.md`.
 
 ## Status (2026-10-23)
 
 - **Certified.** `SpartanSrom.certificate` is a closed theorem on the three allowed axioms (F1
-  RESULT §3).
-- **Through the real harness** (stage F3, the frozen commit `8111b71`, core `a874f87`;
-  `docs/v4/flock-baseline/stages/F3-harness-RESULT.md`):
-  - **ACCEPT at the smoke shape** (`r = 2, n = 16, M = 4`), with two workarounds that the core
-    has since fixed at the pin `81e1ebf`: `Solution` had to import every module (FIXLIST Q7), and
-    CompPoly had to be added to the organiser's roots (Q2);
-  - ACCEPT only where `2^r · n ≤ 4,096`: every larger tree root, and every stream after its fifth
-    link at `n_f = 16`, is above `proofCap`;
-  - **REJECT at the season shape**: the tree when the service refused a 1,572,898-byte query
-    (`queryCap`), the stream when the 11 GiB cgroup killed the pre-golf leaf prover.
-- **Since F3**: the prover's execution-time golf and fix pass (proofs byte-identical, leaves
-  2.6–4.5× faster, a `2^16` leaf in 2.47 GiB instead of about 15 GiB; F2 golf §4), D-6, and the
-  Lean fix pass.
-
-  <!-- TODO(orchestrator): the entry's evaluation at the pin 81e1ebf (cert and smoke bench), after the F1 fix pass -->
+  RESULT §3, §9.3). The entry is the commit `745c7d8`: the Lean fix pass at core `81e1ebf` (D-6,
+  the pin's `acc`, the byte-level node reader, the golf), with the prover's golf and fix pass.
+- **The verdict at the pin**: ACCEPT at `81e1ebf`; confirmed at `01a25b0`: <!-- F4b -->
+- **Through the fixed harness** (stage F4, `745c7d8` at core `81e1ebf`, no workaround;
+  `docs/v4/flock-baseline/stages/F4-final-harness-RESULT.md`):
+  - the certificate job: **ok** in 9 min 52 s. With `--nanoda` it is also ok: nanoda ran over its
+    14 GiB budget, and the Lean kernel's verdict stands;
+  - **ACCEPT at the smoke shape** (`r = 2, n = 16, M = 4`): `T_tree` 0.140 s, `t_leaf` 0.0689 s,
+    `t_merge` 0.0138 s, `t_link` 0.0827 s, **`S` = 1.794**; root `acc` 416 ms; DoS maximum 312 ms;
+  - **REJECT at the season shape**:
+    - the tree, because the prover's 1,572,898-byte Fiat–Shamir query (the absorb of the Ligero row
+      `ū` at `n = 2^18`) is above `queryCap`;
+    - the stream, because its first leaf's `π` (2,791,559 B at `n_f = 2^16`) is above `proofCap`.
+      The leaf itself now completes in 14.4 s at 2.64 GB.
+- **Earlier** (stage F3, the frozen commit `8111b71` at core `a874f87`;
+  `stages/F3-harness-RESULT.md`): smoke ACCEPT with two workarounds that the core has since fixed
+  (`Solution` importing every module, FIXLIST Q7; CompPoly among the organiser's roots, Q2), with
+  `S` = 6.666. The frontier F3 measured still holds: ACCEPT only where `2^r · n ≤ 4,096`. Every
+  larger tree root, and every stream after its fifth link at `n_f = 16`, is above `proofCap`.
 
 ## Proof formats
 
@@ -118,7 +122,7 @@ Sizes at `n = 16` (F1 RESULT §5, F2 RESULT §3.3):
 |---|---|
 | `claim.json` | the declared numbers (above) |
 | `lean/Solution.lean` | the rendered challenge, `submission := SpartanSrom.submission`, `certified` |
-| `lean/SpartanSrom*.lean` | the entry. `SpartanSromNode` holds the v4 verifier (branches `L`, `C`, `N`, `B`), `SpartanSromSubmission` and `SpartanSromFinal` the submission and certificate, `SpartanSromRun` the functions behind the development runner, and the `…Controls` modules the controls. `SpartanSrom` imports every module |
+| `lean/SpartanSrom*.lean` | the entry, 65 modules. `SpartanSromNode` holds the v4 verifier (branches `L`, `C`, `N`, `B`), `SpartanSromNodeBytes` its byte-level node reader, `SpartanSromSubmission` and `SpartanSromFinal` the submission and certificate, `SpartanSromRun` the functions behind the development runner, and the `…Controls` modules the controls. `SpartanSrom` imports every module, and `Solution` imports `SpartanSrom`, so the harness builds and checks the controls too (FIXLIST Q7) |
 | `prover/*.rs`, `Cargo.toml`, `Cargo.lock`, `rust-toolchain.toml` | the native prover's source (`prover/README.md`) |
 | `prover/build-asm.sh`, `prover/sanitize-asm.py` | the assembly build |
 | `prover/prover.s` | the submission: the generated assembly, the only file the runner builds |
@@ -126,7 +130,7 @@ Sizes at `n = 16` (F1 RESULT §5, F2 RESULT §3.3):
 | `LICENSE-leanerVM` | the licence of the leanerVM-derived files |
 | `NOTES.md` | the journal |
 
-<!-- TODO(orchestrator): after the F1 fix pass, the module list (it adds `SpartanSromNodeBytes`, a byte-level node reader) and whether `Solution` imports `SpartanSrom`, so that the harness builds the controls (FIXLIST Q7) -->
+With `Solution` the Lean is 66 files and 17,901 code lines (F1 §9.3).
 
 ## Building and checking it locally
 
@@ -152,14 +156,17 @@ timeout 7200 python3 -I "$ORG/harness/evaluate.py" bench --entry submissions/spa
   --work logs/eval/srom/bench --out logs/eval/srom/result.json
 ```
 
-- Measured at `a874f87` (F3 §1–§3): `org-setup.sh` 5 min 56 s (`logs/f3/org-setup.log`); the
-  certificate job 14 min 22 s, peak RSS 4.11 GB, of which the comparator 8 min 33 s and the Lean
-  kernel about 192 s (`logs/f3/cert-closure.log`); the smoke benchmark 54 s
-  (`logs/f3/bench-smoke.log`). The VM is shared; see F3 for the conditions.
-- `--nanoda` adds a second-kernel run. On this entry nanoda needs more than 20 GB (F3 §2.4); at the
-  pin a memory kill of nanoda no longer changes the verdict (FIXLIST Q12).
-
-  <!-- TODO(orchestrator): the certificate job and the build at the final pin 81e1ebf (time, peak memory, log) -->
+- Measured at `81e1ebf` (F4; the shared VM, lightly loaded):
+  - `org-setup.sh` took 4 min 12 s (`logs/f4/org-setup.log`);
+  - the certificate job took 9 min 52 s (`logs/f4/cert.log`). Of that, the comparator's Lean-kernel
+    run took 354 s at a scope peak of 4.25 GB, the gate-tree build 173 s, the gate 18 s and the
+    badge build 16 s.
+- A clean build of the Lean alone takes 2 min 46 s on 8 cores, peak RSS 4.12 GB
+  (`logs/lean/build-full-fix2.log`, F1 §9.3).
+- The same job at `a874f87` took 14 min 22 s (F3 §2.3).
+- `--nanoda` adds a separate second-kernel run (16 min 36 s for the whole job, F4). On this entry
+  nanoda needs more than 20 GB (F3 §2.4). At the pin, its memory kill no longer changes the verdict
+  (FIXLIST Q12).
 
 **The native prover.**
 
@@ -174,6 +181,11 @@ python3 -I prover/selftest.py --prover /some/work/dir/build/prover \
 - The toolchain is pinned by `prover/rust-toolchain.toml` (rustc 1.99.0). Three clean builds gave
   the same `prover.s`, 9,238,056 bytes, and the same binary, SHA-256 `fecda6a0…`;
   `build-asm.sh` took 57.8–65.3 s (`logs/f2/fix/build-{a,b,c}.log`, `determinism.log`).
+- **The runner's `as` is GNU Binutils 2.42** (`ubuntu-24.04`; `.contract/harness/PROVER.md` §1,
+  RF-M2); this VM's is 2.46. `sanitize-asm.py` drops what LLVM 23 emits and 2.42 rejects. The
+  core's `harness/tools/asm-compat.py` merges its rules with GCC 15's `.base64`, and it is the
+  organiser's helper for every entry. The confirmation run at the pin (Status, above) checks
+  `prover.s` against 2.42.
 - The unit tests are compiled with cargo's own release profile (`codegen-units = 4`, no LTO), so
   they test the source, not the submitted binary; `selftest.py` runs the linked `prover.s`.
 - `selftest.py keyed-kat` needs a service that accepts fixed keys. At the pin the release
