@@ -15,6 +15,7 @@ the core's (`.contract/docs/v4/BRIEF.md`), `C-Mn`/`C-mn` the design attack.
 | D-3 | Root name `spartan-srom`; Lean module prefix and namespace `SpartanSrom` (v3's `SpartanChain` renamed). | Fresh module names (submissions layout rule 4); says what it is (spartan-chain under the signed random oracle). |
 | D-4 | The native prover is **std Rust** (the v3 crate, dependency-free), emitted as one `prover/prover.s` by fat LTO, one codegen unit, `panic=abort`, `-C llvm-args=-align-all-functions=4`, a pinned baseline target CPU (`x86-64-v2`) with run-time dispatch (`is_x86_feature_detected!`) for AVX2 and `pclmulqdq`, and a sanitising filter (`stages/F0-probes-RESULT.md` §1). The Rust source, `build-asm.sh`, the filter and the generated `.s` are all committed. | Measured to work through the harness's own sandboxed build; deterministic; byte-identical proofs to the cargo build. A C or `no_std` port would cost the whole prover for nothing. |
 | D-5 | The Lean honest prover `P` sends node witnesses plainly (§3); only the native prover emits bundles. | Completeness quantifies over every witness of `Rel`; `P` has no signer, so it cannot make `σ0`. `V` does not check `proofCap` on its own input, so `P`'s large node proofs are still accepted (completeness is about `V`, not `acc`). |
+| D-6 | **Clear and bundled leaves are capped at `n ≤ 2^12`** (amendment after review F1-M2): branch `C` accepts only `n ≤ 4096`, and branch `B` requires every bundled `n_j ≤ 4096`. The leaf branch `L` keeps `n ≤ chainCap`. Also, `V` reads the tag and `n` of a proof in place (no whole-array copy). | σ0 is public in every bundle, so anyone can nest plain nodes of clear leaves: the review built a 970 KB proof on which the compiled `acc` takes 68–183 s (`> verify_s = 60 s`), from `C`'s 2^20-step recomputation and per-level re-decoding. No `acc`-acceptable proof is lost: `leafSize 4096 = 796,111 ≤ 2^20 < leafSize 8192 = 1,062,591`, so no accepted proof carries a SNARK leaf above 4096 steps, and a bundled leaf must fit in its bundle. |
 
 ## 1. Proof formats (bytes of `π`; normative)
 
@@ -59,7 +60,7 @@ Decide the branch from `π` before any query:
 1. **`L`** (tag word 0, `|π| > 48`): v3's `leafProg` unchanged: header (`n ≤ chainCap`,
    `|π| = leafSize n`, `c = leafStmt h n`), then `h = s` if `n = 0`, else the SNARK verifier
    `snarkProg` with oracle queries.
-2. **`C`** (tag word 0, `|π| = 48`): `ret (n ≤ chainCap ∧ c = leafStmt (chainEnd s n) n)`; no
+2. **`C`** (tag word 0, `|π| = 48`): `ret (n ≤ 2^12 ∧ c = leafStmt (chainEnd s n) n)` (D-6); no
    query. Use the library's fast twins (`chainEndF`, `leafStmtF`, `Library/Fast.lean`), proved
    equal to the specification.
 3. **`N`** (`decode π = some (.node c₁ c₂ p₁ p₂)` and `encode … = π` exactly): `ret (c = nodeStmt
@@ -71,7 +72,7 @@ Decide the branch from `π` before any query:
    signature equal to slot 1's `σ0`, proof within `proofCap`, proof `C` or `N`, internal
    statements `nodeStmt` of their children, each clear leaf's statement digest is the slot's
    statement); `SigOk vk (traceDigest []) σ0` **once**; `|T| = Σ_j (32 + leafSize n_j − 80)`
-   exactly; every `1 ≤ n_j ≤ chainCap`; **`Σ_j qBound (kap n_j) ≤ 2^16`** (`qBound` is v3's exact
+   exactly; every `1 ≤ n_j ≤ 2^12` (D-6); **`Σ_j qBound (kap n_j) ≤ 2^16`** (`qBound` is v3's exact
    per-leaf query bound, `SpartanChainVerifier.qBound`). Then, for each bundled leaf `j` in order:
    `c_leaf,j = leafStmt h_j n_j` and run `snarkProg s_j n_j h_j π_S,j` with fresh queries. Accept
    iff everything holds.
