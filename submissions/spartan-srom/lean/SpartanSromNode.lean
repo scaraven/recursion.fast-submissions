@@ -7,8 +7,8 @@ leaf verifier `LV` (`SpartanSromVerifierTop`; `SpartanSromVerifier` instantiates
 
 * **`L`** (tag word `0`, `|π| ≠ 48`): v3's `leafProg`, unchanged: the header, then `h = s` for
   `n = 0` or the SNARK verifier with oracle queries.
-* **`C`** (tag word `0`, `|π| = 48`, the clear leaf `encode (.leaf s n)`): `n ≤ chainCap` and
-  `c = leafStmt (chainEnd s n) n`, recomputed with the fast twins, no query.
+* **`C`** (tag word `0`, `|π| = 48`, the clear leaf `encode (.leaf s n)`): `n ≤ clearCap = 2^12`
+  (D-6) and `c = leafStmt (chainEnd s n) n`, recomputed with the fast twins, no query.
 * **`N`** (`π` exactly `encode (.node c₁ c₂ p₁ p₂)`, the plain node): `c = nodeStmt c₁ c₂` and both
   children accepted by the submission's own `acc` (`accWith`, the contract's `Submission.acc`
   with the fast hashes, `V` recursive on the child's proof, which is shorter). No query.
@@ -16,7 +16,7 @@ leaf verifier `LV` (`SpartanSromVerifierTop`; `SpartanSromVerifier` instantiates
   bundle, D-2): with no query, `W` must be a **clear tree** whose every slot has an empty trace,
   the signature `σ0` of slot 1 and a clear leaf or a plain node of clear slots as its proof
   (`clearLeaves`, which lists the clear leaves left to right), `c = nodeStmt c₁ c₂`,
-  `SigOk vk (traceDigest []) σ0` (once), every bundled leaf `1 ≤ n ≤ chainCap`,
+  `SigOk vk (traceDigest []) σ0` (once), every bundled leaf `1 ≤ n ≤ clearCap` (D-6),
   `|T| = Σ (32 + leafSize n − 80)` and `Σ qb n ≤ 2^16` (the static query bound). Then
   `runBundle`: for each bundled leaf in order, `h` and `π_S` are read from `T`, the leaf's slot
   statement must be `leafStmt h n`, and the SNARK verifier runs with fresh queries.
@@ -26,10 +26,18 @@ leaf verifier `LV` (`SpartanSromVerifierTop`; `SpartanSromVerifier` instantiates
 The extractor is the library's copy extractor (`decode π`): `L` and `C` decode to `.leaf s n`,
 `N` and `B` to their node witness `W` (`decode` stops before `T`, `decode_append`).
 
+**Reading nodes (fix pass, review F1-M2).** `V` and `clearLeaves` read a node first with
+`nodeFast` (`SpartanSromNodeBytes`: a byte-level reader validated by a byte-level encoder proved
+equal to `encode`), and otherwise with the library's decoder; both give the same node on a
+canonical encoding, so `V_tag` and `clearLeaves_eq` state `V` and `clearLeaves` through the
+library's decoder alone, and nothing below depends on the fast path. It makes a level of a
+nested proof cost a few ns per byte instead of about 1 µs.
+
 `accV LV vk` is the acceptance predicate of the relation (`accV_eq_acc`: the contract's
-`Submission.acc` of every submission whose verifier is `V LV`).
+`Submission.acc` of every submission whose verifier is `V LV` and whose `qV` is `2^16`).
 -/
 import SpartanSromVerifierTop
+import SpartanSromNodeBytes
 import SpartanSromQueries
 
 namespace SpartanSrom
@@ -42,18 +50,27 @@ variable (LV : LeafVerifier)
 /-! ## Parts of the verifier -/
 
 /-- **Acceptance of a signed child under `vk`**, the verifier's program on its proof being
-`v ()`: the contract's `Submission.acc` (proof within `proofCap`, queries within `queryCap`,
-signature on the trace's digest, `v ()` accepting on the trace used up exactly), with the fast
-hashes. (`v` is delayed so that compiled code builds the child's program only after the cheap
-checks pass.) -/
+`v ()`: the contract's `Submission.acc` for a submission with `qV = 2^16` (proof within
+`proofCap`, trace within `2^16` entries, queries within `queryCap`, signature on the trace's
+digest, `v ()` accepting on the trace used up exactly), with the fast hashes. (`v` is delayed so
+that compiled code builds the child's program only after the cheap checks pass.) -/
 def accWith (vk : Digest) (p : Signed) (v : Unit → OProg Bool) : Bool :=
-  decide (p.π.size ≤ proofCap) && decide (∀ e ∈ p.tr, e.1.size ≤ queryCap) &&
-    SigOkF vk (traceDigestF p.tr) p.σ && decide ((v ()).runSeq p.tr = some true)
+  decide (p.π.size ≤ proofCap) && decide (p.tr.length ≤ 2 ^ 16) &&
+    decide (∀ e ∈ p.tr, e.1.size ≤ queryCap) && SigOkF vk (traceDigestF p.tr) p.σ &&
+    decide ((v ()).runSeq p.tr = some true)
 
-/-- **The clear-leaf check** (`C`): the header's length is within `chainCap` and the statement is
-the leaf statement of the recomputed chain end, with the fast hashes. -/
+/-- **The longest chain a clear or bundled leaf may claim** (D-6): `2^12` steps. No SNARK leaf
+above it fits `proofCap` (`leafSize 4096 ≤ 2^20 < leafSize 8192`), so no accepted proof is lost,
+and a clear leaf's recomputation costs at most `2^12` compressions. -/
+def clearCap : ℕ := 2 ^ 12
+
+theorem clearCap_le : clearCap ≤ chainCap := by unfold clearCap chainCap; norm_num
+
+/-- **The clear-leaf check** (`C`): the header's length is within `clearCap` (checked before any
+hash) and the statement is the leaf statement of the recomputed chain end, with the fast
+hashes. -/
 def clearLeafOK (c : Digest) (π : Proof) : Bool :=
-  decide (leafN π ≤ chainCap) && decide (c = leafStmtF (chainEndF (leafS π) (leafN π)) (leafN π))
+  decide (leafN π ≤ clearCap) && decide (c = leafStmtF (chainEndF (leafS π) (leafN π)) (leafN π))
 
 /-- A bundled leaf: its slot's statement, its chain start, its chain length. -/
 abbrev BLeaf := Digest × Digest × ℕ
@@ -67,6 +84,16 @@ def clearLeaves (σ0 : Sig) (c : Digest) (p : Signed) : Option (List BLeaf) :=
   if p.tr.isEmpty = true ∧ p.σ = σ0 ∧ p.π.size ≤ proofCap then
     if p.π.size = 48 ∧ tagWord p.π = 0 then some [(c, leafS p.π, leafN p.π)]
     else
+      -- The canonical node read at byte level first (`nodeFast`), the library's decoder
+      -- otherwise; both give the same node (`clearLeaves_eq`).
+      match _hf : nodeFast p.π with
+      | some (.node d₁ d₂ q₁ q₂) =>
+        if c = nodeStmtF d₁ d₂ then
+          match clearLeaves σ0 d₁ q₁, clearLeaves σ0 d₂ q₂ with
+          | some l₁, some l₂ => some (l₁ ++ l₂)
+          | _, _ => none
+        else none
+      | _ =>
       match decodeF p.π with
       | some (.node d₁ d₂ q₁ q₂) =>
         if _h : encodeF (.node d₁ d₂ q₁ q₂) = p.π then
@@ -80,8 +107,37 @@ def clearLeaves (σ0 : Sig) (c : Digest) (p : Signed) : Option (List BLeaf) :=
   else none
 termination_by p.π.size
 decreasing_by
+  · exact (nodeFast_child_lt _hf).1
+  · exact (nodeFast_child_lt _hf).2
   · rw [← _h, encodeF_eq]; exact (size_child_lt _ _ _ _).1
   · rw [← _h, encodeF_eq]; exact (size_child_lt _ _ _ _).2
+
+/-- `clearLeaves` through the library's decoder (the fast path changes nothing). -/
+theorem clearLeaves_eq (σ0 : Sig) (c : Digest) (p : Signed) : clearLeaves σ0 c p =
+    if p.tr.isEmpty = true ∧ p.σ = σ0 ∧ p.π.size ≤ proofCap then
+      if p.π.size = 48 ∧ tagWord p.π = 0 then some [(c, leafS p.π, leafN p.π)]
+      else
+        match decodeF p.π with
+        | some (.node d₁ d₂ q₁ q₂) =>
+          if encodeF (.node d₁ d₂ q₁ q₂) = p.π then
+            if c = nodeStmtF d₁ d₂ then
+              match clearLeaves σ0 d₁ q₁, clearLeaves σ0 d₂ q₂ with
+              | some l₁, some l₂ => some (l₁ ++ l₂)
+              | _, _ => none
+            else none
+          else none
+        | _ => none
+    else none := by
+  rw [clearLeaves]
+  split_ifs <;> try rfl
+  simp only [dite_eq_ite]
+  split
+  · rename_i d₁ d₂ q₁ q₂ hf
+    obtain ⟨_, _, _, _, hw, hd, he⟩ := nodeFast_sound hf
+    cases hw
+    rw [hd]
+    simp only [he, ↓reduceIte]
+  · rfl
 
 /-- The bytes of `T` the bundled leaves take: `32 + (leafSize n − 80)` each (`h ‖ π_S`). -/
 def bundleBytes (ls : List BLeaf) : ℕ := (ls.map fun x => 32 + (LV.size x.2.2 - 80)).sum
@@ -100,16 +156,27 @@ def runBundle (T : ByteArray) : List BLeaf → ℕ → OProg Bool
         if b then runBundle T ls (o + 32 + (LV.size n - 80)) else .ret false
     else .ret false
 
-/-- The static checks of a bundle with clear leaves `ls` and trailing bytes `T` (no query). -/
+/-- The static checks of a bundle with clear leaves `ls` and trailing bytes `T` (no query): every
+bundled length in `1 … clearCap`, `T` exactly the leaves' bytes, the query bound, the node
+statement, the shared signature on the empty trace. -/
 def bundleOK (vk c c₁ c₂ : Digest) (σ0 : Sig) (ls : List BLeaf) (T : ByteArray) : Bool :=
-  decide (∀ x ∈ ls, 1 ≤ x.2.2 ∧ x.2.2 ≤ chainCap) && decide (T.size = bundleBytes LV ls) &&
+  decide (∀ x ∈ ls, 1 ≤ x.2.2 ∧ x.2.2 ≤ clearCap) && decide (T.size = bundleBytes LV ls) &&
     decide (bundleQ LV ls ≤ 2 ^ 16) && decide (c = nodeStmtF c₁ c₂) &&
     SigOkF vk (traceDigestF []) σ0
 
+/-- The static checks of a bundle, as propositions. -/
+theorem bundleOK_iff {vk c c₁ c₂ : Digest} {σ0 : Sig} {ls : List BLeaf} {T : ByteArray} :
+    bundleOK LV vk c c₁ c₂ σ0 ls T = true ↔ (∀ x ∈ ls, 1 ≤ x.2.2 ∧ x.2.2 ≤ clearCap) ∧
+      T.size = bundleBytes LV ls ∧ bundleQ LV ls ≤ 2 ^ 16 ∧ c = nodeStmtF c₁ c₂ ∧
+      SigOkF vk (traceDigestF []) σ0 = true := by
+  simp only [bundleOK, Bool.and_eq_true, decide_eq_true_eq, and_assoc]
+
+-- Inlined into `V`: the compiled code then encodes the node once.
 /-- **The bundle branch** (`B`) on `π` whose front decodes to `.node c₁ c₂ p₁ p₂`: its encoding
 is a strict prefix of `π`, the node is a clear tree under slot 1's signature, the static checks
 hold, then the SNARK runs over the rest `T`. -/
-def bundleProg (vk c : Digest) (π : Proof) (c₁ c₂ : Digest) (p₁ p₂ : Signed) : OProg Bool :=
+@[inline] def bundleProg (vk c : Digest) (π : Proof) (c₁ c₂ : Digest) (p₁ p₂ : Signed) :
+    OProg Bool :=
   if IsStrictPrefix (encodeF (.node c₁ c₂ p₁ p₂)) π then
     match clearLeaves p₁.σ c₁ p₁, clearLeaves p₁.σ c₂ p₂ with
     | some l₁, some l₂ =>
@@ -129,7 +196,14 @@ def V (vk c : Digest) (π : Proof) : OProg Bool :=
   else if tagWord π = 0 then
     if π.size = 48 then .ret (clearLeafOK c π) else leafProg LV c π
   else
-    match decodeF π with
+    -- The canonical node read at byte level first (`nodeFast`, validated); the library's
+    -- decoder otherwise. Both give the same node on a canonical encoding (`V_tag`).
+    match _hf : nodeFast π with
+    | some (.node c₁ c₂ p₁ p₂) =>
+      .ret (decide (c = nodeStmtF c₁ c₂) && accWith vk p₁ (fun _ => V vk c₁ p₁.π) &&
+        accWith vk p₂ (fun _ => V vk c₂ p₂.π))
+    | _ =>
+    match decodeFront π with
     | some (.node c₁ c₂ p₁ p₂) =>
       if _h : encodeF (.node c₁ c₂ p₁ p₂) = π then
         .ret (decide (c = nodeStmtF c₁ c₂) && accWith vk p₁ (fun _ => V vk c₁ p₁.π) &&
@@ -138,16 +212,20 @@ def V (vk c : Digest) (π : Proof) : OProg Bool :=
     | _ => .ret false
 termination_by π.size
 decreasing_by
+  · exact (nodeFast_child_lt _hf).1
+  · exact (nodeFast_child_lt _hf).2
   · rw [← _h, encodeF_eq]; exact (size_child_lt _ _ _ _).1
   · rw [← _h, encodeF_eq]; exact (size_child_lt _ _ _ _).2
 
 /-- **The acceptance predicate of the relation**: `accWith` with the verifier `V LV vk`. -/
 def accV (vk c : Digest) (p : Signed) : Bool := accWith vk p fun _ => V LV vk c p.π
 
-/-- **`accV` is the contract's `acc`** of every submission whose verifier is `V LV`. -/
-theorem accV_eq_acc (S : Submission) (hV : S.V = V LV) : S.acc = accV LV := by
+/-- **`accV` is the contract's `acc`** of every submission whose verifier is `V LV` and whose
+query bound is `2^16`. -/
+theorem accV_eq_acc (S : Submission) (hV : S.V = V LV) (hq : S.qV = 2 ^ 16) :
+    S.acc = accV LV := by
   funext vk c p
-  rw [Submission.acc, accV, accWith, hV, SigOkF_eq, traceDigestF_eq]
+  rw [Submission.acc, accV, accWith, hV, hq, SigOkF_eq, traceDigestF_eq]
 
 /-! ## The branches, unfolded -/
 
@@ -171,7 +249,14 @@ theorem V_tag {vk c : Digest} {π : Proof} (h8 : 8 ≤ π.size) (ht : tagWord π
         else bundleProg LV vk c π c₁ c₂ p₁ p₂
       | _ => .ret false := by
   rw [V]
-  simp only [show ¬ π.size < 8 by omega, ht, ↓reduceIte, accV, dite_eq_ite]
+  simp only [show ¬ π.size < 8 by omega, ht, ↓reduceIte, accV, dite_eq_ite, decodeFront_eq]
+  split
+  · rename_i c₁ c₂ p₁ p₂ hf
+    obtain ⟨_, _, _, _, hw, hd, he⟩ := nodeFast_sound hf
+    cases hw
+    rw [hd]
+    simp only [he, ↓reduceIte]
+  · rfl
 
 /-! ## The query bound -/
 
@@ -188,9 +273,7 @@ theorem atMost_runBundle (T : ByteArray)
   | (c, s, n) :: ls, o, h => by
     rw [runBundle]
     have hn : n ≤ chainCap := h _ (List.mem_cons_self ..)
-    have hb : bundleQ LV ((c, s, n) :: ls) = LV.qb n + bundleQ LV ls := by
-      simp [bundleQ]
-    rw [hb]
+    rw [show bundleQ LV ((c, s, n) :: ls) = LV.qb n + bundleQ LV ls from rfl]
     refine AtMost.ite ((hq _ _ _ _ hn).bind fun b => AtMost.ite ?_ (atMost_ret _ _))
       (atMost_ret _ _)
     exact atMost_runBundle T hq ls _ fun x hx => h x (List.mem_cons_of_mem _ hx)
@@ -206,25 +289,17 @@ theorem atMost_V (hq : ∀ s n h π, n ≤ chainCap → AtMost (LV.qb n) (LV.pro
   · by_cases hs : π.size = 48
     · rw [V_clear LV hs ht]; exact atMost_ret _ _
     rw [V_leaf LV (by omega) hs ht, leafProg]
-    split_ifs with hh hn
-    · exact atMost_ret _ _
-    · have hcap := ((leafHeaderOK_iff LV).mp hh).1
-      exact (hq _ _ _ _ hcap).mono (hqb _ hcap)
-    · exact atMost_ret _ _
+    refine AtMost.ite_of (fun hh => ?_) fun _ => atMost_ret _ _
+    have hcap := ((leafHeaderOK_iff LV).mp hh).1
+    exact AtMost.ite (atMost_ret _ _) ((hq _ _ _ _ hcap).mono (hqb _ hcap))
   rw [V_tag LV (by omega) ht]
   split
-  · split_ifs
+  · refine AtMost.ite (atMost_ret _ _) (AtMost.ite ?_ (atMost_ret _ _))
+    split
+    · refine AtMost.ite_of (fun hok => ?_) fun _ => atMost_ret _ _
+      obtain ⟨hn, -, hQ, -⟩ := (bundleOK_iff LV).mp hok
+      exact (atMost_runBundle _ hq _ 0 fun x hx => (hn x hx).2.trans clearCap_le).mono hQ
     · exact atMost_ret _ _
-    · rw [bundleProg]
-      split_ifs
-      · split
-        · dsimp only
-          split_ifs with hok
-          · simp only [bundleOK, Bool.and_eq_true, decide_eq_true_eq] at hok
-            exact (atMost_runBundle _ hq _ 0 fun x hx => (hok.1.1.1.1 x hx).2).mono hok.1.1.2
-          · exact atMost_ret _ _
-        · exact atMost_ret _ _
-      · exact atMost_ret _ _
   · exact atMost_ret _ _
 
 end Queries
@@ -235,21 +310,20 @@ section Final
 
 variable {LV}
 
-/-- A bundled leaf whose statement holds: its length within `chainCap`, its slot's statement the
+/-- A bundled leaf whose statement holds: its length within `clearCap`, its slot's statement the
 leaf statement of its chain's end. -/
 def GoodLeaf (x : BLeaf) : Prop :=
-  x.2.2 ≤ chainCap ∧ x.1 = leafStmt (chainEnd x.2.1 x.2.2) x.2.2
+  x.2.2 ≤ clearCap ∧ x.1 = leafStmt (chainEnd x.2.1 x.2.2) x.2.2
 
 theorem runBundle_final {T : ByteArray} {L : Log}
     (hleaf : ∀ s n h πS, 1 ≤ n → n ≤ chainCap → πS.size = LV.size n - 80 →
       (LV.prog s n h πS).runLog L = some true → chainEnd s n = h) :
-    ∀ (ls : List BLeaf) (o : ℕ), (∀ x ∈ ls, 1 ≤ x.2.2 ∧ x.2.2 ≤ chainCap) →
+    ∀ (ls : List BLeaf) (o : ℕ), (∀ x ∈ ls, 1 ≤ x.2.2 ∧ x.2.2 ≤ clearCap) →
       o + bundleBytes LV ls ≤ T.size → (runBundle LV T ls o).runLog L = some true →
       ∀ x ∈ ls, GoodLeaf x
   | [], _, _, _, _ => by simp
   | (c, s, n) :: ls, o, hn, hsz, hrun => by
-    have hb : bundleBytes LV ((c, s, n) :: ls) = 32 + (LV.size n - 80) + bundleBytes LV ls := by
-      simp [bundleBytes]
+    have hb : bundleBytes LV ((c, s, n) :: ls) = 32 + (LV.size n - 80) + bundleBytes LV ls := rfl
     rw [runBundle] at hrun
     split_ifs at hrun with hc
     · rw [OProg.runLog_bind] at hrun
@@ -262,9 +336,10 @@ theorem runBundle_final {T : ByteArray} {L : Log}
         | false => simp [RecursionFast.OProg.runLog] at hrun
         | true =>
           simp only [↓reduceIte] at hrun
-          have hn1 : 1 ≤ n ∧ n ≤ chainCap := hn _ (List.mem_cons_self ..)
+          have hn1 : 1 ≤ n ∧ n ≤ clearCap := hn _ (List.mem_cons_self ..)
           rw [hb] at hsz
-          have hend := hleaf _ _ _ _ hn1.1 hn1.2 (by rw [ByteArray.size_extract]; omega) hp
+          have hend := hleaf _ _ _ _ hn1.1 (hn1.2.trans clearCap_le)
+            (by rw [ByteArray.size_extract]; omega) hp
           intro x hx
           rcases List.mem_cons.mp hx with rfl | hx
           · exact ⟨hn1.2, by rw [hc, leafStmtF_eq, hend]⟩
@@ -282,42 +357,46 @@ theorem clear_acc {vk : Digest} {σ0 : Sig} (hσ : SigOk vk (traceDigest []) σ0
   induction m using Nat.strong_induction_on with
   | _ m ih =>
   intro c p l hm hcl hgood
-  rw [clearLeaves] at hcl
-  split_ifs at hcl with hslot hC
-  · obtain ⟨hemp, hsig, hcap⟩ := hslot
+  rw [clearLeaves_eq] at hcl
+  by_cases hslot : p.tr.isEmpty = true ∧ p.σ = σ0 ∧ p.π.size ≤ proofCap
+  swap; · rw [ite_eq_right hslot] at hcl; cases hcl
+  rw [ite_eq_left hslot] at hcl
+  obtain ⟨hemp, hsig, hcap⟩ := hslot
+  have htr : p.tr = [] := List.isEmpty_iff.mp hemp
+  -- the slot's conjuncts of `accWith` other than `V`
+  have hs : (decide (p.π.size ≤ proofCap) && decide (p.tr.length ≤ 2 ^ 16) &&
+      decide (∀ e ∈ p.tr, e.1.size ≤ queryCap) && SigOkF vk (traceDigestF p.tr) p.σ) = true := by
+    simp only [Bool.and_eq_true, decide_eq_true_eq]
+    exact ⟨⟨⟨hcap, by simp [htr]⟩, by simp [htr]⟩,
+      by rw [htr, hsig, SigOkF_eq, traceDigestF_eq]; exact hσ⟩
+  rw [accV, accWith, hs, Bool.true_and, htr]
+  split at hcl
+  · rename_i hC
     cases hcl
     have hg := hgood _ (List.mem_singleton_self _)
-    have htr : p.tr = [] := List.isEmpty_iff.mp hemp
-    rw [accV, accWith, V_clear LV hC.1 hC.2]
-    simp only [Bool.and_eq_true, decide_eq_true_eq]
-    refine ⟨⟨⟨hcap, by simp [htr]⟩, by rw [htr, hsig, SigOkF_eq, traceDigestF_eq]; exact hσ⟩, ?_⟩
-    have hok : clearLeafOK c p.π = true := by
-      simp only [clearLeafOK, leafStmtF_eq, chainEndF_eq, Bool.and_eq_true, decide_eq_true_eq]
-      exact hg
-    rw [htr, hok]; rfl
-  · obtain ⟨hemp, hsig, hcap⟩ := hslot
-    have htr : p.tr = [] := List.isEmpty_iff.mp hemp
+    rw [V_clear LV hC.1 hC.2, show clearLeafOK c p.π = true by
+      simpa only [clearLeafOK, leafStmtF_eq, chainEndF_eq, Bool.and_eq_true, decide_eq_true_eq]]
+    rfl
+  split at hcl
+  · rename_i d₁ d₂ q₁ q₂ hd
     split at hcl
-    · rename_i d₁ d₂ q₁ q₂ hd
-      split_ifs at hcl with he hc
-      split at hcl
-      · rename_i l₁ l₂ h₁ h₂
-        cases hcl
-        have hlt := size_child_lt d₁ d₂ q₁ q₂
-        rw [← encodeF_eq, he, hm] at hlt
-        have a₁ := ih _ hlt.1 d₁ q₁ l₁ rfl h₁ fun x hx => hgood x (List.mem_append_left _ hx)
-        have a₂ := ih _ hlt.2 d₂ q₂ l₂ rfl h₂ fun x hx => hgood x (List.mem_append_right _ hx)
-        have h8 : 8 ≤ p.π.size := by
-          rw [← he, encodeF_eq]; exact size_encode_node _ _ _ _
-        have ht : tagWord p.π ≠ 0 := by rw [← he, encodeF_eq, tagWord_encode_node]; decide
-        rw [accV, accWith, V_tag LV h8 ht]
-        simp only [hd, he, ↓reduceIte, Bool.and_eq_true, decide_eq_true_eq]
-        refine ⟨⟨⟨hcap, by simp [htr]⟩, by rw [htr, hsig, SigOkF_eq, traceDigestF_eq]; exact hσ⟩,
-          ?_⟩
-        rw [htr]
-        simp [RecursionFast.OProg.runSeq, hc, a₁, a₂]
-      · cases hcl
+    swap; · cases hcl
+    rename_i he
+    split at hcl
+    swap; · cases hcl
+    rename_i hc
+    split at hcl
+    · rename_i l₁ l₂ h₁ h₂
+      cases hcl
+      have hlt := size_child_lt d₁ d₂ q₁ q₂
+      rw [← encodeF_eq, he, hm] at hlt
+      have a₁ := ih _ hlt.1 d₁ q₁ l₁ rfl h₁ fun x hx => hgood x (List.mem_append_left _ hx)
+      have a₂ := ih _ hlt.2 d₂ q₂ l₂ rfl h₂ fun x hx => hgood x (List.mem_append_right _ hx)
+      rw [V_tag LV (by rw [← he, encodeF_eq]; exact size_encode_node _ _ _ _)
+        (by rw [← he, encodeF_eq, tagWord_encode_node]; decide)]
+      simp [RecursionFast.OProg.runSeq, hd, he, hc, a₁, a₂]
     · cases hcl
+  · cases hcl
 
 /-- **`final` for `V`**: a proof `V` accepts on a log decodes (the library's `decode`) to a
 witness of the relation of `accV`, given that the SNARK verifier, accepting on the log, proves
@@ -335,7 +414,7 @@ theorem V_final {vk c : Digest} {π : Proof} {L : Log}
       have hok : clearLeafOK c π = true := Option.some.inj hacc
       simp only [clearLeafOK, Bool.and_eq_true, decide_eq_true_eq, leafStmtF_eq,
         chainEndF_eq] at hok
-      exact ⟨_, decode_leaf (by omega) ht, hok⟩
+      exact ⟨_, decode_leaf (by omega) ht, hok.1.trans clearCap_le, hok.2⟩
     rw [V_leaf LV (by omega) hs ht] at hacc
     obtain ⟨hdec, hcap, hc, h0, h1⟩ := leafProg_final LV hacc ht
     obtain ⟨-, hsize, -⟩ := (leafHeaderOK_iff LV).mp (leafProg_header LV hacc rfl)
@@ -361,8 +440,7 @@ theorem V_final {vk c : Digest} {π : Proof} {L : Log}
         dsimp only at hacc
         split_ifs at hacc with hok
         swap; · cases hacc
-        simp only [bundleOK, Bool.and_eq_true, decide_eq_true_eq] at hok
-        obtain ⟨⟨⟨⟨hn, hT⟩, -⟩, hc⟩, hσ⟩ := hok
+        obtain ⟨hn, hT, -, hc, hσ⟩ := (bundleOK_iff LV).mp hok
         rw [SigOkF_eq, traceDigestF_eq] at hσ
         have hgood := runBundle_final hleaf _ 0 hn (by rw [Nat.zero_add, hT]) hacc
         refine ⟨by rw [hc, nodeStmtF_eq], ?_, ?_⟩
@@ -386,7 +464,7 @@ queries along every path, and the trace is used up exactly), its queries within 
 theorem fits_of_accV {vk : Digest} (hq : ∀ c π, OProg.AtMost (2 ^ 16) (V LV vk c π))
     {c : Digest} {p : Signed} (h : accV LV vk c p = true) : p.Fits := by
   simp only [accV, accWith, Bool.and_eq_true, decide_eq_true_eq] at h
-  obtain ⟨⟨⟨hπ, hqc⟩, hσ⟩, hrun⟩ := h
+  obtain ⟨⟨⟨⟨hπ, -⟩, hqc⟩, hσ⟩, hrun⟩ := h
   rw [SigOkF_eq] at hσ
   simp only [SigOk, Bool.and_eq_true, decide_eq_true_eq] at hσ
   obtain ⟨⟨⟨hi, ho⟩, hp⟩, -⟩ := hσ

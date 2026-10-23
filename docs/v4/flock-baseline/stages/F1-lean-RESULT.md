@@ -1,6 +1,9 @@
 # F1 RESULT: the Lean port of `spartan-chain` to the v4 contract (`submissions/spartan-srom/lean/`)
 
-Status: **done, certified.** `SpartanSrom.certificate : Certificate SpartanSrom.submission` (module
+Status: **done, certified; fix pass applied (§9, 2026-10-23), final tree built against core
+`81e1ebf`** (its `RecursionFast/` is identical to `ea2e8ab`'s, the contract fix pass). §1–§8 are
+the record of the first version (`8111b71`, core `85f0985`/`a5e4cff`); §9 says what the review,
+the golf, D-6 and the new core changed, and gives the current numbers. `SpartanSrom.certificate : Certificate SpartanSrom.submission` (module
 `SpartanSromFinal`) is a closed theorem, kernel-checked, axioms `propext`, `Classical.choice`,
 `Quot.sound`. `Solution.lean` proves the rendered challenge `RecursionFast.Challenge.certified :
 CertificateR declared submission` from it. Built against **core `85f0985`** (`v4/srom-rules`, stage
@@ -287,3 +290,101 @@ few ms. Stage B's badge parser (`Common.lean.in`) is byte-level and linear (`get
 5. The `C` branch's `2^20`-step recomputation (§6.1.8): bound it lower (e.g. `2^16`) if the DoS
    column matters; soundness and completeness are unaffected (`P` never emits `C`, bundles check
    `n ≤ chainCap` themselves and could check the lower bound too).
+
+## 9. Fix pass (2026-10-23): review `reviews/F1-lean-review.md`, golf, D-6, core `ea2e8ab`/`81e1ebf`
+
+Order of work: the golf patch was applied **first** (`git apply logs/golf-lean/golf.patch`: it is
+against `8111b71` and applied clean, where applying it after the review fixes would have needed
+manual merges in `Node`, `NodeControls`, `VerifierTop`); then the core re-sync, D-6 and the
+review fixes on top. Final tree: core `81e1ebf` (`git archive`; `RecursionFast/` byte-identical to
+`ea2e8ab`), synced 2026-10-23T12:34Z. Logs below are under `logs/lean/` (`L/`).
+
+### 9.1 Each finding and what was done
+
+| Id | What was done |
+|---|---|
+| core `ea2e8ab` | `accWith` gains `decide (p.tr.length ≤ 2^16)` after the size cap (the contract's new `acc` conjunct with `qV = 2^16`); `accV_eq_acc` takes `S.qV = 2^16` (`acc_eq` passes `rfl`); `clear_acc`'s slot conjuncts (`have hs`) and `fits_of_accV` gain the conjunct; `Log = Trace` needed nothing. |
+| F1-m1 (`wordBytes := enc64`) | `Decode.wordBytes_ofLE` re-proved through `enc64` (`wordBytes_length`, `enc64`'s `List.ofFn`); `take8_encode` already used `wordBytes_length` (golf G2). |
+| **F1-M2** (`acc` cost under the public `σ0`) | (1) **D-6**: `clearCap := 2^12` (`Node`, docstring: no SNARK leaf above it fits `proofCap`); `C` checks `n ≤ clearCap` before any hash, `bundleOK` every bundled `1 ≤ n ≤ clearCap`; `GoodLeaf` and the controls follow; `L` keeps `n ≤ chainCap`. (2) **`tagWord`, `leafN` read in place**: `u64From π k` reads 8 bytes through `byteAt` (no `π.data` copy), `@[irreducible]` because unfolding it on a symbolic proof made `whnf` time out in `atMost_V`; bridges `u64From_eq`, `tagWord_eq`, `leafN_eq`. (3) **Nodes read at byte level** (new module `SpartanSromNodeBytes`, 180 code lines): after (1)+(2) the depth-100 chain still took 54–60 s (per level, the list-based `decodeF`/`encodeF` at about 1 µs/byte). `nodeFast π` parses the node by offsets (`parseNodeB`, unproved) and **validates** it: the reader's node must fit the format and its byte-level encoding `encodeB` (proved `= encode`, `encodeB_eq`) must equal `π` byte for byte (`bytesEqB`, in place, `bytesEqB_eq`). `nodeFast_sound`: its result is the canonical node (`decodeF π = some w`, `encodeF w = π`). `V`'s node branch and `clearLeaves` try `nodeFast` first and fall back to the library's decoder, so `V_tag` and the new `clearLeaves_eq` state them exactly as before and no proof above them changed. The attack (`L/run/attack-*.log`) is below. |
+| F1-M1 (CompPoly allowlist) | No entry change: the core's stage B fix pass (FIXLIST Q2, `5b2b591`) adds `CompPoly.Fields.Binary.BF64.Ext3` and `CompPoly.Fields.Binary.BF64.Bytes` to `org-setup.sh`'s default `RF_ORG_ROOTS`, so the 28 CompPoly modules are allowlisted and pinned. The entry needs exactly those two roots (`SpartanSromFieldBase`, `SpartanSromFieldExtCorrect`), as v3 did. |
+| Q7 (harness builds only `Solution`'s closure) | `Solution.lean` imports `SpartanSrom`, which imports every module, so the controls are built and checked with the certificate (header comment says so). |
+| F1-m2 (stale names) | `NodeControls`' docstring names `bundleOK_size` (and `canary_B_push/pop`) for `|T| ± 1`. |
+| F1-m3 (statement binding) | `clearLeafOK_stmt` (`C`), `V_node_stmt` (`N`, `V … = .ret false`), `bundleOK_stmt` (`B`'s node statement), `runBundle_stmt` (a bundled leaf's slot statement, before its SNARK); with `zeroLeaf_other_stmt` (`L`). |
+| F1-m4 (`Batteries.Data.BitVec.Lemmas`) | Answered, not changed: it is v3's carried import (for `BitVec.ofFnLE`, used by `readWord`/`readByte` and their lemmas in two carried modules); it passes the gate today as an untrusted module that registers no code attribute. Recommendation to the organiser: add it to `RF_ORG_ROOTS` beside CompPoly; replacing it would mean re-proving `ofFnLE`'s lemmas inside carried modules. |
+| F1-m5 (static bound unreachable within `proofCap`) | Wording: the control is now `qbound_fourteen` (fourteen `2^12`-step leaves, `qBound 12 = 4,753`, 66,542 > 2^16), "reachable within `clearCap`, not within `proofCap`" (`qbound_nine` used `n = 2^20` leaves, which D-6 rejects earlier). The check stays: `KS`'s bound is over every input. |
+| F1-m6 (comparator, gate, nanoda) | Not run by F1; the orchestrator runs `harness/evaluate.py` on the entry against `81e1ebf`. The stage B badge template (`81e1ebf`'s `harness/badge/`) was rendered with `Solution` and built in the scratch (`L/core/badge/`); results below. |
+| D-6 negatives | `clear_overCap`: the clear leaf of `n = 4097` is rejected (`V … = .ret false`, before any hash); `bundle_overCap`: a bundle whose clear tree holds a `4097`-step leaf is rejected with no query, under the reference key, whatever its `T`; `bundleOK_cap`, `clearLeafOK_cap` at `clearCap < n`. |
+| golf | Applied in full (V1 Karatsuba `F.mul` proved `= mulLoop`, V2 `decodeFront`, V3 `@[inline] bundleProg`, G1–G6); `bundleOK_iff`'s range conjunct moved to `clearCap` with D-6, as the golfer foresaw. |
+
+### 9.2 Statements
+
+Statement dump of every non-internal constant (`logs/golf-lean/stmt/StmtDump.lean`) against the
+golfed tree (`8111b71` + golf, core `a5e4cff`): `L/stmt-diff-fix.txt`. **Unchanged:** the
+certificate, `Solution`'s `certified`, `KS.ks`, `kstate`, `complete`, `certificateOf`,
+`V_final`, `clear_acc`, `V_tag`, `atMost_V`, `fits_of_accV`, `V_encode_node`, every carried
+module's statement. **Changed (10, all by the review, D-6 or the core):** `accV_eq_acc` (+ `S.qV =
+2^16`, core), `bundleOK_iff`, `runBundle_final` (bundled range `≤ clearCap`, D-6), and the
+controls `clearSlot_acc`, `clearTree_rel`, `clearTree_acc`, `bundle_static` (hypotheses `n ≤
+clearCap`), `bundleOK_cap`, `clearLeafOK_cap` (`clearCap < n`), `clear_overCap` (`n = 4097`).
+Removed: `qbound_nine` (replaced by `qbound_fourteen`), `leafN.eq_1` (auto-generated). Added:
+the D-6, m3 and NodeBytes declarations listed in the file. Definition bodies changed: `V`
+(fast path), `clearLeaves` (fast path), `accWith`, `clearLeafOK`, `bundleOK`, `GoodLeaf`,
+`tagWord`, `leafN`.
+
+Runner verdicts on every test file (`logs/golf-lean/verdicts.sh`, 23 cases, `srom-run` and the
+badge, plus the three prover KATs): **identical** to the golfer's (`L/verdicts-fix.txt`); the
+KATs reproduce `kat-n16.bin`, `kat-v3s-n16.bin`, `kat-ab-n16.bin` byte for byte.
+
+### 9.3 Checks and numbers (final tree, core `81e1ebf`)
+
+* **Clean build** (65 modules + `Solution` + the challenge, 8 cores): **2 min 46 s wall, 690 s
+  user, peak RSS 4.12 GB** (`L/build-full-fix2.log`). Slowest: `TranscriptControls` 74 s (kernel
+  KATs), `SoundnessKSBase` 45 s, `FieldBaseCorrect` 22 s (golf V1).
+* **Axioms**: `SpartanSrom.certificate`, `RecursionFast.Challenge.certified`:
+  `[propext, Classical.choice, Quot.sound]` (`L/axioms-print-fix.log`); audit of all 3,600
+  entry declarations PASS (`L/axioms-fix.log`). Source rule: `66 files, 0 finding(s)` (one
+  binder renamed: the raw scan flags `, init`). No `sorry`, `native_decide`, `partial`,
+  `unsafe`, `opaque`, code-changing attribute; `@[irreducible]` (`u64From`) and `@[inline]`
+  (`bundleProg`) only.
+* **Lines**: 17,901 code lines (24,940 total) in 66 modules; the fix pass and golf add 649 code
+  lines over `8111b71` (NodeBytes 180, golf V1/V2 about 400, D-6 and m3 controls, u64From).
+* **The badge** (stage B's `Verify.lean.in` at `81e1ebf`, rendered with `Solution`), one core,
+  `NS` = parse + `accF`, three runs (`L/run/timings-fix.log`):
+
+| Proof | proof bytes | trace | file | verdict | badge NS | was (§5) |
+|---|---|---|---|---|---|---|
+| `L` leaf, n = 16 (F1 test and F2's tree `L0`) | 143,711 | 3,533 | 538,698 | accept | 89–111 ms | 204–218 ms |
+| `B`, 2 leaves (F1 test and F2's `N1_0`) | 297,078 | 7,066 | 1,082,260 | accept | 188–195 ms | 450–500 ms |
+| `B`, 4 leaves (F2's smoke `root.bin`, r = 2) | 603,812 | 14,132 | 2,169,384 | accept | 404–619 ms | — |
+| `C` clear leaf | 48 | 0 | 4,840 | accept | 0.3 ms | 0.3 ms |
+| plain `N` over 2 signed leaves | 1,089,384 | 0 | 1,094,176 | reject (> `proofCap`) | 0.6–0.8 ms | 0.7–0.8 ms |
+
+* **The review's attack** (`srom-attack`, the reviewer's probe extended with a mode `B` whose
+  clear tree is the chain and whose `T` is one byte; one core; `L/run/attack-after-*.log`,
+  `attack-final.log`):
+
+| Proof (≤ 1 MiB, signed with the bundle's public `σ0`) | before (review) | after D-6 + in-place reads | final (+ `nodeFast`) |
+|---|---|---|---|
+| one `C` leaf, `n = 2^20` | 0.79 s, accept | 0 ms, **reject** (D-6) | 0 ms, reject |
+| one `C` leaf, `n = 4097` | — | 0 ms, reject | 0 ms, reject |
+| `N` chain depth 20, `C` leaves `n = 2^20` → `n = 4096` | 27.2 s | 2.5 s | 0.09 s |
+| `N` chain depth 100 (970,448 B), `n = 1` | 68.5 s | 54.5 s | **0.46 s** |
+| `N` chain depth 100, `n = 2^20` → `n = 4096` | 183 s | 60.1 s | **0.69 s** |
+| `B` whose clear tree is that chain, `T` one byte | not measured | 50.8–51.4 s, reject | **1.3–1.5 s**, reject |
+
+**Worst case now** among the measured shapes: 1.5 s (the bundle whose clear tree is a
+970 KB chain, rejected by `|T|`), dominated by the one-level list-based `decodeFront` and
+`encodeF` of the clear tree; a 4-leaf honest root 0.4–0.6 s. Every proof within `proofCap` that
+`acc` can accept is bounded by one byte-level pass per nesting level (`nodeFast`), at most about
+100 levels, plus at most a few SNARK checks (a node's children carry their traces, so a proof
+within `proofCap` holds at most about two signed SNARK leaves or one signed bundle), plus `C`'s
+`2^12` compressions per clear leaf. This is a measurement and an argument, not a theorem.
+
+### 9.4 Remaining open items
+
+1. `Batteries.Data.BitVec.Lemmas` in `RF_ORG_ROOTS` (F1-m4), the organiser's choice.
+2. The bundle branch still encodes its clear tree with the list-based `encodeF` for the
+   strict-prefix test (`bundleProg`) and decodes it with `decodeFront`: one pass, ≤ 1.5 s at
+   1 MB; `encodeB`/`nodeFast` could replace both if the bundle's front ever becomes large in
+   honest proofs (it is ≤ 10 KB per leaf pair today).
+3. `evaluate.py cert` (comparator, gate, nanoda) on this tree: the orchestrator's next step.

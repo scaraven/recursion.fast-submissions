@@ -235,11 +235,354 @@ private theorem mulLoop_spec (n : ℕ) (a bl bh lo hi : UInt64) (hn : 4 * n ≤ 
     exact (ih s4.a s4.bl s4.bh s4.lo s4.hi (by omega) g4).trans
       (congrArg _ (e4.trans (e3.trans (e2.trans e1))))
 
-/-- The class of the word product is the product of the classes. -/
-theorem Q_mul (a b : F) : Q (a * b).val = Q a.val * Q b.val := by
-  change Q (mulLoop 16 a.val b.val 0 0 0) = _
+/-- The class of v3's loop product is the product of the classes. -/
+private theorem Q_mulLoop (a b : F) : Q (mulLoop 16 a.val b.val 0 0 0) = Q a.val * Q b.val := by
   rw [mulLoop_spec 16 _ _ _ _ _ (by norm_num) ⟨a.val.toNat_lt, by simp⟩, ← map_mul]
   simp [Φ, P_zero]
+
+/-! ## The product of words below `2^32` (`clmul32`)
+
+A natural number below `2^64` is the value at `2` of the `ℕ`-polynomial of its bits (`bpN`). If
+`u` and `v` have bits only at positions `≡ r` and `≡ s (mod 4)` below `32` (`Holes`), the
+coefficients of `bpN u * bpN v` are at most `8` and sit at positions `≡ r + s`, so the bits of
+`u * v` there are the coefficients' parities (`testBit_mul_holes`, from `testBit_eval_two_sparse`:
+a column below `16` never reaches the next position of its class). Summing the four products of
+each class gives the carry-less product (`P_clmul32`). -/
+
+private theorem eval_two_divX (D : ℕ[X]) : D.eval 2 = 2 ^ 1 * (divX D).eval 2 + D.coeff 0 := by
+  conv_lhs => rw [← divX_mul_X_add D]
+  simp only [eval_add, eval_mul, eval_X, eval_C]; ring
+
+/-- A polynomial with coefficients below `2` evaluates at `2` to the number with those bits. -/
+private theorem testBit_eval_two_dense (n : ℕ) : ∀ (D : ℕ[X]), (∀ k, D.coeff k < 2) →
+    (D.eval 2).testBit n = decide (D.coeff n = 1) := by
+  induction n with
+  | zero =>
+    intro D h
+    rw [eval_two_divX, Nat.testBit_two_pow_mul_add _ (h 0)]
+    rw [ite_eq_left (by norm_num), Nat.testBit_zero]
+    rcases (by have := h 0; omega : D.coeff 0 = 0 ∨ D.coeff 0 = 1) with h' | h' <;> simp [h']
+  | succ n ih =>
+    intro D h
+    rw [eval_two_divX, Nat.testBit_two_pow_mul_add _ (h 0), ite_eq_right (by omega),
+      Nat.add_sub_cancel, ih _ fun k => by rw [coeff_divX]; exact h _, coeff_divX]
+
+private theorem testBit_eval_two_sparse (n : ℕ) : ∀ (D : ℕ[X]) (t : ℕ), (∀ k, D.coeff k < 16) →
+    (∀ k, D.coeff k ≠ 0 → k % 4 = t) → n % 4 = t →
+    (D.eval 2).testBit n = decide (D.coeff n % 2 = 1) := by
+  induction n using Nat.strong_induction_on with
+  | _ n ih =>
+  intro D t hb hs hn
+  by_cases h0 : D.coeff 0 = 0
+  · rw [eval_two_divX, h0, Nat.testBit_two_pow_mul_add _ (show 0 < 2 ^ 1 by norm_num)]
+    split_ifs with hlt
+    · obtain rfl : n = 0 := by omega
+      simp [h0]
+    · rw [ih (n - 1) (by omega) (divX D) ((t + 3) % 4) (fun k => by rw [coeff_divX]; exact hb _)
+          (fun k hk => by rw [coeff_divX] at hk; have := hs _ hk; omega) (by omega),
+        coeff_divX, Nat.sub_add_cancel (by omega)]
+  · have ht : t = 0 := by have := hs 0 h0; omega
+    have z : ∀ k, k % 4 ≠ 0 → D.coeff k = 0 := fun k hk => by
+      by_contra hne; exact hk (by rw [hs k hne, ht])
+    set D4 := divX (divX (divX (divX D)))
+    have c4 : ∀ k, D4.coeff k = D.coeff (k + 4) := fun k => by simp only [D4, coeff_divX]
+    have e : D.eval 2 = 2 ^ 4 * D4.eval 2 + D.coeff 0 := by
+      rw [eval_two_divX D, eval_two_divX (divX D), eval_two_divX (divX (divX D)),
+        eval_two_divX (divX (divX (divX D)))]
+      simp only [coeff_divX, z 1 (by decide), z 2 (by decide), z 3 (by decide)]
+      ring
+    rw [e, Nat.testBit_two_pow_mul_add _ (hb 0)]
+    split_ifs with hlt
+    · have : n = 0 := by omega
+      subst this; simp
+    · rw [ih (n - 4) (by omega) D4 0 (fun k => by rw [c4]; exact hb _)
+        (fun k hk => by rw [c4] at hk; have := hs _ hk; omega) (by omega), c4,
+        Nat.sub_add_cancel (by omega)]
+
+
+/-- The `ℕ`-polynomial of the bits of `u` below `2^64`. -/
+private noncomputable def bpN (u : ℕ) : ℕ[X] :=
+  ∑ i ∈ Finset.range 64, monomial i (if u.testBit i then 1 else 0)
+
+private theorem coeff_bpN (u n : ℕ) : (bpN u).coeff n = if n < 64 ∧ u.testBit n then 1 else 0 := by
+  rw [bpN, finsetSum_coeff]
+  simp only [coeff_monomial]
+  rw [Finset.sum_ite_eq' (Finset.range 64) n (fun i => if u.testBit i then 1 else 0)]
+  simp only [Finset.mem_range]
+  by_cases hn : n < 64 <;> simp [hn]
+
+private theorem eval_bpN {u : ℕ} (hu : u < 2 ^ 64) : (bpN u).eval 2 = u :=
+  Nat.eq_of_testBit_eq fun n => by
+    rw [testBit_eval_two_dense n _ (fun k => by rw [coeff_bpN]; split_ifs <;> omega), coeff_bpN]
+    by_cases hn : n < 64
+    · by_cases hb : u.testBit n <;> simp [hn, hb]
+    · simp [hn, Nat.testBit_lt_two_pow (lt_of_lt_of_le hu (Nat.pow_le_pow_right (n := 2)
+        (by norm_num) (show 64 ≤ n by omega)))]
+
+/-- `u` has bits only at positions `≡ r (mod 4)` below `32`. -/
+private def Holes (u r : ℕ) : Prop := ∀ i, u.testBit i = true → i % 4 = r ∧ i < 32
+
+private theorem Holes.lt {u r : ℕ} (h : Holes u r) : u < 2 ^ 32 :=
+  Nat.lt_pow_two_of_testBit _ fun i hi => by
+    by_contra hb; exact absurd (h i (by simpa using hb)).2 (by omega)
+
+private theorem Holes.coeff_le {u r : ℕ} (h : Holes u r) (i : ℕ) :
+    (bpN u).coeff i ≤ if i % 4 = r ∧ i < 32 then 1 else 0 := by
+  rw [coeff_bpN]
+  split_ifs with h1 h2 <;> first | omega | exact absurd (h i h1.2) h2
+
+private theorem support_holes {u v r s : ℕ} (hu : Holes u r) (hv : Holes v s) {n : ℕ}
+    (h : (bpN u * bpN v).coeff n ≠ 0) : n % 4 = (r + s) % 4 ∧ n < 64 := by
+  rw [coeff_mul] at h
+  obtain ⟨x, hx, hne⟩ := Finset.exists_ne_zero_of_sum_ne_zero h
+  rw [Finset.mem_antidiagonal] at hx
+  rw [coeff_bpN, coeff_bpN] at hne
+  split_ifs at hne with h1 h2
+  · obtain ⟨r1, r2⟩ := hu _ h1.2; obtain ⟨s1, s2⟩ := hv _ h2.2; omega
+  all_goals simp at hne
+
+private theorem coeff_holes_le {u v r : ℕ} (hu : Holes u r) (hr : r < 4) (n : ℕ) :
+    (bpN u * bpN v).coeff n ≤ 8 := by
+  rw [coeff_mul, Finset.Nat.sum_antidiagonal_eq_sum_range_succ (fun i j => (bpN u).coeff i *
+    (bpN v).coeff j)]
+  calc ∑ i ∈ Finset.range n.succ, (bpN u).coeff i * (bpN v).coeff (n - i)
+      ≤ ∑ i ∈ Finset.range n.succ, if i % 4 = r ∧ i < 32 then 1 else 0 :=
+        Finset.sum_le_sum fun i _ => by
+          have h1 := hu.coeff_le i
+          have h2 : (bpN v).coeff (n - i) ≤ 1 := by rw [coeff_bpN]; split_ifs <;> omega
+          calc (bpN u).coeff i * (bpN v).coeff (n - i) ≤ (bpN u).coeff i * 1 :=
+                Nat.mul_le_mul_left _ h2
+            _ ≤ _ := by rw [Nat.mul_one]; exact h1
+    _ ≤ ∑ i ∈ Finset.range 32, if i % 4 = r ∧ i < 32 then 1 else 0 := by
+        rw [← Finset.sum_filter, ← Finset.sum_filter]
+        exact Finset.sum_le_sum_of_subset fun i hi => by
+          simp only [Finset.mem_filter, Finset.mem_range] at hi ⊢; omega
+    _ = 8 := by
+        rcases (by omega : r = 0 ∨ r = 1 ∨ r = 2 ∨ r = 3) with rfl | rfl | rfl | rfl <;> decide
+
+/-- **The integer product of two words with holes**, read at the positions of its residue class,
+is the carry-less product. -/
+private theorem testBit_mul_holes {u v r s : ℕ} (hu : Holes u r) (hv : Holes v s) (hr : r < 4) {n : ℕ}
+    (hn : n % 4 = (r + s) % 4) : (u * v).testBit n = decide ((bpN u * bpN v).coeff n % 2 = 1) := by
+  have hu64 : u < 2 ^ 64 := lt_trans hu.lt (by norm_num)
+  have hv64 : v < 2 ^ 64 := lt_trans hv.lt (by norm_num)
+  have e : u * v = (bpN u * bpN v).eval 2 := by rw [eval_mul, eval_bpN hu64, eval_bpN hv64]
+  rw [e]
+  exact testBit_eval_two_sparse n _ ((r + s) % 4)
+    (fun k => lt_of_le_of_lt (coeff_holes_le (v := v) hu hr k) (by norm_num))
+    (fun k hk => (support_holes hu hv hk).1) hn
+
+
+/-- The bits of a constant below `2^k`, from its bits below `k`. -/
+private theorem testBit_const {m k : ℕ} {p : ℕ → Bool} (hm : m < 2 ^ k) (h : ∀ i < k, m.testBit i = p i)
+    (hp : ∀ i, k ≤ i → p i = false) (i : ℕ) : m.testBit i = p i := by
+  by_cases hi : i < k
+  · exact h i hi
+  · rw [hp i (by omega), Nat.testBit_lt_two_pow (lt_of_lt_of_le hm
+      (Nat.pow_le_pow_right (by norm_num) (by omega)))]
+
+/-- The input masks: bits `≡ r (mod 4)` below `32`. -/
+private def maskIn : ℕ → ℕ
+  | 0 => 0x11111111
+  | 1 => 0x22222222
+  | 2 => 0x44444444
+  | _ => 0x88888888
+
+private theorem testBit_maskIn {r : ℕ} (hr : r < 4) (i : ℕ) :
+    (maskIn r).testBit i = decide (i % 4 = r ∧ i < 32) := by
+  refine testBit_const (k := 32) (p := fun i => decide (i % 4 = r ∧ i < 32)) ?_ ?_
+    (fun i hi => by simp; omega) i <;>
+  rcases (by omega : r = 0 ∨ r = 1 ∨ r = 2 ∨ r = 3) with rfl | rfl | rfl | rfl <;> decide
+
+private theorem holes_maskIn (u : ℕ) {r : ℕ} (hr : r < 4) : Holes (u &&& maskIn r) r := fun i hi => by
+  rw [Nat.testBit_and, testBit_maskIn hr, Bool.and_eq_true, decide_eq_true_eq] at hi
+  exact hi.2
+
+
+private theorem testBit_lt_of_lt {x k : ℕ} (hx : x < 2 ^ k) {i : ℕ} (hi : k ≤ i) : x.testBit i = false :=
+  Nat.testBit_lt_two_pow (lt_of_lt_of_le hx (Nat.pow_le_pow_right (by norm_num) hi))
+
+private theorem bpN_split {x : ℕ} (hx : x < 2 ^ 32) : bpN x = ∑ r ∈ Finset.range 4, bpN (x &&& maskIn r) := by
+  ext i
+  rw [finsetSum_coeff]
+  simp only [Finset.sum_range_succ, Finset.sum_range_zero, Nat.zero_add, coeff_bpN, Nat.testBit_and,
+    testBit_maskIn (r := 0) (by norm_num), testBit_maskIn (r := 1) (by norm_num),
+    testBit_maskIn (r := 2) (by norm_num), testBit_maskIn (r := 3) (by norm_num)]
+  by_cases hb : x.testBit i
+  · have : i < 32 := by by_contra h; rw [testBit_lt_of_lt hx (by omega)] at hb; simp at hb
+    simp only [hb, this, show i < 64 by omega, and_self, Bool.true_and, decide_eq_true_eq, and_true,
+      true_and, ↓reduceIte]
+    split_ifs <;> omega
+  · simp [hb]
+
+private theorem coeff_mul_split {x y : ℕ} (hx : x < 2 ^ 32) (hy : y < 2 ^ 32) (n : ℕ) :
+    (bpN x * bpN y).coeff n =
+      ∑ r ∈ Finset.range 4, (bpN (x &&& maskIn r) * bpN (y &&& maskIn ((n + 4 - r) % 4))).coeff n := by
+  rw [bpN_split hx, bpN_split hy, Finset.sum_mul_sum, finsetSum_coeff]
+  refine Finset.sum_congr rfl fun r hr => ?_
+  rw [Finset.mem_range] at hr
+  rw [finsetSum_coeff]
+  refine Finset.sum_eq_single_of_mem _ (by simp; omega) fun s hs hne => ?_
+  rw [Finset.mem_range] at hs
+  by_contra h
+  have := (support_holes (holes_maskIn x hr) (holes_maskIn y hs) h).1
+  omega
+
+private theorem coeff_mul_zero {x y : ℕ} (hx : x < 2 ^ 32) (hy : y < 2 ^ 32) {n : ℕ} (hn : 64 ≤ n) :
+    (bpN x * bpN y).coeff n = 0 := by
+  rw [coeff_mul_split hx hy]
+  refine Finset.sum_eq_zero fun r hr => ?_
+  rw [Finset.mem_range] at hr
+  by_contra h
+  have := (support_holes (holes_maskIn x hr) (holes_maskIn y (Nat.mod_lt _ (by norm_num))) h).2
+  omega
+
+private theorem decide_odd_add (a b : ℕ) :
+    decide ((a + b) % 2 = 1) = (decide (a % 2 = 1) ^^ decide (b % 2 = 1)) := by
+  rcases Nat.mod_two_eq_zero_or_one a with h | h <;>
+    rcases Nat.mod_two_eq_zero_or_one b with h' | h' <;> simp [Nat.add_mod, h, h']
+
+private theorem prod_bit {x y : UInt64} (hx : x.toNat < 2 ^ 32) (hy : y.toNat < 2 ^ 32) {r s : ℕ}
+    (hr : r < 4) (hs : s < 4) {mr ms : UInt64} (hmr : mr.toNat = maskIn r) (hms : ms.toNat = maskIn s)
+    {n : ℕ} (hn : n % 4 = (r + s) % 4) :
+    ((x &&& mr) * (y &&& ms)).toNat.testBit n =
+      decide ((bpN (x.toNat &&& maskIn r) * bpN (y.toNat &&& maskIn s)).coeff n % 2 = 1) := by
+  rw [UInt64.toNat_mul, UInt64.toNat_and, UInt64.toNat_and, hmr, hms, Nat.mod_eq_of_lt]
+  · exact testBit_mul_holes (holes_maskIn _ hr) (holes_maskIn _ hs) hr hn
+  · calc (x.toNat &&& maskIn r) * (y.toNat &&& maskIn s) < 2 ^ 32 * 2 ^ 32 :=
+          Nat.mul_lt_mul'' (lt_of_le_of_lt Nat.and_le_left hx) (lt_of_le_of_lt Nat.and_le_left hy)
+      _ = 2 ^ 64 := by norm_num
+
+/-- One residue class of the product: the four integer products whose classes add up to `t`. -/
+private theorem z_bit {x y : UInt64} (hx : x.toNat < 2 ^ 32) (hy : y.toNat < 2 ^ 32) {n t : ℕ}
+    (ht : n % 4 = t) {m0 m1 m2 m3 : UInt64} (h0 : m0.toNat = maskIn ((t + 4) % 4))
+    (h1 : m1.toNat = maskIn ((t + 3) % 4)) (h2 : m2.toNat = maskIn ((t + 2) % 4))
+    (h3 : m3.toNat = maskIn ((t + 1) % 4)) :
+    ((x &&& 0x11111111) * (y &&& m0) ^^^ (x &&& 0x22222222) * (y &&& m1) ^^^
+      (x &&& 0x44444444) * (y &&& m2) ^^^ (x &&& 0x88888888) * (y &&& m3)).toNat.testBit n =
+      decide ((bpN x.toNat * bpN y.toNat).coeff n % 2 = 1) := by
+  simp only [UInt64.toNat_xor, Nat.testBit_xor]
+  rw [prod_bit hx hy (r := 0) (by norm_num) (Nat.mod_lt _ (by norm_num)) rfl h0 (by omega),
+    prod_bit hx hy (r := 1) (by norm_num) (Nat.mod_lt _ (by norm_num)) rfl h1 (by omega),
+    prod_bit hx hy (r := 2) (by norm_num) (Nat.mod_lt _ (by norm_num)) rfl h2 (by omega),
+    prod_bit hx hy (r := 3) (by norm_num) (Nat.mod_lt _ (by norm_num)) rfl h3 (by omega),
+    coeff_mul_split hx hy]
+  simp only [Finset.sum_range_succ, Finset.sum_range_zero, Nat.zero_add, decide_odd_add]
+  rw [show (n + 4 - 0) % 4 = (t + 4) % 4 by omega, show (n + 4 - 1) % 4 = (t + 3) % 4 by omega,
+    show (n + 4 - 2) % 4 = (t + 2) % 4 by omega, show (n + 4 - 3) % 4 = (t + 1) % 4 by omega]
+
+/-- The output masks: bits `≡ t (mod 4)`. -/
+private def maskOut : ℕ → ℕ
+  | 0 => 0x1111111111111111
+  | 1 => 0x2222222222222222
+  | 2 => 0x4444444444444444
+  | _ => 0x8888888888888888
+
+private theorem testBit_maskOut {t : ℕ} (ht : t < 4) {n : ℕ} (hn : n < 64) :
+    (maskOut t).testBit n = decide (n % 4 = t) := by
+  rcases (by omega : t = 0 ∨ t = 1 ∨ t = 2 ∨ t = 3) with rfl | rfl | rfl | rfl <;>
+    revert n <;> decide
+
+private theorem or4_bit (z0 z1 z2 z3 : UInt64) {n : ℕ} (hn : n < 64) :
+    ((z0 &&& 0x1111111111111111) ||| (z1 &&& 0x2222222222222222) |||
+      (z2 &&& 0x4444444444444444) ||| (z3 &&& 0x8888888888888888)).toNat.testBit n =
+    ((decide (n % 4 = 0) && z0.toNat.testBit n) || (decide (n % 4 = 1) && z1.toNat.testBit n) ||
+      (decide (n % 4 = 2) && z2.toNat.testBit n) || (decide (n % 4 = 3) && z3.toNat.testBit n)) := by
+  simp only [UInt64.toNat_or, UInt64.toNat_and, Nat.testBit_or, Nat.testBit_and]
+  rw [show (0x1111111111111111 : UInt64).toNat = maskOut 0 from rfl,
+    show (0x2222222222222222 : UInt64).toNat = maskOut 1 from rfl,
+    show (0x4444444444444444 : UInt64).toNat = maskOut 2 from rfl,
+    show (0x8888888888888888 : UInt64).toNat = maskOut 3 from rfl,
+    testBit_maskOut (by norm_num) hn, testBit_maskOut (by norm_num) hn, testBit_maskOut (by norm_num) hn,
+    testBit_maskOut (by norm_num) hn]
+  simp only [Bool.and_comm]
+
+/-- **The bits of `clmul32`** are the coefficients of the carry-less product. -/
+private theorem testBit_clmul32 {x y : UInt64} (hx : x.toNat < 2 ^ 32) (hy : y.toNat < 2 ^ 32) (n : ℕ) :
+    (clmul32 x y).toNat.testBit n = decide ((bpN x.toNat * bpN y.toNat).coeff n % 2 = 1) := by
+  by_cases hn : 64 ≤ n
+  · rw [coeff_mul_zero hx hy hn, testBit_lt_of_lt (clmul32 x y).toNat_lt hn]; rfl
+  simp only [clmul32]
+  rw [or4_bit _ _ _ _ (by omega)]
+  rcases (by omega : n % 4 = 0 ∨ n % 4 = 1 ∨ n % 4 = 2 ∨ n % 4 = 3) with h | h | h | h <;>
+    simp only [h, Nat.reduceEqDiff, decide_true, decide_false, Bool.true_and, Bool.false_and,
+      Bool.false_or, Bool.or_false] <;>
+    refine z_bit hx hy h ?_ ?_ ?_ ?_ <;> rfl
+
+
+
+private theorem P_eq_map (w : UInt64) : P w = (bpN w.toNat).map (Nat.castRingHom (ZMod 2)) := by
+  ext n
+  rw [coeff_map, coeff_bpN, P, coeff_toPoly]
+  change (if w.toNat.testBit n then _ else _) = _
+  by_cases hn : n < 64
+  · by_cases hb : w.toNat.testBit n <;> simp [hn, hb]
+  · rw [testBit_lt_of_lt w.toNat_lt (by omega)]; simp [hn]
+
+/-- **`clmul32` is the carry-less product** of two words below `2^32`. -/
+private theorem P_clmul32 {x y : UInt64} (hx : x.toNat < 2 ^ 32) (hy : y.toNat < 2 ^ 32) :
+    P (clmul32 x y) = P x * P y := by
+  ext n
+  rw [P_eq_map x, P_eq_map y, ← Polynomial.map_mul, coeff_map, P, coeff_toPoly]
+  change (if (clmul32 x y).toNat.testBit n then _ else _) = _
+  rw [testBit_clmul32 hx hy]
+  generalize (bpN x.toNat * bpN y.toNat).coeff n = c
+  show _ = (c : ZMod 2)
+  rw [← ZMod.natCast_mod]
+  rcases Nat.mod_two_eq_zero_or_one c with h | h <;> simp [h]
+
+/-! ## The product -/
+
+/-- A word is its low half plus `x^32` times its high half. -/
+private theorem P_halves (a : UInt64) : P a = P (a &&& 0xFFFFFFFF) + X ^ 32 * P (a >>> 32) := by
+  ext n
+  simp only [coeff_add, coeff_X_pow_mul', P, coeff_toPoly]
+  change (if a.toNat.testBit n then _ else _) = (if (a &&& 0xFFFFFFFF).toNat.testBit n then _ else _) +
+    if 32 ≤ n then (if (a >>> 32).toNat.testBit (n - 32) then _ else _) else 0
+  rw [UInt64.toNat_and, Nat.testBit_and, show (0xFFFFFFFF : UInt64).toNat = 2 ^ 32 - 1 from rfl,
+    Nat.testBit_two_pow_sub_one, UInt64.toNat_shiftRight, show (32 : UInt64).toNat % 64 = 32 from rfl,
+    Nat.testBit_shiftRight]
+  by_cases h : 32 ≤ n
+  · simp [h, show ¬ n < 32 by omega, Nat.add_sub_cancel' h]
+  · simp [h, show n < 32 by omega]
+
+private theorem lt_and32 (a : UInt64) : (a &&& 0xFFFFFFFF).toNat < 2 ^ 32 := by
+  rw [UInt64.toNat_and]; exact lt_of_le_of_lt Nat.and_le_right (by decide)
+
+private theorem lt_shr32 (a : UInt64) : (a >>> 32).toNat < 2 ^ 32 := by
+  rw [UInt64.toNat_shiftRight, show (32 : UInt64).toNat % 64 = 32 from rfl, Nat.shiftRight_eq_div_pow,
+    Nat.div_lt_iff_lt_mul (by norm_num)]
+  exact a.toNat_lt
+
+private theorem lt_xor32 {a b : UInt64} (ha : a.toNat < 2 ^ 32) (hb : b.toNat < 2 ^ 32) :
+    (a ^^^ b).toNat < 2 ^ 32 := by
+  rw [UInt64.toNat_xor]; exact Nat.xor_lt_two_pow ha hb
+
+/-- **The class of the word product is the product of the classes**: Karatsuba over the halves,
+each half product by `P_clmul32`, then `reduce`. -/
+theorem Q_mul (a b : F) : Q (a * b).val = Q a.val * Q b.val := by
+  have h0 := P_clmul32 (lt_and32 a.val) (lt_and32 b.val)
+  have h2 := P_clmul32 (lt_shr32 a.val) (lt_shr32 b.val)
+  have hm := P_clmul32 (lt_xor32 (lt_and32 a.val) (lt_shr32 a.val))
+    (lt_xor32 (lt_and32 b.val) (lt_shr32 b.val))
+  have es := fun pm : UInt64 => P_shiftLeft pm 32 (by norm_num) (s := 32) (r := 32) (by simp)
+    (by simp)
+  have ha := P_halves a.val
+  have hb := P_halves b.val
+  rw [show a * b = mul a b from rfl]
+  dsimp only [mul]
+  rw [mk_reduce, Q, Q, ← map_mul]
+  refine congrArg (AdjoinRoot.mk BF64.basePoly) ?_
+  simp only [P_xor, es, hm, h0, h2] at ha hb ⊢
+  rw [ha, hb]
+  linear_combination (X ^ 32 * (P (a.val &&& 0xFFFFFFFF) * P (b.val &&& 0xFFFFFFFF) +
+    P (a.val >>> 32) * P (b.val >>> 32))) * ZMod2Poly.two_eq_zero
+
+/-- **The product is v3's shift-and-add loop's** (the verifier's arithmetic is unchanged). -/
+theorem mul_eq_mulLoop (a b : F) : a * b = ⟨mulLoop 16 a.val b.val 0 0 0⟩ := by
+  apply toBF64_injective
+  apply BF64.toQuot_injective
+  rw [toQuot_toBF64, toQuot_toBF64, Q_mul, Q_mulLoop]
 
 /-- **Multiplication is `BF64`'s.** -/
 @[simp] theorem toBF64_mul (a b : F) : toBF64 (a * b) = toBF64 a * toBF64 b := by

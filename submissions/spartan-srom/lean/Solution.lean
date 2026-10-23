@@ -4,10 +4,12 @@
   `certified` is the rendered stub, copied verbatim: the declared claim (`Declared`,
   `Contract/Certificate.lean`): the knowledge error `2^-129`, the completeness error `0`, the
   verifier query bound `2^16` and the fuel `8 t` of the library's copy extractor. The comparator
-  checks that `certified` proves exactly the rendered statement.
+  checks that `certified` proves exactly the rendered statement. It imports `SpartanSrom`, which
+  imports every module of the entry: the harness builds only the closure of `Solution`, so the
+  controls are built and checked with the certificate.
 -/
 import RecursionFast.Contract
-import SpartanSromFinal
+import SpartanSrom
 
 namespace RecursionFast.Challenge
 open RecursionFast

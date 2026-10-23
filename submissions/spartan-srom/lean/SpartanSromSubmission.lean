@@ -153,7 +153,7 @@ structure Facts : Prop where
   qb_le : ∀ n ≤ chainCap, LV.qb n ≤ 2 ^ 16
 
 /-- The submission's `acc` is `accV LV`. -/
-theorem acc_eq : (submissionOf LV proveLeaf).acc = accV LV := accV_eq_acc LV _ rfl
+theorem acc_eq : (submissionOf LV proveLeaf).acc = accV LV := accV_eq_acc LV _ rfl rfl
 
 variable {LV proveLeaf}
 

@@ -54,8 +54,27 @@ variable (LV : LeafVerifier)
 access, 32 per digest.) -/
 def byteAt (π : Proof) (j : ℕ) : UInt8 := if h : j < π.size then π[j] else 0
 
+theorem proof_getD_eq (π : Proof) (i : ℕ) : π.data.getD i 0 = π.data.toList.getD i 0 := by
+  rw [List.getD_eq_getElem?_getD, Array.getElem?_toList]
+  unfold Array.getD
+  split
+  · rename_i h; rw [Array.getElem?_eq_getElem h]; rfl
+  · simp_all
+
+theorem byteAt_eq (π : Proof) (j : ℕ) : byteAt π j = π.data.getD j 0 := rfl
+
+theorem byteAt_toList (π : Proof) (j : ℕ) : byteAt π j = π.data.toList.getD j 0 := by
+  rw [← proof_getD_eq]; rfl
+
+/-- The little-endian number of the 8 bytes of `π` from byte `k` on (`0` past the end), read in
+place (D-6; v3 read `π.data.extract`, a copy of the whole proof in compiled code). Irreducible:
+elaboration never needs its value, and unfolding it on a symbolic proof makes `whnf` spin
+(`u64From_eq` is the way in). -/
+@[irreducible] def u64From (π : Proof) (k : ℕ) : ℕ :=
+  ofLE ((List.range 8).map fun i => byteAt π (k + i))
+
 /-- Word 0 of a proof, bytes 0–7 little-endian: the tag. -/
-def tagWord (π : Proof) : ℕ := ofLE (π.data.extract 0 8).toList
+def tagWord (π : Proof) : ℕ := u64From π 0
 
 /-- The 32 bytes of `π` from byte `k` on, as a digest (`0` past the end). -/
 def digestFrom (π : Proof) (k : ℕ) : Digest :=
@@ -65,7 +84,7 @@ def digestFrom (π : Proof) (k : ℕ) : Digest :=
 def leafS (π : Proof) : Digest := digestFrom π 8
 
 /-- The chain length of a leaf proof, bytes 40–47 little-endian. -/
-def leafN (π : Proof) : ℕ := ofLE (π.data.extract 40 48).toList
+def leafN (π : Proof) : ℕ := u64From π 40
 
 /-- The claimed chain end of a leaf proof, bytes 48–79. -/
 def leafH (π : Proof) : Digest := digestFrom π 48
@@ -90,14 +109,46 @@ def leafProg (c : Digest) (π : Proof) : OProg Bool :=
 theorem take8_encode (w : Wit) : (encode w).data.toList.take 8 =
     wordBytes (toWord (match w with | .leaf .. => 0 | .node .. => 1)) := by
   rw [WitnessSending.encode_data]
-  cases w <;> simp [witWords, wordsBytes, List.flatMap_cons, wordBytes]
+  cases w <;> exact List.take_left' (wordBytes_length _)
 
 theorem proof_extract_toList (π : Proof) (i j : ℕ) :
     (π.data.extract i j).toList = (π.data.toList.drop i).take (j - i) := by
   simp [Array.toList_extract, List.extract]
 
+theorem ofLE_append_replicate (l : List UInt8) (m : ℕ) :
+    ofLE (l ++ List.replicate m 0) = ofLE l := by
+  induction l with
+  | nil =>
+    induction m with
+    | zero => rfl
+    | succ m ih => rw [List.replicate_succ, List.nil_append] at *; rw [ofLE_cons, ih]; rfl
+  | cons x l ih => rw [List.cons_append, ofLE_cons, ih, ofLE_cons]
+
+theorem range_map_getD (l : List UInt8) (n : ℕ) :
+    (List.range n).map (fun i => l.getD i 0) = l.take n ++ List.replicate (n - l.length) 0 := by
+  apply List.ext_getElem (by simp; omega)
+  intro i h1 h2
+  simp only [List.length_map, List.length_range] at h1
+  simp only [List.getElem_map, List.getElem_range]
+  by_cases hi : i < l.length
+  · rw [List.getElem_append_left (by simp; omega), List.getElem_take,
+      List.getD_eq_getElem _ _ hi]
+  · rw [List.getElem_append_right (by simp; omega), List.getElem_replicate,
+      List.getD_eq_default _ _ (by omega)]
+
+/-- `u64From` is the little-endian number of the (at most) 8 bytes from `k` on. -/
+theorem u64From_eq (π : Proof) (k : ℕ) : u64From π k = ofLE ((π.data.toList.drop k).take 8) := by
+  have e : (fun i => byteAt π (k + i)) = fun i => (π.data.toList.drop k).getD i 0 := by
+    funext i; rw [byteAt_toList]; simp [List.getD_eq_getElem?_getD]
+  rw [u64From, e, range_map_getD, ofLE_append_replicate]
+
+theorem u64From_lt (π : Proof) (k : ℕ) : u64From π k < 2 ^ 64 := by
+  rw [u64From]; exact (ofLE_lt _).trans_le (by simp)
+
 theorem tagWord_eq (π : Proof) : tagWord π = ofLE (π.data.toList.take 8) := by
-  rw [tagWord, proof_extract_toList]; rfl
+  rw [tagWord, u64From_eq, List.drop_zero]
+
+theorem leafN_eq (π : Proof) : leafN π = ofLE ((π.data.toList.drop 40).take 8) := u64From_eq π 40
 
 
 theorem tagWord_encode_node (c₁ c₂ : Digest) (p₁ p₂ : Signed) :
@@ -132,14 +183,7 @@ theorem leafHeaderOK_iff {c : Digest} {π : Proof} : leafHeaderOK LV c π = true
     leafN π ≤ chainCap ∧ π.size = LV.size (leafN π) ∧ c = leafStmt (leafH π) (leafN π) := by
   simp [leafHeaderOK, and_assoc]
 
-theorem proof_getD_eq (π : Proof) (i : ℕ) : π.data.getD i 0 = π.data.toList.getD i 0 := by
-  rw [List.getD_eq_getElem?_getD, Array.getElem?_toList]
-  unfold Array.getD
-  split
-  · rename_i h; rw [Array.getElem?_eq_getElem h]; rfl
-  · simp_all
 
-theorem byteAt_eq (π : Proof) (j : ℕ) : byteAt π j = π.data.getD j 0 := rfl
 
 theorem wordsBytes_packBytes_digest (d : Digest) : wordsBytes (packBytes d.toList) = d.toList := by
   have h := unpack_packBytes d.toList
@@ -161,7 +205,7 @@ theorem take48_leaf {π : Proof} (hs : 48 ≤ π.size) (ht : tagWord π = 0) :
       ← hl, List.getElem_take, List.getElem_drop]
     rw [List.getD_eq_getElem _ _ (by simp at h1; omega)]
   have hC : (l.drop 40).take 8 = wordBytes (toWord (leafN π)) := by
-    rw [leafN, proof_extract_toList, ← hl]
+    rw [leafN_eq, ← hl]
     exact (wordBytes_ofLE8 (by simp; omega)).symm
   have e1 : l.take 48 = l.take 8 ++ (l.drop 8).take 32 ++ (l.drop 40).take 8 := by
     rw [List.append_assoc, show (40 : ℕ) = 8 + 32 by rfl, ← List.drop_drop, ← List.take_add,
@@ -177,9 +221,7 @@ theorem decode_leaf {π : Proof} (hs : 48 ≤ π.size) (ht : tagWord π = 0) :
     decode π = some (.leaf (leafS π) (leafN π)) := by
   have hlen : π.data.toList.length = π.size := (size_eq_length π).symm
   have hfit : (Wit.leaf (leafS π) (leafN π)).Fits := by
-    show leafN π < 2 ^ 64
-    have h8 : (π.data.extract 40 48).toList.length ≤ 8 := by simp
-    exact (ofLE_lt _).trans_le ((Nat.pow_le_pow_right (by norm_num) h8).trans (by norm_num))
+    exact u64From_lt π 40
   have hw : (wordsBytes (witWords (.leaf (leafS π) (leafN π)))).length = 8 * 6 := by
     rw [wordsBytes_length]; simp [witWords, packBytes_digest_length]
   rw [decode, ← List.take_append_drop 48 π.data.toList, take48_leaf hs ht,
@@ -218,8 +260,7 @@ theorem parse48_congr {π π' : Proof} (h : π.data.toList.take 48 = π'.data.to
   refine ⟨?_, ?_, ?_⟩
   · rw [tagWord_eq, tagWord_eq, ← List.drop_zero (l := π.data.toList),
       ← List.drop_zero (l := π'.data.toList), take_drop_of_take h (by omega : 0 + 8 ≤ 48)]
-  · rw [leafN, leafN, proof_extract_toList, proof_extract_toList,
-      take_drop_of_take h (by omega : 40 + 8 ≤ 48)]
+  · rw [leafN_eq, leafN_eq, take_drop_of_take h (by omega : 40 + 8 ≤ 48)]
   · ext i hi
     simp only [leafS, digestFrom, Vector.getElem_ofFn, byteAt_eq, proof_getD_eq]
     exact congrArg _ (getD_of_take h (by omega : 8 + i < 48))
@@ -234,7 +275,7 @@ theorem parse_congr {π π' : Proof} (h : π.data.toList.take 80 = π'.data.toLi
   refine ⟨?_, ?_, ?_, ?_⟩
   · rw [tagWord_eq, tagWord_eq, ← List.drop_zero (l := π.data.toList),
       ← List.drop_zero (l := π'.data.toList), ht 0 8 (by omega)]
-  · rw [leafN, leafN, proof_extract_toList, proof_extract_toList, ht 40 8 (by omega)]
+  · rw [leafN_eq, leafN_eq, ht 40 8 (by omega)]
   · ext i hi
     simp only [leafS, digestFrom, Vector.getElem_ofFn, byteAt_eq]
     exact congrArg _ (hg (8 + i) (by omega))

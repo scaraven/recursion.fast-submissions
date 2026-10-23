@@ -30,6 +30,7 @@ import SpartanSromMLE
 import SpartanSromMLEControls
 import SpartanSromMerkle
 import SpartanSromNode
+import SpartanSromNodeBytes
 import SpartanSromNodeControls
 import SpartanSromOracle
 import SpartanSromPCSBounds

@@ -18,11 +18,15 @@ definitions. They hold for every leaf verifier `LV` unless the entry's is named.
   is rejected under another statement and with a byte appended or removed
   (`zeroLeaf_other_stmt`, `zeroLeaf_canaries`).
 * **Bundle negatives** (§6): a slot with a non-empty trace (`clearLeaves_trace`), two slots
-  with different signatures (`clearLeaves_sig`), `|T|` off by one byte (`bundle_T_plus`,
-  `bundle_T_minus`), the static query bound exceeded (`bundleOK_qbound`, reachable with nine
-  `n = 2^20` leaves: `qbound_nine`), a bundled leaf with `n = 0` (`bundleOK_zero`), a clear leaf
-  with `n > chainCap` (`clearLeafOK_cap`, `clear_overCap`, `bundleOK_cap`): each rejected with no
-  query (`V_bundle_reject`, `bundleProg_none₁`, `bundleProg_none₂`).
+  with different signatures (`clearLeaves_sig`), `|T|` off by one byte (`bundleOK_size`, used by
+  `canary_B_push`/`canary_B_pop`), the static query bound exceeded (`bundleOK_qbound`; reachable
+  with fourteen `n = 2^12` leaves, `qbound_fourteen`, though not within `proofCap`), a bundled
+  leaf with `n = 0` (`bundleOK_zero`), a clear or bundled leaf with `n > clearCap = 2^12` (D-6:
+  `clearLeafOK_cap`, `clear_overCap` and `bundle_overCap` at `n = 4097`, `bundleOK_cap`): each
+  rejected with no query (`V_bundle_reject`, `bundleProg_none₁`, `bundleProg_none₂`).
+* **Statement binding** (review F1-m3): `clearLeafOK_stmt` (`C`), `V_node_stmt` (`N`),
+  `bundleOK_stmt` (`B`'s node statement), `runBundle_stmt` (a bundled leaf's slot statement),
+  with `zeroLeaf_other_stmt` (`L`).
 * **Canaries** (§6, DESIGN-v3 §6.3 step 7): one byte appended to or removed from an `L`, `C`,
   `N` or accepted `B` proof is rejected with no query (`canary_*`).
 * **The claim**: the claim of `claim.json` is certified (`certificateR_claim`); one declaring
@@ -68,17 +72,17 @@ theorem bundleBytes_ne_one (ls : List BLeaf) : bundleBytes LV ls ≠ 1 := by
 within `proofCap`. -/
 theorem clearLeaves_slot {σ0 : Sig} {c : Digest} {p : Signed} {l : List BLeaf}
     (h : clearLeaves σ0 c p = some l) : p.tr = [] ∧ p.σ = σ0 ∧ p.π.size ≤ proofCap := by
-  rw [clearLeaves] at h
-  split_ifs at h with hs
-  · exact ⟨List.isEmpty_iff.mp hs.1, hs.2.1, hs.2.2⟩
-  · exact ⟨List.isEmpty_iff.mp hs.1, hs.2.1, hs.2.2⟩
+  by_contra hn
+  rw [clearLeaves_eq, ite_eq_right fun hs => hn ⟨List.isEmpty_iff.mp hs.1, hs.2.1, hs.2.2⟩] at h
+  cases h
 
 /-- A node passing the bundle's static phase fits the output format. -/
 theorem fits_of_bundleOK {vk c c₁ c₂ : Digest} {p₁ p₂ : Signed} {l₁ l₂ : List BLeaf}
     {T : ByteArray} (h₁ : clearLeaves p₁.σ c₁ p₁ = some l₁) (h₂ : clearLeaves p₁.σ c₂ p₂ = some l₂)
     (hok : bundleOK LV vk c c₁ c₂ p₁.σ (l₁ ++ l₂) T = true) : (Wit.node c₁ c₂ p₁ p₂).Fits := by
-  simp only [bundleOK, Bool.and_eq_true, decide_eq_true_eq, SigOkF_eq, SigOk] at hok
-  obtain ⟨-, ⟨⟨hi, ho⟩, hp⟩, -⟩ := hok
+  have hσ := ((bundleOK_iff LV).mp hok).2.2.2.2
+  simp only [SigOkF_eq, SigOk, Bool.and_eq_true, decide_eq_true_eq] at hσ
+  obtain ⟨⟨⟨hi, ho⟩, hp⟩, -⟩ := hσ
   obtain ⟨t₁, -, c₁'⟩ := clearLeaves_slot h₁
   obtain ⟨t₂, σ₂, c₂'⟩ := clearLeaves_slot h₂
   have hcap : proofCap < 2 ^ 64 := by unfold proofCap; norm_num
@@ -175,17 +179,17 @@ theorem sigOk_σ0 : SigOk (Signer.pk sk) (traceDigest []) (σ0 sk) = true :=
 /-- A clear slot: the clear leaf of `(s, n)`, the empty trace, `σ0`. -/
 def clearSlot (s : Digest) (n : ℕ) : Signed := ⟨encode (.leaf s n), [], σ0 sk⟩
 
-/-- **Positive**: a clear slot of a chain within `chainCap`, signed `σ0`, is accepted under the
+/-- **Positive**: a clear slot of a chain within `clearCap`, signed `σ0`, is accepted under the
 reference key, with no query. -/
-theorem clearSlot_acc (s : Digest) {n : ℕ} (hn : n ≤ chainCap) :
+theorem clearSlot_acc (s : Digest) {n : ℕ} (hn : n ≤ clearCap) :
     accV LV (Signer.pk sk) (leafStmt (chainEnd s n) n) (clearSlot sk s n) = true := by
-  have hn64 : n < 2 ^ 64 := hn.trans_lt (by unfold chainCap; norm_num)
+  have hn64 : n < 2 ^ 64 := hn.trans_lt (by unfold clearCap; norm_num)
   obtain ⟨hS, hN⟩ := leaf_parts s hn64
   rw [accV, accWith, clearSlot, V_clear LV (size_encode_leaf s n) (tagWord_encode_leaf s n)]
   simp only [size_encode_leaf, List.not_mem_nil, IsEmpty.forall_iff, implies_true,
     decide_true, SigOkF_eq, traceDigestF_eq, sigOk_σ0, clearLeafOK, hS, hN, hn,
-    leafStmtF_eq, chainEndF_eq, RecursionFast.OProg.runSeq, Bool.and_true]
-  decide
+    leafStmtF_eq, chainEndF_eq, RecursionFast.OProg.runSeq, Bool.and_true, List.length_nil]
+  simp [proofCap]
 
 /-- The statement of the clear leaf of `(s, n)`. -/
 abbrev cl (s : Digest) (n : ℕ) : Digest := leafStmt (chainEnd s n) n
@@ -195,8 +199,8 @@ def clearTree (s₁ : Digest) (n₁ : ℕ) (s₂ : Digest) (n₂ : ℕ) : Wit :=
   .node (cl s₁ n₁) (cl s₂ n₂) (clearSlot sk s₁ n₁) (clearSlot sk s₂ n₂)
 
 /-- **Positive**: the clear tree is a node witness of the relation under the reference key. -/
-theorem clearTree_rel (s₁ : Digest) {n₁ : ℕ} (s₂ : Digest) {n₂ : ℕ} (h₁ : n₁ ≤ chainCap)
-    (h₂ : n₂ ≤ chainCap) :
+theorem clearTree_rel (s₁ : Digest) {n₁ : ℕ} (s₂ : Digest) {n₂ : ℕ} (h₁ : n₁ ≤ clearCap)
+    (h₂ : n₂ ≤ clearCap) :
     Rel (accV LV (Signer.pk sk)) (nodeStmt (cl s₁ n₁) (cl s₂ n₂)) (clearTree sk s₁ n₁ s₂ n₂) :=
   ⟨rfl, clearSlot_acc LV sk s₁ h₁, clearSlot_acc LV sk s₂ h₂⟩
 
@@ -209,34 +213,46 @@ theorem clearSlot_fits (s : Digest) (n : ℕ) : (clearSlot sk s n).Fits := by
   refine ⟨by simp [clearSlot, size_encode_leaf], by simp [clearSlot], by simp [clearSlot],
     by simp [clearSlot, hi], ho, hp⟩
 
+/-- A clear slot is a clear-tree slot of one clear leaf (whatever its length). -/
+theorem clearLeaves_clearSlot (s : Digest) {n : ℕ} (hn : n < 2 ^ 64) :
+    clearLeaves (σ0 sk) (cl s n) (clearSlot sk s n) = some [(cl s n, s, n)] := by
+  obtain ⟨hS, hN⟩ := leaf_parts s hn
+  rw [clearLeaves_eq]
+  simp [clearSlot, size_encode_leaf, tagWord_encode_leaf, hS, hN, proofCap]
+
 theorem clearTree_size (s₁ : Digest) (n₁ : ℕ) (s₂ : Digest) (n₂ : ℕ) :
     (encode (clearTree sk s₁ n₁ s₂ n₂)).size = 9752 := by
-  obtain ⟨ho, hp, -⟩ := σ0_counts sk
-  rw [size_encode]
-  simp only [clearTree, clearSlot, witWords, signedWords, sigWords, bytesWords, logWords,
-    List.length_cons, List.length_append, List.length_flatMap, packBytes_length,
-    Vector.length_toList, List.flatMap_nil, List.length_nil, ← size_eq_length,
-    size_encode_leaf, List.map_const', List.sum_replicate, smul_eq_mul, ho, hp]
-  rfl
+  -- stated for every signature with the right counts: the kernel then never evaluates `σ0 sk`
+  have h : ∀ σ : Sig, σ.ots.length = wotsLen → σ.path.length = sigHeight →
+      (encode (.node (cl s₁ n₁) (cl s₂ n₂) ⟨encode (.leaf s₁ n₁), [], σ⟩
+        ⟨encode (.leaf s₂ n₂), [], σ⟩)).size = 9752 := fun σ ho hp => by
+    rw [size_encode]
+    simp only [witWords, signedWords, sigWords, bytesWords, logWords, List.length_cons,
+      List.length_append, List.length_flatMap, packBytes_length, Vector.length_toList,
+      List.flatMap_nil, List.length_nil, ← size_eq_length, size_encode_leaf, List.map_const',
+      List.sum_replicate, smul_eq_mul, ho, hp]
+    rfl
+  exact h _ (σ0_counts sk).1 (σ0_counts sk).2.1
 
 /-- **Positive** (§6): the plain encoding of the clear tree, with the empty trace and the
 signature `σ0`, is accepted by the entry's `acc` under the reference key. -/
-theorem clearTree_acc (s₁ : Digest) {n₁ : ℕ} (s₂ : Digest) {n₂ : ℕ} (h₁ : n₁ ≤ chainCap)
-    (h₂ : n₂ ≤ chainCap) :
+theorem clearTree_acc (s₁ : Digest) {n₁ : ℕ} (s₂ : Digest) {n₂ : ℕ} (h₁ : n₁ ≤ clearCap)
+    (h₂ : n₂ ≤ clearCap) :
     submission.acc (Signer.pk sk) (nodeStmt (cl s₁ n₁) (cl s₂ n₂))
       ⟨encode (clearTree sk s₁ n₁ s₂ n₂), [], σ0 sk⟩ = true := by
   rw [show submission = submissionOf leafVerifier proveLeafR1 from rfl, acc_eq, accV, accWith]
   rw [clearTree, V_encode_node (atMost_V KS.atMost_leaf KS.qb_le _)
     (clearTree_rel leafVerifier sk s₁ s₂ h₁ h₂), ← clearTree, clearTree_size]
   simp only [List.not_mem_nil, IsEmpty.forall_iff, implies_true, decide_true,
-    SigOkF_eq, traceDigestF_eq, sigOk_σ0, RecursionFast.OProg.runSeq, Bool.and_true]
-  decide
+    SigOkF_eq, traceDigestF_eq, sigOk_σ0, RecursionFast.OProg.runSeq, Bool.and_true,
+    List.length_nil]
+  simp [proofCap]
 
 /-- **Positive** (§6): the bundle of the clear tree with bytes `T` of the right size passes the
 whole static phase (clear tree, `σ0` checked once, sizes, the query bound) and reduces to the two
 leaves' SNARK runs over `T`: it is accepted exactly when they accept. -/
-theorem bundle_static (s₁ : Digest) {n₁ : ℕ} (s₂ : Digest) {n₂ : ℕ} (h₁ : 1 ≤ n₁ ∧ n₁ ≤ chainCap)
-    (h₂ : 1 ≤ n₂ ∧ n₂ ≤ chainCap) (T : ByteArray)
+theorem bundle_static (s₁ : Digest) {n₁ : ℕ} (s₂ : Digest) {n₂ : ℕ} (h₁ : 1 ≤ n₁ ∧ n₁ ≤ clearCap)
+    (h₂ : 1 ≤ n₂ ∧ n₂ ≤ clearCap) (T : ByteArray)
     (hT : T.size = bundleBytes LV [(cl s₁ n₁, s₁, n₁), (cl s₂ n₂, s₂, n₂)])
     (hq : LV.qb n₁ + LV.qb n₂ ≤ 2 ^ 16) :
     V LV (Signer.pk sk) (nodeStmt (cl s₁ n₁) (cl s₂ n₂)) (encode (clearTree sk s₁ n₁ s₂ n₂) ++ T) =
@@ -246,30 +262,20 @@ theorem bundle_static (s₁ : Digest) {n₁ : ℕ} (s₂ : Digest) {n₂ : ℕ} 
     ⟨clearSlot_fits sk s₁ n₁, clearSlot_fits sk s₂ n₂⟩
   have hpre : IsStrictPrefix (encode (clearTree sk s₁ n₁ s₂ n₂))
       (encode (clearTree sk s₁ n₁ s₂ n₂) ++ T) := isStrictPrefix_append hT0
-  have hcl : ∀ (s : Digest) (n : ℕ), n ≤ chainCap →
-      clearLeaves (σ0 sk) (cl s n) (clearSlot sk s n) = some [(cl s n, s, n)] := by
-    intro s n hn
-    obtain ⟨hS, hN⟩ := leaf_parts s (hn.trans_lt (by unfold chainCap; norm_num))
-    rw [clearLeaves]
-    simp [clearSlot, size_encode_leaf, tagWord_encode_leaf, hS, hN, proofCap]
+  have hcl := fun s n (hn : n < 2 ^ 64) => clearLeaves_clearSlot sk s hn
   have hTx : (encode (clearTree sk s₁ n₁ s₂ n₂) ++ T).extract
       (encode (clearTree sk s₁ n₁ s₂ n₂)).size (encode (clearTree sk s₁ n₁ s₂ n₂) ++ T).size = T :=
     ByteArray.extract_append_eq_right rfl (by rw [ByteArray.size_append])
   have hok : bundleOK LV (Signer.pk sk) (nodeStmt (cl s₁ n₁) (cl s₂ n₂)) (cl s₁ n₁) (cl s₂ n₂)
-      (σ0 sk) ([(cl s₁ n₁, s₁, n₁)] ++ [(cl s₂ n₂, s₂, n₂)]) T = true := by
-    rw [bundleOK]
-    simp only [Bool.and_eq_true]
-    refine ⟨⟨⟨⟨decide_eq_true ?_, decide_eq_true hT⟩, decide_eq_true ?_⟩,
-      decide_eq_true (by rw [nodeStmtF_eq])⟩, by rw [SigOkF_eq, traceDigestF_eq]; exact sigOk_σ0 sk⟩
-    · intro x hx
-      simp only [List.cons_append, List.nil_append, List.mem_cons, List.not_mem_nil, or_false] at hx
-      rcases hx with rfl | rfl
-      · exact h₁
-      · exact h₂
-    · simpa [bundleQ] using hq
+      (σ0 sk) ([(cl s₁ n₁, s₁, n₁)] ++ [(cl s₂ n₂, s₂, n₂)]) T = true :=
+    (bundleOK_iff LV).mpr ⟨fun x hx => by
+      rcases List.mem_pair.mp hx with rfl | rfl
+      exacts [h₁, h₂], hT, by simpa [bundleQ] using hq, by rw [nodeStmtF_eq],
+      by rw [SigOkF_eq, traceDigestF_eq]; exact sigOk_σ0 sk⟩
   unfold clearTree at hfit hpre hTx ⊢
-  rw [V_bundle LV hfit hpre.2 hpre.1, bundleProg_static LV hpre (hcl s₁ n₁ h₁.2)
-    (hcl s₂ n₂ h₂.2)]
+  rw [V_bundle LV hfit hpre.2 hpre.1, bundleProg_static LV hpre
+    (hcl s₁ n₁ (h₁.2.trans_lt (by unfold clearCap; norm_num)))
+    (hcl s₂ n₂ (h₂.2.trans_lt (by unfold clearCap; norm_num)))]
   dsimp only
   rw [hTx]
   exact ite_eq_left hok
@@ -281,58 +287,72 @@ end Signer
 /-- A slot with a non-empty trace is not a clear-tree slot. -/
 theorem clearLeaves_trace {σ0 : Sig} {c : Digest} {p : Signed} (h : p.tr ≠ []) :
     clearLeaves σ0 c p = none := by
-  rw [clearLeaves, ite_eq_right]; rintro ⟨he, -⟩; exact h (List.isEmpty_iff.mp he)
+  rw [clearLeaves_eq, ite_eq_right]; rintro ⟨he, -⟩; exact h (List.isEmpty_iff.mp he)
 
 /-- A slot whose signature is not the shared one is not a clear-tree slot. -/
 theorem clearLeaves_sig {σ0 : Sig} {c : Digest} {p : Signed} (h : p.σ ≠ σ0) :
     clearLeaves σ0 c p = none := by
-  rw [clearLeaves, ite_eq_right]; rintro ⟨-, hs, -⟩; exact h hs
+  rw [clearLeaves_eq, ite_eq_right]; rintro ⟨-, hs, -⟩; exact h hs
 
 /-- `|T|` other than the leaves' bytes: rejected. -/
 theorem bundleOK_size {vk c c₁ c₂ : Digest} {σ : Sig} {ls : List BLeaf} {T : ByteArray}
-    (h : T.size ≠ bundleBytes LV ls) : bundleOK LV vk c c₁ c₂ σ ls T = false := by
-  rw [Bool.eq_false_iff]; intro hok
-  rw [bundleOK] at hok
-  simp only [Bool.and_eq_true] at hok
-  exact h (of_decide_eq_true hok.1.1.1.2)
+    (h : T.size ≠ bundleBytes LV ls) : bundleOK LV vk c c₁ c₂ σ ls T = false :=
+  Bool.eq_false_iff.mpr fun hok => h ((bundleOK_iff LV).mp hok).2.1
 
 /-- The static query bound exceeded: rejected. -/
 theorem bundleOK_qbound {vk c c₁ c₂ : Digest} {σ : Sig} {ls : List BLeaf} {T : ByteArray}
-    (h : 2 ^ 16 < bundleQ LV ls) : bundleOK LV vk c c₁ c₂ σ ls T = false := by
-  rw [Bool.eq_false_iff]; intro hok
-  rw [bundleOK] at hok
-  simp only [Bool.and_eq_true] at hok
-  have := of_decide_eq_true hok.1.1.2
-  omega
+    (h : 2 ^ 16 < bundleQ LV ls) : bundleOK LV vk c c₁ c₂ σ ls T = false :=
+  Bool.eq_false_iff.mpr fun hok => absurd ((bundleOK_iff LV).mp hok).2.2.1 (by omega)
 
 /-- A bundled leaf with `n = 0`: rejected. -/
 theorem bundleOK_zero {vk c c₁ c₂ : Digest} {σ : Sig} {ls : List BLeaf} {T : ByteArray}
-    {x : BLeaf} (hx : x ∈ ls) (h : x.2.2 = 0) : bundleOK LV vk c c₁ c₂ σ ls T = false := by
-  rw [Bool.eq_false_iff]; intro hok
-  rw [bundleOK] at hok
-  simp only [Bool.and_eq_true] at hok
-  have := (of_decide_eq_true hok.1.1.1.1 x hx).1
-  omega
+    {x : BLeaf} (hx : x ∈ ls) (h : x.2.2 = 0) : bundleOK LV vk c c₁ c₂ σ ls T = false :=
+  Bool.eq_false_iff.mpr fun hok => absurd (((bundleOK_iff LV).mp hok).1 x hx).1 (by omega)
 
-/-- A bundled leaf with `n > chainCap`: rejected. -/
+/-- A bundled leaf with `n > clearCap` (D-6): rejected. -/
 theorem bundleOK_cap {vk c c₁ c₂ : Digest} {σ : Sig} {ls : List BLeaf} {T : ByteArray}
-    {x : BLeaf} (hx : x ∈ ls) (h : chainCap < x.2.2) : bundleOK LV vk c c₁ c₂ σ ls T = false := by
-  rw [Bool.eq_false_iff]; intro hok
-  rw [bundleOK] at hok
-  simp only [Bool.and_eq_true] at hok
-  have := (of_decide_eq_true hok.1.1.1.1 x hx).2
-  omega
+    {x : BLeaf} (hx : x ∈ ls) (h : clearCap < x.2.2) : bundleOK LV vk c c₁ c₂ σ ls T = false :=
+  Bool.eq_false_iff.mpr fun hok => absurd (((bundleOK_iff LV).mp hok).1 x hx).2 (by omega)
 
-/-- A clear leaf with `n > chainCap`: rejected by `C` before any hash. -/
-theorem clearLeafOK_cap {c : Digest} {π : Proof} (h : chainCap < leafN π) :
+/-- A clear leaf with `n > clearCap` (D-6): rejected by `C` before any hash. -/
+theorem clearLeafOK_cap {c : Digest} {π : Proof} (h : clearCap < leafN π) :
     clearLeafOK c π = false := by
-  simp [clearLeafOK, show ¬ leafN π ≤ chainCap by omega]
+  simp [clearLeafOK, show ¬ leafN π ≤ clearCap by omega]
 
-/-- **The static query bound is reachable within `chainCap`**: nine bundled leaves of `2^20`
-steps ask more than `2^16` queries (`qBound 20 = 7 774`), so `bundleOK_qbound` rejects them. -/
-theorem qbound_nine (c s : Digest) :
-    2 ^ 16 < bundleQ leafVerifier (List.replicate 9 (c, s, 2 ^ 20)) := by
-  have hk : Leaf.kap (2 ^ 20) = 20 := Nat.clog_pow 2 20 (by norm_num)
+/-! ### Statement binding (review F1-m3): each branch rejects a proof under another statement -/
+
+/-- `C` binds the statement: under any digest other than the leaf statement of the recomputed
+chain, the clear leaf is rejected. -/
+theorem clearLeafOK_stmt {c : Digest} {π : Proof}
+    (h : c ≠ leafStmt (chainEnd (leafS π) (leafN π)) (leafN π)) : clearLeafOK c π = false := by
+  simp [clearLeafOK, leafStmtF_eq, chainEndF_eq, h]
+
+/-- `N` binds the statement: a plain node is rejected under any digest other than `nodeStmt` of
+its children, with no query. -/
+theorem V_node_stmt {vk c c₁ c₂ : Digest} {p₁ p₂ : Signed} (hf : (Wit.node c₁ c₂ p₁ p₂).Fits)
+    (h : c ≠ nodeStmt c₁ c₂) : V LV vk c (encode (.node c₁ c₂ p₁ p₂)) = .ret false := by
+  rw [V_tag LV (size_encode_node _ _ _ _) (by rw [tagWord_encode_node]; decide), decodeF_eq,
+    decode_encode _ hf]
+  simp [encodeF_eq, nodeStmtF_eq, h]
+
+/-- `B` binds the node statement: the static checks fail under any other digest. -/
+theorem bundleOK_stmt {vk c c₁ c₂ : Digest} {σ : Sig} {ls : List BLeaf} {T : ByteArray}
+    (h : c ≠ nodeStmt c₁ c₂) : bundleOK LV vk c c₁ c₂ σ ls T = false :=
+  Bool.eq_false_iff.mpr fun hok => h (by rw [((bundleOK_iff LV).mp hok).2.2.2.1, nodeStmtF_eq])
+
+/-- `B` binds each bundled leaf's slot statement: a leaf whose slot statement is not
+`leafStmt h n` for the `h` read from `T` stops the runs, before its SNARK. -/
+theorem runBundle_stmt {T : ByteArray} {c s : Digest} {n o : ℕ} {ls : List BLeaf}
+    (h : c ≠ leafStmt (digestFrom T o) n) : runBundle LV T ((c, s, n) :: ls) o = .ret false := by
+  rw [runBundle, ite_eq_right (by rwa [leafStmtF_eq])]
+
+/-- **The static query bound is reachable within `clearCap`** (not within `proofCap`, review
+F1-m5: fourteen `2^12`-step leaves need `14 · 796,031` bytes of `T`): fourteen bundled leaves of
+`2^12` steps ask more than `2^16` queries (`qBound 12 = 4 753`), so `bundleOK_qbound` rejects
+them. -/
+theorem qbound_fourteen (c s : Digest) :
+    2 ^ 16 < bundleQ leafVerifier (List.replicate 14 (c, s, 2 ^ 12)) := by
+  have hk : Leaf.kap (2 ^ 12) = 12 := Nat.clog_pow 2 12 (by norm_num)
   simp only [bundleQ, List.map_replicate, List.sum_replicate, smul_eq_mul, leafVerifier,
     Leaf.leafVerifier, hk]
   decide
@@ -494,10 +514,7 @@ theorem canary_B_push {vk c c₁ c₂ : Digest} {p₁ p₂ : Signed} {π : Proof
   obtain ⟨hpre, l₁, l₂, h₁, h₂, hok⟩ := bundle_accepted LV h
   have hlt := hpre.1
   have hf := fits_of_bundleOK LV h₁ h₂ hok
-  have hT : (π.extract (encode (.node c₁ c₂ p₁ p₂)).size π.size).size =
-      bundleBytes LV (l₁ ++ l₂) := by
-    simp only [bundleOK, Bool.and_eq_true, decide_eq_true_eq] at hok
-    exact hok.1.1.1.2
+  have hT := ((bundleOK_iff LV).mp hok).2.1
   rw [ByteArray.size_extract] at hT
   refine V_bundle_reject LV hf ⟨by rw [ByteArray.size_push]; omega,
     by rw [extract_push (by omega), hpre.2]⟩ fun l₁' l₂' h₁' h₂' => bundleOK_size LV ?_
@@ -512,15 +529,11 @@ theorem canary_B_pop {vk c c₁ c₂ : Digest} {p₁ p₂ : Signed} {π : Proof}
   obtain ⟨hpre, l₁, l₂, h₁, h₂, hok⟩ := bundle_accepted LV h
   have hlt := hpre.1
   have hf := fits_of_bundleOK LV h₁ h₂ hok
-  have hT : (π.extract (encode (.node c₁ c₂ p₁ p₂)).size π.size).size =
-      bundleBytes LV (l₁ ++ l₂) := by
-    simp only [bundleOK, Bool.and_eq_true, decide_eq_true_eq] at hok
-    exact hok.1.1.1.2
+  have hT := ((bundleOK_iff LV).mp hok).2.1
   rw [ByteArray.size_extract] at hT
-  have hpos := hpre.1
   have h32 : 32 ≤ bundleBytes LV (l₁ ++ l₂) := by
     cases hl : l₁ ++ l₂ with
-    | nil => rw [hl] at hT; simp [bundleBytes] at hT; omega
+    | nil => rw [hl, show bundleBytes LV [] = 0 from rfl] at hT; omega
     | cons x ls => rw [bundleBytes_cons]; omega
   refine V_bundle_reject LV hf ⟨by rw [size_dropLast]; omega,
     by rw [extract_dropLast (by omega), hpre.2]⟩ fun l₁' l₂' h₁' h₂' => bundleOK_size LV ?_
@@ -592,12 +605,28 @@ theorem zeroClear_accepted (vk : Digest) :
   rw [V_clear LV (size_encode_leaf _ _) (tagWord_encode_leaf _ _)]
   simp [clearLeafOK, hS, hN, leafStmtF_eq, chainEndF_eq, ctlStmt, chainEnd]
 
-/-- **Negative (`C`)**: the clear leaf of a chain longer than `chainCap` is rejected before any
-hash. -/
+/-- **Negative (`C`, D-6)**: the clear leaf of a chain of `2^12 + 1 = 4097` steps is rejected
+before any hash, under every key and statement. -/
 theorem clear_overCap (s : Digest) (vk c : Digest) :
-    V LV vk c (encode (.leaf s (chainCap + 1))) = .ret false := by
-  obtain ⟨-, hN⟩ := leaf_parts s (show chainCap + 1 < 2 ^ 64 by unfold chainCap; norm_num)
+    V LV vk c (encode (.leaf s 4097)) = .ret false := by
+  obtain ⟨-, hN⟩ := leaf_parts s (show 4097 < 2 ^ 64 by norm_num)
   rw [V_clear LV (size_encode_leaf _ _) (tagWord_encode_leaf _ _),
-    clearLeafOK_cap (by rw [hN]; omega)]
+    clearLeafOK_cap (by rw [hN]; unfold clearCap; norm_num)]
+
+/-- **Negative (`B`, D-6)**: a bundle whose clear tree holds a leaf of `4097` steps is rejected
+with no query, under the reference key, whatever its `T` (the clear tree is otherwise
+well-formed: `σ0`-signed, empty traces). -/
+theorem bundle_overCap (sk : ℕ → ℕ → Digest) (s₁ s₂ : Digest) {n₂ : ℕ} (h₂ : n₂ < 2 ^ 64)
+    (T : ByteArray) (hT : 0 < T.size) (c : Digest) :
+    V LV (Signer.pk sk) c (encode (clearTree sk s₁ 4097 s₂ n₂) ++ T) = .ret false := by
+  have hfit : (clearTree sk s₁ 4097 s₂ n₂).Fits :=
+    ⟨clearSlot_fits sk s₁ 4097, clearSlot_fits sk s₂ n₂⟩
+  unfold clearTree at hfit ⊢
+  refine V_bundle_reject LV hfit (isStrictPrefix_append hT) fun l₁ l₂ h₁ _ => ?_
+  rw [show (clearSlot sk s₁ 4097).σ = σ0 sk from rfl,
+    clearLeaves_clearSlot sk s₁ (by norm_num)] at h₁
+  cases h₁
+  exact bundleOK_cap LV (List.mem_append_left _ (List.mem_singleton_self _))
+    (by unfold clearCap; norm_num)
 
 end SpartanSrom.NodeControls

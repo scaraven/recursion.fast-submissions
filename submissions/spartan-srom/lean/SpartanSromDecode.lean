@@ -14,6 +14,10 @@ contract's new strict `decodeWit`, and the v4 library has the linear-time twins
 * `wordBytes_ofLE` (v3's, unchanged): the 8 bytes of the word of at most 8 bytes are those bytes,
   zero-padded.
 * `IsStrictPrefix e π`: `e` is a strict prefix of `π`.
+* `decodeFront π`: the library's `decodeF π` read from a prefix of `π` (16 KB, then four times
+  longer while it does not decode), equal to it (`decodeFront_eq`) because the decoder's readers
+  read the same from a longer word list (`decodeWit_append`). A bundle `encode W ‖ T` decodes
+  without packing `T`.
 * A decidable equality of signatures (`Sig` has none in the contract), for the bundle's "every
   slot carries the same signature" test.
 -/
@@ -44,9 +48,9 @@ theorem wordBytes_ofLE {p : List UInt8} (hp : p.length ≤ 8) :
       calc 256 ^ p.length ≤ 256 ^ 8 := Nat.pow_le_pow_right (by norm_num) hp
         _ = 2 ^ 64 := by norm_num)
   apply List.ext_getElem
-  · simp [wordBytes]; omega
+  · rw [wordBytes_length]; simp; omega
   intro i h1 h2
-  simp only [wordBytes, List.getElem_ofFn, toNat_toWord hlt]
+  simp only [wordBytes, enc64, List.getElem_ofFn, toNat_toWord hlt]
   rw [← toUInt8_mod, ofLE_div_mod]
   by_cases hi : i < p.length
   · rw [List.getElem_append_left hi, List.getD_eq_getElem _ _ hi]; simp
@@ -100,6 +104,112 @@ theorem isStrictPrefix_append {e T : ByteArray} (hT : 0 < T.size) :
     IsStrictPrefix e (e ++ T) := by
   refine ⟨by rw [ByteArray.size_append]; omega, ?_⟩
   exact ByteArray.extract_append_eq_left rfl
+
+/-! ## Decoding from a prefix -/
+
+/-- A reader that succeeds on `o` reads the same from `o ++ o₂` and leaves its rest followed by
+`o₂`. -/
+private def Stable {α : Type} (r : Reader α) : Prop :=
+  ∀ o o₂ a rest, r.run o = some (a, rest) → r.run (o ++ o₂) = some (a, rest ++ o₂)
+
+private theorem Stable.pure {α : Type} (a : α) : Stable (Pure.pure a : Reader α) := by
+  intro o o₂ b rest h
+  simp only [StateT.run_pure, Option.pure_def, Option.some.injEq, Prod.mk.injEq] at h ⊢
+  obtain ⟨rfl, rfl⟩ := h; exact ⟨rfl, rfl⟩
+
+private theorem Stable.bind {α β : Type} {r : Reader α} {f : α → Reader β} (hr : Stable r)
+    (hf : ∀ a, Stable (f a)) : Stable (r >>= f) := by
+  intro o o₂ b rest h
+  simp only [StateT.run_bind] at h ⊢
+  cases h1 : r.run o with
+  | none => rw [h1] at h; cases h
+  | some p =>
+    rw [h1] at h
+    rw [hr o o₂ p.1 p.2 h1]
+    exact hf p.1 p.2 o₂ b rest h
+
+private theorem stable_readNat : Stable readNat := by
+  intro o o₂ a rest h
+  cases o with
+  | nil => cases h
+  | cons w o => cases h; rfl
+
+private theorem stable_readBytes (n : ℕ) : Stable (readBytes n) := by
+  intro o o₂ a rest h
+  simp only [StateT.run, readBytes] at h ⊢
+  split_ifs at h with hl
+  cases h
+  have hle : (n + 7) / 8 ≤ o.length := by rw [List.length_take] at hl; omega
+  rw [List.take_append_of_le_length hle, ite_eq_left hl, List.drop_append_of_le_length hle]
+
+private theorem stable_readList {α : Type} {r : Reader α} (hr : Stable r) :
+    ∀ n, Stable (readList r n)
+  | 0 => Stable.pure _
+  | n + 1 => Stable.bind hr fun _ => Stable.bind (stable_readList hr n) fun _ => Stable.pure _
+
+private theorem stable_readWit : Stable readWit := by
+  have hs : Stable readString := Stable.bind stable_readNat fun _ =>
+    Stable.bind (stable_readBytes _) fun _ => Stable.pure _
+  have hd : Stable readDigest := Stable.bind (stable_readBytes _) fun _ => Stable.pure _
+  have ht : Stable readTrace := Stable.bind stable_readNat fun _ => stable_readList
+    (Stable.bind hs fun _ => Stable.bind hd fun _ => Stable.pure _) _
+  have hp : Stable readSigned := Stable.bind hs fun _ => Stable.bind ht fun _ =>
+    Stable.bind (Stable.bind stable_readNat fun _ => Stable.bind (stable_readList hd _) fun _ =>
+      Stable.bind (stable_readList hd _) fun _ => Stable.pure _) fun _ => Stable.pure _
+  refine Stable.bind stable_readNat fun k => ?_
+  rcases k with _ | _ | k
+  · exact Stable.bind hd fun _ => Stable.bind stable_readNat fun _ => Stable.pure _
+  · exact Stable.bind hd fun _ => Stable.bind hd fun _ => Stable.bind hp fun _ =>
+      Stable.bind hp fun _ => Stable.pure _
+  · intro o o₂ b rest h; cases h
+
+/-- **The decoder ignores the words after a witness it reads.** -/
+theorem decodeWit_append {o : List Word} {w : Wit} (h : decodeWit o = some w) (o₂ : List Word) :
+    decodeWit (o ++ o₂) = some w := by
+  simp only [decodeWit, StateT.run', Functor.map, Option.map] at h ⊢
+  cases h1 : readWit o with
+  | none => rw [h1] at h; cases h
+  | some p =>
+    rw [h1] at h; cases h
+    have h2 := stable_readWit o o₂ p.1 p.2 h1
+    simp only [StateT.run] at h2
+    rw [h2]
+
+/-- A witness decoded from the first `8 k` bytes of `π` is `π`'s. -/
+theorem decodeF_of_prefix {π : Proof} {k : ℕ} (hk : 8 * k ≤ π.size) {w : Wit}
+    (h : WitnessSending.decodeF (π.extract 0 (8 * k)) = some w) :
+    WitnessSending.decodeF π = some w := by
+  rw [WitnessSending.decodeF, packFast_eq, extract_zero_toList] at h
+  rw [WitnessSending.decodeF, packFast_eq, ← List.take_append_drop (8 * k) π.data.toList,
+    packBytes_append_mul8 k _ _ (by rw [List.length_take, ← size_eq_length]; omega)]
+  exact decodeWit_append h _
+
+/-- `decodeF π` from the first `8 k` bytes, then `32 k`, …, at most `fuel` times, then from all of
+`π`. -/
+def decodePre (π : Proof) : ℕ → ℕ → Option Wit
+  | 0, _ => WitnessSending.decodeF π
+  | fuel + 1, k =>
+    if 8 * k < π.size then
+      match WitnessSending.decodeF (π.extract 0 (8 * k)) with
+      | some w => some w
+      | none => decodePre π fuel (4 * k)
+    else WitnessSending.decodeF π
+
+theorem decodePre_eq (π : Proof) : ∀ fuel k, decodePre π fuel k = WitnessSending.decodeF π
+  | 0, _ => rfl
+  | fuel + 1, k => by
+    rw [decodePre]
+    split_ifs with hk
+    · split
+      · rename_i w h; exact (decodeF_of_prefix hk.le h).symm
+      · exact decodePre_eq π fuel _
+    · rfl
+
+/-- **The library's `decodeF π`, read from a prefix**: the first 16 KB, then 64 KB, … . -/
+def decodeFront (π : Proof) : Option Wit := decodePre π 8 2048
+
+theorem decodeFront_eq (π : Proof) : decodeFront π = WitnessSending.decodeF π :=
+  decodePre_eq π 8 2048
 
 /-! ## Signatures -/
 

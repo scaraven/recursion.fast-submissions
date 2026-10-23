@@ -59,6 +59,13 @@ theorem AtMost.ite {n : ℕ} {c : Prop} [Decidable c] {p q : OProg α} (hp : AtM
     (hq : AtMost n q) : AtMost n (if c then p else q) := by
   split_ifs <;> assumption
 
+/-- `AtMost.ite`, each branch under its condition (no case split on a concrete program, whose
+`AtMost` would be unfolded by evaluating the condition). -/
+theorem AtMost.ite_of {n : ℕ} {c : Prop} [Decidable c] {p q : OProg α} (hp : c → AtMost n p)
+    (hq : ¬ c → AtMost n q) : AtMost n (if c then p else q) := by
+  split_ifs with h
+  exacts [hp h, hq h]
+
 theorem atMost_mapM {n : ℕ} (f : α → OProg β) :
     ∀ (xs : List α), (∀ x ∈ xs, AtMost n (f x)) → AtMost (xs.length * n) (xs.mapM f)
   | [], _ => atMost_pure _ _

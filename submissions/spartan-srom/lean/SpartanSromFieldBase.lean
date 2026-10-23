@@ -10,10 +10,12 @@ CompPoly `572f997`). `BF64` stores a `BitVec 64`, whose compiled code is `Nat` a
 stores the same bits in a `UInt64`, so its compiled code is word arithmetic.
 
 * Addition is `xor`.
-* Multiplication is a carry-less product by a 64-step shift-and-add loop (`mulLoop`, four steps
-  per round), giving a 128-bit product in two words, followed by a fold of the high word by
-  `x^64 = x^4 + x^3 + x + 1` (`reduce`). The loop is branch-free: the bit read at each step
-  becomes the mask `0 - (a &&& 1)`.
+* Multiplication is a carry-less product giving 128 bits in two words, followed by a fold of the
+  high word by `x^64 = x^4 + x^3 + x + 1` (`reduce`). The product is Karatsuba over the 32-bit
+  halves: three products of words below `2^32` (`clmul32`), each sixteen integer products of the
+  operands split into the four classes of bit positions modulo 4, whose column sums (at most 8)
+  never carry into the next position of the same class. v3's 64-step shift-and-add loop
+  (`mulLoop`) is kept as the reference; the product is equal to it (`mul_eq_mulLoop`).
 * Squaring spreads the bits of the input (bit `i` to bit `2 i`, by five mask-and-shift steps) and
   reduces.
 * Inversion is CompPoly's Itoh-Tsujii addition chain, with `0⁻¹ = 0`.
@@ -81,16 +83,45 @@ structure MulState where
   let d := hi ^^^ (hi >>> 63) ^^^ (hi >>> 61) ^^^ (hi >>> 60)
   lo ^^^ d ^^^ (d <<< 1) ^^^ (d <<< 3) ^^^ (d <<< 4)
 
-/-- The carry-less product loop, four bits per round (`n` rounds), ending in `reduce`. The state
-is passed as five words, so the compiled loop allocates nothing. -/
+/-- The carry-less product loop, four bits per round (`n` rounds), ending in `reduce` (v3's
+multiplication, `16` rounds; kept as the reference of `mul`). The state is passed as five words,
+so the compiled loop allocates nothing. -/
 def mulLoop : Nat → UInt64 → UInt64 → UInt64 → UInt64 → UInt64 → UInt64
   | 0, _, _, _, lo, hi => reduce lo hi
   | n + 1, a, bl, bh, lo, hi =>
     let s := mulStep (mulStep (mulStep (mulStep ⟨a, bl, bh, lo, hi⟩)))
     mulLoop n s.a s.bl s.bh s.lo s.hi
 
-/-- Multiplication: the carry-less product of the words (16 rounds of 4 bits), reduced. -/
-def mul (a b : F) : F := ⟨mulLoop 16 a.val b.val 0 0 0⟩
+/-- The carry-less product of two words below `2^32` (a word below `2^63`): the operands split
+into the bits at positions `≡ r (mod 4)`, `r < 4`; the integer product of the class-`r` part of
+`x` and the class-`s` part of `y` has, at the positions of class `r + s`, the carry-less product's
+bits (each column adds at most eight bits, so its sum fits in the four positions up to the next
+one of its class). -/
+@[inline] def clmul32 (x y : UInt64) : UInt64 :=
+  let x0 := x &&& 0x11111111
+  let x1 := x &&& 0x22222222
+  let x2 := x &&& 0x44444444
+  let x3 := x &&& 0x88888888
+  let y0 := y &&& 0x11111111
+  let y1 := y &&& 0x22222222
+  let y2 := y &&& 0x44444444
+  let y3 := y &&& 0x88888888
+  (((x0 * y0) ^^^ (x1 * y3) ^^^ (x2 * y2) ^^^ (x3 * y1)) &&& 0x1111111111111111) |||
+    (((x0 * y1) ^^^ (x1 * y0) ^^^ (x2 * y3) ^^^ (x3 * y2)) &&& 0x2222222222222222) |||
+    (((x0 * y2) ^^^ (x1 * y1) ^^^ (x2 * y0) ^^^ (x3 * y3)) &&& 0x4444444444444444) |||
+    (((x0 * y3) ^^^ (x1 * y2) ^^^ (x2 * y1) ^^^ (x3 * y0)) &&& 0x8888888888888888)
+
+/-- Multiplication: the carry-less product of the words, Karatsuba over their 32-bit halves
+(three `clmul32`), reduced. -/
+def mul (a b : F) : F :=
+  let a0 := a.val &&& 0xFFFFFFFF
+  let a1 := a.val >>> 32
+  let b0 := b.val &&& 0xFFFFFFFF
+  let b1 := b.val >>> 32
+  let p0 := clmul32 a0 b0
+  let p2 := clmul32 a1 b1
+  let pm := clmul32 (a0 ^^^ a1) (b0 ^^^ b1) ^^^ p0 ^^^ p2
+  ⟨reduce (p0 ^^^ (pm <<< 32)) (p2 ^^^ (pm >>> 32))⟩
 
 instance : Mul F := ⟨mul⟩
 

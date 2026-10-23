@@ -86,3 +86,16 @@ Implementer's journal, newest entry last. A successor reads this first.
   4.12 GB (`logs/lean/build-full-3.log`). Re-synced the scratch to **core `a5e4cff`** (stage A
   review + golf): entry builds unchanged, axiom audit PASS, badge OK (`logs/lean/build-a5-1.log`).
   Remaining: only the announced `acc` change (see the entry above).
+- 2026-10-23 fix pass (review F1-lean-review.md, golf, D-6, core ea2e8ab → 81e1ebf):
+  golf.patch applied first (clean on 8111b71); scratch core re-synced to ea2e8ab, then 81e1ebf
+  (RecursionFast identical). Adapted acc's `tr.length ≤ qV` (accWith, accV_eq_acc with
+  `S.qV = 2^16`, clear_acc, fits_of_accV) and `wordBytes := enc64` (Decode.wordBytes_ofLE).
+  D-6: `clearCap = 2^12` in `C` and `bundleOK`; `tagWord`/`leafN` via `u64From` (in place,
+  `@[irreducible]`: unfolding made `whnf` spin in `atMost_V`). The attack still took 54–60 s
+  (list-based decode/encode per level), so new module `NodeBytes`: `nodeFast` (byte reader,
+  validated by `encodeB = encode` and an in-place byte comparison), used first by `V` and
+  `clearLeaves` (`V_tag`, `clearLeaves_eq` unchanged in form). Attack worst case now 1.5 s.
+  m3 controls, D-6 controls (`clear_overCap`, `bundle_overCap` at 4097), `qbound_fourteen`.
+  Solution imports `SpartanSrom` (all modules; harness builds Solution's closure).
+  Clean build 2 m 46 s, axioms PASS (3,600 decls), verdicts identical, badge L 89–111 ms,
+  B2 188–195 ms, B4 (F2 smoke root) 404–619 ms. RESULT §9.
