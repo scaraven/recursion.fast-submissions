@@ -4,148 +4,275 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-The **recursion.fast submissions repository**: the untrusted half of the competition (design
-§7.7, V3-12). It holds one root per entry under `submissions/`, the registry `records.json`, the
-rules a submitter reads (`AGENTS.md`) and the documentation an agent needs (`docs/`).
+The **recursion.fast submissions repository**: the untrusted half of the competition (the
+ots.golf model, v3's V3-12, kept by v4). It holds:
+
+- one root per entry under `submissions/`;
+- the registry `records.json`;
+- the rules a submitter reads (`AGENTS.md`);
+- the records of the entries built here (`docs/v4/`).
+
+The design in force for new work is **v4, the signed-random-oracle (SROM) rules**: a proposal on
+the core's branch `v4/srom-rules`, not yet adopted by the user. v3 is frozen.
 
 **This repository holds entries, never the contract. The contract is the `.contract` submodule**:
-the trusted core, https://github.com/scaraven/recursion.fast, at a pinned commit. Never copy, edit
-or shadow a contract, library, harness or challenge file here. A change to any of them is a pull
-request to the core.
+the trusted core, https://github.com/scaraven/recursion.fast, at a pinned commit.
 
-Read first: `docs/README.md`, then `docs/baseline/BASELINE-TASK.md`. `AGENTS.md` is the
-submitter's rulebook.
+- Never copy, edit or shadow a contract, library, harness, service, challenge or workflow file of
+  the core here.
+- A change to any of them is a pull request to the core.
+
+Read first: `AGENTS.md` (the rulebook), then `.contract/docs/DESIGN-v4-srom.md` §0, then the entry
+you work on (for `spartan-srom`, `docs/v4/flock-baseline/BLUEPRINT.md`).
 
 ## Where decisions live
 
-- `docs/design/DESIGN-v3.md` is the **design in force**: decisions V3-1 … V3-12, the relation,
-  the submission, the security definitions, scoring, the trusted base, the build order (§11) and
-  the open items (§12). Where v3 is silent, v2's text applies (`docs/design/DESIGN-v2.md`). Where
-  they differ, v3 wins.
-- What the harness checks is the core's Lean contract at the pin. If the contract and the design
-  disagree, report it. Do not code around it.
-- `docs/design/DISCUSSION.md` holds the user's decisions (Q1–Q6).
-- Finding and decision ids (V3-n, O-n, S<n>-A<k>, S9I-M1, …) are cross-referenced everywhere.
-  Keep them when you quote.
+- **The contract at the pin is the rule**: `.contract/RecursionFast/Contract/*.lean`. Where the
+  design and the Lean text differ, the Lean text is what the harness checks, and the difference is
+  a bug in the design.
+- **The normative interfaces**:
+  - `.contract/harness/PROVER.md`: the prover's modes, files, sandbox and build;
+  - `.contract/harness/FORMAT.md`: the signed-proof file;
+  - `.contract/service/PROTOCOL.md`: the oracle service;
+  - the season files `.contract/harness/season.toml` and `smoke.toml`.
+- **The design**, `.contract/docs/DESIGN-v4-srom.md`: §6.1 lists every decision taken in the user's
+  absence, and §6.2 the open items. The brief and its decisions and amendments, V4-1 … V4-16 and
+  V4-A1 … A8, are in `.contract/docs/v4/BRIEF.md`. The design attack (C-Mn, C-mn), the contract review (RA-Mn), the
+  harness review (RB-Mn, RB-mn) and the final whole-branch review (RF-Mn, RF-mn) are in
+  `.contract/docs/v4/reviews/`, the stage RESULTs in
+  `.contract/docs/v4/stages/`, and the orchestrator's fix queue in `.contract/docs/v4/FIXLIST.md`.
+  Cite its items as "FIXLIST Qn" (Q1 … Q15): the user's decisions below are also numbered Q1–Q6.
+- **The score**: `.contract/docs/DESIGN-cost-incentive-model.md` (CM-n, CM-Rn).
+- **An entry's own decisions** are in its blueprint: for `spartan-srom`, the D-n of
+  `docs/v4/flock-baseline/BLUEPRINT.md`. Where a blueprint and the contract disagree, the contract
+  wins and the disagreement is reported.
+- **The user's decisions** Q1–Q6 are in `docs/design/DISCUSSION.md`.
+- **The v3 record** is in `.contract/docs/v3-*.md`. The copies under `docs/design/`, `docs/core/`
+  and `docs/baseline/` are v3-era reference.
+- **The baseline's report on the rules** is `docs/v4/FLOCK-BASELINE-FEEDBACK.md` (FB-n, H-n).
+- **Ids** (V4-n, V4-An, C-Mn, C-mn, RA-Mn, RB-Mn, RF-Mn, FIXLIST Qn, CM-n, D-n, F1-Mn, F2-Mn, FB-n,
+  H-n, V3-n, O-n, S<n>-A<k>, …) are cross-referenced everywhere. Keep them when you quote.
+- If the contract, the harness documents and `AGENTS.md` disagree, report it. Do not code around
+  it.
 
 ## The pin
 
-- `.contract` is pinned to the core's `main` at `15e4ae5` (v3: stage S1, pull request #2, with
-  the v2 tree removed in pull request #3). The core's v2 tree is at the core's tag `v2-archive`
-  (`git -C .contract fetch origin tag v2-archive`, then `git -C .contract show v2-archive:<path>`).
-- **The pin moves only with a contract change,** in its own commit, before any entry is certified
-  against the new commit:
+- **Where it is.** `.contract` is pinned to **`01a25b0`**, the head of the core's branch
+  `v4/srom-rules` and of its pull request #17. It was committed on this branch as `a6ee05c`, and the
+  caller workflow was regenerated from that commit's template in `4d2f282`. It holds stages A and B,
+  each with its review's fix passes:
+  - the contract fix pass `ea2e8ab`: `acc` checks `decide (p.tr.length ≤ S.qV)` right after the
+    size cap (RA-M2); `Log` is an `abbrev` for `Trace`; `wordBytes w := enc64 w.toNat`.
+    `RecursionFast/` is unchanged since;
+  - the harness fix passes `5b2b591` and `0bf80a7`, then `2632285` (the comparator built with the
+    organiser's Lean): `.contract/docs/v4/stages/B-harness-RESULT.md` §9–§11.
+- **Every entry is certified against the pin.** An entry that restates `acc` mirrors its conjuncts:
+  `spartan-srom`'s `accWith` has the trace-length conjunct, and its `Decode` lemmas follow the new
+  `wordBytes` (F1 review F1-m1; its F1 fix pass, `745c7d8`).
+- **The pin moves only with a contract change**, in its own commit, before any entry is certified
+  against the new commit (C14):
 
   ```sh
-  git -C .contract fetch origin main
-  git -C .contract checkout <commit> && git add .contract && git commit
+  git -C .contract fetch origin v4/srom-rules            # or main, once the core merges v4
+  git -C .contract checkout <commit>
+  git add .contract && git commit -m "Pin .contract at <commit>: <what changed>"
   ```
 
-- Never pin a commit that the core's remote does not have when this repository is pushed.
-- Never commit changes inside `.contract`. Its working tree is the pinned commit plus gitignored
-  build products (`.lake/`, `ext/`).
-
-## The task in front of this repository: the baseline (stage S2)
-
-The witness-sending argument, certified against S1, is the first entry here (design §7.3, §11 S2,
-V3-9). `docs/baseline/BASELINE-TASK.md` has the construction, the certificate obligations, the
-build setup, the commands, the traps and the definition of done. S2 also has a core-side half: a
-separate pull request to the core, which follows the core's own `CLAUDE.md`
-(`docs/core/core-CLAUDE.md`).
+- **Set the caller workflow in the same commit.** `.github/workflows/evaluate-entry.yml` is a copy
+  of the core's `harness/ci-template/evaluate-entry.yml`. Its two `CORE_COMMIT_SHA` placeholders,
+  the reusable workflow's `@ref` and `core_ref`, are set to the same full commit SHA as the pin, in
+  the same commit, or in the commit right after it (as `a6ee05c` and `4d2f282` did). Open: it has
+  not run on GitHub.
+- **Never pin a commit that the core's remote does not have** when this repository is pushed.
+- **Never commit changes inside `.contract`.** Its working tree is the pinned commit plus
+  gitignored build products. Build in a private copy (below), not in the submodule.
 
 ## Commands
 
-Toolchain: Lean v4.34.1, Mathlib v4.34.1; CompPoly `572f997`, ArkLib `7653a90`, VCVio
-`a4232d0`, PolyFun `41d3b21`. These are the core's pins; Clean is no longer required.
+Toolchain: Lean v4.34.1 and Mathlib v4.34.1; CompPoly `572f997`, ArkLib `7653a90`, VCVio
+`a4232d0` and PolyFun `41d3b21`, as pinned in the core's `lakefile.toml` and `lake-manifest.json`.
+The service needs Rust 1.99.0 (`service/rust-toolchain.toml`).
+
+**The core at the pin, in a private copy with a private package tree.** Never use the shared
+package tree:
+
+- `/home/devops/CambridgePQ/recursion.fast/contract/.lake/packages` is read-only and, since
+  2026-10-22, holds no build products (A-RESULT §0).
+- Never run `lake update` or `lake exe cache get` against it.
+- Never write into another worktree's private tree. Copy it instead.
 
 ```sh
-git submodule update --init                                   # the core at the pin
-cd .contract
-mkdir -p .lake && ln -s /home/devops/CambridgePQ/recursion.fast/contract/.lake/packages .lake/packages   # local-only; elsewhere `lake exe cache get`
-lake build                                                    # the core's default targets: contract, library, controls
-lake build gate axiomaudit && lake exe axiomaudit             # the harness tools; the axiom audit (PASS)
-scripts/ci.sh /home/devops/Verified-zkEVM/riscv-zkvm          # vendor, hygiene, the source rule's fixtures, build, audit, line budget
-python3 -I scripts/source-rule.py ../submissions/<root>       # the source rule on an entry's sources
-submissions/<root>/check.sh                                   # the entry's own end-to-end check (S2 writes the baseline's)
-
-# The entry pipeline (claim rendering, comparator in a fresh sandboxed tree, organiser package and
-# olean manifest, gate, badge build, runner) is stage S3. Its v2 form, for orientation only, is at
-# the core's tag `v2-archive` (`scripts/harness.sh`, `scripts/org-build.sh`,
-# `scripts/render-challenge.py`; the comparator and nanoda pins in `scripts/tools.env`) and in
-# `docs/core/harness-README.md`.
+git submodule update --init                                  # .contract at the pin
+mkdir -p logs/org && git -C .contract archive HEAD | tar -x -C logs/org     # logs/ is gitignored
+# A built, writable package tree at the manifest's revisions:
+#  - on the development VM, copy stage A's (9.0 GB; about 43 s, A-RESULT §0; F3 measured 9.2 GB
+#    and 4 min 0 s with `cp -a` on ext4, F3 §1):
+rsync -a /home/devops/Verified-zkEVM/recursion.fast-v4/.lake/pkgs-local/ logs/pkgs/
+#  - elsewhere, let Lake clone into an empty logs/pkgs, then fetch Mathlib's cache inside the copy:
+#      (cd logs/org && lake exe cache get)
+mkdir -p logs/org/.lake && ln -s "$PWD/logs/pkgs" logs/org/.lake/packages
+(cd logs/org && timeout 3600 lake build)                     # contract, library, controls
 ```
 
-- **The shared package tree is read-only.** It lives at
-  `/home/devops/CambridgePQ/recursion.fast/contract/.lake/packages`, prebuilt. Never run
-  `lake update` or `lake exe cache get` against it.
-- **Logs.** Measurements go to `logs/` (gitignored) and are quoted in the stage RESULT.
+**Evaluate an entry as CI does**, with the harness at the pin.
 
-## Stage protocol (copied from the core's `CLAUDE.md`)
+- Run each step under `timeout`. A step that runs much longer than the times quoted below is
+  inspected, not waited for: `ps -o etime`, a lock, a library being rebuilt.
+- `evaluate.py cert` refuses an existing `--work` directory, so use fresh ones.
 
-Work here is built in stages (design §11), one at a time. Each stage runs the same cycle:
+```sh
+ORG=$PWD/logs/org
+export RF_HARNESS_COMMIT=$(git -C .contract rev-parse HEAD)   # the archived copy is no git checkout:
+                                                             # without this, the result records this repository's HEAD
+# 1. organiser set-up, before any entry code: build, harness tools, allowlist and olean manifest
+#    (ORG/.lake/rf/), the badge's compiled objects, the service (cargo).
+#    First run 177 s, later runs 65 s (B-RESULT §3); 4 min 12 s in F4's run at 81e1ebf
+#    (logs/f4/org-setup.log). Its default roots include CompPoly's BF64.Ext3 and BF64.Bytes
+#    (FIXLIST Q2), so RF_ORG_ROOTS is not needed for an entry that imports them.
+timeout 14400 "$ORG/harness/org-setup.sh" "$ORG"
+# 2. the proof checkers:
+source "$ORG/scripts/tools.env"            # this VM's comparator; elsewhere:
+#    "$ORG/harness/ci/build-kernels.sh" DIR, then export the COMPARATOR_* lines it prints.
+#    The comparator and lean4export must be built with the organiser's Lean (v4.34.1), as
+#    build-kernels.sh does. A comparator that stops before it builds Solution is a harness ERROR.
+# 3. the certificate job: source rule, comparator (the Lean kernel), the gate tree, gate, badge.
+#    --nanoda adds a separate nanoda run (--nanoda-mem, default 14G). Each kernel run has its own
+#    memory scope and an outcome: ok, rejected, over budget or timeout (Q12). A nanoda run over
+#    budget leaves the Lean kernel's verdict; spartan-srom needs more than 20 GB for nanoda
+#    (F3 §2.4). spartan-srom at 81e1ebf: 9 min 52 s, comparator 354 s at 4.25 GB
+#    (logs/f4/cert.log); 16 min 36 s with --nanoda (logs/f4/cert-nanoda.log).
+timeout 7200 python3 -I "$ORG/harness/evaluate.py" cert --entry submissions/<root> --org "$ORG" \
+  --work logs/eval/<run>/cert --out logs/eval/<run>/cert.json
+# 4. the benchmark job at the smoke shape (the service and rf-bench default to ORG's builds)
+timeout 7200 python3 -I "$ORG/harness/evaluate.py" bench --entry submissions/<root> \
+  --cert logs/eval/<run>/cert.json --season "$ORG/harness/smoke.toml" \
+  --work logs/eval/<run>/bench --out logs/eval/<run>/result.json
+# or both in one go: evaluate.py all --entry … --org "$ORG" --work … --out … --season …
+```
+
+- **The runner needs the host's sandbox.** It needs `bwrap`, unprivileged user namespaces and a
+  systemd user manager for the memory cgroups. Where no user manager is reachable, the memory cap
+  falls back to `prlimit --as`, and the result says so (`memcap`). On Ubuntu 24.04 the AppArmor
+  restriction on user namespaces must be relaxed: `harness/ci/runner-setup.sh` does this on CI.
+- **What the harness builds.** The comparator builds `Challenge` and `Solution`, and the gate tree
+  builds exactly those targets again, so only `Solution`'s import closure is built, compared byte
+  for byte and gated (FIXLIST Q7). An entry module that `Solution` does not import is never built
+  or checked by the harness: import the controls from `Solution` if the harness is to check them.
+  The certificate records `built_modules`.
+- **Iterating on Lean without the harness.** Mirror what `evaluate.py`'s `mkfresh` writes. That is
+  a lakefile and a manifest that require `logs/org` by path, with `packagesDir` the private tree,
+  and one `[[lean_lib]]` that lists **every** module of `lean/` as a root: Lake's `globs =
+  ["Foo.+"]` means submodules of `Foo`, not a name prefix (F1 §7 item 9). Render the challenge with:
+
+  ```sh
+  python3 -I logs/org/harness/render-challenge.py \
+    logs/org/harness/challenge/Challenge.lean.in claim.json OUT.lean
+  ```
+
+  Diff its `declared` against your `Solution.lean`.
+- **The native prover.** Build `prover.s` with the entry's own script (for `spartan-srom`,
+  `submissions/spartan-srom/prover/build-asm.sh WORK`, with `WORK` outside the entry). Link it with
+  the runner's command, `gcc -static -O2 -pthread *.s -o prover -lm`. The entry's `selftest.py`
+  runs it against a real `rf-oracle`.
+- **The reference toolchain** is the runner image's: `ubuntu-24.04`, GCC 13.3, GNU Binutils 2.42,
+  glibc 2.39 (`.contract/harness/PROVER.md` §1, RF-M2). The `.s` must assemble with that `as`; this
+  VM's binutils is 2.46. `.contract/harness/tools/asm-compat.py IN.s OUT.s` rewrites the directives
+  2.42 rejects (GCC 15's `.base64`, LLVM 23's `.prefalign` and DWARF-5 `.file`); it merges
+  `spartan-srom`'s `sanitize-asm.py` rules with the GCC one.
+- **Logs.** Measurements go to `logs/` (gitignored) and are quoted in the stage RESULT with their
+  path.
+
+## Stage protocol (as in the core's `CLAUDE.md`)
+
+Work here is built in stages, one at a time. The v4 baseline's stages are F0 (probes), F1 (Lean),
+F2 (prover) and F3 (the harness run). Their records are `docs/v4/flock-baseline/stages/` and
+`reviews/`. Each stage runs the same cycle:
 
 1. **Implement** (one agent). Build the stage and keep the build green. Write
-   `docs/stages/V3-S<n>-RESULT.md` with:
-   - what was built, file by file, with code line counts from the core's `scripts/loc.py`;
-   - build and check times;
+   `stages/<id>-RESULT.md` with:
+   - what was built, with code line counts;
+   - build and run times, each with its log;
    - the controls, and what each shows;
-   - every deviation from the design, with its reason;
-   - open questions for the orchestrator.
-2. **Adversarial review** (one agent, in parallel with 3): spec tightness, vacuity, loopholes,
-   trust policy, hygiene. It writes `docs/reviews/V3-S<n>-review.md` with numbered findings
-   (`V3-S<n>-M<i>` major: must fix; `V3-S<n>-m<i>` minor) and a verdict.
-3. **Golf** (one agent, in parallel with 2): shortens proofs and definitions without changing any
-   statement, editing in place. It writes `docs/reviews/V3-S<n>-golf.md`: before and after line
-   counts, what changed, and what it declined to touch and why.
-4. **Fix** (the implementing agent): applies every major finding, answers each minor one (fixed or
-   argued), appends `## Fix pass` to the RESULT, and re-runs the build and the controls.
-5. **Commit.** The orchestrator reads the RESULT and the review, commits, and opens the next stage.
+   - every deviation from the blueprint or the contract, with its reason;
+   - open questions.
 
-Subagents **do not commit**; the orchestrator does. Skills to use:
+   Keep a running `stages/<id>-JOURNAL.md` that a successor reads first.
+2. **Adversarial review** (one agent, in parallel with 3). It writes `reviews/<id>-review.md` with
+   numbered findings (`<id>-M<i>` major: must fix; `<id>-m<i>` minor) and a verdict.
+3. **Golf** (one agent, in parallel with 2). It shortens proofs, and run time, without changing
+   any statement, and reports before and after.
+4. **Fix** (the implementing agent). Apply every major finding, answer each minor one, append
+   `## Fix pass` to the RESULT, and re-run the build and the controls.
+5. **Commit.** The orchestrator commits.
 
-- `lean-spec-authoring` when writing definitions or theorem statements;
-- `adversarial-review` and `lean4:review` when reviewing;
-- `lean4:golf` when golfing;
+Subagents **do not commit**; the orchestrator does. Skills:
+
+- `lean-spec-authoring` for definitions and statements;
+- `adversarial-review` and `lean4:review` for review;
+- `lean4:golf` for golfing;
 - `lean4:lean4` for any Lean work.
 
 ## Hard rules
 
-For entries, these are checked by the harness: `AGENTS.md` §10–§11.
+For entries, the harness checks these (`AGENTS.md` §6).
 
-- **Axioms.** Only `propext`, `Classical.choice` and `Quot.sound`. No `sorry`, no `native_decide`.
-- **No code-changing attributes:** `implemented_by`, `extern`, `export`, `init`, `csimp`, `cpass`,
-  `computed_field`.
-- **No `unsafe`, `partial` or `opaque`.** No elaboration-time code (`#eval`, `run_cmd`, `elab`,
-  `macro`, `initialize`, `import Lean`, …), which the source rule refuses, comments included.
-- **Imports only from the core's allowlist**, plus the entry's own modules. CompPoly's `BF64` and
-  `Ext3` are allowed (design §7.4). Clean is never on the badge path.
-- **Badge-path fields** (`V`, `P`, `E`, `img`) have compiled code.
+- **Axioms.** Only `propext`, `Classical.choice` and `Quot.sound`.
+  - **No `sorry`.** It makes an entry PROVISIONAL at best, so it belongs only in a deliberately
+    provisional run.
+  - **No `native_decide`.**
+- **No code-changing attributes**: `implemented_by`, `extern`, `export`, `init`, `csimp`, `cpass`,
+  `computed_field`. **No `unsafe`, `partial` or `opaque`.**
+- **No elaboration-time code.** The source rule refuses `#eval`, `run_cmd`, `elab`, `macro`,
+  `initialize`, `import Lean` and the like, comments included.
+- **Imports only from the allowlist closure**, plus the entry's own modules. The closure is that of
+  Mathlib, the contract, the library, the controls and CompPoly's `BF64.Ext3` and `BF64.Bytes`, at
+  the pin (`org-setup.sh`'s default roots, FIXLIST Q2; `AGENTS.md` §6). Other modules of the pinned
+  packages are checked as entry code.
+- **The submission is computable.** The badge compiles the whole `RecursionFast.Challenge.submission`,
+  so `ε` and `δ` too (a cast from `ℚ≥0`). Gate rule 4 also requires compiled code for `V`, `P` and
+  `ext`.
 - **Statements are non-vacuous**, with a positive and a negative control for every definition an
-  entry relies on. **A proof never changes the statement it proves.** An entry fills only the
-  challenge's placeholders.
-- **An entry pull request touches only its own root:** never `records.json`, `.contract`, `docs/`
-  or another root.
-- **Copies are read-only.** Files under `docs/` other than `docs/README.md`,
-  `docs/baseline/BASELINE-TASK.md` and `docs/report/README.md` are copies. Re-copy from the
-  source with a new provenance line; never edit them here.
-- **Read-only references.** Never edit, build in or commit to
-  `/home/devops/Verified-zkEVM/recursion.fast` (another agent may be working there; use `.contract`
-  or a fresh clone) or the design workspace `/home/devops/CambridgePQ/recursion.fast`.
-- **No pushing** and no creating remotes or GitHub repositories unless the user asks.
+  entry relies on.
+- **A proof never changes the statement it proves.** An entry fills only the challenge's
+  `submission` and `certified`.
+- **An entry pull request touches only its own root:** never `records.json`, `.contract`, `docs/`,
+  the workflows or another root.
+- **The byte layouts are the contract's.** Statements, trace digests, signatures and files hash
+  exactly the bytes of design §1.3 and FORMAT.md.
+- **Copies are read-only.** Files under `docs/` are copies, except:
+  - `docs/README.md`, `docs/baseline/BASELINE-TASK.md` and `docs/report/README.md`;
+  - everything under `docs/v4/`.
 
-## No estimates
+  Re-copy a copy from its source with a new provenance line; never edit it here.
+- **Read-only references.** Never edit, build in or commit to:
+  - `/home/devops/Verified-zkEVM/recursion.fast`, the core's main checkout;
+  - `/home/devops/Verified-zkEVM/recursion.fast-v4`, the core's v4 worktree (other agents work
+    there);
+  - the design workspace `/home/devops/CambridgePQ/recursion.fast`.
 
-Describe work by what it consists of and what it depends on, never by how long it will take: no
-person-weeks, no "a few hours". Durations that were **measured**, such as a build time or a
-harness run, are facts. Quote them with their log.
+  Use `.contract` or a private copy.
+- **No pushing**, and no creating remotes or GitHub repositories, unless the user asks.
+
+## Conventions
+
+- **No estimates.** Describe work by what it consists of and what it depends on, never by how long
+  it will take. Durations that were **measured**, such as a build time or a harness run, are facts:
+  quote them with their log.
+- **Evidence tags**, as in the core: **kernel** (with the theorem name), **paper**, **measured**
+  (with its log), **estimate**.
+- **The writing.** Plain and precise, British spelling, no marketing. Ids are kept.
+- **Long-running work.** Every build or probe that runs in the background or under a shared lock
+  gets a `timeout`. Pin heavy runs to a subset of cores (`taskset`) on the shared VM, and say so
+  next to any time you quote.
 
 ## What "done" means
 
 A stage is done when:
 
-- its definition of done is met (for S2: `docs/baseline/BASELINE-TASK.md` §11);
-- the build and the entry's `check.sh` are green;
-- the harness prints `HARNESS: ACCEPT` for every entry the stage touched;
+- its definition of done in the blueprint is met;
+- the entry builds, and its own checks pass;
+- `harness/evaluate.py` at the pin gives the entry the verdict the stage claims: ACCEPT, or
+  PROVISIONAL where that is the stated goal;
 - the RESULT, the review and the golf report are written, and the fix pass is appended;
 - the orchestrator has committed it.
 
