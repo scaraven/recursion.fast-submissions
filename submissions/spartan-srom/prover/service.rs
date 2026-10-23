@@ -23,10 +23,10 @@ pub const OP_VK: u8 = 3;
 pub const BODY_CAP: usize = 1 << 24;
 pub const QUERY_CAP: usize = 1 << 20;
 pub const SIGN_ITEMS_CAP: usize = 1 << 16;
-/// Connections this client's pool opens at most (the service's cap is 64; `ask` keeps one more).
-/// Beyond about 16 there is no gain, since the service computes on the same CPUs; 32 leaves room
-/// for the sockets of a previous request that are still closing (review F2-m6).
-pub const MAX_CONNS: usize = 32;
+/// Connections this client's pool opens at most. The service refuses a 33rd open connection
+/// (PROTOCOL.md §1, cap 32) and `ask` keeps one more for the Fiat–Shamir queries, so the pool stays
+/// at 31. Beyond about 16 there is no gain anyway, since the service computes on the same CPUs.
+pub const MAX_CONNS: usize = 31;
 /// Connections opened before `ready` (`warm`).
 pub const WARM_CONNS: usize = 16;
 /// A `QUERY` batch: at most this many items and about this many body bytes.

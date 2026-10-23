@@ -89323,7 +89323,7 @@ _RNvMNtCsf9WmG6E9Jj9_19spartan_srom_prover7serviceNtB2_7Service4take:
 	testq	%rax, %rax
 	jne	.LBB186_21
 	movq	88(%rbx), %rax
-	cmpq	$32, %rax
+	cmpq	$31, %rax
 	jb	.LBB186_27
 	movl	(%r15), %r12d
 	xorl	%eax, %eax
