@@ -1,12 +1,14 @@
 //! Signed proofs (blueprint §1, §7): a leaf `L` (prove, with the verifier's trace written by the
 //! prover; one `SIGN`), a bundle `B` of two children (no `QUERY`: the traces are concatenated, one
-//! `SIGN`), and the plain node `N` used when a child cannot be bundled (a leaf of length 0). The
+//! `SIGN`), and the plain node `N` used when a child cannot be bundled (a leaf of length 0 or above
+//! `2^12`, D-6). The
 //! stream's `node` request builds its file in place and writes it while the service signs
 //! (`node_files`).
 
 use std::io::Write;
 use std::time::Instant;
 
+use crate::acc::CLEAR_CAP;
 use crate::blake2s::{leaf_stmt, Digest};
 use crate::circuit::Circuit;
 use crate::format::{decode, encode, put_sig, Sig, Signed, Wit};
@@ -112,13 +114,14 @@ pub fn kind(pi: &[u8]) -> &'static str {
     }
 }
 
-/// A child for bundling, from its statement and signed proof (`L` with `n ≥ 1`, or `B`); `None`
-/// if it cannot be bundled.
+/// A child for bundling, from its statement and signed proof (`L` with `1 ≤ n ≤ 2^12`, or `B`);
+/// `None` if it cannot be bundled.
 pub fn child(stmt: &Digest, p: &Signed) -> Option<Child> {
     match kind(&p.pi) {
         "L" => {
+            // a bundled leaf has `1 ≤ n ≤ 2^12` (§2, D-6); any other leaf goes into a plain node
             let n = u64::from_le_bytes(p.pi[40..48].try_into().unwrap());
-            if n == 0 {
+            if n == 0 || n > CLEAR_CAP {
                 return None;
             }
             Some(Child { stmt: *stmt, clear: p.pi[..48].to_vec(), t: p.pi[48..].to_vec(), tr: p.tr.clone(), sigma0: None })
@@ -245,7 +248,10 @@ fn from_file_sig(b: &[u8]) -> Option<Sig> {
 /// a bundle; `None` if it cannot be bundled.
 fn split(pi: &[u8]) -> Option<(usize, Option<Sig>)> {
     match word0(pi) {
-        Some(0) if pi.len() > 48 => (u64::from_le_bytes(pi[40..48].try_into().unwrap()) != 0).then_some((48, None)),
+        Some(0) if pi.len() > 48 => {
+            let n = u64::from_le_bytes(pi[40..48].try_into().unwrap());
+            (1..=CLEAR_CAP).contains(&n).then_some((48, None))
+        }
         Some(0) => None,
         _ => match decode(pi) {
             Some((Wit::Node { p1, .. }, used)) if used < pi.len() => Some((used, Some(p1.sig))),

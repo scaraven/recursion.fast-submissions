@@ -5,12 +5,13 @@ Status: **built and tested; not committed** (the orchestrator commits). Two chec
 before F1 finished:
 
 - F1's Lean prover `P` gives the **same leaf bytes** as this prover at `n = 1` and `n = 16`;
-- F1's compiled `acc` **accepts** this prover's service-signed leaf and bundle proofs and rejects
-  their canaries.
+- F1's compiled `acc` **accepts** a service-signed leaf and a bundle of two leaves from this prover,
+  and rejects two canaries. The runs on the nested bundles did not finish here.
 
-The harness smoke (`run-benchmark.py` with `smoke.toml`, every part) passed end to end, but with a
-**native stand-in badge** (§3.4). The run with the real badge is still open, because the harness
-builds that badge (`evaluate.py`) from F1's finished entry.
+The harness smoke (`run-benchmark.py` with `smoke.toml`, every part) passed end to end here with a
+**native stand-in badge** (§3.4). Stage F3 then ran this binary through the real harness with the
+**real Lean badge**: smoke ACCEPT, with the nested bundles (the `r = 2` root and stream nodes 2–4)
+accepted (§3.5; `F3-harness-RESULT.md` §3). The fix pass after review is the last section.
 
 Logs are under the worktree's `logs/f2/` (gitignored; written `F/` below). `F/run-all.sh` reruns
 the final build and every test of §2–§4 in one go (`F/run-all.log`). The journal is
@@ -120,7 +121,8 @@ used. The tests:
 - with v3's oracle, the leaf proofs at `n = 1, 16, 64` equal v3's under `-cpu Haswell` (the
   pclmulqdq path), `-cpu Haswell,pclmulqdq=off` (the portable path) and `-cpu max`
   (`F/qemu-asm.log`);
-- native runs on this VM take the portable path.
+- native runs on this VM take the portable path. The hardware path has been validated only under
+  qemu's emulation, never on a CPU with `pclmulqdq`; the runners have one (review F2-m7).
 
 **Toolchain finding.** A static binary linked against this VM's glibc 2.43 needs AVX2 at start-up:
 glibc's own `init_cpu_features` executes `vmovd`. Even a static C hello-world raises SIGILL under
@@ -167,7 +169,10 @@ Results are in `F/selftest-asm.log`; the driver is `prover/selftest.py`.
   with `hashlib`), the encode/decode round trip, the strict file format, the toy signer against
   `SigOk`, `qBound` equal to F0's query counts and to v3's `7 774` at κ = 20, leaf canaries (also a
   changed answer that is re-signed), bundles `r = 2, n = 16` with swapped children and a foreign
-  σ0, the plain node above `proofCap` at `n = 16`, and the plain node at `n = 1`.
+  σ0, the plain node above `proofCap` at `n = 16`, and the plain node at `n = 1`. Cargo builds
+  them with `codegen-units = 4` and without LTO (`Cargo.toml`'s release profile), so the unit tests
+  run a differently compiled binary from the submission's. They are evidence about the source; the
+  selftests and the known-answer tests run the linked `prover.s` (review F2-m7).
 
 ### 3.3 (c) Sizes (bytes; `F/selftest-asm.log`)
 
@@ -201,7 +206,10 @@ In the tree at `n = 16`, `r = 2` fits; the level-3 root would hold 8 leaves, mor
 
 `taskset -c 0-15 python3 -I -B harness/run-benchmark.py --season harness/smoke.toml --entry
 submissions/spartan-srom --badge F/badge-native --service F/rf-oracle --bench F/rf-bench …`, all
-parts: **`benchmark: pass`**.
+parts: **`benchmark: pass`**. The harness is stage B's worktree `recursion.fast-v4h` at commit
+`bb724bb06ec94ec54db382fd4c203d87e6c80863`, with its uncommitted `harness/` files as of the run;
+this commit is the `harness.commit` of `harness-smoke.json`. The service is SHA-256 `d6003237…`
+and `rf-bench` SHA-256 `5a6b9f77…`.
 
 - The prover is built in the sandbox, with the same binary hash.
 - `setup`: 0.08 s.
@@ -248,17 +256,36 @@ on this prover's outputs, all signed by the real service (`F/lean-check/*.out`):
 | tree `L0.bin` (538,698 B) | accept | 0.217 s | 87.8 s |
 | tree `N1_0.bin`, bundle of 2 leaves (1,082,260 B) | accept | 0.575 s | 579 s |
 | `L0.bin` canary `pi+1` | reject (`V = none`) | 0.005 s | 88.6 s |
-| ROOT_RESULT |
-| STREAM_RESULT |
-| CANARY_RESULT |
+| tree `root.bin`, bundle of 4 with nested `N` slots (2,169,384 B) | not completed: stopped unfinished after more than 40 min of parsing, at the session restart | — | — |
+| stream `node2.bin`, bundle of 3 with a nested `N` slot (1,625,822 B) | not completed: stopped unfinished after more than 30 min, at the session restart | — | — |
+| stream `node4.bin`, bundle of 5 (2,712,946 B) | not completed: stopped by hand at 701 s | — | — |
+| `L0.bin` canary `trace-answer-mid` | reject (`sig = false`) | 0.029 s | 97.7 s |
+
+**The nested bundles with the real badge (closes review F2-M1).** These runs did not check the shape
+of every root at `r ≥ 2` and of every stream node from link 2 on: a bundle with a nested `N` slot
+(`clear(B) = encode W_child`). Stage F3 checked exactly these outputs of this binary through the
+real harness and the real Lean badge (`F3-harness-RESULT.md` §3, run 2,
+`logs/f3/bench-smoke.{log,json}`). The prover was built there in the sandbox, binary SHA-256
+`30b46975…`, the same as here. The badge's `acc` **accepted**:
+
+- the tree root `r = 2, n = 16`, a bundle of 4 with two nested `N` slots, 2,169,384 B, in 931 ms;
+- `N1_0` and `N1_1` (bundles of 2) and `L0`…`L3`;
+- the stream's 5 leaves and its nodes 1–4 (bundles of 2–5, nodes 2–4 with nested `N` slots),
+  1,082,260 … 2,712,946 B, in 455, 800, 921 and 1,311 ms;
+- the liveness root.
+
+It **rejected** 69 canaries of the tree, 18 of the stream and 29 of the liveness tree. F3's frontier
+runs (§4.3) also confirm, with the real badge, the stream counts of §3.3 here: 5 links at
+`n_f = 16`, 1 at `1024`. The `acc` times in F3 are the badge's own parse plus `accF`, at most
+1.3 s, so the superlinear parse below is a property of F1's scratch runner `srom-run`, not of the
+badge.
 
 **What the wall times mean.** Almost all of the process wall time is outside `acc`; it is spent
-before `acc` runs, presumably in the runner's parsing of the file (`parseSigned`). It grows faster
-than the file: 87.8 s for 538 KB, 579 s for 1.08 MB. The harness counts the parse in the badge's
-time (`rfh/checks.py`: "NS the nanoseconds of parsing the file's bytes and evaluating `acc`") and
-caps one check at `verify_s = 60 s`. A badge with this parse would therefore fail every proof of
-this entry, including the smallest leaf. This is reported to F1 and the orchestrator; it is not a
-property of the proofs.
+before `acc` runs, presumably in the scratch runner's parsing of the file (`parseSigned`). It grows
+faster than the file: 87.8 s for 538 KB, 579 s for 1.08 MB. The harness counts the parse in the
+badge's time (`rfh/checks.py`: "NS the nanoseconds of parsing the file's bytes and evaluating
+`acc`") and caps one check at `verify_s = 60 s`, so a badge with this parse would have failed every
+proof. The real badge does not have it: F3 measured 0.2–1.3 s per check, parse included (above).
 
 ## 4. Measurements (blueprint §8)
 
@@ -274,18 +301,18 @@ records the peak RSS from `/usr/bin/time -v` (`F/bench-asm-n{16,1024,4096,16384,
 - *oracle*: the wall time inside oracle calls, that is the Fiat–Shamir round trips plus the Merkle
   batches including the building of the column queries, as a share of *prove*.
 
-| n | oracle | reps | prove s | replay s | SIGN s | leaf total s | oracle s (share) | of which FS s | peak RSS |
+| n | oracle | reps | prove s | replay s | SIGN s | leaf total s | oracle s (share) | of which FS s | peak RSS (from KiB) |
 |---|---|---|---|---|---|---|---|---|---|
-| 16 | keyed | 5 | 0.137 | 0.044 | — | 0.185 | 0.007 (4.7 %) | 0.0003 | 9.2 MB |
-| 16 | service | 5 | 0.142 | 0.046 | 0.004 | 0.193 | 0.014 (10.0 %) | 0.0087 | 9.4 MB |
-| 1,024 | keyed | 3 | 0.897 | 0.222 | — | 1.117 | 0.024 (2.8 %) | 0.0010 | 265 MB |
-| 1,024 | service | 3 | 0.879 | 0.225 | 0.013 | 1.122 | 0.034 (3.9 %) | 0.0147 | 267 MB |
-| 4,096 | keyed | 3 | 2.975 | 0.441 | — | 3.463 | 0.071 (2.4 %) | 0.0018 | 1.02 GB |
-| 4,096 | service | 3 | 3.114 | 0.441 | 0.011 | 3.554 | 0.074 (2.4 %) | 0.0179 | 1.03 GB |
-| 16,384 | keyed | 2 | 12.245 | 0.866 | — | 13.113 | 0.228 (2.0 %) | 0.0076 | 3.97 GB |
-| 16,384 | service | 2 | 11.944 | 0.901 | 0.023 | 12.876 | 0.191 (1.6 %) | 0.0280 | 4.03 GB |
-| 65,536 | keyed | 1 | 47.110 | 1.727 | — | 48.840 | 0.778 (1.7 %) | 0.0107 | 15.79 GB |
-| 65,536 | service | 1 | 46.575 | 1.944 | 0.033 | 48.555 | 0.653 (1.4 %) | 0.0584 | 15.85 GB |
+| 16 | keyed | 5 | 0.137 | 0.044 | — | 0.185 | 0.007 (4.7 %) | 0.0003 | 9.0 MiB |
+| 16 | service | 5 | 0.142 | 0.046 | 0.004 | 0.193 | 0.014 (10.0 %) | 0.0087 | 9.1 MiB |
+| 1,024 | keyed | 3 | 0.897 | 0.222 | — | 1.117 | 0.024 (2.8 %) | 0.0010 | 259 MiB |
+| 1,024 | service | 3 | 0.879 | 0.225 | 0.013 | 1.122 | 0.034 (3.9 %) | 0.0147 | 261 MiB |
+| 4,096 | keyed | 3 | 2.975 | 0.441 | — | 3.463 | 0.071 (2.4 %) | 0.0018 | 992 MiB |
+| 4,096 | service | 3 | 3.114 | 0.441 | 0.011 | 3.554 | 0.074 (2.4 %) | 0.0179 | 1,004 MiB |
+| 16,384 | keyed | 2 | 12.245 | 0.866 | — | 13.113 | 0.228 (2.0 %) | 0.0076 | 3.78 GiB |
+| 16,384 | service | 2 | 11.944 | 0.901 | 0.023 | 12.876 | 0.191 (1.6 %) | 0.0280 | 3.85 GiB |
+| 65,536 | keyed | 1 | 47.110 | 1.727 | — | 48.840 | 0.778 (1.7 %) | 0.0107 | 15.06 GiB |
+| 65,536 | service | 1 | 46.575 | 1.944 | 0.033 | 48.555 | 0.653 (1.4 %) | 0.0584 | 15.12 GiB |
 
 **Service traffic per leaf proof** (the service's `stats` line divided by the repetitions;
 prover `QUERY`s plus the one `SIGN`):
@@ -306,14 +333,17 @@ queries of 64 bytes per request (`F/harness-smoke.json`).
 
 **Findings.**
 
-- Going through the service costs no measurable prover time at any `n`; the differences are within
-  the noise of this VM.
+- Going through the service costs little prover time. At `n = 16` the oracle's counters measure it:
+  the 153 sequential round trips add about 8 ms (Fiat–Shamir 0.0003 → 0.0087 s), and `prove` rises
+  0.137 → 0.142 s, about 4 %. From `n = 1024` up the difference is within this VM's run-to-run noise
+  (about ±5 %).
 - The oracle is 1.4–10 % of proving, most at `n = 16`, where the 153 sequential Fiat–Shamir round
   trips dominate it.
 - Proving itself is v3's sumchecks: the outer sumcheck is 55–60 % of proving at large `n`.
 - The replay, the native verifier run, adds 4–24 % to a leaf request.
-- At `n_f = 65536` a leaf needs 15.8 GB, above the season's 11 GiB prover cap, so a stream at
-  `n_f = 2^16` would be stopped by memory before `proofCap`.
+- At `n_f = 65536` a leaf needs 15.1 GiB (16.2 GB), above the season's 11 GiB prover cap, so a
+  stream at `n_f = 2^16` would be stopped by memory before `proofCap`. The golf took this to
+  2.6 GB (`F2-golf-RESULT.md` §4.3).
 
 **A merge (`node`) request** in the stream at `n = 16` (`F/selftest-asm.log`, `SPARTAN_VERBOSE`
 lines; the wall time is from `go` to `done`):
@@ -357,8 +387,10 @@ measured merges of 0.019–0.055 s.
    links at `n_f = 16`, 1 at `1024`, 0 at `4096`, and none at `n_f ≥ 16384`, where the leaf itself
    is too large. The exact `verify-native` messages are in §3.3; the harness's own message on this
    failure is still to be recorded with the real badge. At the season shape the T run fails at the
-   first leaf: π at `n = 2^18` is above `proofCap`, and the memory, extrapolated from 15.8 GB at
-   `2^16`, is far above 11 GiB. The stream at `n_f = 2^16` is stopped by memory (§4).
+   first leaf: π at `n = 2^18` is above `proofCap`, and the memory, extrapolated from 15.1 GiB at
+   `2^16`, is far above 11 GiB. The stream at `n_f = 2^16` is stopped by memory (§4). F3 found
+   the actual first failure at `n = 2^18`: the service refuses the 1,572,898-byte absorb of `ū`
+   (`queryCap`, `F3-harness-RESULT.md` §4.1).
 3. **`SIGN` re-hashes the whole trace** (C-m4). A merge's cost is dominated by it (§4), and it grows
    with the bundle.
 4. **The Unix socket path limit.** Rust's `UnixStream::connect` fails on a path of 108 bytes or more
@@ -386,13 +418,54 @@ measured merges of 0.019–0.055 s.
 
 ## 7. Open problems
 
-- Run the smoke through `run-benchmark.py` with the real badge built from F1's entry (`verify`,
-  `liveness`), and record the harness's own messages for the `proofCap` failures of §3.3.
-- The superlinear file parse of F1's runner (§3.5) must not reach the badge: `verify_s = 60 s`
-  includes the parse.
-- The memory at `n ≥ 2^16`: v3's prover keeps 15.8 GB at `2^16`, above the season's 11 GiB. The
+- Done by stage F3: the smoke through `run-benchmark.py` with the real badge built from F1's entry,
+  and the harness's own messages for the `proofCap` failures (`F3-harness-RESULT.md` §3, §4.3).
+- The superlinear file parse of F1's scratch runner (§3.5) did not reach the badge (F3: at most
+  1.3 s per check).
+- The memory at `n ≥ 2^16`: v3's prover keeps 15.1 GiB at `2^16`, above the season's 11 GiB. The
   stream at the season's `n_f` needs a leaf prover with less memory before anything else matters,
   and `proofCap` stops it anyway.
 - Optional speed-ups that were not made: proving tree leaves concurrently at small `n`, a lighter
   replay (only the transcript and the openings), and using `pclmulqdq` for the Merkle hashing as
   well.
+
+## Fix pass (after review `reviews/F2-prover-review.md`), 2026-10-23
+
+**Base.** The fixes sit on top of the execution-time golf (commit `f2f2bf6`,
+`F2-golf-RESULT.md`) and take in two changes made outside this stage:
+
+- the core moved to `ea2e8ab`, where `acc` checks `p.tr.length ≤ qV` right after the size cap;
+- blueprint D-6 caps clear and bundled leaves at `n ≤ 2^12`.
+
+Logs for this pass are under `logs/f2/fix/` (`run.sh` reruns all of it; `run.log`).
+
+### What was done, finding by finding
+
+| Finding | What was done |
+|---|---|
+| **F2-M1** (Lean-`acc` evidence unfinished; nested bundles never checked) | §3.5's three placeholders are replaced by what happened to those runs: the root and stream node 2 did not finish before the session restart, node 4 was stopped at 701 s, and the `L0` canary `trace-answer-mid` was rejected. The nested shapes are covered by stage F3 (`F3-harness-RESULT.md` §3, run 2), which ran this binary (`30b46975…`) through the real harness and the **real Lean badge**. Accepted: the `r = 2` root (bundle of 4 with nested `N` slots, 931 ms), `N1_0`, `N1_1`, `L0`…`L3`, stream nodes 1–4 (nodes 2–4 nested, up to 1,311 ms). Rejected: 69 + 18 + 29 canaries. The status line now says what was checked where. |
+| core `ea2e8ab` (`acc` caps the trace at `qV`) | `acc.rs`: `p.tr.len() ≤ Q_V = 2^16`, checked right after `|π| ≤ proofCap`, as the Lean `accWith` does. The unit test `caps_d6_and_qv` checks that a trace of `2^16 + 1` entries is rejected. |
+| D-6 (clear and bundled leaves `n ≤ 2^12`) | The native `V` applies it in both branches: `C` rejects `n > 2^12` (`acc::CLEAR_CAP`); `B` rejects any bundled `n_j = 0` or `n_j > 2^12`. The prover never bundles a leaf above `2^12`: `make::child` and `make::split` return `None`, so `tree` and `node` fall back to the plain node `N`, as they already did for `n = 0`. No acceptable proof changes: a leaf above `2^12` is itself above `proofCap`. Unit tests: a `C` at 4096 is accepted and at 4097 rejected; a bundle with a slot of 5,000 steps is rejected with the D-6 message; `child` refuses a 5,000-step leaf. |
+| m1 (stream links measured with an earlier binary) | Re-measured with the final binary `fecda6a0…` (`logs/f2/fix/links-n{16,1024,4096}.log`). The counts are unchanged: **5** links at `n_f = 16` (link 6: `|π| = 1063913 > proofCap`), **1** at `1024` (`1392841`), **0** at `4096` (`1601878`). They agree with F3's real-badge frontier (§4.3 there). |
+| m2 (no toolchain pin) | Added `prover/rust-toolchain.toml` (`channel = "1.99.0"`, `profile = "minimal"`). `build-asm.sh` now runs cargo from the crate's directory, so rustup applies the pin. Built with the pin and without it (rustup's default, `stable` = 1.99.0 b940084d7): **the same `prover.s`** (`determinism.log`). |
+| m3 (peak-RSS unit) | `/usr/bin/time` reports KiB. §4's table now gives MiB/GiB computed from KiB (15.06 / 15.12 GiB at `n = 2^16`), and §4, §6.2 and §7 say 15.1 GiB (16.2 GB). |
+| m4 ("no measurable time" overstated) | §4's finding now reads: about 8 ms (+4 % of `prove`) at `n = 16` from the 153 sequential round trips, within this VM's run-to-run noise (about ±5 %) from `n = 1024` up. |
+| m5 (no diagnostic above a cap) | `main.rs` `warn_caps`: before an output is written (each `L<i>.bin`, `N<l>_<j>.bin`, `root.bin`, a request's `proof.bin`, `prove-signed`), one stderr line names the cap exceeded (`proofCap`, `qV`, `queryCap`, the runner's 64 MiB `file_cap`). The file is still written and `acc` decides. Checked at `n = 8192`: `…/L-n8192.bin: |π| = 1062591 > proofCap = 1048576: acc will reject it` (`logs/f2/fix/selftest-cap.log`). The client also refuses locally, with an explicit message, a Fiat–Shamir query above `queryCap` (F3's first failure at `n = 2^18`) and a `SIGN` above the service's body or item cap, instead of a `CAP` reply or a broken pipe. |
+| m6 (connection pool of 60) | `MAX_CONNS = 32` (one more for the polled Fiat–Shamir connection). `WARM_CONNS = 16` are opened before `ready`, in `leaf`, `node` and `bench-leaf`. |
+| m7 (qemu-only `pclmulqdq`; cargo-test binary) | Said in §2 (the hardware path has been validated only under qemu) and in §3.2 and the README (the unit tests compile with `codegen-units = 4` and no LTO, a different binary; the evidence about `prover.s` is the linked binary's tests). No machine with `pclmulqdq` was available. |
+| m8 (harness not named) | §3.4 names the harness: `recursion.fast-v4h` at `bb724bb06ec94ec54db382fd4c203d87e6c80863` with its uncommitted `harness/` files, as recorded in `harness-smoke.json`. |
+
+### The rebuilt assembly and the tests (linked binary `logs/f2/fix/prover-asm`)
+
+| | |
+|---|---|
+| `prover.s` | **9,238,056 bytes, SHA-256 `7a30e654c016c19845d7e22308f301672d98e33c96e2b5403aec67bb59653b69`** |
+| Binary | 2,818,664 bytes, SHA-256 `fecda6a0020e33088cee353971ff12713a79229be3d92b7d7803ca90dfa95fe9` |
+| Determinism | three builds, all identical (`.s` and binary): in place with the pin, from a copy without the pin, from a copy with the pin (`build-{a,b,c}.log`, `determinism.log`); `build-asm.sh` wall 58.0, 57.8, 65.3 s |
+| `cargo test --release` | **32 pass**: the golf's 31, one of them extended (`clear_leaf_and_n0`: D-6 at 4096/4097), and the new `caps_d6_and_qv` (`logs/f2/fix-cargo-test.log`) |
+| Known-answer tests against v3 (v3's oracle) | `prove-leaf` at `n = 1, 16, 64` identical to v3's cargo-built prover; `dump-proof` (`n = 1, 2, 16, 64`) identical (`kat.log`) |
+| selftest against `rf-oracle` (`d6003237…`) | `tree stream keyed-kat sizes` (`selftest.log`) and `--n 0 tree stream` (`selftest-n0.log`): `selftest: pass`. Every output is accepted by `verify-native` (with the new caps), every canary is rejected (11 per tree output, 10 for the root and the stream's), and the keyed oracle equals the service at `n = 1, 16, 64`. The tree `r = 2, n = 16` took 0.138 s; stream leaves 0.046–0.068 s; merges 0.012–0.032 s; single leaves 0.47 s (`n = 1024`) and 1.23 s (`n = 4096`); sizes as in §3.3. |
+| Stream links (m1) | 5 / 1 / 0 at `n_f = 16 / 1024 / 4096`, as above |
+
+Not rerun in this pass: the harness smoke and the qemu checks. The field code and the run-time
+dispatch are unchanged since the golf's qemu run (`F2-golf-RESULT.md` §3 item 5).

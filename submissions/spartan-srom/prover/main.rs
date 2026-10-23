@@ -230,6 +230,28 @@ fn file_summary(f: &[u8], p: &Signed) -> String {
     )
 }
 
+/// A line on stderr when an output is above a cap that `acc` or the runner checks (review F2-m5):
+/// the file is still written, and the runner's `acc` decides, but its failure then explains itself.
+fn warn_caps(name: &str, f: &[u8]) {
+    let Some(v) = make::view(f) else { return };
+    let mut why = vec![];
+    if v.pi.len() > format::PROOF_CAP {
+        why.push(format!("|π| = {} > proofCap = {}", v.pi.len(), format::PROOF_CAP));
+    }
+    if v.items.len() as u64 > acc::Q_V {
+        why.push(format!("{} trace entries > qV = {}", v.items.len(), acc::Q_V));
+    }
+    if let Some(m) = v.items.iter().map(|x| x.1).max().filter(|&m| m > format::QUERY_CAP) {
+        why.push(format!("a query of {m} bytes > queryCap = {}", format::QUERY_CAP));
+    }
+    if f.len() > 64 << 20 {
+        why.push(format!("{} file bytes > the runner's file_cap of 64 MiB", f.len()));
+    }
+    if !why.is_empty() {
+        eprintln!("spartan-srom-prover: {name}: {}: acc will reject it", why.join(", "));
+    }
+}
+
 fn leaf_signed(circ: &Circuit, svc: &Service, s: &Digest, n: u64) -> Result<Signed, String> {
     let t = Instant::now();
     let mut cost = make::LeafCost::default();
@@ -304,6 +326,7 @@ fn cmd_tree(dir: &Path) -> Result<(), String> {
             cost.sign_s = t.elapsed().as_secs_f64();
             let p = Signed { pi, tr, sig };
             let f = to_file(&p);
+            warn_caps(&format!("L{i}.bin"), &f);
             write(&pdir.join(format!("L{i}.bin")), &f)?;
             if r == 0 {
                 write(&dir.join("root.bin"), &f)?;
@@ -342,6 +365,7 @@ fn cmd_tree(dir: &Path) -> Result<(), String> {
             )?;
             let f = to_file(&p);
             let name = if lv < r { pdir.join(format!("N{lv}_{j}.bin")) } else { dir.join("root.bin") };
+            warn_caps(&name.file_name().unwrap().to_string_lossy(), &f);
             write(&name, &f)?;
             note!(
                 "node {lv}_{j} {:.4}s (build {:.4}s, SIGN {:.4}s) {}",
@@ -391,7 +415,7 @@ fn stream_start(dir: &Path) -> Result<(Circuit, Service), String> {
     heap_setup(64);
     let circ = Circuit::build();
     let svc = service_for(dir)?;
-    svc.warm(par::threads());
+    svc.warm(par::threads().min(service::WARM_CONNS));
     par::warm();
     say("ready");
     wait_go()?;
@@ -405,6 +429,7 @@ fn cmd_leaf(dir: &Path) -> Result<(), String> {
     let p = leaf_signed(&circ, &svc, &s, n)?;
     let f = to_file(&p);
     write(&dir.join("proof.bin"), &f)?;
+    warn_caps("leaf proof.bin", &f);
     say("done");
     note!("leaf request {:.4}s {}", t.elapsed().as_secs_f64(), file_summary(&f, &p));
     Ok(())
@@ -428,8 +453,8 @@ fn cmd_node(dir: &Path) -> Result<(), String> {
         sign0 = t.elapsed().as_secs_f64();
         s
     };
-    // the bundle straight from the files (written as it is made); the plain node (`n = 0`, mixed
-    // σ0) through `make::node`
+    // the bundle straight from the files (written as it is made); the plain node (`n = 0` or
+    // `n > 2^12`, D-6; mixed σ0) through `make::node`
     let out = dir.join("proof.bin");
     let f = match make::node_files(&svc, &c1, &v1, &c2, &v2, sigma0, &out, &mut cost)? {
         Some(f) => f,
@@ -441,6 +466,7 @@ fn cmd_node(dir: &Path) -> Result<(), String> {
         }
     };
     let t_made = t.elapsed().as_secs_f64();
+    warn_caps("node proof.bin", &f);
     say("done");
     note!(
         "node request {:.4}s (read+parse {t_read:.4}s, build+write {:.4}s incl. SIGN [] {sign0:.4}s, SIGN {:.4}s, rest {:.4}s) {}",
@@ -576,6 +602,7 @@ fn run(mut args: Vec<String>) -> Result<ExitCode, String> {
             let svc = service()?;
             let p = leaf_signed(&Circuit::build(), &svc, &s, n)?;
             let f = to_file(&p);
+            warn_caps(out, &f);
             write(Path::new(out), &f)?;
             println!("{} {}", hex(&leaf_stmt(&chain_end(&s, n), n)), file_summary(&f, &p));
             ok
@@ -592,7 +619,7 @@ fn run(mut args: Vec<String>) -> Result<ExitCode, String> {
             println!("oracle={ospec} n={n} threads={} clmul={}", par::threads(), field::clmul_on());
             if ospec == "service" {
                 let svc = service()?;
-                svc.warm(par::threads());
+                svc.warm(par::threads().min(service::WARM_CONNS));
                 for k in 0..reps {
                     let t = Instant::now();
                     let mut cost = make::LeafCost::default();
@@ -788,8 +815,43 @@ mod tests {
         bad.pi.pop();
         assert!(acc(&circ, &vk, &c, &bad).is_err());
         // n = 0: the 80-byte header
-        let p0 = Signed { pi: prover::leaf_header(&s, 0, &s), tr: vec![], sig: s0 };
+        let p0 = Signed { pi: prover::leaf_header(&s, 0, &s), tr: vec![], sig: s0.clone() };
         assert_eq!(acc(&circ, &vk, &leaf_stmt(&s, 0), &p0), Ok(()));
+        // D-6: a clear leaf of 2^12 steps is accepted, of 2^12 + 1 rejected (true statement)
+        let clear = |n: u64| Signed { pi: format::encode(&format::Wit::Leaf { s, n }), tr: vec![], sig: s0.clone() };
+        let c4096 = leaf_stmt(&chain_end(&s, 4096), 4096);
+        assert_eq!(acc(&circ, &vk, &c4096, &clear(4096)), Ok(()));
+        let c4097 = leaf_stmt(&chain_end(&s, 4097), 4097);
+        assert_eq!(acc(&circ, &vk, &c4097, &clear(4097)), Err("C: n > 2^12 (D-6)".into()));
+    }
+
+    /// D-6 in the bundle branch and in the prover; the trace-length cap `qV` of `acc`.
+    #[test]
+    fn caps_d6_and_qv() {
+        let circ = Circuit::build();
+        let (vk, s0) = toy_sign(9, &trace_digest(&[]));
+        let (s1, s2) = (start(1), start(2));
+        let (n1, n2) = (5000u64, 16u64);
+        let (c1, c2) = (leaf_stmt(&chain_end(&s1, n1), n1), leaf_stmt(&chain_end(&s2, n2), n2));
+        let slot = |s: Digest, n: u64| Box::new(Signed { pi: format::encode(&format::Wit::Leaf { s, n }), tr: vec![], sig: s0.clone() });
+        let w = format::Wit::Node { c1, c2, p1: slot(s1, n1), p2: slot(s2, n2) };
+        let mut pi = format::encode(&w);
+        pi.extend_from_slice(&[0u8; 1000]);
+        let p = Signed { pi, tr: vec![], sig: s0.clone() };
+        assert_eq!(make::kind(&p.pi), "B");
+        let e = acc(&circ, &vk, &node_stmt(&c1, &c2), &p).unwrap_err();
+        assert!(e.contains("2^12"), "{e}");
+        // the prover does not bundle a leaf above 2^12 (it would make the plain node)
+        let mut big = prover::leaf_header(&s1, n1, &chain_end(&s1, n1));
+        big.extend_from_slice(&[0u8; 64]);
+        let pl = Signed { pi: big, tr: vec![], sig: s0.clone() };
+        assert_eq!(make::kind(&pl.pi), "L");
+        assert!(child(&c1, &pl).is_none());
+        // a trace of 2^16 + 1 entries is rejected before anything else
+        let tr: oracle::Trace = (0..(1 << 16) + 1).map(|_| (vec![], [0u8; 32])).collect();
+        let (vk2, q) = toy(vec![0u8; 48], tr);
+        let e = acc(&circ, &vk2, &c1, &q).unwrap_err();
+        assert!(e.contains("qV"), "{e}");
     }
 
     /// The smoke shape r = 2, n = 16 under the keyed oracle and the toy key: leaves, level-1

@@ -52,3 +52,17 @@ Short running notes so a successor can continue. Logs under `logs/f2/` (gitignor
   all green (`logs/f2/run-all.log`); previous run's logs in `logs/f2/prev/`.
 - Stream links within proofCap: 5 at n_f = 16, 1 at 1024, 0 at 4096 (`logs/f2/links-n*.log`).
 - RESULT written: `F2-prover-RESULT.md`.
+
+## 2026-10-23, fix pass (review F2-prover-review.md; on top of golf f2f2bf6)
+- F2-M1: RESULT §3.5 placeholders replaced (root / stream node 2 runs unfinished at the restart,
+  node 4 stopped at 701 s, the trace-answer-mid canary rejected); nested bundles closed by citing
+  F3 §3 (real badge: r = 2 root, stream nodes 2–4 accepted; 69 + 18 + 29 canaries rejected).
+- Core ea2e8ab: native acc checks tr.len() ≤ qV = 2^16 after the size cap. D-6: native V caps C
+  and bundled leaves at n ≤ 2^12 (acc::CLEAR_CAP); make::child/split refuse such leaves → plain N.
+- m2: prover/rust-toolchain.toml (1.99.0); build-asm.sh runs cargo from the crate dir; same .s with
+  and without the pin. m5: warn_caps on stderr before writing an output; local fatal for an FS
+  query > queryCap and a SIGN above the service caps. m6: MAX_CONNS 32, WARM_CONNS 16.
+- m1, m3, m4, m7, m8: RESULT text (links re-measured with the final binary: 5 / 1 / 0).
+- prover.s 9,238,056 B sha256 7a30e654…; binary fecda6a0…; 3 identical builds; cargo test 32 pass;
+  KAT vs v3, selftest (tree, stream, keyed-kat, sizes, n = 0), links: all as expected
+  (`logs/f2/fix/run.log`).

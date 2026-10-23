@@ -24,16 +24,17 @@ work=$(cd "$work" && pwd)
 export CARGO_TARGET_DIR="$work/target"
 raw="$work/raw.s"
 rm -f "$raw"
-cargo rustc --manifest-path "$here/Cargo.toml" --release --offline --locked --bin spartan-srom-prover \
+# run from this directory so that rustup takes the toolchain of `rust-toolchain.toml` (1.99.0)
+(cd "$here" && cargo rustc --manifest-path "$here/Cargo.toml" --release --offline --locked --bin spartan-srom-prover \
   --config 'profile.release.lto="fat"' --config 'profile.release.codegen-units=1' \
   --config 'profile.release.panic="abort"' --config 'profile.release.debug=false' \
   --config 'profile.release.incremental=false' \
   -- --emit "asm=$raw" -C target-cpu=x86-64-v2 -C llvm-args=-align-all-functions=4 \
-  --remap-path-prefix "$here=spartan-srom/prover" --remap-path-prefix "$HOME=~"
+  --remap-path-prefix "$here=spartan-srom/prover" --remap-path-prefix "$HOME=~")
 # cargo skips rustc when the crate is fresh: then rebuild from a clean target directory
 if [ ! -s "$raw" ]; then
   [ -z "${BUILD_ASM_RETRY:-}" ] || { echo "build-asm: rustc wrote no assembly" >&2; exit 1; }
-  cargo clean --release --manifest-path "$here/Cargo.toml"
+  (cd "$here" && cargo clean --release --manifest-path "$here/Cargo.toml")
   BUILD_ASM_RETRY=1 exec "$0" "$@"
 fi
 python3 -I "$here/sanitize-asm.py" "$raw" "$here/prover.s"

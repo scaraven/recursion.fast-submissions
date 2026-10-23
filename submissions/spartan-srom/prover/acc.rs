@@ -3,20 +3,27 @@
 //! `acc` is the only binding check; this one makes the same decisions on the proofs this prover
 //! writes and on their canaries.
 //!
-//! `acc vk c p`: `|π| ≤ proofCap`, every `|q| ≤ queryCap`, `SigOk vk (traceDigest tr) σ`, and `V vk c
-//! π` run against the trace (`oracle::Seq`) asks exactly the trace's queries and returns true.
-//! `V` decides the branch from `π` before any query: `L` (tag 0, `|π| > 48`), `C` (tag 0,
-//! `|π| = 48`), `N` (`π` is exactly `encode` of a node), `B` (`encode W` a strict prefix).
+//! `acc vk c p`: `|π| ≤ proofCap`, at most `qV = 2^16` trace entries (core `ea2e8ab`), every
+//! `|q| ≤ queryCap`, `SigOk vk (traceDigest tr) σ`, and `V vk c π` run against the trace
+//! (`oracle::Seq`) asks exactly the trace's queries and returns true. `V` decides the branch from
+//! `π` before any query: `L` (tag 0, `|π| > 48`), `C` (tag 0, `|π| = 48`, `n ≤ 2^12`), `N` (`π` is
+//! exactly `encode` of a node), `B` (`encode W` a strict prefix, every bundled `1 ≤ n ≤ 2^12`).
 
 use crate::blake2s::{chain_end, leaf_stmt, node_stmt, Digest};
-use crate::chain::{leaf_size, Shape, CHAIN_CAP, T_COLS};
+use crate::chain::{leaf_size, Shape, T_COLS};
 use crate::circuit::Circuit;
 use crate::format::{decode, encode, sig_ok, trace_digest, Sig, Signed, Wit, PROOF_CAP, QUERY_CAP};
 use crate::oracle::{Oracle, Seq};
 use crate::verifier::{check_leaf, verify_snark, word0};
 
-/// The bundle's static query cap: `Σ_j qBound (kap n_j) ≤ 2^16` (`qV`).
+/// `qV = 2^16`: the entry's query bound, the cap on a trace's length in `acc` (core `ea2e8ab`) and
+/// the bundle's static cap `Σ_j qBound (kap n_j) ≤ 2^16`.
 pub const Q_V: u64 = 1 << 16;
+
+/// **The longest chain a clear or bundled leaf may claim** (blueprint D-6, the Lean `clearCap`):
+/// `2^12` steps. No SNARK leaf above it fits `proofCap` (`leafSize 4096 = 796,111 ≤ 2^20 <
+/// leafSize 8192`), so no accepted proof is lost.
+pub const CLEAR_CAP: u64 = 1 << 12;
 
 /// v3's exact per-leaf query bound `qBound κ` (`SpartanChainVerifier.lean`):
 /// `1 + (2 + rows) + (5 ℓ_y + 9 + 2 ℓ_q) + (1 + ⌈t/cnt⌉ + t (1 + ℓ_N))`.
@@ -74,8 +81,8 @@ pub fn v(circ: &Circuit, vk: &Digest, o: &dyn Oracle, c: &Digest, pi: &[u8]) -> 
         Some(0) if pi.len() == 48 => {
             let s: Digest = pi[8..40].try_into().unwrap();
             let n = u64::from_le_bytes(pi[40..48].try_into().unwrap());
-            if n > CHAIN_CAP {
-                return Err("C: n > chainCap".into());
+            if n > CLEAR_CAP {
+                return Err("C: n > 2^12 (D-6)".into());
             }
             return if *c == leaf_stmt(&chain_end(&s, n), n) { Ok(()) } else { Err("C: statement".into()) };
         }
@@ -105,8 +112,8 @@ pub fn v(circ: &Circuit, vk: &Digest, o: &dyn Oracle, c: &Digest, pi: &[u8]) -> 
     if !sig_ok(vk, &trace_digest(&[]), sigma0) {
         return Err("B: σ0 is not a signature of the empty trace".into());
     }
-    if leaves.iter().any(|l| l.n == 0 || l.n > CHAIN_CAP) {
-        return Err("B: a bundled leaf has n = 0 or n > chainCap".into());
+    if leaves.iter().any(|l| l.n == 0 || l.n > CLEAR_CAP) {
+        return Err("B: a bundled leaf has n = 0 or n > 2^12 (D-6)".into());
     }
     let t = &pi[used..];
     let want: usize = leaves.iter().map(|l| 32 + leaf_size(l.n) - 80).sum();
@@ -134,6 +141,9 @@ pub fn v(circ: &Circuit, vk: &Digest, o: &dyn Oracle, c: &Digest, pi: &[u8]) -> 
 pub fn acc(circ: &Circuit, vk: &Digest, c: &Digest, p: &Signed) -> Result<(), String> {
     if p.pi.len() > PROOF_CAP {
         return Err(format!("|π| = {} > proofCap", p.pi.len()));
+    }
+    if p.tr.len() as u64 > Q_V {
+        return Err(format!("{} trace entries > qV = 2^16", p.tr.len()));
     }
     if p.tr.iter().any(|(q, _)| q.len() > QUERY_CAP) {
         return Err("a query above queryCap".into());

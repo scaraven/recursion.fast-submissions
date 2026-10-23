@@ -23,8 +23,12 @@ pub const OP_VK: u8 = 3;
 pub const BODY_CAP: usize = 1 << 24;
 pub const QUERY_CAP: usize = 1 << 20;
 pub const SIGN_ITEMS_CAP: usize = 1 << 16;
-/// Connections this client opens at most (the service's cap is 64).
-pub const MAX_CONNS: usize = 60;
+/// Connections this client's pool opens at most (the service's cap is 64; `ask` keeps one more).
+/// Beyond about 16 there is no gain, since the service computes on the same CPUs; 32 leaves room
+/// for the sockets of a previous request that are still closing (review F2-m6).
+pub const MAX_CONNS: usize = 32;
+/// Connections opened before `ready` (`warm`).
+pub const WARM_CONNS: usize = 16;
 /// A `QUERY` batch: at most this many items and about this many body bytes.
 pub const BATCH_ITEMS: usize = 4096;
 pub const BATCH_BYTES: usize = 4 << 20;
@@ -193,6 +197,14 @@ impl Service {
     /// Send a `SIGN` of the `count` items in `req[16..]` (each `len:u32 ‖ q`), without waiting for
     /// the answer (`sign_finish`), so the caller can work while the service hashes.
     pub fn sign_start(&self, req: &mut [u8], count: usize) -> UnixStream {
+        // the service would refuse these (`CAP`) and close the connection; say why here
+        if req.len() - 16 > BODY_CAP || count > SIGN_ITEMS_CAP {
+            fatal(&format!(
+                "SIGN of {count} queries ({} body bytes) is above the service's caps ({SIGN_ITEMS_CAP} items, \
+                 {BODY_CAP} bytes): this trace cannot be signed",
+                req.len() - 16
+            ));
+        }
         let mut conn = self.take();
         Self::send(&mut conn, OP_SIGN, count, req);
         conn
@@ -244,6 +256,12 @@ impl Oracle for Service {
     /// polled, so the answer is taken as soon as it is written (the prover has nothing else to do
     /// meanwhile); the poll yields the CPU after a short spin.
     fn ask(&self, q: &[u8]) -> Digest {
+        if q.len() > QUERY_CAP {
+            fatal(&format!(
+                "a Fiat–Shamir query of {} bytes is above queryCap = {QUERY_CAP} (the service refuses it)",
+                q.len()
+            ));
+        }
         let mut req = Vec::with_capacity(20 + q.len());
         req.resize(16, 0);
         Self::push_item(&mut req, q);
