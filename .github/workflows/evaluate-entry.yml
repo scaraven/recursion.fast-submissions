@@ -64,14 +64,14 @@ jobs:
   evaluate:
     needs: select
     # the organiser's workflow, pinned by commit (moved only with a contract change, in its own commit)
-    uses: scaraven/recursion.fast/.github/workflows/evaluate.yml@a874f874d08aa26c76c070eb25dd05b4080d4af3
+    uses: scaraven/recursion.fast/.github/workflows/evaluate.yml@ea2e8ababfcd04199521ba92986d3b51bb89cedc
     permissions: { contents: read, id-token: write, attestations: write }
     with:
       entry_repo: ${{ github.repository }}
       entry_sha: ${{ needs.select.outputs.sha }}
       entry_path: ${{ needs.select.outputs.root }}
       pr_ref: ${{ needs.select.outputs.ref }}
-      core_ref: a874f874d08aa26c76c070eb25dd05b4080d4af3
+      core_ref: ea2e8ababfcd04199521ba92986d3b51bb89cedc
       split: ${{ github.event_name != 'workflow_dispatch' || inputs.split }}
 
   report:
