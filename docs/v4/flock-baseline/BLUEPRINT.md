@@ -107,9 +107,12 @@ proofs (`L`, `C`) decode to `.leaf s n`; `N` and `B` to their node witness.
   apply.
 - **Completeness** §3. **Computes**: the library's. **Caps**: `ε = 2^-129 ≤ errorCap`, `δ = 0`,
   `qV = 2^16`, the library's fuel and program.
-- The challenge/claim format and the solution module follow the core's stage-B tooling (gate,
-  claim renderer) once it exists; until then the certificate is the theorem
-  `SpartanSrom.certificate : Certificate submission`.
+- **Layout** (stage B's `harness/evaluate.py`): `claim.json` (keys `error`, `completeness_error`
+  as `"a/b"` strings, `qV`, `fuel_base`, `fuel_per_word` as integers; here `"1/2^129"` written out,
+  `"0"`, `65536`, `0`, `8`), the Lean sources flat in `lean/` (module `Foo` is `lean/Foo.lean`),
+  `lean/Solution.lean` defining `RecursionFast.Challenge.submission` and proving
+  `RecursionFast.Challenge.certified : CertificateR declared submission` against the challenge
+  rendered from `claim.json`; `prover/*.s` and the prover's source beside it.
 
 ## 6. Controls (positive and negative, kernel-checked; no hash evaluated beyond a few)
 
