@@ -63,8 +63,9 @@ HoldsE C E z := ∀ k, (A z)_k · (B z)_k = z_k + E_k.
   `h_in(0) = h0` (`hstart`), links `h_out(i) = h_in(i + 1)` (`hl`, bitwise) and zero padding past
   `L` bytes (`Padded`) carry `blake2sDigest (streamBytes w L)` at the last block's `h_out`;
   `Stream.stream_traceDigest`: equal to `traceDigest tr` when the slots hold `0x54 ‖ traceBytes tr`.
-- `Stream.item_aligned`: with the first query `≡ 7 mod 16` (7-byte seed tag) and the others
-  `≡ 8 mod 16`, every item after the first starts at an offset `≡ 0 mod 16` of the hashed stream;
+- `Stream.item_aligned`: with the first query `≡ 7 mod 16` and the others `≡ 8 mod 16`, every
+  item after the first starts at an offset `≡ 0 mod 16` of the hashed stream (item starts only;
+  payload and answer offsets need A.2's tag lengths, which it does not state; S-E1-m1);
   `Stream.elem_slot`: stream element `e` is message slot `4 + e mod 4` of block `⌊e/4⌋`.
 - **`Leaf.leaf_sound`**:
 
@@ -131,7 +132,7 @@ compression of the contract's spec function) costs 1.7 s.
 | `Block.zero_holds` + `Block.zero_not_holdsE`, `Chain.zero_control`, `Stream.zero_control` | negative (BP-C-M5) | **the all-zero block (`one = 0`) satisfies the circuit's R1CS but not the block R1CS with the target**: the target is what excludes it |
 | `Leaf.zero_table_control` | negative (BP-C-M5, leaf level) | the all-zero one-block table with `s = h = 0` has `0`/`1` entries, satisfies the circuit's R1CS and `ChainLinks`, yet `chainEnd 0 1 ≠ 0`; it fails `hE`, so `leaf_sound` would be false without the target |
 | `Leaf.leaf_complete` | positive (non-vacuity) | the honest table meets every hypothesis of `leaf_sound`, for every `s` and `n ≥ 1` |
-| `Stream.stream_complete` | positive (non-vacuity) | for every byte string `B`, the honest blocks meet every hypothesis of `stream_sound` (and hold `B`); with `|B| = 41` and `|B| = 65` this covers `hashStmt`'s `(41, final)`, `(64, ¬final)`, `(65, final)` targets |
+| `Stream.stream_complete` | positive (non-vacuity) | for every byte string `B`, the honest blocks meet every hypothesis of `stream_sound` (and hold `B`); with `|B| = 41` and `|B| = 65` this produces the slot-8 values `(41, final)`, `(64, ¬final)`, `(65, final)`, but not `hashStmt`'s other pins (`h_in = h0`, the constant bytes): those are the kinds of the fix pass (`Kind.block_complete`; S-E1-m3) |
 | `Chain.block_complete`, `Block.holdsE_complete`, `blake2s_complete` | positive | the honest block satisfies each R1CS |
 
 `walk_eq_sum`/`walkE_eq_sum` are equalities of definitions (no control needed beyond the proof);
@@ -175,3 +176,98 @@ the walk's row weights are arbitrary.
    intervals). S-0/S-E2 to decide.
 3. `item_aligned` assumes the query sizes `≡ 7` (first) and `≡ 8 mod 16`; `FRFormat`/`FRVIRSpec`
    must provide these facts for the shapes' item sequences.
+
+## Fix pass
+
+After the review (`reviews/S-E1-review.md`: Lean accepted, two majors resolved in the blueprint,
+revisions 3.3–3.4) and the golf (`reviews/S-E1-golf.md`, committed in `fdf78fa`). Started from the
+golfed files.
+
+### What changed
+
+**New module `FRBlockKinds`** (230 code lines, 376 total). It holds A.6's per-kind targets (S-E1-M1, S-E1-M2):
+
+- **`Kind`**: `h_in` pinned to `h0` or free, pinned message bytes `msgPin`, counter `t`, final flag
+  `fin`. `Kind.target` is the public target: `(0,0)` rows at the pins, `E` = the pinned bits.
+  - `Kind.target_ok`: the target pins only inputs and `one`.
+  - Generic lemmas: `Kind.block_sound`, `Kind.hIn_eq_h0`, `Kind.msgByte_eq`, `Kind.block_complete`
+    (the honest block of any free `h_in` and free message bytes).
+- **A.6's kinds:**
+
+  | kind | `h0` | pinned message bytes | `t` | final |
+  |---|---|---|---|---|
+  | `streamKind t fin` | no | — | `t` | `fin` |
+  | `streamStart` | yes | — | 64 | no |
+  | `streamEnd41` | no | `41…63 = 0` | 4,265 | yes |
+  | `hashA` | yes | `0 = 0x4C`, `41…63 = 0` | 41 | yes |
+  | `hashB1 tag` | yes | `0 = tag` | 64 | no |
+  | `hashB2` | no | `1…63 = 0` | 65 | yes |
+  | `w43 i s` | yes | `0 = 0x57`, `9 = i`, `10 = s`, `43…63 = 0` | 43 | yes |
+
+  - `chain` is `Chain.chainTarget` (unchanged).
+  - `stream` is `Stream.blockTarget t fin`, and `streamKind_target` proves it equal to
+    `(streamKind t fin).target`.
+  - The pinned positions match A.6's table: `hashA`/`streamEnd41` `840…1023`, `hashB2` `520…1023`,
+    `w43` `584…599` and `856…1023`.
+- **Multi-block lemmas:**
+  - `one_block_sound`: a fresh single block (`h0`, `t = L ≤ 64`, final, zeros from byte `L`) outputs
+    `blake2sDigest` of its first `L` message bytes.
+  - `two_block_sound`: a fresh first block (`t = 64`, not final) linked to a final second block
+    (`t = L ∈ [65,128]`) outputs `blake2sDigest` of `msg₁ ++ msg₂.take (L − 64)`.
+- **For `hashStmt`:**
+  - `hashA_sound`: `out_A = blake2sDigest ((msgBytes A).take 41)` and A's message byte 0 is
+    `tagLeaf`.
+  - `hashA_leafStmt`: given `(msgBytes A).take 41 = tagLeaf :: h ++ enc64 n`, `out_A = leafStmt h n`.
+  - `hashB_sound`: `out_B2 = blake2sDigest (msgBytes B1 ++ (msgBytes B2).take 1)` and B1's message
+    byte 0 is `tag`.
+  - `hashB_nodeStmt`: given those bytes equal `tagNode :: c₁ ++ c₂`, `out_B2 = nodeStmt c₁ c₂`.
+  - **`hashStmt_sound` itself stays with S-E2 (`FRWots`).** It needs the 8 element equalities with
+    `stmt` and the parse of `stmt` into `h`, `n`, `c₁`, `c₂` (`FRFormat`). The lemmas above are what
+    it composes.
+- **Dump (A.6 KAT):**
+  - `kindRows base tgt`: per position, the row of `A₀^kind`/`B₀^kind` and the `E` bit. It is pure
+    and compiled; the `base` argument keeps the circuit out of closed-term extraction.
+  - `kindRows_eq` (at `gateBase`, the rows are `blake2sCircuit.rowOf` with `(0,0)` at the pins) and
+    `blockR1CS_rows` (the matrices are those rows' forms) tie the dump to the proved matrices.
+  - `kindLine` formats one row; `allKinds` lists the 8 kinds with one sample block each
+    (`stream`: `t = 64`, not final; `w43`: `i = s = 0`).
+  - No `#eval` in the entry; S-0's tool calls these functions.
+
+**Minors:**
+- **m1:** `item_aligned`'s docstring and this RESULT are reworded to claim item starts only; the
+  lemma is unchanged.
+- **m2:** `one` is element 9; `FRBlockLayout`'s table column is now "element (128 bits)".
+- **m3:** reworded in §4.
+- **m4:** blueprint text, not my modules.
+- **m5:** skipped (optional; a compiled two-block stream KAT belongs in the dump tool).
+
+**Public statements S-E2 depends on are unchanged:** `blockR1CS`, `targetVal`, `HoldsE`, `TargetOk`,
+`holdsE_sound/complete`, `walkE_eq_sum`, `Chain.*`, `Stream.blockTarget`, `block_sound_gen`,
+`streamTarget`, `stream_sound`, `stream_traceDigest`, `Leaf.leaf_sound`, `ChainLinks`. Only
+docstrings changed in `FRBlockLayout` and `FRBlockStream`; everything else is additions in
+`FRBlockKinds`.
+
+### Checks (after the fix pass)
+
+- Build of the 11 modules: green. Source rule: 36 files, 0 findings.
+- Axioms: 54 declarations, the standard three at most (`logs/S-E1/axioms.log`,
+  `logs/S-E1/Axioms.lean`).
+- **Sequential kernel times** (`lake env lean -DElab.async=false --profile`, `taskset -c 11`,
+  `logs/S-E1/profile-seq-*.log`). These replace the asynchronous figures of §3, which were
+  inflated, as the golf report notes.
+
+  | Module | kernel | wall |
+  |---|---|---|
+  | `FRBlake2sCircuit` | 0.15 s | 8.2 s |
+  | `FRBlake2sWords` | 1.17 s | 12.7 s |
+  | `FRBlake2sCompress` | 1.00 s | 17.1 s |
+  | `FRBlake2sGeneric` | 0.40 s | 13.3 s |
+  | `FRBlake2sWalk` | 0.06 s | 6.3 s |
+  | `FRBlake2sWitness` | 0.13 s | 6.2 s |
+  | **BLAKE2s subtotal** | **2.9 s** | |
+  | `FRBlockLayout` | 1.11 s | 11.5 s |
+  | `FRBlockChain` | 2.23 s (1.5 s of it is `chainStep_zero_kat`) | 8.8 s |
+  | `FRBlockStream` | 0.89 s | 8.4 s |
+  | `FRBlockKinds` (new) | 0.68 s | 8.6 s |
+  | `FRLeafCircuit` | 0.08 s | 5.7 s |
+  | **total** | **7.9 s** | 106.9 s (each wall includes ≈ 2.5 s of import) |

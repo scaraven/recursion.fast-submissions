@@ -63,3 +63,13 @@ Stage S-E, first half: the BLAKE2s circuit modules and the leaf circuit. Build t
 - Clean build 74 s wall (lake parallel); kernel 28.3 s over the ten modules, 17.9 s for the six
   BLAKE2s modules (single core profile). Axioms: 40 declarations, standard three at most. Source
   rule: 0 findings. No name clash with the field modules (scratch import of all).
+
+## Fix pass (revision 3.4, after review and golf)
+
+- New `FRBlockKinds`: the `Kind` shape, the generic block lemmas, A.6's kinds (except `chain`,
+  which stays `Chain.chainTarget`), one- and two-block hash lemmas, the `hashStmt` block lemmas, and
+  the `kindRows` dump. Dropped an attempt to prove `chainKind.target = chainTarget` (the
+  simp/split hit max recursion); the `chain` kind is `chainTarget` directly.
+- Trap: `congr 2` on `compress … = compress …` with numerals (`64 * (0 + 1)`) hit max recursion
+  and a whnf timeout; rewriting with `block_congr (l := …) (l' := …)` instead closes it.
+- Sequential kernel time (`-DElab.async=false`): 7.9 s over the 11 modules.
