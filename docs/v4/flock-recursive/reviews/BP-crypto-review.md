@@ -463,3 +463,114 @@ positions) and R2-M4 (batch the pattern claims) are each a few lines of the blue
 no module boundary, no budget beyond R2-m1/m3's recount, and no theorem shape except the `I1`
 row's lemma and `node_sound`'s selector hypothesis. With those applied, and the minors folded into
 S-0's `sizes.py` re-run, the tracks can fork.
+
+---
+
+## Round 3
+
+Reviewed: `BLUEPRINT.md` revision 3 (`0d513c9`), §10 "Fix pass 2", Appendix A.1–A.8, `sizes.txt`.
+
+### Verdict per round-2 finding
+
+| Finding | Verdict | Note |
+|---|---|---|
+| BP-C-R2-M1 | **partly closed** | Three-way selector, selector-linear constants and patterns, one item sequence: the construction is right. Its one-hot enforcement is wrong in characteristic 2 (R3-M1). |
+| BP-C-R2-M2 | **closed** | `W` copy capped by `t`; `BoundsOk` holds on any well-formed tape (`⌈|π|/8⌉ ≤ t`), so `final` covers `W` proofs of any size. |
+| BP-C-R2-M3 | **closed** | Every index opened; items, `piSize`, `reassemble` constant. |
+| BP-C-R2-M4 | **partly closed** | One sumcheck instead of a union of claims; but the fixed-constant batching is unsound for slot-valued claims (R3-M2). |
+| BP-C-R2-m1 … m5 | **closed** | Sh `m − 14 + 2` rounds; B2 `m − 6`; `evalL` templated; `invF` three rows; `hashStmt` from item 1. |
+
+### New findings
+
+#### BP-C-R3-M1. `Σ_κ s_κ = 1` does not make three Boolean bits one-hot in characteristic 2
+
+§4.3: "the selector `(s_L, s_P, s_N)` (three L bits): rows `Σ_κ s_κ = 1` and `kindElem = Σ_κ s_κ ·
+kindConst_κ`"; A.8: `assertOneHot` costs "1 linear". In F (characteristic 2) `1 + 1 + 1 = 1`, so
+`s = (1, 1, 1)` passes both the Booleanity rows and `Σ s_κ = 1`. The §5.6 control ("a two-hot
+assignment fails `Σ s = 1`") is true and misses this case.
+
+*Attack.* The adversary of `∀ vk` (holding `sk`) builds a slot whose trace is a forged `L32`
+trace with the header element replaced by `kindConst_L + kindConst_P + kindConst_N` (kind byte
+`0x4C ⊕ 0x50 ⊕ 0x4E = 0x52`, `m = 32 ⊕ 30 ⊕ 30 = 32`) and sets `s = (1,1,1)`. Activity selectors of
+ops active for two kinds (`s_L + s_P`, `s_P + s_N`) are `0`: those asserts are vacuous; ops active for
+one kind or for all three are enforced, with every kind-dependent constant replaced by the XOR of the
+three. The trace values are the adversary's (no oracle is involved in a committed child), so the
+remaining equalities are satisfiable, and the chain and WOTS blocks hash and sign whatever is
+committed. The rows hold, yet `FR.readSigned` returns a proof with kind byte `0x52`, `kindOf = none`,
+`V` returns `false`, `acc vk cᵢ pᵢ = false`: `node_sound` is false and `compile_mux_sound`'s
+hypothesis ("a one-hot selector") is not delivered by `Patterns`.
+
+*Fix.* Enforce one-hot with products: `s_L s_P = 0`, `s_L s_N = 0`, `s_P s_N = 0` and `Σ s_κ = 1`
+(Boolean bits, pairwise disjoint, sum one ⇒ exactly one); or encode the kind in two bits `(b₁, b₀)`
+with `b₁ b₀ = 0` and `s_L = (1+b₁)(1+b₀)`, `s_P = b₀(1+b₁)`, `s_N = b₁(1+b₀)` (one-hot by
+construction). `assertOneHot` becomes 3 product rows + 1 linear; add the negative control "a
+three-hot assignment fails".
+
+#### BP-C-R3-M2. The fixed-constant batching of the pattern sumcheck is unsound for slot-valued claims
+
+§4: "the differences `z − pat_j` are GF(2)-valued since the selectors are one-hot Boolean bits, so
+`Σ_j c_j d_j(i) ≠ 0` whenever some `d_j(i) ≠ 0`", with `c_j = x^j`. The argument holds when every
+`d_j(i) ∈ GF(2)`, i.e. for single-**bit** claims (`one`, the selector bits). For a **slot** claim
+(`h_in` 2 slots, slot 8's words, the padding slots, `P`'s 6 slots, the `Sel`-complement blocks)
+`d_j(i)` is the packed 128-bit difference, an arbitrary element of F, and `Σ_j x^j d_j(i)` is a
+linear map `F^J → F` that is never injective for `J ≥ 2`.
+
+*Attack.* Two claims `j₁, j₂` whose ranges share a block `i` (slot 8 and the padding slots of a
+chain's last block, say). Flip bit `a` of slot `s_{j₁}` (`d_{j₁}(i) = x^a`) and bit `a' = a + j₁ −
+j₂` of slot `s_{j₂}` (`d_{j₂}(i) = x^{a'}`): `x^{j₁} x^{a} + x^{j₂} x^{a'} = 0`. The batched summand
+vanishes at `i`, the sumcheck and its final check pass for every `θ`, and the block carries a
+wrong counter or flag word and a nonzero padding byte: its compression is not `traceDigest trᵢ`'s,
+so `SigOk` on the chain's output no longer gives `SigOk vk (traceDigest trᵢ) σᵢ`. (The `Sh`
+batching "by `1` and `y`" is **not** affected: the shift sumcheck sums over the 8 in-slot bit
+variables as well, so its summands are GF(2)-valued.)
+
+*Fix (either).* (a) Batch with a random coefficient: one squeeze `κ_pat` before `θ`, coefficients
+`κ_pat^j`, bad `≤ (J − 1)/2^128 ≤ 63/2^128 = 2^-122` (a new row I0); or (b) make the pattern
+sumcheck range over `(block, in-block position)` like `Sh` (16 + 7 bit variables and a univariate
+round over `S`), so every summand is one bit and the fixed `x^j` constants are sound (adds a
+univariate row at `127/2^128`, under `εR`). (a) is the smaller change; with it `J ≤ 64` is no longer
+a constraint. In both cases `pattern_sound`'s statement must say which differences are GF(2)-valued.
+
+#### BP-C-R3-m1. The slot-valued final claims are `f̂` claims, not `ẑ` claims
+
+§4: "`ẑ(r, s_j)` (one evaluation claim per distinct position set, batched in **B**)". For a slot
+`s_j` the value `z[blk i, s_j]` packed as an F element is `f[blk·128 + slot]`, a value of the packed
+polynomial `f`, not an evaluation of the quirky `ẑ` at a point (it is a GF(2)-linear functional over
+128 positions). Batch these in **B′** with the `f̂` claims (R and E), and the bit-valued ones
+(`one`, selectors) in **B**. The error rows do not change (B′ `≤ 4` claims becomes `≤ 10`:
+`9/2^128`).
+
+#### BP-C-R3-m2. B1's claim count
+
+B1 charges `≤ 12` claims. With the pattern sumcheck's per-position-set claims and the selector
+bits the count is a layout constant that may exceed 12; `batch_bad_le` should take the count from
+A.7 (`(J_B − 1)/2^128`; even 32 claims are `2^-123`).
+
+### Attacks that fail
+
+- **Kind mismatch under a genuine one-hot selector**: `kindElem = kindConst_κ` makes the
+  extracted proof's kind byte `κ`, `V` runs `gen κ`, and `compile_mux_sound` at `κ` gives exactly
+  `gen κ`'s asserts on this trace; claiming `'P'` for a node-shaped trace is just a `'P'` proof.
+- **Vacuous gated asserts**: with one-hot `s`, `a = Σ_{active} s_κ ∈ {0, 1}` and the inactive
+  kinds' asserts are those `gen κ` does not have; the ungated arithmetic rows are satisfiable for
+  any inputs (`invF` with three rows). No assert of the active kind is gated by another kind's
+  selector in the construction as written.
+- **Dummy items**: their payloads are asserted zero when the kind needs them (gated by `s_P +
+  s_N`, real steps for `L32`), which `runSeq` requires; their answers are unused by `V`, hashed by
+  `traceDigest`, and a fresh query with no phase for the potential (charge `0 + H`); `P30`'s
+  `Enc₄` over 16 K-elements with 12 zeros equals `Enc₄` over 4; the dummy Merkle query `0^64` is one
+  query repeated, which `runLog`, `runSeq` and `acc` all accept.
+- **The 'N' child's unconditional `evalM` replay**: its inputs are the child's E/Lr challenges
+  (real squeezes for every kind); asserts gated by `s_N`; the fixed point is cut by the one program.
+- **Error table**: S2 `18 × 3/2^128`, I2 `16 × 3/2^128`, B2 `24 × 2/2^128`, B1 `11/2^128`,
+  univariates `127/2^128` (Z2, L3, S3, B3); maximum `2^-120.36 + 2^-144 ≤ 15/2^124 = 2^-120.093`
+  unchanged; with R3-M2 (a) the new I0 row is `≤ 2^-122`. Counts: items 9,007, `piSize` 754,896,
+  blocks 53,792, M rows `2^19.86`: the sums check.
+
+### Overall verdict
+
+**Not ready to fork; two local fixes.** R3-M1 (three product rows or a two-bit selector) and
+R3-M2 (a random batching coefficient `κ_pat`, or the in-slot bits inside the pattern sumcheck) are
+each one paragraph of §4/§4.3/A.8 and one row of §5.2, and change no module boundary or budget
+beyond ≈ 6 rows per slot. After them, with the two minors folded into A.7/§5.2, the tracks can
+fork.
