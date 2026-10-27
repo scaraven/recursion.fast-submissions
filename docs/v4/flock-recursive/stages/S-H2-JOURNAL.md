@@ -100,3 +100,12 @@ Base: branch `v4/flock-recursive`, HEAD `53c2e13`. Build tree `logs/fr-build-SH2
       - the toy control needs `decide +kernel`.
 
     Profile: `FRXLookup` 33.6 s wall, type checking 2.56 s. Stopped before phase 3 (token budget).
+
+## Part 8
+
+20. Per the coordinator, the walks start from π's cap-0 entries, not from `c`. I removed
+    `lookCIR`, so `logIR := idxIR` (cost back to 2,592 + ⌊t/5⌋·11,871). `logIR_lookup` becomes
+    `idx_lookup`, parametric in the target. `cost lookIR = 6486`. Pitfall: a `set X := fun a =>
+    …` does not capture `rd s.M (memX + a)` in hypotheses stated pointwise. Restate them with `X`
+    (`hX₂'`) and pass `(X := X)` explicitly. Stopped before phase 3 (context long); handover in
+    RESULT Part 8.

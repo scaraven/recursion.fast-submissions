@@ -9,7 +9,8 @@ import FRLog
   `packBytes L[k].2`; the sort key of entry `k` is its answer then its position.
 * `bsStep`/`bsRun`: the pure lower-bound search; `bsRun_spec`: on a predicate that holds on a
   prefix of `[0, n)`, 64 halvings from `(0, n)` end at the prefix's length.
-* The machine simulation of `lookIR` and its specification against `FRLog.ansIdx` follow.
+* `lookIR_sem` (the machine runs `bsRun` and sets the found flag) and `idx_lookup`
+  (`lookup_spec`: after `idxIR`, any target's lookup finds its first preimage, `FRLog.ansIdx`).
 -/
 
 namespace FR.X
@@ -840,92 +841,55 @@ theorem lookIR_sem (I : Array Word) (s : St) (hM : Inv s.M) {n : ℕ} {T : List 
       rKa, rH]) x hx).trans (hH1 x hx)⟩
   rw [f1, hH1 _ (by simp only [regs, memX]; omega)]
 
-/-! ## The lookup of `c` after the log index -/
+/-! ## A lookup after the log index -/
 
-/-- The statement's words on the tape. -/
-theorem tape_c (c : Digest) (π : Proof) (L : Log) {w : ℕ} (hw : w < 4) :
-    (extractorInput c π L).getD w 0 = (packBytes c.toList).getD w 0 := by
-  rw [tape_eq, List.append_assoc, List.append_assoc, List.getD_eq_getElem?_getD,
-    List.getElem?_append_left (by rw [packBytes_digest_length]; omega),
-    ← List.getD_eq_getElem?_getD]
-
-theorem list4 (A : List Word) (hA : A.length = 4) :
-    A = [A.getD 0 0, A.getD 1 0, A.getD 2 0, A.getD 3 0] := by
-  match A, hA with
-  | [_, _, _, _], _ => rfl
-
-/-- The four reads of `c` into `rQ0 … rQ3`. -/
-def readsC : XIR := .seq (readAt rQ0 0) (.seq (readAt rQ1 1) (.seq (readAt rQ2 2) (readAt rQ3 3)))
-
-theorem lookCIR_eq : lookCIR = .seq readsC lookIR := rfl
-
-theorem readsC_sem (I : Array Word) (s : St) (hM : Inv s.M) :
-    [rd (semXIR I readsC s).M rQ0, rd (semXIR I readsC s).M rQ1, rd (semXIR I readsC s).M rQ2,
-      rd (semXIR I readsC s).M rQ3] = [I.getD 0 0, I.getD 1 0, I.getD 2 0, I.getD 3 0] := by
-  have hs := hM.1
-  simp only [regs] at hs
-  simp only [readsC, readAt, semXIR, runPrims, List.foldl, Prim.run]
-  simp (disch := first | decide | (simp only [size_set, rA, rQ0, rQ1, rQ2, rQ3]; omega)) only
-    [rd_set_self, rd_set_ne]
-  rfl
-
-/-- **`lookup_spec` for `c`**: after `logIR` on a domain tape of a SNARK proof, if `c` is the
-answer of some log entry, `rFd = 1` and `rLo` is a slot `b` whose `X[b]` is the tape position of
-the **first** such entry (`FRLog.ansIdx`); otherwise `rFd = 0`. `X` still holds the sorted
-index. -/
-theorem logIR_lookup (c : Digest) (π : Proof) (L : Log) (hs : π.size = piSize)
+/-- **`lookup_spec`**, parametric in the target `t`. On a domain tape of a SNARK proof, take a
+state `s₂` whose `X[0..|L|)` is the one `idxIR` left and whose `rQ0 … rQ3` hold
+`packBytes t`. If `t` is the answer of some log entry, `lookIR` sets `rFd = 1` and `rLo` to a
+slot `b` whose `X[b]` is the tape position of the **first** such entry (`FRLog.ansIdx`);
+otherwise `rFd = 0`. `X` is unchanged, so it is still the sorted index. -/
+theorem idx_lookup (c : Digest) (π : Proof) (L : Log) (hs : π.size = piSize)
     (hq : ∀ e ∈ L, e.1.size < 2 ^ 64) (ht : (extractorInput c π L).length ≤ 2 ^ 64)
-    (s : St) (hM : Inv s.M) (hsz : memX + L.length + L.length ≤ s.M.size) :
-    (∀ k, FR.Snd.ansIdx L c = some k → ∃ b < L.length,
-      rd (semXIR (extractorInput c π L).toArray logIR s).M rLo = toWord b ∧
-      rd (semXIR (extractorInput c π L).toArray logIR s).M rFd = 1 ∧
-      rd (semXIR (extractorInput c π L).toArray logIR s).M (memX + b) = toWord (posE L k)) ∧
-    (FR.Snd.ansIdx L c = none → rd (semXIR (extractorInput c π L).toArray logIR s).M rFd = 0) ∧
+    (s : St) (hM : Inv s.M) (hsz : memX + L.length + L.length ≤ s.M.size) (t : Digest)
+    (s₂ : St) (hM₂ : Inv s₂.M)
+    (hX₂ : ∀ a < L.length, rd s₂.M (memX + a) =
+      rd (semXIR (extractorInput c π L).toArray idxIR s).M (memX + a))
+    (hT : [rd s₂.M rQ0, rd s₂.M rQ1, rd s₂.M rQ2, rd s₂.M rQ3] = packBytes t.toList) :
+    (∀ k, FR.Snd.ansIdx L t = some k → ∃ b < L.length,
+      rd (semXIR (extractorInput c π L).toArray lookIR s₂).M rLo = toWord b ∧
+      rd (semXIR (extractorInput c π L).toArray lookIR s₂).M rFd = 1 ∧
+      rd (semXIR (extractorInput c π L).toArray lookIR s₂).M (memX + b) = toWord (posE L k)) ∧
+    (FR.Snd.ansIdx L t = none →
+      rd (semXIR (extractorInput c π L).toArray lookIR s₂).M rFd = 0) ∧
     Sorted (extractorInput c π L).toArray L
-      (fun a => rd (semXIR (extractorInput c π L).toArray logIR s).M (memX + a)) := by
+      (fun a => rd (semXIR (extractorInput c π L).toArray lookIR s₂).M (memX + a)) := by
   set I := (extractorInput c π L).toArray with hI
   have hend := tape_entries_end c π L hs
   have h5 : 5 * L.length ≤ entryOff L L.length := by
     have := length_logEntries L
     rwa [entries_length, ← entryOff_length] at this
   obtain ⟨r1, r2, r3⟩ := idxIR_sorted c π L hs hq ht s hM hsz
-  have hwf : WF idxIR := wf_logIR.1
-  have hM1 := inv_sem I hwf hM
-  rw [logIR, semXIR_seq, lookCIR_eq, semXIR_seq]
-  generalize semXIR I idxIR s = s1 at r1 r2 r3 hM1
+  generalize semXIR I idxIR s = s1 at r1 r2 r3 hX₂
   set X : ℕ → Word := fun a => rd s1.M (memX + a) with hXd
   have hSX : Sorted I L X := ⟨r1, r2, r3⟩
-  -- the target
-  have hT : [rd (semXIR I readsC s1).M rQ0, rd (semXIR I readsC s1).M rQ1,
-      rd (semXIR I readsC s1).M rQ2, rd (semXIR I readsC s1).M rQ3] = packBytes c.toList := by
-    rw [readsC_sem I s1 hM1, list4 (packBytes c.toList) (packBytes_digest_length c)]
-    simp only [hI, getD_toArray, tape_c c π L (show 0 < 4 by decide),
-      tape_c c π L (show 1 < 4 by decide), tape_c c π L (show 2 < 4 by decide),
-      tape_c c π L (show 3 < 4 by decide)]
-  have hwfR : WF readsC := by simp [readsC, readAt, WF, Prim.dst, rA, rQ0, rQ1, rQ2, rQ3]
-  have hH2 := hframe I readsC s1 (by simp [readsC, readAt, Lo, Prim.dst, regs, rA, rQ0, rQ1, rQ2,
-    rQ3])
-  have hM2 := inv_sem I hwfR hM1
-  generalize semXIR I readsC s1 = s2 at hT hH2 hM2
-  have hX2 : ∀ a < L.length, rd s2.M (memX + a) = X a := fun a _ =>
-    hH2 _ (by simp only [regs, memX]; omega)
-  obtain ⟨l1, l2, l3⟩ := lookIR_sem I s2 hM2 (n := L.length)
-    (by rw [hI, getD_toArray, tape_getD_posL c π L hs]) (by omega) hT hX2
-  obtain ⟨hmono, hpure⟩ := lookup_pure c π L hs hq ht hSX c
-  obtain ⟨b1, b2, b3⟩ := bsRun_spec (p := ltT I X (packBytes c.toList)) (n := L.length)
+  have hX₂' : ∀ a < L.length, rd s₂.M (memX + a) = X a := hX₂
+  obtain ⟨l1, l2, l3⟩ := lookIR_sem I s₂ hM₂ (n := L.length) (X := X)
+    (by rw [hI, getD_toArray, tape_getD_posL c π L hs]) (by omega) hT hX₂'
+  obtain ⟨hmono, hpure⟩ := lookup_pure c π L hs hq ht hSX t
+  obtain ⟨b1, b2, b3⟩ := bsRun_spec (p := ltT I X (packBytes t.toList)) (n := L.length)
     (by omega) hmono
   obtain ⟨hsome, hnone⟩ := hpure _ b1 b2 b3
-  have hXb : ∀ a < L.length, rd (semXIR I lookIR s2).M (memX + a) = X a := fun a ha => by
-    rw [l3 _ (by simp only [regs, memX]; omega), hX2 a ha]
+  have hXb : ∀ a < L.length, rd (semXIR I lookIR s₂).M (memX + a) = X a := fun a ha => by
+    rw [l3 _ (by simp only [regs, memX]; omega), hX₂' a ha]
   refine ⟨fun k hk => ?_, fun hk => ?_, ⟨fun a b hab hb => ?_, fun a ha => ?_, fun k hk => ?_⟩⟩
   · obtain ⟨hb, e⟩ := hsome k hk
     obtain ⟨hkl, hkc⟩ := FR.Snd.ansIdx_lt hk
     refine ⟨_, hb, l1, ?_, by rw [hXb _ hb, e]⟩
-    rw [l2, hX2 _ hb, e, ansW_entry c π L hs hq ht hkl, hkc]
+    rw [l2, hX₂' _ hb, e, ansW_entry c π L hs hq ht hkl, hkc]
     simp [hb, bW]
   · rw [l2]
-    by_cases hb : (bsRun (ltT I X (packBytes c.toList)) 64 (0, L.length)).1 < L.length
-    · rw [hX2 _ hb]
+    by_cases hb : (bsRun (ltT I X (packBytes t.toList)) 64 (0, L.length)).1 < L.length
+    · rw [hX₂' _ hb]
       have := hnone hk _ hb
       simp [hb, bW]
       exact this

@@ -650,3 +650,58 @@ the costs and every other module are unchanged.
 - no `sorry`;
 - the source rule is clean;
 - `computes` re-checks with the new `cost_logIR`.
+
+---
+
+## Part 8: the lookup made parametric; handover for phase 3
+
+The coordinator's answer was that the first-preimage walks do not start from `c`. They start from
+the cap-0 entries absorbed in π's cap field (A.3/A.4). This part acts on that.
+
+- **`FRXLog`.** The lookup of `c` (`lookCIR`) is removed. `logIR := idxIR` (walk and sort) again,
+  and `cost_logIR` is back to `2592 + ⌊t/5⌋ · 11871`.
+  - `lookIR` remains as a routine the later phases call with their own target in `rQ0 … rQ3`.
+  - Its cost is `cost lookIR t = 6486`, evaluated in a scratch file outside the entry (`#eval`).
+  - `decOk_logIR`, `computes` and `ext_caps` re-check.
+- **`FRXLookup`.** `logIR_lookup` (for `c`) is replaced by **`idx_lookup`**, which is parametric in
+  the target `t`. Take any state `s₂` whose `X[0..|L|)` is the one `idxIR` left and whose
+  `rQ0 … rQ3` hold `packBytes t`. Then `lookIR`:
+  - sets `rFd = 1` and `rLo = b` with `X[b] = posE L k` when `ansIdx L t = some k`;
+  - sets `rFd = 0` when `ansIdx L t = none`;
+  - and leaves `X` sorted.
+
+  `readsC`, `tape_c` and `list4` were removed with `lookCIR`.
+- **Checks.**
+  - **Axioms.** `idx_lookup` and `computes` depend on `propext, Classical.choice, Quot.sound`.
+  - **Source rule.** 65 files, 0 findings. No `sorry`.
+  - `FRXLookup` is 902 lines (762 code, 48 theorems). `FRXLog` is 331 lines (214 code).
+
+**Handover: phase 3, the ladder read.** It was not started: this agent's context is long. What the
+next agent needs:
+
+1. **Cap entries.** Read π's cap field from the tape (A.3/A.4): 512 cap-0 digests, each packed in
+   4 words at a fixed offset of π's region (tape words `5 …`). Load each into `rQ0 … rQ3` with
+   `input` from the computed offset; `readsC`'s pattern, removed in this part, did the same for
+   tape words 0–3.
+2. **The walk.** For each cap entry, do `lookIR`. `rFd = 1` gives `rLo = b` and `X[b]` = the
+   entry's tape position (`idx_lookup`). Its query is the node query
+   (`FRTranscriptDefs.nodeQ`/`frEnc`), and the children's digests sit in the query at fixed
+   offsets. Continue with those children down to the column leaves, a loop over depth with
+   lookups.
+   - **Cost.** Each lookup is 6,486 steps, so 512 × depth × 6,486 is about `2^22 ·` depth,
+     plus the reads. This goes into the constant term, which has `≈ 2^47.58` available
+     (Part 2).
+   - **Missing entries.** A missing entry (`rFd = 0`) must leave a defined value, as
+     `colL`'s reading does with its default.
+3. **`read_spec`.** The column store must equal `FRMerkle`'s `colL (frEnc 0)`, as used by S-G's
+   soundness (`wordOf`, `colL_take`). The proof per step is `idx_lookup` plus `FR.Snd.ansIdx`'s
+   definition (the first preimage), which is the reading `colL` uses.
+4. **Phases 4–5**: the agreement set, then the butterfly inverse NTT equal to `coeffsAt`
+   via `decode_row_D`.
+
+**Stopped here.** This agent's context is long. The state is commit-ready:
+
+- every `FRX*` module builds;
+- no `sorry`;
+- the source rule is clean;
+- `ext`'s SNARK branch is walk and sort, as at Part 6, with the proved lookup routine available.

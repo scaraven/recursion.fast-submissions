@@ -20,8 +20,8 @@ query's `⌈|q|/8⌉` packed words, then the answer (4 words) at `apos p = p + 1
   (`decOk_logIR`).
 
 * `lookIR`: the lower bound of a target answer `(rQ0 … rQ3)` in the sorted `X` (64 halvings),
-  `rFd := 1` iff found; `lookCIR` looks up the statement digest `c` (the first lookup).
-* `logIR := idxIR ; lookCIR` with `idxIR := walkIR ; sortIR`.
+  `rFd := 1` iff found: a routine for the later phases, parametric in the target.
+* `logIR := idxIR := walkIR ; sortIR`.
 
 Semantics: `FRXLogSpec` (walk), `FRXSortSim` (sort), `FRXLookup` (lookup).
 -/
@@ -200,29 +200,25 @@ def lookIR : XIR :=
   .seq (.seq (readAt rN posL) (.blk [.const rLo 0, .op .or rLn rN rN, .const rNB 64]))
     (.seq (.loopK rCB rNB 64 bsBody) foundIR)
 
-/-- The lookup of the statement digest `c` (tape words `0 … 3`): the first use of the lookup, the
-entry point of the first-preimage walks (phase 3). -/
-def lookCIR : XIR :=
-  .seq (.seq (readAt rQ0 0) (.seq (readAt rQ1 1) (.seq (readAt rQ2 2) (readAt rQ3 3)))) lookIR
-
 /-- Walk and sort. -/
 def idxIR : XIR := .seq walkIR sortIR
 
-/-- **The log index** (the SNARK branch so far): walk, sort, and the lookup of `c`. -/
-def logIR : XIR := .seq idxIR lookCIR
+/-- **The log index** (the SNARK branch so far): walk and sort. The lookup `lookIR` is a
+routine the later phases call with their own targets. -/
+def logIR : XIR := idxIR
 
 /-! ## Well formed, cost, size -/
 
 theorem wf_logIR : WF logIR := by
-  simp [logIR, idxIR, lookCIR, lookIR, bsBody, ansLtIR, cmpTWord, eqTWord, foundIR, rQ0, rQ1, rQ2,
+  simp [logIR, idxIR, lookIR, bsBody, ansLtIR, cmpTWord, eqTWord, foundIR, rQ0, rQ1, rQ2,
     rQ3, rLo, rLn, rHf, rMd, rCB, rNB, rFd, walkIR, walkPre, walkBody, sortIR, sortPre, passIR, passPre, swapPs, stepIR,
     blockIR, cmpIR, cmpWord, aposIR, ceil8Ps, minPs, readAt, WF, Writes, Prim.dst, List.mem_cons,
     List.mem_append, List.mem_nil_iff, rA, rN, rP, rXA, rQL, rT1, rT2, rKc, rCW, rW2, rSrc, rDst,
     rI, rIE, rJ, rJE, rKk, rAd, rX, rY, rPa, rPb, rKa, rKb, rF, rG, rH, rCP, rNP, rCS, rNS, rV,
     regs, cTmp, cOne]
 
-theorem cost_logIR (t : ℕ) : cost logIR t = 9095 + t / 5 * 11871 := by
-  simp only [logIR, idxIR, lookCIR, lookIR, bsBody, ansLtIR, cmpTWord, eqTWord, foundIR, walkIR,
+theorem cost_logIR (t : ℕ) : cost logIR t = 2592 + t / 5 * 11871 := by
+  simp only [logIR, idxIR, walkIR,
     walkPre, walkBody, sortIR, sortPre, passIR, passPre, swapPs, stepIR, blockIR, cmpIR, cmpWord,
     aposIR, ceil8Ps, minPs, readAt, cost, blkSteps, List.length_cons, List.length_nil,
     List.length_append, Aff.eval, Nat.one_mul]
@@ -230,13 +226,13 @@ theorem cost_logIR (t : ℕ) : cost logIR t = 9095 + t / 5 * 11871 := by
   omega
 
 theorem sizeIR_logIR : sizeIR logIR ≤ 2 ^ 19 := by
-  simp only [logIR, idxIR, lookCIR, lookIR, bsBody, ansLtIR, cmpTWord, eqTWord, foundIR, walkIR, walkPre, walkBody, sortIR, sortPre, passIR, passPre, swapPs, stepIR,
+  simp only [logIR, idxIR, walkIR, walkPre, walkBody, sortIR, sortPre, passIR, passPre, swapPs, stepIR,
     blockIR, cmpIR, cmpWord, aposIR, ceil8Ps, minPs, readAt, sizeIR, blkSteps, List.length_cons,
     List.length_nil, List.length_append]
   norm_num
 
 theorem outs_logIR (t : ℕ) : outs logIR t = 0 := by
-  simp [logIR, idxIR, lookCIR, lookIR, bsBody, ansLtIR, cmpTWord, eqTWord, foundIR, walkIR, walkPre, walkBody, sortIR, sortPre, passIR, passPre, swapPs, stepIR,
+  simp [logIR, idxIR, walkIR, walkPre, walkBody, sortIR, sortPre, passIR, passPre, swapPs, stepIR,
     blockIR, cmpIR, cmpWord, aposIR, readAt, outs]
 
 /-! ## Loop bounds -/
@@ -282,15 +278,13 @@ theorem safe_logIR {I : Array Word} {t : ℕ} (h : (I.getD posL 0).toNat ≤ t /
     fun p d hP hd s hM => by
       rw [rd_seq_readAt I p s hP hM hd (by simp only [posL]; omega)]
       simpa [Aff.eval] using h
-  refine .seq (.seq (.loopT (safe_of_noLoopT (by simp [walkPre, readAt, NoLoopT]))
+  refine .seq (.loopT (safe_of_noLoopT (by simp [walkPre, readAt, NoLoopT]))
     (hcnt _ rN (by simp [WF, Prim.dst, rP, rXA]) (by simp [rN, regs]))
     (safe_of_noLoopT (by simp [walkBody, NoLoopT]))) (.seq (safe_of_noLoopT (by
       simp [sortPre, readAt, NoLoopT])) (.loopK (.seq (.loopT (safe_of_noLoopT (by
       simp [passPre, readAt, NoLoopT])) (hcnt _ rNS (by simp [WF, Prim.dst, rI, rIE, rJ, rJE, rKk])
       (by simp [rNS, regs])) (safe_of_noLoopT (by
-        simp [stepIR, blockIR, cmpIR, cmpWord, aposIR, NoLoopT]))) (.blk _)))))
-    (safe_of_noLoopT (by simp [lookCIR, lookIR, readAt, bsBody, ansLtIR, cmpTWord, eqTWord,
-      foundIR, aposIR, NoLoopT]))
+        simp [stepIR, blockIR, cmpIR, cmpWord, aposIR, NoLoopT]))) (.blk _))))
 
 /-! ## The domain tape of a SNARK proof -/
 

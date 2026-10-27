@@ -786,7 +786,7 @@ theorem idxIR_sorted (c : Digest) (π : Proof) (L : Log) (hs : π.size = piSize)
     have := length_logEntries L
     rwa [entries_length, ← entryOff_length] at this
   have hW := fun {k : ℕ} (hk : k < L.length) => walk_spec c π L hs hq ht s hM (by omega) hk
-  have hwf : WF walkIR := wf_logIR.1.1
+  have hwf : WF walkIR := wf_logIR.1
   rw [idxIR, semXIR_seq]
   obtain ⟨r1, r2, r3⟩ := sortIR_sem I (semXIR I walkIR s) (inv_sem I hwf hM) (n := L.length)
     (by rw [hI, getD_toArray, tape_getD_posL c π L hs]) (by omega) (by rw [size_sem]; exact hsz)
