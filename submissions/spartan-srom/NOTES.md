@@ -29,8 +29,8 @@ other agents, so read times as relative. Stage records are cited as F0 … F5:
   - The Lean is certified for every key: ε = 2^-129, δ = 0, qV = 2^16.
   - The harness ACCEPTed the entry at the smoke shape: at core `a874f87` with two workarounds (F3,
     `S` = 6.666), and at `81e1ebf` with none (F4, `S` = 1.794); the confirmation at `01a25b0` is in
-    `README.md`, "Status". At `a283ff8` (V4-A9, V4-A10) the certificate was migrated to the
-    textbook `KS` and the entry is again ACCEPTed at the smoke shape (F5, §4.7).
+    `README.md`, "Status". At `a283ff8` and `8ad98e9` (V4-A9, V4-A10) the certificate was
+    migrated to the new `KS` and the entry is again ACCEPTed at the smoke shape (F5, §4.7).
   - It is ACCEPTed only where `2^r · n ≤ 4,096` chain steps; the season needs `2^24`.
   - `T_V` is unmeetable at every shape it runs.
   - The season shape REJECTs it. In F4 the tree stopped on `queryCap` and the stream's first leaf
@@ -384,38 +384,50 @@ against 0.194 ms.
     `--parts calibrate,stream`;
   - a private writable package tree is still needed (4 min 8 s to copy).
 
-### 4.7 Under V4-A9 and V4-A10 (F5: core `a283ff8`; `logs/f5/`)
+### 4.7 Under V4-A9 and V4-A10 (F5: core `a283ff8`, then `8ad98e9`; `logs/f5/`, `logs/f5-fix/`)
 
 `docs/v4/flock-baseline/stages/F5-ks-RESULT.md`. The rules changed under the entry: textbook
 knowledge soundness in the contract, with the potential a library tool (V4-A10), and the trim
 (V4-A9): 30-minute jobs with nested caps, one run of each, the root only, statement canaries only,
 no liveness, one Lean build, `errorCap = 2^-120`, `completenessCap = 2^-40`.
 
-- **The migration** took 5 Lean files, 21 lines in and 13 out, statements unchanged: the bridge
-  `KState.ks` in place of the anonymous constructor (twice), two imports, docstrings, and one
-  `rw [bind_assoc]` that the library's new `OProg.bind_assoc` made ambiguous
-  (`LawfulMonad.bind_assoc`).
-- **The certificate job, on 4 CPUs** (`taskset -c 0-3`; the caps are for a 4-vCPU runner): **ok**
-  in 8 min 42 s. The build 259.5 s of `build_s` = 600; the kernel 182.3 s of `kernel_s` = 600; the
-  gate about 26 s of 120; the badge build about 20 s of 180 (74 objects compiled, 6 of them
-  packages'). One build, 134 artifacts, 67 modules (`logs/f5/cert4.{log,json}`).
-- **Smoke: ACCEPT** (`logs/f5/bench-smoke.{log,json}`): `T_tree` 0.116 s, `t_leaf` 0.0560 s,
-  `t_merge` 0.0106 s, `t_link` 0.0666 s, **`S` = 1.448**; root `acc` 392 ms; statement canaries
-  rejected: 1 on the root, 8 on the stream; DoS 64 inputs, none accepted, maximum 323 ms. The
-  prover is F4b's (`c5f5e1a8…`); the lower `S` is one run on a shared VM, not a faster prover.
-- **Season: REJECT**, for F4's reasons: the tree on `queryCap` (15.4 s in), the stream's leaf 0 on
-  `proofCap` (15.9 s, `π` 2,791,559 B) (`logs/f5/bench-season*.{log,json}`). Behind them the trim
-  adds a time wall: at 15.9 s per `2^16` leaf on 16 cores, the tree's `2^24` compressions take
-  about 68 min against `tree_s` = 10 min, and the stream's 257 leaves alone about 68 min against
-  `stream_s` = 16 min (**estimate**, linear in `n`).
+- **What "textbook" means** (`.contract/RecursionFast/Contract/Security.lean`'s header): the
+  contract's `KS` gives the extractor the final log, the verifier's own answers included, so it is
+  textbook only for adversaries that make the verifier's queries themselves, which every prover in
+  the deployment is. Textbook implies `KS` at twice the error (`KSTextbook.ks`); the converse fails
+  (`lucky_ks`, `lucky_not_textbook`: a lucky verifier certified at 0, about `2^-112` textbook). For
+  this entry the gap does not bite: its extractor, the library's copy extractor, reads only the
+  proof (`decode π`), never the log, so the two games have the same event (**paper**).
+- **The migration** (`d5a53fa`, golfed in `4829055`) took 5 Lean files, 21 lines in and 13 out,
+  statements unchanged: the bridge `KState.ks` in place of the anonymous constructor (twice), two
+  imports, docstrings, and one `rw [bind_assoc]` that the library's then-new `OProg.bind_assoc`
+  made ambiguous at `a283ff8` (`LawfulMonad.bind_assoc`; the core made it `protected` in
+  `8ad98e9`).
+- **The certificate job at `8ad98e9`, on 4 CPUs** (`taskset -c 0-3`; the caps are for a 4-vCPU
+  runner): **ok** in 9 min 39 s. From `cert.json`: the build 272.9 s of `build_s` = 600; the kernel
+  204.6 s of `kernel_s` = 600, at a 4.02 GB peak; the gate 30.2 s of 120; the badge build 29.3 s of
+  180 (74 objects compiled, 6 of them packages'). One build, 134 artifacts, 67 modules
+  (`logs/f5-fix/cert4.{log,json}`). At `a283ff8`: 8 min 42 s (`logs/f5/cert4.{log,json}`).
+- **Smoke at `8ad98e9`: ACCEPT** (`logs/f5-fix/bench-smoke.{log,json}`): `T_tree` 0.126 s,
+  `t_leaf` 0.0537 s, `t_merge` 0.0108 s, `t_link` 0.0645 s, **`S` = 1.416**; root `acc` 398 ms;
+  statement canaries rejected: 1 on the root, 8 on the stream; DoS 64 inputs, none accepted,
+  maximum 366 ms. At `a283ff8`: `S` = 1.448 (`logs/f5/bench-smoke.{log,json}`). The prover is
+  F4b's (`c5f5e1a8…`); the lower `S` than F4b's is one run on a shared VM, not a faster prover.
+- **Season at `a283ff8`: REJECT**, for F4's reasons: the tree on `queryCap` (15.4 s in), the
+  stream's leaf 0 on `proofCap` (15.9 s, `π` 2,791,559 B) (`logs/f5/bench-season*.{log,json}`).
+  Behind them the trim adds a time wall: at 15.9 s per `2^16` leaf on 16 cores, the tree's `2^24`
+  compressions take about 68 min against `tree_s` = 10 min, and the stream's 257 leaves alone
+  about 68 min against the entry's 900 s (15 min) of `stream_s` = 960 s (**estimate**, linear in
+  `n`).
 
 ## 5. What is proved, and what is not
 
 **Proved** (**kernel**; F1 §3, review F1 §0: "pass on the Lean content").
 
 - `SpartanSrom.certificate : Certificate SpartanSrom.submission`, for every `vk`: KS with
-  ε = 2^-129 and qV = 2^16 against `Rel (acc vk)` (since F5 the contract's textbook `KS`, from the
-  potential through the library's `KState.ks`); completeness with δ = 0; `Computes` with the
+  ε = 2^-129 and qV = 2^16 against `Rel (acc vk)` (since F5 the contract's `KS`, textbook for
+  adversaries that make the verifier's queries themselves, from the potential through the
+  library's `KState.ks`); completeness with δ = 0; `Computes` with the
   library's copy extractor (fuel `8 t`); the caps.
 - `RecursionFast.Challenge.certified : CertificateR declared submission` against the rendered
   challenge.
