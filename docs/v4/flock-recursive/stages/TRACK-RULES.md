@@ -35,7 +35,7 @@
   inside a capped scope:
 
   ```sh
-  systemd-run --user --scope -q -p MemoryMax=12G -p MemorySwapMax=0 -- timeout 1800 lake build FRFoo
+  systemd-run --user --scope -q -p MemoryMax=16G -p MemorySwapMax=0 -- timeout 1800 lake build FRFoo
   ```
 
   A runaway is then killed inside its own cgroup. If a build is killed there, restructure the
