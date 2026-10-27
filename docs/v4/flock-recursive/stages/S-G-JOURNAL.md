@@ -80,3 +80,37 @@ symlinked; `.lake` copied from `fr-build-cert`). Every `lake`/`lean` run used th
     `finFunctionFinEquiv.symm` at base `2^b` (`finFunctionFinEquiv_symm_apply_val` is exactly
     `idxOf`); the count through `finProdFinEquiv`.
 22. Stopped before the doom predicates (budget). RESULT S-G1 §3 has the plan.
+
+## 2026-10-27 (S-G1b)
+
+23. Read TRACK-RULES, S-G-RESULT (all), `FRSoundnessDefs` Parts A–D, the template's
+    `SpartanSromSoundnessDefs` (Rej/Alg/Doom), blueprint §5.1–§5.2, A.2–A.4 and §10 changes 10–11,
+    and `roundOpsF` / `FRVIRSpec.g3` (the degree-3 round: `c₃ := claim + (c₁ + c₂)`, so no check).
+24. Plan: deliver the readers and the words, then one phase end to end with every obligation and
+    the step at `εR`, then generalise. Chosen phase: the degree-3 F rounds (Z3; same shape as Lr2,
+    E2), generic in the truth.
+25. `FRSoundnessStepA`: readers, `fsStarts` (`decide +kernel`, pinned), `capPos`, `capDig`,
+    `colOf`, `wordOf`, `FarAt`. Pitfalls:
+    - `decide` on a concrete seed query hit `maxRecDepth`; `decide +kernel` works;
+    - controls must not quantify over the answer (`decide` needs a closed goal).
+26. `FRSoundnessStepB`. Pitfalls:
+    - `(bind0 · chF a 0)` parses as `fun x => bind0 x chF a 0`; write `(bind0 · (chF a 0))`.
+    - `set κ := kindOf es` left `nr (kindOf es)` from rewritten hypotheses as a separate omega
+      atom; drop the `set`.
+    - `(Finset.mem_filter.mp ha).2` and `refine Finset.mem_filter.mpr …` under `open Classical`
+      hit `maxRecDepth` (instance unification); `rw [Finset.mem_filter] at ha` and
+      `simp only [Finset.mem_filter, …]` work.
+    - `hA.mono (by omega)` inside `simp only [...]` arguments runs `omega` on an open
+      metavariable; give `(l := j)`.
+    - `g3_check`: `simp` on `peval` of a literal array produced `pure` and a kernel timeout.
+      Generalise the three `readF`s and use `peval_four` (via `peval_eq_sum`), then
+      `linear_combination … * CharTwo.two_eq_zero`.
+    - The `constructorNameAsVariable` linter crashed on `D3_single`; switched off for that
+      declaration, as in FRLog.
+27. Obligations: `habs` by the odd-offset squeeze check, `hmid`/`hround` by the checked gap to
+    the multi-squeeze phases (`condCount_eq_zero`), `hsingle` by `D3_single`, `hstab` by
+    `TruthStable`. `z3_step` and `rounds3_step` give the step law at `εR`; `lr2_phase` and
+    `e2_phase` use `roundsPhase_of` (two kernel checks each).
+28. Times, axioms and the source rule recorded in RESULT S-G1b §2. Stopped here (budget):
+    the composed doom, the truths, the degree-2/K rounds and the multi-squeeze rows are in RESULT
+    S-G1b §5.

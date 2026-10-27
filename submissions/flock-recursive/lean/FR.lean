@@ -46,6 +46,8 @@ import FRVIRFinalsSF
 import FRVerifier
 import FRLog
 import FRSoundnessDefs
+import FRSoundnessStepA
+import FRSoundnessStepB
 import FRSoundnessLigerito
 import FRVIRFinalsSG
 

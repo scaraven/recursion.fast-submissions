@@ -376,3 +376,162 @@ Nothing found so far contradicts the step form. `δ` must be at least the P2 row
 **Question.** S-G1's remaining part is the largest piece of L-cert. spartan-srom's equivalent is
 about 3,000 lines, for one level and one kind. Should it run as its own stage with a fresh agent
 and budget, starting from this RESULT?
+
+---
+
+# S-G1b: the readers, the committed words, the round doom and the step law at `εR`
+
+Base `e293029` ("S-G1 part 1"), built against HEAD's versions of other tracks' modules
+(`logs/fr-build-SG`, `snap.sh`). **Status: partial.**
+
+Built:
+- (1) the transcript readers;
+- (2) the committed words under each cap;
+- the contract's `step` at `εR = 15/2^124` from the five obligations (`step_epsR`);
+- (3)–(4) **one phase end to end**: the degree-3 F rounds, with all five obligations and the step
+  law proved. This is generic in the phase's position and its "truth". It is instantiated at Z3,
+  and its position facts are checked for Lr2 and E2.
+
+Not done: the composed doom over all 451 positions, and the truths it needs (§5). No sorry, no
+new axioms. Source rule: 61 files, 0 findings. No warnings, no lines over 100 characters.
+
+## 1. What was built (code lines from `loc.py`)
+
+| File | Code | Content |
+|---|---|---|
+| `FRSoundnessStepA.lean` (new) | 61 | **Readers** (A.2): `entAt`, `ansAt`, `msgAt` (the absorb's payload, from query byte 40), `readF`/`readK`, `fAt es p c` (F coordinate `c` of the answer at `p`), `kAt`, `coordAt` (coordinate `2s + c` of a multi-squeeze phase), `posAt` (P2's `k`-th index, `idxOf`), **`kindOf`** (byte 71 of the seed query = the header's kind byte; `L32` otherwise); `Agree`, `entAt_append`, `agree_append`, `kindOf_congr`. **Phase starts**: `fsStarts`/`phStart` (51 phases), control `fsStarts_eq`. **Committed words**: `capPos` (cap₀ at 2, else `C.(i−1)`; `capPos_eq = [2, 313, 352, 379, 403]`), `capDig` (cap entry `c`: the message bytes `32c…32c+31`), **`colOf`** (`colL (frEnc i)` from cap entry `p / 2^sib`, height `sib`), **`wordOf`** (row `r` at position `p` = the column's F element `r`; `0` where no column is read), **`FarAt`** (no agreement set makes the word `JointClose`), `colOf_congr` |
+| `FRSoundnessStepB.lean` (new) | 346 | Part A: **`epsR = 15/2^124`**, **`deltaR = εR − 2^-142`**, `err_le_epsR` (`badCount/2^256 + deltaR ≤ εR`), `N_le_deltaR`, **`StepObl`** (the five obligations of `hloc_of` as one structure), **`step_epsR`**, `condCount_eq_zero`. Part B: the degree-3 rounds: `g3At` (the coefficients `c₀, c₁, c₂, claim + (c₁ + c₂)`, as `roundOpsF … 3` / `FRVIRSpec.g3`), `rch`/`rchs`, `clR` (the running claims), `ans3`, `Wrong3`, **`D3`**, `g3_check`, `bindAll_append`/`bindAll_size`, `D3_append_iff`, `wrong3_ext1`, **`D3_single`** (≤ `3·2^128` escaping answers), `RoundsPhase`, `TruthLocal`, `TruthStable`, **`rounds3_obl`**, `three_le_deltaR`, **`rounds3_step`**. Part C: `z3_phase` (`b = 15`, 26 items, `mm 6` real), `z3_start`, **`z3_step`**. Part D: `roundsPhase_of` (from two kernel checks), `lr2_phase` (`b = 178`), `e2_phase` (`b = 256`) |
+| `FR.lean` | +2 | imports the two modules |
+
+The statement that matters most:
+
+```lean
+theorem z3_step {e : Expr} {T : Log → Log → Array (Array F)} {c0 : Log → Log → F}
+    (hTc : TruthLocal 15 c0 T) (he : e.deg = 3)
+    (hsz : ∀ L es, ∀ t ∈ T L es, t.size = 2 ^ mm 6 (kindOf es)) (hst : TruthStable c0 T)
+    (L : Log) (q : ByteArray) (hl : L.length < logCap)
+    (hμ : muG (D3 15 c0 (mm 6) e T) (pRoundG (D3 15 c0 (mm 6) e T) fsRnd) L < 1)
+    (hq : q ∉ L.map Prod.fst) :
+    ∑ a : Digest, muG (D3 15 c0 (mm 6) e T) (pRoundG (D3 15 c0 (mm 6) e T) fsRnd) (L ++ [(q, a)]) ≤
+      (muG (D3 15 c0 (mm 6) e T) (pRoundG (D3 15 c0 (mm 6) e T) fsRnd) L + epsR) * 2 ^ 256
+```
+
+This is `KState.step` for the potential of the round doom `D3`, with error `εR`. Its
+hypotheses on the truth are:
+- `TruthLocal`: the truth reads only the entries before the phase;
+- `hsz`: the table sizes;
+- `TruthStable`: the truth reads the same values off `L.take i` and `L` on a non-bad log (§10
+  changes 10).
+
+**`D3`** (the round doom):
+- `D3 L es` holds when `b < |es|` and the claim after the answered rounds,
+  `ans3 = min (nr κ) ⌊(|es| − b)/2⌋`, differs from `trueSum e (bindAll T (r_0 … r_{l−1}))`;
+- the round challenge `r_l` is `chF` of the answer at `b + 2l + 1`, coordinate 0;
+- the dummy rounds (`l ≥ nr κ`) keep the claim, so `D3` is constant there.
+
+How each obligation is discharged:
+- `hsingle` is `round_escape_le` plus `card_chF_fiber`.
+- `habs` uses the checked fact that the odd offsets of the phase are squeezes.
+- `hmid` and `hround` use the checked fact that no multi-squeeze phase meets the round phase, so
+  `D3` is constant on those phases and `condCount = 0`.
+- `hstab` is `TruthStable`.
+
+## 2. Times (sequential, one core: `taskset -c 0 lean -DElab.async=false --profile`)
+
+| Module | Wall (with ≈ 3.6 s import) | Type checking | Max RSS | Log |
+|---|---|---|---|---|
+| `FRSoundnessStepA` | 7.8 s | 1.27 s (`fsStarts_eq`, the two `kindOf` controls: `decide +kernel`) | 2.8 GB | `logs/S-G/profile-FRSoundnessStepA.log` |
+| `FRSoundnessStepB` | 11.5 s | 0.24 s + 0.57 s (the `fsItems` checks of `z3_phase`, `lr2_phase`, `e2_phase`) | 2.7 GB | `logs/S-G/profile-FRSoundnessStepB.log` |
+
+No `decide` or `simp` runs over a program, layout or table. The kernel checks touch only `fsItems`
+(the 451 items) and `fsRanges`.
+
+**Axioms** (`logs/S-G/axioms-S-G1b.log`, a scratch `#print axioms` outside the entry):
+- `z3_step`, `rounds3_obl`, `step_epsR`, `z3_phase`, `D3_first_absorb` and `wordOf_nil`:
+  `propext`, `Classical.choice`, `Quot.sound`;
+- `kindOf_P30`, `fsStarts_eq` and `capPos_eq`: `propext` only.
+
+## 3. Controls
+
+| Control | Shows |
+|---|---|
+| `fsStarts_eq`, `capPos_eq`, `z3_start` | The phase starts and the cap positions are A.4's (Z3 at 15, the caps at 2, 313, 352, 379, 403). |
+| `kindOf_P30` / `kindOf_default` | The kind reader is not constant: a header byte `'P'` gives `P30`, and a non-kind byte gives `L32`. |
+| `wordOf_nil` | On the empty log no column is read, so the word is `0`. |
+| `D3_first_absorb` (positive) | A false initial claim dooms the chain at the phase's first absorb (`D3` is satisfiable). |
+| `not_D3_before` (negative) | Before the phase's first absorb nothing is doomed. |
+| `three_le_deltaR`, `err_le_epsR` | The Z3 row (`3·2^128` answers) and the H row (`2^-142`) fit `εR`. |
+
+Not done: §5.6's "failure at `ε = 2^-121` on Z2" needs the Z2 doom. A positive control for
+`colOf` on a real Merkle path is also missing; it belongs with S-G2's `cap_binding`.
+
+## 4. Deviations and design decisions
+
+1. **The error split.** `εR = 15/2^124 ≈ 2^-120.093` and `δ = deltaR = εR − 2^-142` (still ≈ 2^-120.093).
+   - Every row must be at most `deltaR`, and a single-squeeze row must satisfy
+     `N ≤ 2^256·deltaR` (`N_le_deltaR`).
+   - The P2 row (`2^-120.36`) is below `deltaR` numerically, but **not yet kernel-checked**:
+     `positions_bad_le`'s `(1 − e/n)^t ≤ deltaR` must be shown at the five levels. This can be
+     done here or in S-I.
+2. **One phase, generic in its truth.** `D3` takes the initial claim `c0` and the tables `T` (of an
+   `Expr` of degree 3) as parameters. The positions, the message decoding, the challenge map and
+   the five obligations are concrete. What the truth must satisfy is three explicit predicates
+   (`TruthLocal`, the sizes, `TruthStable`). The parametric form is deliberate: the truth of Z3 is
+   the zerocheck over the decoded witness, and its definition belongs to the composition (§5).
+3. **`D3` is a single-phase slice.**
+   - It is `False` before the phase. `z3_step` is therefore the step law of a potential that
+     charges only Z3; it is not yet the entry's `kstate`, whose `final` needs the full doom.
+   - In the composed doom the guard `b < |es|` becomes the handoff from the previous phase (see
+     §5).
+   - The per-round lemmas `D3_single`, `wrong3_ext1` and `D3_append_iff` carry over unchanged.
+4. **The round message is decoded from the absorb query, not from `π`.** `g3At` reads
+   `c₀ ‖ c₁ ‖ c₂` from the payload at `b + 2l` and sets `c₃ = claim + (c₁ + c₂)`, as
+   `FRVIRSpec.g3`. The two agree once `runLog_chain` (S-G2) identifies the query payload with
+   `π`'s field.
+5. **`StepObl`** packages `hloc_of`'s five obligations. `step_epsR` is the only place where
+   `muG_step_of` meets `εR`.
+6. **`set_option linter.constructorNameAsVariable false in`** on `D3_single`. The linter crashed
+   (`maxRecDepth`) on that proof. FRLog already sets the same option.
+
+## 5. Not done, and what each piece needs
+
+1. **The composed doom `D`** over the 451 positions. This is the next stage's core. The design
+   that the slice supports:
+   - `D L es` is the doom of the phase containing position `|es| − 1`, or `Rej` (a failed assert,
+     which is monotone);
+   - the handoff from one phase to the next is `habs` at the next phase's first absorb (rounds
+     phases, `Zend`, `L3`, `Lrend`, `RS0`, `Eend`, `C.i`). At a phase that starts with a squeeze
+     (Z1 after `cap₀`; L1, S1, E1, B′, P3), it is the escape count at that squeeze;
+   - each handoff is one protocol lemma (for example Z2's skip relation `FRSkip` giving Z3's
+     initial claim). The truth of each phase is then a definition, not a parameter.
+2. **The truths.** Each phase's tables and initial claim depend on another track:
+   - Z (the zerocheck `Expr` and tables over the decoded witness, Z2's claim at `λ`): S-E/L-circ's
+     node and leaf semantics;
+   - L, S, Lr, RS, E: S-E1/S-E2's link, shift, ring-switch and `evalM` definitions;
+   - B′, P1–P3, Pf: Ligerito (S-G2's `ligerito_final`).
+
+   This needs no new interface: the S-C/S-D lemmas give the counts. It does need agreed
+   definitions of what each phase claims (an `Expr` and tables per phase). I propose that
+   S-G1c write them from `FRVIRSpec`'s phase meanings.
+3. **Degree-2 F rounds (L2, S2, Lr4) and K rounds (P1, Pf).**
+   - They need `Rej`, because the verifier asserts `c₁ + c₂ = claim`. `round_escape_le` already
+     covers the check.
+   - The K form needs `card_chK_fiber` (N = 2, `kAt`).
+   - This is a direct copy of Part B with `D = Rej ∨ Wrong`.
+4. **The multi-squeeze phases** (`hround`).
+   - Z1, S1, Lr1, RS1, E1 and P3 need `seq_bad_le`/`pair_bad_le` over `coordAt`, with the
+     coordinates and the answers linked through `chFEquiv`.
+   - P2 needs `card_idx_fiber` with `positions_bad_le` over `posAt`.
+   - These are the only rows that use `condCount` in earnest. They are not started.
+5. **`TruthStable` for the real truths.** Words read under a cap need "`¬ Bad L` implies
+   `¬ Hit (frEnc i)` on the queries read". This is part 1's planned `MerkleEnc` with `carried`
+   capped at `queryCap`. They also need the case where the chain's last entry is the cap's own
+   absorb: there the node that answers a cap digest precedes the absorb, by the window hit.
+   `colOf_congr` covers the chain side.
+
+## 6. Questions for the orchestrator
+
+1. Is the composition design of §5.1 (the doom of the current phase, with handoffs at `habs` and
+   at the first squeeze) acceptable? Also, should the per-phase truths be fixed as an interface
+   (one `Expr` with tables and an initial claim per phase) before S-G1c?
+2. Should the P2 bound `(1 − eᵢ/nᵢ)^{tᵢ} ≤ deltaR` be kernel-checked here (S-G1c) or in S-I?
