@@ -1072,6 +1072,54 @@ Pf). `node_sound`'s M-row count and P2's dump KAT use `gen fin` with every field
 (`ops-*.txt` re-dumped); `KState.final` is proved for `gen fin`, so a missing check is an
 unprovable `final`, never a silent hole.
 
+### A.10 Per-phase truths (the soundness interface; S-G1c)
+
+**Composition (ratified).** The entry's doom is `D L es := Rej L es ∨ D_φ(es) L es`, where `φ(es)` is
+the phase containing position `|es| − 1` (`fsStarts`), `Rej` is "an asserted check of an earlier
+position fails" (monotone under appending), and `D_φ` is the phase's own doom below. Handoff: a
+phase that starts with an **absorb** (rounds phases, `Zend`, `L3`, `Lrend`, `RS0`, `Eend`, `C.i`)
+takes over at that absorb by `habs` (the previous phase's doom at its last position is the new
+phase's doom at the absorb: a false initial claim); a phase that starts with a **squeeze** (Z1
+after `cap₀`, L1, S1, E1, B′, P3.i) takes over by the escape count at that squeeze (`hsingle` or
+`hround`). `rnd 0 = none` (the seed). Every truth below is **local** (`TruthLocal`: it reads the
+chain's entries before the phase and the log) and **stable** (`TruthStable`: it reads the same
+values off `L.take i` and `L` on a non-bad log); the stability column names the reads.
+
+Notation: `es` the chain, `L` the log; `κ = kindOf es`; `wordOf κ L es i` the level-`i` word read
+under its cap (`colOf`, `colL (frEnc i)`), `far_i := FarAt κ C_K e_i L es i`; `f⁽ⁱ⁾ := decode_i
+(wordOf … i)` (the message `interp_F` + `coeffs_of_values` from any `k_i` positions of the
+agreement set; `S-D2`'s `coeffs_of_values`), defined when `¬ far_i`; `z := unpack f⁽⁰⁾`; `A₀^κ`, `E`
+from `FRBlockLayout`/`FRPubTarget` per kind; challenges by the readers (`fAt`, `kAt`, `coordAt`,
+`posAt`); `c₀^X` the phase's initial claim and `c_X` its running claim (`clR`). Owners: **S-G1c**
+writes the definitions named `truth*`; the count lemmas are S-C/S-D's.
+
+| Phase | Truth (tables, initial claim) | Doom form | Count lemma (`hsingle`/`hround`) | Handoff | `hstab` needs |
+|---|---|---|---|---|---|
+| Z1 (10 squeezes, 17/19 coordinates) | the point `r = (ρ₁…ρ₇, coordAt …)`; truth: the zerocheck identity `∀ x ∈ cube: (A₀^κ z)(B₀^κ z) = z + E` on the decoded `z` (`truthZ0 κ L es := ∀ blk pos, Sel … → …`); doomed at Z1's end iff `z` violates it **and** `P^{ab}_r − P^z_r − P^e_r` vanishes on `S` (the next phase's check) | `far_0 ∨ (¬ Holds z ∧ skipRes r = 0 on S)` | `hround`: `zerocheck_bad_le` (DT24 pinned + SZ over the free coordinates: `17/2^128`) with `pair_bad_le`/`seq_bad_le` over `coordAt`, `card_chF2_fiber` | escape at Z1's first squeeze (after `cap₀`'s absorb) | `wordOf … 0` under `cap₀` (absorbed at position 2): `colL_prefix` from `¬ Bad`; the window case of the cap's own absorb |
+| Z2 (absorb 127 F, squeeze `λ`) | `P^z|_Λ`, `P^{ab}|_{Λ₀…₆₂}` as sent; truth: `P^z_r(Y) = Σ_{x'} eq(r,x') z(x',Y)`, `P^{ab}_r(Y) = Σ eq(r,x') a b`, `P^e_r` (`FRSkip.z2Vals`, `truthZ2`); Z3's initial claim `c₀^{Z3} = P^{ab}*(λ)`; the RS claim `α_Z = P^z*(λ)` | `(P^{ab}*, P^z*) ≠ (P^{ab}_r, P^z_r) ∧ P^{ab}*(λ) = P^{ab}_r(λ) ∧ P^z*(λ) = P^z_r(λ)` (`Wrong` at the squeeze; `Rej` if the 16 padding bytes are nonzero) | `hsingle`: `skip_pair_bad_le` (126) with `card_chF_fiber`: `N = 126·2^128` | `habs` at Z3's first absorb (`D3_first_absorb`): `c₀^{Z3} ≠ Σ_{x'} eq(r,x') a_λ b_λ` | as Z1 (the same word) |
+| Z3 (26 rounds, degree 3) | tables `T = [eq(r,·), a_λ, b_λ]` over `2^(m−6)`, `e = w·a·b` (`bz_trueSum`, `FRSpartan`); truth = `D3 15 c0 (mm 6) e T` as delivered (`z3_step`) | `D3` | `D3_single`: `round_escape_le`, `card_chF_fiber`: `N = 3·2^128` | `habs` at `Zend`: `eq(r,r′)·â·b̂ ≠ c_Z` (`finZ`); the lincheck's truth takes `â, b̂` from `Zend` | as Z1 |
+| Zend (absorb `â ‖ b̂`) | `â = (A₀z)̂(r_row)`, `b̂ = (B₀z)̂(r_row)` at the quirky point (`truthZend`) | `â ≠ truth ∨ b̂ ≠ truth` given `finZ` passes | — (`habs`: an absorb) | L1's squeeze | — |
+| L1 (`α`) | batching `â + α b̂ = Σ_kind Σ_j M_kind(j) zfold_kind(j)` (`lin_trueSum_kinds`) | `Wrong`: the batched identity false though `â` or `b̂` wrong | `hsingle`: `batch_bad_le` at 2 (`1·2^128`) | `habs` at L2's first absorb: `c₀^{L2}` free, bound by `finLc` (i) | — |
+| L2 (14 rounds, degree 2) | tables `[M_κ-weights, zfold_kind]` over `2^14` per kind; `e` degree 2; initial claim `â + α b̂` | `Rej ∨ Wrong2` (the verifier asserts `c₁ + c₂ = claim`) | `round_escape_le`, `card_chF_fiber`: `N = 2·2^128` | `habs` at L3's absorb (the 8 `v_kind`): `v_kind ≠ zfold_kind(r_k)` for some kind | reads `z` (the word) and `A₀^κ` |
+| L3 (absorb 8 `v`, squeeze `β`) | `v_β := Σ_kind β^kind v_kind`; truth `⟨W_β, z⟩` (`truthL3`); `finLc` (ii) asserts the walk | `Rej ∨ (some v_kind wrong ∧ Σ β^kind (v_kind − truth) = 0)` | `hsingle`: `batch_pow_bad_le` at 9 (`8·2^128`) | S1's first squeeze (escape) | — |
+| S1 (15 squeezes: `τ`, `θ`, `κ_s`) | the shift identity with the boundary (`shiftTarget`) and ≤ 8 link families (`truthS1`: `ShHolds z s h` of §4.1/§4.2) | `far_0 ∨ (¬ ShHolds ∧ the batched sum at (τ,θ,κ_s) equals the target)` | `hround`: SZ over 26 coordinates + `batch_pow_bad_le` at 8 families: `(26 + 7)/2^128`, via `pair_bad_le`/`seq_bad_le`, `card_chF2_fiber` | `habs` at S2's first absorb: `c₀^{S2} ≠ shiftTarget …` | the word; the mirror cells (M region of `z`) |
+| S2 (28 rounds, degree 2) | tables `[eq(τ,·)·Out, (shift + κ_s eq(0,·) + Σ κ_s^f linkW)·In]` over blocks then the 10 slot bits (`FRShift.shift_sound`, `slotW_mle`) | `Rej ∨ Wrong2` | `round_escape_le`: `N = 2·2^128` | `finSh` (ii): `c_{Sh} ≠ (w_out + w_in)·ẑ(r_blk, r_pos)`; the claim `α_Sh` is RS's | — |
+| Lr1 (8 squeezes) / Lr2 (15 rounds, degree 3) / Lrend / Lr3 (`κ_L`) / Lr4 (15 rounds, degree 2) | Spartan over the L rows (node only; `nodeOnly`): zerocheck tables `[eq(r_L,·), A_L z, B_L z, C_L z]` (`truthLr`), `Lrend` carries `â_L, b̂_L, ĉ_L`; lincheck of `â_L + κ_L b̂_L + κ_L² ĉ_L` with `evalL` (`FRVIREval`) | Lr1: `hround` form; Lr2: `D3` (`lr2_phase`); Lrend: `habs`; Lr3: `Wrong`; Lr4: `Rej ∨ Wrong2` | Lr1: SZ 15, `pair_bad_le`; Lr2: `D3_single`; Lr3: `batch_bad_le` at 3 (`2·2^128`); Lr4: `round_escape_le` | `finLr` (iv): the claim `α_Lr` is RS's | reads `z`'s L region; `A_L` public |
+| RS0 (absorb `4 × 128` partials) / RS1 (4 squeezes: `r″`, `κ`) | per claim `j`: the column check **defines** `α_j` (`rs_column`); the switched claims `T_j = rsT` and `v_RS = Σ κ^j T_j`; truth `rsTruth` (`Σ_u Φ(g_j(u)) f(u)`) with `g_Z = eq(r,·)`, `g_Lc = eq((r′_blk, r_k),·)`, `g_Sh = eq((r_blk, r_pos),·)`, `g_Lr` (`truthRS`) | RS0: `habs` (a wrong partial, `δ_j ≠ 0`); RS1: `Wrong`: some `δ_j ≠ 0 ∧ Σ κ^j rsT = Σ κ^j rsTruth` | `hround`: **`rs1_joint`** (`(7 + J_z − 1) = 10` of `|F|^7` draws), `card_chF2_fiber` | `habs` at E1 (node) / at B′'s squeeze (leaf): `v_RS` as the running value | the partials are chain entries; `f⁽⁰⁾` the word |
+| E1 (11 squeezes) / E2 (21 rounds, degree 3) / Eend | the element zerocheck over the M rows of `f⁽⁰⁾`: tables `[eq(r_E,·), A_M f, B_M f, C_M f]` (`truthE`, `evalM`'s matrices from `compileMux`); `Eend` carries `â_M, b̂_M, ĉ_M` at the final point `r_{E2}` | E1: `hround` form (`far_0 ∨ (¬ EHolds ∧ …)`); E2: `D3` (`e2_phase`); Eend: `habs` | E1: SZ 21 with `pair_bad_le`; E2: `D3_single` | E3's squeeze (`κ_E`): `Wrong` (`batch_bad_le` at 3, `2·2^128`); then B′ | reads `f⁽⁰⁾`'s M region |
+| B′ (squeeze `κ′`) | `v* = v_RS + κ′ v_E + Σ κ′^{k+2} pub_k` (`truthB′`: the true `v_RS`, `v_E` and the public cells' true values `f[cell_k]`) | `Wrong`: some term wrong `∧` the batched value equals the truth | `hsingle`: `batch_pow_bad_le` at `J_f ≤ 21` (`20·2^128`) | `habs` at P1.0's first absorb: `c₀^{P1.0} ≠ ⟨W, f⁽⁰⁾⟩` | the public cells are word entries |
+| P1.i (`ℓᵢ` K rounds, degree 2) | the fold sumcheck of `⟨W_i, f⁽ⁱ⁾⟩` over level `i`'s row variables; tables `[W_i, f⁽ⁱ⁾]` (K); truth: `¬ far_i → c_{P1.i} = Σ_x W_i(z,x) f⁽ⁱ⁾(x)` after the folds (`truthP1 i`); **the fold rounds also carry the proximity doom**: `far_i ∧ the fold is e_i-close` (`fold_preserves` fails only on `lineBad`) | `Rej ∨ Wrong2 ∨ (far_i-doom: the round's challenge `z ∈ round_bad_cover`)` | `round_escape_le` (K: `card_chK_fiber`, `N = 2`) **plus `round_bad_cover`** (`2^(ℓᵢ−r) C_mca`): `N = 2 + 2^(ℓᵢ−r)·C_mca ≤ 2^66` | `habs` at `C.i`'s absorb (the next cap or the final message): the committed next level | `wordOf … i` under `capᵢ` (absorbed at `C.(i−1)`, before this phase) |
+| C.i (absorb `capᵢ₊₁` / final) | the level-`(i+1)` word becomes readable; truth: `¬ far_{i+1} → f⁽ⁱ⁺¹⁾ = fold_z(f⁽ⁱ⁾)`'s message (`truthC i`) | `habs`: `far_{i+1} ∨ f⁽ⁱ⁺¹⁾ ≠ fold(f⁽ⁱ⁾)` | — | P2.i's first squeeze | `wordOf … (i+1)` under `capᵢ₊₁`: `colL_prefix` (the cap is absorbed here; its tree's nodes must precede: the window hit) |
+| P2.i (`sq_i` squeezes, `t_i` indices) | the queried positions `posAt`; truth: the consistency set `A_c := {j : fold_z(column_j) = Enc(f⁽ⁱ⁺¹⁾)[j]}` (`truthP2 i`); doomed iff `(far_i ∨ f⁽ⁱ⁺¹⁾ ≠ fold(f⁽ⁱ⁾)) ∧ every queried index ∈ A_c` | `hround` form: all `t_i` indices land in `A_c`, `|A_c| ≤ n_i − e_i − 1` | `hround`: **`positions_bad_le`** `(1 − e_i/n_i)^{t_i}` with **`card_idx_fiber`** over `posAt` (`per` indices per answer) | the column and Merkle-node queries (asks; no doom change: `habs` for queries, their answers are `Bad`-charged hits), then P3.i's first squeeze | the columns read at the queried positions equal `wordOf`'s (`cap_binding`: `openPath` vs `colL`) |
+| P3.i (5 squeezes, `κ_c`) | the batched claim `v_{i+1} = v_i + Σ_j eq(κ_c, bits₉(j)) fold_j`, weight `W_{i+1} = W_i-folded + Σ_j eq(κ_c,j) G_j` (`novelX_tensor`; `truthP3 i`) | `Wrong`: some `fold_j ≠ Enc(f⁽ⁱ⁺¹⁾)[j]` (as computed from the chain's columns) `∧` the batched value equals the truth | `hround`: SZ on the 9-variable multilinear (`9/2^128`), `pair_bad_le`, `card_chF2_fiber` | `habs` at P1.(i+1)'s first absorb (`i < 4`) / Pf's (`i = 4`, with `Enc₄(final)[j]` computed from the final message at `C.4`) | as P2.i |
+| Pf (7 K rounds, degree 2) | tables `[W_4-folded (incl. `rsWeight`, `evalM(r_{E2},·)`, the cells, the tensor weights), final]` over 7 variables; truth `c₀^{Pf} = v_4` and the final value `Ŵ(ρ)·final̂(ρ)` (`truthPf`; `P30`: zero-padded) | `Rej ∨ Wrong2` | `round_escape_le` (K), `N = 2` | the chain ends: `finPf`'s assert; the accepted run on a non-doomed chain gives `ligerito_final`'s hypotheses | the final message is a chain entry (`C.4`) |
+
+**What `final` then gets** (S-G2): on an accepted chain of a non-bad log with no escape, by
+induction from Pf upwards every `far_i` is false and every claim is true, so `f⁽⁰⁾` is the decoded
+word and `z` satisfies Z's identity, the links, Lr and E (`ligerito_final`, then `leaf_sound` /
+`node_sound`). **Budget**: the truths and their stability lemmas ≈ 900 lines (`FRSoundnessTruths`,
+S-G1c), the composed `D` and its `StepObl` ≈ 1,200 (`FRSoundnessStepC`).
+
 ## 10. Fix passes
 
 ### Fix pass 1 (revision 2): BP-C-M1…M8, BP-C-m1…m9, BP-E-M1…M8, BP-E-m1…m11 — as recorded in
@@ -1368,3 +1416,12 @@ Note (3.9): `sizes.py` carries S-0's 3.8.2 reconciliation of the item sequence (
 | Padding | The factor `(1 + ρ₅)(1 + ρ₆)` applies to the whole weight, for both m = 30 kinds (P30 and N30), not only P30. |
 | `finPf`'s ops | A.8 gains `evalMK : AF 21 → AK 23 → K × K × K` (`evalM` at a K column point, needed for `evalM(r_E2, ρ)`); `rsWeight` is in the op set (S-0). `finPf`'s formula is the native `weight_eval` (S-G-RESULT §3). |
 | `finP 4` row cost | About 60k node M rows with the current ops (estimate; the blueprint had ≈ 32k). An op giving `X_c(D[p])` at a runtime position would recover the difference; this is open for L-circ. The M-row margin stays positive either way (1.69× before). |
+
+### Stage-review changes 12 (revision 3.10): the per-phase truths (S-G1/S-G1b)
+
+| Item | Change |
+|---|---|
+| A.10 | **Appendix A.10 "Per-phase truths"**: for every FS phase (Z1–Z3/Zend, L1–L3, S1/S2, Lr1–Lr4/Lrend, RS0/RS1, E1/E2/Eend, B′, P1.i/C.i/P2.i/P3.i, Pf) the truth (tables, initial claim) in terms of `wordOf`/`FarAt`, the decoded `f⁽ⁱ⁾` and `z`, the public data and earlier challenges, naming existing Lean (`bz_trueSum`, `lin_trueSum_kinds`, `shift_sound`, `rsT`/`rsTruth`/`rs_column`, `evalM`/`evalL`, `novelX_tensor`, `D3`) or the definition to add (`truth*`, owner S-G1c); the doom form (`Rej ∨ Wrong` for asserted rounds, `D3`-style mismatch otherwise, `far_i` for the levels); the count lemma per row (`zerocheck_bad_le`/`skip_pair_bad_le`/`round_escape_le`/`batch_*_bad_le` with `card_chF_fiber`/`card_chF2_fiber`, `rs1_joint`, `round_bad_cover` + `card_chK_fiber`, `positions_bad_le` + `card_idx_fiber`); the handoff (`habs` at the next absorb or the escape at the next squeeze); and the reads `hstab` must keep stable (`wordOf` under the caps by `colL_prefix`/`cap_binding`, the window case of a cap's own absorb). |
+| Composition | **Ratified**: `D L es := Rej L es ∨ D_{φ(es)} L es` (the current phase's doom, or `Rej`), handoffs as S-G1b §5.1; `rnd 0 = none`. |
+| Budget | `FRSoundnessTruths` ≈ 900 lines (S-G1c), `FRSoundnessStepC` (the composed `D`, `StepObl`) ≈ 1,200 (§7). The P2 bound `(1 − eᵢ/nᵢ)^{tᵢ} ≤ deltaR` is kernel-checked in S-G1c (not deferred to S-I). |
+
