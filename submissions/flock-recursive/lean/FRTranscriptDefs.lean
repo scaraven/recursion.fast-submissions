@@ -20,7 +20,7 @@ are all computed from it, so the three cannot drift apart.
   `"FRMNOD" ‖ i ‖ 0`, column `"FRMCOL" ‖ i ‖ 0`.
 * Challenge maps (A.2): `chF a c` is bytes `16c … 16c + 15` of an answer as an F element; `chK a` all
   32 bytes as a K element; `idxOf b a i` bits `[ib, (i+1)b)` of `natLE a`.
-* `items_length : items.length = 8854` (`decide`, a closed form of the table), `fsItems_length`
+* `items_length : items.length = 8874` (`decide`, a closed form of the table), `fsItems_length`
   (431), `streamBytes_eq` (the hashed stream `0x54 ‖ traceBytes`), `chainLen_eq` (compressions).
 -/
 
@@ -193,7 +193,7 @@ def piopPhases : List Phase :=
    ⟨"Lr1", .squeezes 8 (.coords (nodeOnly 15))⟩, ⟨"Lr2", .rounds fLr 15 3 false (nodeOnly 15)⟩,
    ⟨"Lrend", .absorb fLrEnd 48⟩,
    ⟨"Lr3", .squeezes 1 (.one Kind.isNode)⟩, ⟨"Lr4", .rounds fLr 15 2 false (nodeOnly 15)⟩,
-   ⟨"RS0", .absorb fRS0 (5 * 128 * 16)⟩, ⟨"RS1", .squeezes 4 (.coords fun _ => 8)⟩,
+   ⟨"RS0", .absorb fRS0 (4 * 128 * 16)⟩, ⟨"RS1", .squeezes 4 (.coords fun _ => 8)⟩,
    ⟨"E1", .squeezes 11 (.coords (nodeOnly 21))⟩, ⟨"E2", .rounds fE 21 3 false (nodeOnly 21)⟩,
    ⟨"Eend", .absorb fEEnd 48⟩,
    ⟨"E3", .squeezes 1 (.one Kind.isNode)⟩,
@@ -211,7 +211,7 @@ def levelPhases (i : ℕ) : List Phase :=
    ⟨"C", .absorb (capField i) (capBytes i)⟩,
    ⟨"P2", .squeezes (lvlStar i).sq (.pos i)⟩,
    ⟨"Q", .queries i⟩,
-   ⟨"P3", .squeezes 1 (.one fun _ => true)⟩]
+   ⟨"P3", .squeezes 5 (.coords fun _ => 9)⟩]
 
 /-- The final rounds `Pf` (A.4 row 47): `log₂ finalElems` K rounds. -/
 def finalPhase : Phase := ⟨"Pf", .rounds fPf 7 2 true fun _ => 7⟩
@@ -260,9 +260,9 @@ def Item.isFS : Item → Bool
   | _ => true
 
 /-- **`items_length`** (A.4; `qV = 10,240`). -/
-theorem items_length : items.length = 8854 := by decide +kernel
+theorem items_length : items.length = 8874 := by decide +kernel
 
-theorem fsItems_length : (items.filter Item.isFS).length = 431 := by decide +kernel
+theorem fsItems_length : (items.filter Item.isFS).length = 451 := by decide +kernel
 
 /-! ## Tags and queries (A.2) -/
 
@@ -490,7 +490,7 @@ def Item.qlen : Item → ℕ
 per item. -/
 def streamBytes : ℕ := 1 + (items.map fun it => 8 + it.qlen + 32).sum
 
-theorem streamBytes_eq : streamBytes = 1438192 := by decide +kernel
+theorem streamBytes_eq : streamBytes = 1437744 := by decide +kernel
 
 /-- An item's bytes in the stream: `enc64 |q| ‖ q ‖ a`. -/
 def Item.slen (it : Item) : ℕ := 8 + it.qlen + 32
@@ -545,7 +545,7 @@ theorem streamOff_aligned (k : ℕ) (hk : 1 ≤ k) (hk' : k ≤ items.length) : 
 /-- **The digest chain's length** (compressions per slot, §4.2): `⌈|B| / 64⌉`. -/
 def chainLen : ℕ := (streamBytes + 63) / 64
 
-theorem chainLen_eq : chainLen = 22472 := by rw [chainLen, streamBytes_eq]
+theorem chainLen_eq : chainLen = 22465 := by rw [chainLen, streamBytes_eq]
 
 /-! ## Challenge maps (A.2) -/
 
@@ -606,11 +606,14 @@ inductive BlockKind where
   | hashB2
   /-- WOTS chain steps (43 bytes). -/
   | w43
+  /-- The non-hash blocks (M, L, `WM`, spares; revision 3.8/3.8.1): rows `(var k, var k)`, `E = 0`,
+  nothing pinned (`Sel ≡ 1`). -/
+  | free
   deriving DecidableEq, Repr
 
 /-- The kinds, in A.6's order (`kindInd`'s array order). -/
 def blockKinds : List BlockKind :=
-  [.chain, .stream, .streamStart, .streamEnd41, .hashA, .hashB1, .hashB2, .w43]
+  [.chain, .stream, .streamStart, .streamEnd41, .hashA, .hashB1, .hashB2, .w43, .free]
 
 /-- **The pinned positions** (`(0,0)` rows) of a kind (A.6, normative), as bit intervals `[lo, hi]`;
 a pinned position's value is its bit in the public target `E` (the `E` values are A.6's table,
@@ -624,6 +627,7 @@ def zeroRows : BlockKind → List (ℕ × ℕ)
   | .hashB1 => [(0, 255), (512, 519), (1024, 1152)]
   | .hashB2 => [(520, 1023), (1024, 1152)]
   | .w43 => [(0, 255), (512, 519), (584, 599), (856, 1023), (1024, 1152)]
+  | .free => []
 
 /-- Is row `x` a `(0,0)` row of the block kind? -/
 def isZeroRow (bk : BlockKind) (x : ℕ) : Bool := (zeroRows bk).any fun p => p.1 ≤ x && x ≤ p.2

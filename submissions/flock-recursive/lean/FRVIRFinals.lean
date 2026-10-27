@@ -117,14 +117,14 @@ def claimN (fi : FinIn) (name : String) : Reg := (outsOf fi name).getLastD 0
 /-- A squeeze phase's coordinates (after the packed array). -/
 def coordsR (fi : FinIn) (name : String) : List Reg := (outsOf fi name).drop 1
 
-/-- **`finZ`** (A.9): `ŵ(r′)·(â b̂ + ẑ_Z) + Ŵ_E(λ, r′) = c_Z`. Exports `â`, `b̂`. -/
+/-- **`finZ`** (A.9, revision 3.8, skip-c): `eq((ρ, r), r′)·â·b̂ = c_Z`. Exports `â`, `b̂` and Z2's
+`P^z*(λ)`, the value of RS claim 1 (`ẑ(r, λ)`). -/
 def finZ : FinField := fun fi b =>
   let co := coordsR fi "Z1"; let rs := chals fi "Z3" 26
-  ([.packFK (fun κ => co.take (κ.m - 13)), .packFK (fun κ => rs.take (κ.m - 6)),
-    .selWeight b (b + 1), .targetMLE b ((outsOf fi "Z2").headD 0) (b + 1),
-    .piElem fZend 0, .piElem fZend 16, .mulF (b + 4) (b + 5), .addF (b + 6) (fi.zhat.getD 0 0),
-    .mulF (b + 2) (b + 7), .addF (b + 8) (b + 3), .assertEq (b + 9) (claimN fi "Z3") allK],
-   [b + 4, b + 5])
+  ([.packFK (fun κ => co.take (κ.m - 13)), .packFK (fun κ => rs.take (κ.m - 6)), .eqZ b (b + 1),
+    .piElem fZend 0, .piElem fZend 16, .mulF (b + 2) (b + 3), .mulF (b + 5) (b + 4),
+    .assertEq (b + 6) (claimN fi "Z3") allK],
+   [b + 3, b + 4, (outsOf fi "Z2").getD 2 0])
 
 /-- `v_β = Σ_{i<7} β^i v_i` by Horner from `v₆` (register `b + 12`), the `v_i` at `b + 6 + i`, into
 `b + 22 … b + 33` (closed-form register numbers). -/
@@ -143,7 +143,7 @@ def finLc : FinField := fun fi b =>
     .packFK (fun _ => (chals fi "Z3" 26).take 8), .rowW ((outsOf fi "Z2").headD 0) (b + 4)] ++
    (List.range 7).map (fun i => .piElem fL2 (oL3 + 16 * i)) ++
    [.const (fun _ => .f 0),
-    .packFK (fun κ => if κ.isNode then (b + 13) :: v else (b + 6) :: List.replicate 7 (b + 13)),
+    .packFK (fun κ => if κ.isNode then (b + 13) :: v ++ [b + 13] else (b + 6) :: List.replicate 8 (b + 13)),
     .maskRows (b + 14) (b + 5), .packF (chals fi "L2" 14), .eqTable (b + 16),
     .walkA (b + 15) (b + 17), .walkB (b + 15) (b + 17), .mulF α (b + 19), .addF (b + 18) (b + 20),
     .assertEq (b + 21) (claimN fi "L2") allK] ++
@@ -175,8 +175,8 @@ def finSh : FinField := fun fi b =>
     .mulF ks (b + 10), .addF (b + 8) (b + 11), .slotW 1 (b + 1) (b + 4), .mulF (b + 12) (b + 13),
     .mulF ks ks] ++
    linkOps b (b + 3) ks b ++
-   [.mulF (b + 7) (fi.zhat.getD 2 0), .mulF (b + 46) (fi.zhat.getD 3 0), .addF (b + 48) (b + 49),
-    .assertEq (b + 50) (claimN fi "S2") allK],
+   [.addF (b + 7) (b + 46), .mulF (b + 48) (fi.zhat.getD 2 0),
+    .assertEq (b + 49) (claimN fi "S2") allK],
    [b + 7, b + 46])
 
 /-- **`finLr`** (A.9; node only): `â_L, b̂_L, ĉ_L` from the Lr-end absorb (A.3 row 7′, revision 3.7);
@@ -192,7 +192,7 @@ def finLr : FinField := fun fi b =>
     .mulF kL (b + 1), .mulF kL kL, .mulF (b + 10) (b + 2), .addF b (b + 9), .addF (b + 12) (b + 11),
     .assertEq (b + 13) (claim0 fi "Lr4") Kind.isNode,
     .packF (chals fi "Lr4" 15), .evalL (b + 4) (b + 14), .mulF kL (b + 16), .mulF (b + 10) (b + 17),
-    .addF (b + 15) (b + 18), .addF (b + 20) (b + 19), .mulF (b + 21) (fi.zhat.getD 4 0),
+    .addF (b + 15) (b + 18), .addF (b + 20) (b + 19), .mulF (b + 21) (fi.zhat.getD 3 0),
     .assertEq (b + 22) (claimN fi "Lr4") Kind.isNode],
    [b + 14])
 
@@ -208,38 +208,30 @@ variable (impl : OpImpl) (κ : Kind) (inp : Input) (fi : FinIn) (r : Array Val)
 /-- The F value of register `x`. -/
 abbrev fv (x : Reg) : F := (rd r x).toF
 
-/-- **`flag_finZ`**: `finZ` asks nothing, and its flag is A.9's relation. -/
 theorem map_rd_app (L : List Val) (xs : List Reg) (h : ∀ x ∈ xs, x < r.size) :
     xs.map (fun x => (rd (r ++ L.toArray) x).toF) = xs.map (fv r) :=
   List.map_congr_left fun x hx => by rw [rd_app_left _ _ (h x hx)]
 
-theorem flag_finZ (hin : ∀ x ∈ coordsR fi "Z1" ++ chals fi "Z3" 26 ++
-      [(outsOf fi "Z2").headD 0, fi.zhat.getD 0 0, claimN fi "Z3"], x < r.size) :
+/-- **`flag_finZ`**: `finZ` asks nothing, and its flag is A.9's relation (rev 3.8, skip-c). -/
+theorem flag_finZ (hin : ∀ x ∈ coordsR fi "Z1" ++ chals fi "Z3" 26 ++ [claimN fi "Z3"], x < r.size) :
     ∃ L, pureRun impl κ inp (finZ fi r.size).1 r [] = some (L,
-      let co := coordsR fi "Z1"; let rs := chals fi "Z3" 26
-      let rr := ((co.take (κ.m - 13)).map (fv r)).toArray
-      let rr' := ((rs.take (κ.m - 6)).map (fv r)).toArray
-      let a := F.ofBytes (bytesAt inp.π (absOff fZend 0) 16)
-      let bb := F.ofBytes (bytesAt inp.π (absOff fZend 16) 16)
-      (Val.f (impl.selWeight rr rr' * (a * bb + fv r (fi.zhat.getD 0 0)) +
-        impl.targetMLE rr (fv r ((outsOf fi "Z2").headD 0)) rr')).eqv (rd r (claimN fi "Z3"))) := by
+      let rr := (((coordsR fi "Z1").take (κ.m - 13)).map (fv r)).toArray
+      let rr' := (((chals fi "Z3" 26).take (κ.m - 6)).map (fv r)).toArray
+      (Val.f (impl.eqZ rr rr' * F.ofBytes (bytesAt inp.π (absOff fZend 0) 16) *
+        F.ofBytes (bytesAt inp.π (absOff fZend 16) 16))).eqv (rd r (claimN fi "Z3"))) := by
   simp only [List.mem_append, List.mem_cons, List.not_mem_nil, or_false] at hin
-  have h1 := fun L => map_rd_app r L ((coordsR fi "Z1").take (κ.m - 13)) fun x hx => hin x (.inl (.inl (List.mem_of_mem_take hx)))
-  have h2 := fun L => map_rd_app r L ((chals fi "Z3" 26).take (κ.m - 6)) fun x hx => hin x (.inl (.inr (List.mem_of_mem_take hx)))
-  have h3 := hin ((outsOf fi "Z2").headD 0) (.inr (.inl rfl))
-  have h4 := hin (fi.zhat.getD 0 0) (.inr (.inr (.inl rfl)))
-  have h5 := hin (claimN fi "Z3") (.inr (.inr (.inr rfl)))
+  have h1 := fun L => map_rd_app r L ((coordsR fi "Z1").take (κ.m - 13))
+    fun x hx => hin x (.inl (.inl (List.mem_of_mem_take hx)))
+  have h2 := fun L => map_rd_app r L ((chals fi "Z3" 26).take (κ.m - 6))
+    fun x hx => hin x (.inl (.inr (List.mem_of_mem_take hx)))
   have tf : ∀ x, (Val.f x).toF = x := fun _ => rfl
   have taf : ∀ x, (Val.af x).toAF = x := fun _ => rfl
   simp only [finZ]
-  generalize (outsOf fi "Z2").headD 0 = l at *
-  generalize fi.zhat.getD 0 0 = zh at *
   generalize claimN fi "Z3" = cz at *
-  simp only [pureRun, evalOp, tf, taf, List.nil_append, List.cons_append, h1, h2,
-    rd_app, rd_app0, rd_app_left _ _ h3, rd_app_left _ _ h4, rd_app_left _ _ h5,
-    List.getD_eq_getElem?_getD, List.getElem?_cons_succ, List.getElem?_cons_zero, Option.getD_some,
-    Option.map_some, Val.eqv, allK, Bool.not_true, Bool.false_or, Bool.true_and,
-    Bool.and_true]
+  have h5 := hin cz (.inr rfl)
+  simp only [pureRun, evalOp, tf, taf, List.nil_append, List.cons_append, h1, h2, rd_app, rd_app0,
+    rd_app_left _ _ h5, List.getD_cons_succ, List.getD_cons_zero, Option.map_some, Val.eqv, allK,
+    Bool.not_true, Bool.false_or, Bool.true_and, Bool.and_true]
   exact ⟨_, rfl⟩
 
 /-- The F element at byte `o` of field `f`. -/
@@ -250,7 +242,7 @@ def relLc : Bool :=
   let α := fv r ((outsOf fi "L1").headD 0); let β := fv r ((outsOf fi "L3β").headD 0)
   let oL3 := phaseOff (phaseIx "L3") fL2
   let v := (List.range 7).map fun i => pe inp fL2 (oL3 + 16 * i)
-  let vk : List F := if κ.isNode then 0 :: v else v.headD 0 :: List.replicate 7 0
+  let vk : List F := if κ.isNode then 0 :: v ++ [0] else v.headD 0 :: List.replicate 8 0
   let rw := maskRows vk.toArray (impl.rowW (fv r ((outsOf fi "Z2").headD 0))
     (((chals fi "Z3" 26).take 8).map (fv r)).toArray)
   let cw := eqTab ((chals fi "L2" 14).map (fv r)).toArray
@@ -311,11 +303,11 @@ def relSh : Bool :=
     ((impl.shiftEq τ rb + ks * eqPoint (Array.replicate (κ.m - 14) 0) rb) * impl.slotW 1 θ rp)
     (ks * ks)
   (Val.f (impl.shiftTarget τ θ)).eqv (rd r (claim0 fi "S2")) &&
-  (Val.f (wout * fv r (fi.zhat.getD 2 0) + win * fv r (fi.zhat.getD 3 0))).eqv
+  (Val.f ((wout + win) * fv r (fi.zhat.getD 2 0))).eqv
     (rd r (claimN fi "S2"))
 
 theorem flag_finSh (hin : ∀ x ∈ coordsR fi "S1" ++ chals fi "S2" 28 ++
-      [claim0 fi "S2", claimN fi "S2", fi.zhat.getD 2 0, fi.zhat.getD 3 0,
+      [claim0 fi "S2", claimN fi "S2", fi.zhat.getD 2 0, fi.zhat.getD 2 0,
        (coordsR fi "S1").getD 28 0], x < r.size) :
     ∃ L, pureRun impl κ inp (finSh fi r.size).1 r [] = some (L, relSh impl κ fi r) := by
   simp only [List.mem_append, List.mem_cons, List.not_mem_nil, or_false] at hin
@@ -339,17 +331,15 @@ theorem flag_finSh (hin : ∀ x ∈ coordsR fi "S1" ++ chals fi "S2" 28 ++
   generalize claim0 fi "S2" = c0 at *
   generalize claimN fi "S2" = cN at *
   generalize fi.zhat.getD 2 0 = zo at *
-  generalize fi.zhat.getD 3 0 = zi at *
   generalize (coordsR fi "S1").getD 28 0 = ks at *
   have hc0 := hin c0 (.inr (.inl rfl)); have hcN := hin cN (.inr (.inr (.inl rfl)))
   have hzo := hin zo (.inr (.inr (.inr (.inl rfl))))
-  have hzi := hin zi (.inr (.inr (.inr (.inr (.inl rfl)))))
   have hk := hin ks (.inr (.inr (.inr (.inr (.inr rfl)))))
   simp only [pureRun, evalOp, tf, taf, List.nil_append, List.cons_append, h1, h2, h3, h4, linkOps,
     nLinkFam, linkSum, List.range_succ, List.range_zero, List.flatMap_append, List.flatMap_cons,
     List.flatMap_nil, ↓reduceIte, Nat.reduceEqDiff, Nat.reduceAdd, Nat.reduceMul, Nat.reduceSub,
     rd_app, rd_app0, rd_app_left _ _ hc0, rd_app_left _ _ hcN,
-    rd_app_left _ _ hzo, rd_app_left _ _ hzi, rd_app_left _ _ hk,
+    rd_app_left _ _ hzo, rd_app_left _ _ hk,
     List.getD_cons_succ, List.getD_cons_zero,
     Option.map_some, allK, Bool.not_true, Bool.false_or, Bool.true_and, Bool.and_true]
   exact ⟨_, rfl⟩
@@ -365,13 +355,13 @@ def relLr : Bool :=
   if κ.isNode then
     (Val.f (eqPoint rLr rr * (a * bb + c))).eqv (rd r (claimN fi "Lr2")) &&
     ((Val.f (a + kL * bb + kL * kL * c)).eqv (rd r (claim0 fi "Lr4")) &&
-    (Val.f ((m.1 + kL * m.2.1 + kL * kL * m.2.2) * fv r (fi.zhat.getD 4 0))).eqv
+    (Val.f ((m.1 + kL * m.2.1 + kL * kL * m.2.2) * fv r (fi.zhat.getD 3 0))).eqv
       (rd r (claimN fi "Lr4")))
   else true
 
 theorem flag_finLr (hin : ∀ x ∈ (coordsR fi "Lr1").take 15 ++ chals fi "Lr2" 15 ++ chals fi "Lr4" 15 ++
       [(outsOf fi "Lr3").headD 0, claimN fi "Lr2", claim0 fi "Lr4", claimN fi "Lr4",
-       fi.zhat.getD 4 0], x < r.size) :
+       fi.zhat.getD 3 0], x < r.size) :
     ∃ L, pureRun impl κ inp (finLr fi r.size).1 r [] = some (L, relLr impl κ inp fi r) := by
   simp only [List.mem_append, List.mem_cons, List.not_mem_nil, or_false] at hin
   have h1 := fun L => map_rd_app r L ((coordsR fi "Lr1").take 15) fun x hx => hin x (.inl (.inl (.inl hx)))
@@ -384,7 +374,7 @@ theorem flag_finLr (hin : ∀ x ∈ (coordsR fi "Lr1").take 15 ++ chals fi "Lr2"
   generalize claimN fi "Lr2" = c2 at *
   generalize claim0 fi "Lr4" = c40 at *
   generalize claimN fi "Lr4" = c4 at *
-  generalize fi.zhat.getD 4 0 = zl at *
+  generalize fi.zhat.getD 3 0 = zl at *
   have hk := hin kl (.inr (.inl rfl)); have hc2 := hin c2 (.inr (.inr (.inl rfl)))
   have hc40 := hin c40 (.inr (.inr (.inr (.inl rfl))))
   have hc4 := hin c4 (.inr (.inr (.inr (.inr (.inl rfl)))))

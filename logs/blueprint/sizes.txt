@@ -1,0 +1,13 @@
+== unified item sequence (sized for m=32; P30 proofs carry dummy items)
+   FS items=451 columns=871 siblings=7552 -> items=8874; qV=10240 margin 1.15x
+   hashed stream bytes=1437760 compressions/slot=22465
+   piSize = 48+128 + PIOP 18992 + caps 45056 + final 4096 + columns 445696 + siblings 241664 = 755680 B = 738 KiB (72% of proofCap, margin 1.39x)
+   L32 ladder: L0:k=2^19,n=2^20,e=262144,t=290,err=2^-120.36,sib=11,sq=25 L1:k=2^16,n=2^18,e=98304,t=178,err=2^-120.70,sib=10,sq=13 L2:k=2^13,n=2^16,e=28672,t=145,err=2^-120.36,sib=8,sq=10 L3:k=2^10,n=2^14,e=7680,t=132,err=2^-120.45,sib=6,sq=8 L4:k=2^7,n=2^12,e=1984,t=126,err=2^-120.41,sib=5,sq=6
+   P30 ladder: L0:k=2^17,n=2^18,e=65536,t=290,err=2^-120.36,sib=9,sq=21 L1:k=2^14,n=2^16,e=24576,t=178,err=2^-120.70,sib=8,sq=12 L2:k=2^11,n=2^14,e=7168,t=145,err=2^-120.36,sib=6,sq=9 L3:k=2^8,n=2^12,e=1920,t=132,err=2^-120.45,sib=4,sq=7 L4:k=2^5,n=2^10,e=496,t=126,err=2^-120.41,sib=3,sq=6
+== node
+   per slot: imports 74521 (col 27856, sib 45312, fs 1353); folds 54841; encFinal 32256; merkle 30208; uni 400; eq/tensor 15000; mbp 12800; sumchecks 2000; lincheck-replay 98312; evalM-replay 210356; evalL-replay 8192; gated asserts 6118
+   M rows/node = 1090016 = 2^20.06; N_M=2^21 margin 1.92x; M blocks 8516
+   H blocks 45960; L blocks 124; total 54601 of 65536 (83%, margin 1.20x); H gap [45960, 49152) = 3192 blocks holds L+P (125)
+== V products: node ~386997 (evalM irregular 149042); leaf ~118168
+== extractor m=30: products 2^40.69, steps (57/product) 2^46.52; fuel 2^47.5 margin 1.97x; budget 2^48 margin 2.79x
+== outCap: node of two children ~638307 words = 2^19.3 of 2^24

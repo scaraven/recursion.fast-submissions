@@ -20,7 +20,7 @@ BLUEPRINT §3, B-2, B-7, A.8.
 * Assertions do not stop the program: they clear the `ok` flag, so every run asks **every** ask op
   (the item sequence is a constant, §1.2). The result is the flag.
 * `OpImpl` holds the op implementations other tracks supply (`lagrangeS`, `tensorW`, `mbp`,
-  `walkA/B`, `kindInd`, `evalM`, `evalL`, `selWeight`, `targetMLE`, `shiftTarget`, `slotW`,
+  `walkA/B`, `kindInd`, `evalM`, `evalL`, `targetS`, `eqZ`, `shiftTarget`, `slotW`,
   `kindFoldWeight`); `OpSpec` the same signatures as the
   mathematical reference; `OpImpl.Meets impl spec` is what `FRVIREval` proves.
 * `runIR impl P inp : OProg Bool` (the verifier's program) and `semIR impl P inp tr : Option Bool`
@@ -147,7 +147,12 @@ inductive Op where
   | eqTable (r : Reg) | eqTableK (r : Reg)
   /-- K: `Σ_r w[r] · col_r` (a column's F elements folded by the K weights). -/
   | dotKF (w col : Reg)
-  | lagrangeS (vals lam : Reg)
+  /-- `(P^{ab}*(λ), P^z*(λ))` from Z2's 127 values and `pe = targetS r` (two F registers; rev 3.8). -/
+  | lagrangeS (vals lam pe : Reg)
+  /-- AF 64: `P^e` on `S` at the zerocheck point (rev 3.8; S-C). -/
+  | targetS (r : Reg)
+  /-- F: `eq((ρ, r), r′)` with the pinned coordinates `ρ` (rev 3.8, `finZ`; S-C). -/
+  | eqZ (r r' : Reg)
   | tensorW (j r : Reg)
   | mbp (r kappa pt : Reg)
   | walkA (rowW colW : Reg) | walkB (rowW colW : Reg)
@@ -158,7 +163,6 @@ inductive Op where
   | maskRows (kindW rowW : Reg)
   /-- Three F registers. -/
   | evalM (tau sigma : Reg) | evalL (tau sigma : Reg)
-  | selWeight (r r' : Reg) | targetMLE (r lam r' : Reg)
   | shiftTarget (tau theta : Reg)
   /-- F: the slot weight of slot map `s` at `θ`, `r`. -/
   | slotW (s : ℕ) (theta r : Reg)
@@ -195,7 +199,11 @@ inductive Op where
 /-- The op implementations `FRVerifier` takes from `FRVIREval` (and the modules it uses). -/
 structure OpImpl where
   /-- The degree-≤127 interpolant through `S ∪ Λ` at `λ` (FRSkip). -/
-  lagrangeS : Array F → F → F
+  lagrangeS : Array F → F → Array F → F × F
+  /-- `P^e` on `S` (64 values) at the zerocheck point (FRPubTarget/S-C). -/
+  targetS : Array F → Array F
+  /-- `eq((ρ, r), r′)` with the pinned coordinates (FRSkip). -/
+  eqZ : Array F → Array F → F
   /-- `Π_v (1 − r_v + r_v Ŵ_v(D[j]))` (FRRS). -/
   tensorW : ℕ → Array K → K
   /-- `Ŵ(ρ) = Σ_{j<J_z} κ^j B̂_j(ρ)` at the final point (`r″`, `κ`, the point; `J_z` width-128
@@ -231,21 +239,21 @@ structure OpImpl where
 /-- **The specification record**: the same signatures, read as the mathematical definitions.
 Owners of the concrete `OpSpec` and its lemmas (S-0-m2): S-C — `lagrangeS`, `tensorW`, `mbp`,
 `shiftTarget`, `slotW`, `kindFoldWeight`, `linkW`, `rowW`, `shiftEq`; S-E1/S-E2 — `walkA/B`,
-`evalM/L`, `kindInd`; `FRPubTarget` — `selWeight`, `targetMLE`. -/
+`evalM/L`, `kindInd`; `FRPubTarget` — `targetS`; FRSkip — `eqZ`. -/
 abbrev OpSpec := OpImpl
 
 /-- **`impl ⊨ spec`, per op, on well-formed operands only** (S-0-m2): each implemented op equals its
 specification where the verifier calls it (the operand lengths `gen` produces); malformed lengths
 are unconstrained. `FRVIREval` proves it. -/
 def OpImpl.Meets (impl : OpImpl) (spec : OpSpec) : Prop :=
-  (∀ v l, v.size = 127 → impl.lagrangeS v l = spec.lagrangeS v l) ∧
+  (∀ v l pe, v.size = 127 → impl.lagrangeS v l pe = spec.lagrangeS v l pe) ∧
+  (∀ r, impl.targetS r = spec.targetS r) ∧ (∀ a b, impl.eqZ a b = spec.eqZ a b) ∧
   (∀ j r, impl.tensorW j r = spec.tensorW j r) ∧
   (∀ r k p, r.size = 7 → impl.mbp r k p = spec.mbp r k p) ∧
   (∀ rw cw, rw.size = 2 ^ 14 → cw.size = 2 ^ 14 → impl.walkA rw cw = spec.walkA rw cw) ∧
   (∀ rw cw, rw.size = 2 ^ 14 → cw.size = 2 ^ 14 → impl.walkB rw cw = spec.walkB rw cw) ∧
   (∀ a b, impl.evalM a b = spec.evalM a b) ∧ (∀ a b, impl.evalL a b = spec.evalL a b) ∧
-  (∀ a b, a.size = b.size → impl.selWeight a b = spec.selWeight a b) ∧
-  (∀ a l b, impl.targetMLE a l b = spec.targetMLE a l b) ∧ (∀ a, impl.kindInd a = spec.kindInd a) ∧
+  (∀ a, impl.kindInd a = spec.kindInd a) ∧
   (∀ a b, impl.shiftTarget a b = spec.shiftTarget a b) ∧
   (∀ s a b, impl.slotW s a b = spec.slotW s a b) ∧
   (∀ a b c, impl.kindFoldWeight a b c = spec.kindFoldWeight a b c) ∧
@@ -341,7 +349,11 @@ def evalOp (impl : OpImpl) (κ : Kind) (inp : Input) (regs : Array Val) : Op →
   | .eqTable r => .vals [.af (eqTab (rd regs r).toAF)] true
   | .eqTableK r => .vals [.ak (eqTab (rd regs r).toAK)] true
   | .dotKF w col => .vals [.k (dotKF (rd regs w).toAK (rd regs col).toB)] true
-  | .lagrangeS v l => .vals [.f (impl.lagrangeS (rd regs v).toAF (rd regs l).toF)] true
+  | .lagrangeS v l pe =>
+    let x := impl.lagrangeS (rd regs v).toAF (rd regs l).toF (rd regs pe).toAF
+    .vals [.f x.1, .f x.2] true
+  | .targetS r => .vals [.af (impl.targetS (rd regs r).toAF)] true
+  | .eqZ r r' => .vals [.f (impl.eqZ (rd regs r).toAF (rd regs r').toAF)] true
   | .tensorW j r => .vals [.k (impl.tensorW (rd regs j).toN (rd regs r).toAK)] true
   | .mbp r κ' pt => .vals [.f (impl.mbp (rd regs r).toAF (rd regs κ').toF (rd regs pt).toAK)] true
   | .walkA r c => .vals [.f (impl.walkA (rd regs r).toAF (rd regs c).toAF)] true
@@ -354,9 +366,6 @@ def evalOp (impl : OpImpl) (κ : Kind) (inp : Input) (regs : Array Val) : Op →
   | .evalL t s =>
     let x := impl.evalL (rd regs t).toAF (rd regs s).toAF
     .vals [.f x.1, .f x.2.1, .f x.2.2] true
-  | .selWeight r r' => .vals [.f (impl.selWeight (rd regs r).toAF (rd regs r').toAF)] true
-  | .targetMLE r l r' =>
-    .vals [.f (impl.targetMLE (rd regs r).toAF (rd regs l).toF (rd regs r').toAF)] true
   | .shiftTarget t h => .vals [.f (impl.shiftTarget (rd regs t).toAF (rd regs h).toAF)] true
   | .slotW sm t r => .vals [.f (impl.slotW sm (rd regs t).toAF (rd regs r).toAF)] true
   | .eqPt a b => .vals [.f (eqPoint (rd regs a).toAF (rd regs b).toAF)] true
@@ -441,6 +450,7 @@ def semIR (impl : OpImpl) (P : VProg) (inp : Input) (tr : Trace) : Option Bool :
 /-- The registers an op appends. -/
 def Op.outs : Op → ℕ
   | .evalM .. | .evalL .. | .kindSel => 3
+  | .lagrangeS .. => 2
   | .splitDigest _ => 2
   | .assertEq .. | .assertBit .. | .assertZero .. | .assertOneHot .. | .accept => 0
   | _ => 1
@@ -482,6 +492,8 @@ structure GCtx where
   /-- The last position answers and fold challenges. -/
   posAns : List Reg
   foldR : List Reg
+  /-- The last coordinates array (a `.coords` phase's packed point; Z2's `targetS` reads Z1's). -/
+  pt : Reg
   /-- Each phase's outputs, by phase number. -/
   outs : Array (List Reg)
 
@@ -533,12 +545,12 @@ def uniHead (f o st b : ℕ) : List Op :=
 def uniElems (f o : ℕ) : List Op := (List.range 127).map fun i => .piElem f (o + 16 * i)
 
 /-- The interpolant at `λ` and the zero padding (registers `b + 131 … b + 133`). -/
-def uniTail (f o b : ℕ) : List Op :=
-  [.packF ((List.range 127).map (b + 4 + ·)), .lagrangeS (b + 131) (b + 3),
-   .piField f (o + 2032) 16, .assertZero (b + 133) allK]
+def uniTail (f o pt b : ℕ) : List Op :=
+  [.packF ((List.range 127).map (b + 4 + ·)), .targetS pt, .lagrangeS (b + 131) (b + 3) (b + 132),
+   .piField f (o + 2032) 16, .assertZero (b + 135) allK]
 
 /-- A univariate round from field `f` at `o` (width 134): `λ` at `b + 3`, the value at `b + 132`. -/
-def uniOps (f o st b : ℕ) : List Op := uniHead f o st b ++ uniElems f o ++ uniTail f o b
+def uniOps (f o st pt b : ℕ) : List Op := uniHead f o st b ++ uniElems f o ++ uniTail f o pt b
 
 /-- Width of one round. -/
 def roundW (deg : ℕ) : ℕ := if deg = 3 then 16 else 13
@@ -636,15 +648,17 @@ def genPhase (n : ℕ) (p : Phase) (c : GCtx) : List Op × GCtx :=
     match ch with
     | .coords _ =>
       let rs := (List.range (2 * k)).map fun x => b + 3 * (x / 2) + 1 + x % 2
-      rec_ (sqzCoordOps k c.st b ++ [.packF rs]) (3 * k + 1) (b + 3 * k - 3) ((b + 3 * k) :: rs)
+      let (ops, c') :=
+        rec_ (sqzCoordOps k c.st b ++ [.packF rs]) (3 * k + 1) (b + 3 * k - 3) ((b + 3 * k) :: rs)
+      (ops, { c' with pt := b + 3 * k })
     | .one _ => rec_ (sqzOps k c.st b ++ [.chF b 0]) (k + 1) (b + k - 1) [b + k]
     | .pos _ =>
       let ans := (List.range k).map (b + ·)
       let (ops, c') := rec_ (sqzOps k c.st b) k (b + k - 1) ans
       (ops, { c' with posAns := ans })
   | .uni f =>
-    let (ops, c') := rec_ (uniOps f (o f) c.st b) 134 (b + 2) [b + 3, b + 132]
-    (ops, { c' with uni := b + 132 })
+    let (ops, c') := rec_ (uniOps f (o f) c.st c.pt b) 136 (b + 2) [b + 3, b + 133, b + 134]
+    (ops, { c' with uni := b + 133 })
   | .rounds f k deg inK real =>
     let init := initClaim p.name
     let (iops, cl) := initOps init f (o f) inK c.uni b
@@ -673,7 +687,7 @@ def genPhases : List Phase → ℕ → GCtx → List Op × GCtx
     (r₁.1 ++ r₂.1, r₂.2)
 
 /-- The skeleton: every phase of the table, from register `0`. -/
-def skeleton : List Op × GCtx := genPhases phases 0 ⟨0, 0, 0, [], [], #[]⟩
+def skeleton : List Op × GCtx := genPhases phases 0 ⟨0, 0, 0, [], [], 0, #[]⟩
 
 /-- **`genWith fin mode`**: the verifier program of a kind (`.fixed κ`) or the mux (`.mux`): the
 skeleton, the phase-final checks (all after the skeleton: they ask nothing, so their place does not

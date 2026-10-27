@@ -33,8 +33,8 @@ novel-basis change, within `2^47.5 + 2^12 t` steps.
 
 | Quantity | value | bound | margin |
 |---|---|---|---|
-| `piSize` (both kinds) | 755,664 B = 739 KiB | `proofCap` 1,048,576 | 1.39× |
-| trace items (both kinds) | 8,870 | `qV = 10,240` | 1.16× |
+| `piSize` (both kinds) | 755,680 B = 739 KiB | `proofCap` 1,048,576 | 1.39× |
+| trace items (both kinds) | 8,874 | `qV = 10,240` | 1.16× |
 | hashed trace bytes / compressions | 1,437,424 / 22,460 | — | — |
 | node circuit blocks | 54,590 | 65,536 | 1.20× |
 | M rows per node | 1,089,908 = `2^20.06` | `N_M = 2^21` | 1.99× |
@@ -76,7 +76,7 @@ novel-basis change, within `2^47.5 + 2^12 t` steps.
 
 Kinds: **`W`** (`π = WitnessSending.encode w` exactly; decided with no query, §3); **`L32`**,
 **`P30`-leaf (`'P'`)**, **`P30`-node (`'N'`)**: `π = hdr ‖ stmt ‖ body`, `|π| = piSize =
-755,664` for all three (A.3), any other length rejected with no query.
+755,680` for all three (A.3), any other length rejected with no query.
 
 ```
 hdr  (48 B) = kindByte(1) ‖ m(1) ‖ zero(14) ‖ pub(32)      kindByte 0x4C 'L' | 0x50 'P' | 0x4E 'N'; m 32 | 30 | 30
@@ -94,7 +94,7 @@ body        = PIOP messages ‖ cap₀ … cap₄ ‖ final (4,096 B) ‖ column
 | final message `2^7 × 32` (P30: `2^5` K-elements then zeros) | 4,096 |
 | columns `290 · 1,024 + 581 · 256` | 445,696 |
 | siblings `32 × 7,552` (P30: its `5,810` real ones, the rest dummy zeros) | 241,664 |
-| **`piSize`** | **755,664 (739 KiB, 72 % of `proofCap`)** |
+| **`piSize`** | **755,680 (739 KiB, 72 % of `proofCap`)** |
 
 ### 1.2 Queries and the hashed trace
 
@@ -120,8 +120,8 @@ squeeze answer, the second F coordinate of the same phase bytes `16…31`; K = a
 positions: `⌊256/b⌋` indices of `b = log₂ nᵢ` bits per answer, **every index opened, duplicates
 included**. One squeeze serves one phase.
 
-Counts (`sizes.py`): FS items 429, column queries 871, Merkle-node queries 7,552: **8,870 items**
-(`qV = 10,240`, 1.16×); hashed stream 1,437,424 B = **22,460 compressions**.
+Counts (`sizes.py`): FS items 429, column queries 871, Merkle-node queries 7,552: **8,874 items**
+(`qV = 10,240`, 1.16×); hashed stream 1,437,424 B = **22,465 compressions**.
 
 ### 1.3 What each kind proves; `reassemble`
 
@@ -487,8 +487,8 @@ the signature, digit, selector and position-bit regions have power-of-two stride
 |---|---|---|---|
 | blocks | 54,590 | 65,536 | 1.20× |
 | M rows per node | 1,089,908 | `2^21` | 1.99× |
-| items | 8,870 | 10,240 | 1.16× |
-| `piSize` | 755,664 | 1,048,576 | 1.39× |
+| items | 8,874 | 10,240 | 1.16× |
+| `piSize` | 755,680 | 1,048,576 | 1.39× |
 | H gap for L | 124 blocks | 3,202 | — |
 
 ---
@@ -590,7 +590,7 @@ three-hot assignment `(1,1,1)` fails the product rows**, BP-C-R3-M1; a two-hot o
 with `one = 0` or a wrong counter word fails the zerocheck's target at a random point); a wrong
 public cell fails its point claim; `pinned_rank`'s inverse
 (`M · Minv = I` by `decide`; a wrong `Minv` fails); a `W` proof of size `> proofCap` is copied
-(toy at `semXIR`); `items_length = 8,870` and `piSize = 755,664` by `decide`.
+(toy at `semXIR`); `items_length = 8,874` and `piSize = 755,680` by `decide`.
 
 ---
 
@@ -854,7 +854,7 @@ opened**; a sumcheck round's message is its 3 coefficients
 (48 B; K rounds 96 B; degree-2 rounds carry `g(∞) = 0`); a univariate round's message is 127 F
 values padded to 2,048 B; the final message is the level-4 fold, `2^7` K-elements (4,096 B; `P30`: `2^5` then zeros). **Coordinate layouts of multi-coordinate squeezes** (S-0 deviation 7): coordinate `2s + c` is bytes `16c … 16c + 15` of answer `s`; Z1: 20 slots, the first `m − 13` used; S1: `τ` = 0–17 (`P30`: 0–15), `θ` = 18–27, `κ_s` = 28; RS1: `r″` = 0–6, `κ` = 7; Lr1, E1 likewise; consumers pick, dummies are ignored. **In-play windows** (S-0-m1): `windows` is defined by **stream offset** (`≡ 0 mod 16` in `0x54 ‖ traceBytes`, i.e. query offset `7 + 16k` for the seed and `8 + 16k` for every other query), so the seed's `vk`, `c` and `hdr` windows are in play too (harmless, never looked up; the count per entry is unchanged, `≤ 2^16`).
 
-### A.3 `piSize = 755,664`: the body's fields in order (offsets are the cumulative sums)
+### A.3 `piSize = 755,680`: the body's fields in order (offsets are the cumulative sums)
 
 | # | field | bytes |
 |---|---|---|
@@ -877,9 +877,9 @@ values padded to 2,048 B; the final message is the level-4 fold, `2^7` K-element
 | 13 | final message: the level-4 fold, `2^7` K | 4,096 |
 | 14 | columns: level 0 … 4, position by position (every index) | 445,696 |
 | 15 | siblings: level 0 … 4, position by position, leaf level first (11, 10, 8, 6, 5 per position) | 241,664 |
-| | **total** | **755,664** |
+| | **total** | **755,680** |
 
-(`48 + 128 + 18,976 + 45,056 + 4,096 + 445,696 + 241,664 = 755,664`; `sizes.py`.) `P30` fills
+(`48 + 128 + 18,976 + 45,056 + 4,096 + 445,696 + 241,664 = 755,680`; `sizes.py`.) `P30` fills
 its unused rounds (2 of Z3, the second chain's share of S2, 12 of the final message's 16 … 128 K
 slots, the last 2 siblings per position) with zeros.
 
@@ -919,7 +919,7 @@ slots, the last 2 siblings per position) with zeros.
 | 47 | Pf | 7 × (absorb K round 96 B, squeeze) | |
 
 Every absorb's payload is the field listed; every squeeze's answer is consumed as A.2 says, in
-order of appearance. `items_length = 8,870`.
+order of appearance. `items_length = 8,874`.
 
 ### A.5 `reassemble tr : Proof`
 
@@ -1283,20 +1283,20 @@ E2, `piSize = 757,712`, the dumps re-matched.
 |---|---|
 | Skip-c restored (P2 §8) | **Z3 runs on `eq(r,·)·a_λ·b_λ` only** (no `z`, no `W_E` table); the c-claim is the quirky point claim `ẑ(r, λ) = P^z*(λ)`, RS claim 1 (the revision-3.1 route). To make this sound without `Sel` in the RS weight, **`Sel ≡ 1`**: the non-hash blocks (M, L, `WM`, spares) get the kind **`free`** (rows `(var k, var k)`, `E = 0`, satisfied by every Boolean `z`; A.6; corrected in 3.8.1), so `ŵ = eq(r,·)` and `finZ` is `eq(r,r′)·â·b̂ = c_Z`. Z2's message: `P^z|_Λ` (64) then `P^{ab}|_{Λ₀…₆₂}` (63); `P^{ab}|_S` rebuilt as `P^z|_S + P^e|_S` (`targetS`); Z2 row **`126/2^128`** (case split on the fixed message). Prover: −0.26 s per `m = 30` request and −1.0 s per `m = 32` leaf (P2's measurement of the regression), +≈ 0.07 s for the full-cube zerocheck of a node: **link ≈ 2.75–2.85 s against ≈ 3.1 s; tree ≈ 450 s** (**estimate** from P2 §6/§8). |
 | S-C re-proves | `FRSpartan`: `bzExpr = w·a·b` over three tables (back from the five-table 3.4 form), `bz_trueSum = P^{ab}(λ)`, `bz_final = eq(r,r′)·â·b̂`, `bz_triple_wrong` adapted; the lincheck's per-kind claims include the `free` kind (`M_free = (1 + α)·rowW`, no walk; 3.8.1), `β` batching at 9 claims (`8/2^128`); `FRSkip`: `skip_pair_bad_le` (126) for `(P^{ab}*, P^z*)` reconstructed from 127 values and `P^e`; `FRPubTarget`: `targetS_eq` (`P^e` on `S`) replaces `targetMLE_eq`; `selWeight_eq` is unused. `FRRingSwitch`: unchanged (the quirky point claim is its 3.1 case). |
-| Prose vs dump (P2 §7.5) | **1** Z2: as above; `lagrangeS` gains the `pe` operand and two outputs (S-0, sound). **2** `κ_c`: the dump's one squeeze is **unsound against `εR`** (powers give `tᵢ/2^128 = 2^-119.8`); `P3.i` is **5 squeezes** (9 coordinates, `eq(κ_c, bits₉(j))`), A.4 corrected, items 8,870 (S-0 changes the Lean). **3** S2 dummies at the phase's end: ratified. **4** `θ` 10 coordinates, `σ < 256` as a 10-bit index: ratified (S-C's `slotW` reads it so). **5** Sh is **one** RS claim (`w_out + w_in` at one point): `J_z = 4`, RS0 `4 × 128`, 4 MBP runs, RS1 `10/2^128`, `piSize` −2,048 (A.9 `finSh`). **6** a leaf's `J_z = 3`, fourth partials zero: ratified. **7** `linkW = 0` for leaf kinds: ratified. **8** Pf for `P30`: the weight zero-padded, `Ŵ(s, ρ₀…₄)·(1+ρ₅)(1+ρ₆)`: ratified (S-G). **9** §1.2 counts fixed (447 FS items, 8,870). **10** L3's 7 elements / `maskRows`' 8 (now 9 with `free`): the leaf's `v` at entry 0, the node's at 1–8. **11** pending finals: S-F/S-G as A.9. |
+| Prose vs dump (P2 §7.5) | **1** Z2: as above; `lagrangeS` gains the `pe` operand and two outputs (S-0, sound). **2** `κ_c`: the dump's one squeeze is **unsound against `εR`** (powers give `tᵢ/2^128 = 2^-119.8`); `P3.i` is **5 squeezes** (9 coordinates, `eq(κ_c, bits₉(j))`), A.4 corrected, items 8,874 (S-0 changes the Lean). **3** S2 dummies at the phase's end: ratified. **4** `θ` 10 coordinates, `σ < 256` as a 10-bit index: ratified (S-C's `slotW` reads it so). **5** Sh is **one** RS claim (`w_out + w_in` at one point): `J_z = 4`, RS0 `4 × 128`, 4 MBP runs, RS1 `10/2^128`, `piSize` −2,048 (A.9 `finSh`). **6** a leaf's `J_z = 3`, fourth partials zero: ratified. **7** `linkW = 0` for leaf kinds: ratified. **8** Pf for `P30`: the weight zero-padded, `Ŵ(s, ρ₀…₄)·(1+ρ₅)(1+ρ₆)`: ratified (S-G). **9** §1.2 counts fixed (447 FS items, 8,874). **10** L3's 7 elements / `maskRows`' 8 (now 9 with `free`): the leaf's `v` at entry 0, the node's at 1–8. **11** pending finals: S-F/S-G as A.9. |
 
-**Margins** (`sizes.txt`): `piSize` 755,664 (1.39×); items 8,870 of 10,240 (1.15×); hashed stream
-22,460 compressions per slot; node 54,590 of 65,536 blocks (1.20×); M rows 1,089,908 = `2^20.06`
+**Margins** (`sizes.txt`): `piSize` 755,680 (1.39×); items 8,874 of 10,240 (1.15×); hashed stream
+22,465 compressions per slot; node 54,590 of 65,536 blocks (1.20×); M rows 1,089,908 = `2^20.06`
 of `2^21` (1.92×); extractor unchanged; **error maximum unchanged `2^-120.36 + 2^-144 ≤ εR`** (Z2
 `2^-121.0`, L3 `2^-125`, RS1 `2^-124.7`, P3 `2^-124.8`).
 
 **Interface changes:** **S-C** — as "S-C re-proves" above. **S-0** — `gen`: Z2's message order
 and `lagrangeS vals λ pe`, `targetS`, Z3 on two tables with `finZ = eq(r,r′) â b̂`, the Z claim at
 `(r, λ)` to RS, `J_z = 4`, P3.i with 5 squeezes, the `free` kind in `kindInd`/`maskRows` (9
-entries), `selWeight`/`targetMLE` removed; `items`/`piSize = 755,664`; re-dump. **S-F** — `finRS`
+entries), `selWeight`/`targetMLE` removed; `items`/`piSize = 755,680`; re-dump. **S-F** — `finRS`
 with 4 claims (Z's quirky claim as the first), `finE`/`finB′` unchanged. **P2** — the P1 zerocheck
 (skip-c) with the full cube for nodes (free blocks: `a = z`, `b = 1`), Z2's message, `κ_c` from 5
-squeezes with `eq`-structured coefficients, one Sh claim, `J_z = 4`, `piSize = 755,664`.
+squeezes with `eq`-structured coefficients, one Sh claim, `J_z = 4`, `piSize = 755,680`.
 
 ### Stage-review changes 7 (revision 3.8.1)
 
@@ -1304,3 +1304,10 @@ squeezes with `eq`-structured coefficients, one Sh claim, `J_z = 4`, `piSize = 7
 |---|---|
 | BP-C-R5-M1 (crypto round 5) | The `free` kind's rows are `(var k, var k)` with `E = 0`, so `A₀^{free} = B₀^{free} = I` and `z_k² = z_k` holds for every Boolean `z`. The 3.8 rows `(var k, one)` forced the unpinned bit 1,152 to 1, so honest nodes failed the zerocheck on about half their M blocks: a completeness failure, not a soundness one. The lincheck's free term is `(1 + α)·rowW`. P2's "`a = z, b = 1`" must become `a = b = z`. Round 5 confirmed (a) the Z2 row 126/2^128, (b) that `free` cannot be abused (kinds are public intervals), (c) Sh as one RS claim, and (d) κ_c by 5 squeezes. The error maximum is unchanged. |
 
+
+### Stage-review changes 8 (revision 3.8.2, from S-0's 3.8 adoption)
+
+| Finding | Change |
+|---|---|
+| `sizes.py` dropped RS1 | RS1's four squeezes were in a comment. With them back, there are 8,874 items (431 + 20 FS), as the Lean `items_length` and the dump say, and the hashed stream is 22,465 compressions per slot. Numbers updated throughout. |
+| The `free` kind's `v` | L3 absorbs **8** node per-kind claims (the 7 hash kinds and `free`: 128 B), since the lincheck's `free` term `(1 + α)·rowW` needs `v_free`. β batching is over 9 entries (the leaf's `v` at 0, the node's 8 at 1–8), as in 3.8; the error row is unchanged at 8/2^128. `piSize = 755,680`. |

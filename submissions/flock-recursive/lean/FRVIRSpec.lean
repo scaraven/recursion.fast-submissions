@@ -11,7 +11,7 @@ BLUEPRINT §3, B-7.
   `queries_runIR` (a run asks exactly the program's ask ops).
 * **The item sequence**: `items_gen : (genWith fin m).ops.filterMap Op.item? = items` for every phase-final
   fragment that asks nothing, hence **`queries_gen : ((runIR impl (genWith fin m) inp).queries H).length =
-  8854 ≤ qV`**, proved from the phase table's structure (never by evaluating `gen`).
+  8874 ≤ qV`**, proved from the phase table's structure (never by evaluating `gen`).
 * `semIR_mux`: the mux program is the fixed program of the proof's kind byte.
 * **Per shape** (the phase table's shapes, `FRTranscriptDefs.Shape`): the exact registers and flag a
   shape's ops produce on a trace. **Phase Z** (Z1, Z2, Z3, Zend) is proved end to end
@@ -187,10 +187,10 @@ theorem items_gen (fin : FinOps) (hfin : ∀ outs b, (fin outs b).filterMap Op.i
     (m : Mode) : (genWith fin m).ops.filterMap Op.item? = items := by
   simp [genWith, skeleton, items_genPhases, hfin, List.filterMap_cons, Op.item?, items]
 
-/-- **`queries_gen`**: the verifier asks `8,854 ≤ qV` queries under every oracle. -/
+/-- **`queries_gen`**: the verifier asks `8,874 ≤ qV` queries under every oracle. -/
 theorem queries_gen (fin : FinOps) (hfin : ∀ outs b, (fin outs b).filterMap Op.item? = [])
     (m : Mode) (H : ByteArray → Digest) :
-    ((runIR impl (genWith fin m) inp).queries H).length = 8854 := by
+    ((runIR impl (genWith fin m) inp).queries H).length = 8874 := by
   rw [queries_runIR, items_gen fin hfin, items_length]
 
 /-! ## The interpreter step by step; the shapes of phase Z -/
@@ -255,6 +255,14 @@ theorem rd_app (r : Array Val) (L : List Val) (k : ℕ) : rd (r ++ L.toArray) (r
 
 theorem rd_app0 (r : Array Val) (L : List Val) : rd (r ++ L.toArray) r.size = L.getD 0 default := by
   simpa using rd_app r L 0
+
+theorem toD_d (x : Digest) : (Val.d x).toD = x := rfl
+theorem toF_f (x : F) : (Val.f x).toF = x := rfl
+theorem toK_k (x : K) : (Val.k x).toK = x := rfl
+
+theorem rd_app2 (r : Array Val) (L : List Val) (a b : ℕ) :
+    rd (r ++ L.toArray) (r.size + a + b) = L.getD (a + b) default := by
+  rw [Nat.add_assoc, rd_app]
 
 theorem rd_app_left (r : Array Val) (L : List Val) {k : ℕ} (h : k < r.size) : rd (r ++ L.toArray) k = rd r k :=
   rd_append_left h
@@ -340,23 +348,24 @@ theorem exec_map_pure {α : Type} (xs : List α) (g : α → Op) (v : α → Val
 def uniEs (f o : ℕ) : List F := (List.range 127).map fun i => elemAt inp f (o + 16 * i)
 
 /-- The registers of a univariate round (`uniOps`). -/
-def uniVals (f o : ℕ) (a₁ a₂ : Digest) : List Val :=
+def uniVals (f o : ℕ) (pe : Array F) (a₁ a₂ : Digest) : List Val :=
+  let x := impl.lagrangeS (uniEs inp f o).toArray (chF a₂ 0) pe
   [.b (msgAt inp f o uniBytes), .d a₁, .d a₂, .f (chF a₂ 0)] ++ (uniEs inp f o).map .f ++
-    [.af (uniEs inp f o).toArray, .f (impl.lagrangeS (uniEs inp f o).toArray (chF a₂ 0)),
-     .b (msgAt inp f (o + 2032) 16)]
+    [.af (uniEs inp f o).toArray, .af pe, .f x.1, .f x.2, .b (msgAt inp f (o + 2032) 16)]
 
-theorem exec_uni (f o st : ℕ) (r : Array Val) (ok : Bool) (ops : List Op) (d : Digest)
-    (hst : st < r.size) (hd : rd r st = .d d) (q₁ q₂ : ByteArray) (a₁ a₂ : Digest) (tr : Trace) :
-    exec impl κ inp (uniOps f o st r.size ++ ops) ⟨r, ok⟩ ((q₁, a₁) :: (q₂, a₂) :: tr) =
+theorem exec_uni (f o st pt : ℕ) (r : Array Val) (ok : Bool) (ops : List Op) (d : Digest)
+    (hst : st < r.size) (hpt : pt < r.size) (hd : (rd r st).toD = d) (q₁ q₂ : ByteArray)
+    (a₁ a₂ : Digest) (tr : Trace) :
+    exec impl κ inp (uniOps f o st pt r.size ++ ops) ⟨r, ok⟩ ((q₁, a₁) :: (q₂, a₂) :: tr) =
       if q₁ = absorbQ d (msgAt inp f o uniBytes) ∧ q₂ = squeezeQ a₁ then
-        exec impl κ inp ops ⟨r ++ (uniVals impl inp f o a₁ a₂).toArray,
+        exec impl κ inp ops ⟨r ++ (uniVals impl inp f o (impl.targetS (rd r pt).toAF) a₁ a₂).toArray,
           ok && (Val.b (msgAt inp f (o + 2032) 16)).isZero⟩ tr
       else none := by
   rw [show (⟨r, ok⟩ : St) = ⟨r ++ ([] : List Val).toArray, ok⟩ by simp, uniOps, List.append_assoc,
     List.append_assoc]
   simp only [uniHead, List.cons_append, List.nil_append]
-  generalize hM : uniElems f o ++ (uniTail f o r.size ++ ops) = M
-  simp only [exec_app, evalOp, rd_app_left _ _ hst, hd, Val.toD, Val.toB, rd_app,
+  generalize hM : uniElems f o ++ (uniTail f o pt r.size ++ ops) = M
+  simp only [exec_app, evalOp, rd_app_left _ _ hst, hd, toD_d, Val.toB, rd_app,
     rd_app0, List.nil_append, List.cons_append, List.getD_eq_getElem?_getD, List.getElem?_cons_succ,
     List.getElem?_cons_zero, Option.getD_some]
   simp only [msgAt]
@@ -379,15 +388,17 @@ theorem exec_uni (f o st : ℕ) (r : Array Val) (ok : Bool) (ops : List Op) (d :
     rw [show r.size + 4 + i = r.size + (4 + i) by omega, rd_app, hL,
       List.getD_append_right _ _ _ _ (by simp), List.getD_eq_getElem _ _ (by simp; omega)]
     simp [Val.toF, uniEs]
-  have h3 : rd (r ++ (L ++ [Val.af (uniEs inp f o).toArray]).toArray) (r.size + 3) = .f (chF a₂ 0) := by
-    rw [rd_app, hL]; rfl
+  have h3 : ∀ X : List Val, rd (r ++ (L ++ X).toArray) (r.size + 3) = .f (chF a₂ 0) := by
+    intro X; rw [rd_app, hL]; rfl
   have h131 : ∀ X : List Val, rd (r ++ (L ++ X).toArray) (r.size + 131) = X.getD 0 default := by
     intro X; rw [rd_app, List.getD_append_right _ _ _ _ (by omega), hLen]
-  have h133 : ∀ X : List Val, rd (r ++ (L ++ X).toArray) (r.size + 133) = X.getD 2 default := by
+  have h132 : ∀ X : List Val, rd (r ++ (L ++ X).toArray) (r.size + 132) = X.getD 1 default := by
+    intro X; rw [rd_app, List.getD_append_right _ _ _ _ (by omega), hLen]
+  have h135 : ∀ X : List Val, rd (r ++ (L ++ X).toArray) (r.size + 135) = X.getD 4 default := by
     intro X; rw [rd_app, List.getD_append_right _ _ _ _ (by omega), hLen]
   simp only [uniTail, List.cons_append, List.nil_append, exec_app, evalOp, hpack,
-    List.append_assoc, List.cons_append, List.nil_append]
-  rw [h131, h3, h133]
+    List.append_assoc, List.cons_append, List.nil_append, rd_app_left _ _ hpt, h3, h131, h132, h135,
+    List.getD_cons_succ, List.getD_cons_zero]
   simp [uniVals, hL, Val.toF, Val.toAF, msgAt, allK]
 
 /-- A round's next claim. -/
@@ -549,11 +560,13 @@ def refZ (d : Digest) (tr : Trace) : Option (List Val × Bool × Trace) :=
     if q₁ = absorbQ (p.1.getD 9 zeroD) (msgAt inp fZ2 (phaseOff 4 fZ2) uniBytes) ∧
         q₂ = squeezeQ a₁ then
       (rounds3T inp fZ3 (phaseOff 5 fZ3) (mm 6 κ) 26 0 a₂
-          (impl.lagrangeS (uniEs inp fZ2 (phaseOff 4 fZ2)).toArray (chF a₂ 0)) tr₂).bind fun x =>
+          (impl.lagrangeS (uniEs inp fZ2 (phaseOff 4 fZ2)).toArray (chF a₂ 0)
+            (impl.targetS (coordsOf p.1).toArray)).1 tr₂).bind fun x =>
         match x.2.2.2.2 with
         | (q, a) :: tr₄ =>
           if q = absorbQ x.2.2.1 (msgAt inp fZend (phaseOff 6 fZend) 32) then
-            some (v₁ ++ uniVals impl inp fZ2 (phaseOff 4 fZ2) a₁ a₂ ++ x.1 ++
+            some (v₁ ++ uniVals impl inp fZ2 (phaseOff 4 fZ2) (impl.targetS (coordsOf p.1).toArray)
+                a₁ a₂ ++ x.1 ++
                 [.b (msgAt inp fZend (phaseOff 6 fZend) 32), .d a],
               (Val.b (msgAt inp fZ2 (phaseOff 4 fZ2 + 2032) 16)).isZero && x.2.1, tr₄)
           else none
@@ -566,7 +579,7 @@ theorem exec_phaseZ (c : GCtx) (r : Array Val) (ok : Bool) (ops : List Op) (d : 
     (hb : c.next = r.size) (hst : c.st < r.size) (hd : rd r c.st = .d d) (tr : Trace) :
     exec impl κ inp (zOps c ++ ops) ⟨r, ok⟩ tr =
       (refZ impl κ inp d tr).bind fun x => exec impl κ inp ops ⟨r ++ x.1.toArray, ok && x.2.1⟩ x.2.2 := by
-  obtain ⟨b, st, u, pa, fr, outs⟩ := c
+  obtain ⟨b, st, u, pa, fr, pt, outs⟩ := c
   simp only at hb hst hd; subst hb
   simp only [zOps, genPhase, phZ1, phZ2, phZ3, phZend, List.append_assoc, initClaim, initOps,
     Init.width, roundW, ite_true, Bool.false_eq_true, ite_false, show fZend ≠ fStmt by decide,
@@ -590,29 +603,36 @@ theorem exec_phaseZ (c : GCtx) (r : Array Val) (ok : Bool) (ops : List Op) (d : 
   rcases tr₁ with _ | ⟨⟨q₁, a₁⟩, _ | ⟨⟨q₂, a₂⟩, tr₂⟩⟩
   · simp [uniOps, uniHead, exec, evalOp]
   · simp [uniOps, uniHead, exec, evalOp]
-  rw [exec_uni impl κ inp fZ2 _ _ _ ok _ (as.getD 9 zeroD) (by rw [hs₁]; omega) hst₁]
+  have hpt₁ : rd (r ++ v₁.toArray) (r.size + 3 * 10) = .af (coordsOf as).toArray := by
+    rw [rd_app, hv₁, List.getD_append_right _ _ _ _ (by simp [List.length_flatMap, coordVals, hlen])]
+    simp [List.length_flatMap, coordVals, hlen]
+  rw [exec_uni impl κ inp fZ2 _ _ _ _ ok _ (as.getD 9 zeroD) (by rw [hs₁]; omega) (by rw [hs₁]; omega)
+    (by rw [hst₁]; rfl), hpt₁]
   simp only
   by_cases h₁ : q₁ = absorbQ (as.getD 9 zeroD) (msgAt inp fZ2 (phaseOff 4 fZ2) uniBytes) ∧
     q₂ = squeezeQ a₁
   swap; · rw [if_neg h₁, if_neg h₁]; rfl
   rw [if_pos h₁, if_pos h₁]
   set r₁ := r ++ v₁.toArray
-  set U := uniVals impl inp fZ2 (phaseOff 4 fZ2) a₁ a₂ with hU
-  have hUl : U.length = 134 := by simp [hU, uniVals, uniEs]
-  have hs₂ : (r₁ ++ U.toArray).size = r.size + 165 := by simp [hUl, hs₁]
+  set U := uniVals impl inp fZ2 (phaseOff 4 fZ2) (impl.targetS (coordsOf as).toArray) a₁ a₂ with hU
+  have hUl : U.length = 136 := by simp [hU, uniVals, uniEs]
+  have hs₂ : (r₁ ++ U.toArray).size = r.size + 167 := by simp [hUl, hs₁]
   have hst₂ : rd (r₁ ++ U.toArray) (r₁.size + 2) = .d a₂ := by rw [rd_app, hU]; rfl
-  have hcl₂ : rd (r₁ ++ U.toArray) (r₁.size + 132) =
-      .f (impl.lagrangeS (uniEs inp fZ2 (phaseOff 4 fZ2)).toArray (chF a₂ 0)) := by
+  have hcl₂ : rd (r₁ ++ U.toArray) (r₁.size + 133) =
+      .f (impl.lagrangeS (uniEs inp fZ2 (phaseOff 4 fZ2)).toArray (chF a₂ 0)
+        (impl.targetS (coordsOf as).toArray)).1 := by
     rw [rd_app, hU, uniVals, List.getD_append_right _ _ _ _ (by simp [uniEs])]; simp [uniEs]
-  rw [← hs₂, exec_rounds3 impl κ inp fZ3 _ (mm 6) 26 0 _ _ _ _ _ a₂ _ (by rw [hs₂, hs₁]; omega)
+  rw [← hs₂]
+  erw [exec_rounds3 impl κ inp fZ3 _ (mm 6) 26 0 _ _ _ _ _ a₂ _ (by rw [hs₂, hs₁]; omega)
     (by rw [hs₂, hs₁]; omega) hst₂ hcl₂]
   rcases hx : rounds3T inp fZ3 (phaseOff 5 fZ3) (mm 6 κ) 26 0 a₂
-    (impl.lagrangeS (uniEs inp fZ2 (phaseOff 4 fZ2)).toArray (chF a₂ 0)) tr₂ with _ | x
+    (impl.lagrangeS (uniEs inp fZ2 (phaseOff 4 fZ2)).toArray (chF a₂ 0)
+      (impl.targetS (coordsOf as).toArray)).1 tr₂ with _ | x
   · rfl
   obtain ⟨hxl, hxst, -⟩ := rounds3T_spec inp hx
   simp only [Option.bind_some]
   set r₂ := r₁ ++ U.toArray
-  have hs₃ : (r₂ ++ x.1.toArray).size = r₁.size + 134 + (0 + 16 * 26) := by
+  have hs₃ : (r₂ ++ x.1.toArray).size = r₁.size + 136 + (0 + 16 * 26) := by
     simp [hxl, r₂, hUl]
   have hst₃ : rd (r₂ ++ x.1.toArray) (r₂.size + 16 * 26 - 16 + 2) = .d x.2.2.1 := by
     rw [show r₂.size + 16 * 26 - 16 + 2 = r₂.size + (16 * 26 - 14) by omega, rd_app, hxst (by decide)]
@@ -641,12 +661,22 @@ def g2 (f o : ℕ) (a₂ : Digest) : F :=
   elemAt inp f o + r * (elemAt inp f (o + 16) + r * elemAt inp f (o + 32))
 
 /-- The registers of one degree-2 F round (`roundOpsF … 2`). -/
-def round2Vals (f o : ℕ) (real : Bool) (a₁ a₂ : Digest) (claim : F) : List Val :=
+def round2Vals (f o : ℕ) (real : Bool) (a₁ a₂ : Digest) (claim : Val) : List Val :=
   let r := chF a₂ 0
   let c₀ := elemAt inp f o; let c₁ := elemAt inp f (o + 16); let c₂ := elemAt inp f (o + 32)
   [.b (msgAt inp f o 48), .d a₁, .d a₂, .f r, .f c₀, .f c₁, .f c₂, .f (c₁ + c₂), .f (r * c₂),
    .f (c₁ + r * c₂), .f (r * (c₁ + r * c₂)), .f (g2 inp f o a₂),
-   if real then .f (g2 inp f o a₂) else .f claim]
+   if real then .f (g2 inp f o a₂) else claim]
+
+/-- The registers of one degree-3 F round with the claim as a register value (`keep` copies it). -/
+def round3V (f o : ℕ) (real : Bool) (a₁ a₂ : Digest) (claim : Val) : List Val :=
+  let r := chF a₂ 0
+  let c₀ := elemAt inp f o; let c₁ := elemAt inp f (o + 16); let c₂ := elemAt inp f (o + 32)
+  let s := c₁ + c₂; let c₃ := claim.toF + s
+  let t₁ := r * c₃; let t₂ := c₂ + t₁; let t₃ := r * t₂; let t₄ := c₁ + t₃; let t₅ := r * t₄
+  let g := c₀ + t₅
+  [.b (msgAt inp f o 48), .d a₁, .d a₂, .f r, .f c₀, .f c₁, .f c₂, .f s, .f c₃, .f t₁, .f t₂, .f t₃,
+   .f t₄, .f t₅, .f g, if real then .f g else claim]
 
 /-- The K coefficient at byte `o` of field `f`. -/
 def elemKAt (f o : ℕ) : K := K.ofBytes (bytesAt inp.π (absOff f o) 32)
@@ -657,12 +687,12 @@ def gK (f o : ℕ) (a₂ : Digest) : K :=
   elemKAt inp f o + r * (elemKAt inp f (o + 32) + r * elemKAt inp f (o + 64))
 
 /-- The registers of one K round (`roundOpsK`). -/
-def roundKVals (f o : ℕ) (real : Bool) (a₁ a₂ : Digest) (claim : K) : List Val :=
+def roundKVals (f o : ℕ) (real : Bool) (a₁ a₂ : Digest) (claim : Val) : List Val :=
   let r := chK a₂
   let c₀ := elemKAt inp f o; let c₁ := elemKAt inp f (o + 32); let c₂ := elemKAt inp f (o + 64)
   [.b (msgAt inp f o 96), .d a₁, .d a₂, .k r, .k c₀, .k c₁, .k c₂, .k (c₁ + c₂), .k (r * c₂),
    .k (c₁ + r * c₂), .k (r * (c₁ + r * c₂)), .k (gK inp f o a₂),
-   if real then .k (gK inp f o a₂) else .k claim]
+   if real then .k (gK inp f o a₂) else claim]
 
 /-- **Reference: `n` sumcheck rounds of degree `deg` (F) or in K**, from round `j`, state `d` and
 claim `c` (a `Val`): degree 3 completes `c₃` from the claim; degree 2 and K check `c₁ + c₂ =
@@ -675,10 +705,10 @@ def roundsT (f o deg : ℕ) (inK : Bool) (real : ℕ) :
     let o' := o + j * rb
     if q₁ = absorbQ d (msgAt inp f o' rb) ∧ q₂ = squeezeQ a₁ then
       let re := decide (j < real)
-      let vs := if inK then roundKVals inp f o' re a₁ a₂ c.toK
-        else if deg = 3 then round3Vals inp f o' re a₁ a₂ c.toF else round2Vals inp f o' re a₁ a₂ c.toF
-      let chk := if inK then decide (elemKAt inp f (o' + 32) + elemKAt inp f (o' + 64) = c.toK)
-        else if deg = 3 then true else decide (elemAt inp f (o' + 16) + elemAt inp f (o' + 32) = c.toF)
+      let vs := if inK then roundKVals inp f o' re a₁ a₂ c
+        else if deg = 3 then round3V inp f o' re a₁ a₂ c else round2Vals inp f o' re a₁ a₂ c
+      let chk := if inK then (Val.k (elemKAt inp f (o' + 32) + elemKAt inp f (o' + 64))).eqv c
+        else if deg = 3 then true else (Val.f (elemAt inp f (o' + 16) + elemAt inp f (o' + 32))).eqv c
       (roundsT f o deg inK real n (j + 1) a₂ (vs.getLastD default) tr).map fun x =>
         (vs ++ x.1, (!re || chk) && (re || (Val.b (msgAt inp f o' rb)).isZero) && x.2.1, x.2.2)
     else none
@@ -694,6 +724,105 @@ def initVals (init : Init) (f o : ℕ) (inK : Bool) : List Val :=
       .k (elemKAt inp f (o + 32) + elemKAt inp f (o + 64))]
     else [.f (elemAt inp f (o + 16)), .f (elemAt inp f (o + 32)),
       .f (elemAt inp f (o + 16) + elemAt inp f (o + 32))]
+
+/-- **One sumcheck round, any kind** (degree 3 / 2 over F, or K), against its reference. -/
+theorem exec_round (f o deg : ℕ) (inK : Bool) (real : KC Bool) (st cl : ℕ) (r : Array Val) (ok : Bool)
+    (ops : List Op) (d : Digest) (c : Val) (hst : st < r.size) (hcl : cl < r.size)
+    (hd : (rd r st).toD = d) (hc : rd r cl = c) (q₁ q₂ : ByteArray) (a₁ a₂ : Digest) (tr : Trace) :
+    exec impl κ inp ((if inK then roundOpsK f o real st cl r.size else roundOpsF f o deg real st cl r.size)
+        ++ ops) ⟨r, ok⟩ ((q₁, a₁) :: (q₂, a₂) :: tr) =
+      if q₁ = absorbQ d (msgAt inp f o (roundBytes inK)) ∧ q₂ = squeezeQ a₁ then
+        exec impl κ inp ops ⟨r ++ (if inK then roundKVals inp f o (real κ) a₁ a₂ c
+          else if deg = 3 then round3V inp f o (real κ) a₁ a₂ c else round2Vals inp f o (real κ) a₁ a₂ c).toArray,
+          ok && ((!real κ || (if inK then (Val.k (elemKAt inp f (o + 32) + elemKAt inp f (o + 64))).eqv c
+            else if deg = 3 then true else (Val.f (elemAt inp f (o + 16) + elemAt inp f (o + 32))).eqv c)) &&
+            (real κ || (Val.b (msgAt inp f o (roundBytes inK))).isZero))⟩ tr
+      else none := by
+  rw [show (⟨r, ok⟩ : St) = ⟨r ++ ([] : List Val).toArray, ok⟩ by simp]
+  generalize hm : msgAt inp f o (roundBytes inK) = m
+  by_cases h3 : deg = 3 <;> cases inK <;>
+  simp only [roundOpsF, roundOpsK, roundBytes, h3, ite_true, ite_false, Bool.false_eq_true,
+    List.cons_append, List.nil_append] at hm ⊢ <;>
+  simp only [exec_app, evalOp, rd_app_left _ _ hst, rd_app_left _ _ hcl, hd, hc, toD_d, Val.toB,
+    rd_app, rd_app0, List.nil_append, List.cons_append, List.getD_cons_succ, List.getD_cons_zero] <;>
+  by_cases h₁ : q₁ = absorbQ d m <;> by_cases h₂ : q₂ = squeezeQ a₁ <;>
+    simp_all [round3V, round2Vals, roundKVals, msgAt, elemAt, elemKAt, g2, gK, Bool.and_assoc, Val.toF,
+      Val.toK]
+
+/-- The registers of one round of any kind. -/
+def roundV (f o deg : ℕ) (inK re : Bool) (a₁ a₂ : Digest) (c : Val) : List Val :=
+  if inK then roundKVals inp f o re a₁ a₂ c
+  else if deg = 3 then round3V inp f o re a₁ a₂ c else round2Vals inp f o re a₁ a₂ c
+
+theorem roundV_spec (f o deg : ℕ) (inK re : Bool) (a₁ a₂ : Digest) (c : Val) :
+    (roundV inp f o deg inK re a₁ a₂ c).length = (if inK then 13 else roundW deg) ∧
+    (roundV inp f o deg inK re a₁ a₂ c).getD 2 default = .d a₂ ∧
+    (roundV inp f o deg inK re a₁ a₂ c).getD ((if inK then 13 else roundW deg) - 1) default =
+      (roundV inp f o deg inK re a₁ a₂ c).getLastD default := by
+  by_cases h3 : deg = 3 <;> cases inK <;>
+    simp [roundV, h3, roundW, round3V, round2Vals, roundKVals]
+
+/-- **`n` rounds of any kind** against `roundsT`. -/
+theorem exec_roundsT (f o deg : ℕ) (inK : Bool) (real : KC ℕ) (n j st cl : ℕ) (r : Array Val)
+    (ok : Bool) (ops : List Op) (d : Digest) (c : Val) (hst : st < r.size) (hcl : cl < r.size)
+    (hd : (rd r st).toD = d) (hc : rd r cl = c) (tr : Trace) :
+    exec impl κ inp (roundsOps f o deg inK real n j st cl r.size ++ ops) ⟨r, ok⟩ tr =
+      (roundsT inp f o deg inK (real κ) n j d c tr).bind fun x =>
+        exec impl κ inp ops ⟨r ++ x.1.toArray, ok && x.2.1⟩ x.2.2 := by
+  induction n generalizing j st cl r ok d c tr with
+  | zero => simp [roundsOps, roundsT]
+  | succ n ih =>
+    rcases tr with _ | ⟨⟨q₁, a₁⟩, _ | ⟨⟨q₂, a₂⟩, tr⟩⟩
+    · cases inK <;> simp [roundsOps, roundOpsF, roundOpsK, exec, evalOp, roundsT] <;> split <;> rfl
+    · cases inK <;> simp [roundsOps, roundOpsF, roundOpsK, exec, evalOp, roundsT] <;> split <;> simp
+    simp only [roundsOps, List.append_assoc]
+    rw [exec_round impl κ inp f _ deg inK _ st cl r ok _ d c hst hcl hd hc]
+    simp only [roundsT]
+    have hv := roundV_spec inp f (o + j * roundBytes inK) deg inK (decide (j < real κ)) a₁ a₂ c
+    simp only [roundV] at hv
+    by_cases h : q₁ = absorbQ d (msgAt inp f (o + j * roundBytes inK) (roundBytes inK)) ∧
+      q₂ = squeezeQ a₁
+    · simp only [h, and_self, ite_true]
+      obtain ⟨hl, h2, hL⟩ := hv
+      set vs := (if inK then roundKVals inp f (o + j * roundBytes inK) (decide (j < real κ)) a₁ a₂ c
+        else if deg = 3 then round3V inp f (o + j * roundBytes inK) (decide (j < real κ)) a₁ a₂ c
+        else round2Vals inp f (o + j * roundBytes inK) (decide (j < real κ)) a₁ a₂ c) with hvs
+      set w := (if inK then 13 else roundW deg) with hw
+      have hw3 : 3 ≤ w := by simp only [hw, roundW]; split_ifs <;> omega
+      have hs : (r ++ vs.toArray).size = r.size + w := by simp [hl]
+      rw [show r.size + w = (r ++ vs.toArray).size from hs.symm,
+        ih (j + 1) (r.size + 2) ((r ++ vs.toArray).size - 1) _ _ a₂ (vs.getLastD default) (by omega)
+          (by omega) (by rw [rd_app, h2]; rfl)
+          (by rw [hs, show r.size + w - 1 = r.size + (w - 1) by omega, rd_app, hL]),
+        Option.bind_map]
+      simp [Array.append_assoc, Bool.and_assoc]
+    · simp only [h, ite_false, Option.bind_none]
+
+theorem exec_roundsT' (f o deg : ℕ) (inK : Bool) (real : KC ℕ) (n j st cl b : ℕ) (r : Array Val)
+    (ok : Bool) (ops : List Op) (d : Digest) (c : Val) (hb : b = r.size) (hst : st < r.size)
+    (hcl : cl < r.size) (hd : (rd r st).toD = d) (hc : rd r cl = c) (tr : Trace) :
+    exec impl κ inp (roundsOps f o deg inK real n j st cl b ++ ops) ⟨r, ok⟩ tr =
+      (roundsT inp f o deg inK (real κ) n j d c tr).bind fun x =>
+        exec impl κ inp ops ⟨r ++ x.1.toArray, ok && x.2.1⟩ x.2.2 := by
+  subst hb; exact exec_roundsT impl κ inp f o deg inK real n j st cl r ok ops d c hst hcl hd hc tr
+
+theorem exec_sqzOps (n st : ℕ) (r : Array Val) (ok : Bool) (ops : List Op) (hst : st < r.size)
+    (tr : Trace) :
+    exec impl κ inp (sqzOps n st r.size ++ ops) ⟨r, ok⟩ tr =
+      (sqzT n (rd r st).toD tr).bind fun p => exec impl κ inp ops ⟨r ++ (p.1.map .d).toArray, ok⟩ p.2 := by
+  induction n generalizing st r tr with
+  | zero => simp [sqzOps, sqzT]
+  | succ n ih =>
+    rw [sqzOps, List.cons_append, exec_ask impl κ inp rfl, sqzT]
+    rcases ans1 (squeezeQ (rd r st).toD) tr with _ | ⟨a, tr'⟩
+    · rfl
+    · simp only [Option.bind_some, Option.bind_map]
+      have := ih r.size (r.push (.d a)) (by simp) tr'
+      rw [show r.size + 1 = (r.push (.d a)).size by simp, this,
+        show rd (r.push (.d a)) r.size = .d a from rd_push_size _ _]
+      refine Option.bind_congr fun p _ => ?_
+      simp only [Val.toD, Function.comp_apply, List.map_cons]
+      congr 2; apply Array.ext'; simp
 
 /-- **Reference: one Merkle step** at depth `h` of position `j`: the sibling slot, the bit, the
 ordered halves, the node query (`0^64` for a depth the kind lacks), the kept digest. -/
@@ -720,11 +849,11 @@ def stepsT (i j : ℕ) : ℕ → ℕ → ℕ → Digest → Trace → Option (Li
 
 /-- **Reference: position `p` of level `i`** (answers `ans` of P2, fold weights `w`): the index,
 the column query, the fold, the Merkle steps, the cap comparison. -/
-def posT (i co so : ℕ) (ans : List Digest) (w : Array K) (p : ℕ) :
+def posT (i co so : ℕ) (ad : ℕ → Digest) (w : Array K) (p : ℕ) :
     Trace → Option (List Val × Bool × Trace)
   | (q, a) :: tr =>
     let L := lvlStar i
-    let j := posOf κ i ans p
+    let j := idxOf (lvl κ i).logN (ad (p / (lvl κ i).per)) (p % (lvl κ i).per)
     let col := inp.π.extract (absOff fCols (co + p * L.rows * 16))
       (absOff fCols (co + p * L.rows * 16) + L.rows * 16)
     if q = colQ i col then
@@ -737,12 +866,88 @@ def posT (i co so : ℕ) (ans : List Digest) (w : Array K) (p : ℕ) :
   | [] => none
 
 /-- All positions of level `i`. -/
-def posAllT (i co so : ℕ) (ans : List Digest) (w : Array K) :
+def posAllT (i co so : ℕ) (ad : ℕ → Digest) (w : Array K) :
     ℕ → ℕ → Trace → Option (List Val × Bool × Trace)
   | 0, _, tr => some ([], true, tr)
   | t + 1, p, tr =>
-    (posT κ inp i co so ans w p tr).bind fun x =>
-      (posAllT i co so ans w t (p + 1) x.2.2).map fun y => (x.1 ++ y.1, x.2.1 && y.2.1, y.2.2)
+    (posT κ inp i co so ad w p tr).bind fun x =>
+      (posAllT i co so ad w t (p + 1) x.2.2).map fun y => (x.1 ++ y.1, x.2.1 && y.2.1, y.2.2)
+
+theorem stepT_spec {i h j so : ℕ} {cur : Digest} {tr : Trace} {y : List Val × Bool × Digest × Trace}
+    (hy : stepT κ inp i h j so cur tr = some y) : y.1.length = 6 ∧ y.1.getD 5 default = .d y.2.2.1 := by
+  rcases tr with _ | ⟨⟨q, a⟩, tr⟩
+  · cases hy
+  · simp only [stepT] at hy
+    split_ifs at hy <;> cases hy <;> simp
+
+theorem stepsT_spec {i j n h so : ℕ} {cur : Digest} {tr : Trace}
+    {x : List Val × Bool × Digest × Trace} (hx : stepsT κ inp i j n h so cur tr = some x) :
+    x.1.length = 6 * n ∧ (n = 0 → x.2.2.1 = cur) ∧ (0 < n → x.1.getD (6 * n - 1) default = .d x.2.2.1) := by
+  induction n generalizing h so cur tr x with
+  | zero => simp [stepsT] at hx; subst hx; simp
+  | succ n ih =>
+    simp only [stepsT, Option.bind_eq_some_iff, Option.map_eq_some_iff] at hx
+    obtain ⟨y, hy, z, hz, rfl⟩ := hx
+    obtain ⟨hl, h5⟩ := stepT_spec κ inp hy
+    obtain ⟨h1, h2, h3⟩ := ih hz
+    refine ⟨by simp [hl, h1]; ring, by omega, fun _ => ?_⟩
+    rcases Nat.eq_zero_or_pos n with rfl | hn
+    · have hz0 : z.1 = [] := List.length_eq_zero_iff.1 (by simpa using h1)
+      rw [hz0, h2 rfl]; simpa using h5
+    · rw [List.getD_append_right _ _ _ _ (by omega), hl,
+        show 6 * (n + 1) - 1 - 6 = 6 * n - 1 by omega, h3 hn]
+
+/-- **The Merkle steps** of one position against `stepsT`. -/
+theorem exec_merkleOps (i j jr n h curR so : ℕ) (r : Array Val) (ok : Bool) (ops : List Op)
+    (cur : Digest) (hj : jr < r.size) (hjv : (rd r jr).toN = j) (hc : curR < r.size)
+    (hcv : rd r curR = .d cur) (tr : Trace) :
+    exec impl κ inp (merkleOps i jr n h curR so r.size ++ ops) ⟨r, ok⟩ tr =
+      (stepsT κ inp i j n h so cur tr).bind fun x =>
+        exec impl κ inp ops ⟨r ++ x.1.toArray, ok && x.2.1⟩ x.2.2.2 := by
+  induction n generalizing h curR so r ok cur tr with
+  | zero => simp [merkleOps, stepsT]
+  | succ n ih =>
+    rw [show (⟨r, ok⟩ : St) = ⟨r ++ ([] : List Val).toArray, ok⟩ by simp]
+    simp only [merkleOps, stepsT, List.append_assoc, List.cons_append, List.nil_append]
+    rcases tr with _ | ⟨⟨q, a⟩, tr⟩
+    · simp only [exec_app, evalOp, List.nil_append, stepT, Option.bind_none]
+    have hsel : ∀ (c : Bool) (x y : Digest), (if c then Val.d x else Val.d y) = Val.d (if c then x else y) :=
+      fun c x y => by cases c <;> rfl
+    simp only [exec_app, evalOp, rd_app, rd_app0, rd_app_left _ _ hj, rd_app_left _ _ hc, hjv, hcv,
+      List.getD_cons_succ, List.getD_cons_zero, List.nil_append, List.cons_append, Val.toBit, toD_d,
+      hsel, stepT]
+    generalize bytesAt inp.π (absOff fSibs so) 32 = sib
+    generalize hQ : (if decide (h < (lvl κ i).sib) = true then
+      nodeQ i (if j.testBit h = true then sib else cur) (if j.testBit h = true then cur else sib)
+      else nodeQ i zeroD zeroD) = Q
+    by_cases hq : q = Q
+    · simp only [hq, ite_true, Option.bind_some, Option.bind_map]
+      rw [show r.size + 6 = (r ++ [Val.d sib, Val.bit (j.testBit h),
+          Val.d (if j.testBit h = true then sib else cur), Val.d (if j.testBit h = true then cur else sib),
+          Val.d a, Val.d (if decide (h < (lvl κ i).sib) = true then a else cur)].toArray).size by simp,
+        ih _ _ _ _ _ _ (by simp; omega) (by rw [rd_app_left _ _ hj, hjv]) (by simp) (by rw [rd_app]; rfl)]
+      refine Option.bind_congr fun y _ => ?_
+      simp [Array.append_assoc, Bool.and_assoc, Val.isZero]
+    · simp [hq]
+
+theorem exec_merkleOps' (i j jr n h curR so b : ℕ) (r : Array Val) (ok : Bool) (ops : List Op)
+    (cur : Digest) (hb : b = r.size) (hj : jr < r.size) (hjv : (rd r jr).toN = j) (hc : curR < r.size)
+    (hcv : rd r curR = .d cur) (tr : Trace) :
+    exec impl κ inp (merkleOps i jr n h curR so b ++ ops) ⟨r, ok⟩ tr =
+      (stepsT κ inp i j n h so cur tr).bind fun x =>
+        exec impl κ inp ops ⟨r ++ x.1.toArray, ok && x.2.1⟩ x.2.2.2 := by
+  subst hb; exact exec_merkleOps impl κ inp i j jr n h curR so r ok ops cur hj hjv hc hcv tr
+
+/-- **One position** of level `i` against `posT` (`ad`, `wv`: the values of the answer and weight
+registers). -/
+theorem exec_posOps (i co so : ℕ) (ans : List Reg) (w p : ℕ) (r : Array Val) (ok : Bool) (ops : List Op)
+    (ad : ℕ → Digest) (wv : Array K) (hA : ∀ k, ans.getD k 0 < r.size)
+    (had : ∀ k, (rd r (ans.getD k 0)).toD = ad k) (hw : w < r.size) (hwv : (rd r w).toAK = wv)
+    (tr : Trace) :
+    exec impl κ inp (posOps i co so ans w p r.size ++ ops) ⟨r, ok⟩ tr =
+      (posT κ inp i co so ad wv p tr).bind fun x =>
+        exec impl κ inp ops ⟨r ++ x.1.toArray, ok && x.2.1⟩ x.2.2 := by
+  sorry
 
 /-- The seed's registers and flag (`seedOps`). -/
 def seedT (tr : Trace) : Option (List Val × Bool × Trace) :=
@@ -793,7 +998,8 @@ def refPhase (n : ℕ) (p : Phase) (c : GCtx) (r : Array Val) (tr : Trace) :
     match tr with
     | (q₁, a₁) :: (q₂, a₂) :: tr =>
       if q₁ = absorbQ d (msgAt inp f (o f) uniBytes) ∧ q₂ = squeezeQ a₁ then
-        some (uniVals impl inp f (o f) a₁ a₂, (Val.b (msgAt inp f (o f + 2032) 16)).isZero, tr)
+        some (uniVals impl inp f (o f) (impl.targetS (rd r c.pt).toAF) a₁ a₂,
+          (Val.b (msgAt inp f (o f + 2032) 16)).isZero, tr)
       else none
     | _ => none
   | .rounds f k deg inK real =>
@@ -804,13 +1010,14 @@ def refPhase (n : ℕ) (p : Phase) (c : GCtx) (r : Array Val) (tr : Trace) :
   | .queries i =>
     let fr := c.foldR.map fun x => (rd r x).toK
     let w := eqTab fr.toArray
-    let ans := c.posAns.map fun x => (rd r x).toD
-    (posAllT κ inp i (o fCols) (o fSibs) ans w (lvlStar i).t 0 tr).map fun x =>
+    let ad := fun k => (rd r (c.posAns.getD k 0)).toD
+    (posAllT κ inp i (o fCols) (o fSibs) ad w (lvlStar i).t 0 tr).map fun x =>
       ([.ak fr.toArray, .ak w] ++ x.1, x.2.1, x.2.2)
 
 /-- The registers a context points to are below the register file's size. -/
 def CtxOk (c : GCtx) (r : Array Val) : Prop :=
-  c.st < r.size ∧ c.uni < r.size ∧ (∀ x ∈ c.posAns, x < r.size) ∧ (∀ x ∈ c.foldR, x < r.size)
+  c.st < r.size ∧ c.uni < r.size ∧ (∀ x ∈ c.posAns, x < r.size) ∧ (∀ x ∈ c.foldR, x < r.size) ∧
+    c.pt < r.size
 
 /-- **Every phase's semantics** (stated; the S-0 `sorry`): a phase's ops on a trace are its
 reference `refPhase`, for every phase of the table, kind and context. Phase Z is the proved
@@ -820,7 +1027,94 @@ theorem exec_genPhase (n : ℕ) (p : Phase) (c : GCtx) (r : Array Val) (ok : Boo
     exec impl κ inp ((genPhase n p c).1 ++ ops) ⟨r, ok⟩ tr =
       (refPhase impl κ inp n p c r tr).bind fun x =>
         exec impl κ inp ops ⟨r ++ x.1.toArray, ok && x.2.1⟩ x.2.2 := by
-  sorry
+  obtain ⟨name, sh⟩ := p
+  obtain ⟨b, st, u, pa, fr, pt, outs⟩ := c
+  simp only at hb hwf; subst hb
+  have e0 : ∀ ok', (⟨r, ok'⟩ : St) = ⟨r ++ ([] : List Val).toArray, ok'⟩ := fun _ => by simp
+  cases sh with
+  | seed =>
+    simp only [genPhase, refPhase, seedOps, List.cons_append, List.nil_append]
+    rw [e0]
+    rcases tr with _ | ⟨⟨q, a⟩, tr⟩
+    · simp only [exec_app, evalOp, List.nil_append, seedT, Option.bind_none]
+    · simp only [exec_app, evalOp, seedT, rd_app, rd_app0, List.getD_cons_succ, List.getD_cons_zero,
+        List.nil_append, List.cons_append, Val.toB]
+      by_cases h : q = seedQ inp.vk inp.c (inp.π.extract (absOff fHdr 0) (absOff fHdr 0 + 48)) <;>
+        simp [h, allK, Val.eqv, Val.toBit, Bool.and_assoc]
+  | absorb f len =>
+    have hst := (hwf.resolve_left (by simp)).1
+    simp only [genPhase, refPhase]
+    rcases tr with _ | ⟨⟨q, a⟩, tr⟩ <;> split_ifs <;> rw [e0] <;>
+      simp only [absorbOps, stmtOps, finalOps, exec_app, evalOp, List.cons_append, List.nil_append,
+        rd_app, rd_app0, rd_app2, rd_app_left _ _ hst, List.getD_cons_succ, List.getD_cons_zero, ans1,
+        Nat.reduceAdd, msgAt, Option.map_none, Option.bind_none, Val.toB]
+    all_goals (try (by_cases hq : q = absorbQ (rd r st).toD (inp.π.extract (absOff f (phaseOff n f)) (absOff f (phaseOff n f) + len))))
+    all_goals simp_all [Val.eqv, Val.toB, Val.toD, allK, Bool.and_assoc]
+  | squeezes k ch =>
+    have hst := (hwf.resolve_left (by simp)).1
+    cases ch with
+    | coords _ =>
+      simp only [genPhase, refPhase, List.append_assoc]
+      rw [exec_sqzC impl κ inp k st r ok _ hst, Option.bind_map]
+      refine Option.bind_congr fun x hx => ?_
+      rw [show 2 * k = 2 * x.1.length by rw [sqzT_spec hx]]
+      simp only [Function.comp_apply, List.singleton_append, exec_app, evalOp, pack_coords,
+        Bool.and_true, List.nil_append]
+    | one _ =>
+      simp only [genPhase, refPhase, List.append_assoc]
+      rw [exec_sqzOps impl κ inp k st r ok _ hst, Option.bind_map]
+      refine Option.bind_congr fun x _ => ?_
+      have h0 : ((x.1.map Val.d).getD 0 default).toD = x.1.headD zeroD := by
+        cases x.1 <;> rfl
+      simp only [Function.comp_apply, List.singleton_append, exec_app, evalOp, rd_app0, h0,
+        Bool.and_true]
+    | pos _ =>
+      simp only [genPhase, refPhase]
+      rw [exec_sqzOps impl κ inp k st r ok _ hst, Option.bind_map]
+      simp
+  | uni f =>
+    obtain ⟨hst, -, -, -, hpt⟩ := hwf.resolve_left (by simp)
+    replace hst : st < r.size := hst
+    replace hpt : pt < r.size := hpt
+    simp only [genPhase, refPhase]
+    rcases tr with _ | ⟨⟨q₁, a₁⟩, _ | ⟨⟨q₂, a₂⟩, tr⟩⟩
+    · rw [e0]; simp only [uniOps, uniHead, List.append_assoc, List.cons_append, exec_app, evalOp,
+        List.nil_append, Option.bind_none]
+    · rw [e0]; simp only [uniOps, uniHead, List.append_assoc, List.cons_append, exec_app, evalOp,
+        List.nil_append, Option.bind_none]; split <;> simp
+    · rw [exec_uni impl κ inp f _ st pt r ok ops _ hst hpt rfl]
+      by_cases h : q₁ = absorbQ (rd r st).toD (msgAt inp f (phaseOff n f) uniBytes) ∧
+        q₂ = squeezeQ a₁ <;> simp [h]
+  | rounds f k deg inK real =>
+    obtain ⟨hst, hu, -, -, -⟩ := hwf.resolve_left (by simp)
+    replace hst : st < r.size := hst
+    replace hu : u < r.size := hu
+    simp only [genPhase, refPhase]
+    rcases hi : initClaim name with _ | _ | _ <;>
+      simp only [initOps, initVals, Init.width, List.nil_append, Nat.add_zero]
+    · rw [exec_roundsT impl κ inp f _ deg inK real k 0 st u r ok ops _ _ hst hu rfl rfl, Option.bind_map]
+      simp
+    · rw [e0]
+      simp only [List.singleton_append, List.cons_append, exec_app, evalOp, List.nil_append]
+      rw [exec_roundsT' impl κ inp f _ deg inK real k 0 st r.size _ (r ++ [Val.f 0].toArray) _ ops _
+        (.f 0) (by simp) (by simp; exact Nat.le_of_lt hst) (by simp) (by rw [rd_app_left _ _ hst])
+        (by simpa using rd_app0 r [Val.f 0]), Option.bind_map]
+      simp [Array.append_assoc]
+    · rw [e0]
+      cases inK <;>
+      simp only [Bool.false_eq_true, ite_true, ite_false, List.cons_append, List.nil_append, exec_app,
+        evalOp, rd_app, rd_app0, List.getD_cons_succ, List.getD_cons_zero, toF_f, toK_k] <;>
+      rw [exec_roundsT' impl κ inp f _ deg _ real k 0 st (r.size + 2) _ _ _ ops (rd r st).toD _ ?_ ?_ ?_ ?_
+          rfl,
+        Option.bind_map] <;>
+      first
+        | (simp [Array.append_assoc, rd_app, List.getD_cons_succ, List.getD_cons_zero, elemAt,
+            elemKAt]; done)
+        | exact Nat.lt_of_lt_of_le hst (by simp)
+        | (simp; done)
+        | rw [rd_app_left _ _ hst]
+  | queries i =>
+    sorry
 
 /-- **The context a phase hands on** (S-0-M3, stated; the S-0 `sorry`): the next free register is
 past the phase's registers, the next context's registers point into them, and the phase's outputs
@@ -868,7 +1162,7 @@ theorem exec_genPhases (ps : List Phase) (n : ℕ) (c : GCtx) (r : Array Val) (o
     simp [Array.append_assoc, Bool.and_assoc, List.all_cons]
 
 /-- The initial context. -/
-def ctx₀ : GCtx := ⟨0, 0, 0, [], [], #[]⟩
+def ctx₀ : GCtx := ⟨0, 0, 0, [], [], 0, #[]⟩
 
 /-- **`exec_skeleton`** (S-0-M3): the whole skeleton on a trace is `refPhases phases`. -/
 theorem exec_skeleton (ok : Bool) (ops : List Op) (tr : Trace) :

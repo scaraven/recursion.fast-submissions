@@ -39,6 +39,7 @@ def r (i : ℕ) : String := "r" ++ toString i
 
 def outs : Op → ℕ
   | .evalM .. | .evalL .. | .kindSel => 3
+  | .lagrangeS .. => 2
   | .splitDigest _ => 2
   | .assertEq .. | .assertBit .. | .assertZero .. | .assertOneHot .. | .accept => 0
   | _ => 1
@@ -76,7 +77,9 @@ def showOp (m : Mode) : Op → String
   | .eqTable x => s!"eqTable {r x}"
   | .eqTableK x => s!"eqTableK {r x}"
   | .dotKF w c => s!"dotKF {r w} {r c}"
-  | .lagrangeS v l => s!"lagrangeS {r v} {r l}"
+  | .lagrangeS v l pe => s!"lagrangeS {r v} {r l} {r pe}"
+  | .targetS x => s!"targetS {r x}"
+  | .eqZ x y => s!"eqZ {r x} {r y}"
   | .tensorW j x => s!"tensorW {r j} {r x}"
   | .mbp x sv pt => s!"mbp {r x} {r sv} {r pt}"
   | .walkA x c => s!"walkA {r x} {r c}"
@@ -85,8 +88,6 @@ def showOp (m : Mode) : Op → String
   | .maskRows k w => s!"maskRows {r k} {r w}"
   | .evalM t s => s!"evalM {r t} {r s}"
   | .evalL t s => s!"evalL {r t} {r s}"
-  | .selWeight x y => s!"selWeight {r x} {r y}"
-  | .targetMLE x l y => s!"targetMLE {r x} {r l} {r y}"
   | .shiftTarget t h => s!"shiftTarget {r t} {r h}"
   | .slotW sm t x => s!"slotW {sm} {r t} {r x}"
   | .kindFoldWeight x b y => s!"kindFoldWeight {r x} {r b} {r y}"

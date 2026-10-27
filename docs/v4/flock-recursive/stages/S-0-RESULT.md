@@ -330,3 +330,44 @@ VIRFinals → Verifier → …`.
   - `serial.py`: 10,352 lines, ≈ 311 s (estimate).
 - **Checks:** source rule 0 findings (43 files). Axioms unchanged: `sorryAx` only through
   `exec_genPhase` and `genPhase_ctx`. S-0's modules total 1,940 code lines.
+
+### Shape lemmas and revision 3.8 (in progress)
+
+**Revision 3.8 (and 3.8.1) in `gen`:**
+- Z2 `lagrangeS vals λ pe → F × F` with `pe = targetS r` (Z1's point, the new `GCtx.pt`); Z3's
+  initial claim is `P^{ab}*(λ)`.
+- `finZ = eqZ((ρ,r), r′)·â·b̂` (new impl `eqZ`, S-C; it exports `P^z*(λ)` for RS claim 1);
+  `selWeight`/`targetMLE` removed.
+- `J_z = 4`: RS0 `4 × 128`, `finSh` one claim `(w_out + w_in)·ẑ`, `finLr` reads `zhat[3]`.
+- P3.i is 5 squeezes (9 coordinates).
+- The `free` kind (nothing pinned; A₀ = B₀ = I per 3.8.1) makes 9 `blockKinds`: the leaf's `v` at 0,
+  a node's 7 `v` at 1–7, `free` = 0.
+- `flag_finZ`/`finLc`/`finSh`/`finLr` are re-proved.
+- **`items_length = 8,874`**, `piSize = 755,664`, stream 1,437,744 B, `chainLen = 22,465`.
+- **Discrepancy to fix in the blueprint's tooling:** `logs/blueprint/sizes.py` line 26 has
+  `add("RS1", …)` inside a comment, so it counts 8,870 items and 22,460 compressions. A.4 lists RS1
+  (4 squeezes), and the Lean follows A.4.
+- Open: A.3 still carries 7 `v_kind` (112 B). Should the `free` kind's `v` be sent (8 values)?
+- Dump re-run under the cap (`logs/S-0/dump/`): 61,951 ops, asks = items = 8,874.
+  `serial.py`: 10,573 lines, ≈ 317 s (estimate).
+
+**Shape lemmas** (S-0's last part; `FRVIRSpec`, 1,002 code lines of the 1,500 budget):
+- Proved:
+  - `exec_round` (all three round kinds, claim as a register value) and `exec_roundsT`/`exec_roundsT'`
+    (induction);
+  - `exec_sqzOps`, `exec_merkleOps`/`exec_merkleOps'` and `stepT_spec`/`stepsT_spec`;
+  - `exec_genPhase` for **seed, absorb (all four variants), squeezes (coords/one/pos), uni, rounds
+    (uni/zero/free init, F and K)**.
+- Two references changed so that the statement is true in every context:
+  - `round2Vals`/`roundKVals`/`round3V` keep the claim register's value (`keep` copies it);
+  - `posT` reads the position answers through the registers.
+- **Remaining `sorry`s (3):**
+  - `exec_posOps` (one queries position): its first evaluation reaches the kernel's "deep recursion"
+    on the rewrite through `exec_merkleOps'` over the concrete 4-register prefix. Not over budget;
+    to restructure as for `exec_round`.
+  - the queries case of `exec_genPhase` (positions induction).
+  - `genPhase_ctx`.
+- **Estimate:** ≈ 120 lines for the queries shape and ≈ 120 for `genPhase_ctx`, so FRVIRSpec
+  ≈ 1,250 of 1,500. FR-R10 per shape holds so far.
+- **Kernel:** every proved shape lemma checks in under 0.5 s, and FRVIRSpec builds in ≈ 25 s under
+  the 16G cap.
