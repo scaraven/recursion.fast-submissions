@@ -121,3 +121,42 @@ has no imports or foreign ops).
 3. The M-row count of `compileMux (gen fin)` as closed-form per-phase lemmas (D-2).
 4. FR-R4′'s VM build/kernel measurement for the whole entry.
 5. The A.6 dump KAT (S-E1's `kindRows` exists; the prover's side is P2's).
+
+## 7. Revision 3.6 pass (on `109761a`, against BLUEPRINT `58c3834`)
+
+Built against S-0's **working-tree** `FRTranscriptDefs`/`FRFormat`/`FRVIR` (they build now; they
+define `eqPt`, `rowW`, `shiftEq`, `linkW`): `WT="FRTranscriptDefs FRFormat FRVIR"
+logs/fr-build-circ/snap.sh`. All builds under the 16 GB scope. Source rule: 0 findings. Axioms:
+⊆ {`propext`, `Classical.choice`, `Quot.sound`} (`logs/S-E2/axioms.log`).
+
+| Change (§10, changes 4) | Where | State |
+|---|---|---|
+| `eqPt`, `shiftEq`, `linkW` imports of type F, `rowW` of type `AF 2^14` | `FRVIRCompile.opOut` | done; `compile_sound` unchanged (kernel) |
+| gated `stmt` rows; `hashStmt_sound` restated (gates as hypotheses, kind-conditional conclusions; `node` = `s_N`) | `FRWots.hashStmt_sound` | done (kernel); the gating's arithmetic is `compile`'s gated `assertEq` |
+| selectors `[d<1]`, `[d<2]`, `[d<3]` from the digit bits by 2 product rows | `FRWots.digitSel_sound` (+ `digitSel_neg`) | done (kernel) |
+| `e_i` muxed by `sel_{i,3}` | `FRWots.wots_chain_sound`'s `hend` (already the muxed form) | done |
+| `f[Mbase] = 1` | `FRNodeLayout.oneCell = Mbase · 128` (`Params.one`) | constant done; the `PubCells` clause belongs to `node_sound` (pending) |
+| row model | `FRNodeLayout.mRowModel` (+ mirror mux 2,600, selector rows 266) | `mRows_le`: 532,067 per slot ≤ `2^20` |
+
+**F-3′ (minor, still open):** §4.3 (revision 3.6) states 531,588 per slot. Its listed numbers sum
+to 532,151, or 532,143 with the 8 `stmt` equalities counted once (they are listed twice, under the
+lincheck and as "gated `stmt` equalities"). `evalM`'s stated 210,570 is not its formula
+`2 × 74,587 + 2 × 22,468 + 2^14 = 210,494`. `mRowModel` uses the formula and counts the
+equalities once: 532,067, margin 1.97×.
+
+### `FRVIREval` (new, 57 code lines; 7.2 s wall, sequential)
+
+L-circ's share of `impl ⊨ OpSpec` (S-0-m2's owner table), spec and implementation proved equal:
+
+- `walkA_eq`, `walkB_eq`: `walkAB` at row weights `rowW` and column weights `colW` is `Σ_k
+  rowW[k]·(A₀ colW)_k` (resp. `B₀`), for all arrays (S-E1's `walk_eq_sum`);
+- `kindInd_eq`: `kindIndImpl` (prefix sums over `Layout.kindIvs`) equals `kindIndSpec` (the
+  indicator MLEs `Σ_t eq(r′,t) Ind_κ(t)` over `2^16` blocks), via `ind_mle_eq` (single-`eq` form
+  of S-C's `selWeight_eq`) and `kindIvs_le` (from `nodeLayout_chained`, with no evaluation).
+
+**Not done:** `evalM_eq`, `evalL_eq`. The M and L matrices are `compileMux (gen fin)`'s rows, so
+they need S-0's `gen fin`. The whole `OpImpl.Meets impl spec` also needs the other owners'
+fields (S-C, `FRPubTarget`). `node_sound` waits for S-0, as instructed.
+
+Line counts (`logs/S-E2/loc.txt`): `FRVIRCompile` 784, `FRVIRMux` 69, `FRWots` 114,
+`FRNodeLayout` 80, `FRVIREval` 57; **total 1,104 code lines**.

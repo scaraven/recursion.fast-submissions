@@ -1,7 +1,6 @@
 -- New for `flock-recursive` (BLUEPRINT §7, stage S-0; Appendix A.1, A.2, A.4; revision 3.1).
 import FRField256
-import FRRS
-import FRMLE
+import FRMerkle
 import RecursionFast.Contract.Oracle
 import RecursionFast.Contract.Signature
 
@@ -189,7 +188,7 @@ def piopPhases : List Phase :=
    ⟨"S1", .squeezes 15 (.coords fun _ => 29)⟩, ⟨"S2", .rounds fS2 28 2 false (mm 4)⟩,
    ⟨"Lr1", .squeezes 8 (.coords (nodeOnly 15))⟩, ⟨"Lr2", .rounds fLr 15 3 false (nodeOnly 15)⟩,
    ⟨"Lr3", .squeezes 1 (.one Kind.isNode)⟩, ⟨"Lr4", .rounds fLr 15 2 false (nodeOnly 15)⟩,
-   ⟨"RS0", .absorb fRS0 (4 * 128 * 16)⟩, ⟨"RS1", .squeezes 4 (.coords fun _ => 8)⟩,
+   ⟨"RS0", .absorb fRS0 (5 * 128 * 16)⟩, ⟨"RS1", .squeezes 4 (.coords fun _ => 8)⟩,
    ⟨"E1", .squeezes 11 (.coords (nodeOnly 21))⟩, ⟨"E2", .rounds fE 21 3 false (nodeOnly 21)⟩,
    ⟨"E3", .squeezes 1 (.one Kind.isNode)⟩,
    ⟨"B'", .squeezes 1 (.one fun _ => true)⟩]
@@ -305,16 +304,20 @@ def parseNode (i : ℕ) (q : ByteArray) : Option (Digest × Digest) :=
   if q.data.toList.take 8 = tagNode i ∧ q.size = 72 then some (bytesAt q 8 32, bytesAt q 40 32)
   else none
 
-/-- Parse a column query of level `i`: the tag, then the column's bytes. -/
+/-- Parse a column query of level `i`: the tag (with the level byte), then the column's bytes. The
+width is **not** checked (S-0-m4): a wrong-width first preimage under a cap entry is a collision,
+charged by `Bad`; `FRMerkle.MerkleEnc`'s "and check its width" is therefore not required. -/
 def parseCol (i : ℕ) (q : ByteArray) : Option ByteArray :=
   if q.data.toList.take 8 = tagCol i then some (q.extract 8 q.size) else none
 
-/-- The 32-byte windows of a query at offsets `8 + 16k` (S-D-M1, revision 3.3: §5.1's in-play
-windows; with an 8-byte tag these are the 16-byte-aligned windows of the hashed stream,
-`stream_aligned`). -/
-def windows (q : ByteArray) : List Digest :=
-  (List.range ((q.size - 8) / 16)).filterMap fun k =>
-    if 8 + 16 * k + 32 ≤ q.size then some (bytesAt q (8 + 16 * k) 32) else none
+/-- The 32-byte windows of a query at offsets `o₀ + 16k`. -/
+def windowsFrom (o₀ : ℕ) (q : ByteArray) : List Digest :=
+  (List.range ((q.size - o₀) / 16)).filterMap fun k =>
+    if o₀ + 16 * k + 32 ≤ q.size then some (bytesAt q (o₀ + 16 * k) 32) else none
+
+/-- The windows of a non-seed query: offsets `8 + 16k`, which are the 16-aligned stream offsets
+(`streamOff_aligned`: the item starts at `≡ 0`, its `enc64 |q|` takes 8 bytes). -/
+def windows (q : ByteArray) : List Digest := windowsFrom 8 q
 
 /-- `"FRMNOD"`, the node tag without the level byte. -/
 def tagNode6 : List UInt8 := [0x46, 0x52, 0x4D, 0x4E, 0x4F, 0x44]
@@ -449,9 +452,25 @@ theorem carried_absorb (st : Digest) (msg : ByteArray) (k : ℕ) (hk : 32 * (k +
     List.getD_append_right _ _ _ _ (by rw [h8]; omega), h8]
   rw [show 40 + 32 * k + j - 40 = 32 * k + j by omega]
 
-/-- **The in-play windows of a log** (S-D-M1, revision 3.3; §5.1's `Bad`): every query's windows at
-offsets `≡ 8 mod 16` (`windows`) and every answer. -/
-def inPlay (L : Trace) : List Digest := L.flatMap fun e => windows e.1 ++ [e.2]
+/-- **The in-play windows of a log** (S-D-M1; revision 3.5, S-0-m1: by **stream offset**, `≡ 0 mod 16`
+in `0x54 ‖ traceBytes`): the first entry is the seed (stream offset 1, its query at 9), so its
+windows are at query offsets `7 + 16k` (`vk`, `c`, `hdr`); every later query's at `8 + 16k`; and
+every answer. -/
+def inPlay : Trace → List Digest
+  | [] => []
+  | e :: L => windowsFrom 7 e.1 ++ [e.2] ++ L.flatMap fun e => windows e.1 ++ [e.2]
+
+/-- **The protocol's `MerkleEnc`** of level `i` (S-D's fix pass; `FRMerkle`). -/
+def frEnc (i : ℕ) : Merkle.MerkleEnc where
+  nodeQ := nodeQ i
+  colQ := colQ i
+  parseNode := parseNode i
+  parseCol := parseCol i
+  carried := carried
+  parseNode_nodeQ := parseNode_nodeQ i
+  nodeQ_of_parseNode := nodeQ_of_parseNode i
+  parseCol_colQ := parseCol_colQ i
+  carried_nodeQ := carried_nodeQ i
 
 /-- The query length of an item. -/
 def Item.qlen : Item → ℕ
@@ -465,7 +484,7 @@ def Item.qlen : Item → ℕ
 per item. -/
 def streamBytes : ℕ := 1 + (items.map fun it => 8 + it.qlen + 32).sum
 
-theorem streamBytes_eq : streamBytes = 1435888 := by decide +kernel
+theorem streamBytes_eq : streamBytes = 1437936 := by decide +kernel
 
 /-- An item's bytes in the stream: `enc64 |q| ‖ q ‖ a`. -/
 def Item.slen (it : Item) : ℕ := 8 + it.qlen + 32
@@ -520,7 +539,7 @@ theorem streamOff_aligned (k : ℕ) (hk : 1 ≤ k) (hk' : k ≤ items.length) : 
 /-- **The digest chain's length** (compressions per slot, §4.2): `⌈|B| / 64⌉`. -/
 def chainLen : ℕ := (streamBytes + 63) / 64
 
-theorem chainLen_eq : chainLen = 22436 := by rw [chainLen, streamBytes_eq]
+theorem chainLen_eq : chainLen = 22468 := by rw [chainLen, streamBytes_eq]
 
 /-! ## Challenge maps (A.2) -/
 
@@ -551,16 +570,13 @@ of `x`, so `eq(r, x) = Π_v (x_v r_v + (1 − x_v)(1 − r_v))` (`FRVIR.eqTab`, 
 `FRMLE.eq` on `cube`); **sumcheck round `t` binds coordinate `t`** (bit `t`, low bits first), in
 particular **fold round `t` of a level binds bit `t` of the row index**, and the Ligerito point and
 `tensorW`'s operand `r` list the fold challenges in round order (`r[v]` ↔ bit `v`). The bridge
-`FRRS.eqBits r ℓ x = FRMLE.eq (r ∘ ·) (cube x)` is the identity (`eqBits_eq_eq`). -/
+`FRRS.eqBits r ℓ x = FRMLE.eq (r ∘ ·) (cube x)` is the identity; the lemma `eqBits_eq_eq` lives
+with its consumer (S-0-m6, moved out so `FRRS` leaves the serial path; text in S-0-RESULT). -/
 def bitOrderLE : Bool := true
 
-/-- **`eqBits_eq_eq`** (S-D-m4): `FRRS.eqBits` is `FRMLE.eq` against the cube point, in the same
-(little-endian) order. -/
-theorem eqBits_eq_eq {R : Type*} [CommRing R] (r : ℕ → R) (ℓ : ℕ) (x : Fin (2 ^ ℓ)) :
-    eqBits r ℓ x = eq (fun v : Fin ℓ => r v) (cube x) := by
-  rw [eq_cube, eqBits, bitSel, Finset.prod_range]
-
-/-- **The evaluation domain's size bound** `n ≤ 2^20` (S-D-m2): `D[j]`, `j < 2^domBits`. -/
+/-- **The evaluation domain's size bound** `n ≤ 2^20` (S-D-m2): `D[j]`, `j < 2^domBits`; the same
+constant as `FRRS.logNMax` (not imported here, S-0-m6: `domBits = FRRS.logNMax` is `rfl` where both
+are in scope). -/
 def domBits : ℕ := 20
 
 theorem ladder_logN_le : (ladder32 ++ ladder30).all (fun l => l.logN ≤ domBits) = true := by

@@ -85,3 +85,19 @@ Running notes for a successor. Build tree `logs/fr-build-s0/` (`gen.sh` copied f
   A.3 (rev 3.4); `sizes.py` re-run agrees; `serial.py` written (11,854-line serial path, ≈ 356 s
   estimate).
 - Final kill-test count in the module: phase Z section 373 code lines (RESULT §7).
+
+## Fix pass (2026-10-27, after `40b2f81`)
+
+- Rev 3.5/3.6 interfaces: RS0 `5 × 128` (stream 1,437,936, chain 22,468), `piSize 757,616`;
+  `windowsFrom`/`inPlay` by stream offset; `linkW`; ops `eqPt`/`rowW`/`shiftEq` (imports);
+  `Meets` per op; `frEnc`; FRRS/FRMLE dropped from FRTranscriptDefs.
+- M3: `refPhases`, `exec_genPhases` by induction (context lemma stated), `exec_skeleton`.
+- M1: FRVIRFinals. `pureRun` keeps registers as `r ++ L` (the exec_app normal form).
+- **16:37 OOM, mine**: the scratch `flag_finSh` (51 ops) — proof motives quadratic in the register
+  list via `getElem?_cons_succ`, plus `b + 16 + 4 + …` index chains. After the OOM every Lean call
+  runs under `systemd-run --user --scope -p MemoryMax=12G/16G` (`logs/fr-build-s0/b.sh`, `cap.sh`).
+  Fixes: closed-form register numbers in `hornerOps`/`linkOps`; generalise `phaseOff …` (its whnf
+  evaluates the phase table) and every input register; lookups by `List.getD_cons_succ` (rfl
+  lemmas). Kernel: finZ/finLc/finSh/finLr 0.4/0.4/0.36/0.08 s.
+- `exact ⟨_, rfl⟩` closing a flag lemma times out whenever any `r.size + a + b` index or an
+  unevaluated `if 1 = 0` is left: always look at the residual goal first.

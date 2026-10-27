@@ -14,7 +14,7 @@ path = "$R/logs/org"
 [[lean_lib]]
 name = "RFSubmission"
 srcDir = "$SRC"
-roots = ["FRFieldBase", "FRFieldBaseCorrect", "FRField128", "FRField256", "FRRS", "FRMLE", "FRTranscriptDefs", "FRFormat", "FRVIR"]
+roots = ["FRFieldBase", "FRFieldBaseCorrect", "FRField128", "FRField256", "FRMerkle", "FRTranscriptDefs", "FRFormat", "FRVIR", "FRVIRSpec", "FRVIRFinals"]
 [[lean_exe]]
 name = "irdump"
 root = "IRDump"

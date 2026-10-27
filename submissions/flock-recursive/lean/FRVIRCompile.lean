@@ -18,7 +18,8 @@ their elements). The ops are classified:
   `splitDigest` (0), `assertEq`, `assertZero` (one per component, gated), `assertOneHot` (3
   products + 1 linear), `assertBit`, `accept`;
 * **imports**: ops whose value the circuit takes from elsewhere (the trace cells, the
-  irregular entries, L bits, the replay templates of `FRVIREval`): fresh typed cells, recorded in
+  irregular entries, L bits, the replay templates of `FRVIREval`, and the cell-reading ops `eqPt`,
+  `rowW`, `shiftEq`, `linkW` (revision 3.6) whose cells `final` fixes): fresh typed cells, recorded in
   `imp`; `compile_sound` takes their values as a hypothesis;
 * **untracked**: byte strings and naturals (`piField`, `mkAbsorb`, `idx`, `shrN`) and the ops not
   yet arithmetised (`packFK`, `eqTableK`, `kindInd`, `maskRows`, and any op S-0 adds); an
@@ -324,6 +325,8 @@ def opOut (P : Params) (cs : CS) : Op → Out
   | .tensorW .. | .dotKF .. => imports cs [.k]
   | .evalM .. | .evalL .. => imports cs [.f, .f, .f]
   | .hashStmt _ => imports cs [.d]
+  | .eqPt .. | .shiftEq .. | .linkW .. => imports cs [.f]
+  | .rowW .. => imports cs [.af (2 ^ 14)]
   | .kindSel =>
     { slots := kinds.map fun κ => some (.bit, [P.sel κ]), imp := true }
   | .splitDigest d =>

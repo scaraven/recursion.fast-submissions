@@ -1,0 +1,410 @@
+-- New for `flock-recursive` (BLUEPRINT §7, A.9; stage S-0 fix pass, S-0-M1).
+import FRVIRSpec
+
+/-!
+# The phase-final checks (`Finals`, A.9) and `gen`
+
+`Finals` has one field per phase. A field sees the phases' outputs (`GCtx.outs`), the values ring
+switching certifies (`finRS`'s exports `α₁ … α₅`: `ẑ_Z`, Lc's claim, `ẑ_Sh,out`, `ẑ_Sh,in`,
+`ẑ_Lr`), and the exports of the fields run before it; it returns ops (asking nothing) and its own
+exports. `gen fin mode` is the skeleton, then the fields in the order `finRS, finZ, finLc, finSh,
+finLr, finE, finB′, finP 0 … 4, finPf`, then `accept`.
+
+Owners (A.9): **S-0** `finZ`, `finLc`, `finSh`, `finLr` (here, with `flag_finZ` …: the flag of each
+is A.9's relation over the register values); **S-F** `finRS`, `finE`, `finB′`; **S-G** `finP`,
+`finPf` (stated as fields; `s0Finals` takes them as arguments; the dump marks them pending).
+
+The proofs run the ops with `pureRun` (registers kept as `r ++ L`, the normal form of
+`FRVIRSpec.exec_app`; `exec_pureRun` carries them into `exec`).
+-/
+
+namespace FR
+open RecursionFast
+
+/-! ## Running ops that ask nothing -/
+
+/-- Run ops that ask nothing from registers `r ++ L`: the appended values and the flag (`none` if
+an op asks). -/
+def pureRun (impl : OpImpl) (κ : Kind) (inp : Input) : List Op → Array Val → List Val →
+    Option (List Val × Bool)
+  | [], _, L => some (L, true)
+  | op :: ops, r, L =>
+    match evalOp impl κ inp (r ++ L.toArray) op with
+    | .vals vs ok => (pureRun impl κ inp ops r (L ++ vs)).map fun p => (p.1, ok && p.2)
+    | .ask _ => none
+
+theorem exec_pureRun (impl : OpImpl) (κ : Kind) (inp : Input) (o₁ ops : List Op) (r : Array Val)
+    (L L' : List Val) (f ok : Bool) (tr : Trace) (h : pureRun impl κ inp o₁ r L = some (L', f)) :
+    exec impl κ inp (o₁ ++ ops) ⟨r ++ L.toArray, ok⟩ tr =
+      exec impl κ inp ops ⟨r ++ L'.toArray, ok && f⟩ tr := by
+  induction o₁ generalizing L L' f ok with
+  | nil => simp [pureRun] at h; obtain ⟨rfl, rfl⟩ := h; simp
+  | cons op o ih =>
+    rw [List.cons_append, exec_app]
+    simp only [pureRun] at h
+    split at h
+    · next vs ok' hv =>
+      simp only [Option.map_eq_some_iff] at h
+      obtain ⟨⟨L₂, f₂⟩, h₂, he⟩ := h
+      simp only [Prod.mk.injEq] at he; obtain ⟨rfl, rfl⟩ := he
+      simp only [hv]
+      rw [ih _ _ _ _ h₂]; simp [Bool.and_assoc]
+    · cases h
+
+/-- A field's ops on the trace: its flag joins the run's (the bridge from `flag_fin*` to `exec`). -/
+theorem exec_field (impl : OpImpl) (κ : Kind) (inp : Input) (o₁ ops : List Op) (r : Array Val)
+    (L : List Val) (f ok : Bool) (tr : Trace) (h : pureRun impl κ inp o₁ r [] = some (L, f)) :
+    exec impl κ inp (o₁ ++ ops) ⟨r, ok⟩ tr = exec impl κ inp ops ⟨r ++ L.toArray, ok && f⟩ tr := by
+  simpa using exec_pureRun impl κ inp o₁ ops r [] L f ok tr h
+
+/-! ## The typed `Finals` (A.9) -/
+
+/-- What a final field sees. -/
+structure FinIn where
+  /-- The phases' outputs (`GCtx.outs`, by phase number). -/
+  outs : Array (List Reg)
+  /-- `finRS`'s exports: `α₁ … α₅` (`ẑ_Z`, Lc's claim, `ẑ_Sh,out`, `ẑ_Sh,in`, `ẑ_Lr`), `v_RS`. -/
+  zhat : List Reg
+  /-- The exports of the fields run before, in run order. -/
+  ex : Array (List Reg)
+
+/-- A final field: ops from the next free register, and the registers it exports. -/
+abbrev FinField := FinIn → ℕ → List Op × List Reg
+
+/-- **The phase-final checks** (A.9), one field per phase. -/
+structure Finals where
+  finRS : FinField
+  finZ : FinField
+  finLc : FinField
+  finSh : FinField
+  finLr : FinField
+  finE : FinField
+  finB' : FinField
+  finP : ℕ → FinField
+  finPf : FinField
+
+/-- The fields after `finRS`, in run order. -/
+def Finals.rest (fin : Finals) : List FinField :=
+  [fin.finZ, fin.finLc, fin.finSh, fin.finLr, fin.finE, fin.finB'] ++
+    (List.range nLevels).map fin.finP ++ [fin.finPf]
+
+/-- The finals' ops: `finRS`, then the rest with `finRS`'s exports as `zhat`. -/
+def Finals.ops (fin : Finals) : FinOps := fun outs b =>
+  let rs := fin.finRS ⟨outs, [], #[]⟩ b
+  let step := fun (acc : List Op × ℕ × Array (List Reg)) (f : FinField) =>
+    let x := f ⟨outs, rs.2, acc.2.2⟩ acc.2.1
+    (acc.1 ++ x.1, acc.2.1 + opsOut x.1, acc.2.2.push x.2)
+  rs.1 ++ (fin.rest.foldl step ([], b + opsOut rs.1, #[rs.2])).1
+
+/-- **`gen fin mode`**: the verifier program with every phase-final check. -/
+def gen (fin : Finals) (mode : Mode) : VProg := genWith fin.ops mode
+
+/-- A pending field (S-F's, S-G's until delivered): no ops, no exports. -/
+def pending : FinField := fun _ _ => ([], [])
+
+/-! ## S-0's fields -/
+
+/-- Phase `name`'s outputs. -/
+def outsOf (fi : FinIn) (name : String) : List Reg := fi.outs.getD (phaseIx name) []
+
+/-- A rounds phase's challenges (`claim₀ :: rᵢ … ++ [final]`). -/
+def chals (fi : FinIn) (name : String) (k : ℕ) : List Reg := ((outsOf fi name).drop 1).take k
+
+/-- A rounds phase's first and last claims. -/
+def claim0 (fi : FinIn) (name : String) : Reg := (outsOf fi name).headD 0
+def claimN (fi : FinIn) (name : String) : Reg := (outsOf fi name).getLastD 0
+
+/-- A squeeze phase's coordinates (after the packed array). -/
+def coordsR (fi : FinIn) (name : String) : List Reg := (outsOf fi name).drop 1
+
+/-- **`finZ`** (A.9): `ŵ(r′)·(â b̂ + ẑ_Z) + Ŵ_E(λ, r′) = c_Z`. Exports `â`, `b̂`. -/
+def finZ : FinField := fun fi b =>
+  let co := coordsR fi "Z1"; let rs := chals fi "Z3" 26
+  ([.packFK (fun κ => co.take (κ.m - 13)), .packFK (fun κ => rs.take (κ.m - 6)),
+    .selWeight b (b + 1), .targetMLE b ((outsOf fi "Z2").headD 0) (b + 1),
+    .piElem fZend 0, .piElem fZend 16, .mulF (b + 4) (b + 5), .addF (b + 6) (fi.zhat.getD 0 0),
+    .mulF (b + 2) (b + 7), .addF (b + 8) (b + 3), .assertEq (b + 9) (claimN fi "Z3") allK],
+   [b + 4, b + 5])
+
+/-- `v_β = Σ_{i<7} β^i v_i` by Horner from `v₆` (register `b + 12`), the `v_i` at `b + 6 + i`, into
+`b + 22 … b + 33` (closed-form register numbers). -/
+def hornerOps (beta b : ℕ) : List Op := (List.range 6).flatMap fun i =>
+  [.mulF beta (if i = 0 then b + 12 else b + (21 + 2 * i)), .addF (b + (11 - i)) (b + (22 + 2 * i))]
+
+/-- **`finLc`** (A.9): (i) `c₀ = â + α b̂`; (ii) `c_Lc = Â(rowW′, eq(r_k,·)) + α B̂(rowW′, eq(r_k,·))`
+with `rowW′ = maskRows v rowW` (`v` the 7 `v_kind` of L3: the leaf's at `chain`, a node's at the
+other seven kinds); (iii) `Σ_i β^i v_i = α₂` (RS claim 2). Exports `v_β`. -/
+def finLc : FinField := fun fi b =>
+  let α := (outsOf fi "L1").headD 0; let β := (outsOf fi "L3β").headD 0
+  let oL3 := phaseOff (phaseIx "L3") fL2
+  let v := (List.range 7).map fun i => b + (6 + i)
+  ([.piElem fZend 0, .piElem fZend 16, .mulF α (b + 1), .addF b (b + 2),
+    .assertEq (b + 3) (claim0 fi "L2") allK,
+    .packFK (fun _ => (chals fi "Z3" 26).take 8), .rowW ((outsOf fi "Z2").headD 0) (b + 4)] ++
+   (List.range 7).map (fun i => .piElem fL2 (oL3 + 16 * i)) ++
+   [.const (fun _ => .f 0),
+    .packFK (fun κ => if κ.isNode then (b + 13) :: v else (b + 6) :: List.replicate 7 (b + 13)),
+    .maskRows (b + 14) (b + 5), .packF (chals fi "L2" 14), .eqTable (b + 16),
+    .walkA (b + 15) (b + 17), .walkB (b + 15) (b + 17), .mulF α (b + 19), .addF (b + 18) (b + 20),
+    .assertEq (b + 21) (claimN fi "L2") allK] ++
+   hornerOps β b ++
+   [.assertEq (b + 33) (fi.zhat.getD 1 0) allK],
+   [b + 33])
+
+/-- The link families of the Sh phase (A.6, revision 3.5: at most 8). -/
+def nLinkFam : ℕ := 8
+
+/-- Family `f`'s term `κ_s^(f+2)·linkW τ f r` added to the running sum, 4 registers from
+`b + 16 + 4f` (closed-form register numbers; the sum starts at `b + 14`, the power at `b + 15`). -/
+def linkOps (tau r ks b : ℕ) : List Op := (List.range nLinkFam).flatMap fun f =>
+  [.linkW tau f r, .mulF (if f = 0 then b + 15 else b + (16 + 4 * f - 1)) (b + (16 + 4 * f)),
+   .addF (if f = 0 then b + 14 else b + (16 + 4 * f - 2)) (b + (16 + 4 * f + 1)),
+   .mulF (if f = 0 then b + 15 else b + (16 + 4 * f - 1)) ks]
+
+/-- **`finSh`** (A.9): (i) `c₀ = shiftTarget τ θ`; (ii) `c_Sh = w_out ẑ_out + w_in ẑ_in`,
+`w_out = eq(τ, r_blk)·slotW 0 θ r_pos`, `w_in = (shift(τ, r_blk) + κ_s eq(0, r_blk))·slotW 1 θ
+r_pos + Σ_f κ_s^(f+2) linkW τ f r_blk` (`τ` S1's coordinates `0 …`, `θ` 18–27, `κ_s` 28; `r` S2's
+challenges, `r_blk` the first `m − 14`, `r_pos` the next 10). Exports `w_out`, `w_in`. -/
+def finSh : FinField := fun fi b =>
+  let co := coordsR fi "S1"; let rs := chals fi "S2" 28; let ks := co.getD 28 0
+  ([.packFK (fun κ => co.take (κ.m - 14)), .packF ((co.drop 18).take 10), .shiftTarget b (b + 1),
+    .assertEq (b + 2) (claim0 fi "S2") allK,
+    .packFK (fun κ => rs.take (κ.m - 14)), .packFK (fun κ => (rs.drop (κ.m - 14)).take 10),
+    .eqPt b (b + 3), .slotW 0 (b + 1) (b + 4), .mulF (b + 5) (b + 6),
+    .shiftEq b (b + 3), .const (fun κ => .af (Array.replicate (κ.m - 14) 0)), .eqPt (b + 9) (b + 3),
+    .mulF ks (b + 10), .addF (b + 8) (b + 11), .slotW 1 (b + 1) (b + 4), .mulF (b + 12) (b + 13),
+    .mulF ks ks] ++
+   linkOps b (b + 3) ks b ++
+   [.mulF (b + 7) (fi.zhat.getD 2 0), .mulF (b + 46) (fi.zhat.getD 3 0), .addF (b + 48) (b + 49),
+    .assertEq (b + 50) (claimN fi "S2") allK],
+   [b + 7, b + 46])
+
+/-- **`finLr`** (A.9; node only): (ii) `c_Lr2 = eq(r_Lr, r)·(â_L b̂_L + ĉ_L)`; (iii) `c₀^{Lr4} = â_L
++ κ_L b̂_L + κ_L² ĉ_L`; (iv) `c_Lr4 = (Ã + κ_L B̃ + κ_L² C̃)(r, r₄)·ẑ_Lr` (`evalL`); (i) `c₀^{Lr2} = 0`
+holds by `initClaim`. `â_L, b̂_L, ĉ_L` are `abc` (**open**: A.4 has no item carrying them; RESULT).
+Exports the column point `r₄`. -/
+def finLrWith (abc : Reg × Reg × Reg) : FinField := fun fi b =>
+  let (a, bb, c) := abc; let kL := (outsOf fi "Lr3").headD 0
+  ([.packF ((coordsR fi "Lr1").take 15), .packF (chals fi "Lr2" 15), .eqPt b (b + 1),
+    .mulF a bb, .addF (b + 3) c, .mulF (b + 2) (b + 4), .assertEq (b + 5) (claimN fi "Lr2") Kind.isNode,
+    .mulF kL bb, .mulF kL kL, .mulF (b + 7) c, .addF a (b + 6), .addF (b + 9) (b + 8),
+    .assertEq (b + 10) (claim0 fi "Lr4") Kind.isNode,
+    .packF (chals fi "Lr4" 15), .evalL (b + 1) (b + 11), .mulF kL (b + 13), .mulF (b + 7) (b + 14),
+    .addF (b + 12) (b + 15), .addF (b + 17) (b + 16), .mulF (b + 18) (fi.zhat.getD 4 0),
+    .assertEq (b + 19) (claimN fi "Lr4") Kind.isNode],
+   [b + 11])
+
+/-- `finLr` with `â_L, b̂_L, ĉ_L` at the registers `zhat[6 … 8]` (provisional, until A.4 carries
+them). -/
+def finLr : FinField := fun fi => finLrWith (fi.zhat.getD 6 0, fi.zhat.getD 7 0, fi.zhat.getD 8 0) fi
+
+/-- **The finals with S-0's fields** and the other owners' fields as arguments. -/
+def s0Finals (rs e b' : FinField) (p : ℕ → FinField) (pf : FinField) : Finals :=
+  ⟨rs, finZ, finLc, finSh, finLr, e, b', p, pf⟩
+
+/-! ## The flags of S-0's fields (A.9's relations) -/
+
+section Flags
+variable (impl : OpImpl) (κ : Kind) (inp : Input) (fi : FinIn) (r : Array Val)
+
+/-- The F value of register `x`. -/
+abbrev fv (x : Reg) : F := (rd r x).toF
+
+/-- **`flag_finZ`**: `finZ` asks nothing, and its flag is A.9's relation. -/
+theorem map_rd_app (L : List Val) (xs : List Reg) (h : ∀ x ∈ xs, x < r.size) :
+    xs.map (fun x => (rd (r ++ L.toArray) x).toF) = xs.map (fv r) :=
+  List.map_congr_left fun x hx => by rw [rd_app_left _ _ (h x hx)]
+
+theorem flag_finZ (hin : ∀ x ∈ coordsR fi "Z1" ++ chals fi "Z3" 26 ++
+      [(outsOf fi "Z2").headD 0, fi.zhat.getD 0 0, claimN fi "Z3"], x < r.size) :
+    ∃ L, pureRun impl κ inp (finZ fi r.size).1 r [] = some (L,
+      let co := coordsR fi "Z1"; let rs := chals fi "Z3" 26
+      let rr := ((co.take (κ.m - 13)).map (fv r)).toArray
+      let rr' := ((rs.take (κ.m - 6)).map (fv r)).toArray
+      let a := F.ofBytes (bytesAt inp.π (absOff fZend 0) 16)
+      let bb := F.ofBytes (bytesAt inp.π (absOff fZend 16) 16)
+      (Val.f (impl.selWeight rr rr' * (a * bb + fv r (fi.zhat.getD 0 0)) +
+        impl.targetMLE rr (fv r ((outsOf fi "Z2").headD 0)) rr')).eqv (rd r (claimN fi "Z3"))) := by
+  simp only [List.mem_append, List.mem_cons, List.not_mem_nil, or_false] at hin
+  have h1 := fun L => map_rd_app r L ((coordsR fi "Z1").take (κ.m - 13)) fun x hx => hin x (.inl (.inl (List.mem_of_mem_take hx)))
+  have h2 := fun L => map_rd_app r L ((chals fi "Z3" 26).take (κ.m - 6)) fun x hx => hin x (.inl (.inr (List.mem_of_mem_take hx)))
+  have h3 := hin ((outsOf fi "Z2").headD 0) (.inr (.inl rfl))
+  have h4 := hin (fi.zhat.getD 0 0) (.inr (.inr (.inl rfl)))
+  have h5 := hin (claimN fi "Z3") (.inr (.inr (.inr rfl)))
+  have tf : ∀ x, (Val.f x).toF = x := fun _ => rfl
+  have taf : ∀ x, (Val.af x).toAF = x := fun _ => rfl
+  simp only [finZ]
+  generalize (outsOf fi "Z2").headD 0 = l at *
+  generalize fi.zhat.getD 0 0 = zh at *
+  generalize claimN fi "Z3" = cz at *
+  simp only [pureRun, evalOp, tf, taf, List.nil_append, List.cons_append, h1, h2,
+    rd_app, rd_app0, rd_app_left _ _ h3, rd_app_left _ _ h4, rd_app_left _ _ h5,
+    List.getD_eq_getElem?_getD, List.getElem?_cons_succ, List.getElem?_cons_zero, Option.getD_some,
+    Option.map_some, Val.eqv, allK, Bool.not_true, Bool.false_or, Bool.true_and,
+    Bool.and_true]
+  exact ⟨_, rfl⟩
+
+/-- The F element at byte `o` of field `f`. -/
+abbrev pe (f o : ℕ) : F := F.ofBytes (bytesAt inp.π (absOff f o) 16)
+
+/-- **A.9's `finLc` relation** over the register values. -/
+def relLc : Bool :=
+  let α := fv r ((outsOf fi "L1").headD 0); let β := fv r ((outsOf fi "L3β").headD 0)
+  let oL3 := phaseOff (phaseIx "L3") fL2
+  let v := (List.range 7).map fun i => pe inp fL2 (oL3 + 16 * i)
+  let vk : List F := if κ.isNode then 0 :: v else v.headD 0 :: List.replicate 7 0
+  let rw := maskRows vk.toArray (impl.rowW (fv r ((outsOf fi "Z2").headD 0))
+    (((chals fi "Z3" 26).take 8).map (fv r)).toArray)
+  let cw := eqTab ((chals fi "L2" 14).map (fv r)).toArray
+  let vβ := (v.reverse.drop 1).foldl (fun acc x => x + β * acc) (v.getD 6 0)
+  (Val.f (pe inp fZend 0 + α * pe inp fZend 16)).eqv (rd r (claim0 fi "L2")) &&
+  ((Val.f (impl.walkA rw cw + α * impl.walkB rw cw)).eqv (rd r (claimN fi "L2")) &&
+  (Val.f vβ).eqv (rd r (fi.zhat.getD 1 0)))
+
+
+theorem flag_finLc (hin : ∀ x ∈ (chals fi "Z3" 26).take 8 ++ chals fi "L2" 14 ++
+      [(outsOf fi "L1").headD 0, (outsOf fi "L3β").headD 0, (outsOf fi "Z2").headD 0,
+       claim0 fi "L2", claimN fi "L2", fi.zhat.getD 1 0], x < r.size) :
+    ∃ L, pureRun impl κ inp (finLc fi r.size).1 r [] = some (L, relLc impl κ inp fi r) := by
+  simp only [List.mem_append, List.mem_cons, List.not_mem_nil, or_false] at hin
+  have h1 := fun L => map_rd_app r L ((chals fi "Z3" 26).take 8) fun x hx => hin x (.inl (.inl hx))
+  have h2 := fun L => map_rd_app r L (chals fi "L2" 14) fun x hx => hin x (.inl (.inr hx))
+  have tf : ∀ x, (Val.f x).toF = x := fun _ => rfl
+  have taf : ∀ x, (Val.af x).toAF = x := fun _ => rfl
+  simp only [finLc, relLc]
+  generalize (outsOf fi "L1").headD 0 = a at *
+  generalize (outsOf fi "L3β").headD 0 = be at *
+  generalize (outsOf fi "Z2").headD 0 = l at *
+  generalize claim0 fi "L2" = c0 at *
+  generalize claimN fi "L2" = cN at *
+  generalize fi.zhat.getD 1 0 = zh at *
+  generalize phaseOff (phaseIx "L3") fL2 = oL3
+  have ha := hin a (.inr (.inl rfl)); have hb := hin be (.inr (.inr (.inl rfl)))
+  have hl := hin l (.inr (.inr (.inr (.inl rfl)))); have hc0 := hin c0 (.inr (.inr (.inr (.inr (.inl rfl)))))
+  have hcN := hin cN (.inr (.inr (.inr (.inr (.inr (.inl rfl))))))
+  have hz := hin zh (.inr (.inr (.inr (.inr (.inr (.inr rfl))))))
+  cases hk : κ.isNode <;>
+  simp only [hk, pureRun, evalOp, tf, taf, List.nil_append, List.cons_append, h1, h2, hornerOps,
+    rd_app, rd_app0, rd_app_left _ _ ha, rd_app_left _ _ hb, rd_app_left _ _ hl,
+    rd_app_left _ _ hc0, rd_app_left _ _ hcN, rd_app_left _ _ hz, List.range_succ, List.range_zero,
+    List.map_cons, List.map_nil, List.map_append, List.reverse_cons, List.reverse_nil,
+    List.getD_eq_getElem?_getD, List.getElem?_cons_succ, List.getElem?_cons_zero, Option.getD_some,
+    Option.map_some, allK, Bool.not_true, Bool.false_or, Bool.true_and, Bool.and_true,
+    List.drop_succ_cons, List.drop_zero, List.foldl_cons, List.foldl_nil,
+    List.replicate_succ, List.replicate_zero, ite_true, ite_false, Bool.false_eq_true,
+    List.headD_cons, List.flatMap_append, List.flatMap_cons, List.flatMap_nil, ↓reduceIte, Nat.reduceEqDiff, Nat.reduceAdd,
+    Nat.reduceMul, Nat.reduceSub] <;>
+  exact ⟨_, rfl⟩
+
+/-- The link families' sum `acc + Σ_f κ_s^(f+2) linkW τ f r` (as `linkOps`). -/
+def linkSum (τ r : Array F) (ks : F) : ℕ → F → F → F
+  | 0, acc, _ => acc
+  | n + 1, acc, pow => linkSum τ r ks n (acc + pow * impl.linkW τ (nLinkFam - (n + 1)) r) (pow * ks)
+
+/-- **A.9's `finSh` relation** over the register values. -/
+def relSh : Bool :=
+  let co := coordsR fi "S1"; let rs := chals fi "S2" 28; let ks := fv r (co.getD 28 0)
+  let τ := ((co.take (κ.m - 14)).map (fv r)).toArray
+  let θ := (((co.drop 18).take 10).map (fv r)).toArray
+  let rb := ((rs.take (κ.m - 14)).map (fv r)).toArray
+  let rp := (((rs.drop (κ.m - 14)).take 10).map (fv r)).toArray
+  let wout := eqPoint τ rb * impl.slotW 0 θ rp
+  let win := linkSum impl τ rb ks nLinkFam
+    ((impl.shiftEq τ rb + ks * eqPoint (Array.replicate (κ.m - 14) 0) rb) * impl.slotW 1 θ rp)
+    (ks * ks)
+  (Val.f (impl.shiftTarget τ θ)).eqv (rd r (claim0 fi "S2")) &&
+  (Val.f (wout * fv r (fi.zhat.getD 2 0) + win * fv r (fi.zhat.getD 3 0))).eqv
+    (rd r (claimN fi "S2"))
+
+theorem flag_finSh (hin : ∀ x ∈ coordsR fi "S1" ++ chals fi "S2" 28 ++
+      [claim0 fi "S2", claimN fi "S2", fi.zhat.getD 2 0, fi.zhat.getD 3 0,
+       (coordsR fi "S1").getD 28 0], x < r.size) :
+    ∃ L, pureRun impl κ inp (finSh fi r.size).1 r [] = some (L, relSh impl κ fi r) := by
+  simp only [List.mem_append, List.mem_cons, List.not_mem_nil, or_false] at hin
+  have hco : ∀ x ∈ coordsR fi "S1", x < r.size := fun x hx => hin x (.inl (.inl hx))
+  have hrs : ∀ x ∈ chals fi "S2" 28, x < r.size := fun x hx => hin x (.inl (.inr hx))
+  have h1 := fun L => map_rd_app r L ((coordsR fi "S1").take (κ.m - 14))
+    fun x hx => hco x (List.mem_of_mem_take hx)
+  have h2 := fun L => map_rd_app r L (((coordsR fi "S1").drop 18).take 10)
+    fun x hx => hco x (List.mem_of_mem_drop (List.mem_of_mem_take hx))
+  have h3 := fun L => map_rd_app r L ((chals fi "S2" 28).take (κ.m - 14))
+    fun x hx => hrs x (List.mem_of_mem_take hx)
+  have h4 := fun L => map_rd_app r L (((chals fi "S2" 28).drop (κ.m - 14)).take 10)
+    fun x hx => hrs x (List.mem_of_mem_drop (List.mem_of_mem_take hx))
+  have hks : (coordsR fi "S1").getD 28 0 < r.size ∨ (coordsR fi "S1").getD 28 0 = 0 := by
+    rcases Nat.lt_or_ge 28 (coordsR fi "S1").length with h | h
+    · exact .inl (hco _ (by rw [List.getD_eq_getElem _ _ h]; exact List.getElem_mem h))
+    · exact .inr (List.getD_eq_default _ _ h)
+  have tf : ∀ x, (Val.f x).toF = x := fun _ => rfl
+  have taf : ∀ x, (Val.af x).toAF = x := fun _ => rfl
+  simp only [finSh, relSh]
+  generalize claim0 fi "S2" = c0 at *
+  generalize claimN fi "S2" = cN at *
+  generalize fi.zhat.getD 2 0 = zo at *
+  generalize fi.zhat.getD 3 0 = zi at *
+  generalize (coordsR fi "S1").getD 28 0 = ks at *
+  have hc0 := hin c0 (.inr (.inl rfl)); have hcN := hin cN (.inr (.inr (.inl rfl)))
+  have hzo := hin zo (.inr (.inr (.inr (.inl rfl))))
+  have hzi := hin zi (.inr (.inr (.inr (.inr (.inl rfl)))))
+  have hk := hin ks (.inr (.inr (.inr (.inr (.inr rfl)))))
+  simp only [pureRun, evalOp, tf, taf, List.nil_append, List.cons_append, h1, h2, h3, h4, linkOps,
+    nLinkFam, linkSum, List.range_succ, List.range_zero, List.flatMap_append, List.flatMap_cons,
+    List.flatMap_nil, ↓reduceIte, Nat.reduceEqDiff, Nat.reduceAdd, Nat.reduceMul, Nat.reduceSub,
+    rd_app, rd_app0, rd_app_left _ _ hc0, rd_app_left _ _ hcN,
+    rd_app_left _ _ hzo, rd_app_left _ _ hzi, rd_app_left _ _ hk,
+    List.getD_cons_succ, List.getD_cons_zero,
+    Option.map_some, allK, Bool.not_true, Bool.false_or, Bool.true_and, Bool.and_true]
+  exact ⟨_, rfl⟩
+
+/-- **A.9's `finLr` relation** (node only) over the register values. -/
+def relLr : Bool :=
+  let rLr := (((coordsR fi "Lr1").take 15).map (fv r)).toArray
+  let rr := ((chals fi "Lr2" 15).map (fv r)).toArray
+  let r4 := ((chals fi "Lr4" 15).map (fv r)).toArray
+  let kL := fv r ((outsOf fi "Lr3").headD 0)
+  let a := fv r (fi.zhat.getD 6 0); let bb := fv r (fi.zhat.getD 7 0); let c := fv r (fi.zhat.getD 8 0)
+  let m := impl.evalL rr r4
+  if κ.isNode then
+    (Val.f (eqPoint rLr rr * (a * bb + c))).eqv (rd r (claimN fi "Lr2")) &&
+    ((Val.f (a + kL * bb + kL * kL * c)).eqv (rd r (claim0 fi "Lr4")) &&
+    (Val.f ((m.1 + kL * m.2.1 + kL * kL * m.2.2) * fv r (fi.zhat.getD 4 0))).eqv
+      (rd r (claimN fi "Lr4")))
+  else true
+
+theorem flag_finLr (hin : ∀ x ∈ (coordsR fi "Lr1").take 15 ++ chals fi "Lr2" 15 ++ chals fi "Lr4" 15 ++
+      [(outsOf fi "Lr3").headD 0, fi.zhat.getD 6 0, fi.zhat.getD 7 0, fi.zhat.getD 8 0,
+       claimN fi "Lr2", claim0 fi "Lr4", claimN fi "Lr4", fi.zhat.getD 4 0], x < r.size) :
+    ∃ L, pureRun impl κ inp (finLr fi r.size).1 r [] = some (L, relLr impl κ fi r) := by
+  simp only [List.mem_append, List.mem_cons, List.not_mem_nil, or_false] at hin
+  have h1 := fun L => map_rd_app r L ((coordsR fi "Lr1").take 15) fun x hx => hin x (.inl (.inl (.inl hx)))
+  have h2 := fun L => map_rd_app r L (chals fi "Lr2" 15) fun x hx => hin x (.inl (.inl (.inr hx)))
+  have h3 := fun L => map_rd_app r L (chals fi "Lr4" 15) fun x hx => hin x (.inl (.inr hx))
+  have tf : ∀ x, (Val.f x).toF = x := fun _ => rfl
+  have taf : ∀ x, (Val.af x).toAF = x := fun _ => rfl
+  simp only [finLr, finLrWith, relLr]
+  generalize (outsOf fi "Lr3").headD 0 = kl at *
+  generalize fi.zhat.getD 6 0 = za at *
+  generalize fi.zhat.getD 7 0 = zb at *
+  generalize fi.zhat.getD 8 0 = zc at *
+  generalize claimN fi "Lr2" = c2 at *
+  generalize claim0 fi "Lr4" = c40 at *
+  generalize claimN fi "Lr4" = c4 at *
+  generalize fi.zhat.getD 4 0 = zl at *
+  have hk := hin kl (.inr (.inl rfl)); have ha := hin za (.inr (.inr (.inl rfl)))
+  have hb := hin zb (.inr (.inr (.inr (.inl rfl)))); have hc := hin zc (.inr (.inr (.inr (.inr (.inl rfl)))))
+  have hc2 := hin c2 (.inr (.inr (.inr (.inr (.inr (.inl rfl))))))
+  have hc40 := hin c40 (.inr (.inr (.inr (.inr (.inr (.inr (.inl rfl)))))))
+  have hc4 := hin c4 (.inr (.inr (.inr (.inr (.inr (.inr (.inr (.inl rfl))))))))
+  have hzl := hin zl (.inr (.inr (.inr (.inr (.inr (.inr (.inr (.inr rfl))))))))
+  cases hn : κ.isNode <;>
+  simp only [hn, pureRun, evalOp, tf, taf, List.nil_append, List.cons_append, h1, h2, h3,
+    rd_app, rd_app0, rd_app_left _ _ hk, rd_app_left _ _ ha, rd_app_left _ _ hb, rd_app_left _ _ hc,
+    rd_app_left _ _ hc2, rd_app_left _ _ hc40, rd_app_left _ _ hc4, rd_app_left _ _ hzl,
+    List.getD_eq_getElem?_getD, List.getElem?_cons_succ, List.getElem?_cons_zero, Option.getD_some,
+    Option.map_some, Bool.not_true, Bool.not_false, Bool.false_or, Bool.true_or, Bool.true_and,
+    Bool.and_true, ↓reduceIte, Bool.false_eq_true] <;>
+  exact ⟨_, rfl⟩
+
+end Flags
+
+end FR

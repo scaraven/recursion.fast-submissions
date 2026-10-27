@@ -3,11 +3,12 @@
 -- a kind (or the mux) one per line, `opName operands… → dst`, registers numbered; `irdump summary`
 -- prints the counts. The phase-final checks are `gen`'s parameter; the dump uses none
 -- (`noFinals`), so it pins the skeleton: every query, challenge map and round check.
-import FRVIR
+import FRVIRFinals
 
 open FR RecursionFast
 
-def noFinals : Finals := fun _ _ => []
+/-- The finals with S-0's four fields; S-F's and S-G's are pending (marked in the dump). -/
+def fins : Finals := s0Finals pending pending pending (fun _ => pending) pending
 
 def hex (l : List UInt8) : String :=
   String.join (l.map fun b =>
@@ -89,6 +90,10 @@ def showOp (m : Mode) : Op → String
   | .shiftTarget t h => s!"shiftTarget {r t} {r h}"
   | .slotW sm t x => s!"slotW {sm} {r t} {r x}"
   | .kindFoldWeight x b y => s!"kindFoldWeight {r x} {r b} {r y}"
+  | .eqPt a b => s!"eqPt {r a} {r b}"
+  | .rowW l h => s!"rowW {r l} {r h}"
+  | .shiftEq t x => s!"shiftEq {r t} {r x}"
+  | .linkW t f p => s!"linkW {r t} {f} {r p}"
   | .splitDigest d => s!"splitDigest {r d}"
   | .selectHalf b x y => s!"selectHalf {r b} {r x} {r y}"
   | .keep act n o => "keep " ++ showKC toString m act ++ s!" {r n} {r o}"
@@ -100,14 +105,32 @@ def showOp (m : Mode) : Op → String
   | .assertOneHot a b c => s!"assertOneHot {r a} {r b} {r c}"
   | .accept => "accept"
 
-def dumpOps (m : Mode) : IO Unit := do
-  let P := gen noFinals m
-  let mut n := 0
-  for op in P.ops do
+def dumpList (m : Mode) (ops : List Op) (n0 : ℕ) : IO ℕ := do
+  let mut n := n0
+  for op in ops do
     let k := outs op
     let dst := if k = 0 then "" else " → " ++ " ".intercalate ((List.range k).map (fun i => r (n + i)))
     IO.println (showOp m op ++ dst)
     n := n + k
+  return n
+
+/-- The skeleton, then each final field with a header line; pending fields are marked. -/
+def dumpOps (m : Mode) : IO Unit := do
+  let n ← dumpList m skeleton.1 0
+  let outs := skeleton.2.outs
+  let rs := fins.finRS ⟨outs, [], #[]⟩ n
+  IO.println "-- final finRS (S-F): PENDING placeholder"
+  let mut b ← dumpList m rs.1 n
+  let names := ["finZ", "finLc", "finSh", "finLr", "finE (S-F): PENDING placeholder",
+    "finB' (S-F): PENDING placeholder"] ++ (List.range nLevels).map (fun i => s!"finP {i} (S-G): PENDING placeholder") ++
+    ["finPf (S-G): PENDING placeholder"]
+  let mut ex : Array (List Reg) := #[rs.2]
+  for (f, nm) in fins.rest.zip names do
+    let x := f ⟨outs, rs.2, ex⟩ b
+    IO.println s!"-- final {nm}"
+    b ← dumpList m x.1 b
+    ex := ex.push x.2
+  IO.println "accept"
 
 def itemJson : Item → String
   | .seed => "{\"q\":\"seed\",\"qlen\":119}"
@@ -135,7 +158,7 @@ def main (args : List String) : IO UInt32 := do
       | "L" => Mode.fixed .L32 | "P" => .fixed .P30 | "N" => .fixed .N30 | _ => .mux
     dumpOps m; return 0
   | ["summary"] =>
-    let P := gen noFinals .mux
+    let P := gen fins .mux
     let asks := P.ops.filterMap Op.item?
     IO.println s!"ops {P.ops.length}; registers {skeleton.2.next}; asks {asks.length}; items {items.length}; asks = items: {decide (asks = items)}"
     IO.println s!"fieldSizes {fieldSizes}; piSize {piSize}; streamBytes {streamBytes}; chainLen {chainLen}"

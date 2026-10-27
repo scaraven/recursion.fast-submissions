@@ -49,6 +49,9 @@ def mBase : ℕ := 3 * 2 ^ 14
 def nM : ℕ := 2 ^ 21
 def mBlocks : ℕ := nM / 128
 def slotM : ℕ := 2 ^ 20
+/-- **M's `one` cell** (revision 3.6, S-E2 F-4): element `Mbase · 128` of `f`, pinned to `1` by a
+point claim (`PubCells`); the compiler's `Params.one` is this cell. -/
+def oneCell : ℕ := mBase * 128
 /-- The node's blocks (`2^(30 − 14)`). -/
 def nodeBlocks : ℕ := 2 ^ 16
 
@@ -131,12 +134,15 @@ def mRowModel : List ℕ :=
    2 * 74587 + 2 * 22468 + 2 ^ 14, -- evalM replay
    8192,              -- evalL replay
    3288,              -- gated asserts
+   2600,              -- mirror-cell mux (revision 3.6)
+   266,               -- selector–digit rows (S-E2 F-2)
    7]                 -- selector
 
-theorem mRowModel_sum : mRowModel.sum = 529201 := by decide
+theorem mRowModel_sum : mRowModel.sum = 532067 := by decide
 
 /-- **The M rows fit**: a slot's rows in its `2^20` half of M, the node's in `N_M` (margin
-`2^20 / 529,201 ≈ 1.98`; §4.3 states 526,076, its categories sum to 529,201: finding F-3). -/
+`2^20 / 532,067 ≈ 1.97`; §4.3 (revision 3.6) states 531,588, its categories sum to 532,067 with
+`evalM`'s formula and the 8 `stmt` equalities once: finding F-3′). -/
 theorem mRows_le : mRowModel.sum ≤ slotM ∧ 2 * mRowModel.sum ≤ nM := by
   rw [mRowModel_sum]; simp only [slotM, nM]; norm_num
 

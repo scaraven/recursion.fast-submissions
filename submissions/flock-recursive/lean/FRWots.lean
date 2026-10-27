@@ -17,11 +17,13 @@ blocks (`hashStmt`). This module proves what the blocks and the selections compu
   message `tagSigNode ‖ l ‖ r` outputs `sigNode l r`; the walk with the index bits is `sigRoot`
   (`sigRoot_bits`);
 * **`wots_sound`**: chain ends, the leaf and the walk as above give `SigOk vk m σ`;
-* **`hashStmt_sound`**: block A gives `leafStmt` of `stmt`'s fields, blocks B1–B2 `nodeStmt`. The
-  two halves have **separate** message hypotheses: block A pins byte 0 to `tagLeaf`, block B1 to
-  `tagNode`, so equating both messages with the same `stmt` is unsatisfiable
-  (`hashStmt_ungated_vacuous`); the 8 `stmt` equalities of §4.2 must be gated by the kind
-  (A's four by `s_L + s_P`, B1's and B2's by `s_N`; RESULT, finding F-1).
+* **`hashStmt_sound`** (revision 3.6): with the `stmt` equalities gated by the kind (A's four by
+  `s_L + s_P`, B1's and B2's by `s_N`), a leaf kind's block A gives `leafStmt` and a node's blocks
+  B1–B2 give `nodeStmt`. Ungated, the rows are unsatisfiable (A pins `tagLeaf`, B1 `tagNode` at
+  byte 0): `hashStmt_ungated_vacuous` (S-E2 F-1);
+* **the selector–digit rows** (`digitSel_sound`): two product rows per chain give the three
+  selectors `[d < 1]`, `[d < 2]`, `[d < 3]` from the digit bits; the end is muxed by `[d < 3]`
+  (S-E2 F-2).
 
 The key leaf's 67 blocks (`hashB1 tagWotsLeaf`, 65 `stream`, `streamEnd41`) are a stream whose
 digest `FRBlockStream` computes; `wots_sound` takes the leaf as the contract's `wotsLeaf` of the
@@ -125,22 +127,27 @@ theorem path_node {w₁ w₂ : Pos → Bool}
   rw [(hashB_sound h₁ h₂ hl).1, hm]
   rfl
 
-/-- **`hashStmt_sound`** (§4.2): block A with message `stmt[0, 64)` gives `leafStmt` of `stmt`'s
-`h` and `n`; blocks B1–B2 linked, with messages `stmt[0, 64)` and `stmt[64, 128)`, give `nodeStmt`
-of `stmt`'s `c₁`, `c₂`. -/
-theorem hashStmt_sound {stmt : List UInt8} {wA w₁ w₂ : Pos → Bool}
+/-- **`hashStmt_sound`** (§4.2, revision 3.6): with `node` the slot's `s_N` (its one-hot
+selector's kind) and the gated `stmt` equalities (A's by `s_L + s_P`, B1's and B2's by `s_N`), a leaf kind's block A outputs
+`leafStmt` of `stmt`'s `h`, `n` and a node's blocks B1–B2 output `nodeStmt` of its `c₁`, `c₂` (the
+fields as `FRFormat` parses them: the parse hypotheses `hleaf`, `hnode`). -/
+theorem hashStmt_sound {node : Bool} {stmt : List UInt8} {wA w₁ w₂ : Pos → Bool}
     (hA : HoldsE (blockR1CS hashA.target) (targetVal R hashA.target) (liftBlock R wA))
     (h₁ : HoldsE (blockR1CS (hashB1 tagNode).target) (targetVal R (hashB1 tagNode).target)
       (liftBlock R w₁))
     (h₂ : HoldsE (blockR1CS hashB2.target) (targetVal R hashB2.target) (liftBlock R w₂))
-    (hl : ∀ j < 256, w₂ (pos j) = w₁ (pos (256 + j))) :
-    (msgBytes wA = stmt.take 64 → ∀ {h : Digest} {n : ℕ},
-      stmt.take 41 = tagLeaf :: h.toList ++ enc64 n → readDigest wA 256 = leafStmt h n) ∧
-    (msgBytes w₁ = stmt.take 64 → msgBytes w₂ = (stmt.drop 64).take 64 → ∀ {c₁ c₂ : Digest},
-      stmt.take 65 = tagNode :: c₁.toList ++ c₂.toList → readDigest w₂ 256 = nodeStmt c₁ c₂) := by
-  refine ⟨fun hm h n hs => hashA_leafStmt hA ?_, fun hm₁ hm₂ c₁ c₂ hs => hashB_nodeStmt h₁ h₂ hl ?_⟩
-  · rw [hm, List.take_take, show min 41 64 = 41 from rfl, hs]
-  · rw [hm₁, hm₂, List.take_take, show min 1 64 = 1 from rfl, ← List.take_add]; exact hs
+    (hl : ∀ j < 256, w₂ (pos j) = w₁ (pos (256 + j)))
+    (gA : node = false → msgBytes wA = stmt.take 64)
+    (gB : node = true → msgBytes w₁ = stmt.take 64 ∧ msgBytes w₂ = (stmt.drop 64).take 64)
+    {h c₁ c₂ : Digest} {n : ℕ}
+    (hleaf : node = false → stmt.take 41 = tagLeaf :: h.toList ++ enc64 n)
+    (hnode : node = true → stmt.take 65 = tagNode :: c₁.toList ++ c₂.toList) :
+    (node = false → readDigest wA 256 = leafStmt h n) ∧
+    (node = true → readDigest w₂ 256 = nodeStmt c₁ c₂) := by
+  refine ⟨fun hk => hashA_leafStmt hA ?_, fun hk => hashB_nodeStmt h₁ h₂ hl ?_⟩
+  · rw [gA hk, List.take_take, show min 41 64 = 41 from rfl, hleaf hk]
+  · rw [(gB hk).1, (gB hk).2, List.take_take, show min 1 64 = 1 from rfl, ← List.take_add]
+    exact hnode hk
 
 /-- **Negative control (finding F-1)**: the ungated wiring — blocks A and B1 with the same
 message — is unsatisfiable, so §4.2's `hashStmt_sound` with both message hypotheses at once is
@@ -160,6 +167,23 @@ theorem hashStmt_ungated_vacuous {wA w₁ : Pos → Bool}
   exact absurd b (by decide)
 
 end Blocks
+
+/-! ## The selector–digit rows (§4.2, revision 3.6) -/
+
+/-- **The digit selectors**: for digit bits `b₀, b₁` (`d = b₀ + 2 b₁`), the two product rows
+`s₁ = (1 − b₀)(1 − b₁)`, `s₃ = 1 − b₀ b₁` and the linear `s₂ = 1 − b₁` give `s_k = [d < k]`. -/
+theorem digitSel_sound {R : Type*} [CommRing R] [Nontrivial R] {b₀ b₁ : Bool}
+    {s₁ s₂ s₃ : R} (h₁ : s₁ = (1 - (if b₀ then 1 else 0)) * (1 - (if b₁ then 1 else 0)))
+    (h₂ : s₂ = 1 - (if b₁ then 1 else 0))
+    (h₃ : s₃ = 1 - (if b₀ then 1 else 0) * (if b₁ then 1 else 0)) :
+    let d := b₀.toNat + 2 * b₁.toNat
+    (s₁ = if d < 1 then 1 else 0) ∧ (s₂ = if d < 2 then 1 else 0) ∧ (s₃ = if d < 3 then 1 else 0) := by
+  subst h₁ h₂ h₃; cases b₀ <;> cases b₁ <;> simp
+
+/-- Negative control: without the rows, the selectors `s = (1, 1, 1)` on digit `3` claim `d < 1`. -/
+theorem digitSel_neg :
+    ¬ ((1 : ℤ) = (1 - (if true then 1 else 0)) * (1 - (if true then 1 else 0))) := by
+  decide
 
 end Wots
 end FR

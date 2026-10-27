@@ -64,3 +64,11 @@ a closed-form row model (deviation D-2). All later commands run under
 
 All modules built under the 12 GB scope; sequential profiles `logs/S-E2/profile-*.log`; source
 rule 0 findings.
+
+### Revision 3.6 pass
+
+The four cell-reading ops are now imports in the compiler. Also done: `hashStmt_sound` restated
+with the gates, `digitSel_sound`, `oneCell`, and the row model updated (F-3′: the stated 531,588
+still does not equal the sum of its categories, 532,067). New module `FRVIREval`: `walkA_eq`,
+`walkB_eq`, `kindInd_eq`. `evalM`/`evalL` and `node_sound` wait for S-0's `gen fin`. Built against
+S-0's working-tree `FRVIR` (it builds), with the 16 GB scope.

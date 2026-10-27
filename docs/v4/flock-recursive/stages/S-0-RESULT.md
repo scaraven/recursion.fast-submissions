@@ -219,3 +219,88 @@ by phase. Separately, the phase-final checks (deviation 4) will add their own se
    E1 (deviation 7); "≤ 7 `v_kind`" against A.6's eight kinds (deviation 15).
 5. `compileMux`'s dump (A.7's M layout KAT) is L-circ's; the dump tool has the hook (`irdump ops M`
    prints the mux program with the three kinds' tables).
+
+## Fix pass
+
+Against the review (`reviews/S-0-review.md`, M1–M3, m1–m8) and BLUEPRINT revisions 3.5 (A.9,
+`J_z = 5`, `linkW`, `windows` by stream offset, `piSize = 757,616`) and 3.6 (cell-reading ops as
+imports). Builds run under the memory cap (`systemd-run … MemoryMax=16G`); logs `logs/S-0/fix-*`.
+
+**The 16:37 OOM was this stage's**: a scratch `lake env lean` of `flag_finSh` (51 ops evaluated by
+`simp` over a growing register list; the lookups through `List.getElem?_cons_succ` built proof
+motives quadratic in the list). Fixed by (i) closed-form register numbers in the helper ops
+(`hornerOps`, `linkOps`: `b + (16 + 4f)`, never `b + 16 + 4 + …`), (ii) generalising the phase
+offsets and input registers before evaluation, and (iii) list lookups by the rfl lemmas
+`List.getD_cons_succ/zero`. `flag_finSh` now checks in 0.36 s kernel, under the cap.
+
+### What changed (code lines, `loc.py`; `logs/S-0/loc-fix.txt`)
+
+| Module | code | Change |
+|---|---|---|
+| `FRTranscriptDefs` | 361 | imports `FRMerkle` (not `FRRS`/`FRMLE`, m6); **`frEnc i : Merkle.MerkleEnc`** (S-D); `windowsFrom`, `inPlay` by stream offset (m1: the seed's windows at `7 + 16k`); RS0 `5 × 128 × 16` (`J_z = 5`); stream 1,437,936 B, `chainLen = 22,468`; `parseCol`'s docstring (m4); `domBits` documented as `FRRS.logNMax` |
+| `FRFormat` | 123 | `piSize_eq = 757,616` (A.3 rev 3.5); `kindOf`'s W-by-first-byte documented (m5) |
+| `FRVIR` | 425 | ops `eqPt`, `rowW`, `shiftEq`, `linkW` (imports, rev 3.6); `OpImpl.linkW/rowW/shiftEq`; **`Meets` per op under length preconditions, owners named** (m2); `Op.outs`, `opsOut`; `gen` → `genWith (fin : FinOps)` |
+| `FRVIRSpec` | 727 | **M3**: `CtxOk`, `genPhase_ctx` (stated), `refPhases`, **`exec_genPhases`** (proved by induction from `exec_genPhase` + `genPhase_ctx`), **`exec_skeleton`**, `skeleton_ok` (an accepted run has every phase's flag) |
+| `FRVIRFinals` (new) | 301 | **M1**: `FinIn`, `FinField`, the typed **`Finals`** (A.9: `finRS, finZ, finLc, finSh, finLr, finE, finB′, finP i, finPf`), `Finals.ops`, **`gen (fin : Finals)`**, `pending`, `s0Finals`; S-0's fields `finZ`, `finLc`, `finSh` (with the ≤ 8 link families), `finLr`; `pureRun`, `exec_pureRun`, `exec_field`; **`flag_finZ`, `flag_finLc`, `flag_finSh`, `flag_finLr`** (proved: each field asks nothing and its flag is A.9's relation, `relLc`/`relSh`/`relLr`, over the register values) |
+| total | 1,937 | |
+
+### Sequential kernel times (one core, `-DElab.async=false`, capped; `logs/S-0/fix-profile-*.log`)
+
+| Module | wall | kernel | elaboration |
+|---|---|---|---|
+| `FRTranscriptDefs` | 21.5 s | 8.5 s | 0.6 s |
+| `FRFormat` | 7.5 s | 0.25 s | 0.2 s |
+| `FRVIR` | 15.2 s | 0.33 s | 7.3 s |
+| `FRVIRSpec` | 28.9 s | 3.3 s | 3.1 s |
+| `FRVIRFinals` | 26.6 s | 1.0 s | 13.6 s |
+
+Resident memory per module ≈ 2.6–2.9 GB.
+
+### The `sorry`s (the branch's; the DoD allows the non-Z phases)
+
+| Declaration | What closes it |
+|---|---|
+| `exec_genPhase` | per shape (Z's shapes are proved in `exec_phaseZ`): degree-2 F and K rounds, `.one`/`.pos` squeezes, seed, `stmt`/final absorbs, queries |
+| `genPhase_ctx` (new, M3) | per shape: `next` = the shape's width, `st`/`uni`/`posAns`/`foldR` inside the appended registers (definitional from `genPhase` plus the `refPhase` lengths) |
+
+`exec_genPhases`, `exec_skeleton` and `skeleton_ok` are proved from these two; axioms
+(`logs/S-0/axioms.log`, 33 declarations): only `propext`, `Classical.choice`, `Quot.sound`, plus
+`sorryAx` through those two.
+
+### Dumps (`logs/S-0/dump/`)
+
+`irdump ops L|P|N|M` now prints the skeleton, then each final field under a `-- final <name>`
+header; S-F's and S-G's fields are marked `PENDING placeholder`. 61,875 ops; asks = items = 8,852;
+`piSize` 757,616. Until `finRS` lands, the S-0 fields read `ẑ`/`α_j` from register 0 (the
+`zhat` list is empty).
+
+### Deviations and open points of the fix pass
+
+1. **The finals run after the skeleton**, in the order `finRS, finZ, finLc, finSh, finLr, finE, finB′,
+   finP 0…4, finPf`, not after each phase (A.9 says "after the phase's skeleton"). They ask nothing,
+   so the transcript is unchanged. The order is forced: `finZ` and `finSh` need RS's certified values
+   `α_j`, which `finRS` computes from RS0's partials.
+2. **`finLr` needs `â_L, b̂_L, ĉ_L`, and A.4 has no item carrying them** (Z has `Zend`; Lr has none).
+   `finLr` reads them from `zhat[6…8]`, provisional. **Blueprint question:** add an "Lr end" absorb
+   (48 B, like `Zend`), changing `items`/`piSize`, or say where the prover sends them. E (S-F) has
+   the same question for `â_M, b̂_M, ĉ_M`.
+3. **`finSh`'s link term uses the Sh point.** It computes `Σ_f κ_s^(f+2) linkW τ f r_blk` at the Sh
+   point (`OpImpl.linkW : AF → ℕ → AF → F`), while A.8 types `linkW` at the RS point (`AK (m−7)`).
+   Within `finSh` only the Sh point exists. The term's powers start at `κ_s²` (`κ_s¹` weights the
+   `eq(0,·)` term). To confirm with S-C.
+4. **`finLc`'s `β` powers** follow the order of L3's message (`v_i`, i < 7); `maskRows` takes 8
+   entries in `blockKinds` order (leaf: `v₀` at `chain`; node: `v₀ … v₆` at the other seven kinds,
+   `chain = 0`).
+5. **New impl functions** `rowW` (Lagrange at `λ` ⊗ `eq(r′_hi,·)`, `2^14`) and `shiftEq` (`shift(τ,
+   r)`), both S-C's (A.8 has no op for them); `eqPt` is concrete.
+6. **m6 against S-D's request:** `nMax`/`logNMax` are not imported from `FRRS`, because that would put
+   `FRRS` back on the serial path. `domBits = 20` stays and equals `FRRS.logNMax` by `rfl` where
+   both are in scope. `eqBits_eq_eq` leaves S-0; its text, for its consumer (`FRSoundnessLigerito`,
+   importing `FRRS` and `FRMLE`):
+   `theorem eqBits_eq_eq {R} [CommRing R] (r : ℕ → R) (ℓ) (x : Fin (2^ℓ)) : eqBits r ℓ x = eq (fun v : Fin ℓ => r v) (cube x) := by rw [eq_cube, eqBits, bitSel, Finset.prod_range]`.
+7. **Revision 3.6's `B′` point weight** for the M `one` cell is `finB′`'s (S-F); nothing in S-0.
+8. **m8:** 29 warnings remain (unused simp arguments, deprecated `if_pos`), left for golf.
+
+**Serial path** (`logs/S-0/serial.txt`): 10,220 lines, ≈ 307 s (**estimate**), down from 11,854
+now that `FRRS` is off the S-0 chain: `… Field256 → TranscriptDefs → Format → VIR → VIRSpec →
+VIRFinals → Verifier → …`.

@@ -164,6 +164,15 @@ inductive Op where
   | slotW (s : ℕ) (theta r : Reg)
   /-- F: `Ŵ_β(ρ)`. -/
   | kindFoldWeight (r beta rho : Reg)
+  /-- F: `eq(a, b) = Π_v (a_v b_v + (1 − a_v)(1 − b_v))` of two F points. In the circuit an
+  import (revision 3.6: no rows; its value is a hypothesis discharged in `final`). -/
+  | eqPt (a b : Reg)
+  /-- AF: the lincheck's row weights (`OpImpl.rowW`; an import, revision 3.6). -/
+  | rowW (lam rhi : Reg)
+  /-- F: `shift(τ, r)` (`OpImpl.shiftEq`; an import, revision 3.6). -/
+  | shiftEq (tau r : Reg)
+  /-- F: link family `fam`'s weight at a point (`OpImpl.linkW`; an import, revision 3.6). -/
+  | linkW (tau : Reg) (fam : ℕ) (pt : Reg)
   /-- Two F registers. -/
   | splitDigest (d : Reg)
   /-- D: `y` if the bit is set, else `x`. -/
@@ -211,19 +220,37 @@ structure OpImpl where
   slotW : ℕ → Array F → Array F → F
   /-- `Ŵ_β` at the ring-switching point (S-C-M1; FRRingSwitch). -/
   kindFoldWeight : Array F → F → Array K → F
+  /-- A link family's weight (revision 3.5, S-0-M2; FRShift): `τ`, the family, the point. -/
+  linkW : Array F → ℕ → Array F → F
+  /-- The lincheck's row weights `rowW` (`2^14`): Lagrange at `λ` on the skip coordinate ⊗
+  `eq(r′_hi, ·)` on the 8 high position bits (A.9 `finLc`; FRSkip/FRSpartan). -/
+  rowW : F → Array F → Array F
+  /-- `shift(τ, r)`, the shift's MLE at two block points (FRShift). -/
+  shiftEq : Array F → Array F → F
 
-/-- **The specification record**: the same signatures, read as the mathematical definitions
-(supplied by the defining modules; may be noncomputable). -/
+/-- **The specification record**: the same signatures, read as the mathematical definitions.
+Owners of the concrete `OpSpec` and its lemmas (S-0-m2): S-C — `lagrangeS`, `tensorW`, `mbp`,
+`shiftTarget`, `slotW`, `kindFoldWeight`, `linkW`, `rowW`, `shiftEq`; S-E1/S-E2 — `walkA/B`,
+`evalM/L`, `kindInd`; `FRPubTarget` — `selWeight`, `targetMLE`. -/
 abbrev OpSpec := OpImpl
 
-/-- **`impl ⊨ spec`**: every implemented op is its specification (`FRVIREval` proves it). -/
+/-- **`impl ⊨ spec`, per op, on well-formed operands only** (S-0-m2): each implemented op equals its
+specification where the verifier calls it (the operand lengths `gen` produces); malformed lengths
+are unconstrained. `FRVIREval` proves it. -/
 def OpImpl.Meets (impl : OpImpl) (spec : OpSpec) : Prop :=
-  impl.lagrangeS = spec.lagrangeS ∧ impl.tensorW = spec.tensorW ∧ impl.mbp = spec.mbp ∧
-  impl.walkA = spec.walkA ∧ impl.walkB = spec.walkB ∧ impl.evalM = spec.evalM ∧
-  impl.evalL = spec.evalL ∧ impl.selWeight = spec.selWeight ∧ impl.targetMLE = spec.targetMLE ∧
-  impl.kindInd = spec.kindInd ∧
-  impl.shiftTarget = spec.shiftTarget ∧ impl.slotW = spec.slotW ∧
-  impl.kindFoldWeight = spec.kindFoldWeight
+  (∀ v l, v.size = 127 → impl.lagrangeS v l = spec.lagrangeS v l) ∧
+  (∀ j r, impl.tensorW j r = spec.tensorW j r) ∧
+  (∀ r k p, r.size = 7 → impl.mbp r k p = spec.mbp r k p) ∧
+  (∀ rw cw, rw.size = 2 ^ 14 → cw.size = 2 ^ 14 → impl.walkA rw cw = spec.walkA rw cw) ∧
+  (∀ rw cw, rw.size = 2 ^ 14 → cw.size = 2 ^ 14 → impl.walkB rw cw = spec.walkB rw cw) ∧
+  (∀ a b, impl.evalM a b = spec.evalM a b) ∧ (∀ a b, impl.evalL a b = spec.evalL a b) ∧
+  (∀ a b, a.size = b.size → impl.selWeight a b = spec.selWeight a b) ∧
+  (∀ a l b, impl.targetMLE a l b = spec.targetMLE a l b) ∧ (∀ a, impl.kindInd a = spec.kindInd a) ∧
+  (∀ a b, impl.shiftTarget a b = spec.shiftTarget a b) ∧
+  (∀ s a b, impl.slotW s a b = spec.slotW s a b) ∧
+  (∀ a b c, impl.kindFoldWeight a b c = spec.kindFoldWeight a b c) ∧
+  (∀ a f c, impl.linkW a f c = spec.linkW a f c) ∧ (∀ l a, impl.rowW l a = spec.rowW l a) ∧
+  (∀ a b, a.size = b.size → impl.shiftEq a b = spec.shiftEq a b)
 
 /-! ## One op -/
 
@@ -242,6 +269,12 @@ def absOff (f o : ℕ) : ℕ := fieldOffA.getD f 0 + o
 /-- `eq(r, ·)`: bit `v` of the index is coordinate `v`. -/
 def eqTab {R : Type} [Mul R] [Add R] [Sub R] [One R] (r : Array R) : Array R :=
   r.foldl (fun t x => t.map (· * (1 - x)) ++ t.map (· * x)) #[1]
+
+/-- `eq(a, b)` of two F points (missing coordinates read as `0`). -/
+def eqPoint (a b : Array F) : F :=
+  (List.range a.size).foldl (fun acc v =>
+    let x := a.getD v 0; let y := b.getD v 0
+    acc * (x * y + (1 - x) * (1 - y))) 1
 
 /-- The F elements of a byte string, 16 bytes each. -/
 def felems (b : ByteArray) : Array F :=
@@ -326,6 +359,10 @@ def evalOp (impl : OpImpl) (κ : Kind) (inp : Input) (regs : Array Val) : Op →
     .vals [.f (impl.targetMLE (rd regs r).toAF (rd regs l).toF (rd regs r').toAF)] true
   | .shiftTarget t h => .vals [.f (impl.shiftTarget (rd regs t).toAF (rd regs h).toAF)] true
   | .slotW sm t r => .vals [.f (impl.slotW sm (rd regs t).toAF (rd regs r).toAF)] true
+  | .eqPt a b => .vals [.f (eqPoint (rd regs a).toAF (rd regs b).toAF)] true
+  | .rowW l h => .vals [.af (impl.rowW (rd regs l).toF (rd regs h).toAF)] true
+  | .shiftEq t r => .vals [.f (impl.shiftEq (rd regs t).toAF (rd regs r).toAF)] true
+  | .linkW t fm p => .vals [.f (impl.linkW (rd regs t).toAF fm (rd regs p).toAF)] true
   | .kindFoldWeight r b ρ =>
     .vals [.f (impl.kindFoldWeight (rd regs r).toAF (rd regs b).toF (rd regs ρ).toAK)] true
   | .splitDigest d =>
@@ -401,6 +438,16 @@ def semIR (impl : OpImpl) (P : VProg) (inp : Input) (tr : Trace) : Option Bool :
   | some (s, []) => some s.ok
   | _ => none
 
+/-- The registers an op appends. -/
+def Op.outs : Op → ℕ
+  | .evalM .. | .evalL .. | .kindSel => 3
+  | .splitDigest _ => 2
+  | .assertEq .. | .assertBit .. | .assertZero .. | .assertOneHot .. | .accept => 0
+  | _ => 1
+
+/-- The registers an op list appends. -/
+def opsOut (ops : List Op) : ℕ := (ops.map Op.outs).sum
+
 /-- The item of an ask op (`none` for every other op). -/
 def Op.item? : Op → Option Item
   | .askSeed _ => some .seed
@@ -438,9 +485,10 @@ structure GCtx where
   /-- Each phase's outputs, by phase number. -/
   outs : Array (List Reg)
 
-/-- The phase-final checks (S-C, L-pcs, L-cert): ops from the phases' outputs and the next free
-register. They ask nothing (`FRVIRSpec.items_gen` assumes it). -/
-abbrev Finals := Array (List Reg) → ℕ → List Op
+/-- The phase-final checks as raw ops from the phases' outputs and the next free register (the typed
+`Finals` of A.9 is `FRVIRFinals.Finals`, whose `ops` this is). They ask nothing
+(`FRVIRSpec.items_gen` assumes it). -/
+abbrev FinOps := Array (List Reg) → ℕ → List Op
 
 /-- Seed: `hdr`, the seed query, the kind selector and the kind element (§4.3 (1)). -/
 def seedOps (b : ℕ) : List Op :=
@@ -614,21 +662,6 @@ def genPhase (n : ℕ) (p : Phase) (c : GCtx) : List Op × GCtx :=
 /-- The number of the phase called `name`. -/
 def phaseIx (name : String) : ℕ := phases.findIdx (·.name = name)
 
-/-- **Phase Z's final check** (§2.3 step 2, revision 3.3), a `Finals` fragment from register `b`,
-given the register of the quirky claim `ẑ(λ, r′)` (ring switching's, RS): `claim_Z3 = ŵ(r′)·(â b̂ −
-ẑ) − Ê_w(λ, r′)` with `ŵ = selWeight r r′`, `Ê_w = targetMLE r λ r′`, `r` Z1's `m − 13` free
-coordinates, `r′` Z3's `m − 6` challenges (the ops take the full vectors; the block coordinates
-are their last `m − 14`), `â ‖ b̂` the `Zend` message (width 10). -/
-def finZ (outs : Array (List Reg)) (zhat b : ℕ) : List Op :=
-  let co := (outs.getD (phaseIx "Z1") []).drop 1
-  let z2 := outs.getD (phaseIx "Z2") []
-  let z3 := outs.getD (phaseIx "Z3") []
-  let rs := ((z3.drop 1).take 26)
-  [.packFK (fun κ => co.take (κ.m - 13)), .packFK (fun κ => rs.take (κ.m - 6)),
-   .selWeight b (b + 1), .targetMLE b (z2.headD 0) (b + 1),
-   .piElem fZend 0, .piElem fZend 16, .mulF (b + 4) (b + 5), .addF (b + 6) zhat,
-   .mulF (b + 2) (b + 7), .addF (b + 8) (b + 3), .assertEq (b + 9) (z3.getLastD 0) allK]
-
 /-- The phases from number `n`. -/
 def genPhases : List Phase → ℕ → GCtx → List Op × GCtx
   | [], _, c => ([], c)
@@ -640,9 +673,10 @@ def genPhases : List Phase → ℕ → GCtx → List Op × GCtx
 /-- The skeleton: every phase of the table, from register `0`. -/
 def skeleton : List Op × GCtx := genPhases phases 0 ⟨0, 0, 0, [], [], #[]⟩
 
-/-- **`gen fin mode`**: the verifier program of a kind (`.fixed κ`) or the mux (`.mux`): the
-skeleton, the phase-final checks, `accept`. -/
-def gen (fin : Finals) (mode : Mode) : VProg :=
+/-- **`genWith fin mode`**: the verifier program of a kind (`.fixed κ`) or the mux (`.mux`): the
+skeleton, the phase-final checks (all after the skeleton: they ask nothing, so their place does not
+change the transcript), `accept`. `FRVIRFinals.gen` instantiates `fin` with the typed `Finals`. -/
+def genWith (fin : FinOps) (mode : Mode) : VProg :=
   ⟨mode, skeleton.1 ++ fin skeleton.2.outs skeleton.2.next ++ [.accept]⟩
 
 end FR

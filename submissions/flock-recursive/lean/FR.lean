@@ -34,10 +34,16 @@ import FRBlockChain
 import FRBlockStream
 import FRBlockKinds
 import FRLeafCircuit
+import FRVIRFinals
+import FRVIRCompile
+import FRVIRMux
+import FRWots
+import FRNodeLayout
+import FRVIREval
 
 /-!
 # `flock-recursive`
 
 The entry's modules, flat under `lean/` with the prefix `FR` and the namespace `FR`
-(`docs/v4/flock-recursive/BLUEPRINT.md` §7). Stages S-A (fields), S-C (PIOP core), S-D (PCS), S-E1 (BLAKE2s, blocks, leaf), S-H1 (extractor DSL) and S-0 (interfaces) so far.
+(`docs/v4/flock-recursive/BLUEPRINT.md` §7). Stages S-A (fields), S-C (PIOP core), S-D (PCS), S-E1 (BLAKE2s, blocks, leaf), S-H1 (extractor DSL), S-0 (interfaces) and S-E2 in part so far.
 -/

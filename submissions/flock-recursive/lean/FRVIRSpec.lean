@@ -9,8 +9,8 @@ BLUEPRINT §3, B-7.
 * **Generic** (any program): `runSeq_runIR : (runIR impl P inp).runSeq tr = semIR impl P inp tr`
   (the oracle program on a trace is the trace semantics); `exec_append` (sequencing);
   `queries_runIR` (a run asks exactly the program's ask ops).
-* **The item sequence**: `items_gen : (gen fin m).ops.filterMap Op.item? = items` for every phase-final
-  fragment that asks nothing, hence **`queries_gen : ((runIR impl (gen fin m) inp).queries H).length =
+* **The item sequence**: `items_gen : (genWith fin m).ops.filterMap Op.item? = items` for every phase-final
+  fragment that asks nothing, hence **`queries_gen : ((runIR impl (genWith fin m) inp).queries H).length =
   8852 ≤ qV`**, proved from the phase table's structure (never by evaluating `gen`).
 * `semIR_mux`: the mux program is the fixed program of the proof's kind byte.
 * **Per shape** (the phase table's shapes, `FRTranscriptDefs.Shape`): the exact registers and flag a
@@ -105,9 +105,9 @@ theorem queries_runIR (H : ByteArray → Digest) (P : VProg) :
 
 /-- **The mux is the fixed program of the proof's kind byte** (IR level; the circuit's
 `compile_mux_sound` is L-circ's). -/
-theorem semIR_mux (fin : Finals) (k : Kind) (h : inp.π.data[0]? = some k.byte) (tr : Trace) :
-    semIR impl (gen fin .mux) inp tr = semIR impl (gen fin (.fixed k)) inp tr := by
-  simp [semIR, VProg.kindOn, gen, h, Kind.ofByte?_byte]
+theorem semIR_mux (fin : FinOps) (k : Kind) (h : inp.π.data[0]? = some k.byte) (tr : Trace) :
+    semIR impl (genWith fin .mux) inp tr = semIR impl (genWith fin (.fixed k)) inp tr := by
+  simp [semIR, VProg.kindOn, genWith, h, Kind.ofByte?_byte]
 
 /-! ## The item sequence of `gen` -/
 
@@ -183,14 +183,14 @@ theorem items_genPhases (ps : List Phase) (n : ℕ) (c : GCtx) :
   | cons p ps ih => simp [genPhases, ih, items_genPhase]
 
 /-- **`gen` asks the item sequence**, for every phase-final fragment that asks nothing. -/
-theorem items_gen (fin : Finals) (hfin : ∀ outs b, (fin outs b).filterMap Op.item? = [])
-    (m : Mode) : (gen fin m).ops.filterMap Op.item? = items := by
-  simp [gen, skeleton, items_genPhases, hfin, List.filterMap_cons, Op.item?, items]
+theorem items_gen (fin : FinOps) (hfin : ∀ outs b, (fin outs b).filterMap Op.item? = [])
+    (m : Mode) : (genWith fin m).ops.filterMap Op.item? = items := by
+  simp [genWith, skeleton, items_genPhases, hfin, List.filterMap_cons, Op.item?, items]
 
 /-- **`queries_gen`**: the verifier asks `8,852 ≤ qV` queries under every oracle. -/
-theorem queries_gen (fin : Finals) (hfin : ∀ outs b, (fin outs b).filterMap Op.item? = [])
+theorem queries_gen (fin : FinOps) (hfin : ∀ outs b, (fin outs b).filterMap Op.item? = [])
     (m : Mode) (H : ByteArray → Digest) :
-    ((runIR impl (gen fin m) inp).queries H).length = 8852 := by
+    ((runIR impl (genWith fin m) inp).queries H).length = 8852 := by
   rw [queries_runIR, items_gen fin hfin, items_length]
 
 /-! ## The interpreter step by step; the shapes of phase Z -/
@@ -806,17 +806,79 @@ def refPhase (n : ℕ) (p : Phase) (c : GCtx) (r : Array Val) (tr : Trace) :
     (posAllT κ inp i (o fCols) (o fSibs) ans w (lvlStar i).t 0 tr).map fun x =>
       ([.ak fr.toArray, .ak w] ++ x.1, x.2.1, x.2.2)
 
+/-- The registers a context points to are below the register file's size. -/
+def CtxOk (c : GCtx) (r : Array Val) : Prop :=
+  c.st < r.size ∧ c.uni < r.size ∧ (∀ x ∈ c.posAns, x < r.size) ∧ (∀ x ∈ c.foldR, x < r.size)
+
 /-- **Every phase's semantics** (stated; the S-0 `sorry`): a phase's ops on a trace are its
 reference `refPhase`, for every phase of the table, kind and context. Phase Z is the proved
 instance `exec_phaseZ` (Z1 `.coords`, Z2 `.uni`, Z3 `.rounds … 3`, Zend `.absorb`). -/
 theorem exec_genPhase (n : ℕ) (p : Phase) (c : GCtx) (r : Array Val) (ok : Bool) (ops : List Op)
-    (hb : c.next = r.size) (hwf : c.st < r.size ∧ c.uni < r.size ∧ (∀ x ∈ c.posAns, x < r.size) ∧
-      (∀ x ∈ c.foldR, x < r.size)) (tr : Trace) :
+    (hb : c.next = r.size) (hwf : p.shape = .seed ∨ CtxOk c r) (tr : Trace) :
     exec impl κ inp ((genPhase n p c).1 ++ ops) ⟨r, ok⟩ tr =
       (refPhase impl κ inp n p c r tr).bind fun x =>
         exec impl κ inp ops ⟨r ++ x.1.toArray, ok && x.2.1⟩ x.2.2 := by
   sorry
 
+/-- **The context a phase hands on** (S-0-M3, stated; the S-0 `sorry`): the next free register is
+past the phase's registers, the next context's registers point into them, and the phase's outputs
+are pushed. -/
+theorem genPhase_ctx (n : ℕ) (p : Phase) (c : GCtx) (r : Array Val) (tr : Trace)
+    (x : List Val × Bool × Trace) (hb : c.next = r.size) (hwf : p.shape = .seed ∨ CtxOk c r)
+    (hx : refPhase impl κ inp n p c r tr = some x) :
+    (genPhase n p c).2.next = (r ++ x.1.toArray).size ∧
+      CtxOk (genPhase n p c).2 (r ++ x.1.toArray) ∧
+      (genPhase n p c).2.outs.size = c.outs.size + 1 := by
+  sorry
+
+/-- **Reference semantics of a run of phases**: the registers, each phase's flag, the rest. -/
+def refPhases : List Phase → ℕ → GCtx → Array Val → Trace → Option (List Val × List Bool × Trace)
+  | [], _, _, _, tr => some ([], [], tr)
+  | p :: ps, n, c, r, tr =>
+    (refPhase impl κ inp n p c r tr).bind fun x =>
+      (refPhases ps (n + 1) (genPhase n p c).2 (r ++ x.1.toArray) x.2.2).map fun y =>
+        (x.1 ++ y.1, x.2.1 :: y.2.1, y.2.2)
+
+/-- A run of phases may start: the first is the seed, or the context is well formed. -/
+def StartOk (ps : List Phase) (c : GCtx) (r : Array Val) : Prop :=
+  CtxOk c r ∨ ∃ p ps', ps = p :: ps' ∧ p.shape = .seed
+
+/-- **`exec_genPhases`** (S-0-M3): a run of phases on a trace is `refPhases`; the flag is the
+conjunction of the phases' flags. -/
+theorem exec_genPhases (ps : List Phase) (n : ℕ) (c : GCtx) (r : Array Val) (ok : Bool)
+    (ops : List Op) (hb : c.next = r.size) (hs : StartOk ps c r) (tr : Trace) :
+    exec impl κ inp ((genPhases ps n c).1 ++ ops) ⟨r, ok⟩ tr =
+      (refPhases impl κ inp ps n c r tr).bind fun y =>
+        exec impl κ inp ops ⟨r ++ y.1.toArray, ok && y.2.1.all id⟩ y.2.2 := by
+  induction ps generalizing n c r ok tr with
+  | nil => simp [genPhases, refPhases]
+  | cons p ps ih =>
+    have hwf : p.shape = .seed ∨ CtxOk c r := by
+      rcases hs with h | ⟨q, qs, he, hq⟩
+      · exact .inr h
+      · cases he; exact .inl hq
+    simp only [genPhases, List.append_assoc]
+    rw [exec_genPhase impl κ inp n p c r ok _ hb hwf, refPhases, Option.bind_assoc]
+    refine Option.bind_congr fun x hx => ?_
+    obtain ⟨h1, h2, -⟩ := genPhase_ctx impl κ inp n p c r tr x hb hwf hx
+    rw [ih (n + 1) _ _ _ h1 (.inl h2), Option.bind_map]
+    refine Option.bind_congr fun y _ => ?_
+    simp [Array.append_assoc, Bool.and_assoc, List.all_cons]
+
+/-- The initial context. -/
+def ctx₀ : GCtx := ⟨0, 0, 0, [], [], #[]⟩
+
+/-- **`exec_skeleton`** (S-0-M3): the whole skeleton on a trace is `refPhases phases`. -/
+theorem exec_skeleton (ok : Bool) (ops : List Op) (tr : Trace) :
+    exec impl κ inp (skeleton.1 ++ ops) ⟨#[], ok⟩ tr =
+      (refPhases impl κ inp phases 0 ctx₀ #[] tr).bind fun y =>
+        exec impl κ inp ops ⟨#[] ++ y.1.toArray, ok && y.2.1.all id⟩ y.2.2 :=
+  exec_genPhases impl κ inp phases 0 ctx₀ #[] ok ops rfl (.inr ⟨_, _, rfl, rfl⟩) tr
+
+/-- **Every phase's flag** (S-0-M3): an accepted skeleton has every phase's check passing. -/
+theorem skeleton_ok {y : List Val × List Bool × Trace} (h : y.2.1.all id = true) :
+    ∀ b ∈ y.2.1, b = true := by
+  simpa using h
 
 /-! ## Controls (a toy program: the input `vk`, one squeeze, one assertion) -/
 
