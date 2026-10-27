@@ -1,5 +1,6 @@
 -- New for `flock-recursive` (BLUEPRINT §4.3, §4.5, A.6, A.7, stage S-E2; B-2's kill test).
-import FRTranscriptDefs
+import FRVIRMux
+import FRVIRFinals
 
 /-!
 # The node's block layout: `nodeLayout`, the kind intervals, the size checks
@@ -7,7 +8,7 @@ import FRTranscriptDefs
 BLUEPRINT §4.3's region table and A.6/A.7 (revision 3.5). Blocks of `2^14` positions; the node has
 `2^16` (`m = 30`).
 
-* **H** (from block 0): digest chain 1 `[0, 22,472)` and chain 2 `[22,472, 44,944)` (`streamStart`
+* **H** (from block 0): digest chain 1 `[0, 22,465)` and chain 2 `[22,465, 44,930)` (`streamStart`
   first, `stream` after), `hashStmt` (`hashA`, `hashB1`, `hashB2` per slot), WOTS per slot laid
   out consecutively (§4.2: the 399 `w43` chain steps, the key leaf `hashB1` + 65 `stream` +
   `streamEnd41`, the 16 path steps `hashB1`, `hashB2`), the mirror sub-region `WM` (10 blocks per
@@ -29,8 +30,8 @@ namespace Layout
 
 /-! ## Constants (§4.3, A.7) -/
 
-/-- Compressions of one digest chain (§4.2, revision 3.7: the Lr-end and E-end absorbs). -/
-def chainN : ℕ := 22472
+/-- Compressions of one digest chain (§4.2, revision 3.9). -/
+def chainN : ℕ := 22465
 /-- `hashStmt`'s blocks: 3 per slot. -/
 def stmtBase : ℕ := 2 * chainN
 /-- WOTS: 133 chains × 3 steps, the key leaf's 67 blocks, the path's 16 × 2 per slot. -/
@@ -81,8 +82,10 @@ def wotsIvs (σ : ℕ) : List Iv :=
   (List.range 16).flatMap fun t =>
     [⟨.hashB1, b + 466 + 2 * t, b + 467 + 2 * t⟩, ⟨.hashB2, b + 467 + 2 * t, b + 468 + 2 * t⟩]
 
-/-- **`nodeLayout`**: the node's kind intervals in address order. -/
-def nodeLayout : List Iv := chainIvs 0 ++ chainIvs 1 ++ stmtIvs ++ wotsIvs 0 ++ wotsIvs 1
+/-- **`nodeLayout`**: the node's kind intervals in address order; `WM`, the spares, L and M have
+the kind `free` (`A₀ = B₀ = I`, revision 3.8.1), so `Sel ≡ 1`. -/
+def nodeLayout : List Iv :=
+  chainIvs 0 ++ chainIvs 1 ++ stmtIvs ++ wotsIvs 0 ++ wotsIvs 1 ++ [⟨.free, wmBase, nodeBlocks⟩]
 
 /-- **`Ind_kind`** (A.6): block `blk` is of kind `κ`. -/
 def Ind (κ : BlockKind) (blk : ℕ) : Bool :=
@@ -103,18 +106,18 @@ def chained : List Iv → Bool
 
 /-! ## The checks (B-2's kill test, closed form) -/
 
-theorem nodeLayout_length : nodeLayout.length = 82 := by decide
+theorem nodeLayout_length : nodeLayout.length = 83 := by decide
 
 /-- **The intervals are disjoint and in order** (so `Ind` partitions `Sel`). -/
 theorem nodeLayout_chained : chained nodeLayout = true := by decide
 
-/-- They start at block 0 and end where `WM` starts. -/
+/-- They start at block 0 and end at `2^16`. -/
 theorem nodeLayout_end : (nodeLayout.head?.map Iv.lo, nodeLayout.getLast?.map Iv.hi) =
-    (some 0, some wmBase) := by decide
+    (some 0, some nodeBlocks) := by decide
 
 /-- **The regions fit**: H ends before L, L's used blocks before M, M ends at `2^16`. -/
 theorem regions_fit : hEnd ≤ lBase ∧ lBase + lUsed ≤ mBase ∧ mBase + mBlocks = nodeBlocks ∧
-    hEnd = 45974 := by
+    hEnd = 45960 := by
   simp only [hEnd, wmBase, wmSlot, wotsBase, wotsSlot, stmtBase, chainN, lBase, lUsed, mBase,
     mBlocks, nM, nodeBlocks]; norm_num
 
@@ -122,27 +125,30 @@ theorem regions_fit : hEnd ≤ lBase ∧ lBase + lUsed ≤ mBase ∧ mBase + mBl
 
 /-- §4.3's row count per slot, by category (revision 3.5's table). -/
 def mRowModel : List ℕ :=
-  [74461,             -- imports (revision 3.7)
+  [74521,             -- imports (revision 3.9)
    54841,             -- folds
    2 * 2 ^ 7 * 126,   -- final Enc₄
    4 * 7552,          -- Merkle steps
    400,               -- Z2 Lagrange
    15000,             -- eq/tensor
-   5 * 25 * 128,      -- MBP (J_z = 5)
+   4 * 128 * 136,     -- ring switching: Φ on 4 × 128 slice values
+   4032,              -- Z's Lagrange weights
+   4 * 128 * 25,      -- rsWeight
    2000,              -- sumchecks
-   65536 + 16384,     -- lincheck replay, per-kind adjustment
-   2 * 74461 + 2 * chainN + 2 ^ 14, -- evalM replay
+   65536 + 16384 + 16384, -- lincheck replay, per-kind adjustment, the `free` kind's term
+   2 * 74521 + 2 * chainN + 2 ^ 14, -- evalM replay
    8192,              -- evalL replay
-   2 * 431 + 2 * 871 + 600, -- gated asserts
+   2 * 451 + 2 * 871 + 600, -- gated asserts
    2600,              -- mirror-cell mux
    266,               -- selector–digit rows
    8,                 -- gated stmt equalities
    4]                 -- selector and kind rows
 
-theorem mRowModel_sum : mRowModel.sum = 531610 := by decide
+theorem mRowModel_sum : mRowModel.sum = 618664 := by decide
 
 /-- **The M rows fit**: a slot's rows in its `2^20` half of M, the node's in `N_M` (margin
-`2^20 / 531,610 ≈ 1.97`; §4.3 revision 3.7 states 531,618, its listed numbers sum to 531,610: F-3″). -/
+`2^20 / 618,664 ≈ 1.69`; revision 3.9 with `Φ`; its 1,237,344 per node is 16 above twice the
+listed numbers: F-3″). -/
 theorem mRows_le : mRowModel.sum ≤ slotM ∧ 2 * mRowModel.sum ≤ nM := by
   rw [mRowModel_sum]; simp only [slotM, nM]; norm_num
 
@@ -150,14 +156,35 @@ theorem mRows_le : mRowModel.sum ≤ slotM ∧ 2 * mRowModel.sum ≤ nM := by
 theorem usedBlocks_le : hEnd + lUsed + (2 * mRowModel.sum + 127) / 128 ≤ nodeBlocks := by
   rw [mRowModel_sum, regions_fit.2.2.2]; simp only [lUsed, nodeBlocks]; norm_num
 
+/-! ## The slots' compiled programs (the node's M rows) -/
+
+/-- Slot `σ`'s selector cells in L (A.7: after `sig` 299, digits 133, selectors 399, position bits
+7,552). -/
+def selCells (σ : ℕ) : FR.Kind → ℕ
+  | .L32 => lBase * 128 + σ * 2 ^ 14 + 8383
+  | .P30 => lBase * 128 + σ * 2 ^ 14 + 8384
+  | .N30 => lBase * 128 + σ * 2 ^ 14 + 8385
+
+/-- Slot `σ`'s first fresh M cell (after the `one` cell). -/
+def slotBase (σ : ℕ) : ℕ := oneCell + 1 + σ * slotM
+
+/-- Slot `σ`'s compiled program (`compileMux (gen fin .mux)`). -/
+def slotCS (fin : Finals) (σ : ℕ) : Circ.CS :=
+  Circ.compileMux oneCell (selCells σ) (slotBase σ) (gen fin .mux).ops
+
+/-- **The node's M rows**: both slots'. -/
+def nodeRows (fin : Finals) : List Circ.Row := (slotCS fin 0).rows ++ (slotCS fin 1).rows
+
+
 /-! ## Controls -/
 
 /-- Positive: block 0 is `streamStart`, block 1 `stream`, the first `w43` block is `w43`. -/
 theorem ind_controls : Ind .streamStart 0 = true ∧ Ind .stream 1 = true ∧
     Ind .w43 wotsBase = true ∧ Sel (wmBase - 1) = true := by decide
 
-/-- Negative: block 0 is not `stream`, `WM`'s first block has no kind, nor has region L. -/
-theorem ind_controls_neg : Ind .stream 0 = false ∧ Sel wmBase = false ∧ Sel lBase = false := by
+/-- `WM` and region L are `free`; negative: block 0 is not `stream`, no block past `2^16`. -/
+theorem ind_controls_free : Ind .free wmBase = true ∧ Ind .free lBase = true ∧
+    Ind .stream 0 = false ∧ Sel nodeBlocks = false := by
   decide
 
 /-- Negative: a layout with an overlap fails the order check. -/

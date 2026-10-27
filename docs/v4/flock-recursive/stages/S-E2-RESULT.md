@@ -232,3 +232,84 @@ scope), `logs/S-E2/profile-*.log`, `logs/S-E2/r4.txt`:
 
 Peak RSS is 2.7 GB or less per module. The only noticeable kernel cost is the `decide` controls
 in `FRVIRMux`. Code lines: 1,217 in total (`logs/S-E2/loc.txt`).
+
+## 9. Revisions 3.8–3.9 and `node_sound` (HEAD `757dfa8`)
+
+### Build blockers in HEAD (not S-E2's; reported)
+
+- **B-1:** `FR.toF_f` is declared in both `FRVIRSpec` (S-0, line 260) and `FRVIRFinalsSF` (S-F,
+  line 166). Any module importing both fails, including `FRVerifier`. In the private tree
+  `logs/fr-build-circ/src/` I commented out S-F's copy (after `snap.sh`); the entry file is
+  unchanged.
+- **B-2:** `FR.eW` is declared in both `FRSpartan` (S-C) and `FRVIRFinalsSF` (S-F), so no module
+  can import both, and `FR.lean`, which imports all modules, cannot build. To work around it, the
+  slots' compiled programs (`selCells`, `slotBase`, `slotCS`, `nodeRows`) moved from `FRVIREval`
+  to `FRNodeLayout`, so `FRNodeCircuit` imports `FRVerifier` without `FRSpartan`.
+
+### Compiler and layout (revision 3.8.2/3.9)
+
+- `opOut` follows the 3.8 op set:
+  - `selWeight` and `targetMLE` are removed;
+  - `lagrangeS` is an import of two F registers, `targetS` an import of `AF 64`, `eqZ` an import
+    of F;
+  - `Op.nOut` gives `lagrangeS` 2 results.
+
+  `FRVIRCompile` is now 786 code lines, so **FR-R3′ still passes**. 3.9's `rsWeight` and `phiRS`
+  are not in HEAD's `FRVIR` yet. Until S-0 adds them they fall into the default branch (untracked
+  and foreign, still sound). When S-0 removes `mbp`, its line in `opOut` must go.
+- `FRNodeLayout`:
+  - the kind `free` covers `[wmBase, 2^16)` (`WM`, the spares, L and M; `Sel ≡ 1`);
+  - `nodeLayout_end` now ends at `2^16`;
+  - `ind_controls_free` replaces the old negative control;
+  - `chainN = 22,465`, `hEnd = 45,960`;
+  - `mRowModel` follows revision 3.9 (`Φ` 69,632, Z's Lagrange weights 4,032, `rsWeight` 12,800,
+    the `free` kind's 16,384): **618,664 per slot**, `mRows_le` holds at 1.69×.
+  - **F-3″ persists:** the stated 1,237,344 per node is 16 above twice the listed numbers, i.e.
+    the 8 `stmt` equalities are still counted twice.
+
+### `node_sound` (`FRNodeCircuit`)
+
+- **`PubCells w vk c₁ c₂ pad`** (A.7, revision 3.9): the nine public cells in order map to
+  `1`, `vk`'s, `c₁`'s, `vk`'s and `c₂`'s F halves, then six zeros. The order is `oneCell`, then
+  the seed payload cells (`seedCell σ e = (σ·chainN + ⌊(1+e)/4⌋)·128 + 4 + (1+e) mod 4`), then the
+  padding cells `pad`, which are a parameter. `PubCells.one` extracts the `one` cell; the control
+  `pubCells_nodup` shows the nine cells are distinct.
+- **`child_sound`**: a SNARK child (`kindOf p.π = .snark k`) satisfies `accV impl fin vk c p = true`
+  given:
+  - its format facts: proof size ≤ `proofCap`, trace length ≤ `qV`, query sizes ≤ `queryCap`;
+  - `SigOk vk (traceDigest p.tr) p.σ`, which is `wots_sound`'s conclusion;
+  - `w oneCell = 1` and the slot's `SlotHolds`.
+
+  The route is S-F's `V_snark`, then `runSeq_runIR`, then `gen_fixed_eq` (the fixed-kind and mux
+  programs have the same op list), then `semIR_mux_eq` (the kind byte, read off `kindOf` by
+  `byte_of_kindOf`), then `slot_sound`.
+- **`node_sound`**: under one `PubCells`, both SNARK children are accepted:
+  `accV … c₁ p₁ = true ∧ accV … c₂ p₂ = true`.
+
+All audited statements use at most `propext`, `Classical.choice` and `Quot.sound`
+(`logs/S-E2/axioms.log`); source rule: 0 findings.
+
+### Still open
+
+1. **The H-side assembly is not done**, so `SlotHolds`' imports and foreign flags, `SigOk` and
+   the format facts remain hypotheses of `node_sound`. Each needs its own route:
+   - the imports from the trace cells (pack map, `irregular_mle`);
+   - the foreign byte checks from the H blocks' pins and point claims;
+   - `SigOk` from `w43_step`, `path_node`, the key-leaf stream and the link families;
+   - the format facts from `FRFormat`/`items`.
+2. W-kind children are not covered (`V_W`).
+3. `node_complete`/`nodeWitness`: not started.
+
+### FR-R4′ (measured, sequential, 16 GB scope, `logs/S-E2/profile-*.log`)
+
+| Module | wall | tactic exec. | kernel |
+|---|---|---|---|
+| `FRVIRCompile` | 27.1 s | 6.79 s | 1.12 s |
+| `FRVIRMux` | 10.3 s (§8) | 2.34 s | 1.42 s |
+| `FRWots` | 7.7 s (§8) | 0.20 s | 0.10 s |
+| `FRNodeLayout` | 7.6 s | 0.28 s | 0.23 s |
+| `FRVIREval` | 8.3 s | 0.37 s | 0.10 s |
+| `FRNodeCircuit` | 6.8 s | 0.09 s | 0.05 s |
+| **total** | **67.8 s** | | **3.0 s** |
+
+Code lines: **1,272** (`logs/S-E2/loc.txt`).

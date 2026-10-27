@@ -81,3 +81,11 @@ revision 3.7 (F-3″: the stated 531,618 vs the listed numbers' sum 531,610). Th
 for S-E2's modules are measured (63 s wall, 2.8 s kernel). An earlier build failure in
 `FRFormat` came from a snapshot taken while S-0's commit was landing; it was fixed by
 re-snapshotting.
+
+### Revisions 3.8–3.9, `node_sound`
+
+The compiler follows the 3.8 op set; the layout and row model follow 3.9 (`free` kind, `Φ`,
+618,664 per slot). `PubCells` is in A.7's order. `child_sound` and `node_sound` conclude
+`accV … = true`. Two duplicate declarations block HEAD's build: `toF_f` (S-0/S-F) and `eW`
+(S-C/S-F). The first is patched in the private tree only; the second is avoided by moving the
+slot definitions into `FRNodeLayout`. The H-side assembly is still open.

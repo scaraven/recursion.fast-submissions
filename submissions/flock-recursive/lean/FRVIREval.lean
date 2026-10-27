@@ -2,8 +2,6 @@
 import FRSpartan
 import FRBlake2sWalk
 import FRNodeLayout
-import FRVIRMux
-import FRVIRFinals
 
 /-!
 # The op implementations owned by L-circ: `walkA`, `walkB`, `kindInd`
@@ -184,29 +182,12 @@ theorem evalRows_eq (a b : ℕ) (rows : List Circ.Row) (τ σ : Array F) :
     evalRows a b rows τ σ = evalRowsSpec a b rows τ σ := by
   simp only [evalRows, evalRowsSpec, sparse_eq]
 
-/-- Slot `σ`'s selector cells in L (A.7: after `sig` 299, digits 133, selectors 399, position bits
-7,552). -/
-def selCells (σ : ℕ) : FR.Kind → ℕ
-  | .L32 => Layout.lBase * 128 + σ * 2 ^ 14 + 8383
-  | .P30 => Layout.lBase * 128 + σ * 2 ^ 14 + 8384
-  | .N30 => Layout.lBase * 128 + σ * 2 ^ 14 + 8385
-
-/-- Slot `σ`'s first fresh M cell (after the `one` cell). -/
-def slotBase (σ : ℕ) : ℕ := Layout.oneCell + 1 + σ * Layout.slotM
-
-/-- Slot `σ`'s compiled program (`compileMux (gen fin .mux)`). -/
-def slotCS (fin : Finals) (σ : ℕ) : Circ.CS :=
-  Circ.compileMux Layout.oneCell (selCells σ) (slotBase σ) (gen fin .mux).ops
-
-/-- **The node's M rows**: both slots'. -/
-def nodeRows (fin : Finals) : List Circ.Row := (slotCS fin 0).rows ++ (slotCS fin 1).rows
-
 /-- **`evalM`** (A.8: `τ` 21 row coordinates, `σ` 23 cell coordinates). -/
-def evalMImpl (fin : Finals) (τ σ : Array F) : F × F × F := evalRows 21 23 (nodeRows fin) τ σ
+def evalMImpl (fin : Finals) (τ σ : Array F) : F × F × F := evalRows 21 23 (Layout.nodeRows fin) τ σ
 
 /-- **`evalM_eq`**: the implementation is the MLE of the node's M matrices. -/
 theorem evalM_eq (fin : Finals) (τ σ : Array F) :
-    evalMImpl fin τ σ = evalRowsSpec 21 23 (nodeRows fin) τ σ := evalRows_eq _ _ _ _ _
+    evalMImpl fin τ σ = evalRowsSpec 21 23 (Layout.nodeRows fin) τ σ := evalRows_eq _ _ _ _ _
 
 /-- **`evalL`** over L's rows `lRows` (A.7: `τ` 15, `σ` 23). -/
 def evalLImpl (lRows : List Circ.Row) (τ σ : Array F) : F × F × F := evalRows 15 23 lRows τ σ

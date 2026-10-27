@@ -97,7 +97,7 @@ def bb (i : ℕ) : F := bitBasis ⟨i % 128, Nat.mod_lt _ (by decide)⟩
 /-- Partial `i` of RS claim `j` (RS0's message: claim-major, 16 bytes each). -/
 def rsOff (j i : ℕ) : ℕ := 16 * (128 * j + i)
 
-/-- One slice value of claim `j` (width `eW`): `s`, its low weight `c` (`wop i`), `c·s` into the claim
+/-- One slice value of claim `j` (width `elemW`): `s`, its low weight `c` (`wop i`), `c·s` into the claim
 value, `Φ(s)`, `bitBasis i · Φ(s)` into the switched claim. -/
 def elemOps (j i : ℕ) (wop : ℕ → Op) (fs : List Reg) (aA aT b : ℕ) : List Op :=
   [.piElem fRS0 (rsOff j i), wop i, .mulF (b + 1) b, .addF aA (b + 2)] ++ phiOps fs 6 b (b + 4) ++
@@ -105,13 +105,13 @@ def elemOps (j i : ℕ) (wop : ℕ → Op) (fs : List Reg) (aA aT b : ℕ) : Lis
    .addF aT (b + 5 + phiW fs 6)]
 
 /-- The width of `elemOps`. -/
-def eW (fs : List Reg) : ℕ := 7 + phiW fs 6
+def elemW (fs : List Reg) : ℕ := 7 + phiW fs 6
 
 /-- Partials `i … i + n − 1` of claim `j`. -/
 def elemsOps (j : ℕ) (wop : ℕ → Op) (fs : List Reg) : ℕ → ℕ → Reg → Reg → ℕ → List Op
   | 0, _, _, _, _ => []
   | n + 1, i, aA, aT, b =>
-    elemOps j i wop fs aA aT b ++ elemsOps j wop fs n (i + 1) (b + 3) (b + eW fs - 1) (b + eW fs)
+    elemOps j i wop fs aA aT b ++ elemsOps j wop fs n (i + 1) (b + 3) (b + elemW fs - 1) (b + elemW fs)
 
 /-- The skip node `x_j` (`S` is the first 64 nodes). -/
 def xS (j : ℕ) : F := skipNode ⟨j % 128, Nat.mod_lt _ (by decide)⟩
@@ -163,7 +163,6 @@ theorem rdX (L X : List Val) (t : ℕ) :
 theorem rdL {L X : List Val} {y : ℕ} (h : y < r.size + L.length) :
     rd (r ++ (L ++ X).toArray) y = rd (r ++ L.toArray) y := rd_pre r h
 
-theorem toF_f (x : F) : (Val.f x).toF = x := rfl
 
 /-- `sqOps` squares `n` times. -/
 theorem run_sqOps (n : ℕ) : ∀ (x : ℕ) (a : F) (L : List Val), x < r.size + L.length →
@@ -266,9 +265,9 @@ theorem run_elemOps (j i aA aT : ℕ) (wop : ℕ → Op) (fs : List ℕ) (c A T 
     (hTv : (rd (r ++ L.toArray) aT).toF = T)
     (hw : ∀ X : List Val, evalOp impl κ inp (r ++ (L ++ X).toArray) (wop i) = .vals [.f c] true) :
     ∃ M, pureRun impl κ inp (elemOps j i wop fs aA aT (r.size + L.length)) r L = some (L ++ M, true) ∧
-      M.length = eW fs ∧
+      M.length = elemW fs ∧
       (rd (r ++ (L ++ M).toArray) (r.size + L.length + 3)).toF = A + c * sv inp j i ∧
-      (rd (r ++ (L ++ M).toArray) (r.size + L.length + eW fs - 1)).toF =
+      (rd (r ++ (L ++ M).toArray) (r.size + L.length + elemW fs - 1)).toF =
         T + bb i * frobMap (stages 6 (fs.map fun f => (rd (r ++ L.toArray) f).toF)) (sv inp j i) := by
   set s := sv inp j i
   have hP := phiW_pos hfs 6
@@ -313,7 +312,7 @@ theorem run_elemOps (j i aA aT : ℕ) (wop : ℕ → Op) (fs : List ℕ) (c A T 
   have hlen₂ : ([Val.f s, .f c, .f (c * s), .f (A + c * s)] ++ M₂).length = 4 + phiW fs 6 := by
     simp [hl₂]; omega
   refine ⟨[Val.f s, .f c, .f (c * s), .f (A + c * s)] ++ M₂ ++ [.f (bb i), .f (bb i * φ),
-    .f (T + bb i * φ)], ?_, by simp [eW, hl₂]; omega, ?_, ?_⟩
+    .f (T + bb i * φ)], ?_, by simp [elemW, hl₂]; omega, ?_, ?_⟩
   · simp only [elemOps, List.cons_append, List.nil_append, List.append_assoc]
     rw [pr_op impl κ inp r e0, pr_op impl κ inp r e1, pr_op impl κ inp r e2, pr_op impl κ inp r e3]
     rw [show L ++ [Val.f s] ++ [Val.f c] ++ [Val.f (c * s)] ++ [Val.f (A + c * s)] = L₁ by simp [hL₁],
@@ -321,7 +320,7 @@ theorem run_elemOps (j i aA aT : ℕ) (wop : ℕ → Op) (fs : List ℕ) (c A T 
     rw [pr_op impl κ inp r e4, pr_op impl κ inp r e5, pr_op impl κ inp r e6]
     simp [pureRun, hL₂, hL₁]
   · rw [hB, rdX]; simp [toF_f]
-  · rw [show B + eW fs - 1 = r.size + L.length + (4 + phiW fs 6 + 2) by simp only [eW]; omega, rdX,
+  · rw [show B + elemW fs - 1 = r.size + L.length + (4 + phiW fs 6 + 2) by simp only [elemW]; omega, rdX,
       List.getD_append_right _ _ _ _ (by omega), hlen₂]
     simp [toF_f]
 
@@ -333,10 +332,10 @@ theorem run_elemsOps (j : ℕ) (wop : ℕ → Op) (fs : List ℕ) (c : ℕ → F
     aT < r.size + L₀.length + X.length → (rd (r ++ (L₀ ++ X).toArray) aA).toF = A →
     (rd (r ++ (L₀ ++ X).toArray) aT).toF = T →
     ∃ M, pureRun impl κ inp (elemsOps j wop fs n i aA aT (r.size + L₀.length + X.length)) r (L₀ ++ X) =
-      some (L₀ ++ X ++ M, true) ∧ M.length = n * eW fs ∧
-      (0 < n → (rd (r ++ (L₀ ++ X ++ M).toArray) (r.size + L₀.length + X.length + (n - 1) * eW fs + 3)).toF =
+      some (L₀ ++ X ++ M, true) ∧ M.length = n * elemW fs ∧
+      (0 < n → (rd (r ++ (L₀ ++ X ++ M).toArray) (r.size + L₀.length + X.length + (n - 1) * elemW fs + 3)).toF =
           A + ∑ k ∈ Finset.range n, c (i + k) * sv inp j (i + k) ∧
-        (rd (r ++ (L₀ ++ X ++ M).toArray) (r.size + L₀.length + X.length + n * eW fs - 1)).toF =
+        (rd (r ++ (L₀ ++ X ++ M).toArray) (r.size + L₀.length + X.length + n * elemW fs - 1)).toF =
           T + ∑ k ∈ Finset.range n, bb (i + k) *
             frobMap (stages 6 (fs.map fun f => (rd (r ++ L₀.toArray) f).toF)) (sv inp j (i + k))) := by
   induction n with
@@ -352,13 +351,13 @@ theorem run_elemsOps (j : ℕ) (wop : ℕ → Op) (fs : List ℕ) (c : ℕ → F
         fs.map fun f => (rd (r ++ L₀.toArray) f).toF :=
       List.map_congr_left fun f hf' => rdL r (hf f hf') ▸ rfl
     rw [hmap] at hτ
-    have hE : 7 ≤ eW fs := by simp [eW]
+    have hE : 7 ≤ elemW fs := by simp [elemW]
     obtain ⟨M₂, h₂, hl₂, hv₂⟩ := ih (i + 1) (r.size + L₀.length + X.length + 3)
-      (r.size + L₀.length + X.length + eW fs - 1) (A + c i * sv inp j i)
+      (r.size + L₀.length + X.length + elemW fs - 1) (A + c i * sv inp j i)
       (T + bb i * frobMap (stages 6 (fs.map fun f => (rd (r ++ L₀.toArray) f).toF)) (sv inp j i)) (X ++ M₁)
       (by simp only [List.length_append, hl₁]; omega) (by simp only [List.length_append, hl₁]; omega)
       (by simpa only [List.append_assoc] using hα) (by simpa only [List.append_assoc] using hτ)
-    have hb : r.size + L₀.length + (X ++ M₁).length = r.size + L₀.length + X.length + eW fs := by
+    have hb : r.size + L₀.length + (X ++ M₁).length = r.size + L₀.length + X.length + elemW fs := by
       simp [hl₁]; omega
     rw [hb] at h₂ hv₂
     refine ⟨M₁ ++ M₂, ?_, by simp [hl₁, hl₂]; ring, fun _ => ?_⟩
@@ -370,18 +369,18 @@ theorem run_elemsOps (j : ℕ) (wop : ℕ → Op) (fs : List ℕ) (c : ℕ → F
           Nat.zero_mul, Nat.one_mul]
         exact ⟨hα, hτ⟩
       · obtain ⟨h3, h4⟩ := hv₂ hn
-        have hm : n * eW fs = eW fs + (n - 1) * eW fs := by
+        have hm : n * elemW fs = elemW fs + (n - 1) * elemW fs := by
           obtain ⟨m, rfl⟩ : ∃ m, n = m + 1 := ⟨n - 1, by omega⟩
           simp only [Nat.add_sub_cancel, Nat.add_mul, Nat.one_mul]; ring
         have hk : ∀ k, i + 1 + k = i + (k + 1) := fun k => by omega
         simp only [List.append_assoc] at h3 h4 ⊢
         refine ⟨?_, ?_⟩
-        · rw [show r.size + L₀.length + X.length + (n + 1 - 1) * eW fs + 3 =
-            r.size + L₀.length + X.length + eW fs + (n - 1) * eW fs + 3 by
+        · rw [show r.size + L₀.length + X.length + (n + 1 - 1) * elemW fs + 3 =
+            r.size + L₀.length + X.length + elemW fs + (n - 1) * elemW fs + 3 by
               rw [Nat.add_sub_cancel]; omega, h3, Finset.sum_range_succ']
           simp only [hk, Nat.add_zero]; ring
-        · rw [show r.size + L₀.length + X.length + (n + 1) * eW fs - 1 =
-            r.size + L₀.length + X.length + eW fs + n * eW fs - 1 by
+        · rw [show r.size + L₀.length + X.length + (n + 1) * elemW fs - 1 =
+            r.size + L₀.length + X.length + elemW fs + n * elemW fs - 1 by
               rw [Nat.add_mul, Nat.one_mul]; omega, h4, Finset.sum_range_succ']
           simp only [hk, Nat.add_zero]; ring
 
@@ -464,7 +463,7 @@ theorem run_lagAll (lam : ℕ) (l : F) (n : ℕ) : ∀ (i : ℕ) (L : List Val),
         rw [show r.size + L.length + 190 * (k + 1) + 189 = r.size + L.length + 190 + 190 * k + 189 by ring,
           this, show i + 1 + k = i + (k + 1) by omega]
 
-/-- One claim: a zero, then its 128 partials (width `1 + 128 · eW`). -/
+/-- One claim: a zero, then its 128 partials (width `1 + 128 · elemW`). -/
 def claimOps (j : ℕ) (wop : ℕ → Op) (fs : List Reg) (b : ℕ) : List Op :=
   .const (fun _ => .f 0) :: elemsOps j wop fs 128 0 b b (b + 1)
 
@@ -472,10 +471,10 @@ theorem run_claimOps (j : ℕ) (wop : ℕ → Op) (fs : List ℕ) (c : ℕ → F
     (hfs : fs ≠ []) (hf : ∀ f ∈ fs, f < r.size + L₀.length)
     (hw : ∀ i (X : List Val), evalOp impl κ inp (r ++ (L₀ ++ X).toArray) (wop i) = .vals [.f (c i)] true) :
     ∃ M, pureRun impl κ inp (claimOps j wop fs (r.size + L₀.length + X.length)) r (L₀ ++ X) =
-      some (L₀ ++ X ++ M, true) ∧ M.length = 1 + 128 * eW fs ∧
-      (rd (r ++ (L₀ ++ X ++ M).toArray) (r.size + L₀.length + X.length + 127 * eW fs + 4)).toF =
+      some (L₀ ++ X ++ M, true) ∧ M.length = 1 + 128 * elemW fs ∧
+      (rd (r ++ (L₀ ++ X ++ M).toArray) (r.size + L₀.length + X.length + 127 * elemW fs + 4)).toF =
         ∑ k ∈ Finset.range 128, c k * sv inp j k ∧
-      (rd (r ++ (L₀ ++ X ++ M).toArray) (r.size + L₀.length + X.length + 128 * eW fs)).toF =
+      (rd (r ++ (L₀ ++ X ++ M).toArray) (r.size + L₀.length + X.length + 128 * elemW fs)).toF =
         ∑ k ∈ Finset.range 128, bb k *
           frobMap (stages 6 (fs.map fun f => (rd (r ++ L₀.toArray) f).toF)) (sv inp j k) := by
   set B := r.size + L₀.length + X.length
@@ -491,9 +490,9 @@ theorem run_claimOps (j : ℕ) (wop : ℕ → Op) (fs : List ℕ) (c : ℕ → F
   · simp only [claimOps]; rw [pr_op impl κ inp r e0]
     simp only [List.append_assoc] at hM ⊢; exact hM
   · simp only [List.append_assoc, zero_add] at h1 ⊢
-    rw [show B + 127 * eW fs + 4 = B + 1 + (128 - 1) * eW fs + 3 by omega, h1]
+    rw [show B + 127 * elemW fs + 4 = B + 1 + (128 - 1) * elemW fs + 3 by omega, h1]
   · simp only [List.append_assoc, zero_add] at h2 ⊢
-    rw [show B + 128 * eW fs = B + 1 + 128 * eW fs - 1 by omega, h2]
+    rw [show B + 128 * elemW fs = B + 1 + 128 * elemW fs - 1 by omega, h2]
 
 end Run
 
@@ -514,7 +513,7 @@ def zLow (fi : FinIn) : Reg := (coordsR fi "Z1").headD 0
 /-- **`finRS`** (revision 3.8, `J_z = 4`): the claim values `α_Z, α_Lc, α_Sh, α_Lr` and `v_RS`
 (exports, in this order). Registers: the 64 skip Lagrange weights from `b`; at
 `b₁ = b + 12,160` the constant `1`, `1 + r₀`, and the three `eq` tables (Lc, Sh, Lr); the claims
-from `b₁ + 8`, `1 + 128 · eW` each; then `rsTail`. -/
+from `b₁ + 8`, `1 + 128 · elemW` each; then `rsTail`. -/
 def finRS : FinField := fun fi b =>
   let fs := (List.range 7).map fun p => (coordsR fi "RS1").getD p 0
   let kap := (coordsR fi "RS1").getD 7 0
@@ -522,7 +521,7 @@ def finRS : FinField := fun fi b =>
   let r0 := zLow fi
   let b₁ := b + 190 * 64
   let c₀ := b₁ + 8
-  let cw := 1 + 128 * eW fs
+  let cw := 1 + 128 * elemW fs
   let d := c₀ + 4 * cw
   let zw : ℕ → Op := fun i => .mulF (b + 190 * (i % 64) + 189) (if i < 64 then b₁ + 1 else r0)
   (lagAll lam 64 0 b ++
@@ -534,7 +533,7 @@ def finRS : FinField := fun fi b =>
    claimOps 2 (fun i => .getF (b₁ + 5) i) fs (c₀ + 2 * cw) ++
    claimOps 3 (fun i => .getF (b₁ + 7) i) fs (c₀ + 3 * cw) ++
    rsTail kap (c₀ + cw - 1) (c₀ + 2 * cw - 1) (c₀ + 3 * cw - 1) (c₀ + 4 * cw - 1) d,
-   (List.range 4).map (fun j => c₀ + j * cw + 127 * eW fs + 4) ++ [d + 7])
+   (List.range 4).map (fun j => c₀ + j * cw + 127 * elemW fs + 4) ++ [d + 7])
 
 /-- `finRS`'s export index of `v_RS` (after the `J_z = 4` claim values). -/
 def nRS : ℕ := 4
@@ -629,7 +628,7 @@ theorem exec_finRS (hin : ∀ x ∈ rsRefs κ fi, x < r.size) :
   have hfin : ∀ f ∈ fs, f < r.size := fun f hf => by
     simp only [fs, List.mem_map, List.mem_range] at hf
     obtain ⟨p, hp, rfl⟩ := hf; exact hin _ (.inl (.inl (.inl (.inl ⟨p, by omega, rfl⟩))))
-  have hE : eW fs = 148 := by simp only [eW, phiW_seven fs (by simp [fs])]
+  have hE : elemW fs = 148 := by simp only [elemW, phiW_seven fs (by simp [fs])]
   set kap := (coordsR fi "RS1").getD 7 0 with hkapd
   set lam := (outsOf fi "Z2").headD 0 with hlamd
   set r0 := zLow fi with hr0d
