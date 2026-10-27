@@ -15,8 +15,8 @@ BLUEPRINT §3, B-7.
 * `semIR_mux`: the mux program is the fixed program of the proof's kind byte.
 * **Per shape** (the phase table's shapes, `FRTranscriptDefs.Shape`): the exact registers and flag a
   shape's ops produce on a trace. **Phase Z** (Z1, Z2, Z3, Zend) is proved end to end
-  (`exec_phaseZ`), with its final check `finZ` (`exec_finZ`). The other phases' lemmas are stated
-  (`sorry`, listed in `stages/S-0-RESULT.md`).
+  (`exec_phaseZ`), with its final check `finZ` (`exec_finZ`); every shape is proved
+  (`exec_genPhase`), and so is the whole skeleton (`exec_skeleton`).
 -/
 
 namespace FR
@@ -651,9 +651,8 @@ theorem exec_phaseZ (c : GCtx) (r : Array Val) (ok : Bool) (ops : List Op) (d : 
 /-! ## The other phases: reference semantics, stated
 
 The reference semantics of every shape, written as functions of the trace (the "structured Lean"
-reading of each phase); `exec_genPhase` states that a phase's ops are its reference. Phase Z's
-instance is proved above (`exec_phaseZ`); the general statement is the one `sorry` of this module
-(stage S-0; listed in `stages/S-0-RESULT.md`; the merged entry has none). -/
+reading of each phase); `exec_genPhase` proves that a phase's ops are its reference. Phase Z's
+instance is also proved directly above (`exec_phaseZ`). -/
 
 /-- A degree-2 F round's next claim `c₀ + r(c₁ + r c₂)`. -/
 def g2 (f o : ℕ) (a₂ : Digest) : F :=
@@ -938,6 +937,70 @@ theorem exec_merkleOps' (i j jr n h curR so b : ℕ) (r : Array Val) (ok : Bool)
         exec impl κ inp ops ⟨r ++ x.1.toArray, ok && x.2.1⟩ x.2.2.2 := by
   subst hb; exact exec_merkleOps impl κ inp i j jr n h curR so r ok ops cur hj hjv hc hcv tr
 
+/-- A position's first four registers. -/
+def posHeadVals (j : ℕ) (col : ByteArray) (a : Digest) (wv : Array K) : List Val :=
+  [.n j, .b col, .d a, .k (dotKF wv col)]
+
+@[simp] theorem posHeadVals_length (j : ℕ) (col : ByteArray) (a : Digest) (wv : Array K) :
+    (posHeadVals j col a wv).length = 4 := rfl
+
+theorem posHead_size (r : Array Val) (j : ℕ) (col : ByteArray) (a : Digest) (wv : Array K) :
+    (r ++ (posHeadVals j col a wv).toArray).size = r.size + 4 := by simp [posHeadVals]
+
+theorem posHead_rd0 (r : Array Val) (j : ℕ) (col : ByteArray) (a : Digest) (wv : Array K) :
+    rd (r ++ (posHeadVals j col a wv).toArray) r.size = .n j := by
+  rw [rd_app0]; simp [posHeadVals]
+
+theorem posHead_rd2 (r : Array Val) (j : ℕ) (col : ByteArray) (a : Digest) (wv : Array K) :
+    rd (r ++ (posHeadVals j col a wv).toArray) (r.size + 2) = .d a := by
+  rw [rd_app]; simp [posHeadVals]
+
+theorem exec_posMid (i j n so : ℕ) (r : Array Val) (col : ByteArray) (a : Digest) (wv : Array K)
+    (ok : Bool) (ops : List Op) (tr : Trace) :
+    exec impl κ inp (merkleOps i r.size n 0 (r.size + 2) so (r.size + 4) ++ ops)
+      ⟨r ++ (posHeadVals j col a wv).toArray, ok⟩ tr =
+      (stepsT κ inp i j n 0 so a tr).bind fun x =>
+        exec impl κ inp ops ⟨r ++ (posHeadVals j col a wv).toArray ++ x.1.toArray, ok && x.2.1⟩
+          x.2.2.2 :=
+  exec_merkleOps' impl κ inp i j r.size n 0 (r.size + 2) so (r.size + 4) _ ok ops a
+    (posHead_size r j col a wv).symm (by rw [posHead_size]; omega) (by rw [posHead_rd0]; rfl)
+    (by rw [posHead_size]; omega) (posHead_rd2 r j col a wv) tr
+
+/-- A position's first four ops: the index, the column, its query, the fold. -/
+theorem exec_posHead (i co : ℕ) (ans : List Reg) (w p : ℕ) (r : Array Val) (ok : Bool) (rest : List Op)
+    (ad : ℕ → Digest) (wv : Array K) (hA : ∀ k, ans.getD k 0 < r.size)
+    (had : ∀ k, (rd r (ans.getD k 0)).toD = ad k) (hw : w < r.size) (hwv : (rd r w).toAK = wv)
+    (q : ByteArray) (a : Digest) (tr : Trace) :
+    exec impl κ inp ([.idx (fun κ => ans.getD (p / (lvl κ i).per) 0) (fun κ => (lvl κ i).logN)
+        (fun κ => p % (lvl κ i).per),
+      .piField fCols (co + p * (lvlStar i).rows * 16) ((lvlStar i).rows * 16),
+      .askCol i (r.size + 1), .dotKF w (r.size + 1)] ++ rest) ⟨r, ok⟩ ((q, a) :: tr) =
+      let j := idxOf (lvl κ i).logN (ad (p / (lvl κ i).per)) (p % (lvl κ i).per)
+      let col := inp.π.extract (absOff fCols (co + p * (lvlStar i).rows * 16))
+        (absOff fCols (co + p * (lvlStar i).rows * 16) + (lvlStar i).rows * 16)
+      if q = colQ i col then
+        exec impl κ inp rest ⟨r ++ (posHeadVals j col a wv).toArray, ok⟩ tr
+      else none := by
+  rw [show (⟨r, ok⟩ : St) = ⟨r ++ ([] : List Val).toArray, ok⟩ by simp]
+  simp only [List.cons_append, List.nil_append, exec_app, evalOp, rd_app_left _ _ (hA _), had,
+    rd_app_left _ _ hw, hwv, rd_app, rd_app0, List.getD_cons_succ, List.getD_cons_zero, Val.toB,
+    Bool.and_true, posHeadVals]
+
+/-- A position's last three ops: the cap index, the cap entry, the comparison. -/
+theorem exec_posTail (i jr curR e : ℕ) (R : Array Val) (ok : Bool) (ops : List Op) (j : ℕ)
+    (cur : Digest) (he : e = R.size) (hjr : jr < R.size) (hj : rd R jr = .n j) (hcr : curR < R.size)
+    (hc : rd R curR = .d cur) (tr : Trace) :
+    exec impl κ inp ([.shrN jr (fun κ => (lvl κ i).sib), .piDigestAt fCaps (capOff i) e,
+        .assertEq curR (e + 1) allK] ++ ops) ⟨R, ok⟩ tr =
+      exec impl κ inp ops ⟨R ++ [Val.n (j >>> (lvl κ i).sib),
+        .d (bytesAt inp.π (absOff fCaps (capOff i) + 32 * (j >>> (lvl κ i).sib)) 32)].toArray,
+        ok && decide (cur = bytesAt inp.π (absOff fCaps (capOff i) + 32 * (j >>> (lvl κ i).sib)) 32)⟩ tr := by
+  subst he
+  rw [show (⟨R, ok⟩ : St) = ⟨R ++ ([] : List Val).toArray, ok⟩ by simp]
+  simp only [List.cons_append, List.nil_append, exec_app, evalOp, rd_app_left _ _ hjr, hj,
+    rd_app_left _ _ hcr, hc, rd_app, rd_app0, List.getD_cons_succ, List.getD_cons_zero, Val.toN,
+    Val.eqv, allK, Bool.not_true, Bool.false_or, Bool.and_true]
+
 /-- **One position** of level `i` against `posT` (`ad`, `wv`: the values of the answer and weight
 registers). -/
 theorem exec_posOps (i co so : ℕ) (ans : List Reg) (w p : ℕ) (r : Array Val) (ok : Bool) (ops : List Op)
@@ -947,7 +1010,71 @@ theorem exec_posOps (i co so : ℕ) (ans : List Reg) (w p : ℕ) (r : Array Val)
     exec impl κ inp (posOps i co so ans w p r.size ++ ops) ⟨r, ok⟩ tr =
       (posT κ inp i co so ad wv p tr).bind fun x =>
         exec impl κ inp ops ⟨r ++ x.1.toArray, ok && x.2.1⟩ x.2.2 := by
-  sorry
+  simp only [posOps, List.append_assoc]
+  rcases tr with _ | ⟨⟨q, a⟩, tr⟩
+  · rw [show (⟨r, ok⟩ : St) = ⟨r ++ ([] : List Val).toArray, ok⟩ by simp]
+    simp only [List.cons_append, List.nil_append, exec_app, evalOp, posT, Option.bind_none]
+  rw [exec_posHead impl κ inp i co ans w p r ok _ ad wv hA had hw hwv]
+  simp only [posT]
+  generalize idxOf (lvl κ i).logN (ad (p / (lvl κ i).per)) (p % (lvl κ i).per) = j
+  generalize inp.π.extract (absOff fCols (co + p * (lvlStar i).rows * 16))
+    (absOff fCols (co + p * (lvlStar i).rows * 16) + (lvlStar i).rows * 16) = col
+  by_cases hq : q = colQ i col
+  swap; · simp [hq]
+  simp only [hq, ite_true]
+  rw [exec_posMid, Option.bind_map]
+  refine Option.bind_congr fun x hx => ?_
+  obtain ⟨hl, h0, hlast⟩ := stepsT_spec κ inp hx
+  generalize hsb : (lvlStar i).sib = sb at *
+  have hs4 : (r ++ (posHeadVals j col a wv).toArray).size = r.size + 4 := posHead_size r j col a wv
+  rw [exec_posTail impl κ inp i (jr := r.size)
+    (curR := if sb = 0 then r.size + 2 else r.size + 4 + 6 * sb - 1) (e := r.size + 4 + 6 * sb)
+    (j := j) (cur := x.2.2.1) (he := by simp [hl]; omega)
+    (hjr := by simp)
+    (hj := by rw [rd_append_left (by rw [posHead_size]; omega), posHead_rd0])
+    (hcr := by split_ifs <;> simp [hl] <;> omega) (hc := ?_)]
+  · simp [Array.append_assoc, Bool.and_assoc, hsb, posHeadVals]
+  · split_ifs with hs
+    · rw [rd_append_left (by rw [posHead_size]; omega), posHead_rd2, h0 hs]
+    · rw [show r.size + 4 + 6 * sb - 1 = (r ++ (posHeadVals j col a wv).toArray).size
+          + (6 * sb - 1) by rw [hs4]; omega, rd_app, hlast (by omega)]
+
+theorem posT_length {i co so p : ℕ} {ad : ℕ → Digest} {w : Array K} {tr : Trace}
+    {x : List Val × Bool × Trace} (hx : posT κ inp i co so ad w p tr = some x) :
+    x.1.length = posW i := by
+  rcases tr with _ | ⟨⟨q, a⟩, tr⟩
+  · cases hx
+  simp only [posT] at hx
+  split_ifs at hx
+  obtain ⟨y, hy, rfl⟩ := Option.map_eq_some_iff.1 hx
+  simp [(stepsT_spec κ inp hy).1, posW]; omega
+
+/-- **The positions of a level**, from position `p` on, against `posAllT`. -/
+theorem exec_posAll (i co so : ℕ) (ans : List Reg) (w b : ℕ) (ad : ℕ → Digest) (wv : Array K)
+    (t : ℕ) : ∀ (p : ℕ) (r : Array Val) (ok : Bool) (ops : List Op) (tr : Trace),
+    r.size = b + 2 + posW i * p → (∀ k, ans.getD k 0 < r.size) →
+    (∀ k, (rd r (ans.getD k 0)).toD = ad k) → w < r.size → (rd r w).toAK = wv →
+    exec impl κ inp (((List.range' p t).flatMap fun p => posOps i co so ans w p (b + 2 + posW i * p))
+        ++ ops) ⟨r, ok⟩ tr =
+      (posAllT κ inp i co so ad wv t p tr).bind fun x =>
+        exec impl κ inp ops ⟨r ++ x.1.toArray, ok && x.2.1⟩ x.2.2 := by
+  induction t with
+  | zero => intro p r ok ops tr _ _ _ _ _; simp [posAllT]
+  | succ t ih =>
+    intro p r ok ops tr hs hA had hw hwv
+    have h := exec_posOps impl κ inp i co so ans w p r ok
+      (((List.range' (p + 1) t).flatMap fun p => posOps i co so ans w p (b + 2 + posW i * p)) ++ ops)
+      ad wv hA had hw hwv tr
+    rw [hs] at h
+    rw [List.range'_succ, List.flatMap_cons, List.append_assoc, h]
+    simp only [posAllT, Option.bind_assoc, Option.bind_map]
+    refine Option.bind_congr fun x hx => ?_
+    have hl := posT_length κ inp hx
+    rw [ih (p + 1) (r ++ x.1.toArray) _ ops x.2.2 (by simp [hl, hs, Nat.mul_succ]; omega)
+      (fun k => by simp; exact Nat.lt_add_right _ (hA k))
+      (fun k => by rw [rd_append_left (hA k), had]) (by simp; exact Nat.lt_add_right _ hw)
+      (by rw [rd_append_left hw, hwv])]
+    simp [Function.comp_def, Array.append_assoc, Bool.and_assoc]
 
 /-- The seed's registers and flag (`seedOps`). -/
 def seedT (tr : Trace) : Option (List Val × Bool × Trace) :=
@@ -1014,16 +1141,69 @@ def refPhase (n : ℕ) (p : Phase) (c : GCtx) (r : Array Val) (tr : Trace) :
     (posAllT κ inp i (o fCols) (o fSibs) ad w (lvlStar i).t 0 tr).map fun x =>
       ([.ak fr.toArray, .ak w] ++ x.1, x.2.1, x.2.2)
 
+theorem seedT_length {tr : Trace} {x : List Val × Bool × Trace} (hx : seedT κ inp tr = some x) :
+    x.1.length = 7 := by
+  rcases tr with _ | ⟨⟨q, a⟩, tr⟩
+  · cases hx
+  simp only [seedT] at hx
+  split_ifs at hx
+  cases hx; simp
+
+theorem roundsT_length {f o deg real n j : ℕ} {inK : Bool} {d : Digest} {c : Val} {tr : Trace}
+    {x : List Val × Bool × Trace} (hx : roundsT inp f o deg inK real n j d c tr = some x) :
+    x.1.length = (if inK then 13 else roundW deg) * n := by
+  induction n generalizing j d c tr x with
+  | zero => simp [roundsT] at hx; subst hx; simp
+  | succ n ih =>
+    rcases tr with _ | ⟨⟨q₁, a₁⟩, _ | ⟨⟨q₂, a₂⟩, tr⟩⟩
+    · cases hx
+    · cases hx
+    simp only [roundsT] at hx
+    split_ifs at hx <;>
+    · obtain ⟨y, hy, rfl⟩ := Option.map_eq_some_iff.1 hx
+      rw [List.length_append, ih hy]
+      cases inK <;> simp_all [roundKVals, round3V, round2Vals, roundW, Nat.mul_succ] <;> omega
+
+theorem posAllT_length {i co so t p : ℕ} {ad : ℕ → Digest} {w : Array K} {tr : Trace}
+    {x : List Val × Bool × Trace} (hx : posAllT κ inp i co so ad w t p tr = some x) :
+    x.1.length = posW i * t := by
+  induction t generalizing p tr x with
+  | zero => simp [posAllT] at hx; subst hx; simp
+  | succ t ih =>
+    simp only [posAllT, Option.bind_eq_some_iff, Option.map_eq_some_iff] at hx
+    obtain ⟨y, hy, z, hz, rfl⟩ := hx
+    simp only [List.length_append, posT_length κ inp hy, ih hz, Nat.mul_succ]; omega
+
+theorem coordVals_length (as : List Digest) : (as.flatMap coordVals).length = 3 * as.length := by
+  induction as with
+  | nil => rfl
+  | cons a as ih => simp [coordVals, ih]; omega
+
+theorem initVals_length (init : Init) (f o : ℕ) (inK : Bool) :
+    (initVals inp init f o inK).length = init.width := by
+  cases init <;> cases inK <;> rfl
+
+theorem uniVals_length (f o : ℕ) (pe : Array F) (a₁ a₂ : Digest) :
+    (uniVals impl inp f o pe a₁ a₂).length = 136 := by
+  simp [uniVals, uniEs]
+
 /-- The registers a context points to are below the register file's size. -/
 def CtxOk (c : GCtx) (r : Array Val) : Prop :=
   c.st < r.size ∧ c.uni < r.size ∧ (∀ x ∈ c.posAns, x < r.size) ∧ (∀ x ∈ c.foldR, x < r.size) ∧
     c.pt < r.size
 
-/-- **Every phase's semantics** (stated; the S-0 `sorry`): a phase's ops on a trace are its
+theorem CtxOk.mono {c : GCtx} {r : Array Val} {m : ℕ} (h : CtxOk c r) (hm : r.size ≤ m) :
+    c.st < m ∧ c.uni < m ∧ (∀ x ∈ c.posAns, x < m) ∧ (∀ x ∈ c.foldR, x < m) ∧ c.pt < m :=
+  let ⟨h1, h2, h3, h4, h5⟩ := h
+  ⟨Nat.lt_of_lt_of_le h1 hm, Nat.lt_of_lt_of_le h2 hm, fun x hx => Nat.lt_of_lt_of_le (h3 x hx) hm,
+    fun x hx => Nat.lt_of_lt_of_le (h4 x hx) hm, Nat.lt_of_lt_of_le h5 hm⟩
+
+/-- **Every phase's semantics**: a phase's ops on a trace are its
 reference `refPhase`, for every phase of the table, kind and context. Phase Z is the proved
 instance `exec_phaseZ` (Z1 `.coords`, Z2 `.uni`, Z3 `.rounds … 3`, Zend `.absorb`). -/
 theorem exec_genPhase (n : ℕ) (p : Phase) (c : GCtx) (r : Array Val) (ok : Bool) (ops : List Op)
-    (hb : c.next = r.size) (hwf : p.shape = .seed ∨ CtxOk c r) (tr : Trace) :
+    (hb : c.next = r.size)
+    (hwf : (p.shape = .seed ∧ CtxOk c #[default]) ∨ CtxOk c r) (tr : Trace) :
     exec impl κ inp ((genPhase n p c).1 ++ ops) ⟨r, ok⟩ tr =
       (refPhase impl κ inp n p c r tr).bind fun x =>
         exec impl κ inp ops ⟨r ++ x.1.toArray, ok && x.2.1⟩ x.2.2 := by
@@ -1114,18 +1294,139 @@ theorem exec_genPhase (n : ℕ) (p : Phase) (c : GCtx) (r : Array Val) (ok : Boo
         | (simp; done)
         | rw [rd_app_left _ _ hst]
   | queries i =>
-    sorry
+    obtain ⟨hst, -, hpa, -, -⟩ := hwf.resolve_left (by simp)
+    replace hst : st < r.size := hst
+    replace hpa : ∀ x ∈ pa, x < r.size := hpa
+    have hA : ∀ k, pa.getD k 0 < r.size := fun k => by
+      rw [List.getD_eq_getElem?_getD]
+      cases h : pa[k]? with
+      | none => exact Nat.lt_of_le_of_lt (Nat.zero_le _) hst
+      | some x => simpa using hpa x (List.mem_of_getElem? h)
+    simp only [genPhase, refPhase]
+    rw [e0]
+    simp only [List.cons_append, List.nil_append, exec_app, evalOp]
+    simp only [Array.append_empty, rd_app0, List.getD_cons_zero, List.range_eq_range', Val.toAK]
+    generalize hX : (fr.map fun x => (rd r x).toK).toArray = X
+    rw [exec_posAll impl κ inp i _ _ pa (r.size + 1) r.size (fun k => (rd r (pa.getD k 0)).toD)
+      (eqTab X) _ 0 (r ++ #[Val.ak X, Val.ak (eqTab X)]) _ ops tr (by simp)
+      (fun k => Nat.lt_of_lt_of_le (hA k) (by simp)) (fun k => by rw [rd_app_left _ _ (hA k)])
+      (by simp) (by rw [rd_app _ _ 1]; rfl), Option.bind_map]
+    simp [Function.comp_def, Array.append_assoc]
 
-/-- **The context a phase hands on** (S-0-M3, stated; the S-0 `sorry`): the next free register is
+/-- **The context a phase hands on** (S-0-M3): the next free register is
 past the phase's registers, the next context's registers point into them, and the phase's outputs
 are pushed. -/
 theorem genPhase_ctx (n : ℕ) (p : Phase) (c : GCtx) (r : Array Val) (tr : Trace)
-    (x : List Val × Bool × Trace) (hb : c.next = r.size) (hwf : p.shape = .seed ∨ CtxOk c r)
+    (x : List Val × Bool × Trace) (hb : c.next = r.size)
+    (hwf : (p.shape = .seed ∧ CtxOk c #[default]) ∨ CtxOk c r)
     (hx : refPhase impl κ inp n p c r tr = some x) :
     (genPhase n p c).2.next = (r ++ x.1.toArray).size ∧
       CtxOk (genPhase n p c).2 (r ++ x.1.toArray) ∧
       (genPhase n p c).2.outs.size = c.outs.size + 1 := by
-  sorry
+  obtain ⟨name, sh⟩ := p
+  obtain ⟨b, st, u, pa, fr, pt, outs⟩ := c
+  simp only at hb hwf; subst hb
+  have hm : ∀ m, r.size ≤ m → 1 ≤ m →
+      st < m ∧ u < m ∧ (∀ x ∈ pa, x < m) ∧ (∀ x ∈ fr, x < m) ∧ pt < m := fun m h1 h2 => by
+    rcases hwf with ⟨-, h⟩ | h
+    · exact h.mono (by simpa using h2)
+    · exact h.mono h1
+  have hm4 : ∀ m, r.size ≤ m → 1 ≤ m →
+      u < m ∧ (∀ x ∈ pa, x < m) ∧ (∀ x ∈ fr, x < m) ∧ pt < m := fun m h1 h2 => (hm m h1 h2).2
+  have hpos : sh ≠ .seed → 0 < r.size := fun h => by
+    rcases hwf with ⟨h', -⟩ | h
+    · exact absurd h' h
+    · exact Nat.lt_of_le_of_lt (Nat.zero_le _) h.1
+  cases sh with
+  | seed =>
+    simp only [refPhase] at hx
+    have hl := seedT_length κ inp hx
+    obtain ⟨-, h2, h3, h4, h5⟩ := hm (r.size + 7) (by omega) (by omega)
+    simp only [genPhase, CtxOk, Array.size_append, List.size_toArray, hl, Array.size_push]
+    refine ⟨trivial, ⟨?_, h2, h3, h4, h5⟩, trivial⟩
+    dsimp only [Reg]; omega
+  | absorb f len =>
+    simp only [refPhase] at hx
+    obtain ⟨y, -, rfl⟩ := Option.map_eq_some_iff.1 hx
+    have hp := hpos (by simp)
+    simp only [genPhase]
+    split_ifs <;> simp [CtxOk]
+    all_goals repeat' apply And.intro
+    all_goals try dsimp only [Reg] at *
+    all_goals first
+      | trivial | omega
+      | exact (hm _ (by omega) (by omega)).1
+      | exact (hm4 _ (by omega) (by omega)).1 | exact (hm4 _ (by omega) (by omega)).2.1
+      | exact (hm4 _ (by omega) (by omega)).2.2.1 | exact (hm4 _ (by omega) (by omega)).2.2.2
+      | (intro a ha; simp at ha; omega)
+  | squeezes k ch =>
+    simp only [refPhase] at hx
+    obtain ⟨y, hy, rfl⟩ := Option.map_eq_some_iff.1 hx
+    have hk := sqzT_spec hy
+    have hc := coordVals_length y.1
+    simp only [List.length_flatMap] at hc
+    have hp := hpos (by simp)
+    cases ch <;> simp [genPhase, CtxOk, hc, hk]
+    all_goals repeat' apply And.intro
+    all_goals try dsimp only [Reg] at *
+    all_goals first
+      | trivial | omega
+      | exact (hm _ (by omega) (by omega)).1
+      | exact (hm4 _ (by omega) (by omega)).1 | exact (hm4 _ (by omega) (by omega)).2.1
+      | exact (hm4 _ (by omega) (by omega)).2.2.1 | exact (hm4 _ (by omega) (by omega)).2.2.2
+      | (intro a ha; simp at ha; omega)
+  | uni f =>
+    simp only [refPhase] at hx
+    have hp := hpos (by simp)
+    rcases tr with _ | ⟨⟨q₁, a₁⟩, _ | ⟨⟨q₂, a₂⟩, tr⟩⟩
+    · cases hx
+    · cases hx
+    simp only at hx
+    split_ifs at hx
+    cases hx
+    simp [genPhase, CtxOk, uniVals_length]
+    all_goals repeat' apply And.intro
+    all_goals try dsimp only [Reg] at *
+    all_goals first
+      | trivial | omega
+      | exact (hm _ (by omega) (by omega)).1
+      | exact (hm4 _ (by omega) (by omega)).1 | exact (hm4 _ (by omega) (by omega)).2.1
+      | exact (hm4 _ (by omega) (by omega)).2.2.1 | exact (hm4 _ (by omega) (by omega)).2.2.2
+      | (intro a ha; simp at ha; omega)
+  | rounds f k deg inK real =>
+    simp only [refPhase] at hx
+    obtain ⟨y, hy, rfl⟩ := Option.map_eq_some_iff.1 hx
+    have hk := roundsT_length inp hy
+    have hp := hpos (by simp)
+    have hw : 13 ≤ roundW deg := by unfold roundW; split <;> omega
+    have hwk : 0 < k → roundW deg ≤ roundW deg * k := Nat.le_mul_of_pos_right _
+    have hst : st < r.size := (hm r.size le_rfl hp).1
+    simp only [genPhase]
+    rcases initClaim name with _ | _ | _ <;> cases inK <;>
+      simp [initOps, initVals_length, hk, CtxOk, Init.width]
+    all_goals repeat' apply And.intro
+    all_goals try dsimp only [Reg] at *
+    all_goals first
+      | trivial | omega
+      | (split_ifs with hk0 <;> first | omega | (have := hwk (by omega); omega))
+      | exact (hm _ (by omega) (by omega)).1
+      | exact (hm4 _ (by omega) (by omega)).1 | exact (hm4 _ (by omega) (by omega)).2.1
+      | exact (hm4 _ (by omega) (by omega)).2.2.1 | exact (hm4 _ (by omega) (by omega)).2.2.2
+      | (intro a ha; simp at ha; omega)
+  | queries i =>
+    simp only [refPhase] at hx
+    obtain ⟨y, hy, rfl⟩ := Option.map_eq_some_iff.1 hx
+    have hk := posAllT_length κ inp hy
+    have hp := hpos (by simp)
+    simp [genPhase, CtxOk, hk]
+    all_goals repeat' apply And.intro
+    all_goals try dsimp only [Reg] at *
+    all_goals first
+      | trivial | omega
+      | exact (hm _ (by omega) (by omega)).1
+      | exact (hm4 _ (by omega) (by omega)).1 | exact (hm4 _ (by omega) (by omega)).2.1
+      | exact (hm4 _ (by omega) (by omega)).2.2.1 | exact (hm4 _ (by omega) (by omega)).2.2.2
+      | (intro a ha; simp at ha; omega)
 
 /-- **Reference semantics of a run of phases**: the registers, each phase's flag, the rest. -/
 def refPhases : List Phase → ℕ → GCtx → Array Val → Trace → Option (List Val × List Bool × Trace)
@@ -1137,7 +1438,7 @@ def refPhases : List Phase → ℕ → GCtx → Array Val → Trace → Option (
 
 /-- A run of phases may start: the first is the seed, or the context is well formed. -/
 def StartOk (ps : List Phase) (c : GCtx) (r : Array Val) : Prop :=
-  CtxOk c r ∨ ∃ p ps', ps = p :: ps' ∧ p.shape = .seed
+  CtxOk c r ∨ ∃ p ps', ps = p :: ps' ∧ p.shape = .seed ∧ CtxOk c #[default]
 
 /-- **`exec_genPhases`** (S-0-M3): a run of phases on a trace is `refPhases`; the flag is the
 conjunction of the phases' flags. -/
@@ -1149,10 +1450,10 @@ theorem exec_genPhases (ps : List Phase) (n : ℕ) (c : GCtx) (r : Array Val) (o
   induction ps generalizing n c r ok tr with
   | nil => simp [genPhases, refPhases]
   | cons p ps ih =>
-    have hwf : p.shape = .seed ∨ CtxOk c r := by
-      rcases hs with h | ⟨q, qs, he, hq⟩
+    have hwf : (p.shape = .seed ∧ CtxOk c #[default]) ∨ CtxOk c r := by
+      rcases hs with h | ⟨q, qs, he, hq, h0⟩
       · exact .inr h
-      · cases he; exact .inl hq
+      · cases he; exact .inl ⟨hq, h0⟩
     simp only [genPhases, List.append_assoc]
     rw [exec_genPhase impl κ inp n p c r ok _ hb hwf, refPhases, Option.bind_assoc]
     refine Option.bind_congr fun x hx => ?_
@@ -1169,7 +1470,7 @@ theorem exec_skeleton (ok : Bool) (ops : List Op) (tr : Trace) :
     exec impl κ inp (skeleton.1 ++ ops) ⟨#[], ok⟩ tr =
       (refPhases impl κ inp phases 0 ctx₀ #[] tr).bind fun y =>
         exec impl κ inp ops ⟨#[] ++ y.1.toArray, ok && y.2.1.all id⟩ y.2.2 :=
-  exec_genPhases impl κ inp phases 0 ctx₀ #[] ok ops rfl (.inr ⟨_, _, rfl, rfl⟩) tr
+  exec_genPhases impl κ inp phases 0 ctx₀ #[] ok ops rfl (.inr ⟨_, _, rfl, rfl, by simp [CtxOk, ctx₀]⟩) tr
 
 /-- **Every phase's flag** (S-0-M3): an accepted skeleton has every phase's check passing. -/
 theorem skeleton_ok {y : List Val × List Bool × Trace} (h : y.2.1.all id = true) :

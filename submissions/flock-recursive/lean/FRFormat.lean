@@ -11,7 +11,7 @@ BLUEPRINT §1.1, A.3, A.5.
   (`FRTranscriptDefs.phases`): an absorb puts its message in its field, the seed's `hdr` is field 0,
   the queries of level `i` put `tᵢ` columns in field 14 and `tᵢ · sibᵢ` siblings in field 15
   (revision 3.1's numbering).
-  `fieldSizes_eq` is A.3's column; **`piSize_eq : piSize = 755664`** (the checked sum).
+  `fieldSizes_eq` is A.3's column; **`piSize_eq : piSize = 755680`** (the checked sum).
 * `kindOf π`: `W` unless byte 0 is a kind byte; a kind byte with `|π| ≠ piSize` is `bad`.
 * `serialise` concatenates the fields, `parse` cuts a proof of `piSize` bytes at the offsets;
   **`parse_serialise`**: `parse (serialise fs) = some fs` when the sizes are A.3's.
@@ -46,12 +46,12 @@ def fieldSizes : List ℕ := (List.range nFields).map fieldSize
 def piSize : ℕ := fieldSizes.sum
 
 /-- A.3's column. -/
-theorem fieldSizes_eq : fieldSizes = [48, 128, 2048, 1248, 32, 784, 1344, 1440, 48, 8192, 1008, 48,
+theorem fieldSizes_eq : fieldSizes = [48, 128, 2048, 1248, 32, 800, 1344, 1440, 48, 8192, 1008, 48,
     2112, 672, 45056, 4096, 445696, 241664] := by decide +kernel
 
-/-- **`piSize = 755,664`** (A.3, revision 3.8: `48 + 128 + 18,976 + 45,056 + 4,096 + 445,696 +
+/-- **`piSize = 755,680`** (A.3, revision 3.8.2: `48 + 128 + 18,992 + 45,056 + 4,096 + 445,696 +
 241,664`). -/
-theorem piSize_eq : piSize = 755664 := by rw [piSize, fieldSizes_eq]; rfl
+theorem piSize_eq : piSize = 755680 := by rw [piSize, fieldSizes_eq]; rfl
 
 theorem piSize_le_proofCap : piSize ≤ proofCap := by rw [piSize_eq]; decide
 

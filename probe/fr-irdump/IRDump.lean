@@ -3,16 +3,17 @@
 -- a kind (or the mux) one per line, `opName operands… → dst`, registers numbered; `irdump summary`
 -- prints the counts. The phase-final checks are `gen`'s parameter; the dump uses none
 -- (`noFinals`), so it pins the skeleton: every query, challenge map and round check.
-import FRVIRFinals
+import FRVIRFinalsSF
 
 open FR RecursionFast
 
-/-- The finals with S-0's four fields; S-F's and S-G's are pending (marked in the dump). -/
-def fins : Finals := s0Finals pending pending pending (fun _ => pending) pending
+/-- The finals: S-0's four fields and S-F's (`sfFinals`); S-G's `finP`, `finPf` are pending (marked in
+the dump; S-G's private copy `logs/fr-build-SG/dump/IRDumpSG.lean` dumps them). -/
+def fins : Finals := sfFinals (fun _ => pending) pending
 
 def hex (l : List UInt8) : String :=
   String.join (l.map fun b =>
-    let s := (Nat.toDigits 16 b.toNat).asString
+    let s := String.ofList (Nat.toDigits 16 b.toNat)
     if s.length = 1 then "0" ++ s else s)
 
 def kindName : Kind → String
@@ -27,6 +28,8 @@ def showVal : Val → String
   | .b x => "B:" ++ hex x.data.toList
   | .n x => "N:" ++ toString x
   | .bit x => "Bit:" ++ toString x
+  | .af xs => "AF:[" ++ ",".intercalate (xs.toList.map fun x => hex x.toBytes.toList) ++ "]"
+  | .ak xs => "AK:[" ++ ",".intercalate (xs.toList.map fun x => hex x.toBytes.toList) ++ "]"
   | _ => "arr"
 
 /-- A kind-dependent datum: the kind's value, or all three for the mux. -/
@@ -37,12 +40,7 @@ def showKC {α : Type} (sh : α → String) (m : Mode) (c : KC α) : String :=
 
 def r (i : ℕ) : String := "r" ++ toString i
 
-def outs : Op → ℕ
-  | .evalM .. | .evalL .. | .kindSel => 3
-  | .lagrangeS .. => 2
-  | .splitDigest _ => 2
-  | .assertEq .. | .assertBit .. | .assertZero .. | .assertOneHot .. | .accept => 0
-  | _ => 1
+def outs : Op → ℕ := Op.outs
 
 def showOp (m : Mode) : Op → String
   | .input w => s!"input {w}"
@@ -81,14 +79,17 @@ def showOp (m : Mode) : Op → String
   | .targetS x => s!"targetS {r x}"
   | .eqZ x y => s!"eqZ {r x} {r y}"
   | .tensorW j x => s!"tensorW {r j} {r x}"
-  | .mbp x sv pt => s!"mbp {r x} {r sv} {r pt}"
+  | .rsWeight x ps k y =>
+    s!"rsWeight {r x} " ++ showKC (fun l => "[" ++ " ".intercalate (l.map r) ++ "]") m ps ++ s!" {r k} {r y}"
+  | .phiRS x a => s!"phiRS {r x} {r a}"
   | .walkA x c => s!"walkA {r x} {r c}"
   | .walkB x c => s!"walkB {r x} {r c}"
   | .kindInd x => s!"kindInd {r x}"
   | .maskRows k w => s!"maskRows {r k} {r w}"
   | .evalM t s => s!"evalM {r t} {r s}"
   | .evalL t s => s!"evalL {r t} {r s}"
-  | .shiftTarget t h => s!"shiftTarget {r t} {r h}"
+  | .evalMK t s => s!"evalMK {r t} {r s}"
+  | .shiftTarget t h bd => s!"shiftTarget {r t} {r h} {r bd}"
   | .slotW sm t x => s!"slotW {sm} {r t} {r x}"
   | .kindFoldWeight x b y => s!"kindFoldWeight {r x} {r b} {r y}"
   | .eqPt a b => s!"eqPt {r a} {r b}"
@@ -120,10 +121,9 @@ def dumpOps (m : Mode) : IO Unit := do
   let n ← dumpList m skeleton.1 0
   let outs := skeleton.2.outs
   let rs := fins.finRS ⟨outs, [], #[]⟩ n
-  IO.println "-- final finRS (S-F): PENDING placeholder"
+  IO.println "-- final finRS (S-F)"
   let mut b ← dumpList m rs.1 n
-  let names := ["finZ", "finLc", "finSh", "finLr", "finE (S-F): PENDING placeholder",
-    "finB' (S-F): PENDING placeholder"] ++ (List.range nLevels).map (fun i => s!"finP {i} (S-G): PENDING placeholder") ++
+  let names := ["finZ", "finLc", "finSh", "finLr", "finE (S-F)", "finB' (S-F)"] ++ (List.range nLevels).map (fun i => s!"finP {i} (S-G): PENDING placeholder") ++
     ["finPf (S-G): PENDING placeholder"]
   let mut ex : Array (List Reg) := #[rs.2]
   for (f, nm) in fins.rest.zip names do

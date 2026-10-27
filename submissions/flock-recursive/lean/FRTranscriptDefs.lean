@@ -188,7 +188,7 @@ def piopPhases : List Phase :=
    ⟨"Z1", .squeezes 10 (.coords (mm 13))⟩, ⟨"Z2", .uni fZ2⟩,
    ⟨"Z3", .rounds fZ3 26 3 false (mm 6)⟩, ⟨"Zend", .absorb fZend 32⟩,
    ⟨"L1", .squeezes 1 (.one fun _ => true)⟩, ⟨"L2", .rounds fL2 14 2 false fun _ => 14⟩,
-   ⟨"L3", .absorb fL2 (7 * 16)⟩, ⟨"L3β", .squeezes 1 (.one fun _ => true)⟩,
+   ⟨"L3", .absorb fL2 (8 * 16)⟩, ⟨"L3β", .squeezes 1 (.one fun _ => true)⟩,
    ⟨"S1", .squeezes 15 (.coords fun _ => 29)⟩, ⟨"S2", .rounds fS2 28 2 false (mm 4)⟩,
    ⟨"Lr1", .squeezes 8 (.coords (nodeOnly 15))⟩, ⟨"Lr2", .rounds fLr 15 3 false (nodeOnly 15)⟩,
    ⟨"Lrend", .absorb fLrEnd 48⟩,
@@ -490,7 +490,7 @@ def Item.qlen : Item → ℕ
 per item. -/
 def streamBytes : ℕ := 1 + (items.map fun it => 8 + it.qlen + 32).sum
 
-theorem streamBytes_eq : streamBytes = 1437744 := by decide +kernel
+theorem streamBytes_eq : streamBytes = 1437760 := by decide +kernel
 
 /-- An item's bytes in the stream: `enc64 |q| ‖ q ‖ a`. -/
 def Item.slen (it : Item) : ℕ := 8 + it.qlen + 32

@@ -38,10 +38,6 @@ rc=0
 for i in $(seq "${P2_LEAF_REQS:-3}"); do
   timeout 300 python3 -I "$HERE/request.py" "$BIN" "$D/req$i" "$D/oracle.sock" 65536 "$(printf '%064x' $((i * 7919)))" 2>&1 | tee -a "$OUT/requests.log" || rc=1
 done
-( cd "$D" && FLOCK_VERBOSE=1 FLOCK_NODE_SHAPE=1 FLOCK_PREFAULT_MIB=1800 RF_ORACLE="$D/oracle.sock" /usr/bin/time -v timeout 600 "$BIN" prove-leaf 30 --reps 2 --out "$D/n30.bin" ) > "$OUT/node30.log" 2> "$OUT/time-node30.txt" || rc=1
-# rev. 3.2's node shape: 54,111 used blocks (Sel), timing only (the leaf statement does not hold)
-( cd "$D" && FLOCK_VERBOSE=1 FLOCK_NODE_SHAPE=1 FLOCK_USED_BLOCKS=54111 FLOCK_PREFAULT_MIB=1800 RF_ORACLE="$D/oracle.sock" /usr/bin/time -v timeout 600 "$BIN" prove-leaf 30 --reps 2 --out "$D/n30s.bin" ) > "$OUT/node30sel.log" 2> "$OUT/time-node30sel.txt"
-( cd "$D" && FLOCK_VERBOSE=1 FLOCK_NODE_SHAPE=1 FLOCK_E2_BATCHED=1 FLOCK_USED_BLOCKS=54111 FLOCK_PREFAULT_MIB=1800 RF_ORACLE="$D/oracle.sock" /usr/bin/time -v timeout 600 "$BIN" prove-leaf 30 --reps 2 --out "$D/n30e.bin" ) > "$OUT/node30sele2.log" 2> "$OUT/time-node30sele2.txt"
 ( cd "$D" && FLOCK_VERBOSE=1 FLOCK_PREFAULT_MIB=1800 RF_ORACLE="$D/oracle.sock" /usr/bin/time -v timeout 600 "$BIN" prove-leaf 30 --reps 2 --out "$D/l30.bin" ) > "$OUT/leaf30.log" 2> "$OUT/time-leaf30.txt" || rc=1
 ( cd "$D" && FLOCK_VERBOSE=1 FLOCK_PREFAULT_MIB=6000 RF_ORACLE="$D/oracle.sock" /usr/bin/time -v timeout 900 "$BIN" prove-leaf 32 --reps "${P2_M32:-2}" --out "$D/l32.bin" ) > "$OUT/leaf32.log" 2> "$OUT/time-leaf32.txt" || rc=1
 exec 3>&-; wait "$spid"; cp "$D/svc.log" "$OUT/svc.log"; rm -rf "$D"

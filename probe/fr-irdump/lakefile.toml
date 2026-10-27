@@ -6,7 +6,7 @@ path = "/home/devops/Verified-zkEVM/recursion.fast-submissions-flock/logs/org"
 [[lean_lib]]
 name = "RFSubmission"
 srcDir = "../../submissions/flock-recursive/lean"
-roots = ["FRFieldBase", "FRFieldBaseCorrect", "FRField128", "FRField256", "FRMerkle", "FRTranscriptDefs", "FRFormat", "FRVIR", "FRVIRSpec", "FRVIRFinals"]
+roots = ["FR","FRBlake2sCircuit","FRBlake2sCompress","FRBlake2sGeneric","FRBlake2sWalk","FRBlake2sWitness","FRBlake2sWords","FRBlockChain","FRBlockKinds","FRBlockLayout","FRBlockStream","FRField128","FRField256","FRFieldBase","FRFieldBaseCorrect","FRFieldControls","FRFormat","FRLeafCircuit","FRLog","FRMLE","FRMLEControls","FRMerkle","FRNodeCircuit","FRNodeLayout","FRProximityBW","FRProximityFold","FRProximityLine","FRPubTarget","FRRS","FRRSEval","FRRingSwitch","FRShift","FRSkip","FRSoundnessDefs","FRSoundnessLigerito","FRSoundnessStepA","FRSoundnessStepB","FRSoundnessStepC","FRSoundnessTruths","FRSpartan","FRSumcheck","FRTranscriptDefs","FRVIR","FRVIRCompile","FRVIREval","FRVIRFinals","FRVIRFinalsSF","FRVIRFinalsSG","FRVIRMux","FRVIRSpec","FRVerifier","FRWots","FRXComputes","FRXDsl","FRXExt","FRXField","FRXLog","FRXLogSpec","FRXMerge","FRXProg","FRXSortSim","FRXSortSpec","FRXSpec"]
 [[lean_exe]]
 name = "irdump"
 root = "IRDump"

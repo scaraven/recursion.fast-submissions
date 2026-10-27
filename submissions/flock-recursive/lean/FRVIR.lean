@@ -19,9 +19,9 @@ BLUEPRINT §3, B-2, B-7, A.8.
   (`FRVIRSpec.semIR_mux`).
 * Assertions do not stop the program: they clear the `ok` flag, so every run asks **every** ask op
   (the item sequence is a constant, §1.2). The result is the flag.
-* `OpImpl` holds the op implementations other tracks supply (`lagrangeS`, `tensorW`, `mbp`,
-  `walkA/B`, `kindInd`, `evalM`, `evalL`, `targetS`, `eqZ`, `shiftTarget`, `slotW`,
-  `kindFoldWeight`); `OpSpec` the same signatures as the
+* `OpImpl` holds the op implementations other tracks supply (`lagrangeS`, `tensorW`, `rsWeight`,
+  `phiRS`, `walkA/B`, `kindInd`, `evalM`, `evalMK`, `evalL`, `targetS`, `eqZ`, `shiftTarget`,
+  `slotW`, `kindFoldWeight`, …; revision 3.9); `OpSpec` the same signatures as the
   mathematical reference; `OpImpl.Meets impl spec` is what `FRVIREval` proves.
 * `runIR impl P inp : OProg Bool` (the verifier's program) and `semIR impl P inp tr : Option Bool`
   (the same ops against a trace, consumed in order: the semantics `FRVIRSpec` reasons about);
@@ -151,10 +151,16 @@ inductive Op where
   | lagrangeS (vals lam pe : Reg)
   /-- AF 64: `P^e` on `S` at the zerocheck point (rev 3.8; S-C). -/
   | targetS (r : Reg)
-  /-- F: `eq((ρ, r), r′)` with the pinned coordinates `ρ` (rev 3.8, `finZ`; S-C). -/
-  | eqZ (r r' : Reg)
+  /-- AF 128: the Z claim's inner weight over an element's 128 bit positions,
+  `L_{lo(i)}(λ) · eq(ρ₁, bit 6 of i)` (A.8, revision 3.9: bit 6's coordinate is `ρ₁`). -/
+  | eqZ (lam rho1 : Reg)
   | tensorW (j r : Reg)
-  | mbp (r kappa pt : Reg)
+  /-- K: `Ŵ(ρ) = Σ_j κ^j Σ_{k<128} c_k(r″) eq(r_j^{2^k}, ρ)` (`weightEval`) at the claims' outer
+  points `pts` (AK registers; a leaf passes 3), `κ` (F) and the final point `ρ` (AK); revision
+  3.9, replaces `mbp`. -/
+  | rsWeight (r : Reg) (pts : KC (List Reg)) (kappa rho : Reg)
+  /-- F: `Φ_{r″}(a)`, the staged Frobenius map (`FRRingSwitch.Phi`; revision 3.9). -/
+  | phiRS (r a : Reg)
   | walkA (rowW colW : Reg) | walkB (rowW colW : Reg)
   /-- AF: the indicator MLEs of the kinds at a point. -/
   | kindInd (r : Reg)
@@ -163,7 +169,12 @@ inductive Op where
   | maskRows (kindW rowW : Reg)
   /-- Three F registers. -/
   | evalM (tau sigma : Reg) | evalL (tau sigma : Reg)
-  | shiftTarget (tau theta : Reg)
+  /-- Three K registers: `evalM` at a K column point (`evalM(r_{E2}, ρ)`, `finPf`; stage-review
+  changes 11). -/
+  | evalMK (tau sigma : Reg)
+  /-- F: the shift sumcheck's boundary term with the boundary values `bnd` (AF 4: a leaf's `s`, `h`
+  as two elements each; a node's `h0` twice; revision 3.9). -/
+  | shiftTarget (tau theta bnd : Reg)
   /-- F: the slot weight of slot map `s` at `θ`, `r`. -/
   | slotW (s : ℕ) (theta r : Reg)
   /-- F: `Ŵ_β(ρ)`. -/
@@ -202,13 +213,15 @@ structure OpImpl where
   lagrangeS : Array F → F → Array F → F × F
   /-- `P^e` on `S` (64 values) at the zerocheck point (FRPubTarget/S-C). -/
   targetS : Array F → Array F
-  /-- `eq((ρ, r), r′)` with the pinned coordinates (FRSkip). -/
-  eqZ : Array F → Array F → F
+  /-- The Z claim's inner weight `L_{lo(i)}(λ) · eq(ρ₁, bit 6 of i)`, 128 values (FRSkip). -/
+  eqZ : F → F → Array F
   /-- `Π_v (1 − r_v + r_v Ŵ_v(D[j]))` (FRRS). -/
   tensorW : ℕ → Array K → K
-  /-- `Ŵ(ρ) = Σ_{j<J_z} κ^j B̂_j(ρ)` at the final point (`r″`, `κ`, the point; `J_z` width-128
-  runs; P1-D6/D7, R4-m2; FRRingSwitch). -/
-  mbp : Array F → F → Array K → F
+  /-- `Ŵ(ρ) = Σ_j κ^j Σ_{k<128} c_k(r″) eq(r_j^{2^k}, ρ)` (`r″`, the claims' outer points, `κ`,
+  the final point; `weightEval`, L-R4; FRRingSwitch). -/
+  rsWeight : Array F → List (Array K) → F → Array K → K
+  /-- `Φ_{r″}(a)` (FRRingSwitch). -/
+  phiRS : Array F → F → F
   /-- `Â₀`, `B̂₀` by the circuit walk at the (masked) row weights and the column weights
   (`walkE_eq_sum`; FRBlake2sWalk). -/
   walkA : Array F → Array F → F
@@ -218,12 +231,10 @@ structure OpImpl where
   /-- The node's matrix MLEs (FRVIREval). -/
   evalM : Array F → Array F → F × F × F
   evalL : Array F → Array F → F × F × F
-  /-- `ŵ(r′) = Σ_x eq(r′,x) eq(r,x) Sel(x)` (R4-m1) and `Ê` (§4; FRPubTarget). -/
-  selWeight : Array F → Array F → F
-  /-- `Ê_w(λ, r′)` (§2.3 step 2): from Z1's point, `λ`, Z3's challenges. -/
-  targetMLE : Array F → F → Array F → F
-  /-- The shift sumcheck's boundary and slot-weight terms (P1-D5; FRShift). -/
-  shiftTarget : Array F → Array F → F
+  /-- `evalM` at a K column point (FRVIREval). -/
+  evalMK : Array F → Array K → K × K × K
+  /-- The shift sumcheck's boundary term: `τ`, `θ`, the boundary values (P1-D5; FRShift). -/
+  shiftTarget : Array F → Array F → Array F → F
   /-- The collapse's slot weight of slot map `s`, summed directly (S-C-m1; FRShift). -/
   slotW : ℕ → Array F → Array F → F
   /-- `Ŵ_β` at the ring-switching point (S-C-M1; FRRingSwitch). -/
@@ -237,9 +248,10 @@ structure OpImpl where
   shiftEq : Array F → Array F → F
 
 /-- **The specification record**: the same signatures, read as the mathematical definitions.
-Owners of the concrete `OpSpec` and its lemmas (S-0-m2): S-C — `lagrangeS`, `tensorW`, `mbp`,
+Owners of the concrete `OpSpec` and its lemmas (S-0-m2): S-C — `lagrangeS`, `tensorW`, `rsWeight`,
+`phiRS`,
 `shiftTarget`, `slotW`, `kindFoldWeight`, `linkW`, `rowW`, `shiftEq`; S-E1/S-E2 — `walkA/B`,
-`evalM/L`, `kindInd`; `FRPubTarget` — `targetS`; FRSkip — `eqZ`. -/
+`evalM/MK/L`, `kindInd`; `FRPubTarget` — `targetS`; FRSkip — `eqZ`. -/
 abbrev OpSpec := OpImpl
 
 /-- **`impl ⊨ spec`, per op, on well-formed operands only** (S-0-m2): each implemented op equals its
@@ -249,12 +261,14 @@ def OpImpl.Meets (impl : OpImpl) (spec : OpSpec) : Prop :=
   (∀ v l pe, v.size = 127 → impl.lagrangeS v l pe = spec.lagrangeS v l pe) ∧
   (∀ r, impl.targetS r = spec.targetS r) ∧ (∀ a b, impl.eqZ a b = spec.eqZ a b) ∧
   (∀ j r, impl.tensorW j r = spec.tensorW j r) ∧
-  (∀ r k p, r.size = 7 → impl.mbp r k p = spec.mbp r k p) ∧
+  (∀ r ps k p, r.size = 7 → impl.rsWeight r ps k p = spec.rsWeight r ps k p) ∧
+  (∀ r a, r.size = 7 → impl.phiRS r a = spec.phiRS r a) ∧
   (∀ rw cw, rw.size = 2 ^ 14 → cw.size = 2 ^ 14 → impl.walkA rw cw = spec.walkA rw cw) ∧
   (∀ rw cw, rw.size = 2 ^ 14 → cw.size = 2 ^ 14 → impl.walkB rw cw = spec.walkB rw cw) ∧
   (∀ a b, impl.evalM a b = spec.evalM a b) ∧ (∀ a b, impl.evalL a b = spec.evalL a b) ∧
+  (∀ a b, impl.evalMK a b = spec.evalMK a b) ∧
   (∀ a, impl.kindInd a = spec.kindInd a) ∧
-  (∀ a b, impl.shiftTarget a b = spec.shiftTarget a b) ∧
+  (∀ a b c, c.size = 4 → impl.shiftTarget a b c = spec.shiftTarget a b c) ∧
   (∀ s a b, impl.slotW s a b = spec.slotW s a b) ∧
   (∀ a b c, impl.kindFoldWeight a b c = spec.kindFoldWeight a b c) ∧
   (∀ a f c, impl.linkW a f c = spec.linkW a f c) ∧ (∀ l a, impl.rowW l a = spec.rowW l a) ∧
@@ -353,9 +367,12 @@ def evalOp (impl : OpImpl) (κ : Kind) (inp : Input) (regs : Array Val) : Op →
     let x := impl.lagrangeS (rd regs v).toAF (rd regs l).toF (rd regs pe).toAF
     .vals [.f x.1, .f x.2] true
   | .targetS r => .vals [.af (impl.targetS (rd regs r).toAF)] true
-  | .eqZ r r' => .vals [.f (impl.eqZ (rd regs r).toAF (rd regs r').toAF)] true
+  | .eqZ l r₁ => .vals [.af (impl.eqZ (rd regs l).toF (rd regs r₁).toF)] true
   | .tensorW j r => .vals [.k (impl.tensorW (rd regs j).toN (rd regs r).toAK)] true
-  | .mbp r κ' pt => .vals [.f (impl.mbp (rd regs r).toAF (rd regs κ').toF (rd regs pt).toAK)] true
+  | .rsWeight r ps κ' ρ =>
+    .vals [.k (impl.rsWeight (rd regs r).toAF ((ps κ).map fun p => (rd regs p).toAK) (rd regs κ').toF
+      (rd regs ρ).toAK)] true
+  | .phiRS r a => .vals [.f (impl.phiRS (rd regs r).toAF (rd regs a).toF)] true
   | .walkA r c => .vals [.f (impl.walkA (rd regs r).toAF (rd regs c).toAF)] true
   | .walkB r c => .vals [.f (impl.walkB (rd regs r).toAF (rd regs c).toAF)] true
   | .kindInd r => .vals [.af (impl.kindInd (rd regs r).toAF)] true
@@ -366,7 +383,11 @@ def evalOp (impl : OpImpl) (κ : Kind) (inp : Input) (regs : Array Val) : Op →
   | .evalL t s =>
     let x := impl.evalL (rd regs t).toAF (rd regs s).toAF
     .vals [.f x.1, .f x.2.1, .f x.2.2] true
-  | .shiftTarget t h => .vals [.f (impl.shiftTarget (rd regs t).toAF (rd regs h).toAF)] true
+  | .evalMK t s =>
+    let x := impl.evalMK (rd regs t).toAF (rd regs s).toAK
+    .vals [.k x.1, .k x.2.1, .k x.2.2] true
+  | .shiftTarget t h bd =>
+    .vals [.f (impl.shiftTarget (rd regs t).toAF (rd regs h).toAF (rd regs bd).toAF)] true
   | .slotW sm t r => .vals [.f (impl.slotW sm (rd regs t).toAF (rd regs r).toAF)] true
   | .eqPt a b => .vals [.f (eqPoint (rd regs a).toAF (rd regs b).toAF)] true
   | .rowW l h => .vals [.af (impl.rowW (rd regs l).toF (rd regs h).toAF)] true
@@ -449,7 +470,7 @@ def semIR (impl : OpImpl) (P : VProg) (inp : Input) (tr : Trace) : Option Bool :
 
 /-- The registers an op appends. -/
 def Op.outs : Op → ℕ
-  | .evalM .. | .evalL .. | .kindSel => 3
+  | .evalM .. | .evalMK .. | .evalL .. | .kindSel => 3
   | .lagrangeS .. => 2
   | .splitDigest _ => 2
   | .assertEq .. | .assertBit .. | .assertZero .. | .assertOneHot .. | .accept => 0

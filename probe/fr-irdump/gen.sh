@@ -5,6 +5,8 @@ set -euo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd); R=$(cd "$HERE/../.." && pwd)
 # SRC: the entry's sources (default); a private view may be passed while a module is mid-edit.
 SRC=${SRC:-../../submissions/flock-recursive/lean}
+# every module of the entry (the finals import S-C/S-D modules)
+ROOTS=$(cd "$HERE" && ls "$SRC"/*.lean | xargs -n1 basename | sed 's/\.lean$//; s/.*/"&"/' | paste -sd, -)
 cat > "$HERE/lakefile.toml" <<EOT
 name = "frirdump"
 packagesDir = "$R/logs/pkgs"
@@ -14,7 +16,7 @@ path = "$R/logs/org"
 [[lean_lib]]
 name = "RFSubmission"
 srcDir = "$SRC"
-roots = ["FRFieldBase", "FRFieldBaseCorrect", "FRField128", "FRField256", "FRMerkle", "FRTranscriptDefs", "FRFormat", "FRVIR", "FRVIRSpec", "FRVIRFinals"]
+roots = [$ROOTS]
 [[lean_exe]]
 name = "irdump"
 root = "IRDump"

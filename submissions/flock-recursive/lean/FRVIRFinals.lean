@@ -1,5 +1,6 @@
 -- New for `flock-recursive` (BLUEPRINT §7, A.9; stage S-0 fix pass, S-0-M1).
 import FRVIRSpec
+import FRSkip
 
 /-!
 # The phase-final checks (`Finals`, A.9) and `gen`
@@ -117,39 +118,46 @@ def claimN (fi : FinIn) (name : String) : Reg := (outsOf fi name).getLastD 0
 /-- A squeeze phase's coordinates (after the packed array). -/
 def coordsR (fi : FinIn) (name : String) : List Reg := (outsOf fi name).drop 1
 
-/-- **`finZ`** (A.9, revision 3.8, skip-c): `eq((ρ, r), r′)·â·b̂ = c_Z`. Exports `â`, `b̂` and Z2's
+/-- The pinned coordinates `ρ₁ … ρ₇` (A.1, `FRSkip.pinnedRho`) as seven constant registers. -/
+def pinOps : List Op := (List.ofFn pinnedRho).map fun x => .const fun _ => .f x
+
+/-- **`finZ`** (A.9, revisions 3.8–3.9, skip-c): `eq((ρ, r), r′)·â·b̂ = c_Z` by `eqPt` (the pinned
+`ρ₁ … ρ₇` are the point's variables `0 … 6`, then Z1's free coordinates). Exports `â`, `b̂` and Z2's
 `P^z*(λ)`, the value of RS claim 1 (`ẑ(r, λ)`). -/
 def finZ : FinField := fun fi b =>
   let co := coordsR fi "Z1"; let rs := chals fi "Z3" 26
-  ([.packFK (fun κ => co.take (κ.m - 13)), .packFK (fun κ => rs.take (κ.m - 6)), .eqZ b (b + 1),
-    .piElem fZend 0, .piElem fZend 16, .mulF (b + 2) (b + 3), .mulF (b + 5) (b + 4),
-    .assertEq (b + 6) (claimN fi "Z3") allK],
-   [b + 3, b + 4, (outsOf fi "Z2").getD 2 0])
+  (pinOps ++
+   [.packFK (fun κ => [b, b + 1, b + 2, b + 3, b + 4, b + 5, b + 6] ++ co.take (κ.m - 13)),
+    .packFK (fun κ => rs.take (κ.m - 6)), .eqPt (b + 7) (b + 8),
+    .piElem fZend 0, .piElem fZend 16, .mulF (b + 9) (b + 10), .mulF (b + 12) (b + 11),
+    .assertEq (b + 13) (claimN fi "Z3") allK],
+   [b + 10, b + 11, (outsOf fi "Z2").getD 2 0])
 
-/-- `v_β = Σ_{i<7} β^i v_i` by Horner from `v₆` (register `b + 12`), the `v_i` at `b + 6 + i`, into
-`b + 22 … b + 33` (closed-form register numbers). -/
-def hornerOps (beta b : ℕ) : List Op := (List.range 6).flatMap fun i =>
-  [.mulF beta (if i = 0 then b + 12 else b + (21 + 2 * i)), .addF (b + (11 - i)) (b + (22 + 2 * i))]
+/-- `v_β = Σ_{i<8} β^i v_i` by Horner from `v₇` (register `b + 13`), the `v_i` at `b + 6 + i`, into
+`b + 23 … b + 36` (closed-form register numbers). -/
+def hornerOps (beta b : ℕ) : List Op := (List.range 7).flatMap fun i =>
+  [.mulF beta (if i = 0 then b + 13 else b + (22 + 2 * i)), .addF (b + (12 - i)) (b + (23 + 2 * i))]
 
-/-- **`finLc`** (A.9): (i) `c₀ = â + α b̂`; (ii) `c_Lc = Â(rowW′, eq(r_k,·)) + α B̂(rowW′, eq(r_k,·))`
-with `rowW′ = maskRows v rowW` (`v` the 7 `v_kind` of L3: the leaf's at `chain`, a node's at the
-other seven kinds); (iii) `Σ_i β^i v_i = α₂` (RS claim 2). Exports `v_β`. -/
+/-- **`finLc`** (A.9, revision 3.8.2): (i) `c₀ = â + α b̂`; (ii) `c_Lc = Â(rowW′, eq(r_k,·)) + α
+B̂(rowW′, eq(r_k,·))` with `rowW′ = maskRows v rowW` (9 entries in `blockKinds` order: the leaf's
+`v₀` at `chain`, a node's 8 `v` at the other kinds, `free` included); (iii) `Σ_{i<8} β^i v_i = α₂`
+(RS claim 2). Exports `v_β`. -/
 def finLc : FinField := fun fi b =>
   let α := (outsOf fi "L1").headD 0; let β := (outsOf fi "L3β").headD 0
   let oL3 := phaseOff (phaseIx "L3") fL2
-  let v := (List.range 7).map fun i => b + (6 + i)
+  let v := (List.range 8).map fun i => b + (6 + i)
   ([.piElem fZend 0, .piElem fZend 16, .mulF α (b + 1), .addF b (b + 2),
     .assertEq (b + 3) (claim0 fi "L2") allK,
     .packFK (fun _ => (chals fi "Z3" 26).take 8), .rowW ((outsOf fi "Z2").headD 0) (b + 4)] ++
-   (List.range 7).map (fun i => .piElem fL2 (oL3 + 16 * i)) ++
+   (List.range 8).map (fun i => .piElem fL2 (oL3 + 16 * i)) ++
    [.const (fun _ => .f 0),
-    .packFK (fun κ => if κ.isNode then (b + 13) :: v ++ [b + 13] else (b + 6) :: List.replicate 8 (b + 13)),
-    .maskRows (b + 14) (b + 5), .packF (chals fi "L2" 14), .eqTable (b + 16),
-    .walkA (b + 15) (b + 17), .walkB (b + 15) (b + 17), .mulF α (b + 19), .addF (b + 18) (b + 20),
-    .assertEq (b + 21) (claimN fi "L2") allK] ++
+    .packFK (fun κ => if κ.isNode then (b + 14) :: v else (b + 6) :: List.replicate 8 (b + 14)),
+    .maskRows (b + 15) (b + 5), .packF (chals fi "L2" 14), .eqTable (b + 17),
+    .walkA (b + 16) (b + 18), .walkB (b + 16) (b + 18), .mulF α (b + 20), .addF (b + 19) (b + 21),
+    .assertEq (b + 22) (claimN fi "L2") allK] ++
    hornerOps β b ++
-   [.assertEq (b + 33) (fi.zhat.getD 1 0) allK],
-   [b + 33])
+   [.assertEq (b + 36) (fi.zhat.getD 1 0) allK],
+   [b + 36])
 
 /-- The link families of the Sh phase (A.6, revision 3.5: at most 8). -/
 def nLinkFam : ℕ := 8
@@ -161,13 +169,33 @@ def linkOps (tau r ks b : ℕ) : List Op := (List.range nLinkFam).flatMap fun f 
    .addF (if f = 0 then b + 14 else b + (16 + 4 * f - 2)) (b + (16 + 4 * f + 1)),
    .mulF (if f = 0 then b + 15 else b + (16 + 4 * f - 1)) ks]
 
-/-- **`finSh`** (A.9): (i) `c₀ = shiftTarget τ θ`; (ii) `c_Sh = w_out ẑ_out + w_in ẑ_in`,
+/-- The 32-byte chaining value `h0` of BLAKE2s-256 (`FRBlockLayout.h0`, little-endian words). -/
+def h0Bytes : ByteArray := bytesOf [0x47, 0xE6, 0x08, 0x6B, 0x85, 0xAE, 0x67, 0xBB, 0x72, 0xF3,
+  0x6E, 0x3C, 0x3A, 0xF5, 0x4F, 0xA5, 0x7F, 0x52, 0x0E, 0x51, 0x8C, 0x68, 0x05, 0x9B, 0xAB, 0xD9,
+  0x83, 0x1F, 0x19, 0xCD, 0xE0, 0x5B]
+
+/-- `h0`'s two F elements. -/
+def h0lo : F := F.ofBytes (bytesAt h0Bytes 0 16)
+def h0hi : F := F.ofBytes (bytesAt h0Bytes 16 16)
+
+/-- **The shift's boundary values** (A.8 `shiftTarget … bnd`, revision 3.9), 7 registers from `b`:
+a leaf's `s` (`hdr`'s `pub`, bytes 16–47) and `h` (`stmt` bytes 1–32), two elements each; a node's
+`h0` twice. The array is register `b + 6`. -/
+def bndOps (b : ℕ) : List Op :=
+  [.piElem fHdr 16, .piElem fHdr 32, .piElem fStmt 1, .piElem fStmt 17,
+   .const (fun _ => .f h0lo), .const (fun _ => .f h0hi),
+   .packFK (fun κ => if κ.isNode then [b + 4, b + 5, b + 4, b + 5] else [b, b + 1, b + 2, b + 3])]
+
+/-- **`finSh`** (A.9): the boundary values (`bndOps`, registers `b … b + 6`), then (i)
+`c₀ = shiftTarget τ θ bnd`; (ii) `c_Sh = w_out ẑ_out + w_in ẑ_in`,
 `w_out = eq(τ, r_blk)·slotW 0 θ r_pos`, `w_in = (shift(τ, r_blk) + κ_s eq(0, r_blk))·slotW 1 θ
 r_pos + Σ_f κ_s^(f+2) linkW τ f r_blk` (`τ` S1's coordinates `0 …`, `θ` 18–27, `κ_s` 28; `r` S2's
 challenges, `r_blk` the first `m − 14`, `r_pos` the next 10). Exports `w_out`, `w_in`. -/
-def finSh : FinField := fun fi b =>
+def finSh : FinField := fun fi b₀ =>
   let co := coordsR fi "S1"; let rs := chals fi "S2" 28; let ks := co.getD 28 0
-  ([.packFK (fun κ => co.take (κ.m - 14)), .packF ((co.drop 18).take 10), .shiftTarget b (b + 1),
+  let b := b₀ + 7
+  (bndOps b₀ ++
+   [.packFK (fun κ => co.take (κ.m - 14)), .packF ((co.drop 18).take 10), .shiftTarget b (b + 1) (b₀ + 6),
     .assertEq (b + 2) (claim0 fi "S2") allK,
     .packFK (fun κ => rs.take (κ.m - 14)), .packFK (fun κ => (rs.drop (κ.m - 14)).take 10),
     .eqPt b (b + 3), .slotW 0 (b + 1) (b + 4), .mulF (b + 5) (b + 6),
@@ -215,9 +243,9 @@ theorem map_rd_app (L : List Val) (xs : List Reg) (h : ∀ x ∈ xs, x < r.size)
 /-- **`flag_finZ`**: `finZ` asks nothing, and its flag is A.9's relation (rev 3.8, skip-c). -/
 theorem flag_finZ (hin : ∀ x ∈ coordsR fi "Z1" ++ chals fi "Z3" 26 ++ [claimN fi "Z3"], x < r.size) :
     ∃ L, pureRun impl κ inp (finZ fi r.size).1 r [] = some (L,
-      let rr := (((coordsR fi "Z1").take (κ.m - 13)).map (fv r)).toArray
+      let rr := (List.ofFn pinnedRho ++ ((coordsR fi "Z1").take (κ.m - 13)).map (fv r)).toArray
       let rr' := (((chals fi "Z3" 26).take (κ.m - 6)).map (fv r)).toArray
-      (Val.f (impl.eqZ rr rr' * F.ofBytes (bytesAt inp.π (absOff fZend 0) 16) *
+      (Val.f (eqPoint rr rr' * F.ofBytes (bytesAt inp.π (absOff fZend 0) 16) *
         F.ofBytes (bytesAt inp.π (absOff fZend 16) 16))).eqv (rd r (claimN fi "Z3"))) := by
   simp only [List.mem_append, List.mem_cons, List.not_mem_nil, or_false] at hin
   have h1 := fun L => map_rd_app r L ((coordsR fi "Z1").take (κ.m - 13))
@@ -226,12 +254,13 @@ theorem flag_finZ (hin : ∀ x ∈ coordsR fi "Z1" ++ chals fi "Z3" 26 ++ [claim
     fun x hx => hin x (.inl (.inr (List.mem_of_mem_take hx)))
   have tf : ∀ x, (Val.f x).toF = x := fun _ => rfl
   have taf : ∀ x, (Val.af x).toAF = x := fun _ => rfl
-  simp only [finZ]
+  simp only [finZ, pinOps, List.ofFn_succ, List.ofFn_zero, List.map_cons, List.map_nil]
   generalize claimN fi "Z3" = cz at *
   have h5 := hin cz (.inr rfl)
-  simp only [pureRun, evalOp, tf, taf, List.nil_append, List.cons_append, h1, h2, rd_app, rd_app0,
-    rd_app_left _ _ h5, List.getD_cons_succ, List.getD_cons_zero, Option.map_some, Val.eqv, allK,
-    Bool.not_true, Bool.false_or, Bool.true_and, Bool.and_true]
+  simp only [pureRun, evalOp, tf, taf, List.nil_append, List.cons_append, List.map_append,
+    List.map_cons, List.map_nil, h1, h2, rd_app, rd_app0, rd_app_left _ _ h5, List.getD_cons_succ,
+    List.getD_cons_zero, Option.map_some, Val.eqv, allK, Bool.not_true, Bool.false_or, Bool.true_and,
+    Bool.and_true]
   exact ⟨_, rfl⟩
 
 /-- The F element at byte `o` of field `f`. -/
@@ -241,12 +270,12 @@ abbrev pe (f o : ℕ) : F := F.ofBytes (bytesAt inp.π (absOff f o) 16)
 def relLc : Bool :=
   let α := fv r ((outsOf fi "L1").headD 0); let β := fv r ((outsOf fi "L3β").headD 0)
   let oL3 := phaseOff (phaseIx "L3") fL2
-  let v := (List.range 7).map fun i => pe inp fL2 (oL3 + 16 * i)
-  let vk : List F := if κ.isNode then 0 :: v ++ [0] else v.headD 0 :: List.replicate 8 0
+  let v := (List.range 8).map fun i => pe inp fL2 (oL3 + 16 * i)
+  let vk : List F := if κ.isNode then 0 :: v else v.headD 0 :: List.replicate 8 0
   let rw := maskRows vk.toArray (impl.rowW (fv r ((outsOf fi "Z2").headD 0))
     (((chals fi "Z3" 26).take 8).map (fv r)).toArray)
   let cw := eqTab ((chals fi "L2" 14).map (fv r)).toArray
-  let vβ := (v.reverse.drop 1).foldl (fun acc x => x + β * acc) (v.getD 6 0)
+  let vβ := (v.reverse.drop 1).foldl (fun acc x => x + β * acc) (v.getD 7 0)
   (Val.f (pe inp fZend 0 + α * pe inp fZend 16)).eqv (rd r (claim0 fi "L2")) &&
   ((Val.f (impl.walkA rw cw + α * impl.walkB rw cw)).eqv (rd r (claimN fi "L2")) &&
   (Val.f vβ).eqv (rd r (fi.zhat.getD 1 0)))
@@ -302,14 +331,16 @@ def relSh : Bool :=
   let win := linkSum impl τ rb ks nLinkFam
     ((impl.shiftEq τ rb + ks * eqPoint (Array.replicate (κ.m - 14) 0) rb) * impl.slotW 1 θ rp)
     (ks * ks)
-  (Val.f (impl.shiftTarget τ θ)).eqv (rd r (claim0 fi "S2")) &&
+  let bnd : Array F := if κ.isNode then #[h0lo, h0hi, h0lo, h0hi]
+    else #[pe inp fHdr 16, pe inp fHdr 32, pe inp fStmt 1, pe inp fStmt 17]
+  (Val.f (impl.shiftTarget τ θ bnd)).eqv (rd r (claim0 fi "S2")) &&
   (Val.f ((wout + win) * fv r (fi.zhat.getD 2 0))).eqv
     (rd r (claimN fi "S2"))
 
 theorem flag_finSh (hin : ∀ x ∈ coordsR fi "S1" ++ chals fi "S2" 28 ++
       [claim0 fi "S2", claimN fi "S2", fi.zhat.getD 2 0, fi.zhat.getD 2 0,
        (coordsR fi "S1").getD 28 0], x < r.size) :
-    ∃ L, pureRun impl κ inp (finSh fi r.size).1 r [] = some (L, relSh impl κ fi r) := by
+    ∃ L, pureRun impl κ inp (finSh fi r.size).1 r [] = some (L, relSh impl κ inp fi r) := by
   simp only [List.mem_append, List.mem_cons, List.not_mem_nil, or_false] at hin
   have hco : ∀ x ∈ coordsR fi "S1", x < r.size := fun x hx => hin x (.inl (.inl hx))
   have hrs : ∀ x ∈ chals fi "S2" 28, x < r.size := fun x hx => hin x (.inl (.inr hx))
@@ -327,7 +358,7 @@ theorem flag_finSh (hin : ∀ x ∈ coordsR fi "S1" ++ chals fi "S2" 28 ++
     · exact .inr (List.getD_eq_default _ _ h)
   have tf : ∀ x, (Val.f x).toF = x := fun _ => rfl
   have taf : ∀ x, (Val.af x).toAF = x := fun _ => rfl
-  simp only [finSh, relSh]
+  simp only [finSh, relSh, bndOps]
   generalize claim0 fi "S2" = c0 at *
   generalize claimN fi "S2" = cN at *
   generalize fi.zhat.getD 2 0 = zo at *
@@ -335,13 +366,15 @@ theorem flag_finSh (hin : ∀ x ∈ coordsR fi "S1" ++ chals fi "S2" 28 ++
   have hc0 := hin c0 (.inr (.inl rfl)); have hcN := hin cN (.inr (.inr (.inl rfl)))
   have hzo := hin zo (.inr (.inr (.inr (.inl rfl))))
   have hk := hin ks (.inr (.inr (.inr (.inr (.inr rfl)))))
-  simp only [pureRun, evalOp, tf, taf, List.nil_append, List.cons_append, h1, h2, h3, h4, linkOps,
+  cases hκ : κ.isNode <;>
+  simp only [hκ, ite_true, ite_false, Bool.false_eq_true, Nat.add_assoc, List.map_cons, List.map_nil,
+    pureRun, evalOp, tf, taf, List.nil_append, List.cons_append, h1, h2, h3, h4, linkOps,
     nLinkFam, linkSum, List.range_succ, List.range_zero, List.flatMap_append, List.flatMap_cons,
     List.flatMap_nil, ↓reduceIte, Nat.reduceEqDiff, Nat.reduceAdd, Nat.reduceMul, Nat.reduceSub,
     rd_app, rd_app0, rd_app_left _ _ hc0, rd_app_left _ _ hcN,
     rd_app_left _ _ hzo, rd_app_left _ _ hk,
     List.getD_cons_succ, List.getD_cons_zero,
-    Option.map_some, allK, Bool.not_true, Bool.false_or, Bool.true_and, Bool.and_true]
+    Option.map_some, allK, Bool.not_true, Bool.false_or, Bool.true_and, Bool.and_true] <;>
   exact ⟨_, rfl⟩
 
 /-- **A.9's `finLr` relation** (node only) over the register values. -/

@@ -49,6 +49,7 @@
   `lean -DElab.async=false --profile …` on one core. With asynchronous elaboration, Lean's
   "type checking" figure includes kernel tasks waiting for the core, which inflated S-A's
   figure 2.5× (`reviews/S-A-golf.md`).
+- **Pace.** Work through your item list in one invocation. Stop only when it is done, when you are blocked, or when your context is genuinely long. Each stop-and-resume re-reads context and costs more than it saves. The user's budget concern is the number of concurrent agents, not the size of a chunk.
 - **Records.**
   - Keep a running `docs/v4/flock-recursive/stages/<stage>-JOURNAL.md`.
   - At the end, write `<stage>-RESULT.md`:
