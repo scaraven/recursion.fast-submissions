@@ -57,3 +57,11 @@ Base: branch `v4/flock-recursive`, HEAD `53c2e13`. Build tree `logs/fr-build-SH2
     intermediate state, with `FRXDsl.frame` for the registers a block does not write.
 15. Designed the remaining sort proof to avoid permutation tracking (membership + strict
     sortedness + injectivity, then a cardinality argument). Stopped on the token budget.
+
+## Part 4
+
+16. `FRXMerge`: the pure merge machine and its invariant compiled after four rounds. Notes: the
+    invariant's run-end clause had to allow the empty initial block (`jE = lo`), and an
+    alignment argument at block close distinguishes `jE = lo + 2w` from the empty block; the
+    `let` in `mstep` needs `dsimp only` before `by_cases` on `takeL`; `passes_ok` and
+    `keyLt_order` compiled first time. Stopped before the register-level simulation (step 2).

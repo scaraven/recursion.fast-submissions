@@ -319,3 +319,63 @@ in Part 2.
 - no `sorry`;
 - the source rule is clean;
 - `computes` is unchanged (`ext` still runs walk and sort; their costs are as in Part 2).
+
+---
+
+## Part 4: the merge sort's correctness, pure form (plan steps 1, 3, 4 and 5)
+
+**Delivered: `FRXMerge`** (436 lines, 364 code, 14 theorems).
+
+- **Step 1, the order.** `keyLt_order : SOrd (keyLt I)`. `keyLt` is irreflexive, transitive,
+  and total on distinct positions, through `lexW_irrefl`, `lexW_trans` and `lexW_total` (the
+  key's last word is the position).
+- **The pure machine.**
+  - `MS` holds the heads `i`/`j`, the run ends `iE`/`jE`, the output index `k`, the destination as
+    a function, and a ghost block start `lo`.
+  - `bstart` and `mstep` mirror `blockIR` and `stepIR` operation for operation, including
+    `jE = min(k + w + w, n)` and the choice rule `takeL`.
+  - `mrun` is `m` steps, and `passF` is a pass (`n` steps from the empty state).
+- **Steps 3 and 4.** `Good` is the per-block invariant: order of the indices, run ends,
+  alignment, `k + iE = i + j`, the current block strictly sorted and drawn from its own block,
+  below both heads, and finished blocks sorted and drawn from their own blocks.
+  - `good_bstart` and `good_mstep` show it is preserved; `good_mrun` iterates them.
+  - **`pass_ok`**: a pass on a source whose width-`w` runs are strictly sorted and which is
+    injective on `[0, n)` gives `PassOut`. Its width-`2w` blocks are strictly sorted and draw
+    their values from the same source block.
+  - `PassOut.inj` shows the output is injective. `PassOut.runs` shows the runs of the next
+    width `min(2w, n)` are sorted.
+- **Step 5.**
+
+  ```lean
+  theorem passes_ok (ho : SOrd lt) (hn : n < 2 ^ 63) (X ds : ℕ → ℕ → Word)
+      (hX : ∀ p, ∀ a < n, X (p + 1) a = passF lt (X p) n (wseq n p) (ds p) a)
+      (hinj : ∀ a b, a < n → b < n → X 0 a = X 0 b → a = b) :
+      (∀ a b, a < b → b < n → lt (X 64 a) (X 64 b) = true) ∧
+      (∀ a < n, ∃ c < n, X 64 a = X 0 c) ∧ (∀ c < n, ∃ a < n, X 64 a = X 0 c)
+  ```
+
+  After 64 passes at the widths `wseq n p = min(2^p, n)` (`wseq_eq`), the array is strictly
+  sorted and holds exactly the initial values. Completeness comes from a cardinality argument
+  (`Finset.eq_of_subset_of_card_le`); no permutation is tracked anywhere.
+- **Checks.**
+  - Axioms: `propext, Classical.choice, Quot.sound`.
+  - Sequential profile: 12.3 s wall, type checking 1.66 s (`logs/S-H2/FRXMerge.profile`).
+  - Source rule: 60 files, 0 findings. No `sorry`.
+
+**What remains for the sort's correctness: step 2, the machine simulation.** It is mechanical,
+but it is the largest register-level proof so far.
+
+- **`stepIR_sem`.** On a state whose registers hold an `MS` state (as words) and whose heap holds
+  `src` at `S + ·` and `dst` at `D + ·`, one `stepIR` gives `mstep`'s state. It uses
+  `cmpIR_sem`, the `minPs` identity `min` on words below `2^63`, the `eq`/`ltu` flags as `Nat`
+  comparisons, `rd_storeM` for the `dst` write, and the heap frame for `src`.
+- **`passIR_sem`.** `passIR = passF` on `[0, n)`, by induction over `iterL`. After a pass the
+  bases swap and `w := min(2w, n)` (`swapPs`).
+- **`sortIR_sem`.** Then `passes_ok` applies with `X 0` the walk's positions. These are
+  injective because `entryOff` is strictly increasing, and `walk_spec` gives them.
+
+**Then** comes the lookup by binary search: the lower bound of `(a, ·)` in `X`, specified as the
+first entry of `L` whose answer is `a`, against FRMerkle/FRLog's first-preimage reading.
+
+**Stopped here** on the token budget. The state is commit-ready: every `FRX*` module builds, no
+`sorry`, the source rule is clean, and `ext`, `computes` and the costs are unchanged.
