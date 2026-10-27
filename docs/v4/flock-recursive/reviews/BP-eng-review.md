@@ -343,3 +343,243 @@ magnitude. Eight things need a revision pass first:
 - missing normative interfaces (M8).
 
 Re-run `sizes.py` with M2/M3's corrections before re-reviewing.
+
+---
+
+## Round 2
+
+Reviewed: BLUEPRINT revision 2 (`de0d708`; fix pass §10, Appendix A), `logs/blueprint/sizes.{py,txt}`, and
+S-A's modules `submissions/flock-recursive/lean/FRField*.lean` (1,613 code lines, `loc.py`).
+
+New probes (`logs/blueprint/probe/r2/`, every command under `timeout`):
+
+- `BPeng2.lean` / `BPeng2.log`: clean.
+  - **Alignment** on a five-item trace in revision 2's layout (7-byte seed tag, then absorb,
+    squeeze, Merkle node, level-1 column): every payload and answer of the hashed stream
+    `tagTrace :: traceBytes` is at 0 mod 16 (offsets 16, 128, 176, 208, 256, 304, 336, 384, 448,
+    496, 752; length 784).
+  - **The claim's numbers**: `fuel_base = 2^47 + 2^46`; `D.fuel t ≤ extractorBudget t`;
+    `ε ≤ errorCap`; `δ = 0 ≤ completenessCap`; `qV ≤ 2^16`.
+- `render-r2.log`: `render-challenge.py` accepts revision 2's claim (exit 0).
+- `rerun-r1.log`: `B8.lean` and `BPeng.lean` still clean.
+- `appendixA.py` / `appendixA.log`: Appendix A's constants in Python.
+  - `ζ = x^((2^64−1)/255)` has order 255, and `x` is primitive in BF64.
+  - **The pinned-coordinate candidate fails**: rank 64, not 128.
+  - `ρⱼ = y^(2^j)`, `j = 1…7`, has rank 128.
+
+### Verdict per round-1 finding
+
+| Finding | Verdict | Note |
+|---|---|---|
+| M1 trace alignment | **closed** | 7-byte seed tag; probe above |
+| M2 T↔H identification, T size | **closed by redesign** | T dropped: a trace is its chain's H message slots, read by irregular entries. The pattern claims that replace the identification are new trouble (R2-M1) |
+| M3 variants, NN sizing | **partly closed** | One program `P30`, fixed dimensions, the fixed point cut. The per-slot mux of the two child kinds has no construction, theorem or honest count (R2-M2) |
+| M4 IR semantics, `queries_le` | **partly closed** | `FRVIRSpec` and a closed-form `queries_le` added. 1,200 lines against leanerVM's analog (#149 + #150, about 5 k added) is a budget risk (R2-m8). `runSeq_eq_runIR` drops `π` (R2-m2). A cycle in `runIR` (R2-M4) |
+| M5 XIR cost model | **partly closed** | Affine caps, `∃ n ≤ cost`, `cap_ok`: right. The runtime clamp `min(M[bound], capFn t)` needs `t`, which the machine never has (R2-m1) |
+| M6 seq steps, fuel, `m = 31` | **closed** | 86 steps per product, `invD`, fuel `2^47.5` (margin 1.27×, to be confirmed by S-H's `cost` lemma), `m = 31` struck |
+| M7 completeness | **closed** | `P := encode`, `δ = 0` via `complete_withError_zero` (`Library/Completeness.lean` l. 63) |
+| M8 normative interfaces | **partly closed** | Appendix A exists and pins most values. Several entries are wrong or missing (R2-M3); a cycle remains (R2-M4) |
+| m1 claim | **closed** | renders, probed |
+| m2 counts | **closed / new** | `sizes.txt` and the text agree on items and `qV`. A.3's rows no longer sum to `piSize` (R2-M3) |
+| m3 `W` cost | **partly closed** | Fast twin and byte reader are in. §3.3 still prices one `W` leaf (0.17 s) and ignores nesting (R2-m3) |
+| m4 `T_V` | **closed** | spec-hash pricing; S-B probe |
+| m5 controls | **closed** | |
+| m6 statement shapes | **closed** | MCA over K; `interpF`/`encF` twins |
+| m7 names, `accWith` | **closed** | |
+| m8 build plan | **partly closed** | Modules ≤ 1,200 lines. The stated serial path skips required edges, and the table lost its dependency column (R2-m4) |
+| m9 vocabulary | **closed** | |
+| m10 `progCap`, cost proofs | **closed** | |
+| m11 dump tool, service | **closed** for `gen` | No dump of `compile`'s layout (R2-M3 (g)) |
+
+### New majors
+
+**BP-E-R2-M1. The public-pattern claims are over the whole cube, and the node's honest witness fails them.**
+
+- **The claim covers every block.** §4 defines a pattern claim as
+  `Σ_i eq(θ, i) · z[blk i, s] = Σ_i eq(θ, i) · pat_s(i)`, summing over all `2^(m−14)` blocks,
+  checked as a point evaluation (§2.3 step 5: `θ` plus one univariate round, no sumcheck over the
+  block index).
+- **The node's non-H blocks carry data there.** In the node, the M, L and P blocks hold witness
+  data at every bit position the patterns name. For example, bit 1,152 (`one`) of an M block is
+  bit 0 of an F row. So:
+  - `one` ("1 on used blocks"), `t_lo`/`f0`/padding "over the two ranges", and "`Sel`'s complement
+    blocks all zero" cannot hold for an honest node;
+  - `node_sound`'s hypothesis `∀ i ∈ usedH, z[blk i, one] = 1` is not what such a claim yields.
+- **Sh has one round where it needs a block sumcheck.** `Σ_i eq(τ,i) R(i) (…)` over `2^(m−14)`
+  blocks needs `m − 14` rounds (16 or 18). `sizes.py` (`fs_items`: "tau, 1 round, collapse round")
+  and A.3 ("S2 round 48") count one, so the item sequence, `piSize` and §5.2's S rows are all short.
+- **Fix.** Restrict every range claim:
+  - either decompose each range (the used H prefix, each chain, the chain-end blocks) into
+    aligned sub-cubes, one evaluation claim per sub-cube (about 7 per range) at block coordinates
+    of that sub-cube's size, all batched in B;
+  - or use one range-indicator sumcheck (`eq · R · z`, degree 3, `m − 14` rounds) per claim group,
+    as for Sh.
+  Then give Sh its `m − 14` rounds, recount items, `piSize` and §5.2's S and I rows, and restate
+  `Patterns` as range claims.
+
+**BP-E-R2-M2. The mux of the two child kinds is the load-bearing new construction, and it has no definition, theorem or honest row count.**
+
+- **What the plan says.** B-2 and §4.3: "the templates that differ between the two child kinds
+  are muxed by rows (both import sets exist; the selector zeroes one)".
+- **Only constants are cheap to mux.** A witness bit `s` times a public constant is a linear form,
+  so muxing constants is free. But `gen L32` and `gen P30` differ in *structure*: ladder depths
+  (11 vs 9 siblings per level-0 query), `k`, item counts (8,786 vs 7,193), the final `Enc` (16 vs 4
+  K-elements), and the P30-only `evalM`/Lr/E replay.
+- **No sharing compiler or theorem exists.** `compile : VProg → rows` and `compile_sound` are
+  stated for one program. Nothing makes one row set that serves two programs, and nothing says
+  how an `assertEq` against a tag constant, or a Merkle step, of the unselected program is
+  disabled. Each needs a gating row `s · (a − b) = 0`, or a step `cur′ = cur + s·(…)`.
+- **The row count assumes sharing.** `sizes.py` (l. 66–73) counts both import sets but only one
+  set of folds, Merkle steps, `Enc`, eq tables and lincheck replay (L32's), i.e. a max.
+  - Without a sharing compiler the count is about the sum: about 0.89 M rows per slot,
+    1.78 M = `2^20.8` per node.
+  - That still fits `N_M = 2^21` but at 1.18×, not 1.50×.
+  - At about 13,900 blocks, M runs past L's base (R2-m5).
+- **The chain-end patterns are witness-dependent.** The patterns at a chain's end (`t_lo = |B|`
+  and `f0` at block `N−1`, the zero padding after the stream) differ between an L32 child (22,170
+  compressions) and a P30 child (19,343). §4.2 calls them "kind-selected". The kind is a
+  *committed* selector, not public to the parent's `V` (the node header carries no child kinds),
+  so these are not public patterns.
+- **Fix.**
+  - Specify the mux: a superprogram per slot with per-op activity, the list of ops that need a
+    gating row, and `compile_mux_sound`. Or adopt B-2's own enumeration fallback (two pairs
+    occur: `(L32,L32)` at tree level 1, `(P30,P30)` everywhere else) with a public pair byte in
+    the node header.
+  - Put the children's kinds in the node's header (absorbed in the seed), so the chain-end
+    patterns are public.
+  - Recount with gating, and re-run `nodeLayout`'s two `decide`s.
+
+**BP-E-R2-M3. Appendix A is not yet complete enough for the tracks to fork without guessing.** It pins the fields, `D` and the novel basis, `ζ` and the skip sets (`ζ`'s order checked:
+`appendixA.log`), the tags, the column order, the coordinate split and the block layout. It gets
+the following wrong or leaves them open:
+
+- **(a) The pinned coordinates fail.** The candidate `ρⱼ := (x^(2^(j+3)), 0)` lies in `BF64`, a
+  64-dimensional space over GF(2), so its 128 products have rank ≤ 64 (computed: 64). The
+  `pinned_rank` certificate can never pass. `ρⱼ := y^(2^j)`, `j = 1…7`, gives rank 128
+  (`appendixA.log`). Pin a value that passes.
+- **(b) Repeated positions contradict the fixed layout.** A.2 says "each repeated position is
+  opened once in the trace". Then the number of column and Merkle queries, the item sequence,
+  `piSize`, the trace length and the chain length all depend on the answers. That contradicts
+  "`|π| = piSize kind` exactly", "the item sequence of `gen kind` is fixed" (A.4) and the fixed H
+  ranges. Open every index (duplicate queries in the trace; `runSeq` allows them).
+- **(c) `piSize` is not pinned.** A.3's rows sum to **745,920 / 692,400**, not the stated
+  743,888 / 690,368. Row 5 is explicitly unresolved (`3 × 2,048` bytes either way). The
+  node-only rounds are 3,552 B by row 5's own formula but 2,880 in §1.1 and row 5's column. Sh's
+  missing rounds (R2-M1) add more.
+- **(d) The item sequence is not written down.** Missing:
+  - which proof fields go into which absorb;
+  - absorb-before-squeeze per round;
+  - the squeezes per phase;
+  - the per-position order of the column query and its Merkle-node queries.
+  A.4 cites `items kind` and `items_length` but gives no table. The Rust prover, `reassemble`, the
+  replay and the potential's phases all depend on this sequence.
+- **(e) `reassemble` takes the statement fields from the wrong item.** A.4 takes "the header and
+  statement fields from item 0's payload", and §4.2 wires `hashStmt` "to the header fields read
+  from the seed payload". But §2.3 step 0 absorbs the statement fields (`enc64 n ‖ h`, `c₁ ‖ c₂`)
+  in item 1. The seed holds `vk ‖ c ‖ hdr` only.
+- **(f) A.5 is not complete despite "No `...`".**
+  - It has no op that reads a proof field or a cap entry out of `π`, and none that builds an
+    absorb's byte string `B` from fields.
+  - The register types (F, K, D, B, N, Bit) omit the arrays that `eqTable → F[2^v]` and
+    `lagrangeS : F[128] → …` use.
+  - `mbp`'s operands are "F^7, …".
+  - `patternSum` takes a "pattern id" from a list that is never enumerated.
+- **(g) The compiled circuit's layout is not pinned.** The native prover must build a node
+  witness that satisfies exactly Lean's `compile (gen P30)` (`V` evaluates `evalM` from it). But
+  three things are absent: the M/L layout (template bases and strides, the L-region map of
+  signatures, digits, position bits and selectors), the `z → f` pack (which of 128 consecutive
+  bits is bit `i` of `c₀`/`c₁`), and a dump/KAT of `compile`'s output (§8.6 dumps `gen` only).
+- **Fix.** S-0 publishes, before the fork:
+  - a valid `ρ`;
+  - "open every index";
+  - `piSize` as a checked sum;
+  - the item table per phase;
+  - the corrected `reassemble`;
+  - the missing ops and types;
+  - the pack map;
+  - a second dump tool, for `compile`'s `nnz` and layout, with a Rust KAT.
+
+**BP-E-R2-M4. There is a cycle in S-0's own modules.**
+
+- **`evalM`.** `FRVIR` holds `runIR`, which must execute A.5's `evalM`/`evalL` ("the node's
+  matrix MLEs"). Their implementation is `FRVIREval` (L-circ), which is generated from
+  `compile (gen P30)` and imports `FRVIR`.
+- **`items`.** `FRFormat.reassemble` needs `items kind`, which A.4 attributes to `gen`/`FRVIRSpec`.
+  But "`FRVIR` imports `FRTranscriptDefs` and `FRFormat` only".
+- **Fix.** Parametrise the interpreter by an op-implementation record
+  (`runIR (impl : OpImpl)`, with `evalM`, `evalL` and optionally `walk`/`mbp`/`lagrangeS` inside),
+  instantiated in `FRVerifier`. `FRVIRSpec` then states semantics against the record's
+  specification, and `FRVIREval` proves its instance meets it (`evalM_eq`). Define `items` in
+  `FRTranscriptDefs` and prove `gen`'s asks follow it in `FRVIRSpec`.
+
+### New minors
+
+- **BP-E-R2-m1.** The XIR clamp `min(M[bound], capFn t)` (§6.4) needs `t` in a register. The
+  machine has no tape-length op, and computing `t` takes a scan over `|L|` entries, the very loop
+  to be bounded.
+  - Drop the clamp. State `compile_runs` under a hypothesis `BoundsOk P tape` (each `for` bound's
+    value ≤ `capFn t` on entry).
+  - Prove `BoundsOk extIR` on `extractorInput` tapes (`cap_ok`, through `semXIR`).
+  - `Computes` only quantifies over such tapes.
+- **BP-E-R2-m2.** `runSeq_eq_runIR` (§3) is stated as `semIR (gen k) (answers tr) = accept`. The
+  program also reads `vk`, `c` and `π`'s fields, so state it over `(vk, c, π, answers tr)`.
+- **BP-E-R2-m3.** §3.3 still says one `W` leaf (≤ 2^20 compressions, 0.17 s) is "within
+  `10 · T_V`". Nested `W` nodes multiply that: about 200 `W` leaves fit in 1 MiB, about 35 s.
+  Either state the argument that only the run's own prover can sign under a run's `vk` (the key
+  dies with the service, and the DoS inputs carry no valid signature), or bound the nesting.
+- **BP-E-R2-m4.** The stated serial path (§7, about 9 k lines) jumps `FRSoundnessDefs →
+  FRSoundnessStepB → FRSoundnessFinal`. The real path also runs through `FRMerkle → FRLog`
+  (μ is defined on the log's forest), `FRSoundnessStepA` (`muG_step` needs every row),
+  `FRSoundnessLigerito` (`final` uses it), and joins the `FRVIRCompile → FRVIREval → FRWots →
+  FRNodeLayout → FRNodeCircuit` chain. Reconstructed path:
+  `FieldBase → FieldDefs → TranscriptDefs → Format → VIR → VIRSpec → Verifier → Transcript →
+  Merkle → Log → SoundnessDefs → StepA → StepB → Ligerito → SoundnessFinal → KState →
+  Submission → Final`, about 11.9 k lines, i.e. about 360 s single-threaded on a runner. That is
+  still under 600 s, but the margin is about 1.3× once contention is added. Restore the
+  dependency column and compute the path by script from the imports, from S-0 on.
+- **BP-E-R2-m5.** The node layout overlaps itself. M is allotted `N_M = 2^21` elements = 16,384
+  blocks from block 49,152, which covers L (61,440) and P (65,535). The slot stride `2^20`
+  elements (§4.4) starts slot 1 at block 57,344, and its 701 k rows (about 5,480 blocks) end at
+  about 62,824, past L's base. Move L and P into the free H gap `[45,348, 49,152)` (3,804 blocks).
+- **BP-E-R2-m6.** S-0's definition of done ("statements; proofs may be `sorry`-free skeletons
+  with the phase lemmas stated") contradicts itself. Say which lemmas S-0 must prove, which may
+  carry `sorry` on the branch until their track closes them, and that the merged entry has none.
+- **BP-E-R2-m7.** The kernel certificates are sized for `decide`; ship certificates instead.
+  - `pinned_rank` ("`decide +kernel` on a 128 × 128 bit matrix"): ship the inverse matrix (or a
+    row-echelon certificate) and check `M · M⁻¹ = I` by `decide`. That is linear kernel work,
+    not a Gaussian elimination.
+  - `D_inj` ("`decide` on words" over `2^20` indices) is a one-line injectivity proof, not an
+    enumeration.
+- **BP-E-R2-m8.** `FRVIR` + `FRVIRSpec` at 2,200 lines carry the per-phase semantics of about
+  15 phases: five Ligerito levels, four univariate rounds, MBP, walks, `evalM`, tensor weights.
+  leanerVM's equivalent layer added about 5 k lines. Add an S-0 mid-point kill test: one phase
+  (Z) end to end, with its line count extrapolated.
+
+### Appendix A: can each track start?
+
+| Track | From Appendix A today | Blocked by |
+|---|---|---|
+| L-field | done (S-A) | — |
+| L-pcs | yes: `D`, novel basis, `Enc`, tensor identity, `C_mca` parametric | — |
+| L-ext | `FRXDsl`/`FRXField` yes | R2-m1 (theorem shape); `FRXDecode`/output need S-0's `items`/`reassemble` (R2-M3 (d, e)) |
+| L-piop | sumcheck, skip, ring switch, Spartan yes | `FRPatterns`/`FRShift`: R2-M1; `pinned_rank`: R2-M3 (a) |
+| L-circ | BLAKE2s, block, leaf circuit yes | compile/mux/node: R2-M2, R2-M3 (f, g), R2-M4 |
+| L-cert | oracle, Merkle, log yes | phases and `final` need S-0's `gen`/item table (R2-M3 (d)) |
+| P | field, NTT, BLAKE2s, leaf witness, Merkle/service yes | protocol layer: R2-M3 (a, b, c, d, g) |
+
+### Overall verdict (round 2)
+
+**Not ready for every track to fork.** Revision 2 closes M1, M6 and M7, removes T, cuts the fixed
+point, and gives an appendix that pins most values. Four things remain, all S-0-sized: no
+cryptographic redesign and no change to the budget's order of magnitude.
+
+- The range claims that replaced the identification do not hold for the node, and Sh has one
+  round where it needs a block sumcheck (R2-M1).
+- The child-kind mux, the central device of B-2, is unspecified and counted as a max (R2-M2).
+- Appendix A has a pinned constant that cannot pass its certificate, a self-contradictory
+  repeat rule, an unpinned `piSize`, no item table, and no pinned circuit layout (R2-M3).
+- S-0's modules have a cycle (R2-M4).
+
+L-pcs, L-ext's DSL, L-piop's core sumcheck modules, L-circ's BLAKE2s/leaf modules and P's field,
+NTT and leaf kernels can proceed now. The rest should fork after an S-0 revision closes R2-M1–M4,
+with `sizes.py` re-run.
