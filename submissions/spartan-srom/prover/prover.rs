@@ -1,0 +1,260 @@
+//! `proveLeaf` (BLUEPRINT-R1 §1.4): the honest leaf proof, byte for byte as §7 (v3's), under an
+//! oracle (`oracle.rs`). The protocol is deterministic given the oracle. The Merkle leaves (one
+//! query per column) and each Merkle level are asked as one batch; the transcript is sequential.
+
+use std::time::Instant;
+
+use crate::blake2s::{chain_end, Digest};
+use crate::chain::{leaf_size, witness, Shape, T_COLS};
+use crate::circuit::Circuit;
+use crate::field::{E, K};
+use crate::mle::eq_table;
+use crate::par;
+use crate::ringswitch::{target, PhiTab, STAGES};
+use crate::rs::Code;
+use crate::sumcheck::{bytes_of, inner, outer, product_sumcheck, slices, KIND_RS};
+use crate::oracle::{Oracle, Trace};
+use crate::transcript::{Merkle, Transcript};
+
+pub struct Timings(pub Vec<(&'static str, f64)>);
+
+impl Timings {
+    pub fn report(&self) -> String {
+        self.0.iter().map(|(k, v)| format!("{k}={v:.3}s")).collect::<Vec<_>>().join(" ")
+    }
+}
+
+/// The 80-byte leaf header `enc64 0 ‖ s ‖ enc64 n ‖ h`.
+pub fn leaf_header(s: &Digest, n: u64, h: &Digest) -> Vec<u8> {
+    let mut out = Vec::with_capacity(leaf_size(n));
+    out.extend_from_slice(&0u64.to_le_bytes());
+    out.extend_from_slice(s);
+    out.extend_from_slice(&n.to_le_bytes());
+    out.extend_from_slice(h);
+    out
+}
+
+/// `Σ_i c_i Q[i]` for `c ∈ E^m`, `Q` the `m × k` matrix of words.
+fn combine_rows(q: &[u64], m: usize, k: usize, c: &[E]) -> Vec<E> {
+    par::collect_vec(k, 1 << 10, |j| {
+        let mut acc = E::ZERO;
+        for i in 0..m {
+            acc += c[i].mul_k(K(q[i * k + j]));
+        }
+        acc
+    })
+}
+
+/// The honest leaf proof for `(s, n)`, and the timings of its phases. With `log`, the
+/// transcript's state sequence is returned too.
+/// The challenges and tables of one leaf proof (the known-answer harness, `kat.rs`).
+#[derive(Default)]
+pub struct LeafTrace {
+    pub tau: Vec<E>,
+    pub r_x: Vec<E>,
+    pub rho: E,
+    pub r_y: Vec<E>,
+    pub f: Vec<E>,
+    pub r2: Vec<E>,
+    pub w: Vec<u64>,
+    pub a: Vec<u64>,
+    pub b: Vec<u64>,
+    pub c: Vec<u64>,
+    pub h: Digest,
+}
+
+pub fn prove_leaf(
+    circ: &Circuit,
+    o: &dyn Oracle,
+    s: &Digest,
+    n: u64,
+    log: bool,
+) -> (Vec<u8>, Timings, Option<Vec<(String, Digest)>>) {
+    prove_leaf_traced(circ, o, s, n, log, None)
+}
+
+pub fn prove_leaf_traced(
+    circ: &Circuit,
+    o: &dyn Oracle,
+    s: &Digest,
+    n: u64,
+    log: bool,
+    trace: Option<&mut LeafTrace>,
+) -> (Vec<u8>, Timings, Option<Vec<(String, Digest)>>) {
+    prove_leaf_core(circ, o, s, n, log, trace, None)
+}
+
+/// The leaf proof; with `otr`, also the verifier's trace of it (`verifier::verify_snark`'s queries
+/// in order with their answers): the transcript's queries, which the verifier repeats from `π`,
+/// then each opened column's leaf and path queries, with the answers the prover got. Equal to the
+/// replay of the verifier against the prover's answers (`make::prove_traced` checks it with
+/// `SPARTAN_REPLAY=1`; the tests compare both).
+pub fn prove_leaf_core(
+    circ: &Circuit,
+    o: &dyn Oracle,
+    s: &Digest,
+    n: u64,
+    log: bool,
+    trace: Option<&mut LeafTrace>,
+    otr: Option<&mut Trace>,
+) -> (Vec<u8>, Timings, Option<Vec<(String, Digest)>>) {
+    let mut tm = vec![];
+    if n == 0 {
+        return (leaf_header(s, 0, s), Timings(tm), None);
+    }
+    let t0 = Instant::now();
+    let mut lap = |name: &'static str, t: &mut Instant| {
+        tm.push((name, t.elapsed().as_secs_f64()));
+        *t = Instant::now();
+    };
+    let mut t = Instant::now();
+    let sh = Shape::new(n);
+    let mut wit = witness(circ, &sh, s);
+    debug_assert_eq!(wit.h, chain_end(s, n));
+    debug_assert!(crate::chain::sat_tables(&wit));
+    lap("witness", &mut t);
+
+    // Ligero commitment (§5.3): rows Q[i] = q(j + k i), encoded over K
+    let (m, k, nn, ln) = (sh.m, sh.k, sh.nn, sh.ln);
+    let q = &wit.w;
+    let code = Code::new(sh.lk, ln);
+    let tw = code.twiddles();
+    let mut u: Vec<Vec<K>> = vec![vec![]; m];
+    par::for_each_chunk_mut(&mut u, 1, |off, rows| {
+        for (i, row) in rows.iter_mut().enumerate() {
+            let msg: Vec<K> = q[(off + i) * k..(off + i + 1) * k].iter().map(|&x| K(x)).collect();
+            *row = code.encode_k_tw(&msg, &tw);
+        }
+    });
+    lap("encode", &mut t);
+    let col_bytes = |c: usize| -> Vec<u8> {
+        let mut b = Vec::with_capacity(8 * m);
+        for row in u.iter() {
+            b.extend_from_slice(&row[c].to_bytes());
+        }
+        b
+    };
+    let mut answers = vec![[0u8; 32]; nn];
+    o.ask_many(&mut answers, &|c, b: &mut Vec<u8>| {
+        b.push(0x00);
+        for row in u.iter() {
+            b.extend_from_slice(&row[c].to_bytes());
+        }
+    });
+    let tree = Merkle::build(o, answers);
+    let root = tree.root();
+    lap("merkle", &mut t);
+
+    let mut tr = Transcript::new(o, s, n, &wit.h, log);
+    if otr.is_some() {
+        tr = tr.traced();
+    }
+    tr.absorb(0x01, &root);
+    let rcoef: Vec<E> = (0..m).map(|_| tr.squeeze_e()).collect();
+    let ubar = combine_rows(q, m, k, &rcoef);
+    tr.absorb(0x02, &bytes_of(&ubar));
+    let tau: Vec<E> = (0..sh.ell).map(|_| tr.squeeze_e()).collect();
+    lap("proximity", &mut t);
+
+    let mut bits = [std::mem::take(&mut wit.a), std::mem::take(&mut wit.b), std::mem::take(&mut wit.c)];
+    let out = outer(&sh, &mut bits, &tau, &mut tr, trace.is_some());
+    [wit.a, wit.b, wit.c] = bits;
+    lap("outer", &mut t);
+    let [va, vb, vc] = out.v;
+    tr.absorb(0x04, &bytes_of(&out.v));
+    let rho = tr.squeeze_e();
+    let inn = inner(circ, &sh, &wit, s, &out.r_x, rho, va + rho * vb + rho * rho * vc, &mut tr);
+    lap("inner", &mut t);
+
+    // slices and ring switching (§4)
+    let r_y = &inn.r_y;
+    let r_lo = &r_y[..6];
+    let r_hi = &r_y[6..sh.lw];
+    let eq_hi = eq_table(r_hi);
+    let sl = slices(q, &eq_hi);
+    debug_assert_eq!(
+        {
+            // z̃(r_y) = (1 + r_ytop) w̃(r_u) + r_ytop pub̃(r_u), w̃(r_u) = Σ_i eq(r_lo, i) s_i
+            let el = eq_table(r_lo);
+            let wt = (0..64).fold(E::ZERO, |a, i| a + el[i] * sl[i]);
+            let ytop = r_y[sh.lw];
+            (E::ONE + ytop) * wt + ytop * crate::chain::pub_mle(s, &wit.h, &r_y[..sh.lw])
+        },
+        inn.final_z,
+        "slices"
+    );
+    tr.absorb(0x06, &bytes_of(&sl));
+    let f: [E; STAGES] = std::array::from_fn(|_| tr.squeeze_e());
+    let phit = PhiTab::new(&f);
+    let tgt = target(&f, &sl);
+    let wv = par::collect_vec(eq_hi.len(), 1 << 12, |i| phit.apply(eq_hi[i]));
+    drop(eq_hi);
+    let qe = par::collect_vec(q.len(), 1 << 14, |i| E::from_k(K(q[i])));
+    let (rs_polys, r2, _wfin, qfin) = product_sumcheck(wv, qe, tgt, KIND_RS, &mut tr);
+    lap("ringswitch", &mut t);
+
+    // Ligero evaluation (§5.4)
+    let a = eq_table(&r2[sh.lk..]);
+    let v = combine_rows(q, m, k, &a);
+    debug_assert_eq!(
+        {
+            let b = eq_table(&r2[..sh.lk]);
+            (0..k).fold(E::ZERO, |acc, j| acc + b[j] * v[j])
+        },
+        qfin
+    );
+    let _ = qfin;
+    tr.absorb(0x08, &bytes_of(&v));
+    let idx = tr.squeeze_indices(T_COLS, ln);
+
+    // bytes (§7)
+    let mut bytes = leaf_header(s, n, &wit.h);
+    bytes.extend_from_slice(&root);
+    bytes.extend_from_slice(&bytes_of(&ubar));
+    for g in &out.polys {
+        bytes.extend_from_slice(&bytes_of(g));
+    }
+    bytes.extend_from_slice(&bytes_of(&out.v));
+    for g in &inn.polys {
+        bytes.extend_from_slice(&bytes_of(g));
+    }
+    bytes.extend_from_slice(&bytes_of(&sl));
+    for g in &rs_polys {
+        bytes.extend_from_slice(&bytes_of(g));
+    }
+    bytes.extend_from_slice(&bytes_of(&v));
+    for &c in &idx {
+        bytes.extend_from_slice(&col_bytes(c));
+        for lab in tree.path(c) {
+            bytes.extend_from_slice(&lab);
+        }
+    }
+    assert_eq!(bytes.len(), leaf_size(n));
+    if let Some(ot) = otr {
+        *ot = tr.trace.take().unwrap();
+        for &c in &idx {
+            let mut q = Vec::with_capacity(1 + 8 * m);
+            q.push(0x00);
+            q.extend_from_slice(&col_bytes(c));
+            tree.open_trace(c, q, ot);
+        }
+    }
+    if let Some(tc) = trace {
+        *tc = LeafTrace {
+            tau: tau.clone(),
+            r_x: out.r_x.clone(),
+            rho,
+            r_y: inn.r_y.clone(),
+            f: f.to_vec(),
+            r2: r2.clone(),
+            w: wit.w.clone(),
+            a: wit.a.clone(),
+            b: wit.b.clone(),
+            c: wit.c.clone(),
+            h: wit.h,
+        };
+    }
+    lap("open", &mut t);
+    tm.push(("total", t0.elapsed().as_secs_f64()));
+    (bytes, Timings(tm), tr.log)
+}
