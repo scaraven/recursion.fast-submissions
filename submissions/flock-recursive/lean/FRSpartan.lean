@@ -9,37 +9,32 @@ import FRShift
 /-!
 # Zerocheck and lincheck soundness (rows Z1–Z3, L1–L2, Lr1–Lr4, E1–E4)
 
-**The block zerocheck** (rev. 3.2 §2.3 step 2, §4). The witness is laid out as 64 skip slices
-`i` (the 6 low position bits, ranging over `S`) of tables on the other `ℓ = m − 6` variables `u`.
-The tables `a = (I ⊗ A₀) z`, `b = (I ⊗ B₀) z`, `z` and the public target `E` are bit-valued; `Sel`
-(the used-block indicator) is a bit-valued table on `u` (constant along positions). The relation
-`BHolds`: `a · b = z + E` wherever `Sel = 1` (characteristic two). The residual
-`bzRes i u = Sel(u) · (a b + z + E)` is bit-valued.
+**The block zerocheck** (rev. 3.8 §2.3 step 2: the whole cube, `Sel ≡ 1` with the non-hash blocks
+of kind `free`; skip-c). The witness is laid out as 64 skip slices `i` (the 6 low position bits,
+ranging over `S`) of tables on the other `ℓ = m − 6` variables `u`. The tables `a = (A z)`,
+`b = (B z)`, `z` and the public target `E` are bit-valued; `BHolds`: `a · b = z + E`
+(characteristic two); the residual `bzRes = a b + z + E` is bit-valued.
 
 | step | doom | lemma | count |
 |---|---|---|---|
 | start | some residual slice nonzero | `bz_start` | — |
 | Z1 pinned (7 coordinates) | still nonzero after `fixLow` at `ρ` | `pinned_sound` (`FRSkip`) | 0 |
 | Z1 free coordinates | still nonzero | `zerocheck_bad_le` | 1 each |
-| Z1 end | `P*(node i) ≠ 0` for some `i ∈ S` | `bz_end`, `bzPoly_node` | — |
-| Z2 `λ` | the interpolated claim `≠ P*(λ)` | `zc_skip_bad_le` (`FRSkip`), `bzPoly_natDegree` (≤ 126) | 127 |
-| Z3 rounds | `claim ≠ trueSum` (`bzExpr = w(ab + z) + W_E`, degree 3) | `round_escape_le` | 3 each |
-| Z3 end | the triple `(â, b̂, ẑ)` is wrong | `bz_final`, `bz_triple_wrong` | — |
+| Z1 end | `P^{ab} ≠ P^z + P^e` at a node of `S` | `bz_end`, `bz_node` | — |
+| Z2 `λ` | a reconstructed value `≠` the truth at `λ` | `skip_pair_bad_le` (`FRSkip`), `pabPoly_natDegree` (≤ 126), `pzPoly_natDegree` (≤ 63) | 126 |
+| Z3 rounds | `claim ≠ trueSum` (`bzExpr = w · a · b`, degree 3) | `round_escape_le` | 3 each |
+| Z3 end | the pair `(â, b̂)` is wrong | `bz_final` (`eq(r, r′) â b̂`), `bz_triple_wrong` | — |
 
-`P*(Y) = Σ_u ŵ(u) (Â(Y,u) B̂(Y,u) + Ẑ(Y,u) + Ê(Y,u))` with `ŵ = eq(r,·) Sel` (the weight of
-BP-C-R4-m1, never `Sel ⊗ A₀`) and `Â(Y, u)` the quirky (skip-interpolated) extension
-`skipExt`. **The weight's final value** is a prefix sum: `prefixP` sums a product weight
-`Π_l e_l(x_l)` over `x < c` in `O(n²)` (`prefixP_eq`); `selWeight_eq` gives
-`ŵ(r′) = Σ_x eq(r′,x) eq(r,x) Sel(x)` over `Sel`'s intervals (`selOf`) as differences of
-`prefixP`, and `selWeight_split` separates the position part (`eq(r_pos, r′_pos)`) from the block
-part. It is not `eq(r, r′) · Sẽl(r′)` (`selWeight_ne_control`).
+The c-claim `ẑ(r, λ) = P^z*(λ)` goes to ring switching as claim 1 (`quirky_claim_split`,
+`FRRingSwitch.rs1_four`). `prefixP`/`selOf` serve `FRPubTarget` (`selWeight_eq` is withdrawn with
+`Sel ≡ 1`). `rowW`, `rowW_eq` (A.8): the lincheck's quirky row weights.
 
 **The lincheck, per kind** (rev. 3.4, S-C-M1): `A = Σ_κ Ind_κ ⊗ A₀^κ`; the sumcheck runs on the
 per-kind folded columns (`kindExpr`, `kindTables`, `zfoldK`; degree 2): `lin_trueSum_kinds`
 (true sum `â* + α b̂*`, `linAK`), `lin_final_kinds` (`Σ_κ M̃_κ(r_k) v_κ`), `lin_walk_adjust` (one
 walk with `rw′ = rw · Σ_κ v_κ free_κ`), `zfoldK_mle` and `lin_beta_claim` (the `v_κ` batched by
-`β` are one weighted claim with the public weight `W_β`), `lin_beta_le` (row L3: 6 of `|F|` for 7
-kinds). Z3's summand is `w · (ab + z) + W_E` (S-C-M2; `targetMLE_eq` gives `Ŵ_E(λ, ρ)`).
+`β` are one weighted claim with the public weight `W_β`), `lin_beta_le` (row L3: 8 of `|F|` for 9
+kinds, `free` included), `linM_free` (the `free` kind, `A₀ = B₀ = I`: `(1 + α)·rowW`, no walk).
 
 **The single-kind lincheck** (step 3, 14 rounds of degree 2, P1-D4; the leaf). For in-block matrices `A₀, B₀` on
 `2^p` positions, row weights `rw` (the quirky row point: Lagrange at `λ` on the skip bits, `eq` on
@@ -283,73 +278,30 @@ def eW {n : ℕ} (r r' : Fin n → R) (l : Fin n) (b : Bool) : R :=
 def selOf {n : ℕ} (ivs : List (ℕ × ℕ)) (x : Fin (2 ^ n)) : R :=
   (ivs.map fun p ↦ if p.1 ≤ x.val ∧ x.val < p.2 then (1 : R) else 0).sum
 
-/-- **The zerocheck weight's final value** (`selWeight`, BP-C-R4-m1): `ŵ(r′) = Σ_x eq(r′, x)
-eq(r, x) Sel(x)` is the sum over `Sel`'s intervals of differences of prefix sums. -/
-theorem selWeight_eq {n : ℕ} (r r' : Fin n → R) (ivs : List (ℕ × ℕ))
-    (h : ∀ p ∈ ivs, p.1 ≤ p.2) :
-    mle (fun x ↦ eq r (cube x) * selOf ivs x) r' =
-      (ivs.map fun p ↦ prefixP n (eW r r') p.2 - prefixP n (eW r r') p.1).sum := by
-  have hprod : ∀ x : Fin (2 ^ n), eq r' (cube x) * eq r (cube x) =
-      ∏ l : Fin n, eW r r' l (x.val.testBit l) := fun x ↦ by
-    rw [eq_cube, eq_cube, ← Finset.prod_mul_distrib]
-    exact Finset.prod_congr rfl fun l _ ↦ by unfold eW; split_ifs <;> rfl
-  induction ivs with
-  | nil => simp [selOf, mle]
-  | cons p ps ih =>
-    have hp := h p (List.mem_cons_self ..)
-    rw [List.map_cons, List.sum_cons, ← ih fun q hq ↦ h q (List.mem_cons_of_mem _ hq),
-      prefixP_eq, prefixP_eq, ← Finset.sum_sub_distrib]
-    simp only [selOf, List.map_cons, List.sum_cons, mle, mul_add, Finset.sum_add_distrib]
-    congr 1
-    refine Finset.sum_congr rfl fun x _ ↦ ?_
-    rw [← mul_assoc, hprod]
-    split_ifs <;> first | ring1 | (exfalso; omega)
-
-/-- `ŵ` splits into the position part and the block part when `Sel` depends on the block only
-(positions low, blocks high). -/
-theorem selWeight_split {p q : ℕ} (rp r'p : Fin p → R) (rb r'b : Fin q → R)
-    (SelB : Fin (2 ^ q) → R) :
-    mle (fun x : Fin (2 ^ (p + q)) ↦ eq (Fin.append rp rb) (cube x) * SelB ((joinEquiv p q).symm x).2)
-        (Fin.append r'p r'b) =
-      eq rp r'p * mle (fun t ↦ eq rb (cube t) * SelB t) r'b := by
-  rw [mle_split]
-  simp only [mle, Finset.mul_sum]
-  rw [Finset.sum_comm]
-  refine Finset.sum_congr rfl fun t _ ↦ ?_
-  have hj : ∀ a, ((joinEquiv p q).symm (join a t)).2 = t := fun a ↦ by
-    rw [show join a t = joinEquiv p q (a, t) from rfl, Equiv.symm_apply_apply]
-  simp only [hj, eq_append_join]
-  rw [← eq_mle rp r'p, Finset.sum_mul]
-  exact Finset.sum_congr rfl fun a _ ↦ by rw [eq_swap r'p]; ring
-
 end SelW
 
-/-! ## The block zerocheck (rows Z1–Z3) -/
+/-! ## The block zerocheck (rows Z1–Z3; rev. 3.8: whole cube, skip-c) -/
 
 section BZ
 
 variable {ℓ : ℕ}
 
-/-- **The block R1CS with the public target holds** on the used blocks: `a b = z + E`
-(characteristic two) wherever `Sel = 1`. -/
-def BHolds (Sel : Fin (2 ^ ℓ) → F) (a b z E : Fin 64 → Fin (2 ^ ℓ) → F) : Prop :=
-  ∀ i u, Sel u = 1 → a i u * b i u = z i u + E i u
+/-- **The block R1CS with the public target holds** (rev. 3.8: on the whole cube, `Sel ≡ 1`, the
+non-hash blocks of kind `free`): `a b = z + E` (characteristic two). -/
+def BHolds (a b z E : Fin 64 → Fin (2 ^ ℓ) → F) : Prop := ∀ i u, a i u * b i u = z i u + E i u
 
-/-- The residual slice `i`: `Sel(u) · (a b + z + E)`. -/
-def bzRes (Sel : Fin (2 ^ ℓ) → F) (a b z E : Fin 64 → Fin (2 ^ ℓ) → F) (i : Fin 64)
-    (u : Fin (2 ^ ℓ)) : F :=
-  Sel u * (a i u * b i u + z i u + E i u)
+/-- The residual slice `i`: `a b + z + E`. -/
+def bzRes (a b z E : Fin 64 → Fin (2 ^ ℓ) → F) (i : Fin 64) (u : Fin (2 ^ ℓ)) : F :=
+  a i u * b i u + z i u + E i u
 
 /-- **Start of Z1.** A violated relation leaves a nonzero residual slice. -/
-theorem bz_start {Sel : Fin (2 ^ ℓ) → F} {a b z E : Fin 64 → Fin (2 ^ ℓ) → F}
-    (h : ¬BHolds Sel a b z E) :
-    ∃ i, bzRes Sel a b z E i ≠ 0 := by
+theorem bz_start {a b z E : Fin 64 → Fin (2 ^ ℓ) → F} (h : ¬BHolds a b z E) :
+    ∃ i, bzRes a b z E i ≠ 0 := by
   by_contra hall
   push Not at hall
-  refine h fun i u hu ↦ ?_
+  refine h fun i u ↦ ?_
   have := congrFun (hall i) u
-  simp only [bzRes, hu, one_mul, Pi.zero_apply] at this
-  rw [add_assoc] at this
+  simp only [bzRes, Pi.zero_apply, add_assoc] at this
   exact CharTwo.add_eq_zero.mp this
 
 theorem isBit_mul {x y : F} (hx : x = 0 ∨ x = 1) (hy : y = 0 ∨ y = 1) : x * y = 0 ∨ x * y = 1 := by
@@ -359,122 +311,103 @@ theorem isBit_add {x y : F} (hx : x = 0 ∨ x = 1) (hy : y = 0 ∨ y = 1) : x + 
   rcases hx with rfl | rfl <;> rcases hy with rfl | rfl <;> simp [CharTwo.add_self_eq_zero]
 
 /-- The residual is bit-valued (the hypothesis of `pinned_sound`). -/
-theorem bzRes_bit {Sel : Fin (2 ^ ℓ) → F} {a b z E : Fin 64 → Fin (2 ^ ℓ) → F}
-    (hSel : ∀ u, Sel u = 0 ∨ Sel u = 1) (ha : ∀ i u, a i u = 0 ∨ a i u = 1)
+theorem bzRes_bit {a b z E : Fin 64 → Fin (2 ^ ℓ) → F} (ha : ∀ i u, a i u = 0 ∨ a i u = 1)
     (hb : ∀ i u, b i u = 0 ∨ b i u = 1) (hz : ∀ i u, z i u = 0 ∨ z i u = 1)
     (hE : ∀ i u, E i u = 0 ∨ E i u = 1) (i : Fin 64) (u : Fin (2 ^ ℓ)) :
-    bzRes Sel a b z E i u = 0 ∨ bzRes Sel a b z E i u = 1 :=
-  isBit_mul (hSel u) (isBit_add (isBit_add (isBit_mul (ha i u) (hb i u)) (hz i u)) (hE i u))
+    bzRes a b z E i u = 0 ∨ bzRes a b z E i u = 1 :=
+  isBit_add (isBit_add (isBit_mul (ha i u) (hb i u)) (hz i u)) (hE i u)
 
 /-- The castLE of a skip index into the 128 nodes. -/
 abbrev sNode (i : Fin 64) : Fin 128 := Fin.castLE (by norm_num) i
 
-/-- The honest Z2 polynomial `P*(Y) = Σ_u eq(r, u) Sel(u) (Â(Y,u) B̂(Y,u) + Ẑ(Y,u) + Ê(Y,u))`. -/
-noncomputable def bzPoly (r : Fin ℓ → F) (Sel : Fin (2 ^ ℓ) → F) (a b z E : Fin 64 → Fin (2 ^ ℓ) → F) :
-    F[X] :=
-  ∑ u, C (eq r (cube u) * Sel u) * (skipExt (fun i ↦ a i u) * skipExt (fun i ↦ b i u) +
-    skipExt (fun i ↦ z i u) + skipExt (fun i ↦ E i u))
+/-- `P^{ab}(Y) = Σ_u eq(r, u) Â(Y, u) B̂(Y, u)` (degree ≤ 126). -/
+noncomputable def pabPoly (r : Fin ℓ → F) (a b : Fin 64 → Fin (2 ^ ℓ) → F) : F[X] :=
+  ∑ u, C (eq r (cube u)) * (skipExt (fun i ↦ a i u) * skipExt (fun i ↦ b i u))
 
-/-- `P*` has degree at most `126 ≤ 127`. -/
-theorem bzPoly_natDegree (r : Fin ℓ → F) (Sel : Fin (2 ^ ℓ) → F)
-    (a b z E : Fin 64 → Fin (2 ^ ℓ) → F) : (bzPoly r Sel a b z E).natDegree ≤ 127 := by
+/-- `P^z(Y) = Σ_u eq(r, u) Ẑ(Y, u)` (degree ≤ 63): the quirky point claim `ẑ(r, λ)`. -/
+noncomputable def pzPoly (r : Fin ℓ → F) (z : Fin 64 → Fin (2 ^ ℓ) → F) : F[X] :=
+  ∑ u, C (eq r (cube u)) * skipExt (fun i ↦ z i u)
+
+theorem pabPoly_natDegree (r : Fin ℓ → F) (a b : Fin 64 → Fin (2 ^ ℓ) → F) :
+    (pabPoly r a b).natDegree ≤ 126 := by
   refine natDegree_sum_le_of_forall_le _ _ fun u _ ↦ (natDegree_C_mul_le _ _).trans ?_
-  refine (natDegree_add_le _ _).trans (max_le ((natDegree_add_le _ _).trans (max_le ?_ ?_)) ?_)
-  · exact (natDegree_mul_le).trans (by
-      have := skipExt_natDegree (fun i ↦ a i u); have := skipExt_natDegree (fun i ↦ b i u); omega)
-  · exact (skipExt_natDegree _).trans (by norm_num)
-  · exact (skipExt_natDegree _).trans (by norm_num)
+  exact (natDegree_mul_le).trans (by
+    have := skipExt_natDegree (fun i ↦ a i u); have := skipExt_natDegree (fun i ↦ b i u); omega)
 
-/-- At a node of `S`, `P*` is the residual slice's extension at `r`. -/
-theorem bzPoly_node (r : Fin ℓ → F) (Sel : Fin (2 ^ ℓ) → F) (a b z E : Fin 64 → Fin (2 ^ ℓ) → F)
-    (i : Fin 64) : (bzPoly r Sel a b z E).eval (skipNode (sNode i)) = mle (bzRes Sel a b z E i) r := by
-  simp only [bzPoly, eval_finsetSum, eval_mul, eval_add, eval_C, skipExt_node, mle, bzRes]
+theorem pzPoly_natDegree (r : Fin ℓ → F) (z : Fin 64 → Fin (2 ^ ℓ) → F) :
+    (pzPoly r z).natDegree ≤ 63 :=
+  natDegree_sum_le_of_forall_le _ _ fun _ _ ↦ (natDegree_C_mul_le _ _).trans (skipExt_natDegree _)
+
+/-- **At a node of `S` the residual is `P^{ab} + P^z + P^e`** (`P^e` the public target on `S`,
+`FRPubTarget.targetS`). -/
+theorem bz_node (r : Fin ℓ → F) (a b z E : Fin 64 → Fin (2 ^ ℓ) → F) (i : Fin 64) :
+    (pabPoly r a b).eval (skipNode (sNode i)) + (pzPoly r z).eval (skipNode (sNode i)) +
+        ∑ u, eq r (cube u) * E i u = mle (bzRes a b z E i) r := by
+  simp only [pabPoly, pzPoly, eval_finsetSum, eval_mul, eval_C, skipExt_node, mle, bzRes,
+    ← Finset.sum_add_distrib]
   exact Finset.sum_congr rfl fun u _ ↦ by ring
 
-/-- **End of Z1.** A nonzero residual extension at `r` makes `P*` nonzero at a node of `S`: the
-hypothesis of `zc_skip_bad_le` (row Z2, 127 bad `λ`). -/
-theorem bz_end {r : Fin ℓ → F} {Sel : Fin (2 ^ ℓ) → F} {a b z E : Fin 64 → Fin (2 ^ ℓ) → F}
-    {i : Fin 64} (h : mle (bzRes Sel a b z E i) r ≠ 0) :
-    ∃ b' : Fin 128, b'.val < 64 ∧ (bzPoly r Sel a b z E).eval (skipNode b') ≠ 0 :=
-  ⟨sNode i, i.isLt, by rwa [bzPoly_node]⟩
+/-- **End of Z1** (the hypothesis of `skip_pair_bad_le`): a nonzero residual extension at `r` makes
+`P^{ab} ≠ P^z + P^e` at a node of `S`. -/
+theorem bz_end {r : Fin ℓ → F} {a b z E : Fin 64 → Fin (2 ^ ℓ) → F} {i : Fin 64}
+    (h : mle (bzRes a b z E i) r ≠ 0) :
+    (pabPoly r a b).eval (skipNode (sNode i)) ≠
+      (pzPoly r z).eval (skipNode (sNode i)) + ∑ u, eq r (cube u) * E i u := by
+  intro he
+  apply h
+  rw [← bz_node, he, add_assoc, CharTwo.add_self_eq_zero]
 
-/-- **Row Z2.** From a nonzero residual at `r`, at most 127 values of `λ` make the verifier's
-interpolated claim true, whatever the message. -/
-theorem bz_skip_le {r : Fin ℓ → F} {Sel : Fin (2 ^ ℓ) → F} {a b z E : Fin 64 → Fin (2 ^ ℓ) → F}
-    {i : Fin 64} (h : mle (bzRes Sel a b z E i) r ≠ 0) (msg : Fin 64 → F) :
-    (univ.filter fun l ↦ lagrangeS (zcMsg msg) l = (bzPoly r Sel a b z E).eval l).card ≤ 127 :=
-  zc_skip_bad_le msg _ (bzPoly_natDegree r Sel a b z E) (bz_end h)
-
-/-- The Z3 summand `w · (A B + Z) + W_E` (rev. 3.4, S-C-M2), degree 3. -/
-def bzExpr : Expr := .add (.mul (.var 0) (.add (.mul (.var 1) (.var 2)) (.var 3))) (.var 4)
+/-- The Z3 summand `w · a · b` (rev. 3.8, skip-c), degree 3. -/
+def bzExpr : Expr := .mul (.var 0) (.mul (.var 1) (.var 2))
 
 theorem bzExpr_deg : bzExpr.deg = 3 := rfl
 
-/-- The Z3 tables at `λ`: `w = eq(r, ·) Sel`, `Â(λ, ·)`, `B̂(λ, ·)`, `Ẑ(λ, ·)`, and the target's
-weighted table `W_E = eq(r, ·) Sel Ê(λ, ·)`. -/
-noncomputable def bzTables (rs : List F) (l : F) (Sel : Fin (2 ^ ℓ) → F)
-    (a b z E : Fin 64 → Fin (2 ^ ℓ) → F) : Array (Array F) :=
-  #[Array.ofFn fun u ↦ eq (ptOf ℓ rs) (cube u) * Sel u,
-    Array.ofFn fun u ↦ (skipExt fun i ↦ a i u).eval l,
-    Array.ofFn fun u ↦ (skipExt fun i ↦ b i u).eval l,
-    Array.ofFn fun u ↦ (skipExt fun i ↦ z i u).eval l,
-    Array.ofFn fun u ↦ eq (ptOf ℓ rs) (cube u) * Sel u * (skipExt fun i ↦ E i u).eval l]
+/-- The Z3 tables at `λ`: `w = eq(r, ·)`, `Â(λ, ·)`, `B̂(λ, ·)`. -/
+noncomputable def bzTables (rs : List F) (l : F) (a b : Fin 64 → Fin (2 ^ ℓ) → F) :
+    Array (Array F) :=
+  #[Array.ofFn fun u ↦ eq (ptOf ℓ rs) (cube u), Array.ofFn fun u ↦ (skipExt fun i ↦ a i u).eval l,
+    Array.ofFn fun u ↦ (skipExt fun i ↦ b i u).eval l]
 
-theorem bz_sizes (rs : List F) (l : F) (Sel : Fin (2 ^ ℓ) → F)
-    (a b z E : Fin 64 → Fin (2 ^ ℓ) → F) : ∀ t ∈ bzTables rs l Sel a b z E, t.size = 2 ^ ℓ := by
+theorem bz_sizes (rs : List F) (l : F) (a b : Fin 64 → Fin (2 ^ ℓ) → F) :
+    ∀ t ∈ bzTables rs l a b, t.size = 2 ^ ℓ := by
   simp [bzTables]
 
-/-- **The Z3 true sum is `P*(λ)`.** -/
-theorem bz_trueSum (rs : List F) (l : F) (Sel : Fin (2 ^ ℓ) → F)
-    (a b z E : Fin 64 → Fin (2 ^ ℓ) → F) :
-    trueSum bzExpr (bzTables rs l Sel a b z E) ℓ = (bzPoly (ptOf ℓ rs) Sel a b z E).eval l := by
+/-- **The Z3 true sum is `P^{ab}(λ)`.** -/
+theorem bz_trueSum (rs : List F) (l : F) (a b : Fin 64 → Fin (2 ^ ℓ) → F) :
+    trueSum bzExpr (bzTables rs l a b) ℓ = (pabPoly (ptOf ℓ rs) a b).eval l := by
   simp only [trueSum, bzExpr, Expr.eval, bzTables, Array.getD_eq_getD_getElem?,
     List.getElem?_toArray, List.getElem?_cons_zero, List.getElem?_cons_succ, Option.getD_some,
-    tbl_ofFn, bzPoly, eval_finsetSum, eval_mul, eval_add, eval_C]
-  exact Finset.sum_congr rfl fun _ _ ↦ by ring
+    tbl_ofFn, pabPoly, eval_finsetSum, eval_mul, eval_C]
 
-/-- **End of Z3.** All variables bound at `ρs`: `ŵ(ρ) · (Ã B̃ + Z̃)(λ, ρ) + Ŵ_E(λ, ρ)`, each factor
-the extension of its table. -/
-theorem bz_final (rs ρs : List F) (hρ : ρs.length = ℓ) (l : F) (Sel : Fin (2 ^ ℓ) → F)
-    (a b z E : Fin 64 → Fin (2 ^ ℓ) → F) :
-    trueSum bzExpr (bindAll (bzTables rs l Sel a b z E) ρs) 0 =
-      mle (fun u ↦ eq (ptOf ℓ rs) (cube u) * Sel u) (ptOf ℓ ρs) *
-          (mle (fun u ↦ (skipExt fun i ↦ a i u).eval l) (ptOf ℓ ρs) *
-              mle (fun u ↦ (skipExt fun i ↦ b i u).eval l) (ptOf ℓ ρs) +
-            mle (fun u ↦ (skipExt fun i ↦ z i u).eval l) (ptOf ℓ ρs)) +
-        mle (fun u ↦ eq (ptOf ℓ rs) (cube u) * Sel u * (skipExt fun i ↦ E i u).eval l)
-          (ptOf ℓ ρs) := by
-  rw [trueSum_bindAll' _ _ _ hρ (bz_sizes rs l Sel a b z E)]
+/-- **End of Z3.** All variables bound at `ρs`: `eq(r, r′) · â · b̂` with `â`, `b̂` the extensions of
+the `λ`-tables (`finZ = c_Z`). -/
+theorem bz_final (rs ρs : List F) (hρ : ρs.length = ℓ) (l : F) (a b : Fin 64 → Fin (2 ^ ℓ) → F) :
+    trueSum bzExpr (bindAll (bzTables rs l a b) ρs) 0 =
+      eq (ptOf ℓ rs) (ptOf ℓ ρs) * (mle (fun u ↦ (skipExt fun i ↦ a i u).eval l) (ptOf ℓ ρs) *
+        mle (fun u ↦ (skipExt fun i ↦ b i u).eval l) (ptOf ℓ ρs)) := by
+  rw [trueSum_bindAll' _ _ _ hρ (bz_sizes rs l a b)]
   simp only [bzExpr, Expr.eval, bzTables, Array.getD_eq_getD_getElem?, List.getElem?_toArray,
-    List.getElem?_cons_zero, List.getElem?_cons_succ, Option.getD_some, tbl_ofFn]
+    List.getElem?_cons_zero, List.getElem?_cons_succ, Option.getD_some, tbl_ofFn, mle_eqPt]
 
-/-- **After Z3.** A false final claim that passes the check (with the verifier's own `ŵ`, `Ŵ_E`)
-has a wrong triple `(â, b̂, ẑ)`. -/
-theorem bz_triple_wrong {claim w we va vb vz ta tb tz : F}
-    (hdoom : claim ≠ w * (ta * tb + tz) + we) (hchk : claim = w * (va * vb + vz) + we) :
-    (va, vb, vz) ≠ (ta, tb, tz) := by
+/-- **After Z3.** A false final claim that passes `claim = eq(r, r′) â b̂` has a wrong pair. -/
+theorem bz_triple_wrong {claim e va vb ta tb : F} (hdoom : claim ≠ e * (ta * tb))
+    (hchk : claim = e * (va * vb)) : (va, vb) ≠ (ta, tb) := by
   rintro ⟨⟩
   exact hdoom hchk
 
-/-- **`targetMLE`** (A.8): the target's weighted extension at `(λ, ρ)` is the per-position sum
-`Σ_i Σ_hi Σ_blk L_i(λ) · eq(r_hi, hi) eq(ρ_hi, hi) · eq(r_blk, blk) eq(ρ_blk, blk) Sel(blk) ·
-E(i, hi, blk)` (positions `hi` low, blocks high; only the pinned positions, `E ≠ 0`, contribute). -/
-theorem targetMLE_eq {p q : ℕ} (rhi ρhi : Fin p → F) (rb ρb : Fin q → F) (SelB : Fin (2 ^ q) → F)
-    (E : Fin 64 → Fin (2 ^ (p + q)) → F) (l : F) :
-    mle (fun u ↦ eq (Fin.append rhi rb) (cube u) * SelB ((joinEquiv p q).symm u).2 *
-        (skipExt fun i ↦ E i u).eval l) (Fin.append ρhi ρb) =
-      ∑ i : Fin 64, ∑ hi : Fin (2 ^ p), ∑ t : Fin (2 ^ q),
-        lagrangeWeight (fun b : Fin 64 ↦ skipNode (Fin.castLE (by norm_num) b)) l i *
-          (eq rhi (cube hi) * eq ρhi (cube hi)) * (eq rb (cube t) * eq ρb (cube t)) * SelB t *
-            E i (join hi t) := by
-  rw [mle, ← (joinEquiv p q).sum_comp, Fintype.sum_prod_type]
-  simp only [skipExt_eval, Finset.mul_sum, Equiv.symm_apply_apply]
-  conv_lhs => enter [2, hi]; rw [Finset.sum_comm]
-  conv_lhs => rw [Finset.sum_comm]
-  refine Finset.sum_congr rfl fun i _ ↦ Finset.sum_congr rfl fun hi _ ↦
-    Finset.sum_congr rfl fun t _ ↦ ?_
-  rw [show (joinEquiv p q) (hi, t) = join hi t from rfl, eq_append_join, eq_append_join]
-  ring
+/-- **`rowW_eq`** (A.8 `rowW`, rev. 3.7): the lincheck's row weights, Lagrange at `λ` on the skip
+slice times `eq(r′_hi, ·)` on the high position bits, evaluate any in-block table at the quirky row
+point `(λ, r′_hi)`. -/
+def rowW {p : ℕ} (l : F) (rhi : Fin p → F) (k : Fin (2 ^ (6 + p))) : F :=
+  let ij := (joinEquiv 6 p).symm k
+  lagrangeWeight (fun b : Fin 64 ↦ skipNode (Fin.castLE (by norm_num) b)) l ij.1 * eq rhi (cube ij.2)
+
+theorem rowW_eq {p : ℕ} (l : F) (rhi : Fin p → F) (T : Fin (2 ^ (6 + p)) → F) :
+    ∑ k, rowW l rhi k * T k = ∑ h, eq rhi (cube h) * (skipExt fun i ↦ T (join i h)).eval l := by
+  rw [← (joinEquiv 6 p).sum_comp, Fintype.sum_prod_type, Finset.sum_comm]
+  refine Finset.sum_congr rfl fun h _ ↦ ?_
+  simp only [rowW, Equiv.symm_apply_apply, skipExt_eval, Finset.mul_sum]
+  exact Finset.sum_congr rfl fun i _ ↦ by rw [show joinEquiv 6 p (i, h) = join i h from rfl]; ring
 
 end BZ
 
@@ -673,10 +606,22 @@ theorem lin_walk_adjust (A₀ B₀ : Fin (2 ^ p) → Fin (2 ^ p) → R) (free : 
   rw [Finset.sum_comm]
   exact Finset.sum_congr rfl fun k _ ↦ Finset.sum_congr rfl fun κ _ ↦ by ring
 
-/-- **Row L3, count.** A wrong family of 7 kind claims survives `β` for at most 6 values. -/
-theorem lin_beta_le [IsDomain R] [Fintype R] [DecidableEq R] {v t : Fin 7 → R} (h : v ≠ t) :
-    (univ.filter fun β ↦ ∑ κ, β ^ κ.val * v κ = ∑ κ, β ^ κ.val * t κ).card ≤ 6 :=
+/-- **Row L3, count** (rev. 3.8: 9 claims, the `free` kind included). A wrong family survives `β`
+for at most 8 values. -/
+theorem lin_beta_le [IsDomain R] [Fintype R] [DecidableEq R] {v t : Fin 9 → R} (h : v ≠ t) :
+    (univ.filter fun β ↦ ∑ κ, β ^ κ.val * v κ = ∑ κ, β ^ κ.val * t κ).card ≤ 8 :=
   batch_pow_bad_le h
+
+/-- **The `free` kind** (rev. 3.8.1: rows `(var k, var k)`, `A₀ = B₀ = I`): its column weights are
+`(1 + α) · rowW`, no walk. -/
+theorem linM_free (rw : Fin (2 ^ p) → R) (α : R) :
+    linM (fun k j ↦ if k = j then 1 else 0) (fun k j ↦ if k = j then 1 else 0) rw α =
+      fun j ↦ (1 + α) * rw j := by
+  funext j
+  simp only [linM, mul_ite, mul_one, mul_zero, ite_add, zero_add]
+  rw [Finset.sum_eq_single j (fun k _ hk ↦ by simp [hk]) (by simp)]
+  simp only [ite_true]
+  ring
 
 end LinKinds
 

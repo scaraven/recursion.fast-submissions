@@ -18,8 +18,8 @@ import Mathlib.LinearAlgebra.Lagrange
   (`gW_eq`); the 128 nodes `skipNode b = Σ_{i<7} b_i g_i` (b's bits), `S` the first 64
   (`b₆ = 0`), `Λ = S + g₆` the rest; `skipNode_injective` (so `S_disjoint_Λ`), by additivity
   (`skipNode_xor`) and a 128-case kernel check that only `b = 0` maps to `0`.
-* **Row Z2** (the only univariate round): `z2_pair_bad_le` for `gen`'s form (rev. 3.4: `P^z` and
-  `P^{ab}` on `Λ`, `P^{ab}|_S = P^z|_S + P^e|_S`, at most 127 bad `λ`); `lagrangeS v l`, the degree-≤127 interpolant
+* **Row Z2** (the only univariate round): `skip_pair_bad_le` for `gen`'s form (rev. 3.8: `P^z` on
+  `Λ` (64), `P^{ab}` on `Λ₀…₆₂` (63), `P^{ab}|_S = P^z|_S + P^e|_S`, at most 126 bad `λ`); `lagrangeS v l`, the degree-≤127 interpolant
   through `S ∪ Λ` at `l`; **`skip_bad_le`**: values other than a degree-≤127 polynomial's give at
   most 127 agreeing `l`; `zcMsg` (zeros on `S`, the message on `Λ`, leanerVM's `skipClaim`) with
   **`zc_skip_bad_le`** (a residual nonzero at some node of `S` leaves ≤ 127 bad `λ`) and
@@ -215,34 +215,45 @@ private theorem lNode_inj : Function.Injective lNode := fun a b h ↦ by
   have := congrArg Fin.val (skipNode_injective h)
   exact Fin.ext (by simpa using this)
 
-/-- Z2's interpolation data in `gen`'s form (rev. 3.4): on `S`, `P^z` (interpolated from its
-message on `Λ`) plus the public `P^e`; on `Λ`, the `P^{ab}` message. -/
-def z2Vals (pz pab pe : Fin 64 → F) (b : Fin 128) : F :=
-  if h : b.val < 64 then interpolateAt lNode pz (skipNode b) + pe ⟨b.val, h⟩
+/-- The 127 interpolation nodes of `P^{ab}`: `S` then `Λ₀ … Λ₆₂`. -/
+abbrev node127 (b : Fin 127) : F := skipNode (Fin.castLE (by norm_num) b)
+
+private theorem node127_inj : Function.Injective node127 := fun a b h ↦ by
+  have := congrArg Fin.val (skipNode_injective h)
+  exact Fin.ext (by simpa using this)
+
+/-- Z2's interpolation data (rev. 3.8): on `S`, `P^z` (interpolated from its message on `Λ`) plus
+the public `P^e` (`targetS`); on `Λ₀ … Λ₆₂`, the `P^{ab}` message. -/
+def z2Vals (pz : Fin 64 → F) (pab : Fin 63 → F) (pe : Fin 64 → F) (b : Fin 127) : F :=
+  if h : b.val < 64 then interpolateAt lNode pz (skipNode (Fin.castLE (by norm_num) b)) + pe ⟨b.val, h⟩
   else pab ⟨b.val - 64, by omega⟩
 
-/-- **`z2_pair_bad_le` (row Z2 in `gen`'s form, 127).** If the residual is nonzero at a node of `S`
-(`P*_ab ≠ P*_z + P^e` there) or the `P^z` message is wrong, at most 127 values of `λ` make both
-reconstructed values (`P^{ab}` through `S ∪ Λ`, `P^z` through `Λ`) agree with the truth. -/
-theorem z2_pair_bad_le (pz pab pe : Fin 64 → F) (Pab Pz : F[X]) (hab : Pab.natDegree ≤ 127)
-    (hz : Pz.natDegree ≤ 63)
+/-- **`skip_pair_bad_le` (row Z2, 126).** With `P^{ab}*` interpolated through the 127 nodes from
+`z2Vals` and `P^z*` through `Λ`: if the residual is nonzero at a node of `S`
+(`P^{ab} ≠ P^z + P^e` there) or the `P^z` message is wrong, at most 126 values of `λ` make both
+reconstructed values agree with the truth (`P^{ab}`, degree ≤ 126; `P^z`, degree ≤ 63). -/
+theorem skip_pair_bad_le (pz : Fin 64 → F) (pab : Fin 63 → F) (pe : Fin 64 → F) (Pab Pz : F[X])
+    (hab : Pab.natDegree ≤ 126) (hz : Pz.natDegree ≤ 63)
     (h : (∃ b : Fin 64, Pab.eval (skipNode (Fin.castLE (by norm_num) b)) ≠
         Pz.eval (skipNode (Fin.castLE (by norm_num) b)) + pe b) ∨ pz ≠ fun k ↦ Pz.eval (lNode k)) :
-    (univ.filter fun l ↦ lagrangeS (z2Vals pz pab pe) l = Pab.eval l ∧
-      interpolateAt lNode pz l = Pz.eval l).card ≤ 127 := by
+    (univ.filter fun l ↦ interpolateAt node127 (z2Vals pz pab pe) l = Pab.eval l ∧
+      interpolateAt lNode pz l = Pz.eval l).card ≤ 126 := by
   have hzdeg : Pz.degree < (64 : ℕ) :=
     (degree_le_natDegree).trans_lt (by exact_mod_cast Nat.lt_succ_of_le hz)
+  have habdeg : Pab.degree < (127 : ℕ) :=
+    (degree_le_natDegree).trans_lt (by exact_mod_cast Nat.lt_succ_of_le hab)
   by_cases hpz : pz = fun k ↦ Pz.eval (lNode k)
-  · have hS := h.resolve_right (not_not.mpr hpz)
-    obtain ⟨b, hb⟩ := hS
-    refine (Finset.card_le_card (t := univ.filter fun l ↦ lagrangeS (z2Vals pz pab pe) l = Pab.eval l)
-      fun l hl ↦ ?_).trans (skip_bad_le _ Pab hab fun hv ↦ hb ?_)
+  · obtain ⟨b, hb⟩ := h.resolve_right (not_not.mpr hpz)
+    refine (Finset.card_le_card (t := univ.filter fun l ↦
+      interpolateAt node127 (z2Vals pz pab pe) l = Pab.eval l) fun l hl ↦ ?_).trans
+      (card_interpolateAt_eq_le _ node127_inj _ Pab habdeg fun hv ↦ hb ?_)
     · simp only [Finset.mem_filter, Finset.mem_univ, true_and] at hl ⊢; exact hl.1
     · have := congrFun hv (Fin.castLE (by norm_num) b)
-      simp only [z2Vals, Fin.val_castLE, b.isLt, dite_true] at this
-      rw [← this, hpz, interpolateAt_eval _ lNode_inj Pz hzdeg]
-  · refine (Finset.card_le_card fun l hl ↦ ?_).trans
-      ((card_interpolateAt_eq_le _ lNode_inj pz Pz hzdeg hpz).trans (by norm_num))
+      simp only [z2Vals, node127, Fin.castLE_castLE, Fin.val_castLE, b.isLt, dite_true, hpz,
+        interpolateAt_eval _ lNode_inj Pz hzdeg, Fin.eta] at this
+      exact this.symm
+  · refine (Finset.card_le_card (t := univ.filter fun l ↦ interpolateAt lNode pz l = Pz.eval l)
+      fun l hl ↦ ?_).trans ((card_interpolateAt_eq_le _ lNode_inj pz Pz hzdeg hpz).trans (by norm_num))
     simp only [Finset.mem_filter, Finset.mem_univ, true_and] at hl ⊢; exact hl.2
 
 /-- The quirky extension over `S` of the values `h` at its 64 nodes (degree ≤ 63). -/

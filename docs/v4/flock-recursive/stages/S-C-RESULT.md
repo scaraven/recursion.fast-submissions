@@ -206,3 +206,33 @@ Sequential kernel times (`lake env lean --profile`, `taskset -c 5`, `logs/S-C-fi
 prefix sum over the kinds' intervals) is `selWeight_eq`'s computation with `Σ_κ β^κ Ind_κ` in place
 of `Sel`; the instance lemma is for whoever writes `kindFoldWeight` in `FRVIR`. The two kernel
 bridges above (≈ 4.5 s together) remain available if FR-R4′ tightens.
+
+## Revision 3.8 rework (3.8.1, `af0c0d0`; §10 "Stage-review changes 6" and "7")
+
+Builds under the 16G memory scope (`logs/fr-build-piop/b.sh`); `logs/S-C-fix/build-38.log` (58.1 s,
+8 modules, no warnings); source rule 0 findings (`source-rule-38.log`); 66 declarations on the three
+axioms at most (`axioms-38.log`). Statement diff against the 3.4 fix pass
+(`logs/S-C-fix/stmts-38.diff`, S-A's tool): changes only in the zerocheck, the lincheck's count, the
+new declarations below and the controls; everything else is unchanged.
+
+**Statement changes.**
+
+| Module | Change |
+|---|---|
+| `FRSpartan` | `BHolds`, `bzRes` lose `Sel` (rev. 3.8: whole cube, `Sel ≡ 1`; the `free` kind). `bzPoly`/`bzPoly_node`/`bz_skip_le` replaced by `pabPoly` (≤ 126), `pzPoly` (≤ 63), `bz_node` (`P^{ab} + P^z + P^e = r̃es` at a node of `S`), `bz_end` (now the hypothesis of `skip_pair_bad_le`). **`bzExpr = w·a·b`** over three tables (`bzTables rs λ a b`), **`bz_trueSum = P^{ab}(λ)`**, **`bz_final = eq(r, r′)·â·b̂`**, `bz_triple_wrong` on the pair `(â, b̂)`. Lincheck: **`linM_free`** (`A₀ = B₀ = I`: `M_free = (1 + α)·rowW`, no walk), **`lin_beta_le`** now 9 claims, ≤ 8 bad `β`. **`rowW`, `rowW_eq`** (A.8: `Σ_k rowW(λ, r′_hi)(k)·T(k) = Σ_h eq(r′_hi, h)·T̂(λ, h)`). `selWeight_eq`, `selWeight_split`, `targetMLE_eq` removed (`prefixP`, `selOf`, `eW` stay for `FRPubTarget` and the controls). |
+| `FRSkip` | **`skip_pair_bad_le` (126)**: `P^{ab}*` through the 127 nodes `S ∪ Λ₀…₆₂` from `z2Vals pz pab pe` (`P^z*` interpolated over `Λ` plus `P^e` on `S`, the 63 `P^{ab}` values on `Λ₀…₆₂`), `P^z*` through `Λ`; a nonzero residual on `S` or a wrong `P^z` message leaves ≤ 126 bad `λ`. Replaces 3.4's `z2_pair_bad_le` (127). |
+| `FRPubTarget` (new, 35 lines) | `targetS` (`P^e(σ) = Σ_{x′} eq(r,x′) E(x′,σ)`), **`targetS_eq`** (per kind and pinned position: `Σ_hi eq(r_hi,hi) Σ_κ E_κ(σ,hi)·Ĩnd_κ(r_blk)`), **`intervalMle_eq`** (`Ĩnd_κ` as prefix-sum differences over the kind's intervals). Per-block affine patterns (`t_lo`) are not covered (S-0/L-cert if `targetS` needs them). |
+| `FRShift` | **`shiftEq_eq`** (A.8 `shiftEq`: `(shiftPair τ r).2` is the successor's extension). |
+| `FRRingSwitch` | unchanged statements; **`rs1_four`** instantiates `rs1_joint` at `J_z = 4` (≤ `10·|F|^7`). The Z claim `ẑ(r, λ)` is its weighted-claim case with the quirky low weight (`quirky_claim_split`) and `g = eq(r,·)`; its position (first) does not enter the bound. |
+| `FRMLEControls` | `bHolds_pos/neg` restated, `bHolds_sel` removed; new `free_rows_pos` (`z·z = z + 0` on bits), `free_rows_neg` (3.8's `(var k, one)` rows fail on `z = 0`, BP-C-R5-M1), `targetS_pos/neg`. |
+
+§5.2 rows now: Z1 0/1, **Z2 126**, Z3 3, L1 1, L2 2, **L3 8**, S1 1, S2 2, RS1 `7 + J − 1 = 10`
+(`rs1_four`), Lr/E as before.
+
+**Sequential kernel times** (`taskset -c 5`, `logs/S-C-fix/profile38-*.log`): `FRMLE` 1.37 s,
+`FRSumcheck` 1.72 s, `FRShift` 1.24 s, `FRRingSwitch` 2.39 s, `FRSkip` 20.8 s (`pinnedW_eq` and
+`pinned_cert` as before), `FRSpartan` 1.94 s, `FRPubTarget` 0.10 s, `FRMLEControls` 1.84 s;
+total ≈ 31.4 s.
+
+**Lines (code):** `FRMLE` 281, `FRSumcheck` 439, `FRShift` 283, `FRRingSwitch` 500, `FRSkip` 548,
+`FRSpartan` 415, `FRPubTarget` 35, `FRMLEControls` 100; total **2,601**.

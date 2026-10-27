@@ -11,6 +11,7 @@ import FRShift
 import FRRingSwitch
 import FRSkip
 import FRSpartan
+import FRPubTarget
 import FRRS
 import FRRSEval
 import FRProximityBW
@@ -41,6 +42,8 @@ import FRWots
 import FRNodeLayout
 import FRVIREval
 import FRNodeCircuit
+import FRVIRFinalsSF
+import FRVerifier
 
 /-!
 # `flock-recursive`

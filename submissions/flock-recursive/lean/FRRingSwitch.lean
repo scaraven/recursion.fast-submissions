@@ -722,6 +722,16 @@ theorem rs1_joint {J' : ℕ} (Q : Fin 128 → Fin (2 ^ ℓ) → F) (hQ : ∀ i u
     rw [show N ^ 7 = N ^ 6 * N by ring]
     nlinarith [Nat.zero_le N]
 
+/-- **RS1 at `J_z = 4`** (rev. 3.8: the Z claim `ẑ(r, λ)` first, then Lc's `⟨W_β, z⟩`, Sh's and
+Lr's claims; the order does not enter the bound): at most `10 · |F|^7` escaping draws. -/
+theorem rs1_four (Q : Fin 128 → Fin (2 ^ ℓ) → F) (hQ : ∀ i u, Q i u = 0 ∨ Q i u = 1)
+    (g : Fin 4 → Fin (2 ^ ℓ) → F) (s : Fin 4 → Fin 128 → F)
+    (hδ : ∃ j, (fun i ↦ s j i - ∑ u, g j u * algebraMap F F (Q i u)) ≠ 0) :
+    (univ.filter fun p : (Fin 7 → F) × F ↦
+      ∑ j, p.2 ^ j.val * rsT s p.1 j = ∑ j, p.2 ^ j.val * rsTruth Q g p.1 j).card ≤
+      10 * Fintype.card F ^ 7 :=
+  rs1_joint (J' := 3) Q hQ g s hδ
+
 end RS1
 
 end FR

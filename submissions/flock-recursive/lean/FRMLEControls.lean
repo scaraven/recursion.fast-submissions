@@ -2,7 +2,7 @@
 -- `v4/flock-recursive` at `783328c`), namespace `SpartanSrom` → `FR`; that file was ported from v3
 -- `spartan-chain` (submissions repo, local `main` at `1f59b38`). Changes are listed in the module
 -- docstring.
-import FRSpartan
+import FRPubTarget
 import Mathlib.Algebra.Field.ZMod
 
 /-!
@@ -192,16 +192,26 @@ theorem ring_inj_F_pos : ∃ k < 128, ∑ i, bitBasis i * (Pi.single 0 1 : Fin 1
   ring_inj_F _ fun h ↦ one_ne_zero ((congrFun h 0).symm.trans (Pi.single_eq_same _ _)).symm
 
 /-- `BHolds` over a one-variable toy: `1 · 1 = 0 + 1` holds, `1 · 1 = 1 + 1` does not. -/
-theorem bHolds_pos : BHolds (ℓ := 0) (fun _ ↦ 1) (fun _ _ ↦ 1) (fun _ _ ↦ 1) (fun _ _ ↦ 0)
-    (fun _ _ ↦ 1) := fun _ _ _ ↦ by simp
+theorem bHolds_pos : BHolds (ℓ := 0) (fun _ _ ↦ 1) (fun _ _ ↦ 1) (fun _ _ ↦ 0) (fun _ _ ↦ 1) :=
+  fun _ _ ↦ by simp
 
-theorem bHolds_neg : ¬BHolds (ℓ := 0) (fun _ ↦ 1) (fun _ _ ↦ 1) (fun _ _ ↦ 1) (fun _ _ ↦ 1)
-    (fun _ _ ↦ 1) := fun h ↦ by
-  have := h 0 0 rfl
+theorem bHolds_neg : ¬BHolds (ℓ := 0) (fun _ _ ↦ 1) (fun _ _ ↦ 1) (fun _ _ ↦ 1) (fun _ _ ↦ 1) :=
+  fun h ↦ by
+  have := h 0 0
   simp [CharTwo.add_self_eq_zero] at this
 
-/-- `Sel` matters: the same violation off the used blocks is not a violation. -/
-theorem bHolds_sel : BHolds (ℓ := 0) (fun _ ↦ 0) (fun _ _ ↦ 1) (fun _ _ ↦ 1) (fun _ _ ↦ 1)
-    (fun _ _ ↦ 1) := fun _ _ h ↦ absurd h zero_ne_one
+/-- The `free` kind's rows hold for every bit: `z · z = z + 0`. -/
+theorem free_rows_pos (x : F) (hx : x = 0 ∨ x = 1) : x * x = x + 0 := by
+  rcases hx with rfl | rfl <;> simp
+
+/-- 3.8's free rows `(var k, one)` would force the bit to 1 (BP-C-R5-M1): `0 · 1 ≠ 0 + 1`. -/
+theorem free_rows_neg : (0 : F) * 1 ≠ 0 + 1 := by simp
+
+/-- `targetS` against its definition over `ZMod 7`, `ℓ = 1`. -/
+theorem targetS_pos : targetS ![(3 : ZMod 7)] (fun _ u ↦ if u.val = 1 then 5 else 0) 0 = 1 := by
+  decide
+
+theorem targetS_neg : targetS ![(3 : ZMod 7)] (fun _ u ↦ if u.val = 0 then 5 else 0) 0 ≠ 1 := by
+  decide
 
 end FR

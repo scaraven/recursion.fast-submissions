@@ -113,6 +113,12 @@ theorem shiftPair_eq (n : ℕ) (xs ys : List R) (hx : xs.length = n) (hy : ys.le
     rw [shiftPair, ih xs ys hx hy, ptOf_cons, ptOf_cons, shiftMle, eq_succ]
     simp
 
+/-- **`shiftEq_eq`** (A.8 `shiftEq`, rev. 3.7): the computed shift is the successor's extension. -/
+theorem shiftEq_eq (n : ℕ) (xs ys : List R) (hx : xs.length = n) (hy : ys.length = n) :
+    (shiftPair xs ys).2 = ∑ u : Fin (2 ^ n), ∑ v : Fin (2 ^ n),
+      eq (ptOf n xs) (cube u) * succT u v * eq (cube v) (ptOf n ys) := by
+  rw [shiftPair_eq n xs ys hx hy, shift_mle]
+
 /-! ## The argument (BLUEPRINT rev. 3.1 §2.3 step 4, P1-D5)
 
 Tables on `s + n` variables (`join σ y`: slot `σ` low, block `y` high): `Out`, `In` are the slots
