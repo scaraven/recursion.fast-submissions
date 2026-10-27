@@ -138,4 +138,87 @@ theorem colL_take {L : Log} (hb : ¬ Bad L) (i n : ℕ) {d : Digest}
       rw [colL_prefix hnh hd hc'] at hc
       cases hc
 
+/-! ## Part C: the cap entries and the cap's own absorb -/
+
+/-- The bytes of a message read at `o` are the absorb query's bytes at `40 + o`. -/
+theorem bytesAt_extract40 (q : ByteArray) (o : ℕ) (h : 40 + o + 32 ≤ q.size) :
+    bytesAt (q.extract 40 q.size) o 32 = bytesAt q (40 + o) 32 := by
+  ext k hk
+  simp only [getElem_bytesAt _ _ _ _ hk, ByteArray.data_extract]
+  rw [List.getD_eq_getElem?_getD, List.getD_eq_getElem?_getD, Array.getElem?_toList,
+    Array.getElem?_toList, Array.getElem?_extract]
+  simp only [ByteArray.size] at h
+  rw [ite_eq_left (by have : q.size = q.data.size := rfl; omega)]
+  congr 3
+  omega
+
+/-- **(a) A cap entry is carried (within its windows) by the cap's absorb query**: entry `c` of
+an absorb of `len ≥ 32(c + 1)` bytes, at offset `40 + 32c = 8 + 16(2 + 2c)`. -/
+theorem cap_carried {q : ByteArray} {len : ℕ} (hq : fsCheck (.absorb len) q = true)
+    (hcap : q.size ≤ queryCap) {c : ℕ} (hc : 32 * (c + 1) ≤ len) (j : ℕ) :
+    bytesAt (q.extract 40 q.size) (32 * c) 32 ∈ (frEncW j).carried q := by
+  simp only [fsCheck, Bool.and_eq_true, beq_iff_eq] at hq
+  obtain ⟨ht, hs⟩ := hq
+  rw [bytesAt_extract40 q _ (by omega)]
+  refine List.mem_filter.mpr ⟨?_, ?_⟩
+  · simp only [carried, ht, ite_true]
+    refine List.mem_cons_of_mem _ (List.mem_map.mpr ⟨c, ?_, rfl⟩)
+    rw [List.mem_range, hs, Nat.lt_div_iff_mul_lt (by norm_num)]
+    omega
+  · rw [decide_eq_true_eq, wins, ite_eq_left hcap]
+    refine List.mem_append_right _ (List.mem_filterMap.mpr ⟨2 + 2 * c, ?_, ?_⟩)
+    · rw [List.mem_range]; omega
+    · rw [ite_eq_left (by omega)]; congr 2; omega
+
+/-- On a non-bad log, an entry answering a digest carried by entry `i` precedes `i`. -/
+theorem ans_lt_of_carried {L : Log} (hb : ¬ Bad L) {i : ℕ} (hi : i < L.length) {j : ℕ}
+    {d : Digest} (hd : d ∈ (frEncW j).carried (L[i]).1) {k : ℕ} (hk : k < L.length)
+    (hkd : L[k].2 = d) : k < i := by
+  by_contra hki
+  rcases Nat.lt_or_eq_of_le (Nat.le_of_not_lt hki) with h | h
+  · exact not_hit_of_not_bad hb j ⟨i, k, h, hk, hkd ▸ hd⟩
+  · have hw := (List.mem_filter.mp hd).2
+    simp only [decide_eq_true_eq] at hw
+    exact hb (Or.inr (Or.inl ⟨i, k, h.le, hk, hkd ▸ hw⟩))
+
+/-- Under the same hypotheses, the first preimage of `d` is read off `L.take i`. -/
+theorem pre_take_own {L : Log} (hb : ¬ Bad L) {i : ℕ} (hi : i < L.length) {j : ℕ}
+    {d : Digest} (hd : d ∈ (frEncW j).carried (L[i]).1) : pre (L.take i) d = pre L d := by
+  have hnone : (L.drop i).find? (fun e => decide (e.2 = d)) = none := by
+    rw [List.find?_eq_none]
+    intro e he hed
+    obtain ⟨m, hm, rfl⟩ := List.getElem_of_mem he
+    rw [List.getElem_drop] at hed
+    simp only [decide_eq_true_eq] at hed
+    have := ans_lt_of_carried hb hi hd (by simp at hm; omega) hed
+    omega
+  conv_rhs => rw [← List.take_append_drop i L]
+  simp only [pre, List.find?_append, hnone, Option.or_none]
+
+/-- **(b) The cap's own absorb**: on a non-bad log, a column read under a digest carried by entry
+`i` (e.g. the cap absorb as a chain's last entry) is the same on `L.take i` and on `L`. -/
+theorem colL_take_own {L : Log} (hb : ¬ Bad L) {i : ℕ} (hi : i < L.length) {j : ℕ}
+    {d : Digest} (hd : d ∈ (frEncW j).carried (L[i]).1) (h p : ℕ) :
+    colL (frEnc j) (L.take i) d h p = colL (frEnc j) L d h p := by
+  have hpre := pre_take_own hb hi hd
+  cases h with
+  | zero => simp only [colL, hpre]
+  | succ h =>
+    simp only [colL]
+    rw [hpre]
+    cases he : pre L d with
+    | none => rfl
+    | some e =>
+      simp only [Option.bind_some]
+      cases hn : (frEnc j).parseNode e.1 with
+      | none => rfl
+      | some ab =>
+        simp only [Option.bind_some]
+        have hmem : e ∈ L.take i := by
+          rw [← hpre] at he; exact List.mem_of_find?_eq_some he
+        have hc : ab.1 ∈ (frEncW j).carried e.1 ∧ ab.2 ∈ (frEncW j).carried e.1 := by
+          rw [(frEncW j).nodeQ_of_parseNode e.1 ab.1 ab.2 hn]
+          exact (frEncW j).carried_nodeQ _ _
+        exact colL_take hb j i ⟨e, hmem, by split <;> simp [hc]⟩ h p
+
 end FR.Snd

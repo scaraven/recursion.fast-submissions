@@ -713,3 +713,78 @@ These are A.10's notation for the Ligerito truths.
      The first preimage of a cap digest is then strictly before the absorb: a later one is a hit,
      and the absorb itself is a window self-hit. So the top step of `colL` reads the same entry on
      `L.take i`, and `colL_take` covers the children.
+
+---
+
+# S-G1c (part 3): stability of word reads finished; `FR` builds again; re-dump with `finP`
+
+Base `81f19b2`, after S-0 landed. **Status: partial, commit-ready.**
+
+- `FR.lean` builds as a whole against HEAD (`lake build FR`, 2,277 jobs).
+- There is no sorry and no warning in S-G's modules.
+- The source rule passes: 64 files, 0 findings.
+- Axioms are only `propext`, `Classical.choice` and `Quot.sound` (`logs/S-G/axioms-S-G1c-3.log`).
+
+## 1. Stability, second half (item 1)
+
+This is `FRSoundnessTruths` Part C. The module is now 162 code lines.
+
+- **`bytesAt_extract40`**: reading the message at `o` is the same as reading the absorb query at
+  `40 + o`.
+- **(a) `cap_carried`**: cap entry `c` of an absorb of `len ≥ 32(c + 1)` bytes is a window of
+  that absorb query, at offset `40 + 32c = 8 + 16(2 + 2c)`. Hence it is in `(frEncW j).carried`
+  of the query, for any query of at most `queryCap` bytes.
+- **(b) The cap's own absorb**, in three steps:
+  - `ans_lt_of_carried`: on a non-bad log, any entry answering a digest that entry `i` carries
+    comes strictly before `i`. A later entry would be a hit; entry `i` itself would be a window
+    self-hit.
+  - `pre_take_own`: hence `pre (L.take i) d = pre L d`.
+  - **`colL_take_own`**: the column read under a digest that entry `i` carries is the same on
+    `L.take i` and on `L`. The top step uses `pre_take_own`; the children use `colL_take`.
+
+Together with `colL_take` (part 2), this covers every word read A.10 lists. For the chain at a
+cap's absorb position, `TruthStable` reduces to `cap_carried` plus one of the two `colL_take`
+lemmas.
+
+## 2. Fixes for `FR.lean`
+
+`FR.lean` did not build because two names in `FRVIRFinalsSG` clashed with other modules:
+
+| Old name | Clashed with | New name |
+|---|---|---|
+| `accV` (the finals' accumulator), with `accV_eq` | `FRVerifier.accV` | `accVal`, `accVal_eq` |
+| `sNode` (the skip nodes in F) | `FRSpartan.sNode : Fin 64 → Fin 128` | `sNodeF` |
+
+S-G3 §1's statement `accV_eq` now reads `accVal_eq`.
+
+## 3. The re-dump (`logs/S-G/dump/`)
+
+- **Tool.** The private copy `logs/fr-build-SG/dump/IRDumpSG.lean` was refreshed from S-0's
+  current tool (`probe/fr-irdump/IRDump.lean` at `81f19b2`, which prints arrays and the
+  revision 3.9 ops). It differs in two ways only: it imports `FRVIRFinalsSG`, and it uses
+  `fins := sfFinals finP pending`.
+- **Contents.** It dumps S-0's and S-F's finals and `finP 0 … 4`. **`finPf` is still a pending
+  placeholder**, marked `-- final finPf (S-G): PENDING placeholder`.
+- **Outputs:**
+  - `ops-{L,P,N,M}.txt`, 185,390 lines each;
+  - `items.json`;
+  - `summary.txt`: ops 185,377; registers 53,164; asks = items = 8,874; `piSize` 755,680.
+- The sha256 of `ops-L.txt` begins `346c647431826922`.
+- **To regenerate**, in `logs/fr-build-SG` under the 16G scope:
+  `bash snap.sh && lake build irdumpsg && .lake/build/bin/irdumpsg ops L`.
+
+## 4. Not done, for a fresh invocation
+
+1. **`finPf` with the real ops** (`rsWeight`, `evalMK`, `phiRS` are now in `FRVIR`). The formula
+   is S-G3 §3's, with §10 changes 11 (the `û` factors, each later level's point without its first
+   coordinate, the padding factor for both m = 30 kinds). It needs:
+   - the ops;
+   - `flag_finPf` and `noAsk_finPf`, like `finP4`'s lemmas;
+   - a re-dump, which P2 is waiting on.
+2. **S-G1c items 2–5:**
+   - the remaining truths (`A_c`, `truthC`/`P1`/`P3`/`Pf`, the PIOP truths);
+   - the per-phase dooms and `Dp` over `phStart`;
+   - the multi-squeeze coordinate rows;
+   - the instantiated `KState.step` at εR for the whole transcript.
+
+I stopped here because the context of this invocation is long.

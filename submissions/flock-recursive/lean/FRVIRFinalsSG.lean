@@ -27,15 +27,15 @@ not have yet, and `evalM` at a K point (S-G RESULT).
 namespace FR
 
 /-- The nodes of `S`, as `quirky_claim_split` indexes them. -/
-def sNode (b : Fin 64) : F := skipNode (Fin.castLE (by norm_num) b)
+def sNodeF (b : Fin 64) : F := skipNode (Fin.castLE (by norm_num) b)
 
 theorem foldl_mul_eq {α : Type*} (g : α → F) :
     ∀ (xs : List α) (c : F), xs.foldl (fun a j => a * g j) c = c * (xs.map g).prod
   | [], c => by simp
   | x :: xs, c => by rw [List.foldl_cons, foldl_mul_eq g xs, List.map_cons, List.prod_cons]; ring
 
-theorem xS_of_lt {j : ℕ} (hj : j < 64) : xS j = sNode ⟨j, hj⟩ := by
-  simp only [xS, sNode, Nat.mod_eq_of_lt (show j < 128 by omega)]; rfl
+theorem xS_of_lt {j : ℕ} (hj : j < 64) : xS j = sNodeF ⟨j, hj⟩ := by
+  simp only [xS, sNodeF, Nat.mod_eq_of_lt (show j < 128 by omega)]; rfl
 
 /-- The product over `others lo` is the product over the 63 nodes other than `lo`. -/
 theorem prod_others (g : ℕ → F) {lo : ℕ} (hlo : lo < 64) :
@@ -63,8 +63,8 @@ theorem prod_others (g : ℕ → F) {lo : ℕ} (hlo : lo < 64) :
 /-- **`lagV_eq_lagrangeWeight`**: the weight `finRS`'s ops compute at `λ` is the Lagrange weight
 of node `lo` of `S` at `λ`. -/
 theorem lagV_eq_lagrangeWeight (l : F) {lo : ℕ} (hlo : lo < 64) :
-    lagV l lo = lagrangeWeight sNode l ⟨lo, hlo⟩ := by
-  have hx : ∀ j ∈ (Finset.univ : Finset (Fin 64)).erase ⟨lo, hlo⟩, xS j = sNode j :=
+    lagV l lo = lagrangeWeight sNodeF l ⟨lo, hlo⟩ := by
+  have hx : ∀ j ∈ (Finset.univ : Finset (Fin 64)).erase ⟨lo, hlo⟩, xS j = sNodeF j :=
     fun j _ => xS_of_lt j.isLt
   rw [lagV, wInv, foldl_mul_eq, foldl_mul_eq, one_mul, prod_others _ hlo, prod_others _ hlo,
     lagrangeWeight, mul_comm, xS_of_lt hlo]
@@ -159,16 +159,16 @@ def finP (i : ℕ) : FinField := if i < 4 then finPLow i else finP4
 /-! ## `finP i < 4` runs to its relation -/
 
 /-- `A + Σ_k e[q + k]·Y_k`, as `accOps` accumulates it. -/
-def accV (E : Array F) : List K → ℕ → K → K
+def accVal (E : Array F) : List K → ℕ → K → K
   | [], _, A => A
-  | y :: ys, q, A => accV E ys (q + 1) (A + K.smulF (E.getD q 0) y)
+  | y :: ys, q, A => accVal E ys (q + 1) (A + K.smulF (E.getD q 0) y)
 
-theorem accV_eq (E : Array F) : ∀ (Ys : List K) (q : ℕ) (A : K),
-    accV E Ys q A =
+theorem accVal_eq (E : Array F) : ∀ (Ys : List K) (q : ℕ) (A : K),
+    accVal E Ys q A =
       A + ((List.range Ys.length).map fun k => K.smulF (E.getD (q + k) 0) (Ys.getD k 0)).sum
-  | [], _, A => by simp [accV]
+  | [], _, A => by simp [accVal]
   | y :: ys, q, A => by
-    rw [accV, accV_eq E ys (q + 1), List.length_cons, List.range_succ_eq_map, List.map_cons,
+    rw [accVal, accVal_eq E ys (q + 1), List.length_cons, List.range_succ_eq_map, List.map_cons,
       List.sum_cons, List.map_map]
     simp only [Nat.add_zero, List.getD_cons_zero, Function.comp_def, List.getD_cons_succ,
       Nat.add_succ, Nat.succ_add]
@@ -182,9 +182,9 @@ theorem run_accOps (e : Reg) (E : Array F) : ∀ (ys : List Reg) (q acc : ℕ) (
     acc < r.size + L.length → rd (r ++ L.toArray) acc = .k A →
     ∃ M, pureRun impl κ inp (accOps e ys q acc (r.size + L.length)) r L = some (L ++ M, true) ∧
       rd (r ++ (L ++ M).toArray) (accOut acc (r.size + L.length) ys) =
-        .k (accV E (ys.map fun y => (rd r y).toK) q A)
+        .k (accVal E (ys.map fun y => (rd r y).toK) q A)
   | [], q, acc, A, L, _, _, _, _, hA =>
-    ⟨[], by simp [accOps, pureRun], by simpa [accOut, accV] using hA⟩
+    ⟨[], by simp [accOps, pureRun], by simpa [accOut, accVal] using hA⟩
   | y :: ys, q, acc, A, L, hy, he, hE, hacc, hA => by
     have hy0 : y < r.size := hy y (List.mem_cons_self ..)
     set b := r.size + L.length with hb
@@ -215,7 +215,7 @@ theorem run_accOps (e : Reg) (E : Array F) : ∀ (ys : List Reg) (q acc : ℕ) (
     · simp only [accOps, List.cons_append, List.nil_append]
       rw [pr_op impl κ inp r h1, pr_op impl κ inp r h2, pr_op impl κ inp r h3, hM]
       simp
-    · simp only [accOut, List.map_cons, accV]
+    · simp only [accOut, List.map_cons, accVal]
       simpa using hout
 
 variable (fi : FinIn)
@@ -225,7 +225,7 @@ def kcTab (i : ℕ) : Array F := eqTab ((kcOf fi i).map (fv r)).toArray
 
 /-- The batched claim `claimN(P1.i) + Σ_q eq(κ_c, bits₉(q))·y_q`. -/
 def vNext (i : ℕ) : K :=
-  accV (kcTab r fi i) ((ysOf fi i).map fun y => (rd r y).toK) 0 (rd r (p1ClaimN fi i)).toK
+  accVal (kcTab r fi i) ((ysOf fi i).map fun y => (rd r y).toK) 0 (rd r (p1ClaimN fi i)).toK
 
 /-- **A.9's `finP i` relation, `i < 4`**: the batched claim is `P1.(i+1)`'s initial claim. -/
 def relPLow (i : ℕ) : Bool := (Val.k (vNext r fi i)).eqv (rd r (p1Claim0 fi (i + 1)))

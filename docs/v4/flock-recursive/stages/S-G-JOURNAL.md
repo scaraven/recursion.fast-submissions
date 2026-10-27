@@ -142,3 +142,19 @@ symlinked; `.lake` copied from `fr-build-cert`). Every `lake`/`lean` run used th
 33. Stopped at this boundary (budget). Next: (a) cap entries are absorb windows; (b) the cap's own
     absorb; then `A_c` and the remaining truths, the dooms and `Dp`, and the coordinate rows
     (RESULT S-G1c part 2 §4).
+
+## 2026-10-27 (S-G1c, part 3)
+
+34. Item 1: `bytesAt_extract40`, `cap_carried`, `ans_lt_of_carried`, `pre_take_own`,
+    `colL_take_own`. Pitfalls:
+    - the goal of `bytesAt` over `extract` is `List.getD` on `toList`: rewrite with
+      `List.getD_eq_getElem?_getD`, `Array.getElem?_toList` and `Array.getElem?_extract`;
+    - `q.size` and `q.data.size` are separate `omega` atoms;
+    - `cases hn : parseNode j e.1` does not match `(frEnc j).parseNode e.1` syntactically.
+35. The coordinator's items after S-0 landed:
+    - `FR.lean` now builds: `accV` was renamed `accVal` and `sNode` was renamed `sNodeF` in
+      `FRVIRFinalsSG`;
+    - re-dumped with S-0's current tool through a private copy that imports `FRVIRFinalsSG`
+      (`finP` in, `finPf` still pending).
+36. Stopped (the context is long). Next, in a fresh invocation: `finPf` with
+    `rsWeight`/`evalMK`/`phiRS` and the re-dump, then S-G1c items 2–5.
