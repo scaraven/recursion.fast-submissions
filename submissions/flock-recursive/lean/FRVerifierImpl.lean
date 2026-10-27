@@ -542,12 +542,13 @@ end SparseK
 /-! ## The assembled record, `Meets`, `V` -/
 
 /-- **`implC`**: the computable ops. `fin` fixes the node's M rows (`evalM`, `evalMK`), `lRows`
-the L rows (`evalL`; no module fixes them yet), `κs₀` stands for `κ_s` in `shiftTarget` (gap: the
-op does not pass it). `targetS` and `linkW` are the leaf kinds' (gap: no kind in `OpImpl`);
+the L rows (`evalL`; no module fixes them yet); `κs₀` is no longer used (`shiftTarget` takes `κ_s`
+as an operand since S-0's interface pass). `targetS`, `slotW` and `linkW` receive the kind but are
+still the leaf kinds' functions at every kind (the node's are S-C's);
 `kindFoldWeight` is not used by revision 3.9's `gen` and is `0`. -/
 def implC (fin : Finals) (lRows : List Circ.Row) (κs₀ : F) : OpImpl where
   lagrangeS := lagrangeSI
-  targetS := targetSLeafI
+  targetS _ := targetSLeafI
   eqZ := eqZI
   tensorW := tensorWI
   rsWeight := rsWeightI
@@ -558,10 +559,10 @@ def implC (fin : Finals) (lRows : List Circ.Row) (κs₀ : F) : OpImpl where
   evalM := Eval.evalMImpl fin
   evalL := Eval.evalLImpl lRows
   evalMK := evalMKI fin
-  shiftTarget := shiftTargetI κs₀
-  slotW := slotWI
+  shiftTarget := shiftTargetI
+  slotW _ := slotWI
   kindFoldWeight _ _ _ := 0
-  linkW _ _ _ := 0
+  linkW _ _ _ _ := 0
   rowW := rowWI
   shiftEq := shiftEqI
 
@@ -569,7 +570,7 @@ def implC (fin : Finals) (lRows : List Circ.Row) (κs₀ : F) : OpImpl where
 kinds' with `m = 30`, any `m` gives the same function; `linkW` the leaf kinds' `0`). -/
 noncomputable def specC (fin : Finals) (lRows : List Circ.Row) (κs₀ : F) : OpSpec where
   lagrangeS := lagrangeSS
-  targetS := targetSLeafS 16
+  targetS _ := targetSLeafS 16
   eqZ := eqZS
   tensorW := tensorWS
   rsWeight := rsWeightS
@@ -580,10 +581,10 @@ noncomputable def specC (fin : Finals) (lRows : List Circ.Row) (κs₀ : F) : Op
   evalM := Eval.evalRowsSpec 21 23 (Layout.nodeRows fin)
   evalL := Eval.evalRowsSpec 15 23 lRows
   evalMK := evalMKS fin
-  shiftTarget := shiftTargetS κs₀
-  slotW := slotWS
+  shiftTarget := shiftTargetS
+  slotW _ := slotWS
   kindFoldWeight _ _ _ := 0
-  linkW _ _ _ := 0
+  linkW _ _ _ _ := 0
   rowW := rowWS
   shiftEq := shiftEqS
 
@@ -593,7 +594,7 @@ theorem implC_meets (fin : Finals) (lRows : List Circ.Row) (κs₀ : F) :
   simp only [OpImpl.Meets, implC, specC]
   refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
   · exact fun v l pe _ => lagrangeS_meets v l pe
-  · exact fun r => targetSLeaf_meets 16 r
+  · exact fun _ r => targetSLeaf_meets 16 r
   · exact eqZ_meets
   · exact tensorW_meets
   · exact fun r ps k p h => rsWeight_meets r ps k p h
@@ -604,8 +605,8 @@ theorem implC_meets (fin : Finals) (lRows : List Circ.Row) (κs₀ : F) :
   · exact Eval.evalL_eq lRows
   · exact evalMK_meets fin
   · exact Eval.kindInd_eq
-  · exact fun a b c _ => shiftTarget_meets κs₀ a b c
-  · exact slotW_meets
+  · exact fun k a b c _ => shiftTarget_meets k a b c
+  · exact fun _ => slotW_meets
   · simp
   · simp
   · exact rowW_meets

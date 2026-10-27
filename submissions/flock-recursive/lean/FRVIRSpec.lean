@@ -107,7 +107,7 @@ theorem queries_runIR (H : ByteArray → Digest) (P : VProg) :
 `compile_mux_sound` is L-circ's). -/
 theorem semIR_mux (fin : FinOps) (k : Kind) (h : inp.π.data[0]? = some k.byte) (tr : Trace) :
     semIR impl (genWith fin .mux) inp tr = semIR impl (genWith fin (.fixed k)) inp tr := by
-  simp [semIR, VProg.kindOn, genWith, h, Kind.ofByte?_byte]
+  simp [semIR, VProg.kindOn, genWith, byteAt?_eq, h, Kind.ofByte?_byte]
 
 /-! ## The item sequence of `gen` -/
 
@@ -358,7 +358,7 @@ theorem exec_uni (f o st pt : ℕ) (r : Array Val) (ok : Bool) (ops : List Op) (
     (a₁ a₂ : Digest) (tr : Trace) :
     exec impl κ inp (uniOps f o st pt r.size ++ ops) ⟨r, ok⟩ ((q₁, a₁) :: (q₂, a₂) :: tr) =
       if q₁ = absorbQ d (msgAt inp f o uniBytes) ∧ q₂ = squeezeQ a₁ then
-        exec impl κ inp ops ⟨r ++ (uniVals impl inp f o (impl.targetS (rd r pt).toAF) a₁ a₂).toArray,
+        exec impl κ inp ops ⟨r ++ (uniVals impl inp f o (impl.targetS κ (rd r pt).toAF) a₁ a₂).toArray,
           ok && (Val.b (msgAt inp f (o + 2032) 16)).isZero⟩ tr
       else none := by
   rw [show (⟨r, ok⟩ : St) = ⟨r ++ ([] : List Val).toArray, ok⟩ by simp, uniOps, List.append_assoc,
@@ -561,11 +561,11 @@ def refZ (d : Digest) (tr : Trace) : Option (List Val × Bool × Trace) :=
         q₂ = squeezeQ a₁ then
       (rounds3T inp fZ3 (phaseOff 5 fZ3) (mm 6 κ) 26 0 a₂
           (impl.lagrangeS (uniEs inp fZ2 (phaseOff 4 fZ2)).toArray (chF a₂ 0)
-            (impl.targetS (coordsOf p.1).toArray)).1 tr₂).bind fun x =>
+            (impl.targetS κ (coordsOf p.1).toArray)).1 tr₂).bind fun x =>
         match x.2.2.2.2 with
         | (q, a) :: tr₄ =>
           if q = absorbQ x.2.2.1 (msgAt inp fZend (phaseOff 6 fZend) 32) then
-            some (v₁ ++ uniVals impl inp fZ2 (phaseOff 4 fZ2) (impl.targetS (coordsOf p.1).toArray)
+            some (v₁ ++ uniVals impl inp fZ2 (phaseOff 4 fZ2) (impl.targetS κ (coordsOf p.1).toArray)
                 a₁ a₂ ++ x.1 ++
                 [.b (msgAt inp fZend (phaseOff 6 fZend) 32), .d a],
               (Val.b (msgAt inp fZ2 (phaseOff 4 fZ2 + 2032) 16)).isZero && x.2.1, tr₄)
@@ -614,20 +614,20 @@ theorem exec_phaseZ (c : GCtx) (r : Array Val) (ok : Bool) (ops : List Op) (d : 
   swap; · rw [if_neg h₁, if_neg h₁]; rfl
   rw [if_pos h₁, if_pos h₁]
   set r₁ := r ++ v₁.toArray
-  set U := uniVals impl inp fZ2 (phaseOff 4 fZ2) (impl.targetS (coordsOf as).toArray) a₁ a₂ with hU
+  set U := uniVals impl inp fZ2 (phaseOff 4 fZ2) (impl.targetS κ (coordsOf as).toArray) a₁ a₂ with hU
   have hUl : U.length = 136 := by simp [hU, uniVals, uniEs]
   have hs₂ : (r₁ ++ U.toArray).size = r.size + 167 := by simp [hUl, hs₁]
   have hst₂ : rd (r₁ ++ U.toArray) (r₁.size + 2) = .d a₂ := by rw [rd_app, hU]; rfl
   have hcl₂ : rd (r₁ ++ U.toArray) (r₁.size + 133) =
       .f (impl.lagrangeS (uniEs inp fZ2 (phaseOff 4 fZ2)).toArray (chF a₂ 0)
-        (impl.targetS (coordsOf as).toArray)).1 := by
+        (impl.targetS κ (coordsOf as).toArray)).1 := by
     rw [rd_app, hU, uniVals, List.getD_append_right _ _ _ _ (by simp [uniEs])]; simp [uniEs]
   rw [← hs₂]
   erw [exec_rounds3 impl κ inp fZ3 _ (mm 6) 26 0 _ _ _ _ _ a₂ _ (by rw [hs₂, hs₁]; omega)
     (by rw [hs₂, hs₁]; omega) hst₂ hcl₂]
   rcases hx : rounds3T inp fZ3 (phaseOff 5 fZ3) (mm 6 κ) 26 0 a₂
     (impl.lagrangeS (uniEs inp fZ2 (phaseOff 4 fZ2)).toArray (chF a₂ 0)
-      (impl.targetS (coordsOf as).toArray)).1 tr₂ with _ | x
+      (impl.targetS κ (coordsOf as).toArray)).1 tr₂ with _ | x
   · rfl
   obtain ⟨hxl, hxst, -⟩ := rounds3T_spec inp hx
   simp only [Option.bind_some]
@@ -1125,7 +1125,7 @@ def refPhase (n : ℕ) (p : Phase) (c : GCtx) (r : Array Val) (tr : Trace) :
     match tr with
     | (q₁, a₁) :: (q₂, a₂) :: tr =>
       if q₁ = absorbQ d (msgAt inp f (o f) uniBytes) ∧ q₂ = squeezeQ a₁ then
-        some (uniVals impl inp f (o f) (impl.targetS (rd r c.pt).toAF) a₁ a₂,
+        some (uniVals impl inp f (o f) (impl.targetS κ (rd r c.pt).toAF) a₁ a₂,
           (Val.b (msgAt inp f (o f + 2032) 16)).isZero, tr)
       else none
     | _ => none
@@ -1218,7 +1218,7 @@ theorem exec_genPhase (n : ℕ) (p : Phase) (c : GCtx) (r : Array Val) (ok : Boo
     rcases tr with _ | ⟨⟨q, a⟩, tr⟩
     · simp only [exec_app, evalOp, List.nil_append, seedT, Option.bind_none]
     · simp only [exec_app, evalOp, seedT, rd_app, rd_app0, List.getD_cons_succ, List.getD_cons_zero,
-        List.nil_append, List.cons_append, Val.toB]
+        List.nil_append, List.cons_append, Val.toB, byteAt_eq]
       by_cases h : q = seedQ inp.vk inp.c (inp.π.extract (absOff fHdr 0) (absOff fHdr 0 + 48)) <;>
         simp [h, allK, Val.eqv, Val.toBit, Bool.and_assoc]
   | absorb f len =>

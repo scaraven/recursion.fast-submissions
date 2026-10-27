@@ -440,3 +440,70 @@ S-E2 should confirm the import kinds. Every module of `FR` builds under the 16G 
 - S-F's `finRS` still has to switch to the new `eqZ λ ρ₁` (bit 6 = `ρ₁`).
 - The concrete `OpImpl` needs computable twins of `rsWeight`, `phiRS`, `evalMK`, the three-argument
   `shiftTarget` and the AF-valued `eqZ`.
+
+### Verifier-time pass (S-F2's blockers, 2026-10-27)
+
+**1. In-place proof reads (`FRTranscriptDefs`, `FRVIR`, `FRFormat`).** In compiled code,
+`ByteArray.data` copies the whole array, so each byte read copied the 755,680-byte proof.
+- New readers (no attributes, plain definitions):
+  - `byteAt q k := if h : k < q.size then q[k] else 0`;
+  - `byteAt? q k`, the `Option` form.
+- Rewired:
+  - `bytesAt` reads through `byteAt`;
+  - `kindSel` uses `byteAt inp.π 0`;
+  - `VProg.kindOn` and `FRFormat.kindOf` use `byteAt? π 0`.
+- Bridging lemmas, both `@[simp]`, so existing `simp [kindOf]`-style proofs keep working:
+  - `byteAt?_eq : byteAt? q k = q.data[k]?`;
+  - `byteAt_eq : byteAt q k = q.data.getD k 0`;
+  - plus `bytesAt_eq`, the old `Vector.ofFn … q.data.getD …` form.
+- `getElem_bytesAt` is re-proved through `bytesAt_eq`. Every other use of `bytesAt` (FRLog,
+  FRSoundness*, FRX*) goes through `getElem_bytesAt`/`bytesAt_toList` and needed no change.
+- Mechanical fix outside S-0's modules: `FRNodeCircuit.byte_of_kindOf` (S-E2) gains one line,
+  `rw [byteAt?_eq] at h`, after `unfold kindOf`.
+
+**2. `OpImpl` interface (`FRVIR`; `gen` and `Meets` updated).**
+- `targetS : Kind → …`, `slotW : Kind → …` and `linkW : Kind → …` are passed `κ` by `evalOp`.
+- `shiftTarget` gains the operand `ks`. `Op.shiftTarget tau theta bnd ks`, and
+  `OpImpl.shiftTarget : F → Array F → Array F → Array F → F`, with `κ_s` first. `finSh` passes S1's
+  coordinate 28, the same register as its `κ_s`.
+- `relSh` (`flag_finSh`) and the Z2 `targetS` references in `FRVIRSpec` take `κ`. All proofs
+  build unchanged.
+- **`FRVerifierImpl` (S-F2's module) adapted mechanically**, at the coordinator's request:
+  - `implC`/`specC` take `targetS _`, `slotW _` and `linkW _ _ _ _`;
+  - `shiftTarget := shiftTargetI` / `shiftTargetS` now take `κ_s` from the operand. `κs₀` is no
+    longer used but is kept in the signatures.
+  - `implC_meets` follows. The diff is in `logs/S-0/FRVerifierImpl-iface.patch`.
+- **Not done: the fused walk op** (the optional item, about 15 ms). It needs a new constructor,
+  which in turn needs a `FRVIRCompile` case (S-E2), and a `walk` field in `FRVerifierImpl`.
+  Proposal: `walkAB rowW colW → F × F` replacing `walkA`/`walkB` in `finLc`.
+- **For the other tracks:**
+  - S-C: the node's `targetS`/`linkW`/slot-1 `slotW` now receive the kind; at present `implC`
+    uses the leaf functions for every kind.
+  - P2: `shiftTarget` has 4 operands (`… bnd ks`) in the dump.
+  - S-F2: `κs₀` can now be dropped from `V`.
+
+**3. Timing** (`probe/fr-vtime`, built from `logs/S-0/vtime-src`: the entry as is, no
+`implemented_by`; VM, `taskset -c 9`, 16G scope; logs `logs/S-0/vtime-{N,P,L}.log`, `vtime-N-2.log`,
+`prof-N.log`):
+
+| Kind | warm `runSeq`, best / median of 9 | `traceDigestF` | peak RSS |
+|---|---|---|---|
+| N30 | 172.9 / 178.6 ms (first run, loaded machine: 191.5 / 220.9) | 13.0 ms | 127 MB |
+| P30 | 182.0 / 185.8 ms | 12.9 ms | 126 MB |
+| L32 | 180.4 / 194.0 ms | 12.4 ms | 127 MB |
+
+This is S-F2's `get!` measurement (177–183 ms), now from the entry's own code. The profile
+(`prof-N.log`): `piDigest` 7,554 ops in 8.9 ms (was 233 s), `piElem` 1.2 ms, `piDigestAt` 0.9 ms,
+`kindSel` 0.0 ms (was 2.6 ms).
+
+**Checks:**
+- `FR` builds as a whole: 2,279 jobs under the 16G cap, including FRVerifierImpl, FRNodeCircuit and
+  S-E2's linear `compileMux`, which needed no change.
+- The axiom audit (`logs/S-0/axioms.log`) is clean: 37 theorems, no `sorry`.
+- `source-rule`: 72 files, 0 findings.
+- Code lines (`logs/S-0/loc-tv.txt`): FRTranscriptDefs 381, FRVIR 447, FRVIRSpec 1,283,
+  FRVIRFinals 306.
+
+**Re-dump (`logs/S-0/dump/`, previous one in `prev/`):** 66,135 ops, 53,164 registers, asks =
+items = 8,874, and `items.json` is unchanged. The op count fell from 149,974 because of the
+other tracks' `finRS` change since the last dump, not this pass. `shiftTarget` prints 4 operands.

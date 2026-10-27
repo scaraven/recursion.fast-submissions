@@ -300,8 +300,31 @@ def nodeQ (i : ℕ) (l r : Digest) : ByteArray := bytesOf (tagNode i ++ l.toList
 /-- The column query of level `i`: `"FRMCOL" ‖ i ‖ 0 ‖ column`. -/
 def colQ (i : ℕ) (col : ByteArray) : ByteArray := bytesOf (tagCol i) ++ col
 
-/-- `n` bytes of `q` at `o` (zero past the end). -/
-def bytesAt (q : ByteArray) (o n : ℕ) : Vector UInt8 n := Vector.ofFn fun i => q.data.getD (o + i) 0
+/-- Byte `k` of `q`, or `none` past the end. It reads `q` in place: `q.data` would copy the whole
+array in compiled code, once per read (S-F2 §3.1: 283 s for `V` on a node proof). -/
+def byteAt? (q : ByteArray) (k : ℕ) : Option UInt8 := if h : k < q.size then some q[k] else none
+
+/-- Byte `k` of `q` (zero past the end), read in place. -/
+def byteAt (q : ByteArray) (k : ℕ) : UInt8 := if h : k < q.size then q[k] else 0
+
+@[simp] theorem byteAt?_eq (q : ByteArray) (k : ℕ) : byteAt? q k = q.data[k]? := by
+  unfold byteAt?
+  split
+  · next h => exact (Array.getElem?_eq_getElem h).symm
+  · next h => exact (Array.getElem?_eq_none (Nat.le_of_not_lt h)).symm
+
+@[simp] theorem byteAt_eq (q : ByteArray) (k : ℕ) : byteAt q k = q.data.getD k 0 := by
+  rw [Array.getD_eq_getD_getElem?, ← byteAt?_eq]
+  unfold byteAt byteAt?
+  split <;> rfl
+
+/-- `n` bytes of `q` at `o` (zero past the end), read in place (`byteAt`). -/
+def bytesAt (q : ByteArray) (o n : ℕ) : Vector UInt8 n := Vector.ofFn fun i => byteAt q (o + i)
+
+/-- `bytesAt` in its reading through `q.data` (the form the proofs use). -/
+theorem bytesAt_eq (q : ByteArray) (o n : ℕ) :
+    bytesAt q o n = Vector.ofFn fun i => q.data.getD (o + i) 0 := by
+  simp only [bytesAt, byteAt_eq]
 
 /-! ### The Merkle encodings (`FRMerkle.MerkleEnc`, per level) -/
 
@@ -350,7 +373,7 @@ theorem nodeQ_size (i : ℕ) (l r : Digest) : (nodeQ i l r).size = 72 := by
 
 theorem getElem_bytesAt (q : ByteArray) (o n k : ℕ) (hk : k < n) :
     (bytesAt q o n)[k] = q.data.toList.getD (o + k) 0 := by
-  rw [bytesAt, Vector.getElem_ofFn, Array.getD_eq_getD_getElem?, List.getD_eq_getElem?_getD,
+  rw [bytesAt_eq, Vector.getElem_ofFn, Array.getD_eq_getD_getElem?, List.getD_eq_getElem?_getD,
     Array.getElem?_toList]
 
 theorem bytesAt_nodeQ_l (i : ℕ) (l r : Digest) : bytesAt (nodeQ i l r) 8 32 = l := by

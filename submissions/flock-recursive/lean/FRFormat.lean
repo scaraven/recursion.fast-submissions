@@ -102,7 +102,7 @@ witness-sending proof's first word is `0` or `1`, so its first byte is `0x00`/`0
 kind byte; the empty proof and any other first byte are `W` too, whose branch decides `Rel` and
 rejects every non-canonical encoding). -/
 def kindOf (π : Proof) : PKind :=
-  match π.data[0]?.bind Kind.ofByte? with
+  match (byteAt? π 0).bind Kind.ofByte? with
   | none => .W
   | some k => if π.size = piSize then .snark k else .bad
 
@@ -214,16 +214,16 @@ def reassemble (tr : Trace) : Proof :=
 /-! ## Controls -/
 
 theorem kindOf_snark {π : Proof} {k : Kind} (h0 : π.data[0]? = some k.byte) (hs : π.size = piSize) :
-    kindOf π = .snark k := by simp [kindOf, h0, Kind.ofByte?_byte, hs]
+    kindOf π = .snark k := by simp [kindOf, byteAt?_eq, h0, Kind.ofByte?_byte, hs]
 
 /-- Negative: a kind byte with another size is rejected (`bad`), not run. -/
 theorem kindOf_bad {π : Proof} {k : Kind} (h0 : π.data[0]? = some k.byte) (hs : π.size ≠ piSize) :
-    kindOf π = .bad := by simp [kindOf, h0, Kind.ofByte?_byte, hs]
+    kindOf π = .bad := by simp [kindOf, byteAt?_eq, h0, Kind.ofByte?_byte, hs]
 
 /-- A witness-sending proof (first word `0` or `1`) is the `W` kind. -/
 theorem kindOf_W {π : Proof} {b : UInt8} (h0 : π.data[0]? = some b) (hb : b = 0 ∨ b = 1) :
     kindOf π = .W := by
-  rcases hb with rfl | rfl <;> simp [kindOf, h0, Kind.ofByte?]
+  rcases hb with rfl | rfl <;> simp [kindOf, byteAt?_eq, h0, Kind.ofByte?]
 
 theorem kindOf_small : kindOf ⟨#[0x4E]⟩ = .bad ∧ kindOf ⟨#[1, 0]⟩ = .W ∧ kindOf ByteArray.empty = .W := by
   refine ⟨kindOf_bad (k := .N30) rfl (by rw [piSize_eq]; decide), kindOf_W rfl (by decide), rfl⟩

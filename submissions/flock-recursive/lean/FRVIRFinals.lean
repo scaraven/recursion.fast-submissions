@@ -195,7 +195,7 @@ def finSh : FinField := fun fi b₀ =>
   let co := coordsR fi "S1"; let rs := chals fi "S2" 28; let ks := co.getD 28 0
   let b := b₀ + 7
   (bndOps b₀ ++
-   [.packFK (fun κ => co.take (κ.m - 14)), .packF ((co.drop 18).take 10), .shiftTarget b (b + 1) (b₀ + 6),
+   [.packFK (fun κ => co.take (κ.m - 14)), .packF ((co.drop 18).take 10), .shiftTarget b (b + 1) (b₀ + 6) ks,
     .assertEq (b + 2) (claim0 fi "S2") allK,
     .packFK (fun κ => rs.take (κ.m - 14)), .packFK (fun κ => (rs.drop (κ.m - 14)).take 10),
     .eqPt b (b + 3), .slotW 0 (b + 1) (b + 4), .mulF (b + 5) (b + 6),
@@ -318,7 +318,8 @@ theorem flag_finLc (hin : ∀ x ∈ (chals fi "Z3" 26).take 8 ++ chals fi "L2" 1
 /-- The link families' sum `acc + Σ_f κ_s^(f+2) linkW τ f r` (as `linkOps`). -/
 def linkSum (τ r : Array F) (ks : F) : ℕ → F → F → F
   | 0, acc, _ => acc
-  | n + 1, acc, pow => linkSum τ r ks n (acc + pow * impl.linkW τ (nLinkFam - (n + 1)) r) (pow * ks)
+  | n + 1, acc, pow =>
+    linkSum τ r ks n (acc + pow * impl.linkW κ τ (nLinkFam - (n + 1)) r) (pow * ks)
 
 /-- **A.9's `finSh` relation** over the register values. -/
 def relSh : Bool :=
@@ -327,13 +328,13 @@ def relSh : Bool :=
   let θ := (((co.drop 18).take 10).map (fv r)).toArray
   let rb := ((rs.take (κ.m - 14)).map (fv r)).toArray
   let rp := (((rs.drop (κ.m - 14)).take 10).map (fv r)).toArray
-  let wout := eqPoint τ rb * impl.slotW 0 θ rp
-  let win := linkSum impl τ rb ks nLinkFam
-    ((impl.shiftEq τ rb + ks * eqPoint (Array.replicate (κ.m - 14) 0) rb) * impl.slotW 1 θ rp)
+  let wout := eqPoint τ rb * impl.slotW κ 0 θ rp
+  let win := linkSum impl κ τ rb ks nLinkFam
+    ((impl.shiftEq τ rb + ks * eqPoint (Array.replicate (κ.m - 14) 0) rb) * impl.slotW κ 1 θ rp)
     (ks * ks)
   let bnd : Array F := if κ.isNode then #[h0lo, h0hi, h0lo, h0hi]
     else #[pe inp fHdr 16, pe inp fHdr 32, pe inp fStmt 1, pe inp fStmt 17]
-  (Val.f (impl.shiftTarget τ θ bnd)).eqv (rd r (claim0 fi "S2")) &&
+  (Val.f (impl.shiftTarget ks τ θ bnd)).eqv (rd r (claim0 fi "S2")) &&
   (Val.f ((wout + win) * fv r (fi.zhat.getD 2 0))).eqv
     (rd r (claimN fi "S2"))
 

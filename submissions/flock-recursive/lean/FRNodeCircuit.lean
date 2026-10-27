@@ -112,6 +112,7 @@ theorem pubCells_nodup : (pubCells []).Nodup := by decide
 theorem byte_of_kindOf {π : Proof} {k : FR.Kind} (h : kindOf π = .snark k) :
     π.data[0]? = some k.byte := by
   unfold kindOf at h
+  rw [byteAt?_eq] at h
   rcases e : π.data[0]? with _ | b <;> simp only [e, Option.bind_none, Option.bind_some] at h
   · cases h
   · rcases e' : Kind.ofByte? b with _ | k' <;> simp only [e'] at h

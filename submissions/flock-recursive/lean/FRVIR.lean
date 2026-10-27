@@ -174,7 +174,7 @@ inductive Op where
   | evalMK (tau sigma : Reg)
   /-- F: the shift sumcheck's boundary term with the boundary values `bnd` (AF 4: a leaf's `s`, `h`
   as two elements each; a node's `h0` twice; revision 3.9). -/
-  | shiftTarget (tau theta bnd : Reg)
+  | shiftTarget (tau theta bnd ks : Reg)
   /-- F: the slot weight of slot map `s` at `θ`, `r`. -/
   | slotW (s : ℕ) (theta r : Reg)
   /-- F: `Ŵ_β(ρ)`. -/
@@ -211,8 +211,8 @@ inductive Op where
 structure OpImpl where
   /-- The degree-≤127 interpolant through `S ∪ Λ` at `λ` (FRSkip). -/
   lagrangeS : Array F → F → Array F → F × F
-  /-- `P^e` on `S` (64 values) at the zerocheck point (FRPubTarget/S-C). -/
-  targetS : Array F → Array F
+  /-- `P^e` on `S` (64 values) at the zerocheck point, for the proof's kind (FRPubTarget/S-C). -/
+  targetS : Kind → Array F → Array F
   /-- The Z claim's inner weight `L_{lo(i)}(λ) · eq(ρ₁, bit 6 of i)`, 128 values (FRSkip). -/
   eqZ : F → F → Array F
   /-- `Π_v (1 − r_v + r_v Ŵ_v(D[j]))` (FRRS). -/
@@ -233,14 +233,17 @@ structure OpImpl where
   evalL : Array F → Array F → F × F × F
   /-- `evalM` at a K column point (FRVIREval). -/
   evalMK : Array F → Array K → K × K × K
-  /-- The shift sumcheck's boundary term: `τ`, `θ`, the boundary values (P1-D5; FRShift). -/
-  shiftTarget : Array F → Array F → Array F → F
-  /-- The collapse's slot weight of slot map `s`, summed directly (S-C-m1; FRShift). -/
-  slotW : ℕ → Array F → Array F → F
+  /-- The shift sumcheck's boundary term: `κ_s`, `τ`, `θ`, the boundary values (P1-D5, A.9
+  `finSh` (i); FRShift). -/
+  shiftTarget : F → Array F → Array F → Array F → F
+  /-- The collapse's slot weight of slot map `s` for the proof's kind, summed directly (S-C-m1;
+  FRShift). -/
+  slotW : Kind → ℕ → Array F → Array F → F
   /-- `Ŵ_β` at the ring-switching point (S-C-M1; FRRingSwitch). -/
   kindFoldWeight : Array F → F → Array K → F
-  /-- A link family's weight (revision 3.5, S-0-M2; FRShift): `τ`, the family, the point. -/
-  linkW : Array F → ℕ → Array F → F
+  /-- A link family's weight for the proof's kind (revision 3.5, S-0-M2; FRShift): `τ`, the
+  family, the point. -/
+  linkW : Kind → Array F → ℕ → Array F → F
   /-- The lincheck's row weights `rowW` (`2^14`): Lagrange at `λ` on the skip coordinate ⊗
   `eq(r′_hi, ·)` on the 8 high position bits (A.9 `finLc`; FRSkip/FRSpartan). -/
   rowW : F → Array F → Array F
@@ -259,7 +262,7 @@ specification where the verifier calls it (the operand lengths `gen` produces); 
 are unconstrained. `FRVIREval` proves it. -/
 def OpImpl.Meets (impl : OpImpl) (spec : OpSpec) : Prop :=
   (∀ v l pe, v.size = 127 → impl.lagrangeS v l pe = spec.lagrangeS v l pe) ∧
-  (∀ r, impl.targetS r = spec.targetS r) ∧ (∀ a b, impl.eqZ a b = spec.eqZ a b) ∧
+  (∀ κ r, impl.targetS κ r = spec.targetS κ r) ∧ (∀ a b, impl.eqZ a b = spec.eqZ a b) ∧
   (∀ j r, impl.tensorW j r = spec.tensorW j r) ∧
   (∀ r ps k p, r.size = 7 → impl.rsWeight r ps k p = spec.rsWeight r ps k p) ∧
   (∀ r a, r.size = 7 → impl.phiRS r a = spec.phiRS r a) ∧
@@ -268,10 +271,10 @@ def OpImpl.Meets (impl : OpImpl) (spec : OpSpec) : Prop :=
   (∀ a b, impl.evalM a b = spec.evalM a b) ∧ (∀ a b, impl.evalL a b = spec.evalL a b) ∧
   (∀ a b, impl.evalMK a b = spec.evalMK a b) ∧
   (∀ a, impl.kindInd a = spec.kindInd a) ∧
-  (∀ a b c, c.size = 4 → impl.shiftTarget a b c = spec.shiftTarget a b c) ∧
-  (∀ s a b, impl.slotW s a b = spec.slotW s a b) ∧
+  (∀ k a b c, c.size = 4 → impl.shiftTarget k a b c = spec.shiftTarget k a b c) ∧
+  (∀ κ s a b, impl.slotW κ s a b = spec.slotW κ s a b) ∧
   (∀ a b c, impl.kindFoldWeight a b c = spec.kindFoldWeight a b c) ∧
-  (∀ a f c, impl.linkW a f c = spec.linkW a f c) ∧ (∀ l a, impl.rowW l a = spec.rowW l a) ∧
+  (∀ κ a f c, impl.linkW κ a f c = spec.linkW κ a f c) ∧ (∀ l a, impl.rowW l a = spec.rowW l a) ∧
   (∀ a b, a.size = b.size → impl.shiftEq a b = spec.shiftEq a b)
 
 /-! ## One op -/
@@ -366,7 +369,7 @@ def evalOp (impl : OpImpl) (κ : Kind) (inp : Input) (regs : Array Val) : Op →
   | .lagrangeS v l pe =>
     let x := impl.lagrangeS (rd regs v).toAF (rd regs l).toF (rd regs pe).toAF
     .vals [.f x.1, .f x.2] true
-  | .targetS r => .vals [.af (impl.targetS (rd regs r).toAF)] true
+  | .targetS r => .vals [.af (impl.targetS κ (rd regs r).toAF)] true
   | .eqZ l r₁ => .vals [.af (impl.eqZ (rd regs l).toF (rd regs r₁).toF)] true
   | .tensorW j r => .vals [.k (impl.tensorW (rd regs j).toN (rd regs r).toAK)] true
   | .rsWeight r ps κ' ρ =>
@@ -386,13 +389,14 @@ def evalOp (impl : OpImpl) (κ : Kind) (inp : Input) (regs : Array Val) : Op →
   | .evalMK t s =>
     let x := impl.evalMK (rd regs t).toAF (rd regs s).toAK
     .vals [.k x.1, .k x.2.1, .k x.2.2] true
-  | .shiftTarget t h bd =>
-    .vals [.f (impl.shiftTarget (rd regs t).toAF (rd regs h).toAF (rd regs bd).toAF)] true
-  | .slotW sm t r => .vals [.f (impl.slotW sm (rd regs t).toAF (rd regs r).toAF)] true
+  | .shiftTarget t h bd ks =>
+    .vals [.f (impl.shiftTarget (rd regs ks).toF (rd regs t).toAF (rd regs h).toAF (rd regs bd).toAF)]
+      true
+  | .slotW sm t r => .vals [.f (impl.slotW κ sm (rd regs t).toAF (rd regs r).toAF)] true
   | .eqPt a b => .vals [.f (eqPoint (rd regs a).toAF (rd regs b).toAF)] true
   | .rowW l h => .vals [.af (impl.rowW (rd regs l).toF (rd regs h).toAF)] true
   | .shiftEq t r => .vals [.f (impl.shiftEq (rd regs t).toAF (rd regs r).toAF)] true
-  | .linkW t fm p => .vals [.f (impl.linkW (rd regs t).toAF fm (rd regs p).toAF)] true
+  | .linkW t fm p => .vals [.f (impl.linkW κ (rd regs t).toAF fm (rd regs p).toAF)] true
   | .kindFoldWeight r b ρ =>
     .vals [.f (impl.kindFoldWeight (rd regs r).toAF (rd regs b).toF (rd regs ρ).toAK)] true
   | .splitDigest d =>
@@ -403,7 +407,7 @@ def evalOp (impl : OpImpl) (κ : Kind) (inp : Input) (regs : Array Val) : Op →
   | .keep act n o => .vals [if act κ then rd regs n else rd regs o] true
   | .hashStmt s => .vals [.d (stmtDigest κ (rd regs s).toB)] true
   | .kindSel =>
-    let b := inp.π.data.getD 0 0
+    let b := byteAt inp.π 0
     .vals [.bit (b == Kind.L32.byte), .bit (b == Kind.P30.byte), .bit (b == Kind.N30.byte)] true
   | .assertEq a b act => .vals [] (!act κ || (rd regs a).eqv (rd regs b))
   | .assertBit _ _ => .vals [] true
@@ -428,7 +432,7 @@ structure VProg where
 def VProg.kindOn (P : VProg) (inp : Input) : Kind :=
   match P.mode with
   | .fixed κ => κ
-  | .mux => ((inp.π.data[0]?).bind Kind.ofByte?).getD .L32
+  | .mux => ((byteAt? inp.π 0).bind Kind.ofByte?).getD .L32
 
 /-- The interpreter's state: the registers and the flag. -/
 structure St where

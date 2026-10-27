@@ -89,7 +89,7 @@ def showOp (m : Mode) : Op → String
   | .evalM t s => s!"evalM {r t} {r s}"
   | .evalL t s => s!"evalL {r t} {r s}"
   | .evalMK t s => s!"evalMK {r t} {r s}"
-  | .shiftTarget t h bd => s!"shiftTarget {r t} {r h} {r bd}"
+  | .shiftTarget t h bd ks => s!"shiftTarget {r t} {r h} {r bd} {r ks}"
   | .slotW sm t x => s!"slotW {sm} {r t} {r x}"
   | .kindFoldWeight x b y => s!"kindFoldWeight {r x} {r b} {r y}"
   | .eqPt a b => s!"eqPt {r a} {r b}"
