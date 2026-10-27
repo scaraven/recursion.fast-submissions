@@ -25,7 +25,9 @@ value each) and applies the `F₂`-linear map `Φ(a) = a_7`, `a_{p+1} = a_p + f_
 * From spartan-srom: `stages`, `Phi`, `phiApply`, `phiTable`, `target`, `weightTable`,
   `weightEval`, `weight_mle`, `mleEval_weightTable` (MBP = the extension of the prover's
   weights), `stage_bad_le_one`; `ring_complete` and `ring_final`, **generalised from the power
-  basis `x^i` to any packing basis `b`**.
+  basis `x^i` to any packing basis `b`, and from `eq(r, ·)` to any high weight `g`** (rev. 3.4: the
+  lincheck's weighted claim with `W_β`'s block weight; `g = eq(r, ·)` gives `Q̃_i(r)` by `mle`'s
+  definition).
 * New: **`ring_inj_basis`** — for any `GF(2)`-independent family `b : Fin n → L` with `|L| = 2^n`
   (any field of characteristic two), a nonzero `δ ∈ L^n` has some `Σ_i b_i δ_i^(2^k) ≠ 0`, `k < n`
   (the Moore matrix of `b` kills no nonzero vector: a left kernel vector `c` gives the linearised
@@ -362,31 +364,33 @@ section Switch
 
 variable {K E : Type*} [CommRing K] [CommRing E] [Algebra K E]
 
-/-- **Completeness.** For Boolean bit-planes `Q_i` packed as `q(u) = Σ_i Q_i(u) · b_i ∈ K` and any
-additive `Φ`, `Σ_u Φ(eq(r, u)) · q(u) = Σ_i x^i · Φ(Q̃_i(r))`. -/
+/-- **Completeness.** For Boolean bit-planes `Q_i` packed as `q(u) = Σ_i Q_i(u) · b_i ∈ K`, any
+additive `Φ` and any high weight `g` (`eq(r, ·)` for an evaluation claim, so the partials are
+`Q̃_i(r)`; `W_β`'s block weight for the lincheck's weighted claim, rev. 3.4),
+`Σ_u Φ(g(u)) · q(u) = Σ_i b_i · Φ(Σ_u g(u) Q_i(u))`. -/
 theorem ring_complete {n ℓ : ℕ} (Φ : E →+ E) (b : Fin n → K) (Q : Fin n → Fin (2 ^ ℓ) → K)
-    (hQ : ∀ i u, Q i u = 0 ∨ Q i u = 1) (r : Fin ℓ → E) :
-    ∑ u, Φ (eq r (cube u)) * algebraMap K E (∑ i : Fin n, Q i u * b i) =
-      ∑ i : Fin n, algebraMap K E (b i) * Φ (mle (fun u ↦ algebraMap K E (Q i u)) r) := by
-  have hbit : ∀ i u, Φ (eq r (cube u) * algebraMap K E (Q i u)) =
-      algebraMap K E (Q i u) * Φ (eq r (cube u)) := fun i u ↦ by
+    (hQ : ∀ i u, Q i u = 0 ∨ Q i u = 1) (g : Fin (2 ^ ℓ) → E) :
+    ∑ u, Φ (g u) * algebraMap K E (∑ i : Fin n, Q i u * b i) =
+      ∑ i : Fin n, algebraMap K E (b i) * Φ (∑ u, g u * algebraMap K E (Q i u)) := by
+  have hbit : ∀ i u, Φ (g u * algebraMap K E (Q i u)) =
+      algebraMap K E (Q i u) * Φ (g u) := fun i u ↦ by
     rcases hQ i u with h | h <;> simp [h]
-  simp only [mle, map_sum, hbit, Finset.mul_sum, map_mul]
+  simp only [map_sum, hbit, Finset.mul_sum, map_mul]
   rw [Finset.sum_comm]
   refine Finset.sum_congr rfl fun u _ ↦ ?_
   refine Finset.sum_congr rfl fun i _ ↦ ?_
   ring
 
-/-- **The switched claim's error.** `T - Σ_u Φ(eq(r, u)) · q(u)` is `π_0` of the family
-`Φ(s_i - Q̃_i(r))` with weights `b_i`: the claim handed on is true exactly when this `π_0`
-vanishes (the end of the six stages). -/
+/-- **The switched claim's error.** `T - Σ_u Φ(g(u)) · q(u)` is `π_0` of the family
+`Φ(s_i - Σ_u g(u) Q_i(u))` with weights `b_i`: the claim handed on is true exactly when this `π_0`
+vanishes (the end of the stages). -/
 theorem ring_final {n ℓ : ℕ} (Φ : E →+ E) (b : Fin n → K) (Q : Fin n → Fin (2 ^ ℓ) → K)
-    (hQ : ∀ i u, Q i u = 0 ∨ Q i u = 1) (r : Fin ℓ → E) (s : Fin n → E) :
+    (hQ : ∀ i u, Q i u = 0 ∨ Q i u = 1) (g : Fin (2 ^ ℓ) → E) (s : Fin n → E) :
     (∑ i : Fin n, algebraMap K E (b i) * Φ (s i)) -
-        ∑ u, Φ (eq r (cube u)) * algebraMap K E (∑ i : Fin n, Q i u * b i) =
+        ∑ u, Φ (g u) * algebraMap K E (∑ i : Fin n, Q i u * b i) =
       frobPair univ (fun i : Fin n ↦ algebraMap K E (b i))
-        (fun i ↦ Φ (s i - mle (fun u ↦ algebraMap K E (Q i u)) r)) 0 := by
-  rw [ring_complete Φ b Q hQ r, ← Finset.sum_sub_distrib, frobPair]
+        (fun i ↦ Φ (s i - ∑ u, g u * algebraMap K E (Q i u))) 0 := by
+  rw [ring_complete Φ b Q hQ g, ← Finset.sum_sub_distrib, frobPair]
   refine Finset.sum_congr rfl fun i _ ↦ ?_
   rw [pow_zero, pow_one, map_sub, mul_sub]
 
@@ -490,8 +494,8 @@ theorem ring_inj_basis {L : Type*} [Field L] [Fintype L] [CharP L 2] {n : ℕ}
   refine hc (funext fun j ↦ ?_)
   have := congrArg (fun p : L[X] ↦ p.coeff (2 ^ (j : ℕ))) hP0
   simp only [hP, finsetSum_coeff, coeff_C_mul_X_pow, coeff_zero] at this
-  rw [Finset.sum_eq_single j (fun j' _ hj' ↦ if_neg fun h ↦ hj' (Fin.ext
-    (Nat.pow_right_injective le_rfl h).symm)) (by simp), if_pos rfl] at this
+  rw [Finset.sum_eq_single j (fun j' _ hj' ↦ ite_eq_right fun h ↦ hj' (Fin.ext
+    (Nat.pow_right_injective le_rfl h).symm)) (by simp), ite_eq_left rfl] at this
   exact this
 
 end Inj
@@ -523,21 +527,21 @@ theorem rs_escape_le [CharP E 2] [Fintype E] [DecidableEq E] {n : ℕ} (w δ : F
     Nat.add_sub_add_right, Finset.mem_filter, Finset.mem_univ, true_and]
 
 /-- **End of R5.** Doom after all `s' + 1` coefficients means the switched claim is false:
-`T = Σ_i b_i Φ(s_i) ≠ Σ_u Φ(eq(r, u)) · q(u)` for the slices' errors `δ_i = s_i - Q̃_i(r)`. -/
+`T = Σ_i b_i Φ(s_i) ≠ Σ_u Φ(g(u)) · q(u)` for the slices' errors `δ_i = s_i - Σ_u g(u) Q_i(u)`. -/
 theorem rs_end [CharP E 2] {K : Type*} [CommRing K] [Algebra K E] {n ℓ : ℕ} (b : Fin n → K)
-    (Q : Fin n → Fin (2 ^ ℓ) → K) (hQ : ∀ i u, Q i u = 0 ∨ Q i u = 1) (r : Fin ℓ → E)
+    (Q : Fin n → Fin (2 ^ ℓ) → K) (hQ : ∀ i u, Q i u = 0 ∨ Q i u = 1) (g : Fin (2 ^ ℓ) → E)
     (s : Fin n → E) (s' : ℕ) (fs : List E) (hlen : fs.length = s' + 1)
     (h : rsDoom (fun i ↦ algebraMap K E (b i))
-      (fun i ↦ s i - mle (fun u ↦ algebraMap K E (Q i u)) r) s' fs) :
+      (fun i ↦ s i - ∑ u, g u * algebraMap K E (Q i u)) s' fs) :
     ∑ i : Fin n, algebraMap K E (b i) * Phi fs (s i) ≠
-      ∑ u, Phi fs (eq r (cube u)) * algebraMap K E (∑ i : Fin n, Q i u * b i) := by
+      ∑ u, Phi fs (g u) * algebraMap K E (∑ i : Fin n, Q i u * b i) := by
   obtain ⟨k, hk, hne⟩ := h
   rw [hlen, Nat.sub_self, pow_zero, Nat.lt_one_iff] at hk
   subst hk
   have hPhi : Phi fs = frobMap (stages s' fs) := by rw [Phi, hlen, Nat.add_sub_cancel]
   intro heq
   apply hne
-  have := ring_final (frobMapHom (stages s' fs)) b Q hQ r s
+  have := ring_final (frobMapHom (stages s' fs)) b Q hQ g s
   simp only [frobMapHom, AddMonoidHom.coe_mk, ZeroHom.coe_mk, ← hPhi] at this ⊢
   rw [← this, heq, sub_self]
 
@@ -671,21 +675,21 @@ def rsT (s : Fin J → Fin 128 → F) (fs : Fin 7 → F) (j : Fin J) : F :=
   ∑ i, algebraMap F F (bitBasis i) * Phi (List.ofFn fs) (s j i)
 
 /-- Its true value `Σ_u Φ(eq(r_j, u)) · q(u)`, `q = pack Q`. -/
-def rsTruth (Q : Fin 128 → Fin (2 ^ ℓ) → F) (r : Fin J → Fin ℓ → F) (fs : Fin 7 → F) (j : Fin J) :
-    F :=
-  ∑ u, Phi (List.ofFn fs) (eq (r j) (cube u)) * algebraMap F F (∑ i, Q i u * bitBasis i)
+def rsTruth (Q : Fin 128 → Fin (2 ^ ℓ) → F) (g : Fin J → Fin (2 ^ ℓ) → F) (fs : Fin 7 → F)
+    (j : Fin J) : F :=
+  ∑ u, Phi (List.ofFn fs) (g j u) * algebraMap F F (∑ i, Q i u * bitBasis i)
 
 open scoped Classical in
 /-- **Row RS1, the joint bound** (rev. 3.2: `(7 + J_z − 1)/2^128`, one phase). If some claim's
 partials are wrong (`δ_j ≠ 0`), then of the `|F|^8` draws `(f_0 … f_6, κ)` at most
 `(7 + J − 1)·|F|^7` leave the batched switched claim `Σ_j κ^j T_j` equal to its true value. -/
 theorem rs1_joint {J' : ℕ} (Q : Fin 128 → Fin (2 ^ ℓ) → F) (hQ : ∀ i u, Q i u = 0 ∨ Q i u = 1)
-    (r : Fin (J' + 1) → Fin ℓ → F) (s : Fin (J' + 1) → Fin 128 → F)
-    (hδ : ∃ j, (fun i ↦ s j i - mle (fun u ↦ algebraMap F F (Q i u)) (r j)) ≠ 0) :
+    (g : Fin (J' + 1) → Fin (2 ^ ℓ) → F) (s : Fin (J' + 1) → Fin 128 → F)
+    (hδ : ∃ j, (fun i ↦ s j i - ∑ u, g j u * algebraMap F F (Q i u)) ≠ 0) :
     (univ.filter fun p : (Fin 7 → F) × F ↦
-      ∑ j, p.2 ^ j.val * rsT s p.1 j = ∑ j, p.2 ^ j.val * rsTruth Q r p.1 j).card ≤
+      ∑ j, p.2 ^ j.val * rsT s p.1 j = ∑ j, p.2 ^ j.val * rsTruth Q g p.1 j).card ≤
       (7 + J') * Fintype.card F ^ 7 := by
-  set δ : Fin (J' + 1) → Fin 128 → F := fun j i ↦ s j i - mle (fun u ↦ algebraMap F F (Q i u)) (r j)
+  set δ : Fin (J' + 1) → Fin 128 → F := fun j i ↦ s j i - ∑ u, g j u * algebraMap F F (Q i u)
   have hN : 0 < Fintype.card F := Fintype.card_pos
   -- the seven stages
   have hstart : rsJDoom δ [] := by
@@ -694,8 +698,8 @@ theorem rs1_joint {J' : ℕ} (Q : Fin 128 → Fin (2 ^ ℓ) → F) (hQ : ∀ i u
   set N := Fintype.card F
   have hseq := seq_bad_le (rsJDoom δ) (fun n ↦ if n ≤ 6 then 1 else N) (fun l hl ↦ by
     by_cases hp : l.length ≤ 6
-    · rw [if_pos hp]; exact rsJ_escape_le δ l hp hl
-    · rw [if_neg hp]; exact Finset.card_le_univ _) 7 [] hstart
+    · rw [ite_eq_left hp]; exact rsJ_escape_le δ l hp hl
+    · rw [ite_eq_right hp]; exact Finset.card_le_univ _) 7 [] hstart
   simp only [List.nil_append, List.length_nil, zero_add] at hseq
   have h7 : ∑ i ∈ range 7, (if i ≤ 6 then 1 else N) = 7 := by decide
   rw [h7] at hseq
@@ -704,13 +708,13 @@ theorem rs1_joint {J' : ℕ} (Q : Fin 128 → Fin (2 ^ ℓ) → F) (hQ : ∀ i u
       rw [mul_assoc, ← pow_succ]; exact hseq
     exact Nat.le_of_mul_le_mul_right this hN
   have hB : ∀ fs : Fin 7 → F, ¬¬rsJDoom δ (List.ofFn fs) →
-      (univ.filter fun κ : F ↦ ∑ j, κ ^ j.val * rsT s fs j = ∑ j, κ ^ j.val * rsTruth Q r fs j).card
+      (univ.filter fun κ : F ↦ ∑ j, κ ^ j.val * rsT s fs j = ∑ j, κ ^ j.val * rsTruth Q g fs j).card
         ≤ J' := fun fs hd ↦ by
     obtain ⟨j, hj⟩ := not_not.mp hd
     refine batch_pow_bad_le fun h ↦ ?_
-    exact rs_end bitBasis Q hQ (r j) (s j) 6 (List.ofFn fs) (by simp) hj (congrFun h j)
+    exact rs_end bitBasis Q hQ (g j) (s j) 6 (List.ofFn fs) (by simp) hj (congrFun h j)
   have hP := pair_bad_le (fun fs : Fin 7 → F ↦ ¬rsJDoom δ (List.ofFn fs))
-    (fun fs κ ↦ ∑ j, κ ^ j.val * rsT s fs j = ∑ j, κ ^ j.val * rsTruth Q r fs j) hA hB
+    (fun fs κ ↦ ∑ j, κ ^ j.val * rsT s fs j = ∑ j, κ ^ j.val * rsTruth Q g fs j) hA hB
   refine (Finset.card_le_card fun p hp ↦ ?_).trans (hP.trans ?_)
   · simp only [Finset.mem_filter, Finset.mem_univ, true_and] at hp ⊢
     exact Or.inr hp

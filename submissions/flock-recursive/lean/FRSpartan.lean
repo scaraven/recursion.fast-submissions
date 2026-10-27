@@ -23,7 +23,7 @@ The tables `a = (I ⊗ A₀) z`, `b = (I ⊗ B₀) z`, `z` and the public target
 | Z1 free coordinates | still nonzero | `zerocheck_bad_le` | 1 each |
 | Z1 end | `P*(node i) ≠ 0` for some `i ∈ S` | `bz_end`, `bzPoly_node` | — |
 | Z2 `λ` | the interpolated claim `≠ P*(λ)` | `zc_skip_bad_le` (`FRSkip`), `bzPoly_natDegree` (≤ 126) | 127 |
-| Z3 rounds | `claim ≠ trueSum` (`bzExpr`, degree 3) | `round_escape_le` | 3 each |
+| Z3 rounds | `claim ≠ trueSum` (`bzExpr = w(ab + z) + W_E`, degree 3) | `round_escape_le` | 3 each |
 | Z3 end | the triple `(â, b̂, ẑ)` is wrong | `bz_final`, `bz_triple_wrong` | — |
 
 `P*(Y) = Σ_u ŵ(u) (Â(Y,u) B̂(Y,u) + Ẑ(Y,u) + Ê(Y,u))` with `ŵ = eq(r,·) Sel` (the weight of
@@ -34,7 +34,14 @@ BP-C-R4-m1, never `Sel ⊗ A₀`) and `Â(Y, u)` the quirky (skip-interpolated) 
 `prefixP`, and `selWeight_split` separates the position part (`eq(r_pos, r′_pos)`) from the block
 part. It is not `eq(r, r′) · Sẽl(r′)` (`selWeight_ne_control`).
 
-**The lincheck** (step 3, 14 rounds of degree 2, P1-D4). For in-block matrices `A₀, B₀` on
+**The lincheck, per kind** (rev. 3.4, S-C-M1): `A = Σ_κ Ind_κ ⊗ A₀^κ`; the sumcheck runs on the
+per-kind folded columns (`kindExpr`, `kindTables`, `zfoldK`; degree 2): `lin_trueSum_kinds`
+(true sum `â* + α b̂*`, `linAK`), `lin_final_kinds` (`Σ_κ M̃_κ(r_k) v_κ`), `lin_walk_adjust` (one
+walk with `rw′ = rw · Σ_κ v_κ free_κ`), `zfoldK_mle` and `lin_beta_claim` (the `v_κ` batched by
+`β` are one weighted claim with the public weight `W_β`), `lin_beta_le` (row L3: 6 of `|F|` for 7
+kinds). Z3's summand is `w · (ab + z) + W_E` (S-C-M2; `targetMLE_eq` gives `Ŵ_E(λ, ρ)`).
+
+**The single-kind lincheck** (step 3, 14 rounds of degree 2, P1-D4; the leaf). For in-block matrices `A₀, B₀` on
 `2^p` positions, row weights `rw` (the quirky row point: Lagrange at `λ` on the skip bits, `eq` on
 the rest; computed by the verifier) and the block point `r_blk`, the true values are
 `â* = Σ_t eq(r_blk, t) Σ_k rw(k) (A₀ z_t)(k)` (`linA`); `α` batches (`batch2_bad_le`: 1);
@@ -232,9 +239,9 @@ private theorem sum_eq_prodAt {n : ℕ} (e : Fin n → Bool → R) (d : ℕ) :
       prodAt e d := by
   unfold prodAt
   split_ifs with hd
-  · rw [Finset.sum_eq_single ⟨d, hd⟩ (fun u _ hu ↦ if_neg fun h ↦ hu (Fin.ext h)) (by simp),
-      if_pos rfl]
-  · exact Finset.sum_eq_zero fun u _ ↦ if_neg fun (h : u.val = d) ↦ hd (h ▸ u.isLt)
+  · rw [Finset.sum_eq_single ⟨d, hd⟩ (fun u _ hu ↦ ite_eq_right fun h ↦ hu (Fin.ext h)) (by simp),
+      ite_eq_left rfl]
+  · exact Finset.sum_eq_zero fun u _ ↦ ite_eq_right fun (h : u.val = d) ↦ hd (h ▸ u.isLt)
 
 /-- **`prefixP` is the prefix sum.** -/
 theorem prefixP_eq (n : ℕ) (e : Fin n → Bool → R) (c : ℕ) :
@@ -335,7 +342,7 @@ def bzRes (Sel : Fin (2 ^ ℓ) → F) (a b z E : Fin 64 → Fin (2 ^ ℓ) → F)
 
 /-- **Start of Z1.** A violated relation leaves a nonzero residual slice. -/
 theorem bz_start {Sel : Fin (2 ^ ℓ) → F} {a b z E : Fin 64 → Fin (2 ^ ℓ) → F}
-    (hSel : ∀ u, Sel u = 0 ∨ Sel u = 1) (h : ¬BHolds Sel a b z E) :
+    (h : ¬BHolds Sel a b z E) :
     ∃ i, bzRes Sel a b z E i ≠ 0 := by
   by_contra hall
   push Not at hall
@@ -398,17 +405,20 @@ theorem bz_skip_le {r : Fin ℓ → F} {Sel : Fin (2 ^ ℓ) → F} {a b z E : Fi
     (univ.filter fun l ↦ lagrangeS (zcMsg msg) l = (bzPoly r Sel a b z E).eval l).card ≤ 127 :=
   zc_skip_bad_le msg _ (bzPoly_natDegree r Sel a b z E) (bz_end h)
 
-/-- The Z3 summand `ŵ · (A B + Z + E)`, degree 3. -/
-def bzExpr : Expr := .mul (.var 0) (.add (.add (.mul (.var 1) (.var 2)) (.var 3)) (.var 4))
+/-- The Z3 summand `w · (A B + Z) + W_E` (rev. 3.4, S-C-M2), degree 3. -/
+def bzExpr : Expr := .add (.mul (.var 0) (.add (.mul (.var 1) (.var 2)) (.var 3))) (.var 4)
 
 theorem bzExpr_deg : bzExpr.deg = 3 := rfl
 
-/-- The Z3 tables at `λ`: `ŵ = eq(r, ·) Sel`, and `Â(λ, ·)`, `B̂(λ, ·)`, `Ẑ(λ, ·)`, `Ê(λ, ·)`. -/
+/-- The Z3 tables at `λ`: `w = eq(r, ·) Sel`, `Â(λ, ·)`, `B̂(λ, ·)`, `Ẑ(λ, ·)`, and the target's
+weighted table `W_E = eq(r, ·) Sel Ê(λ, ·)`. -/
 noncomputable def bzTables (rs : List F) (l : F) (Sel : Fin (2 ^ ℓ) → F)
     (a b z E : Fin 64 → Fin (2 ^ ℓ) → F) : Array (Array F) :=
   #[Array.ofFn fun u ↦ eq (ptOf ℓ rs) (cube u) * Sel u,
-    Array.ofFn fun u ↦ (skipExt fun i ↦ a i u).eval l, Array.ofFn fun u ↦ (skipExt fun i ↦ b i u).eval l,
-    Array.ofFn fun u ↦ (skipExt fun i ↦ z i u).eval l, Array.ofFn fun u ↦ (skipExt fun i ↦ E i u).eval l]
+    Array.ofFn fun u ↦ (skipExt fun i ↦ a i u).eval l,
+    Array.ofFn fun u ↦ (skipExt fun i ↦ b i u).eval l,
+    Array.ofFn fun u ↦ (skipExt fun i ↦ z i u).eval l,
+    Array.ofFn fun u ↦ eq (ptOf ℓ rs) (cube u) * Sel u * (skipExt fun i ↦ E i u).eval l]
 
 theorem bz_sizes (rs : List F) (l : F) (Sel : Fin (2 ^ ℓ) → F)
     (a b z E : Fin 64 → Fin (2 ^ ℓ) → F) : ∀ t ∈ bzTables rs l Sel a b z E, t.size = 2 ^ ℓ := by
@@ -421,27 +431,50 @@ theorem bz_trueSum (rs : List F) (l : F) (Sel : Fin (2 ^ ℓ) → F)
   simp only [trueSum, bzExpr, Expr.eval, bzTables, Array.getD_eq_getD_getElem?,
     List.getElem?_toArray, List.getElem?_cons_zero, List.getElem?_cons_succ, Option.getD_some,
     tbl_ofFn, bzPoly, eval_finsetSum, eval_mul, eval_add, eval_C]
+  exact Finset.sum_congr rfl fun _ _ ↦ by ring
 
-/-- **End of Z3.** All variables bound at `ρs`: `ŵ(ρ) · (Ã B̃ + Z̃ + Ẽ)(λ, ρ)` with each factor the
-extension of its `λ`-table. -/
+/-- **End of Z3.** All variables bound at `ρs`: `ŵ(ρ) · (Ã B̃ + Z̃)(λ, ρ) + Ŵ_E(λ, ρ)`, each factor
+the extension of its table. -/
 theorem bz_final (rs ρs : List F) (hρ : ρs.length = ℓ) (l : F) (Sel : Fin (2 ^ ℓ) → F)
     (a b z E : Fin 64 → Fin (2 ^ ℓ) → F) :
     trueSum bzExpr (bindAll (bzTables rs l Sel a b z E) ρs) 0 =
       mle (fun u ↦ eq (ptOf ℓ rs) (cube u) * Sel u) (ptOf ℓ ρs) *
-        (mle (fun u ↦ (skipExt fun i ↦ a i u).eval l) (ptOf ℓ ρs) *
-            mle (fun u ↦ (skipExt fun i ↦ b i u).eval l) (ptOf ℓ ρs) +
-          mle (fun u ↦ (skipExt fun i ↦ z i u).eval l) (ptOf ℓ ρs) +
-          mle (fun u ↦ (skipExt fun i ↦ E i u).eval l) (ptOf ℓ ρs)) := by
+          (mle (fun u ↦ (skipExt fun i ↦ a i u).eval l) (ptOf ℓ ρs) *
+              mle (fun u ↦ (skipExt fun i ↦ b i u).eval l) (ptOf ℓ ρs) +
+            mle (fun u ↦ (skipExt fun i ↦ z i u).eval l) (ptOf ℓ ρs)) +
+        mle (fun u ↦ eq (ptOf ℓ rs) (cube u) * Sel u * (skipExt fun i ↦ E i u).eval l)
+          (ptOf ℓ ρs) := by
   rw [trueSum_bindAll' _ _ _ hρ (bz_sizes rs l Sel a b z E)]
   simp only [bzExpr, Expr.eval, bzTables, Array.getD_eq_getD_getElem?, List.getElem?_toArray,
     List.getElem?_cons_zero, List.getElem?_cons_succ, Option.getD_some, tbl_ofFn]
 
-/-- **After Z3.** A false final claim that passes the check (with the verifier's own `ŵ`, `Ê`) has
-a wrong triple `(â, b̂, ẑ)`. -/
-theorem bz_triple_wrong {claim w e va vb vz ta tb tz : F} (hdoom : claim ≠ w * (ta * tb + tz + e))
-    (hchk : claim = w * (va * vb + vz + e)) : (va, vb, vz) ≠ (ta, tb, tz) := by
+/-- **After Z3.** A false final claim that passes the check (with the verifier's own `ŵ`, `Ŵ_E`)
+has a wrong triple `(â, b̂, ẑ)`. -/
+theorem bz_triple_wrong {claim w we va vb vz ta tb tz : F}
+    (hdoom : claim ≠ w * (ta * tb + tz) + we) (hchk : claim = w * (va * vb + vz) + we) :
+    (va, vb, vz) ≠ (ta, tb, tz) := by
   rintro ⟨⟩
   exact hdoom hchk
+
+/-- **`targetMLE`** (A.8): the target's weighted extension at `(λ, ρ)` is the per-position sum
+`Σ_i Σ_hi Σ_blk L_i(λ) · eq(r_hi, hi) eq(ρ_hi, hi) · eq(r_blk, blk) eq(ρ_blk, blk) Sel(blk) ·
+E(i, hi, blk)` (positions `hi` low, blocks high; only the pinned positions, `E ≠ 0`, contribute). -/
+theorem targetMLE_eq {p q : ℕ} (rhi ρhi : Fin p → F) (rb ρb : Fin q → F) (SelB : Fin (2 ^ q) → F)
+    (E : Fin 64 → Fin (2 ^ (p + q)) → F) (l : F) :
+    mle (fun u ↦ eq (Fin.append rhi rb) (cube u) * SelB ((joinEquiv p q).symm u).2 *
+        (skipExt fun i ↦ E i u).eval l) (Fin.append ρhi ρb) =
+      ∑ i : Fin 64, ∑ hi : Fin (2 ^ p), ∑ t : Fin (2 ^ q),
+        lagrangeWeight (fun b : Fin 64 ↦ skipNode (Fin.castLE (by norm_num) b)) l i *
+          (eq rhi (cube hi) * eq ρhi (cube hi)) * (eq rb (cube t) * eq ρb (cube t)) * SelB t *
+            E i (join hi t) := by
+  rw [mle, ← (joinEquiv p q).sum_comp, Fintype.sum_prod_type]
+  simp only [skipExt_eval, Finset.mul_sum, Equiv.symm_apply_apply]
+  conv_lhs => enter [2, hi]; rw [Finset.sum_comm]
+  conv_lhs => rw [Finset.sum_comm]
+  refine Finset.sum_congr rfl fun i _ ↦ Finset.sum_congr rfl fun hi _ ↦
+    Finset.sum_congr rfl fun t _ ↦ ?_
+  rw [show (joinEquiv p q) (hi, t) = join hi t from rfl, eq_append_join, eq_append_join]
+  ring
 
 end BZ
 
@@ -505,6 +538,147 @@ theorem lin_final (A₀ B₀ : Fin (2 ^ p) → Fin (2 ^ p) → R) (rw : Fin (2 ^
   rfl
 
 end Lin
+
+/-! ## The lincheck on per-kind folded columns (rev. 3.4, S-C-M1) -/
+
+section LinKinds
+
+variable {R : Type*} [CommRing R] {p q K : ℕ}
+
+/-- `Σ_{κ ≤ K} t_{2κ} · t_{2κ+1}`: one product per kind, degree 2. -/
+def kindExpr : ℕ → Expr
+  | 0 => .mul (.var 0) (.var 1)
+  | K + 1 => .add (kindExpr K) (.mul (.var (2 * K + 2)) (.var (2 * K + 3)))
+
+theorem kindExpr_deg (K : ℕ) : (kindExpr K).deg = 2 := by
+  induction K with
+  | zero => rfl
+  | succ K ih => simp only [kindExpr, Expr.deg, ih]; rfl
+
+theorem eval_kindExpr (K : ℕ) (v : ℕ → R) :
+    (kindExpr K).eval v = ∑ κ ∈ range (K + 1), v (2 * κ) * v (2 * κ + 1) := by
+  induction K with
+  | zero => simp [kindExpr, Expr.eval]
+  | succ K ih => rw [kindExpr, Expr.eval, ih, Finset.sum_range_succ _ (K + 1)]; rfl
+
+/-- The tables `M_κ`, `z̄_κ` interleaved: table `2κ` is `M_κ`, table `2κ + 1` is `z̄_κ`. -/
+def kindTables (Ms zs : Fin (K + 1) → Fin (2 ^ p) → R) : Array (Array R) :=
+  Array.ofFn (n := 2 * (K + 1)) fun idx ↦ Array.ofFn fun j ↦
+    if idx.val % 2 = 0 then Ms ⟨idx.val / 2, by omega⟩ j else zs ⟨idx.val / 2, by omega⟩ j
+
+omit [CommRing R] in
+theorem kindTables_size (Ms zs : Fin (K + 1) → Fin (2 ^ p) → R) :
+    ∀ t ∈ kindTables Ms zs, t.size = 2 ^ p := by
+  intro t ht
+  obtain ⟨i, rfl⟩ := Array.mem_ofFn.mp ht
+  simp
+
+theorem tbl_kindTables (Ms zs : Fin (K + 1) → Fin (2 ^ p) → R) (κ : Fin (K + 1)) :
+    tbl p ((kindTables Ms zs).getD (2 * κ.val) #[]) = Ms κ ∧
+      tbl p ((kindTables Ms zs).getD (2 * κ.val + 1) #[]) = zs κ := by
+  have h0 : 2 * κ.val < 2 * (K + 1) := by omega
+  have h1 : 2 * κ.val + 1 < 2 * (K + 1) := by omega
+  have e0 : 2 * κ.val / 2 = κ.val := by omega
+  have e1 : (2 * κ.val + 1) / 2 = κ.val := by omega
+  have m1 : (2 * κ.val + 1) % 2 = 1 := by omega
+  constructor <;> funext j <;>
+    simp [tbl, kindTables, Array.getD_eq_getD_getElem?, h0, h1, Nat.mul_mod_right, e0, e1, m1]
+
+private theorem kind_sum (Ms zs : Fin (K + 1) → Fin (2 ^ p) → R) (G : Array R → Array R → R) :
+    ∑ κ ∈ range (K + 1), G ((kindTables Ms zs).getD (2 * κ) #[]) ((kindTables Ms zs).getD (2 * κ + 1) #[]) =
+      ∑ κ : Fin (K + 1), G ((kindTables Ms zs).getD (2 * κ.val) #[])
+        ((kindTables Ms zs).getD (2 * κ.val + 1) #[]) :=
+  (Fin.sum_univ_eq_sum_range (fun κ ↦ G ((kindTables Ms zs).getD (2 * κ) #[])
+    ((kindTables Ms zs).getD (2 * κ + 1) #[])) _).symm
+
+/-- The per-kind column fold `z̄_κ(j) = Σ_t eq(r′_blk, t) Ind_κ(t) z(j, t)`. -/
+def zfoldK (Ind : Fin (K + 1) → Fin (2 ^ q) → R) (rb : Fin q → R) (z : Fin (2 ^ (p + q)) → R)
+    (κ : Fin (K + 1)) (j : Fin (2 ^ p)) : R :=
+  ∑ t : Fin (2 ^ q), eq rb (cube t) * Ind κ t * z (join j t)
+
+/-- `â*` for `A = Σ_κ Ind_κ ⊗ A₀^κ`: the indicator inside the block sum. -/
+def linAK (Ak : Fin (K + 1) → Fin (2 ^ p) → Fin (2 ^ p) → R) (Ind : Fin (K + 1) → Fin (2 ^ q) → R)
+    (rw : Fin (2 ^ p) → R) (rb : Fin q → R) (z : Fin (2 ^ (p + q)) → R) : R :=
+  ∑ t : Fin (2 ^ q), eq rb (cube t) * ∑ κ, Ind κ t * ∑ k, rw k * ∑ j, Ak κ k j * z (join j t)
+
+/-- **The per-kind lincheck's true sum** is `â* + α b̂*` (S-C-M1's identity). -/
+theorem lin_trueSum_kinds (Ak Bk : Fin (K + 1) → Fin (2 ^ p) → Fin (2 ^ p) → R)
+    (Ind : Fin (K + 1) → Fin (2 ^ q) → R) (rw : Fin (2 ^ p) → R) (α : R) (rb : Fin q → R)
+    (z : Fin (2 ^ (p + q)) → R) :
+    trueSum (kindExpr K) (kindTables (fun κ ↦ linM (Ak κ) (Bk κ) rw α) (zfoldK Ind rb z)) p =
+      linAK Ak Ind rw rb z + α * linAK Bk Ind rw rb z := by
+  simp only [trueSum, eval_kindExpr]
+  refine (Finset.sum_congr rfl fun x _ ↦ kind_sum _ _ (fun a b ↦ tbl p a x * tbl p b x)).trans ?_
+  simp only [(tbl_kindTables _ _ _).1, (tbl_kindTables _ _ _).2]
+  have aux : ∀ Ck : Fin (K + 1) → Fin (2 ^ p) → Fin (2 ^ p) → R,
+      ∑ j : Fin (2 ^ p), ∑ κ, (∑ k, rw k * Ck κ k j) * zfoldK Ind rb z κ j = linAK Ck Ind rw rb z := by
+    intro Ck
+    simp only [zfoldK, linAK, Finset.sum_mul, Finset.mul_sum]
+    conv_lhs => rw [Finset.sum_comm]
+    conv_lhs => enter [2, κ]; rw [Finset.sum_comm]
+    conv_lhs => enter [2, κ, 2, k]; rw [Finset.sum_comm]
+    conv_lhs => enter [2, κ]; rw [Finset.sum_comm]
+    conv_lhs => enter [2, κ]; rw [Finset.sum_comm]
+    conv_lhs => rw [Finset.sum_comm]
+    exact Finset.sum_congr rfl fun _ _ ↦ Finset.sum_congr rfl fun _ _ ↦
+      Finset.sum_congr rfl fun _ _ ↦ Finset.sum_congr rfl fun _ _ ↦ by ring
+  have hM : ∀ κ j, linM (Ak κ) (Bk κ) rw α j =
+      (∑ k, rw k * Ak κ k j) + α * ∑ k, rw k * Bk κ k j := fun κ j ↦ by
+    simp only [linM, mul_add, Finset.sum_add_distrib, Finset.mul_sum]
+    exact congrArg _ (Finset.sum_congr rfl fun _ _ ↦ by ring)
+  simp only [hM, add_mul, Finset.sum_add_distrib, mul_assoc, ← Finset.mul_sum, aux]
+
+/-- **End of L2** (per kind): the true value is `Σ_κ M̃_κ(r_k) · v_κ`, `v_κ = z̄̃_κ(r_k)`. -/
+theorem lin_final_kinds (Ak Bk : Fin (K + 1) → Fin (2 ^ p) → Fin (2 ^ p) → R)
+    (Ind : Fin (K + 1) → Fin (2 ^ q) → R) (rw : Fin (2 ^ p) → R) (α : R) (rb : Fin q → R)
+    (z : Fin (2 ^ (p + q)) → R) (rs : List R) (hr : rs.length = p) :
+    trueSum (kindExpr K)
+        (bindAll (kindTables (fun κ ↦ linM (Ak κ) (Bk κ) rw α) (zfoldK Ind rb z)) rs) 0 =
+      ∑ κ, mle (linM (Ak κ) (Bk κ) rw α) (ptOf p rs) * mle (zfoldK Ind rb z κ) (ptOf p rs) := by
+  rw [trueSum_bindAll' _ _ _ hr (kindTables_size _ _), eval_kindExpr,
+    kind_sum _ _ (fun a b ↦ mle (tbl p a) (ptOf p rs) * mle (tbl p b) (ptOf p rs))]
+  simp only [(tbl_kindTables _ _ _).1, (tbl_kindTables _ _ _).2]
+
+/-- The claim `v_κ` is a weighted claim on `z`: the weight `eq(r_k, j) eq(r′_blk, t) Ind_κ(t)`. -/
+theorem zfoldK_mle (Ind : Fin (K + 1) → Fin (2 ^ q) → R) (rb : Fin q → R)
+    (z : Fin (2 ^ (p + q)) → R) (κ : Fin (K + 1)) (r : Fin p → R) :
+    mle (zfoldK Ind rb z κ) r =
+      ∑ j : Fin (2 ^ p), ∑ t : Fin (2 ^ q), eq r (cube j) * eq rb (cube t) * Ind κ t * z (join j t) := by
+  simp only [mle, zfoldK, Finset.mul_sum]
+  exact Finset.sum_congr rfl fun _ _ ↦ Finset.sum_congr rfl fun _ _ ↦ by ring
+
+/-- **Row L3** (`β`, 6 of `|F|` for 7 kinds): the `v_κ` batched by `β` are one weighted claim with
+the public weight `W_β(j, t) = eq(r_k, j) eq(r′_blk, t) Σ_κ β^κ Ind_κ(t)`. -/
+theorem lin_beta_claim (Ind : Fin (K + 1) → Fin (2 ^ q) → R) (rb : Fin q → R)
+    (z : Fin (2 ^ (p + q)) → R) (r : Fin p → R) (β : R) :
+    ∑ κ : Fin (K + 1), β ^ κ.val * mle (zfoldK Ind rb z κ) r =
+      ∑ j : Fin (2 ^ p), ∑ t : Fin (2 ^ q),
+        eq r (cube j) * eq rb (cube t) * (∑ κ : Fin (K + 1), β ^ κ.val * Ind κ t) * z (join j t) := by
+  simp only [zfoldK_mle, Finset.mul_sum, Finset.sum_mul]
+  rw [Finset.sum_comm]
+  refine Finset.sum_congr rfl fun j _ ↦ ?_
+  rw [Finset.sum_comm]
+  exact Finset.sum_congr rfl fun t _ ↦ Finset.sum_congr rfl fun κ _ ↦ by ring
+
+/-- **The walk adjustment.** When the kinds' matrices differ only by their free rows
+(`A₀^κ(k, j) = free_κ(k) A₀(k, j)`), `Σ_κ v_κ M̃_κ(r_k)` is one walk of `(A₀, B₀)` with the row
+weights `rw′(k) = rw(k) · Σ_κ v_κ free_κ(k)`. -/
+theorem lin_walk_adjust (A₀ B₀ : Fin (2 ^ p) → Fin (2 ^ p) → R) (free : Fin (K + 1) → Fin (2 ^ p) → R)
+    (rw : Fin (2 ^ p) → R) (α : R) (v : Fin (K + 1) → R) (r : Fin p → R) :
+    ∑ κ, v κ * mle (linM (fun k j ↦ free κ k * A₀ k j) (fun k j ↦ free κ k * B₀ k j) rw α) r =
+      mle (linM A₀ B₀ (fun k ↦ rw k * ∑ κ, v κ * free κ k) α) r := by
+  simp only [mle, linM, Finset.mul_sum, Finset.sum_mul]
+  rw [Finset.sum_comm]
+  refine Finset.sum_congr rfl fun j _ ↦ ?_
+  rw [Finset.sum_comm]
+  exact Finset.sum_congr rfl fun k _ ↦ Finset.sum_congr rfl fun κ _ ↦ by ring
+
+/-- **Row L3, count.** A wrong family of 7 kind claims survives `β` for at most 6 values. -/
+theorem lin_beta_le [IsDomain R] [Fintype R] [DecidableEq R] {v t : Fin 7 → R} (h : v ≠ t) :
+    (univ.filter fun β ↦ ∑ κ, β ^ κ.val * v κ = ∑ κ, β ^ κ.val * t κ).card ≤ 6 :=
+  batch_pow_bad_le h
+
+end LinKinds
 
 /-! ## The quirky claim's ring-switching weight (row RS1) -/
 

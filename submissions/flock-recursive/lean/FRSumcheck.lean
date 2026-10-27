@@ -40,9 +40,6 @@ is `eq · (A · B + C)`, the inner and ring-switching summands are `M · z` and 
   escapes for at most `b`, the pairs that escape number at most `a·|R| + |R|·b`.
 * `innerExpr` (`t₀ · t₁`, degree 2) with `prod_trueSum`, `tbl_ofFn` (moved here from
   spartan-srom's `SoundnessSpartan`, used by every degree-2 sumcheck).
-* `uni_bad_le` (row Z2 with `d = 127`; `FRSkip` supplies the nodes): a received
-  polynomial passing `Σ_{x ∈ S} g(x) = claim` against a false claim agrees with the honest one at
-  `≤ d` points.
 * `seq_bad_le`: a phase drawing `k` coordinates in sequence, each escaping a doomed prefix for at
   most `b_i` values, has at most `(Σ_i b_i)·|R|^(k−1)` escaping tuples (the joint row RS1, and Z1's
   free coordinates); `pair_bad_le` combines a first draw with a second (`α × β`).
@@ -50,7 +47,7 @@ is `eq · (A · B + C)`, the inner and ring-switching summands are `M · z` and 
   challenge, and the final claim is the expression at the tables' extensions.
 
 Changes from spartan-srom: the namespace; `trueSum_bindAll'`, `innerExpr`/`prod_trueSum`/`tbl_ofFn`
-(moved from `SoundnessSpartan`), `batch_pow_bad_le`, `batch2_bad_le`, `uni_bad_le`, `pair_bad_le`,
+(moved from `SoundnessSpartan`), `batch_pow_bad_le`, `batch2_bad_le`, `pair_bad_le`,
 `seq_bad_le` added.
 -/
 
@@ -551,15 +548,6 @@ theorem batch2_bad_le {v₀ v₁ t₀ t₁ : R} (h : (v₀, v₁) ≠ (t₀, t�
   convert batch_pow_bad_le hne using 3 with α
   simp [Fin.sum_univ_two]
 
-/-- **The univariate round** (rows L3, S3, B3 of BLUEPRINT §5.2, any node set `S`). If the
-received polynomial `g` (degree `≤ d`) passes the check `Σ_{x ∈ S} g(x) = claim` while the honest
-`g*` (degree `≤ d`) does not, the next claim `g(l)` is true (`= g*(l)`) for at most `d` values. -/
-theorem uni_bad_le {d : ℕ} {g gs : R[X]}
-    (hg : g.natDegree ≤ d) (hgs : gs.natDegree ≤ d) (S : Finset R) {claim : R}
-    (hchk : ∑ x ∈ S, g.eval x = claim) (hfalse : ∑ x ∈ S, gs.eval x ≠ claim) :
-    (univ.filter fun l ↦ g.eval l = gs.eval l).card ≤ d :=
-  round_bad_le (fun h ↦ hfalse (h ▸ hchk)) hg hgs
-
 end Counting
 
 /-! ## Two coordinates per squeeze -/
@@ -624,10 +612,10 @@ theorem seq_bad_le {R : Type*} [Fintype R] [DecidableEq R] (Doom : List R → Pr
           (if Doom (l ++ [c]) then 0 else N ^ k * N) +
             (∑ i ∈ range k, b (l.length + (i + 1))) * N ^ k := fun c ↦ by
       by_cases hc : Doom (l ++ [c])
-      · rw [if_pos hc, zero_add]
+      · rw [ite_eq_left hc, zero_add]
         have := ih (l ++ [c]) hc
         simpa [Nat.add_assoc, Nat.add_comm 1] using this
-      · rw [if_neg hc]
+      · rw [ite_eq_right hc]
         refine le_add_right (Nat.mul_le_mul_right _ ?_)
         exact (Finset.card_le_univ _).trans (by simp [N])
     calc ∑ c : R, (univ.filter fun v : Fin k → R ↦ ¬Doom ((l ++ [c]) ++ List.ofFn v)).card * N

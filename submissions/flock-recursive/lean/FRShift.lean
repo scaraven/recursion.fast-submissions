@@ -57,11 +57,11 @@ private theorem succT_dbl {n : ℕ} (u v : Fin (2 ^ n)) (b c : Bool) :
       if b then (if c then 0 else succT u v) else (if c then (if v = u then 1 else 0) else 0) := by
   unfold succT
   cases b <;> cases c <;> simp only [Bool.false_eq_true, ↓reduceIte]
-  · exact if_neg (by simp only [dbl, Bool.toNat_false]; omega)
+  · exact ite_eq_right (by simp only [dbl, Bool.toNat_false]; omega)
   · exact if_congr (by rw [Fin.ext_iff]; simp only [dbl, Bool.toNat_false, Bool.toNat_true]; omega)
       rfl rfl
   · exact if_congr (by simp only [dbl, Bool.toNat_false, Bool.toNat_true]; omega) rfl rfl
-  · exact if_neg (by simp only [dbl, Bool.toNat_true]; omega)
+  · exact ite_eq_right (by simp only [dbl, Bool.toNat_true]; omega)
 
 /-- **The successor's extension.** `Σ_{u,v} eq(τ, u) · [v = u + 1] · eq(v, ρ) = S_n(τ, ρ)`. -/
 theorem shift_mle {n : ℕ} (τ ρ : Fin n → R) :
@@ -77,8 +77,7 @@ theorem shift_mle {n : ℕ} (τ ρ : Fin n → R) :
     simp only [sum_cube_succ, eq_dbl, eq_swap (cube (dbl _ _)) ρ, succT_dbl, Bool.false_eq_true,
       ↓reduceIte, mul_zero, zero_mul, add_zero, zero_add, mul_ite, mul_one, ite_mul]
     refine Finset.sum_congr rfl fun u _ ↦ ?_
-    simp only [Finset.sum_add_distrib, Finset.sum_ite_eq', Finset.mem_univ, if_true,
-      Finset.mul_sum]
+    simp only [Finset.sum_ite_eq', Finset.mem_univ, ite_true, Finset.mul_sum]
     congr 1
     · rw [eq_swap (Fin.tail ρ) (cube u)]; ring
     · exact Finset.sum_congr rfl fun v _ ↦ by rw [eq_swap (Fin.tail ρ) (cube v)]; ring
@@ -140,9 +139,9 @@ theorem sum_succT (y : Fin (2 ^ n)) (f : Fin (2 ^ n) → R) :
     ∑ y', succT y y' * f y' = if h : y.val + 1 < 2 ^ n then f ⟨y.val + 1, h⟩ else 0 := by
   simp only [succT, ite_mul, one_mul, zero_mul]
   split_ifs with h
-  · rw [Finset.sum_eq_single ⟨y.val + 1, h⟩ (fun y' _ hy ↦ if_neg fun e ↦ hy (Fin.ext e))
-      (by simp), if_pos rfl]
-  · exact Finset.sum_eq_zero fun y' _ ↦ if_neg fun (e : y'.val = y.val + 1) ↦ h (e ▸ y'.isLt)
+  · rw [Finset.sum_eq_single ⟨y.val + 1, h⟩ (fun y' _ hy ↦ ite_eq_right fun e ↦ hy (Fin.ext e))
+      (by simp), ite_eq_left rfl]
+  · exact Finset.sum_eq_zero fun y' _ ↦ ite_eq_right fun (e : y'.val = y.val + 1) ↦ h (e ▸ y'.isLt)
 
 /-- **The chain links** (BLUEPRINT §4.1's `ChainLinks z s h`, slot by slot): the input of block
 `y + 1` is the output of block `y`, the first input is `sV`, the last output is `hV`. -/
@@ -180,19 +179,19 @@ theorem chainLinks_iff (Out In : Fin (2 ^ (s + n)) → R) (sV hV : Fin (2 ^ s) �
       change chainD Out In hV (join σ y) = 0
       rw [chainD_join, sum_succT]
       by_cases h : y.val + 1 < 2 ^ n
-      · rw [dif_pos h, if_neg ((not_congr (hlast y)).mpr (not_not.mpr h)), hl σ y h, add_zero,
+      · rw [dite_eq_left h, ite_eq_right ((not_congr (hlast y)).mpr (not_not.mpr h)), hl σ y h, add_zero,
           CharTwo.add_self_eq_zero]
       · have hy : y = lastBlk n := (hlast y).mpr h
-        rw [dif_neg h, if_pos hy, add_zero, hy, hh, CharTwo.add_self_eq_zero]
+        rw [dite_eq_right h, ite_eq_left hy, add_zero, hy, hh, CharTwo.add_self_eq_zero]
     · simp only [chainD0, Pi.zero_apply, hs, CharTwo.add_self_eq_zero]
   · rintro ⟨hD, hD0⟩
     refine ⟨fun σ y h ↦ ?_, fun σ ↦ ?_, fun σ ↦ ?_⟩
     · have := congrFun hD (join σ y)
-      rw [chainD_join, sum_succT, dif_pos h, if_neg ((not_congr (hlast y)).mpr (not_not.mpr h)),
+      rw [chainD_join, sum_succT, dite_eq_left h, ite_eq_right ((not_congr (hlast y)).mpr (not_not.mpr h)),
         add_zero, Pi.zero_apply] at this
       exact (CharTwo.add_eq_zero.mp this).symm
     · have := congrFun hD (join σ (lastBlk n))
-      rw [chainD_join, sum_succT, dif_neg ((hlast _).mp rfl), if_pos rfl, add_zero,
+      rw [chainD_join, sum_succT, dite_eq_right ((hlast _).mp rfl), ite_eq_left rfl, add_zero,
         Pi.zero_apply] at this
       exact CharTwo.add_eq_zero.mp this
     · exact CharTwo.add_eq_zero.mp (congrFun hD0 σ)
@@ -203,6 +202,7 @@ theorem shift_sound {Out In : Fin (2 ^ (s + n)) → R} {sV hV : Fin (2 ^ s) → 
   rw [chainLinks_iff, not_and_or] at h
   exact h
 
+omit [CharP R 2] in
 /-- **S1, the batching `κ_s`.** With `X ≠ 0` or `Y ≠ 0` (here `D̃(θ, τ)` and `D̃₀(θ)`), at most
 one `κ` makes `X + κ Y = 0`. -/
 theorem shift_kappa_le [IsDomain R] [Fintype R] [DecidableEq R] {X Y : R} (h : X ≠ 0 ∨ Y ≠ 0) :
@@ -211,6 +211,7 @@ theorem shift_kappa_le [IsDomain R] [Fintype R] [DecidableEq R] {X Y : R} (h : X
     rintro ⟨⟩; simp at h)
   simpa using this
 
+omit [CharP R 2] in
 /-- **S1, one coordinate of `θ` or `τ`, two residual tables bound together** (the slot
 coordinates bind both): from `t₁ ≠ 0 ∨ t₂ ≠ 0`, at most one value makes both bound tables zero.
 (The block coordinates bind `t₁` only; then `zerocheck_bad_le` applies when `t₂ = 0`, and nothing
@@ -240,7 +241,7 @@ theorem shW_mle (τ ρ : Fin n → R) (κ : R) :
     mle (shW τ κ) ρ = shiftMle n τ ρ + κ * eq (fun _ ↦ 0) ρ := by
   rw [← shift_mle, ← cube_firstBlk, eq_swap _ ρ]
   simp only [mle, shW, mul_add, Finset.sum_add_distrib, Finset.mul_sum, mul_ite, mul_one,
-    mul_zero, Finset.sum_ite_eq', Finset.mem_univ, if_true]
+    mul_zero, Finset.sum_ite_eq', Finset.mem_univ, ite_true]
   congr 1
   · rw [Finset.sum_comm]
     exact Finset.sum_congr rfl fun _ _ ↦ Finset.sum_congr rfl fun _ _ ↦ by
@@ -299,13 +300,13 @@ theorem shift_trueSum (θ : Fin s → R) (τs : List R) (hτ : τs.length = n) (
   have hW : ∑ y, shW τ κ y * fixLow In θ y =
       (∑ y, ∑ y', eq τ (cube y) * succT y y' * fixLow In θ y') + κ * fixLow In θ (firstBlk n) := by
     simp only [shW, add_mul, Finset.sum_add_distrib, Finset.sum_mul, mul_assoc, ite_mul, one_mul,
-      zero_mul, mul_ite, mul_zero, Finset.sum_ite_eq', Finset.mem_univ, if_true]
+      zero_mul, mul_ite, mul_zero, Finset.sum_ite_eq', Finset.mem_univ, ite_true]
     rw [Finset.sum_comm]
   have hDτ : mle (fixLow (chainD Out In hV) θ) τ = (∑ y, eq τ (cube y) * fixLow Out θ y) +
       (∑ y, ∑ y', eq τ (cube y) * succT y y' * fixLow In θ y') +
         eq τ (cube (lastBlk n)) * mle hV θ := by
     simp only [mle, hD, mul_add, Finset.sum_add_distrib, Finset.mul_sum, mul_ite, mul_zero,
-      Finset.sum_ite_eq', Finset.mem_univ, if_true, mul_assoc]
+      Finset.sum_ite_eq', Finset.mem_univ, ite_true, mul_assoc]
   rw [shift_tbl θ τs hτ, mle_fixLow, hDτ, hD0, hW, shiftTarget]
   linear_combination (-(eq τ (cube (lastBlk n)) * mle hV θ + κ * mle sV θ)) *
     CharTwo.two_eq_zero (R := R)
@@ -350,7 +351,18 @@ theorem collapse_mle {q : ℕ} (Z : Fin (2 ^ (q + n)) → R) (pos : Fin (2 ^ s) 
   rw [mle_split]
   simp only [hT, slotW, Finset.sum_mul, ite_mul, one_mul, zero_mul, mul_assoc, mul_ite, mul_zero]
   rw [Finset.sum_comm]
-  exact Finset.sum_congr rfl fun σ _ ↦ by rw [Finset.sum_ite_eq, if_pos (Finset.mem_univ _)]
+  exact Finset.sum_congr rfl fun σ _ ↦ by rw [Finset.sum_ite_eq, ite_eq_left (Finset.mem_univ _)]
+
+omit [CharP R 2] in
+/-- **The slot weight's extension, any slot map** (A.8 `slotW`; the chain block's `d` at 520…775 is
+not aligned): `w̃_θ(r) = Σ_σ eq(θ, σ) eq(r, pos σ)`, `2^s` terms over the `q = 10` collapse
+coordinates. -/
+theorem slotW_mle {q : ℕ} (pos : Fin (2 ^ s) → Fin (2 ^ q)) (θ : Fin s → R) (r : Fin q → R) :
+    mle (slotW pos θ) r = ∑ σ, eq θ (cube σ) * eq r (cube (pos σ)) := by
+  simp only [mle, slotW, Finset.mul_sum, mul_ite, mul_one, mul_zero]
+  rw [Finset.sum_comm]
+  simp only [Finset.sum_ite_eq, Finset.mem_univ, ite_true]
+  exact Finset.sum_congr rfl fun _ _ ↦ mul_comm _ _
 
 omit [CharP R 2] in
 /-- **The slot weight's extension** for a slot at an aligned base (`pos σ = join σ c`, the low
@@ -361,7 +373,7 @@ theorem slotW_mle_aligned {t : ℕ} (c : Fin (2 ^ t)) (θ r₁ : Fin s → R) (r
   rw [mle]
   simp only [slotW, Finset.mul_sum, mul_ite, mul_one, mul_zero]
   rw [Finset.sum_comm]
-  simp only [Finset.sum_ite_eq, Finset.mem_univ, if_true]
+  simp only [Finset.sum_ite_eq, Finset.mem_univ, ite_true]
   simp only [eq_append_join]
   rw [← eq_mle θ r₁, Finset.sum_mul]
   exact Finset.sum_congr rfl fun σ _ ↦ by rw [eq_swap r₁, eq_swap r₂]; ring

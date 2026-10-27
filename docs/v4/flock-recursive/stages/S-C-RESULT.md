@@ -152,3 +152,57 @@ dominant item of this stage.
 | `FRShift` general in the block count | yes (`n`, `s` parameters) |
 | axioms | three at most (`logs/S-C/axioms.log`); no `sorry`, no `native_decide` |
 | source rule | 0 findings |
+
+## Fix pass (revision 3.4; review `reviews/S-C-review.md`)
+
+All changes build (`logs/S-C-fix/build.log`: 51.6 s for the 7 modules, **no warnings**); source
+rule 0 findings (`logs/S-C-fix/source-rule.log`); 60 declarations on the three axioms at most
+(`logs/S-C-fix/axioms.log`). Statement check with S-A's tool (`logs/S-C-fix/Stmts.lean`,
+`stmts-before.txt`/`stmts-after.txt`, hygiene suffixes stripped, `stmts.diff`): the only changed
+types are the intended ones below; every other public declaration is unchanged.
+
+| Finding | Change |
+|---|---|
+| S-C-M2 (1) | `bzExpr = w·(ab + z) + W_E` over five tables (`W_E = eq(r,·)·Sel·Ê(λ,·)`); `bz_trueSum` (still `= P*(λ)`), `bz_final` (`ŵ(ρ)(Ã B̃ + Z̃) + Ŵ_E`) and `bz_triple_wrong` restated; new `targetMLE_eq` (`Ŵ_E(λ, ρ) = Σ_i Σ_hi Σ_blk L_i(λ)·eq(r_hi,hi)eq(ρ_hi,hi)·eq(r_blk,blk)eq(ρ_blk,blk)·Sel(blk)·E`). `bzPoly`/Z2 unchanged. `bz_start` lost its unused `Sel`-Boolean hypothesis. |
+| S-C-M1 / rev. 3.4 lincheck | per-kind folded columns: `kindExpr` (degree 2, `kindExpr_deg`), `kindTables`, `zfoldK`, `linAK`; **`lin_trueSum_kinds`** (true sum `â* + α b̂*` with `A = Σ_κ Ind_κ ⊗ A₀^κ`), **`lin_final_kinds`** (`Σ_κ M̃_κ(r_k) v_κ`), **`lin_walk_adjust`** (one walk with `rw′ = rw · Σ_κ v_κ free_κ`), `zfoldK_mle`, **`lin_beta_claim`** (the `β`-batched claim is `⟨W_β, z⟩`, `W_β(j,t) = eq(r_k,j) eq(r′_blk,t) Σ_κ β^κ Ind_κ(t)`), **`lin_beta_le`** (row L3: 6 bad `β` for 7 kinds, `batch_pow_bad_le`). The single-kind lemmas (`lin_trueSum`, `lin_final`) stay for the leaf. |
+| S-C-M2 (3) | **`z2_pair_bad_le`** (`FRSkip`): `gen`'s Z2 form (`z2Vals`: `P^z` interpolated over `Λ` plus `P^e` on `S`, the `P^{ab}` message on `Λ`); a nonzero residual on `S` or a wrong `P^z` message leaves ≤ 127 bad `λ`. `zcMsg` stays (controls). |
+| rev. 3.4 RS weight | `ring_complete`, `ring_final`, `rs_end`, `rsTruth`, `rs1_joint` take any high weight `g` instead of `eq(r, ·)` (partials `Σ_u g(u) Q_i(u)`; `g = eq(r,·)` is the old statement by `mle`'s definition), so `W_β`'s block weight (a tensor prefix sum over the kinds' intervals, as `ŵ`, `selWeight_eq`) is consumed directly. |
+| S-C-m1 | `slotW_mle` (any slot map: `Σ_σ eq(θ,σ) eq(r, pos σ)`, for `d` at 520…775) beside `slotW_mle_aligned`; the lemmas are generic in `s` and `q` (`q = 10` collapse coordinates). |
+| S-C-m2 | `FR.lean` left to the orchestrator. |
+| S-C-m3 | all ~40 warnings fixed (deprecated `if_pos/if_neg/dif_pos/dif_neg/if_true/Fin.coe_*` renamed, `<;>` linter, unused simp arguments, `omit [CharP R 2]`, unused hypothesis). |
+| S-C-m4 | budgets below. |
+| S-C-m5 | golf below. |
+| S-C-m6 | **How `rs1_joint` is consumed.** RS1 is one phase of 4 squeezes (A.2: two F coordinates per answer, `f₀ f₁ | f₂ f₃ | f₄ f₅ | f₆ κ`). `rs1_joint` bounds the escaping tuples of `F^8` by `(7 + J − 1)·|F|^7`; the potential charges the phase's open chain `φ = (7 + J − 1)/|F|` and, after each answer, the conditional count over the remaining coordinates: `seq_bad_le` gives the per-prefix counts (1 per stage coefficient from a doomed prefix, `J − 1` for `κ`), `pair_bad_le` combines the two coordinates of one answer, and L-cert's `extCount_split` sums the per-answer conditional counts into the phase's martingale step (each fresh answer's bad set is `≤ (b_{2a} + b_{2a+1})·2^128` of `2^256` answers by `card_chF_fiber`). |
+
+**Golf (kernel time).**
+
+| Item | Before | After | Note |
+|---|---|---|---|
+| `pinned_cert` | 7.1 s | **6.5 s** | `bitN` on `toNat.testBit`, the row walk adds with `F.add` (statement unchanged). A Nat-xor row product measured 5.0 s but needs a Nat ↔ `F.add` bridge; not taken. |
+| `pinnedW_eq` | 9.8 s | 9.6 s (unchanged) | The review assumed CompPoly's `Ext` product; it already runs on S-A's two-`UInt64` twin (`F.mul`, ≈ 38 ms per product in the kernel). A list `flatMap` table measured 6.6 s (`T14` probe) but needs a `List`/`Array` bridge lemma for `eqTable`; declined for budget. |
+| `skipNode_eq_zero`, `S_disjoint_Λ` | < 0.6 s together | unchanged | Deriving them from `GF2Indep gW` would replace a 128-case check by a 128-subset one; no gain. |
+| `uni_bad_le` | — | removed | unused after rev. 3.1 (Z2 uses `card_interpolateAt_eq_le`). |
+
+Sequential kernel times (`lake env lean --profile`, `taskset -c 5`, `logs/S-C-fix/profile-*.log`):
+
+| Module | wall | kernel |
+|---|---|---|
+| `FRMLE` | 9.4 s | 1.29 s |
+| `FRSumcheck` | 12.1 s | 1.60 s |
+| `FRShift` | 10.5 s | 1.23 s |
+| `FRRingSwitch` | 14.6 s | 2.32 s |
+| `FRSkip` | 26.9 s | 20.2 s (`pinnedW_eq` 9.56, `pinned_cert` 6.5, others ≤ 1.5) |
+| `FRSpartan` | 15.2 s | 1.85 s |
+| `FRMLEControls` | 8.1 s | 1.61 s |
+
+(The first table, §4, was not pinned to one core; these are the comparable numbers from now on.)
+
+**Lines (loc.py code), before → after:** `FRMLE` 281 → 281; `FRSumcheck` 444 → 439 (budget
+350); `FRShift` 271 → 279; `FRRingSwitch` 493 → 493; `FRSkip` 513 → 541; `FRSpartan` 333 → 462
+(budget 450: the per-kind lincheck and `targetMLE_eq`); `FRMLEControls` 95 → 95 (budget 50);
+**total 2,430 → 2,590** (sum of budgets 2,850).
+
+**Open after the fix pass.** `kindFoldWeight`'s closed form (A.8: `W̃_β` at the RS point as a tensor
+prefix sum over the kinds' intervals) is `selWeight_eq`'s computation with `Σ_κ β^κ Ind_κ` in place
+of `Sel`; the instance lemma is for whoever writes `kindFoldWeight` in `FRVIR`. The two kernel
+bridges above (≈ 4.5 s together) remain available if FR-R4′ tightens.

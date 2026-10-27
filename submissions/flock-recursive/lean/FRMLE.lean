@@ -61,7 +61,7 @@ theorem testBit_dbl_succ {ℓ : ℕ} (u : Fin (2 ^ ℓ)) (b : Bool) (l : ℕ) :
     (dbl u b).val.testBit (l + 1) = u.val.testBit l := by
   rw [Nat.testBit_succ]
   congr 1
-  cases b <;> simp [dbl] <;> omega
+  cases b <;> (simp [dbl]; try omega)
 
 /-- `Fin (2 ^ ℓ) × Bool ≃ Fin (2 ^ (ℓ + 1))` by `dbl`. -/
 def dblEquiv (ℓ : ℕ) : Fin (2 ^ ℓ) × Bool ≃ Fin (2 ^ (ℓ + 1)) where
@@ -69,7 +69,7 @@ def dblEquiv (ℓ : ℕ) : Fin (2 ^ ℓ) × Bool ≃ Fin (2 ^ (ℓ + 1)) where
   invFun v := (⟨v.val / 2, by have := v.isLt; have := pow_succ 2 ℓ; omega⟩, v.val % 2 = 1)
   left_inv p := by
     obtain ⟨u, b⟩ := p
-    refine Prod.ext (Fin.ext ?_) ?_ <;> cases b <;> simp [dbl] <;> omega
+    refine Prod.ext (Fin.ext ?_) ?_ <;> cases b <;> (simp [dbl]; try omega)
   right_inv v := by
     ext
     simp only [dbl]
@@ -344,10 +344,10 @@ theorem tbl_eqTable (r : List R) : tbl r.length (eqTable r) = fun u ↦ eq (pt r
     have hs := eqTable_size r
     have hu := u.isLt
     have hlt : 2 * u.val + b.toNat < 2 * (eqTable r).size := by
-      rw [hs]; cases b <;> simp <;> omega
+      rw [hs]; cases b <;> (simp; try omega)
     simp only [tbl, eqTable, dbl, Array.getD_eq_getD_getElem?, Array.getElem?_ofFn, hlt,
       dite_true, Option.getD_some]
-    have h2 : (2 * u.val + b.toNat) / 2 = u.val := by cases b <;> simp <;> omega
+    have h2 : (2 * u.val + b.toNat) / 2 = u.val := by cases b <;> (simp; try omega)
     have hlt' : u.val < (eqTable r).size := by rw [hs]; exact hu
     simp only [h2, Array.getElem?_eq_getElem hlt', Option.getD_some]
     cases b <;> simp [mul_comm]
