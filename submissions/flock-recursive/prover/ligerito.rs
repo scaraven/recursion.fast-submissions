@@ -64,7 +64,7 @@ fn round_kk(w: &[K], g: &[K]) -> [K; 3] {
 }
 
 fn fold_k(t: &[K], s: K) -> Vec<K> {
-    let mut out = vec![K::ZERO; t.len() / 2];
+    let mut out: Vec<K> = par::uninit_vec(t.len() / 2);
     par::for_each_chunk_mut(&mut out, 1 << 12, |off, ch| crate::simd::kfold(&t[2 * off..2 * (off + ch.len())], s, ch));
     out
 }
@@ -76,8 +76,8 @@ fn fold_msg(w: &Tab, g: &FTab, s: K, msg: bool) -> (Vec<K>, Vec<K>, [K; 3]) {
         FTab::F(x) => x.len() / 2,
         FTab::K(x) => x.len() / 2,
     };
-    let mut wo = vec![K::ZERO; n];
-    let mut go = vec![K::ZERO; n];
+    let mut wo: Vec<K> = par::uninit_vec(n);
+    let mut go: Vec<K> = par::uninit_vec(n);
     let (pw, pg) = (par::SyncPtr(wo.as_mut_ptr()), par::SyncPtr(go.as_mut_ptr()));
     let blk = 2048usize.min(n);
     let parts = par::map_chunks(n.div_ceil(blk), 1, |lo, hi| {
@@ -118,7 +118,7 @@ enum FTab<'a> {
 }
 
 fn fold_kf(g: &[F], s: K) -> Vec<K> {
-    let mut out = vec![K::ZERO; g.len() / 2];
+    let mut out: Vec<K> = par::uninit_vec(g.len() / 2);
     par::for_each_chunk_mut(&mut out, 1 << 12, |off, ch| crate::simd::kfold_f(&g[2 * off..2 * (off + ch.len())], s, ch));
     out
 }

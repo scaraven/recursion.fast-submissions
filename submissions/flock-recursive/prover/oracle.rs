@@ -152,13 +152,15 @@ impl Table {
 pub struct Recorder<'a> {
     inner: &'a dyn Oracle,
     keep: bool,
+    /// batch queries longer than this are not kept (the replay asks them again)
+    pub batch_max: usize,
     table: Mutex<Vec<(u128, Digest)>>,
     pub stats: Stats,
 }
 
 impl<'a> Recorder<'a> {
     pub fn new(inner: &'a dyn Oracle) -> Recorder<'a> {
-        Recorder { inner, keep: true, table: Mutex::new(Vec::new()), stats: Stats::default() }
+        Recorder { inner, keep: true, batch_max: usize::MAX, table: Mutex::new(Vec::new()), stats: Stats::default() }
     }
     /// Counts only; `into_table` is then empty.
     pub fn counting(inner: &'a dyn Oracle) -> Recorder<'a> {
@@ -205,7 +207,7 @@ impl Oracle for Recorder<'_> {
         self.inner.ask_many(out, &|i, buf: &mut Vec<u8>| {
             let st = buf.len();
             build(i, buf);
-            let f = fp(&buf[st..]);
+            let f = if buf.len() - st <= self.batch_max { fp(&buf[st..]) } else { 0 };
             fps[2 * i].store((f >> 64) as u64, Ordering::Relaxed);
             fps[2 * i + 1].store(f as u64, Ordering::Relaxed);
             bytes.fetch_add((buf.len() - st) as u64, Ordering::Relaxed);
@@ -215,7 +217,9 @@ impl Oracle for Recorder<'_> {
             tab.reserve(n);
             for (i, a) in out.iter().enumerate() {
                 let f = ((fps[2 * i].load(Ordering::Relaxed) as u128) << 64) | fps[2 * i + 1].load(Ordering::Relaxed) as u128;
-                tab.push((f, *a));
+                if f != 0 {
+                    tab.push((f, *a));
+                }
             }
         }
         self.stats.many_ns.fetch_add(t.elapsed().as_nanos() as u64, Ordering::Relaxed);
@@ -231,13 +235,15 @@ pub type Trace = Vec<(Vec<u8>, Digest)>;
 /// Answers from the prover's table and records the queries asked, in order.
 pub struct Replay<'a> {
     table: &'a Table,
+    /// asked for a query the table does not hold (`None`: the miss is counted)
+    pub fallback: Option<&'a dyn Oracle>,
     rec: Mutex<Trace>,
     missing: AtomicU64,
 }
 
 impl<'a> Replay<'a> {
     pub fn new(table: &'a Table) -> Replay<'a> {
-        Replay { table, rec: Mutex::new(Vec::new()), missing: AtomicU64::new(0) }
+        Replay { table, fallback: None, rec: Mutex::new(Vec::new()), missing: AtomicU64::new(0) }
     }
     /// The recorded trace and the number of queries the table did not hold.
     pub fn finish(self) -> (Trace, u64) {
@@ -247,9 +253,12 @@ impl<'a> Replay<'a> {
 
 impl Oracle for Replay<'_> {
     fn ask(&self, q: &[u8]) -> Digest {
-        let a = self.table.get(q).unwrap_or_else(|| {
-            self.missing.fetch_add(1, Ordering::Relaxed);
-            [0u8; 32]
+        let a = self.table.get(q).unwrap_or_else(|| match self.fallback {
+            Some(o) => o.ask(q),
+            None => {
+                self.missing.fetch_add(1, Ordering::Relaxed);
+                [0u8; 32]
+            }
         });
         self.rec.lock().unwrap().push((q.to_vec(), a));
         a

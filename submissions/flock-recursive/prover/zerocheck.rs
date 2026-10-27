@@ -187,7 +187,7 @@ pub fn round_x6(t: &[F], a: &[u8], b: &[u8], rest: &[F]) -> (F, F) {
 /// After `s₁`: the folded tables `A'[p] = A(2p) + s₁(A(2p) + A(2p+1))` from the bits.
 pub fn fold_x6(t: &[F], a: &[u8], s1: F) -> Vec<F> {
     let n = a.len() / 16;
-    let mut out = vec![F::ZERO; n];
+    let mut out: Vec<F> = par::uninit_vec(n);
     par::for_each_chunk_mut(&mut out, 1 << 12, |off, ch| simd::x6_fold(t, a, off, s1, ch));
     out
 }

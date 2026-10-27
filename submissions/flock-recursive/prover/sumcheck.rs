@@ -39,7 +39,7 @@ pub fn msg_pairs(pairs: &[(&[F], &[F])]) -> [F; 3] {
 /// `t'[i] = t[2i] + s (t[2i] + t[2i+1])`.
 pub fn fold_f(t: &[F], s: F) -> Vec<F> {
     let n = t.len() / 2;
-    let mut out = vec![F::ZERO; n];
+    let mut out: Vec<F> = par::uninit_vec(n);
     par::for_each_chunk_mut(&mut out, 1 << 12, |off, ch| {
         crate::simd::fold(&t[2 * off..2 * (off + ch.len())], s, ch);
     });

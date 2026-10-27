@@ -249,3 +249,13 @@ mod tests {
         assert!(v.iter().enumerate().all(|(i, &x)| x == i * i));
     }
 }
+
+/// A `Vec` of `n` elements whose contents are written by the caller before they are read
+/// (plain-data element types only).
+#[allow(clippy::uninit_vec)]
+pub fn uninit_vec<T: Copy>(n: usize) -> Vec<T> {
+    let mut v = Vec::with_capacity(n);
+    // SAFETY: T is Copy (no drop), and every caller writes every element before reading it.
+    unsafe { v.set_len(n) };
+    v
+}

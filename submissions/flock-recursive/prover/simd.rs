@@ -505,30 +505,29 @@ macro_rules! ymm_kernels {
                 _mm256_permute2x128_si256::<0x01>(x, x)
             }
 
-            /// `s·d` for K elements `s` (pre-split: `s01 = [S₀ S₁]`, `ss = [S₀+S₁]²`) and `d = [D₀ D₁]`.
+            /// `s·d` for a constant K element `s` and `d = [D₀ D₁]`: `c₀ = S₀D₀ + (αS₁)D₁`,
+            /// `c₁ = S₁D₀ + (S₀+S₁)D₁`, with `ca = [S₀, αS₁]`, `cb = [S₁, S₀+S₁]` (two products).
             #[inline]
             #[target_feature(enable = $feat)]
-            unsafe fn kmul_c(d: __m256i, s01: __m256i, ss: __m256i, al: __m256i) -> __m256i {
-                let p = mul(d, s01); // [P0, P1]
-                let ds = _mm256_xor_si256(d, swap(d)); // [D0+D1]²
-                let pm = mul(ds, ss);
-                let sw = swap(p); // [P1, P0]
-                let ap = mul(sw, al); // [αP1, ·]
-                let r0 = _mm256_xor_si256(p, ap);
-                let r1 = _mm256_xor_si256(pm, sw);
+            unsafe fn kmul_c(d: __m256i, ca: __m256i, cb: __m256i) -> __m256i {
+                let x = mul(d, ca);
+                let y = mul(d, cb);
+                let r0 = _mm256_xor_si256(x, swap(x));
+                let r1 = _mm256_xor_si256(y, swap(y));
                 _mm256_blend_epi32::<0xF0>(r0, r1)
             }
 
             /// `out[i] = t[2i] + s (t[2i] + t[2i+1])` over K.
             #[target_feature(enable = $feat)]
             pub unsafe fn kfold(t: &[crate::field::K], s: crate::field::K, out: &mut [crate::field::K]) {
-                let s01 = _mm256_set_epi64x(s.b.hi as i64, s.b.lo as i64, s.a.hi as i64, s.a.lo as i64);
-                let ss = bcast(s.a + s.b);
-                let al = bcast(crate::field::alpha());
+                let as1 = s.b.mul_alpha();
+                let ss = s.a + s.b;
+                let ca = _mm256_set_epi64x(as1.hi as i64, as1.lo as i64, s.a.hi as i64, s.a.lo as i64);
+                let cb = _mm256_set_epi64x(ss.hi as i64, ss.lo as i64, s.b.hi as i64, s.b.lo as i64);
                 for i in 0..out.len() {
                     let x = ldk(t.as_ptr().add(2 * i));
                     let y = ldk(t.as_ptr().add(2 * i + 1));
-                    let r = kmul_c(_mm256_xor_si256(x, y), s01, ss, al);
+                    let r = kmul_c(_mm256_xor_si256(x, y), ca, cb);
                     _mm256_storeu_si256(out.as_mut_ptr().add(i) as *mut __m256i, _mm256_xor_si256(x, r));
                 }
             }

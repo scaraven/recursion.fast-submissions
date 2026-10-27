@@ -11,6 +11,7 @@
 //! Environment: FLOCK_THREADS (default all CPUs), FLOCK_TIER (force `portable`, `pclmul`, `ymm`).
 #![allow(clippy::needless_range_loop, clippy::too_many_arguments, dead_code)]
 
+mod alloc;
 mod blake2s;
 mod circuit;
 mod field;
@@ -36,6 +37,9 @@ mod zerocheck;
 use blake2s::{leaf_stmt, Digest};
 use oracle::{Recorder, Replay, Seq};
 use std::time::Instant;
+
+#[global_allocator]
+static ALLOC: alloc::Cache = alloc::Cache;
 
 fn unhex(s: &str) -> Digest {
     let s = s.trim();
@@ -135,9 +139,16 @@ fn prove_leaf_service(m: usize, start: &Digest, out: &str, reps: usize) {
     let vk = svc.vk();
     let circ = circuit::Circuit::build();
     let n = params::leaf_n(m);
+    let pf: usize = std::env::var("FLOCK_PREFAULT_MIB").ok().and_then(|x| x.parse().ok()).unwrap_or(0);
+    if pf > 0 {
+        let t = Instant::now();
+        alloc::prefault(pf << 20);
+        eprintln!("prefault {pf} MiB {:.3}s", t.elapsed().as_secs_f64());
+    }
     for rep in 0..reps {
         let t0 = Instant::now();
-        let rec = Recorder::new(&svc);
+        let mut rec = Recorder::new(&svc);
+        rec.batch_max = 128;
         let (pi, tm) = leaf::prove(&rec, &circ, &vk, start, m);
         let t_prove = t0.elapsed().as_secs_f64();
         let stats = rec.stats.report();
@@ -146,7 +157,8 @@ fn prove_leaf_service(m: usize, start: &Digest, out: &str, reps: usize) {
         let table = rec.into_table();
         let h = blake2s::chain_end(start, n);
         let c = leaf_stmt(&h, n);
-        let rp = Replay::new(&table);
+        let mut rp = Replay::new(&table);
+        rp.fallback = Some(&svc);
         if leaf::verify(&rp, &circ, &vk, &c, &pi).is_none() {
             service::fatal("the native verifier rejects the proof (replay)");
         }
@@ -192,12 +204,123 @@ fn prove_leaf_service(m: usize, start: &Digest, out: &str, reps: usize) {
     }
 }
 
+extern "C" {
+    /// glibc's `mallopt` (the prover is linked with glibc, `-static`).
+    fn mallopt(param: i32, value: i32) -> i32;
+}
+
+/// Keep small freed memory in one arena (glibc) and pre-fault `mib` MiB for the large-block cache
+/// (`alloc.rs`), before the request's clock.
+fn heap_setup(mib: usize) {
+    // SAFETY: plain glibc calls (M_ARENA_MAX = -8, M_TRIM_THRESHOLD = -1); a refused setting is
+    // only slower.
+    unsafe {
+        mallopt(-8, 1);
+        mallopt(-1, i32::MAX);
+    }
+    alloc::prefault(mib << 20);
+}
+
+fn say(word: &str) {
+    use std::io::Write;
+    let mut out = std::io::stdout().lock();
+    let _ = writeln!(out, "{word}");
+    let _ = out.flush();
+}
+
+fn wait_go() {
+    let mut line = String::new();
+    loop {
+        line.clear();
+        if std::io::stdin().read_line(&mut line).unwrap_or(0) == 0 {
+            service::fatal("stdin closed before `go`");
+        }
+        if line.trim() == "go" {
+            return;
+        }
+    }
+}
+
+/// Prefault size per shape (peak RSS measured in P1 plus margin).
+fn prefault_mib(m: usize) -> usize {
+    if m >= 32 {
+        6000
+    } else {
+        1800
+    }
+}
+
+/// A signed leaf through the service: prove, the verifier's trace by replay, SIGN; the file bytes.
+fn leaf_file(svc: &service::Service, circ: &circuit::Circuit, vk: &Digest, s: &Digest, m: usize) -> Vec<u8> {
+    let mut rec = Recorder::new(svc);
+    rec.batch_max = 128; // column queries are asked again by the replay (≈ 750 of them)
+    let (pi, _) = leaf::prove(&rec, circ, vk, s, m);
+    let table = rec.into_table();
+    let n = params::leaf_n(m);
+    let c = leaf_stmt(&blake2s::chain_end(s, n), n);
+    let mut rp = Replay::new(&table);
+    rp.fallback = Some(svc);
+    if leaf::verify(&rp, circ, vk, &c, &pi).is_none() {
+        service::fatal("the native verifier rejects the proof (replay)");
+    }
+    let (tr, missing) = rp.finish();
+    if missing != 0 {
+        service::fatal(&format!("{missing} verifier queries were not asked while proving"));
+    }
+    let qs: Vec<&[u8]> = tr.iter().map(|(q, _)| q.as_slice()).collect();
+    let (_, sig) = svc.sign(&qs);
+    format::to_file(&format::Signed { pi, tr, sig })
+}
+
+/// `prover leaf /work` (PROVER.md §3): `leaf.json` = `{"n": N, "start": "HEX"}`, `n ∈ {2^16, 2^18}`.
+fn cmd_leaf(dir: &std::path::Path) {
+    let path = std::env::var("RF_ORACLE").unwrap_or_else(|_| service::fatal("RF_ORACLE is not set"));
+    let svc = service::Service::connect(&path).unwrap_or_else(|e| service::fatal(&e));
+    svc.warm(par::threads().min(service::WARM_CONNS));
+    par::warm();
+    let circ = circuit::Circuit::build();
+    let vk = unhex(&std::fs::read_to_string(dir.join("vk.hex")).unwrap_or_else(|e| service::fatal(&format!("vk.hex: {e}"))));
+    heap_setup(prefault_mib(30));
+    let _ = skipdom::skip();
+    say("ready");
+    wait_go();
+    let t = Instant::now();
+    let j = std::fs::read_to_string(dir.join("leaf.json")).unwrap_or_else(|e| service::fatal(&format!("leaf.json: {e}")));
+    let num = |k: &str| -> String {
+        let i = j.find(&format!("\"{k}\"")).unwrap_or_else(|| service::fatal(&format!("leaf.json: no {k}")));
+        let rest = &j[i + k.len() + 2..];
+        let rest = rest[rest.find(':').unwrap() + 1..].trim_start();
+        rest.chars().take_while(|c| c.is_ascii_hexdigit() || *c == '"').filter(|c| *c != '"').collect()
+    };
+    let n: u64 = num("n").parse().unwrap_or_else(|_| service::fatal("leaf.json: n"));
+    let s = unhex(&num("start"));
+    if !n.is_power_of_two() || !(1u64 << 11..=1u64 << 18).contains(&n) {
+        service::fatal(&format!("leaf n = {n}: this prover proves n = 2^11 … 2^18 (m = 25 … 32)"));
+    }
+    let m = 14 + n.trailing_zeros() as usize;
+    let f = leaf_file(&svc, &circ, &vk, &s, m);
+    std::fs::write(dir.join("proof.bin"), &f).unwrap_or_else(|e| service::fatal(&format!("proof.bin: {e}")));
+    say("done");
+    eprintln!("leaf request m={m} {:.3}s file={} {}", t.elapsed().as_secs_f64(), f.len(), svc.report());
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     simd::tier();
     let mode = args.get(1).map(String::as_str).unwrap_or("");
     let reps: usize = arg(&args, "--reps").and_then(|x| x.parse().ok()).unwrap_or(1);
     match mode {
+        "setup" => {}
+        "vk" => {
+            let path = std::env::var("RF_ORACLE").unwrap_or_else(|_| service::fatal("RF_ORACLE is not set"));
+            let svc = service::Service::connect(&path).unwrap_or_else(|e| service::fatal(&e));
+            println!("{}", svc.vk().iter().map(|x| format!("{x:02x}")).collect::<String>());
+        }
+        "leaf" => cmd_leaf(std::path::Path::new(args.get(2).map(String::as_str).unwrap_or("."))),
+        "tree" | "node" => {
+            eprintln!("flock-prover {mode}: the node prover is not built yet (stage P2 waits for S-0's compileMux dump)");
+            std::process::exit(2);
+        }
         "selftest" => match simd::selftest() {
             Ok(s) => println!("SELFTEST pass {s}"),
             Err(e) => {

@@ -94,45 +94,6 @@ fn put(w: &mut [u64; 256], pos: usize, bits: u64, n: usize) {
     }
 }
 
-struct Emit<'a> {
-    z: &'a mut [u64; 256],
-    a: &'a mut [u64; 256],
-    b: &'a mut [u64; 256],
-    pos: usize,
-}
-
-impl Emit<'_> {
-    /// `n` gates with A-sides `ga`, B-sides `gb` (bits `lo … lo + n` of the words).
-    #[inline(always)]
-    fn gates(&mut self, ga: u32, gb: u32, lo: u32, n: usize) {
-        let (x, y) = ((ga >> lo) as u64, (gb >> lo) as u64);
-        put(self.a, self.pos, x, n);
-        put(self.b, self.pos, y, n);
-        put(self.z, self.pos, x & y, n);
-        self.pos += n;
-    }
-    /// `addW`: 31 carry gates.
-    #[inline(always)]
-    fn add(&mut self, x: u32, y: u32) -> u32 {
-        let s = x.wrapping_add(y);
-        let c = s ^ x ^ y;
-        self.gates(x ^ c, y ^ c, 0, 31);
-        s
-    }
-    /// `add3W`: 31 majority gates, then 30 ripple gates.
-    #[inline(always)]
-    fn add3(&mut self, x: u32, y: u32, z: u32) -> u32 {
-        self.gates(x ^ z, y ^ z, 0, 31);
-        let ms = ((x ^ z) & (y ^ z)) ^ z;
-        let p = x ^ y ^ z;
-        let q = ms << 1;
-        let s = p.wrapping_add(q);
-        let c = s ^ p ^ q;
-        self.gates(p ^ c, q ^ c, 1, 30);
-        s
-    }
-}
-
 /// One chain block's `(z, a, b)` from its input digest, by word arithmetic in the circuit's gate
 /// order (`Circuit::trace` is the reference; `witness::tests`). Returns the output digest.
 pub fn block_fast(t: &Template, d: &Digest, z: &mut [u64; 256], a: &mut [u64; 256], b: &mut [u64; 256]) -> Digest {
@@ -150,56 +111,107 @@ pub fn block_fast(t: &Template, d: &Digest, z: &mut [u64; 256], a: &mut [u64; 25
     v[8..].copy_from_slice(&IV);
     v[12] ^= 33;
     v[14] ^= 0xFFFF_FFFF;
-    let mut e = Emit { z, a, b, pos: crate::params::GATE_BASE };
-    let gf = |e: &mut Emit, v: &mut [u32; 16], ia: usize, ib: usize, ic: usize, id: usize, x: u32, y: u32| {
-        let a1 = e.add3(v[ia], v[ib], x);
-        let d1 = (v[id] ^ a1).rotate_right(16);
-        let c1 = e.add(v[ic], d1);
-        let b1 = (v[ib] ^ c1).rotate_right(12);
-        let a2 = e.add3(a1, b1, y);
-        let d2 = (d1 ^ a2).rotate_right(8);
-        let c2 = e.add(c1, d2);
-        let b2 = (b1 ^ c2).rotate_right(7);
-        v[ia] = a2;
-        v[ib] = b2;
-        v[ic] = c2;
-        v[id] = d2;
-    };
-    for s in SIGMA.iter() {
-        gf(&mut e, &mut v, 0, 4, 8, 12, m[s[0]], m[s[1]]);
-        gf(&mut e, &mut v, 1, 5, 9, 13, m[s[2]], m[s[3]]);
-        gf(&mut e, &mut v, 2, 6, 10, 14, m[s[4]], m[s[5]]);
-        gf(&mut e, &mut v, 3, 7, 11, 15, m[s[6]], m[s[7]]);
-        gf(&mut e, &mut v, 0, 5, 10, 15, m[s[8]], m[s[9]]);
-        gf(&mut e, &mut v, 1, 6, 11, 12, m[s[10]], m[s[11]]);
-        gf(&mut e, &mut v, 2, 7, 8, 13, m[s[12]], m[s[13]]);
-        gf(&mut e, &mut v, 3, 4, 9, 14, m[s[14]], m[s[15]]);
+    // the gate region (word-aligned: 1280 = 20·64, 14,720 = 230·64), written as three bit
+    // streams held in locals (no store-to-load traffic per gate group)
+    let (mut pa, mut pb, mut pz, mut nb, mut word) = (0u64, 0u64, 0u64, 0u32, crate::params::GATE_BASE / 64);
+    macro_rules! gates {
+        ($ga:expr, $gb:expr, $lo:expr, $n:expr) => {{
+            let mask = (1u64 << $n) - 1;
+            let x = (($ga >> $lo) as u64) & mask;
+            let y = (($gb >> $lo) as u64) & mask;
+            let zz = x & y;
+            pa |= x << nb;
+            pb |= y << nb;
+            pz |= zz << nb;
+            if nb + $n >= 64 {
+                a[word] = pa;
+                b[word] = pb;
+                z[word] = pz;
+                word += 1;
+                let sh = 64 - nb;
+                pa = if sh < 64 { x >> sh } else { 0 };
+                pb = if sh < 64 { y >> sh } else { 0 };
+                pz = if sh < 64 { zz >> sh } else { 0 };
+                nb = nb + $n - 64;
+            } else {
+                nb += $n;
+            }
+        }};
     }
-    debug_assert_eq!(e.pos, crate::params::GATE_BASE + crate::params::GATES);
+    macro_rules! add {
+        ($x:expr, $y:expr) => {{
+            let (x, y): (u32, u32) = ($x, $y);
+            let s = x.wrapping_add(y);
+            let c = s ^ x ^ y;
+            gates!(x ^ c, y ^ c, 0, 31u32);
+            s
+        }};
+    }
+    macro_rules! add3 {
+        ($x:expr, $y:expr, $z:expr) => {{
+            let (x, y, zw): (u32, u32, u32) = ($x, $y, $z);
+            gates!(x ^ zw, y ^ zw, 0, 31u32);
+            let ms = ((x ^ zw) & (y ^ zw)) ^ zw;
+            let p = x ^ y ^ zw;
+            let q = ms << 1;
+            let s = p.wrapping_add(q);
+            let c = s ^ p ^ q;
+            gates!(p ^ c, q ^ c, 1, 30u32);
+            s
+        }};
+    }
+    macro_rules! g {
+        ($ia:expr, $ib:expr, $ic:expr, $id:expr, $x:expr, $y:expr) => {{
+            let a1 = add3!(v[$ia], v[$ib], $x);
+            let d1 = (v[$id] ^ a1).rotate_right(16);
+            let c1 = add!(v[$ic], d1);
+            let b1 = (v[$ib] ^ c1).rotate_right(12);
+            let a2 = add3!(a1, b1, $y);
+            let d2 = (d1 ^ a2).rotate_right(8);
+            let c2 = add!(c1, d2);
+            let b2 = (b1 ^ c2).rotate_right(7);
+            v[$ia] = a2;
+            v[$ib] = b2;
+            v[$ic] = c2;
+            v[$id] = d2;
+        }};
+    }
+    for s in SIGMA.iter() {
+        g!(0, 4, 8, 12, m[s[0]], m[s[1]]);
+        g!(1, 5, 9, 13, m[s[2]], m[s[3]]);
+        g!(2, 6, 10, 14, m[s[4]], m[s[5]]);
+        g!(3, 7, 11, 15, m[s[6]], m[s[7]]);
+        g!(0, 5, 10, 15, m[s[8]], m[s[9]]);
+        g!(1, 6, 11, 12, m[s[10]], m[s[11]]);
+        g!(2, 7, 8, 13, m[s[12]], m[s[13]]);
+        g!(3, 4, 9, 14, m[s[14]], m[s[15]]);
+    }
+    debug_assert_eq!((word, nb), ((crate::params::GATE_BASE + crate::params::GATES) / 64, 0));
     let mut out = [0u8; 32];
     for w in 0..8 {
         let o = v[w] ^ v[w + 8] ^ h[w];
         out[4 * w..4 * w + 4].copy_from_slice(&o.to_le_bytes());
         // output rows (out, one) and input rows (d, one)
-        put(e.z, crate::params::OUT_BASE + 32 * w, o as u64, 32);
-        put(e.a, crate::params::OUT_BASE + 32 * w, o as u64, 32);
-        put(e.b, crate::params::OUT_BASE + 32 * w, 0xFFFF_FFFF, 32);
+        put(z, crate::params::OUT_BASE + 32 * w, o as u64, 32);
+        put(a, crate::params::OUT_BASE + 32 * w, o as u64, 32);
+        put(b, crate::params::OUT_BASE + 32 * w, 0xFFFF_FFFF, 32);
     }
     for k in 0..4 {
         let x = u64::from_le_bytes(d[8 * k..8 * k + 8].try_into().unwrap());
         let p = crate::params::D_BASE + 64 * k;
-        put(e.z, p, x, 64.min(63)); // 63 bits, then the top bit
-        put(e.z, p + 63, x >> 63, 1);
-        put(e.a, p, x, 63);
-        put(e.a, p + 63, x >> 63, 1);
-        put(e.b, p, u64::MAX, 63);
-        put(e.b, p + 63, 1, 1);
+        put(z, p, x, 64.min(63)); // 63 bits, then the top bit
+        put(z, p + 63, x >> 63, 1);
+        put(a, p, x, 63);
+        put(a, p + 63, x >> 63, 1);
+        put(b, p, u64::MAX, 63);
+        put(b, p + 63, 1, 1);
     }
     out
 }
 
 /// The leaf witness by `block_fast` (blocks in parallel after the sequential chain).
 pub fn leaf_witness_fast(c: &Circuit, s: &Digest, m: usize) -> Witness {
+    let t0 = std::time::Instant::now();
     let nb = 1usize << (m - 14);
     let mut ds = Vec::with_capacity(nb + 1);
     ds.push(*s);
@@ -207,7 +219,9 @@ pub fn leaf_witness_fast(c: &Circuit, s: &Digest, m: usize) -> Witness {
         let n = chain_step(&ds[i]);
         ds.push(n);
     }
+    let t1 = t0.elapsed().as_secs_f64();
     let t = Template::new(c);
+    let t2 = t0.elapsed().as_secs_f64();
     let words = nb * 256;
     let (mut z, mut a, mut b) = (alloc_u64(words), alloc_u64(words), alloc_u64(words));
     let (pz, pa, pb) = (par::SyncPtr(z.as_mut_ptr()), par::SyncPtr(a.as_mut_ptr()), par::SyncPtr(b.as_mut_ptr()));
@@ -222,6 +236,9 @@ pub fn leaf_witness_fast(c: &Circuit, s: &Digest, m: usize) -> Witness {
             }
         }
     });
+    if std::env::var_os("FLOCK_VERBOSE").is_some() {
+        eprintln!("  witness chain {t1:.3} template {:.3} blocks {:.3}", t2 - t1, t0.elapsed().as_secs_f64() - t2);
+    }
     Witness { m, z, a, b, h: ds[nb] }
 }
 
@@ -245,5 +262,28 @@ mod tests {
                 assert_eq!(b[w], b0[w], "b word {w}");
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod bench {
+    use super::*;
+    #[test]
+    #[ignore]
+    fn block_fast_speed() {
+        let c = Circuit::build();
+        let t = Template::new(&c);
+        let (mut z, mut a, mut b) = ([0u64; 256], [0u64; 256], [0u64; 256]);
+        let mut d = [7u8; 32];
+        let t0 = std::time::Instant::now();
+        for _ in 0..10000 {
+            d = block_fast(&t, &d, &mut z, &mut a, &mut b);
+        }
+        eprintln!("block_fast {:.0} ns", t0.elapsed().as_nanos() as f64 / 10000.0);
+        let t0 = std::time::Instant::now();
+        for _ in 0..10000 {
+            d = chain_step(&d);
+        }
+        eprintln!("chain_step {:.0} ns", t0.elapsed().as_nanos() as f64 / 10000.0);
     }
 }

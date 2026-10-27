@@ -234,6 +234,7 @@ pub fn prove(o: &dyn Oracle, circ: &Circuit, vk: &Digest, s: &Digest, m: usize) 
     let (s_in, s_out) = (&sz[..8], &sz[8..]);
     let eta = lincheck::eta(circ, lambda, s_in, alpha);
     let zf = lincheck::partial_fold(&w.z, s_out);
+    let zf_keep = zf.clone();
     let (tl, fin) = prove_pairs(vec![(eta, zf)], &mut |g| {
         wr.send_f(&g);
         wr.fs.chal_f()
@@ -260,6 +261,7 @@ pub fn prove(o: &dyn Oracle, circ: &Circuit, vk: &Digest, s: &Digest, m: usize) 
     wr.send_f(&[vo, vi]);
     let mu = wr.fs.chal_f();
     let zs = partial_fold_prefix(&w.z, &taup, 16);
+    let zs_keep = zs.clone();
     let (tpp, fin) = prove_pairs(vec![(slot_weight(theta, mu), zs)], &mut |g| {
         wr.send_f(&g);
         wr.fs.chal_f()
@@ -267,6 +269,11 @@ pub fn prove(o: &dyn Oracle, circ: &Circuit, vk: &Digest, s: &Digest, m: usize) 
     let vc = fin[0].1;
     wr.send_f(&[vc]);
     tm.mark("shift_io", &mut t);
+
+    if std::env::var_os("FLOCK_NODE_SHAPE").is_some() {
+        node_surrogate(f, &mut wr.fs);
+        tm.mark("node_extra", &mut t);
+    }
 
     // ---- R
     let his = claim_points(&r, &tl, &sz[8..], &tpp, &taup);
@@ -277,8 +284,20 @@ pub fn prove(o: &dyn Oracle, circ: &Circuit, vk: &Digest, s: &Digest, m: usize) 
         sa[sg] = r1.bank[0][sg] * i0;
         sa[64 + sg] = r1.bank[1][sg] * i1;
     }
-    let sbv = ringswitch::partials(&w.z, &his[1]);
-    let scv = ringswitch::partials(&w.z, &his[2]);
+    // claims (b) and (c) share their block coordinates with the partial folds already made
+    // (lincheck at s_out, shift collapse at τ'): s_v = Σ_{y_in} eq(hi_in, y_in) Z(128 y_in + v)
+    let from_fold = |z: &[F], hi_in: &[F]| -> Vec<F> {
+        let e = eq_table(hi_in);
+        let mut sv = vec![F::ZERO; 128];
+        for (yi, ey) in e.iter().enumerate() {
+            crate::simd::axpy(&mut sv, &z[128 * yi..128 * yi + 128], *ey);
+        }
+        sv
+    };
+    let sbv = from_fold(&zf_keep, &tl[7..14]);
+    let scv = from_fold(&zs_keep, &tpp[7..10]);
+    debug_assert_eq!(sbv, ringswitch::partials(&w.z, &his[1]));
+    tm.mark("rs_partials", &mut t);
     debug_assert_eq!(dot(&claim_weights_a(&r, lambda), &sa), pz_l);
     debug_assert_eq!(dot(&eq_table(&tl[..7]), &sbv), vz);
     debug_assert_eq!(dot(&eq_table(&tpp[..7]), &scv), vc);
@@ -296,6 +315,39 @@ pub fn prove(o: &dyn Oracle, circ: &Circuit, vk: &Digest, s: &Digest, m: usize) 
     ligerito::prove(m, f, wt, beta, c0, &mut wr);
     tm.mark("ligerito", &mut t);
     (wr.pi, tm)
+}
+
+/// Timing surrogate of the node's element phases (P2 prototype, not part of the proof; rev. 3
+/// §2.3 E, Lr): E1, a degree-3 zerocheck over `2^20` rows (`A·B − C`); E2, a degree-2 sumcheck over
+/// the packed polynomial (`2^(m−7)` F) against a weight table; Lr, the same over `2^15` rows.
+/// Challenges are drawn from a local hash chain, not the transcript.
+fn node_surrogate(f: &[F], fs: &mut Fs) {
+    let st = fs.st;
+    let mut x = F::from_bytes(&st[..16]);
+    let mut next = || {
+        x = x * x + F::new(0x9E37_79B9_7F4A_7C15, 3);
+        x
+    };
+    for rows in [(1usize << 20).min(f.len() / 4), 1 << 15] {
+        let lg = rows.trailing_zeros() as usize;
+        let (mut a, mut b, mut c): (Vec<F>, Vec<F>, Vec<F>) = (f[..rows].to_vec(), f[rows..2 * rows].to_vec(), f[2 * rows..3 * rows].to_vec());
+        let r: Vec<F> = (0..lg).map(|_| next()).collect();
+        for k in 0..lg {
+            let (h1, hi) = zerocheck::round_tab(&a, &b, &r[k + 1..]);
+            let cs = crate::simd::dot(&c, &c[..]);
+            std::hint::black_box((h1, hi, cs));
+            let s = next();
+            a = fold_f(&a, s);
+            b = fold_f(&b, s);
+            c = fold_f(&c, s);
+        }
+    }
+    let wt: Vec<F> = f.iter().map(|v| *v + F::ONE).collect();
+    let (pt, _) = prove_pairs(vec![(wt, f.to_vec())], &mut |g| {
+        std::hint::black_box(g);
+        next()
+    });
+    std::hint::black_box(pt);
 }
 
 fn dot(a: &[F], b: &[F]) -> F {
