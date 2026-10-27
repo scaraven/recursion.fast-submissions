@@ -574,3 +574,123 @@ R3-M2 (a random batching coefficient `κ_pat`, or the in-slot bits inside the pa
 each one paragraph of §4/§4.3/A.8 and one row of §5.2, and change no module boundary or budget
 beyond ≈ 6 rows per slot. After them, with the two minors folded into A.7/§5.2, the tracks can
 fork.
+
+---
+
+## Round 4
+
+Reviewed: `BLUEPRINT.md` revision 3.1 (`c38bda1`), §10 "Fix pass 3", §2.3, §4, §5.2, A.1–A.5,
+against the Flock paper's App. A–B (the univariate skip, the lincheck, ring switching B.2–B.4).
+
+### Verdict per round-3 finding
+
+| Finding | Verdict | Note |
+|---|---|---|
+| BP-C-R3-M1 | **closed** | One-hot by `s_L s_P = s_L s_N = s_P s_N = 0` and `Σ s = 1`; with Boolean bits this is exactly one `1`; the three-hot control is added. |
+| BP-C-R3-M2 | **closed by removal** | No pattern sumcheck. The public target `E` in the zerocheck pins every `(0,0)`-row position of a `Sel` block bit by bit at the zerocheck's own random point; the summand `Sel·(ab − z − E)` is GF(2)-valued on the cube, so DT24's pinned coordinates still apply. (One bookkeeping error in how `Sel` enters: R4-m1.) |
+| BP-C-R3-m1 | **closed** | Slot-valued facts are point claims on `f` batched at B′. |
+| BP-C-R3-m2 | **closed** | `J_z`, `J_f` are layout constants. |
+
+### (a) The public target
+
+- A `(0,0)` row at position `p` of block `i` contributes `Sel(i)·(0 − z[i,p] − E[i,p])` to the zerocheck
+  summand; the zerocheck (point `r` with the 7 pinned coordinates, SZ on the GF(2)-valued
+  `Sel·(ab − z − E)`) forces `z[i,p] = E[i,p]` on every `Sel` block. Wrong constants on a `Sel`
+  block are caught at `17/2^128`; on a non-`Sel` block nothing is pinned, and nothing reads those
+  blocks (M, L, the zero gap, the spare H blocks). `Sel` and `E` are functions of the proof's own
+  kind, which `V` knows from `π`; the child's `Sel`/`E` inside a replay are selector-linear
+  constants of the child program. Sound.
+- Kind-dependent cells of the node: the chains' `t_lo`, `f0` and padding are kind-independent
+  because the hashed stream has one length (8,896 items for every kind). **But `hashStmt`'s blocks
+  are not** (R4-M1).
+
+#### BP-C-R4-M1. `hashStmt`'s counter and flag words are kind-dependent, and `E` cannot pin both variants in two blocks
+
+§4.2: "`hashStmt`: 2 blocks per slot, both always compressing (in `Sel`, `one = 1` by `E`) …
+the leaf variant's digest is block 1's output, the node variant's block 2's". `leafStmt` hashes 41
+bytes in **one** compression with `t_lo = 41`, `f0 = 0xFFFFFFFF`; `nodeStmt` hashes 65 bytes in
+two with block 1 at `t_lo = 64`, `f0 = 0` and block 2 at `t_lo = 65`, `f0 = 0xFFFFFFFF`
+(`Contract/Hash`). So block 1's `(0,0)`-pinned words are `(41, final)` for a leaf child and
+`(64, non-final)` for a node child: a per-block constant that depends on the slot's kind, which
+is a witness, while `E` is public. Whichever value `E` pins, the other variant's digest is not the
+contract's statement: with `E = (64, 0)` an honest `L32` or `'P'` child's `hashStmt` output is
+`compress(h0, leafmsg, 64, 0) ≠ leafStmt h n`, the gated assert `cᵢ = out₁` fails, and no honest
+node with a leaf child (every tree node at level 1, every stream node) is provable; with `E = (41,
+final)` the node-child variant fails instead. `hashStmt_sound` as stated ("`cᵢ = leafStmt hᵢ nᵢ ∨
+cᵢ = nodeStmt c₁ᵢ c₂ᵢ` as the kind says") cannot hold for both kinds, and §4.3's premise "no
+kind-dependent per-block constant exists" is false. (Not a soundness hole: it is the certificate's
+positive side and the prover that break.)
+
+*Fix.* Three `hashStmt` blocks per slot, all in `Sel` with kind-independent constants: block A
+(`t = 41`, final) on the leaf message `tagLeaf ‖ h ‖ enc64 n ‖ 0^23`, blocks B1–B2 (`t = 64`,
+non-final; `t = 65`, final; linked `h_in(B2) = h_out(B1)`) on `tagNode ‖ c₁ ‖ c₂ ‖ 0^63`, the
+messages wired from `stmt` (selector-linear), and `cᵢ = (s_L + s_P)·out_A + s_N·out_{B2}` (two
+product rows). H grows by 2 blocks (46,022); `node_sound`'s `usedH` and `sizes.py` follow.
+
+#### BP-C-R4-m1. Where `Sel` sits in the zerocheck (degree 3 against `Sẽl(r′)`)
+
+§2.3 step 2 states the summand `Sel·((A₀z)∘(B₀z) − z − E)`, "`m* − 6` rounds of degree 3", and a
+final factor "`Sẽl(r′) · Ê(λ, r′)`". These three do not fit together. If `Sel` is a separate
+multilinear factor, the block-variable rounds have degree 4 (`eq · Sẽl · â · b̂`), the prover sends
+4 coefficients, the row is `4/2^128`, and the final check is `Sẽl(r′)·(â b̂ − ẑ − Ê)(r′, λ)`. If the
+rounds are to stay degree 3, `Sel` must be folded into the weight, `ŵ := MLE(eq(r,·)·Sel(·))`, and
+the final factor is `ŵ(r′) = Σ_x eq(r′,x) eq(r,x) Sel(x)` — a prefix sum of the tensor
+`eq(r′,·)eq(r,·)` over `Sel`'s ≤ 4 intervals (`O(log)` each), **not** `eq(r, r′)·Sẽl(r′)` (the MLE
+of a product is not the product of MLEs). In both forms `Sel` must not be inside `A`, `B`: with `A =
+Sel ⊗ A₀` the lincheck's reduction to `ẑ(r′_blk, ·)` (paper App. A step 3) is false, since
+`Σ_blk eq(r′_blk, blk) Sel(blk) z(blk, ·) ≠ Sẽl(r′_blk) ẑ(r′_blk, ·)`. State one form (the weight
+form keeps every row as tabled); the pinned-coordinate argument holds for either (`Sel·p` is
+GF(2)-valued). The child replay then computes `ŵ_κ(r′)` for the three kinds and selects.
+
+### (b) Ring-switched batching of the `J_z` claims
+
+Each claim `j` is `Σ_v w^{(j)}_v · q̂(r_hi^{(j)}, v) = α_j` with its own outer point and inner weight
+(Lagrange × eq for Z's quirky claim, eq for Lc, Sh, Lr). The prover sends the `128` partials
+`s_v^{(j)}` per claim; the verifier checks `α_j = Σ_v w_v^{(j)} s_v^{(j)}` (the inner weight enters
+only here, paper B.3: any `w ∈ F^128` is fine). Certifying the partials is per claim the paper's
+B.2: the F₂-slice recombination `s_u^{(j)} = Σ_y A_j(y,u) f(y)` with `A_j` from `eq(r_hi^{(j)},·)`,
+128 claims per `j`, batched by `r″` into `Σ_y B_j(y) f(y) = β_j`, `B_j = Φ_{r″}(eq(r_hi^{(j)}, ·))`;
+then the `J_z` weighted claims are batched by `κ` into `⟨W, f⟩ = Σ_j κ^j β_j`, `W = Σ_j κ^j B_j`.
+Ligerito opens `⟨W, f⟩` as a general MLE-friendly linear claim (App. C.2): `Ŵ(ρ) = Σ_j κ^j
+B̂_j(ρ)` for any `ρ ∈ K^{m−7}` by B.4's identity, the fold rounds are degree 2, the level
+transition keeps `Ŵ(s, ·)` MLE-friendly, and the 7 final rounds end at one `Ŵ` evaluation.
+`fold_preserves`, P2, P3 are untouched (the weight is the verifier's). **Sound.**
+
+The error: a wrong partial makes some `δ_u^{(j)} ≠ 0` (F₂-injectivity of the recombination, B.2),
+and the batched final equation differs by `D(r″, κ) = Σ_j κ^j Σ_u eq(r″,u) δ_u^{(j)}`, a nonzero
+polynomial of degree ≤ 1 in each `r″` coordinate and ≤ `J_z − 1` in `κ`: `(7 + J_z − 1)/2^128 =
+10/2^128 = 2^-124.7` for the phase. The table's "7, 3" rows sum to that; since `r″` and `κ` are one
+phase (4 squeezes) the lemma should state the joint bound `(7 + J_z − 1)/2^128` (R4-m2).
+
+#### BP-C-R4-m2. RS1 as one joint row; `J_z` MBP evaluations
+
+State RS1 as one row `(7 + J_z − 1)/2^128`. `Ŵ(ρ)` needs `B̂_j(ρ)` for each of the `J_z` claims:
+`J_z` MBP runs of `(m−7)·128` products (or one run with `J_z` state vectors), `≈ 12.8 k` products,
+not §3.1's 3.2 k; the replay rows for `mbp` scale the same way (`+9.6 k` per slot, inside `N_M`'s
+2.1× margin). `T_V` is unaffected in substance.
+
+### (c) The new rows
+
+- **RS1**: `10/2^128` jointly (above). **B′**: `κ′` over `J_f ≤ 20` claims (`⟨W,f⟩`, `f̂(r_E)`, 8
+  seed cells, 6 padding cells): `19/2^128` ✓ (all weights MLE-friendly: `W`, eq at `r_E`, eq at
+  Boolean cells).
+- **S1**: the shift identity `Σ_i eq(τ,i) Out_θ(i) − Σ_i (shift(τ,i) + κ_s eq(0,i)) In_θ(i) =
+  eq(τ, n−1)·h_θ − κ_s·s_θ` is, when a link or an endpoint fails, a nonzero polynomial of degree ≤ 1
+  in each of `τ` (16), `θ` (10) and `κ_s`: `27/2^128` ✓. The two chains batched by `1, y` keep the
+  per-`(i, p)` summand GF(2)-valued (the collapse sums over the position bits) ✓. **S2**: 16 block
+  rounds (`eq·Out`, `shift·In`: degree 2) and 10 collapse rounds (`eq·z`: degree 2): `2/2^128` ✓; the
+  shifted `d` slot (520…775) weight is a shift-by-8 of an eq tensor, `O(log)` for the verifier.
+- **L2**: 14 multilinear rounds of degree 2 over the position bits, output `ẑ_ML(r′_blk, r_k)` (a
+  GF(2)-linear functional with eq weights, which ring switching accepts); the walk with Lagrange row
+  weights at `λ` and eq column weights at `r_k` ✓; L3 is rightly gone.
+- **Pf**: 7 K-rounds, `2/2^256` ✓; `P30`'s zero-extended final message is handled by evaluating the
+  verifier's own zero-extended weight (`Π_{top bits}(1 − ρ_b)·Ŵ₅(ρ_low)`).
+- Maximum per fresh query unchanged, `2^-120.36 + 2^-144 ≤ 15/2^124 = 2^-120.093`; `piSize`
+  756,496 and `items_length` 8,896 re-added and correct.
+
+### Overall verdict
+
+**Not ready to fork, by one local fix: R4-M1** (three `hashStmt` blocks per slot so that every
+`(0,0)`-pinned word is kind-independent; +2 H blocks). With it, and R4-m1 (which form of `Sel`)
+and R4-m2 (one RS1 row, `J_z` MBP runs) folded into §2.3/§3.1/§5.2, the tracks can fork; the
+ring-switched batching, the public target and the new error rows are sound as designed.

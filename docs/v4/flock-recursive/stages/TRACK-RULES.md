@@ -32,8 +32,10 @@
     shared by several agents, so don't start more than 2 parallel Lean processes.
 - **Kernel cost.** The certificate must build in ≤ 600 s and kernel-check in ≤ 600 s on a 4-vCPU
   runner. Avoid `decide` on large terms. Use checked certificates (e.g. an inverse matrix) instead
-  of enumeration. Log per-module wall and kernel time (`lean --profile` or the method in
-  `stages/S-A-RESULT.md`).
+  of enumeration. Log per-module wall and kernel time with **sequential** elaboration:
+  `lean -DElab.async=false --profile …` on one core. With asynchronous elaboration, Lean's
+  "type checking" figure includes kernel tasks waiting for the core, which inflated S-A's
+  figure 2.5× (`reviews/S-A-golf.md`).
 - **Records.**
   - Keep a running `docs/v4/flock-recursive/stages/<stage>-JOURNAL.md`.
   - At the end, write `<stage>-RESULT.md`:
