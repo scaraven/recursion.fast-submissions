@@ -10,8 +10,8 @@ instantiation is one line once they exist (v3's structure, v4's contract):
 * `Facts LV proveLeaf`, the facts proved elsewhere:
   * `size_zero`: `leafSize 0 = 80`;
   * `leaf_complete`: for every oracle, the honest SNARK has the right size and is accepted;
-  * `ks`: for every public key, a knowledge state with error `2^-129` for the relation of
-    `accV LV vk` (`SoundnessKState`);
+  * `ks`: for every public key, a knowledge state (the library's potential `KState`) with error
+    `2^-129` for the relation of `accV LV vk` (`SoundnessKState`);
   * `atMost`, `qb_le`: the SNARK verifier asks at most `qb n ≤ 2^16` queries along every path of
     answers on every chain of at most `chainCap` steps (v3's L-Q1, along paths:
     `SpartanSromSnarkQueries`).
@@ -22,7 +22,8 @@ What this module proves, for every such instantiation:
   query), so completeness with error `δ = 0` (`complete_withError_zero`);
 * `V_queries`: at most `2^16` queries on every input and oracle;
 * `certificateOf`: the contract's `Certificate` (`KS` and completeness for every key; `E`, `ext`,
-  `fuel` and `computes` the library's witness-sending copy extractor);
+  `fuel` and `computes` the library's witness-sending copy extractor). `KS` comes from the knowledge
+  state and the query bound through the library's bridge `KState.ks` (V4-A10);
 * `certificateR_of`: `CertificateR` against any rendered claim within the declared numbers.
 
 The honest prover (§3): a leaf is its 80-byte header (`enc64 0 ‖ s ‖ enc64 n ‖ h`,
@@ -36,6 +37,7 @@ bundle branch's static bound); `δ = 0` and completeness for every key; v3's `im
 -/
 import SpartanSromNode
 import RecursionFast.Library.Completeness
+import RecursionFast.Library.PaperTheorem
 
 open scoped NNReal
 
@@ -217,7 +219,7 @@ theorem certificateOf (F : Facts LV proveLeaf) : Certificate (submissionOf LV pr
   secure vk := by
     show KS (Rel ((submissionOf LV proveLeaf).acc vk)) (V LV vk) WitnessSending.E εR1 qVR1
     rw [acc_eq]
-    exact ⟨F.ks vk, V_queries F vk⟩
+    exact (F.ks vk).elim fun k => k.ks (V_queries F vk)
   complete vk := complete_withError_zero (complete F vk)
   computes := WitnessSending.computes
   cap := ⟨εR1_le_errorCap, show (0 : ℝ≥0) ≤ _ from zero_le, show qVR1 ≤ 2 ^ 16 from le_rfl,

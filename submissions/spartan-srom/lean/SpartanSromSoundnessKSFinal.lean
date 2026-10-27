@@ -6,7 +6,8 @@ import SpartanSromNode
 /-!
 # The `final` law of the knowledge state (BLUEPRINT §5; v3 BLUEPRINT-R1 §9.3 `final`, L-K5)
 
-`mu_final` is the contract's `KState.final` for the entry under a public key `vk`. The pieces are:
+`mu_final` is the `final` law of the library's potential `KState` (`Library/Security.lean`) for the
+entry under a public key `vk`. The pieces are:
 
 * the verifier `V LV vk` (`SpartanSromNode`), with `LV := Leaf.leafVerifier chainEvals`;
 * the library's extractor `WitnessSending.E` (`decode π`);
@@ -26,7 +27,7 @@ answers from the log.
   definitions; `B` by `snark_final` for each bundled leaf, then by induction on the clear tree
   (`clear_acc`).
 
-The log-length guard of the contract's `final` is not needed.
+The log-length guard of `KState.final` is not needed.
 -/
 
 namespace SpartanSrom.SoundnessKSFinal
@@ -49,7 +50,7 @@ theorem snark_final {L : Log} (hμ : KS.μ chainEvals L < 1) (s : Digest) (n : �
   exact SoundnessFinal.chainEnd_of_runChain chainEvals hb he
     (runLog_chain chainEvals hb h1 hcap hsz' hrun)
 
-/-- **`mu_final`** (the contract's `KState.final` for the entry under `vk`): on a log with
+/-- **`mu_final`** (the library's `KState.final` for the entry under `vk`): on a log with
 `μ L < 1`, every proof the verifier accepts reading its answers from the log is extracted by the
 library's extractor to a witness of `Rel (accV LV vk)`. -/
 theorem mu_final (vk : Digest) (L : Log) (c : Digest) (π : Proof) (_hl : L.length ≤ logCap)

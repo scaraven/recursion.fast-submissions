@@ -941,7 +941,7 @@ theorem chainEvals_ok : EvalsOK chainEvals where
 
 end ChainEvals
 
-/-! ## `mu_step`: the contract's `step` law for `μ` -/
+/-! ## `mu_step`: the `step` law of the library's `KState` for `μ` -/
 
 /-- **`mu_step`** (§9.3): for evaluators that are the extensions of the chain R1CS (`EvalsOK`),
 `Σ_a μ(L ++ [(q, a)]) ≤ (μ L + 2^-129) · 2^256` for a fresh query on a log below `logCap` with

@@ -20,12 +20,23 @@ The entry's journal, for the next solver, is `NOTES.md`. Its records are in
 D-1 … D-6, formats, the verifier branch by branch), the stage RESULTs F0–F4 and the reviews. The
 report on the rules that this entry produced is `docs/v4/FLOCK-BASELINE-FEEDBACK.md`.
 
-## Status (2026-10-23)
+## Status (2026-10-27)
 
+- **Under the amended rules** (stage F5, core `a283ff8`: V4-A9, the trim, and V4-A10, textbook
+  knowledge soundness; `docs/v4/flock-baseline/stages/F5-ks-RESULT.md`):
+  - the certificate reaches the contract's new `KS` through the library's bridge `KState.ks`
+    (5 Lean files, no statement changed);
+  - the certificate job is **ok** in 8 min 42 s on 4 CPUs of the development VM, within every cap:
+    build 259.5 s of 600, kernel 182.3 s of 600, gate about 26 s of 120, badge build about 20 s of
+    180;
+  - **ACCEPT at the smoke shape**: `T_tree` 0.116 s, `t_leaf` 0.0560 s, `t_merge` 0.0106 s,
+    `t_link` 0.0666 s, **`S` = 1.448**; root `acc` 392 ms; 9 statement canaries rejected; DoS 64
+    inputs, none accepted, maximum 323 ms;
+  - **REJECT at the season shape**, for F4's reasons (below).
 - **Certified.** `SpartanSrom.certificate` is a closed theorem on the three allowed axioms (F1
   RESULT §3, §9.3). The entry is the commit `745c7d8`: the Lean fix pass at core `81e1ebf` (D-6,
   the pin's `acc`, the byte-level node reader, the golf), with the prover's golf and fix pass.
-- **The verdict at the pin**: ACCEPT at `81e1ebf`; confirmed at `01a25b0`: **ACCEPT** (F4b: certificate ok with the Lean kernel in 9 min 51 s; smoke bench of the submitted `prover.s` `733b3a30…`: T_tree 0.142 s, t_link 0.0846 s, S 1.835; `prover.s` assembles with GNU Binutils 2.42 without error or warning; `docs/v4/flock-baseline/stages/F4-final-harness-RESULT.md`, F4b)
+- **The verdict at the previous pins**: ACCEPT at `81e1ebf`; confirmed at `01a25b0`: **ACCEPT** (F4b: certificate ok with the Lean kernel in 9 min 51 s; smoke bench of the submitted `prover.s` `733b3a30…`: T_tree 0.142 s, t_link 0.0846 s, S 1.835; `prover.s` assembles with GNU Binutils 2.42 without error or warning; `docs/v4/flock-baseline/stages/F4-final-harness-RESULT.md`, F4b)
 - **Through the fixed harness** (stage F4, `745c7d8` at core `81e1ebf`, no workaround;
   `docs/v4/flock-baseline/stages/F4-final-harness-RESULT.md`):
   - the certificate job: **ok** in 9 min 52 s. With `--nanoda` it is also ok: nanoda ran over its
@@ -76,9 +87,10 @@ Sizes at `n = 16` (F1 RESULT §5, F2 RESULT §3.3):
   `SpartanSromFinal`). Its axioms are `propext`, `Classical.choice` and `Quot.sound`
   (`logs/lean/axioms-print-2.log`). For **every** public key `vk`:
   - **knowledge soundness** for `Rel (acc vk)`, with **ε = 2^-129** per fresh query and
-    **qV = 2^16** (`KS.ks vk`). The potential is v3's. A bundle of `k` SNARKs costs no extra error:
-    v3's `final` argument is about the log, and it gives `chainEnd s_j n_j = h_j` for every bundled
-    leaf at once;
+    **qV = 2^16** (`KS.ks vk`): the contract's textbook `KS` (V4-A10), from v3's potential, now the
+    library's `KState` and the entry's intermediate artifact, through the library's bridge
+    `KState.ks`. A bundle of `k` SNARKs costs no extra error: v3's `final` argument is about the
+    log, and it gives `chainEnd s_j n_j = h_j` for every bundled leaf at once;
   - **completeness with δ = 0**: perfect completeness for every oracle function, through the
     library's `complete_withError_zero`.
 
@@ -147,15 +159,18 @@ mkdir -p logs/org && git -C .contract archive HEAD | tar -x -C logs/org
 # a built package tree at the manifest's revisions, copied to logs/pkgs (CLAUDE.md, "Commands")
 mkdir -p logs/org/.lake && ln -s "$PWD/logs/pkgs" logs/org/.lake/packages
 ORG=$PWD/logs/org; export RF_HARNESS_COMMIT=$(git -C .contract rev-parse HEAD)
-timeout 14400 "$ORG/harness/org-setup.sh" "$ORG"             # CompPoly's field is a root at the pin
+timeout 1800 "$ORG/harness/org-setup.sh" "$ORG"              # CompPoly's field is a root at the pin
 source "$ORG/scripts/tools.env"                              # the comparator and nanoda
-timeout 7200 python3 -I "$ORG/harness/evaluate.py" cert --entry submissions/spartan-srom \
+timeout 1800 python3 -I "$ORG/harness/evaluate.py" cert --entry submissions/spartan-srom \
   --org "$ORG" --work logs/eval/srom/cert --out logs/eval/srom/cert.json
-timeout 7200 python3 -I "$ORG/harness/evaluate.py" bench --entry submissions/spartan-srom \
+timeout 1800 python3 -I "$ORG/harness/evaluate.py" bench --entry submissions/spartan-srom \
   --cert logs/eval/srom/cert.json --season "$ORG/harness/smoke.toml" \
   --work logs/eval/srom/bench --out logs/eval/srom/result.json
 ```
 
+- Measured at `a283ff8` (F5; `logs/f5/`): `org-setup.sh` 6 min 7 s, the `Mathlib.Tactic` objects
+  included; the certificate job 8 min 42 s on 4 CPUs (the one build 259.5 s, the comparator's
+  Lean-kernel run 182.3 s, the gate about 26 s, the badge build about 20 s); the smoke bench 14 s.
 - Measured at `81e1ebf` (F4; the shared VM, lightly loaded):
   - `org-setup.sh` took 4 min 12 s (`logs/f4/org-setup.log`);
   - the certificate job took 9 min 52 s (`logs/f4/cert.log`). Of that, the comparator's Lean-kernel

@@ -2,6 +2,7 @@
 import SpartanSromSoundnessKS
 import SpartanSromSoundnessKSFinal
 import SpartanSromSnarkQueries
+import RecursionFast.Library.PaperTheorem
 
 /-!
 # The knowledge state and knowledge soundness of the entry (BLUEPRINT §5; v3 L-K5, L-K6)
@@ -11,9 +12,13 @@ For **every public key** `vk` (V4-1):
 * **L-K5 `kstate vk`**: `KState (Rel (accV LV vk)) (V LV vk) WitnessSending.E 2^-129` with v3's
   potential `KS.μ chainEvals` (independent of `vk`), the laws `empty` (`KS.mu_empty`), `step`
   (`KS.mu_step_chain`, from `SpartanSromSoundnessKS`, unchanged) and `final`
-  (`SoundnessKSFinal.final_law vk`).
-* **L-K6 `ks vk`**: `KS (Rel (accV LV vk)) (V LV vk) WitnessSending.E 2^-129 2^16`: the knowledge
-  state, and the query bound (`atMost_V` with `atMost_snarkProg` and v3's `qBound_le`).
+  (`SoundnessKSFinal.final_law vk`). `KState` is the library's potential
+  (`Library/Security.lean`), the entry's intermediate artifact: since V4-A10 it is not part of the
+  contract.
+* **L-K6 `ks vk`**: `KS (Rel (accV LV vk)) (V LV vk) WitnessSending.E 2^-129 2^16`, the contract's
+  textbook knowledge soundness, from the knowledge state and the query bound (`atMost_V` with
+  `atMost_snarkProg` and v3's `qBound_le`) through the library's bridge `KState.ks`
+  (`Library/PaperTheorem.lean`).
 
 `LV = Leaf.leafVerifier chainEvals`, `ε = 2^-129` (`KS.εKS`).
 -/
@@ -49,6 +54,6 @@ theorem V_queries_le (vk : Digest) (H : ByteArray → Digest) (c : Digest) (π :
 `KS (Rel (accV LV vk)) (V LV vk) E 2^-129 2^16`. -/
 theorem ks (vk : Digest) :
     RecursionFast.KS (Rel (accV LV vk)) (V LV vk) WitnessSending.E εKS (2 ^ 16) :=
-  ⟨⟨kstate vk⟩, V_queries_le vk⟩
+  (kstate vk).ks (V_queries_le vk)
 
 end SpartanSrom.KS

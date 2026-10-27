@@ -59,7 +59,7 @@ theorem atMost_mverify (root : Label) (c : ℕ) (col : ByteArray) (ss : List Lab
 theorem atMost_verify1 (κ : ℕ) (st : Digest) (a b : ByteArray) :
     AtMost (2 + rows κ) (Ligero.verify1 κ st a b) := by
   simp only [Ligero.verify1, Ligero.rootAndCoeffs]
-  rw [bind_assoc]
+  rw [LawfulMonad.bind_assoc]
   exact ((atMost_absorb _ _ _).bind fun st => (atMost_squeezeE st (rows κ)).bind fun p =>
     (atMost_absorb _ _ _).bind (n := 0) fun _ => atMost_pure 0 _).mono (by omega)
 

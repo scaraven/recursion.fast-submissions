@@ -6,7 +6,8 @@ stopped it, and what we would do next. The entry itself is described in `README.
 which hold the full evidence, are under `docs/v4/flock-baseline/` (repository root), and the report
 to the rules' authors is `docs/v4/FLOCK-BASELINE-FEEDBACK.md`.
 
-Dated 2026-10-23. Evidence is tagged as in the core:
+Dated 2026-10-23; §4.7 (stage F5, the rules' amendments V4-A9 and V4-A10) added 2026-10-27.
+Evidence is tagged as in the core:
 
 - **kernel**: a kernel-checked theorem;
 - **measured**: a number with its log;
@@ -15,7 +16,7 @@ Dated 2026-10-23. Evidence is tagged as in the core:
 
 Logs are under `logs/` at the repository root (gitignored, kept on the development VM). Every
 measurement is from that VM: 32 vCPU under QEMU, AVX2 and AVX-512F, **no `pclmulqdq`**, shared with
-other agents, so read times as relative. Stage records are cited as F0 … F4:
+other agents, so read times as relative. Stage records are cited as F0 … F5:
 `docs/v4/flock-baseline/stages/F<n>-…-RESULT.md`.
 
 ## 0. In short
@@ -27,8 +28,9 @@ other agents, so read times as relative. Stage records are cited as F0 … F4:
 - **The result.**
   - The Lean is certified for every key: ε = 2^-129, δ = 0, qV = 2^16.
   - The harness ACCEPTed the entry at the smoke shape: at core `a874f87` with two workarounds (F3,
-    `S` = 6.666), and at `81e1ebf` with none (F4, `S` = 1.794). The confirmation at the final pin
-    `01a25b0` is in `README.md`, "Status".
+    `S` = 6.666), and at `81e1ebf` with none (F4, `S` = 1.794); the confirmation at `01a25b0` is in
+    `README.md`, "Status". At `a283ff8` (V4-A9, V4-A10) the certificate was migrated to the
+    textbook `KS` and the entry is again ACCEPTed at the smoke shape (F5, §4.7).
   - It is ACCEPTed only where `2^r · n ≤ 4,096` chain steps; the season needs `2^24`.
   - `T_V` is unmeetable at every shape it runs.
   - The season shape REJECTs it. In F4 the tree stopped on `queryCap` and the stream's first leaf
@@ -48,7 +50,7 @@ taken from it are BLUEPRINT D-1 … D-6. Three routes were weighed.
   F0-ideation Q1). As published, Flock also works over GF(2^128), whose sumcheck rounds cannot meet
   `errorCap = 2^-128` per fresh query: a degree-2 round errs with `2/2^128 = 2^-127`, the
   univariate-skip round with `126/2^128 ≈ 2^-121` (**estimate**, Q4). A certified Flock needs
-  GF(2^192), or grinding (FB-9).
+  GF(2^192), or grinding (FB-9). Since V4-A9, `errorCap = 2^-120`, and both rounds meet it.
 - **(b) Port `spartan-chain`** (v3's honest entry: Spartan R1CS sumchecks over GF(2^64)/GF(2^192),
   ring switching, Ligero with unique-decoding proximity; 61 modules, 16,766 code lines,
   knowledge-sound against the v3 contract in the kernel). Its pins are v4's (Lean and Mathlib
@@ -382,12 +384,38 @@ against 0.194 ms.
     `--parts calibrate,stream`;
   - a private writable package tree is still needed (4 min 8 s to copy).
 
+### 4.7 Under V4-A9 and V4-A10 (F5: core `a283ff8`; `logs/f5/`)
+
+`docs/v4/flock-baseline/stages/F5-ks-RESULT.md`. The rules changed under the entry: textbook
+knowledge soundness in the contract, with the potential a library tool (V4-A10), and the trim
+(V4-A9): 30-minute jobs with nested caps, one run of each, the root only, statement canaries only,
+no liveness, one Lean build, `errorCap = 2^-120`, `completenessCap = 2^-40`.
+
+- **The migration** took 5 Lean files, 21 lines in and 13 out, statements unchanged: the bridge
+  `KState.ks` in place of the anonymous constructor (twice), two imports, docstrings, and one
+  `rw [bind_assoc]` that the library's new `OProg.bind_assoc` made ambiguous
+  (`LawfulMonad.bind_assoc`).
+- **The certificate job, on 4 CPUs** (`taskset -c 0-3`; the caps are for a 4-vCPU runner): **ok**
+  in 8 min 42 s. The build 259.5 s of `build_s` = 600; the kernel 182.3 s of `kernel_s` = 600; the
+  gate about 26 s of 120; the badge build about 20 s of 180 (74 objects compiled, 6 of them
+  packages'). One build, 134 artifacts, 67 modules (`logs/f5/cert4.{log,json}`).
+- **Smoke: ACCEPT** (`logs/f5/bench-smoke.{log,json}`): `T_tree` 0.116 s, `t_leaf` 0.0560 s,
+  `t_merge` 0.0106 s, `t_link` 0.0666 s, **`S` = 1.448**; root `acc` 392 ms; statement canaries
+  rejected: 1 on the root, 8 on the stream; DoS 64 inputs, none accepted, maximum 323 ms. The
+  prover is F4b's (`c5f5e1a8…`); the lower `S` is one run on a shared VM, not a faster prover.
+- **Season: REJECT**, for F4's reasons: the tree on `queryCap` (15.4 s in), the stream's leaf 0 on
+  `proofCap` (15.9 s, `π` 2,791,559 B) (`logs/f5/bench-season*.{log,json}`). Behind them the trim
+  adds a time wall: at 15.9 s per `2^16` leaf on 16 cores, the tree's `2^24` compressions take
+  about 68 min against `tree_s` = 10 min, and the stream's 257 leaves alone about 68 min against
+  `stream_s` = 16 min (**estimate**, linear in `n`).
+
 ## 5. What is proved, and what is not
 
 **Proved** (**kernel**; F1 §3, review F1 §0: "pass on the Lean content").
 
 - `SpartanSrom.certificate : Certificate SpartanSrom.submission`, for every `vk`: KS with
-  ε = 2^-129 and qV = 2^16 against `Rel (acc vk)`; completeness with δ = 0; `Computes` with the
+  ε = 2^-129 and qV = 2^16 against `Rel (acc vk)` (since F5 the contract's textbook `KS`, from the
+  potential through the library's `KState.ks`); completeness with δ = 0; `Computes` with the
   library's copy extractor (fuel `8 t`); the caps.
 - `RecursionFast.Challenge.certified : CertificateR declared submission` against the rendered
   challenge.
@@ -427,7 +455,7 @@ needed, because `KS` bounds queries on every input. Its control is now `qbound_f
    1,062,591 B at 8,192. The largest accepted tree is 4,096 times smaller than the season's `2^24`
    steps. No `r ≥ 4` fits, even at `n = 1`. The stream stops at link 6 (`n_f = 16`), link 2
    (`1,024`) or link 0 (`≥ 16,384`, where the leaf alone is over the cap). Bundling cannot reach the
-   season's `M = 512`.
+   season's `M = 256` (512 before V4-A9).
 2. **`T_V`** (§4.4, §4.5).
    - At the shapes the entry can run, the trivial checker takes microseconds, so the cap is
      microseconds: 10.3–15.4 µs at the smoke shape, against a root of 0.9–1 s.
@@ -514,14 +542,15 @@ needed, because `KS` bounds queries on every input. Its control is now `qbound_f
    - **One WOTS `SigOk`.** About 300 compressions on average and 495 at most (design §4.2).
    - **The total.** For a Flock-class child the hashing alone is about 16–17k compressions, about
      one `2^14` leaf. leanVM's whole step is 18.4k compression-equivalents (v3 §5.2).
-   - **And the node's own proof.** It must stay bounded over `M = 512` links, its `acc` must stay
+   - **And the node's own proof.** It must stay bounded over `M = 256` links, its `acc` must stay
      within `T_V` (about 178 ms on a runner), and its extractor must output the children's signed
      proofs within `outCap = 2^24` words, at 4,776 B per signature slot (C-m11).
 2. **A smaller-proof PCS for the leaf.** Ligero's `√`-size is what sets the frontier, and it makes
    the trace a recursive node must hash large.
    - WHIR-class proofs are about 250 KB: leanVM's BLAKE2s Flock gives 259,320 B at `2^14` (F0 §4).
-   - Under `errorCap` that needs GF(2^192) (F0-ideation Q4: about 261–309 queries per level at
-     rate ½, **estimate**).
+   - Under `errorCap = 2^-128` that needed GF(2^192), with about 261–309 proximity queries per
+     level at rate ½ (F0-ideation Q4, **estimate**); V4-A9's `2^-120` admits GF(2^128) sumcheck
+     rounds (FB-9).
    - It also needs a proximity theorem in Lean. Unique decoding is the admissible first step (v3
      §5.3); the list-decoding MCA is research-scale.
 3. **A chunked absorb.** Absorb long messages as a hash chain over pieces of at most `2^20` bytes.
