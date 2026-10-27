@@ -36,8 +36,8 @@ novel-basis change, within `2^47.5 + 2^12 t` steps.
 | `piSize` (both kinds) | 757,616 B = 739 KiB | `proofCap` 1,048,576 | 1.39× |
 | trace items (both kinds) | 8,852 | `qV = 10,240` | 1.16× |
 | hashed trace bytes / compressions | 1,437,936 / 22,468 | — | — |
-| node circuit blocks | 54,393 | 65,536 | 1.20× |
-| M rows per node | 1,062,628 = `2^20.02` | `N_M = 2^21` | 1.99× |
+| node circuit blocks | 54,398 | 65,536 | 1.20× |
+| M rows per node | 1,063,176 = `2^20.02` | `N_M = 2^21` | 1.99× |
 | extractor steps (`m = 30` node) | `2^47.11 + 2^11 t` | `fuel = 2^47.5 + 2^12 t`; `B = 2^48 + 2^16 t` | 1.31×; 1.85× |
 | error per fresh query | `2^-120.36 + 2^-144` | `εR = 2^-120.093` | — |
 | verifier F-products | leaf ≈ 1.2·10^5, node ≈ 3.9·10^5 | `T_V` 205.9 ms (≈ 80–120 ms, **estimate**) | ≈ 2× |
@@ -364,7 +364,7 @@ and `j` at 1–8 of a `w43` block; the ends at `9 + 32k` of the key leaf; `l`, `
 33–64 of a path step), so they are **not** wired by element equalities. Instead: (i) every
 variable field's source is computed on the **aligned side** in M rows — the selector mux `a_{i,s}
 = sel_{i,s}·h_out(w_{i,s−1}) + (1 − sel_{i,s})·ots_i` (2 rows per half; `sel_{i,s} = [d_i < s]`, L
-bits), the end `e_i = h_out(w_{i,3})` (copies), the path's `l_t = b_t ? sib_t : cur_t`, `r_t = b_t
+bits), the end `e_i = sel_{i,3}·h_out(w_{i,3}) + (1 − sel_{i,3})·ots_i` (S-E2 F-2: digit 3 keeps `ots_i`; three selectors per chain `[d<1] = (1−b₀)(1−b₁)`, `[d<2] = 1 − b₁`, `[d<3] = 1 − b₀b₁` tied to the digit bits by 2 product rows per chain, 266 per slot), the path's `l_t = b_t ? sib_t : cur_t`, `r_t = b_t
 ? cur_t : sib_t` (`b_t` the index bit, `cur_t` the previous output) — into the **mirror sub-region
 `WM`** of H (10 blocks per slot; stride 2 elements per link source); (ii) each unaligned field is
 tied to its mirror cell by a **link family of the shift argument**: `Σ_t eq(τ,t) Ind_fam(t) ·
@@ -384,14 +384,14 @@ compression (`t_lo = 41`, `f0 = 0xFFFFFFFF`); blocks **B1–B2** hash the node m
 h_out(B1)` by an element equality); **the messages are item 1's payload itself** (S-E1-M1): `stmt`
 is laid out as the padded statement-hash message blocks (§1.1: `tagLeaf ‖ h ‖ enc64 n ‖ 0^23 ‖ 0^64`
 or `tagNode ‖ c₁ ‖ c₂ ‖ 0^63`), so block A's and B1's message slots equal payload elements 0–3 and
-B2's elements 4–7 by **8 element equalities per slot** (the payload's elements are 16-aligned
+B2's elements 4–7 by **8 gated product rows per slot** — A's four equalities gated by `s_L + s_P`, B1's and B2's by `s_N` (S-E2 F-1: ungated, A's `tagLeaf` pin and B1's `tagNode` pin at byte 0 and A's zero bytes 41–63 against a node's `c₂` make the rows unsatisfiable together, and the lemma would hold vacuously) — (the payload's elements are 16-aligned
 trace cells, §1.2; no byte shift); the kinds `hashA`, `hashB1`, `hashB2` pin `h_in = h0`, the tag
 byte, the zero bytes and slot 8 (A.6), so the equalities carry only the variable bytes; the
 slot's statement is `cᵢ = (s_L + s_P) · out_A + s_N · out_B2` (two product rows), asserted equal to
-item 0's `c`. `wots_sound`; `hashStmt_sound : HoldsE (blockR1CS hashA) A → HoldsE (blockR1CS
-hashB1) B1 → HoldsE (blockR1CS hashB2) B2 → h_in(B2) = h_out(B1) → msg(A) = msg(B1) = stmt[0…63] →
-msg(B2) = stmt[64…127] → out_A = leafStmt (stmt[1…32]) (stmt[33…40]) ∧ out_B2 = nodeStmt
-(stmt[1…32]) (stmt[33…64])` (the output selection and the `stmt` parse are `compile_mux_sound`'s
+item 0's `c`. `wots_sound`; `hashStmt_sound : OneHot s → HoldsE (blockR1CS hashA) A → HoldsE (blockR1CS
+hashB1) B1 → HoldsE (blockR1CS hashB2) B2 → h_in(B2) = h_out(B1) → (s_L + s_P = 1 → msg(A) =
+stmt[0…63]) → (s_N = 1 → msg(B1) = stmt[0…63] ∧ msg(B2) = stmt[64…127]) → (s_L + s_P = 1 → out_A =
+leafStmt (stmt[1…32]) (stmt[33…40])) ∧ (s_N = 1 → out_B2 = nodeStmt (stmt[1…32]) (stmt[33…64]))` (the output selection and the `stmt` parse are `compile_mux_sound`'s
 and `FRFormat`'s). `V`'s own `stmtOk` checks `stmt`'s tag and zero bytes for its kind and hashes
 the message (one or two compressions). This is the cheapest sound construction found: the
 alternative (keep `enc64 n ‖ h` and wire byte-shifted windows) needs GF(2)-linear, not F-linear,
@@ -403,13 +403,13 @@ rows (the BP-E-M1 problem).
 |---|---|---|---|
 | **H** | 0 | chain 1 `[0, 22,468)`, chain 2 `[22,468, 44,936)` (kinds `streamStart` at each chain's first block, `stream` elsewhere), `hashStmt` 6 (`hashA`, `hashB1`, `hashB2` per slot), WOTS 996 per node (`w43` 399, `hashB1` 1 + `stream` 65 + `streamEnd41` 1 for the key leaf, `hashB1`/`hashB2` 16 + 16 for the path, per slot), spare 8; `Sel` = the kinds' intervals; all-zero blocks elsewhere | 45,966 |
 | **L** | 46,336 | bits (A.7): per slot the signature (4,772 B), the WOTS digits and selectors, the position bits as bit-elements, the one-hot kind selector `(s_L, s_P, s_N)`; `N_L = 2^15` rows | 124 (allotted 3,072: the gap to M) |
-| **M** | 49,152 (`3·2^14`) | `N_M = 2^21` elements = 16,384 blocks, ending at 65,536; slot `σ`'s rows at `Mbase + (σ−1)·2^20` | 8,302 used |
-| **total** | | | **54,393 of 65,536 (82 %, 1.20×)** |
+| **M** | 49,152 (`3·2^14`) | `N_M = 2^21` elements = 16,384 blocks, ending at 65,536; slot `σ`'s rows at `Mbase + (σ−1)·2^20` | 8,307 used |
+| **total** | | | **54,398 of 65,536 (82 %, 1.20×)** |
 
 There is no `P` region: the public inputs `vk`, `c₁`, `c₂` are **point claims on `f`** at each slot's
 seed cells (payload elements 0–5 of item 0: `vk` 2, `cᵢ` 2; 8 claims per node), batched into the
 Ligerito weight at B′ (BP-C-R3-m1: slot-valued facts are `f̂` claims, not `ẑ` claims); the padding
-cells of each chain's last block (3 per chain) are point claims `= 0` the same way.
+cells of each chain's last block (3 per chain) are point claims `= 0` the same way, and **M's `one` cell `f[Mbase] = 1` is a point claim** (S-E2 F-4): `J_f ≤ 21`.
 
 **The mux (B-2, B-7).** Each slot is replayed by `gen Mux`, one program with the item sequence's
 shape, whose kind-dependent data are selector-linear:
@@ -447,8 +447,7 @@ folds 54,841; final `Enc₄` `2 · 2^7 · 126 = 32,256` (P1-D7); Merkle steps `4
 the Z2 Lagrange 400; eq/tensor 15,000; **MBP `J_z · 25 · 128 = 16,000`** (R4-m2, `J_z = 5`); sumchecks 2,000; lincheck replay 65,536 + the per-kind row-weight adjustment 16,384 + 8 `stmt` equalities;
 **`evalM` replay 210,570** (one row per irregular entry of the child's two slots, `2 × 74,587`,
 plus eq tables `2 × 22,468 + 2^14`); `evalL` replay 8,192 (L's matrices templated, BP-C-R2-m3);
-gated asserts 3,288; selector 7: **526,076 per slot, 1,062,628 = `2^20.02` per node** (`N_M`
-margin 1.99×). **The node fits `m = 30`**;
+gated asserts 3,288, mirror-cell mux 2,600, selector–digit rows 266, gated `stmt` equalities 8; selector 7: **531,588 per slot, 1,063,176 = `2^20.02` per node** (`N_M` margin 1.97×; S-E2 F-3: the categories now sum). **The node fits `m = 30`**;
 the smallest cut, if `nodeLayout`'s `decide` fails, is sharing the lincheck-replay eq tables between
 the two slots (−2^15 rows) and then the enumeration fallback of B-2.
 
@@ -490,8 +489,8 @@ the signature, digit, selector and position-bit regions have power-of-two stride
 
 | Quantity | value | bound | margin |
 |---|---|---|---|
-| blocks | 54,393 | 65,536 | 1.20× |
-| M rows per node | 1,062,628 | `2^21` | 1.99× |
+| blocks | 54,398 | 65,536 | 1.20× |
+| M rows per node | 1,063,176 | `2^21` | 1.99× |
 | items | 8,852 | 10,240 | 1.16× |
 | `piSize` | 757,616 | 1,048,576 | 1.39× |
 | H gap for L | 124 blocks | 3,186 | — |
@@ -525,7 +524,7 @@ per row of §5.2 from the exact fiber counts (`card_chF_fiber = 2^128`, `card_ch
 | Lr1–Lr4 | point (15); rounds (3); `κ_L` (1); rounds (2) | F | `15, 3, 1, 2 / 2^128` | ≥ 126.4 |
 | RS1 | `r″` (7 coordinates) and `κ` (`J_z = 5` claims) in one phase: the bad polynomial `D(r″, κ)` has degree ≤ 1 per `r″` coordinate and ≤ `J_z − 1` in `κ` | F | `(7 + J_z − 1)/2^128 = 11/2^128` | 124.5 |
 | E1–E3 | point (21); rounds (3); `κ_E` (3 claims: 2); no E2 lincheck (its claim is a weight of `W`) | F | `21, 3, 2 / 2^128` | ≥ 123.6 |
-| B′ | `κ′`: `J_f ≤ 20` claims on `f` (the E claim, 8 public cells, 6 padding cells, the RS claim) | F | `19/2^128` | 123.8 |
+| B′ | `κ′`: `J_f ≤ 21` claims on `f` (the E claim, 8 public cells, 6 padding cells, M's `one` cell, the RS claim) | F | `20/2^128` | 123.7 |
 | P1 | fold round `r` of level `i`, `2^(ℓᵢ−r)` lines; the round folds `W` and `f` (degree 2 in K) | K | `(2^(ℓᵢ−r) C_mca + 2)/2^256`, `C_mca ≤ 2^60` | ≥ 190 |
 | P2 | positions | `log₂ nᵢ` bits | `(1 − eᵢ/nᵢ)^{tᵢ}` | **120.36**, 120.70, 120.36, 120.45, 120.41 |
 | P3 | consistency batching, 9 coordinates | F | `9/2^128` | 124.8 |
@@ -1011,6 +1010,7 @@ Register kinds: `F`, `K`, `D` (digest), `B` (byte string), `N` (ℕ), `Bit`, `AF
 | `selWeight r r′ → F`, `targetMLE r λ r′ → F` | `AF (m−14), AF (m−14) → F`; `AF (m−6), F, AF (m−6) → F` | `ŵ(r′)` (a prefix sum of the tensor over `Sel`'s intervals, R4-m1) and `Ŵ_E(λ, r′)` of §2.3 step 2 with its position factor `eq(r_hi,hi) eq(r′_hi,hi) L_lo(λ)` (S-C-M2; `targetMLE_eq`) | `O(#kinds · #pinned)` |
 | `shiftTarget τ θ → F` | `AF 18, AF 10 → F` | the shift sumcheck's boundary and slot-weight terms (P1-D5) | `O(m)` |
 | `slotW θ pos r → F` | `AF 10, slot map, AF 10 → F` | the collapse's slot weight `Σ_σ eq(θ,σ)·eq(cube(pos σ), r)` summed directly for the unaligned `d` slot (`520…775`: 256 terms × ≈ 14 products, S-C-m1); the aligned `h_in`/`h_out` slots by `slotW_mle_aligned` | ≈ 3.6 k |
+| **cell-reading ops `eqPt`, `rowW`, `shiftEq`, `linkW`** | — | these read fixed cells or public tables and compile to **imports**: the compiler emits no row for them; their cell values enter `compile_sound` as hypotheses (the imported cells' values), discharged in `final` by the zerocheck/shift/RS facts that fix those cells (S-G), exactly as the trace imports are | 0 (imports) |
 | `linkW τ fam ρ → F` | `AF 18, family id, AK (m−7) → F` | a link family's weight at the ring-switching point: the slot map's direct sum times the mirror side's tensor prefix sum (S-0-M2) | `O(len · 14 + log)` |
 | structural ops delivered by S-0 (`input`, `const`, `packF/packK/packFK`, `getF/getK`, `piElemK`, `piDigestAt`, `eqTableK`, `dotKF`, `shrN`, `keep`, `kindSel`; `askNode` with depth and activity, `askAbsorb` with its static length, `askSeed hdr`) | as `FRVIR` | S-0 RESULT deviation 1 | — |
 | `kindFoldWeight r′ β ρ → F` | `AF (m−14), F, AK (m−7) → F` | `Ŵ_β` at the ring-switching point: the tensor prefix sum `Σ_t eq(r′,t) eq(ρ_blk,t) Σ_kind β^kind Ind_kind(t)` over the kinds' intervals (S-C-M1) | `O(#intervals · log)` |
@@ -1225,4 +1225,23 @@ maximum unchanged `2^-120.36 + 2^-144 ≤ εR`** (S1 `33/2^128`, RS1 `11/2^128`)
 | S-E2 | `FRWots`: the consecutive WOTS/key-leaf/path layout, the `WM` mirror cells and their mux rows (M), the digits' bit-elements and linear rows; `FRNodeLayout`: `WM` (10 blocks per slot), the link families' intervals; `node_sound` takes `ShHolds` with the link families; the M-row count from `gen fin`. |
 | P2 | the node witness: `WM` mirror cells, consecutive WOTS layout, the link families in the shift sumcheck (their slot maps and `κ_s` powers), `J_z = 5` partials and MBP state vectors, the finals' values (`v_kind`, `â_L …`, `fold_j`, `v*`) in the transcript as A.9 lists; the KAT against the re-dumped `ops-*.txt`. |
 | S-F / S-G | `exec_finRS/E/B′` (S-F) and `exec_finP/Pf` (S-G) against A.9's relations; `final` discharges the WOTS links from the Sh sumcheck's link families. |
+
+### Stage-review changes 4 (revision 3.6): S-E2 RESULT §5
+
+| Item | Change |
+|---|---|
+| F-1 (major) | the 8 `stmt` equalities are **gated**: A's four by `s_L + s_P`, B1's and B2's by `s_N` (product rows); `hashStmt_sound` restated with the gates as hypotheses and kind-conditional conclusions (§4.2). |
+| F-2 (major) | the chain end is `e_i = sel_{i,3}·h_out(w_{i,3}) + (1 − sel_{i,3})·ots_i`; three selectors per chain `[d<1], [d<2], [d<3]` tied to the digit bits by 2 product rows per chain (266 per slot) (§4.2, §4.3). |
+| F-3 (minor) | §4.3's categories now sum: 531,588 per slot (incl. the mux 2,600, selector rows 266, gated equalities 8), 1,063,176 per node. |
+| F-4 (minor) | M's `one` cell pinned by a point claim `f[Mbase] = 1` at B′; `J_f ≤ 21`, B′ row `20/2^128` (§4.3, §5.2). |
+| Op tracking | `eqPt`, `rowW`, `shiftEq`, `linkW` are **imports**: no row; their cell values are hypotheses of `compile_sound`, discharged in `final` (S-G) by the facts that fix those cells (A.8). |
+
+**Margins** (`sizes.txt`): node 54,398 of 65,536 blocks (1.20×); M rows 1,063,176 = `2^20.02` of
+`2^21` (1.97×); `piSize`, items, extractor and the error maximum unchanged (B′ `20/2^128`).
+
+**Interface changes:** **S-E2** — gated `stmt` rows, the selector–digit rows, `e_i`'s mux, the
+`f[Mbase] = 1` claim in `PubCells`, `hashStmt_sound`'s new statement; **S-0** — `gen`'s B′ adds the
+`one`-cell point weight (`J_f ≤ 21`), the four cell-reading ops documented as imports; **P2** — the
+node witness: gated equalities (no change to the cells), the 266 selector rows, `e_i` by the digit-3
+selector, the `one` cell at `f[Mbase]`.
 
