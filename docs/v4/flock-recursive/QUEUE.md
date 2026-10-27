@@ -6,10 +6,12 @@ S-H1 and S-0; the combined `FR` builds (2,237 jobs).
 ## Running
 
 - P2: native acc vs the full dump (logs/S-G/dump), node prover, tree/node modes, 7763 stream link.
-- S-F2: FRVerifierImpl (specC, implC, Meets per op), V compiled, V timing.
+- S-0: T_V blockers: bytesAt without the π copy (283 s → ≈ 180 ms), Kind argument for targetS/slotW/linkW, κ_s for shiftTarget.
 - S-H2d: node decoding (butterfly machine program, agreement scan, levels as needed, decodeWit output, 'N' case of ext_good_tape).
 
 ## Waiting
+
+- **T_V (risk FR-R9; the binding item now).** The VM measures ≈ 180 ms with the bytesAt fix (S-F2), against a VM-equivalent cap of ≈ 264 ms. It must still absorb finPf (≈ 7.6 ms), the real evalL, and a **templated evalM/evalMK** (S-E2: a linear compileMux, templates, and L's row list; plain evalM over ≈ 2.4M rows takes seconds). S-C owes the node's targetS (E for all nine kinds), the linkW families, the In slot map and kindFoldWeight. Then S-F2 re-times with real proofs.
 
 - S-G next (fresh agent from S-G-RESULT S-G1d §5–6):
   - pin the six padding cells (finB′ and finPf: the same six terms = 0);
