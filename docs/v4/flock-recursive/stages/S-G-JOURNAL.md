@@ -203,3 +203,32 @@ symlinked; `.lake` copied from `fr-build-cert`). Every `lake`/`lean` run used th
     (`¬ far_i ∧ truthP2 → truthC`).
 43. Item 4: `FRSoundnessStepD` (`card_coords_in`, `coords_round_le`).
 44. Stopped here: the context is long. The rest is RESULT S-G1d §4.
+
+## 2026-10-27 (S-G1e)
+
+45. Item 1 (pin the six padding cells): `streamBytes = 1,437,760 = 64·22,465`, so the chains'
+    last blocks are full and `Padded` is vacuous (`stream_padded`). The cells A.7 calls padding
+    would be trace cells, and pinning them would break completeness. `finB′`/`finPf` were left
+    unchanged; reported in RESULT S-G1e §1.
+46. Item 2:
+    - `truthC_of` (the uniqueness lemma) via `exists_msg`/`msgOf_eq`/`card_inter_ge`;
+    - the weight tables `wNext`/`vNext_eq` (P3.i) and `wSplit`/`wSplit_sum` (the coordinate
+      split, `y = 2x + b`).
+47. The coordinator's addition (§10 changes 14):
+    - `hideL`, `consSet_eq_jointAgree`, `hide_round_le`;
+    - the potential placement of `Hide_i` is an open question (RESULT §6 item 2).
+48. Items 3–5 in `FRSoundnessStepE`:
+    - the bad-set rows (`flat_round_le`, `seq_round_le`, `ml_round_le`, `rs1_round_le`);
+    - `phOf`/`Dp`, `msD` with `hmid_of_msForm`/`esc_msD`;
+    - `PhaseObl` and `kstate_step`;
+    - the generic asserted rounds `D2`.
+49. Lean pitfalls:
+    - `congr 1` on an equation of K sums timed out in `whnf` (`vNext_eq`). Prove the two sides
+      separately and `rw`;
+    - `(List.take n []).length` inside `tbl`'s index cannot be rewritten (dependent type). Use
+      `cases n <;> exact h`;
+    - `if_pos`/`if_neg` are deprecated in this toolchain. Use local `ite_pos'`/`ite_neg'`;
+    - `decide +kernel` of `phOf (p+1) = phOf p` over 450 positions cost 10.8 s. A generic
+      `List.filter_congr` proof replaced it.
+50. Stopped with the list done in generic form. What remains is the concrete truths, the
+    handoffs, and the Hide placement (RESULT S-G1e §6).

@@ -1514,3 +1514,10 @@ Note (3.9): `sizes.py` carries S-0's 3.8.2 reconciliation of the item sequence (
 |---|---|
 | Extractor fuel (B-10) | `fuel_per_word` goes from 4,096 to **8,192**. Decoding level 0 needs levels 1–4 (the fold-consistency sets), and those need the fold challenges, which come from a second, query-keyed index of the log (≈ 2,374·t on top of the first sort's 2,374·t). This is still far inside `extractorBudget = 2^48 + 2^16·t`. Claim: `fuel_base 211106232532992`, `fuel_per_word 8192`. |
 | Hidden disagreement (A.10, P1.i) | P1.i's doom includes `Hide_i`: a position where the word disagrees with the close codeword but whose folded difference is zero at z. Its probability is ≤ eᵢ·ℓᵢ/|K| per Schwartz–Zippel, inside P1's existing cancellation charge, and the row's bound is unchanged. With it, `final` supplies `A_c⁽ⁱ⁾ = jointAgree⁽ⁱ⁾` to the extractor. |
+
+### Stage-review changes 15 (S-G1e)
+
+| Point | Change |
+|---|---|
+| No padding cells | The hashed stream is `1,437,760 = 64·22,465` bytes, so every chain's last block is full and `Padded` holds trivially (`stream_padded`). The six "padding cells" of A.7/§4.3 do not exist (they would be trace cells), and pinning them would break completeness. They are dropped from A.7's public-cell list and from S-E2's `pubVals`/`PubCells`. The public cells are `one`, then `vk` and `c₁` halves, then `vk` and `c₂` halves. |
+| `Hide` in the potential | Hide gets a separate additive potential `μ_Hide`: the indicator that Hide occurred at some P1.i, charged ≤ eᵢℓᵢ/|K| at P1.i's fold squeezes (≈ 2^-238 per query) and frozen afterwards. The total `μ = μ_doom + μ_Hide`; the per-query sum stays ≤ εR = 15/2^124, kernel-checked. `final` gets ¬Hide, hence `A_c⁽ⁱ⁾ = jointAgree⁽ⁱ⁾`, from μ < 1. The claimed ε is unchanged. |

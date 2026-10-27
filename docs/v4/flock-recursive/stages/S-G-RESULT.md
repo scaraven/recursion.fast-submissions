@@ -957,3 +957,186 @@ No `decide` or `simp` runs over a program or a table. The `decide`s are on lists
    `finLr`.
 2. **The padding cells.** Do they stay unclaimed, or are they pinned (§4 item 2)?
 3. **The P2 doom.** Is `truthP2`'s phrasing acceptable for A.10 (§4 item 5)?
+
+---
+
+# S-G1e: uniqueness, the weight tables, Hide, the per-phase dooms, the bad sets, `KState.step`
+
+Base: HEAD `3aaa778`, built against HEAD's versions of other tracks' modules
+(`logs/fr-build-SG/snap.sh`, with the worktree's `FR.lean`). **Status:** item 1 resolved without
+the edit (§1: the padding cells do not exist); items 2–5 built in generic form, with the PIOP
+truths and the per-phase handoffs still parametric (§6). `FR` builds as a whole
+(`logs/S-G/build-FR-S-G1e.log`, 2,280 jobs). No sorry, no warning in S-G's modules, no line over
+100 characters. Axioms: `propext`, `Classical.choice`, `Quot.sound` only
+(`logs/S-G/axioms-S-G1e.log`). Source rule: 77 files, 1 finding, in `FRVIRTemplates.lean:74`
+("partial"), which is another track's new, uncommitted module. S-G's files have none.
+
+## 1. Item 1: the six padding cells. Not pinned, because they do not exist
+
+- The node's hashed stream is `streamBytes = 1,437,760` bytes (`FRTranscriptDefs.streamBytes_eq`).
+  That is exactly `64 · 22,465 = 64 · chainN`, so each chain's last block is **full** and has no
+  padding bytes. `Stream.Padded w L` quantifies over `L ≤ p < 64·nBlocks L`, which is empty here.
+- **`stream_padded`** (`FRSoundnessTruths` Part E) proves `Padded w streamBytes` for **every**
+  assignment `w`. `stream_sound`'s padding hypothesis therefore needs no point claim.
+- The "three padding cells per chain" date from the old 1,440,336-byte stream, whose last block
+  held 16 bytes (S-E1 review). Pinning six cells to `0` now would pin six **trace cells** of the
+  chains' last blocks (bytes of the last item's query and answer). The honest prover would then
+  fail `finB′`/`finPf` (a completeness break), so I made **no change** to `finB′` (S-F) or `finPf`.
+- Needed elsewhere:
+  - A.7 and §4.3 should drop the padding cells (`J_f ≤ 15`, not 21);
+  - S-E2's `pubVals` should drop `List.replicate 6 0`. As written, `PubCells w vk c₁ c₂ pad` is
+    **false** unless `pad` has exactly six cells, because the two lists' lengths must match.
+    `node_sound` uses only `PubCells.one`;
+  - with the padding cells dropped, `finB′` and `finPf` already agree (nine cells each, S-G1d §4
+    item 2), and no dump changes.
+
+## 2. What was built (code lines from `loc.py`)
+
+| File | Code (total) | Added in S-G1e |
+|---|---|---|
+| `FRSoundnessTruths.lean` | 419 | Parts E, F, G (below); `import FRBlockStream` |
+| `FRSoundnessStepE.lean` (new) | 493 | Parts A–E and the controls (below) |
+| `FR.lean` | +1 | `import FRSoundnessStepE` |
+| `logs/fr-build-SG/snap.sh` | — | `FRSoundnessStepE` added to `MINE` |
+
+**`FRSoundnessTruths`**
+- **Part E: uniqueness.**
+  - **`truthC_of`**: `i < 5 → ¬ farL κ L es i → truthP2 κ L es i → truthC κ L es i`.
+  - The proof:
+    - decoded rows are `Enc` of messages (`exists_msg`), and `msgOf` recovers them
+      (`msgOf_eq`, by `coeffs_unique`);
+    - the fold of the decoded rows and `Enc(nextMsg)` are codewords that agree with the column
+      fold on `jointAgree`, resp. on `A_c`;
+    - these two sets meet in `≥ nᵢ − 2eᵢ ≥ kᵢ` positions (`card_inter_ge`, `lv_params`), so the
+      codewords are equal (`rs_eq_of_agree`);
+    - `enc_injective` then gives the messages.
+  - Also in Part E: `stream_padded` (§1).
+- **Part F: the weight tables.**
+  - `gW κ i p x = X_x(D[p])` (`encAt_eq_sum`: `Enc(m)[p] = Σ_x m_x·G_p(x)`; its MLE is `tensorW p`).
+  - **`wNext`** is P3.i's table `Wf + Σ_q eq(κ_c, bits₉(q))·G_{p_q}`, and `vNext` is the batched
+    claim `c + Σ_q eq(κ_c, q)·y_q`.
+  - **`vNext_eq`**: from `c = ⟨Wf, fold_z(f⁽ⁱ⁾)⟩`, `truthC` and `truthP3`, we get
+    `v_{i+1} = ⟨wNext Wf, f⁽ⁱ⁺¹⁾⟩`.
+  - **`wSplit W y = W(y/2)·(1 or u)`** is the coordinate split (its MLE in the split bit is A.9's
+    `û(β)`). **`wSplit_sum`**: `⟨wSplit W, fTab (i+1)⟩` over level `i + 1`'s
+    `4 + mLog` variables equals `⟨W, nextMsg⟩` (`lv_next`: 16 rows, `mLog` drops by 3).
+  - So `W_{i+1} = wSplit (wNext (W_i bound at sᵢ))`, and `truthP1 (i+1)` follows from `truthP1 i`
+    through the P1 rounds, C.i and P3.i.
+  - Level 0's table stays a parameter (see §6).
+- **Part G: hidden disagreement** (the coordinator's addition, §10 changes 14).
+  - **`hideL`** (`Hide_i`): some `j ∉ jointAgree` with `Σ_r eq(sᵢ, r)·(W⁽ⁱ⁾[r][j] − V[r][j]) = 0`.
+  - **`consSet_eq_jointAgree`**: `¬ far_i ∧ truthC i ∧ ¬ Hide_i → A_c = jointAgree`. This is the
+    fact `final` hands the extractor (S-H2 Part 11 Q2).
+  - `card_not_jointAgree`: at most `eᵢ` positions lie outside `jointAgree`.
+  - **`hide_round_le`**: per round, at most `|P|` challenge values make one of `|P|` nonzero
+    difference tables vanish (`zerocheck_bad_le` over K, union bound). Over `ℓᵢ` rounds this is
+    `eᵢℓᵢ/|K|`.
+  - `hide_fits`: `2 + eᵢ ≤ 2^20` at every level, which is inside P1's `N ≤ 2^66`.
+
+**`FRSoundnessStepE`**
+- **Part A: the multi-squeeze bad sets** (item 4).
+  - `pairsEquiv`: `(F×F)^r ≃ F^{2r}`, pair `s` coordinate `c` at `2s + c`, as `coordAt`.
+  - **`flat_round_le`**: escapes that put the `2r` coordinates in `W` are charged
+    `|W|/2^(256r)`.
+  - **`seq_round_le`**: from `seq_bad_le`, a coordinate-list doom that loses `b i` values at
+    coordinate `i` is charged `Σ b/2^128`.
+  - **`mlDoom`/`mlDoom_step`/`ml_round_le`**: the multilinear zero test (`bindL`, `tbl_bind0`,
+    `zerocheck_bad_le`) is charged `n/2^128` for `n ≤ 2r` variables. This covers Z1, Lr1, E1 and P3.
+  - **`rs1_round_le`**: RS1's `(r″, κ)` (coordinates `0…6`, `7`) in a set of `c·|F|^7`, which is
+    `rs1_joint`'s form, is charged `c/2^128`.
+  - `coord_le_deltaR` (`c ≤ 239 → c/2^128 ≤ deltaR`) and `coord_rows_le` (A.10's counts 20, 33,
+    15, 10, 21, 9).
+- **Part B: the phase map** (item 3).
+  - **`phOf p`** is the last phase that starts at or before `p` (a `Q` phase is never returned).
+  - **`Dp Dk p := Dk (phOf p)`**.
+  - The facts:
+    - `phOf_start` (checked: every phase with FS items is its first position's phase);
+    - `phOf_succ` (generic: the phase changes only at a phase start);
+    - `ms_check`/`ms_phOf` (checked: each `fsRanges` phase is one phase starting at `s0 + 1`,
+      with `r ≥ 2`).
+- **Part C: multi-squeeze dooms.**
+  - **`msD prev fin s0 r`**: inside the phase, the entry's doom at the entry; at the last
+    answer, `fin`. `MsForm Dk` requires this form for all 15 phases.
+  - **`hmid_of_msForm`** discharges `hmid` at **every** multi-squeeze position.
+  - **`esc_msD`**: an escape means "the entry is doomed and `fin` fails". This feeds every
+    `hround` row.
+- **Part D: the whole transcript** (item 5).
+  - **`PhaseObl Rej Dk N`** holds what is left per phase: `habs` (inside a phase and the
+    handoffs at a phase's first absorb), `hsingle`, `hfin` (each multi-squeeze phase's charge
+    `≤ deltaR`) and `hstab`.
+  - **`kstate_step`**: from `N ≤ 2^256·deltaR` and `PhaseObl`, the contract's `KState.step` law
+    at `εR` holds for `muG (DC Rej (Dp Dk)) (pRoundG … fsRnd)`. The proof is `stepObl_compose`
+    plus `step_epsR`.
+  - `hfin_ml`, `hfin_seq`, `hfin_rs1` and `hfin_p2` discharge `PhaseObl.hfin` per phase shape
+    from Part A and `p2_hround`.
+- **Part E: the asserted rounds.**
+  - **`D2`**, over a field `R` with a coefficient reader `rd`, width `wd` and challenge map `ch`
+    (F: L2, S2, Lr4; K: P1.i, Pf). It mirrors `D3`, but the check is `Chk2`, which `Rej` must
+    supply.
+  - `D2_append_iff`: absorbs inside the phase.
+  - **`D2_single`**: at most `2·M` escaping answers, with `M` from the fiber count
+    (`card_chF_fiber`: `2^128`; `card_chK_fiber`: 1).
+
+## 3. Controls
+
+| Control | Shows |
+|---|---|
+| `phOf_examples` | `phOf 12 = 3` (Z1's last), `13 = 4` (Z2), `339 = 29` (P3.0, not Q.0), `450 = 50` (Pf) |
+| `msD_inside_last` | `msD` is the entry's doom inside the phase and `fin` at the last answer |
+| `mlDoom_nil` / `not_mlDoom_zero` | a nonzero table is doomed, and the zero table never is |
+| `phaseObl_false` | `PhaseObl` is satisfiable (empty doom, `N = 0`): the structure is not contradictory |
+| `D2_first_absorb` / `not_D2_before` | a false initial claim dooms the asserted rounds at their first absorb; nothing is doomed before |
+| `not_hideL_of_univ` | with full agreement, nothing can hide |
+| `coord_rows_le`, `hide_fits` | A.10's coordinate counts fit `deltaR`, and the hiding count fits P1's budget |
+
+## 4. Times (sequential, one core: `taskset -c 0 lean -DElab.async=false --profile`)
+
+| Module | Wall (≈ 3.8 s import) | Type checking | Max RSS | Log |
+|---|---|---|---|---|
+| `FRSoundnessTruths` | 11.8 s | 0.95 s | 2.70 GB | `logs/S-G/profile-FRSoundnessTruths-S-G1e.log` |
+| `FRSoundnessStepE` | 15.5 s | 4.6 s (`phOf_start`, `ms_check`, `phOf_examples`: `decide +kernel` on the 51 phase starts and the 15 ranges) | 2.87 GB | `logs/S-G/profile-FRSoundnessStepE-S-G1e.log` |
+
+A first version checked `phOf (p + 1) = phOf p` at all 450 positions by `decide +kernel`, which
+cost 10.8 s of kernel time. The generic `phOf_succ` replaced it. No `decide` or `simp` runs over a
+program, layout or table.
+
+## 5. Deviations
+
+1. **Item 1 not applied**, for the reason in §1.
+2. **The degree-2 rounds are a new generic `D2`**, not a refactor of `D3`: `D3` (Z3, Lr2, E2) is
+   unchanged. `D2` takes the check from `Rej` (`Chk2`, stated as `g(0) + g(1) = claim`; with the
+   asserted `c₁ + c₂ = claim` this is characteristic two).
+3. **`PhaseObl.hstab` is per phase index**: every `Dk k` must be stable on the chain-prefix
+   extensions, for every `k`. This is slightly stronger than "the phase of the extension's
+   length", and simpler to supply.
+4. **P1.i's proximity/cancellation doom and `Hide_i` are not yet in a `Dk`** (§6 item 2). The
+   counting lemmas are built (`hide_round_le`, the earlier `round_bad_cover`).
+
+## 6. Not done, and questions
+
+1. **The concrete `Dk`, `Rej` and the handoffs.** These need:
+   - the PIOP truths over `z = unpack f⁽⁰⁾`: Z (`A₀^κ`, `E`), L, S, Lr, RS, E and B′. They need
+     the F-valued level-0 message (an `interp_F_D` projection of `decodeL` 0), `unpack`
+     (`FRFormat`), and other tracks' layouts (S-G1c part 1 §4.1). Each is a definition plus one
+     handoff lemma (`PhaseObl.habs` at its first absorb, or `hsingle` at its first squeeze);
+   - level 0's weight table `W₀` from `rsWeight`, `evalM(r_{E2}, ·)` and the nine cells, and its
+     relation to `finPf`'s `lvsV` (S-G2, `ligerito_final`).
+
+   The step law needs nothing more than `PhaseObl`. Every multi-squeeze charge has its wrapper
+   (`hfin_*`), and the rounds have `D3_single`/`D2_single`.
+2. **Where does `Hide_i` sit in the potential? (question.)**
+   - `final` needs `¬ Hide_i` on accepted, non-escaped chains. With one doom `D`, `final` derives
+     the truths backwards from `¬ D` at the end, so a Hide component must make Hide an **escape**:
+     doomed before the hiding challenge, not doomed after.
+   - The natural component, "every disagreeing position's partially bound difference is still
+     nonzero", is **true** in the benign close-but-not-codeword case. `habs` would carry it to the
+     chain's end, where acceptance cannot refute it.
+   - Two ways out:
+     - (a) a second potential, `μ_H` for the Hide component alone, frozen after P1.i. Its per-query error
+       `max_i eᵢ/|K| ≤ 2^18/2^256 = 2^-238` would **add** to `εR`, which is negligible but
+       still a change to the claimed error;
+     - (b) a P1.i doom that combines Hide with the claim's truth, so that a non-escaped end
+       refutes it.
+   - (b) needs a blueprint statement of what is doomed. Please rule on it.
+3. **A.7/§4.3 and S-E2's `pubVals`**: drop the padding cells (§1).
+4. **Golf.** `FRVIRFinalsSG` is still 1,526 code lines (budget 400). Not touched here.
