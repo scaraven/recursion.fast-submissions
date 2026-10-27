@@ -1,16 +1,18 @@
 # Orchestrator queue (FR-D8: at most 3 concurrent agents)
 
-Last updated 2026-10-27. Blueprint at revision 3.4 (`2fa83b1`). `FR.lean` imports S-A, S-C, S-D,
+Last updated 2026-10-27. Blueprint at revision 3.5 (`f411b1e`). `FR.lean` imports S-A, S-C, S-D,
 S-H1 and S-0; the combined `FR` builds (2,237 jobs).
 
 ## Running
 
-- Blueprint revision 3.5: A.9 phase-final checks (S-0-M1), unaligned wiring via the shift argument (S-0-M2). Then the S-0 fix pass: typed Finals in FRVIRFinals, M3 (context lemmas, exec_skeleton), m2, m4–m8.
+- S-0 fix pass against rev 3.5: `FRVIRFinals` (typed `Finals`; finZ/Lc/Sh/Lr proved), context lemmas
+  + `exec_skeleton` (M3), J_z = 5, link families, `nMax`, the `MerkleEnc` instance, minors.
+- S-E2 node circuit: compile_sound (FR-R3′ kill test: ≤ 1,000 lines), compile_mux_sound, WOTS,
+  hashStmt_sound, nodeLayout's two decides (B-2), node_sound. Waits on S-0 for `gen fin`.
 
 ## Closed
 
-S-A `8ff873c`; S-C `d81b568`; S-H1 `40b2f81`. S-D `1705d97` and S-E1 `fdf78fa` are golfed, with
-fix passes running. S-0 `40b2f81` is in review.
+S-A `8ff873c`; S-C `d81b568`; S-D `8e6dad7`; S-E1 `2d5a811`; S-H1 `40b2f81`. S-0 `40b2f81` (reviewed; fix pass running).
 
 ## Rulings
 
@@ -22,8 +24,6 @@ fix passes running. S-0 `40b2f81` is in review.
 
 1. P2 resume: S-0's dumps (`logs/S-0/dump/`), rev 3.4 formats, per-kind matrices, the node
    prover, the `tree`/`node` modes. Wait for the S-0 review.
-2. S-E2: WOTS, `compile`/`compileMux`/`evalM`, node layout, `node_sound`. Needs the S-E1 fix pass
-   and the S-0 review.
 3. S-F (verifier + `FRVIRFinals` + the remaining `exec_genPhase` shapes), S-G (soundness), S-H2
    (the extractor program; see the notes below), S-I (certificate), H (harness runs).
 
