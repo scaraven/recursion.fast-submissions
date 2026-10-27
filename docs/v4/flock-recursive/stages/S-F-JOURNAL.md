@@ -21,3 +21,7 @@
 - `FRVerifier`: `Vwith` by well-founded recursion, `accWith`, `accV`, `acc_eq`, `V_W`,
   `V_W_sound`, `complete` (`P := encodeF`, δ = 0), `exec_length`/`runSeq_length`, four controls.
 - Source rule: the word "partial" in two docstrings fixed. Axioms: the three standard ones.
+- Revision 3.9 follow-up: `finRS` rewritten to `eqZ λ ρ₁` (ρ₁ = `pinnedRho 0`) and one `phiRS` per
+  slice value (A.9 3.9's op shape); `exec_finRS` re-proved (simpler: 9 setup ops, 8-op elements);
+  `lagV`/`wInv`/`others`/`xS` kept for S-G. Consumers build. Items 2 (concrete `OpImpl`) and 3
+  (timing probe) not started: stopped on context length; inventory in the RESULT.

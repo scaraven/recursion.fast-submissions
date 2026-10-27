@@ -172,3 +172,72 @@ The compiled-`V` timing probe was not done. It is optional, and `V` is not yet c
 3. `zLow`'s coordinate, the `zhat` indices and the public cell order (§4.4, §4.7) need agreement
    from S-0, S-E2 and P2.
 4. Should the blueprint (A.9, §3.1) adopt the Φ-based `v_RS` and its row cost (§4.2)?
+
+## Revision 3.9 follow-up (coordinator: eqZ, concrete `OpImpl`, timing probe)
+
+### Done: `finRS` on revision 3.9's op set (item 1)
+
+`finRS` now has A.9 revision 3.9's op shape. It was built against HEAD `81f19b2` (S-0's 3.9 `FRVIR`/`FRVIRFinals`).
+
+- **Inner weights.**
+  - Z: `getF` of `eqZ λ ρ₁`, with `ρ₁ = pinnedRho 0` as a constant register.
+  - Lc, Sh, Lr: `getF` of `eqTable` at the claim's low 7 coordinates.
+- **Switched claims.** `T_j = Σ_i bitBasis i · phiRS r″ s_{j,i}`, with `r″` packed once (`packF`
+  of RS1's coordinates 0–6). Each slice value is 8 ops: `piElem`, the weight, `mulF`, `addF`,
+  `phiRS`, `const`, `mulF`, `addF`.
+- **What was removed.** The in-IR squaring chain (`sqOps`/`phiOps`) and the in-IR Lagrange
+  products (`prodOps`/`lagAll`) are gone. `zLow` is gone; deviation 4's open coordinate question
+  is closed by A.2 (bit 6 is `ρ₁`).
+- **What was kept.** `xS`, `others`, `wInv` and `lagV`. S-G's `lagV_eq_lagrangeWeight` uses them,
+  and they are the natural computable `eqZ`.
+- **Size.** About 4,100 ops (4 × 1,025 plus setup and tail), down from about 76 k. Deviation 2's
+  M-row cost now depends on how `phiRS` is compiled, which is S-E2's choice.
+- **`exec_finRS`, restated.** With `rsRefs κ fi` in range, `finRS` returns `some (L, relRS κ inp)`.
+  Its exports are `rsAlpha impl κ inp fi r j` (`j < 4`) and `rsV impl κ inp fi r`, where:
+  - `rsW impl κ fi r 0 i = (impl.eqZ λ ρ₁).getD i 0`;
+  - `rsTv impl inp fi r j = Σ_k bb k · impl.phiRS (ptF r (rsFsRegs fi)) (sv inp j k)`.
+
+  These now mention `impl`. `OpImpl.Meets` turns them into `Phi` and `lagrangeWeight`.
+- `nRS = 4`, the export layout, `finE`, `finB′`, `FRVerifier` and every control are unchanged.
+  `FRVerifier`, `FRVIRFinalsSG` and `FRNodeCircuit` build against the new module.
+- **Measurements** (`logs/S-F/profile-FRVIRFinalsSF-3.9.log`, `time-…-3.9.log`, sequential, 16 GB
+  scope): wall 23.4 s, kernel 1.52 s, peak 2.7 GB. Code lines: `FRVIRFinalsSF` 467 (was 740),
+  `FRVerifier` 138.
+- **Checks.** Axioms (`logs/S-F/axioms-3.9.txt`): the standard three or fewer (`noAsk_finRS`:
+  `propext`, `Quot.sound`). Source rule: 64 files, 0 findings.
+
+### Not done: the concrete `OpImpl` (item 2) and the compiled-`V` timing probe (item 3)
+
+I stopped here under TRACK-RULES' pace rule: this agent's context is long. Item 2 is the larger
+part of the remaining work, and the following inventory is the plan for whoever takes it.
+
+**Prerequisite: an `OpSpec` record.**
+- No `OpSpec` value exists yet. Every spec is stated over `Fin n → R`, in the owners' modules.
+- `Meets impl spec` needs, per op, a spec in `OpImpl`'s `Array` signature that is defined from the
+  owner's math, plus a computable implementation, plus the equality.
+- The spec record is the owners' (S-0-m2's table). A neutral home would be a new module
+  `FRVerifierImpl` (L-cert, importing FRVIREval, FRSpartan, FRShift, FRPubTarget, FRRingSwitch and
+  FRRSEval) holding the Array adapters, `specC`, `implC` and the per-op `Meets` lemmas.
+
+**Per op: what exists and what is missing.**
+
+| Op | Computable code that exists | Spec, and its owner | `Meets` |
+|---|---|---|---|
+| `phiRS` | `FRRingSwitch.phiApply` | `Phi` (S-C) | immediate: `phiApply_eq` |
+| `eqZ` | `lagV` (here) | `lagrangeWeight · eq(ρ₁, ·)` (FRSkip, S-C) | from S-G's `lagV_eq_lagrangeWeight`; the spec needs defining |
+| `rsWeight` | `weightEval` (over lists) | `weight_mle`/`mleEval_weightTable` (S-C) | adapter to K points and `κ` batching; to write |
+| `walkA`, `walkB`, `kindInd`, `evalM`, `evalL` | `FRVIREval` | `FRVIREval` (S-E2) | proved: `walkA_eq`, `walkB_eq`, `kindInd_eq`, `evalM_eq`, `evalL_eq` (L's row list still a parameter) |
+| `evalMK` | none | S-E2 | missing |
+| `lagrangeS` (3.9 signature) | `FRSkip.lagrangeS` (old signature) | FRSkip (S-C) | adapter for `pe` and the two outputs; missing |
+| `targetS` | `FRPubTarget.targetS` (over `Fin`) | FRPubTarget | adapter |
+| `shiftTarget` (with `bnd`) | `FRShift.shiftTarget` (over `Fin`) | FRShift (S-C) | adapter |
+| `shiftEq` | `FRShift.shiftMle` | FRShift (S-C) | adapter |
+| `slotW` | `FRShift.slotW` (generic slot map) | FRShift (S-C) | adapter, plus the slot maps (A.6) as data |
+| `rowW` | `FRSpartan.rowW` (over `Fin`) | FRSpartan (S-C) | adapter |
+| `linkW` | none | FRShift (S-C) | missing |
+| `kindFoldWeight` | none | FRRingSwitch (S-C) | missing |
+| `tensorW` | `FRRSEval`'s twins, partly | FRRS (L-pcs) | missing |
+
+**Item 3 (timing probe).** It needs `implC`. With stub implementations, a probe would only time the
+interpreter and the inline F/K arithmetic of about 150 k ops. It would leave out `walk`, `evalM` and
+`rsWeight`, which dominate §3.1, so it would not be `T_V` evidence. I did not run it.
