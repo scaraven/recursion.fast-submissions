@@ -30,6 +30,19 @@
   - Every build runs under `timeout`. If one runs much longer than expected, inspect it
     (`ps -eo pid,etime,cmd`, locks, Mathlib being rebuilt) and fix the cause. The VM has 32 cores
     shared by several agents, so don't start more than 2 parallel Lean processes.
+- **Memory cap (mandatory, after the 2026-10-27 OOM).** A `lean` process reached 41.6 GB and the
+  kernel's global OOM killer took down the server. Run every `lake`, `lean` and `cargo` command
+  inside a capped scope:
+
+  ```sh
+  systemd-run --user --scope -q -p MemoryMax=12G -p MemorySwapMax=0 -- timeout 1800 lake build FRFoo
+  ```
+
+  A runaway is then killed inside its own cgroup. If a build is killed there, restructure the
+  proof; never raise the cap. Usual causes: `decide` or `simp` on a large concrete structure (a
+  layout, a table, a program), or `rfl` unfolding a big definition. Use a checked certificate or a
+  lemma about the generator instead. Avoid the lean-lsp MCP tools on large modules: the LSP server
+  runs outside any cap. Prefer capped command-line builds.
 - **Kernel cost.** The certificate must build in ≤ 600 s and kernel-check in ≤ 600 s on a 4-vCPU
   runner. Avoid `decide` on large terms. Use checked certificates (e.g. an inverse matrix) instead
   of enumeration. Log per-module wall and kernel time with **sequential** elaboration:
