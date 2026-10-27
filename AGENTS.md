@@ -30,10 +30,10 @@ to report.
 - **v4 is a proposal.** It is implemented on the core's branches `v4/srom-rules`, `v4/trim-fat` and
   `v4/ks-standard`, and has not been adopted by the user. Every decision taken in the user's absence
   is listed in design §6.1, and each is reversible.
-- **The pin.** `.contract` is at `<core-pin>`, on the core's branch `v4/ks-standard`. It holds
-  stages A (contract) and B (harness) with their reviews' fix passes (`01a25b0`, the head of the
-  core's pull request #17, whose CI was green on GitHub runners, run 39966237935), and two of the
-  user's amendments on top:
+- **The pin.** `.contract` is at `8ad98e9`, the head of the core's branch `v4/ks-standard` and of
+  its pull request #19, whose CI is green on GitHub runners. It holds stages A (contract) and B
+  (harness) with their reviews' fix passes (`01a25b0`, the head of the core's pull request #17,
+  run 39966237935), and two of the user's amendments on top:
   - **V4-A9, the trim** (`v4/trim-fat`, the core's pull request #18; D-trim): every GitHub job at
     most 30 minutes, with the caps nested inside it (§5.5); one tree run, of which only the root is
     read, and one stream run of `M = 256` links; per entry only the statement canaries; a DoS
@@ -42,8 +42,10 @@ to report.
     `errorCap = 2^-120` and `completenessCap = 2^-40`. Its new workflow structure has not run on
     GitHub (D-trim §8 item 7).
   - **V4-A10, textbook knowledge soundness** (`v4/ks-standard`; E-ks): `KS` quantifies over
-    query-bounded adversaries against a lazily sampled random oracle; the potential `KState` is a
-    library tool, and the bridge `KState.ks` turns one into `KS` (§3.1).
+    query-bounded adversaries against a lazily sampled random oracle, and is textbook for
+    adversaries that make the verifier's queries themselves, since its extractor reads the final
+    log (§3.1); the potential `KState` is a library tool, and the bridge `KState.ks` turns one into
+    `KS`.
   - The contract fix pass `ea2e8ab`: `acc` checks the trace's length against `qV` (RA-M2, §2.2);
     `Log` is an `abbrev` for `Trace`; `wordBytes w := enc64 w.toNat`.
   - The harness fix passes (B-RESULT §9–§11):
@@ -57,8 +59,8 @@ to report.
     - the runner image's toolchain, binutils 2.42 included, is part of the prover rule (§4.5).
 - **The first entry has run through the harness.** `spartan-srom` was ACCEPTed at the smoke shape
   and REJECTed at the season shape: at `a874f87` with two workarounds (F3), at `81e1ebf` and
-  `01a25b0` with none (F4, F4b), and at `a283ff8` after its migration to V4-A10 (F5). Its status is
-  in `README.md`, "Status". §7 holds what it found.
+  `01a25b0` with none (F4, F4b), and at `a283ff8` and `8ad98e9` after its migration to V4-A10
+  (F5). Its status is in `README.md`, "Status". §7 holds what it found.
 - **v3 is frozen.** Its rules no longer apply (`README.md`, "Status").
 
 ---
@@ -294,8 +296,10 @@ structure CertificateR (D : Declared) (S : Submission) : Prop extends Certificat
            ∀ t, S.fuel t ≤ D.fuel t ∧ D.fuel t ≤ extractorBudget t
 ```
 
-The obligations, in words (`Security.lean`, `Extractor.lean`; `KS` is V4-A10's, the rest v3's
-definitions word for word, V4-1):
+The obligations, in words (`Security.lean`, `Extractor.lean`; V4-1): `KS` is V4-A10's;
+`CompleteWithError` is v3's statement, now written through `prob` (the same statement by
+`Library/Completeness.lean`'s `completeWithError_iff`); the rest are v3's definitions word for
+word.
 
 - **Knowledge soundness** (`KS`), for every `vk`: textbook single-output knowledge soundness in the
   random-oracle model (V4-A10). Two conjuncts, in this order:
@@ -306,12 +310,21 @@ definitions word for word, V4-1):
      the final query log (`runLog`) while `E`, given the statement, the proof and that log, returns
      no witness of `Rel (S.acc vk)` is at most `(Q + qV)·ε`.
 
-  **The recommended route is v3's potential** (design §2.4), now an untrusted library structure,
-  `KState` (`Library/Security.lean`): a potential `μ` on query logs with three laws (`empty`: it
-  starts at 0; `step`: on a log of fewer than `logCap` entries, a fresh query raises it by at most
-  `ε` on average over the `2^256` answers; `final`: below 1, every proof `V` accepts reading the log
-  is extracted by `E` to a witness of `Rel (S.acc vk)`). The bridge turns it into `KS`, with no
-  other hypothesis:
+  **What "textbook" means here** (`.contract/RecursionFast/Contract/Security.lean`'s header; the
+  core's review E-ks M-1, the user's option B): `E` reads the final log, the verifier's own fresh
+  answers included, so `KS` is textbook knowledge soundness only for adversaries that make the
+  verifier's queries themselves, which every prover in the deployment is (`V` reads only the signed
+  trace, and the prover asked the service for every answer in it); textbook implies `KS` with the
+  same extractor at twice the error (`Library/KS.lean`, `KSTextbook.ks`), but not conversely: a
+  verifier that reads its witness off its own fresh answer is certified at error `0`, against about
+  `2^-112` textbook (`Controls/Security.lean`, `lucky_ks`, `lucky_not_textbook`).
+
+  **One route, the organiser library's, is v3's potential** (design §2.4), now an untrusted
+  library structure, `KState` (`Library/Security.lean`): a potential `μ` on query logs with three
+  laws (`empty`: it starts at 0; `step`: on a log of fewer than `logCap` entries, a fresh query
+  raises it by at most `ε` on average over the `2^256` answers; `final`: below 1, every proof `V`
+  accepts reading the log is extracted by `E` to a witness of `Rel (S.acc vk)`). The bridge turns
+  it into `KS`, with no other hypothesis:
 
   ```lean
   theorem RecursionFast.KState.ks (k : KState R V E ε)
@@ -341,7 +354,8 @@ definitions word for word, V4-1):
 - The certificate holds **for every `vk`**.
 - There is no RISC-V image: `ext` is a Lean term run by the compiled contract interpreter.
 - `Vb`, `blake2sOracle` and `tagRO` are gone.
-- `KS` is the textbook statement above, and the potential is a library tool (V4-A10).
+- `KS` is the single-output statement above, textbook for adversaries that make the verifier's
+  queries themselves, and the potential is a library tool (V4-A10).
 
 **The reference entry.** The organiser's library has a complete witness-sending entry,
 `.contract/RecursionFast/Library/WitnessSending.lean`:
@@ -641,7 +655,10 @@ on a 4-vCPU runner. Then:
        (B-RESULT §3);
      - on `spartan-srom`, a 226 MB export, it was killed at a 20 GB cap after 10 min 1 s, still
        growing about 2.1 GB per minute (F3 §2.4).
-   - The result's `kernels` and `kernel_runs` say which kernels ran and how each ended.
+   - The result's `kernels` and `kernel_runs` say which kernels ran and how each ended, with each
+     run's memory peak (`peak_bytes`); `cert.json` also records the seconds of every capped step
+     (`build_s`, `comparator_s`, `gate_s`, `badge_s`). The peak of a run that succeeds, `gate_s`
+     and `badge_s` are recorded since `8ad98e9`.
 5. **The gate**, rules 1–8 (§6), with `--computable` on the badge fields `V`, `P` and `ext`, in the
    sandbox, within `gate_s` = 120 s.
 6. **The badge.** The executable `verify` (parse plus `accF`, proved equal to `acc`) is built from
@@ -664,18 +681,18 @@ is one of three:
 **What it cost `spartan-srom`** on the shared VM (F3 and F4 under `taskset -c 0-15`, F5 as
 stated; the caps are for a 4-vCPU runner):
 
-| Step | at `a874f87`, with the workarounds (F3 §2.3) | at `81e1ebf`, none (F4) | at `a283ff8`, one build (F5) |
+| Step | at `a874f87`, with the workarounds (F3 §2.3) | at `81e1ebf`, none (F4) | at `8ad98e9`, one build, 4 CPUs (F5; `a283ff8` in brackets) |
 |---|---|---|---|
-| the entry's build (`build_s` 600 s) | inside the comparator | inside the comparator: 147 s | 259.5 s on 4 CPUs; 181.5 s on 16 |
-| comparator, Lean kernel (`kernel_s` 600 s) | 8 min 33 s; kernel about 192 s at 3.62 GB | 354 s with the build, scope peak 4.25 GB; kernel about 144 s at 3.67 GB | 182.3 s on 4 CPUs, 171.6 s on 16: the exports and the replay, the build up to date |
+| the entry's build (`build_s` 600 s) | inside the comparator | inside the comparator: 147 s | 272.9 s (259.5 s; 181.5 s on 16 CPUs) |
+| comparator, Lean kernel (`kernel_s` 600 s) | 8 min 33 s; kernel about 192 s at 3.62 GB | 354 s with the build, scope peak 4.25 GB; kernel about 144 s at 3.67 GB | 204.6 s, peak 4.02 GB: the exports and the replay, the build up to date (182.3 s; 171.6 s on 16) |
 | gate-tree rebuild | 3 min 30 s | 173 s; "byte-identical (134 artifacts)" | gone (V4-A9) |
-| gate (`gate_s` 120 s) | 21.8 s | 18 s | about 26 s; 22 s on 16 |
-| badge build (`badge_s` 180 s) | 73.7 s (986 package objects compiled) | 16 s (CompPoly's objects prebuilt by `org-setup.sh`) | about 20 s on 4 CPUs: 74 objects, the entry's 66, the badge's 2 and 6 of Batteries and Mathlib |
-| **whole job** | **14 min 22 s**, peak 4.11 GB | **9 min 52 s** | **8 min 42 s** on 4 CPUs; 6 min 47 s on 16 |
+| gate (`gate_s` 120 s) | 21.8 s | 18 s | 30.2 s (about 26 s; 22 s on 16) |
+| badge build (`badge_s` 180 s) | 73.7 s (986 package objects compiled) | 16 s (CompPoly's objects prebuilt by `org-setup.sh`) | 29.3 s: 74 objects, the entry's 66, the badge's 2 and 6 of Batteries and Mathlib (about 20 s) |
+| **whole job** | **14 min 22 s**, peak 4.11 GB | **9 min 52 s** | **9 min 39 s** (8 min 42 s; 6 min 47 s on 16) |
 | with `--nanoda` | PROVISIONAL: nanoda's kill stopped the Lean kernel | ok in 16 min 36 s: "nanoda: over budget (cap 14G, peak 14.00 GiB); checked by the Lean kernel only" | not run |
 
-(`logs/f3/cert-closure.log`, `logs/f4/cert.log`, `logs/f4/cert-nanoda.log`, `logs/f5/cert4.log`,
-`logs/f5/cert16.log`.)
+(`logs/f3/cert-closure.log`, `logs/f4/cert.log`, `logs/f4/cert-nanoda.log`,
+`logs/f5-fix/cert4.{log,json}`, `logs/f5/cert4.log`, `logs/f5/cert16.log`.)
 
 - **A comparator that stops before it builds `Solution`** (the organiser's challenge failed) is a
   harness ERROR, not your REJECT (B-RESULT §11).
@@ -923,9 +940,9 @@ The source rule (`.contract/scripts/source-rule.py`) and the gate
 Each item below follows from the rules and was measured, proved or estimated by the first v4 entry
 (`spartan-srom`: v3's Spartan+Ligero leaf SNARK over GF(2^64)/GF(2^192), with σ0-bundle nodes) or
 by the core's stages. The harness findings are from F3's run of the frozen entry `8111b71` at
-`a874f87`, F4's run of the fixed entry `745c7d8` at `81e1ebf` and F5's run of the migrated entry
-at `a283ff8`. Each item below still holds at the pin `<core-pin>`, or says what V4-A9 or
-V4-A10 changed; the harness defects that the pin fixed are in §5. Times are from the shared
+`a874f87`, F4's run of the fixed entry `745c7d8` at `81e1ebf` and F5's runs of the migrated entry
+at `a283ff8` and `8ad98e9`. Each item below still holds at the pin `8ad98e9`, or says what V4-A9
+or V4-A10 changed; the harness defects that the pin fixed are in §5. Times are from the shared
 development VM (32 vCPU QEMU, no `pclmulqdq`, under load), not a runner, so read them as relative.
 The entry's own account is `submissions/spartan-srom/NOTES.md`.
 
@@ -1030,7 +1047,8 @@ The entry's own account is `submissions/spartan-srom/NOTES.md`.
     on `proofCap`.
   - So memory is not what bounds a well-engineered prover at these sizes; `proofCap` is (§7.1).
 - **The Lean side.** The build of `spartan-srom` peaks at 4.12 GB (F1 §5, §9.3), and its
-  comparator run at 4.25 GB (F4), under the 14G cap. nanoda needs more than 20 GB on it (§5.1).
+  comparator run at 4.25 GB (F4) and its Lean-kernel run at 4.02 GB (F5, `peak_bytes`), under the
+  14G cap. nanoda needs more than 20 GB on it (§5.1).
 
 ### 7.3 The verifier's time: `T_V` is measured on your compiled Lean `V`
 
@@ -1171,8 +1189,10 @@ in-place reads and a byte-level node reader.
     `PaperTheorem.prob` is the contract's `prob`; `DepthLE` is gone; `avg_le`, `N_pos` and
     `prob_le_one` are in the `RecursionFast` namespace (`Library/Prob.lean`); `failProb` is a
     library definition, and `completeWithError_iff` converts a `failProb` bound;
-  - the library's new `OProg.bind_assoc` and `OProg.queries_bind` can make an unqualified name
-    ambiguous under `open … OProg`: `spartan-srom` wrote `LawfulMonad.bind_assoc` once.
+  - at `a283ff8` the library's new `OProg.bind_assoc` and `OProg.queries_bind` made an
+    unqualified `bind_assoc` ambiguous under `open … OProg`, so `spartan-srom` names
+    `LawfulMonad.bind_assoc`; since `8ad98e9` both are `protected`, and the plain name is Lean's
+    again.
 - **Completeness is for every witness, and the Lean `P` has no signer.**
   - `CompleteWithError` quantifies over every witness of `Rel (S.acc vk)`, for every `vk`. That
     includes node witnesses whose children are any accepted signed proofs of any size.
@@ -1186,8 +1206,8 @@ in-place reads and a byte-level node reader.
     package tree: 986 for `spartan-srom` at `a874f87` (952 Mathlib, 28 CompPoly, 6 Batteries), in
     73.7 s (F3 §2.3). At the pin `org-setup.sh` prebuilds those of the closures of `RecursionFast`,
     the CompPoly roots and `Mathlib.Tactic`, and the rest must fit `badge_s` = 180 s (§5.1):
-    `spartan-srom`'s badge build took about 20 s on 4 CPUs for 74 objects: its 66 modules, the
-    badge's 2 and 6 Batteries and Mathlib modules outside those closures (F5).
+    `spartan-srom`'s badge build took 29.3 s on 4 CPUs at `8ad98e9` for 74 objects: its 66
+    modules, the badge's 2 and 6 Batteries and Mathlib modules outside those closures (F5).
   - `org-setup.sh` writes into the package tree too. So the harness needs a private, writable copy
     of it; the shared read-only tree cannot be used (F3 friction 9; `CLAUDE.md`, "Commands").
 
@@ -1209,13 +1229,13 @@ in-place reads and a byte-level node reader.
   - **random `π` with the root's genuine trace and signature**: `SigOk` passes, so your `V` runs on
     garbage;
   - bit flips in `π`;
-  - bit flips, truncations and extensions of the whole file.
+  - bit flips and truncations of the whole file.
 
   It fails only on time or a crash (V4-A9): each input at most 10 × `T_V` (or `verify_s` where
   `T_V` is not enforced), the column at most 180 s. An accepted input is recorded, not failed. The
   maximum time is published. For `spartan-srom` the maximum was 443 ms at the smoke shape and
   1.59 s at `r = 0, n = 4,096` before its fix pass (F3 §3, §4.3), 312 ms at the smoke shape after it
-  (F4), and 323 ms at the smoke shape at `a283ff8` (F5).
+  (F4), and 323 ms and 366 ms at the smoke shape at `a283ff8` and `8ad98e9` (F5).
 - **Crafted inputs are not tested, and they can be much slower** (review F1-M2; FB-5).
   - A signature on the empty trace signs every query-free slot under that `vk`. `spartan-srom`'s σ0
     is public in every bundle it emits.
@@ -1262,10 +1282,13 @@ in-place reads and a byte-level node reader.
   - copying the private package tree: 9.2 GB, 4 min 0 s with `cp -a` on ext4 (F3), 4 min 8 s (F4),
     2 min 2 s (F5);
   - `org-setup.sh`: 5 min 56 s at `a874f87` (F3), 4 min 12 s at `81e1ebf`, CompPoly included (F4),
-    6 min 7 s at `a283ff8`, the `Mathlib.Tactic` objects included (F5, `logs/f5/org-setup.log`);
+    6 min 7 s at `a283ff8`, the `Mathlib.Tactic` objects included (F5, `logs/f5/org-setup.log`),
+    3 min 5 s at `8ad98e9` on that tree, whose package objects were already built (F5,
+    `logs/f5-fix/org-setup.log`);
   - `spartan-srom`'s certificate job: 14 min 22 s (F3), 9 min 52 s (F4), 16 min 36 s with
-    `--nanoda` (F4), 8 min 42 s on 4 CPUs and 6 min 47 s on 16 (F5);
-  - its smoke benchmark: 54 s (F3), 14 s (F5).
+    `--nanoda` (F4), 8 min 42 s on 4 CPUs and 6 min 47 s on 16 at `a283ff8`, 9 min 39 s on 4 CPUs
+    at `8ad98e9` (F5);
+  - its smoke benchmark: 54 s (F3), 14–15 s (F5).
 
 ## 8. Submitting
 

@@ -4,7 +4,7 @@
 > copy**: the v3 design and its predecessors, the core's v2 handover and harness documents, the
 > research, the v1.0 report and the v3 baseline brief. None of it is the design in force.
 >
-> - **The v4 design** lives in the core: `.contract/docs/DESIGN-v4-srom.md`, at the pin `<core-pin>`
+> - **The v4 design** lives in the core: `.contract/docs/DESIGN-v4-srom.md`, at the pin `8ad98e9`
 >   (branch `v4/ks-standard`, with the amendments V4-A9 and V4-A10). Its brief, design attack and
 >   stage records are under `.contract/docs/v4/`, and the contract is
 >   `.contract/RecursionFast/Contract/`.
