@@ -1,0 +1,30 @@
+# The native prover of the `spartan-srom` entry (blueprint §7, stage F2). Flat layout: the crate
+# root is this directory, `main.rs` and its modules beside it. No dependencies, so the build is
+# offline and reproducible from this directory alone. The submitted form is `prover.s`, emitted by
+# `build-asm.sh` (README.md); a plain cargo build is for tests:
+#   CARGO_TARGET_DIR=<outside this directory> cargo test --release --offline
+[package]
+name = "spartan-srom-prover"
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+publish = false
+autobins = false
+autotests = false
+autobenches = false
+autoexamples = false
+
+[[bin]]
+name = "spartan-srom-prover"
+path = "main.rs"
+
+[dependencies]
+
+[profile.release]
+opt-level = 3
+codegen-units = 4
+debug = false
+panic = "abort"
+
+[profile.test]
+opt-level = 3
