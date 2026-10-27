@@ -1349,3 +1349,13 @@ exist. **S-G** — `finPf` with `rsWeight` (leaf: 3 points), `evalM(r_{E2}, ρ)`
 target, `eqZ` with `ρ₁`.
 
 Note (3.9): `sizes.py` carries S-0's 3.8.2 reconciliation of the item sequence (L3 absorbs 8 `v_kind`, 128 B; 451 FS items, 8,874 items, `piSize = 755,680`, 22,465 compressions per slot); the text follows the script.
+
+### Stage-review changes 10 (orchestrator rulings on S-G part 1)
+
+| Point | Ruling |
+|---|---|
+| The charging log | A chain is charged on the log before its last entry (`L.take j`), because levels 1–4 absorb their caps mid-chain. Each row proves that its doom predicate reads the same values off `L.take i` and `L` when nothing bad occurs (`colL_prefix`/`colL_append`). |
+| The window hits (§5.1) | Windows count only queries of at most `queryCap` bytes (the log can hold longer oracle queries), include the entry's own query, and sit at offsets 7 + 16k and 8 + 16k. The H row is ≤ 2^-142, not 2^-144. The total `2^-120.36 + 2^-142 ≤ εR` must be kernel-checked in S-I. |
+| "Flipped group" | Dropped from §5.1's `Bad`: it was never defined and no row needs it. |
+| Off-chain queries | Column and Merkle-node queries carry no state and are charged only through `Bad`. |
+| The stage split | S-G is split into S-G3 (`finP`, `finPf`, then a dump), S-G1 (the doom predicates and the §5.2 rows, `card_idx_fiber`, a generic `hloc_of`), and S-G2 (`ligerito_final`, `final`, `kstate`), done in that order. |
