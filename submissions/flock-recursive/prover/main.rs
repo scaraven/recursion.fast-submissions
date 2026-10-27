@@ -16,6 +16,7 @@ mod blake2s;
 mod circuit;
 mod field;
 mod format;
+mod ir;
 mod items;
 mod kat;
 mod leaf;
@@ -120,6 +121,17 @@ fn test_leaf(m: usize, reps: usize) {
         let mut c2 = c;
         c2[0] ^= 1;
         let bad1 = leaf::verify(&o, &circ, &vk, &c2, &pi);
+        // the dumped Lean program (with the finals) on the same proof, for the Lean kinds
+        let ir = match (m, kat::find_ir_dump()) {
+            (30 | 32, Some(d)) => {
+                let k = if m == 32 { "L" } else { "P" };
+                let text = std::fs::read_to_string(d.join(format!("ops-{k}.txt"))).unwrap_or_default();
+                let r = ir::run(&text, &circ, &o, &vk, &c, &pi);
+                let r2 = ir::run(&text, &circ, &o, &vk, &c2, &pi);
+                format!("{}(lines {:?}; canary_accept={}; asks={}; node_matrices_used={})", if r.ok { "accept" } else { "REJECT" }, r.failed, r2.ok, r.asks, r.node_matrices_used)
+            }
+            _ => "skip".to_string(),
+        };
         let mut bad2 = false;
         for frac in [7usize, 3, 2] {
             let mut pi2 = pi.clone();
@@ -128,7 +140,7 @@ fn test_leaf(m: usize, reps: usize) {
             bad2 |= leaf::verify(&o, &circ, &vk, &c, &pi2);
         }
         println!(
-            "TEST-LEAF m={m} rep={rep} n={n} |pi|={} piSize={} prove_s={pt:.3} verify_s={vt:.3} accept={ok} flipped_stmt_accept={bad1} flipped_byte_accept={bad2} items_kat={kat} peak_rss_mb={:.0} threads={} tier={} {}",
+            "TEST-LEAF m={m} rep={rep} n={n} |pi|={} piSize={} prove_s={pt:.3} verify_s={vt:.3} accept={ok} flipped_stmt_accept={bad1} flipped_byte_accept={bad2} items_kat={kat} lean_ir={ir} peak_rss_mb={:.0} threads={} tier={} {}",
             pi.len(),
             params::PI_SIZE,
             peak_rss_mb(),
@@ -136,7 +148,7 @@ fn test_leaf(m: usize, reps: usize) {
             simd::tier_name(),
             tm.report()
         );
-        if !ok || bad1 || bad2 || pi.len() != params::PI_SIZE || kat.starts_with("FAIL") {
+        if !ok || bad1 || bad2 || pi.len() != params::PI_SIZE || kat.starts_with("FAIL") || ir.starts_with("REJECT") || ir.contains("canary_accept=true") {
             eprintln!("test-leaf: FAIL");
             std::process::exit(1);
         }

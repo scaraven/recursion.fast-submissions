@@ -90,3 +90,15 @@
   0.25–0.27 s (rev 3.7 0.36/0.42, pre-3.7 0.27/0.27); m = 32 13.3 s; `prove-leaf 30` via `rf-oracle`:
   |tr| = 8,874, `acc` accept, canary reject. `prover.s` sha256 `f3385c4d…62a3`. RESULT §9.
 - 2026-10-27 7763 run 40561971516 (rev 3.9, prover.s f3385c4d…): leaf request 1.37–1.43 s, m = 32 5.58 s; skip-c recovered the 3.7 regression. Node ≈ 1.42 s (estimate), link ≈ 2.8 s, tree ≈ 445 s. Node prover waits for S-G's finals. Branches deleted.
+
+## 2026-10-27 (resumption 3: finals, node)
+
+- `ir.rs`: an interpreter of the S-G dump (`ops-L/P.txt`, all finals) with native op
+  implementations after S-F2's `FRVerifierImpl`. First run: the dumped program accepts the native
+  m = 30 and m = 32 proofs, rejects the canary, asks 8,874 items; 54 single-byte flips (3 per field)
+  rejected by both it and the native verifier. Φ order (`r″` = RS1 0…6) and `eqZ`'s bit 6 confirmed
+  from the dump's `finRS`.
+- Node prover: blocked. No dump of `compileMux`'s M rows and cell map, of the L rows, or of
+  `nodeLayout`'s intervals and link maps exists (A.7 says the M bases are pinned by such a dump);
+  the Lr point is provisional. Stopped per the Pace rule; RESULT §11.3 lists what is needed.
+- `prover.s` regenerated: sha256 `f3e33f44…f7a6`.

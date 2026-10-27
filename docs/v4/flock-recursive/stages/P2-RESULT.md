@@ -537,3 +537,84 @@ The two caps, estimated:
 - measure the link on a 7763.
 
 The probe branches p2-22 and p2-23 are deleted; no `probe/p2-*` branch remains.
+
+## 11. Finals, node prover, modes (resumption 3)
+
+Status: 2026-10-27, partial: **item 1 (finals) done; items 2–3 (node prover, `node`/`tree` modes,
+run.sh) blocked** on inputs that do not exist yet (11.3). Dump used: `logs/S-G/dump/` (21:38;
+105,700 ops, 8,874 items, `piSize` 755,680, `ops-L.txt` sha256 `d9652595…`, no pending finals).
+Logs: `logs/P2/r311/`.
+
+### 11.1 Changes (crate 8,541 `.rs` lines)
+
+| file | lines | change |
+|---|---:|---|
+| `ir.rs` | new, 537 | an interpreter of the dumped Lean program (`irdump ops L\|P`, `FRVIR.evalOp`, all 55 op names of the dump) with native op implementations mirroring S-F2's `FRVerifierImpl` (`lagrangeSI`, `eqZI`, `rowWI`, `maskRows` with A.6's nine kinds in `blockKinds` order, `walkA/B` on the circuit walk, `phiRSI`, `rsWeightI` over K points, `tensorWI` = `ntt::xhat`, `slotWI`, `shiftTargetI`, `targetSLeafI`, `shiftEq`, `eqPoint`); `linkW = 0` (leaf kinds); `evalL`/`evalMK` return zeros and are reported (`node_matrices_used`); test `ir_kat_p30` |
+| `main.rs` | 385 → 397 | `test-leaf` runs the dumped program of its kind (m = 30 `P`, m = 32 `L`) on the proof and on the canary (`lean_ir=…`); a rejection fails the mode |
+| `kat.rs` | 191 → 209 | `find_ir_dump` (`FLOCK_IR_DUMP`, else `logs/S-G/dump` above the working directory) |
+| `prover.s` | regenerated | 6,416,110 bytes, **sha256 `f3e33f44a88be73e562d58a4aa0edc6a9f95705c0f44d284166a65444ff2f7a6`** (`build-asm.sh logs/P2/r311/asm`, 32.3 s); linked binary sha256 `489b868c…1334`; no machine path; `selftest` pass |
+
+No change to the prover or the native verifier was needed: the dumped finals accept their proofs.
+
+### 11.2 The finals KAT
+
+- **The whole dumped program** (skeleton and every final: `finRS`, `finZ`, `finLc`, `finSh`,
+  `finLr`, `finE`, `finB′`, `finP 0…4`, `finPf`) run by `ir.rs` on native proofs: **accepts** an
+  m = 30 `P30` proof (`ir_kat_p30`, `test-leaf 30` with the `prover.s` binary) and an m = 32 `L32`
+  proof (`test-leaf 32`); **rejects** the canary (flipped `c`) for both; asks exactly the 8,874
+  items. `ir_kat_p30` also flips one byte at the start, the middle and the end of each of the 18
+  fields: the native verifier and the dumped program both reject all 54.
+- **Φ's coefficient order and `eqZ`'s bit order (§9.4 item 3): settled.** The dump's `finRS` packs
+  `r″` = RS1's coordinates 0…6 in order (registers r1679, r1680, r1682, … , r1688; `κ` = coordinate
+  7, r1689) and computes `T_j = Σ_i b_i·phiRS(r″, s_{j,i})` with `b_i` the one-bit constants
+  `0x01, 0x02, 0x04, …` (A.7's basis), Horner in `κ`, the fourth `T` zeroed by `keep false`; `eqZ λ ρ₁`
+  weights slice `i` by `L_{i mod 64}(λ)·eq(ρ₁, bit 6 of i)`. The native verifier and prover use the
+  same orders, and `phiRS` follows `FRRingSwitch.phiApply` (stage `p` = `(2^{6−p}, r″_p)`), so
+  `α_Z = P^z*(λ)` and `finPf`'s `rsWeight` both pass on honest proofs.
+- What the dumped program does that the native verifier does not spell out the same way (no
+  verdict difference): `finB′` adds `κ′·v_E` (zero for a leaf: E end is zero) and the public cells
+  under `keep false`; `finPf` evaluates `evalMK` at E2's point and the `L`/`M` terms under `keep
+  false`; `shiftTarget` gets `κ_s` from outside the op (S-F2's interface gap; `ir.rs` reads S1's
+  coordinate 28 at τ's first register + 42).
+- **Disagreements: none for the leaf kinds.** Not covered: the `N` program (needs `evalM`, `evalMK`,
+  `evalL`, `linkW`, `targetS` of the node), see 11.3.
+
+### 11.3 The node prover: what is missing
+
+The node's proof cannot be built exactly, nor checked by a native `acc` against the Lean program, from
+what exists in the worktree:
+
+1. **M rows and cell map.** The E phase's matrices are `compileMux (gen fin .mux)`'s rows (A.7: "the
+   exact bases are the output of `compileMux` and are pinned by its dump"). No such dump exists:
+   `irdump` prints items, ops and the summary; `logs/S-G/dump/ops-M.txt` is the mux program's op
+   list, not its compiled rows. Needed: a dump of the sparse `A_M`, `B_M`, `C_M` entries `(row, cell,
+   coef)` (1,237,344 rows) **and** the map from the program's registers/imports to M cells, so the
+   prover can fill the M region of `f` from the children's replayed verifiers (and `evalM`/`evalMK`
+   natively, as S-F2's `evalMKI` reads `Layout.nodeRows fin`).
+2. **L rows and cell map** (`lRows`, `FRNodeLayout`'s L layout): for Lr's R1CS and `evalL`.
+3. **`nodeLayout`'s intervals**: the block intervals of the nine kinds (`Ind_kind`, incl. `free` and
+   `WM`) and the link families' slot maps (`linkW`), as a dump; without them Lc's per-kind folds,
+   Sh's link terms and the H witness's placement are not exact.
+4. **The Lr point** is provisional (S-G-RESULT §6).
+5. **Op interface gaps** (S-F2): `targetS`, `slotW`, `linkW` need the kind; `shiftTarget` needs `κ_s`.
+
+A stubbed node prover (stub matrices, self-consistent with a stub native `acc`) is possible, but it
+would be a second protocol to maintain and its "acceptance" would not mean the Lean `acc` accepts; the
+timing surrogate `FLOCK_NODE_SHAPE` (§2, §6) already measures the node's extra phases. I stopped
+here (TRACK-RULES' Pace: blocked) rather than build that. With items 1–3 dumped, the node prover is a
+port with KATs: H blocks (stream, hashStmt, WOTS, key leaf, path, mirror) from the children's traces
+and signatures, the M region from the replayed verifiers, the L bits, the shared PIOP plus E/Lr, and
+`ir.rs` extended with `evalM/MK/L` from the dumped rows to check the `N` program.
+
+**Modes**: `node` and `tree` still exit 2 (they need the node prover); `run.sh` is unchanged (the stream
+link and tree measurements need them). The m = 32 leaf and the `leaf` request are measurable now with
+the current `run.sh` (`probe/p2-prover/run.sh OUTDIR`, env `P2_LEAF_REQS`, `P2_M32`).
+
+### 11.4 Local runs (VM, portable, 32 threads; `logs/P2/r311/`)
+
+| run | result |
+|---|---|
+| `cargo test --release` | 28 passed, 1 ignored |
+| `test-leaf 30` (prover.s binary) | accept, rejections, items KAT pass, `lean_ir=accept`, canary rejected; prove 3.64 s |
+| `test-leaf 32` | accept, `lean_ir=accept`, canary rejected; prove 16.1 s (shared VM), 5.25 GB |
+| `prove-leaf 30` via `rf-oracle` | |tr| = 8,874, query lengths equal, `acc` accept, canary reject |

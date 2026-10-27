@@ -31,6 +31,24 @@ pub fn find_items_json() -> Option<PathBuf> {
     }
 }
 
+/// The dumped verifier programs with the finals (`ops-L.txt`, `ops-P.txt`): `FLOCK_IR_DUMP`, else
+/// `logs/S-G/dump` in the working directory or one of its parents.
+pub fn find_ir_dump() -> Option<PathBuf> {
+    if let Some(p) = std::env::var_os("FLOCK_IR_DUMP") {
+        return Some(PathBuf::from(p));
+    }
+    let mut d = std::env::current_dir().ok()?;
+    loop {
+        let p = d.join("logs/S-G/dump");
+        if p.join("ops-P.txt").is_file() {
+            return Some(p);
+        }
+        if !d.pop() {
+            return None;
+        }
+    }
+}
+
 /// The item objects of `items.json`, one per line as the dump tool prints them.
 pub fn load_items(p: &std::path::Path) -> Option<Vec<String>> {
     let s = std::fs::read_to_string(p).ok()?;
