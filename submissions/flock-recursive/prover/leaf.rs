@@ -62,7 +62,7 @@ pub fn packed(z: &[u64]) -> &[F] {
 }
 
 /// `(P^{ab}(λ), P^z(λ))` from the values on `Λ`: `P^z` by Lagrange on `Λ`; `P^{ab}` by Lagrange on
-/// `S ∪ Λ` with `P^{ab}|_S = P^z|_S + P^e|_S` (`e` = the one position in every block).
+/// `S ∪ Λ` with `P^{ab}|_S = P^z|_S + P^e|_S` (`e` = the block's public target `E`).
 pub fn skip_eval(pab: &[F], pz: &[F], r: &[F], lambda: F) -> (F, F) {
     let sk = skip();
     let wl = lagrange_weights(&sk.l_pts, lambda);
@@ -71,17 +71,18 @@ pub fn skip_eval(pab: &[F], pz: &[F], r: &[F], lambda: F) -> (F, F) {
         pzl += wl[i] * pz[i];
     }
     // P^z on S from its values on Λ (GF(2^8) Lagrange coefficients), plus P^e
-    let pe0 = eq_at_int(&r[..8], (params::ONE_POS >> 6) as u64);
+    // P^e on S: Σ over the target's 1-positions p of eq(r₀…₇, ⌊p/64⌋) at σ = p mod 64
+    let mut pe = [F::ZERO; 64];
+    for &p in crate::circuit::e_positions() {
+        pe[p & 63] += eq_at_int(&r[..8], (p >> 6) as u64);
+    }
     let mut vals = vec![F::ZERO; 128];
     for sg in 0..64 {
         let mut v = F::ZERO;
         for i in 0..64 {
             v += pz[i].mulb(sk.phi8[sk.ms[sg][i] as usize]);
         }
-        if sg == params::ONE_POS & 63 {
-            v += pe0;
-        }
-        vals[sg] = v;
+        vals[sg] = v + pe[sg];
     }
     vals[64..].copy_from_slice(pab);
     let w = lagrange_weights(&sk.sl_pts, lambda);
@@ -342,12 +343,28 @@ fn node_surrogate(f: &[F], fs: &mut Fs) {
             c = fold_f(&c, s);
         }
     }
-    let wt: Vec<F> = f.iter().map(|v| *v + F::ONE).collect();
-    let (pt, _) = prove_pairs(vec![(wt, f.to_vec())], &mut |g| {
-        std::hint::black_box(g);
-        next()
-    });
-    std::hint::black_box(pt);
+    let t = Instant::now();
+    if std::env::var_os("FLOCK_E2_BATCHED").is_some() {
+        // E2's claim batched into the Ligerito weight (as ring switching is): one pass adding a
+        // template weight to W
+        let mut w: Vec<F> = crate::par::uninit_vec(f.len());
+        crate::par::for_each_chunk_mut(&mut w, 1 << 14, |off, ch| {
+            for (i, x) in ch.iter_mut().enumerate() {
+                *x = f[off + i] + F::new((off + i) as u64, 1);
+            }
+        });
+        std::hint::black_box(&w);
+    } else {
+        let wt: Vec<F> = f.iter().map(|v| *v + F::ONE).collect();
+        let (pt, _) = prove_pairs(vec![(wt, f.to_vec())], &mut |g| {
+            std::hint::black_box(g);
+            next()
+        });
+        std::hint::black_box(pt);
+    }
+    if std::env::var_os("FLOCK_VERBOSE").is_some() {
+        eprintln!("  node_extra E2 {:.3}", t.elapsed().as_secs_f64());
+    }
 }
 
 fn dot(a: &[F], b: &[F]) -> F {

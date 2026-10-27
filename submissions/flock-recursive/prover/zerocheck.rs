@@ -91,7 +91,8 @@ pub fn round1(a: &[u8], b: &[u8], z: &[u8], r_out: &[F]) -> R1 {
     let parts = par::map_chunks(nw, 16, |lo, hi| {
         let mut acc = vec![F::ZERO; 192];
         let mut w = [F::ZERO; 192];
-        for x in lo..hi {
+        let used_w = crate::par::used_blocks().saturating_mul(2);
+        for x in lo..hi.min(used_w) {
             let base = x * 1024;
             simd::round1_window(sk, &a[base..base + 1024], &b[base..base + 1024], &z[base..base + 1024], &mut w);
             simd::axpy(&mut acc, &w, eo[x]);
@@ -169,7 +170,9 @@ pub fn round_x6(t: &[F], a: &[u8], b: &[u8], rest: &[F]) -> (F, F) {
     let nlo = es.nlo;
     let parts = par::map_chunks(es.hi.len(), 1, |lo, hi| {
         let (mut s1, mut si) = (FAcc::default(), FAcc::default());
-        for h in lo..hi {
+        // pair p is rows 2p, 2p+1; a block has 256 rows
+        let used_h = crate::par::used_blocks().saturating_mul(128).div_ceil(1 << nlo);
+        for h in lo..hi.min(used_h) {
             let (i1, ii) = simd::x6_inner(t, a, b, h << nlo, &es.lo);
             s1.mac(es.hi[h], i1);
             si.mac(es.hi[h], ii);
@@ -188,7 +191,14 @@ pub fn round_x6(t: &[F], a: &[u8], b: &[u8], rest: &[F]) -> (F, F) {
 pub fn fold_x6(t: &[F], a: &[u8], s1: F) -> Vec<F> {
     let n = a.len() / 16;
     let mut out: Vec<F> = par::uninit_vec(n);
-    par::for_each_chunk_mut(&mut out, 1 << 12, |off, ch| simd::x6_fold(t, a, off, s1, ch));
+    let used_p = crate::par::used_blocks().saturating_mul(128);
+    par::for_each_chunk_mut(&mut out, 1 << 12, |off, ch| {
+        if off >= used_p {
+            ch.iter_mut().for_each(|x| *x = F::ZERO);
+        } else {
+            simd::x6_fold(t, a, off, s1, ch)
+        }
+    });
     out
 }
 

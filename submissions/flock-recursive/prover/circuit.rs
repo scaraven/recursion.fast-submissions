@@ -4,8 +4,8 @@
 //! leanVM `crates/flock/src/hash.rs`, pin `a386121f`), as `submissions/spartan-srom/prover/circuit.rs`
 //! builds it, with the chain step's constants and the P1 re-based layout:
 //!
-//! * `h0` at 0…255 and every constant message/counter/flag bit as constant rows: `(one, one)` for a
-//!   1 bit, the zero row for a 0 bit;
+//! * `h0` at 0…255 and every constant message/counter/flag bit: the zero row, the bit in the
+//!   public target `E` (S-E1-M2, rev. 3.3's convention);
 //! * the output digest at 256…511 (rows `(out form, one)`);
 //! * the message at 512…1023 (A.6): the input digest `d` (bytes 1…32) at 520…775 (input rows
 //!   `(var k, one)`), the tag byte 0x43 at 512…519, zero bytes 776…1023;
@@ -232,6 +232,18 @@ pub fn const_bit(k: usize) -> Option<bool> {
     }
 }
 
+/// The positions where the public target `E` of the block is 1: the constant one and every
+/// constant 1-bit (the zerocheck's constraint is `(A₀z)∘(B₀z) = z + E`, every constant a zero row).
+pub fn e_positions() -> &'static Vec<usize> {
+    static E: std::sync::OnceLock<Vec<usize>> = std::sync::OnceLock::new();
+    E.get_or_init(|| {
+        let mut v: Vec<usize> = (0..GATE_BASE).filter(|&k| const_bit(k) == Some(true)).collect();
+        v.push(CPOS);
+        v.sort_unstable();
+        v
+    })
+}
+
 /// Transpose a 64 × 64 bit matrix in place: bit `j` of `a[i]` becomes bit `i` of `a[j]` (each
 /// stage swaps the off-diagonal `w × w` blocks).
 pub fn transpose64(a: &mut [u64; 64]) {
@@ -324,6 +336,12 @@ impl Circuit {
             if !is_gate[p] {
                 is_gate[p] = true;
                 rows[p] = Some((a, bb));
+            }
+        }
+        // S-E1-M2 / rev. 3.3: every constant position has the zero row; its bit is in E
+        for k in 0..GATE_BASE {
+            if const_bit(k).is_some() {
+                rows[k] = None;
             }
         }
         assert!(!is_gate[CPOS]);
@@ -563,9 +581,12 @@ mod tests {
                     assert_eq!((z[k / 64] >> (k % 64)) & 1, ((d[e] >> bit) & 1) as u64);
                 }
             }
+            let mut e = [0u64; 256];
+            for &p in e_positions() {
+                e[p / 64] |= 1u64 << (p % 64);
+            }
             for w in 0..256 {
-                let e = if w == CPOS / 64 { 1u64 << (CPOS % 64) } else { 0 };
-                assert_eq!(a[w] & b[w], z[w] ^ e, "row word {w}");
+                assert_eq!(a[w] & b[w], z[w] ^ e[w], "row word {w}");
             }
             assert!(z[GATE_BASE / 64..].iter().any(|&x| x != 0));
         }

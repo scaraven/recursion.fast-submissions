@@ -259,3 +259,11 @@ pub fn uninit_vec<T: Copy>(n: usize) -> Vec<T> {
     unsafe { v.set_len(n) };
     v
 }
+
+/// Blocks that carry a computation (`Sel`'s prefix); the rest are zero blocks whose zerocheck
+/// weight `eq·Sel` vanishes, so the prover skips them. Default: every block. Set by the node-shape
+/// timing mode (P2 prototype of rev. 3.2's `Sel`).
+pub static USED_BLOCKS: AtomicUsize = AtomicUsize::new(usize::MAX);
+pub fn used_blocks() -> usize {
+    USED_BLOCKS.load(Ordering::Relaxed)
+}

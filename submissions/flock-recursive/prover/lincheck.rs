@@ -36,7 +36,8 @@ pub fn partial_fold(z: &[u64], s_out: &[F]) -> Vec<F> {
     let parts = par::map_chunks(stripes, 1, |lo, hi| {
         let mut acc = vec![F::ZERO; BLOCK];
         let mut t = [F::ZERO; 256];
-        for s in lo..hi {
+        let used_s = crate::par::used_blocks().div_ceil(8);
+        for s in lo..hi.min(used_s) {
             t[0] = F::ZERO;
             for i in 0..8 {
                 let h = 1 << i;

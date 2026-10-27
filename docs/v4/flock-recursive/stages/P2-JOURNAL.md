@@ -42,3 +42,13 @@
   2.8), tree ≈ 450 s (target 500). Branches p2-1 … p2-15 deleted.
 - Rev. 3.2 (2709159) relayed: node 54,111 blocks, M ≈ 2^19.96 (the surrogate's 2^20 matches);
   Sel·eq at degree 3, 3 hashStmt blocks per slot, J_z = 4 in acc: node-side, not yet built.
+- Orchestrator: the committed `prover.s` is the submission (regenerate with every source change);
+  the child-file parsing counts in a node request.
+- Sel prototype (`FLOCK_USED_BLOCKS`, timing only) and the E2-batched surrogate
+  (`FLOCK_E2_BATCHED`). 7763 (40520772546, -81943, -88939): leaf request 1.34–1.41 s; node with
+  Sel 1.40–1.46 s; with Sel + E2 batched 1.26–1.32 s; m = 32 5.47–5.53 s. E2 alone 0.14 s
+  (0.008 s batched). Link ≈ 2.80 s (Sel), ≈ 2.66 s (Sel + E2 batched, a proposal for review).
+- S-E1-M2: the leaf chain block's constants are zero rows with their bits in E
+  (`circuit::e_positions`); `skip_eval`'s `P^e` sums over E. Tests and `test-leaf` pass (VM
+  portable, qemu ymm-sim). `prover.s` regenerated: sha256 4588296d…, rustc 1.99.0.
+- Stopped at the orchestrator's request (fewer agents/tokens). All probe/p2-* branches deleted.

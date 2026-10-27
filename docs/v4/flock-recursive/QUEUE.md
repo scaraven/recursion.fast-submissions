@@ -8,7 +8,6 @@ Last updated 2026-10-27. Blueprint at revision 3.3 (`1c1e27c`).
   revision 3.3.
 - S-H1, the extractor DSL (`FRXDsl`, `FRXField`).
 - S-D golf, S-E1 golf.
-- P2, winding down: write-up only, then stop.
 
 ## Done, awaiting closure
 
@@ -17,6 +16,13 @@ Last updated 2026-10-27. Blueprint at revision 3.3 (`1c1e27c`).
 | S-C (piop core) | one combined review + golf | rev 3.3: `FRSpartan` to per-kind masked rows (`A = Σ Ind_kind ⊗ A₀^kind`, `Ê_w`); open Q2 (which Z2 form `gen` uses), Q3 (the d slot at 520…775 is not 256-aligned, and the θ count is 8 or 10); `FR.lean` imports `FRMLEControls`; `FRPubTarget` unowned |
 | S-D (pcs) | fix pass after golf: S-D-m2/m3/m5; then commit | S-D2 (`coeffs_of_values`, `coeffs_spec`, `interpF`, `encF` in `FRRSEval`) |
 | S-E1 (BLAKE2s, leaf) | fix pass after golf: the per-kind targets of rev 3.3 (A.6 table), S-E1-m1…m5; then commit | — |
+
+## Decisions pending
+
+- **E2 batching** (P2-RESULT §6): put the node's E2 claim into the Ligerito weight, the same
+  treatment ring switching gets, instead of its own sumcheck. Measured: the stream link drops from
+  2.80 s to 2.66 s on the 7763. This is sound only if E2 is a linear claim on `f`. Ask the crypto
+  reviewer (a short check) before P2 resumes.
 
 ## Next stages (in order, as slots free)
 

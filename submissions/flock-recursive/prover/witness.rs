@@ -225,9 +225,18 @@ pub fn leaf_witness_fast(c: &Circuit, s: &Digest, m: usize) -> Witness {
     let words = nb * 256;
     let (mut z, mut a, mut b) = (alloc_u64(words), alloc_u64(words), alloc_u64(words));
     let (pz, pa, pb) = (par::SyncPtr(z.as_mut_ptr()), par::SyncPtr(a.as_mut_ptr()), par::SyncPtr(b.as_mut_ptr()));
+    let used = par::used_blocks().min(nb);
     par::run(nb.div_ceil(64), &|g| {
         let (pz, pa, pb) = (pz, pa, pb);
         for i in 64 * g..(64 * g + 64).min(nb) {
+            if i >= used {
+                unsafe {
+                    std::ptr::write_bytes(pz.0.add(256 * i), 0, 256);
+                    std::ptr::write_bytes(pa.0.add(256 * i), 0, 256);
+                    std::ptr::write_bytes(pb.0.add(256 * i), 0, 256);
+                }
+                continue;
+            }
             unsafe {
                 let zw = &mut *(pz.0.add(256 * i) as *mut [u64; 256]);
                 let aw = &mut *(pa.0.add(256 * i) as *mut [u64; 256]);
