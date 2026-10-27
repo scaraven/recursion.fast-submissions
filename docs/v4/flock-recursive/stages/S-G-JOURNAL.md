@@ -132,3 +132,13 @@ symlinked; `.lake` copied from `fr-build-cert`). Every `lake`/`lean` run used th
       - `dif_pos` is deprecated: add a `vAt_of_lt` lemma proved by `simp`.
 31. Stopped at a natural boundary (budget). The truths, the per-phase dooms, the coordinate
     `hround` rows and the `Dp` assembly remain (RESULT S-G1c §4).
+
+## 2026-10-27 (S-G1c, part 2)
+
+32. `FRSoundnessTruths`: `wordK`, `codeK`, `farL`, `decodeL` (`decodeL_spec`), `farL_congr`,
+    control `not_farL_nil`; `frEncW` (carried ∩ wins; the node children are windows at 8 and 40),
+    `colL_frEncW`, `not_hit_of_not_bad`, `colL_take`. `if_pos`/`dif_pos` are deprecated; use
+    `ite_eq_left`/`dite_eq_left`.
+33. Stopped at this boundary (budget). Next: (a) cap entries are absorb windows; (b) the cap's own
+    absorb; then `A_c` and the remaining truths, the dooms and `Dp`, and the coordinate rows
+    (RESULT S-G1c part 2 §4).

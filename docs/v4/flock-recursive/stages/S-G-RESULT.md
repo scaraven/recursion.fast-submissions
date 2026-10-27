@@ -653,3 +653,63 @@ warnings, no lines over 100 characters.
    `2^128`-element coordinates.
 4. **`TruthStable` for word reads.** As in S-G1b §5.5: the bridge from `¬ Bad L` to
    `¬ Hit (frEnc i)`, and the cap's own absorb.
+
+---
+
+# S-G1c (part 2): the Ligerito words, and "no bad event, no Merkle hit"
+
+Base: HEAD after S-G1c part 1. **Status: partial, commit-ready.**
+
+The new module is `FRSoundnessTruths.lean`: 93 code lines, plus one import in `FR.lean`. There
+is no sorry and no warning. The source rule passes (63 files, 0 findings).
+
+## 1. Part A: the level words
+
+These are A.10's notation for the Ligerito truths.
+
+| Definition or theorem | What it is |
+|---|---|
+| `wordK` | Level `i`'s word in K. |
+| `codeK κ i` | The level's code, `rsCode (Dpts nᵢ) kᵢ`. |
+| **`farL`** | `far_i`: no agreement set makes the word `JointClose` at radius `eᵢ`. |
+| `not_farL_iff` | `¬ farL` holds iff some family of codeword rows agrees with the word on at least `n − e` positions. |
+| **`decodeL`** | The decoded codeword rows: a choice from `not_farL_iff`, and `0` when the word is far. |
+| **`decodeL_spec`** | The decoded rows lie in the code and agree with the word on at least `nᵢ − eᵢ` positions. |
+| `farL_congr` | The word reads only the entries up to the cap's absorb. |
+| `not_farL_nil` | Positive control: the empty log gives the zero word, which is a codeword. |
+
+## 2. Part B: no bad event, no Merkle hit (item 4, first half)
+
+| Definition or theorem | What it is |
+|---|---|
+| `frEncW i` | Level `i`'s encoding with `carried` filtered to the query's windows (`wins`). Its `carried_nodeQ` holds because both children of a node query are windows at offsets 8 and 40. |
+| `colL_frEncW` | `colL (frEncW i) = colL (frEnc i)`, since `colL` never reads `carried`. |
+| **`not_hit_of_not_bad`** | `¬ Bad L → ¬ Hit (frEncW i) L`: a hit under `frEncW` is a window hit. |
+| **`colL_take`** | On a non-bad log, a column read under a digest that an entry of `L.take n` carries within its windows is the same on `L.take n` and on `L`. This is `colL_prefix` plus `colL_append`. It is the `hstab` read of A.10 for every word under a cap absorbed strictly inside the chain's prefix. |
+
+## 3. Time and axioms
+
+- **Time:** 7.4 s wall single-core, 3.9 s of it import, 2.6 GB
+  (`logs/S-G/profile-FRSoundnessTruths.log`).
+- **Axioms:** `propext`, `Classical.choice`, `Quot.sound` (`logs/S-G/axioms-S-G1c-2.log`).
+
+## 4. Remaining work, in the coordinator's order
+
+1. **The other truths.**
+   - **P2's consistency set `A_c`.** It needs the index map between levels (A.2's coordinate
+     split: next row `(x mod 8)·2 + c`, column `x div 8`) and `foldRows` on columns.
+   - **`truthC`, `truthP1`, `truthP3`, `truthPf`.** These are `decodeL` plus the fold and
+     `novelX_tensor`. `truthPf` takes `evalMK` and `rsWeight` as hypotheses.
+   - **The PIOP truths (Z, L, S, Lr, RS, E, B′).** These are as in part 1 §4.1.
+   - **The negative control for `farL`.** It needs an explicitly far word.
+2. **The per-phase dooms and `Dp` over `phStart`.** Not started.
+3. **The multi-squeeze coordinate rows.** Not started.
+4. **Stability, second half.**
+   - **(a) Cap entries are windows.** Each cap entry is a window of the cap's absorb query
+     (offset `40 + 32c = 8 + 16(2 + 2c)`, query size at most `40 + 8192 ≤ queryCap`). This is
+     byte-level: `bytesAt (absorbQ st msg) (40 + 32c) 32 = bytesAt msg (32c) 32`, plus the chain
+     entry at `capPos i` being `absorbQ`.
+   - **(b) The cap's own absorb.** This is the case where the chain's last entry is that absorb.
+     The first preimage of a cap digest is then strictly before the absorb: a later one is a hit,
+     and the absorb itself is a window self-hit. So the top step of `colL` reads the same entry on
+     `L.take i`, and `colL_take` covers the children.

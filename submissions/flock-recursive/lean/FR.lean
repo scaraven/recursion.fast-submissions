@@ -49,6 +49,7 @@ import FRSoundnessDefs
 import FRSoundnessStepA
 import FRSoundnessStepB
 import FRSoundnessStepC
+import FRSoundnessTruths
 import FRSoundnessLigerito
 import FRVIRFinalsSG
 
