@@ -32,7 +32,7 @@ noncomputable def kstate (vk : Digest) :
     KState (Rel (accV LV vk)) (V LV vk) WitnessSending.E εKS where
   μ := μ chainEvals
   empty := mu_empty chainEvals
-  step := fun _ _ hl hμ hq => mu_step_chain hl hμ hq
+  step _ _ := mu_step_chain
   final := final_law vk
 
 /-- The entry's SNARK asks at most `qBound (kap n)` queries along every path. -/

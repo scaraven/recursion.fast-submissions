@@ -11,11 +11,11 @@ prefix log `L₀` and its entries `es`), the potential of §9.3 is
 `μ L := if Bad L ∨ Esc L then 1 else Σ_{j ∈ chains L} [OnFrontier L L[j]] φ (L₀ L j) (es j)`
 
 with `EscAt L₀ es := 2 ≤ |es| ∧ D L₀ es.dropLast ∧ ¬ D L₀ es` and `Esc L` some chain escaping.
-`muG_step` proves the contract's `step` law for it from one **local** inequality `hloc` on a single
-chain and one fresh query (the "intended values" of §9.3 step 4), plus `hseed` (a seed is charged
-nothing). The proof is §9.3 steps 1–5: `mu_le` (pointwise), `step_bad` (L-K1), `step_split`
-(L-K8: old chains keep their paths, prefixes and charges, the predecessor `i*` of the new entry
-leaves the frontier exactly when the query is its squeeze).
+`muG_step` proves the `step` law of the library's `KState` for it from one **local** inequality
+`hloc` on a single chain and one fresh query (the "intended values" of §9.3 step 4), plus `hseed`
+(a seed is charged nothing). The proof is §9.3 steps 1–5: `mu_le` (pointwise), `step_bad` (L-K1),
+`step_split` (L-K8: old chains keep their paths, prefixes and charges, the predecessor `i*` of the
+new entry leaves the frontier exactly when the query is its squeeze).
 -/
 
 namespace SpartanSrom
@@ -234,7 +234,7 @@ theorem new_seed (hseed : ∀ L₀ e, Matches [e] → φ L₀ [e] = 0) (hb : ¬ 
 end Step
 
 open Classical in
-/-- **`mu_step` (generic)**: the contract's `step` law for the potential `muG D φ`, with error
+/-- **`mu_step` (generic)**: the `step` law of `KState` for the potential `muG D φ`, with error
 L-K1's bad fraction plus `δ`, from the local inequality `hloc` on one chain and one fresh query
 (§9.3 step 4, "intended values") and `hseed`. -/
 theorem muG_step (δ : ℝ≥0)
@@ -893,7 +893,7 @@ theorem pRoundG_seed (D : Log → Log → Prop) (L₀ : Log) (e : ByteArray × D
   simp only [List.length_singleton, Nat.sub_self, this]
 
 open Classical in
-/-- **`mu_step` from the per-position facts**: the contract's `step` law with error `2^-129` for
+/-- **`mu_step` from the per-position facts**: the `step` law of `KState` with error `2^-129` for
 `muG D (pRoundG D)`, given `doom_absorb`, `doom_mid`, `esc_single_le` and the round bounds. -/
 theorem muG_step_of {D : Log → Log → Prop}
     (habs : ∀ L₀ es x k l, Matches (es ++ [x]) →

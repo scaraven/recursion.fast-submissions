@@ -216,10 +216,7 @@ theorem εR1_le_errorCap : εR1 ≤ errorCap := by
 /-- **The certificate**: knowledge soundness and completeness (`δ = 0`) for every public key, the
 library's extractor program computing `E`, and the caps. -/
 theorem certificateOf (F : Facts LV proveLeaf) : Certificate (submissionOf LV proveLeaf) where
-  secure vk := by
-    show KS (Rel ((submissionOf LV proveLeaf).acc vk)) (V LV vk) WitnessSending.E εR1 qVR1
-    rw [acc_eq]
-    exact (F.ks vk).elim fun k => k.ks (V_queries F vk)
+  secure vk := acc_eq LV proveLeaf ▸ (F.ks vk).elim fun k => k.ks (V_queries F vk)
   complete vk := complete_withError_zero (complete F vk)
   computes := WitnessSending.computes
   cap := ⟨εR1_le_errorCap, show (0 : ℝ≥0) ≤ _ from zero_le, show qVR1 ≤ 2 ^ 16 from le_rfl,

@@ -62,6 +62,6 @@ theorem mu_final (vk : Digest) (L : Log) (c : Digest) (π : Proof) (_hl : L.leng
 theorem final_law (vk : Digest) : ∀ L c π, L.length ≤ logCap → KS.μ chainEvals L < 1 →
     (V LV vk c π).runLog L = some true →
     ∃ w, WitnessSending.E c π L = some w ∧ Rel (accV LV vk) c w :=
-  fun L c π hl hμ hacc => mu_final vk L c π hl hμ hacc
+  mu_final vk
 
 end SpartanSrom.SoundnessKSFinal

@@ -36,7 +36,10 @@ report on the rules that this entry produced is `docs/v4/FLOCK-BASELINE-FEEDBACK
 - **Certified.** `SpartanSrom.certificate` is a closed theorem on the three allowed axioms (F1
   RESULT §3, §9.3). The entry is the commit `745c7d8`: the Lean fix pass at core `81e1ebf` (D-6,
   the pin's `acc`, the byte-level node reader, the golf), with the prover's golf and fix pass.
-- **The verdict at the previous pins**: ACCEPT at `81e1ebf`; confirmed at `01a25b0`: **ACCEPT** (F4b: certificate ok with the Lean kernel in 9 min 51 s; smoke bench of the submitted `prover.s` `733b3a30…`: T_tree 0.142 s, t_link 0.0846 s, S 1.835; `prover.s` assembles with GNU Binutils 2.42 without error or warning; `docs/v4/flock-baseline/stages/F4-final-harness-RESULT.md`, F4b)
+- **The verdict at the previous pins**: ACCEPT at `81e1ebf`; confirmed at `01a25b0`: **ACCEPT**
+  (F4b: certificate ok with the Lean kernel in 9 min 51 s; smoke bench of the submitted `prover.s`
+  `733b3a30…`: T_tree 0.142 s, t_link 0.0846 s, S 1.835; `prover.s` assembles with GNU Binutils
+  2.42 without error or warning; `docs/v4/flock-baseline/stages/F4-final-harness-RESULT.md`, F4b)
 - **Through the fixed harness** (stage F4, `745c7d8` at core `81e1ebf`, no workaround;
   `docs/v4/flock-baseline/stages/F4-final-harness-RESULT.md`):
   - the certificate job: **ok** in 9 min 52 s. With `--nanoda` it is also ok: nanoda ran over its
@@ -87,10 +90,10 @@ Sizes at `n = 16` (F1 RESULT §5, F2 RESULT §3.3):
   `SpartanSromFinal`). Its axioms are `propext`, `Classical.choice` and `Quot.sound`
   (`logs/lean/axioms-print-2.log`). For **every** public key `vk`:
   - **knowledge soundness** for `Rel (acc vk)`, with **ε = 2^-129** per fresh query and
-    **qV = 2^16** (`KS.ks vk`): the contract's textbook `KS` (V4-A10), from v3's potential, now the
-    library's `KState` and the entry's intermediate artifact, through the library's bridge
-    `KState.ks`. A bundle of `k` SNARKs costs no extra error: v3's `final` argument is about the
-    log, and it gives `chainEnd s_j n_j = h_j` for every bundled leaf at once;
+    **qV = 2^16** (`KS.ks vk`): the contract's textbook `KS` (V4-A10), from v3's potential (now the
+    library's `KState`, the entry's intermediate artifact) through the library's bridge `KState.ks`.
+    A bundle of `k` SNARKs costs no extra error: v3's `final` argument is about the log, and it
+    gives `chainEnd s_j n_j = h_j` for every bundled leaf at once;
   - **completeness with δ = 0**: perfect completeness for every oracle function, through the
     library's `complete_withError_zero`.
 
