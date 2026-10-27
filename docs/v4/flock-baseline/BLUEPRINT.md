@@ -10,7 +10,7 @@ the core's (`.contract/docs/v4/BRIEF.md`), `C-Mn`/`C-mn` the design attack.
 
 | Id | Decision | Reason |
 |---|---|---|
-| D-1 | **Route (b)**: port the v3 honest entry `spartan-chain` (Spartan R1CS sumchecks over GF(2^64)/GF(2^192), ring switching, Ligero with unique-decoding proximity; 61 modules, KS kernel-checked against the v3 contract) to the v4 contract, with a Flock-style native prover. Route (c) (leanVM's BLAKE2s Flock port as a prover-only study) follows only if budget remains. | The only route that is **certified** and exercises the ranked path end to end (C-m10). Flock's own protocol needs Ligerito/WHIR proximity theorems in Lean (research-scale) and, as published, GF(2^128), whose sumcheck rounds cannot meet `errorCap = 2^-128` per query. The pins are identical to v3's, so about 13–14k of the 16.8k lines carry over. |
+| D-1 | **Route (b)**: port the v3 honest entry `spartan-chain` (Spartan R1CS sumchecks over GF(2^64)/GF(2^192), ring switching, Ligero with unique-decoding proximity; 61 modules, KS kernel-checked against the v3 contract) to the v4 contract, with a Flock-style native prover. Route (c) (leanVM's BLAKE2s Flock port as a prover-only study) follows only if budget remains. | The only route that is **certified** and exercises the ranked path end to end (C-m10). Flock's own protocol needs Ligerito/WHIR proximity theorems in Lean (research-scale) and, as published, GF(2^128), whose sumcheck rounds cannot meet `errorCap = 2^-128` per query (they can meet V4-A9's `2^-120`, FB-9). The pins are identical to v3's, so about 13–14k of the 16.8k lines carry over. |
 | D-2 | **Nodes are σ0-bundles** (§1.4): a node proof carries its whole subtree as a *clear* witness whose every child slot is signed by one signature `σ0` on the **empty** trace, followed by the leaves' SNARKs, which the node verifier checks with fresh queries. | Plain v4 witness-sending dies at the first node: a signed child is `π ‖ trace ‖ σ`, and the trace restates every byte the verifier hashed, so a level-1 node of two `n = 16` leaves is about 1.2 MB > `proofCap` (route analysis, point 1). Under the bundle the extractor is the library's unmodified copy extractor and only the leaves' SNARKs count against `proofCap`. |
 | D-3 | Root name `spartan-srom`; Lean module prefix and namespace `SpartanSrom` (v3's `SpartanChain` renamed). | Fresh module names (submissions layout rule 4); says what it is (spartan-chain under the signed random oracle). |
 | D-4 | The native prover is **std Rust** (the v3 crate, dependency-free), emitted as one `prover/prover.s` by fat LTO, one codegen unit, `panic=abort`, `-C llvm-args=-align-all-functions=4`, a pinned baseline target CPU (`x86-64-v2`) with run-time dispatch (`is_x86_feature_detected!`) for AVX2 and `pclmulqdq`, and a sanitising filter (`stages/F0-probes-RESULT.md` §1). The Rust source, `build-asm.sh`, the filter and the generated `.s` are all committed. | Measured to work through the harness's own sandboxed build; deterministic; byte-identical proofs to the cargo build. A C or `no_std` port would cost the whole prover for nothing. |
@@ -98,7 +98,9 @@ proofs (`L`, `C`) decode to `.leaf s n`; `N` and `B` to their node witness.
 ## 5. The certificate
 
 - **KS** for every `vk`, `ε = 2^-129` (v3's), `qV = 2^16`, with v3's potential `μ` (it is defined
-  on logs; the statement and proof are quantified only in `final`). `final` per branch: `L` as v3
+  on logs; the statement and proof are quantified only in `final`). Since V4-A10 the potential is
+  the library's `KState`, not the contract's, and the library's bridge `KState.ks` turns it and the
+  query bound into the contract's textbook `KS` (F5). `final` per branch: `L` as v3
   (`mu_final_leaf_closed`); `C` and `N` by their definitions (they decide `Rel`); `B`: the bundle's
   run on the log accepts ⇒ each `snarkProg` accepts on the log ⇒ (μ L < 1) `chainEnd s_j n_j = h_j`
   for every bundled leaf ⇒ every clear slot of `W` is accepted by `acc vk` (by induction on the
@@ -106,8 +108,9 @@ proofs (`L`, `C`) decode to `.leaf s n`; `N` and `B` to their node witness.
   `Rel (acc vk) c W`. `SigOk` on `σ0` is checked so that the extracted witness is in `Rel`, not
   for soundness, and it holds for every key the adversary picks, so C-m1's impossibility does not
   apply.
-- **Completeness** §3. **Computes**: the library's. **Caps**: `ε = 2^-129 ≤ errorCap`, `δ = 0`,
-  `qV = 2^16`, the library's fuel and program.
+- **Completeness** §3. **Computes**: the library's. **Caps**: `ε = 2^-129 ≤ errorCap` (`2^-128`
+  when this was written, `2^-120` since V4-A9), `δ = 0`, `qV = 2^16`, the library's fuel and
+  program.
 - **Layout** (stage B's `harness/evaluate.py`): `claim.json` (keys `error`, `completeness_error`
   as `"a/b"` strings, `qV`, `fuel_base`, `fuel_per_word` as integers; here `"1/2^129"` written out,
   `"0"`, `65536`, `0`, `8`), the Lean sources flat in `lean/` (module `Foo` is `lean/Foo.lean`),

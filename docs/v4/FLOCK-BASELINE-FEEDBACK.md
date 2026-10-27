@@ -4,6 +4,15 @@
 2026-10-23. It has been revised after its review (`docs/v4/flock-baseline/reviews/FB-feedback-review.md`,
 5 majors and 21 minors, all applied).
 
+**Since this report (2026-10-27).** The user's amendments V4-A9 (the trim) and V4-A10 (textbook
+knowledge soundness) changed rules it cites; the design's §6.3 gives each finding's disposition.
+FB-9 is answered: `errorCap = 2^-120` admits GF(2^128) sumcheck rounds. FB-5's crafted-input column
+is a follow-up, and the random DoS column now has 100 inputs and fails only on time or a crash. The
+repeats, the inner-proof samples, the liveness run and the non-malleability canaries are gone, so
+the findings about them are moot; `completenessCap` is `2^-40`; the certificate job builds once,
+within 30-minute jobs with nested caps. The text below is unchanged: it describes the rules as they
+stood on 2026-10-23. The entry under the new rules: `F/stages/F5-ks-RESULT.md`.
+
 It draws on building and running the first v4 entry, `submissions/spartan-srom`, through four
 stages:
 

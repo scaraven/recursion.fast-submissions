@@ -8,12 +8,12 @@ against them. Citations:
 |---|---|
 | design §n | `.contract/docs/DESIGN-v4-srom.md` (normative) |
 | BRIEF, V4-n, V4-An | `.contract/docs/v4/BRIEF.md` (the decisions and amendments) |
-| A-RESULT, B-RESULT | `.contract/docs/v4/stages/A-contract-RESULT.md`, `B-harness-RESULT.md` |
+| A-RESULT, B-RESULT, D-trim, E-ks | `.contract/docs/v4/stages/A-contract-RESULT.md`, `B-harness-RESULT.md`, `D-trim-RESULT.md` (V4-A9), `E-ks-RESULT.md` (V4-A10) |
 | [CM] | `.contract/docs/DESIGN-cost-incentive-model.md` (the score and the stream) |
 | PROVER.md, FORMAT.md | `.contract/harness/PROVER.md`, `.contract/harness/FORMAT.md` (normative) |
 | PROTOCOL.md | `.contract/service/PROTOCOL.md` (normative for provers) |
 | the contract | `.contract/RecursionFast/Contract/*.lean` |
-| BLUEPRINT, F0 … F4 | `docs/v4/flock-baseline/BLUEPRINT.md`, `docs/v4/flock-baseline/stages/F<n>-…-RESULT.md` (the baseline entry `spartan-srom`) |
+| BLUEPRINT, F0 … F5 | `docs/v4/flock-baseline/BLUEPRINT.md`, `docs/v4/flock-baseline/stages/F<n>-…-RESULT.md` (the baseline entry `spartan-srom`) |
 | F0-ideation, F1-review, F2-review | `docs/v4/flock-baseline/reviews/F0-route-ideation.md`, `F1-lean-review.md`, `F2-prover-review.md` |
 | FIXLIST Qn | `.contract/docs/v4/FIXLIST.md` (the core orchestrator's fix queue) |
 | FB-n, H-n | `docs/v4/FLOCK-BASELINE-FEEDBACK.md` (the baseline's report on the rules) |
@@ -25,17 +25,27 @@ and the season files (`.contract/harness/season.toml`, `smoke.toml`); then the d
 file. Where two of them disagree, the higher one is what is checked, and the disagreement is a bug
 to report.
 
-**Status on 2026-10-23.**
+**Status on 2026-10-27.**
 
-- **v4 is a proposal.** It is implemented on the core's branch `v4/srom-rules` and has not been
-  adopted by the user. Every decision taken in the user's absence is listed in design §6.1, and each
-  is reversible.
-- **The pin.** `.contract` is at `01a25b0`, the head of the core's pull request #17: stages A
-  (contract) and B (harness), each with its review's fix passes. The core's CI is green on GitHub
-  runners there, the end-to-end smoke included (run 39966237935).
+- **v4 is a proposal.** It is implemented on the core's branches `v4/srom-rules`, `v4/trim-fat` and
+  `v4/ks-standard`, and has not been adopted by the user. Every decision taken in the user's absence
+  is listed in design §6.1, and each is reversible.
+- **The pin.** `.contract` is at `<core-pin>`, on the core's branch `v4/ks-standard`. It holds
+  stages A (contract) and B (harness) with their reviews' fix passes (`01a25b0`, the head of the
+  core's pull request #17, whose CI was green on GitHub runners, run 39966237935), and two of the
+  user's amendments on top:
+  - **V4-A9, the trim** (`v4/trim-fat`, the core's pull request #18; D-trim): every GitHub job at
+    most 30 minutes, with the caps nested inside it (§5.5); one tree run, of which only the root is
+    read, and one stream run of `M = 256` links; per entry only the statement canaries; a DoS
+    column of 100 inputs that fails only on time or a crash; no liveness; one Lean build instead of
+    the byte-identical rebuild; the organiser's own checks only in the core's CI; `errorCap =
+    2^-120` and `completenessCap = 2^-40`. Its new workflow structure has not run on GitHub
+    (D-trim §8 item 7).
+  - **V4-A10, textbook knowledge soundness** (`v4/ks-standard`; E-ks): `KS` quantifies over
+    query-bounded adversaries against a lazily sampled random oracle; the potential `KState` is a
+    library tool, and the bridge `KState.ks` turns one into `KS` (§3.1).
   - The contract fix pass `ea2e8ab`: `acc` checks the trace's length against `qV` (RA-M2, §2.2);
-    `Log` is an `abbrev` for `Trace`; `wordBytes w := enc64 w.toNat`. `RecursionFast/` is unchanged
-    since.
+    `Log` is an `abbrev` for `Trace`; `wordBytes w := enc64 w.toNat`.
   - The harness fix passes (B-RESULT §9–§11):
     - CompPoly's field is an organiser root (§6);
     - the harness builds only `Solution`'s import closure (§3.3, §5.1);
@@ -46,8 +56,9 @@ to report.
     - the benchmark's parts follow one job plan (§5.4);
     - the runner image's toolchain, binutils 2.42 included, is part of the prover rule (§4.5).
 - **The first entry has run through the harness.** `spartan-srom` was ACCEPTed at the smoke shape
-  and REJECTed at the season shape: at `a874f87` with two workarounds (F3), and at `81e1ebf` with
-  none (F4). Its confirmation run at the pin is in `README.md`, "Status". §7 holds what it found.
+  and REJECTed at the season shape: at `a874f87` with two workarounds (F3), at `81e1ebf` and
+  `01a25b0` with none (F4, F4b), and at `a283ff8` after its migration to V4-A10 (F5). Its status is
+  in `README.md`, "Status". §7 holds what it found.
 - **v3 is frozen.** Its rules no longer apply (`README.md`, "Status").
 
 ---
@@ -80,15 +91,15 @@ S = T_tree + K · t_link
 ```
 
 - **`T_tree`**, the chain term, is the wall time of one `prover tree` process proving `2^r` chains
-  of `n` steps and every node up to the root. It is the median of the repeats. Anything goes inside
-  the process: flattening, bundling, proof of parent, grinding (design §3.5).
+  of `n` steps up to the root, in one run (V4-A9); only the root's proof is read. Anything goes
+  inside the process: flattening, bundling, proof of parent, grinding (design §3.5).
 - **`t_link`**, the recursion term, is measured on **the stream** ([CM] §3.3). `M` fresh chains of
   length `n_f` arrive one at a time. Each is proved by a `leaf` request and folded into the running
   proof by a `node` request. Every request is a fresh process: its start-up is untimed, and it is
   timed from its inputs to its output. Then:
   - `t_leaf` = (the sum of the `M + 1` leaf times) / `M`;
   - `t_merge` = (the sum of the `M` merge times) / `M`;
-  - `t_link = t_leaf + t_merge`, the median of the repeats (`.contract/harness/rfh/bench.py`,
+  - `t_link = t_leaf + t_merge`, from one stream run (V4-A9; `.contract/harness/rfh/bench.py`,
     `score`).
 
   A link may also be done 1→1: the `leaf` request outputs a cheap witness-sending leaf, and the
@@ -101,17 +112,16 @@ S = T_tree + K · t_link
   - the slowest merge;
   - the calibration columns (§5.2).
 
-**The shapes** (V4-11; `.contract/harness/season.toml`, `smoke.toml`):
+**The shapes** (V4-11, V4-A9; `.contract/harness/season.toml`, `smoke.toml`):
 
 | Parameter | Season 1 | Smoke (CI) |
 |---|---|---|
 | tree depth `r`; leaves and nodes | 6; 64 leaves, 63 nodes | 2; 4 leaves, 3 nodes |
 | chain length `n` | `2^18` (`2^24` compressions per tree) | 16 |
-| stream: links `M`, chain length `n_f` | 512, `2^16` | 4, 16 |
+| stream: links `M`, chain length `n_f` | 256, `2^16` | 4, 16 |
 | `K`; `T_V` ratio `R` | 20; 10, enforced | 20; 10, reported only |
-| repeats (tree, stream); medians | 3, 3 | 1, 1 |
-| samples; canaries per kind; DoS inputs | 16; 8; 1,000 | 16; 8; 64 |
-| liveness shape | `r = 1`, `n = 16` | the same |
+| runs (tree, stream) | 1, 1 | 1, 1 |
+| proofs read from the tree; statement canaries per kind; DoS inputs | the root; 2; 100 | the root; 2; 64 |
 
 **What is ranked** (design §3.6, §6.2; V4-15).
 
@@ -186,7 +196,8 @@ def Submission.acc (S : Submission) (vk c : Digest) (p : Signed) : Bool :=
 
 - **One predicate for everything** (V4-7). `acc` is used in four places:
   - the relation's node clause;
-  - the harness's check of every proof it is given (root, samples, canaries, every stream output);
+  - the harness's check of every proof it is given (the tree's root, every stream output, the
+    statement canaries);
   - the badge `verify`;
   - any third party's later check with the published `vk`.
 
@@ -211,8 +222,8 @@ So the signed trace is exactly `V`'s query sequence on those answers, and nothin
 
 ### 2.3 The oracle (V4-2, V4-3; design §3.2; PROTOCOL.md)
 
-For every timed run the runner starts a **service**: one per tree repeat, one per stream repeat,
-and one for the liveness run.
+For every timed run the runner starts a **service**: one for the tree run and one for the stream
+run.
 
 - **Keys.** It draws a fresh PRF key `k` and an **independent** signing seed. The seed gives
   `(sk, vk)`: a Merkle tree of `2^16` WOTS one-time keys (`w = 4`, 133 chains), with `vk` its root.
@@ -229,8 +240,7 @@ and one for the liveness run.
 - **What it does not do.**
   - It keeps no answer table, so no state passes between requests except the 16-bit signature
     index (V4-A5, C-m2).
-  - It has no other operation. In liveness mode it logs every query it evaluates, and the prover
-    cannot tell.
+  - It has no other operation, and no logging mode (V4-A9 removed it with liveness).
 
 **Why it closes v3's O-25** (design §2.3). A backdoor needs a value about the deployed oracle that
 `V` holds without asking it. With a key drawn after `V` is frozen, none exists: recognising
@@ -248,10 +258,10 @@ model (`Controls/Backdoor.lean`, `backdoor`), and in deployment it never fires.
     `sk`.
   - Suppose a branch of `V` accepts a false statement because the proof carries something that
     adversary can always produce: a valid signature, `sk`, or a signed answer that agrees with the
-    oracle. Then the branch has no knowledge state below error `1/q`, where `q ≤ qV ≤ 2^16` is its
-    number of queries. So it has none at `errorCap = 2^-128`.
-  - Kernel controls: `Library/SigTrust.lean`, `sigTrust_kstate_iff`; `Controls/Certificate.lean`,
-    `sigTrust_no_certificate`.
+    oracle. Then that adversary wins `KS`'s game with probability 1, asking nothing, so `KS` fails
+    at every `ε` with `qV · ε < 1`, which the caps force (`qV ≤ 2^16`, `ε ≤ errorCap = 2^-120`).
+  - Kernel controls: `Library/SigTrust.lean`, `adversary_wins`, `sigTrust_ks_iff`;
+    `Controls/Certificate.lean`, `sigTrust_no_certificate`.
 - **What `V` may do.** A node verifier may check signatures as part of proving its children's
   `acc`, but its extractor must still output the children. A signature may serve to make the
   extracted witness a member of `Rel`, never as a substitute for a witness. The σ0-bundle of §7.1
@@ -284,30 +294,44 @@ structure CertificateR (D : Declared) (S : Submission) : Prop extends Certificat
            ∀ t, S.fuel t ≤ D.fuel t ∧ D.fuel t ≤ extractorBudget t
 ```
 
-The obligations, in words (`Security.lean`, `Extractor.lean`; v3's definitions word for word,
-V4-1):
+The obligations, in words (`Security.lean`, `Extractor.lean`; `KS` is V4-A10's, the rest v3's
+definitions word for word, V4-1):
 
-- **Knowledge soundness** (`KS`), for every `vk`. You exhibit a potential `μ` on query logs with
-  three laws:
-  - `empty`: it starts at 0;
-  - `step`: on a log of fewer than `logCap = 2^96` entries, a fresh query raises it by at most `ε`
-    on average over the `2^256` answers;
-  - `final`: below 1, every proof `V` accepts reading the log (`runLog`) is extracted by `E` to a
-    witness of `Rel (S.acc vk)`.
+- **Knowledge soundness** (`KS`), for every `vk`: textbook single-output knowledge soundness in the
+  random-oracle model (V4-A10). Two conjuncts, in this order:
+  1. `V` asks at most `qV` queries on every input and **every oracle function**;
+  2. for every adversary `A : OProg (Digest × Proof)` asking at most `Q` queries on every oracle
+     function, with `Q + qV ≤ logCap = 2^96`: when `A` runs and then `V` runs on its output, against
+     one lazily sampled random oracle (the contract's `prob`), the probability that `V` accepts on
+     the final query log (`runLog`) while `E`, given the statement, the proof and that log, returns
+     no witness of `Rel (S.acc vk)` is at most `(Q + qV)·ε`.
 
-  Separately, `V` asks at most `qV` queries on every input and **every oracle function**. The
-  paper theorem gives the error `(Q + qV)·ε` (`Library/PaperTheorem.lean`, `paper`).
+  **The recommended route is v3's potential** (design §2.4), now an untrusted library structure,
+  `KState` (`Library/Security.lean`): a potential `μ` on query logs with three laws (`empty`: it
+  starts at 0; `step`: on a log of fewer than `logCap` entries, a fresh query raises it by at most
+  `ε` on average over the `2^256` answers; `final`: below 1, every proof `V` accepts reading the log
+  is extracted by `E` to a witness of `Rel (S.acc vk)`). The bridge turns it into `KS`, with no
+  other hypothesis:
+
+  ```lean
+  theorem RecursionFast.KState.ks (k : KState R V E ε)
+      (hq : ∀ H c π, ((V c π).queries H).length ≤ qV) : KS R V E ε qV   -- Library/PaperTheorem.lean
+  ```
+
+  Any other correct proof of `KS` is accepted as well; a verifier whose every accepted proof is
+  extracted needs no potential (`Library/KS.lean`, `KS.of_extracts`).
 - **Completeness with error** (`CompleteWithError`). On **every** statement and witness of the
   relation, for every `vk`, the honest proof is rejected with probability at most
-  `δ ≤ completenessCap = 2^-128`. The proof is made by `P` and checked by `V` against one lazily
-  sampled random oracle. Grinding is admitted.
+  `δ ≤ completenessCap = 2^-40` (V4-A9). The proof is made by `P` and checked by `V` against one
+  lazily sampled random oracle (`prob`; `Library/Completeness.lean`'s `completeWithError_iff`
+  restates it with v3's `failProb`). Grinding is admitted.
 - **`Computes`.** On every statement, every proof of at most `proofCap` bytes and every log whose
   tape the machine can address, `ext` halts within `fuel t` steps. Its output has at most
   `outCap = 2^24` words and decodes to `E`'s result. Also `fuel t ≤ B t = 2^48 + 2^16 · t`, and
   `ext` has at most `progCap = 2^20` statements.
 - **Caps.**
-  - `ε ≤ errorCap = 2^-128`;
-  - `δ ≤ 2^-128`;
+  - `ε ≤ errorCap = 2^-120` per fresh query (V4-A9; it was `2^-128`);
+  - `δ ≤ completenessCap = 2^-40` (V4-A9; it was `2^-128`);
   - `qV ≤ 2^16`.
 
 **What changed from v3.**
@@ -317,6 +341,7 @@ V4-1):
 - The certificate holds **for every `vk`**.
 - There is no RISC-V image: `ext` is a Lean term run by the compiled contract interpreter.
 - `Vb`, `blake2sOracle` and `tagRO` are gone.
+- `KS` is the textbook statement above, and the potential is a library tool (V4-A10).
 
 **The reference entry.** The organiser's library has a complete witness-sending entry,
 `.contract/RecursionFast/Library/WitnessSending.lean`:
@@ -355,7 +380,8 @@ Your `lean/Solution.lean`:
 - proves `theorem certified : CertificateR declared submission`.
 
 The comparator checks that `certified` proves exactly the rendered statement, with `submission`
-the only definition that changed. The badge's liveness check runs `ext` with the declared fuel.
+the only definition that changed. No badge runs `ext` (V4-A9): its correctness and cost are the
+kernel-checked `Computes`.
 `submissions/spartan-srom/lean/Solution.lean` is a worked example.
 
 ### 3.3 The entry's layout (`.contract/harness/evaluate.py`, `harness/ci/fetch-entry.sh`)
@@ -379,13 +405,13 @@ submissions/<root>/
   - Module names must be fresh: no module root may exist in the organiser's build, the toolchain or
     any package, so not `RecursionFast`, `Mathlib`, `CompPoly` and so on. `Challenge` is the
     rendered stub's. Use a prefix that names the entry, as `SpartanSrom…` does.
-  - **Only `Solution`'s import closure is built** (FIXLIST Q7; B-RESULT §9). The comparator builds
-    `Challenge` and `Solution`, and the gate tree builds exactly those targets again. A module that
-    `Solution` does not import, directly or through other modules, is never built, compared, gated
-    or linked by the harness. **Import your controls from `Solution`** if you want the harness to
-    check them: `spartan-srom` does it through `SpartanSrom`, which imports every module, so the
-    harness builds all 66 of its modules with the challenge (F1 §9.1; F4: 67 built modules,
-    "byte-identical (134 artifacts)").
+  - **Only `Solution`'s import closure is built** (FIXLIST Q7; B-RESULT §9). The harness builds
+    `Challenge` and `Solution` once (V4-A9), and the comparator, the gate and the badge read that
+    build. A module that `Solution` does not import, directly or through other modules, is never
+    built, checked, gated or linked by the harness. **Import your controls from `Solution`** if you
+    want the harness to check them: `spartan-srom` does it through `SpartanSrom`, which imports
+    every module, so the harness builds all 66 of its modules with the challenge (F1 §9.1; F5:
+    67 built modules, "one build (134 artifacts)").
 - **Files.** The root holds only regular files and directories, so no symbolic link and no special
   file (`fetch-entry.sh`). An entry pull request changes exactly one root (§8).
 - **The layout rules of a root** are in `submissions/README.md`.
@@ -416,10 +442,10 @@ submissions/<root>/
 
 | Invocation | Inputs in the working directory | Outputs | Timed |
 |---|---|---|---|
-| `prover setup /setup` (optional) | none: no instance, no service, `/setup` writable | anything under `/setup`, read-only afterwards | no (`setup_s` = 1 h) |
-| `prover tree /work` | `leaves.json` = `{"n": N, "starts": ["HEX", …]}`, `vk.hex`, the service | `proofs/L<i>.bin` for each leaf; `proofs/N<l>_<j>.bin` for each inner node (`l = 1 … r−1`; node `j` of level `l` joins nodes `2j`, `2j + 1` of level `l − 1`); `root.bin` | yes, from `exec` to exit (`tree_s`) |
-| `prover leaf /work` | `leaf.json` = `{"n": N, "start": "HEX"}` | `proof.bin` | yes (`step_s`) |
-| `prover node /work` | `child1.stmt`, `child1.bin` (the running statement and proof), `child2.stmt`, `child2.bin` (the new leaf's) | `proof.bin`, a signed proof of `nodeStmt child1 child2` | yes (`step_s`) |
+| `prover setup /setup` (optional) | none: no instance, no service, `/setup` writable | anything under `/setup`, read-only afterwards | no (`setup_s`, 5 min) |
+| `prover tree /work` | `leaves.json` = `{"n": N, "starts": ["HEX", …]}`, `vk.hex`, the service | `root.bin`, a signed proof of `treeRoot`; nothing else is read: inner proofs, if written, are ignored (V4-A9) | yes, from `exec` to exit (`tree_s`, 10 min) |
+| `prover leaf /work` | `leaf.json` = `{"n": N, "start": "HEX"}` | `proof.bin` | yes (`step_s`, 60 s) |
+| `prover node /work` | `child1.stmt`, `child1.bin` (the running statement and proof), `child2.stmt`, `child2.bin` (the new leaf's) | `proof.bin`, a signed proof of `nodeStmt child1 child2` | yes (`step_s`, 60 s) |
 
 - **The stream handshake** (CM-6).
   1. The process starts with `vk.hex` already present, loads its setup, and prints `ready`.
@@ -429,6 +455,11 @@ submissions/<root>/
   3. The clock stops when the prover prints `done` or exits.
 
   One request runs at a time, and nothing survives a request except the proof the runner copies.
+- **The stream's deadline** (V4-A9; PROVER.md §3). The whole stream, every request (its start-up to
+  `ready` included) and every check from the first request on, runs within `stream_s` = 960 s of
+  wall time, of which 60 s are the runner's own overhead. So an entry has about 900 s for its 513
+  requests (`M = 256`) and their checks: **about 3.1 s per link** with every check at `T_V` ≈ 178
+  ms. A link that would end after it fails the run.
 - **What the runner never gives you.** It never passes a digest to `tree` and never passes a start
   to `node`. Compute statements with exactly the contract's `leafStmt`, `nodeStmt`, tags and
   `enc64` (§2.1). Statements and keys are 64 lowercase hex characters, with an optional newline.
@@ -467,7 +498,7 @@ When a request ends, every process it started is killed. A GitHub-hosted `ubuntu
   - a request body of at most `2^24` bytes (16 MiB);
   - at most `2^18` items per `QUERY` and `2^16` per `SIGN`;
   - at most 32 connections at a time (64 before the final fix pass, RF-m20);
-  - **`2^16` signatures per service lifetime**: a tree repeat, a stream repeat, the liveness run.
+  - **`2^16` signatures per service lifetime**: the tree run, or the stream run.
 - **Batch, and use one connection per thread.**
   - One round trip costs about 31 µs (median; B-RESULT §3).
   - Batches of 4,096 queries of 64 bytes reach 6.6 M calls/s on one connection, and 25.3 M calls/s
@@ -577,22 +608,31 @@ The pitfalls, each measured:
 
 ## 5. The evaluation
 
-### 5.1 The certificate job (`evaluate.py cert`; design §3.1, V4-A1, V4-A2)
+### 5.1 The certificate job (`evaluate.py cert`; design §3.1, V4-A1, V4-A2, V4-A9)
 
-It is deterministic and may run on any machine with the package tree. The organiser's checkout is
-built, and its olean manifest and import allowlist are written (`harness/org-setup.sh`), before
-any entry code is on the machine. Then:
+It is deterministic and may run on any machine with the package tree. The organiser's environment
+(the package tree, the organiser's build, its olean manifest and import allowlist, the badge's
+precompiled objects; `harness/org-setup.sh`) is built and cached per core commit by the
+evaluation's `setup` job, before any entry code is on any machine of the run. Every Lean step below
+has a cap (`[certificate]` of the season file, V4-A9), nested inside one GitHub job of 30 minutes
+on a 4-vCPU runner. Then:
 
 1. **Render** the challenge from the stub and `claim.json`.
 2. **The source rule** on `lean/*.lean` (§6), before anything is built.
-3. **The comparator** in a fresh tree. It builds `Challenge` and `Solution` **in the sandbox** and
-   replays the exported proof of `certified` against the rendered statement.
+3. **The one build** (V4-A9). In a fresh tree, **in the sandbox**, `lake build +Challenge
+   +Solution`, so `Solution`'s import closure and nothing else (FIXLIST Q7; §3.3), within
+   `build_s` = 600 s. The certificate records `built_modules`. The organiser's oleans are checked
+   against the manifest before this build and after the badge build.
+4. **The comparator** on that build. Its own `lake build` finds both targets up to date; it exports
+   them and replays the proof of `certified` against the rendered statement, within `kernel_s` =
+   600 s. The build's artifacts must be unchanged afterwards, so the gate and the badge read what
+   the kernel's exports were made from. The byte-identical second build is gone (V4-A9).
    - **The Lean kernel and nanoda are separate comparator runs** (FIXLIST Q12), each in its own
      memory scope: `--cert-mem` and `--nanoda-mem`, 14G each by default. Each run's outcome is
      `ok`, `rejected`, `over budget` (the scope was killed for memory) or `timeout`.
    - **The Lean kernel decides.** `rejected` makes the entry PROVISIONAL ("the certificate does not
-     check"). `over budget` or `timeout` also makes it PROVISIONAL, but as "unchecked, not
-     refuted", and the rebuild binding is then not checked.
+     check"). `over budget` or a breach of `kernel_s` also makes it PROVISIONAL, but as "unchecked,
+     not refuted".
    - **nanoda is optional** (`--nanoda`) and runs only after the Lean kernel accepted. If it is
      over budget or times out, the Lean kernel's verdict stands and `second_kernel` says so. If it
      rejects what the Lean kernel accepted, the entry is PROVISIONAL.
@@ -602,77 +642,77 @@ any entry code is on the machine. Then:
      - on `spartan-srom`, a 226 MB export, it was killed at a 20 GB cap after 10 min 1 s, still
        growing about 2.1 GB per minute (F3 §2.4).
    - The result's `kernels` and `kernel_runs` say which kernels ran and how each ended.
-   - The organiser's oleans are checked against the manifest before and after.
-4. **Gate tree.** A second fresh tree at the same path builds **exactly the comparator's targets**,
-   `+Challenge` and `+Solution`, so `Solution`'s import closure (FIXLIST Q7).
-   - Byte equality is required both ways: every artifact of the comparator's build, and no other.
-   - Modules outside `Solution`'s closure are never built (§3.3).
-   - The certificate records `built_modules`.
+5. **The gate**, rules 1–8 (§6), with `--computable` on the badge fields `V`, `P` and `ext`, in the
+   sandbox, within `gate_s` = 120 s.
+6. **The badge.** The executable `verify` (parse plus `accF`, proved equal to `acc`) is built from
+   your `Solution` module, in the sandbox, within `badge_s` = 180 s. Its build must neither build
+   nor change an entry module: the badge's import closure lies inside the verified one. It links
+   the compiled object of every module of that closure. The organiser precompiles those of the
+   closures of `RecursionFast`, the CompPoly roots and `Mathlib.Tactic`; your own modules and any
+   other module you import are compiled inside the 180 s, at about 4.8 objects per second on 4
+   cores, so about 860 such modules fit and `import Mathlib` does not (PROVER.md §6). There is no
+   `liveness` badge any more (V4-A9).
 
-   Then the **gate** runs, rules 1–8 (§6), with `--computable` on the badge fields `V`, `P` and
-   `ext`.
-5. **The badge.** The executables `verify` (parse plus `accF`, proved equal to `acc`) and
-   `liveness` (the contract interpreter on `ext`) are built from your `Solution` module, in the
-   sandbox. Their build must neither build nor change an entry module: the badge's import closure
-   lies inside the verified one.
-
-The status is one of three:
+A breach of `build_s`, `gate_s` or `badge_s` is the entry's REJECT, with the cap named. The status
+is one of three:
 
 - `ok`;
 - `provisional`: everything builds, and the only failures are an open certificate (the Lean
   kernel's verdict or budget, nanoda's rejection, gate rule 1's `sorryAx`);
 - `reject`.
 
-**What it cost `spartan-srom`** on the shared VM:
+**What it cost `spartan-srom`** on the shared VM (F3 and F4 under `taskset -c 0-15`, F5 as
+stated; the caps are for a 4-vCPU runner):
 
-| Step | at `a874f87`, with the workarounds (F3 §2.3) | at `81e1ebf`, none (F4) |
-|---|---|---|
-| comparator, Lean kernel | 8 min 33 s; kernel about 192 s at 3.62 GB | 354 s, scope peak 4.25 GB; kernel about 144 s at 3.67 GB |
-| gate-tree rebuild | 3 min 30 s | 173 s; "byte-identical (134 artifacts)" |
-| gate | 21.8 s | 18 s |
-| badge build | 73.7 s (986 package objects compiled) | 16 s (CompPoly's objects prebuilt by `org-setup.sh`) |
-| **whole job** | **14 min 22 s**, peak 4.11 GB | **9 min 52 s** |
-| with `--nanoda` | PROVISIONAL: nanoda's kill stopped the Lean kernel | ok in 16 min 36 s: "nanoda: over budget (cap 14G, peak 14.00 GiB); checked by the Lean kernel only" |
+| Step | at `a874f87`, with the workarounds (F3 §2.3) | at `81e1ebf`, none (F4) | at `a283ff8`, one build (F5) |
+|---|---|---|---|
+| the entry's build (`build_s` 600 s) | inside the comparator | inside the comparator: 147 s | 259.5 s on 4 CPUs; 181.5 s on 16 |
+| comparator, Lean kernel (`kernel_s` 600 s) | 8 min 33 s; kernel about 192 s at 3.62 GB | 354 s with the build, scope peak 4.25 GB; kernel about 144 s at 3.67 GB | 182.3 s on 4 CPUs, 171.6 s on 16: the exports and the replay, the build up to date |
+| gate-tree rebuild | 3 min 30 s | 173 s; "byte-identical (134 artifacts)" | gone (V4-A9) |
+| gate (`gate_s` 120 s) | 21.8 s | 18 s | about 26 s; 22 s on 16 |
+| badge build (`badge_s` 180 s) | 73.7 s (986 package objects compiled) | 16 s (CompPoly's objects prebuilt by `org-setup.sh`) | about 20 s on 4 CPUs: 74 objects, the entry's 66, the badge's 2 and 6 of Batteries and Mathlib |
+| **whole job** | **14 min 22 s**, peak 4.11 GB | **9 min 52 s** | **8 min 42 s** on 4 CPUs; 6 min 47 s on 16 |
+| with `--nanoda` | PROVISIONAL: nanoda's kill stopped the Lean kernel | ok in 16 min 36 s: "nanoda: over budget (cap 14G, peak 14.00 GiB); checked by the Lean kernel only" | not run |
 
-(`logs/f3/cert-closure.log`, `logs/f4/cert.log`, `logs/f4/cert-nanoda.log`.)
+(`logs/f3/cert-closure.log`, `logs/f4/cert.log`, `logs/f4/cert-nanoda.log`, `logs/f5/cert4.log`, `logs/f5/cert16.log`.)
 
 - **A comparator that stops before it builds `Solution`** (the organiser's challenge failed) is a
   harness ERROR, not your REJECT (B-RESULT §11).
 - The comparator and its `lean4export` are built with the organiser's Lean (v4.34.1). One built
   with the comparator pin's own v4.34.0 cannot read the oleans ("incompatible header").
 
-### 5.2 The benchmark job (`evaluate.py bench`, `run-benchmark.py`; design §3.4)
+### 5.2 The benchmark job (`evaluate.py bench`, `run-benchmark.py`; design §3.4, V4-A9)
 
-It runs only on the GitHub-hosted runner. Untrusted code runs only in the sandbox. The steps, in
-order:
+It runs only on the GitHub-hosted runner. Untrusted code runs only in the sandbox. With `split`
+(the default) it is **two parallel jobs** of at most 30 minutes each, every capped step of a part
+within `PART_S` = 28 min: the tree job (calibration, the tree run, the DoS column) and the stream
+job (calibration, the stream run). Each builds the prover and calibrates on its own machine. The
+steps, in order:
 
-1. **The machine and toolchain record.** The prover is built in the sandbox; the sources' and
-   binary's hashes are recorded. Then `setup` runs.
+1. **The machine and toolchain record.** The prover is built in the sandbox (`build_s` = 300 s);
+   the sources' and binary's hashes are recorded. Then `setup` runs (`setup_s` = 300 s).
 2. **Calibration.**
    - `T_triv,best` is the best of `checker_runs` runs of the organiser's interleaved compiled-Lean
      chain checker over the tree's chains, on one pinned core.
    - The service's calls/s and compressions/s, published beside every score (V4-A5), with the
      query size, the batch and the compressions per query they were measured at (RB-m6).
-3. **The tree repeats.** Each has fresh starts from `os.urandom` and a fresh service. `prover tree`
-   is timed. Then, offline:
-   - the **root** check: `acc` on the runner's `treeRoot` digest;
-   - 16 **samples**;
-   - the **canaries** of 8 leaf and 8 node proofs (§7.6).
-4. **The DoS column** (§7.6). It is bounded (RF-M1): each input may take at most
-   `dos.item_factor · T_V` (10 × `T_V` where `T_V` is enforced, else `verify_s`), and the column
-   at most `dos.total_s` (1,800 s per season, 300 s at the smoke shape). A breach fails the run,
-   and the slow input is kept and named in the result.
-5. **The stream repeats.** Each has a fresh service, shared by its requests. Every output is
-   checked with `acc`, within `T_V`.
-6. **Liveness** at `r = 1`, `n = 16`.
-   - The service runs in logging mode, so its log is the complete, authentic query log.
-   - `ext` runs on the root's tape with that log, within the declared fuel. The output must decode
-     to a witness: `Rel` for a leaf, and for a node `acc` on the extracted children, recursively.
-   - The result records `liveness.ran`: a run skipped because the declared fuel or memory is above
-     the liveness caps is not counted as a run (RB-m10).
-   - It cost `spartan-srom` 24.1 s and 121 MB for a log of 30,820 entries (F3 §3). Only the badge's
-     timeout bounds it.
-7. **The score**, and the result JSON.
+3. **The tree run**, once (V4-A9), with fresh starts from `os.urandom` and a fresh service.
+   `prover tree` is timed (`tree_s` = 600 s). Then, offline, only the **root** is read: `acc` on
+   the runner's `treeRoot` digest, within `T_V`, and its statement canary (§7.6).
+4. **The DoS column** (§7.6): 100 random and mutated inputs (64 at the smoke shape). It fails only
+   on time or a crash of the checker (V4-A9; RF-M1): each input may take at most
+   `dos.item_factor · T_V` (10 × `T_V` where `T_V` is enforced, else `verify_s`), and the column at
+   most `dos.total_s` = 180 s. A breach fails the run, and the slow input is kept and named in the
+   result. An accepted input is recorded, not failed.
+5. **The stream run**, once, `M = 256` links (V4-A9), with a fresh service shared by its requests.
+   Every output is checked with `acc`, within `T_V`; the first two leaf and two node outputs also
+   with their statement canaries. The whole stream, requests and checks, runs within `stream_s` =
+   960 s (§4.1).
+6. **The score**, and the result JSON.
+
+There is no liveness run any more (V4-A9): the extractor's correctness and cost are the
+kernel-checked `Computes`, and the core's CI tests the compiled extractor interpreter on the
+library's witness-sending entry.
 
 **`T_V`** (V4-12). One `acc` check must take at most `T_triv,best / R`, with `R = 10`.
 
@@ -680,7 +720,7 @@ order:
   pinned to one core: an upper bound on its CPU time. The cap's calibration is measured the same
   way (design §3.5, RF-m2).
 - Every timed batch starts with one untimed warm-up check (RF-m3).
-- It applies to the root, the samples and every stream output.
+- It applies to the root and every stream output.
 - It is enforced at the season shape and only reported at the smoke shape.
 - **Best of N** (RB-M1). The cap is the best of `checker_runs` checker runs over `R`. So a check
   whose first sample is above the cap is measured again, up to `checker_runs` times in all, and
@@ -694,18 +734,9 @@ order:
   smoke shape (64 compressions) the cap was 10.3–15.4 µs (F3 §3, §4.4) and 12.1 µs (F4). No SNARK
   verifier passes a `T_V` enforced there (§7.3).
 
-**Splitting.** A GitHub-hosted job ends after 6 h. With `split` (the default), the benchmark is six
-jobs:
-
-1. calibration, one tree repeat, the DoS column and liveness;
-2. one tree repeat;
-3. one tree repeat;
-4. one stream repeat;
-5. one stream repeat;
-6. one stream repeat.
-
-Each job builds the prover and calibrates `T_V` on its own machine. `aggregate.py` takes the
-medians and marks a result whose jobs ran on different CPU models `mixed_cpu`. Since RF-M1 it
+**The two jobs.** `aggregate.py` takes `T_tree` from the tree job and `t_link` from the stream
+job, with no repeats and no medians (V4-A9), and marks a result whose jobs ran on different CPU
+models `mixed_cpu`. Since RF-M1 it
 requires exactly the parts of its job plan (`PLANS`), from one harness commit and one season. A
 part that is missing, duplicated or mismatched makes the result ERROR. A part the entry failed makes
 it REJECT, whatever else is missing.
@@ -717,16 +748,16 @@ The first failure ends the evaluation with REJECT:
 - the prover does not build, or `setup` fails;
 - `tree` exits non-zero;
 - an output is missing, is not a regular file, or is over `file_cap`;
-- `acc` rejects any output it is asked about: the root, a sample, or any stream output;
-- `acc` accepts a canary;
-- a check takes longer than `T_V` (season shape) or `verify_s`;
-- a timeout (`tree_s`, `step_s`, `stream_s`);
+- `acc` rejects any output it is asked about: the root, or any stream output;
+- `acc` accepts a statement canary;
+- a check takes longer than `T_V` (season shape) or `verify_s` (10 s);
+- a cap is breached (`build_s`, `setup_s`, `tree_s`, `step_s`, `stream_s`): every GitHub job of an
+  evaluation ends within 30 minutes, and these caps are nested inside it (V4-A9);
 - the service dies (it is never restarted: a restart is a new key);
 - a stream link is not accepted. **The stream is pass/fail link by link**: every one of the `M`
-  links must be accepted;
-- liveness fails to extract a witness;
-- a DoS input is accepted, or crashes the verifier, or takes longer than its cap, or the column
-  runs over its budget (§5.2).
+  links must be accepted, within `stream_s`;
+- a DoS input crashes the checker or takes longer than its cap, or the column runs over its budget
+  (§5.2). An accepted DoS input does not fail the run (V4-A9).
 
 **The reason names the cause** (FIXLIST Q13, Q14; PROVER.md §5):
 
@@ -755,9 +786,9 @@ prints a line on stderr naming any cap an output exceeds (F2-m5).
 - **ACCEPT**: the certificate is `ok` and the benchmark passes;
 - **PROVISIONAL**: the certificate is `provisional` and the benchmark passes;
 - **REJECT**: anything else;
-- **ERROR**: a harness fault: for example a comparator that stops before it builds `Solution`, or
-  a benchmark part that is missing, duplicated or mismatched against the job plan (RF-M1). An ERROR
-  is never comparable.
+- **ERROR**: a harness fault: for example a comparator that stops before it builds `Solution`, an
+  organiser step over its own limit, a setup job's cache that is missing, or a benchmark part that
+  is missing, duplicated or mismatched against the job plan (RF-M1). An ERROR is never comparable.
 
 **The result JSON** (`recursion.fast/v4/result-1`) binds:
 
@@ -797,26 +828,29 @@ commit to equal the result's `harness_commit`, and the verdict to be a comparabl
 | `queryCap` (each trace query) | `2^20` bytes | `acc`, the service |
 | trace length | `≤ qV` (since `ea2e8ab`, RA-M2) | `acc` |
 | `qV` | `≤ 2^16` | `Certificate.cap` |
-| `ε` (`errorCap`), `δ` (`completenessCap`) | `≤ 2^-128` each | `Certificate.cap` |
-| `logCap` (logs the knowledge laws cover) | `2^96` entries | `Security.lean` |
+| `ε` (`errorCap`, per fresh query) | `≤ 2^-120` (V4-A9) | `Certificate.cap` |
+| `δ` (`completenessCap`) | `≤ 2^-40` (V4-A9) | `Certificate.cap` |
+| `logCap` (the adversary's and the verifier's queries together, `Q + qV`) | `2^96` | `Security.lean` (`KS`) |
 | extractor fuel | `fuel t ≤ B t = 2^48 + 2^16·t` | `Certificate.cap`, `CertificateR` |
 | extractor program; output | `2^20` statements; `2^24` words | `progCap`, `outCap` |
 | `chainCap` | `2^20` steps | `Rel` |
 | signed-proof file the runner reads (`file_cap`) | 64 MiB | season file |
-| one `acc` check (`verify_s`) | 60 s | season file |
+| one `acc` check (`verify_s`) | 10 s | season files |
 | one `acc` check, season shape | `T_V = T_triv,best / 10` | §5.2 |
-| one DoS input; the whole DoS column | `10 · T_V` (else `verify_s`); 1,800 s (season), 300 s (smoke) | `[dos]` of the season files |
-| prover build (`build_s`); `setup` (`setup_s`) | 1 h each | season file |
-| tree run (`tree_s`) | 1 h (season), 300 s (smoke) | season files |
-| stream request (`step_s`); stream repeat (`stream_s`) | 600 s and 4 h (season); 120 s and 30 min (smoke) | season files |
+| one DoS input; the whole DoS column | `10 · T_V` (else `verify_s`); 180 s | `[dos]` of the season files |
+| prover build (`build_s`); `setup` (`setup_s`) | 300 s each | `[caps]` of the season files |
+| tree run (`tree_s`) | 600 s (season), 120 s (smoke) | season files |
+| stream request (`step_s`, and again its wait for `ready`); the whole stream (`stream_s`, wall time, checks included) | 60 s and 960 s (season); 60 s and 300 s (smoke) | season files |
+| the entry's Lean build (`build_s`); the kernel (`kernel_s`); the gate (`gate_s`); the badge build (`badge_s`) | 600 s, 600 s, 120 s, 180 s | `[certificate]` of the season files (V4-A9) |
 | memory | prover `11G`, service `2G`, badge `4G`, separate cgroups | `[memory]` of the season files |
-| comparator runs, one per kernel | `14G` each; 1 h per step | `evaluate.py` (`--cert-mem`, `--nanoda-mem`, `--timeout`) |
-| the gate tree's build, the gate, the badge build | `12G` each | `evaluate.py` (`sandboxed`) |
+| comparator runs, one per kernel | `14G` each | `evaluate.py` (`--cert-mem`, `--nanoda-mem`) |
+| the build, the gate, the badge build | `12G` each | `evaluate.py` (`sandboxed`) |
 | service | `2^16` signatures per lifetime; `2^18` items per `QUERY`, `2^16` per `SIGN`; 16 MiB body; 32 connections | PROTOCOL.md §3 |
-| GitHub-hosted job | 6 h; 4 vCPU, 16 GB RAM, 14 GB disk | design §3.1 |
+| GitHub-hosted job | 30 min, every job of an evaluation (V4-A9); 4 vCPU, 16 GB RAM, 14 GB disk | design §3.1, §3.4 |
 
-Open: the certificate job's build caps, to be set from a runner run of a real entry's certificate
-job (design §3.1, §6.2), and limits on files and bytes per root (none is fixed).
+Open: the certificate job's caps have not run on a GitHub runner; F5 measured `spartan-srom`
+against them on 4 CPUs of the development VM (§5.1). No limit on files and bytes per root is
+fixed.
 
 ## 6. Allowed imports and hard rules
 
@@ -868,6 +902,10 @@ The source rule (`.contract/scripts/source-rule.py`) and the gate
   - **The badge also compiles `S.accF` with `S := RecursionFast.Challenge.submission`, so the whole
     `submission` must be computable**, its `ε` and `δ` included (F1 §7.1).
   - A `noncomputable` field that rule 4 accepts still fails the badge build (§7.5).
+  - **The badge build has a cap**, `badge_s` = 180 s (V4-A9; §5.1). Your modules, and every
+    module you import outside the precompiled closures of `RecursionFast`, the CompPoly roots and
+    `Mathlib.Tactic`, are compiled inside it: `import Mathlib.Tactic` costs nothing there, and
+    `import Mathlib` does not fit.
 - **Statements are the organiser's.** You fill the challenge's `submission` and `certified`.
   Everything else in `Solution.lean` is the rendered stub, verbatim.
 - **Bind the statement into every Fiat–Shamir seed** (C15). This is a rule of this rulebook, not
@@ -885,8 +923,9 @@ The source rule (`.contract/scripts/source-rule.py`) and the gate
 Each item below follows from the rules and was measured, proved or estimated by the first v4 entry
 (`spartan-srom`: v3's Spartan+Ligero leaf SNARK over GF(2^64)/GF(2^192), with σ0-bundle nodes) or
 by the core's stages. The harness findings are from F3's run of the frozen entry `8111b71` at
-`a874f87` and F4's run of the fixed entry `745c7d8` at `81e1ebf`. Each item below still holds at
-the pin `01a25b0`; the harness defects that the pin fixed are in §5. Times are from the shared
+`a874f87` and F4's run of the fixed entry `745c7d8` at `81e1ebf`, and F5's run of the migrated
+entry at `a283ff8`. Each item below still holds at the pin `<core-pin>`, or says what V4-A9 or
+V4-A10 changed; the harness defects that the pin fixed are in §5. Times are from the shared
 development VM (32 vCPU QEMU, no `pclmulqdq`, under load), not a runner, so read them as relative.
 The entry's own account is `submissions/spartan-srom/NOTES.md`.
 
@@ -913,8 +952,8 @@ The entry's own account is `submissions/spartan-srom/NOTES.md`.
     - then each leaf SNARK, with fresh queries.
   - The node's trace is the concatenation of the leaves' traces, and `E` is the library's copy
     extractor, unchanged.
-  - `final` holds because the potential already covers every chain in the log, so a bundle of `k`
-    SNARKs costs no extra error.
+  - The potential's `final` holds because it already covers every chain in the log, so a bundle
+    of `k` SNARKs costs no extra error; `KState.ks` then gives `KS` (F5).
   - C-m1 does not bite: `σ0` serves only to make the extracted witness a member of `Rel`.
   - It grows by **153,367 bytes per leaf** at `n = 16`: 143,663 of SNARK and 9,704 of `W`.
 - **`proofCap` bounds the stream.** Every stream output must be accepted. A growing bundle
@@ -928,8 +967,8 @@ The entry's own account is `submissions/spartan-srom/NOTES.md`.
   | ≥ 16,384 | 0 | the leaf itself is above `proofCap` |
 
   (F2 §3.3, `logs/f2/links-n*.log`; F3 §4.3 confirmed the counts with the real badge.) The season
-  stream has `M = 512` links, so its running proof must stay bounded: a node that verifies its
-  children and forgets them.
+  stream has `M = 256` links (V4-A9; it had 512), so its running proof must stay bounded: a node
+  that verifies its children and forgets them.
 - **`proofCap` bounds the tree: the frontier is `2^r · n ≤ 4,096`** (F3 §4.3,
   `logs/f3/frontier-table.txt`). The largest trees the harness ACCEPTed:
 
@@ -951,8 +990,9 @@ The entry's own account is `submissions/spartan-srom/NOTES.md`.
     `proofCap` (F0 §2, F2 §3.3).
   - The season's `n_f = 2^16` needs a polylogarithmic commitment. leanVM's BLAKE2s Flock (WHIR) is
     259,320 bytes at `2^14` compressions (F0 §4).
-  - Under `errorCap = 2^-128` per query, GF(2^128) sumcheck rounds do not qualify (2^-127 per
-    degree-2 round); GF(2^192) does (F0-ideation Q4, **estimate**).
+  - At `errorCap = 2^-120` per query (V4-A9; FB-9), GF(2^128) sumcheck rounds qualify: a degree-2
+    round costs `2^-127`, and Flock's univariate-skip round about `2^-121` (BRIEF V4-A9 item 10).
+    Under v4's earlier `2^-128` only GF(2^192) did (F0-ideation Q4, **estimate**).
 - **The season shape needs recursion** (design §2.8, §4.2; C-m10).
   - One flat SNARK over the tree's `2^24` compressions is about `2^38` witness bits, 32 GiB
     (F0-ideation point 3, **estimate**), far above 11 GiB.
@@ -1113,7 +1153,8 @@ in-place reads and a byte-level node reader.
   - Every change to `acc`'s conjuncts must be mirrored (F1 §7.3). RA-M2's trace-length conjunct is
     one. The same contract commit redefined `wordBytes w` as `enc64 w.toNat`, which breaks byte
     lemmas proved against the old definition (review F1-m1).
-- **`KS`'s query bound is over oracle functions** (`∀ H c π, (queries H).length ≤ qV`).
+- **`KS`'s query bound is over oracle functions** (its first conjunct, `∀ H c π, (queries H).length
+  ≤ qV`).
   - A non-functional trace follows no function's path.
   - Node completeness needs every accepted child's trace below `2^64` entries (`Signed.Fits`), so
     `spartan-srom` proved a path-uniform bound (`OProg.AtMost`, 150 lines).
@@ -1121,6 +1162,17 @@ in-place reads and a byte-level node reader.
     short enough to re-encode without that bound (F1 §7.2).
   - `qV` must also be **static**: compute your query count from the proof's headers before the
     first query, and reject above the bound. That is the bundle's `Σ qBound ≤ 2^16`.
+- **Migrating a certificate to V4-A10** (E-ks §3; F5). An entry built on a potential changes a few
+  lines; its statements stay:
+  - `⟨⟨k⟩, hq⟩ : KS …` becomes `k.ks hq` (`KState.ks`; `Nonempty.elim` when the potential sits
+    behind `Nonempty`, as in `spartan-srom`'s `Facts`);
+  - the conjuncts of `KS` swapped: `h.1` is now the query bound, `h.2` the probability bound;
+  - `KState` is in `Library/Security.lean`, the bridge in `Library/PaperTheorem.lean`;
+    `PaperTheorem.prob` is the contract's `prob`; `DepthLE` is gone; `avg_le`, `N_pos` and
+    `prob_le_one` are in the `RecursionFast` namespace (`Library/Prob.lean`); `failProb` is a
+    library definition, and `completeWithError_iff` converts a `failProb` bound;
+  - the library's new `OProg.bind_assoc` and `OProg.queries_bind` can make an unqualified name
+    ambiguous under `open … OProg`: `spartan-srom` wrote `LawfulMonad.bind_assoc` once.
 - **Completeness is for every witness, and the Lean `P` has no signer.**
   - `CompleteWithError` quantifies over every witness of `Rel (S.acc vk)`, for every `vk`. That
     includes node witnesses whose children are any accepted signed proofs of any size.
@@ -1132,45 +1184,45 @@ in-place reads and a byte-level node reader.
     import closure.
   - Objects outside the organiser's prebuilt closure are compiled in your badge build, into the
     package tree: 986 for `spartan-srom` at `a874f87` (952 Mathlib, 28 CompPoly, 6 Batteries), in
-    73.7 s (F3 §2.3). At the pin `org-setup.sh` prebuilds CompPoly's.
+    73.7 s (F3 §2.3). At the pin `org-setup.sh` prebuilds those of the closures of `RecursionFast`,
+    the CompPoly roots and `Mathlib.Tactic`, and the rest must fit `badge_s` = 180 s (§5.1):
+    `spartan-srom`'s badge build took about 20 s on 4 CPUs for 74 objects: its 66 modules, the
+    badge's 2 and 6 Batteries and Mathlib modules outside those closures (F5).
   - `org-setup.sh` writes into the package tree too. So the harness needs a private, writable copy
     of it; the shared read-only tree cannot be used (F3 friction 9; `CLAUDE.md`, "Commands").
 
 ### 7.6 What the runner checks byte for byte
 
-- **Canaries** (`.contract/harness/rfh/checks.py`, `canaries`). For 8 leaf and 8 node proofs, every
-  mutation below must be rejected:
-  - one byte appended to the file, or removed from it;
-  - one bit of the statement flipped;
-  - the sibling's statement;
-  - one byte appended to `π`, or removed from it;
-  - the first trace answer changed;
-  - a byte of the first trace query changed (RB-m9, new at the pin);
-  - a trace entry appended;
-  - a signature chain value changed;
-  - the signature index changed.
-
-  So decode strictly: exact lengths, no trailing data, one encoding per value. Exact consumption
-  in `runSeq` rejects the appended entry for you.
-- **The DoS column.** It runs 1,000 inputs (64 at the smoke shape), and any accept or crash
-  rejects:
+- **Statement canaries** (`.contract/harness/rfh/checks.py`, `canaries`; V4-A9). On the tree's
+  root and on the first two leaf and two node outputs of the stream, `acc` must reject the proof
+  for its statement with one bit flipped (`stmt-bit`) and, on the stream's outputs, for its
+  sibling's statement (`swapped-child`).
+  - The non-malleability canaries (`π` one byte longer or shorter) are gone: an accepted mutation
+    of a true statement's proof is required by no rule.
+  - The canaries that never reach your `V` (the file one byte longer or shorter, a changed trace
+    answer or query, an appended trace entry, a changed signature chain value or index) test the
+    organiser's parser, `traceDigest` and `SigOk`, so they run in the core's CI, not per entry.
+  - Strict decoding (exact lengths, no trailing data, one encoding per value) is no longer tested,
+    but it costs nothing. Exact consumption in `runSeq` rejects an appended trace entry for you.
+- **The DoS column.** It runs 100 inputs (64 at the smoke shape):
   - random bytes;
   - **random `π` with the root's genuine trace and signature**: `SigOk` passes, so your `V` runs on
     garbage;
   - bit flips in `π`;
-  - bit flips and truncations of the whole file.
+  - bit flips, truncations and extensions of the whole file.
 
-  The maximum time is published, and since the final fix pass it is bounded (RF-M1, §5.2): each
-  input at most 10 × `T_V` (or `verify_s` where `T_V` is not enforced), the column at most 1,800 s
-  per season. A breach fails the run. For `spartan-srom` the maximum was 443 ms at the smoke shape
-  and 1.59 s at `r = 0, n = 4,096` before its fix pass (F3 §3, §4.3), and 312 ms at the smoke shape
-  after it (F4).
+  It fails only on time or a crash (V4-A9): each input at most 10 × `T_V` (or `verify_s` where
+  `T_V` is not enforced), the column at most 180 s. An accepted input is recorded, not failed. The
+  maximum time is published. For `spartan-srom` the maximum was 443 ms at the smoke shape and
+  1.59 s at `r = 0, n = 4,096` before its fix pass (F3 §3, §4.3), 312 ms at the smoke shape after it
+  (F4), and 323 ms at the smoke shape at `a283ff8` (F5).
 - **Crafted inputs are not tested, and they can be much slower** (review F1-M2; FB-5).
   - A signature on the empty trace signs every query-free slot under that `vk`. `spartan-srom`'s σ0
     is public in every bundle it emits.
   - From those public parts the review built a 970 KB chain of 100 nested plain nodes over clear
     leaves. `spartan-srom`'s compiled `acc` took **68.5 s** on it with `n = 1` leaves and **183 s**
-    with `n = 2^20` leaves, against 0.43 s for the honest root and `verify_s = 60 s`.
+    with `n = 2^20` leaves, against 0.43 s for the honest root and `verify_s` = 60 s at the time
+    (10 s since V4-A9).
   - There were two causes: each level re-decoded its child from scratch, and each clear leaf
     recomputed up to `2^20` chain steps.
   - The DoS column's random mutations never reach such inputs, so its bound does not cover them.
@@ -1207,11 +1259,13 @@ in-place reads and a byte-level node reader.
   - `--work` must not exist.
   - Set `RF_HARNESS_COMMIT` when the organiser checkout is an archive, not a git checkout.
 - **What it costs**, on the development VM:
-  - copying the private package tree: 9.2 GB, 4 min 0 s with `cp -a` on ext4 (F3), 4 min 8 s (F4);
-  - `org-setup.sh`: 5 min 56 s at `a874f87` (F3), 4 min 12 s at `81e1ebf`, CompPoly included (F4);
+  - copying the private package tree: 9.2 GB, 4 min 0 s with `cp -a` on ext4 (F3), 4 min 8 s (F4),
+    2 min 2 s (F5);
+  - `org-setup.sh`: 5 min 56 s at `a874f87` (F3), 4 min 12 s at `81e1ebf`, CompPoly included (F4),
+    6 min 7 s at `a283ff8`, the `Mathlib.Tactic` objects included (F5, `logs/f5/org-setup.log`);
   - `spartan-srom`'s certificate job: 14 min 22 s (F3), 9 min 52 s (F4), 16 min 36 s with
-    `--nanoda` (F4);
-  - its smoke benchmark: 54 s (F3).
+    `--nanoda` (F4), 8 min 42 s on 4 CPUs and 6 min 47 s on 16 (F5);
+  - its smoke benchmark: 54 s (F3), 14 s (F5).
 
 ## 8. Submitting
 
@@ -1221,8 +1275,9 @@ in-place reads and a byte-level node reader.
   - The `select` job of `.github/workflows/evaluate-entry.yml` refuses anything else. That caller
     workflow is the core's `harness/ci-template/evaluate-entry.yml`, with both `CORE_COMMIT_SHA`
     placeholders set to the pin.
-  - Open: this workflow, the core's evaluation workflow, its six benchmark jobs and the attestation
-    have never run on GitHub (design §6.2). The branch that carries them here is not pushed.
+  - Open: this workflow, the core's evaluation workflow (its setup jobs, its two benchmark jobs) and
+    the attestation have never run on GitHub (design §6.2). The branch that carries them here is
+    not pushed.
 - **Evaluation needs a maintainer.**
   - A maintainer applies the `evaluate` label, or dispatches the workflow with the pull request's
     number.
@@ -1231,8 +1286,9 @@ in-place reads and a byte-level node reader.
   - GitHub's approval of a first-time contributor's workflow run admits the run to compute. It is
     not a verdict.
 - **The verdict.**
-  - The core's reusable `evaluate.yml`, at the pinned commit, runs the `certificate`, `benchmark`
-    and `attest` jobs.
+  - The core's reusable `evaluate.yml`, at the pinned commit, runs the `plan`, `setup`,
+    `setup-tools`, `certificate`, `benchmark` (two jobs) and `attest` jobs, each within 30 minutes
+    (V4-A9).
   - The `report` job comments the verdict, `S`, `T_tree`, `t_link`, `K` and the CPU models on the
     pull request.
   - The attested `result` artifact is the durable record (§5.4).
@@ -1280,8 +1336,9 @@ in-place reads and a byte-level node reader.
   - `docs/v4/flock-baseline/BLUEPRINT.md`: the formats, the verifier branch by branch, the
     certificate;
   - the stage RESULTs F0 (probes and the assembly route), F1 (Lean), F2 (prover), F3 (the
-    harness run with the real badge: smoke ACCEPT, season REJECT, the frontier) and F4 (the run of
-    the fixed entry with no workaround), with their golfs and journals;
+    harness run with the real badge: smoke ACCEPT, season REJECT, the frontier), F4 (the run of
+    the fixed entry with no workaround) and F5 (the migration to V4-A9 and V4-A10), with their golfs
+    and journals;
   - the route ideation and the Lean and prover reviews.
 - `docs/v4/FLOCK-BASELINE-FEEDBACK.md`: the baseline team's report on the v4 rules (FB-1 … FB-12,
   H-1 … H-18).

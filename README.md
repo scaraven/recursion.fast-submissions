@@ -31,21 +31,30 @@ evaluation workflow, at the pinned commit, certifies the entry and benchmarks it
 GitHub-hosted runner, and the result is attested. Pull requests are never merged: after a verdict,
 the intake copies the verified root and its registry entry into `main`.
 
-## Status (2026-10-23)
+## Status (2026-10-27)
 
-- **v4 is a proposal, built on the core's branch `v4/srom-rules`.** It is open as the core's pull
-  request #17 (https://github.com/scaraven/recursion.fast/pull/17), not merged, and the user has not
-  adopted it. Every decision taken in their absence is listed in design §6.1.
-- **The pin.** `.contract` is at **`01a25b0`**, the head of that pull request, committed here as
-  `a6ee05c`; the caller workflow was regenerated from its template in `4d2f282`. The core's CI is
-  green on GitHub runners at that commit, the end-to-end smoke included (run 39966237935).
-  - **The contract** (`RecursionFast/`) is unchanged since the contract fix pass `ea2e8ab`: `acc`
-    checks `p.tr.length ≤ S.qV` right after the size cap (RA-M2); `Log` is an abbreviation for
-    `Trace`; `wordBytes w := enc64 w.toNat`.
+- **v4 is a proposal, built on the core's branch `v4/srom-rules`** (the core's pull request #17,
+  https://github.com/scaraven/recursion.fast/pull/17), with two of the user's amendments stacked on
+  it: V4-A9, the trim (`v4/trim-fat`, pull request #18), and V4-A10, textbook knowledge soundness
+  (`v4/ks-standard`). None is merged, and the user has not adopted v4. Every decision taken in
+  their absence is listed in design §6.1.
+- **The pin.** `.contract` is at **`<core-pin>`**, on `v4/ks-standard`; the caller workflow is the
+  core's template at that commit. The core's CI was green on GitHub runners at `01a25b0`, the
+  end-to-end smoke included (run 39966237935); the trim's workflow structure has not run on GitHub.
+  - **The contract**: the contract fix pass `ea2e8ab` (`acc` checks `p.tr.length ≤ S.qV` right
+    after the size cap, RA-M2; `Log` is an abbreviation for `Trace`; `wordBytes w := enc64
+    w.toNat`); V4-A9's caps, `errorCap = 2^-120` per fresh query and `completenessCap = 2^-40`;
+    and V4-A10's `KS`, textbook single-output knowledge soundness over query-bounded adversaries
+    on a lazily sampled oracle, with the potential `KState` a library tool closed by `KState.ks`.
+  - **The trim** (V4-A9): every GitHub job at most 30 minutes, with nested caps (certificate:
+    build 600 s, kernel 600 s, gate 120 s, badge 180 s); one tree run, root only, and one stream
+    run, `M = 256` within 960 s; per entry only the statement canaries; a DoS column of 100 inputs
+    that fails only on time or a crash; no liveness; one Lean build; the organiser's own checks in
+    the core's CI only.
   - **The harness** carries stage B's fix pass `5b2b591` (B-RESULT §9) and its final fix pass
     (B-RESULT §10–§11):
     - CompPoly's field is an organiser root (Q2);
-    - the gate tree builds only `Solution`'s closure (Q7);
+    - the harness builds only `Solution`'s closure (Q7);
     - the two kernels run separately (Q12);
     - failure reasons name their cause (Q13, Q14);
     - `T_V` is the best-of-N wall time of the pinned check (RB-M1);
@@ -70,7 +79,13 @@ the intake copies the verified root and its registry entry into `main`.
     - **F4**, the fixed entry `745c7d8` against `81e1ebf` with no workaround
       (`stages/F4-final-harness-RESULT.md`): certificate ok in 9 min 52 s, **smoke ACCEPT** with
       `S` = 1.794 (from 6.666).
-    - **The verdict at the pin**: ACCEPT at `81e1ebf`; confirmed at `01a25b0`: **ACCEPT** (F4b: certificate ok with the Lean kernel in 9 min 51 s; smoke bench of the submitted `prover.s` `733b3a30…`: T_tree 0.142 s, t_link 0.0846 s, S 1.835; `prover.s` assembles with GNU Binutils 2.42 without error or warning; `docs/v4/flock-baseline/stages/F4-final-harness-RESULT.md`, F4b)
+    - **F4b**, the confirmation at `01a25b0`: **ACCEPT** (certificate ok with the Lean kernel in
+      9 min 51 s; smoke bench of the submitted `prover.s` `733b3a30…`: T_tree 0.142 s, t_link
+      0.0846 s, S 1.835; `prover.s` assembles with GNU Binutils 2.42 without error or warning).
+    - **F5**, the migration to V4-A10 at `a283ff8` (`stages/F5-ks-RESULT.md`): the certificate
+      reaches V4-A10's `KS` through `KState.ks` (5 Lean files, statements unchanged) and is ok within
+      every cap on 4 CPUs in 8 min 42 s; **smoke ACCEPT** with `S` = 1.448 (`T_tree` 0.116 s,
+      `t_link` 0.0666 s); season REJECT for F4's reasons.
     - At every pin, ACCEPT only where `2^r · n ≤ 4,096`: above that, every root is over `proofCap`.
     - **REJECT at the season shape** (F4): the tree because a 1,572,898-byte Fiat–Shamir query is
       above `queryCap`, the stream because its first leaf's `π` (2,791,559 B) is above `proofCap`.
@@ -85,8 +100,9 @@ the intake copies the verified root and its registry entry into `main`.
 
   Neither is a v4 entry. The v3 documents copied under `docs/` are reference (`docs/README.md`).
 - **The caller workflow** `.github/workflows/evaluate-entry.yml` is installed on this branch. It is
-  the core's `harness/ci-template/evaluate-entry.yml` at the pin, with both `CORE_COMMIT_SHA`
-  placeholders set to it. Open: it has not run on GitHub, since this branch is not pushed.
+  the core's `harness/ci-template/evaluate-entry.yml` at the pin (two jobs of 10 minutes around the
+  core's evaluation), with both `CORE_COMMIT_SHA` placeholders set to it. Open: it has not run on
+  GitHub, since this branch is not pushed.
 - **Not built yet.**
   - The intake: copying verified roots into `main` and writing `records.json`.
   - The paired (ABBA) record comparison.
@@ -128,7 +144,7 @@ git clone --recurse-submodules https://github.com/scaraven/recursion.fast-submis
 ## Links
 
 - Core repository: https://github.com/scaraven/recursion.fast (`git@github.com:scaraven/recursion.fast.git`),
-  branch `v4/srom-rules`.
+  branch `v4/ks-standard` (on `v4/trim-fat`, on `v4/srom-rules`).
 - The v4 design: `.contract/docs/DESIGN-v4-srom.md`. Its brief and decisions are in
   `.contract/docs/v4/BRIEF.md`, and its stage records under `.contract/docs/v4/`.
 - The score: `.contract/docs/DESIGN-cost-incentive-model.md`.
