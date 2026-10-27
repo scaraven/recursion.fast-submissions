@@ -190,3 +190,13 @@ Base: branch `v4/flock-recursive`, HEAD `53c2e13`. Build tree `logs/fr-build-SH2
       from level 0 alone; the fold-consistency set needs the fold challenges (a Fiat–Shamir
       chain replay, absent from §6.2) and a "no hidden disagreement" event (absent from A.10).
       Stopped there: both need the coordinator.
+
+## Part 12
+
+25. Coordinator's answers (stage-review changes 14): `fuel_per_word = 8192`, `Hide_i` in P1's
+    doom (`final` supplies `A_c⁽ⁱ⁾ = jointAgree⁽ⁱ⁾`), column values read in place. `FRXProg`'s
+    `fuelPerWord := 2^13`; `decOk_decRead`/`decOk_decLN` re-proved by changing their linear
+    constant (`2^13 − 16 = 8176`). `computes`, `ext_caps`, `E_leaf` re-check (axioms standard).
+    Build `logs/S-H2/build11b.log` (2 min 50 s, rebuilding from `FRXProg` down). Stopped:
+    this agent's context is long; items 1–6 of the coordinator's new list handed over in RESULT
+    Part 12.

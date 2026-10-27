@@ -1228,3 +1228,51 @@ commit-ready:
 - every `FRX*` module builds;
 - no `sorry`;
 - the source rule is clean.
+
+---
+
+## Part 12: the new fuel (after the coordinator's answers to Part 11's Q1–Q3)
+
+The coordinator's answers (BLUEPRINT §10, stage-review changes 14):
+
+- **Q1.** `fuel_per_word` is now 8,192 (`claim.json`).
+- **Q2.** `Hide_i` is in P1.i's doom, so `final` supplies `A_c⁽ⁱ⁾ = jointAgree⁽ⁱ⁾`. It goes in as a
+  hypothesis of the `'N'` case.
+- **Q3.** The column values are read in place.
+
+**Delivered.**
+
+- `FRXProg`: `fuelPerWord := 2^13`. With it:
+  - `fuel t = 3·2^46 + 2^13 t`, which matches `claim.json` (`fuel_base = 211,106,232,532,992`);
+  - `fuel_le_budget` holds against `2^48 + 2^16 t`.
+- `FRXReadDefs`: `decOk_decRead` and `decOk_decLN` re-proved. The only change is the linear
+  constant, `2^13 − 16 = 8176`.
+- `computes`, `ext_caps` and `E_leaf` re-check. They depend on `propext, Classical.choice,
+  Quot.sound`.
+- The build (`FRXProg` … `FRXAgree`, everything downstream of `FRXProg` rebuilt) takes
+  2 min 50 s (`logs/S-H2/build11b.log`).
+- The linear budget is now `8,176 t`. The answer sort uses `≈ 2,374 t`, which leaves
+  `≈ 5,800 t` for the query-keyed index.
+
+**Handover** (the coordinator's items 1–6; this agent's context is long, so it stopped here).
+
+1. **Query index and challenge replay.**
+   - Sort the log entries by a key of their query. The existing `sortIR` is parametric only in the
+     key comparison: `cmpIR` compares answer words. A second instance should compare the query
+     words `1 … ⌈|q|/8⌉` lexicographically, with the length word first.
+   - Then replay the chain by binary search, as `lookIR` does over the answer index, for the
+     first entry whose query equals the query built from the previous answer and π's bytes
+     (A.4's item table; `FRTranscriptDefs` gives tags and offsets).
+   - Prove it against `Oracle.runLog`'s `L.find? (·.1 = q)`. The index must be stable, so that
+     the first entry wins among equal queries, which is what `FRXMerge`'s stable merge gives.
+   - Read only up to P1.4's last round. Read `z` with `kAt`/`coordAt` as S-G does.
+2. **The barycentric interpolation**, per Part 11 §4 step 4, with the pure lemma
+   "barycentric = `interpF` off `J`, `y(s)` on `J`". It reads `y(J_t)` in place from
+   `colBase + 128·J_t + 2r`.
+3. **Levels 1–4** (the `readIR` generalisation, Part 11 §4 step 2), then the folds, `Enc` and the
+   flags feeding `scanIR`, bottom-up from level 4 (the final message from π).
+4. **The `decodeWit` output.**
+5. **The `'N'` case.** Its hypotheses are `capPi π e = capDig es 0 e`, `¬ farL` and `truthC` for
+   every level, and `A_c⁽ⁱ⁾ = jointAgree⁽ⁱ⁾`.
+6. **Wire into `decSnark`.** `bflyIR`, `wtabIR` and `scanIR` already have exact costs and `WF`,
+   `NoLoopT` and `outs = 0` lemmas.

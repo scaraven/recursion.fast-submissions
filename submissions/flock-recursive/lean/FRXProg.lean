@@ -141,7 +141,7 @@ def mpwX : ℕ := 3
 /-- `claim.json`'s `fuel_base` (`3 · 2^46 ≈ 2^47.58`, blueprint B-10). -/
 def fuelBase : ℕ := 3 * 2 ^ 46
 /-- `claim.json`'s `fuel_per_word` (`2^12`). -/
-def fuelPerWord : ℕ := 2 ^ 12
+def fuelPerWord : ℕ := 2 ^ 13
 
 /-- **The declared fuel** `fuel t = fuel_base + fuel_per_word · t` (`claim.json`). -/
 def fuel (t : ℕ) : ℕ := fuelBase + fuelPerWord * t

@@ -418,7 +418,7 @@ theorem decOk_decRead : DecOk decRead where
     simp only [decRead, cost, cost_logIR, cost_read0, decBudget, fuelBase, fuelPerWord]
     have h1 : t / 5 * 11871 ≤ 2380 * t := by omega
     have h2 : (3 * 2 ^ 46 - 2 ^ 27 : ℕ) = 211106098315264 := by norm_num
-    have h3 : (2 ^ 12 - 16 : ℕ) = 4080 := by norm_num
+    have h3 : (2 ^ 13 - 16 : ℕ) = 8176 := by norm_num
     rw [h2, h3]
     omega
   outs := fun t => by simp [decRead, outs, outs_logIR, outs_readIR, read0]
@@ -465,7 +465,7 @@ theorem decOk_decLN : DecOk decLN where
     simp only [decLN, cost, e, e2]
     simp only [decRead, cost, cost_logIR, cost_read0, decBudget, fuelBase, fuelPerWord] at h ⊢
     have h2 : (3 * 2 ^ 46 - 2 ^ 27 : ℕ) = 211106098315264 := by norm_num
-    have h3 : (2 ^ 12 - 16 : ℕ) = 4080 := by norm_num
+    have h3 : (2 ^ 13 - 16 : ℕ) = 8176 := by norm_num
     rw [h2, h3] at h ⊢
     omega
   outs := fun t => by
