@@ -1,6 +1,6 @@
 # `flock-recursive`: entry blueprint (normative)
 
-Status: phase 1 (B), **revision 3** (stage S-0, part 1) after two rounds of adversarial review
+Status: phase 1 (B), **revision 3.2, frozen for implementation** (2026-10-27) after four rounds of adversarial review; later changes only through stage reviews, recorded in §10
 (`reviews/BP-crypto-review.md`, `reviews/BP-eng-review.md`; fix passes in §10), 2026-10-27, for
 the tracks S-0 (interfaces), L-field, L-piop, L-pcs, L-circ, L-ext, L-cert, P and H (`PLAN.md`
 §3). Contract: `.contract` at core `15dac52` (`RecursionFast/Contract/*.lean` is authoritative;
@@ -36,11 +36,11 @@ novel-basis change, within `2^47.5 + 2^12 t` steps.
 | `piSize` (both kinds) | 756,496 B = 739 KiB | `proofCap` 1,048,576 | 1.39× |
 | trace items (both kinds) | 8,896 | `qV = 10,240` | 1.15× |
 | hashed trace bytes / compressions | 1,440,336 / 22,506 | — | — |
-| node circuit blocks | 53,959 | 65,536 | 1.21× |
-| M rows per node | 1,000,164 = `2^19.93` | `N_M = 2^21` | 2.10× |
+| node circuit blocks | 54,111 | 65,536 | 1.21× |
+| M rows per node | 1,019,364 = `2^19.96` | `N_M = 2^21` | 2.06× |
 | extractor steps (`m = 30` node) | `2^47.11 + 2^11 t` | `fuel = 2^47.5 + 2^12 t`; `B = 2^48 + 2^16 t` | 1.31×; 1.85× |
 | error per fresh query | `2^-120.36 + 2^-144` | `εR = 2^-120.093` | — |
-| verifier F-products | leaf ≈ 1.1·10^5, node ≈ 3.6·10^5 | `T_V` 205.9 ms (≈ 80–115 ms, **estimate**) | ≈ 2× |
+| verifier F-products | leaf ≈ 1.2·10^5, node ≈ 3.7·10^5 | `T_V` 205.9 ms (≈ 80–120 ms, **estimate**) | ≈ 2× |
 | output words (node) | `2^19.3` | `outCap = 2^24` | — |
 
 ### 0.1 Decisions
@@ -169,11 +169,17 @@ object is the quirky `ẑ` (multilinear in `m − 6` variables, degree `< 64` in
 turns both forms into claims on the packed `f`.
 
 0. `seed`; `absorb(stmt)`. 1. `absorb(cap₀)`.
-2. **Z** zerocheck of `Sel · ((A₀z)∘(B₀z) − z − E) = 0` over the blocks (`Sel` the kind's used-block
-   indicator, `E` the **public target** of §4: the constant positions of every used block): **Z1**
-   `r`, `m* − 13 = 19` free coordinates (10 squeezes; 7 pinned, A.1); **Z2** `absorb(P^{ab} ‖ P^z)`,
-   `λ`; **Z3** `m* − 6 = 26` rounds of degree 3; the prover ends with `â, b̂` (`absorb`) and the
-   quirky claim `ẑ(λ, r′)`; the verifier computes `Sẽl(r′) · Ê(λ, r′)`.
+2. **Z** zerocheck of `(A₀z)∘(B₀z) − z − E = 0` on the used blocks, with **`Sel` inside the weight**
+   (R4-m1): the summand is `ŵ(x) · ((A₀z)∘(B₀z) − z − E)(x)` with `ŵ := MLE(eq(r,·) · Sel(·))`
+   (`Sel` the kind's used-block indicator, a union of ≤ 4 block intervals; `A = I ⊗ A₀`, `B = I ⊗
+   B₀`, `Sel` never inside `A`, `B`), `E` the **public target** of §4: **Z1** `r`, `m* − 13 = 19`
+   free coordinates (10 squeezes; 7 pinned, A.1); **Z2** `absorb(P^{ab} ‖ P^z)`, `λ`; **Z3** `m* −
+   6 = 26` rounds of degree 3; the prover ends with `â, b̂` (`absorb`) and the quirky claim
+   `ẑ(λ, r′)`; the verifier's final value is `ŵ(r′) · (â b̂ − ẑ − Ê(λ, r′))` with **`ŵ(r′) = Σ_x
+   eq(r′,x) eq(r,x) Sel(x)`, a prefix sum of the tensor `eq(r′,·) eq(r,·)` over `Sel`'s intervals**
+   (`O(log)` per interval; not `eq(r, r′) · Sẽl(r′)`). The weight form keeps the rounds at degree 3
+   and the prover's eq table (its entries outside `Sel` are zero: no extra prover cost); the
+   separate-factor form would be degree 4 (4 coefficients, `4/2^128`).
 3. **Lc** lincheck of `â = (A z)̂(r_row)`, `b̂ = (B z)̂(r_row)`: **L1** `α`; **L2** **14 rounds of
    degree 2** over the block's position bits (P1-D4); the verifier evaluates `Â₀(r_row, r_k)`,
    `B̂₀(r_row, r_k)` by the walk with the row weights at `r_row` (Lagrange at `λ` on the skip
@@ -247,7 +253,7 @@ some true ↔ semIR (gen k) (vk, c, π, answers tr) = accept)`.
 | the univariate round Z2 at 128 points; 7 final K rounds | 0.5 k | 0.5 k |
 | eq tables, tensor weights, K arithmetic | ≈ 15 k | ≈ 15 k |
 | sumcheck rounds | ≈ 2 k | ≈ 2 k |
-| MBP (one evaluation of `W` at the final point) `25 · 128` F + `25 · 2^14` XOR | 3.2 k | 3.2 k |
+| MBP: `Ŵ(ρ) = Σ_j κ^j B̂_j(ρ)` at the final point, `J_z = 4` runs of `25 · 128` F (or one run with 4 state vectors) + `25 · 2^14` XOR | 12.8 k | 12.8 k |
 | walks `Â₀, B̂₀` | `1.2·10^5` XOR | `1.2·10^5` XOR |
 | node: `evalM` irregular `2 × 74,587` + eq tables `2 × 22,506 + 2^14` + templates + walks; `evalL` templated | — | ≈ 2.4·10^5 F |
 | **F-products** | **≈ 1.1·10^5** | **≈ 3.6·10^5** |
@@ -275,8 +281,9 @@ prover could build such proofs, against itself. `V`'s `W` branch therefore has n
 ## 4. The circuits
 
 Batch R1CS in Flock's form: `z ∈ GF(2)^(2^m)` is `2^(m−14)` blocks of `2^14` positions; the
-zerocheck's summand is `Sel(blk) · ((A₀z)∘(B₀z) − z − E)(blk, pos)` with `Sel` the public used-block
-indicator (a union of ≤ 4 intervals; `Sẽl` by prefix MLEs) and **`E` the public target** (P1-D2,
+zerocheck's summand is `ŵ(blk, pos) · ((A₀z)∘(B₀z) − z − E)(blk, pos)` with `ŵ = MLE(eq(r,·) ·
+Sel(·))`, `Sel` the public used-block indicator (a union of ≤ 4 intervals; its final value a prefix
+sum, §2.3 step 2) and **`E` the public target** (P1-D2,
 P1-D3): at a position whose block row is `(0, 0)` the constraint reads `z = E`, so every per-block
 public constant is pinned by the zerocheck itself at its random point, bit by bit: `one` (`E = 1`
 at bit 1,152 of every used block), the constant words of slot 8 (`t_lo = 64(i+1)` or the stream
@@ -316,19 +323,24 @@ layout): `h₀ = h0`, `hᵢ₊₁ = compress hᵢ Bᵢ tᵢ fᵢ 0`, `traceDiges
 (`blake2s_chain`). Child slot `σ ∈ {1, 2}` reads stream element `e` at element address
 `(chainBase_σ + ⌊e/4⌋)·128 + 4 + e mod 4`, `chainBase_1 = 0`, `chainBase_2 = 22,506`. **WOTS**:
 133 chains × 3 selector steps + 67 leaf blocks + 32 path blocks = 498 blocks per slot.
-**`hashStmt`**: 2 blocks per slot, both always compressing (in `Sel`, `one = 1` by `E`); inputs
-from **item 1's payload** (`stmt`); the leaf variant's digest is block 1's output, the node
-variant's block 2's, selected by the one-hot selector (`cᵢ = s_N · out₂ + (s_L + s_P) · out₁`, two
-product rows); output asserted equal to item 0's `c`. `wots_sound`, `hashStmt_sound`.
+**`hashStmt`** (BP-C-R4-M1): **three blocks per slot**, all in `Sel`, all constants
+kind-independent: block **A** hashes the leaf message `tagLeaf ‖ h ‖ enc64 n ‖ 0^23` in one
+compression (`t_lo = 41`, `f0 = 0xFFFFFFFF`); blocks **B1–B2** hash the node message `tagNode ‖ c₁
+‖ c₂ ‖ 0^63` in two (`t_lo = 64`, `f0 = 0`; then `t_lo = 65`, `f0 = 0xFFFFFFFF`, linked `h_in(B2) =
+h_out(B1)` by an element equality); the messages are wired from **item 1's payload** (`stmt`:
+`h ‖ enc64 n` and `c₁ ‖ c₂` are the same 64 bytes read two ways, selector-free); the slot's
+statement is `cᵢ = (s_L + s_P) · out_A + s_N · out_B2` (two product rows), asserted equal to item
+0's `c`. `wots_sound`; `hashStmt_sound : Holds blockR1CS_E on A, B1, B2 → (link B1 → B2) → out_A =
+leafStmt h n ∧ out_B2 = nodeStmt c₁ c₂` (the output selection is `compile_mux_sound`'s).
 
 ### 4.3 The node circuit: layout, mux, counts
 
 | Region | Base (blocks) | Content | Blocks |
 |---|---|---|---|
-| **H** | 0 | chain 1 `[0, 22,506)`, chain 2 `[22,506, 45,012)`, `hashStmt` 4, WOTS 996, spare 8; `Sel` = these four intervals; all-zero blocks elsewhere | 46,020 |
-| **L** | 46,080 | bits (A.7): per slot the signature (4,772 B), the WOTS digits and selectors, the position bits as bit-elements, the one-hot kind selector `(s_L, s_P, s_N)`; `N_L = 2^15` rows | 124 (allotted 3,072: the gap to M) |
-| **M** | 49,152 (`3·2^14`) | `N_M = 2^21` elements = 16,384 blocks, ending at 65,536; slot `σ`'s rows at `Mbase + (σ−1)·2^20` | 7,814 used |
-| **total** | | | **53,959 of 65,536 (82 %, 1.21×)** |
+| **H** | 0 | chain 1 `[0, 22,506)`, chain 2 `[22,506, 45,012)`, `hashStmt` 6 (A, B1, B2 per slot), WOTS 996, spare 8; `Sel` = these intervals; all-zero blocks elsewhere | 46,022 |
+| **L** | 46,336 | bits (A.7): per slot the signature (4,772 B), the WOTS digits and selectors, the position bits as bit-elements, the one-hot kind selector `(s_L, s_P, s_N)`; `N_L = 2^15` rows | 124 (allotted 3,072: the gap to M) |
+| **M** | 49,152 (`3·2^14`) | `N_M = 2^21` elements = 16,384 blocks, ending at 65,536; slot `σ`'s rows at `Mbase + (σ−1)·2^20` | 7,964 used |
+| **total** | | | **54,111 of 65,536 (82 %, 1.21×)** |
 
 There is no `P` region: the public inputs `vk`, `c₁`, `c₂` are **point claims on `f`** at each slot's
 seed cells (payload elements 0–5 of item 0: `vk` 2, `cᵢ` 2; 8 claims per node), batched into the
@@ -368,11 +380,11 @@ ungated rows of `gen κ`; the inactive ones are vacuous). Budget 600 lines on to
 **Row count per slot** (`sizes.py`; honest, no sharing between kinds since there is one program):
 imports 74,587 (columns 27,856, sibling halves and answers `6 × 7,552`, FS fields `3 × 473`);
 folds 54,841; final `Enc₄` `2 · 2^7 · 126 = 32,256` (P1-D7); Merkle steps `4 × 7,552 = 30,208`;
-the Z2 Lagrange 400; eq/tensor 15,000; MBP 3,200; sumchecks 2,000; lincheck replay 65,536;
+the Z2 Lagrange 400; eq/tensor 15,000; **MBP `J_z · 25 · 128 = 12,800`** (R4-m2); sumchecks 2,000; lincheck replay 65,536;
 **`evalM` replay 210,570** (one row per irregular entry of the child's two slots, `2 × 74,587`,
 plus eq tables `2 × 22,506 + 2^14`); `evalL` replay 8,192 (L's matrices templated, BP-C-R2-m3);
-gated asserts 3,288; selector 7: **500,082 per slot, 1,000,164 = `2^19.93` per node** (`N_M`
-margin 2.10×). **The node fits `m = 30`**;
+gated asserts 3,288; selector 7: **509,682 per slot, 1,019,364 = `2^19.96` per node** (`N_M`
+margin 2.06×). **The node fits `m = 30`**;
 the smallest cut, if `nodeLayout`'s `decide` fails, is sharing the lincheck-replay eq tables between
 the two slots (−2^15 rows) and then the enumeration fallback of B-2.
 
@@ -414,11 +426,11 @@ the signature, digit, selector and position-bit regions have power-of-two stride
 
 | Quantity | value | bound | margin |
 |---|---|---|---|
-| blocks | 53,959 | 65,536 | 1.21× |
-| M rows per node | 1,000,164 | `2^21` | 2.10× |
+| blocks | 54,111 | 65,536 | 1.21× |
+| M rows per node | 1,019,364 | `2^21` | 2.06× |
 | items | 8,896 | 10,240 | 1.15× |
 | `piSize` | 756,496 | 1,048,576 | 1.39× |
-| H gap for L | 124 blocks | 3,132 | — |
+| H gap for L | 124 blocks | 3,130 | — |
 
 ---
 
@@ -444,7 +456,7 @@ per row of §5.2 from the exact fiber counts (`card_chF_fiber = 2^128`, `card_ch
 | L1, L2 | `α`; **14 rounds of degree 2** (P1-D4) | F | `1, 2 / 2^128` | 128, 127 |
 | S1, S2 | `τ, θ, κ_s` (16 + 10 + 1 = 27 coordinates); 16 block rounds + 10 collapse rounds, degree 2 | F | `27, 2 / 2^128` | 123.2, 127 |
 | Lr1–Lr4 | point (15); rounds (3); `κ_L` (1); rounds (2) | F | `15, 3, 1, 2 / 2^128` | ≥ 126.4 |
-| RS1 | `r″` (7 coordinates) and `κ` (`J_z − 1 = 3` claims batched) | F | `7, 3 / 2^128` | 125.2, 126.4 |
+| RS1 | `r″` (7 coordinates) and `κ` (`J_z = 4` claims) in one phase: the bad polynomial `D(r″, κ)` has degree ≤ 1 per `r″` coordinate and ≤ `J_z − 1` in `κ` | F | `(7 + J_z − 1)/2^128 = 10/2^128` | 124.7 |
 | E1–E4 | point (21); rounds (3); `κ_E` (2); rounds (2) | F | `21, 3, 2, 2 / 2^128` | ≥ 123.6 |
 | B′ | `κ′`: `J_f ≤ 20` claims on `f` (the E claim, 8 public cells, 6 padding cells, the RS claim) | F | `19/2^128` | 123.8 |
 | P1 | fold round `r` of level `i`, `2^(ℓᵢ−r)` lines; the round folds `W` and `f` (degree 2 in K) | K | `(2^(ℓᵢ−r) C_mca + 2)/2^256`, `C_mca ≤ 2^60` | ≥ 190 |
@@ -880,10 +892,10 @@ Register kinds: `F`, `K`, `D` (digest), `B` (byte string), `N` (ℕ), `Bit`, `AF
 | `eqTable r → AF (2^v)` | `AF v → AF (2^v)` | `eq(r, ·)` | `2^v − 1` |
 | `lagrangeS vals λ → F` | `AF 127, F → F` | the degree-≤127 interpolant through `S ∪ Λ` at `λ` (Z2 only) | ≈ 400 |
 | `tensorW j r → K` | `N, AK v → K` | `Π_v (1 − r_v + r_v Ŵᵥ(D[j]))` | `2v` |
-| `mbp r″ sv pt → F` | `AF 7, AF (4·128), AK (m−7) → F` | the batched weight `W` at the final point by the width-128 program over `m − 7` layers (one evaluation per proof, P1-D6/D7) | `(m−7)·128` |
+| `mbp r″ κ pt → F` | `AF 7, F, AK (m−7) → F` | `Ŵ(ρ) = Σ_{j<J_z} κ^j B̂_j(ρ)` at the final point, `J_z` width-128 runs over `m − 7` layers (one evaluation per proof, P1-D6/D7; R4-m2) | `J_z · (m−7) · 128` |
 | `walkA r c → F`, `walkB r c → F` | `AF 14, AF 14 → F` | `Â₀`, `B̂₀` by the circuit walk | lincheck replay |
 | `evalM τ σ → F × F × F`, `evalL τ σ → F × F × F` | `AF 21, AF 23 → …`; `AF 15, AF 23 → …` | the node's matrix MLEs (kind-selected) | `evalM`/`evalL` replay |
-| `selMLE r → F`, `targetMLE r → F` | `AF m → F` | `Sẽl(r)` and `Ê(r)` of §4 (closed forms: range MLEs, affine-bit MLEs) | `O(m)` |
+| `selWeight r r′ → F`, `targetMLE r → F` | `AF (m−14), AF (m−14) → F`; `AF m → F` | `ŵ(r′) = Σ_x eq(r′,x) eq(r,x) Sel(x)` (a prefix sum of the tensor over `Sel`'s intervals, R4-m1) and `Ê(r)` of §4 (range and affine-bit MLEs) | `O(m)` |
 | `shiftTarget τ θ → F` | `AF 18, AF 10 → F` | the shift sumcheck's boundary and slot-weight terms (P1-D5) | `O(m)` |
 | `splitDigest d → F × F`, `selectHalf b l r → D` | | | 0 / 2 |
 | `hashStmt kind fields → D` | `B → D` | `leafStmtF`/`nodeStmtF` | 1–2 H blocks |
@@ -968,4 +980,26 @@ partly. The partial ones are closed below.
 | S-E1 | `FRBlake2s*`, `FRBlockLayout`, `FRBlockChain`, `FRBlockStream`, `FRLeafCircuit` | the block R1CS gains the public target: `Holds blockR1CS_E` (rows `(0,0)` at the constant positions, `z = E` there), `one = 1` delivered by it; `leaf_sound`'s hypotheses are `Holds blockR1CS_E` per block and `ChainLinks z s h` (links and both endpoints), no `Patterns`/`IOHolds`; the stream block's `t_lo`, `t_hi`, `f0`, `f1` positions are `(0,0)` rows; the walk takes general row weights (the quirky `λ` coordinate). |
 | S-H1 | `FRXDsl`, `FRXField` | unchanged. |
 | P1 → P2 | prover | adopt A.3/A.4 (the item sequence with dummies, `piSize = 756,496`), `reassemble` from item 1, the node mode; keep P1-D1…D7 as adopted. |
+
+### Fix pass 4 (revision 3.2): the crypto review's round 4
+
+| Finding | Change |
+|---|---|
+| BP-C-R4-M1 | **Fixed**: three `hashStmt` blocks per slot with kind-independent constants — A (`t = 41`, final) on the leaf message, B1–B2 (`t = 64` non-final, `t = 65` final, linked) on the node message; `cᵢ = (s_L + s_P)·out_A + s_N·out_B2`; `hashStmt_sound` restated as the two unconditional digests (§4.2); H = 46,022 blocks, `usedH` and `Sel` follow (§4.3); `sizes.py`. |
+| BP-C-R4-m1 | **Fixed**: `Sel` sits in the zerocheck's **weight**, `ŵ = MLE(eq(r,·)·Sel(·))`, rounds of degree 3, final value `ŵ(r′) = Σ_x eq(r′,x) eq(r,x) Sel(x)` as a prefix sum over `Sel`'s intervals; `A = I ⊗ A₀`, `B = I ⊗ B₀` (never `Sel ⊗`); chosen over the degree-4 factor form for prover cost (the eq table is simply zeroed outside `Sel`) and because every row stays as tabled (§2.3 step 2, §4, A.8 `selWeight`). |
+| BP-C-R4-m2 | **Fixed**: RS1 is one joint row `(7 + J_z − 1)/2^128 = 10/2^128`; `Ŵ` needs `J_z = 4` MBP runs: verifier +9.6 k products (node ≈ 3.7·10^5, leaf ≈ 1.2·10^5), replay +9.6 k rows per slot (§3.1, §4.3, §5.2, A.8 `mbp`). |
+
+**Margins after revision 3.2** (`sizes.txt`): `piSize` 756,496 (1.39×); items 8,896 of 10,240
+(1.15×); hashed stream 22,506 compressions per slot; **node 54,111 of 65,536 blocks (1.21×)**; **M
+rows 1,019,364 = `2^19.96` of `2^21` (2.06×)**; extractor `2^47.11` (fuel 1.31×, `B` 1.85×); error
+maximum `2^-120.36 + 2^-144 ≤ εR`; verifier ≈ 1.2·10^5 (leaf) / 3.7·10^5 (node) products.
+
+**Interface changes of revision 3.2:**
+
+| Track | Modules | Change |
+|---|---|---|
+| S-0 | `FRVIR`, `FRVIRSpec`, `FRTranscriptDefs` | `gen`: `hashStmt` is three blocks per slot (A, B1, B2) with the selection `cᵢ = (s_L + s_P)·out_A + s_N·out_B2`; the op `selWeight r r′` replaces `selMLE`; `mbp` takes `κ` and runs `J_z = 4` programs; Z's final value is `ŵ(r′)·(â b̂ − ẑ − Ê)`. No change to the item sequence or `piSize`. |
+| S-C | `FRSpartan` | the zerocheck's weight is `MLE(eq(r,·)·Sel(·))` (degree 3), with the prefix-sum lemma for `ŵ(r′)`; `A, B` are `I ⊗ A₀, I ⊗ B₀`; the lincheck's reduction to `ẑ(r′_blk, ·)` is then as the paper's. `FRRingSwitch`: the RS1 lemma states the joint bound `(7 + J_z − 1)/2^128` (one phase). |
+| S-E1 / S-E | `FRBlockStream`, `FRWots` | `FRBlockStream`: unchanged (the three `hashStmt` blocks are stream blocks with constants `(41, final)`, `(64, 0)`, `(65, final)` in `E`). `FRWots`/`hashStmt_sound`: three blocks, the statement of §4.2, the link row B1 → B2. `FRNodeLayout`: `usedH` has 6 `hashStmt` blocks; L's base moves to 46,336. |
+| P2 | prover | three `hashStmt` blocks per slot in the node witness; `Sel` zeroes the zerocheck's eq table outside the used blocks (no separate factor); `J_z = 4` MBP state vectors in the native `acc`. |
 
