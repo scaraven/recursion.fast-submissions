@@ -45,3 +45,22 @@ symlinked; `.lake` copied from `fr-build-cert`). Every `lake`/`lean` run used th
 12. Stopped here (the brief's conservative pace): the per-phase doom predicates over the Flock
     layout, the row lemmas, `ligerito_final`, `final`, `finP`/`finPf` and `kstate` are not
     started. RESULT §5 lists what each needs.
+
+## 2026-10-27 (S-G3)
+
+13. Rulings received (§10 changes 10). S-G3 started: read A.9's finP/finPf rows, `FRVIR` (op
+    set, `genPhase`, `posOps`), S-F's finals and the native `prover/ligerito.rs` verifier
+    (`verify`, `weight_eval`, `u_hat`, `consistency_weights`).
+14. Found: `rsWeight` is not in `FRVIR.Op`/`OpImpl` yet (only `mbp`), and `evalM`'s column point is
+    `AF` while Ligerito's point is in K. `finPf` is blocked on both; its formula from the native
+    verifier is recorded in RESULT §3.
+15. `finP` written. A first version built the unit vectors with `packK` from `0`/`1` registers;
+    replaced by `const` `AK` vectors (register-independent, simpler proofs).
+16. Proofs: `run_accOps`, `flag_finPLow`; `run_layer`, `run_horner`, `run_encOps`,
+    `run_positions`, `flag_finP4`; `hornerVal_eq`; `noAsk_finP`. Pitfalls:
+    - `omega` failed on goals whose base register was a `set` variable. The cause was a broken
+      `hb` proof left behind by a regex rename (`simp [(r.size + L.length), …]`), which confused
+      the later goals. I replaced `set` with explicit expressions.
+    - `pr_op` needs the exact `[] ++ [v₀] ++ …` shape of the register list.
+17. Dump: a private copy `logs/fr-build-SG/dump/IRDumpSG.lean` (`lake build irdumpsg`), with the
+    full finals and array constants printed; outputs in `logs/S-G/dump/`.

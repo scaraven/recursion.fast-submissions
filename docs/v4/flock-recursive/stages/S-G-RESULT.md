@@ -146,3 +146,142 @@ Axioms: a scratch `#print axioms` was run outside the entry on `muG_step`, `bad_
 3. The remaining scope (§5) is well beyond the size of this pass. Should S-G be split, for
    example as S-G1 (doom predicates and rows), S-G2 (Ligerito and `final`) and S-G3
    (`finP`/`finPf`), each with its own review?
+
+---
+
+# S-G3: `finP i`, `finPf`, the dump
+
+Base `c6089f7` (HEAD). Built against HEAD's versions of other tracks' modules. S-0's uncommitted
+edits (`FRVIRSpec`, `FRVIRFinals`, `FRFormat`, `FRTranscriptDefs`) are not included, so this must
+be rebuilt and re-dumped once they land.
+
+**Status:**
+- **`finP 0 … 4` are done.** Ops, flag lemmas, no-ask lemma and meaning lemmas are proved.
+- **The dump is done, with `finPf` still pending.**
+- **`finPf` is blocked** on two interface items owned by S-0, L-circ and S-E2 (§3 below).
+
+## 1. What was built (`FRVIRFinalsSG.lean`, 447 code lines in total; 43 lines were S-G part 1)
+
+The source is the native verifier (`prover/ligerito.rs`, `verify`/`weight_eval`), read against
+A.9.
+
+**Locating level `i`'s outputs.** Level `i`'s phases are at `phaseIx "P1" + 5i + {0,…,4}` (`lvOuts`).
+`Q`'s outputs are the column folds `y_q`; the skeleton already computes
+`y_q = dotKF(col_q, eqTableK(s_i))`. Each position's `idx` register is `y_q − 3` (`FRVIR.posOps`).
+
+**`finP i`, `i < 4` (`finPLow`).**
+- It computes `claimN(P1.i) + Σ_q eq(κ_c, bits₉(q))·y_q`, with `κ_c` the first 9 coordinates of
+  P3.i, using `eqTable`, `getF`, `mulKF` and `addK`.
+- It asserts this equals `claim0(P1.(i+1))`, the free initial claim of the next fold sumcheck.
+- It exports the batched claim.
+
+**`finP 4` (`finP4`).**
+- For each of the 126 positions it checks `y_q = Enc₄(final)[p_q]`:
+  - `Ŵ_v(D[p]) = tensorW p e_v` for `v < 7`, with `e_v` constant `AK 7` unit vectors;
+  - then Horner over the 128 final-message elements, top bit first.
+- It asserts that Pf's free initial claim equals `claimN(P1.4)`. The native verifier adds nothing
+  at the last level.
+- The `m = 30` padding is zero (`FRVIR.finalOps` asserts it), so the sum over `2^7` equals the
+  sum over `2^5`.
+
+**Lemmas:**
+- `flag_finPLow`: the field asks nothing, its flag is `relPLow` (the binder equation), and its
+  export holds `vNext`.
+- `flag_finP4`: the flag is `relP4` (every `y_q = encVal p_q`, and the Pf binder).
+- `noAsk_finP`: `finP i` asks nothing (`items_gen`'s hypothesis).
+- Meaning lemmas:
+  - `accV_eq`: the accumulator is `A + Σ_k e[q+k]·Y_k`.
+  - **`hornerVal_eq`**: Horner's value is `Σ_{c<2^v} X_c · Π_{u<v} W_u^{bit_u(c)}`. With `W_u = Ŵ_u(D[p])` this is the novel-basis encoding `Σ_c final[c]·X_c(D[p])` (`FRRS.novelX`).
+- Run lemmas (generic, reusable): `run_indep`, `run_frozen`, `run_accOps`, `run_layer`,
+  `run_horner`, `run_encOps`, `run_positions`.
+
+**Axioms.** A scratch `#print axioms` on `flag_finPLow`, `flag_finP4`, `hornerVal_eq`, `noAsk_finP`
+and `accV_eq` shows only `propext`, `Classical.choice` and `Quot.sound`. The source rule finds
+nothing (53 files, 0 findings). There are no lines over 100 characters and no warnings.
+
+**Timing.** Sequential single-core run: 20.2 s wall (3.5 s of it import), 3.5 s elaboration
+(5.3 s tactics), 0.66 s type checking, 2.6 GB (`logs/S-G/profile-FRVIRFinalsSG.log`).
+
+## 2. The dump (`logs/S-G/dump/`)
+
+`logs/fr-build-SG/dump/IRDumpSG.lean` is a private copy of S-0's `probe/fr-irdump/IRDump.lean`. I
+did not edit S-0's tool. The copy differs in three ways:
+- the finals are `sfFinals finP pending` (S-0's, S-F's and S-G's `finP`; `finPf` pending);
+- array constants print as `AF:[…]`/`AK:[…]`, where S-0's tool prints `arr`;
+- it is built as `lake build irdumpsg` in the S-G tree.
+
+Outputs:
+- `ops-{L,P,N,M}.txt`: 185,375 lines each;
+- `items.json`;
+- `summary.txt`: ops 185,360; registers 53,164; asks = items = 8,874; `piSize` 755,664 (HEAD).
+
+Sections are marked `-- final finP i (S-G)`. finP 0 is 875 ops, finP 4 is 33,148 ops. sha256 of
+`ops-L.txt`: `e31ea2ab2ae0f0a9…`.
+
+**HEAD's skeleton differs from S-0's last dump** (`logs/S-0/dump`, made from S-0's working tree).
+For example, L3 absorbs 112 bytes at HEAD and 128 bytes in S-0's tree. P2 should take the dump made
+after S-0 lands. To regenerate:
+`bash logs/fr-build-SG/snap.sh && lake build irdumpsg && .lake/build/bin/irdumpsg ops L`, run in
+`logs/fr-build-SG` under the 16 G scope.
+
+## 3. `finPf`: blocked, with its exact specification
+
+Two interface items block it:
+1. **`rsWeight` is not in the op set.** A.8 (revision 3.9) lists `rsWeight r″ pts κ ρ → K`, which
+   replaces `mbp`. `FRVIR.Op` and `OpImpl` still have only `mbp`. Owner: S-0 (op and `OpImpl`
+   field) with S-C (`OpSpec`, `weightEval`).
+2. **`evalM` cannot take Ligerito's point.** The point `ρ` is in K (the P1 and Pf challenges are
+   `chK`), but A.8's `evalM τ σ` has `σ : AF 23` and `OpImpl.evalM : Array F → Array F → F×F×F`.
+   The E weight `(Ã_M + κ_E B̃_M + κ_E² C̃_M)(r_{E2}, ρ)` needs `σ ∈ K^23`.
+   - Proposed change: a K-point form `evalMK : AF 21 → AK 23 → K × K × K` (or `evalM` with
+     `σ : AK`).
+   - Owners: S-0 (op), S-E2 (`evalM_eq` over K), L-circ (`FRVIREval`).
+   - The same holds for any other weight evaluated at `ρ`.
+
+With both ops in place, `finPf` follows directly from the native verifier. Notation:
+- `s_k` are P1.k's 4 or 6 K challenges and `sf` are Pf's 7 challenges.
+- `μ = 7` for L32 and `μ = 5` for the `m = 30` kinds.
+- `P_4 = s_4 ++ sf[0..μ)`, and `P_k = s_k ++ P_{k+1}[1..]` for `k = 3 … 0`. `P_0` has `m − 7`
+  coordinates.
+- `û(β) = 1 + β(1 + u)`, where `u` is the K basis element of the coordinate split
+  (`ligerito.rs::u_hat`).
+
+Then:
+
+```
+Ŵ_4(P_4) = (Π_{k=1..4} û(s_k[0]))·w0(P_0)
+         + Σ_{i=0..3} (Π_{k=i+1..4} û(s_k[0])) · Σ_q eq(κ_c^{(i)}, bits₉(q))·tensorW(p_q^{(i)}, P_{i+1}[1..])
+w0(ρ)    = rsWeight(r″, pts, κ, ρ)                              -- a leaf: 3 points
+         + [node] κ′·evalMK(r_{E2}, ρ) + Σ_{k} κ′^{k+2} eq(cell_k, ρ)   -- A.7's cell order, finE export 1
+check:     claimN(Pf) = Ŵ_4(P_4) · Π_{x ∈ sf[μ..7)} (1 + x) · final̂(sf)     -- final̂: eqTableK(sf) · final (128 terms)
+```
+
+**What `finPf` needs that A.9 leaves unstated:**
+- The `û` factors, which are A.9's "fold factors of levels > i".
+- That `P_{i+1}` drops the first coordinate of each later level, because that coordinate is the
+  coordinate-split bit.
+- The padding factor applies to the whole weight, for both `m = 30` kinds (P30 and N30), not only
+  P30.
+
+Please put these into A.9.
+
+## 4. Other findings
+
+1. **Cost of `finP 4`.** The blueprint estimates `2·2^7·126 ≈ 32 k` products. The op form here is,
+   per position, 7 `tensorW` plus 127 `mulK` and 127 `addK`. In the node's M rows (`mulK` is 3
+   rows, `tensorW` is `2v` rows), that is about 60 k rows. This is an estimate from A.8's row
+   column, not a measurement.
+
+   A cheaper form needs a new op that gives the F table `X_c(D[p])` at a runtime position, followed
+   by 128 `mulKF`. L-circ should decide.
+2. **A.9's finP row versus the native verifier.** They agree: the batched claim for `i < 4`, the
+   direct check and no claim update at the last level, and `κ_c` as 9 coordinates
+   `eq(κ_c, bits₉(q))` over the query number `q` (not the position).
+3. **Dump tool.** S-0's `IRDump` prints array constants as `arr`. P2 cannot read the unit vectors
+   from that, so the tool should adopt the `AF:[…]`/`AK:[…]` printing.
+
+## 5. Next
+
+- `finPf`, as soon as `rsWeight` and a K-point `evalM` are in `FRVIR`.
+- Then a re-dump after S-0 lands.
+- Then S-G1: the doom predicates, the §5.2 rows, `card_idx_fiber` and `hloc_of`.

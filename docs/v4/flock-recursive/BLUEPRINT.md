@@ -1359,3 +1359,12 @@ Note (3.9): `sizes.py` carries S-0's 3.8.2 reconciliation of the item sequence (
 | "Flipped group" | Dropped from §5.1's `Bad`: it was never defined and no row needs it. |
 | Off-chain queries | Column and Merkle-node queries carry no state and are charged only through `Bad`. |
 | The stage split | S-G is split into S-G3 (`finP`, `finPf`, then a dump), S-G1 (the doom predicates and the §5.2 rows, `card_idx_fiber`, a generic `hloc_of`), and S-G2 (`ligerito_final`, `final`, `kstate`), done in that order. |
+
+### Stage-review changes 11 (S-G3: A.9's Ligerito finals)
+
+| Point | Change |
+|---|---|
+| Fold factors | At each later level's first challenge β, the fold factor is `û(β) = 1 + β(1 + u)`. Each later level's point drops its first coordinate (the coordinate-split bit). This matches the native verifier (`prover/ligerito.rs`). |
+| Padding | The factor `(1 + ρ₅)(1 + ρ₆)` applies to the whole weight, for both m = 30 kinds (P30 and N30), not only P30. |
+| `finPf`'s ops | A.8 gains `evalMK : AF 21 → AK 23 → K × K × K` (`evalM` at a K column point, needed for `evalM(r_E2, ρ)`); `rsWeight` is in the op set (S-0). `finPf`'s formula is the native `weight_eval` (S-G-RESULT §3). |
+| `finP 4` row cost | About 60k node M rows with the current ops (estimate; the blueprint had ≈ 32k). An op giving `X_c(D[p])` at a runtime position would recover the difference; this is open for L-circ. The M-row margin stays positive either way (1.69× before). |
