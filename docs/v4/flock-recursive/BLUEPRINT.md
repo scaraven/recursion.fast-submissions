@@ -36,11 +36,11 @@ novel-basis change, within `2^47.5 + 2^12 t` steps.
 | `piSize` (both kinds) | 755,680 B = 739 KiB | `proofCap` 1,048,576 | 1.39× |
 | trace items (both kinds) | 8,874 | `qV = 10,240` | 1.16× |
 | hashed trace bytes / compressions | 1,437,760 / 22,465 | — | — |
-| node circuit blocks | 55,752 | 65,536 | 1.20× |
-| M rows per node | 1,237,344 = `2^20.24` | `N_M = 2^21` | 1.99× |
+| node circuit blocks | 59,585 | 65,536 | 1.10× (A.11) |
+| M rows per node | 1,727,884 = `2^20.72` | `N_M = 2^21` | 1.21× (A.11) |
 | extractor steps (`m = 30` node) | `2^47.11 + 2^11 t` | `fuel = 2^47.5 + 2^12 t`; `B = 2^48 + 2^16 t` | 1.31×; 1.85× |
 | error per fresh query | `2^-120.36 + 2^-144` | `εR = 2^-120.093` | — |
-| verifier F-products | leaf ≈ 1.2·10^5, node ≈ 3.9·10^5 | `T_V` 205.9 ms (≈ 80–120 ms, **estimate**) | ≈ 2× |
+| verifier F-products | leaf ≈ 1.9·10^5, node ≈ 4.6·10^5 + ≈ 6.6·10^5 (template `evalM`, A.11) | `T_V` 205.9 ms: S-F2 measured 183 ms VM without templates; **≈ 225 ms VM ≈ 175 ms runner, estimate** | ≈ 1.17× |
 | output words (node) | `2^19.3` | `outCap = 2^24` | — |
 
 ### 0.1 Decisions
@@ -293,8 +293,12 @@ some true ↔ semIR (gen k) (vk, c, π, answers tr) = accept)`.
 ### 3.2 `T_V` (**estimate**; the S-B probe replaces it)
 
 Root check (`P30` node): trace digest at the spec hash's speed (1.45 MB, 15–25 ms on the
-runner); `SigOk` 0.3 ms; parsing 2 ms; products `3.6·10^5 × 70 ns = 25 ms`; XORs 8 ms;
-interpreter overhead ≤ 2× on the arithmetic: **≈ 80–115 ms against 205.9 ms**.
+runner); `SigOk` 0.3 ms; parsing 2 ms; products `4.6·10^5 × 70 ns = 32 ms`; XORs 8 ms;
+interpreter overhead ≤ 2× on the arithmetic: the pre-S-F2 estimate was ≈ 80–115 ms. **Measured
+(S-F2, VM):** `N30` 182.7 ms + `acc` 12.5 ms against the VM-equivalent cap ≈ 264 ms, without the
+replay templates. **With the templates (A.11)**: the `evalM`/`evalMK` over the templates adds
+≈ 6.6·10^5 F-products ≈ 40 ms VM: **≈ 225 ms VM ≈ 175 ms on the runner against 205.9 ms (1.17×)**,
+`finPf` and the real `evalL` ≈ 10 ms more. FR-R9 stays open until the S-E3 probe measures it.
 
 ### 3.3 The `W` kind and DoS
 
@@ -405,8 +409,8 @@ rows (the BP-E-M1 problem).
 |---|---|---|---|
 | **H** | 0 | chain 1 `[0, 22,465)`, chain 2 `[22,465, 44,930)` (kinds `streamStart` at each chain's first block, `stream` elsewhere), `hashStmt` 6 (`hashA`, `hashB1`, `hashB2` per slot), WOTS 996 per node (`w43` 399, `hashB1` 1 + `stream` 65 + `streamEnd41` 1 for the key leaf, `hashB1`/`hashB2` 16 + 16 for the path, per slot), spare 8; `Sel` = the kinds' intervals; all-zero blocks elsewhere | 45,960 |
 | **L** | 46,336 | bits (A.7): per slot the signature (4,772 B), the WOTS digits and selectors, the position bits as bit-elements, the one-hot kind selector `(s_L, s_P, s_N)`; `N_L = 2^15` rows | 124 (allotted 3,072: the gap to M) |
-| **M** | 49,152 (`3·2^14`) | `N_M = 2^21` elements = 16,384 blocks, ending at 65,536; slot `σ`'s rows at `Mbase + (σ−1)·2^20` | 9,667 used |
-| **total** | | | **55,752 of 65,536 (82 %, 1.20×)** |
+| **M** | 49,152 (`3·2^14`) | `N_M = 2^21` elements = 16,384 blocks, ending at 65,536; slot `σ`'s rows at `Mbase + (σ−1)·2^20` | 13,500 used |
+| **total** | | | **59,585 of 65,536 (91 %, 1.10×; A.11)** |
 
 There is no `P` region: the public inputs `vk`, `c₁`, `c₂` are **point claims on `f`** at each slot's
 seed cells (payload elements 0–5 of item 0: `vk` 2, `cᵢ` 2; 8 claims per node), batched into the
@@ -450,10 +454,13 @@ the Z2 Lagrange 400; eq/tensor 15,000; **ring switching: `Φ` on `4 × 128` slic
 sumchecks 2,000; lincheck replay 65,536 + the per-kind row-weight adjustment 16,384 + the `free` kind's term 16,384 = 98,304;
 **`evalM` replay `2 × 74,521 + 2 × 22,465 + 2^14 = 210,356`**; `evalL` replay 8,192; gated asserts
 `2 × 451 + 2 × 871 + 600 = 3,244`, mirror-cell mux 2,600, selector–digit rows 266, gated `stmt`
-equalities 8 (counted once, F-3′), selector and kind rows 4: **544,954 per slot (the listed numbers
-sum), 1,237,344 = `2^20.24` per node** (`N_M` margin 1.92×). **The node fits `m = 30`**;
-the smallest cut, if `nodeLayout`'s `decide` fails, is sharing the lincheck-replay eq tables between
-the two slots (−2^15 rows) and then the enumeration fallback of B-2.
+equalities 8 (counted once, F-3′), selector and kind rows 4: 544,954 per slot by this **pre-A.11
+op-count model**. The normative count is **A.11's replay-template model: 863,942 rows per slot
+(the measured 68,795-row compiled skeleton plus the templates of every structured op), 1,727,884 =
+`2^20.72` per node** (`N_M` margin 1.21×). **The node fits `m = 30`**; the smallest cut, if
+`nodeLayout`'s `decide` fails, is the E2 lincheck restored so the child's `evalM` replays at an F
+point (1,320,204 rows, 1.59×; A.11), then sharing the `eq(ρ_blk,·)` tables between the two slots
+(−196 k), then the enumeration fallback of B-2.
 
 **The fixed point.** `gen Mux` is a function of `(items, ladder30, ladder32, N_M, N_L, nodeLayout)`;
 the child's `evalM` replay is sized by `items` (the irregular count is the item sequence's element
@@ -493,8 +500,8 @@ the signature, digit, selector and position-bit regions have power-of-two stride
 
 | Quantity | value | bound | margin |
 |---|---|---|---|
-| blocks | 55,752 | 65,536 | 1.20× |
-| M rows per node | 1,237,344 | `2^21` | 1.99× |
+| blocks | 59,585 | 65,536 | 1.10× |
+| M rows per node | 1,727,884 | `2^21` | 1.21× |
 | items | 8,874 | 10,240 | 1.16× |
 | `piSize` | 755,680 | 1,048,576 | 1.39× |
 | H gap for L | 124 blocks | 3,192 | — |
@@ -990,7 +997,7 @@ prover's row generator must reproduce them.
   block's element `k` (`k < 128`) is `f[blk·128 + k]`.
 - **L** (base block 46,336; element addresses relative to `Lbase = 46,336·128`): per slot `σ`
   (stride `2^14` elements): `sig` 299 elements (`idx` 1, `ots` 133 × 2, `path` 16 × 2), digits
-  133 as bit-elements, step selectors 399, position bits 7,552 (the bit-elements `(b, 0^127)`),
+  266 as bit-elements (two per base-4 digit, 133 digits incl. the checksum's; F-5), step selectors 399, position bits 7,552 (the bit-elements `(b, 0^127)`),
   kind selector 3 (one-hot by three product rows and one linear row); the rest zero. **`N_L = 2^15` rows**: the Lr R1CS's rows are the bit-element
   constraints (`b (1 − b) = 0` for every declared bit, the 127 zero coordinates as linear rows).
 - **M** (base block 49,152): slot `σ` at `Mbase + (σ−1)·2^20`; templates in the order of
@@ -1119,6 +1126,73 @@ induction from Pf upwards every `far_i` is false and every claim is true, so `f�
 word and `z` satisfies Z's identity, the links, Lr and E (`ligerito_final`, then `leaf_sound` /
 `node_sound`). **Budget**: the truths and their stability lemmas ≈ 900 lines (`FRSoundnessTruths`,
 S-G1c), the composed `D` and its `StepObl` ≈ 1,200 (`FRSoundnessStepC`).
+
+### A.11 Replay templates (S-E2 F-6; revision 3.11)
+
+`compile` emits rows for the arithmetic ops only (68,795 rows, 114,378 cells per slot, measured);
+every **structured op** of the replayed child verifier is an import whose value must be
+**constrained by a template** of rows in M, or be a value already bound elsewhere. Without the
+templates `node_sound` would rest on hypotheses `final` cannot discharge. Conventions: a template
+`X` is emitted for every instance `inst` of the op at rows `tplBase_X + inst·2^{a_X} + j` (`a_X` =
+`⌈log₂ rows_X⌉`), its own cells at `cellBase_X + inst·2^{b_X} + k`; "import" cells are read, not
+constrained here: **trace cells** (bound by the digest chain: the H message slots), **L cells**
+(bits, bound by `lRows`), or **another template's outputs**. A K product is 3 F rows (Karatsuba);
+a K×F product 2. Entry classes for the verifier's `evalM`/`evalMK`/`evalL` (§4.4): **local** —
+columns inside the instance: `Σ_{inst} eq(τ_hi, inst) eq(σ_hi, inst) · Â_tpl(τ_lo, σ_lo)` =
+`eqInner(prefix) · Â_tpl`, `O(|tpl|)` once + `O(log)`; **shared** — a column at a fixed address for
+every instance (a table another op produced): `(Σ_{inst} eq(τ_hi, inst)) · eq(τ_lo, j) · eq(σ, c)`,
+`O(|tpl|)`; **irregular** — a trace or L cell: one product per entry from the eq tables over
+blocks and slots (`irregular_mle`).
+
+| Op | Template rows (constrained) | Imports | Rows / instance; instances per slot | Entry classes | MLE cost (per slot) |
+|---|---|---|---|---|---|
+| `eqTableK r → AK 2^v` | binary tree `tab[2i] = tab[i]·(1 − r_b)`, `tab[2i+1] = tab[i]·r_b` (K) | `r` (challenges: trace cells) | `6(2^v − 1)`; 5 (one per level) | local (shift-structured) | 738 |
+| `dotKF col w → K` (a column fold) | `p_b = w_b · col_b` (K×F, 2 rows), `out = Σ_b p_b` (linear) | `w_b` shared (`eqTableK`), `col_b` irregular (trace) | `2·rows_i`; `t_i` per level | shared + **irregular** (`rows_i` per instance) | 55,712 rows; 27,856 irregular entries |
+| `tensorW j r → K` | `ŵ_v := Σ_b j_b · Ŵ_v(x^b)` (linear in the position bit-elements: `Ŵ_v` is GF(2)-linear), then `Π_v (1 + r_v·(1 + ŵ_v))`… as `(1 − r_v + r_v ŵ_v)` products (K) | `j_b` (L bit-elements of the index, aligned per index), `r` | `3·log k_i`; `t_i` per level | local + L cells (aligned stride 32 per index: shared form) | 37,335 |
+| `rowW λ r′_hi → AF 2^14` | the 64 Lagrange values `L_σ(λ)` (shared with `lagrangeS`) ⊗ `eq(r′_hi,·)` tree (255) → `2^14` products | `λ`, `r′_hi` | 16,384; 1 | local | 16 k (in `walks`) |
+| `maskRows v rowW → AF 2^14` | `rowW′[k] = rowW[k] · (Σ_{kind ∌ k} v_kind)` (the mask is a public 0/1 form of the `v_kind`) | `v_kind` (trace cells) | 16,384; 1 | shared | 16 k |
+| `walkA/walkB rowW′ colW → F` | `colW` = `eqTable(r_k)` tree (`2^14`); `p_k = rowW′[k] · (Σ_j A₀[k,j] colW[j])`, `out = Σ_k p_k` | `rowW′`, `colW` (own templates) | `2^14 + 2^14` (tables) + `2^14` per walk; 2 walks | **lincheck-replay class**: `B̃` restricted to the product rows is `A₀`/`B₀` at an aligned base, evaluated by `walk_eq_sum` (6·10^4 XOR) | 49 k rows; 2 walks + `O(2^14)` |
+| `lagrangeS vals λ pe → F×F` | barycentric: `inv_i = (λ − node_i)^{-1}` (3 rows each), `Z(λ) = Π(λ − node_i)`, `L_i = w_i·Z·inv_i`, `P* = Σ vals_i L_i` for the 64 nodes of `Λ` and the 127 of `S ∪ Λ₀…₆₂` (`P^{ab}|_S` from `P^z|_S + pe`) | `vals` (127 trace cells), `pe` (`targetS`), `λ` | ≈ 1,400; 1 | local + irregular (127) | 1.4 k |
+| `targetS r → AF 64` | per kind and interval the prefix sums of `eq(r_blk,·)` (`O(m)` products each, ≈ 20 intervals), per pinned position `(blk-pattern value) × (hi weight)` summed into its `σ` slot | `r` | ≈ 10,000; 1 | local | 10 k |
+| `eqZ λ ρ₁ → AF 128` | `L_lo(λ) · eq(ρ₁, bit 6)` | the 64 Lagrange values (shared) | 128; 1 | shared | 128 |
+| `shiftEq τ r`, `eqPt`, `kindInd r′` | `eq`/`shift` closed forms: `O(m)` products | challenges | ≤ 60 each | local | 0.5 k |
+| `slotW θ pos r → F` | `eq(θ,σ)` tree (255), `eq(cube(pos σ), r)` as 9 products per `σ` (public bits), 256 products, the sum | `θ`, `r` | ≈ 2,800; 3 slot maps | local | 8.4 k |
+| `linkW τ fam r_blk → F` | as `slotW` over the family's 256 bit positions + the interval prefix sum | `τ`, `r_blk` | ≈ 2,500; ≤ 8 | local | 20 k |
+| `shiftTarget τ θ bnd → F` | `eq(τ, 0)·⟨slotW_in, bnd_s⟩ + eq(τ, n−1)·⟨slotW_out, bnd_h⟩` (node: `h0` constants) | `slotW` outputs, `bnd` (trace: `hdr`/`stmt` cells) | ≈ 100; 1 | shared | 0.1 k |
+| `kindFoldWeight r′ β ρ → F` | `Σ_kind β^kind · prefixSum_kind(eq(r′,·) eq(ρ_blk,·))`: `O(#intervals · log)` | `r′`, `β`, `ρ` | ≈ 1,000; 1 | local | 1 k |
+| `phiRS r″ a → F` | 127 squarings (`a² = c`: 1 row each) + 7 products (the stages) | `a` (RS0 partials: trace cells), `r″` | 134; 512 | local | 68.6 k |
+| `rsWeight r″ pts κ ρ → K` | `c_k(r″)` (128 products from the stage coefficients); per claim: `r_v^{2^k}` by 127 squarings per coordinate (23 × 127), `eq(r^{2^k}, ρ) = Π_v (1 + ρ_v + r_v^{2^k})` (22 K products per `k`), `Σ_k c_k · (…)` | `r″`, the 4 outer points (trace cells / earlier outputs), `κ`, `ρ` | ≈ 11,400 per claim; 4 | local | 45.6 k |
+| `evalM(r_{E2}, ρ)`, `evalMK`, `evalL` (the **child's** matrix MLEs, `'N'` child only; gated by `s_N`) | the eq tables `eq(ρ_blk, ·)` over `2^16` blocks and `eq(ρ_slot, ·)` over `2^14` positions (K trees: `3·2^16 + 3·2^14`), one K×F product per irregular entry of the child's two slots (`2 × 74,521`), the closed forms of the child's templates in K (≈ 20 k K products), `evalL` ≈ 10 k | `r_{E2}`, `ρ` (trace cells), the child's layout constants | ≈ 464,800; 1 | local (tables), **irregular** (the entries' addresses are the child layout's: public) | 465 k |
+| `piField/piElem/piDigest`, `askCol`/`askNode`/`askAbsorb` imports, `idx`, `bitOf`, `selectHalf`, Merkle steps, folds' operands | **no template**: trace cells (bound by the digest chain and `cap_binding`), L bit-elements (`lRows`), or arithmetic already in the skeleton | — | — | irregular where read | in the skeleton's count |
+| `kindSel`, `assertOneHot`, `assertEq` (gated), `const`, `input` (`vk`, `c`: the public cells) | public constants or the skeleton's rows | — | — | — | — |
+
+**Totals per slot** (`sizes.py`, A.11 model): skeleton 68,795 + eqTableK 738 + dotKF 55,712 +
+tensorW 37,335 + walks 81,920 + lagrangeS 1,400 + targetS 10,000 + slotW 8,400 + linkW 20,000 +
+small 628 + phiRS 68,608 + rsWeight 45,604 + evalM/evalL replay 464,802 = **863,942 rows per slot,
+1,727,884 = `2^20.72` per node** (`N_M = 2^21`: **1.21×**); M blocks 13,500; **node blocks 59,585 of
+65,536 (1.10×)**. It fits `m = 30`. **Smallest cut if `nodeLayout`'s `decide` fails**: restore the
+E2 lincheck (23 F rounds, prover +0.14 s per `m = 30` request, link ≈ 2.9 s) so that the child's
+`evalM` is replayed at an **F** point (1 row per product instead of 3): per node 1,320,204 =
+`2^20.33` (1.59×). Second cut: share the two slots' `eq(ρ_blk, ·)` tables (`ρ` is one point): −196 k
+rows per node.
+
+**Soundness lemma shape** (`FRVIRTemplates`, L-circ): for each structured op `X` with
+specification `X_S` (`FRVerifierImpl`'s `…S`), `tplX_sound : HoldsRows (tplX base inst) f →
+outCells_X f = X_S (inCells_X f)`, and `tplX_mle : Σ_{(r,c) ∈ nnz(tplX)} eq(τ,r) eq(σ,c) =
+closedForm_X τ σ` (the local/shared/irregular factorisations, with `walk_eq_sum` for the walks and
+`irregular_mle` for the trace cells). `compile_sound` is extended to `compileT_sound`: the import
+hypotheses of structured ops are discharged by the `tplX_sound` of their templates, so
+`node_sound`'s remaining import hypotheses are exactly the **trace cells** (fixed by the digest
+chains and `cap_binding`/`wordOf`), the **L bits** (`lRows_sound`) and the **public inputs**.
+`evalM_eq` becomes the sum of the templates' `tplX_mle` plus the skeleton's `sparse_eq` part.
+
+**`T_V` estimate**: the verifier's `evalM`/`evalMK` over the templates: the two block/slot eq
+tables in K (shared by the slots, `3·(2^16 + 2^14)` F), `2 × 2 × 74,521` irregular K×F products,
+the templates' closed forms (`≈ 2 × 20 k` K): ≈ 6.6·10^5 F-products ≈ **40 ms on the VM**, on top of
+S-F2's measured 183 ms (N30, with the sparse `evalRows` for the toy and without the templates):
+**≈ 225 ms VM ≈ 175 ms on the runner against 205.9 ms** (1.17×; `finPf` and the real `evalL` add
+≈ 10 ms). The skeleton's own rows (68.8 k per slot) are evaluated by `sparse_eq` once per node
+(≈ 140 k entries, ≈ 10 ms) unless they too are grouped by op into templates (S-E3: recommended).
 
 ## 10. Fix passes
 
@@ -1424,4 +1498,12 @@ Note (3.9): `sizes.py` carries S-0's 3.8.2 reconciliation of the item sequence (
 | A.10 | **Appendix A.10 "Per-phase truths"**: for every FS phase (Z1–Z3/Zend, L1–L3, S1/S2, Lr1–Lr4/Lrend, RS0/RS1, E1/E2/Eend, B′, P1.i/C.i/P2.i/P3.i, Pf) the truth (tables, initial claim) in terms of `wordOf`/`FarAt`, the decoded `f⁽ⁱ⁾` and `z`, the public data and earlier challenges, naming existing Lean (`bz_trueSum`, `lin_trueSum_kinds`, `shift_sound`, `rsT`/`rsTruth`/`rs_column`, `evalM`/`evalL`, `novelX_tensor`, `D3`) or the definition to add (`truth*`, owner S-G1c); the doom form (`Rej ∨ Wrong` for asserted rounds, `D3`-style mismatch otherwise, `far_i` for the levels); the count lemma per row (`zerocheck_bad_le`/`skip_pair_bad_le`/`round_escape_le`/`batch_*_bad_le` with `card_chF_fiber`/`card_chF2_fiber`, `rs1_joint`, `round_bad_cover` + `card_chK_fiber`, `positions_bad_le` + `card_idx_fiber`); the handoff (`habs` at the next absorb or the escape at the next squeeze); and the reads `hstab` must keep stable (`wordOf` under the caps by `colL_prefix`/`cap_binding`, the window case of a cap's own absorb). |
 | Composition | **Ratified**: `D L es := Rej L es ∨ D_{φ(es)} L es` (the current phase's doom, or `Rej`), handoffs as S-G1b §5.1; `rnd 0 = none`. |
 | Budget | `FRSoundnessTruths` ≈ 900 lines (S-G1c), `FRSoundnessStepC` (the composed `D`, `StepObl`) ≈ 1,200 (§7). The P2 bound `(1 − eᵢ/nᵢ)^{tᵢ} ≤ deltaR` is kernel-checked in S-G1c (not deferred to S-I). |
+
+### Stage-review changes 13 (revision 3.11): S-E2 F-6, replay templates
+
+| Item | Change |
+|---|---|
+| A.11 | **Appendix A.11 "Replay templates"**: for every structured op (`eqTableK`, `dotKF`, `tensorW`, `rowW`, `maskRows`, `walkA/B`, `lagrangeS`, `targetS`, `eqZ`, `shiftEq`/`eqPt`/`kindInd`, `slotW`, `linkW`, `shiftTarget`, `kindFoldWeight`, `phiRS`, `rsWeight`, the child's `evalM`/`evalMK`/`evalL`) the template rows, imports, alignment `tplBase + inst·2^a + j`, row count and entry class (local / shared / irregular) with the verifier's MLE cost; the ops needing no template (trace cells bound by the digest chain and `cap_binding`, L bits by `lRows`, public constants); `tplX_sound`/`tplX_mle` and `compileT_sound` extending `compile_sound`; the revised count **863,942 rows per slot, 1,727,884 = `2^20.72` per node (1.21× under `N_M`), 59,585 blocks (1.10×)**: it fits `m = 30`; smallest cut: the E2 lincheck restored so the child's `evalM` replays at an F point (1,320,204 rows, 1.59×; prover +0.14 s); second: shared `eq(ρ_blk,·)` tables (−196 k). `T_V` ≈ 225 ms VM ≈ 175 ms runner (1.17×). |
+| §4.3 / §4.5 / §0 | the row and block totals now cite A.11's model; `sizes.py` carries it (`A.11 row model`). |
+| F-5 (S-E2 §10, minor) | A.7 fixed: the WOTS digits are **266 bit-elements** (two per base-4 digit, 133 digits incl. the checksum's), not 133; `lBitCells`' offsets move by 133 (S-E3; the L region stays far inside `N_L = 2^15` rows per slot). |
 

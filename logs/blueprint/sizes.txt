@@ -11,3 +11,7 @@
 == V products: node ~460661 (evalM irregular 149042); leaf ~191832
 == extractor m=30: products 2^40.69, steps (57/product) 2^46.52; fuel 2^47.5 margin 1.97x; budget 2^48 margin 2.79x
 == outCap: node of two children ~638307 words = 2^19.3 of 2^24
+== A.11 row model: skeleton 68795; eqTableK 738; dotKF 55712; tensorW 37335; walks 81920; lagrangeS 1400; targetS 10000; slotW 8400; linkW 20000; eqZ/shift/eqPt 628; phiRS 68608; rsWeight 45604; evalM/evalL replay 464802
+   per slot 863942; per node 1727884 = 2^20.72; N_M margin 1.21x; M blocks 13500; node blocks 59585 of 65536 (1.10x)
+   fallback (E2 lincheck restored, evalM replay in F): per node 1320204 = 2^20.33 (1.59x)
+== V: evalM over templates ~663844 F-products (tables shared by the slots); measured V (S-F2, VM, N30) 183 ms + ~40 ms = ~223 ms VM against 264 ms VM-equivalent cap

@@ -1,4 +1,4 @@
-# Blueprint sizing, revision 3.9 (v_RS = rsT: Phi rows; rsWeight replaces mbp) (skip-c restored, Sel = 1 with the free kind, J_z = 4, kappa_c 5 squeezes) (Lr end / E end absorbs) (S-E2 F-1…F-4) (J_z = 5, WOTS links through the shift argument) (stage-review changes 2: per-kind lincheck claims batched by beta, E2 in the Ligerito weight, 57 steps/product) (stage-review changes 1: per-kind block matrices, stmt as hash message blocks) (fix pass 4: hashStmt 3 blocks, Sel in the weight, J_z MBP runs). One item sequence and one piSize for L32 and P30:
+# Blueprint sizing, revision 3.11 (A.11 replay templates: the node row model is the compiled skeleton + templates) (v_RS = rsT: Phi rows; rsWeight replaces mbp) (skip-c restored, Sel = 1 with the free kind, J_z = 4, kappa_c 5 squeezes) (Lr end / E end absorbs) (S-E2 F-1…F-4) (J_z = 5, WOTS links through the shift argument) (stage-review changes 2: per-kind lincheck claims batched by beta, E2 in the Ligerito weight, 57 steps/product) (stage-review changes 1: per-kind block matrices, stmt as hash message blocks) (fix pass 4: hashStmt 3 blocks, Sel in the weight, J_z MBP runs). One item sequence and one piSize for L32 and P30:
 # every phase is sized for the larger kind; a kind's unused items are dummy queries (zero payloads).
 import math
 RATES=[2,4,8,16,32]; ROWS=[64,16,16,16,16]
@@ -88,3 +88,25 @@ steps=prod*57+2**30                       # 57 steps per F product (S-H1, kernel
 print(f"== extractor m=30: products 2^{math.log2(prod):.2f}, steps (57/product) 2^{math.log2(steps):.2f}; fuel 2^47.5 margin {2**47.5/steps:.2f}x; budget 2^48 margin {2**48/steps:.2f}x")
 w=9+2*((1+pi//8)+(1+items*5+tb//8)+597)
 print(f"== outCap: node of two children ~{w} words = 2^{math.log2(w):.1f} of 2^24")
+
+# ---- A.11 replay-template row model (rev. 3.11), per slot; K products = 3 F rows
+T32=L32
+skeleton=68795                                       # compiled arithmetic skeleton (S-E2 F-6, measured)
+eqTableK=sum(6*(2**(6 if l['i']==0 else 4)-1) for l in T32)
+dotKF=sum(l['t']*2*l['rows'] for l in T32)
+tensorW=sum(l['t']*3*int(math.log2(l['k'])) for l in T32)
+walks=2*2**14+2*2**14+2**14                          # rowW, colW tables; A and B product rows; rowW' mask
+lagrangeS=1400; targetS=10000; slotW=3*2800; linkW=8*2500; small=500; eqZ=128
+phiRS=4*128*134
+rsWeight=4*(23*127+128*22*3)+128
+evalM_rep=2**16*3+2**14*3+2*I_slot+20000*3+10000    # eq tables over blocks/slots in K, irregular entries (K x F = 2 rows), template closed forms in K, evalL
+per_slot_A11=skeleton+eqTableK+dotKF+tensorW+walks+lagrangeS+targetS+slotW+linkW+small+eqZ+phiRS+rsWeight+evalM_rep
+M_rows_A11=2*per_slot_A11
+print(f"== A.11 row model: skeleton {skeleton}; eqTableK {eqTableK}; dotKF {dotKF}; tensorW {tensorW}; walks {walks}; lagrangeS {lagrangeS}; targetS {targetS}; slotW {slotW}; linkW {linkW}; eqZ/shift/eqPt {small+eqZ}; phiRS {phiRS}; rsWeight {rsWeight}; evalM/evalL replay {evalM_rep}")
+print(f"   per slot {per_slot_A11}; per node {M_rows_A11} = 2^{math.log2(M_rows_A11):.2f}; N_M margin {2**21/M_rows_A11:.2f}x; M blocks {math.ceil(M_rows_A11*128/2**14)}; node blocks {H+math.ceil(M_rows_A11*128/2**14)+L_blocks+1} of 65536 ({65536/(H+math.ceil(M_rows_A11*128/2**14)+L_blocks+1):.2f}x)")
+# fallback: E2 lincheck restored -> evalM replay in F
+evalM_F=2**16+2**14+2*I_slot+20000+10000
+alt=2*(per_slot_A11-evalM_rep+evalM_F)
+print(f"   fallback (E2 lincheck restored, evalM replay in F): per node {alt} = 2^{math.log2(alt):.2f} ({2**21/alt:.2f}x)")
+V_evalM = 2**16*3 + 2**14*3 + 2*(2*I_slot) + 2*20000*3
+print(f"== V: evalM over templates ~{V_evalM} F-products (tables shared by the slots); measured V (S-F2, VM, N30) 183 ms + ~{V_evalM*60e-9*1000:.0f} ms = ~{183+V_evalM*60e-9*1000:.0f} ms VM against 264 ms VM-equivalent cap")
