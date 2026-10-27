@@ -48,6 +48,7 @@ import FRLog
 import FRSoundnessDefs
 import FRSoundnessStepA
 import FRSoundnessStepB
+import FRSoundnessStepC
 import FRSoundnessLigerito
 import FRVIRFinalsSG
 

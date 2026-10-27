@@ -535,3 +535,121 @@ Not done: §5.6's "failure at `ε = 2^-121` on Z2" needs the Z2 doom. A positive
    at the first squeeze) acceptable? Also, should the per-phase truths be fixed as an interface
    (one `Expr` with tables and an initial claim per phase) before S-G1c?
 2. Should the P2 bound `(1 − eᵢ/nᵢ)^{tᵢ} ≤ deltaR` be kernel-checked here (S-G1c) or in S-I?
+
+---
+
+# S-G1c (part 1): the composed doom and the generic rows
+
+Base `e1ad02c` (blueprint revision 3.10, A.10). **Status: partial, commit-ready.**
+
+Built:
+- the composition `D = Rej ∨ D_φ` and its reduction to per-phase obligations;
+- every count lemma A.10 needs at single squeezes (F and K) and at sumcheck rounds (F and K);
+- the P2 row end to end: the index counting over answer tuples, and the kernel-checked
+  `(1 − eᵢ/nᵢ)^{tᵢ} ≤ deltaR` at all ten levels.
+
+Not started:
+- `FRSoundnessTruths` (the `truth*` definitions);
+- the per-phase dooms `D_φ`;
+- the multi-squeeze coordinate rows (Z1, S1, Lr1, RS1, E1, P3);
+- the final assembly of `Dp` over the 451 positions.
+
+§4 lists what each needs. No sorry, no new axioms. Source rule: 62 files, 0 findings. No
+warnings, no lines over 100 characters.
+
+## 1. What was built (`FRSoundnessStepC.lean`, 310 code lines; `FR.lean` +1 import)
+
+- **Part A: composition (A.10, ratified).**
+  - `DPos Dp L es := Dp (|es| − 1) L es` and `DC Rej Dp := Rej ∨ DPos Dp`.
+  - **`RejOK`** has three fields: `mono`; `sq` (appending at a squeeze position does not change
+    `Rej`, because every asserted check completes at an absorb); and `stab` (the charging log).
+  - Supporting lemmas: `rej_ext` (`Rej` is constant along a multi-squeeze phase), `condCount_congr`
+    and `sq_of_fsRnd`.
+  - **`stepObl_compose`**: `StepObl (DC Rej Dp) fsRnd δ N` follows from the five obligations for
+    `DPos Dp`, each with the extra assumption `¬ Rej`. With that assumption a round row may use
+    "the check passed". With `step_epsR` (S-G1b) this gives `KState.step` at εR for the whole
+    transcript once `Dp` is assembled.
+- **Part B: the single-squeeze and round rows.**
+  - `single_F_le`: escapes only at a first F coordinate in `S` gives `≤ |S|·2^128`.
+  - `single_K_le`: the K version gives `≤ |S|`.
+  - **`round_row_F`** (`≤ deg e · 2^128`) and **`round_row_K`** (`≤ deg e`): from a false claim,
+    the answers that pass the round check and make the next claim true. These are the count lemmas
+    for the degree-2 and degree-3 F rounds and for the K rounds (P1, Pf); `Rej` supplies the check.
+- **Part C: the P2 row.**
+  - The ladder: `lvN`/`lvK`/`lvE` (`n`, `k = n/2^(i+1)`, `e = ⌊(n − k)/2⌋`), with control
+    `lv_eq_pcsLevels` (these are `pcsLevels`, where `mca_ud_line` is checked).
+  - **`p2_row_le_q`**: `(1 − eᵢ/nᵢ)^{tᵢ} ≤ 15/2^124 − 2^-142` at every level of every kind.
+    - It is proved by `decide +kernel` on rationals. `norm_num` cannot do it: core's `Nat.pow`
+      evaluation stops at exponents above 256.
+  - `p2_row_le` states the same bound against `deltaR`, via `deltaR_coe`.
+  - **`card_idx_in`**: the answers whose first `c` indices lie in `S` number `|S|^c·2^(256−cb)`
+    (`card_idx_fiber` summed over `S^c`).
+  - **`card_pos_in`**: over `r` answers with `per` indices each, the tuples whose first `t` indices
+    lie in `S` number `Π_s |S|^{c_s}·2^(256 − c_s b)`, where `c_s = pc per t s` and
+    `sum_pc` gives `Σ c_s = t`.
+  - Supporting lemmas: `ansAt_ext` (the answers of a formal extension) and `vAt`.
+  - **`p2_round_le`**: if the escape puts the first `t` positions (`posAt`) in `S`, the phase's
+    `condCount ≤ (|S|/2^b)^t`.
+  - `p2_params` (checked): `per ≥ 1`, `per·log₂n ≤ 256`, and `t ≤ sq·per` for every kind. `sq` is
+    sized for `m* = 32`, and the m = 30 kinds fit inside it.
+  - **`p2_hround`**: given the set `S` with `|S| + eᵢ < nᵢ` and the escape-in-`S` property, the P2
+    phase's charge is `≤ deltaR`. This is the hround row of P2.i, missing only the truth `A_c`.
+- **Controls:**
+  - `rejOK_false` (positive);
+  - `not_rejOK_len` (negative: a `Rej` that changes at Z1's first squeeze is not `RejOK`);
+  - `pc_last` (level 0's last answer carries 2 indices);
+  - `lv_eq_pcsLevels`.
+
+## 2. Times and axioms
+
+- **Time:** a sequential single-core run takes 9.8 s wall, 3.7 s of it import, with 2.7 GB max
+  RSS (`logs/S-G/profile-FRSoundnessStepC.log`). Type checking is below the profiler's threshold.
+  The 15 rational checks of `p2_row_le_q` are `decide +kernel`.
+- **Axioms** (`logs/S-G/axioms-S-G1c.log`):
+  - `stepObl_compose`, `p2_hround`, `p2_row_le_q`, `card_pos_in`, `round_row_F` and `round_row_K`:
+    `propext`, `Classical.choice`, `Quot.sound`;
+  - `not_rejOK_len`: `propext`, `Quot.sound`;
+  - `lv_eq_pcsLevels`: `propext`.
+
+## 3. Deviations
+
+1. **`RejOK.sq`.** `Rej` must not change when an entry is appended at a squeeze position. A
+   check that reads a challenge is placed at the next absorb (A.10's checks are all at absorbs).
+   The last check, `finPf`, reads Pf's last challenge and has no later absorb, so it stays with
+   `final` (accepted run), not with `Rej`.
+2. **P2's answers.** The phase has `sq` answers sized for `m* = 32` for every kind. `p2_params`
+   checks that the m = 30 kinds' indices fit. The unused indices are unconstrained, which
+   `card_pos_in` counts exactly.
+3. **`set_option linter.constructorNameAsVariable false`** is set for the whole module. The
+   linter crashes (`maxRecDepth`) on the Digest-fiber statements, as in FRLog and StepB.
+
+## 4. Not done, and what each piece needs
+
+1. **`FRSoundnessTruths`.** The truths split by who owns their definitions:
+
+   | Truths | Needs | Owner | Status |
+   |---|---|---|---|
+   | Ligerito: `decode_i` (rows of a `JointClose` witness), `far_i` (`FarAt`, StepA), `A_c` for P2, `truthC`, `truthP1`, `truthP3`, `truthPf` | `FRProximityFold`/`FRRS` only | L-cert | can start now |
+   | `truthZ0`/`Z2`/`Zend` | `unpack` (`FRFormat`, S-0), `A₀^κ`/`B₀^κ` (`FRBlockLayout`), `E` (`FRPubTarget`) | other tracks | — |
+   | `truthL3`, `truthS1` | `lin_trueSum_kinds`, `shift_sound`/`slotW_mle` (S-C) | S-C | — |
+   | `truthLr` | `evalL`/L layout (`FRVIREval`, L-circ) | L-circ | — |
+   | `truthRS` | `rsT`/`rsTruth` (S-C `FRRingSwitch`) | S-C | — |
+   | `truthE` | `evalM`, `compileMux` matrices (S-E2) | S-E2 | — |
+   | `truthB′` | the public cells, from `FRNodeLayout` | other tracks | — |
+
+   All of these exist at HEAD except `evalMK` and `rsWeight` (S-G3 §3). Where a definition is
+   missing, the plan is to state it as a hypothesis.
+2. **The per-phase dooms and `Dp`.** These are the D3-style definitions per phase:
+   - `Wrong2` for the asserted rounds, closed by `round_row_F`/`round_row_K`;
+   - `D3` for Z3, Lr2 and E2 (S-G1b);
+   - the batch rows, through `single_F_le` with `batch_pow_bad_le`;
+   - P2 through `p2_hround`.
+
+   Each also needs its handoff at the next absorb or squeeze, and `Dp p := D_{φ(p)}` through
+   `phStart`.
+3. **The multi-squeeze coordinate rows** (Z1, S1, Lr1, RS1, E1, P3; `hround`). These need a
+   `card_pos_in` analogue for F coordinates (`coordAt` over `chFEquiv`), combined with
+   `seq_bad_le`/`pair_bad_le`/`rs1_joint`. It is the same counting pattern as P2, at
+   `2^128`-element coordinates.
+4. **`TruthStable` for word reads.** As in S-G1b §5.5: the bridge from `¬ Bad L` to
+   `¬ Hit (frEnc i)`, and the cap's own absorb.

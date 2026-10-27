@@ -114,3 +114,21 @@ symlinked; `.lake` copied from `fr-build-cert`). Every `lake`/`lean` run used th
 28. Times, axioms and the source rule recorded in RESULT S-G1b §2. Stopped here (budget):
     the composed doom, the truths, the degree-2/K rounds and the multi-squeeze rows are in RESULT
     S-G1b §5.
+
+## 2026-10-27 (S-G1c, part 1)
+
+29. Blueprint 3.10 (A.10, changes 12): composition ratified; per-phase truths tabled; the P2 bound
+    to be kernel-checked here.
+30. `FRSoundnessStepC`.
+    - Composition: `stepObl_compose`, under `RejOK` (`mono`, `sq`, `stab`).
+    - The rows: `single_F_le`/`single_K_le`, `round_row_F`/`round_row_K`.
+    - The P2 row: `card_idx_in` → `card_pos_in` → `p2_round_le` → `p2_hround`.
+    - Pitfalls:
+      - `norm_num` will not evaluate `3^290` (core's `Nat.pow` evaluation stops above exponent
+        256); `decide +kernel` on ℚ works (15 cases, fast).
+      - `rw [← Fin.prod_const]` rewrote `2 ^ b` inside `Fin (2 ^ b)` (motive error); state the
+        product form with `show`.
+      - `per * s` and `s * per` are separate `omega` atoms.
+      - `dif_pos` is deprecated: add a `vAt_of_lt` lemma proved by `simp`.
+31. Stopped at a natural boundary (budget). The truths, the per-phase dooms, the coordinate
+    `hround` rows and the `Dp` assembly remain (RESULT S-G1c §4).
