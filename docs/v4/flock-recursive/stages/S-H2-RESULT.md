@@ -538,3 +538,115 @@ the costs and every other module are unchanged.
 - no `sorry`;
 - the source rule is clean;
 - `ext`, `computes` and the costs are unchanged.
+
+---
+
+## Part 7: the lookup (first preimage by binary search), in `ext`
+
+**Delivered.**
+
+- `FRXLog`: the lookup program, now part of `logIR`.
+- `FRXLookup` (new): its semantics and its specification against `FRLog.ansIdx`.
+- `FRXSortSim`: `logIR_sorted` is renamed **`idxIR_sorted`**. Its statement is unchanged; it is
+  now about `idxIR := walkIR ; sortIR`.
+
+**The program** (`FRXLog`).
+
+- `lookIR` reads `n` from tape word `posL` and runs `loopK 64 bsBody`, then `foundIR`. `bsBody`
+  is one halving step of the lower-bound search on `[lo, lo + len)`:
+  - it probes `mid = lo + len/2` and loads `X[mid]`;
+  - `ansLtIR` sets `rF := ansW(X[mid]) <_lex (rQ0 … rQ3)`;
+  - then either `lo := mid + 1`, `len -= len/2 + 1`, or `len := len/2`;
+  - it does nothing when `len = 0`.
+- `foundIR` sets `rFd := [lo < n] ∧ ansW(X[lo]) = (rQ0 … rQ3)`.
+- `lookCIR` loads the statement digest `c` (tape words `0 … 3`) into `rQ0 … rQ3` and runs
+  `lookIR`. This is the first use of the lookup and the entry point I assumed for the
+  first-preimage walks. If phase 3 starts its walks from another digest, only the four reads
+  change.
+- `logIR := idxIR ; lookCIR`. New registers `rQ0 … rQ3, rLo, rLn, rHf, rMd, rCB, rNB, rFd` are
+  `106 … 116`.
+
+**Cost and obligations (re-proved).**
+
+- `cost_logIR : cost logIR t = 9095 + ⌊t/5⌋ · 11871`. The constant was 2,592; the lookup adds
+  6,503. The per-word term is unchanged.
+- `decOk_logIR` is re-proved:
+  - `safe_logIR` has the new `seq` shape; the lookup has no `loopT`;
+  - `wf_logIR`, `outs_logIR = 0` and `sizeIR_logIR ≤ 2^19` still hold.
+- `computes` and `ext_caps` re-check unchanged. `ext`'s SNARK branch runs the lookup.
+- The constant term stays far inside Part 2's budget: 9,095 against `≈ 2^47.58` left for
+  phases 2–5.
+
+**The specification** (`FRXLookup`).
+
+- **The tape.**
+  - `tape_answer`: the answer words of entry `k` are `packBytes L[k].2`.
+  - `ansW_entry`: `ansW I (posE L k) = packBytes L[k].2`, where `ansW` is the first four key words
+    and `keyW_eq : keyW = ansW ++ [x]`.
+  - `packBytes_digest_inj`: `packBytes` is injective on digests.
+  - `lexW_append`: the key order is the answer order, then the position order.
+- **The pure search.**
+  - `bsStep`/`bsRun`, with the invariant `BsInv` and `bsStep_inv`/`bsRun_inv`.
+  - **`bsRun_spec`**: on a predicate that holds on a prefix of `[0, n)` with `n < 2^64`,
+    64 halvings from `(0, n)` end at the prefix's length.
+- **`lookup_pure`**: take a sorted index (`Sorted`: `idxIR_sorted`'s three facts) and the
+  predicate `ltT` ("the answer at slot `a` is below `packBytes t`").
+  - `ltT` holds on a prefix of the slots.
+  - If `ansIdx L t = some k`, the prefix's end `b` is a slot (`b < |L|`) with
+    `X[b] = posE L k`. This is the first entry of `L` with answer `t`. The proof: an equal answer
+    at an earlier slot would be an entry with a smaller position, hence a smaller index,
+    contradicting `findIdx?`.
+  - If `ansIdx L t = none`, no slot has answer `t`.
+- **The machine.**
+  - `ansLtIR_sem`, `bsBody_sem` (one machine step is `bsStep (ltT I X T)`), `bsLoop`,
+    `foundIR_sem`.
+  - **`lookIR_sem`**: for a target `T` in `rQ0 … rQ3`:
+    - `rLo = (bsRun (ltT I X T) 64 (0, n)).1`;
+    - `rFd = [lo < n ∧ ansW(X[lo]) = T]`;
+    - the heap is unchanged.
+- **`logIR_lookup`** (`lookup_spec` for `c`). The setting is a domain tape of a SNARK proof, with
+  `memX + 2|L| ≤ |M|`. After `logIR`:
+  - if `ansIdx L c = some k`, then `rFd = 1` and `rLo = b` for a slot `b < |L|` with
+    `X[b] = posE L k`;
+  - if `ansIdx L c = none`, then `rFd = 0`;
+  - and `X` is still `Sorted`.
+
+  For any other target, `lookIR_sem` combined with `lookup_pure` gives the same result.
+- **Controls.**
+  - `bsRun_ctl`, by kernel `decide` on a 10-element toy: on a prefix predicate the search finds
+    the prefix's end (3); on a predicate that is not a prefix (true only at 7) it returns 0. So
+    the monotonicity hypothesis of `bsRun_spec` is needed.
+  - `lookup_pure`'s two cases are the positive and negative controls of `ltT`/`Sorted`.
+- **Checks.**
+  - **Axioms.** `logIR_lookup`, `lookIR_sem`, `lookup_pure`, `decOk_logIR` and `computes` depend
+    on `propext, Classical.choice, Quot.sound`.
+  - **Source rule.** 64 files, 0 findings. No `sorry`.
+  - **Sequential profile** (`taskset -c 0`, `-DElab.async=false`, `logs/S-H2/*.profile`):
+
+    | Module | wall | max RSS | type checking | simp |
+    |---|---|---|---|---|
+    | `FRXLookup` (938 lines, 792 code, 52 theorems) | 33.6 s | 2.66 GB | 2.56 s | 11.1 s |
+    | `FRXLog` (333 lines, 218 code) | 18.6 s | 2.60 GB | 0.79 s | 4.8 s |
+
+**Notes** (journal item 19):
+
+- `rw [ansW_eq]` also rewrote inside the `getD` terms it produces, and the following `simp` timed
+  out. A separate lemma (`decide_ansW`, by `match` on the 4-list) avoids this.
+- `(by revert hq; decide)` fails when `hq` mentions a free variable. Use a closed fact,
+  `(by decide : ∀ r ∈ [..], P r) q hq`.
+- Give implicit arguments that a `by` argument depends on: `bsRun_le (n := n)`, and `hHE (memX + a)`.
+- The control `bsRun_ctl` needs `decide +kernel`; plain `decide` exceeds the recursion depth.
+
+**What remains:**
+
+1. **Phase 3, the ladder read.** It runs first-preimage walks from the caps (`lookIR` gives each
+   step's first preimage), and the column store must equal `colL`'s first-preimage reading
+   (`read_spec`). It depends on S-G2's `final`/`colL` interface.
+2. Phases 4–6 and the SNARK case of `ext_good_tape`, as in Part 2.
+
+**Stopped here** on the token budget. The state is commit-ready:
+
+- every `FRX*` module builds (`FRXLookup`, `FRXSpec`, `FRXExt`);
+- no `sorry`;
+- the source rule is clean;
+- `computes` re-checks with the new `cost_logIR`.

@@ -19,7 +19,11 @@ query's `⌈|q|/8⌉` packed words, then the answer (4 words) at `apos p = p + 1
   `piSize` bytes (`safe_logIR`), its cost `cost_logIR` within `decBudget`, no output
   (`decOk_logIR`).
 
-The sort's semantics (`X` sorted and a permutation of the walk's) is the next part of this stage.
+* `lookIR`: the lower bound of a target answer `(rQ0 … rQ3)` in the sorted `X` (64 halvings),
+  `rFd := 1` iff found; `lookCIR` looks up the statement digest `c` (the first lookup).
+* `logIR := idxIR ; lookCIR` with `idxIR := walkIR ; sortIR`.
+
+Semantics: `FRXLogSpec` (walk), `FRXSortSim` (sort), `FRXLookup` (lookup).
 -/
 
 namespace FR.X
@@ -62,6 +66,17 @@ def posL : ℕ := 5 + 94460
 /-- The step counter. -/ def rCS : ℕ := 103
 /-- The step count (`|L|`). -/ def rNS : ℕ := 104
 /-- Scratch. -/ def rV : ℕ := 105
+/-- Target answer word 0. -/ def rQ0 : ℕ := 106
+/-- Target answer word 1. -/ def rQ1 : ℕ := 107
+/-- Target answer word 2. -/ def rQ2 : ℕ := 108
+/-- Target answer word 3. -/ def rQ3 : ℕ := 109
+/-- The search's lower end. -/ def rLo : ℕ := 110
+/-- The search's length. -/ def rLn : ℕ := 111
+/-- Half the length. -/ def rHf : ℕ := 112
+/-- The probe slot. -/ def rMd : ℕ := 113
+/-- The search's counter. -/ def rCB : ℕ := 114
+/-- The search's step count (`64`). -/ def rNB : ℕ := 115
+/-- `1` iff the target was found. -/ def rFd : ℕ := 116
 
 /-! ## Blocks -/
 
@@ -147,33 +162,81 @@ def sortPre : XIR :=
 /-- **The sort**: 64 passes. -/
 def sortIR : XIR := .seq sortPre (.loopK rCP rNP 64 passIR)
 
-/-- **The log index** (the SNARK branch so far). -/
-def logIR : XIR := .seq walkIR sortIR
+/-! ## The lookup (lower bound by binary search) -/
+
+/-- Fold in answer word `w` against the target register `r`:
+`rF := (a_w < r) ∨ (a_w = r ∧ rF)`. -/
+def cmpTWord (w r : ℕ) : XIR :=
+  .seq (.blk [.const rKc (BitVec.ofNat 64 w), .op .add rAd rPa rKc]) (.seq (.input rKa rAd)
+    (.blk [.op .ltu rG rKa r, .op .eq rH rKa r, .op .and rH rH rF, .op .or rF rG rH]))
+
+/-- `rF :=` the answer of the entry at `rX` is below the target `(rQ0 … rQ3)`, lexicographically
+from word 0. -/
+def ansLtIR : XIR :=
+  .seq (aposIR rPa rX) (.seq (.blk [.const rF 0]) (.seq (cmpTWord 3 rQ3) (.seq (cmpTWord 2 rQ2)
+    (.seq (cmpTWord 1 rQ1) (cmpTWord 0 rQ0)))))
+
+/-- One halving step of the lower-bound search on `[lo, lo + len)`; nothing when `len = 0`. -/
+def bsBody : XIR :=
+  .ite rLn (.seq (.blk [.const rKc 1, .op .shr rHf rLn rKc, .op .add rMd rLo rHf,
+      .const rKc (BitVec.ofNat 64 memX), .op .add rAd rMd rKc]) (.seq (.load rX rAd)
+    (.seq ansLtIR (.ite rF (.blk [.op .add rLo rMd cOne, .op .sub rLn rLn rHf,
+      .op .sub rLn rLn cOne]) (.blk [.op .or rLn rHf rHf]))))) (.blk [])
+
+/-- Equality of answer word `w` with the target register `r`, and-ed into `rFd`. -/
+def eqTWord (w r : ℕ) : XIR :=
+  .seq (.blk [.const rKc (BitVec.ofNat 64 w), .op .add rAd rPa rKc]) (.seq (.input rKa rAd)
+    (.blk [.op .eq rH rKa r, .op .and rFd rFd rH]))
+
+/-- After the search: `rFd := lo < n ∧ answer(X[lo]) = target`. -/
+def foundIR : XIR :=
+  .seq (.blk [.const rKc (BitVec.ofNat 64 memX), .op .add rAd rLo rKc]) (.seq (.load rX rAd)
+    (.seq (aposIR rPa rX) (.seq (.blk [.op .ltu rFd rLo rN]) (.seq (eqTWord 0 rQ0)
+      (.seq (eqTWord 1 rQ1) (.seq (eqTWord 2 rQ2) (eqTWord 3 rQ3)))))))
+
+/-- **The lookup** of the target `(rQ0 … rQ3)` in the sorted `X[0..n)`: `rLo :=` the first slot
+whose answer is not below the target (64 halvings), `rFd := 1` iff its answer is the target. -/
+def lookIR : XIR :=
+  .seq (.seq (readAt rN posL) (.blk [.const rLo 0, .op .or rLn rN rN, .const rNB 64]))
+    (.seq (.loopK rCB rNB 64 bsBody) foundIR)
+
+/-- The lookup of the statement digest `c` (tape words `0 … 3`): the first use of the lookup, the
+entry point of the first-preimage walks (phase 3). -/
+def lookCIR : XIR :=
+  .seq (.seq (readAt rQ0 0) (.seq (readAt rQ1 1) (.seq (readAt rQ2 2) (readAt rQ3 3)))) lookIR
+
+/-- Walk and sort. -/
+def idxIR : XIR := .seq walkIR sortIR
+
+/-- **The log index** (the SNARK branch so far): walk, sort, and the lookup of `c`. -/
+def logIR : XIR := .seq idxIR lookCIR
 
 /-! ## Well formed, cost, size -/
 
 theorem wf_logIR : WF logIR := by
-  simp [logIR, walkIR, walkPre, walkBody, sortIR, sortPre, passIR, passPre, swapPs, stepIR,
+  simp [logIR, idxIR, lookCIR, lookIR, bsBody, ansLtIR, cmpTWord, eqTWord, foundIR, rQ0, rQ1, rQ2,
+    rQ3, rLo, rLn, rHf, rMd, rCB, rNB, rFd, walkIR, walkPre, walkBody, sortIR, sortPre, passIR, passPre, swapPs, stepIR,
     blockIR, cmpIR, cmpWord, aposIR, ceil8Ps, minPs, readAt, WF, Writes, Prim.dst, List.mem_cons,
     List.mem_append, List.mem_nil_iff, rA, rN, rP, rXA, rQL, rT1, rT2, rKc, rCW, rW2, rSrc, rDst,
     rI, rIE, rJ, rJE, rKk, rAd, rX, rY, rPa, rPb, rKa, rKb, rF, rG, rH, rCP, rNP, rCS, rNS, rV,
     regs, cTmp, cOne]
 
-theorem cost_logIR (t : ℕ) : cost logIR t = 2592 + t / 5 * 11871 := by
-  simp only [logIR, walkIR, walkPre, walkBody, sortIR, sortPre, passIR, passPre, swapPs, stepIR,
-    blockIR, cmpIR, cmpWord, aposIR, ceil8Ps, minPs, readAt, cost, blkSteps, List.length_cons,
-    List.length_nil, List.length_append, Aff.eval, Nat.one_mul]
+theorem cost_logIR (t : ℕ) : cost logIR t = 9095 + t / 5 * 11871 := by
+  simp only [logIR, idxIR, lookCIR, lookIR, bsBody, ansLtIR, cmpTWord, eqTWord, foundIR, walkIR,
+    walkPre, walkBody, sortIR, sortPre, passIR, passPre, swapPs, stepIR, blockIR, cmpIR, cmpWord,
+    aposIR, ceil8Ps, minPs, readAt, cost, blkSteps, List.length_cons, List.length_nil,
+    List.length_append, Aff.eval, Nat.one_mul]
   norm_num
   omega
 
 theorem sizeIR_logIR : sizeIR logIR ≤ 2 ^ 19 := by
-  simp only [logIR, walkIR, walkPre, walkBody, sortIR, sortPre, passIR, passPre, swapPs, stepIR,
+  simp only [logIR, idxIR, lookCIR, lookIR, bsBody, ansLtIR, cmpTWord, eqTWord, foundIR, walkIR, walkPre, walkBody, sortIR, sortPre, passIR, passPre, swapPs, stepIR,
     blockIR, cmpIR, cmpWord, aposIR, ceil8Ps, minPs, readAt, sizeIR, blkSteps, List.length_cons,
     List.length_nil, List.length_append]
   norm_num
 
 theorem outs_logIR (t : ℕ) : outs logIR t = 0 := by
-  simp [logIR, walkIR, walkPre, walkBody, sortIR, sortPre, passIR, passPre, swapPs, stepIR,
+  simp [logIR, idxIR, lookCIR, lookIR, bsBody, ansLtIR, cmpTWord, eqTWord, foundIR, walkIR, walkPre, walkBody, sortIR, sortPre, passIR, passPre, swapPs, stepIR,
     blockIR, cmpIR, cmpWord, aposIR, readAt, outs]
 
 /-! ## Loop bounds -/
@@ -213,18 +276,21 @@ theorem rd_seq_readAt (I : Array Word) (p : XIR) (s : St) (hP : WF p) (hM : Inv 
 /-- **The log index's loop bounds**, on a tape whose word `posL` is a count of at most `t / 5`. -/
 theorem safe_logIR {I : Array Word} {t : ℕ} (h : (I.getD posL 0).toNat ≤ t / 5) :
     Safe I t logIR := by
+  unfold logIR idxIR
   have hcnt : ∀ (p : XIR) (d : ℕ), WF p → d < regs → ∀ s : St, Inv s.M →
       (rd (semXIR I (.seq p (readAt d posL)) s).M d).toNat ≤ Aff.eval ⟨0, 1, 5⟩ t :=
     fun p d hP hd s hM => by
       rw [rd_seq_readAt I p s hP hM hd (by simp only [posL]; omega)]
       simpa [Aff.eval] using h
-  refine .seq (.loopT (safe_of_noLoopT (by simp [walkPre, readAt, NoLoopT]))
+  refine .seq (.seq (.loopT (safe_of_noLoopT (by simp [walkPre, readAt, NoLoopT]))
     (hcnt _ rN (by simp [WF, Prim.dst, rP, rXA]) (by simp [rN, regs]))
     (safe_of_noLoopT (by simp [walkBody, NoLoopT]))) (.seq (safe_of_noLoopT (by
       simp [sortPre, readAt, NoLoopT])) (.loopK (.seq (.loopT (safe_of_noLoopT (by
       simp [passPre, readAt, NoLoopT])) (hcnt _ rNS (by simp [WF, Prim.dst, rI, rIE, rJ, rJE, rKk])
       (by simp [rNS, regs])) (safe_of_noLoopT (by
-        simp [stepIR, blockIR, cmpIR, cmpWord, aposIR, NoLoopT]))) (.blk _))))
+        simp [stepIR, blockIR, cmpIR, cmpWord, aposIR, NoLoopT]))) (.blk _)))))
+    (safe_of_noLoopT (by simp [lookCIR, lookIR, readAt, bsBody, ansLtIR, cmpTWord, eqTWord,
+      foundIR, aposIR, NoLoopT]))
 
 /-! ## The domain tape of a SNARK proof -/
 

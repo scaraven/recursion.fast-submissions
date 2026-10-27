@@ -84,3 +84,19 @@ Base: branch `v4/flock-recursive`, HEAD `53c2e13`. Build tree `logs/fr-build-SH2
 
     Profile: 27.1 s wall, type checking 2.43 s. Stopped before the binary-search lookup (token
     budget); plan in RESULT Part 6.
+
+## Part 7
+
+19. Lookup.
+    - `FRXLog`: `lookIR` (64-step lower bound), `foundIR`, `lookCIR` (looks up `c`), and
+      `logIR := idxIR ; lookCIR`. The cost constant went from 2,592 to 9,095; `decOk` re-proved.
+    - `FRXLookup`: `tape_answer`, `ansW_entry`, `bsRun_spec`, `lookup_pure` (against
+      `FRLog.ansIdx`), `lookIR_sem`, `logIR_lookup`.
+    - `logIR_sorted` renamed `idxIR_sorted`.
+    - Pitfalls:
+      - `rw [ansW_eq]` rewrites inside its own result; use a lemma over a 4-element list;
+      - `revert; decide` fails when the goal has free variables; use a closed `decide` fact;
+      - give implicit arguments before a `by` argument needs them;
+      - the toy control needs `decide +kernel`.
+
+    Profile: `FRXLookup` 33.6 s wall, type checking 2.56 s. Stopped before phase 3 (token budget).

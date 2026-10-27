@@ -12,7 +12,7 @@ import FRXMerge
   sets `w := min(2w, n)`.
 * **`sortIR_sem`**: 64 passes leave `X[0..n)` strictly sorted by `keyLt` and holding exactly the
   initial (distinct) values (`passes_ok`).
-* **`logIR_sorted`**: on a domain tape of a SNARK proof, after `logIR` `X[0..|L|)` holds exactly
+* **`idxIR_sorted`**: on a domain tape of a SNARK proof, after `idxIR` `X[0..|L|)` holds exactly
   the log entries' tape positions, sorted by (answer, position).
 
 (S-H2-RESULT, Parts 5 and 6.)
@@ -766,19 +766,19 @@ theorem entryOff_lt (L : Log) {a b : ℕ} (h : a < b) (hb : b ≤ L.length) :
     · have := ih h' (by omega); omega
     · subst h'; omega
 
-/-- **The log index** (`index_spec`, sort half): after `logIR` on a domain tape of a SNARK proof,
+/-- **The log index** (`index_spec`, sort half): after `idxIR` (walk and sort) on a domain tape of a SNARK proof,
 `X[0..|L|)` holds exactly the tape positions of the log's entries, strictly sorted by the key
 (answer, position). -/
-theorem logIR_sorted (c : Digest) (π : Proof) (L : Log) (hs : π.size = piSize)
+theorem idxIR_sorted (c : Digest) (π : Proof) (L : Log) (hs : π.size = piSize)
     (hq : ∀ e ∈ L, e.1.size < 2 ^ 64) (ht : (extractorInput c π L).length ≤ 2 ^ 64)
     (s : St) (hM : Inv s.M) (hsz : memX + L.length + L.length ≤ s.M.size) :
     (∀ a b, a < b → b < L.length →
       keyLt (extractorInput c π L).toArray
-        (rd (semXIR (extractorInput c π L).toArray logIR s).M (memX + a))
-        (rd (semXIR (extractorInput c π L).toArray logIR s).M (memX + b)) = true) ∧
-    (∀ a < L.length, ∃ k < L.length, rd (semXIR (extractorInput c π L).toArray logIR s).M
+        (rd (semXIR (extractorInput c π L).toArray idxIR s).M (memX + a))
+        (rd (semXIR (extractorInput c π L).toArray idxIR s).M (memX + b)) = true) ∧
+    (∀ a < L.length, ∃ k < L.length, rd (semXIR (extractorInput c π L).toArray idxIR s).M
       (memX + a) = toWord (posL + 1 + entryOff L k)) ∧
-    (∀ k < L.length, ∃ a < L.length, rd (semXIR (extractorInput c π L).toArray logIR s).M
+    (∀ k < L.length, ∃ a < L.length, rd (semXIR (extractorInput c π L).toArray idxIR s).M
       (memX + a) = toWord (posL + 1 + entryOff L k)) := by
   set I := (extractorInput c π L).toArray with hI
   have hend := tape_entries_end c π L hs
@@ -786,8 +786,8 @@ theorem logIR_sorted (c : Digest) (π : Proof) (L : Log) (hs : π.size = piSize)
     have := length_logEntries L
     rwa [entries_length, ← entryOff_length] at this
   have hW := fun {k : ℕ} (hk : k < L.length) => walk_spec c π L hs hq ht s hM (by omega) hk
-  have hwf : WF walkIR := wf_logIR.1
-  rw [logIR, semXIR_seq]
+  have hwf : WF walkIR := wf_logIR.1.1
+  rw [idxIR, semXIR_seq]
   obtain ⟨r1, r2, r3⟩ := sortIR_sem I (semXIR I walkIR s) (inv_sem I hwf hM) (n := L.length)
     (by rw [hI, getD_toArray, tape_getD_posL c π L hs]) (by omega) (by rw [size_sem]; exact hsz)
     (fun a b ha hb h => by
