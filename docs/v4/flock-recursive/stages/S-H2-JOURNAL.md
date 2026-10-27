@@ -70,3 +70,17 @@ Base: branch `v4/flock-recursive`, HEAD `53c2e13`. Build tree `logs/fr-build-SH2
 
 17. `FRXSortSim`: `minW` (branch-free min), `eqW_toWord`, `ltW_toWord`; compiled first time.
     Stopped: this agent's context is long; RESULT Part 5 is a handover brief for step 2.
+
+## Part 6
+
+18. `FRXSortSim`: `Rel`/`Regs`/`Lay`/`Lo` + `hframe`; `blockIR_sem`, `choose_sem`, `tail_sem`,
+    `stepIR_sem`, `stepLoop`, `passIR_sem`, `sortIR_sem`, `logIR_sorted`. `stepIR` is split as
+    `blockIR ; flagsIR ; chooseIR ; advIR ; tailIR` by `rfl`. The step needs no sortedness, only
+    `Bnd`, so `passes_ok` is applied unchanged. Pitfalls met:
+    - `rfl` or `assumption` time out in `whnf` on `0 = toWord 0` with tape facts in context;
+    - a `let`-bound base function makes `rw`'s closing `rfl` time out (use `def baseX`);
+    - multi-line `(by …)` needs `;`;
+    - implicit arguments must be given before a `by` argument can run.
+
+    Profile: 27.1 s wall, type checking 2.43 s. Stopped before the binary-search lookup (token
+    budget); plan in RESULT Part 6.

@@ -427,3 +427,114 @@ register-level proof is best done by a fresh agent from this record.
    - loads need `regs ≤ address`;
    - `simp only` with explicit dischargers for `rd_set_*`;
    - `BitVec.ofNat_add` in place of `toWord_add_one` on `1#64`.
+
+---
+
+## Part 6: the machine–model simulation of the sort (step 2), and the sorted log index
+
+**Delivered: `FRXSortSim`** extended to 809 lines (675 code, 50 theorems). `ext`, `computes`,
+the costs and every other module are unchanged.
+
+- **The relation.**
+  - `Regs M S D n w σ`: the registers `rI, rIE, rJ, rJE, rKk` hold `toWord` of `σ`'s indices, and
+    `rW2, rN, rSrc, rDst` hold `w, n, S, D`.
+  - `Rel S D n w src M σ`: `Inv M`, `Regs`, the heap holds `src a` at `S + a` and `σ.dst a` at
+    `D + a` for `a < n`, and `Bnd n σ` (`i ≤ iE ≤ n`, `j ≤ jE ≤ n`).
+  - `Lay S D n w sz`: `regs ≤ S, D`; the two ranges are disjoint, inside the memory and below
+    `2^64`; `3n + 2 < 2^64`; `w ≤ n + 1`; and `0 < w` when `0 < n`.
+  - `Lo P` (no store, no loop, register destinations) with `hframe`: such code leaves every cell
+    `≥ regs` alone. This is the heap frame that `FRXDsl.frame` (registers only) does not give.
+- **One step.** `stepIR` is split as `blockIR ; flagsIR ; chooseIR ; advIR ; tailIR` (`stepIR_eq`,
+  by `rfl`).
+  - `blockIR_sem`: `Regs` goes to `Regs (bstart n w σ)`. It uses `eqW_toWord`, `bW_and` and
+    `minP_toWord`.
+  - `choose_sem`: `rF = bW (takeL (keyLt I) src τ)`. It uses `ltW_toWord` and `cmpIR_sem`; the
+    address hypotheses come from `regs ≤ S`.
+  - `adv_blk`: `rAd := S + h` and the head is advanced.
+  - `tail_sem`: the load of `src h`, then `rAd := D + k`, `k++`, and the store through
+    `rd_storeM`. The heap changes at `D + k` only; the source is untouched because the ranges
+    are disjoint.
+  - **`stepIR_sem`**:
+
+    ```lean
+    theorem stepIR_sem (I : Array Word) (s : St) {S D n w : ℕ} {src : ℕ → Word} {σ : MS}
+        (hL : Lay S D n w s.M.size) (hR : Rel S D n w src s.M σ) (hk : σ.k < n) :
+        Rel S D n w src (semXIR I stepIR s).M (mstep (keyLt I) src n w σ) ∧
+          (mstep (keyLt I) src n w σ).k = σ.k + 1
+    ```
+
+    No sortedness of `src` is needed. The bounds are carried by `Bnd` and `bstart_props`: after
+    `bstart`, a head is available.
+- **One pass.** `stepLoop`: `m` iterations of the step loop run `mrun`. The counter's decrement
+  keeps `Rel` (`Rel.set`, `Rel.decS`). **`passIR_sem`**: from `rSrc = S`, `rDst = D`, `rW2 = w`,
+  `rN = n` and tape word `posL = n`, a pass leaves the following:
+  - `D + a` holds `passF (keyLt I) (S + ·) n w (D + ·) a` for `a < n`;
+  - `rSrc = D` and `rDst = S`;
+  - `rW2 = min(2w, n)` and `rN = n`.
+- **The sort.** **`sortIR_sem`**:
+
+  ```lean
+  theorem sortIR_sem (I : Array Word) (s : St) (hM : Inv s.M) {n : ℕ}
+      (hn : I.getD posL 0 = toWord n) (hn2 : n < 2 ^ 62) (hsz : memX + n + n ≤ s.M.size)
+      (hinj : ∀ a b, a < n → b < n → rd s.M (memX + a) = rd s.M (memX + b) → a = b) :
+      (∀ a b, a < b → b < n → keyLt I (rd M' (memX + a)) (rd M' (memX + b)) = true) ∧
+      (∀ a < n, ∃ c < n, rd M' (memX + a) = rd s.M (memX + c)) ∧
+      (∀ c < n, ∃ a < n, rd M' (memX + a) = rd s.M (memX + c))
+  ```
+
+  Here `M'` stands for `(semXIR I sortIR s).M`; the Lean statement writes it out. The proof:
+  - the pass invariant runs over `iterL` (`iterL_succ'`), with bases `baseX n p` (`X` on even
+    passes, `Y = X + n` on odd ones) and widths `wseq n p` (`wseq_le`, `wseq_pos`);
+  - the loop count is 64 (`entryK64`);
+  - then `passes_ok` applies. 64 is even, so the result is back in `X`.
+- **The log index.** **`logIR_sorted`** holds on a domain tape of a SNARK proof, given
+  `memX + 2|L| ≤ |M|`. After `logIR`, `X[0..|L|)` is strictly sorted by `keyLt`, and as a set it is
+  exactly `{posL + 1 + entryOff L k | k < |L|}`. These are the tape positions of the log's entries
+  (`walk_spec`). Injectivity comes from `entryOff_lt`: `qWords ≥ 5`, and every position is below
+  `2^64`, by `tape_entries_end`.
+- **Controls.**
+  - `Lo`: positive `lo_blockIR`, `lo_cmpIR`, `lo_chooseIR`; negative `not_lo_store`,
+    `not_lo_heap`.
+  - `baseX_ctl`: `X` on pass 0, `Y` on pass 1.
+  - `Rel` is established on a real state inside `passIR_sem` (its positive control). `Lay` holds
+    for every pass of the sort (`hLay` in `sortIR_sem`).
+- **Checks.**
+  - **Axioms.** `stepIR_sem`, `passIR_sem`, `sortIR_sem` and `logIR_sorted` depend on
+    `propext, Classical.choice, Quot.sound`.
+  - **Source rule.** 63 files, 0 findings. No `sorry`.
+  - **Sequential profile** (`taskset -c 0`, `-DElab.async=false`;
+    `logs/S-H2/FRXSortSim.profile`, `.time`):
+
+    | wall | max RSS | type checking | simp | tactic execution |
+    |---|---|---|---|---|
+    | 27.1 s | 2.65 GB | 2.43 s | 7.7 s | 6.5 s |
+
+**Notes for the next agent** (journal item 18):
+
+- `rfl` and `assumption` can time out in `whnf` on goals such as `0 = toWord 0` when the context
+  holds tape facts (`I.getD posL 0 = …`). Close such goals with explicit `exact h`, or put `rfl`
+  last.
+- A `let`-bound base function (`B p := if p % 2 = 0 …`) made `rw` time out in its closing `rfl`.
+  Use a top-level `def` (`baseX`) and a rewrite lemma (`baseX_two`).
+- In `(by …)` arguments that span several lines, separate tactics with `;`.
+- A tactic argument whose implicit arguments are not yet determined (`rd_readAt … (by …)` without
+  `pos :=`, or `hframe I _ s (by simp …)`) fails with "simp made no progress". Give the implicit
+  arguments.
+
+**What remains** (in order):
+
+1. **Lookup.** A binary search over `X` (a `loopK` of 64) for the lower bound of `(a, ·)` in key
+   order. Its specification follows from `logIR_sorted`. Positions increase with the entry index,
+   so the first `X` slot whose answer is `a` holds the first entry of `L` with answer `a`. The
+   pure half needs a tape lemma: the four answer words at `aposW I (posL + 1 + entryOff L k)` are
+   `packBytes L[k].2`. The comparison with `FRMerkle`/`FRLog`'s first-preimage reading comes after
+   that lemma. The program must be added to `logIR`/`ext` with its cost within Part 2's budget:
+   the binary search is in the constant term.
+2. Phases 3–6 and the SNARK case of `ext_good_tape`, as in Part 2.
+
+**Stopped here** on the token budget. The state is commit-ready:
+
+- every `FRX*` module builds;
+- no `sorry`;
+- the source rule is clean;
+- `ext`, `computes` and the costs are unchanged.
