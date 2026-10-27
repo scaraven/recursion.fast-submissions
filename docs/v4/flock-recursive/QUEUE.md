@@ -1,25 +1,26 @@
 # Orchestrator queue (FR-D8: at most 3 concurrent agents)
 
-Last updated 2026-10-27. Blueprint at revision 3.8.1 (`af0c0d0`). `FR.lean` imports S-A, S-C, S-D,
+Last updated 2026-10-27. Blueprint at revision 3.9 (`757dfa8`). `FR.lean` imports S-A, S-C, S-D,
 S-H1 and S-0; the combined `FR` builds (2,237 jobs).
 
 ## Running
 
-- S-C: re-prove FRSpartan/FRSkip for skip-c (rev 3.8/3.8.1), FRPubTarget, rowW_eq/shiftEq_eq.
-- S-F: `FRVerifier` (V, accWith, acc_eq), S-F finals (finRS, finE, finB′), the OpImpl instance.
-- S-0: adapt `gen` to 3.8/3.8.1, then prove `exec_genPhase` and `genPhase_ctx` (FR-R10 per shape).
+- S-0: FRVIRSpec's last sorrys (exec_posOps, the queries case, genPhase_ctx) + rev 3.9 ops; re-dump.
+- S-G: FRLog, FRSoundnessDefs/Step/Ligerito/Final, FRKState, finP/finPf, the lagV bridge.
+- P2: adopt 3.8–3.9, KAT against the dump, re-time on a 7763 (does skip-c recover the link?), node prover.
 
 ## Waiting
 
-- P2: adopt 3.8/3.8.1 (skip-c zerocheck with free blocks a = b = z, Z2 message, κ_c 5 squeezes, one Sh claim, J_z = 4, piSize 755,664), re-dump KATs, re-measure on a 7763; then the node prover once the finals exist. Committed state `2d352a5` (rev 3.7 layout; leaf 1.62 s, regression).
-
-- S-E2 rest: `node_sound` over the packed witness (needs S-F's accWith), the H-side assembly,
-  `node_complete`/`nodeWitness`, templated evalM/evalL (T_V: plain evalM ≈ 2^20 products), linking
-  the compiled row count to `mRowModel`. F-3″: §4.3 sums to 531,610 (blueprint text).
+- S-E2 rest: H-side assembly (SlotHolds imports and foreign flags, SigOk, format facts), W-kind
+  children, node_complete/nodeWitness, templated evalM/evalL (T_V). F-3″: blueprint §4.3 double-counts
+  the 8 stmt equalities (16 rows).
+- S-F rest: the concrete OpImpl (needs S-C's computable twins of the 3.9 ops).
+- S-H2: the extractor program (see the notes below).
+- S-I: certificate assembly, Solution.lean, claim.json; H: GitHub harness runs.
 
 ## Closed
 
-S-A `8ff873c`; S-C `d81b568`; S-D `8e6dad7`; S-E1 `2d5a811`; S-H1 `40b2f81`; S-0 `afc2928` (two stated lemmas left); S-E2 partial `b1579e9`. FR builds (2,260 jobs).
+S-A `8ff873c`; S-C `ebac8c2`; S-D `8e6dad7`; S-E1 `2d5a811`; S-H1 `40b2f81`; S-0 `e3eefae` (3 sorrys left); S-E2 `cf2f7b3` (partial); S-F `e4b2c1d` (OpImpl pending).
 
 ## Rulings
 
