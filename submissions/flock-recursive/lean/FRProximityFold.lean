@@ -320,7 +320,8 @@ theorem D_not_injOn_succ : ¬ Set.InjOn D (Set.Iio (2 ^ 64 + 1)) := fun h =>
   absurd (h (Set.mem_Iio.2 (by norm_num)) (Set.mem_Iio.2 (by norm_num)) D_two_pow_64)
     (by norm_num)
 
-/-- The `FRRS` lemmas instantiated on `D` (a remark, not a control): `Ŵ_v(D[2^v]) = 1` and `X_x` has degree `x`
+/-- The `FRRS` lemmas instantiated on `D` (a remark, not a control): `Ŵ_v(D[2^v]) = 1` and
+`X_x` has degree `x`
 for `x < 2^64` (the hypotheses of the `FRRS` lemmas are discharged by `D_injOn`). -/
 theorem novel_D_ok {v x : ℕ} (hv : v < 64) (hx : x < 2 ^ 64) :
     (normW D v).eval (D (2 ^ v)) = 1 ∧ novelX D x ≠ 0 ∧ (novelX D x).natDegree = x :=

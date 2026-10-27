@@ -259,7 +259,8 @@ theorem coeffs_unique (hadd : ∀ a b, pt (a ^^^ b) = pt a + pt b)
 `pt j`: `Σ_{i∈J} y_i ∏_{m ∈ J∖i} (pt j − pt m)/(pt i − pt m)`. -/
 def interpF (pt : ℕ → L) (J : Finset ℕ) (y : ℕ → M) (j : ℕ) : M :=
   ∑ i ∈ J, y i * ∏ m ∈ J.erase i,
-    (algebraMap L M (pt j) - algebraMap L M (pt m)) / (algebraMap L M (pt i) - algebraMap L M (pt m))
+    (algebraMap L M (pt j) - algebraMap L M (pt m)) /
+      (algebraMap L M (pt i) - algebraMap L M (pt m))
 
 omit [CharP L 2] in
 theorem interpF_congr (pt : ℕ → L) (J : Finset ℕ) {y y' : ℕ → M} (h : ∀ i ∈ J, y i = y' i)

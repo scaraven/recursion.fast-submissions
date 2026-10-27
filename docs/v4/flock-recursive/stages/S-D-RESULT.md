@@ -171,8 +171,8 @@ Kernel total ≈ 4.2 s; `FRMerkle`'s 2.55 s is the `decide` controls on byte arr
    are L-cert's.
 7. **`FRMerkle` is parametric in the query encodings** (`MerkleEnc`), as instructed; the blueprint
    §7 lists `FRMerkle` under L-cert, the orchestrator assigned it to L-pcs. Digests are the full
-   32-byte BLAKE2s outputs (no truncation, unlike spartan-srom). The verifier's path (`openPath`)
-   is the semantics of A.5's `askCol`, `askNode`, `bitOf`, `selectHalf` sequence.
+   32-byte BLAKE2s outputs (no truncation, unlike spartan-srom). That `gen`'s `askCol`/`askNode`/
+   `selectHalf` ops run `openPath` is a remark for `FRVIR` (`runSeq_eq_runIR`), not a result here.
 8. **Controls live in the modules** (`FRProximityFold` §Controls, `FRMerkle` §Controls) rather
    than in `FRControls` (L-cert's). `FRProximityFold` declares the instance
    `Fact (Nat.Prime 5)` for the GF(5) controls.
@@ -215,3 +215,105 @@ Kernel total ≈ 4.2 s; `FRMerkle`'s 2.55 s is the `decide` controls on byte arr
 | axioms, `sorry`, `native_decide`, source rule | three axioms; none; none; 0 findings |
 
 Not committed (TRACK-RULES).
+
+## Fix pass
+
+Started from the golfed, committed files (`1705d97`). Review `S-D-review.md` (ACCEPT); S-D-M1
+was fixed by S-0 in `FRTranscriptDefs`. Public statements are unchanged except for the bound
+unification (m5): the bound changed from `2^64` to `nMax`.
+
+**Minors.**
+
+- **m2 (controls that cannot fail).**
+  - Added `fold_preserves_fails_at_bad` (the reviewer's probe): at the bad `z = 0` of
+    `lineBad_nonempty`, the fold is jointly close with `A = {0, 1}` but the pair rows are not. It
+    is the negative control of `fold_preserves`.
+  - Added `D_not_injOn_succ : ¬ Set.InjOn D (Set.Iio (2^64 + 1))`: `D_injOn`'s bound is sharp.
+  - `D_two_pow_64` is kept as the lemma this rests on. `novel_D_ok` is relabelled a remark, not a
+    control.
+- **m5 (small things).**
+  - One bound: `FRRS.logNMax := 20` and `nMax := 2 ^ logNMax` (both `abbrev`), with
+    `D_injOn_nMax`.
+  - `Dpts_injective`, `encCode_D`, `mca_ud_line_K`, `interp_F_D` and `enc_D_dist` now take
+    `n, k ≤ nMax` (were `≤ 2^64`). `pcsLevels_ok` checks `n ≤ nMax`.
+  - `wAtD`, `encD`, `wAtD_eq` and `encD_eq` use `logNMax`/`nMax`. `D_injOn20` is kept, proved
+    from `D_injOn_nMax`.
+  - `FRTranscriptDefs` imports `FRRS`, so the constant lives in `FRRS`; S-0 should reuse it.
+    Nothing outside S-D used the changed statements (grep).
+  - The GF(5) `Fact` is now a theorem made a `local instance` inside the controls section.
+  - The "semantics of A.5" sentence is now a remark: it is `FRVIR`'s obligation. This applies to
+    the `FRMerkle` docstring and §6.7 above.
+- **m3 (level byte).** S-0's `parseNode i` and `parseCol i` compare the first 8 bytes with
+  `tagNode i` / `tagCol i`, so they check the level byte. Their laws instantiate `MerkleEnc`
+  exactly, field by field. Checked by elaboration: a scratch `frEnc i : MerkleEnc` built from
+  `nodeQ i`, `colQ i`, `parseNode i`, `parseCol i`, `carried`, `parseNode_nodeQ i`,
+  `nodeQ_of_parseNode i`, `parseCol_colQ i` and `carried_nodeQ i` elaborates. The instance itself
+  belongs to S-0/L-cert. `pre L d` searches the whole log: a first preimage of another level or
+  kind parses to `none` (an erasure), never to a wrong column (`FRMerkle` docstring).
+
+**S-D2 (`FRRSEval`, BLUEPRINT 3.3 §7, §6.2).**
+
+- `encN pt c j`: `Enc` as an `ℕ`-indexed word, with `enc_eq_encN` (rfl).
+- `coeffsAt pt N ℓ s y` is the **inverse additive NTT** on the coset `pt s + pt [0, 2^ℓ)`.
+  - One level, with `α = Ŵ_ℓ(pt s)` from the table: the halves give `u = c_lo + α c_hi` and
+    `w = c_lo + (α+1) c_hi`. So `c_lo = u − α(w − u)` and `c_hi = w − u`.
+  - This needs `Ŵ_ℓ(pt(s+j)) = α` on the lower half and `α + 1` on the upper half (`W_linear`).
+  - The spec is `coeffsAt_spec`; `novelX_two_pow_add` and `sum_novel_succ` are its helpers.
+- **`coeffsOfValues`** (`coeffs_of_values`) is `coeffsAt` at offset 0.
+  - **`coeffs_spec`**: `encN pt (coeffsOfValues y) j = y j` for `j < 2^ℓ`.
+  - **`coeffs_unique`**: values on `pt [0, 2^ℓ)` determine the message.
+- **`interpF pt J y j`**: Lagrange interpolation through `(pt i, y i)`, `i ∈ J`, at `pt j`.
+  - `interpF_congr`.
+  - **`interpF_eq`**: exact on polynomials of degree `< |J|`, via Mathlib's
+    `Lagrange.eq_interpolate`.
+- **`decode_row`** and **`decode_row_D`** are the statements for the extractor (§6.2). If a word
+  `u` agrees with `Enc(c)` on `2^ℓ` distinct positions `J`, then
+  `coeffsOfValues (interpF J u) = c`. On `D`: `J ⊆ [0, nMax)`, `ℓ ≤ logNMax`.
+- **`encF ℓ c j`**: the computable `Enc` on `D` from the table. **`encF_eq`**: `= encN D c j`.
+  `coeffsOfValuesD` is the `D` instance.
+- Cost of the definitions as written: `coeffsAt` recomputes the halves for each `x`, so
+  evaluating all `2^ℓ` coefficients costs `O(4^ℓ)` operations. That is the spec's cost, not the
+  extractor's: L-ext's XIR program must share `u` and `w` across `x` (the butterfly,
+  `O(ℓ 2^ℓ)`) and prove it equal to `coeffsAt`. This is cheaper than §6.3's `k²/2`
+  back-substitution charge.
+
+**Line counts** (`logs/S-D/loc-fix.txt`):
+
+| Module | code (total) |
+|---|---|
+| `FRRS` | 393 (574) |
+| `FRRSEval` | 236 (338) |
+| `FRProximityBW` | 39 (71) |
+| `FRProximityLine` | 213 (315) |
+| `FRProximityFold` | 230 (353) |
+| `FRMerkle` | 196 (324) |
+| **total** | **1,307** (1,975) |
+
+S-D2 itself is +116 code lines (`FRRSEval` 120 before the golf).
+
+**Sequential kernel times** (`lake env lean -DElab.async=false --profile`, `taskset -c 7`,
+`logs/S-D/profilefix-*.log`):
+
+| Module | wall | kernel |
+|---|---|---|
+| `FRRS` | 11.3 s | 0.39 s |
+| `FRRSEval` | 9.9 s | 0.32 s |
+| `FRProximityBW` | 7.7 s | 0.09 s |
+| `FRProximityLine` | 10.4 s | 0.59 s |
+| `FRProximityFold` | 9.4 s | 0.23 s |
+| `FRMerkle` | 6.6 s | 2.25 s |
+| **total kernel** | | **3.9 s** |
+
+**Checks.**
+
+- `lake build FRRSEval FRProximityFold FRTranscriptDefs FRMerkle` is green.
+- Axioms of the 16 new or changed declarations (`logs/S-D/axioms-fix.log`): the three standard
+  ones (`pcsLevels_ok`: `propext` only).
+- Source rule: 36 files, 0 findings (`logs/S-D/source-rule-fix.log`).
+- No line over 100 characters.
+
+**Open (for others).**
+
+- S-0 should take `nMax`/`logNMax` from `FRRS` and add the `MerkleEnc` instance (the scratch
+  `frEnc` above).
+- L-ext: prove that the butterfly-sharing XIR program equals `coeffsAt`, and use `decode_row_D`.

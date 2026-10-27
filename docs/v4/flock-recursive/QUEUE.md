@@ -5,9 +5,7 @@ S-H1 and S-0; the combined `FR` builds (2,237 jobs).
 
 ## Running
 
-- S-E1 fix pass: the per-kind targets of A.6, stmt block lemmas, a dump function.
 - Blueprint revision 3.5: A.9 phase-final checks (S-0-M1), unaligned wiring via the shift argument (S-0-M2). Then the S-0 fix pass: typed Finals in FRVIRFinals, M3 (context lemmas, exec_skeleton), m2, m4–m8.
-- S-D fix pass + S-D2 (`coeffs_of_values`, `coeffs_spec`, `interpF`, `encF`).
 
 ## Closed
 
@@ -29,11 +27,19 @@ fix passes running. S-0 `40b2f81` is in review.
 3. S-F (verifier + `FRVIRFinals` + the remaining `exec_genPhase` shapes), S-G (soundness), S-H2
    (the extractor program; see the notes below), S-I (certificate), H (harness runs).
 
-## Notes for S-H2 (from the S-H1 review)
+## Carried into the S-0 fix pass
+
+- Take `nMax`/`logNMax` from `FRRS`.
+- Add the real `MerkleEnc` instance (`frEnc i` from `nodeQ`/`colQ`/`parseNode`/`parseCol`/`carried`;
+  a scratch version already elaborates, S-D-RESULT fix pass).
+
+## Notes for S-H2 (from the S-H1 review, plus S-D2)
 
 - No tape-length loop nested inside another. Each `loopT` count is loaded by `input`
   immediately before its loop.
 - Query lengths as `|q| >> 3` plus `(|q| & 7 ≠ 0)`; never `(|q| + 7)/8`.
+- The decoder: a butterfly inverse NTT (O(ℓ·2^ℓ)), proved equal to S-D2's `coeffsAt` spec, using
+  `decode_row_D` (agreement on 2^ℓ positions decodes to the message).
 
 ## Kernel-time total (sequential, VM)
 

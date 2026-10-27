@@ -55,3 +55,15 @@ under `logs/S-D/`.
   `-DElab.async=false` on one core.
 - Final: 6 modules, 1,246 code lines; build 20 s; kernel ≈ 4.2 s total; 46 declarations with the
   three axioms; source rule clean. RESULT written.
+
+## Fix pass and S-D2 (2026-10-27, from golfed `1705d97`)
+
+- m2: `fold_preserves_fails_at_bad` (reviewer's probe), `D_not_injOn_succ`; `novel_D_ok` → remark.
+- m5: `logNMax`/`nMax` in `FRRS` (FRTranscriptDefs imports FRRS, so the constant lives here);
+  D-instances re-stated with `nMax`; GF(5) `Fact` as a local instance; the A.5 sentence demoted to a
+  remark.
+- m3: S-0's laws instantiate `MerkleEnc` exactly (scratch `frEnc` elaborates); level byte checked.
+- S-D2: the inverse additive NTT on cosets (`coeffsAt`, `coeffsAt_spec`) instead of the half-split
+  back-substitution: the coset offset `s` with `pt (s + j) = pt s + pt j` makes the induction
+  close; `coeffsOfValues`, `coeffs_spec`, `coeffs_unique`, `interpF` (= `Lagrange.interpolate`),
+  `decode_row(_D)`, `encF`. RESULT "## Fix pass" appended.
