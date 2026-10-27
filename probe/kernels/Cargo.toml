@@ -1,0 +1,15 @@
+# Prover-kernel probe (FR-R5). std only, no dependencies: builds offline.
+[package]
+name = "kernels"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+
+[profile.release]
+opt-level = 3
+codegen-units = 1
+lto = "fat"
+panic = "abort"
+debug = false
