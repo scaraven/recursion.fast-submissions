@@ -694,3 +694,67 @@ not §3.1's 3.2 k; the replay rows for `mbp` scale the same way (`+9.6 k` per sl
 `(0,0)`-pinned word is kind-independent; +2 H blocks). With it, and R4-m1 (which form of `Sel`)
 and R4-m2 (one RS1 row, `J_z` MBP runs) folded into §2.3/§3.1/§5.2, the tracks can fork; the
 ring-switched batching, the public target and the new error rows are sound as designed.
+
+---
+
+## Round 5
+
+Reviewed: revision 3.8 (`b71b65d`), §10 "Stage-review changes 6", §2.3 steps 2, 4, 6, 11, §4, A.6,
+§5.2.
+
+### (a) Z2 and the 126 count — correct
+
+The message fixes `P^z*` (degree ≤ 63, through `Λ`) and `P^{ab}*` (degree ≤ 126, through the 127
+nodes `S ∪ Λ₀…₆₂` with `P^{ab}*|_S := P^z*|_S + P^e|_S`) before `λ`. If the zerocheck is false
+(some `σ ∈ S` with `P^{ab}(σ) ≠ P^z(σ) + P^e(σ)`), then either `P^z* ≠ P^z` — the RS claim
+`ẑ(r, λ) = P^z*(λ)` is false except at ≤ 63 roots, and RS/Ligerito's own rows carry the rest —
+or `P^z* = P^z`, whence `P^{ab}*|_S ≠ P^{ab}|_S`, `P^{ab}* ≠ P^{ab}` and `P^{ab}*(λ) = P^{ab}(λ)` at
+≤ 126 roots, the tail (`eq(r,r′)·â·b̂`, then Lc) carrying the rest. The case is decided by the
+message, so the bad set of the `λ` squeeze is ≤ `max(63, 126) = 126`: the row `126/2^128` is right
+and it is charged to the `λ` squeeze only; the degree-127 slack of revision 3.1 is gone because
+the verifier, not the prover, supplies the 64 values on `S`. The c-claim is B.3's quirky point
+claim; `RS` is unchanged.
+
+### (b) The `free` kind — one defect
+
+Kinds are public intervals of `nodeLayout`, selected by the proof's own kind byte; a prover cannot
+declare a block `free`, and the hash kinds keep their `(0,0)`-pinned words. But the stated rows
+are **not** "satisfied by every `z`":
+
+#### BP-C-R5-M1. `(var k, var one)` with `E = 0` forces `z·one = z`, i.e. `one = 1` or the block all-zero
+
+In a `free` block `one` (bit 1,152) is a witness bit with no pin (`E = 0`, no `(0,0)` row). The
+row at position `k` reads `z[k]·one = z[k]`; for a nonzero block it forces `one = 1`. In an M block
+bit 1,152 is bit 0 of element 9, a committed element of some template; in an L block it is
+whatever A.7 puts there. Nothing reserves it, so for about half of the M blocks of an honest node
+`one = 0` and the free rows fail: honest nodes are unprovable (no soundness loss: the prover is
+only constrained more). *Fix.* `A₀^{free} = B₀^{free} = I` (rows `(var k, var k)`, `E = 0`): `z[k]² =
+z[k]` holds for every Boolean `z`, no reserved bit; the lincheck's free term becomes `(1 + α)·rowW`
+(no `[j = one]` column); update A.6, §2.3 step 2, S-C's `M_free`, P2's "`a = z`, `b = 1`" (which
+is the fix, not the stated rows).
+
+### (c) Sh as one RS claim — sound
+
+With both slot terms read at the same `(i, p)` and the slot weights `slotW_out`/`slotW_in`
+supported on their slots, the summand is `[eq(τ,i)·slotW_out(θ,p) − (shift(τ,i) + κ_s eq(0,i))·
+slotW_in(θ,p)]·z(i,p)`: one weight times `z`, degree 2 per round, final `(w_out(r) + w_in(r))·
+ẑ(r_blk, r_pos)` — a plain multilinear claim at one point, which RS accepts (eq inner weights).
+Rows S1 `27/2^128`, S2 `2/2^128` unchanged; RS1 `(7 + J_z − 1)/2^128 = 10/2^128` with `J_z = 4`.
+
+### (d) `κ_c` by 5 squeezes — sound
+
+Nine F coordinates (two per answer, one phase); the coefficient of index `j < tᵢ ≤ 290 < 2^9` is
+`eq(κ_c, bits₉(j))`; a nonzero vector of consistency differences makes `Σ_j eq(κ_c, j) d_j` a
+nonzero 9-variate multilinear: bad `≤ 9/2^128`. The weight `Σ_j eq(κ_c, j)·Ĝ_j` stays
+MLE-friendly. The dump's single squeeze with powers (`≤ 289/2^128 = 2^-119.8`) was indeed over
+`εR`; the correction is right.
+
+### Error table
+
+Z2 `2^-121.0`, L3 `8/2^128`, RS1 `10/2^128`, P3 `9/2^128`; maximum `2^-120.36 + 2^-144 ≤ 15/2^124`
+unchanged.
+
+### Verdict
+
+Sound except R5-M1, a one-line layout/row fix (`free` rows `(var k, var k)`), which must land in
+A.6/S-C/P2 before the node is proved; with it the tracks continue.

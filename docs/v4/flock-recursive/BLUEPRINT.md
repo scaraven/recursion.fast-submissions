@@ -172,7 +172,7 @@ turns both forms into claims on the packed `f`.
 
 0. `seed`; `absorb(stmt)`. 1. `absorb(cap₀)`.
 2. **Z** zerocheck of `(A₀z)∘(B₀z) = z + E` over **the whole cube** (revision 3.8: `Sel ≡ 1`; the M, L,
-   `WM` and spare blocks have the kind **`free`** of A.6, whose rows `(var k, one)` with `E = 0` are
+   `WM` and spare blocks have the kind **`free`** of A.6, whose rows `(var k, var k)` with `E = 0` (`z_k² = z_k`, true for every Boolean `z`; revision 3.8.1, BP-C-R5-M1) are
    satisfied by every `z`), with **the paper's "skipping c"** restored (P2 §8): `A = Σ_kind Ind_kind ⊗
    A₀^kind`, `B` likewise. **Z1** `r`, `m* − 13 = 19` free coordinates (10 squeezes; 7 pinned, A.1);
    **Z2** the prover absorbs **`P^z` on `Λ₀ … Λ₆₃` (64 values) then `P^{ab}` on `Λ₀ … Λ₆₂` (63
@@ -961,7 +961,7 @@ rows `1153 … 1279`, `16000 … 16383` have `E = 0` in every kind.
 | `hashB1` | `hashStmt` B1 (nodeStmt block 1); key-leaf block 0 (tagWotsLeaf); path blocks 1 (sigNode) | `0…255`, `512…519`, `1024…1152` | `h0`; the tag (`0x4E` / `0x4B` / `0x4D`); `t_lo = 64`, `f0 = 0` |
 | `hashB2` | `hashStmt` B2; path blocks 2 | `520…1023`, `1024…1152` | zero; `t_lo = 65`, `f0 = 0xFFFFFFFF` |
 | `w43` | WOTS chain steps (`tagWots ‖ enc64 j ‖ i ‖ s ‖ x`, 43 bytes) | `0…255`, `512…519`, `584…599`, `856…1023`, `1024…1152` | `h0`; `0x57`; `i`, `s` of the block's step (per block); zero; `t_lo = 43`, `f0 = 0xFFFFFFFF` |
-| **`free`** | the M, L, `WM` and spare blocks (`Sel ≡ 1`: every block has a kind) | none: rows `(var k, var one)` at every position, `E = 0` — satisfied by every `z`; `A₀^{free}` is the identity, `B₀^{free}` the all-`one` column | — |
+| **`free`** | the M, L, `WM` and spare blocks (`Sel ≡ 1`: every block has a kind) | none: rows `(var k, var k)` at every position, `E = 0` — satisfied by every Boolean `z` (`z_k² = z_k`); `A₀^{free} = B₀^{free} = I` (revision 3.8.1, BP-C-R5-M1: `(var k, one)` would force the unpinned bit 1,152 to 1) | — |
 | `WM` (no block matrix of its own: kind `free`) | the mirror sub-region: 10 blocks per slot after the WOTS blocks, holding the aligned sources of the link families (§4.2) at stride 2 elements | — | — |
 
 (`h_in` of `stream`, `streamEnd41`, `hashB2` blocks is the previous block's output, wired by the
@@ -1281,8 +1281,8 @@ E2, `piSize = 757,712`, the dumps re-matched.
 
 | Item | Change |
 |---|---|
-| Skip-c restored (P2 §8) | **Z3 runs on `eq(r,·)·a_λ·b_λ` only** (no `z`, no `W_E` table); the c-claim is the quirky point claim `ẑ(r, λ) = P^z*(λ)`, RS claim 1 (the revision-3.1 route). To make this sound without `Sel` in the RS weight, **`Sel ≡ 1`**: the non-hash blocks (M, L, `WM`, spares) get the kind **`free`** (rows `(var k, one)`, `E = 0`, satisfied by every `z`; A.6), so `ŵ = eq(r,·)` and `finZ` is `eq(r,r′)·â·b̂ = c_Z`. Z2's message: `P^z|_Λ` (64) then `P^{ab}|_{Λ₀…₆₂}` (63); `P^{ab}|_S` rebuilt as `P^z|_S + P^e|_S` (`targetS`); Z2 row **`126/2^128`** (case split on the fixed message). Prover: −0.26 s per `m = 30` request and −1.0 s per `m = 32` leaf (P2's measurement of the regression), +≈ 0.07 s for the full-cube zerocheck of a node: **link ≈ 2.75–2.85 s against ≈ 3.1 s; tree ≈ 450 s** (**estimate** from P2 §6/§8). |
-| S-C re-proves | `FRSpartan`: `bzExpr = w·a·b` over three tables (back from the five-table 3.4 form), `bz_trueSum = P^{ab}(λ)`, `bz_final = eq(r,r′)·â·b̂`, `bz_triple_wrong` adapted; the lincheck's per-kind claims include the `free` kind (`M_free(j) = rowW(j) + α[j = one]·Σ rowW`, no walk), `β` batching at 9 claims (`8/2^128`); `FRSkip`: `skip_pair_bad_le` (126) for `(P^{ab}*, P^z*)` reconstructed from 127 values and `P^e`; `FRPubTarget`: `targetS_eq` (`P^e` on `S`) replaces `targetMLE_eq`; `selWeight_eq` is unused. `FRRingSwitch`: unchanged (the quirky point claim is its 3.1 case). |
+| Skip-c restored (P2 §8) | **Z3 runs on `eq(r,·)·a_λ·b_λ` only** (no `z`, no `W_E` table); the c-claim is the quirky point claim `ẑ(r, λ) = P^z*(λ)`, RS claim 1 (the revision-3.1 route). To make this sound without `Sel` in the RS weight, **`Sel ≡ 1`**: the non-hash blocks (M, L, `WM`, spares) get the kind **`free`** (rows `(var k, var k)`, `E = 0`, satisfied by every Boolean `z`; A.6; corrected in 3.8.1), so `ŵ = eq(r,·)` and `finZ` is `eq(r,r′)·â·b̂ = c_Z`. Z2's message: `P^z|_Λ` (64) then `P^{ab}|_{Λ₀…₆₂}` (63); `P^{ab}|_S` rebuilt as `P^z|_S + P^e|_S` (`targetS`); Z2 row **`126/2^128`** (case split on the fixed message). Prover: −0.26 s per `m = 30` request and −1.0 s per `m = 32` leaf (P2's measurement of the regression), +≈ 0.07 s for the full-cube zerocheck of a node: **link ≈ 2.75–2.85 s against ≈ 3.1 s; tree ≈ 450 s** (**estimate** from P2 §6/§8). |
+| S-C re-proves | `FRSpartan`: `bzExpr = w·a·b` over three tables (back from the five-table 3.4 form), `bz_trueSum = P^{ab}(λ)`, `bz_final = eq(r,r′)·â·b̂`, `bz_triple_wrong` adapted; the lincheck's per-kind claims include the `free` kind (`M_free = (1 + α)·rowW`, no walk; 3.8.1), `β` batching at 9 claims (`8/2^128`); `FRSkip`: `skip_pair_bad_le` (126) for `(P^{ab}*, P^z*)` reconstructed from 127 values and `P^e`; `FRPubTarget`: `targetS_eq` (`P^e` on `S`) replaces `targetMLE_eq`; `selWeight_eq` is unused. `FRRingSwitch`: unchanged (the quirky point claim is its 3.1 case). |
 | Prose vs dump (P2 §7.5) | **1** Z2: as above; `lagrangeS` gains the `pe` operand and two outputs (S-0, sound). **2** `κ_c`: the dump's one squeeze is **unsound against `εR`** (powers give `tᵢ/2^128 = 2^-119.8`); `P3.i` is **5 squeezes** (9 coordinates, `eq(κ_c, bits₉(j))`), A.4 corrected, items 8,870 (S-0 changes the Lean). **3** S2 dummies at the phase's end: ratified. **4** `θ` 10 coordinates, `σ < 256` as a 10-bit index: ratified (S-C's `slotW` reads it so). **5** Sh is **one** RS claim (`w_out + w_in` at one point): `J_z = 4`, RS0 `4 × 128`, 4 MBP runs, RS1 `10/2^128`, `piSize` −2,048 (A.9 `finSh`). **6** a leaf's `J_z = 3`, fourth partials zero: ratified. **7** `linkW = 0` for leaf kinds: ratified. **8** Pf for `P30`: the weight zero-padded, `Ŵ(s, ρ₀…₄)·(1+ρ₅)(1+ρ₆)`: ratified (S-G). **9** §1.2 counts fixed (447 FS items, 8,870). **10** L3's 7 elements / `maskRows`' 8 (now 9 with `free`): the leaf's `v` at entry 0, the node's at 1–8. **11** pending finals: S-F/S-G as A.9. |
 
 **Margins** (`sizes.txt`): `piSize` 755,664 (1.39×); items 8,870 of 10,240 (1.15×); hashed stream
@@ -1297,4 +1297,10 @@ entries), `selWeight`/`targetMLE` removed; `items`/`piSize = 755,664`; re-dump. 
 with 4 claims (Z's quirky claim as the first), `finE`/`finB′` unchanged. **P2** — the P1 zerocheck
 (skip-c) with the full cube for nodes (free blocks: `a = z`, `b = 1`), Z2's message, `κ_c` from 5
 squeezes with `eq`-structured coefficients, one Sh claim, `J_z = 4`, `piSize = 755,664`.
+
+### Stage-review changes 7 (revision 3.8.1)
+
+| Finding | Change |
+|---|---|
+| BP-C-R5-M1 (crypto round 5) | The `free` kind's rows are `(var k, var k)` with `E = 0`, so `A₀^{free} = B₀^{free} = I` and `z_k² = z_k` holds for every Boolean `z`. The 3.8 rows `(var k, one)` forced the unpinned bit 1,152 to 1, so honest nodes failed the zerocheck on about half their M blocks: a completeness failure, not a soundness one. The lincheck's free term is `(1 + α)·rowW`. P2's "`a = z, b = 1`" must become `a = b = z`. Round 5 confirmed (a) the Z2 row 126/2^128, (b) that `free` cannot be abused (kinds are public intervals), (c) Sh as one RS claim, and (d) κ_c by 5 squeezes. The error maximum is unchanged. |
 
