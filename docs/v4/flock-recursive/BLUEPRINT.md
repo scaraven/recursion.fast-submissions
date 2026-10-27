@@ -33,14 +33,14 @@ novel-basis change, within `2^47.5 + 2^12 t` steps.
 
 | Quantity | value | bound | margin |
 |---|---|---|---|
-| `piSize` (both kinds) | 754,896 B = 737 KiB | `proofCap` 1,048,576 | 1.39× |
-| trace items (both kinds) | 9,007 | `qV = 10,240` | 1.14× |
-| hashed trace bytes / compressions | 1,447,616 / 22,619 | — | — |
-| node circuit blocks | 53,792 | 65,536 | 1.22× |
-| M rows per node | 949,810 = `2^19.86` | `N_M = 2^21` | 2.21× |
+| `piSize` (both kinds) | 756,496 B = 739 KiB | `proofCap` 1,048,576 | 1.39× |
+| trace items (both kinds) | 8,896 | `qV = 10,240` | 1.15× |
+| hashed trace bytes / compressions | 1,440,336 / 22,506 | — | — |
+| node circuit blocks | 53,959 | 65,536 | 1.21× |
+| M rows per node | 1,000,164 = `2^19.93` | `N_M = 2^21` | 2.10× |
 | extractor steps (`m = 30` node) | `2^47.11 + 2^11 t` | `fuel = 2^47.5 + 2^12 t`; `B = 2^48 + 2^16 t` | 1.31×; 1.85× |
 | error per fresh query | `2^-120.36 + 2^-144` | `εR = 2^-120.093` | — |
-| verifier F-products | leaf ≈ 8.2·10^4, node ≈ 3.3·10^5 | `T_V` 205.9 ms (≈ 90–110 ms, **estimate**) | ≈ 2× |
+| verifier F-products | leaf ≈ 1.1·10^5, node ≈ 3.6·10^5 | `T_V` 205.9 ms (≈ 80–115 ms, **estimate**) | ≈ 2× |
 | output words (node) | `2^19.3` | `outCap = 2^24` | — |
 
 ### 0.1 Decisions
@@ -49,11 +49,11 @@ novel-basis change, within `2^47.5 + 2^12 t` steps.
 |---|---|---|
 | **B-1** | **Tree leaves are single `m = 32` SNARKs of `2^18` compressions.** The stream leaf is `m = 30`. | The runner hashes the 64 statements `leafStmt (chainEnd sᵢ 2^18) 2^18` itself (`Tree.lean`); the leaf clause of `Rel` demands the chain, so a leaf made of signed segments is uncertifiable (`∀ vk`, design §2.2) and one of two fresh-query segment SNARKs exceeds `proofCap`. K measures the `m = 32` leaf at 3.73–3.86 s and 3.81 GB peak (K §3, §4.4). |
 | **B-2** | **Nodes are `m = 30`, one shape, one program `P30`.** `L32` and `P30` have **one item sequence** (every phase sized for the larger kind; a kind's unused items are dummy queries with zero payloads, §1.2) so that every trace element has one address. A node's child slot is replayed by **one program `gen Mux`** whose kind-dependent constants, matrices and public patterns are selector-linear in a **one-hot selector `(s_L, s_P, s_N)`** of three L bits (§4.3). Exact count 53,792 of 65,536 blocks (1.22×), M rows `2^19.86` of `N_M = 2^21` (2.21×). | K: an `m = 31` node (≈ 1.9 s) puts the stream link over its cap, so `m = 30` is hard. A node's replayed verifier does not depend structurally on its own or its children's variants (rulings 1 and 2 of fix pass 2); the fixed point is cut by fixed dimensions (§4.3). Fallback if `nodeLayout` overflows: the enumeration of the occurring pairs `(L32, L32)`, `(P30, P30)` with a public pair byte, never `m = 31`. |
-| **B-3** | **Five levels**, rates 1/2 … 1/32, rows 64 then 16, `eᵢ = ⌊(nᵢ − kᵢ)/2⌋`, queries **290, 178, 145, 132, 126**, caps at depth 9, 8, 8, 8, 7, final `k₅` K-elements in the clear (16 at `m = 32`, 4 at `m = 30`, padded to 16). **Every index is opened**, duplicates included. | BP-C-M3, BP-C-R2-M3: the item sequence is a constant. |
+| **B-3** | **Five levels**, rates 1/2 … 1/32, rows 64 then 16, `eᵢ = ⌊(nᵢ − kᵢ)/2⌋`, queries **290, 178, 145, 132, 126**, caps at depth 9, 8, 8, 8, 7; **the final message is the level-4 fold, `2^7` K elements** (`2^5` at `m = 30`, zero-padded), followed by **7 final rounds** that reduce the claim to one point (P1-D7). **Every index is opened**, duplicates included. | BP-C-M3, BP-C-R2-M3, P1 question 3: a level-4 fold of 4 row variables leaves `k₄ = 2^7` K elements, not `k₅`; reducing the final claim to one point costs 7 K rounds and one MBP evaluation instead of 128. |
 | **B-4** | **F = BF64[y]/(y² + y + β), β = x^63; K = F[u]/(u² + u + α), α = β·y** (S-A), through CompPoly's allowlisted `Ext` over `BF64`, two-`UInt64` twins. | S-A journal; no off-allowlist copy. |
 | **B-5** | **Own mutual correlated agreement for lines in the UD regime over K-valued words and `C_K`**, constant `C_mca(n,k,e) ≤ 2^60` a parameter fixed by the closing proof (§5.3). | I §2.5; any polynomial constant is `≤ 2^-190` over K. |
-| **B-6** | **Wiring:** regions H (BLAKE2s blocks), L and P (in the H gap), M (element rows). A child's trace is the message slots of its chain's H blocks, read by irregular matrix entries evaluated with eq tables (one product per entry); M-internal patterns are templates; BLAKE2s matrices by the walk; the L matrices templated too. **Every per-block public constant is a range claim inside one pattern sumcheck** (§4). | BP-E-R2-M1: whole-cube point claims are false for the node; T_V is not binding. |
-| **B-7** | **The verifier is an interpreter `runIR impl` of a straight-line IR**, parametrised by an op-implementation record `OpImpl` (`evalM`, `evalL`, `walk`, `mbp`, `lagrangeS`); `FRVIRSpec` states each phase's semantics against the record's specification; the circuit's M and L rows are compiled from the same IR (`compile`), with the per-slot mux as a compiler mode (`compileMux`, `compile_mux_sound`). | BP-E-R2-M4 (no cycle), BP-E-R2-M2 (a construction and a theorem for the mux). |
+| **B-6** | **Wiring:** regions H (BLAKE2s blocks), L and P (in the H gap), M (element rows). A child's trace is the message slots of its chain's H blocks, read by irregular matrix entries evaluated with eq tables (one product per entry); M-internal patterns are templates; BLAKE2s matrices by the walk; the L matrices templated too. **Every per-block public constant is pinned by the zerocheck's public target `E`** (`(A₀z)∘(B₀z) = z + E` at `(0,0)`-row positions, P1-D2/D3); the public inputs and padding are point claims on `f`; the chain links and endpoints are the shift argument's (P1-D5). | No pattern sumcheck, no selector-linear patterns (BP-C-R3-M2 moot); the zerocheck pins constants bit by bit at its own random point; it is what the prover already does. |
+| **B-7** | **The verifier is an interpreter `runIR impl` of a straight-line IR**, parametrised by an op-implementation record `OpImpl` (`evalM`, `evalL`, `walk`, `mbp`, `lagrangeS`); the lincheck has 14 multilinear rounds (P1-D4) and all `ẑ` claims are ring-switched at once into Ligerito's weight (P1-D6); `FRVIRSpec` states each phase's semantics against the record's specification; the circuit's M and L rows are compiled from the same IR (`compile`), with the per-slot mux as a compiler mode (`compileMux`, `compile_mux_sound`). | BP-E-R2-M4 (no cycle), BP-E-R2-M2 (a construction and a theorem for the mux). |
 | **B-8** | **`E := fun c π L => (ext.run (extractorInput c π L) (fuel t)).bind decodeWit`**; `XIR` with affine-in-`t` caps, `compile_runs` as `∃ n ≤ cost P t` under `BoundsOk`, counted on the compiled code; the `W` copy is capped by `t`. | Probed; BP-E-M5/M6, BP-C-R2-M2, BP-E-R2-m1. |
 | **B-9** | **Prover: std Rust, one `prover.s`, CPUID dispatch, AVX2 + VPCLMULQDQ-256 tier of record.** | K. |
 | **B-10** | **`ε = 15/2^124`; `δ = 0` (`P := encode`, kind `W`); `qV = 10,240`; `fuel t = 211,106,232,532,992 + 4,096 t`.** Claim: `{"error": "15/21267647932558653966460912964485513216", "completeness_error": "0", "qV": 10240, "fuel_base": 211106232532992, "fuel_per_word": 4096}` (renders: `r2/render-r2.log`). | §5.2; BP-E-M7; §6.3. |
@@ -64,7 +64,8 @@ novel-basis change, within `2^47.5 + 2^12 t` steps.
 |---|---|---|---|
 | D-2′ | five levels, `e = ⌊(n−k)/2⌋`, every index opened, final in the clear | five Johnson levels / six UD levels, stratified queries | B-3 |
 | D-9′ | F = BF64[y]/(y²+y+x^63), K = F[u]/(u²+u+x^63 y) | GHASH; `F128[u]/(u²+u+x⁻¹)` | B-4 |
-| D-13′ | node `m = 30`, one program, one item sequence for all kinds, one-hot child selector, trace = H message slots, pattern sumcheck | tower, deferred accumulator | B-2, B-6 |
+| D-13′ | node `m = 30`, one program, one item sequence for all kinds, one-hot child selector, trace = H message slots, public target `E` | tower, deferred accumulator | B-2, B-6 |
+| D-23 | lincheck with 14 multilinear rounds; all `ẑ` claims ring-switched at once into Ligerito's weight; the shift argument with both endpoints and a 10-round slot collapse; the final message is the level-4 fold with 7 final rounds; the two-level pinned set | paper: skip round in the lincheck, separate ring-switch sumcheck | P1 (revision 3.1) |
 | D-18 … D-22 | IR interpreter + compiled circuit; `decodeWit ∘ run`; MCA over K; ymm tier; completeness through `W` | — | B-7, B-8, B-5, B-9, B-10 |
 
 ---
@@ -75,23 +76,23 @@ novel-basis change, within `2^47.5 + 2^12 t` steps.
 
 Kinds: **`W`** (`π = WitnessSending.encode w` exactly; decided with no query, §3); **`L32`**,
 **`P30`-leaf (`'P'`)**, **`P30`-node (`'N'`)**: `π = hdr ‖ stmt ‖ body`, `|π| = piSize =
-754,896` for all three (A.3), any other length rejected with no query.
+756,496` for all three (A.3), any other length rejected with no query.
 
 ```
 hdr  (48 B) = kindByte(1) ‖ m(1) ‖ zero(14) ‖ pub(32)      kindByte 0x4C 'L' | 0x50 'P' | 0x4E 'N'; m 32 | 30 | 30
 stmt (64 B) = 'L','P': enc64 n ‖ h ‖ zero(24)   (n = 2^(m−14), checked)      'N': c₁ ‖ c₂
-body        = PIOP messages ‖ cap₀ … cap₄ ‖ final (512 B) ‖ columns ‖ siblings     (A.3)
+body        = PIOP messages ‖ cap₀ … cap₄ ‖ final (4,096 B) ‖ columns ‖ siblings   (A.3)
 ```
 
 | part | bytes |
 |---|---|
 | `hdr`, `stmt` | 48 + 64 |
-| PIOP messages (A.3's rows 2–16) | 21,856 |
+| PIOP messages (A.3's rows 2–17) | 19,872 |
 | caps `(512 + 256 + 256 + 256 + 128) × 32` | 45,056 |
-| final message `16 × 32` (P30: 4 K-elements then zeros) | 512 |
+| final message `2^7 × 32` (P30: `2^5` K-elements then zeros) | 4,096 |
 | columns `290 · 1,024 + 581 · 256` | 445,696 |
 | siblings `32 × 7,552` (P30: its `5,810` real ones, the rest dummy zeros) | 241,664 |
-| **`piSize`** | **754,896 (737 KiB, 72 % of `proofCap`)** |
+| **`piSize`** | **756,496 (739 KiB, 72 % of `proofCap`)** |
 
 ### 1.2 Queries and the hashed trace
 
@@ -117,8 +118,8 @@ squeeze answer, the second F coordinate of the same phase bytes `16…31`; K = a
 positions: `⌊256/b⌋` indices of `b = log₂ nᵢ` bits per answer, **every index opened, duplicates
 included**. One squeeze serves one phase.
 
-Counts (`sizes.py`): FS items 584, column queries 871, Merkle-node queries 7,552: **9,007 items**
-(`qV = 10,240`, 1.14×); hashed stream 1,447,616 B = **22,619 compressions**.
+Counts (`sizes.py`): FS items 473, column queries 871, Merkle-node queries 7,552: **8,896 items**
+(`qV = 10,240`, 1.15×); hashed stream 1,440,336 B = **22,506 compressions**.
 
 ### 1.3 What each kind proves; `reassemble`
 
@@ -129,7 +130,7 @@ nodeStmt c₁ c₂`, SNARK of `acc vk c₁ p₁ ∧ acc vk c₂ p₂` for the co
 
 ### 1.4 The extractor's output
 
-`witWords`: a node of two children `≈ 641,905 = 2^19.3` words of `outCap = 2^24`; a leaf 6
+`witWords`: a node of two children `≈ 639,375 = 2^19.3` words of `outCap = 2^24`; a leaf 6
 words; `W`: the proof's words.
 
 ---
@@ -161,33 +162,55 @@ of K-element `x`; row `(x mod 8)·2 + c`, column `x div 8`; the running claim be
 
 ### 2.3 Round by round (phases named as in §5.2; `m* = 32` sizes the sequence)
 
+A sumcheck round sends 3 coefficients (degree ≤ 3; degree-2 rounds carry `g(∞) = 0`), is checked
+`g(0) + g(1) = claim` and folded at the challenge. The only univariate round is Z2. The committed
+object is the quirky `ẑ` (multilinear in `m − 6` variables, degree `< 64` in the skip variable over
+`S`); every other claim on `z` is a plain multilinear evaluation, and ring switching (step 7)
+turns both forms into claims on the packed `f`.
+
 0. `seed`; `absorb(stmt)`. 1. `absorb(cap₀)`.
-2. **Z**: **Z1** `r`, `m* − 13 = 19` free coordinates (10 squeezes; `P30` uses 17); **Z2**
-   `absorb(P^{ab} ‖ P^z)`, `λ`; **Z3** `m* − 6 = 26` rounds of degree 3 (`P30`: 24 real + 2 dummy).
-3. **Lc**: **L1** `α`; **L2** 9 rounds of degree 2; **L3** univariate round over `S`.
-4. **Sh** (range-restricted shift over the block index; both chains of a node batched by the
-   constant `c = y`): **S1** `τ` (`m* − 14 + 8 = 26` coordinates, 13 squeezes); **S2** `m* − 14 =
-   18` block rounds + 2 position rounds, degree 3; **S3** univariate round.
-5. **I, the pattern sumcheck** (§4): **I1** `θ` (18 coordinates, 9 squeezes); **I2** 18 rounds of
-   degree 3 over the block index; the final check uses the range and pattern MLEs the verifier
-   computes and the selector-weighted pattern sums; its claims on `ẑ` are evaluations at fixed
-   in-block positions.
-6. **Lr** (node): point (8 squeezes), 15 zerocheck rounds (degree 3), `κ_L`, 15 lincheck rounds.
-7. **B**: `κ`; `m* − 6 = 26` multilinear rounds of degree 2; one univariate round (**B3**).
-8. **R**: `absorb(s_v)`; `r″` (4 squeezes); `m* − 7 = 25` rounds of degree 2; the MBP evaluation.
-9. **E** (node): point (11 squeezes), 21 zerocheck rounds (degree 3), `κ_E`, 23 lincheck rounds.
-10. **B′**: `κ′`.
-11. **P**, levels 0 … 4: `ℓᵢ` fold rounds (K), `absorb(capᵢ₊₁)` / `absorb(final)`, position
-    squeezes, per position the column query then its Merkle-node queries leaf level first (11, 10,
-    8, 6, 5 of them; `P30`'s last 2 per level are dummies), `κ_c` and the consistency batching.
-12. Accept iff every check passed.
+2. **Z** zerocheck of `Sel · ((A₀z)∘(B₀z) − z − E) = 0` over the blocks (`Sel` the kind's used-block
+   indicator, `E` the **public target** of §4: the constant positions of every used block): **Z1**
+   `r`, `m* − 13 = 19` free coordinates (10 squeezes; 7 pinned, A.1); **Z2** `absorb(P^{ab} ‖ P^z)`,
+   `λ`; **Z3** `m* − 6 = 26` rounds of degree 3; the prover ends with `â, b̂` (`absorb`) and the
+   quirky claim `ẑ(λ, r′)`; the verifier computes `Sẽl(r′) · Ê(λ, r′)`.
+3. **Lc** lincheck of `â = (A z)̂(r_row)`, `b̂ = (B z)̂(r_row)`: **L1** `α`; **L2** **14 rounds of
+   degree 2** over the block's position bits (P1-D4); the verifier evaluates `Â₀(r_row, r_k)`,
+   `B̂₀(r_row, r_k)` by the walk with the row weights at `r_row` (Lagrange at `λ` on the skip
+   coordinate, eq on the rest) and column weights `eq(r_k, ·)`; result: one multilinear claim
+   `ẑ(r′_blk, r_k)`.
+4. **Sh** shift argument (P1-D5), one sumcheck per proof (a node's two chains batched by `1, y`):
+   **S1** `τ` (`m* − 14 = 18` block coordinates), `θ` (10 slot coordinates) and `κ_s` from 15
+   squeezes; **S2** `18` block rounds of degree 2 on `eq(τ,·)·Out + (shift(τ,·) + κ_s eq(0,·))·In`
+   with the endpoints (leaf: `s`, `h`; node: `h0` at each chain's first block) in the
+   verifier's target, then **10 collapse rounds** over the positions `< 1024` with the
+   verifier-computed slot weight of the two digest slots (`h_out` at 256…511; `d` at 520…775 for
+   the chain block, `h_in` at 0…255 for the stream block); result: multilinear claims on `ẑ`.
+5. **Lr** (node): Spartan over the L rows (`2^15`): point (8 squeezes), 15 zerocheck rounds (degree
+   3), `κ_L`, 15 lincheck rounds (degree 2); result: one multilinear claim on `ẑ`.
+6. **RS**, ring switching of all `ẑ` claims at once (P1-D6; paper App. B, quirky variant): the
+   prover absorbs `J_z × 128` partials (`J_z = 4` for the node: Z, Lc, Sh, Lr; 3 for a leaf, the
+   fourth zero); `r″` (7 coordinates) and `κ` (4 squeezes); the batched claim `Σ_y W(y) f(y) = v`,
+   `W = Σ_j κ^j Ŵ_j`, is **Ligerito's input**; no separate `m − 7` rounds.
+7. **E** (node): the element R1CS over the M rows: point (11 squeezes), 21 zerocheck rounds (degree
+   3), `κ_E`, 23 lincheck rounds (degree 2); result: `f̂(r_E)`. **B′**: `κ′` batches into `W` the
+   weights of `f̂(r_E)` and of the **point claims** on `f` (the public cells: `vk`, `cᵢ` in each
+   slot's seed cells; the padding cells of each chain's last block): `J_f ≤ 20` claims.
+8. **P** Ligerito, levels 0 … 4: **P1** `ℓᵢ` fold rounds (K challenges; the rounds fold `W` and
+   `f` together, degree 2 in K); `absorb(capᵢ₊₁)` / `absorb(final)`; **P2** positions; the column
+   and Merkle-node queries per index; **P3** `κ_c`, the consistency batching by the tensor weights.
+   **The final message is the level-4 fold, `2^7` K elements** (P1-D7; `P30`: `2^5` then zeros);
+   the verifier checks `Enc₄(final)[j]` directly at the `t₄` positions and reduces `Σ_c W(s, c)
+   final(c)` by **7 final rounds** (K) to one point, where it evaluates `W` once (the MBP, A.8
+   `mbp`).
+9. Accept iff every check passed.
 
 ### 2.4 Parameters
 
 | Name | Value |
 |---|---|
 | `m₀` | 14 |
-| skip | `k_s = 6`, `S`, `Λ`, pinned `ρⱼ = y^(2^j)` (A.1) |
+| skip | `k_s = 6`, `S`, `Λ`, the two-level pinned set `ρᵢ = gᵢ/(1 + gᵢ)` (A.1) |
 | `N_M`, `N_L` | `2^21`, `2^15` rows |
 | `qV`, `εR`, `δ`, `fuel` | 10,240; `15/2^124`; 0; `2^47.5 + 2^12 t` |
 
@@ -209,7 +232,8 @@ functions; `FRVIRSpec` states semantics against `OpImpl`'s specification record 
 `FRVIREval` proves `impl ⊨ OpSpec`). `gen k` is generated phase by phase from the item sequence
 `items` (`FRTranscriptDefs`); the three kinds share the op list's **shape**; the kind-dependent
 public constants (`Sel`, the matrices, patterns, `hashStmt`'s variant) are the kind's. `stmtOk`
-is the first `hashStmt` op (its inputs from item 1's `stmt`). **`FRVIRSpec`**: `semIR (genPhase …)
+is the first `hashStmt` op (its inputs from item 1's `stmt`). The verifier's own public inputs
+(`vk`, `c`) are bound by the seed query's bytes, which `V` builds itself. **`FRVIRSpec`**: `semIR (genPhase …)
 (vk, c, π, answers) = …` per phase; `queries_le : ∀ H c π, ((V vk c π).queries H).length ≤ 10240`
 by `items_length` (closed form); `runSeq_eq_runIR : asks tr = items → (runSeq tr (V vk c π) =
 some true ↔ semIR (gen k) (vk, c, π, answers tr) = accept)`.
@@ -219,20 +243,20 @@ some true ↔ semIR (gen k) (vk, c, π, answers tr) = accept)`.
 | Work | `L32` | `P30` node |
 |---|---|---|
 | column folds `Σ tᵢ rowsᵢ` K×F | 46.6 k (F: 2 each) | same |
-| final `Enc₄` `2 k₅ t₄` | 4.0 k | ≤ 4.0 k |
-| univariate rounds (Z2, L3, S3, B3) at 128 points | 2 k | 2 k |
+| final `Enc₄` at `t₄` positions, `2 · 2^7 · 126` | 32.3 k | 32.3 k (`P30`: 12 zero coefficients) |
+| the univariate round Z2 at 128 points; 7 final K rounds | 0.5 k | 0.5 k |
 | eq tables, tensor weights, K arithmetic | ≈ 15 k | ≈ 15 k |
 | sumcheck rounds | ≈ 2 k | ≈ 2 k |
-| MBP `25 · 128` F + `25 · 2^14` XOR | 3.2 k | 3.2 k |
+| MBP (one evaluation of `W` at the final point) `25 · 128` F + `25 · 2^14` XOR | 3.2 k | 3.2 k |
 | walks `Â₀, B̂₀` | `1.2·10^5` XOR | `1.2·10^5` XOR |
-| node: `evalM` irregular `2 × 74,920` + eq tables `2 × 22,619 + 2^14` + templates + walks; `evalL` templated | — | ≈ 2.4·10^5 F |
-| **F-products** | **≈ 8.2·10^4** | **≈ 3.3·10^5** |
+| node: `evalM` irregular `2 × 74,587` + eq tables `2 × 22,506 + 2^14` + templates + walks; `evalL` templated | — | ≈ 2.4·10^5 F |
+| **F-products** | **≈ 1.1·10^5** | **≈ 3.6·10^5** |
 
 ### 3.2 `T_V` (**estimate**; the S-B probe replaces it)
 
 Root check (`P30` node): trace digest at the spec hash's speed (1.45 MB, 15–25 ms on the
-runner); `SigOk` 0.3 ms; parsing 2 ms; products `3.3·10^5 × 70 ns = 23 ms`; XORs 8 ms;
-interpreter overhead ≤ 2× on the arithmetic: **≈ 75–110 ms against 205.9 ms**.
+runner); `SigOk` 0.3 ms; parsing 2 ms; products `3.6·10^5 × 70 ns = 25 ms`; XORs 8 ms;
+interpreter overhead ≤ 2× on the arithmetic: **≈ 80–115 ms against 205.9 ms**.
 
 ### 3.3 The `W` kind and DoS
 
@@ -250,76 +274,75 @@ prover could build such proofs, against itself. `V`'s `W` branch therefore has n
 
 ## 4. The circuits
 
-Batch R1CS in Flock's form: `z ∈ GF(2)^(2^m)` is `2^(m−14)` blocks of `2^14` positions; `A = Sel ⊗
-A₀`, `B = Sel ⊗ B₀`, `C = Sel ⊗ I`; plus the shift sumcheck, the pattern sumcheck, the element
-R1CS over `f = pack z` and the L R1CS (node). Block layout A.6; `one = 1` and every per-block
-public constant is a **pattern claim**:
-
-**The pattern sumcheck** (one per proof; BP-E-R2-M1, BP-C-R2-M4). Claims `j = 1 … J ≤ 64`, each a
-triple `(R_j, s_j, pat_j)`: a block range `R_j` (a public interval of blocks), an in-block
-position set `s_j` (a slot or bit), and a public pattern `pat_j : block → GF(2)^|s_j|` that is
-**selector-linear**: `pat_j(i) = Σ_κ s_κ · pat_{j,κ}(i)` with `s_κ` the kind-selector bits of the
-slot the range belongs to (or constants for the proof's own blocks). The claim: `∀ i ∈ R_j,
-z[blk i, s_j] = pat_j(i)`. All claims are batched with the **fixed GF(2)-independent constants
-`c_j := x^j ∈ BF64 ⊂ F`** (distinct monomials of the GF(2)-basis of BF64; the differences
-`z − pat_j` are GF(2)-valued since the selectors are one-hot Boolean bits, so `Σ_j c_j d_j(i) ≠ 0`
-whenever some `d_j(i) ≠ 0`: no error for the batching) into one degree-3 sumcheck over the block
-index: `Σ_i eq(θ, i) · Σ_j c_j · R_j(i) · (z[blk i, s_j] − pat_j(i)) = 0`, `m − 14` rounds; at the
-final point `r` the verifier needs `R̃_j(r)` (range-indicator MLEs: a prefix-MLE closed form,
-`O(m)` each), the pattern MLEs `p̃at_{j,κ}(r)` (constants on ranges or affine in `i`: `O(m)`), the
-selector bits `s_κ` (evaluation claims on `ẑ` at the L bits' positions) and `ẑ(r, s_j)` (one
-evaluation claim per distinct position set, batched in **B**). Lemma `pattern_sound`: if some claim
-is false, the sumcheck's doom is `(m − 14) · 3/2^128 + (m − 14)/2^128` (rounds + the point). Claims
-used (A.7): `one` on the used blocks; `Sel`'s complement blocks zero; `h_in = h0` at each chain's
-first block; `t_lo`, `f0` on each chain (affine / constant on the range, with the last block
-selector-linear); the padding of each chain's last block; `P`; the three selector bits' `Σ = 1`
-and the kind-byte equality (linear rows in Lr are an alternative; the pattern sumcheck is used).
+Batch R1CS in Flock's form: `z ∈ GF(2)^(2^m)` is `2^(m−14)` blocks of `2^14` positions; the
+zerocheck's summand is `Sel(blk) · ((A₀z)∘(B₀z) − z − E)(blk, pos)` with `Sel` the public used-block
+indicator (a union of ≤ 4 intervals; `Sẽl` by prefix MLEs) and **`E` the public target** (P1-D2,
+P1-D3): at a position whose block row is `(0, 0)` the constraint reads `z = E`, so every per-block
+public constant is pinned by the zerocheck itself at its random point, bit by bit: `one` (`E = 1`
+at bit 1,152 of every used block), the constant words of slot 8 (`t_lo = 64(i+1)` or the stream
+length at a chain's last block, `t_hi = 0`, `f0`, `f1 = 0`: `Ê` of an affine-in-`i` bit is `r_j +
+Π_{l<j} r_l`-structured, `O(m)` per bit), the zero fields of the layout, and the chain block's
+constants (`h0`, the tag, the zero message bytes, `t = 33`, `f`). `Ê(r) = Σ_{(blk,pos)} eq(r,
+(blk,pos)) E` is computed by the verifier in `O(m · #patterns)`. **No pattern sumcheck exists**
+(revision 3's §4 is withdrawn, BP-C-R3-M2 is moot). Positions that are inputs (`h_in`, the message,
+the gates) are not in `E`; what must hold of them is proved by the shift argument (the chain links
+and both endpoints, §4.1) or by point claims on `f` (§4.3).
 
 ### 4.1 The leaf circuit (`FRLeafCircuit`)
 
-`2^(m−14)` chain blocks (`h_in = h0`, message `0x43 ‖ dᵢ ‖ 0^31`, `t_lo = 33`, `f0 = 0xFFFFFFFF`
-as patterns; the stream block of §4.2), **Sh**: `Σ_i eq(τ,i) R(i) (z[blk i, 256…511] − z[blk i+1,
-520…775]) = 0` with `R = [0, n−1)`, `m − 14` block rounds, 2 position rounds and a univariate
-round (`shift_sound`); **IO**: `in(0) = s`, `out(n−1) = h` as pattern claims on blocks `0` and
-`n − 1`.
+`2^(m−14)` chain blocks (spartan-srom's block, A.6: `h0`, the tag `0x43`, the zero message bytes,
+`t = 33`, `f0 = 0xFFFFFFFF` as `(0,0)`-row positions pinned by `E`; the input `d` at 520…775; the
+output at 256…511), **Sh** (P1-D5): `Σ_i eq(τ,i) Out(i) = Σ_i shift(τ,i) In(i) + boundary`, with
+`In(0) = s` and `Out(n−1) = h` in the verifier's target, a sumcheck over the `m − 14` block
+variables and a 10-round collapse over the slot positions with the verifier-computed slot weight.
 
 ```
-leaf_sound : ∀ z s h, Boolean z → (∀ i < 2^(m−14), z[blk i, one] = 1) → (∀ i, Holds blockR1CS (z ∘ blk i)) →
-  Patterns z → ChainLinks z → IOHolds z s h → chainEnd s (2^(m−14)) = h
+leaf_sound : ∀ z s h, Boolean z → (∀ i, Holds blockR1CS_E (z ∘ blk i)) → ChainLinks z s h →
+  chainEnd s (2^(m−14)) = h
 ```
 
-(S-E1 takes `Patterns`, `ChainLinks`, `IOHolds` as hypotheses; their derivation from the pattern
-and shift sumchecks is L-cert's.)
+`Holds blockR1CS_E` is the block R1CS with the target (it entails `one = 1`); `ChainLinks z s h`
+is the shift identity's content (`in(i+1) = out(i)`, `in(0) = s`, `out(n−1) = h`). S-E1 keeps
+`ChainLinks` a hypothesis; its derivation from the shift sumcheck is L-cert's (`shift_sound`).
 
 ### 4.2 Stream block, digest chain, WOTS, statement check
 
-Stream block: `h_in`, message, `t_lo`, `f0` inputs; `block_sound` (`one = 1` explicit). Digest
-chain of the hashed stream `B` (`N = ⌈|B|/64⌉ = 22,619` for every kind, since the stream is one
+Stream block: `h_in` and the message are inputs; `t_lo`, `t_hi`, `f0`, `f1` and `one` are
+`(0,0)`-row positions pinned by the public target `E` (per-block values: the counter `64(i+1)`,
+the stream length and `f0 = 0xFFFFFFFF` at the chain's last block); `block_sound` (`one = 1`
+explicit, delivered by `E`). Digest
+chain of the hashed stream `B` (`N = ⌈|B|/64⌉ = 22,506` for every kind, since the stream is one
 layout): `h₀ = h0`, `hᵢ₊₁ = compress hᵢ Bᵢ tᵢ fᵢ 0`, `traceDigest tr = le h_N`
 (`blake2s_chain`). Child slot `σ ∈ {1, 2}` reads stream element `e` at element address
-`(chainBase_σ + ⌊e/4⌋)·128 + 4 + e mod 4`, `chainBase_1 = 0`, `chainBase_2 = 22,619`. **WOTS**:
+`(chainBase_σ + ⌊e/4⌋)·128 + 4 + e mod 4`, `chainBase_1 = 0`, `chainBase_2 = 22,506`. **WOTS**:
 133 chains × 3 selector steps + 67 leaf blocks + 32 path blocks = 498 blocks per slot.
-**`hashStmt`**: 2 blocks per slot; inputs from **item 1's payload** (`stmt`), variant
-selector-linear (`'L'`/`'P'`: `leafStmt h n` in one block, the second block's inputs zero and its
-`one` excluded from the used set by the selector-linear `one` pattern; `'N'`: `nodeStmt c₁ c₂` in
-two); output asserted equal to item 0's `c`. `wots_sound`, `hashStmt_sound`.
+**`hashStmt`**: 2 blocks per slot, both always compressing (in `Sel`, `one = 1` by `E`); inputs
+from **item 1's payload** (`stmt`); the leaf variant's digest is block 1's output, the node
+variant's block 2's, selected by the one-hot selector (`cᵢ = s_N · out₂ + (s_L + s_P) · out₁`, two
+product rows); output asserted equal to item 0's `c`. `wots_sound`, `hashStmt_sound`.
 
 ### 4.3 The node circuit: layout, mux, counts
 
 | Region | Base (blocks) | Content | Blocks |
 |---|---|---|---|
-| **H** | 0 | chain 1 `[0, 22,619)`, chain 2 `[22,619, 45,238)`, `hashStmt` 4, WOTS 996, spare 8; all-zero blocks elsewhere | 46,246 |
-| **L** | 46,336 | bits (A.7): per slot the signature (4,772 B), the WOTS digits and selectors, the position bits as bit-elements, the one-hot kind selector `(s_L, s_P, s_N)`; `N_L = 2^15` rows | 124 (allotted 2,816: the gap to M) |
-| **P** | 49,151 | `vk ‖ c₁ ‖ c₂` then zeros | 1 |
-| **M** | 49,152 (`3·2^14`) | `N_M = 2^21` elements = 16,384 blocks, ending at 65,536; slot `σ`'s rows at `Mbase + (σ−1)·2^20` | 7,421 used |
-| **total** | | | **53,792 of 65,536 (82 %, 1.22×)** |
+| **H** | 0 | chain 1 `[0, 22,506)`, chain 2 `[22,506, 45,012)`, `hashStmt` 4, WOTS 996, spare 8; `Sel` = these four intervals; all-zero blocks elsewhere | 46,020 |
+| **L** | 46,080 | bits (A.7): per slot the signature (4,772 B), the WOTS digits and selectors, the position bits as bit-elements, the one-hot kind selector `(s_L, s_P, s_N)`; `N_L = 2^15` rows | 124 (allotted 3,072: the gap to M) |
+| **M** | 49,152 (`3·2^14`) | `N_M = 2^21` elements = 16,384 blocks, ending at 65,536; slot `σ`'s rows at `Mbase + (σ−1)·2^20` | 7,814 used |
+| **total** | | | **53,959 of 65,536 (82 %, 1.21×)** |
+
+There is no `P` region: the public inputs `vk`, `c₁`, `c₂` are **point claims on `f`** at each slot's
+seed cells (payload elements 0–5 of item 0: `vk` 2, `cᵢ` 2; 8 claims per node), batched into the
+Ligerito weight at B′ (BP-C-R3-m1: slot-valued facts are `f̂` claims, not `ẑ` claims); the padding
+cells of each chain's last block (3 per chain) are point claims `= 0` the same way.
 
 **The mux (B-2, B-7).** Each slot is replayed by `gen Mux`, one program with the item sequence's
 shape, whose kind-dependent data are selector-linear:
 
-- the **selector** `(s_L, s_P, s_N)` (three L bits): rows `Σ_κ s_κ = 1` and `kindElem = Σ_κ s_κ ·
-  kindConst_κ`, where `kindElem` is the first element of item 0's payload bytes `64…79` (`hdr`'s
-  `kindByte ‖ m ‖ zero(14)`), both linear in `z` (pattern claims);
+- the **selector** `(s_L, s_P, s_N)` (three L bits, Boolean by Lr): **one-hot by the rows `s_L s_P
+  = 0`, `s_L s_N = 0`, `s_P s_N = 0` (three product rows) and `Σ_κ s_κ = 1` (linear)** — in
+  characteristic 2 the sum alone admits `(1,1,1)` (BP-C-R3-M1); and `kindElem = Σ_κ s_κ ·
+  kindConst_κ` (linear), where `kindElem` is element 4 of item 0's payload (`hdr`'s `kindByte ‖ m ‖
+  zero(14)`);
 - an **import** reads one trace cell (one address for all kinds, since the item sequence is one):
   one irregular entry, one row `v = x[a]` (a copy; or the cell is used in place);
 - a **kind-dependent constant** `κ(kind)` is the linear form `Σ_κ s_κ κ_κ`: no row;
@@ -333,8 +356,9 @@ shape, whose kind-dependent data are selector-linear:
 - the **kind-dependent matrices** of the child's own `evalM`/`evalL` (an `'N'` child evaluates the
   node's matrices, `'L'`/`'P'` none): the replay rows compute `evalM` for the node's matrices
   unconditionally (arithmetic) and gate the resulting asserts by `s_N`;
-- the **kind-dependent patterns** of the child's chain (`t_lo = |B|` and `f0` at the last block,
-  the padding) are selector-linear pattern claims (§4).
+- **no kind-dependent per-block constant exists**: the hashed stream has one length for every
+  kind (the item sequence is one), so the chain's `t_lo`, `f0` and padding positions are the same
+  public target `E` for every kind.
 
 `compileMux : VProg → rows` is `compile` in "gated" mode; **`compile_mux_sound`**: if the rows hold
 with a one-hot selector equal to kind `κ`, then `semIR (gen κ) (vk, cᵢ, πᵢ, answers) = accept`;
@@ -342,12 +366,13 @@ proved from `compile_sound` by specialising the selector (the gated rows of the 
 ungated rows of `gen κ`; the inactive ones are vacuous). Budget 600 lines on top of `compile_sound`.
 
 **Row count per slot** (`sizes.py`; honest, no sharing between kinds since there is one program):
-imports 74,920 (columns 27,856, sibling halves and answers `6 × 7,552`, FS fields `3 × 584`);
-folds 54,841; final `Enc₄` 4,032; Merkle steps `4 × 7,552 = 30,208`; univariate Lagrange 2,000;
-eq/tensor 15,000; MBP 3,200; sumchecks 2,000; lincheck replay 65,536; **`evalM` replay 211,462**
-(one row per irregular entry of the child's two slots, `2 × 74,920`, plus eq tables `2 × 22,619 +
-2^14`); `evalL` replay 8,192 (L's matrices templated, BP-C-R2-m3); gated asserts 3,510; selector 4:
-**474,905 per slot, 949,810 = `2^19.86` per node** (`N_M` margin 2.21×). **The node fits `m = 30`**;
+imports 74,587 (columns 27,856, sibling halves and answers `6 × 7,552`, FS fields `3 × 473`);
+folds 54,841; final `Enc₄` `2 · 2^7 · 126 = 32,256` (P1-D7); Merkle steps `4 × 7,552 = 30,208`;
+the Z2 Lagrange 400; eq/tensor 15,000; MBP 3,200; sumchecks 2,000; lincheck replay 65,536;
+**`evalM` replay 210,570** (one row per irregular entry of the child's two slots, `2 × 74,587`,
+plus eq tables `2 × 22,506 + 2^14`); `evalL` replay 8,192 (L's matrices templated, BP-C-R2-m3);
+gated asserts 3,288; selector 7: **500,082 per slot, 1,000,164 = `2^19.93` per node** (`N_M`
+margin 2.10×). **The node fits `m = 30`**;
 the smallest cut, if `nodeLayout`'s `decide` fails, is sharing the lincheck-replay eq tables between
 the two slots (−2^15 rows) and then the enumeration fallback of B-2.
 
@@ -358,18 +383,20 @@ count, a constant), so the program does not depend on any variant; the stage the
 
 **What the circuit asserts of slot `σ`** (compiled from `gen Mux`): (1) one-hot selector and
 `kindElem`; (2) item constants (`enc64 |q|`, tags, dummy payloads zero) gated by activity; (3) the
-FS chain `state(k+1) = answer(k)`; (4) item 0's payload holds `vk`, `cᵢ` (the `P` region) and
+FS chain `state(k+1) = answer(k)`; (4) item 0's payload holds `vk`, `cᵢ` (point claims on `f`) and
 `hdrᵢ`; (5) `hashStmt`: `cᵢ` is the statement of item 1's fields; (6) the arithmetic of `gen κ`;
 (7) Merkle steps and cap comparisons; (8) the size constants; (9) `SigOk vk (traceDigest trᵢ) σᵢ`.
 
 ```
-node_sound : ∀ z vk c₁ c₂, Boolean z → (∀ i ∈ usedH, z[blk i, one] = 1) → HHolds z → Patterns z vk c₁ c₂ →
+node_sound : ∀ z vk c₁ c₂, Boolean z → (∀ i ∈ usedH, Holds blockR1CS_E (z ∘ blk i)) → PubCells z vk c₁ c₂ →
   ShHolds z → LrHolds z → EHolds (pack z) →
   let p₁ := FR.readSigned 1 z; let p₂ := FR.readSigned 2 z
   accWith V vk c₁ p₁ = true ∧ accWith V vk c₂ p₂ = true
 ```
 
-Proof: `Patterns` fixes each slot's one-hot selector `κ_σ`; (a) the chains compute `traceDigest`;
+Proof: `LrHolds` (Booleanity) and the one-hot rows fix each slot's selector `κ_σ`; `PubCells` (the
+point claims) fixes `vk`, `cᵢ` and the padding; (a) the chains compute `traceDigest` (`blockR1CS_E`
+pins `one`, the counters and flags; `ShHolds` the links and `h0`);
 (b) `compile_mux_sound` at `κ_σ` gives `semIR (gen κ_σ) … = accept`, `wots_sound`, `hashStmt_sound`;
 (c) `runSeq_eq_runIR` with (2)–(3); (d) the constants.
 
@@ -387,11 +414,11 @@ the signature, digit, selector and position-bit regions have power-of-two stride
 
 | Quantity | value | bound | margin |
 |---|---|---|---|
-| blocks | 53,792 | 65,536 | 1.22× |
-| M rows per node | 949,810 | `2^21` | 2.21× |
-| items | 9,007 | 10,240 | 1.14× |
-| `piSize` | 754,896 | 1,048,576 | 1.39× |
-| H gap for L + P | 125 blocks | 2,906 | — |
+| blocks | 53,959 | 65,536 | 1.21× |
+| M rows per node | 1,000,164 | `2^21` | 2.10× |
+| items | 8,896 | 10,240 | 1.15× |
+| `piSize` | 756,496 | 1,048,576 | 1.39× |
+| H gap for L | 124 blocks | 3,132 | — |
 
 ---
 
@@ -407,28 +434,29 @@ open phase its bad probability over the unasked squeezes (`extCount_split`). `st
 per row of §5.2 from the exact fiber counts (`card_chF_fiber = 2^128`, `card_chK_fiber = 1`,
 `card_idx_fiber`) plus the H row; `final` = §5.4.
 
-### 5.2 Per-fresh-query error (`P30` node; one squeeze per phase)
+### 5.2 Per-fresh-query error (`P30` node; `L32` with `m = 32`; one squeeze per phase)
 
 | # | Phase | Field | Bad probability | `−log₂` |
 |---|---|---|---|---|
 | Z1 | point, 17 free coordinates (19 at `m = 32`) | F | `17/2^128` | 123.9 |
-| Z2 | skip `λ`, interpolant of degree ≤ 127 | F | `127/2^128` | **120.99** |
-| Z3 | 24 rounds, degree 3 | F | `3/2^128` | 126.4 |
-| L1, L2, **L3** | `α`; 9 rounds degree 2; univariate | F | `1, 2, 127 / 2^128` | 128, 127, **120.99** |
-| S1, S2, **S3** | `τ` (24 coordinates); `m − 14 + 2 = 18` rounds degree 3; univariate | F | `24, 3, 127 / 2^128` | 123.4, 126.4, **120.99** |
-| I1, I2 | pattern point (16); 16 rounds degree 3; the fixed-constant batching costs 0 | F | `16, 3 / 2^128` | 124, 126.4 |
+| Z2 | skip `λ`, interpolant of degree ≤ 127 (the only univariate round) | F | `127/2^128` | **120.99** |
+| Z3 | 24 rounds, degree 3 (26 at `m = 32`) | F | `3/2^128` | 126.4 |
+| L1, L2 | `α`; **14 rounds of degree 2** (P1-D4) | F | `1, 2 / 2^128` | 128, 127 |
+| S1, S2 | `τ, θ, κ_s` (16 + 10 + 1 = 27 coordinates); 16 block rounds + 10 collapse rounds, degree 2 | F | `27, 2 / 2^128` | 123.2, 127 |
 | Lr1–Lr4 | point (15); rounds (3); `κ_L` (1); rounds (2) | F | `15, 3, 1, 2 / 2^128` | ≥ 126.4 |
-| B1, B2, **B3** | `κ` (≤ 12 claims: 11); 24 rounds degree 2; univariate | F | `11, 2, 127 / 2^128` | 124.5, 127, **120.99** |
-| R1, R2 | `r″` (7); 23 rounds degree 2 | F | `7, 2 / 2^128` | 125.2, 127 |
+| RS1 | `r″` (7 coordinates) and `κ` (`J_z − 1 = 3` claims batched) | F | `7, 3 / 2^128` | 125.2, 126.4 |
 | E1–E4 | point (21); rounds (3); `κ_E` (2); rounds (2) | F | `21, 3, 2, 2 / 2^128` | ≥ 123.6 |
-| B′ | ≤ 4 claims | F | `3/2^128` | 126.4 |
-| P1 | fold round `r` of level `i`, `2^(ℓᵢ−r)` lines | K | `(2^(ℓᵢ−r) C_mca + 2)/2^256`, `C_mca ≤ 2^60` | ≥ 190 |
+| B′ | `κ′`: `J_f ≤ 20` claims on `f` (the E claim, 8 public cells, 6 padding cells, the RS claim) | F | `19/2^128` | 123.8 |
+| P1 | fold round `r` of level `i`, `2^(ℓᵢ−r)` lines; the round folds `W` and `f` (degree 2 in K) | K | `(2^(ℓᵢ−r) C_mca + 2)/2^256`, `C_mca ≤ 2^60` | ≥ 190 |
 | P2 | positions | `log₂ nᵢ` bits | `(1 − eᵢ/nᵢ)^{tᵢ}` | **120.36**, 120.70, 120.36, 120.45, 120.41 |
 | P3 | consistency batching, 9 coordinates | F | `9/2^128` | 124.8 |
+| Pf | 7 final rounds, degree 2 | K | `2/2^256` | 255 |
 | H | collision / window hit, `≤ 2^16 · logCap` windows | — | `2^-144` | 144 |
 
-**Maximum `2^-120.36 + 2^-144 ≤ εR = 2^-120.093`** (kernel-probed `epsR_le_cap`). Dummy
-queries carry no challenge and no charge (their answers are unused; a repeated query is not fresh).
+**Maximum `2^-120.36 + 2^-144 ≤ εR = 2^-120.093`** (kernel-probed `epsR_le_cap`). The public
+target `E` and the zerocheck's `Sel` add no row: they are evaluated by the verifier inside Z's
+final check. Dummy queries carry no challenge and no charge. The claim counts `J_z`, `J_f` are
+layout constants (`FRNodeLayout`), and `batch_bad_le` takes them from there (BP-C-R3-m2).
 
 ### 5.3 The proximity lemma (`FRProximity.mca_ud_line`; B-5)
 
@@ -465,9 +493,9 @@ positions were squeezed; a repeated position reads the same entries); (2) `liger
 level 4 up: `W⁽ⁱ⁾` read off `L` is `eᵢ`-close to `C_K^{rowsᵢ}` with joint agreement `Aᵢ`, `|Aᵢ| ≥
 kᵢ` (P2, P3 and the fold rounds; `fold_preserves` under P1); `interp_F`, `coeffs_of_values` give
 `f⁽ⁱ⁾` whose fold is `g⁽ⁱ⁺¹⁾`; (3) `f⁽⁰⁾` satisfies the batched claims (B′, R, E), `ring_inj` the
-`ẑ` claims, `z := unpack f` is GF(2)-valued by definition, and the pattern and shift sumchecks (I,
-S) and Z, Lc, Lr give `HHolds`, `Patterns` (hence the one-hot selectors and `one = 1` on the
-used blocks), `ShHolds`, `LrHolds`, `EHolds`; (4) `leaf_sound`/`node_sound`; (5)
+`ẑ` claims, `z := unpack f` is GF(2)-valued by definition, and Z (with its public target), Lc,
+the shift sumcheck, Lr and the point claims give `Holds blockR1CS_E` on the used blocks (hence
+`one = 1` and the constants), `ShHolds`, `LrHolds`, `PubCells`, `EHolds`; (4) `leaf_sound`/`node_sound`; (5)
 `ext_good_tape`, `decodeWit_witWords`.
 
 ### 5.5 Completeness
@@ -482,11 +510,13 @@ query (`accWith V = acc`, `decode ∘ encode = id`), so `CompleteWithError … 0
 Revision 2's table (fields, `Enc`/tensor identity, `mca_ud_line`'s constant, the sumcheck lemmas,
 block circuits, `leaf_sound`/`node_sound`, formats and `reassemble`, `gen`/`FRVIRSpec` on a
 2-round toy, the MLE lemmas on a 3-row layout, the potential's step at one phase and its failure
-at `ε = 2^-121` on Z2, the extractor at `semXIR` on a toy tape) plus: the one-hot selector (a
-two-hot assignment fails `Σ s = 1`); a dummy item with a non-zero payload fails its gated assert;
-`pattern_sound`'s negative (a false claim in one range is caught); `pinned_rank`'s inverse
+at `ε = 2^-121` on Z2, the extractor at `semXIR` on a toy tape) plus: the one-hot selector (**a
+three-hot assignment `(1,1,1)` fails the product rows**, BP-C-R3-M1; a two-hot one fails `Σ s =
+1`); a dummy item with a non-zero payload fails its gated assert; the public target (a block
+with `one = 0` or a wrong counter word fails the zerocheck's target at a random point); a wrong
+public cell fails its point claim; `pinned_rank`'s inverse
 (`M · Minv = I` by `decide`; a wrong `Minv` fails); a `W` proof of size `> proofCap` is copied
-(toy at `semXIR`); `items_length = 9,007` and `piSize = 754,896` by `decide`.
+(toy at `semXIR`); `items_length = 8,896` and `piSize = 756,496` by `decide`.
 
 ---
 
@@ -569,10 +599,10 @@ challenge maps, **`items`**, `ladder`), `FRFormat`, `FRVIR` (`VProg`, `OpImpl`, 
 | `FRField128`, `FRField256`, `FRFieldControls` | L-field (done) | traces, irreducibility, twins, KATs | 1,300 | FieldDefs |
 | `FRMLE`, `FRMLEControls` | L-piop (S-C) | eq, MLE, tables, `eq_mle` | 350 | Field128 |
 | `FRSumcheck` | S-C | rounds, batching, degree 3 | 350 | MLE |
-| `FRSkip` | S-C | `S`, `Λ`, `ζ`, `skip_bad_le`, `pinned_rank` (parametric in `ρ`; A.1's `ρⱼ = y^(2^j)` with the shipped inverse) | 700 | Sumcheck |
-| `FRShift` | S-C | range-restricted shift, `m − 14` rounds, `shift_sound` | 350 | Sumcheck |
-| `FRPatterns` | L-piop | the pattern sumcheck, range MLEs, `pattern_sound` | 400 | Sumcheck |
-| `FRRingSwitch` | S-C | `ring_inj`, `unpack`, MBP | 650 | Field128 |
+| `FRSkip` | S-C | `S`, `Λ`, `ζ`, `skip_bad_le`, `pinned_rank` (parametric in `ρ`; A.1's two-level set with the shipped inverse) | 700 | Sumcheck |
+| `FRShift` | S-C | the shift sumcheck of P1-D5: `m − 14` block rounds, 10 collapse rounds, endpoints in the target, two chains batched; `shift_sound` | 400 | Sumcheck |
+| `FRPubTarget` | L-piop | `Sel`, the public target `E` and `Ê`'s closed forms (range and affine-bit MLEs); `target_pins` (`(0,0)` rows force `z = E`) | 250 | MLE |
+| `FRRingSwitch` | S-C | `ring_inj`, `unpack`, the weight `Ŵ` of a quirky or multilinear claim, MBP = `Ŵ`; the κ-batching of `J_z` claims | 700 | Field128 |
 | `FRSpartan` | S-C | zerocheck/lincheck over `Sel ⊗ (A₀,B₀,I)` and sparse `(A,B,C)` | 450 | Sumcheck |
 | `FRRS`, `FRRSEval` | L-pcs (S-D) | novel basis, `Enc`, triangularity, tensor identity; twins | 900 | Field128 |
 | `FRProximityBW`, `FRProximityLine`, `FRProximityFold` | S-D | `bw_unique`; `mca_ud_line`; `fold_preserves`, `interp_F`, `positions_bad_le` | 2,000 | RS |
@@ -583,17 +613,17 @@ challenge maps, **`items`**, `ladder`), `FRFormat`, `FRVIR` (`VProg`, `OpImpl`, 
 | `FRLog` | L-cert | forest, `bad_step_le`, `extCount_split` | 800 | Merkle |
 | `FRBlake2s{Circuit,Words,Compress,Generic,Walk,Witness}` | S-E1 | leanerVM's circuit, walk | 2,280 | — |
 | `FRBlockLayout`, `FRBlockChain`, `FRBlockStream` | S-E1 | A.6 layout; chain block; stream block, `blake2s_chain` | 1,300 | Blake2s* |
-| `FRLeafCircuit` | S-E1 | `leaf_sound` (hypotheses `Patterns`, `ChainLinks`, `IOHolds`) | 1,200 | BlockStream |
+| `FRLeafCircuit` | S-E1 | `leaf_sound` (hypotheses `Holds blockR1CS_E` per block, `ChainLinks z s h`) | 1,200 | BlockStream |
 | `FRFormat` | S-0 | A.3–A.5: `hdr`, `piSize`, `parse`, `reassemble`, byte readers, `W` reader | 700 | TranscriptDefs |
 | `FRVIR` | S-0 | `VProg` (A.8), `OpImpl`/`OpSpec`, `runIR`, `semIR`, `gen` per phase (`gen k`, `gen Mux`) | 1,100 | Format, TranscriptDefs |
 | `FRVIRSpec` | S-0 | per-phase semantics, `items_length`, `queries_le`, `runSeq_eq_runIR` | 1,500 | VIR |
 | `FRVIRCompile`, `FRVIRMux` | L-circ | `compile`, `compile_sound`; `compileMux`, `compile_mux_sound` | 1,200 + 600 | VIR, Spartan, Walk |
 | `FRVIREval` | L-circ | `impl`, `evalM`, `evalL`, `tpl_mle`, `shift_mle`, `irregular_mle`, `evalM_eq`, `impl ⊨ OpSpec` | 1,100 | VIRCompile, RSEval, RingSwitch |
 | `FRWots` | L-circ | WOTS, `hashStmt`, soundness | 700 | VIRMux, BlockStream |
-| `FRNodeLayout`, `FRNodeCircuit` | L-circ | A.7 layout, the two `decide`s, `FR.readSigned`; `node_sound` | 400 + 1,200 | Wots, LeafCircuit, Patterns, Shift |
+| `FRNodeLayout`, `FRNodeCircuit` | L-circ | A.7 layout, the two `decide`s, `FR.readSigned`; `node_sound` | 400 + 1,200 | Wots, LeafCircuit, PubTarget, Shift |
 | `FRVerifier` | L-cert | `V`, `accWith`, `acc_eq`, `W` branches | 800 | VIRSpec, VIREval, Format |
 | `FRSoundnessDefs` | L-cert | phases, doom, `φ`, `μ` | 800 | Log, Proximity*, Verifier |
-| `FRSoundnessStepA`, `FRSoundnessStepB` | L-cert | F rows; P/H rows; `muG_step` | 2,200 | SoundnessDefs, Skip, Spartan, RingSwitch, Patterns, Shift |
+| `FRSoundnessStepA`, `FRSoundnessStepB` | L-cert | F rows; P/H rows; `muG_step` | 2,200 | SoundnessDefs, Skip, Spartan, RingSwitch, PubTarget, Shift |
 | `FRSoundnessLigerito` | L-cert | `ligerito_final` | 1,000 | SoundnessDefs, ProximityFold, Merkle |
 | `FRSoundnessFinal` | L-cert | `runLog_chain`, `final` | 1,200 | StepA, StepB, Ligerito, NodeCircuit, LeafCircuit |
 | `FRKState`, `FRCompleteness` | L-cert | `kstate vk`; `P := encode` | 350 | SoundnessFinal; Verifier |
@@ -662,7 +692,7 @@ and of `compileMux (gen Mux)` (`nnz` and layout, byte for byte); the native `acc
 | **S-0 interfaces** | one implementer | below |
 | **S-A field** | L-field | done (S-A journal) |
 | **S-B IR probe** | L-circ | the compiled interpreter on a synthetic `P30`-size program: `T_V` on the VM ≤ 160 ms |
-| **S-C piop** | L-piop | every F row of §5.2 as a lemma; `FRShift` (`m − 14` rounds), `FRPatterns`, `FRSkip` (`pinned_rank` by inverse) |
+| **S-C piop** | L-piop | every F row of §5.2 as a lemma; `FRShift` (P1-D5), `FRPubTarget`, `FRSkip` (`pinned_rank` by inverse, two-level set) |
 | **S-D pcs** | L-pcs | `mca_ud_line` over K with `C_mca ≤ 2^60` at every level, `fold_preserves`, `interp_F`, `positions_bad_le`, `cap_binding`, `FRRS`'s triangularity and tensor identity |
 | **S-E circuits** | L-circ | `FRBlockStream`, `leaf_sound`, `compile_sound`, `compile_mux_sound`, `evalM_eq`, `evalL_eq`, `impl ⊨ OpSpec`, `wots_sound`, `hashStmt_sound`, `node_sound`; `nodeLayout`'s two `decide`s (**B-2's kill test**); the VM build/kernel measurement (FR-R4′) |
 | **S-F verifier** | L-cert | `V`, `accWith`, `acc_eq`, format controls |
@@ -689,8 +719,8 @@ and of `compileMux (gen Mux)` (`nnz` and layout, byte for byte); the native `acc
   phase Z's semantic lemma **proved** and every other phase's lemma **stated** (`sorry` allowed on the
   branch, tracked in the stage RESULT; the merged entry has none), the two dump tools, `sizes.py`
   and `serial.py` re-run.
-- **S-C** adds `FRPatterns`; `FRShift` has `m − 14` rounds. **S-E** adds `FRVIRMux`
-  (`compile_mux_sound`). **S-E1** keeps `Patterns`/`ChainLinks`/`IOHolds` as hypotheses.
+- **S-C**: `FRShift` is P1-D5's sumcheck; `FRPubTarget` is a new sibling module. **S-E** adds `FRVIRMux`
+  (`compile_mux_sound`). **S-E1** keeps `Holds blockR1CS_E` and `ChainLinks` as hypotheses.
 
 ---
 
@@ -709,9 +739,8 @@ and of `compileMux (gen Mux)` (`nnz` and layout, byte for byte); the native `acc
 | novel basis | `Wᵥ`, `Ŵᵥ`, `X_x` as §2.1 | `FRRS` |
 | GF(2^8) ⊂ BF64 | `ζ = x^((2^64−1)/255)`, `gᵢ = ζ^i` | `zeta_order` (kernel; `appendixA.log`: order 255) |
 | skip sets | `S = {Σ_{i<6} bᵢ gᵢ}`, `Λ = S + g₆` | `S_disjoint_Λ` |
-| **pinned coordinates** | **`ρⱼ = y^(2^j)`, `j = 1 … 7`** (`y` the F generator over BF64) | `pinned_rank`: the 128 products `Π_{j∈T} ρⱼ Π_{j∉T}(1 + ρⱼ)` are GF(2)-independent; **shipped as the inverse bit matrix `Minv` with `M · Minv = I` checked by `decide`** (rank 128 verified: `r2/appendixA.log`) |
-| pattern constants | `c_j = x^j ∈ BF64 ⊂ F`, `j < 64` | distinct basis monomials: independent by definition |
-| shift batching | the two chains' shift claims batched by `1` and `y` | GF(2)-independent |
+| **pinned coordinates** | **the paper's two-level set (P1-D1): `gᵢ = ζ^(2^(i−1))` for `i = 1, 2, 3` (in GF(2^8)), `gᵢ = y^(2^(i−4))` for `i = 4 … 7`; `ρᵢ = gᵢ / (1 + gᵢ)`** | `pinned_rank`: the 128 products `Π_{i∈T} ρᵢ Π_{i∉T}(1 + ρᵢ)` are GF(2)-independent; **shipped as the inverse bit matrix `Minv` with `M · Minv = I` checked by `decide`** (rank 128: P1's test `pinned_rank`; the one-level set `y^(2^j)` also passes but costs round 1 ≈ 8× its convert-table work) |
+| shift batching | the two chains' shift claims batched by `1` and `y` (the summands are GF(2)-valued bits, BP-C-R3 confirms) | GF(2)-independent |
 | `h0` | the unkeyed BLAKE2s-256 chaining value | contract |
 | ladders | §2.2 | `FRTranscriptDefs.ladder30/32` |
 | `N_M, N_L, qV, εR, δ, fuel` | `2^21`, `2^15`, 10,240, `15/2^124`, 0, `2^47.5 + 2^12 t` | B-10 |
@@ -732,7 +761,7 @@ opened**; a sumcheck round's message is its 3 coefficients
 (48 B; K rounds 96 B; degree-2 rounds carry `g(∞) = 0`); a univariate round's message is 127 F
 values padded to 2,048 B; the final message is 16 K-elements (512 B; `P30`: 4 then zeros).
 
-### A.3 `piSize = 754,896`: the body's fields in order (offsets are the cumulative sums)
+### A.3 `piSize = 756,496`: the body's fields in order (offsets are the cumulative sums)
 
 | # | field | bytes |
 |---|---|---|
@@ -740,76 +769,66 @@ values padded to 2,048 B; the final message is 16 K-elements (512 B; `P30`: 4 th
 | 1 | `stmt` | 64 |
 | 2 | Z2: `P^{ab} ‖ P^z` | 2,048 |
 | 3 | Z3: 26 rounds × 48 | 1,248 |
-| 4 | L2: 9 rounds × 48 | 432 |
-| 5 | L3 univariate | 2,048 |
-| 6 | S2: 20 rounds × 48 | 960 |
-| 7 | S3 univariate | 2,048 |
-| 8 | I2: 18 rounds × 48 | 864 |
-| 9 | Lr2 + Lr4: 30 rounds × 48 | 1,440 |
-| 10 | B2: 26 rounds × 48 | 1,248 |
-| 11 | B3 univariate | 2,048 |
-| 12 | R0: `s_v` 128 × 16 | 2,048 |
-| 13 | R2: 25 rounds × 48 | 1,200 |
-| 14 | E2 + E4: 44 rounds × 48 | 2,112 |
-| 15 | P1: 22 fold rounds × 96 | 2,112 |
-| | rows 2–15 (PIOP messages) | **21,856** |
-| 16 | caps `cap₀ … cap₄` | 45,056 |
-| 17 | final message | 512 |
-| 18 | columns: level 0 … 4, position by position (every index) | 445,696 |
-| 19 | siblings: level 0 … 4, position by position, leaf level first (11, 10, 8, 6, 5 per position) | 241,664 |
-| | **total** | **754,896** |
+| 4 | Z end: `â ‖ b̂` | 32 |
+| 5 | L2: 14 rounds × 48 | 672 |
+| 6 | S2: 28 rounds (18 block + 10 collapse) × 48 | 1,344 |
+| 7 | Lr2 + Lr4: 30 rounds × 48 | 1,440 |
+| 8 | RS0: partials `4 × 128 × 16` | 8,192 |
+| 9 | E2 + E4: 44 rounds × 48 | 2,112 |
+| 10 | P1: 22 fold rounds × 96 | 2,112 |
+| 11 | Pf: 7 final rounds × 96 | 672 |
+| | rows 2–11 (PIOP messages) | **19,872** |
+| 12 | caps `cap₀ … cap₄` | 45,056 |
+| 13 | final message: the level-4 fold, `2^7` K | 4,096 |
+| 14 | columns: level 0 … 4, position by position (every index) | 445,696 |
+| 15 | siblings: level 0 … 4, position by position, leaf level first (11, 10, 8, 6, 5 per position) | 241,664 |
+| | **total** | **756,496** |
 
-(`48 + 64 + 21,856 + 45,056 + 512 + 445,696 + 241,664 = 754,896`; `sizes.py`.) The `â ‖ b̂` values
-of Lc and the per-level consistency sums are inside the following round's message (the sumcheck's
-first coefficient pair), so they have no row.
+(`48 + 64 + 19,872 + 45,056 + 4,096 + 445,696 + 241,664 = 756,496`; `sizes.py`.) `P30` fills
+its unused rounds (2 of Z3, the second chain's share of S2, 12 of the final message's 16 … 128 K
+slots, the last 2 siblings per position) with zeros.
 
-### A.4 The item sequence `items` (584 FS items, then per position its queries; `FRTranscriptDefs`)
+### A.4 The item sequence `items` (473 FS items, then per position its queries; `FRTranscriptDefs`)
 
 | # | phase | items (in order) | absorb payload |
 |---|---|---|---|
 | 0 | seed | 1 seed (`vk ‖ c ‖ hdr`, 112 B) | — |
 | 1 | stmt | 1 absorb | `stmt` (64 B) |
 | 2 | cap₀ | 1 absorb | 16,384 B |
-| 3 | Z1 | 10 squeezes | — |
-| 4 | Z2 | 1 absorb (row 2), 1 squeeze | 2,048 B |
+| 3 | Z1 | 10 squeezes (19 free coordinates, 2 per answer) | — |
+| 4 | Z2 | 1 absorb (row 2), 1 squeeze (`λ`) | 2,048 B |
 | 5 | Z3 | 26 × (absorb round, squeeze) | 48 B |
-| 6 | L1 | 1 squeeze | — |
-| 7 | L2 | 9 × (absorb, squeeze) | 48 B |
-| 8 | L3 | 1 absorb (2,048 B), 1 squeeze | |
-| 9 | S1 | 13 squeezes | — |
-| 10 | S2 | 20 × (absorb, squeeze) | 48 B |
-| 11 | S3 | 1 absorb (2,048 B), 1 squeeze | |
-| 12 | I1 | 9 squeezes | — |
-| 13 | I2 | 18 × (absorb, squeeze) | 48 B |
-| 14 | Lr1 | 8 squeezes | — |
-| 15 | Lr2 | 15 × (absorb, squeeze) | 48 B |
-| 16 | Lr3 | 1 squeeze | — |
-| 17 | Lr4 | 15 × (absorb, squeeze) | 48 B |
-| 18 | B1 | 1 squeeze | — |
-| 19 | B2 | 26 × (absorb, squeeze) | 48 B |
-| 20 | B3 | 1 absorb (2,048 B), 1 squeeze | |
-| 21 | R0 | 1 absorb | `s_v` 2,048 B |
-| 22 | R1 | 4 squeezes | — |
-| 23 | R2 | 25 × (absorb, squeeze) | 48 B |
-| 24 | E1 | 11 squeezes | — |
-| 25 | E2 | 21 × (absorb, squeeze) | 48 B |
-| 26 | E3 | 1 squeeze | — |
-| 27 | E4 | 23 × (absorb, squeeze) | 48 B |
-| 28 | B′ | 1 squeeze | — |
-| 29+5i | P1.i | `ℓᵢ` × (absorb K round 96 B, squeeze) | |
-| 30+5i | C.i | 1 absorb: `capᵢ₊₁` (8,192 / 8,192 / 8,192 / 4,096 B) or the final message (512 B) | |
-| 31+5i | P2.i | 25 / 13 / 10 / 8 / 6 squeezes | — |
-| 32+5i | Q.i | for each of the `tᵢ` indices: 1 column query, then 11 / 10 / 8 / 6 / 5 Merkle-node queries leaf level first (`P30`: the last 2 of each are dummies `0^64`) | |
-| 33+5i | P3.i | 1 squeeze | — |
+| 6 | Z end | 1 absorb (`â ‖ b̂`) | 32 B |
+| 7 | L1 | 1 squeeze (`α`) | — |
+| 8 | L2 | 14 × (absorb, squeeze) | 48 B |
+| 9 | S1 | 15 squeezes (`τ` 18, `θ` 10, `κ_s`) | — |
+| 10 | S2 | 28 × (absorb, squeeze) | 48 B |
+| 11 | Lr1 | 8 squeezes | — |
+| 12 | Lr2 | 15 × (absorb, squeeze) | 48 B |
+| 13 | Lr3 | 1 squeeze (`κ_L`) | — |
+| 14 | Lr4 | 15 × (absorb, squeeze) | 48 B |
+| 15 | RS0 | 1 absorb (the `4 × 128` partials) | 8,192 B |
+| 16 | RS1 | 4 squeezes (`r″` 7, `κ`) | — |
+| 17 | E1 | 11 squeezes | — |
+| 18 | E2 | 21 × (absorb, squeeze) | 48 B |
+| 19 | E3 | 1 squeeze (`κ_E`) | — |
+| 20 | E4 | 23 × (absorb, squeeze) | 48 B |
+| 21 | B′ | 1 squeeze (`κ′`) | — |
+| 22+5i | P1.i | `ℓᵢ` × (absorb K round 96 B, squeeze) | |
+| 23+5i | C.i | 1 absorb: `capᵢ₊₁` (8,192 / 8,192 / 8,192 / 4,096 B) or the final message (4,096 B) | |
+| 24+5i | P2.i | 25 / 13 / 10 / 8 / 6 squeezes | — |
+| 25+5i | Q.i | for each of the `tᵢ` indices: 1 column query, then 11 / 10 / 8 / 6 / 5 Merkle-node queries leaf level first (`P30`: the last 2 of each are dummies `0^64`) | |
+| 26+5i | P3.i | 1 squeeze (`κ_c`) | — |
+| 47 | Pf | 7 × (absorb K round 96 B, squeeze) | |
 
 Every absorb's payload is the field listed; every squeeze's answer is consumed as A.2 says, in
-order of appearance. `items_length = 9,007`.
+order of appearance. `items_length = 8,896`.
 
 ### A.5 `reassemble tr : Proof`
 
-`hdr := payload₀[64…111]`; `stmt := payload₁`; rows 2–15 from the absorbs of phases 4–27 in
-order; row 16 from `C.0 … C.3`'s payloads and `cap₀`'s; row 17 from `C.4`; row 18 from the column
-queries in order; row 19: for the Merkle-node query at depth `h` of index `j` of level `i`, the
+`hdr := payload₀[64…111]`; `stmt := payload₁`; rows 2–11 from the absorbs of phases 4–21 and 47 in
+order; row 12 from `cap₀`'s and `C.0 … C.3`'s payloads; row 13 from `C.4`; row 14 from the column
+queries in order; row 15: for the Merkle-node query at depth `h` of index `j` of level `i`, the
 **sibling is the half whose position is not bit `h` of `j`** (`j` read from `P2.i`'s answers by
 `idxOf`), dummies copied as zeros. `reassemble_roundtrip` for honest traces; `FR.readSigned` uses it.
 
@@ -826,7 +845,7 @@ queries in order; row 19: for the Merkle-node query at depth `h` of index `j` of
 | 1280 … 15999 | — | the 14,720 gates in leanerVM's order |
 | 16000 … 16383 | — | zero |
 
-Every public per-block constant is a pattern claim (§4).
+Every public per-block constant is pinned by the zerocheck's target `E` (§4).
 
 ### A.7 The node's M and L layout and the pack map
 
@@ -836,7 +855,7 @@ Every public per-block constant is a pattern claim (§4).
 - **L** (base block 46,336; element addresses relative to `Lbase = 46,336·128`): per slot `σ`
   (stride `2^14` elements): `sig` 299 elements (`idx` 1, `ots` 133 × 2, `path` 16 × 2), digits
   133 as bit-elements, step selectors 399, position bits 7,552 (the bit-elements `(b, 0^127)`),
-  kind selector 3; the rest zero. **`N_L = 2^15` rows**: the Lr R1CS's rows are the bit-element
+  kind selector 3 (one-hot by three product rows and one linear row); the rest zero. **`N_L = 2^15` rows**: the Lr R1CS's rows are the bit-element
   constraints (`b (1 − b) = 0` for every declared bit, the 127 zero coordinates as linear rows).
 - **M** (base block 49,152): slot `σ` at `Mbase + (σ−1)·2^20`; templates in the order of
   `compileMux`'s output, each at a power-of-two-aligned base of its size rounded up: imports,
@@ -859,15 +878,17 @@ Register kinds: `F`, `K`, `D` (digest), `B` (byte string), `N` (ℕ), `Bit`, `AF
 | `chF a lo → F`, `chK a → K`, `idx a b i → N`, `bitOf n h → Bit` | | challenge maps (A.2) | 0 / 0 / L / L |
 | `mulF, addF, mulK, addK, mulKF, invF` | | field ops; `invF`: `a·inv = sel`, `a(1−sel) = 0`, **`inv(1−sel) = 0`** (3 rows, BP-C-R2-m4) | 1/0/3/0/2/3 |
 | `eqTable r → AF (2^v)` | `AF v → AF (2^v)` | `eq(r, ·)` | `2^v − 1` |
-| `lagrangeS vals λ → F` | `AF 127, F → F` | the degree-≤127 interpolant through `S ∪ Λ` at `λ` | ≈ 400 |
+| `lagrangeS vals λ → F` | `AF 127, F → F` | the degree-≤127 interpolant through `S ∪ Λ` at `λ` (Z2 only) | ≈ 400 |
 | `tensorW j r → K` | `N, AK v → K` | `Π_v (1 − r_v + r_v Ŵᵥ(D[j]))` | `2v` |
-| `mbp r″ sv → F` | `AF 7, AF 128 → F` | the ring-switch `B̂` by the width-128 program over `m − 7` layers | `(m−7)·128` |
+| `mbp r″ sv pt → F` | `AF 7, AF (4·128), AK (m−7) → F` | the batched weight `W` at the final point by the width-128 program over `m − 7` layers (one evaluation per proof, P1-D6/D7) | `(m−7)·128` |
 | `walkA r c → F`, `walkB r c → F` | `AF 14, AF 14 → F` | `Â₀`, `B̂₀` by the circuit walk | lincheck replay |
 | `evalM τ σ → F × F × F`, `evalL τ σ → F × F × F` | `AF 21, AF 23 → …`; `AF 15, AF 23 → …` | the node's matrix MLEs (kind-selected) | `evalM`/`evalL` replay |
-| `rangeMLE R r → F`, `patMLE p r → F` | range id, `AF 16 → F` | `R̃(r)`, `p̃at(r)` of A.7's pattern list | `O(m)` |
+| `selMLE r → F`, `targetMLE r → F` | `AF m → F` | `Sẽl(r)` and `Ê(r)` of §4 (closed forms: range MLEs, affine-bit MLEs) | `O(m)` |
+| `shiftTarget τ θ → F` | `AF 18, AF 10 → F` | the shift sumcheck's boundary and slot-weight terms (P1-D5) | `O(m)` |
 | `splitDigest d → F × F`, `selectHalf b l r → D` | | | 0 / 2 |
 | `hashStmt kind fields → D` | `B → D` | `leafStmtF`/`nodeStmtF` | 1–2 H blocks |
-| `assertEq a b`, `assertBit b`, `assertZero a`, `assertOneHot s₁ s₂ s₃` | | checks; a failure returns `false` | 1 linear (gated: 1 product) |
+| `assertEq a b`, `assertBit b`, `assertZero a` | | checks; a failure returns `false` | 1 linear (gated: 1 product) |
+| `assertOneHot s₁ s₂ s₃` | `Bit³` | `s₁s₂ = s₁s₃ = s₂s₃ = 0 ∧ Σ sᵢ = 1` (BP-C-R3-M1) | 3 products + 1 linear |
 | `accept` | | `true` | — |
 
 This table is the op set; `gen` uses no other op. Dump format (`probe/fr-irdump/`): one line per
@@ -918,3 +939,33 @@ partly. The partial ones are closed below.
 | S-E1 | `FRBlake2s*`, `FRBlockLayout`, `FRBlockChain`, `FRBlockStream`, `FRLeafCircuit` | **unchanged**: the public-pattern facts stay hypotheses (`Patterns`, `ChainLinks`, `IOHolds`); only their later derivation (the pattern sumcheck, L-cert) changed. The digest chain length is `22,619` blocks for every kind (a constant of `FRTranscriptDefs`, consumed later by `FRNodeLayout`, not by S-E1). |
 | S-H1 | `FRXDsl`, `FRXField` | `for` **loses the runtime clamp**; `compile_runs` is stated under `BoundsOk P tape` (BP-E-R2-m1); `cost` unchanged; `invF`'s machine form unchanged (the third row is a circuit matter). |
 | P1 | prover | one item sequence for both kinds (dummy queries: `P30` asks 2 extra Merkle-node queries of `0^64` per position per level and the node-only phases' items with zero payloads; `L32` asks the node-only phases' items with zero payloads); every index opened; `piSize = 754,896` for every kind (final message padded to 512 B, `P30`'s sibling slots padded with zeros); `reassemble` from item 1; `ρⱼ = y^(2^j)`; the node witness layout is `compileMux`'s dump (KAT). |
+
+### Fix pass 3 (revision 3.1): P1's protocol questions and the crypto review's round 3
+
+| Item | Decision |
+|---|---|
+| P1 Q1 (P1-D1, pinned point) | **Adopted**: the two-level set `gᵢ = ζ^(2^(i−1))` (`i ≤ 3`), `y^(2^(i−4))` (`i ≥ 4`), `ρᵢ = gᵢ/(1+gᵢ)`, with the inverse-matrix certificate (A.1). Nothing depends on the set beyond `pinned_rank`; it keeps round 1's GF(2^8) accumulation (≈ −0.3 s per `m = 32` leaf against the one-level set). |
+| P1 Q2 (P1-D6, batching) | **Adopted**: revision 3's B phase (a sumcheck over `m` bit variables) is withdrawn as unprovable in practice; all `ẑ` claims (`J_z = 4`: Z's quirky claim, Lc's, Sh's, Lr's) are ring-switched together (`J_z × 128` partials, `r″`, `κ`), the batched weight `W` is Ligerito's input, the separate `m − 7` R rounds disappear; the E claim and the point claims on `f` join `W` at B′ (`κ′`). Error rows RS1 `7, 3 / 2^128`, B′ `19/2^128`; the fold rounds are degree 2 in K (§2.3, §5.2). Soundness: ring switching handles any claim that is a GF(2)-linear functional of the bits per packed element (the quirky skip coordinate's Lagrange weights, the multilinear eq weights), and the Ligerito analysis (`fold_preserves`, P2, P3) is unchanged, the weight being the verifier's bookkeeping. |
+| P1 Q3 (P1-D7, final message) | **Adopted**: the final message is the level-4 fold, `2^7` K elements (`2^5` at `m = 30`, zero-padded to 4,096 B), the verifier checks `Enc₄(final)[j]` at the `t₄` positions (`2 · 2^7 · 126 = 32,256` products; 32 k rows per slot in the node) and 7 final K rounds reduce `Σ_c W(s,c) final(c)` to one point, where `W` is evaluated once by the MBP. `piSize = 756,496` (A.3). Six levels were rejected: a sixth level costs 124 queries, ≈ 1.2 k compressions and ≈ 7.6 k rows per slot for a saving of ≈ 28 k rows. |
+| P1 Q4 (P1-D4, lincheck rounds) | **Adopted**: 14 multilinear rounds of degree 2 over the block's 14 position bits; the lincheck's output is a plain multilinear claim `ẑ(r′_blk, r_k)`; the walk takes the row weights at `r_row` (Lagrange at `λ` on the skip coordinate) and `eq(r_k, ·)` column weights. Revision 3's "9 rounds + L3" (the ninth variable did not exist) is withdrawn; the L3 row (`2^-120.99`) disappears. |
+| P1-D2 (`one` forced by `a∘b = z + e`) | **Adopted and generalised**: the zerocheck's summand is `Sel · ((A₀z)∘(B₀z) − z − E)` with the public target `E` on every `(0,0)`-row position (`one`, slot 8's words, the layout's zero fields, the chain block's constants). BP-C-M5's `one` claim is gone. |
+| P1-D3 (constants as constant rows) | **Adopted** for the leaf's chain block (rows `(0,0)` with `E` = the constant) and for the node's stream blocks (`t_lo`, `f0` per block through `E`; the unified stream length makes them kind-independent). |
+| P1-D5 (shift with both endpoints and the 10-round slot collapse) | **Adopted** (§2.3 step 4, §4.1): `eq(τ,·)·Out + (shift(τ,·) + κ_s eq(0,·))·In` with `s`, `h` (leaf) or `h0` (node chains) in the target, then 10 collapse rounds with the verifier-computed slot weight (the `d` slot at 520…775 is handled by the weight). Rows S1 `27/2^128`, S2 `2/2^128` × 26 rounds. **The pattern sumcheck of revision 3 is withdrawn** (P1-D2/D3/D5 cover every public constant; the public inputs and padding are point claims on `f`). |
+| P1-D8 (`π` field order) | Not adopted: A.3's grouped order stands (the circuit's imports read cells of the trace, not of `π`; `reassemble` fixes the map); P2 adopts A.3/A.4. |
+| ≥ 15 % cut on the `m = 30` path | **None found at the protocol level without a security cost**: the stream leaf is `2^16` compressions × `2^14` bits (the block is 14,720 gates, so `m = 30` is minimal), the node uses 82 % of its cube, level 0 dominates Ligerito, and the Merkle hashing volume is the codeword's. What this revision removes from the `m = 30` path: the B sumcheck (which P1 never implemented), the separate R rounds (−1 pass over `f`), L3 and the pattern sumcheck (−1 sumcheck over the blocks). The link overrun (P1: 3.7 s against 3.1 s) is engineering against K's measured kernels (node 0.81 s, `m = 30` leaf 0.97–1.01 s ⇒ link 2.1–2.8 s): P2's list (K×K Karatsuba, fused level-0 pass, arena, Merkle overlap, trace recording, zero-block skipping in node mode, GF(16)² round 1). |
+| BP-C-R3-M1 | **Fixed**: one-hot by three product rows `s_L s_P = s_L s_N = s_P s_N = 0` and `Σ s = 1`; `assertOneHot` costs 3 products + 1 linear (A.8); the control "a three-hot assignment fails" (§5.6). |
+| BP-C-R3-M2 | **Moot by removal**: no pattern sumcheck and no fixed-constant batching of slot-valued claims exist; every public constant is pinned bit by bit by the zerocheck's target at its own random point; the shift batching by `1, y` acts on bit-valued summands (unchanged). |
+| BP-C-R3-m1 | **Fixed**: slot-valued facts (`vk`, `cᵢ` in the seed cells; the padding cells) are point claims on `f`, batched at B′ (§4.3, §5.2). |
+| BP-C-R3-m2 | **Fixed**: `J_z`, `J_f` are `FRNodeLayout` constants; `batch_bad_le` takes them from there (§5.2). |
+
+**Interface changes of revision 3.1 for the running tracks:**
+
+| Track | Modules | Change |
+|---|---|---|
+| S-0 | `FRTranscriptDefs`, `FRFormat`, `FRVIR`, `FRVIRSpec` | the item sequence of A.4 (473 FS items; no L3, S3, I, B, R items; RS0/RS1, Pf added), `piSize = 756,496` with A.3's rows, the two-level `ρ`, the ops `selMLE`/`targetMLE`/`shiftTarget`/`mbp` (new signature) and `assertOneHot` (3 + 1 rows), `rangeMLE`/`patMLE` removed; `gen`'s phases Z, Lc (14 rounds), Sh (P1-D5), Lr, RS, E, B′, P (with Pf). |
+| S-C | `FRSkip`, `FRShift`, `FRRingSwitch`, `FRSpartan`, `FRSumcheck`, `FRMLE` | `FRSkip`: `ρ` is A.1's two-level set (still a parameter of the lemmas; the inverse certificate is for that set). `FRShift`: P1-D5's form (block rounds with `eq·Out + (shift + κ_s eq(0,·))·In`, endpoints in the target, 10 collapse rounds, two chains batched by `1, y`), no univariate round. `FRRingSwitch`: the weight `Ŵ` of a quirky claim and of a multilinear claim, and the κ-batching of `J_z` claims before Ligerito. `FRSpartan`: the zerocheck's summand carries `Sel` and the public target `E` (degree 3), and the lincheck has 14 rounds. `FRSumcheck`, `FRMLE`: unchanged. `FRPatterns` is withdrawn; `FRPubTarget` (small) replaces it. |
+| S-D | `FRRS`, `FRProximity*`, `FRMerkle` | unchanged (the final message's size and the final rounds are `FRSoundnessLigerito`'s concern). |
+| S-E1 | `FRBlake2s*`, `FRBlockLayout`, `FRBlockChain`, `FRBlockStream`, `FRLeafCircuit` | the block R1CS gains the public target: `Holds blockR1CS_E` (rows `(0,0)` at the constant positions, `z = E` there), `one = 1` delivered by it; `leaf_sound`'s hypotheses are `Holds blockR1CS_E` per block and `ChainLinks z s h` (links and both endpoints), no `Patterns`/`IOHolds`; the stream block's `t_lo`, `t_hi`, `f0`, `f1` positions are `(0,0)` rows; the walk takes general row weights (the quirky `λ` coordinate). |
+| S-H1 | `FRXDsl`, `FRXField` | unchanged. |
+| P1 → P2 | prover | adopt A.3/A.4 (the item sequence with dummies, `piSize = 756,496`), `reassemble` from item 1, the node mode; keep P1-D1…D7 as adopted. |
+
