@@ -1,15 +1,17 @@
 # Orchestrator queue (FR-D8: at most 3 concurrent agents)
 
-Last updated 2026-10-27. Blueprint at revision 3.7 (`9bd0a82`). `FR.lean` imports S-A, S-C, S-D,
+Last updated 2026-10-27. Blueprint at revision 3.8.1 (`af0c0d0`). `FR.lean` imports S-A, S-C, S-D,
 S-H1 and S-0; the combined `FR` builds (2,237 jobs).
 
 ## Running
 
-- P2: rev 3.7 proof layout + KATs against logs/S-0/dump, leaf re-timed, real node prover, tree/node modes.
+- S-C: re-prove FRSpartan/FRSkip for skip-c (rev 3.8/3.8.1), FRPubTarget, rowW_eq/shiftEq_eq.
 - S-F: `FRVerifier` (V, accWith, acc_eq), S-F finals (finRS, finE, finB′), the OpImpl instance.
-- S-0: prove `exec_genPhase` and `genPhase_ctx` (FRVIRSpec sorry-free; FR-R10 per shape).
+- S-0: adapt `gen` to 3.8/3.8.1, then prove `exec_genPhase` and `genPhase_ctx` (FR-R10 per shape).
 
 ## Waiting
+
+- P2: adopt 3.8/3.8.1 (skip-c zerocheck with free blocks a = b = z, Z2 message, κ_c 5 squeezes, one Sh claim, J_z = 4, piSize 755,664), re-dump KATs, re-measure on a 7763; then the node prover once the finals exist. Committed state `2d352a5` (rev 3.7 layout; leaf 1.62 s, regression).
 
 - S-E2 rest: `node_sound` over the packed witness (needs S-F's accWith), the H-side assembly,
   `node_complete`/`nodeWitness`, templated evalM/evalL (T_V: plain evalM ≈ 2^20 products), linking
