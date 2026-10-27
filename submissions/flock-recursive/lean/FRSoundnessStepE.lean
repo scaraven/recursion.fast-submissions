@@ -20,8 +20,8 @@ import FRSoundnessStepD
   `fin` false" (**`esc_msD`**).
 * **Part D: the whole transcript.** **`PhaseObl Rej Dk N`**: the per-phase obligations that are
   left (absorbs and handoffs, single squeezes, each multi-squeeze phase's charge, stability).
-  **`kstate_step`**: the contract's `KState.step` law at `εR` for the potential of
-  `DC Rej (Dp Dk)` (`stepObl_compose`, `step_epsR`). `hfin_ml`, `hfin_seq`, `hfin_rs1`, `hfin_p2`
+  **`kstate_step`**: the contract's `KState.step` law at `εD = εR − ε_H` for the potential of
+  `DC Rej (Dp Dk)` (`stepObl_compose`, `step_epsD`). `hfin_ml`, `hfin_seq`, `hfin_rs1`, `hfin_p2`
   discharge `PhaseObl.hfin` per phase shape from Part A and `p2_hround`.
 * **Part E: the asserted rounds** (degree 2 over F: L2, S2, Lr4; over K: P1.i, Pf): **`D2`**
   (`Rej ∨ Wrong2` with the check in `Rej`), `D2_append_iff` (absorbs inside the phase), and
@@ -115,13 +115,13 @@ theorem bindL_size {R : Type*} [CommRing R] {n : ℕ} :
 /-- **The multilinear zero test's doom** over a table of `n` variables: with the first coordinates
 bound (at most `n`), the table is not zero. At `n` coordinates this is "the MLE of `t` at the
 point is nonzero". -/
-def mlDoom (n : ℕ) (t : Array F) (l : List F) : Prop :=
+def mlDoom {R : Type*} [CommRing R] (n : ℕ) (t : Array R) (l : List R) : Prop :=
   tbl (n - (l.take n).length) (bindL t (l.take n)) ≠ 0
 
 open Classical in
 /-- Each coordinate loses at most one value (`zerocheck_bad_le`, `tbl_bind0`); past `n`, none. -/
-theorem mlDoom_step {n : ℕ} {t : Array F} (ht : t.size = 2 ^ n) (l : List F)
-    (hd : mlDoom n t l) :
+theorem mlDoom_step {R : Type*} [Field R] [Fintype R] [DecidableEq R] {n : ℕ} {t : Array R}
+    (ht : t.size = 2 ^ n) (l : List R) (hd : mlDoom n t l) :
     (univ.filter fun c => ¬ mlDoom n t (l ++ [c])).card ≤ if l.length < n then 1 else 0 := by
   by_cases hl : l.length < n
   · simp only [hl, ↓reduceIte]
@@ -189,13 +189,14 @@ theorem rs1_round_le {D : Log → Log → Prop} {L es₀ : Log} {s0 : ℕ} (hl :
       rw [mul_assoc, ← pow_succ, ← pow_mul, show 128 * (7 + 1) = 256 * 4 by norm_num]
 
 /-- A coordinate row of at most `239` bad values per `2^128` fits the rows' budget `deltaR`
-(`εR − 2^-142 ≈ 239.99 / 2^128`). -/
+(`εR − 2·2^-142 − 2^-238 ≈ 239.9998 / 2^128`). -/
 theorem coord_le_deltaR {c : ℕ} (hc : c ≤ 239) : (c : ℝ≥0) / 2 ^ 128 ≤ deltaR := by
   rw [← NNReal.coe_le_coe, NNReal.coe_div, deltaR_coe]
   push_cast
   have : (c : ℝ) ≤ 239 := by exact_mod_cast hc
   rw [div_le_iff₀ (by positivity)]
-  nlinarith
+  norm_num
+  linarith
 
 /-- **The Ligerito and PIOP coordinate rows fit `deltaR`** (A.10's counts: Z1 `≤ 20`, S1 `33`,
 Lr1 `15`, RS1 `10`, E1 `21`, P3 `9`). -/
@@ -350,17 +351,18 @@ structure PhaseObl (Rej : Log → Log → Prop) (Dk : ℕ → Log → Log → Pr
       Dk k L (ext ((entriesOf L (pathOf L i)).take k') as))
 
 open Classical in
-/-- **`KState.step` at `εR` for the whole transcript** (BLUEPRINT §5.1, A.10): the potential
+/-- **`KState.step` at `εD` for the whole transcript** (BLUEPRINT §5.1, A.10): the potential
 `muG` of the entry's doom `DC Rej (Dp Dk)`, charged by `pRoundG … fsRnd`, satisfies the contract's
-step law with error `εR = 15/2^124`, given the per-phase obligations and `N ≤ 2^256·deltaR`. -/
+step law with error `εD = εR − ε_H` (the doom potential's share, §10 changes 15), given the
+per-phase obligations and `N ≤ 2^256·deltaR`. -/
 theorem kstate_step {Rej : Log → Log → Prop} {Dk : ℕ → Log → Log → Prop} {N : ℕ}
     (hN : (N : ℝ≥0) ≤ 2 ^ 256 * deltaR) (ob : PhaseObl Rej Dk N) (L : Log) (q : ByteArray)
     (hl : L.length < logCap)
     (hμ : muG (DC Rej (Dp Dk)) (pRoundG (DC Rej (Dp Dk)) fsRnd) L < 1)
     (hq : q ∉ L.map Prod.fst) :
     ∑ a : Digest, muG (DC Rej (Dp Dk)) (pRoundG (DC Rej (Dp Dk)) fsRnd) (L ++ [(q, a)]) ≤
-      (muG (DC Rej (Dp Dk)) (pRoundG (DC Rej (Dp Dk)) fsRnd) L + epsR) * 2 ^ 256 := by
-  refine step_epsR hN (stepObl_compose ob.rej ?_ ?_ ?_ ?_ ?_) L q hl hμ hq
+      (muG (DC Rej (Dp Dk)) (pRoundG (DC Rej (Dp Dk)) fsRnd) L + epsD) * 2 ^ 256 := by
+  refine step_epsD hN (stepObl_compose ob.rej ?_ ?_ ?_ ?_ ?_) L q hl hμ hq
   · intro L es x len hm hit hr hd
     have := ob.habs L es x len hm hit hr hd
     simpa [DPos, Dp] using this

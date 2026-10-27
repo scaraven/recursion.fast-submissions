@@ -243,3 +243,40 @@ symlinked; `.lake` copied from `fr-build-cert`). Every `lake`/`lean` run used th
     in RESULT S-G1f §2 because the context is long. Key point: `kstate_step` spends all of `εR`,
     so `μ_doom` must be re-run at `δ' = deltaR − ε_H` (P2's slack, `2^-120.36` against
     `2^-120.09`, allows it).
+
+## 2026-10-27 (S-G1g)
+
+52. **The re-budget.**
+    - `epsH = 2^-142 + 2^-238`, `epsD = εR − ε_H`, `deltaR = εD − 2^-142`;
+    - `p2_row_le_q` with the right side lowered by `ε_H` still passes `decide +kernel`;
+    - `step_epsR` → `step_epsD`;
+    - `kstate_step`, `rounds3_step` and `z3_step` now conclude at `εD`.
+53. **`μ_Hide`** (`FRSoundnessHide`).
+    - `DH = ∀ i, noHide i`: the disagreeing columns' bound difference tables stay nonzero
+      (`mlDoom` over K);
+    - it moves only at P1's round squeezes (`DH_append_iff`), with at most `eᵢ ≤ 2^18` hiding
+      answers (`hide_single`);
+    - `hide_step` at `ε_H`;
+    - `muT_step` at `εR` via `step_add`.
+54. **`hstab` for a word-reading doom is the hard part.**
+    - `hstab` covers every formal extension, and past the chain those extensions put formal
+      squeezes on cap positions. So `noHide` is guarded by `capOK` (a real absorb at the cap
+      position).
+    - `wordK_stab` then reads the cap off `L.take n` (`colL_take`) or off `L[n]`
+      (`colL_take_own`).
+    - Item 4's word dooms need the same guard (RESULT S-G1g §6 item 2, question 1).
+55. **Lean pitfalls.**
+    - `tauto` hit the maximum recursion depth on `decide`d facts with five disjuncts. Use `omega`,
+      or `hci'.1 κ (by cases κ <;> simp)`.
+    - `rw [← hn] at hJ` fails when the rewritten `2^logN` sits inside a `Fin` type. Prove the
+      inequality separately.
+    - `obtain ⟨-, -, H⟩` on `Matches` silently loses `H`, because the cleared length witness
+      occurs in `H`'s type. Name it.
+    - Five `decide +kernel` checks of `fsItems` cost 5.5 s; one combined check costs 2.9 s.
+56. **`FRSoundnessPIOP`.**
+    - `fF`/`fTab_F` (`interp_F_D`), `zW = unpack f⁽⁰⁾`, `zBlk_bool`;
+    - `truthZ` with `leaf_of_truthZ` (`leaf_sound` over F);
+    - `truthB'` parametric in the cells.
+57. **`FRKState`.** `FinalLaw` (the contract's `final` for `muT`), `kstate_of` and `ks_of`. Stopped
+    there: the context is long. Items 3 and 4, the rest of item 2, and S-G2's chain walk remain
+    (RESULT S-G1g §7).

@@ -1216,3 +1216,174 @@ and `ring`.
 
 The PIOP truths (item 2) need other tracks' definitions at their current HEAD. Check that
 `FRFormat.unpack` and the S-E3 `pubVals` fix have landed before starting.
+
+---
+
+# S-G1g: `μ_Hide` and the re-budget; `μ = μ_doom + μ_Hide` at `εR`; `f⁽⁰⁾` in F, `z`, the Z and B′ truths; the `kstate` frame
+
+Base `4e0ca9b` (S-G1f), built against HEAD's versions of other tracks' modules
+(`logs/fr-build-SG/snap.sh`, `WT=FR`). **Status: item 1 done; item 2 partial (foundation, Z, B′);
+items 3 and 4 not started; item 5's frame done (`final` is a hypothesis).** `FR` builds as a whole
+(`logs/S-G/build-FR-S-G1g.log`, 2,283 jobs). No sorry, no warning in S-G's modules, no line over
+100 characters. Axioms: `propext`, `Classical.choice`, `Quot.sound` only, for the 16 theorems of
+`logs/S-G/axioms-S-G1g.log` (`muT_step`, `hide_step`, `kstate_of`, `ks_of`, `consSet_eq_of_DH`,
+`err_total`, `fTab_F`, `leaf_of_truthZ`, …). Source rule: 85 files, 0 findings.
+
+## 1. Item 1: the re-budget, `μ_Hide`, and the sum (done)
+
+**The re-budget** (`FRSoundnessStepB` Part A, `FRSoundnessStepC`, `FRSoundnessStepE`):
+- `epsH := 2^-142 + 2^-238` (`2^18/2^256 = 2^-238`), `epsD := εR − ε_H`, and the rows' budget
+  `deltaR := εD − 2^-142 = 15/2^124 − 2·2^-142 − 2^-238` (`deltaR_coe`).
+- `epsD_add_epsH : εD + ε_H = εR` (from `epsH_le_epsR`), `err_le_epsD` (the doom potential's
+  `badCount/2^256 + deltaR ≤ εD`).
+- `step_epsR` is now **`step_epsD`** (conclusion at `εD`); `rounds3_step`, `z3_step` and
+  `kstate_step` conclude at `εD`.
+- `p2_row_le_q`'s right side is lowered by `ε_H` (`15/2^124 − 2/2^142 − 1/2^238`); the
+  `decide +kernel` still passes for all ten levels. `coord_le_deltaR` (`c ≤ 239`) and
+  `three_le_deltaR` still hold; `N_le_deltaR` now takes its hypothesis in ℝ.
+
+**`μ_Hide`** (new module `FRSoundnessHide`):
+- **Positions** (checked once): `p1Start i` (`301, 344, 371, 395, 417`), `hEll i = ℓᵢ`
+  (`lvl_ell`: the same for every kind), `p1_phase` (each P1.i a `RoundsPhase`, one kernel check
+  `p1_sq_check` for all five), `p1_disj`, `capPos_lt`, `cap_check` (each cap absorb has
+  `len ≥ 32·2^cap` for every kind and `40 + len ≤ queryCap`).
+- **The doom.** `hRnd es i` (P1.i's rounds answered), `sList` (their challenges `sᵢ`), `hDiff`
+  (column `j`'s difference table `W⁽ⁱ⁾[·][j] − V[·][j]`), `capOK` (the cap entry passes its
+  absorb item's check), **`noHide`**: on a close word with a real cap entry, every column outside
+  `jointAgree` keeps a nonzero table after binding the answered challenges (`mlDoom`, now generic
+  over a commutative ring). **`DH L es := ∀ i < 5, noHide …`**.
+  - `noHide_zero`: before P1.i it holds for every word; `DH_short`;
+  - **`DH_append_iff`**: off P1's round squeezes, appending keeps `DH`.
+- **Stability** (`hstab`): **`colOf_stab`/`wordK_stab`**: on a non-bad log, the level-`i` word of
+  a formal extension of a prefix of chain `n` reads the same off `L.take n` and `L` whenever
+  `capOK` holds. A formal entry past the chain passes no absorb check (`fsCheck_ext_ge`), so the
+  cap entry is a real chain entry: an entry of `L.take n` (`colL_take`) or `L[n]` itself
+  (`colL_take_own`); its digests are carried within the windows (`cap_carried`, sizes from
+  `cap_check`). `noHide_stab`, `decodeL_congr`.
+- **The step law.** **`hide_single`**: at P1.i's round-`l` squeeze the other levels keep their
+  state, and an answer can hide only if `chK a` makes one of the `≤ eᵢ` nonzero bound tables vanish
+  (`mlDoom_step` over K, `card_not_jointAgree`, `card_chK_fiber`): at most `eᵢ ≤ 2^18`
+  (`lvE_le`). **`hide_obl`**: `StepObl DH fsRnd 2^-238 2^18`. Absorbs, middle squeezes and the
+  multi-squeeze phases cost nothing. **`hide_step`**: the contract's step law at `ε_H`
+  (`muG_step_of`, `err_le_epsH`).
+- **What `final` gets.** **`noHide_full`**: at P1.i's end, `noHide` is `¬ hideL`.
+  `bindL_mle`: binding every variable evaluates the MLE (`mle_fix0`, `tbl_bind0`), and
+  `bindL_sList` gives the `eq(sᵢ, ·)`-weighted row sum. **`consSet_eq_of_DH`**: on a chain past
+  P1.i with `DH`, a close level whose next message is the fold has `A_c = jointAgree`
+  (`capOK_of_matches`, `consSet_eq_jointAgree`).
+- **The sum.** **`muT Rej Dk := μ_doom + μ_Hide`**, with `muT_empty`, **`muT_step`** (the
+  contract's step law at **`εR`**: `step_add` of `kstate_step` at `εD` and `hide_step` at `ε_H`),
+  **`err_total`** (kernel-checked: the two potentials' errors sum to at most `εR`), and
+  `muT_lt_one` (below `1`: `¬ Bad`, no doom escape, no Hide escape).
+
+## 2. Item 2: the PIOP truths (partial; new module `FRSoundnessPIOP`)
+
+- **`f⁽⁰⁾` in F.** `fF κ L es e := (fTab κ L es 0 e).f₀`. **`msgOf_F`/`fTab_F`**: on a close
+  level-0 word, `fTab … 0 = ι ∘ fF`. Each decoded row is `Enc_K` of an F-message: `interp_F_D` on
+  `jointAgree`, which has `n₀ − e₀ ≥ k₀` positions; `msgOf_eq` recovers it.
+- **`z = unpack f⁽⁰⁾`.** `FRFormat` has no `unpack`. I used `FRRingSwitch.unpack` (bit `k` of an F
+  element, `pack_unpack`), which is A.7's pack map read backwards: **`zW b := unpack f[b/128]
+  (b mod 128)`**.
+  - **`zBlk blk`** is block `blk`'s `2^14` positions; `zBlk_elem`: element `k` of block `blk` is
+    `f[blk·128 + k]`.
+  - **`zBlk_bool`**: the witness is Boolean by construction (`unpack_boolean`), which is
+    `leaf_sound`'s `hbool`.
+- **Z.** **`truthZ tgt nb`**: each used block satisfies `HoldsE (blockR1CS (tgt blk))
+  (targetVal F (tgt blk))` (A.10 Z1's identity per block). **`leaf_of_truthZ`**: with every block a
+  chain block and `ChainLinks` (the S truth's content), `leaf_sound` over F gives `chainEnd s n = h`.
+- **B′.** **`truthB'`**, parametric in the cell list, because S-E3 is changing `pubVals`:
+  `v* = v_RS + κ′ v_E + Σ_k κ′^(k+2)·f[cell_k]`. With the padding cells gone, the nine cells are
+  `Node.pubCells []`.
+- **Not built:**
+  - the node's Z truth, which needs A.6's block → target assignment per kind (`truthZ` takes it as
+    `tgt`);
+  - L (`lin_trueSum_kinds`), S (`shift_sound`, `slotW_mle`), Lr (`evalL`), RS (`rsT`/`rsTruth`),
+    E (`evalM`);
+  - all handoffs.
+
+## 3. Item 5: the `kstate` frame (new module `FRKState`)
+
+- **`FinalLaw S vk Rej Dk`** is exactly the contract's `KState.final` for `muT Rej Dk`:
+  `∀ L c π, |L| ≤ logCap → muT Rej Dk L < 1 → (S.V vk c π).runLog L = some true →
+  ∃ w, S.E c π L = some w ∧ Rel (S.acc vk) c w`.
+- **`kstate_of`** builds `KState (Rel (S.acc vk)) (S.V vk) S.E εR` from `N ≤ 2^256·deltaR`,
+  `PhaseObl Rej Dk N` and `FinalLaw`.
+- **`ks_of`** adds the query bound to give `KS … εR S.qV`; `epsR_le_errorCap` gives
+  `εR ≤ 2^-120`.
+- What `final` (S-G2) must prove is `FinalLaw` for the concrete `Rej`, `Dk`. `muT_lt_one` provides
+  `¬ Bad L`, `¬ EscG (DC Rej (Dp Dk)) L` and `¬ EscG DH L`.
+  - From these, S-G2 needs a generic chain walk: no escape on every prefix chain, transported
+    between the prefix logs by `hstab`, gives `D` at the accepted chain's end (`DH_short` for
+    `DH`'s start).
+  - Then `consSet_eq_of_DH`, `ligerito_final` and `leaf_sound`/`node_sound`.
+
+## 4. Controls
+
+| Control | Shows |
+|---|---|
+| `DH_seed`, `DH_short` | the Hide doom holds before P1.0 (positive) |
+| `not_noHide_of_hideL` | a hidden disagreement at P1.i's end refutes `noHide` (not vacuous) |
+| `mlDoom_toy` (over ℚ) | the table `(1, 0)` is doomed before its challenge and the challenge `1` hides it |
+| `not_capOK_ext` | a formal extension past the chain has no real cap entry (negative) |
+| `capOK_of_matches` | on a chain past the cap absorb, `capOK` holds (positive) |
+| `truthB'_self` / `not_truthB'_of_ne` | B′'s truth holds at its batched value; a wrong value fails |
+| `zBlk_bool` | the decoded witness is Boolean |
+| `err_total`, `epsD_add_epsH`, `epsR_le_errorCap` | the error split is exact and within `2^-120` |
+
+## 5. Times (sequential, one core: `taskset -c 0 lean -DElab.async=false --profile`)
+
+| Module | Code lines (`loc.py`) | Wall (≈ 3.7 s import) | Type checking | Max RSS | Log |
+|---|---|---|---|---|---|
+| `FRSoundnessHide` (new) | 471 | 16.5 s | 5.7 s (`p1_check` 1.5 s, `p1_sq_check` 2.9 s: `fsItems` in the kernel, one check for all five levels) | 3.02 GB | `logs/S-G/profile-FRSoundnessHide-S-G1g.log` |
+| `FRSoundnessPIOP` (new) | 62 | 6.6 s | 0.15 s | 2.67 GB | `logs/S-G/profile-FRSoundnessPIOP-S-G1g.log` |
+| `FRKState` (new) | 28 | 7.0 s | 0.03 s | 2.66 GB | `logs/S-G/profile-FRKState-S-G1g.log` |
+| `FRSoundnessStepB` | 364 | 12.0 s | 2.2 s | 2.75 GB | `logs/S-G/profile-FRSoundnessStepB-S-G1g.log` |
+| `FRSoundnessStepC` | 307 | 9.3 s | 0.53 s | 2.68 GB | `logs/S-G/profile-FRSoundnessStepC-S-G1g.log` |
+
+`FRSoundnessStepE` is 508 code lines; it changed only in `mlDoom`'s generality and the `εD`
+statements. A first version of `p1_phase` ran five separate `decide +kernel` checks of `fsItems`
+(5.5 s); the single combined check replaced them. No `decide` or `simp` runs over a program or a
+table.
+
+## 6. Deviations
+
+1. **Statement changes to S-G's own lemmas** (the ordered re-budget):
+   - `deltaR`'s definition and `deltaR_coe` (moved to `FRSoundnessStepB`);
+   - `p2_row_le_q`'s right side;
+   - `N_le_deltaR`'s hypothesis (now in ℝ);
+   - `step_epsR` → `step_epsD`;
+   - `rounds3_step`, `z3_step`, `kstate_step` now conclude at `εD`.
+
+   The entry's claimed `ε` is unchanged (`muT_step` is at `εR`).
+2. **`capOK` in `noHide`.** `StepObl.hstab` quantifies over every formal extension
+   `ext (chain.take k) as`, of any length. Past the chain's end such an extension fills absorb
+   positions, the cap positions included, with formal squeeze entries, and a word read under a
+   formal "cap" can differ between `L.take n` and `L`. The guard makes such reads vacuous. This
+   affects **every word-reading doom of item 4** (P1's far doom, C.i, P2.i, Z1, S1, E1). Each needs
+   the same guard, or `hstab` restricted to the extensions `hloc_of` uses (`k ∈ {s0, s0 + 1}`,
+   `|as| ≤ r`), which would be a change to `FRSoundnessDefs`.
+   `wordK_stab` is the reusable lemma either way.
+3. **`unpack`** is `FRRingSwitch.unpack`; `FRFormat` has none (as the brief anticipated).
+4. `mlDoom` is generic over a commutative ring (`mlDoom_step` over a finite field), so that the
+   Hide doom uses it over K.
+
+## 7. Not done, in order (for the next invocation)
+
+1. **Item 2, the rest:**
+   - the node's per-block targets (A.6) for `truthZ`;
+   - L, S, Lr, RS, E as definitions over `zW`/`fF` with A.10's lemmas.
+2. **Item 3:** level 0's weight table `W₀`, from `rsWeight`, `evalM(r_E2, ·)` and the nine cells,
+   tied to `finPf`'s `lvsV`/`w0V` by `vNext_eq`/`wSplit_sum`.
+3. **Item 4:**
+   - the concrete `Dk` and `Rej`, and one handoff per phase start;
+   - `PhaseObl` through the `hfin_*` wrappers;
+   - each word-reading doom guarded as in §6 item 2.
+4. **S-G2:**
+   - the chain walk (§3);
+   - `FinalLaw`, i.e. `final`, for the concrete doom.
+
+## 8. Questions for the orchestrator
+
+1. **The `hstab` scope** (§6 item 2). Keep a `capOK` guard in every word-reading doom, or restrict
+   `StepObl.hstab` (and `PhaseObl.hstab`) to the extensions `hloc_of` uses? The latter is cleaner
+   for item 4, but it re-proves `hloc_of`'s `condCount` congruence on the right-length lists only.

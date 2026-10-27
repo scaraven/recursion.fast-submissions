@@ -14,7 +14,8 @@ import FRSoundnessStepB
   its first F coordinate (its K challenge) in a set of `s` bad challenges, at most `s·2^128`
   (`s`) answers escape (`card_chF_fiber`, `card_chK_fiber`).
 * **Part C: the P2 row's arithmetic.** `p2_row_le`: at every level of both ladders,
-  `(1 − eᵢ/nᵢ)^{tᵢ} ≤ 15/2^124 − 2^-142 = deltaR` (kernel-checked rationals; `deltaR_coe`).
+  `(1 − eᵢ/nᵢ)^{tᵢ} ≤ 15/2^124 − 2·2^-142 − 2^-238 = deltaR` (kernel-checked rationals;
+  `deltaR_coe`).
   `card_idx_in`: the answers whose first `c` indices of `b` bits lie in `S` number
   `|S|^c · 2^(256 − c b)` (`card_idx_fiber`, summed over `S^c`).
 -/
@@ -177,11 +178,6 @@ theorem round_row_K (e : Expr) (ts : Array (Array K)) {m : ℕ}
 
 /-! ## Part C: the P2 row -/
 
-theorem deltaR_coe : (deltaR : ℝ) = 15 / 2 ^ 124 - 1 / 2 ^ 142 := by
-  rw [deltaR, NNReal.coe_sub h_le_epsR, epsR]
-  push_cast
-  norm_num
-
 /-- The proximity parameters of level `i` of kind `κ`: `n = 2^log₂n`, `k = n/2^(i+1)`,
 `e = ⌊(n − k)/2⌋` (§2.2). -/
 def lvN (κ : Kind) (i : ℕ) : ℕ := 2 ^ (lvl κ i).logN
@@ -195,9 +191,10 @@ theorem lv_eq_pcsLevels :
   decide
 
 /-- **The P2 row** (§5.2), in ℚ as `positions_bad_le` states it: at every level of every kind,
-`(1 − eᵢ/nᵢ)^{tᵢ} ≤ 15/2^124 − 2^-142` (kernel arithmetic: the exponents exceed `norm_num`'s). -/
+`(1 − eᵢ/nᵢ)^{tᵢ} ≤ 15/2^124 − 2·2^-142 − 2^-238` (kernel arithmetic: the exponents exceed
+`norm_num`'s). -/
 theorem p2_row_le_q (κ : Kind) (i : ℕ) (hi : i < 5) :
-    (1 - (lvE κ i : ℚ) / lvN κ i) ^ (lvl κ i).t ≤ 15 / 2 ^ 124 - 1 / 2 ^ 142 := by
+    (1 - (lvE κ i : ℚ) / lvN κ i) ^ (lvl κ i).t ≤ 15 / 2 ^ 124 - 2 / 2 ^ 142 - 1 / 2 ^ 238 := by
   interval_cases i <;> cases κ <;> decide +kernel
 
 /-- **The P2 row against `deltaR`.** -/
@@ -205,7 +202,8 @@ theorem p2_row_le (κ : Kind) (i : ℕ) (hi : i < 5) :
     ((1 - (lvE κ i : ℚ) / lvN κ i) ^ (lvl κ i).t : ℝ) ≤ deltaR := by
   rw [deltaR_coe]
   have := p2_row_le_q κ i hi
-  have h : ((15 / 2 ^ 124 - 1 / 2 ^ 142 : ℚ) : ℝ) = 15 / 2 ^ 124 - 1 / 2 ^ 142 := by push_cast; ring
+  have h : ((15 / 2 ^ 124 - 2 / 2 ^ 142 - 1 / 2 ^ 238 : ℚ) : ℝ) =
+      15 / 2 ^ 124 - 2 / 2 ^ 142 - 1 / 2 ^ 238 := by push_cast; ring
   rw [← h]
   exact_mod_cast this
 

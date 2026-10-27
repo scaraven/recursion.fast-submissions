@@ -1,0 +1,645 @@
+-- New for `flock-recursive` (BLUEPRINT §5.1, A.10 P1.i; §10 changes 14–15; stage S-G1g).
+import FRSoundnessStepE
+import FRSoundnessLigerito
+
+/-!
+# The Hide potential `μ_Hide`, and the entry's potential `μ_doom + μ_Hide` (§10 changes 15)
+
+`Hide_i` (`hideL`, §10 changes 14) is a column outside the joint agreement set whose folded
+difference vanishes at P1.i's challenges. A doom that a non-escaped chain end refutes cannot carry
+it (S-G1e §6 item 2), so it gets its own additive potential, charged at P1.i's fold squeezes and
+frozen elsewhere.
+
+* **Part A: the positions** (checked on `fsStarts`/`fsItems`): `p1Start i`, `hEll i = ℓᵢ`
+  (`lvl_ell`), `p1_phase` (P1.i is a `RoundsPhase`), `p1_disj`, `capPos_lt`, `cap_check`.
+* **Part B: the doom.** `hRnd es i` (P1.i's rounds answered), `sList` (their challenges), `hDiff`
+  (a column's difference table), `capOK` (the cap entry is a real absorb), **`noHide`** (every
+  disagreeing column's table stays nonzero after binding the answered challenges, `mlDoom` over
+  K), **`DH`** (`noHide` at every level). `noHide_zero`: true before P1.i; **`DH_append_iff`**:
+  off P1's round squeezes appending keeps `DH`.
+* **Part C: stability.** **`colOf_stab`/`wordK_stab`**: on a non-bad log, the level words of a
+  chain's formal extension read the same off `L.take n` and `L` whenever the cap entry is real
+  (`fsCheck_ext_ge`: past the chain it is not; `colL_take`, `colL_take_own`). `noHide_stab`.
+* **Part D: the step law.** **`hide_single`** (at most `eᵢ ≤ 2^18` answers hide at a P1 round,
+  `mlDoom_step`, `card_not_jointAgree`, `card_chK_fiber`), **`hide_obl`** (`StepObl` at
+  `δ = 2^-238`, `N = 2^18`), **`hide_step`** (the contract's step law at `ε_H = 2^-142 + 2^-238`).
+* **Part E: what `final` gets.** **`noHide_full`**: at P1.i's end `noHide` is `¬ Hide_i`
+  (`bindL_mle`, `bindL_sList`); **`consSet_eq_of_DH`**: then `A_c = jointAgree`.
+* **Part F: the entry's potential** **`muT = μ_doom + μ_Hide`**: `muT_empty`, **`muT_step`** (the
+  contract's step law at `εR`, `step_add` with `εD + ε_H = εR`), `err_total`, `muT_lt_one`.
+-/
+
+namespace FR.Snd
+open RecursionFast FR.Merkle Finset
+open scoped NNReal
+
+set_option linter.constructorNameAsVariable false
+
+/-! ## Part A: the positions -/
+
+/-- P1.i's first Fiat–Shamir position (phase `25 + 5i`). -/
+def p1Start (i : ℕ) : ℕ := phStart (25 + 5 * i)
+
+/-- P1.i's rounds `ℓᵢ` (the same for every kind, `lvl_ell`). -/
+def hEll (i : ℕ) : ℕ := (lvlStar i).ell
+
+theorem lvl_ell (κ : Kind) {i : ℕ} (hi : i < 5) : (lvl κ i).ell = hEll i := by
+  cases κ <;> interval_cases i <;> rfl
+
+/-- Checked: P1's starts and rounds (`[301, 344, 371, 395, 417]`, `[6, 4, 4, 4, 4]`), each level's
+cap absorbed before its P1, and the P1 phases disjoint. -/
+theorem p1_check : (List.range 5).all (fun i => decide (capPos i < p1Start i) &&
+    (List.range 5).all fun i' => i == i' || decide (p1Start i + 2 * hEll i ≤ p1Start i') ||
+      decide (p1Start i' + 2 * hEll i' ≤ p1Start i)) = true := by
+  unfold capPos p1Start phStart hEll; rw [fsStarts_eq]; decide
+
+theorem capPos_lt {i : ℕ} (hi : i < 5) : capPos i < p1Start i := by
+  have := p1_check
+  simp only [List.all_eq_true, List.mem_range, Bool.and_eq_true, decide_eq_true_eq] at this
+  exact (this i hi).1
+
+theorem p1_disj {i i' : ℕ} (hi : i < 5) (hi' : i' < 5) (h : i ≠ i') :
+    p1Start i + 2 * hEll i ≤ p1Start i' ∨ p1Start i' + 2 * hEll i' ≤ p1Start i := by
+  have := p1_check
+  simp only [List.all_eq_true, List.mem_range, Bool.and_eq_true, Bool.or_eq_true, beq_iff_eq,
+    decide_eq_true_eq] at this
+  have := (this i hi).2 i' hi'
+  omega
+
+/-- Checked: every level's cap absorb (`len` bytes, `len ≥ 32·2^cap` for every kind, inside
+`queryCap`), with `cap ≤ log₂ n`. -/
+theorem cap_check : (List.range 5).all (fun i => match fsItems[capPos i]? with
+    | some (.absorb len) => [Kind.L32, .P30, .N30].all (fun κ =>
+        decide (32 * 2 ^ (lvl κ i).cap ≤ len) && decide ((lvl κ i).cap ≤ (lvl κ i).logN)) &&
+        decide (40 + len ≤ queryCap)
+    | _ => false) = true := by
+  unfold capPos phStart; rw [fsStarts_eq]; decide +kernel
+
+/-- Checked once for all five levels: P1.i's odd offsets are squeezes, and no multi-squeeze
+phase meets P1.i. -/
+theorem p1_sq_check : (List.range 5).all (fun i => decide (1 ≤ p1Start i) && decide (0 < hEll i) &&
+    (List.range (hEll i)).all (fun j => fsItems[p1Start i + 2 * j + 1]? == some .squeeze) &&
+    fsRanges.all fun x => decide (x.1 + x.2 < p1Start i ∨ p1Start i + 2 * hEll i ≤ x.1 + 1)) =
+      true := by
+  rw [fsRanges_eq]; decide +kernel
+
+/-- **P1.i is a rounds phase** of `ℓᵢ` real rounds (checked squeezes, no multi-squeeze phase). -/
+theorem p1_phase {i : ℕ} (hi : i < 5) : RoundsPhase (p1Start i) (hEll i) fun _ => hEll i := by
+  have h := p1_sq_check
+  rw [List.all_eq_true] at h
+  have h' := h i (List.mem_range.mpr hi)
+  simp only [Bool.and_eq_true, decide_eq_true_eq] at h'
+  exact roundsPhase_of h'.1.1.1 h'.1.1.2 (fun _ => le_rfl) h'.1.2 h'.2
+
+/-! ## Part B: the Hide doom -/
+
+/-- The P1.i rounds answered by `es`: `min ℓᵢ ⌊(|es| − p1Start i)/2⌋`. -/
+def hRnd (es : Log) (i : ℕ) : ℕ := min (hEll i) ((es.length - p1Start i) / 2)
+
+/-- P1.i's first `l` fold challenges `sᵢ` (`sAt`). -/
+def sList (es : Log) (i l : ℕ) : List K := (List.range l).map (sAt es i)
+
+/-- Column `j`'s difference table between level `i`'s word and its decoded rows (over the
+`2^ℓᵢ` rows). -/
+noncomputable def hDiff (κ : Kind) (L es : Log) (i : ℕ) (j : Fin (2 ^ (lvl κ i).logN)) :
+    Array K :=
+  Array.ofFn (n := (lvl κ i).rows) fun r => wordK κ L es i r j - decodeL κ L es i r j
+
+/-- Level `i`'s cap entry passes its absorb item's check (on a chain this is `Matches`; on a formal
+extension past the chain it fails, `fsCheck_ext_ge`). -/
+def capOK (es : Log) (i : ℕ) : Prop :=
+  ∃ len, fsItems[capPos i]? = some (.absorb len) ∧
+    fsCheck (.absorb len) (entAt es (capPos i)).1 = true
+
+/-- **No hidden disagreement so far at level `i`** (§10 changes 14–15): on a close word whose cap
+entry is real, every column outside the joint agreement set keeps a nonzero difference table
+after binding the P1.i challenges answered so far (`mlDoom` over K). With all `ℓᵢ` bound this is
+`¬ Hide_i` (`noHide_full`); before P1.i it holds for every word (`noHide_zero`). -/
+def noHide (κ : Kind) (L es : Log) (i : ℕ) : Prop :=
+  capOK es i → ¬ farL κ L es i → ∀ j ∉ jointAgree (wordK κ L es i) (decodeL κ L es i),
+    mlDoom (lvl κ i).ell (hDiff κ L es i j) (sList es i (hRnd es i))
+
+/-- **The Hide doom** (§10 changes 15): no level has hidden a disagreement so far. Its potential
+`μ_Hide` escapes exactly when some P1.i challenge hides one. -/
+def DH (L es : Log) : Prop := ∀ i < 5, noHide (kindOf es) L es i
+
+theorem hDiff_size (κ : Kind) (L es : Log) (i : ℕ) (j : Fin (2 ^ (lvl κ i).logN)) :
+    (hDiff κ L es i j).size = 2 ^ (lvl κ i).ell := Array.size_ofFn
+
+theorem tbl_hDiff (κ : Kind) (L es : Log) (i : ℕ) (j : Fin (2 ^ (lvl κ i).logN)) :
+    tbl (lvl κ i).ell (hDiff κ L es i j) = fun r => wordK κ L es i r j - decodeL κ L es i r j := by
+  funext r
+  simp [tbl, hDiff, Array.getD_eq_getD_getElem?, Level.rows]
+
+/-- Before P1.i (no round answered), nothing is hidden: a column outside the joint agreement set
+has a nonzero difference table. -/
+theorem noHide_zero {κ : Kind} {L es : Log} {i : ℕ} (h : hRnd es i = 0) : noHide κ L es i := by
+  intro _ _ j hj
+  have hnil : ∀ n (t : Array K), tbl n t ≠ 0 → mlDoom n t [] := fun n t h => by cases n <;> exact h
+  rw [h, sList, List.range_zero, List.map_nil]
+  refine hnil _ _ ?_
+  rw [tbl_hDiff]
+  intro hz
+  refine hj (mem_jointAgree.mpr fun r => ?_)
+  have := congrFun hz r
+  exact sub_eq_zero.mp this
+
+/-- Every chain short of P1.0's first answer satisfies the Hide doom. -/
+theorem DH_short {L es : Log} (h : es.length ≤ p1Start 0 + 1) : DH L es := by
+  intro i hi
+  refine noHide_zero ?_
+  have := p1_phase hi
+  have hv : ∀ j, j < 5 → p1Start j = [301, 344, 371, 395, 417].getD j 0 := by
+    intro j hj; unfold p1Start phStart; rw [fsStarts_eq]; interval_cases j <;> rfl
+  have h0 := hv 0 (by norm_num)
+  have hi' : p1Start 0 ≤ p1Start i := by
+    rw [hv i hi, h0]; interval_cases i <;> decide
+  simp only [hRnd]
+  omega
+
+/-- The rounds answered change only at a P1.i round's squeeze `p1Start i + 2l + 1`, `l < ℓᵢ`. -/
+theorem hRnd_append (es : Log) (x : ByteArray × Digest) {i : ℕ}
+    (h : ∀ l < hEll i, es.length ≠ p1Start i + 2 * l + 1) : hRnd (es ++ [x]) i = hRnd es i := by
+  by_contra hne
+  refine h ((es.length - p1Start i) / 2) ?_ ?_ <;>
+    simp only [hRnd, List.length_append, List.length_singleton] at hne <;> omega
+
+theorem hRnd_ext1 (es : Log) (a : Digest) {i l : ℕ} (hl : l < hEll i)
+    (h : es.length = p1Start i + 2 * l + 1) : hRnd es i = l ∧ hRnd (ext1 es a) i = l + 1 := by
+  simp only [hRnd, ext1, List.length_append, List.length_singleton]
+  omega
+
+theorem sAt_congr {es es' : Log} {i l : ℕ} (h : Agree es es' (p1Start i + 2 * l + 2)) :
+    sAt es i l = sAt es' i l := by
+  simp only [sAt, kAt, ansAt]
+  rw [h _ (by unfold p1Start; omega)]
+
+theorem sList_congr {es es' : Log} {i l : ℕ} (h : Agree es es' (p1Start i + 2 * l)) :
+    sList es i l = sList es' i l := by
+  refine List.map_congr_left fun l' hl' => sAt_congr (h.mono ?_)
+  simp only [List.mem_range] at hl'
+  omega
+
+theorem sList_ext1 (es : Log) (a : Digest) {i l : ℕ} (h : es.length = p1Start i + 2 * l + 1) :
+    sList (ext1 es a) i (l + 1) = sList es i l ++ [chK a] := by
+  rw [sList, List.range_succ, List.map_append, List.map_singleton, ← sList,
+    sList_congr (l := l) (show Agree (ext1 es a) es _ from agree_append es _ (by omega))]
+  have : sAt (ext1 es a) i l = chK a := by
+    simp only [sAt, kAt, ansAt]
+    rw [show phStart (25 + 5 * i) + 2 * l + 1 = es.length by unfold p1Start at h; omega,
+      entAt_ext1]
+  rw [this]
+
+/-- `decodeL` reads the word only. -/
+theorem decodeL_congr {κ : Kind} {L L' es es' : Log} {i : ℕ}
+    (h : wordK κ L es i = wordK κ L' es' i) : decodeL κ L es i = decodeL κ L' es' i := by
+  have key : ∀ (U U' : Fin (lvl κ i).rows → Fin (2 ^ (lvl κ i).logN) → K) (hU : U = U')
+      (p : ∃ V : Fin (lvl κ i).rows → Fin (2 ^ (lvl κ i).logN) → K, (∀ r, V r ∈ codeK κ i) ∧
+        2 ^ (lvl κ i).logN - lvE κ i ≤ (jointAgree U V).card)
+      (p' : ∃ V : Fin (lvl κ i).rows → Fin (2 ^ (lvl κ i).logN) → K, (∀ r, V r ∈ codeK κ i) ∧
+        2 ^ (lvl κ i).logN - lvE κ i ≤ (jointAgree U' V).card),
+      Classical.choose p = Classical.choose p' := by
+    intro U U' hU p p'; subst hU; rfl
+  have hf : farL κ L es i ↔ farL κ L' es' i := by simp only [farL, h]
+  unfold decodeL
+  by_cases hn : farL κ L es i
+  · simp only [hn, hf.mp hn, not_true_eq_false, dite_false]
+  · simp only [hn, (not_congr hf).mp hn, not_false_eq_true, dite_true]
+    exact key _ _ h _ _
+
+/-- Appending where the rounds answered do not change keeps level `i`'s Hide state. -/
+theorem noHide_append {κ : Kind} {L es : Log} {i : ℕ} (hi : i < 5) (x : ByteArray × Digest)
+    (hr : hRnd (es ++ [x]) i = hRnd es i) : noHide κ L (es ++ [x]) i ↔ noHide κ L es i := by
+  by_cases h0 : hRnd es i = 0
+  · exact ⟨fun _ => noHide_zero h0, fun _ => noHide_zero (hr.trans h0)⟩
+  have hlen : p1Start i + 2 * hRnd es i ≤ es.length := by unfold hRnd at h0 ⊢; omega
+  have hcap := capPos_lt hi
+  have hA : Agree (es ++ [x]) es es.length := agree_append es _ le_rfl
+  have hw : wordK κ L (es ++ [x]) i = wordK κ L es i := by
+    funext r p; simp only [wordK, wordOf, colOf_congr κ L i p (hA.mono (by omega))]
+  have hd := decodeL_congr hw
+  have hc : capOK (es ++ [x]) i ↔ capOK es i := by
+    simp only [capOK, hA (capPos i) (by omega)]
+  have hs : sList (es ++ [x]) i (hRnd es i) = sList es i (hRnd es i) := sList_congr (hA.mono hlen)
+  unfold noHide hDiff farL
+  rw [hr, hs, hw, hd, hc]
+
+theorem kindOf_ext1 (es : Log) (a : Digest) (h : 0 < es.length) : kindOf (ext1 es a) = kindOf es :=
+  kindOf_append _ h
+
+/-- **Off P1's round squeezes, appending keeps the Hide doom.** -/
+theorem DH_append_iff {L es : Log} (x : ByteArray × Digest)
+    (h : ∀ i < 5, ∀ l < hEll i, es.length ≠ p1Start i + 2 * l + 1) :
+    DH L (es ++ [x]) ↔ DH L es := by
+  rcases Nat.eq_zero_or_pos es.length with h0 | h0
+  · exact ⟨fun _ => DH_short (by omega),
+      fun _ => DH_short (by rw [List.length_append, List.length_singleton]; omega)⟩
+  rw [DH, DH, kindOf_append x h0]
+  exact forall₂_congr fun i hi => noHide_append hi x (hRnd_append es x (h i hi))
+
+/-! ## Part C: the word read off the charging log (`hstab`) -/
+
+theorem fsCheck_absorb_squeezeQ (len : ℕ) (st : Digest) :
+    fsCheck (.absorb len) (squeezeQ st) = false := by
+  have h8 : (squeezeQ st).data.toList.take 8 = tagSqz := by
+    rw [squeezeQ_data, List.take_append_of_le_length (by decide)]; rfl
+  simp only [fsCheck, h8, Bool.and_eq_false_iff]
+  left; decide
+
+theorem fsCheck_absorb_default (len : ℕ) :
+    fsCheck (.absorb len) (default : ByteArray × Digest).1 = false := by
+  simp only [fsCheck, Bool.and_eq_false_iff]
+  left; decide
+
+/-- **A formal extension's entries past its prefix pass no absorb check** (they are squeezes, or
+past the end). -/
+theorem fsCheck_ext_ge (es₀ : Log) (as : List Digest) {p : ℕ} (hp : es₀.length ≤ p) (len : ℕ) :
+    fsCheck (.absorb len) (entAt (ext es₀ as) p).1 = false := by
+  induction as using List.reverseRecOn with
+  | nil =>
+    rw [ext_nil, entAt, List.getD_eq_default _ _ hp]; exact fsCheck_absorb_default len
+  | append_singleton as a ih =>
+    rw [ext_append, ext1]
+    rcases Nat.lt_or_ge p (ext es₀ as).length with h | h
+    · rw [entAt_append _ _ h]; exact ih
+    · rcases Nat.lt_or_ge (ext es₀ as).length p with h' | h'
+      · rw [entAt, List.getD_eq_default _ _ (by simp; omega)]; exact fsCheck_absorb_default len
+      · have : p = (ext es₀ as).length := by omega
+        subst this
+        simp only [entAt, List.getD_eq_getElem?_getD, List.getElem?_concat_length,
+          Option.getD_some]
+        exact fsCheck_absorb_squeezeQ len _
+
+theorem entAt_ext_lt (es₀ : Log) (as : List Digest) {p : ℕ} (hp : p < es₀.length) :
+    entAt (ext es₀ as) p = entAt es₀ p := by
+  conv_rhs => rw [← take_ext es₀ as]
+  simp only [entAt, List.getD_eq_getElem?_getD, List.getElem?_take, hp, ite_true]
+
+theorem entAt_take {es : Log} {k p : ℕ} (hp : p < k) : entAt (es.take k) p = entAt es p := by
+  simp only [entAt, List.getD_eq_getElem?_getD, List.getElem?_take, hp, ite_true]
+
+/-- **The level words of a chain's formal extensions read the same off the charging log**
+(§10 changes 10; A.10's `hstab` reads): on a non-bad log, when the cap entry of an extension of a
+prefix of chain `n` passes its absorb check, it is a real chain entry (`fsCheck_ext_ge`), an
+entry of `L.take n` or the chain's last entry `L[n]`; its cap digests are carried within the
+windows (`cap_carried`), so every column under them reads the same (`colL_take`,
+`colL_take_own`). -/
+theorem colOf_stab {L : Log} (hb : ¬ Bad L) {n : ℕ} (hci : IsChain L n) (k : ℕ)
+    (as : List Digest) {i : ℕ} (hi : i < 5) (κ : Kind)
+    (hc : capOK (ext ((entriesOf L (pathOf L n)).take k) as) i) (p : Fin (2 ^ (lvl κ i).logN)) :
+    colOf κ (L.take n) (ext ((entriesOf L (pathOf L n)).take k) as) i p =
+      colOf κ L (ext ((entriesOf L (pathOf L n)).take k) as) i p := by
+  obtain ⟨len, hit, hchk⟩ := hc
+  set es₀ := (entriesOf L (pathOf L n)).take k with hes₀
+  have hlt : capPos i < es₀.length := by
+    by_contra h
+    rw [fsCheck_ext_ge _ _ (not_lt.mp h)] at hchk
+    cases hchk
+  have hlk : capPos i < k := by rw [hes₀, List.length_take] at hlt; omega
+  have hlc : capPos i < (entriesOf L (pathOf L n)).length := by
+    rw [hes₀, List.length_take] at hlt; omega
+  have hpl : capPos i < (pathOf L n).length := by rwa [length_entriesOf] at hlc
+  set idx := (pathOf L n)[capPos i] with hidx
+  have hidxn : idx ≤ n := mem_pathOf_le (List.getElem_mem hpl)
+  have hidxL : idx < L.length := lt_of_le_of_lt hidxn hci.1
+  have hent : entAt (ext es₀ as) (capPos i) = L[idx] := by
+    rw [entAt_ext_lt _ _ hlt, hes₀, entAt_take hlk, entAt, List.getD_eq_getElem _ _ hlc,
+      entriesOf_getElem, getElem!_pos L _ hidxL]
+  -- the cap's sizes (checked)
+  have hcc := cap_check
+  simp only [List.all_eq_true, List.mem_range] at hcc
+  have hci' := hcc i hi
+  rw [hit] at hci'
+  simp only [Bool.and_eq_true, List.all_eq_true, decide_eq_true_eq] at hci'
+  have hk32 := hci'.1 κ (by cases κ <;> simp)
+  have hq := hci'.2
+  rw [hent] at hchk
+  have hsz : (L[idx]).1.size = 40 + len := by
+    simp only [fsCheck, Bool.and_eq_true, beq_iff_eq] at hchk; exact hchk.2
+  have hcp : p.val / 2 ^ (lvl κ i).sib < 2 ^ (lvl κ i).cap := by
+    rw [Nat.div_lt_iff_lt_mul (by positivity), ← pow_add, Level.sib,
+      Nat.add_sub_cancel' hk32.2]
+    exact p.isLt
+  have hd : capDig (ext es₀ as) i (p.val / 2 ^ (lvl κ i).sib) ∈ (frEncW i).carried (L[idx]).1 := by
+    rw [capDig, msgAt, hent]
+    refine cap_carried hchk (by omega) ?_ i
+    calc 32 * (p.val / 2 ^ (lvl κ i).sib + 1) ≤ 32 * 2 ^ (lvl κ i).cap := by omega
+      _ ≤ len := hk32.1
+  unfold colOf
+  rcases Nat.lt_or_eq_of_le hidxn with h | h
+  · refine colL_take hb i n ⟨L[idx], ?_, hd⟩ _ _
+    rw [List.mem_iff_getElem]
+    exact ⟨idx, by simp; omega, by simp⟩
+  · have hd' : capDig (ext es₀ as) i (p.val / 2 ^ (lvl κ i).sib) ∈
+        (frEncW i).carried (L[n]'hci.1).1 := by simpa [h] using hd
+    exact colL_take_own hb hci.1 hd' _ _
+
+theorem wordK_stab {L : Log} (hb : ¬ Bad L) {n : ℕ} (hci : IsChain L n) (k : ℕ)
+    (as : List Digest) {i : ℕ} (hi : i < 5) (κ : Kind)
+    (hc : capOK (ext ((entriesOf L (pathOf L n)).take k) as) i) :
+    wordK κ (L.take n) (ext ((entriesOf L (pathOf L n)).take k) as) i =
+      wordK κ L (ext ((entriesOf L (pathOf L n)).take k) as) i := by
+  funext r p
+  simp only [wordK, wordOf, colOf_stab hb hci k as hi κ hc p]
+
+/-- **Level `i`'s Hide state reads the same off the charging log.** -/
+theorem noHide_stab {L : Log} (hb : ¬ Bad L) {n : ℕ} (hci : IsChain L n) (k : ℕ)
+    (as : List Digest) {i : ℕ} (hi : i < 5) (κ : Kind) :
+    noHide κ (L.take n) (ext ((entriesOf L (pathOf L n)).take k) as) i ↔
+      noHide κ L (ext ((entriesOf L (pathOf L n)).take k) as) i := by
+  by_cases hc : capOK (ext ((entriesOf L (pathOf L n)).take k) as) i
+  · have hw := wordK_stab hb hci k as hi κ hc
+    have hd := decodeL_congr hw
+    unfold noHide hDiff farL
+    rw [hw, hd]
+  · exact ⟨fun _ h => absurd h hc, fun _ h => absurd h hc⟩
+
+/-! ## Part D: the Hide potential's step law at `ε_H` -/
+
+/-- Every level's decoding radius fits `2^18` (level 0 of `L32`: `e₀ = 2^18`). -/
+theorem lvE_le (κ : Kind) {i : ℕ} (hi : i < 5) : lvE κ i ≤ 2 ^ 18 := by
+  cases κ <;> interval_cases i <;> decide
+
+theorem not_p1Sq_of_absorb {es : Log} {len : ℕ} (hit : fsItems[es.length]? = some (.absorb len)) :
+    ∀ i < 5, ∀ l < hEll i, es.length ≠ p1Start i + 2 * l + 1 := by
+  intro i hi l hl he
+  have := (p1_phase hi).hsq l hl
+  rw [← he, hit] at this
+  cases this
+
+theorem not_p1Sq_of_rnd {p s0 r : ℕ} (h : fsRnd p = some (s0, r)) :
+    ∀ i < 5, ∀ l < hEll i, p ≠ p1Start i + 2 * l + 1 := by
+  intro i hi l hl he
+  rcases (p1_phase hi).hph p s0 r h with h' | h' <;> omega
+
+open Classical in
+/-- **The Hide row** (A.10 P1.i, §10 changes 14): at P1.i's round-`l` squeeze, the other levels
+keep their state (`p1_disj`), and an answer hides a disagreement only if its challenge `chK a`
+makes one of the `≤ eᵢ` nonzero bound difference tables vanish (`mlDoom_step` over K,
+`card_not_jointAgree`): at most `eᵢ ≤ 2^18` answers (`card_chK_fiber`). -/
+theorem hide_single (L es : Log) {i₀ l : ℕ} (hi₀ : i₀ < 5) (hl : l < hEll i₀)
+    (hp : es.length = p1Start i₀ + 2 * l + 1) :
+    (univ.filter fun a => DH L es ∧ ¬ DH L (ext1 es a)).card ≤ 2 ^ 18 := by
+  have h0 : 0 < es.length := by omega
+  set κ := kindOf es with hκ
+  have hsub : (univ.filter fun a => DH L es ∧ ¬ DH L (ext1 es a)) ⊆
+      univ.filter fun a => noHide κ L es i₀ ∧ ¬ noHide κ L (ext1 es a) i₀ := by
+    intro a ha
+    simp only [mem_filter, mem_univ, true_and] at ha ⊢
+    obtain ⟨hd, hnd⟩ := ha
+    refine ⟨hd i₀ hi₀, fun hn => hnd fun i hi => ?_⟩
+    rw [kindOf_ext1 es a h0]
+    by_cases hii : i = i₀
+    · subst hii; exact hn
+    · have hr : hRnd (ext1 es a) i = hRnd es i := hRnd_append es _ fun l' hl' he => by
+        rcases p1_disj hi hi₀ hii with h | h <;> omega
+      exact (noHide_append hi _ hr).mpr (hd i hi)
+  refine (card_le_card hsub).trans ?_
+  have hcap := capPos_lt hi₀
+  have hA : ∀ a, Agree (ext1 es a) es es.length := fun a => agree_append es _ le_rfl
+  have hw : ∀ a, wordK κ L (ext1 es a) i₀ = wordK κ L es i₀ := fun a => by
+    funext r p; simp only [wordK, wordOf, colOf_congr κ L i₀ p ((hA a).mono (by omega))]
+  have hc : ∀ a, capOK (ext1 es a) i₀ ↔ capOK es i₀ := fun a => by
+    simp only [capOK, hA a (capPos i₀) (by omega)]
+  have hkey : ∀ a, noHide κ L (ext1 es a) i₀ ↔ (capOK es i₀ → ¬ farL κ L es i₀ →
+      ∀ j ∉ jointAgree (wordK κ L es i₀) (decodeL κ L es i₀),
+        mlDoom (lvl κ i₀).ell (hDiff κ L es i₀ j) (sList es i₀ l ++ [chK a])) := fun a => by
+    unfold noHide hDiff farL
+    rw [(hRnd_ext1 es a hl hp).2, sList_ext1 es a hp, hw a, decodeL_congr (hw a), hc a]
+  have hR : hRnd es i₀ = l := (hRnd_ext1 es default hl hp).1
+  by_cases hcf : capOK es i₀ ∧ ¬ farL κ L es i₀
+  swap
+  · rw [Finset.filter_false_of_mem fun a _ ha =>
+      ha.2 ((hkey a).mpr fun h1 h2 => absurd ⟨h1, h2⟩ hcf)]
+    simp
+  obtain ⟨hc1, hf1⟩ := hcf
+  by_cases hn : noHide κ L es i₀
+  swap
+  · rw [Finset.filter_false_of_mem fun a _ ha => hn ha.1]; simp
+  set P := univ.filter fun j => j ∉ jointAgree (wordK κ L es i₀) (decodeL κ L es i₀)
+  set S := univ.filter fun c : K => ∃ j ∈ P,
+    ¬ mlDoom (lvl κ i₀).ell (hDiff κ L es i₀ j) (sList es i₀ l ++ [c])
+  have h1 : (univ.filter fun a => noHide κ L es i₀ ∧ ¬ noHide κ L (ext1 es a) i₀) ⊆
+      univ.filter fun a : Digest => chK a ∈ S := by
+    intro a ha
+    simp only [mem_filter, mem_univ, true_and] at ha ⊢
+    rw [hkey a] at ha
+    by_contra hS
+    refine ha.2 fun _ _ j hj => ?_
+    by_contra hd
+    exact hS (by simp only [S, P, mem_filter, mem_univ, true_and]; exact ⟨j, hj, hd⟩)
+  have h2 : S.card ≤ P.card := by
+    calc S.card ≤ (P.biUnion fun j => univ.filter fun c : K =>
+          ¬ mlDoom (lvl κ i₀).ell (hDiff κ L es i₀ j) (sList es i₀ l ++ [c])).card :=
+          card_le_card fun c hc => by
+            simp only [S, mem_filter, mem_univ, true_and] at hc
+            obtain ⟨j, hj, h⟩ := hc
+            exact mem_biUnion.mpr ⟨j, hj, by simp [h]⟩
+      _ ≤ ∑ j ∈ P, (univ.filter fun c : K =>
+          ¬ mlDoom (lvl κ i₀).ell (hDiff κ L es i₀ j) (sList es i₀ l ++ [c])).card :=
+          card_biUnion_le
+      _ ≤ ∑ _j ∈ P, 1 := sum_le_sum fun j hj => by
+          have hd := hn hc1 hf1 j (by simpa [P] using hj)
+          rw [hR] at hd
+          exact (mlDoom_step (hDiff_size κ L es i₀ j) _ hd).trans (by split <;> omega)
+      _ = P.card := by simp
+  calc _ ≤ (univ.filter fun a : Digest => chK a ∈ S).card := card_le_card h1
+    _ = S.card := card_chK_fiber S
+    _ ≤ P.card := h2
+    _ ≤ lvE κ i₀ := card_not_jointAgree hf1
+    _ ≤ 2 ^ 18 := lvE_le κ hi₀
+
+open Classical in
+/-- **The Hide doom's five obligations** at `δ = 2^-238`, `N = 2^18`: off P1's round squeezes the
+doom does not move (`DH_append_iff`), so absorbs, middle squeezes and the multi-squeeze phases
+cost nothing; P1's squeezes are `hide_single`; the reads are stable (`noHide_stab`). -/
+theorem hide_obl : StepObl DH fsRnd ((2 : ℝ≥0)⁻¹ ^ 238) (2 ^ 18) where
+  habs L es x len _ hit hd := (DH_append_iff x (not_p1Sq_of_absorb hit)).mpr hd
+  hmid L es x s0 r _ hr _ := DH_append_iff x (not_p1Sq_of_rnd hr)
+  hsingle L es _ _ _ := by
+    by_cases h : ∃ i < 5, ∃ l < hEll i, es.length = p1Start i + 2 * l + 1
+    · obtain ⟨i, hi, l, hl, hp⟩ := h
+      exact hide_single L es hi hl hp
+    · push Not at h
+      rw [Finset.filter_false_of_mem fun a _ ha => ha.2 ((DH_append_iff _ h).mpr ha.1)]
+      simp
+  hround L es₀ s0 r _ hl hr := by
+    rw [condCount_eq_zero]
+    · exact zero_le
+    intro as has ⟨_, hd, hnd⟩
+    obtain ⟨-, hpr, hspec⟩ := fsRnd_ok _ _ _ hr
+    have hlen := length_ext as es₀
+    have hne : ext es₀ as ≠ [] := by
+      intro h; rw [h] at hlen; simp at hlen; omega
+    have hdl : (ext es₀ as).dropLast.length = s0 + r := by
+      rw [List.length_dropLast, hlen]; omega
+    have hq := not_p1Sq_of_rnd (hspec (s0 + r) (by omega) le_rfl).2
+    rw [← hdl] at hq
+    have := (DH_append_iff ((ext es₀ as).getLast hne) hq).mpr hd
+    rw [List.dropLast_append_getLast hne] at this
+    exact hnd this
+  hstab L n hb hci k as := forall₂_congr fun i hi => noHide_stab hb hci k as hi _
+
+theorem hide_N_le : ((2 ^ 18 : ℕ) : ℝ≥0) ≤ 2 ^ 256 * (2 : ℝ≥0)⁻¹ ^ 238 := by
+  rw [← NNReal.coe_le_coe]; push_cast; norm_num
+
+/-- The Hide potential's error: its H row and its rounds fit `ε_H`. -/
+theorem err_le_epsH : (badCount : ℝ≥0) / 2 ^ 256 + (2 : ℝ≥0)⁻¹ ^ 238 ≤ epsH := by
+  rw [epsH]; gcongr; exact badCount_frac_le
+
+open Classical in
+/-- **`μ_Hide`'s step law** (§10 changes 15): the contract's `KState.step` law with error
+`ε_H = 2^-142 + 2^-238` for `muG DH (pRoundG DH fsRnd)`. -/
+theorem hide_step (L : Log) (q : ByteArray) (hl : L.length < logCap)
+    (hμ : muG DH (pRoundG DH fsRnd) L < 1) (hq : q ∉ L.map Prod.fst) :
+    ∑ a : Digest, muG DH (pRoundG DH fsRnd) (L ++ [(q, a)]) ≤
+      (muG DH (pRoundG DH fsRnd) L + epsH) * 2 ^ 256 :=
+  (muG_step_of fsRnd_ok fsRnd_zero _ _ hide_N_le hide_obl.habs hide_obl.hmid hide_obl.hsingle
+    hide_obl.hround hide_obl.hstab hl hμ hq).trans (by gcongr; exact err_le_epsH)
+
+/-! ## Part E: at P1.i's end, `noHide` is `¬ Hide_i` -/
+
+/-- **Binding every variable evaluates the MLE** (`mle_fix0`, `tbl_bind0`). -/
+theorem bindL_mle {R : Type*} [CommRing R] :
+    ∀ (cs : List R) (t : Array R), t.size = 2 ^ cs.length →
+      tbl 0 (bindL t cs) 0 = mle (tbl cs.length t) (pt cs)
+  | [], t, _ => (mle_zero _ _).symm
+  | c :: cs, t, ht => by
+    have ht' : t.size = 2 ^ (cs.length + 1) := by simpa using ht
+    have hs : (bind0 t c).size = 2 ^ cs.length := by
+      rw [bind0_size, ht', pow_succ, Nat.mul_div_cancel _ two_pos]
+    show tbl 0 (bindL (bind0 t c) cs) 0 = mle (tbl (cs.length + 1) t) (pt (c :: cs))
+    rw [bindL_mle cs _ hs, pt_cons, mle_fix0, Fin.cons_zero, Fin.tail_cons, tbl_bind0 t c ht']
+
+theorem sList_length (es : Log) (i l : ℕ) : (sList es i l).length = l := by simp [sList]
+
+/-- With all `ℓ` challenges bound, the table's value is the `eq(sᵢ, ·)`-weighted row sum. -/
+theorem bindL_sList {ℓ : ℕ} {t : Array K} (ht : t.size = 2 ^ ℓ) (es : Log) (i : ℕ) :
+    tbl 0 (bindL t (sList es i ℓ)) 0 = ∑ u : Fin (2 ^ ℓ), eqBits (sAt es i) ℓ u * tbl ℓ t u := by
+  rw [bindL_mle _ _ (by rw [ht, sList_length]), ← mleEval_eq,
+    mleEval_eq' t _ (sList_length es i ℓ), mle]
+  refine sum_congr rfl fun u _ => ?_
+  have : (fun v : Fin ℓ => sAt es i (v : ℕ)) = ptOf ℓ (sList es i ℓ) := by
+    funext v
+    simp only [ptOf, sList, List.getD_eq_getElem?_getD, List.getElem?_map,
+      List.getElem?_range v.isLt, Option.map_some, Option.getD_some]
+  rw [eqBits_eq_eq, this]
+
+/-- **`noHide` at P1.i's end is `¬ Hide_i`** (A.10 P1.i): with every round answered, a real cap
+and a close word, no disagreeing column's fold vanishes. -/
+theorem noHide_full {κ : Kind} {L es : Log} {i : ℕ} (hi : i < 5) (hR : hRnd es i = hEll i)
+    (hc : capOK es i) (hfar : ¬ farL κ L es i) (hn : noHide κ L es i) : ¬ hideL κ L es i := by
+  rintro ⟨j, hj, hz⟩
+  have hd := hn hc hfar j hj
+  rw [hR, ← lvl_ell κ hi, mlDoom, List.take_of_length_le (by rw [sList_length]),
+    sList_length, Nat.sub_self] at hd
+  refine hd (funext fun u => ?_)
+  obtain ⟨u, hu⟩ := u
+  obtain rfl : u = 0 := by simp at hu; omega
+  rw [Pi.zero_apply, show (⟨0, hu⟩ : Fin (2 ^ 0)) = 0 from rfl,
+    bindL_sList (hDiff_size κ L es i j), tbl_hDiff]
+  exact hz
+
+/-- On a chain past level `i`'s cap absorb, the cap entry is real. -/
+theorem capOK_of_matches {es : Log} (hm : Matches es) {i : ℕ} (hi : i < 5)
+    (hl : capPos i < es.length) : capOK es i := by
+  have hcc := cap_check
+  simp only [List.all_eq_true, List.mem_range] at hcc
+  have h := hcc i hi
+  have h1 : 1 ≤ capPos i := by
+    unfold capPos phStart; rw [fsStarts_eq]; interval_cases i <;> decide
+  obtain ⟨_, hl', H⟩ := hm
+  obtain ⟨-, hf⟩ := H (capPos i - 1) (by omega)
+  cases hh : fsItems[capPos i]? with
+  | none => rw [hh] at h; simp at h
+  | some it =>
+    cases it with
+    | absorb len =>
+      refine ⟨len, hh, ?_⟩
+      have hlt : capPos i < fsItems.length := by omega
+      have he : fsItems[capPos i] = .absorb len :=
+        Option.some.inj ((List.getElem?_eq_getElem hlt).symm.trans hh)
+      have hidx : capPos i - 1 + 1 = capPos i := by omega
+      simp only [hidx, he] at hf
+      rw [entAt, List.getD_eq_getElem _ _ hl]
+      exact hf
+    | _ => rw [hh] at h; simp at h
+
+/-- **What `final` gets from `μ_Hide`** (§10 changes 14–15, S-H2 Part 11 Q2): on a chain past
+P1.i whose Hide doom holds (no escape of `μ_Hide`), a close level whose next message is the fold
+has `A_c = jointAgree` (`consSet_eq_jointAgree`). -/
+theorem consSet_eq_of_DH {L es : Log} {i : ℕ} (hi : i < 5) (hm : Matches es)
+    (hlen : p1Start i + 2 * hEll i ≤ es.length) (hD : DH L es)
+    (hfar : ¬ farL (kindOf es) L es i) (hC : truthC (kindOf es) L es i) :
+    consSet (kindOf es) L es i =
+      jointAgree (wordK (kindOf es) L es i) (decodeL (kindOf es) L es i) :=
+  consSet_eq_jointAgree hi hfar hC (noHide_full hi (by unfold hRnd; omega)
+    (capOK_of_matches hm hi (by have := capPos_lt hi; omega)) hfar (hD i hi))
+
+/-! ## Part F: the entry's potential `μ = μ_doom + μ_Hide` and its step law at `εR` -/
+
+/-- **The entry's potential** (§10 changes 15): the doom potential of `DC Rej (Dp Dk)` plus the
+Hide potential. -/
+noncomputable def muT (Rej : Log → Log → Prop) (Dk : ℕ → Log → Log → Prop) (L : Log) : ℝ≥0 :=
+  muG (DC Rej (Dp Dk)) (pRoundG (DC Rej (Dp Dk)) fsRnd) L + muG DH (pRoundG DH fsRnd) L
+
+theorem muT_empty (Rej : Log → Log → Prop) (Dk : ℕ → Log → Log → Prop) : muT Rej Dk [] = 0 := by
+  simp only [muT, muG_empty, add_zero]
+
+/-- **The errors add up** (kernel-checked): the doom potential's `badCount/2^256 + deltaR` and the
+Hide potential's `badCount/2^256 + 2^-238` sum to at most `εR = 15/2^124`. -/
+theorem err_total : ((badCount : ℝ≥0) / 2 ^ 256 + deltaR) +
+    ((badCount : ℝ≥0) / 2 ^ 256 + (2 : ℝ≥0)⁻¹ ^ 238) ≤ epsR := by
+  rw [← epsD_add_epsH]; exact add_le_add err_le_epsD err_le_epsH
+
+open Classical in
+/-- **`KState.step` at `εR` for the entry's potential** (BLUEPRINT §5.1, §10 changes 15):
+`kstate_step` (`εD`) and `hide_step` (`ε_H`) through `step_add`, with `εD + ε_H = εR`. -/
+theorem muT_step {Rej : Log → Log → Prop} {Dk : ℕ → Log → Log → Prop} {N : ℕ}
+    (hN : (N : ℝ≥0) ≤ 2 ^ 256 * deltaR) (ob : PhaseObl Rej Dk N) (L : Log) (q : ByteArray)
+    (hl : L.length < logCap) (hμ : muT Rej Dk L < 1) (hq : q ∉ L.map Prod.fst) :
+    ∑ a : Digest, muT Rej Dk (L ++ [(q, a)]) ≤ (muT Rej Dk L + epsR) * 2 ^ 256 := by
+  have h := step_add (fun L q hl hμ hq => kstate_step hN ob L q hl hμ hq)
+    (fun L q hl hμ hq => hide_step L q hl hμ hq) L q hl hμ hq
+  rwa [epsD_add_epsH] at h
+
+/-- Below `1`, neither potential has escaped and the log is not bad. -/
+theorem muT_lt_one {Rej : Log → Log → Prop} {Dk : ℕ → Log → Log → Prop} {L : Log}
+    (h : muT Rej Dk L < 1) :
+    ¬ Bad L ∧ ¬ EscG (DC Rej (Dp Dk)) L ∧ ¬ EscG DH L := by
+  have h1 := muG_lt_one _ _ (lt_of_le_of_lt le_self_add h)
+  have h2 := muG_lt_one _ _ (lt_of_le_of_lt le_add_self h)
+  exact ⟨h1.1, h1.2, h2.2⟩
+
+/-! ## Controls -/
+
+/-- Control (positive): before P1.0's first answer every chain satisfies the Hide doom. -/
+theorem DH_seed (L : Log) (e : ByteArray × Digest) : DH L [e] :=
+  DH_short (by
+    have := (p1_phase (i := 0) (by norm_num)).hb1; simp only [List.length_singleton]; omega)
+
+/-- Control (negative): a hidden disagreement at P1.i's end refutes `noHide`, so the Hide doom is
+not vacuous. -/
+theorem not_noHide_of_hideL {κ : Kind} {L es : Log} {i : ℕ} (hi : i < 5)
+    (hR : hRnd es i = hEll i) (hc : capOK es i) (hfar : ¬ farL κ L es i)
+    (hH : hideL κ L es i) : ¬ noHide κ L es i :=
+  fun hn => noHide_full hi hR hc hfar hn hH
+
+/-- Control (toy, `mlDoom` over ℚ): the nonzero table `(1, 0)` is doomed before its challenge,
+and the challenge `1` hides it (`1 + 1·(0 − 1) = 0`). -/
+theorem mlDoom_toy : mlDoom 1 (#[1, 0] : Array ℚ) [] ∧ ¬ mlDoom 1 (#[1, 0] : Array ℚ) [1] := by
+  refine ⟨fun h => ?_, fun h => h (funext fun u => ?_)⟩
+  · have := congrFun h 0
+    simp [tbl, bindL] at this
+  · obtain ⟨u, hu⟩ := u
+    obtain rfl : u = 0 := by simp at hu; omega
+    simp [tbl, bindL, bind0]
+
+/-- Control (negative): a formal extension past the chain has no real cap entry. -/
+theorem not_capOK_ext (es₀ : Log) (as : List Digest) {i : ℕ} (h : es₀.length ≤ capPos i) :
+    ¬ capOK (ext es₀ as) i := by
+  rintro ⟨len, -, hc⟩
+  rw [fsCheck_ext_ge es₀ as h] at hc
+  cases hc
+
+end FR.Snd

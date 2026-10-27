@@ -7,10 +7,12 @@ import FRSumcheck
 /-!
 # The step law at `εR = 15/2^124`, and the degree-3 sumcheck rounds (BLUEPRINT §5.1–§5.2)
 
-* **Part A: the error.** `epsR = 15/2^124` (the contract's per-query error of this entry),
-  `deltaR = εR − 2^-142` (the rows' budget, after the H row's `2^-142`). `StepObl D rnd δ N`
-  packages `hloc_of`'s five per-position obligations; **`step_epsR`** turns them, at `δ = deltaR`
-  and `N ≤ 2^256·deltaR`, into the contract's `KState.step` law with error `εR`.
+* **Part A: the error.** `epsR = 15/2^124` (the contract's per-query error of this entry) is
+  split (§10 changes 15) into the Hide potential's `epsH = 2^-142 + 2^-238` and the doom
+  potential's `epsD = εR − ε_H` (`epsD_add_epsH`); `deltaR = εD − 2^-142` is the rows' budget,
+  after the H row's `2^-142`. `StepObl D rnd δ N` packages `hloc_of`'s five per-position
+  obligations; **`step_epsD`** turns them, at `δ = deltaR` and `N ≤ 2^256·deltaR`, into the
+  contract's `KState.step` law with error `εD`.
 * **Part B: one phase end to end, the degree-3 F rounds** (Z3; also the shape of Lr2 and E2). The
   phase starts at Fiat–Shamir position `b` and has `nMax` items `(absorb, squeeze)`; the first
   `nr κ` rounds are real for kind `κ` (the rest are dummies, which keep the claim). Round `l`'s
@@ -20,7 +22,7 @@ import FRSumcheck
   the log and the chain's entries before the phase. **`D3`**: past the phase's first absorb, the
   running claim after the answered rounds is not the true sum of the bound tables.
   **`rounds3_obl`** proves the five obligations with `N = 3·2^128` (`round_escape_le`,
-  `card_chF_fiber`), and **`rounds3_step`** the contract's step law with error `εR`.
+  `card_chF_fiber`), and **`rounds3_step`** the contract's step law with error `εD`.
 * **Part C: Z3** (`b = 15`, 26 items, `m − 6` real rounds): `z3_step`.
 
 What the truth must satisfy is explicit: it reads the entries before `b` only (`hTc`), its tables
@@ -37,23 +39,56 @@ open scoped NNReal
 /-- The entry's per-query knowledge error: `εR = 15/2^124 ≈ 2^-120.093`. -/
 noncomputable def epsR : ℝ≥0 := 15 / 2 ^ 124
 
-/-- The rows' budget: `εR − 2^-142` (the H row takes `2^-142`, `badCount_frac_le`). -/
-noncomputable def deltaR : ℝ≥0 := epsR - (2 : ℝ≥0)⁻¹ ^ 142
+/-- **The Hide potential's per-query error** (§10 changes 15): its H row `2^-142` and its rounds'
+`2^18/2^256 = 2^-238` (at most `eᵢ ≤ 2^18` hiding challenges per P1.i round). -/
+noncomputable def epsH : ℝ≥0 := (2 : ℝ≥0)⁻¹ ^ 142 + (2 : ℝ≥0)⁻¹ ^ 238
+
+/-- **The doom potential's per-query error**: `εD = εR − ε_H`, so that `εD + ε_H = εR`. -/
+noncomputable def epsD : ℝ≥0 := epsR - epsH
+
+/-- The rows' budget: `εD − 2^-142` (the H row takes `2^-142`, `badCount_frac_le`). -/
+noncomputable def deltaR : ℝ≥0 := epsD - (2 : ℝ≥0)⁻¹ ^ 142
 
 theorem h_le_epsR : (2 : ℝ≥0)⁻¹ ^ 142 ≤ epsR := by
   rw [epsR, inv_pow, ← one_div, div_le_div_iff₀ (by positivity) (by positivity)]
   norm_num
 
-theorem err_le_epsR : (badCount : ℝ≥0) / 2 ^ 256 + deltaR ≤ epsR :=
+theorem epsH_le_epsR : epsH ≤ epsR := by
+  rw [← NNReal.coe_le_coe, epsH, epsR]
+  push_cast
+  norm_num
+
+theorem epsD_coe : (epsD : ℝ) = 15 / 2 ^ 124 - 1 / 2 ^ 142 - 1 / 2 ^ 238 := by
+  rw [epsD, NNReal.coe_sub epsH_le_epsR, epsH, epsR]
+  push_cast
+  norm_num
+
+theorem h_le_epsD : (2 : ℝ≥0)⁻¹ ^ 142 ≤ epsD := by
+  rw [← NNReal.coe_le_coe, epsD_coe]
+  push_cast
+  norm_num
+
+/-- **The two potentials' errors add up to `εR`** (kernel-checked: `ε_H ≤ εR`). -/
+theorem epsD_add_epsH : epsD + epsH = epsR := tsub_add_cancel_of_le epsH_le_epsR
+
+theorem deltaR_coe : (deltaR : ℝ) = 15 / 2 ^ 124 - 2 / 2 ^ 142 - 1 / 2 ^ 238 := by
+  rw [deltaR, NNReal.coe_sub h_le_epsD, epsD_coe]
+  push_cast
+  ring
+
+/-- **The doom potential's error**: the H row and the rows' budget fit `εD`. -/
+theorem err_le_epsD : (badCount : ℝ≥0) / 2 ^ 256 + deltaR ≤ epsD :=
   calc (badCount : ℝ≥0) / 2 ^ 256 + deltaR ≤ (2 : ℝ≥0)⁻¹ ^ 142 + deltaR := by
         gcongr; exact badCount_frac_le
-    _ = epsR := add_tsub_cancel_of_le h_le_epsR
+    _ = epsD := add_tsub_cancel_of_le h_le_epsD
 
-/-- A single-squeeze row of `N` answers fits the budget when `N/2^256 + 2^-142 ≤ εR`. -/
-theorem N_le_deltaR {N : ℕ} (h : (N : ℝ≥0) / 2 ^ 256 + (2 : ℝ≥0)⁻¹ ^ 142 ≤ epsR) :
+/-- A single-squeeze row of `N` answers fits the budget when `N/2^256 ≤ deltaR` (in ℝ). -/
+theorem N_le_deltaR {N : ℕ} (h : (N : ℝ) / 2 ^ 256 ≤ 15 / 2 ^ 124 - 2 / 2 ^ 142 - 1 / 2 ^ 238) :
     (N : ℝ≥0) ≤ 2 ^ 256 * deltaR := by
-  have h1 : (N : ℝ≥0) / 2 ^ 256 ≤ deltaR := le_tsub_of_add_le_right h
-  rwa [div_le_iff₀ (by positivity), mul_comm] at h1
+  rw [← NNReal.coe_le_coe, NNReal.coe_mul, deltaR_coe]
+  push_cast
+  rw [div_le_iff₀ (by positivity)] at h
+  linarith
 
 open Classical in
 /-- **The five per-position obligations of `hloc_of`** for a doom predicate `D`, the phase map
@@ -73,15 +108,15 @@ structure StepObl (D : Log → Log → Prop) (rnd : ℕ → Option (ℕ × ℕ))
       D L (ext ((entriesOf L (pathOf L i)).take k) as))
 
 open Classical in
-/-- **`step_epsR`**: the contract's `KState.step` law with error `εR = 15/2^124` for the potential
+/-- **`step_epsD`**: the contract's `KState.step` law with error `εD = εR − ε_H` for the potential
 `muG D (pRoundG D fsRnd)`, from the obligations at `δ = deltaR` and `N ≤ 2^256·deltaR`. -/
-theorem step_epsR {D : Log → Log → Prop} {N : ℕ} (hN : (N : ℝ≥0) ≤ 2 ^ 256 * deltaR)
+theorem step_epsD {D : Log → Log → Prop} {N : ℕ} (hN : (N : ℝ≥0) ≤ 2 ^ 256 * deltaR)
     (ob : StepObl D fsRnd deltaR N) (L : Log) (q : ByteArray) (hl : L.length < logCap)
     (hμ : muG D (pRoundG D fsRnd) L < 1) (hq : q ∉ L.map Prod.fst) :
     ∑ a : Digest, muG D (pRoundG D fsRnd) (L ++ [(q, a)]) ≤
-      (muG D (pRoundG D fsRnd) L + epsR) * 2 ^ 256 :=
+      (muG D (pRoundG D fsRnd) L + epsD) * 2 ^ 256 :=
   (muG_step_of fsRnd_ok fsRnd_zero deltaR N hN ob.habs ob.hmid ob.hsingle ob.hround ob.hstab hl
-    hμ hq).trans (by gcongr; exact err_le_epsR)
+    hμ hq).trans (by gcongr; exact err_le_epsD)
 
 /-- A multi-squeeze phase on which `D` cannot escape is charged nothing. -/
 theorem condCount_eq_zero {D : Log → Log → Prop} {L es₀ : Log} {r : ℕ}
@@ -369,22 +404,19 @@ theorem rounds3_obl {nMax : ℕ} (P : RoundsPhase b nMax nr) (hTc : TruthLocal b
     obtain ⟨hT, hc⟩ := hst L i hb hci k as
     exact D3_log_congr hT hc
 
-theorem three_le_deltaR : ((3 * 2 ^ 128 : ℕ) : ℝ≥0) ≤ 2 ^ 256 * deltaR := by
-  refine N_le_deltaR ?_
-  rw [epsR, ← NNReal.coe_le_coe]
-  push_cast
-  norm_num
+theorem three_le_deltaR : ((3 * 2 ^ 128 : ℕ) : ℝ≥0) ≤ 2 ^ 256 * deltaR :=
+  N_le_deltaR (by push_cast; norm_num)
 
 open Classical in
-/-- **The contract's step law for the round doom**, with error `εR = 15/2^124`. -/
+/-- **The contract's step law for the round doom**, with error `εD = εR − ε_H`. -/
 theorem rounds3_step {nMax : ℕ} (P : RoundsPhase b nMax nr) (hTc : TruthLocal b c0 T)
     (he : e.deg = 3) (hsz : ∀ L es, ∀ t ∈ T L es, t.size = 2 ^ nr (kindOf es))
     (hst : TruthStable c0 T) (L : Log) (q : ByteArray) (hl : L.length < logCap)
     (hμ : muG (D3 b c0 nr e T) (pRoundG (D3 b c0 nr e T) fsRnd) L < 1)
     (hq : q ∉ L.map Prod.fst) :
     ∑ a : Digest, muG (D3 b c0 nr e T) (pRoundG (D3 b c0 nr e T) fsRnd) (L ++ [(q, a)]) ≤
-      (muG (D3 b c0 nr e T) (pRoundG (D3 b c0 nr e T) fsRnd) L + epsR) * 2 ^ 256 :=
-  step_epsR three_le_deltaR (rounds3_obl P hTc he hsz hst) L q hl hμ hq
+      (muG (D3 b c0 nr e T) (pRoundG (D3 b c0 nr e T) fsRnd) L + epsD) * 2 ^ 256 :=
+  step_epsD three_le_deltaR (rounds3_obl P hTc he hsz hst) L q hl hμ hq
 
 end Rounds3
 
@@ -416,7 +448,7 @@ theorem z3_phase : RoundsPhase 15 26 (mm 6) where
 theorem z3_start : phStart 5 = 15 := by rw [phStart, fsStarts_eq]; rfl
 
 open Classical in
-/-- **Z3's step law** (§5.2 row Z3, error `εR`), for any truth of degree 3 that reads the entries
+/-- **Z3's step law** (§5.2 row Z3, error `εD`), for any truth of degree 3 that reads the entries
 before Z3 only and is stable under the charging log. -/
 theorem z3_step {e : Expr} {T : Log → Log → Array (Array F)} {c0 : Log → Log → F}
     (hTc : TruthLocal 15 c0 T) (he : e.deg = 3)
@@ -425,7 +457,7 @@ theorem z3_step {e : Expr} {T : Log → Log → Array (Array F)} {c0 : Log → L
     (hμ : muG (D3 15 c0 (mm 6) e T) (pRoundG (D3 15 c0 (mm 6) e T) fsRnd) L < 1)
     (hq : q ∉ L.map Prod.fst) :
     ∑ a : Digest, muG (D3 15 c0 (mm 6) e T) (pRoundG (D3 15 c0 (mm 6) e T) fsRnd) (L ++ [(q, a)]) ≤
-      (muG (D3 15 c0 (mm 6) e T) (pRoundG (D3 15 c0 (mm 6) e T) fsRnd) L + epsR) * 2 ^ 256 :=
+      (muG (D3 15 c0 (mm 6) e T) (pRoundG (D3 15 c0 (mm 6) e T) fsRnd) L + epsD) * 2 ^ 256 :=
   rounds3_step z3_phase hTc he hsz hst L q hl hμ hq
 
 /-! ## Part D: the other degree-3 F round phases, Lr2 (`b = 178`) and E2 (`b = 256`) -/
