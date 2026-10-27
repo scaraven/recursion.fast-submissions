@@ -104,3 +104,9 @@ Running notes for a successor. Build tree `logs/fr-build-s0/` (`gen.sh` copied f
 - Rev 3.7: Lr-end/E-end absorbs (new fields 8 and 11; the rest renumbered), finLr from the Lr-end
   field, exec_phaseZ's simp needs `¬(fZend = fLrEnd ∨ fZend = fEEnd)`. Dump/sizes/serial re-run,
   all agree (8,854 items, piSize 757,712).
+- 2026-10-27: last sorrys closed. Kernel "deep recursion" in exec_posOps = `rw` with `_` args solved
+  by unification against a big goal; a closed lemma with explicit args fixes it. `omega` ignores
+  `<` at `Reg` (abbrev): `dsimp only [Reg] at *`. A silent (no heartbeat error) multi-minute simp
+  in flag_finSh = indices `r.size + 7 + k` from a `let b := b₀ + 7`: add `Nat.add_assoc`.
+- Rev 3.9 ops landed (eqZ λ ρ₁, rsWeight/phiRS, evalMK, shiftTarget bnd); FRVIRCompile pattern
+  touched (S-E2's, flagged). Dump: 149,974 ops with S-F's finals; items unchanged.

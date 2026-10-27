@@ -371,3 +371,72 @@ VIRFinals → Verifier → …`.
   ≈ 1,250 of 1,500. FR-R10 per shape holds so far.
 - **Kernel:** every proved shape lemma checks in under 0.5 s, and FRVIRSpec builds in ≈ 25 s under
   the 16G cap.
+
+### The last `sorry`s and revision 3.9 (2026-10-27)
+
+**`FRVIRSpec` has no `sorry`** (1,283 code lines of the 1,500 budget; `logs/S-0/loc-3.9.txt`).
+`logs/S-0/axioms.log`: every listed theorem, `exec_skeleton`, `exec_genPhase` and `genPhase_ctx`
+included, depends on `propext`, `Classical.choice` and `Quot.sound` only.
+- `exec_posOps`: the kernel's "deep recursion" came from `rw [exec_merkleOps' … _ …]` with metavariables
+  solved against the goal. The fix is a closed lemma `exec_posMid` (the Merkle ops after the
+  4-register head, all arguments explicit) plus `posHead_size`/`posHead_rd0`/`posHead_rd2`.
+- The queries case: `exec_posAll`, induction on the positions with the register file's size as an
+  invariant, and `posT_length`.
+- `genPhase_ctx`: length lemmas (`seedT_length`, `roundsT_length`, `posAllT_length`,
+  `uniVals_length`, `coordVals_length`, `initVals_length`), `CtxOk.mono`, and one finisher per shape.
+- **Hypothesis change (statement):** the seed alternative of `exec_genPhase`/`genPhase_ctx` is now
+  `p.shape = .seed ∧ CtxOk c #[default]`, and `StartOk` changed with it. Without it, `genPhase_ctx`
+  is false for a seed with an arbitrary context (the seed keeps `uni`, `pt`, `posAns` and `foldR`).
+  `ctx₀` satisfies it (`exec_skeleton` is unchanged).
+- Trap: `omega` does not see `<` at type `Reg` (an `abbrev` for ℕ) as a ℕ fact. The fix is
+  `dsimp only [Reg] at *` first.
+
+**Revision 3.9 and stage-review changes 11 (the op set, `FRVIR`):**
+- `eqZ λ ρ₁ → AF 128` (`OpImpl.eqZ : F → F → Array F`).
+- `rsWeight r″ pts κ ρ → K` replaces `mbp`. `pts : KC (List Reg)`: the claims' outer points, a
+  leaf passing 3. `OpImpl.rsWeight : Array F → List (Array K) → F → Array K → K`.
+- `phiRS r″ a → F`.
+- `evalMK τ σ → K × K × K` (three K registers, `Op.outs = 3`).
+- `shiftTarget τ θ bnd` (`bnd : AF 4`).
+- The `OpImpl` fields `selWeight`, `targetMLE` and `mbp` are removed. `Meets` covers the new fields:
+  `rsWeight`/`phiRS` on `r″.size = 7`, `shiftTarget` on `bnd.size = 4`.
+
+**Revision 3.9 in S-0's finals (`FRVIRFinals`, now importing `FRSkip`):**
+- `finZ` uses `eqPt` on `(ρ₁…ρ₇, Z1's free coordinates)` against Z3's challenges. The pinned
+  coordinates are 7 `const` registers from `FRSkip.pinnedRho` (`pinOps`), as A.9 lists (`eqPt`, 2
+  `mulF`, `assertEq`). Exports are unchanged in meaning (`â`, `b̂`, Z2's `P^z*`).
+- `finSh` builds `bnd` first (`bndOps`, 7 registers), then calls `shiftTarget τ θ bnd`.
+  - A leaf's `bnd` is `hdr` bytes 16, 32 (`s`) and `stmt` bytes 1, 17 (`h`), from A.3's layout.
+  - A node's `bnd` is `h0` twice. `h0Bytes` is checked equal to `FRBlockLayout.h0`'s digest by
+    `logs/S-0/check/H0Check.lean` (`decide +kernel`, log `h0check.log`).
+- `finSh` and `finLr` read `zhat[2]` and `zhat[3]`. `flag_finZ` and `flag_finSh` are re-proved
+  (`relSh` now takes `inp`).
+
+**Outside S-0's modules:** `FRVIRCompile` (S-E2) needs a one-line change in its op match, or it
+does not build. I made it:
+- `.mbp` → `.rsWeight`/`.phiRS`;
+- `.eqZ` → `imports [.af 128]`;
+- `.evalMK` → `imports [.k, .k, .k]`, with `nOut 3`.
+
+S-E2 should confirm the import kinds. Every module of `FR` builds under the 16G cap, including
+`FRVIRCompile`, `FRVIRFinalsSF`, `FRVerifier`, `FRNodeCircuit`, `FRVIRFinalsSG` and
+`FRSoundness*` (2,260 jobs). `FR.lean` itself fails on a name clash that is not S-0's:
+`FRVIRFinalsSG` defines `FR.accV`, which `FRVerifier` already defines.
+
+**Dump (`logs/S-0/dump/`, previous dump in `prev/`):**
+- The dump tool imports `FRVIRFinalsSF` and dumps S-0's and S-F's finals. Only `finP 0…4` and
+  `finPf` are marked PENDING; S-G's private copy dumps those.
+- Array constants are printed with their values (`AF:[…]`, `AK:[…]`).
+- `gen.sh` takes every module as a root.
+- Result: 149,974 ops, 53,164 registers, asks = items = 8,874, `piSize` 755,680. `items.json` is
+  byte-identical to the previous dump.
+
+**Checks:** `source-rule`: 63 files, 0 findings. `serial.py`: 7,974 lines on the serial path
+(`logs/S-0/serial.txt`). Its table does not yet list `FRVIRFinals → FRSkip`.
+
+**Open:**
+- The leaf's `bnd` byte offsets (`hdr` 16/32, `stmt` 1/17) and the node's `h0`-twice order need
+  P2's confirmation, as do the 7 `pinOps` constants' position in `finZ`'s point (variables `0…6`).
+- S-F's `finRS` still has to switch to the new `eqZ λ ρ₁` (bit 6 = `ρ₁`).
+- The concrete `OpImpl` needs computable twins of `rsWeight`, `phiRS`, `evalMK`, the three-argument
+  `shiftTarget` and the AF-valued `eqZ`.
