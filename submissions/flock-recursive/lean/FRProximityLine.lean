@@ -292,9 +292,9 @@ theorem mca_ud_line [Finite K] {x : Fin n → K} (hx : Function.Injective x) {k 
 /-! ## The protocol's instance: words over `K`, the code `C_K` on `D` -/
 
 /-- **`mca_ud_line` for the Ligerito levels** (BLUEPRINT §5.3): over `K = GF(2^256)`, the code
-`C_K = Enc_k(K^k)` on the domain `D[0…n)` (`n ≤ 2^64`, `k ≤ 2^64`), `2e + k ≤ n`: every line's
+`C_K = Enc_k(K^k)` on the domain `D[0…n)` (`n, k ≤ nMax = 2^20`), `2e + k ≤ n`: every line's
 bad set has at most `C_mca(n, k, e) = k e + n` elements. -/
-theorem mca_ud_line_K {n k e : ℕ} (hn : n ≤ 2 ^ 64) (hk : k ≤ 2 ^ 64) (h : 2 * e + k ≤ n)
+theorem mca_ud_line_K {n k e : ℕ} (hn : n ≤ nMax) (hk : k ≤ nMax) (h : 2 * e + k ≤ n)
     (u₀ u₁ : Fin n → FR.K) :
     Nat.card (lineBad (encCode (M := FR.K) D n k) e u₀ u₁) ≤ cMca n k e := by
   rw [encCode_D hk]

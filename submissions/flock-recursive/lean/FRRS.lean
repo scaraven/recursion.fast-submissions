@@ -542,20 +542,32 @@ theorem D_injOn : Set.InjOn D (Set.Iio (2 ^ 64)) := by
   simp only [D, F.ofB64] at this
   rwa [UInt64.toNat_ofNat_of_lt' ha, UInt64.toNat_ofNat_of_lt' hb] at this
 
+/-- `log₂` of the largest level size (BLUEPRINT §2.2, revision 3.3: every level has
+`n ≤ 2^20`); the one bound of the `D`-instances here and in `FRRSEval`. -/
+abbrev logNMax : ℕ := 20
+
+/-- The largest level size `2^20`. -/
+abbrev nMax : ℕ := 2 ^ logNMax
+
+/-- `D` is injective on `[0, nMax)`. -/
+theorem D_injOn_nMax : Set.InjOn D (Set.Iio nMax) := fun _ ha _ hb h =>
+  D_injOn (Set.mem_Iio.2 (lt_trans (Set.mem_Iio.1 ha) (by decide)))
+    (Set.mem_Iio.2 (lt_trans (Set.mem_Iio.1 hb) (by decide))) h
+
 /-- `D` as `n` points of `M ⊇ F` (`M = F` or `K`). -/
 def Dpts {M : Type*} [Field M] [Algebra F M] (n : ℕ) : Fin n → M := fun j => algebraMap F M (D j)
 
-theorem Dpts_injective {M : Type*} [Field M] [Algebra F M] {n : ℕ} (hn : n ≤ 2 ^ 64) :
+theorem Dpts_injective {M : Type*} [Field M] [Algebra F M] {n : ℕ} (hn : n ≤ nMax) :
     Function.Injective (Dpts (M := M) n) := by
   intro a b h
-  exact Fin.ext (D_injOn (Set.mem_Iio.2 (a.2.trans_le hn)) (Set.mem_Iio.2 (b.2.trans_le hn))
+  exact Fin.ext (D_injOn_nMax (Set.mem_Iio.2 (a.2.trans_le hn)) (Set.mem_Iio.2 (b.2.trans_le hn))
     ((algebraMap F M).injective h))
 
 /-- **`C_K = RS[K, D, k]`** (and `C_F` with `M = F`): the novel-basis code over the protocol's
 domain is the Reed–Solomon code. -/
-theorem encCode_D {M : Type*} [Field M] [Algebra F M] {n k : ℕ} (hk : k ≤ 2 ^ 64) :
+theorem encCode_D {M : Type*} [Field M] [Algebra F M] {n k : ℕ} (hk : k ≤ nMax) :
     encCode (M := M) D n k = rsCode (Dpts n) k :=
-  encCode_eq_rsCode D_injOn hk
+  encCode_eq_rsCode D_injOn_nMax hk
 
 end Domain
 

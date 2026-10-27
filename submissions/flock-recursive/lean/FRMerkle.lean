@@ -15,8 +15,11 @@ transcript. The query byte layouts (tags `"FRMNOD" ‖ i ‖ 0`, `"FRMCOL" ‖ i
 needs, so it does not depend on S-0.
 
 * The verifier's path (`climb`, `openPath`): the column query, then `h` node queries, the child
-  order chosen by bit `t` of the position at height `t` (`selectHalf`, A.5); the result is
-  compared with the cap entry `cap[j / 2^h]`.
+  order chosen by bit `t` of the position at height `t`; the result is compared with the cap
+  entry `cap[j / 2^h]`. That `gen`'s `askCol`/`askNode`/`selectHalf` ops (A.5) run this program
+  is `FRVIR`'s obligation (`runSeq_eq_runIR`), not proved here. `pre L d` searches the whole log:
+  a first preimage of another level or kind parses to `none` (an erasure), never to a wrong
+  column, since S-0's `parseNode i`/`parseCol i` check the level byte.
 * The log side: `pre L d` (the first entry answering `d`), `colL L d h j` (the column of
   position `j` under `d` at height `h`, read top-down from first preimages), `Collision`
   (two different queries with one answer) and `Hit` (an answer carried in an earlier input).

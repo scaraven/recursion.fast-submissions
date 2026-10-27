@@ -176,7 +176,7 @@ end InterpF
 
 /-- **`interp_F` on the protocol's code**: a word of `C_K` (on `D`, `n, k ≤ 2^64`) that is
 `F`-valued on `k` positions is `Enc_K` of an `F`-message, i.e. lies in `C_F`. -/
-theorem interp_F_D {n k : ℕ} (hn : n ≤ 2 ^ 64) (hk : k ≤ 2 ^ 64) {v : Fin n → K}
+theorem interp_F_D {n k : ℕ} (hn : n ≤ nMax) (hk : k ≤ nMax) {v : Fin n → K}
     (hv : v ∈ encCode (M := K) D n k) (f : Fin n → F) (A : Finset (Fin n)) (hA : k ≤ A.card)
     (hvA : ∀ j ∈ A, v j = algebraMap F K (f j)) :
     ∃ c : Fin k → F, v = enc (M := K) D n k (fun x => algebraMap F K (c x)) := by
@@ -225,9 +225,9 @@ def pcsLevels : List (ℕ × ℕ × ℕ) :=
     fun p => (p.1, p.2, (p.1 - p.2) / 2)
 
 /-- **Positive control of `mca_ud_line`'s use**: at every level the hypotheses hold
-(`2e + k ≤ n ≤ 2^64`), `C_mca ≤ 2^60` (the stage requirement) and the P1 row with `2^6` lines,
+(`2e + k ≤ n ≤ nMax`), `C_mca ≤ 2^60` (the stage requirement) and the P1 row with `2^6` lines,
 `(2^6 C_mca + 2)/2^256`, is at most `2^-190` (BLUEPRINT §5.2). -/
-theorem pcsLevels_ok : ∀ p ∈ pcsLevels, 2 * p.2.2 + p.2.1 ≤ p.1 ∧ p.1 ≤ 2 ^ 64 ∧
+theorem pcsLevels_ok : ∀ p ∈ pcsLevels, 2 * p.2.2 + p.2.1 ≤ p.1 ∧ p.1 ≤ nMax ∧
     cMca p.1 p.2.1 p.2.2 ≤ 2 ^ 60 ∧ 2 ^ 6 * cMca p.1 p.2.1 p.2.2 + 2 ≤ 2 ^ 66 := by
   decide
 
@@ -253,7 +253,9 @@ theorem lineBad_codewords {K : Type*} [Field K] [DecidableEq K] {n : ℕ} {x : F
   obtain rfl := close_unique hx h hw huz hcl hfull
   exact hnot ⟨u₀, h₀, u₁, h₁, by ext j; simp⟩
 
-instance fact_prime_five : Fact (Nat.Prime 5) := ⟨Nat.prime_five⟩
+theorem fact_prime_five : Fact (Nat.Prime 5) := ⟨Nat.prime_five⟩
+
+attribute [local instance] fact_prime_five
 
 /-- **Negative control of `lineBad`**: it is not always empty. Over `GF(5)`, points `0, 1, 2`,
 `k = 1`, `e = 1` (`2e + k ≤ n`): the line from `(0, 0, 1)` to `(0, 1, 0)` is bad at `z = 0`
@@ -271,6 +273,29 @@ theorem lineBad_nonempty :
   rw [← h0.2, ← h1.2] at this
   exact absurd this (by decide)
 
+/-- **Negative control of `fold_preserves`** (S-D-m2): at the bad `z = 0` of
+`lineBad_nonempty` the fold is jointly close with `A = {0, 1}`, the pair rows are not. -/
+theorem fold_preserves_fails_at_bad :
+    JointClose (rsCode ![(0 : ZMod 5), 1, 2] 1) 1
+      (foldRows (0 : ZMod 5) (fun _ : Unit => ![(0 : ZMod 5), 0, 1]) (fun _ => ![0, 1, 0]))
+        {0, 1} ∧
+    ¬ JointClose (rsCode ![(0 : ZMod 5), 1, 2] 1) 1
+      (pairRows (fun _ : Unit => ![(0 : ZMod 5), 0, 1]) (fun _ => ![0, 1, 0])) {0, 1} := by
+  constructor
+  · refine ⟨by decide, fun _ => 0, fun _ => zero_mem _, ?_⟩
+    ext j; simp only [mem_jointAgree, foldRows]; fin_cases j <;> decide
+  · rintro ⟨-, V, hV, hA⟩
+    have h0 : (0 : Fin 3) ∈ jointAgree (pairRows (fun _ : Unit => ![(0 : ZMod 5), 0, 1])
+      (fun _ => ![0, 1, 0])) V := by rw [hA]; decide
+    have h1 : (1 : Fin 3) ∈ jointAgree (pairRows (fun _ : Unit => ![(0 : ZMod 5), 0, 1])
+      (fun _ => ![0, 1, 0])) V := by rw [hA]; decide
+    rw [mem_jointAgree] at h0 h1
+    have := rsCode_one_const (hV (true, ())) 0 1
+    have e0 := h0 (true, ()); have e1 := h1 (true, ())
+    simp only [pairRows_true] at e0 e1
+    rw [← e0, ← e1] at this
+    exact absurd this (by decide)
+
 /-- **Negative control of `close_unique`** (BLUEPRINT §5.6, "`2e = d`"): without `2e + k ≤ n`
 two codewords can be equally close. Over `GF(5)`, points `0, 1`, `k = 1`, `e = 1` (`2e = d = 2`):
 the word `(0, 1)` agrees with the codewords `0` and `1` on one position each. -/
@@ -286,10 +311,16 @@ theorem positions_card_toy :
     (univ.filter fun f : Fin 2 → Fin 4 => ∀ i, f i ∈ ({0, 1} : Finset (Fin 4))).card = 4 := by
   decide
 
-/-- **Negative control of `D`**: `D` is injective only below `2^64` (`D (2^64) = D 0`). -/
+/-- `D (2^64) = D 0` (the `UInt64` wrap). -/
 theorem D_two_pow_64 : D (2 ^ 64) = D 0 := rfl
 
-/-- **Positive control of the novel basis on `D`**: `Ŵ_v(D[2^v]) = 1` and `X_x` has degree `x`
+/-- **Negative control of `D_injOn`**: its bound is sharp, `D` is not injective on
+`[0, 2^64 + 1)`. -/
+theorem D_not_injOn_succ : ¬ Set.InjOn D (Set.Iio (2 ^ 64 + 1)) := fun h =>
+  absurd (h (Set.mem_Iio.2 (by norm_num)) (Set.mem_Iio.2 (by norm_num)) D_two_pow_64)
+    (by norm_num)
+
+/-- The `FRRS` lemmas instantiated on `D` (a remark, not a control): `Ŵ_v(D[2^v]) = 1` and `X_x` has degree `x`
 for `x < 2^64` (the hypotheses of the `FRRS` lemmas are discharged by `D_injOn`). -/
 theorem novel_D_ok {v x : ℕ} (hv : v < 64) (hx : x < 2 ^ 64) :
     (normW D v).eval (D (2 ^ v)) = 1 ∧ novelX D x ≠ 0 ∧ (novelX D x).natDegree = x :=
@@ -305,16 +336,16 @@ theorem novel_D_triangular {v j : ℕ} (hv : v < 64) (hj : j < 2 ^ v) :
   simp [bitProd, bitSel, normW_eval_self D_injOn hv]
 
 /-- **Control of `Enc`** (BLUEPRINT §5.6, "distinct messages differ"): on `D`, distinct messages
-give codewords that differ in at least `n − k + 1` positions (`k ≤ n ≤ 2^64`); in particular a
+give codewords that differ in at least `n − k + 1` positions (`k ≤ n ≤ nMax`); in particular a
 codeword has one message (the round trip of `coeffs_of_values`). -/
 theorem enc_D_dist {M : Type*} [Field M] [Algebra F M] [DecidableEq M] {n k : ℕ}
-    (hn : n ≤ 2 ^ 64) (hkn : k ≤ n) {c c' : Fin k → M} (h : c ≠ c') :
+    (hn : n ≤ nMax) (hkn : k ≤ n) {c c' : Fin k → M} (h : c ≠ c') :
     n + 1 ≤ k + hammingDist (enc (M := M) D n k c) (enc D n k c') := by
-  have hk : k ≤ 2 ^ 64 := hkn.trans hn
+  have hk : k ≤ nMax := hkn.trans hn
   have hmem : ∀ c : Fin k → M, enc (M := M) D n k c ∈ rsCode (Dpts n) k := fun c => by
     rw [← encCode_D hk]; exact LinearMap.mem_range.2 ⟨c, rfl⟩
   exact rs_minDist (Dpts_injective hn) (hmem c) (hmem c')
-    (fun e => h (enc_injective D_injOn hk hn hkn e))
+    (fun e => h (enc_injective D_injOn_nMax hk hn hkn e))
 
 end Controls
 

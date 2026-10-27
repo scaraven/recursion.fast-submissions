@@ -6,7 +6,7 @@ S-H1 and S-0; the combined `FR` builds (2,237 jobs).
 ## Running
 
 - S-E1 fix pass: the per-kind targets of A.6, stmt block lemmas, a dump function.
-- S-0 review (engineering reviewer).
+- Blueprint revision 3.5: A.9 phase-final checks (S-0-M1), unaligned wiring via the shift argument (S-0-M2). Then the S-0 fix pass: typed Finals in FRVIRFinals, M3 (context lemmas, exec_skeleton), m2, m4–m8.
 - S-D fix pass + S-D2 (`coeffs_of_values`, `coeffs_spec`, `interpF`, `encF`).
 
 ## Closed

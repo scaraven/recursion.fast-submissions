@@ -10,7 +10,7 @@ import FRBlake2sWitness
 
 One block of `2 ^ 14` bits is one BLAKE2s compression, laid out as A.6:
 
-| bits | slot | content |
+| bits | element (128 bits) | content |
 |---|---|---|
 | `0 … 255` | 0–1 | `h_in` (8 words, little-endian) |
 | `256 … 511` | 2–3 | `h_out` (output rows `(out form, one)`) |

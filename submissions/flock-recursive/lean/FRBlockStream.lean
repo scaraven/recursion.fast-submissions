@@ -27,8 +27,8 @@ Results:
   the shift argument's content) and zero past `L` bytes (`Padded`: point claims on `f`), carry at
   the last block's `h_out` the contract's `blake2sDigest` of the bytes in their message slots;
   `stream_traceDigest`: when those bytes are `0x54 ‖ traceBytes tr`, it is `traceDigest tr`;
-* `item_aligned`: with a 7-byte tag on the first query and 8-byte tags on the others (A.2), every
-  item after the first, and every payload, starts at an offset `≡ 0 mod 16` of `0x54 ‖ traceBytes`;
+* `item_aligned`: with the first query `≡ 7 mod 16` and the others `≡ 8 mod 16`, every item after
+  the first starts at an offset `≡ 0 mod 16` of `0x54 ‖ traceBytes` (item starts only, S-E1-m1);
 * controls: `stream_complete` (the honest blocks of any stream meet every hypothesis of
   `stream_sound`), `zero_control` (the all-zero block fails the target).
 -/
@@ -285,10 +285,11 @@ theorem traceBytes_length_cons (e : ByteArray × Digest) (tr : Trace) :
   simp only [List.length_append, enc64, List.length_ofFn, Array.length_toList, ByteArray.size_data,
     Vector.length_toList]
 
-/-- **Alignment.** If the first query has size `≡ 7 mod 16` (the 7-byte seed tag and a payload of
-`16`-byte elements) and every other query `≡ 8 mod 16`, then in the stream `0x54 ‖ traceBytes tr`
-the first item's payload starts at offset `16`, and every later item, hence its payload (at `+16`)
-and its answer, starts at an offset `≡ 0 mod 16`. -/
+/-- **Alignment of item starts.** If the first query has size `≡ 7 mod 16` and every other query
+`≡ 8 mod 16`, then in the stream `0x54 ‖ traceBytes tr` every item after the first starts at an
+offset `≡ 0 mod 16`. (The first conjunct is only the arithmetic `1 + 8 + 7 = 16`. Payload and
+answer offsets follow from A.2's tag lengths, 7 then 8 bytes, which this lemma does not state;
+those size facts are `FRFormat`/`FRVIRSpec` obligations, S-E1-m1.) -/
 theorem item_aligned (e₀ : ByteArray × Digest) (rest : Trace) (h₀ : e₀.1.size % 16 = 7)
     (hr : ∀ e ∈ rest, e.1.size % 16 = 8) :
     1 + 8 + 7 = 16 ∧ ∀ k ≤ rest.length,
