@@ -1,5 +1,0 @@
-# The toolchain `prover.s` is generated with (README.md): `build-asm.sh` and `cargo test` refuse to
-# run on another one rather than emit a different `.s` (review F2-m2).
-[toolchain]
-channel = "1.99.0"
-profile = "minimal"
