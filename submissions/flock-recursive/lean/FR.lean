@@ -44,6 +44,7 @@ import FRVIREval
 import FRNodeCircuit
 import FRVIRFinalsSF
 import FRVerifier
+import FRVerifierImpl
 import FRLog
 import FRSoundnessDefs
 import FRSoundnessStepA
