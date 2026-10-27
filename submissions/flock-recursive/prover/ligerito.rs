@@ -6,21 +6,27 @@
 //! degree-2 rounds with K challenges `sᵢ` (3 K coefficients each). The folded K-vector `f'(c) =
 //! ĝᵢ(sᵢ, c)` becomes `gᵢ₊₁` by the coordinate split (A.2: F index `2c + b` = coordinate `b`).
 //! Then the next commitment (cap absorbed) or, after the last level, the final K-message in the
-//! clear; `tᵢ` positions; columns and Merkle paths; for `i <` last, `κ_c ∈ F^9` and the batched
-//! claim `eq(κ_c, 0)·claim + Σ_q eq(κ_c, q+1) y_q` with `y_q = Σ_r eq(sᵢ, r) Cᵢ[r, p_q]`, whose
-//! weight is `Wᵢ₊₁(b, c) = U(b)·[eq(κ_c, 0) Ŵᵢ(sᵢ, c) + Σ_q eq(κ_c, q+1) X_c(D[p_q])]`, `U(0) = 1,
-//! U(1) = u`. At the last level the verifier checks `y_q = Enc(final)[p_q]` directly, then
-//! `log k₅` final rounds reduce `Σ_c Ŵ(s, c) final(c)` to one point (**P1 choice**: the verifier
-//! then evaluates every weight once, by the recursion `weight_eval`).
+//! clear; `tᵢ` positions (A.4 P2: the `m* = 32` count of squeezes, every index opened, duplicates
+//! included); columns and Merkle paths (Q: the column query, then `sibᵢ*` node queries, a smaller
+//! `m`'s missing depths as dummies `0^64` with zero sibling slots); P3, one F challenge `κ_c`; for
+//! `i <` last the batched claim `claim + Σ_q κ_c^{q+1} y_q` with `y_q = Σ_r eq(sᵢ, r) Cᵢ[r, p_q]`
+//! (rev. 3.7 P3 is one squeeze: the tensor weights of `finP` are taken as the powers of `κ_c`), whose
+//! weight is `Wᵢ₊₁(b, c) = U(b)·[Ŵᵢ(sᵢ, c) + Σ_q κ_c^{q+1} X_c(D[p_q])]`, `U(0) = 1, U(1) = u`. At
+//! the last level the verifier checks `y_q = Enc(final)[p_q]` directly, then Pf's 7 final rounds
+//! reduce `Σ_c Ŵ(s, c) final(c)` over the final message padded to `2^7` (weight and message zero
+//! beyond the kind's `2^(m−25)`) to one point, where it evaluates every weight once
+//! (`weight_eval`). Messages go to A.3's fields: P1 rounds, caps, the final message, columns,
+//! siblings, Pf rounds.
 
 use crate::blake2s::Digest;
 use crate::field::{KAcc, B64, F, K};
-use crate::merkle::{col_query, node_query, Tree};
-use crate::mle::{eq_at_int, eq_table, eq_table_k};
+use crate::transcript::k_bytes;
+use crate::merkle::Tree;
+use crate::mle::{eq_table_k, mle_k};
 use crate::ntt::{what_at, xhat, xrow, Ntt};
-use crate::params::{ladder, Level, KAPPA_C, LEVELS, LOG_INV_RATE};
+use crate::params::{self as pp, ladder, Level, CAP_LOG, LEVELS, LOG_INV_RATE};
 use crate::par;
-use crate::sumcheck::eval2_k;
+use crate::sumcheck::{coeffs_k, eval2_k};
 use crate::transcript::{Reader, Writer};
 
 /// The commitment of level 0 (made before the PIOP).
@@ -157,7 +163,7 @@ fn rounds(w: Tab, g: &[F], nrounds: usize, wr: &mut Writer, claim: &mut K) -> (V
         }
     };
     debug_assert_eq!(msg[0] + msg[1], *claim);
-    wr.send_k(&msg);
+    wr.send_k(pp::F_P1, &coeffs_k(msg));
     let s = wr.fs.chal_k();
     *claim = eval2_k(msg, s);
     let mut ch = vec![s];
@@ -166,7 +172,7 @@ fn rounds(w: Tab, g: &[F], nrounds: usize, wr: &mut Writer, claim: &mut K) -> (V
         let msg = nmsg;
         debug_assert_eq!(msg, round_kk(&wk, &gk));
         debug_assert_eq!(msg[0] + msg[1], *claim);
-        wr.send_k(&msg);
+        wr.send_k(pp::F_P1, &coeffs_k(msg));
         let s = wr.fs.chal_k();
         *claim = eval2_k(msg, s);
         ch.push(s);
@@ -240,13 +246,40 @@ fn column_fold(col: &[F], e: &[K]) -> K {
     acc.reduce()
 }
 
-fn put_digests(wr: &mut Writer, ds: &[Digest]) {
-    for d in ds {
-        wr.put(d);
+/// The cap of level `i` in its A.3 slot (`2^capᵢ*` digests; a test shape's smaller cap zero-padded).
+pub fn cap_slot(i: usize, cap: &[Digest]) -> Vec<u8> {
+    let mut b = vec![0u8; 32 << CAP_LOG[i]];
+    for (j, d) in cap.iter().enumerate() {
+        b[32 * j..32 * j + 32].copy_from_slice(d);
     }
+    b
 }
 
-/// The prover: `Σ_y W(y) f(y) = claim` with `f` committed in `c0`.
+/// The cap depth of level `i` for `m` committed bits.
+pub fn cap_log(m: usize, i: usize) -> usize {
+    ladder(m)[i].cap_log
+}
+
+/// Read (and absorb) level `i`'s cap slot from the caps field: its first `2^cl` digests; the rest
+/// must be zero.
+pub fn read_cap_slot(rd: &mut Reader, i: usize, cl: usize) -> Vec<Digest> {
+    let b = rd.recv(pp::F_CAPS, 32 << CAP_LOG[i]);
+    rd.check(b[32 << cl..].iter().all(|&x| x == 0));
+    b[..32 << cl].chunks_exact(32).map(|d| d.try_into().unwrap()).collect()
+}
+
+/// `κ_c^{q+1}`, `q < t`.
+fn kappa_powers(kc: F, t: usize) -> Vec<F> {
+    let mut v = Vec::with_capacity(t);
+    let mut x = kc;
+    for _ in 0..t {
+        v.push(x);
+        x *= kc;
+    }
+    v
+}
+
+/// The prover: `Σ_y W(y) f(y) = claim` with `f` committed in `c0` (cap₀ already absorbed).
 pub fn prove(m: usize, f: &[F], w0: Vec<F>, claim0: F, c0: Commit0, wr: &mut Writer) {
     let lad = ladder(m);
     let mut claim = K::f(claim0);
@@ -265,9 +298,11 @@ pub fn prove(m: usize, f: &[F], w0: Vec<F>, claim0: F, c0: Commit0, wr: &mut Wri
     for i in 0..LEVELS {
         let lv = lad[i];
         let rows = 1usize << lv.rows_log;
+        wr.fs.phase = "P1";
         let (wk, fk, s) = rounds(wtab, &g, lv.rows_log, wr, &mut claim);
         lap("rounds", i);
         let last = i + 1 == LEVELS;
+        wr.fs.phase = "C";
         let (ncw, ntree) = if !last {
             let nl = lad[i + 1];
             let gn = split(&fk);
@@ -275,41 +310,49 @@ pub fn prove(m: usize, f: &[F], w0: Vec<F>, claim0: F, c0: Commit0, wr: &mut Wri
             let mut ncw = Vec::new();
             ntt.encode(&gn, 1 << nl.rows_log, LOG_INV_RATE[i + 1], &mut ncw);
             let t = Tree::commit(wr.fs.o, (i + 1) as u8, &ncw, 1 << nl.rows_log, nl.cap_log);
-            let mut capb = Vec::with_capacity(32 * t.cap().len());
-            for d in t.cap() {
-                capb.extend_from_slice(d);
-            }
-            wr.send(&capb);
+            wr.send(pp::F_CAPS, &cap_slot(i + 1, t.cap()));
             lap("encode+merkle", i);
             (ncw, Some((t, gn)))
         } else {
-            wr.send_k(&fk);
+            let mut fin = fk.clone();
+            fin.resize(pp::FINAL_ELEMS, K::ZERO);
+            wr.send(pp::F_FINAL, &k_bytes(&fin));
             (Vec::new(), None)
         };
-        let ps = wr.fs.positions(lv.queries, lv.code_log);
+        wr.fs.phase = "P2";
+        let ps = wr.fs.positions(pp::STAR_SQ[i], lv.queries, lv.code_log);
         let es = eq_table_k(&s);
+        let sib = lv.code_log - lv.cap_log;
+        if sib < pp::STAR_SIB[i] {
+            // the level's dummy node query `0^64` (asked by the verifier at the missing depths),
+            // asked once here so that the trace replay finds it in the prover's table
+            let mut q = Vec::with_capacity(72);
+            crate::merkle::node_query(i as u8, &[0u8; 32], &[0u8; 32], &mut q);
+            wr.fs.o.ask(&q);
+        }
         let mut ys = Vec::with_capacity(ps.len());
         for &p in &ps {
             let col = &cw[p as usize * rows..(p as usize + 1) * rows];
             for x in col {
-                wr.put(&x.to_bytes());
+                wr.put(pp::F_COLS, &x.to_bytes());
             }
-            put_digests(wr, &tree.path(p as usize));
+            for d in tree.path(p as usize) {
+                wr.put(pp::F_SIBS, &d);
+            }
+            wr.put(pp::F_SIBS, &vec![0u8; 32 * (pp::STAR_SIB[i] - sib)]);
             ys.push(column_fold(col, &es));
         }
         lap("open", i);
+        wr.fs.phase = "P3";
+        let kc = wr.fs.chal_f();
         match ntree {
             Some((t, gn)) => {
-                let kap = wr.fs.chal_fs(KAPPA_C);
-                let ek = eq_table(&kap);
-                let kq: Vec<F> = (0..ps.len()).map(|q| ek[q + 1]).collect();
-                claim = claim.mulf(ek[0]);
+                let kq = kappa_powers(kc, ps.len());
                 for q in 0..ps.len() {
                     claim += ys[q].mulf(kq[q]);
                 }
                 let cons = consistency_weights(&ps, &kq, lv.msg_log);
-                let e0 = ek[0];
-                let base: Vec<K> = par::collect_vec(wk.len(), 1 << 12, |c| wk[c].mulf(e0) + K::f(cons[c]));
+                let base: Vec<K> = par::collect_vec(wk.len(), 1 << 12, |c| wk[c] + K::f(cons[c]));
                 let mut wn = Vec::with_capacity(2 * base.len());
                 for b in &base {
                     wn.push(*b);
@@ -322,13 +365,16 @@ pub fn prove(m: usize, f: &[F], w0: Vec<F>, claim0: F, c0: Commit0, wr: &mut Wri
                 tree = t;
             }
             None => {
-                // final rounds over the clear message
+                // Pf: the final rounds over the message and weight padded to 2^7
+                wr.fs.phase = "Pf";
                 let mut wk = wk;
                 let mut fk = fk;
+                wk.resize(pp::FINAL_ELEMS, K::ZERO);
+                fk.resize(pp::FINAL_ELEMS, K::ZERO);
                 while fk.len() > 1 {
                     let msg = round_kk(&wk, &fk);
                     debug_assert_eq!(msg[0] + msg[1], claim);
-                    wr.send_k(&msg);
+                    wr.send_k(pp::F_PF, &coeffs_k(msg));
                     let s = wr.fs.chal_k();
                     claim = eval2_k(msg, s);
                     wk = fold_k(&wk, s);
@@ -346,7 +392,7 @@ pub fn prove(m: usize, f: &[F], w0: Vec<F>, claim0: F, c0: Commit0, wr: &mut Wri
 /// What the verifier keeps per level for the final weight evaluation.
 struct LevelRec {
     s: Vec<K>,
-    kappa: Vec<F>,
+    kappa: F,
     ps: Vec<u64>,
 }
 
@@ -358,112 +404,109 @@ fn weight_eval(i: usize, pt: &[K], recs: &[LevelRec], w0: &dyn Fn(&[K]) -> K) ->
     let r = &recs[i - 1];
     let mut inner: Vec<K> = r.s.clone();
     inner.extend_from_slice(&pt[1..]);
-    let ek = |j: u64| eq_at_int(&r.kappa, j);
-    let mut v = weight_eval(i - 1, &inner, recs, w0).mulf(ek(0));
+    let mut v = weight_eval(i - 1, &inner, recs, w0);
+    let kq = kappa_powers(r.kappa, r.ps.len());
     for (q, &p) in r.ps.iter().enumerate() {
-        v += xhat(p, &pt[1..]).mulf(ek(q as u64 + 1));
+        v += xhat(p, &pt[1..]).mulf(kq[q]);
     }
     u_hat(pt[0]) * v
 }
 
-/// The verifier of `Σ_y W(y) f(y) = claim0` against the level-0 cap; `w0(pt)` evaluates `Ŵ`.
-/// Returns `None` on any failure.
-pub fn verify(m: usize, cap0: &[Digest], claim0: F, rd: &mut Reader, w0: &dyn Fn(&[K]) -> K) -> Option<()> {
+/// One K round (`roundOpsK`): `c₁ + c₂ = claim`, next claim `c₀ + r(c₁ + r c₂)`.
+fn v_round_k(rd: &mut Reader, f: usize, claim: &mut K) -> K {
+    let g = rd.recv_k(f, 3);
+    let x = rd.fs.chal_k();
+    rd.check(g[1] + g[2] == *claim);
+    *claim = g[0] + x * (g[1] + x * g[2]);
+    x
+}
+
+/// The verifier of `Σ_y W(y) f(y) = claim0` against the level-0 cap; `w0(pt)` evaluates `Ŵ`. Every
+/// check goes to `rd.ok`; every item is asked.
+pub fn verify(m: usize, cap0: &[Digest], claim0: F, rd: &mut Reader, w0: &dyn Fn(&[K]) -> K) {
     let lad = ladder(m);
     let mut claim = K::f(claim0);
     let mut cap: Vec<Digest> = cap0.to_vec();
     let mut recs: Vec<LevelRec> = Vec::new();
+    let zero = [0u8; 32];
     for i in 0..LEVELS {
         let lv: Level = lad[i];
         let rows = 1usize << lv.rows_log;
+        rd.fs.phase = "P1";
         let mut s = Vec::with_capacity(lv.rows_log);
         for _ in 0..lv.rows_log {
-            let g = rd.recv_k(3)?;
-            if g[0] + g[1] != claim {
-                return None;
-            }
-            let x = rd.fs.chal_k();
-            claim = eval2_k([g[0], g[1], g[2]], x);
-            s.push(x);
+            s.push(v_round_k(rd, pp::F_P1, &mut claim));
         }
         let last = i + 1 == LEVELS;
+        rd.fs.phase = "C";
         let mut fin: Vec<K> = Vec::new();
         let mut next_cap = Vec::new();
         if !last {
-            let nl = lad[i + 1];
-            let b = rd.recv(32 << nl.cap_log)?;
-            next_cap = b.chunks_exact(32).map(|d| d.try_into().unwrap()).collect();
+            next_cap = read_cap_slot(rd, i + 1, lad[i + 1].cap_log);
         } else {
-            fin = rd.recv_k(1 << lv.msg_log)?;
+            fin = rd.recv_k(pp::F_FINAL, pp::FINAL_ELEMS);
+            let real = 1usize << lv.msg_log;
+            let pad_zero = fin[real..].iter().all(|x| *x == K::ZERO);
+            rd.check(pad_zero);
         }
-        let ps = rd.fs.positions(lv.queries, lv.code_log);
+        rd.fs.phase = "P2";
+        let ps = rd.fs.positions(pp::STAR_SQ[i], lv.queries, lv.code_log);
+        rd.fs.phase = "Q";
         let es = eq_table_k(&s);
         let mut ys = Vec::with_capacity(ps.len());
-        let mut q = Vec::new();
-        let levelb = i as u8;
-        let depth = lv.code_log;
+        let sib = lv.code_log - lv.cap_log;
         for &p in &ps {
-            let cb = rd.take(16 * rows)?;
+            let cb = rd.take(pp::F_COLS, 16 * rows);
             let col: Vec<F> = cb.chunks_exact(16).map(F::from_bytes).collect();
-            q.clear();
-            col_query(levelb, &col, &mut q);
-            let mut cur = rd.fs.o.ask(&q);
-            for d in 0..depth - lv.cap_log {
-                let sib: Digest = rd.take(32)?.try_into().unwrap();
-                q.clear();
-                if (p >> d) & 1 == 0 {
-                    node_query(levelb, &cur, &sib, &mut q);
+            let mut cur = rd.fs.ask_col(i, &col);
+            for d in 0..pp::STAR_SIB[i] {
+                let sd: Digest = rd.take(pp::F_SIBS, 32).try_into().unwrap();
+                if d < sib {
+                    cur = if (p >> d) & 1 == 0 { rd.fs.ask_node(i, d, &cur, &sd) } else { rd.fs.ask_node(i, d, &sd, &cur) };
                 } else {
-                    node_query(levelb, &sib, &cur, &mut q);
+                    rd.check(sd == zero);
+                    rd.fs.ask_node(i, d, &zero, &zero);
                 }
-                cur = rd.fs.o.ask(&q);
             }
-            if cur != cap[(p >> (depth - lv.cap_log)) as usize] {
-                return None;
-            }
+            let ok = cur == cap[(p >> sib) as usize];
+            rd.check(ok);
             ys.push(column_fold(&col, &es));
         }
+        rd.fs.phase = "P3";
+        let kc = rd.fs.chal_f();
         if !last {
-            let kap = rd.fs.chal_fs(KAPPA_C);
-            let ek = eq_table(&kap);
-            claim = claim.mulf(ek[0]);
-            for qn in 0..ps.len() {
-                claim += ys[qn].mulf(ek[qn + 1]);
+            let kq = kappa_powers(kc, ps.len());
+            for q in 0..ps.len() {
+                claim += ys[q].mulf(kq[q]);
             }
-            recs.push(LevelRec { s, kappa: kap, ps });
+            recs.push(LevelRec { s, kappa: kc, ps });
             cap = next_cap;
         } else {
-            // direct consistency against the clear message
+            // finP 4: the direct consistency against the final message (its real part)
+            let real = &fin[..1usize << lv.msg_log];
             let mut row = Vec::new();
             for (qn, &p) in ps.iter().enumerate() {
                 xrow(p, lv.msg_log, &mut row);
                 let mut e = K::ZERO;
-                for c in 0..fin.len() {
-                    e += fin[c].mulb(row[c]);
+                for c in 0..real.len() {
+                    e += real[c].mulb(row[c]);
                 }
-                if e != ys[qn] {
-                    return None;
-                }
+                rd.check(e == ys[qn]);
             }
+            // Pf and finPf
+            rd.fs.phase = "Pf";
             let mut sf = Vec::new();
-            for _ in 0..lv.msg_log {
-                let g = rd.recv_k(3)?;
-                if g[0] + g[1] != claim {
-                    return None;
-                }
-                let x = rd.fs.chal_k();
-                claim = eval2_k([g[0], g[1], g[2]], x);
-                sf.push(x);
+            for _ in 0..pp::PF_ROUNDS {
+                sf.push(v_round_k(rd, pp::F_PF, &mut claim));
             }
-            let fv = crate::mle::mle_k(&fin, &sf);
+            let fv = mle_k(&fin, &sf);
             let mut pt = s.clone();
-            pt.extend_from_slice(&sf);
-            let wv = weight_eval(i, &pt, &recs, w0);
-            if claim != wv * fv {
-                return None;
+            pt.extend_from_slice(&sf[..lv.msg_log]);
+            let mut wv = weight_eval(i, &pt, &recs, w0);
+            for x in &sf[lv.msg_log..] {
+                wv = wv * (K::ONE + *x);
             }
-            return Some(());
+            rd.check(claim == wv * fv);
         }
     }
-    None
 }

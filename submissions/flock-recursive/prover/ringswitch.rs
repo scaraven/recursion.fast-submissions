@@ -122,15 +122,12 @@ pub fn phi_apply(t: &[F], x: F) -> F {
     acc
 }
 
-/// The prover's weight table `W(y) = Σ_j κ^j Φ(eq(hi_j, y))`.
-pub fn weight_table(his: &[&[F]], rpp: &[F], kappa: F) -> Vec<F> {
+/// The prover's weight table `W(y) = Σ_j c_j Φ(eq(hi_j, y))` for the claims `(hi_j, c_j)` (rev. 3.7:
+/// `c_j = κ^j`; claims at the same point are merged by adding their coefficients).
+pub fn weight_table(claims: &[(&[F], F)], rpp: &[F]) -> Vec<F> {
+    let his: Vec<&[F]> = claims.iter().map(|c| c.0).collect();
     let mu = his[0].len();
-    let mut tabs = Vec::new();
-    let mut c = F::ONE;
-    for _ in his {
-        tabs.push(phi_tables(rpp, c));
-        c *= kappa;
-    }
+    let tabs: Vec<Vec<F>> = claims.iter().map(|c| phi_tables(rpp, c.1)).collect();
     let nlo = mu.min(10);
     let splits: Vec<(Vec<F>, Vec<F>)> = his.iter().map(|h| (eq_table(&h[..nlo]), eq_table(&h[nlo..]))).collect();
     let nhi = 1usize << (mu - nlo);
@@ -225,7 +222,7 @@ mod tests {
         let mut rf = || F::new(rnd(&mut s), rnd(&mut s));
         let hi: Vec<F> = (0..mu).map(|i| if i == 2 { F::ZERO } else { rf() }).collect();
         let rpp: Vec<F> = (0..7).map(|_| rf()).collect();
-        let w = weight_table(&[&hi], &rpp, F::ONE);
+        let w = weight_table(&[(&hi[..], F::ONE)], &rpp);
         let pt: Vec<K> = (0..mu).map(|_| K { a: rf(), b: rf() }).collect();
         let eq = eq_table_k(&pt);
         let mut want = K::ZERO;

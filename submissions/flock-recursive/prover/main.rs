@@ -16,6 +16,8 @@ mod blake2s;
 mod circuit;
 mod field;
 mod format;
+mod items;
+mod kat;
 mod leaf;
 mod ligerito;
 mod lincheck;
@@ -83,7 +85,7 @@ pub fn acc(circ: &circuit::Circuit, vk: &Digest, c: &Digest, file: &[u8]) -> Res
         return Err("SigOk fails".into());
     }
     let seq = Seq::new(&p.tr);
-    if leaf::verify(&seq, circ, vk, c, &p.pi).is_none() {
+    if !leaf::verify(&seq, circ, vk, c, &p.pi) {
         return Err("V rejects".into());
     }
     if !seq.consumed() {
@@ -97,34 +99,44 @@ fn test_leaf(m: usize, reps: usize) {
     let o = oracle::Local::keyed(&[0x5Au8; 32]);
     let vk = [7u8; 32];
     let s: Digest = std::array::from_fn(|i| i as u8 ^ 0x33);
+    let want = kat::find_items_json().and_then(|p| kat::load_items(&p));
     for rep in 0..reps {
         let t = Instant::now();
-        let (pi, tm) = leaf::prove(&o, &circ, &vk, &s, m);
+        let ((pi, tm), plog) = leaf::prove_logged(&o, &circ, &vk, &s, m, true);
         let pt = t.elapsed().as_secs_f64();
         let n = params::leaf_n(m);
-        let h = blake2s::chain_end(&s, n);
-        let c = leaf_stmt(&h, n);
+        let c = leaf::leaf_c(&s, m);
         let t = Instant::now();
-        let ok = leaf::verify(&o, &circ, &vk, &c, &pi).is_some();
+        let ok = leaf::verify(&o, &circ, &vk, &c, &pi);
         let vt = t.elapsed().as_secs_f64();
+        let (_, vlog) = leaf::verify_logged(&o, &circ, &vk, &c, &pi, true);
+        let kat = match &want {
+            None => "skip(no items.json)".to_string(),
+            Some(w) => match (kat::compare(vlog.as_deref().unwrap(), w), kat::compare_fs(plog.as_deref().unwrap(), w)) {
+                (Ok(()), Ok(())) => format!("pass({} items)", w.len()),
+                (Err(e), _) | (_, Err(e)) => format!("FAIL({e})"),
+            },
+        };
         let mut c2 = c;
         c2[0] ^= 1;
-        let bad1 = leaf::verify(&o, &circ, &vk, &c2, &pi).is_some();
+        let bad1 = leaf::verify(&o, &circ, &vk, &c2, &pi);
         let mut bad2 = false;
         for frac in [7usize, 3, 2] {
             let mut pi2 = pi.clone();
             let k = pi.len() / frac;
             pi2[k] ^= 4;
-            bad2 |= leaf::verify(&o, &circ, &vk, &c, &pi2).is_some();
+            bad2 |= leaf::verify(&o, &circ, &vk, &c, &pi2);
         }
         println!(
-            "TEST-LEAF m={m} rep={rep} n={n} |pi|={} prove_s={pt:.3} verify_s={vt:.3} accept={ok} flipped_stmt_accept={bad1} flipped_byte_accept={bad2} threads={} tier={} {}",
+            "TEST-LEAF m={m} rep={rep} n={n} |pi|={} piSize={} prove_s={pt:.3} verify_s={vt:.3} accept={ok} flipped_stmt_accept={bad1} flipped_byte_accept={bad2} items_kat={kat} peak_rss_mb={:.0} threads={} tier={} {}",
             pi.len(),
+            params::PI_SIZE,
+            peak_rss_mb(),
             par::threads(),
             simd::tier_name(),
             tm.report()
         );
-        if !ok || bad1 || bad2 {
+        if !ok || bad1 || bad2 || pi.len() != params::PI_SIZE || kat.starts_with("FAIL") {
             eprintln!("test-leaf: FAIL");
             std::process::exit(1);
         }
@@ -163,7 +175,7 @@ fn prove_leaf_service(m: usize, start: &Digest, out: &str, reps: usize) {
         let c = leaf_stmt(&h, n);
         let mut rp = Replay::new(&table);
         rp.fallback = Some(&svc);
-        if leaf::verify(&rp, &circ, &vk, &c, &pi).is_none() && !timing_only {
+        if !leaf::verify(&rp, &circ, &vk, &c, &pi) && !timing_only {
             service::fatal("the native verifier rejects the proof (replay)");
         }
         let (tr, missing) = rp.finish();
@@ -188,8 +200,21 @@ fn prove_leaf_service(m: usize, start: &Digest, out: &str, reps: usize) {
         let mut c2 = c;
         c2[31] ^= 1;
         let canary = acc(&circ, &vk, &c2, &file).is_ok();
+        // the trace against A.4: |tr| = 8,854 and every query length as `items.json` lists it
+        let tr_kat = match kat::find_items_json().and_then(|p| kat::load_items(&p)) {
+            None => "skip(no items.json)".to_string(),
+            Some(w) => {
+                let bad = tr.iter().zip(w.iter()).position(|((q, _), it)| q.len() != kat::qlen_of(it));
+                match (tr.len() == w.len(), bad) {
+                    (true, None) => format!("pass({} items, qlens equal)", w.len()),
+                    (_, Some(i)) => format!("FAIL(item {i}: qlen {} vs {})", tr[i].0.len(), kat::qlen_of(&w[i])),
+                    (false, None) => format!("FAIL(|tr| {} vs {})", tr.len(), w.len()),
+                }
+            }
+        };
+        let reasm = items::reassemble(&tr).as_deref() == Some(&pi[..]);
         println!(
-            "PROVE-LEAF m={m} rep={rep} n={n} total_s={total:.3} prove_s={t_prove:.3} trace_s={t_trace:.3} sign_s={t_sign:.3} oracle_s={oracle_s:.3} \
+            "PROVE-LEAF m={m} rep={rep} n={n} trace_kat={tr_kat} reassemble_eq_pi={reasm} total_s={total:.3} prove_s={t_prove:.3} trace_s={t_trace:.3} sign_s={t_sign:.3} oracle_s={oracle_s:.3} \
              compressions_per_s={:.0} |pi|={} |tr|={} trace_query_bytes={qbytes} file={} acc={} acc_s={t_acc:.3} canary_accept={canary} peak_rss_mb={:.0} threads={} tier={} | {} | {stats} | {}",
             n as f64 / total,
             pi.len(),
@@ -202,7 +227,7 @@ fn prove_leaf_service(m: usize, start: &Digest, out: &str, reps: usize) {
             tm.report(),
             svc.report()
         );
-        if (r.is_err() || canary) && !timing_only {
+        if (r.is_err() || canary || !reasm || tr_kat.starts_with("FAIL") || pi.len() != params::PI_SIZE) && !timing_only {
             std::process::exit(1);
         }
     }
@@ -264,7 +289,7 @@ fn leaf_file(svc: &service::Service, circ: &circuit::Circuit, vk: &Digest, s: &D
     let c = leaf_stmt(&blake2s::chain_end(s, n), n);
     let mut rp = Replay::new(&table);
     rp.fallback = Some(svc);
-    if leaf::verify(&rp, circ, vk, &c, &pi).is_none() {
+    if !leaf::verify(&rp, circ, vk, &c, &pi) {
         service::fatal("the native verifier rejects the proof (replay)");
     }
     let (tr, missing) = rp.finish();

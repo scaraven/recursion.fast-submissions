@@ -3,12 +3,10 @@
 //! `docs/v4/flock-recursive/stages/P1-RESULT.md` §4 where the blueprint leaves a detail open).
 //! A change of the protocol is a change of this file (and of the phase code that reads it).
 //!
-//! **PLACEHOLDERS.** The blueprint's engineering review (BP-E-M8) found that β, α, the domain
-//! basis, the GF(2^8) embedding and skip sets, ρ₁…ρ₇, the column order, `piSize` and the
-//! transcript/query layouts are not yet normative; a fix pass (stage S-0, "interfaces" appendix)
-//! and S-A ("Normative constants") will fix them. Every value below marked `PLACEHOLDER` is a P1
-//! choice for measurement only: throughput does not depend on it, and the byte formats it implies
-//! are not final.
+//! Revision 3.7: the constants are A.1's (S-A), the layouts A.2–A.4's (S-0): the proof's eighteen
+//! fields (`FIELD_SIZES`, `piSize = 757,712`), the item counts of the phase table (`Z1_SQ` …), the
+//! `m* = 32` ladder that sizes the item sequence (`STAR_*`). The old P1 notes below that say
+//! "PLACEHOLDER" record where a value came from before S-A fixed it (the values did not change).
 
 /// Bits per BLAKE2s block (`m₀`).
 pub const BLOCK_LOG: usize = 14;
@@ -56,9 +54,6 @@ pub const LOG_INV_RATE: [usize; LEVELS] = [1, 2, 3, 4, 5];
 pub const ROW_LOG: [usize; LEVELS] = [6, 4, 4, 4, 4];
 /// Merkle cap depth per level (clamped to the tree depth for test shapes).
 pub const CAP_LOG: [usize; LEVELS] = [9, 8, 8, 8, 7];
-/// Consistency batching coordinates (eq over ⌈log₂(t + 1)⌉ = 9 bits).
-pub const KAPPA_C: usize = 9;
-
 /// Queries per level (rev. 2 §2.2: `t = ⌈120.25 / −log₂(1 − e/n)⌉`, `e = ⌊(n − k)/2⌋`).
 pub fn queries(_m: usize) -> [usize; LEVELS] {
     [290, 178, 145, 132, 126]
@@ -101,6 +96,86 @@ pub fn final_log(m: usize) -> usize {
     ladder(m)[LEVELS - 1].msg_log
 }
 
+// ---------------------------------------------------------------- the proof layout (rev. 3.7 A.3, A.4)
+
+/// `m* = 32`: the item sequence and `π`'s fields are sized for the larger kind (A.4); a smaller
+/// `m` (the `P30` leaf, and the native test shapes `m = 25 … 29`) fills the difference with dummies.
+pub const M_STAR: usize = 32;
+
+/// A.3's fields, in order (`FRTranscriptDefs.fHdr … fSibs`).
+pub const F_HDR: usize = 0;
+pub const F_STMT: usize = 1;
+pub const F_Z2: usize = 2;
+pub const F_Z3: usize = 3;
+pub const F_ZEND: usize = 4;
+pub const F_L2: usize = 5;
+pub const F_S2: usize = 6;
+pub const F_LR: usize = 7;
+pub const F_LREND: usize = 8;
+pub const F_RS0: usize = 9;
+pub const F_E: usize = 10;
+pub const F_EEND: usize = 11;
+pub const F_P1: usize = 12;
+pub const F_PF: usize = 13;
+pub const F_CAPS: usize = 14;
+pub const F_FINAL: usize = 15;
+pub const F_COLS: usize = 16;
+pub const F_SIBS: usize = 17;
+pub const N_FIELDS: usize = 18;
+/// A.3's sizes (`FRFormat.fieldSizes_eq`; `logs/S-0/dump/summary.txt`).
+pub const FIELD_SIZES: [usize; N_FIELDS] =
+    [48, 128, 2048, 1248, 32, 784, 1344, 1440, 48, 10240, 1008, 48, 2112, 672, 45056, 4096, 445696, 241664];
+/// `piSize = 757,712` (A.3), the same for every SNARK kind.
+pub const PI_SIZE: usize = 757712;
+
+/// The offset of field `f` in `π`.
+pub const fn field_off(f: usize) -> usize {
+    let mut s = 0;
+    let mut i = 0;
+    while i < f {
+        s += FIELD_SIZES[i];
+        i += 1;
+    }
+    s
+}
+
+/// Squeeze and round counts of the item sequence (A.4, `FRTranscriptDefs.piopPhases`).
+pub const Z1_SQ: usize = 10;
+pub const Z3_ROUNDS: usize = 26;
+pub const L2_ROUNDS: usize = 14;
+/// The `v_kind` entries of L3 (112 bytes; the leaf's is entry 0, `chain`).
+pub const L3_KINDS: usize = 7;
+pub const S1_SQ: usize = 15;
+pub const S2_ROUNDS: usize = 28;
+/// S1's coordinate layout (S-0 deviation 7): `τ` = 0…17, `θ` = 18…27, `κ_s` = 28.
+pub const S1_THETA: usize = 18;
+pub const THETA_LEN: usize = 10;
+pub const S1_KAPPA: usize = 28;
+pub const LR1_SQ: usize = 8;
+pub const LR_ROUNDS: usize = 15;
+pub const RS_CLAIMS: usize = 5;
+pub const RS1_SQ: usize = 4;
+pub const E1_SQ: usize = 11;
+pub const E2_ROUNDS: usize = 21;
+pub const PF_ROUNDS: usize = 7;
+/// The final message: `2^7` K elements (`P30`: `2^5` then zeros).
+pub const FINAL_ELEMS: usize = 1 << PF_ROUNDS;
+/// The `m* = 32` ladder's position squeezes and Merkle-node queries per position (`lvlStar`).
+pub const STAR_SQ: [usize; LEVELS] = [25, 13, 10, 8, 6];
+pub const STAR_SIB: [usize; LEVELS] = [11, 10, 8, 6, 5];
+/// Rows per column (`2^ℓ`), the same for every kind.
+pub const STAR_ROWS: [usize; LEVELS] = [64, 16, 16, 16, 16];
+
+/// The kind byte of a leaf of `m` committed bits: `'L'` for `m = 32`, `'P'` otherwise (the `P30`
+/// leaf; `m = 25 … 29` are native test shapes with the `P30` byte).
+pub fn leaf_kind_byte(m: usize) -> u8 {
+    if m == M_STAR {
+        KIND_LEAF
+    } else {
+        KIND_P30
+    }
+}
+
 // ---------------------------------------------------------------- transcript (§1.2; PLACEHOLDER layouts)
 
 /// A.2: the seed tag is 7 bytes (BP-E-M1: every field of the hashed trace stream is 16-aligned).
@@ -112,9 +187,9 @@ pub const TAG_MNOD: &[u8; 6] = b"FRMNOD";
 pub const TAG_MCOL: &[u8; 6] = b"FRMCOL";
 
 pub const KIND_LEAF: u8 = 0x4C;
+pub const KIND_P30: u8 = 0x50;
 pub const KIND_NODE: u8 = 0x4E;
 pub const HDR_LEN: usize = 48;
-pub const HDR2_LEN: usize = 48;
 
 /// `qV` (rev. 2 A.1).
 pub const QV: usize = 10240;
@@ -127,6 +202,42 @@ pub fn leaf_n(m: usize) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A.3's sizes from the counts of A.4 (`sizes.py`): rounds × 48 or 96, the caps, the final
+    /// message, the columns and the siblings of the `m* = 32` ladder.
+    #[test]
+    fn layout_matches_a3() {
+        assert_eq!(FIELD_SIZES.iter().sum::<usize>(), PI_SIZE);
+        assert_eq!(field_off(N_FIELDS - 1) + FIELD_SIZES[N_FIELDS - 1], PI_SIZE);
+        let l = ladder(M_STAR);
+        let want = [
+            (F_Z2, 2048),
+            (F_Z3, Z3_ROUNDS * 48),
+            (F_ZEND, 32),
+            (F_L2, L2_ROUNDS * 48 + L3_KINDS * 16),
+            (F_S2, S2_ROUNDS * 48),
+            (F_LR, 2 * LR_ROUNDS * 48),
+            (F_LREND, 48),
+            (F_RS0, RS_CLAIMS * 128 * 16),
+            (F_E, E2_ROUNDS * 48),
+            (F_EEND, 48),
+            (F_P1, ROW_LOG.iter().sum::<usize>() * 96),
+            (F_PF, PF_ROUNDS * 96),
+            (F_CAPS, CAP_LOG.iter().map(|c| 32 << c).sum()),
+            (F_FINAL, FINAL_ELEMS * 32),
+            (F_COLS, (0..LEVELS).map(|i| l[i].queries * STAR_ROWS[i] * 16).sum()),
+            (F_SIBS, (0..LEVELS).map(|i| l[i].queries * STAR_SIB[i] * 32).sum()),
+        ];
+        for (f, n) in want {
+            assert_eq!(FIELD_SIZES[f], n, "field {f}");
+        }
+        for i in 0..LEVELS {
+            assert_eq!(STAR_SIB[i], l[i].code_log - l[i].cap_log);
+            assert_eq!(STAR_SQ[i], l[i].queries.div_ceil(256 / l[i].code_log));
+            assert_eq!(STAR_ROWS[i], 1 << l[i].rows_log);
+        }
+        assert_eq!(final_log(M_STAR), PF_ROUNDS);
+    }
 
     #[test]
     fn ladder_matches_blueprint() {

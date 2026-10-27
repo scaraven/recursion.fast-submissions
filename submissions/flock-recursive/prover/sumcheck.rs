@@ -1,6 +1,8 @@
-//! Degree-2 sumcheck pieces shared by the phases. A round message is `(g(0), g(1), g(∞))` (three
-//! coefficients, blueprint §2.3), checked `g(0) + g(1) = claim` and evaluated at the challenge
-//! `g(X) = g(0) + (g(0) + g(1) + g(∞))X + g(∞)X²`. Variables are bound low bit first.
+//! Sumcheck pieces shared by the phases. The provers compute a degree-2 round as `(g(0), g(1),
+//! g(∞))`; the message is the coefficients `c₀ ‖ c₁ ‖ c₂` of `g(X) = c₀ + c₁X + c₂X²` (A.2, `gen`'s
+//! `roundOpsF`/`roundOpsK`), checked `c₁ + c₂ = claim` (that is `g(0) + g(1) = claim`) and evaluated
+//! `c₀ + r(c₁ + r c₂)`. A degree-3 round sends `c₀ ‖ c₁ ‖ c₂` and the verifier completes
+//! `c₃ = claim + c₁ + c₂`. Variables are bound low bit first.
 
 use crate::field::{FAcc, F, K};
 use crate::par;
@@ -10,6 +12,14 @@ pub fn eval2_f(g: [F; 3], x: F) -> F {
 }
 pub fn eval2_k(g: [K; 3], x: K) -> K {
     g[0] + (g[0] + g[1] + g[2]) * x + g[2] * x * x
+}
+
+/// `(g(0), g(1), g(∞))` → the message `(c₀, c₁, c₂)`.
+pub fn coeffs_f(g: [F; 3]) -> [F; 3] {
+    [g[0], g[0] + g[1] + g[2], g[2]]
+}
+pub fn coeffs_k(g: [K; 3]) -> [K; 3] {
+    [g[0], g[0] + g[1] + g[2], g[2]]
 }
 
 /// The message of one round of `Σ_x Σ_t P_t(x) Q_t(x)` over the low variable.

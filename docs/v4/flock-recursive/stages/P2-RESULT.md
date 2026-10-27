@@ -222,3 +222,192 @@ When S-0 delivers the dumps and rev. 3.3 lands:
 Smaller items, if the margin needs them: the round-1 kernel (the table apply is about two thirds of
 it; GF(16)² is about −0.04 s), and overlapping the Merkle leaf hashing with the NTT (−0.03 to
 −0.05 s).
+
+## 7. Rev 3.7 layout (resumption)
+
+Status: 2026-10-27, step 1 of P2's resumption (blueprint revision 3.7, `9bd0a82`/`afc2928`). Scope: the
+leaf prover and the native verifier of the leaf kinds (`L32`, `m = 32`; the `P30` leaf, `m = 30`;
+the native test shapes `m = 25 … 29` carry the `'P'` byte). Not in scope: the node prover, the
+`tree`/`node` modes, runner measurements. Every number below is from this VM (32 vCPU, portable
+tier: no pclmul; shared with other agents), logs under `logs/P2/r37/` (gitignored).
+
+### 7.1 What changed (files under `submissions/flock-recursive/prover/`; the crate is 8,092 `.rs` lines, was 7,124)
+
+| file | lines (before → after) | change |
+|---|---:|---|
+| `params.rs` | 147 → 258 | A.3's 18 fields (`F_HDR … F_SIBS`, `FIELD_SIZES`, `field_off`, `PI_SIZE = 757,712`), A.4's counts (`Z1_SQ`, `Z3_ROUNDS`, …, `PF_ROUNDS`), the `m* = 32` ladder's `STAR_SQ/SIB/ROWS`, `KIND_P30`, `leaf_kind_byte`; test `layout_matches_a3` (every field size from the counts) |
+| `transcript.rs` | 163 → 272 | `Fs`: `coords(nsq)` (coordinate `2s + c`), `chal_f` (one squeeze, bytes 0…15), `positions(nsq, t, bits)` (always the `m*` count of squeezes), `ask_col`/`ask_node`, an optional item log (`ItemRec`, `items.json`'s form); `Writer` writes each message into its A.3 field, `Reader` reads each field with its own cursor and keeps a flag (`check`; `FLOCK_DEBUG_V` prints the first failed check) |
+| `leaf.rs` | 526 → 702 | prover and verifier phase by phase in A.4's order (below); the verifier asks every item whatever `π` holds (as `gen`) and returns the flag; finals after the skeleton |
+| `ligerito.rs` | 469 → 512 | messages as coefficients into `F_P1`/`F_PF`; caps into their slots of `F_CAPS` (`cap_slot`, `read_cap_slot`); P2 always `STAR_SQ[i]` squeezes; Q: `STAR_SIB[i]` node queries per position, the missing depths as dummies `0^64` with zero sibling slots; P3 one F squeeze `κ_c`, batching by `κ_c^{q+1}`; the final message padded to `2^7` K and Pf's 7 rounds over the zero-padded message and weight |
+| `zerocheck.rs` | 229 → 317 | Z3's `z` part (`z_h1_bytes`, `z_fold_bytes`, `lin_h1`), `e_hi_table` (`Ê(λ, ·)`), `zc_coeffs` (the degree-3 message of `P·eq(r_k, X)·H(X)`) |
+| `sumcheck.rs` | 66 → 76 | `coeffs_f`/`coeffs_k`: `(g(0), g(1), g(∞))` → `c₀ ‖ c₁ ‖ c₂` |
+| `ringswitch.rs` | 245 → 242 | `weight_table` takes explicit coefficients per claim (claims at one point merged) |
+| `main.rs` | 360 → 385 | `test-leaf`: |π| = piSize, the item KAT of the prover's and the verifier's logs; `prove-leaf`: the trace KAT (|tr| and every query length against `items.json`), `reassemble(tr) = π` |
+| `items.rs` | new, 218 | `items_seq` (A.4 as a static table) and `reassemble` (A.5); tests `items_seq_kat`, `reassemble_roundtrip` (m = 25, 26) |
+| `kat.rs` | new, 191 | `items.json` reader and comparison; tests `items_kat_verifier` (zero proofs of m = 25, 28, 30, 32), `items_kat_prover` (a real m = 25 proof), `chain_kind_rows_kat` |
+| `kat-chain-kind.txt` | new, 11 | provenance, BLAKE2s-256 and size of the Lean dump of the chain kind, its zero rows and E's 173 1-positions |
+| `prover.s` | regenerated | `build-asm.sh logs/P2/r37/asm`: 6,211,900 bytes, **sha256 `3f5743f2de7239b7e04a667fa4149266166c1805b5aea41c11c7e40415711866`** (rustc 1.99.0; build 29.8 s; linked binary 2,089,312 bytes, sha256 `512a2a2e…`); no machine path in it; `selftest` passes |
+
+Unchanged: `simd.rs`, `field.rs`, `ntt.rs`, `witness.rs`, `circuit.rs` (its rows already were the
+chain kind's, see 7.3), `lincheck.rs`, `merkle.rs`, `oracle.rs`, `service.rs`.
+
+The leaf protocol as implemented (prover = verifier order; `m* = 32` sizes everything):
+- `hdr = kindByte ‖ m ‖ 0^14 ‖ s`; seed; `stmt = 0x4C ‖ h ‖ enc64 n ‖ 0^87` (checked: tag, `n`,
+  zeros, `leafStmt h n = c`); cap₀ (slot `2^9 × 32`).
+- **Z**: Z1 10 squeezes, `r_out` = the first `m − 13` coordinates; Z2 `P^{ab}` on `Λ₀…Λ₆₂` (63) ‖
+  `P^z` on `Λ` (64) ‖ 16 zero bytes, `λ`; Z3 26 rounds (`m − 6` real) of the summand
+  `w·(ab + z) + W_E` (`w = eq(r, ·)`, `W_E = eq(r, ·)·E(λ, ·)` a separate multilinear table),
+  messages `c₀ ‖ c₁ ‖ c₂`; Z end `â ‖ b̂`. finZ: `eq(r, r′)(â b̂ + ẑ_Z) + Ŵ_E(λ, r′) = c_Z`.
+- **Lc**: L1 `α`; L2 14 rounds (free first claim = `â + α b̂`, finLc (i)); L3 `[v_chain, 0⁶]`; L3β
+  `β`. finLc (ii) the walk with the chain kind's rows (= `maskRows` on the base circuit) times
+  `v_0`; (iii) `Σ β^i v_i = α₁`.
+- **Sh**: S1 15 squeezes (`τ` 0…`m−15`, `θ` 18…27, `κ_s` 28); S2 one 28-round sumcheck (`m − 4`
+  real): `m − 14` block rounds of `eq(τ,·)·Out_θ + (shift(τ,·) + κ_s eq(0,·))·In_θ`, then 10
+  collapse rounds of `W(pos)·z(r_blk, pos)` over the positions `< 1024`, no absorb between them;
+  free first claim = `shiftTarget` (finSh (i)); finSh (ii) `c = w_out α₂ + w_in α₃`.
+- **Lr**, **E**: the squeezes asked and ignored, zero rounds, zero `Lr end`/`E end` (checked).
+- **RS**: RS0 the 5 × 128 partials (Z at `(λ, r′)`, Lc at `(r_k, r′_blk)`, Sh out and Sh in at
+  `(r_pos, 0⁴, r_blk)`, zero), RS1 `r″` = 0…6, `κ` = 7; finRS: `α_j` from the partials, the fifth
+  checked zero, `v_RS = Σ_j κ^j Σ_u eq(r″, u) ŝ⁽ʲ⁾_u`; `W = Σ_j κ^j B_j`.
+- **B′** one squeeze (unused by a leaf: no E claim, no point claims); Ligerito's first claim is
+  `v_RS` (finB′); then P (above).
+
+### 7.2 Item-sequence KAT (A.4)
+
+`items.json` (`logs/S-0/dump/`, read in place, not copied) is compared object by object (phase,
+query kind, `len`, `level`, `depth`, `qlen`; the dump's own key order) with:
+- the native verifier's log on zero proofs with the headers of m = 25, 28, 30 (`'P'`) and 32 (`'L'`):
+  **8,854 items equal** (`items_kat_verifier`; 431 Fiat–Shamir items);
+- a real m = 25 proof: the prover's Fiat–Shamir items equal the 431 FS items of `items.json`, the
+  verifier's 8,854 items equal (`items_kat_prover`, also run with debug assertions: the prover's
+  internal checks of the round sums, the RS partials against a direct pass and Z3's final value pass);
+- the static table `items_seq` (`items_seq_kat`);
+- every `test-leaf` run (prover FS log and verifier log, m = 25 … 30, 32: `items_kat=pass(8854 items)`)
+  and `prove-leaf 30` through the service: **|tr| = 8,854 and every query length equal**
+  (`trace_kat=pass`), `reassemble(tr) = π` (`reassemble_eq_pi=true`).
+
+The item sequence is the same for every leaf `m` (the dummies fill it), so the KAT covers `L32` and
+the `P30` leaf with the same file.
+
+### 7.3 Block-rows KAT (A.6, the chain kind)
+
+`FR.Kinds.kindRows gateBase Chain.chainTarget` dumped by `logs/P2/r37/kinds/KindsDump.lean` (a
+dev-only `lake env lean --run` in `logs/fr-build`, against its built `FRBlockKinds.olean`; 2 min 36 s,
+16G scope): one line per position `k a:<set positions> b:<set positions> e:<bit>`, 16,384 lines,
+448,616,473 bytes, BLAKE2s-256 `951e62ee…b771`. `chain_kind_rows_kat` renders the same lines from
+`circuit.rs` (`row_bitsets`, `e_positions`) and compares the digest, E's 173 1-positions and, when
+the dump file is present, every line: **equal** (zero rows 0–255, 512–519, 776–1279, 16000–16383;
+E = h0's bits, `0x43`, `t_lo = 33`, `f0 = 0xFFFFFFFF`, `one`). The `irdump` tool was not extended:
+its lake project does not build `FRBlockKinds`' closure, and `logs/fr-build` had it built. A KAT of
+the other seven kinds is the node prover's (step 3).
+
+### 7.4 Runs (VM, portable tier, 32 threads; `logs/P2/r37/runs-final/`, binary = `prover.s` linked by `build-asm.sh`)
+
+| run | result |
+|---|---|
+| `cargo test --release` | 27 passed, 1 ignored (the bench) |
+| `test-leaf 25 … 30` | accept; flipped statement rejected; flipped proof bytes (3 offsets) rejected; |π| = 757,712; items KAT pass. Prove 0.28 / 0.44 / 0.62 / 1.20 / 2.17 / **3.72 s**, verify 0.031–0.036 s |
+| `test-leaf 32` | accept, rejections as above, |π| = 757,712, items KAT pass; prove **15.0 s**, verify 0.046 s, peak RSS 5.25 GB (16G scope) |
+| `prove-leaf 30` through `rf-oracle` (fifo stdin, `RF_ORACLE`), 2 reps | total 3.88 / 3.69 s; **|tr| = 8,854**, query lengths = `items.json`; `reassemble(tr) = π`; native `acc` accepts the signed file (in-process and the CLI `acc`), the canary (flipped `c`) is rejected (`V rejects`); file 2,200,695 bytes; peak RSS 1.90 GB (1,800 MiB pre-fault) |
+| `leaf` request (`request.py`, n = 2^16) | `done`, `acc=accept`, `canary=reject`; request 4.18 s |
+
+Per phase, m = 30 (`test-leaf`, s): witness 0.047, commit0 0.427, zc_round1 1.369, zc_round2 0.360,
+zc_tail 0.421, lincheck 0.047, shift 0.035, ringswitch 0.167, ligerito 0.843. Against the pre-change
+binary on this VM (3.64 s, `logs/P2/r37/baseline-test-leaf.txt`): zc_round2 +0.09 s (the `z` table of Z3's new summand is folded with
+`â`, `b̂`), zc_tail +0.15 s (its folds and the separate partials pass of RS claim 0 at `r′`); the
+RS0 partials no longer come from round 1's banks. These are VM numbers, not the tier of record.
+
+### 7.5 Disagreements between the dump (`gen`) and the prose, and choices where both are silent
+
+1. **Z2 / `lagrangeS`** (S-0 deviation 16 foresaw it): `gen` reads 127 values and asserts the
+   last 16 bytes zero; `lagrangeS : AF 127 → F → F` has no operand for `r` (needed for `P^e`) and
+   A.8 calls it "the interpolant through `S ∪ Λ`" (128 nodes). The rev. 3.4 form (§2.3, `FRSkip.
+   z2Vals`) fits 127 values only as `P^{ab}` on `Λ₀…Λ₆₂` (degree ≤ 126 needs 127 nodes: `S ∪ Λ₀…₆₂`)
+   plus `P^z` on `Λ` (64). Native: that message; Z3's first claim = `P^{ab}(λ) + P^z(λ) + P^e(λ)`
+   (the sum of Z3's summand, zero on `S`), `P^e` from `r`. S-C/S-0 must pin the message order and
+   give `lagrangeS` the `r` operand (or the `P^e` values).
+2. **P3 / `κ_c`**: A.4 and `gen` have one squeeze (one F); A.9 `finP` writes `eq(κ_c, j)` over
+   `j < tᵢ` (≤ 290, 9 bits), which one F coordinate does not define. Native: powers `κ_c^{j+1}`
+   (claim `v + Σ_j κ_c^{j+1} y_j`, error `tᵢ/2^128`). S-G (finP, finPf, pending in the dump) decides.
+3. **S2 dummies**: A.3's prose says `P30` zero-fills "the second chain's share of S2"; `gen` puts the
+   2 dummy rounds at the end (after the collapse rounds), as for every phase. Native follows `gen`.
+4. **θ has 10 coordinates** (S1 18–27, `finSh`'s `slotW`), a digest slot 256 positions. Native:
+   `eq(θ, σ)` with `σ < 256` read as a 10-bit index (factor `(1+θ₈)(1+θ₉)` on both sides of every
+   link); `slotW`'s implementation is S-C's (pending), the same reading needed there.
+5. **Sh's two RS claims**: with one 28-round S2 (no absorb between block and collapse rounds) both
+   `ẑ_Sh,out` and `ẑ_Sh,in` are claims on `ẑ` at the one point `(r_pos, r_blk)` with eq inner
+   weights (A.9's "the slot weights for Sh" as RS inner weights does not apply after the collapse).
+   Native: the same partials twice, one MBP run with coefficient `κ² + κ³`.
+6. **`J_z = 5` for a leaf**: the fifth (Lr) claim's partials are asserted zero and it has no weight;
+   with 5 the leaf runs 3 MBP programs (Z, Lc, Sh). `finRS` (S-F) is pending in the dump.
+7. **`linkW` in a leaf's `finSh`**: the dump has the 8 `linkW` ops for `L` and `P` too; a leaf has no
+   link families, so native takes them as 0. The `linkW` implementation must return 0 for leaf kinds.
+8. **Pf for `P30`**: "7 real rounds, the final message zero beyond `2^5`" leaves the weight's
+   extension to the 2 padding coordinates open. Native: weight zero-padded too, so `finPf` evaluates
+   `Ŵ(s, ρ₀…₄)·(1+ρ₅)(1+ρ₆)`. S-G (finPf) must fix the same extension.
+9. **§1.2 counts are stale**: "FS items 429 … 8,854 items" (429 + 871 + 7,552 = 8,852); rev. 3.7 has
+   431 FS items (A.4, the dump). A.3's/§1.1's `piSize` and fields agree with the dump.
+10. **A.3 row 5 / S-0-m3**: L3 absorbs 7 elements (112 B; the leaf's at entry 0); `maskRows` takes 8
+    (`blockKinds`; leaf `[v₀, 0⁷]`, node `[0, v₀…v₆]`). Consistent once read so; noted only.
+11. Pending finals: `finRS`, `finE`, `finB′`, `finP`, `finPf` are placeholders in the dump (S-F,
+    S-G); the native verifier implements them from A.9's prose with the choices 2, 5, 6, 8.
+
+### 7.6 Open questions / for the node prover (step 3)
+
+- Items 1, 2, 4, 5, 8 above decide byte formats or values both the leaf and the node use; the leaf
+  code isolates them (`z2_value`, `ligerito::kappa_powers`, `theta_eq`, `claim_points`, the Pf
+  padding), so a ruling is a local change, but the proofs change with it.
+- The node prover needs: the KAT of the other seven kinds' rows and targets (the same dump script
+  with `allKinds`; the dump is 448 MB per kind, so digests), `compileMux`'s M layout dump (A.7), the
+  `linkW`/`slotW`/`evalM`/`evalL` implementations (S-C/S-E2), and the finals S-F/S-G are writing.
+  `items.rs`'s `reassemble` is ready for reading child proofs from their traces.
+- Prover cost of rev. 3.7 on the leaf path: Z3's `z` part and the separate RS-0 partials pass add
+  ≈ 0.2 s at m = 30 on the VM; folding `z` into round 1's kernel (it already reads the bits) would
+  remove most of it.
+
+## 8. Rev 3.7 leaf on the 7763 (step 2 of the resumption)
+
+Run 40554199135 (EPYC 7763) used the runner-assembled `prover.s` of §7's sources; the requests
+went through `rf-oracle`. Every proof had |π| = 757,712 and |tr| = 8,854. The native `acc`
+accepted every one and rejected every canary.
+
+| request | rev 3.7 (this run) | P2 §6 (pre-3.7 layout) |
+|---|---:|---:|
+| stream `leaf` request (`go` → `done`) | **1.62–1.63 s** | 1.34–1.41 s |
+| prove-leaf m = 30 | 1.61–1.65 s | 1.31–1.36 s |
+| prove-leaf m = 32 | **6.51–6.64 s** | 5.47–5.53 s |
+| peak RSS m = 30 / 32 | 1.90 / 6.19 GB | same |
+
+An EPYC 9V74 (run 40554204584) measured 1.31–1.33 s, 1.28–1.32 s and 5.44–5.54 s.
+
+**Per phase at m = 30 (7763):** witness 0.082, commit 0.269, round 1 0.303, x₆ round 0.250,
+tail 0.198, lincheck 0.080, shift 0.023, ring switch 0.147, Ligerito 0.196, trace 0.057.
+
+**The regression is in the zerocheck:**
+- x₆ round: 0.128 → 0.250 s.
+- tail: 0.063 → 0.198 s.
+- At m = 32 both together: +1.0 s.
+
+Rev 3.7's Z3 summand carries the z part, so the tail sumcheck folds three tables, `a`, `b` and the
+λ-folded `z` (§7.5). The paper's "skipping c" (P1's protocol) kept z out of the tail: the c-claim was
+read off `P^z(λ)` directly. This one change costs about 0.26 s per m = 30 request and 1.0 s per
+m = 32 leaf.
+
+**Estimates with the §6.2 node measurements:**
+- Stream link ≈ 1.63 + (1.29…1.43) + ≈ 0.26 (the same Z3 cost in the node) ≈ **3.2–3.3 s**. That
+  is over the 2.8 s target and the ≈ 3.1 s cap.
+- Tree ≈ 64 × 6.6 + 63 × ≈ 1.6 ≈ **525 s**. That is over the 500 s target but under the 600 s cap.
+
+**Recommendation for review:** restore "skipping c" in Z3 (rev 3.7's summand with `ĉ` read from
+`P^z`, as in rev. 3.1 / P1). If that is not possible, the z table must be folded inside the x₆ round
+kernel; that saves the extra pass but not the third table's products.
+
+**Steps 3–4 are not started.** §7.6 lists what blocks the node prover:
+- rulings on the Z2 format, `κ_c`, θ, the Sh claims and the Pf padding;
+- the S-F/S-G finals, which are placeholders;
+- the `slotW`/`linkW`/`evalM`/`evalL` implementations;
+- the rows/E KAT for the other seven kinds;
+- the `compileMux` M-layout dump.
+
+The `tree` and `node` modes follow the node prover. `prover.s` is regenerated for §7's sources
+(sha256 `3f5743f2…`). Probe branches p2-20 and p2-21 are deleted.

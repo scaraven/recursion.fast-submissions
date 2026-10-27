@@ -52,3 +52,28 @@
   (`circuit::e_positions`); `skip_eval`'s `P^e` sums over E. Tests and `test-leaf` pass (VM
   portable, qemu ymm-sim). `prover.s` regenerated: sha256 4588296d…, rustc 1.99.0.
 - Stopped at the orchestrator's request (fewer agents/tokens). All probe/p2-* branches deleted.
+
+## 2026-10-27 (resumption, step 1: rev. 3.7 layout)
+
+- Read rev. 3.7 (§1–§2.3, A.1–A.9, stage-review changes 1–5) and `gen` (`FRVIR.lean`,
+  `FRVIRFinals.lean`, `FRTranscriptDefs.phases`); the dumps `items.json`, `ops-{L,P}.txt` checked
+  at the phase boundaries (dummy node queries `askNode … false`, `idx … 18|20`, the finals).
+- `transcript.rs`: A.3 fields (`Writer`/`Reader` per field), coordinate squeezes, flag verifier,
+  item log. `leaf.rs` rewritten in A.4's order: Z2 127 values, Z3 26 degree-3 rounds of
+  `w(ab+z) + W_E`, L3 + β, one 28-round S2, Lr/E zero, RS0 5 × 128, B′. First accept failed finZ:
+  `W_E` was folded as `eq·E` (a product) instead of a fifth multilinear table; fixed (the `W_E`
+  part as its own linear round term).
+- `ligerito.rs`: field placement, fixed squeeze counts, dummy node queries, `κ_c` one squeeze
+  (powers), final message padded to `2^7`, Pf 7 rounds.
+- KATs: `items.json` 8,854/8,854 equal (verifier on zero proofs m = 25, 28, 30, 32; real m = 25
+  proof; static table); chain-kind rows: Lean `kindRows gateBase Chain.chainTarget` dumped (448 MB,
+  `logs/P2/r37/kinds/`), equal line by line to `circuit.rs`; digest shipped in
+  `kat-chain-kind.txt`. `items.rs`: `reassemble` (A.5), round trip equal.
+- VM (portable, 32 threads): `test-leaf 25…30` and `32` pass (|π| = 757,712; m = 30 prove 3.72 s,
+  m = 32 15.0 s, 5.25 GB); `prove-leaf 30` through `rf-oracle`: |tr| = 8,854, query lengths equal,
+  `acc` accepts, canary rejected; `leaf` request done/accept/reject. `prover.s` regenerated, sha256
+  `3f5743f2…1866`. Disagreements and choices: RESULT §7.5.
+- 7763 run 40554199135 (rev 3.7 layout, runner-assembled prover.s): leaf request 1.62–1.63 s,
+  m = 32 6.51–6.64 s, all accepted (|π| 757,712, |tr| 8,854). Regression vs §6 from Z3 now
+  folding z (x₆ round 0.25 s, tail 0.20 s at m = 30). Link ≈ 3.2–3.3 s, tree ≈ 525 s (estimates).
+  Recommend restoring "skipping c". Steps 3–4 blocked (P2-RESULT §7.6). Branches deleted.
