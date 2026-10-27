@@ -1,45 +1,44 @@
 # Orchestrator queue (FR-D8: at most 3 concurrent agents)
 
-Last updated 2026-10-27. Blueprint at revision 3.3 (`1c1e27c`).
+Last updated 2026-10-27. Blueprint at revision 3.4 (`2fa83b1`). `FR.lean` imports S-A, S-C, S-D,
+S-H1 and S-0; the combined `FR` builds (2,237 jobs).
 
 ## Running
 
-- S-0, interfaces (`FRTranscriptDefs`, `FRFormat`, `FRVIR`, `FRVIRSpec`, dump tools), against
-  revision 3.3.
-- S-E1 golf.
-- S-H1 fix pass + golf (m2, m4, m5).
-
-## Done, awaiting closure
-
-| Stage | Next step | Carried items |
-|---|---|---|
-| S-D (pcs, committed `1705d97`) | fix pass: S-D-m2/m3/m5 | S-D2 (`coeffs_of_values`, `coeffs_spec`, `interpF`, `encF` in `FRRSEval`) |
-| S-E1 (BLAKE2s, leaf) | fix pass after golf: the per-kind targets of rev 3.3 (A.6 table), S-E1-m1…m5; then commit | — |
-
-## Notes for S-H2 (the extractor program), from the S-H1 review
-
-- m1: no tape-length loop nested inside another (the cost model does not amortise). Each `loopT`
-  count is loaded by `input` from a tape length field immediately before its loop.
-- m3: compute query lengths as `|q| >> 3` plus `(|q| & 7 ≠ 0)`, never `(|q| + 7)/8`, which wraps
-  in 64-bit words.
-- m6: blueprint §6.4 should record the delivered DSL (largely done in revision 3.4).
+- S-E1 fix pass: the per-kind targets of A.6, stmt block lemmas, a dump function.
+- S-0 review (engineering reviewer).
+- S-D fix pass + S-D2 (`coeffs_of_values`, `coeffs_spec`, `interpF`, `encF`).
 
 ## Closed
 
-S-A `8ff873c`; S-C `d81b568`; S-D `1705d97` (fix pass pending); FR.lean imports them.
+S-A `8ff873c`; S-C `d81b568`; S-H1 `40b2f81`. S-D `1705d97` and S-E1 `fdf78fa` are golfed, with
+fix passes running. S-0 `40b2f81` is in review.
 
-## Decisions pending
+## Rulings
 
-- none. E2 batching was adopted in revision 3.4.
+- FRVIRSpec budget: judged per shape, not ×15 phases. Re-check when the queries shape is proved.
+- The phase-final checks (`fin : Finals`) go to a new module `FRVIRFinals`, owned by S-F (the
+  verifier), which consumes S-C's lemma forms.
 
-Kernel-time running total (VM, sequential): S-A 15 s, S-C 22 s, S-D ≈ 4 s, S-E1 28 s, S-H1 43 s, about 112 s. Watch it against the 600 s runner cap.
+## Next (in order, as slots free)
 
-## Next stages (in order, as slots free)
+1. P2 resume: S-0's dumps (`logs/S-0/dump/`), rev 3.4 formats, per-kind matrices, the node
+   prover, the `tree`/`node` modes. Wait for the S-0 review.
+2. S-E2: WOTS, `compile`/`compileMux`/`evalM`, node layout, `node_sound`. Needs the S-E1 fix pass
+   and the S-0 review.
+3. S-F (verifier + `FRVIRFinals` + the remaining `exec_genPhase` shapes), S-G (soundness), S-H2
+   (the extractor program; see the notes below), S-I (certificate), H (harness runs).
 
-1. S-E2: WOTS, `compile`/`compileMux`/`evalM`, node layout, `node_sound` (needs S-0).
-2. P2 resume: rev 3.3 formats, per-kind matrices, the node prover, `tree`/`node` modes (needs S-0's dumps).
-3. S-F verifier; S-G soundness; S-H2 extractor program; S-I certificate; H harness runs.
+## Notes for S-H2 (from the S-H1 review)
+
+- No tape-length loop nested inside another. Each `loopT` count is loaded by `input`
+  immediately before its loop.
+- Query lengths as `|q| >> 3` plus `(|q| & 7 ≠ 0)`; never `(|q| + 7)/8`.
+
+## Kernel-time total (sequential, VM)
+
+S-A 15 s, S-C ≈ 22 s, S-D ≈ 4 s, S-E1 7 s, S-H1 27 s, S-0 ≈ 12 s: about 87 s.
 
 ## Deferred
 
-- X128: the 128-bit profile memo (the user's optional side question).
+- X128, the 128-bit profile memo (the user's optional side question).
