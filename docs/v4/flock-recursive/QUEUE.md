@@ -1,26 +1,34 @@
 # Orchestrator queue (FR-D8: at most 3 concurrent agents)
 
-Last updated 2026-10-27. Blueprint at revision 3.9 (`757dfa8`). `FR.lean` imports S-A, S-C, S-D,
+Last updated 2026-10-27. Blueprint at revision 3.10 (`e1ad02c`). `FR.lean` imports S-A, S-C, S-D,
 S-H1 and S-0; the combined `FR` builds (2,237 jobs).
 
 ## Running
 
-- S-0: FRVIRSpec's last sorrys (exec_posOps, the queries case, genPhase_ctx) + rev 3.9 ops; re-dump.
-- S-G: FRLog, FRSoundnessDefs/Step/Ligerito/Final, FRKState, finP/finPf, the lagV bridge.
-- P2: adopt 3.8–3.9, KAT against the dump, re-time on a 7763 (does skip-c recover the link?), node prover.
+- P2: native acc vs the full dump (logs/S-G/dump), node prover, tree/node modes, 7763 stream link.
+- S-F2: FRVerifierImpl (specC, implC, Meets per op), V compiled, V timing.
+- S-H2d: node decoding (butterfly machine program, agreement scan, levels as needed, decodeWit output, 'N' case of ext_good_tape).
 
 ## Waiting
 
-- S-E2 rest: H-side assembly (SlotHolds imports and foreign flags, SigOk, format facts), W-kind
-  children, node_complete/nodeWitness, templated evalM/evalL (T_V). F-3″: blueprint §4.3 double-counts
-  the 8 stmt equalities (16 rows).
-- S-F rest: the concrete OpImpl (needs S-C's computable twins of the 3.9 ops).
-- S-H2: the extractor program (see the notes below).
-- S-I: certificate assembly, Solution.lean, claim.json; H: GitHub harness runs.
+- S-G next (fresh agent from S-G-RESULT S-G1d §5–6):
+  - pin the six padding cells (finB′ and finPf: the same six terms = 0);
+  - the uniqueness lemma ¬far ∧ truthP2 → truthC, the weight tables W_i, the PIOP truths;
+  - the per-phase dooms and Dp over phStart, the multi-squeeze bad sets, the instantiated KState.step;
+  - then S-G2: ligerito_final, final (including capPi = capDig and V_W size), kstate.
+  - FRVIRFinalsSG is 1,526 lines (budget 400): golf candidate.
+- S-E2 rest: H-side assembly of node_sound (imports, foreign flags, SigOk, format facts), W-kind children, node_complete.
+- S-I: certificate assembly (Solution.lean, claim.json at B-10, the εR arithmetic, axioms, the 600 s build/kernel check). H: GitHub harness runs.
+
+## Rulings since revision 3.10
+
+- The Lr point (node) is S-G's provisional choice (Lr4 challenges 7–14 plus L-base bits), checked against the prover's native verifier.
+- Leaves: the extractor parses s from the header; only N30 decodes.
+- final supplies capPi π e = capDig es 0 e; V_W proofs are < 2^64 bytes by V_W_sound.
 
 ## Closed
 
-S-A `8ff873c`; S-C `ebac8c2`; S-D `8e6dad7`; S-E1 `2d5a811`; S-H1 `40b2f81`; S-0 `e3eefae` (3 sorrys left); S-E2 `cf2f7b3` (partial); S-F `e4b2c1d` (OpImpl pending).
+S-A `8ff873c`; S-C `ebac8c2`; S-D `8e6dad7`; S-E1 `2d5a811`; S-H1 `40b2f81`; S-0 done (`81f19b2`, FRVIRSpec sorry-free); S-E2 partial `cf2f7b3`; S-F `c8e1869`; S-G through `21bc631`; S-H2 through `fd836c3`. FR builds as a whole.
 
 ## Rulings
 
