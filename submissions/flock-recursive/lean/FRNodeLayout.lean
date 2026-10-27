@@ -7,7 +7,7 @@ import FRTranscriptDefs
 BLUEPRINT §4.3's region table and A.6/A.7 (revision 3.5). Blocks of `2^14` positions; the node has
 `2^16` (`m = 30`).
 
-* **H** (from block 0): digest chain 1 `[0, 22,468)` and chain 2 `[22,468, 44,936)` (`streamStart`
+* **H** (from block 0): digest chain 1 `[0, 22,472)` and chain 2 `[22,472, 44,944)` (`streamStart`
   first, `stream` after), `hashStmt` (`hashA`, `hashB1`, `hashB2` per slot), WOTS per slot laid
   out consecutively (§4.2: the 399 `w43` chain steps, the key leaf `hashB1` + 65 `stream` +
   `streamEnd41`, the 16 path steps `hashB1`, `hashB2`), the mirror sub-region `WM` (10 blocks per
@@ -29,8 +29,8 @@ namespace Layout
 
 /-! ## Constants (§4.3, A.7) -/
 
-/-- Compressions of one digest chain (§4.2, revision 3.5). -/
-def chainN : ℕ := 22468
+/-- Compressions of one digest chain (§4.2, revision 3.7: the Lr-end and E-end absorbs). -/
+def chainN : ℕ := 22472
 /-- `hashStmt`'s blocks: 3 per slot. -/
 def stmtBase : ℕ := 2 * chainN
 /-- WOTS: 133 chains × 3 steps, the key leaf's 67 blocks, the path's 16 × 2 per slot. -/
@@ -114,7 +114,7 @@ theorem nodeLayout_end : (nodeLayout.head?.map Iv.lo, nodeLayout.getLast?.map Iv
 
 /-- **The regions fit**: H ends before L, L's used blocks before M, M ends at `2^16`. -/
 theorem regions_fit : hEnd ≤ lBase ∧ lBase + lUsed ≤ mBase ∧ mBase + mBlocks = nodeBlocks ∧
-    hEnd = 45966 := by
+    hEnd = 45974 := by
   simp only [hEnd, wmBase, wmSlot, wotsBase, wotsSlot, stmtBase, chainN, lBase, lUsed, mBase,
     mBlocks, nM, nodeBlocks]; norm_num
 
@@ -122,7 +122,7 @@ theorem regions_fit : hEnd ≤ lBase ∧ lBase + lUsed ≤ mBase ∧ mBase + mBl
 
 /-- §4.3's row count per slot, by category (revision 3.5's table). -/
 def mRowModel : List ℕ :=
-  [74587,             -- imports
+  [74461,             -- imports (revision 3.7)
    54841,             -- folds
    2 * 2 ^ 7 * 126,   -- final Enc₄
    4 * 7552,          -- Merkle steps
@@ -130,19 +130,19 @@ def mRowModel : List ℕ :=
    15000,             -- eq/tensor
    5 * 25 * 128,      -- MBP (J_z = 5)
    2000,              -- sumchecks
-   65536 + 16384 + 8, -- lincheck replay, per-kind adjustment, stmt equalities
-   2 * 74587 + 2 * 22468 + 2 ^ 14, -- evalM replay
+   65536 + 16384,     -- lincheck replay, per-kind adjustment
+   2 * 74461 + 2 * chainN + 2 ^ 14, -- evalM replay
    8192,              -- evalL replay
-   3288,              -- gated asserts
-   2600,              -- mirror-cell mux (revision 3.6)
-   266,               -- selector–digit rows (S-E2 F-2)
-   7]                 -- selector
+   2 * 431 + 2 * 871 + 600, -- gated asserts
+   2600,              -- mirror-cell mux
+   266,               -- selector–digit rows
+   8,                 -- gated stmt equalities
+   4]                 -- selector and kind rows
 
-theorem mRowModel_sum : mRowModel.sum = 532067 := by decide
+theorem mRowModel_sum : mRowModel.sum = 531610 := by decide
 
 /-- **The M rows fit**: a slot's rows in its `2^20` half of M, the node's in `N_M` (margin
-`2^20 / 532,067 ≈ 1.97`; §4.3 (revision 3.6) states 531,588, its categories sum to 532,067 with
-`evalM`'s formula and the 8 `stmt` equalities once: finding F-3′). -/
+`2^20 / 531,610 ≈ 1.97`; §4.3 revision 3.7 states 531,618, its listed numbers sum to 531,610: F-3″). -/
 theorem mRows_le : mRowModel.sum ≤ slotM ∧ 2 * mRowModel.sum ≤ nM := by
   rw [mRowModel_sum]; simp only [slotM, nM]; norm_num
 

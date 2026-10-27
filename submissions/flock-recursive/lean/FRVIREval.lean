@@ -2,6 +2,8 @@
 import FRSpartan
 import FRBlake2sWalk
 import FRNodeLayout
+import FRVIRMux
+import FRVIRFinals
 
 /-!
 # The op implementations owned by L-circ: `walkA`, `walkB`, `kindInd`
@@ -17,8 +19,10 @@ module gives each op its **specification** (the mathematical definition) and its
   `2^16` blocks is a sum over `κ`'s intervals (`Layout.kindIvs`) of differences of prefix sums,
   `O(intervals · 16²)`.
 
-`evalM`, `evalL` (the node's M and L matrices' MLEs) are the matrices of `compileMux (gen fin)`'s
-rows, so they wait for S-0's `gen fin` (RESULT §6).
+* `evalM`, `evalL` (`evalM_eq`, `evalL_eq`): the MLE of a sparse matrix given by R1CS rows —
+  `Σ_{x,y} eq(τ, x) eq(σ, y) M[x][y]` over the cube — is the sum over its entries of
+  `coef · eq(τ, row) · eq(σ, cell)` (`sparse_eq`); `evalM`'s rows are `compileMux (gen fin .mux)`'s
+  for both slots (`nodeRows`), `evalL`'s the Lr rows (a parameter until L's row list is fixed).
 -/
 
 namespace FR
@@ -101,6 +105,114 @@ theorem kindInd_eq (r : Array F) : kindIndImpl r = kindIndSpec r := by
   unfold kindIndImpl kindIndSpec
   exact congrArg List.toArray
     (List.map_congr_left fun κ _ ↦ (ind_mle_eq (pt16 r) _ (kindIvs_le κ)).symm)
+
+/-! ## `evalM`, `evalL`: sparse matrix MLEs -/
+
+/-- A sparse matrix: `(row, column, coefficient)` entries. -/
+abbrev Entries := List (ℕ × ℕ × F)
+
+/-- Entry `(x, y)`. -/
+def entry (E : Entries) (x y : ℕ) : F :=
+  ((E.filter fun e => e.1 = x ∧ e.2.1 = y).map (·.2.2)).sum
+
+/-- **The matrix MLE** (specification): `Σ_{x,y} eq(τ, x) eq(σ, y) M[x][y]`. -/
+noncomputable def matMLE {a b : ℕ} (E : Entries) (τ : Fin a → F) (σ : Fin b → F) : F :=
+  ∑ x : Fin (2 ^ a), ∑ y : Fin (2 ^ b), eq τ (cube x) * eq σ (cube y) * entry E x y
+
+/-- `eq(τ, i)` by the bits of `i`. -/
+def eqAt {n : ℕ} (τ : Fin n → F) (i : ℕ) : F := ∏ l : Fin n, if i.testBit l then τ l else 1 - τ l
+
+/-- **The sparse evaluation** (implementation): one product per entry. -/
+def sparseEval {a b : ℕ} (E : Entries) (τ : Fin a → F) (σ : Fin b → F) : F :=
+  (E.map fun e => if e.1 < 2 ^ a ∧ e.2.1 < 2 ^ b then e.2.2 * eqAt τ e.1 * eqAt σ e.2.1 else 0).sum
+
+private theorem sum_fin_ite {n : ℕ} (c : ℕ) (g : Fin n → F) :
+    ∑ y : Fin n, (if y.val = c then g y else 0) = if h : c < n then g ⟨c, h⟩ else 0 := by
+  split_ifs with hc
+  · rw [Finset.sum_eq_single ⟨c, hc⟩ (fun u _ hu => ite_eq_right fun h => hu (Fin.ext h))
+      (by simp), ite_eq_left rfl]
+  · exact Finset.sum_eq_zero fun u _ => by
+      simp only [ite_eq_right_iff]; intro h; exact absurd (h ▸ u.isLt) hc
+
+theorem sparse_eq {a b : ℕ} (E : Entries) (τ : Fin a → F) (σ : Fin b → F) :
+    sparseEval E τ σ = matMLE E τ σ := by
+  induction E with
+  | nil => simp [sparseEval, matMLE, entry]
+  | cons e E ih =>
+    have he : ∀ x y, entry (e :: E) x y = (if x = e.1 then
+        (if y = e.2.1 then e.2.2 else 0) else 0) + entry E x y := fun x y => by
+      simp only [entry, List.filter_cons]
+      by_cases h1 : e.1 = x <;> by_cases h2 : e.2.1 = y <;> simp [h1, h2, eq_comm] <;>
+        intro h <;> simp_all
+    simp only [sparseEval, List.map_cons, List.sum_cons] at ih ⊢
+    rw [ih]
+    simp only [matMLE, he, mul_add, Finset.sum_add_distrib]
+    congr 1
+    have : ∀ x : Fin (2 ^ a), ∑ y : Fin (2 ^ b), eq τ (cube x) * eq σ (cube y) *
+        (if x.val = e.1 then (if y.val = e.2.1 then e.2.2 else 0) else 0) =
+        if x.val = e.1 then (if h : e.2.1 < 2 ^ b then
+          eq τ (cube x) * eq σ (cube (⟨e.2.1, h⟩ : Fin (2 ^ b))) * e.2.2 else 0) else 0 := by
+      intro x
+      by_cases hx : x.val = e.1
+      · simp only [hx, ↓reduceIte]
+        rw [← sum_fin_ite e.2.1 (fun y : Fin (2 ^ b) => eq τ (cube x) * eq σ (cube y) * e.2.2)]
+        exact Finset.sum_congr rfl fun y _ => by split_ifs <;> simp
+      · simp [hx]
+    simp only [this, sum_fin_ite]
+    by_cases ha : e.1 < 2 ^ a <;> by_cases hb : e.2.1 < 2 ^ b <;> simp [ha, hb, eq_cube, eqAt]
+    ring
+
+/-- The entries of a row list's `A`, `B`, `C` (row number, cell, coefficient). -/
+def entriesOf (sel : Circ.Row → Circ.Lin) (rows : List Circ.Row) : Entries :=
+  rows.zipIdx.flatMap fun p => (sel p.1).map fun t => (p.2, t.1, t.2)
+
+/-- A point as a function. -/
+def ptOf (n : ℕ) (r : Array F) (l : Fin n) : F := r.getD l.val 0
+
+/-- **The row matrices' evaluation** (implementation) and its specification. -/
+def evalRows (a b : ℕ) (rows : List Circ.Row) (τ σ : Array F) : F × F × F :=
+  (sparseEval (entriesOf Circ.Row.a rows) (ptOf a τ) (ptOf b σ),
+   sparseEval (entriesOf Circ.Row.b rows) (ptOf a τ) (ptOf b σ),
+   sparseEval (entriesOf Circ.Row.c rows) (ptOf a τ) (ptOf b σ))
+
+noncomputable def evalRowsSpec (a b : ℕ) (rows : List Circ.Row) (τ σ : Array F) : F × F × F :=
+  (matMLE (entriesOf Circ.Row.a rows) (ptOf a τ) (ptOf b σ),
+   matMLE (entriesOf Circ.Row.b rows) (ptOf a τ) (ptOf b σ),
+   matMLE (entriesOf Circ.Row.c rows) (ptOf a τ) (ptOf b σ))
+
+theorem evalRows_eq (a b : ℕ) (rows : List Circ.Row) (τ σ : Array F) :
+    evalRows a b rows τ σ = evalRowsSpec a b rows τ σ := by
+  simp only [evalRows, evalRowsSpec, sparse_eq]
+
+/-- Slot `σ`'s selector cells in L (A.7: after `sig` 299, digits 133, selectors 399, position bits
+7,552). -/
+def selCells (σ : ℕ) : FR.Kind → ℕ
+  | .L32 => Layout.lBase * 128 + σ * 2 ^ 14 + 8383
+  | .P30 => Layout.lBase * 128 + σ * 2 ^ 14 + 8384
+  | .N30 => Layout.lBase * 128 + σ * 2 ^ 14 + 8385
+
+/-- Slot `σ`'s first fresh M cell (after the `one` cell). -/
+def slotBase (σ : ℕ) : ℕ := Layout.oneCell + 1 + σ * Layout.slotM
+
+/-- Slot `σ`'s compiled program (`compileMux (gen fin .mux)`). -/
+def slotCS (fin : Finals) (σ : ℕ) : Circ.CS :=
+  Circ.compileMux Layout.oneCell (selCells σ) (slotBase σ) (gen fin .mux).ops
+
+/-- **The node's M rows**: both slots'. -/
+def nodeRows (fin : Finals) : List Circ.Row := (slotCS fin 0).rows ++ (slotCS fin 1).rows
+
+/-- **`evalM`** (A.8: `τ` 21 row coordinates, `σ` 23 cell coordinates). -/
+def evalMImpl (fin : Finals) (τ σ : Array F) : F × F × F := evalRows 21 23 (nodeRows fin) τ σ
+
+/-- **`evalM_eq`**: the implementation is the MLE of the node's M matrices. -/
+theorem evalM_eq (fin : Finals) (τ σ : Array F) :
+    evalMImpl fin τ σ = evalRowsSpec 21 23 (nodeRows fin) τ σ := evalRows_eq _ _ _ _ _
+
+/-- **`evalL`** over L's rows `lRows` (A.7: `τ` 15, `σ` 23). -/
+def evalLImpl (lRows : List Circ.Row) (τ σ : Array F) : F × F × F := evalRows 15 23 lRows τ σ
+
+theorem evalL_eq (lRows : List Circ.Row) (τ σ : Array F) :
+    evalLImpl lRows τ σ = evalRowsSpec 15 23 lRows τ σ := evalRows_eq _ _ _ _ _
 
 end Eval
 end FR

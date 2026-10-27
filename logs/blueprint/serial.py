@@ -28,7 +28,7 @@ PLAN = {
     "FRWots": (700, ["FRVIRMux", "FRBlockStream"]),
     "FRNodeLayout": (400, ["FRWots", "FRLeafCircuit", "FRPubTarget", "FRShift"]),
     "FRNodeCircuit": (1200, ["FRNodeLayout"]),
-    "FRVerifier": (800, ["FRVIRSpec", "FRVIREval", "FRFormat"]),
+    "FRVerifier": (800, ["FRVIRFinals", "FRVIREval", "FRFormat"]),
     "FRSoundnessDefs": (800, ["FRLog", "FRProximityFold", "FRVerifier"]),
     "FRSoundnessStepA": (1100, ["FRSoundnessDefs", "FRSkip", "FRSpartan", "FRRingSwitch",
                                 "FRPubTarget", "FRShift"]),

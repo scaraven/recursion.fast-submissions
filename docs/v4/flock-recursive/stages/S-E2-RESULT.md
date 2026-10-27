@@ -160,3 +160,75 @@ fields (S-C, `FRPubTarget`). `node_sound` waits for S-0, as instructed.
 
 Line counts (`logs/S-E2/loc.txt`): `FRVIRCompile` 784, `FRVIRMux` 69, `FRWots` 114,
 `FRNodeLayout` 80, `FRVIREval` 57; **total 1,104 code lines**.
+
+## 8. After S-0's fix pass (HEAD `afc2928`, BLUEPRINT revision 3.7)
+
+Built against HEAD (`logs/fr-build-circ/snap.sh` copies HEAD's other-track modules; S-0 has
+nothing in progress in the working tree). 16 GB scope. Source rule: 0 findings. Axioms ⊆
+{`propext`, `Classical.choice`, `Quot.sound`} for all 15 audited statements
+(`logs/S-E2/axioms.log`).
+
+### New and changed
+
+- **`FRVIREval`** (129 code lines):
+  - `sparse_eq`: a sparse matrix's MLE `Σ_{x,y} eq(τ,x) eq(σ,y) M[x][y]` over the cube equals the
+    sum over its entries of `coef · eq(τ, row) · eq(σ, cell)` (entries outside the cube drop out);
+  - **`evalM_eq`**: `evalMImpl fin` (the sparse sum over the A/B/C entries of `nodeRows fin`)
+    equals the MLE of the node's M matrices. `nodeRows fin` is both slots'
+    `compileMux (gen fin .mux)` rows, with selector cells in L (`selCells`, A.7 offset 8,383) and
+    fresh cells from `slotBase σ = oneCell + 1 + σ·2^20`;
+  - **`evalL_eq`**: the same for a row list `lRows` (L's Lr rows; A.7 describes them but no
+    module fixes them);
+  - `walkA_eq`, `walkB_eq`, `kindInd_eq` (§7).
+
+  The implementation costs one product per entry. The blueprint's templated evaluation
+  (`tpl_mle`, `shift_mle`, `irregular_mle`, `O(templates)`) is **not** done (deviation D-6). As
+  stated, `evalM` costs the replay's row count. That count is already §4.3's "evalM replay"
+  budget for the child's irregular entries. For the node's own M matrices it is the whole M row
+  count, about 2^20 products. This exceeds §3.1's verifier estimate, so the templates are needed
+  for `T_V` (open).
+- **`PubCells`** (`FRNodeCircuit`): `w Layout.oneCell = 1`, the point claim `f[Mbase] = 1`. The
+  `vk` and `cᵢ` cells enter as the slots' `input` imports.
+- **`node_m_sound`** (`FRNodeCircuit`), with `slot_sound`: if `PubCells` holds and both slots
+  satisfy `SlotHolds`, both children's **mux** programs accept: `semIR impl (gen fin .mux) inpᵢ
+  trᵢ = some true`. `SlotHolds` contains:
+  - the selector cells are bits and satisfy the one-hot rows;
+  - every compiled row holds;
+  - at the kind the selector picks: `hdr`'s kind byte is that kind's, the run uses its trace up,
+    the imports' cells hold their values and the foreign flags hold.
+
+  The statement is over `fin` with no hypotheses on S-F's or S-G's fields: whatever they contain,
+  the compiled rows check `gen fin` as it stands.
+- **`FRNodeLayout`** (revision 3.7): `chainN = 22,472`, `hEnd = 45,974`, and `mRowModel` with
+  imports 74,461, `evalM` `2·74,461 + 2·22,472 + 2^14`, gated asserts `2·431 + 2·871 + 600`, and
+  selector and kind rows 4. **F-3″ (minor): §4.3 states 531,618; its listed numbers sum to
+  531,610** (`mRowModel_sum`). `mRows_le` holds (1.97×).
+
+### Not done
+
+1. **`node_sound` over the packed witness `z`** (`Holds blockR1CS_E` on the used blocks,
+   `ShHolds` with the link families, `LrHolds`, `EHolds`, `readSigned`, conclusion
+   `accWith V …`). It needs S-F's `V`/`accWith`. The H side of the assembly is also missing:
+   discharging `SlotHolds`' imports from the trace cells (the pack map) and the foreign flags from
+   the H blocks' pins and point claims.
+2. **`node_complete`/`nodeWitness`**: not started.
+3. The templated `evalM`/`evalL` (D-6), and the definition of L's row list.
+4. Linking `compile`'s actual row count to `mRowModel` (D-2).
+
+### FR-R4′: build and kernel time of S-E2's modules
+
+**Measured** on this VM, sequential (`lean -DElab.async=false --profile`, one process each, 16 GB
+scope), `logs/S-E2/profile-*.log`, `logs/S-E2/r4.txt`:
+
+| Module | wall | import | elaboration | tactic exec. | type checking (kernel) |
+|---|---|---|---|---|---|
+| `FRVIRCompile` | 24.6 s | 3.5 s | 0.86 s | 5.99 s | 1.00 s |
+| `FRVIRMux` | 10.3 s | 3.4 s | 0.20 s | 2.34 s | 1.42 s |
+| `FRWots` | 7.7 s | 2.5 s | 0.13 s | 0.20 s | 0.10 s |
+| `FRNodeLayout` | 6.7 s | 3.4 s | 0.10 s | 0.25 s | 0.20 s |
+| `FRVIREval` | 8.2 s | 3.5 s | 0.14 s | 0.39 s | 0.10 s |
+| `FRNodeCircuit` | 5.8 s | 3.5 s | 0.03 s | 0.03 s | 0.02 s |
+| **total** | **63.3 s** | | | | **2.84 s** |
+
+Peak RSS is 2.7 GB or less per module. The only noticeable kernel cost is the `decide` controls
+in `FRVIRMux`. Code lines: 1,217 in total (`logs/S-E2/loc.txt`).

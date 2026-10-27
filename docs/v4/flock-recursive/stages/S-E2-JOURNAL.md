@@ -72,3 +72,12 @@ with the gates, `digitSel_sound`, `oneCell`, and the row model updated (F-3′: 
 still does not equal the sum of its categories, 532,067). New module `FRVIREval`: `walkA_eq`,
 `walkB_eq`, `kindInd_eq`. `evalM`/`evalL` and `node_sound` wait for S-0's `gen fin`. Built against
 S-0's working-tree `FRVIR` (it builds), with the 16 GB scope.
+
+### After S-0's fix pass (`afc2928`)
+
+`evalM_eq` and `evalL_eq` are done (sparse form, through `sparse_eq`). `PubCells`, `slot_sound`
+and `node_m_sound` are in the new module `FRNodeCircuit`. The layout and row model follow
+revision 3.7 (F-3″: the stated 531,618 vs the listed numbers' sum 531,610). The FR-R4′ figures
+for S-E2's modules are measured (63 s wall, 2.8 s kernel). An earlier build failure in
+`FRFormat` came from a snapshot taken while S-0's commit was landing; it was fixed by
+re-snapshotting.

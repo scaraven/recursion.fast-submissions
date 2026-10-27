@@ -40,6 +40,7 @@ import FRVIRMux
 import FRWots
 import FRNodeLayout
 import FRVIREval
+import FRNodeCircuit
 
 /-!
 # `flock-recursive`
