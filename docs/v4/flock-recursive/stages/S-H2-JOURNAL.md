@@ -65,3 +65,8 @@ Base: branch `v4/flock-recursive`, HEAD `53c2e13`. Build tree `logs/fr-build-SH2
     alignment argument at block close distinguishes `jE = lo + 2w` from the empty block; the
     `let` in `mstep` needs `dsimp only` before `by_cases` on `takeL`; `passes_ok` and
     `keyLt_order` compiled first time. Stopped before the register-level simulation (step 2).
+
+## Part 5
+
+17. `FRXSortSim`: `minW` (branch-free min), `eqW_toWord`, `ltW_toWord`; compiled first time.
+    Stopped: this agent's context is long; RESULT Part 5 is a handover brief for step 2.

@@ -379,3 +379,51 @@ first entry of `L` whose answer is `a`, against FRMerkle/FRLog's first-preimage 
 
 **Stopped here** on the token budget. The state is commit-ready: every `FRX*` module builds, no
 `sorry`, the source rule is clean, and `ext`, `computes` and the costs are unchanged.
+
+---
+
+## Part 5: simulation building blocks; handover for step 2
+
+**Delivered: `FRXSortSim`** (50 lines, 31 code, 4 theorems).
+
+- `minW`/`minW_toWord`: `minPs`'s branch-free `min` equals `toWord (min a b)` for `a, b < 2^64`.
+- `eqW_toWord`, `ltW_toWord`: the `eq` and `ltu` flags on `toWord`s are `bW` of the `Nat`
+  comparisons.
+- Axioms: the three standard ones (two lemmas need only `propext, Quot.sound`).
+- Source rule: 61 files, 0 findings. No `sorry`.
+
+**Handover: what step 2 needs.** This agent's context is long, and the remaining
+register-level proof is best done by a fresh agent from this record.
+
+1. **`Rel s σ`** (the registers and heap hold `σ : MS`).
+   - Registers: `rI, rIE, rJ, rJE, rKk, rW2, rN, rSrc, rDst` hold `toWord` of `i, iE, j, jE, k,
+     w, n, S, D`.
+   - Heap: `rd M (S + a) = src a` and `rd M (D + a) = σ.dst a` for `a < n`.
+   - Bounds: `regs ≤ S, D`; the ranges `[S, S + n)` and `[D, D + n)` are disjoint and inside
+     the memory; `n < 2^61`.
+2. **`blockIR_sem`**: `Rel` goes to `Rel (bstart n w σ)` (the ghost `lo` is free).
+   - Use `eqW_toWord` for the two `eq` flags. `XOp.and.eval` of two `bW` flags is `bW (p && q)`.
+   - For the new block: `rI := k`, `rV := k + w`, `minPs rIE rV rN` (`minW_toWord`),
+     `rJ := iE`, `rV := rV + w`, `minPs rJE rV rN`.
+3. **The choice.** Use `ltW_toWord` for `rG`/`rH`, then the nested `ite` with `cmpIR_sem`. Its
+   address hypotheses are `regs ≤ S + i` and `regs ≤ S + j`. The result is
+   `rF = bW (takeL (keyLt I) src σ')`.
+4. **The write.** `ite rF (rAd := S + i; i++) (rAd := S + j; j++)`, `load rV rAd` (a heap read of
+   `src`), `rAd := D + k`, `k++`, and `store rAd rV`. The store goes through `rd_storeM` and
+   updates exactly `D + k`; `src` is untouched because the ranges are disjoint.
+5. **`stepIR_sem`**: `Rel s σ → σ.k < n → Rel (semXIR I stepIR s) (mstep (keyLt I) src n w σ)`.
+6. **`passIR_sem`**. `passPre` resets `i…k` to `0` and reads the count `n` from `posL`. Iterate
+   `stepIR_sem` `n` times along `iterL`, following `wLoop`'s pattern and generalising the state
+   at each step. Then `swapPs` swaps the bases and sets `w := min(2w, n)`
+   (`minW_toWord`).
+7. **`sortIR_sem`**. `loopK rCP rNP 64 passIR`: 64 iterations of `passIR_sem`, with `X p` the
+   heap image of the current source (`X` at `memX`, `Y` at `memX + n`, alternating). Then apply
+   `passes_ok` with `X 0 a = toWord (posL + 1 + entryOff L a)` from `walk_spec`. These values are
+   injective because `entryOff` strictly increases (`entryOff_succ`, `qWords ≥ 5`) and stays
+   below `2^64`. The result after 64 passes is back in `X`, since 64 is even.
+8. **Pitfalls** (journal items 5, 12, 14):
+   - generalise the state before any case analysis on `semXIR`;
+   - no `rfl` between `XIR` terms with different `seq` association;
+   - loads need `regs ≤ address`;
+   - `simp only` with explicit dischargers for `rd_set_*`;
+   - `BitVec.ofNat_add` in place of `toWord_add_one` on `1#64`.
