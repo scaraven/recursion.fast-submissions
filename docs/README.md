@@ -1,5 +1,17 @@
 # Documentation index
 
+> **v4 note (2026-10-27).** Apart from `v4/`, everything under `docs/` is a **v3-era reference
+> copy**: the v3 design and its predecessors, the core's v2 handover and harness documents, the
+> research, the v1.0 report and the v3 baseline brief. None of it is the design in force.
+>
+> - **The v4 design** lives in the core: `.contract/docs/DESIGN-v4-srom.md`, at the pin `8ad98e9`
+>   (branch `v4/ks-standard`, with the amendments V4-A9 and V4-A10). Its brief, design attack and
+>   stage records are under `.contract/docs/v4/`, and the contract is
+>   `.contract/RecursionFast/Contract/`.
+> - **`v4/flock-baseline/`** is written here: the blueprint, stage records and reviews of the v4
+>   baseline entry `spartan-srom`.
+> - **For v4, start at `../AGENTS.md`.** The reading order and the folder table below are v3's.
+
 This folder holds everything an agent needs to work in this repository without the design
 workspace: the v3 design and its predecessors, the core's handover and harness documentation, the
 research behind the design, the v1.0 report, and the brief for the baseline entry. Everything here

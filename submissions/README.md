@@ -1,67 +1,85 @@
 # `submissions/`: one root per entry
 
-Each entry is one directory `submissions/<root>/`. There is no entry yet. The first will be the
-organiser's baseline, `submissions/baseline/` (stage S2, `docs/baseline/BASELINE-TASK.md`). The
-rules a submitter reads are in `../AGENTS.md`. This file is the layout of a root. Section numbers
-refer to `docs/design/DESIGN-v3.md`.
+Each entry is one directory `submissions/<root>/`. This file is the layout of a root. The rules a
+submitter reads are in `../AGENTS.md`.
+
+On this branch the only v4 entry is `spartan-srom`: the baseline, v3's Spartan+Ligero leaf SNARK
+under the signed random oracle, with σ0-bundle nodes. Its own `README.md` and `NOTES.md` describe
+it, and its blueprint is `../docs/v4/flock-baseline/BLUEPRINT.md`. It is also the worked example of
+a root's layout. The v3 entries, `baseline` and `spartan-chain`, exist only on the local, unpushed
+`main` of the organiser's checkout, and they are not v4 entries.
+
+The harness that reads a root is the core's `harness/evaluate.py` and `harness/ci/fetch-entry.sh`
+at the `.contract` pin.
 
 ## Root rules
 
-1. **One root per entry.** An entry pull request creates or changes only its own root (§7.7). It
-   never touches `records.json`, `.contract`, `docs/` or another root.
-2. **Root name.** Proposed until S7 fixes it: a lowercase identifier (`[a-z][a-z0-9-]*`), unique
-   in this directory. The intake's submission id and the record refer to it.
-3. **Flat.** §7.7 says the intake exports a root "as flat regular files". ots.golf, whose model §7.7
-   adopts, reads that as no subdirectories, no symbolic links and only regular files. S7 fixes the
-   rule. Until then, keep roots flat.
-   - The v2 baseline (`docs/baseline/v2-example/`) used subdirectories, but it lived inside the
-     core and predates the intake.
-   - A Rust prover fits a flat root: `Cargo.toml` with `[[bin]] path = "main.rs"`, and the modules
-     beside it.
+1. **One root per entry.** An entry pull request changes files under exactly one
+   `submissions/<root>/`. It never touches `records.json`, `.contract`, `docs/`, the workflows or
+   another root. The evaluation's `select` job refuses anything else.
+2. **Root name.** A lowercase identifier (`[a-z][a-z0-9-]*`), unique in this directory. The result
+   and the record refer to it. The intake, not built yet, fixes the rule.
+3. **Subdirectories, not flat.** v3 proposed flat roots, reading its §7.7 ("the intake exports a
+   root as flat regular files") as ots.golf does. **v4's harness requires two subdirectories**:
+   - it reads the Lean sources from `lean/`;
+   - it builds the prover from `prover/*.s`;
+   - `claim.json` stays at the root.
+
+   `fetch-entry.sh` exports the root with `git archive` and refuses anything that is not a regular
+   file or a directory. The rule is therefore now **regular files and directories, no symbolic
+   links, no special files**. A link could point the harness at a host file, and a directory
+   cannot.
 4. **Lean modules.**
-   - Every `.lean` file of the root becomes a module of one generated library. The harness ignores
-     any lakefile, `leanOptions` and `moreLeanArgs` (`docs/core/harness-README.md`, "How the
-     harness builds a solution").
-   - In a flat root, a file `Foo.lean` is the module `Foo`.
-   - Module names must be fresh: not `RecursionFast`, not `Mathlib`, and not the root of any
-     package. Use a prefix that names the entry, such as `BaselineV3…`.
-   - Imports: the allowlist and the hard rules of `AGENTS.md` §10 and §11.
+   - Every `.lean` file directly in `lean/` is a module of one generated library: `lean/Foo.lean`
+     is the module `Foo`. Subdirectories of `lean/` are not read.
+   - The harness ignores any lakefile, `leanOptions` and `moreLeanArgs`.
+   - `lean/Solution.lean` is required. It copies the rendered challenge verbatim, defines
+     `RecursionFast.Challenge.submission` and proves `RecursionFast.Challenge.certified`
+     (`AGENTS.md` §3.2).
+   - **Only `Solution`'s import closure is built.** The harness builds the targets `Challenge` and
+     `Solution` once, and nothing else (the core's FIXLIST Q7, V4-A9); the comparator, the gate and
+     the badge read that build. A module of `lean/` that `Solution` does not import, directly or
+     not, is never built or checked by the harness. So import the controls from `Solution` if the
+     harness is to check them.
+   - Module names must be fresh. No module root may exist in the organiser's build, the toolchain
+     or any package (so not `RecursionFast`, `Mathlib`, `CompPoly`, …), and `Challenge` is taken.
+     Use a prefix that names the entry, such as `SpartanSrom…`.
+   - Imports and hard rules: `AGENTS.md` §6.
 5. **Files a root holds:**
 
    | File | Required | What |
    |---|---|---|
-   | Lean sources (`*.lean`) | yes | `V`, `P`, `E`, the proofs, and the solution module that fills the challenge's `submission` and `certified` (§3.2) |
-   | `claim.json` | yes | the declared data rendered into the challenge: v2 schema below, S3 fixes the v3 one |
-   | extractor image | yes | `image.code` (little-endian 32-bit words) and `image.data` (little-endian 64-bit words), named by the claim, ≤ `2^20` bytes together (§4.4, §6.6) |
-   | extractor source and build script | recommended | e.g. `extractor.S` and `build-extractor.sh`, so the image can be reassembled byte for byte (the v2 baseline's `check.sh` does this) |
-   | native prover source and build script | yes | built from source in the sandbox with the pinned toolchains, ≤ 1 h (§3.2, §6.3 step 2) |
-   | `README.md` | recommended | what the entry is, for a reader: the construction, what is proved, the measurements |
-   | `NOTES.md` | expected (§7.7) | the untrusted journal: the idea, the result, what did not work and why, what to try next. Published whatever the verdict (§7.7) |
-   | `check.sh` | recommended | the entry's own end-to-end check (the v2 baseline's `scripts/check.sh` is the model) |
+   | `claim.json` | yes | the declared numbers: `error`, `completeness_error` (strings `"a"` or `"a/b"`), `qV`, `fuel_base`, `fuel_per_word` (integers); exactly these keys (`AGENTS.md` §3.2) |
+   | `lean/Solution.lean` | yes | the solution module (rule 4) |
+   | `lean/*.lean` | yes | `V`, `P`, `E`, `ext`, the proofs and the controls |
+   | `prover/*.s` | yes | the native prover as x86-64 GNU assembly, linked by the runner with `gcc -static -O2 -pthread *.s -o prover -lm` in its sandbox; it must assemble with the runner image's GNU Binutils 2.42 (`AGENTS.md` §4.5) |
+   | prover sources and build script | expected | what the `.s` is generated from and the script that does it, so that it can be regenerated byte for byte; the runner does not build them |
+   | `README.md` | recommended | what the entry is, for a reader: the construction, what is proved, the measurements, how to check it (as `spartan-srom/README.md`) |
+   | `NOTES.md` | expected | the untrusted journal: the idea, the result, what did not work and why, what to try next. Published whatever the verdict (as `spartan-srom/NOTES.md`) |
+   | `LICENSE-…` | when needed | the licence of code derived from elsewhere (as `spartan-srom/LICENSE-leanerVM`) |
 
-6. **No secrets, no binaries the harness would trust.** The harness renders the image from your
-   files and checks it against the certificate. It builds the prover from source. Prebuilt
-   executables are not run.
-
-## The claim (v2 schema; S3 fixes the v3 schema)
-
-v2's leaf-board claim (`docs/baseline/v2-example/claim.json`):
-
-```json
-{"k": 24, "hash": "blake2s", "arity": 2,
- "image": {"code": "extractor/extractor.bin", "data": "extractor/extractor.data"}}
-```
-
-- **What v3 drops.** v3 has no class `k`, one hash at launch (V3-6) and no Merkle arity, because
-  there is no organiser compiler. So `k`, `hash` and `arity` go.
-- **What v3 keeps.** The image and "the declared numbers" stay. `Declared` carries over from v2,
-  and the certificate requires `S.img = D.img` (§3.2).
-- **Renderer rules** (v2 §3.3): the claim's keys equal the stub's placeholders exactly; there are no
-  floats and no duplicate keys; paths are relative, inside the root, with no `..` and no symbolic
-  link.
+6. **No secrets, and no binaries the harness would trust.**
+   - The harness renders the challenge from your claim and builds the prover from your `.s` files,
+     in its sandbox; prebuilt executables are never run.
+   - The assembly build sees only copies of the `.s` files, so `.include` and `.incbin` cannot
+     reach anything else.
+7. **Size.** A signed-proof file the runner reads is capped at 64 MiB. Open: no per-root file or
+   byte limit is fixed; the intake, when it is built, fixes them.
 
 ## Registry
 
-`../records.json` is the registry (§7.7). Per board, it holds the standing entry with its contract
-id, hardware id, `entry_id` and the verdict's commit. Only the intake writes it. Until S7 it is
-empty: `{"version": 1, "records": {}}`.
+`../records.json` is the registry, and only the intake writes it. It is at `{"version": 2,
+"records": {}}` (version 1 was v3's).
+
+**A v4 record** is held per season, under the season's name. It holds:
+
+- the standing entry's root and commit;
+- `S`, `T_tree`, `t_link` and the season's `K`;
+- the core commit (the pin) and the harness commit;
+- the attested result's digest and the run that produced it;
+- the CPU model.
+
+A record is admitted only with an ACCEPT whose attestation verifies (`AGENTS.md` §5.4) and a
+paired comparison in one job (`AGENTS.md` §8). PROVISIONAL results are never recorded. The
+acceptance check is the core's `harness/verify-record.sh RESULT.json` at the pin (`AGENTS.md`
+§5.4). Open: the exact record schema, which the intake fixes when it is built.
