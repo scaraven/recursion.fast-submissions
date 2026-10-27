@@ -1,0 +1,16 @@
+# Compiled-Lean binary-field and BLAKE2s microbenchmark (recursion.fast-submissions-flock,
+# docs/v4/flock-recursive/phase0/M-measure.md). Lean core only: no Mathlib, no packages.
+name = "leanfield"
+defaultTargets = ["gfbench", "chaincheck"]
+
+[[lean_lib]]
+name = "GF"
+roots = ["GF", "GFU", "Blake2sProbe"]
+
+[[lean_exe]]
+name = "gfbench"
+root = "Main"
+
+[[lean_exe]]
+name = "chaincheck"
+root = "ChainCheck"

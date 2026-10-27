@@ -1,0 +1,49 @@
+# Microbenchmarks on the evaluation's runner image (plan FR-D7). It runs on a push to a `probe/**`
+# branch, once per probe named in `.github/probe.conf` (one directory under `probe/` per line, each
+# with a `run.sh OUTDIR`), and uploads each probe's output directory. Not part of any evaluation.
+name: probe
+on:
+  push:
+    branches: ["probe/**"]
+permissions: { contents: read }
+
+jobs:
+  list:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      probes: ${{ steps.l.outputs.probes }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { persist-credentials: false, sparse-checkout: .github }
+      - id: l
+        run: echo "probes=$(grep -E '^[A-Za-z0-9._-]+$' .github/probe.conf | jq -R . | jq -sc .)" >> "$GITHUB_OUTPUT"
+
+  probe:
+    needs: list
+    strategy:
+      fail-fast: false
+      matrix:
+        probe: ${{ fromJSON(needs.list.outputs.probes) }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with: { persist-credentials: false }
+      - name: machine
+        run: lscpu; nproc; free -g
+      - name: elan
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh | sh -s -- -y --default-toolchain none
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+      - name: rust 1.99.0
+        run: rustup toolchain install 1.99.0 --profile minimal
+      - name: run
+        run: probe/${{ matrix.probe }}/run.sh "$RUNNER_TEMP/out" 2>&1 | tee "$RUNNER_TEMP/run.log"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: probe-${{ matrix.probe }}
+          path: |
+            ${{ runner.temp }}/out
+            ${{ runner.temp }}/run.log
