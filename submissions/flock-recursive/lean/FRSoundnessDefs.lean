@@ -1,5 +1,6 @@
 -- New for `flock-recursive` (BLUEPRINT §5.1, §7; stage S-G). Part A follows
--- `submissions/spartan-srom/lean/SpartanSromSoundnessDefs.lean` and `SpartanSromSoundnessKSBase.lean`
+-- `submissions/spartan-srom/lean/SpartanSromSoundnessDefs.lean` and
+-- `SpartanSromSoundnessKSBase.lean`
 -- Part A (this repository, `v4/flock-recursive` at `cf2f7b3`), with one change: a chain's charge
 -- reads the log strictly before its **last** entry (`L₀ L j = L.take j`), not before its cut.
 import FRLog
@@ -399,5 +400,367 @@ theorem condCount_last (L₀ es₀ : Log) {r : ℕ} {pre : List Digest} (h : pre
   split_ifs <;> simp
 
 end Ext
+
+/-! ## Part C: the local inequality from per-position facts (`hloc_of`)
+
+The charge `pRoundG D rnd`: inside a multi-squeeze phase (`rnd p = some (s0, r)`: the `r` answers
+`s0 + 1 … s0 + r` after the entry `s0`), after `1 ≤ k < r` answers, the conditional count of the
+phase's escape; `0` elsewhere. `hloc_of` proves `muG_step`'s `hloc` for it from four per-position
+facts and the stability `hstab` of `D` under the charging log (deviation 1 of part 1). -/
+
+section Local
+
+theorem lastAns_append (es : Log) (x : ByteArray × Digest) : lastAns (es ++ [x]) = x.2 := by
+  simp [lastAns]
+
+theorem lastAns_of_getLast? {es : Log} {e : ByteArray × Digest} (h : es.getLast? = some e) :
+    lastAns es = e.2 := by
+  simp [lastAns, h]
+
+theorem ext_nil (es : Log) : ext es [] = es := rfl
+
+theorem ext_append (es : Log) (as : List Digest) (a : Digest) :
+    ext es (as ++ [a]) = ext1 (ext es as) a := by
+  simp [ext, List.foldl_append]
+
+theorem ext_dropLast (es₀ : Log) {as : List Digest} (h : as ≠ []) :
+    (ext es₀ as).dropLast = ext es₀ as.dropLast := by
+  conv_lhs => rw [← List.dropLast_append_getLast h, ext_append]
+  rw [ext1, List.dropLast_concat]
+
+/-- A 40-byte query is its first 8 bytes and its 32-byte state. -/
+theorem split40 (q : ByteArray) (hs : q.size = 40) :
+    q.data.toList = q.data.toList.take 8 ++ (bytesAt q 8 32).toList := by
+  have hl : q.data.toList.length = 40 := by rw [Array.length_toList]; exact hs
+  have ht : (q.data.toList.take 8).length = 8 := by rw [List.length_take, hl]; rfl
+  refine List.ext_getElem (by rw [List.length_append, ht, hl]; simp) fun k h₁ h₂ => ?_
+  by_cases k8 : k < 8
+  · rw [List.getElem_append_left (by rw [ht]; omega), List.getElem_take]
+  · rw [List.getElem_append_right (by rw [ht]; omega), Vector.getElem_toList, getElem_bytesAt,
+      List.getD_eq_getElem _ _ (by omega)]
+    congr 1; rw [ht]; omega
+
+/-- A query of the squeeze item with state `st` is `squeezeQ st`. -/
+theorem eq_squeezeQ {q : ByteArray} {st : Digest} (hm : fsCheck .squeeze q = true)
+    (hs : stateIn q = some st) : q = squeezeQ st := by
+  simp only [fsCheck, Bool.and_eq_true, beq_iff_eq] at hm
+  obtain ⟨ht, hsz⟩ := hm
+  simp only [stateIn, ht, hsz, and_true, or_true, ↓reduceIte, Option.some.injEq] at hs
+  apply Merkle.byteArray_ext_toList
+  rw [squeezeQ_data, split40 q hsz, ht, hs]
+
+theorem fsCheck_absorb_or {it : Item} {q : ByteArray} (h : fsCheck it q = true) :
+    it = .seed ∨ it = .squeeze ∨ ∃ len, it = .absorb len := by
+  cases it <;> simp_all [fsCheck]
+
+/-- **`Matches` extends exactly by the next item, linked to the last answer.** -/
+theorem matches_append_iff {es : Log} (hm : Matches es) (x : ByteArray × Digest) :
+    Matches (es ++ [x]) ↔ ∃ hl : es.length < fsItems.length,
+      stateIn x.1 = some (lastAns es) ∧ fsCheck (fsItems[es.length]'hl) x.1 = true := by
+  have hne := matches_ne_nil hm
+  have hpos : 0 < es.length := List.length_pos_iff.mpr hne
+  have hla : lastAns es = es[es.length - 1].2 := by
+    simp [lastAns, List.getLast?_eq_getElem?,
+      List.getElem?_eq_getElem (show es.length - 1 < es.length by omega)]
+  constructor
+  · rintro ⟨-, hl, H⟩
+    have hl' : es.length < fsItems.length := by simp at hl; omega
+    obtain ⟨h1, h2⟩ := H (es.length - 1) (by simp; omega)
+    have hx : (es ++ [x])[es.length - 1 + 1]'(by simp; omega) = x := by
+      simp [show es.length - 1 + 1 = es.length by omega]
+    have hy : (es ++ [x])[es.length - 1]'(by
+        simp only [List.length_append, List.length_singleton]; omega) =
+        es[es.length - 1] :=
+      List.getElem_append_left _
+    have hf : fsItems[es.length - 1 + 1]'(by omega) = fsItems[es.length]'hl' := by
+      congr 1; omega
+    rw [hx, hy] at h1; rw [hx, hf] at h2
+    exact ⟨hl', by rw [hla]; exact h1, h2⟩
+  · rintro ⟨hl, hs, hc⟩
+    refine matches_append hm hl ⟨es[es.length - 1], ?_, by rw [hs, hla]⟩ hc
+    rw [List.getLast?_eq_getElem?, List.getElem?_eq_getElem]
+
+/-- On the squeeze positions after `s0`, a matching chain is the formal extension of its first
+`s0 + 1` entries by its later answers. -/
+theorem ext_take {es : Log} (hm : Matches es) {s0 : ℕ} (hs : s0 < es.length)
+    (hsq : ∀ p, s0 < p → p < es.length → fsItems[p]? = some .squeeze) :
+    es = ext (es.take (s0 + 1)) ((es.drop (s0 + 1)).map Prod.snd) := by
+  obtain ⟨-, hl, H⟩ := hm
+  suffices Hk : ∀ k, s0 + 1 + k ≤ es.length →
+      es.take (s0 + 1 + k) = ext (es.take (s0 + 1)) (((es.take (s0 + 1 + k)).drop (s0 + 1)).map
+        Prod.snd) by
+    have := Hk (es.length - (s0 + 1)) (by omega)
+    rwa [show s0 + 1 + (es.length - (s0 + 1)) = es.length by omega, List.take_length] at this
+  intro k
+  induction k with
+  | zero => intro _; simp [ext]
+  | succ k ih =>
+    intro hk
+    have hn : s0 + 1 + k < es.length := by omega
+    rw [show s0 + 1 + (k + 1) = s0 + 1 + k + 1 by omega, List.take_add_one,
+      List.getElem?_eq_getElem hn, Option.toList_some, List.drop_append_of_le_length
+        (by simp; omega), List.map_append, List.map_cons, List.map_nil, ext_append, ← ih (by omega)]
+    simp only [ext1]
+    congr 1
+    obtain ⟨hst, hck⟩ := H (s0 + k) (by omega)
+    have hsqk := hsq (s0 + k + 1) (by omega) (by omega)
+    rw [List.getElem?_eq_getElem (by omega), Option.some.injEq] at hsqk
+    rw [hsqk] at hck
+    have hla : lastAns (es.take (s0 + 1 + k)) = es[s0 + k].2 := by
+      rw [lastAns, List.getLast?_eq_getElem?, List.length_take,
+        show min (s0 + 1 + k) es.length - 1 = s0 + k by omega, List.getElem?_take_of_lt
+          (by omega), List.getElem?_eq_getElem (by omega)]
+      rfl
+    rw [hla, ← eq_squeezeQ hck hst]
+    have heq : es[s0 + k + 1]'(by omega) = es[s0 + 1 + k] := by congr 1; omega
+    rw [heq]
+
+/-- **The multi-squeeze phases**: `rnd p = some (s0, r)` places position `p` among the `r` squeezes
+after the entry `s0`, and every position of the phase is a squeeze of the same phase. -/
+def RndOK (rnd : ℕ → Option (ℕ × ℕ)) : Prop :=
+  ∀ p s0 r, rnd p = some (s0, r) → s0 < p ∧ p ≤ s0 + r ∧
+    ∀ p', s0 < p' → p' ≤ s0 + r → fsItems[p']? = some .squeeze ∧ rnd p' = some (s0, r)
+
+variable (D : Log → Log → Prop) (rnd : ℕ → Option (ℕ × ℕ))
+
+/-- **The charge**: inside a multi-squeeze phase, after `1 ≤ k < r` answers, the conditional count
+of its escape (on the log `L`); `0` elsewhere. -/
+noncomputable def pRoundG (L es : Log) : ℝ≥0 :=
+  match rnd (es.length - 1) with
+  | some (s0, r) =>
+    if es.length - 1 - s0 < r then
+      condCount D L (es.take (s0 + 1)) r ((es.drop (s0 + 1)).map Prod.snd)
+    else 0
+  | none => 0
+
+theorem pRoundG_seed (L : Log) (e : ByteArray × Digest) (h0 : rnd 0 = none) :
+    pRoundG D rnd L [e] = 0 := by
+  simp [pRoundG, h0]
+
+variable {D rnd}
+
+open Classical in
+/-- **`hloc_of`**: `muG_step`'s local inequality for the charge `pRoundG D rnd`, from
+* `habs`: an absorb never undooms;
+* `hmid`: a middle answer of a multi-squeeze phase neither dooms nor undooms;
+* `hsingle`: a single squeeze escapes on at most `N ≤ 2^256 δ` answers;
+* `hround`: a multi-squeeze phase's escape count from its entry is at most `δ`;
+* `hstab`: on a non-bad log, `D` reads the same off the log before a chain's last entry and off the
+  whole log, for every formal extension of every prefix of the chain. -/
+theorem hloc_of (hrnd : RndOK rnd) (δ : ℝ≥0) (N : ℕ) (hN : (N : ℝ≥0) ≤ 2 ^ 256 * δ)
+    (habs : ∀ L es x len, Matches (es ++ [x]) → fsItems[es.length]? = some (.absorb len) →
+      D L es → D L (es ++ [x]))
+    (hmid : ∀ L es x s0 r, Matches (es ++ [x]) → rnd es.length = some (s0, r) →
+      es.length < s0 + r → (D L (es ++ [x]) ↔ D L es))
+    (hsingle : ∀ L es, Matches es → fsItems[es.length]? = some .squeeze → rnd es.length = none →
+      (Finset.univ.filter fun a => D L es ∧ ¬ D L (ext1 es a)).card ≤ N)
+    (hround : ∀ L es₀ s0 r, Matches es₀ → es₀.length = s0 + 1 →
+      rnd (s0 + 1) = some (s0, r) → condCount D L es₀ r [] ≤ δ)
+    (hstab : ∀ L i, ¬ Bad L → IsChain L i → ∀ k as,
+      (D (L.take i) (ext ((entriesOf L (pathOf L i)).take k) as) ↔
+        D L (ext ((entriesOf L (pathOf L i)).take k) as)))
+    (L : Log) (i : ℕ) (q : ByteArray) (hb : ¬ Bad L) (hci : IsChain L i)
+    (hst : stateIn q = some L[i]!.2) :
+    ∑ a : Digest, (if Matches (entriesOf L (pathOf L i) ++ [(q, a)]) then
+        (if EscAtG D L (entriesOf L (pathOf L i) ++ [(q, a)]) then 1 else 0) +
+          pRoundG D rnd L (entriesOf L (pathOf L i) ++ [(q, a)]) else 0) ≤
+      2 ^ 256 * ((if q = squeezeQ L[i]!.2 then
+        pRoundG D rnd (L₀ L i) (entriesOf L (pathOf L i)) else 0) + δ) := by
+  have hstab' := hstab L i hb hci
+  generalize hes : entriesOf L (pathOf L i) = es at hstab' ⊢
+  have hm : Matches es := hes ▸ hci.2
+  have hla : lastAns es = L[i]!.2 := lastAns_of_getLast? (hes ▸ entriesOf_getLast? L i)
+  have hne := matches_ne_nil hm
+  have hp1 : 1 ≤ es.length := List.length_pos_iff.mpr hne
+  have hlen : ∀ x : ByteArray × Digest, (es ++ [x]).length - 1 = es.length := fun x => by simp
+  by_cases hex : ∃ hl : es.length < fsItems.length, fsCheck (fsItems[es.length]'hl) q = true
+  swap
+  · have : ∀ a, ¬ Matches (es ++ [(q, a)]) := fun a h => by
+      obtain ⟨hl, -, hc⟩ := (matches_append_iff hm _).mp h; exact hex ⟨hl, hc⟩
+    simp only [this, ite_false, Finset.sum_const_zero]; exact zero_le
+  obtain ⟨hl, hc⟩ := hex
+  have hM : ∀ a, Matches (es ++ [(q, a)]) := fun a =>
+    (matches_append_iff hm _).mpr ⟨hl, by rw [hla]; exact hst, hc⟩
+  simp only [hM, ite_true]
+  have hit : fsItems[es.length]? = some (fsItems[es.length]'hl) := List.getElem?_eq_getElem hl
+  have hpr0 : ∀ L₁ x, rnd es.length = none → pRoundG D rnd L₁ (es ++ [x]) = 0 := by
+    intro L₁ x hr; unfold pRoundG; rw [hlen, hr]
+  rcases fsCheck_absorb_or hc with h | h | ⟨len, h⟩
+  · rw [h] at hc; rw [stateIn_of_seed hc] at hst; cases hst
+  · -- a squeeze
+    rw [h] at hc hit
+    have hq : q = squeezeQ L[i]!.2 := eq_squeezeQ hc hst
+    subst hq
+    rw [ite_eq_left rfl]
+    have hext1 : ∀ a, es ++ [(squeezeQ L[i]!.2, a)] = ext1 es a := fun a => by rw [ext1, hla]
+    cases hr : rnd es.length with
+    | none =>
+      calc ∑ a, ((if EscAtG D L (es ++ [(squeezeQ L[i]!.2, a)]) then 1 else 0) +
+              pRoundG D rnd L (es ++ [(squeezeQ L[i]!.2, a)]))
+          ≤ ∑ a, (if D L es ∧ ¬ D L (ext1 es a) then 1 else 0 : ℝ≥0) := by
+            refine Finset.sum_le_sum fun a _ => ?_
+            rw [hpr0 _ _ hr, add_zero]
+            split_ifs with h1 h2 h2
+            · exact le_rfl
+            · exfalso; obtain ⟨-, hd, hnd⟩ := h1
+              rw [List.dropLast_concat, hext1] at *
+              exact h2 ⟨hd, hnd⟩
+            · exact zero_le
+            · exact le_rfl
+        _ = ((Finset.univ.filter fun a => D L es ∧ ¬ D L (ext1 es a)).card : ℝ≥0) := by
+            rw [Finset.sum_boole]
+        _ ≤ N := by exact_mod_cast hsingle L es hm hit hr
+        _ ≤ 2 ^ 256 * δ := hN
+        _ ≤ 2 ^ 256 * (pRoundG D rnd (L₀ L i) es + δ) := by gcongr; exact le_add_self
+    | some sr =>
+      obtain ⟨s0, r⟩ := sr
+      obtain ⟨hs0, hpr, hspec⟩ := hrnd _ _ _ hr
+      have hes' : es = ext (es.take (s0 + 1)) ((es.drop (s0 + 1)).map Prod.snd) :=
+        ext_take hm (by omega) (fun p h1 h2 => (hspec p h1 (by omega)).1)
+      have hes0len : (es.take (s0 + 1)).length = s0 + 1 := by simp; omega
+      have hnew : ∀ a, es ++ [(squeezeQ L[i]!.2, a)] =
+          ext (es.take (s0 + 1)) ((es.drop (s0 + 1)).map Prod.snd ++ [a]) := by
+        intro a; rw [ext_append, ← hes', hext1]
+      have hterm : ∀ a, (if EscAtG D L (es ++ [(squeezeQ L[i]!.2, a)]) then 1 else 0) +
+          pRoundG D rnd L (es ++ [(squeezeQ L[i]!.2, a)]) =
+          condCount D L (es.take (s0 + 1)) r ((es.drop (s0 + 1)).map Prod.snd ++ [a]) := by
+        intro a
+        have hpRnew : pRoundG D rnd L (es ++ [(squeezeQ L[i]!.2, a)]) =
+            if es.length - s0 < r then
+              condCount D L (es.take (s0 + 1)) r ((es.drop (s0 + 1)).map Prod.snd ++ [a])
+            else 0 := by
+          unfold pRoundG
+          rw [hlen, hr]
+          simp only
+          rw [List.take_append_of_le_length (by omega),
+            List.drop_append_of_le_length (by omega), List.map_append]
+          rfl
+        by_cases hmidp : es.length < s0 + r
+        · rw [ite_eq_right, zero_add, hpRnew, ite_eq_left (by omega)]
+          rintro ⟨-, hd, hnd⟩
+          rw [List.dropLast_concat] at hd
+          exact hnd ((hmid L es _ s0 r (hM _) hr hmidp).mpr hd)
+        · rw [hpRnew, ite_eq_right (show ¬ (es.length - s0 < r) by omega), add_zero,
+            condCount_last D _ _ (by simp; omega), hnew]
+      rw [Finset.sum_congr rfl (fun a _ => hterm a), condCount_split D _ _ (by simp; omega)]
+      gcongr
+      by_cases hfirst : es.length = s0 + 1
+      · have htk : es.take (s0 + 1) = es := List.take_of_length_le (by omega)
+        have hpre : (es.drop (s0 + 1)).map Prod.snd = [] := by
+          rw [List.drop_of_length_le (by omega)]; rfl
+        rw [hpre]
+        refine le_trans ?_ le_add_self
+        refine hround L _ s0 r (by rw [htk]; exact hm) hes0len ?_
+        exact (hspec (s0 + 1) (by omega) (by omega)).2
+      · -- the charge before the new answer, read off the charging log (`hstab`)
+        have hcc : condCount D L (es.take (s0 + 1)) r ((es.drop (s0 + 1)).map Prod.snd) =
+            condCount D (L₀ L i) (es.take (s0 + 1)) r ((es.drop (s0 + 1)).map Prod.snd) := by
+          unfold condCount
+          congr 3
+          funext as
+          apply propext
+          unfold EscAtG
+          have hX : ∀ k as', D L (ext (es.take k) as') ↔ D (L₀ L i) (ext (es.take k) as') :=
+            fun k as' => (hstab' k as').symm
+          obtain ⟨k', as', hk'⟩ : ∃ k' as', (ext (es.take (s0 + 1)) as).dropLast =
+              ext (es.take k') as' := by
+            by_cases has : as = []
+            · subst has
+              refine ⟨s0, [], ?_⟩
+              rw [ext_nil, ext_nil, List.dropLast_eq_take, List.take_take, hes0len]; simp
+            · exact ⟨s0 + 1, as.dropLast, ext_dropLast _ has⟩
+          rw [hk', hX k' as', hX (s0 + 1) as]
+        have hp : pRoundG D rnd (L₀ L i) es =
+            condCount D (L₀ L i) (es.take (s0 + 1)) r ((es.drop (s0 + 1)).map Prod.snd) := by
+          unfold pRoundG
+          rw [(hspec (es.length - 1) (by omega) (by omega)).2]
+          simp only
+          rw [ite_eq_left (by omega)]
+        rw [hcc, hp]; exact le_self_add
+  · -- an absorb: no escape, no charge
+    rw [h] at hit
+    have hr : rnd es.length = none := by
+      cases hr : rnd es.length with
+      | none => rfl
+      | some sr =>
+        obtain ⟨h1, h2, hs⟩ := hrnd _ _ _ hr
+        rw [(hs _ h1 h2).1] at hit; cases hit
+    have hz : ∀ a, (if EscAtG D L (es ++ [(q, a)]) then 1 else 0) +
+        pRoundG D rnd L (es ++ [(q, a)]) = (0 : ℝ≥0) := by
+      intro a
+      rw [hpr0 _ _ hr, add_zero, ite_eq_right]
+      rintro ⟨-, hd, hnd⟩
+      rw [List.dropLast_concat] at hd
+      exact hnd (habs L es _ len (hM a) hit hd)
+    simp only [hz, Finset.sum_const_zero]; exact zero_le
+
+open Classical in
+/-- **`muG_step_of`**: the contract's `step` law for `muG D (pRoundG D rnd)` from the per-position
+facts of `hloc_of` (`rnd 0 = none`: the seed is in no phase). -/
+theorem muG_step_of (hrnd : RndOK rnd) (h0 : rnd 0 = none) (δ : ℝ≥0) (N : ℕ)
+    (hN : (N : ℝ≥0) ≤ 2 ^ 256 * δ)
+    (habs : ∀ L es x len, Matches (es ++ [x]) → fsItems[es.length]? = some (.absorb len) →
+      D L es → D L (es ++ [x]))
+    (hmid : ∀ L es x s0 r, Matches (es ++ [x]) → rnd es.length = some (s0, r) →
+      es.length < s0 + r → (D L (es ++ [x]) ↔ D L es))
+    (hsingle : ∀ L es, Matches es → fsItems[es.length]? = some .squeeze → rnd es.length = none →
+      (Finset.univ.filter fun a => D L es ∧ ¬ D L (ext1 es a)).card ≤ N)
+    (hround : ∀ L es₀ s0 r, Matches es₀ → es₀.length = s0 + 1 →
+      rnd (s0 + 1) = some (s0, r) → condCount D L es₀ r [] ≤ δ)
+    (hstab : ∀ L i, ¬ Bad L → IsChain L i → ∀ k as,
+      (D (L.take i) (ext ((entriesOf L (pathOf L i)).take k) as) ↔
+        D L (ext ((entriesOf L (pathOf L i)).take k) as)))
+    {L : Log} {q : ByteArray} (hl : L.length < logCap) (hμ : muG D (pRoundG D rnd) L < 1)
+    (hq : q ∉ L.map Prod.fst) :
+    ∑ a : Digest, muG D (pRoundG D rnd) (L ++ [(q, a)]) ≤
+      (muG D (pRoundG D rnd) L + ((badCount : ℝ≥0) / 2 ^ 256 + δ)) * 2 ^ 256 :=
+  muG_step δ (fun L₀ e _ => pRoundG_seed D rnd L₀ e h0)
+    (fun L i q hb hci _ hst => hloc_of hrnd δ N hN habs hmid hsingle hround hstab L i q hb hci hst)
+    hl hμ hq
+
+end Local
+
+/-! ## Part D: Flock's multi-squeeze phases -/
+
+/-- The multi-squeeze phases of A.4 as `(s0, r)`: `r ≥ 2` squeezes after the Fiat–Shamir entry
+`s0` (Z1, S1, Lr1, RS1, E1, and each level's P2 and P3). -/
+def fsRanges : List (ℕ × ℕ) :=
+  (phases.foldl (fun (acc : ℕ × List (ℕ × ℕ)) p =>
+    let n := (p.shape.items.filter Item.isFS).length
+    match p.shape with
+    | .squeezes k _ => if 2 ≤ k then (acc.1 + n, acc.2 ++ [(acc.1 - 1, k)]) else (acc.1 + n, acc.2)
+    | _ => (acc.1 + n, acc.2)) (0, [])).2
+
+/-- **Flock's `rnd`**: the multi-squeeze phase of a Fiat–Shamir position. -/
+def fsRnd (p : ℕ) : Option (ℕ × ℕ) := fsRanges.find? fun x => decide (x.1 < p ∧ p ≤ x.1 + x.2)
+
+/-- The phases' positions are squeezes, each in its own phase (checked). -/
+def rangesOK : Bool :=
+  fsRanges.all fun x => (List.range x.2).all fun j =>
+    fsItems[x.1 + 1 + j]? == some .squeeze && fsRnd (x.1 + 1 + j) == some x
+
+theorem rangesOK_eq : rangesOK = true := by decide +kernel
+
+/-- Control: the 15 multi-squeeze phases (Z1 after `cap0`, S1, Lr1, RS1, E1 after RS1's last
+squeeze, then P2 and P3 of each level), 451 Fiat–Shamir items. -/
+theorem fsRanges_eq : fsRanges = [(2, 10), (98, 15), (169, 8), (240, 4), (244, 11), (313, 25),
+    (338, 5), (352, 13), (365, 5), (379, 10), (389, 5), (403, 8), (411, 5), (425, 6),
+    (431, 5)] := by
+  decide +kernel
+
+theorem fsRnd_zero : fsRnd 0 = none := by
+  unfold fsRnd; rw [List.find?_eq_none]; intro x _; simp
+
+/-- **`fsRnd_ok`**: `fsRnd` satisfies `RndOK`. -/
+theorem fsRnd_ok : RndOK fsRnd := by
+  intro p s0 r h
+  have hmem := List.mem_of_find?_eq_some h
+  have hp := List.find?_some h
+  simp only [decide_eq_true_eq] at hp
+  refine ⟨hp.1, hp.2, fun p' h1 h2 => ?_⟩
+  have hall := rangesOK_eq
+  simp only [rangesOK, List.all_eq_true, List.mem_range, Bool.and_eq_true, beq_iff_eq] at hall
+  have := hall _ hmem (p' - (s0 + 1)) (by omega)
+  rwa [show s0 + 1 + (p' - (s0 + 1)) = p' by omega] at this
 
 end FR.Snd

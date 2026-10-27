@@ -762,6 +762,69 @@ theorem card_chK_fiber (S : Finset K) :
   Finset.card_equiv chKEquiv (t := S) fun a => by
     simp only [Finset.mem_filter, Finset.mem_univ, true_and]; rfl
 
+/-! ## Position fibers (A.2 `idxOf`): the indices of an answer are uniform -/
+
+/-- `natLE` is a bijection onto `[0, 2^256)`. -/
+def natLEEquiv : Digest ≃ Fin (2 ^ 256) :=
+  (digestEquiv.trans finFunctionFinEquiv).trans (finCongr (by norm_num))
+
+theorem natLEEquiv_val (a : Digest) : (natLEEquiv a : ℕ) = natLE a := by
+  simp only [natLEEquiv, Equiv.trans_apply, finCongr_apply, Fin.val_cast]
+  rw [finFunctionFinEquiv_apply]
+  simp [digestEquiv, natLE]
+
+/-- Index `i < k` of `b` bits depends only on the low `k b` bits. -/
+theorem idx_mod (n b k i : ℕ) (hi : i < k) :
+    n / 2 ^ (i * b) % 2 ^ b = n % 2 ^ (k * b) / 2 ^ (i * b) % 2 ^ b := by
+  have hd : 2 ^ (i * b) * 2 ^ b ∣ 2 ^ (k * b) := by
+    rw [← pow_add]; exact Nat.pow_dvd_pow 2 (by nlinarith)
+  rw [← Nat.mod_mul_right_div_self, ← Nat.mod_mul_right_div_self (n % _),
+    Nat.mod_mod_of_dvd _ hd]
+
+/-- **`card_idx_fiber`** (A.2): the answers whose first `k` indices of `b` bits (`k b ≤ 256`) are
+`f` number `2^(256 − k b)`. -/
+theorem card_idx_fiber (b k : ℕ) (hkb : k * b ≤ 256) (f : Fin k → Fin (2 ^ b)) :
+    (Finset.univ.filter fun a : Digest => ∀ i : Fin k, idxOf b a i = f i).card =
+      2 ^ (256 - k * b) := by
+  classical
+  set M := (2 ^ b) ^ k with hM
+  have hM' : M = 2 ^ (k * b) := by rw [hM, ← pow_mul, mul_comm]
+  set c : ℕ := (finFunctionFinEquiv f : ℕ)
+  have hc : c < M := (finFunctionFinEquiv f).isLt
+  -- the event is `natLE a % M = c`
+  have hiff : ∀ a : Digest, (∀ i : Fin k, idxOf b a i = f i) ↔ natLE a % M = c := by
+    intro a
+    have hx : natLE a % M < M := Nat.mod_lt _ (by positivity)
+    have key : ∀ i : Fin k, idxOf b a i =
+        (finFunctionFinEquiv.symm (⟨natLE a % M, hx⟩ : Fin ((2 ^ b) ^ k)) i : ℕ) := by
+      intro i
+      rw [finFunctionFinEquiv_symm_apply_val, idxOf, idx_mod _ b k i i.isLt, ← hM', pow_mul']
+    constructor
+    · intro h
+      have : finFunctionFinEquiv.symm (⟨natLE a % M, hx⟩ : Fin ((2 ^ b) ^ k)) = f :=
+        funext fun i => Fin.ext ((key i).symm.trans (h i))
+      have := congrArg (fun g => (finFunctionFinEquiv g : ℕ)) this
+      simpa [c] using this
+    · intro h i
+      rw [key]
+      have : (⟨natLE a % M, hx⟩ : Fin ((2 ^ b) ^ k)) = finFunctionFinEquiv f := Fin.ext h
+      rw [this, Equiv.symm_apply_apply]
+  have h256 : 2 ^ 256 = 2 ^ (256 - k * b) * M := by
+    rw [hM', ← pow_add]; congr 1; omega
+  let e : Digest ≃ Fin (2 ^ (256 - k * b)) × Fin M :=
+    natLEEquiv.trans ((finCongr h256).trans finProdFinEquiv.symm)
+  have he : ∀ a, ((e a).2 : ℕ) = natLE a % M := by
+    intro a
+    have h1 : (finProdFinEquiv (e a) : ℕ) = natLE a := by
+      simp only [e, Equiv.trans_apply, Equiv.apply_symm_apply, finCongr_apply, Fin.val_cast,
+        natLEEquiv_val]
+    rw [finProdFinEquiv_apply_val] at h1
+    rw [← h1, Nat.add_mul_mod_self_left, Nat.mod_eq_of_lt (e a).2.isLt]
+  rw [Finset.card_equiv e (t := Finset.univ ×ˢ {⟨c, hc⟩}) fun a => by
+    simp only [Finset.mem_filter, Finset.mem_univ, true_and, Finset.mem_product,
+      Finset.mem_singleton, hiff, Fin.ext_iff, he]]
+  simp
+
 /-! ## Controls -/
 
 /-- The empty log is not bad. -/
@@ -789,7 +852,8 @@ theorem bad_collision (st a : Digest) (h : st ≠ a) :
 /-- A seed query with a 48-byte header, alone, is a chain's entries. -/
 theorem matches_seed (vk c : Digest) (hdr : ByteArray) (hh : hdr.size = 48) (a : Digest) :
     Matches [(seedQ vk c hdr, a)] := by
-  have hd : (seedQ vk c hdr).data.toList = tagSeed ++ (vk.toList ++ c.toList ++ hdr.data.toList) := by
+  have hd : (seedQ vk c hdr).data.toList =
+      tagSeed ++ (vk.toList ++ c.toList ++ hdr.data.toList) := by
     simp [seedQ, bytesOf, ByteArray.data_append]
   have hs : (seedQ vk c hdr).size = Item.seed.qlen := by
     rw [ByteArray.size, ← Array.length_toList, hd]

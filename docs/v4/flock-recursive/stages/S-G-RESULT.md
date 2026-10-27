@@ -285,3 +285,94 @@ Please put these into A.9.
 - `finPf`, as soon as `rsWeight` and a K-point `evalM` are in `FRVIR`.
 - Then a re-dump after S-0 lands.
 - Then S-G1: the doom predicates, the §5.2 rows, `card_idx_fiber` and `hloc_of`.
+
+---
+
+# S-G1 (part 1): the step machinery for the rows
+
+Base `334aa75`. **Status: partial.** Built: the generic reduction from per-position facts to
+`muG_step` (`hloc_of`, `muG_step_of`), Flock's multi-squeeze phase map (`fsRnd`, checked), and
+`card_idx_fiber`. **Not started:** the doom predicates over the Flock transcript and the §5.2 row
+lemmas themselves (§3 lists what they need). No sorry, no new axioms. Source rule: 56 files, 0
+findings. No warnings, no lines over 100 characters.
+
+## 1. What was built (code lines from `loc.py`)
+
+| File | Code (total) | Added |
+|---|---|---|
+| `FRLog.lean` | 665 | **`card_idx_fiber`** (A.2): for `k b ≤ 256`, the answers whose first `k` indices of `b` bits equal a given `f` number exactly `2^(256 − k b)`; `natLEEquiv : Digest ≃ Fin 2^256` (`natLE` is little-endian base 256, via `digestEquiv` and `finFunctionFinEquiv`); `idx_mod` |
+| `FRSoundnessDefs.lean` | 601 | Part C: `split40`, **`eq_squeezeQ`**, **`matches_append_iff`**, `ext_take`, `ext_dropLast`; `RndOK`, **`pRoundG D rnd`** (the conditional-count charge), **`hloc_of`**, **`muG_step_of`**. Part D: **`fsRanges`**, **`fsRnd`**, `rangesOK_eq` (`decide +kernel`), `fsRnd_ok : RndOK fsRnd`, `fsRnd_zero`, control `fsRanges_eq` |
+
+**`hloc_of` / `muG_step_of`.** These give the contract's `step` law for `muG D (pRoundG D rnd)`
+with error `badCount/2^256 + δ`, from six facts about a doom predicate `D`. They are what each
+row (or group of rows) must supply:
+
+1. `habs`: an absorb never undooms (`D L es → D L (es ++ [x])` at an absorb item).
+2. `hmid`: a middle answer of a multi-squeeze phase neither dooms nor undooms.
+3. `hsingle`: at a single squeeze outside every phase, at most `N ≤ 2^256 δ` answers escape.
+   This is where the F/K rows enter: `card_chF_fiber`/`card_chF2_fiber`/`card_chK_fiber` turn a
+   bad-challenge count `B` into `B·2^128` (F) or `B` (K) answers.
+4. `hround`: a multi-squeeze phase's escape count from its entry is at most `δ` (`condCount`).
+   This is where Z1, S1, Lr1, RS1, E1 (Schwartz–Zippel over F coordinates, two per answer), P2
+   (`card_idx_fiber` with `positions_bad_le`) and P3 enter.
+5. `hstab`: on a non-bad log, `D` gives the same answer on the charging log `L.take i` and on
+   `L`, for every formal extension of every prefix of the chain. This is part 1's deviation 1,
+   now an explicit obligation. For trees under caps absorbed in the chain, it follows from
+   `FRMerkle.colL_prefix`/`colL_append`, plus the self-window case (`WinHit` with `i = j`).
+6. `rnd 0 = none` (the seed is in no phase).
+
+**The Flock phase map.** `fsRanges_eq` pins the phases, each as (entry position, number of
+squeezes):
+
+| Phase | Ranges |
+|---|---|
+| Z1 | `(2, 10)` |
+| S1 | `(98, 15)` |
+| Lr1 | `(169, 8)` |
+| RS1 | `(240, 4)` |
+| E1 | `(244, 11)` |
+| P2.0 … P2.4 | `(313, 25)`, `(352, 13)`, `(379, 10)`, `(403, 8)`, `(425, 6)` |
+| P3.0 … P3.4 | `(338, 5)`, `(365, 5)`, `(389, 5)`, `(411, 5)`, `(431, 5)` |
+
+These are positions in the 451 Fiat–Shamir items. A phase's entry may itself be a squeeze, as
+for E1 after RS1 and P3 after P2. `hloc_of` handles that, because the charge at a phase's last
+answer is `0`.
+
+**Axioms.** A scratch `#print axioms` was run on `muG_step_of`, `card_idx_fiber` and `fsRnd_ok`:
+only `propext`, `Classical.choice`, `Quot.sound`.
+
+## 2. Times
+
+Sequential single-core runs (`logs/S-G/profile-*.log`):
+
+| Module | Wall | Type checking | Note |
+|---|---|---|---|
+| `FRLog` | 12.8 s | 0.77 s | |
+| `FRSoundnessDefs` | 20.0 s | 7.75 s, 3.3 GB | `rangesOK_eq` and `fsRanges_eq` are `decide +kernel` over the 451-item `fsItems` (5.75 s + 1.23 s of kernel time) |
+
+If kernel time gets tight, a hand-written position table proved equal once would be cheaper.
+
+## 3. Not started: the doom predicates and the rows
+
+The remaining work, in order:
+
+1. **Transcript readers.** The message and challenge at each Fiat–Shamir position, from the A.4
+   positions (Z2's 127 values, each round's 3 coefficients, the F coordinates and K challenges of
+   each squeeze), and the kind from the seed's header.
+2. **The committed words.** `W⁽ⁱ⁾` read off `L` under the cap absorbed at level `i`
+   (`colL (frEnc i)`, with `carried` capped at `queryCap` as planned in part 1), and the
+   decoded `f⁽ⁱ⁾` (`interp_F`, `coeffs_of_values`) or "far".
+3. **`D` per phase.** "The running claim is false for the true `f`/witness", or "far" for the
+   Ligerito levels. Each row then discharges `habs` and `hmid` (structural), and `hsingle` or
+   `hround` with S-C's and S-D's counts:
+   - single squeezes: `round_bad_le_of_check`, `skip_pair_bad_le` (Z2: 126), `batch_*_bad_le`;
+   - multi-squeeze phases: `zerocheck_bad_le` with `pair_bad_le`/`seq_bad_le`, `rs1_joint`,
+     `round_bad_cover` (P1), `positions_bad_le` with `card_idx_fiber` (P2).
+4. **`hstab`** for that `D`.
+
+Nothing found so far contradicts the step form. `δ` must be at least the P2 row
+(`2^-120.36`), and `N` at most `2^256 δ`.
+
+**Question.** S-G1's remaining part is the largest piece of L-cert. spartan-srom's equivalent is
+about 3,000 lines, for one level and one kind. Should it run as its own stage with a fresh agent
+and budget, starting from this RESULT?

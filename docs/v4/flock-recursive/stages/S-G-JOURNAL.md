@@ -64,3 +64,19 @@ symlinked; `.lake` copied from `fr-build-cert`). Every `lake`/`lean` run used th
     - `pr_op` needs the exact `[] ++ [v₀] ++ …` shape of the register list.
 17. Dump: a private copy `logs/fr-build-SG/dump/IRDumpSG.lean` (`lake build irdumpsg`), with the
     full finals and array constants printed; outputs in `logs/S-G/dump/`.
+
+## 2026-10-27 (S-G1, part 1)
+
+18. Ported the template's `hloc_of` to the charging log `L.take i`. The only change in substance:
+    the last step compares `condCount` on `L` and on `L.take i`, which needs `hstab` (equality of
+    `EscAtG` on every formal extension `ext (es.take k) as`; the `dropLast` of an extension is
+    again one).
+19. Flock helpers: `split40` / `eq_squeezeQ` (a squeeze item with state `st` is `squeezeQ st`),
+    `matches_append_iff`, `ext_take`. Pitfall: dependent `getElem` indices (`es.length - 1 + 1`)
+    cannot be `rw`ritten. I used `congr 1; omega` on the `getElem` equality instead.
+20. `fsRanges` computed from `phases`; `RndOK` by a boolean check under `decide +kernel` (7 s of
+    kernel time in total). The values are pinned in `fsRanges_eq`.
+21. `card_idx_fiber`: `natLE` through `finFunctionFinEquiv`; the indices through
+    `finFunctionFinEquiv.symm` at base `2^b` (`finFunctionFinEquiv_symm_apply_val` is exactly
+    `idxOf`); the count through `finProdFinEquiv`.
+22. Stopped before the doom predicates (budget). RESULT S-G1 §3 has the plan.
