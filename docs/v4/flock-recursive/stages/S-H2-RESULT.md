@@ -256,3 +256,66 @@ the constant term.
 
 The pitfall noted in Part 1 held again here: every semantic proof generalises the state or the
 memory before case analysis on `semXIR` (`walkBody_sem`, `walk_spec`).
+
+---
+
+## Part 3: the sort's key comparison (first brick of `sortIR`'s correctness)
+
+**Delivered: `FRXSortSpec`** (180 lines, 142 code, 8 theorems).
+
+- **Definitions.**
+  - `aposW I x`: the answer position, as the program computes it.
+  - `keyW I x = [a₀, a₁, a₂, a₃, x]`: the sort key, the four answer words then the position.
+  - `lexW`: lexicographic `<` on word lists, unsigned.
+  - `keyLt I x y := lexW (keyW I x) (keyW I y)`.
+  - `bW`: a Boolean as a 0/1 word.
+- **`cmpIR_sem`.**
+
+  ```lean
+  theorem cmpIR_sem (I s) (hM : Inv s.M)
+      (hi : regs ≤ (rd s.M rSrc + rd s.M rI).toNat) (hj : regs ≤ (rd s.M rSrc + rd s.M rJ).toNat) :
+      rd (semXIR I cmpIR s).M rF = bW (keyLt I (rd s.M (rd s.M rSrc + rd s.M rI).toNat)
+        (rd s.M (rd s.M rSrc + rd s.M rJ).toNat))
+  ```
+
+  The two `regs ≤ …` hypotheses are needed. Without them the load's address could be the
+  address register itself.
+- **Supporting lemmas.**
+  - `fold_bW`: one step of the machine's lexicographic fold equals one step of `lexW`.
+  - `cmpWord_sem`, `aposIR_sem`.
+  - The frames `cmpWord_frame`, `aposIR_frame`, via `FRXDsl.frame`.
+- **Checks.**
+  - Axioms: `propext, Quot.sound`.
+  - Sequential profile: 9.8 s wall, type checking 0.26 s (`logs/S-H2/FRXSortSpec.profile`).
+  - Source rule: 57 files, 0 findings. No `sorry`.
+
+**The plan for the rest of the sort's correctness.** It is designed so that no permutation has
+to be tracked.
+
+1. **`keyLt` is a strict total order on distinct positions.** This follows from `lexW` and the
+   position as the last key word.
+2. **`stepIR_sem`.** Simulate one step against a pure step function on `(i, iE, j, jE, k)` and the
+   memory images of `src` and `dst`. It reuses `cmpIR_sem`, the `blockIR` arithmetic (the `minPs`
+   identity) and `rd_storeM`.
+3. **The per-block invariant.** Within the current block `[lo, hi)`:
+   - `dst[lo..k)` is strictly sorted;
+   - its values lie in `src[lo..i) ∪ src[iE₀..j)`;
+   - `k − lo = (i − lo) + (j − iE₀)`;
+   - the last value written is below the heads `src[i]` and `src[j]`.
+4. **The per-pass lemma.** If `src` is injective on `[0, n)` and its runs of width `w` are
+   strictly sorted, then `dst` has strictly sorted runs of width `2w`, each `dst` block's values
+   lie in the same `src` block, and `dst` is injective.
+5. **After the 64 passes.** `X[0..n)` is strictly sorted (width `min(2^k, n)` reaches `n` by pass
+   61) and its values lie among the walk's positions. Being strictly sorted, it has `n` distinct
+   values in a set of `n` positions, so by `Finset.eq_of_subset_of_card_le` it is exactly that set.
+   That is the property the lookup needs: every entry is present, sorted by key.
+
+**Then** the lookup (a 64-step binary search for the lower bound of `(a, ·)`), and phases 2–6, as
+in Part 2.
+
+**Stopped here** on the token budget. The state is commit-ready:
+
+- every `FRX*` module builds;
+- no `sorry`;
+- the source rule is clean;
+- `computes` is unchanged (`ext` still runs walk and sort; their costs are as in Part 2).

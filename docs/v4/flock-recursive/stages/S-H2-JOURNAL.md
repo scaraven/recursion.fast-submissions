@@ -47,3 +47,13 @@ Base: branch `v4/flock-recursive`, HEAD `53c2e13`. Build tree `logs/fr-build-SH2
     `toWord_add_one` timed out in `whnf` (use `BitVec.ofNat_add`); the unfolded `ceil8` must be
     put back with `change` before arithmetic.
 13. Stopped before the sort's semantics (token budget); plan in RESULT Part 2.
+
+## Part 3
+
+14. `FRXSortSpec`: `cmpIR_sem`. Pitfalls: a load's result depends on whether its computed
+    address is a register (needs `regs ≤ address` hypotheses); `rfl` between two `XIR` terms
+    with different `seq` association fails (rewrite with `semXIR_seq` along the program's own
+    right-nested shape instead of regrouping); composition through `generalize` of each
+    intermediate state, with `FRXDsl.frame` for the registers a block does not write.
+15. Designed the remaining sort proof to avoid permutation tracking (membership + strict
+    sortedness + injectivity, then a cardinality argument). Stopped on the token budget.
