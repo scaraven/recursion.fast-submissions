@@ -1,0 +1,52 @@
+# Development caller for the organiser's evaluation workflow (plan FR-D7). It runs on a push to an
+# `eval/**` branch whose `.github/eval.conf` names one entry root, and calls the same reusable
+# workflow as `evaluate-entry.yml`, at the same pinned core commit: the same runners, jobs, caps
+# and attestation. Only the pull-request selection differs. `pull_request_target` reads its
+# workflow from the default branch, which carries none until the guidance PR is merged.
+#
+# .github/eval.conf (shell syntax): ROOT=submissions/<root>  SEASON=harness/season.toml|harness/smoke.toml
+#                                   SPLIT=true|false  (the smoke shape needs SPLIT=false)
+name: eval-push
+on:
+  push:
+    branches: ["eval/**"]
+permissions: {}
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  select:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions: { contents: read }
+    outputs:
+      root: ${{ steps.conf.outputs.root }}
+      season: ${{ steps.conf.outputs.season }}
+      split: ${{ steps.conf.outputs.split }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { persist-credentials: false, sparse-checkout: .github }
+      - id: conf
+        run: |
+          set -euo pipefail
+          [[ -f .github/eval.conf ]] || { echo "no .github/eval.conf: nothing to evaluate"; exit 1; }
+          ROOT= SEASON=harness/season.toml SPLIT=true
+          source .github/eval.conf
+          [[ "$ROOT" =~ ^submissions/[A-Za-z0-9._-]+$ ]] || { echo "bad ROOT"; exit 1; }
+          echo "root=$ROOT" >> "$GITHUB_OUTPUT"
+          echo "season=$SEASON" >> "$GITHUB_OUTPUT"
+          echo "split=$SPLIT" >> "$GITHUB_OUTPUT"
+
+  evaluate:
+    needs: select
+    uses: scaraven/recursion.fast/.github/workflows/evaluate.yml@15dac52322a889de1a010512236e1e0622bcc805
+    permissions: { contents: read, id-token: write, attestations: write }
+    with:
+      entry_repo: ${{ github.repository }}
+      entry_sha: ${{ github.sha }}
+      entry_path: ${{ needs.select.outputs.root }}
+      core_ref: 15dac52322a889de1a010512236e1e0622bcc805
+      season: ${{ needs.select.outputs.season }}
+      split: ${{ needs.select.outputs.split == 'true' }}
