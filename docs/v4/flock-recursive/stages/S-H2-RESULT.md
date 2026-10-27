@@ -705,3 +705,217 @@ next agent needs:
 - no `sorry`;
 - the source rule is clean;
 - `ext`'s SNARK branch is walk and sort, as at Part 6, with the proved lookup routine available.
+
+---
+
+## Part 9: the ladder read of level 0 (phase 3), in `ext`; `read_spec` against `colL (frEnc 0)`
+
+**Delivered.**
+
+- `FRXReadDefs` (new): the read program `readIR sib np`, its cost and obligations, the facts
+  about the tape it uses, and `decRead := logIR ; read0`.
+- `FRXRead` (new): its semantics, **`read_spec`** and **`read_spec_F`**, and controls.
+- `FRXExt`: `decSnark := decRead`. `ext` now runs the log index and then the read on every
+  SNARK proof. `computes`, `ext_caps` and `ext_encode` re-check, and so do `FRXSpec`'s kernel toy
+  runs.
+
+**The program** (`FRXReadDefs`; registers `117 … 135`). For each position `p < np`
+(`read0 := readIR 9 (2^18)`, `P30` level 0), it does five things:
+
+1. It loads cap entry `p >> sib` from π's `cap₀` field into `rQ0 … rQ3` (tape word
+   `capW0 + 4 (p >> sib)`, `capW0 = 2401`).
+2. It walks down `sib` levels, from height `sib` to `1` (`loopK`, the counter is the height). At
+   each step:
+   - `lookIR` finds the digest's first preimage;
+   - the node test is `|q| = 72` and query word 0 `= tagNW`;
+   - the child at `X + 2 + 4 · bit_h(p)` goes into `rQ0 … rQ3`;
+   - a missing entry or a failed test sets `rOk := 0`.
+3. At the leaf: `lookIR`, then the column test (`7 < |q|` and word 0 `= tagCW`). On success
+   `rQe := |q|`, else `0`.
+4. It copies 128 words to `colBase + 128 p + w` (`colBase = 2^25`). Each word is masked
+   branch-free to `[8 (w + 1) < rQe] · tape[X + 2 + w]`, so a failed read stores zeros.
+5. It sets `p += 1`.
+
+The store fills `[2^25, 2^26)`, below the log index at `memX = 2^26`.
+
+**Cost and obligations.**
+
+- `cost_read0 : cost read0 t = 18,001,952,782` (`≈ 2^34.07`): `2^18` positions, each with 10
+  lookups of 6,486 steps (`cost_lookIR`) and a 128-word copy. It is a constant.
+- `decOk_decRead` proves:
+  - `wf` (`wf_readIR`, with `lookIR_nw`: the lookup writes no register `≥ 117`);
+  - `safe`: the read has no `loopT` (`noLoopT_readIR`);
+  - `cost`: `2592 + ⌊t/5⌋·11871 + 18,001,952,783 ≤ decBudget t`;
+  - `outs = 0`;
+  - `size = 294 + 570 + 1` (`sizeIR_logIR_eq`, `sizeIR_read0`).
+- **Budget.** About `2^47.58 − 2^34.07` of the constant term is left for phases 4–6.
+
+**Pure facts** (`FRXReadDefs`).
+
+- Aligned slices of packed bytes: `packBytes_getD`, `packBytes_drop8`, `packBytes_take8`,
+  `bytesAt_toList`, `packBytes_bytesAt`.
+- The parsers on words: `ofLE_inj` and `tagWord_iff`, then
+  - **`nodeChk_iff`**: `(|q| = 72 ∧ word₀ = tagNW) ↔ (take 8 = tagNode 0 ∧ |q| = 72)`;
+  - **`colChk_iff`**: `(7 < |q| ∧ word₀ = tagCW) ↔ take 8 = tagCol 0`. The length test is
+    needed: `tagCol 0` ends in two zero bytes, so a 6-byte `"FRMCOL"` would pack to the same
+    word.
+  - `packBytes_col`: the column's words are the query's words from word 1 on.
+- The tape:
+  - `tape_query`: query word `j` of entry `k` is at `posE L k + 1 + j`;
+  - `tape_cap`: cap entry `e < 512` is at `capW0 + 4e`, with `capPi π e := bytesAt π (capOff + 32e) 32`
+    and `capOff = fieldOff fCaps = 19,168` (`capOff_eq`).
+- `pre_eq_ansIdx`: `FRMerkle.pre L d` is the entry at `FRLog.ansIdx L d`.
+
+**The semantics** (`FRXRead`).
+
+- `look_spec`: the lookup on any sorted index `Xi` (`Sorted`), with the frames it keeps (the
+  heap, registers `≥ 117`).
+- `LoK`/`hframeK`: the heap frame of store-free code that has counted loops.
+- `capLd_sem`, `getIR_sem`, `nodeChk_sem`, `colChk_sem`, `child_sem`, `ld4_sem`: the blocks.
+- `nodeFlag`/`colFlag`: the machine's tests are `parseNode 0`/`parseCol 0`. `child_words`: the
+  child's four tape words are its packed digest.
+- `nodeStepP` and **`colL_succ`**: one step of `colL (frEnc 0)` as a function of the digest.
+  **`nodeBody_sem`**: one machine step is `nodeStepP`.
+- `WalkSt`, `nodeWalk`, **`nodeLoop`**: `sib` steps keep this invariant: "`rOk = 1` and
+  `rQ = packBytes d` with `colL d₀ sib p = colL d h p`", or "`rOk = 0` and `colL d₀ sib p = none`".
+- `cpW_entry`, **`colIR_sem`**: the leaf leaves `rXq`, `rQe` such that the copy's words are
+  `colWord (colL …)`.
+- `copyBody_sem`, `copyLoop`, `copyIR_sem`: the copy.
+- **`posBody_sem`**: one position.
+- `posLoop`, **`readIR_sem`**: all positions; the index is kept.
+- **`read_spec`**:
+
+  ```lean
+  theorem read_spec (c π L) (hD : Dom c π L) (s : St) (hM : Inv s.M)
+      (hsz : memX + L.length + L.length ≤ s.M.size) {q w : ℕ} (hq : q < 2 ^ 18) (hw : w < 128) :
+      rd (semXIR (tp c π L) (.seq idxIR read0) s).M (colBase + 128 * q + w) =
+        colWord (colL (frEnc 0) L (capPi π (q / 2 ^ 9)) 9 q) w
+  ```
+
+  `Dom` bundles the domain hypotheses of `computes` (`|π| = piSize`, queries under `2^64`
+  bytes, the tape within `2^64` words). `colWord o w` is word `w` of `packBytes col`, and `0`
+  for `none`.
+- **`read_spec_F`**: read as `F` elements (`rdF`, two words), the store is S-G's reading:
+
+  ```lean
+  rdF M (colBase + 128 * q + 2 * r) =
+    ((colL (frEnc 0) L (capPi π (q / 2 ^ 9)) 9 q).map fun col => F.ofBytes (bytesAt col (16 * r) 16)).getD 0
+  ```
+
+  This is `FR.Snd.wordOf .N30 L es 0 r q` (`readF col o := F.ofBytes (bytesAt col o 16)`,
+  `colOf` at `lvl _ 0 = ⟨6, 18, 290, 9⟩`), with the cap entries taken from π and not from the
+  log. It relies on `b64_ofBytes_word` and `F_ofBytes_words`: an `F` read off bytes is its two
+  packed words.
+
+**Controls** (`FRXRead.ReadControls`, kernel `decide`, toy logs):
+
+| Control | Kind | Shows |
+|---|---|---|
+| `nodeStepP_toy` | positive | bit `h` of `p` picks the left or right child |
+| `nodeStepP_toy_none` | negative | a digest with no preimage, and a node query of level 1 (the level byte is checked), give `none` |
+| `colWord_toy` | positive | the stored words of a 9-byte column are bytes `1…8`, then `9`, then `0` |
+| `colWord_toy_none` | negative | a subtree with no preimage stores zeros; a level-1 column is not read at level 0 |
+| `not_loK_store` | negative | `LoK` excludes stores |
+| `nodeChk_iff`, `colChk_iff` | characterisation | the machine's tests are exactly the parsers (both directions) |
+| `capOff_eq`, `tagNW_eq`, `tagCW_eq` | value | the cap field's offset (A.3) and the tag words |
+
+**Checks.**
+
+- **Axioms.** `read_spec`, `read_spec_F`, `readIR_sem`, `nodeBody_sem`, `colIR_sem`,
+  `decOk_decRead`, `computes`, `ext_caps` and `ext_encode` depend on
+  `propext, Classical.choice, Quot.sound`.
+- **Source rule.** 67 files, 0 findings. No `sorry`. The only warnings are the
+  `if_pos`/`if_neg` deprecations that other modules also have.
+- **Build.** `lake build FRXReadDefs FRXRead FRXExt FRXSpec` takes 29.3 s (`logs/S-H2/build9.log`).
+- **Sequential profile** (`taskset -c 0`, `-DElab.async=false`; `logs/S-H2/*.profile`, `*.time`):
+
+  | Module | total / code / theorems | wall | max RSS | type checking | simp | tactics |
+  |---|---|---|---|---|---|---|
+  | `FRXReadDefs` | 428 / 286 / 36 | 15.5 s | 2.62 GB | 1.22 s | 4.8 s | 0.66 s |
+  | `FRXRead` | 1,328 / 1,116 / 71 | 53.1 s | 2.80 GB | 5.23 s | 5.5 s | 30.1 s |
+  | `FRXExt` | 36 / 11 / 3 | 5.7 s | 2.57 GB | 0 s | — | — |
+
+  In `FRXRead`, most of the tactic time is about ten `show rd (entryK …) … = …` steps at about
+  1.4 s each, plus one 6.5 s `obtain`. These are golf candidates: name the entry state with a
+  `def`.
+
+**Deviations from the blueprint.**
+
+1. **A walk per position, not per subtree.** Each position walks from its cap entry: `2^18 × 10`
+   lookups, `≈ 2^34.07` steps, against §6.3's `2^30` for "memory, index, ladder read". This is
+   negligible against the `≈ 2^47.58` left, and the proof follows `colL`'s recursion one step at
+   a time. Every one of the `2^18` positions is read: the word `W⁽⁰⁾` is indexed by position, as
+   `wordOf` is.
+2. **Cap entries from π, not from the log.** The read takes cap entry `e` from π's `cap₀` field
+   (`capPi`). S-G's `wordOf` takes it from the absorb's message (`capDig es 0 e`). The link
+   `capPi π e = capDig es 0 e` for `e < 512` is a hypothesis for the SNARK case of
+   `ext_good_tape`: the verifier absorbs π's `cap₀` field at phase 2 (A.4, A.5). With it,
+   `read_spec_F` is `wordOf .N30 L es 0` by unfolding.
+3. **Only level 0, and only `P30`.**
+   - `readIR` is parametric in `sib` and `np`. `readIR_sem` holds for `sib < 64`,
+     `np ≤ 2^18` and `np ≤ 512 · 2^sib`.
+   - The tag words, the cap offset and the 128-word columns are those of level 0.
+   - The `L32` kind (`'L'`: `sib = 11`, `2^20` positions) needs `2^27` store words, more than
+     `memX = 2^26`. See Q1.
+
+**Open questions.**
+
+- **Q1 (`L32` and the leaves).** §6.2 step 1 says `'L'`/`'P'` output `0 ‖ s ‖ n` at the parse,
+  but `s` is in the committed witness, so a leaf needs the decoder too. For `'L'` (`m = 32`), the
+  level-0 store does not fit under `memX = 2^26`. Two options:
+  - raise `memX`: memory costs one step per word, so `2^28` is cheap, but every `FRX*` proof
+    that uses `memX = 2^26` must be re-checked;
+  - read and decode only the rows that hold `s`.
+
+  Which does the coordinator want?
+- **Q2 (the cap link).** Does S-G2's `final` (or `reassemble`) supply `capPi π e = capDig es 0 e`?
+  Equivalently: `msgAt es (capPos 0)` is the first `16,384` bytes of π's field `fCaps`.
+
+**Phase 5, the pure half** (`FRXDecodeB`, new: 162 lines, 98 code, 11 theorems; 7.2 s wall,
+type checking 0.10 s, `logs/S-H2/FRXDecodeB.profile`).
+
+- `bflyLevel`/`bflyRun`: the bottom-up, in-place butterfly. Level `l` merges adjacent blocks of
+  `2^l` with `α = Ŵ_l(pt (s₀ + base))`; `ℓ` levels make `O(ℓ · 2^ℓ)` butterflies. This is the
+  form a machine runs.
+- **`bflyRun_block`**: after `l` levels, block `b` holds `coeffsAt pt N l (s₀ + b·2^l)` of its
+  values. Hence **`bflyRun_eq`** (`= coeffsAt` on `[0, 2^ℓ)`) and `bflyRun_coeffs`
+  (`= coeffsOfValues`).
+- **`bfly_decode_D`**: through `decode_row_D`, the butterflies on `interpF D J u` return the
+  message `c` when `u` agrees with `Enc(c)` on `J`, `|J| = 2^ℓ`.
+- `firstK n A k`: the first `k` positions of `A` below `n`, the scan a machine makes. Its facts
+  are `firstK_subset`, `firstK_lt` and `firstK_card`.
+  **`decode_agree`**: if `u` agrees with `Enc(c)` on a set `A` of at least `2^ℓ` positions
+  below `n ≤ 2^20`, the butterflies on `interpF D (firstK n A 2^ℓ) u` return `c` (§6.2 step 4,
+  `P = A[0…k)`).
+- Controls:
+  - `bflyRun_one` (positive): one level is the explicit merge;
+  - `bflyRun_zero`: zero levels are the identity;
+  - `firstK_ctl` (`decide`): the first two of `{5, 1, 3}` are `{1, 3}`, and asking for 7 gives
+    only 3, so `decode_agree` needs `2^ℓ ≤ |A|`.
+- Axioms: `propext, Classical.choice, Quot.sound`.
+- `FRXDecodeB` is not yet on `ext`'s import path. The machine program for the butterflies is
+  the next step. Its simulation needs:
+  - the table `wRow D 20 v` on the machine (one `invF` per row, from `FRXField`);
+  - `wAt` as XOR sums over the bits of the block offset;
+  - `mulF`/`addF` per butterfly.
+
+  The proof then follows `bflyRun` level by level, as `passIR_sem` followed `passF`.
+
+**What remains** (in order):
+
+1. **Levels 1–4.** The same read with the level byte `i`, 16-row (32-word) columns and the
+   caps at `capOff + 16384 + 8192 (i − 1)`. It is needed for the agreement set, which compares
+   level `i`'s word with the encoding of level `i + 1`'s fold.
+2. **Phase 4, the agreement set.** It depends on the K-fold and on `Enc` of the next level's
+   decoded message (§6.2 step 4). So the decoder runs from level 4 (the final message, π's row
+   13) up to level 0.
+3. **Phase 5 on the machine**: the butterfly program, simulated against `bflyRun` (the pure
+   half above is done).
+4. **Phase 6, the output, and the SNARK case of `ext_good_tape`.**
+
+**Stopped here.** Phase 3 and the pure half of phases 4–5 are complete. The state is
+commit-ready:
+
+- every `FRX*` module builds;
+- no `sorry`;
+- the source rule is clean.

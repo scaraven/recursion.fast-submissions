@@ -1,5 +1,5 @@
 -- New for `flock-recursive` (BLUEPRINT §6.4; stage S-H2, track L-ext).
-import FRXLog
+import FRXReadDefs
 
 /-!
 # The extractor `ext`, its specification `E`, and `computes`
@@ -14,11 +14,11 @@ open RecursionFast
 
 /-! ## The program delivered: `ext`, `E`, `computes` -/
 
-/-- **The SNARK branch delivered so far**: the log index (§6.2 step 2); the ladder read, the
-decoding and the output follow (S-H2-RESULT). -/
-def decSnark : XIR := logIR
+/-- **The SNARK branch delivered so far**: the log index (§6.2 step 2) and the ladder read of
+level 0 (§6.2 step 3, `read_spec`); the decoding and the output follow (S-H2-RESULT). -/
+def decSnark : XIR := decRead
 
-theorem decOk_decSnark : DecOk decSnark := decOk_logIR
+theorem decOk_decSnark : DecOk decSnark := decOk_decRead
 
 /-- **The extractor program** `ext := toProg 2^26 3 extIR` (§6.4). -/
 def ext : XProg := extWith decSnark

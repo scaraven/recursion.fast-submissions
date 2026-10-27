@@ -109,3 +109,33 @@ Base: branch `v4/flock-recursive`, HEAD `53c2e13`. Build tree `logs/fr-build-SH2
     …` does not capture `rd s.M (memX + a)` in hypotheses stated pointwise. Restate them with `X`
     (`hX₂'`) and pass `(X := X)` explicitly. Stopped before phase 3 (context long); handover in
     RESULT Part 8.
+
+## Part 9
+
+21. Phase 3, the ladder read of level 0.
+    - `FRXReadDefs`: the program (per-position walk, masked copy), the word facts and the parser
+      iffs. `cost_read0 = 18,001,952,782`. `decRead := logIR ; read0` with `DecOk`.
+    - `FRXRead`: the semantics, from the blocks up to `read_spec` and `read_spec_F`, plus
+      controls.
+    - `FRXExt`: `decSnark := decRead`.
+    - Pitfalls met:
+      - `refine ⟨fun … => by tac1; tac2, …⟩` lets the `by` swallow the rest. Parenthesise:
+        `(by tac1; tac2)`.
+      - `omega` hit the maximum recursion depth on `sizeIR logIR + … ≤ 2^19`. Use an exact
+        size lemma (`sizeIR_logIR_eq = 294`) and `norm_num`.
+      - The cost `simp` needs `(toWord (2^18)).toNat = 2^18` as an explicit rewrite before
+        `norm_num`, else it hits the maximum recursion depth.
+      - `rw [Nat.add_zero]` failed silently on `getD (… + 0)`; `simp only [Nat.add_zero]` works.
+      - `rw` of an equation under `decide` fails (motive). Use `decide_eq_decide.mpr` and
+        `Bool.decide_and`.
+      - A `'(by omega)` inside a `∀ … → …` statement does not see the arrows' hypotheses. Name
+        them: `∀ (_ : …)`.
+      - `show rd (entryK …) … = _` on `(⟨entryK …, o⟩ : St).M` costs about 1.4 s each (a golf
+        candidate).
+    - Profile: `FRXRead` 53.1 s wall, type checking 5.2 s. Stopped after phase 3 with the RESULT
+      written (Part 9). The open questions are Q1 (`L32`/leaves) and Q2 (the cap link).
+22. Phase 5, pure half (`FRXDecodeB`): `bflyLevel`/`bflyRun`, `bflyRun_block` (the block
+    invariant against `coeffsAt`, by induction on the level, with the IH applied to blocks `2b`
+    and `2b + 1`), `bfly_decode_D`, `firstK`, `decode_agree`. Most of it compiled first time.
+    Pitfall: `Finset.sort` does not reduce under `decide`, not even `decide +kernel`. Defining
+    `firstK` as a scan of `List.range n` makes it decidable, and it matches the machine's scan.
