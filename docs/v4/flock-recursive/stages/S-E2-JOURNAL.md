@@ -89,3 +89,10 @@ The compiler follows the 3.8 op set; the layout and row model follow 3.9 (`free`
 `accV … = true`. Two duplicate declarations block HEAD's build: `toF_f` (S-0/S-F) and `eW`
 (S-C/S-F). The first is patched in the private tree only; the second is avoided by moving the
 slot definitions into `FRNodeLayout`. The H-side assembly is still open.
+
+### Unblocking pass
+
+`compile` is linear (prepending, plus `rowList`). L's rows (`lRows`, `lRows_sound`) are defined.
+The dump tool `probe/fr-nodedump` covers M rows, register map, L rows and layout, and runs in
+66 s / 145 MB. F-6: the compiled skeleton is 68,795 rows per slot; the replay templates are not
+emitted. The templated evalM, the slot-map dump and the H-side assembly are open.

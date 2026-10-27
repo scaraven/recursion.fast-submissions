@@ -313,3 +313,54 @@ All audited statements use at most `propext`, `Classical.choice` and `Quot.sound
 | **total** | **67.8 s** | | **3.0 s** |
 
 Code lines: **1,272** (`logs/S-E2/loc.txt`).
+
+## 10. Unblocking S-F2 and P2 (HEAD `d37a009`)
+
+1. **`compile` is linear.** `CS.add` used to append to the rows, imports and foreign lists, which
+   was quadratic. It now prepends: `rows := o.rows.reverseAux cs.rows`, imports prepended,
+   foreign entries consed. `CS.rowList := rows.reverse` gives the rows in program order, and
+   `nodeRows` uses it. The proofs (`compileFrom_mono`, `compileFrom_sound`) are adjusted;
+   `compile_sound` is unchanged. `FRVIRCompile` is 794 code lines, so **FR-R3′ still passes**.
+   **Measured:** the compiled dump tool builds both slots' rows of `compileMux (gen fins .mux)`
+   and writes them out in **66 s wall, 145 MB RSS** (`logs/S-E2/nodedump-run.log`).
+2. **Templated `evalM`/`evalMK`/`evalL` (D-6): not done.** The obstacle is that `compile`
+   allocates cells and rows sequentially per op, not in §4.4's power-of-two-aligned templates. A
+   templated MLE first needs the compiler to emit A.7's template layout, with each phase's
+   repeated op block at an aligned base and its rows indexed `tplBase + inst·2^a + j`. Then each
+   template's MLE is `eq(prefix) · Σ_inst eq(inst) · (inner)`. That is a redesign of the
+   compiler's allocation, plus per-template lemmas equating the templated sum to `matMLE`
+   (`sparse_eq` is the base case). For S-F2, `FR.Eval.evalRows a b rows τ σ` (sparse, proved
+   equal to the MLE by `evalRows_eq`) is the callable implementation today.
+3. **L's row list (done).** `FRNodeLayout.lBitCells σ` lists slot σ's declared bit-elements in
+   A.7's order after `sig`: digits 133, step selectors 399, position bits 7,552, kind selector 3.
+   `lRows` holds the rows `b·(one − b) = 0` for both slots (`lRows_length = 16,174 ≤ 2^15`).
+   `lRows_sound` shows the rows make those cells bits. `selCells_mem` shows the selector cells
+   are among them. `evalL_eq` applies with `lRows`.
+   **Finding F-5 (minor):** A.7 says "digits 133 as bit-elements", but a base-4 digit is two bits
+   (266 bit-elements, or 256 + checksum by revision 3.5's text). `lBitCells` follows A.7's
+   literal 133, consistent with `selCells`' offset 8,383. The blueprint should fix the count.
+4. **Dumps for P2** (`probe/fr-nodedump/`, compiled, outside the entry; built against the private
+   HEAD view `logs/fr-build-circ/src`; output `logs/S-E2/nodedump/`):
+   - (a) `mrows-σ.txt`: each slot's M rows in program order, `row | A | B | C` with `cell:coef`
+     (F little-endian hex). `mregs-σ.txt`: register → import flag, type, and one linear form
+     per F component (the register/import → M-cell map).
+   - (b) `lrows.txt`: L's rows and the bit-cell ranges.
+   - (c) `layout.txt`: `nodeLayout`'s 83 intervals for the 9 kinds, including `free` over
+     `[wmBase, 2^16)` (WM is its first 20 blocks), plus `oneCell`, `Mbase`, `Lbase`, `wmBase`.
+   - (d) **The link families' slot maps: not dumped.** They live in S-0's/S-C's `linkW`/`slotW`
+     implementations (the op takes a family id); I did not find a slot-map table to export.
+
+   **Measured counts and finding F-6 (major, for the row model and P2):** the compiled program
+   has **68,795 rows and 114,378 cells per slot, 27,691 import registers and 173 foreign
+   assertions** (`nodedump-run.log`). This is far below `mRowModel`'s 618,664 because the
+   compiler emits rows only for the arithmetic ops. The structured ops are **imports** whose rows
+   belong to their replay templates, which no module emits yet: `lagrangeS`, `walkA/B`,
+   `evalM/L`, `tensorW`, `rsWeight`/`phiRS`, `dotKF`, `eqTableK`, `kindFoldWeight`, `slotW`,
+   `linkW`, the Merkle node and column imports, and the folds. So **the dump is the arithmetic
+   skeleton plus the import map; the replay templates' rows are still to be emitted.** That is
+   item 2's work.
+5. **The H-side assembly of `node_sound`: not done.**
+
+`FR.toF_f` (S-0/S-F) still clashes at HEAD; the private build tree patches S-F's copy. `FR.eW`
+(S-C/S-F) also still clashes and is avoided (§9). Source rule: 0 findings. All builds and the dump
+ran under the 16 GB scope.

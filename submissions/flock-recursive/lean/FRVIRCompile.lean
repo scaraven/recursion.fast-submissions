@@ -189,11 +189,15 @@ structure CS where
   next : ℕ
   /-- The slot of every register so far. -/
   slots : Array Slot
+  /-- The rows, last first (`CS.rowList` is in program order; prepending keeps `compile` linear). -/
   rows : List Row
   /-- The import registers. -/
   imp : List ℕ
   /-- The foreign assertions, with the register count at that point. -/
   fors : List (Op × ℕ)
+
+/-- The rows in program order (row `i` is the `i`-th row emitted). -/
+def CS.rowList (cs : CS) : List Row := cs.rows.reverse
 
 /-- The slot of register `i`. -/
 def CS.slot (cs : CS) (i : ℕ) : Slot := cs.slots.getD i none
@@ -205,9 +209,9 @@ def CS.cell (cs : CS) (j : ℕ) : Lin := Lin.cell (cs.next + j)
 def CS.add (cs : CS) (op : Op) (o : Out) : CS where
   next := cs.next + o.fresh
   slots := cs.slots ++ o.slots.toArray
-  rows := cs.rows ++ o.rows
-  imp := if o.imp then cs.imp ++ List.range' cs.slots.size o.slots.length else cs.imp
-  fors := if o.foreign then cs.fors ++ [(op, cs.slots.size)] else cs.fors
+  rows := o.rows.reverseAux cs.rows
+  imp := if o.imp then List.range' cs.slots.size o.slots.length ++ cs.imp else cs.imp
+  fors := if o.foreign then (op, cs.slots.size) :: cs.fors else cs.fors
 
 /-- `n` untracked results. -/
 def skip (n : ℕ) : Out := { slots := List.replicate n none }
@@ -914,15 +918,17 @@ theorem exec_prefix {impl : OpImpl} {κ : Kind} {inp : Input} :
         · simp at h
 
 theorem compileFrom_mono (P : Params) : ∀ (ops : List Op) (cs : CS), ∃ ss rs,
-    (compileFrom P cs ops).slots = cs.slots ++ ss ∧ (compileFrom P cs ops).rows = cs.rows ++ rs ∧
+    (compileFrom P cs ops).slots = cs.slots ++ ss ∧ (compileFrom P cs ops).rows = rs ++ cs.rows ∧
     cs.imp ⊆ (compileFrom P cs ops).imp ∧ cs.fors ⊆ (compileFrom P cs ops).fors
   | [], cs => ⟨#[], [], by simp [compileFrom]⟩
   | op :: ops, cs => by
     obtain ⟨ss, rs, h1, h2, h3, h4⟩ := compileFrom_mono P ops (cs.add op (opOut P cs op))
     have e : compileFrom P cs (op :: ops) = compileFrom P (cs.add op (opOut P cs op)) ops := rfl
     rw [e]
-    refine ⟨(opOut P cs op).slots.toArray ++ ss, (opOut P cs op).rows ++ rs, h1.trans (by simp [CS.add, Array.append_assoc]),
-      h2.trans (by simp [CS.add, List.append_assoc]), fun x hx => h3 ?_, fun x hx => h4 ?_⟩ <;>
+    refine ⟨(opOut P cs op).slots.toArray ++ ss, rs ++ (opOut P cs op).rows.reverse,
+      h1.trans (by simp [CS.add, Array.append_assoc]),
+      h2.trans (by simp [CS.add, List.reverseAux_eq, List.append_assoc]),
+      fun x hx => h3 ?_, fun x hx => h4 ?_⟩ <;>
       simp only [CS.add] <;> split <;> simp [hx]
 
 /-- The induction behind `compile_sound`. -/
@@ -941,7 +947,9 @@ theorem compileFrom_sound {impl : OpImpl} {κ : Kind} {inp : Input} {w : Asg} {P
     rw [e] at hr hi hf ⊢
     obtain ⟨ss, rs, hsl, hrw, himp, hfor⟩ := compileFrom_mono P ops (cs.add op (opOut P cs op))
     have hro : ∀ r ∈ (opOut P cs op).rows, r.Holds w := fun r h =>
-      hr r (by rw [hrw]; exact List.mem_append_left _ (List.mem_append_right _ h))
+      hr r (by
+        rw [hrw]; simp only [CS.add, List.reverseAux_eq]
+        exact List.mem_append_right _ (List.mem_append_left _ (List.mem_reverse.2 h)))
     -- the new registers' values, read off the final state
     have fin : ∀ (vs : List Val) (s1 : St), s1.regs = s.regs ++ vs.toArray →
         exec impl κ inp ops s1 tr' = some (s', tr') ∨ True →

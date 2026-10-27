@@ -173,8 +173,42 @@ def slotCS (fin : Finals) (σ : ℕ) : Circ.CS :=
   Circ.compileMux oneCell (selCells σ) (slotBase σ) (gen fin .mux).ops
 
 /-- **The node's M rows**: both slots'. -/
-def nodeRows (fin : Finals) : List Circ.Row := (slotCS fin 0).rows ++ (slotCS fin 1).rows
+def nodeRows (fin : Finals) : List Circ.Row := (slotCS fin 0).rowList ++ (slotCS fin 1).rowList
 
+
+/-! ## L's rows (Lr, A.7) -/
+
+/-- Slot `σ`'s declared bit cells in L (A.7: after `sig`'s 299 elements, the digits 133, the step
+selectors 399, the position bits 7,552 and the kind selector 3, each a bit-element). -/
+def lBitCells (σ : ℕ) : List ℕ :=
+  (List.range (133 + 399 + 7552 + 3)).map fun j => lBase * 128 + σ * 2 ^ 14 + 299 + j
+
+/-- **L's rows** (`N_L = 2^15`): `b · (1 − b) = 0` for every declared bit of both slots, with M's
+`one` cell. -/
+def lRows : List Circ.Row :=
+  ((List.range 2).flatMap lBitCells).map fun b =>
+    ⟨Circ.Lin.cell b, (Circ.Lin.cell oneCell).sub (Circ.Lin.cell b), []⟩
+
+theorem lRows_length : lRows.length = 16174 := by simp [lRows, lBitCells]
+
+/-- **Lr's rows make the declared cells bits.** -/
+theorem lRows_sound {w : Circ.Asg} (hone : w oneCell = 1) (h : ∀ r ∈ lRows, r.Holds w)
+    {b : ℕ} (hb : b ∈ (List.range 2).flatMap lBitCells) : Circ.IsBitCell w b := by
+  have := h _ (List.mem_map.2 ⟨b, hb, rfl⟩)
+  simp only [Circ.Row.Holds, Circ.Lin.ev_cell, Circ.Lin.ev_sub, Circ.Lin.ev_nil, hone] at this
+  rcases mul_eq_zero.1 this with h0 | h1
+  · exact .inl h0
+  · exact .inr (sub_eq_zero.1 h1).symm
+
+/-- The selector cells are among L's declared bits. -/
+theorem selCells_mem (σ : ℕ) (hσ : σ < 2) (κ : FR.Kind) :
+    selCells σ κ ∈ (List.range 2).flatMap lBitCells := by
+  simp only [List.mem_flatMap, List.mem_range, lBitCells, List.mem_map]
+  refine ⟨σ, hσ, ?_⟩
+  cases κ
+  · exact ⟨8084, by omega, by simp only [selCells]⟩
+  · exact ⟨8085, by omega, by simp only [selCells]⟩
+  · exact ⟨8086, by omega, by simp only [selCells]⟩
 
 /-! ## Controls -/
 

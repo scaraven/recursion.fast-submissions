@@ -1,0 +1,12 @@
+name = "frnodedump"
+packagesDir = "/home/devops/Verified-zkEVM/recursion.fast-submissions-flock/logs/pkgs"
+[[require]]
+name = "RecursionFast"
+path = "/home/devops/Verified-zkEVM/recursion.fast-submissions-flock/logs/org"
+[[lean_lib]]
+name = "RFSubmission"
+srcDir = "../../logs/fr-build-circ/src"
+roots = ["FR","FRBlake2sCircuit","FRBlake2sCompress","FRBlake2sGeneric","FRBlake2sWalk","FRBlake2sWitness","FRBlake2sWords","FRBlockChain","FRBlockKinds","FRBlockLayout","FRBlockStream","FRField128","FRField256","FRFieldBase","FRFieldBaseCorrect","FRFieldControls","FRFormat","FRLeafCircuit","FRLog","FRMLE","FRMLEControls","FRMerkle","FRNodeCircuit","FRNodeLayout","FRProximityBW","FRProximityFold","FRProximityLine","FRPubTarget","FRRS","FRRSEval","FRRingSwitch","FRShift","FRSkip","FRSoundnessDefs","FRSoundnessLigerito","FRSoundnessStepA","FRSoundnessStepB","FRSoundnessStepC","FRSoundnessStepD","FRSoundnessTruths","FRSpartan","FRSumcheck","FRTranscriptDefs","FRVIR","FRVIRCompile","FRVIREval","FRVIRFinals","FRVIRFinalsSF","FRVIRFinalsSG","FRVIRMux","FRVIRSpec","FRVerifier","FRVerifierImpl","FRWots","FRXComputes","FRXDecodeB","FRXDsl","FRXExt","FRXField","FRXLeaf","FRXLog","FRXLogSpec","FRXLookup","FRXMerge","FRXProg","FRXRead","FRXReadDefs","FRXSortSim","FRXSortSpec","FRXSpec"]
+[[lean_exe]]
+name = "nodedump"
+root = "NodeDump"
