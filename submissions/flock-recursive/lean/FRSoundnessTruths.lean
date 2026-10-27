@@ -1,5 +1,6 @@
 -- New for `flock-recursive` (BLUEPRINT A.10, §5.4; stage S-G1c).
 import FRSoundnessStepC
+import FRRSEval
 
 /-!
 # The per-phase truths (BLUEPRINT A.10): Ligerito's words, and the stability of word reads
@@ -220,5 +221,133 @@ theorem colL_take_own {L : Log} (hb : ¬ Bad L) {i : ℕ} (hi : i < L.length) {j
           rw [(frEncW j).nodeQ_of_parseNode e.1 ab.1 ab.2 hn]
           exact (frEncW j).carried_nodeQ _ _
         exact colL_take hb j i ⟨e, hmem, by split <;> simp [hc]⟩ h p
+
+/-! ## Part D: Ligerito's per-level truths (A.10: P1.i, C.i, P2.i, P3.i, Pf)
+
+The layout is the native prover's (`ligerito.rs::prove`, `ntt.rs::encode`): level `i`'s row `r`
+encodes the message coefficients `c ↦ f[c·rows + r]` in the novel basis; the next level's F
+vector is the folded K message split into coordinates (`split`: F element `2x + b` is coordinate
+`b` of K element `x`), so K element `x` of the fold sits in rows `2(x mod 8) + b`, column
+`x div 8` of level `i + 1` (16 rows). -/
+
+/-- P1.i's fold challenge `l` (K): the answer of round `l`'s squeeze. -/
+def sAt (es : Log) (i l : ℕ) : K := kAt es (phStart (25 + 5 * i) + 2 * l + 1)
+
+/-- **The column fold `y_j`** of level `i` at position `j`: `Σ_r eq(sᵢ, r)·W⁽ⁱ⁾[r][j]`. -/
+noncomputable def foldAt (κ : Kind) (L es : Log) (i : ℕ) (j : Fin (2 ^ (lvl κ i).logN)) : K :=
+  ∑ r : Fin (lvl κ i).rows, eqBits (sAt es i) (lvl κ i).ell r * wordK κ L es i r j
+
+/-- `log₂ kᵢ`: level `i`'s message length is `kᵢ = nᵢ / 2^(i+1) = 2^mLog`. -/
+def mLog (κ : Kind) (i : ℕ) : ℕ := (lvl κ i).logN - (i + 1)
+
+/-- **Row `r`'s message** of level `i`'s decoded word (`f⁽ⁱ⁾`'s row `r`: novel-basis
+coefficients by `coeffs_of_values` on `D[0, kᵢ)`); `0` past the rows or the message. -/
+noncomputable def msgOf (κ : Kind) (L es : Log) (i r : ℕ) : ℕ → K := fun x =>
+  if hr : r < (lvl κ i).rows then
+    if hx : x < 2 ^ mLog κ i then
+      coeffsOfValuesD (mLog κ i) (fun j => if hj : j < 2 ^ (lvl κ i).logN then
+        decodeL κ L es i ⟨r, hr⟩ ⟨j, hj⟩ else 0) ⟨x, hx⟩
+    else 0
+  else 0
+
+/-- `f⁽ⁱ⁾` as a table over level `i`'s variables (row bits first, as P1.i folds them). -/
+noncomputable def fTab (κ : Kind) (L es : Log) (i y : ℕ) : K :=
+  msgOf κ L es i (y % (lvl κ i).rows) (y / (lvl κ i).rows)
+
+/-- **`fold_z(f⁽ⁱ⁾)`**: the decoded messages folded by P1.i's challenges. -/
+noncomputable def foldMsg (κ : Kind) (L es : Log) (i x : ℕ) : K :=
+  ∑ r : Fin (lvl κ i).rows, eqBits (sAt es i) (lvl κ i).ell r * msgOf κ L es i r x
+
+/-- The final message's element `x` (absorbed at C.4, phase 46). -/
+def finalAt (es : Log) (x : ℕ) : K := readK (msgAt es (phStart 46)) (32 * x)
+
+/-- **`f⁽ⁱ⁺¹⁾` as level `i`'s folded message**: K element `x` from level `i + 1`'s rows
+`2(x mod 8)` and `2(x mod 8) + 1`, column `x div 8` (`i < 4`); the final message (`i = 4`). -/
+noncomputable def nextMsg (κ : Kind) (L es : Log) (i x : ℕ) : K :=
+  if i + 1 < nLevels then
+    msgOf κ L es (i + 1) (2 * (x % 8)) (x / 8) +
+      K.u * msgOf κ L es (i + 1) (2 * (x % 8) + 1) (x / 8)
+  else finalAt es x
+
+/-- Level `i`'s encoding of a message at position `j` (`Enc_{kᵢ}` in the novel basis on `D`). -/
+noncomputable def encAt (κ : Kind) (i : ℕ) (m : ℕ → K) (j : ℕ) : K :=
+  encF (mLog κ i) (fun x => m x) j
+
+/-- **P2.i's consistency set `A_c`** (A.10): the positions where the column fold agrees with the
+next level's codeword. -/
+noncomputable def consSet (κ : Kind) (L es : Log) (i : ℕ) : Finset (Fin (2 ^ (lvl κ i).logN)) :=
+  univ.filter fun j => foldAt κ L es i j = encAt κ i (nextMsg κ L es i) j
+
+/-- **`truthP2 i`**: the next level's codeword is `eᵢ`-close to the fold (`|A_c| ≥ nᵢ − eᵢ`).
+P2.i is doomed when this fails and every queried index lands in `A_c`. -/
+def truthP2 (κ : Kind) (L es : Log) (i : ℕ) : Prop :=
+  lvN κ i - lvE κ i ≤ (consSet κ L es i).card
+
+/-- When `truthP2` fails, `A_c` is small enough for `p2_hround` (`|A_c| + eᵢ < nᵢ`). -/
+theorem consSet_card_of_not (κ : Kind) {L es : Log} {i : ℕ} (h : ¬ truthP2 κ L es i) :
+    (consSet κ L es i).card + lvE κ i < lvN κ i := by
+  have : lvE κ i ≤ lvN κ i := by unfold lvE; omega
+  unfold truthP2 at h; omega
+
+/-- **`truthC i`** (A.10, C.i): the next level's message is the fold of level `i`'s decoded
+messages. -/
+def truthC (κ : Kind) (L es : Log) (i : ℕ) : Prop :=
+  ∀ x < 2 ^ mLog κ i, nextMsg κ L es i x = foldMsg κ L es i x
+
+/-- P3.i's consistency coefficient point `κ_c` (the first 9 F coordinates of P3.i). -/
+def kcAt (es : Log) (i v : ℕ) : F := coordAt es (phStart (29 + 5 * i) - 1) v
+
+/-- P2.i's queried position `q` (A.2: index `q mod per` of answer `q div per`). -/
+def qPos (κ : Kind) (es : Log) (i q : ℕ) : ℕ :=
+  posAt es (phStart (26 + 5 * i)) (lvl κ i).logN (lvl κ i).per q
+
+/-- The column fold at an `ℕ` position (`0` off the code). -/
+noncomputable def foldAtN (κ : Kind) (L es : Log) (i j : ℕ) : K :=
+  if hj : j < 2 ^ (lvl κ i).logN then foldAt κ L es i ⟨j, hj⟩ else 0
+
+/-- Query `q`'s consistency error `y_q − Enc(f⁽ⁱ⁺¹⁾)[p_q]`. -/
+noncomputable def consErr (κ : Kind) (L es : Log) (i q : ℕ) : K :=
+  foldAtN κ L es i (qPos κ es i q) - encAt κ i (nextMsg κ L es i) (qPos κ es i q)
+
+/-- **`truthP3 i`** (A.10): every queried fold is the next level's codeword symbol. -/
+def truthP3 (κ : Kind) (L es : Log) (i : ℕ) : Prop := ∀ q < (lvl κ i).t, consErr κ L es i q = 0
+
+/-- P3.i's batched consistency `Σ_q eq(κ_c, bits₉(q))·(y_q − Enc[p_q])`: P3.i is doomed when
+`truthP3` fails and this vanishes (`9/2^128`, Schwartz–Zippel over `κ_c`). -/
+noncomputable def p3Batch (κ : Kind) (L es : Log) (i : ℕ) : K :=
+  ∑ q ∈ range (lvl κ i).t, K.smulF (eqBits (kcAt es i) 9 q) (consErr κ L es i q)
+
+/-- **`truthP1 i`** (A.10), in the level's weight table `W` (a parameter: level 0's is
+`rsWeight`'s and `evalM`'s, later levels add the tensor weights): on a close word, a claim `c`
+is `⟨W, f⁽ⁱ⁾⟩` over level `i`'s variables. -/
+noncomputable def truthP1 (κ : Kind) (L es : Log) (i : ℕ) (W : ℕ → K) (c : K) : Prop :=
+  ¬ farL κ L es i →
+    c = ∑ y ∈ range (2 ^ ((lvl κ i).ell + mLog κ i)), W y * fTab κ L es i y
+
+/-- **`truthPf`** (A.10), in the folded weight `W` over the final message's 7 variables. -/
+noncomputable def truthPf (es : Log) (W : ℕ → K) (c : K) : Prop :=
+  c = ∑ x ∈ range finalElems, W x * finalAt es x
+
+/-! ### Controls -/
+
+/-- On the empty log the word is `0`, so every column fold is `0`. -/
+theorem foldAt_nil (κ : Kind) (es : Log) (i : ℕ) : foldAt κ [] es i = 0 := by
+  funext j; simp [foldAt, wordK, wordOf_nil]
+
+/-- `truthP3` is not vacuous: a nonzero error of query `0` refutes it (levels have queries). -/
+theorem not_truthP3_of (κ : Kind) {L es : Log} {i : ℕ} (hi : 0 < (lvl κ i).t)
+    (h : consErr κ L es i 0 ≠ 0) : ¬ truthP3 κ L es i := fun hT => h (hT 0 hi)
+
+/-- Every level of both ladders has queries (`tᵢ > 0`). -/
+theorem lvl_t_pos (κ : Kind) {i : ℕ} (hi : i < 5) : 0 < (lvl κ i).t := by
+  cases κ <;> interval_cases i <;> decide
+
+/-- The message logs: `kᵢ = 2^mLog` is `lvK` (`m = 32`: `19, 16, 13, 10, 7`; `m = 30`:
+`17, 14, 11, 8, 5`). -/
+theorem mLog_eq : (List.range 5).map (mLog .L32) = [19, 16, 13, 10, 7] ∧
+    (List.range 5).map (mLog .P30) = [17, 14, 11, 8, 5] ∧
+    ∀ κ, ∀ i < 5, 2 ^ mLog κ i = lvK κ i := by
+  refine ⟨by decide, by decide, fun κ i hi => ?_⟩
+  cases κ <;> interval_cases i <;> decide
 
 end FR.Snd

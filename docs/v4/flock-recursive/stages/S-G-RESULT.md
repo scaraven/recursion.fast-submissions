@@ -788,3 +788,172 @@ S-G3 §1's statement `accV_eq` now reads `accVal_eq`.
    - the instantiated `KState.step` at εR for the whole transcript.
 
 I stopped here because the context of this invocation is long.
+
+---
+
+# S-G1d: `finPf` with the real ops, its lemmas, the re-dump; the Ligerito truths; the coordinate row
+
+Base: HEAD `c8e1869` (S-F's `finRS` on the revision 3.9 op set), built against HEAD's versions of
+other tracks' modules (`logs/fr-build-SG/snap.sh`). **Status: item 1 done; items 2–4 partial;
+item 5 not started.** `FR` builds as a whole with the new import (`logs/S-G/build-FR-S-G1d.log`,
+2,278 jobs). No sorry and no warning in S-G's modules. The source rule passes (70 files, 0
+findings). Axioms are only `propext`, `Classical.choice` and `Quot.sound`
+(`logs/S-G/axioms-S-G1d.log`). There are no lines over 100 characters.
+
+## 1. `finPf` (item 1, `FRVIRFinalsSG`)
+
+**The ops** follow the native verifier (`ligerito.rs::verify`/`weight_eval`, `leaf.rs::claim_points`,
+`ringswitch.rs::rs_weight`, `mle.rs::mle_k`). With `μ = m − 25`, `P₄ = s₄ ++ sf[..μ]`,
+`Pₖ = sₖ ++ Pₖ₊₁[1..]` and `û(β) = 1 + β(1 + u)`:
+
+```
+Ŵₖ(Pₖ) = û(Pₖ[0]) · (Ŵₖ₋₁(Pₖ₋₁) + Σ_q eq(κ_c⁽ᵏ⁻¹⁾, bits₉(q)) · tensorW(p_q⁽ᵏ⁻¹⁾, Pₖ[1..]))
+Ŵ₀(ρ)  = rsWeight(r″, pts, κ, ρ) + [node] κ′·(Ã + κ_E B̃ + κ_E² C̃)(r_E2, ρ) + [node] Σ_k κ′^(k+2) eq(cell_k, ρ)
+check:   claimN(Pf) = Ŵ₄(P₄) · Π_{x ∈ sf[μ..7)} (1 + x) · final̂(sf)
+```
+
+Register blocks, in order:
+1. the constants `1`, `1 + u`, `0` of K;
+2. 17 K points (`pfPts`), built by `PtSrc`: an F register through `mulKF one`, a K register
+   through `addK · 0`, or a constant. They are:
+   - the claim points at `m = 32` and `m = 30`, as the native `claim_points`:
+     - Z: `ρ₂ … ρ₇` and Z1's `m − 13` coordinates;
+     - Lc: L2's challenges `7 … 13` and Z3's real challenges from `8`;
+     - Sh: S2's challenges `m − 7 … m − 5`, four zeros, S2's first `m − 14`;
+     - the node's Lr point (provisional, §4 item 1);
+   - the tails `P₁[1..] … P₄[1..]` and `P₀`, at both `m`. They differ only in their last two
+     coordinates (Pf's challenges 5 and 6);
+3. `keep is32` picks the kind's tails and `P₀`;
+4. `packF r″`, `rsWeight` (the claim points by kind: `rsPtIx`, three for a leaf, four for a
+   node), `evalMK(r_E2, P₀)` (`finE`'s export 1), the E combination, `κ′·E`;
+5. `ρ_v` and `1 + ρ_v` for the 23 coordinates, `κ′²`, then the nine cells
+   (`eq(cell, P₀)` as a 23-term product, `Σ κ′^(k+2)·eq`);
+6. `Ŵ₀`, with the node terms through `keep isNode`;
+7. the four level steps (`eqTable(κ_c)`, `tensorW` per query, `accOps`, `û`);
+8. `final̂(sf)`: `eqTableK(sf)` and 128 products;
+9. the padding factor (`keep is32` against `(1 + sf₅)(1 + sf₆)`), the products and the
+   `assertEq`.
+
+**The lemmas:**
+- **`flag_finPf`**: under `∀ x ∈ pfRefs fi, x < r.size`, `finPf` asks nothing and its flag is
+  **`relPf`**. `relPf` is `claimN(Pf) = wV · padV · finHat` in K (`relPf_iff`), where:
+  - `wV` is `lvsV` over `lvStepV` from `w0V`;
+  - `finHat` is `fhVal`, which `fhVal_eq` shows is `Σ_c final[c]·eq(sf, c)`;
+  - the cells' sum is `cellsVal`, which `cellsVal_eq` shows is `Σ_k κ′^(k+2)·eqCellK`.
+- **`noAsk_finPf`**: `finPf` asks nothing.
+
+The proof runs 13 blocks, each on the register file the previous block left
+(`pureRun_rebase`, `pr_seq`; `ExtA` carries reads forward). Its loop lemmas are `run_ptsOps`,
+`run_prodKOps`, `run_cellsOps`, `run_lvOps`/`run_lvsOps` and `run_fhOps`. It also has
+`pureRun_len`/`evalOp_outs_len` (a run appends `opsOut` registers) and `lvsV_congr`.
+
+**The dump** (`logs/S-G/dump/`):
+- **Tool.** `logs/fr-build-SG/dump/IRDumpSG.lean` with `fins := sfFinals finP finPf`; regenerate
+  with `logs/fr-build-SG/redump.sh`; log in `logs/S-G/redump-S-G1d.log`.
+- **`summary.txt`:** ops 105,700; registers 53,164; asks = items = 8,874; `piSize` 755,680.
+- **Sections.** `ops-{L,P,N,M}.txt` are 105,713 lines each. **No section is PENDING.**
+  `finPf` is 4,163 ops; `finRS` is now S-F's 4,119.
+- **sha256:** `ops-L` `d9652595…`, `ops-P` `b6f59935…`, `ops-N` `8f882cef…`, `ops-M` `9bfbf2d8…`.
+
+## 2. The Ligerito truths (item 2, partial; `FRSoundnessTruths` Part D)
+
+The layout is the native prover's:
+- level `i`'s row `r` holds the message coefficients `c ↦ f[c·rows + r]` (novel basis,
+  `ntt.rs::encode`);
+- the next level's F vector is `split` of the folded K message. K element `x` sits in rows
+  `2(x mod 8) + b`, column `x div 8`.
+
+| Definition | Meaning |
+|---|---|
+| `sAt`, `foldAt` | P1.i's challenges; the column fold `y_j = Σ_r eq(sᵢ, r)·W⁽ⁱ⁾[r][j]` |
+| `mLog`, `msgOf`, `fTab`, `foldMsg` | `log₂ kᵢ`; row `r`'s decoded message (`coeffsOfValuesD` of `decodeL`); `f⁽ⁱ⁾` as a table; `fold_z(f⁽ⁱ⁾)` |
+| `nextMsg`, `finalAt`, `encAt` | `f⁽ⁱ⁺¹⁾` as level `i`'s folded message (`i < 4`: from level `i + 1`'s rows; `i = 4`: the final message); `Enc_{kᵢ}` (`encF`) |
+| **`consSet`** (`A_c`), **`truthP2`** | the positions where `y_j = Enc(f⁽ⁱ⁺¹⁾)[j]`; `|A_c| ≥ nᵢ − eᵢ` |
+| `consSet_card_of_not` | `¬ truthP2 → |A_c| + eᵢ < nᵢ`, which is `p2_hround`'s hypothesis |
+| **`truthC`** | `f⁽ⁱ⁺¹⁾ = fold_z(f⁽ⁱ⁾)` on the `kᵢ` coordinates |
+| `kcAt`, `qPos`, `consErr`, **`truthP3`**, `p3Batch` | `κ_c`; the queried positions; `y_q − Enc[p_q]`; all errors zero; the batched `Σ_q eq(κ_c, bits₉(q))·err_q` |
+| **`truthP1`**, **`truthPf`** | in the level's weight table `W` (a parameter): `¬ far_i → c = ⟨W, f⁽ⁱ⁾⟩`; `c = ⟨W, final⟩` |
+
+Controls:
+- `foldAt_nil`;
+- `not_truthP3_of` with `lvl_t_pos` (`truthP3` is refuted by one error);
+- `mLog_eq`: the message logs `19, 16, 13, 10, 7` and `17, 14, 11, 8, 5`, with
+  `2^mLog = lvK`.
+
+## 3. The coordinate row (item 4, partial; new module `FRSoundnessStepD`, 43 code lines)
+
+- **`card_coords_in`**: the answer tuples whose coordinates (`chFEquiv` per answer) lie in
+  `B ⊆ (F × F)^r` number exactly `|B|`. This is `Equiv.piCongrRight chFEquiv`.
+- **`coords_round_le`**: if a multi-squeeze phase's escape puts its coordinate tuple in `B`, its
+  conditional count from the entry is at most `|B| / 2^(256r)`. `coords_prob` restates this as
+  `|B| / |F × F|^r`.
+
+This is the F-coordinate analogue of `card_pos_in`/`p2_round_le` that Z1, S1, Lr1, RS1, E1 and
+P3 need. Controls: `card_coords_univ` (the full set counts `2^(256r)`) and `card_coords_empty`.
+
+## 4. Deviations, open points, and what remains
+
+**Deviations and open points:**
+1. **The Lr claim point (node only) is provisional.**
+   - `lrSrc` is Lr4's challenges `7 … 14`, then `lrHi`: the 15 bits of `Lbase·128/2^8 = 23,168`
+     (`lrHi_eq`).
+   - A.8 says only "Lr: its point". `finLr` passes Lr4's 15 challenges as `evalL`'s `σ`, but A.8
+     types that `σ` as `AF 23`. `finRS` reads Lr4's first 7 challenges as the bit coordinates.
+   - The native verifier has no node.
+   - S-F or L-circ must fix the point (A.8). `finPf` changes only in `lrSrc`.
+2. **The cells.** `finPf` claims the nine cells of `finB′`'s `pubH`:
+   - `pfCells_spec`: nine distinct cells, the first M's `one` cell;
+   - the formula is `Node.seedCell`'s.
+
+   The six zero padding cells of A.7 and S-E2's `PubCells pad` are claimed by neither `finB′`
+   nor `finPf`, so the two sides stay consistent. If the padding cells must be pinned, both
+   fields gain the same six terms (owners S-F and S-G).
+3. **Points by kind.**
+   - `keep is32` selects the `m = 32` or `m = 30` point, and `rsWeight`'s `pts` is a
+     kind-dependent register list.
+   - Every point is built from register-level coordinates.
+   - The row cost of this, the `mulKF` per F coordinate and the `addK` copies, is not
+     measured.
+4. **The finals budget is exceeded.** A.9 allots S-G 400 lines; `FRVIRFinalsSG` is now 1,526
+   code lines, of which `finPf`'s run proof is about 900. A golf pass could shorten it, for
+   example with one generic straight-line block lemma.
+5. **`truthP2`'s doom differs from A.10's form.**
+   - It is phrased as `¬ (|A_c| ≥ nᵢ − eᵢ)`, and the P2 doom is `¬ truthP2 ∧` every index in
+     `A_c`. A.10 has `(far_i ∨ f⁽ⁱ⁺¹⁾ ≠ fold(f⁽ⁱ⁾)) ∧ …`.
+   - The count is then direct (`consSet_card_of_not` with `p2_hround`).
+   - The far case stays with P1's line doom (`fold_preserves` off `lineBad`).
+   - A.10's form follows from it with a uniqueness lemma that is not proved yet: `¬ far_i`
+     and `truthP2 i` give `truthC i`, by `fold_lift`, `decodeL_spec`, `coeffs_unique` and
+     `rs_eq_of_agree` with `2e + k ≤ n`.
+6. `FRSoundnessTruths` now imports `FRRSEval` (`coeffsOfValuesD`, `encF`).
+
+**Not done, in order:**
+- **Item 2, the rest:**
+  - the uniqueness lemma above;
+  - `W_i` as tables for `truthP1`: level 0's from `rsWeight`'s spec, `evalM`'s matrices and the
+    cells; later levels by fold plus tensor;
+  - `lvsV`'s relation to those tables;
+  - the PIOP truths (Z, L, S, Lr, RS, E, B′), which still need the other tracks' definitions
+    (S-G1c part 1 §4.1).
+- **Item 3:** the per-phase dooms and `Dp` over `phStart`.
+- **Item 4:** the per-phase bad sets with their Schwartz–Zippel counts, fed to
+  `coords_round_le`.
+- **Item 5:** the instantiated `KState.step`.
+
+## 5. Times (sequential, one core: `taskset -c 0 lean -DElab.async=false --profile`)
+
+| Module | Wall (≈ 3.6 s import) | Elaboration | Type checking | Max RSS | Log |
+|---|---|---|---|---|---|
+| `FRVIRFinalsSG` | 89.6 s | 37 s (`flag_finPf` ≈ 28 s) | 5.08 s | 3.37 GB | `logs/S-G/profile-FRVIRFinalsSG-S-G1d.log` |
+| `FRSoundnessTruths` | 8.3 s | 0.20 s | 0.33 s | 2.66 GB | `logs/S-G/profile-FRSoundnessTruths-S-G1d.log` |
+| `FRSoundnessStepD` | 6.8 s | 0.04 s | 0.04 s | 2.65 GB | `logs/S-G/profile-FRSoundnessStepD-S-G1d.log` |
+
+No `decide` or `simp` runs over a program or a table. The `decide`s are on lists of at most
+15 small numbers or K constants (`pfCells_spec`, `lrHi_eq`, `mLog_eq`).
+
+## 6. Questions for the orchestrator
+
+1. **The Lr point.** Which point is it (§4 item 1)? It affects the node's `finPf`, `finRS` and
+   `finLr`.
+2. **The padding cells.** Do they stay unclaimed, or are they pinned (§4 item 2)?
+3. **The P2 doom.** Is `truthP2`'s phrasing acceptable for A.10 (§4 item 5)?

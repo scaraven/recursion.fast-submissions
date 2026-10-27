@@ -50,6 +50,7 @@ import FRSoundnessStepA
 import FRSoundnessStepB
 import FRSoundnessStepC
 import FRSoundnessTruths
+import FRSoundnessStepD
 import FRSoundnessLigerito
 import FRVIRFinalsSG
 

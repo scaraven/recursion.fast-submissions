@@ -158,3 +158,48 @@ symlinked; `.lake` copied from `fr-build-cert`). Every `lake`/`lean` run used th
       (`finP` in, `finPf` still pending).
 36. Stopped (the context is long). Next, in a fresh invocation: `finPf` with
     `rsWeight`/`evalMK`/`phiRS` and the re-dump, then S-G1c items 2–5.
+
+## 2026-10-27 (S-G1d)
+
+37. HEAD had moved to `c8e1869` (S-F's `finRS` on the revision 3.9 op set), so the build tree
+    (`snap.sh`) and the dump use it: `finRS` is now about 4,100 ops instead of about 76k, and the
+    whole mux program is 105,700 ops.
+38. `finPf` (`FRVIRFinalsSG`), from the native verifier (`ligerito.rs::verify`, `weight_eval`,
+    `leaf.rs::claim_points`, `ringswitch.rs::rs_weight`, `mle.rs::mle_k`):
+    - the points are built as K registers (`PtSrc`: an F register through `mulKF one`, a K
+      register through `addK · 0`, a constant), one set per `m` (32 and 30), and `keep is32`
+      selects the kind's;
+    - `Pₖ[1..]` ends with Pf's first `m − 25` challenges at every level, so the two `m` variants
+      differ only in that tail;
+    - the claim points are the native `claim_points` (Z: `ρ₂ … ρ₇` and Z1's `m − 13`
+      coordinates; Lc: L2's challenges `7 … 13` and Z3's from `8`; Sh: S2's `m − 7 … m − 5`,
+      four zeros, S2's first `m − 14`). The node's Lr point is provisional (`lrHi`: Lr4's
+      challenges `7 … 14` and the bits of `Lbase·128/2^8`).
+    - the cells are `finB′`'s nine (`pubH`'s order, `Node.seedCell`'s formula); the six zero
+      padding cells are not claimed by either side;
+    - the dump (`logs/S-G/dump/`): 105,700 ops, `finPf` 4,163 ops, no PENDING section.
+39. Lean pitfalls:
+    - `omega` does not see a goal or hypothesis `x < y` whose type is `Reg` (the `<` is
+      elaborated at `Reg`, an `abbrev` of `ℕ`). State the lemma's registers as `ℕ`, or put the
+      `ℕ` term first (`b + w > x`).
+    - `pkill -f 'lean scratch/…'` also kills the shell running it (its command line contains the
+      pattern).
+    - `refine ⟨_, ?_⟩` / `⟨?_, ?_⟩` on an `∃` leaves a synthetic witness that `rfl` cannot
+      assign; a lemma `ex_some : f = g → ∃ V, some (A, f) = some (V, g)` avoids it.
+    - `congr 2` on an equation of `Bool`s built from `Val.eqv` (a `decide` on K) hit
+      `maxRecDepth`; `congrArg (fun z => (Val.k z).eqv _)` is cheap.
+    - `omega` inside a proof whose context holds `set` arrays with long bodies timed out in
+      `whnf`; rewrite with the size equation first (`rw [sR12]; omega`).
+    - simp over `List.range 128`-sized concrete lists hung (`noAsk_finPf`'s first try): prove
+      the pieces by generic lemmas (`noAsk_map`) and `rfl` on the short literal lists.
+40. `flag_finPf` is proved block by block: 13 blocks, each run on the register file left by the
+    previous one (`pureRun_rebase`, `pr_seq`), with loop lemmas for the points, the cell
+    products, the levels and `final̂`. `ExtA` (the register file only grows) carries the reads
+    forward.
+41. Dump re-run after the lemmas moved into the module: the same sha256 (`ops-L` `d9652595…`).
+42. Item 2, Part D of `FRSoundnessTruths`: the level layout follows the native
+    `prove`/`encode`. `truthP2` is phrased as `|A_c| ≥ n − e`, so that the count is
+    `p2_hround`'s directly; the far case stays with P1. Not yet done: the uniqueness lemma
+    (`¬ far_i ∧ truthP2 → truthC`).
+43. Item 4: `FRSoundnessStepD` (`card_coords_in`, `coords_round_le`).
+44. Stopped here: the context is long. The rest is RESULT S-G1d §4.
