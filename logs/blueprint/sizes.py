@@ -1,4 +1,4 @@
-# Blueprint sizing, revision 3.8 (skip-c restored, Sel = 1 with the free kind, J_z = 4, kappa_c 5 squeezes) (Lr end / E end absorbs) (S-E2 F-1…F-4) (J_z = 5, WOTS links through the shift argument) (stage-review changes 2: per-kind lincheck claims batched by beta, E2 in the Ligerito weight, 57 steps/product) (stage-review changes 1: per-kind block matrices, stmt as hash message blocks) (fix pass 4: hashStmt 3 blocks, Sel in the weight, J_z MBP runs). One item sequence and one piSize for L32 and P30:
+# Blueprint sizing, revision 3.9 (v_RS = rsT: Phi rows; rsWeight replaces mbp) (skip-c restored, Sel = 1 with the free kind, J_z = 4, kappa_c 5 squeezes) (Lr end / E end absorbs) (S-E2 F-1…F-4) (J_z = 5, WOTS links through the shift argument) (stage-review changes 2: per-kind lincheck claims batched by beta, E2 in the Ligerito weight, 57 steps/product) (stage-review changes 1: per-kind block matrices, stmt as hash message blocks) (fix pass 4: hashStmt 3 blocks, Sel in the weight, J_z MBP runs). One item sequence and one piSize for L32 and P30:
 # every phase is sized for the larger kind; a kind's unused items are dummy queries (zero payloads).
 import math
 RATES=[2,4,8,16,32]; ROWS=[64,16,16,16,16]
@@ -64,7 +64,7 @@ folds=sum(l['t']*(2*l['rows']-2+1) for l in L32)
 enc_final=2*FINAL_K*L32[4]['t']
 merkle=4*sibs                         # 2 rows per half, gated: u = b(r-l); s(cur-l-u)=0
 uni_lagr=400
-eq_tensor=15000; mbp=4*(M-7)*128; sumchecks=2000; linrep=2*2**14*2+2**14+2**14+8   # + the free kind's lincheck term (rev. 3.8)   # mbp: J_z = 4 runs; + per-kind row-weight adjust and the 8 stmt equalities (rev. 3.3)
+eq_tensor=15000; mbp=4*128*(M-7)+4*128*136+4032; sumchecks=2000; linrep=2*2**14*2+2**14+2**14+8   # rsWeight + Phi on 512 slice values + Z Lagrange weights (rev. 3.9); lincheck replay incl. free kind
 evalM_rep=2*I_slot+(2*comp+2**14)     # the 'N' child's evalM over its two slots: one row per entry + eq tables
 evalL_rep=2**13
 gated=2*fs_items+2*cols+600+2600+266+8   # + mirror-cell mux rows (3.5); + selector-digit rows and the 8 gated stmt equalities (3.6)
