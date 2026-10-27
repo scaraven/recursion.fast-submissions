@@ -30,3 +30,20 @@ Base: branch `v4/flock-recursive`, HEAD `53c2e13`. Build tree `logs/fr-build-SH2
    toy runs: `propext, Quot.sound`. Source rule: 53 files, 0 findings.
 8. Stopped before the decoder (§6.2 steps 2–5) per the conservative-pace instruction; plan in
    the RESULT §7.
+
+## Part 2
+
+9. Coordinator: fuel `3·2^46 + 4096 t` (B-10); `E_W` keeps `π.size < 2^64`. Updated `fuelBase`.
+10. Sort cost with cap `t` for a count of log entries: `64 · 186 · t ≈ 11,900 t`, over `4096 t`.
+    The cost model cannot express `t / 5` with `Aff = a + b·t`; added a divisor to `Aff`
+    (`FRXDsl`, L-ext's own module), controls updated. Sort now `≈ 2,374 t`.
+11. `FRXLog`: walk + 64-pass bottom-up merge sort; `wf` by `simp`, `cost_logIR` closed form via
+    `norm_num; omega` (values read off a scratch `#eval`), `Safe` via `NoLoopT` +
+    `rd_seq_readAt` + `tape_count_le`. `ext` moved to `FRXExt` so that the SNARK branch can come
+    after the tape lemmas.
+12. `FRXLogSpec`: `tape_entry` (the tape word at an entry's offset is `|q|`), `rd_storeM`,
+    `walkBody_sem`, `walkLoop`, `walk_spec`. Pitfalls met: a full `simp` with
+    `WitnessSending.size_eq_length` loops (use `simp only`); `toWord x + 1#64` against
+    `toWord_add_one` timed out in `whnf` (use `BitVec.ofNat_add`); the unfolded `ceil8` must be
+    put back with `change` before arithmetic.
+13. Stopped before the sort's semantics (token budget); plan in RESULT Part 2.

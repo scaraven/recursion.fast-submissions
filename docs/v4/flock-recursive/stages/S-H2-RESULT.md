@@ -147,3 +147,112 @@ not delivered.
   program> s).M r = 0` (`by_cases`, `rcases`, `refine ⟨_, ?_⟩` on `BoundsOk`) make the unifier
   run the concrete program and time out. Generalise the state first, and use the `Iff.rfl`
   unfolding lemmas (`boundsOk_seq`, `boundsOk_ite`, `semXIR_seq`, `semXIR_ite`).
+
+---
+
+## Part 2 (after the coordinator's answers): fuel `3·2^46 + 2^12 t`; log walk and sort
+
+**Delivered.**
+
+- **Fuel.** `fuelBase := 3 * 2 ^ 46`, matching `claim.json` (B-10). `decBudget` is now
+  `3·2^46 − 2^27 + 4080 t`. `fuel_le_budget`, `ext_caps` and `computes` re-prove unchanged.
+- **The log index program** (`FRXLog`). `logIR := walkIR ; sortIR`. It is the SNARK branch now:
+  `decSnark := logIR`, so the shipped `ext` runs it on every proof of kind `'L'`, `'P'` or `'N'`
+  with `|π| = piSize`.
+  - **The walk.** It records the tape position of entry `k` in `X[k]` (cell `memX + k`). Its
+    count `|L|` is read from tape word `posL = 94,465` just before the loop, and the loop is
+    charged at `t / 5`.
+  - **The sort.** A bottom-up merge sort of `X` (64 passes; `X → Y = X + n` and back). The key is
+    (answer words 0…3, tape position), compared lexicographically and unsigned. Ties break by
+    position, so the earliest entry with a given answer comes first: the first-preimage order.
+    Each pass reloads its count from `posL`.
+  - **Obligations.** `decOk_logIR` proves `DecOk logIR`:
+    - `wf_logIR`;
+    - `safe_logIR`, from `tape_count_le`: `|L| ≤ t / 5` on every domain tape of a proof of
+      `piSize` bytes;
+    - `cost_logIR : cost logIR t = 2592 + ⌊t/5⌋ · 11871`;
+    - `outs_logIR = 0`;
+    - `sizeIR ≤ 2^19`.
+- **The walk's semantics** (`FRXLogSpec`, `index_spec` first half).
+  - `walk_spec` proves that `X[k]` holds the tape position of log entry `k`, for every
+    `k < |L|`:
+
+    ```lean
+    theorem walk_spec (c π L) (hs : π.size = piSize) (hq : ∀ e ∈ L, e.1.size < 2 ^ 64)
+        (ht : (extractorInput c π L).length ≤ 2 ^ 64) (s : St) (hM : Inv s.M)
+        (hsz : memX + L.length ≤ s.M.size) {k} (hk : k < L.length) :
+        rd (semXIR (extractorInput c π L).toArray walkIR s).M (memX + k) =
+          toWord (posL + 1 + entryOff L k)
+    ```
+
+  - `tape_entry` states that the tape word at that position is `|q_k|`.
+  - `walkLoop` is the loop invariant, including the frame of the other heap cells.
+  - `rd_storeM` is the guarded heap store.
+- **`FRXDsl` change (same track).** `Aff` gained a divisor `d`: `eval = a + ⌊b·t/d⌋`. A count of
+  log entries (at most `t / 5`) is then charged at `t / 5`. With cap `t` the sort alone would
+  cost about `11,871 t`, which is over the fuel. The S-H1 controls were updated to `⟨0,1,1⟩` and
+  `⟨1,0,1⟩`; all S-H1 proofs re-check.
+- **Module split.** `ext`, `E`, `computes` and `ext_caps` moved from `FRXComputes` to a new
+  module `FRXExt` (after `FRXLog`). `FRXSpec` imports `FRXExt`.
+
+**Budget under the new fuel.**
+
+| Part | Constant | Per tape word |
+|---|---|---|
+| memory | `2^26` | 3 |
+| parse and `W` branch | 34 | 8 (`W` only) |
+| `logIR` (walk ≈ 6.2 t, sort ≈ 2,368 t) | 2,592 | ≈ 2,374 |
+| `decBudget` (what `dec` may use) | `3·2^46 − 2^27` | 4,080 |
+| **left for phases 2–5** | **≈ `2^47.58`** | **≈ 1,705** |
+
+§6.3's decoder estimate of `2^46.52` for the constant term fits about 2.1× under what is left.
+Phases 2–5 have no linear term of their own: their lookups are binary searches, which go into
+the constant term.
+
+**Files.**
+
+| Module | total | code | theorems |
+|---|---|---|---|
+| `FRXProg` | 208 | 112 | 8 |
+| `FRXComputes` | 276 | 206 | 24 |
+| `FRXLog` | 271 | 178 | 12 |
+| `FRXLogSpec` | 260 | 215 | 14 |
+| `FRXExt` | 36 | 11 | 3 |
+| `FRXSpec` | 277 | 197 | 18 |
+| **total** | 1,328 | 919 | 79 |
+
+**Times.**
+
+- **Build.** Building all `FRX*` modules after the `FRXDsl` change takes 32.5 s (`logs/S-H2/build2.log`).
+- **Sequential profile** (`logs/S-H2/*.profile`):
+
+| Module | wall | type checking | simp |
+|---|---|---|---|
+| `FRXLog` | 15.8 s | 0.51 s | 3.7 s |
+| `FRXLogSpec` | 10.5 s | 0.82 s | 1.0 s |
+| `FRXExt` | 6.1 s | 0 s | — |
+| `FRXSpec` | 13.2 s | 2.45 s | 2.5 s |
+
+**Checks.**
+
+- **Axioms.** `computes`, `walk_spec`, `decOk_logIR` and `ext_encode` depend on
+  `propext, Classical.choice, Quot.sound`.
+- **Source rule.** 56 files, 0 findings.
+- **Hygiene.** No `sorry`.
+
+**Not done yet** (in order):
+
+1. **The sort's semantics.** `X` after `sortIR` is the permutation of the walk's positions sorted
+   by key. Plan: a pure Lean merge-sort model over `List ℕ`, proved sorted and a permutation; a
+   pass-level lemma that one `passIR` maps the memory image of the model's list to the next one
+   (the `stepIR` invariant, with blocks of width `w`); then 64 passes. This is the largest
+   remaining proof in phase 1. The program may change while it is proved: any fix must keep
+   `cost_logIR` within the budget above.
+2. **Lookup.** A binary search over `X` (a `loopK` of 64), and its first-preimage spec against
+   `FRMerkle`/`FRLog`'s first-preimage reading.
+3. **The ladder read, the agreement set, the butterfly inverse NTT with `decode_row_D`/`coeffsAt`,
+   and the output in `decodeWit`'s format.**
+4. **The SNARK case of `ext_good_tape`**, with hypotheses for what S-G2's `final` will supply.
+
+The pitfall noted in Part 1 held again here: every semantic proof generalises the state or the
+memory before case analysis on `semXIR` (`walkBody_sem`, `walk_spec`).

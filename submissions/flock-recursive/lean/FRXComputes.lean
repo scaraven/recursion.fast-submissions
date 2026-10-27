@@ -187,7 +187,7 @@ theorem safe_wIR {I : Array Word} {t a : ℕ} (ha : a < 2 ^ 64) (h4 : I.getD 4 0
   refine .loopT (.seq (.seq (.blk _) (.input _ _)) (.blk _)) (fun s hM => ?_) (.seq (.input _ _)
     (.seq (.out _) (.blk _)))
   rw [(wPre_regs _ s hM).1, h4, toNat_ceil8 ha]
-  simp only [Aff.eval]; omega
+  simp only [Aff.eval, Nat.div_one]; omega
 
 theorem safe_parseIR (I : Array Word) (t : ℕ) : Safe I t parseIR :=
   .seq (.seq (.blk _) (.input _ _)) (.seq (.seq (.blk _) (.input _ _)) (.blk _))
@@ -272,33 +272,5 @@ theorem halts_with {dec : XIR} (hd : DecOk dec) (c : Digest) (π : Proof) (L : L
 theorem computesWith {dec : XIR} (hd : DecOk dec) :
     Computes (extWith dec) (Eof (extWith dec) fuel) fuel :=
   computes_Eof _ _ fun c π L h1 h2 h3 => halts_with hd c π L h1 h2 h3
-
-/-! ## The program delivered: `ext`, `E`, `computes` -/
-
-/-- **The SNARK branch delivered by S-H2**: empty (no output), pending the decoder (§6.2 steps
-2–5; S-H2-RESULT). -/
-def decSnark : XIR := .blk []
-
-theorem decOk_decSnark : DecOk decSnark where
-  wf := by simp [decSnark, WF]
-  safe := fun _ _ _ _ _ _ => .blk _
-  cost := fun t => by
-    simp only [decSnark, cost, blkSteps, List.length_nil, ↓reduceIte, decBudget, fuelBase,
-      fuelPerWord]; omega
-  outs := fun t => by simp [decSnark, outs]
-  size := by simp [decSnark, sizeIR, blkSteps]
-
-/-- **The extractor program** `ext := toProg 2^26 3 extIR` (§6.4). -/
-def ext : XProg := extWith decSnark
-
-/-- **The extractor specification** (B-8): `ext`'s decoded output within `fuel`. -/
-def E : Digest → Proof → Log → Option Wit := Eof ext fuel
-
-/-- **`Computes ext E fuel`**: the certificate's `computes` conjunct. -/
-theorem computes : Computes ext E fuel := computesWith decOk_decSnark
-
-/-- The certificate's caps on the extractor: the fuel within `B`, the program within `progCap`. -/
-theorem ext_caps : (∀ t, fuel t ≤ extractorBudget t) ∧ ext.body.size ≤ progCap :=
-  ⟨fuel_le_budget, size_extWith decOk_decSnark.size⟩
 
 end FR.X

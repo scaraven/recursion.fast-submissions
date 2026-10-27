@@ -116,7 +116,7 @@ def wPre : XIR := .seq (readAt rLen 4) (.blk wCntPs)
 def wBody : XIR := .seq (.input rW rPos) (.seq (.out rW) (.blk [.op .add rPos rPos cOne]))
 
 /-- **The `W` branch**: copy `⌈|π|/8⌉` tape words from word 5 (cap `t`, BP-C-R2-M2). -/
-def wIR : XIR := .seq wPre (.loopT rC rCnt ⟨0, 1⟩ wBody)
+def wIR : XIR := .seq wPre (.loopT rC rCnt ⟨0, 1, 1⟩ wBody)
 
 /-- The kind bytes `'L'`, `'P'`, `'N'` (`Kind.byte`). -/
 def kindPs : List Prim :=
@@ -138,8 +138,8 @@ def memX : ℕ := 2 ^ 26
 /-- The memory per tape word (§6.2). -/
 def mpwX : ℕ := 3
 
-/-- `claim.json`'s `fuel_base` (`2^46`). -/
-def fuelBase : ℕ := 2 ^ 46
+/-- `claim.json`'s `fuel_base` (`3 · 2^46 ≈ 2^47.58`, blueprint B-10). -/
+def fuelBase : ℕ := 3 * 2 ^ 46
 /-- `claim.json`'s `fuel_per_word` (`2^12`). -/
 def fuelPerWord : ℕ := 2 ^ 12
 
@@ -179,7 +179,7 @@ theorem wf_extIRWith {dec : XIR} (h : WF dec) : WF (extIRWith dec) := by
 theorem cost_extIRWith (dec : XIR) (t : ℕ) :
     cost (extIRWith dec) t = 33 + max (max (cost dec t) 1 + 1) (23 + 8 * t) := by
   simp only [extIRWith, parseIR, readAt, kindPs, wIR, wPre, wCntPs, wBody, cost, blkSteps,
-    List.length_cons, List.length_nil, Aff.eval]
+    List.length_cons, List.length_nil, Aff.eval, Nat.div_one]
   norm_num; omega
 
 theorem sizeIR_extIRWith (dec : XIR) : sizeIR (extIRWith dec) = 65 + sizeIR dec := by

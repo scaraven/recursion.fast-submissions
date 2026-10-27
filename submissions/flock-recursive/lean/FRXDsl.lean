@@ -138,15 +138,18 @@ def blkSteps (n : ℕ) : ℕ := if n = 0 then 1 else 2 * n - 1
 
 /-! ## The language -/
 
-/-- An affine function `a + b · t` of the tape length. -/
+/-- An affine function `a + ⌊b · t / d⌋` of the tape length (S-H2: the divisor `d` lets a count
+of log entries, at most `t / 5`, be charged at `t / 5` and not at `t`). -/
 structure Aff where
   /-- The constant term. -/
   a : ℕ
   /-- The coefficient of `t`. -/
   b : ℕ
+  /-- The divisor of `b · t`. -/
+  d : ℕ
 
 /-- The value at tape length `t`. -/
-def Aff.eval (c : Aff) (t : ℕ) : ℕ := c.a + c.b * t
+def Aff.eval (c : Aff) (t : ℕ) : ℕ := c.a + c.b * t / c.d
 
 /-- **The counted-loop language.** -/
 inductive XIR where
@@ -895,9 +898,9 @@ def toyWith (L : XIR → XIR) : XIR :=
     (.seq (.input 68 64) (.seq (L body) (.out 66)))
 
 /-- The toy, its loop capped by `t`. -/
-def toy : XIR := toyWith (.loopT 69 68 ⟨0, 1⟩)
+def toy : XIR := toyWith (.loopT 69 68 ⟨0, 1, 1⟩)
 /-- The toy, its loop declared with the cap `1`. -/
-def toyBad : XIR := toyWith (.loopT 69 68 ⟨1, 0⟩)
+def toyBad : XIR := toyWith (.loopT 69 68 ⟨1, 0, 1⟩)
 /-- The toy, its loop clamped to `2` iterations. -/
 def toyK : XIR := toyWith (.loopK 69 68 2)
 

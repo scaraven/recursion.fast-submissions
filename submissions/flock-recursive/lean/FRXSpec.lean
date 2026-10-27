@@ -1,5 +1,5 @@
 -- New for `flock-recursive` (BLUEPRINT §6.5, §5.4; stage S-H2, track L-ext).
-import FRXComputes
+import FRXExt
 
 /-!
 # What `ext` outputs: the `W` and `bad` cases of `ext_good_tape`
