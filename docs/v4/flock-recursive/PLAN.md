@@ -41,6 +41,10 @@ than search forever. What needed sharpening, and how each point is resolved in t
   `evaluate.yml` (the same runners, jobs, caps and attestation; only the PR selection differs).
   Microbenchmarks run in a probe workflow on `probe/*` branches (`ubuntu-24.04`).
 
+- **FR-D8** (the user, 2026-10-27): at most 3 concurrent agents; a slower pace over several days is
+  preferred to token-heavy bursts. Small stages get one combined review-and-golf pass; optional side
+  studies (the 128-bit profile, X128) wait until the main line has room.
+
 ## 3. Work breakdown
 
 Phase 0 (parallel): **T** theory and parameters (Fable); **I** reuse inventory (leanerVM's #12
