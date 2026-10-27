@@ -100,7 +100,8 @@ proofs (`L`, `C`) decode to `.leaf s n`; `N` and `B` to their node witness.
 - **KS** for every `vk`, `ε = 2^-129` (v3's), `qV = 2^16`, with v3's potential `μ` (it is defined
   on logs; the statement and proof are quantified only in `final`). Since V4-A10 the potential is
   the library's `KState`, not the contract's, and the library's bridge `KState.ks` turns it and the
-  query bound into the contract's textbook `KS` (F5). `final` per branch: `L` as v3
+  query bound into the contract's `KS`, textbook for adversaries that make the verifier's queries
+  themselves (F5). `final` per branch: `L` as v3
   (`mu_final_leaf_closed`); `C` and `N` by their definitions (they decide `Rel`); `B`: the bundle's
   run on the log accepts ⇒ each `snarkProg` accepts on the log ⇒ (μ L < 1) `chainEnd s_j n_j = h_j`
   for every bundled leaf ⇒ every clear slot of `W` is accepted by `acc vk` (by induction on the

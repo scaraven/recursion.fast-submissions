@@ -58,9 +58,10 @@ you work on (for `spartan-srom`, `docs/v4/flock-baseline/BLUEPRINT.md`).
 
 ## The pin
 
-- **Where it is.** `.contract` is pinned to **`<core-pin>`**, on the core's branch
-  `v4/ks-standard`. It holds stages A and B, each with its review's fix passes (`01a25b0`, the head
-  of `v4/srom-rules` and of the core's pull request #17), and two amendments on top:
+- **Where it is.** `.contract` is pinned to **`8ad98e9`**, the head of the core's branch
+  `v4/ks-standard` and of its pull request #19. It holds stages A and B, each with its review's
+  fix passes (`01a25b0`, the head of `v4/srom-rules` and of the core's pull request #17), and two
+  amendments on top:
   - the contract fix pass `ea2e8ab`: `acc` checks `decide (p.tr.length ≤ S.qV)` right after the
     size cap (RA-M2); `Log` is an `abbrev` for `Trace`; `wordBytes w := enc64 w.toNat`;
   - the harness fix passes `5b2b591` and `0bf80a7`, then `2632285` (the comparator built with the
@@ -71,7 +72,9 @@ you work on (for `spartan-srom`, `docs/v4/flock-baseline/BLUEPRINT.md`).
     build, `errorCap = 2^-120`, `completenessCap = 2^-40`;
   - **V4-A10, textbook knowledge soundness** (`v4/ks-standard`;
     `.contract/docs/v4/stages/E-ks-RESULT.md`): `KS` over query-bounded adversaries on a lazily
-    sampled oracle; the potential `KState` is a library tool, closed by the bridge `KState.ks`.
+    sampled oracle, textbook for adversaries that make the verifier's queries themselves (its
+    extractor reads the final log; `Contract/Security.lean`'s header); the potential `KState` is
+    a library tool, closed by the bridge `KState.ks`.
 - **Every entry is certified against the pin.** An entry that restates `acc` mirrors its conjuncts:
   `spartan-srom`'s `accWith` has the trace-length conjunct, and its `Decode` lemmas follow the new
   `wordBytes` (F1 review F1-m1; its F1 fix pass, `745c7d8`). Its certificate reaches V4-A10's `KS`
@@ -149,9 +152,11 @@ source "$ORG/scripts/tools.env"            # this VM's comparator; elsewhere:
 #    120 s, badge 180 s, for a 4-vCPU runner; V4-A9). --nanoda adds a separate nanoda run
 #    (--nanoda-mem, default 14G). Each kernel run has its own memory scope and an outcome: ok,
 #    rejected, over budget or timeout (Q12). A nanoda run over budget leaves the Lean kernel's
-#    verdict; spartan-srom needs more than 20 GB for nanoda (F3 §2.4). spartan-srom at a283ff8:
-#    8 min 42 s on 4 CPUs (the build 259.5 s, the comparator 182.3 s; logs/f5/cert4.log), 6 min 47 s
-#    on 16 (logs/f5/cert16.log); at 81e1ebf 9 min 52 s, comparator 354 s at 4.25 GB
+#    verdict; spartan-srom needs more than 20 GB for nanoda (F3 §2.4). cert.json records each
+#    capped step's seconds (build_s, comparator_s, gate_s, badge_s) and the kernel's memory peak.
+#    spartan-srom at 8ad98e9 on 4 CPUs: 9 min 39 s (build 272.9 s, kernel 204.6 s at a 4.02 GB
+#    peak, gate 30.2 s, badge 29.3 s; logs/f5-fix/cert4.json); at a283ff8 8 min 42 s on 4 CPUs,
+#    6 min 47 s on 16 (logs/f5/); at 81e1ebf 9 min 52 s, comparator 354 s at 4.25 GB
 #    (logs/f4/cert.log), 16 min 36 s with --nanoda (logs/f4/cert-nanoda.log).
 timeout 1800 python3 -I "$ORG/harness/evaluate.py" cert --entry submissions/<root> --org "$ORG" \
   --work logs/eval/<run>/cert --out logs/eval/<run>/cert.json
@@ -200,8 +205,8 @@ timeout 1800 python3 -I "$ORG/harness/evaluate.py" bench --entry submissions/<ro
 ## Stage protocol (as in the core's `CLAUDE.md`)
 
 Work here is built in stages, one at a time. The v4 baseline's stages are F0 (probes), F1 (Lean),
-F2 (prover), F3 and F4 (the harness runs) and F5 (the migration to V4-A9 and V4-A10). Their records are `docs/v4/flock-baseline/stages/` and
-`reviews/`. Each stage runs the same cycle:
+F2 (prover), F3 and F4 (the harness runs) and F5 (the migration to V4-A9 and V4-A10). Their
+records are `docs/v4/flock-baseline/stages/` and `reviews/`. Each stage runs the same cycle:
 
 1. **Implement** (one agent). Build the stage and keep the build green. Write
    `stages/<id>-RESULT.md` with:
@@ -250,9 +255,11 @@ For entries, the harness checks these (`AGENTS.md` §6).
   `ext`.
 - **Statements are non-vacuous**, with a positive and a negative control for every definition an
   entry relies on.
-- **Knowledge soundness is the contract's textbook `KS`** (V4-A10). A potential (`KState`) is an
-  untrusted library route to it, closed by `KState.ks`; the caps are `ε ≤ 2^-120` per fresh query
-  and `δ ≤ 2^-40` (V4-A9; `AGENTS.md` §3.1).
+- **Knowledge soundness is the contract's `KS`** (V4-A10): textbook for adversaries that make the
+  verifier's queries themselves, since `E` reads the final log; textbook implies it at twice the
+  error, not conversely (`AGENTS.md` §3.1). A potential (`KState`) is an untrusted library route
+  to it, closed by `KState.ks`; the caps are `ε ≤ 2^-120` per fresh query and `δ ≤ 2^-40`
+  (V4-A9).
 - **A proof never changes the statement it proves.** An entry fills only the challenge's
   `submission` and `certified`.
 - **An entry pull request touches only its own root:** never `records.json`, `.contract`, `docs/`,

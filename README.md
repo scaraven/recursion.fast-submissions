@@ -36,16 +36,19 @@ the intake copies the verified root and its registry entry into `main`.
 - **v4 is a proposal, built on the core's branch `v4/srom-rules`** (the core's pull request #17,
   https://github.com/scaraven/recursion.fast/pull/17), with two of the user's amendments stacked on
   it: V4-A9, the trim (`v4/trim-fat`, pull request #18), and V4-A10, textbook knowledge soundness
-  (`v4/ks-standard`). None is merged, and the user has not adopted v4. Every decision taken in
-  their absence is listed in design §6.1.
-- **The pin.** `.contract` is at **`<core-pin>`**, on `v4/ks-standard`; the caller workflow is the
-  core's template at that commit. The core's CI was green on GitHub runners at `01a25b0`, the
-  end-to-end smoke included (run 39966237935); the trim's workflow structure has not run on GitHub.
+  (`v4/ks-standard`, pull request #19). None is merged, and the user has not adopted v4. Every
+  decision taken in their absence is listed in design §6.1.
+- **The pin.** `.contract` is at **`8ad98e9`**, the head of `v4/ks-standard`; the caller workflow
+  is the core's template at that commit. The core's CI is green on GitHub runners there, as it was
+  at `01a25b0` (run 39966237935, the end-to-end smoke included); the trim's evaluation workflow
+  has not run on GitHub.
   - **The contract**: the contract fix pass `ea2e8ab` (`acc` checks `p.tr.length ≤ S.qV` right
     after the size cap, RA-M2; `Log` is an abbreviation for `Trace`; `wordBytes w := enc64
     w.toNat`); V4-A9's caps, `errorCap = 2^-120` per fresh query and `completenessCap = 2^-40`;
-    and V4-A10's `KS`, textbook single-output knowledge soundness over query-bounded adversaries
-    on a lazily sampled oracle, with the potential `KState` a library tool closed by `KState.ks`.
+    and V4-A10's `KS`, single-output knowledge soundness over query-bounded adversaries on a
+    lazily sampled oracle, textbook for adversaries that make the verifier's queries themselves
+    (its extractor reads the final log; textbook implies it at twice the error, not conversely;
+    `AGENTS.md` §3.1), with the potential `KState` a library tool closed by `KState.ks`.
   - **The trim** (V4-A9): every GitHub job at most 30 minutes, with nested caps (certificate:
     build 600 s, kernel 600 s, gate 120 s, badge 180 s); one tree run, root only, and one stream
     run, `M = 256` within 960 s; per entry only the statement canaries; a DoS column of 100 inputs
@@ -82,10 +85,11 @@ the intake copies the verified root and its registry entry into `main`.
     - **F4b**, the confirmation at `01a25b0`: **ACCEPT** (certificate ok with the Lean kernel in
       9 min 51 s; smoke bench of the submitted `prover.s` `733b3a30…`: T_tree 0.142 s, t_link
       0.0846 s, S 1.835; `prover.s` assembles with GNU Binutils 2.42 without error or warning).
-    - **F5**, the migration to V4-A10 at `a283ff8` (`stages/F5-ks-RESULT.md`): the certificate
-      reaches V4-A10's `KS` through `KState.ks` (5 Lean files, statements unchanged) and is ok within
-      every cap on 4 CPUs in 8 min 42 s; **smoke ACCEPT** with `S` = 1.448 (`T_tree` 0.116 s,
-      `t_link` 0.0666 s); season REJECT for F4's reasons.
+    - **F5**, the migration to V4-A10 (`stages/F5-ks-RESULT.md`): the certificate reaches
+      V4-A10's `KS` through `KState.ks` (5 Lean files, statements unchanged). At the pin
+      `8ad98e9` it is ok within every cap on 4 CPUs in 9 min 39 s, and **smoke ACCEPT** with
+      `S` = 1.416 (`T_tree` 0.126 s, `t_link` 0.0645 s); at `a283ff8` 8 min 42 s and `S` = 1.448;
+      season REJECT for F4's reasons.
     - At every pin, ACCEPT only where `2^r · n ≤ 4,096`: above that, every root is over `proofCap`.
     - **REJECT at the season shape** (F4): the tree because a 1,572,898-byte Fiat–Shamir query is
       above `queryCap`, the stream because its first leaf's `π` (2,791,559 B) is above `proofCap`.
