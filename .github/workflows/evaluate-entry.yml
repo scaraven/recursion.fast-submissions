@@ -27,7 +27,7 @@ on:
   workflow_dispatch:
     inputs:
       pr: { description: "pull request number", required: true }
-      split: { description: "one job per repeat (needed for the season shape: 6 h per job)", type: boolean, default: true }
+      split: { description: "the tree and the stream in two parallel jobs (needed for the season shape: 30 min per job)", type: boolean, default: true }
 permissions: {}
 
 # Q8: every `run:` step is `bash -eo pipefail`, so `cmd | tee log` fails when `cmd` fails
@@ -39,6 +39,7 @@ jobs:
   select:
     if: github.event_name == 'workflow_dispatch' || github.event.label.name == 'evaluate'
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     permissions: { contents: read, pull-requests: read }
     outputs:
       sha: ${{ steps.pr.outputs.sha }}
@@ -71,20 +72,21 @@ jobs:
   evaluate:
     needs: select
     # the organiser's workflow, pinned by commit (moved only with a contract change, in its own commit)
-    uses: scaraven/recursion.fast/.github/workflows/evaluate.yml@01a25b0e6d0c03a78c156b685c0e59d3bdc1f056
+    uses: scaraven/recursion.fast/.github/workflows/evaluate.yml@15dac52322a889de1a010512236e1e0622bcc805
     permissions: { contents: read, id-token: write, attestations: write }
     with:
       entry_repo: ${{ github.repository }}
       entry_sha: ${{ needs.select.outputs.sha }}
       entry_path: ${{ needs.select.outputs.root }}
       pr_ref: ${{ needs.select.outputs.ref }}
-      core_ref: 01a25b0e6d0c03a78c156b685c0e59d3bdc1f056
+      core_ref: 15dac52322a889de1a010512236e1e0622bcc805
       split: ${{ github.event_name != 'workflow_dispatch' || inputs.split }}
 
   report:
     needs: [select, evaluate]
     if: always() && needs.select.result == 'success'
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     permissions: { pull-requests: write }
     steps:
       - name: machine
