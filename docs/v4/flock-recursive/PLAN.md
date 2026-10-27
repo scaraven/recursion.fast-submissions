@@ -34,12 +34,12 @@ than search forever. What needed sharpening, and how each point is resolved in t
 - **FR-D4** Hashes: BLAKE2s R1CS for the chain, WOTS and trace digest (from `spartan-srom`'s
   leanerVM-derived circuit); commitments' Merkle and Fiat–Shamir hashes are oracle (service) calls.
 - **FR-D5** Prover: std Rust → `prover.s`, CPUID dispatch, portable fallback; tuned on runners.
-- **FR-D7** GitHub is the benchmark of record. Evaluations go through `evaluate-entry.yml`
-  (`pull_request_target` runs the **base** branch's file, and the PR must change exactly one entry
-  root). So each evaluation is a PR from `eval/<entry>-<pin>` into `eval/base-<pin>`, where the
-  base is this branch without that root, and the PR is labelled `evaluate`. Microbenchmarks run in
-  `.github/workflows/probe.yml` on branch `probe/*` (`ubuntu-24.04`, the evaluation's image).
-- **FR-D6** Protocol fixed by the blueprint, with a drift table against the paper.
+- **FR-D7** GitHub is the benchmark of record. `pull_request_target` reads its workflow from the
+  default branch, which has none until guidance PR #1 is merged. So evaluations run through
+  `.github/workflows/eval-push.yml`: a push to `eval/<entry>-<shape>-<pin>`, with
+  `.github/eval.conf` naming the root, the season file and the split, calls the same pinned
+  `evaluate.yml` (the same runners, jobs, caps and attestation; only the PR selection differs).
+  Microbenchmarks run in a probe workflow on `probe/*` branches (`ubuntu-24.04`).
 
 ## 3. Work breakdown
 
