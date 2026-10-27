@@ -1140,3 +1140,79 @@ program, layout or table.
    - (b) needs a blueprint statement of what is doomed. Please rule on it.
 3. **A.7/§4.3 and S-E2's `pubVals`**: drop the padding cells (§1).
 4. **Golf.** `FRVIRFinalsSG` is still 1,526 code lines (budget 400). Not touched here.
+
+---
+
+# S-G1f: handover (context long). After the rulings of §10 changes 15
+
+Base `94ab897` (S-G1e committed). **Status:** one lemma added; the rest is handed over.
+
+## 1. Built
+
+`FRSoundnessStepE` gains **`step_add`**: two step laws, with errors `ε₁` and `ε₂`, give the step
+law of `μ₁ + μ₂` with error `ε₁ + ε₂` wherever `μ₁ + μ₂ < 1`. This is the combinator for
+`μ = μ_doom + μ_Hide`. It builds, and so does `FRSoundnessStepE` (`lake build`, 16G scope). It
+takes no hypothesis beyond the two step laws, so its axioms are those of `Finset.sum_add_distrib`
+and `ring`.
+
+## 2. Next, in order (for a fresh invocation)
+
+1. **`μ_Hide` and the combined KState** (ruling Q1, option (a)).
+   - **The budget.** `kstate_step` spends all of `εR`: `deltaR = εR − 2^-142`, and the H row
+     takes `2^-142`. The sum therefore needs slack.
+     - Re-run `stepObl_compose` at `δ' = deltaR − ε_H`.
+     - Every row still fits. The largest is P2, `2^-120.36` against `deltaR ≈ 2^-120.09`, so
+       `p2_row_le_q` needs only its right-hand side lowered by `ε_H`. The coordinate rows are
+       `≤ 33/2^128`.
+     - The single-squeeze `N`s are `≤ 126·2^128` (Z2) and `≤ 2^66` (P1).
+   - **`μ_Hide`.** Use `muG` with the doom `DH L es := ¬ hideSoFar`, with Hide's charge at P1.i's
+     squeezes.
+     - Per round: `hide_round_le` (`≤ eᵢ` K values, so `N = eᵢ ≤ 2^18`, `hide_fits`), through
+       `D2`-style plumbing with `card_chK_fiber`.
+     - Frozen after P1.i: `DH` is constant outside the P1 rounds, so `habs`, `hmid` and `hround`
+       are trivial there.
+     - Its `muG` also charges `Bad` (another `2^-142`).
+   - **The total.** `ε_doom' + ε_H ≤ εR` with
+     `ε_doom' = 2^-142 + δ'` and `ε_H = 2^-142 + 2^18/2^256`. This is a kernel-checkable `ℝ≥0`
+     inequality, like `err_le_epsR`. Then apply `step_add`.
+   - **What `final` gets.** `μ_doom + μ_Hide < 1` gives `muG_lt_one` for both, so no Hide escape,
+     hence `¬ hideL` at each level, hence `A_c = jointAgree` (`consSet_eq_jointAgree`).
+2. **The PIOP truths.**
+   - The F-valued level-0 message: project `fTab κ L es 0` through `K → F`.
+     - `interp_F_D` (`FRProximityFold`) gives that the decoded rows of an F-word close to the
+       code are F-codewords, so the projection loses nothing.
+   - Then `z = unpack f⁽⁰⁾` (`FRFormat`).
+   - Then the truths, as A.10's table:
+     - Z: `FRSpartan` (`bz_trueSum`), `A₀^κ` (`FRBlockLayout`), `E` (`FRPubTarget`),
+       `FRSkip.z2Vals`;
+     - L: `lin_trueSum_kinds`;
+     - S: `shift_sound`, `slotW_mle`;
+     - Lr: `FRVIREval.evalL`;
+     - RS: `rsT`/`rsTruth`;
+     - E: `evalM`;
+     - B′: the nine cells, no padding.
+3. **Level 0's weight table `W₀`.**
+   - It has `rsWeight`'s spec (`weightEval`, S-C), `evalM(r_{E2}, ·)` and the nine cells
+     `eq(cell_k, ·)`.
+   - Relate it to `finPf`'s `lvsV`/`w0V` (`FRVIRFinalsSG`) through `vNext_eq` and `wSplit_sum`.
+4. **The concrete `Dk` and `Rej`, and `PhaseObl`.**
+   - `Dk` per phase:
+     - `D3` for Z3, Lr2 and E2;
+     - `D2` (F) for L2, S2 and Lr4;
+     - `D2` (K) for P1.i and Pf, plus the far/cancellation doom (`round_bad_cover`);
+     - `msD` with `fin` for the 15 multi-squeeze phases;
+     - the single-squeeze `Wrong` dooms for L1, L3β, Lr3, E3 and B′;
+     - the absorb phases.
+   - `Rej`: the finals' and the rounds' asserts (`Chk2`).
+   - The handoffs: one lemma per phase start.
+   - `hfin` comes from `hfin_ml` (Z1, Lr1, E1, P3), `hfin_seq` (S1), `hfin_rs1` (RS1) and
+     `hfin_p2` (P2; `S = consSet`, `consSet_card_of_not`).
+5. **`kstate vk`** (S-G2, `FRKState`).
+   - `empty`: `muG_empty`.
+   - `step`: item 1.
+   - `cert`.
+   - `final`: `ligerito_final`, then `leaf_sound`/`node_sound`; with `capPi = capDig` and the
+     `V_W` size, per the rulings since revision 3.10.
+
+The PIOP truths (item 2) need other tracks' definitions at their current HEAD. Check that
+`FRFormat.unpack` and the S-E3 `pubVals` fix have landed before starting.

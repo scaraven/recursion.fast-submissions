@@ -374,6 +374,24 @@ theorem kstate_step {Rej : Log → Log → Prop} {Dk : ℕ → Log → Log → P
   · intro L i hb hci k as
     exact ob.hstab _ L i hb hci k as
 
+/-- **Two step laws add** (§10 changes 15: `μ = μ_doom + μ_Hide`): if `μ₁` and `μ₂` each satisfy
+the contract's step law (with errors `ε₁`, `ε₂`) wherever they are below `1`, their sum satisfies
+it with error `ε₁ + ε₂` wherever the sum is below `1`. -/
+theorem step_add {μ₁ μ₂ : Log → ℝ≥0} {ε₁ ε₂ : ℝ≥0}
+    (h₁ : ∀ L q, L.length < logCap → μ₁ L < 1 → q ∉ L.map Prod.fst →
+      ∑ a : Digest, μ₁ (L ++ [(q, a)]) ≤ (μ₁ L + ε₁) * 2 ^ 256)
+    (h₂ : ∀ L q, L.length < logCap → μ₂ L < 1 → q ∉ L.map Prod.fst →
+      ∑ a : Digest, μ₂ (L ++ [(q, a)]) ≤ (μ₂ L + ε₂) * 2 ^ 256)
+    (L : Log) (q : ByteArray) (hl : L.length < logCap) (hμ : μ₁ L + μ₂ L < 1)
+    (hq : q ∉ L.map Prod.fst) :
+    ∑ a : Digest, (μ₁ (L ++ [(q, a)]) + μ₂ (L ++ [(q, a)])) ≤
+      (μ₁ L + μ₂ L + (ε₁ + ε₂)) * 2 ^ 256 := by
+  rw [Finset.sum_add_distrib]
+  have a₁ := h₁ L q hl (lt_of_le_of_lt le_self_add hμ) hq
+  have a₂ := h₂ L q hl (lt_of_le_of_lt le_add_self hμ) hq
+  calc _ ≤ (μ₁ L + ε₁) * 2 ^ 256 + (μ₂ L + ε₂) * 2 ^ 256 := add_le_add a₁ a₂
+    _ = _ := by ring
+
 /-! ### The multi-squeeze rows in the composition (`hfin` from `esc_msD`) -/
 
 open Classical in

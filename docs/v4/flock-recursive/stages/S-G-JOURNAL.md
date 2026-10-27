@@ -232,3 +232,14 @@ symlinked; `.lake` copied from `fr-build-cert`). Every `lake`/`lean` run used th
       `List.filter_congr` proof replaced it.
 50. Stopped with the list done in generic form. What remains is the concrete truths, the
     handoffs, and the Hide placement (RESULT S-G1e §6).
+
+## 2026-10-27 (S-G1f)
+
+51. Rulings of §10 changes 15:
+    - Hide is a separate additive potential;
+    - the padding cells are dropped.
+
+    Added `step_add` (the sum of two step laws, with the errors added). The rest is handed over
+    in RESULT S-G1f §2 because the context is long. Key point: `kstate_step` spends all of `εR`,
+    so `μ_doom` must be re-run at `δ' = deltaR − ε_H` (P2's slack, `2^-120.36` against
+    `2^-120.09`, allows it).
