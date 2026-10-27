@@ -265,7 +265,8 @@ def Writes : XIR → ℕ → Prop
   | .loopT c _ _ b, i => i = c ∨ Writes b i
 
 /-- **Well-formed**: no destination is a constant cell, and every loop counter is a register
-above `cTmp` that its body does not write. -/
+above `cTmp`, distinct from the loop's count register, that its body does not write (the entry
+writes `c` and `cTmp` before it reads `n`, so `n ∈ {c, cTmp}` would change the count). -/
 def WF : XIR → Prop
   | .blk ps => ∀ p ∈ ps, 4 ≤ p.dst
   | .load d _ => 4 ≤ d
@@ -274,8 +275,8 @@ def WF : XIR → Prop
   | .out _ => True
   | .seq p q => WF p ∧ WF q
   | .ite _ p q => WF p ∧ WF q
-  | .loopK c _ _ b => 4 < c ∧ c < regs ∧ ¬ Writes b c ∧ WF b
-  | .loopT c _ _ b => 4 < c ∧ c < regs ∧ ¬ Writes b c ∧ WF b
+  | .loopK c n _ b => (4 < c ∧ n ≠ c ∧ n ≠ cTmp) ∧ c < regs ∧ ¬ Writes b c ∧ WF b
+  | .loopT c n _ b => (4 < c ∧ n ≠ c ∧ n ≠ cTmp) ∧ c < regs ∧ ¬ Writes b c ∧ WF b
 
 /-- **The caps hold** on the run of `P` from `s`: every `loopT` entered has a count of at most
 its cap at `t`. -/

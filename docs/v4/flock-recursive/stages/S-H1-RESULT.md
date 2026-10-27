@@ -200,3 +200,39 @@ satisfy them.
 5. Golf targets (single-core elaboration): `frame` (≈ 8 s), `compile_correct` (≈ 6 s),
    `size_sem`, `steps_le_cost`, `outs_le` (≈ 3.5 s each); in `FRXField` the flat `mulFC_run`
    evaluation (≈ 5 s) and the composition proofs.
+
+## Fix pass
+
+This pass answers `reviews/S-H1-review.md` (verdict ACCEPT, no majors) as the coordinator scoped
+it: m2, m4, m5 and the golf suggestions. m1, m3, m6 and m7 are handled elsewhere (S-H2, the
+blueprint, `FR.lean`).
+
+| Finding | Change |
+|---|---|
+| S-H1-m2 | **Fixed.** `WF` for `loopK c n …`/`loopT c n …` now requires `n ≠ c ∧ n ≠ cTmp`, as `(4 < c ∧ n ≠ c ∧ n ≠ cTmp) ∧ c < regs ∧ ¬ Writes b c ∧ WF b`. The docstring says why: the entry writes `c` and `cTmp` before it reads `n`. Every proof and `toy_wf` go through unchanged. |
+| S-H1-m4 | **Fixed.** `invK_guard` now instantiates `invK_sem` at `oneK`, the prologue's state with the `K` element `1` in registers `64 … 67`. It also proves `rdK oneK.M 64 = 1` in the kernel, so the operand is nonzero. The `invK` value KAT stays an `#eval` **measurement** in `logs/S-H1/stepcount.log`, not a control (§3's last row should read that way). |
+| S-H1-m5 | **Fixed.** Dropped `invF_kat`, `sqF_kat` and `sqK_kat`; `invF_sem`, `sqF_sem` and `sqK_sem` cover them. Kept `mulF_kat`, `mulF_alone`, `mulF_bad_const`, `mulK_kat` and all `FRXDsl` controls. `unProg` was used only by the dropped controls, so it moved to the probe. |
+| Golf: per-constructor `frame`/`compile_correct` | **Declined.** Their cost (≈ 8 s and ≈ 6 s) is elaboration, not kernel: `FRXDsl`'s kernel time is 6.4 s, of which ≈ 5 s are the controls. Splitting would not change the kernel time, and the token budget of this pass did not allow it. It remains a target for a golf stage. |
+| Golf: `wf_blk_of_dsts` + `decide` | **Argued.** `WF (.blk ps)` is by definition `∀ p ∈ ps, 4 ≤ p.dst`, so each `wf_*` is already that lemma applied to the routine's `*_dst` (one line each). A `decide` on a destination list is impossible here: the lists contain the symbolic registers `d, a, b`. |
+
+**Statements.** No public theorem's statement changed except through `WF`'s new conjunct (m2) and
+the new `invK_guard` (m4). The dropped controls are `invF_kat`, `sqF_kat`, `sqK_kat` and the
+definition `unProg`.
+
+**Measurements** (one core, `taskset`, `lean --profile`; logs `logs/S-H1/profile-fix-*.log`,
+`loc-fix.txt`):
+
+| | before | after |
+|---|---|---|
+| kernel, `FRXDsl` | 7.1 s | 6.4 s |
+| kernel, `FRXField` | 36.0 s | **20.7 s** |
+| kernel, total | 43.1 s | **27.1 s** |
+| wall, `FRXDsl` / `FRXField` | 33.7 s / 71.2 s | 34.7 s / 43.1 s |
+| code lines `FRXDsl` / `FRXField` / total | 648 / 891 / 1,539 | 649 / 880 / 1,529 |
+
+The remaining `FRXField` kernel time is about 4 s of controls (`mulK_kat` 2.4 s). The rest is
+the proofs, spread over many declarations, none above 1 s.
+
+**Checks.** `lake build FRXDsl FRXField`: 0 warnings. Source rule: 0 findings. Axioms: at most
+`propext`, `Classical.choice` and `Quot.sound` (`logs/S-H1/axioms.log`). The step-count probe
+was re-run and agrees with the theorems (`logs/S-H1/stepcount.log`).

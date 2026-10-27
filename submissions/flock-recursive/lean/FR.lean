@@ -17,10 +17,16 @@ import FRProximityBW
 import FRProximityLine
 import FRProximityFold
 import FRMerkle
+import FRXDsl
+import FRXField
+import FRTranscriptDefs
+import FRFormat
+import FRVIR
+import FRVIRSpec
 
 /-!
 # `flock-recursive`
 
 The entry's modules, flat under `lean/` with the prefix `FR` and the namespace `FR`
-(`docs/v4/flock-recursive/BLUEPRINT.md` §7). Stages S-A (fields), S-C (PIOP core) and S-D (PCS) so far.
+(`docs/v4/flock-recursive/BLUEPRINT.md` §7). Stages S-A (fields), S-C (PIOP core), S-D (PCS), S-H1 (extractor DSL) and S-0 (interfaces) so far.
 -/

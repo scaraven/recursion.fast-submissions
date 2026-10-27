@@ -1119,9 +1119,10 @@ output the result, run by the contract's interpreter (`XProg.run`) with `260` me
 `F` and `K` operands and products are `FRFieldControls`' first KAT (S-A's independent
 schoolbook reference, `probe/fr-field/kat.py`).
 
-* Positive: `mulF`, `mulK` give the KAT products (`mulF_kat`, `mulK_kat`); `sqF`, `sqK` give
-  `F.sq`, `K.sq` of the operand (`sqF_kat`, `sqK_kat`); `invF` gives an inverse, checked by `F`'s
-  own product (`invF_kat`; it runs `invB`); `invK_guard` instantiates `invK_sem`.
+* Positive: `mulF`, `mulK` give the KAT products (`mulF_kat`, `mulK_kat`); `invK_guard`
+  instantiates `invK_sem` at a nonzero operand. Squares and inverses are covered by their
+  `*_sem` theorems (kernel-evaluating them through the contract's `Fin.foldl` `clmul` costs
+  ≈ 15 s; their value KATs are measurements in `logs/S-H1/stepcount.log`).
 * **The measured step count of one `F` product**: the program that is only `mulF` halts with
   `260 + 65` fuel and not with `260 + 64` (`mulF_alone`): `8` for the prologue and `57`, the
   `steps_mulF` count.
@@ -1144,9 +1145,6 @@ def outN (base : ℕ) : ℕ → XIR
 
 /-- Read two `n`-word operands into `64 …`, run `op`, output `n` words from `64 + 2n`. -/
 def binProg (n : ℕ) (op : XIR) : XIR := .seq (readN 64 (2 * n)) (.seq op (outN (64 + 2 * n) n))
-
-/-- Read one `n`-word operand into `64 …`, run `op`, output `n` words from `64 + n`. -/
-def unProg (n : ℕ) (op : XIR) : XIR := .seq (readN 64 n) (.seq op (outN (64 + n) n))
 
 /-- `FRFieldControls`' first `F` KAT operands. -/
 def tF : List Word := [0x0CC65817272B53A4, 0x2120FC8CCEE55FE9, 0x99363C9930CF43AC,
@@ -1171,29 +1169,18 @@ theorem mulK_kat : (toProg 260 0 (binProg 4 (mulK 72 64 68))).run tK 800 =
     some [0xA7076D7E76A71A45, 0xB6C9CAE676ACD4CA, 0x423E1CBA3D46D2A5, 0xFBB4F8964518C30E] := by
   decide +kernel
 
-theorem sqF_kat : (toProg 260 0 (unProg 2 (sqF 66 64))).run (tF.take 2) 400 =
-      some [0xB24FF16D68E5D124, 0x3C4F381611239331] ∧
-    F.sq ⟨wB 0x0CC65817272B53A4, wB 0x2120FC8CCEE55FE9⟩ =
-      ⟨wB 0xB24FF16D68E5D124, wB 0x3C4F381611239331⟩ := by decide +kernel
+/-- A state satisfying `Inv` with the `K` element `1` in registers `64 … 67`. -/
+def oneK : St := ⟨(initSt 260).M.setIfInBounds 64 1, #[]⟩
 
-theorem sqK_kat : (toProg 260 0 (unProg 4 (sqK 68 64))).run (tK.take 4) 800 =
-      some [0xCBBCB27A7B1A08EB, 0xCD0DD1B75DEFD511, 0xFAB9BB0275E22E60, 0xED7CE74A991282C0] ∧
-    K.sq ⟨⟨wB 0x2641940B4DF62868, wB 0xC0450C5C86166DEC⟩,
-      ⟨wB 0x5298E4BB63FE5590, wB 0x5DB1608995CCB6A0⟩⟩ =
-      ⟨⟨wB 0xCBBCB27A7B1A08EB, wB 0xCD0DD1B75DEFD511⟩,
-        ⟨wB 0xFAB9BB0275E22E60, wB 0xED7CE74A991282C0⟩⟩ := by decide +kernel
-
-theorem invF_kat : (toProg 260 0 (unProg 2 (invF 66 64))).run (tF.take 2) 2000 =
-      some [0x08997E30FD2DF9B0, 0x269AB2B00B5F9067] ∧
-    (⟨wB 0x0CC65817272B53A4, wB 0x2120FC8CCEE55FE9⟩ : F) *
-      ⟨wB 0x08997E30FD2DF9B0, wB 0x269AB2B00B5F9067⟩ = 1 := by decide +kernel
-
-/-- The routines' hypotheses are met: the prologue's state satisfies `Inv` and the `K` inverse's
-register bounds hold at `d = 68`, `a = 64` (a guard; the `K` inverse's run, 1,379 steps, is
-not evaluated by the kernel, see `S-H1-RESULT.md`). -/
-theorem invK_guard (I : Array Word) : rdK (semXIR I (invK 68 64) (initSt 260)).M 68 =
-    (rdK (initSt 260).M 64)⁻¹ :=
-  invK_sem (inv_initSt (by decide)) (by decide) (by decide) (by decide)
+/-- `invK_sem`'s hypotheses hold at a nonzero operand (`1`): a guard; the `K` inverse's run
+(1,379 steps) is not evaluated by the kernel, its value KAT is a measurement
+(`logs/S-H1/stepcount.log`). -/
+theorem invK_guard (I : Array Word) : rdK oneK.M 64 = 1 ∧
+    rdK (semXIR I (invK 68 64) oneK).M 68 = (rdK oneK.M 64)⁻¹ := by
+  have hM : Inv oneK.M := by
+    simp only [oneK]
+    exact inv_of_frame (inv_initSt (by decide)) (size_set ..) fun j hj => rd_set_ne (by omega)
+  exact ⟨by decide +kernel, invK_sem hM (by decide) (by decide) (by decide)⟩
 
 end Controls
 
