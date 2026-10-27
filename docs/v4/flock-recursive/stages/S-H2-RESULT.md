@@ -919,3 +919,77 @@ commit-ready:
 - every `FRX*` module builds;
 - no `sorry`;
 - the source rule is clean.
+
+---
+
+## Part 10: the leaf branch (after the coordinator's answers to Part 9's Q1 and Q2)
+
+The coordinator's answers:
+
+- **Q1.** Leaves do not decode. The chain start `s` is in the leaf proof's clear header, at bytes
+  `16 … 47`. S-0's `finSh` reads it as `bnd`, and the circuit pins the chain's start to that
+  value. So `memX` stays `2^26`; only `'N'` decodes.
+- **Q2.** On an accepted run, the cap absorb's query bytes are π's cap field. So `final`
+  supplies `capPi π e = capDig es 0 e`. It goes in as a hypothesis of the SNARK case of
+  `ext_good_tape`.
+
+**Delivered.**
+
+- `FRXReadDefs`: the SNARK branch is now **`decLN := kindIR ; ite rKN decRead leafIR`**.
+  - `kindIR` sets `rKN := [byte₀ = 'N']` and `rKL := [byte₀ = 'L']`, from tape word 5.
+  - `leafIR` outputs `0`, tape words `7 … 10` (header bytes `16 … 47`), then `2^18` (`'L'`) or
+    `2^16` (`'P'`). That is `witWords (.leaf s (leafN k))`.
+  - `decOk_decLN` proves `wf`, `safe` and `cost` (`max(cost decRead, 32) + 16` within
+    `decBudget`), `outs ≤ 6` and the size.
+- `FRXExt`: `decSnark := decLN`. `computes` re-checks, and so do `FRXSpec`'s `E_W`, `E_bad`,
+  `ext_encode` and its toy runs.
+- `FRXLeaf` (new; 160 lines, 129 code, 7 theorems):
+  - `kindIR_regs`, `leafIR_out`;
+  - `tape_leafS`: the chain start's packed words are tape words `7 … 10`;
+  - `leaf_byte`, `lowByte_eq`;
+  - **`run_leaf`**: on a domain tape of a leaf proof (`kindOf π = .snark k`, `k ≠ N30`), `ext`
+    halts within the fuel with output `witWords (.leaf (bytesAt π 16 32) (leafN k))`;
+  - **`E_leaf`**: under the same hypotheses, `E c π L = some (.leaf (bytesAt π 16 32) (leafN k))`.
+    This is the leaf case of `ext_good_tape`. The `Rel` side (`chainEnd s n = h`, `c = leafStmt h n`)
+    is `final`'s, from `leaf_sound` and the statement check.
+- **`n`.** The program outputs `leafN k = 2^(m − 14)` and does not read `n` from `stmt`'s
+  unaligned `enc64 n` (bytes 81–88). The verifier checks that the statement carries this `n`
+  (§1.1, "checked"), so on an accepted proof the two are equal.
+
+**Checks.**
+
+- **Axioms.** `E_leaf`, `run_leaf`, `decOk_decLN` and `computes` depend on
+  `propext, Classical.choice, Quot.sound`.
+- **Source rule.** 69 files, 0 findings. No `sorry`.
+- **Build.** `lake build FRXReadDefs FRXRead FRXExt FRXSpec FRXLeaf FRXDecodeB` takes 37.1 s
+  (`logs/S-H2/build10.log`).
+- **Profile.** `FRXLeaf` takes 10.1 s wall, with type checking 0.44 s and `simp` 2.5 s
+  (`logs/S-H2/FRXLeaf.profile`).
+
+**Controls.**
+
+- `E_leaf` is the positive control: every leaf proof is extracted.
+- The negative side is that `E_leaf` excludes `N30` (`hkn`); for `'N'` the branch runs the
+  decoder path (`read_spec`).
+- A kernel toy run of the SNARK branch is not possible: it needs a tape with `|π| = piSize`.
+
+**What remains** (the coordinator's list, items 2–6). This agent's context is long, so it
+stopped here. The state is commit-ready.
+
+2. **The butterfly program on the machine**, simulated against `bflyRun` (`FRXDecodeB`). It
+   needs:
+   - `wRow D 20 v` computed on the machine (`invF` once per row);
+   - `wAt` as XOR sums over the set bits of the block offset;
+   - `mulF`/`addF` per butterfly, on `F` in two heap words (`rdF`).
+
+   The proof is level by level, as `passIR_sem` was against `passF`.
+3. **The agreement set on the machine**: a scan of positions `0 … 2^18 − 1` with a running
+   count. It matches `firstK` (`decode_agree`).
+4. **Levels 1–4**: the read with level byte `i` (generalise `tagNW`/`tagCW`, `capOff`, the
+   32-word columns), then `Enc` and the K-folds of §6.2 step 4, decoding from level 4 up.
+5. **Phase 6**: the node's `decodeWit` output.
+6. **The SNARK `'N'` case of `ext_good_tape`.** Its hypotheses are:
+   - `capPi π e = capDig es 0 e` for `e < 512` (Q2);
+   - `ligerito_final`'s closeness and agreement.
+
+   The leaf case is `E_leaf`.

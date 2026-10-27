@@ -139,3 +139,18 @@ Base: branch `v4/flock-recursive`, HEAD `53c2e13`. Build tree `logs/fr-build-SH2
     and `2b + 1`), `bfly_decode_D`, `firstK`, `decode_agree`. Most of it compiled first time.
     Pitfall: `Finset.sort` does not reduce under `decide`, not even `decide +kernel`. Defining
     `firstK` as a scan of `List.range n` makes it decidable, and it matches the machine's scan.
+
+## Part 10
+
+23. The leaf branch (coordinator's Q1: `s` is in the header, `n = leafN k`).
+    - `decLN := kindIR ; ite rKN decRead leafIR` with `DecOk`.
+    - `FRXLeaf`: `run_leaf`, `E_leaf`.
+    - Pitfalls:
+      - `cases hk` on `PKind.snark k = if … then … else …` fails with "dependent elimination".
+        Use `by_cases` on the size, then `simp [hs] at hk`.
+      - `simp only` turns the `o` conjunct into `True`, so `rfl` no longer fits; use `trivial`.
+      - Numerals in the program (`0x4C`) display as `76`. State the byte lemmas with a `Word`
+        and a `UInt8` argument and `hvu : v.toNat = u.toNat := rfl`.
+      - `rw [E, Eof]` fails on `E`'s equation lemma. Use
+        `show (ext.run …).bind decodeWit = _`.
+    - Stopped: context long. Items 2–6 are handed over in RESULT Part 10.

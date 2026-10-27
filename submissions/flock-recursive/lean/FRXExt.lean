@@ -14,11 +14,13 @@ open RecursionFast
 
 /-! ## The program delivered: `ext`, `E`, `computes` -/
 
-/-- **The SNARK branch delivered so far**: the log index (§6.2 step 2) and the ladder read of
-level 0 (§6.2 step 3, `read_spec`); the decoding and the output follow (S-H2-RESULT). -/
-def decSnark : XIR := decRead
+/-- **The SNARK branch delivered so far**: a leaf (`'L'`, `'P'`) outputs its witness from the
+header (§6.2 step 1, `FRXLeaf.E_leaf`); a node (`'N'`) runs the log index (§6.2 step 2) and the
+ladder read of level 0 (§6.2 step 3, `read_spec`); the decoding and the output follow
+(S-H2-RESULT). -/
+def decSnark : XIR := decLN
 
-theorem decOk_decSnark : DecOk decSnark := decOk_decRead
+theorem decOk_decSnark : DecOk decSnark := decOk_decLN
 
 /-- **The extractor program** `ext := toProg 2^26 3 extIR` (§6.4). -/
 def ext : XProg := extWith decSnark

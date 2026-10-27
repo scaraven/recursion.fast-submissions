@@ -425,4 +425,55 @@ theorem decOk_decRead : DecOk decRead where
   size := by
     rw [decRead, sizeIR, sizeIR_read0, sizeIR_logIR_eq]; norm_num
 
+/-! ## The leaf branch (`'L'`, `'P'`: no decoding, §6.2 step 1) -/
+
+/-- `1` iff the first proof byte is `'N'`. -/ def rKN : ℕ := 136
+/-- `1` iff the first proof byte is `'L'`. -/ def rKL : ℕ := 137
+
+/-- The kind tests: `rKN := [byte₀ = 'N']`, `rKL := [byte₀ = 'L']` (byte₀ the low byte of tape
+word 5). -/
+def kindIR : XIR :=
+  .seq (readAt rB 5) (.blk [.const rK2 0xFF, .op .and rB rB rK2, .const rK2 0x4E,
+    .op .eq rKN rB rK2, .const rK2 0x4C, .op .eq rKL rB rK2])
+
+/-- `out` tape word `pos`. -/
+def outAt (pos : ℕ) : XIR := .seq (readAt rV2 pos) (.out rV2)
+
+/-- **The leaf output** `witWords (.leaf s n)`: the tag `0`, the chain start `s` (header bytes
+`16 … 47`, tape words `7 … 10`), and `n = leafN k` (`2^18` for `'L'`, `2^16` for `'P'`). -/
+def leafIR : XIR :=
+  .seq (.blk [.const rK2 0]) (.seq (.out rK2) (.seq (outAt 7) (.seq (outAt 8) (.seq (outAt 9)
+    (.seq (outAt 10) (.ite rKL (.seq (.blk [.const rK2 (2 ^ 18)]) (.out rK2))
+      (.seq (.blk [.const rK2 (2 ^ 16)]) (.out rK2))))))))
+
+/-- **The SNARK branch**: a node (`'N'`) runs the index and the read; a leaf outputs its
+witness. -/
+def decLN : XIR := .seq kindIR (.ite rKN decRead leafIR)
+
+theorem noLoopT_leaf : NoLoopT kindIR ∧ NoLoopT leafIR := by
+  simp [kindIR, leafIR, outAt, readAt, NoLoopT]
+
+theorem decOk_decLN : DecOk decLN where
+  wf := ⟨by simp [kindIR, readAt, WF, Prim.dst, rB, rK2, rKN, rKL, rA],
+    decOk_decRead.wf, by simp [leafIR, outAt, readAt, WF, Prim.dst, rK2, rV2, rA]⟩
+  safe := fun c π L hs hq ht => .seq (safe_of_noLoopT noLoopT_leaf.1)
+    (.ite (decOk_decRead.safe c π L hs hq ht) (safe_of_noLoopT noLoopT_leaf.2))
+  cost := fun t => by
+    have h := decOk_decRead.cost t
+    have e : cost leafIR t = 32 := by simp [leafIR, outAt, readAt, cost, blkSteps]
+    have e2 : cost kindIR t = 15 := by simp [kindIR, readAt, cost, blkSteps]
+    simp only [decLN, cost, e, e2]
+    simp only [decRead, cost, cost_logIR, cost_read0, decBudget, fuelBase, fuelPerWord] at h ⊢
+    have h2 : (3 * 2 ^ 46 - 2 ^ 27 : ℕ) = 211106098315264 := by norm_num
+    have h3 : (2 ^ 12 - 16 : ℕ) = 4080 := by norm_num
+    rw [h2, h3] at h ⊢
+    omega
+  outs := fun t => by
+    have : outs decRead t = 0 := by simp [decRead, outs, outs_logIR, outs_readIR, read0]
+    simp [decLN, kindIR, leafIR, outAt, readAt, outs, this, outCap]
+  size := by
+    have e : sizeIR leafIR = 35 := by simp [leafIR, outAt, readAt, sizeIR, blkSteps]
+    have e2 : sizeIR kindIR = 15 := by simp [kindIR, readAt, sizeIR, blkSteps]
+    rw [decLN, sizeIR, sizeIR, e, e2, decRead, sizeIR, sizeIR_read0, sizeIR_logIR_eq]; norm_num
+
 end FR.X
