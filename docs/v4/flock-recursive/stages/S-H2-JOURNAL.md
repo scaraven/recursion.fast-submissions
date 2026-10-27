@@ -154,3 +154,39 @@ Base: branch `v4/flock-recursive`, HEAD `53c2e13`. Build tree `logs/fr-build-SH2
       - `rw [E, Eof]` fails on `E`'s equation lemma. Use
         `show (ext.run …).bind decodeWit = _`.
     - Stopped: context long. Items 2–6 are handed over in RESULT Part 10.
+
+## Part 11
+
+24. Items 2–3 of the Part 10 handover (butterflies and the agreement scan on the machine).
+    - Upstream drift: HEAD moved to `eba6537` (S-0's `kindOf` now reads `byteAt? π 0`). `FRXSpec`
+      and `FRXLeaf` failed to build. Repaired by adding the `@[simp]` lemma `byteAt?_eq` to their
+      seven `kindOf` simps; no statement changed.
+    - `FRXBflyDefs`: `ldF`/`stF`, `alphaIR`, `pairBody` (= `pairPs ; alphaIR ; arithIR ; stF ;
+      stF ; q += 1`), `levelIR`, `bflyIR`, and the table program `wtabIR` (`row0IR`, `rowIR`).
+      `divu`/`remu`/`mul` give the pair's positions in one flattened loop per level (a nested
+      block × offset loop would be charged `K²` by `loopK`'s constant cap).
+    - `FRXBfly`: `iterL_ind`/`loopK_eq` (generic loop invariants), `ldF_sem`, `stF_sem`,
+      `alphaIR_sem`, the pure pair lemmas (`pairOf`, `pair_cases`, `bflyLevel_lo/hi`),
+      `pairBody_sem`, `levelIR_sem`, **`bflyIR_sem`**, `wtabIR_sem`, **`bflyIR_decode`**.
+    - `FRXAgree`: `scanIR`, `scanIR_sem`, `firstK_scan`, `scan_decode`, two kernel toy runs.
+    - Pitfalls met:
+      - `rfl` between two `seq` associations of the same program does not hold (different
+        terms); rewrite both sides with `semXIR_seq` instead (`simp only [semXIR_seq]` at the
+        facts, then `generalize` the flattened state).
+      - A `have e : semXIR I P s = semXIR I Q (…) := rfl` timed out in `whnf` (the unifier
+        evaluates the program); same fix.
+      - `generalize … at h` without `⊢` leaves the goal on the old term; the unifier then
+        unfolds `iterL` 20 times (maximum recursion).
+      - The loop count `(20 : Word).toNat` from `loopK_eq` must be rewritten to `20` before
+        `generalize` matches the invariant's state.
+      - `rowIR_sem` needs `maxRecDepth 8000` (kernel deep recursion on the 554-statement `invF`
+        list inside the program term).
+      - `eq_bW` rewrites the outer `eq` first; give its arguments.
+      - `show rd (entryK …) x = _` costs ~1.5 s each (29 of them): `dsimp only` does the same
+        projection reduction for free (FRXBfly 111 s → 62 s sequential).
+    - Profile (sequential, one core): FRXBflyDefs 13.7 s, FRXBfly 62.0 s (type checking 8.9 s),
+      FRXAgree 35.7 s (type checking 19.8 s, of which ≈ 18 s the two toy runs).
+    - Analysis for items 4–6 (RESULT Part 11 §4): the level-0 agreement set cannot be computed
+      from level 0 alone; the fold-consistency set needs the fold challenges (a Fiat–Shamir
+      chain replay, absent from §6.2) and a "no hidden disagreement" event (absent from A.10).
+      Stopped there: both need the coordinator.

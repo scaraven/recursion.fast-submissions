@@ -993,3 +993,238 @@ stopped here. The state is commit-ready.
    - `ligerito_final`'s closeness and agreement.
 
    The leaf case is `E_leaf`.
+
+---
+
+## Part 11: the butterflies and the agreement scan on the machine (items 2–3); analysis of 4–6
+
+**Delivered.** Items 2 and 3 of Part 10's list are complete and kernel-checked. Items 4–6 are not
+started: the analysis in §4 shows that they need two decisions first (Q1, Q2).
+
+### 1. Files (code lines by the core's `scripts/loc.py`)
+
+| File | total / code / theorems | What |
+|---|---|---|
+| `FRXBflyDefs` (new) | 222 / 138 / 13 | the programs: heap `F` load/store (`ldF`, `stF`); `alphaIR`; `pairBody`, `levelIR ℓ`, `bflyIR ℓ tb`; the basis table `wtabIR tb` (`row0IR`, `rowIR`); `WF`, `NoLoopT`, `outs`, exact costs |
+| `FRXBfly` (new) | 1,531 / 1,396 / 50 | the semantics, up to `bflyIR_sem`, `wtabIR_sem`, `bflyIR_decode` |
+| `FRXAgree` (new) | 391 / 319 / 14 | the scan `scanIR`, `scanIR_sem`, `firstK_scan`, `scan_decode`, controls |
+| `FRXSpec`, `FRXLeaf` | unchanged statements | repaired after upstream drift (below) |
+
+**Upstream drift.** HEAD moved from `fd836c3` to `eba6537` during this part. S-0's commit `3aaa778`
+changed `FRFormat.kindOf` to read `byteAt? π 0`, and `FRXSpec`/`FRXLeaf` stopped building. The
+repair adds the `@[simp]` lemma `byteAt?_eq` to the seven `kindOf` simps. No statement changed.
+
+### 2. What is proved
+
+**Layout.** A row of `2^ℓ` `F` elements from cell `A` holds element `i` in cells `A + 2i`, `A + 2i + 1`
+(`rdF`, `c₀` first). The basis table holds `(wRow D 20 v).getD i 0` at `tb + 40v + 2i`
+(`v, i < 20`, 800 cells). Registers `140 … 184`.
+
+**The basis table** (`wtabIR_sem`). On any state with `regs ≤ tb`, `tb + 800 ≤ |M|`:
+
+```lean
+(∀ v < 20, ∀ i < 20, rdF (semXIR I (wtabIR tb) s).M (tb + 40 * v + 2 * i) =
+    (wRow D logNMax v).getD i 0) ∧
+(∀ x, regs ≤ x → (x < tb ∨ tb + 800 ≤ x) → rd (semXIR I (wtabIR tb) s).M x = rd s.M x) ∧ Inv … ∧ size …
+```
+
+- Row 0 is `D(2^i)`: the words `(2^i, 0)`, because `D 0 = 0` and `D 1 = 1` (`wRow_zero_getD`).
+- Row `v + 1` is LCH's `a (a + 1) · (b (b + 1))⁻¹`, with `b` entry `v + 1` of row `v`
+  (`wRow_succ_getD`; `a − 1 = a + 1` and `x / y = x y⁻¹` hold by `rfl` in `F`). The program uses
+  one `invF` per row.
+
+**`α`** (`alphaIR_sem`). `α` is computed branch-free: `α = Σ_{i<20} [bit_i(base)] · T i` on the
+table row at `rTr` (`mask = 0 − bit`, `mask_bit`, `rdF_acc`). With `T = wRow D 20 l` this is
+`wAt D 20 l base` by definition.
+
+**One butterfly** (`pairBody_sem`). Take pair `q` of level `l`, with `P = 2^l`,
+`lo = ⌊q/P⌋·2P + q mod P` and `hi = lo + P` (`loP`, `hiP`; the machine uses `divu`, `remu`,
+`mul`).
+
+- The heap elements `u` at `lo` and `w` at `hi` become `u + α (w + u)` and `w + u`.
+- Nothing else on the heap changes, and `q` advances.
+- In characteristic 2 these are `bflyLevel`'s `u − α (w − u)` and `w − u` (`bflyLevel_lo`,
+  `bflyLevel_hi`, by `rfl` on `F`'s `Sub`).
+
+**A level** (`levelIR_sem`) and **the iteration** (`bflyIR_sem`).
+
+- Each level is one loop over the `2^(ℓ−1)` pairs.
+- The loop invariant is "element `i` is `bflyLevel … i` if `pairOf l i < q`, else unchanged".
+  It rests on `pair_cases` (every position is its pair's low or high one), `pairOf_lt` and
+  `hiP_lt`.
+
+```lean
+theorem bflyIR_sem … (hℓ1 : 1 ≤ ℓ) (hℓ : ℓ ≤ 20) (hA : regs ≤ A) (hA2 : A + 2 * 2 ^ ℓ + 1 < 2 ^ 64)
+    (hsz : A + 2 * 2 ^ ℓ ≤ s.M.size) (htb : regs ≤ tb) (htb2 : tb + 800 < 2 ^ 64)
+    (hdisj : tb + 800 ≤ A ∨ A + 2 * 2 ^ ℓ ≤ tb) (hA0 : rd s.M rA0 = toWord A)
+    (hW : ∀ v < 20, ∀ i < 20, rdF s.M (tb + 40 * v + 2 * i) = (wRow D logNMax v).getD i 0)
+    (hY : ∀ i < 2 ^ ℓ, rdF s.M (A + 2 * i) = Y i) :
+    (∀ i < 2 ^ ℓ, rdF (semXIR I (bflyIR ℓ tb) s).M (A + 2 * i) = bflyRun (M := F) D logNMax 0 ℓ Y i) ∧
+    (∀ x, regs ≤ x → (x < A ∨ A + 2 * 2 ^ ℓ ≤ x) → rd (semXIR I (bflyIR ℓ tb) s).M x = rd s.M x) ∧
+    Inv (semXIR I (bflyIR ℓ tb) s).M
+```
+
+**`bflyIR_decode`** composes this with `bfly_decode_D`. Suppose the row holds `interpF D J u` on
+`D[0, 2^ℓ)`, `u` agrees with `Enc(c)` on `J`, `|J| = 2^ℓ` and `J ⊆ [0, 2^20)`. Then the row ends
+holding the message `c`.
+
+**The agreement scan** (`scanIR_sem`, item 3). The set `A` is a flag array: word `f j` at `fb + j`.
+The scan `scanIR n k fb lb` lists positions at `lb`. With `L = scanL n f` (the flagged positions
+below `n`, increasing):
+
+- the count register is `min(|L|, k)`;
+- cell `lb + t` holds `L[t]` for `t < min(|L|, k)`;
+- the heap outside `[lb, lb + k)` is kept.
+
+`firstK_scan` proves that `firstK n A k` is the set of listed positions on flags that mark `A`.
+`scan_decode` is `decode_agree` restated on the scanned list.
+
+### 3. Costs (exact, `cost_*`), against the remaining budget
+
+| Program | Cost | Note |
+|---|---|---|
+| `pairBody` | 738 | of which `α` 618: 20 masked bit steps |
+| `bflyIR ℓ tb` | `14 + ℓ (741 · 2^(ℓ−1) + 23)` | `ℓ = 17`: 825,557,397 ≈ `2^29.62` per row; 64 rows ≈ `2^35.62` |
+| `wtabIR tb` | 79,606 | once |
+| `scanIR n k fb lb` | `16 + 32 n` | `n = 2^18`: ≈ `2^23` |
+
+The constant term has `≈ 2^47.585` left after the read (Part 9). The level-0 butterflies use
+`2^35.62` of it, so `2^47.584` remains. `decSnark` is unchanged (`decLN`): these programs are not
+yet on `ext`'s path, so `decOk_decSnark` and `computes` are unchanged and re-checked.
+
+### 4. Items 4–6: what the analysis found
+
+**The level-0 agreement set does not suffice alone.** `final`'s closeness of the level-0 word
+(`¬ farL`) gives a codeword family `V` agreeing jointly with the word on `≥ n₀ − e₀ = 3·2^16 ≥ k₀`
+positions. It does not say which positions. The extractor must compute the positions, and from
+level 0 alone it cannot: that would need an errors-and-erasures decoder (Berlekamp–Welch or Gao),
+`≈ 2^42` products for 64 rows, over the budget, and a decoder proof of its own. The computable set
+is §6.2's fold-consistency set:
+
+`A_c⁽ⁱ⁾ = {j : fold_z(W⁽ⁱ⁾ column j) = Enc(f⁽ⁱ⁺¹⁾)[j]}`
+
+It needs `f⁽ⁱ⁺¹⁾`, so the decoder runs from level 4 (the final message) up, as Part 9 planned.
+Levels 1–4 cannot be skipped. Two pieces are missing from the blueprint:
+
+1. **The fold challenges** (Q1). `fold_z` uses P1.i's sumcheck challenges `z`. They are log
+   answers on the verifier's Fiat–Shamir chain, and `runLog` answers each query by the first
+   entry with exactly that query (`Oracle.runLog`).
+   - To learn `z`, the extractor must replay the chain from the seed (`"FRSEED0" ‖ vk ‖ c ‖ hdr`)
+     to P1.4's last round, about 430 FS items. At each item it builds the query (tag ‖ previous
+     answer ‖ message from π's field, A.3/A.4) and finds its first exact match in `L`.
+   - That needs a second index of `L`, keyed by query: the existing one is keyed by answer, for
+     the Merkle walks. A second sort costs another `≈ 2,374 t`, and the linear term then exceeds
+     `fuel_per_word = 4096` (`2,374 t` for the first sort, out of `4,080 t` available).
+   - Options:
+     - (a) raise `fuel_per_word` to `2^13` (still `≤ 2^16 t` of `extractorBudget`; a `claim.json`
+       change);
+     - (b) a cheaper query index that I do not see under this cost model;
+     - (c) a coordinator ruling that `final` supplies `z` some other way.
+   - §6.2 does not list this step.
+2. **No hidden disagreement** (Q2). `truthC` (`f⁽ⁱ⁺¹⁾ = fold_z(f⁽ⁱ⁾)`) and linearity give
+   `A_c ⊇ jointAgree(W⁽ⁱ⁾, V⁽ⁱ⁾)`. Decoding from the first `kᵢ` positions of `A_c` is correct only
+   if `A_c ⊆ jointAgree`: no position `j` with `δ_j = W⁽ⁱ⁾_j − V⁽ⁱ⁾_j ≠ 0` and
+   `Σ_x eq(z, x) δ_j(x) = 0`.
+   - A.10 has no doom for this event, `Hide_i`. Its probability is at most `eᵢ · ℓᵢ / |K|`
+     (Schwartz–Zippel on the multilinear `δ_j` at `z`, union over the `≤ eᵢ` disagreeing
+     positions); at level 0 that is `≤ 2^16 · 6 / 2^256`.
+   - It needs a doom row at P1.i (S-G's territory, via `seq_bad_le` across the rounds), or a
+     ruling that `final` supplies `A_c⁽ⁱ⁾ = jointAgree` for `i ≤ 4`.
+   - With `¬ Hide_i`, `A_c = jointAgree` exactly, and `scan_decode` applies at every level by
+     induction from level 4.
+
+**The plan once Q1 and Q2 are settled** (each piece in the style of this part):
+
+1. **Chain replay** (Q1).
+2. **Reads of levels 1–4**: `readIR` with the level byte in `tagNW`/`tagCW`, cap offset
+   `capOff + 16384 + 8192(i − 1)`, 32-word columns and `sib = 8, 6, 4, 3` (`P30`), with the store
+   below `colBase`. Cost `≈ 2^32`.
+3. **Folds and `Enc`**:
+   - the `eq(z, ·)` table in `K`;
+   - per position, `Σ_x eq(z, x) W_x[j]` (`mulK`);
+   - `Enc(f⁽ⁱ⁺¹⁾)` at `nᵢ` positions, by the forward butterfly (the inverse of `bflyIR`) per coset,
+     or naively for `i ≥ 1`;
+   - the flags `[fold = Enc]`, then `scanIR`.
+4. **Interpolation `interpF D J u`** on `D[0, kᵢ)`, barycentric per target `s`:
+   - `d_t = D[s] + D[J_t] = D[s ⊕ J_t]` (`D_xor`);
+   - `ℓ(s) = Π d_t`, `e_t = w_t d_t⁻¹` with the weights `w_t` precomputed;
+   - per row, `ℓ(s) Σ_t y(J_t) e_t`;
+   - `s ∈ J` handled by a membership flag (`interpF` there is `y(s)`).
+
+   The pure lemma (barycentric form = `interpF` off `J`) is needed. Cost at level 0:
+   `2^34 · (invF + 64 · ≈ 75)` ≈ `2^46.6` steps, the largest item, under `2^47.58`. Memory: the
+   64 output rows fill `[2^24, 2^25)`, and `y(J_t)` is read in place from the column store.
+5. **`bflyIR` per row** (done), and the reshape of `f⁽ⁱ⁾` into level `i + 1`'s message by the
+   coordinate split (§2.2).
+6. **The node output** (`decodeWit` format, §1.4, A.5, A.7) from `f⁽⁰⁾`'s chain and L cells; then
+   **the `'N'` case of `ext_good_tape`**, with the hypotheses `capPi π e = capDig es 0 e`,
+   `¬ farL` for each level, `truthC`, and Q2's.
+
+### 5. Controls
+
+| Control | Kind | Shows |
+|---|---|---|
+| `toyScan_two` (kernel run, `decide +kernel`) | positive | flags `0,5,0,7,7,0,1,0`, `k = 2`: the scan lists `1, 3`, count 2 (`firstK 8 {1,3,4,6} 2`) |
+| `toyScan_six` (kernel run) | limit | `k = 6 > |A|`: the count is `|A| = 4` and later cells stay 0 (`min(|L|, k)`) |
+| `bflyIR_sem`, `wtabIR_sem`, `scanIR_sem` | universal | stated for every state meeting the layout hypotheses; their instances are the run's states |
+| `bflyRun_one`, `bflyRun_zero`, `firstK_ctl` (Part 9) | positive / negative | the pure targets these programs are proved against |
+| `wRow_zero_getD`, `wRow_succ_getD` | value | the table rows are LCH's recursion on `D` |
+
+A kernel toy run of `bflyIR` was not added. It would need kernel evaluation of `mulF` and of the
+pure `bflyRun` on `F` (the S-H1 note puts a kernel `clmul` evaluation at ≈ 15 s per field
+inverse). `bflyIR_sem` is the universal statement.
+
+### 6. Checks
+
+- **Axioms.** `bflyIR_sem`, `bflyIR_decode`, `wtabIR_sem`, `scanIR_sem`, `firstK_scan`,
+  `computes`, `E_leaf` and `E_W` depend on `propext, Classical.choice, Quot.sound`. The toy runs
+  depend on `propext, Quot.sound`.
+- **Source rule.** 74 files, 0 findings. No `sorry`.
+- **Build.** `lake build FRXReadDefs FRXRead FRXExt FRXSpec FRXLeaf FRXDecodeB FRXBflyDefs FRXBfly
+  FRXAgree` takes 60.9 s (`logs/S-H2/build11.log`; this includes rebuilding the modules touched by
+  the upstream drift).
+- **Sequential profile** (`taskset -c 0`, `-DElab.async=false`; `logs/S-H2/*.profile`, `*.time`):
+
+  | Module | wall | max RSS | type checking | simp | tactics |
+  |---|---|---|---|---|---|
+  | `FRXBflyDefs` | 13.7 s | 2.69 GB | 0.38 s | 5.4 s | 0.13 s |
+  | `FRXBfly` | 62.0 s | 2.96 GB | 8.86 s | 16.1 s | 21.5 s |
+  | `FRXAgree` | 35.7 s | 3.89 GB | 19.8 s (≈ 18 s the two toy runs) | 1.2 s | 7.0 s |
+  | `FRXSpec` | 13.1 s | 2.69 GB | 2.24 s | 2.3 s | 1.0 s |
+  | `FRXLeaf` | 9.7 s | 2.63 GB | 0.42 s | 2.3 s | 0.39 s |
+
+  `FRXBfly` was 111 s until its 29 `show rd (entryK …) … = _` steps became `dsimp only`. The same
+  change applies to `FRXRead`'s ten (Part 9's golf note).
+- `rowIR_sem` needs `set_option maxRecDepth 8000`: the kernel recurses deeply on the
+  554-statement `invF` list inside the program term.
+
+### 7. Deviations
+
+1. **A flattened pair loop.** The blueprint does not fix the loop shape. `loopK` charges its
+   constant cap, so a nested block × offset loop would be charged `2^(ℓ−1) · 2^(ℓ−1)` per level.
+   One loop over the pairs, with `divu`/`remu`, keeps the cost at `ℓ · 2^(ℓ−1)` butterflies.
+2. **`α` recomputed per pair** (20 masked steps, 618 of the 738). It is simple to prove, and the
+   cost, `2^35.6` for 64 rows, is negligible. Hoisting it per block is a later optimisation.
+3. **Not on `ext`'s path yet.** The decoder pieces stay off `decSnark` until the interpolation and
+   the folds exist. Wiring them in now would add cost and prove nothing.
+
+### 8. Open questions
+
+- **Q1 (the fold challenges; blocking item 4).** The folds need P1.i's challenges, so the extractor
+  must replay the Fiat–Shamir chain. That needs a query-keyed index of `L`, a second sort of
+  `≈ 2,374 t`, over the linear fuel term. Raise `fuel_per_word` to `2^13`? Or another source of
+  `z`? §6.2 should list the step either way.
+- **Q2 (no hidden disagreement; blocking item 6).** Add a doom `Hide_i` at P1.i (S-G), or have
+  `final` supply `A_c⁽ⁱ⁾ ⊆ jointAgree(W⁽ⁱ⁾, decodeL i)` for `i ≤ 4`. Without it, decoding from
+  the fold-consistency set is not correct on every accepted non-doomed chain.
+- **Q3 (memory).** The level-0 interpolation's 64 output rows (`2^24` words), the levels 1–4
+  stores (`≈ 2^21.3` words) and the scratch fit in `[256, 2^25)` below the column store. This
+  holds only if `y(J_t)` is read in place. A larger `memX` would simplify the layout but re-checks
+  every `FRX*` proof that uses `memX`.
+
+**Stopped here.** Items 2–3 are complete, and items 4–6 wait on Q1 and Q2. The state is
+commit-ready:
+
+- every `FRX*` module builds;
+- no `sorry`;
+- the source rule is clean.

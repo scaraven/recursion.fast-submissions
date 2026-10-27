@@ -151,7 +151,7 @@ theorem run_W {dec : XIR} (hd : DecOk dec) (c : Digest) (π : Proof) (L : Log)
       · rw [Array.getElem?_eq_none_iff] at h; exact (hne (Nat.le_zero.mp h)).elim
       · exact ⟨b, rfl⟩
     rw [kindFlag_byte, getD_toArray, tape_byte0 c π L hb]
-    simp only [kindOf, hb, Option.bind_some] at hW
+    simp only [kindOf, byteAt?_eq, hb, Option.bind_some] at hW
     revert hW; cases Kind.ofByte? b
     · intro; rfl
     · intro h; by_cases hs : π.size = piSize <;> simp [hs] at h
@@ -203,15 +203,15 @@ theorem E_bad {dec : XIR} (hd : DecOk dec) (c : Digest) (π : Proof) (L : Log)
       Eof (extWith dec) fuel c π L = none := by
   obtain ⟨b, hb0⟩ : ∃ b, π.data[0]? = some b := by
     rcases h : π.data[0]? with _ | b
-    · simp [kindOf, h] at hb
+    · simp [kindOf, byteAt?_eq, h] at hb
     · exact ⟨b, rfl⟩
   have hk : kindFlag ((extractorInput c π L).toArray.getD 5 0) ≠ 0 := by
     rw [Ne, kindFlag_byte, getD_toArray, tape_byte0 c π L hb0]
-    simp only [kindOf, hb0, Option.bind_some] at hb
+    simp only [kindOf, byteAt?_eq, hb0, Option.bind_some] at hb
     intro h; rw [h] at hb; cases hb
   have hs : π.size ≠ piSize := by
     intro h
-    simp only [kindOf, hb0, Option.bind_some, h, ↓reduceIte] at hb
+    simp only [kindOf, byteAt?_eq, hb0, Option.bind_some, h, ↓reduceIte] at hb
     revert hb; cases Kind.ofByte? b <;> simp
   have hr := run_bad_tape hd _ π.size hπ (by rw [getD_toArray, tape_getD4]) hs hk
   exact ⟨hr, by simp only [Eof, hr, Option.bind_some]; rfl⟩

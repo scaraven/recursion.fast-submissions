@@ -1507,3 +1507,10 @@ Note (3.9): `sizes.py` carries S-0's 3.8.2 reconciliation of the item sequence (
 | §4.3 / §4.5 / §0 | the row and block totals now cite A.11's model; `sizes.py` carries it (`A.11 row model`). |
 | F-5 (S-E2 §10, minor) | A.7 fixed: the WOTS digits are **266 bit-elements** (two per base-4 digit, 133 digits incl. the checksum's), not 133; `lBitCells`' offsets move by 133 (S-E3; the L region stays far inside `N_L = 2^15` rows per slot). |
 
+
+### Stage-review changes 14 (S-H2 Part 11)
+
+| Point | Change |
+|---|---|
+| Extractor fuel (B-10) | `fuel_per_word` goes from 4,096 to **8,192**. Decoding level 0 needs levels 1–4 (the fold-consistency sets), and those need the fold challenges, which come from a second, query-keyed index of the log (≈ 2,374·t on top of the first sort's 2,374·t). This is still far inside `extractorBudget = 2^48 + 2^16·t`. Claim: `fuel_base 211106232532992`, `fuel_per_word 8192`. |
+| Hidden disagreement (A.10, P1.i) | P1.i's doom includes `Hide_i`: a position where the word disagrees with the close codeword but whose folded difference is zero at z. Its probability is ≤ eᵢ·ℓᵢ/|K| per Schwartz–Zippel, inside P1's existing cancellation charge, and the row's bound is unchanged. With it, `final` supplies `A_c⁽ⁱ⁾ = jointAgree⁽ⁱ⁾` to the extractor. |

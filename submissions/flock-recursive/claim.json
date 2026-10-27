@@ -3,5 +3,5 @@
   "completeness_error": "0",
   "qV": 10240,
   "fuel_base": 211106232532992,
-  "fuel_per_word": 4096
+  "fuel_per_word": 8192
 }

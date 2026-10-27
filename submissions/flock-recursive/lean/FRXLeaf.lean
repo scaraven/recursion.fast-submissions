@@ -60,9 +60,9 @@ theorem leaf_byte (c : Digest) (π : Proof) (L : Log) {k : Kind} (hk : kindOf π
     ∃ b, π.data[0]? = some b ∧ Kind.ofByte? b = some k ∧
       ((extractorInput c π L).getD 5 0 &&& 0xFF).toNat = b.toNat := by
   rcases h : π.data[0]? with _ | b
-  · simp [kindOf, h] at hk
+  · simp [kindOf, byteAt?_eq, h] at hk
   · refine ⟨b, rfl, ?_, ?_⟩
-    · simp only [kindOf, h, Option.bind_some] at hk
+    · simp only [kindOf, byteAt?_eq, h, Option.bind_some] at hk
       revert hk; cases Kind.ofByte? b <;> intro hk
       · cases hk
       · by_cases hs : π.size = piSize
@@ -83,7 +83,7 @@ theorem run_leaf (c : Digest) (π : Proof) (L : Log) (hq : ∀ e ∈ L, e.1.size
       some (witWords (.leaf (bytesAt π 16 32) (leafN k))) := by
   have hs : π.size = piSize := by
     by_contra hne
-    simp only [kindOf, hne, if_false] at hk
+    simp only [kindOf, byteAt?_eq, hne, if_false] at hk
     split at hk <;> simp at hk
   obtain ⟨b, -, hbk, hlow⟩ := leaf_byte c π L hk
   set inp := extractorInput c π L with hinp
