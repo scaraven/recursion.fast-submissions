@@ -1,0 +1,30 @@
+# The native prover of the `flock-recursive` entry (blueprint §8; stage P1). Flat layout: the crate
+# root is this directory. No dependencies (offline build). The submitted form will be `prover.s`
+# (stage P2, `build-asm.sh`); a plain cargo build is for tests and measurements:
+#   CARGO_TARGET_DIR=<outside this directory> cargo test --release --offline
+[package]
+name = "flock-prover"
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+publish = false
+autobins = false
+autotests = false
+autobenches = false
+autoexamples = false
+
+[[bin]]
+name = "flock-prover"
+path = "main.rs"
+
+[dependencies]
+
+[profile.release]
+opt-level = 3
+codegen-units = 1
+lto = "fat"
+debug = false
+panic = "abort"
+
+[profile.test]
+opt-level = 3
