@@ -38,9 +38,9 @@ to report.
     most 30 minutes, with the caps nested inside it (§5.5); one tree run, of which only the root is
     read, and one stream run of `M = 256` links; per entry only the statement canaries; a DoS
     column of 100 inputs that fails only on time or a crash; no liveness; one Lean build instead of
-    the byte-identical rebuild; the organiser's own checks only in the core's CI; `errorCap =
-    2^-120` and `completenessCap = 2^-40`. Its new workflow structure has not run on GitHub
-    (D-trim §8 item 7).
+    the byte-identical rebuild; the organiser's own checks only in the core's CI;
+    `errorCap = 2^-120` and `completenessCap = 2^-40`. Its new workflow structure has not run on
+    GitHub (D-trim §8 item 7).
   - **V4-A10, textbook knowledge soundness** (`v4/ks-standard`; E-ks): `KS` quantifies over
     query-bounded adversaries against a lazily sampled random oracle; the potential `KState` is a
     library tool, and the bridge `KState.ks` turns one into `KS` (§3.1).
@@ -674,7 +674,8 @@ stated; the caps are for a 4-vCPU runner):
 | **whole job** | **14 min 22 s**, peak 4.11 GB | **9 min 52 s** | **8 min 42 s** on 4 CPUs; 6 min 47 s on 16 |
 | with `--nanoda` | PROVISIONAL: nanoda's kill stopped the Lean kernel | ok in 16 min 36 s: "nanoda: over budget (cap 14G, peak 14.00 GiB); checked by the Lean kernel only" | not run |
 
-(`logs/f3/cert-closure.log`, `logs/f4/cert.log`, `logs/f4/cert-nanoda.log`, `logs/f5/cert4.log`, `logs/f5/cert16.log`.)
+(`logs/f3/cert-closure.log`, `logs/f4/cert.log`, `logs/f4/cert-nanoda.log`, `logs/f5/cert4.log`,
+`logs/f5/cert16.log`.)
 
 - **A comparator that stops before it builds `Solution`** (the organiser's challenge failed) is a
   harness ERROR, not your REJECT (B-RESULT §11).
@@ -736,10 +737,9 @@ library's witness-sending entry.
 
 **The two jobs.** `aggregate.py` takes `T_tree` from the tree job and `t_link` from the stream
 job, with no repeats and no medians (V4-A9), and marks a result whose jobs ran on different CPU
-models `mixed_cpu`. Since RF-M1 it
-requires exactly the parts of its job plan (`PLANS`), from one harness commit and one season. A
-part that is missing, duplicated or mismatched makes the result ERROR. A part the entry failed makes
-it REJECT, whatever else is missing.
+models `mixed_cpu`. Since RF-M1 it requires exactly the parts of its job plan (`PLANS`), from one
+harness commit and one season. A part that is missing, duplicated or mismatched makes the result
+ERROR. A part the entry failed makes it REJECT, whatever else is missing.
 
 ### 5.3 What fails a run (PROVER.md §5; B-RESULT §7)
 
@@ -923,8 +923,8 @@ The source rule (`.contract/scripts/source-rule.py`) and the gate
 Each item below follows from the rules and was measured, proved or estimated by the first v4 entry
 (`spartan-srom`: v3's Spartan+Ligero leaf SNARK over GF(2^64)/GF(2^192), with σ0-bundle nodes) or
 by the core's stages. The harness findings are from F3's run of the frozen entry `8111b71` at
-`a874f87` and F4's run of the fixed entry `745c7d8` at `81e1ebf`, and F5's run of the migrated
-entry at `a283ff8`. Each item below still holds at the pin `<core-pin>`, or says what V4-A9 or
+`a874f87`, F4's run of the fixed entry `745c7d8` at `81e1ebf` and F5's run of the migrated entry
+at `a283ff8`. Each item below still holds at the pin `<core-pin>`, or says what V4-A9 or
 V4-A10 changed; the harness defects that the pin fixed are in §5. Times are from the shared
 development VM (32 vCPU QEMU, no `pclmulqdq`, under load), not a runner, so read them as relative.
 The entry's own account is `submissions/spartan-srom/NOTES.md`.

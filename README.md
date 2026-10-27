@@ -83,8 +83,8 @@ the intake copies the verified root and its registry entry into `main`.
       9 min 51 s; smoke bench of the submitted `prover.s` `733b3a30…`: T_tree 0.142 s, t_link
       0.0846 s, S 1.835; `prover.s` assembles with GNU Binutils 2.42 without error or warning).
     - **F5**, the migration to V4-A10 at `a283ff8` (`stages/F5-ks-RESULT.md`): the certificate
-      reaches V4-A10's `KS` through `KState.ks` (5 Lean files, statements unchanged) and is ok within
-      every cap on 4 CPUs in 8 min 42 s; **smoke ACCEPT** with `S` = 1.448 (`T_tree` 0.116 s,
+      reaches V4-A10's `KS` through `KState.ks` (5 Lean files, statements unchanged) and is ok
+      within every cap on 4 CPUs in 8 min 42 s; **smoke ACCEPT** with `S` = 1.448 (`T_tree` 0.116 s,
       `t_link` 0.0666 s); season REJECT for F4's reasons.
     - At every pin, ACCEPT only where `2^r · n ≤ 4,096`: above that, every root is over `proofCap`.
     - **REJECT at the season shape** (F4): the tree because a 1,572,898-byte Fiat–Shamir query is

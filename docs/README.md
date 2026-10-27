@@ -5,8 +5,9 @@
 > research, the v1.0 report and the v3 baseline brief. None of it is the design in force.
 >
 > - **The v4 design** lives in the core: `.contract/docs/DESIGN-v4-srom.md`, at the pin `<core-pin>`
->   (branch `v4/ks-standard`, with the amendments V4-A9 and V4-A10). Its brief, design attack and stage records are under
->   `.contract/docs/v4/`, and the contract is `.contract/RecursionFast/Contract/`.
+>   (branch `v4/ks-standard`, with the amendments V4-A9 and V4-A10). Its brief, design attack and
+>   stage records are under `.contract/docs/v4/`, and the contract is
+>   `.contract/RecursionFast/Contract/`.
 > - **`v4/flock-baseline/`** is written here: the blueprint, stage records and reviews of the v4
 >   baseline entry `spartan-srom`.
 > - **For v4, start at `../AGENTS.md`.** The reading order and the folder table below are v3's.

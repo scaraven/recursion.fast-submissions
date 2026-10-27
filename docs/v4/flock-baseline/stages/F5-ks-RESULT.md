@@ -119,9 +119,9 @@ The prover is the same binary; the lower `S` is one run each on a shared VM, not
   round (FB-9); this entry keeps GF(2^192).
 - **Benchmark.** One run each; only the tree's root is read, so the prover's inner proofs are
   ignored; per entry only the statement canaries (9 at the smoke shape, against 76 + 20 at F4b,
-  and 32 more on F4's liveness tree); no liveness; the DoS column records accepted inputs instead of failing on them
-  (none was accepted). The entry's own Lean controls for `π ± 1` byte stay: they are entry controls,
-  no longer a harness requirement.
+  and 32 more on F4's liveness tree); no liveness; the DoS column records accepted inputs instead
+  of failing on them (none was accepted). The entry's own Lean controls for `π ± 1` byte stay:
+  they are entry controls, no longer a harness requirement.
 - **Season.** The first failures are unchanged (`queryCap` for the tree, `proofCap` for the
   stream). Behind them the trim adds a time wall: at 15.9 s per `2^16` leaf on 16 CPUs, the tree's
   `2^24` compressions are about 256 such leaves, about 68 min against `tree_s` = 10 min (about

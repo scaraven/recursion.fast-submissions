@@ -200,8 +200,8 @@ timeout 1800 python3 -I "$ORG/harness/evaluate.py" bench --entry submissions/<ro
 ## Stage protocol (as in the core's `CLAUDE.md`)
 
 Work here is built in stages, one at a time. The v4 baseline's stages are F0 (probes), F1 (Lean),
-F2 (prover), F3 and F4 (the harness runs) and F5 (the migration to V4-A9 and V4-A10). Their records are `docs/v4/flock-baseline/stages/` and
-`reviews/`. Each stage runs the same cycle:
+F2 (prover), F3 and F4 (the harness runs) and F5 (the migration to V4-A9 and V4-A10). Their
+records are `docs/v4/flock-baseline/stages/` and `reviews/`. Each stage runs the same cycle:
 
 1. **Implement** (one agent). Build the stage and keep the build green. Write
    `stages/<id>-RESULT.md` with:
