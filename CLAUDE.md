@@ -13,7 +13,8 @@ ots.golf model, v3's V3-12, kept by v4). It holds:
 - the records of the entries built here (`docs/v4/`).
 
 The design in force for new work is **v4, the signed-random-oracle (SROM) rules**: a proposal on
-the core's branch `v4/srom-rules`, not yet adopted by the user. v3 is frozen.
+the core's branch `v4/srom-rules` with the user's amendments V4-A9 (`v4/trim-fat`) and V4-A10
+(`v4/ks-standard`), not yet adopted by the user. v3 is frozen.
 
 **This repository holds entries, never the contract. The contract is the `.contract` submodule**:
 the trusted core, https://github.com/scaraven/recursion.fast, at a pinned commit.
@@ -37,7 +38,7 @@ you work on (for `spartan-srom`, `docs/v4/flock-baseline/BLUEPRINT.md`).
   - the season files `.contract/harness/season.toml` and `smoke.toml`.
 - **The design**, `.contract/docs/DESIGN-v4-srom.md`: §6.1 lists every decision taken in the user's
   absence, and §6.2 the open items. The brief and its decisions and amendments, V4-1 … V4-16 and
-  V4-A1 … A8, are in `.contract/docs/v4/BRIEF.md`. The design attack (C-Mn, C-mn), the contract review (RA-Mn), the
+  V4-A1 … A10, are in `.contract/docs/v4/BRIEF.md`. The design attack (C-Mn, C-mn), the contract review (RA-Mn), the
   harness review (RB-Mn, RB-mn) and the final whole-branch review (RF-Mn, RF-mn) are in
   `.contract/docs/v4/reviews/`, the stage RESULTs in
   `.contract/docs/v4/stages/`, and the orchestrator's fix queue in `.contract/docs/v4/FIXLIST.md`.
@@ -57,18 +58,24 @@ you work on (for `spartan-srom`, `docs/v4/flock-baseline/BLUEPRINT.md`).
 
 ## The pin
 
-- **Where it is.** `.contract` is pinned to **`01a25b0`**, the head of the core's branch
-  `v4/srom-rules` and of its pull request #17. It was committed on this branch as `a6ee05c`, and the
-  caller workflow was regenerated from that commit's template in `4d2f282`. It holds stages A and B,
-  each with its review's fix passes:
+- **Where it is.** `.contract` is pinned to **`<core-pin>`**, on the core's branch
+  `v4/ks-standard`. It holds stages A and B, each with its review's fix passes (`01a25b0`, the head
+  of `v4/srom-rules` and of the core's pull request #17), and two amendments on top:
   - the contract fix pass `ea2e8ab`: `acc` checks `decide (p.tr.length ≤ S.qV)` right after the
-    size cap (RA-M2); `Log` is an `abbrev` for `Trace`; `wordBytes w := enc64 w.toNat`.
-    `RecursionFast/` is unchanged since;
+    size cap (RA-M2); `Log` is an `abbrev` for `Trace`; `wordBytes w := enc64 w.toNat`;
   - the harness fix passes `5b2b591` and `0bf80a7`, then `2632285` (the comparator built with the
-    organiser's Lean): `.contract/docs/v4/stages/B-harness-RESULT.md` §9–§11.
+    organiser's Lean): `.contract/docs/v4/stages/B-harness-RESULT.md` §9–§11;
+  - **V4-A9, the trim** (`v4/trim-fat`, the core's pull request #18;
+    `.contract/docs/v4/stages/D-trim-RESULT.md`): 30-minute jobs with nested caps, one tree run
+    (root only) and one stream run (`M = 256`), statement canaries only, no liveness, one Lean
+    build, `errorCap = 2^-120`, `completenessCap = 2^-40`;
+  - **V4-A10, textbook knowledge soundness** (`v4/ks-standard`;
+    `.contract/docs/v4/stages/E-ks-RESULT.md`): `KS` over query-bounded adversaries on a lazily
+    sampled oracle; the potential `KState` is a library tool, closed by the bridge `KState.ks`.
 - **Every entry is certified against the pin.** An entry that restates `acc` mirrors its conjuncts:
   `spartan-srom`'s `accWith` has the trace-length conjunct, and its `Decode` lemmas follow the new
-  `wordBytes` (F1 review F1-m1; its F1 fix pass, `745c7d8`).
+  `wordBytes` (F1 review F1-m1; its F1 fix pass, `745c7d8`). Its certificate reaches V4-A10's `KS`
+  through `KState.ks` (`docs/v4/flock-baseline/stages/F5-ks-RESULT.md`).
 - **The pin moves only with a contract change**, in its own commit, before any entry is certified
   against the new commit (C14):
 
@@ -125,26 +132,32 @@ ORG=$PWD/logs/org
 export RF_HARNESS_COMMIT=$(git -C .contract rev-parse HEAD)   # the archived copy is no git checkout:
                                                              # without this, the result records this repository's HEAD
 # 1. organiser set-up, before any entry code: build, harness tools, allowlist and olean manifest
-#    (ORG/.lake/rf/), the badge's compiled objects, the service (cargo).
-#    First run 177 s, later runs 65 s (B-RESULT §3); 4 min 12 s in F4's run at 81e1ebf
-#    (logs/f4/org-setup.log). Its default roots include CompPoly's BF64.Ext3 and BF64.Bytes
-#    (FIXLIST Q2), so RF_ORG_ROOTS is not needed for an entry that imports them.
-timeout 14400 "$ORG/harness/org-setup.sh" "$ORG"
+#    (ORG/.lake/rf/), the badge's compiled objects (the closures of RecursionFast, the CompPoly
+#    roots and Mathlib.Tactic), the service (cargo). Its step timeouts sum to 18 min plus 2 for
+#    the service (V4-A9). 4 min 12 s in F4's run at 81e1ebf (logs/f4/org-setup.log); 6 min 7 s
+#    at a283ff8, the Mathlib.Tactic objects included (logs/f5/org-setup.log). Its default roots
+#    include CompPoly's BF64.Ext3 and BF64.Bytes (FIXLIST Q2), so RF_ORG_ROOTS is not needed for
+#    an entry that imports them.
+timeout 1800 "$ORG/harness/org-setup.sh" "$ORG"
 # 2. the proof checkers:
 source "$ORG/scripts/tools.env"            # this VM's comparator; elsewhere:
 #    "$ORG/harness/ci/build-kernels.sh" DIR, then export the COMPARATOR_* lines it prints.
 #    The comparator and lean4export must be built with the organiser's Lean (v4.34.1), as
 #    build-kernels.sh does. A comparator that stops before it builds Solution is a harness ERROR.
-# 3. the certificate job: source rule, comparator (the Lean kernel), the gate tree, gate, badge.
-#    --nanoda adds a separate nanoda run (--nanoda-mem, default 14G). Each kernel run has its own
-#    memory scope and an outcome: ok, rejected, over budget or timeout (Q12). A nanoda run over
-#    budget leaves the Lean kernel's verdict; spartan-srom needs more than 20 GB for nanoda
-#    (F3 §2.4). spartan-srom at 81e1ebf: 9 min 52 s, comparator 354 s at 4.25 GB
-#    (logs/f4/cert.log); 16 min 36 s with --nanoda (logs/f4/cert-nanoda.log).
-timeout 7200 python3 -I "$ORG/harness/evaluate.py" cert --entry submissions/<root> --org "$ORG" \
+# 3. the certificate job: source rule, the one build, comparator (the Lean kernel), gate, badge,
+#    each within its cap of the season file's [certificate] (build 600 s, kernel 600 s, gate
+#    120 s, badge 180 s, for a 4-vCPU runner; V4-A9). --nanoda adds a separate nanoda run
+#    (--nanoda-mem, default 14G). Each kernel run has its own memory scope and an outcome: ok,
+#    rejected, over budget or timeout (Q12). A nanoda run over budget leaves the Lean kernel's
+#    verdict; spartan-srom needs more than 20 GB for nanoda (F3 §2.4). spartan-srom at a283ff8:
+#    8 min 42 s on 4 CPUs (the build 259.5 s, the comparator 182.3 s; logs/f5/cert4.log), 6 min 47 s
+#    on 16 (logs/f5/cert16.log); at 81e1ebf 9 min 52 s, comparator 354 s at 4.25 GB
+#    (logs/f4/cert.log), 16 min 36 s with --nanoda (logs/f4/cert-nanoda.log).
+timeout 1800 python3 -I "$ORG/harness/evaluate.py" cert --entry submissions/<root> --org "$ORG" \
   --work logs/eval/<run>/cert --out logs/eval/<run>/cert.json
-# 4. the benchmark job at the smoke shape (the service and rf-bench default to ORG's builds)
-timeout 7200 python3 -I "$ORG/harness/evaluate.py" bench --entry submissions/<root> \
+# 4. the benchmark job at the smoke shape (the service and rf-bench default to ORG's builds);
+#    each part ends within PART_S = 28 min
+timeout 1800 python3 -I "$ORG/harness/evaluate.py" bench --entry submissions/<root> \
   --cert logs/eval/<run>/cert.json --season "$ORG/harness/smoke.toml" \
   --work logs/eval/<run>/bench --out logs/eval/<run>/result.json
 # or both in one go: evaluate.py all --entry … --org "$ORG" --work … --out … --season …
@@ -154,11 +167,13 @@ timeout 7200 python3 -I "$ORG/harness/evaluate.py" bench --entry submissions/<ro
   systemd user manager for the memory cgroups. Where no user manager is reachable, the memory cap
   falls back to `prlimit --as`, and the result says so (`memcap`). On Ubuntu 24.04 the AppArmor
   restriction on user namespaces must be relaxed: `harness/ci/runner-setup.sh` does this on CI.
-- **What the harness builds.** The comparator builds `Challenge` and `Solution`, and the gate tree
-  builds exactly those targets again, so only `Solution`'s import closure is built, compared byte
-  for byte and gated (FIXLIST Q7). An entry module that `Solution` does not import is never built
-  or checked by the harness: import the controls from `Solution` if the harness is to check them.
-  The certificate records `built_modules`.
+- **What the harness builds.** It builds `Challenge` and `Solution` once, in the sandbox, and the
+  comparator, the gate and the badge read that build (V4-A9), so only `Solution`'s import closure
+  is built, checked and gated (FIXLIST Q7). An entry module that `Solution` does not import is
+  never built or checked by the harness: import the controls from `Solution` if the harness is to
+  check them. The certificate records `built_modules`. The badge build compiles, within its
+  180 s, the objects of every module of that closure outside the organiser's precompiled
+  closures of `RecursionFast`, the CompPoly roots and `Mathlib.Tactic`.
 - **Iterating on Lean without the harness.** Mirror what `evaluate.py`'s `mkfresh` writes. That is
   a lakefile and a manifest that require `logs/org` by path, with `packagesDir` the private tree,
   and one `[[lean_lib]]` that lists **every** module of `lean/` as a root: Lake's `globs =
@@ -185,7 +200,7 @@ timeout 7200 python3 -I "$ORG/harness/evaluate.py" bench --entry submissions/<ro
 ## Stage protocol (as in the core's `CLAUDE.md`)
 
 Work here is built in stages, one at a time. The v4 baseline's stages are F0 (probes), F1 (Lean),
-F2 (prover) and F3 (the harness run). Their records are `docs/v4/flock-baseline/stages/` and
+F2 (prover), F3 and F4 (the harness runs) and F5 (the migration to V4-A9 and V4-A10). Their records are `docs/v4/flock-baseline/stages/` and
 `reviews/`. Each stage runs the same cycle:
 
 1. **Implement** (one agent). Build the stage and keep the build green. Write
@@ -227,12 +242,17 @@ For entries, the harness checks these (`AGENTS.md` §6).
 - **Imports only from the allowlist closure**, plus the entry's own modules. The closure is that of
   Mathlib, the contract, the library, the controls and CompPoly's `BF64.Ext3` and `BF64.Bytes`, at
   the pin (`org-setup.sh`'s default roots, FIXLIST Q2; `AGENTS.md` §6). Other modules of the pinned
-  packages are checked as entry code.
+  packages are checked as entry code. Imports beyond the precompiled closures (`RecursionFast`,
+  the CompPoly roots, `Mathlib.Tactic`) are compiled in the badge build, within 180 s:
+  `import Mathlib` does not fit (`AGENTS.md` §5.1).
 - **The submission is computable.** The badge compiles the whole `RecursionFast.Challenge.submission`,
   so `ε` and `δ` too (a cast from `ℚ≥0`). Gate rule 4 also requires compiled code for `V`, `P` and
   `ext`.
 - **Statements are non-vacuous**, with a positive and a negative control for every definition an
   entry relies on.
+- **Knowledge soundness is the contract's textbook `KS`** (V4-A10). A potential (`KState`) is an
+  untrusted library route to it, closed by `KState.ks`; the caps are `ε ≤ 2^-120` per fresh query
+  and `δ ≤ 2^-40` (V4-A9; `AGENTS.md` §3.1).
 - **A proof never changes the statement it proves.** An entry fills only the challenge's
   `submission` and `certified`.
 - **An entry pull request touches only its own root:** never `records.json`, `.contract`, `docs/`,

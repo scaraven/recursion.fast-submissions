@@ -36,10 +36,11 @@ at the `.contract` pin.
    - `lean/Solution.lean` is required. It copies the rendered challenge verbatim, defines
      `RecursionFast.Challenge.submission` and proves `RecursionFast.Challenge.certified`
      (`AGENTS.md` §3.2).
-   - **Only `Solution`'s import closure is built.** The comparator and the gate tree build the
-     targets `Challenge` and `Solution`, and nothing else (the core's FIXLIST Q7). A module of
-     `lean/` that `Solution` does not import, directly or not, is never built or checked by the
-     harness. So import the controls from `Solution` if the harness is to check them.
+   - **Only `Solution`'s import closure is built.** The harness builds the targets `Challenge` and
+     `Solution` once, and nothing else (the core's FIXLIST Q7, V4-A9); the comparator, the gate and
+     the badge read that build. A module of `lean/` that `Solution` does not import, directly or
+     not, is never built or checked by the harness. So import the controls from `Solution` if the
+     harness is to check them.
    - Module names must be fresh. No module root may exist in the organiser's build, the toolchain
      or any package (so not `RecursionFast`, `Mathlib`, `CompPoly`, …), and `Challenge` is taken.
      Use a prefix that names the entry, such as `SpartanSrom…`.

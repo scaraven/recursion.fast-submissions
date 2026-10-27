@@ -1,11 +1,11 @@
 # Documentation index
 
-> **v4 note (2026-10-23).** Apart from `v4/`, everything under `docs/` is a **v3-era reference
+> **v4 note (2026-10-27).** Apart from `v4/`, everything under `docs/` is a **v3-era reference
 > copy**: the v3 design and its predecessors, the core's v2 handover and harness documents, the
 > research, the v1.0 report and the v3 baseline brief. None of it is the design in force.
 >
-> - **The v4 design** lives in the core: `.contract/docs/DESIGN-v4-srom.md`, at the pin `a874f87`
->   (branch `v4/srom-rules`). Its brief, design attack and stage records are under
+> - **The v4 design** lives in the core: `.contract/docs/DESIGN-v4-srom.md`, at the pin `<core-pin>`
+>   (branch `v4/ks-standard`, with the amendments V4-A9 and V4-A10). Its brief, design attack and stage records are under
 >   `.contract/docs/v4/`, and the contract is `.contract/RecursionFast/Contract/`.
 > - **`v4/flock-baseline/`** is written here: the blueprint, stage records and reviews of the v4
 >   baseline entry `spartan-srom`.
