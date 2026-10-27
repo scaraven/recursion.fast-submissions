@@ -11,7 +11,7 @@ BLUEPRINT §3, B-7.
   `queries_runIR` (a run asks exactly the program's ask ops).
 * **The item sequence**: `items_gen : (genWith fin m).ops.filterMap Op.item? = items` for every phase-final
   fragment that asks nothing, hence **`queries_gen : ((runIR impl (genWith fin m) inp).queries H).length =
-  8852 ≤ qV`**, proved from the phase table's structure (never by evaluating `gen`).
+  8854 ≤ qV`**, proved from the phase table's structure (never by evaluating `gen`).
 * `semIR_mux`: the mux program is the fixed program of the proof's kind byte.
 * **Per shape** (the phase table's shapes, `FRTranscriptDefs.Shape`): the exact registers and flag a
   shape's ops produce on a trace. **Phase Z** (Z1, Z2, Z3, Zend) is proved end to end
@@ -187,10 +187,10 @@ theorem items_gen (fin : FinOps) (hfin : ∀ outs b, (fin outs b).filterMap Op.i
     (m : Mode) : (genWith fin m).ops.filterMap Op.item? = items := by
   simp [genWith, skeleton, items_genPhases, hfin, List.filterMap_cons, Op.item?, items]
 
-/-- **`queries_gen`**: the verifier asks `8,852 ≤ qV` queries under every oracle. -/
+/-- **`queries_gen`**: the verifier asks `8,854 ≤ qV` queries under every oracle. -/
 theorem queries_gen (fin : FinOps) (hfin : ∀ outs b, (fin outs b).filterMap Op.item? = [])
     (m : Mode) (H : ByteArray → Digest) :
-    ((runIR impl (genWith fin m) inp).queries H).length = 8852 := by
+    ((runIR impl (genWith fin m) inp).queries H).length = 8854 := by
   rw [queries_runIR, items_gen fin hfin, items_length]
 
 /-! ## The interpreter step by step; the shapes of phase Z -/
@@ -570,7 +570,8 @@ theorem exec_phaseZ (c : GCtx) (r : Array Val) (ok : Bool) (ops : List Op) (d : 
   simp only at hb hst hd; subst hb
   simp only [zOps, genPhase, phZ1, phZ2, phZ3, phZend, List.append_assoc, initClaim, initOps,
     Init.width, roundW, ite_true, Bool.false_eq_true, ite_false, show fZend ≠ fStmt by decide,
-    show fZend ≠ fFinal by decide, List.nil_append, Nat.add_zero]
+    show fZend ≠ fFinal by decide, show ¬(fZend = fLrEnd ∨ fZend = fEEnd) by decide, List.nil_append,
+    Nat.add_zero]
   rw [exec_sqzC impl κ inp 10 st r ok _ hst, hd, refZ]
   simp only [Val.toD]
   rcases hs : sqzT 10 d tr with _ | ⟨as, tr₁⟩
@@ -780,6 +781,7 @@ def refPhase (n : ℕ) (p : Phase) (c : GCtx) (r : Array Val) (tr : Trace) :
       else if f = fFinal then
         let z := msgAt inp fFinal (2 ^ 5 * 32) ((finalElems - 2 ^ 5) * 32)
         (base ++ [.b z], decide (κ = .L32) || (Val.b z).isZero, x.2)
+      else if f = fLrEnd ∨ f = fEEnd then (base, κ.isNode || (Val.b m).isZero, x.2)
       else (base, true, x.2)
   | .squeezes k ch =>
     (sqzT k d tr).map fun x =>

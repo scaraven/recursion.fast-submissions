@@ -179,24 +179,22 @@ def finSh : FinField := fun fi b =>
     .assertEq (b + 50) (claimN fi "S2") allK],
    [b + 7, b + 46])
 
-/-- **`finLr`** (A.9; node only): (ii) `c_Lr2 = eq(r_Lr, r)·(â_L b̂_L + ĉ_L)`; (iii) `c₀^{Lr4} = â_L
-+ κ_L b̂_L + κ_L² ĉ_L`; (iv) `c_Lr4 = (Ã + κ_L B̃ + κ_L² C̃)(r, r₄)·ẑ_Lr` (`evalL`); (i) `c₀^{Lr2} = 0`
-holds by `initClaim`. `â_L, b̂_L, ĉ_L` are `abc` (**open**: A.4 has no item carrying them; RESULT).
-Exports the column point `r₄`. -/
-def finLrWith (abc : Reg × Reg × Reg) : FinField := fun fi b =>
-  let (a, bb, c) := abc; let kL := (outsOf fi "Lr3").headD 0
-  ([.packF ((coordsR fi "Lr1").take 15), .packF (chals fi "Lr2" 15), .eqPt b (b + 1),
-    .mulF a bb, .addF (b + 3) c, .mulF (b + 2) (b + 4), .assertEq (b + 5) (claimN fi "Lr2") Kind.isNode,
-    .mulF kL bb, .mulF kL kL, .mulF (b + 7) c, .addF a (b + 6), .addF (b + 9) (b + 8),
-    .assertEq (b + 10) (claim0 fi "Lr4") Kind.isNode,
-    .packF (chals fi "Lr4" 15), .evalL (b + 1) (b + 11), .mulF kL (b + 13), .mulF (b + 7) (b + 14),
-    .addF (b + 12) (b + 15), .addF (b + 17) (b + 16), .mulF (b + 18) (fi.zhat.getD 4 0),
-    .assertEq (b + 19) (claimN fi "Lr4") Kind.isNode],
-   [b + 11])
-
-/-- `finLr` with `â_L, b̂_L, ĉ_L` at the registers `zhat[6 … 8]` (provisional, until A.4 carries
-them). -/
-def finLr : FinField := fun fi => finLrWith (fi.zhat.getD 6 0, fi.zhat.getD 7 0, fi.zhat.getD 8 0) fi
+/-- **`finLr`** (A.9; node only): `â_L, b̂_L, ĉ_L` from the Lr-end absorb (A.3 row 7′, revision 3.7);
+(ii) `c_Lr2 = eq(r_Lr, r)·(â_L b̂_L + ĉ_L)`; (iii) `c₀^{Lr4} = â_L + κ_L b̂_L + κ_L² ĉ_L`; (iv) `c_Lr4 =
+(Ã + κ_L B̃ + κ_L² C̃)(r, r₄)·ẑ_Lr` (`evalL`); (i) `c₀^{Lr2} = 0` holds by `initClaim`. Exports the
+column point `r₄`. -/
+def finLr : FinField := fun fi b =>
+  let kL := (outsOf fi "Lr3").headD 0
+  ([.piElem fLrEnd 0, .piElem fLrEnd 16, .piElem fLrEnd 32,
+    .packF ((coordsR fi "Lr1").take 15), .packF (chals fi "Lr2" 15), .eqPt (b + 3) (b + 4),
+    .mulF b (b + 1), .addF (b + 6) (b + 2), .mulF (b + 5) (b + 7),
+    .assertEq (b + 8) (claimN fi "Lr2") Kind.isNode,
+    .mulF kL (b + 1), .mulF kL kL, .mulF (b + 10) (b + 2), .addF b (b + 9), .addF (b + 12) (b + 11),
+    .assertEq (b + 13) (claim0 fi "Lr4") Kind.isNode,
+    .packF (chals fi "Lr4" 15), .evalL (b + 4) (b + 14), .mulF kL (b + 16), .mulF (b + 10) (b + 17),
+    .addF (b + 15) (b + 18), .addF (b + 20) (b + 19), .mulF (b + 21) (fi.zhat.getD 4 0),
+    .assertEq (b + 22) (claimN fi "Lr4") Kind.isNode],
+   [b + 14])
 
 /-- **The finals with S-0's fields** and the other owners' fields as arguments. -/
 def s0Finals (rs e b' : FinField) (p : ℕ → FinField) (pf : FinField) : Finals :=
@@ -362,7 +360,7 @@ def relLr : Bool :=
   let rr := ((chals fi "Lr2" 15).map (fv r)).toArray
   let r4 := ((chals fi "Lr4" 15).map (fv r)).toArray
   let kL := fv r ((outsOf fi "Lr3").headD 0)
-  let a := fv r (fi.zhat.getD 6 0); let bb := fv r (fi.zhat.getD 7 0); let c := fv r (fi.zhat.getD 8 0)
+  let a := pe inp fLrEnd 0; let bb := pe inp fLrEnd 16; let c := pe inp fLrEnd 32
   let m := impl.evalL rr r4
   if κ.isNode then
     (Val.f (eqPoint rLr rr * (a * bb + c))).eqv (rd r (claimN fi "Lr2")) &&
@@ -372,35 +370,29 @@ def relLr : Bool :=
   else true
 
 theorem flag_finLr (hin : ∀ x ∈ (coordsR fi "Lr1").take 15 ++ chals fi "Lr2" 15 ++ chals fi "Lr4" 15 ++
-      [(outsOf fi "Lr3").headD 0, fi.zhat.getD 6 0, fi.zhat.getD 7 0, fi.zhat.getD 8 0,
-       claimN fi "Lr2", claim0 fi "Lr4", claimN fi "Lr4", fi.zhat.getD 4 0], x < r.size) :
-    ∃ L, pureRun impl κ inp (finLr fi r.size).1 r [] = some (L, relLr impl κ fi r) := by
+      [(outsOf fi "Lr3").headD 0, claimN fi "Lr2", claim0 fi "Lr4", claimN fi "Lr4",
+       fi.zhat.getD 4 0], x < r.size) :
+    ∃ L, pureRun impl κ inp (finLr fi r.size).1 r [] = some (L, relLr impl κ inp fi r) := by
   simp only [List.mem_append, List.mem_cons, List.not_mem_nil, or_false] at hin
   have h1 := fun L => map_rd_app r L ((coordsR fi "Lr1").take 15) fun x hx => hin x (.inl (.inl (.inl hx)))
   have h2 := fun L => map_rd_app r L (chals fi "Lr2" 15) fun x hx => hin x (.inl (.inl (.inr hx)))
   have h3 := fun L => map_rd_app r L (chals fi "Lr4" 15) fun x hx => hin x (.inl (.inr hx))
   have tf : ∀ x, (Val.f x).toF = x := fun _ => rfl
   have taf : ∀ x, (Val.af x).toAF = x := fun _ => rfl
-  simp only [finLr, finLrWith, relLr]
+  simp only [finLr, relLr]
   generalize (outsOf fi "Lr3").headD 0 = kl at *
-  generalize fi.zhat.getD 6 0 = za at *
-  generalize fi.zhat.getD 7 0 = zb at *
-  generalize fi.zhat.getD 8 0 = zc at *
   generalize claimN fi "Lr2" = c2 at *
   generalize claim0 fi "Lr4" = c40 at *
   generalize claimN fi "Lr4" = c4 at *
   generalize fi.zhat.getD 4 0 = zl at *
-  have hk := hin kl (.inr (.inl rfl)); have ha := hin za (.inr (.inr (.inl rfl)))
-  have hb := hin zb (.inr (.inr (.inr (.inl rfl)))); have hc := hin zc (.inr (.inr (.inr (.inr (.inl rfl)))))
-  have hc2 := hin c2 (.inr (.inr (.inr (.inr (.inr (.inl rfl))))))
-  have hc40 := hin c40 (.inr (.inr (.inr (.inr (.inr (.inr (.inl rfl)))))))
-  have hc4 := hin c4 (.inr (.inr (.inr (.inr (.inr (.inr (.inr (.inl rfl))))))))
-  have hzl := hin zl (.inr (.inr (.inr (.inr (.inr (.inr (.inr (.inr rfl))))))))
+  have hk := hin kl (.inr (.inl rfl)); have hc2 := hin c2 (.inr (.inr (.inl rfl)))
+  have hc40 := hin c40 (.inr (.inr (.inr (.inl rfl))))
+  have hc4 := hin c4 (.inr (.inr (.inr (.inr (.inl rfl)))))
+  have hzl := hin zl (.inr (.inr (.inr (.inr (.inr rfl)))))
   cases hn : κ.isNode <;>
   simp only [hn, pureRun, evalOp, tf, taf, List.nil_append, List.cons_append, h1, h2, h3,
-    rd_app, rd_app0, rd_app_left _ _ hk, rd_app_left _ _ ha, rd_app_left _ _ hb, rd_app_left _ _ hc,
-    rd_app_left _ _ hc2, rd_app_left _ _ hc40, rd_app_left _ _ hc4, rd_app_left _ _ hzl,
-    List.getD_eq_getElem?_getD, List.getElem?_cons_succ, List.getElem?_cons_zero, Option.getD_some,
+    rd_app, rd_app0, rd_app_left _ _ hk, rd_app_left _ _ hc2, rd_app_left _ _ hc40, rd_app_left _ _ hc4, rd_app_left _ _ hzl,
+    List.getD_cons_succ, List.getD_cons_zero,
     Option.map_some, Bool.not_true, Bool.not_false, Bool.false_or, Bool.true_or, Bool.true_and,
     Bool.and_true, ↓reduceIte, Bool.false_eq_true] <;>
   exact ⟨_, rfl⟩

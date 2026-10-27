@@ -304,3 +304,29 @@ header; S-F's and S-G's fields are marked `PENDING placeholder`. 61,875 ops; ask
 **Serial path** (`logs/S-0/serial.txt`): 10,220 lines, ≈ 307 s (**estimate**), down from 11,854
 now that `FRRS` is off the S-0 chain: `… Field256 → TranscriptDefs → Format → VIR → VIRSpec →
 VIRFinals → Verifier → …`.
+
+### Revision 3.7 update
+
+- **Items and fields:** the absorbs "Lr end" (48 B, after Lr2, field 7′ = `fLrEnd`) and "E end"
+  (48 B, after E2, field 9′ = `fEEnd`) are added to the phase table. A.3 now has 18 fields, so the
+  field constants after `fLr` shift by one or two.
+  - `items_length = 8,854` and 431 FS items.
+  - `fieldSizes_eq` (A.3 rev 3.7) and **`piSize_eq = 757,712`**.
+  - Stream 1,438,192 B, `chainLen = 22,472`.
+  - `reassemble` follows from the table, unchanged in code.
+  - For `L32`/`P30` the two messages are asserted zero (node-only, like the dummy rounds; `refPhase`
+    matches).
+- **`finLr`** reads `â_L, b̂_L, ĉ_L` from the Lr-end field (`piElem fLrEnd 0/16/32`) instead of
+  `zhat[6…8]`. `relLr` and `flag_finLr` are restated and re-proved.
+  - Open point 2 of the fix pass is closed for Lr. E's source exists now for S-F's `finE`.
+- **Settled by revision 3.7, no code change:** the finals' order after the skeleton (already as
+  built); `linkW` at the Sh point (as built); `rowW`/`shiftEq` as ops with S-C owning the specs;
+  `domBits`.
+- **Re-runs agree:**
+  - `sizes.py` (`logs/S-0/sizes-rerun.txt`): 8,854 items, 1,438,192 B, 22,472 compressions,
+    757,712 B — equal to the Lean values.
+  - The dump (`logs/S-0/dump/`, the prover's byte-for-byte reference): 61,884 ops, 53,092
+    registers, asks = items = 8,854.
+  - `serial.py`: 10,352 lines, ≈ 311 s (estimate).
+- **Checks:** source rule 0 findings (43 files). Axioms unchanged: `sorryAx` only through
+  `exec_genPhase` and `genPhase_ctx`. S-0's modules total 1,940 code lines.

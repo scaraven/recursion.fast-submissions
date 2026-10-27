@@ -101,3 +101,6 @@ Running notes for a successor. Build tree `logs/fr-build-s0/` (`gen.sh` copied f
   lemmas). Kernel: finZ/finLc/finSh/finLr 0.4/0.4/0.36/0.08 s.
 - `exact ⟨_, rfl⟩` closing a flag lemma times out whenever any `r.size + a + b` index or an
   unevaluated `if 1 = 0` is left: always look at the residual goal first.
+- Rev 3.7: Lr-end/E-end absorbs (new fields 8 and 11; the rest renumbered), finLr from the Lr-end
+  field, exec_phaseZ's simp needs `¬(fZend = fLrEnd ∨ fZend = fEEnd)`. Dump/sizes/serial re-run,
+  all agree (8,854 items, piSize 757,712).

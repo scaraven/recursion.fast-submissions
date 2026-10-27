@@ -629,6 +629,8 @@ def genPhase (n : ℕ) (p : Phase) (c : GCtx) : List Op × GCtx :=
   | .absorb f len =>
     if f = fStmt then rec_ (absorbOps f (o f) len c.st b ++ stmtOps b (b + 2)) 10 (b + 1) [b]
     else if f = fFinal then rec_ (absorbOps f (o f) len c.st b ++ finalOps (b + 2)) 3 (b + 1) [b]
+    else if f = fLrEnd ∨ f = fEEnd then
+      rec_ (absorbOps f (o f) len c.st b ++ [.assertZero b (fun κ => !κ.isNode)]) 2 (b + 1) [b]
     else rec_ (absorbOps f (o f) len c.st b) 2 (b + 1) [b]
   | .squeezes k ch =>
     match ch with
