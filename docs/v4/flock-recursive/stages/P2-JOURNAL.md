@@ -77,3 +77,16 @@
   m = 32 6.51–6.64 s, all accepted (|π| 757,712, |tr| 8,854). Regression vs §6 from Z3 now
   folding z (x₆ round 0.25 s, tail 0.20 s at m = 30). Link ≈ 3.2–3.3 s, tree ≈ 525 s (estimates).
   Recommend restoring "skipping c". Steps 3–4 blocked (P2-RESULT §7.6). Branches deleted.
+
+## 2026-10-27 (resumption 2: rev. 3.9)
+
+- Read stage-review changes 6–9 and §2.3/A.9 of 3.9; `FRRingSwitch` (`Phi`, `phiTable`, `rsT`,
+  `weightEval`). Dump `logs/S-0/dump/` (18:15): 8,874 items, `piSize` 755,680, P3 five squeezes,
+  L3 128 B; finals S-F/S-G still placeholders there.
+- Skip-c back in `leaf.rs` (Z2 `P^z ‖ P^{ab}`, Z3 on `a·b`, c-claim from round 1's banks as RS
+  claim 0 with `eqZ λ ρ₁`); one Sh claim; `J_z = 4`; L3 8 values; `ringswitch.rs` to `Φ_{r″}`/`rsT`/
+  `rsWeight`; `κ_c` from 5 squeezes with `eq(κ_c, bits₉(j))`. First build passed every test.
+- VM: `test-leaf 25…30`, `32` pass (|π| = 755,680); m = 30 x₆ round 0.25–0.29 s and tail
+  0.25–0.27 s (rev 3.7 0.36/0.42, pre-3.7 0.27/0.27); m = 32 13.3 s; `prove-leaf 30` via `rf-oracle`:
+  |tr| = 8,874, `acc` accept, canary reject. `prover.s` sha256 `f3385c4d…62a3`. RESULT §9.
+- 2026-10-27 7763 run 40561971516 (rev 3.9, prover.s f3385c4d…): leaf request 1.37–1.43 s, m = 32 5.58 s; skip-c recovered the 3.7 regression. Node ≈ 1.42 s (estimate), link ≈ 2.8 s, tree ≈ 445 s. Node prover waits for S-G's finals. Branches deleted.

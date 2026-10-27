@@ -4,13 +4,10 @@
 //! within a 64-bit word). Rows `x = (x₆ … x_{m−1})`; the zerocheck point is `r = (ρ₁ … ρ₇, r₈ …)`
 //! for `x₆ …` (`skipdom.rs`). Round 1 sends `P^{ab}` and `P^z` on `Λ`; the c-side is computed as
 //! two banks split by `x₆` (`bank_b[σ] = Σ_{x: x₆ = b} eq(r, x) z(x, σ)`, giving `P^z` on `Λ`).
-//! Then (rev. 3.7, §2.3 step 2) `m − 6` degree-3 rounds of the summand `w·(a b + z) + W_E` with
-//! `w = eq(r, ·)` (`Sel = 1` for a leaf) and `W_E = eq(r, ·)·E(λ, ·)` a fifth (multilinear) table:
-//! the prover works in Gruen's form for the `w` part, `H_k(X) = Σ eq(r_{>k}, ·) (â b̂ + ẑ)(λ, s_{<k},
-//! X, ·)` from `H_k(1)`, `H_k(∞)` and the claim, and sends the coefficients of `g_k(X) =
-//! eq(r_{<k}, s_{<k})·(1 + r_k + X)·H_k(X) + G_k(X)` (`zc_coeffs`), `G_k` the linear `W_E` part
-//! (`leaf.rs`). The `z` part is linear in each variable: its table `Z(x) = ẑ(λ, x)` is made from the
-//! bits on the fly in the first round (`z_h1_bytes`, `z_fold_bytes`) and folded with `â`, `b̂` after.
+//! Then (rev. 3.8, "skipping c") `m − 6` degree-3 rounds of `eq(r, x)·a_λ(x)·b_λ(x)` in Gruen's
+//! form: `H_k(X) = Σ eq(r_{>k}, ·) â(λ, s_{<k}, X, ·) b̂(…)` from `H_k(1)`, `H_k(∞)` and the reduced
+//! claim (`H_k(0) = (claim′ + r_k H_k(1))/(1 + r_k)`); the message is the coefficients of `g_k(X) =
+//! eq(r_{<k}, s_{<k})·(1 + r_k + X)·H_k(X)` (`zc_coeffs`); the final value is `eq(r, s)·â·b̂`.
 //!
 //! The round-1 structure (windows of 2^13 bits, 16 "medium" positions × 8 rows, the compressed LDE
 //! table, the GF(2^8) accumulation by `a^k`, the convert table and the two C banks) is Flock's
@@ -230,82 +227,6 @@ pub fn round_tab(a: &[F], b: &[F], rest: &[F]) -> (F, F) {
 /// `h(0)` from the claim: `(1 + r) h(0) + r h(1) = claim`.
 pub fn h0_from_claim(claim: F, r: F, h1: F) -> F {
     (claim + r * h1) * (F::ONE + r).inv()
-}
-
-/// `Ê(λ, hi) = Σ_{p ∈ E, ⌊p/64⌋ = hi} L^S_{p mod 64}(λ)`: the leaf chain block's target at `λ` (the
-/// same for every block), per 64-bit row `hi < 256` of the block.
-pub fn e_hi_table(lambda: F) -> Vec<F> {
-    let w = crate::skipdom::lagrange_weights(&skip().s_pts, lambda);
-    let mut t = vec![F::ZERO; 256];
-    for &p in crate::circuit::e_positions() {
-        t[p >> 6] += w[p & 63];
-    }
-    t
-}
-
-/// `ẑ(λ, x)` of the 64-bit row `x`.
-#[inline(always)]
-fn z_row(t: &[F], z: &[u8], x: usize) -> F {
-    fold_row(t, &z[8 * x..8 * x + 8])
-}
-
-/// Round 1 (`x₆`) of the `z` part: `Σ_p eq(rest, p) ẑ(λ, 2p + 1)`.
-pub fn z_h1_bytes(t: &[F], z: &[u8], rest: &[F]) -> F {
-    let es = EqSplit::new(rest);
-    let nlo = es.nlo;
-    let parts = par::map_chunks(es.hi.len(), 1, |lo, hi| {
-        let mut acc = FAcc::default();
-        for h in lo..hi {
-            let mut inner = FAcc::default();
-            for l in 0..1usize << nlo {
-                let p = (h << nlo) | l;
-                inner.mac(es.lo[l], z_row(t, z, 2 * p + 1));
-            }
-            acc.mac(es.hi[h], inner.reduce());
-        }
-        acc
-    });
-    let mut acc = FAcc::default();
-    for x in parts {
-        acc.add(&x);
-    }
-    acc.reduce()
-}
-
-/// After `s₁`: `Z′[p] = ẑ(λ, 2p) + s₁(ẑ(λ, 2p) + ẑ(λ, 2p+1))` from the bits.
-pub fn z_fold_bytes(t: &[F], z: &[u8], s1: F) -> Vec<F> {
-    let n = z.len() / 16;
-    let mut out: Vec<F> = par::uninit_vec(n);
-    par::for_each_chunk_mut(&mut out, 1 << 12, |off, ch| {
-        for (i, o) in ch.iter_mut().enumerate() {
-            let p = off + i;
-            let (a, b) = (z_row(t, z, 2 * p), z_row(t, z, 2 * p + 1));
-            *o = a + s1 * (a + b);
-        }
-    });
-    out
-}
-
-/// A later round of the linear part on its table: `Σ_p eq(rest, p) T(2p + 1)`.
-pub fn lin_h1(t: &[F], rest: &[F]) -> F {
-    let es = EqSplit::new(rest);
-    let nlo = es.nlo;
-    let parts = par::map_chunks(es.hi.len(), 1, |lo, hi| {
-        let mut acc = FAcc::default();
-        for h in lo..hi {
-            let mut inner = FAcc::default();
-            for l in 0..1usize << nlo {
-                inner.mac(es.lo[l], t[2 * ((h << nlo) | l) + 1]);
-            }
-            acc.mac(es.hi[h], inner.reduce());
-        }
-        acc
-    });
-    let mut acc = FAcc::default();
-    for x in parts {
-        acc.add(&x);
-    }
-    acc.reduce()
 }
 
 /// The degree-3 message `(c₀, c₁, c₂)` of `g(X) = P·(1 + r + X)·H(X)` from `H(0), H(1), H(∞)`

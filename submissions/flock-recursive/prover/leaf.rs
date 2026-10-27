@@ -1,14 +1,15 @@
-//! The leaf proof (`L32`, `P30`-leaf; blueprint rev. 3.7 §1.1, §2.3, A.3, A.4, A.9): prover and
+//! The leaf proof (`L32`, `P30`-leaf; blueprint rev. 3.9 §1.1, §2.3, A.3, A.4, A.9): prover and
 //! native verifier, phase for phase in A.4's item order, `π` in A.3's eighteen fields.
 //!
 //! Phases (one item sequence for every kind, sized by `m* = 32`; a smaller `m` fills it with
 //! dummies, the node-only phases Lr and E are zero for a leaf): seed, stmt, cap₀; **Z** (Z1 point,
-//! Z2 univariate skip `P^{ab} ‖ P^z`, Z3 `26` degree-3 rounds of `eq(r,·)(ab + z + E)`, Z end `â ‖ b̂`);
-//! **Lc** (α, 14 degree-2 rounds on the chain kind's folded column, L3 the per-kind values `v_kind`,
-//! β); **Sh** (τ, θ, κ_s; one 28-round sumcheck: block rounds, then 10 collapse rounds over the
-//! positions `< 1024`); Lr (zero); **RS** (`J_z = 5` claims' partials, `r″`, κ); E (zero); B′; **P**
-//! (Ligerito, `ligerito.rs`). The verifier runs every check as a flag and asks every item whatever
-//! the proof (as `gen` does); the finals (A.9) follow the skeleton.
+//! Z2 univariate skip `P^z ‖ P^{ab}`, Z3 `26` degree-3 rounds of `eq(r,·)·a_λ·b_λ` ("skipping c",
+//! rev. 3.8), Z end `â ‖ b̂`; the c-claim `ẑ(r, λ) = P^z*(λ)` goes to ring switching); **Lc** (α, 14
+//! degree-2 rounds on the chain kind's folded column, L3 the 8 per-kind values, β); **Sh** (τ, θ,
+//! κ_s; one 28-round sumcheck: block rounds, then 10 collapse rounds over the positions `< 1024`);
+//! Lr (zero); **RS** (`J_z = 4` claims' slices, `r″`, κ; `v_RS = Σ κ^j T_j` with `Φ_{r″}`); E (zero);
+//! B′; **P** (Ligerito, `ligerito.rs`). The verifier runs every check as a flag and asks every item
+//! whatever the proof (as `gen` does); the finals (A.9) follow the skeleton.
 
 use crate::blake2s::{leaf_stmt, Digest};
 use crate::circuit::Circuit;
@@ -79,13 +80,12 @@ fn pe_on_s(r_hi: &[F]) -> [F; 64] {
     pe
 }
 
-/// **Z2's value** (the native `lagrangeS`, rev. 3.4 message form): the message is `P^{ab}` on
-/// `Λ₀ … Λ₆₂` and `P^z` on `Λ` (127 values; `P^{ab}` has degree ≤ 126, `P^z` ≤ 63); `P^z(λ)` by
-/// Lagrange on `Λ`; `P^{ab}|_S := P^z|_S + P^e|_S`, `P^{ab}(λ)` through the 127 nodes `S ∪ Λ₀…₆₂`;
-/// `P^e(λ)` from `S`. Z3's first claim is `P^{ab}(λ) + P^z(λ) + P^e(λ)`, the sum of `eq(r,·)(ab + z
-/// + E)(λ, ·)` (zero on `S` by construction).
-pub fn z2_value(pab: &[F], pz: &[F], r: &[F], lambda: F) -> F {
-    assert_eq!((pab.len(), pz.len()), (63, 64));
+/// **Z2's values** (`targetS`, `lagrangeS vals λ pe`, rev. 3.8): the message is `P^z` on `Λ` (64)
+/// then `P^{ab}` on `Λ₀ … Λ₆₂` (63); `P^z*(λ)` by Lagrange on `Λ`; `P^{ab}|_S := P^z|_S + P^e|_S`,
+/// `P^{ab}*(λ)` through the 127 nodes `S ∪ Λ₀…₆₂`. Returns `(P^{ab}*(λ), P^z*(λ))`: Z3's first claim
+/// and the c-claim `ẑ(r, λ)`.
+pub fn z2_value(pz: &[F], pab: &[F], r: &[F], lambda: F) -> (F, F) {
+    assert_eq!((pz.len(), pab.len()), (64, 63));
     let sk = skip();
     let wl = lagrange_weights(&sk.l_pts, lambda);
     let mut pzl = F::ZERO;
@@ -103,27 +103,11 @@ pub fn z2_value(pab: &[F], pz: &[F], r: &[F], lambda: F) -> F {
     }
     vals[64..].copy_from_slice(pab);
     let w = lagrange_weights(&sk.sl_pts[..127], lambda);
-    let ws = lagrange_weights(&sk.s_pts, lambda);
-    let mut acc = pzl;
+    let mut pabl = F::ZERO;
     for i in 0..127 {
-        acc += w[i] * vals[i];
+        pabl += w[i] * vals[i];
     }
-    for sg in 0..64 {
-        acc += ws[sg] * pe[sg];
-    }
-    acc
-}
-
-/// `Ŵ_E(λ, r′)` for a leaf (`targetMLE`; one kind, every block used): `eq(r_blk, r′_blk)·Σ_{p ∈ E}
-/// eq(r_hi, hi(p)) eq(r′_hi, hi(p)) L^S_{lo(p)}(λ)`.
-fn target_mle(r: &[F], lambda: F, rp: &[F]) -> F {
-    let ws = lagrange_weights(&skip().s_pts, lambda);
-    let mut s = F::ZERO;
-    for &p in crate::circuit::e_positions() {
-        let hi = (p >> 6) as u64;
-        s += eq_at_int(&r[..8], hi) * eq_at_int(&rp[..8], hi) * ws[p & 63];
-    }
-    eq_f(&r[8..], &rp[8..]) * s
+    (pabl, pzl)
 }
 
 /// `eq(θ, σ)` for the 256 slot positions `σ` of a digest (θ has 10 coordinates; `σ < 256`).
@@ -218,8 +202,8 @@ fn dot(a: &[F], b: &[F]) -> F {
     acc.reduce()
 }
 
-/// RS claim 0's inner weights (Z's quirky claim at `(λ, r′)`): `w_(σ,b) = L^S_σ(λ) eq(r′₀, b)`,
-/// `v = σ + 64 b`.
+/// RS claim 0's inner weights (Z's quirky claim `ẑ(r, λ)`, `eqZ λ ρ₁`): `w_(σ,b) = L^S_σ(λ)
+/// eq(ρ₁, b)`, `v = σ + 64 b` (bit 6's coordinate is the pinned `ρ₁ = r₀`, rev. 3.9).
 fn claim_weights_z(rp0: F, lambda: F) -> Vec<F> {
     let l = lagrange_weights(&skip().s_pts, lambda);
     let mut w = vec![F::ZERO; 128];
@@ -230,11 +214,11 @@ fn claim_weights_z(rp0: F, lambda: F) -> Vec<F> {
     w
 }
 
-/// The packed points of the leaf's RS claims (A.9 `finRS`): 0, Z at `(λ, r′)`: `r′₁ …`; 1, Lc's
-/// `β`-batched claim (a leaf: `ẑ(r_k, r′_blk)`): `(r_k,7…13, r′_blk)`; 2–3, Sh's `Out` and `In` slot
-/// claims (the same point `(r_pos, r_blk)`): `(r_pos,7…9, 0⁴, r_blk)`.
-fn claim_points(rp: &[F], tl: &[F], tpp: &[F], taup: &[F]) -> [Vec<F>; 3] {
-    let a: Vec<F> = rp[1..].to_vec();
+/// The packed (outer) points of the leaf's RS claims (A.9 `finRS`): 0, Z's `ẑ(r, λ)`: `r₁ …`
+/// (`ρ₂ … ρ₇, r_out`); 1, Lc's `β`-batched claim (a leaf: `ẑ(r_k, r′_blk)`): `(r_k,7…13, r′_blk)`;
+/// 2, Sh's one claim `ẑ(r_pos, r_blk)`: `(r_pos,7…9, 0⁴, r_blk)`.
+fn claim_points(r: &[F], rp: &[F], tl: &[F], tpp: &[F], taup: &[F]) -> [Vec<F>; 3] {
+    let a: Vec<F> = r[1..].to_vec();
     let mut b: Vec<F> = tl[7..14].to_vec();
     b.extend_from_slice(&rp[8..]);
     let mut c: Vec<F> = tpp[7..10].to_vec();
@@ -303,70 +287,51 @@ pub fn prove_logged(o: &dyn Oracle, circ: &Circuit, vk: &Digest, s: &Digest, m: 
     let (ab, bb, zb) = (Witness::bytes(&w.a), Witness::bytes(&w.b), Witness::bytes(&w.z));
     let r1 = zerocheck::round1(ab, bb, zb, r_out);
     let pz = zerocheck::pz_on_lambda(&r1);
-    let mut msg = r1.pab[..63].to_vec();
-    msg.extend_from_slice(&pz);
+    let mut msg = pz.to_vec();
+    msg.extend_from_slice(&r1.pab[..63]);
     msg.push(F::ZERO);
     wr.fs.phase = "Z2";
     wr.send_f(pp::F_Z2, &msg);
     let lambda = wr.fs.chal_f();
-    let mut claim = z2_value(&r1.pab[..63], &pz, &r, lambda);
+    let (mut claim, pz_l) = z2_value(&pz, &r1.pab[..63], &r, lambda);
+    // the c-claim ẑ(r, λ): its slices from round 1's banks (bank_b = eq(ρ₁, b)·Σ_y eq(r₁…, y) z(y, ·))
+    let (i0, i1) = ((F::ONE + sk.rho[0]).inv(), sk.rho[0].inv());
+    let mut s0v = vec![F::ZERO; 128];
+    for sg in 0..64 {
+        s0v[sg] = r1.bank[0][sg] * i0;
+        s0v[64 + sg] = r1.bank[1][sg] * i1;
+    }
+    debug_assert_eq!(dot(&claim_weights_z(r[0], lambda), &s0v), pz_l);
     tm.mark("zc_round1", &mut t);
+    // Z3: Gruen's form on eq(r,·)·a_λ·b_λ; the message is g's coefficients, g(X) = P·(1 + r_k + X)·H(X)
     wr.fs.phase = "Z3";
     let tabs = zerocheck::fold_tables(lambda);
-    // W_E = eq(r, ·)·E(λ, ·): the hi part (8 variables) as a table, the block part as eq(r_blk, ·)
-    let e_hi = zerocheck::e_hi_table(lambda);
-    let mut we: Vec<F> = (0..256).map(|h| eq_at_int(&r[..8], h as u64) * e_hi[h]).collect();
-    let mut we_blk = F::ONE;
     let mut pref = F::ONE;
     let mut sz = Vec::with_capacity(m - 6);
-    let (mut ta, mut tb, mut tz) = (Vec::new(), Vec::new(), Vec::new());
+    let (mut ta, mut tb) = (Vec::new(), Vec::new());
     for k in 0..m - 6 {
         let (h1, hi) = if k == 0 { zerocheck::round_x6(&tabs, ab, bb, &r[1..]) } else { zerocheck::round_tab(&ta, &tb, &r[k + 1..]) };
-        let h1 = h1 + if k == 0 { zerocheck::z_h1_bytes(&tabs, zb, &r[1..]) } else { zerocheck::lin_h1(&tz, &r[k + 1..]) };
-        // the W_E part G(X) = G0 + (G0 + G1) X
-        let (g0, g1) = if k < 8 {
-            let (mut a, mut b) = (F::ZERO, F::ZERO);
-            for i in 0..we.len() / 2 {
-                a += we[2 * i];
-                b += we[2 * i + 1];
-            }
-            (a, b)
-        } else {
-            let c = we[0] * we_blk;
-            (c * (F::ONE + r[k]), c * r[k])
-        };
-        let h0 = zerocheck::h0_from_claim((claim + g0 + g1) * pref.inv(), r[k], h1);
-        let mut msg = zerocheck::zc_coeffs(pref, r[k], h0, h1, hi);
-        msg[0] += g0;
-        msg[1] += g0 + g1;
-        wr.send_f(pp::F_Z3, &msg);
+        let h0 = zerocheck::h0_from_claim(claim, r[k], h1);
+        wr.send_f(pp::F_Z3, &zerocheck::zc_coeffs(pref, r[k], h0, h1, hi));
         let x = wr.fs.chal_f();
-        claim = pref * (F::ONE + r[k] + x) * eval2_f([h0, h1, hi], x) + g0 + (g0 + g1) * x;
+        claim = eval2_f([h0, h1, hi], x);
         pref *= F::ONE + r[k] + x;
         sz.push(x);
-        if k < 8 {
-            we = fold_f(&we, x);
-        } else {
-            we_blk *= F::ONE + r[k] + x;
-        }
         if k == 0 {
             ta = zerocheck::fold_x6(&tabs, ab, x);
             tb = zerocheck::fold_x6(&tabs, bb, x);
-            tz = zerocheck::z_fold_bytes(&tabs, zb, x);
             tm.mark("zc_round2", &mut t);
         } else {
             ta = fold_f(&ta, x);
             tb = fold_f(&tb, x);
-            tz = fold_f(&tz, x);
         }
     }
     dummy_rounds(&mut wr, pp::F_Z3, pp::Z3_ROUNDS - (m - 6), 48);
     let (va, vb) = (ta[0], tb[0]);
-    debug_assert_eq!(claim, pref * (va * vb + tz[0]) + we[0] * we_blk);
-    drop((ta, tb, tz));
+    debug_assert_eq!(claim, va * vb);
+    drop((ta, tb));
     wr.fs.phase = "Zend";
     wr.send_f(pp::F_ZEND, &[va, vb]);
-    let s0v = ringswitch::partials(&w.z, &sz[1..]);
     tm.mark("zc_tail", &mut t);
 
     // ---- Lc
@@ -435,8 +400,8 @@ pub fn prove_logged(o: &dyn Oracle, circ: &Circuit, vk: &Digest, s: &Digest, m: 
     wr.fs.phase = "Lr4";
     dummy_rounds(&mut wr, pp::F_LR, pp::LR_ROUNDS, 48);
 
-    // ---- RS: J_z = 5 partials (a leaf's fifth, Lr's, is zero)
-    let his = claim_points(&sz, &tl, &tpp, &taup);
+    // ---- RS: J_z = 4 claims' slices (a leaf's fourth, Lr's, is zero)
+    let his = claim_points(&r, &sz, &tl, &tpp, &taup);
     let s1v = partials_from_fold(&zf_keep, &tl[7..14]);
     let s2v = partials_from_fold(&zs_keep, &tpp[7..10]);
     debug_assert_eq!(s1v, ringswitch::partials(&w.z, &his[1]));
@@ -445,16 +410,15 @@ pub fn prove_logged(o: &dyn Oracle, circ: &Circuit, vk: &Digest, s: &Digest, m: 
     let mut msg = s0v.clone();
     msg.extend_from_slice(&s1v);
     msg.extend_from_slice(&s2v);
-    msg.extend_from_slice(&s2v);
     msg.extend_from_slice(&[F::ZERO; 128]);
     wr.fs.phase = "RS0";
     wr.send_f(pp::F_RS0, &msg);
     wr.fs.phase = "RS1";
     let ch = wr.fs.coords(pp::RS1_SQ);
     let (rpp, kap) = (&ch[..7], ch[7]);
-    let parts = [&s0v, &s1v, &s2v, &s2v];
+    let parts = [&s0v, &s1v, &s2v];
     let (coef, v_rs) = rs_batch(&parts, rpp, kap);
-    let wt = ringswitch::weight_table(&[(&his[0][..], coef[0]), (&his[1][..], coef[1]), (&his[2][..], coef[2] + coef[3])], rpp);
+    let wt = ringswitch::weight_table(&[(&his[0][..], coef[0]), (&his[1][..], coef[1]), (&his[2][..], coef[2])], rpp);
     tm.mark("ringswitch", &mut t);
 
     // ---- E (node only): zero for a leaf; B′
@@ -476,14 +440,14 @@ pub fn prove_logged(o: &dyn Oracle, circ: &Circuit, vk: &Digest, s: &Digest, m: 
     ((wr.finish(), tm), log)
 }
 
-/// The RS batching: the coefficients `κ^j` and `v_RS = Σ_j κ^j Σ_u eq(r″, u) ŝ⁽ʲ⁾_u`.
+/// The RS batching: the coefficients `κ^j` and `v_RS = Σ_j κ^j T_j`, `T_j = Σ_v b_v Φ_{r″}(s_{j,v})`.
 fn rs_batch(parts: &[&Vec<F>], rpp: &[F], kap: F) -> (Vec<F>, F) {
     let mut coef = Vec::with_capacity(parts.len());
     let mut c = F::ONE;
     let mut v = F::ZERO;
     for s in parts {
         coef.push(c);
-        v += c * ringswitch::target(s, rpp);
+        v += c * ringswitch::switched(s, rpp);
         c *= kap;
     }
     (coef, v)
@@ -598,7 +562,7 @@ pub fn verify_logged(o: &dyn Oracle, circ: &Circuit, vk: &Digest, c: &Digest, pi
     let msg = rd.recv_f(pp::F_Z2, 128);
     rd.check(msg[127].is_zero());
     let lambda = rd.fs.chal_f();
-    let mut c_z = z2_value(&msg[..63], &msg[63..127], &r, lambda);
+    let (mut c_z, pz_l) = z2_value(&msg[..64], &msg[64..127], &r, lambda);
     rd.fs.phase = "Z3";
     let rp = v_rounds(&mut rd, pp::F_Z3, 3, pp::Z3_ROUNDS, m - 6, &mut c_z);
     rd.fs.phase = "Zend";
@@ -662,17 +626,17 @@ pub fn verify_logged(o: &dyn Oracle, circ: &Circuit, vk: &Digest, c: &Digest, pi
     rd.fs.squeeze();
 
     // ---- the finals (A.9), on the transcript values
-    // finRS: the claims' values from the partials; a leaf's fifth (Lr) partials are zero
+    // finRS: the claims' values from the slices (the column check); a leaf's fourth (Lr) is zero
     let part = |j: usize| &sv[128 * j..128 * (j + 1)];
-    let az = dot(&claim_weights_z(rp[0], lambda), part(0));
+    let az = dot(&claim_weights_z(r[0], lambda), part(0));
     let al = dot(&eq_table(&tl[..7]), part(1));
-    let a_out = dot(&eq_table(&tpp[..7]), part(2));
-    let a_in = dot(&eq_table(&tpp[..7]), part(3));
-    rd.check(part(4).iter().all(|x| x.is_zero()));
-    let parts: Vec<Vec<F>> = (0..4).map(|j| part(j).to_vec()).collect();
+    let ash = dot(&eq_table(&tpp[..7]), part(2));
+    rd.check(part(3).iter().all(|x| x.is_zero()));
+    let parts: Vec<Vec<F>> = (0..3).map(|j| part(j).to_vec()).collect();
     let (coef, v_rs) = rs_batch(&parts.iter().collect::<Vec<_>>(), &rpp, kap);
-    // finZ: ŵ(r′)(â b̂ + ẑ) + Ŵ_E(λ, r′) = c_Z (Sel = 1: ŵ(r′) = eq(r, r′))
-    rd.check(eq_f(&r, &rp) * (va * vb + az) + target_mle(&r, lambda, &rp) == c_z);
+    // finZ: eq(r, r′)·â·b̂ = c_Z; the c-claim α_Z = P^z*(λ)
+    rd.check(eq_f(&r, &rp) * va * vb == c_z);
+    rd.check(az == pz_l);
     // finLc: (ii) the walk with the chain kind's rows, (iii) Σ β^i v_i = Lc's RS value
     let eta = lincheck::eta(circ, lambda, &rp[..8], alpha);
     rd.check(c_l == vkind[0] * dot(&eta, &eq_table(&tl)));
@@ -681,20 +645,17 @@ pub fn verify_logged(o: &dyn Oracle, circ: &Circuit, vk: &Digest, c: &Digest, pi
         vb_sum = vb_sum * beta + *v;
     }
     rd.check(vb_sum == al);
-    // finSh: c_Sh = w_out ẑ_out + w_in ẑ_in
+    // finSh: c_Sh = (w_out + w_in)·ẑ_Sh (one claim, rev. 3.8)
     let (wo, wi) = slot_weights(&eqt);
     let ep = eq_table(tpp);
     let zeros = vec![F::ZERO; m - 14];
     let w_out = eq_f(tau, taup) * dot(&wo, &ep);
     let w_in = (shift_mle(tau, taup, F::ONE) + kap_s * eq_f(&zeros, taup)) * dot(&wi, &ep);
-    rd.check(c_s == w_out * a_out + w_in * a_in);
+    rd.check(c_s == (w_out + w_in) * ash);
 
-    // ---- P (finB′: Ligerito's first claim is v_RS; finP, finPf inside)
-    let his = claim_points(&rp, &tl, tpp, taup);
-    let c23 = coef[2] + coef[3];
-    let w0 = |pt: &[K]| -> K {
-        ringswitch::mbp(&his[0], pt, &rpp).mulf(coef[0]) + ringswitch::mbp(&his[1], pt, &rpp).mulf(coef[1]) + ringswitch::mbp(&his[2], pt, &rpp).mulf(c23)
-    };
+    // ---- P (finB′: Ligerito's first claim is v_RS; finP, finPf inside; Ŵ by rsWeight, 3 points)
+    let his = claim_points(&r, &rp, &tl, tpp, taup);
+    let w0 = |pt: &[K]| -> K { ringswitch::rs_weight(&[(&his[0][..], coef[0]), (&his[1][..], coef[1]), (&his[2][..], coef[2])], &rpp, pt) };
     ligerito::verify(m, &cap0, v_rs, &mut rd, &w0);
     assert!(rd.all_read());
     let log = rd.fs.log.take();

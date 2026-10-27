@@ -8,10 +8,10 @@
 //! Then the next commitment (cap absorbed) or, after the last level, the final K-message in the
 //! clear; `tᵢ` positions (A.4 P2: the `m* = 32` count of squeezes, every index opened, duplicates
 //! included); columns and Merkle paths (Q: the column query, then `sibᵢ*` node queries, a smaller
-//! `m`'s missing depths as dummies `0^64` with zero sibling slots); P3, one F challenge `κ_c`; for
-//! `i <` last the batched claim `claim + Σ_q κ_c^{q+1} y_q` with `y_q = Σ_r eq(sᵢ, r) Cᵢ[r, p_q]`
-//! (rev. 3.7 P3 is one squeeze: the tensor weights of `finP` are taken as the powers of `κ_c`), whose
-//! weight is `Wᵢ₊₁(b, c) = U(b)·[Ŵᵢ(sᵢ, c) + Σ_q κ_c^{q+1} X_c(D[p_q])]`, `U(0) = 1, U(1) = u`. At
+//! `m`'s missing depths as dummies `0^64` with zero sibling slots); P3, `κ_c ∈ F^9` from 5 squeezes
+//! (rev. 3.8); for `i <` last the batched claim `claim + Σ_q eq(κ_c, bits₉(q)) y_q` with `y_q = Σ_r
+//! eq(sᵢ, r) Cᵢ[r, p_q]` (A.9 `finP`), whose weight is `Wᵢ₊₁(b, c) = U(b)·[Ŵᵢ(sᵢ, c) + Σ_q
+//! eq(κ_c, bits₉(q)) X_c(D[p_q])]`, `U(0) = 1, U(1) = u`. At
 //! the last level the verifier checks `y_q = Enc(final)[p_q]` directly, then Pf's 7 final rounds
 //! reduce `Σ_c Ŵ(s, c) final(c)` over the final message padded to `2^7` (weight and message zero
 //! beyond the kind's `2^(m−25)`) to one point, where it evaluates every weight once
@@ -268,15 +268,11 @@ pub fn read_cap_slot(rd: &mut Reader, i: usize, cl: usize) -> Vec<Digest> {
     b[..32 << cl].chunks_exact(32).map(|d| d.try_into().unwrap()).collect()
 }
 
-/// `κ_c^{q+1}`, `q < t`.
-fn kappa_powers(kc: F, t: usize) -> Vec<F> {
-    let mut v = Vec::with_capacity(t);
-    let mut x = kc;
-    for _ in 0..t {
-        v.push(x);
-        x *= kc;
-    }
-    v
+/// The consistency coefficients `eq(κ_c, bits₉(q))`, `q < t` (A.9 `finP`).
+fn kappa_coeffs(kc: &[F], t: usize) -> Vec<F> {
+    let mut e = crate::mle::eq_table(kc);
+    e.truncate(t);
+    e
 }
 
 /// The prover: `Σ_y W(y) f(y) = claim` with `f` committed in `c0` (cap₀ already absorbed).
@@ -344,10 +340,10 @@ pub fn prove(m: usize, f: &[F], w0: Vec<F>, claim0: F, c0: Commit0, wr: &mut Wri
         }
         lap("open", i);
         wr.fs.phase = "P3";
-        let kc = wr.fs.chal_f();
+        let kc = wr.fs.coords(pp::P3_SQ);
         match ntree {
             Some((t, gn)) => {
-                let kq = kappa_powers(kc, ps.len());
+                let kq = kappa_coeffs(&kc[..pp::KAPPA_C], ps.len());
                 for q in 0..ps.len() {
                     claim += ys[q].mulf(kq[q]);
                 }
@@ -392,7 +388,7 @@ pub fn prove(m: usize, f: &[F], w0: Vec<F>, claim0: F, c0: Commit0, wr: &mut Wri
 /// What the verifier keeps per level for the final weight evaluation.
 struct LevelRec {
     s: Vec<K>,
-    kappa: F,
+    kappa: Vec<F>,
     ps: Vec<u64>,
 }
 
@@ -405,7 +401,7 @@ fn weight_eval(i: usize, pt: &[K], recs: &[LevelRec], w0: &dyn Fn(&[K]) -> K) ->
     let mut inner: Vec<K> = r.s.clone();
     inner.extend_from_slice(&pt[1..]);
     let mut v = weight_eval(i - 1, &inner, recs, w0);
-    let kq = kappa_powers(r.kappa, r.ps.len());
+    let kq = kappa_coeffs(&r.kappa, r.ps.len());
     for (q, &p) in r.ps.iter().enumerate() {
         v += xhat(p, &pt[1..]).mulf(kq[q]);
     }
@@ -473,9 +469,9 @@ pub fn verify(m: usize, cap0: &[Digest], claim0: F, rd: &mut Reader, w0: &dyn Fn
             ys.push(column_fold(&col, &es));
         }
         rd.fs.phase = "P3";
-        let kc = rd.fs.chal_f();
+        let kc = rd.fs.coords(pp::P3_SQ)[..pp::KAPPA_C].to_vec();
         if !last {
-            let kq = kappa_powers(kc, ps.len());
+            let kq = kappa_coeffs(&kc, ps.len());
             for q in 0..ps.len() {
                 claim += ys[q].mulf(kq[q]);
             }

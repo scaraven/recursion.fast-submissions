@@ -1,14 +1,15 @@
-//! Ring switching (blueprint §2.3 R, paper App. B.2–B.3), for several claims at once. A claim on
-//! the bit witness is `Σ_v w_v s_v = value` with `s_v = Σ_y e(y) z(y, v)` (`y` the packed index,
-//! `v < 128` the bit inside the F element, `e = eq(hi, ·)`); the prover sends every claim's `s_v`;
-//! after `r″ ∈ F^7` and `κ`, each `s_v` is decomposed over F₂ and recombined (`ŝ_u`, a 128 × 128 bit
-//! transpose), and the claims become one linear claim on the packed polynomial
-//! `Σ_y W(y) f(y) = Σ_j κ^j Σ_u eq(r″, u) ŝ⁽ʲ⁾_u` with `W(y) = Σ_j κ^j Φ(e_j(y))`, `Φ(b_u) = eq(r″, u)`.
-//! **P1 choice**: that claim is the input of the Ligerito opening directly (its weight `Ŵ` is
-//! evaluated by the verifier at Ligerito's final point by the width-128 matrix branching program),
-//! instead of rev. 2's separate `m − 7`-round R sumcheck to an `f̂(r_f)` claim.
+//! Ring switching (blueprint rev. 3.9 §2.3 step 6, A.9 `finRS`; `FRRingSwitch`), for several
+//! claims at once. A claim on the bit witness is `Σ_v w_v s_v = value` with `s_v = Σ_y g(y) z(y, v)`
+//! (`y` the packed index, `v < 128` the bit inside the F element, `g = eq(hi, ·)` the outer weight);
+//! the prover sends every claim's slices `s_v`; after `r″ ∈ F^7` and `κ` each claim is switched:
+//! `T = Σ_v b_v Φ_{r″}(s_v)` (`b_v` the packing basis, `Φ_{r″}(a) = Σ_{k<128} c_k a^{2^k}` the staged
+//! Frobenius map `a ← a + r″_p a^{2^{2^{6−p}}}`, `p = 0 … 6`; `FRRingSwitch.Phi`, `rsT`), true when
+//! `Σ_y Φ(g(y)) f(y) = T`. The batched claim `Σ_y W(y) f(y) = Σ_j κ^j T_j`, `W = Σ_j κ^j Φ∘g_j`, is
+//! Ligerito's input; the verifier evaluates `Ŵ(ρ) = Σ_j κ^j Σ_k c_k eq(hi_j^{2^k}, ρ)` at the final
+//! point (`rs_weight`, the op `rsWeight`; `FRRingSwitch.weightEval`). Rev. 3.9 replaces the
+//! tensor-algebra form (`Σ_u eq(r″, u) ŝ_u`, the MBP) of P1–rev. 3.8.
 
-use crate::field::{FAcc, B64, F, K};
+use crate::field::{B64, F, K};
 use crate::mle::eq_table;
 use crate::par;
 
@@ -71,42 +72,59 @@ pub fn partials(z: &[u64], hi: &[F]) -> Vec<F> {
     s
 }
 
-/// `ŝ_u = Σ_v bit_u(s_v) b_v` (the 128 × 128 bit transpose).
-pub fn recombine(s: &[F]) -> Vec<F> {
-    let mut out = vec![F::ZERO; 128];
-    for (v, sv) in s.iter().enumerate() {
-        for u in 0..128 {
-            if sv.bit(u) {
-                if v < 64 {
-                    out[u].lo |= 1u64 << v;
-                } else {
-                    out[u].hi |= 1u64 << (v - 64);
-                }
-            }
+/// The packing basis (A.7): `b_v` has the one bit `v` set.
+pub fn basis(v: usize) -> F {
+    if v < 64 {
+        F::new(1u64 << v, 0)
+    } else {
+        F::new(0, 1u64 << (v - 64))
+    }
+}
+
+/// `Φ_{r″}(a)`: the stages `a ← a + r″_p · a^{2^{2^{6−p}}}`, `p = 0 … 6` (`phiApply`).
+pub fn phi(rpp: &[F], mut a: F) -> F {
+    for (p, f) in rpp.iter().enumerate() {
+        let mut x = a;
+        for _ in 0..1usize << (rpp.len() - 1 - p) {
+            x = x.sq();
+        }
+        a += *f * x;
+    }
+    a
+}
+
+/// The coefficients `c_k` of `Φ_{r″}(a) = Σ_{k<128} c_k a^{2^k}` (`phiTable`).
+pub fn phi_coeffs(rpp: &[F]) -> Vec<F> {
+    let mut t = vec![F::ONE];
+    for f in rpp.iter().rev() {
+        let n = t.len();
+        let mut fp = *f;
+        for e in 0..n {
+            let x = t[e] * fp;
+            t.push(x);
+            fp = fp.sq();
         }
     }
-    out
+    t
 }
 
-/// `Σ_u eq(r″, u) ŝ_u` (the batched target of one claim).
-pub fn target(s: &[F], rpp: &[F]) -> F {
-    let e = eq_table(rpp);
-    let sh = recombine(s);
-    let mut acc = FAcc::default();
-    for u in 0..128 {
-        acc.mac(e[u], sh[u]);
+/// The switched claim `T = Σ_v b_v Φ_{r″}(s_v)` (`rsT`).
+pub fn switched(s: &[F], rpp: &[F]) -> F {
+    let mut acc = F::ZERO;
+    for (v, sv) in s.iter().enumerate() {
+        acc += basis(v) * phi(rpp, *sv);
     }
-    acc.reduce()
+    acc
 }
 
-/// `Φ` as 16 byte tables scaled by `c`: `T[p][val] = c Σ_{i: val_i} eq(r″, 8p + i)`.
+/// `Φ` as 16 byte tables scaled by `c`: `T[p][val] = c Σ_{i: val_i} Φ(b_{8p+i})` (`Φ` is `F₂`-linear).
 pub fn phi_tables(rpp: &[F], c: F) -> Vec<F> {
-    let e = eq_table(rpp);
+    let img: Vec<F> = (0..128).map(|v| phi(rpp, basis(v)) * c).collect();
     let mut t = vec![F::ZERO; 16 * 256];
     for p in 0..16 {
         for val in 1..256usize {
             let low = val & val.wrapping_neg();
-            t[p * 256 + val] = t[p * 256 + (val ^ low)] + e[8 * p + low.trailing_zeros() as usize] * c;
+            t[p * 256 + val] = t[p * 256 + (val ^ low)] + img[8 * p + low.trailing_zeros() as usize];
         }
     }
     t
@@ -154,49 +172,20 @@ pub fn weight_table(claims: &[(&[F], F)], rpp: &[F]) -> Vec<F> {
     out
 }
 
-/// The verifier's `B̂(pt) = Σ_u eq(r″, u) a_u` for the claim with point `hi`, by the width-128 matrix
-/// branching program over `K ⊗ F`: start `a = e₀` (the element 1), each layer
-/// `a ← (1 + pt_i) a + a·hi_i` (the second term multiplies the F factor by `hi_i`: an F₂-matrix).
-pub fn mbp(hi: &[F], pt: &[K], rpp: &[F]) -> K {
-    assert_eq!(hi.len(), pt.len());
-    let mut a = vec![K::ZERO; 128];
-    a[0] = K::ONE;
-    let mut nxt = vec![K::ZERO; 128];
-    for (h, p) in hi.iter().zip(pt.iter()) {
-        let sc = K::ONE + *p;
-        for u in 0..128 {
-            nxt[u] = a[u] * sc;
+/// `Ŵ(ρ) = Σ_j c_j Σ_k c_k(r″) eq(hi_j^{2^k}, ρ)` for the claims `(hi_j, c_j)` (`rsWeight`).
+pub fn rs_weight(claims: &[(&[F], F)], rpp: &[F], rho: &[K]) -> K {
+    let ck = phi_coeffs(rpp);
+    let mut out = K::ZERO;
+    for (hi, cj) in claims {
+        let mut p = hi.to_vec();
+        let mut acc = K::ZERO;
+        for c in &ck {
+            acc += crate::mle::eq_fk(&p, rho).mulf(*c);
+            p.iter_mut().for_each(|x| *x = x.sq());
         }
-        if !h.is_zero() {
-            for u in 0..128 {
-                if a[u] == K::ZERO {
-                    continue;
-                }
-                // b_u · h as an F element: its set bits u' receive a_u
-                let bu = if u < 64 { F::new(1u64 << u, 0) } else { F::new(0, 1u64 << (u - 64)) };
-                let v = bu * *h;
-                let mut lo = v.lo;
-                while lo != 0 {
-                    let t = lo.trailing_zeros() as usize;
-                    nxt[t] += a[u];
-                    lo &= lo - 1;
-                }
-                let mut hb = v.hi;
-                while hb != 0 {
-                    let t = hb.trailing_zeros() as usize;
-                    nxt[64 + t] += a[u];
-                    hb &= hb - 1;
-                }
-            }
-        }
-        std::mem::swap(&mut a, &mut nxt);
+        out += acc.mulf(*cj);
     }
-    let e = eq_table(rpp);
-    let mut r = K::ZERO;
-    for u in 0..128 {
-        r += a[u].mulf(e[u]);
-    }
-    r
+    out
 }
 
 /// `x` as a BF64 if it is one (tests).
@@ -214,29 +203,40 @@ mod tests {
         *s ^= *s << 17;
         *s
     }
-    /// `B̂` by the MBP equals the MLE of the prover's table, and the batched identity holds.
+    /// `Φ`'s coefficient table agrees with the stages; `Ŵ` by `rs_weight` is the MLE of the
+    /// prover's table; the switched claim is true for honest slices.
     #[test]
-    fn mbp_and_identity() {
+    fn rs_weight_and_identity() {
         let mut s = 77u64;
         let mu = 5;
         let mut rf = || F::new(rnd(&mut s), rnd(&mut s));
-        let hi: Vec<F> = (0..mu).map(|i| if i == 2 { F::ZERO } else { rf() }).collect();
         let rpp: Vec<F> = (0..7).map(|_| rf()).collect();
-        let w = weight_table(&[(&hi[..], F::ONE)], &rpp);
+        let a = rf();
+        let ck = phi_coeffs(&rpp);
+        assert_eq!(ck.len(), 128);
+        let mut x = a;
+        let mut want = F::ZERO;
+        for c in &ck {
+            want += *c * x;
+            x = x.sq();
+        }
+        assert_eq!(phi(&rpp, a), want);
+        let hi: Vec<F> = (0..mu).map(|i| if i == 2 { F::ZERO } else { rf() }).collect();
+        let kap = rf();
+        let w = weight_table(&[(&hi[..], kap)], &rpp);
         let pt: Vec<K> = (0..mu).map(|_| K { a: rf(), b: rf() }).collect();
         let eq = eq_table_k(&pt);
         let mut want = K::ZERO;
         for y in 0..(1 << mu) {
             want += eq[y].mulf(w[y]);
         }
-        assert_eq!(mbp(&hi, &pt, &rpp), want);
-        // identity: Σ_y W(y) f(y) = target(s)
+        assert_eq!(rs_weight(&[(&hi[..], kap)], &rpp, &pt), want);
         let z: Vec<u64> = (0..(2usize << mu)).map(|_| rnd(&mut s)).collect();
         let sv = partials(&z, &hi);
         let mut lhs = F::ZERO;
         for y in 0..(1 << mu) {
             lhs += w[y] * F::new(z[2 * y], z[2 * y + 1]);
         }
-        assert_eq!(lhs, target(&sv, &rpp));
+        assert_eq!(lhs, kap * switched(&sv, &rpp));
     }
 }

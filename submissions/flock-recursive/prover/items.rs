@@ -24,7 +24,7 @@ pub enum It {
 
 /// The phases of A.4 with their items (`FRTranscriptDefs.phases`).
 pub fn items_seq() -> Vec<(&'static str, It)> {
-    let mut v: Vec<(&'static str, It)> = Vec::with_capacity(8854);
+    let mut v: Vec<(&'static str, It)> = Vec::with_capacity(8874);
     let ab = |v: &mut Vec<(&'static str, It)>, ph: &'static str, len: usize, field: usize| v.push((ph, It::Absorb { len, field }));
     let sq = |v: &mut Vec<(&'static str, It)>, ph: &'static str, n: usize| (0..n).for_each(|_| v.push((ph, It::Squeeze)));
     let rounds = |v: &mut Vec<(&'static str, It)>, ph: &'static str, n: usize, len: usize, field: usize| {
@@ -73,7 +73,7 @@ pub fn items_seq() -> Vec<(&'static str, It)> {
                 v.push(("Q", It::Node { level: i, depth: d }));
             }
         }
-        sq(&mut v, "P3", 1);
+        sq(&mut v, "P3", pp::P3_SQ);
     }
     rounds(&mut v, "Pf", pp::PF_ROUNDS, 96, pp::F_PF);
     v
@@ -189,8 +189,8 @@ mod tests {
     #[test]
     fn items_seq_kat() {
         let recs = item_recs();
-        assert_eq!(recs.len(), 8854);
-        assert_eq!(recs.iter().filter(|r| r.q != "col" && r.q != "node").count(), 431);
+        assert_eq!(recs.len(), 8874);
+        assert_eq!(recs.iter().filter(|r| r.q != "col" && r.q != "node").count(), 451);
         let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../logs/S-0/dump/items.json");
         match crate::kat::load_items(&p) {
             Some(want) => crate::kat::compare(&recs, &want).unwrap(),

@@ -1,6 +1,6 @@
 //! Known-answer checks against the Lean dumps (stage P2, rev. 3.7):
 //!
-//! * the item sequence (A.4): `logs/S-0/dump/items.json` (`irdump items`, 8,854 items: phase, query
+//! * the item sequence (A.4): `logs/S-0/dump/items.json` (`irdump items`, 8,874 items: phase, query
 //!   kind, payload length, Merkle level and depth, query length), compared item by item with what
 //!   the native verifier asks (`leaf::verify_logged`) and, for the Fiat–Shamir items, with what the
 //!   prover asks. The file is read where it is (env `FLOCK_ITEMS_JSON`, else `logs/S-0/dump/
@@ -91,7 +91,7 @@ mod tests {
         })
     }
 
-    /// The verifier asks A.4's 8,854 items for every leaf kind and test shape, whatever `π` holds
+    /// The verifier asks A.4's 8,874 items for every leaf kind and test shape, whatever `π` holds
     /// (here a zero proof with the kind's header).
     #[test]
     fn items_kat_verifier() {
@@ -100,8 +100,8 @@ mod tests {
             return;
         };
         let want = load_items(&p).unwrap();
-        assert_eq!(want.len(), 8854);
-        assert_eq!(want.iter().filter(|w| !w.contains("\"q\":\"col\"") && !w.contains("\"q\":\"node\"")).count(), 431);
+        assert_eq!(want.len(), 8874);
+        assert_eq!(want.iter().filter(|w| !w.contains("\"q\":\"col\"") && !w.contains("\"q\":\"node\"")).count(), 451);
         let circ = Circuit::build();
         let o = crate::oracle::Local::keyed(&[3u8; 32]);
         for m in [25usize, 28, 30, 32] {

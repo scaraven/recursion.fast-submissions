@@ -3,8 +3,8 @@
 //! `docs/v4/flock-recursive/stages/P1-RESULT.md` §4 where the blueprint leaves a detail open).
 //! A change of the protocol is a change of this file (and of the phase code that reads it).
 //!
-//! Revision 3.7: the constants are A.1's (S-A), the layouts A.2–A.4's (S-0): the proof's eighteen
-//! fields (`FIELD_SIZES`, `piSize = 757,712`), the item counts of the phase table (`Z1_SQ` …), the
+//! Revision 3.9: the constants are A.1's (S-A), the layouts A.2–A.4's (S-0): the proof's eighteen
+//! fields (`FIELD_SIZES`, `piSize = 755,680`), the item counts of the phase table (`Z1_SQ` …), the
 //! `m* = 32` ladder that sizes the item sequence (`STAR_*`). The old P1 notes below that say
 //! "PLACEHOLDER" record where a value came from before S-A fixed it (the values did not change).
 
@@ -124,9 +124,9 @@ pub const F_SIBS: usize = 17;
 pub const N_FIELDS: usize = 18;
 /// A.3's sizes (`FRFormat.fieldSizes_eq`; `logs/S-0/dump/summary.txt`).
 pub const FIELD_SIZES: [usize; N_FIELDS] =
-    [48, 128, 2048, 1248, 32, 784, 1344, 1440, 48, 10240, 1008, 48, 2112, 672, 45056, 4096, 445696, 241664];
-/// `piSize = 757,712` (A.3), the same for every SNARK kind.
-pub const PI_SIZE: usize = 757712;
+    [48, 128, 2048, 1248, 32, 800, 1344, 1440, 48, 8192, 1008, 48, 2112, 672, 45056, 4096, 445696, 241664];
+/// `piSize = 755,680` (A.3, rev. 3.8.2), the same for every SNARK kind.
+pub const PI_SIZE: usize = 755680;
 
 /// The offset of field `f` in `π`.
 pub const fn field_off(f: usize) -> usize {
@@ -143,8 +143,8 @@ pub const fn field_off(f: usize) -> usize {
 pub const Z1_SQ: usize = 10;
 pub const Z3_ROUNDS: usize = 26;
 pub const L2_ROUNDS: usize = 14;
-/// The `v_kind` entries of L3 (112 bytes; the leaf's is entry 0, `chain`).
-pub const L3_KINDS: usize = 7;
+/// The `v_kind` entries of L3 (rev. 3.8.2: 8, 128 bytes; a leaf's `v` is entry 0, the rest zero).
+pub const L3_KINDS: usize = 8;
 pub const S1_SQ: usize = 15;
 pub const S2_ROUNDS: usize = 28;
 /// S1's coordinate layout (S-0 deviation 7): `τ` = 0…17, `θ` = 18…27, `κ_s` = 28.
@@ -153,11 +153,15 @@ pub const THETA_LEN: usize = 10;
 pub const S1_KAPPA: usize = 28;
 pub const LR1_SQ: usize = 8;
 pub const LR_ROUNDS: usize = 15;
-pub const RS_CLAIMS: usize = 5;
+/// `J_z = 4` (rev. 3.8: Z's quirky claim, Lc's, Sh's one claim, Lr's; a leaf's fourth is zero).
+pub const RS_CLAIMS: usize = 4;
 pub const RS1_SQ: usize = 4;
 pub const E1_SQ: usize = 11;
 pub const E2_ROUNDS: usize = 21;
 pub const PF_ROUNDS: usize = 7;
+/// P3: `κ_c` from 5 squeezes, the first 9 coordinates (rev. 3.8: `eq(κ_c, bits₉(j))`).
+pub const P3_SQ: usize = 5;
+pub const KAPPA_C: usize = 9;
 /// The final message: `2^7` K elements (`P30`: `2^5` then zeros).
 pub const FINAL_ELEMS: usize = 1 << PF_ROUNDS;
 /// The `m* = 32` ladder's position squeezes and Merkle-node queries per position (`lvlStar`).

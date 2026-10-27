@@ -200,7 +200,7 @@ fn prove_leaf_service(m: usize, start: &Digest, out: &str, reps: usize) {
         let mut c2 = c;
         c2[31] ^= 1;
         let canary = acc(&circ, &vk, &c2, &file).is_ok();
-        // the trace against A.4: |tr| = 8,854 and every query length as `items.json` lists it
+        // the trace against A.4: |tr| = 8,874 and every query length as `items.json` lists it
         let tr_kat = match kat::find_items_json().and_then(|p| kat::load_items(&p)) {
             None => "skip(no items.json)".to_string(),
             Some(w) => {

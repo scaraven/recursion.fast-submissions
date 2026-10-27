@@ -411,3 +411,129 @@ kernel; that saves the extra pass but not the third table's products.
 
 The `tree` and `node` modes follow the node prover. `prover.s` is regenerated for §7's sources
 (sha256 `3f5743f2…`). Probe branches p2-20 and p2-21 are deleted.
+
+## 9. Rev 3.9 (resumption 2)
+
+Status: 2026-10-27. Blueprint revision 3.9 (`757dfa8`; stage-review changes 6–9). The dump is
+`logs/S-0/dump/` of 18:15 (summary: 8,874 items, `piSize` 755,680, field sizes as below). Scope and
+rules as in §7: leaf prover and native `acc`, this VM only (32 vCPU, portable tier, shared), logs
+under `logs/P2/r39/` (gitignored).
+
+### 9.1 What changed (crate 7,974 `.rs` lines)
+
+| file | lines (§7 → now) | change |
+|---|---:|---|
+| `params.rs` | 258 → 262 | `FIELD_SIZES` (L2 + L3 800, RS0 8,192), `PI_SIZE = 755,680`, `L3_KINDS = 8`, `RS_CLAIMS = 4`, `P3_SQ = 5`, `KAPPA_C = 9` |
+| `leaf.rs` | 702 → 663 | **skip-c**: Z2 sends `P^z|_Λ` (64) then `P^{ab}|_{Λ₀…₆₂}` (63); `z2_value` returns `(P^{ab}*(λ), P^z*(λ))` (`lagrangeS vals λ pe`, `targetS`); Z3 on `eq(r,·)·a_λ·b_λ` only (initial claim `P^{ab}*(λ)`); `finZ`: `eq(r, r′)·â·b̂ = c_Z`; the c-claim `ẑ(r, λ)` is RS claim 0 with inner weights `eqZ λ ρ₁` (Lagrange at λ ⊗ `eq(ρ₁, bit 6)`), its slices from round 1's banks (no pass over `z`), bound by `α_Z = P^z*(λ)`. L3 absorbs 8 values (`[v_chain, 0⁷]`), `v_β` over 8. Sh is one RS claim: `c_Sh = (w_out + w_in)·α_Sh`. RS0 `4 × 128` (the fourth zero, checked); `v_RS = Σ_{j<3} κ^j T_j`; `Ŵ` by `rs_weight` (3 points). The `z`/`W_E` tables of §7 are gone |
+| `ringswitch.rs` | 242 → 242 | `FRRingSwitch`'s form: `phi` (`Φ_{r″}`, stages `a ← a + r″_p a^{2^{2^{6−p}}}`), `phi_coeffs` (`phiTable`, 128 `c_k`), `switched` (`rsT`: `T = Σ_v b_v Φ(s_v)`), byte tables of `Φ(b_v)` for the prover's `W = Σ_j κ^j Φ∘eq(hi_j, ·)`, `rs_weight` (`Σ_j κ^j Σ_k c_k eq(hi_j^{2^k}, ρ)`); the tensor-algebra target and the MBP are removed; test `rs_weight_and_identity` (`Φ` = its coefficient table; `rs_weight` = the MLE of the prover's table; `Σ_y W f = κ T` on honest slices) |
+| `ligerito.rs` | 512 → 508 | P3: `κ_c` = the first 9 coordinates of 5 squeezes; consistency coefficients `eq(κ_c, bits₉(q))`, `q < tᵢ` (claim `v + Σ_q eq(κ_c, q) y_q`, weight likewise in `weight_eval`) |
+| `zerocheck.rs` | 317 → 238 | the §7 `z`/`E` table kernels removed; `zc_coeffs` kept (Z3's message) |
+| `items.rs`, `kat.rs`, `main.rs` | 218, 191, 385 | P3 5 squeezes; counts 8,874 / 451 FS items in the tests and comments |
+| `prover.s` | regenerated | 6,003,623 bytes, **sha256 `f3385c4db55143cdfd3e93873ca62a453b20d27bca5950da0194c0d01f2262a3`** (rustc 1.99.0, `build-asm.sh logs/P2/r39/asm`, 28.4 s); linked binary 2,050,768 bytes, sha256 `35535365…9c24`; no machine path; `selftest` pass |
+
+### 9.2 KATs
+
+- `items.json` (3.9 dump): the native verifier's items on zero proofs of m = 25, 28, 30, 32 and on a
+  real m = 25 proof, the prover's 451 Fiat–Shamir items, and the static `items_seq`: **8,874 items
+  equal** (`items_kat_verifier`, `items_kat_prover`, `items_seq_kat`; the item tests and
+  `reassemble_roundtrip` also pass with debug assertions, including the check `α_Z = P^z*(λ)` on
+  the bank slices and Z3's final `â·b̂`).
+- Chain-kind rows and E: `FRBlockKinds`, `FRBlockChain` and the BLAKE2s modules are unchanged since
+  `afc2928` (3.8's `free` kind is a new, node-only kind), so the §7.3 dump stands; `chain_kind_rows_kat`
+  re-run: equal line by line.
+- `cargo test --release`: 27 passed, 1 ignored (the bench).
+
+### 9.3 Runs (`logs/P2/r39/runs/`, binary = the `prover.s` above, linked by `build-asm.sh`)
+
+| run | result |
+|---|---|
+| `test-leaf 25 … 30` | accept; flipped statement and flipped bytes rejected; |π| = 755,680; items KAT pass; prove 0.29 / 0.41 / 0.64 / 1.03 / 1.84 / 3.47 s |
+| `test-leaf 30 --reps 3` | prove 3.79 / 3.34 / 3.36 s |
+| `test-leaf 32` | accept, rejections, |π| = 755,680, items KAT pass; prove **13.3 s** (§7: 15.0 s), peak RSS 5.25 GB |
+| `prove-leaf 30` via `rf-oracle`, 2 reps | total 3.80 / 3.77 s; **|tr| = 8,874**, query lengths = `items.json`, `reassemble(tr) = π`; `acc` accepts (in-process and CLI), canary rejected; file 2,198,231 B |
+| `leaf` request (n = 2^16) | done, `acc=accept`, `canary=reject`; 3.87 s |
+
+**The zerocheck at m = 30** (VM, s; `test-leaf`, FLOCK_VERBOSE):
+
+| phase | rev 3.9 (3 reps) | rev 3.7 (§7.4) | pre-3.7 (`logs/P2/r37/baseline-test-leaf.txt`) | 7763 rev 3.7 (§8) |
+|---|---:|---:|---:|---:|
+| x₆ round (`zc_round2`) | 0.249–0.288 | 0.360 | 0.270 | 0.250 |
+| tail (`zc_tail`) | 0.250–0.269 | 0.421 | 0.269 | 0.198 |
+
+At m = 32: x₆ round 1.03 s, tail 0.98 s (§7: 1.50, 1.61). **Skip-c removed the §7 z-table cost
+locally**: both phases are back at the pre-3.7 level on this VM (the 7763 numbers are a different
+machine; the runner measurement is the orchestrator's). Ring switching with `Φ` costs the same as
+before (0.17–0.18 s), the verifier 0.035–0.040 s.
+
+### 9.4 Disagreements left
+
+1. **3.9's "Margins" line** says `piSize` 755,664 and 8,870 items; the note under it, §8 of the
+   stage-review changes, the dump and the orchestrator say **755,680 / 8,874**. Implemented: the
+   dump.
+2. **The dump predates 3.9's op signatures**: `finSh` calls `shiftTarget τ θ` (no `bnd`), and the
+   S-F/S-G finals (`finRS`, `finE`, `finB′`, `finP`, `finPf`) are still placeholders in `ops-*.txt`.
+   The item sequence does not depend on them. Natively they follow A.9 (3.9): the column checks
+   define `α_j`; `v_RS = Σ κ^j T_j`; `rsWeight` with 3 points; `eq(κ_c, bits₉(j))` with
+   coefficient 1 on the running claim; `P30`'s zero-padded Pf weight; `bnd = (s, h)`.
+3. **`Φ_{r″}`'s coefficient order** (`r″` = RS1 coordinates 0…6 as `f_0 … f_6`, stage `p` with
+   shift `2^{6−p}`, as `FRRingSwitch.Phi`) cannot be checked against the dump until `finRS`/`finPf`
+   are dumped; the same holds for `eqZ λ ρ₁`'s bit order (`v = σ + 64·b`).
+4. Prose leftovers (no effect): §2.3 step 8 still says the verifier evaluates `W` "by the MBP";
+   step 3 still speaks of "≤ 7 kinds" and "MBP runs".
+
+## 10. Rev 3.9 on the 7763 (resumption 2, step 2), and the node estimate
+
+**Run 40561971516, EPYC 7763.** Built from the runner-assembled `prover.s` of §9's sources and run
+through `rf-oracle`. Every proof is 755,680 bytes with a trace of 8,874 entries; the native `acc`
+accepted each one and rejected every canary.
+
+| request | rev 3.9 | rev 3.7 (§8) | pre-3.7 (§6) |
+|---|---:|---:|---:|
+| stream `leaf` request (`go` → `done`) | **1.37–1.43 s** | 1.62–1.63 s | 1.34–1.41 s |
+| prove-leaf m = 30 | 1.32 s | 1.61–1.65 s | 1.31–1.36 s |
+| prove-leaf m = 32 | **5.58 s** | 6.51–6.64 s | 5.47–5.53 s |
+| peak RSS m = 30 / 32 | 1.90 / 6.19 GB | same | same |
+
+Per phase on the 7763, in seconds:
+
+| phase | m = 30 | m = 32 |
+|---|---:|---:|
+| witness | 0.082 | 0.536 |
+| commit | 0.269 | 1.135 |
+| round 1 | 0.286 | 1.207 |
+| x₆ round | **0.131** | 0.567 |
+| tail | **0.065** | 0.261 |
+| lincheck | 0.078 | 0.329 |
+| shift | 0.022 | 0.089 |
+| ring switch | 0.133 | 0.528 |
+| Ligerito | 0.195 | 0.746 |
+
+**Skip-c recovers the rev 3.7 regression.** The x₆ round and the tail are back at their pre-3.7
+values, against the §8 rev 3.7 figures of 0.250 and 0.198 s at m = 30. The targets were a stream
+request of ≈ 1.36 s and an m = 32 leaf of ≈ 5.5 s; this run gives 1.37–1.43 s and 5.58 s.
+
+An EPYC 9V45 run (40561976342) gave 0.86–0.87 s for the request and 3.26 s at m = 32.
+
+**Node at 3.9's size: an estimate, because the node prover is not built.**
+- The finals `finP` and `finPf` (S-G) are pending, and §9.4 lists what remains open.
+- The node's commitment and bit-level PIOP cost what the m = 30 leaf costs: about 1.32 s. With
+  Sel ≡ 1 the free blocks are proved too, as a = b = z, so no blocks are skipped.
+- Add E1 over 2^20.24 rows, Lr, and E2 batched into the Ligerito weight. §6.2 measured these at
+  0.027 s (E2 batched, 2^20 rows). Scaling, about 0.03–0.04 s.
+- Add reading and parsing the two child files, about 0.01 s.
+- Node request ≈ 1.32 + 0.04 + 0.01 + the request overhead (≈ 0.05, from the leaf's request minus
+  its prove-leaf) ≈ **1.42 s**.
+
+The two caps, estimated:
+- **Stream link** ≈ 1.40 + 1.42 ≈ **2.8 s**. That is at the target, about 10 % under the ≈ 3.1 s cap.
+- **Tree** ≈ 64 × 5.58 + 63 × 1.37 ≈ 357 + 86 ≈ **445 s**. That meets the 500 s target.
+
+**Next.** Once S-G's finals are dumped:
+- build the node prover on `compileMux`'s layout (uniform P30, gated stmt rows, WOTS digit selectors,
+  mirror cells);
+- check the Φ coefficient order and eqZ's bit order against the Lean finals (§9.4);
+- add the `tree`/`node` modes;
+- regenerate `prover.s`;
+- measure the link on a 7763.
+
+The probe branches p2-22 and p2-23 are deleted; no `probe/p2-*` branch remains.
