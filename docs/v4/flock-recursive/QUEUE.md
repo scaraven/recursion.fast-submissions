@@ -1,14 +1,16 @@
 # Orchestrator queue (FR-D8: at most 3 concurrent agents)
 
-Last updated 2026-10-28. Blueprint at revision 3.13 (§10 changes 1–20). FR builds as a whole (2,320 jobs at S-E5).
+Last updated 2026-10-28. **Rebased onto core PR #20 (pin `6d05d00`, commit `987e679`); blueprint revision 4.0** (§0.1 B-11…B-17, §10 changes 25). Build trees use `logs/org20`.
 
-## Running
+## Running (revision 4.0)
 
-- S-G11: `gL`/`wrsL` with the 3.16 kind factor, the node's L folded in, `hW0`, `hFrontV`, `kstate_front` via the linked route `kstate_front_ofR`.
-- S-T1: **verifier time** (226–233 ms VM best after INT-5; cap 206.0 ms on the 7763 ≈ 245 ms VM at 1.19); target ≤ 205 ms VM with the remaining additions.
-- Blueprint 3.17: S-N1's O3 (extractor domain vs `logCap`), O2/O2b row budget for every unbound import (incl. §4.2's WOTS mux rows), O1's consequences, the `T_V` frontier, the plan-time record.
+- S-0′: the 4.0 shapes: the segment circuit (variable `n_i ≤ 2^18`, `pubStart`), `L31`, the aggregate leaf `A` (`V_A` over k ≤ 4 segment verifiers on one signed trace), `gen` for `N4`/`N8`, layouts, the one item sequence, `qV` 36,000.
+- S-H2n: B-15 `E := if InDom then E_den else E_search` (`InDom` includes `π.size ≤ 8·outCap`, closing INT-6's `WBeyond` and O3′), `Computes` at the new domain, `FRSoundnessExtE` without `hOut`.
+- P2′: the multi-threaded segment prover (variable n, `L31`), the aggregate and one SIGN, `prover/main.rs`'s `proofCap` check removed; then `N4`/`N8` from the dumps and a stream dry run on the PR #20 harness.
 
 ## Waiting
+
+- **4.0 critical path:** S-0′ → S-E12′ (all import rows, `R`, templates on N4/N8, plan ≤ 2 s per process) ∥ S-G12′ (`truthE` over `nodeIRows`, 1+k slot truths, `hRes`, the walk bridge, `hFrontV`, `kstate_front` via `ks_of_front`) → P2′ node prover on the full dumps → stream dry run (S ≈ 3.7–4.1 s projected) → S-I certificate (600 s build/kernel) → H evaluation on GitHub. The items below written for revision 3.x are superseded where §10 changes 25 (c) lists them obsolete (the tree, `P30`, `proofCap` margins, the `T_V` gate).
 
 - **Critical path to a certified node:** S-E12 (all remaining circuit rows: kind-factor and `free`-term templates, τ-op templates, `tplTargetSNode`, `tplLinkWAll`, `rsWeight`, 745 `tensorW`, the WOTS mux rows, the pack map and `input w` alias, `R` with the sparse-skeleton templating and instance-AP layout) → `hRes` (S-N2) → S-G12 (`truthE` over `compileT`) → `kstate` unconditional → P2 node prover on the full dump and the stream-link measurement → S-I certificate (600 s build/kernel) → H runs.
 

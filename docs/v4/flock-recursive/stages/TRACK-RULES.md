@@ -24,7 +24,11 @@
   - Use your own build tree: copy `logs/fr-build/gen.sh` to `logs/fr-build-<track>/gen.sh`, run it
     there, and build only your targets (`lake build FRFoo FRBar`). Other tracks' unfinished modules
     must not break your build.
-  - Packages come from the private tree `logs/pkgs`, via `logs/org`. Never write into other
+  - **Since the re-pin to core `6d05d00` (PR #20, 2026-10-28): the org copy is `logs/org20`** (not `logs/org`,
+    which is the old pin's). Start a new build tree by copying `logs/fr-build-INT6` (its `gen.sh`/`snap.sh`
+    point at `logs/org20`); `snap.sh` takes `MINE="<your modules>"` to overlay your worktree files on HEAD.
+    The source rule is `python3 -I logs/org20/scripts/source-rule.py submissions/flock-recursive`.
+  - Packages come from the private tree `logs/pkgs`, via `logs/org20`. Never write into other
     worktrees' trees or the shared package tree, and never run `lake update` or
     `lake exe cache get`.
   - Every build runs under `timeout`. If one runs much longer than expected, inspect it
