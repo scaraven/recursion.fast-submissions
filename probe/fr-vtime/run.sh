@@ -31,7 +31,11 @@ if [[ -z "${ORG:-}" ]]; then
   ORG=${WORK:-$REPO/../rf-core}
   step "core $PIN into $ORG"
   rm -rf "$ORG"; git clone -q https://github.com/scaraven/recursion.fast "$ORG"; git -C "$ORG" checkout -q "$PIN"
-  (cd "$ORG" && timeout 900 lake exe cache get) > "$OUT/cache-get.log" 2>&1 || { tail -30 "$OUT/cache-get.log"; exit 1; }
+  # three tries: the toolchain and cache downloads time out now and then (run 40668064175)
+  for try in 1 2 3; do
+    (cd "$ORG" && timeout 900 lake exe cache get) >> "$OUT/cache-get.log" 2>&1 && break
+    [[ $try == 3 ]] && { tail -30 "$OUT/cache-get.log"; exit 1; }; echo "cache get: try $try failed"; sleep 30
+  done
   tail -2 "$OUT/cache-get.log"
   PKGS=$ORG/.lake/packages
 fi
