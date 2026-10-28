@@ -2745,3 +2745,209 @@ each chain value and each path digest, in order.
 - `simp only [List.foldl_map] at …` followed by `generalize` made the kernel unfold the phase
   walk (32 s, deep recursion). Stating the folded form first (`have e : reassemble tr = …
   := by rw [List.foldl_map]; rfl`) costs nothing.
+
+## Part 21 (track S-H2l): the node output (`FRXOut`), `E c π L = some (FR.readWit …)`
+
+**Delivered:** Part 20 §5 items 1–3.
+- **Item 1 (pure).** Per-phase word slices of `ctb` (`pPh`, `pRest`, `pSeg`) with the
+  within-phase `streamOff` arithmetic (`drop_rep`, `drop_cons_item`), the sibling bit from the
+  answer words (`ans_bit`, `testBit_posOf`, `sib_one`), `(reassemble …).size = piSize`
+  (`reassemble_size`), the seed entry's 15 shifted words (`entryW_seed`), and
+  `Wit.Fits (readWit w)` (`readWit_fits`).
+- **Item 2 (the program).** `outIR` (`FRXOutRun`), compiled from a segment language (`Seg`,
+  `FRNodeReadS`; `segIR`, `FRXOut`). Its semantics (`outIR_out`), exact cost, `WF`, `NoLoopT`,
+  `outs` and size are proved.
+- **Item 3.** `decNode := decF0 ; outIR`, with `decF0` the old body
+  (`decRead ; chainIR ; decLevels`). Then `ext_node` gives
+  `ext.run … = some (witWords (FR.readWit w))`, and `E_node` gives
+  `E c π L = some (FR.readWit w)`. Here `w e = (msgOf .N30 L es 0 (e % 64) (e / 64)).f₀`, which
+  is `fF .N30 L es e` by unfolding `fTab`.
+
+`ext`, `E`, `computes`, `ext_caps`, `decSnark`, `cost_le_decLN3` and `decNode_sem` keep their
+statements. Only `decNode`'s body, `cost_decNode`, `outs_decNode` and `ext_node`'s first
+conjunct changed. Part 19's chain-link hypotheses are unchanged.
+
+### 1. Files (code lines by the core's `scripts/loc.py`)
+
+| File | total / code / theorems | What |
+|---|---|---|
+| `FRNodeReadS` (new) | 478 / 352 / 31 | `Seg`, `segOut`, `segLen`, `sibW`; the trace: `trWf`, `tItems`, `tPh`, `tSegs`, `trSeg`, **`logWords_trSeg`**; the seed: `seedSeg`, `shw_bytes`, `sh8_bytes`, **`entryW_seed`**; the signature: `lWord`, `sigSeg`, **`sigWords_sigSeg`**; **`stmtWords`** |
+| `FRNodeReadP` (new) | 684 / 516 / 49 | `wo`, `pPh`, `pRest`, **`pSeg`**, `kflag`, `kOf`, `PrevInv`, `qOk`; `streamOff_drop`, `drop_rep`, `qB`, `cpSlice`, `ans_bit`, `sib_one`, `pPh_spec`, `pRest_spec`; **`traceKind_lvl`**, **`proof_words`**, `segLen_pSeg`, **`reassemble_size`**, `slotSeg`, **`signedWords_readSigned`**, **`witWords_readWit`**, **`readWit_fits`**; controls (`ReadControls`) |
+| `FRXOut` (new) | 1,015 / 868 / 49 | registers, `AP`, `addrW`, `src`, `ldw`, `cpIR`, `sibHit`/`sibH`/`sibP`/`sibIR`, **`segIR`**, `depthSeg`, `okSeg`, `Ctx`, `Prot`; `wrL`, `ow_segIR`, `noW_segIR`, `wf_segIR`, `loK_segIR`, `noLoopT_segIR`, `ctx_segIR`; `iterL_emit`, `loopK_emit`, `ldw_sem`, `cpIR_sem`, `sibHit_sem`, `sibH_sem`, `sibP_sem`, `sibIR_sem`, **`segIR_sem`** |
+| `FRXOutRun` (new) | 382 / 277 / 31 | `apS`, `apL`, `baseS`, `baseL`, `kflagIR`, `slotIR`, **`outIR`**; `cost_outIR`, `outs_outIR`, `sizeIR_outIR`, `wf_outIR`, `noLoopT_outIR`; `addrS_toNat`, `addrL_toNat`, `src_stream`, `src_l`; `seg_step`, `kflag_step`, `setR_step`, `sig_step`, `slot_step`, **`outIR_out`**; controls (`OutControls`) |
+| `FRXNode` | 876 / 683 / 52 (+69 code) | `decF0` (the old body), `decNode := decF0 ; outIR`, `cost_decF0`, `cost_decNode`, `outs_decF0`, `outs_decNode`, `decOk_decLN3` (updated), **`cost_le_decLN3_node`**, `decF0_sem` (the old `decNode_sem`), `loK_outIR`, **`decNode_sem`** (same statement), **`decNode_out`** |
+| `FRXNodeRun` | 142 / 112 / 2 (+18 code) | **`ext_node`** (first conjunct: the witness), **`E_node`** |
+| `FRXExt` | docstring | `decSnark`'s docstring |
+| `FRNodeReadW` | +2 lines | `tail_slen_le` (the 3.5 s `decide +kernel` of `logWords_readTrace`, shared) |
+
+New code: 2,013 lines (four new modules), plus 87 lines in `FRXNode` and `FRXNodeRun`.
+
+### 2. What is proved
+
+**The segment language (`FRNodeReadS.Seg`).**
+- A segment denotes words over a word source `W : ℕ → Word`, from a base `b`
+  (`segOut W κ b`). The constructors are `wd x`, `cp o n` (the words `W (b + o + j)`),
+  `rep c s x` (`x` at bases `b + s j`), `cat`, `shw`/`sh8` (the seed's straddling words),
+  `kite` (by the child's kind flag `κ`) and `sib` (`sibW`: one level's siblings).
+- Every word of the witness is a constant, a stream word, an L word, a shifted pair of stream
+  words, or a sibling chosen by a stream-word bit. The proofs are therefore generic in the
+  phase table: one induction over the phases, with a step lemma per shape.
+
+**The child's words, pure (`FRNodeReadP`, `FRNodeReadS`).** Here `W` agrees with
+`streamWord w σ` below 185,168, and `WL` with `lWord w σ` below 598.
+- `logWords (readTrace w σ) = segOut W κ 0 trSeg`. The count, the seed entry (`entryW_seed`),
+  then per phase a `rep` over its items. The length words are constants `toWord qlen`, as ruled.
+- `bl (reassemble (readTrace w σ)) = wordsBytes (segOut W (kflag (W 10)) 0 pSeg)`
+  (`proof_words`). This rests on `reassemble_eq`, then `pRest_spec`, an induction over
+  `restSh` with `PrevInv` and the decided `qOk`.
+  - `absorb`, `uni` and the rounds' messages start 6 words after their item. Round `j` sits
+    `j·wsum[absorb, squeeze]` words on.
+  - Columns start 2 words after the column item, with positions `wsum (posItems i)` apart.
+  - A sibling is node words 6–9 (bit 0) or 2–5 (bit 1), or four zero words at a dummy depth.
+    Its bit is bit `m mod 64` of answer word `⌊m/64⌋`, with `m = (p mod per)·logN + h`.
+- The child's kind flag is `kflag (W 10)`. `traceKind_lvl` shows that the trace's kind and
+  the flag's ladder agree on every level (byte 80 of the stream is word 10's low byte).
+  `P30` and `N30` share `ladder30`.
+- `segLen κ pSeg = 99,738` (`decide +kernel`), so `|reassemble| = 797,904 = piSize`
+  (`reassemble_size`).
+- `sigWords (readSig w σ) = segOut WL _ 0 sigSeg` (`idx`, then L elements 1–298).
+  `packBytes (readStmt w σ)` is stream words 6–9.
+- These assemble into `witWords_readWit`: the tag, both statements, then per slot `slotSeg`
+  over the stream and `sigSeg` over L. Also `readWit_fits`.
+
+**The program (`FRXOut`, `FRXOutRun`).**
+- `outIR` does no store. Each source word is one computed load,
+  `addrW ap R n = R + (((n>>1) & m₁) << 18) + ((n >> s₃) << s₄) + (n & 1)`:
+  - a stream word (`apS = (3, 3, 2)`, `R = baseS σ = ob0 + 2^20 + 4·(σ−1)·23,146`) is
+    `streamWord w σ u` (`src_stream`);
+  - an L word (`apL = (63, 7, 1)`, `R = baseL σ = ob0 + 2·(2·47,616 + (σ−1)·256)`) is
+    `lWord w σ v` (`src_l`).
+
+  So neither slot needs a gather. `obL` is not used.
+- `segIR_sem`: in context (`Ctx`: the heap is `M₀`'s, `rR = R`, the flag), `segIR ap d seg`
+  appends `segOut (src M₀ ap R) κ b seg`. The loops use one lemma, `loopK_emit`, with an
+  invariant `Q`. The sibling loop keeps `p mod per`, `(p mod per)·logN` and the answer pointer
+  in registers (`succ_divmod`).
+- **`outIR_out`**: if the heap holds `w` at `ob0`, that is
+  `rdF M (2^24 + 2^18 (e mod 64) + 2⌊e/64⌋) = w e` for `e < 2^23`, then `outIR` appends
+  `witWords (FR.readWit w)`.
+- **Exact numbers:**
+  - `cost outIR t = 21,609,039`;
+  - `outs outIR t = 571,019` (`= |witWords|`, `≤ outCap = 2^24`);
+  - `sizeIR outIR = 22,421`.
+
+  The numbers were read off a scratch `#eval` outside the entry and then proved by
+  `decide +kernel`, with `cost_noLoopT` and `outs_noLoopT`.
+
+**The node branch.**
+- `decNode_out`, under `decNode_sem`'s hypotheses: `decNode`'s output is `decF0`'s, then
+  `witWords (FR.readWit w)`.
+- `ext_node`: `ext.run (extractorInput c π L) (fuel _) = some (witWords (FR.readWit w))`, and
+  the heap still holds `f⁽⁰⁾`.
+- **`E_node`**: `E c π L = some (FR.readWit w)` (`decodeWit_witWords` with `readWit_fits`).
+
+### 3. Costs, against the budget
+
+| part | steps | theorem |
+|---|---|---|
+| `outIR` | 21,609,039 | `cost_outIR` |
+| `decNode` | `cost decN + 140,866,457,335,279 + 21,609,041` | `cost_decNode` |
+| **`decLN3`** | `≤ 140,884,480,944,337 + 2,558 t` | `cost_le_decLN3_node` |
+| budget | 211,106,098,315,264 + 8,176 t | `cost_le_decLN3` (statement unchanged) |
+
+The margin is now 70,221,617,370,927 + 5,618 t. Sizes: `sizeIR outIR = 22,421`, and
+`sizeIR decLN3 ≤ 96,990 < 2^19` (`decOk_decLN3.size`).
+
+### 4. Controls
+
+| Control | Kind | Shows |
+|---|---|---|
+| `logWords_trSeg`, `proof_words`, `sigWords_sigSeg`, `stmtWords`, `witWords_readWit` | positive (universal) | for every `w` and every word source agreeing with it, the segments denote exactly the contract's words |
+| `segOut_cp_ctl` (`decide`) | positive / negative | `cp 6 4` starts at word 6; `cp 7 4` does not read it; the base adds |
+| `segOut_rep_kite_ctl` | positive / negative | `rep` moves the base by `s`; `kite` takes only the flag's branch |
+| `sibW_ctl` | positive / negative | bit 0 (from answer word 100) picks node words 6–9, not 2–5; bit 1 picks 2–5; `sK = 0` gives zeros |
+| `kflag_ctl`, `kOf_ctl` | positive / negative | `'N'`, `'P'` set the flag, `'L'` does not; only the low byte counts; the two ladders differ (level 0's `logN` is 18 and 20) |
+| `trWf_ctl` | positive / negative | a squeeze item gives 10 words, an 8-byte absorb 11; the first is the constant `toWord 40` |
+| `qOk_ctl`, `prevInv_ctl` | positive / negative | the phase table passes `qOk`; a `queries` phase without its `P2` fails; `PrevInv` constrains after a `P2` phase |
+| `witWords_tag`, `outIR_tag` | negative | the output starts with the node tag `1` (not a leaf witness) |
+| `addrS_ctl`, `addrL_ctl` | positive | stream word 1 is the next cell, word 2 the next row (`+2^18`), word 8 the next block (`+4`); L word 2 is the next row, word 128 two cells on |
+| `okSeg_ctl` | positive / negative | the program's segments pass `okSeg`; a count of `2^32` or `per = 0` fails |
+| `outIR_any` | positive (universal) | `outIR_out`'s hypothesis holds on every heap, with `w` read at `ob0` |
+| `ext_node`, `E_node`, `decNode_out` | universal | for every log, transcript and proof with Part 19's hypotheses |
+
+The controls are statements about the pure segments, or follow from the `_sem` lemmas. None is
+a concrete machine run (S-H2k's ≈ 185 ms per operation).
+
+### 5. Checks
+
+- **Build**: the whole entry plus the new modules,
+  `lake build FR FRXNodeRun FRNodeRead FRNodeReadW FRNodeReadLayout FRNodeReadS FRNodeReadP FRXOut FRXOutRun`,
+  is green in `logs/fr-build-SH2l` (2,371 jobs; 4 min 59 s wall on the shared VM;
+  `logs/S-H2/build21.{out,log}`). Re-checked on HEAD `d332644`: green, 2,374 jobs
+  (`build21b`). The tree is a HEAD snapshot (`snap.sh`); my modules are symlinks.
+- **Axioms** (`logs/S-H2/axioms21.log`):
+  - these depend on `propext, Classical.choice, Quot.sound`: `computes`, `ext_caps`,
+    `ext_node`, `E_node`, `E_leaf`, `cost_le_decLN3`, `cost_le_decLN3_node`, `decOk_decLN3`,
+    `decNode_sem`, `decNode_out`, `outIR_out`, `segIR_sem`, `sibIR_sem`, `proof_words`,
+    `reassemble_size`, `witWords_readWit`, `readWit_fits`, `logWords_trSeg`,
+    `sigWords_sigSeg`, `traceKind_lvl`, `addrS_ctl`, `addrL_ctl`, `outIR_any`, `outIR_tag`;
+  - the `decide` facts and controls (`cost_outIR`, `outs_outIR`, `sizeIR_outIR`,
+    `segLen_pSeg`, `segOut_*_ctl`, `sibW_ctl`, `kOf_ctl`, `trWf_ctl`, `qOk_ctl`, `okSeg_ctl`)
+    depend on `propext`; `kflag_ctl` and `prevInv_ctl` on `propext, Quot.sound`.
+- **Source rule**: 152 files, 0 findings (`logs/S-H2/source21.log`). There is no `sorry`.
+- **Sequential profile** (`taskset -c 0`, `-DElab.async=false`, `logs/S-H2/*.21.{profile,time}`):
+
+  | Module | wall | max RSS | type checking (entries ≥ 0.1 s) |
+  |---|---|---|---|
+  | `FRNodeReadS` (new) | 13.1 s | 2.75 GB | 2.33 s, one entry (a `decide +kernel` over the phase table) |
+  | `FRNodeReadP` (new) | 21.3 s | 3.02 GB | 5.8 s, of which one entry is 4.94 s (the decided phase-table facts, `qOk_restSh` / `segLen_pSeg`) |
+  | `FRXOut` (new) | 57.7 s | 2.60 GB | 0.2 s; elaboration dominates (`sibP_sem`, `segIR_sem`) |
+  | `FRXOutRun` (new) | 16.0 s | 2.54 GB | 3.3 s (the four exact `decide +kernel` facts, ≈ 0.6 s each) |
+  | `FRXNode` | 28.3 s (was 26.6 s) | 3.21 GB | 6.0 s, of which 4.4 s is `toyFin_run` (unchanged) |
+  | `FRXNodeRun` | 7.0 s | 2.63 GB | below 0.1 s |
+  | `FRNodeReadW` | 14.9 s | 2.87 GB | as in Part 20 (`tail_slen_le` now carries the 3.5 s) |
+  | `FRXSpec` | 12.4 s | 2.73 GB | 0.38 s (the toy runs, with the new `decSnark` compiled in) |
+
+### 6. Deviations and choices
+
+1. **No gather.** The handover planned to copy each slot's stream into `obL`. Instead `outIR`
+   reads every word through one computed load (`addrW`). Both shapes are affine in the bits of
+   the index, so `outIR` stores nothing. Its heap frame is then `LoK`'s, and `decNode_sem`
+   keeps its statement. The cost is ≈ 38 steps per output word, 2.2·10^7 in all.
+2. **`decNode_sem`'s proof moved to `decF0_sem`** (same statement, about the decode
+   `decF0`). `decNode_sem` keeps its statement about the new `decNode`, from `decF0_sem` and
+   `outIR`'s frame. `cost_decNode` and `outs_decNode` changed: they are equations about
+   `decNode`'s body, which grew.
+3. **The witness function is stated as `fun e => (msgOf .N30 L es 0 (e % 64) (e / 64)).f₀`.**
+   This is `fF .N30 L es` once `fTab` is unfolded (`(lvl .N30 0).rows = 64`). The `FRX`
+   modules do not import `FRSoundnessPIOP`, where `fF` lives. `final` can rewrite with
+   `fF`'s definition.
+4. **The child's kind at run time.** `sibling` and `posOf` use the child's ladder
+   (`traceKind`). `outIR` reads it from stream word 10 (`kflag`), and the sibling segment is a
+   `kite` between `ladder30` and `ladder32`. A byte that is no kind byte gives `L32`, as in
+   `traceKind`.
+5. **The length words are constants** (`toWord qlen`, the ruling), in the trace (`tItems`) and
+   for the proof (`toWord piSize`).
+
+### 7. What remains (in order)
+
+1. **The links on `final`'s side** (Part 19 §8 item 2, unchanged): `FinalLaw` must supply
+   `E_node`'s transcript hypotheses from `runLog = some true` (S-G2/S-G3). It then gets
+   `E c π L = some (FR.readWit (fF .N30 L es))`.
+2. **`FR.lean` imports.** The worktree's `FR.lean` (INT-3) already imports `FRNodeReadLayout`,
+   `FRNodeRead`, `FRNodeReadW` and `FRXNodeRun`. Add **`FRNodeReadS`, `FRNodeReadP`, `FRXOut`,
+   `FRXOutRun`**. They are already reached through `FRXExt → FRXNode`, so the build does not
+   need them; listing them is for the module list.
+3. Optional golf: `FRXOut`'s register frames repeat a pattern (`simp only [names]; omega`
+   dischargers, `wrL` membership).
+
+### 8. Pitfalls (also in the journal, items 49–53)
+
+- Close goals of the form `[] ++ big = big`, or arithmetic over `cost decN t`, with
+  `List.nil_append` or with `generalize` and `omega`. **Not `rfl`**: the kernel unfolds the big
+  side (deep recursion or a timeout at the declaration).
+- In a long `runPrims` `rd` chain, discharge with `simp only [register names]; omega` only. A
+  `decide` discharger evaluates the array size. Read the heap through
+  `rd_runPrims_of_not_writes`.
+- `exact lemma` against a goal stated with a folded program (`segIR ap d (.cp o n)`) timed out
+  in unification: `rw [segIR, segOut]` first.

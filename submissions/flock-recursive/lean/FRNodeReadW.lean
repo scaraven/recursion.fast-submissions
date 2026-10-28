@@ -321,6 +321,9 @@ theorem readItems_words (w : ℕ → F) (σ : ℕ) : ∀ (its : List Item) (o : 
       readItems_words w σ its (o + it.slen) (by omega) (fun x hx => hq x (by simp [hx])) (by omega),
       show (o + it.slen) / 8 = o / 8 + it.slen / 8 by omega]
 
+/-- The later items fill the stream after the seed's 160 bytes. -/
+theorem tail_slen_le : 160 + (items.tail.map Item.slen).sum ≤ streamBytes := by decide +kernel
+
 theorem items_cons : items = .seed :: items.tail := by
   obtain ⟨t, ht⟩ := List.head?_eq_some_iff.1 qlen_mod.1
   rw [ht, List.tail_cons]
@@ -331,8 +334,7 @@ theorem logWords_readTrace (w : ℕ → F) (σ : ℕ) :
     logWords (readTrace w σ) = toWord 8891 :: (entryW (entryAt (stream w σ) 1 .seed) ++
       trW (streamWords w σ) 20 items.tail) := by
   have hq : ∀ it ∈ items.tail, it.qlen % 8 = 0 := fun it h => by have := qlen_mod.2.2 it h; omega
-  have hsum : 160 + (items.tail.map Item.slen).sum ≤ streamBytes := by decide +kernel
-  have hw := readItems_words w σ items.tail 160 rfl hq hsum
+  have hw := readItems_words w σ items.tail 160 rfl hq tail_slen_le
   show toWord (readTrace w σ).length :: (readTrace w σ).flatMap entryW = _
   rw [readTrace_length]
   refine congrArg (toWord 8891 :: ·) ?_

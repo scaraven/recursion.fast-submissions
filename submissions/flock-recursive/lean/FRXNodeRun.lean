@@ -4,13 +4,13 @@ import FRXLeaf
 import FRXNode
 
 /-!
-# The node case of `ext_good_tape`, up to the output
+# The node case of `ext_good_tape`
 
 On a domain tape of a node proof (`kindOf π = .snark .N30`), `ext` takes the node branch
-`decNode` (`FRXNode`), halts within its fuel, and leaves `f⁽⁰⁾`'s rows at `ob0` (`ext_node`).
-The output step (`f⁽⁰⁾` to `witWords (.node c₁ c₂ p₁ p₂)`, BLUEPRINT §6.2 step 5) is not
-delivered: until it is, `ext` outputs nothing on a node proof, so `E c π L = none` there
-(`ext_node`'s first conjunct).
+`decNode` (`FRXNode`), halts within its fuel, leaves `f⁽⁰⁾`'s rows at `ob0` and outputs
+`witWords (FR.readWit w)` with `w e = (msgOf .N30 L es 0 (e mod 64) ⌊e/64⌋).f₀` (A.10's
+`fF .N30 L es`; BLUEPRINT §6.2 step 5, `ext_node`), so `E c π L = some (FR.readWit w)`
+(`E_node`).
 
 The hypotheses of `ext_node` beyond the domain are what `final` (`FinalLaw`) holds about the
 log's transcript `es` when the verifier accepts: the chain link (`fmAns … = ansAt es`), the
@@ -22,10 +22,10 @@ namespace FR.X
 
 open RecursionFast FR FR.Snd FR.Merkle
 
-/-- **The node case of `ext_good_tape`, up to the output.** On a domain tape of a node proof, with
-the transcript facts `final` holds, the program halts within the fuel with no output yet, and
-its final heap holds `f⁽⁰⁾`: at `ob0 + 2^18 r + 2x`, coefficient `x` of row `r` of
-`msgOf .N30 L es 0` as an `F` value. -/
+/-- **The node case of `ext_good_tape`.** On a domain tape of a node proof, with the transcript
+facts `final` holds, the program halts within the fuel and outputs the node witness read off
+`f⁽⁰⁾` (`FR.readWit`), and its final heap holds `f⁽⁰⁾`: at `ob0 + 2^18 r + 2x`, coefficient `x`
+of row `r` of `msgOf .N30 L es 0` as an `F` value. -/
 theorem ext_node (c : Digest) (π : Proof) (L : Log) (hq : ∀ e ∈ L, e.1.size < 2 ^ 64)
     (ht : (extractorInput c π L).length ≤ 2 ^ 64) (hk : kindOf π = .snark .N30)
     (hS : ¬ StateHit L) (st₀ : Digest) {es : Log}
@@ -35,7 +35,8 @@ theorem ext_node (c : Digest) (π : Proof) (L : Log) (hq : ∀ e ∈ L, e.1.size
     (hfin : ∀ x < 32, finalAt es x = finPi π x)
     (hfar : ∀ i < 5, ¬ farL .N30 L es i)
     (hA : ∀ i < 5, consSet .N30 L es i = jointAgree (wordK .N30 L es i) (decodeL .N30 L es i)) :
-    ext.run (extractorInput c π L) (fuel (extractorInput c π L).length) = some [] ∧
+    ext.run (extractorInput c π L) (fuel (extractorInput c π L).length) =
+      some (witWords (FR.readWit fun e => (msgOf .N30 L es 0 (e % 64) (e / 64)).f₀)) ∧
     ∀ r < (lvl .N30 0).rows, ∀ x < 2 ^ mLog .N30 0,
       algebraMap F K (rdF (semXIR (extractorInput c π L).toArray (extIRWith decSnark)
         (initSt (memX + mpwX * (extractorInput c π L).length))).M
@@ -101,21 +102,41 @@ theorem ext_node (c : Digest) (π : Proof) (L : Log) (hq : ∀ e ∈ L, e.1.size
   have e2 : semXIR I (.ite rKN decNode leafIR) (semXIR I kindIR s1) =
       semXIR I decNode (semXIR I kindIR s1) := by
     rw [semXIR_ite, n1, if_pos hN, if_neg (by decide : (1 : Word) ≠ 0)]
-  -- the branch's output is empty
+  -- the decode's output is empty; the output step emits the witness
   have hBn : BoundsOk I inp.length decNode (semXIR I kindIR s1) := by
     have := boundsOk_of_safe hsafe hd.wf _ h1
     rw [decSnark, decLN3, boundsOk_seq, boundsOk_ite, n1, if_pos hN, if_neg (by decide : (1 : Word) ≠ 0)] at this
     exact this.2
-  have ho := outs_le inp.length decNode _ decOk_decLN3.wf.2.1 hM2 hBn
-  rw [outs_decNode, n3, hpo] at ho
+  have ho := outs_le inp.length decF0 _ decOk_decLN3.wf.2.1.1 hM2 hBn.1
+  rw [outs_decF0, n3, hpo] at ho
   refine ⟨hrun.trans ?_, fun r hr x hx => ?_⟩
   · rw [e, e2]
     simp only [Array.size_empty, Nat.add_zero, Nat.le_zero, Array.size_eq_zero_iff] at ho
-    rw [ho]
+    have hszK : memX + L.length + L.length ≤ (semXIR I kindIR s1).M.size := by
+      rw [hz2, hz1, hz0]; exact hlen
+    rw [← hI] at hM2 hszK ho ⊢
+    rw [decNode_out c π L hD hS st₀ hfm hcap0 hcap hfin hfar hA _ hM2 hszK, ho, Array.toList_empty,
+      List.nil_append]
   · rw [e, e2]
     have hszK : memX + L.length + L.length ≤ (semXIR I kindIR s1).M.size := by
       rw [hz2, hz1, hz0]; exact hlen
     rw [← hI] at hM2 hszK ⊢
     exact decNode_sem c π L hD hS st₀ hfm hcap0 hcap hfin hfar hA _ hM2 hszK r hr x hx
+
+/-- **`E` on a node proof** (the node case of `ext_good_tape`): with the transcript facts `final`
+holds, the extractor's witness is the node witness read off `f⁽⁰⁾` (`FR.readWit`, A.5, A.7). -/
+theorem E_node (c : Digest) (π : Proof) (L : Log) (hq : ∀ e ∈ L, e.1.size < 2 ^ 64)
+    (ht : (extractorInput c π L).length ≤ 2 ^ 64) (hk : kindOf π = .snark .N30)
+    (hS : ¬ StateHit L) (st₀ : Digest) {es : Log}
+    (hfm : ∀ p < nRep, fmAns (fsQ (vkOf π) c π) st₀ L p = some (ansAt es p))
+    (hcap0 : ∀ e < 2 ^ 9, capDig es 0 e = capPi π e)
+    (hcap : ∀ i, 1 ≤ i → i ≤ 4 → ∀ e < 2 ^ capLogL i, capDig es i e = capPiL i π e)
+    (hfin : ∀ x < 32, finalAt es x = finPi π x)
+    (hfar : ∀ i < 5, ¬ farL .N30 L es i)
+    (hA : ∀ i < 5, consSet .N30 L es i = jointAgree (wordK .N30 L es i) (decodeL .N30 L es i)) :
+    E c π L = some (FR.readWit fun e => (msgOf .N30 L es 0 (e % 64) (e / 64)).f₀) := by
+  show (ext.run (extractorInput c π L) (fuel (extractorInput c π L).length)).bind decodeWit = _
+  rw [(ext_node c π L hq ht hk hS st₀ hfm hcap0 hcap hfin hfar hA).1, Option.bind_some,
+    decodeWit_witWords _ (FR.Read.readWit_fits _)]
 
 end FR.X

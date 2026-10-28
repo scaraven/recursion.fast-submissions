@@ -2,6 +2,7 @@
 -- track L-ext, S-H2j).
 import FRXDecLv
 import FRXDec
+import FRXOutRun
 
 /-!
 # The five levels chained
@@ -543,32 +544,54 @@ theorem sizeIR_decLevels : sizeIR decLevels = 53515 := by decide +kernel
 
 /-! ## The node branch: index, level 0's read, the chain, the five levels -/
 
-/-- **The node branch** (BLUEPRINT §6.2 steps 2–4): the log index and level 0's read
-(`decRead`), the Fiat–Shamir replay (`chainIR`, answers at `ansB`), then the five levels
-(`decLevels`). The chain runs after the read: its frame keeps the index and the column store. -/
-def decNode : XIR := .seq decRead (.seq (chainIR nRep chTab seedIR) decLevels)
+/-- **The decode** (BLUEPRINT §6.2 steps 2–4): the log index and level 0's read (`decRead`), the
+Fiat–Shamir replay (`chainIR`, answers at `ansB`), then the five levels (`decLevels`). The chain
+runs after the read: its frame keeps the index and the column store. -/
+def decF0 : XIR := .seq decRead (.seq (chainIR nRep chTab seedIR) decLevels)
+
+/-- **The node branch** (BLUEPRINT §6.2 steps 2–5): the decode `decF0` leaves `f⁽⁰⁾` at `ob0`,
+then `outIR` emits `witWords (readWit f⁽⁰⁾)` (`FRXOutRun`). -/
+def decNode : XIR := .seq decF0 outIR
 
 /-- **The SNARK branch**: a node runs `decNode`, a leaf outputs its witness. -/
 def decLN3 : XIR := .seq kindIR (.ite rKN decNode leafIR)
 
-theorem cost_decNode (t : ℕ) : cost decNode t = cost decN t + cost decLevels t + 1 := by
-  simp only [decNode, decN, cost]; omega
+theorem cost_decF0 (t : ℕ) : cost decF0 t = cost decN t + cost decLevels t + 1 := by
+  rw [decF0, decN, cost, cost, cost]
+  generalize cost decRead t = a
+  generalize cost (chainIR nRep chTab seedIR) t = b
+  generalize cost decLevels t = c
+  omega
 
-theorem outs_decNode (t : ℕ) : outs decNode t = 0 := by
+/-- The node branch's cost: the decode and the output's `21,609,039` steps. -/
+theorem cost_decNode (t : ℕ) : cost decNode t = cost decN t + cost decLevels t + 21609041 := by
+  have h1 := cost_decF0 t
+  have h2 := cost_outIR t
+  show cost decF0 t + cost outIR t + 1 = _
+  generalize cost decF0 t = a at h1 ⊢
+  generalize cost outIR t = b at h2 ⊢
+  generalize cost decN t = c at h1 ⊢
+  generalize cost decLevels t = d at h1 ⊢
+  omega
+
+theorem outs_decF0 (t : ℕ) : outs decF0 t = 0 := by
   have h1 : outs decRead t = 0 := by simp [decRead, outs, outs_logIR, outs_readIR, read0]
-  rw [decNode, outs, outs, h1, outs_chainIR nRep t chTab (sd := seedIR) (outs_sdList t _),
+  rw [decF0, outs, outs, h1, outs_chainIR nRep t chTab (sd := seedIR) (outs_sdList t _),
     outs_decLevels]
+
+theorem outs_decNode (t : ℕ) : outs decNode t = 571019 := by
+  rw [decNode, outs, outs_decF0, outs_outIR]
 
 theorem decOk_decLN3 : DecOk decLN3 where
   wf := ⟨by simp [kindIR, readAt, WF, Prim.dst, rB, rK2, rKN, rKL, rA],
-    ⟨decOk_decRead.wf, wf_chainIR nRep chTab (wf_sdList _) (noWrite_seedIR (by decide) (by decide)
-      (by decide) (by decide) (by decide) (by decide)), wf_decLevels⟩,
+    ⟨⟨decOk_decRead.wf, wf_chainIR nRep chTab (wf_sdList _) (noWrite_seedIR (by decide) (by decide)
+      (by decide) (by decide) (by decide) (by decide)), wf_decLevels⟩, wf_outIR⟩,
     by simp [leafIR, outAt, readAt, WF, Prim.dst, rK2, rV2, rA]⟩
   safe := fun c π L hs hq ht => .seq (safe_of_noLoopT noLoopT_leaf.1)
-    (.ite (.seq (decOk_decRead.safe c π L hs hq ht)
+    (.ite (.seq (.seq (decOk_decRead.safe c π L hs hq ht)
       (.seq (safe_chainIR c π L hs hq ht nRep chTab (noLoopT_sdList _) (wf_sdList _)
         (noWrite_seedIR (by decide) (by decide) (by decide) (by decide) (by decide) (by decide)))
-        (safe_of_noLoopT noLoopT_decLevels))) (safe_of_noLoopT noLoopT_leaf.2))
+        (safe_of_noLoopT noLoopT_decLevels))) (safe_of_noLoopT noLoopT_outIR)) (safe_of_noLoopT noLoopT_leaf.2))
   cost := fun t => by
     have h := cost_decN t
     have e : cost leafIR t = 32 := by simp [leafIR, outAt, readAt, cost, blkSteps]
@@ -583,8 +606,8 @@ theorem decOk_decLN3 : DecOk decLN3 where
     have := sizeIR_decN
     have e : sizeIR leafIR = 35 := by simp [leafIR, outAt, readAt, sizeIR, blkSteps]
     have e2 : sizeIR kindIR = 15 := by simp [kindIR, readAt, sizeIR, blkSteps]
-    have e3 : sizeIR decNode = sizeIR decN + 53515 + 1 := by
-      rw [decNode, decN, sizeIR, sizeIR, sizeIR, sizeIR_decLevels]
+    have e3 : sizeIR decNode = sizeIR decN + 53515 + 1 + 22421 + 1 := by
+      rw [decNode, decF0, sizeIR, sizeIR_outIR, decN, sizeIR, sizeIR, sizeIR, sizeIR_decLevels]
       generalize sizeIR decRead = a
       generalize sizeIR (chainIR nRep chTab seedIR) = b
       omega
@@ -594,10 +617,20 @@ theorem decOk_decLN3 : DecOk decLN3 where
 
 /-- **The SNARK branch's cost within its fuel** (F): `cost decLN3 t ≤ 211,106,098,315,264 +
 8,176 t` (`fuel_base − 2^27`, `fuel_per_word − 16`), with the decode at
-`140,866,457,335,279 ≈ 2^47.0` and `≈ 7.0·10^13 ≈ 2^46.0` left for the output. -/
+`140,866,457,335,279 ≈ 2^47.0` and the output (`outIR`) at `21,609,039` steps. -/
 theorem cost_le_decLN3 (t : ℕ) : cost decLN3 t ≤ 211106098315264 + 8176 * t := by
   have h := decOk_decLN3.cost t
   simp only [decBudget, fuelBase, fuelPerWord] at h
+  omega
+
+/-- **The SNARK branch's cost with the output** (S-H2l): `cost decLN3 t ≤ 140,884,480,944,337 +
+2,558 t`, of which the output is `21,609,039` steps; the budget's margin is
+`70,221,617,370,927 + 5,618 t`. -/
+theorem cost_le_decLN3_node (t : ℕ) : cost decLN3 t ≤ 140884480944337 + 2558 * t := by
+  have h := cost_decN t
+  have e : cost leafIR t = 32 := by simp [leafIR, outAt, readAt, cost, blkSteps]
+  have e2 : cost kindIR t = 15 := by simp [kindIR, readAt, cost, blkSteps]
+  rw [decLN3, cost, cost, e, e2, cost_decNode, cost_decLevels]
   omega
 
 /-! ## The node branch decodes `f⁽⁰⁾` -/
@@ -636,7 +669,7 @@ absorbs are π's fields (the caps `capDig es i`, the final message `finalAt es`)
 every level is close with `A_c = jointAgree` (what `final` hands over), then after `decNode` the
 heap at `ob0 + 2^18 r + 2x` holds, as an `F` value, coefficient `x` of row `r` of `f⁽⁰⁾`
 (`msgOf .N30 L es 0`). -/
-theorem decNode_sem (c : Digest) (π : Proof) (L : Log) (hD : Dom c π L) (hS : ¬ StateHit L)
+theorem decF0_sem (c : Digest) (π : Proof) (L : Log) (hD : Dom c π L) (hS : ¬ StateHit L)
     (st₀ : Digest) {es : Log}
     (hfm : ∀ p < nRep, fmAns (fsQ (vkOf π) c π) st₀ L p = some (ansAt es p))
     (hcap0 : ∀ e < 2 ^ 9, capDig es 0 e = capPi π e)
@@ -646,7 +679,7 @@ theorem decNode_sem (c : Digest) (π : Proof) (L : Log) (hD : Dom c π L) (hS : 
     (hA : ∀ i < 5, consSet .N30 L es i = jointAgree (wordK .N30 L es i) (decodeL .N30 L es i))
     (s : St) (hM : Inv s.M) (hsz : memX + L.length + L.length ≤ s.M.size) :
     ∀ r < (lvl .N30 0).rows, ∀ x < 2 ^ mLog .N30 0,
-      algebraMap F K (rdF (semXIR (tp c π L) decNode s).M (ob0 + 2 * 2 ^ mLog .N30 0 * r + 2 * x)) =
+      algebraMap F K (rdF (semXIR (tp c π L) decF0 s).M (ob0 + 2 * 2 ^ mLog .N30 0 * r + 2 * x)) =
         msgOf .N30 L es 0 r x := by
   have hm : memX = 67108864 := rfl
   have ech : chEnd = 8394752 := rfl
@@ -661,7 +694,7 @@ theorem decNode_sem (c : Digest) (π : Proof) (L : Log) (hD : Dom c π L) (hS : 
   obtain ⟨r1, r2, r3⟩ := idxIR_sorted c π L hD.hs hD.hq hD.ht s hM hsz
   have hM1 : Inv (semXIR (tp c π L) idxIR s).M := inv_sem _ wf_logIR hM
   have z1 := size_sem (tp c π L) idxIR s
-  rw [decNode, semXIR_seq, semXIR_seq, show decRead = .seq idxIR read0 from rfl, semXIR_seq]
+  rw [decF0, semXIR_seq, semXIR_seq, show decRead = .seq idxIR read0 from rfl, semXIR_seq]
   generalize semXIR (tp c π L) idxIR s = s1 at r1 r2 r3 hM1 z1 hWF
   have hX : Sorted (tp c π L) L (fun a => rd s1.M (memX + a)) := ⟨r1, r2, r3⟩
   have hsz1 : memX ≤ s1.M.size := by rw [z1]; exact le_trans (by omega) hsz
@@ -699,6 +732,59 @@ theorem decNode_sem (c : Digest) (π : Proof) (L : Log) (hD : Dom c π L) (hS : 
         (.inr (le_trans (by decide) (le_add3 _ _ _))))
       (cf _ (le_trans (by decide) (le_add4 _ _ _ _)) (.inr (le_trans (by decide) (le_add4 _ _ _ _))))
   exact (decLevels_sem hD hX s3 hM3 (z3 ▸ hsz2) hXs3 hW3 hans hcap hfin hfar hA).1
+
+theorem loK_outIR : LoK outIR := by
+  have h1 := loK_segIR apS FR.Read.slotSeg 0 (by have := okSeg_slot.2; omega)
+  have h2 := loK_segIR apL FR.Read.sigSeg 0 (by have := okSeg_sig.2; omega)
+  have h3 := loK_segIR apS (.cp 6 4) 0 (by simp [depthSeg])
+  have hk : LoK kflagIR := ⟨by simp [LoK, Prim.dst, oU, regs], loK_ldw apS,
+    by simp [LoK, Prim.dst, oK, oX, oT1, oT2, oKF, regs]⟩
+  simp only [outIR, slotIR, setR, LoK]
+  refine ⟨by simp [Prim.dst, oBd, oKF, oX, regs], trivial, by simp [Prim.dst, oR, regs], h3,
+    by simp [Prim.dst, oR, regs], h3, ⟨by simp [Prim.dst, oR, regs], hk, h1, by simp [Prim.dst, oR, regs],
+      by simp [Prim.dst, oKF, regs], h2⟩, ⟨by simp [Prim.dst, oR, regs], hk, h1, by simp [Prim.dst, oR, regs],
+      by simp [Prim.dst, oKF, regs], h2⟩⟩
+
+/-- **The node branch decodes `f⁽⁰⁾`** (as `decF0_sem`; the output step keeps the heap). -/
+theorem decNode_sem (c : Digest) (π : Proof) (L : Log) (hD : Dom c π L) (hS : ¬ StateHit L)
+    (st₀ : Digest) {es : Log}
+    (hfm : ∀ p < nRep, fmAns (fsQ (vkOf π) c π) st₀ L p = some (ansAt es p))
+    (hcap0 : ∀ e < 2 ^ 9, capDig es 0 e = capPi π e)
+    (hcap : ∀ i, 1 ≤ i → i ≤ 4 → ∀ e < 2 ^ capLogL i, capDig es i e = capPiL i π e)
+    (hfin : ∀ x < 32, finalAt es x = finPi π x)
+    (hfar : ∀ i < 5, ¬ farL .N30 L es i)
+    (hA : ∀ i < 5, consSet .N30 L es i = jointAgree (wordK .N30 L es i) (decodeL .N30 L es i))
+    (s : St) (hM : Inv s.M) (hsz : memX + L.length + L.length ≤ s.M.size) :
+    ∀ r < (lvl .N30 0).rows, ∀ x < 2 ^ mLog .N30 0,
+      algebraMap F K (rdF (semXIR (tp c π L) decNode s).M (ob0 + 2 * 2 ^ mLog .N30 0 * r + 2 * x)) =
+        msgOf .N30 L es 0 r x := fun r hr x hx => by
+  rw [decNode, semXIR_seq, ← decF0_sem c π L hD hS st₀ hfm hcap0 hcap hfin hfar hA s hM hsz r hr x hx]
+  exact congrArg _ (rdF_eq (hframeK _ _ _ loK_outIR _ (by simp only [ob0, regs]; omega))
+    (hframeK _ _ _ loK_outIR _ (by simp only [ob0, regs]; omega)))
+
+/-- **The node branch outputs the node witness** read off `f⁽⁰⁾` (BLUEPRINT §6.2 step 5): after
+the decode, `outIR` appends `witWords (readWit w)` with `w e = (msgOf .N30 L es 0 (e mod 64)
+⌊e/64⌋).f₀` (A.10's `fF .N30 L es`). -/
+theorem decNode_out (c : Digest) (π : Proof) (L : Log) (hD : Dom c π L) (hS : ¬ StateHit L)
+    (st₀ : Digest) {es : Log}
+    (hfm : ∀ p < nRep, fmAns (fsQ (vkOf π) c π) st₀ L p = some (ansAt es p))
+    (hcap0 : ∀ e < 2 ^ 9, capDig es 0 e = capPi π e)
+    (hcap : ∀ i, 1 ≤ i → i ≤ 4 → ∀ e < 2 ^ capLogL i, capDig es i e = capPiL i π e)
+    (hfin : ∀ x < 32, finalAt es x = finPi π x)
+    (hfar : ∀ i < 5, ¬ farL .N30 L es i)
+    (hA : ∀ i < 5, consSet .N30 L es i = jointAgree (wordK .N30 L es i) (decodeL .N30 L es i))
+    (s : St) (hM : Inv s.M) (hsz : memX + L.length + L.length ≤ s.M.size) :
+    (semXIR (tp c π L) decNode s).o.toList = (semXIR (tp c π L) decF0 s).o.toList ++
+      witWords (FR.readWit fun e => (msgOf .N30 L es 0 (e % 64) (e / 64)).f₀) := by
+  rw [decNode, semXIR_seq]
+  have hM' : Inv (semXIR (tp c π L) decF0 s).M := inv_sem _ (decOk_decLN3.wf.2.1.1) hM
+  refine outIR_out _ _ _ hM' fun e he => ?_
+  have h := decF0_sem c π L hD hS st₀ hfm hcap0 hcap hfin hfar hA s hM hsz (e % 64)
+    (Nat.mod_lt _ (by decide)) (e / 64) (by rw [show mLog .N30 0 = 17 from rfl]; omega)
+  rw [show mLog .N30 0 = 17 from rfl, show ob0 = 16777216 from rfl] at h
+  rw [show 16777216 + 2 ^ 18 * (e % 64) + 2 * (e / 64) = 16777216 + 2 * 2 ^ 17 * (e % 64) + 2 * (e / 64) by
+    norm_num, ← h]
+  rfl
 
 /-! ## Controls -/
 

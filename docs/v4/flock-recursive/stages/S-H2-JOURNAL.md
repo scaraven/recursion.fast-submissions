@@ -459,3 +459,55 @@ Base: branch `v4/flock-recursive`, HEAD `53c2e13`. Build tree `logs/fr-build-SH2
 46. Stopped before the output program (context). Checks: build green (`build20`), axioms
     standard (`axioms20.log`), source rule 136 files / 0 findings, profiles `*.20.*`
     (`FRXNode` 70.4 s → 26.6 s). Handover: RESULT Part 20 §5.
+
+## S-H2l (2026-10-28): the node output (`FRXOut`), `ext_node` with the witness
+
+47. Build tree `logs/fr-build-SH2l` (a copy of `fr-build-SH2k` with its `.lake`; `snap.sh` links
+    `FRNodeReadS FRNodeReadP FRXOut FRXOutRun` too; `c.sh` compiles one module in the capped scope).
+48. Design. The output program does no stores: it reads `f⁽⁰⁾` at `ob0` through an address block
+    (`addr = R + ((u>>1)&m)<<18 + (u>>s3)<<s4 + (u&1)`), so a stream word and an L word are each
+    one computed load. Both slots' streams therefore need no gather into `obL`. What is emitted is
+    described by a segment language (`Seg`: `wd`, `cp`, `rep`, `cat`, `shw`/`sh8` for the seed's
+    straddling words, `kite` on the child kind, `sib` for one level's siblings), with a pure
+    semantics `segOut W κ b` (`FRNodeReadS`), compiled once (`FRXOut`).
+49. `FRNodeReadS`: `logWords_trSeg` (one `rep` per phase over `tItems`; `trWf_rep`,
+    `trWf_congr` for the node items whose `h` differ), `entryW_seed` (the 15 straddling words:
+    `shw_bytes`, `sh8_bytes`), `sigWords_sigSeg` (`lPairs`), `stmtWords`. `FRNodeReadW` gained
+    `tail_slen_le` (the 3.5 s `decide +kernel` once, shared).
+    Pitfalls: `List.toArray l |>.toList` is not `rfl`-cheap (a `foldl`): `rw [List.toList_toArray]`
+    first. `congr 1` on `map f (range 14) ++ … = … ++ …` timed out at whnf: use
+    `congrArg₂ (· ++ ·)`. `List.drop_eq_getElem_cons` rewrote the outer `drop 1` first: give it
+    the instance (`show a < ws.length`). `congr 1` on `lWord w σ x = lWord w σ y` hit max
+    recursion: rewrite the index with `show … by omega`.
+50. `FRNodeReadP` (pure, done): `pSeg` mirrors `ctbs` field by field (`pPh`, `pRest`, the seed's
+    `hdr`), with the invariant `PrevInv` (after a `P2` phase the answers are its items') and the
+    decided `qOk` (every `queries i` follows level `i`'s `P2`). `drop_rep`/`drop_cons_item` give
+    the items and offsets inside a phase; `qB`/`cpSlice` turn a query slice into stream words;
+    `ans_bit` and `testBit_posOf` give a position bit as a stream-word bit; `sib_one`.
+    `proof_words`, `traceKind_lvl` (byte 80 = low byte of word 10), `segLen_pSeg = 99738`
+    (`decide +kernel`), `reassemble_size`, `signedWords_readSigned`, `witWords_readWit`,
+    `readWit_fits`.
+51. `FRXOut` (machine, done): `segIR` (registers 200–224 for the leaves, `226 + 3d`… for `rep` at
+    depth `d`), `ldw_sem`, `cpIR_sem`, `sibHit_sem`, `sibH_sem`, `sibP_sem`, `sibIR_sem`,
+    `segIR_sem`, `wf_segIR`, `loK_segIR`, `noW_segIR`, `noLoopT_segIR`, `ctx_segIR`.
+    Pitfalls: a 14-prim block's `rd` chain timed out with a `decide` discharger (it tried to
+    evaluate the array size); discharge with `simp only [names]; omega` only, and read the heap
+    through `rd_runPrims_of_not_writes`. `exact cpIR_sem …` against the `segIR` goal timed out
+    in unification: `rw [segIR, segOut]` first. `generalize` a state only after rewriting the
+    goal to mention it (`semXIR_seq`, `semXIR_blk`), else the goal keeps the folded program.
+52. `FRXOutRun`: `outIR` (tag, statements, per slot the kind flag, `slotSeg`, `sigSeg`), the
+    address lemmas `addrS_toNat`/`addrL_toNat` (`src_stream`, `src_l`), `outIR_out`. Numbers
+    read off a scratch `#eval` (`scr/ev.lean`, outside the entry): cost 21,609,039, outs 571,019,
+    size 22,421; then `decide +kernel` (`cost_noLoopT` removes `t`).
+    Pitfalls: kernel deep recursion or timeouts at a declaration came from `rfl` closing a goal
+    `[] ++ witWords X = witWords X` or `a + b + 1 + c + 1 = a + b + d` after `rw`: the kernel
+    unfolds the big side (`witWords (readWit …)`, `cost decN`). Close with `List.nil_append`,
+    or `generalize` the big atoms and `omega`. A `rfl` between a two-block `seq` and one
+    `runPrims` list needs the lists in program order.
+53. `FRXNode`: `decF0` (old body), `decNode := decF0 ; outIR`; `decF0_sem` (old proof),
+    `decNode_sem` (same statement: `outIR` is `LoK`, the heap is kept), `decNode_out`,
+    `cost_le_decLN3_node`. `FRXNodeRun`: `ext_node` (the witness), `E_node`. A name clash
+    (`bit_word` in `FRXEqT`) surfaced only when `FRXNode` imported both: renamed `bit_shr_word`.
+54. Checks: whole entry plus the new modules green (`build21`, 4 min 59 s wall on the shared VM);
+    axioms standard (`axioms21.log`); source rule 152 files, 0 findings (`source21.log`).
+55. Profiles (`*.21.*`): FRXOut 57.7 s (elaboration), FRNodeReadP 21.3 s (4.9 s kernel on the decided phase-table facts), FRXNode 28.3 s. Re-built on HEAD d332644 (`build21b`). Handover: RESULT Part 21 §7.
