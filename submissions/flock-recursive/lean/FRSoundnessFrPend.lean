@@ -5,9 +5,12 @@ import FRSoundnessFrE
 # The RS claims' bindings, and E4 end's claim as RS claim 4
 
 * **`okRS oZ oSh`**: the four bindings RS0's `RejRS`/`PendBad` take (`FRSoundnessFrRS0`): Z's
-  (`oZ`, a parameter: the implemented `finZ` binds nothing, S-G6 journal), Lc's `v = v_β`
-  (`finLc` (iii): `v_β = Σ_{i<8} β^i v_i` with L3's values and L3β's `β`), Sh's (`oSh`, a
-  parameter until S's item), E's `v = E4 end's value` (`okE`, `finE` (v)). **`okRS_reads`**.
+  (`oZ`; since INT-4 `finZ` asserts `P^z*(λ) = α_Z` (`relZ`), and the concrete binding is
+  `FRSoundnessFrZ.oZ`), Lc's `v = v_β` (`finLc` (iii): `v_β = Σ_{i<8} β^i v_i` with L3's values
+  and L3β's `β`; under revision 3.16's ruling on R-V-M1/M2 for a node), Sh's (`oSh`; the concrete
+  binding is `FRSoundnessFrS.oSh`, `finSh` (ii)), E's `v = E4 end's value` (`okE`, `finE` (v)).
+  `okRS` keeps Z's and Sh's as parameters so that this module stays below theirs.
+  **`okRS_reads`**.
 * **`trueL_three`**: on a node, RS claim 4's true value is `ẑ(r′)` at E4's point (`pack_unpack`,
   `eqPts_eq`). **`pendE_pendBad`**: E's pending doom is RS0's `PendBad` at claim 4.
 -/

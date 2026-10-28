@@ -7,7 +7,7 @@ import FRSoundnessFrRS
 The RS claim values have no message of their own: `finRS` *computes* `α_j = Σ_i c_{j,i} s_{j,i}`
 from RS0's slices (`rsAlpha`), and the other finals bind each `α_j` where it is used (`finLc`:
 `v_β = α_Lc`; `finSh`: `c_Sh = (w_out + w_in)·α_Sh`; `finE` (iv)–(v): E4 end's value is `α_E`;
-the blueprint's `finZ`: `α_Z = P^z*(λ)`). So:
+`finZ`: `α_Z = P^z*(λ)`, asserted since INT-4, `relZ`). So:
 
 * **`cwL`**: the inner weights `c_{j,i}` on the log (`rsW`'s mirror: `eqZS λ ρ₁`, `eq` at the low
   7 coordinates of Lc's and Sh's points, the packing basis `bb`).

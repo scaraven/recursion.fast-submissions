@@ -82,6 +82,8 @@ import FRSoundnessAccLog
 import FRSoundnessFrRS
 import FRSoundnessFrPend
 import FRSoundnessFrExt
+import FRSoundnessFrS
+import FRSoundnessFrL
 import FRNodeMirror
 import FRVIRTplDag
 import FRVIRTplWalk
