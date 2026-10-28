@@ -185,3 +185,22 @@ print(f"   layout: chains end {stmtBase}; wotsBase {wotsBase}; wmBase {wmBase}; 
 print(f"   node rows per slot {rows14} (S-E5 3.12 model {968943} - 44,168 claim 5 - 20,000 + 31,000); per node {2*rows14} = 2^{math.log2(2*rows14):.2f} ({2**21/(2*rows14):.2f}x); M blocks {Mblocks14} of 16,384 ({16384/Mblocks14:.2f}x); used blocks {lEnd+Mblocks14}")
 v14=204.9+4.5+2.0+1.9
 print(f"   V N30: measured 204.9 ms VM (S-E5, with evalM) + evalLT 4.5 + targetSNode 2.0 + linkWAll 1.9 = {v14:.1f} ms VM ({264/v14:.2f}x of 264 VM-equivalent) = {v14/1.28:.0f} ms runner ({205.9/(v14/1.28):.2f}x); stream link (P2 §12 estimate) ~3.0 s of 3.1 s (1.03x)")
+# ---- changes 21 item (D): the replay fixed point, option (a) (constant-coefficient linear replay). R's rows per slot:
+R_tables=2**11+2**10+2**12+2**11+2*2**14      # eq trees over tau/sigma prefixes and the walks' 14-bit tables (closed form O(log^2))
+R_walks=2*(2**14+2**14)                        # per walk: u-rows (linear, nnz(A0) constant entries) + v-rows (products)
+R_loc=2*15000                                  # per key: u-rows (linear, the template's entries as constants) + v-rows
+R_reg=1500*22                                  # regular imports: bit-by-bit product chains reading the challenge cells (Addr constants in the forms)
+R_irr=2*(sibs*3.5+sibs/8+451*2+512+2000)*1 + 2*(sibs+2000)   # run/irregular imports of the child's two slots: products + the Inc u-rows
+R_pref=3000; R_misc=5000
+R=R_tables+R_walks+R_loc+R_reg+R_irr+R_pref+R_misc
+rows_e6=1017848                                 # S-E6 mRowModel per slot (replay at 422,912; targetS 10 k; linkW 20 k)
+rows14D=rows_e6-422912+R-10000+16000-20000+15000
+rows14D_lever=rows14D-62000
+print("== changes 21 (D): replay fixed point, option (a)")
+print(f"   R per slot {R:.0f} rows: eq trees {R_tables}, walks {R_walks}, template u/v rows {R_loc}, regular imports {R_reg}, run/irregular imports {R_irr:.0f}, prefix/misc {R_pref+R_misc} (was 422,912)")
+print(f"   mRowModel per slot {rows14D:.0f} (S-E6 1,017,848 - 422,912 + R + targetSNode/linkWAll resize); per node {2*rows14D:.0f} = 2^{math.log2(2*rows14D):.2f} ({2**21/(2*rows14D):.2f}x); with the phiRS padding lever {rows14D_lever:.0f}/slot ({2**21/(2*rows14D_lever):.2f}x); M blocks {math.ceil(2*rows14D*128/2**14)} of 16,384")
+# V budget: S-E6 measured 229.3 ms (M without rsWeight, walkAB, shiftTarget, 745 tensorW, linkW, R)
+base6=229.3; add_link=1.9; add_tpl=3.0; add_walks_fast=16; add_walks_now=30; add_R=5
+for lab,w,lever in (("fused walks (8 ms each), no other lever",add_walks_fast,0),("walks as implemented (15 ms each)",add_walks_now,0),("fused walks + S-F2 hot spots (-40 ms)",add_walks_fast,40)):
+    v=base6+add_link+add_tpl+w+add_R-lever
+    print(f"   V N30 ({lab}): {v:.0f} ms VM ({264/v:.2f}x of 264) = {v/1.28:.0f} ms runner ({205.9/(v/1.28):.2f}x)")

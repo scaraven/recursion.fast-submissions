@@ -36,11 +36,11 @@ novel-basis change, within `2^47.5 + 2^12 t` steps.
 | `piSize` (both kinds) | 797,904 B = 779 KiB (revision 3.14: E4 end 32 B) | `proofCap` 1,048,576 | 1.31× |
 | trace items (both kinds) | 8,891 | `qV = 10,240` | 1.15× |
 | hashed trace bytes / compressions | 1,481,344 = `64 · 23,146` / 23,146 (no padding cell) | — | — |
-| node circuit blocks | H + L end at 47,740 of `Mbase` 49,152; M 14,622 of 16,384 blocks | 65,536 | 1.03× (H+L), 1.12× (M) (changes 21) |
-| M rows per node | 1,871,550 = `2^20.84` (S-E5's measured model + the node `targetS`/`linkWAll` templates) | `N_M = 2^21` | 1.12× (changes 21) |
+| node circuit blocks | H + L end at 47,740 of `Mbase` 49,152; M 13,362 of 16,384 blocks | 65,536 | 1.03× (H+L), 1.23× (M) (changes 21) |
+| M rows per node | 1,710,280 = `2^20.71` (S-E6's measured model with the replay `R` at 259 k per slot, §4.4; 1.32× with the `phiRS` padding lever) | `N_M = 2^21` | 1.23× (changes 21) |
 | extractor steps (`m = 30` node) | `2^47.11 + 2^11 t` | `fuel = 2^47.5 + 2^12 t`; `B = 2^48 + 2^16 t` | 1.31×; 1.85× |
 | error per fresh query | `2^-120.36 + 2^-144` | `εR = 2^-120.093` | — |
-| verifier time (N30) | **S-E5 measured 204.9 ms VM with `finE`'s `evalM`**; + `evalLT` 4.5 + `targetSNode` 2.0 + `linkWAll` 1.9 ms (measured apart) | `T_V` 205.9 ms: **≈ 213 ms VM ≈ 167 ms runner** against the VM-equivalent cap ≈ 264 ms (§10 changes 21) | 1.24× |
+| verifier time (N30) | **S-E6 measured 229.3 ms VM** (full 3.13 finals, real L rows, `targetSNode`); still to bind: `linkWAll` 1.9, `rsWeight`/`shiftTarget`/`tensorW` templates ≈ 3, the child's walk rows (2 walks ≈ 16 ms fused, 30 as implemented), the replay's closed forms ≈ 5 | `T_V` 205.9 ms: **≈ 255 ms VM (1.03×) with fused walks; 269 ms (over) with the walks as implemented; ≈ 215 ms VM ≈ 168 ms runner (1.23×) with the S-F2 hot spots (−40 ms)** — the fit depends on (e) (§10 changes 21 D) | 1.03× → 1.23× |
 | output words (node) | `2^19.3` | `outCap = 2^24` | — |
 
 ### 0.1 Decisions
@@ -519,6 +519,34 @@ replay** (`A₀`/`B₀` at an aligned base: the walk); **irregular** (a trace ce
 row's template table: **one product per entry**, `irregular_mle`); **L entries** (templated like M's:
 the signature, digit, selector and position-bit regions have power-of-two strides; `evalL` in
 `O(tpl)`). `evalM_eq`, `evalL_eq` proved generically from the per-kind lemmas.
+
+**The replay fixed point (revision 3.14, S-E6 §4).** The node's M contains the replay rows `R`
+that compute the child's `evalM(r_{E2}, r′)`; a node child has the same circuit, so the matrix `R`
+evaluates contains `R`. If `R`'s rows were as irregular as `evalMT`'s products, `MLE(R)` would cost
+`|R|` and `|R| ≥ |M∖R| + |R|` would have no solution. **The layout rule that closes the fixed
+point (option (a)): every constant the evaluation uses sits in the coefficients of a linear row,
+and every product multiplies two regularly addressed cells.** Concretely, `evalM` is a sum over a
+fixed set of public matrices `𝒞 = {T_k (each key's template), Inc_f (the 0/1 incidence matrices of
+the run/irregular import families: item `t` ↦ its block), Addr (the import addresses' bits), A₀,
+B₀, the pack and base patterns}`, each used as `Σ_r eqτ[r] · (Σ_c C[r,c] · eqσ[c])` with `eqτ`,
+`eqσ` the eq-tree prefix tables (LSB-first, so level `b` is `eq(σ_{<b}, ·)` at the aligned base
+`2^b`). `R` lays this out as **u-rows** `u_r = Σ_c C[r,c] · eqσ[c]` (linear, constant coefficients,
+regular reads), **v-rows** `v_r = eqτ[r] · u_r` (products at stride 1) and aligned range sums, with
+`R`'s u-rows for `C` at a row base aligned to `2^{a_C}`. Then `MLE(u-rows of C)(τ, σ) = eq(τ_hi,
+uBase_C) · eq(σ_hi, tbl_C) · Ĉ(τ_{<a_C}, σ_{<b_C})` — **the same value `Ĉ(τ_lo, σ_lo)` that the
+evaluation of the child's own instances of `C` needs**, computed once and shared; v-rows, sums and
+eq trees are `O(log)`/`O(log²)` closed forms. So `cost(evalM) = Σ_C cost(Ĉ) + O(|𝒞| · log)` and
+`|R| ≈ #products of evalM + Σ_C rows(C)`, independent of `|R|`: the set `𝒞` is closed under taking
+`R`'s own rows (`R` introduces no new constant matrix beyond `Addr`/bases, themselves in `𝒞`).
+The plan is not circular: every base and size is a function of the matrices' dimensions
+(`planOf` from `sizes`), never of `R`'s contents. Lemmas (L-circ/S-E): `replay_mle` (the MLE of
+`R`'s rows in terms of the shared `Ĉ` values and closed forms), `evalM_eq` restated as the sum over
+`𝒞`, `plan_wf` (the layout depends on sizes only), `replay_sound` (an instance of `compileT_sound`).
+No protocol, extractor or error change. `R ≈ 259 k` rows per slot (`sizes.py`: eq trees 42 k, the
+two walks' u/v rows 66 k, template u/v rows 30 k, regular imports 33 k, run/irregular imports and
+`Inc` rows 81 k, prefix/misc 8 k; was 423 k). `T_V`: the parent's `evalM` pays, beyond `M∖R`, the
+two walks `Â₀, B̂₀` at `(τ_{<14}, σ_{<14})` for the child's walk rows (inherent, ≈ 8 ms each fused)
+and ≈ 5 ms of closed forms and `Înc` sums.
 
 ### 4.5 Margins (`sizes.py`)
 
@@ -1189,7 +1217,7 @@ blocks and slots (`irregular_mle`).
 | `kindFoldWeight r′ β ρ → F` | `Σ_kind β^kind · prefixSum_kind(eq(r′,·) eq(ρ_blk,·))`: `O(#intervals · log)` | `r′`, `β`, `ρ` | ≈ 1,000; 1 | local | 1 k |
 | `phiRS r″ a → F` | 127 squarings (`a² = c`: 1 row each) + 7 products (the stages) | `a` (RS0 partials: trace cells), `r″` | 134; 512 | local | 68.6 k |
 | `rsWeight r″ pts κ ρ → K` | `c_k(r″)` (128 products from the stage coefficients); per claim: `r_v^{2^k}` by 127 squarings per coordinate (23 × 127), `eq(r^{2^k}, ρ) = Π_v (1 + ρ_v + r_v^{2^k})` (22 K products per `k`), `Σ_k c_k · (…)` | `r″`, the 4 outer points (trace cells / earlier outputs), `κ`, `ρ` | ≈ 11,400 per claim; 4 | local | 45.6 k |
-| `evalM(r_{E2}, ρ)`, `evalMK`, `evalL` (the **child's** matrix MLEs, `'N'` child only; gated by `s_N`) | the eq tables `eq(ρ_blk, ·)` over `2^16` blocks and `eq(ρ_slot, ·)` over `2^14` positions (K trees: `3·2^16 + 3·2^14`), one K×F product per irregular entry of the child's two slots (`2 × 74,521`), the closed forms of the child's templates in K (≈ 20 k K products), `evalL` ≈ 10 k | `r_{E2}`, `ρ` (trace cells), the child's layout constants | ≈ 464,800; 1 | local (tables), **irregular** (the entries' addresses are the child layout's: public) | 465 k |
+| the child's `evalM(r_{E2}, r′)` replay `R` (`'N'` child only, gated by `s_N`; **revision 3.14: the constant-coefficient linear layout of §4.4**) | eq trees over `τ`/`σ` prefixes and the walks' 14-bit tables; per matrix `C ∈ 𝒞` the u-rows (linear, `C`'s entries as constants) and v-rows (stride-1 products); the imports' bit-by-bit product chains; the `Inc` u-rows; range sums | `r_{E2}`, `r′` (trace cells), the child's layout constants | ≈ 259,000; 1 | eq trees `O(log²)`; u-rows `= Ĉ(τ_lo, σ_lo)` (shared with the child's instances of `C`); v-rows/sums `O(log)` | + 2 walks (≈ 16 ms fused) + ≈ 5 ms |
 | `piField/piElem/piDigest`, `askCol`/`askNode`/`askAbsorb` imports, `idx`, `bitOf`, `selectHalf`, Merkle steps, folds' operands | **no template**: trace cells (bound by the digest chain and `cap_binding`), L bit-elements (`lRows`), or arithmetic already in the skeleton | — | — | irregular where read | in the skeleton's count |
 | `kindSel`, `assertOneHot`, `assertEq` (gated), `const`, `input` (`vk`, `c`: the public cells) | public constants or the skeleton's rows | — | — | — | — |
 
@@ -1678,17 +1706,22 @@ the node's `targetS` and `linkW` and the `WM` map (A.6, A.8, §4.2).
 | S-CN §7, A.11 sizes | `tplTargetSNode` ≈ 16 k rows (from `targetSNodeI`'s measured 2.0 ms), `tplLinkWAll` ≈ 15 k rows per slot (`6 n_f + 24 len_f` per family; `linkWAllI` 1.9 ms); A.11's `linkW` row (8 × 2,500) replaced. |
 | Margins (`sizes.py`, `sizes.txt` "changes 21") | piSize **797,904 B (1.31×)**; items 8,891 (qV 1.15×); stream `64 · 23,146`, no padding; H + L end at **47,740 of 49,152** (1.03×); node rows **935,775 per slot = S-E5's measured model (968,943 at 3.12) − 44,168 (claim 5) − 20,000 + 31,000; 1,871,550 = `2^20.84` per node (1.12× under `N_M`)**, M 14,622 of 16,384 blocks (1.12×); **`T_V` (N30): 204.9 ms VM measured with `evalM` (S-E5) + `evalLT` 4.5 + `targetSNode` 2.0 + `linkWAll` 1.9 = ≈ 213 ms VM (1.24× under the ≈ 264 ms VM-equivalent cap) ≈ 167 ms runner**; stream link (P2 §12 estimate) ≈ 3.0 s of 3.1 s (1.03×; the node prover and its measurement are P2's next item). |
 
+| **(D) S-E6 §4: the replay fixed point** | **Ruling: option (a), with the layout rule of §4.4** ("constants in linear coefficients, products only between regularly addressed cells"). `evalM` is a sum over the fixed public matrices `𝒞` (templates `T_k`, import incidence matrices `Inc_f`, address bits `Addr`, `A₀`/`B₀`, pack/base patterns), each evaluated once at `(τ_lo, σ_lo)`; `R`'s u-rows for `C` have MLE `eq(τ_hi, uBase_C)·eq(σ_hi, tbl_C)·Ĉ(τ_lo, σ_lo)` — the same value — and its v-rows, sums and eq trees are closed forms, so `|R| ≈ #products + Σ_C rows(C)` with `MLE(R)` costing `O(|𝒞|·log)` beyond the shared `Ĉ`: the inequality `|R| ≥ |M∖R| + |R|` does not arise. **Soundness**: unchanged — `R` is the compiled replay of `V`'s `evalM` (`replay_sound` = `compileT_sound`), the plan is a function of sizes (`plan_wf`), no new error row, no extractor change, no `μ` row. **(b)** stays rejected (changes 17 (d): a kernel fact over `2^21` entries, +300 KB, memory-checking rows). **(c)** rejected: deferring the child's claim `Â(r_{E2}^c, r′^c) = v` to the parent's E phase never removes the evaluation (a multi-point reduction moves the point), batching across levels by `γ` destroys the `τ_hi/τ_lo` factorisation (cost × depth), and it changes the relation: the deferred `(r, r′, v)` would have to enter the hashed statement, `RelW`, `acc` and the extractor (which would decode a chain of pending claims verified only at the root), with a `γ` row per level and a new KS argument for claims no node checks locally. |
+| (D) kernel lemmas | **L-circ/S-E**: `replay_mle`, `evalM_eq` over `𝒞`, `plan_wf`, `replay_sound`; the eq-tree closed form `eqTree_mle` (LSB-first prefix tables at aligned bases); `inc_mle` (`Înc_f` = the run/irregular import sums' u-rows). **S-G**: `truthE4`'s `evalM` is `evalMT` over the plan including `R` (no change of statement). **S-E5/E6's evaluator**: `evalMT` restructured so that each `Ĉ` is computed once and reused by the instances and by `R`'s u-rows (`FRVIRTplEval`/`TplFast`). |
+| (D) margins (`sizes.py` "(D)") | `R ≈ 259 k` rows per slot (was 423 k): **`mRowModel` 855,140 per slot, 1,710,280 = `2^20.71` per node (1.23×)**, 1.32× with the `phiRS` padding lever (−62 k); M 13,362 of 16,384 blocks. **`T_V` (N30)**: S-E6's measured 229.3 ms VM + `linkWAll` 1.9 + the remaining templates ≈ 3 + the child's two walks (**16 ms fused / 30 ms as implemented**) + `R`'s closed forms ≈ 5 = **≈ 255 ms VM (1.03× under ≈ 264) with fused walks; ≈ 269 ms (over, 0.98×) with the walks as implemented; ≈ 215 ms VM ≈ 168 ms runner (1.23×) with the S-F2 hot spots (`dotKF` 28, `askNode` 22, `idx` 20, `maskRows` 7 ms: −40 ms)**. **FR-D2 frontier**: the shape is consistent only with the fused `walkAB` **and** at least ≈ 10 ms of the hot-spot work (then 1.07×); without (e) the obstruction is `229 + 2·15 + 10 > 264`. The largest consistent shape without (e) does not exist at `m = 30` (the walks and the 229 ms base are inherent to one `evalM` call); the rule-change fallback is a smaller `R` in `T_V = T_triv/R` (the coordinator's `R = 10`). Stream link ≈ 3.0 s of 3.1 s (unchanged by (D)). |
+
 **Revision 3.14 (normative):** (1) E4 end 32 B, piSize 797,904, no padding cell, `finE` (v); (2)
 `r_{Lr}` = Lr2's final point; (3) A.3's numbering and offsets; (4) `finB′` without `κ′ v_E` and
 padding cells, `J_f = 9`; (5) 8 link families with `end41lo`/`end41hi`; (6) the `WM` map of A.6 and
 the chain-masked node Sh; (7) `linkWAll`, S1 row `(26 + 9)/2^128`, kind-selected `slotW_in`; (8)
-`t_lo = 1,481,344`, steps `s ∈ {0,1,2}`; (9) A.11's `tplTargetSNode` 16 k / `tplLinkWAll` 15 k.
+`t_lo = 1,481,344`, steps `s ∈ {0,1,2}`; (9) A.11's `tplTargetSNode` 16 k / `tplLinkWAll` 15 k; **(10) the
+replay `R` in the constant-coefficient linear layout of §4.4 (option (a)), ≈ 259 k rows per slot.**
 
 **What each track changes (revision 3.14):**
 - **S-0** (transcript, `FRVIRChain`/`FRVIRFinals`): E4 end 32 B (done in INT-2); `finSh`'s `linkWAll` op with the packed points, the `κ_s^{f+2}` weights and `relSh`/`flag_finSh`; `finLr`'s `r_{Lr}` export (done); A.3/A.4 as the table.
 - **S-C** (`FRShift`, `FRVerifierImplNode` specs): `shift_sound_masked`; `linkWAllS` with the 8 families and the A.6 map (S-CN's `wmB`/`mirB`/`mpos` are the pinned ones), `linkW_mle`, `linkInd_sum`; `targetSNodeS` with `t_lo = 1,481,344` (S-CN's `cls 2` already).
 - **S-F / S-F2** (`FRVerifierImpl`): `finE` (v); `implC`'s `targetS` and `linkWAll` selected by `κ.isNode`, `slotW_in` by kind; `linkWAll_meets`, `targetSNode_meets` in `implC_meets`; `finB′` without `κ′ v_E`.
-- **S-E** (`FRNodeLayout`, mux, templates): `wmSlot = 146`, `hEnd = 47,594`, `regions_fit`; the mux's mirror output addresses per the A.6 map; `mRowModel` without the claim-5 row and with `tplTargetSNode`/`tplLinkWAll`; the two templates.
+- **S-E** (`FRNodeLayout`, mux, templates, evaluator): `wmSlot = 146`, `hEnd = 47,594`, `regions_fit`; the mux's mirror output addresses per the A.6 map; `mRowModel` without the claim-5 row, with `tplTargetSNode`/`tplLinkWAll` and `R` at 259 k; the two templates; **the replay `R` in the §4.4 layout (`replay_mle`, `plan_wf`, `replay_sound`, `inc_mle`, `eqTree_mle`) and `evalMT` sharing each `Ĉ` between the instances and `R`'s u-rows; the fused `walkAB` (with S-F) and the S-F2 hot spots, which the `T_V` fit now depends on.**
 - **S-G** (soundness): the node `truthS1` with the chain mask and the 8 terms, `sh_reads_chain_only`; `truthB′` with `J_f = 9` (`pfCells`); the E4 end binder in `truthE4`'s end absorb; positions as INT-2 §3.
 - **S-H2** (extractor): π offsets of INT-2 §4.1 and the item indices (−29 from B′ on); E4 end 32 B.
 - **P2** (prover): the mirror writes per the A.6 map (146 blocks per slot after both WOTS runs), `end41` split, `linkWAll`'s weights in the Sh tables, the chain mask in the node's Sh tables, `slotW_in` = `h_in` for node blocks; E4 end `f̂(r′) ‖ 0^16` (done).

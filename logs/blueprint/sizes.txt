@@ -35,3 +35,9 @@
    layout: chains end 46292; wotsBase 46298; wmBase 47294; WM 2 x 146 blocks end 47586 (< lBase 47616); hEnd 47594; L ends 47740 of 49,152 (1.03x)
    node rows per slot 935775 (S-E5 3.12 model 968943 - 44,168 claim 5 - 20,000 + 31,000); per node 1871550 = 2^20.84 (1.12x); M blocks 14622 of 16,384 (1.12x); used blocks 62362
    V N30: measured 204.9 ms VM (S-E5, with evalM) + evalLT 4.5 + targetSNode 2.0 + linkWAll 1.9 = 213.3 ms VM (1.24x of 264 VM-equivalent) = 167 ms runner (1.24x); stream link (P2 §12 estimate) ~3.0 s of 3.1 s (1.03x)
+== changes 21 (D): replay fixed point, option (a)
+   R per slot 259204 rows: eq trees 41984, walks 65536, template u/v rows 30000, regular imports 33000, run/irregular imports 80684, prefix/misc 8000 (was 422,912)
+   mRowModel per slot 855140 (S-E6 1,017,848 - 422,912 + R + targetSNode/linkWAll resize); per node 1710280 = 2^20.71 (1.23x); with the phiRS padding lever 793140/slot (1.32x); M blocks 13362 of 16,384
+   V N30 (fused walks (8 ms each), no other lever): 255 ms VM (1.03x of 264) = 199 ms runner (1.03x)
+   V N30 (walks as implemented (15 ms each)): 269 ms VM (0.98x of 264) = 210 ms runner (0.98x)
+   V N30 (fused walks + S-F2 hot spots (-40 ms)): 215 ms VM (1.23x of 264) = 168 ms runner (1.22x)
