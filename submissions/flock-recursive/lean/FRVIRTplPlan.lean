@@ -201,7 +201,17 @@ def tinPP (L : TLay) (one : Lin) (off : ℕ) (t : TKey × ℕ × List Lin) : Lis
   let X := off + L.rb t.1 + t.2.1 * 2 ^ T.rbits
   let cb := L.cb t.1 t.2.1
   let r : RawI := ⟨T.rows, t.2.2.toArray, X, cb, T.rbits, L.bits t.1⟩
-  if 12 < T.rbits then
+  if isWalk t.1 then
+    -- the walk's DAG (S-E10): its `2^gBits` blocks (the 80 `G` gadgets, the head, the tail), each
+    -- abstracted over the block's cells, so that the `G` blocks are instances of one key
+    let rows := ((tinIRows L one off t).map (·.2)).toArray
+    let B := 2 ^ gBits
+    let nb := rows.size / B
+    let seg := fun (a b : ℕ) => (List.range (b - a)).map fun i => rows.getD (a + i) ⟨[], [], []⟩
+    let idx := fun (a b : ℕ) => (seg a b).zipIdx.map fun p => (X + a + p.2, p.1)
+    ((List.range nb).map fun c => blockPP (seg (B * c) (B * c + B)) (X + B * c) (cb + B * c) gBits) ++
+      [PP.sp (idx (B * nb) rows.size)]
+  else if 12 < T.rbits then
     let rows := ((tinIRows L one off t).map (·.2)).toArray
     let nb := rows.size / 64
     let seg := fun (a b : ℕ) => (List.range (b - a)).map fun i => rows.getD (a + i) ⟨[], [], []⟩
@@ -261,7 +271,8 @@ member's window; a **partition** input if it takes at most 16 values in each slo
 split by these values, so that each part shares them); otherwise own. Returns the kinds (`sh j` for
 the `j`-th partition input, own inputs numbered after them) and, per partition input, its index and
 its distinct values in slots 0 and 1. -/
-def inputKinds (mem : List (ℕ × RawI)) : Array IK × List (ℕ × List Lin × List Lin) :=
+def inputKinds (mem : List (ℕ × RawI)) (part : Bool := true) :
+    Array IK × List (ℕ × List Lin × List Lin) :=
   let n := mem.foldl (fun m p => max m p.2.ins.size) 0
   let r := (List.range n).foldl (fun (q : Array IK × List (ℕ × List Lin × List Lin) × ℕ) i =>
     let col := mem.map fun p => (p.1, p.2.cb, p.2.B, p.2.ins.getD i [])
@@ -275,7 +286,7 @@ def inputKinds (mem : List (ℕ × RawI)) : Array IK × List (ℕ × List Lin ×
       let d := fun (σ : ℕ) => distinctUpTo 16 ((col.filter (·.1 == σ)).map (·.2.2.2))
       -- a partition input splits the group only into parts of at least 4 members (per slot)
       let big := fun (σ : ℕ) (dv : List Lin) => 4 * dv.length ≤ (col.filter (·.1 == σ)).length
-      match d 0, d 1 with
+      match (if part then d 0 else none), d 1 with
       | some d0, some d1 =>
         if (d0.length ≤ 1 && d1.length ≤ 1) || (big 0 d0 && big 1 d1) then
           (q.1.push (IK.sh q.2.1.length), q.2.1 ++ [(i, d0, d1)], q.2.2)
@@ -321,7 +332,13 @@ def groupPPs (pp0 pp1 : Array PP) : Array Key × Array (List Lin) × Array (List
       | .sp _ => st) st
   let st := addAll 1 pp1 (addAll 0 pp0 ({}, #[]))
   let mems := st.2.map List.reverse
-  let ana := mems.map inputKinds
+  -- partition inputs whose joint labels cut the group into parts of fewer than 4 members are
+  -- read as own inputs instead (the walk's message words: 16 values each, 80 joint labels; S-E10)
+  let ana := mems.map fun m =>
+    let a := inputKinds m
+    let labs := m.foldl (fun (acc : List (ℕ × List ℕ)) p =>
+      let l := (p.1, partLabel a.2 p.1 p.2); if acc.contains l then acc else l :: acc) []
+    if 4 * labs.length ≤ m.length then a else inputKinds m false
   -- the parts: key ids by (group, label)
   let st2 := (List.range mems.size).foldl (fun (q : Std.HashMap (ℕ × List ℕ) ℕ × Array (ℕ × List ℕ)) g =>
     (mems.getD g []).foldl (fun q m =>

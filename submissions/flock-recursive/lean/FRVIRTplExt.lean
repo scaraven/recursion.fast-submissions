@@ -5,6 +5,7 @@ import FRVIRTplLag
 import FRVIRTplRep
 import FRVIRCompileSound
 import FRVIRTplMask
+import FRVIRTplWalk
 
 /-!
 # `compileT`: the compiler with the replay templates, and `compileT_sound`
@@ -29,6 +30,17 @@ open Tpl RecursionFast
 
 /-! ## The template table -/
 
+/-- The node's walk template (`rowW′`, `colW` of `2^14` entries), computed once. -/
+def tplWalk14 : Tpl := tplWalkG (2 ^ 14) (2 ^ 14)
+
+/-- `walkAB`'s template at operand sizes `n`, `m` (the node's from the closed term). -/
+def tplWalkOf (n m : ℕ) : Tpl := if n = 2 ^ 14 ∧ m = 2 ^ 14 then tplWalk14 else tplWalkG n m
+
+theorem tplWalkOf_eq (n m : ℕ) : tplWalkOf n m = tplWalkG n m := by
+  unfold tplWalkOf; split_ifs with h
+  · obtain ⟨rfl, rfl⟩ := h; rfl
+  · rfl
+
 /-- **The templates** by key (A.11's table; keys without a template yet have none). -/
 def tplOf : TKey → Tpl
   | .eqPt n m => tplEqPt n m
@@ -45,6 +57,7 @@ def tplOf : TKey → Tpl
   | .tensorW n => tplTensorW n
   | .rowW _ => tplRowW
   | .shiftMask n m => tplShiftMask n m
+  | .walkAB n m => tplWalkOf n m
   | _ => ⟨[], []⟩
 
 /-- **A layout**: per key, the group's row base (relative to the slot), cell base and cell bits. -/
@@ -100,6 +113,11 @@ def tplExt (tc : TCtx) : Ext := fun P cs op =>
     | _, _ => none
   -- `targetS` is the node's at a node kind (S-CN's `targetSNodeI`) and the leaf's otherwise, so
   -- the leaf template no longer serves every kind: an import until `tplTargetSNode` (S-E6)
+  -- the walk as the node's own XOR DAG (revision 3.15)
+  | .walkAB r c =>
+    match cs.slot r, cs.slot c with
+    | some (.af n, lr), some (.af m, lc) => some (tplOut tc P cs (.walkAB n m) (lr ++ lc) [.f, .f])
+    | _, _ => none
   | .slotW sm t r =>
     match cs.slot t, cs.slot r with
     | some (.af n, lt), some (.af m, lr) => some (tplOut tc P cs (.slotW sm n m) (lt ++ lr) [.f])
@@ -159,6 +177,7 @@ structure ImplT (impl : OpImpl) : Prop where
   tensorW : impl.tensorW = Impl.tensorWI
   rowW : impl.rowW = Impl.rowWI
   shiftMask : impl.shiftMask = NodeI.shiftMaskI
+  walkAB : impl.walkAB = Eval.walkImpl
 
 theorem outSlots_length (one : Lin) (ins : List Lin) (cb : ℕ) :
     ∀ (tys : List Ty) (os : List LinT), (outSlots one ins cb tys os).length = tys.length
@@ -371,6 +390,22 @@ theorem tplExt_ok {impl : OpImpl} (hT : ImplT impl) (L : TLay) : ExtOk impl L.ct
     rw [hx, hy, hT.shiftMask]
     exact outSlots_three rfl rfl rfl
       (tplShiftMask_ok (inpIs_of (by simp [hxl, hyl])) hP.1 (tin_eqns hP.1 ht))
+  case walkAB r c =>
+    split at hX <;> simp only [Option.some.injEq, reduceCtorEq] at hX; subst hX
+    rename_i n lr m lc hr hc
+    refine ⟨rfl, fun κ inp w regs hP hI => ⟨fun q => by simp [evalOp], fun _ ht _ vs ok he => ?_⟩⟩
+    simp only [evalOp, Res.vals.injEq] at he; obtain ⟨rfl, rfl⟩ := he
+    refine ⟨fun _ => ?_, fun _ => rfl⟩
+    obtain ⟨x, hx, rfl, hxl⟩ := rep_af (rep_slot hI hr)
+    obtain ⟨y, hy, rfl, hyl⟩ := rep_af (rep_slot hI hc)
+    rw [hx, hy, hT.walkAB]
+    have he := tin_eqns hP.1 ht
+    have hg : (L.ctx.tpl (.walkAB x.size y.size)) = tplWalkG x.size y.size := by
+      simp only [TLay.ctx, tplOf, tplWalkOf_eq]
+    rw [hg] at he
+    have ho := tplWalkAB_ok (inpIs_of (by simp [hxl, hyl])) he
+    rw [← hg] at ho
+    exact outSlots_two rfl rfl ho
   case tensorW j r =>
     split at hX
     · rename_i n lr hr
@@ -433,6 +468,12 @@ def cregion (k : TKey) : ℕ :=
   | .tensorW n => max (tplOf k).cbits (Nat.size (5 * n + logNMax))
   | _ => (tplOf k).cbits
 
+/-- The walk's blocks (`G` gadgets at a `2^gBits` stride): its rows and cells are aligned to the
+block, and the next group's cells start after its last local (S-E10). -/
+def isWalk : TKey → Bool
+  | .walkAB .. => true
+  | _ => false
+
 /-- **The layout** from the counts: groups after the skeleton's rows `r0` and cells `c0`, each
 aligned to its instance size. -/
 def mkLay (r0 c0 : ℕ) : List (TKey × ℕ) → TLay
@@ -440,11 +481,12 @@ def mkLay (r0 c0 : ℕ) : List (TKey × ℕ) → TLay
   | (k, n) :: ks =>
     let T := tplOf k
     -- a template of more than `2^12` rows is evaluated in 64-row chunks (`FRVIRTplPlan.tinPP`),
-    -- so its rows need only 64-row alignment (S-E6)
-    let rb := alignUp r0 (if 12 < T.rbits then 6 else T.rbits); let cb := alignUp c0 (cregion k)
+    -- so its rows need only 64-row alignment (S-E6); the walk's in `2^gBits` blocks (S-E10)
+    let rb := alignUp r0 (if isWalk k then gBits else if 12 < T.rbits then 6 else T.rbits)
+    let cb := alignUp c0 (if isWalk k then gBits else cregion k)
     -- the next group starts after the last instance's rows, not its whole aligned region (S-E6)
     (k, rb, cb, cregion k) :: mkLay (rb + (n - 1) * 2 ^ T.rbits + T.rows.length)
-      (cb + n * 2 ^ cregion k) ks
+      (if isWalk k then cb + (n - 1) * 2 ^ cregion k + nlocs T.gates else cb + n * 2 ^ cregion k) ks
 
 /-- **The two-pass compile**: count with the zero layout, lay the groups out, compile again. -/
 def layOf (P : Params) (base : ℕ) (ops : List Op) : TLay :=

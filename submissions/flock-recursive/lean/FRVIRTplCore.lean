@@ -134,18 +134,21 @@ def RowT.Holds (e : Env) (r : RowT) : Prop := r.a.ev e * r.b.ev e = r.c.ev e
 
 /-! ## Gates and templates -/
 
-/-- A gate: a product (one new local, one row), an inverse (two locals, three rows), or a product
-plus a linear form (one local `a·b + c`, one row; S-E5). -/
+/-- A gate: a product (one new local, one row), an inverse (two locals, three rows), a product
+plus a linear form (one local `a·b + c`, one row; S-E5), or **padding** (`r` empty rows and `l`
+unused locals: the alignment of a block inside a template; S-E10). -/
 inductive Gate where
   | mul (a b : LinT)
   | inv (a : LinT)
   | mulAdd (a b c : LinT)
+  | pad (r l : ℕ)
 
 /-- The locals a gate allocates. -/
 def Gate.nloc : Gate → ℕ
   | .mul .. => 1
   | .inv _ => 2
   | .mulAdd .. => 1
+  | .pad _ l => l
 
 /-- A gate's rows, its first local at `k`. -/
 def Gate.rows (k : ℕ) : Gate → List RowT
@@ -153,12 +156,14 @@ def Gate.rows (k : ℕ) : Gate → List RowT
   | .inv a => [⟨a, L k, L (k + 1)⟩, ⟨a, C 1 ++ sc (-1) (L (k + 1)), []⟩,
       ⟨L k, C 1 ++ sc (-1) (L (k + 1)), []⟩]
   | .mulAdd a b c => [⟨a, b, L k ++ sc (-1) c⟩]
+  | .pad r _ => List.replicate r ⟨[], [], []⟩
 
 /-- A gate's equation, its first local at `k`. -/
 def Gate.Eqn (e : Env) (k : ℕ) : Gate → Prop
   | .mul a b => e.loc k = a.ev e * b.ev e
   | .inv a => e.loc k = (a.ev e)⁻¹
   | .mulAdd a b c => e.loc k = a.ev e * b.ev e + c.ev e
+  | .pad .. => True
 
 /-- The gates with their first locals, from `k`. -/
 def gatesAt : List Gate → ℕ → List (ℕ × Gate)
@@ -216,6 +221,7 @@ theorem Gate.eqn_of_rows {e : Env} (h1 : e.one = 1) (k : ℕ) (g : Gate)
   | mulAdd a b c =>
     simp only [Gate.rows, List.mem_singleton, forall_eq, RowT.Holds, ev_append, ev_L, ev_sc] at h
     simp only [Gate.Eqn]; linear_combination -h
+  | pad => trivial
 
 /-- **The rows give the gate equations** (generic, once for every template). -/
 theorem Tpl.eqns_of_rows {e : Env} (h1 : e.one = 1) (T : Tpl) (h : ∀ r ∈ T.rows, r.Holds e) :
@@ -294,6 +300,7 @@ inductive TKey where
   | rsWeight (n : ℕ) (ps : List ℕ) (m : ℕ)
   | kindInd (n : ℕ)
   | shiftMask (n m : ℕ)
+  | walkAB (n m : ℕ)
   deriving DecidableEq, Inhabited
 
 /-- **The template context**: each key's template and each instance's cell base. -/
