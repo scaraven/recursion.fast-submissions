@@ -88,3 +88,37 @@ relocated fields).
   the parameter `NodeDec4.Links`).
 - Final: 2,468 jobs green; 117 theorems' axioms clean; source rule 257 files, 0 findings.
   Stopped with items 2–4 in the RESULT's Pass 2 handover (context long).
+
+### Pass 3 (R4c)
+
+- Build tree `logs/fr-build-R4c` (copy of R4b's; `b.sh` logs to `logs/R4c/`). Baseline (HEAD `4919027`)
+  green. Re-snapshotted to HEAD `94ee843` (P4e, S-H4 committed) for the final build.
+- **Item 2 (flags at `FinP`)**: `FRSoundness4R4Fin` (`pe4`, `evalOp_reloc`, `reloc_pi*`,
+  `flag_gFinZ`, `flag_gFinLr`, `flag_gFinE`, `flag_gFinB'`), `FRSoundness4R4FinSh` (`flag_gFinSh`,
+  four cases `P.vn × P.kv.node`), `FRSoundness4R4FinLc` (`flag_gFinLc`, generated from 3.x's text;
+  `dotOps_reloc`, `lcTail_reloc`), `FRSoundness4R4FinRS` (`run_elemOps4` … `exec_gFinRS`, the kit on
+  relocated ops). Relations are 3.x's with sizes/kind tables/reads from `P` (`relZ4` …); controls
+  `relZ4_fin3P`, `relLr4_fin3P`, `relB4_fin3P`, `relLc4_fin3P` (+: equal to 3.x's at `fin3P`),
+  `relZ4_rejects`, `relLr4_rejects` (−).
+  Traps: `simp only [reloc]` unfolds `reloc S (wop i)` into a match on an opaque `wop i`: rewrite
+  with `hwr` first, then unfold `reloc`. `reloc` on a field read needs `hf : f < 19` in the simp
+  set (else an unreduced `if`), and `absOff_zero` (else `rfl` whnf's `fieldOffA`).
+  `gFinSh`'s link part: kept general (`linkSum (impl.linkWAll …)`) in `relSh4`, so the front check
+  closes it with `linkWAll_seg*` + `linkSum_zero` rather than `run_linkOps_zero`.
+- **Missing fact (b), outs before `next`** (`FRSoundness4R4Outs`): `opsOut_*` for every generator,
+  `genPhase4_out_lt`, `genPhases4_split`, `cAt4_succ`, `cAt4_next_mono`, `cAt4_outs`, `OutsLt`,
+  `cAt4_outsLt` (from the run's `CtxOk`, as 3.x), **`segPt_lt`** (`uni_view4`'s `hpt`, any `n > 3`),
+  **`skeleton4_out_lt`**. Trap: `rfl` for `opsOut (lastOps o b) = 94` hits max recursion
+  (`opsOut_flatMap` instead).
+- **Missing fact (a), the kind** (`FRSoundness4R4Kind`): `seed_byte4` (the seed's `assertEq` and
+  `ofBytes_inj` give `byteAt π 0 = p.byte`), `kindOfC_byte4` (byte 71 of the seed query),
+  **`kindOfC_seg4`**, **`kindOfC_node4`**, `dims_seg4`, `dims_node4` (`z3 = m − 6`, `s2 = nb + 10`,
+  node `lr/e2/e4 = lrR/e2R/ncR`). Trap: any `simp` that meets `bytesOf ([…] ++ replicate 46 0)`
+  hits max recursion: `generalize` it first.
+- **Item 3 started**: `FRSoundness4R4Acc`: `fields_of_accept4` (every field's relocated run from a
+  file extending the skeleton's, flag `true`), `skel_pos4`, `outsOf_lt4`, `hin_Lr`,
+  **`relLr4_of_accept`** (the template). Trap (cost me four bisections): **never let the unifier
+  see `(skeleton4 seq4 p).2.outs` under a reducible head** (`List.drop`, `headD`): `rfl` against it,
+  `rcases … rfl`, or `List.mem_of_mem_drop` on `coordsR ⟨skeleton…⟩` whnf's `skeleton4` (heartbeat
+  timeout). State register bounds for an abstract `fi` (`hin_Lr`) and instantiate.
+- Stopped with items 3 (rest) and 4 in the RESULT's Pass 3 handover (context long).

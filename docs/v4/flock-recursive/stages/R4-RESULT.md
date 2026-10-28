@@ -324,3 +324,167 @@ fixed it (< 0.2 s).
    item 3; `p1`/`pf` need K-round views (`inK = true`; this pass did F only: port 3.x's
    `rounds_view` to `rounds_at4`'s form, `roundKVals`); `lvl4` needs level 4's column values
    (port `posT` for `posOps4`, R4's D2) and `flag_gFinP 4`; `fin` from `flag_gFinPf`.
+
+## Pass 3 (track R4c; HEAD `4919027`, re-snapshotted to `94ee843`)
+
+- **Build tree** `logs/fr-build-R4c` (a copy of `fr-build-R4b`; `b.sh`/logs to `logs/R4c/`;
+  `MINE.txt` adds the eight new modules). Every lean/lake command ran in the 16G scope (12G for single
+  files) under `timeout`. No sub-agents. Nothing committed. Only R4's modules and new
+  `FRSoundness4R4*` modules written; every new short name grepped first (`relZ4`, `pe4`, `sv4`,
+  `OutsLt`, … are new). No statement of another track changed; `FRVIRFinals*` untouched (G1).
+- **Imports for `FR.lean`:** add `import FRSoundness4R4Acc` (it pulls `FRSoundness4R4FinCtrl`,
+  `…Fin`, `…FinSh`, `…FinLc`, `…FinRS`, `…Outs`, `…Kind`), next to R4/R4b's imports.
+
+### Status
+
+| Item | State |
+|---|---|
+| 2. Finals' flags at `FinP` | **Done** for every field the front reads: `flag_gFinZ`, `flag_gFinLc`, `flag_gFinSh`, `flag_gFinLr`, `flag_gFinE`, `exec_gFinRS`, `flag_gFinB'` (all on `(gFin* P fi r.size).1.map (reloc P.S)`, any `P`, any kind index). `gFinP`/`gFinPf` (item 4's) not started. |
+| Missing fact: the kind | **Done**: `kindOfC_seg4`, `kindOfC_node4` (from the seed's check), `dims_seg4`, `dims_node4`. |
+| Missing fact: outs before `next` | **Done**: `segPt_lt` (`uni_view4`'s `hpt`), `skeleton4_out_lt`, `cAt4_outsLt`. |
+| 3. Front checks | **Started**: the run bridge `fields_of_accept4` and its template `relLr4_of_accept` (the relation holds on an accepted run, on a file extending the skeleton's). No `¬ Rej*` closed yet. |
+| 4. `AcceptTail` | Not started. |
+
+**Final checks** (HEAD `94ee843` re-snapshotted, R4's 17 modules overlaid):
+- `lake build FR` + the 17 R4 modules: **green, 2,494 jobs** (`logs/R4c/build-final.log`).
+- **Axioms** (`logs/R4c/axioms.log`, all 188 theorems of the 17 modules): within `propext`,
+  `Classical.choice`, `Quot.sound` (10 use none); no `sorryAx`.
+- **Source rule** (`python3 -I logs/org20/scripts/source-rule.py submissions/flock-recursive`): 274
+  files, 0 findings (`logs/R4c/source-rule.log`).
+- **Times** (sequential, one core: `taskset -c 0 lake env lean -DElab.async=false --profile`;
+  `logs/R4c/prof-*.log`; import ≈ 4 s):
+
+  | Module | wall | type checking | max RSS |
+  |---|---|---|---|
+  | `FRSoundness4R4Fin` | 14.4 s | 0.27 s | 2.9 GB |
+  | `FRSoundness4R4FinSh` | 28.4 s | **3.68 s** (`flag_gFinSh`: four unrolled cases with 32 link ops each) | 3.1 GB |
+  | `FRSoundness4R4FinLc` | 12.2 s | 0.56 s | 2.9 GB |
+  | `FRSoundness4R4FinRS` | 15.7 s | 0.11 s | 2.9 GB |
+  | `FRSoundness4R4Outs` | 45.7 s | 0.14 s (elaboration: `genPhase4_out_lt`'s simp; golf target) | 3.0 GB |
+  | `FRSoundness4R4Kind` | 8.0 s | < 0.1 s | 3.0 GB |
+  | `FRSoundness4R4FinCtrl` | 7.0 s | < 0.1 s | 3.0 GB |
+  | `FRSoundness4R4Acc` | 7.2 s | < 0.1 s | 3.0 GB |
+
+  Net kernel cost of the pass ≈ 4.9 s, 3.7 s of it `flag_gFinSh` (if the budget needs it: prove
+  `relSh4`'s link part once through `run_linkOps_zero`-style family lemmas instead of unrolling, as 3.x
+  could not). No `decide` over a program, a register file or a table in this pass (only
+  `kind_zero_none` over the kind-byte decoder, and `dims_*` over three kinds).
+
+### What was built (`loc.py`, `logs/R4c/loc.txt`: total / code / thm)
+
+| Module | total / code / thm | Content |
+|---|---|---|
+| `FRSoundness4R4Fin` | 251 / 196 / 11 | `pe4` (a read at `fieldOffOf S f + o`), **`evalOp_reloc`** (one lemma, every read form, general `S`), `reloc_piElem`/`_piField`/`_piDigest`, `evalOp_pi*0`; `relZ4` + **`flag_gFinZ`**, `relLr4`/`vLv4` + **`flag_gFinLr`** (exports `v_L`, Lr2's point), `relE4` + **`flag_gFinE`** (export `r′`), `pubH4`/`vStar4`/`relB4` + **`flag_gFinB'`** |
+| `FRSoundness4R4FinSh` | 110 / 91 / 1 | `relSh4` (with `P.vn`: `τ ‖ L` operand, `E`/`Sh`/`E₀` from `shiftMask`, `bnd`'s last block `L`) + **`flag_gFinSh`** |
+| `FRSoundness4R4FinLc` | 170 / 128 / 4 | `lcV4`, `lcRhi4`, `lcWalk4`, `lcVf4`, `lcFree4`, `relLc4` + **`flag_gFinLc`**; `dotOps_reloc`, `lcTail_reloc`, `lcFree4_leaf` |
+| `FRSoundness4R4FinRS` | 333 / 287 / 5 | `sv4`, `rsLeafZero4`; `run_elemOps4`, `run_elemsOps4`, `run_claimOps4`, `run_rsTail4`; `rsW4`, `rsAlpha4`, `rsTv4`, `rsV4`, `relRS4`, `rsRefs4` + **`exec_gFinRS`** (flag `relRS4`, exports `α_j = rsAlpha4`, `v_RS = rsV4`) |
+| `FRSoundness4R4Outs` | 253 / 201 / 26 | `opsOut_*` (absorb, `lastOps` 94, seed 4, squeezes, uni 136, rounds `w·n`, Merkle `6n`, position `posW4`); **`genPhase4_out_lt`**, `genPhases4_split`, `cAt4_succ`, `cAt4_next_mono`, `cAt4_size`, `cAt4_outs`, `OutsLt`, `genPhase4_outsLt`, **`cAt4_outsLt`**, **`segPt_lt`**, **`skeleton4_out_lt`** |
+| `FRSoundness4R4Kind` | 106 / 78 / 7 | **`seed_byte4`**, `kindOfC_byte4`, **`kindOfC_seg4`**, **`kindOfC_node4`**, `dims_seg4`, `dims_node4` |
+| `FRSoundness4R4FinCtrl` | 91 / 52 / 11 | the controls (below) |
+| `FRSoundness4R4Acc` | 98 / 73 / 6 | **`fields_of_accept4`**, `skel_pos4`, `outsOf_lt4`, `hin_Lr`, **`relLr4_of_accept`** |
+| **new total** | 1,412 / 1,106 / 71 | R4 total now 3,655 / 2,862 / 188 |
+
+### Main statements
+
+```lean
+theorem evalOp_reloc (hf : f < 19) (o len k : ℕ) :
+    evalOp impl κ inp regs (reloc S (.piField f o len)) = .vals [.b (inp.π.extract (fieldOffOf S f + o) (fieldOffOf S f + o + len))] true ∧
+    evalOp impl κ inp regs (reloc S (.piElem f o)) = .vals [.f (pe4 S inp f o)] true ∧ … (piElemK, piDigest, piDigestAt)
+theorem flag_gFinZ (hin : ∀ x ∈ coordsR fi "Z1" ++ chals fi "Z3" P.S.z3 ++ [claimN fi "Z3", (outsOf fi "Z2").getD 2 0, fi.zhat.getD 0 0], x < r.size) :
+    ∃ L, pureRun impl κ inp ((gFinZ P fi r.size).1.map (reloc P.S)) r [] = some (L, relZ4 κ inp fi r P)
+-- likewise flag_gFinLr (+ exports), flag_gFinE (+ export), flag_gFinB' (+ export), flag_gFinSh, flag_gFinLc,
+-- exec_gFinRS (+ exports α_j, v_RS)
+theorem segPt_lt (h : refPhases4 impl κ inp seq4 p (phasesOf seq4) 0 ctx0 #[] tr = some y) (h3 : 3 < n)
+    (hn : n ≤ (phasesOf seq4).length) : ∀ x ∈ segPtRegs seq4 p (cAt4 seq4 p n).outs, x < (cAt4 seq4 p n).next
+theorem skeleton4_out_lt (h : refPhases4 …) : ∀ m, ∀ x ∈ (skeleton4 seq4 p).2.outs.getD m [], x < (#[] ++ y.1.toArray).size
+theorem kindOfC_seg4 (h : SkRun4 impl (.ofSeg σ) inp tr y) : kindOfC (fsOf tr (itemsOf seq4)) = .seg σ
+theorem kindOfC_node4 (h : SkRun4 impl (.ofNode ν) inp tr y) : kindOfC (fsOf tr (itemsOf seq4)) = .node ν
+theorem fields_of_accept4 (P : FinP) (h : semIR impl (gen4 seq4 p (finOps4 P)) inp tr = some true) :
+    ∃ y, SkRun4 impl p inp tr y ∧ ∃ zh Rs, (∀ k ≤ 12, ExtA (#[] ++ y.1.toArray) (Rs k)) ∧
+      ∀ k (hk : k < 12), ∃ ex L, pureRun impl p.tix inp (((finalsOf P).rest[k] ⟨(skeleton4 seq4 p).2.outs, zh, ex⟩ (Rs k).size).1.map (reloc P.S)) (Rs k) [] = some (L, true)
+theorem relLr4_of_accept (P : FinP) (h : semIR impl (gen4 seq4 p (finOps4 P)) inp tr = some true) :
+    ∃ y, SkRun4 impl p inp tr y ∧ ∃ fi R, fi.outs = (skeleton4 seq4 p).2.outs ∧ ExtA (#[] ++ y.1.toArray) R ∧ relLr4 p.tix inp fi R P = true
+```
+
+### Design and deviations
+
+- **D6. The relations are 3.x's, generalised, not reused verbatim.** 3.x's `relZ` … hard-code
+  `Kind.m`, 3.x's sizes (Z3 26, Lr 15, …) and `pe` (3.x's field offsets); at `segFinP σ` the program's
+  kind index is `.L32` (so `Kind.m = 32`) while the kind's `m` is `σ.m`, and `seq4`'s offsets differ
+  from 3.x's past field 7. So each relation `rel*4` is 3.x's text with `P.kv.m κ`, `P.kv.node κ`,
+  `P.S.*`, `P.lrR/e2R/e4R` and `pe4 P.S`; the controls `rel*4_fin3P` prove each equals 3.x's at
+  `fin3P` (Z, Lr, B′, Lc), so nothing was lost in the generalisation.
+- **D7. `relSh4` keeps the link term general** (`linkSum (impl.linkWAll κ tt rr) …`). The brief
+  asked for `run_linkOps_zero` inside the flag lemma; keeping the flag kind-free and closing the link
+  term at the front check (`linkWAll_seg*` gives `0^8`, then `linkSum_zero`) needs no second proof of
+  the 32 link ops. `run_linkOps_zero` stays available.
+- **D8. `exec_gFinRS` reruns 3.x's kit on relocated ops** (`run_elemOps4` …): RS0's slice reads move
+  with `seq4`'s RS0 offset, so 3.x's `run_claimOps` could not be reused. The kit takes the weight op's
+  invariance `reloc S (wop i) = wop i` as a hypothesis (every `wop` is `getF`/`const`).
+- **D9. Kind by the seed, not by `kindOf4 π`.** `seed_byte4` reads the program's own check
+  (`hdr`'s first 16 bytes against `[p.byte, m, 0…]`), so it holds on every accepted run, whatever the
+  dispatcher did.
+- No value asserted by no final was met in this scope.
+
+### Controls (`FRSoundness4R4FinCtrl`)
+
+| Definition | Positive | Negative |
+|---|---|---|
+| `relZ4`, `flag_gFinZ` | `relZ4_fin3P` (= 3.x's `relZ` at `fin3P`) | `relZ4_rejects` (a wrong `c_Z` register gives `false`) |
+| `relLr4`, `flag_gFinLr` | `relLr4_fin3P`, `relLr4_leaf` | `relLr4_rejects` (a node's wrong end claim gives `false`) |
+| `relB4`, `pubH4`, `vStar4` | `relB4_fin3P` | (3.x's `relB` negative carries over through `relB4_fin3P`) |
+| `relLc4` and its parts | `relLc4_fin3P` | `lcFree4_leaf` (a leaf's free term vanishes: the node/leaf split is live) |
+| `pe4` | `pe4_seq3` (= 3.x's `pe` at `seq3`) | `reloc_seq4_moves` (S-F4's: `seq4` moves `E`) |
+| `OutsLt` | `outsLt_ctx0` | `not_outsLt_self` |
+| `kindOfC_byte4` | `kindOfC_seg4`/`_node4` | `kind_zero_none` (byte `0` is no kind: the `p.byte ≠ 0` hypothesis is needed) |
+
+`relE4`, `relSh4`, `relRS4` have no `fin3P` agreement lemma yet (their 3.x relations read `oE4end`,
+`Array.replicate 18`, `rsLeafZero` through `absOff`; each is a `pe4_seq3`-style rewrite): **todo**
+for the next pass, with a negative each (`relE4` with a wrong E4-end message, …).
+
+### Traps (for whoever continues)
+
+1. **`skeleton4` must never reach the unifier under a reducible head.** `rfl : fi.outs = (skeleton4 seq4
+   p).2.outs` with `fi` a metavariable, `rcases … with rfl` on `x = (outsOf ⟨skeleton…⟩ n).headD 0`, and
+   `List.mem_of_mem_drop` on `coordsR ⟨skeleton…⟩ n` all whnf `skeleton4` (heartbeat timeout at the
+   declaration). State register bounds for an abstract `fi` (`hin_Lr`), give `fi` explicitly, and only
+   then instantiate.
+2. `simp only [reloc]` on `reloc S (wop i)` unfolds into a match on the opaque `wop i`: rewrite with
+   `reloc S (wop i) = wop i` first.
+3. Unfolding `reloc` on a read leaves `if f < 19 …` unless `hf : f < 19` is in the simp set, and
+   `absOff 0 x` must go through `absOff_zero` (else `rfl` evaluates `fieldOffA`).
+4. Any simp that meets `bytesOf ([p.byte, m] ++ List.replicate 46 0)` hits max recursion:
+   `generalize` the constant.
+
+### Handover (remaining items, in order)
+
+3. **The front checks** (each `¬ Rej L es` on `es = fsOf tr (itemsOf seq4)`, then on
+   `entriesOf L (pathOf L j)` by `runLog_chain4`). Pattern: `rel*4_of_accept` (copy `relLr4_of_accept`
+   with the field index of `(finalsOf P).rest` = `[Z, Lc, Sh, Lr, E, B′, P0…P4, Pf]`, `hin_*` for an
+   abstract `fi`); `val_eqv_f` on the conjunct; then each register through the views, rewriting
+   `outsOf ⟨skeleton…⟩ name` by `outsOf_skel` + `phaseIx4_rounds`:
+   - **`RejEndLr4`** (first; all pieces exist): `P = nodeFinP ν cells`, `kindOfC_node4` + `onNode_iff`;
+     `claimN Lr2` = `clR 179 (fun _ _ => 0) L es (min (realRounds p "Lr2" 17) 17)` from
+     `roundsF3_view4` at `n = 14` (head `.f 0`: `clVal .zero`); `phStart4 14 = 179`, `phStart4 13 = 170`
+     (`fsStarts4_eq`); `min … = lrR ν` (`dims_node4`, `P4b.dims_le`); Lr1's coordinates = `tauS`'s
+     `coordAt es 169 l` (`coords_view4` at Lr1's index); Lr2's challenges = `rch 179 es j` = `rxs`;
+     `pe4 seq4 inp fLrEnd (16 j)` = `vEnd 17 179 es j` = `readF (msgAt es 213) (16 j)` through
+     `SkRun4.hq 213` (one table certificate: `(fsMsgs4 seq4).getD 213 none = some (fieldOffOf seq4
+     fLrEnd, 48)`) and R4b's `msgAt_of_q`/`readF_piMsg`; `eqPoint` to `eq ∘ ptOf` by
+     `FRVerifierImplOps.eqPoint_eq`.
+   - `RejEndE4` (n = 18, Eend at 273, `relE4` 1st conjunct), `RejInE4` (n = 21 `roundsF2_view4`'s
+     `Chk2`, head `= claim0 E4` = `relE4` 2nd conjunct = `c4E4 es`: needs `lrEx fi 0` = `vLv4`, i.e.
+     `exAt`'s bookkeeping that `ex[4]` is `gFinLr`'s exports), `RejFinE4 srcE srcL` (`relE4` 3rd
+     conjunct; the node plan's `evalM`/`evalL` must meet `wEb4`: parameters), `RejZ` (`relZ4` 1st
+     conjunct at n = 5; head = Z2's `b+s+133` from `uni_view4` with `segPt_lt` for a segment; target
+     spec `implSegC_meets` → `peL`), `RejL2` (n = 8), `RejLc2`/`RejLcN` (`relLc4` 3rd conjunct, 3.x's
+     `lc_bridge` path), `RejS2` (n = 12; head = `relSh4` 1st conjunct; `shiftTarget` spec → `c0S`;
+     a segment's `bnd` tail is `lastRegs` = P4a's `run_lastOps` bits), `RejRS4 (okRS4 oZ oLc oSh)`
+     (`exec_gFinRS`'s `rsAlpha4` = `alphaL4` through `sv4` = `sliceL4` (`msgAt es 326`) and
+     `rsW4` = `cwL4`).
+   - Still owed for item 2: `fin3P` agreement controls for `relE4`, `relSh4`, `relRS4` (+ a negative
+     each).
+4. **`AcceptTail` (T4)**: `chain`, `len` from `runLog_chain4`; `rejF` from item 3; `p1`/`pf` need
+   K-round views (port 3.x's `rounds_view` to `rounds_at4`'s form); `lvl4` needs level 4's column
+   values (port `posT` for `posOps4`, R4's D2) and the flags of `gFinP 4`/`gFinPf` at `FinP`
+   (`flag_finP4`, `flag_finPf`'s generalisation, not started).
