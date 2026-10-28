@@ -223,3 +223,135 @@ No statement elsewhere was found wrong. No other track's module was edited.
 2. The owner of `FR.lean` should add `import FRSoundnessAcc`.
 3. The `start` field and `hFront` should go to the front's owner, after INT-3, together with
    `FrontObl`.
+
+---
+
+# Pass 2: `hFin` steps 1, 3, 4 (step 2 and step 6 handed over)
+
+Base HEAD `b1fecbc`. Built on the HEAD snapshot (`logs/fr-build-SG3/snap.sh`, S-G3's modules
+symlinked). `lake build FRSoundnessAcc FRSoundnessAccSem` is green (`logs/S-G3/p2-build7.log`).
+No sorry.
+
+- **Axioms** (`logs/S-G3/axioms-pass2.log`, 22 declarations): only `propext`, `Classical.choice`
+  and `Quot.sound`. `foldl_step` and `finals_ops_eq` use only `propext`; `fsStarts_foldl` and
+  `eqv_k` use `propext` and `Quot.sound`.
+- **Source rule:** 131 files, 0 findings (`logs/S-G3/source-rule-pass2.log`).
+- **No new `decide`.** The positions come from `fsMsgs_eq` and `phStart`'s definition.
+
+## P2.1 Files
+
+| Module | Total / code / theorems | Wall (sequential) | Type checking | Max RSS |
+|---|---|---|---|---|
+| `FRSoundnessAccPos` (steps 3–4) | 222 / 169 / 16 | 7.9 s | 275 ms | 2.77 GB |
+| `FRSoundnessAccSem` (step 1) | 199 / 158 / 8 | 7.8 s | 63 ms | 2.76 GB |
+
+Logs: `logs/S-G3/time2-*.log`, `profile2-*.log`. No declaration takes more than 150 ms.
+
+## P2.2 What is proved
+
+**Step 3: positions (`FRSoundnessAccPos`).**
+- `phStart_eq_sum`: `phStart n` is the number of Fiat–Shamir items of the phases before `n`.
+- `phaseMsgs_length`: a phase has exactly one message per Fiat–Shamir item, shape by shape.
+- **`fsMsgs_phase`**: `fsMsgs.getD (phStart n + k) none = (phaseMsgs n phases[n].shape).getD k none`.
+  It comes from `fsMsgs_eq` and `msgsFrom_getD`.
+- **`fsMsgs_round`**: for a `.rounds f K deg inK real` phase and `l < K`, round `l`'s absorb at
+  `phStart n + 2l` has π range `(fieldOff f + phaseOff n f + l·rb, rb)`, and its squeeze at `+1`
+  is `none`.
+
+**Step 4: arithmetic.**
+- `rSum_eq` (char 2): `rSum` is `c₁ + c₂` of the log's round message.
+- `rVal_eq`: `rVal` is `c₀ + r(c₁ + r c₂)`.
+- On the run's entries (`fsQ_gen`'s `hq`), for a K rounds phase:
+  - **`rSum_fsQ`**: `rSum (phStart n) es l` is the verifier's
+    `elemKAt inp f (phaseOff n f + 96l + 32) + elemKAt … (+64)`;
+  - **`rVal_fsQ`**: `rVal` is `gK inp f (phaseOff n f + 96l) (ansAt es (phStart n + 2l + 1))`.
+- `eqv_k`: `(Val.k a).eqv (Val.k b) = true ↔ a = b`.
+- **`roundsT_chk`**: an accepted `roundsT … 2 true real n j …` with `j + n ≤ real` checks two
+  things:
+  - round 0's `c₁ + c₂` against the incoming claim;
+  - each round `l + 1`'s `c₁ + c₂ = gK` of round `l` at its squeeze's answer.
+
+  This is `FinLog.rnd`/`rndPf` on the verifier side. With `rSum_fsQ`/`rVal_fsQ` it closes the
+  round fields, once the phase's trace segment is identified with `es`'s positions (step 2's
+  segment part).
+
+**Step 1: every field's flag (`FRSoundnessAccSem`).**
+- `finals_ops_eq`: `Finals.ops` written as `runFields` (via `foldl_step`).
+- Lemmas about a field's run:
+  - `pureRun_noAsk`: ops that ask nothing run purely;
+  - `exec_ok_false`: a lowered flag stays lowered;
+  - `field_flag`: one field on an accepted run has flag `true`;
+  - `fields_ok`: every field of `runFields` has flag `true`, each from a register file that
+    extends the skeleton's (`ExtA`) and whose size is the field's base.
+- `genPhases_next`: the skeleton's `next` is the size of `R = #[] ++ y.1.toArray`.
+- **`accept_fields`**: on `semIR … (gen fin (.fixed κ)) inp tr = some true`, with every field
+  asking nothing:
+  - the skeleton is `refPhases … = some y`, and every phase flag is `true`;
+  - `finRS` and each field of `Finals.rest` (so `finP i` and `finPf`) satisfy
+    `pureRun … = some (L, true)` from some `Rk` with `ExtA R Rk`.
+
+  `flag_finPLow`, `flag_finP4` and `flag_finPf` then turn that flag into `relPLow`, `relP4` and
+  `relPf` at `Rk`. The relations read only skeleton registers, so `ExtA` moves them to `R`.
+  - **Caveat:** `accept_fields` leaves the fields' `ex` existential (and `zh` for `finRS`). `finP`
+    reads only `outs`. `finPf`'s `w0V` may read `zhat`/`ex` through `pfPts`/`rsPtsV`; that part is
+    the front's (`w0V ↦ mleP W₀`).
+
+## P2.3 Handover: what is left of `hFin`, in order
+
+1. **Step 2a: phase segments.** Add a refPhases decomposition, in the style of
+   `refPhases_chain`: for each phase `n`, `∃ cₙ rₙ segₙ xₙ` such that
+   - `refPhase n phases[n] cₙ rₙ segₙ… = some xₙ` and `cₙ.next = rₙ.size`;
+   - `ExtA (rₙ ++ xₙ.1) R`;
+   - `skeleton.2.outs[n] = genPhase`'s `out` at `cₙ`;
+   - `fsOf segₙ phases[n].items` is `es.drop (phStart n)`'s first `|phaseMsgs n|` entries.
+
+   Every phase flag is already `true` (`accept_fields`).
+2. **Step 2b: values per shape.** Read the values off `genPhase`'s `out` lists (`FRVIR.lean`
+   l. 653–695).
+   - **`.rounds` (K):**
+     - `cl = b + 2` holds `.k (c₁ + c₂)` of round 0 (`initVals .free`);
+     - `rs = b' + 13j + 3` holds `.k (chK a₂)`, Pf's `chals` and P1's `sRegs`;
+     - the last register `b' + 13K − 1` holds `.k (gK …)`, which is `claimN`.
+
+     A small `roundsT_vals` lemma (13 values per round, `roundKVals`) is needed.
+   - **`.queries i`:** `ysOf i` at `b + 2 + posW·p + 3` holds `dotKF (eqTab foldR) col_p`, and
+     `posAllT`'s flag is the Merkle path check (`openPath … runLog L = capDig`). Its `col_p` is
+     the trace's column answer.
+   - **P3's `.coords`:** `kcOf` registers hold `chF` coordinates. `.pos` squeezes feed
+     `posAns ↦ qPos`.
+3. **Assemble `FinLog`.**
+   - `rnd`/`rndPf`/`pf0`: `roundsT_chk` + `rSum_fsQ`/`rVal_fsQ` + `relP4`'s second conjunct.
+   - `link`: `relPLow`, with `vNext`'s `accVal (kcTab) ys` equal to
+     `Σ_q smulF (eqBits (kcAt es i) 9 q) y_q`. This needs `eqTab` ↔ `eqBits` on `kcOf`'s values.
+   - `cols`: from 2b.
+   - `enc`: `encFlag` + `tensorW` (step 5).
+   - `fin`: step 6.
+4. **Step 5, against `implC_meets` as at HEAD.**
+   - `Meets` covers `tensorW` and `rsWeight`.
+   - **Gaps `implC_meets` does not cover:**
+     1. `eqTab` and `dotKF` are not `OpImpl` fields. They are fixed FRVIR functions, so what they
+        need are plain lemmas: `eqTab r` at `q` is `eqBits r 9 q`-style, and `dotKF (eqTab s) col`
+        is `Σ_r eqBits (sAt es i) ell r · readF col (16r)`. They are spec facts, not `Meets`
+        facts.
+     2. `specC`'s `tensorW` must be shown equal to the tail's objects: `encAt 4 finalAt` through
+        `encVal`/`hornerVal`, and `tensorTwin D logNMax …` in `wHatL`. This is a spec-to-spec
+        lemma that `implC_meets` does not give.
+5. **Step 6, `relPf`.**
+   - `wV ↦ wHatL 4`: `lvsV [1,2,3,4]` against `wHatL`'s recursion. Per step this means
+     `uHat (sRegs k).head ↦ uHat (ptL (k+1) 0)`, `accVal (eqTab kc) (tensorW p (tailV k))` ↦
+     `Σ_q eqBits(kcAt) · tensorTwin …`, and `tailRegs ↦ ptL`.
+   - `finHat ↦ mleN 7 finalAt pfPt`: `fhVal_eq` plus `eqTab` ↔ `mle`'s `eq` basis. The
+     bit-order convention must be checked.
+   - `padV` is done (`padV_eq`).
+   - `claimN Pf ↦ clR2 … 7` is `rVal` at round 6 (2b).
+6. **Outside `hFin`:** `start` and `hFront` stay with the front, and so does `w0V`.
+
+A positive `FinLog` instance was not cheap: it needs a log with Merkle openings. It is left for
+completeness.
+
+## P2.4 Open questions
+
+1. `accept_fields` leaves `ex`/`zhat` existential. Should a later pass pin them (for `w0V`), or
+   does the front read `finRS`'s exports some other way?
+2. The `eqTab` ↔ `eqBits`/`mle` lemmas (gap 1) are needed by both steps 3 and 6. Should they
+   live with S-E8's `FRVerifierImplOps` (`eqTable_getD`) or in an S-G module?

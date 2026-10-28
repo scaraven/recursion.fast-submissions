@@ -26,3 +26,16 @@ symlinked in; S-E8 edits `FRVIR*`/`FRVerifierImpl*`, S-H2j edits `FRX*` in the w
 - HEAD moved to `5b2fb93` (S-H2 part 19, `FRX*` only) during the stage; re-snapshotted, rebuilt
   green (2,328 jobs), axioms re-checked.
 - Not attempted: the register bookkeeping that would discharge `hFin` (RESULT §5).
+
+## Pass 2 (after `b1fecbc`): `hFin` steps 1–4, 6
+
+- `FRSoundnessAccPos` (steps 3–4): `phStart_eq_sum` (the `fsStarts` fold, generalised accumulator),
+  `phaseMsgs_length` (per shape), `msgsFrom_getD`, `fsMsgs_phase`, `fsMsgs_round`; `rSum_eq`,
+  `rVal_eq` (char 2), `rSum_fsQ`, `rVal_fsQ`, `eqv_k`, `roundsT_chk`. Built after two small fixes.
+- `FRSoundnessAccSem` (step 1): `runFields` + `foldl_step`, `finals_ops_eq`, `pureRun_noAsk`,
+  `exec_ok_false`, `field_flag`, `fields_ok`, `genPhases_next`, `accept_fields`.
+  Trap: `show skeleton.2.next = … from hn` timed out (projection whnf evaluates `genPhases` on the
+  whole table); fixed with `hsk : genPhases phases 0 ctx₀ = skeleton := by rw [skeleton]; rfl` and
+  `rw [hsk] at hn`.
+- Stopped before step 2 (outs ↔ values) and step 6 (`relPf`): context long; handover in RESULT
+  Pass 2.
