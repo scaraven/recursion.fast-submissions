@@ -92,3 +92,19 @@
    S estimates (7763): current design cannot run (leaf fixed at 2^18 / 2^16): S = fail; if every chain were 2^18: Pbar 7.1 + Vbar 0.83 = 7.9 s
    4.0 one thread: S = 8.2 + 0.83 = 9.0 s but truncated; 4 threads: S = 3.3 + 0.83 = 4.1 s; + V 150 ms: 3.8 s; + |π| 0.65 MiB: 3.7 s
    plan time: 43-49 s x 12 verify processes = 552 s of stream_s 960 -> must be <= 2 s per process (24 s)
+== revision 4.1: the stream budget (7763, 4 threads, measured segment fits; node by the phase model)
+   node (phase model): N4 today (power-of-two H) at k=1/2/4: 2.2 s (m=31) / 3.7 s (m=32) / 4.2 s (m=32); N8: 7.3 s (m=33)
+   node tight-packed at k=1/2/4: 1.6 s (m=30) / 2.5 s (m=31) / 4.2 s (m=32); N8: 4.9 s (m=32); with 0.65 MiB children (19,400 blocks): k=4 4.0 s (m=32), N8 4.6 s (m=32)
+   overhead per step at plan 40 s / 2 s: 6.54 / 1.79 s (ready 0.22, three V 0.57, calibration 0.55 incl. the 2^24 chain checker per sample, plan/8, re-runs 2%)
+   A  4.0 as measured (plan 40 s): P-bar 8.74 s, mean step 10.08 + overhead 6.54 = 16.63 s; fits M <= 22; truncated 100%; S = 8.74 + 0.81 = 9.55 s
+   A' 4.0 as measured, plan 2 s: P-bar 8.74 s, mean step 10.08 + overhead 1.79 = 11.88 s; fits M <= 75; truncated 51%; S = 8.74 + 0.81 = 9.55 s
+   B  + tight packing, ladder L29-L32, overlap 0.4 s/extra segment: P-bar 7.73 s, mean step 8.92 + overhead 1.77 = 10.69 s; fits M <= 84; truncated 30%; S = 7.73 + 0.81 = 8.54 s
+   C  + |π| 0.65 MiB (rows 32 at level 0), round-1 kernel -30% (k1 0.87): P-bar 7.27 s, mean step 8.37 + overhead 1.76 = 10.13 s; fits M <= 89; truncated 22%; S = 7.27 + 0.72 = 8.00 s
+   C' = C with V 150 ms: P-bar 7.27 s, mean step 8.37 + overhead 1.64 = 10.01 s; fits M <= 90; truncated 21%; S = 7.27 + 0.43 = 7.70 s
+   D  = C' + L(k): one PCS per step (reserve): P-bar 7.00 s, mean step 7.93 + overhead 1.63 = 9.56 s; fits M <= 94; truncated 16%; S = 7.00 + 0.43 = 7.42 s
+   P(M > m) = (16/17)^(m-64): M fit 80 -> 38%, 90 -> 21%, 100 -> 11%, 110 -> 6%; M = 112 needs step <= 8.05 s incl. overhead
+   A': truncation 51% -> unranked median 52%
+   B: truncation 30% -> unranked median 21%
+   C': truncation 21% -> unranked median 11%
+   D: truncation 16% -> unranked median 7%
+   floor for the mean step with today's kernels and a zero-waste split: 8.9 s + overhead 1.4 = 10.3 s > 8.05 needed for M = 112; M = 112 needs the per-compression cost ~13 us incl. the PCS (today 20 us)

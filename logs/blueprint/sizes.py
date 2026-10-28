@@ -297,3 +297,50 @@ for lab,V,pi in (("today: V 193 ms, |π| 797,904",193,797904),("S-T1/S-E11: V 15
 print(f"   S estimates (7763): current design cannot run (leaf fixed at 2^18 / 2^16): S = fail; if every chain were 2^18: Pbar {(L32_s+3.0)/RP:.1f} + Vbar 0.83 = {(L32_s+3.0)/RP+0.83:.1f} s")
 print(f"   4.0 one thread: S = {Pbar_vm/RP:.1f} + 0.83 = {Pbar_vm/RP+0.83:.1f} s but truncated; 4 threads: S = {Pbar_vm/RP/2.5:.1f} + 0.83 = {Pbar_vm/RP/2.5+0.83:.1f} s; + V 150 ms: {Pbar_vm/RP/2.5+Vbar(150,797904)[0]:.1f} s; + |π| 0.65 MiB: {Pbar_vm/RP/2.5+Vbar(150,683000)[0]:.1f} s")
 print(f"   plan time: 43-49 s x 12 verify processes = {46*12} s of stream_s 960 -> must be <= 2 s per process ({2*12} s)")
+# ---- revision 4.1 (stage-review changes 26): P2' §13 — the threads were already counted. Measured on the EPYC 7763, 4 threads (2 cores x 2 SMT):
+# L32(n) = 2.76 + 2.86 n/2^18, L31(n) = 1.37 + 1.43 n/2^17 (fixed half = commit 1.12 + ring switch 0.53 + Ligerito 0.74 + trace/SIGN 0.18 = 2.57;
+# per block: witness 0.53 + round 1 1.20 + x6 0.56 + tail 0.25 + lincheck 0.30 = 2.84 s per 2^18). Stream overhead per step from bench.py/season.toml.
+PCS32=2.39; FIX_OTHER=0.18; PERBLK=2.84/2**18
+def seg_cost(nseg, m, k1=1.0):            # a segment of nseg blocks in an L_m instance; k1 scales the per-block kernels
+    return PCS32*2**(m-32)+FIX_OTHER+k1*PERBLK*nseg
+def split(n, shapes):                     # full 2^18 pieces, remainder in the smallest shape of the ladder that holds it
+    k=-(-n//2**18); r=n-(k-1)*2**18
+    segs=[(2**18,32)]*(k-1)
+    m=min(mm for mm in shapes if r<=2**(mm-14)); segs.append((r,m)); return segs
+def node_cost(slots, blk_per_slot, tight, mcells=2**20):
+    Hblocks=slots*blk_per_slot+2*498+304
+    bits=Hblocks*2**14+slots*mcells*128
+    m=math.ceil(math.log2(bits)) if tight else math.ceil(math.log2(2**math.ceil(math.log2(Hblocks))*2**14+2**math.ceil(math.log2(slots*mcells))*128))
+    return PCS32*2**(m-32)+PERBLK*Hblocks+0.3+0.2, m
+def overhead(plan_s, V=0.19, rerun_frac=0.05, meanP=10.0):
+    return 0.22+3*V+(2.0+0.6+1.8)/8+plan_s/8+rerun_frac*meanP
+def scen(label, shapes, tight, blk, k1, overlap, lk, plan_s, V=0.19, pi=797904):
+    rng=random.Random(7); N=200000; num=den=tot=0.0
+    for _ in range(N):
+        n=draw(rng.random()); segs=split(n,shapes); k=len(segs)
+        P=sum(seg_cost(r,m,k1) for r,m in segs)-overlap*(k-1)
+        slots=(1+1) if lk else (1+k)          # L(k): one leaf slot
+        P+=node_cost(slots,blk,tight)[0]; num+=n*(P/n)**3; den+=n; tot+=P
+    Pbar=2**18*(num/den)**(1/3); meanP=tot/N; ov=overhead(plan_s,V,0.02,meanP); step=meanP+ov
+    Mfit=int((960-14*plan_s-30)//step); trunc=0.0 if Mfit>=112 else min(1.0,(16/17)**max(0,Mfit-64))
+    vb,x=Vbar(V*1000,pi)
+    print(f"   {label}: P-bar {Pbar:.2f} s, mean step {meanP:.2f} + overhead {ov:.2f} = {step:.2f} s; fits M <= {Mfit}; truncated {trunc*100:.0f}%; S = {Pbar:.2f} + {vb:.2f} = {Pbar+vb:.2f} s")
+    return Pbar,step,Mfit,trunc,vb
+print("== revision 4.1: the stream budget (7763, 4 threads, measured segment fits; node by the phase model)")
+print(f"   node (phase model): N4 today (power-of-two H) at k=1/2/4: "+" / ".join(f"{node_cost(1+k,23146,False)[0]:.1f} s (m={node_cost(1+k,23146,False)[1]})" for k in (1,2,4))+f"; N8: {node_cost(8,23146,False)[0]:.1f} s (m={node_cost(8,23146,False)[1]})")
+print(f"   node tight-packed at k=1/2/4: "+" / ".join(f"{node_cost(1+k,23146,True)[0]:.1f} s (m={node_cost(1+k,23146,True)[1]})" for k in (1,2,4))+f"; N8: {node_cost(8,23146,True)[0]:.1f} s (m={node_cost(8,23146,True)[1]}); with 0.65 MiB children (19,400 blocks): k=4 {node_cost(5,19400,True)[0]:.1f} s (m={node_cost(5,19400,True)[1]}), N8 {node_cost(8,19400,True)[0]:.1f} s (m={node_cost(8,19400,True)[1]})")
+print(f"   overhead per step at plan 40 s / 2 s: {overhead(40,0.19,0.02):.2f} / {overhead(2,0.19,0.02):.2f} s (ready 0.22, three V 0.57, calibration 0.55 incl. the 2^24 chain checker per sample, plan/8, re-runs 2%)")
+A=scen("A  4.0 as measured (plan 40 s)", (31,32), False, 23146, 1.0, 0.0, False, 40)
+A2=scen("A' 4.0 as measured, plan 2 s", (31,32), False, 23146, 1.0, 0.0, False, 2)
+B=scen("B  + tight packing, ladder L29-L32, overlap 0.4 s/extra segment", (29,30,31,32), True, 23146, 1.0, 0.4, False, 2)
+C=scen("C  + |π| 0.65 MiB (rows 32 at level 0), round-1 kernel -30% (k1 0.87)", (29,30,31,32), True, 19400, 0.87, 0.4, False, 2, pi=683000)
+C2=scen("C' = C with V 150 ms", (29,30,31,32), True, 19400, 0.87, 0.4, False, 2, V=0.15, pi=683000)
+D=scen("D  = C' + L(k): one PCS per step (reserve)", (29,30,31,32), True, 19400, 0.87, 0.4, True, 2, V=0.15, pi=683000)
+print(f"   P(M > m) = (16/17)^(m-64): M fit 80 -> {100*(16/17)**16:.0f}%, 90 -> {100*(16/17)**26:.0f}%, 100 -> {100*(16/17)**36:.0f}%, 110 -> {100*(16/17)**46:.0f}%; M = 112 needs step <= {(960-28-30)/112:.2f} s incl. overhead")
+
+# unranked-median probability for a truncation rate p (median of the last three evaluations): 3p^2 - 2p^3
+for lab,(Pb,st,Mf,tr,vb) in (("A'",A2),("B",B),("C'",C2),("D",D)):
+    print(f"   {lab}: truncation {tr*100:.0f}% -> unranked median {100*(3*tr**2-2*tr**3):.0f}%")
+# the floor: a mean chain (1.19·2^18) needs >= 2^32.25 bits of instance: PCS >= 2.39·2^0.25 + per-block 2.86·1.19 + node(k=2 tight) 2.5 + 0.2
+floor=PCS32*2**0.25+0.18+2.86*1.19+2.5
+print(f"   floor for the mean step with today's kernels and a zero-waste split: {floor:.1f} s + overhead 1.4 = {floor+1.4:.1f} s > 8.05 needed for M = 112; M = 112 needs the per-compression cost ~{(8.05-1.4-2.5)/(1.19*2**18)*1e6:.0f} us incl. the PCS (today {(PCS32*2**0.25+2.86*1.19)/(1.19*2**18)*1e6:.0f} us)")
