@@ -4,14 +4,14 @@ Last updated 2026-10-28. Blueprint at revision 3.13 (§10 changes 1–20). FR bu
 
 ## Running
 
-- INT-3: revision 3.14 outside S-E (finSh `linkWAll`, `shift_sound_masked`, implC kind selection, `finB′` at `J_f = 9`, chain-masked `truthS1`, E4-end binder), `digestAt` in `flag_finB'`, the full `FR.lean`; re-dump, re-measure V.
+- S-E9: the replay `R` (3.14 (D)), the fused child walk, `FRNodeLayout` constants, templates (incl. `linkWAll`, `shiftMask`), the re-dump for P2.
 - S-G4: `hFin` steps 2, 5, 6 and `FinLog` assembly (S-G3 pass 2 handover).
 - S-H2l: the extractor's output program `FRXOut`, `ext_node` with `E = some (readWit …)`.
 
 ## Waiting
 
 - **INT-3 (after S-E7 item 1): the 3.14 items outside S-E.** S-0 `finSh` with the `linkWAll` op and packed points (`κ_s^{f+2}`; `relSh`/`flag_finSh`); S-C `shift_sound_masked`, `linkWAllS` on the pinned map; S-F `implC` kind-selected `linkWAll`/`slotW_in`, `linkWAll_meets` in `implC_meets`, `finB′` without `κ′ v_E` (`J_f = 9`); S-G chain-masked node `truthS1`, `sh_reads_chain_only`, `truthB′` at `J_f = 9`, the E4-end binder in `truthE4`; `FR.lean` imports FRNodeTarget, FRVerifierImplNode, FRVIRTplRep, FRVIRCompileSound, FRVIRTplPlan.
-- **S-E9 (after INT-3):** the replay `R` in 3.14 (D)'s uniform layout (`replay_mle`, `plan_wf`, `replay_sound`, `inc_mle`, `eqTree_mle`, `evalMT` sharing each `Ĉ`), the fused child walk (prototype 15.2–17.8 ms), `FRNodeLayout` `wmSlot = 146`/`hEnd = 47,594`/`regions_fit`, the mux mirror addresses, `mRowModel`, the templates (`tplTargetSNode`, `tplLinkWAll`, `walkAB`, `rsWeight`, `shiftTarget`, 745 `tensorW`), the re-dump for P2.
+- ~~S-E9 after INT-3~~ (running; INT-3 closed `ebcc8f1`, V 168.7 ms VM best). Was: the replay `R` in 3.14 (D)'s uniform layout (`replay_mle`, `plan_wf`, `replay_sound`, `inc_mle`, `eqTree_mle`, `evalMT` sharing each `Ĉ`), the fused child walk (prototype 15.2–17.8 ms), `FRNodeLayout` `wmSlot = 146`/`hEnd = 47,594`/`regions_fit`, the mux mirror addresses, `mRowModel`, the templates (`tplTargetSNode`, `tplLinkWAll`, `walkAB`, `rsWeight`, `shiftTarget`, 745 `tensorW`), the re-dump for P2.
 - **H-probe (after INT-3):** V (N30) on a GitHub runner: `probe/fr-vtime` has no `run.sh` yet (it must build the entry on the runner); replaces the ≈ 264 ms VM-equivalent estimate. VM: 169.4 ms best at S-E8 (`937e14d`), projected ≈ 195 ms.
 - **Then:** `FrontObl`, `FrontChainStab`, `hFront`, `hExt` (S-G); the S-E H-side assembly of `node_sound` (pack map, `input w` alias, SigOk, W-kind children, `node_complete`).
 - **P2 node prover** after S-E7's re-dump: mirror writes per A.6 (146 blocks/slot), `end41` split, `linkWAll` weights, the chain mask in Sh, `slotW_in = h_in`.
@@ -31,6 +31,9 @@ Last updated 2026-10-28. Blueprint at revision 3.13 (§10 changes 1–20). FR bu
 S-A `8ff873c`; S-C `ebac8c2`; S-D `8e6dad7`; S-E1 `2d5a811`; S-H1 `40b2f81`; S-0 `47158b1`; S-E2/S-E3 `8447c50`; S-F `c8e1869`; S-F2 `8f22b86`; S-G through `ac43569`; S-H2 through `11fb3a5`; INT-1 `5fc7d3b`; S-E5 `9dbab71`. FR builds as a whole.
 
 ## Rulings
+
+- **Blueprint 3.15 batch (to issue when S-E9 lands):** lBase 47,616 in A.7/§4.3; the S-G2 level-4 tail (§5.2 P3.4 row 0, A.10); `T_V` measured (169 ms VM) and the (D) frontier note; INT-3's `shiftMask` op (A.8), `slotW_in` selected in `finSh` by `keep`; **INT-3 decision 3 to verify**: the node's Sh start term `κ_s(eq(0,·)+eq(N,·))` has target 0 in characteristic 2, so Sh binds only `In(0) = In(N)`; check that `streamStart`'s Z pin fixes `h0` for **both** chains (else a hole), and state it in §4.2.
+- **P2 after S-E9:** `ir.rs` must interpret `linkWAll` and `shiftMask` (it still reads `linkW`), the A.6 mirror map, the chain mask, the `h_in` In slot, and the node's S2 initial claim 0.
 
 - **S-H2k, 2026-10-28:** the extractor emits the trace's length words as constants (`enc64 qlen`), not copies of the stream, so `FinalLaw` gains no hypothesis. Blueprint fix pending: A.7 and the §4.3 table still give L's base block as 46,336 (`lBase` is 47,616 since 3.12).
 - **S-E8, 2026-10-28:** the `T_V` kill test passes (V 169.4 ms VM best, projected ≈ 195 ms, 1.35×); the §10 changes 21 (D) frontier note and the `T_V` row are to be updated at the next revision. Hot compiled code uses shifts and literals, not `2 ^ k` (≈ 60 ns per power).
