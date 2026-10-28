@@ -4,11 +4,13 @@ Last updated 2026-10-28. Blueprint at revision 3.13 (§10 changes 1–20). FR bu
 
 ## Running
 
-- S-E10: the walk as the node's own XOR-DAG G-gadget template (`dag_mle`), the `phiRS` split, the evaluator's shift class, `planOf` ≤ 0.2 s from literals; re-dump.
-- H-V: V (N30) and `chaincheck` on a GitHub runner (`probe/fr-vtime`).
-- INT-4: **the `finZ` defect** (RS claim 1 `ẑ(r, λ)` was never asserted against Z2's `P^z*(λ)`; found by S-G6) and 3.15 (c), τ of 18 coordinates for every kind.
+- S-G11: `gL`/`wrsL` with the 3.16 kind factor, the node's L folded in, `hW0`, `hFrontV`, `kstate_front` via the linked route `kstate_front_ofR`.
+- S-T1: **verifier time** (226–233 ms VM best after INT-5; cap 206.0 ms on the 7763 ≈ 245 ms VM at 1.19); target ≤ 205 ms VM with the remaining additions.
+- Blueprint 3.17: S-N1's O3 (extractor domain vs `logCap`), O2/O2b row budget for every unbound import (incl. §4.2's WOTS mux rows), O1's consequences, the `T_V` frontier, the plan-time record.
 
 ## Waiting
+
+- **Critical path to a certified node:** S-E12 (all remaining circuit rows: kind-factor and `free`-term templates, τ-op templates, `tplTargetSNode`, `tplLinkWAll`, `rsWeight`, 745 `tensorW`, the WOTS mux rows, the pack map and `input w` alias, `R` with the sparse-skeleton templating and instance-AP layout) → `hRes` (S-N2) → S-G12 (`truthE` over `compileT`) → `kstate` unconditional → P2 node prover on the full dump and the stream-link measurement → S-I certificate (600 s build/kernel) → H runs.
 
 - **R-V (after INT-4): adversarial review of the verifier's finals.** Does every claimed or exported value (`zhat` 0…nRS, every sub-protocol's final claim, every absorbed message the finals read, every `ex` export) reach an `assertEq`? Is every `relX` the blueprint's A.9 row? Method: a dataflow table from the dumped program (`logs/INT-4/dump`) plus the `flag_fin*` statements, not prose. The `finZ` miss passed every per-field proof because a relation only covers what it names.
 - **S-G7 (after INT-4):** the front's S, L, Z, assembly (`DF`/`RejF`, `FrontObl`, `FrontChainStab`), `hW0`, `hStart`, `hFront`, `kstate_front` (S-G6-RESULT §5).
@@ -36,6 +38,8 @@ Last updated 2026-10-28. Blueprint at revision 3.13 (§10 changes 1–20). FR bu
 S-A `8ff873c`; S-C `ebac8c2`; S-D `8e6dad7`; S-E1 `2d5a811`; S-H1 `40b2f81`; S-0 `47158b1`; S-E2/S-E3 `8447c50`; S-F `c8e1869`; S-F2 `8f22b86`; S-G through `ac43569`; S-H2 through `11fb3a5`; INT-1 `5fc7d3b`; S-E5 `9dbab71`. FR builds as a whole.
 
 ## Rulings
+
+- **S-N1, 2026-10-28 (orchestrator):** O0: `ExtIface` was false as stated (the chain is not tied to π); the linked route `RunLink`/`ExtIfaceR`/`kstate_front_ofR` is adopted. O1: the E truth must be stated over the templated rows V evaluates (`nodeIRows (planOf fin)`/`compileT`), not `Layout.nodeRows`: a stage after S-G11 (S-G12: `truthE`, `nE`, `RejE4`, `hfit`). O2/O2b (the circuit rows for every import: pack map, `R`, the templates, the WOTS selector/digit/mirror mux) are S-E's and make up `hRes : StmtN → NodeResid`. O3 to the blueprint.
 
 - **S-G7, 2026-10-28:** S1's doom is charged only on the τ coordinates the residual reads (node 35 = 26 + 9, L32 29, P30 27 ≤ §5.2). The leaf statement `SL` := `ShHoldsL` (block y+1's `d` at 520 = block y's `h_out` at 256, with the hdr/stmt digests as start and end) ∧ `ZHolds` with a leaf's matrices; `Stmt` keeps `Reads 3`. Ratified.
 
