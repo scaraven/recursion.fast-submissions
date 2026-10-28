@@ -251,7 +251,7 @@
    "configFile": "lakefile.lean"
   }
  ],
- "name": "rfentry",
+ "name": "frvtime",
  "lakeDir": ".lake",
  "fixedToolchain": false,
  "packagesDir": "/home/devops/Verified-zkEVM/recursion.fast-submissions-flock/logs/pkgs"

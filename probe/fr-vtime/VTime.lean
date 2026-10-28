@@ -27,10 +27,10 @@ def randK (seed : UInt64) : K := K.ofBytes (Vector.ofFn fun i : Fin 32 => (randB
 def randAF (seed : UInt64) (n : ℕ) : Array F := (Array.range n).map fun i => randF (seed + 7919 * i.toUInt64)
 def randAK (seed : UInt64) (n : ℕ) : Array K := (Array.range n).map fun i => randK (seed + 7919 * i.toUInt64)
 
-/-- The finals: S-0's, S-F's, S-G's `finP`; `finPf` pending (S-G1d). -/
-def finC : Finals := Impl.finC pending
+/-- The full finals (revision 3.13): S-0's, S-F's, S-G's `finP` and `finPf`. -/
+def finC : Finals := Impl.finC finPf
 
-def implP : OpImpl := Impl.implC finC [] 0
+def implP : OpImpl := Impl.implC finC Layout.lRows 0
 
 def Vp (vk c : Digest) (π : Proof) : OProg Bool := Vwith implP finC vk c π
 
@@ -86,7 +86,7 @@ def timeRows : IO Unit := do
   -- S-E4: the node's plan (both slots' templated compile and their flat forms), then `evalM`
   let t0 ← IO.monoNanosNow
   let pl := TEval.planOf finC
-  IO.println s!"plan: {pl.fs0.insts.length} + {pl.fs1.insts.length} instances"
+  IO.println s!"plan: {pl.keys.size} keys, {pl.pc0.length} + {pl.pc1.length} pieces"
   let t1 ← IO.monoNanosNow
   IO.println s!"planOf {ms t0 t1}"
   timeOp "evalM (flat, TEval.evalMT)" 3 fun _ => hexF (TEval.evalMT pl (randAF 19 21) (randAF 20 23)).1
@@ -122,7 +122,7 @@ def opName : Op → String
   | .phiRS .. => "phiRS" | .walkAB .. => "walkAB" | .kindInd .. => "kindInd"
   | .maskRows .. => "maskRows" | .evalM .. => "evalM" | .evalL .. => "evalL"
   | .shiftTarget .. => "shiftTarget" | .slotW .. => "slotW" | .kindFoldWeight .. => "kindFoldWeight"
-  | .eqPt .. => "eqPt" | .rowW .. => "rowW" | .shiftEq .. => "shiftEq" | .linkW .. => "linkW"
+  | .eqPt .. => "eqPt" | .rowW .. => "rowW" | .shiftEq .. => "shiftEq" | .linkWAll .. => "linkWAll" | .shiftMask .. => "shiftMask"
   | .splitDigest .. => "splitDigest" | .selectHalf .. => "selectHalf" | .keep .. => "keep"
   | .hashStmt .. => "hashStmt" | .kindSel => "kindSel" | .assertEq .. => "assertEq"
   | .assertBit .. => "assertBit" | .assertZero .. => "assertZero" | .assertOneHot .. => "assertOneHot"
@@ -159,12 +159,104 @@ def profileOps (κ : Kind) : IO Unit := do
   for (nm, (cnt, tm)) in rows do
     IO.println s!"  {nm}: {cnt} ops, {ms 0 tm}"
 
+
+/-- S-E8 prototypes for `tensorW`. -/
+def tw1 (j : ℕ) (r : Array K) : K :=
+  Impl.prodTo r.size fun v => 1 - r.getD v 0 + K.smulF (Impl.wAtT v j) (r.getD v 0)
+
+def wByte : Array (Array F) := Array.ofFn (n := 3 * FR.logNMax) fun vb =>
+  let v := vb.val / 3; let b := vb.val % 3
+  Array.ofFn (n := 256) fun x => FR.sumTo 8 fun i =>
+    if x.val.testBit i && 8 * b + i < FR.logNMax then ((Impl.wTab.getD v #[]).getD (8 * b + i) 0) else 0
+
+def wAtB (v j : ℕ) : F :=
+  (wByte.getD (3 * v) #[]).getD (j % 256) 0 + (wByte.getD (3 * v + 1) #[]).getD (j / 256 % 256) 0 +
+    (wByte.getD (3 * v + 2) #[]).getD (j / 65536 % 16) 0
+
+def wAtB2 (v j : ℕ) : F :=
+  (Impl.wByte.getD (3 * v) #[]).getD (j % 256) 0 + (Impl.wByte.getD (3 * v + 1) #[]).getD (j / 256 % 256) 0 +
+    (Impl.wByte.getD (3 * v + 2) #[]).getD (j / 65536 % 256) 0
+
+def tw3 (j : ℕ) (r : Array K) : K :=
+  Impl.prodTo r.size fun v => 1 - r.getD v 0 + K.smulF (wAtB2 v j) (r.getD v 0)
+
+def tw4 (j : ℕ) (r : Array K) : K :=
+  Impl.prodTo r.size fun v => 1 - r.getD v 0 + K.smulF (Impl.wB v 0 j + Impl.wB v 1 j + Impl.wB v 2 j) (r.getD v 0)
+
+def tw2 (j : ℕ) (r : Array K) : K :=
+  Impl.prodTo r.size fun v => 1 - r.getD v 0 + K.smulF (wAtB v j) (r.getD v 0)
+
+def timeNQ : IO Unit := do
+  let ds := (List.range 7552).map fun i => (randDigest (i.toUInt64 + 5), randDigest (i.toUInt64 + 9))
+  IO.println s!"check: {ds.all fun (l, r) => nodeQF 3 l r == nodeQ 3 l r}"
+  timeOp "nodeQ x7552" 5 fun _ => toString (ds.foldl (fun a (l, r) => a + (nodeQ 3 l r).size) 0)
+  timeOp "nodeQF x7552" 5 fun _ => toString (ds.foldl (fun a (l, r) => a + (nodeQF 3 l r).size) 0)
+  let qs := ds.map fun (l, r) => (nodeQ 3 l r, nodeQF 3 l r)
+  timeOp "compare x7552" 5 fun _ => toString (qs.foldl (fun a (x, y) => a + if x = y then 1 else 0) 0)
+  timeOp "randDigest x7552" 5 fun _ => toString (ds.foldl (fun a (l, _) => a + (randDigest l[0].toUInt64).toArray.size) 0)
+
+def dAt2 (q : ByteArray) (o : ℕ) : Array UInt8 := (q.extract o (o + 32)).data
+
+def timePD : IO Unit := do
+  let π := proofOf .N30
+  let os := (List.range 7555).map fun i => (i * 97) % (π.size - 40)
+  IO.println s!"check: {os.all fun o => (bytesAt π o 32).toArray == dAt2 π o}"
+  timeOp "bytesAt 32 x7555" 5 fun _ => toString (os.foldl (fun a o => a + (bytesAt π o 32)[3].toNat) 0)
+  timeOp "extract.data x7555" 5 fun _ => toString (os.foldl (fun a o => a + (dAt2 π o)[3]!.toNat) 0)
+  timeOp "bytesAt 16 + F.ofBytes x7555" 5 fun _ => toString (os.foldl (fun a o => a + (F.ofBytes (bytesAt π o 16)).c₀.val.toNat % 7) 0)
+  timeOp "fAt x7555" 5 fun _ => toString (os.foldl (fun a o => a + (fAt π o).c₀.val.toNat % 7) 0)
+  let rs := randAF 3 14
+  timeOp "eqTab 14 F" 5 fun _ => hexF ((eqTab rs).getD 5 0)
+
+/-- S-E8 item 7: the shared `Â₀(τ_lo, σ_lo)`, `B̂₀(τ_lo, σ_lo)` of the child's walk template: two
+`eq` tables over the block's 14 row / 14 column bits, then one fused walk. -/
+def timeCW : IO Unit := do
+  for (sd, sd2) in [(31, 37), (41, 43), (47, 53)] do
+    let t := randAF sd 14; let s := randAF sd2 14
+    let t0 ← IO.monoNanosNow
+    let et ← IO.lazyPure fun _ => eqTab t
+    let t1 ← IO.monoNanosNow
+    let es ← IO.lazyPure fun _ => eqTab s
+    let t2 ← IO.monoNanosNow
+    let w ← IO.lazyPure fun _ => Eval.walkImpl et es
+    let t3 ← IO.monoNanosNow
+    IO.println s!"eqTab τ_lo {ms t0 t1}, eqTab σ_lo {ms t1 t2}, walkImpl (A₀, B₀ fused) {ms t2 t3}, total {ms t0 t3} [{hexF w.1}]"
+    (← IO.getStdout).flush
+  -- V's own walkAB inputs for comparison (rowW′ = maskRows of rowW, colW = eqTab r_k)
+  let rw := maskRows (randAF 11 9) (Impl.rowWI (randF 5) (randAF 9 8)); let cw := eqTab (randAF 10 14)
+  timeOp "walkImpl at V's own (rowW′, colW)" 5 fun _ => hexF (Eval.walkImpl rw cw).1
+  let et := eqTab (randAF 31 14); let es := eqTab (randAF 37 14)
+  timeOp "walkImpl at (eq τ_lo, eq σ_lo)" 5 fun _ => hexF (Eval.walkImpl et es).1
+  timeOp "eqTab 14 (F)" 5 fun _ => hexF ((eqTab (randAF 31 14)).getD 5 0)
+
+def timeTW : IO Unit := do
+  let r := randAK 14 7
+  let js := (List.range 1627).map fun i => (lcg (i.toUInt64 + 3)).toNat % (2 ^ 20)
+  IO.println s!"check: {js.all fun j => tw1 j r == Impl.tensorWI j r} {js.all fun j => tw2 j r == Impl.tensorWI j r} {(wByte.size)}"
+  timeOp "tensorWI x1627" 5 fun _ => toString (js.foldl (fun a j => a + Impl.tensorWI j r) 0).toBytes.toList.head!
+  timeOp "tw1 (smulF) x1627" 5 fun _ => toString (js.foldl (fun a j => a + tw1 j r) 0).toBytes.toList.head!
+  timeOp "tw2 (smulF, byte tables) x1627" 5 fun _ => toString (js.foldl (fun a j => a + tw2 j r) 0).toBytes.toList.head!
+  timeOp "tw3 (Impl.wByte, literals) x1627" 5 fun _ => toString (js.foldl (fun a j => a + tw3 j r) 0).toBytes.toList.head!
+  timeOp "tw4 (Impl.wB) x1627" 5 fun _ => toString (js.foldl (fun a j => a + tw4 j r) 0).toBytes.toList.head!
+  for n in [7, 13, 20] do
+    let r := randAK 14 n
+    timeOp s!"Impl.tensorWI n={n} x1627" 5 fun _ => toString (js.foldl (fun a j => a + Impl.tensorWI j r) 0).toBytes.toList.head!
+    timeOp s!"Impl.tensorWF n={n} x1627" 5 fun _ => toString (js.foldl (fun a j => a + Impl.tensorWF j r) 0).toBytes.toList.head!
+  timeOp "wAtT x1627x7" 5 fun _ => hexF (js.foldl (fun a j => a + (List.range 7).foldl (fun b v => b + Impl.wAtT v j) 0) 0)
+
 def main (args : List String) : IO Unit := do
   match args with
   | ["v", k] =>
     let κ := match k with | "L" => Kind.L32 | "P" => Kind.P30 | _ => Kind.N30
     timeV κ 9
+  | ["v", k, n] =>
+    let κ := match k with | "L" => Kind.L32 | "P" => Kind.P30 | _ => Kind.N30
+    timeV κ n.toNat!
   | ["ops"] => timeOps
+  | ["tw"] => timeTW
+  | ["nq"] => timeNQ
+  | ["cw"] => timeCW
+  | ["pd"] => timePD
   | ["rows"] => timeRows
   | ["prof", k] =>
     let κ := match k with | "L" => Kind.L32 | "P" => Kind.P30 | _ => Kind.N30

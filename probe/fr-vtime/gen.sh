@@ -1,19 +1,23 @@
 #!/usr/bin/env bash
-# Dev-only timing probe of the compiled verifier (outside the entry; S-F2). The entry's modules as a
-# library (default: L-cert's snapshot logs/fr-build-cert/src, HEAD plus L-cert's files), the probe as
-# an executable. Packages from the private tree logs/pkgs via logs/org. S-F2 timed with
-# SRC=logs/S-F2/src-fast: the snapshot with FRTranscriptDefs.bytesAt run as `q.get! (o + i)`
-# (`implemented_by`, in that private copy only); see S-F2-RESULT §3.
+# Dev-only timing probe of the compiled verifier (outside the entry; S-F2, H-V). Writes this
+# directory's lakefile.toml and lake-manifest.json: the entry's modules as a library, the probe
+# `VTime.lean` as the executable `vtime`, the core `RecursionFast` as a path dependency.
+#   env: SRC  the entry's modules   (default: submissions/flock-recursive/lean)
+#        ORG  the core's checkout   (default: the private tree logs/org)
+#        PKGS its package tree      (default: the private tree logs/pkgs)
+# On the runner, run.sh sets ORG to a fresh clone of the core and PKGS to its .lake/packages.
 set -euo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd); R=$(cd "$HERE/../.." && pwd)
-SRC=${SRC:-$R/logs/fr-build-cert/src}
-ROOTS=$(ls "$SRC"/*.lean | xargs -n1 basename | sed 's/\.lean$//; s/.*/"&"/' | paste -sd, -)
+SRC=${SRC:-$R/submissions/flock-recursive/lean}
+ORG=${ORG:-$R/logs/org}
+PKGS=${PKGS:-$R/logs/pkgs}
+ROOTS=$(ls "$SRC"/FR*.lean | xargs -n1 basename | sed 's/\.lean$//; s/.*/"&"/' | paste -sd, -)
 cat > "$HERE/lakefile.toml" <<EOT
 name = "frvtime"
-packagesDir = "$R/logs/pkgs"
+packagesDir = "$PKGS"
 [[require]]
 name = "RecursionFast"
-path = "$R/logs/org"
+path = "$ORG"
 [[lean_lib]]
 name = "RFSubmission"
 srcDir = "$SRC"
@@ -22,3 +26,15 @@ roots = [$ROOTS]
 name = "vtime"
 root = "VTime"
 EOT
+# the manifest: the core's own (its pinned packages), plus the core as a path package
+python3 -I - "$ORG/lake-manifest.json" "$ORG" "$PKGS" > "$HERE/lake-manifest.json" <<'PY'
+import json, sys
+m = json.load(open(sys.argv[1]))
+pk = [{"type": "path", "scope": "", "name": "RecursionFast", "manifestFile": "lake-manifest.json",
+       "inherited": False, "dir": sys.argv[2], "configFile": "lakefile.toml"}]
+for p in m["packages"]:
+    p = dict(p); p["inherited"] = True; pk.append(p)
+print(json.dumps({"version": m["version"], "packages": pk, "name": "frvtime", "lakeDir": ".lake",
+                  "fixedToolchain": False, "packagesDir": sys.argv[3]}, indent=1))
+PY
+cp "$ORG/lean-toolchain" "$HERE/lean-toolchain"
