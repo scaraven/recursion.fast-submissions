@@ -1,7 +1,9 @@
 -- New for `flock-recursive` (BLUEPRINT A.10, §5.1–§5.2; stage S-G1i).
+-- RET-1: position-free declarations moved to `FRSoundnessCoreTail`.
 import FRSoundnessTailM
 import FRKState
 import FRSoundnessPhases
+import FRSoundnessCoreTail
 
 /-!
 # `PhaseObl` from the PIOP front's obligations and the Ligerito tail
@@ -181,8 +183,6 @@ theorem lt_length_of_get {p : ℕ} {it : Item} (h : fsItems[p]? = some it) : p <
 
 variable {RejF : Log → Log → Prop} {DF : ℕ → Log → Log → Prop} {W₀ : Log → Log → ℕ → K}
   {c₀ : Log → Log → K}
-
-theorem N_le : ((239 * 2 ^ 128 : ℕ) : ℝ≥0) ≤ 2 ^ 256 * deltaR := batch_N_le le_rfl
 
 /-- **The per-phase obligations of the whole transcript**, from the front's and the tail's. -/
 theorem phaseObl_of (hFr : FrontObl RejF DF W₀ c₀) :

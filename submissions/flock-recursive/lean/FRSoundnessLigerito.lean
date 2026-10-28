@@ -1,6 +1,8 @@
 -- New for `flock-recursive` (BLUEPRINT §5.4 step 2, A.2; stage S-G).
+-- RET-1: position-free declarations moved to `FRSoundnessCoreHide`.
 import FRRS
 import FRMLE
+import FRSoundnessCoreHide
 
 /-!
 # Ligerito's walk (BLUEPRINT §5.4 step 2): the bit-order bridge
@@ -17,11 +19,5 @@ import FRMLE
 namespace FR
 
 variable {R : Type*} [CommRing R]
-
-/-- **`eqBits_eq_eq`**: `eqBits` is `eq` at the cube point, coordinate `v` against bit `v`. -/
-theorem eqBits_eq_eq (r : ℕ → R) (ℓ : ℕ) (u : Fin (2 ^ ℓ)) :
-    eqBits r ℓ u = eq (fun v : Fin ℓ => r v) (cube u) := by
-  rw [eq_cube, eqBits, bitSel,
-    Finset.prod_range (fun i => if (u : ℕ).testBit i then r i else 1 - r i)]
 
 end FR

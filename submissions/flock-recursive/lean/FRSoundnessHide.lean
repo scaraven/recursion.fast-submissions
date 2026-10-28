@@ -1,6 +1,8 @@
 -- New for `flock-recursive` (BLUEPRINT §5.1, A.10 P1.i; §10 changes 14–15; stage S-G1g).
+-- RET-1: position-free declarations moved to `FRSoundnessCoreHide`.
 import FRSoundnessStepE
 import FRSoundnessLigerito
+import FRSoundnessCoreHide
 
 /-!
 # The Hide potential `μ_Hide`, and the entry's potential `μ_doom + μ_Hide` (§10 changes 15)
@@ -41,9 +43,6 @@ set_option linter.constructorNameAsVariable false
 
 /-- P1.i's first Fiat–Shamir position (phase `26 + 5i`). -/
 def p1Start (i : ℕ) : ℕ := phStart (26 + 5 * i)
-
-/-- P1.i's rounds `ℓᵢ` (the same for every kind, `lvl_ell`). -/
-def hEll (i : ℕ) : ℕ := (lvlStar i).ell
 
 theorem lvl_ell (κ : Kind) {i : ℕ} (hi : i < 5) : (lvl κ i).ell = hEll i := by
   cases κ <;> interval_cases i <;> rfl
@@ -238,45 +237,6 @@ theorem DH_append_iff {L es : Log} (x : ByteArray × Digest)
   exact forall₂_congr fun i hi => noHide_append hi x (hRnd_append es x (h i hi))
 
 /-! ## Part C: the word read off the charging log (`hstab`) -/
-
-theorem fsCheck_absorb_squeezeQ (len : ℕ) (st : Digest) :
-    fsCheck (.absorb len) (squeezeQ st) = false := by
-  have h8 : (squeezeQ st).data.toList.take 8 = tagSqz := by
-    rw [squeezeQ_data, List.take_append_of_le_length (by decide)]; rfl
-  simp only [fsCheck, h8, Bool.and_eq_false_iff]
-  left; decide
-
-theorem fsCheck_absorb_default (len : ℕ) :
-    fsCheck (.absorb len) (default : ByteArray × Digest).1 = false := by
-  simp only [fsCheck, Bool.and_eq_false_iff]
-  left; decide
-
-/-- **A formal extension's entries past its prefix pass no absorb check** (they are squeezes, or
-past the end). -/
-theorem fsCheck_ext_ge (es₀ : Log) (as : List Digest) {p : ℕ} (hp : es₀.length ≤ p) (len : ℕ) :
-    fsCheck (.absorb len) (entAt (ext es₀ as) p).1 = false := by
-  induction as using List.reverseRecOn with
-  | nil =>
-    rw [ext_nil, entAt, List.getD_eq_default _ _ hp]; exact fsCheck_absorb_default len
-  | append_singleton as a ih =>
-    rw [ext_append, ext1]
-    rcases Nat.lt_or_ge p (ext es₀ as).length with h | h
-    · rw [entAt_append _ _ h]; exact ih
-    · rcases Nat.lt_or_ge (ext es₀ as).length p with h' | h'
-      · rw [entAt, List.getD_eq_default _ _ (by simp; omega)]; exact fsCheck_absorb_default len
-      · have : p = (ext es₀ as).length := by omega
-        subst this
-        simp only [entAt, List.getD_eq_getElem?_getD, List.getElem?_concat_length,
-          Option.getD_some]
-        exact fsCheck_absorb_squeezeQ len _
-
-theorem entAt_ext_lt (es₀ : Log) (as : List Digest) {p : ℕ} (hp : p < es₀.length) :
-    entAt (ext es₀ as) p = entAt es₀ p := by
-  conv_rhs => rw [← take_ext es₀ as]
-  simp only [entAt, List.getD_eq_getElem?_getD, List.getElem?_take, hp, ite_true]
-
-theorem entAt_take {es : Log} {k p : ℕ} (hp : p < k) : entAt (es.take k) p = entAt es p := by
-  simp only [entAt, List.getD_eq_getElem?_getD, List.getElem?_take, hp, ite_true]
 
 /-- **The level words of a chain's formal extensions read the same off the charging log**
 (§10 changes 10; A.10's `hstab` reads): on a non-bad log, when the cap entry of an extension of a
@@ -534,13 +494,6 @@ theorem hide_obl : StepObl DH fsRnd ((2 : ℝ≥0)⁻¹ ^ 238) (2 ^ 18) where
     exact hnd this
   hstab L n hb hci X hX := forall₂_congr fun i hi => noHide_stab hb hci hX hi _
 
-theorem hide_N_le : ((2 ^ 18 : ℕ) : ℝ≥0) ≤ 2 ^ 256 * (2 : ℝ≥0)⁻¹ ^ 238 := by
-  rw [← NNReal.coe_le_coe]; push_cast; norm_num
-
-/-- The Hide potential's error: its H row and its rounds fit `ε_H`. -/
-theorem err_le_epsH : (badCount : ℝ≥0) / 2 ^ 256 + (2 : ℝ≥0)⁻¹ ^ 238 ≤ epsH := by
-  rw [epsH]; gcongr; exact badCount_frac_le
-
 open Classical in
 /-- **`μ_Hide`'s step law** (§10 changes 15): the library's `KState.step` law with error
 `ε_H = 2^-142 + 2^-238` for `muG DH (pRoundG DH fsRnd)`. -/
@@ -552,18 +505,6 @@ theorem hide_step (L : Log) (q : ByteArray) (hl : L.length < logCap)
     hide_obl.hround hide_obl.hstab hl hμ hq).trans (by gcongr; exact err_le_epsH)
 
 /-! ## Part E: at P1.i's end, `noHide` is `¬ Hide_i` -/
-
-/-- **Binding every variable evaluates the MLE** (`mle_fix0`, `tbl_bind0`). -/
-theorem bindL_mle {R : Type*} [CommRing R] :
-    ∀ (cs : List R) (t : Array R), t.size = 2 ^ cs.length →
-      tbl 0 (bindL t cs) 0 = mle (tbl cs.length t) (pt cs)
-  | [], t, _ => (mle_zero _ _).symm
-  | c :: cs, t, ht => by
-    have ht' : t.size = 2 ^ (cs.length + 1) := by simpa using ht
-    have hs : (bind0 t c).size = 2 ^ cs.length := by
-      rw [bind0_size, ht', pow_succ, Nat.mul_div_cancel _ two_pos]
-    show tbl 0 (bindL (bind0 t c) cs) 0 = mle (tbl (cs.length + 1) t) (pt (c :: cs))
-    rw [bindL_mle cs _ hs, pt_cons, mle_fix0, Fin.cons_zero, Fin.tail_cons, tbl_bind0 t c ht']
 
 theorem sList_length (es : Log) (i l : ℕ) : (sList es i l).length = l := by simp [sList]
 
@@ -614,12 +555,6 @@ noncomputable def muT (Rej : Log → Log → Prop) (Dk : ℕ → Log → Log →
 theorem muT_empty (Rej : Log → Log → Prop) (Dk : ℕ → Log → Log → Prop) : muT Rej Dk [] = 0 := by
   simp only [muT, muG_empty, add_zero]
 
-/-- **The errors add up** (kernel-checked): the doom potential's `badCount/2^256 + deltaR` and the
-Hide potential's `badCount/2^256 + 2^-238` sum to at most `εR = 15/2^124`. -/
-theorem err_total : ((badCount : ℝ≥0) / 2 ^ 256 + deltaR) +
-    ((badCount : ℝ≥0) / 2 ^ 256 + (2 : ℝ≥0)⁻¹ ^ 238) ≤ epsR := by
-  rw [← epsD_add_epsH]; exact add_le_add err_le_epsD err_le_epsH
-
 open Classical in
 /-- **`KState.step` at `εR` for the entry's potential** (BLUEPRINT §5.1, §10 changes 15):
 `kstate_step` (`εD`) and `hide_step` (`ε_H`) through `step_add`, with `εD + ε_H = εR`. -/
@@ -652,16 +587,6 @@ theorem not_noHide_of_hideL {κ : Kind} {L es : Log} {i : ℕ} (hi : i < 5)
     (hR : hRnd es i = hEll i) (hfar : ¬ farL κ L es i)
     (hH : hideL κ L es i) : ¬ noHide κ L es i :=
   fun hn => noHide_full hi hR hfar hn hH
-
-/-- Control (toy, `mlDoom` over ℚ): the nonzero table `(1, 0)` is doomed before its challenge,
-and the challenge `1` hides it (`1 + 1·(0 − 1) = 0`). -/
-theorem mlDoom_toy : mlDoom 1 (#[1, 0] : Array ℚ) [] ∧ ¬ mlDoom 1 (#[1, 0] : Array ℚ) [1] := by
-  refine ⟨fun h => ?_, fun h => h (funext fun u => ?_)⟩
-  · have := congrFun h 0
-    simp [tbl, bindL] at this
-  · obtain ⟨u, hu⟩ := u
-    obtain rfl : u = 0 := by simp at hu; omega
-    simp [tbl, bindL, bind0]
 
 /-- Control (negative): a formal extension past the chain has no real cap entry. -/
 theorem not_capOK_ext (es₀ : Log) (as : List Digest) {i : ℕ} (h : es₀.length ≤ capPos i) :

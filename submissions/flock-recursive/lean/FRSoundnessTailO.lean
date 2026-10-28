@@ -1,5 +1,7 @@
 -- New for `flock-recursive` (BLUEPRINT A.10 P1.i … Pf, §5.2; stage S-G1i).
+-- RET-1: position-free declarations moved to `FRSoundnessCoreTail`.
 import FRSoundnessTailD
+import FRSoundnessCoreTail
 
 /-!
 # The Ligerito tail's per-phase obligations (A.10 P1.i → Pf)
@@ -43,9 +45,6 @@ theorem Same.take {L es L' es' : Log} {p : ℕ} (h : Same L es L' es' p) {m : �
   have hA' : Agree (es'.take m) es' m := fun q hq => entAt_take hq
   refine ⟨fun q hq => by rw [hA q hq, hA' q hq, h.1 q (by omega)], fun κ i hi hc => ?_⟩
   rw [(same_of_agree L hA).2 κ i hi hc, h.2 κ i hi (by omega), (same_of_agree L' hA').2 κ i hi hc]
-
-theorem agree_ext (es₀ : Log) (as : List Digest) : Agree (ext es₀ as) es₀ es₀.length :=
-  fun q hq => by rw [← entAt_take (es := ext es₀ as) hq, take_ext]
 
 theorem kindOf_ext (es₀ : Log) (as : List Digest) (h : 0 < es₀.length) :
     kindOf (ext es₀ as) = kindOf es₀ := kindOf_congr ((agree_ext es₀ as).mono h)
@@ -238,9 +237,6 @@ theorem fsItems_length : fsItems.length = 468 := by
   simp only [Bool.and_eq_true, beq_iff_eq] at h
   exact h.2
 
-theorem hEll_le {i : ℕ} (hi : i < 5) : hEll i ≤ 6 := by
-  unfold hEll lvlStar; interval_cases i <;> decide
-
 /-- P1's single-squeeze count fits `N = 239·2^128`. -/
 theorem p1_N_le (κ : Kind) {i : ℕ} (hi : i < 5) :
     2 + 2 ^ 5 * cMca (lvN κ i) (lvK κ i) (lvE κ i) ≤ 239 * 2 ^ 128 := by
@@ -334,7 +330,6 @@ theorem single_Pf (hF : FrontLocal W₀ c₀) {l : ℕ} {L es : Log}
   unfold DPf at h1 h2
   rw [not_or, hB a, not_not] at h2
   exact ⟨h1.resolve_left (not_not.mpr h2.1), h2.2⟩
-
 
 /-! ## Part D: the asserted checks -/
 

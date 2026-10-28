@@ -1,7 +1,9 @@
 -- New for `flock-recursive` (BLUEPRINT A.10, §5.4; stage S-G1c).
+-- RET-1: position-free declarations moved to `FRSoundnessCoreSteps`.
 import FRSoundnessStepC
 import FRRSEval
 import FRBlockStream
+import FRSoundnessCoreSteps
 
 /-!
 # The per-phase truths (BLUEPRINT A.10): Ligerito's words, and the stability of word reads
@@ -86,148 +88,7 @@ theorem not_farL_nil (κ : Kind) (es : Log) (i : ℕ) : ¬ farL κ [] es i := by
 
 /-! ## Part B: no bad event, no Merkle hit -/
 
-/-- Level `i`'s encoding with `carried` restricted to the query's windows. -/
-def frEncW (i : ℕ) : MerkleEnc where
-  nodeQ := nodeQ i
-  colQ := colQ i
-  parseNode := parseNode i
-  parseCol := parseCol i
-  carried q := (carried q).filter fun d => decide (d ∈ wins q)
-  parseNode_nodeQ := parseNode_nodeQ i
-  nodeQ_of_parseNode := nodeQ_of_parseNode i
-  parseCol_colQ := parseCol_colQ i
-  carried_nodeQ l r := by
-    have hw : ∀ k, k < 4 → 8 + 16 * k + 32 ≤ 72 →
-        bytesAt (nodeQ i l r) (8 + 16 * k) 32 ∈ wins (nodeQ i l r) := fun k hk h32 => by
-      rw [wins, ite_eq_left (by rw [nodeQ_size]; unfold queryCap; norm_num)]
-      refine List.mem_append_right _ (List.mem_filterMap.mpr ⟨k, ?_, ?_⟩)
-      · rw [List.mem_range, nodeQ_size]; omega
-      · rw [nodeQ_size, ite_eq_left h32]
-    have hl := hw 0 (by norm_num) (by norm_num)
-    have hr := hw 2 (by norm_num) (by norm_num)
-    rw [show 8 + 16 * 0 = 8 by rfl, bytesAt_nodeQ_l] at hl
-    rw [show 8 + 16 * 2 = 40 by rfl, bytesAt_nodeQ_r] at hr
-    obtain ⟨cl, cr⟩ := carried_nodeQ i l r
-    exact ⟨List.mem_filter.mpr ⟨cl, by simpa using hl⟩, List.mem_filter.mpr ⟨cr, by simpa using hr⟩⟩
-
-/-- `colL` does not read `carried`. -/
-theorem colL_frEncW (i : ℕ) (L : Log) : ∀ (h : ℕ) (d : Digest) (j : ℕ),
-    colL (frEncW i) L d h j = colL (frEnc i) L d h j
-  | 0, _, _ => rfl
-  | h + 1, d, j => by
-    simp only [colL]
-    congr 1; funext e; congr 1; funext ab
-    exact colL_frEncW i L h _ j
-
-/-- **No bad event, no Merkle hit**: a hit under `frEncW` is a window hit. -/
-theorem not_hit_of_not_bad {L : Log} (hb : ¬ Bad L) (i : ℕ) : ¬ Hit (frEncW i) L := by
-  rintro ⟨a, b, hab, hbL, hm⟩
-  have hm' := (List.mem_filter.mp hm).2
-  simp only [decide_eq_true_eq] at hm'
-  exact hb (Or.inr (Or.inl ⟨a, b, hab.le, hbL, hm'⟩))
-
-/-- **`colL_take`**: on a non-bad log, the column read under a digest carried (within its
-windows) by an entry of the prefix `L.take n` is the same on the prefix and on `L`. -/
-theorem colL_take {L : Log} (hb : ¬ Bad L) (i n : ℕ) {d : Digest}
-    (hd : ∃ e ∈ L.take n, d ∈ (frEncW i).carried e.1) (h j : ℕ) :
-    colL (frEnc i) (L.take n) d h j = colL (frEnc i) L d h j := by
-  have hnh : ¬ Hit (frEncW i) (L.take n ++ L.drop n) := by
-    rw [List.take_append_drop]; exact not_hit_of_not_bad hb i
-  rw [← colL_frEncW, ← colL_frEncW]
-  cases hc : colL (frEncW i) (L.take n) d h j with
-  | some col =>
-    have := colL_append (E := frEncW i) (L.drop n) hc
-    rw [List.take_append_drop] at this; exact this.symm
-  | none =>
-    cases hc' : colL (frEncW i) L d h j with
-    | none => rfl
-    | some col =>
-      rw [← List.take_append_drop n L] at hc'
-      rw [colL_prefix hnh hd hc'] at hc
-      cases hc
-
 /-! ## Part C: the cap entries and the cap's own absorb -/
-
-/-- The bytes of a message read at `o` are the absorb query's bytes at `40 + o`. -/
-theorem bytesAt_extract40 (q : ByteArray) (o : ℕ) (h : 40 + o + 32 ≤ q.size) :
-    bytesAt (q.extract 40 q.size) o 32 = bytesAt q (40 + o) 32 := by
-  ext k hk
-  simp only [getElem_bytesAt _ _ _ _ hk, ByteArray.data_extract]
-  rw [List.getD_eq_getElem?_getD, List.getD_eq_getElem?_getD, Array.getElem?_toList,
-    Array.getElem?_toList, Array.getElem?_extract]
-  simp only [ByteArray.size] at h
-  rw [ite_eq_left (by have : q.size = q.data.size := rfl; omega)]
-  congr 3
-  omega
-
-/-- **(a) A cap entry is carried (within its windows) by the cap's absorb query**: entry `c` of
-an absorb of `len ≥ 32(c + 1)` bytes, at offset `40 + 32c = 8 + 16(2 + 2c)`. -/
-theorem cap_carried {q : ByteArray} {len : ℕ} (hq : fsCheck (.absorb len) q = true)
-    (hcap : q.size ≤ queryCap) {c : ℕ} (hc : 32 * (c + 1) ≤ len) (j : ℕ) :
-    bytesAt (q.extract 40 q.size) (32 * c) 32 ∈ (frEncW j).carried q := by
-  simp only [fsCheck, Bool.and_eq_true, beq_iff_eq] at hq
-  obtain ⟨ht, hs⟩ := hq
-  rw [bytesAt_extract40 q _ (by omega)]
-  refine List.mem_filter.mpr ⟨?_, ?_⟩
-  · simp only [carried, ht, ite_true]
-    refine List.mem_cons_of_mem _ (List.mem_map.mpr ⟨c, ?_, rfl⟩)
-    rw [List.mem_range, hs, Nat.lt_div_iff_mul_lt (by norm_num)]
-    omega
-  · rw [decide_eq_true_eq, wins, ite_eq_left hcap]
-    refine List.mem_append_right _ (List.mem_filterMap.mpr ⟨2 + 2 * c, ?_, ?_⟩)
-    · rw [List.mem_range]; omega
-    · rw [ite_eq_left (by omega)]; congr 2; omega
-
-/-- On a non-bad log, an entry answering a digest carried by entry `i` precedes `i`. -/
-theorem ans_lt_of_carried {L : Log} (hb : ¬ Bad L) {i : ℕ} (hi : i < L.length) {j : ℕ}
-    {d : Digest} (hd : d ∈ (frEncW j).carried (L[i]).1) {k : ℕ} (hk : k < L.length)
-    (hkd : L[k].2 = d) : k < i := by
-  by_contra hki
-  rcases Nat.lt_or_eq_of_le (Nat.le_of_not_lt hki) with h | h
-  · exact not_hit_of_not_bad hb j ⟨i, k, h, hk, hkd ▸ hd⟩
-  · have hw := (List.mem_filter.mp hd).2
-    simp only [decide_eq_true_eq] at hw
-    exact hb (Or.inr (Or.inl ⟨i, k, h.le, hk, hkd ▸ hw⟩))
-
-/-- Under the same hypotheses, the first preimage of `d` is read off `L.take i`. -/
-theorem pre_take_own {L : Log} (hb : ¬ Bad L) {i : ℕ} (hi : i < L.length) {j : ℕ}
-    {d : Digest} (hd : d ∈ (frEncW j).carried (L[i]).1) : pre (L.take i) d = pre L d := by
-  have hnone : (L.drop i).find? (fun e => decide (e.2 = d)) = none := by
-    rw [List.find?_eq_none]
-    intro e he hed
-    obtain ⟨m, hm, rfl⟩ := List.getElem_of_mem he
-    rw [List.getElem_drop] at hed
-    simp only [decide_eq_true_eq] at hed
-    have := ans_lt_of_carried hb hi hd (by simp at hm; omega) hed
-    omega
-  conv_rhs => rw [← List.take_append_drop i L]
-  simp only [pre, List.find?_append, hnone, Option.or_none]
-
-/-- **(b) The cap's own absorb**: on a non-bad log, a column read under a digest carried by entry
-`i` (e.g. the cap absorb as a chain's last entry) is the same on `L.take i` and on `L`. -/
-theorem colL_take_own {L : Log} (hb : ¬ Bad L) {i : ℕ} (hi : i < L.length) {j : ℕ}
-    {d : Digest} (hd : d ∈ (frEncW j).carried (L[i]).1) (h p : ℕ) :
-    colL (frEnc j) (L.take i) d h p = colL (frEnc j) L d h p := by
-  have hpre := pre_take_own hb hi hd
-  cases h with
-  | zero => simp only [colL, hpre]
-  | succ h =>
-    simp only [colL]
-    rw [hpre]
-    cases he : pre L d with
-    | none => rfl
-    | some e =>
-      simp only [Option.bind_some]
-      cases hn : (frEnc j).parseNode e.1 with
-      | none => rfl
-      | some ab =>
-        simp only [Option.bind_some]
-        have hmem : e ∈ L.take i := by
-          rw [← hpre] at he; exact List.mem_of_find?_eq_some he
-        have hc : ab.1 ∈ (frEncW j).carried e.1 ∧ ab.2 ∈ (frEncW j).carried e.1 := by
-          rw [(frEncW j).nodeQ_of_parseNode e.1 ab.1 ab.2 hn]
-          exact (frEncW j).carried_nodeQ _ _
-        exact colL_take hb j i ⟨e, hmem, by split <;> simp [hc]⟩ h p
 
 /-! ## Part D: Ligerito's per-level truths (A.10: P1.i, C.i, P2.i, P3.i, Pf)
 
@@ -357,7 +218,6 @@ theorem mLog_eq : (List.range 5).map (mLog .L32) = [19, 16, 13, 10, 7] ∧
   refine ⟨by decide, by decide, fun κ i hi => ?_⟩
   cases κ <;> interval_cases i <;> decide
 
-
 /-! ## Part E: uniqueness (A.10, C.i from P2.i), and the node stream's padding
 
 **`truthC_of`**: a close level-`i` word and `truthP2 i` give `truthC i`. The decoded rows are
@@ -397,14 +257,6 @@ theorem msgOf_eq {κ : Kind} {L es : Log} {i : ℕ} (hi : i < 5) {r : Fin (lvl �
   rw [coeffsOfValuesD, coeffs_unique D_xor D_injOn_nMax hm _ c fun j hj => ?_]
   simp only [show j < 2 ^ (lvl κ i).logN from lt_of_lt_of_le hj hkn, dite_true]
   rw [← hc, enc_eq_encN]
-
-
-/-- Two sets of at least `n − e` positions meet in at least `n − 2e`. -/
-theorem card_inter_ge {n e : ℕ} {A B : Finset (Fin n)} (hA : n - e ≤ A.card) (hB : n - e ≤ B.card) :
-    n - 2 * e ≤ (A ∩ B).card := by
-  have h1 := card_union_add_card_inter A B
-  have h2 : (A ∪ B).card ≤ n := by simpa using card_le_univ (A ∪ B)
-  omega
 
 /-- **The uniqueness lemma** (A.10, C.i from P2.i): if level `i`'s word is close (`¬ far_i`) and
 the next level's codeword agrees with the column fold on at least `nᵢ − eᵢ` positions
@@ -526,19 +378,6 @@ theorem vNext_eq {κ : Kind} {L es : Log} {i : ℕ} {Wf : ℕ → K} {c : K}
   rw [h1, h2, ← sum_add_distrib]
   exact sum_congr rfl fun x _ => by rw [wNext, add_mul]
 
-/-- **The coordinate split** (A.2, `ligerito.rs`): level `i + 1`'s weight table from a table over
-level `i`'s folded message: variable 0 is the split bit (`1` for coordinate 0, `u` for
-coordinate 1), the rest index the K element (`y = 2x + b`). Its MLE in the split bit at `β` is
-`W(x)·û(β)`, `û(β) = 1 + β(1 + u)` (A.9's fold factor). -/
-def wSplit (W : ℕ → K) (y : ℕ) : K := W (y / 2) * (if y % 2 = 0 then 1 else K.u)
-
-theorem sum_range_two_mul {M : Type*} [AddCommMonoid M] (f : ℕ → M) :
-    ∀ k, ∑ y ∈ range (2 * k), f y = ∑ x ∈ range k, (f (2 * x) + f (2 * x + 1))
-  | 0 => by simp
-  | k + 1 => by
-    rw [show 2 * (k + 1) = 2 * k + 1 + 1 by ring, sum_range_succ, sum_range_succ,
-      sum_range_two_mul f k, sum_range_succ, add_assoc]
-
 /-- Levels `1 … 4` have 16 rows and `k_{i+1} = kᵢ / 8`. -/
 theorem lv_next (κ : Kind) {i : ℕ} (hi : i + 1 < 5) :
     (lvl κ (i + 1)).rows = 16 ∧ (lvl κ (i + 1)).ell = 4 ∧ mLog κ (i + 1) + 3 = mLog κ i := by
@@ -627,24 +466,6 @@ theorem card_not_jointAgree {κ : Kind} {L es : Log} {i : ℕ} (hfar : ¬ farL �
     fun j => j ∈ jointAgree (wordK κ L es i) (decodeL κ L es i)
   rw [card_univ, Fintype.card_fin, filter_mem_eq_inter, univ_inter] at h
   omega
-
-open Classical in
-/-- **The per-round hiding count** (Schwartz–Zippel, `zerocheck_bad_le` over K): for a family of
-nonzero difference tables indexed by `P`, at most `|P|` values of a round's challenge make one of
-them vanish when its first variable is bound. Over P1.i's `ℓᵢ` rounds with `|P| ≤ eᵢ`
-(`card_not_jointAgree`) this is `eᵢ·ℓᵢ/|K|`, inside P1's cancellation charge. -/
-theorem hide_round_le {ι : Type*} (P : Finset ι) {m : ℕ} (t : ι → Fin (2 ^ (m + 1)) → K)
-    (ht : ∀ j ∈ P, t j ≠ 0) :
-    (univ.filter fun c : K => ∃ j ∈ P, FR.fix0 (t j) c = 0).card ≤ P.card := by
-  calc (univ.filter fun c : K => ∃ j ∈ P, FR.fix0 (t j) c = 0).card
-      ≤ (P.biUnion fun j => univ.filter fun c => FR.fix0 (t j) c = 0).card :=
-        card_le_card fun c hc => by
-          simp only [mem_filter, mem_univ, true_and] at hc
-          obtain ⟨j, hj, h⟩ := hc
-          exact mem_biUnion.mpr ⟨j, hj, by simp [h]⟩
-    _ ≤ ∑ j ∈ P, (univ.filter fun c => FR.fix0 (t j) c = 0).card := card_biUnion_le
-    _ ≤ ∑ _j ∈ P, 1 := sum_le_sum fun j hj => zerocheck_bad_le _ (ht j hj)
-    _ = P.card := by simp
 
 /-- The hiding count fits P1's single-squeeze budget: `2 + eᵢ ≤ 2^66` at every level (A.10's
 `N ≤ 2^66` for P1.i already holds the cancellation term). -/

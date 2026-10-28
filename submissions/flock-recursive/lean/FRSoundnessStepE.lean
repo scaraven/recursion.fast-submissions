@@ -1,5 +1,7 @@
 -- New for `flock-recursive` (BLUEPRINT §5.1–§5.2, A.10; stage S-G1e).
+-- RET-1: position-free declarations moved to `FRSoundnessCoreSteps`.
 import FRSoundnessStepD
+import FRSoundnessCoreSteps
 
 /-!
 # The per-phase dooms, the multi-squeeze bad sets, and `KState.step` for the whole transcript
@@ -36,176 +38,6 @@ set_option linter.constructorNameAsVariable false
 
 /-! ## Part A: the multi-squeeze bad sets -/
 
-/-- `r` coordinate pairs as `2r` coordinates, pair `s`'s coordinate `c` at `2s + c`. -/
-def pairsEquiv (r : ℕ) : (Fin r → F × F) ≃ (Fin (r * 2) → F) :=
-  (Equiv.arrowCongr (Equiv.refl _) (finTwoArrowEquiv F).symm).trans
-    ((Equiv.curry _ _ _).symm.trans (Equiv.arrowCongr finProdFinEquiv (Equiv.refl F)))
-
-theorem pairsEquiv_apply {r : ℕ} (u : Fin r → F × F) (j : Fin (r * 2)) :
-    pairsEquiv r u j =
-      if j.val % 2 = 0 then (u ⟨j / 2, by omega⟩).1 else (u ⟨j / 2, by omega⟩).2 := by
-  simp only [pairsEquiv, Equiv.trans_apply, Equiv.arrowCongr_apply, Equiv.refl_symm,
-    Equiv.coe_refl, Function.comp_apply, Equiv.curry_symm_apply, Function.uncurry_apply_pair,
-    finTwoArrowEquiv_symm_apply, finProdFinEquiv_symm_apply, id]
-  rcases Nat.mod_two_eq_zero_or_one j.val with h | h
-  · have : Fin.modNat j = 0 := Fin.ext (by simp [Fin.modNat, h])
-    simp [this, h, Fin.divNat]
-  · have : Fin.modNat j = 1 := Fin.ext (by simp [Fin.modNat, h])
-    simp [this, h, Fin.divNat]
-
-open Classical in
-/-- **The flattened coordinate row**: if a multi-squeeze phase's escape puts its `2r` coordinates
-(`coordAt`) in a set `W`, its conditional count from the entry is at most `|W| / 2^(256 r)`. -/
-theorem flat_round_le {D : Log → Log → Prop} {L es₀ : Log} {s0 r : ℕ}
-    (hl : es₀.length = s0 + 1) (W : Finset (Fin (r * 2) → F))
-    (hesc : ∀ as : List Digest, as.length = r → EscAtG D L (ext es₀ as) →
-      (fun j : Fin (r * 2) => coordAt (ext es₀ as) s0 j) ∈ W) :
-    condCount D L es₀ r [] ≤ (W.card : ℝ≥0) / 2 ^ (256 * r) := by
-  have hB := coords_round_le (D := D) (L := L) hl (W.map (pairsEquiv r).symm.toEmbedding)
-    fun as has hE => by
-      rw [Finset.mem_map_equiv, Equiv.symm_symm]
-      convert hesc as has hE using 1
-      funext j
-      rw [pairsEquiv_apply, coordAt]
-      rcases Nat.mod_two_eq_zero_or_one j.val with h | h <;> simp [h]
-  rwa [Finset.card_map] at hB
-
-open Classical in
-/-- **The Schwartz–Zippel row** (`seq_bad_le`): if a doom on the coordinate list holds at the
-entry, loses at most `b i` values at coordinate `i`, and fails at every escape, the phase's charge
-is at most `Σ_{i < 2r} b i / 2^128`. -/
-theorem seq_round_le {D : Log → Log → Prop} {L es₀ : Log} {s0 r : ℕ}
-    (hl : es₀.length = s0 + 1) (Doom : List F → Prop) (b : ℕ → ℕ)
-    (hb : ∀ l, Doom l → (univ.filter fun c => ¬ Doom (l ++ [c])).card ≤ b l.length)
-    (h0 : Doom [])
-    (hesc : ∀ as : List Digest, as.length = r → EscAtG D L (ext es₀ as) →
-      ¬ Doom (List.ofFn fun j : Fin (r * 2) => coordAt (ext es₀ as) s0 j)) :
-    condCount D L es₀ r [] ≤ ((∑ i ∈ range (r * 2), b i : ℕ) : ℝ≥0) / 2 ^ 128 := by
-  set W := univ.filter fun w : Fin (r * 2) → F => ¬ Doom (List.ofFn w)
-  have h1 := flat_round_le (D := D) (L := L) hl W fun as has hE => by
-    simp only [W, mem_filter, mem_univ, true_and]; exact hesc as has hE
-  have h2 := seq_bad_le Doom b hb (r * 2) [] h0
-  simp only [List.nil_append, List.length_nil, zero_add, F.card_F] at h2
-  refine h1.trans ?_
-  rw [div_le_div_iff₀ (by positivity) (by positivity)]
-  have h3 : (W.card : ℝ≥0) * 2 ^ 128 ≤ (∑ i ∈ range (r * 2), b i : ℕ) * (2 ^ 128) ^ (r * 2) := by
-    exact_mod_cast h2
-  calc (W.card : ℝ≥0) * 2 ^ 128 ≤ _ := h3
-    _ = _ := by rw [← pow_mul]; ring_nf
-
-
-/-- A table with its first variables bound to `cs`, in order (`bind0` each). -/
-def bindL {R : Type*} [CommRing R] (t : Array R) : List R → Array R
-  | [] => t
-  | c :: cs => bindL (bind0 t c) cs
-
-theorem bindL_append {R : Type*} [CommRing R] (t : Array R) (cs : List R) (c : R) :
-    bindL t (cs ++ [c]) = bind0 (bindL t cs) c := by
-  induction cs generalizing t with
-  | nil => rfl
-  | cons c' cs ih => exact ih _
-
-theorem bindL_size {R : Type*} [CommRing R] {n : ℕ} :
-    ∀ (cs : List R) (t : Array R), t.size = 2 ^ (cs.length + n) → (bindL t cs).size = 2 ^ n
-  | [], t, h => by rw [bindL]; simpa using h
-  | c :: cs, t, h => bindL_size cs _ (by
-      rw [bind0_size, h, List.length_cons, show cs.length + 1 + n = (cs.length + n) + 1 by omega,
-        pow_succ, Nat.mul_div_cancel _ two_pos])
-
-/-- **The multilinear zero test's doom** over a table of `n` variables: with the first coordinates
-bound (at most `n`), the table is not zero. At `n` coordinates this is "the MLE of `t` at the
-point is nonzero". -/
-def mlDoom {R : Type*} [CommRing R] (n : ℕ) (t : Array R) (l : List R) : Prop :=
-  tbl (n - (l.take n).length) (bindL t (l.take n)) ≠ 0
-
-open Classical in
-/-- Each coordinate loses at most one value (`zerocheck_bad_le`, `tbl_bind0`); past `n`, none. -/
-theorem mlDoom_step {R : Type*} [Field R] [Fintype R] [DecidableEq R] {n : ℕ} {t : Array R}
-    (ht : t.size = 2 ^ n) (l : List R) (hd : mlDoom n t l) :
-    (univ.filter fun c => ¬ mlDoom n t (l ++ [c])).card ≤ if l.length < n then 1 else 0 := by
-  by_cases hl : l.length < n
-  · simp only [hl, ↓reduceIte]
-    have hlk : l.take n = l := List.take_of_length_le (by omega)
-    obtain ⟨m, hm⟩ : ∃ m, n - l.length = m + 1 := ⟨n - l.length - 1, by omega⟩
-    have hsz : (bindL t l).size = 2 ^ (m + 1) := bindL_size l t (by rw [ht]; congr 1; omega)
-    have hd' : tbl (m + 1) (bindL t l) ≠ 0 := by
-      rw [mlDoom, hlk, hm] at hd; exact hd
-    refine le_trans (card_le_card fun c hc => ?_) (zerocheck_bad_le _ hd')
-    simp only [mem_filter, mem_univ, true_and, mlDoom, not_not] at hc ⊢
-    rw [List.take_of_length_le (by simp; omega), bindL_append, List.length_append,
-      List.length_singleton, show n - (l.length + 1) = m by omega, tbl_bind0 _ _ hsz] at hc
-    exact hc
-  · simp only [hl, ↓reduceIte, Nat.le_zero, Finset.card_eq_zero, filter_eq_empty_iff, mem_univ,
-      true_implies, not_not]
-    intro c
-    rw [mlDoom, List.take_append_of_le_length (by omega)]
-    exact hd
-
-open Classical in
-/-- **The multilinear row** (Z1, Lr1, E1, P3; A.10): if at the entry the table `t` of `n ≤ 2r`
-variables is nonzero and every escape makes its MLE vanish at the phase's first `n`
-coordinates, the phase's charge is at most `n / 2^128`. -/
-theorem ml_round_le {D : Log → Log → Prop} {L es₀ : Log} {s0 r n : ℕ}
-    (hl : es₀.length = s0 + 1) (hn : n ≤ r * 2) {t : Array F} (ht : t.size = 2 ^ n)
-    (h0 : tbl n t ≠ 0)
-    (hesc : ∀ as : List Digest, as.length = r → EscAtG D L (ext es₀ as) →
-      ¬ mlDoom n t (List.ofFn fun j : Fin (r * 2) => coordAt (ext es₀ as) s0 j)) :
-    condCount D L es₀ r [] ≤ (n : ℝ≥0) / 2 ^ 128 := by
-  have h := seq_round_le hl (mlDoom n t) (fun i => if i < n then 1 else 0)
-    (fun l hd => mlDoom_step ht l hd) (by cases n <;> exact h0) hesc
-  refine h.trans (le_of_eq ?_)
-  have : (∑ i ∈ range (r * 2), if i < n then 1 else 0) = n := by
-    rw [Finset.sum_boole, show (range (r * 2)).filter (· < n) = range n by
-      ext i; simp only [mem_filter, mem_range]; omega, card_range, Nat.cast_id]
-  rw [this]
-
-
-open Classical in
-/-- **The ring-switching row** (RS1, 4 squeezes: `r″` = coordinates `0 … 6`, `κ` = coordinate
-`7`): if the escape puts `(r″, κ)` in a set of at most `c·|F|^7` pairs (`rs1_joint`), the
-phase's charge is at most `c / 2^128`. -/
-theorem rs1_round_le {D : Log → Log → Prop} {L es₀ : Log} {s0 : ℕ} (hl : es₀.length = s0 + 1)
-    (P : Finset ((Fin 7 → F) × F)) {c : ℕ} (hP : P.card ≤ c * Fintype.card F ^ 7)
-    (hesc : ∀ as : List Digest, as.length = 4 → EscAtG D L (ext es₀ as) →
-      ((fun i : Fin 7 => coordAt (ext es₀ as) s0 i), coordAt (ext es₀ as) s0 7) ∈ P) :
-    condCount D L es₀ 4 [] ≤ (c : ℝ≥0) / 2 ^ 128 := by
-  let pr : (Fin (4 * 2) → F) → (Fin 7 → F) × F := fun w => (Fin.init (n := 7) w, w (Fin.last 7))
-  set W := univ.filter fun w : Fin (4 * 2) → F => pr w ∈ P
-  have h1 := flat_round_le (D := D) (L := L) hl W fun as has hE => by
-    simp only [W, mem_filter, mem_univ, true_and]; exact hesc as has hE
-  have hinj : Set.InjOn pr W := fun w _ w' _ he => by
-    have e1 := congrArg Prod.fst he; have e2 := congrArg Prod.snd he
-    rw [← Fin.snoc_init_self (n := 7) w, ← Fin.snoc_init_self (n := 7) w']
-    exact congrArg₂ (fun a b => Fin.snoc (α := fun _ => F) a b) e1 e2
-  have h2 : W.card ≤ P.card := card_le_card_of_injOn pr (fun w hw => by
-    simp only [W, coe_filter, mem_univ, true_and] at hw; exact hw) hinj
-  rw [F.card_F] at hP
-  refine h1.trans ?_
-  rw [div_le_div_iff₀ (by positivity) (by positivity)]
-  have h3 : (W.card : ℝ≥0) ≤ c * (2 ^ 128) ^ 7 := by exact_mod_cast h2.trans hP
-  calc (W.card : ℝ≥0) * 2 ^ 128 ≤ c * (2 ^ 128) ^ 7 * 2 ^ 128 :=
-        mul_le_mul_of_nonneg_right h3 (by positivity)
-    _ = c * 2 ^ (256 * 4) := by
-      rw [mul_assoc, ← pow_succ, ← pow_mul, show 128 * (7 + 1) = 256 * 4 by norm_num]
-
-/-- A coordinate row of at most `239` bad values per `2^128` fits the rows' budget `deltaR`
-(`εR − 2·2^-142 − 2^-238 ≈ 239.9998 / 2^128`). -/
-theorem coord_le_deltaR {c : ℕ} (hc : c ≤ 239) : (c : ℝ≥0) / 2 ^ 128 ≤ deltaR := by
-  rw [← NNReal.coe_le_coe, NNReal.coe_div, deltaR_coe]
-  push_cast
-  have : (c : ℝ) ≤ 239 := by exact_mod_cast hc
-  rw [div_le_iff₀ (by positivity)]
-  norm_num
-  linarith
-
-/-- **The Ligerito and PIOP coordinate rows fit `deltaR`** (A.10's counts: Z1 `≤ 20`, S1 `33`,
-Lr1 `15`, RS1 `10`, E1 `21`, P3 `9`). -/
-theorem coord_rows_le : ∀ c ∈ [20, 33, 15, 10, 21, 9], (c : ℝ≥0) / 2 ^ 128 ≤ deltaR :=
-  fun c hc => by
-    simp only [List.mem_cons, List.not_mem_nil, or_false] at hc
-    rcases hc with rfl | rfl | rfl | rfl | rfl | rfl <;> exact coord_le_deltaR (by norm_num)
-
-
 /-! ## Part B: the phase map and the position doom -/
 
 /-- **The phase of Fiat–Shamir position `p`**: the last phase starting at or before `p`
@@ -215,9 +47,6 @@ def phOf (p : ℕ) : ℕ := (fsStarts.filter (· ≤ p)).length - 1
 
 /-- **The position doom** (A.10): position `p`'s doom is the doom of its phase. -/
 def Dp (Dk : ℕ → Log → Log → Prop) (p : ℕ) : Log → Log → Prop := Dk (phOf p)
-
-/-- The phases with no Fiat–Shamir item (each level's `Q`). -/
-def isQ (k : ℕ) : Bool := 29 ≤ k && k ≤ 49 && (k - 29) % 5 == 0
 
 /-- Checked: every phase with Fiat–Shamir items is the phase of its first position. -/
 theorem phOf_start : (List.range 52).all (fun k => isQ k || phOf (phStart k) == k) = true := by
@@ -248,32 +77,12 @@ theorem ms_phOf {s0 r : ℕ} (h : (s0, r) ∈ fsRanges) :
   have := h3 (p - (s0 + 1)) (by simp; omega)
   rwa [show s0 + 1 + (p - (s0 + 1)) = p by omega] at this
 
-
 /-! ## Part C: the multi-squeeze phases' doom -/
-
-/-- **A multi-squeeze phase's doom** (A.10's `hround` rows): on a chain ending inside the phase
-(before its last answer), the doom of the phase's entry `prev` there; at its last answer, `fin`. -/
-def msD (prev fin : Log → Log → Prop) (s0 r : ℕ) (L es : Log) : Prop :=
-  if es.length ≤ s0 + r then prev L (es.take (s0 + 1)) else fin L es
 
 /-- Every multi-squeeze phase's doom has the `msD` form over the doom of its entry. -/
 def MsForm (Dk : ℕ → Log → Log → Prop) : Prop :=
   ∀ s0 r, (s0, r) ∈ fsRanges →
     ∃ fin, Dk (phOf (s0 + 1)) = msD (Dk (phOf s0)) fin s0 r
-
-theorem ite_pos' {α : Sort*} {p : Prop} [Decidable p] (h : p) (a b : α) :
-    (if p then a else b) = a := by simp [h]
-
-theorem ite_neg' {α : Sort*} {p : Prop} [Decidable p] (h : ¬ p) (a b : α) :
-    (if p then a else b) = b := by simp [h]
-
-/-- A formal extension keeps its chain as a prefix. -/
-theorem take_ext (es₀ : Log) : ∀ as : List Digest, (ext es₀ as).take es₀.length = es₀ := by
-  intro as
-  induction as using List.reverseRecOn with
-  | nil => simp [ext_nil]
-  | append_singleton as a ih =>
-    rw [ext_append, ext1, List.take_append_of_le_length (by rw [length_ext]; omega), ih]
 
 /-- **`hmid` for every multi-squeeze position** (A.10): with every multi-squeeze phase in `msD`
 form, a middle answer neither dooms nor undooms. -/
@@ -376,24 +185,6 @@ theorem kstate_step {Rej : Log → Log → Prop} {Dk : ℕ → Log → Log → P
   · intro L i hb hci X hX
     exact ob.hstab _ L i hb hci X hX rfl
 
-/-- **Two step laws add** (§10 changes 15: `μ = μ_doom + μ_Hide`): if `μ₁` and `μ₂` each satisfy
-the contract's step law (with errors `ε₁`, `ε₂`) wherever they are below `1`, their sum satisfies
-it with error `ε₁ + ε₂` wherever the sum is below `1`. -/
-theorem step_add {μ₁ μ₂ : Log → ℝ≥0} {ε₁ ε₂ : ℝ≥0}
-    (h₁ : ∀ L q, L.length < logCap → μ₁ L < 1 → q ∉ L.map Prod.fst →
-      ∑ a : Digest, μ₁ (L ++ [(q, a)]) ≤ (μ₁ L + ε₁) * 2 ^ 256)
-    (h₂ : ∀ L q, L.length < logCap → μ₂ L < 1 → q ∉ L.map Prod.fst →
-      ∑ a : Digest, μ₂ (L ++ [(q, a)]) ≤ (μ₂ L + ε₂) * 2 ^ 256)
-    (L : Log) (q : ByteArray) (hl : L.length < logCap) (hμ : μ₁ L + μ₂ L < 1)
-    (hq : q ∉ L.map Prod.fst) :
-    ∑ a : Digest, (μ₁ (L ++ [(q, a)]) + μ₂ (L ++ [(q, a)])) ≤
-      (μ₁ L + μ₂ L + (ε₁ + ε₂)) * 2 ^ 256 := by
-  rw [Finset.sum_add_distrib]
-  have a₁ := h₁ L q hl (lt_of_le_of_lt le_self_add hμ) hq
-  have a₂ := h₂ L q hl (lt_of_le_of_lt le_add_self hμ) hq
-  calc _ ≤ (μ₁ L + ε₁) * 2 ^ 256 + (μ₂ L + ε₂) * 2 ^ 256 := add_le_add a₁ a₂
-    _ = _ := by ring
-
 /-! ### The multi-squeeze rows in the composition (`hfin` from `esc_msD`) -/
 
 open Classical in
@@ -490,22 +281,7 @@ section Rounds2
 variable {R : Type*} [Field R]
 variable (b wd : ℕ) (rd : ByteArray → ℕ → R) (ch : Digest → R)
 
-/-- Round `l`'s coefficients `c₀, c₁, c₂`. -/
-def g2At (es : Log) (l : ℕ) : Array R :=
-  #[rd (msgAt es (b + 2 * l)) 0, rd (msgAt es (b + 2 * l)) wd, rd (msgAt es (b + 2 * l)) (2 * wd)]
-
-/-- Round `l`'s challenge. -/
-def rch2 (es : Log) (l : ℕ) : R := ch (ansAt es (b + 2 * l + 1))
-
-/-- The first `l` challenges. -/
-def rchs2 (es : Log) (l : ℕ) : List R := (List.range l).map (rch2 b ch es)
-
 variable (c0 : Log → Log → R)
-
-/-- The running claims: `c0`, then `g_l(r_l)`. -/
-def clR2 (L es : Log) : ℕ → R
-  | 0 => c0 L es
-  | l + 1 => peval (g2At b wd rd es l) (rch2 b ch es l)
 
 variable (nr : Kind → ℕ) (e : Expr) (T : Log → Log → Array (Array R))
 
@@ -517,29 +293,7 @@ def Wrong2 (L es : Log) (l : ℕ) : Prop :=
 claim after the answered rounds (`ans3`) is false. -/
 def D2 (L es : Log) : Prop := b < es.length ∧ Wrong2 b wd rd ch c0 nr e T L es (ans3 b nr es)
 
-/-- Round `l`'s asserted check, as `Rej` must guarantee it. -/
-def Chk2 (L es : Log) (l : ℕ) : Prop :=
-  peval (g2At b wd rd es l) 0 + peval (g2At b wd rd es l) 1 = clR2 b wd rd ch c0 L es l
-
 variable {b wd rd ch c0 nr e T}
-
-omit [Field R] in
-theorem rchs2_congr {es es' : Log} {l : ℕ} (h : Agree es es' (b + 2 * l)) :
-    rchs2 b ch es l = rchs2 b ch es' l := by
-  unfold rchs2 rch2 ansAt
-  refine List.map_congr_left fun j hj => ?_
-  rw [h _ (by simp at hj; omega)]
-
-theorem clR2_congr {L es es' : Log} (hc : c0 L es = c0 L es') :
-    ∀ {l : ℕ}, Agree es es' (b + 2 * l) → clR2 b wd rd ch c0 L es l = clR2 b wd rd ch c0 L es' l
-  | 0, _ => hc
-  | l + 1, h => by
-    simp only [clR2]
-    simp only [g2At, rch2, ansAt, msgAt, h (b + 2 * l) (by omega), h (b + 2 * l + 1) (by omega)]
-
-/-- The truth reads the entries before `b` only. -/
-def TruthLocal2 (b : ℕ) (c0 : Log → Log → R) (T : Log → Log → Array (Array R)) : Prop :=
-  ∀ L es es', Agree es es' b → T L es = T L es' ∧ c0 L es = c0 L es'
 
 theorem wrong2_congr (hb1 : 1 ≤ b) (hTc : TruthLocal2 b c0 T) {L es es' : Log} {l : ℕ}
     (h : Agree es es' (b + 2 * l)) :
@@ -650,40 +404,6 @@ end Rounds2
 squeeze after the column queries, Pf's last round). -/
 theorem phOf_examples : phOf 12 = 3 ∧ phOf 13 = 4 ∧ phOf 356 = 30 ∧ phOf 467 = 51 := by
   unfold phOf; rw [fsStarts_eq]; decide
-
-/-- Control: inside the phase `msD` is the entry's doom, at the last answer `fin`. -/
-theorem msD_inside_last (prev fin : Log → Log → Prop) (s0 r : ℕ) (L es : Log) :
-    (es.length ≤ s0 + r → (msD prev fin s0 r L es ↔ prev L (es.take (s0 + 1)))) ∧
-      (s0 + r < es.length → (msD prev fin s0 r L es ↔ fin L es)) :=
-  ⟨fun h => by rw [msD, ite_pos' h], fun h => by rw [msD, ite_neg' (by omega)]⟩
-
-/-- Control (positive): a nonzero table is doomed before any coordinate. -/
-theorem mlDoom_nil {n : ℕ} {t : Array F} (h : tbl n t ≠ 0) : mlDoom n t [] := by
-  cases n <;> exact h
-
-/-- Control (negative): the zero table is never doomed. -/
-theorem not_mlDoom_zero (n : ℕ) (l : List F) :
-    ¬ mlDoom n (Array.replicate (2 ^ n) 0) l := by
-  unfold mlDoom
-  rw [not_not]
-  funext u
-  have hz : ∀ (cs : List F) (m : ℕ), cs.length ≤ m →
-      bindL (Array.replicate (2 ^ m) (0 : F)) cs = Array.replicate (2 ^ (m - cs.length)) 0 := by
-    intro cs
-    induction cs with
-    | nil => intro m _; simp [bindL]
-    | cons c cs ih =>
-      intro m hm
-      obtain ⟨m', rfl⟩ : ∃ m', m = m' + 1 := ⟨m - 1, by simp at hm; omega⟩
-      have : bind0 (Array.replicate (2 ^ (m' + 1)) (0 : F)) c = Array.replicate (2 ^ m') 0 := by
-        apply Array.ext
-        · simp [bind0_size, pow_succ]
-        · intro j h1 h2; simp [bind0]
-      rw [bindL, this, ih m' (by simp at hm; omega), List.length_cons,
-        show m' + 1 - (cs.length + 1) = m' - cs.length by omega]
-  rw [hz _ n (by simp)]
-  simp only [tbl, Array.getD_eq_getD_getElem?, Array.getElem?_replicate, Pi.zero_apply]
-  split <;> rfl
 
 /-- Control (positive, satisfiability): the empty doom meets every per-phase obligation with
 `N = 0` (the structure is not contradictory). -/

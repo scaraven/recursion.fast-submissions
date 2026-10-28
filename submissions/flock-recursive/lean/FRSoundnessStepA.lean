@@ -1,8 +1,10 @@
 -- New for `flock-recursive` (BLUEPRINT §5.1–§5.2, A.2–A.4; stage S-G1b). The readers follow
 -- `submissions/spartan-srom/lean/SpartanSromSoundnessDefs.lean` Part C (`entAt`, `msgOf`, `chAt`),
 -- re-stated for Flock's item sequence.
+-- RET-1: position-free declarations moved to `FRSoundnessCoreSteps`.
 import FRSoundnessDefs
 import FRProximityFold
+import FRSoundnessCoreSteps
 
 /-!
 # The transcript read off a chain, and the committed words (BLUEPRINT §5.1, A.2–A.4)
@@ -33,54 +35,9 @@ open RecursionFast FR.Merkle
 
 /-! ## (1) Readers -/
 
-/-- The entry at Fiat–Shamir position `p` (`default` past the end). -/
-def entAt (es : Log) (p : ℕ) : ByteArray × Digest := es.getD p default
-
-/-- The answer at position `p`. -/
-def ansAt (es : Log) (p : ℕ) : Digest := (entAt es p).2
-
-/-- The message of the absorb at position `p`: the query after its tag and state (40 bytes). -/
-def msgAt (es : Log) (p : ℕ) : ByteArray := (entAt es p).1.extract 40 (entAt es p).1.size
-
-/-- The F element at byte offset `o` of a message (16 bytes, A.2). -/
-def readF (msg : ByteArray) (o : ℕ) : F := F.ofBytes (bytesAt msg o 16)
-
-/-- The K element at byte offset `o` of a message (32 bytes). -/
-def readK (msg : ByteArray) (o : ℕ) : K := K.ofBytes (bytesAt msg o 32)
-
-/-- F coordinate `c` of the answer at position `p` (A.2: `c = 0` bytes `0…15`, `c = 1` `16…31`). -/
-def fAt (es : Log) (p c : ℕ) : F := chF (ansAt es p) c
-
-/-- The K challenge of the answer at position `p`. -/
-def kAt (es : Log) (p : ℕ) : K := chK (ansAt es p)
-
-/-- Coordinate `j` of the multi-squeeze phase entered at `s0` (A.2, S-0 deviation 7: coordinate
-`2s + c` is F coordinate `c` of answer `s`). -/
-def coordAt (es : Log) (s0 j : ℕ) : F := fAt es (s0 + 1 + j / 2) (j % 2)
-
-/-- The `k`-th position of a P2 phase entered at `s0`, with `b` bits and `per` indices per answer
-(A.2: index `k mod per` of answer `k / per`). -/
-def posAt (es : Log) (s0 b per k : ℕ) : ℕ := idxOf b (ansAt es (s0 + 1 + k / per)) (k % per)
-
 /-- **The kind of a chain**: the header's first byte (byte 71 of the seed query
 `"FRSEED0" ‖ vk ‖ c ‖ hdr`); `L32` if it is not a kind byte. -/
 def kindOf (es : Log) : Kind := (((entAt es 0).1.data[71]?).bind Kind.ofByte?).getD .L32
-
-/-- Two logs agree on their first `n` positions. -/
-def Agree (es es' : Log) (n : ℕ) : Prop := ∀ p < n, entAt es p = entAt es' p
-
-theorem entAt_append (es xs : Log) {p : ℕ} (hp : p < es.length) :
-    entAt (es ++ xs) p = entAt es p := by
-  simp [entAt, List.getD_eq_getElem?_getD, List.getElem?_append_left hp]
-
-theorem agree_append (es xs : Log) {n : ℕ} (hn : n ≤ es.length) : Agree (es ++ xs) es n :=
-  fun p hp => entAt_append es xs (by omega)
-
-theorem Agree.mono {es es' : Log} {n n' : ℕ} (h : Agree es es' n) (hn : n' ≤ n) :
-    Agree es es' n' := fun p hp => h p (by omega)
-
-theorem Agree.symm {es es' : Log} {n : ℕ} (h : Agree es es' n) : Agree es' es n :=
-  fun p hp => (h p hp).symm
 
 theorem kindOf_congr {es es' : Log} (h : Agree es es' 1) : kindOf es = kindOf es' := by
   simp only [kindOf, h 0 one_pos]

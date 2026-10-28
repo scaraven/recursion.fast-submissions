@@ -2,6 +2,8 @@
 -- `FRSoundnessTruths` to revision 4.1's item sequence `seq4` (namespace `FR.Snd.T4`, see `FRSoundness4TailStep`):
 -- the declarations that read positions, chains or the kind are copied, the rest is imported.
 import FRSoundness4TailStep
+import FRRSEval
+import FRBlockStream
 
 /-!
 # The tail truths at `seq4` (T4)

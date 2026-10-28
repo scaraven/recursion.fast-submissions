@@ -1,5 +1,7 @@
 -- New for `flock-recursive` (BLUEPRINT A.10 P1.i … Pf; stage S-G1i).
+-- RET-1: position-free declarations moved to `FRSoundnessCoreTail`.
 import FRSoundnessTail
+import FRSoundnessCoreTail
 
 /-!
 # The Ligerito tail's dooms (A.10 P1.i, C.i, P2.i, P3.i, Pf)
@@ -36,15 +38,6 @@ set_option linter.constructorNameAsVariable false
 /-- **What the front hands the tail** reads only what lies before P1.0. -/
 def FrontLocal (W₀ : Log → Log → ℕ → K) (c₀ : Log → Log → K) : Prop :=
   ∀ L es L' es' p, Same L es L' es' p → p1Start 0 ≤ p → W₀ L es = W₀ L' es' ∧ c₀ L es = c₀ L' es'
-
-theorem clR2_same {R : Type*} [Field R] {b wd : ℕ} {rd : ByteArray → ℕ → R} {ch : Digest → R}
-    {c0 : Log → Log → R} {L L' es es' : Log} (hc : c0 L es = c0 L' es') :
-    ∀ {l : ℕ}, Agree es es' (b + 2 * l) →
-      clR2 b wd rd ch c0 L es l = clR2 b wd rd ch c0 L' es' l
-  | 0, _ => hc
-  | l + 1, h => by
-    simp only [clR2]
-    simp only [g2At, rch2, ansAt, msgAt, h (b + 2 * l) (by omega), h (b + 2 * l + 1) (by omega)]
 
 /-! ## Part A: the level chain -/
 

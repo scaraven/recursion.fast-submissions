@@ -1,5 +1,7 @@
 -- New for `flock-recursive` (BLUEPRINT A.10 P1.i, C.i, P2.i, P3.i, Pf; stage S-G1i).
+-- RET-1: position-free declarations moved to `FRSoundnessCoreTail`.
 import FRSoundnessFold
+import FRSoundnessCoreTail
 
 /-!
 # The Ligerito tail P1.0 → Pf: the concrete dooms and their per-phase obligations
@@ -89,10 +91,6 @@ theorem Same.kind (h : Same L es L' es' p) (hp : 1 ≤ p) : kindOf es = kindOf e
 theorem same_stabX (hb : ¬ Bad L) {n : ℕ} (hci : IsChain L n) {X : Log}
     (hX : StabExt fsRnd (entriesOf L (pathOf L n)) X) : Same (L.take n) X L X X.length :=
   ⟨fun _ _ => rfl, fun κ _ hi hc => wordK_stabX hb hci hX hi κ hc⟩
-
-theorem eqBits_congr {R : Type*} [CommRing R] {r r' : ℕ → R} {ℓ : ℕ}
-    (h : ∀ v < ℓ, r v = r' v) (x : ℕ) : eqBits r ℓ x = eqBits r' ℓ x := by
-  unfold eqBits bitSel; exact prod_congr rfl fun v hv => by simp only [h v (mem_range.1 hv)]
 
 section Reads
 
@@ -214,113 +212,7 @@ end Reads
 
 /-! ## Part C: the level chain -/
 
-/-- The product summand of the K sumchecks (P1.i, Pf). -/
-def e2 : Expr := .mul (.var 0) (.var 1)
-
-theorem e2_deg : e2.deg = 2 := rfl
-
 /-- P1.i's variables: the `ℓᵢ` row bits (the rounds), then level `i`'s message bits. -/
 def nrP (i : ℕ) (κ : Kind) : ℕ := (lvl κ i).ell + mLog κ i
-
-/-- Two tables of size `2^m`. -/
-noncomputable def tabs (W f : ℕ → K) (m : ℕ) : Array (Array K) :=
-  #[Array.ofFn (n := 2 ^ m) fun y => W y, Array.ofFn (n := 2 ^ m) fun y => f y]
-
-theorem tabs_size (W f : ℕ → K) (m : ℕ) : ∀ t ∈ tabs W f m, t.size = 2 ^ m := by
-  intro t ht
-  simp only [tabs, List.mem_toArray, List.mem_cons, List.not_mem_nil, or_false] at ht
-  rcases ht with rfl | rfl <;> exact Array.size_ofFn
-
-theorem getD_bindAll {R : Type*} [CommRing R] :
-    ∀ (rs : List R) (ts : Array (Array R)) (k : ℕ),
-      (bindAll ts rs).getD k #[] = bindL (ts.getD k #[]) rs
-  | [], _, _ => rfl
-  | r :: rs, ts, k => by
-    rw [bindAll, getD_bindAll rs, getD_map_bind0]; rfl
-
-/-- The top-bit split of an `eq`-weighted sum (as in `pf_succ`). -/
-theorem sum_eqBits_succ {R : Type*} [CommRing R] (s : ℕ → R) (ℓ x : ℕ) (G : ℕ → R) :
-    ∑ u ∈ range (2 ^ (ℓ + 1)), eqBits s (ℓ + 1) u * G (u + 2 ^ (ℓ + 1) * x) =
-      ∑ u ∈ range (2 ^ ℓ), eqBits s ℓ u * G (u + 2 ^ ℓ * (2 * x)) +
-        s ℓ * (∑ u ∈ range (2 ^ ℓ), eqBits s ℓ u * G (u + 2 ^ ℓ * (2 * x + 1)) -
-          ∑ u ∈ range (2 ^ ℓ), eqBits s ℓ u * G (u + 2 ^ ℓ * (2 * x))) := by
-  have hr : range (2 ^ (ℓ + 1)) = range (2 ^ ℓ + 2 ^ ℓ) := by congr 1; ring
-  have s1 : ∑ u ∈ range (2 ^ ℓ), eqBits s (ℓ + 1) u * G (u + 2 ^ (ℓ + 1) * x) =
-      ∑ u ∈ range (2 ^ ℓ), eqBits s ℓ u * (1 - s ℓ) * G (u + 2 ^ ℓ * (2 * x)) :=
-    sum_congr rfl fun u hu => by
-      rw [show eqBits s (ℓ + 1) u = _ from bitSel_succ_lo _ _ (mem_range.1 hu),
-        show u + 2 ^ (ℓ + 1) * x = u + 2 ^ ℓ * (2 * x) by ring]; rfl
-  have s2 : ∑ u ∈ range (2 ^ ℓ), eqBits s (ℓ + 1) (2 ^ ℓ + u) *
-      G (2 ^ ℓ + u + 2 ^ (ℓ + 1) * x) =
-      ∑ u ∈ range (2 ^ ℓ), eqBits s ℓ u * s ℓ * G (u + 2 ^ ℓ * (2 * x + 1)) :=
-    sum_congr rfl fun u hu => by
-      rw [show eqBits s (ℓ + 1) (2 ^ ℓ + u) = _ from bitSel_succ_hi _ _ (mem_range.1 hu),
-        show 2 ^ ℓ + u + 2 ^ (ℓ + 1) * x = u + 2 ^ ℓ * (2 * x + 1) by ring]; rfl
-  rw [hr, sum_range_add, s1, s2, mul_sub, mul_sum, mul_sum, ← sum_sub_distrib,
-    ← sum_add_distrib, ← sum_add_distrib]
-  exact sum_congr rfl fun u _ => by ring
-
-/-- **Binding the first `ℓ` variables** at `s 0, …, s (ℓ−1)`: entry `x` of the bound table is
-`Σ_{u<2^ℓ} eq(s, u)·t[u + 2^ℓ x]`. -/
-theorem bindL_range_getD {R : Type*} [CommRing R] (s : ℕ → R) :
-    ∀ (ℓ m : ℕ) (t : Array R), t.size = 2 ^ (ℓ + m) → ∀ x < 2 ^ m,
-      (bindL t ((List.range ℓ).map s)).getD x 0 =
-        ∑ u ∈ range (2 ^ ℓ), eqBits s ℓ u * t.getD (u + 2 ^ ℓ * x) 0
-  | 0, m, t, _, x, _ => by simp [bindL, eqBits, bitSel]
-  | ℓ + 1, m, t, ht, x, hx => by
-    rw [List.range_succ, List.map_append, List.map_singleton, bindL_append,
-      sum_eqBits_succ s ℓ x (fun y => t.getD y 0)]
-    have hs : (bindL t ((List.range ℓ).map s)).size = 2 ^ (m + 1) :=
-      bindL_size _ t (by rw [ht, List.length_map, List.length_range]; congr 1; ring)
-    have ih := bindL_range_getD s ℓ (m + 1) t (by rw [ht]; congr 1; ring)
-    rw [← ih (2 * x) (by rw [pow_succ]; omega), ← ih (2 * x + 1) (by rw [pow_succ]; omega)]
-    have h2 : 2 * x + 1 < (bindL t ((List.range ℓ).map s)).size := by rw [hs, pow_succ]; omega
-    simp only [bind0, Array.getD_eq_getD_getElem?, Array.getElem?_ofFn, hs,
-      show x < 2 ^ (m + 1) / 2 by rw [pow_succ, Nat.mul_div_cancel _ two_pos]; exact hx,
-      dite_true, Option.getD_some, Array.getElem?_eq_getElem h2,
-      Array.getElem?_eq_getElem (show 2 * x < (bindL t ((List.range ℓ).map s)).size by omega)]
-
-/-- The two-table summand's true sum. -/
-theorem trueSum_e2 (ts : Array (Array K)) (m : ℕ) :
-    trueSum e2 ts m = ∑ u ∈ range (2 ^ m), (ts.getD 0 #[]).getD u 0 * (ts.getD 1 #[]).getD u 0 := by
-  rw [trueSum, ← Fin.sum_univ_eq_sum_range (fun u => (ts.getD 0 #[]).getD u 0 *
-    (ts.getD 1 #[]).getD u 0)]
-  exact sum_congr rfl fun u _ => by simp only [e2, Expr.eval, tbl]
-
-theorem tabs_getD0 (W f : ℕ → K) (m : ℕ) :
-    (tabs W f m).getD 0 #[] = Array.ofFn (n := 2 ^ m) fun y => W y := rfl
-
-theorem tabs_getD1 (W f : ℕ → K) (m : ℕ) :
-    (tabs W f m).getD 1 #[] = Array.ofFn (n := 2 ^ m) fun y => f y := rfl
-
-theorem ofFn_getD {n y : ℕ} (g : ℕ → K) (h : y < n) :
-    (Array.ofFn (n := n) fun x => g x).getD y 0 = g y := by
-  simp [Array.getD_eq_getD_getElem?, h]
-
-theorem trueSum_tabs (W f : ℕ → K) (m : ℕ) :
-    trueSum e2 (tabs W f m) m = ∑ y ∈ range (2 ^ m), W y * f y := by
-  rw [trueSum_e2]
-  refine sum_congr rfl fun y hy => ?_
-  rw [tabs_getD0, tabs_getD1, ofFn_getD _ (mem_range.1 hy), ofFn_getD _ (mem_range.1 hy)]
-
-/-- **After `ℓ` rounds the true sum is the folded inner product** `⟨foldW W, fold(f)⟩`. -/
-theorem trueSum_tabs_fold (s : ℕ → K) (ℓ m : ℕ) (W f : ℕ → K) :
-    trueSum e2 (bindAll (tabs W f (ℓ + m)) ((List.range ℓ).map s)) m =
-      ∑ x ∈ range (2 ^ m), foldW ℓ s W x *
-        ∑ u ∈ range (2 ^ ℓ), eqBits s ℓ u * f (u + 2 ^ ℓ * x) := by
-  rw [trueSum_e2, getD_bindAll, getD_bindAll]
-  refine sum_congr rfl fun x hx => ?_
-  have hx' := mem_range.1 hx
-  have hsz := tabs_size W f (ℓ + m)
-  rw [tabs_getD0, tabs_getD1, bindL_range_getD s ℓ m _ Array.size_ofFn x hx',
-    bindL_range_getD s ℓ m _ Array.size_ofFn x hx', foldW,
-    Fin.sum_univ_eq_sum_range (fun u => eqBits s ℓ u * W (u + 2 ^ ℓ * x)) (2 ^ ℓ)]
-  refine congrArg₂ (· * ·) (sum_congr rfl fun u hu => ?_) (sum_congr rfl fun u hu => ?_)
-  · have : u + 2 ^ ℓ * x < 2 ^ (ℓ + m) := by
-      have := mem_range.1 hu; rw [pow_add]; nlinarith
-    rw [ofFn_getD _ this]
-  · have : u + 2 ^ ℓ * x < 2 ^ (ℓ + m) := by
-      have := mem_range.1 hu; rw [pow_add]; nlinarith
-    rw [ofFn_getD _ this]
 
 end FR.Snd

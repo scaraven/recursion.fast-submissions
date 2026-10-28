@@ -1,5 +1,7 @@
 -- New for `flock-recursive` (BLUEPRINT §5.4, A.10 "What `final` then gets"; stage S-G1h).
+-- RET-1: position-free declarations moved to `FRSoundnessCoreHide`.
 import FRSoundnessHide
+import FRSoundnessCoreHide
 
 /-!
 # The chain walk: no escape on any prefix carries the doom along a chain (§5.4)
@@ -29,133 +31,9 @@ open RecursionFast FR.Merkle
 
 /-! ## Part A: logs and their prefixes -/
 
-theorem predIdx_take (L : Log) {t j : ℕ} (hj : j < t) :
-    predIdx (L.take t) j = (predIdx L j).bind (Option.guard fun i => i < t) := by
-  simp only [predIdx, List.getElem?_take, hj, ite_true]
-  cases L[j]? with
-  | none => rfl
-  | some e =>
-    simp only [Option.bind_some]
-    cases stateIn e.1 with
-    | none => rfl
-    | some st => simp only [Option.bind_some, ansIdx, List.findIdx?_take]
-
-theorem back_take (L : Log) {t : ℕ} : ∀ f j, j < t → back (L.take t) f j = back L f j := by
-  intro f
-  induction f with
-  | zero => intro _ _; rfl
-  | succ f ih =>
-    intro j hj
-    simp only [back, predIdx_take L hj]
-    cases hp : predIdx L j with
-    | none => rfl
-    | some i =>
-      by_cases hit : i < t
-      · have hg : (some i).bind (Option.guard fun i => decide (i < t)) = some i := by
-          simp [Option.guard, hit]
-        rw [hg]
-        dsimp only
-        split_ifs with h
-        · rw [ih i (by omega)]
-        · rfl
-      · have hg : (some i).bind (Option.guard fun i => decide (i < t)) = none := by
-          simp [Option.guard, hit]
-        rw [hg]
-        dsimp only
-        rw [ite_eq_right (show ¬ i < j by omega)]
-
-/-- **A path that ends before `t` is the same in `L.take t`.** -/
-theorem pathOf_take (L : Log) {t j : ℕ} (hj : j < t) : pathOf (L.take t) j = pathOf L j :=
-  back_take L _ _ hj
-
-theorem entriesOf_take (L : Log) {t : ℕ} {is : List ℕ} (h : ∀ i ∈ is, i < t) :
-    entriesOf (L.take t) is = entriesOf L is := by
-  unfold entriesOf
-  refine List.map_congr_left fun i hi => ?_
-  simp only [getElem!_def, List.getElem?_take, h i hi, ite_true]
-
-theorem entriesOf_pathOf_take (L : Log) {t j : ℕ} (hj : j < t) :
-    entriesOf (L.take t) (pathOf (L.take t) j) = entriesOf L (pathOf L j) := by
-  rw [pathOf_take L hj, entriesOf_take L fun i hi => lt_of_le_of_lt (mem_pathOf_le hi) hj]
-
 theorem isChain_take {L : Log} {j : ℕ} (h : IsChain L j) {t : ℕ} (ht : j < t) :
     IsChain (L.take t) j :=
   ⟨by simp; exact ⟨ht, h.1⟩, by rw [entriesOf_pathOf_take L ht]; exact h.2⟩
-
-/-- **A prefix of a non-bad log is non-bad.** -/
-theorem not_bad_take {L : Log} (hb : ¬ Bad L) (t : ℕ) : ¬ Bad (L.take t) := by
-  rintro (⟨e₁, h₁, e₂, h₂, h⟩ | ⟨i, j, hij, hj, h⟩ | ⟨i, j, hij, hj, h⟩ | h)
-  · exact hb (Or.inl ⟨e₁, List.mem_of_mem_take h₁, e₂, List.mem_of_mem_take h₂, h⟩)
-  · have hj' : j < L.length := lt_of_lt_of_le hj (by simp)
-    refine hb (Or.inr (Or.inl ⟨i, j, hij, hj', ?_⟩))
-    simpa only [List.getElem_take] using h
-  · have hj' : j < L.length := lt_of_lt_of_le hj (by simp)
-    refine hb (Or.inr (Or.inr (Or.inl ⟨i, j, hij, hj', ?_⟩)))
-    simpa only [List.getElem_take] using h
-  · refine hb (Or.inr (Or.inr (Or.inr fun hn => h ?_)))
-    rw [List.map_take]
-    exact hn.sublist (List.take_sublist _ _)
-
-/-- The path to `j` is the path to its predecessor, then `j`. -/
-theorem pathOf_eq (L : Log) (j : ℕ) :
-    pathOf L j = match predIdx L j with
-      | some i => if i < j then pathOf L i ++ [j] else [j]
-      | none => [j] := by
-  rw [pathOf, back.eq_2]
-  cases predIdx L j with
-  | none => rfl
-  | some i =>
-    simp only
-    split_ifs with h
-    · rw [back_fuel L j i h]; rfl
-    · rfl
-
-/-- **The path to an entry of a path is the path's prefix.** -/
-theorem pathOf_prefix (L : Log) :
-    ∀ j k (hk : k < (pathOf L j).length), pathOf L (pathOf L j)[k] = (pathOf L j).take (k + 1) := by
-  intro j
-  induction j using Nat.strong_induction_on with
-  | _ j ih =>
-    intro k hk
-    have hp := pathOf_eq L j
-    cases hq : predIdx L j with
-    | none =>
-      rw [hq] at hp
-      simp only [hp, List.length_singleton] at hk
-      obtain rfl : k = 0 := by omega
-      rw [show (pathOf L j)[0] = j by simp [hp], hp]; rfl
-    | some i =>
-      rw [hq] at hp
-      by_cases hij : i < j
-      · simp only [hij, ite_true] at hp
-        simp only [hp, List.length_append, List.length_singleton] at hk ⊢
-        by_cases hkl : k < (pathOf L i).length
-        · rw [List.getElem_append_left hkl, ih i hij k hkl,
-            List.take_append_of_le_length (by omega)]
-        · have : k = (pathOf L i).length := by omega
-          subst this
-          rw [List.getElem_append_right (le_refl _)]
-          simp only [Nat.sub_self, List.getElem_singleton]
-          rw [List.take_of_length_le (by simp), ← hp]
-      · simp only [hij, ite_false] at hp
-        simp only [hp, List.length_singleton] at hk
-        obtain rfl : k = 0 := by omega
-        rw [show (pathOf L j)[0] = j by simp [hp], hp]; rfl
-
-theorem pathOf_lt {L : Log} {j k : ℕ} (hk : k + 1 < (pathOf L j).length) :
-    (pathOf L j)[k] < (pathOf L j)[k + 1] := by
-  have h1 := pathOf_prefix L j (k + 1) hk
-  have hle : (pathOf L j)[k] ≤ (pathOf L j)[k + 1] := by
-    apply mem_pathOf_le (j := (pathOf L j)[k + 1])
-    rw [h1]
-    exact List.mem_iff_getElem.mpr ⟨k, by simp; omega, by simp⟩
-  rcases Nat.lt_or_eq_of_le hle with h | h
-  · exact h
-  · have h0 := pathOf_prefix L j k (by omega)
-    rw [h, h1] at h0
-    have := congrArg List.length h0
-    simp at this
-    omega
 
 /-! ## Part B: the walk -/
 
@@ -165,11 +43,6 @@ the real chain). -/
 def ChainStab (D : Log → Log → Prop) : Prop :=
   ∀ L j, ¬ Bad L → IsChain L j →
     (D (L.take j) (entriesOf L (pathOf L j)) ↔ D L (entriesOf L (pathOf L j)))
-
-/-- The prefix of chain `i` ending at its `m`-th entry is the chain of that entry. -/
-theorem entriesOf_prefix (L : Log) (i : ℕ) {m : ℕ} (hm : m < (pathOf L i).length) :
-    entriesOf L (pathOf L (pathOf L i)[m]) = (entriesOf L (pathOf L i)).take (m + 1) := by
-  rw [pathOf_prefix L i m hm, entriesOf, entriesOf, List.map_take]
 
 /-- A nonempty prefix of a matching chain matches. -/
 theorem matches_take {es : Log} (h : Matches es) : ∀ d k, es.length = k + d → 1 ≤ k →

@@ -1,6 +1,9 @@
 -- New for `flock-recursive` (BLUEPRINT A.9 `finP i`/`finPf`, A.10 P1.i–P3.i, B′; stage S-G1h).
+-- RET-1: position-free declarations moved to `FRSoundnessCoreWeights`, `FRSoundnessCoreSG`.
 import FRSoundnessPIOP
 import FRVIRFinalsSG
+import FRSoundnessCoreWeights
+import FRSoundnessCoreSG
 
 /-!
 # The Ligerito weight tables and their extensions (A.9, A.10)
@@ -38,74 +41,6 @@ namespace FR.Snd
 open RecursionFast FR.Merkle Finset
 
 /-! ## Part A: extensions of ℕ-indexed tables -/
-
-/-- The multilinear extension of the table `W` on its first `2^n` entries. -/
-noncomputable def mleN (n : ℕ) (W : ℕ → K) (ρ : Fin n → K) : K := mle (fun u : Fin (2 ^ n) => W u) ρ
-
-theorem uK_sub_one : K.u - 1 = 1 + K.u := by
-  rw [sub_eq_add_neg, CharTwo.neg_eq, add_comm]
-
-/-- **The coordinate split's extension** (A.9): variable `0` is the split bit, weighted `1` or
-`u`, so its extension is `û(ρ₀) = 1 + ρ₀(1 + u)` times the rest. -/
-theorem mleN_wSplit (n : ℕ) (W : ℕ → K) (ρ : Fin (n + 1) → K) :
-    mleN (n + 1) (wSplit W) ρ = uHat (ρ 0) * mleN n W (Fin.tail ρ) := by
-  rw [mleN, mle_fix0, mleN, ← mle_smul]
-  congr 1
-  funext u
-  have h1 : (2 * u.val + 1) / 2 = u.val := by omega
-  have h2 : (2 * u.val + 1) % 2 = 1 := by omega
-  have h3 : 2 * u.val / 2 = u.val := by omega
-  have h4 : 2 * u.val % 2 = 0 := by omega
-  simp only [fix0, dbl, wSplit, uHat, Bool.toNat_false, Bool.toNat_true, add_zero, h1, h2, h3,
-    h4, ite_true, one_ne_zero, ite_false, mul_one]
-  rw [show W u * K.u - W u = W u * (K.u - 1) by ring, uK_sub_one]
-  ring
-
-/-- Binding level `i`'s `ℓ` row variables at `s` (row bits low: `y = r + 2^ℓ·x`). -/
-noncomputable def foldW (ℓ : ℕ) (s : ℕ → K) (W : ℕ → K) (x : ℕ) : K :=
-  ∑ r : Fin (2 ^ ℓ), eqBits s ℓ r * W (r + 2 ^ ℓ * x)
-
-/-- **Binding is evaluating**: the extension of the bound table at `ρ` is `W̃(s, ρ)`. -/
-theorem mleN_foldW (ℓ n : ℕ) (s : ℕ → K) (W : ℕ → K) (ρ : Fin n → K) :
-    mleN n (foldW ℓ s W) ρ = mleN (ℓ + n) W (Fin.append (fun v : Fin ℓ => s v) ρ) := by
-  rw [mleN, mleN, mle_split]
-  simp only [foldW]
-  rw [mle_sum]
-  refine sum_congr rfl fun r _ => ?_
-  rw [eqBits_eq_eq]
-  congr 2
-  funext u
-  simp only [join]
-  congr 1; ring
-
-/-- `bitProd` splits off its lowest bit. -/
-theorem bitProd_dbl (a : ℕ → K) (n : ℕ) (u : Fin (2 ^ n)) (b : Bool) :
-    bitProd a (n + 1) (dbl u b).val =
-      (if b then a 0 else 1) * bitProd (fun v => a (v + 1)) n u := by
-  simp only [bitProd, bitSel, dbl]
-  rw [prod_range_succ']
-  have h0 : (2 * u.val + b.toNat).testBit 0 = b := by
-    cases b <;> simp [Nat.testBit_zero, Nat.mul_mod_right]
-  have hs : ∀ i, (2 * u.val + b.toNat).testBit (i + 1) = u.val.testBit i := fun i => by
-    cases b <;> simp [Nat.testBit_succ, Nat.mul_add_div]
-  simp only [h0, hs]
-  rw [mul_comm]
-  cases b <;> simp
-
-/-- **A product-of-bits table's extension** is the tensor product
-`Π_v (1 − ρ_v + ρ_v a_v)`. -/
-theorem mle_bitProd : ∀ (n : ℕ) (a : ℕ → K) (ρ : Fin n → K),
-    mle (fun u : Fin (2 ^ n) => bitProd a n u) ρ = ∏ v : Fin n, (1 - ρ v + ρ v * a v)
-  | 0, a, ρ => by rw [mle_zero]; simp [bitProd, bitSel]
-  | n + 1, a, ρ => by
-    rw [mle_fix0]
-    have : fix0 (fun u : Fin (2 ^ (n + 1)) => bitProd a (n + 1) u) (ρ 0) =
-        fun u : Fin (2 ^ n) => (1 - ρ 0 + ρ 0 * a 0) * bitProd (fun v => a (v + 1)) n u := by
-      funext u
-      simp only [fix0, bitProd_dbl, Bool.false_eq_true, ite_false, ite_true]
-      ring
-    rw [this, mle_smul, mle_bitProd n, Fin.prod_univ_succ]
-    rfl
 
 /-- **The codeword weight's extension is the tensor weight** (A.1; `tensorTwin`, the spec of
 `tensorW`): `G̃_p(ρ) = Π_v (1 − ρ_v + ρ_v Ŵ_v(D[p]))`. -/
@@ -192,11 +127,6 @@ theorem mle_wE (rows : List Row) (rE : Fin 21 → F) (kE : F) (ρ : Fin 23 → F
     exact sum_congr rfl fun x _ => by ring
   rw [h, mle_comb, mle_matMle, mle_matMle, mle_matMle]
 
-/-- **Level 0's table** (A.9 `Ŵ₀`, F-valued on the cube; revision 3.13): the RS weight `Wrs` (all
-four claims, E4's included) and the public cells' indicators weighted `κ′^(k+2)` (A.7's order). -/
-def w0F (Wrs : ℕ → F) (cells : List ℕ) (kp : F) (y : ℕ) : F :=
-  Wrs y + ∑ k ∈ range cells.length, kp ^ (k + 2) * if y = cells.getD k 0 then 1 else 0
-
 /-- **Level 0's claim** (A.10 B′ → P1.0): if `v_RS = ⟨Wrs, f⟩` (RS's truth) and `v*` is the B′
 truth with cells inside level 0's `2^n` elements, then `v* = ⟨w0F, f⁽⁰⁾⟩`: `truthP1 0` at
 `ι ∘ w0F` and `ι v*`. -/
@@ -231,61 +161,6 @@ where
         ((if y = cs.getD k 0 then (1 : F) else 0) * g y) := by
     simp only [sum_mul]; rw [sum_comm]
     exact sum_congr rfl fun _ _ => sum_congr rfl fun _ _ => by ring
-
-theorem foldl_mulK (g : ℕ → K) :
-    ∀ (xs : List ℕ) (c : K), (xs.map g).foldl (· * ·) c = c * (xs.map g).prod
-  | [], c => by simp
-  | x :: xs, c => by
-    rw [List.map_cons, List.foldl_cons, foldl_mulK g xs, List.prod_cons]; ring
-
-/-- `eq(ρ, cube(c))` at a natural `c` (bit `v` of `c` against coordinate `v`). -/
-def eqCell {n : ℕ} (ρ : Fin n → K) (c : ℕ) : K := ∏ v : Fin n, if c.testBit v then ρ v else 1 - ρ v
-
-/-- A cell's indicator table extends to `eqCell`. -/
-theorem mle_ind {n c : ℕ} (hc : c < 2 ^ n) (ρ : Fin n → K) :
-    mle (fun u : Fin (2 ^ n) => if (u : ℕ) = c then (1 : K) else 0) ρ = eqCell ρ c := by
-  rw [mle, sum_eq_single (⟨c, hc⟩ : Fin (2 ^ n)) (fun u _ hu => by
-    rw [ite_eq_right fun h => absurd (Fin.ext h) hu, mul_zero]) (by simp), ite_eq_left rfl,
-    mul_one, eq_cube]
-  rfl
-
-/-- `finPf`'s `eqCellK` is `eqCell` at the point's 23 coordinates (characteristic two:
-`1 + ρ = 1 − ρ`). -/
-theorem eqCellK_eq (ρ : Array K) (c : ℕ) :
-    eqCellK ρ c = eqCell (fun v : Fin 23 => ρ.getD v 0) c := by
-  rw [eqCellK, foldl_mulK, one_mul]
-  have : ((List.range 23).map fun v => if c.testBit v then ρ.getD v 0 else 1 + ρ.getD v 0).prod =
-      ∏ v ∈ range 23, (if c.testBit v then ρ.getD v 0 else 1 + ρ.getD v 0) := by
-    simp only [Finset.prod, Finset.range_val, Multiset.range, Multiset.map_coe, Multiset.prod_coe]
-  rw [this, ← Fin.prod_univ_eq_prod_range, eqCell]
-  refine prod_congr rfl fun v _ => ?_
-  simp only [CharTwo.sub_eq_add, add_comm (1 : K)]
-
-/-- **Level 0's extension** (`w0V`'s shape): the RS weight's and `Σ_k κ′^(k+2) eq(cell_k, ρ)`. -/
-theorem mleN_w0F (Wrs : ℕ → F) (cells : List ℕ) (kp : F) {n : ℕ}
-    (hc : ∀ c ∈ cells, c < 2 ^ n) (ρ : Fin n → K) :
-    mleN n (fun y => algebraMap F K (w0F Wrs cells kp y)) ρ =
-      mleN n (fun y => algebraMap F K (Wrs y)) ρ +
-        ∑ k ∈ range cells.length, algebraMap F K (kp ^ (k + 2)) * eqCell ρ (cells.getD k 0) := by
-  have h : (fun u : Fin (2 ^ n) => algebraMap F K (w0F Wrs cells kp u)) =
-      (fun u : Fin (2 ^ n) => algebraMap F K (Wrs u)) +
-        fun u : Fin (2 ^ n) => ∑ k ∈ range cells.length, algebraMap F K (kp ^ (k + 2)) *
-          (if (u : ℕ) = cells.getD k 0 then (1 : K) else 0) := by
-    funext u
-    simp only [w0F, map_add, map_mul, map_sum, Pi.add_apply]
-    congr 1
-    refine sum_congr rfl fun k _ => ?_
-    split_ifs <;> simp
-  rw [mleN, h, mle_add, mle_sum]
-  congr 1
-  refine sum_congr rfl fun k hk => ?_
-  rw [mle_ind (hc _ (by rw [List.getD_eq_getElem _ _ (mem_range.mp hk)]; exact List.getElem_mem _))]
-
-/-- Control (positive): with no RS weight and one cell `c`, level 0's table reads `f[c]` weighted
-`κ′²`. -/
-theorem w0F_cell (kp : F) (c y : ℕ) :
-    w0F (fun _ => 0) [c] kp y = if y = c then kp ^ 2 else 0 := by
-  simp [w0F]
 
 end Level0
 

@@ -3,7 +3,8 @@
 -- (the committed words), `FRSoundnessStepB`, `FRSoundnessStepC` and `FRSoundnessStepE` into
 -- `FR.Snd.T4`: only the declarations that read the positions, the chains or the kind are copied;
 -- the position-free algebra is imported. Proof text unchanged except where noted (`T4:`).
-import FRSoundnessLigFinal
+import FRSoundnessCoreTail
+import FRSoundnessCoreSG
 import FRSoundness4Pos
 
 /-!

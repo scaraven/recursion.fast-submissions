@@ -3,6 +3,7 @@
 -- the declarations that read positions, chains or the kind are copied, the rest is imported.
 import FRSoundness4TailC
 import FRSoundness4Frame
+import FRSoundnessTail
 
 /-!
 # `ligerito_final`, `AcceptTail`, `not_DC_end` at `seq4` (T4)

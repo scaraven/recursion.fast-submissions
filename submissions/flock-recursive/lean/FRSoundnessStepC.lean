@@ -1,5 +1,7 @@
 -- New for `flock-recursive` (BLUEPRINT §5.1–§5.2, A.10; stage S-G1c).
+-- RET-1: position-free declarations moved to `FRSoundnessCoreSteps`.
 import FRSoundnessStepB
+import FRSoundnessCoreSteps
 
 /-!
 # The composed doom `Rej ∨ D_φ` and the generic rows (BLUEPRINT A.10, §5.2)
@@ -28,13 +30,6 @@ set_option linter.constructorNameAsVariable false
 
 /-! ## Part A: the composed doom -/
 
-/-- The doom of the position of a chain's last entry. -/
-def DPos (Dp : ℕ → Log → Log → Prop) (L es : Log) : Prop := Dp (es.length - 1) L es
-
-/-- **The composed doom** (A.10): a failed asserted check, or the current phase's doom. -/
-def DC (Rej : Log → Log → Prop) (Dp : ℕ → Log → Log → Prop) (L es : Log) : Prop :=
-  Rej L es ∨ DPos Dp L es
-
 /-- What `Rej` must satisfy: monotone; unchanged by an entry at a squeeze position; stable under
 the charging log. -/
 structure RejOK (Rej : Log → Log → Prop) : Prop where
@@ -42,9 +37,6 @@ structure RejOK (Rej : Log → Log → Prop) : Prop where
   sq : ∀ L es x, fsItems[es.length]? = some .squeeze → (Rej L (es ++ [x]) ↔ Rej L es)
   stab : ∀ L i, ¬ Bad L → IsChain L i → ∀ X, StabExt fsRnd (entriesOf L (pathOf L i)) X →
     (Rej (L.take i) X ↔ Rej L X)
-
-theorem length_ext1 (es : Log) (a : Digest) : (ext1 es a).length = es.length + 1 := by
-  simp [ext1]
 
 /-- Inside a multi-squeeze phase, `Rej` does not change along a formal extension. -/
 theorem rej_ext {Rej : Log → Log → Prop} (hR : RejOK Rej) {L es₀ : Log} {s0 r : ℕ}
@@ -60,15 +52,6 @@ theorem rej_ext {Rej : Log → Log → Prop} (hR : RejOK Rej) {L es₀ : Log} {s
     rw [ext_append, ext1, hR.sq _ _ _ ?_, ih (by omega)]
     rw [length_ext as es₀, hl]
     exact (hspec _ (by omega) (by omega)).1
-
-/-- `condCount` depends on the escape predicate only along the extensions of length `r`. -/
-theorem condCount_congr {D D' : Log → Log → Prop} {L es₀ : Log} {r : ℕ}
-    (h : ∀ as : List Digest, as.length = r → (EscAtG D L (ext es₀ as) ↔ EscAtG D' L (ext es₀ as))) :
-    condCount D L es₀ r [] = condCount D' L es₀ r [] := by
-  classical
-  unfold condCount extCount
-  congr 3
-  exact Finset.filter_congr fun v _ => h _ (by simp)
 
 /-- A position of a multi-squeeze phase is a squeeze. -/
 theorem sq_of_fsRnd {p s0 r : ℕ} (h : fsRnd p = some (s0, r)) :
@@ -132,48 +115,6 @@ theorem stepObl_compose {Rej : Log → Log → Prop} {Dp : ℕ → Log → Log �
 
 /-! ## Part B: the single-squeeze rows -/
 
-open Classical in
-/-- **A single F squeeze**: escapes only at a bad first F coordinate, at most `s` of them. -/
-theorem single_F_le (P : Digest → Prop) (S : Finset F) {s : ℕ} (hS : S.card ≤ s)
-    (h : ∀ a, P a → chF a 0 ∈ S) : (Finset.univ.filter P).card ≤ s * 2 ^ 128 :=
-  le_trans (Finset.card_le_card (t := Finset.univ.filter fun a : Digest => chF a 0 ∈ S)
-      fun a ha => by
-        simp only [Finset.mem_filter, Finset.mem_univ, true_and] at ha ⊢; exact h a ha)
-    (by rw [card_chF_fiber]; exact Nat.mul_le_mul_right _ hS)
-
-open Classical in
-/-- **A single K squeeze**: escapes only at a bad K challenge, at most `s` of them. -/
-theorem single_K_le (P : Digest → Prop) (S : Finset K) {s : ℕ} (hS : S.card ≤ s)
-    (h : ∀ a, P a → chK a ∈ S) : (Finset.univ.filter P).card ≤ s :=
-  le_trans (Finset.card_le_card (t := Finset.univ.filter fun a : Digest => chK a ∈ S)
-      fun a ha => by
-        simp only [Finset.mem_filter, Finset.mem_univ, true_and] at ha ⊢; exact h a ha)
-    (by rw [card_chK_fiber]; exact hS)
-
-open Classical in
-/-- **A round row over F** (degree-2 and degree-3 rounds, §5.2): from a false claim, the answers
-whose round passes its check and whose next claim is true number at most `deg e · 2^128`
-(`round_escape_le`, `card_chF_fiber`). -/
-theorem round_row_F (e : Expr) (ts : Array (Array F)) {m : ℕ}
-    (hts : ∀ t ∈ ts, t.size = 2 ^ (m + 1)) {claim : F} (hw : claim ≠ trueSum e ts (m + 1))
-    (g : Array F) (P : Digest → Prop)
-    (hP : ∀ a, P a → (g.size = e.deg + 1 ∧ peval g 0 + peval g 1 = claim) ∧
-      peval g (chF a 0) = trueSum e (ts.map (bind0 · (chF a 0))) m) :
-    (Finset.univ.filter P).card ≤ e.deg * 2 ^ 128 :=
-  single_F_le P _ (round_escape_le e ts hts hw g) fun a ha => by
-    simp only [Finset.mem_filter, Finset.mem_univ, true_and]; exact hP a ha
-
-open Classical in
-/-- **A round row over K** (P1, Pf): at most `deg e` answers (`card_chK_fiber`). -/
-theorem round_row_K (e : Expr) (ts : Array (Array K)) {m : ℕ}
-    (hts : ∀ t ∈ ts, t.size = 2 ^ (m + 1)) {claim : K} (hw : claim ≠ trueSum e ts (m + 1))
-    (g : Array K) (P : Digest → Prop)
-    (hP : ∀ a, P a → (g.size = e.deg + 1 ∧ peval g 0 + peval g 1 = claim) ∧
-      peval g (chK a) = trueSum e (ts.map (bind0 · (chK a))) m) :
-    (Finset.univ.filter P).card ≤ e.deg :=
-  single_K_le P _ (round_escape_le e ts hts hw g) fun a ha => by
-    simp only [Finset.mem_filter, Finset.mem_univ, true_and]; exact hP a ha
-
 /-! ## Part C: the P2 row -/
 
 /-- The proximity parameters of level `i` of kind `κ`: `n = 2^log₂n`, `k = n/2^(i+1)`,
@@ -204,157 +145,6 @@ theorem p2_row_le (κ : Kind) (i : ℕ) (hi : i < 5) :
       15 / 2 ^ 124 - 2 / 2 ^ 142 - 1 / 2 ^ 238 := by push_cast; ring
   rw [← h]
   exact_mod_cast this
-
-theorem idx_lt (b : ℕ) (a : Digest) (i : ℕ) : idxOf b a i < 2 ^ b :=
-  Nat.mod_lt _ (by positivity)
-
-open Classical in
-/-- **The answers whose first `c` indices of `b` bits lie in `S`** number `|S|^c · 2^(256 − cb)`. -/
-theorem card_idx_in (b c : ℕ) (hcb : c * b ≤ 256) (S : Finset (Fin (2 ^ b))) :
-    (Finset.univ.filter fun a : Digest =>
-      ∀ j : Fin c, (⟨idxOf b a j, idx_lt b a j⟩ : Fin (2 ^ b)) ∈ S).card =
-      S.card ^ c * 2 ^ (256 - c * b) := by
-  have hU : (Finset.univ.filter fun a : Digest =>
-      ∀ j : Fin c, (⟨idxOf b a j, idx_lt b a j⟩ : Fin (2 ^ b)) ∈ S) =
-      (Fintype.piFinset fun _ : Fin c => S).biUnion fun f =>
-        Finset.univ.filter fun a : Digest => ∀ j : Fin c, idxOf b a j = f j := by
-    ext a
-    simp only [Finset.mem_filter, Finset.mem_univ, true_and, Finset.mem_biUnion,
-      Fintype.mem_piFinset]
-    constructor
-    · intro h
-      exact ⟨fun j => ⟨idxOf b a j, idx_lt b a j⟩, h, fun j => rfl⟩
-    · rintro ⟨f, hf, he⟩ j
-      have : (⟨idxOf b a j, idx_lt b a j⟩ : Fin (2 ^ b)) = f j := Fin.ext (he j)
-      rw [this]; exact hf j
-  rw [hU, Finset.card_biUnion]
-  · rw [Finset.sum_congr rfl fun f _ => card_idx_fiber b c hcb f, Finset.sum_const,
-      Fintype.card_piFinset, smul_eq_mul]
-    simp
-  · intro f _ g _ hfg
-    refine Finset.disjoint_left.mpr fun a ha hb => hfg ?_
-    simp only [Finset.mem_filter, Finset.mem_univ, true_and] at ha hb
-    funext j; exact Fin.ext ((ha j).symm.trans (hb j))
-
-/-- The indices answer `s` contributes to the first `t` (`per` per answer). -/
-def pc (per t s : ℕ) : ℕ := min per (t - s * per)
-
-theorem sum_pc (per : ℕ) : ∀ r t : ℕ, t ≤ r * per → ∑ s ∈ range r, pc per t s = t
-  | 0, t, h => by simp at h; simp [h]
-  | r + 1, t, h => by
-    have hs : ∀ s, pc per t (s + 1) = pc per (t - per) s := fun s => by
-      unfold pc; rw [Nat.succ_mul]; congr 1; omega
-    rw [Finset.sum_range_succ', Finset.sum_congr rfl fun s _ => hs s,
-      sum_pc per r (t - per) (by rw [Nat.succ_mul] at h; omega)]
-    unfold pc; omega
-
-/-- The answer at Fiat–Shamir position `n + s` of a formal extension of a chain of length `n`. -/
-theorem ansAt_ext {es₀ : Log} : ∀ (as : List Digest) {s : ℕ} (hs : s < as.length),
-    ansAt (ext es₀ as) (es₀.length + s) = as[s] := by
-  intro as
-  induction as using List.reverseRecOn with
-  | nil => intro s hs; simp at hs
-  | append_singleton as a ih =>
-    intro s hs
-    simp only [List.length_append, List.length_singleton] at hs
-    rw [ext_append, ext1]
-    by_cases h : s < as.length
-    · rw [ansAt, entAt_append _ _ (by rw [length_ext]; omega), ← ansAt, ih h,
-        List.getElem_append_left h]
-    · have hs' : s = as.length := by omega
-      subst hs'
-      simp [ansAt, entAt, length_ext]
-
-/-- `S` as a set of naturals. -/
-theorem mem_map_val {b : ℕ} (S : Finset (Fin (2 ^ b))) {x : ℕ} (hx : x < 2 ^ b) :
-    x ∈ S.map Fin.valEmbedding ↔ (⟨x, hx⟩ : Fin (2 ^ b)) ∈ S := by
-  simp only [Finset.mem_map, Fin.valEmbedding_apply]
-  exact ⟨fun ⟨y, hy, he⟩ => by rwa [show (⟨x, hx⟩ : Fin (2 ^ b)) = y from Fin.ext he.symm],
-    fun h => ⟨_, h, rfl⟩⟩
-
-/-- An answer tuple read as one list of indices: answer `k / per`, index `k mod per`. -/
-def vAt {r : ℕ} (v : Fin r → Digest) (s : ℕ) : Digest := if h : s < r then v ⟨s, h⟩ else 0
-
-theorem vAt_of_lt {r : ℕ} (v : Fin r → Digest) {s : ℕ} (h : s < r) : vAt v s = v ⟨s, h⟩ := by
-  simp [vAt, h]
-
-open Classical in
-/-- **The answer tuples whose first `t` indices lie in `S`** number
-`Π_s |S|^{c_s}·2^(256 − c_s b)`. -/
-theorem card_pos_in (b per r t : ℕ) (hper : 0 < per) (hpb : per * b ≤ 256) (ht : t ≤ r * per)
-    (S : Finset (Fin (2 ^ b))) :
-    (univ.filter fun v : Fin r → Digest => ∀ k < t,
-      idxOf b (vAt v (k / per)) (k % per) ∈ S.map Fin.valEmbedding).card =
-      ∏ s : Fin r, S.card ^ pc per t s * 2 ^ (256 - pc per t s * b) := by
-  have hU : (univ.filter fun v : Fin r → Digest => ∀ k < t,
-      idxOf b (vAt v (k / per)) (k % per) ∈ S.map Fin.valEmbedding) =
-      Fintype.piFinset fun s : Fin r => univ.filter fun a : Digest =>
-        ∀ j : Fin (pc per t s), (⟨idxOf b a j, idx_lt b a j⟩ : Fin (2 ^ b)) ∈ S := by
-    ext v
-    simp only [Finset.mem_filter, Finset.mem_univ, true_and, Fintype.mem_piFinset]
-    constructor
-    · intro h s j
-      have hj := j.2
-      simp only [pc, lt_min_iff] at hj
-      have := h (per * s + j) (by rw [mul_comm]; omega)
-      rwa [Nat.mul_add_div hper, Nat.div_eq_of_lt hj.1, add_zero, Nat.mul_add_mod,
-        Nat.mod_eq_of_lt hj.1, vAt_of_lt v s.2, mem_map_val] at this
-    · intro h k hk
-      have hs : k / per < r := Nat.div_lt_of_lt_mul (by rw [mul_comm]; omega)
-      have hj : k % per < pc per t (k / per) := by
-        simp only [pc, lt_min_iff]
-        refine ⟨Nat.mod_lt _ hper, ?_⟩
-        have := Nat.div_add_mod k per
-        rw [mul_comm] at this
-        omega
-      have := h ⟨k / per, hs⟩ ⟨k % per, hj⟩
-      rw [vAt_of_lt v hs, mem_map_val]
-      exact this
-  rw [hU, Fintype.card_piFinset]
-  refine Finset.prod_congr rfl fun s _ => card_idx_in b _ ?_ S
-  exact le_trans (Nat.mul_le_mul_right _ (min_le_left _ _)) hpb
-
-open Classical in
-/-- **The P2 row's count** (`hround`): if the phase's escape puts each of its first `t` positions
-(`posAt`, `per` per answer, `b` bits) in `S`, its conditional count from the entry is at most
-`(|S|/2^b)^t`. -/
-theorem p2_round_le {D : Log → Log → Prop} {L es₀ : Log} {s0 r b per t : ℕ}
-    (hl : es₀.length = s0 + 1) (hper : 0 < per) (hpb : per * b ≤ 256) (ht : t ≤ r * per)
-    (S : Finset (Fin (2 ^ b)))
-    (hesc : ∀ as : List Digest, as.length = r → EscAtG D L (ext es₀ as) →
-      ∀ k < t, posAt (ext es₀ as) s0 b per k ∈ S.map Fin.valEmbedding) :
-    condCount D L es₀ r [] ≤ ((S.card : ℝ≥0) / 2 ^ b) ^ t := by
-  unfold condCount extCount
-  simp only [List.length_nil, Nat.sub_zero, List.nil_append]
-  have hle := Finset.card_le_card (s := univ.filter fun v : Fin r → Digest =>
-      EscAtG D L (ext es₀ (List.ofFn v)))
-    (t := univ.filter fun v : Fin r → Digest => ∀ k < t,
-      idxOf b (vAt v (k / per)) (k % per) ∈ S.map Fin.valEmbedding) fun v hv => by
-    simp only [Finset.mem_filter, Finset.mem_univ, true_and] at hv ⊢
-    intro k hk
-    have := hesc _ (by simp) hv k hk
-    have hs : k / per < r := Nat.div_lt_of_lt_mul (by rw [mul_comm]; omega)
-    rw [vAt_of_lt v hs]
-    rwa [posAt, show s0 + 1 + k / per = es₀.length + k / per by omega,
-      ansAt_ext _ (by simpa using hs), List.getElem_ofFn] at this
-  rw [card_pos_in b per r t hper hpb ht S] at hle
-  have hpow : ∀ s : Fin r, ((S.card ^ pc per t s * 2 ^ (256 - pc per t s * b) : ℕ) : ℝ≥0) /
-      2 ^ 256 = ((S.card : ℝ≥0) / 2 ^ b) ^ pc per t s := fun s => by
-    have hcb : pc per t s * b ≤ 256 := le_trans (Nat.mul_le_mul_right _ (min_le_left _ _)) hpb
-    push_cast
-    rw [div_pow, ← pow_mul, div_eq_div_iff (by positivity) (by positivity), mul_assoc, ← pow_add,
-      show 256 - pc per t s * b + b * pc per t s = 256 by rw [mul_comm b]; omega]
-  calc ((univ.filter fun v : Fin r → Digest => EscAtG D L (ext es₀ (List.ofFn v))).card : ℝ≥0) /
-        2 ^ (256 * r)
-      ≤ ((∏ s : Fin r, S.card ^ pc per t s * 2 ^ (256 - pc per t s * b) : ℕ) : ℝ≥0) /
-          2 ^ (256 * r) := by gcongr
-    _ = ∏ s : Fin r, ((S.card : ℝ≥0) / 2 ^ b) ^ pc per t s := by
-        rw [show (2 : ℝ≥0) ^ (256 * r) = ∏ _s : Fin r, (2 : ℝ≥0) ^ 256 by
-            rw [Finset.prod_const, Finset.card_univ, Fintype.card_fin, ← pow_mul],
-          Nat.cast_prod, ← Finset.prod_div_distrib]
-        exact Finset.prod_congr rfl fun s _ => hpow s
-    _ = ((S.card : ℝ≥0) / 2 ^ b) ^ t := by
-        rw [Finset.prod_pow_eq_pow_sum, Fin.sum_univ_eq_sum_range (pc per t), sum_pc per r t ht]
 
 /-- The P2 phase parameters (checked): `per ≥ 1` indices of `log₂ n` bits fit an answer, and the
 phase's `sq` answers (sized for `m* = 32`) carry the `t` indices of every kind. -/
@@ -401,8 +191,5 @@ theorem not_rejOK_len : ¬ RejOK fun _ es => 4 ≤ es.length := by
     simp only [List.length_replicate]; decide +kernel
   have := (h.sq [] _ default h3).mp (by simp)
   simp at this
-
-/-- Control: level 0's last answer (`L32`: 12 indices per answer, 290 indices) carries 2. -/
-theorem pc_last : pc 12 290 24 = 2 ∧ pc 12 290 23 = 12 := by decide
 
 end FR.Snd

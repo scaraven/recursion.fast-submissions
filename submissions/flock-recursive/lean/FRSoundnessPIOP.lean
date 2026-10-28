@@ -1,9 +1,11 @@
 -- New for `flock-recursive` (BLUEPRINT A.7, A.10; stage S-G1g).
+-- RET-1: position-free declarations moved to `FRSoundnessCoreWeights`.
 import FRSoundnessHide
 import FRLeafCircuit
 import FRRingSwitch
 import FRBlockKinds
 import FRVIREval
+import FRSoundnessCoreWeights
 
 /-!
 # The PIOP truths over the decoded witness (A.10), part 1: `f⁽⁰⁾` in F, `z = unpack f⁽⁰⁾`
@@ -55,8 +57,6 @@ open RecursionFast FR.Merkle Finset
 /-- **A.10's `f⁽⁰⁾` in F**: element `e` is the constant coefficient of the decoded level-0
 message's element `e` (`fTab`, row bits first). -/
 noncomputable def fF (κ : Kind) (L es : Log) (e : ℕ) : F := (fTab κ L es 0 e).f₀
-
-theorem algebraMap_f₀ (c : F) : (algebraMap F K c).f₀ = c := rfl
 
 /-- **A close level-0 word decodes to F-messages** (`interp_F_D`): every decoded row's message is
 F-valued. -/

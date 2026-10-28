@@ -1,8 +1,10 @@
 -- New for `flock-recursive` (BLUEPRINT §5.1–§5.2; stage S-G1b). The round doom follows
 -- `submissions/spartan-srom/lean/SpartanSromSoundnessDefs.lean` (`SumWrong`, `clOut`) and
 -- `SpartanSromSoundnessKS.lean` (the round rows), re-stated for Flock's positions.
+-- RET-1: position-free declarations moved to `FRSoundnessCoreSteps`.
 import FRSoundnessStepA
 import FRSumcheck
+import FRSoundnessCoreSteps
 
 /-!
 # The step law at `εR = 15/2^124`, and the degree-3 sumcheck rounds (BLUEPRINT §5.1–§5.2)
@@ -36,60 +38,6 @@ open scoped NNReal
 
 /-! ## Part A: the error `εR` and the obligations -/
 
-/-- The entry's per-query knowledge error: `εR = 15/2^124 ≈ 2^-120.093`. -/
-noncomputable def epsR : ℝ≥0 := 15 / 2 ^ 124
-
-/-- **The Hide potential's per-query error** (§10 changes 15): its H row `2^-142` and its rounds'
-`2^18/2^256 = 2^-238` (at most `eᵢ ≤ 2^18` hiding challenges per P1.i round). -/
-noncomputable def epsH : ℝ≥0 := (2 : ℝ≥0)⁻¹ ^ 142 + (2 : ℝ≥0)⁻¹ ^ 238
-
-/-- **The doom potential's per-query error**: `εD = εR − ε_H`, so that `εD + ε_H = εR`. -/
-noncomputable def epsD : ℝ≥0 := epsR - epsH
-
-/-- The rows' budget: `εD − 2^-142` (the H row takes `2^-142`, `badCount_frac_le`). -/
-noncomputable def deltaR : ℝ≥0 := epsD - (2 : ℝ≥0)⁻¹ ^ 142
-
-theorem h_le_epsR : (2 : ℝ≥0)⁻¹ ^ 142 ≤ epsR := by
-  rw [epsR, inv_pow, ← one_div, div_le_div_iff₀ (by positivity) (by positivity)]
-  norm_num
-
-theorem epsH_le_epsR : epsH ≤ epsR := by
-  rw [← NNReal.coe_le_coe, epsH, epsR]
-  push_cast
-  norm_num
-
-theorem epsD_coe : (epsD : ℝ) = 15 / 2 ^ 124 - 1 / 2 ^ 142 - 1 / 2 ^ 238 := by
-  rw [epsD, NNReal.coe_sub epsH_le_epsR, epsH, epsR]
-  push_cast
-  norm_num
-
-theorem h_le_epsD : (2 : ℝ≥0)⁻¹ ^ 142 ≤ epsD := by
-  rw [← NNReal.coe_le_coe, epsD_coe]
-  push_cast
-  norm_num
-
-/-- **The two potentials' errors add up to `εR`** (kernel-checked: `ε_H ≤ εR`). -/
-theorem epsD_add_epsH : epsD + epsH = epsR := tsub_add_cancel_of_le epsH_le_epsR
-
-theorem deltaR_coe : (deltaR : ℝ) = 15 / 2 ^ 124 - 2 / 2 ^ 142 - 1 / 2 ^ 238 := by
-  rw [deltaR, NNReal.coe_sub h_le_epsD, epsD_coe]
-  push_cast
-  ring
-
-/-- **The doom potential's error**: the H row and the rows' budget fit `εD`. -/
-theorem err_le_epsD : (badCount : ℝ≥0) / 2 ^ 256 + deltaR ≤ epsD :=
-  calc (badCount : ℝ≥0) / 2 ^ 256 + deltaR ≤ (2 : ℝ≥0)⁻¹ ^ 142 + deltaR := by
-        gcongr; exact badCount_frac_le
-    _ = epsD := add_tsub_cancel_of_le h_le_epsD
-
-/-- A single-squeeze row of `N` answers fits the budget when `N/2^256 ≤ deltaR` (in ℝ). -/
-theorem N_le_deltaR {N : ℕ} (h : (N : ℝ) / 2 ^ 256 ≤ 15 / 2 ^ 124 - 2 / 2 ^ 142 - 1 / 2 ^ 238) :
-    (N : ℝ≥0) ≤ 2 ^ 256 * deltaR := by
-  rw [← NNReal.coe_le_coe, NNReal.coe_mul, deltaR_coe]
-  push_cast
-  rw [div_le_iff₀ (by positivity)] at h
-  linarith
-
 open Classical in
 /-- **The five per-position obligations of `hloc_of`** for a doom predicate `D`, the phase map
 `rnd`, the multi-squeeze budget `δ` and the single-squeeze count `N`. -/
@@ -117,54 +65,13 @@ theorem step_epsD {D : Log → Log → Prop} {N : ℕ} (hN : (N : ℝ≥0) ≤ 2
   (muG_step_of fsRnd_ok fsRnd_zero deltaR N hN ob.habs ob.hmid ob.hsingle ob.hround ob.hstab hl
     hμ hq).trans (by gcongr; exact err_le_epsD)
 
-/-- A multi-squeeze phase on which `D` cannot escape is charged nothing. -/
-theorem condCount_eq_zero {D : Log → Log → Prop} {L es₀ : Log} {r : ℕ}
-    (h : ∀ as : List Digest, as.length = r → ¬ EscAtG D L (ext es₀ as)) :
-    condCount D L es₀ r [] = 0 := by
-  classical
-  unfold condCount extCount
-  rw [Finset.filter_false_of_mem fun v _ => h _ (by simp)]
-  simp
-
 /-! ## Part B: the degree-3 F rounds -/
-
-/-- Binding one more challenge is mapping `bind0`. -/
-theorem bindAll_append {R : Type*} [CommRing R] (ts : Array (Array R)) (rs : List R) (r : R) :
-    bindAll ts (rs ++ [r]) = (bindAll ts rs).map (bind0 · r) := by
-  induction rs generalizing ts with
-  | nil => rfl
-  | cons r' rs ih => exact ih _
-
-theorem bindAll_size {R : Type*} [CommRing R] {m : ℕ} :
-    ∀ (rs : List R) (ts : Array (Array R)), (∀ t ∈ ts, t.size = 2 ^ (rs.length + m)) →
-      ∀ t ∈ bindAll ts rs, t.size = 2 ^ m
-  | [], ts, h => fun t ht => by simpa using h t ht
-  | r :: rs, ts, h => bindAll_size rs _ (map_bind0_size ts r fun t ht => by
-      rw [h t ht]; congr 1; simp; omega)
 
 section Rounds3
 
 variable (b : ℕ)
 
-/-- Round `l`'s coefficients from claim `c`: `c₀, c₁, c₂` from the message at `b + 2l`, and
-`c₃ = c + (c₁ + c₂)` (`roundOpsF … 3`, `FRVIRSpec.g3`). -/
-def g3At (es : Log) (l : ℕ) (c : F) : Array F :=
-  #[readF (msgAt es (b + 2 * l)) 0, readF (msgAt es (b + 2 * l)) 16,
-    readF (msgAt es (b + 2 * l)) 32,
-    c + (readF (msgAt es (b + 2 * l)) 16 + readF (msgAt es (b + 2 * l)) 32)]
-
-/-- Round `l`'s challenge: the first F coordinate of the answer at `b + 2l + 1`. -/
-def rch (es : Log) (l : ℕ) : F := fAt es (b + 2 * l + 1) 0
-
-/-- The first `l` challenges. -/
-def rchs (es : Log) (l : ℕ) : List F := (List.range l).map (rch b es)
-
 variable (c0 : Log → Log → F)
-
-/-- The running claims: `c0`, then `g_l(r_l)`. -/
-def clR (L es : Log) : ℕ → F
-  | 0 => c0 L es
-  | l + 1 => peval (g3At b es l (clR L es l)) (rch b es l)
 
 variable (nr : Kind → ℕ)
 
@@ -183,50 +90,6 @@ answered rounds is false. -/
 def D3 (L es : Log) : Prop := b < es.length ∧ Wrong3 b c0 nr e T L es (ans3 b nr es)
 
 variable {b c0 nr e T}
-
-theorem peval_four (x0 x1 x2 x3 r : F) :
-    peval #[x0, x1, x2, x3] r = x0 + r * (x1 + r * (x2 + r * x3)) := by
-  simp [peval_eq_sum, Finset.sum_range_succ]
-  ring
-
-/-- The round's check always passes (`c₃` is set from the claim; characteristic two). -/
-theorem g3_check (es : Log) (l : ℕ) (c : F) :
-    peval (g3At b es l c) 0 + peval (g3At b es l c) 1 = c := by
-  unfold g3At
-  generalize readF (msgAt es (b + 2 * l)) 0 = x0
-  generalize readF (msgAt es (b + 2 * l)) 16 = x1
-  generalize readF (msgAt es (b + 2 * l)) 32 = x2
-  rw [peval_four, peval_four]
-  linear_combination (x0 + x1 + x2) * CharTwo.two_eq_zero (R := F)
-
-theorem g3_size (es : Log) (l : ℕ) (c : F) : (g3At b es l c).size = 4 := rfl
-
-theorem rchs_succ (es : Log) (l : ℕ) : rchs b es (l + 1) = rchs b es l ++ [rch b es l] := by
-  simp [rchs, List.range_succ]
-
-theorem rchs_congr {es es' : Log} {l : ℕ} (h : Agree es es' (b + 2 * l)) :
-    rchs b es l = rchs b es' l := by
-  unfold rchs rch fAt ansAt
-  refine List.map_congr_left fun j hj => ?_
-  rw [h _ (by simp at hj; omega)]
-
-theorem clR_congr {L es es' : Log} (hc : c0 L es = c0 L es') :
-    ∀ {l : ℕ}, Agree es es' (b + 2 * l) → clR b c0 L es l = clR b c0 L es' l
-  | 0, _ => hc
-  | l + 1, h => by
-    simp only [clR]
-    rw [clR_congr hc (h.mono (by omega))]
-    simp only [g3At, rch, fAt, ansAt, msgAt, h (b + 2 * l) (by omega),
-      h (b + 2 * l + 1) (by omega)]
-
-theorem clR_log_congr {L L' es : Log} (hc : c0 L' es = c0 L es) :
-    ∀ l, clR b c0 L' es l = clR b c0 L es l
-  | 0 => hc
-  | l + 1 => by simp only [clR, clR_log_congr hc l]
-
-/-- What the truth must satisfy: it reads the entries before `b` only. -/
-def TruthLocal (b : ℕ) (c0 : Log → Log → F) (T : Log → Log → Array (Array F)) : Prop :=
-  ∀ L es es', Agree es es' b → T L es = T L es' ∧ c0 L es = c0 L es'
 
 theorem wrong3_congr (hb1 : 1 ≤ b) (hTc : TruthLocal b c0 T) {L es es' : Log} {l : ℕ}
     (h : Agree es es' (b + 2 * l)) : Wrong3 b c0 nr e T L es l ↔ Wrong3 b c0 nr e T L es' l := by
@@ -259,9 +122,6 @@ theorem D3_append_iff (hb1 : 1 ≤ b) (hTc : TruthLocal b c0 T) {L es : Log}
 
 theorem not_D3_short {L es : Log} (h : es.length ≤ b) : ¬ D3 b c0 nr e T L es :=
   fun hd => by have := hd.1; omega
-
-theorem entAt_ext1 (es : Log) (a : Digest) : (entAt (ext1 es a) es.length).2 = a := by
-  simp [entAt, ext1]
 
 /-- At a real round's squeeze, the extension answers one more round, and its claim and truth
 are the round polynomial and the bound tables at the answer's first F coordinate. -/
@@ -330,12 +190,6 @@ theorem D3_single (hb1 : 1 ≤ b) (hTc : TruthLocal b c0 T) (he : e.deg = 3)
   refine ⟨⟨by rw [he]; rfl, g3_check es j _⟩, ?_⟩
   rw [hnw, show nr (kindOf es) - (j + 1) = nr (kindOf es) - j - 1 by omega]
 
-theorem length_ext : ∀ (as : List Digest) (es : Log), (ext es as).length = es.length + as.length
-  | [], _ => rfl
-  | a :: as, es => by
-    rw [show ext es (a :: as) = ext (ext1 es a) as from rfl, length_ext as]
-    simp [ext1]; omega
-
 theorem D3_log_congr {L L' X : Log} (hT : T L' X = T L X) (hc : c0 L' X = c0 L X) :
     D3 b c0 nr e T L' X ↔ D3 b c0 nr e T L X := by
   simp only [D3, Wrong3, clR_log_congr hc, hT]
@@ -400,9 +254,6 @@ theorem rounds3_obl {nMax : ℕ} (P : RoundsPhase b nMax nr) (hTc : TruthLocal b
   hstab L i hb hci X hX := by
     obtain ⟨hT, hc⟩ := hst L i hb hci X hX
     exact D3_log_congr hT hc
-
-theorem three_le_deltaR : ((3 * 2 ^ 128 : ℕ) : ℝ≥0) ≤ 2 ^ 256 * deltaR :=
-  N_le_deltaR (by push_cast; norm_num)
 
 open Classical in
 /-- **The contract's step law for the round doom**, with error `εD = εR − ε_H`. -/

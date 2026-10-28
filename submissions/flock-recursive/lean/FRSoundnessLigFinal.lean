@@ -1,5 +1,7 @@
 -- New for `flock-recursive` (BLUEPRINT §5.4 step 2, A.10 "What `final` then gets"; stage S-G2).
+-- RET-1: position-free declarations moved to `FRSoundnessCoreTail`.
 import FRSoundnessCompose
+import FRSoundnessCoreTail
 
 /-!
 # `ligerito_final`: unique decoding of the five Ligerito levels (BLUEPRINT §5.4 (2))
@@ -59,10 +61,6 @@ theorem lig_pos {i : ℕ} (hi : i < 5) : p1Start 0 ≤ p1Start i ∧ p3S0 i ≤ 
 /-- A prefix reads what the chain reads before its length. -/
 theorem same_take (L es : Log) (n : ℕ) : Same L (es.take n) L es n :=
   same_of_agree L fun _ hq => entAt_take hq
-
-theorem length_take_succ {es : Log} {p : ℕ} (hp : p < es.length) :
-    (es.take (p + 1)).length = p + 1 := by
-  rw [List.length_take]; omega
 
 variable {W₀ : Log → Log → ℕ → K} {c₀ : Log → Log → K}
 
@@ -241,15 +239,6 @@ theorem ligerito_final_of_walk {RejF : Log → Log → Prop} {DF : ℕ → Log �
 
 /-! ## Part D: Pf's end (the fold rounds' binding) -/
 
-/-- Binding every variable of a table of `2^n` entries at a list of `n` challenges evaluates its
-extension there. -/
-theorem bindL_ofFn_mle {n : ℕ} (g : ℕ → K) (cs : List K) (hl : cs.length = n) :
-    tbl 0 (bindL (Array.ofFn (n := 2 ^ n) fun y => g y) cs) 0 = mleN n g (ptOf n cs) := by
-  subst hl
-  rw [bindL_mle _ _ (Array.size_ofFn ..), mleN, pt_eq_ptOf]
-  congr 1
-  funext u; exact ofFn_getD g u.2
-
 /-- Pf's seven challenges, as a point. -/
 def pfPt (es : Log) : Fin 7 → K := ptOf 7 (rchs2 pfStart chK es 7)
 
@@ -276,19 +265,6 @@ theorem DPf_end_iff {L es : Log} (hl : pfStart + 14 ≤ es.length) :
   exact or_congr Iff.rfl ⟨fun h => h.2, fun h => ⟨by omega, h⟩⟩
 
 /-! ### The level tables' extensions at ℕ-indexed points (`finPf`'s level steps) -/
-
-/-- The extension of `W`'s first `2^n` entries at the ℕ-indexed point `ρ`. -/
-noncomputable def mleP (n : ℕ) (W ρ : ℕ → K) : K := mleN n W (fun v => ρ v)
-
-theorem fin_append_nat {a b : ℕ} (s ρ : ℕ → K) (v : Fin (a + b)) :
-    Fin.append (fun u : Fin a => s u) (fun u : Fin b => ρ u) v =
-      if (v : ℕ) < a then s v else ρ (v - a) := by
-  refine Fin.addCases (fun u => ?_) (fun u => ?_) v
-  · simp [Fin.append_left, u.2]
-  · simp [Fin.append_right]
-
-theorem mleP_zero (W ρ : ℕ → K) : mleP 0 W ρ = W 0 := by
-  rw [mleP, mleN, mle_zero]; rfl
 
 /-- **One level step** (A.9 `finPf`'s `lvStepV`, at the spec): level `i + 1`'s table at `P` is
 `û(P₀)·(Wᵢ(sᵢ, P[1..]) + Σ_q eq(κ_c, bits₉(q))·tensorW(p_q, P[1..]))`. -/
@@ -319,47 +295,6 @@ theorem mleP_lvW_succ {i : ℕ} (hi : i + 1 < 5) (L es : Log) (P : ℕ → K) :
     funext v; split_ifs <;> rfl
   rw [hpt, htl]
   rfl
-
-/-- The point of a table indexed by `ℕ` (`Fin.append` of a prefix and the rest, as in
-`mle_split`). -/
-theorem mleP_pt_split (m k : ℕ) (W ρ : ℕ → K) :
-    mleP (m + k) W ρ = mle (fun u : Fin (2 ^ (m + k)) => W u)
-      (Fin.append (fun v : Fin m => ρ v) (fun v : Fin k => ρ (m + v))) := by
-  unfold mleP mleN
-  congr 1
-  funext v
-  rw [fin_append_nat ρ (fun u => ρ (m + u))]
-  split_ifs with h
-  · rfl
-  · congr 1; omega
-
-/-- **Zero padding** (A.9 `finPf`'s `P30` factor): a table zero from `2^m` on has, over `n ≥ m`
-variables, the extension over `m` times `Π_{m ≤ v < n} (1 − ρ_v)`. -/
-theorem mleP_pad {m n : ℕ} (hmn : m ≤ n) {W : ℕ → K} (hW : ∀ x, 2 ^ m ≤ x → W x = 0)
-    (ρ : ℕ → K) : mleP n W ρ = mleP m W ρ * ∏ v ∈ Ico m n, (1 - ρ v) := by
-  obtain ⟨k, rfl⟩ := Nat.exists_eq_add_of_le hmn
-  rw [mleP_pt_split, mle_split]
-  have hin : ∀ u₁ : Fin (2 ^ m), mle (fun u₂ : Fin (2 ^ k) =>
-      (fun u : Fin (2 ^ (m + k)) => W u) (join u₁ u₂)) (fun v : Fin k => ρ (m + v)) =
-      (∏ v ∈ Ico m (m + k), (1 - ρ v)) * W u₁ := fun u₁ => by
-    have hf : (fun u₂ : Fin (2 ^ k) => (fun u : Fin (2 ^ (m + k)) => W u) (join u₁ u₂)) =
-        fun u₂ => if u₂ = 0 then W u₁ else 0 := by
-      funext u₂
-      simp only [join]
-      split_ifs with h
-      · subst h; simp
-      · refine hW _ ?_
-        have : 1 ≤ u₂.val := Nat.one_le_iff_ne_zero.mpr fun h' => h (Fin.ext h')
-        nlinarith [u₁.2, Nat.one_le_two_pow (n := m)]
-    rw [hf, mle]
-    simp only [mul_ite, mul_zero, sum_ite_eq', mem_univ, ite_true, eq_cube]
-    congr 1
-    rw [prod_Ico_eq_prod_range, Nat.add_sub_cancel_left, ← Fin.prod_univ_eq_prod_range]
-    exact prod_congr rfl fun v _ => by simp
-  refine (sum_congr rfl fun u₁ _ => congrArg _ (hin u₁)).trans ?_
-  unfold mleP mleN mle
-  rw [sum_mul]
-  exact sum_congr rfl fun u _ => by ring
 
 /-! ## Part E: Merkle binding (`cap_binding`) -/
 
@@ -555,17 +490,6 @@ theorem finalLaw_of (S : Submission) (vk : Digest) {RejF : Log → Log → Prop}
     (ligerito_final_of_walk hF hS hb hE hEH hT.chain (by omega) hend)
 
 /-! ## Part G: controls -/
-
-theorem bytesAt_empty (o n : ℕ) : bytesAt ByteArray.empty o n = Vector.replicate n 0 := by
-  ext k hk; simp [bytesAt, byteAt, Vector.getElem_ofFn]
-
-theorem msgAt_nil (p : ℕ) : msgAt [] p = ByteArray.empty := by
-  simp [msgAt, entAt]; decide
-
-theorem K_ofBytes_zero : K.ofBytes (Vector.replicate 32 0) = 0 := by decide
-
-theorem readK_nil (p o : ℕ) : readK (msgAt [] p) o = 0 := by
-  rw [readK, msgAt_nil, bytesAt_empty, K_ofBytes_zero]
 
 /-- On the empty log the decoded rows are `0` (the zero word decodes to the zero codeword). -/
 theorem decodeL_nil (κ : Kind) (es : Log) {i : ℕ} (hi : i < 5) : decodeL κ [] es i = 0 := by
