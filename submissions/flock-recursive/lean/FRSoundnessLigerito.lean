@@ -10,7 +10,8 @@ import FRMLE
   the same order (no reversal). The fold rounds bind bit `0` first, so the Ligerito point's
   coordinate `v` is the challenge of the round that folded bit `v`.
 
-`ligerito_final` (the per-level induction) is not in this module yet (S-G RESULT, open items).
+`ligerito_final` is in `FRSoundnessLigFinal` (stage S-G2): it needs the tail's dooms, which import
+`FRSoundnessHide`, which imports this module.
 -/
 
 namespace FR
