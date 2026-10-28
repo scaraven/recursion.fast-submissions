@@ -98,6 +98,7 @@ import FRSoundness4Pos
 import FRSoundness4P4bB
 import FRSoundness4P4aBridge
 import FRSoundness4TailFront
+import FRSoundness4R4Ctrl
 import FRNodeMirror
 import FRVIRTplDag
 import FRVIRTplWalk
