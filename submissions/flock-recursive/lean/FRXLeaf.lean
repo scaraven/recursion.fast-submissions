@@ -117,12 +117,12 @@ theorem run_leaf (c : Digest) (π : Proof) (L : Log) (hq : ∀ e ∈ L, e.1.size
     (by rw [hs0, hI]; exact hB) (fuel_covers hd.cost _)
   rw [hs0, hI] at hrun
   refine hrun.trans (congrArg some ?_)
-  have e : semXIR I (extIRWith decSnark) s0 = semXIR I (.ite rKN decN leafIR)
+  have e : semXIR I (extIRWith decSnark) s0 = semXIR I (.ite rKN decNode leafIR)
       (semXIR I kindIR s1) := by
-    rw [extIRWith, semXIR_seq, hs1, semXIR_ite, if_neg hk1, semXIR_ite, if_neg hz, decSnark, decLN2,
+    rw [extIRWith, semXIR_seq, hs1, semXIR_ite, if_neg hk1, semXIR_ite, if_neg hz, decSnark, decLN3,
       semXIR_seq]
   obtain ⟨n1, n2, n3⟩ := kindIR_regs I s1 h1
-  have hM2 := inv_sem I decOk_decLN2.wf.1 h1
+  have hM2 := inv_sem I decOk_decLN3.wf.1 h1
   rw [congrArg (fun s' : St => s'.o.toList) e]
   generalize semXIR I kindIR s1 = s2 at n1 n2 n3 hM2
   have hN : I.getD 5 0 &&& 0xFF ≠ 0x4E := by

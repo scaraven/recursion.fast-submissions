@@ -2356,3 +2356,217 @@ Missing: negative controls for `MsgOk`, `finPi` and the message programs (toy ke
 
 **Stopped here.** The cause is context length. The state is commit-ready: the FRX targets build,
 no `sorry`, the source rule is clean, and `ext`, `computes` and the earlier statements are unchanged.
+
+## Part 19 (track S-H2j): the five levels chained, wired into `decSnark`; the node case up to the output
+
+**Delivered** (Part 18 §7, items 1–3, 5 and 6; the task's A, B, C, E, F):
+- **A.** `readIR_frame`: the ladder read keeps the heap outside its store (from `posLoop`).
+  `readIR_sem` is unchanged.
+- **B.** The five levels chained after the read (`decLevels`, **`decLevels_sem`**): level 0's
+  decoded rows at `ob0` are `msgOf .N30 L es 0`, `F`-valued.
+- **C.** Exact costs per level and in all (`cost_decLvIR`, `cost_levels`, `cost_decLevels`).
+  `WF`, `NoLoopT`, `outs` and the size are proved for `decLvIR` and the chain.
+- **E.** The node branch (`decNode_sem`), and the run of `ext` on a node proof (`ext_node`): it
+  halts within the fuel, and its final heap holds `f⁽⁰⁾`. The chain links are hypotheses that
+  `FinalLaw` supplies (§6, deviation 2).
+- **F.** `decSnark := decLN3 = kindIR ; ite rKN decNode leafIR`, with `DecOk` and the cost
+  `cost_le_decLN3` within 211,106,098,315,264 + 8,176·t.
+
+**Not delivered: D** (`decodeWit`'s output on a node proof). It is blocked: no reader of the
+packed witness exists yet (`FR.readSigned`, `reassemble` from `z`; A.5, A.7; S-E2's open item in
+the `FRNodeCircuit` docstring). Until D lands, `ext` outputs nothing on a node proof, so
+`E c π L = none` there (`ext_node`, first conjunct). About 2^46.0 steps are left for the output.
+
+The statements of `decSnark`, `decOk_decSnark`, `ext`, `E`, `computes`, `ext_caps`, `E_W`,
+`E_bad`, `E_leaf` and every earlier theorem are unchanged. `decSnark` is a `def`, and only its
+body changed. `FRXLeaf`'s proof now names the new branch (`decNode`, `decLN3`).
+
+### 1. Files (code lines by the core's `scripts/loc.py`)
+
+| File | total / code / theorems | What |
+|---|---|---|
+| `FRXNode` (new) | 761 / 586 / 45 | `readIR_frame`, `readLv_frame`, `lvl_logN/sib/rows`, `p1_lt_nRep`, `readLv_wordOf`; `eqt_keep`, `lvMsg`, `msg4`, `msg4_keep`, `lvMsg_keep`; `stepU`, `KeepR`, **`lvStep_sem`**, `lv0Step_sem`; **`decLevels`**, **`decLevels_sem`**; `WF`/`NoLoopT`/`outs` of `setA`, `decLvIR`, `decLevels`; **`cost_decLvIR`**, `cost_msg4`, `cost_lvMsg`, **`cost_levels`**, **`cost_decLevels`**, `sizeIR_decLevels`; **`decNode`**, **`decLN3`**, `cost_decNode`, `outs_decNode`, **`decOk_decLN3`**, **`cost_le_decLN3`**; `chain_frame`, `wordOf0_eq`, **`decNode_sem`**; controls (`NodeControls`) |
+| `FRXNodeRun` (new) | 121 / 94 / 1 | **`ext_node`** (the node case of `ext_good_tape`, up to the output) |
+| `FRXExt` | +3 lines | imports `FRXNode`; `decSnark := decLN3`, `decOk_decSnark := decOk_decLN3` |
+| `FRXLeaf` | 3 names in a proof | `decN`/`decLN2` → `decNode`/`decLN3` in `run_leaf`'s proof |
+
+New code: 680 lines.
+
+### 2. What is proved
+
+**The program.**
+
+```
+decLevels := wtabIR tb0 ; stepU msg4 4 ; stepU (lvMsg 3) 3 ; stepU (lvMsg 2) 2 ; stepU (lvMsg 1) 1 ;
+             decLvIR (lvMsg 0) 0 128 colBase (cbS 0) ob0
+stepU msg i := readLv i ; decLvIR msg i 32 stB (cbS i) obL
+msg4        := msgTIR 10 32 finW xbM ybM          lvMsg i := msgHIR (lvl .N30 i).logN (2^mLog (i+1)) obL xbM ybM
+decNode     := decRead ; chainIR nRep chTab seedIR ; decLevels          decLN3 := kindIR ; ite rKN decNode leafIR
+```
+
+**The frames.**
+- `readIR_frame`: every heap cell outside `[sb, sb + nw·np)` is kept.
+- `readLv_frame`: for levels 1–4, the heap outside `[stB, stB + 32·2^logNL i)` is kept.
+- `eqt_keep`: the heap outside `[eqB, eqB + 256)` is kept. It needs no hypothesis on the
+  challenges.
+- `chain_frame`: the heap outside `[chB, chEnd)` is kept (`chainIR_sem` for the seed block).
+
+**One step** (`lvStep_sem`, `1 ≤ i ≤ 4`). The setting:
+- `s₀` is the state after `wtabIR`. It holds the basis table, the chain's answers
+  (`ansB + 4p + m`, `p < nRep`) and the sorted index.
+- The current state `s` agrees with `s₀` on `KeepR`: below `jb0`, on `[chB, eqB)`, and from
+  `2^25` on.
+- The message step satisfies `MsgOk` from every state that agrees with `s` below `2^24` outside
+  the `eq` table.
+
+Given `capDig es i = capPiL i π`, `¬ farL` and `A_c = jointAgree` at level `i`, `stepU msg i`
+leaves `msgOf i` at `obL`, keeps `KeepR`, and preserves `Inv`. On the way:
+- `readLv_wordOf` turns `readLv_spec_F`'s `F` reading into `wordOf .N30 L es i`, through
+  `(lvl .N30 i).sib = sibL i` and the cap link;
+- `sAt_words` places P1.i's challenges at `cbS i`;
+- `p1_lt_nRep` shows that the challenges' positions `phStart(26+5i) + 2v + 1` are below `nRep`.
+
+`lv0Step_sem` is level 0's step, with the word at `colBase`.
+
+**`decLevels_sem`** (hypotheses on the state before `wtabIR`):
+- the sorted index at `memX`;
+- level 0's word at `colBase` (`wordOf .N30 L es 0`);
+- the answers `ansAt es p` at `ansB`;
+- `capDig es i = capPiL i π` for `i ∈ [1,4]`, and `finalAt es x = finPi π x` for `x < 32`;
+- `¬ farL` and `A_c = jointAgree` at every level.
+
+Conclusion: `algebraMap F K (rdF M (ob0 + 2·2^17·r + 2x)) = msgOf .N30 L es 0 r x` for `r < 64`,
+`x < 2^17`. Levels 3, 2, 1 and 0 get their message from the previous level's rows through
+`msgOf_embed`, which supplies `F`-valuedness, and `lvMsg_keep`.
+
+**`decNode_sem`** adds three hypotheses: the domain, `¬ StateHit L`, and the chain link
+`fmAns (fsQ (vkOf π) c π) st₀ L p = some (ansAt es p)` (`p < nRep`); level 0's cap link
+`capDig es 0 = capPi π` comes in with them. Then:
+- `idxIR_sorted` and `read_spec_F` give the index and the word;
+- `readIR_sem` keeps the index across `read0`;
+- `chain_dec` gives the answers, and `chain_frame` keeps the index and the word;
+- `decLevels_sem` finishes.
+
+**`ext_node`** (`kindOf π = .snark .N30`, with the same hypotheses):
+- `ext.run (extractorInput c π L) (fuel _) = some []`;
+- the final state of `extIRWith decSnark` from `initSt (memX + 3t)` holds `f⁽⁰⁾` at `ob0`.
+
+The proof follows `run_leaf`: the parse flags, `kindIR_regs` with the byte `0x4E`, `run_toProg`,
+and `outs_le` with `outs decNode = 0`.
+
+### 3. Costs (exact theorems), against the budget
+
+| part | steps | theorem |
+|---|---|---|
+| level 4 | 14,546,064 | `cost_levels` |
+| level 3 | 261,035,116 | `cost_levels` |
+| level 2 | 13,186,204,712 | `cost_levels` |
+| level 1 | 823,525,089,508 | `cost_levels` |
+| level 0 | 140,024,626,811,056 | `cost_levels` |
+| reads 4…1 | 4,843,569,208 | `cost_readLv` |
+| basis table | 79,606 | `cost_wtabIR` |
+| **`decLevels`** | **140,866,457,335,279** (`≈ 2^47.00`) | `cost_decLevels` |
+| `decN` (chain + index + read 0) | `≤ 18,002·10^6 + 2,558 t` | `cost_decN` |
+| **`decLN3`** | `≤ 140,884,459,335,297 + 2,558 t` | `decOk_decLN3.cost` |
+| budget (`decBudget`) | 211,106,098,315,264 + 8,176 t | `cost_le_decLN3` |
+
+The margin is 70,221,638,979,967 + 5,618 t (`≈ 2^45.997`). It is room for the output (D).
+Statements: `sizeIR decLevels = 53,515` (`decide +kernel`) and `sizeIR decLN3 ≤ 74,568 < 2^19`.
+
+### 4. Controls (`FRXNode.NodeControls`)
+
+| Control | Kind | Shows |
+|---|---|---|
+| `toyFin_run` (`decide +kernel`) | positive / negative | the compiled `finIR` on the tape `[0,0,7,8,9,10]`: from `tw = 2`, `X[0] = (7,8)`, `Y[0] = (9,10)`; from `tw = 1` the element is shifted (`[0,7,8,9]`): the read is at `tw` |
+| `toyGath_run` (`decide +kernel`) | positive / negative | the compiled `gathIR` on 16 toy rows: `X[x]` is row `2x`, `Y[x]` row `2x+1` (`[1,2,3,4]`); row 1 goes to `Y[0]`, not to `X[1]` |
+| `msgOk_empty_neg` | negative | the empty step is not `MsgOk` for a nonzero message over a zero row: `MsgOk` is not trivial |
+| `finPi_toy` (`decide +kernel`) | positive / negative | a `1` at byte `finOff` makes `finPi π 0 ≠ 0`; a `1` at `finOff − 1` is not read |
+| `keepR_ctl` | positive / negative | `KeepR` holds at `tb0`, `ansB`, `colBase` and fails at `obL`, `ob0` (the decode writes them) |
+| `decLevels_sem`, `decNode_sem`, `ext_node` | universal | for every log, transcript and proof with the stated hypotheses; `msgOk_four`, `msgOk_lower` (Part 18) inhabit `MsgOk` |
+| `toy_W`, `toy_W_exact`, `toy_bad` (FRXSpec, unchanged) | positive / negative | still kernel-checked with the new `decSnark` compiled in |
+
+### 5. Checks
+
+- **Build**: the whole entry, `lake build FR FRXNodeRun`, is green in `logs/fr-build-SH2j`
+  (2,347 jobs; 3 min 4 s wall on the shared VM; `logs/S-H2/build19.{out,log}`). The tree is a
+  snapshot: HEAD's modules of the other tracks (`snap.sh`; S-E8 is editing `FRVIR*` in the
+  worktree), with `FRXNode`, `FRXNodeRun`, `FRXExt`, `FRXLeaf` symlinked to the worktree.
+- **Axioms** (`logs/S-H2/axioms19.log`):
+  - these depend on `propext, Classical.choice, Quot.sound`: `computes`, `ext_caps`,
+    `decOk_decSnark`, `decOk_decLN3`, `cost_le_decLN3`, `cost_decLevels`, `cost_levels`,
+    `cost_decLvIR`, `ext_node`, `decNode_sem`, `decLevels_sem`, `lvStep_sem`, `lv0Step_sem`,
+    `readIR_frame`, `readLv_frame`, `readLv_wordOf`, `chain_frame`, `ext_W`, `ext_bad`, `E_leaf`,
+    `ext_encode`, `msgOk_empty_neg`, `keepR_ctl`;
+  - `toyFin_run`, `toyGath_run` and `finPi_toy` depend on `propext, Quot.sound`;
+    `sizeIR_decLevels` depends on `propext`.
+- **Source rule**: 128 files, 0 findings (`logs/S-H2/source19.log`). There is no `sorry`.
+- **Sequential profile** (`taskset -c 0`, `-DElab.async=false`, `logs/S-H2/*.19.{profile,time}`):
+
+  | Module | wall | max RSS | type checking (listed entries) |
+  |---|---|---|---|
+  | `FRXNode` | 70.4 s | 5.49 GB | ≈ 49 s, almost all of it the toy kernel runs: 23.3 s (`finPi_toy`, a 64,641-byte toy proof), 20.5 s and 4.5 s (`toyGath_run`, `toyFin_run`); `sizeIR_decLevels` 0.9 s |
+  | `FRXNodeRun` | 7.6 s | 2.75 GB | below 100 ms |
+  | `FRXSpec` | 12.4 s | 2.85 GB | 0.43 s (the toy runs, with the new `decSnark` compiled in) |
+  | `FRXLeaf` | 9.3 s | 2.76 GB | below 100 ms |
+  | `FRXExt` | 5.9 s | 2.73 GB | below 100 ms |
+
+### 6. Deviations
+
+1. **Program order: the chain after the read.** `decNode := decRead ; chainIR ; decLevels`;
+   `decN` (chain first) is kept but is no longer on `ext`'s path. `chainIR_sem` has a heap frame
+   (outside `[chB, chEnd)`), and the index (`idxIR`: walk and merge sort) has none. With the chain
+   last, its frame keeps the index at `memX` and level 0's word at `colBase`, and no frame of the
+   sort is needed. The cost is the same (`cost_decNode = cost decN + cost decLevels + 1`).
+2. **E: the chain links are hypotheses of the `'N'` case, which `FinalLaw` supplies.** The links
+   are:
+   - `fmAns (fsQ (vkOf π) c π) st₀ L p = some (ansAt es p)` for `p < nRep`;
+   - `capDig es i = capPiL i π` (and `capPi π` at level 0);
+   - `finalAt es x = finPi π x` for `x < 32`;
+   - `¬ StateHit L`;
+   - `¬ farL` and `A_c = jointAgree` per level.
+
+   They are hypotheses because each one relates the transcript `es` to `L` and to π, and `es` is
+   free on the extractor's side. It is the transcript the verifier's run reads off `L`. These
+   facts come from `(V vk c π).runLog L = some true`: `runLog_chain` says the queries are `fsQ`'s
+   and the answers are the first-match chain, and the absorbed caps and final message are π's
+   fields. That is `final`'s side (S-G2/S-G3). The `FRX` modules do not import the verifier's
+   semantics, and they should not: the program does not depend on them. `ext_good_tape`'s `'N'`
+   case is used inside `FinalLaw`'s proof, where `runLog = some true` is available.
+
+   A reduction is possible. If `es`'s queries are `fsQ`'s, then `capOffL_fsMsgs` (and its level-0
+   and final-message twins) turn the cap and final links into consequences of that one fact,
+   because `msgAt es (capPos i)` is π's bytes at `capOffL i`. That needs a lemma
+   `msgAt (fsQ …) = π.extract …`, which is not written (§8).
+3. **The seed state `st₀` is a parameter** (as in `chain_dec`); `final` instantiates it with the
+   verifier's seed.
+4. **D is not delivered** (blocked, above). `ext_node` states what the output step will
+   consume: `f⁽⁰⁾` at `ob0`.
+5. **`FR.lean` does not import `FRXNodeRun`.** `FR.lean` is not an `FRX` module, so I did not
+   edit it. `FRXNode` is imported through `FRXExt`. The orchestrator should add
+   `import FRXNodeRun` to `FR.lean`. It builds (`lake build FRXNodeRun` above).
+
+### 7. Pitfalls (also in the journal)
+
+- **`omega` and large atoms.** `omega` fails with "maximum recursion depth" when an atom is a
+  large closed term (`sizeIR decRead`, `(semXIR I (wtabIR tb0) s).M.size`). It appears to compare
+  atoms up to definitional equality. Fix: `generalize` the atoms first, or give constant bounds by
+  `le_trans (by decide) …` (`le_add3`, `le_add4`). This is probably Part 18's pitfall too.
+- **A fact stated with an unfolded definition.** `readIR_sem` gives a fact about
+  `semXIR … (readIR 0 capW0 …) s1`, while the goal has `read0`. `generalize` did not abstract
+  it, and a later `.trans` made the elaborator evaluate `semXIR` (a whnf timeout reported at the
+  declaration). Fix: state the fact with the folded name.
+
+### 8. What remains (in order)
+
+1. **D, the output** (BLUEPRINT §6.2 step 5, §6.5 `output_spec`). It needs:
+   - a reader `z ↦ (c₁, c₂, p₁, p₂)` of the packed witness `z := unpack f⁽⁰⁾`
+     (`FR.readSigned σ z`, `reassemble` of A.5, the A.7 cell map; S-E2/L-circ);
+   - then an output program from the rows at `ob0` (row `c` at `ob0 + 2^18 c`), proved to emit
+     `witWords (.node c₁ c₂ p₁ p₂)`, so that `decodeWit_witWords` gives `E c π L = some w`;
+   - a cost within the ≈ 7.0·10^13 margin (§3).
+2. **The links on `final`'s side**: discharge `ext_node`'s transcript hypotheses from
+   `runLog = some true` (S-G2/S-G3). Optionally, reduce the cap and final links to "the queries
+   are `fsQ`'s" (§6, deviation 2).
+3. `import FRXNodeRun` in `FR.lean` (orchestrator).
+4. Kernel time of the new controls (≈ 49 s): `finPi_toy` could use a congruence lemma instead
+   of a 64 kB toy proof, if the 600 s kernel budget gets tight.

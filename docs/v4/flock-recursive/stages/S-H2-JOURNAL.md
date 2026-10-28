@@ -393,3 +393,43 @@ Base: branch `v4/flock-recursive`, HEAD `53c2e13`. Build tree `logs/fr-build-SH2
       level 1 `8.2·10^11`, the rest below `1.4·10^10`.
     - Profiles: FRXFlag 44.8 s (kernel 15.2 s, the toy run), FRXMsg 71.2 s, FRXDecLv 24.2 s.
     - Stopped: context long. Handover in RESULT Part 18 §7.
+
+## Part 19 (track S-H2j)
+
+34. Own tree `logs/fr-build-SH2j` (a copy of `fr-build-SH2i`, then `snap.sh`: HEAD's modules of the
+    other tracks, mine symlinked, because S-E8 is editing `FRVIR*` in the worktree).
+35. Item A, `readIR_frame` (new module `FRXNode`): `readIR_sem`'s proof with the last step taken from
+    `posLoop`'s frame conjunct; `readIR_sem` unchanged. `readLv_frame` for levels 1–4.
+36. Item B, the five levels (`decLevels`, `decLevels_sem`):
+    - `lvStep_sem` (read and decode of level `i ∈ [1,4]`) takes a reference state `s₀` (after
+      `wtabIR`) and the agreement on `KeepR` (below `jb0`, `[chB, eqB)`, from `2^25`); it rebuilds
+      `hT`, `hS` (`sAt_words` with `p1_lt_nRep`), the index and the word (`readLv_wordOf`: the
+      `F` reading is `wordOf` once `capDig es i = capPiL i π`).
+    - The message step is passed as "`MsgOk` from every state agreeing below `2^24` outside the
+      `eq` table" (`msg4_keep`, `lvMsg_keep`); `eqt_keep` gives the `eq` table's frame without
+      `hS` (take `S v := rdK s.M (cbS i + 8v)`).
+    - Program order: `decNode := decRead ; chainIR ; decLevels`. The chain has a heap frame
+      (`chainIR_sem`), the index (`idxIR`) has none, so the chain runs after the read.
+37. Item C: `cost_decLvIR` (exact, generic in `i`), `cost_levels` (the five numbers of Part 18's
+    table, now theorems), `cost_decLevels = 140,866,457,335,279`; `sizeIR_decLevels = 53,515`
+    (`decide +kernel`, 0.9 s kernel); `WF`, `NoLoopT`, `outs` of `decLvIR` and `decLevels`.
+38. Items E and F: `decNode_sem` (index, read, chain, levels), `decOk_decLN3`,
+    `cost_le_decLN3`; `decSnark := decLN3` (FRXExt); FRXLeaf's proof follows the new branch name
+    (statement unchanged). `ext_node` (new module `FRXNodeRun`): the run halts with no output,
+    and the final heap holds `f⁽⁰⁾`.
+39. Pitfalls:
+    - **`omega` and large atoms.** `omega` failed with "maximum recursion depth" on goals whose
+      atoms were `sizeIR decRead`, `sizeIR (chainIR …)`, and in a context with
+      `(semXIR I (wtabIR tb0) s).M.size`. `generalize` the atoms first, or give the bounds by
+      `le_trans (by decide) …` (helpers `le_add3`, `le_add4`). This is probably Part 18's
+      pitfall too: `omega` compares atoms up to definitional equality.
+    - **A hypothesis stated with an unfolded definition** (`readIR_sem` gives
+      `semXIR … (readIR 0 capW0 …) s1`, the goal has `read0`): `generalize` did not abstract
+      it, and a later `.trans` made the elaborator evaluate `semXIR` (whnf timeout at the
+      declaration). State the fact with the folded name (`have d2 : … read0 … := …`).
+    - Lean's `one_ne_zero` at `Word` needs `NeZero 1`; use `(by decide : (1 : Word) ≠ 0)`.
+40. Item D is blocked: no `FR.readSigned`/`reassemble` from the packed witness (A.5/A.7) exists.
+41. Checks: the whole entry (`FR`, `FRXNodeRun`) is green in the snapshot tree (3 min 4 s,
+    `build19`); the axioms are the three standard ones (`axioms19.log`); the source rule reports
+    128 files and 0 findings. Profile: `FRXNode` 70.4 s, of which ≈ 49 s is the kernel on the toy
+    runs (`finPi_toy` 23.3 s). Handover in RESULT Part 19 §8 (D first).
