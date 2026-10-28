@@ -535,8 +535,8 @@ def dHi (x : Digest) : F := F.ofBytes (Vector.ofFn fun i : Fin 16 => x[16 + i.1]
 /-- **`finB′`** (A.9, revisions 3.6, 3.12): `v* = v_RS + Σ_k κ′^(k+2) pub_k` equals P1.0's initial
 claim (in `K`); E is batched into `v_RS` as RS claim 4 (3.13), so `v*` has no `v_E` term
 (stage-review changes 18). A node's public point claims, in order: M's `one` cell `1`; slot 0's
-`vk`, `c₁`; slot 1's `vk`, `c₂` (each digest as its two halves); the zero padding cells after them
-add nothing. A leaf kind has none (`keep`). `v_RS` is `finRS`'s export `nRS`. Exports `v*`. -/
+`vk`, `c₁`; slot 1's `vk`, `c₂` (each digest as its two halves): nine cells, `J_f = 9`, no padding
+cells (revision 3.14). A leaf kind has none (`keep`). `v_RS` is `finRS`'s export `nRS`. Exports `v*`. -/
 def finB' : FinField := fun fi b =>
   let kp := (outsOf fi "B'").headD 0
   let vRS := fi.zhat.getD nRS 0
@@ -576,6 +576,20 @@ def relE : Bool :=
     ((Val.f ((wM + kE * kE * kE * wL) * fv r (fi.zhat.getD 3 0))).eqv (rd r (claimN fi "E4")) &&
       e4))
   else e4
+
+/-- **The E4-end binder** (revision 3.14, INT-2 (2)): an accepting `finE` (every kind) binds E4
+end's absorbed message to `α₄ ‖ 0^16` (`α₄` = RS claim 4, `zhat` 3). This is what `truthE4`'s end
+absorb reads: the message is not a free field. -/
+theorem relE_e4end (h : relE impl κ inp fi r = true) :
+    (Val.f (pe inp fE oE4end)).eqv (rd r (fi.zhat.getD 3 0)) = true ∧
+      (inp.π.extract (absOff fE (oE4end + 16)) (absOff fE (oE4end + 16) + 16)).data.all
+        (· == 0) = true := by
+  revert h
+  unfold relE
+  dsimp only
+  split
+  · intro h; simp only [Bool.and_eq_true] at h; exact h.2.2.2
+  · intro h; simp only [Bool.and_eq_true] at h; exact h
 
 /-- **`flag_finE`**: `finE` asks nothing, its flag is `relE`, its export the point `r′`. -/
 theorem flag_finE (hin : ∀ x ∈ (coordsR fi "E1").take 21 ++ chals fi "E2" 21 ++ chals fi "E4" 23 ++
@@ -650,7 +664,8 @@ theorem flag_finB' (hin : ∀ x ∈ [(outsOf fi "B'").headD 0, fi.zhat.getD nRS 
   simp only [hn, pureRun, evalOp, tf, td, tk, List.nil_append, List.cons_append,
     rd_app, rd_app0, rd_app_left _ _ hk, rd_app_left _ _ hR, rd_app_left _ _ hc,
     List.getD_cons_succ, List.getD_cons_zero, Option.map_some, allK, Bool.not_true, Bool.false_or,
-    Bool.true_and, Bool.and_true, ↓reduceIte, Bool.false_eq_true, ite_true, ite_false] <;>
+    Bool.true_and, Bool.and_true, ↓reduceIte, Bool.false_eq_true, ite_true, ite_false,
+    digestAt_eq] <;>
   exact ⟨_, rfl, rfl⟩
 
 end EB

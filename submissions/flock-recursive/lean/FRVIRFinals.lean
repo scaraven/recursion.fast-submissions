@@ -175,35 +175,33 @@ def finLc : FinField := fun fi b =>
 /-- The link families of the Sh phase (A.6, revision 3.5: at most 8). -/
 def nLinkFam : ℕ := 8
 
-/-- Family `f`'s term `κ_s^(f+2)·linkW τ f r` added to the running sum, 4 registers from
-`b + 16 + 4f` (closed-form register numbers; the sum starts at `b + 14`, the power at `b + 15`). -/
-def linkOps (tau r ks b : ℕ) : List Op := (List.range nLinkFam).flatMap fun f =>
-  [.linkW tau f r, .mulF (if f = 0 then b + 15 else b + (16 + 4 * f - 1)) (b + (16 + 4 * f)),
-   .addF (if f = 0 then b + 14 else b + (16 + 4 * f - 2)) (b + (16 + 4 * f + 1)),
-   .mulF (if f = 0 then b + 15 else b + (16 + 4 * f - 1)) ks]
-
-/-- The 32-byte chaining value `h0` of BLAKE2s-256 (`FRBlockLayout.h0`, little-endian words). -/
-def h0Bytes : ByteArray := bytesOf [0x47, 0xE6, 0x08, 0x6B, 0x85, 0xAE, 0x67, 0xBB, 0x72, 0xF3,
-  0x6E, 0x3C, 0x3A, 0xF5, 0x4F, 0xA5, 0x7F, 0x52, 0x0E, 0x51, 0x8C, 0x68, 0x05, 0x9B, 0xAB, 0xD9,
-  0x83, 0x1F, 0x19, 0xCD, 0xE0, 0x5B]
-
-/-- `h0`'s two F elements. -/
-def h0lo : F := F.ofBytes (bytesAt h0Bytes 0 16)
-def h0hi : F := F.ofBytes (bytesAt h0Bytes 16 16)
+/-- Family `f`'s term `κ_s^(f+2)·W_f` added to the running sum, 4 registers from `b + 27 + 4f`
+(`W_f` read by `getF` from `linkWAll`'s register `b + 25`; the sum starts at `b + 22`, the power
+at `b + 26`; revision 3.14). -/
+def linkOps (ks b : ℕ) : List Op := (List.range nLinkFam).flatMap fun f =>
+  [.getF (b + 25) f, .mulF (b + (26 + 4 * f)) (b + (27 + 4 * f)),
+   .addF (if f = 0 then b + 22 else b + (25 + 4 * f)) (b + (28 + 4 * f)),
+   .mulF (b + (26 + 4 * f)) ks]
 
 /-- **The shift's boundary values** (A.8 `shiftTarget … bnd`, revision 3.9), 7 registers from `b`:
 a leaf's `s` (`hdr`'s `pub`, bytes 16–47) and `h` (`stmt` bytes 1–32), two elements each; a node's
-`h0` twice. The array is register `b + 6`. -/
+are zero (revision 3.14: the chain-masked Sh has no end term, and its start term
+`κ_s(In(0) + In(chainBase_2))` has target `κ_s(h̃0 + h̃0) = 0` in characteristic two; the starts'
+`h_in = h0` is `streamStart`'s pin). The array is register `b + 6`. -/
 def bndOps (b : ℕ) : List Op :=
   [.piElem fHdr 16, .piElem fHdr 32, .piElem fStmt 1, .piElem fStmt 17,
-   .const (fun _ => .f h0lo), .const (fun _ => .f h0hi),
+   .const (fun _ => .f 0), .const (fun _ => .f 0),
    .packFK (fun κ => if κ.isNode then [b + 4, b + 5, b + 4, b + 5] else [b, b + 1, b + 2, b + 3])]
 
-/-- **`finSh`** (A.9): the boundary values (`bndOps`, registers `b … b + 6`), then (i)
-`c₀ = shiftTarget τ θ bnd`; (ii) `c_Sh = w_out ẑ_out + w_in ẑ_in`,
-`w_out = eq(τ, r_blk)·slotW 0 θ r_pos`, `w_in = (shift(τ, r_blk) + κ_s eq(0, r_blk))·slotW 1 θ
-r_pos + Σ_f κ_s^(f+2) linkW τ f r_blk` (`τ` S1's coordinates `0 …`, `θ` 18–27, `κ_s` 28; `r` S2's
-challenges, `r_blk` the first `m − 14`, `r_pos` the next 10). Exports `w_out`, `w_in`. -/
+/-- **`finSh`** (A.9, revision 3.14): the boundary values (`bndOps`, registers `b … b + 6`), then
+(i) `c₀ = shiftTarget τ θ bnd`; (ii) `c_Sh = w_out ẑ_out + w_in ẑ_in` with
+`w_out = E·slotW 0 θ r_pos`, `w_in = (Sh + κ_s E₀)·slotW_in θ r_pos + Σ_f κ_s^(f+2) W_f`
+(`τ` S1's coordinates `0 …`, `θ` 18–27, `κ_s` 28; `r` S2's challenges, `r_blk` the first `m − 14`,
+`r_pos` the next 10). A leaf: `E = eq(τ, r_blk)`, `Sh = shift(τ, r_blk)`, `E₀ = eq(0, r_blk)`,
+`slotW_in` the `d` slot (map 1), `W_f = 0`. A node (**chain-masked**, `shiftMask`): `E`, `Sh` the
+sums over the blocks with an in-chain successor, `E₀ = eq(0, r_blk) + eq(chainBase_2, r_blk)`,
+`slotW_in` the `h_in` slot (map 2, base 0), `W_f` the 8 families of `linkWAll (τ ‖ θ)
+(r_blk ‖ r_pos)` (`getF`). Exports `w_out`, `w_in`. -/
 def finSh : FinField := fun fi b₀ =>
   let co := coordsR fi "S1"; let rs := chals fi "S2" 28; let ks := co.getD 28 0
   let b := b₀ + 7
@@ -211,14 +209,21 @@ def finSh : FinField := fun fi b₀ =>
    [.packFK (fun κ => co.take (κ.m - 14)), .packF ((co.drop 18).take 10), .shiftTarget b (b + 1) (b₀ + 6) ks,
     .assertEq (b + 2) (claim0 fi "S2") allK,
     .packFK (fun κ => rs.take (κ.m - 14)), .packFK (fun κ => (rs.drop (κ.m - 14)).take 10),
-    .eqPt b (b + 3), .slotW 0 (b + 1) (b + 4), .mulF (b + 5) (b + 6),
-    .shiftEq b (b + 3), .const (fun κ => .af (Array.replicate (κ.m - 14) 0)), .eqPt (b + 9) (b + 3),
-    .mulF ks (b + 10), .addF (b + 8) (b + 11), .slotW 1 (b + 1) (b + 4), .mulF (b + 12) (b + 13),
-    .mulF ks ks] ++
-   linkOps b (b + 3) ks b ++
-   [.addF (b + 7) (b + 46), .mulF (b + 48) (fi.zhat.getD 2 0),
-    .assertEq (b + 49) (claimN fi "S2") allK],
-   [b + 7, b + 46])
+    .eqPt b (b + 3), .shiftEq b (b + 3), .const (fun κ => .af (Array.replicate (κ.m - 14) 0)),
+    .eqPt (b + 7) (b + 3), .shiftMask b (b + 3),
+    .keep Kind.isNode (b + 9) (b + 5), .keep Kind.isNode (b + 10) (b + 6),
+    .keep Kind.isNode (b + 11) (b + 8),
+    .slotW 0 (b + 1) (b + 4), .mulF (b + 12) (b + 15),
+    .mulF ks (b + 14), .addF (b + 13) (b + 17),
+    .slotW 1 (b + 1) (b + 4), .slotW 2 (b + 1) (b + 4), .keep Kind.isNode (b + 20) (b + 19),
+    .mulF (b + 18) (b + 21),
+    .packFK (fun κ => co.take (κ.m - 14) ++ (co.drop 18).take 10),
+    .packFK (fun κ => rs.take (κ.m - 14) ++ (rs.drop (κ.m - 14)).take 10),
+    .linkWAll (b + 23) (b + 24), .mulF ks ks] ++
+   linkOps ks b ++
+   [.addF (b + 16) (b + 57), .mulF (b + 59) (fi.zhat.getD 2 0),
+    .assertEq (b + 60) (claimN fi "S2") allK],
+   [b + 16, b + 57])
 
 /-- **`finLr`** (A.9, revision 3.13; node only): `â_L, b̂_L, ĉ_L` from the Lr-end absorb (A.3 row
 7′); (ii) `c_Lr2 = eq(r_Lr, r)·(â_L b̂_L + ĉ_L)` (`r_Lr` Lr1's 15 coordinates, `r` Lr2's
@@ -326,29 +331,35 @@ theorem flag_finLc (hin : ∀ x ∈ (chals fi "Z3" 26).take 8 ++ chals fi "L2" 1
     Nat.reduceMul, Nat.reduceSub] <;>
   exact ⟨_, rfl⟩
 
-/-- The link families' sum `acc + Σ_f κ_s^(f+2) linkW τ f r` (as `linkOps`). -/
-def linkSum (τ r : Array F) (ks : F) : ℕ → F → F → F
+/-- The link families' sum `acc + Σ_f κ_s^(f+2) W_f` (as `linkOps`; `W` is `linkWAll`'s array). -/
+def linkSum (W : Array F) (ks : F) : ℕ → F → F → F
   | 0, acc, _ => acc
-  | n + 1, acc, pow =>
-    linkSum τ r ks n (acc + pow * impl.linkW κ τ (nLinkFam - (n + 1)) r) (pow * ks)
+  | n + 1, acc, pow => linkSum W ks n (acc + pow * W.getD (nLinkFam - (n + 1)) 0) (pow * ks)
 
-/-- **A.9's `finSh` relation** over the register values. -/
+/-- **A.9's `finSh` relation** over the register values (revision 3.14: a node's weights are the
+chain-masked `shiftMask`, its In slot map 2, its link families `linkWAll`'s). -/
 def relSh : Bool :=
   let co := coordsR fi "S1"; let rs := chals fi "S2" 28; let ks := fv r (co.getD 28 0)
   let τ := ((co.take (κ.m - 14)).map (fv r)).toArray
   let θ := (((co.drop 18).take 10).map (fv r)).toArray
   let rb := ((rs.take (κ.m - 14)).map (fv r)).toArray
   let rp := (((rs.drop (κ.m - 14)).take 10).map (fv r)).toArray
-  let wout := eqPoint τ rb * impl.slotW κ 0 θ rp
-  let win := linkSum impl κ τ rb ks nLinkFam
-    ((impl.shiftEq τ rb + ks * eqPoint (Array.replicate (κ.m - 14) 0) rb) * impl.slotW κ 1 θ rp)
-    (ks * ks)
-  let bnd : Array F := if κ.isNode then #[h0lo, h0hi, h0lo, h0hi]
+  let tt := ((co.take (κ.m - 14) ++ (co.drop 18).take 10).map (fv r)).toArray
+  let rr := ((rs.take (κ.m - 14) ++ (rs.drop (κ.m - 14)).take 10).map (fv r)).toArray
+  let sm := impl.shiftMask τ rb
+  let e := if κ.isNode then sm.1 else eqPoint τ rb
+  let sh := if κ.isNode then sm.2.1 else impl.shiftEq τ rb
+  let e0 := if κ.isNode then sm.2.2 else eqPoint (Array.replicate (κ.m - 14) 0) rb
+  let sIn := if κ.isNode then impl.slotW κ 2 θ rp else impl.slotW κ 1 θ rp
+  let wout := e * impl.slotW κ 0 θ rp
+  let win := linkSum (impl.linkWAll κ tt rr) ks nLinkFam ((sh + ks * e0) * sIn) (ks * ks)
+  let bnd : Array F := if κ.isNode then #[0, 0, 0, 0]
     else #[pe inp fHdr 16, pe inp fHdr 32, pe inp fStmt 1, pe inp fStmt 17]
   (Val.f (impl.shiftTarget ks τ θ bnd)).eqv (rd r (claim0 fi "S2")) &&
   (Val.f ((wout + win) * fv r (fi.zhat.getD 2 0))).eqv
     (rd r (claimN fi "S2"))
 
+set_option maxRecDepth 8192 in
 theorem flag_finSh (hin : ∀ x ∈ coordsR fi "S1" ++ chals fi "S2" 28 ++
       [claim0 fi "S2", claimN fi "S2", fi.zhat.getD 2 0, fi.zhat.getD 2 0,
        (coordsR fi "S1").getD 28 0], x < r.size) :
@@ -364,10 +375,16 @@ theorem flag_finSh (hin : ∀ x ∈ coordsR fi "S1" ++ chals fi "S2" 28 ++
     fun x hx => hrs x (List.mem_of_mem_take hx)
   have h4 := fun L => map_rd_app r L (((chals fi "S2" 28).drop (κ.m - 14)).take 10)
     fun x hx => hrs x (List.mem_of_mem_drop (List.mem_of_mem_take hx))
-  have hks : (coordsR fi "S1").getD 28 0 < r.size ∨ (coordsR fi "S1").getD 28 0 = 0 := by
-    rcases Nat.lt_or_ge 28 (coordsR fi "S1").length with h | h
-    · exact .inl (hco _ (by rw [List.getD_eq_getElem _ _ h]; exact List.getElem_mem h))
-    · exact .inr (List.getD_eq_default _ _ h)
+  have h5 := fun L => map_rd_app r L ((coordsR fi "S1").take (κ.m - 14) ++
+    ((coordsR fi "S1").drop 18).take 10) fun x hx => by
+      rcases List.mem_append.1 hx with hx | hx
+      · exact hco x (List.mem_of_mem_take hx)
+      · exact hco x (List.mem_of_mem_drop (List.mem_of_mem_take hx))
+  have h6 := fun L => map_rd_app r L ((chals fi "S2" 28).take (κ.m - 14) ++
+    ((chals fi "S2" 28).drop (κ.m - 14)).take 10) fun x hx => by
+      rcases List.mem_append.1 hx with hx | hx
+      · exact hrs x (List.mem_of_mem_take hx)
+      · exact hrs x (List.mem_of_mem_drop (List.mem_of_mem_take hx))
   have tf : ∀ x, (Val.f x).toF = x := fun _ => rfl
   have taf : ∀ x, (Val.af x).toAF = x := fun _ => rfl
   simp only [finSh, relSh, bndOps]
@@ -380,7 +397,7 @@ theorem flag_finSh (hin : ∀ x ∈ coordsR fi "S1" ++ chals fi "S2" 28 ++
   have hk := hin ks (.inr (.inr (.inr (.inr (.inr rfl)))))
   cases hκ : κ.isNode <;>
   simp only [hκ, ite_true, ite_false, Bool.false_eq_true, Nat.add_assoc, List.map_cons, List.map_nil,
-    pureRun, evalOp, tf, taf, List.nil_append, List.cons_append, h1, h2, h3, h4, linkOps,
+    pureRun, evalOp, tf, taf, List.nil_append, List.cons_append, h1, h2, h3, h4, h5, h6, linkOps,
     nLinkFam, linkSum, List.range_succ, List.range_zero, List.flatMap_append, List.flatMap_cons,
     List.flatMap_nil, ↓reduceIte, Nat.reduceEqDiff, Nat.reduceAdd, Nat.reduceMul, Nat.reduceSub,
     rd_app, rd_app0, rd_app_left _ _ hc0, rd_app_left _ _ hcN,

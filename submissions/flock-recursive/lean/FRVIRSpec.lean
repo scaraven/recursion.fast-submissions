@@ -914,7 +914,7 @@ theorem exec_merkleOps (i j jr n h curR so : ℕ) (r : Array Val) (ok : Bool) (o
       fun c x y => by cases c <;> rfl
     simp only [exec_app, evalOp, rd_app, rd_app0, rd_app_left _ _ hj, rd_app_left _ _ hc, hjv, hcv,
       List.getD_cons_succ, List.getD_cons_zero, List.nil_append, List.cons_append, Val.toBit, toD_d,
-      hsel, stepT, nodeQF_eq]
+      hsel, stepT, nodeQF_eq, digestAt_eq]
     generalize bytesAt inp.π (absOff fSibs so) 32 = sib
     generalize hQ : (if decide (h < (lvl κ i).sib) = true then
       nodeQ i (if j.testBit h = true then sib else cur) (if j.testBit h = true then cur else sib)
@@ -1229,7 +1229,7 @@ theorem exec_genPhase (n : ℕ) (p : Phase) (c : GCtx) (r : Array Val) (ok : Boo
     rcases tr with _ | ⟨⟨q, a⟩, tr⟩ <;> split_ifs <;> rw [e0] <;>
       simp only [absorbOps, stmtOps, finalOps, exec_app, evalOp, List.cons_append, List.nil_append,
         rd_app, rd_app0, rd_app2, rd_app_left _ _ hst, List.getD_cons_succ, List.getD_cons_zero, ans1,
-        Nat.reduceAdd, msgAt, Option.map_none, Option.bind_none, Val.toB]
+        Nat.reduceAdd, msgAt, Option.map_none, Option.bind_none, Val.toB, digestAt_eq]
     all_goals (try (by_cases hq : q = absorbQ (rd r st).toD (inp.π.extract (absOff f (phaseOff n f)) (absOff f (phaseOff n f) + len))))
     all_goals simp_all [Val.eqv, Val.toB, Val.toD, allK, Bool.and_assoc]
   | squeezes k ch =>

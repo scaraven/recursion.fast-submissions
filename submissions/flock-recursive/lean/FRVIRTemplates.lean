@@ -278,7 +278,7 @@ theorem tplPhiRS_ok {r : Array F} {a : F} (hi : InpIs e (r.toList ++ [a]))
     Array.length_toList, Prod.mk.injEq, true_and]
   exact Option.some.inj (this.trans (List.getElem?_eq_getElem _))
 
-/-! ## `linkW`, `kindFoldWeight` (`implC`: `0`) -/
+/-! ## `kindFoldWeight` (`implC`: `0`) -/
 
 /-- The constant `0` (no rows). -/
 def tplZero : Tpl := ⟨[], [[]]⟩

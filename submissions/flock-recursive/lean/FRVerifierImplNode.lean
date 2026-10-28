@@ -509,7 +509,107 @@ theorem linkWAll_meets {f : ℕ} (hf : f < nLinkFam) (τ θ rb rp : Array F) :
   rw [Array.getD_eq_getD_getElem?, Array.getElem?_ofFn, dif_pos hf, Option.getD_some]
   exact linkWOne_eq f _ _ _ _
 
+theorem ptA_extract (a : Array F) {o s n : ℕ} (hs : s = o + n) :
+    ptA n (a.extract o s) = fun l : Fin n => a.getD (o + l.1) 0 := by
+  funext l
+  subst hs
+  simp only [ptA, Array.getD_eq_getD_getElem?, Array.getElem?_extract]
+  by_cases h : o + l.1 < a.size
+  · rw [if_pos (by omega)]
+  · rw [Array.getElem?_eq_none (by omega)]
+    split_ifs <;> simp
+
+/-- **`linkWAll` meets `linkWAllS`** on the packed points (`implC`'s split of `τ ‖ θ`,
+`r_blk ‖ r_pos`; `linkWOne_eq`, as `linkWAll_meets` per family). -/
+theorem linkWAll_eqS (tt rr : Array F) :
+    linkWAllI (tt.extract 0 16) (tt.extract 16 26) (rr.extract 0 16) (rr.extract 16 26) =
+      linkWAllS tt rr := by
+  unfold linkWAllI linkTabs linkWAllS
+  dsimp only
+  rw [ptA_extract tt (o := 0) (n := 16) rfl, ptA_extract tt (o := 16) (n := 10) rfl,
+    ptA_extract rr (o := 0) (n := 16) rfl, ptA_extract rr (o := 16) (n := 10) rfl]
+  congr 1
+  funext f
+  rw [linkWOne_eq]
+  simp only [zero_add]
+  rfl
+
 end LinkMeets
+
+/-! ## `shiftMask` (revision 3.14: the node's chain-masked shift weights) -/
+
+/-- **`shiftMask`, computed**: the product tables of `τ` and `r` (`tabs`), the separable range sums
+over the two chains' link blocks (`sepSum`); the shifted weight splits at the low byte's carry
+(`l < 255`: `C₁`; `l = 255`: `R₂ C₂`, the high byte stepping). -/
+def shiftMaskI (τ r : Array F) : F × F × F :=
+  let Tt := tabs (ptA 16 τ); let Tr := tabs (ptA 16 r)
+  let R : ℕ → F := fun h => Tt.b h * Tr.b h
+  let R2 : ℕ → F := fun h => Tt.b h * Tr.b (h + 1)
+  let C : ℕ → F := fun l => Tt.a l * Tr.a l
+  let C1 : ℕ → F := fun l => Tt.a l * Tr.a (l + 1)
+  let C2 : ℕ → F := fun l => if l = 255 then Tt.a 255 * Tr.a 0 else 0
+  let PR := pfx R; let PR2 := pfx R2; let PC := pfx C; let PC1 := pfx C1; let PC2 := pfx C2
+  let N := Layout.chainN
+  (sepSum PR R PC 0 (N - 1) + sepSum PR R PC N (N - 1),
+   sepSum PR R PC1 0 (N - 1) + sepSum PR R PC1 N (N - 1) +
+     (sepSum PR2 R2 PC2 0 (N - 1) + sepSum PR2 R2 PC2 N (N - 1)),
+   eqbI Tr 0 + eqbI Tr N)
+
+section MaskMeets
+
+theorem tabs_a256 (rb : Fin 16 → F) : (tabs rb).a 256 = 0 := by
+  rw [Tabs.a, tabs_A, Array.getD_eq_getD_getElem?, Array.getElem?_eq_none (by
+    rw [eqTable_size, List.length_ofFn]; norm_num)]
+  rfl
+
+theorem mask_eq (τ r : Fin 16 → F) {y : ℕ} (hy : y < 2 ^ 16) :
+    eqAtR τ y * eqAtR r y =
+      (tabs τ).b (y / 256) * (tabs r).b (y / 256) * ((tabs τ).a (y % 256) * (tabs r).a (y % 256)) := by
+  rw [← ba_eq τ hy, ← ba_eq r hy]; ring
+
+theorem mask_succ_eq (τ r : Fin 16 → F) {y : ℕ} (hy : y + 256 < 2 ^ 16) :
+    eqAtR τ y * eqAtR r (y + 1) =
+      (tabs τ).b (y / 256) * (tabs r).b (y / 256) * ((tabs τ).a (y % 256) * (tabs r).a (y % 256 + 1)) +
+      (tabs τ).b (y / 256) * (tabs r).b (y / 256 + 1) *
+        (if y % 256 = 255 then (tabs τ).a 255 * (tabs r).a 0 else 0) := by
+  rw [← ba_eq τ (by omega), ← ba_eq r (by omega)]
+  by_cases hl : y % 256 = 255
+  · rw [if_pos hl, hl, tabs_a256, show (y + 1) / 256 = y / 256 + 1 by omega,
+      show (y + 1) % 256 = 0 by omega]
+    ring
+  · rw [if_neg hl, show (y + 1) / 256 = y / 256 by omega, show (y + 1) % 256 = y % 256 + 1 by omega]
+    ring
+
+private theorem sum2 (g : ℕ → F) : ∑ c ∈ range 2, g c = g 0 + g 1 := by
+  simp [Finset.sum_range_succ]
+
+/-- **`shiftMask` meets its specification.** -/
+theorem shiftMask_meets (τ r : Array F) : shiftMaskI τ r = shiftMaskS τ r := by
+  have hN : 2 * Layout.chainN + 256 < 2 ^ 16 := by simp only [Layout.chainN]; norm_num
+  unfold shiftMaskI shiftMaskS
+  generalize Layout.chainN = N at hN ⊢
+  have hs : ∀ (lo : ℕ) (R C : ℕ → F), lo ≤ N →
+      sepSum (pfx R) R (pfx C) lo (N - 1) =
+        ∑ k ∈ range (N - 1), R ((lo + k) / 256) * C ((lo + k) % 256) :=
+    fun lo R C h => sepSum_eq R C (by omega)
+  have hb : ∀ k ∈ range (N - 1), N + k + 256 < 2 ^ 16 := fun k hk => by
+    have := Finset.mem_range.1 hk; omega
+  dsimp only
+  rw [hs 0 _ _ (Nat.zero_le _), hs 0 _ _ (Nat.zero_le _), hs 0 _ _ (Nat.zero_le _),
+    hs _ _ _ le_rfl, hs _ _ _ le_rfl, hs _ _ _ le_rfl, eqbI_eq, eqbI_eq, sum2, sum2]
+  simp only [zero_mul, one_mul, zero_add]
+  refine Prod.ext ?_ (Prod.ext ?_ rfl)
+  · dsimp only
+    refine congrArg₂ (· + ·) (Finset.sum_congr rfl fun k hk => ?_) (Finset.sum_congr rfl fun k hk => ?_)
+    · exact (mask_eq (ptA 16 τ) (ptA 16 r) (by have := hb k hk; omega)).symm
+    · exact (mask_eq (ptA 16 τ) (ptA 16 r) (by have := hb k hk; omega)).symm
+  · dsimp only
+    rw [add_add_add_comm, ← Finset.sum_add_distrib, ← Finset.sum_add_distrib]
+    refine congrArg₂ (· + ·) (Finset.sum_congr rfl fun k hk => ?_) (Finset.sum_congr rfl fun k hk => ?_)
+    · exact (mask_succ_eq (ptA 16 τ) (ptA 16 r) (by have := hb k hk; omega)).symm
+    · exact (mask_succ_eq (ptA 16 τ) (ptA 16 r) (hb k hk)).symm
+
+end MaskMeets
 
 /-! ## Controls -/
 

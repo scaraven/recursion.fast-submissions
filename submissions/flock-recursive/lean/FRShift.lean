@@ -397,6 +397,110 @@ theorem collapse_final {q : ℕ} (W : Fin (2 ^ q) → R) (Z : Fin (2 ^ (q + n)) 
   rw [mle_split]
   rfl
 
+/-! ### The chain-masked form (revision 3.14: the node's Sh, the `WM` ruling)
+
+The node's blocks are not one chain: two digest chains `[0, N)`, `[N, 2N)`, then WOTS, `hashStmt`,
+`WM`, L and M blocks, which are not linked. The masked identity links block `y` to `y + 1` only
+where `lk y` holds (`y + 1` in `y`'s chain), has no end term, and its start term is
+`κ Σ_{c ∈ st} [y' = c]` (the node: `st = {0, N}`). -/
+
+section Masked
+variable (lk : Fin (2 ^ n) → Prop) [DecidablePred lk] (st : Finset (Fin (2 ^ n)))
+
+/-- **The masked chain links**: `In(σ, y + 1) = Out(σ, y)` where `lk y`; the starts' residual
+`Σ_{c ∈ st} (In(σ, c) + sV(σ))` vanishes (the node: `In(σ, 0) = In(σ, N)`, characteristic two). -/
+def ChainLinksM (Out In : Fin (2 ^ (s + n)) → R) (sV : Fin (2 ^ s) → R) : Prop :=
+  (∀ σ (y : Fin (2 ^ n)) (h : y.val + 1 < 2 ^ n), lk y → In (join σ ⟨y.val + 1, h⟩) = Out (join σ y)) ∧
+    ∀ σ, ∑ c ∈ st, (In (join σ c) + sV σ) = 0
+
+/-- The masked link residual: `Out(σ, y) + In(σ, y + 1)` where `lk y`, else `0`. -/
+def chainDM (Out In : Fin (2 ^ (s + n)) → R) (w : Fin (2 ^ (s + n))) : R :=
+  let p := (joinEquiv s n).symm w
+  if lk p.2 then Out w + ∑ y', succT p.2 y' * In (join p.1 y') else 0
+
+/-- The masked start residual `Σ_{c ∈ st} (In(σ, c) + sV(σ))`. -/
+def chainD0M (In : Fin (2 ^ (s + n)) → R) (sV : Fin (2 ^ s) → R) (σ : Fin (2 ^ s)) : R :=
+  ∑ c ∈ st, (In (join σ c) + sV σ)
+
+omit [CharP R 2] in
+theorem chainDM_join (Out In : Fin (2 ^ (s + n)) → R) (σ : Fin (2 ^ s)) (y : Fin (2 ^ n)) :
+    chainDM lk Out In (join σ y) =
+      if lk y then Out (join σ y) + ∑ y', succT y y' * In (join σ y') else 0 := by
+  simp only [chainDM]
+  rw [show join σ y = joinEquiv s n (σ, y) from rfl, Equiv.symm_apply_apply]
+
+/-- **`shift_sound_masked`**: on blocks whose successor exists (`hlk`), the masked links hold iff
+both masked residual tables vanish; so broken masked links leave a nonzero residual. -/
+theorem chainLinksM_iff (hlk : ∀ y, lk y → y.val + 1 < 2 ^ n) (Out In : Fin (2 ^ (s + n)) → R)
+    (sV : Fin (2 ^ s) → R) :
+    ChainLinksM lk st Out In sV ↔ chainDM lk Out In = 0 ∧ chainD0M st In sV = 0 := by
+  constructor
+  · rintro ⟨hl, hs⟩
+    refine ⟨funext fun w ↦ ?_, funext fun σ ↦ hs σ⟩
+    obtain ⟨⟨σ, y⟩, rfl⟩ := (joinEquiv s n).surjective w
+    change chainDM lk Out In (join σ y) = 0
+    rw [chainDM_join, sum_succT]
+    split_ifs with h1 h2
+    · rw [hl σ y h2 h1, CharTwo.add_self_eq_zero]
+    · exact absurd (hlk y h1) h2
+    · rfl
+  · rintro ⟨hD, hD0⟩
+    refine ⟨fun σ y h hy ↦ ?_, fun σ ↦ congrFun hD0 σ⟩
+    have := congrFun hD (join σ y)
+    rw [chainDM_join, sum_succT, if_pos hy, dif_pos h, Pi.zero_apply] at this
+    exact (CharTwo.add_eq_zero.mp this).symm
+
+theorem shift_sound_masked (hlk : ∀ y, lk y → y.val + 1 < 2 ^ n) {Out In : Fin (2 ^ (s + n)) → R}
+    {sV : Fin (2 ^ s) → R} (h : ¬ChainLinksM lk st Out In sV) :
+    chainDM lk Out In ≠ 0 ∨ chainD0M st In sV ≠ 0 := by
+  rw [chainLinksM_iff lk st hlk, not_and_or] at h
+  exact h
+
+/-- **The masked block weight** (the verifier's `shW` with the interval factor):
+`Σ_y eq(τ, y) [lk y] [y' = y + 1] + κ [y' ∈ st]`. -/
+def shWM (τ : Fin n → R) (κ : R) (y' : Fin (2 ^ n)) : R :=
+  (∑ y, eq τ (cube y) * if lk y then succT y y' else 0) + κ * if y' ∈ st then 1 else 0
+
+/-- **The masked S2 block sum** is the target `κ Σ_{c ∈ st} s̃V(θ)` plus the residuals'
+extensions: `Σ_y eq(τ,y)[lk y] Out_θ(y) + Σ_{y'} shWM(y') In_θ(y') = κ Σ_c s̃V(θ) +
+D̃M(θ, τ) + κ D̃₀M(θ)`. So with links broken and S1 not bad, the masked claim is false. -/
+theorem shift_sum_masked (θ : Fin s → R) (τ : Fin n → R) (κ : R) (Out In : Fin (2 ^ (s + n)) → R)
+    (sV : Fin (2 ^ s) → R) :
+    (∑ y, eq τ (cube y) * (if lk y then fixLow Out θ y else 0)) +
+        ∑ y', shWM lk st τ κ y' * fixLow In θ y' =
+      κ * ∑ _c ∈ st, mle sV θ + mle (chainDM lk Out In) (Fin.append θ τ) +
+        κ * mle (chainD0M st In sV) θ := by
+  have hD : ∀ y, fixLow (chainDM lk Out In) θ y =
+      if lk y then fixLow Out θ y + ∑ y', succT y y' * fixLow In θ y' else 0 := fun y ↦ by
+    simp only [fixLow, chainDM_join]
+    split_ifs
+    · simp only [mul_add, Finset.sum_add_distrib, Finset.mul_sum]
+      congr 1
+      rw [Finset.sum_comm]
+      exact Finset.sum_congr rfl fun _ _ ↦ Finset.sum_congr rfl fun _ _ ↦ by ring
+    · simp
+  have hD0 : mle (chainD0M st In sV) θ = ∑ c ∈ st, fixLow In θ c + ∑ _c ∈ st, mle sV θ := by
+    simp only [mle, chainD0M, fixLow, mul_add, Finset.sum_add_distrib, Finset.mul_sum]
+    rw [Finset.sum_comm, Finset.sum_comm (s := univ) (t := st)]
+  have hW : ∑ y', shWM lk st τ κ y' * fixLow In θ y' =
+      (∑ y, ∑ y', eq τ (cube y) * (if lk y then succT y y' else 0) * fixLow In θ y') +
+        κ * ∑ c ∈ st, fixLow In θ c := by
+    simp only [shWM, add_mul, Finset.sum_add_distrib, Finset.sum_mul, mul_assoc, ite_mul, one_mul,
+      zero_mul, mul_ite, mul_zero, Finset.mul_sum]
+    rw [Finset.sum_comm]
+    congr 1
+    rw [← Finset.sum_filter, Finset.filter_mem_eq_inter, Finset.univ_inter]
+  have hDτ : mle (fixLow (chainDM lk Out In) θ) τ = (∑ y, eq τ (cube y) *
+      (if lk y then fixLow Out θ y else 0)) +
+      ∑ y, ∑ y', eq τ (cube y) * (if lk y then succT y y' else 0) * fixLow In θ y' := by
+    simp only [mle, hD, ← Finset.sum_add_distrib]
+    refine Finset.sum_congr rfl fun y _ ↦ ?_
+    split_ifs <;> simp [mul_add, Finset.mul_sum, mul_assoc]
+  rw [mle_fixLow, hDτ, hD0, hW]
+  linear_combination (-(κ * ∑ _c ∈ st, mle sV θ)) * CharTwo.two_eq_zero (R := R)
+
+end Masked
+
 end Argument
 
 /-! ### The node's two chains, batched by `1, y` -/

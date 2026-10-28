@@ -65,10 +65,28 @@ import FRSoundnessFront
 import FRSoundnessRows
 import FRVIRFinalsSG
 import FRVIRChain
+import FRNodeTarget
+import FRVerifierImplNode
+import FRVIRTplRep
+import FRVIRCompileSound
+import FRVIRTplPlan
+import FRVIRTplControls
+import FRSoundnessShift
+import FRSoundnessLigFinal
+import FRSoundnessAccRun
+import FRSoundnessAccFin
+import FRSoundnessAccPos
+import FRSoundnessAccSem
+import FRSoundnessAcc
+import FRNodeReadLayout
+import FRNodeRead
+import FRNodeReadW
+import FRXNodeRun
 
 /-!
 # `flock-recursive`
 
 The entry's modules, flat under `lean/` with the prefix `FR` and the namespace `FR`
-(`docs/v4/flock-recursive/BLUEPRINT.md` §7). Stages S-A (fields), S-C (PIOP core), S-D (PCS), S-E1 (BLAKE2s, blocks, leaf), S-H1 (extractor DSL), S-0 (interfaces), S-E2, S-F and S-G in part so far.
+(`docs/v4/flock-recursive/BLUEPRINT.md` §7). Stages S-A (fields), S-C (PIOP core), S-D (PCS), S-E1 (BLAKE2s, blocks, leaf), S-H1 (extractor DSL), S-0 (interfaces), S-E2 … S-E8, S-F, S-F2, S-CN, S-G and S-H2 in part so far (INT-3: every landed
+module; the extractor's other `FRX*` modules are S-H2's, outside this file until they land in it).
 -/

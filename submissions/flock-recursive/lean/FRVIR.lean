@@ -185,8 +185,14 @@ inductive Op where
   | rowW (lam rhi : Reg)
   /-- F: `shift(τ, r)` (`OpImpl.shiftEq`; an import, revision 3.6). -/
   | shiftEq (tau r : Reg)
-  /-- F: link family `fam`'s weight at a point (`OpImpl.linkW`; an import, revision 3.6). -/
-  | linkW (tau : Reg) (fam : ℕ) (pt : Reg)
+  /-- AF 8: the 8 link families' weights at the Sh point (`OpImpl.linkWAll`, revision 3.14; replaces
+  `linkW τ fam r_blk`): `tt = τ ‖ θ` (S1's 16 block, then 10 slot coordinates), `rr = r_blk ‖ r_pos`
+  (S2's 16, then 10). A leaf's result is `0^8`. -/
+  | linkWAll (tt rr : Reg)
+  /-- F × F × F: the node's chain-masked shift weights (`OpImpl.shiftMask`, revision 3.14, the
+  `WM` ruling): `Σ_{y ∈ Lk} eq(τ,y) eq(r,y)`, `Σ_{y ∈ Lk} eq(τ,y) eq(r,y+1)` and
+  `eq(r,0) + eq(r,chainBase_2)`, `Lk` the blocks with an in-chain successor. -/
+  | shiftMask (tau r : Reg)
   /-- Two F registers. -/
   | splitDigest (d : Reg)
   /-- D: `y` if the bit is set, else `x`. -/
@@ -237,9 +243,12 @@ structure OpImpl where
   slotW : Kind → ℕ → Array F → Array F → F
   /-- `Ŵ_β` at the ring-switching point (S-C-M1; FRRingSwitch). -/
   kindFoldWeight : Array F → F → Array K → F
-  /-- A link family's weight for the proof's kind (revision 3.5, S-0-M2; FRShift): `τ`, the
-  family, the point. -/
-  linkW : Kind → Array F → ℕ → Array F → F
+  /-- The 8 link families' weights for the proof's kind at `τ ‖ θ`, `r_blk ‖ r_pos` (revision 3.14;
+  FRNodeTarget's `linkWAllS`). -/
+  linkWAll : Kind → Array F → Array F → Array F
+  /-- The node's chain-masked shift weights at `τ`, `r_blk` (revision 3.14; FRNodeTarget's
+  `shiftMaskS`). -/
+  shiftMask : Array F → Array F → F × F × F
   /-- The lincheck's row weights `rowW` (`2^14`): Lagrange at `λ` on the skip coordinate ⊗
   `eq(r′_hi, ·)` on the 8 high position bits (A.9 `finLc`; FRSkip/FRSpartan). -/
   rowW : F → Array F → Array F
@@ -249,7 +258,7 @@ structure OpImpl where
 /-- **The specification record**: the same signatures, read as the mathematical definitions.
 Owners of the concrete `OpSpec` and its lemmas (S-0-m2): S-C — `lagrangeS`, `tensorW`, `rsWeight`,
 `phiRS`,
-`shiftTarget`, `slotW`, `kindFoldWeight`, `linkW`, `rowW`, `shiftEq`; S-E1/S-E2 — `walkAB`,
+`shiftTarget`, `slotW`, `kindFoldWeight`, `linkWAll`, `shiftMask`, `rowW`, `shiftEq`; S-E1/S-E2 — `walkAB`,
 `evalM/L`, `kindInd`; `FRPubTarget` — `targetS`; FRSkip — `eqZ`. -/
 abbrev OpSpec := OpImpl
 
@@ -268,7 +277,8 @@ def OpImpl.Meets (impl : OpImpl) (spec : OpSpec) : Prop :=
   (∀ k a b c, c.size = 4 → impl.shiftTarget k a b c = spec.shiftTarget k a b c) ∧
   (∀ κ s a b, impl.slotW κ s a b = spec.slotW κ s a b) ∧
   (∀ a b c, impl.kindFoldWeight a b c = spec.kindFoldWeight a b c) ∧
-  (∀ κ a f c, impl.linkW κ a f c = spec.linkW κ a f c) ∧ (∀ l a, impl.rowW l a = spec.rowW l a) ∧
+  (∀ κ a c, impl.linkWAll κ a c = spec.linkWAll κ a c) ∧
+  (∀ a b, impl.shiftMask a b = spec.shiftMask a b) ∧ (∀ l a, impl.rowW l a = spec.rowW l a) ∧
   (∀ a b, a.size = b.size → impl.shiftEq a b = spec.shiftEq a b)
 
 /-! ## One op -/
@@ -489,7 +499,7 @@ def evalOp (impl : OpImpl) (κ : Kind) (inp : Input) (regs : Array Val) : Op →
   | .piField f o len => .vals [.b (inp.π.extract (absOff f o) (absOff f o + len))] true
   | .piElem f o => .vals [.f (F.ofBytes (bytesAt inp.π (absOff f o) 16))] true
   | .piElemK f o => .vals [.k (K.ofBytes (bytesAt inp.π (absOff f o) 32))] true
-  | .piDigest f o => .vals [.d (bytesAt inp.π (absOff f o) 32)] true
+  | .piDigest f o => .vals [.d (digestAt inp.π (absOff f o))] true
   | .piDigestAt f o k => .vals [.d (digestAt inp.π (absOff f o + 32 * (rd regs k).toN))] true
   | .mkAbsorb xs => .vals [.b (pad16 (xs.foldl (fun acc x => acc ++ (rd regs x).bytes) .empty))] true
   | .askSeed h => .ask (seedQ inp.vk inp.c (rd regs h).toB)
@@ -545,7 +555,10 @@ def evalOp (impl : OpImpl) (κ : Kind) (inp : Input) (regs : Array Val) : Op →
   | .eqPt a b => .vals [.f (eqPoint (rd regs a).toAF (rd regs b).toAF)] true
   | .rowW l h => .vals [.af (impl.rowW (rd regs l).toF (rd regs h).toAF)] true
   | .shiftEq t r => .vals [.f (impl.shiftEq (rd regs t).toAF (rd regs r).toAF)] true
-  | .linkW t fm p => .vals [.f (impl.linkW κ (rd regs t).toAF fm (rd regs p).toAF)] true
+  | .linkWAll t p => .vals [.af (impl.linkWAll κ (rd regs t).toAF (rd regs p).toAF)] true
+  | .shiftMask t r =>
+    let x := impl.shiftMask (rd regs t).toAF (rd regs r).toAF
+    .vals [.f x.1, .f x.2.1, .f x.2.2] true
   | .kindFoldWeight r b ρ =>
     .vals [.f (impl.kindFoldWeight (rd regs r).toAF (rd regs b).toF (rd regs ρ).toAK)] true
   | .splitDigest d =>
@@ -623,7 +636,7 @@ def semIR (impl : OpImpl) (P : VProg) (inp : Input) (tr : Trace) : Option Bool :
 
 /-- The registers an op appends. -/
 def Op.outs : Op → ℕ
-  | .evalM .. | .evalL .. | .kindSel => 3
+  | .evalM .. | .evalL .. | .kindSel | .shiftMask .. => 3
   | .lagrangeS .. | .walkAB .. => 2
   | .splitDigest _ => 2
   | .assertEq .. | .assertBit .. | .assertZero .. | .assertOneHot .. | .accept => 0

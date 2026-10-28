@@ -89,7 +89,8 @@ def tplExt (tc : TCtx) : Ext := fun P cs op =>
     match cs.slot r, cs.slot a with
     | some (.af n, lr), some (.f, la) => some (tplOut tc P cs (.phiRS n) (lr ++ la) [.f])
     | _, _ => none
-  | .linkW .. | .kindFoldWeight .. => some (tplOut tc P cs .zero [] [.f])
+  | .kindFoldWeight .. => some (tplOut tc P cs .zero [] [.f])
+  -- `linkWAll`, `shiftMask` (revision 3.14): imports until `tplLinkWAll` (S-E)
   -- `targetS` is the node's at a node kind (S-CN's `targetSNodeI`) and the leaf's otherwise, so
   -- the leaf template no longer serves every kind: an import until `tplTargetSNode` (S-E6)
   | .slotW sm t r =>
@@ -144,7 +145,6 @@ def tplExt (tc : TCtx) : Ext := fun P cs op =>
 structure ImplT (impl : OpImpl) : Prop where
   shiftEq : impl.shiftEq = Impl.shiftEqI
   phiRS : impl.phiRS = Impl.phiRSI
-  linkW : ∀ κ a f c, impl.linkW κ a f c = 0
   kfw : ∀ a b c, impl.kindFoldWeight a b c = 0
   eqZ : impl.eqZ = Impl.eqZI
   lagrangeS : impl.lagrangeS = Impl.lagrangeSI
@@ -356,12 +356,6 @@ theorem tplExt_ok {impl : OpImpl} (hT : ImplT impl) (L : TLay) : ExtOk impl L.ct
   all_goals first
     | (simp at hX; done)
     | skip
-  case linkW t f p =>
-    obtain rfl := Option.some.inj hX
-    refine ⟨rfl, fun κ inp w regs hP hI => ⟨fun q => by simp [evalOp], fun _ _ _ vs ok he => ?_⟩⟩
-    simp only [evalOp, Res.vals.injEq] at he; obtain ⟨rfl, rfl⟩ := he
-    rw [hT.linkW]
-    exact ⟨fun _ => outSlots_one rfl tplZero_ok, fun _ => rfl⟩
   case kindFoldWeight r b ρ =>
     obtain rfl := Option.some.inj hX
     refine ⟨rfl, fun κ inp w regs hP hI => ⟨fun q => by simp [evalOp], fun _ _ _ vs ok he => ?_⟩⟩

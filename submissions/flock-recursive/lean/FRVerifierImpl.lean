@@ -26,8 +26,10 @@ open Finset RecursionFast RecursionFast.Blake2s
 
 /-- **`implC`**: the computable ops. `fin` fixes the node's M rows (`evalM`, `TEval.planOf`),
 `lRows` the L rows (`evalL`, templated by `TEval.planL`, S-E6); `κs₀` is no longer used (`shiftTarget` takes `κ_s`
-as an operand since S-0's interface pass). `targetS`, `slotW` and `linkW` receive the kind but are
-the leaf kinds' functions except `targetS` at a node kind (S-CN's `targetSNodeI`, S-E6);
+as an operand since S-0's interface pass). `targetS` and `linkWAll` are selected by `κ.isNode`
+(S-CN's `targetSNodeI`, `linkWAllI` on the packed points; a leaf's `linkWAll` is `0^8`); `slotW`
+is kind-free (`finSh` selects the In slot map by `keep`, revision 3.14); `shiftMask` is the node's
+chain-masked weights (`shiftMaskI`, read by a node only);
 `kindFoldWeight` is not used by revision 3.9's `gen` and is `0`. -/
 def implCWith (pl : TEval.Plan) (lp : TEval.LPlan) : OpImpl where
   lagrangeS := lagrangeSI
@@ -43,7 +45,10 @@ def implCWith (pl : TEval.Plan) (lp : TEval.LPlan) : OpImpl where
   shiftTarget := shiftTargetI
   slotW _ := slotWI
   kindFoldWeight _ _ _ := 0
-  linkW _ _ _ _ := 0
+  linkWAll κ tt rr := if κ.isNode then
+    NodeI.linkWAllI (tt.extract 0 16) (tt.extract 16 26) (rr.extract 0 16) (rr.extract 16 26)
+    else Array.replicate nLinkFam 0
+  shiftMask := NodeI.shiftMaskI
   rowW := rowWI
   shiftEq := shiftEqI
 
@@ -53,7 +58,8 @@ def implC (fin : Finals) (lRows : List Circ.Row) (_κs₀ : F) : OpImpl :=
   implCWith (TEval.planOf fin) (TEval.planL lRows)
 
 /-- **`specC`**: the specifications, field by field (the same parameters; `targetS` the leaf
-kinds' with `m = 30`, any `m` gives the same function; `linkW` the leaf kinds' `0`). -/
+kinds' with `m = 30`, any `m` gives the same function; `linkWAll` the node's `linkWAllS`, a
+leaf's `0^8`; `shiftMask` the node's `shiftMaskS`). -/
 noncomputable def specCWith (pl : TEval.Plan) (lRows : List Circ.Row) : OpSpec where
   lagrangeS := lagrangeSS
   targetS κ := if κ.isNode then NodeT.targetSNodeS else targetSLeafS 16
@@ -68,7 +74,8 @@ noncomputable def specCWith (pl : TEval.Plan) (lRows : List Circ.Row) : OpSpec w
   shiftTarget := shiftTargetS
   slotW _ := slotWS
   kindFoldWeight _ _ _ := 0
-  linkW _ _ _ _ := 0
+  linkWAll κ tt rr := if κ.isNode then NodeT.linkWAllS tt rr else Array.replicate nLinkFam 0
+  shiftMask := NodeT.shiftMaskS
   rowW := rowWS
   shiftEq := shiftEqS
 
@@ -79,7 +86,7 @@ noncomputable def specC (fin : Finals) (lRows : List Circ.Row) (_κs₀ : F) : O
 theorem implCWith_meets (pl : TEval.Plan) (lRows : List Circ.Row) :
     (implCWith pl (TEval.planL lRows)).Meets (specCWith pl lRows) := by
   simp only [OpImpl.Meets, implCWith, specCWith]
-  refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
+  refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
   · exact fun v l pe _ => lagrangeS_meets v l pe
   · intro κ r
     split_ifs
@@ -98,7 +105,11 @@ theorem implCWith_meets (pl : TEval.Plan) (lRows : List Circ.Row) :
   · exact fun k a b c _ => shiftTarget_meets k a b c
   · exact fun _ => slotW_meets
   · simp
-  · simp
+  · intro κ tt rr
+    split_ifs
+    · exact NodeI.linkWAll_eqS tt rr
+    · rfl
+  · exact NodeI.shiftMask_meets
   · exact rowW_meets
   · exact fun a b h => shiftEq_meets a b h
 

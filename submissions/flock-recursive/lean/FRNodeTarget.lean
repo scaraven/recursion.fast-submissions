@@ -44,8 +44,8 @@ residual.
   collapse rounds over the positions `< 1024`), so A.6's map `WMbase_σ·128 + 2(off_f + t) + p`
   (elements up to 127 of a block) puts most mirror cells where no link family can read them. Here
   mirror source `g` of slot `σ` is block `wmB σ + ⌊g/4⌋`, elements `2(g mod 4)` and `2(g mod 4)+1`
-  (positions `256 (g mod 4) + [0, 256)`), `wmB σ = wmBase + 146 σ` (582 sources, 146 blocks per
-  slot; A.6's `WMbase_σ = wotsBase_σ + 498` is slot 1's first WOTS block for `σ = 0`).
+  (positions `256 (g mod 4) + [0, 256)`), `wmB σ = wmBase + 146 σ` (581 sources, 146 blocks per
+  slot; pinned by A.6 at revision 3.14, with `g = off_f + t`).
 * `j`'s 400 sources are the 399 `w43` blocks and key-leaf block 0 (`src t = t`), one mirror.
 -/
 
@@ -530,13 +530,14 @@ structure Fam where
   mbo : ℕ
 
 /-- **The eight families** (§4.2; `x`, `j`, `end9`, `end41lo`, `end41hi`, `l`, `r0`, `r31`), with
-A.6's mirror offsets `x` 0, `end9` 399, `end41` 466, `l` 533, `r0` 549, `r31` 565, `j` 581. -/
+A.6's pinned mirror offsets (revision 3.14) `x` 0, `j` 399, `end9` 400, `end41` 467 (shared by
+`end41lo`/`end41hi`), `l` 533, `r0` 549, `r31` 565: sources `0 … 580`. -/
 def fam : ℕ → Fam
   | 0 => ⟨399, id, 11, 32, id, 0⟩
-  | 1 => ⟨400, id, 1, 8, fun _ => 581, 0⟩
-  | 2 => ⟨67, (399 + ·), 9, 32, (399 + ·), 0⟩
-  | 3 => ⟨66, (399 + ·), 41, 23, (466 + ·), 0⟩
-  | 4 => ⟨66, (400 + ·), 0, 9, (466 + ·), 184⟩
+  | 1 => ⟨400, id, 1, 8, fun _ => 399, 0⟩
+  | 2 => ⟨67, (399 + ·), 9, 32, (400 + ·), 0⟩
+  | 3 => ⟨66, (399 + ·), 41, 23, (467 + ·), 0⟩
+  | 4 => ⟨66, (400 + ·), 0, 9, (467 + ·), 184⟩
   | 5 => ⟨16, fun t => 466 + 2 * t, 1, 32, (533 + ·), 0⟩
   | 6 => ⟨16, fun t => 466 + 2 * t, 33, 31, (549 + ·), 0⟩
   | 7 => ⟨16, fun t => 467 + 2 * t, 0, 1, (565 + ·), 0⟩
@@ -580,6 +581,24 @@ def linkInd (f u s y q : ℕ) : F :=
         (if y = mirB σ f t ∧ q = mpos f t s then 1 else 0)
     else 0
 
+/-- **`linkWAll`'s specification** (A.8, revision 3.14; a node): the 8 families' `linkWS` at the
+packed points `tt = τ ‖ θ` (S1's 16 block, then 10 slot coordinates) and `rr = r_blk ‖ r_pos`
+(S2's 16, then 10). -/
+def linkWAllS (tt rr : Array F) : Array F :=
+  Array.ofFn (n := nLinkFam) fun f => linkWS f (ptA 16 tt) (fun l => tt.getD (16 + l) 0)
+    (ptA 16 rr) (fun l => rr.getD (16 + l) 0)
+
+/-- **`shiftMask`'s specification** (A.9 `finSh`, a node; revision 3.14, the chain mask): the
+block weights over the two chains' link blocks `c·N + k`, `k < N − 1` (`N = chainN`; block `y` is
+linked to `y + 1` inside its chain): `Σ eq(τ, y) eq(r, y)`, `Σ eq(τ, y) eq(r, y + 1)`, and the two
+starts' weight `eq(r, 0) + eq(r, N)`. -/
+def shiftMaskS (τ r : Array F) : F × F × F :=
+  (∑ c ∈ range 2, ∑ k ∈ range (Layout.chainN - 1),
+      eqAtR (ptA 16 τ) (c * Layout.chainN + k) * eqAtR (ptA 16 r) (c * Layout.chainN + k),
+   ∑ c ∈ range 2, ∑ k ∈ range (Layout.chainN - 1),
+      eqAtR (ptA 16 τ) (c * Layout.chainN + k) * eqAtR (ptA 16 r) (c * Layout.chainN + k + 1),
+   eqAtR (ptA 16 r) 0 + eqAtR (ptA 16 r) Layout.chainN)
+
 section LinkProof
 
 /-- Every source and mirror block is inside the node (`2^16` blocks), every field position inside
@@ -594,8 +613,8 @@ theorem fam_bounds {f σ t s : ℕ} (hσ : σ < 2) (ht : t < (fam f).n) :
   unfold srcB mirB fpos mpos fbits
   have h4 : ∀ g, g % 4 < 4 := fun g => Nat.mod_lt _ (by norm_num)
   rcases f with _ | _ | _ | _ | _ | _ | _ | _ | f <;>
-    simp only [fam, id] at ht ⊢ <;> (try have := h4 t) <;> (try have := h4 (399 + t)) <;>
-    (try have := h4 (466 + t)) <;> (try have := h4 (533 + t)) <;> (try have := h4 (549 + t)) <;>
+    simp only [fam, id] at ht ⊢ <;> (try have := h4 t) <;> (try have := h4 (400 + t)) <;>
+    (try have := h4 (467 + t)) <;> (try have := h4 (533 + t)) <;> (try have := h4 (549 + t)) <;>
     (try have := h4 (565 + t)) <;> omega
 
 theorem fbits_le (f : ℕ) : fbits f ≤ 2 ^ 10 := by
