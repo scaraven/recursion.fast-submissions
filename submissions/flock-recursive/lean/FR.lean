@@ -104,6 +104,12 @@ import FRNodeReadS
 import FRNodeReadP
 import FRXOut
 import FRXOutRun
+import FRShape4
+import FRSegment
+import FRAgg
+import FRVerifier4
+import FRNodeLayout4
+import FRVIR4
 
 /-!
 # `flock-recursive`
