@@ -37,3 +37,15 @@ S-E7) landed during the stage, with no change to the Ligerito tail or A.9's `fin
   on the hypothesis, not the goal.
 - Green, axioms clean (26 declarations, `logs/S-G2/axioms.log`), source rule 123 files / 0
   findings, sequential profile 11.7 s wall, ≈ 2.7 s type checking. RESULT written.
+
+## Pass 2 (2026-10-28, after the orchestrator's ruling: the tail changes, the verifier stays)
+
+- Tail fix in `FRSoundnessTailD/O/M`: `lvC 5 = c1 4`, `wPf = wFold 4` padded,
+  `finP3 4 = finP2 4`, `DPf = ¬ truthP3 4 ∨ D2`. `hfin_P3` at `i = 4` is now
+  `condCount_eq_zero`. `nxSum_eq` is restricted to `i < 4`. `Compose` needed no edit.
+- `FRSoundnessLigFinal`: `pf_round0_conflict` replaced by `pf_round0_agree`; `DPf_end_iff` takes
+  the background; new `truthP3_four_of_cols`, `pfP`/`ptD`/`ptL`/`wHatL`, `mleP_lvW_chain`,
+  `mleN_wPf`, `DPf_end_chain`, `AcceptTail`, `not_DC_end`, `finalLaw_of`, and controls.
+- Green on the HEAD `8b0439e` snapshot (Front and Rows rebuilt); axioms clean; source rule 0
+  findings. `runLog_chain` not attempted (needs `V`'s run semantics); it stays inside
+  `finalLaw_of`'s `hAcc`.

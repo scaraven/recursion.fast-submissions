@@ -113,25 +113,13 @@ noncomputable def dP3 (W₀ : Log → Log → ℕ → K) (c₀ : Log → Log →
   c1 c₀ i L es - ∑ x ∈ range (2 ^ mLog (kindOf es) i),
     wFold W₀ i L es x * nextMsg (kindOf es) L es i x
 
-theorem mLog4_le (κ : Kind) : mLog κ 4 ≤ 7 := by cases κ <;> decide
-
-/-- `nxSum` as the next weight's inner product with level `i`'s folded message. -/
-theorem nxSum_eq (W₀ : Log → Log → ℕ → K) {i : ℕ} (hi : i < 5)
+/-- `nxSum` as the next weight's inner product with level `i`'s folded message (`i < 4`). -/
+theorem nxSum_eq (W₀ : Log → Log → ℕ → K) {i : ℕ} (hi : i < 4)
     (L es : Log) : nxSum W₀ i L es = ∑ x ∈ range (2 ^ mLog (kindOf es) i),
       wNext (kindOf es) es i (wFold W₀ i L es) x * nextMsg (kindOf es) L es i x := by
   unfold nxSum
-  by_cases h4 : i < 4
-  · rw [ite_pos' h4, nrP, ← wSplit_sum (show i + 1 < 5 by omega)]
-    rfl
-  · obtain rfl : i = 4 := by omega
-    rw [ite_neg' h4]
-    have hm := mLog4_le (kindOf es)
-    have hle : 2 ^ mLog (kindOf es) 4 ≤ 2 ^ 7 := Nat.pow_le_pow_right two_pos hm
-    rw [← Finset.sum_range_add_sum_Ico _ hle, Finset.sum_eq_zero (s := Ico _ _) fun x hx => by
-      simp only [mem_Ico] at hx; simp only [wPf, show ¬ x < 2 ^ mLog (kindOf es) 4 by omega,
-        ↓reduceIte, zero_mul], add_zero]
-    refine sum_congr rfl fun x hx => ?_
-    simp only [wPf, mem_range.1 hx, ↓reduceIte, nextMsg, nLevels, lt_irrefl]
+  rw [ite_pos' hi, nrP, ← wSplit_sum (show i + 1 < 5 by omega)]
+  rfl
 
 theorem dP3_same (hF : FrontLocal W₀ c₀) {L es L' es' : Log} {p : ℕ} (h : Same L es L' es' p)
     {i : ℕ} (hi : i < 5) (hp : cStart i + 1 ≤ p) : dP3 W₀ c₀ i L es = dP3 W₀ c₀ i L' es' := by
@@ -164,6 +152,22 @@ theorem hfin_P3 (hF : FrontLocal W₀ c₀) {Dk : ℕ → Log → Log → Prop} 
   obtain ⟨-, -, -, h4, -, -, -, -, -, -, hmem⟩ := tail_ph hi
   obtain ⟨hc, h1, h3, hsq, h5⟩ := tail_pos hi
   have hms := ms_P3 hi hP hQ
+  by_cases hi4 : i < 4
+  swap
+  · -- P3.4: `finP3 4` is P2.4's final doom, which reads no P3.4 answer: nothing escapes.
+    obtain rfl : i = 4 := by omega
+    refine (condCount_eq_zero fun as has he => ?_).trans_le zero_le
+    obtain ⟨hd, hnf⟩ := esc_msD hmem hms hl as has he
+    rw [h4, hP, DP2, msD, ite_neg' (by omega)] at hd
+    unfold finP3 at hnf
+    rw [ite_neg' (by norm_num)] at hnf
+    have hS : Same L (ext es₀ as) L es₀ (p3S0 4 + 1) := hl ▸ same_of_agree L (agree_ext es₀ as)
+    have hk : kindOf (ext es₀ as) = kindOf es₀ := kindOf_ext es₀ as (by omega)
+    refine hnf ?_
+    unfold finP2 at hd ⊢
+    rw [hk, truthP3_same hS hi _ le_rfl, truthC_same hS hi _ (by omega),
+      farL_same hS hi _ (by omega), c1_same hF hS hi (by omega), foldSum_same hF hS hi (by omega)]
+    exact hd
   refine hfin_seq hmem hms (fun j => if j < 9 then 1 else 0) (by decide)
     (fun L es₀ l => es₀.length = p3S0 i + 1 →
       mlDoom 9 (p3T (kindOf es₀) L es₀ i (dP3 W₀ c₀ i L es₀)) (l.map (algebraMap F K)))
@@ -195,10 +199,11 @@ theorem hfin_P3 (hF : FrontLocal W₀ c₀) {Dk : ℕ → Log → Log → Prop} 
     have hS : Same L X L es₀ (p3S0 i + 1) := hl' ▸ same_of_agree L (agree_ext es₀ as)
     have hk : kindOf X = kindOf es₀ := kindOf_ext es₀ as (by omega)
     unfold finP3 at hnf
-    rw [not_or, not_not] at hnf
-    have hv : vNext (kindOf X) L X i (c1 c₀ i L X) = nxSum W₀ i L X := hnf.2
+    rw [ite_pos' hi4, not_or, not_not] at hnf
+    have hv : vNext (kindOf X) L X i (c1 c₀ i L X) = nxSum W₀ i L X := by
+      rw [← lvC_succ c₀ hi4]; exact hnf.2
     have hsub := vNext_sub (kindOf X) L X i (wFold W₀ i L X) (c1 c₀ i L X)
-    rw [hv, nxSum_eq W₀ hi, sub_self] at hsub
+    rw [hv, nxSum_eq W₀ hi4, sub_self] at hsub
     have hmle := p3T_mle (kindOf X) L X hi (dP3 W₀ c₀ i L X)
     rw [dP3, ← hsub] at hmle
     rw [← dP3, p3T_same hS hi _ le_rfl, dP3_same hF hS hi (by omega), hk] at hmle
@@ -258,16 +263,17 @@ theorem DP2_stab (h : Same L Y L' Y p) (hY : Y.length ≤ p) (hp : cStart i + 1 
 
 theorem finP3_stab (hp : nxStart i ≤ p) : finP3 W₀ c₀ i L Y ↔ finP3 W₀ c₀ i L' Y := by
   obtain ⟨hc, h1, h3, h4, h5⟩ := tail_pos hi
-  have hC : lvC c₀ (i + 1) L Y = lvC c₀ (i + 1) L' Y :=
-    (chain_same hF (i + 1) (by omega) h (by rw [lvB_succ hi]; exact hp)).2
-  have hN : nxSum W₀ i L Y = nxSum W₀ i L' Y := by
-    rw [nxSum_eq W₀ hi, nxSum_eq W₀ hi, wFold_same hF h hi (by omega),
-      wNext_same h hi _ hp, nextMsg_same h hi _ (by omega)]
   unfold finP3
-  rw [hC, hN]
   by_cases h4' : i < 4
-  · rw [farL_same h (show i + 1 < 5 by omega) _ (by rw [capPos_succ]; omega)]
-  · simp [h4']
+  · have hC : lvC c₀ (i + 1) L Y = lvC c₀ (i + 1) L' Y :=
+      (chain_same hF (i + 1) (by omega) h (by rw [lvB_succ hi]; exact hp)).2
+    have hN : nxSum W₀ i L Y = nxSum W₀ i L' Y := by
+      rw [nxSum_eq W₀ h4', nxSum_eq W₀ h4', wFold_same hF h hi (by omega),
+        wNext_same h hi _ hp, nextMsg_same h hi _ (by omega)]
+    rw [ite_pos' h4', ite_pos' h4', hC, hN,
+      farL_same h (show i + 1 < 5 by omega) _ (by rw [capPos_succ]; omega)]
+  · rw [ite_neg' h4', ite_neg' h4']
+    exact finP2_stab hF h hi (by omega)
 
 omit h in
 theorem DP3_stab (h : Same L Y L' Y p) (hY : Y.length ≤ p) (hp : p3S0 i + 1 ≤ p) :
@@ -281,8 +287,12 @@ theorem DP3_stab (h : Same L Y L' Y p) (hY : Y.length ≤ p) (hp : p3S0 i + 1 �
 end Stab
 
 theorem DPf_stab (hF : FrontLocal W₀ c₀) {L L' Y : Log} {p : ℕ} (h : Same L Y L' Y p)
-    (hp : pfStart ≤ p) : DPf W₀ c₀ L Y ↔ DPf W₀ c₀ L' Y :=
-  D2_congrL (tPf_same hF h hp) (lvC5_same hF h hp)
+    (hp : pfStart ≤ p) : DPf W₀ c₀ L Y ↔ DPf W₀ c₀ L' Y := by
+  have h4 := (tail_pos (show 4 < 5 by norm_num)).2.2.2.2
+  have hnx : nxStart 4 = pfStart := rfl
+  unfold DPf
+  rw [truthP3_same h (show 4 < 5 by norm_num) _ (by omega)]
+  exact or_congr Iff.rfl (D2_congrL (tPf_same hF h hp) (lvC5_same hF h hp))
 
 /-- **Every tail doom is stable** (`hstab`): on two logs whose words agree up to the chain's
 length, once the chain has reached phase `k`. -/

@@ -111,8 +111,12 @@ theorem habs_P1 {i l : ℕ} (hi : i < 5) (hl : 1 ≤ l) (hlen : es.length = p1St
 theorem habs_Pf {l : ℕ} (hl : 1 ≤ l) (hlen : es.length = pfStart + 2 * l) :
     DPf W₀ c₀ L es → DPf W₀ c₀ L (es ++ [x]) := by
   have hp := pfStart_eq
+  have h4 := (tail_pos (show 4 < 5 by norm_num)).2.2.2.2
+  have hnx : nxStart 4 = pfStart := rfl
   unfold DPf
-  rw [D2_append_iff (by omega) (pf_local hF) x (by omega) (Or.inl (by omega))]
+  rw [kindOf_append x (by omega),
+    truthP3_same (same_append L es [x]) (show 4 < 5 by norm_num) _ (by omega),
+    D2_append_iff (by omega) (pf_local hF) x (by omega) (Or.inl (by omega))]
   exact id
 
 /-- **P1.i → C.i** (A.10): a far fold refutes `truthP2` (`closeP_of_truthP2`); a close word with a
@@ -154,8 +158,8 @@ theorem habs_P1_next {i : ℕ} (hi : i + 1 < 5) (hlen : es.length = p1Start (i +
     rw [show p1Start (i + 1) + 1 - p1Start (i + 1) = 1 by omega]; simp
   have hfar := farL_same hS hi (kindOf es) (i := i + 1) (by omega)
   unfold finP3 D1
-  rw [hk, hr, closeP_zero, not_not, hfar]
-  rintro (⟨-, hf⟩ | hw)
+  rw [ite_pos' (show i < 4 by omega), hk, hr, closeP_zero, not_not, hfar]
+  rintro (hf | hw)
   · exact Or.inl hf
   by_cases hf : farL (kindOf es) L es (i + 1)
   · exact Or.inl hf
@@ -169,33 +173,48 @@ theorem habs_P1_next {i : ℕ} (hi : i + 1 < 5) (hlen : es.length = p1Start (i +
   unfold nxSum at hw
   rwa [ite_pos' (show i < 4 by omega)] at hw
 
-/-- **P3.4 → Pf**: a false final claim is Pf's false initial claim. -/
+omit hF in
+/-- Pf's true sum is level 4's folded table against the final message (the padding is zero). -/
+theorem sum_wPf (L es : Log) :
+    ∑ x ∈ range (2 ^ 7), wPf W₀ L es x * finalAt es x =
+      ∑ x ∈ range (2 ^ mLog (kindOf es) 4), wFold W₀ 4 L es x * finalAt es x := by
+  have hle : 2 ^ mLog (kindOf es) 4 ≤ 2 ^ 7 := Nat.pow_le_pow_right two_pos (mLog4_le _)
+  rw [← Finset.sum_range_add_sum_Ico _ hle, Finset.sum_eq_zero (s := Ico _ _) fun x hx => by
+    simp only [mem_Ico] at hx; simp only [wPf, show ¬ x < 2 ^ mLog (kindOf es) 4 by omega,
+      ↓reduceIte, zero_mul], add_zero]
+  exact sum_congr rfl fun x hx => by simp only [wPf, mem_range.1 hx, ↓reduceIte]
+
+/-- **P3.4 → Pf**: an inconsistent level-4 query stays Pf's background; on a close word whose
+final message is the fold, a false folded claim is Pf's false initial claim. -/
 theorem habs_Pf_first (hlen : es.length = pfStart) :
     finP3 W₀ c₀ 4 L es → DPf W₀ c₀ L (es ++ [x]) := by
   have hS := same_append L es [x]
   have hp := pfStart_eq
-  unfold finP3 DPf
-  rintro (⟨h, -⟩ | hw)
-  · omega
-  refine ⟨by simp [hlen], ?_⟩
-  have ha : ans3 pfStart (fun _ => 7) (es ++ [x]) = 0 := by simp [ans3, hlen]
-  rw [ha, Wrong2]
-  simp only [clR2, rchs2, List.range_zero, List.map_nil, bindAll, Nat.sub_zero]
-  rw [tPf, trueSum_tabs, lvC5_same hF hS (by omega)]
   have h4 : (4 : ℕ) < 5 := by norm_num
   obtain ⟨-, -, -, h44, h45⟩ := tail_pos h4
   have hnx : nxStart 4 = pfStart := rfl
   have hk : kindOf (es ++ [x]) = kindOf es := kindOf_append x (by omega)
+  unfold finP3 DPf
+  rw [ite_neg' (by norm_num), hk, truthP3_same hS h4 _ (by omega)]
+  unfold finP2
+  rintro (h | ⟨-, hC, hw⟩)
+  · exact Or.inl h
+  refine Or.inr ⟨by simp [hlen], ?_⟩
+  have ha : ans3 pfStart (fun _ => 7) (es ++ [x]) = 0 := by simp [ans3, hlen]
+  rw [ha, Wrong2]
+  simp only [clR2, rchs2, List.range_zero, List.map_nil, bindAll, Nat.sub_zero]
+  rw [tPf, trueSum_tabs, lvC5_same hF hS (by omega)]
   have hw' : wPf W₀ L (es ++ [x]) = wPf W₀ L es := by
     funext y
-    simp only [wPf, hk, wFold_same hF hS h4 (by omega), wNext_same hS h4 _ (by omega)]
+    simp only [wPf, hk, wFold_same hF hS h4 (by omega)]
   have h46 : cStart 4 = phStart 47 := rfl
   have hf' : finalAt (es ++ [x]) = finalAt es := funext fun y => by
     simp only [finalAt, msgAt, hS.1 (phStart 47) (by omega)]
-  unfold nxSum at hw
-  rw [ite_neg' (by norm_num)] at hw
-  rw [hw', hf']
-  exact hw
+  rw [hw', hf', sum_wPf, lvC_five]
+  convert hw using 1
+  refine sum_congr rfl fun y hy => ?_
+  rw [← hC y (mem_range.1 hy)]
+  simp [nextMsg, nLevels]
 
 end Absorbs
 
@@ -283,10 +302,11 @@ theorem single_P1 (hF : FrontLocal W₀ c₀) {i l : ℕ} (hi : i < 5) (hl : l <
     omega
 
 open Classical in
-/-- **Pf's round squeeze**: `D2_single` over K, `2` answers. -/
-theorem single_Pf (hF : FrontLocal W₀ c₀) {l : ℕ} {L es : Log}
+/-- Pf's rounds' own count: `D2_single` over K, `2` answers. -/
+theorem single_Pf_D2 (hF : FrontLocal W₀ c₀) {l : ℕ} {L es : Log}
     (hlen : es.length = pfStart + 2 * l + 1) (hr : ¬ RejT c₀ L es) :
-    (univ.filter fun a => DPf W₀ c₀ L es ∧ ¬ DPf W₀ c₀ L (ext1 es a)).card ≤ 2 := by
+    (univ.filter fun a => D2 pfStart 32 readK chK (lvC c₀ 5) (fun _ => 7) e2 (tPf W₀) L es ∧
+      ¬ D2 pfStart 32 readK chK (lvC c₀ 5) (fun _ => 7) e2 (tPf W₀) L (ext1 es a)).card ≤ 2 := by
   have hp := pfStart_eq
   have := D2_single (R := K) (show 1 ≤ pfStart by omega) (pf_local hF) e2_deg (M := 1)
     (nr := fun _ => 7) (fun S => by rw [card_chK_fiber, mul_one]) (fun L es => tPf_size L es) L es
@@ -295,6 +315,26 @@ theorem single_Pf (hF : FrontLocal W₀ c₀) {l : ℕ} {L es : Log}
       exact hr (Or.inr ⟨j, by omega, by omega, hcj⟩))
   refine le_trans (le_of_eq ?_) this
   congr 1
+
+open Classical in
+/-- **Pf's round squeeze**: at most `2` answers escape (the level-4 background never does). -/
+theorem single_Pf (hF : FrontLocal W₀ c₀) {l : ℕ} {L es : Log}
+    (hlen : es.length = pfStart + 2 * l + 1) (hr : ¬ RejT c₀ L es) :
+    (univ.filter fun a => DPf W₀ c₀ L es ∧ ¬ DPf W₀ c₀ L (ext1 es a)).card ≤ 2 := by
+  have hp := pfStart_eq
+  have h4 := (tail_pos (show 4 < 5 by norm_num)).2.2.2.2
+  have hnx : nxStart 4 = pfStart := rfl
+  have hB : ∀ a, truthP3 (kindOf (ext1 es a)) L (ext1 es a) 4 ↔ truthP3 (kindOf es) L es 4 :=
+    fun a => by
+      rw [kindOf_ext1 es a (by omega)]
+      exact truthP3_same (same_append L es _) (show 4 < 5 by norm_num) _ (by omega)
+  refine le_trans (card_le_card fun a ha => ?_) (single_Pf_D2 hF hlen hr)
+  simp only [mem_filter, mem_univ, true_and] at ha ⊢
+  obtain ⟨h1, h2⟩ := ha
+  unfold DPf at h1 h2
+  rw [not_or, hB a, not_not] at h2
+  exact ⟨h1.resolve_left (not_not.mpr h2.1), h2.2⟩
+
 
 /-! ## Part D: the asserted checks -/
 

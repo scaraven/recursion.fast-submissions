@@ -27,14 +27,16 @@ what they give `final`.
   composed doom false at the chain's end.
 * **Level 0** (Part B): `f⁽⁰⁾` is F-valued and fixed once `cap₀` is absorbed
   (`level0_committed`): every prefix past `cap₀` reads the same close word and message.
-* **Part D, Pf's end**: `DPf` at the chain's end is the final check `c_{Pf} = Ŵ(ρ)·final̂(ρ)` in
-  the tables' extensions (`mleN`) at Pf's challenges (`not_DPf_end_iff`).
+* **Part D, Pf's end**: `DPf` at the chain's end is `¬ truthP3 4` or the failure of the final
+  check `c_{Pf} = Ŵ(ρ)·final̂(ρ)` in the tables' extensions at Pf's challenges (`DPf_end_iff`);
+  the level step at the spec (`mleP_lvW_succ`) and the zero padding (`mleP_pad`).
 * **Part E, Merkle binding**: a path that evaluates on the log to the cap entry fixes the column
   `colOf` reads (`colOf_of_path`, from `cap_binding`), so the verifier's fold of an opened column
   is `foldAt` (`foldAt_of_cols`).
-* **Part F, level 4** (finding): the tail batches level 4's queries into Pf's claim
-  (`lvC_five_eq`), while `finP 4` checks them directly and asserts Pf's initial claim is P1.4's
-  final claim (A.9). See the RESULT.
+* **Part F, level 4 and Pf against `finP 4`/`finPf`** (pass 2, after the tail fix): `RejT`'s Pf
+  round 0 is the verifier's (`pf_round0_agree`); `finP 4`'s direct checks give `truthP3 4`
+  (`truthP3_four_of_cols`); `DPf` at the end is `relPf`'s failure in `Ŵ₄(P₄)·pad·final̂`
+  (`wHatL`, `mleN_wPf`, `DPf_end_chain`).
 * **Part G**: controls.
 -/
 
@@ -189,7 +191,8 @@ theorem LigeritoOut.claim0 {L es : Log} (h : LigeritoOut W₀ c₀ L es) :
 the same close level-0 word, the same decoded messages and the same F-valued `f⁽⁰⁾`. -/
 theorem LigeritoOut.level0_committed {L es : Log} (h : LigeritoOut W₀ c₀ L es) {p : ℕ}
     (hp : capPos 0 < p) :
-    ¬ farL (kindOf es) L (es.take p) 0 ∧ msgOf (kindOf es) L (es.take p) 0 = msgOf (kindOf es) L es 0 ∧
+    ¬ farL (kindOf es) L (es.take p) 0 ∧
+      msgOf (kindOf es) L (es.take p) 0 = msgOf (kindOf es) L es 0 ∧
       fF (kindOf es) L (es.take p) = fF (kindOf es) L es := by
   have hS := same_take L es p
   refine ⟨(farL_same hS (by norm_num) _ hp).not.mpr (h.close 0 (by norm_num)),
@@ -260,17 +263,17 @@ theorem trueSum_tPf_end (L es : Log) :
     tabs_getD1, pfPt, ← bindL_ofFn_mle _ _ hl, ← bindL_ofFn_mle _ _ hl]
   rfl
 
-/-- **Pf's doom at the chain's end** is the failure of the final check in the tables' extensions:
-the claim after Pf's seven rounds is not `W̃_f(ρ)·final̂(ρ)`. -/
+/-- **Pf's doom at the chain's end** is the failure of `finP 4`'s direct checks or of the final
+check in the tables' extensions: the claim after Pf's seven rounds is not `W̃_f(ρ)·final̂(ρ)`. -/
 theorem DPf_end_iff {L es : Log} (hl : pfStart + 14 ≤ es.length) :
-    DPf W₀ c₀ L es ↔ clR2 pfStart 32 readK chK (lvC c₀ 5) L es 7 ≠
+    DPf W₀ c₀ L es ↔ ¬ truthP3 (kindOf es) L es 4 ∨ clR2 pfStart 32 readK chK (lvC c₀ 5) L es 7 ≠
       mleN 7 (wPf W₀ L es) (pfPt es) * mleN 7 (finalAt es) (pfPt es) := by
   have ha : ans3 pfStart (fun _ => 7) es = 7 := by
     unfold ans3; show min 7 ((es.length - pfStart) / 2) = 7; omega
   unfold DPf D2 Wrong2
   beta_reduce
   rw [ha, Nat.sub_self, trueSum_tPf_end]
-  exact ⟨fun h => h.2, fun h => ⟨by omega, h⟩⟩
+  exact or_congr Iff.rfl ⟨fun h => h.2, fun h => ⟨by omega, h⟩⟩
 
 /-! ### The level tables' extensions at ℕ-indexed points (`finPf`'s level steps) -/
 
@@ -383,29 +386,173 @@ theorem foldAt_of_cols {κ : Kind} {L es : Log} (hc : ¬ Collision L) {i : ℕ}
   refine sum_congr rfl fun r _ => ?_
   simp only [wordK, wordOf, hcol, Option.map_some, Option.getD_some]
 
-/-! ## Part F: level 4 (finding: the tail batches level 4, the verifier does not) -/
+/-! ## Part F: level 4 and Pf's end, against `finP 4` and `finPf` (pass 2)
 
-/-- **The tail's Pf claim batches level 4's queries** (`vNext 4`), unlike `finP 4`, which asserts
-Pf's initial claim is P1.4's final claim `c1 4` (A.9, `FRVIRFinalsSG.finP4`). -/
-theorem lvC_five_eq (L es : Log) :
-    lvC c₀ 5 L es = c1 c₀ 4 L es + ∑ q ∈ range (lvl (kindOf es) 4).t,
-      K.smulF (eqBits (kcAt es 4) 9 q) (foldAtN (kindOf es) L es 4 (qPos (kindOf es) es 4 q)) :=
-  rfl
+The tail now matches the verifier (S-G2 pass 2): Pf starts from P1.4's final claim
+(`lvC_five`), `wPf` is the zero-padded `wFold 4`, and level 4's queries are a background of Pf's
+doom (`¬ truthP3 4`), refuted by `finP 4`'s direct checks (`truthP3_four_of_cols`). -/
 
-/-- **The conflict**: the tail's check of Pf's first round (`RejT`) and the verifier's
-(`g(0) + g(1) = c1 4`, `finP 4` with `initClaim "Pf" = free`) hold together only if level 4's
-batched folds vanish at P3.4's `κ_c`. -/
-theorem pf_round0_conflict {L es : Log} (hR : ¬ RejT c₀ L es) (hl : pfStart < es.length)
-    (hV : peval (g2At pfStart 32 readK es 0) 0 + peval (g2At pfStart 32 readK es 0) 1 =
-      c1 c₀ 4 L es) :
-    ∑ q ∈ range (lvl (kindOf es) 4).t,
-      K.smulF (eqBits (kcAt es 4) 9 q) (foldAtN (kindOf es) L es 4 (qPos (kindOf es) es 4 q)) =
-      0 := by
-  have hc : Chk2 pfStart 32 readK chK (lvC c₀ 5) L es 0 :=
-    Classical.byContradiction fun h => hR (Or.inr ⟨0, by norm_num, by omega, h⟩)
-  unfold Chk2 at hc
-  rw [hV, clR2, lvC_five_eq] at hc
-  exact (add_eq_left.mp hc.symm)
+/-- **Control (pass 2)**: `RejT`'s check of Pf's first round is the verifier's
+(`g(0) + g(1) = claim0 Pf = claimN P1.4`, `finP 4` with `initClaim "Pf" = free`). -/
+theorem pf_round0_agree (L es : Log) :
+    Chk2 pfStart 32 readK chK (lvC c₀ 5) L es 0 ↔
+      peval (g2At pfStart 32 readK es 0) 0 + peval (g2At pfStart 32 readK es 0) 1 =
+        c1 c₀ 4 L es := by
+  rw [Chk2, clR2, lvC_five]
+
+/-- **`finP 4`'s direct checks give `truthP3 4`**: every queried position's opened column has a
+path to its cap entry and its fold is `Enc₄(final)` there. -/
+theorem truthP3_four_of_cols {L es : Log} (hc : ¬ Collision L)
+    (hq : ∀ q < (lvl (kindOf es) 4).t, ∃ col : ByteArray, ∃ ss : List Digest,
+      ss.length = (lvl (kindOf es) 4).sib ∧
+      (openPath (frEnc 4) col (qPos (kindOf es) es 4 q) ss).runLog L =
+        some (capDig es 4 (qPos (kindOf es) es 4 q / 2 ^ (lvl (kindOf es) 4).sib)) ∧
+      ∑ r : Fin (lvl (kindOf es) 4).rows, eqBits (sAt es 4) (lvl (kindOf es) 4).ell r *
+          algebraMap F K (readF col (16 * r)) =
+        encAt (kindOf es) 4 (finalAt es) (qPos (kindOf es) es 4 q)) :
+    truthP3 (kindOf es) L es 4 := by
+  intro q hq'
+  obtain ⟨col, ss, hss, hpath, hfold⟩ := hq q hq'
+  have hlt : qPos (kindOf es) es 4 q < 2 ^ (lvl (kindOf es) 4).logN := idx_lt _ _ _
+  have hn : nextMsg (kindOf es) L es 4 = finalAt es := by
+    funext x; simp [nextMsg, nLevels]
+  rw [consErr, foldAtN, dite_eq_left_of_eq_true (eq_true hlt),
+    foldAt_of_cols (j := ⟨_, hlt⟩) hc hss hpath, hfold, hn, sub_self]
+
+/-- Pf's challenges as an ℕ-indexed point. -/
+def pfP (es : Log) (v : ℕ) : K := (rchs2 pfStart chK es 7).getD v 0
+
+/-- Level `k`'s point at the chain's end, from level 4 down (`d = 4 − k` steps). -/
+def ptD (es : Log) : ℕ → ℕ → ℕ → K
+  | 0, k, v => if v < hEll k then sAt es k v else pfP es (v - hEll k)
+  | d + 1, k, v => if v < hEll k then sAt es k v else ptD es d (k + 1) (v - hEll k + 1)
+
+/-- **Level `k`'s point** (A.9 `finPf`'s `Pₖ`, `tailRegs`): `sₖ`, then level `k + 1`'s point from
+its coordinate 1; level 4: `s₄`, then Pf's challenges. -/
+def ptL (es : Log) (k : ℕ) : ℕ → K := ptD es (4 - k) k
+
+theorem ptL_lt {k : ℕ} (hk : k < 4) (es : Log) :
+    ptL es k = fun v => if v < hEll k then sAt es k v else ptL es (k + 1) (v - hEll k + 1) := by
+  unfold ptL; rw [show 4 - k = (4 - (k + 1)) + 1 by omega]; rfl
+
+/-- **`Ŵₖ(Pₖ)`** (A.9 `finPf`'s `wV`, at the spec): `W̃₀(P₀)`, then the level steps `lvStepV`. -/
+noncomputable def wHatL (W₀ : Log → Log → ℕ → K) (L es : Log) : ℕ → K
+  | 0 => mleP (nrP 0 (kindOf es)) (W₀ L es) (ptL es 0)
+  | k + 1 => uHat (ptL es (k + 1) 0) * (wHatL W₀ L es k +
+      ∑ q ∈ range (lvl (kindOf es) k).t, algebraMap F K (eqBits (kcAt es k) 9 q) *
+        tensorTwin D logNMax (mLog (kindOf es) k)
+          (fun v => if v < mLog (kindOf es) k then ptL es (k + 1) (v + 1) else 0)
+          (qPos (kindOf es) es k q))
+
+/-- **The level tables at their points are `wHatL`** (levels `0 … 4`). -/
+theorem mleP_lvW_chain (L es : Log) : ∀ k ≤ 4,
+    mleP (nrP k (kindOf es)) (lvW W₀ k L es) (ptL es k) = wHatL W₀ L es k
+  | 0, _ => rfl
+  | k + 1, hk => by
+    rw [mleP_lvW_succ (by omega), wHatL, ← mleP_lvW_chain L es k (by omega), ptL_lt (k := k)
+      (by omega), lvl_ell (kindOf es) (show k < 5 by omega)]
+
+/-- **Pf's weight at Pf's challenges** is `Ŵ₄(P₄)` times the padding `Π_{μ ≤ v < 7} (1 − ρ_v)`
+(A.9 `finPf`: `wV · padV`). -/
+theorem mleN_wPf (L es : Log) :
+    mleN 7 (wPf W₀ L es) (pfPt es) =
+      wHatL W₀ L es 4 * ∏ v ∈ Ico (mLog (kindOf es) 4) 7, (1 - pfP es v) := by
+  have h1 : mleN 7 (wPf W₀ L es) (pfPt es) = mleP 7 (wPf W₀ L es) (pfP es) := rfl
+  have h2 : mleP (mLog (kindOf es) 4) (wPf W₀ L es) (pfP es) =
+      mleP (mLog (kindOf es) 4) (wFold W₀ 4 L es) (pfP es) := by
+    unfold mleP mleN; congr 1; funext u; simp [wPf, u.2]
+  have h3 : mleP (mLog (kindOf es) 4) (wFold W₀ 4 L es) (pfP es) =
+      mleP (nrP 4 (kindOf es)) (lvW W₀ 4 L es) (ptL es 4) := by
+    unfold mleP wFold
+    rw [mleN_foldW]
+    unfold nrP mleN
+    congr 1
+    funext v
+    have he := lvl_ell (kindOf es) (show 4 < 5 by norm_num)
+    rw [fin_append_nat (sAt es 4) (pfP es)]
+    simp only [he]
+    rfl
+  rw [h1, mleP_pad (mLog4_le (kindOf es)) (W := wPf W₀ L es)
+    (fun x hx => by simp only [wPf]; rw [ite_neg' (by omega)]) (pfP es),
+    h2, h3, mleP_lvW_chain L es 4 le_rfl]
+
+/-- **Pf's doom at the chain's end, in `finPf`'s terms** (A.9 `relPf`:
+`claimN(Pf) = Ŵ₄(P₄)·pad·final̂(sf)`; and `finP 4`'s direct checks). -/
+theorem DPf_end_chain {L es : Log} (hl : pfStart + 14 ≤ es.length) :
+    DPf W₀ c₀ L es ↔ ¬ truthP3 (kindOf es) L es 4 ∨
+      clR2 pfStart 32 readK chK (lvC c₀ 5) L es 7 ≠ wHatL W₀ L es 4 *
+        (∏ v ∈ Ico (mLog (kindOf es) 4) 7, (1 - pfP es v)) * mleN 7 (finalAt es) (pfPt es) := by
+  rw [DPf_end_iff hl, mleN_wPf]
+
+/-! ## Part H: `FinalLaw` from the tail's end, the front and the extractor (pass 2) -/
+
+/-- **What an accepted SNARK run gives on the log for the tail** (`runLog_chain` and the finals'
+semantics: P1.i's and Pf's round checks, `finP 4`'s direct checks, `finPf`'s `relPf`), on the
+chain of entry `j`, with the front's asserts passed. -/
+structure AcceptTail (RejF : Log → Log → Prop) (W₀ : Log → Log → ℕ → K) (c₀ : Log → Log → K)
+    (L : Log) (j : ℕ) : Prop where
+  /-- The accepted run's Fiat–Shamir entries are a chain of the log. -/
+  chain : IsChain L j
+  /-- The chain has passed Pf's last round. -/
+  len : pfStart + 14 ≤ (entriesOf L (pathOf L j)).length
+  /-- The front's asserted checks pass. -/
+  rejF : ¬ RejF L (entriesOf L (pathOf L j))
+  /-- Every P1.i round check holds against the tail's claims. -/
+  p1 : ∀ i < 5, ∀ l < hEll i,
+    Chk2 (p1Start i) 32 readK chK (lvC c₀ i) L (entriesOf L (pathOf L j)) l
+  /-- Every Pf round check holds (round 0 from `c1 4`, `pf_round0_agree`). -/
+  pf : ∀ l < 7, Chk2 pfStart 32 readK chK (lvC c₀ 5) L (entriesOf L (pathOf L j)) l
+  /-- `finP 4`'s direct checks (`truthP3_four_of_cols`). -/
+  lvl4 : truthP3 (kindOf (entriesOf L (pathOf L j))) L (entriesOf L (pathOf L j)) 4
+  /-- `finPf`'s `relPf` at the spec (`DPf_end_chain`). -/
+  fin : clR2 pfStart 32 readK chK (lvC c₀ 5) L (entriesOf L (pathOf L j)) 7 =
+    wHatL W₀ L (entriesOf L (pathOf L j)) 4 *
+      (∏ v ∈ Ico (mLog (kindOf (entriesOf L (pathOf L j))) 4) 7,
+        (1 - pfP (entriesOf L (pathOf L j)) v)) *
+      mleN 7 (finalAt (entriesOf L (pathOf L j))) (pfPt (entriesOf L (pathOf L j)))
+
+/-- **`hend`**: on an accepted chain the composed doom is false at its end (phase 51, Pf). -/
+theorem not_DC_end {RejF : Log → Log → Prop} {DF : ℕ → Log → Log → Prop} {L : Log} {j : ℕ}
+    (h : AcceptTail RejF W₀ c₀ L j) :
+    ¬ DC (RejC RejF c₀) (Dp (DkC DF W₀ c₀)) L (entriesOf L (pathOf L j)) := by
+  have hp := pfStart_eq
+  have hlen := h.len
+  rintro ((hR | ⟨i, hi, l, hl, -, hc⟩ | ⟨l, hl, -, hc⟩) | hD)
+  · exact h.rejF hR
+  · exact hc (h.p1 i hi l hl)
+  · exact hc (h.pf l hl)
+  · unfold DPos Dp at hD
+    rw [phOf_ge (by omega), DkC_ge (by norm_num), DT_Pf, DPf_end_chain (by omega)] at hD
+    exact hD.elim (fun h4 => h4 h.lvl4) fun hf => hf h.fin
+
+/-- **`FinalLaw` from the tail's end, the front and the extractor.** The tail (P1.0 … Pf, the
+walk, unique decoding, Hide) is discharged; what is left is named: `hAcc` (an accepted run is a
+`W` proof with its witness, or gives `AcceptTail`: `runLog_chain` and the finals' semantics) and
+`hExt` (the front's truths on `f⁽⁰⁾` and the extractor: from no doom on any prefix and
+`LigeritoOut`, the extractor's output is a witness). -/
+theorem finalLaw_of (S : Submission) (vk : Digest) {RejF : Log → Log → Prop}
+    {DF : ℕ → Log → Log → Prop} (hF : FrontLocal W₀ c₀) (hFS : FrontChainStab RejF DF)
+    (hAcc : ∀ L c π, L.length ≤ logCap → ¬ Bad L → (S.V vk c π).runLog L = some true →
+      (∃ w, S.E c π L = some w ∧ Rel (S.acc vk) c w) ∨ ∃ j, AcceptTail RejF W₀ c₀ L j)
+    (hExt : ∀ L c π j, L.length ≤ logCap → ¬ Bad L → (S.V vk c π).runLog L = some true →
+      AcceptTail RejF W₀ c₀ L j →
+      (∀ p < (entriesOf L (pathOf L j)).length,
+        ¬ DC (RejC RejF c₀) (Dp (DkC DF W₀ c₀)) L ((entriesOf L (pathOf L j)).take (p + 1))) →
+      LigeritoOut W₀ c₀ L (entriesOf L (pathOf L j)) →
+      ∃ w, S.E c π L = some w ∧ Rel (S.acc vk) c w) :
+    FinalLaw S vk (RejC RejF c₀) (DkC DF W₀ c₀) := by
+  intro L c π hl hμ hrun
+  obtain ⟨hb, hE, hEH⟩ := muT_lt_one hμ
+  rcases hAcc L c π hl hb hrun with hw | ⟨j, hT⟩
+  · exact hw
+  have hS := chainStab_of hF hFS
+  have hend := not_DC_end (DF := DF) hT
+  have hp := pfStart_eq
+  have hlen := hT.len
+  have h4 := (tail_pos (show 4 < 5 by norm_num)).2.2.2.2
+  have hnx : nxStart 4 = pfStart := rfl
+  exact hExt L c π j hl hb hrun hT (fun p hp' => not_D_prefix hS hb hE hT.chain hend hp')
+    (ligerito_final_of_walk hF hS hb hE hEH hT.chain (by omega) hend)
 
 /-! ## Part G: controls -/
 
@@ -460,9 +607,10 @@ theorem c1_nil (c₀ : Log → Log → K) {i : ℕ} (hi : i < 5) : c1 c₀ i [] 
 theorem lvC_nil : ∀ i ≤ 5, lvC (fun _ _ => (0 : K)) i [] [] = 0
   | 0, _ => rfl
   | i + 1, hi => by
-    show vNext _ [] [] i (c1 _ i [] []) = 0
-    rw [c1_nil _ (by omega), vNext]
-    simp [foldAtN, foldAt_nil, K.smulF_eq_mul]
+    by_cases h4 : i < 4
+    · rw [lvC_succ _ h4, c1_nil _ (by omega), vNext]
+      simp [foldAtN, foldAt_nil, K.smulF_eq_mul]
+    · rw [show i = 4 by omega, lvC_five, c1_nil _ (by norm_num)]
 
 /-- **Control (positive)**: `LigeritoOut` holds on the empty chain of the empty log with `W₀ = 0`
 and `c₀ = 0` (every word, message and claim is `0`). -/
@@ -481,6 +629,21 @@ theorem ligeritoOut_nil :
   · rw [hcons i hi, decodeL_nil _ _ hi]
     have hw : wordK (kindOf []) [] [] i = 0 := by funext r p; simp [wordK, wordOf_nil]
     rw [hw]; ext j; simp
+
+/-- Control (value): `pfP` reads Pf's challenges (`kAt` at Pf's squeeze positions). -/
+theorem pfP_eq (es : Log) {v : ℕ} (hv : v < 7) : pfP es v = kAt es (pfStart + 2 * v + 1) := by
+  simp [pfP, rchs2, rch2, kAt, List.getD_eq_getElem?_getD, hv]
+
+/-- Control (value): level 4's point starts with P1.4's fold challenges. -/
+theorem ptL_four_lt (es : Log) {v : ℕ} (hv : v < hEll 4) : ptL es 4 v = sAt es 4 v := by
+  simp [ptL, ptD, hv]
+
+/-- Control (negative): an inconsistent level-4 query refutes `AcceptTail` (its `lvl4` field is not
+vacuous). -/
+theorem not_acceptTail_of_cons {RejF : Log → Log → Prop} {L : Log} {j : ℕ}
+    (h : consErr (kindOf (entriesOf L (pathOf L j))) L (entriesOf L (pathOf L j)) 4 0 ≠ 0) :
+    ¬ AcceptTail RejF W₀ c₀ L j := fun hT =>
+  not_truthP3_of _ (lvl_t_pos _ (by norm_num)) h hT.lvl4
 
 /-- **Control (negative)**: with `c₀ = 1` the same empty chain fails `LigeritoOut` (level 0's
 claim `1 ≠ ⟨0, f⁽⁰⁾⟩ = 0`): the claim field is not vacuous. -/

@@ -226,3 +226,154 @@ direct check, so the tail is the side to change.
 3. `FinalLaw` still needs `runLog_chain`. It also needs the register-to-log bridge for `finP i`
    (opened columns ↦ `foldAt_of_cols`) and for `finPf` (`lvsV ↦ mleP_lvW_succ`,
    `finHat ↦ mleN 7 finalAt`). These are S-G's `final` items, after 3.14.
+
+---
+
+# Pass 2: the level-4 tail fix, `FinalLaw`'s `hend`, and `FinalLaw` reduced to named obligations
+
+Base HEAD `8b0439e`. The orchestrator ruled on §5: the tail changes to match the verifier, and
+the verifier is unchanged. Built on a snapshot of HEAD (`logs/fr-build-SG2/snap.sh`) with S-G2's
+modules symlinked in, because the worktree's `FRVIR*` files are being edited by S-E8.
+`lake build FRSoundnessLigFinal FRSoundnessFront FRSoundnessRows` is green (2,301 jobs; this
+covers every module that imports the tail). No sorry. Axioms: `logs/S-G2/axioms-pass2.log`, 32
+declarations, all `propext`, `Classical.choice`, `Quot.sound`; `pfP_eq` and `ptL_four_lt` use only
+`propext` and `Quot.sound`. Source rule: 124 files, 0 findings.
+
+## P2.1 The tail fix (`FRSoundnessTailD`, `TailO`, `TailM`)
+
+Four definitions change, as ruled. The `κ_c⁽⁴⁾` items stay in the transcript, so no position
+moves.
+
+| Definition | Before | After |
+|---|---|---|
+| `lvC (i+1)` | `vNext i (c1 i)` | `vNext i (c1 i)` for `i < 4`; **`c1 4`** for `i = 4` (`lvC_succ`, `lvC_five`) |
+| `wPf` | `wNext 4 (wFold 4)`, zero-padded | **`wFold 4`**, zero-padded |
+| `finP3 i` | `(i < 4 ∧ far_{i+1}) ∨ lvC (i+1) ≠ nxSum i` | the same for `i < 4`; **`finP2 4`** for `i = 4`, so `DP3 4 = msD (DP2 4) (finP2 4) …` |
+| `DPf` | `D2 …` | **`¬ truthP3 κ L es 4 ∨ D2 …`**, with the new `lvC 5` and `wPf` |
+
+Re-proved with their statements kept: `chain_same`, `tPf_same`, `habs_P1_next`, `habs_Pf`,
+`habs_Pf_first` (P3.4 → Pf now goes through `truthC 4` and `sum_wPf`), `single_Pf` (the level-4
+background never escapes; the count of 2 now comes from `single_Pf_D2`), `hfin_P3`, `finP3_stab`
+and `DPf_stab`. `FRSoundnessCompose` (`phaseObl_of`, `kstate_of_front`, `chainStab_of`,
+`rejT_same`) needed no edit.
+
+One statement changed: **`nxSum_eq` now takes `i < 4`.** Its `i = 4` case described the old `wPf`
+and is false for the new one. Pf's sum is now `sum_wPf`.
+
+New lemmas: `lvC_succ`, `lvC_five`, `sum_wPf`, `single_Pf_D2`. `mLog4_le` moved from `TailM` to
+`TailD`.
+
+**Error rows (for §5.2's table; the error only goes down):**
+- **P3.4: `9/2^128` → 0.** `hfin_P3` at `i = 4` is `condCount_eq_zero`: the final doom
+  `finP2 4` reads no P3.4 answer, so no `κ_c⁽⁴⁾` escapes.
+- P3.0 to P3.3: `9/2^128` each, unchanged.
+- **Pf: unchanged.** At most 2 escapes per round (`2/2^256`). The background `¬ truthP3 4` is
+  fixed after P2.4 and never undooms.
+- P1.4 and P2.4: unchanged.
+- The maximum (P2.0, `2^-120.36`) and `phaseObl_of`'s `N = 239·2^128` are unchanged.
+
+`pf_round0_conflict` is removed. In its place, the control **`pf_round0_agree`** shows that
+`RejT`'s check of Pf's round 0 is now exactly the verifier's: `g(0) + g(1) = c1 4`, which is
+`claim0 Pf = claimN P1.4` with `initClaim "Pf" = free`.
+
+## P2.2 `hend` for Pf and level 4 (`FRSoundnessLigFinal`, Part F)
+
+- **`truthP3_four_of_cols`**: `finP 4`'s direct checks give `truthP3 4`. For each query, the
+  opened column's path evaluates to its cap entry, and its fold equals `Enc₄(final)[p_q]`. The
+  proof goes through `foldAt_of_cols`, and `nextMsg 4 = finalAt`.
+- **`DPf_end_chain`**: at the chain's end,
+  `DPf ↔ ¬ truthP3 4 ∨ c_{Pf} ≠ wHatL 4 · Π_{mLog₄ ≤ v < 7} (1 − ρ_v) · final̂(ρ)`. This is A.9's
+  `relPf` (`wV · padV · finHat`) at the spec. The pieces:
+  - `wHatL`: the verifier's `lvsV [1,2,3,4] w0V` at the spec;
+  - `ptL` (with `ptD`): the verifier's points `Pₖ` (`tailRegs`), with `ptL_lt`;
+  - `pfP`: Pf's challenges, read as `rchs2`;
+  - `mleP_lvW_chain`: level `k`'s table at `Pₖ` is `wHatL k`, for `k ≤ 4`;
+  - `mleN_wPf`: the padding (`mleP_pad`) and level 4's fold (`mleN_foldW`).
+- **`pf_round0_agree`**: covers `¬ RejT` for Pf's round 0.
+
+## P2.3 `FinalLaw` (`FRSoundnessLigFinal`, Part H)
+
+- **`AcceptTail RejF W₀ c₀ L j`** is what an accepted SNARK run gives on the log for the tail. Its
+  fields:
+  - `chain`: `IsChain L j`;
+  - `len`: `468 ≤ |es|`;
+  - `rejF`: `¬ RejF`;
+  - `p1`, `pf`: every P1.i and Pf round check (`Chk2`);
+  - `lvl4`: `truthP3 4`;
+  - `fin`: `relPf` in `DPf_end_chain`'s form.
+- **`not_DC_end`**: `AcceptTail` gives `¬ DC (RejC …) (Dp (DkC …))` at the chain's end. This is
+  `hend`.
+- **`finalLaw_of`**:
+  ```lean
+  theorem finalLaw_of (S : Submission) (vk : Digest) (hF : FrontLocal W₀ c₀)
+      (hFS : FrontChainStab RejF DF)
+      (hAcc : ∀ L c π, L.length ≤ logCap → ¬ Bad L → (S.V vk c π).runLog L = some true →
+        (∃ w, S.E c π L = some w ∧ Rel (S.acc vk) c w) ∨ ∃ j, AcceptTail RejF W₀ c₀ L j)
+      (hExt : ∀ L c π j, L.length ≤ logCap → ¬ Bad L → (S.V vk c π).runLog L = some true →
+        AcceptTail RejF W₀ c₀ L j →
+        (∀ p < |es|, ¬ DC (RejC RejF c₀) (Dp (DkC DF W₀ c₀)) L (es.take (p + 1))) →
+        LigeritoOut W₀ c₀ L es → ∃ w, S.E c π L = some w ∧ Rel (S.acc vk) c w) :
+      FinalLaw S vk (RejC RejF c₀) (DkC DF W₀ c₀)
+  ```
+  Here `es = entriesOf L (pathOf L j)`. Proved: `muT_lt_one`, `chainStab_of`, `not_DC_end`,
+  `not_D_prefix`, `ligerito_final_of_walk`. With `kstate_of_front`, the knowledge state at `εR`
+  needs exactly four hypotheses: `FrontObl`, `FrontChainStab`, `hAcc`, `hExt`.
+- **Controls:**
+  - `not_acceptTail_of_cons` (negative): one inconsistent level-4 query refutes `AcceptTail`;
+  - `pfP_eq`, `ptL_four_lt` (values): `pfP` is Pf's `kAt`, and `P₄` starts with `s₄`;
+  - `pf_round0_agree` (the iff above).
+
+**What is left, precisely:**
+
+1. **The front** (S-G, after INT-3):
+   - **`FrontObl RejF DF W₀ c₀`**: all of its fields (`loc`, `rej`, `ms`, `habs`, `handoff`,
+     `hsingle`, `hfin`, `hstab`) for concrete `RejF`, `DF`, `W₀ = ι ∘ w0F Wrs cells κ′` and
+     `c₀ = v*`.
+   - **`FrontChainStab RejF DF`**.
+   - The row Spartan unit exists (`FRSoundnessRows`). The Z/L and S units, and the RS0 … B′ dooms,
+     are not built.
+   - INT-3 owns the node `truthS1`/`sh_reads_chain_only`, `truthB′` at `J_f = 9`, and the E4-end
+     binder in `truthE4`. They enter only through `DF` and `hExt`.
+2. **`hAcc`** (not INT-3):
+   - `runLog_chain`: an accepted run's FS entries are the chain of a log entry. The tools are
+     `fsQ_gen` (S-0) and `¬ Bad` (no repeated query: unique preimages for `pathOf`).
+   - The `W` branch: the proof is copied and `Rel` is decided (§5.4).
+   - The finals in log terms:
+     - P1.i round checks: `roundOpsK`'s semantics against `Chk2`, with `lvC i` equal to the
+       verifier's claim registers. For `i ≥ 1` this is `finPLow` plus `foldAt_of_cols` on P2.i's
+       `askCol`/Merkle ops. For `i = 0` it is the front's `c₀`.
+     - Pf: `pf_round0_agree` and `finP4`'s `assertEq`.
+     - `lvl4`: `finP4`'s `encFlag` (`run_encOps`: `encVal = encAt 4 finalAt`) plus
+       `truthP3_four_of_cols`.
+     - `fin`: `relPf` with `wV = wHatL 4` (the reads `sRegs`/`kcOf`/`ysOf`/`tailRegs` ↦
+       `sAt`/`kcAt`/`qPos`/`ptL`), `padV = Π (1 − pfP v)` (characteristic 2), and
+       `finHat = mleN 7 finalAt pfPt` (`eqTableK`).
+     - `w0V = mleP (nrP 0) W₀ (ptL 0)` is the front's (`weight_mle`, `mleN_w0F`).
+   - I did not attempt `runLog_chain`. It needs `V`'s run semantics on the hashed trace
+     (`accWith`, `semIR` over the log's answers), which did not fit this pass.
+3. **`hExt`** (the front plus S-H2):
+   - from no doom on every front prefix and `LigeritoOut.claim0`/`level0_committed`: the PIOP
+     truths on `f⁽⁰⁾`, then `leaf_sound`/`node_sound`, which give `Rel`;
+   - `S.E c π L` is the extractor's output by `ext_good_tape`'s `'N'` case, which takes
+     `LigeritoOut.close`/`agree` per level.
+
+## P2.4 Files and times
+
+| Module | Code (HEAD → now) | Theorems | Wall (sequential) | Type checking (items > 100 ms) | Max RSS |
+|---|---|---|---|---|---|
+| `FRSoundnessTailD` | 190 → 205 | 22 → 25 | 17.9 s | 4.92 s, 3.70 s (`rounds_check`/`phOf_check`, as before) | 3.21 GB |
+| `FRSoundnessTailO` | 268 → 302 | 26 → 28 | 11.2 s | 1.28 s | 2.89 GB |
+| `FRSoundnessTailM` | 250 → 261 | 22 → 21 | 9.4 s | 0.33 s | 2.76 GB |
+| `FRSoundnessCompose` | 324 (unchanged) | 23 | 16.1 s | 1.87, 1.27, 2.07, 1.25 s | 2.95 GB |
+| `FRSoundnessLigFinal` | 337 → 449 | 36 → 45 | 11.9 s | 1.25 s (`lig_pos_check`), 0.16 s | 2.88 GB |
+
+Logs: `logs/S-G2/profile2-*.log` and `time2-*.log`. Code lines are from the core's `loc.py`. No
+`decide` runs over a table, a layout or a program.
+
+## P2.5 Open questions
+
+1. §5.2's P3 row should read `9/2^128` for levels 0–3 and 0 for level 4 (P2.1). The blueprint's
+   A.10 rows P3.4 and Pf should say: "P3.4: no escape; Pf: background `¬ truthP3 4` (`finP 4`'s
+   direct check), claim `c1 4`, weight `wFold 4` padded". A.9 is unchanged.
+2. Who takes `runLog_chain` and the finals-to-log bridges in `hAcc`? These are S-0/S-F's
+   `exec_fin*` semantics and S-G's log side.

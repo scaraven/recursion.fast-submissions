@@ -9,7 +9,8 @@ what lies before P1.0).
 
 * **Part A: the level chain.** `lvW i` (`W₀`, then `nextW`), `lvC i` (`c₀`, then `vNext` of
   P1.(i−1)'s final claim `c1`), P1.i's tables `lvT i`, the folded claim's truth `foldSum i`
-  (`⟨foldW Wᵢ, fold_z(f⁽ⁱ⁾)⟩`), Pf's tables `tPf` (`[W_f, final]`, `W_f` the zero-padded `wNext`).
+  (`⟨foldW Wᵢ, fold_z(f⁽ⁱ⁾)⟩`), Pf's tables `tPf` (`[W_f, final]`, `W_f` the zero-padded `wFold 4`:
+  level 4's queries are checked directly by `finP 4`, not batched; S-G2 pass 2).
   `chain_same`: all of them read only what lies before their level's start.
 * **Part B: the dooms.**
   - `D1 i` (P1.i): the intermediate fold is far, or the word is close and the asserted rounds'
@@ -17,9 +18,10 @@ what lies before P1.0).
   - `DCi i` (C.i): `¬ truthP2`, or the word is close and the folded claim is false.
   - `DP2 i` (P2.i): `msD` over `DCi i` with `finP2 i` (a query inconsistent, or close, the next
     message the fold, and the folded claim false).
-  - `DP3 i` (P3.i): `msD` over `DP2 i` with `finP3 i` (the next level is far, or its initial
-    claim is false).
-  - `DPf` (Pf): `D2` over K on `[W_f, final]`.
+  - `DP3 i` (P3.i): `msD` over `DP2 i` with `finP3 i` (`i < 4`: the next level is far, or its
+    initial claim is false; `i = 4`: P2.4's final doom, unchanged, since `κ_c⁽⁴⁾` is unused).
+  - `DPf` (Pf): a queried level-4 fold is not `Enc₄(final)` there, or `D2` over K on
+    `[W_f, final]` from `c1 4`.
   - **`DT k`**: phase `k`'s doom for `k = 26 … 51`.
 * **Part C: the asserted checks** `RejT`: some answered round of P1.i or Pf fails its check.
 * **Part D: the position facts** (checked once): the phase bounds `phOf_bounds`, the rounds'
@@ -55,11 +57,12 @@ noncomputable def lvW : ℕ → Log → Log → ℕ → K
   | 0 => W₀
   | i + 1 => fun L es => nextW (kindOf es) es i (lvW i L es)
 
-/-- Level `i`'s initial claim (P1.i's; `lvC 5` is Pf's). -/
+/-- Level `i`'s initial claim (P1.i's; `lvC 5` is Pf's: P1.4's final claim, as `finP 4` asserts). -/
 noncomputable def lvC : ℕ → Log → Log → K
   | 0 => c₀
   | i + 1 => fun L es =>
-    vNext (kindOf es) L es i (clR2 (p1Start i) 32 readK chK (lvC i) L es (hEll i))
+    if i < 4 then vNext (kindOf es) L es i (clR2 (p1Start i) 32 readK chK (lvC i) L es (hEll i))
+    else clR2 (p1Start i) 32 readK chK (lvC i) L es (hEll i)
 
 /-- P1.i's final claim (after its `ℓᵢ` rounds). -/
 noncomputable def c1 (i : ℕ) (L es : Log) : K :=
@@ -77,9 +80,9 @@ noncomputable def wFold (i : ℕ) (L es : Log) : ℕ → K :=
 noncomputable def foldSum (i : ℕ) (L es : Log) : K :=
   ∑ x ∈ range (2 ^ mLog (kindOf es) i), wFold W₀ i L es x * foldMsg (kindOf es) L es i x
 
-/-- Pf's weight: level 4's `wNext`, zero past its `2^mLog` message (`P30`/`N30`: `2^5`). -/
+/-- Pf's weight: level 4's folded table, zero past its `2^mLog` message (`P30`/`N30`: `2^5`). -/
 noncomputable def wPf (L es : Log) (x : ℕ) : K :=
-  if x < 2 ^ mLog (kindOf es) 4 then wNext (kindOf es) es 4 (wFold W₀ 4 L es) x else 0
+  if x < 2 ^ mLog (kindOf es) 4 then wFold W₀ 4 L es x else 0
 
 /-- Pf's tables `[W_f, final]` over 7 variables. -/
 noncomputable def tPf (L es : Log) : Array (Array K) := tabs (wPf W₀ L es) (finalAt es) 7
@@ -112,8 +115,12 @@ theorem chain_same (hF : FrontLocal W₀ c₀) : ∀ i ≤ 5, ∀ {L es L' es' :
     refine ⟨?_, ?_⟩
     · show nextW (kindOf es) es i (lvW W₀ i L es) = nextW (kindOf es') es' i (lvW W₀ i L' es')
       rw [hW, hk, nextW_same h hi' _ hnx]
-    · show vNext (kindOf es) L es i (clR2 (p1Start i) 32 readK chK (lvC c₀ i) L es (hEll i)) =
-        vNext (kindOf es') L' es' i (clR2 (p1Start i) 32 readK chK (lvC c₀ i) L' es' (hEll i))
+    · show (if i < 4 then vNext (kindOf es) L es i
+            (clR2 (p1Start i) 32 readK chK (lvC c₀ i) L es (hEll i))
+          else clR2 (p1Start i) 32 readK chK (lvC c₀ i) L es (hEll i)) =
+        (if i < 4 then vNext (kindOf es') L' es' i
+            (clR2 (p1Start i) 32 readK chK (lvC c₀ i) L' es' (hEll i))
+          else clR2 (p1Start i) 32 readK chK (lvC c₀ i) L' es' (hEll i))
       rw [clR2_same hC (h.1.mono (by omega)), hk, vNext_same h hi' _ hnx]
 
 variable (hF : FrontLocal W₀ c₀) {L es L' es' : Log} {p : ℕ} (h : Same L es L' es' p) {i : ℕ}
@@ -159,8 +166,7 @@ theorem tPf_same (hp : pfStart ≤ p) : tPf W₀ L es = tPf W₀ L' es' := by
   have hk := h.kind h1
   have hw : wPf W₀ L es = wPf W₀ L' es' := by
     funext x
-    simp only [wPf, hk, wFold_same hF h (show 4 < 5 by norm_num) (by omega),
-      wNext_same h (show 4 < 5 by norm_num) _ (by omega)]
+    simp only [wPf, hk, wFold_same hF h (show 4 < 5 by norm_num) (by omega)]
   have hf : finalAt es = finalAt es' := by
     funext x
     have h46 : cStart 4 = phStart 47 := rfl
@@ -174,6 +180,19 @@ theorem lvC5_same (hp : pfStart ≤ p) : lvC c₀ 5 L es = lvC c₀ 5 L' es' :=
   (chain_same hF 5 le_rfl h (by simpa [lvB] using hp)).2
 
 end ChainPf
+
+/-- Below level 4, level `i + 1`'s initial claim is P3.i's batched claim. -/
+theorem lvC_succ (c₀ : Log → Log → K) {i : ℕ} (hi : i < 4) (L es : Log) :
+    lvC c₀ (i + 1) L es = vNext (kindOf es) L es i (c1 c₀ i L es) := by
+  show (if i < 4 then vNext (kindOf es) L es i (c1 c₀ i L es) else c1 c₀ i L es) = _
+  exact ite_pos' hi _ _
+
+/-- **Pf's initial claim is P1.4's final claim** (`finP 4`: `claim0 Pf = claimN P1.4`). -/
+theorem lvC_five (c₀ : Log → Log → K) (L es : Log) : lvC c₀ 5 L es = c1 c₀ 4 L es := by
+  show (if 4 < 4 then vNext (kindOf es) L es 4 (c1 c₀ 4 L es) else c1 c₀ 4 L es) = _
+  exact ite_neg' (by norm_num) _ _
+
+theorem mLog4_le (κ : Kind) : mLog κ 4 ≤ 7 := by cases κ <;> decide
 
 /-! ## Part B: the dooms -/
 
@@ -210,15 +229,20 @@ noncomputable def nxSum (i : ℕ) (L es : Log) : K :=
     ∑ y ∈ range (2 ^ nrP (i + 1) (kindOf es)), lvW W₀ (i + 1) L es y * fTab (kindOf es) L es (i + 1) y
   else ∑ x ∈ range (2 ^ 7), wPf W₀ L es x * finalAt es x
 
-/-- P3.i's final doom: the next level is far, or its initial claim is false. -/
+/-- P3.i's final doom: the next level is far, or its initial claim is false (`i < 4`); P2.4's
+final doom (`i = 4`: `finP 4` does not batch, so `κ_c⁽⁴⁾` changes nothing). -/
 def finP3 (i : ℕ) (L es : Log) : Prop :=
-  (i < 4 ∧ farL (kindOf es) L es (i + 1)) ∨ lvC c₀ (i + 1) L es ≠ nxSum W₀ i L es
+  if i < 4 then farL (kindOf es) L es (i + 1) ∨ lvC c₀ (i + 1) L es ≠ nxSum W₀ i L es
+  else finP2 W₀ c₀ i L es
 
 /-- **P3.i's doom** (`msD` over P2.i's). -/
 def DP3 (i : ℕ) : Log → Log → Prop := msD (DP2 W₀ c₀ i) (finP3 W₀ c₀ i) (p3S0 i) 5
 
-/-- **Pf's doom** (`D2` over K, 7 rounds). -/
-def DPf : Log → Log → Prop := D2 pfStart 32 readK chK (lvC c₀ 5) (fun _ => 7) e2 (tPf W₀)
+/-- **Pf's doom**: a queried level-4 fold is not the final codeword's symbol (`finP 4`'s direct
+check fails), or `D2` over K, 7 rounds, from P1.4's final claim. -/
+def DPf (L es : Log) : Prop :=
+  ¬ truthP3 (kindOf es) L es 4 ∨
+    D2 pfStart 32 readK chK (lvC c₀ 5) (fun _ => 7) e2 (tPf W₀) L es
 
 /-- **The tail's phase dooms** (`k = 26 + 5i + t`: P1.i, C.i, P2.i, Q, P3.i; `k = 51`: Pf). -/
 def DT (k : ℕ) : Log → Log → Prop :=
