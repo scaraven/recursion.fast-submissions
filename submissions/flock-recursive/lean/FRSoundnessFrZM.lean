@@ -15,7 +15,8 @@ import FRSoundnessFrBind
 * **`peL_node`**, **`peL_leaf`**: Z2's `P^e` is the verifier's `targetS` (`specC`) at Z1's
   register point.
 * **`ind_iff`**: `nodeLayout`'s `Ind` (the verifier's kind intervals) is `nodeBK`'s class.
-* The leaf's Lc claim: **`trueL_one`** (every kind: RS claim 2's true value is `ẑ(r_k, r_blk)`),
+* The leaf's Lc claim: **`trueL_one`** (every kind: RS claim 2's true value is `ẑ(r_k, r_blk)`
+  weighted by the kind factor `kfT`, revision 3.16),
   **`zfL_leaf`**, **`pendLc_pendBad`** (L3β's pending doom is RS0's `PendBad` at claim 2), and
   **`rejLc2_ok`** (`finLc` (ii)'s failure on a leaf is a `RejOK`). The node's L3/L3β wait for
   revision 3.16 (INT-5).
@@ -444,11 +445,12 @@ theorem ptOf_rbLc (es : Log) :
     List.getElem?_range (show 8 + l.val < mm 6 (kindOf es) by unfold mm qL at *; omega),
     Option.map_some, Option.getD_some]
 
-/-- **RS claim 2's true value is `ẑ(r_k, r_blk)`** at L2's challenges and Z3's block point (every
-kind). -/
+/-- **RS claim 2's true value is the kind-weighted `ẑ(r_k, r_blk)`** at L2's challenges and Z3's
+block point (every kind; the weight `kfT` is a node's kind factor `B_β(t)`, a leaf's `1`). -/
 theorem trueL_one (L es : Log) : trueL (kindOf es) L es 1 =
     ∑ t ∈ range (2 ^ qL (kindOf es)), ∑ j ∈ range (2 ^ 14),
-      eqAtR (ptOf 14 (rkL es)) j * eqAtR (rbLc es) t * zW (kindOf es) L es (j + 2 ^ 14 * t) := by
+      eqAtR (ptOf 14 (rkL es)) j * eqAtR (rbLc es) t * kfT (kindOf es) es t *
+        zW (kindOf es) L es (j + 2 ^ 14 * t) := by
   rw [← ptOf_rkL, ← ptOf_rbLc]
   generalize kindOf es = κ
   have hm := kind_m κ
@@ -464,12 +466,13 @@ theorem trueL_one (L es : Log) : trueL (kindOf es) L es 1 =
       eqAtR, ← Fin.prod_univ_eq_prod_range]
     refine prod_congr rfl fun l _ => ?_
     simp [ptOf, Array.getD_eq_getD_getElem?, List.getD_eq_getElem?_getD]
-  have hg : ∀ u : Fin (2 ^ nrP 0 κ), gL κ es 1 u = eqAtR (ptOf (nrP 0 κ) lP) u := by
+  have hg : ∀ u : Fin (2 ^ nrP 0 κ), gL κ es 1 u =
+      eqAtR (ptOf (nrP 0 κ) lP) u * kfT κ es (u.val / 2 ^ 7) := by
     intro u
     have hl : (rsPtsL κ es).getD 1 [] = lP := by cases κ <;> rfl
     have h1 : (1 : ℕ) < (rsPtsL κ es).length := by rw [rsPtsL_length]; split_ifs <;> norm_num
     have h1' : ((1 : Fin 4) : ℕ) = 1 := rfl
-    rw [gL, h1', if_pos h1, hl, eqPts_eq _ _ (hlP.trans hP0.symm) (by simp [bitsL, hlP, hP0]),
+    rw [gL, h1', if_pos h1, if_pos rfl, hl, eqPts_eq _ _ (hlP.trans hP0.symm) (by simp [bitsL, hlP, hP0]),
       hlP, ← hP0, ptOf_bitsL u.val _ u.isLt, eq_cube_eqAtR]
   have hq : ∀ (i : Fin 128) (u : Fin (2 ^ nrP 0 κ)), algebraMap F F (rsQ κ L es (nrP 0 κ) i u) =
       zW κ L es (i.val + 2 ^ 7 * u.val) := by
@@ -478,28 +481,40 @@ theorem trueL_one (L es : Log) : trueL (kindOf es) L es 1 =
     have h2 : (i.val + 2 ^ 7 * u.val) % 128 = i.val := by have := i.isLt; omega
     simp only [rsQ, zW, Algebra.algebraMap_self, RingHom.id_apply, h1]
     congr 2; exact Fin.ext h2.symm
+  set g : ℕ → F := fun b => kfT κ es (b / 2 ^ 14) * zW κ L es b with hgdef
   have step1 : trueL κ L es 1 = ∑ u ∈ range (2 ^ (qL κ + 7)), ∑ i ∈ range (2 ^ 7),
-      eqAtR (ptOf 7 xL) i * eqAtR (ptOf (qL κ + 7) lP) u * zW κ L es (i + 2 ^ 7 * u) := by
+      eqAtR (ptOf 7 xL) i * eqAtR (ptOf (qL κ + 7) lP) u * g (i + 2 ^ 7 * u) := by
     unfold trueL
     simp only [hcw, hg, hq, mul_sum]
-    rw [sum_comm, hP0]
-    rw [Fin.sum_univ_eq_sum_range (fun y => ∑ x : Fin 128, eqAtR (ptOf 7 xL) x *
-      (eqAtR (ptOf (qL κ + 7) lP) y * zW κ L es (x + 2 ^ 7 * y)))]
+    rw [sum_comm, hP0, Finset.sum_range]
     refine sum_congr rfl fun y _ => ?_
-    rw [Fin.sum_univ_eq_sum_range (fun x => eqAtR (ptOf 7 xL) x *
-      (eqAtR (ptOf (qL κ + 7) lP) y * zW κ L es (x + 2 ^ 7 * y)))]
-    exact sum_congr rfl fun x _ => by ring
+    rw [Finset.sum_range]
+    refine sum_congr rfl fun x _ => ?_
+    have hx := x.isLt
+    simp only [hgdef]
+    rw [show (x.val + 2 ^ 7 * y.val) / 2 ^ 14 = y.val / 2 ^ 7 by omega]
+    ring
   have hP7 : ptOf 7 (xL ++ lP) = ptOf 7 xL := by
     funext l; simp only [ptOf, List.getD_eq_getElem?_getD,
       List.getElem?_append_left (show l.val < xL.length by rw [hxL]; exact l.isLt)]
   have hPd : (xL ++ lP).drop 7 = lP := by rw [List.drop_left' hxL]
-  rw [step1, ← sum_eqAtR_split 14 (qL κ) (fun b => zW κ L es b), show 14 + qL κ = 7 + (qL κ + 7) by omega,
+  have hR : ∀ P : List F, (∑ t ∈ range (2 ^ qL κ), ∑ j ∈ range (2 ^ 14),
+      eqAtR (ptOf 14 P) j * eqAtR (ptOf (qL κ) (P.drop 14)) t * kfT κ es t *
+        zW κ L es (j + 2 ^ 14 * t)) = ∑ t ∈ range (2 ^ qL κ), ∑ j ∈ range (2 ^ 14),
+      eqAtR (ptOf 14 P) j * eqAtR (ptOf (qL κ) (P.drop 14)) t * g (j + 2 ^ 14 * t) := fun P =>
+    sum_congr rfl fun t _ => sum_congr rfl fun j hj => by
+      rw [mem_range] at hj
+      simp only [hgdef]
+      rw [show (j + 2 ^ 14 * t) / 2 ^ 14 = t by omega]
+      ring
+  rw [step1, hR, ← sum_eqAtR_split 14 (qL κ) g, show 14 + qL κ = 7 + (qL κ + 7) by omega,
     sum_eqAtR_split, hP7, hPd]
 
 /-- On a leaf, `z̄_chain(r_k)` is RS claim 2's true value (every block a `chain` block). -/
 theorem zfL_leaf {L es : Log} (hn : (kindOf es).isNode = false) :
     zfL zlmFR L es 0 = trueL (kindOf es) L es 1 := by
   rw [trueL_one]
+  simp only [kfT, hn, Bool.false_eq_true, if_false, mul_one]
   unfold zfL zfoldK mle IndF
   have hI : ∀ t, zlmFR.Ind (kindOf es) 0 t = 1 := fun t => by simp [zlmFR, hn]
   simp only [hI, mul_one, eq_cube_eqAtR, zN, join, mul_sum]

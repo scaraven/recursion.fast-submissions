@@ -487,7 +487,7 @@ theorem trueL_two (L es : Log) :
     have hl : (rsPtsL κ es).getD 2 [] = sP := by cases κ <;> rfl
     have h2 : (2 : ℕ) < (rsPtsL κ es).length := by rw [rsPtsL_length]; split_ifs <;> norm_num
     have h2' : ((2 : Fin 4) : ℕ) = 2 := rfl
-    rw [gL, h2', if_pos h2, hl, eqPts_eq _ _ (hsP.trans hP0.symm) (by simp [bitsL, hsP, hP0]),
+    rw [gL, h2', if_pos h2, if_neg (show (2 : ℕ) ≠ 1 by norm_num), mul_one, hl, eqPts_eq _ _ (hsP.trans hP0.symm) (by simp [bitsL, hsP, hP0]),
       hsP, ← hP0, ptOf_bitsL u.val _ u.isLt, eq_cube_eqAtR]
   have hq : ∀ (i : Fin 128) (u : Fin (2 ^ nrP 0 κ)), algebraMap F F (rsQ κ L es (nrP 0 κ) i u) =
       zW κ L es (i.val + 2 ^ 7 * u.val) := by

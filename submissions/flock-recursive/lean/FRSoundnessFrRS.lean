@@ -4,8 +4,8 @@ import FRSoundnessFrB
 /-!
 # RS1: the ring-switching batch (`hfin` at RS1's range `(312, 4)`)
 
-* **`gL`, `sL`**: the four claims' weights `g_j(u) = eq(p_j, u)` on level 0's cube and their RS0
-  slices (a leaf's fourth claim is `0`).
+* **`gL`, `sL`**: the four claims' weights `g_j(u) = eq(p_j, u)` on level 0's cube (claim 2 times
+  the node's kind factor `kfT`, revision 3.16) and their RS0 slices (a leaf's fourth claim is `0`).
 * **`DRS0`** (RS0's doom at its absorb): the level-0 word is far, a public cell is false, or some
   slice is false (`¬ truthRS0`).
 * **`vRSL_eq`**: `v_RS = Σ_j κ^j T_j` (`rsT`); **`fipL_eq`**: `⟨W_rs, f⁽⁰⁾⟩ = Σ_j κ^j rsTruth_j`
@@ -21,10 +21,12 @@ set_option linter.constructorNameAsVariable false
 
 /-! ## The claims' weights and slices -/
 
-/-- Claim `j`'s weight on level 0's cube: `eq(p_j, cube u)` (`0` for a leaf's fourth claim). -/
+/-- Claim `j`'s weight on level 0's cube: `eq(p_j, cube u)`, times the kind factor
+`kfT κ es (u / 2^7)` for claim 2 (`j = 1`; revision 3.16), `0` for a leaf's fourth claim. -/
 noncomputable def gL (κ : Kind) (es : Log) (j : Fin 4) (u : Fin (2 ^ nrP 0 κ)) : F :=
   if j.val < (rsPtsL κ es).length then
-    eqPts ((rsPtsL κ es).getD j []) (bitsL ((rsPtsL κ es).getD j []).length u) else 0
+    eqPts ((rsPtsL κ es).getD j []) (bitsL ((rsPtsL κ es).getD j []).length u) *
+      (if j.val = 1 then kfT κ es (u.val / 2 ^ 7) else 1) else 0
 
 /-- Claim `j`'s RS0 slices (`0` for a leaf's fourth claim). -/
 def sL (κ : Kind) (es : Log) (j : Fin 4) (i : Fin 128) : F :=
@@ -88,7 +90,7 @@ theorem fipL_eq (κ : Kind) (L es : Log) :
 /-! ## `hfin` at RS1 -/
 
 theorem gL_congr {es es' : Log} (h : Agree es es' 311) (κ : Kind) : gL κ es = gL κ es' := by
-  funext j u; simp only [gL, rsPtsL_congr h κ]
+  funext j u; simp only [gL, rsPtsL_congr h κ, kfT_congr (h.mono (by norm_num)) κ]
 
 theorem sL_congr {es es' : Log} (h : Agree es es' 313) (κ : Kind) : sL κ es = sL κ es' := by
   funext j i

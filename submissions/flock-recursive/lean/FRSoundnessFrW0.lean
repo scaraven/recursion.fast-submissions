@@ -1,6 +1,7 @@
 -- New for `flock-recursive` (BLUEPRINT A.9 `finRS`/`finB′`/`finPf`, A.10 B′ → P1.0; stage S-G5).
 import FRSoundnessFront
 import FRSoundnessWeights
+import FRKindWeight
 
 /-!
 # The front's level-0 weight `W₀` and claim `c₀`, read off the chain
@@ -12,8 +13,9 @@ the readers of `FRSoundnessStepA`, in the form of the verifier's registers:
 * **the claim points** (`zSrc`, `lcSrc`, `shSrc`, `eSrc`, `rsPtIx`): `zPtL`, `lcPtL`, `shPtL`,
   `ePtL`, `rsPtsL` (Z, Lc, Sh at the kind's `m`, and E4's `r′` for a node);
 * **RS1's coordinates** `r″` (`rsRL`) and `κ` (`rsKL`); **B′'s** `κ′` (`kpL`);
-* **`wrsL`**: the RS weight table `y ↦ Σ_j κ^j Φ_{r″}(eq(p_j, y))`, whose extension is
-  `rsWeightS` (`weight_mle`);
+* **`wrsL`**: the RS weight table `y ↦ Σ_j κ^j Φ_{r″}(eq(p_j, y)·f_j(y))`, `f_1` the node's
+  kind factor `kfT` (revision 3.16; `1` on a leaf), whose extension is `rsWeightS`
+  (`weight_mle`, `rsWeight_kind_eq`);
 * **`W₀L := ι ∘ w0F wrsL (cellsOf κ) κ′`** (`w0V`'s table: the RS weight and the public cells);
 * **`c₀L := ι v*`** with `v* = v_RS + [node] κ′²·pubH(κ′)` (`relB`'s `vStar`): `v_RS` is `rsV`
   over RS0's slices (`sliceL`), `pubH` over the seed's `vk` and the statement's `c₁`, `c₂`
@@ -77,10 +79,23 @@ def kpL (es : Log) : F := fAt es 317 0
 /-- Bit `l` of `y`, `n` coordinates, as F (the cube point). -/
 def bitsL (n y : ℕ) : List F := (List.range n).map fun l => if y.testBit l then 1 else 0
 
-/-- **The RS weight table** (`rsWeightS`'s table): `y ↦ Σ_j κ^j Φ_{r″}(eq(p_j, cube y))`. -/
+/-! ## The node's kind factor (revision 3.16, R-V-M1) -/
+
+/-- Node kind `i`'s indicator on block `t` (`finLc`'s `v_i` order `KW.nodeKinds`; the verifier's
+intervals `KW.ivsQ 16`). -/
+def indKW (i : Fin 8) (t : Fin (2 ^ 16)) : F := selOf (KW.ivsQ 16 (KW.nodeKinds.getD i .free)) t
+
+/-- **The kind factor of block `t`**: a node's `B_β(t) = Σ_i β^i Ind_i(t)` with L3β's `β`
+(position 98); a leaf's is `1` (`rsWeight` passes `β = 1` off a node). -/
+noncomputable def kfT (κ : Kind) (es : Log) (t : ℕ) : F :=
+  if κ.isNode then kindFac indKW (fAt es 98 0) ⟨t % 2 ^ 16, Nat.mod_lt _ (by positivity)⟩ else 1
+
+/-- **The RS weight table** (`rsWeightS`'s table): `y ↦ Σ_j κ^j Φ_{r″}(eq(p_j, cube y)·f_j(y))`,
+`f_1(y) = kfT κ es (y / 2^7)` (claim 2's kind factor on the block of `y`), `f_j = 1` otherwise. -/
 noncomputable def wrsL (κ : Kind) (es : Log) (y : ℕ) : F :=
   ((rsPtsL κ es).zipIdx.map fun p =>
-    rsKL es ^ p.2 * Phi (rsRL es) (eqPts p.1 (bitsL p.1.length y))).sum
+    rsKL es ^ p.2 * Phi (rsRL es) (eqPts p.1 (bitsL p.1.length y) *
+      if p.2 = 1 then kfT κ es (y / 2 ^ 7) else 1)).sum
 
 /-- Slice `i` of RS claim `j` (`sv`: RS0's message, claim-major, 16 bytes each). -/
 def sliceL (es : Log) (j i : ℕ) : F := readF (msgAt es 312) (rsOff j i)
@@ -167,10 +182,13 @@ theorem rsCoL_congr (h : Agree es es' 317) {p : ℕ} (hp : p < 8) : rsCoL es p =
 theorem rsRL_congr (h : Agree es es' 317) : rsRL es = rsRL es' :=
   List.map_congr_left fun p hp => rsCoL_congr h (by simp at hp; omega)
 
+theorem kfT_congr (h : Agree es es' 99) (κ : Kind) : kfT κ es = kfT κ es' := by
+  funext t; simp only [kfT, fAt_congr h (show 98 < 99 by norm_num)]
+
 theorem wrsL_congr (h : Agree es es' 317) (κ : Kind) : wrsL κ es = wrsL κ es' := by
   funext y
   simp only [wrsL, rsPtsL_congr (h.mono (by norm_num)) κ, rsRL_congr h, rsKL,
-    rsCoL_congr h (show 7 < 8 by norm_num)]
+    rsCoL_congr h (show 7 < 8 by norm_num), kfT_congr (h.mono (by norm_num)) κ]
 
 theorem vRSL_congr (h : Agree es es' 317) (κ : Kind) : vRSL κ es = vRSL κ es' := by
   have hs : ∀ j i, sliceL es j i = sliceL es' j i := fun j i => by

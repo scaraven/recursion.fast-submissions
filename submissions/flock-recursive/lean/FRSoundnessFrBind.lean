@@ -64,7 +64,7 @@ theorem trueL_zero (L es : Log) : trueL (kindOf es) L es 0 = (pzT L es).eval (la
     intro u
     have hl : (rsPtsL κ es).getD 0 [] = zP := by cases κ <;> rfl
     have h0 : (0 : ℕ) < (rsPtsL κ es).length := by rw [rsPtsL_length]; split_ifs <;> norm_num
-    rw [gL, Fin.val_zero, if_pos h0, hl, eqPts_eq _ _ hzP (by simp [bitsL, hzP]), hzP,
+    rw [gL, Fin.val_zero, if_pos h0, if_neg (show (0 : ℕ) ≠ 1 by norm_num), mul_one, hl, eqPts_eq _ _ hzP (by simp [bitsL, hzP]), hzP,
       ptOf_bitsL u.val _ u.isLt, eq_cube_eqAtR]
   have hq : ∀ (i : Fin 128) (u : Fin (2 ^ (nrP 0 κ))), algebraMap F F (rsQ κ L es (nrP 0 κ) i u) =
       zW κ L es (i.val + 2 ^ 7 * u.val) := by

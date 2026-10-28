@@ -74,7 +74,8 @@ theorem trueL_three {L es : Log} (hn : (kindOf es).isNode = true) :
   have h3 : ((3 : Fin 4) : ℕ) = 3 := rfl
   have hg : ∀ u : Fin (2 ^ nrP 0 κ), gL κ es 3 u = eqPts (rE4 es) (bitsL 23 u) := by
     intro u
-    rw [gL, h3, if_pos (by rw [hlen]; norm_num), rsPtsL_three hn, ePtL_eq, hlr]
+    rw [gL, h3, if_pos (by rw [hlen]; norm_num), if_neg (show (3 : ℕ) ≠ 1 by norm_num), mul_one,
+      rsPtsL_three hn, ePtL_eq, hlr]
   have hzC : zC 23 L es = fun y : Fin (2 ^ 23) => fF κ L es y := by
     funext y; simp [zC, hκ]
   have hb : ∀ i : Fin 128, bb i = bitBasis i := fun i => by
