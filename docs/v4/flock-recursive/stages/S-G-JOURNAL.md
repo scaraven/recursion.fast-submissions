@@ -280,3 +280,40 @@ symlinked; `.lake` copied from `fr-build-cert`). Every `lake`/`lean` run used th
 57. **`FRKState`.** `FinalLaw` (the contract's `final` for `muT`), `kstate_of` and `ks_of`. Stopped
     there: the context is long. Items 3 and 4, the rest of item 2, and S-G2's chain walk remain
     (RESULT S-G1g §7).
+
+## 2026-10-27/28 (S-G1h)
+
+58. **The `hstab` ruling.**
+    - `StabExt` (inside a multi-squeeze phase, `s0 + 1 < |es|`, `|as| ≤ r`) replaces "every
+      formal extension" in `hloc_of`, `StepObl`, `TruthStable`, `RejOK`, `stepObl_compose` and
+      `PhaseObl`. `PhaseObl` also gets the guard `phOf (|X|−1) = k`.
+    - `hloc_of`'s congruence now runs over `extCount`'s completions (`Finset.filter_congr`).
+    - `noHide` loses `capOK`: `capOK_of_stabExt` makes a reached cap a real entry, and
+      `wordK_stabX` is the reusable read.
+    - Everything downstream rebuilt on the first try.
+59. **PIOP truths.**
+    - `nodeKind`/`truthZN` (A.6 per block);
+    - `rowMat`, `matVec_rowMat`, `sat_rowMat_iff` (`truthE`, `truthLr`, `lRows_fit`);
+    - `rsQ`/`truthRS0`/`rs1_of_not_truthRS0`;
+    - `zN`/`truthLc`/`trueSum_of_truthLc`.
+60. **Weights** (`FRSoundnessWeights`).
+    - `mleN` of `wSplit` (`uHat`), `foldW`, `gW` (`tensorTwin`) and `wNext`;
+    - `nextW`, with `truthP1_next` and `mleN_nextW`;
+    - `wE`/`sum_wE`/`mle_wE`, `w0F`/`truthP1_zero`/`mleN_w0F`, `eqCellK_eq`.
+61. **The walk** (`FRSoundnessWalk`).
+    - `pathOf_take` needs no `¬ Bad` (`List.findIdx?_take`); `not_bad_take`; `pathOf_prefix`.
+    - `ChainStab`, `walk_fwd`, `walk_back`.
+    - `DH_chainStab`, `DH_of_noEsc`, `consSet_eq_of_noEsc`: Hide is now fully carried to `final`.
+62. **Item 3 begun** (`FRSoundnessPhases`): `batch_single`, `batch_N_le`.
+63. **Lean pitfalls.**
+    - `dif_pos`, `dif_neg`, `if_neg` and `dite_cond_eq_false` are deprecated in this toolchain.
+      Use `dite_eq_left`/`dite_eq_right` (or `ite_neg'`). Each deprecation warning surfaces one at
+      a time.
+    - `exact single_F_le …` on a goal `univ.filter (fun a => A ∧ ¬ B)` hit the maximum recursion
+      depth, because the decidability instances differ (`instDecidableAnd` vs
+      `Classical.propDecidable`). `convert … using 2; ext a; simp` fixes it.
+    - `rw [List.take_of_length_le _]` rewrote the wrong `take` (the log's, not the chain's). Pass
+      `(l := …)`.
+    - In `FR.Snd`, `entriesOf` is the log's. The matrix one is `Eval.entriesOf`, and `tagNode`
+      must be `RecursionFast.tagNode`, because `FR.Merkle.tagNode` shadows it.
+    - The source rule flags "partial" in comments ("partials" passes).

@@ -1387,3 +1387,231 @@ table.
 1. **The `hstab` scope** (§6 item 2). Keep a `capOK` guard in every word-reading doom, or restrict
    `StepObl.hstab` (and `PhaseObl.hstab`) to the extensions `hloc_of` uses? The latter is cleaner
    for item 4, but it re-proves `hloc_of`'s `condCount` congruence on the right-length lists only.
+
+---
+
+# S-G1h: the `hstab` ruling applied; PIOP truths (node Z targets, E, Lr, RS, L); the weight tables; the chain walk; item 3 begun
+
+Base `00d72a5` (S-G1g), built against HEAD's versions of other tracks' modules
+(`logs/fr-build-SG/snap.sh`, `WT=FR`). **Status:**
+- the ruling is applied (§1);
+- item 1 is done except the node's S truth (§2);
+- item 2 is done at the specification level (§3);
+- item 3 is begun: one generic row (§5);
+- item 4 is done (§4).
+
+`FR` builds as a whole (`logs/S-G/build-FR-S-G1h.log`, 2,286 jobs). No sorry, no warning in S-G's
+modules, no line over 100 characters. Axioms: `propext`, `Classical.choice`, `Quot.sound` only,
+for the 38 theorems of `logs/S-G/axioms-S-G1h.log`. `nodeKind_controls` uses only `propext` and
+`Quot.sound`. Source rule: 92 files, 0 findings.
+
+## 1. The ruling: `hstab` narrowed to `hloc_of`'s extensions
+
+**What changed** (`FRSoundnessDefs`):
+- **`StabExt rnd es X`** is the new scope: `X = ext (es.take (s0+1)) as`, with
+  `rnd (s0+1) = some (s0, r)`, `s0 + 1 < |es|` and `|as| ≤ r`. The formal entries then sit on
+  the phase's squeeze positions, so every absorb entry of `X` (every cap) is a real chain entry
+  before the last.
+- `hloc_of` and `muG_step_of` take `hstab` on `StabExt` only. The `condCount` congruence is now
+  taken over `extCount`'s completions (`Finset.filter_congr`), which have length `r` and are
+  nonempty.
+
+**Restated to the same scope** (statement changes to S-G's own definitions, §6):
+`StepObl.hstab`, `TruthStable` (`FRSoundnessStepB`), `RejOK.stab` and `stepObl_compose`
+(`FRSoundnessStepC`), and `PhaseObl.hstab` (`FRSoundnessStepE`). `PhaseObl.hstab` also gains the
+guard `phOf (|X| − 1) = k`, which is exactly what `stepObl_compose` consumes.
+
+**The Hide doom.**
+- **`noHide` no longer has the `capOK` guard.**
+- **`capOK_of_stabExt`**: on a `StabExt` extension that reaches level `i`'s cap, the cap is a real
+  entry. The formal positions are squeezes (`fsRnd_ok`) and the cap is an absorb (`cap_check`).
+- **`wordK_stabX`**: the reusable form for every word-reading doom of item 3. On `StabExt` with
+  `capPos i < |X|`, the level words read the same off `L.take n` and `L`.
+- `noHide_stab`: before P1.i (`hRnd = 0`), `noHide` holds on both sides; after P1.i, the cap is
+  in `X`.
+- Dropped as now unneeded: the `capOK` hypotheses of `noHide_full` and `not_noHide_of_hideL`,
+  and the `Matches` hypothesis of `consSet_eq_of_DH`. `capOK` remains as a predicate, with
+  `colOf_stab`/`wordK_stab` and the control `not_capOK_ext`.
+- Everything downstream re-proved: `hide_single`, `hide_obl`, `rounds3_obl`, `stepObl_compose`,
+  `kstate_step`, `phaseObl_false`, `rejOK_false`.
+
+## 2. Item 1: the PIOP truths (`FRSoundnessPIOP`, Parts D–G; 62 → 269 code lines)
+
+- **Part D: the node's per-block targets** (A.6, §4.2–§4.3).
+  - **`nodeKind blk : Option Block.Target`** (`none` means a `free` block: WM, the spares, L, M).
+    - Each digest chain: `streamStart`, then `streamTarget 1437760` (`= streamBytes`).
+    - Per slot: `hashA`, `hashB1 tagNode`, `hashB2`.
+    - Per WOTS slot, at offset `o`: chain `⌊o/3⌋`'s step `o mod 3` (`w43`) for `o < 399`. Then the
+      key leaf: `hashB1 tagWotsLeaf`, `streamTarget 4265 k` for `k = 1…65`, and `streamEnd41`.
+      Then the 16 path pairs: `hashB1 tagSigNode`, `hashB2`.
+  - **`truthZN`** is the node's Z truth: every non-free block satisfies its kind's block R1CS.
+    The free blocks' rows `z_k² = z_k` hold by `zBlk_bool`.
+- **Part E: E and Lr.**
+  - `rowMat sel rows a b` is a row list's matrix, as `evalM`/`evalL` read it (`entriesOf`).
+  - **`matVec_rowMat`**: `(M w)(x)` is row `x`'s linear form.
+  - **`sat_rowMat_iff`**: on rows that fit (`RowsFit`), the zerocheck tables' R1CS
+    (`FRSpartan.Sat`) holds iff every row holds.
+  - **`truthE fin`** says every compiled M row holds on `f⁽⁰⁾`; this is `SlotHolds.rows`.
+    `truthE_iff` relates it to `Sat` under `RowsFit (nodeRows fin) 21 23`, which is a hypothesis
+    (§7).
+  - **`truthLr`** says every L row holds (`lRows_sound`); `truthLr_iff` uses the proved
+    `lRows_fit`.
+- **Part F: RS.**
+  - `rsQ` is the bit planes of `f⁽⁰⁾`; `rsQ_eq_zW` relates them to `z`.
+  - **`truthRS0 g s`**: every claim's slice values are the true bit-plane claims.
+  - **`rs1_of_not_truthRS0`** is RS1's count `(7 + J′)·|F|^7`, from `rs1_joint` with `rsQ_bool`.
+- **Part G: L.**
+  - `zN` is `z` over 14 position bits and `q` block bits (`zN_join`).
+  - **`truthLc`**: Zend's `â`, `b̂` are `linAK` of the kinds' block matrices.
+  - **`trueSum_of_truthLc`**: then `â + α b̂` is L2's true sum (`lin_trueSum_kinds`).
+- **Not built:** the node's S truth (the link families of §4.2), and the leaf/node Z truths as
+  zerocheck tables over `targetS` (Z1/Z2's dooms).
+  - The leaf's S truth is `Leaf.ChainLinks`, as before.
+  - `truthB'` stays parametric. HEAD's `pubVals` still appends `List.replicate 6 0`: S-E3 has not
+    landed.
+
+## 3. Item 2: the weight tables (`FRSoundnessWeights`, new, 193 code lines)
+
+- **Extensions of ℕ-indexed tables.** `mleN n W ρ` is the MLE of `W` on `2^n` points.
+  - **`mleN_wSplit`**: the split's extension is `û(ρ₀)·W̃(ρ₁…)`, with `uHat` from A.9.
+  - **`mleN_foldW`**: binding the row variables at `s` is evaluating at `s ++ ρ`.
+  - **`mle_bitProd`** gives **`mleN_gW`**: `G̃_p` is `tensorTwin D logNMax`, the spec of
+    `tensorW`.
+  - **`mleN_wNext`**: P3.i's table adds `Σ_q eq(κ_c, bits₉(q))·tensorW(p_q, ·)`.
+- **The next level.** **`nextW W = wSplit (wNext (foldW W))`**.
+  - **`truthP1_next`** (A.10 P1.i → P1.(i+1)): from P1.i's folded claim
+    `⟨foldW W, fold_z(f⁽ⁱ⁾)⟩`, `truthC` and `truthP3`, we get
+    `truthP1 (i+1) (nextW W) (vNext c)` (`vNext_eq`, `wSplit_sum`).
+  - **`mleN_nextW`** is `finPf`'s `lvStepV` at the spec:
+    `û(ρ₀)·(W̃(sᵢ ++ ρ₁…) + Σ_q eq(κ_c, q)·tensorW(p_q, ρ₁…))`.
+- **Level 0.**
+  - `wE` is the E claim's weight `(A + κ_E B + κ_E² C)(r_E2, ·)` over `rowMat`.
+    - **`sum_wE`**: `⟨wE, f⟩ = â_M + κ_E b̂_M + κ_E² ĉ_M`.
+    - **`mle_wE`**: its extension is `M̃(r_E2, ρ)`, the spec of `evalM`.
+  - **`w0F Wrs WE cells κ′`** is the RS weight, plus `κ′·WE`, plus `κ′^(k+2)` times the cells'
+    indicators.
+    - **`truthP1_zero`**: from `v_RS = ⟨Wrs, f⟩`, `v_E = ⟨WE, f⟩` and `truthB'`, we get
+      `truthP1 0 (ι ∘ w0F) (ι v*)`.
+    - **`mleN_w0F`**: its extension has `w0V`'s shape. With **`eqCellK_eq`**, `finPf`'s
+      `eqCellK` is `eqCell`.
+- **Not stated:**
+  - `Wrs`'s extension as `rsWeight`. That is S-C's `weight_mle`, applied in `ligerito_final`.
+  - The register-level identity `lvStepV … = mleN_nextW …`. It needs the register values to
+    equal the transcript's challenges, which is S-G2's `ligerito_final`.
+
+## 4. Item 4: the chain walk (`FRSoundnessWalk`, new, 225 code lines)
+
+- **Logs and prefixes.**
+  - **`pathOf_take`**: a path ending before `t` is the same in `L.take t`. This needs no
+    `¬ Bad`, via `List.findIdx?_take`.
+  - `entriesOf_pathOf_take`, `isChain_take`.
+  - **`not_bad_take`**: a prefix of a non-bad log is non-bad.
+  - **`pathOf_prefix`**: the path to an entry of a path is the path's prefix.
+  - `pathOf_lt`, `matches_take`, `isChain_prefix`.
+- **The walk.**
+  - **`ChainStab D`**: `D` reads the same off `L.take j` and `L` on chain `j` itself.
+  - **`walk_step`**/**`walk_fwd`**: with no escape, `D` on a prefix (charged at its last entry)
+    gives `D` on the whole chain.
+  - **`walk_back`**: `¬ D` at the end gives `¬ D` on every prefix. This is A.10's "by induction
+    from Pf upwards".
+- **The Hide potential, fully discharged.**
+  - **`DH_chainStab`**.
+  - **`DH_of_noEsc`**: with no Hide escape, every chain satisfies `DH`.
+  - **`consSet_eq_of_noEsc`**: on such a chain past P1.i, `A_c = jointAgree`. This is what
+    `final` hands the extractor; `muT_lt_one` supplies `¬ EscG DH L`.
+
+## 5. Item 3, begun (`FRSoundnessPhases`, new, 27 code lines)
+
+- **`batch_single`**: at a single squeeze that batches `k + 1` claims by powers of the answer's
+  first F coordinate, at most `k·2^128` answers escape (`batch_pow_bad_le`, `single_F_le`). This
+  is `PhaseObl.hsingle`'s shape for L1, L3, Lr3, E3 and B′.
+- **`batch_N_le`**: every such count with `k ≤ 239` fits `N ≤ 2^256·deltaR`.
+- Not built:
+  - the concrete `Dk`/`Rej` per phase;
+  - the handoffs;
+  - `PhaseObl`.
+
+  `kstate_of` therefore still takes `PhaseObl` and `FinalLaw` (§7).
+
+## 6. Controls
+
+| Control | Shows |
+|---|---|
+| `nodeKind_controls` | the kinds at the regions' first blocks and `free` from WM agree with `nodeLayout`'s `Ind` |
+| `nodeKind_inner` | a chain's inner block is not `h0`-pinned (negative) |
+| `not_sat_one_row` / `sat_nil` | the row `1·1 = 0` fails the R1CS (negative); no rows always hold (positive) |
+| `truthRS0_true` | the true slice claims satisfy the RS0 truth |
+| `not_truthLc_of_ne` | a wrong `â` fails the L truth |
+| `w0F_cell` | level 0's table with one cell reads that cell, weighted `κ′²` |
+| `chainStab_const` | a doom that reads only the chain is stable |
+| `batch_single_true` | with all claims true nothing escapes |
+| `DH_seed`, `not_noHide_of_hideL`, `not_capOK_ext`, `phaseObl_false` (re-proved) | as in S-G1g |
+
+## 7. Times (sequential, one core: `taskset -c 0 lean -DElab.async=false --profile`)
+
+| Module | Code lines | Wall (≈ 3.5 s import) | Type checking | Max RSS | Log |
+|---|---|---|---|---|---|
+| `FRSoundnessDefs` | 606 | 20.0 s | 7.85 s (unchanged: `rangesOK_eq` and the `fsRnd` checks) | 3.32 GB | `logs/S-G/profile-FRSoundnessDefs-S-G1h.log` |
+| `FRSoundnessHide` | 488 | 16.3 s | 5.89 s | 3.02 GB | `logs/S-G/profile-FRSoundnessHide-S-G1h.log` |
+| `FRSoundnessPIOP` | 269 | 9.4 s | 0.43 s | 2.72 GB | `logs/S-G/profile-FRSoundnessPIOP-S-G1h.log` |
+| `FRSoundnessWeights` (new) | 193 | 11.0 s | 0.22 s | 2.73 GB | `logs/S-G/profile-FRSoundnessWeights-S-G1h.log` |
+| `FRSoundnessWalk` (new) | 225 | 7.9 s | 0.41 s | 2.68 GB | `logs/S-G/profile-FRSoundnessWalk-S-G1h.log` |
+| `FRSoundnessPhases` (new) | 27 | 6.1 s | 0.01 s | 2.66 GB | `logs/S-G/profile-FRSoundnessPhases-S-G1h.log` |
+
+`nodeKind_controls` runs `decide` on six `Ind` values (83 intervals each). It costs well under a
+second. No `decide` runs over a program, a layout scan of all blocks, or a table.
+
+## 8. Deviations
+
+1. **Statement changes to S-G's own definitions** (the ruling):
+   - `hloc_of`, `muG_step_of`, `StepObl.hstab`, `TruthStable`, `RejOK.stab`,
+     `stepObl_compose`: scope narrowed to `StabExt`;
+   - `PhaseObl.hstab`: narrowed to `StabExt` and the guard `phOf (|X|−1) = k`;
+   - `noHide`: the `capOK` guard removed;
+   - `noHide_full` and `not_noHide_of_hideL`: `hc` removed;
+   - `consSet_eq_of_DH`: `hm` removed;
+   - `noHide_stab`: now stated on `X` with `StabExt`.
+
+   No contract-facing statement changed. `kstate_of`, `ks_of` and `muT_step` keep their types.
+2. **The walk needs its own stability, `ChainStab`.** `StabExt` excludes the chain itself
+   (`s0 + 1 < |es|`), and the walk transports the doom of a prefix chain between the logs of
+   consecutive entries. S-G2 must supply `ChainStab` for the concrete doom. For `DH` it is proved
+   (`DH_chainStab`).
+3. **`nodeKind` fixes the WOTS block order** from §4.2's "consecutively" and `w43_step`'s
+   convention:
+   - chain `i`'s step `s` (byte `s = 0, 1, 2`) at offset `3i + s`;
+   - the key leaf at `399…465`;
+   - path step `t` at `466 + 2t`.
+
+   The prover's row generator must use the same order (P2's KAT).
+4. **`RowsFit (nodeRows fin) 21 23` is a hypothesis of `truthE_iff`.** It says at most `2^21` rows
+   and every cell below `2^23`. It is a fact about the compiled program, and checking it would
+   mean a `decide` over the program. `lRows_fit` is proved.
+
+## 9. Not done, in order (for the next invocation)
+
+1. **Item 3, the bulk:**
+   - the concrete `Dk` per phase (51 phases): `D3` for Z3, Lr2 and E2; `D2` for L2, S2, Lr4,
+     P1.i and Pf, plus P1's far doom; `msD` for the 15 multi-squeeze phases; `batch_single` dooms
+     for L1, L3, Lr3, E3 and B′; the absorb phases;
+   - `Rej` from the asserted round checks (`Chk2`);
+   - one handoff per phase start;
+   - `hfin` through `hfin_ml`, `hfin_seq`, `hfin_rs1` and `hfin_p2`;
+   - each word-reading doom's `hstab` through `wordK_stabX`.
+
+   A coherent first unit is the Ligerito tail P1.0 → Pf. Its truths (`truthP1/C/P2/P3/Pf`) and
+   weights (`nextW`, `truthP1_next`) are now all built.
+2. **The rest of item 1:**
+   - the node's S truth (the link families);
+   - Z1/Z2's tables over `targetS` for `truthZ`/`truthZN`.
+3. **S-G2:**
+   - `ChainStab` for the concrete doom;
+   - `ligerito_final`, which ties `lvsV`/`w0V` to `mleN_nextW`/`mleN_w0F` and `weight_mle`;
+   - `FinalLaw`.
+
+## 10. Questions for the orchestrator
+
+1. **The WOTS block order** (§8 item 3): please confirm it, or name the authoritative order, for
+   P2's dump KAT.
+2. **Who proves `RowsFit (nodeRows fin) 21 23`** (§8 item 4)? It belongs with S-E2's/S-E3's row
+   model (`mRows_le`) once `rows (compileMux (gen fin))` is linked to it.

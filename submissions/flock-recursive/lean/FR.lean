@@ -56,6 +56,9 @@ import FRSoundnessStepE
 import FRSoundnessHide
 import FRKState
 import FRSoundnessPIOP
+import FRSoundnessWeights
+import FRSoundnessWalk
+import FRSoundnessPhases
 import FRSoundnessLigerito
 import FRVIRFinalsSG
 

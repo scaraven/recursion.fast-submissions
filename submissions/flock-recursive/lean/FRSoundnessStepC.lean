@@ -40,9 +40,8 @@ the charging log. -/
 structure RejOK (Rej : Log → Log → Prop) : Prop where
   mono : ∀ L es x, Rej L es → Rej L (es ++ [x])
   sq : ∀ L es x, fsItems[es.length]? = some .squeeze → (Rej L (es ++ [x]) ↔ Rej L es)
-  stab : ∀ L i, ¬ Bad L → IsChain L i → ∀ k as,
-    (Rej (L.take i) (ext ((entriesOf L (pathOf L i)).take k) as) ↔
-      Rej L (ext ((entriesOf L (pathOf L i)).take k) as))
+  stab : ∀ L i, ¬ Bad L → IsChain L i → ∀ X, StabExt fsRnd (entriesOf L (pathOf L i)) X →
+    (Rej (L.take i) X ↔ Rej L X)
 
 theorem length_ext1 (es : Log) (a : Digest) : (ext1 es a).length = es.length + 1 := by
   simp [ext1]
@@ -91,9 +90,8 @@ theorem stepObl_compose {Rej : Log → Log → Prop} {Dp : ℕ → Log → Log �
       (Finset.univ.filter fun a => DPos Dp L es ∧ ¬ DPos Dp L (ext1 es a)).card ≤ N)
     (hround : ∀ L es₀ s0 r, Matches es₀ → es₀.length = s0 + 1 →
       fsRnd (s0 + 1) = some (s0, r) → ¬ Rej L es₀ → condCount (DPos Dp) L es₀ r [] ≤ δ)
-    (hstab : ∀ L i, ¬ Bad L → IsChain L i → ∀ k as,
-      (DPos Dp (L.take i) (ext ((entriesOf L (pathOf L i)).take k) as) ↔
-        DPos Dp L (ext ((entriesOf L (pathOf L i)).take k) as))) :
+    (hstab : ∀ L i, ¬ Bad L → IsChain L i → ∀ X, StabExt fsRnd (entriesOf L (pathOf L i)) X →
+      (DPos Dp (L.take i) X ↔ DPos Dp L X)) :
     StepObl (DC Rej Dp) fsRnd δ N where
   habs L es x len hm hit hd := by
     by_cases hr : Rej L es
@@ -129,8 +127,8 @@ theorem stepObl_compose {Rej : Log → Log → Prop} {Dp : ℕ → Log → Log �
         rw [ext_dropLast _ hne]
         exact fun h => hr ((hext _ (by simp; omega)).mp h)
       simp only [EscAtG, DC, h1, h2, false_or]
-  hstab L i hb hci k as := by
-    simp only [DC, hR.stab L i hb hci k as, hstab L i hb hci k as]
+  hstab L i hb hci X hX := by
+    simp only [DC, hR.stab L i hb hci X hX, hstab L i hb hci X hX]
 
 /-! ## Part B: the single-squeeze rows -/
 

@@ -13,13 +13,15 @@ frozen elsewhere.
 * **Part A: the positions** (checked on `fsStarts`/`fsItems`): `p1Start i`, `hEll i = ℓᵢ`
   (`lvl_ell`), `p1_phase` (P1.i is a `RoundsPhase`), `p1_disj`, `capPos_lt`, `cap_check`.
 * **Part B: the doom.** `hRnd es i` (P1.i's rounds answered), `sList` (their challenges), `hDiff`
-  (a column's difference table), `capOK` (the cap entry is a real absorb), **`noHide`** (every
-  disagreeing column's table stays nonzero after binding the answered challenges, `mlDoom` over
-  K), **`DH`** (`noHide` at every level). `noHide_zero`: true before P1.i; **`DH_append_iff`**:
-  off P1's round squeezes appending keeps `DH`.
-* **Part C: stability.** **`colOf_stab`/`wordK_stab`**: on a non-bad log, the level words of a
-  chain's formal extension read the same off `L.take n` and `L` whenever the cap entry is real
-  (`fsCheck_ext_ge`: past the chain it is not; `colL_take`, `colL_take_own`). `noHide_stab`.
+  (a column's difference table), **`noHide`** (on a close word every disagreeing column's table
+  stays nonzero after binding the answered challenges, `mlDoom` over K), **`DH`** (`noHide` at
+  every level). `noHide_zero`: true before P1.i; **`DH_append_iff`**: off P1's round squeezes
+  appending keeps `DH`.
+* **Part C: stability** on `hloc_of`'s extensions (`StabExt`). `capOK` (the cap entry passes its
+  absorb check); **`colOf_stab`/`wordK_stab`**: under `capOK`, the level words of a chain's formal
+  extension read the same off `L.take n` and `L` (`colL_take`, `colL_take_own`);
+  **`capOK_of_stabExt`/`wordK_stabX`**: on a `StabExt` extension that reaches the cap, the cap is a
+  real chain entry, so no guard is needed; `noHide_stab`.
 * **Part D: the step law.** **`hide_single`** (at most `eᵢ ≤ 2^18` answers hide at a P1 round,
   `mlDoom_step`, `card_not_jointAgree`, `card_chK_fiber`), **`hide_obl`** (`StepObl` at
   `δ = 2^-238`, `N = 2^18`), **`hide_step`** (the contract's step law at `ε_H = 2^-142 + 2^-238`).
@@ -111,12 +113,12 @@ def capOK (es : Log) (i : ℕ) : Prop :=
   ∃ len, fsItems[capPos i]? = some (.absorb len) ∧
     fsCheck (.absorb len) (entAt es (capPos i)).1 = true
 
-/-- **No hidden disagreement so far at level `i`** (§10 changes 14–15): on a close word whose cap
-entry is real, every column outside the joint agreement set keeps a nonzero difference table
-after binding the P1.i challenges answered so far (`mlDoom` over K). With all `ℓᵢ` bound this is
-`¬ Hide_i` (`noHide_full`); before P1.i it holds for every word (`noHide_zero`). -/
+/-- **No hidden disagreement so far at level `i`** (§10 changes 14–15): on a close word, every
+column outside the joint agreement set keeps a nonzero difference table after binding the P1.i
+challenges answered so far (`mlDoom` over K). With all `ℓᵢ` bound this is `¬ Hide_i`
+(`noHide_full`); before P1.i it holds for every word (`noHide_zero`). -/
 def noHide (κ : Kind) (L es : Log) (i : ℕ) : Prop :=
-  capOK es i → ¬ farL κ L es i → ∀ j ∉ jointAgree (wordK κ L es i) (decodeL κ L es i),
+  ¬ farL κ L es i → ∀ j ∉ jointAgree (wordK κ L es i) (decodeL κ L es i),
     mlDoom (lvl κ i).ell (hDiff κ L es i j) (sList es i (hRnd es i))
 
 /-- **The Hide doom** (§10 changes 15): no level has hidden a disagreement so far. Its potential
@@ -134,7 +136,7 @@ theorem tbl_hDiff (κ : Kind) (L es : Log) (i : ℕ) (j : Fin (2 ^ (lvl κ i).lo
 /-- Before P1.i (no round answered), nothing is hidden: a column outside the joint agreement set
 has a nonzero difference table. -/
 theorem noHide_zero {κ : Kind} {L es : Log} {i : ℕ} (h : hRnd es i = 0) : noHide κ L es i := by
-  intro _ _ j hj
+  intro _ j hj
   have hnil : ∀ n (t : Array K), tbl n t ≠ 0 → mlDoom n t [] := fun n t h => by cases n <;> exact h
   rw [h, sList, List.range_zero, List.map_nil]
   refine hnil _ _ ?_
@@ -218,11 +220,9 @@ theorem noHide_append {κ : Kind} {L es : Log} {i : ℕ} (hi : i < 5) (x : ByteA
   have hw : wordK κ L (es ++ [x]) i = wordK κ L es i := by
     funext r p; simp only [wordK, wordOf, colOf_congr κ L i p (hA.mono (by omega))]
   have hd := decodeL_congr hw
-  have hc : capOK (es ++ [x]) i ↔ capOK es i := by
-    simp only [capOK, hA (capPos i) (by omega)]
   have hs : sList (es ++ [x]) i (hRnd es i) = sList es i (hRnd es i) := sList_congr (hA.mono hlen)
   unfold noHide hDiff farL
-  rw [hr, hs, hw, hd, hc]
+  rw [hr, hs, hw, hd]
 
 theorem kindOf_ext1 (es : Log) (a : Digest) (h : 0 < es.length) : kindOf (ext1 es a) = kindOf es :=
   kindOf_append _ h
@@ -342,17 +342,76 @@ theorem wordK_stab {L : Log} (hb : ¬ Bad L) {n : ℕ} (hci : IsChain L n) (k : 
   funext r p
   simp only [wordK, wordOf, colOf_stab hb hci k as hi κ hc p]
 
-/-- **Level `i`'s Hide state reads the same off the charging log.** -/
-theorem noHide_stab {L : Log} (hb : ¬ Bad L) {n : ℕ} (hci : IsChain L n) (k : ℕ)
-    (as : List Digest) {i : ℕ} (hi : i < 5) (κ : Kind) :
-    noHide κ (L.take n) (ext ((entriesOf L (pathOf L n)).take k) as) i ↔
-      noHide κ L (ext ((entriesOf L (pathOf L n)).take k) as) i := by
-  by_cases hc : capOK (ext ((entriesOf L (pathOf L n)).take k) as) i
-  · have hw := wordK_stab hb hci k as hi κ hc
-    have hd := decodeL_congr hw
-    unfold noHide hDiff farL
-    rw [hw, hd]
-  · exact ⟨fun _ h => absurd h hc, fun _ h => absurd h hc⟩
+/-- On a chain past level `i`'s cap absorb, the cap entry is real. -/
+theorem capOK_of_matches {es : Log} (hm : Matches es) {i : ℕ} (hi : i < 5)
+    (hl : capPos i < es.length) : capOK es i := by
+  have hcc := cap_check
+  simp only [List.all_eq_true, List.mem_range] at hcc
+  have h := hcc i hi
+  have h1 : 1 ≤ capPos i := by
+    unfold capPos phStart; rw [fsStarts_eq]; interval_cases i <;> decide
+  obtain ⟨_, hl', H⟩ := hm
+  obtain ⟨-, hf⟩ := H (capPos i - 1) (by omega)
+  cases hh : fsItems[capPos i]? with
+  | none => rw [hh] at h; simp at h
+  | some it =>
+    cases it with
+    | absorb len =>
+      refine ⟨len, hh, ?_⟩
+      have hlt : capPos i < fsItems.length := by omega
+      have he : fsItems[capPos i] = .absorb len :=
+        Option.some.inj ((List.getElem?_eq_getElem hlt).symm.trans hh)
+      have hidx : capPos i - 1 + 1 = capPos i := by omega
+      simp only [hidx, he] at hf
+      rw [entAt, List.getD_eq_getElem _ _ hl]
+      exact hf
+    | _ => rw [hh] at h; simp at h
+
+/-- **On `hloc_of`'s extensions a cap entry inside the extension is real** (the ruling on S-G1g
+§8 Q1: `hstab`'s scope is `StabExt`): the formal entries sit on squeeze positions
+(`fsRnd_ok`), and the cap position is an absorb (`cap_check`), so it lies in the chain's prefix,
+where `Matches` gives the check (`capOK_of_matches`). -/
+theorem capOK_of_stabExt {es X : Log} (hm : Matches es) (hX : StabExt fsRnd es X) {i : ℕ}
+    (hi : i < 5) (hl : capPos i < X.length) : capOK X i := by
+  obtain ⟨s0, r, as, hr, hs, has, rfl⟩ := hX
+  have htk : (es.take (s0 + 1)).length = s0 + 1 := by simp; omega
+  have hlt : capPos i < s0 + 1 := by
+    by_contra hge
+    obtain ⟨-, hpr, hspec⟩ := fsRnd_ok _ _ _ hr
+    rw [length_ext, htk] at hl
+    have hsq := (hspec (capPos i) (by omega) (by omega)).1
+    have hcc := cap_check
+    simp only [List.all_eq_true, List.mem_range] at hcc
+    have h := hcc i hi
+    rw [hsq] at h
+    simp at h
+  obtain ⟨len, hit, hchk⟩ := capOK_of_matches hm hi (by omega)
+  refine ⟨len, hit, ?_⟩
+  rw [entAt_ext_lt _ _ (by rw [htk]; exact hlt), entAt_take hlt]
+  exact hchk
+
+/-- **The level words read the same off the charging log on `hloc_of`'s extensions**, once the
+extension reaches the cap (the reusable form for every word-reading doom). -/
+theorem wordK_stabX {L : Log} (hb : ¬ Bad L) {n : ℕ} (hci : IsChain L n) {X : Log}
+    (hX : StabExt fsRnd (entriesOf L (pathOf L n)) X) {i : ℕ} (hi : i < 5) (κ : Kind)
+    (hl : capPos i < X.length) : wordK κ (L.take n) X i = wordK κ L X i := by
+  have hc := capOK_of_stabExt hci.2 hX hi hl
+  obtain ⟨s0, r, as, -, -, -, rfl⟩ := hX
+  exact wordK_stab hb hci (s0 + 1) as hi κ hc
+
+/-- **Level `i`'s Hide state reads the same off the charging log** on `hloc_of`'s extensions:
+before P1.i it holds on both sides (`noHide_zero`); after, the cap is real (`wordK_stabX`). -/
+theorem noHide_stab {L : Log} (hb : ¬ Bad L) {n : ℕ} (hci : IsChain L n) {X : Log}
+    (hX : StabExt fsRnd (entriesOf L (pathOf L n)) X) {i : ℕ} (hi : i < 5) (κ : Kind) :
+    noHide κ (L.take n) X i ↔ noHide κ L X i := by
+  by_cases h0 : hRnd X i = 0
+  · exact ⟨fun _ => noHide_zero h0, fun _ => noHide_zero h0⟩
+  have hl : capPos i < X.length := by
+    have := capPos_lt hi; unfold hRnd at h0; omega
+  have hw := wordK_stabX hb hci hX hi κ hl
+  have hd := decodeL_congr hw
+  unfold noHide hDiff farL
+  rw [hw, hd]
 
 /-! ## Part D: the Hide potential's step law at `ε_H` -/
 
@@ -399,20 +458,15 @@ theorem hide_single (L es : Log) {i₀ l : ℕ} (hi₀ : i₀ < 5) (hl : l < hEl
   have hA : ∀ a, Agree (ext1 es a) es es.length := fun a => agree_append es _ le_rfl
   have hw : ∀ a, wordK κ L (ext1 es a) i₀ = wordK κ L es i₀ := fun a => by
     funext r p; simp only [wordK, wordOf, colOf_congr κ L i₀ p ((hA a).mono (by omega))]
-  have hc : ∀ a, capOK (ext1 es a) i₀ ↔ capOK es i₀ := fun a => by
-    simp only [capOK, hA a (capPos i₀) (by omega)]
-  have hkey : ∀ a, noHide κ L (ext1 es a) i₀ ↔ (capOK es i₀ → ¬ farL κ L es i₀ →
+  have hkey : ∀ a, noHide κ L (ext1 es a) i₀ ↔ (¬ farL κ L es i₀ →
       ∀ j ∉ jointAgree (wordK κ L es i₀) (decodeL κ L es i₀),
         mlDoom (lvl κ i₀).ell (hDiff κ L es i₀ j) (sList es i₀ l ++ [chK a])) := fun a => by
     unfold noHide hDiff farL
-    rw [(hRnd_ext1 es a hl hp).2, sList_ext1 es a hp, hw a, decodeL_congr (hw a), hc a]
+    rw [(hRnd_ext1 es a hl hp).2, sList_ext1 es a hp, hw a, decodeL_congr (hw a)]
   have hR : hRnd es i₀ = l := (hRnd_ext1 es default hl hp).1
-  by_cases hcf : capOK es i₀ ∧ ¬ farL κ L es i₀
-  swap
-  · rw [Finset.filter_false_of_mem fun a _ ha =>
-      ha.2 ((hkey a).mpr fun h1 h2 => absurd ⟨h1, h2⟩ hcf)]
+  by_cases hf1 : farL κ L es i₀
+  · rw [Finset.filter_false_of_mem fun a _ ha => ha.2 ((hkey a).mpr fun h2 => absurd hf1 h2)]
     simp
-  obtain ⟨hc1, hf1⟩ := hcf
   by_cases hn : noHide κ L es i₀
   swap
   · rw [Finset.filter_false_of_mem fun a _ ha => hn ha.1]; simp
@@ -425,7 +479,7 @@ theorem hide_single (L es : Log) {i₀ l : ℕ} (hi₀ : i₀ < 5) (hl : l < hEl
     simp only [mem_filter, mem_univ, true_and] at ha ⊢
     rw [hkey a] at ha
     by_contra hS
-    refine ha.2 fun _ _ j hj => ?_
+    refine ha.2 fun _ j hj => ?_
     by_contra hd
     exact hS (by simp only [S, P, mem_filter, mem_univ, true_and]; exact ⟨j, hj, hd⟩)
   have h2 : S.card ≤ P.card := by
@@ -439,7 +493,7 @@ theorem hide_single (L es : Log) {i₀ l : ℕ} (hi₀ : i₀ < 5) (hl : l < hEl
           ¬ mlDoom (lvl κ i₀).ell (hDiff κ L es i₀ j) (sList es i₀ l ++ [c])).card :=
           card_biUnion_le
       _ ≤ ∑ _j ∈ P, 1 := sum_le_sum fun j hj => by
-          have hd := hn hc1 hf1 j (by simpa [P] using hj)
+          have hd := hn hf1 j (by simpa [P] using hj)
           rw [hR] at hd
           exact (mlDoom_step (hDiff_size κ L es i₀ j) _ hd).trans (by split <;> omega)
       _ = P.card := by simp
@@ -478,7 +532,7 @@ theorem hide_obl : StepObl DH fsRnd ((2 : ℝ≥0)⁻¹ ^ 238) (2 ^ 18) where
     have := (DH_append_iff ((ext es₀ as).getLast hne) hq).mpr hd
     rw [List.dropLast_append_getLast hne] at this
     exact hnd this
-  hstab L n hb hci k as := forall₂_congr fun i hi => noHide_stab hb hci k as hi _
+  hstab L n hb hci X hX := forall₂_congr fun i hi => noHide_stab hb hci hX hi _
 
 theorem hide_N_le : ((2 ^ 18 : ℕ) : ℝ≥0) ≤ 2 ^ 256 * (2 : ℝ≥0)⁻¹ ^ 238 := by
   rw [← NNReal.coe_le_coe]; push_cast; norm_num
@@ -525,12 +579,12 @@ theorem bindL_sList {ℓ : ℕ} {t : Array K} (ht : t.size = 2 ^ ℓ) (es : Log)
       List.getElem?_range v.isLt, Option.map_some, Option.getD_some]
   rw [eqBits_eq_eq, this]
 
-/-- **`noHide` at P1.i's end is `¬ Hide_i`** (A.10 P1.i): with every round answered, a real cap
-and a close word, no disagreeing column's fold vanishes. -/
+/-- **`noHide` at P1.i's end is `¬ Hide_i`** (A.10 P1.i): with every round answered and a close
+word, no disagreeing column's fold vanishes. -/
 theorem noHide_full {κ : Kind} {L es : Log} {i : ℕ} (hi : i < 5) (hR : hRnd es i = hEll i)
-    (hc : capOK es i) (hfar : ¬ farL κ L es i) (hn : noHide κ L es i) : ¬ hideL κ L es i := by
+    (hfar : ¬ farL κ L es i) (hn : noHide κ L es i) : ¬ hideL κ L es i := by
   rintro ⟨j, hj, hz⟩
-  have hd := hn hc hfar j hj
+  have hd := hn hfar j hj
   rw [hR, ← lvl_ell κ hi, mlDoom, List.take_of_length_le (by rw [sList_length]),
     sList_length, Nat.sub_self] at hd
   refine hd (funext fun u => ?_)
@@ -540,41 +594,15 @@ theorem noHide_full {κ : Kind} {L es : Log} {i : ℕ} (hi : i < 5) (hR : hRnd e
     bindL_sList (hDiff_size κ L es i j), tbl_hDiff]
   exact hz
 
-/-- On a chain past level `i`'s cap absorb, the cap entry is real. -/
-theorem capOK_of_matches {es : Log} (hm : Matches es) {i : ℕ} (hi : i < 5)
-    (hl : capPos i < es.length) : capOK es i := by
-  have hcc := cap_check
-  simp only [List.all_eq_true, List.mem_range] at hcc
-  have h := hcc i hi
-  have h1 : 1 ≤ capPos i := by
-    unfold capPos phStart; rw [fsStarts_eq]; interval_cases i <;> decide
-  obtain ⟨_, hl', H⟩ := hm
-  obtain ⟨-, hf⟩ := H (capPos i - 1) (by omega)
-  cases hh : fsItems[capPos i]? with
-  | none => rw [hh] at h; simp at h
-  | some it =>
-    cases it with
-    | absorb len =>
-      refine ⟨len, hh, ?_⟩
-      have hlt : capPos i < fsItems.length := by omega
-      have he : fsItems[capPos i] = .absorb len :=
-        Option.some.inj ((List.getElem?_eq_getElem hlt).symm.trans hh)
-      have hidx : capPos i - 1 + 1 = capPos i := by omega
-      simp only [hidx, he] at hf
-      rw [entAt, List.getD_eq_getElem _ _ hl]
-      exact hf
-    | _ => rw [hh] at h; simp at h
-
 /-- **What `final` gets from `μ_Hide`** (§10 changes 14–15, S-H2 Part 11 Q2): on a chain past
 P1.i whose Hide doom holds (no escape of `μ_Hide`), a close level whose next message is the fold
 has `A_c = jointAgree` (`consSet_eq_jointAgree`). -/
-theorem consSet_eq_of_DH {L es : Log} {i : ℕ} (hi : i < 5) (hm : Matches es)
+theorem consSet_eq_of_DH {L es : Log} {i : ℕ} (hi : i < 5)
     (hlen : p1Start i + 2 * hEll i ≤ es.length) (hD : DH L es)
     (hfar : ¬ farL (kindOf es) L es i) (hC : truthC (kindOf es) L es i) :
     consSet (kindOf es) L es i =
       jointAgree (wordK (kindOf es) L es i) (decodeL (kindOf es) L es i) :=
-  consSet_eq_jointAgree hi hfar hC (noHide_full hi (by unfold hRnd; omega)
-    (capOK_of_matches hm hi (by have := capPos_lt hi; omega)) hfar (hD i hi))
+  consSet_eq_jointAgree hi hfar hC (noHide_full hi (by unfold hRnd; omega) hfar (hD i hi))
 
 /-! ## Part F: the entry's potential `μ = μ_doom + μ_Hide` and its step law at `εR` -/
 
@@ -621,9 +649,9 @@ theorem DH_seed (L : Log) (e : ByteArray × Digest) : DH L [e] :=
 /-- Control (negative): a hidden disagreement at P1.i's end refutes `noHide`, so the Hide doom is
 not vacuous. -/
 theorem not_noHide_of_hideL {κ : Kind} {L es : Log} {i : ℕ} (hi : i < 5)
-    (hR : hRnd es i = hEll i) (hc : capOK es i) (hfar : ¬ farL κ L es i)
+    (hR : hRnd es i = hEll i) (hfar : ¬ farL κ L es i)
     (hH : hideL κ L es i) : ¬ noHide κ L es i :=
-  fun hn => noHide_full hi hR hc hfar hn hH
+  fun hn => noHide_full hi hR hfar hn hH
 
 /-- Control (toy, `mlDoom` over ℚ): the nonzero table `(1, 0)` is doomed before its challenge,
 and the challenge `1` hides it (`1 + 1·(0 − 1) = 0`). -/

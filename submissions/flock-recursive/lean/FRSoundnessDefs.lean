@@ -521,6 +521,15 @@ def RndOK (rnd : ℕ → Option (ℕ × ℕ)) : Prop :=
   ∀ p s0 r, rnd p = some (s0, r) → s0 < p ∧ p ≤ s0 + r ∧
     ∀ p', s0 < p' → p' ≤ s0 + r → fsItems[p']? = some .squeeze ∧ rnd p' = some (s0, r)
 
+/-- **The extensions on which `hloc_of` reads the doom off the charging log**: inside a
+multi-squeeze phase `(s0, r)` entered strictly before the chain's last entry, the chain's first
+`s0 + 1` entries extended formally by at most `r` answers. With `RndOK rnd` the formal entries sit
+on the phase's squeeze positions, so every absorb entry of such an extension (every cap) is a real
+chain entry before the last. -/
+def StabExt (rnd : ℕ → Option (ℕ × ℕ)) (es X : Log) : Prop :=
+  ∃ s0 r as, rnd (s0 + 1) = some (s0, r) ∧ s0 + 1 < es.length ∧ as.length ≤ r ∧
+    X = ext (es.take (s0 + 1)) as
+
 variable (D : Log → Log → Prop) (rnd : ℕ → Option (ℕ × ℕ))
 
 /-- **The charge**: inside a multi-squeeze phase, after `1 ≤ k < r` answers, the conditional count
@@ -546,7 +555,7 @@ open Classical in
 * `hsingle`: a single squeeze escapes on at most `N ≤ 2^256 δ` answers;
 * `hround`: a multi-squeeze phase's escape count from its entry is at most `δ`;
 * `hstab`: on a non-bad log, `D` reads the same off the log before a chain's last entry and off the
-  whole log, for every formal extension of every prefix of the chain. -/
+  whole log, on the formal extensions inside a multi-squeeze phase (`StabExt`). -/
 theorem hloc_of (hrnd : RndOK rnd) (δ : ℝ≥0) (N : ℕ) (hN : (N : ℝ≥0) ≤ 2 ^ 256 * δ)
     (habs : ∀ L es x len, Matches (es ++ [x]) → fsItems[es.length]? = some (.absorb len) →
       D L es → D L (es ++ [x]))
@@ -556,9 +565,8 @@ theorem hloc_of (hrnd : RndOK rnd) (δ : ℝ≥0) (N : ℕ) (hN : (N : ℝ≥0) 
       (Finset.univ.filter fun a => D L es ∧ ¬ D L (ext1 es a)).card ≤ N)
     (hround : ∀ L es₀ s0 r, Matches es₀ → es₀.length = s0 + 1 →
       rnd (s0 + 1) = some (s0, r) → condCount D L es₀ r [] ≤ δ)
-    (hstab : ∀ L i, ¬ Bad L → IsChain L i → ∀ k as,
-      (D (L.take i) (ext ((entriesOf L (pathOf L i)).take k) as) ↔
-        D L (ext ((entriesOf L (pathOf L i)).take k) as)))
+    (hstab : ∀ L i, ¬ Bad L → IsChain L i → ∀ X, StabExt rnd (entriesOf L (pathOf L i)) X →
+      (D (L.take i) X ↔ D L X))
     (L : Log) (i : ℕ) (q : ByteArray) (hb : ¬ Bad L) (hci : IsChain L i)
     (hst : stateIn q = some L[i]!.2) :
     ∑ a : Digest, (if Matches (entriesOf L (pathOf L i) ++ [(q, a)]) then
@@ -655,21 +663,21 @@ theorem hloc_of (hrnd : RndOK rnd) (δ : ℝ≥0) (N : ℕ) (hN : (N : ℝ≥0) 
       · -- the charge before the new answer, read off the charging log (`hstab`)
         have hcc : condCount D L (es.take (s0 + 1)) r ((es.drop (s0 + 1)).map Prod.snd) =
             condCount D (L₀ L i) (es.take (s0 + 1)) r ((es.drop (s0 + 1)).map Prod.snd) := by
-          unfold condCount
+          have hX : ∀ as', as'.length ≤ r →
+              (D L (ext (es.take (s0 + 1)) as') ↔ D (L₀ L i) (ext (es.take (s0 + 1)) as')) :=
+            fun as' h => (hstab' _ ⟨s0, r, as', (hspec (s0 + 1) (by omega) (by omega)).2,
+              by omega, h, rfl⟩).symm
+          have hpl : ((es.drop (s0 + 1)).map Prod.snd).length = es.length - (s0 + 1) := by simp
+          unfold condCount extCount
           congr 3
-          funext as
-          apply propext
-          unfold EscAtG
-          have hX : ∀ k as', D L (ext (es.take k) as') ↔ D (L₀ L i) (ext (es.take k) as') :=
-            fun k as' => (hstab' k as').symm
-          obtain ⟨k', as', hk'⟩ : ∃ k' as', (ext (es.take (s0 + 1)) as).dropLast =
-              ext (es.take k') as' := by
-            by_cases has : as = []
-            · subst has
-              refine ⟨s0, [], ?_⟩
-              rw [ext_nil, ext_nil, List.dropLast_eq_take, List.take_take, hes0len]; simp
-            · exact ⟨s0 + 1, as.dropLast, ext_dropLast _ has⟩
-          rw [hk', hX k' as', hX (s0 + 1) as]
+          refine Finset.filter_congr fun v _ => ?_
+          set as := (es.drop (s0 + 1)).map Prod.snd ++ List.ofFn v with has
+          have hal : as.length = r := by
+            rw [has, List.length_append, List.length_ofFn, hpl]; omega
+          have hne : as ≠ [] := by
+            intro h; rw [h] at hal; simp at hal; omega
+          simp only [EscAtG]
+          rw [ext_dropLast _ hne, hX _ hal.le, hX _ (by simp; omega)]
         have hp : pRoundG D rnd (L₀ L i) es =
             condCount D (L₀ L i) (es.take (s0 + 1)) r ((es.drop (s0 + 1)).map Prod.snd) := by
           unfold pRoundG
@@ -707,9 +715,8 @@ theorem muG_step_of (hrnd : RndOK rnd) (h0 : rnd 0 = none) (δ : ℝ≥0) (N : �
       (Finset.univ.filter fun a => D L es ∧ ¬ D L (ext1 es a)).card ≤ N)
     (hround : ∀ L es₀ s0 r, Matches es₀ → es₀.length = s0 + 1 →
       rnd (s0 + 1) = some (s0, r) → condCount D L es₀ r [] ≤ δ)
-    (hstab : ∀ L i, ¬ Bad L → IsChain L i → ∀ k as,
-      (D (L.take i) (ext ((entriesOf L (pathOf L i)).take k) as) ↔
-        D L (ext ((entriesOf L (pathOf L i)).take k) as)))
+    (hstab : ∀ L i, ¬ Bad L → IsChain L i → ∀ X, StabExt rnd (entriesOf L (pathOf L i)) X →
+      (D (L.take i) X ↔ D L X))
     {L : Log} {q : ByteArray} (hl : L.length < logCap) (hμ : muG D (pRoundG D rnd) L < 1)
     (hq : q ∉ L.map Prod.fst) :
     ∑ a : Digest, muG D (pRoundG D rnd) (L ++ [(q, a)]) ≤

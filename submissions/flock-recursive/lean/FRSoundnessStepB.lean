@@ -103,9 +103,8 @@ structure StepObl (D : Log → Log → Prop) (rnd : ℕ → Option (ℕ × ℕ))
     (Finset.univ.filter fun a => D L es ∧ ¬ D L (ext1 es a)).card ≤ N
   hround : ∀ L es₀ s0 r, Matches es₀ → es₀.length = s0 + 1 →
     rnd (s0 + 1) = some (s0, r) → condCount D L es₀ r [] ≤ δ
-  hstab : ∀ L i, ¬ Bad L → IsChain L i → ∀ k as,
-    (D (L.take i) (ext ((entriesOf L (pathOf L i)).take k) as) ↔
-      D L (ext ((entriesOf L (pathOf L i)).take k) as))
+  hstab : ∀ L i, ¬ Bad L → IsChain L i → ∀ X, StabExt rnd (entriesOf L (pathOf L i)) X →
+    (D (L.take i) X ↔ D L X)
 
 open Classical in
 /-- **`step_epsD`**: the contract's `KState.step` law with error `εD = εR − ε_H` for the potential
@@ -350,13 +349,11 @@ structure RoundsPhase (b nMax : ℕ) (nr : Kind → ℕ) : Prop where
   hsq : ∀ j < nMax, fsItems[b + 2 * j + 1]? = some .squeeze
   hph : ∀ p s0 r, fsRnd p = some (s0, r) → p < b ∨ b + 2 * nMax ≤ p
 
-/-- What the truth must read the same off the charging log and the whole log (§10 changes 10). -/
+/-- What the truth must read the same off the charging log and the whole log, on `hloc_of`'s
+extensions (`StabExt`; §10 changes 10). -/
 def TruthStable (c0 : Log → Log → F) (T : Log → Log → Array (Array F)) : Prop :=
-  ∀ L i, ¬ Bad L → IsChain L i → ∀ k as,
-    T (L.take i) (ext ((entriesOf L (pathOf L i)).take k) as) =
-        T L (ext ((entriesOf L (pathOf L i)).take k) as) ∧
-      c0 (L.take i) (ext ((entriesOf L (pathOf L i)).take k) as) =
-        c0 L (ext ((entriesOf L (pathOf L i)).take k) as)
+  ∀ L i, ¬ Bad L → IsChain L i → ∀ X, StabExt fsRnd (entriesOf L (pathOf L i)) X →
+    T (L.take i) X = T L X ∧ c0 (L.take i) X = c0 L X
 
 /-- **The five obligations for the round doom** at `δ = deltaR`, `N = 3·2^128`. -/
 theorem rounds3_obl {nMax : ℕ} (P : RoundsPhase b nMax nr) (hTc : TruthLocal b c0 T)
@@ -400,8 +397,8 @@ theorem rounds3_obl {nMax : ℕ} (P : RoundsPhase b nMax nr) (hTc : TruthLocal b
           have := P.hn0
           omega
       exact not_D3_short (by omega) hd
-  hstab L i hb hci k as := by
-    obtain ⟨hT, hc⟩ := hst L i hb hci k as
+  hstab L i hb hci X hX := by
+    obtain ⟨hT, hc⟩ := hst L i hb hci X hX
     exact D3_log_congr hT hc
 
 theorem three_le_deltaR : ((3 * 2 ^ 128 : ℕ) : ℝ≥0) ≤ 2 ^ 256 * deltaR :=

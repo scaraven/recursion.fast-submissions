@@ -333,7 +333,8 @@ failed asserted checks; `Dk k` is phase `k`'s doom; every multi-squeeze phase is
   most `N` answers escape;
 * `hfin`: a multi-squeeze phase's charge is at most `deltaR` (`ml_round_le`, `seq_round_le`,
   `rs1_round_le`, `p2_hround`, through `esc_msD`);
-* `hstab`: every phase's doom reads the same off the charging log (§10 changes 10). -/
+* `hstab`: the position's phase doom reads the same off the charging log on `hloc_of`'s
+  extensions (`StabExt`: inside a multi-squeeze phase; §10 changes 10, the S-G1g ruling). -/
 structure PhaseObl (Rej : Log → Log → Prop) (Dk : ℕ → Log → Log → Prop) (N : ℕ) : Prop where
   rej : RejOK Rej
   ms : MsForm Dk
@@ -346,9 +347,8 @@ structure PhaseObl (Rej : Log → Log → Prop) (Dk : ℕ → Log → Log → Pr
         ¬ Dk (phOf es.length) L (ext1 es a)).card ≤ N
   hfin : ∀ s0 r, (s0, r) ∈ fsRanges → ∀ L es₀, Matches es₀ → es₀.length = s0 + 1 →
     ¬ Rej L es₀ → condCount (DPos (Dp Dk)) L es₀ r [] ≤ deltaR
-  hstab : ∀ k L i, ¬ Bad L → IsChain L i → ∀ k' as,
-    (Dk k (L.take i) (ext ((entriesOf L (pathOf L i)).take k') as) ↔
-      Dk k L (ext ((entriesOf L (pathOf L i)).take k') as))
+  hstab : ∀ k L i, ¬ Bad L → IsChain L i → ∀ X, StabExt fsRnd (entriesOf L (pathOf L i)) X →
+    phOf (X.length - 1) = k → (Dk k (L.take i) X ↔ Dk k L X)
 
 open Classical in
 /-- **`KState.step` at `εD` for the whole transcript** (BLUEPRINT §5.1, A.10): the potential
@@ -373,8 +373,8 @@ theorem kstate_step {Rej : Log → Log → Prop} {Dk : ℕ → Log → Log → P
     simpa [DPos, Dp, length_ext1] using this
   · intro L es₀ s0 r hm hl hrnd hr
     exact ob.hfin s0 r (fsRnd_mem hrnd).1 L es₀ hm hl hr
-  · intro L i hb hci k as
-    exact ob.hstab _ L i hb hci k as
+  · intro L i hb hci X hX
+    exact ob.hstab _ L i hb hci X hX rfl
 
 /-- **Two step laws add** (§10 changes 15: `μ = μ_doom + μ_Hide`): if `μ₁` and `μ₂` each satisfy
 the contract's step law (with errors `ε₁`, `ε₂`) wherever they are below `1`, their sum satisfies
@@ -695,7 +695,7 @@ theorem phaseObl_false : PhaseObl (fun _ _ => False) (fun _ _ _ => False) 0 wher
   hsingle _ _ _ _ _ _ := by simp
   hfin _ _ _ L es₀ _ _ _ := by
     rw [condCount_eq_zero fun _ _ h => h.2.1]; exact zero_le
-  hstab _ _ _ _ _ _ _ := Iff.rfl
+  hstab _ _ _ _ _ _ _ _ := Iff.rfl
 
 /-- Control (positive): a false initial claim dooms the asserted rounds at their first absorb. -/
 theorem D2_first_absorb (nr : Kind → ℕ) (L : Log) :
