@@ -3037,3 +3037,160 @@ a non-constructive choice", `choice_certificate`).
 - **Source rule** (`logs/S-H2/source22.log`): 183 files, 0 findings.
 - **Names** `den`, `Eden`, `den_of_run`, `den_leaf`: grepped across `FR*.lean`, no clash.
 - **Imports for `FR.lean`:** none new.
+
+## Part 23 (track S-H2n): B-15, the search branch; `hOut` and `hWB` closed
+
+**Status.** All four items are done. `lake build FR` is green against `logs/org20` (2,410 jobs,
+`logs/S-H2n/build-final.log`). Nothing was committed. The new route `kstate_front_ofE'`
+(`FRSoundnessExtE`) has neither `hOut` nor `hWB`. Its hypotheses are `hRes` (S-N1 O1/O2) and
+`kstate_front_of`'s front obligations, plus `hE : S.E = X.E S.acc`.
+
+### 1. Finiteness (item 1)
+
+The witness space of `Rel (S.acc vk) c` is finite under the contract's types. No obstruction was
+found.
+- **Leaf:** a digest `s` and `n ≤ chainCap` (`Rel`).
+- **Node:** two digests and two signed proofs. `Submission.acc` bounds each proof:
+  - `|π| < 2^64`;
+  - `|tr| ≤ S.qV`, and `S.qV ≤ 2^16` by the certificate's cap;
+  - each query is at most `queryCap` bytes, and each answer is a digest;
+  - `SigOk` fixes `σ`: `idx < 2^16`, 133 chain values, 16 path digests.
+
+`SFits`/`WFits` (`FRXSearch`) name these bounds. **`sFits_of_acc`** derives them from
+`S.acc vk c p = true` when `S.qV ≤ qMax = 2^16`.
+
+### 2. What was built
+
+| File | loc (code) | Change |
+|---|---|---|
+| `FRXSearch` (new) | 198 | **Finders** `Finder α := (α → Option Wit) → Option Wit`: the first `some` of a test over a fixed enumeration. Built from `fRet`/`fBind`/`fOr`/`fNat`/`fListN`/`fListLe`, with `Sound` and `Covers` rules. They never build a list of candidates, so the compiled code has no large closed term (the compiler would evaluate one at program start). **`fWit`**: the leaves, then the nodes within `acc`'s bounds. **`relDec`/`relDec_iff`**: `Rel` decided. **`search A vk c`**: `fWit` tested by `relDec (A vk) c`. **`search_sound`**, **`search_spec`** (a witness within the bounds exists ⇒ the search returns one), `search_spec_acc` (for an `A` that implies the bounds), `search_none`, `sFits_of_acc`, `wFits_of_rel`. Controls: §4. |
+| `FRXExt` | 44 | **`Ed`** (the old `E`: `Eden memX mpwX (extIRWith decSnark)`). **`InDomE`** (decidable): `|π| ≤ 8·outCap`, queries `< 2^64` bytes, tape `≤ 2^64` words. **`Eout A`** by kind: `W` → `WitnessSending.decode π`; a node SNARK → `search A (vkOf π) c`; a leaf SNARK → `Ed`; `bad` → `none`. **`E A := if InDomE then Ed else Eout A`**. Also `E_of_dom`, `E_of_not_dom`, `size_snarkX`, `size_snark_le`, `E_snark_leaf`, `E_snark_node`. **`computes A : Computes ext (E A) fuel`**, from `computesWith` with `E A = Ed` on the domain. |
+| `FRXSpec` | 207 | **`ext_W A`: `E A c π L = decode π` on every `W` proof**, with no size bound (`E_W` on the domain, `Eout` outside it). **`ext_bad A`** holds on every size. `ext_encode A` no longer needs `hs`. `E_W`/`E_bad` over `Eden` are unchanged. |
+| `FRXLeaf` | 133 | `E_leaf A`: proof via `E_snark_leaf`, then the old proof. |
+| `FRXNodeRun` | 120 | `E_node A`: proof via `E_of_dom` (a SNARK has `piSize ≤ 8·outCap`), then the old proof. New **`E_node_out`**: outside the domain, a node SNARK, `A` implying the bounds and some witness of `Rel (A (vkOf π)) c` ⇒ `E` returns a witness. |
+| `FRSoundnessExtE` (new) | 151 | **`wBeyond_E`**; `ExtIfaceE` (`ExtIfaceR` without `InDom`); `extIfaceR_of_E`; **`extIfaceE_of`**; `hExt_of_ifaceE`, `finalLaw_ofE` (`hExt_of_ifaceR`/`finalLaw_ofR` without the domain split); **`kstate_front_ofE'`**; controls `extIfaceE_false`, `extIfaceE_W`, `hE_of_accV`. |
+| `FRSoundnessAcc`, `FRSoundnessExtAll`, `FRSoundnessExtLinks` | 73 / 84 / 70 | Repairs for `X.E A`. See §3. |
+| `FR` | +1 | `import FRSoundnessExtE`. |
+
+**How `extIfaceE_of` covers the out-of-domain node.** On the domain it is `extIfaceR_of`.
+Outside it:
+- **Leaf:** `E_leaf` (domain-free).
+- **Node:** `E_node_out` with `A := S.acc`, which needs two things:
+  - the bounds, from `sFits_of_acc`;
+  - a witness, `readWit (fF .N30 L es)`. It is one by `rel_readWit` + `acc_eq`, which use no
+    domain bound, under the key `vkOf π = vk` (`vkOf_of_run`).
+
+So the existence comes from the decode argument already in the chain. **No new S-G/S-N lemma
+is needed**, and no named hypothesis was left.
+
+### 3. Statement changes (every one under B-15)
+
+- `X.E`: new definition, and it takes `A`. On the domain, `E A = Ed` is the old `E`.
+- `computes`: now `∀ A, Computes ext (E A) fuel`.
+- `ext_W`: takes `A`; **`hπ` dropped** (it is now true on every size; this closes `WBeyond`).
+- `ext_bad`: takes `A`; `hπ` dropped.
+- `ext_encode`: takes `A`; `hs` dropped.
+- `E_leaf`, `E_node`: take `A`. Their hypotheses are unchanged.
+- `FRSoundnessExtLinks.E_node_of_run`: gains an implicit `{A}` in the conclusion `X.E A …`.
+- `hE : S.E = X.E` → `{A} (hE : S.E = X.E A)` in:
+  - `FRSoundnessAcc.hAcc_of_E`, `finalLaw_of_run`;
+  - `FRSoundnessExtAll.extIfaceR_of`, `kstate_front_ofE`.
+
+  These old routes still carry `hWB`/`hOut` and are kept unchanged otherwise. Their proofs only
+  pass `A` through.
+
+Unchanged: `ext`, `ext_caps`, `Eden`, `E_W`, `E_bad`, `computesWith`, `run_leaf`, `ext_node`, and
+everything in `FRSoundnessExtR`/`FRSoundnessAccRun`.
+
+### 4. Controls
+
+- `FRXSearch.search_acceptAll` (**positive**): with `acc` accepting everything, the search
+  returns a witness of `nodeStmt d d`. It goes through `search_spec` with the witness
+  `node d d signed₀ signed₀`, so no hash is evaluated.
+- `search_rejectAll_node` (**negative**): with `acc` rejecting everything, the search never
+  returns a node witness.
+- `search_none`: no witness, so the result is `none`.
+  - A concrete `c` with no witness at all cannot be exhibited: the leaf branch covers every value
+    of `leafStmt`.
+  - So the negative toy is evaluated in the kernel instead: `toy_found`
+    (`fNat 3 (toyTest d 1) = some (.leaf d 1)`) and `toy_none` (`fNat 3 (toyTest d 5) = none`),
+    both by `rfl`, with no axioms.
+- `FRSoundnessExtE`:
+  - `extIfaceE_false` (positive);
+  - `extIfaceE_W` (negative: a `W` proof has no run link);
+  - `hE_of_accV`: `hE` is satisfiable without self-reference. An `S` whose `E` is
+    `X.E (accV impl fin)` meets `S.E = X.E S.acc`.
+- The old controls still hold: `ext_encode` (positive), `ext_bad` (negative), `toy_W`, `toy_bad`.
+
+### 5. Checks
+
+- **Build:** `lake build FR` green (`logs/S-H2n/build-final.log`).
+- **Axioms:** `logs/S-H2n/axioms.log`. Every listed declaration uses only `propext`,
+  `Classical.choice` and `Quot.sound` (or a subset). The list:
+  - `computes`, `E_node`, `E_node_out`, `E_leaf`, `ext_W` (= the restated `E_W`), `ext_bad`,
+    `ext_encode`;
+  - `search_spec*`, `search_sound`, `search_none`, `sFits_of_acc`, the search controls;
+  - `wBeyond_E`, `extIfaceE_of`, `finalLaw_ofE`, `kstate_front_ofE'`;
+  - the repaired `kstate_front_ofE`, `extIfaceR_of`, `E_node_of_run`, `finalLaw_of_run`;
+  - `hE_of_accV`.
+- **Source rule:** `python3 -I logs/org20/scripts/source-rule.py submissions/flock-recursive`
+  gives 188 files, 0 findings (`logs/S-H2n/source.log`).
+- **Compiled executable:** `logs/fr-build-SH2n/probe/Probe.lean` (outside the entry) does
+  `import FR`.
+  - It calls `FR.X.E`/`FR.X.Eout` and references `FR.X.search`.
+  - `lake build probe` is green: 4,819 jobs, 186 C objects compiled
+    (`logs/S-H2n/probe-build.log`).
+  - The run (`logs/S-H2n/probe-run.log`) gives: `Eout` on a `W` proof `true`; `E` on a `W` proof
+    in domain (the denotation, a 2^26-word memory) `true`; `E` on a `bad` proof `false`. It took
+    47 s wall at 1.1 GB RSS. Module start-up is not delayed by the search: there is no large
+    closed term.
+- **Names:** every new name was grepped across `FR*.lean`.
+  - Clashes renamed: `relB` (`FRVIRFinalsSF`) → `relDec`; the finder rules (`sound_bind` in
+    `FRBlake2sCompress`) → `sound_fBind` and so on.
+  - `Rel` in `FR.X` resolves to another `Rel`, so `FRXNodeRun` writes `RecursionFast.Rel`.
+- **Sequential profiles** (`-DElab.async=false --profile`, one core, `logs/S-H2n/prof-*.log`,
+  `prof-summary.txt`). Wall time includes about 5 s of import.
+
+  | Module | Wall | Kernel |
+  |---|---|---|
+  | `FRXSearch` | 6.0 s | 43 ms |
+  | `FRXExt` | 6.2 s | 12 ms |
+  | `FRXSpec` | 13.1 s | 2.27 s (the old toy runs) |
+  | `FRXLeaf` | 9.5 s | 139 ms |
+  | `FRXNodeRun` | 7.3 s | 77 ms |
+  | `FRSoundnessExtE` | 7.2 s | 102 ms |
+  | the repaired modules | 6.1–7.6 s each | — |
+
+### 6. Deviations from the blueprint (changes requested of B-15's text)
+
+1. **`E`'s out-of-domain branch dispatches on the kind**, where B-15 says just "else
+   `E_search`".
+   - The search's key is `vkOf π`. It is the verifier's key only on an accepted node run
+     (`vkOf_of_run`).
+   - A `W` proof's bytes `16…47` are arbitrary, so a search under `vkOf π` could miss the
+     KS game's `vk`. A leaf SNARK's search could return a node witness for the wrong key.
+   - Both kinds have a domain-free witness: `W` → `decode` (this is what closes `WBeyond`), and
+     a leaf → the denotation.
+   - Suggested text: "`E := if InDom then E_den else E_out`, with `E_out` = `decode` on `W`,
+     `E_search` under `vkOf π` on a node SNARK, `E_den` on a leaf SNARK, and `none` on `bad`."
+2. **`E` is parametric in the acceptance `A`** that the search tests. The verifier is still
+   parametric (`finPf`, `lRows`, `κs₀`). The certificate instantiates `A := accV implC finC`,
+   and then `S.E = X.E S.acc` (`hE_of_accV`).
+3. **The trace bound in the enumeration is the certificate's `2^16`**, not the entry's `qV`. This
+   keeps `FRXSearch` independent of the verifier modules, and the enumeration covers every
+   `qV ≤ 2^16`.
+4. **`InDomE` (in `FR.X`) and `FR.Snd.InDom`** are both kept.
+   - `InDomE = (|π| ≤ 8·outCap) ∧ InDom`.
+   - On a SNARK the first conjunct holds, because `piSize ≤ 8·outCap`. So `E_node` keeps
+     exactly its hypotheses.
+
+### 7. Open questions / what is left for S-H2
+
+- **Moving the old routes (orchestrator's call).** The old `hWB`/`hOut` routes
+  (`kstate_front_ofE`, `kstate_front_ofR`, `finalLaw_of_run`, …) are kept. The integration can
+  move to `kstate_front_ofE'` and retire them.
+- **The new kinds (S-0′'s `A`/`N4`/`N8`).** `Eout` uses `Kind.isNode`, so a new node kind
+  searches automatically. Two pieces must then be generalised from `.N30`:
+  - `E_node_out`'s caller in `extIfaceE_of`;
+  - the node decoding over `1 + k` children (blueprint S-H2 entry).
+- **`hRes`** (S-N1 O1/O2, the node circuit's residual) is unchanged and is not part of this track.

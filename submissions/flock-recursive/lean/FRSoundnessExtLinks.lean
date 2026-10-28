@@ -95,11 +95,11 @@ extractor's domain, the extractor returns `readWit` of the decoded `f⁽⁰⁾`.
 theorem E_node_of_run {L : Log} {W₀ : Log → Log → ℕ → K} {c₀ : Log → Log → K}
     (h : SkRun impl .N30 ⟨vk, c, π⟩ tr y) (hb : ¬ Bad L) (hin : ∀ e ∈ tr, e ∈ L)
     (hk : FR.kindOf π = .snark .N30) (hD : InDom c π L)
-    (hLig : LigeritoOut W₀ c₀ L (fsOf tr items)) :
-    X.E c π L = some (FR.readWit (fF .N30 L (fsOf tr items))) := by
+    (hLig : LigeritoOut W₀ c₀ L (fsOf tr items)) {A : Digest → Digest → Signed → Bool} :
+    X.E A c π L = some (FR.readWit (fF .N30 L (fsOf tr items))) := by
   have hkc : kindOf (fsOf tr items) = .N30 := kindOf_chain h.hq hk
   have hS : ¬ StateHit L := fun hs => hb (Or.inr (Or.inr (Or.inl hs)))
-  have hE := X.E_node c π L hD.1 hD.2 hk hS zeroD (es := fsOf tr items)
+  have hE := X.E_node A c π L hD.1 hD.2 hk hS zeroD (es := fsOf tr items)
     (fun p hp => fmAns_of_run h hb hin zeroD p (by unfold X.nRep at hp; omega))
     (cap0_of_run h) (capL_of_run h) (final_of_run h)
     (fun i hi => hkc ▸ hLig.close i hi) (fun i hi => hkc ▸ hLig.agree i hi)

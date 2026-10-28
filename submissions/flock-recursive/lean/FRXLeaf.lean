@@ -12,7 +12,7 @@ statement by the verifier). So the SNARK branch, on a kind byte other than `'N'`
 `witWords (.leaf s n)` and decodes nothing.
 
 **`E_leaf`**: on a leaf proof of `piSize` bytes and **every log** (the denotation `den_leaf` reads
-only the header; revision 3.17), `E c π L = some (.leaf (bytesAt π 16 32) (leafN k))`. On a domain
+only the header; revision 3.17; B-15: `E A = Ed` on a leaf, `E_snark_leaf`), `E A c π L = some (.leaf (bytesAt π 16 32) (leafN k))`. On a domain
 tape the machine halts with that output (`run_leaf`).
 -/
 
@@ -158,9 +158,10 @@ theorem run_leaf (c : Digest) (π : Proof) (L : Log) (hq : ∀ e ∈ L, e.1.size
 /-- **`E` on a leaf proof** (the leaf case of `ext_good_tape`), **on every log** (revision 3.17:
 no domain hypothesis): the witness `.leaf s n` with `s` the header's chain start and
 `n = leafN k`. -/
-theorem E_leaf (c : Digest) (π : Proof) (L : Log) {k : Kind} (hk : kindOf π = .snark k)
-    (hkn : k ≠ .N30) :
-    E c π L = some (.leaf (bytesAt π 16 32) (leafN k)) := by
+theorem E_leaf (A : Digest → Digest → Signed → Bool) (c : Digest) (π : Proof) (L : Log) {k : Kind}
+    (hk : kindOf π = .snark k) (hkn : k ≠ .N30) :
+    E A c π L = some (.leaf (bytesAt π 16 32) (leafN k)) := by
+  rw [E_snark_leaf hk (by cases k <;> simp_all [Kind.isNode])]
   show decodeWit (den memX mpwX (extIRWith decSnark) (extractorInput c π L)) = _
   rw [den_leaf c π L hk hkn, decodeWit_witWords]
   show leafN k < 2 ^ 64

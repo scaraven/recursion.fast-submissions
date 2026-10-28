@@ -45,7 +45,8 @@ theorem vkL_of_chain {vk c : Digest} {π : Proof} {es : Log}
 /-- **`ExtIfaceR` for the entry's statement**, from the node circuit's residual. -/
 theorem extIfaceR_of {impl : OpImpl} {S : Submission} {vk : Digest}
     {W₀ : Log → Log → ℕ → K} {c₀ : Log → Log → K}
-    (hV : S.V = Vwith impl (sfFinals finP finPf)) (hq : S.qV = qV) (hE : S.E = X.E)
+    (hV : S.V = Vwith impl (sfFinals finP finPf)) (hq : S.qV = qV) {A : Digest → Digest → Signed → Bool}
+    (hE : S.E = X.E A)
     (hT : Circ.ImplT impl)
     (hRes : ∀ L es, StmtN (finC finPf) .N30 L es →
       NodeResid impl (sfFinals finP finPf) (vkL es) (fF .N30 L es)) :
@@ -62,7 +63,7 @@ theorem extIfaceR_of {impl : OpImpl} {S : Submission} {vk : Digest}
   · -- a leaf kind
     rw [if_neg (by simp [hkn])] at hSt
     have hkN : k ≠ .N30 := by rintro rfl; cases hkn
-    exact ⟨_, X.E_leaf c π L hk hkN, rel_leaf_of_run hkn hk hsk _ hSt⟩
+    exact ⟨_, X.E_leaf A c π L hk hkN, rel_leaf_of_run hkn hk hsk _ hSt⟩
   · -- a node
     obtain rfl : k = .N30 := by cases k <;> simp_all [Kind.isNode]
     rw [if_pos (show Kind.N30.isNode = true from rfl)] at hSt
@@ -79,7 +80,8 @@ circuit's residual `hRes` (and the out-of-domain case `hOut`, and the `W` proofs
 `hWB`, core PR #20). -/
 noncomputable def kstate_front_ofE (S : Submission) (vk : Digest) (κs₀ : F)
     {L3N PendN : Log → Log → Prop}
-    (hV : S.V = VC finPf Layout.lRows κs₀) (hq : S.qV = qV) (hE : S.E = X.E)
+    (hV : S.V = VC finPf Layout.lRows κs₀) (hq : S.qV = qV) {A : Digest → Digest → Signed → Bool}
+    (hE : S.E = X.E A)
     (hWB : WBeyond S vk)
     (hRes : ∀ L es, StmtN (finC finPf) .N30 L es →
       NodeResid (implC (finC finPf) Layout.lRows κs₀) (sfFinals finP finPf) (vkL es)
@@ -106,7 +108,7 @@ noncomputable def kstate_front_ofE (S : Submission) (vk : Digest) (κs₀ : F)
     (hFrontV : AccFront (implC (finC finPf) Layout.lRows κs₀) vk
       (RejF (finC finPf) oLc fun _ _ => False)) :
     KState (Rel (S.acc vk)) (S.V vk) S.E epsR :=
-  kstate_front_ofR S vk κs₀ hV hq (fun c π L hW hπ => hE ▸ X.ext_W c π L hW hπ) hWB
+  kstate_front_ofR S vk κs₀ hV hq (fun c π L hW _ => hE ▸ X.ext_W A c π L hW) hWB
     (extIfaceR_of hV hq hE (implCWith_implT _ _) hRes) hOut hN hfit hStart hW0 hFrontV
 
 /-! ## Controls -/

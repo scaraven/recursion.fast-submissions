@@ -68,7 +68,8 @@ theorem hAcc_of (impl : OpImpl) (fin : Finals) (S : Submission) (vk : Digest)
 
 /-- `hAcc_of` with the entry's extractor `E` (`FRXSpec.ext_W`). -/
 theorem hAcc_of_E (impl : OpImpl) (fin : Finals) (S : Submission) (vk : Digest)
-    {RejF : Log → Log → Prop} (hV : S.V = Vwith impl fin) (hq : S.qV = qV) (hE : S.E = X.E)
+    {RejF : Log → Log → Prop} (hV : S.V = Vwith impl fin) (hq : S.qV = qV) {A : Digest → Digest → Signed → Bool}
+    (hE : S.E = X.E A)
     (hWB : WBeyond S vk)
     (hFin : ∀ (k : Kind) (c : Digest) (π : Proof) (L tr : Log) (j : ℕ), ¬ Bad L →
       π.size = piSize → semIR impl (gen fin (.fixed k)) ⟨vk, c, π⟩ tr = some true →
@@ -80,13 +81,14 @@ theorem hAcc_of_E (impl : OpImpl) (fin : Finals) (S : Submission) (vk : Digest)
       ¬ RejF L (entriesOf L (pathOf L j))) :
     ∀ L c π, L.length ≤ logCap → ¬ Bad L → (S.V vk c π).runLog L = some true →
       (∃ w, S.E c π L = some w ∧ Rel (S.acc vk) c w) ∨ ∃ j, AcceptTail RejF W₀ c₀ L j :=
-  hAcc_of impl fin S vk hV hq (fun c π L hW hπ => hE ▸ X.ext_W c π L hW hπ) hWB hFin hFront
+  hAcc_of impl fin S vk hV hq (fun c π L hW _ => hE ▸ X.ext_W A c π L hW) hWB hFin hFront
 
 /-- **`FinalLaw` from the run obligations**: `finalLaw_of` with `hAcc := hAcc_of`. What is left
 for `kstate` (with `kstate_of_front`): `FrontObl`, `FrontChainStab`, `hFin`, `hFront`, `hExt`. -/
 theorem finalLaw_of_run (impl : OpImpl) (fin : Finals) (S : Submission) (vk : Digest)
     {RejF : Log → Log → Prop} {DF : ℕ → Log → Log → Prop}
-    (hV : S.V = Vwith impl fin) (hq : S.qV = qV) (hE : S.E = X.E) (hWB : WBeyond S vk)
+    (hV : S.V = Vwith impl fin) (hq : S.qV = qV) {A : Digest → Digest → Signed → Bool}
+    (hE : S.E = X.E A) (hWB : WBeyond S vk)
     (hF : FrontLocal W₀ c₀) (hFS : FrontChainStab RejF DF)
     (hFin : ∀ (k : Kind) (c : Digest) (π : Proof) (L tr : Log) (j : ℕ), ¬ Bad L →
       π.size = piSize → semIR impl (gen fin (.fixed k)) ⟨vk, c, π⟩ tr = some true →

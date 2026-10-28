@@ -9,13 +9,13 @@ BLUEPRINT §6.5, §5.4 ("`W` is `Rel` by definition and `E` copies the proof (§
 * `parse_isK`: the parse's kind flag is `kindFlag` of tape word 5, which is `0` exactly when the
   word's low byte is not a kind byte (`kindFlag_eq_zero`);
 * **`E_W`**: on a proof of the `W` kind (`kindOf π = .W`, `FRFormat`) of fewer than `2^64` bytes,
-  `E c π L = WitnessSending.decode π`, for every SNARK branch with `DecOk` and so for `ext`
-  (`ext_W`), **including proofs above the contract's domain `8 · outCap`** (no size guard beyond
-  the word, BP-C-R2-M2) and **on every log**
+  `Eden … c π L = WitnessSending.decode π`, for every SNARK branch with `DecOk`, **on every log**
   (no domain hypothesis): the program halts within `fuel` on every such tape, and its output is
   the denotation (`den_of_run`);
-* **`E_bad`**: on a kind byte with `|π| ≠ piSize` (`kindOf π = .bad`), `E c π L = none` (no
-  output; the negative control: an ill-formed tape halts within the fuel).
+* **`ext_W`** (B-15): `E A c π L = WitnessSending.decode π` on **every** `W` proof and log: `E_W`
+  on the domain, `Eout`'s `W` branch outside it (proofs above `8 · outCap` bytes included);
+* **`E_bad`**: on a kind byte with `|π| ≠ piSize` (`kindOf π = .bad`), `Eden … c π L = none` (no
+  output; the negative control: an ill-formed tape halts within the fuel); `ext_bad` for `E`.
 
 The SNARK case (`kindOf π = .snark k`) is the decoder's (§6.2 steps 2–5), not delivered here.
 -/
@@ -221,17 +221,26 @@ theorem E_bad {dec : XIR} (hd : DecOk dec) (c : Digest) (π : Proof) (L : Log)
   exact ⟨hr, by
     rw [Eden, ← den_of_run (by simp only [regs, memX]; norm_num) (wf_extIRWith hd.wf) hr]; rfl⟩
 
-/-- `E_W` for `ext`. -/
-theorem ext_W (c : Digest) (π : Proof) (L : Log) (hW : kindOf π = .W) (hπ : π.size < 2 ^ 64) :
-    E c π L = WitnessSending.decode π := E_W decOk_decSnark c π L hW hπ
+/-- **`E` on a `W` proof is `WitnessSending.decode`, on every size and log** (B-15: `E_W` on the
+domain, `Eout`'s `W` branch outside it). -/
+theorem ext_W (A : Digest → Digest → Signed → Bool) (c : Digest) (π : Proof) (L : Log)
+    (hW : kindOf π = .W) : E A c π L = WitnessSending.decode π := by
+  by_cases h : InDomE c π L
+  · rw [E_of_dom h]
+    exact E_W decOk_decSnark c π L hW (by have := h.1; rw [outCap] at this; omega)
+  · rw [E_of_not_dom h, Eout]; simp [hW]
 
-/-- `E_bad` for `ext`. -/
-theorem ext_bad (c : Digest) (π : Proof) (L : Log) (hb : kindOf π = .bad) (hπ : π.size < 2 ^ 64) :
-    E c π L = none := (E_bad decOk_decSnark c π L hb hπ).2
+/-- **`E` on a `bad` proof is `none`**, on every size and log (`E_bad` on the domain). -/
+theorem ext_bad (A : Digest → Digest → Signed → Bool) (c : Digest) (π : Proof) (L : Log)
+    (hb : kindOf π = .bad) : E A c π L = none := by
+  by_cases h : InDomE c π L
+  · rw [E_of_dom h]
+    exact (E_bad decOk_decSnark c π L hb (by have := h.1; rw [outCap] at this; omega)).2
+  · rw [E_of_not_dom h, Eout]; simp [hb]
 
 /-! ## Controls
 
-* Positive (every witness-sending witness): `ext_encode`: `E c (encode w) L = some w` for every
+* Positive (every witness-sending witness): `ext_encode`: `E A c (encode w) L = some w` for every
   `w` that fits the output format, on every statement and log.
 * Negative (ill-formed, `E_bad`/`ext_bad`): a kind byte with another length halts within the
   fuel with no output.
@@ -247,14 +256,13 @@ theorem encode_byte0 (w : Wit) :
   cases w <;> simp [WitnessSending.encode, witWords, wordsBytes, wordBytes, enc64, toWord]
 
 /-- **Positive control**: `ext` recovers every witness-sending witness. -/
-theorem ext_encode (c : Digest) (L : Log) (w : Wit) (hw : w.Fits)
-    (hs : (WitnessSending.encode w).size < 2 ^ 64) :
-    E c (WitnessSending.encode w) L = some w := by
+theorem ext_encode (A : Digest → Digest → Signed → Bool) (c : Digest) (L : Log) (w : Wit)
+    (hw : w.Fits) : E A c (WitnessSending.encode w) L = some w := by
   have hk : kindOf (WitnessSending.encode w) = .W := by
     rcases encode_byte0 w with h | h
     · exact kindOf_W h (.inl rfl)
     · exact kindOf_W h (.inr rfl)
-  rw [ext_W c _ L hk hs, WitnessSending.decode_encode w hw]
+  rw [ext_W A c _ L hk, WitnessSending.decode_encode w hw]
 
 namespace Controls
 

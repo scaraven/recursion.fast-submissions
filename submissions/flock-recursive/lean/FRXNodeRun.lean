@@ -10,7 +10,8 @@ On a domain tape of a node proof (`kindOf π = .snark .N30`), `ext` takes the no
 `decNode` (`FRXNode`), halts within its fuel, leaves `f⁽⁰⁾`'s rows at `ob0` and outputs
 `witWords (FR.readWit w)` with `w e = (msgOf .N30 L es 0 (e mod 64) ⌊e/64⌋).f₀` (A.10's
 `fF .N30 L es`; BLUEPRINT §6.2 step 5, `ext_node`), so `E c π L = some (FR.readWit w)`
-(`E_node`).
+(`E_node`). Outside the domain (B-15) `E` searches: **`E_node_out`**, from a witness's
+existence (`FRXSearch.search_spec_acc`).
 
 The hypotheses of `ext_node` beyond the domain are what `final` (`FinalLaw`) holds about the
 log's transcript `es` when the verifier accepts: the chain link (`fmAns … = ansAt es`), the
@@ -127,7 +128,7 @@ theorem ext_node (c : Digest) (π : Proof) (L : Log) (hq : ∀ e ∈ L, e.1.size
 holds, the extractor's witness is the node witness read off `f⁽⁰⁾` (`FR.readWit`, A.5, A.7). The
 domain hypotheses `hq`, `ht` stay: the denotation is the 64-bit machine's (`compile_correct`), so
 it reads no tape word from `2^64` on (S-H2 RESULT Part 22, finding O3′). -/
-theorem E_node (c : Digest) (π : Proof) (L : Log) (hq : ∀ e ∈ L, e.1.size < 2 ^ 64)
+theorem E_node (A : Digest → Digest → Signed → Bool) (c : Digest) (π : Proof) (L : Log) (hq : ∀ e ∈ L, e.1.size < 2 ^ 64)
     (ht : (extractorInput c π L).length ≤ 2 ^ 64) (hk : kindOf π = .snark .N30)
     (hS : ¬ StateHit L) (st₀ : Digest) {es : Log}
     (hfm : ∀ p < nRep, fmAns (fsQ (vkOf π) c π) st₀ L p = some (ansAt es p))
@@ -136,10 +137,21 @@ theorem E_node (c : Digest) (π : Proof) (L : Log) (hq : ∀ e ∈ L, e.1.size <
     (hfin : ∀ x < 32, finalAt es x = finPi π x)
     (hfar : ∀ i < 5, ¬ farL .N30 L es i)
     (hA : ∀ i < 5, consSet .N30 L es i = jointAgree (wordK .N30 L es i) (decodeL .N30 L es i)) :
-    E c π L = some (FR.readWit fun e => (msgOf .N30 L es 0 (e % 64) (e / 64)).f₀) := by
+    E A c π L = some (FR.readWit fun e => (msgOf .N30 L es 0 (e % 64) (e / 64)).f₀) := by
+  rw [E_of_dom ⟨size_snark_le hk, hq, ht⟩]
   show decodeWit (den memX mpwX (extIRWith decSnark) (extractorInput c π L)) = _
   rw [← den_of_run (by simp only [regs, memX]; norm_num) (wf_extIRWith decOk_decSnark.wf)
     (ext_node c π L hq ht hk hS st₀ hfm hcap0 hcap hfin hfar hA).1,
     decodeWit_witWords _ (FR.Read.readWit_fits _)]
+
+/-- **`E` on a node proof outside the domain** (B-15): when the acceptance `A` implies the
+witness bounds (`FRXSearch.sFits_of_acc`) and some witness of `Rel (A (vkOf π)) c` exists, `E`
+returns a witness (`search_spec_acc`). -/
+theorem E_node_out (A : Digest → Digest → Signed → Bool) (c : Digest) (π : Proof) (L : Log)
+    {k : Kind} (hk : kindOf π = .snark k) (hkN : k.isNode = true) (hD : ¬ InDomE c π L)
+    (hA : ∀ c p, A (vkOf π) c p = true → SFits p) (h : ∃ w, RecursionFast.Rel (A (vkOf π)) c w) :
+    ∃ w, E A c π L = some w ∧ RecursionFast.Rel (A (vkOf π)) c w := by
+  rw [E_snark_node hk hkN hD]
+  exact search_spec_acc hA h
 
 end FR.X
