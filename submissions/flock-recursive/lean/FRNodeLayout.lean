@@ -8,7 +8,7 @@ import FRVIRFinals
 BLUEPRINT §4.3's region table and A.6/A.7 (revision 3.5). Blocks of `2^14` positions; the node has
 `2^16` (`m = 30`).
 
-* **H** (from block 0): digest chain 1 `[0, 23,225)` and chain 2 `[23,225, 46,450)` (`streamStart`
+* **H** (from block 0): digest chain 1 `[0, 23,146)` and chain 2 `[23,146, 46,292)` (`streamStart`
   first, `stream` after), `hashStmt` (`hashA`, `hashB1`, `hashB2` per slot), WOTS per slot laid
   out consecutively (§4.2: the 399 `w43` chain steps, the key leaf `hashB1` + 65 `stream` +
   `streamEnd41`, the 16 path steps `hashB1`, `hashB2`), the mirror sub-region `WM` (10 blocks per
@@ -31,8 +31,8 @@ namespace Layout
 
 /-! ## Constants (§4.3, A.7) -/
 
-/-- Compressions of one digest chain (§4.2, revision 3.12: `chainLen_eq`, column items padded). -/
-def chainN : ℕ := 23225
+/-- Compressions of one digest chain (§4.2, revision 3.13: `chainLen_eq`; 23,225 under 3.12). -/
+def chainN : ℕ := 23146
 /-- `hashStmt`'s blocks: 3 per slot. -/
 def stmtBase : ℕ := 2 * chainN
 /-- WOTS: 133 chains × 3 steps, the key leaf's 67 blocks, the path's 16 × 2 per slot. -/
@@ -43,7 +43,8 @@ def wmBase : ℕ := wotsBase + 2 * wotsSlot
 def wmSlot : ℕ := 10
 /-- The end of region H (after 8 spare blocks). -/
 def hEnd : ℕ := wmBase + 2 * wmSlot + 8
-/-- Region L: base and used blocks (revision 3.12: moved from 46,336 past H's new end 47,480). -/
+/-- Region L: base and used blocks (revision 3.12: moved from 46,336 past H's end, 47,480 then;
+47,322 under revision 3.13, the base kept: stage-review changes 19). -/
 def lBase : ℕ := 47616
 def lUsed : ℕ := 124
 /-- Region M: base, elements, blocks, per-slot elements. -/
@@ -184,32 +185,32 @@ theorem nodeLayout_end : (nodeLayout.head?.map Iv.lo, nodeLayout.getLast?.map Iv
 
 /-- **The regions fit**: H ends before L, L's used blocks before M, M ends at `2^16`. -/
 theorem regions_fit : hEnd ≤ lBase ∧ lBase + lUsed ≤ mBase ∧ mBase + mBlocks = nodeBlocks ∧
-    hEnd = 47480 := by
+    hEnd = 47322 := by
   simp only [hEnd, wmBase, wmSlot, wotsBase, wotsSlot, stmtBase, chainN, lBase, lUsed, mBase,
     mBlocks, nM, nodeBlocks]; norm_num
 
 /-! ## The M rows (A.11's row model on the measured counts, per slot) -/
 
-/-- **Per slot, the row model of revision 3.12** (S-E4; BLUEPRINT §10 changes 17, `sizes.txt`),
-with S-E3's measured counts where the rows are emitted (`logs/S-E3/tpl.log`): the skeleton
-(`compileT`'s own rows, 120,597), the emitted templates in their aligned layout (310,656 − 120,597
-= 190,059 rows, padding included); then the plan's figures for what is not emitted yet: the
+/-- **Per slot, the row model of revision 3.12** (S-E5; BLUEPRINT §10 changes 17, `sizes.txt`),
+with S-E5's measured counts where the rows are emitted (`logs/S-E5/lay-2.log`): the skeleton
+(`compileT`'s own rows, 139,137, of which ≈ 29.5 k are the alignment's empty rows before the Merkle
+positions, the Horner blocks and the tensor `eqTable`'s products), the emitted templates in their
+aligned layout (361,856 − 139,137 = 222,719 rows, padding included; `Φ`'s claim 5 is now among
+them, 128 of the 640 `phiRS` instances); then the plan's figures for what is not emitted yet: the
 missing templates 118,639 (`tensorW` 37,335, `rsWeight` with claim 5 45,604 + 11,400, `linkW`'s
 families 20,000, `kindFoldWeight` 1,000, `kindInd` 500, `rowW`/`shiftTarget` 2,800), the fused
-`walkAB`'s 65,536 (the tables `rowW′`, `colW` and the two walks' product rows, `2^14` each; the
-model of changes 17 omits them), `Φ`'s fifth claim 17,152 (`J_z = 5`), and the child's `evalM`
-replay at an F point 422,912 (no `evalMK`). -/
+`walkAB`'s 65,536 (the tables `rowW′`, `colW` and the two walks' product rows, `2^14` each), and
+the child's `evalM` replay at an F point 422,912. -/
 def mRowModel : List ℕ :=
-  [120597,            -- skeleton (measured)
-   190059,            -- emitted templates, aligned (measured)
+  [139137,            -- skeleton, alignment padding included (measured, S-E5)
+   222719,            -- emitted templates, aligned (measured, S-E5)
    118639,            -- templates still missing (changes 17)
    65536,             -- walkAB: rowW′, colW, 2 × 2^14 products
-   17152,             -- Φ, claim 5 (J_z = 5)
    422912]            -- the child's evalM replay at an F point (changes 17)
 
-theorem mRowModel_sum : mRowModel.sum = 934895 := by decide
+theorem mRowModel_sum : mRowModel.sum = 968943 := by decide
 
-/-- **The M rows fit**: a slot's rows in its `2^20` half of M (margin `1.12`), the node's in
+/-- **The M rows fit**: a slot's rows in its `2^20` half of M (margin `1.08`), the node's in
 `N_M = 2^21`. -/
 theorem mRows_le : mRowModel.sum ≤ slotM ∧ 2 * mRowModel.sum ≤ nM := by
   rw [mRowModel_sum]; simp only [slotM, nM]; norm_num

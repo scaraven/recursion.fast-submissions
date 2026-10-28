@@ -114,9 +114,11 @@ def tplExt (tc : TCtx) : Ext := fun P cs op =>
   | .dotKF w col =>
     match cs.slot w with
     | some (.ak n, lw) =>
-      -- the column's `n` F elements: auxiliary import cells (trace cells), fresh at `cs.next`
-      let cells := (List.range n).map fun b => cs.cell b
-      some { tplOut tc P cs (.dotKF n) (lw ++ cells) [.k] with fresh := n, aux := [(cells, col, .felems n)] }
+      -- the column's `n` F elements: auxiliary import cells (trace cells), in the instance's own
+      -- cell region after the template's `2n` locals (S-E5: local to the instance)
+      let cb := tc.cb (.dotKF n) (cs.tcount (.dotKF n))
+      let cells := (List.range n).map fun b => Lin.cell (cb + 2 * n + b)
+      some { tplOut tc P cs (.dotKF n) (lw ++ cells) [.k] with aux := [(cells, col, .felems n)] }
     | _ => none
   | _ => none
 
@@ -357,13 +359,16 @@ theorem compileT_sound {impl : OpImpl} {κ : Kind} {inp : Input} {ops : List Op}
 
 /-! ## The layout -/
 
-/-- Round `x` up to a multiple of `2^b`. -/
-def alignUp (x b : ℕ) : ℕ := (x + 2 ^ b - 1) / 2 ^ b * 2 ^ b
-
 /-- The keys in order of first appearance, with their instance counts. -/
 def keyCounts (tins : List (TKey × ℕ × List Lin)) : List (TKey × ℕ) :=
   tins.reverse.foldl (fun acc t => if acc.any (·.1 == t.1) then
     acc.map fun p => if p.1 == t.1 then (p.1, p.2 + 1) else p else acc ++ [(t.1, 1)]) []
+
+/-- A key's cell region bits: its template's locals and, for `dotKF`, the column cells after them. -/
+def cregion (k : TKey) : ℕ :=
+  match k with
+  | .dotKF n => max (tplOf k).cbits (Nat.size (3 * n + 1))
+  | _ => (tplOf k).cbits
 
 /-- **The layout** from the counts: groups after the skeleton's rows `r0` and cells `c0`, each
 aligned to its instance size. -/
@@ -371,13 +376,13 @@ def mkLay (r0 c0 : ℕ) : List (TKey × ℕ) → TLay
   | [] => []
   | (k, n) :: ks =>
     let T := tplOf k
-    let rb := alignUp r0 T.rbits; let cb := alignUp c0 T.cbits
-    (k, rb, cb, T.cbits) :: mkLay (rb + n * 2 ^ T.rbits) (cb + n * 2 ^ T.cbits) ks
+    let rb := alignUp r0 T.rbits; let cb := alignUp c0 (cregion k)
+    (k, rb, cb, cregion k) :: mkLay (rb + n * 2 ^ T.rbits) (cb + n * 2 ^ cregion k) ks
 
 /-- **The two-pass compile**: count with the zero layout, lay the groups out, compile again. -/
 def layOf (P : Params) (base : ℕ) (ops : List Op) : TLay :=
   let cs := compileT [] P base ops
-  mkLay cs.rows.length cs.next (keyCounts cs.tins)
+  mkLay cs.nrows cs.next (keyCounts cs.tins)
 
 end Circ
 end FR

@@ -462,38 +462,74 @@ theorem foldl_smulF (cs : List F) :
       constructor <;> ring
 
 /-- **`dotKF`** for `w : AK n` (inputs `0 … 2n−1`) and the column's `F` elements (inputs
-`2n … 3n−1`): `c_b · w_b` componentwise (`K.smulF`, 2 gates per `b`); the two sums. -/
-def tplDotKF (n : ℕ) : Tpl :=
-  ⟨mulsG (2 * n) (fun v => I (2 * n + v / 2)) I,
-    [sumLT n fun b => L (2 * b), sumLT n fun b => L (2 * b + 1)]⟩
+`2n … 3n−1`): `c_b · w_b` componentwise (`K.smulF`, 2 gates per `b`); the last two gates also add
+the other products (`mulAdd`, S-E5), so the outputs are two locals and the template keeps `2n`
+rows. -/
+def tplDotKF : ℕ → Tpl
+  | 0 => ⟨[], [[], []]⟩
+  | n + 1 =>
+    ⟨mulsG (2 * n) (fun v => I (2 * (n + 1) + v / 2)) I ++
+      [.mulAdd (I (2 * (n + 1) + n)) (I (2 * n)) (sumLT n fun b => L (2 * b)),
+       .mulAdd (I (2 * (n + 1) + n)) (I (2 * n + 1)) (sumLT n fun b => L (2 * b + 1))],
+     [L (2 * n), L (2 * n + 1)]⟩
 
 theorem tplDotKF_ok {n : ℕ} {w : Array K} {col : ByteArray} (hw : w.size = n)
     (hi : InpIs e (w.toList.flatMap encK ++ (List.range n).map fun b => (felems col).getD b 0))
     (h : Eqns e (tplDotKF n).gates 0) :
     (tplDotKF n).outs.map (LinT.ev e) = encV (.k (dotKF w col)) := by
-  have hm := mulsG_eqns h
-  have hlen : (w.toList.flatMap encK).length = 2 * n := by
-    rw [length_flatMap_encK, Array.length_toList, hw]
-  have hw0 : ∀ b < n, e.inp (2 * b) = (w.toList.getD b 0).f₀ := fun b hb => by
-    rw [hi, getD_append_left (by omega), (encK_getD _ _).1]
-  have hw1 : ∀ b < n, e.inp (2 * b + 1) = (w.toList.getD b 0).f₁ := fun b hb => by
-    rw [hi, getD_append_left (by omega), (encK_getD _ _).2]
-  have hc : ∀ b < n, e.inp (2 * n + b) = (felems col).toList.getD b 0 := fun b hb => by
-    rw [hi, ← hlen, getD_append_right, List.getD_eq_getElem _ _ (by simpa using hb),
-      List.getElem_map, List.getElem_range, arr_getD]
-  have hd := foldl_smulF (felems col).toList w.toList 0
-  rw [Array.length_toList, hw] at hd
-  simp only [tplDotKF, List.map_cons, List.map_nil, encV, encK, dotKF, ← Array.foldl_toList,
-    Array.toList_zipWith, hd.1, hd.2, List.cons.injEq, and_true, ev_sumLT, ev_L]
-  constructor <;> refine (zero_add _).symm.trans ?_ <;> congr 1 <;>
-    refine Finset.sum_congr rfl fun b hb => ?_ <;> have hb := Finset.mem_range.1 hb
-  · rw [← zero_add (2 * b), hm (2 * b) (by omega), ev_I, ev_I,
-      show 2 * b / 2 = b by omega, hc b hb, hw0 b hb]
-  · rw [← zero_add (2 * b + 1), hm (2 * b + 1) (by omega), ev_I, ev_I,
-      show (2 * b + 1) / 2 = b by omega, hc b hb, hw1 b hb]
+  cases n with
+  | zero =>
+    obtain rfl : w = #[] := Array.eq_empty_of_size_eq_zero hw
+    have hd := foldl_smulF (felems col).toList ([] : List K) 0
+    simp only [tplDotKF, List.map_cons, List.map_nil, encV, encK, dotKF, ← Array.foldl_toList,
+      Array.toList_zipWith, List.cons.injEq, and_true]
+    rw [hd.1, hd.2]
+    simp only [List.length_nil, Finset.range_zero, Finset.sum_empty, add_zero]
+    exact ⟨rfl, rfl⟩
+  | succ n =>
+    simp only [tplDotKF, Eqns.append, mulsG_nlocs, Eqns.cons, Gate.Eqn, Gate.nloc,
+      zero_add] at h
+    obtain ⟨h, g1, g2, -⟩ := h
+    have hm := mulsG_eqns h
+    have hlen : (w.toList.flatMap encK).length = 2 * (n + 1) := by
+      rw [length_flatMap_encK, Array.length_toList, hw]
+    have hw0 : ∀ b < n + 1, e.inp (2 * b) = (w.toList.getD b 0).f₀ := fun b hb => by
+      rw [hi, getD_append_left (by omega), (encK_getD _ _).1]
+    have hw1 : ∀ b < n + 1, e.inp (2 * b + 1) = (w.toList.getD b 0).f₁ := fun b hb => by
+      rw [hi, getD_append_left (by omega), (encK_getD _ _).2]
+    have hc : ∀ b < n + 1, e.inp (2 * (n + 1) + b) = (felems col).toList.getD b 0 := fun b hb => by
+      rw [hi, ← hlen, getD_append_right, List.getD_eq_getElem _ _ (by simpa using hb),
+        List.getElem_map, List.getElem_range, arr_getD]
+    have hd := foldl_smulF (felems col).toList w.toList 0
+    rw [Array.length_toList, hw] at hd
+    simp only [tplDotKF, List.map_cons, List.map_nil, ev_L, g1, g2, ev_sumLT, ev_I]
+    simp only [encV, encK, dotKF, ← Array.foldl_toList,
+      Array.toList_zipWith, hd.1, hd.2, List.cons.injEq, and_true]
+    constructor
+    · rw [Finset.sum_range_succ, show (0 : K).f₀ = 0 from rfl, zero_add, hc n (by omega),
+        hw0 n (by omega), add_comm]
+      congr 1
+      refine Finset.sum_congr rfl fun b hb => ?_
+      have hb := Finset.mem_range.1 hb
+      rw [← zero_add (2 * b), hm (2 * b) (by omega), ev_I, ev_I,
+        show 2 * b / 2 = b by omega, hc b (by omega), hw0 b (by omega)]
+    · rw [Finset.sum_range_succ, show (0 : K).f₁ = 0 from rfl, zero_add, hc n (by omega),
+        hw1 n (by omega), add_comm]
+      congr 1
+      refine Finset.sum_congr rfl fun b hb => ?_
+      have hb := Finset.mem_range.1 hb
+      rw [← zero_add (2 * b + 1), hm (2 * b + 1) (by omega), ev_I, ev_I,
+        show (2 * b + 1) / 2 = b by omega, hc b (by omega), hw1 b (by omega)]
 
 /-- `dotKF`'s locals (one per gate): `2n`. -/
-theorem tplDotKF_nlocs (n : ℕ) : nlocs (tplDotKF n).gates = 2 * n := mulsG_nlocs _ _ _
+theorem tplDotKF_nlocs (n : ℕ) : nlocs (tplDotKF n).gates = 2 * n := by
+  cases n with
+  | zero => rfl
+  | succ n =>
+    have := mulsG_nlocs (2 * n) (fun v => I (2 * (n + 1) + v / 2)) I
+    simp only [tplDotKF, nlocs, List.map_append, List.sum_append, List.map_cons, List.map_nil,
+      Gate.nloc, List.sum_cons, List.sum_nil] at this ⊢
+    omega
 
 end Tpl
 end FR

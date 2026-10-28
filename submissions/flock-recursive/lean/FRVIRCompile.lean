@@ -157,6 +157,8 @@ structure CS where
   tins : List (Tpl.TKey × ℕ × List Lin) := []
   /-- The auxiliary imports, with the register count at that point (S-E3). -/
   aux : List ((List Lin × ℕ × Tpl.AuxK) × ℕ) := []
+  /-- The number of rows (`rows.length`, kept so that alignment is `O(1)`; S-E5). -/
+  nrows : ℕ := 0
 
 /-- The rows in program order (row `i` is the `i`-th row emitted). -/
 def CS.rowList (cs : CS) : List Row := cs.rows.reverse
@@ -182,7 +184,21 @@ def CS.add (cs : CS) (op : Op) (o : Out) : CS :=
   let fors := if o.foreign then (op, n) :: cs.fors else cs.fors
   let rows := o.rows.reverseAux cs.rows
   let next := cs.next + o.fresh
-  ⟨next, cs.slots ++ o.slots.toArray, rows, imp, fors, tins, aux⟩
+  let nrows := cs.nrows + o.rows.length
+  ⟨next, cs.slots ++ o.slots.toArray, rows, imp, fors, tins, aux, nrows⟩
+
+/-- Round `x` up to a multiple of `2^b`. -/
+def alignUp (x b : ℕ) : ℕ := (x + 2 ^ b - 1) / 2 ^ b * 2 ^ b
+
+/-- **Alignment** (S-E5, performance only): pad the rows with empty rows to a multiple of `2^a` and
+skip the cells to a multiple of `2^b`, so that the block that follows is an aligned instance of a
+template for the evaluator (`FRVIRTplFast`). Empty rows hold; skipped cells are unused. -/
+def CS.align (cs : CS) : Option (ℕ × ℕ) → CS
+  | none => cs
+  | some (a, b) =>
+    let pad := alignUp cs.nrows a - cs.nrows
+    { cs with rows := List.replicate pad ⟨[], [], []⟩ ++ cs.rows, nrows := cs.nrows + pad,
+              next := alignUp cs.next b }
 
 /-- `n` untracked results. -/
 def skip (n : ℕ) : Out := { slots := List.replicate n none }
@@ -196,11 +212,20 @@ def impSlots (cs : CS) : ℕ → List Ty → List Slot
 def imports (cs : CS) (ts : List Ty) : Out :=
   { slots := impSlots cs 0 ts, fresh := (ts.map Ty.len).sum, imp := true }
 
-/-- `x + g·(y − x)` per component of type `t`, on fresh cells `u_j = g·(y_j − x_j)`. -/
+/-- `x + g·(y − x)` per component of type `t`, **materialised** on fresh cells (S-E5, F-9): the row
+`g·(y_j − x_j) = v_j − x_j`, the output `v_j`. One row per component as before, but the output is
+one cell, so a chain of selects (the Merkle steps' `cur`) does not grow. -/
 def muxOut (cs : CS) (g : Lin) (t : Ty) (sx sy : Slot) : Out where
-  slots := [some (t, (List.range t.len).map fun j => comp sx j ++ cs.cell j)]
-  rows := (List.range t.len).map fun j => ⟨g, (comp sy j).sub (comp sx j), cs.cell j⟩
+  slots := [some (t, (List.range t.len).map fun j => cs.cell j)]
+  rows := (List.range t.len).map fun j => ⟨g, (comp sy j).sub (comp sx j), (cs.cell j).sub (comp sx j)⟩
   fresh := t.len
+
+/-- An activity off for every kind (its assertion's flag is `true`, so it needs no row). -/
+def offK (act : KC Bool) : Bool := !act .L32 && !act .P30 && !act .N30
+
+theorem offK_false {act : KC Bool} (h : offK act = true) (κ : Kind) : act κ = false := by
+  simp only [offK, Bool.and_eq_true, Bool.not_eq_true'] at h
+  cases κ <;> simp [h]
 
 /-- Types whose `Val.eqv` is componentwise equality. -/
 def Ty.eqOk : Ty → Bool
@@ -222,6 +247,29 @@ def eqRows (cs : CS) : List Lin → List Lin → ℕ → List Lin × List Row ×
     let s := eqStep cs x t o
     let r := eqRows cs xs (s.1 ++ s.2.1) (o + t.length)
     (r.1, s.2.2 ++ r.2.1, r.2.2)
+
+/-- The tensor products `lo_i · hi_j` on fresh cells `u0 + i + |lo|·j` (`j`-major). -/
+def prodRows (cs : CS) (lo hi : List Lin) (u0 : ℕ) : List Row :=
+  (List.range hi.length).flatMap fun j => (List.range lo.length).map fun i =>
+    ⟨lo.getD i [], hi.getD j [], cs.cell (u0 + i + lo.length * j)⟩
+
+/-- The product cells, in table order. -/
+def prodOut (cs : CS) (lo hi : List Lin) (u0 : ℕ) : List Lin :=
+  (List.range hi.length).flatMap fun j => (List.range lo.length).map fun i =>
+    cs.cell (u0 + i + lo.length * j)
+
+/-- **`eqTable` as a tensor** (S-E5, ≥ 8 coordinates): `eq(lo, ·)` over the first `p` coordinates and
+`eq(hi, ·)` over the rest (`eqRows` each), then the `2^v` products `lo_i · hi_j` in aligned blocks of
+`2^p` rows and cells, one block per `j` (instances of one template for the evaluator). -/
+def eqTensor (P : Params) (cs : CS) (xs : List Lin) : Out :=
+  let p := (xs.length + 1) / 2
+  let l := eqRows cs (xs.take p) [P.one] 0
+  let h := eqRows cs (xs.drop p) [P.one] l.2.2
+  let r0 := cs.nrows + l.2.1.length + h.2.1.length
+  let u0 := alignUp (cs.next + h.2.2) p - cs.next
+  { slots := [some (.af (prodOut cs l.1 h.1 u0).length, prodOut cs l.1 h.1 u0)]
+    rows := l.2.1 ++ h.2.1 ++ List.replicate (alignUp r0 p - r0) ⟨[], [], []⟩ ++ prodRows cs l.1 h.1 u0
+    fresh := u0 + l.1.length * h.1.length }
 
 /-- Both operands tracked. -/
 def both (a b : Slot) : Bool := a.isSome && b.isSome
@@ -292,6 +340,7 @@ def opOut (P : Params) (cs : CS) : Op → Out
     else skip 1
   | .eqTable r =>
     if (cs.slot r).isSome then
+      if 8 ≤ (asAF (cs.slot r)).length then eqTensor P cs (asAF (cs.slot r)) else
       let e := eqRows cs (asAF (cs.slot r)) [P.one] 0
       { slots := [some (.af e.1.length, e.1)], rows := e.2.1, fresh := e.2.2 }
     else skip 1
@@ -328,6 +377,7 @@ def opOut (P : Params) (cs : CS) : Op → Out
       if t = t' then muxOut cs (asBit (cs.slot b)) t (cs.slot x) (cs.slot y) else skip 1
     | _, _, _ => skip 1
   | .assertEq a b act =>
+    if offK act then { slots := [] } else
     match (cs.slot a).ty?, (cs.slot b).ty? with
     | some t, some t' =>
       if t = t' ∧ t.eqOk then
@@ -336,6 +386,7 @@ def opOut (P : Params) (cs : CS) : Op → Out
       else { slots := [], rows := [⟨P.gate act, P.one, []⟩] }
     | _, _ => { slots := [], foreign := true }
   | .assertZero a act =>
+    if offK act then { slots := [] } else
     match (cs.slot a).ty? with
     | some t =>
       { slots := [], rows := (List.range t.len).map fun j => ⟨P.gate act, comp (cs.slot a) j, []⟩ }
@@ -358,15 +409,36 @@ def noExt : Ext := fun _ _ _ => none
 /-- One op's contribution under an extension. -/
 def stepOut (X : Ext) (P : Params) (cs : CS) (op : Op) : Out := (X P cs op).getD (opOut P cs op)
 
-/-- The compiler from a state. -/
-def compileFromX (X : Ext) (P : Params) (cs : CS) (ops : List Op) : CS :=
-  ops.foldl (fun cs op => cs.add op (stepOut X P cs op)) cs
+/-- The Merkle steps that follow, up to the position's `shrN`. -/
+def stepsAhead : List Op → ℕ
+  | [] => 0
+  | .shrN .. :: _ => 0
+  | .piDigest f _ :: ops => (if f = fSibs then 1 else 0) + stepsAhead ops
+  | _ :: ops => stepsAhead ops
+
+/-- **The alignment hint** of an op given the ops after it (S-E5, performance only): a Merkle
+position (`posOps`, from its `idx`; `4s + 10` rows and at most `9s + 8` cells for `s` steps) and a
+Horner block (`encOps`, from the first of its 7 `tensorW`; 383 rows, 395 cells). -/
+def alignOf : Op → List Op → Option (ℕ × ℕ)
+  | .idx .., ops => let s := stepsAhead ops; some (Nat.size (4 * s + 9), Nat.size (9 * s + 7))
+  | .tensorW .., ops =>
+    match ops.drop 6 with
+    | .mulK .. :: _ => if (ops.take 6).all (fun o => o matches .tensorW ..) then some (9, 9) else none
+    | _ => none
+  | _, _ => none
+
+/-- The compiler from a state (each op after its alignment). -/
+def compileFromX (X : Ext) (P : Params) : CS → List Op → CS
+  | cs, [] => cs
+  | cs, op :: ops =>
+    let cs' := cs.align (alignOf op ops)
+    compileFromX X P (cs'.add op (stepOut X P cs' op)) ops
 
 /-- The compiler without templates. -/
 abbrev compileFrom (P : Params) (cs : CS) (ops : List Op) : CS := compileFromX noExt P cs ops
 
 /-- The initial state: fresh cells from `base`. -/
-def CS.init (base : ℕ) : CS := ⟨base, #[], [], [], [], [], []⟩
+def CS.init (base : ℕ) : CS := ⟨base, #[], [], [], [], [], [], 0⟩
 
 /-- **`compile`**: the rows, slots, imports and foreign assertions of an op list. -/
 def compile (P : Params) (base : ℕ) (ops : List Op) : CS := compileFrom P (CS.init base) ops
@@ -527,12 +599,15 @@ theorem muxOut_sound {w : Asg} {cs : CS} {g : Lin} {t : Ty} {lx ly : List Lin} {
       [if c then vy else vx] := by
   simp only [muxOut, List.forall₂_cons, List.Forall₂.nil, and_true]
   refine ⟨by cases c <;> simp [hx.1, hy.1], ?_⟩
-  have key : ∀ j < t.len, (comp (some (t, lx)) j ++ cs.cell j).ev w =
-      (comp (some (t, if c then ly else lx)) j).ev w := by
+  have key : ∀ j < t.len, (cs.cell j).ev w = (comp (some (t, if c then ly else lx)) j).ev w := by
     intro j hj
     have := hr _ (List.mem_map.2 ⟨j, List.mem_range.2 hj, rfl⟩)
-    simp only [Row.Holds, Lin.ev_sub, hg, Lin.ev_append] at this ⊢
-    cases c <;> simp_all [bitF, CS.cell] <;> rw [← this] <;> ring
+    simp only [Row.Holds, Lin.ev_sub, hg] at this
+    have h1 : bitF true = 1 := rfl
+    have h0 : bitF false = 0 := rfl
+    cases c
+    · rw [h0] at this; simp only [Bool.false_eq_true, ↓reduceIte]; linear_combination -this
+    · rw [h1] at this; simp only [↓reduceIte]; linear_combination -this
   have hc : RepS w (some (t, if c then ly else lx)) (if c then vy else vx) := by
     cases c <;> simpa
   refine encV_ext hc (by simp) fun j hj => ?_
@@ -574,6 +649,62 @@ theorem eqRows_sound {w : Asg} {cs : CS} : ∀ (xs t : List Lin) (o : ℕ) (xv :
       (by simp only [List.map_append, st.1, st.2, Array.toList_append, Array.toList_map])
       fun r h => hr r (Or.inr h)
 
+/-- **The table of a concatenation is a tensor** (`lo` the fast index): folding `ys` from a table
+`t` gives `t ⊗ eq(ys, ·)`. -/
+theorem foldl_eqStep_tensor (ys : List F) : ∀ t : Array F,
+    (ys.foldl (fun t x => t.map (· * (1 - x)) ++ t.map (· * x)) t).toList =
+      (ys.foldl (fun t x => t.map (· * (1 - x)) ++ t.map (· * x)) #[1]).toList.flatMap
+        fun e => t.toList.map (· * e) := by
+  induction ys with
+  | nil => intro t; simp
+  | cons y ys ih =>
+    intro t
+    rw [List.foldl_cons, List.foldl_cons, ih, ih (#[1].map _ ++ #[1].map _), List.flatMap_assoc]
+    refine List.flatMap_congr fun e _ => ?_
+    simp [List.map_map, Function.comp_def, mul_assoc]
+
+theorem prodRows_sound {w : Asg} {cs : CS} {lo hi : List Lin} {u0 : ℕ}
+    (h : ∀ r ∈ prodRows cs lo hi u0, r.Holds w) :
+    (prodOut cs lo hi u0).map (Lin.ev w) =
+      (hi.map (Lin.ev w)).flatMap fun e => (lo.map (Lin.ev w)).map (· * e) := by
+  have hh : (List.range hi.length).map ((hi.map (Lin.ev w)).getD · 0) = hi.map (Lin.ev w) :=
+    List.ext_getElem (by simp) fun j _ h2 => by simp [List.getElem?_eq_getElem (by simpa using h2)]
+  have hl : (List.range lo.length).map ((lo.map (Lin.ev w)).getD · 0) = lo.map (Lin.ev w) :=
+    List.ext_getElem (by simp) fun j _ h2 => by simp [List.getElem?_eq_getElem (by simpa using h2)]
+  rw [← hh, ← hl]
+  simp only [prodOut, List.map_flatMap, List.flatMap_map, List.map_map]
+  refine List.flatMap_congr fun j hj => List.map_congr_left fun i hi' => ?_
+  have hr := h _ (List.mem_flatMap.2 ⟨j, hj, List.mem_map.2 ⟨i, hi', rfl⟩⟩)
+  simp only [Row.Holds] at hr
+  simp only [Function.comp_apply, ← getD_ev rfl i, ← getD_ev rfl j, hr]
+
+/-- **The tensor `eqTable` is sound**: its rows give `eqTab` of the coordinates. -/
+theorem eqTensor_sound {w : Asg} {P : Params} {cs : CS} {κ : Kind} (hP : SelOk w P κ)
+    {xs : List Lin} {x : Array F} (hx : xs.map (Lin.ev w) = x.toList)
+    (hr : ∀ r ∈ (eqTensor P cs xs).rows, r.Holds w) :
+    List.Forall₂ (RepS w) (eqTensor P cs xs).slots [.af (eqTab x)] := by
+  simp only [eqTensor, List.mem_append] at hr ⊢
+  generalize (xs.length + 1) / 2 = p at hr ⊢
+  have hl := eqRows_sound (cs := cs) (xs.take p) [P.one] 0 (x.toList.take p) #[1]
+    (by rw [List.map_take, hx]) (by simp [hP.1]) fun r h => hr r (.inl (.inl (.inl h)))
+  have hh := eqRows_sound (cs := cs) (xs.drop p) [P.one] _ (x.toList.drop p) #[1]
+    (by rw [List.map_drop, hx]) (by simp [hP.1]) fun r h => hr r (.inl (.inl (.inr h)))
+  have hp := prodRows_sound fun r h => hr r (.inr h)
+  have hsplit : x.toList.foldl (fun t x => t.map (· * (1 - x)) ++ t.map (· * x)) #[1] =
+      (x.toList.drop p).foldl (fun t x => t.map (· * (1 - x)) ++ t.map (· * x))
+        ((x.toList.take p).foldl (fun t x => t.map (· * (1 - x)) ++ t.map (· * x)) #[1]) := by
+    conv_lhs => rw [← List.take_append_drop p x.toList]
+    rw [List.foldl_append]
+  have key : (prodOut cs (eqRows cs (xs.take p) [P.one] 0).1
+      (eqRows cs (xs.drop p) [P.one] (eqRows cs (xs.take p) [P.one] 0).2.2).1
+      (alignUp (cs.next + (eqRows cs (xs.drop p) [P.one] (eqRows cs (xs.take p) [P.one] 0).2.2).2.2) p
+        - cs.next)).map (Lin.ev w) = (eqTab x).toList := by
+    rw [hp, hl, hh, eqTab, ← Array.foldl_toList, hsplit, foldl_eqStep_tensor (x.toList.drop p)
+      ((x.toList.take p).foldl (fun t x => t.map (· * (1 - x)) ++ t.map (· * x)) #[1])]
+  simp only [List.forall₂_cons, List.Forall₂.nil, and_true, RepS, tyOf, encV]
+  refine ⟨?_, key⟩
+  rw [← List.length_map (f := Lin.ev w), key]; simp
+
 theorem oneHot_sound {a b c : Bool} {one x y z : F} (h1 : one = 1) (hx : x = bitF a)
     (hy : y = bitF b) (hz : z = bitF c) (r1 : x * y = 0) (r2 : x * z = 0) (r3 : y * z = 0)
     (r4 : one * (x + y + z) = one) : ([a, b, c].count true == 1) = true := by
@@ -614,8 +745,8 @@ theorem impSlots_len (cs : CS) : ∀ (o : ℕ) (ts : List Ty), (impSlots cs o ts
   | o, _ :: ts => by simp [impSlots, impSlots_len cs _ ts]
 
 theorem opOut_len (P : Params) (cs : CS) (op : Op) : (opOut P cs op).slots.length = op.nOut := by
-  cases op <;> simp only [opOut, imports, impSlots_len, skip, muxOut] <;> (try split) <;>
-    (try split) <;> (try split) <;> simp [Op.nOut, kinds]
+  cases op <;> simp only [opOut, imports, impSlots_len, skip, muxOut, eqTensor] <;> (try split) <;>
+    (try split) <;> (try split) <;> (try split) <;> simp [Op.nOut, kinds]
 
 theorem range_getD {l : List F} {n : ℕ} (h : l.length = n) : (List.range n).map (l.getD · 0) = l := by
   subst h; apply List.ext_getElem (by simp); intro j h1 h2; simp [List.getElem?_eq_getElem h2]
@@ -753,7 +884,10 @@ theorem opOut_sound {impl : OpImpl} {κ : Kind} {inp : Input} {w : Asg} {P : Par
       simp [h0, h1]
     · simp [skip, RepS]
   case eqTable r =>
-    simp only [opOut] at hr ⊢; split_ifs at hr ⊢ with ha
+    simp only [opOut] at hr ⊢; split_ifs at hr ⊢ with ha hbig
+    · obtain ⟨t, ls, e, rr⟩ := rep_of_some hI ha
+      rw [e] at hr ⊢
+      exact ⟨fun _ => eqTensor_sound hP (asAF_ev rr) hr, fun _ => trivial⟩
     · obtain ⟨t, ls, e, rr⟩ := rep_of_some hI ha
       rw [e] at hr ⊢
       have := eqRows_sound (cs := cs) _ [P.one] 0 _ #[1] (asAF_ev rr) (by simp [hP.1]) hr
@@ -801,6 +935,9 @@ theorem opOut_sound {impl : OpImpl} {κ : Kind} {inp : Input} {w : Asg} {P : Par
       · simp [htt, skip, RepS]
   case assertEq a b act =>
     simp only [opOut] at hr ⊢
+    by_cases hoff : offK act = true
+    · rw [if_pos hoff]; exact ⟨fun _ => .nil, fun _ => by simp [offK_false hoff κ]⟩
+    rw [if_neg hoff] at hr ⊢
     rcases ha : (cs.slot a).ty? with _ | t <;> rcases hb : (cs.slot b).ty? with _ | t' <;>
       simp only [ha, hb] at hr ⊢
     all_goals try (simp; done)
@@ -819,6 +956,9 @@ theorem opOut_sound {impl : OpImpl} {κ : Kind} {inp : Input} {w : Asg} {P : Par
       · simp [Row.Holds, hg, hP.1] at hr
   case assertZero a act =>
     simp only [opOut] at hr ⊢
+    by_cases hoff : offK act = true
+    · rw [if_pos hoff]; exact ⟨fun _ => .nil, fun _ => by simp [offK_false hoff κ]⟩
+    rw [if_neg hoff] at hr ⊢
     rcases ha : (cs.slot a).ty? with _ | t <;> simp only [ha] at hr ⊢
     · simp
     · obtain ⟨la, ea⟩ := slot_of_ty ha
@@ -846,12 +986,12 @@ theorem opOut_sound {impl : OpImpl} {κ : Kind} {inp : Input} {w : Asg} {P : Par
     · simp
 
 theorem opOut_tin (P : Params) (cs : CS) (op : Op) : (opOut P cs op).tin = none := by
-  cases op <;> simp only [opOut, imports, skip, muxOut] <;> (try split) <;> (try split) <;>
-    (try split) <;> rfl
+  cases op <;> simp only [opOut, imports, skip, muxOut, eqTensor] <;> (try split) <;> (try split) <;>
+    (try split) <;> (try split) <;> rfl
 
 theorem opOut_aux (P : Params) (cs : CS) (op : Op) : (opOut P cs op).aux = [] := by
-  cases op <;> simp only [opOut, imports, skip, muxOut] <;> (try split) <;> (try split) <;>
-    (try split) <;> rfl
+  cases op <;> simp only [opOut, imports, skip, muxOut, eqTensor] <;> (try split) <;> (try split) <;>
+    (try split) <;> (try split) <;> rfl
 
 theorem ask_imp {impl : OpImpl} {κ : Kind} {inp : Input} {regs : Array Val} {op : Op} {q : ByteArray}
     (P : Params) (cs : CS) (h : evalOp impl κ inp regs op = .ask q) : (opOut P cs op).imp = true := by
@@ -930,6 +1070,33 @@ def ExtOk (impl : OpImpl) (tc : Tpl.TCtx) (X : Ext) : Prop :=
        ∀ vs ok, evalOp impl κ inp regs op = .vals vs ok →
          (o.imp = false → List.Forall₂ (RepS w) o.slots vs) ∧ (o.foreign = false → ok = true))
 
+/-! ## Alignment changes only the rows (by empty rows) and the next cell -/
+
+@[simp] theorem CS.align_slots (cs : CS) (a : Option (ℕ × ℕ)) : (cs.align a).slots = cs.slots := by
+  rcases a with _ | ⟨_, _⟩ <;> rfl
+@[simp] theorem CS.align_imp (cs : CS) (a : Option (ℕ × ℕ)) : (cs.align a).imp = cs.imp := by
+  rcases a with _ | ⟨_, _⟩ <;> rfl
+@[simp] theorem CS.align_fors (cs : CS) (a : Option (ℕ × ℕ)) : (cs.align a).fors = cs.fors := by
+  rcases a with _ | ⟨_, _⟩ <;> rfl
+@[simp] theorem CS.align_tins (cs : CS) (a : Option (ℕ × ℕ)) : (cs.align a).tins = cs.tins := by
+  rcases a with _ | ⟨_, _⟩ <;> rfl
+@[simp] theorem CS.align_aux (cs : CS) (a : Option (ℕ × ℕ)) : (cs.align a).aux = cs.aux := by
+  rcases a with _ | ⟨_, _⟩ <;> rfl
+
+theorem CS.align_rows (cs : CS) (a : Option (ℕ × ℕ)) :
+    ∃ pad : List Row, (cs.align a).rows = pad ++ cs.rows ∧ ∀ r ∈ pad, r = ⟨[], [], []⟩ := by
+  rcases a with _ | ⟨_, _⟩
+  · exact ⟨[], rfl, by simp⟩
+  · exact ⟨_, rfl, fun r h => List.eq_of_mem_replicate h⟩
+
+theorem CS.align_slot (cs : CS) (a : Option (ℕ × ℕ)) (i : ℕ) : (cs.align a).slot i = cs.slot i := by
+  simp [CS.slot]
+
+theorem compileFromX_cons (X : Ext) (P : Params) (cs : CS) (op : Op) (ops : List Op) :
+    compileFromX X P cs (op :: ops) =
+      compileFromX X P ((cs.align (alignOf op ops)).add op
+        (stepOut X P (cs.align (alignOf op ops)) op)) ops := rfl
+
 theorem noExt_ok (impl : OpImpl) (tc : Tpl.TCtx) : ExtOk impl tc noExt := by
   intro _ _ _ _ h; simp [noExt] at h
 
@@ -939,16 +1106,21 @@ theorem compileFromX_mono (X : Ext) (P : Params) : ∀ (ops : List Op) (cs : CS)
     cs.tins ⊆ (compileFromX X P cs ops).tins ∧ cs.aux ⊆ (compileFromX X P cs ops).aux
   | [], cs => ⟨#[], [], by simp [compileFromX]⟩
   | op :: ops, cs => by
+    rw [compileFromX_cons]
+    obtain ⟨pad, hpad, -⟩ := CS.align_rows cs (alignOf op ops)
+    generalize hc : cs.align (alignOf op ops) = cs' at hpad ⊢
+    have hs : cs'.slots = cs.slots := by rw [← hc]; simp
+    have hi : cs'.imp = cs.imp := by rw [← hc]; simp
+    have hf : cs'.fors = cs.fors := by rw [← hc]; simp
+    have ht : cs'.tins = cs.tins := by rw [← hc]; simp
+    have ha : cs'.aux = cs.aux := by rw [← hc]; simp
     obtain ⟨ss, rs, h1, h2, h3, h4, h5, h6⟩ :=
-      compileFromX_mono X P ops (cs.add op (stepOut X P cs op))
-    have e : compileFromX X P cs (op :: ops) =
-        compileFromX X P (cs.add op (stepOut X P cs op)) ops := rfl
-    rw [e]
-    refine ⟨(stepOut X P cs op).slots.toArray ++ ss, rs ++ (stepOut X P cs op).rows.reverse,
-      h1.trans (by simp [CS.add, Array.append_assoc]),
-      h2.trans (by simp [CS.add, List.reverseAux_eq, List.append_assoc]),
+      compileFromX_mono X P ops (cs'.add op (stepOut X P cs' op))
+    refine ⟨(stepOut X P cs' op).slots.toArray ++ ss, rs ++ (stepOut X P cs' op).rows.reverse ++ pad,
+      h1.trans (by simp [CS.add, Array.append_assoc, hs]),
+      h2.trans (by simp [CS.add, List.reverseAux_eq, List.append_assoc, hpad]),
       fun x hx => h3 ?_, fun x hx => h4 ?_, fun x hx => h5 ?_, fun x hx => h6 ?_⟩ <;>
-      simp only [CS.add] <;> (try split) <;> simp [hx]
+      simp only [CS.add, hi, hf, ht, ha] <;> (try split) <;> simp [hx]
 
 /-- The induction behind `compile_sound` (with an extension). -/
 theorem compileFromX_sound {impl : OpImpl} {κ : Kind} {inp : Input} {w : Asg} {P : Params}
@@ -966,9 +1138,12 @@ theorem compileFromX_sound {impl : OpImpl} {κ : Kind} {inp : Input} {w : Asg} {
   | [], cs, s, s', tr, tr', hI, he, _, _, _, _, _ => by
     simp [exec] at he; obtain ⟨rfl, rfl⟩ := he; exact ⟨rfl, hI⟩
   | op :: ops, cs, s, s', tr, tr', hI, he, hr, ht, hx, hi, hf => by
-    have e : compileFromX X P cs (op :: ops) =
-        compileFromX X P (cs.add op (stepOut X P cs op)) ops := rfl
-    rw [e] at hr ht hx hi hf ⊢
+    rw [compileFromX_cons] at hr ht hx hi hf ⊢
+    have hI' : Inv w (cs.align (alignOf op ops)) s.regs :=
+      ⟨by simp [hI.1], fun i => by rw [CS.align_slot]; exact hI.2 i⟩
+    generalize cs.align (alignOf op ops) = cs at hI' hr ht hx hi hf ⊢
+    clear hI
+    rename' hI' => hI
     set o := stepOut X P cs op with ho
     obtain ⟨ss, rs, hsl, hrw, himp, hfor, htin, haux⟩ := compileFromX_mono X P ops (cs.add op o)
     have hro : ∀ r ∈ o.rows, r.Holds w := fun r h =>
@@ -1070,7 +1245,8 @@ theorem compile_sound {impl : OpImpl} {κ : Kind} {inp : Input} {ops : List Op} 
     | nil => intro cs h1 h2; exact ⟨h1, h2⟩
     | cons op ops ih =>
       intro cs h1 h2
-      exact ih _ (by simp [CS.add, stepOut, noExt, opOut_tin, h1]) (by simp [CS.add, stepOut, noExt, opOut_aux, h2])
+      exact ih _ (by simp [CS.add, stepOut, noExt, opOut_tin, h1])
+        (by simp [CS.add, stepOut, noExt, opOut_aux, h2])
   have h0 := hn ops (CS.init base) rfl rfl
   have h := compileFromX_sound (noExt_ok impl ⟨fun _ => ⟨[], []⟩, fun _ _ => 0⟩) hP ops (CS.init base)
     St.init s tr tr' ⟨rfl, fun i => by simp [CS.slot, CS.init, RepS]⟩ he hr

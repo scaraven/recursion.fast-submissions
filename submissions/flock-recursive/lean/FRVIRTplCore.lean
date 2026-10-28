@@ -67,6 +67,7 @@ structure Row where
   a : Lin
   b : Lin
   c : Lin
+  deriving DecidableEq
 
 /-- The row holds at `w`. -/
 def Row.Holds (w : Asg) (r : Row) : Prop := r.a.ev w * r.b.ev w = r.c.ev w
@@ -85,7 +86,7 @@ inductive Wire where
   | one
   | inp (i : ℕ)
   | loc (k : ℕ)
-  deriving DecidableEq, Inhabited
+  deriving DecidableEq, Inhabited, Hashable
 
 /-- A linear form over wires. -/
 abbrev LinT := List (Wire × F)
@@ -127,31 +128,37 @@ structure RowT where
   a : LinT
   b : LinT
   c : LinT
+  deriving DecidableEq, Hashable
 
 def RowT.Holds (e : Env) (r : RowT) : Prop := r.a.ev e * r.b.ev e = r.c.ev e
 
 /-! ## Gates and templates -/
 
-/-- A gate: a product (one new local, one row) or an inverse (two locals, three rows). -/
+/-- A gate: a product (one new local, one row), an inverse (two locals, three rows), or a product
+plus a linear form (one local `a·b + c`, one row; S-E5). -/
 inductive Gate where
   | mul (a b : LinT)
   | inv (a : LinT)
+  | mulAdd (a b c : LinT)
 
 /-- The locals a gate allocates. -/
 def Gate.nloc : Gate → ℕ
   | .mul .. => 1
   | .inv _ => 2
+  | .mulAdd .. => 1
 
 /-- A gate's rows, its first local at `k`. -/
 def Gate.rows (k : ℕ) : Gate → List RowT
   | .mul a b => [⟨a, b, L k⟩]
   | .inv a => [⟨a, L k, L (k + 1)⟩, ⟨a, C 1 ++ sc (-1) (L (k + 1)), []⟩,
       ⟨L k, C 1 ++ sc (-1) (L (k + 1)), []⟩]
+  | .mulAdd a b c => [⟨a, b, L k ++ sc (-1) c⟩]
 
 /-- A gate's equation, its first local at `k`. -/
 def Gate.Eqn (e : Env) (k : ℕ) : Gate → Prop
   | .mul a b => e.loc k = a.ev e * b.ev e
   | .inv a => e.loc k = (a.ev e)⁻¹
+  | .mulAdd a b c => e.loc k = a.ev e * b.ev e + c.ev e
 
 /-- The gates with their first locals, from `k`. -/
 def gatesAt : List Gate → ℕ → List (ℕ × Gate)
@@ -206,6 +213,9 @@ theorem Gate.eqn_of_rows {e : Env} (h1 : e.one = 1) (k : ℕ) (g : Gate)
     simp only [Gate.rows, List.mem_cons, List.not_mem_nil, or_false, forall_eq_or_imp, forall_eq,
       RowT.Holds, ev_append, ev_L, ev_C, ev_sc, ev_nil, h1] at h
     exact inv_of_rows h.1 (by linear_combination h.2.1) (by linear_combination h.2.2)
+  | mulAdd a b c =>
+    simp only [Gate.rows, List.mem_singleton, forall_eq, RowT.Holds, ev_append, ev_L, ev_sc] at h
+    simp only [Gate.Eqn]; linear_combination -h
 
 /-- **The rows give the gate equations** (generic, once for every template). -/
 theorem Tpl.eqns_of_rows {e : Env} (h1 : e.one = 1) (T : Tpl) (h : ∀ r ∈ T.rows, r.Holds e) :

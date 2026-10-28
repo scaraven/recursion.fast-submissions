@@ -1,7 +1,7 @@
 -- New for `flock-recursive` (BLUEPRINT §10 changes 17, revision 3.12 item 3; stage S-E4, track
 -- L-circ). The node section (`Plan`, `planOf`, `nodeIRows`, `evalMT`, `evalMKT`) moved here from
 -- `FRVIRTplEval` (S-E3); `evalMT` is now the flat evaluation.
-import FRVIRTplEval
+import FRVIRTplPlan
 
 /-!
 # The flat evaluation of the node's M matrices (`evalM`)
@@ -274,133 +274,466 @@ theorem compactIT_sum (it : List (ℕ × F)) (f : ℕ → F) :
   simp only [h0, zero_mul]
   simp
 
-/-! ## Template instances -/
+/-! ## A raw template instance in closed form (`tplR_mle`) -/
 
-/-- A key's prepared values with its input terms compacted. -/
-def cprep (p : Prep F) : Prep F := { p with it := compactIT p.it }
+section Raw
+variable {R : Type*} [CommRing R] (ι : F →+* R)
 
-/-- The keys' prepared values for matrix `s` from their cached templates (once per evaluation,
-shared by the two slots). -/
-def pcache (s : Mat) (τ σ : ℕ → F) (tp : List (TKey × Tpl)) : List (TKey × Prep F) :=
-  tp.map fun p => (p.1, cprep (prepT (RingHom.id F) s τ σ p.2))
+/-- A raw template's terms with the row factor: `(wire, eq(τ_lo, j) · ι c)`. -/
+def ttR (s : Mat) (T : List RowT) (eτ : ℕ → R) : List (Wire × R) :=
+  T.zipIdx.flatMap fun p => (s.t p.1).map fun t => (t.1, eτ p.2 * ι t.2)
 
-/-- A key's prepared values from the cache. -/
-def pfind (s : Mat) (τ σ : ℕ → F) (c : List (TKey × Prep F)) (k : TKey) : Prep F :=
-  match c.find? (·.1 == k) with
-  | some p => p.2
-  | none => cprep (prepOf (RingHom.id F) s τ σ k)
+/-- **`tplR_mle`** (`tpl_mle` for raw template rows): an instance at row base `2^A · Xh` and cell
+base `2^B · Ch` is `Hτ · (Hσ · LOC + ONE · E(one) + Σ_IT u · E(ins_i))`, when the rows fit `2^A`
+and the locals `2^B`. -/
+theorem tplR_mle (s : Mat) {n m A B : ℕ} (τ σ : ℕ → R) (T : List RowT) (one : Lin)
+    (ins : List Lin) (Xh Ch : ℕ) (hA : A ≤ n) (hB : B ≤ m) (hT : T.length ≤ 2 ^ A)
+    (hL : ∀ r ∈ T, ∀ k c, (Wire.loc k, c) ∈ s.t r → k < 2 ^ B) (eτ eσ : ℕ → R)
+    (heτ : ∀ j < T.length, eτ j = eqN A τ j) (heσ : ∀ k < 2 ^ B, eσ k = eqN B σ k) :
+    rowsVal ι s n m τ σ (instIR T one ins (2 ^ A * Xh) (2 ^ B * Ch)) =
+      instClosed ι m σ one ins (gN (n - A) (fun l => τ (A + l)) Xh)
+        (gN (m - B) (fun l => σ (B + l)) Ch) (locSum eσ (ttR ι s T eτ))
+        (oneSum (ttR ι s T eτ)) (inpList (ttR ι s T eτ)) := by
+  set Hτ := gN (n - A) (fun l => τ (A + l)) Xh
+  set Hσ := gN (m - B) (fun l => σ (B + l)) Ch
+  set cb := 2 ^ B * Ch
+  have hloc : ∀ p ∈ ttR ι s T eτ, ∀ k, p.1 = .loc k → gN m σ (cb + k) = eσ k * Hσ := by
+    intro p hp k hk
+    simp only [ttR, List.mem_flatMap, List.mem_map] at hp
+    obtain ⟨q, hq, ⟨w, c⟩, hwc, rfl⟩ := hp
+    simp only at hk; subst hk
+    have hk' := hL _ (zipIdx_mem hq).1 _ _ hwc
+    rw [gN_split hB _ _ hk', heσ k hk']
+  have hrow : ∀ p ∈ T.zipIdx,
+      gN n τ (2 ^ A * Xh + p.2) * linE ι m σ (s.r (instRow one ins cb p.1)) =
+      Hτ * ((s.t p.1).map fun t => eτ p.2 * ι t.2 * wireE ι m σ one ins cb t.1).sum := by
+    intro p hp
+    have hj := (zipIdx_mem hp).2
+    rw [gN_split hA _ _ (lt_of_lt_of_le hj hT), Mat.r_inst, linE_instLin, ← heτ _ hj,
+      mul_comm (eτ _), mul_assoc, ← List.sum_map_mul_left]
+    simp only [mul_assoc]; rfl
+  unfold instClosed
+  rw [← partition ι m σ one ins cb eσ Hσ _ hloc, rowsVal, instIR, List.map_map, ttR,
+    sum_flatMap_map]
+  simp only [Function.comp_def]
+  rw [List.map_congr_left hrow, List.sum_map_mul_left]
+  simp only [List.map_map, Function.comp_def]
 
-theorem pfind_eq (s : Mat) (τ σ : ℕ → F) (tp : List (TKey × Tpl)) (htp : ∀ p ∈ tp, p.2 = tplOf p.1)
-    (k : TKey) : pfind s τ σ (pcache s τ σ tp) k = cprep (prepOf (RingHom.id F) s τ σ k) := by
-  unfold pfind
-  split
-  · rename_i p hp
-    have h1 := List.find?_some hp
-    obtain ⟨k', hk', rfl⟩ := List.mem_map.1 (List.mem_of_find?_eq_some hp)
-    simp only [beq_iff_eq] at h1
-    simp only [prepOf, htp k' hk', h1]
-  · rfl
+end Raw
 
-/-- The cached templates of a list of keys. -/
-def tplCache (ks : List TKey) : List (TKey × Tpl) := ks.map fun k => (k, tplOf k)
+/-! ## Input coefficients as a dense array -/
 
-theorem tplCache_ok (ks : List TKey) : ∀ p ∈ tplCache ks, p.2 = tplOf p.1 := by
-  intro p hp; obtain ⟨k, -, rfl⟩ := List.mem_map.1 hp; rfl
+/-- **One coefficient per input index** (`U[i] = Σ_{(i, u) ∈ IT} u`). -/
+def denseIT (it : List (ℕ × F)) : Array F :=
+  it.foldl (fun U q => U.modify q.1 (· + q.2))
+    (Array.replicate (it.foldl (fun m q => max m (q.1 + 1)) 0) 0)
 
-/-- **An instance, prepared once per node**: its key, the row and cell bits of its template, the
-alignment test of `instVal`, the high parts of its bases, its grouped input forms, and its grouped
-rows when it is not aligned. -/
-structure GInst where
-  key : TKey
-  a : ℕ
-  b : ℕ
-  al : Bool
-  xh : ℕ
-  ch : ℕ
-  ins : Array GForm
-  rows : GRows
+theorem foldl_modify_size (it : List (ℕ × F)) : ∀ U : Array F,
+    (it.foldl (fun U q => U.modify q.1 (· + q.2)) U).size = U.size := by
+  induction it with
+  | nil => intro U; rfl
+  | cons q it ih => intro U; rw [List.foldl_cons, ih, Array.size_modify]
 
-/-- The prepared instance `t` of a slot at row offset `off`. -/
-def ginstOf (L : TLay) (one : Lin) (off : ℕ) (t : TKey × ℕ × List Lin) : GInst :=
-  let T := tplOf t.1
-  let X := off + L.rb t.1 + t.2.1 * 2 ^ T.rbits
-  let cb := L.cb t.1 t.2.1
-  let al := decide (T.rbits ≤ 21 ∧ T.cbits ≤ 23 ∧ X % 2 ^ T.rbits = 0 ∧ cb % 2 ^ T.cbits = 0)
-  ⟨t.1, T.rbits, T.cbits, al, X / 2 ^ T.rbits, cb / 2 ^ T.cbits, (t.2.2.map (grp 4096)).toArray,
-    if al then [] else grows 2048 4096 (tinIRows L one off t)⟩
+theorem sum_range_ext (g : ℕ → F) (L : ℕ) (h : ∀ i, L ≤ i → g i = 0) :
+    ∀ k, ((List.range (L + k)).map g).sum = ((List.range L).map g).sum := by
+  intro k; induction k with
+  | zero => rfl
+  | succ k ih => rw [← Nat.add_assoc, List.range_succ, List.map_append, List.sum_append, ih]; simp [h (L + k) (by omega)]
 
-/-- The instance's two high `eq` factors (shared by the three matrices). -/
-def ghv (τ σ : ℕ → F) (g : GInst) : F × F :=
-  (gNL (21 - g.a) (fun l => τ (g.a + l)) g.xh, gNL (23 - g.b) (fun l => σ (g.b + l)) g.ch)
+theorem sum_range_ext' (g : ℕ → F) {L M : ℕ} (hLM : L ≤ M) (h : ∀ i, L ≤ i → g i = 0) :
+    ((List.range M).map g).sum = ((List.range L).map g).sum := by
+  obtain ⟨k, rfl⟩ := Nat.exists_eq_add_of_le hLM; exact sum_range_ext g L h k
 
-/-- **An instance's value** for matrix `s` (`instVal`'s closed form, or its grouped rows). -/
-def ginstVal (s : Mat) (tlo thi slo shi : Array F) (p : Prep F) (e1 : F) (hv : F × F) (g : GInst) :
-    F :=
-  if g.al then
-    hv.1 * (hv.2 * p.loc + p.one * e1 + sumL (fun q => q.2 * glVal slo shi (g.ins.getD q.1 [])) p.it)
-  else growsVal s tlo thi slo shi g.rows
+/-- **The dense coefficients give the input sum**, over any range covering the inputs read. -/
+theorem denseIT_sum (it : List (ℕ × F)) (f : ℕ → F) (M : ℕ) (hM : ∀ i, M ≤ i → f i = 0) :
+    (it.map fun q => q.2 * f q.1).sum = ((List.range M).map fun i => (denseIT it).getD i 0 * f i).sum := by
+  set N := it.foldl (fun m q => max m (q.1 + 1)) 0
+  have h0 : ∀ i, (Array.replicate N (0 : F)).getD i 0 = 0 := fun i => by
+    rw [Array.getD_eq_getD_getElem?, Array.getElem?_replicate]; split <;> rfl
+  have hf := foldl_modify N f it (Array.replicate N 0) (Array.size_replicate ..) (foldl_max_lt it 0)
+  simp only [h0, zero_mul, List.map_const', List.sum_replicate, smul_zero, zero_add] at hf
+  rw [← hf]
+  change ((List.range N).map fun i => (denseIT it).getD i 0 * f i).sum = _
+  have hs : (denseIT it).size = N := by rw [denseIT, foldl_modify_size, Array.size_replicate]
+  have hU : ∀ i, N ≤ i → (denseIT it).getD i 0 * f i = 0 := fun i hi => by
+    rw [Array.getD_eq_getD_getElem?, Array.getElem?_eq_none (by omega)]; simp
+  have hV : ∀ i, M ≤ i → (denseIT it).getD i 0 * f i = 0 := fun i hi => by simp [hM i hi]
+  rw [← sum_range_ext' _ (le_max_left N M) hU, sum_range_ext' _ (le_max_right N M) hV]
 
-theorem ginstVal_eq (s : Mat) (tlo thi slo shi : Array F) (τ σ : ℕ → F) (L : TLay) (one : Lin)
-    (off : ℕ) (t : TKey × ℕ × List Lin) :
-    ginstVal s tlo thi slo shi (cprep (prepOf (RingHom.id F) s τ σ t.1))
-        (glVal slo shi (grp 4096 one)) (ghv τ σ (ginstOf L one off t)) (ginstOf L one off t) =
-      instVal (RingHom.id F) s 21 23 τ σ (splitAt tlo thi 2048) (splitAt slo shi 4096) L one off
-        (prepOf (RingHom.id F) s τ σ t.1) t := by
-  have hins : ∀ i, ((t.2.2.map (grp 4096)).toArray).getD i [] = grp 4096 (t.2.2.getD i []) := by
-    intro i
-    rw [Array.getD_eq_getD_getElem?, List.getElem?_toArray, List.getElem?_map, List.getD_eq_getElem?_getD]
-    cases t.2.2[i]? <;> rfl
-  unfold ginstVal instVal ginstOf ghv
-  simp only [prepOf, prepT, cprep]
-  split_ifs with h1 h2 h2
-  · simp only [ite_eq_left h2, glVal_grp, hins, sumL_eq]
-    rw [compactIT_sum _ (fun i => linEI (RingHom.id F) (splitAt slo shi 4096) (t.2.2.getD i []))]
-  · exact absurd (by simpa using h1) h2
-  · exact absurd (by simpa using h2) h1
-  · simp only [h2, ↓reduceIte]; rw [growsVal_grows]
-
-/-! ## A slot -/
-
-/-- **A slot, prepared once per node**: the grouped skeleton rows, the prepared instances, the
-grouped `one` form. -/
-structure FSlot where
-  sk : GRows
-  insts : List GInst
-  one : GForm
-
-/-- The prepared slot (row offset `off`). -/
-def fslotOf (L : TLay) (one : Lin) (off : ℕ) (cs : CS) : FSlot :=
-  ⟨grows 2048 4096 (cs.rowList.zipIdx.map fun p => (off + p.2, p.1)), cs.tins.map (ginstOf L one off),
-    grp 4096 one⟩
-
-/-- **The flat value of a slot** for matrix `s` (`hvs`: the instances' high factors). -/
-def fslotVal (s : Mat) (tlo thi slo shi : Array F) (τ σ : ℕ → F) (c : List (TKey × Prep F))
-    (fs : FSlot) (hvs : List (F × F)) : F :=
-  let e1 := glVal slo shi fs.one
-  growsVal s tlo thi slo shi fs.sk +
-    sumL (fun gh => ginstVal s tlo thi slo shi (pfind s τ σ c gh.1.key) e1 gh.2 gh.1) (fs.insts.zip hvs)
-
-theorem map_zip_map {α β γ δ : Type*} (l : List α) (g : α → β) (h : β → γ) (f : β × γ → δ) :
-    ((l.map g).zip (l.map fun x => h (g x))).map f = l.map fun x => f (g x, h (g x)) := by
-  induction l with
-  | nil => rfl
-  | cons a l ih => simp only [List.map_cons, List.zip_cons_cons, ih]
-
-/-- **`fslotVal_eq`**: the flat value of the prepared slot is `slotVal`'s. -/
-theorem fslotVal_eq (s : Mat) (tlo thi slo shi : Array F) (τ σ : ℕ → F) (tp : List (TKey × Tpl))
-    (htp : ∀ p ∈ tp, p.2 = tplOf p.1) (L : TLay) (one : Lin) (off : ℕ) (cs : CS) :
-    fslotVal s tlo thi slo shi τ σ (pcache s τ σ tp) (fslotOf L one off cs)
-        ((fslotOf L one off cs).insts.map (ghv τ σ)) =
-      slotVal (RingHom.id F) s 21 23 τ σ (splitAt tlo thi 2048) (splitAt slo shi 4096) L one off cs := by
-  unfold fslotVal slotVal fslotOf
-  simp only []
-  rw [growsVal_grows]
+/-- **The input sum split into shared and own inputs.** -/
+theorem sum_split (U : Array F) (E : Lin → F) (hE : E [] = 0) (sh own : List Lin) :
+    ((List.range (sh.length + own.length)).map fun i => U.getD i 0 * E ((sh ++ own).getD i [])).sum =
+      ((List.range sh.length).map fun i => U.getD i 0 * E (sh.getD i [])).sum +
+        ((List.range own.length).map fun j => U.getD (sh.length + j) 0 * E (own.getD j [])).sum := by
+  rw [List.range_add, List.map_append, List.sum_append, List.map_map]
   congr 1
-  simp only [sumL_eq, List.map_map, Function.comp_def]
-  rw [map_zip_map]
-  simp only [pfind_eq s τ σ tp htp, prepFind_eq]
-  refine congrArg List.sum (List.map_congr_left fun t _ => ?_)
-  exact ginstVal_eq s tlo thi slo shi τ σ L one off t
+  · refine congrArg List.sum (List.map_congr_left fun i hi => ?_)
+    rw [List.getD_append _ _ _ _ (List.mem_range.1 hi)]
+  · refine congrArg List.sum (List.map_congr_left fun j _ => ?_)
+    simp only [Function.comp_apply]
+    rw [List.getD_eq_getElem?_getD, List.getD_eq_getElem?_getD,
+      List.getElem?_append_right (by omega), Nat.add_sub_cancel_left]
+
+/-! ## The high `eq` factors by tables -/
+
+/-- `eq(t_[A, S), ·)` for every `A ≤ S` that a key needs (`need[A]`; the others are left empty). -/
+def hiTabs (t : ℕ → F) (S : ℕ) (need : Array Bool) : Array (Array F) :=
+  (Array.range (S + 1)).map fun A => if need.getD A false then loTab (S - A) (fun l => t (A + l)) else #[]
+
+/-- **`eq(t_[A, n), x)`**: a lookup in `hiTabs`' row `A` times one in the table of `t_[S, n)` (one
+product), `gNL` when `A > S` or the row was not built. -/
+def hfac (tabs : Array (Array F)) (need : Array Bool) (hi : Array F) (S n : ℕ) (t : ℕ → F) (A x : ℕ) :
+    F :=
+  if A ≤ S ∧ need.getD A false = true then
+    (tabs.getD A #[]).getD (x % 2 ^ (S - A)) 0 * hi.getD (x / 2 ^ (S - A)) 0
+  else gNL (n - A) (fun l => t (A + l)) x
+
+theorem hfac_eq (t : ℕ → F) {S n : ℕ} (hS : S ≤ n) (need : Array Bool) (A x : ℕ) :
+    hfac (hiTabs t S need) need (loTab (n - S) fun l => t (S + l)) S n t A x =
+      gN (n - A) (fun l => t (A + l)) x := by
+  unfold hfac
+  split_ifs with h
+  · have ht : (hiTabs t S need).getD A #[] = loTab (S - A) fun l => t (A + l) := by
+      have h2 := h.2
+      simp only [hiTabs, Array.getD_eq_getD_getElem?, Array.getElem?_map, Array.getElem?_range,
+        show A < S + 1 by omega, if_true, Option.map_some, Option.getD_some] at h2 ⊢
+      rw [if_pos h2]
+    rw [ht, ← splitE_eq (m := n - A) (s := S - A) (by omega)]
+    simp only [splitE, splitAt]
+    have e1 : n - A - (S - A) = n - S := by omega
+    have e2 : (fun l => t (A + (S - A + l))) = fun l => t (S + l) := funext fun l => by
+      congr 1; omega
+    rw [e1, e2]
+  · rw [gNL_eq]
+
+/-! ## Prepared pieces and their values -/
+
+/-- A key's prepared values for matrix `s` (once per evaluation, shared by the two slots). -/
+structure KP where
+  loc : F
+  one : F
+  u : Array F
+
+/-- A key's preparation from its row and cell tables. -/
+def kprepT (s : Mat) (eτ eσ : ℕ → F) (K : Key) : KP :=
+  let tt := ttR (RingHom.id F) s K.rows eτ
+  ⟨locSum eσ tt, oneSum tt, denseIT (inpList tt)⟩
+
+/-- **A key's preparation**: its local part, `one` part and dense input coefficients. -/
+def kprep (s : Mat) (t u : ℕ → F) (K : Key) : KP :=
+  kprepT s (getD0 (loTab K.A t)) (getD0 (loTab K.B u)) K
+
+/-- A prepared piece: grouped sparse rows, or an instance with grouped own forms. -/
+inductive PPc where
+  | sp (g : GRows)
+  | ins (k xh ch : ℕ) (own : List GForm)
+
+/-- A row with some entry (the alignment's padding rows have none). -/
+def nonEmpty (p : ℕ × Row) : Bool := !(p.2.a.isEmpty && p.2.b.isEmpty && p.2.c.isEmpty)
+
+def prepPiece : Piece → PPc
+  | .sp rs => .sp (grows 2048 4096 (rs.filter nonEmpty))
+  | .ins k xh ch own => .ins k xh ch (own.map (grp 4096))
+
+/-- `Σ_j U[j0 + j] · E(g_j)`. -/
+def ownSum (U : Array F) (slo shi : Array F) : ℕ → List GForm → F
+  | _, [] => 0
+  | j, g :: gs => U.getD j 0 * glVal slo shi g + ownSum U slo shi (j + 1) gs
+
+/-- **The tables of an evaluation point** (computed once, shared by the matrices and slots): `eq(τ,
+·)` over `n` coordinates and `eq(σ, ·)` over 23, split at `2^11` and `2^12`, the per-key low tables,
+and `E(one)`. -/
+structure Tb where
+  tlo : Array F
+  thi : Array F
+  slo : Array F
+  shi : Array F
+  nt : Array Bool
+  ns : Array Bool
+  ttab : Array (Array F)
+  stab : Array (Array F)
+  e1 : F
+
+/-- The tables (`nt`, `ns`: the row and cell bits some key has). -/
+def tbOf (n : ℕ) (t u : ℕ → F) (one : Lin) (nt ns : Array Bool) : Tb :=
+  let slo := loTab 12 u; let shi := loTab 11 fun l => u (12 + l)
+  ⟨loTab 11 t, loTab (n - 11) fun l => t (11 + l), slo, shi, nt, ns, hiTabs t 11 nt, hiTabs u 12 ns,
+    glVal slo shi (grp 4096 one)⟩
+
+/-- The bits `< m` that some key has as `A` (resp. `B`). -/
+def needA (keys : Array Key) (m : ℕ) : Array Bool := (Array.range m).map fun A => keys.any (·.A == A)
+def needB (keys : Array Key) (m : ℕ) : Array Bool := (Array.range m).map fun B => keys.any (·.B == B)
+
+/-- **The evaluation context** of a slot and a matrix (`n`: the row coordinates). -/
+structure ECtx where
+  n : ℕ
+  tb : Tb
+  t : ℕ → F
+  u : ℕ → F
+  keys : Array Key
+  kp : Array KP
+  dkp : KP
+  /-- Each key's shared value in the slot. -/
+  sv : Array F
+  /-- Each key's number of shared inputs in the slot. -/
+  nsh : Array ℕ
+
+/-- **A prepared piece's value** for matrix `s` (the specification of `ppv3`). -/
+def ppv (s : Mat) (c : ECtx) : PPc → F
+  | .sp g => growsVal s c.tb.tlo c.tb.thi c.tb.slo c.tb.shi g
+  | .ins k xh ch own =>
+    hfac c.tb.ttab c.tb.nt c.tb.thi 11 c.n c.t (c.keys.getD k dkey).A xh *
+      (hfac c.tb.stab c.tb.ns c.tb.shi 12 23 c.u (c.keys.getD k dkey).B ch * (c.kp.getD k c.dkp).loc +
+        (c.kp.getD k c.dkp).one * c.tb.e1 + c.sv.getD k 0 +
+        ownSum (c.kp.getD k c.dkp).u c.tb.slo c.tb.shi (c.nsh.getD k 0) own)
+
+/-- **A slot's context** (`gsh`: its shared forms, grouped). -/
+def ectx (s : Mat) (n : ℕ) (tb : Tb) (t u : ℕ → F) (keys : Array Key) (kp : Array KP)
+    (gsh : Array (List GForm)) : ECtx :=
+  let dkp := kprep s t u dkey
+  ⟨n, tb, t, u, keys, kp, dkp,
+    (Array.range gsh.size).map (fun k => ownSum (kp.getD k dkp).u tb.slo tb.shi 0 (gsh.getD k [])),
+    gsh.map List.length⟩
+
+/-- A slot's value: the sum of its pieces'. -/
+def slotV (s : Mat) (c : ECtx) (pps : List PPc) : F := sumL (ppv s c) pps
+
+/-! ## Correctness of the pieces' values -/
+
+/-- **Empty rows add nothing.** -/
+theorem rowsValI_filter (s : Mat) (gt gs : ℕ → F) (rs : List (ℕ × Row)) :
+    rowsValI (RingHom.id F) s gt gs (rs.filter nonEmpty) = rowsValI (RingHom.id F) s gt gs rs := by
+  simp only [rowsValI, sumL_eq]
+  induction rs with
+  | nil => rfl
+  | cons p rs ih =>
+    rw [List.filter_cons]
+    split_ifs with h
+    · simp [ih]
+    · have h' : p.2.a.isEmpty = true ∧ p.2.b.isEmpty = true ∧ p.2.c.isEmpty = true := by
+        simpa [nonEmpty, and_assoc] using h
+      have hm : s.r p.2 = [] := by
+        cases s <;> simp only [Mat.r] <;> simp only [List.isEmpty_iff] at h' <;> simp [h']
+      rw [List.map_cons, List.sum_cons, ← ih, hm]
+      simp [linEI, sumL_eq]
+
+theorem getD_map' {α β : Type*} (a : Array α) (f : α → β) (k : ℕ) (d : α) :
+    (a.map f).getD k (f d) = f (a.getD k d) := by
+  simp only [Array.getD_eq_getD_getElem?, Array.getElem?_map]; cases a[k]? <;> rfl
+
+theorem ownSum_eq (U slo shi : Array F) (E : Lin → F) (hE : ∀ l, glVal slo shi (grp 4096 l) = E l) :
+    ∀ (own : List Lin) (j0 : ℕ), ownSum U slo shi j0 (own.map (grp 4096)) =
+      ((List.range own.length).map fun j => U.getD (j0 + j) 0 * E (own.getD j [])).sum
+  | [], _ => rfl
+  | a :: own, j0 => by
+    rw [List.map_cons, ownSum, ownSum_eq U slo shi E hE own (j0 + 1), List.length_cons,
+      List.range_succ_eq_map, List.map_cons, List.sum_cons, List.map_map, hE]
+    simp only [Nat.add_zero, List.getD_cons_zero, Function.comp_def, List.getD_cons_succ,
+      Nat.add_assoc, Nat.add_comm 1]
+
+theorem linE_glVal (u : ℕ → F) (l : Lin) :
+    glVal (loTab 12 u) (loTab 11 fun l => u (12 + l)) (grp 4096 l) = linE (RingHom.id F) 23 u l := by
+  rw [glVal_grp, ← linEI_eq]; congr 1; exact splitE_eq (m := 23) (s := 12) (by norm_num) u
+
+theorem key_ok {n : ℕ} {keys : Array Key} (hk : keys.all (Key.ok n) = true) (k : ℕ) :
+    (keys.getD k dkey).ok n = true := by
+  rw [Array.getD_eq_getD_getElem?]
+  rcases h : keys[k]? with _ | K
+  · simp [Key.ok, dkey]
+  · obtain ⟨hk', hK⟩ := Array.getElem?_eq_some_iff.1 h
+    exact hK ▸ (Array.all_eq_true.1 hk) k hk'
+
+theorem locOk_mem {B : ℕ} {l : LinT} (h : locOk B l = true) {k : ℕ} {c : F}
+    (hm : (Wire.loc k, c) ∈ l) : k < 2 ^ B := by
+  have := List.all_eq_true.1 h _ hm
+  simpa using this
+
+theorem Key.ok_spec {n : ℕ} {K : Key} (h : K.ok n = true) :
+    K.A ≤ n ∧ K.B ≤ 23 ∧ K.rows.length ≤ 2 ^ K.A ∧
+      ∀ s : Mat, ∀ r ∈ K.rows, ∀ k c, (Wire.loc k, c) ∈ s.t r → k < 2 ^ K.B := by
+  simp only [Key.ok, Bool.and_eq_true, decide_eq_true_eq, List.all_eq_true] at h
+  obtain ⟨⟨⟨h1, h2⟩, h3⟩, h4⟩ := h
+  refine ⟨h1, h2, h3, fun s r hr k c hm => ?_⟩
+  obtain ⟨⟨ha, hb⟩, hc⟩ := h4 r hr
+  cases s
+  · exact locOk_mem ha hm
+  · exact locOk_mem hb hm
+  · exact locOk_mem hc hm
+
+/-- **A piece's value is its rows' sparse value** (`tplR_mle` for an instance). -/
+theorem ppv_eq (s : Mat) {n : ℕ} (hn : 11 ≤ n) (t u : ℕ → F) (one : Lin) (nt ns : Array Bool)
+    (keys : Array Key) (sh : Array (List Lin)) (hk : keys.all (Key.ok n) = true) (p : Piece) :
+    ppv s (ectx s n (tbOf n t u one nt ns) t u keys (keys.map (kprep s t u)) (sh.map (·.map (grp 4096))))
+        (prepPiece p) = rowsVal (RingHom.id F) s n 23 t u (p.rows keys sh one) := by
+  have hE : ∀ l, glVal (loTab 12 u) (loTab 11 fun l => u (12 + l)) (grp 4096 l) =
+      linE (RingHom.id F) 23 u l := linE_glVal u
+  cases p with
+  | sp rs =>
+    simp only [prepPiece, ppv, ectx, tbOf, Piece.rows]
+    have h1 : splitAt (loTab 11 t) (loTab (n - 11) fun l => t (11 + l)) 2048 = gN n t :=
+      splitE_eq (m := n) (s := 11) hn t
+    have h2 : splitAt (loTab 12 u) (loTab 11 fun l => u (12 + l)) 4096 = gN 23 u :=
+      splitE_eq (m := 23) (s := 12) (by norm_num) u
+    rw [growsVal_grows, h1, h2, rowsValI_filter, rowsValI_eq]
+  | ins k xh ch own =>
+    obtain ⟨hA, hB, hT, hL⟩ := Key.ok_spec (key_ok hk k)
+    set K := keys.getD k dkey with hK
+    simp only [prepPiece, ppv, ectx, tbOf, Piece.rows]
+    rw [← hK, tplR_mle (RingHom.id F) s t u K.rows one _ xh ch hA hB hT (hL s)
+      (getD0 (loTab K.A t)) (getD0 (loTab K.B u))
+      (fun j hj => loTab_getD _ _ (lt_of_lt_of_le hj hT)) (fun j hj => loTab_getD _ _ hj)]
+    have hP : (keys.map (kprep s t u)).getD k (kprep s t u dkey) = kprep s t u K := getD_map' ..
+    rw [hP, hfac_eq t (S := 11) (n := n) hn, hfac_eq u (S := 12) (n := 23) (by norm_num)]
+    have hsh : (sh.map (·.map (grp 4096))).getD k [] = (sh.getD k []).map (grp 4096) :=
+      getD_map' sh (·.map (grp 4096)) k []
+    have hn' : ((sh.map (·.map (grp 4096))).map List.length).getD k 0 = (sh.getD k []).length := by
+      rw [show (0 : ℕ) = List.length ([] : List GForm) from rfl, getD_map', hsh, List.length_map]
+    have hsv : ((Array.range (sh.map (·.map (grp 4096))).size).map fun k' =>
+        ownSum ((keys.map (kprep s t u)).getD k' (kprep s t u dkey)).u (loTab 12 u)
+          (loTab 11 fun l => u (12 + l)) 0 ((sh.map (·.map (grp 4096))).getD k' [])).getD k 0 =
+        ((List.range (sh.getD k []).length).map fun i =>
+          (kprep s t u K).u.getD i 0 * linE (RingHom.id F) 23 u ((sh.getD k []).getD i [])).sum := by
+      rw [Array.getD_eq_getD_getElem?, Array.getElem?_map, Array.getElem?_range]
+      split_ifs with hks
+      · simp only [Option.map_some, Option.getD_some]
+        rw [hP, hsh, ownSum_eq _ _ _ _ hE]; simp
+      · have : sh.getD k [] = [] := by
+          rw [Array.getD_eq_getD_getElem?, Array.getElem?_eq_none (by simpa using hks)]; rfl
+        simp [this]
+    rw [hn', hsv, ownSum_eq _ _ _ _ hE, hE]
+    unfold instClosed
+    simp only [kprep, kprepT]
+    rw [denseIT_sum _ (fun i => linE (RingHom.id F) 23 u ((sh.getD k [] ++ own).getD i []))
+      ((sh.getD k []).length + own.length) (fun i hi => by
+        rw [List.getD_eq_getElem?_getD, List.getElem?_eq_none (by simpa using hi)]; rfl),
+      sum_split _ _ rfl]
+    ring
+
+/-- **A slot's value is its pieces' rows' sparse value.** -/
+theorem slotV_eq (s : Mat) {n : ℕ} (hn : 11 ≤ n) (t u : ℕ → F) (one : Lin) (nt ns : Array Bool)
+    (keys : Array Key) (sh : Array (List Lin)) (hk : keys.all (Key.ok n) = true) (pcs : List Piece) :
+    slotV s (ectx s n (tbOf n t u one nt ns) t u keys (keys.map (kprep s t u)) (sh.map (·.map (grp 4096))))
+        (pcs.map prepPiece) = rowsVal (RingHom.id F) s n 23 t u (pcs.flatMap (Piece.rows keys sh one)) := by
+  rw [slotV, sumL_eq, rowsVal_flatMap, List.map_map]
+  exact congrArg List.sum (List.map_congr_left fun p _ => ppv_eq s hn t u one nt ns keys sh hk p)
+
+/-! ## The three matrices in one pass
+
+`ppv3` computes a piece's `A`, `B` and `C` values together: the high `eq` factors, the own and
+shared inputs' `E` values and the sparse rows' row factors are computed once for the three. -/
+
+/-- A triple of values. -/
+abbrev F3 := F × F × F
+
+@[inline] def add3 (x y : F3) : F3 := (x.1 + y.1, x.2.1 + y.2.1, x.2.2 + y.2.2)
+
+/-- `Σ_{x ∈ l} f x` over triples. -/
+def sum3 {α : Type*} (f : α → F3) (l : List α) : F3 := l.foldl (fun a x => add3 a (f x)) (0, 0, 0)
+
+theorem sum3_eq {α : Type*} (f : α → F3) (l : List α) :
+    sum3 f l = (sumL (fun x => (f x).1) l, sumL (fun x => (f x).2.1) l, sumL (fun x => (f x).2.2) l) := by
+  suffices ∀ a : F3, l.foldl (fun a x => add3 a (f x)) a =
+      (a.1 + sumL (fun x => (f x).1) l, a.2.1 + sumL (fun x => (f x).2.1) l,
+        a.2.2 + sumL (fun x => (f x).2.2) l) by
+    simpa [sum3] using this (0, 0, 0)
+  induction l with
+  | nil => intro a; simp [sumL]
+  | cons x l ih => intro a; rw [List.foldl_cons, ih]; simp only [add3, sumL_eq, List.map_cons,
+      List.sum_cons]; simp only [add_assoc]
+
+/-- The three matrices' values of grouped rows. -/
+def growsVal3 (tlo thi slo shi : Array F) (G : GRows) : F3 :=
+  sum3 (fun h =>
+    let x := sum3 (fun r => let w := tlo.getD r.lo 0
+      (rowMul slo shi w r.a, rowMul slo shi w r.b, rowMul slo shi w r.c)) h.2
+    let y := thi.getD h.1 0
+    (y * x.1, y * x.2.1, y * x.2.2)) G
+
+theorem growsVal3_eq (tlo thi slo shi : Array F) (G : GRows) :
+    growsVal3 tlo thi slo shi G = (growsVal .a tlo thi slo shi G, growsVal .b tlo thi slo shi G,
+      growsVal .c tlo thi slo shi G) := by
+  simp only [growsVal3, sum3_eq, growsVal, rInner, GRow.m]
+
+/-- The own inputs of the three matrices: `E(g_j)` once. -/
+def ownSum3 (Ua Ub Uc : Array F) (slo shi : Array F) : ℕ → List GForm → F3
+  | _, [] => (0, 0, 0)
+  | j, g :: gs =>
+    let e := glVal slo shi g
+    add3 (Ua.getD j 0 * e, Ub.getD j 0 * e, Uc.getD j 0 * e) (ownSum3 Ua Ub Uc slo shi (j + 1) gs)
+
+theorem ownSum3_eq (Ua Ub Uc slo shi : Array F) : ∀ (j : ℕ) (g : List GForm),
+    ownSum3 Ua Ub Uc slo shi j g = (ownSum Ua slo shi j g, ownSum Ub slo shi j g, ownSum Uc slo shi j g)
+  | _, [] => rfl
+  | j, g :: gs => by rw [ownSum3, ownSum3_eq Ua Ub Uc slo shi (j + 1) gs]; rfl
+
+/-- The three preparations of a key. -/
+abbrev KP3 := KP × KP × KP
+
+/-- The three preparations, the key's two tables built once. -/
+def kprep3 (t u : ℕ → F) (K : Key) : KP3 :=
+  let eτ := getD0 (loTab K.A t); let eσ := getD0 (loTab K.B u)
+  (kprepT .a eτ eσ K, kprepT .b eτ eσ K, kprepT .c eτ eσ K)
+
+/-- **A slot's context for the three matrices.** -/
+structure ECtx3 where
+  n : ℕ
+  tb : Tb
+  t : ℕ → F
+  u : ℕ → F
+  keys : Array Key
+  kp : Array KP3
+  dkp : KP3
+  sv : Array F3
+  nsh : Array ℕ
+
+def ectx3 (n : ℕ) (tb : Tb) (t u : ℕ → F) (keys : Array Key) (kp : Array KP3)
+    (gsh : Array (List GForm)) : ECtx3 :=
+  let dkp := kprep3 t u dkey
+  ⟨n, tb, t, u, keys, kp, dkp,
+    (Array.range gsh.size).map (fun k => let P := kp.getD k dkp
+      ownSum3 P.1.u P.2.1.u P.2.2.u tb.slo tb.shi 0 (gsh.getD k [])),
+    gsh.map List.length⟩
+
+/-- **A prepared piece's three values.** -/
+def ppv3 (c : ECtx3) : PPc → F3
+  | .sp g => growsVal3 c.tb.tlo c.tb.thi c.tb.slo c.tb.shi g
+  | .ins k xh ch own =>
+    let K := c.keys.getD k dkey; let P := c.kp.getD k c.dkp
+    let h1 := hfac c.tb.ttab c.tb.nt c.tb.thi 11 c.n c.t K.A xh
+    let h2 := hfac c.tb.stab c.tb.ns c.tb.shi 12 23 c.u K.B ch
+    let sv := c.sv.getD k (0, 0, 0)
+    let o := ownSum3 P.1.u P.2.1.u P.2.2.u c.tb.slo c.tb.shi (c.nsh.getD k 0) own
+    (h1 * (h2 * P.1.loc + P.1.one * c.tb.e1 + sv.1 + o.1),
+     h1 * (h2 * P.2.1.loc + P.2.1.one * c.tb.e1 + sv.2.1 + o.2.1),
+     h1 * (h2 * P.2.2.loc + P.2.2.one * c.tb.e1 + sv.2.2 + o.2.2))
+
+def slotV3 (c : ECtx3) (pps : List PPc) : F3 := sum3 (ppv3 c) pps
+
+theorem kp3_getD (t u : ℕ → F) (keys : Array Key) (k : ℕ) :
+    (keys.map (kprep3 t u)).getD k (kprep3 t u dkey) =
+      ((keys.map (kprep .a t u)).getD k (kprep .a t u dkey),
+       (keys.map (kprep .b t u)).getD k (kprep .b t u dkey),
+       (keys.map (kprep .c t u)).getD k (kprep .c t u dkey)) := by
+  rw [getD_map' keys (kprep3 t u), getD_map', getD_map', getD_map']; rfl
+
+theorem getD_range3 (f g h : ℕ → F) (n k : ℕ) :
+    ((Array.range n).map fun k => (f k, g k, h k)).getD k (0, 0, 0) =
+      (((Array.range n).map f).getD k 0, ((Array.range n).map g).getD k 0,
+        ((Array.range n).map h).getD k 0) := by
+  simp only [Array.getD_eq_getD_getElem?, Array.getElem?_map, Array.getElem?_range]
+  split_ifs <;> rfl
+
+/-- **The one-pass value is the three values.** -/
+theorem slotV3_eq (n : ℕ) (tb : Tb) (t u : ℕ → F) (keys : Array Key) (g : Array (List GForm))
+    (pps : List PPc) :
+    slotV3 (ectx3 n tb t u keys (keys.map (kprep3 t u)) g) pps =
+      (slotV .a (ectx .a n tb t u keys (keys.map (kprep .a t u)) g) pps,
+       slotV .b (ectx .b n tb t u keys (keys.map (kprep .b t u)) g) pps,
+       slotV .c (ectx .c n tb t u keys (keys.map (kprep .c t u)) g) pps) := by
+  simp only [slotV3, slotV, sum3_eq]
+  refine Prod.ext ?_ (Prod.ext ?_ ?_) <;> simp only <;>
+    refine congrArg (sumL · pps) (funext fun p => ?_) <;>
+    cases p <;> simp only [ppv3, ppv, ectx3, ectx, growsVal3_eq, kp3_getD, ownSum3_eq, getD_range3]
 
 /-! ## The node -/
 
@@ -414,81 +747,109 @@ def slotLay (fin : Finals) (σ : ℕ) : TLay := layOf (slotP σ) (Layout.slotBas
 def slotCST (fin : Finals) (σ : ℕ) : CS :=
   compileT (slotLay fin σ) (slotP σ) (Layout.slotBase σ) (gen fin .mux).ops
 
-/-- The node's plan: both slots' layouts and compiled programs, and their prepared forms (computed
-once per node). -/
+/-- M's `one` form. -/
+abbrev oneL : Lin := Lin.cell Layout.oneCell
+
+/-- **The node's plan** (computed once per node): both slots' layouts and compiled programs, the
+keys, each slot's shared forms and pieces — whose rows are the slot's indexed rows (`ok`) — and
+their prepared forms. -/
 structure Plan where
   lay : ℕ → TLay
   cs : ℕ → CS
-  fs0 : FSlot
-  fs1 : FSlot
-  h0 : fs0 = fslotOf (lay 0) (Lin.cell Layout.oneCell) 0 (cs 0)
-  h1 : fs1 = fslotOf (lay 1) (Lin.cell Layout.oneCell) Layout.slotM (cs 1)
-  /-- The templates of the keys present (a missing key is prepared on demand). -/
-  tp : List (TKey × Tpl)
-  htp : ∀ p ∈ tp, p.2 = tplOf p.1
+  keys : Array Key
+  sh0 : Array (List Lin)
+  sh1 : Array (List Lin)
+  pc0 : List Piece
+  pc1 : List Piece
+  ok : keys.all (Key.ok 21) = true ∧
+    pc0.flatMap (Piece.rows keys sh0 oneL) = slotIRows (lay 0) oneL 0 (cs 0) ∧
+    pc1.flatMap (Piece.rows keys sh1 oneL) = slotIRows (lay 1) oneL Layout.slotM (cs 1)
+  g0 : Array (List GForm)
+  g1 : Array (List GForm)
+  p0 : List PPc
+  p1 : List PPc
+  hg0 : g0 = sh0.map (·.map (grp 4096))
+  hg1 : g1 = sh1.map (·.map (grp 4096))
+  hp0 : p0 = pc0.map prepPiece
+  hp1 : p1 = pc1.map prepPiece
 
-/-- The plan of two laid-out, compiled slots. -/
-def mkPlan (l0 l1 : TLay) (c0 c1 : CS) : Plan where
+/-- A plan from its parts. -/
+def mkPlanOf (l0 l1 : TLay) (c0 c1 : CS) (keys : Array Key) (sh0 sh1 : Array (List Lin))
+    (pc0 pc1 : List Piece) (ok : keys.all (Key.ok 21) = true ∧
+      pc0.flatMap (Piece.rows keys sh0 oneL) = slotIRows l0 oneL 0 c0 ∧
+      pc1.flatMap (Piece.rows keys sh1 oneL) = slotIRows l1 oneL Layout.slotM c1) : Plan where
   lay σ := if σ = 0 then l0 else l1
   cs σ := if σ = 0 then c0 else c1
-  fs0 := fslotOf l0 (Lin.cell Layout.oneCell) 0 c0
-  fs1 := fslotOf l1 (Lin.cell Layout.oneCell) Layout.slotM c1
-  h0 := by simp
-  h1 := by simp
-  tp := tplCache ((keyCounts c0.tins).map (·.1))
-  htp := tplCache_ok _
+  keys := keys
+  sh0 := sh0
+  sh1 := sh1
+  pc0 := pc0
+  pc1 := pc1
+  ok := by simpa using ok
+  g0 := sh0.map (·.map (grp 4096))
+  g1 := sh1.map (·.map (grp 4096))
+  p0 := pc0.map prepPiece
+  p1 := pc1.map prepPiece
+  hg0 := rfl
+  hg1 := rfl
+  hp0 := rfl
+  hp1 := rfl
+
+/-- **The plan of two laid-out, compiled slots** from the search's data: kept if the keys are well
+formed and the pieces' rows are the slots' rows (checked here, once), else one sparse piece per
+slot. -/
+def mkPlan (l0 l1 : TLay) (c0 c1 : CS)
+    (d : Array Key × Array (List Lin) × Array (List Lin) × List Piece × List Piece) : Plan :=
+  if h : (d.1.all (Key.ok 21) && eqL (d.2.2.2.1.flatMap (Piece.rows d.1 d.2.1 oneL))
+      (slotIRows l0 oneL 0 c0) &&
+      eqL (d.2.2.2.2.flatMap (Piece.rows d.1 d.2.2.1 oneL)) (slotIRows l1 oneL Layout.slotM c1)) = true
+  then
+    mkPlanOf l0 l1 c0 c1 d.1 d.2.1 d.2.2.1 d.2.2.2.1 d.2.2.2.2 (by
+      simp only [Bool.and_eq_true] at h
+      exact ⟨h.1.1, eqL_eq h.1.2, eqL_eq h.2⟩)
+  else
+    mkPlanOf l0 l1 c0 c1 #[] #[] #[] [.sp (slotIRows l0 oneL 0 c0)]
+      [.sp (slotIRows l1 oneL Layout.slotM c1)] (by simp [Piece.rows])
 
 /-- **The node's plan** (once per node). -/
 def planOf (fin : Finals) : Plan :=
+  let ops := (gen fin .mux).ops
   let l0 := slotLay fin 0; let l1 := slotLay fin 1
-  mkPlan l0 l1 (compileT l0 (slotP 0) (Layout.slotBase 0) (gen fin .mux).ops)
-    (compileT l1 (slotP 1) (Layout.slotBase 1) (gen fin .mux).ops)
+  let c0 := compileT l0 (slotP 0) (Layout.slotBase 0) ops
+  let c1 := compileT l1 (slotP 1) (Layout.slotBase 1) ops
+  mkPlan l0 l1 c0 c1 (groupPPs
+    (slotPPs (tplExt l0.ctx) (slotP 0) (Layout.slotBase 0) ops l0 oneL 0 c0)
+    (slotPPs (tplExt l1.ctx) (slotP 1) (Layout.slotBase 1) ops l1 oneL Layout.slotM c1))
 
 /-- **The node's indexed M rows**: slot `σ`'s at offset `σ · 2^20`. -/
 def nodeIRows (pl : Plan) : List (ℕ × Row) :=
-  slotIRows (pl.lay 0) (Lin.cell Layout.oneCell) 0 (pl.cs 0) ++
-    slotIRows (pl.lay 1) (Lin.cell Layout.oneCell) Layout.slotM (pl.cs 1)
+  slotIRows (pl.lay 0) oneL 0 (pl.cs 0) ++ slotIRows (pl.lay 1) oneL Layout.slotM (pl.cs 1)
 
-/-- The node's value of matrix `s` (templated, generic: `evalMKT`), over `R`. -/
-@[specialize]
-def nodeVal {R : Type*} [CommRing R] (ι : F →+* R) (s : Mat) (τ σ : ℕ → R) (pl : Plan) : R :=
-  let gt := splitAt (loTab 11 τ) (loTab 10 fun l => τ (11 + l)) 2048
-  let gs := splitAt (loTab 12 σ) (loTab 11 fun l => σ (12 + l)) 4096
-  slotVal ι s 21 23 τ σ gt gs (pl.lay 0) (Lin.cell Layout.oneCell) 0 (pl.cs 0) +
-    slotVal ι s 21 23 τ σ gt gs (pl.lay 1) (Lin.cell Layout.oneCell) Layout.slotM (pl.cs 1)
+/-- The node's value of matrix `s`, given the tables (the specification of `nodeV3`). -/
+def nodeV (pl : Plan) (s : Mat) (t u : ℕ → F) (tb : Tb) : F :=
+  let kp := pl.keys.map (kprep s t u)
+  slotV s (ectx s 21 tb t u pl.keys kp pl.g0) pl.p0 + slotV s (ectx s 21 tb t u pl.keys kp pl.g1) pl.p1
 
-theorem nodeVal_eq {R : Type*} [CommRing R] (ι : F →+* R) (s : Mat) (τ σ : ℕ → R) (pl : Plan) :
-    nodeVal ι s τ σ pl = rowsVal ι s 21 23 τ σ (nodeIRows pl) := by
-  have h1 : splitAt (loTab 11 τ) (loTab 10 fun l => τ (11 + l)) 2048 = gN 21 τ :=
-    splitE_eq (m := 21) (s := 11) (by norm_num) τ
-  have h2 : splitAt (loTab 12 σ) (loTab 11 fun l => σ (12 + l)) 4096 = gN 23 σ :=
-    splitE_eq (m := 23) (s := 12) (by norm_num) σ
-  simp only [nodeVal, h1, h2, slotVal_eq, nodeIRows, rowsVal_append]
+theorem nodeV_eq (pl : Plan) (s : Mat) (t u : ℕ → F) (nt ns : Array Bool) :
+    nodeV pl s t u (tbOf 21 t u oneL nt ns) = rowsVal (RingHom.id F) s 21 23 t u (nodeIRows pl) := by
+  simp only [nodeV, nodeIRows]
+  rw [pl.hg0, pl.hg1, pl.hp0, pl.hp1, slotV_eq _ (by norm_num) _ _ _ _ _ _ _ pl.ok.1,
+    slotV_eq _ (by norm_num) _ _ _ _ _ _ _ pl.ok.1, pl.ok.2.1, pl.ok.2.2, rowsVal_append]
 
-/-- **The flat value of the node's matrix `s`** at `(τ, σ)`, given the shared tables and the
-instances' high factors. -/
-def nodeFlat (pl : Plan) (s : Mat) (t u : ℕ → F) (tlo thi slo shi : Array F) (hv0 hv1 : List (F × F)) :
-    F :=
-  let c := pcache s t u pl.tp
-  fslotVal s tlo thi slo shi t u c pl.fs0 hv0 + fslotVal s tlo thi slo shi t u c pl.fs1 hv1
+/-- The node's three matrices in one pass per slot. -/
+def nodeV3 (pl : Plan) (t u : ℕ → F) (tb : Tb) : F3 :=
+  let kp := pl.keys.map (kprep3 t u)
+  add3 (slotV3 (ectx3 21 tb t u pl.keys kp pl.g0) pl.p0) (slotV3 (ectx3 21 tb t u pl.keys kp pl.g1) pl.p1)
 
-theorem nodeFlat_eq (pl : Plan) (s : Mat) (t u : ℕ → F) :
-    nodeFlat pl s t u (loTab 11 t) (loTab 10 fun l => t (11 + l)) (loTab 12 u)
-        (loTab 11 fun l => u (12 + l)) (pl.fs0.insts.map (ghv t u)) (pl.fs1.insts.map (ghv t u)) =
-      nodeVal (RingHom.id F) s t u pl := by
-  unfold nodeFlat nodeVal
-  simp only []
-  rw [pl.h0, pl.h1, fslotVal_eq _ _ _ _ _ _ _ _ pl.htp, fslotVal_eq _ _ _ _ _ _ _ _ pl.htp]
+theorem nodeV3_eq (pl : Plan) (t u : ℕ → F) (tb : Tb) :
+    nodeV3 pl t u tb = (nodeV pl .a t u tb, nodeV pl .b t u tb, nodeV pl .c t u tb) := by
+  simp only [nodeV3, nodeV, slotV3_eq, add3]
 
-/-- **`evalM`** (flat, A.11 / revision 3.12): the node's three M matrices at `(τ, σ)`; the tables,
-the keys' local parts and the instances' high factors are computed once and shared. -/
+/-- **`evalM`** (revision 3.12; S-E5): the node's three M matrices at `(τ, σ)`, the pieces of both
+slots in closed form or sparse, the three matrices in one pass; the tables are computed once. -/
 def evalMT (pl : Plan) (τ σ : Array F) : F × F × F :=
   let t := fun l => τ.getD l 0; let u := fun l => σ.getD l 0
-  let tlo := loTab 11 t; let thi := loTab 10 fun l => t (11 + l)
-  let slo := loTab 12 u; let shi := loTab 11 fun l => u (12 + l)
-  let hv0 := pl.fs0.insts.map (ghv t u); let hv1 := pl.fs1.insts.map (ghv t u)
-  (nodeFlat pl .a t u tlo thi slo shi hv0 hv1, nodeFlat pl .b t u tlo thi slo shi hv0 hv1,
-    nodeFlat pl .c t u tlo thi slo shi hv0 hv1)
+  nodeV3 pl t u (tbOf 21 t u oneL (needA pl.keys 12) (needB pl.keys 13))
 
 /-- **`evalM`'s specification**: the MLEs of the node's M matrices (`FRVIREval.matMLE`). -/
 noncomputable def evalMS (pl : Plan) (τ σ : Array F) : F × F × F :=
@@ -496,27 +857,56 @@ noncomputable def evalMS (pl : Plan) (τ σ : Array F) : F × F × F :=
    Eval.matMLE (entriesI .b (nodeIRows pl)) (Eval.ptOf 21 τ) (Eval.ptOf 23 σ),
    Eval.matMLE (entriesI .c (nodeIRows pl)) (Eval.ptOf 21 τ) (Eval.ptOf 23 σ))
 
-/-- **`evalM_eq`** (A.11: the sum of the templates' `tpl_mle` and the skeleton's `sparse_eq`). -/
+/-- **`evalM_eq`** (A.11: the instances' `tplR_mle` and the sparse pieces' `sparse_eq`). -/
 theorem evalMT_eq (pl : Plan) (τ σ : Array F) : evalMT pl τ σ = evalMS pl τ σ := by
-  simp only [evalMT, evalMS, nodeFlat_eq, nodeVal_eq, rowsVal_F, Eval.sparse_eq]
+  simp only [evalMT, evalMS, nodeV3_eq, nodeV_eq, rowsVal_F, Eval.sparse_eq]
 
-/-- **`evalMK`, templated**: the M matrices at an F row point and a K column point. -/
-def evalMKT (pl : Plan) (τ : Array F) (σ : Array K) : K × K × K :=
-  let t := fun l => K.ofF (τ.getD l 0); let u := fun l => σ.getD l 0
-  (nodeVal K.ofFRingHom .a t u pl, nodeVal K.ofFRingHom .b t u pl, nodeVal K.ofFRingHom .c t u pl)
+/-! ## `evalL`: L's rows (revision 3.13: at the full 23-coordinate point) -/
 
-/-- `evalMKT` is the sparse sum over `K` (`FRVerifierImpl.sparseEvalK`'s body). -/
-theorem evalMKT_eq (pl : Plan) (τ : Array F) (σ : Array K) :
-    evalMKT pl τ σ = (((entriesI .a (nodeIRows pl)).map fun e => if e.1 < 2 ^ 21 ∧ e.2.1 < 2 ^ 23 then
-        K.ofF (e.2.2 * Eval.eqAt (Eval.ptOf 21 τ) e.1) *
-          Impl.eqAtR (fun l : Fin 23 => σ.getD l 0) e.2.1 else 0).sum,
-      ((entriesI .b (nodeIRows pl)).map fun e => if e.1 < 2 ^ 21 ∧ e.2.1 < 2 ^ 23 then
-        K.ofF (e.2.2 * Eval.eqAt (Eval.ptOf 21 τ) e.1) *
-          Impl.eqAtR (fun l : Fin 23 => σ.getD l 0) e.2.1 else 0).sum,
-      ((entriesI .c (nodeIRows pl)).map fun e => if e.1 < 2 ^ 21 ∧ e.2.1 < 2 ^ 23 then
-        K.ofF (e.2.2 * Eval.eqAt (Eval.ptOf 21 τ) e.1) *
-          Impl.eqAtR (fun l : Fin 23 => σ.getD l 0) e.2.1 else 0).sum) := by
-  simp only [evalMKT, nodeVal_eq, rowsVal_K]
+/-- **L's plan**: L's rows (indexed by position, 15 row coordinates) in aligned blocks of `2^6`. -/
+structure LPlan where
+  rows : List Row
+  keys : Array Key
+  sh : Array (List Lin)
+  pc : List Piece
+  ok : keys.all (Key.ok 15) = true ∧
+    pc.flatMap (Piece.rows keys sh oneL) = rows.zipIdx.map fun p => (p.2, p.1)
+  g : Array (List GForm)
+  p : List PPc
+  hg : g = sh.map (·.map (grp 4096))
+  hp : p = pc.map prepPiece
+
+def mkLPlanOf (rows : List Row) (keys : Array Key) (sh : Array (List Lin)) (pc : List Piece)
+    (ok : keys.all (Key.ok 15) = true ∧
+      pc.flatMap (Piece.rows keys sh oneL) = rows.zipIdx.map fun p => (p.2, p.1)) : LPlan :=
+  ⟨rows, keys, sh, pc, ok, sh.map (·.map (grp 4096)), pc.map prepPiece, rfl, rfl⟩
+
+/-- **L's plan** from its rows (checked as the node's). -/
+def planL (rows : List Row) : LPlan :=
+  let d := groupPPs (listPPs 6 rows) #[]
+  let tgt := rows.zipIdx.map fun p => (p.2, p.1)
+  if h : (d.1.all (Key.ok 15) && eqL (d.2.2.2.1.flatMap (Piece.rows d.1 d.2.1 oneL)) tgt) = true then
+    mkLPlanOf rows d.1 d.2.1 d.2.2.2.1 (by
+      simp only [Bool.and_eq_true] at h; exact ⟨h.1, eqL_eq h.2⟩)
+  else mkLPlanOf rows #[] #[] [.sp tgt] (by simp [Piece.rows, tgt])
+
+/-- **`evalL`, templated**: L's three matrices at `(τ, σ)` (15 and 23 coordinates). -/
+def evalLT (pl : LPlan) (τ σ : Array F) : F × F × F :=
+  let t := fun l => τ.getD l 0; let u := fun l => σ.getD l 0
+  slotV3 (ectx3 15 (tbOf 15 t u oneL (needA pl.keys 12) (needB pl.keys 13)) t u pl.keys (pl.keys.map (kprep3 t u)) pl.g) pl.p
+
+theorem entriesOf_eq (sel : Mat) (rows : List Row) :
+    Eval.entriesOf sel.r rows = entriesI sel (rows.zipIdx.map fun p => (p.2, p.1)) := by
+  simp only [Eval.entriesOf, entriesI, List.flatMap_map]
+
+/-- **`evalL_eq`**: the templated `evalL` is the MLE of L's rows (`FRVIREval.evalRowsSpec`). -/
+theorem evalLT_eq (pl : LPlan) (τ σ : Array F) : evalLT pl τ σ = Eval.evalRowsSpec 15 23 pl.rows τ σ := by
+  simp only [evalLT, slotV3_eq, Eval.evalRowsSpec]
+  rw [pl.hg, pl.hp]
+  simp only [slotV_eq _ (by norm_num : 11 ≤ 15) _ _ _ _ _ _ _ pl.ok.1, pl.ok.2, rowsVal_F,
+    Eval.sparse_eq]
+  simp only [← entriesOf_eq]
+  rfl
 
 end TEval
 end FR

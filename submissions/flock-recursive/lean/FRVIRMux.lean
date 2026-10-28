@@ -129,5 +129,56 @@ def hotL : Asg := fun i => if i = 0 ∨ i = 1 then 1 else 0
 theorem kindProg_rows_L : ¬ ∀ r ∈ (compileMux 0 cells3 10 kindProg).rows, r.Holds hotL := by
   decide
 
+/-! ## Controls of S-E5's compiler changes
+
+* the **materialised select** (`muxOut`, F-9): the output cell must hold the selected value;
+* an assertion **off for every kind** emits no row, the same assertion on for a kind is a live row;
+* the **tensor `eqTable`**'s product rows (`prodRows`, on a 2 × 2 instance; the tables are
+  `eqRows`, whose rows S-E2's controls exercise): honest products hold, a wrong one fails. -/
+
+/-- `selectHalf` of `0` and `1` by the bit `1` (its output on the fresh cell `10`). -/
+def selProg : List Op :=
+  [.const fun _ => .f 0, .const fun _ => .f 1, .const fun _ => .bit true, .selectHalf 2 0 1]
+
+/-- The selector one-hot at `'N'`, the output cell holding the selected `1`. -/
+def selOk : Asg := fun i => if i = 0 ∨ i = 3 ∨ i = 10 then 1 else 0
+
+/-- The output cell holding the other operand, `0`. -/
+def selBad : Asg := fun i => if i = 0 ∨ i = 3 then 1 else 0
+
+/-- **Positive control**: the honest select satisfies the materialised row. -/
+theorem sel_rows_honest : ∀ r ∈ (compileMux 0 cells3 10 selProg).rows, r.Holds selOk := by
+  decide
+
+/-- **Negative control**: the unselected value fails it. -/
+theorem sel_rows_reject : ¬ ∀ r ∈ (compileMux 0 cells3 10 selProg).rows, r.Holds selBad := by
+  decide
+
+/-- An assertion off for every kind: no row. -/
+theorem off_rows_none :
+    (compileMux 0 cells3 10 [.const fun _ => .f 1, .assertZero 0 fun _ => false]).rows = [] := by
+  decide
+
+/-- The same assertion on for every kind is a live row: it fails on the nonzero value. -/
+theorem on_rows_reject :
+    ¬ ∀ r ∈ (compileMux 0 cells3 10 [.const fun _ => .f 1, .assertZero 0 allK]).rows,
+      r.Holds hotN := by
+  decide
+
+/-- The tensor's product rows for `lo = (w₁, w₂)`, `hi = (w₃, w₄)` on the cells `10 … 13`. -/
+def prodCtl : List Row := prodRows (CS.init 10) [Lin.cell 1, Lin.cell 2] [Lin.cell 3, Lin.cell 4] 0
+
+/-- `lo = (1, 0)`, `hi = (1, 1)` and their honest products `(1, 0, 1, 0)`. -/
+def prodOk : Asg := fun i => if i = 1 ∨ i = 3 ∨ i = 4 ∨ i = 10 ∨ i = 12 then 1 else 0
+
+/-- The product `lo_0 · hi_1` (cell `12`) set to `0`. -/
+def prodBad : Asg := fun i => if i = 1 ∨ i = 3 ∨ i = 4 ∨ i = 10 then 1 else 0
+
+/-- **Positive control**: the honest products satisfy the tensor's product rows. -/
+theorem prod_rows_honest : ∀ r ∈ prodCtl, r.Holds prodOk := by decide
+
+/-- **Negative control**: a wrong product fails them. -/
+theorem prod_rows_reject : ¬ ∀ r ∈ prodCtl, r.Holds prodBad := by decide
+
 end Circ
 end FR
