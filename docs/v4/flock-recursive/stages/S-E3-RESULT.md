@@ -213,3 +213,46 @@ Each module's wall time includes about 3.6 s of import. Checks:
   `FRVerifierImpl` and `FRNodeCircuit`.
 - S-G: switch `truthE`/`RowsFit` to `TEval.nodeIRows` (D-5).
 - S-0: track `packFK`/`kindInd` registers (F-8).
+
+## 9. S-0's `hdr.pub = vk` assertion (stage-review changes 16; HEAD `47158b1`)
+
+The library is rebuilt against HEAD `8447c50` (S-0's `47158b1` included): `lake build
+RFSubmission` rc 0. The dump is re-run (`logs/S-E3/nodedump-run2.log`): per slot, 246,629 indexed
+rows (+2), 27,306 import registers (+2), 1,401 instances, 871 auxiliary imports, 168 foreign.
+
+**What `compileMux` emits** (`logs/S-E3/nodedump/mregs-0.txt`, `mrows-0.txt`, slot 0):
+
+- `r17` = `piDigest fHdr 16`: a digest import on fresh M cells 6,291,466 and 6,291,467 (its two F
+  halves).
+- `r18` = `input 0`: a digest import on cells 6,291,468 and 6,291,469.
+- `assertEq r17 r18` gated on `Kind.isNode` becomes two gated rows (rows 7 and 8):
+  `s_N · (r17_j − r18_j) = 0`, `j = 0, 1`. The gate is the selector form with coefficients
+  `(0, 0, 1)` on the cells `selCells 0 = 5,939,524 / 525 / 526`. As S-0 says, no template is needed.
+
+Every later register moves by 2.
+
+**The two bindings.** Both are import hypotheses of `SlotHolds.run`, the representation of the
+import registers. The circuit has **no row yet** that ties them to the cells they must equal:
+
+1. **`input 0` → the node's `vk` cells.** `SlotHolds.run` assumes that `r18`'s cells hold
+   `inp.vk`, with `inp = ⟨vk, cᵢ, πᵢ⟩` in `node_sound`. But `PubCells` pins `vk`'s halves at the
+   seed payload cells `seedCell σ 0`, `seedCell σ 1` (H), not at `r18`'s fresh M cells. Nothing
+   equates the two sets yet: that is the pack map, part of the H-side assembly (§6 item 4,
+   S-E2's open item). The same holds for `input 1` (`cᵢ`, `seedCell σ 2, 3`).
+
+   **Proposed change (L-circ, smallest):** compile `input w` as an alias of the public cells
+   instead of fresh imports. `Params` would get the input forms (`[cell (seedCell σ (2w)), cell
+   (seedCell σ (2w+1))]`), and `opOut (.input w)` would return them, untracked as an import.
+   Then `PubCells` binds `vk` and `cᵢ` directly, and `input` drops out of the import
+   hypotheses. That costs no rows, and `compile_sound` gets one hypothesis: the input forms
+   represent `vk`, `c`, which `PubCells` gives.
+2. **`piDigest fHdr 16` → the child's `hdr` bytes 16–47.** `SlotHolds.run` assumes that `r17`'s
+   cells hold `bytesAt πᵢ (absOff fHdr 16) 32` (two F halves). Those bytes are the seed query's
+   message (`askSeed hdr`: `seedQ vk c hdr`), so in H they are stream cells of the child's digest
+   chain, bound by hashing (`stream_sound`, `cap_binding`). M's `r17` cells are again fresh
+   imports. Equating them with the chain's cells holding `hdr[16..48)` is the same pack-map step.
+
+**Conclusion.** The gated rows are correct and their soundness is in `compileT_sound`. Both
+bindings are confirmed **as import hypotheses**: each is the value of a trace cell (`hdr`) or a
+public cell (`vk`). They are not discharged inside the circuit until the pack map (or the
+proposed `input` alias, for `vk`) is in place.

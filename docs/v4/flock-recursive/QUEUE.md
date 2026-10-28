@@ -1,36 +1,25 @@
 # Orchestrator queue (FR-D8: at most 3 concurrent agents)
 
-Last updated 2026-10-27. Blueprint at revision 3.10 (`e1ad02c`). `FR.lean` imports S-A, S-C, S-D,
+Last updated 2026-10-27. Blueprint at revision 3.11 + §10 changes 14–16. `FR.lean` imports S-A, S-C, S-D,
 S-H1 and S-0; the combined `FR` builds (2,237 jobs).
 
 ## Running
 
-- P2: native acc vs the full dump (logs/S-G/dump), node prover, tree/node modes, 7763 stream link.
-- S-0: T_V blockers: bytesAt without the π copy (283 s → ≈ 180 ms), Kind argument for targetS/slotW/linkW, κ_s for shiftTarget.
-- S-H2d: node decoding (butterfly machine program, agreement scan, levels as needed, decodeWit output, 'N' case of ext_good_tape).
+- Blueprint author (Fable): **F-7, the T_V redesign.** V ≈ 3.3 s on the VM against ≈ 264 ms (the node's untemplated skeleton has 1.23M sparse entries; templated evalM 1.13 s and evalMK 2.02 s). Options (a)–(e) are being costed. **This is the binding risk (FR-R9).**
+- S-G1i: concrete dooms and PhaseObl (the Ligerito tail, then the PIOP front).
+- S-H2f: extractor node decoding (seed block, chain wiring, interpolation, levels 1–4, decodeWit, 'N' case).
 
 ## Waiting
 
-- **T_V (risk FR-R9; the binding item now).** The VM measures ≈ 180 ms with the bytesAt fix (S-F2), against a VM-equivalent cap of ≈ 264 ms. It must still absorb finPf (≈ 7.6 ms), the real evalL, and a **templated evalM/evalMK** (S-E2: a linear compileMux, templates, and L's row list; plain evalM over ≈ 2.4M rows takes seconds). S-C owes the node's targetS (E for all nine kinds), the linkW families, the In slot map and kindFoldWeight. Then S-F2 re-times with real proofs.
-
-- S-G next (fresh agent from S-G-RESULT S-G1d §5–6):
-  - pin the six padding cells (finB′ and finPf: the same six terms = 0);
-  - the uniqueness lemma ¬far ∧ truthP2 → truthC, the weight tables W_i, the PIOP truths;
-  - the per-phase dooms and Dp over phStart, the multi-squeeze bad sets, the instantiated KState.step;
-  - then S-G2: ligerito_final, final (including capPi = capDig and V_W size), kstate.
-  - FRVIRFinalsSG is 1,526 lines (budget 400): golf candidate.
-- S-E2 rest: H-side assembly of node_sound (imports, foreign flags, SigOk, format facts), W-kind children, node_complete.
-- S-I: certificate assembly (Solution.lean, claim.json at B-10, the εR arithmetic, axioms, the 600 s build/kernel check). H: GitHub harness runs.
-
-## Rulings since revision 3.10
-
-- The Lr point (node) is S-G's provisional choice (Lr4 challenges 7–14 plus L-base bits), checked against the prover's native verifier.
-- Leaves: the extractor parses s from the header; only N30 decodes.
-- final supplies capPi π e = capDig es 0 e; V_W proofs are < 2^64 bytes by V_W_sound.
+- **P2 node prover**: needs S-E3's node dump (logs/S-E3/nodedump/, which now has template groups and the WOTS order) and the F-7 outcome (it may change the node circuit). Leaf proofs are dump-exact (P2 §11).
+- **S-E (the H-side assembly of node_sound)**: the pack map from H trace/stream cells to the M imports. This covers the r17/r18 bindings (S-E3 §9), `input w` as an alias of the public seed cells (S-E3's proposal: no rows, `PubCells` binds vk/cᵢ), SigOk and the format facts, W-kind children, node_complete; the remaining templates (tensorW, rsWeight, walkA/B, kindInd, rowW, shiftTarget, the child's evalM/evalMK/evalL replay); F-8 (track kindInd/packFK); per-generator row counts for RowsFit (S-G's truthE_iff hypothesis; false for an arbitrary fin).
+- S-G2: ligerito_final, final (with fsQ_gen, ChainStab), FinalLaw; then kstate.
+- S-I: certificate assembly (Solution.lean, claim.json at B-10 with fuel_per_word 8,192, the εR arithmetic, axioms, the 600 s build/kernel check). H: GitHub harness runs.
+- Golf: FRVIRFinalsSG (1,526 lines, budget 400) and the large L-ext modules.
 
 ## Closed
 
-S-A `8ff873c`; S-C `ebac8c2`; S-D `8e6dad7`; S-E1 `2d5a811`; S-H1 `40b2f81`; S-0 done (`81f19b2`, FRVIRSpec sorry-free); S-E2 partial `cf2f7b3`; S-F `c8e1869`; S-G through `21bc631`; S-H2 through `fd836c3`. FR builds as a whole.
+S-A `8ff873c`; S-C `ebac8c2`; S-D `8e6dad7`; S-E1 `2d5a811`; S-H1 `40b2f81`; S-0 `47158b1`; S-E2/S-E3 `8447c50`; S-F `c8e1869`; S-F2 `8f22b86`; S-G through `ac43569`; S-H2 through `11fb3a5`. FR builds as a whole.
 
 ## Rulings
 
