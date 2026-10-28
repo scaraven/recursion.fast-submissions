@@ -173,3 +173,15 @@ print(f"   piSize {pi13} B = {pi13/1024:.0f} KiB ({2**20/pi13:.2f}x): PIOP {piop
 print(f"   node rows per slot {rows13:.0f}, per node {2*rows13:.0f} = 2^{math.log2(2*rows13):.2f} ({2**21/(2*rows13):.2f}x); blocks {blocks13} of 65536 ({65536/blocks13:.2f}x)")
 v13=base+finPf-4+3+evalM_F17*us/1000
 print(f"   V N30: {v13:.0f} ms VM = {v13/1.28:.0f} ms runner ({205.9/(v13/1.28):.2f}x) with fused walks; {v13-40:.0f} ms VM = {(v13-40)/1.28:.0f} ms runner ({205.9/((v13-40)/1.28):.2f}x) with the S-F2 hot spots; stream link ~2.94 s of 3.1 s (one 2^23 lincheck pass, +0.14 s over 2.80 s)")
+# ---- stage-review changes 21 (revision 3.14): INT-2 ratified (E4end 32 B), S-CN (8 families, WM map, linkWAll), S-E5's row model
+pi14=pi13+16; tb14=tb13+16; comp14=math.ceil(tb14/64)
+rows_e5_313=968943-32768-11400                 # S-E5's mRowModel at 3.12, less Phi's and rsWeight's fifth claim
+rows14=rows_e5_313-20000+15000+16000           # A.11's linkW (8 x 2,500) -> tplLinkWAll 15 k; + tplTargetSNode 16 k
+chainN=comp14; stmtBase=2*chainN; wotsBase=stmtBase+6; wmBase=wotsBase+2*498; wmEnd=wmBase+2*146; hEnd=wmEnd+8; lBase=47616; lEnd=lBase+124
+Mblocks14=math.ceil(2*rows14*128/2**14)
+print("== stage-review changes 21 (revision 3.14)")
+print(f"   piSize {pi14} (E4end 32 B; {2**20/pi14:.2f}x); hashed bytes {tb14} = 64 x {comp14} (no padding); last block t_lo {tb14}")
+print(f"   layout: chains end {stmtBase}; wotsBase {wotsBase}; wmBase {wmBase}; WM 2 x 146 blocks end {wmEnd} (< lBase {lBase}); hEnd {hEnd}; L ends {lEnd} of 49,152 ({49152/lEnd:.2f}x)")
+print(f"   node rows per slot {rows14} (S-E5 3.12 model {968943} - 44,168 claim 5 - 20,000 + 31,000); per node {2*rows14} = 2^{math.log2(2*rows14):.2f} ({2**21/(2*rows14):.2f}x); M blocks {Mblocks14} of 16,384 ({16384/Mblocks14:.2f}x); used blocks {lEnd+Mblocks14}")
+v14=204.9+4.5+2.0+1.9
+print(f"   V N30: measured 204.9 ms VM (S-E5, with evalM) + evalLT 4.5 + targetSNode 2.0 + linkWAll 1.9 = {v14:.1f} ms VM ({264/v14:.2f}x of 264 VM-equivalent) = {v14/1.28:.0f} ms runner ({205.9/(v14/1.28):.2f}x); stream link (P2 §12 estimate) ~3.0 s of 3.1 s (1.03x)")

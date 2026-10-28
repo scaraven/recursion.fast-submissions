@@ -33,14 +33,14 @@ novel-basis change, within `2^47.5 + 2^12 t` steps.
 
 | Quantity | value | bound | margin |
 |---|---|---|---|
-| `piSize` (both kinds) | 797,888 B = 779 KiB (revision 3.13) | `proofCap` 1,048,576 | 1.31× |
+| `piSize` (both kinds) | 797,904 B = 779 KiB (revision 3.14: E4 end 32 B) | `proofCap` 1,048,576 | 1.31× |
 | trace items (both kinds) | 8,891 | `qV = 10,240` | 1.15× |
-| hashed trace bytes / compressions | 1,481,328 / 23,146 | — | — |
-| node circuit blocks | 59,585 | 65,536 | 1.10× (changes 20) |
-| M rows per node | 1,553,556 = `2^20.57` | `N_M = 2^21` | 1.35× (changes 20) |
+| hashed trace bytes / compressions | 1,481,344 = `64 · 23,146` / 23,146 (no padding cell) | — | — |
+| node circuit blocks | H + L end at 47,740 of `Mbase` 49,152; M 14,622 of 16,384 blocks | 65,536 | 1.03× (H+L), 1.12× (M) (changes 21) |
+| M rows per node | 1,871,550 = `2^20.84` (S-E5's measured model + the node `targetS`/`linkWAll` templates) | `N_M = 2^21` | 1.12× (changes 21) |
 | extractor steps (`m = 30` node) | `2^47.11 + 2^11 t` | `fuel = 2^47.5 + 2^12 t`; `B = 2^48 + 2^16 t` | 1.31×; 1.85× |
 | error per fresh query | `2^-120.36 + 2^-144` | `εR = 2^-120.093` | — |
-| verifier time (N30) | S-E3 measured 166 ms VM without `evalM`; the redesign's `evalM` ≈ 4.0·10^5 F (one F-point call) | `T_V` 205.9 ms: **≈ 221 ms VM ≈ 173 ms runner with the fused walks (1.19×); ≈ 181 / 142 ms with the S-F2 hot spots (1.45×), estimate** (§10 changes 17, 20) | 1.19–1.45× |
+| verifier time (N30) | **S-E5 measured 204.9 ms VM with `finE`'s `evalM`**; + `evalLT` 4.5 + `targetSNode` 2.0 + `linkWAll` 1.9 ms (measured apart) | `T_V` 205.9 ms: **≈ 213 ms VM ≈ 167 ms runner** against the VM-equivalent cap ≈ 264 ms (§10 changes 21) | 1.24× |
 | output words (node) | `2^19.3` | `outCap = 2^24` | — |
 
 ### 0.1 Decisions
@@ -237,7 +237,7 @@ turns both forms into claims on the packed `f`.
    merges Lr's lincheck into it**: `κ_E` batches six claims, `c₀^{E4} = â_M + κ_E b̂_M + κ_E² ĉ_M +
    κ_E³ (â_L + κ_L b̂_L + κ_L² ĉ_L)` (the L term is `nodeOnly`: zero for a leaf); **E4**: 23 F
    rounds (degree 2) over the `2^23` cells reduce it to `(W_E2(r′) + κ_E³ W_L(r′))·f̂(r′)` with
-   `W_L(y) = (Ã_L + κ_L B̃_L + κ_L² C̃_L)(r_{Lr}, y)` and `r′ ∈ F^23`; the verifier evaluates
+   `W_L(y) = (Ã_L + κ_L B̃_L + κ_L² C̃_L)(r_{Lr}, y)` (**`r_{Lr}` is Lr2's final point**, the zerocheck's, as `r_{E2}` is E2's; INT-2) and `r′ ∈ F^23`; E4 end absorbs `f̂(r′) ‖ 0^16` (32 B, so the hashed stream stays `64 · 23,146` and `stream_padded` needs no padding cell; INT-2 ratified); the verifier evaluates
    `evalM(r_{E2}, r′)` and `evalL(r_{Lr}, r′)` **once each, at the F point `r′`** (`finE`), and
    `f̂(r′)` is ring switching's **fourth claim** (`J_z = 4`); the order is `… Lr3, E1, E2, E end,
    E3, E4, E4 end, RS0, RS1, B′`. The weight form of revisions 3.4–3.11 (`Ŵ_E2(ρ) =
@@ -376,7 +376,8 @@ layout): `h₀ = h0`, `hᵢ₊₁ = compress hᵢ Bᵢ tᵢ fᵢ 0`, `traceDiges
 (`blake2s_chain`). Child slot `σ ∈ {1, 2}` reads stream element `e` at element address
 `(chainBase_σ + ⌊e/4⌋)·128 + 4 + e mod 4`, `chainBase_1 = 0`, `chainBase_2 = 22,465`. **WOTS**
 (S-0-M2): 133 chains × 3 steps + 67 key-leaf blocks + 32 path blocks = 498 blocks per slot, laid
-out **consecutively** (chain `i`'s steps `w_{i,1..3}`, then the key leaf, then path step `t`'s two
+out **consecutively** (chain `i`'s steps `w_{i,0..2}` at blocks `wotsBase_σ + 3i + s`, `s ∈ {0,1,2}` the
+contract's step `s+1` — S-G's `nodeKind`, S-CN D-5 —, then the key leaf, then path step `t`'s two
 blocks). The contract's messages put the variable fields at unaligned byte offsets (`x` at 11–42
 and `j` at 1–8 of a `w43` block; the ends at `9 + 32k` of the key leaf; `l`, `r` at 1–32 and
 33–64 of a path step), so they are **not** wired by element equalities. Instead: (i) every
@@ -387,13 +388,24 @@ bits), the end `e_i = sel_{i,3}·h_out(w_{i,3}) + (1 − sel_{i,3})·ots_i` (S-E
 `WM`** of H (10 blocks per slot; stride 2 elements per link source); (ii) each unaligned field is
 tied to its mirror cell by a **link family of the shift argument**: `Σ_t eq(τ,t) Ind_fam(t) ·
 msg(t)[off … off + len) = Σ_t eq(τ,t) Ind_fam(t) · mirror(t)` with an arbitrary slot map
-(`slotW`, S-C-m1) and a re-based stride for the mirror side (the `WM` element map is pinned in A.6:
-`WMbase_σ·128 + 2·(off_f + t) + p`; revision 3.13), all families batched into the one Sh sumcheck by powers
-of `κ_s`. Families per slot: `w43` input `x` (offset 11, 32 B, 399 blocks), `w43`/key-leaf `j`
-(offset 1, 8 B; the source is one cell, so the family is a linear claim), key-leaf ends at offsets
-9 and 41 (2 families over 67 blocks), path `l` (offset 1), `r[0…30]` (offset 33), `r[31]` (block 2
-offset 0): **≤ 8 families**, one batched sumcheck, S2's rounds unchanged, S1's point gains the
-`κ_s` batching (`+7/2^128`). The WOTS message's digits `d_i` are 256 L bit-elements tied to the
+(`slotW`, S-C-m1) and a re-based stride for the mirror side (the `WM` map is pinned in A.6, revision
+3.14: source `g` of slot `σ` in block `wmB σ + ⌊g/4⌋` at positions `256·(g mod 4) + [0, 256)`, so
+that every mirror lies in positions `< 1024`, the only ones the Sh collapse rounds reach), all families batched into the one Sh sumcheck by powers
+of `κ_s`. Families per slot (**8, `nLinkFam = 8`; S-CN D-1**): `w43` input `x` (offset 11, 32 B, 399 blocks),
+`w43`/key-leaf `j` (offset 1, 8 B; the source is one cell, so the family is a linear claim),
+key-leaf ends at offset 9 (67 even ends) and at offset 41, which **crosses the block boundary**
+(end `k = 2u+1` is block `u` bytes 41–63 and block `u+1` bytes 0–8): `end41lo` (23 B) and `end41hi`
+(9 B) with one shared mirror source per odd end (66 odd ends: `k ≤ 131`), path `l` (offset 1),
+`r[0…30]` (offset 33), `r[31]` (block 2 offset 0): one batched sumcheck, S2's rounds unchanged,
+S1's point gains the `κ_s` batching (powers `κ_s² … κ_s⁹`: `+9/2^128`). **The node's Sh is
+chain-masked**: its `Out`/`In` tables carry the factor `Ind_chain(y)` (the two chain intervals;
+the start term `κ_s (eq(0,·) + eq(chainBase_2,·))`), so the identity never reads a block `≥
+chainN·2` — WOTS, `hashStmt`, `WM`, L or M; consecutive non-chain blocks are not linked and the
+honest witness would fail an unmasked identity. Kernel check: `shift_sound_masked` (S-C,
+`FRShift`: the masked `ChainLinks` ⇔ the two chains' links and endpoints) and `sh_reads_chain_only`
+(S-G: the node `truthS1` reads no block `≥ 2·chainN`). This is what makes the `WM` mirrors in
+positions `< 1024` of `free` blocks sound: no other claim reads them (`free`'s rows only force
+Booleanity, which bit mirrors satisfy). The WOTS message's digits `d_i` are 256 L bit-elements tied to the
 chain's last `h_out` by two linear rows; the checksum digits by Lr rows.
 **`hashStmt`** (BP-C-R4-M1): **three blocks per slot**, all in `Sel`, all constants
 kind-independent: block **A** hashes the leaf message `tagLeaf ‖ h ‖ enc64 n ‖ 0^23` in one
@@ -543,11 +555,11 @@ per row of §5.2 from the exact fiber counts (`card_chF_fiber = 2^128`, `card_ch
 | Z2 | skip `λ` (the only univariate round): `P^z*` through `Λ`, `P^{ab}*` through `S ∪ Λ₀…₆₂`; bad `λ` ≤ 126 for any fixed message (§2.3) | F | `126/2^128` | **121.0** |
 | Z3 | 24 rounds, degree 3 (26 at `m = 32`) | F | `3/2^128` | 126.4 |
 | L1, L2, **L3** | `α`; **14 rounds of degree 2** (P1-D4); `β` batching ≤ 9 per-kind claims (8 kinds + `free`) | F | `1, 2, 8 / 2^128` | 128, 127, 125 |
-| S1, S2 | `τ, θ` (16 + 10 coordinates) and the batching `κ_s` of ≤ 8 link families (S-0-M2); 16 block rounds + 10 collapse rounds, degree 2 | F | `26 + 7, 2 / 2^128` | 123.2, 127 |
+| S1, S2 | `τ, θ` (16 + 10 coordinates) and the batching `κ_s` of the start term and 8 link families (powers 1 … 9; S-0-M2, revision 3.14); 16 block rounds + 10 collapse rounds, degree 2 | F | `26 + 9, 2 / 2^128` | 122.9, 127 |
 | Lr1–Lr3 | point (15); rounds (3); `κ_L` (1); the lincheck rounds are E4's (revision 3.13) | F | `15, 3, 1 / 2^128` | ≥ 126.4 |
 | RS1 (after E4, revision 3.13) | `r″` (7 coordinates) and `κ` (`J_z = 4` claims) in one phase: the bad polynomial `D(r″, κ)` has degree ≤ 1 per `r″` coordinate and ≤ `J_z − 1` in `κ` | F | `(7 + J_z − 1)/2^128 = 10/2^128` | 124.7 |
 | E1–E4 | point (21); rounds (3); `κ_E` (6 claims, revision 3.13: `â_M, b̂_M, ĉ_M` and `κ_E³·` Lr's three: `batch_bad_le` at 6, `5/2^128`); **E4: the lincheck's 23 rounds (degree 2; revision 3.12)** | F | `21, 3, 5, 2 / 2^128` per round (`round_escape_le`) | ≥ 123.6 |
-| B′ | `κ′`: `J_f ≤ 21` claims on `f` (the E claim, 8 public cells, 6 padding cells, M's `one` cell, the RS claim) | F | `20/2^128` | 123.7 |
+| B′ | `κ′`: `J_f = 9` point claims on `f` (M's `one` cell, 8 public cells; the E claim is RS's since 3.12, the padding cells are gone since INT-2), powers `κ′² … κ′^{10}` | F | `10/2^128` | 124.7 |
 | P1 | fold round `r` of level `i`, `2^(ℓᵢ−r)` lines; the round folds `W` and `f` (degree 2 in K) | K | `(2^(ℓᵢ−r) C_mca + 2)/2^256`, `C_mca ≤ 2^60` | ≥ 190 |
 | P2 | positions | `log₂ nᵢ` bits | `(1 − eᵢ/nᵢ)^{tᵢ}` | **120.36**, 120.70, 120.36, 120.45, 120.41 |
 | P3 | consistency batching: `κ_c` of 9 coordinates (**5 squeezes**), coefficient of index `j` = `eq(κ_c, bits₉(j))` (powers of one F would be `tᵢ/2^128 = 2^-119.8`, over `εR`: not allowed) | F | `9/2^128` | 124.8 |
@@ -881,34 +893,35 @@ opened**; a sumcheck round's message is its 3 coefficients
 (48 B; K rounds 96 B; degree-2 rounds carry `g(∞) = 0`); a univariate round's message is 127 F
 values padded to 2,048 B; the final message is the level-4 fold, `2^7` K-elements (4,096 B; `P30`: `2^5` then zeros). **Variable order of the quirky polynomial** (S-F deviation 4): its `m − 6` multilinear variables are position bits `6 … 13` (8) then the block bits (`m − 14`); the pinned `ρ₁ … ρ₇` of A.1 are variables `0 … 6` (position bits `6 … 12`, the lowest, which round 1's GF(2^8) accumulation needs); Z1's free coordinates are variables `7 …` (position bit 13, then the blocks). Hence **the Z claim's inner weight uses `ρ₁` for bit 6** (`eqZ λ ρ₁`), not Z1's first coordinate (S-0/S-F: a one-line change). **Coordinate layouts of multi-coordinate squeezes** (S-0 deviation 7): coordinate `2s + c` is bytes `16c … 16c + 15` of answer `s`; Z1: 20 slots, the first `m − 13` used; S1: `τ` = 0–17 (`P30`: 0–15), `θ` = 18–27, `κ_s` = 28; RS1: `r″` = 0–6, `κ` = 7; Lr1, E1 likewise; consumers pick, dummies are ignored. **In-play windows** (S-0-m1): `windows` is defined by **stream offset** (`≡ 0 mod 16` in `0x54 ‖ traceBytes`, i.e. query offset `7 + 16k` for the seed and `8 + 16k` for every other query), so the seed's `vk`, `c` and `hdr` windows are in play too (harmless, never looked up; the count per entry is unchanged, `≤ 2^16`).
 
-### A.3 `piSize = 797,888` (revision 3.13): the body's fields in order (offsets are the cumulative sums)
+### A.3 `piSize = 797,904` (revision 3.14): the body's fields in order (INT-2's numbering and offsets)
 
-| # | field | bytes |
-|---|---|---|
-| 0 | `hdr` | 48 |
-| 1 | `stmt` (the padded statement-hash message blocks, 128 B) | 128 |
-| 2 | Z2: `P^z|_Λ ‖ P^{ab}|_{Λ₀…₆₂}` (127 F, zero-padded) | 2,048 |
-| 3 | Z3: 26 rounds × 48 | 1,248 |
-| 4 | Z end: `â ‖ b̂` | 32 |
-| 5 | L2: 14 rounds × 48; the 8 `v_kind` | 672 + 128 |
-| 6 | S2: 28 rounds (18 block + 10 collapse) × 48 | 1,344 |
-| 7 | Lr2: 15 rounds × 48 (Lr4 withdrawn, revision 3.13) | 720 |
-| 7′ | Lr end: `â_L ‖ b̂_L ‖ ĉ_L` (the Lr2 zerocheck's output claims; `finLr`'s source) | 48 |
-| 8 | RS0: partials `4 × 128 × 16` (**after E4**, revision 3.13; in the body the field order follows the item order) | 8,192 |
-| 9 | E2: 21 rounds × 48; **E4 (revision 3.12): the E lincheck (L and M rows, revision 3.13), 23 rounds × 48, and its end absorb (`f̂(r′)`, 16)**; fields 9, 9′ precede field 8 | 1,008 + 1,120 |
-| 9′ | E end: `â_M ‖ b̂_M ‖ ĉ_M` (`finE`'s source) | 48 |
-| 10 | P1: 22 fold rounds × 96 | 2,112 |
-| 11 | Pf: 7 final rounds × 96 | 672 |
-| | rows 2–11 (PIOP messages) | **19,392** |
-| 12 | caps `cap₀ … cap₄` | 45,056 |
-| 13 | final message: the level-4 fold, `2^7` K | 4,096 |
-| 14 | columns: level 0 … 4, position by position (every index); items padded to 64-B multiples (revision 3.12) | 487,504 |
-| 15 | siblings: level 0 … 4, position by position, leaf level first (11, 10, 8, 6, 5 per position) | 241,664 |
-| | **total** | **797,888** (revision 3.13; `sizes.py`) |
+| # | field | offset | bytes |
+|---|---|---|---|
+| 0 | `hdr` | 0 | 48 |
+| 1 | `stmt` (the padded statement-hash message blocks, 128 B) | 48 | 128 |
+| 2 | Z2: `P^z|_Λ ‖ P^{ab}|_{Λ₀…₆₂}` (127 F, zero-padded) | 176 | 2,048 |
+| 3 | Z3: 26 rounds × 48 | 2,224 | 1,248 |
+| 4 | Z end: `â ‖ b̂` | 3,472 | 32 |
+| 5 | L2: 14 rounds × 48; the 8 `v_kind` | 3,504 | 672 + 128 |
+| 6 | S2: 28 rounds (18 block + 10 collapse) × 48 | 4,304 | 1,344 |
+| 7 | Lr2: 15 rounds × 48 (Lr4 withdrawn, revision 3.13) | 5,648 | 720 |
+| 8 | Lr end: `â_L ‖ b̂_L ‖ ĉ_L` (`finLr`'s source) | 6,368 | 48 |
+| 9 | E: E2 21 rounds × 48 at +0; E4 23 rounds × 48 at +1,008; **E4 end `f̂(r′) ‖ 0^16` (32 B) at +2,112** | 6,416 | 2,144 |
+| 10 | E end: `â_M ‖ b̂_M ‖ ĉ_M` (`finE`'s source) | 8,560 | 48 |
+| 11 | RS0: partials `4 × 128 × 16`, claim-major | 8,608 | 8,192 |
+| 12 | P1: 22 fold rounds × 96 | 16,800 | 2,112 |
+| 13 | Pf: 7 final rounds × 96 | 18,912 | 672 |
+| | rows 2–13 (PIOP messages) | | **19,408** |
+| 14 | caps `cap₀ … cap₄` (level offsets 19,584 / 35,968 / 44,160 / 52,352 / 60,544) | 19,584 | 45,056 |
+| 15 | final message: the level-4 fold, `2^7` K | 64,640 | 4,096 |
+| 16 | columns: level 0 … 4, position by position (every index); items padded to 64-B multiples (revision 3.12) | 68,736 | 487,504 |
+| 17 | siblings: level 0 … 4, position by position, leaf level first (11, 10, 8, 6, 5 per position) | 556,240 | 241,664 |
+| | **total** | | **797,904** |
 
-(`48 + 128 + 19,392 + 45,056 + 4,096 + 487,504 + 241,664 = 797,888`; `sizes.py`.) `P30` fills
-its unused rounds (2 of Z3, the second chain's share of S2, 12 of the final message's 16 … 128 K
-slots, the last 2 siblings per position) with zeros.
+(The body order is the item order: E2, E4, E4 end and E end precede RS0. `48 + 128 + 19,408 +
+45,056 + 4,096 + 487,504 + 241,664 = 797,904`; `sizes.py`; INT-2 §4.1.) `P30` fills its unused
+rounds (2 of Z3, the second chain's share of S2, 12 of the final message's 16 … 128 K slots, the
+last 2 siblings per position) with zeros.
 
 ### A.4 The item sequence `items` (468 FS items, then per position its queries; `FRTranscriptDefs`; revision 3.13 order)
 
@@ -936,7 +949,7 @@ slots, the last 2 siblings per position) with zeros.
 | 16′ | E end | 1 absorb (`â_M ‖ b̂_M ‖ ĉ_M`), after E2 (263) | 48 B |
 | 17 | E3 | 1 squeeze (`κ_E`) (264) | — |
 | 18 | E4 | 23 × (absorb, squeeze) (265–310): the lincheck of `c₀^{E4}` over the `2^23` cells | 48 B per round |
-| 18′ | E4 end | 1 absorb (`f̂(r′)`) (311) | 16 B |
+| 18′ | E4 end | 1 absorb (`f̂(r′) ‖ 0^16`, bound by `finE` (v)) (311) | 32 B |
 | 19 | RS0 | 1 absorb (the `4 × 128` partials) (312) | 8,192 B |
 | 20 | RS1 | 4 squeezes (`r″` 7, `κ`) (313–316) | — |
 | 21 | B′ | 1 squeeze (`κ′`) (317; P1.0 starts at 318) | — |
@@ -991,7 +1004,7 @@ rows `1153 … 1279`, `16000 … 16383` have `E = 0` in every kind.
 | `hashB2` | `hashStmt` B2; path blocks 2 | `520…1023`, `1024…1152` | zero; `t_lo = 65`, `f0 = 0xFFFFFFFF` |
 | `w43` | WOTS chain steps (`tagWots ‖ enc64 j ‖ i ‖ s ‖ x`, 43 bytes) | `0…255`, `512…519`, `584…599`, `856…1023`, `1024…1152` | `h0`; `0x57`; `i`, `s` of the block's step (per block); zero; `t_lo = 43`, `f0 = 0xFFFFFFFF` |
 | **`free`** | the M, L, `WM` and spare blocks (`Sel ≡ 1`: every block has a kind) | none: rows `(var k, var k)` at every position, `E = 0` — satisfied by every Boolean `z` (`z_k² = z_k`); `A₀^{free} = B₀^{free} = I` (revision 3.8.1, BP-C-R5-M1: `(var k, one)` would force the unpinned bit 1,152 to 1) | — |
-| `WM` (no block matrix of its own: kind `free`) | the mirror sub-region: 10 blocks per slot after the WOTS blocks (`WMbase_σ = wotsBase_σ + 498`), holding the aligned sources of the link families (§4.2) at stride 2 elements: **source `t` of family `f` is elements `WMbase_σ·128 + 2·(off_f + t) + p`, `p ∈ {0,1}` the field's 16-byte halves (shorter fields in `p = 0`, zero-padded); `off_f`: `x` 0 (399 sources), `end9` 399 (67), `end41` 466 (67), `l` 533 (16), `r0` 549 (16), `r31` 565 (16), `j` 581 (1): 582 sources, 1,164 of 1,280 elements** (revision 3.13, S-G1j §1.3) | — | — |
+| `WM` (no block matrix of its own: kind `free`) | the mirror sub-region, **146 blocks per slot after both WOTS runs** (`wmBase = wotsBase + 2·498 = 47,294`; `wmB σ = wmBase + 146σ`; the last block 47,585 `< lBase = 47,616`; `FRNodeLayout.wmSlot = 146`, `hEnd = 47,594`): **mirror source `g` of slot `σ` is block `wmB σ + ⌊g/4⌋`, positions `256·(g mod 4) + [0, 256)` (elements `2(g mod 4)`, `+1`; shorter fields zero-padded)**; `g = off_f + t`, `off_f`: `x` 0 (399 sources), `j` 399 (1), `end9` 400 (67), `end41` 467 (66, shared by `end41lo`/`end41hi`), `l` 533 (16), `r0` 549 (16), `r31` 565 (16): 581 sources of 584 (revision 3.14, S-CN D-2/D-3; replaces 3.13's `2·(off_f+t)+p` map, whose elements `≥ 8` no `linkW` could read) | — | — |
 
 (`h_in` of `stream`, `streamEnd41`, `hashB2` blocks is the previous block's output, wired by the
 shift argument (digest chains, key leaf) or by element equalities (`hashStmt`, path block 2);
@@ -1005,7 +1018,7 @@ prover's row generator must reproduce them.
 
 ### A.7 The node's M and L layout and the pack map
 
-- **Public cells** (`finB′`, S-F deviation 7; one order for S-E2's `PubCells`, `finPf`'s `eq(cell_k, ρ)` weights and the prover): `pub_0 =` M's `one` cell `f[Mbase] = 1`; then slot 1's `vk` (halves: `pub_1, pub_2`) and `c₁` (`pub_3, pub_4`); then slot 2's `vk` (`pub_5, pub_6`) and `c₂` (`pub_7, pub_8`); then the padding cells (slot 1's three, slot 2's three, `= 0`). A half `k` of slot `σ`'s seed payload element `e` is the H cell `(chainBase_σ + ⌊(1+e)/4⌋)·128 + 4 + (1+e) mod 4` (the seed payload starts at stream element 1; `vk` = payload elements 0–1, `c` = 2–3). `pub_k` enters `v*` with `κ′^{k+2}`.
+- **Public cells** (`finB′`, S-F deviation 7; one order for S-E2's `PubCells`, `finPf`'s `eq(cell_k, ρ)` weights and the prover): `pub_0 =` M's `one` cell `f[Mbase] = 1`; then slot 1's `vk` (halves: `pub_1, pub_2`) and `c₁` (`pub_3, pub_4`); then slot 2's `vk` (`pub_5, pub_6`) and `c₂` (`pub_7, pub_8`); **no padding cells** (INT-2: the stream is `64 · 23,146` bytes, `stream_padded` holds without them; S-E3 D-6). A half `k` of slot `σ`'s seed payload element `e` is the H cell `(chainBase_σ + ⌊(1+e)/4⌋)·128 + 4 + (1+e) mod 4` (the seed payload starts at stream element 1; `vk` = payload elements 0–1, `c` = 2–3). `pub_k` enters `v*` with `κ′^{k+2}`.
 - **Pack**: `f[e]` is the F element whose 16 bytes are bits `[128e, 128e + 128)` of `z`, byte `b`
   = bits `[128e + 8b, 128e + 8b + 8)` low bit first; `c₀ = bytes 0…7`, `c₁ = bytes 8…15` LE. A
   block's element `k` (`k < 128`) is `f[blk·128 + k]`.
@@ -1043,12 +1056,12 @@ Register kinds: `F`, `K`, `D` (digest), `B` (byte string), `N` (ℕ), `Bit`, `AF
 | `walkA rowW colW → F`, `walkB rowW colW → F` | `AF (2^14), AF (2^14) → F` | `Â₀`, `B̂₀` by the circuit walk (`walkE_eq_sum`) with the row weights `rowW′[k] = rowW[k] · Σ_{kind : k ∉ pinned(kind)} v_kind` built by `maskRows vKinds rowW` from the prover's per-kind claims (S-C-M1; one walk for all kinds) | lincheck replay + `2^14` |
 | `kindInd r′ → AF #kinds` | `AF (m−14) → AF 8` | the indicator MLEs `Ĩnd_kind(r′)` (prefix sums over the kind's intervals; used by `kindFoldWeight` and `maskRows`) | `O(log)` each |
 | `evalM τ σ → F × F × F`, `evalL τ σ → F × F × F` | `AF 21, AF 23 → …`; `AF 15, AF 23 → …` | the node's matrix MLEs (kind-selected) | `evalM`/`evalL` replay |
-| `targetS r → AF 64` | `AF (m−6) → AF 64` | `P^e(σ) = Σ_{x'} eq(r,x') E(x', σ)` for `σ ∈ S` (per kind and pinned position: interval prefix sums and affine-bit MLEs; `targetS_eq`, S-C). `selWeight` and `targetMLE` are withdrawn (`Sel ≡ 1`, skip-c). **Node form (revision 3.13, S-G1j §1.3; `targetSNodeS`, owner S-C; `targetSNodeI` + `_meets` S-F2/L-circ; `implC` selects it by `s_N`):** `Σ_kind Σ_{I ∈ intervals(kind)} Σ_{blk ∈ I} eq(r, blk)·E_kind(blk, σ)` over A.6's nine kinds and `nodeLayout`'s intervals (two chains, `hashStmt` A/B1/B2, WOTS steps, key leaves, path blocks, `free`): constant bits (`h0`, tags, zeros, the fixed `t_lo`/`f0`/`one`) give `E_kind(σ)·` a dyadic range sum of `eq(r,·)` (`rangeEq_mle`, `O(log)` per interval); `stream`'s counter `t_lo = 64(k+1)` (`k` chain-relative) gives, per bit `j`, `Σ_k eq(r, blk₀ + k)·(k_j + Π_{i<j} k_i)` (char 2: bit `j` of `k+1`), a shifted range sum (`shift_mle`, `O(log²)`); the last-block fields (`t_lo = 1,437,760`, `f0`; the key leaf's `4,265`) are single-block terms `eq(r, blk)`; `w43`'s `i = ⌊o/3⌋`, `s = o mod 3` are not bit-affine at stride 3 and are an explicit sum over the 399 step blocks from an `eq(r,·)` table (`399 + 16·399` products; the stride-4 layout alternative is declined to keep `ind_wots`/`nodeBK_wots`). Cost `≈ 10 k` products; its template `tplTargetSNode ≈ 10 k` rows (A.11) | `O(#kinds · #pinned)` |
+| `targetS r → AF 64` | `AF (m−6) → AF 64` | `P^e(σ) = Σ_{x'} eq(r,x') E(x', σ)` for `σ ∈ S` (per kind and pinned position: interval prefix sums and affine-bit MLEs; `targetS_eq`, S-C). `selWeight` and `targetMLE` are withdrawn (`Sel ≡ 1`, skip-c). **Node form (revision 3.13, S-G1j §1.3; `targetSNodeS`, owner S-C; `targetSNodeI` + `_meets` S-F2/L-circ; `implC` selects it by `s_N`):** `Σ_kind Σ_{I ∈ intervals(kind)} Σ_{blk ∈ I} eq(r, blk)·E_kind(blk, σ)` over A.6's nine kinds and `nodeLayout`'s intervals (two chains, `hashStmt` A/B1/B2, WOTS steps, key leaves, path blocks, `free`): constant bits (`h0`, tags, zeros, the fixed `t_lo`/`f0`/`one`) give `E_kind(σ)·` a dyadic range sum of `eq(r,·)` (`rangeEq_mle`, `O(log)` per interval); `stream`'s counter `t_lo = 64(k+1)` (`k` chain-relative) gives, per bit `j`, `Σ_k eq(r, blk₀ + k)·(k_j + Π_{i<j} k_i)` (char 2: bit `j` of `k+1`), a shifted range sum (`shift_mle`, `O(log²)`); the last-block fields (`t_lo = 1,481,344 = 64 · 23,146`, `f0`; the key leaf's `4,265`) are single-block terms `eq(r, blk)` (S-CN's `blockTarget 1481344 true`); `w43`'s `i = ⌊o/3⌋`, `s = o mod 3 ∈ {0,1,2}` are not bit-affine at stride 3 and are an explicit sum over the 399 step blocks from an `eq(r,·)` table (`399 + 16·399` products; the stride-4 layout alternative is declined to keep `ind_wots`/`nodeBK_wots`). Cost `≈ 10 k` products; its template `tplTargetSNode ≈ 10 k` rows (A.11) | `O(#kinds · #pinned)` |
 | `lagrangeS vals λ pe → F × F` | `AF 127, F, AF 64 → F × F` | `(P^{ab}*(λ), P^z*(λ))`: `P^z*` through `Λ` from `vals[0…63]`, `P^{ab}*` through `S ∪ Λ₀…₆₂` from `pe + vals[0…63]|_S` and `vals[64…126]` (replaces the single-output form) | ≈ 800 |
 | `shiftTarget τ θ bnd → F` | `AF 18, AF 10, AF 4 → F` | the shift sumcheck's boundary term with the boundary values `bnd` (leaf: `s` and `h` as two elements each, from `hdr`/`stmt`; node: `h0` twice, constants) and the slot weights (P1-D5); `θ`'s 10 coordinates read a slot position `σ < 256` as a 10-bit index (factor `(1+θ₈)(1+θ₉)`, P2 §7.5 (4)) | `O(m)` |
 | `slotW θ pos r → F` | `AF 10, slot map, AF 10 → F` | the collapse's slot weight `Σ_σ eq(θ,σ)·eq(cube(pos σ), r)` summed directly for the unaligned `d` slot (`520…775`: 256 terms × ≈ 14 products, S-C-m1); the aligned `h_in`/`h_out` slots by `slotW_mle_aligned` | ≈ 3.6 k |
 | **cell-reading ops `eqPt`, `rowW`, `shiftEq`, `linkW`** | — | these read fixed cells or public tables and compile to **imports**: the compiler emits no row for them; their cell values enter `compile_sound` as hypotheses (the imported cells' values), discharged in `final` by the zerocheck/shift/RS facts that fix those cells (S-G), exactly as the trace imports are | 0 (imports) |
-| `linkW τ fam r_blk → F` | `AF 18, family id, AF 18 → F` | a link family's weight **at the Sh sumcheck's block point** (not the RS point: within `finSh` only the Sh point exists; the Sh claims reach RS through the `Out`/`In` slot weights); the families' powers start at `κ_s²` (`κ_s` weights the `eq(0,·)` term) (S-0-M2). **Node definition (revision 3.13, S-G1j §1.3; `linkWS` and `linkW_mle` owner S-C; `linkWI` + `_meets` S-F2/L-circ; `tplLinkW` S-E; the prover's mirror writes P2):** per slot the 7 families `f` with sources `t < n_f` at block `src_f(t)` and message field `[off_f^B, off_f^B + len_f)`: `x` (`w43` step blocks `wotsBase + 3i + s`, `n = 399`, offset 11, 32 B), `j` (the same 399 blocks and key-leaf block 0, offset 1, 8 B; one mirror element: a linear claim), `end9`/`end41` (the 67 key-leaf blocks, offsets 9 / 41, 32 B), `l` (path blocks 1: `wotsBase + 466 + 2t`, offset 1, 32 B), `r0` (path blocks 1, offset 33, 31 B), `r31` (path blocks 2: `wotsBase + 467 + 2t`, offset 0, 1 B); mirror element of `(f, t, p)` per A.6's `WM` map. The Sh in-table term for family `f` at `(r_blk, r_pos)` is `W_f = Σ_{t<n_f} eq(τ, src_f(t))·[eq(r_blk, src_f(t))·slotW(field_f, r_pos) − eq(r_blk, mirBlk_f(t))·slotW(mirPos_f(t), r_pos)]` (char 2: the source side minus the mirror side; `slotW` the slot map of a byte range to the position bits, `O(log)` by `rangeEq_mle`); the two eq factors are `n_f`-term table sums (`src_f`, `mirBlk_f` are affine in `t` at strides 3, 2, 1, not bit-aligned): **`linkW` costs `Σ_f (2 n_f + O(log))` ≈ 1,300 products per slot pair**, `tplLinkW` ≈ 2,500 rows per family (A.11). `truthS1`'s `ShHolds` for a node is `shift_sound`'s identity with these 7 terms added (owner S-G) | `O(n_f + log)` |
+| **`linkWAll κ (τ ‖ θ) (r_blk ‖ r_pos) → AF 8`** (revision 3.14; replaces `linkW τ fam r_blk → F`) | `Kind, AF 26, AF 26 → AF 8` | the 8 link families' weights **at the Sh sumcheck's point** `(r_blk, r_pos)` with S1's `(τ, θ)`, in one op with shared tables (S-CN §6.3: 1.9 ms measured on the VM against 4.35 ms for 8 separate calls), read by 8 `getF`; `finSh` packs `τ ‖ θ` (S1's 16 block coordinates, then its 10 slot coordinates) and `r_blk ‖ r_pos` (S2's 16, then 10); a leaf's result is `0^8`; the families' powers are `κ_s^{f+2}`, `f < 8` (`κ_s` weights the start term). **Definition (`linkWAllS`, `linkW_mle`, `linkInd_sum`: owner S-C, delivered by S-CN; `linkWAllI` + `linkWAll_meets`: S-F2/L-circ; `tplLinkWAll`: S-E; the mirror writes: P2):** per slot the 8 families `f` with sources `t < n_f` at block `src_f(t)`, field `[off_f^B, off_f^B + len_f)` and mirror source `g_f(t)` (A.6): `x` (`wotsBase + 3i + s`, 399, offset 11, 32 B), `j` (the 399 step blocks and key-leaf block 0, offset 1, 8 B, one mirror source), `end9` (key-leaf block `u` of the 67, offset 9, 32 B: the even ends), `end41lo` (block `u`, offset 41, 23 B, mirror bits 0–183), `end41hi` (block `u+1`, offset 0, 9 B, mirror bits 184–255; `u < 66`), `l` (path blocks 1 `466 + 2t`, offset 1, 32 B), `r0` (path blocks 1, offset 33, 31 B), `r31` (path blocks 2 `467 + 2t`, offset 0, 1 B). `W_f = Σ_{t<n_f} eq(τ, src_f(t))·[eq(r_blk, src_f(t))·slotW(field_f, r_pos) − eq(r_blk, mirBlk(g_f(t)))·slotW(mirPos(g_f(t)), r_pos)]` (char 2; `slotW` by `rangeEq_mle`); the eq factors are `n_f`-term table sums. Cost ≈ `6 n_f + 24 len_f` products per family with the generic loop (S-CN §7), ≈ 1.9 ms in all; **`tplLinkWAll` ≈ 15 k rows per slot** (A.11). `truthS1`'s node `ShHolds` is the chain-masked `shift_sound` identity with these 8 terms (owner S-G) | `O(Σ n_f + log)` |
 | `rowW λ r′_hi → AF (2^14)` | `F, AF 8 → AF (2^14)` | the lincheck's row weights: Lagrange at `λ` on the skip slice ⊗ `eq(r′_hi, ·)` on the 8 high position bits; spec `rowW_eq` (S-C) | `2^14` |
 | `shiftEq τ r → F` | `AF 18, AF 18 → F` | `shift(τ, r)`, the MLE of the successor map on block indices (paper §4.6); spec `shiftEq_eq` (S-C) | `O(m)` |
 | structural ops delivered by S-0 (`input`, `const`, `packF/packK/packFK`, `getF/getK`, `piElemK`, `piDigestAt`, `eqTableK`, `dotKF`, `shrN`, `keep`, `kindSel`; `askNode` with depth and activity, `askAbsorb` with its static length, `askSeed hdr`) | as `FRVIR` | S-0 RESULT deviation 1 | — |
@@ -1081,10 +1094,10 @@ X's `z`-claim; all registers are the phase outputs of S-0's `gen`.
 | `finZ` | `eq(r, r′)·â·b̂ = c_Z` (§2.3 step 2, skip-c); the c-claim `ẑ(r, λ) = P^z*(λ)` is RS claim 1 | none (Z3's initial claim is `P^{ab}*(λ)` from `lagrangeS`) | `eqPt`, 2 `mulF`, `assertEq` | S-0 fix pass, `exec_finZ` (re-done for skip-c) |
 | `finLc` | (i) `c₀^{Lc} = â + α b̂`; (ii) `c_{Lc} = walk(rowW′, eq(r_k,·))` with `rowW′[k] = rowW[k]·Σ_{kind ∌ k} v_kind` (`rowW` = Lagrange at `λ` ⊗ eq on the 8 high bits); (iii) `v_β := Σ_kind β^kind v_kind` becomes RS claim 2 with weight `W_β` | L2's initial claim | `eqTable` (row/col), `maskRows`, `walkA`, `walkB`, `mulF` (α), `addF`, `assertEq` ×2, powers of `β` | S-0 fix pass, `exec_finLc` (algebra: S-C's `lin_final_kinds`) |
 | `finSh` | (i) `c₀^{Sh} = shiftTarget τ θ` (the boundary: `s`, `h` for a leaf; `h0` per chain for a node; batched by `1, y`); (ii) `c_{Sh} = (w_out(r) + w_in(r))·ẑ_{Sh}` (one claim at `(r_blk, r_pos)`) with `w_out = eq(τ,r_blk)·slotW_out(θ, r_pos)`, `w_in = (shift(τ,r_blk) + κ_s eq(0,r_blk))·slotW_in(θ, r_pos) + Σ_fam κ_s^fam · linkW` (§4.2's link families) | S2's initial claim | `shiftTarget`, `slotW` ×2, `linkW` ×≤8, `mulF`, `addF`, `assertEq` ×2; outputs RS claims 3–4 (`Out`, `In` slot weights) | S-0 fix pass, `exec_finSh` (algebra: S-C's `shift_sound`, `slotW_mle`) |
-| `finLr` | (i) `c₀^{Lr2} = 0`; (ii) `c_{Lr2} = eq(r_Lr, r)·(â_L b̂_L + ĉ_L)`; (iii) **exports `v_L := â_L + κ_L b̂_L + κ_L² ĉ_L` and `r_{Lr}`** to `finE` (revision 3.13: Lr4 withdrawn; `nodeOnly`: a leaf exports 0) | none | `mulF` ×3, `addF`, `assertEq` ×2 | S-0 fix pass, `exec_finLr` |
+| `finLr` | (i) `c₀^{Lr2} = 0`; (ii) `c_{Lr2} = eq(r_Lr, r)·(â_L b̂_L + ĉ_L)`; (iii) **exports `v_L := â_L + κ_L b̂_L + κ_L² ĉ_L` and `r_{Lr}` := Lr2's final point** to `finE` (revisions 3.13–3.14: Lr4 withdrawn; `nodeOnly`: a leaf exports 0) | none | `mulF` ×3, `addF`, `assertEq` ×2 | S-0 fix pass, `exec_finLr` |
 | `finRS` | for each claim `j < 4`: the column check **defines** `α_j := Σ_i w_i^{(j)} s_i^{(j)}` (inner weights: `eqZ λ ρ₁` for Z, `eq` on the element's 7 bits for Lc, Sh, Lr); the switched claims `T_j = Σ_i b_i Φ_{r″}(s_{j,i})`; **`v_RS := Σ_j κ^j T_j`** is Ligerito's input value (a leaf: 3 claims, the fourth's slices asserted zero and `T₃` omitted); `Ŵ` is evaluated only at the final point (`finPf`, `rsWeight`) | none (RS has no rounds); the `α_j` are **computed, not asserted** (`rs_column`), and bound where they are used: `finZ` (`α_Z = P^z*(λ)`), `finLc` (`v_β = α_Lc`), `finSh`, `finLr` | `packF`, 4 × 128 (`mulF` + `addF`), 4 × 128 `phiRS` + `mulF`, powers of `κ` | S-F (delivered), `exec_finRS` |
-| `finE` | (i) `c₀^{E2} = 0`; (ii) `c_{E2} = eq(r_E, r_{E2})·(â_M b̂_M + ĉ_M)` at the zerocheck's final point `r_{E2}`; (iii) `c₀^{E4} = â_M + κ_E b̂_M + κ_E² ĉ_M + κ_E³ v_L` (revision 3.13); (iv) `c_{E4} = ((Ã_M + κ_E B̃_M + κ_E² C̃_M)(r_{E2}, r′) + κ_E³ (Ã_L + κ_L B̃_L + κ_L² C̃_L)(r_{Lr}, r′))·f̂(r′)` with **`evalM(r_{E2}, r′)` and `evalL(r_{Lr}, r′)` at the F point `r′`** (the only matrix evaluations in `V`); `f̂(r′)` is RS claim 4 | E4's initial claim | `evalM`, `evalL`, `mulF` ×7, `addF`, `assertEq` ×4; outputs RS claim 4 | S-F / S-G (revisions 3.12–3.13), `exec_finE` |
-| `finB′` | `v* := v_RS + κ′ v_E + Σ_k κ′^{k+2} pub_k` (`pub_k`: the public cells `vk`, `cᵢ` elements and the zero padding cells) = the initial claim of P1.0 | P1.0's initial claim | `mulF`, `addF`, `assertEq` | S-F, `exec_finB′` |
+| `finE` | (i) `c₀^{E2} = 0`; (ii) `c_{E2} = eq(r_E, r_{E2})·(â_M b̂_M + ĉ_M)` at the zerocheck's final point `r_{E2}`; (iii) `c₀^{E4} = â_M + κ_E b̂_M + κ_E² ĉ_M + κ_E³ v_L` (revision 3.13); (iv) `c_{E4} = ((Ã_M + κ_E B̃_M + κ_E² C̃_M)(r_{E2}, r′) + κ_E³ (Ã_L + κ_L B̃_L + κ_L² C̃_L)(r_{Lr}, r′))·α₄` with **`evalM(r_{E2}, r′)` and `evalL(r_{Lr}, r′)` at the F point `r′`** (the only matrix evaluations in `V`) and `α₄` = RS claim 4's column value (`rs_column`); **(v) the E4 end message equals `α₄ ‖ 0^16`** (every kind; a leaf's `α₄ = 0` by `finRS`'s zero check; INT-2) | E4's initial claim; the E4 end message | `evalM`, `evalL`, `mulF` ×7, `addF`, `assertEq` ×6 | S-F / S-G (revisions 3.12–3.14), `exec_finE` |
+| `finB′` | `v* := v_RS + Σ_{k<9} κ′^{k+2} pub_k` (`pub_k`: M's `one` cell and the 8 `vk`/`cᵢ` halves of A.7; **no `κ′ v_E` term since revision 3.12** — the E claim is RS claim 4 — and **no padding cells** since INT-2: the stream is `64 · 23,146`; the powers `k+2` keep the Lean's order) = the initial claim of P1.0 | P1.0's initial claim | `mulF`, `addF`, `assertEq` | S-F, `exec_finB′` |
 | `finP i` (level `i = 0 … 4`) | (i) `c_{P1.i}` (after the `ℓᵢ` fold rounds) = the running claim `v_i` folded; (ii) for each queried index `j`: `fold_j = dotKF(column_j, eq(z_i,·))` and (`i < 4`) the next claim `v_{i+1} := v_i + Σ_j eq(κ_c, j)·fold_j`, whose weight adds `Σ_j eq(κ_c,j)·G_j` with `Ĝ_j(ρ) = tensorW j ρ` (A.1); (`i = 4`) `fold_j = Enc₄(final)[j]` computed from the final message (`2 k₅ … = 2^7` K×F products per `j`) | P1.(i+1)'s initial claim (level 4: Pf's) | `eqTableK`, `dotKF` × `tᵢ`, `tensorW` deferred, `mulK`, `addK`, `assertEq` | S-G (with L-pcs), `exec_finP` |
 | `finPf` | `c_{Pf} = Ŵ(ρ)·final̂(ρ)` with `final̂(ρ)` the multilinear evaluation of the `2^7` K final message at `ρ` (`P30`: the weight zero-padded, `·(1+ρ₅)(1+ρ₆)`) and `Ŵ(ρ) = rsWeight r″ pts κ ρ` (the leaf omits the fourth weight, as `v_RS` does) (revisions 3.12–3.13: **no `evalM`/`evalMK` term**: the E4 claim is RS claim 4) `+ Σ_k κ′^{k+2} eq(cell_k, ρ)` (A.7's order) `+ Σ_i Σ_j eq(κ_c^{(i)}, bits₉(j))·tensorW(j, ρ_i)·(the fold factors of levels > i)` | Pf's initial claim = level 4's claim | `rsWeight` (4 claims), `tensorW` × `Σ tᵢ`, `eqTableK`, `mulK`, `addK`, `assertEq` | S-G, `exec_finPf` |
 
@@ -1123,12 +1136,12 @@ writes the definitions named `truth*`; the count lemmas are S-C/S-D's.
 | L1 (`α`) | batching `â + α b̂ = Σ_kind Σ_j M_kind(j) zfold_kind(j)` (`lin_trueSum_kinds`) | `Wrong`: the batched identity false though `â` or `b̂` wrong | `hsingle`: `batch_bad_le` at 2 (`1·2^128`) | `habs` at L2's first absorb: `c₀^{L2}` free, bound by `finLc` (i) | — |
 | L2 (14 rounds, degree 2) | tables `[M_κ-weights, zfold_kind]` over `2^14` per kind; `e` degree 2; initial claim `â + α b̂` | `Rej ∨ Wrong2` (the verifier asserts `c₁ + c₂ = claim`) | `round_escape_le`, `card_chF_fiber`: `N = 2·2^128` | `habs` at L3's absorb (the 8 `v_kind`): `v_kind ≠ zfold_kind(r_k)` for some kind | reads `z` (the word) and `A₀^κ` |
 | L3 (absorb 8 `v`, squeeze `β`) | `v_β := Σ_kind β^kind v_kind`; truth `⟨W_β, z⟩` (`truthL3`); `finLc` (ii) asserts the walk | `Rej ∨ (some v_kind wrong ∧ Σ β^kind (v_kind − truth) = 0)` | `hsingle`: `batch_pow_bad_le` at 9 (`8·2^128`) | S1's first squeeze (escape) | — |
-| S1 (15 squeezes: `τ`, `θ`, `κ_s`) | the shift identity with the boundary (`shiftTarget`) and ≤ 8 link families (`truthS1`: `ShHolds z s h` of §4.1/§4.2) | `far_0 ∨ (¬ ShHolds ∧ the batched sum at (τ,θ,κ_s) equals the target)` | `hround`: SZ over 26 coordinates + `batch_pow_bad_le` at 8 families: `(26 + 7)/2^128`, via `pair_bad_le`/`seq_bad_le`, `card_chF2_fiber` | `habs` at S2's first absorb: `c₀^{S2} ≠ shiftTarget …` | the word; the mirror cells (M region of `z`) |
+| S1 (15 squeezes: `τ`, `θ`, `κ_s`) | the shift identity with the boundary (`shiftTarget`) and ≤ 8 link families (`truthS1`: `ShHolds z s h` of §4.1/§4.2) | `far_0 ∨ (¬ ShHolds ∧ the batched sum at (τ,θ,κ_s) equals the target)` | `hround`: SZ over 26 coordinates + `batch_pow_bad_le` at degree 9 (8 families): `(26 + 9)/2^128`, via `pair_bad_le`/`seq_bad_le`, `card_chF2_fiber` | `habs` at S2's first absorb: `c₀^{S2} ≠ shiftTarget …` | the word; the mirror cells (M region of `z`) |
 | S2 (28 rounds, degree 2) | tables `[eq(τ,·)·Out, (shift + κ_s eq(0,·) + Σ κ_s^f linkW)·In]` over blocks then the 10 slot bits (`FRShift.shift_sound`, `slotW_mle`) | `Rej ∨ Wrong2` | `round_escape_le`: `N = 2·2^128` | `finSh` (ii): `c_{Sh} ≠ (w_out + w_in)·ẑ(r_blk, r_pos)`; the claim `α_Sh` is RS's | — |
 | Lr1 (8 squeezes) / Lr2 (15 rounds, degree 3) / Lrend / Lr3 (`κ_L`); **Lr4 withdrawn (revision 3.13): the lincheck is E4's, over the `2^23` cells; `truthLr` keeps the zerocheck half, the lincheck truth is `truthE4`'s** | Spartan over the L rows (node only; `nodeOnly`): zerocheck tables `[eq(r_L,·), A_L z, B_L z, C_L z]` (`truthLr`), `Lrend` carries `â_L, b̂_L, ĉ_L`; lincheck of `â_L + κ_L b̂_L + κ_L² ĉ_L` with `evalL` (`FRVIREval`) | Lr1: `hround` form; Lr2: `D3` (`lr2_phase`); Lrend: `habs`; Lr3: `Wrong`; Lr4: `Rej ∨ Wrong2` | Lr1: SZ 15, `pair_bad_le`; Lr2: `D3_single`; Lr3: `batch_bad_le` at 3 (`2·2^128`); Lr4: `round_escape_le` | `finLr` (iv): the claim `α_Lr` is RS's | reads `z`'s L region; `A_L` public |
 | RS0 (absorb `4 × 128` partials) / RS1 (4 squeezes: `r″`, `κ`) | per claim `j`: the column check **defines** `α_j` (`rs_column`); the switched claims `T_j = rsT` and `v_RS = Σ κ^j T_j`; truth `rsTruth` (`Σ_u Φ(g_j(u)) f(u)`) with `g_Z = eq(r,·)`, `g_Lc = eq((r′_blk, r_k),·)`, `g_Sh = eq((r_blk, r_pos),·)`, `g_Lr` (`truthRS`) | RS0: `habs` (a wrong partial, `δ_j ≠ 0`); RS1: `Wrong`: some `δ_j ≠ 0 ∧ Σ κ^j rsT = Σ κ^j rsTruth` | `hround`: **`rs1_joint`** (`(7 + J_z − 1) = 10` of `|F|^7` draws), `card_chF2_fiber` | `habs` at E1 (node) / at B′'s squeeze (leaf): `v_RS` as the running value | the partials are chain entries; `f⁽⁰⁾` the word |
 | E1 (11 squeezes) / E2 (21 rounds, degree 3) / Eend / E3 (`κ_E`, 6 claims) / **E4 (23 rounds, degree 2: the L and M linchecks, `truthE4`; then E4 end, RS0, RS1, B′ — revision 3.13 order)** | the element zerocheck over the M rows of `f⁽⁰⁾`: tables `[eq(r_E,·), A_M f, B_M f, C_M f]` (`truthE`, `evalM`'s matrices from `compileMux`); `Eend` carries `â_M, b̂_M, ĉ_M` at the final point `r_{E2}` | E1: `hround` form (`far_0 ∨ (¬ EHolds ∧ …)`); E2: `D3` (`e2_phase`); Eend: `habs` | E1: SZ 21 with `pair_bad_le`; E2: `D3_single` | E3's squeeze (`κ_E`): `Wrong` (`batch_bad_le` at 3, `2·2^128`); then B′ | reads `f⁽⁰⁾`'s M region |
-| B′ (squeeze `κ′`) | `v* = v_RS + κ′ v_E + Σ κ′^{k+2} pub_k` (`truthB′`: the true `v_RS`, `v_E` and the public cells' true values `f[cell_k]`) | `Wrong`: some term wrong `∧` the batched value equals the truth | `hsingle`: `batch_pow_bad_le` at `J_f ≤ 21` (`20·2^128`) | `habs` at P1.0's first absorb: `c₀^{P1.0} ≠ ⟨W, f⁽⁰⁾⟩` | the public cells are word entries |
+| B′ (squeeze `κ′`) | `v* = v_RS + Σ_{k<9} κ′^{k+2} pub_k` (`truthB′`: the true `v_RS` and the 9 public cells' true values `f[cell_k]`; `pfCells`, INT-2) | `Wrong`: some term wrong `∧` the batched value equals the truth | `hsingle`: `batch_pow_bad_le` at degree 10 (`10/2^128`) | `habs` at P1.0's first absorb: `c₀^{P1.0} ≠ ⟨W, f⁽⁰⁾⟩` | the public cells are word entries |
 | P1.i (`ℓᵢ` K rounds, degree 2) | the fold sumcheck of `⟨W_i, f⁽ⁱ⁾⟩` over level `i`'s row variables; tables `[W_i, f⁽ⁱ⁾]` (K); truth: `¬ far_i → c_{P1.i} = Σ_x W_i(z,x) f⁽ⁱ⁾(x)` after the folds (`truthP1 i`); **the fold rounds also carry the proximity doom**: `far_i ∧ the fold is e_i-close` (`fold_preserves` fails only on `lineBad`) | `Rej ∨ Wrong2 ∨ (far_i-doom: the round's challenge `z ∈ round_bad_cover`)` | `round_escape_le` (K: `card_chK_fiber`, `N = 2`) **plus `round_bad_cover`** (`2^(ℓᵢ−r) C_mca`): `N = 2 + 2^(ℓᵢ−r)·C_mca ≤ 2^66` | `habs` at `C.i`'s absorb (the next cap or the final message): the committed next level | `wordOf … i` under `capᵢ` (absorbed at `C.(i−1)`, before this phase) |
 | C.i (absorb `capᵢ₊₁` / final) | the level-`(i+1)` word becomes readable; truth: `¬ far_{i+1} → f⁽ⁱ⁺¹⁾ = fold_z(f⁽ⁱ⁾)`'s message (`truthC i`) | `habs`: `far_{i+1} ∨ f⁽ⁱ⁺¹⁾ ≠ fold(f⁽ⁱ⁾)` | — | P2.i's first squeeze | `wordOf … (i+1)` under `capᵢ₊₁`: `colL_prefix` (the cap is absorbed here; its tree's nodes must precede: the window hit) |
 | P2.i (`sq_i` squeezes, `t_i` indices) | the queried positions `posAt`; truth: the consistency set `A_c := {j : fold_z(column_j) = Enc(f⁽ⁱ⁺¹⁾)[j]}` (`truthP2 i`); doomed iff `(far_i ∨ f⁽ⁱ⁺¹⁾ ≠ fold(f⁽ⁱ⁾)) ∧ every queried index ∈ A_c` | `hround` form: all `t_i` indices land in `A_c`, `|A_c| ≤ n_i − e_i − 1` | `hround`: **`positions_bad_le`** `(1 − e_i/n_i)^{t_i}` with **`card_idx_fiber`** over `posAt` (`per` indices per answer) | the column and Merkle-node queries (asks; no doom change: `habs` for queries, their answers are `Bad`-charged hits), then P3.i's first squeeze | the columns read at the queried positions equal `wordOf`'s (`cap_binding`: `openPath` vs `colL`) |
@@ -1167,11 +1180,11 @@ blocks and slots (`irregular_mle`).
 | `maskRows v rowW → AF 2^14` | `rowW′[k] = rowW[k] · (Σ_{kind ∌ k} v_kind)` (the mask is a public 0/1 form of the `v_kind`) | `v_kind` (trace cells) | 16,384; 1 | shared | 16 k |
 | `walkA/walkB rowW′ colW → F` | `colW` = `eqTable(r_k)` tree (`2^14`); `p_k = rowW′[k] · (Σ_j A₀[k,j] colW[j])`, `out = Σ_k p_k` | `rowW′`, `colW` (own templates) | `2^14 + 2^14` (tables) + `2^14` per walk; 2 walks | **lincheck-replay class**: `B̃` restricted to the product rows is `A₀`/`B₀` at an aligned base, evaluated by `walk_eq_sum` (6·10^4 XOR) | 49 k rows; 2 walks + `O(2^14)` |
 | `lagrangeS vals λ pe → F×F` | barycentric: `inv_i = (λ − node_i)^{-1}` (3 rows each), `Z(λ) = Π(λ − node_i)`, `L_i = w_i·Z·inv_i`, `P* = Σ vals_i L_i` for the 64 nodes of `Λ` and the 127 of `S ∪ Λ₀…₆₂` (`P^{ab}|_S` from `P^z|_S + pe`) | `vals` (127 trace cells), `pe` (`targetS`), `λ` | ≈ 1,400; 1 | local + irregular (127) | 1.4 k |
-| `targetS r → AF 64` | per kind and interval the prefix sums of `eq(r_blk,·)` (`O(m)` products each, ≈ 20 intervals), per pinned position `(blk-pattern value) × (hi weight)` summed into its `σ` slot | `r` | ≈ 10,000; 1 | local | 10 k |
+| `targetS r → AF 64` (node: `targetSNode`) | per kind and interval the dyadic range sums of `eq(r,·)`, the `stream` counter's shifted bit forms, the single last blocks, `w43`'s 399-term table (A.8) | `r` | ≈ 16,000; 1 (revision 3.14: sized from `targetSNodeI`'s measured 2.0 ms) | local | 16 k |
 | `eqZ λ ρ₁ → AF 128` | `L_lo(λ) · eq(ρ₁, bit 6)` | the 64 Lagrange values (shared) | 128; 1 | shared | 128 |
 | `shiftEq τ r`, `eqPt`, `kindInd r′` | `eq`/`shift` closed forms: `O(m)` products | challenges | ≤ 60 each | local | 0.5 k |
 | `slotW θ pos r → F` | `eq(θ,σ)` tree (255), `eq(cube(pos σ), r)` as 9 products per `σ` (public bits), 256 products, the sum | `θ`, `r` | ≈ 2,800; 3 slot maps | local | 8.4 k |
-| `linkW τ fam r_blk → F` | as `slotW` over the family's 256 bit positions + the interval prefix sum | `τ`, `r_blk` | ≈ 2,500; ≤ 8 | local | 20 k |
+| `linkWAll (τ‖θ) (r_blk‖r_pos) → AF 8` (node) | the four eq tables, per family the `n_f`-term source and mirror sums, `slotW` range forms | `τ`, `θ`, `r_blk`, `r_pos` | ≈ 15,000 in all; 1 (revision 3.14, S-CN §7: ≈ `6 n_f + 24 len_f` per family) | local | 15 k |
 | `shiftTarget τ θ bnd → F` | `eq(τ, 0)·⟨slotW_in, bnd_s⟩ + eq(τ, n−1)·⟨slotW_out, bnd_h⟩` (node: `h0` constants) | `slotW` outputs, `bnd` (trace: `hdr`/`stmt` cells) | ≈ 100; 1 | shared | 0.1 k |
 | `kindFoldWeight r′ β ρ → F` | `Σ_kind β^kind · prefixSum_kind(eq(r′,·) eq(ρ_blk,·))`: `O(#intervals · log)` | `r′`, `β`, `ρ` | ≈ 1,000; 1 | local | 1 k |
 | `phiRS r″ a → F` | 127 squarings (`a² = c`: 1 row each) + 7 products (the stages) | `a` (RS0 partials: trace cells), `r″` | 134; 512 | local | 68.6 k |
@@ -1648,4 +1661,35 @@ B′` (§2 items 5–7, A.3, A.4, A.10); (2) Lr4 withdrawn; E4 is the lincheck o
 claims over the `2^23` cells, `finE` (iv) evaluates `evalM(r_{E2}, r′)` and `evalL(r_{Lr}, r′)`
 at the F point `r′`, `f̂(r′)` is RS claim 4, `J_z = 4` (§2, §5 error table, the finals table); (3)
 the node's `targetS` and `linkW` and the `WM` map (A.6, A.8, §4.2).
+
+### Stage-review changes 21 (revision 3.14): INT-2 ratified, S-CN's findings, the `WM` ruling
+
+| Item | Change |
+|---|---|
+| INT-2 (1) ratified | **E4 end absorbs 32 B** (`f̂(r′) ‖ 0^16`): the hashed stream is `1,481,344 = 64 · 23,146`, `stream_padded` holds with no padding cell; **piSize 797,904** (1.31×); the last block's `t_lo = 1,481,344` (A.3, A.4 row 18′, A.8 `targetSNode`, §0). The alternative (16 B + one padding cell per slot as a B′ point claim) is declined: it touches `pubCells`/`pfCells`/`truthBN`/`stream_padded` and the prover for no gain. |
+| INT-2 (2) | **`finE` (v)** binds the E4 end message: value `= α₄` (RS claim 4's column value) and the zero half, for every kind (a leaf's `α₄ = 0` by `finRS`'s zero check). `finE` has 6 asserts (finals table). |
+| INT-2 (3) | **`r_{Lr}` is Lr2's final point** (the zerocheck's, as `r_{E2}` is E2's); `finLr` exports it with `v_L` (§2 item 7, finals table). |
+| INT-2 (4) | A.3 rewritten with the Lean's field numbering and INT-2's offsets: 7 Lr2 (5,648), 8 Lr end (6,368), **9 E (6,416; E2 +0, E4 +1,008, E4 end +2,112), 10 E end (8,560), 11 RS0 (8,608)**, 12 P1 (16,800), 13 Pf (18,912), 14 caps (19,584), 15 final (64,640), 16 columns (68,736), 17 siblings (556,240). |
+| INT-2 (5) stale rows | A.9's `finB′`: `v* := v_RS + Σ_{k<9} κ′^{k+2} pub_k` — **no `κ′ v_E`** (the E claim is RS's since 3.12) and **no padding cells** (`J_f = 9`, B′ row `10/2^128`; A.7's public-cell list and A.10's B′ row amended). `mRowModel`'s "templates still missing" row over-counts `rsWeight`'s fifth claim (11,400): S-E drops it (an upper bound, `mRows_le` unaffected). |
+| S-CN D-1 | **8 link families** (`nLinkFam = 8`): `end41` crosses the block boundary, split into `end41lo` (block `u`, bytes 41–63, 23 B, mirror bits 0–183) and `end41hi` (block `u+1`, bytes 0–8, 9 B, mirror bits 184–255) sharing one mirror source; **66 odd ends** (`k ≤ 131`). §4.2, A.8. |
+| S-CN D-2/D-3, **the `WM` ruling** | 3.13's map (`WMbase_σ·128 + 2(off_f+t) + p`) put mirrors in elements `≥ 8`, i.e. positions `≥ 1024`, which the Sh collapse rounds (10 slot coordinates, `shSrc`) never reach; and `wotsBase_σ + 498` was slot 1's first WOTS block. **Pinned (A.6): mirror source `g` of slot `σ` is block `wmB σ + ⌊g/4⌋`, positions `256·(g mod 4) + [0, 256)`; `wmB σ = wmBase + 146σ`, `wmBase = wotsBase + 2·498 = 47,294` (after both WOTS runs), 146 blocks per slot, last block 47,585 `< lBase = 47,616`**; `g = off_f + t` with `x` 0, `j` 399, `end9` 400, `end41` 467, `l` 533, `r0` 549, `r31` 565 (581 of 584 sources). **Soundness ruling**: the mirrors may use positions `0 … 1023` (the `h_in`/`h_out`/`d` slots) of `WM` blocks because **the node's Sh is chain-masked**: its `Out`/`In` tables carry `Ind_chain(y)` and the start term is `κ_s(eq(0,·) + eq(chainBase_2,·))`, so no S claim reads a block `≥ 2·chainN = 46,292`; it must be masked anyway — consecutive WOTS, `hashStmt` and `WM` blocks are not linked, and the honest witness fails an unmasked identity (`FRShift.ChainLinks` is over every block: it is the leaf's form). `WM` blocks are `free`: their rows force Booleanity only, which bit mirrors satisfy; the link families' mirror side is the only other reader. The elements-4–7 variant (291 blocks per slot, `WM` in the L–M gap) is therefore not needed. **Kernel checks**: `shift_sound_masked` (S-C, `FRShift`: the masked identity ⇔ the two chains' links and endpoints, the verifier's `shW` gaining the interval factor) and `sh_reads_chain_only` (S-G: the node `truthS1` reads no block `≥ 46,292`); S-E's `FRNodeLayout`: `wmSlot = 146`, `hEnd = 47,594`, `regions_fit`. |
+| S-CN D-4, D-5 | A.8's last-block `t_lo` is 1,481,344 (the counter form at `k+1 = 23,146`; only `f0` differs); `w43`'s steps are `s ∈ {0,1,2}` (`w_{i,0..2}` at `wotsBase_σ + 3i + s`; the contract's step is `s+1`): §4.2 amended to S-G's `nodeKind`. |
+| S-CN §6, **the `linkW` interface** | **One op `linkWAll κ (τ ‖ θ) (r_blk ‖ r_pos) → AF 8`** replaces `linkW τ fam r_blk → F`: `finSh` packs `τ ‖ θ` (S1's 16 + 10) and `r_blk ‖ r_pos` (S2's 16 + 10), the 8 results are read by `getF` and weighted by `κ_s^{f+2}`; a leaf's result is `0^8`; shared tables (1.9 ms measured against 4.35 ms). `finSh`'s registers, `relSh`/`flag_finSh` renumber (S-0/S-F). **Error accounting**: `κ_s` batches the start term (power 1) and 8 families (powers 2 … 9): `batch_pow_bad_le` at degree 9, **S1 row `(26 + 9)/2^128`** (was `26 + 7`), 122.9 bits; the maximum error is unchanged (Ligerito's `2^-120.36`). S-CN §6.4 adopted too: **`slotW`'s In slot is kind-selected** — the node's `h_in` (slot map 2, base 0), the leaf's `d` (base 520). |
+| S-CN §7, A.11 sizes | `tplTargetSNode` ≈ 16 k rows (from `targetSNodeI`'s measured 2.0 ms), `tplLinkWAll` ≈ 15 k rows per slot (`6 n_f + 24 len_f` per family; `linkWAllI` 1.9 ms); A.11's `linkW` row (8 × 2,500) replaced. |
+| Margins (`sizes.py`, `sizes.txt` "changes 21") | piSize **797,904 B (1.31×)**; items 8,891 (qV 1.15×); stream `64 · 23,146`, no padding; H + L end at **47,740 of 49,152** (1.03×); node rows **935,775 per slot = S-E5's measured model (968,943 at 3.12) − 44,168 (claim 5) − 20,000 + 31,000; 1,871,550 = `2^20.84` per node (1.12× under `N_M`)**, M 14,622 of 16,384 blocks (1.12×); **`T_V` (N30): 204.9 ms VM measured with `evalM` (S-E5) + `evalLT` 4.5 + `targetSNode` 2.0 + `linkWAll` 1.9 = ≈ 213 ms VM (1.24× under the ≈ 264 ms VM-equivalent cap) ≈ 167 ms runner**; stream link (P2 §12 estimate) ≈ 3.0 s of 3.1 s (1.03×; the node prover and its measurement are P2's next item). |
+
+**Revision 3.14 (normative):** (1) E4 end 32 B, piSize 797,904, no padding cell, `finE` (v); (2)
+`r_{Lr}` = Lr2's final point; (3) A.3's numbering and offsets; (4) `finB′` without `κ′ v_E` and
+padding cells, `J_f = 9`; (5) 8 link families with `end41lo`/`end41hi`; (6) the `WM` map of A.6 and
+the chain-masked node Sh; (7) `linkWAll`, S1 row `(26 + 9)/2^128`, kind-selected `slotW_in`; (8)
+`t_lo = 1,481,344`, steps `s ∈ {0,1,2}`; (9) A.11's `tplTargetSNode` 16 k / `tplLinkWAll` 15 k.
+
+**What each track changes (revision 3.14):**
+- **S-0** (transcript, `FRVIRChain`/`FRVIRFinals`): E4 end 32 B (done in INT-2); `finSh`'s `linkWAll` op with the packed points, the `κ_s^{f+2}` weights and `relSh`/`flag_finSh`; `finLr`'s `r_{Lr}` export (done); A.3/A.4 as the table.
+- **S-C** (`FRShift`, `FRVerifierImplNode` specs): `shift_sound_masked`; `linkWAllS` with the 8 families and the A.6 map (S-CN's `wmB`/`mirB`/`mpos` are the pinned ones), `linkW_mle`, `linkInd_sum`; `targetSNodeS` with `t_lo = 1,481,344` (S-CN's `cls 2` already).
+- **S-F / S-F2** (`FRVerifierImpl`): `finE` (v); `implC`'s `targetS` and `linkWAll` selected by `κ.isNode`, `slotW_in` by kind; `linkWAll_meets`, `targetSNode_meets` in `implC_meets`; `finB′` without `κ′ v_E`.
+- **S-E** (`FRNodeLayout`, mux, templates): `wmSlot = 146`, `hEnd = 47,594`, `regions_fit`; the mux's mirror output addresses per the A.6 map; `mRowModel` without the claim-5 row and with `tplTargetSNode`/`tplLinkWAll`; the two templates.
+- **S-G** (soundness): the node `truthS1` with the chain mask and the 8 terms, `sh_reads_chain_only`; `truthB′` with `J_f = 9` (`pfCells`); the E4 end binder in `truthE4`'s end absorb; positions as INT-2 §3.
+- **S-H2** (extractor): π offsets of INT-2 §4.1 and the item indices (−29 from B′ on); E4 end 32 B.
+- **P2** (prover): the mirror writes per the A.6 map (146 blocks per slot after both WOTS runs), `end41` split, `linkWAll`'s weights in the Sh tables, the chain mask in the node's Sh tables, `slotW_in` = `h_in` for node blocks; E4 end `f̂(r′) ‖ 0^16` (done).
 

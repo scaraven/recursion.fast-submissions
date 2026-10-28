@@ -30,3 +30,8 @@
    piSize 797888 B = 779 KiB (1.31x): PIOP 19392, columns 487504, siblings 241664, caps 45056, final 4096
    node rows per slot 776778, per node 1553556 = 2^20.57 (1.35x); blocks 59585 of 65536 (1.10x)
    V N30: 221 ms VM = 173 ms runner (1.19x) with fused walks; 181 ms VM = 142 ms runner (1.45x) with the S-F2 hot spots; stream link ~2.94 s of 3.1 s (one 2^23 lincheck pass, +0.14 s over 2.80 s)
+== stage-review changes 21 (revision 3.14)
+   piSize 797904 (E4end 32 B; 1.31x); hashed bytes 1481344 = 64 x 23146 (no padding); last block t_lo 1481344
+   layout: chains end 46292; wotsBase 46298; wmBase 47294; WM 2 x 146 blocks end 47586 (< lBase 47616); hEnd 47594; L ends 47740 of 49,152 (1.03x)
+   node rows per slot 935775 (S-E5 3.12 model 968943 - 44,168 claim 5 - 20,000 + 31,000); per node 1871550 = 2^20.84 (1.12x); M blocks 14622 of 16,384 (1.12x); used blocks 62362
+   V N30: measured 204.9 ms VM (S-E5, with evalM) + evalLT 4.5 + targetSNode 2.0 + linkWAll 1.9 = 213.3 ms VM (1.24x of 264 VM-equivalent) = 167 ms runner (1.24x); stream link (P2 §12 estimate) ~3.0 s of 3.1 s (1.03x)
