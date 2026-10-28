@@ -4,10 +4,15 @@ Last updated 2026-10-28. Blueprint at revision 3.13 (§10 changes 1–20). FR bu
 
 ## Running
 
-- S-CN: the node `targetS`/`linkW` specs (S-C part) plus `targetSNodeI`/`linkWI` and `_meets` (S-F2 part), in new modules; wiring into `implC` after INT-2.
-- P2: the node prover driven by the dump (`logs/S-E5/nodedump/`), the mirror writes, tree/node modes, the stream-link measurement.
+- S-H2i: the node decoder (`flagIR` loops, message rows, per-level composition, level 0, decodeWit output, 'N' case, decSnark wiring).
+- S-G2: `ligerito_final` (parametric in RS/B′'s claims; no FinalLaw or front dooms until 3.14 lands in Lean).
+- S-E7: **the T_V kill test first** (fused `walkAB`, the S-F2 hot spots; ≈ 255 ms VM projected against ≈ 264), then the replay `R` in 3.14 (D)'s uniform layout, the 3.14 S-E items, re-dump.
 
 ## Waiting
+
+- **INT-3 (after S-E7 item 1): the 3.14 items outside S-E.** S-0 `finSh` with the `linkWAll` op and packed points (`κ_s^{f+2}`; `relSh`/`flag_finSh`); S-C `shift_sound_masked`, `linkWAllS` on the pinned map; S-F `implC` kind-selected `linkWAll`/`slotW_in`, `linkWAll_meets` in `implC_meets`, `finB′` without `κ′ v_E` (`J_f = 9`); S-G chain-masked node `truthS1`, `sh_reads_chain_only`, `truthB′` at `J_f = 9`, the E4-end binder in `truthE4`; `FR.lean` imports FRNodeTarget, FRVerifierImplNode, FRVIRTplRep, FRVIRCompileSound, FRVIRTplPlan.
+- **H-probe:** measure V (N30) on a GitHub runner (probe workflow) once S-E7 item 1 lands, to replace the ≈ 264 ms VM-equivalent estimate with a runner figure.
+- **P2 node prover** after S-E7's re-dump: mirror writes per A.6 (146 blocks/slot), `end41` split, `linkWAll` weights, the chain mask in Sh, `slotW_in = h_in`.
 
 - **After INT-2:** re-verify `lake build FR`, commit; wire S-E5's `evalLT` into `implC` (+≈ 4.5 ms); re-measure V; S-H2h with the moved positions (FRX constants: nRep, chTab/fsMsgs, capW0/capOffL, piSize tape facts).
 - **After S-CN:** S-E templates `tplTargetSNode` (≈ 10k rows) and `tplLinkW` (≈ 2,500 rows per family); S-G the node S truth (`ShHolds` + 7 terms), Z1/Z2 tables over the node `targetS`; re-dump for P2.
