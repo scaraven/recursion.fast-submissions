@@ -303,14 +303,171 @@ def felems (b : ByteArray) : Array F :=
 def dotKF (w : Array K) (col : ByteArray) : K :=
   ((felems col).zipWith (fun c x => K.smulF c x) w).foldl (· + ·) 0
 
+/-! ### Fast twins (S-E8): what `evalOp` runs, each equal to its reference -/
+
+/-- The F element at byte `o` of `b` (zero past the end), read in place: `F.ofBytes (bytesAt b o 16)`
+without its three intermediate vectors (`fAt_eq`). -/
+def fAt (b : ByteArray) (o : ℕ) : F :=
+  ⟨⟨(byteAt b (o + 0)).toUInt64 + ((byteAt b (o + 1)).toUInt64 <<< 8) +
+      ((byteAt b (o + 2)).toUInt64 <<< 16) + ((byteAt b (o + 3)).toUInt64 <<< 24) +
+      ((byteAt b (o + 4)).toUInt64 <<< 32) + ((byteAt b (o + 5)).toUInt64 <<< 40) +
+      ((byteAt b (o + 6)).toUInt64 <<< 48) + ((byteAt b (o + 7)).toUInt64 <<< 56)⟩,
+    ⟨(byteAt b (o + 8)).toUInt64 + ((byteAt b (o + 9)).toUInt64 <<< 8) +
+      ((byteAt b (o + 10)).toUInt64 <<< 16) + ((byteAt b (o + 11)).toUInt64 <<< 24) +
+      ((byteAt b (o + 12)).toUInt64 <<< 32) + ((byteAt b (o + 13)).toUInt64 <<< 40) +
+      ((byteAt b (o + 14)).toUInt64 <<< 48) + ((byteAt b (o + 15)).toUInt64 <<< 56)⟩⟩
+
+theorem fAt_eq (b : ByteArray) (o : ℕ) : fAt b o = F.ofBytes (bytesAt b o 16) := by
+  simp only [fAt, F.ofBytes, B64.ofBytes, bytesAt, Vector.getElem_ofFn]
+
+/-- `dotKFF`'s loop: `k` more terms from row `r`. -/
+def dotKFGo (w : Array K) (col : ByteArray) : ℕ → ℕ → K → K
+  | 0, _, acc => acc
+  | k + 1, r, acc => dotKFGo w col k (r + 1) (acc + K.smulF (fAt col (16 * r)) w[r]!)
+
+/-- **`dotKF` as one loop** (S-E8): no `felems` array, no zipped array (`dotKFF_eq`). -/
+def dotKFF (w : Array K) (col : ByteArray) : K := dotKFGo w col (min (col.size / 16) w.size) 0 0
+
+theorem dotKFGo_eq (w : Array K) (col : ByteArray) (k r : ℕ) (acc : K) :
+    dotKFGo w col k r acc =
+      ((List.range' r k).map fun i => K.smulF (fAt col (16 * i)) w[i]!).foldl (· + ·) acc := by
+  induction k generalizing r acc with
+  | zero => rfl
+  | succ k ih => simp only [dotKFGo, ih, List.range'_succ, List.map_cons, List.foldl_cons]
+
+theorem dotKFF_eq (w : Array K) (col : ByteArray) : dotKFF w col = dotKF w col := by
+  rw [dotKFF, dotKFGo_eq, dotKF, ← Array.foldl_toList, ← List.range_eq_range']
+  refine congrArg (List.foldl (· + ·) 0) (List.ext_getElem (by simp [felems]) fun i h₁ _ => ?_)
+  simp only [List.length_map, List.length_range] at h₁
+  simp only [List.getElem_map, List.getElem_range, List.getElem_zipWith, Array.toList_zipWith,
+    Array.toList_map, Array.toList_range, Array.getElem_toList, felems]
+  rw [fAt_eq, getElem!_pos w i (lt_min_iff.1 h₁).2]
+
 /-- Zero-pad to a multiple of 16. -/
 def pad16 (b : ByteArray) : ByteArray := b ++ ⟨Array.replicate ((16 - b.size % 16) % 16) 0⟩
 
-/-- **The masked row weights** (A.8 `maskRows`): row `k`'s weight times the sum of the indicator
-weights of the kinds (in `blockKinds` order) that do not pin `k`. -/
+/-- **`nodeQ`'s fast twin** (S-E8): the 72-byte query from arrays, not from three lists appended
+(`nodeQF_eq`). -/
+def nodeQF (i : ℕ) (l r : Digest) : ByteArray :=
+  ⟨#[0x46, 0x52, 0x4D, 0x4E, 0x4F, 0x44, i.toUInt8, 0] ++ l.toArray ++ r.toArray⟩
+
+theorem nodeQF_eq (i : ℕ) (l r : Digest) : nodeQF i l r = nodeQ i l r := by
+  simp [nodeQF, nodeQ, bytesOf, tagNode]; rfl
+
+/-- **A digest read from `q` at `o`** (S-E8): one 32-byte slice, not 32 bounds-checked reads into a
+`Vector.ofFn` (`digestAt_eq`). -/
+def digestAt (q : ByteArray) (o : ℕ) : Digest :=
+  if h : o + 32 ≤ q.size then ⟨(q.extract o (o + 32)).data, by simp; omega⟩ else bytesAt q o 32
+
+theorem digestAt_eq (q : ByteArray) (o : ℕ) : digestAt q o = bytesAt q o 32 := by
+  unfold digestAt
+  split_ifs with h
+  · ext t ht
+    simp only [Vector.getElem_mk, ByteArray.data_extract, Array.getElem_extract, bytesAt,
+      Vector.getElem_ofFn, byteAt, show o + t < q.size by omega, dite_true]
+    rfl
+  · rfl
+
+section IdxF
+open Finset
+
+/-- Byte `k` of a digest as a number, `0` past the end. -/
+def dByte (a : Digest) (k : ℕ) : ℕ := if h : k < 32 then a[k].toNat else 0
+
+/-- The four bytes from `k`, little-endian. -/
+def dWin (a : Digest) (k : ℕ) : ℕ :=
+  dByte a k + dByte a (k + 1) * 256 + dByte a (k + 2) * 65536 + dByte a (k + 3) * 16777216
+
+/-- **`idxOf`'s fast twin** (S-E8): for `b ≤ 24`, bits `[i b, i b + b)` of `natLE a` lie in the four
+bytes from `⌊i b / 8⌋`, so only those are read, with shifts in place of `2 ^ _` (which runs as a
+loop in compiled code). Equal to `idxOf` for every `b`, `a`, `i` (`idxOfF_eq`). -/
+def idxOfF (b : ℕ) (a : Digest) (i : ℕ) : ℕ :=
+  if b ≤ 24 then dWin a (i * b / 8) >>> (i * b % 8) % (1 <<< b) else idxOf b a i
+
+theorem dByte_lt (a : Digest) (k : ℕ) : dByte a k < 256 := by
+  unfold dByte; split
+  · exact UInt8.toNat_lt _
+  · norm_num
+
+theorem natLE_sum (a : Digest) (N : ℕ) (hN : 32 ≤ N) :
+    natLE a = ∑ t ∈ range N, dByte a t * 256 ^ t := by
+  obtain ⟨M, rfl⟩ := Nat.exists_eq_add_of_le hN
+  rw [sum_range_add, show ∑ t ∈ range M, dByte a (32 + t) * 256 ^ (32 + t) = 0 from
+    sum_eq_zero fun t _ => by simp [dByte], add_zero, natLE,
+    ← Fin.sum_univ_eq_sum_range (fun t => dByte a t * 256 ^ t)]
+  exact sum_congr rfl fun t _ => by simp [dByte, t.2]
+
+theorem sum_lt_pow (a : Digest) (k : ℕ) : ∑ t ∈ range k, dByte a t * 256 ^ t < 256 ^ k := by
+  induction k with
+  | zero => simp
+  | succ k ih =>
+    rw [sum_range_succ, pow_succ]
+    have := dByte_lt a k
+    nlinarith [pow_pos (show (0:ℕ) < 256 by norm_num) k]
+
+theorem natLE_split (a : Digest) (k : ℕ) :
+    natLE a = ∑ t ∈ range k, dByte a t * 256 ^ t +
+      256 ^ k * (dWin a k + 2 ^ 32 * ∑ t ∈ range 32, dByte a (k + (4 + t)) * 256 ^ t) := by
+  rw [natLE_sum a (k + (4 + 32)) (by omega), sum_range_add, sum_range_add]
+  have h4 : ∑ x ∈ range 4, dByte a (k + x) * 256 ^ (k + x) = 256 ^ k * dWin a k := by
+    simp only [sum_range_succ, sum_range_zero, dWin, add_zero, pow_add]; ring_nf
+  have h32 : ∑ x ∈ range 32, dByte a (k + (4 + x)) * 256 ^ (k + (4 + x)) =
+      256 ^ k * (2 ^ 32 * ∑ t ∈ range 32, dByte a (k + (4 + t)) * 256 ^ t) := by
+    rw [mul_sum, mul_sum]
+    refine sum_congr rfl fun t _ => ?_
+    rw [pow_add, pow_add, show (256 : ℕ) ^ 4 = 2 ^ 32 by norm_num]; ring
+  rw [h4, h32, mul_add]
+
+theorem idxOfF_eq (b : ℕ) (a : Digest) (i : ℕ) : idxOfF b a i = idxOf b a i := by
+  unfold idxOfF
+  split_ifs with hb
+  swap; · rfl
+  set s := i * b
+  set k := s / 8
+  set r := s % 8
+  have hr : r < 8 := Nat.mod_lt _ (by norm_num)
+  have hs : 2 ^ s = 256 ^ k * 2 ^ r := by
+    rw [← Nat.div_add_mod s 8, pow_add, pow_mul]; norm_num; rfl
+  set H := ∑ t ∈ range 32, dByte a (k + (4 + t)) * 256 ^ t
+  have hY : 2 ^ 32 * H = 2 ^ r * (2 ^ b * (2 ^ (32 - r - b) * H)) := by
+    rw [← mul_assoc, ← mul_assoc, ← pow_add, ← pow_add]; congr 2; omega
+  rw [idxOf, natLE_split a k, hs, ← Nat.div_div_eq_div_mul, Nat.add_mul_div_left _ _ (by positivity),
+    Nat.div_eq_of_lt (sum_lt_pow a k), zero_add, hY, Nat.add_mul_div_left _ _ (by positivity),
+    Nat.add_mul_mod_self_left, Nat.shiftRight_eq_div_pow, Nat.one_shiftLeft]
+end IdxF
+
+/-- The sum of the indicator weights of the kinds (in `blockKinds` order) that do not pin row `k`. -/
+def maskOf (kindW : Array F) (k : ℕ) : F :=
+  ((blockKinds.zipIdx.filter fun p => !isZeroRow p.1 k).map fun p => kindW.getD p.2 0).sum
+
+/-- The last row any kind pins (`zeroRows`' largest bound; `isZeroRow_of_gt`). -/
+def pinEnd : ℕ := 1152
+
+/-- **The masked row weights** (A.8 `maskRows`): row `k`'s weight times `maskOf kindW k`, the sum of
+the indicator weights of the kinds that do not pin `k` (`maskRows_eq`). Past `pinEnd` no kind pins a
+row, so that sum is computed once (S-E8). -/
 def maskRows (kindW rowW : Array F) : Array F :=
-  rowW.mapIdx fun k w => w * ((blockKinds.zipIdx.filter fun p => !isZeroRow p.1 k).map
-    fun p => kindW.getD p.2 0).sum
+  let all := maskOf kindW (pinEnd + 1)
+  rowW.mapIdx fun k w => w * if k ≤ pinEnd then maskOf kindW k else all
+
+theorem isZeroRow_of_gt (bk : BlockKind) {k : ℕ} (h : pinEnd < k) : isZeroRow bk k = false := by
+  cases bk <;> simp only [isZeroRow, zeroRows, List.any_cons, List.any_nil, pinEnd] at h ⊢ <;>
+    simp only [Bool.or_false, Bool.or_eq_false_iff, Bool.and_eq_false_iff, decide_eq_false_iff_not] <;>
+    omega
+
+theorem maskOf_of_gt (kindW : Array F) {k : ℕ} (h : pinEnd < k) :
+    maskOf kindW k = maskOf kindW (pinEnd + 1) := by
+  have e : ∀ x, pinEnd < x → (blockKinds.zipIdx.filter fun p => !isZeroRow p.1 x) = blockKinds.zipIdx :=
+    fun x hx => List.filter_eq_self.2 fun p _ => by simp [isZeroRow_of_gt p.1 hx]
+  simp only [maskOf, e k h, e (pinEnd + 1) (by omega)]
+
+/-- **`maskRows` row by row** (its reading as A.8 states it): row `k`'s weight times `maskOf kindW k`. -/
+theorem maskRows_eq (kindW rowW : Array F) :
+    maskRows kindW rowW = rowW.mapIdx fun k w => w * maskOf kindW k :=
+  congrArg rowW.mapIdx (funext fun k => funext fun w => by
+    by_cases h : k ≤ pinEnd
+    · simp only [h, if_true]
+    · simp only [h, if_false, maskOf_of_gt kindW (Nat.lt_of_not_le h)])
 
 /-- The statement of `stmt` for kind `κ` (§4.2, revision 3.3: `stmt` is the padded message blocks,
 `tagLeaf ‖ h ‖ enc64 n ‖ 0^23 ‖ 0^64` or `tagNode ‖ c₁ ‖ c₂ ‖ 0^63`). -/
@@ -333,17 +490,17 @@ def evalOp (impl : OpImpl) (κ : Kind) (inp : Input) (regs : Array Val) : Op →
   | .piElem f o => .vals [.f (F.ofBytes (bytesAt inp.π (absOff f o) 16))] true
   | .piElemK f o => .vals [.k (K.ofBytes (bytesAt inp.π (absOff f o) 32))] true
   | .piDigest f o => .vals [.d (bytesAt inp.π (absOff f o) 32)] true
-  | .piDigestAt f o k => .vals [.d (bytesAt inp.π (absOff f o + 32 * (rd regs k).toN) 32)] true
+  | .piDigestAt f o k => .vals [.d (digestAt inp.π (absOff f o + 32 * (rd regs k).toN))] true
   | .mkAbsorb xs => .vals [.b (pad16 (xs.foldl (fun acc x => acc ++ (rd regs x).bytes) .empty))] true
   | .askSeed h => .ask (seedQ inp.vk inp.c (rd regs h).toB)
   | .askAbsorb st m _ => .ask (absorbQ (rd regs st).toD (rd regs m).toB)
   | .askSqueeze st => .ask (squeezeQ (rd regs st).toD)
   | .askNode i _ l r act =>
-    .ask (if act κ then nodeQ i (rd regs l).toD (rd regs r).toD else nodeQ i zeroD zeroD)
+    .ask (if act κ then nodeQF i (rd regs l).toD (rd regs r).toD else nodeQF i zeroD zeroD)
   | .askCol i col => .ask (colQ i (rd regs col).toB)
   | .chF a c => .vals [.f (chF (rd regs a).toD c)] true
   | .chK a => .vals [.k (chK (rd regs a).toD)] true
-  | .idx a b i => .vals [.n (idxOf (b κ) (rd regs (a κ)).toD (i κ))] true
+  | .idx a b i => .vals [.n (idxOfF (b κ) (rd regs (a κ)).toD (i κ))] true
   | .bitOf n h => .vals [.bit ((rd regs n).toN.testBit h)] true
   | .shrN n s => .vals [.n ((rd regs n).toN >>> s κ)] true
   | .mulF a b => .vals [.f ((rd regs a).toF * (rd regs b).toF)] true
@@ -359,7 +516,7 @@ def evalOp (impl : OpImpl) (κ : Kind) (inp : Input) (regs : Array Val) : Op →
   | .getK a i => .vals [.k ((rd regs a).toAK.getD i 0)] true
   | .eqTable r => .vals [.af (eqTab (rd regs r).toAF)] true
   | .eqTableK r => .vals [.ak (eqTab (rd regs r).toAK)] true
-  | .dotKF w col => .vals [.k (dotKF (rd regs w).toAK (rd regs col).toB)] true
+  | .dotKF w col => .vals [.k (dotKFF (rd regs w).toAK (rd regs col).toB)] true
   | .lagrangeS v l pe =>
     let x := impl.lagrangeS (rd regs v).toAF (rd regs l).toF (rd regs pe).toAF
     .vals [.f x.1, .f x.2] true
@@ -713,5 +870,63 @@ skeleton, the phase-final checks (all after the skeleton: they ask nothing, so t
 change the transcript), `accept`. `FRVIRFinals.gen` instantiates `fin` with the typed `Finals`. -/
 def genWith (fin : FinOps) (mode : Mode) : VProg :=
   ⟨mode, skeleton.1 ++ fin skeleton.2.outs skeleton.2.next ++ [.accept]⟩
+
+/-! ## Controls of the fast twins (S-E8) -/
+
+/-- A 16-byte column: one row, the `F` element `1`. -/
+def col1 : ByteArray := ⟨#[1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]⟩
+/-- A 32-byte column: rows `1` and `x` (`c₀ = 2`). -/
+def col2 : ByteArray := ⟨#[1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]⟩
+
+/-- (+) `dotKF` on one row, through its twin. -/
+theorem dotKF_pos : dotKF #[1] col1 = 1 := by rw [← dotKFF_eq]; decide +kernel
+
+/-- (−) The loop one row short is not `dotKF` (the second row counts). -/
+theorem dotKF_neg : dotKFGo #[1, 1] col2 1 0 0 ≠ dotKF #[1, 1] col2 := by
+  rw [← dotKFF_eq]; decide +kernel
+
+/-- The digest `0, 1, …, 31`. -/
+def dCtl : Digest := Vector.ofFn fun i => i.val.toUInt8
+
+/-- (+) `idxOf` through its twin: bits `[8, 12)`, `[12, 24)` and past the end. -/
+theorem idxOf_pos : idxOf 4 dCtl 2 = 1 ∧ idxOf 12 dCtl 1 = 32 ∧ idxOf 20 dCtl 13 = 0 := by
+  simp only [← idxOfF_eq]; decide +kernel
+
+/-- (−) The window one byte late is not `idxOf`. -/
+theorem idxOf_neg : dWin dCtl (12 / 8 + 1) >>> (12 % 8) % (1 <<< 12) ≠ idxOf 12 dCtl 1 := by
+  rw [← idxOfF_eq]; decide +kernel
+
+/-- (+) The node query's length and level byte. -/
+theorem nodeQ_pos : (nodeQ 3 zeroD zeroD).size = 72 ∧ (nodeQ 3 zeroD zeroD).data[6]! = 3 := by
+  rw [← nodeQF_eq]; decide +kernel
+
+/-- (−) The children's order matters. -/
+theorem nodeQ_neg : nodeQ 0 zeroD (Vector.replicate 32 1) ≠ nodeQ 0 (Vector.replicate 32 1) zeroD := by
+  rw [← nodeQF_eq, ← nodeQF_eq]; decide +kernel
+
+/-- Forty bytes `0, …, 39`. -/
+def qCtl : ByteArray := ⟨Array.ofFn (n := 40) fun i => i.val.toUInt8⟩
+
+/-- (+) A digest inside `q`, and one running past its end (zero-padded), through the twin. -/
+theorem bytesAt_pos : bytesAt qCtl 8 32 = Vector.ofFn (fun i => (i.val + 8).toUInt8) ∧
+    (bytesAt qCtl 20 32)[19] = 39 ∧ (bytesAt qCtl 20 32)[20] = 0 := by
+  simp only [← digestAt_eq]; decide +kernel
+
+/-- (−) The offset matters. -/
+theorem bytesAt_neg : digestAt qCtl 8 ≠ bytesAt qCtl 9 32 := by rw [← digestAt_eq]; decide +kernel
+
+/-- Kind weights with `c₀ = 2^i`: a sum of them names its set of kinds. -/
+def kwCtl : Array F := Array.ofFn (n := 9) fun i => ⟨⟨(2 ^ i.val : ℕ).toUInt64⟩, ⟨0⟩⟩
+
+/-- (+) Row 0 is pinned by `chain`, `streamStart`, `hashA`, `hashB1`, `w43`: its mask is the other
+four kinds' weights; past `pinEnd` it is all nine. -/
+theorem maskOf_pos : maskOf kwCtl 0 = ⟨⟨2 + 8 + 64 + 256⟩, ⟨0⟩⟩ ∧
+    maskOf kwCtl (pinEnd + 1) = ⟨⟨511⟩, ⟨0⟩⟩ := by
+  decide +kernel
+
+/-- (−) Row 1100 (in `[1024, 1152]`, pinned by every kind but `free`) does not take the shared value:
+`pinEnd` cannot be lowered. -/
+theorem maskOf_neg : maskOf kwCtl 1100 ≠ maskOf kwCtl (pinEnd + 1) := by decide +kernel
 
 end FR

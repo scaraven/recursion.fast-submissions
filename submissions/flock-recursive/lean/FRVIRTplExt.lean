@@ -323,7 +323,7 @@ theorem tplExt_ok {impl : OpImpl} (hT : ImplT impl) (L : TLay) : ExtOk impl L.ct
     obtain ⟨x, hx', rfl, hxl⟩ := rep_ak (rep_slot hI hw)
     have hc := hx _ (List.mem_singleton_self _)
     simp only [Tpl.AuxK.val] at hc
-    rw [hx']
+    rw [hx', dotKFF_eq]
     exact outSlots_one rfl (tplDotKF_ok rfl (inpIs_of (by rw [List.map_append, hxl, hc]; rfl))
       (tin_eqns (tc := L.ctx) (k := .dotKF x.size) (tys := [.k]) hP.1 ht))
   case rowW lam rhi =>

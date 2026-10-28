@@ -231,7 +231,7 @@ theorem tplMaskRows_ok {kw rw : Array F} (hi : InpIs e (kw.toList ++ rw.toList))
   simp only [tplMaskRows, encV, List.map_map]
   refine List.ext_getElem (by simp [maskRows]) fun k h₁ h₂ => ?_
   have hk : k < rw.size := by simpa using h₁
-  simp only [List.getElem_map, List.getElem_range, Function.comp_apply, ev_L, maskRows,
+  simp only [List.getElem_map, List.getElem_range, Function.comp_apply, ev_L, maskRows_eq, maskOf,
     Array.getElem_toList, Array.getElem_mapIdx]
   have hk' := hm k hk
   rw [zero_add] at hk'

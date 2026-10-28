@@ -914,7 +914,7 @@ theorem exec_merkleOps (i j jr n h curR so : ℕ) (r : Array Val) (ok : Bool) (o
       fun c x y => by cases c <;> rfl
     simp only [exec_app, evalOp, rd_app, rd_app0, rd_app_left _ _ hj, rd_app_left _ _ hc, hjv, hcv,
       List.getD_cons_succ, List.getD_cons_zero, List.nil_append, List.cons_append, Val.toBit, toD_d,
-      hsel, stepT]
+      hsel, stepT, nodeQF_eq]
     generalize bytesAt inp.π (absOff fSibs so) 32 = sib
     generalize hQ : (if decide (h < (lvl κ i).sib) = true then
       nodeQ i (if j.testBit h = true then sib else cur) (if j.testBit h = true then cur else sib)
@@ -984,7 +984,7 @@ theorem exec_posHead (i co : ℕ) (ans : List Reg) (w p : ℕ) (r : Array Val) (
   rw [show (⟨r, ok⟩ : St) = ⟨r ++ ([] : List Val).toArray, ok⟩ by simp]
   simp only [List.cons_append, List.nil_append, exec_app, evalOp, rd_app_left _ _ (hA _), had,
     rd_app_left _ _ hw, hwv, rd_app, rd_app0, List.getD_cons_succ, List.getD_cons_zero, Val.toB,
-    Bool.and_true, posHeadVals]
+    Bool.and_true, posHeadVals, dotKFF_eq, idxOfF_eq]
 
 /-- A position's last three ops: the cap index, the cap entry, the comparison. -/
 theorem exec_posTail (i jr curR e : ℕ) (R : Array Val) (ok : Bool) (ops : List Op) (j : ℕ)
@@ -999,7 +999,7 @@ theorem exec_posTail (i jr curR e : ℕ) (R : Array Val) (ok : Bool) (ops : List
   rw [show (⟨R, ok⟩ : St) = ⟨R ++ ([] : List Val).toArray, ok⟩ by simp]
   simp only [List.cons_append, List.nil_append, exec_app, evalOp, rd_app_left _ _ hjr, hj,
     rd_app_left _ _ hcr, hc, rd_app, rd_app0, List.getD_cons_succ, List.getD_cons_zero, Val.toN,
-    Val.eqv, allK, Bool.not_true, Bool.false_or, Bool.and_true]
+    Val.eqv, allK, Bool.not_true, Bool.false_or, Bool.and_true, digestAt_eq]
 
 /-- **One position** of level `i` against `posT` (`ad`, `wv`: the values of the answer and weight
 registers). -/

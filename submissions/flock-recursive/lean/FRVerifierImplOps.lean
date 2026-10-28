@@ -368,6 +368,78 @@ theorem tensorW_meets (j : ℕ) (r : Array K) : tensorWI j r = tensorWS j r := b
     simp [wTab, Array.getD_eq_getD_getElem?, hv, List.getD_eq_getElem?_getD]
   · rfl
 
+/-! ### `tensorW`'s fast twin (S-E8) -/
+
+/-- `Ŵ_v(D[x ⋅ 2^{8b}])` for a byte `x`, `v < 20`, `b < 3`: entry `x` of table `3v + b`. -/
+def wByte : Array (Array F) := Array.ofFn (n := 3 * logNMax) fun vb =>
+  Array.ofFn (n := 256) fun x => sumTo 8 fun i =>
+    if x.val.testBit i && 8 * (vb.val % 3) + i < logNMax then
+      (wTab.getD (vb.val / 3) #[]).getD (8 * (vb.val % 3) + i) 0 else 0
+
+/-- Byte `b` of `j`'s contribution to `Ŵ_v(D[j])`, by table (`wAtF`'s terms, as the proof reads them). -/
+def wB (v b j : ℕ) : F := (wByte.getD (3 * v + b) #[]).getD (j / 2 ^ (8 * b) % 2 ^ 8) 0
+
+/-- **`wAtT` by three byte tables** (S-E8): three lookups instead of a 20-term sum (`wAtF_eq`); it is
+`wB v 0 j + wB v 1 j + wB v 2 j` with the powers as literals (`2 ^ k` runs as a loop here). -/
+def wAtF (v j : ℕ) : F :=
+  if v < logNMax then
+    (wByte.getD (3 * v) #[]).getD (j % 256) 0 + (wByte.getD (3 * v + 1) #[]).getD (j / 256 % 256) 0 +
+      (wByte.getD (3 * v + 2) #[]).getD (j / 65536 % 256) 0
+  else wAtD v j
+
+theorem wB_eq (v b j : ℕ) (hv : v < logNMax) (hb : b < 3) :
+    wB v b j =
+      ∑ i ∈ range 8, if j.testBit (8 * b + i) && 8 * b + i < logNMax then
+        (wTab.getD v #[]).getD (8 * b + i) 0 else 0 := by
+  have h1 : 3 * v + b < 3 * logNMax := by omega
+  have h2 : j / 2 ^ (8 * b) % 2 ^ 8 < 256 := Nat.mod_lt _ (by norm_num)
+  have e1 : (3 * v + b) % 3 = b := by omega
+  have e2 : (3 * v + b) / 3 = v := by omega
+  simp only [wB, wByte, Array.getD_eq_getD_getElem?, Array.getElem?_ofFn, h1, h2, dite_true,
+    Option.getD_some, e1, e2, sumTo_eq]
+  refine sum_congr rfl fun i hi => ?_
+  have hi8 : i < 8 := mem_range.1 hi
+  have ht : (j / 2 ^ (8 * b) % 2 ^ 8).testBit i = j.testBit (8 * b + i) := by
+    rw [Nat.testBit_mod_two_pow, Nat.testBit_div_two_pow]; simp [hi8, add_comm]
+  rw [ht]
+
+theorem wAtF_eq (v j : ℕ) : wAtF v j = wAtT v j := by
+  unfold wAtF wAtT
+  split_ifs with hv
+  · rw [show j % 256 = j / 2 ^ (8 * 0) % 2 ^ 8 by norm_num, show j / 256 % 256 = j / 2 ^ (8 * 1) % 2 ^ 8 by
+      norm_num, show j / 65536 % 256 = j / 2 ^ (8 * 2) % 2 ^ 8 by norm_num]
+    change wB v 0 j + wB v 1 j + wB v 2 j = _
+    rw [wB_eq v 0 j hv (by norm_num), wB_eq v 1 j hv (by norm_num), wB_eq v 2 j hv (by norm_num),
+      sumTo_eq]
+    set g : ℕ → F := fun i => if j.testBit i && i < logNMax then (wTab.getD v #[]).getD i 0 else 0
+    have hz : ∑ x ∈ range 4, g (20 + x) = 0 := sum_eq_zero fun x _ => by simp [g, logNMax]
+    have h20 : ∑ i ∈ range 20, g i = ∑ i ∈ range logNMax, if j.testBit i then (wTab.getD v #[]).getD i 0 else 0 :=
+      sum_congr rfl fun i hi => by simp [g, mem_range.1 hi, logNMax]
+    have hs : ∑ i ∈ range 20, g i = ∑ x ∈ range 8, g x + ∑ x ∈ range 8, g (8 + x) + ∑ x ∈ range 8, g (16 + x) := by
+      rw [← add_zero (∑ i ∈ range 20, g i), ← hz, ← sum_range_add, show 20 + 4 = (8 + 8) + 8 from rfl,
+        sum_range_add g (8 + 8) 8, sum_range_add g 8 8]
+    rw [← h20, hs]
+    rfl
+  · rfl
+/-- **`tensorW`'s fast twin** (S-E8): `wAtF`, and `r_v · Ŵ` as `smulF` (two `F` products instead
+of a `K` product); `tensorWF_eq`. -/
+def tensorWF (j : ℕ) (r : Array K) : K :=
+  prodTo r.size fun v => 1 - r.getD v 0 + K.smulF (wAtF v j) (r.getD v 0)
+
+theorem tensorWF_eq (j : ℕ) (r : Array K) : tensorWF j r = tensorWI j r :=
+  congrArg (prodTo r.size) (funext fun v => by
+    rw [wAtF_eq, K.smulF_eq_mul, ← K.algebraMap_eq_ofF, mul_comm])
+/-! #### Controls (S-E8) -/
+
+/-- (+) `tensorW` at `j = 0`: `Π (1 + r_v)`; the twin agrees (`tensorWF_eq`). -/
+theorem tensorW_pos : tensorWI 0 #[K.u] = 1 + K.u := by decide +kernel
+
+theorem tensorWF_pos : tensorWF 0 #[K.u] = 1 + K.u := (tensorWF_eq 0 _).trans tensorW_pos
+
+/-- (−) The third byte table is needed: its entry for `j = 2^16` is `Ŵ_0(D[2^16]) ≠ 0`, so a twin
+reading only bits `0 … 15` is wrong at `j = 2^16`. -/
+theorem wByte_neg : (wByte.getD 2 #[]).getD 1 0 ≠ 0 := by decide +kernel
+
 /-- **`slotW` meets its specification.** -/
 theorem slotW_meets (s : ℕ) (θ r : Array F) : slotWI s θ r = slotWS s θ r := by
   unfold slotWI slotWS
