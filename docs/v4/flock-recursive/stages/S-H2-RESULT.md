@@ -2570,3 +2570,178 @@ Statements: `sizeIR decLevels = 53,515` (`decide +kernel`) and `sizeIR decLN3 �
 3. `import FRXNodeRun` in `FR.lean` (orchestrator).
 4. Kernel time of the new controls (≈ 49 s): `finPi_toy` could use a congruence lemma instead
    of a 64 kB toy proof, if the 600 s kernel budget gets tight.
+
+## Part 20 (track S-H2k): `FR.readSigned`, `reassemble` field by field, the trace and signature in words; the toys' kernel cost
+
+**Delivered:** item 1 (`FR.readSigned`, with controls), item 4 (the toys' kernel cost), and the
+pure half of item 2: `reassemble` field by field, and the trace and the signature as word lists.
+
+**Not delivered: the output program (item 2's machine half) and `ext_node`'s output (item 3).**
+§5 gives the plan in order. The statements of `ext`, `E`, `computes`, `ext_caps`, `decSnark` and
+`ext_node` are unchanged. Until the output program lands, `E c π L = none` on a node proof.
+
+### 1. Files (code lines by the core's `scripts/loc.py`)
+
+| File | total / code / theorems | What |
+|---|---|---|
+| `FRNodeRead` (new) | 231 / 119 / 12 | `streamCell`, `streamWord`, `streamWords`, `stream`, `entryAt`, `readItems`, `readTrace`, `digestW`, `digestOf`, `lCell`, `readSig`, `readStmt`, **`FR.readSigned`**, **`FR.readWit`**; `readTrace_length`, `stream_length`, `entryAt_of`, **`readItems_traceBytes`**, **`readTrace_of_stream`**, `stream_getD`; controls |
+| `FRNodeReadW` (new) | 362 / 273 / 23 | `ctb`, `ansOf`, `ctbs`, `cont`, `Appends`, `foldl_appends`, `rsPhase_spec`, `foldl_rsPhase`, **`reassemble_eq`**; `readTrace_getD`, **`qBytes_readTrace`**; `wordsBytes_drop`/`_take`, `stream_slice`; `entryW`, `trW`, `entryW_aligned`, `readItems_words`, **`logWords_readTrace`**; `packBytes_digestOf`, **`sigWords_readSig`** |
+| `FRNodeReadLayout` (new) | 31 / 11 / 3 | `consts_eq`, **`streamCell_seedCell`**, `readStmt_cells` (against `FRNodeLayout`/`FRNodeCircuit`) |
+| `FRXNode` | 790 / 614 / 46 (+41 −12 lines) | `toyGath_run` → `toyGath_ctl`; `finPi_toy` re-proved (`byteAt_toyPi`) |
+
+New code: 403 lines. `FR.lean` should import **`FRNodeRead`, `FRNodeReadW`, `FRNodeReadLayout`**,
+and `FRXNodeRun` (Part 19).
+
+### 2. What is defined and proved
+
+**The reader (`FRNodeRead`).** `w : ℕ → F` is the committed witness in A.7's element view:
+`w e = f[e]`, `z = unpack f⁽⁰⁾`, `f⁽⁰⁾ = pack z`. On the extractor's side,
+`w e = (msgOf .N30 L es 0 (e % 64) (e / 64)).f₀`, which is S-G's `fF .N30 L es e`. Slots are
+`σ ∈ {1, 2}`.
+- `streamCell σ e := ((σ−1)·chainLen + ⌊e/4⌋)·128 + 4 + e mod 4`. This is A.7's map, and
+  `FRBlockStream.elem_slot`'s: stream element `e` is message slot `4 + e mod 4` of block `⌊e/4⌋`.
+- `streamWord w σ u` is coefficient `c_{u mod 2}` of element `⌊u/2⌋`. `stream w σ` is the
+  `streamBytes = 1,481,344` bytes of the 185,168 words (`wordsBytes`, little-endian, as A.7's
+  byte order).
+- **`readTrace w σ`** reads the item sequence's shape: item `k` sits at `streamOff k` with
+  `|q| = items[k].qlen`. The length word `enc64 |q|` is **not** read: the circuit asserts it
+  (§4.3 (2)).
+- `readSig`: `idx` is `c₀` of element 0 of slot `σ`'s L region (`lBase·128 + (σ−1)·2^14`), then
+  the 133 chain values and the 16 path digests, two elements each (`digestOf`: bytes 0–15, then
+  16–31, as `Node.halves`).
+- `readStmt` is stream elements 3–4, the seed payload's `c` (`PubCells`' `cᵢ`,
+  `readStmt_cells`).
+- **`FR.readSigned σ w := ⟨reassemble (readTrace w σ), readTrace w σ, readSig w σ⟩`**;
+  **`FR.readWit w := .node (readStmt w 1) (readStmt w 2) (readSigned 1 w) (readSigned 2 w)`**.
+
+**`reassemble` field by field (`reassemble_eq`).**
+
+```
+bl (reassemble tr) = (range 18).flatMap (ctbs (traceKind tr.toArray) tr.toArray 0 [] (phases.map shape))
+```
+
+Here `ctb k a ix ans sh f` is phase `sh`'s contribution to field `f`: the `qBytes` slices of its
+items from item `ix`, and for `queries i` and field 17 the `sibling` halves with
+`posOf k i ans p`. `ctbs` threads `ix` (`+ sh.items.length`) and `ans` (`ansOf`: a `P2` phase's
+answers) through the phases. The proof goes through the walk's state field by field: `cont`,
+`cont_put`, `Appends`/`foldl_appends`, `rsPhase_spec` per shape, `foldl_rsPhase`.
+
+**The trace on the stream.**
+- `readTrace_getD`: entry `j` is `entryAt (stream w σ) (streamOff j) items[j]`.
+- **`qBytes_readTrace`**: query bytes `[off, off + n)` of item `j` are stream bytes
+  `[streamOff j + 8 + off, +n)`.
+- `stream_slice`: an aligned stream slice is `wordsBytes` of a word slice.
+- **`logWords_readTrace`**:
+  `logWords (readTrace w σ) = toWord 8891 :: entryW (seed entry at offset 1) ++ trW W 20 items.tail`,
+  where `trW` is, per later item, `toWord qlen` followed by the next `qlen/8 + 4` stream words.
+
+**The signature (`sigWords_readSig`).** `toWord idx`, then `elemWords` of the two L cells of
+each chain value and each path digest, in order.
+
+### 3. Controls
+
+| Control | Kind | Shows |
+|---|---|---|
+| `readItems_traceBytes`, **`readTrace_of_stream`** | positive (universal) | on `0x54 ‖ traceBytes tr` with `tr` of the item shape, `readTrace = tr`: the reader inverts the hashed stream (`stream_traceDigest`'s bytes) |
+| `readSig_idx_ctl` | positive / negative | `idx = 5` from `c₀ = 5`; `c₁ = 5` gives `idx = 0`; slot 2 does not read slot 1's cell |
+| `readStmt_ctl` | positive / negative | byte 0 of `c₁` is element 3's low byte; a change in element 2 (`vk`'s high half) does not change it |
+| `streamCell_seedCell`, `consts_eq`, `readStmt_cells` | link | the cells are `Node.seedCell`'s, and the constants are `Layout.lBase`, `Layout.chainN` |
+| `reassemble_eq` | universal | for every trace |
+| `toyGath_ctl` (replaces `toyGath_run`) | positive / negative | `gathIR`: `X[0]`, `Y[0]`, `X[1]` are rows 0, 1, 2; `X[1]` is not row 1 when rows 1 and 2 differ (from `gathIR_sem` on every state) |
+| `finPi_toy` (same statement) | positive / negative | as before; the proof reduces the toy to its 32 read bytes (`byteAt_toyPi`) |
+
+### 4. Checks
+
+- **Build**: `lake build FR FRXNodeRun FRNodeRead FRNodeReadW FRNodeReadLayout` is green in
+  `logs/fr-build-SH2k` (2,350 jobs; 3 min 54 s wall on the shared VM;
+  `logs/S-H2/build20.{out,log}`). The tree is a HEAD snapshot (`snap.sh`); my modules are
+  symlinks.
+- **Axioms** (`logs/S-H2/axioms20.log`):
+  - these depend on `propext, Classical.choice, Quot.sound`: `computes`, `ext_caps`,
+    `ext_node`, `decNode_sem`, `cost_le_decLN3`, `toyGath_ctl`, `finPi_toy`, `reassemble_eq`,
+    `readTrace_of_stream`, `readItems_traceBytes`, `readStmt_ctl`, `readTrace_getD`,
+    `qBytes_readTrace`, `logWords_readTrace`, `sigWords_readSig`, `stream_getD`;
+  - `toyFin_run` and `readSig_idx_ctl` depend on `propext, Quot.sound`;
+  - `streamCell_seedCell`, `readStmt_cells` and `consts_eq` depend on `propext`.
+- **Source rule**: 136 files (the worktree, other tracks' new files included), 0 findings
+  (`logs/S-H2/source20.log`).
+- **Sequential profile** (`taskset -c 0`, `-DElab.async=false`, `logs/S-H2/*.20.{profile,time}`):
+
+  | Module | wall | max RSS | type checking |
+  |---|---|---|---|
+  | `FRXNode` | **26.6 s** (was 70.4 s) | 3.35 GB | 4.45 s `toyFin_run` (unchanged), 0.84 s `sizeIR_decLevels`; the rest below 0.2 s |
+  | `FRNodeRead` | 12.2 s | 2.86 GB | 2.3 s and 2.4 s (the concrete controls) |
+  | `FRNodeReadW` | 14.9 s | 3.02 GB | 3.5 s (`decide +kernel` over the item sequence's lengths in `logWords_readTrace`) |
+  | `FRNodeReadLayout` | 5.8 s | 2.71 GB | below 0.1 s |
+
+- **Kernel cost of the toys (item 4), measured.** A concrete kernel run of the DSL costs
+  ≈ 185 ms per machine operation on a 296-cell memory: `decide +kernel` of 20 `add`s takes
+  3.7 s, with `semXIR` as with `toProg`. `toyGath` through `semXIR` takes 20.3 s, and one
+  iteration of `gBody` 5.7 s. No run of `gathIR` (8k iterations) fits 3 s, so its control is
+  stated from `gathIR_sem`. `finPi_toy` went from 23.3 s to 0.2 s with the same statement.
+  `toyFin_run` (4.5 s) was not in the brief and is unchanged.
+
+### 5. What remains (in order): the output program and `ext_node`
+
+1. **The words of the proof** (pure, `FRNodeReadW`). Per shape, `ctb` on
+   `(readTrace w σ).toArray` at the phase's start `ix` is `wordsBytes` of stream word slices.
+   - Use `qBytes_readTrace` and `stream_slice`.
+   - Add the arithmetic of `streamOff` inside a phase:
+     `streamOff (ix + j) = streamOff ix + Σ_{<j} slen` over `sh.items`. Rounds have stride
+     `slen(abs) + 80`, queries `slen(col) + 80·sib`.
+   - Every slice is aligned: offsets `o + 48` (absorb, uni, rounds), `o + 16` (columns),
+     `o + 48` or `o + 16` (siblings), `80…127` (`hdr`, words 10–15). Every length is a multiple
+     of 8.
+   - The sibling is `bl (sibling …) = wordsBytes` of 4 words or `[0,0,0,0]`. Its bit is
+     `posOf k i ans p / 2^h % 2 = bit (idx·logN + h) of natLE(answer)`, with
+     `idx = p mod per` and answer `p / per` of the preceding `P2` phase. That is bit
+     `m mod 64` of answer word `⌊m/64⌋`, and the answer's words are stream words
+     (`entryAt`'s answer is `digestW` of 4 stream words).
+   - The kind: `traceKind` is the low byte of stream word 10.
+   - Also needed: `(reassemble (readTrace w σ)).size = piSize` (for `bytesWords`), the seed
+     entry's 15 shifted query words (`(W[1+i] >>> 8) ||| (W[2+i] <<< 56)`, the last `W[15] >>> 8`),
+     and `Wit.Fits (readWit w)` for `decodeWit_witWords`.
+2. **The output program** (`FRXOut`, after `decLevels`; only `f⁽⁰⁾` at `ob0` is live then).
+   - Gather each slot's 185,168 stream words into a free region, for example `obL`
+     (`[obL, obL + 185,168) ⊂ [obL, chB)`). Word `u` of slot `σ` is at
+     `ob0 + 2^18·(4 + (u/2) mod 4) + 4·((σ−1)·23,146 + ⌊u/8⌋) + u mod 2`, from
+     `f[g] = rdF (ob0 + 2^18 (g mod 64) + 2 ⌊g/64⌋)`.
+   - Then emit `1`, `c₁`, `c₂`, and per slot `piSize`, the proof's words field by field
+     (`reassemble_eq`), `logWords` (`logWords_readTrace`), and the signature
+     (`sigWords_readSig`, from L at `f`'s rows 0–63).
+   - A segment language keeps the program small and the proofs generic: constant word; copy
+     `n` words; repeat `c` times with stride `s` over a body of leaves; the sibling leaf
+     computes its bit from the repetition counter `p` and per-kind registers (`logN`, `per`,
+     `sib`).
+   - The output is ≈ 571,000 words (`< outCap = 2^24`) and needs ≈ 10^7 steps, against the
+     ≈ 7.0·10^13 margin of Part 19 §3.
+3. **`ext_node`**: `decNode := decRead ; chainIR ; decLevels ; outIR` (the body only), with
+   `E c π L = some (readWit (fun e => (msgOf .N30 L es 0 (e % 64) (e / 64)).f₀))`. Keep
+   Part 19's chain-link hypotheses as they are.
+
+### 6. Deviations and choices
+
+1. **The element view.** `readSigned σ w` takes `w : ℕ → F` (`f⁽⁰⁾`), not the bit vector `z`.
+   The blueprint's `FR.readSigned σ z` is `readSigned σ (pack z)`, and on the extractor's side
+   `z = unpack f⁽⁰⁾` (`pack_unpack`). The circuit's cells (`PubCells`, `SlotHolds`) are
+   element-valued too.
+2. **The trace's shape is fixed; the length word is not read.** A data-dependent parse would
+   make the output's offsets data-dependent. With the circuit's length asserts,
+   `readTrace_of_stream` gives back the hashed trace.
+3. **`idx` is `c₀`** of the first `sig` element. A.7 says "idx 1 element" without an encoding.
+   The `j` mirror source is 16 bytes, zero-padded (A.6), which matches `c₀ = j`, `c₁ = 0`.
+4. **The L base is `FRNodeLayout.lBase = 47,616`.** A.7 and the §4.3 table still say 46,336
+   (revision 3.12 moved L; `FRNodeLayout`'s docstring). This needs a blueprint fix.
+5. **`toyGath_run` is replaced by `toyGath_ctl`**, a statement from the semantic lemma, because
+   a concrete run cannot meet 3 s (§4).
+
+### 7. Pitfalls (also in the journal)
+
+- `norm_num` or `omega` on a goal that contains `semXIR … (gathIR …)` or `streamBytes`
+  evaluates them (whnf timeout, max recursion). `generalize` the state, or rewrite with
+  `streamBytes_eq` first.
+- `rfl`/`congr 1` on goals with `items`/`readTrace` recurses; use `refine congrArg …` and
+  `decide +kernel` for closed facts about the item sequence.
+- `simp only [List.foldl_map] at …` followed by `generalize` made the kernel unfold the phase
+  walk (32 s, deep recursion). Stating the folded form first (`have e : reassemble tr = …
+  := by rw [List.foldl_map]; rfl`) costs nothing.

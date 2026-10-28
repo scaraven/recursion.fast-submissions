@@ -433,3 +433,29 @@ Base: branch `v4/flock-recursive`, HEAD `53c2e13`. Build tree `logs/fr-build-SH2
     `build19`); the axioms are the three standard ones (`axioms19.log`); the source rule reports
     128 files and 0 findings. Profile: `FRXNode` 70.4 s, of which ≈ 49 s is the kernel on the toy
     runs (`finPi_toy` 23.3 s). Handover in RESULT Part 19 §8 (D first).
+
+## S-H2k (2026-10-28): `FR.readSigned`, the node output
+
+42. Build tree `logs/fr-build-SH2k` (copied from SH2j with its `.lake`; `snap.sh` links only the
+    modules that exist: `FRXNode FRXNodeRun FRXExt FRXLeaf FRNodeRead FRNodeReadLayout FRXOut*`).
+43. Item 4 first (kernel cost of the toys). Measured: a concrete kernel run of the DSL costs
+    ≈ 185 ms per machine operation on a 296-cell memory (`decide +kernel` of 20 `add`s: 3.7 s),
+    independent of `toProg` vs `semXIR` (`toyGath` via `semXIR`: 20.3 s; 1 iteration of
+    `gBody`: 5.7 s). No instance of `gathIR` (8k iterations) fits 3 s. `toyGath_run` is replaced
+    by `toyGath_ctl` (from `gathIR_sem` on every state: `X[0]`, `Y[0]`, `X[1]` are rows 0, 1, 2;
+    `X[1]` is not row 1). `finPi_toy` keeps its statement; the proof reduces the 64 kB toy proof
+    to its 32 read bytes (`byteAt_toyPi`), 205 ms. `elaborating `norm_num` on a goal containing
+    `semXIR … (gathIR …)` timed out at whnf: `generalize` the state first.
+44. Item 1: `FRNodeRead` (element view `w : ℕ → F`, A.7): `streamCell`, `streamWord`,
+    `stream`, `readTrace` (fixed item shape, the length word not read), `readSig`, `readStmt`,
+    `FR.readSigned σ w`, `FR.readWit`. Controls: `readTrace_of_stream` (the reader inverts
+    `0x54 ‖ traceBytes tr`), `readSig_idx_ctl`, `readStmt_ctl`; `FRNodeReadLayout` checks the
+    constants and `streamCell (σ+1) (1+e) = Node.seedCell σ e`.
+45. Item 2, pure half (`FRNodeReadW`): `reassemble_eq` (the walk field by field: `cont`,
+    `Appends`, `rsPhase_spec`, `foldl_rsPhase`); `readTrace_getD`, `qBytes_readTrace`,
+    `stream_slice`; `logWords_readTrace` (`trW` over the aligned items); `sigWords_readSig`.
+    Pitfall: `simp only [List.foldl_map] at` + `generalize` made the kernel unfold the phase walk
+    (32 s, deep recursion); stating the folded form first is free.
+46. Stopped before the output program (context). Checks: build green (`build20`), axioms
+    standard (`axioms20.log`), source rule 136 files / 0 findings, profiles `*.20.*`
+    (`FRXNode` 70.4 s → 26.6 s). Handover: RESULT Part 20 §5.
