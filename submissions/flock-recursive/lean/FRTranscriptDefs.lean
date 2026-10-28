@@ -20,7 +20,7 @@ are all computed from it, so the three cannot drift apart.
   `"FRMNOD" ‖ i ‖ 0`, column `"FRMCOL" ‖ i ‖ 0`.
 * Challenge maps (A.2): `chF a c` is bytes `16c … 16c + 15` of an answer as an F element; `chK a` all
   32 bytes as a K element; `idxOf b a i` bits `[ib, (i+1)b)` of `natLE a`.
-* `items_length : items.length = 8874` (`decide`, a closed form of the table), `fsItems_length`
+* `items_length : items.length = 8920` (`decide`, a closed form of the table), `fsItems_length`
   (431), `streamBytes_eq` (the hashed stream `0x54 ‖ traceBytes`), `chainLen_eq` (compressions).
 -/
 
@@ -102,6 +102,11 @@ def lvl (k : Kind) (i : ℕ) : Level := (ladder k).getD i ⟨0, 1, 0, 0⟩
 
 /-- The level of the item sequence (`m* = 32`). -/
 def lvlStar (i : ℕ) : Level := lvl .L32 i
+
+/-- **A column's bytes** at level `i` (revision 3.12, A.3): the `rows · 16` element bytes, zero-padded
+so that the column item `enc64 |q| ‖ tag ‖ column` is a multiple of 64 bytes (level 0: 1,072 B, so
+the item is 1,088 B; levels 1–4: 304 B, item 320 B). -/
+def colBytes (i : ℕ) : ℕ := ((lvlStar i).rows * 16 + 16 + 63) / 64 * 64 - 16
 
 /-- Levels. -/
 def nLevels : ℕ := 5
@@ -193,10 +198,10 @@ def piopPhases : List Phase :=
    ⟨"Lr1", .squeezes 8 (.coords (nodeOnly 15))⟩, ⟨"Lr2", .rounds fLr 15 3 false (nodeOnly 15)⟩,
    ⟨"Lrend", .absorb fLrEnd 48⟩,
    ⟨"Lr3", .squeezes 1 (.one Kind.isNode)⟩, ⟨"Lr4", .rounds fLr 15 2 false (nodeOnly 15)⟩,
-   ⟨"RS0", .absorb fRS0 (4 * 128 * 16)⟩, ⟨"RS1", .squeezes 4 (.coords fun _ => 8)⟩,
+   ⟨"RS0", .absorb fRS0 (5 * 128 * 16)⟩, ⟨"RS1", .squeezes 4 (.coords fun _ => 8)⟩,
    ⟨"E1", .squeezes 11 (.coords (nodeOnly 21))⟩, ⟨"E2", .rounds fE 21 3 false (nodeOnly 21)⟩,
    ⟨"Eend", .absorb fEEnd 48⟩,
-   ⟨"E3", .squeezes 1 (.one Kind.isNode)⟩,
+   ⟨"E3", .squeezes 1 (.one Kind.isNode)⟩, ⟨"E4", .rounds fE 23 2 false (nodeOnly 23)⟩,
    ⟨"B'", .squeezes 1 (.one fun _ => true)⟩]
 
 /-- The bytes absorbed after level `i`'s fold rounds: `cap_{i+1}`, or the final message. -/
@@ -260,9 +265,9 @@ def Item.isFS : Item → Bool
   | _ => true
 
 /-- **`items_length`** (A.4; `qV = 10,240`). -/
-theorem items_length : items.length = 8874 := by decide +kernel
+theorem items_length : items.length = 8920 := by decide +kernel
 
-theorem fsItems_length : (items.filter Item.isFS).length = 451 := by decide +kernel
+theorem fsItems_length : (items.filter Item.isFS).length = 497 := by decide +kernel
 
 /-! ## Tags and queries (A.2) -/
 
@@ -506,14 +511,14 @@ def Item.qlen : Item → ℕ
   | .seed => 7 + 32 + 32 + 48
   | .absorb len => 8 + 32 + len
   | .squeeze => 8 + 32
-  | .col i => 8 + (lvlStar i).rows * 16
+  | .col i => 8 + colBytes i
   | .node _ _ => 8 + 64
 
 /-- The hashed stream `0x54 ‖ traceBytes tr` of a trace of the item sequence: `enc64 |q| ‖ q ‖ a`
 per item. -/
 def streamBytes : ℕ := 1 + (items.map fun it => 8 + it.qlen + 32).sum
 
-theorem streamBytes_eq : streamBytes = 1437760 := by decide +kernel
+theorem streamBytes_eq : streamBytes = 1486400 := by decide +kernel
 
 /-- An item's bytes in the stream: `enc64 |q| ‖ q ‖ a`. -/
 def Item.slen (it : Item) : ℕ := 8 + it.qlen + 32
@@ -568,7 +573,7 @@ theorem streamOff_aligned (k : ℕ) (hk : 1 ≤ k) (hk' : k ≤ items.length) : 
 /-- **The digest chain's length** (compressions per slot, §4.2): `⌈|B| / 64⌉`. -/
 def chainLen : ℕ := (streamBytes + 63) / 64
 
-theorem chainLen_eq : chainLen = 22465 := by rw [chainLen, streamBytes_eq]
+theorem chainLen_eq : chainLen = 23225 := by rw [chainLen, streamBytes_eq]
 
 /-! ## Challenge maps (A.2) -/
 

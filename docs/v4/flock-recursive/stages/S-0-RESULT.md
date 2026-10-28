@@ -553,3 +553,95 @@ other tracks' `finRS` change since the last dump, not this pass. `shiftTarget` p
 **Dump (`logs/S-0/dump/`, previous one in `prev/`):** the tool now imports `FRVIRFinalsSG` and dumps
 the full finals (`sfFinals finP finPf`, with no PENDING marks). Result: 105,703 ops, 53,166
 registers, asks = items = 8,874, and `items.json` is unchanged.
+
+### Revision 3.12 (stage-review changes 17), S-0's part (2026-10-28)
+
+**Done (S-0's modules; every number is checked by `decide` and matches `sizes.txt`):**
+- **E4** (`FRTranscriptDefs.phases`, after E3): `⟨"E4", .rounds fE 23 2 false (nodeOnly 23)⟩`, the E
+  lincheck's 23 F rounds of degree 2. They are absorbed from field `fE` after E2's 1,008 B, so
+  `fE` is 2,112 B. The initial claim is `.free`, as for L2/Lr4; `finE` (iii) must bind it.
+- **RS0** absorbs `5 × 128 × 16` B (`J_z = 5`), so `fRS0` is 10,240 B.
+- **Column padding:**
+  - New: `colBytes i = ⌈(rows·16 + 16)/64⌉·64 − 16`, i.e. 1,072 B at level 0 and 304 B at levels
+    1–4. The item `enc64 ‖ tag ‖ column` is then 1,088 or 320 B.
+  - It replaces `rows · 16` in `Shape.bytesTo` (A.3), `reassemble`, `Item.qlen` (A.4), `posOps`
+    (stride and length), `posT` and `exec_posHead`.
+  - `dotKF` reads the padded column: `zipWith` against the `rows` weights stops before the 48 zero
+    bytes. `qlen_mod` (col `qlen` ≡ 8 mod 16) and `items_aligned` hold.
+- **Checked by `decide`:**
+  - `fieldSizes_eq` (RS0 10,240; E 2,112; columns 487,504);
+  - **`piSize_eq = 800,640`**, `items_length = 8,920`, `fsItems_length = 497`;
+  - `streamBytes_eq = 1,486,400`, **`chainLen_eq = 23,225`**;
+  - `queries_gen = 8,920`.
+- `FRVIRSpec` and `FRVIRFinals` build unchanged otherwise (exec lemmas, the flags,
+  `exec_skeleton`).
+- **`FRVIRChain`:** 451 → 497 (`fsQ_gen`).
+  - It cannot build in the entry until S-H2 updates `FRXChainFlock`.
+  - I checked it in a private project, `logs/S-0/chain-proj/`. There, `FRXChainFlock` is replaced
+    by a stub of S-H2's `phaseMsgs`/`fsMsgs`/`fsQ`/controls, with the new numbers and nothing
+    else, and `fsQ_gen` builds.
+- **Dump** (`logs/S-0/dump/`, previous one in `prev/`; full finals, no PENDING): 106,051 ops,
+  53,468 registers, asks = items = 8,920, piSize 800,640, streamBytes 1,486,400, chainLen 23,225.
+  The finals in it are still the pre-3.12 ones, see below.
+
+**Not done, handed off with the spec read from the blueprint:**
+- **`finRS` claim 5 (S-F).**
+  - The weights are `wop i = .const (bb i)`, the packing basis: `f̂(r′) = Σ_e eq(r′,e) Σ_i b_i
+    z_{e,i}`, so `α₅ = Σ_i b_i s_{4,i}` and `T₄ = Σ_i b_i Φ(s_{4,i})`. The outer point is all of `r′`
+    (23 coordinates).
+  - `rsTail` gets `T₄` node-only, plus the leaf's zero assert of claim 4's slices.
+  - Exports `α_Z … α_E, v_RS`, so `nRS = 5`.
+  - The `exec_finRS` proof extends claim by claim.
+- **`finE` (S-F):**
+  - (iii) `c₀^{E4} = â + κ_E b̂ + κ_E² ĉ` against `claim0 "E4"`;
+  - (iv) `(A + κ_E B + κ_E² C)(r_{E2}, r′) · α_E = claimN "E4"`, using `evalM` at the F point `r′`
+    (E4's 23 challenges); both gated by `isNode`.
+- **`finB′` (S-F) and `finPf` (S-G):** with E batched through RS claim 5, the `κ′·v_E` term of
+  `v*` and the `κ′·evalMK(r_{E2}, ρ)` term of `Ŵ` must both go. The pub powers stay
+  `κ′^{k+2}`. The blueprint names only `finPf`; the matching `finB′` change is my reading.
+- **`evalMK` leaves `FRVIR`/`OpImpl`** only after S-G's `finPf` drops it, otherwise
+  `FRVIRFinalsSG` breaks.
+- **`walkAB`:** S-E4's journal measures the fused walk but does not fix the IR op's signature, so
+  it is not added yet. When confirmed, the op is `walkAB rowW colW → F × F`, which replaces
+  `walkA`/`walkB` in `finLc` (registers `b + 19`, `b + 20`).
+
+**Blueprint inconsistency (for the orchestrator):**
+- Normative item 1 and A.4 list an **`E4end` absorb** (A.4 "48 B", A.3 row 9 "`f̂(r′)`, 16").
+  `sizes.py`/`sizes.txt` count none, and the coordinator's numbers (items 8,920, piSize 800,640)
+  agree with `sizes.py`.
+- I followed `sizes.py`, so there is no `E4end`. This is consistent with 3.9's ratified rule:
+  `α_j` is computed from RS0's slices and bound where it is used.
+- With an end absorb, items would be 8,921 and piSize 800,656 (or 800,688).
+
+**Position constants that moved** (phase table `logs/S-0/check/pos-3.12.txt`): phase indices
+`≥ 24` shift by +1; FS positions and item positions `≥ 300` shift by +46.
+- **S-G:**
+  - `phOf_check` 451 → 497; `pfStart_eq` and `phOf_ge` 437 → 483; `rounds_check` gains E4
+    (phase 24, 23 F rounds, degree 2, kind `nodeOnly`).
+  - `fsRanges_eq` → `[(2,10), (98,15), (169,8), (240,4), (244,11), (359,25), (384,5), (398,13),
+    (411,5), (425,10), (435,5), (449,8), (457,5), (471,6), (477,5)]`. This currently fails in
+    `FRSoundnessDefs`.
+- **S-H2:**
+  - `fsMsgs_length`/`fsMsgs_items` 451 → 497;
+  - `fsMsgs_ctl` position 2 = `(22320, 16384)` (`cap₀` moved by +3,152);
+  - `nRep_ctl`: P1.4 is phase 46 at FS 463, so `nRep = 471` if it stays "through P1.4";
+  - `msgOk` bound and the `π.size = 755680` literals → 800,640 (FRXLog, FRXLogSpec, FRXLeaf,
+    FRXLookup, FRXChainFlock);
+  - `posL = 5 + 100080`;
+  - `FRXReadDefs`'s layout `decide`.
+- **S-E:** `FRNodeLayout.chainN` 22,465 → 23,225.
+- **P2:**
+  - E4 (23 × (absorb 48 B, squeeze)) after E3, from `fE` bytes 1,008 … 2,111;
+  - RS0 = 5 × 128 partials;
+  - each column is followed by 48 zero bytes (payload 1,072/304 B);
+  - field offsets: `fE` +2,048, fields 11–15 +3,152 (`cap₀` at 22,320), `fCols` +3,152, `fSibs`
+    +44,960;
+  - the KAT should use the new dump.
+
+**Build state:**
+- S-0's modules build.
+- `FR` does not build because of other tracks' constants, listed above: `FRSoundnessDefs`
+  (`fsRanges_eq`) and `FRXLog` (piSize literal) fail.
+- `FRVerifierImpl`/`FRNodeCircuit` also fail, on S-E4's in-progress `FRVIRTplEval` (`TEval.*`
+  unknown), which is unrelated to this pass.
+- I did not edit other tracks' modules in this pass.

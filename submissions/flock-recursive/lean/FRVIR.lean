@@ -652,7 +652,7 @@ def posOps (i co so : ℕ) (ans : List Reg) (w : Reg) (p b : ℕ) : List Op :=
   let cur := b + 4 + 6 * L.sib - 1
   [.idx (fun κ => ans.getD (p / (lvl κ i).per) 0) (fun κ => (lvl κ i).logN)
       (fun κ => p % (lvl κ i).per),
-   .piField fCols (co + p * L.rows * 16) (L.rows * 16), .askCol i (b + 1), .dotKF w (b + 1)] ++
+   .piField fCols (co + p * colBytes i) (colBytes i), .askCol i (b + 1), .dotKF w (b + 1)] ++
   merkleOps i b L.sib 0 (b + 2) (so + p * L.sib * 32) (b + 4) ++
   [.shrN b (fun κ => (lvl κ i).sib), .piDigestAt fCaps (capOff i) (b + 4 + 6 * L.sib),
    .assertEq (if L.sib = 0 then b + 2 else cur) (b + 4 + 6 * L.sib + 1) allK]

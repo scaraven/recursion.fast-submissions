@@ -1605,3 +1605,11 @@ coordinator's example `R = 10`).
    padding, 5 claims). S-E3's F-8 (`kindInd`/`packFK` untracked) is fixed on the way: tracked
    kind-dependent packs and a `kindInd` key.
 
+
+### Stage-review changes 18 (S-0's 3.12 pass)
+
+| Point | Ruling |
+|---|---|
+| E4end absorb | **None.** Revision 3.12 item 1 and A.4's "E4end, 48 B", and A.3 row 9's "f̂(r′), 16 B", are withdrawn. The value of f̂(r′), RS claim 5, comes from RS0's fifth slice (α₅ = Σ bᵢ s₄,ᵢ), under revision 3.9's rule that the α_j are computed from RS0. The counts are the Lean values: 8,920 items, 497 FS items, piSize = 800,640. |
+| `finB′` | Drops the κ′·v_E term along with `finPf`'s evalMK term, since E is now a lincheck whose final is in `finE`. |
+| Positions | Phase indices ≥ 24 move by +1, FS and item positions ≥ 300 by +46 (S-0: logs/S-0/check/pos-3.12.txt). |

@@ -190,7 +190,7 @@ theorem items_gen (fin : FinOps) (hfin : ∀ outs b, (fin outs b).filterMap Op.i
 /-- **`queries_gen`**: the verifier asks `8,874 ≤ qV` queries under every oracle. -/
 theorem queries_gen (fin : FinOps) (hfin : ∀ outs b, (fin outs b).filterMap Op.item? = [])
     (m : Mode) (H : ByteArray → Digest) :
-    ((runIR impl (genWith fin m) inp).queries H).length = 8874 := by
+    ((runIR impl (genWith fin m) inp).queries H).length = 8920 := by
   rw [queries_runIR, items_gen fin hfin, items_length]
 
 /-! ## The interpreter step by step; the shapes of phase Z -/
@@ -853,8 +853,8 @@ def posT (i co so : ℕ) (ad : ℕ → Digest) (w : Array K) (p : ℕ) :
   | (q, a) :: tr =>
     let L := lvlStar i
     let j := idxOf (lvl κ i).logN (ad (p / (lvl κ i).per)) (p % (lvl κ i).per)
-    let col := inp.π.extract (absOff fCols (co + p * L.rows * 16))
-      (absOff fCols (co + p * L.rows * 16) + L.rows * 16)
+    let col := inp.π.extract (absOff fCols (co + p * colBytes i))
+      (absOff fCols (co + p * colBytes i) + colBytes i)
     if q = colQ i col then
       (stepsT κ inp i j L.sib 0 (so + p * L.sib * 32) a tr).map fun x =>
         let capIx := j >>> (lvl κ i).sib
@@ -973,11 +973,11 @@ theorem exec_posHead (i co : ℕ) (ans : List Reg) (w p : ℕ) (r : Array Val) (
     (q : ByteArray) (a : Digest) (tr : Trace) :
     exec impl κ inp ([.idx (fun κ => ans.getD (p / (lvl κ i).per) 0) (fun κ => (lvl κ i).logN)
         (fun κ => p % (lvl κ i).per),
-      .piField fCols (co + p * (lvlStar i).rows * 16) ((lvlStar i).rows * 16),
+      .piField fCols (co + p * colBytes i) (colBytes i),
       .askCol i (r.size + 1), .dotKF w (r.size + 1)] ++ rest) ⟨r, ok⟩ ((q, a) :: tr) =
       let j := idxOf (lvl κ i).logN (ad (p / (lvl κ i).per)) (p % (lvl κ i).per)
-      let col := inp.π.extract (absOff fCols (co + p * (lvlStar i).rows * 16))
-        (absOff fCols (co + p * (lvlStar i).rows * 16) + (lvlStar i).rows * 16)
+      let col := inp.π.extract (absOff fCols (co + p * colBytes i))
+        (absOff fCols (co + p * colBytes i) + colBytes i)
       if q = colQ i col then
         exec impl κ inp rest ⟨r ++ (posHeadVals j col a wv).toArray, ok⟩ tr
       else none := by
@@ -1017,8 +1017,8 @@ theorem exec_posOps (i co so : ℕ) (ans : List Reg) (w p : ℕ) (r : Array Val)
   rw [exec_posHead impl κ inp i co ans w p r ok _ ad wv hA had hw hwv]
   simp only [posT]
   generalize idxOf (lvl κ i).logN (ad (p / (lvl κ i).per)) (p % (lvl κ i).per) = j
-  generalize inp.π.extract (absOff fCols (co + p * (lvlStar i).rows * 16))
-    (absOff fCols (co + p * (lvlStar i).rows * 16) + (lvlStar i).rows * 16) = col
+  generalize inp.π.extract (absOff fCols (co + p * colBytes i))
+    (absOff fCols (co + p * colBytes i) + colBytes i) = col
   by_cases hq : q = colQ i col
   swap; · simp [hq]
   simp only [hq, ite_true]
