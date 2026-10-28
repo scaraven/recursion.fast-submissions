@@ -22,10 +22,12 @@ Differences from 3.x's `genPhase` (each forced by the 4.0 shapes):
   node tag, zero bytes 65–127 and `hdr.pub = vk`.
 * **Final message**: zero beyond the kind's `2^(m − 25)` K elements.
 
-The **phase-final checks** are the parameter `fin : FinOps`. The 3.x finals (`FRVIRFinals*`)
-hard-code 3.x sizes (`τ` of 18, `"S2" 28`, `"Z3" 26`, `32 − κ.m`), so the 4.0 programs need
-finals generalised over `Seq` (S-0′ RESULT, "For S-E12′"); and the variable last block of a
-segment needs `finSh`'s `bnd` from the statement and the target's free blocks (S-C).
+* **The variable last block** (a segment; S-F4): the `stmt` phase also reads `L = n − 1` from the
+  statement (`lastOps`, its outputs `b :: lastOuts`), and Z2's `targetS` operand is Z1's point
+  zero-padded, then `L` (`segPtOp`), for the segment's masked target (`FRSegTarget4`).
+
+The **phase-final checks** are the parameter `fin : FinOps`: the finals over the sequence
+(`FRVIRFinals4.finOps4`; the programs `FRVerifierC4.progSeg`/`progNode`).
 -/
 
 namespace FR
@@ -84,6 +86,31 @@ def merkleOps4 (sib : ℕ) (i : ℕ) (j : Reg) : ℕ → ℕ → Reg → ℕ →
      .askNode i h (b + 2) (b + 3) act, .keep act (b + 4) cur,
      .assertZero b (fun κ => !act κ)] ++ merkleOps4 sib i j n (h + 1) (b + 5) (so + 32) (b + 6)
 
+/-- **The variable last block** (a segment, B-12; S-F4). From `stmt`'s `enc64 n` (bytes 33–40 at
+absolute offset `so`; bytes 41–127 are asserted zero), registers from `b`: the digest at byte 33
+(`b`), `n mod 2^24` (`b + 1`, `idx`), the constants `0` (`b + 2`) and `1` (`b + 3`), then for
+`k < 18` `n`'s bit `k` (`bitOf`, `b + 4 + 2k`) as `0`/`1` (`selectHalf`, `b + 5 + 2k`), then the
+borrow chain of `L = n − 1`: `L_k = n_k + c_k`, `1 + n_k`, `c_{k+1} = (1 + n_k)·c_k` (registers
+`b + 40 + 3k`, `+ 1`, `+ 2`; `c₀ = 1`; characteristic two). 94 registers. -/
+def lastOps (so b : ℕ) : List Op :=
+  [.piDigest 0 (so + 33), .idx (fun _ => b) (fun _ => 24) (fun _ => 0),
+   .const (fun _ => .f 0), .const (fun _ => .f 1)] ++
+  (List.range 18).flatMap (fun k => [.bitOf (b + 1) k, .selectHalf (b + 4 + 2 * k) (b + 2) (b + 3)]) ++
+  (List.range 18).flatMap (fun k =>
+    let c := if k = 0 then b + 3 else b + 42 + 3 * (k - 1)
+    [.addF (b + 5 + 2 * k) c, .addF (b + 3) (b + 5 + 2 * k), .mulF (b + 41 + 3 * k) c])
+
+/-- `lastOps`' outputs: the zero register, then `L`'s 18 bits (`stmt`'s outputs from 1). -/
+def lastOuts (b : ℕ) : List Reg := (b + 2) :: (List.range 18).map (b + 40 + 3 * ·)
+
+/-- **Z2's `targetS` operand of a segment** (S-F4): Z1's position coordinate and `m − 14` block
+coordinates, zero-padded to `m* − 14`, then `L`'s 18 bits (`19 + 18` entries; the segment's
+`targetS` scales the chain target by `Σ_{t ≤ L} eq(r_blk, t)`, `FRSegTarget4`). -/
+def segPtOp (S : Seq) (p : KindP) (outs : Array (List Reg)) : Op :=
+  let st := outs.getD 1 []
+  .packF (((outs.getD 3 []).drop 1).take (p.d.m - 13) ++ List.replicate (S.mStar - p.d.m) (st.getD 1 0) ++
+    st.drop 2)
+
 /-- One position `p` of level `i` (3.x's `posOps`; absolute offsets `co`, `so`, `cap`). -/
 def posOps4 (S : Seq) (k : KindP) (i co so capO : ℕ) (ans : List Reg) (w : Reg) (p b : ℕ) : List Op :=
   let L := S.lv i
@@ -110,7 +137,12 @@ def genPhase4 (S : Seq) (p : KindP) (n : ℕ) (ph : String × Sh) (c : GCtx) : L
   match ph.2 with
   | .seed => rec_ (seedOps4 p b) (b + 1) [b + 1]
   | .absorb f len =>
-    if f = fStmt then rec_ (absorbOps 0 (o f) len c.st b ++ stmtOps4 p (o f) b (b + 2)) (b + 1) [b]
+    if f = fStmt then
+      if p.d.node then rec_ (absorbOps 0 (o f) len c.st b ++ stmtOps4 p (o f) b (b + 2)) (b + 1) [b]
+      else
+        let b₂ := b + 2 + opsOut (stmtOps4 p (o f) b (b + 2))
+        rec_ (absorbOps 0 (o f) len c.st b ++ stmtOps4 p (o f) b (b + 2) ++ lastOps (o f) b₂) (b + 1)
+          (b :: lastOuts b₂)
     else if f = fFinal then rec_ (absorbOps 0 (o f) len c.st b ++ finalOps4 S p (o f) (b + 2)) (b + 1) [b]
     else if f = fLrEnd ∨ f = fEEnd then
       rec_ (absorbOps 0 (o f) len c.st b ++ [.assertZero b (fun _ => !p.d.node)]) (b + 1) [b]
@@ -127,8 +159,13 @@ def genPhase4 (S : Seq) (p : KindP) (n : ℕ) (ph : String × Sh) (c : GCtx) : L
       let (ops, c') := rec_ (sqzOps k c.st b) (b + k - 1) ans
       (ops, { c' with posAns := ans })
   | .uni f =>
-    let (ops, c') := rec_ (uniOps 0 (o f) c.st c.pt b) (b + 2) [b + 3, b + 133, b + 134]
-    (ops, { c' with uni := b + 133 })
+    if p.d.node then
+      let (ops, c') := rec_ (uniOps 0 (o f) c.st c.pt b) (b + 2) [b + 3, b + 133, b + 134]
+      (ops, { c' with uni := b + 133 })
+    else
+      let (ops, c') := rec_ (segPtOp S p c.outs :: uniOps 0 (o f) c.st b (b + 1)) (b + 3)
+        [b + 4, b + 134, b + 135]
+      (ops, { c' with uni := b + 134 })
   | .rounds f k deg inK =>
     let init := initClaim ph.1
     let (iops, cl) := initOps init 0 (o f) inK c.uni b

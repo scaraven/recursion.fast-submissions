@@ -165,6 +165,31 @@ def SegSound (Vseg : SegKind → Digest → Digest → Proof → OProg Bool) (vk
   ∀ π v t, segView π = some v → v.n ≤ v.kind.cap →
     (Vseg v.kind vk (segC v) π).runSeq t = some true → chainEnd v.start v.n = v.h
 
+/-- **Segment soundness on the good traces** (`Good`: S-G's non-doomed runs, whose complement the
+potential bounds): an accepted run on a good trace proves the segment's chain. `SegSound` is
+`Good = ⊤`; for a real SNARK it holds only on good traces (an arbitrary trace may answer the
+Fiat–Shamir queries at will), so `VA_extract_on` is the form the real programs use. -/
+def SegSoundOn (Vseg : SegKind → Digest → Digest → Proof → OProg Bool) (vk : Digest)
+    (Good : Trace → Prop) : Prop :=
+  ∀ π v t, segView π = some v → v.n ≤ v.kind.cap → Good t →
+    (Vseg v.kind vk (segC v) π).runSeq t = some true → chainEnd v.start v.n = v.h
+
+/-- **Per-segment knowledge soundness on the good traces** (the SNARK's half, per kind: S-G's
+potential): an accepted run on a good trace comes with a table meeting the segment circuit. -/
+def SegKSOn (Vseg : SegKind → Digest → Digest → Proof → OProg Bool) (vk : Digest)
+    (Good : Trace → Prop) : Prop :=
+  ∀ π v t, segView π = some v → v.n ≤ v.kind.cap → Good t →
+    (Vseg v.kind vk (segC v) π).runSeq t = some true →
+      ∃ (b : Bool) (z : ℕ → Block.Pos → F), SegHolds v.kind (v.stmt b) z
+
+/-- **`SegSoundOn` from the circuit's `leaf_sound`** (`seg_sound`): the chain half of a segment's
+soundness is proved; what remains is the SNARK's extraction (`SegKSOn`). -/
+theorem segSoundOn_of_KS {Vseg : SegKind → Digest → Digest → Proof → OProg Bool} {vk : Digest}
+    {Good : Trace → Prop} (h : SegKSOn Vseg vk Good) : SegSoundOn Vseg vk Good :=
+  fun π v t hv hn hg hacc => by
+    obtain ⟨b, z, hz⟩ := h π v t hv hn hg hacc
+    exact seg_sound hz
+
 private theorem mapM_forall₂ {l : List Proof} {vs : List SegView} (h : l.mapM segView = some vs) :
     List.Forall₂ (fun p v => segView p = some v) l vs := by
   induction l generalizing vs with
@@ -220,6 +245,52 @@ theorem VA_extract {segSize : ℕ} {Vseg : SegKind → Digest → Digest → Pro
       have := hf.length_eq; simp [segProgs] at this; omega)
     simp only [segProgs, List.get_eq_getElem, List.getElem_map, List.getElem_zip] at hf'
     exact hS _ _ _ hpi (hr _ hv).2 hf'
+  obtain ⟨a, l, rfl⟩ : ∃ a l, vs = a :: l := by
+    cases vs with
+    | nil => simp at hk
+    | cons a l => exact ⟨a, l, rfl⟩
+  have hcomp := compose_views a l hch hseg
+  have hlast' : ((a :: l).getLast (List.cons_ne_nil _ _)).h = bytesAt π 16 32 := by
+    rw [List.getLast?_eq_some_getLast (List.cons_ne_nil _ _)] at hlast; simpa using hlast
+  have hhead : segs.head?.bind segView = some a := by
+    obtain ⟨p, ps, hp, -, hl⟩ := List.forall₂_cons_right_iff.1 h2
+    rw [hl]; exact hp
+  refine ⟨a.start, rdLE64 π 8, ?_, ?_, ?_⟩
+  · show (segs.head?.bind segView).map (fun v => (v.start, rdLE64 π 8)) = _
+    rw [hhead]; rfl
+  · rw [← hsum]
+    have hle : ∀ v ∈ a :: l, v.n ≤ 2 ^ 18 := fun v hv => (hr v hv).2.trans (by cases v.kind <;> decide)
+    have hb := List.sum_le_length_nsmul ((a :: l).map SegView.n) (2 ^ 18) (by
+      intro x hx; obtain ⟨v, hv, rfl⟩ := List.mem_map.1 hx; exact hle v hv)
+    rw [List.length_map, smul_eq_mul] at hb
+    calc ((a :: l).map SegView.n).sum ≤ (a :: l).length * 2 ^ 18 := hb
+      _ ≤ 4 * 2 ^ 18 := Nat.mul_le_mul_right _ hk.2
+      _ = chainCap := rfl
+  · rw [hst, leafStmtF_eq, ← hsum, hcomp, hlast']
+
+/-- **`V_A`'s extraction on the good traces** (`VA_extract` with `SegSoundOn`): `Good` must hold of
+every piece of every split of `tr` (e.g. a per-query predicate). -/
+theorem VA_extract_on {segSize : ℕ} {Vseg : SegKind → Digest → Digest → Proof → OProg Bool}
+    {vk c : Digest} {π : Proof} {tr : Trace} {Good : Trace → Prop} (hS : SegSoundOn Vseg vk Good)
+    (hG : ∀ trs : List Trace, tr = trs.flatten → ∀ t ∈ trs, Good t)
+    (h : (VAwith segSize Vseg vk c π).runSeq tr = some true) :
+    ∃ s n, aggWit segSize π = some (s, n) ∧ n ≤ chainCap ∧ c = leafStmt (chainEnd s n) n := by
+  obtain ⟨vs, trs, hvs, hc, htr, hf⟩ := VA_sound h
+  set segs := aggSegs segSize (byteAt π 1).toNat π
+  have h2 := mapM_forall₂ hvs
+  simp only [aggChecks, Bool.and_eq_true, decide_eq_true_eq, List.all_eq_true] at hc
+  obtain ⟨⟨⟨⟨⟨hst, hk⟩, hr⟩, hsum⟩, hlast⟩, hch⟩ := hc
+  -- every segment proves its chain
+  have hseg : ∀ v ∈ vs, chainEnd v.start v.n = v.h := by
+    intro v hv
+    obtain ⟨i, hi, rfl⟩ := List.getElem_of_mem hv
+    have hl := h2.length_eq
+    have hpi : segView segs[i] = some vs[i] := (List.forall₂_iff_get.1 h2).2 i (by omega) hi
+    have hf' := (List.forall₂_iff_get.1 hf).2 i (by simp [segProgs]; omega) (by
+      have := hf.length_eq; simp [segProgs] at this; omega)
+    simp only [segProgs, List.get_eq_getElem, List.getElem_map, List.getElem_zip] at hf'
+    have hlt : i < trs.length := by have := hf.length_eq; simp [segProgs] at this; omega
+    exact hS _ _ _ hpi (hr _ hv).2 (hG trs htr _ (List.getElem_mem hlt)) hf'
   obtain ⟨a, l, rfl⟩ : ∃ a l, vs = a :: l := by
     cases vs with
     | nil => simp at hk

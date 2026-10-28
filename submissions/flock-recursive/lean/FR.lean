@@ -110,6 +110,9 @@ import FRAgg
 import FRVerifier4
 import FRNodeLayout4
 import FRVIR4
+import FRVIRFinals4
+import FRSegTarget4
+import FRVerifierC4
 
 /-!
 # `flock-recursive`
