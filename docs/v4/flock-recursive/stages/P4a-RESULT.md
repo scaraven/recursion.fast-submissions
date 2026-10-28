@@ -157,3 +157,56 @@ The one `decide` is `BlockKind.chain ≠ .free` (a constructor inequality, as in
    (item 6)? I recommend yes, and porting the obligations against T4's foundation.
 2. Should R4 take `M := zlm4 indN etN` with the node maps as parameters for now? If so, the
    segment `Rej*`s are final and the node ones wait for F3.
+
+## Pass 2 (after the coordinator's rulings; HEAD `4acc3b3`, T4 committed)
+
+**Done:**
+- **Switched to T4's foundation (ruling 1).** `D3Z`, `D2L` and `D2S` are now `T4.D3`/`T4.D2`, whose
+  `ans3` reads `kindOfC`. P4a's `D3n`/`D2n`/`ansN`/`Wrong*n` are deleted (no other module used them),
+  and `FRSoundness4P4aNames` imports `FRSoundness4TailStep`. Deviation D2 is closed. The dooms keep
+  `zw : Wit` as a parameter; T4's `T4.zW` has that type, and X4 instantiates `zw := T4.zW`.
+- **New module `FRSoundness4P4aBridge`** (§6 items 1–2):
+  - `sum_bits_lt`, `testBit_sum_bits`;
+  - **`testBit_lastL`** (bit `k < 18` of `lastL es` is `lb (nStmt es) k`), `lastL_lt`,
+    **`lastBits_getD`** (`lastBits` are the cube bits of `lastL`);
+  - `pad_getD`, **`eq_pad_last`** (`eq((τ ‖ 0^(18−nb)), bits L) = eqAtR τ L` for `L < 2^nb`),
+    `nbC_le`;
+  - **`c0S_seg`**: a segment's `c0S es = eqAtR τ (lastL es) · thS θ hb + κ_s · thS θ sb`;
+  - **`zW_bool`** (T4's witness is Boolean: `segHolds_of_truths`' `hbool` at `zw := T4.zW`).
+- Lesson: `simp [lastBits, …]` over `List.range 18` produced a proof that hit the kernel's
+  deep-recursion limit. Explicit `getElem?_map`/`getElem?_range` rewrites avoid it.
+
+**Checks (pass 2):**
+- `lake build FR FRSoundness4P4aBridge`: green (`logs/P4a/build-last.log`).
+- Axioms: 54 theorems within `propext`, `Classical.choice`, `Quot.sound`; no `sorryAx`
+  (`logs/P4a/axioms.log`).
+- Source rule: 234 files, 0 findings.
+- `FRSoundness4P4aBridge`: 7.9 s wall, 0.21 s type checking, 2.96 GB peak memory, sequential
+  (`logs/P4a/prof-FRSoundness4P4aBridge.log`).
+- `loc.py` over the five modules: 1,168 total / 741 code / 61 theorems (`logs/P4a/loc.txt`).
+
+**Imports for `FR.lean`:** `import FRSoundness4P4aBridge`. It pulls in the four modules of pass 1.
+
+**Handover (replaces §6), in order:**
+1. **`trueSum_TS` at a segment.** Follow 3.x's proof: `prod_trueSum`, the `idx_split` sum,
+   `sh_sum_seg` (needs `lastL es < 2^nb`), then `c0S_seg`. The result is
+   `trueSum innerExpr (TS wN zw L es) (nrS κ) = c0S es + resSum nb 2 (resSeg nb (lastL es) …)`.
+   Then `S2Bad` ⇔ a nonzero residual (3.x's `TR`, `TR_mle`, `tr_ne`, with `res_ne_seg`), and S1's
+   `hfin` against T4's `hfin_*`/`esc_msD`.
+2. **`final_seg`** (3.x's `final_leaf`): `W̃_seg(r_blk, r_pos)` is `slotW … · eq(τ, r) +
+   (shiftSegS's successor + κ_s eq(r, 0)) · slotW …`. It needs the 18-coordinate padding of
+   `shiftSegS` against `nb` (as `eq_pad_last`) and `lastAt τL 18 = lastL es` (`lastL_sum`,
+   `lastVals_bit`).
+3. **`peL_seg`**: Z2's `P^e` at a segment is `targetSSegS` at `segPtOp`'s operand. Use
+   `lastAt r 19 = lastL es`, then sum out the zero-padded block coordinates with `eqAtR` at `0`
+   (as in 3.x's `peL_leaf`).
+4. **The doom obligations for Z, L, S and Sh, against `FR.Snd.T4.FrontObl`.** These are `Reads`
+   (T4's, through `T4.Same`), `*_habs`, `*_single`, `rej*_ok` (`T4.RejOK`), `s1_hfin`, stability, and
+   the position facts at `fsRanges4`/`phOf4`. Copy them from 3.x's `FrZ`, `FrL`, `FrS`, `FrSh`,
+   `FrBind` and `FrZM`, mapping `kindOf → kindOfC`, `mm d → mC d`, `zW → T4.zW` and `Same → T4.Same`.
+   The congruence `zW_same` comes from T4's `fF_same`/`*_same`. The rounds lemmas are T4's
+   (`D3_single`, `rounds3_obl`, `RoundsPhase` at Z3 15/26, S2 114/28), with Z3's and S2's
+   squeeze-position certificates on `fsItems4`. The `FrontObl` handoff targets T4's `D1 W₀ c₀ 0`.
+   That handoff is B′'s, so it is P4b's; P4a contributes phases 0–12 of `DF`.
+5. **The node half** (`L3BadN`, `PendLcN`, `truthSN`, `wN`, `indN`, `etN`) waits for S-E's Rev4 node
+   maps (S-G13 F3).

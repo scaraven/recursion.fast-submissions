@@ -2,6 +2,7 @@
 import FRSoundnessFrZM
 import FRSoundness4Pos
 import FRSegTarget4
+import FRSoundness4TailStep
 
 /-!
 # The front's Z, L, S names at revision 4.1 (positions < 170): the asserted checks and the dooms
@@ -20,8 +21,8 @@ boundary (the shift's end at block `L`, the successor masked there).
   the log, so a segment's is the chain target on the blocks `t ≤ L` and `0` past, **`EtSeg`**).
 * **The segment's last block** on the log: **`nStmt`** (`n mod 2^24` from `stmt` bytes 33–35, as
   `lastOps` reads it) and **`lastL`** (`(n − 1) mod 2^18`, `lastOps`' borrow chain).
-* The rounds' dooms over a kind read from the log: **`D3n`**, **`D2n`** (3.x's `D3`/`D2`, whose
-  round count is `nr (kindOf es)` over the 3-kind `Kind`, with the count `nr es` instead).
+* The rounds' dooms are T4's `T4.D3`/`T4.D2` (round count `nr (kindOfC es)`); the witness `zw` is
+  T4's `T4.zW` at X4.
 -/
 
 namespace FR.Snd.P4a
@@ -104,37 +105,6 @@ def zlm4 (indN : Rev4.NodeKind → Fin 9 → ℕ → F) (etN : Rev4.NodeKind →
     | .seg _ => EtSeg (lastL es) t p
     | .node ν => etN ν t p
 
-/-! ## The rounds' dooms with the round count read from the log -/
-
-section Rounds
-variable (b : ℕ) (c0 : Log → Log → F) (nr : Log → ℕ) (e : Expr) (T : Log → Log → Array (Array F))
-
-/-- The rounds answered by `es`: `min (nr es) ⌊(|es| − b)/2⌋` (3.x's `ans3` with the count read from
-the log). -/
-def ansN (es : Log) : ℕ := min (nr es) ((es.length - b) / 2)
-
-/-- The claim after `l` rounds of a degree-3 phase is not the true sum (3.x's `Wrong3`). -/
-def Wrong3n (L es : Log) (l : ℕ) : Prop :=
-  clR b c0 L es l ≠ trueSum e (bindAll (T L es) (rchs b es l)) (nr es - l)
-
-/-- **A degree-3 rounds phase's doom** (3.x's `D3`). -/
-def D3n (L es : Log) : Prop := b < es.length ∧ Wrong3n b c0 nr e T L es (ansN b nr es)
-
-end Rounds
-
-section Rounds2
-variable (b wd : ℕ) (rd : ByteArray → ℕ → F) (ch : Digest → F) (c0 : Log → Log → F)
-  (nr : Log → ℕ) (e : Expr) (T : Log → Log → Array (Array F))
-
-/-- The claim after `l` asserted rounds is not the true sum (3.x's `Wrong2`). -/
-def Wrong2n (L es : Log) (l : ℕ) : Prop :=
-  clR2 b wd rd ch c0 L es l ≠ trueSum e (bindAll (T L es) (rchs2 b ch es l)) (nr es - l)
-
-/-- **An asserted rounds phase's doom** (3.x's `D2`). -/
-def D2n (L es : Log) : Prop := b < es.length ∧ Wrong2n b wd rd ch c0 nr e T L es (ansN b nr es)
-
-end Rounds2
-
 /-! ## Z (positions 2 … 67) -/
 
 variable (M : ZLM4) (zw : Wit)
@@ -204,9 +174,9 @@ def TZ (L es : Log) : Array (Array F) :=
   bzTables (ℓ := mC 6 (kindOfC es)) (zrL es) (lamL es) (aZ M zw _ (kindOfC es) L es)
     (bZ M zw _ (kindOfC es) L es)
 
-/-- **Z3's rounds' doom** (`D3n` from 15, `m − 6` real rounds). -/
+/-- **Z3's rounds' doom** (`T4.D3` from 15, `m − 6` real rounds). -/
 abbrev D3Z : Log → Log → Prop :=
-  D3n 15 (fun _ es => c0Z M es) (fun es => mC 6 (kindOfC es)) bzExpr (TZ M zw)
+  T4.D3 15 (fun _ es => c0Z M es) (mC 6) bzExpr (TZ M zw)
 
 /-- Z3's challenges `r′`. -/
 def rZ (es : Log) : List F := rchs 15 es (mC 6 (kindOfC es))
@@ -267,7 +237,7 @@ def TL (L es : Log) : Array (Array F) :=
 
 /-- **L2's rounds' doom** (from 69, 14 rounds, degree 2). -/
 abbrev D2L : Log → Log → Prop :=
-  D2n 69 16 readF (fun d => chF d 0) (fun _ es => c0L es) (fun _ => 14) (kindExpr 8) (TL M zw)
+  T4.D2 69 16 readF (fun d => chF d 0) (fun _ es => c0L es) (fun _ => 14) (kindExpr 8) (TL M zw)
 
 /-- **L2's round checks fail**: 3.x's `RejL2` (kind-free). -/
 abbrev RejL2 : Log → Log → Prop := FR.Snd.RejL2
@@ -342,7 +312,7 @@ def c0S (es : Log) : F :=
 /-- S2's round count `nb + 10`. -/
 def nrS (κ : CKind) : ℕ := nbC κ + 10
 
-/-- S2's initial claim as a `D2n` claim. -/
+/-- S2's initial claim as a `T4.D2` claim. -/
 def c0SL (_L es : Log) : F := c0S es
 
 /-- **S2's round checks fail** (the verifier's `c₁ + c₂ = claim` asserts). -/

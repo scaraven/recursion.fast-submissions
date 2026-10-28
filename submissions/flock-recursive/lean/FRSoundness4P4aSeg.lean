@@ -309,9 +309,9 @@ noncomputable def TS (L es : Log) : Array (Array F) :=
 /-- **S1's final doom**: S2's initial claim is not the true sum at S1's challenges. -/
 def S2Bad (L es : Log) : Prop := c0S es ≠ trueSum innerExpr (TS wN zw L es) (nrS (kindOfC es))
 
-/-- **S2's rounds' doom** (`D2n`, F, degree 2, from 114, `nb + 10` real rounds). -/
+/-- **S2's rounds' doom** (`T4.D2`, F, degree 2, from 114, `nb + 10` real rounds). -/
 abbrev D2S : Log → Log → Prop :=
-  D2n 114 16 readF (fun d => chF d 0) c0SL (fun es => nrS (kindOfC es)) innerExpr (TS wN zw)
+  T4.D2 114 16 readF (fun d => chF d 0) c0SL nrS innerExpr (TS wN zw)
 
 /-- **The S truth** by kind: a segment's masked `ShHoldsSeg` at `L` with the statement's boundary,
 a node's `truthSN`. -/

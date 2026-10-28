@@ -73,3 +73,11 @@ supply `z = unpack f⁽⁰⁾` at `CKind`).
 - `lake build FR FRSoundness4P4aCtrl` green (`logs/P4a/build-last.log`); axioms of 44 theorems within
   `propext`, `Classical.choice`, `Quot.sound`, no `sorryAx` (`logs/P4a/axioms.log`); source rule 224
   files, 0 findings (`logs/P4a/source-rule.log`); sequential profiles `logs/P4a/prof-*.log`.
+
+### Pass 2 (rulings: use T4's `D3`/`D2`; continue §6 items 1–5)
+
+- HEAD moved to `4acc3b3` (T4 committed). `D3Z`/`D2L`/`D2S` now use `T4.D3`/`T4.D2`; P4a's copies
+  are deleted.
+- `FRSoundness4P4aBridge`: `testBit_lastL`, `lastBits_getD`, `eq_pad_last`, `c0S_seg`, `zW_bool`.
+  Items 3–5 of the old §6 and the obligations are in the RESULT's pass-2 handover; my context ran
+  short, so I stopped there.
