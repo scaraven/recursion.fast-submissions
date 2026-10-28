@@ -13,6 +13,8 @@ Last updated 2026-10-28. **Rebased onto core PR #20 (pin `6d05d00`, commit `987e
 
 ## Waiting
 
+- **INT-9 (after S-E12e, INT-8): the node's `evalM`/`evalL` wiring.** `implN4`/`implN4T` take `evalM`/`evalL` from the 3.x base (`implC`), i.e. 3.x's plan, not the 4.1 node rows. They must be S-E12b's `evalMT4 κ` (= MLE of `nodeIRows4 κ`, `evalMT4_eq`) and the 4.1 L rows (`lRows4`), with `_meets`; this discharges R4's `RejFinE4` parameters `hM`/`hL` (R4d D11). Owner: L-circ + the node-ops module.
+
 - **Certificate build budget (H-cert, `0864c53`): over the cap.** `lake build FR` takes 611–712 s on the 7763 against `build_s` 600 s (kernel replay fits: 372 s, 1.6×). Levers, in order: G1 golf of the S-0/S-F finals (running); golf of the FRX* top modules after S-H3; **retire the 3.x-only modules from `lean/`** once the Rev4 theorem composes (X4: the 3.x S-G chain, the 3.x extractor paths, P30/tree remnants; move T4's 195 position-free imports to a shared module first); keep controls cheap. Question to the user (organiser): a larger `build_s` (the 30-minute job has room). Re-measure with `probe/cert-time` after each integration; S-I must run the real `evaluate.py cert` (gate 120 s, badge 180 s unmeasured).
 
 - **R4 (after P4a/P4b fix their `Rej*` names):** the program layer on `gen4` (`accept_chain`, views, `finLog`) and the front checks once (S-G13 §6).

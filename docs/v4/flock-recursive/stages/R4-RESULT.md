@@ -644,3 +644,155 @@ On the chain of `runLog_chain4` these transfer by its `entriesOf L (pathOf L j) 
    form, `roundKVals`); `lvl4`: level 4's column values (port `posT` for `posOps4`, R4's D2) and the
    flags of `gFinP 4`/`gFinPf` at `FinP` (`flag_gFinP`, `flag_gFinPf`, not started; after INT-8, as
    the final field becomes one zero-padded field).
+
+## Pass 5 (track R4e; HEAD `29d0016`, re-snapshotted to `1ee751b`, then `3ef2c51`)
+
+- **Build tree** `logs/fr-build-R4e` (a copy of `fr-build-R4d`; `b.sh` logs to `logs/R4e/`; `MINE.txt`
+  adds `FRSoundness4R4Fld`, `FRSoundness4R4FrS`, `FRSoundness4R4FrZ`, `FRSoundness4R4FrLc`,
+  `FRSoundness4R4FrRS`, `FRSoundness4R4FrCtrlB`). Every lean/lake command ran in the 16G scope (12G for
+  single files) under `timeout`. No sub-agents. Nothing committed. Only new `FRSoundness4R4*` modules
+  written (every short name grepped first); no existing module edited, no statement changed.
+- **Re-snapshots** on the coordinator's instructions: S-T2 (`1ee751b`), S-CN4b (`3ef2c51`). **INT-8 had
+  not committed** when this pass stopped (its edits are in the shared working tree, uncommitted; the
+  build tree uses HEAD's files), so item 1 (INT-8's repairs) is still open.
+- **Imports for `FR.lean`:** add `import FRSoundness4R4FrCtrlB` (it pulls `FRSoundness4R4FrRS` →
+  `FrLc` → `FrZ` → `FrS` → `Fld`, and `FRVerifierImplNode4T`).
+
+### Status
+
+| Item | State |
+|---|---|
+| 1. INT-8's repairs | **Open**: INT-8 not committed |
+| 2. `RejS2` | **Done**, both kinds: `not_rejS2_seg4`, `not_rejS2_node4` (`shiftTarget` at `shiftTargetS`: parameter `hST`) |
+| 3. `relSh4`'s node link term | **Done**: `sh_bind_node4` (`oSh4 wNS4`, through `wSumNode4` and `CN4.wNS4_node4`); the segment's `sh_bind_seg4` (`wSumSeg`) |
+| 4. `RejZ` | **Done**, both kinds: `not_rejZ_seg4` (`targetSSegS`, P4c's `peL_seg` with `lastOps`' bits), `not_rejZ_node4` (`targetSNode4S`, `peL_node4`); `targetS` at its spec is the parameter `hTS`, discharged for `implN4T` by `targetSNode4_meets` (`nodeC_params`) |
+| 5. `RejLc2`/`RejLcN` | **Done**, both kinds: `lc_ii4` (3.x's `lc_ii_run` ported; `walkAB`/`rowW`/`eqZ` specs the parameters `hW hR hZ`, as 3.x), `not_rejLc_seg4`, `not_rejLc_node4` |
+| 6. `RejRS4 (okRS4 oZ oLc4 (oSh4 wNS))` | **Done**, both kinds: `not_rejRS4_seg` (any `wNS`), `not_rejRS4_node` (`wNS4`) |
+| 7. `AcceptTail` | **Not started** (handover) |
+| Coordinator: the RS front's `rsWeightS4` bridge | **Not started** (handover, with the exact form asked) |
+
+**Final checks** (HEAD `3ef2c51`, R4's 26 modules overlaid):
+- `lake build FR FRSoundness4R4FrCtrl FRSoundness4R4FrCtrlB`: **green, 2,514 jobs** (`logs/R4e/build-final.log`).
+- **Axioms** (`logs/R4e/axioms.log`, `logs/fr-build-R4e/ax/AxR4e.lean`; all 311 theorems of the 26 R4
+  modules): within `propext`, `Classical.choice`, `Quot.sound`; no `sorryAx`.
+- **Source rule** (`python3 -I logs/org20/scripts/source-rule.py submissions/flock-recursive`): 295
+  files, 0 findings (`logs/R4e/source-rule.log`).
+- **Times** (sequential, one core: `taskset -c 0 lake env lean -DElab.async=false --profile`;
+  `logs/R4e/prof-*.log`; import ≈ 4–5 s; `FrCtrlB` at `3ef2c51`, the others at `1ee751b`):
+
+  | Module | wall | type checking | tactic execution | max RSS |
+  |---|---|---|---|---|
+  | `FRSoundness4R4Fld` | 7.6 s | 0.12 s | 1.02 s | 2.9 GB |
+  | `FRSoundness4R4FrS` | 10.9 s | 0.82 s | 1.49 s | 3.0 GB |
+  | `FRSoundness4R4FrZ` | 9.4 s | 0.58 s | 1.14 s | 3.0 GB |
+  | `FRSoundness4R4FrLc` | 7.4 s | 0.16 s | 0.44 s | 3.0 GB |
+  | `FRSoundness4R4FrRS` | 11.2 s | 0.30 s | 0.99 s | 2.9 GB |
+  | `FRSoundness4R4FrCtrlB` | 6.6 s | 0.05 s | 0.15 s | 2.9 GB |
+
+  Net kernel cost of the pass ≈ 2.0 s. No `decide` over a program, a register file or a sum; one
+  small certificate (`fieldOff_hdr_stmt4`: `seq4`'s `hdr`/`stmt` offsets), the rest `cases κ <;> decide`
+  on kind constants.
+
+### What was built (`loc.py`, `logs/R4e/loc.txt`: total / code / thm)
+
+| Module | total / code / thm | Content |
+|---|---|---|
+| `FRSoundness4R4Fld` | 125 / 96 / 5 | **`Fields4`** (one accepted run's `zhat`, files, exports and `finRS`'s run), **`fields4_of_accept`**, `Fields4.chain/zlt'/sk_lt/pos` |
+| `FRSoundness4R4FrS` | 538 / 429 / 31 | the log's public reads (`seedQ4`, `seed_bytesAt4`, `stmt_msg4`, `nStmt_eq4`, `bnd_seg4`); **`last_view4`** (a segment's `lastOps` registers, P4a's `run_lastOps`); `relSh4_of_fields`; `s1_view4`, `s2r_view4`, `s2_from_head4`, `lastRegs_view4`; **`sh_head_seg4/_node4`** (S2's head is `c0S`); `s2_chk_*`, **`not_rejS2_seg4/_node4`**; **`sh_bind_seg4/_node4`**; `segOps_of_meets`, `nodeOps_of_meets`, `shiftTarget_of_meets` |
+| `FRSoundness4R4FrZ` | 306 / 248 / 15 | `coords_pt_view4`, `pt_cAt4`, `uni_cAt5`, `lastAt_pad19`, `lag_c0Z`; **`z3_head_seg4/_node4`** (Z3's head is `c0Z`); `relZ4_of_fields`, `clR_c0_eq`, **`z_chk4`**, **`not_rejZ_seg4/_node4`** |
+| `FRSoundness4R4FrLc` | 176 / 147 / 5 | `relLc4_of_fields`, `lcV4_eq`, **`lc_ii4`**, **`not_rejLc_seg4/_node4`** |
+| `FRSoundness4R4FrRS` | 261 / 204 / 11 | `Fields4.fv_zh`, `rs_vals4`, `lam_view4`, **`rs_alpha4`** (`α_j = alphaL4`); `z_bind4`, `lc_bind4`, `relE4_of_fields`, `e_bind4`; **`not_rejRS4_seg/_node`** |
+| `FRSoundness4R4FrCtrlB` | 88 / 61 / 5 | controls (below) |
+| **new total** | 1,494 / 1,185 / 72 | R4 total now 5,925 / 4,650 / 311 |
+
+### Main statements
+
+```lean
+structure Fields4 (impl p inp tr) (P : FinP) (y) (zh : List Reg) (Rs : ℕ → Array Val) (Ex : ℕ → Array (List Reg)) : Prop
+  -- sk : SkRun4 …; ext; zlt; zh_eq : zh = ((finalsOf P).finRS ⟨outs, [], #[]⟩ |skel|).2; rs : finRS's run; fld : field k's run
+theorem fields4_of_accept (P) (h : semIR impl (gen4 seq4 p (finOps4 P)) inp tr = some true) : ∃ y zh Rs Ex, Fields4 impl p inp tr P y zh Rs Ex
+theorem not_rejS2_seg4 (hST) (h : semIR impl (gen4 seq4 (.ofSeg σ) (finOps4 (segFinP σ))) inp tr = some true) (L) :
+    ¬ P4a.RejS2 L (fsOf tr (itemsOf seq4))                    -- and not_rejS2_node4 (nodeFinP ν cells)
+theorem sh_bind_node4 (hST hSM hSW hLW) (hF : Fields4 impl (.ofNode ν) inp tr (nodeFinP ν cells) y zh Rs Ex) :
+    P4a.oSh4 P4a.wNS4 (kindOfC es) es (fv (Rs 2) (zh.getD 2 0)) -- and sh_bind_seg4 (any wNS)
+theorem not_rejZ_seg4 (hLS hTS) (indN etN) (h) (L) : ¬ P4a.RejZ (P4a.zlm4 indN etN) L es
+theorem not_rejZ_node4 (hLS) (hTS : ∀ r, impl.targetS (KindP.ofNode ν).tix r = NT4.targetSNode4S ν r) (h) (L) :
+    ¬ P4a.RejZ (P4a.zlm4 N4c.indN4 N4c.etN4) L es
+theorem lc_ii4 (hW hR hZ) (hF) (hPS : P.S = seq4) (hnode) (hκ) (M) (hA : M.Ak = zlmFR.Ak) (hB) (L) :
+    clR2 69 16 readF (fun d => chF d 0) (fun _ es => c0L es) L es 14 =
+      ∑ j, P4a.vM (kindOfC es) es j * mle (linM (M.Ak j) (M.Bk j) (P4a.rwL es) (alL es)) (ptOf 14 (rkL es))
+theorem not_rejLc_seg4 (hW hR hZ) (indN etN) (h) (L) : ¬ P4a.RejLc2 (zlm4 indN etN) L es ∧ ¬ P4a.RejLcN (zlm4 indN etN) L es
+theorem rs_alpha4 (hZ) (hF) (hPS) (hm : P.kv.m p.tix = (kindOfC es).m) (j : Fin 4) (hj : j < (rsPtsL4 κ es).length) :
+    P4b.alphaL4 κ es j = fv (Rs 0) (zh.getD j 0)
+theorem not_rejRS4_node (hZ hLS hST hSM hSW hLW) (h) (L) :
+    ¬ P4b.RejRS4 (P4b.okRS4 P4a.oZ P4a.oLc4 (P4a.oSh4 P4a.wNS4)) L es   -- and not_rejRS4_seg (any wNS)
+-- es = fsOf tr (itemsOf seq4)
+```
+
+The op parameters are equations about `impl` at the spec forms (`hZ`: `eqZ = eqZS`, `hLS`: `lagrangeS =
+lagrangeSS` at 127 values, `hTS`: `targetS` at the kind's spec, `hST`, `hSM`, `hSW`, `hLW`, and 3.x's
+`hW`, `hR`). **`segC_params`** / **`nodeC_params`** prove all of them for the concrete ops
+(`implSeg (implC …)`, S-CN4b's `implN4T` over `implC`), so none is an assumption left open.
+
+### Design and deviations
+
+- **D13. `Fields4`.** `fields_ex4` (R4d) gives each field's run with existential `zhat`/files; the RS
+  bindings need `finRS`'s `α_j` and Z's/Lc's/Sh's/E's relations on the *same* registers, so `Fields4`
+  packages one choice (plus `finRS`'s run, which `fields_ex4` dropped). `fields4_of_accept` reruns
+  `fields_ex4`'s proof; `fields_ex4` itself is unchanged. New `rel*_of_fields` (Z, Lc, Sh, E) sit beside
+  R4d's `rel*_of_accept` (`relSh4_of_accept` is now a corollary).
+- **D14. Op facts as equations, not `Meets`.** Each front statement takes only the op equations it
+  uses; `segOps_of_meets`/`nodeOps_of_meets` and the controls `segC_params`/`nodeC_params` derive them
+  from `Meets`. This keeps the statements independent of how S-CN4b/S-T2 assemble `specN4`
+  (`withRS4S` changed `specN4` mid-pass; nothing here broke).
+- **D15. `RejZ`'s `M`.** The segment's is any `zlm4 indN etN` (its targets are `EtSeg`, so the node
+  maps do not matter); the node's is `zlm4 N4c.indN4 N4c.etN4` (what `peL_node4` speaks of).
+- **D16. `not_rejRS4_seg` holds for every `wNS`** (a segment's Sh binding reads `wSumSeg`); the node's is
+  at `P4a.wNS4`.
+- No value asserted by no final was met in this scope.
+
+### Controls (`FRSoundness4R4FrCtrlB`)
+
+| Definition / parameter | Positive | Negative |
+|---|---|---|
+| `Fields4` | `fields4_of_accept` | `not_fields4_nil` (no fields on an empty trace) |
+| the segment statements' op parameters | `segC_params` (`implSeg (implC …)` meets all nine) | `clR2_c0_dep` (the claim switch needs its hypothesis) |
+| the node statements' op parameters | `nodeC_params` (`implN4T` over `implC` meets all nine; `targetS` by `targetSNode4_meets`) | as above |
+| `lastAt_pad19` | `lastAt_pad19_ctl` | — (an equation) |
+
+### Traps (new)
+
+1. **`congr 1` on `(w_out + w_in) * v = W * v`, `.f a = .f b` or an `interpolateAt` equation** whnf's the
+   whole term (heartbeat timeout or max recursion at the declaration): use `congrArg (· * v)`,
+   `congrArg Val.f`, or `funext` lemmas and `rw`.
+2. `chk2F_c0 rfl` with implicit claims timed out: give `c0`/`c0'`.
+3. Again R4c's trap 1: `exact ⟨…, _, Rs 2, rfl, …⟩` against `skeleton4` — give `fi` explicitly;
+   `s1_view4 … rfl` likewise needs `(fi := ⟨…⟩)`.
+4. `show (impl.eqZ _ _).getD i 0 = …` on `rsW4` timed out: `simp only [rsW4, P4b.cwL4, cwF]` instead.
+5. A `Reg`-typed `<` (`headD` of an outs list) defeats `omega` (R4b's trap): wrap with `lt_reg`.
+6. `simp` cannot rewrite the `n` of `eq (ptOf n a) (ptOf n b)` (dependent `Fin n`): `rw` all occurrences at
+   once.
+7. `rw [h] at hlen` with `h : seq4.s2 = 28` also rewrites `chals fi "S2" seq4.s2` inside: use
+   `hlen.trans h`.
+
+### Handover (remaining items, in order)
+
+1. **INT-8's repairs** when its commit appears (re-snapshot: `b.sh` snapshots HEAD each run). Places
+   that unfold `finOps4`/`finalsOf` beyond `finOps4_eq`/`accept_chain4`: R4d's D12 lemmas (`rest_gFin*`,
+   `opsOut_gFinLr`, `gFinLr`'s outputs in `relE4_of_accept`/`relE4_of_fields`, `opsOut_gFinRS`,
+   `gFinRS_ex_lt`); this pass adds `rest_gFinSh`, `rest_gFinZ` (index 2, 0), `Fields4.zh_eq`/`rs`
+   (`(finalsOf P).finRS` = `gFinRS P`, used by `rs_vals4` through `exec_gFinRS`; INT-8's working tree gives
+   `gFinRS` a `Q` table argument), and `last_view4` (`absTail4`'s segment `stmt` case:
+   `stmtOps4 ++ lastOps`; robust to `stmtOps4`'s content, it uses only that its run succeeds).
+2. **The coordinator's RS bridge** (S-T2): state the Φ form of P4b's `wrsL4 kf` against
+   `Impl.rsWeightS4 ν` at `kf := N4c.kf4 ν` (3.x's `rsWeight_kind_eq` form), using
+   `KW4.kwS4_eq`/`kwS4_fast` in `FRKindWeight4`. It feeds `AcceptTail`'s `start`/W₀ (P4b's `W₀L4`,
+   `c₀L4`), i.e. `finPf`'s `rsWeight` call; S-CN4b's `specN4` now carries `rsWeightS4 ν` (`withRS4S`).
+3. **`AcceptTail` (T4)**: `chain`, `len` from `runLog_chain4`; `rejF` from R4d's and this pass's
+   `not_rej*` (they are on `fsOf tr (itemsOf seq4)`; transfer to `entriesOf L (pathOf L j)` by
+   `runLog_chain4`); `p1`/`pf`: K-round views (port 3.x's `rounds_view` to `rounds_core4`'s form,
+   `roundKVals`); `lvl4`: level 4's column values (port `posT` for `posOps4`, R4's D2) and the flags of
+   `gFinP 4`/`gFinPf` at `FinP` (`flag_gFinP`, `flag_gFinPf`: not started; after INT-8, whose final field
+   becomes one zero-padded field). Read every field through `Fields4` (one `fields4_of_accept`).
+4. `RejFinE4`'s node matrix parameters `hM`/`hL` (R4d's D11) are still parameters: whoever owns the node
+   plan's `evalM`/`evalL` specs discharges them (S-CN4b did not).

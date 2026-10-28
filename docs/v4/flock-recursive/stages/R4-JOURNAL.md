@@ -149,3 +149,36 @@ relocated fields).
   (`c2c6fba`): re-snapshotted, rebuilt green (2,503 jobs). INT-8 not landed at the stop.
 - Final: axioms 239 theorems clean; source rule 281 files 0 findings; profiles in `logs/R4d/`.
   Stopped (context long) with the RESULT's Pass 4 handover: S2, Sh's node link, Z, Lc, RS, AcceptTail.
+
+### Pass 5 (R4e)
+
+- Build tree `logs/fr-build-R4e` (copy of R4d's; `b.sh` logs to `logs/R4e/`; `MINE.txt` adds
+  `FRSoundness4R4FrS`, `FRSoundness4R4Fld`). Baseline at HEAD `29d0016`: green (2,503 jobs).
+  INT-8 not committed at the start (its journal: `finalsOf P` keeps its name and default values;
+  `stmtOps4`'s `hashStmt` becomes `.input 1`).
+- **`Fields4`** (`FRSoundness4R4Fld`): one choice of `zhat`, files and exports for every field,
+  with `finRS`'s run kept (`fields_ex4`'s are existential per call, so two fields' facts could not
+  be joined; RS's `α_j` must meet Z's/Lc's/Sh's/E's bindings on the same registers).
+- **`RejS2`** (`FRSoundness4R4FrS`): `seedQ4`, `seed_bytesAt4`, `stmt_msg4`, `nStmt_eq4`,
+  `bnd_seg4` (the log's public reads are π's); `last_view4` (segment `stmt` phase: `lastOps`'
+  registers through P4a's `run_lastOps`, via `pureRun_append`/`pureRun_rebase`); `relSh4_of_fields`;
+  `s1_view4`, `s2r_view4`, `s2_from_head4`; `sh_head_seg4/_node4` (head = `c0S`, `shiftTarget` at
+  `shiftTargetS` a parameter `hST`); `s2_chk_*`, `not_rejS2_*`.
+- **Item 3, the Sh binding**: `sh_bind_seg4` (`wSumSeg`, `linkSum_zero`), `sh_bind_node4`
+  (`wSumNode4`, `CN4.wNS4_node4`): `oSh4 wNS4 κ es (fv (Rs 2) (zh.getD 2 0))`; op facts as
+  parameters `hSM hSW hLW`, discharged by `segOps_of_meets` / `nodeOps_of_meets`.
+- Traps: `congr 1` on `(w_out + w_in) * v = W * v` whnf's the whole weight (heartbeat timeout at
+  the declaration): use `congrArg (· * v)`. `chk2F_c0 rfl` with implicit claims timed out: give
+  `c0`/`c0'`. `exact ⟨…, _, Rs 2, rfl, …⟩` against `skeleton4` (R4c trap 1) again: give `fi`.
+- **Items 4–6**: `FRSoundness4R4FrZ` (Z3 head `c0Z` via Z2's `lagrangeS`/`targetS`; `coords_pt_view4`,
+  `pt_cAt4`, `uni_cAt5`; `peL_seg` needs `lastAt pe 19 = lastL`: `lastAt_pad19`; `z_chk4`),
+  `FRSoundness4R4FrLc` (3.x's `lc_ii_run` ported as `lc_ii4` through `lc_bridge`, the kind flag from
+  `hnode : P.kv.node p.tix = p.tix.isNode`), `FRSoundness4R4FrRS` (`rs_alpha4`: `exec_gFinRS`'s exports
+  on `Fields4`; bindings `z_bind4`, `lc_bind4` (Horner by `simp` + `ring` on the 8 values), `e_bind4`,
+  `sh_bind_*`; `not_rejRS4_*`).
+- Coordinator mid-pass: S-T2 (`rsWeightS4`) and S-CN4b (`implN4T`, `targetSNode4_meets`) committed;
+  re-snapshotted to `3ef2c51`, rebuilt green (2,514 jobs). `nodeC_params` instantiates the node
+  statements' op parameters at `implN4T`. The `rsWeightS4` bridge is left as handover item 2.
+- Controls `FRSoundness4R4FrCtrlB`. Final: axioms 311 theorems clean; source rule 295 files 0 findings;
+  profiles in `logs/R4e/`. INT-8 still uncommitted at the stop. Stopped with the RESULT's Pass 5
+  handover: INT-8 repairs, the RS weight bridge, `AcceptTail`, `hM`/`hL`.
