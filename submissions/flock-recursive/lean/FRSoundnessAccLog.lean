@@ -31,7 +31,8 @@ theorem noAsk_finZ (fi : FinIn) (b : ℕ) : (finZ fi b).1.filterMap Op.item? = [
   simp [finZ, pinOps, Op.item?]
 
 theorem noAsk_finLc (fi : FinIn) (b : ℕ) : (finLc fi b).1.filterMap Op.item? = [] := by
-  simp [finLc, hornerOps, Op.item?]
+  simp only [finLc, List.filterMap_append, dotOps_noAsk, List.append_nil]
+  simp [lcHead, lcTail, hornerOps, Op.item?]
   aesop
 
 theorem noAsk_finSh (fi : FinIn) (b : ℕ) : (finSh fi b).1.filterMap Op.item? = [] := by
@@ -243,7 +244,7 @@ theorem pfRefs_lt : ∀ x ∈ pfRefs fi, x < N := by
   intro x hx
   simp only [pfRefs, List.mem_append, List.mem_flatMap, List.mem_map, List.mem_range,
     List.mem_cons, List.not_mem_nil, or_false] at hx
-  rcases hx with (((⟨s, hs, p, hp, hx⟩ | ⟨q, -, rfl⟩) | (rfl | rfl | rfl | rfl)) | hx) |
+  rcases hx with (((⟨s, hs, p, hp, hx⟩ | ⟨q, -, rfl⟩) | (rfl | rfl | rfl | rfl | rfl)) | hx) |
     ⟨k, -, hx⟩
   · exact pfPts_lt hN hO s hs p hp x hx
   · exact getD_lt hN (coordsR_lt hN hO "RS1") q
@@ -251,6 +252,7 @@ theorem pfRefs_lt : ∀ x ∈ pfRefs fi, x < N := by
   · exact getLastD_lt (outsOf_lt hN hO "Pf") hN
   · exact getD_lt hN (chals_lt hN hO "Pf" 7) 5
   · exact getD_lt hN (chals_lt hN hO "Pf" 7) 6
+  · exact headD_lt (outsOf_lt hN hO "L3β") hN
   · exact chals_lt hN hO "Pf" 7 x hx
   · simp only [lvRefs, List.mem_cons, List.mem_append] at hx
     rcases hx with (rfl | hx) | hx

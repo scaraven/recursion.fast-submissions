@@ -44,20 +44,6 @@ open RecursionFast
 section Kit
 variable (impl : OpImpl) (κ : Kind) (inp : Input) (r : Array Val)
 
-theorem pureRun_append (o₁ o₂ : List Op) (L : List Val) :
-    pureRun impl κ inp (o₁ ++ o₂) r L = (pureRun impl κ inp o₁ r L).bind fun p =>
-      (pureRun impl κ inp o₂ r p.1).map fun q => (q.1, p.2 && q.2) := by
-  induction o₁ generalizing L with
-  | nil => simp only [List.nil_append, pureRun, Option.bind_some, Bool.true_and]; simp
-  | cons op o ih =>
-    simp only [List.cons_append, pureRun]
-    split
-    · rw [ih]
-      cases pureRun impl κ inp o r _ with
-      | none => rfl
-      | some p => simp [Option.map_map, Function.comp_def, Bool.and_assoc]
-    · rfl
-
 /-- One op appending one value with no assertion. -/
 theorem pr_op {op : Op} {ops : List Op} {L : List Val} {v : Val}
     (h : evalOp impl κ inp (r ++ L.toArray) op = .vals [v] true) :

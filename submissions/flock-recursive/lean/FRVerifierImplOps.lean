@@ -7,6 +7,7 @@ import FRRSEval
 import FRVerifier
 import FRBlockChain
 import FRPubTarget
+import FRKindWeight
 
 /-!
 # The concrete op implementations (`implC`), their specification (`specC`) and `Meets`
@@ -135,11 +136,24 @@ def wEvalC (c : Array K) (r ρ : List K) : K :=
   (Nat.fold c.size (fun k _ (p : K × List K) =>
     (p.1 + c.getD k 0 * eqPtsC p.2 ρ, p.2.map fun a => a * a)) (0, r)).1
 
-/-- **`rsWeight`** (A.8, revision 3.9): `Σ_j κ^j Σ_{k<128} c_k(r″) eq(r_j^{2^k}, ρ)`, the
+/-- Claim 2's stage fold (revision 3.16): `Σ_{k<|c|} c_k eq(q_hi, ρ_hi)·kwI(β^(2^k), q_blk, ρ_blk)`,
+`q = r^(2^k)` (hi: the first 7 coordinates; blk: the `|ρ| − 7` block coordinates). -/
+def wEvalKC (c : Array K) (β : K) (r ρ : List K) : K :=
+  let ρh := ρ.take 7
+  let ρb := (ρ.drop 7).toArray
+  (Nat.fold c.size (fun k _ (p : K × List K × K) =>
+    (p.1 + c.getD k 0 * (eqPtsC (p.2.1.take 7) ρh *
+        KW.kwI ρb.size p.2.2 (fun l => (p.2.1.drop 7).toArray.getD l 0) (fun l => ρb.getD l 0)),
+     p.2.1.map fun a => a * a, p.2.2 * p.2.2)) (0, r, β)).1
+
+/-- **`rsWeight`** (A.8, revisions 3.9, 3.16): `Σ_j κ^j Ŵ_j(ρ)`, `Ŵ_j = Σ_{k<128} c_k(r″)
+eq(r_j^{2^k}, ρ)` except claim 2 (index 1), weighted by the kind factor (`wEvalKC`); the
 coefficients `c_k(r″)` (`FRRingSwitch.phiTable`) computed once over F. -/
-def rsWeightI (r : Array F) (ps : List (Array K)) (κ : F) (ρ : Array K) : K :=
+def rsWeightI (r : Array F) (ps : List (Array K)) (κ β : F) (ρ : Array K) : K :=
   let c := (phiTable r.toList).map K.ofF
-  ((ps.zipIdx).map fun p => K.ofF κ ^ p.2 * wEvalC c p.1.toList ρ.toList).sum
+  ((ps.zipIdx).map fun p => K.ofF κ ^ p.2 *
+    (if p.2 = 1 then wEvalKC c (K.ofF β) p.1.toList ρ.toList
+     else wEvalC c p.1.toList ρ.toList)).sum
 
 /-- The slot maps' bases (A.6, P2 §7.5 (4)): `0` the `h_out` slot `256 + σ`, `1` the chain
 block's `d` slot `520 + σ` (a leaf's `In`), `2` the `h_in` slot `σ`. -/
@@ -216,11 +230,21 @@ def shiftEqS (a b : Array F) : F :=
 /-- **`tensorW`'s specification** (`FRRSEval.tensorTwin` on `D`, S-D's verifier tensor weight). -/
 def tensorWS (j : ℕ) (r : Array K) : K := tensorTwin D logNMax r.size (fun v => r.getD v 0) j
 
-/-- **`rsWeight`'s specification** (A.8, L-R4 `weight_mle`'s right side): `Σ_j κ^j Σ_{k<128}
-c_k(r″) eq(r_j^{2^k}, ρ)`, `c_k(r″)` the coefficients of `Φ_{r″}` (`FRRingSwitch.phiTable`). -/
-def rsWeightS (r : Array F) (ps : List (Array K)) (κ : F) (ρ : Array K) : K :=
+/-- Claim 2's weight at one Frobenius stage (`KW.kwS`, revision 3.16): `eq(q_hi, ρ_hi)` on the 7 high
+position coordinates times the kind-weighted block weight on the `|ρ| − 7` block coordinates. -/
+def kwSL (β : K) (q ρ : List K) : K :=
+  eqPts (q.take 7) (ρ.take 7) *
+    KW.kwS (ρ.length - 7) β (ptOf (ρ.length - 7) (q.drop 7)) (ptOf (ρ.length - 7) (ρ.drop 7))
+
+/-- **`rsWeight`'s specification** (A.8, L-R4 `weight_mle`'s right side; revision 3.16):
+`Σ_j κ^j Σ_{k<128} c_k(r″) w_{j,k}` with `w_{j,k} = eq(r_j^{2^k}, ρ)`, except claim 2 (index 1):
+`w_{1,k} = kwSL(β^(2^k), r_1^{2^k}, ρ)` (`FRRingSwitch.rsWeight_kind_eq` is its Φ form);
+`c_k(r″)` the coefficients of `Φ_{r″}` (`FRRingSwitch.phiTable`). -/
+def rsWeightS (r : Array F) (ps : List (Array K)) (κ β : F) (ρ : Array K) : K :=
   ((ps.zipIdx).map fun p => K.ofF κ ^ p.2 * ∑ k ∈ range 128,
-    K.ofF ((phiTable r.toList).getD k 0) * eqPts (p.1.toList.map (sqIter k)) ρ.toList).sum
+    K.ofF ((phiTable r.toList).getD k 0) *
+      (if p.2 = 1 then kwSL (sqIter k (K.ofF β)) (p.1.toList.map (sqIter k)) ρ.toList
+       else eqPts (p.1.toList.map (sqIter k)) ρ.toList)).sum
 
 /-- A digest's bits as a table over the 10-bit slot index (`0` from `σ = 256` on). -/
 def digTbl (e₀ e₁ : F) : Fin (2 ^ 10) → F := fun u => if u.val < 256 ∧ digBit e₀ e₁ u then 1 else 0
@@ -473,16 +497,56 @@ theorem wEvalC_eq (c : Array K) (r ρ : List K) :
   simp only [eqPtsC_eq]
   rw [weightEval_fold]
 
-/-- **`rsWeight` meets its specification** (`r″` of 7 coordinates). -/
-theorem rsWeight_meets (r : Array F) (ps : List (Array K)) (κ : F) (ρ : Array K) (hr : r.size = 7) :
-    rsWeightI r ps κ ρ = rsWeightS r ps κ ρ := by
+theorem wEvalKC_fold (c : Array K) (β : K) (r ρ : List K) (n : ℕ) :
+    Nat.fold n (fun k _ (p : K × List K × K) =>
+      (p.1 + c.getD k 0 * (eqPtsC (p.2.1.take 7) (ρ.take 7) *
+          KW.kwI (ρ.drop 7).toArray.size p.2.2 (fun l => (p.2.1.drop 7).toArray.getD l 0)
+            (fun l => (ρ.drop 7).toArray.getD l 0)),
+       p.2.1.map fun a => a * a, p.2.2 * p.2.2)) (0, r, β) =
+    (∑ k ∈ range n, c.getD k 0 * (eqPtsC ((r.map (sqIter k)).take 7) (ρ.take 7) *
+        KW.kwI (ρ.drop 7).toArray.size (sqIter k β)
+          (fun l => ((r.map (sqIter k)).drop 7).toArray.getD l 0)
+          (fun l => (ρ.drop 7).toArray.getD l 0)),
+      r.map (sqIter n), sqIter n β) := by
+  induction n with
+  | zero => simp [sqIter]
+  | succ n ih =>
+    rw [Nat.fold_succ, ih, Finset.sum_range_succ, List.map_map]
+    congr 2
+    · exact List.map_congr_left fun a _ => by simp [sqIter_succ']
+    · rw [sqIter_succ']
+
+theorem toArray_getD_list (L : List K) (l : ℕ) : L.toArray.getD l 0 = L.getD l 0 := by
+  simp [Array.getD_eq_getD_getElem?, List.getD_eq_getElem?_getD]
+
+/-- **Claim 2's fold meets `kwSL`** (at least 16 block coordinates). -/
+theorem wEvalKC_eq (c : Array K) (β : K) (r ρ : List K) (hρ : 23 ≤ ρ.length) :
+    wEvalKC c β r ρ = ∑ k ∈ range c.size, c.getD k 0 * kwSL (sqIter k β) (r.map (sqIter k)) ρ := by
+  dsimp only [wEvalKC]
+  rw [wEvalKC_fold]
+  dsimp only
+  refine Finset.sum_congr rfl fun k _ => ?_
+  have hn : (ρ.drop 7).toArray.size = ρ.length - 7 := by simp
+  rw [kwSL, hn, KW.kwI_eq (by omega), eqPtsC_eq]
+  congr 3 <;> funext l <;> simp only [ptOf, toArray_getD_list]
+
+/-- **`rsWeight` meets its specification** (`r″` of 7 coordinates, `ρ` of at least 23: the block
+coordinates cover the node layout's `2^16` blocks). -/
+theorem rsWeight_meets (r : Array F) (ps : List (Array K)) (κ β : F) (ρ : Array K) (hr : r.size = 7)
+    (hρ : 23 ≤ ρ.size) : rsWeightI r ps κ β ρ = rsWeightS r ps κ β ρ := by
   unfold rsWeightI rsWeightS
   refine congrArg List.sum (List.map_congr_left fun p _ => congrArg _ ?_)
-  rw [wEvalC_eq, Array.size_map, phiTable_size, Array.length_toList, hr]
-  refine Finset.sum_congr rfl fun k _ => ?_
-  congr 1
-  simp only [Array.getD_eq_getD_getElem?, Array.getElem?_map]
-  cases (phiTable r.toList)[k]? <;> rfl
+  have hc : ((phiTable r.toList).map K.ofF).size = 128 := by
+    rw [Array.size_map, phiTable_size, Array.length_toList, hr]; norm_num
+  have hg : ∀ k, ((phiTable r.toList).map K.ofF).getD k 0 = K.ofF ((phiTable r.toList).getD k 0) :=
+    fun k => by
+      simp only [Array.getD_eq_getD_getElem?, Array.getElem?_map]
+      cases (phiTable r.toList)[k]? <;> rfl
+  split_ifs
+  · rw [wEvalKC_eq _ _ _ _ (by simpa using hρ), hc]
+    exact Finset.sum_congr rfl fun k _ => by rw [hg]
+  · rw [wEvalC_eq, hc]
+    exact Finset.sum_congr rfl fun k _ => by rw [hg]
 
 theorem digestMle_eq (θ : Array F) (e₀ e₁ : F) :
     digestMle (eqTable (List.ofFn (ptA 10 θ))) e₀ e₁ = mle (digTbl e₀ e₁) (ptA 10 θ) := by

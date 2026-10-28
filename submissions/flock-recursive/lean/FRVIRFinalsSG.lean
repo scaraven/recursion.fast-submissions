@@ -768,7 +768,8 @@ def finPf : FinField := fun fi b =>
    [.keep is32 (P 7) (P 11), .keep is32 (P 8) (P 12), .keep is32 (P 9) (P 13),
     .keep is32 (P 10) (P 14), .keep is32 (P 15) (P 16)] ++
    [.packF ((List.range 7).map fun p => rs1.getD p 0),
-    .rsWeight wb (fun κ => (rsPtIx κ).map P) (rs1.getD 7 0) (sb + 4)] ++
+    .rsWeight wb (fun κ => (rsPtIx κ).map P) (rs1.getD 7 0) ((outsOf fi "L3β").headD 0)
+      Kind.isNode (sb + 4)] ++
    (List.range 23).map (fun v => .getK (sb + 4) v) ++
    (List.range 23).map (fun v => .addK one (wb + 2 + v)) ++
    [.mulF kp kp] ++
@@ -840,20 +841,6 @@ theorem noAsk_finPf (fi : FinIn) (b : ℕ) : (finPf fi b).1.filterMap Op.item? =
 
 section RunPf
 variable (impl : OpImpl) (κ : Kind) (inp : Input)
-
-/-- **Rebase**: running from `r` with `L ++ M` appended is running from `r ++ L` with `M`. -/
-theorem pureRun_rebase (os : List Op) (r : Array Val) (L : List Val) : ∀ M : List Val,
-    pureRun impl κ inp os r (L ++ M) =
-      (pureRun impl κ inp os (r ++ L.toArray) M).map fun p => (L ++ p.1, p.2) := by
-  induction os with
-  | nil => intro M; simp [pureRun]
-  | cons op os ih =>
-    intro M
-    have e : r ++ (L ++ M).toArray = r ++ L.toArray ++ M.toArray := by simp [Array.append_assoc]
-    simp only [pureRun, e]
-    rcases evalOp impl κ inp (r ++ L.toArray ++ M.toArray) op with ⟨vs, ok⟩ | q
-    · simp only [List.append_assoc, ih, Option.map_map]; rfl
-    · rfl
 
 /-- Blocks in sequence: the second runs from the first's registers. -/
 theorem pr_seq {A B : List Op} {R : Array Val} {M M' : List Val} {f : Bool}
@@ -1394,7 +1381,7 @@ def pfRefs (fi : FinIn) : List ℕ :=
   (pfPts fi).flatMap (fun s => s.flatMap PtSrc.regs) ++
     (List.range 8).map (fun p => (coordsR fi "RS1").getD p 0) ++
     [(outsOf fi "B'").headD 0, claimN fi "Pf", (chals fi "Pf" 7).getD 5 0,
-      (chals fi "Pf" 7).getD 6 0] ++ chals fi "Pf" 7 ++
+      (chals fi "Pf" 7).getD 6 0, (outsOf fi "L3β").headD 0] ++ chals fi "Pf" 7 ++
     [1, 2, 3, 4].flatMap (lvRefs fi)
 
 section PfVal
@@ -1412,7 +1399,8 @@ and for a node `Σ_k κ′^(k+2) eq(cell_k, P₀)`. -/
 def w0V : K :=
   let kp := fv r ((outsOf fi "B'").headD 0)
   impl.rsWeight (ptF r ((List.range 7).map fun p => (coordsR fi "RS1").getD p 0))
-      (rsPtsV κ fi r) (fv r ((coordsR fi "RS1").getD 7 0)) (p0V κ fi r) +
+      (rsPtsV κ fi r) (fv r ((coordsR fi "RS1").getD 7 0))
+      (if κ.isNode then fv r ((outsOf fi "L3β").headD 0) else 1) (p0V κ fi r) +
     (if κ.isNode then cellsVal (p0V κ fi r) kp pfCells (kp * kp) 0 else 0)
 
 /-- **`Ŵ₄(P₄)`**: the four level steps from `Ŵ₀(P₀)`. -/
@@ -1484,7 +1472,7 @@ theorem flag_finPf (impl : OpImpl) (κ : Kind) (inp : Input) (fi : FinIn) (r : A
     hin _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _
       (List.mem_append_right _ (List.mem_map.mpr ⟨p, List.mem_range.mpr hp, rfl⟩)))))
   have mC : ∀ x ∈ [(outsOf fi "B'").headD 0, claimN fi "Pf", (chals fi "Pf" 7).getD 5 0,
-      (chals fi "Pf" 7).getD 6 0], x < r.size :=
+      (chals fi "Pf" 7).getD 6 0, (outsOf fi "L3β").headD 0], x < r.size :=
     fun x hx =>
     hin x (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ hx)))
   have mD : ∀ x ∈ chals fi "Pf" 7, x < r.size := fun x hx =>
@@ -1586,7 +1574,8 @@ theorem flag_finPf (impl : OpImpl) (κ : Kind) (inp : Input) (fi : FinIn) (r : A
     rw [e23.rd (hPv j (hix j hj)).2, (hPv j (hix j hj)).1]; rfl
   set kpv := fv r kp
   set rsW := impl.rsWeight (ptF r ((List.range 7).map fun p => (coordsR fi "RS1").getD p 0))
-      (rsPtsV κ fi r) (fv r ((coordsR fi "RS1").getD 7 0)) (p0V κ fi r)
+      (rsPtsV κ fi r) (fv r ((coordsR fi "RS1").getD 7 0))
+      (if κ.isNode then fv r ((outsOf fi "L3β").headD 0) else 1) (p0V κ fi r)
   set V4 : List Val := [.af (ptF r ((List.range 7).map fun p => (coordsR fi "RS1").getD p 0)),
     .k rsW]
   have hrpp : ∀ x ∈ (List.range 7).map (fun p => (coordsR fi "RS1").getD p 0), x < r.size := by
@@ -1594,7 +1583,8 @@ theorem flag_finPf (impl : OpImpl) (κ : Kind) (inp : Input) (fi : FinIn) (r : A
   have hB4 : pureRun impl κ inp
       [.packF ((List.range 7).map fun p => (coordsR fi "RS1").getD p 0),
        .rsWeight (b + 3 + pw + 5) (fun κ => (rsPtIx κ).map (ptsOut (pfPts fi) (b + 3)))
-         ((coordsR fi "RS1").getD 7 0) (b + 3 + pw + 4)] R3 [] =
+         ((coordsR fi "RS1").getD 7 0) ((outsOf fi "L3β").headD 0) Kind.isNode
+         (b + 3 + pw + 4)] R3 [] =
       some (V4, true) := by
     have hP4 : b + 3 + pw + 4 < R3.size := by rw [sR3]; omega
     have hPr : ∀ j ∈ rsPtIx κ, ptsOut (pfPts fi) (b + 3) j < R3.size := fun j hj =>
@@ -1608,7 +1598,7 @@ theorem flag_finPf (impl : OpImpl) (κ : Kind) (inp : Input) (fi : FinIn) (r : A
     rw [← sR3]
     simp only [pureRun, evalOp, List.nil_append, List.cons_append, rd_app, rd_app0,
       rd_app_left _ _ hP4, r3P, List.map_map, Function.comp_def, hptsL,
-      rr _ (mB 7 (by omega)),
+      rr _ (mB 7 (by omega)), rr ((outsOf fi "L3β").headD 0) (mC _ (by simp)),
       List.getD_cons_succ, List.getD_cons_zero, Option.map_some, Bool.and_true,
       Array.append_empty, hrpp']
     rfl
@@ -1701,7 +1691,7 @@ theorem flag_finPf (impl : OpImpl) (κ : Kind) (inp : Input) (fi : FinIn) (r : A
       rd_app_left _ _ (show b + 3 + pw + 5 + 1 < R8.size by omega),
       rd_app_left _ _ (show b + 2 < R8.size by omega), rd_app_left _ _ hca, r8w, r8z, hv8,
       List.getD_cons_succ, List.getD_cons_zero, Option.map_some, Bool.and_true]
-    simp only [V9, w0V, cv, toK_k]
+    simp only [V9, w0V, cv, toK_k, rsW]
     cases κ.isNode <;> rfl
   set R9 := R8 ++ V9.toArray with hR9
   have sR9 : R9.size = b + 3 + pw + 5 + 48 + 1 + 26 * 9 + 2 := by simp [R9, sR8, V9]

@@ -358,6 +358,66 @@ theorem mleEval_weightTable [CharP R 2] {ℓ : ℕ} (fs r r'' : List R) (hr : r.
   simp only [ptOf, List.getD_eq_getElem?_getD, List.getElem?_map]
   cases r[l.val]? <;> simp [sqIter_eq]
 
+/-! ## Revision 3.16 (R-V-M1): the kind-weighted claim's weight
+
+RS claim 2 (Lc, node) has the outer weight `g(y) = eq(p, y)·B_β(t(y))`, `t(y)` the block bits of
+`y` and `B_β = Σ_κ β^κ Ind_κ` (§2.3 step 3's `W_β`). `rsWeight_kind_eq` is A.8's Φ form of its
+extension: `Φ` is `F₂`-linear, `eq(p, u)^(2^k) = eq(p^(2^k), u)` on the cube and, for 0/1
+indicators, `B_β^(2^k) = Σ_κ β^(κ·2^k) Ind_κ` in characteristic two. -/
+
+/-- The high `b` bits of an index of `Fin (2 ^ (a + b))` (`join`'s second argument). -/
+def hiIdx {a b : ℕ} (y : Fin (2 ^ (a + b))) : Fin (2 ^ b) :=
+  ⟨y.val / 2 ^ a, Nat.div_lt_of_lt_mul (by rw [← pow_add]; exact y.isLt)⟩
+
+theorem hiIdx_join {a b : ℕ} (u₁ : Fin (2 ^ a)) (u₂ : Fin (2 ^ b)) : hiIdx (join u₁ u₂) = u₂ := by
+  ext
+  simp only [hiIdx, join]
+  rw [Nat.mul_add_div (by positivity), Nat.div_eq_of_lt u₁.isLt, add_zero]
+
+/-- **The kind factor** `B_β(t) = Σ_κ β^κ Ind_κ(t)` (§2.3 step 3). -/
+def kindFac {b n : ℕ} (Ind : Fin n → Fin (2 ^ b) → R) (β : R) (t : Fin (2 ^ b)) : R :=
+  ∑ κ, β ^ κ.val * Ind κ t
+
+theorem kindFac_frob [CharP R 2] {b n : ℕ} (Ind : Fin n → Fin (2 ^ b) → R)
+    (hInd : ∀ κ t, Ind κ t = 0 ∨ Ind κ t = 1) (β : R) (t : Fin (2 ^ b)) (k : ℕ) :
+    kindFac Ind β t ^ 2 ^ k = ∑ κ, β ^ (κ.val * 2 ^ k) * Ind κ t := by
+  have : Fact (Nat.Prime 2) := ⟨Nat.prime_two⟩
+  rw [kindFac, sum_pow_char_pow]
+  refine Finset.sum_congr rfl fun κ _ ↦ ?_
+  rw [mul_pow, ← pow_mul]
+  rcases hInd κ t with h | h <;> rw [h]
+  · rw [zero_pow (pow_ne_zero _ two_ne_zero)]
+  · rw [one_pow]
+
+/-- **`rsWeight_kind_eq`** (revision 3.16, R-V-M1 (a)): the extension at `ρ = (ρ₁, ρ₂)` of the
+weight table `y ↦ Φ(eq(p, y)·B_β(t(y)))`, `p = (p₁, p₂)` (`p₂`, `ρ₂`: the block coordinates), is
+A.8's pattern-interval sum `Σ_k c_k Σ_κ β^(κ·2^k) eq(p₁^(2^k), ρ₁) Σ_{t ∈ I_κ} eq(p₂^(2^k), t)
+eq(ρ₂, t)`, for any 0/1 indicators `Ind_κ` (disjointness is not needed). -/
+theorem rsWeight_kind_eq [CharP R 2] {a b n : ℕ} (fs : List R) (Ind : Fin n → Fin (2 ^ b) → R)
+    (hInd : ∀ κ t, Ind κ t = 0 ∨ Ind κ t = 1) (β : R) (p₁ ρ₁ : Fin a → R) (p₂ ρ₂ : Fin b → R) :
+    mle (fun y ↦ Phi fs (eq (Fin.append p₁ p₂) (cube y) * kindFac Ind β (hiIdx y)))
+        (Fin.append ρ₁ ρ₂) =
+      ∑ k ∈ range (2 ^ fs.length), (phiTable fs).getD k 0 * ∑ κ, β ^ (κ.val * 2 ^ k) *
+        eq (fun l ↦ p₁ l ^ 2 ^ k) ρ₁ *
+          ∑ t, Ind κ t * eq (fun l ↦ p₂ l ^ 2 ^ k) (cube t) * eq ρ₂ (cube t) := by
+  have hE : ∀ k : ℕ, eq (fun l ↦ p₁ l ^ 2 ^ k) ρ₁ =
+      ∑ u₁ : Fin (2 ^ a), eq ρ₁ (cube u₁) * eq (fun l ↦ p₁ l ^ 2 ^ k) (cube u₁) := fun k ↦ by
+    rw [← eq_mle (fun l ↦ p₁ l ^ 2 ^ k) ρ₁]
+    exact Finset.sum_congr rfl fun u _ ↦ by rw [eq_swap (cube u) ρ₁]; ring
+  rw [mle_split]
+  simp only [eq_append_join, hiIdx_join, mle, Phi_eq_table, mul_pow, eq_frob,
+    kindFac_frob Ind hInd]
+  conv_rhs => simp only [hE, Finset.mul_sum, Finset.sum_mul]
+  simp only [Finset.mul_sum]
+  refine (Finset.sum_congr rfl fun u₁ _ ↦ Finset.sum_comm.trans
+    (Finset.sum_congr rfl fun k _ ↦ Finset.sum_comm)).trans ?_
+  rw [Finset.sum_comm]
+  refine Finset.sum_congr rfl fun k _ ↦ ?_
+  rw [Finset.sum_comm]
+  refine Finset.sum_congr rfl fun κ _ ↦ ?_
+  rw [Finset.sum_comm]
+  exact Finset.sum_congr rfl fun u₂ _ ↦ Finset.sum_congr rfl fun u₁ _ ↦ by ring
+
 /-! ## L-R3: completeness, and the error of the switched claim -/
 
 section Switch

@@ -434,7 +434,10 @@ def opOut (P : Params) (cs : CS) : Op → Out
       let x := asBit (cs.slot a); let y := asBit (cs.slot b); let z := asBit (cs.slot c)
       { slots := [], rows := [⟨x, y, []⟩, ⟨x, z, []⟩, ⟨y, z, []⟩, ⟨P.one, x ++ y ++ z, P.one⟩] }
     else { slots := [], foreign := true }
-  | .assertBit .. | .accept => { slots := [] }
+  -- INT-5 (revision 3.16, R-V-m1): `assertBit` now clears `ok` on a non-bit; it is not
+  -- arithmetised (no `gen` emits it), so it is foreign.
+  | .assertBit .. => { slots := [], foreign := true }
+  | .accept => { slots := [] }
   | .piField .. | .mkAbsorb _ | .idx .. | .shrN .. => skip 1
   | _ => { slots := [none], foreign := true }
 

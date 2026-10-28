@@ -76,6 +76,12 @@ def isZero : Val → Bool
   | ak x => x.all fun y => decide (y = 0)
   | ad x => x.all fun y => decide (y = zeroD)
 
+/-- Bit test (`assertBit`, revision 3.16, R-V-m1): a `bit`, or the F value `0` or `1`. -/
+def isBit : Val → Bool
+  | bit _ => true
+  | f x => decide (x = 0) || decide (x = 1)
+  | _ => false
+
 /-- Equality test (`assertEq`): same kind and equal. -/
 def eqv : Val → Val → Bool
   | f x, f y => decide (x = y)
@@ -155,10 +161,14 @@ inductive Op where
   `L_{lo(i)}(λ) · eq(ρ₁, bit 6 of i)` (A.8, revision 3.9: bit 6's coordinate is `ρ₁`). -/
   | eqZ (lam rho1 : Reg)
   | tensorW (j r : Reg)
-  /-- K: `Ŵ(ρ) = Σ_j κ^j Σ_{k<128} c_k(r″) eq(r_j^{2^k}, ρ)` (`weightEval`) at the claims' outer
-  points `pts` (AK registers; a leaf passes 3), `κ` (F) and the final point `ρ` (AK); revision
-  3.9, replaces `mbp`. -/
-  | rsWeight (r : Reg) (pts : KC (List Reg)) (kappa rho : Reg)
+  /-- K: `Ŵ(ρ) = Σ_j κ^j Ŵ_j(ρ)` at the claims' outer points `pts` (AK registers; a leaf passes 3),
+  `κ` (F), `β` (F; `1` where `act` fails) and the final point `ρ` (AK); `Ŵ_j(ρ) = Σ_{k<128}
+  c_k(r″) eq(r_j^{2^k}, ρ)` (`weightEval`) except claim 2 (Lc, index 1), whose block factor is
+  `B_β^(2^k)` over the node layout's kinds (revision 3.16, R-V-M1: `Σ_k c_k eq(p_hi^(2^k), ρ_hi)
+  Σ_i β^(i 2^k) Σ_{t ∈ I_i} eq(p_blk^(2^k), t) eq(ρ_blk, t)`). `gen` gates `β` by `isNode`: a
+  leaf's `β = 1` makes the factor `1` (`KW.kwS_one`). Revision 3.9, replaces `mbp`; revision 3.16
+  adds `β`. -/
+  | rsWeight (r : Reg) (pts : KC (List Reg)) (kappa beta : Reg) (act : KC Bool) (rho : Reg)
   /-- F: `Φ_{r″}(a)`, the staged Frobenius map (`FRRingSwitch.Phi`; revision 3.9). -/
   | phiRS (r a : Reg)
   /-- F × F: `(Â₀, B̂₀)` by one circuit walk at the (masked) row weights and the column weights
@@ -178,7 +188,8 @@ inductive Op where
   | shiftTarget (tau theta bnd ks : Reg)
   /-- F: the slot weight of slot map `s` at `θ`, `r`. -/
   | slotW (s : ℕ) (theta r : Reg)
-  /-- F: `Ŵ_β(ρ)`. -/
+  /-- F: `Ŵ_β(ρ)`. **Withdrawn** (revision 3.16): the kind factor is `rsWeight`'s claim-2 weight;
+  no `gen` emits this op, and `implC` gives `0`. -/
   | kindFoldWeight (r beta rho : Reg)
   /-- F: `eq(a, b) = Π_v (a_v b_v + (1 − a_v)(1 − b_v))` of two F points. In the circuit an
   import (revision 3.6: no rows; its value is a hypothesis discharged in `final`). -/
@@ -224,9 +235,10 @@ structure OpImpl where
   eqZ : F → F → Array F
   /-- `Π_v (1 − r_v + r_v Ŵ_v(D[j]))` (FRRS). -/
   tensorW : ℕ → Array K → K
-  /-- `Ŵ(ρ) = Σ_j κ^j Σ_{k<128} c_k(r″) eq(r_j^{2^k}, ρ)` (`r″`, the claims' outer points, `κ`,
-  the final point; `weightEval`, L-R4; FRRingSwitch). -/
-  rsWeight : Array F → List (Array K) → F → Array K → K
+  /-- `Ŵ(ρ) = Σ_j κ^j Ŵ_j(ρ)` (`r″`, the claims' outer points, `κ`, `β`, the final point;
+  `weightEval`, L-R4; claim 2 with the kind factor `B_β`, revision 3.16; FRRingSwitch,
+  FRKindWeight). -/
+  rsWeight : Array F → List (Array K) → F → F → Array K → K
   /-- `Φ_{r″}(a)` (FRRingSwitch). -/
   phiRS : Array F → F → F
   /-- `Â₀`, `B̂₀` by the circuit walk at the (masked) row weights and the column weights
@@ -271,7 +283,8 @@ def OpImpl.Meets (impl : OpImpl) (spec : OpSpec) : Prop :=
   (∀ v l pe, v.size = 127 → impl.lagrangeS v l pe = spec.lagrangeS v l pe) ∧
   (∀ κ r, impl.targetS κ r = spec.targetS κ r) ∧ (∀ a b, impl.eqZ a b = spec.eqZ a b) ∧
   (∀ j r, impl.tensorW j r = spec.tensorW j r) ∧
-  (∀ r ps k p, r.size = 7 → impl.rsWeight r ps k p = spec.rsWeight r ps k p) ∧
+  (∀ r ps k β p, r.size = 7 → 23 ≤ p.size →
+    impl.rsWeight r ps k β p = spec.rsWeight r ps k β p) ∧
   (∀ r a, r.size = 7 → impl.phiRS r a = spec.phiRS r a) ∧
   (∀ rw cw, rw.size = 2 ^ 14 → cw.size = 2 ^ 14 → impl.walkAB rw cw = spec.walkAB rw cw) ∧
   (∀ a b, impl.evalM a b = spec.evalM a b) ∧ (∀ a b, impl.evalL a b = spec.evalL a b) ∧
@@ -535,9 +548,9 @@ def evalOp (impl : OpImpl) (κ : Kind) (inp : Input) (regs : Array Val) : Op →
   | .targetS r => .vals [.af (impl.targetS κ (rd regs r).toAF)] true
   | .eqZ l r₁ => .vals [.af (impl.eqZ (rd regs l).toF (rd regs r₁).toF)] true
   | .tensorW j r => .vals [.k (impl.tensorW (rd regs j).toN (rd regs r).toAK)] true
-  | .rsWeight r ps κ' ρ =>
+  | .rsWeight r ps κ' β act ρ =>
     .vals [.k (impl.rsWeight (rd regs r).toAF ((ps κ).map fun p => (rd regs p).toAK) (rd regs κ').toF
-      (rd regs ρ).toAK)] true
+      (if act κ then (rd regs β).toF else 1) (rd regs ρ).toAK)] true
   | .phiRS r a => .vals [.f (impl.phiRS (rd regs r).toAF (rd regs a).toF)] true
   | .walkAB r c =>
     let x := impl.walkAB (rd regs r).toAF (rd regs c).toAF
@@ -574,7 +587,7 @@ def evalOp (impl : OpImpl) (κ : Kind) (inp : Input) (regs : Array Val) : Op →
     let b := byteAt inp.π 0
     .vals [.bit (b == Kind.L32.byte), .bit (b == Kind.P30.byte), .bit (b == Kind.N30.byte)] true
   | .assertEq a b act => .vals [] (!act κ || (rd regs a).eqv (rd regs b))
-  | .assertBit _ _ => .vals [] true
+  | .assertBit a act => .vals [] (!act κ || (rd regs a).isBit)
   | .assertZero a act => .vals [] (!act κ || (rd regs a).isZero)
   | .assertOneHot a b c =>
     .vals [] ([(rd regs a).toBit, (rd regs b).toBit, (rd regs c).toBit].count true == 1)
@@ -934,14 +947,48 @@ theorem bytesAt_neg : digestAt qCtl 8 ≠ bytesAt qCtl 9 32 := by rw [← digest
 /-- Kind weights with `c₀ = 2^i`: a sum of them names its set of kinds. -/
 def kwCtl : Array F := Array.ofFn (n := 9) fun i => ⟨⟨(2 ^ i.val : ℕ).toUInt64⟩, ⟨0⟩⟩
 
-/-- (+) Row 0 is pinned by `chain`, `streamStart`, `hashA`, `hashB1`, `w43`: its mask is the other
-four kinds' weights; past `pinEnd` it is all nine. -/
-theorem maskOf_pos : maskOf kwCtl 0 = ⟨⟨2 + 8 + 64 + 256⟩, ⟨0⟩⟩ ∧
+/-- (−) **`free` in the walk** (the 3.15 node vector put `v_free` at index 8, R-V-M2): with weights
+`2^i`, row 0 is pinned by `chain`, `streamStart`, `hashA`, `hashB1`, `w43`, so its mask is the other
+four kinds' weights, `free`'s 256 included; past `pinEnd` it is all nine. -/
+theorem maskOf_free_old : maskOf kwCtl 0 = ⟨⟨2 + 8 + 64 + 256⟩, ⟨0⟩⟩ ∧
     maskOf kwCtl (pinEnd + 1) = ⟨⟨511⟩, ⟨0⟩⟩ := by
   decide +kernel
+
+/-- **The node's kind weights for the walk** (`finLc` (ii), revision 3.16, R-V-M2): `0` at `chain`,
+`v_0 … v_6` at `stream … w43`, and `0` at `free` (`free`'s term is the closed form
+`(1 + α)·v_free·⟨rowW, eq(r_k, ·)⟩`, not the walk: `A₀^free = I`). -/
+def nodeKindW (v : List F) : List F := 0 :: (v.take 7 ++ [0])
+
+/-- The control's claims `v_i = 2^(i+1)`. -/
+def kwV : List F := List.ofFn (n := 8) fun i => ⟨⟨(2 ^ (i.val + 1) : ℕ).toUInt64⟩, ⟨0⟩⟩
+
+/-- (+) **`free` has mask weight 0** (revision 3.16): with the node vector `nodeKindW`, row 0's mask
+is `stream`, `streamEnd41`, `hashB2` only, and past `pinEnd` it is every kind but `free`. -/
+theorem maskOf_pos : maskOf (nodeKindW kwV).toArray 0 = ⟨⟨2 + 8 + 64⟩, ⟨0⟩⟩ ∧
+    maskOf (nodeKindW kwV).toArray (pinEnd + 1) = ⟨⟨254⟩, ⟨0⟩⟩ := by
+  decide +kernel
+
+/-- (+) **`assertBit`** (revision 3.16, R-V-m1): the F values `0`, `1` and bits pass. -/
+theorem isBit_pos : Val.isBit (.f 0) = true ∧ Val.isBit (.f 1) = true ∧ Val.isBit (.bit false) = true :=
+  by decide +kernel
+
+/-- (−) … the F value `x` (`2`), a digest and a number do not. -/
+theorem isBit_neg : Val.isBit (.f ⟨⟨2⟩, ⟨0⟩⟩) = false ∧ Val.isBit (.d zeroD) = false ∧
+    Val.isBit (.n 1) = false := by decide +kernel
 
 /-- (−) Row 1100 (in `[1024, 1152]`, pinned by every kind but `free`) does not take the shared value:
 `pinEnd` cannot be lowered. -/
 theorem maskOf_neg : maskOf kwCtl 1100 ≠ maskOf kwCtl (pinEnd + 1) := by decide +kernel
+
+/-- (−) **`assertBit` rejects a non-bit** (revision 3.16, R-V-m1; before, it was a no-op): the
+F value `2` clears `ok` where the op is active. -/
+theorem assertBit_rejects (impl : OpImpl) (κ : Kind) (inp : Input) :
+    evalOp impl κ inp #[.f ⟨⟨2⟩, ⟨0⟩⟩] (.assertBit 0 allK) = .vals [] false := rfl
+
+/-- (+) … accepts a bit, and is inactive where `act` fails. -/
+theorem assertBit_accepts (impl : OpImpl) (κ : Kind) (inp : Input) :
+    evalOp impl κ inp #[.f 1] (.assertBit 0 allK) = .vals [] true ∧
+      evalOp impl κ inp #[.f ⟨⟨2⟩, ⟨0⟩⟩] (.assertBit 0 fun _ => false) = .vals [] true :=
+  ⟨rfl, rfl⟩
 
 end FR

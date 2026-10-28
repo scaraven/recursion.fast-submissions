@@ -59,6 +59,141 @@ theorem exec_field (impl : OpImpl) (κ : Kind) (inp : Input) (o₁ ops : List Op
     exec impl κ inp (o₁ ++ ops) ⟨r, ok⟩ tr = exec impl κ inp ops ⟨r ++ L.toArray, ok && f⟩ tr := by
   simpa using exec_pureRun impl κ inp o₁ ops r [] L f ok tr h
 
+/-! ## The run kit (moved here from `FRVIRFinalsSF`/`FRVIRFinalsSG` by INT-5 for `finLc`) -/
+
+section Kit
+variable (impl : OpImpl) (κ : Kind) (inp : Input) (r : Array Val)
+
+theorem pureRun_append (o₁ o₂ : List Op) (L : List Val) :
+    pureRun impl κ inp (o₁ ++ o₂) r L = (pureRun impl κ inp o₁ r L).bind fun p =>
+      (pureRun impl κ inp o₂ r p.1).map fun q => (q.1, p.2 && q.2) := by
+  induction o₁ generalizing L with
+  | nil => simp only [List.nil_append, pureRun, Option.bind_some, Bool.true_and]; simp
+  | cons op o ih =>
+    simp only [List.cons_append, pureRun]
+    split
+    · rw [ih]
+      cases pureRun impl κ inp o r _ with
+      | none => rfl
+      | some p => simp [Option.map_map, Function.comp_def, Bool.and_assoc]
+    · rfl
+
+end Kit
+
+section Rebase
+variable (impl : OpImpl) (κ : Kind) (inp : Input)
+
+/-- **Rebase**: running from `r` with `L ++ M` appended is running from `r ++ L` with `M`. -/
+theorem pureRun_rebase (os : List Op) (r : Array Val) (L : List Val) : ∀ M : List Val,
+    pureRun impl κ inp os r (L ++ M) =
+      (pureRun impl κ inp os (r ++ L.toArray) M).map fun p => (L ++ p.1, p.2) := by
+  induction os with
+  | nil => intro M; simp [pureRun]
+  | cons op os ih =>
+    intro M
+    have e : r ++ (L ++ M).toArray = r ++ L.toArray ++ M.toArray := by simp [Array.append_assoc]
+    simp only [pureRun, e]
+    rcases evalOp impl κ inp (r ++ L.toArray ++ M.toArray) op with ⟨vs, ok⟩ | q
+    · simp only [List.append_assoc, ih, Option.map_map]; rfl
+    · rfl
+
+/-- Two blocks from base registers: the second runs from the first's registers. -/
+theorem pureRun_seq {A B : List Op} {R : Array Val} {M M' : List Val} {f g : Bool}
+    (hA : pureRun impl κ inp A R [] = some (M, f))
+    (hB : pureRun impl κ inp B (R ++ M.toArray) [] = some (M', g)) :
+    pureRun impl κ inp (A ++ B) R [] = some (M ++ M', f && g) := by
+  rw [pureRun_append, hA, Option.bind_some]
+  have := pureRun_rebase impl κ inp B R M []
+  simp only [List.append_nil] at this
+  rw [this, hB]; rfl
+
+end Rebase
+
+/-! ## The 64-term sum of `finLc` (ii)'s `free` term (revision 3.16, R-V-M2) -/
+
+/-- `a0 + Σ_{s<n} X[s]·Y[s]`, summed in order (`dotOps`' running sum). -/
+def dotAcc (a0 : F) (X Y : Array F) : ℕ → F
+  | 0 => a0
+  | n + 1 => dotAcc a0 X Y n + X.getD n 0 * Y.getD n 0
+
+/-- **`Σ_{s<n} X[s]·Y[s]`** (`X`, `Y` the arrays of registers `x`, `y`; the sum starts at register
+`z`'s value): per term `X[s]`, `Y[s]`, their product and the running sum, four ops from register
+`c + 4s`; the sum ends at `c + 4n − 1`. -/
+def dotOps (x y z c : ℕ) : ℕ → List Op
+  | 0 => []
+  | n + 1 => dotOps x y z c n ++
+      [.getF x n, .getF y n, .mulF (c + 4 * n) (c + 4 * n + 1),
+       .addF (if n = 0 then z else c + 4 * n - 1) (c + 4 * n + 2)]
+
+/-- The values `dotOps` appends. -/
+def dotVals (a0 : F) (X Y : Array F) : ℕ → List Val
+  | 0 => []
+  | n + 1 => dotVals a0 X Y n ++ [.f (X.getD n 0), .f (Y.getD n 0), .f (X.getD n 0 * Y.getD n 0),
+      .f (dotAcc a0 X Y (n + 1))]
+
+theorem dotVals_length (a0 : F) (X Y : Array F) (n : ℕ) : (dotVals a0 X Y n).length = 4 * n := by
+  induction n with
+  | zero => rfl
+  | succ n ih => simp only [dotVals, List.length_append, ih, List.length_cons, List.length_nil]; ring
+
+theorem dotVals_last (a0 : F) (X Y : Array F) (n : ℕ) :
+    (dotVals a0 X Y (n + 1)).getD (4 * n + 3) default = .f (dotAcc a0 X Y (n + 1)) := by
+  rw [dotVals, List.getD_eq_getElem?_getD,
+    List.getElem?_append_right (by rw [dotVals_length]; omega), dotVals_length]
+  simp
+
+theorem rd_len (R : Array Val) (L M : List Val) (t : ℕ) :
+    rd (R ++ (L ++ M).toArray) (R.size + L.length + t) = M.getD t default := by
+  rw [Nat.add_assoc, rd_app]; simp [List.getElem?_append_right]
+
+theorem pureRun_cons_val {impl : OpImpl} {κ : Kind} {inp : Input} {R : Array Val} {op : Op}
+    {ops : List Op} {L : List Val} {v : Val}
+    (h : evalOp impl κ inp (R ++ L.toArray) op = .vals [v] true) :
+    pureRun impl κ inp (op :: ops) R L = pureRun impl κ inp ops R (L ++ [v]) := by
+  simp only [pureRun, h, Bool.true_and]; cases pureRun impl κ inp ops R (L ++ [v]) <;> rfl
+
+/-- **`dotOps` runs to its sum**: from base registers `R` (holding `x`, `y`, `z`), the appended
+values are `dotVals`, the last the sum `dotAcc`. -/
+theorem run_dotOps (impl : OpImpl) (κ : Kind) (inp : Input) (R : Array Val) (x y z : ℕ)
+    (hx : x < R.size) (hy : y < R.size) (hz : z < R.size) : ∀ n,
+    pureRun impl κ inp (dotOps x y z R.size n) R [] =
+      some (dotVals (rd R z).toF (rd R x).toAF (rd R y).toAF n, true)
+  | 0 => rfl
+  | n + 1 => by
+    rw [dotOps, pureRun_append, run_dotOps impl κ inp R x y z hx hy hz n, Option.bind_some]
+    set X := (rd R x).toAF
+    set Y := (rd R y).toAF
+    set D := dotVals (rd R z).toF X Y n with hDdef
+    have hD : D.length = 4 * n := dotVals_length _ _ _ n
+    have r0 : ∀ (M : List Val) (t : ℕ), rd (R ++ (D ++ M).toArray) (R.size + 4 * n + t) =
+        M.getD t default := fun M t ↦ by rw [← hD]; exact rd_len R D M t
+    have hacc : ∀ (M : List Val), (rd (R ++ (D ++ M).toArray)
+        (if n = 0 then z else R.size + 4 * n - 1)).toF = dotAcc (rd R z).toF X Y n := by
+      intro M
+      rcases n with _ | k
+      · rw [if_pos rfl, rd_app_left R _ hz]; rfl
+      · rw [if_neg (by omega), show R.size + 4 * (k + 1) - 1 = R.size + (4 * k + 3) by omega,
+          rd_app, List.getD_eq_getElem?_getD,
+          List.getElem?_append_left (by rw [hD]; omega), ← List.getD_eq_getElem?_getD,
+          hDdef, dotVals_last]; rfl
+    have r00 : ∀ M : List Val, rd (R ++ (D ++ M).toArray) (R.size + 4 * n) = M.getD 0 default :=
+      fun M ↦ by simpa using r0 M 0
+    have hxL : ∀ M : List Val, rd (R ++ (D ++ M).toArray) x = rd R x := fun M ↦
+      rd_app_left R _ hx
+    have hyL : ∀ M : List Val, rd (R ++ (D ++ M).toArray) y = rd R y := fun M ↦
+      rd_app_left R _ hy
+    rw [pureRun_cons_val (v := .f (X.getD n 0)) (by
+          rw [show D = D ++ [] by simp]; simp only [evalOp, hxL]; rfl),
+      pureRun_cons_val (v := .f (Y.getD n 0)) (by simp only [evalOp, hyL]; rfl),
+      pureRun_cons_val (v := .f (X.getD n 0 * Y.getD n 0)) (by
+          simp only [evalOp, List.append_assoc, List.singleton_append, List.cons_append, r0, r00]
+          rfl),
+      pureRun_cons_val (v := .f (dotAcc (rd R z).toF X Y (n + 1))) (by
+          simp only [evalOp, List.append_assoc, List.singleton_append, List.cons_append, r0, hacc]
+          rfl)]
+    simp [pureRun, dotVals, hDdef]
+
+
 /-! ## The typed `Finals` (A.9) -/
 
 /-- What a final field sees. -/
@@ -153,26 +288,49 @@ def finZ : FinField := fun fi b =>
 def hornerOps (beta b : ℕ) : List Op := (List.range 7).flatMap fun i =>
   [.mulF beta (if i = 0 then b + 13 else b + (22 + 2 * i)), .addF (b + (12 - i)) (b + (23 + 2 * i))]
 
-/-- **`finLc`** (A.9, revision 3.8.2): (i) `c₀ = â + α b̂`; (ii) `c_Lc = Â(rowW′, eq(r_k,·)) + α
-B̂(rowW′, eq(r_k,·))` with `rowW′ = maskRows v rowW` (9 entries in `blockKinds` order: the leaf's
-`v₀` at `chain`, a node's 8 `v` at the other kinds, `free` included); (iii) `Σ_{i<8} β^i v_i = α₂`
-(RS claim 2). Exports `v_β`. -/
-def finLc : FinField := fun fi b =>
+/-- `dotOps` asks nothing. -/
+theorem dotOps_noAsk (x y z c n : ℕ) : (dotOps x y z c n).filterMap Op.item? = [] := by
+  induction n with
+  | zero => rfl
+  | succ n ih => simp [dotOps, List.filterMap_append, ih, Op.item?]
+
+/-- `finLc`'s registers `b … b + 40` (A.9, revisions 3.8.2, 3.16): (i) `c₀ = â + α b̂`; the walk
+`Â(rowW′, eq(r_k,·)) + α B̂(rowW′, eq(r_k,·))` (at `b + 22`) with `rowW′ = maskRows w rowW`, `w` in
+`blockKinds` order: a leaf's `v₀` at `chain`; a node's `v₀ … v₆` at `stream … w43` and **`0` at
+`free`** (R-V-M2: `nodeKindW`); `v_β = Σ_{i<8} β^i v_i` (`b + 36`) and (iii) `v_β = α₂` (RS claim
+2); then the `free` term's inputs: `v_free` (`b + 37`: a node's `v₇`, a leaf's `0`), `L_s(λ)` for
+`s < 64` (`eqZ λ 0`, `b + 38`) and `eq(r_k[0..5], ·)` (`b + 40`). -/
+def lcHead (fi : FinIn) (b : ℕ) : List Op :=
   let α := (outsOf fi "L1").headD 0; let β := (outsOf fi "L3β").headD 0
   let oL3 := phaseOff (phaseIx "L3") fL2
   let v := (List.range 8).map fun i => b + (6 + i)
-  ([.piElem fZend 0, .piElem fZend 16, .mulF α (b + 1), .addF b (b + 2),
+  [.piElem fZend 0, .piElem fZend 16, .mulF α (b + 1), .addF b (b + 2),
     .assertEq (b + 3) (claim0 fi "L2") allK,
     .packFK (fun _ => (chals fi "Z3" 26).take 8), .rowW ((outsOf fi "Z2").headD 0) (b + 4)] ++
    (List.range 8).map (fun i => .piElem fL2 (oL3 + 16 * i)) ++
    [.const (fun _ => .f 0),
-    .packFK (fun κ => if κ.isNode then (b + 14) :: v else (b + 6) :: List.replicate 8 (b + 14)),
+    .packFK (fun κ => if κ.isNode then (b + 14) :: (v.take 7 ++ [b + 14])
+      else (b + 6) :: List.replicate 8 (b + 14)),
     .maskRows (b + 15) (b + 5), .packF (chals fi "L2" 14), .eqTable (b + 17),
-    .walkAB (b + 16) (b + 18), .mulF α (b + 20), .addF (b + 19) (b + 21),
-    .assertEq (b + 22) (claimN fi "L2") allK] ++
+    .walkAB (b + 16) (b + 18), .mulF α (b + 20), .addF (b + 19) (b + 21)] ++
    hornerOps β b ++
-   [.assertEq (b + 36) (fi.zhat.getD 1 0) allK],
-   [b + 36])
+   [.assertEq (b + 36) (fi.zhat.getD 1 0) allK,
+    .keep Kind.isNode (b + 13) (b + 14), .eqZ ((outsOf fi "Z2").headD 0) (b + 14),
+    .packF ((chals fi "L2" 14).take 6), .eqTable (b + 39)]
+
+/-- `finLc`'s last ops, own registers from `d` (`= b + 297`; the 64-term sum `Σ_s L_s(λ)
+eq(r_k[0..5], s)` is at `b + 296`): `eq(r′_hi, r_k[6..13])`, `X = sum · eq`, `Y = v_free·X`, the
+check (ii) `c_Lc = walk + Y + α Y` (R-V-M2: `(1 + α)·v_free·⟨rowW, eq(r_k,·)⟩`, `linM_free_mle`). -/
+def lcTail (fi : FinIn) (b d : ℕ) : List Op :=
+  let α := (outsOf fi "L1").headD 0
+  [.packF ((chals fi "L2" 14).drop 6), .eqPt (b + 4) d, .mulF (b + 296) (d + 1),
+   .mulF (b + 37) (d + 2), .mulF α (d + 3), .addF (d + 3) (d + 4), .addF (b + 22) (d + 5),
+   .assertEq (d + 6) (claimN fi "L2") allK]
+
+/-- **`finLc`** (A.9, revision 3.16): `lcHead`, the 64-term sum (`dotOps`, registers
+`b + 41 … b + 296`), `lcTail` (registers `b + 297 … b + 303`). Exports `v_β`. -/
+def finLc : FinField := fun fi b =>
+  (lcHead fi b ++ dotOps (b + 38) (b + 40) (b + 14) (b + 41) 64 ++ lcTail fi b (b + 297), [b + 36])
 
 /-- The link families of the Sh phase (A.6, revision 3.5: at most 8). -/
 def nLinkFam : ℕ := 8
@@ -337,21 +495,64 @@ theorem finZ_accepts (hin : ∀ x ∈ coordsR fi "Z1" ++ chals fi "Z3" 26 ++
   obtain ⟨L, hL⟩ := flag_finZ impl κ inp fi r hin
   exact ⟨L, hL.trans (by rw [(relZ_iff κ inp fi r hp ha).2 ⟨h1, rfl⟩])⟩
 
-/-- **A.9's `finLc` relation** over the register values. -/
+/-- `finLc`'s claims `v_0 … v_7` (L3's message). -/
+def lcV : List F := (List.range 8).map fun i => pe inp fL2 (phaseOff (phaseIx "L3") fL2 + 16 * i)
+
+/-- `r′_hi`: Z3's first 8 challenges. -/
+def lcRhi : Array F := (((chals fi "Z3" 26).take 8).map (fv r)).toArray
+
+/-- `r_k`: L2's 14 challenges. -/
+def lcRk : List F := (chals fi "L2" 14).map (fv r)
+
+/-- **The walk** `Â + α B̂` at `rowW′ = maskRows w rowW` and `eq(r_k, ·)`; `w` = a node's
+`nodeKindW v` (`free` weight 0, revision 3.16), a leaf's `v₀ :: 0^8`. -/
+def lcWalk : F :=
+  let α := fv r ((outsOf fi "L1").headD 0)
+  let w : List F := if κ.isNode then nodeKindW (lcV inp) else (lcV inp).headD 0 :: List.replicate 8 0
+  let rw := maskRows w.toArray (impl.rowW (fv r ((outsOf fi "Z2").headD 0)) (lcRhi fi r))
+  let cw := eqTab (lcRk fi r).toArray
+  (impl.walkAB rw cw).1 + α * (impl.walkAB rw cw).2
+
+/-- `v_free`: a node's `v₇`, a leaf's `0`. -/
+def lcVf : F := if κ.isNode then pe inp fL2 (phaseOff (phaseIx "L3") fL2 + 16 * 7) else 0
+
+/-- **`free`'s term without `(1 + α)`** (revision 3.16, R-V-M2): `v_free · (Σ_{s<64} L_s(λ)
+eq(r_k[0..5], s)) · eq(r′_hi, r_k[6..13])` (`L_s(λ)` = `eqZ(λ, 0)[s]`); its spec is
+`FRSpartan.linM_free_mle`, `⟨rowW, eq(r_k, ·)⟩` in closed form. -/
+def lcFree : F :=
+  lcVf κ inp * (dotAcc 0 (impl.eqZ (fv r ((outsOf fi "Z2").headD 0)) 0)
+    (eqTab (((chals fi "L2" 14).take 6).map (fv r)).toArray) 64 * eqPoint (lcRhi fi r) (((chals fi "L2" 14).drop 6).map (fv r)).toArray)
+
+/-- `dotAcc` is the sum `a0 + Σ_{s<n} X[s]·Y[s]` (`lcFree`'s 64-term sum is `Σ_{s<64} L_s(λ)
+eq(r_k[0..5], s)`). -/
+theorem dotAcc_eq (a0 : F) (X Y : Array F) (n : ℕ) :
+    dotAcc a0 X Y n = a0 + ∑ s ∈ Finset.range n, X.getD s 0 * Y.getD s 0 := by
+  induction n with
+  | zero => simp [dotAcc]
+  | succ n ih => rw [dotAcc, ih, Finset.sum_range_succ, add_assoc]
+
+/-- (+) **A leaf's `free` term is `0`**: `lcVf` is `0`, so a leaf's (ii) is the 3.15 walk. -/
+theorem lcFree_leaf (h : κ.isNode = false) : lcFree impl κ inp fi r = 0 := by
+  simp [lcFree, lcVf, h]
+
+/-- **A.9's `finLc` relation** over the register values (revision 3.16): (i) `c₀ = â + α b̂`,
+(iii) `Σ_{i<8} β^i v_i = α₂`, (ii) `c_Lc = walk + (1 + α)·lcFree` (as `Y + α Y`). -/
 def relLc : Bool :=
   let α := fv r ((outsOf fi "L1").headD 0); let β := fv r ((outsOf fi "L3β").headD 0)
-  let oL3 := phaseOff (phaseIx "L3") fL2
-  let v := (List.range 8).map fun i => pe inp fL2 (oL3 + 16 * i)
-  let vk : List F := if κ.isNode then 0 :: v else v.headD 0 :: List.replicate 8 0
-  let rw := maskRows vk.toArray (impl.rowW (fv r ((outsOf fi "Z2").headD 0))
-    (((chals fi "Z3" 26).take 8).map (fv r)).toArray)
-  let cw := eqTab ((chals fi "L2" 14).map (fv r)).toArray
+  let v := lcV inp
   let vβ := (v.reverse.drop 1).foldl (fun acc x => x + β * acc) (v.getD 7 0)
-  (Val.f (pe inp fZend 0 + α * pe inp fZend 16)).eqv (rd r (claim0 fi "L2")) &&
-  ((Val.f ((impl.walkAB rw cw).1 + α * (impl.walkAB rw cw).2)).eqv (rd r (claimN fi "L2")) &&
-  (Val.f vβ).eqv (rd r (fi.zhat.getD 1 0)))
+  let y := lcFree impl κ inp fi r
+  ((Val.f (pe inp fZend 0 + α * pe inp fZend 16)).eqv (rd r (claim0 fi "L2")) &&
+    (Val.f vβ).eqv (rd r (fi.zhat.getD 1 0))) &&
+  (Val.f (lcWalk impl κ inp fi r + (y + α * y))).eqv (rd r (claimN fi "L2"))
 
+theorem map_rd_app' (R : Array Val) (hR : ∀ i < r.size, ∀ L : List Val, rd (R ++ L.toArray) i = rd r i)
+    (L : List Val) (xs : List Reg) (h : ∀ x ∈ xs, x < r.size) :
+    xs.map (fun x => (rd (R ++ L.toArray) x).toF) = xs.map (fv r) :=
+  List.map_congr_left fun x hx => by rw [hR x (h x hx)]
 
+set_option maxRecDepth 4096 in
+/-- **`flag_finLc`**: `finLc` asks nothing, and its flag is A.9's relation `relLc` (revision 3.16). -/
 theorem flag_finLc (hin : ∀ x ∈ (chals fi "Z3" 26).take 8 ++ chals fi "L2" 14 ++
       [(outsOf fi "L1").headD 0, (outsOf fi "L3β").headD 0, (outsOf fi "Z2").headD 0,
        claim0 fi "L2", claimN fi "L2", fi.zhat.getD 1 0], x < r.size) :
@@ -359,32 +560,92 @@ theorem flag_finLc (hin : ∀ x ∈ (chals fi "Z3" 26).take 8 ++ chals fi "L2" 1
   simp only [List.mem_append, List.mem_cons, List.not_mem_nil, or_false] at hin
   have h1 := fun L => map_rd_app r L ((chals fi "Z3" 26).take 8) fun x hx => hin x (.inl (.inl hx))
   have h2 := fun L => map_rd_app r L (chals fi "L2" 14) fun x hx => hin x (.inl (.inr hx))
+  have h2a := fun L => map_rd_app r L ((chals fi "L2" 14).take 6)
+    fun x hx => hin x (.inl (.inr (List.mem_of_mem_take hx)))
   have tf : ∀ x, (Val.f x).toF = x := fun _ => rfl
   have taf : ∀ x, (Val.af x).toAF = x := fun _ => rfl
-  simp only [finLc, relLc]
-  generalize (outsOf fi "L1").headD 0 = a at *
-  generalize (outsOf fi "L3β").headD 0 = be at *
-  generalize (outsOf fi "Z2").headD 0 = l at *
-  generalize claim0 fi "L2" = c0 at *
-  generalize claimN fi "L2" = cN at *
-  generalize fi.zhat.getD 1 0 = zh at *
-  generalize phaseOff (phaseIx "L3") fL2 = oL3
-  have ha := hin a (.inr (.inl rfl)); have hb := hin be (.inr (.inr (.inl rfl)))
-  have hl := hin l (.inr (.inr (.inr (.inl rfl)))); have hc0 := hin c0 (.inr (.inr (.inr (.inr (.inl rfl)))))
-  have hcN := hin cN (.inr (.inr (.inr (.inr (.inr (.inl rfl))))))
-  have hz := hin zh (.inr (.inr (.inr (.inr (.inr (.inr rfl))))))
-  cases hk : κ.isNode <;>
-  simp only [hk, pureRun, evalOp, tf, taf, List.nil_append, List.cons_append, h1, h2, hornerOps,
-    rd_app, rd_app0, rd_app_left _ _ ha, rd_app_left _ _ hb, rd_app_left _ _ hl,
-    rd_app_left _ _ hc0, rd_app_left _ _ hcN, rd_app_left _ _ hz, List.range_succ, List.range_zero,
-    List.map_cons, List.map_nil, List.map_append, List.reverse_cons, List.reverse_nil,
-    List.getD_eq_getElem?_getD, List.getElem?_cons_succ, List.getElem?_cons_zero, Option.getD_some,
-    Option.map_some, allK, Bool.not_true, Bool.false_or, Bool.true_and, Bool.and_true,
-    List.drop_succ_cons, List.drop_zero, List.foldl_cons, List.foldl_nil,
-    List.replicate_succ, List.replicate_zero, ite_true, ite_false, Bool.false_eq_true,
-    List.headD_cons, List.flatMap_append, List.flatMap_cons, List.flatMap_nil, ↓reduceIte, Nat.reduceEqDiff, Nat.reduceAdd,
-    Nat.reduceMul, Nat.reduceSub] <;>
-  exact ⟨_, rfl⟩
+  have ha := hin _ (.inr (.inl rfl)); have hb := hin _ (.inr (.inr (.inl rfl)))
+  have hl := hin _ (.inr (.inr (.inr (.inl rfl))))
+  have hc0 := hin _ (.inr (.inr (.inr (.inr (.inl rfl)))))
+  have hcN := hin _ (.inr (.inr (.inr (.inr (.inr (.inl rfl))))))
+  have hz := hin _ (.inr (.inr (.inr (.inr (.inr (.inr rfl))))))
+  -- the head: registers `b … b + 40`
+  obtain ⟨V1, f1, hA, hlen, hf1, g4, g14, g22, g37, g38, g40⟩ : ∃ V1 f1,
+      pureRun impl κ inp (lcHead fi r.size) r [] = some (V1, f1) ∧ V1.length = 41 ∧
+      f1 = ((Val.f (pe inp fZend 0 + fv r ((outsOf fi "L1").headD 0) * pe inp fZend 16)).eqv
+          (rd r (claim0 fi "L2")) &&
+        (Val.f (((lcV inp).reverse.drop 1).foldl
+          (fun acc x => x + fv r ((outsOf fi "L3β").headD 0) * acc) ((lcV inp).getD 7 0))).eqv
+          (rd r (fi.zhat.getD 1 0))) ∧
+      V1.getD 4 default = .af (lcRhi fi r) ∧ V1.getD 14 default = .f 0 ∧
+      V1.getD 22 default = .f (lcWalk impl κ inp fi r) ∧ V1.getD 37 default = .f (lcVf κ inp) ∧
+      V1.getD 38 default = .af (impl.eqZ (fv r ((outsOf fi "Z2").headD 0)) 0) ∧
+      V1.getD 40 default = .af (eqTab (((chals fi "L2" 14).take 6).map (fv r)).toArray) := by
+    cases hk : κ.isNode
+    all_goals
+      apply Exists.intro
+      apply Exists.intro
+      refine ⟨?run, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
+      case run =>
+        simp only [lcHead, hk, pureRun, evalOp, tf, taf, List.nil_append, List.cons_append, h1, h2,
+            h2a, hornerOps, rd_app, rd_app0, rd_app_left _ _ ha, rd_app_left _ _ hb,
+            rd_app_left _ _ hl, rd_app_left _ _ hc0, rd_app_left _ _ hz, List.range_succ,
+            List.range_zero, List.map_cons, List.map_nil, List.map_append,
+            List.getD_cons_succ, List.getD_cons_zero,
+            Option.getD_some, Option.map_some, allK, Bool.not_true, Bool.false_or, Bool.true_and,
+            Bool.and_true, List.take_succ_cons, List.take_zero, List.replicate_succ,
+            List.replicate_zero, ite_true, ite_false, Bool.false_eq_true, List.flatMap_append,
+            List.flatMap_cons, List.flatMap_nil, ↓reduceIte, Nat.reduceEqDiff, Nat.reduceAdd,
+            Nat.reduceMul, Nat.reduceSub]
+        rfl
+      all_goals
+        try simp only [lcWalk, lcV, lcRhi, lcRk, lcVf, nodeKindW, hk, ite_true, ite_false,
+          Bool.false_eq_true, List.range_succ, List.range_zero, List.map_cons, List.map_nil,
+          List.map_append, List.nil_append, List.cons_append, List.getD_cons_succ,
+          List.getD_cons_zero, List.take_succ_cons, List.take_zero, List.headD_cons,
+          List.replicate_succ, List.replicate_zero, List.length_cons, List.length_nil,
+          List.reverse_cons, List.reverse_nil, List.drop_succ_cons, List.drop_zero,
+          List.foldl_cons, List.foldl_nil, List.getD_eq_getElem?_getD, List.getElem?_cons_succ,
+          List.getElem?_cons_zero, Option.getD_some, Nat.reduceMul, Nat.reduceAdd]
+      all_goals rfl
+  -- the 64-term sum: registers `b + 41 … b + 296`
+  have hsz : (r ++ V1.toArray).size = r.size + 41 := by simp [hlen]
+  have hD := run_dotOps impl κ inp (r ++ V1.toArray) (r.size + 38) (r.size + 40) (r.size + 14)
+    (by rw [hsz]; omega) (by rw [hsz]; omega) (by rw [hsz]; omega) 64
+  rw [hsz, rd_app, rd_app, rd_app, g14, g38, g40] at hD
+  set dv := dotVals (Val.f 0).toF (Val.af (impl.eqZ (fv r ((outsOf fi "Z2").headD 0)) 0)).toAF
+    (Val.af (eqTab (((chals fi "L2" 14).take 6).map (fv r)).toArray)).toAF 64 with hdv
+  -- the tail: registers from `b + 297`
+  set R2 := r ++ (V1 ++ dv).toArray with hR2def
+  have hR2 : R2.size = r.size + 297 := by simp [R2, hlen, hdv, dotVals_length]
+  have rr : ∀ i < r.size, ∀ L : List Val, rd (R2 ++ L.toArray) i = rd r i := fun i hi L => by
+    rw [rd_app_left R2 L (by omega), hR2def, rd_app_left r _ hi]
+  have rv : ∀ k < 41, ∀ L : List Val, rd (R2 ++ L.toArray) (r.size + k) = V1.getD k default :=
+    fun k hk L => by
+      rw [rd_app_left R2 L (by omega), hR2def, rd_app, List.getD_eq_getElem?_getD,
+        List.getElem?_append_left (by omega), ← List.getD_eq_getElem?_getD]
+  have rs : ∀ L : List Val, rd (R2 ++ L.toArray) (r.size + 296) =
+      .f (dotAcc 0 (impl.eqZ (fv r ((outsOf fi "Z2").headD 0)) 0)
+        (eqTab (((chals fi "L2" 14).take 6).map (fv r)).toArray) 64) := fun L => by
+    rw [rd_app_left R2 L (by omega), hR2def, rd_app, List.getD_eq_getElem?_getD,
+      List.getElem?_append_right (by omega), hlen, ← List.getD_eq_getElem?_getD, hdv,
+      show 296 - 41 = 4 * 63 + 3 by norm_num, dotVals_last]
+    rfl
+  have h2b := fun L => map_rd_app' r R2 rr L ((chals fi "L2" 14).drop 6)
+    fun x hx => hin x (.inl (.inr (List.mem_of_mem_drop hx)))
+  obtain ⟨V3, hC⟩ : ∃ V3, pureRun impl κ inp (lcTail fi r.size R2.size) R2 [] =
+      some (V3, (Val.f (lcWalk impl κ inp fi r + (lcFree impl κ inp fi r +
+        fv r ((outsOf fi "L1").headD 0) * lcFree impl κ inp fi r))).eqv (rd r (claimN fi "L2"))) := by
+    simp only [lcTail, pureRun, evalOp, tf, taf, List.nil_append, List.cons_append, h2b, rd_app,
+      rd_app0, rv 4 (by norm_num), rv 22 (by norm_num), rv 37 (by norm_num), rs, g4, g22, g37,
+      rr _ ha, rr _ hb, rr _ hcN, List.getD_cons_succ, List.getD_cons_zero, Option.map_some,
+      allK, Bool.not_true, Bool.false_or, Bool.true_and, Bool.and_true]
+    exact ⟨_, rfl⟩
+  have e : (finLc fi r.size).1 =
+      (lcHead fi r.size ++ dotOps (r.size + 38) (r.size + 40) (r.size + 14) (r.size + 41) 64) ++
+        lcTail fi r.size R2.size := by rw [hR2]; rfl
+  rw [e, pureRun_seq impl κ inp (pureRun_seq impl κ inp hA hD) hC, hf1]
+  exact ⟨_, by simp only [relLc, Bool.and_true]; rfl⟩
 
 /-- The link families' sum `acc + Σ_f κ_s^(f+2) W_f` (as `linkOps`; `W` is `linkWAll`'s array). -/
 def linkSum (W : Array F) (ks : F) : ℕ → F → F → F

@@ -648,4 +648,27 @@ theorem quirky_claim_split {ℓ : ℕ} (z : Fin 64 → Fin (2 ^ (1 + ℓ)) → F
     rw [Finset.mul_sum]; exact Finset.sum_congr rfl fun _ _ ↦ by ring, this, Finset.mul_sum]
   exact Finset.sum_congr rfl fun _ _ ↦ by ring
 
+/-- **`finLc` (ii)'s `free` term in closed form** (revision 3.16, R-V-M2): with `A₀ = B₀ = I`
+(`linM_free`) and the quirky row weights `rowW(λ, r′_hi)`, the lincheck's `free` column weight at
+`r_k = (r₁, r₂)` (6 skip bits, then the high bits) is `(1 + α)·(Σ_{s<64} L_s(λ) eq(r₁, s))·
+eq(r′_hi, r₂)`: one `eqPt` and a 64-term sum. -/
+theorem linM_free_mle {p : ℕ} (l α : F) (rhi : Fin p → F) (r₁ : Fin 6 → F) (r₂ : Fin p → F) :
+    mle (linM (p := 6 + p) (fun k j ↦ if k = j then 1 else 0) (fun k j ↦ if k = j then 1 else 0)
+        (rowW l rhi) α) (Fin.append r₁ r₂) =
+      (1 + α) * ((∑ s : Fin (2 ^ 6), lagrangeWeight
+        (fun b : Fin 64 ↦ skipNode (Fin.castLE (by norm_num) b)) l s * eq r₁ (cube s)) *
+          eq rhi r₂) := by
+  rw [linM_free, mle_smul, mle_split]
+  congr 1
+  have hrow : ∀ (u₁ : Fin (2 ^ 6)) (u₂ : Fin (2 ^ p)), rowW l rhi (join u₁ u₂) =
+      lagrangeWeight (fun b : Fin 64 ↦ skipNode (Fin.castLE (by norm_num) b)) l u₁ *
+        eq rhi (cube u₂) := fun u₁ u₂ ↦ by
+    simp only [rowW, show join u₁ u₂ = joinEquiv 6 p (u₁, u₂) from rfl, Equiv.symm_apply_apply]
+  simp only [hrow, mle_smul, Finset.sum_mul]
+  refine Finset.sum_congr rfl fun u₁ _ ↦ ?_
+  rw [show mle (fun u₂ ↦ eq rhi (cube u₂)) r₂ = eq rhi r₂ by
+    rw [mle, ← eq_mle rhi r₂]
+    exact Finset.sum_congr rfl fun u _ ↦ by rw [eq_swap r₂ (cube u), eq_swap (cube u) r₂]; ring]
+  ring
+
 end FR

@@ -30,7 +30,7 @@ as an operand since S-0's interface pass). `targetS` and `linkWAll` are selected
 (S-CN's `targetSNodeI`, `linkWAllI` on the packed points; a leaf's `linkWAll` is `0^8`); `slotW`
 is kind-free (`finSh` selects the In slot map by `keep`, revision 3.14); `shiftMask` is the node's
 chain-masked weights (`shiftMaskI`, read by a node only);
-`kindFoldWeight` is not used by revision 3.9's `gen` and is `0`. -/
+`kindFoldWeight` is withdrawn (revision 3.16) and is `0`; `rsWeight` carries claim 2's kind factor. -/
 def implCWith (pl : TEval.Plan) (lp : TEval.LPlan) : OpImpl where
   lagrangeS := lagrangeSI
   targetS κ := if κ.isNode then NodeI.targetSNodeI else targetSLeafI
@@ -94,7 +94,7 @@ theorem implCWith_meets (pl : TEval.Plan) (lRows : List Circ.Row) :
     · exact targetSLeaf_meets 16 r
   · exact eqZ_meets
   · exact fun j r => (tensorWF_eq j r).trans (tensorW_meets j r)
-  · exact fun r ps k p h => rsWeight_meets r ps k p h
+  · exact fun r ps k b p h hp => rsWeight_meets r ps k b p h hp
   · exact fun r a _ => phiRS_meets r a
   · intro rw cw _ _
     rewrite [← Eval.walkA_eq rw cw, ← Eval.walkB_eq rw cw]
