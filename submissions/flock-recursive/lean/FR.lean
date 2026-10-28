@@ -95,6 +95,7 @@ import FRSoundness4Agg
 import FRSoundnessFrKS
 import FRSoundness4Frame
 import FRSoundness4Pos
+import FRSoundness4P4bRS
 import FRNodeMirror
 import FRVIRTplDag
 import FRVIRTplWalk
