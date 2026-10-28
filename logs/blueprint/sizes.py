@@ -204,3 +204,27 @@ base6=229.3; add_link=1.9; add_tpl=3.0; add_walks_fast=16; add_walks_now=30; add
 for lab,w,lever in (("fused walks (8 ms each), no other lever",add_walks_fast,0),("walks as implemented (15 ms each)",add_walks_now,0),("fused walks + S-F2 hot spots (-40 ms)",add_walks_fast,40)):
     v=base6+add_link+add_tpl+w+add_R-lever
     print(f"   V N30 ({lab}): {v:.0f} ms VM ({264/v:.2f}x of 264) = {v/1.28:.0f} ms runner ({205.9/(v/1.28):.2f}x)")
+# ---- stage-review changes 22 (revision 3.15): S-E9's measured sizes; the walk ruling (XOR-DAG rows in the G-template layout,
+# D-hat closed form: R replays no walk); the levers. Inputs: S-E9 §1 (rstat-0, rcount.py), §6.
+meas=436092; rsW=45604; walkDAG=90851; shT=1300; tW=47680; tgtN=16000; lkA=15000
+# rcount.py's R1s classes (per slot): tables 48,400; keys 29,623; per-child-slot 193,472 (beta 61,530 + alpha 18,507 + sparse 55,065 + shared 20,112 + own 11,116 + inst 27,142); walks 106,496; closed forms 8,300; out 1,000
+R_T=48400; R_K=29623; R_beta=61530; R_alpha=18507; R_sparse=55065; R_shared=20112; R_own=11116; R_inst=27142; R_Psi=8300; R_out=1000
+R_walk_DAG=106496+25315               # S-E9: R replays the walk as the XOR DAG (412,606 - 387,291 over the u/v-row walk)
+R_walk_Dhat=13000                     # ruling: the DAG rows' MLE is the G-template closed form (80 instances + 480 word wires): no walk in R
+R0=R_T+R_K+R_beta+R_alpha+R_sparse+R_shared+R_own+R_inst+R_Psi+R_out
+R_E9=R0+R_walk_DAG; R_rule=R0+R_walk_Dhat
+lever_phi=62464; lever_sparse=110000; lever_inst=20000
+def node(rows): return 2*rows
+rows_E9=meas+rsW+walkDAG+shT+tW+tgtN+lkA+R_E9
+rows_A=meas+rsW+walkDAG+shT+tW+tgtN+lkA+R_rule
+rows_B=rows_A-lever_phi
+rows_C=rows_B-lever_sparse-lever_inst
+print("== stage-review changes 22 (revision 3.15): rows per slot / per node")
+for lab,r in (("S-E9 as sized (DAG walk replayed in R)",rows_E9),("ruling: D-hat closed form in R",rows_A),("+ phiRS key split (-62,464, measured)",rows_B),("+ sparse-skeleton templating (-110 k) + instance AP layout (-20 k)",rows_C)):
+    print(f"   {lab}: {r:.0f} per slot, {node(r):.0f} per node = 2^{math.log2(node(r)):.3f} ({2**21/node(r):.3f}x); M blocks {math.ceil(node(r)*128/2**14)} of 16,384; used blocks {47740+math.ceil(node(r)*128/2**14)} of 65,536 ({65536/(47740+math.ceil(node(r)*128/2**14)):.3f}x)")
+print(f"   R per slot: S-E9 {R_E9} -> ruling {R_rule} -> with the skeleton/instance levers {R_rule-lever_sparse-lever_inst}")
+# T_V (VM): S-E8 169.4 ms (maskRows foreign); S-E9 207.2 with maskRows bound (+39 ms, evaluator defect); fix: shift class
+v_base=169.4; v_mask=1.0; v_tpl=4.0; v_Dhat=1.5; v_R=7.0
+v15=v_base+v_mask+v_tpl+v_Dhat+v_R
+print(f"   V N30: 169.4 (S-E8) + maskRows shift class {v_mask} + remaining templates {v_tpl} + D-hat {v_Dhat} + R closed forms/Inc {v_R} = {v15:.0f} ms VM ({264/v15:.2f}x of 264) = {v15/1.28:.0f} ms runner ({205.9/(v15/1.28):.2f}x); S-E9's projection with two replayed walks was 231-240 ms")
+print(f"   stream link: P2 estimate ~3.0 s of 3.1 s (1.03x) before the ruling; nnz(M) falls by ~{(rows_E9-rows_B)/rows_E9*100:.0f}% (rows) -> P2 re-measures; target >= 1.05x = 2.95 s")

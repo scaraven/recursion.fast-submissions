@@ -41,3 +41,11 @@
    V N30 (fused walks (8 ms each), no other lever): 255 ms VM (1.03x of 264) = 199 ms runner (1.03x)
    V N30 (walks as implemented (15 ms each)): 269 ms VM (0.98x of 264) = 210 ms runner (0.98x)
    V N30 (fused walks + S-F2 hot spots (-40 ms)): 215 ms VM (1.23x of 264) = 168 ms runner (1.22x)
+== stage-review changes 22 (revision 3.15): rows per slot / per node
+   S-E9 as sized (DAG walk replayed in R): 1065133 per slot, 2130266 per node = 2^21.023 (0.984x); M blocks 16643 of 16,384; used blocks 64383 of 65,536 (1.018x)
+   ruling: D-hat closed form in R: 946322 per slot, 1892644 per node = 2^20.852 (1.108x); M blocks 14787 of 16,384; used blocks 62527 of 65,536 (1.048x)
+   + phiRS key split (-62,464, measured): 883858 per slot, 1767716 per node = 2^20.753 (1.186x); M blocks 13811 of 16,384; used blocks 61551 of 65,536 (1.065x)
+   + sparse-skeleton templating (-110 k) + instance AP layout (-20 k): 753858 per slot, 1507716 per node = 2^20.524 (1.391x); M blocks 11780 of 16,384; used blocks 59520 of 65,536 (1.101x)
+   R per slot: S-E9 412606 -> ruling 293795 -> with the skeleton/instance levers 163795
+   V N30: 169.4 (S-E8) + maskRows shift class 1.0 + remaining templates 4.0 + D-hat 1.5 + R closed forms/Inc 7.0 = 183 ms VM (1.44x of 264) = 143 ms runner (1.44x); S-E9's projection with two replayed walks was 231-240 ms
+   stream link: P2 estimate ~3.0 s of 3.1 s (1.03x) before the ruling; nnz(M) falls by ~17% (rows) -> P2 re-measures; target >= 1.05x = 2.95 s
