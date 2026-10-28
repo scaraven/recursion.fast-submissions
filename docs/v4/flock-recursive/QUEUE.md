@@ -4,11 +4,16 @@ Last updated 2026-10-28. Blueprint at revision 3.13 (§10 changes 1–20). FR bu
 
 ## Running
 
-- S-E9: the replay `R` (3.14 (D)), the fused child walk, `FRNodeLayout` constants, templates (incl. `linkWAll`, `shiftMask`), the re-dump for P2.
-- S-G4: `hFin` steps 2, 5, 6 and `FinLog` assembly (S-G3 pass 2 handover).
-- S-H2l: the extractor's output program `FRXOut`, `ext_node` with `E = some (readWit …)`.
+- S-E10: the walk as the node's own XOR-DAG G-gadget template (`dag_mle`), the `phiRS` split, the evaluator's shift class, `planOf` ≤ 0.2 s from literals; re-dump.
+- H-V: V (N30) and `chaincheck` on a GitHub runner (`probe/fr-vtime`).
+- INT-4: **the `finZ` defect** (RS claim 1 `ẑ(r, λ)` was never asserted against Z2's `P^z*(λ)`; found by S-G6) and 3.15 (c), τ of 18 coordinates for every kind.
 
 ## Waiting
+
+- **R-V (after INT-4): adversarial review of the verifier's finals.** Does every claimed or exported value (`zhat` 0…nRS, every sub-protocol's final claim, every absorbed message the finals read, every `ex` export) reach an `assertEq`? Is every `relX` the blueprint's A.9 row? Method: a dataflow table from the dumped program (`logs/INT-4/dump`) plus the `flag_fin*` statements, not prose. The `finZ` miss passed every per-field proof because a relation only covers what it names.
+- **S-G7 (after INT-4):** the front's S, L, Z, assembly (`DF`/`RejF`, `FrontObl`, `FrontChainStab`), `hW0`, `hStart`, `hFront`, `kstate_front` (S-G6-RESULT §5).
+- **S-E11 (after S-E10, INT-4):** the τ-ops as templates, `tplTargetSNode`, `tplLinkWAll`, `rsWeight` (`sq127`/`eqK`), the 745 `tensorW`, then `R` with the reserve levers; the full node dump.
+- **P2 (after S-E11):** the node prover from the full dump (XOR cells, `phiRS` split, 18-coordinate τ, `finZ`'s assert, `linkWAll`/`shiftMask`); **re-measure the stream link (the thinnest margin, ≈ 3.0 s of 3.1 s)**.
 
 - **INT-3 (after S-E7 item 1): the 3.14 items outside S-E.** S-0 `finSh` with the `linkWAll` op and packed points (`κ_s^{f+2}`; `relSh`/`flag_finSh`); S-C `shift_sound_masked`, `linkWAllS` on the pinned map; S-F `implC` kind-selected `linkWAll`/`slotW_in`, `linkWAll_meets` in `implC_meets`, `finB′` without `κ′ v_E` (`J_f = 9`); S-G chain-masked node `truthS1`, `sh_reads_chain_only`, `truthB′` at `J_f = 9`, the E4-end binder in `truthE4`; `FR.lean` imports FRNodeTarget, FRVerifierImplNode, FRVIRTplRep, FRVIRCompileSound, FRVIRTplPlan.
 - ~~S-E9 after INT-3~~ (running; INT-3 closed `ebcc8f1`, V 168.7 ms VM best). Was: the replay `R` in 3.14 (D)'s uniform layout (`replay_mle`, `plan_wf`, `replay_sound`, `inc_mle`, `eqTree_mle`, `evalMT` sharing each `Ĉ`), the fused child walk (prototype 15.2–17.8 ms), `FRNodeLayout` `wmSlot = 146`/`hEnd = 47,594`/`regions_fit`, the mux mirror addresses, `mRowModel`, the templates (`tplTargetSNode`, `tplLinkWAll`, `walkAB`, `rsWeight`, `shiftTarget`, 745 `tensorW`), the re-dump for P2.
