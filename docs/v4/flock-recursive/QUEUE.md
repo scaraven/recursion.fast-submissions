@@ -5,7 +5,6 @@ Last updated 2026-10-28. **Rebased onto core PR #20 (pin `6d05d00`, commit `987e
 ## Running (revision 4.0)
 
 - S-0′: the 4.0 shapes: the segment circuit (variable `n_i ≤ 2^18`, `pubStart`), `L31`, the aggregate leaf `A` (`V_A` over k ≤ 4 segment verifiers on one signed trace), `gen` for `N4`/`N8`, layouts, the one item sequence, `qV` 36,000.
-- S-H2n: B-15 `E := if InDom then E_den else E_search` (`InDom` includes `π.size ≤ 8·outCap`, closing INT-6's `WBeyond` and O3′), `Computes` at the new domain, `FRSoundnessExtE` without `hOut`.
 - P2′: the multi-threaded segment prover (variable n, `L31`), the aggregate and one SIGN, `prover/main.rs`'s `proofCap` check removed; then `N4`/`N8` from the dumps and a stream dry run on the PR #20 harness.
 
 ## Waiting
@@ -40,6 +39,8 @@ Last updated 2026-10-28. **Rebased onto core PR #20 (pin `6d05d00`, commit `987e
 S-A `8ff873c`; S-C `ebac8c2`; S-D `8e6dad7`; S-E1 `2d5a811`; S-H1 `40b2f81`; S-0 `47158b1`; S-E2/S-E3 `8447c50`; S-F `c8e1869`; S-F2 `8f22b86`; S-G through `ac43569`; S-H2 through `11fb3a5`; INT-1 `5fc7d3b`; S-E5 `9dbab71`. FR builds as a whole.
 
 ## Rulings
+
+- **B-15 as built (S-H2n, `9398792`), accepted 2026-10-28:** outside the domain `E` dispatches on the proof's kind (decode on W, `search` under `vkOf π` on a node SNARK, the denotation on a leaf, `none` on bad), since `vkOf π` is the KS key only on an accepted node run; `E` takes the acceptance `A` as a parameter (`hE_of_accV` for `A := accV implC finC`); the search bounds traces by the certificate's 2^16. Blueprint text to follow at the next revision. Old routes with `hWB`/`hOut` to be retired once integration uses `kstate_front_ofE'`.
 
 - **S-N1, 2026-10-28 (orchestrator):** O0: `ExtIface` was false as stated (the chain is not tied to π); the linked route `RunLink`/`ExtIfaceR`/`kstate_front_ofR` is adopted. O1: the E truth must be stated over the templated rows V evaluates (`nodeIRows (planOf fin)`/`compileT`), not `Layout.nodeRows`: a stage after S-G11 (S-G12: `truthE`, `nE`, `RejE4`, `hfit`). O2/O2b (the circuit rows for every import: pack map, `R`, the templates, the WOTS selector/digit/mirror mux) are S-E's and make up `hRes : StmtN → NodeResid`. O3 to the blueprint.
 
