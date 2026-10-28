@@ -44,12 +44,16 @@ abbrev DB := StateM DSt
 /-- Emit a gate; its first local. -/
 def emit (g : Gate) : DB LinT :=
   modifyGet fun s =>
-    (L s.nl, ⟨s.next, s.gs.push g, s.nl + g.nloc, s.nr + (g.rows 0).length, s.accA, s.accB⟩)
+    -- every other field first, the gate array last, so that its push is in place (S-E13)
+    let nx := s.next; let nl := s.nl; let nr := s.nr; let a := s.accA; let b := s.accB
+    (L nl, ⟨nx, s.gs.push g, nl + g.nloc, nr + (g.rows 0).length, a, b⟩)
 
 /-- Pad the locals and the rows to the next multiples of `2^b` (a fresh block). -/
 def padTo (b : ℕ) : DB Unit :=
-  modify fun s => ⟨s.next, s.gs.push (.pad (Circ.alignUp s.nr b - s.nr) (Circ.alignUp s.nl b - s.nl)),
-    Circ.alignUp s.nl b, Circ.alignUp s.nr b, s.accA, s.accB⟩
+  modify fun s =>
+    let nx := s.next; let nl := s.nl; let nr := s.nr; let a := s.accA; let c := s.accB
+    ⟨nx, s.gs.push (.pad (Circ.alignUp nr b - nr) (Circ.alignUp nl b - nl)), Circ.alignUp nl b,
+      Circ.alignUp nr b, a, c⟩
 
 /-- **XOR** of two forms: their formal sum (no row; characteristic 2). -/
 def dx (a b : LinT) : LinT := a ++ b
@@ -68,8 +72,9 @@ variable (ri ci : ℕ → LinT)
 def dmul (a b : LinT) : DB LinT :=
   modifyGet fun s =>
     let k := (pos (m := Blake2sCircuit.m) s.next).val
-    (ci k, ⟨s.next + 1, (s.gs.push (.mulAdd (ri k) a s.accA)).push (.mulAdd (ri k) b s.accB),
-      s.nl + 2, s.nr + 2, L s.nl, L (s.nl + 1)⟩)
+    let nx := s.next; let nl := s.nl; let nr := s.nr; let pa := s.accA; let pb := s.accB
+    (ci k, ⟨nx + 1, (s.gs.push (.mulAdd (ri k) a pa)).push (.mulAdd (ri k) b pb),
+      nl + 2, nr + 2, L nl, L (nl + 1)⟩)
 
 /-- `n` values from a program per index, in order. -/
 def dvec {β : Type} : (n : ℕ) → (Fin n → DB β) → DB (Vector β n)
@@ -199,8 +204,10 @@ def dcompressW : DB (Vector (Vector LinT 32) 8) := do
 
 /-- A product row into accumulator `A` (`B` if `b`): `p ← rowW′[k]·a + p`. -/
 def dacc (b : Bool) (k : ℕ) (a : LinT) : DB Unit :=
-  modifyGet fun s => ((), ⟨s.next, s.gs.push (.mulAdd (ri k) a (if b then s.accB else s.accA)),
-    s.nl + 1, s.nr + 1, if b then s.accA else L s.nl, if b then L s.nl else s.accB⟩)
+  modifyGet fun s =>
+    let nx := s.next; let nl := s.nl; let nr := s.nr; let pa := s.accA; let pb := s.accB
+    ((), ⟨nx, s.gs.push (.mulAdd (ri k) a (if b then pb else pa)), nl + 1, nr + 1,
+      if b then pa else L nl, if b then L nl else pb⟩)
 
 /-- The accumulations after the compression (`walkABF`'s order): per output row the form into `A`
 and the constant into `B`; per input position `colW[k]` into `A` and the constant into `B`; the

@@ -56,15 +56,23 @@ def tplOf : TKey → Tpl
   | .dotKF n => tplDotKF n
   | .tensorW n => tplTensorW n
   | .rowW _ => tplRowW
-  | .shiftMask n m => tplShiftMask n m
+  | .shiftMask n m => tplShiftMaskF n m
   | .walkAB n m => tplWalkOf n m
   | _ => ⟨[], []⟩
 
 /-! ## The walk template's rows and sizes, computed once (S-E11: plan time) -/
 
+/-- A template's cell bits from its rows, given once (`Tpl.cbits` reads them twice). -/
+def cbitsOf (T : Tpl) (rows : List RowT) : ℕ :=
+  Nat.size (max ((rows.map fun r => max r.a.maxLoc (max r.b.maxLoc r.c.maxLoc)).foldl max 0)
+    (nlocs T.gates - 1))
+
+theorem cbitsOf_rows (T : Tpl) : cbitsOf T T.rows = T.cbits := rfl
+
 def tplWalk14Rows : List RowT := tplWalk14.rows
-def tplWalk14RB : ℕ := tplWalk14.rbits
-def tplWalk14CB : ℕ := tplWalk14.cbits
+-- (S-E13: the row and cell bits from the rows above, not from rows built again)
+def tplWalk14RB : ℕ := Nat.size (tplWalk14Rows.length - 1)
+def tplWalk14CB : ℕ := cbitsOf tplWalk14 tplWalk14Rows
 def tplWalk14NL : ℕ := nlocs tplWalk14.gates
 
 /-- The node's walk key. -/
@@ -95,7 +103,7 @@ theorem tRows_eq (k : TKey) : tRows k = (tplOf k).rows := by
 
 theorem tRbits_eq (k : TKey) : tRbits k = (tplOf k).rbits := by
   unfold tRbits; split_ifs with h
-  · rw [tplOf_walk14 h]; rfl
+  · rw [tplOf_walk14 h, tplWalk14RB, tplWalk14Rows, Tpl.rbits]
   · rfl
 
 /-- **A layout**: per key, the group's row base (relative to the slot), cell base and cell bits. -/

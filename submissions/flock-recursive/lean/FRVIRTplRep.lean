@@ -121,8 +121,18 @@ def rowWG (N : ℕ) : Tpl :=
       (eqTblG ((List.range 8).map fun l => I (l + 1)) (N + nlocs (lagG Impl.xT 64 Impl.denS (I 0) N).1)).1,
     (List.range N).map fun k => L k⟩
 
+/-- `rowWG` with the weights and the table built once (`rowWG` rebuilds them per product; S-E13:
+plan time). -/
+def rowWGF (N : ℕ) : Tpl :=
+  let g := lagG Impl.xT 64 Impl.denS (I 0) N
+  let t := eqTblG ((List.range 8).map fun l => I (l + 1)) (N + nlocs g.1)
+  ⟨mulsG N (fun k => g.2.getD (k % 64) []) (fun k => t.2.getD (k / 64) []) ++ g.1 ++ t.1,
+    (List.range N).map fun k => L k⟩
+
+theorem rowWGF_eq (N : ℕ) : rowWGF N = rowWG N := rfl
+
 /-- **`rowW`** (inputs `λ`, then `r′_hi`'s coordinates): `rowWG` at `2^14` products. -/
-def tplRowW : Tpl := rowWG (2 ^ 14)
+def tplRowW : Tpl := rowWGF (2 ^ 14)
 
 theorem rowWI_size (l : F) (r : Array F) : (Impl.rowWI l r).size = 2 ^ 14 := Array.size_ofFn ..
 
@@ -152,7 +162,7 @@ theorem rowWG_ev (h1 : e.one = 1) (N : ℕ) {l : F} {rhi : Array F} (hi : InpIs 
 theorem tplRowW_ok (h1 : e.one = 1) {l : F} {rhi : Array F} (hi : InpIs e (l :: rhi.toList))
     (h : Eqns e tplRowW.gates 0) :
     tplRowW.outs.map (LinT.ev e) = encV (.af (Impl.rowWI l rhi)) := by
-  simp only [tplRowW, rowWG, encV]
+  rw [tplRowW, rowWGF_eq]; simp only [rowWG, encV]
   refine List.ext_getElem (by simp [rowWI_size]) fun k h₁ h₂ => ?_
   have hk : k < 2 ^ 14 := by simpa using h₁
   simp only [List.getElem_map, List.getElem_range, Array.getElem_toList, Impl.rowWI,

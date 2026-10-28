@@ -159,6 +159,9 @@ structure CS where
   aux : List ((List Lin × ℕ × Tpl.AuxK) × ℕ) := []
   /-- The number of rows (`rows.length`, kept so that alignment is `O(1)`; S-E5). -/
   nrows : ℕ := 0
+  /-- Each key's instance count so far (`tcount`'s table, so that it costs the keys, not the
+  instances; S-E13). `tcount_eq`: it is the count of `tins`. -/
+  tcnt : List (Tpl.TKey × ℕ) := []
 
 /-- The rows in program order (row `i` is the `i`-th row emitted). -/
 def CS.rowList (cs : CS) : List Row := cs.rows.reverse
@@ -169,8 +172,13 @@ def CS.slot (cs : CS) (i : ℕ) : Slot := cs.slots.getD i none
 /-- Fresh cell `j` of the current op. -/
 def CS.cell (cs : CS) (j : ℕ) : Lin := Lin.cell (cs.next + j)
 
-/-- The instances of template `k` so far (the next instance's number). -/
-def CS.tcount (cs : CS) (k : Tpl.TKey) : ℕ := cs.tins.countP (·.1 == k)
+/-- The instances of template `k` so far (the next instance's number; `tcount_eq`). -/
+def CS.tcount (cs : CS) (k : Tpl.TKey) : ℕ := ((cs.tcnt.find? (·.1 == k)).map (·.2)).getD 0
+
+/-- A count table with key `k`'s count raised by one. -/
+def bumpCnt (k : Tpl.TKey) : List (Tpl.TKey × ℕ) → List (Tpl.TKey × ℕ)
+  | [] => [(k, 1)]
+  | p :: ps => if p.1 == k then (p.1, p.2 + 1) :: ps else p :: bumpCnt k ps
 
 /-- Append an op's contribution. -/
 def CS.add (cs : CS) (op : Op) (o : Out) : CS :=
@@ -185,7 +193,10 @@ def CS.add (cs : CS) (op : Op) (o : Out) : CS :=
   let rows := o.rows.reverseAux cs.rows
   let next := cs.next + o.fresh
   let nrows := cs.nrows + o.rows.length
-  ⟨next, cs.slots ++ o.slots.toArray, rows, imp, fors, tins, aux, nrows⟩
+  let tcnt := match o.tin with
+    | some t => bumpCnt t.1 cs.tcnt
+    | none => cs.tcnt
+  ⟨next, cs.slots ++ o.slots.toArray, rows, imp, fors, tins, aux, nrows, tcnt⟩
 
 /-- Round `x` up to a multiple of `2^b`. -/
 def alignUp (x b : ℕ) : ℕ := (x + 2 ^ b - 1) / 2 ^ b * 2 ^ b
@@ -479,7 +490,7 @@ def compileFromX (X : Ext) (P : Params) : CS → List Op → CS
 abbrev compileFrom (P : Params) (cs : CS) (ops : List Op) : CS := compileFromX noExt P cs ops
 
 /-- The initial state: fresh cells from `base`. -/
-def CS.init (base : ℕ) : CS := ⟨base, #[], [], [], [], [], [], 0⟩
+def CS.init (base : ℕ) : CS := ⟨base, #[], [], [], [], [], [], 0, []⟩
 
 /-- (+) Lists that differ at an element emit its three selector products. -/
 theorem muxEl_rows_diff :
@@ -490,12 +501,54 @@ theorem muxEl_rows_diff :
 theorem muxEl_rows_same : (muxEl ⟨[], fun _ => []⟩ (CS.init 0) (fun _ => [0]) 0).2 = [] := rfl
 
 
+/-- The count table agrees with the instances. -/
+def CS.TcOk (cs : CS) : Prop := ∀ k, cs.tcount k = cs.tins.countP (·.1 == k)
+
+theorem bumpCnt_get (k k' : Tpl.TKey) : ∀ l : List (Tpl.TKey × ℕ),
+    (((bumpCnt k l).find? (·.1 == k')).map (·.2)).getD 0 =
+      ((l.find? (·.1 == k')).map (·.2)).getD 0 + if k = k' then 1 else 0
+  | [] => by by_cases h : k = k' <;> simp [bumpCnt, h]
+  | p :: ps => by
+    by_cases hp : p.1 = k
+    · subst hp; by_cases h : p.1 = k' <;> simp [bumpCnt, h]
+    · have ih := bumpCnt_get k k' ps
+      by_cases h : p.1 = k'
+      · subst h; simp [bumpCnt, hp, Ne.symm hp]
+      · simp [bumpCnt, hp, h, ih]
+
+theorem CS.TcOk.add {cs : CS} (h : cs.TcOk) (op : Op) (o : Out) : (cs.add op o).TcOk := fun k => by
+  simp only [CS.TcOk, CS.tcount, CS.add] at h ⊢
+  rcases o.tin with _ | t
+  · exact h k
+  · simp only [bumpCnt_get, h, List.countP_cons, beq_iff_eq]
+
+theorem CS.TcOk.align {cs : CS} (h : cs.TcOk) (a : Option (ℕ × ℕ)) : (cs.align a).TcOk := by
+  cases a with
+  | none => exact h
+  | some a => exact h
+
+theorem compileFromX_tcount (X : Ext) (P : Params) :
+    ∀ (ops : List Op) (cs : CS), cs.TcOk → (compileFromX X P cs ops).TcOk
+  | [], _, h => h
+  | op :: ops, cs, h => compileFromX_tcount X P ops _ ((h.align _).add _ _)
+
 /-- **`compile`**: the rows, slots, imports and foreign assertions of an op list. -/
 def compile (P : Params) (base : ℕ) (ops : List Op) : CS := compileFrom P (CS.init base) ops
 
 /-- **`compileX`**: `compile` with an extension (`compileT` is `compileX` with the templates). -/
 def compileX (X : Ext) (P : Params) (base : ℕ) (ops : List Op) : CS :=
   compileFromX X P (CS.init base) ops
+
+/-- (+) Two instances of a key count two, (−) a key without instances counts none. -/
+theorem tcount_ctl :
+    let cs := ((CS.init 0).add .accept { slots := [], tin := some (.zero, []) }).add .accept
+      { slots := [], tin := some (.zero, []) }
+    cs.tcount .zero = 2 ∧ cs.tcount .eqZ = 0 := by decide
+
+/-- (+) **`tcount` is the instance count** in every compiled state (`CS.tcnt` only makes it fast). -/
+theorem compileX_tcount (X : Ext) (P : Params) (base : ℕ) (ops : List Op) :
+    (compileX X P base ops).TcOk :=
+  compileFromX_tcount X P ops _ fun _ => rfl
 
 /-- The template instances' rows. -/
 def CS.tplRows (tc : Tpl.TCtx) (one : Lin) (cs : CS) : List Row := cs.tins.flatMap (Tpl.instRows tc one)

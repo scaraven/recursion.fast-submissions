@@ -1,8 +1,10 @@
 -- New for `flock-recursive` (BLUEPRINT §10 changes 17, revision 3.12 item 3; stage S-E4, track
 -- L-circ). The node section (`Plan`, `planOf`, `nodeIRows`, `evalMT`, `evalMKT`) moved here from
 -- `FRVIRTplEval` (S-E3); `evalMT` is now the flat evaluation. S-E11: the first half is
--- `FRVIRTplGrp`; the run class and the fast key preparation are `FRVIRTplRun`.
-import FRVIRTplRun
+-- `FRVIRTplGrp`; the run class and the fast key preparation are `FRVIRTplRun`. S-E13: `planOf` is
+-- built from `FRVIRTplBuild`'s proved pieces (no run-time row comparison), slot 1's layout is
+-- slot 0's shifted when it fits.
+import FRVIRTplBuild
 
 namespace FR
 namespace TEval
@@ -343,8 +345,49 @@ theorem slotV3_eq (n n' : ℕ) (t u : ℕ → F) (one : Lin) (nt ns lt lu : Arra
 /-- Slot `σ`'s selector forms. -/
 def slotP (σ : ℕ) : Params := muxP Layout.oneCell (Layout.selCells σ)
 
-/-- Slot `σ`'s layout (the two-pass compile's first pass). -/
-def slotLay (fin : Finals) (σ : ℕ) : TLay := layOf (slotP σ) (Layout.slotBase σ) (gen fin .mux).ops
+/-- A layout's cells shifted by `d`. -/
+def shiftLay (d : ℕ) (L : TLay) : TLay := L.map fun e => (e.1, e.2.1, e.2.2.1 + d, e.2.2.2)
+
+/-- The keys of a compiled state's instances, in order. -/
+def tinKeys (cs : CS) : List TKey := cs.tins.map (·.1)
+
+/-- **A shifted layout fits** a compiled state `c` laid out with it: `c` has the rows, the cells
+(shifted by `d`) and the instance sequence of the state `z` the layout was made from. -/
+def slotLayOk (z c : CS) (d : ℕ) : Bool :=
+  c.nrows == z.nrows && c.next == z.next + d && tinKeys c == tinKeys z
+
+/-- (+) A shifted layout moves the cell bases only. -/
+theorem shiftLay_ctl : shiftLay 4 [(.zero, 1, 2, 3)] = [(.zero, 1, 6, 3)] := rfl
+
+/-- (+) A state fits the layout of the same state shifted by `d`; (−) not with another row count, nor
+with a cell shift other than `d`. -/
+theorem slotLayOk_ctl : slotLayOk (CS.init 5) (CS.init 9) 4 = true ∧
+    slotLayOk (CS.init 5) { CS.init 9 with nrows := 1 } 4 = false ∧
+    slotLayOk (CS.init 5) (CS.init 9) 3 = false := by decide
+
+/-- Slot 0's layout: the two-pass compile's (`layOf`). -/
+def slotLay0 (fin : Finals) : TLay := layOf (slotP 0) (Layout.slotBase 0) (gen fin .mux).ops
+
+/-- Slot `σ ≥ 1`'s layout from slot 0's `l0`: `l0` with its cells shifted to the slot's base if the
+slot's compile with it fits (`slotLayOk`: the same rows, cells and instances as slot 0's first pass,
+so the groups sit after the slot's skeleton, each sized for its instances), else its own `layOf`. -/
+def slotLayS (fin : Finals) (σ : ℕ) (l0 : TLay) : TLay :=
+  bif slotLayOk (compileT [] (slotP 0) (Layout.slotBase 0) (gen fin .mux).ops)
+      (compileT (shiftLay (Layout.slotBase σ - Layout.slotBase 0) l0) (slotP σ) (Layout.slotBase σ)
+        (gen fin .mux).ops) (Layout.slotBase σ - Layout.slotBase 0)
+    then shiftLay (Layout.slotBase σ - Layout.slotBase 0) l0
+    else layOf (slotP σ) (Layout.slotBase σ) (gen fin .mux).ops
+
+/-- **Slot `σ`'s layout** (S-E13: slot `σ ≥ 1` reuses slot 0's when it fits, `slotLayS`, sparing a
+compile pass per process). The layout only places the instances: soundness does not depend on it
+(`compileT_sound` holds for every layout). -/
+def slotLay (fin : Finals) (σ : ℕ) : TLay :=
+  if σ = 0 then slotLay0 fin else slotLayS fin σ (slotLay0 fin)
+
+theorem slotLay_zero (fin : Finals) : slotLay fin 0 = slotLay0 fin := if_pos rfl
+
+theorem slotLay_one (fin : Finals) : slotLay fin 1 = slotLayS fin 1 (slotLay0 fin) :=
+  if_neg one_ne_zero
 
 /-- **Slot `σ`'s compiled program with the templates** (`compileT (gen fin .mux)`). -/
 def slotCST (fin : Finals) (σ : ℕ) : CS :=
@@ -424,8 +467,9 @@ def mkPlan (l0 l1 : TLay) (c0 c1 : CS)
     mkPlanOf l0 l1 c0 c1 #[] #[] #[] [.sp (slotIRows l0 oneL 0 c0)]
       [.sp (slotIRows l1 oneL Layout.slotM c1)] #[] (by simp [Piece.rows])
 
-/-- **The node's plan** (once per node). -/
-def planOf (fin : Finals) : Plan :=
+/-- **The node's plan, checked at run time** (S-E5 … S-E11: both slots' rows compared with the
+pieces'); superseded by `planOf`, kept for the dev probes' comparison. -/
+def planOfChk (fin : Finals) : Plan :=
   let ops := (gen fin .mux).ops
   let l0 := slotLay fin 0; let l1 := slotLay fin 1
   let c0 := compileT l0 (slotP 0) (Layout.slotBase 0) ops
@@ -434,9 +478,205 @@ def planOf (fin : Finals) : Plan :=
     (slotPPs (tplExt l0.ctx) (slotP 0) (Layout.slotBase 0) ops l0 oneL 0 c0)
     (slotPPs (tplExt l1.ctx) (slotP 1) (Layout.slotBase 1) ops l1 oneL Layout.slotM c1))
 
+/-! ## The plan from proved pieces (S-E13) -/
+
+
+/-- The key data of a compiled state's keys (computed once per process). -/
+def kmsOf (z : CS) : List KM := (keyCounts z.tins).map fun p => mkKM p.1
+
+/-- The layout data of a key, from the key data. -/
+def infoOf (kms : List KM) (k : TKey) : ℕ × ℕ × ℕ :=
+  let e := kmOf kms k; (e.rows.length, e.cr, e.nl)
+
+/-- A layout, its compiled state and blocks. -/
+def withLay (l : TLay) (r : CS × List Seg × List (TKey × Tpl)) : TLay × CS × List Seg := (l, r.1, r.2.1)
+
+theorem withLay_1 (l : TLay) (r : CS × List Seg × List (TKey × Tpl)) : (withLay l r).1 = l := rfl
+theorem withLay_2 (l : TLay) (r : CS × List Seg × List (TKey × Tpl)) : (withLay l r).2.1 = r.1 := rfl
+
+/-- Slot 1 compiled at layout `l`. -/
+def comp1 (ops : List Op) (M : List (TKey × Tpl)) (l : TLay) : TLay × CS × List Seg :=
+  withLay l (compMS l (slotP 1) M (CS.init (Layout.slotBase 1)) ops none [])
+
+/-- Slot 1's own layout from its first pass `z1`. -/
+def lay1 (kms : List KM) (z1 : CS) : TLay := mkLayI (infoOf kms) z1.nrows z1.next (keyCounts z1.tins)
+
+/-- Slot 1's own two passes. -/
+def slot1Own (ops : List Op) (kms : List KM) (M : List (TKey × Tpl)) : TLay × CS × List Seg :=
+  comp1 ops M (lay1 kms (compMS [] (slotP 1) M (CS.init (Layout.slotBase 1)) ops none []).1)
+
+/-- Slot 1 at slot 0's layout shifted (`r1`), kept if it fits, else slot 1's own passes. -/
+def slot1Pick (ops : List Op) (z0 : CS) (kms : List KM) (l0 : TLay) (M : List (TKey × Tpl))
+    (r1 : CS × List Seg × List (TKey × Tpl)) : TLay × CS × List Seg :=
+  bif slotLayOk z0 r1.1 (Layout.slotBase 1 - Layout.slotBase 0)
+    then withLay (shiftLay (Layout.slotBase 1 - Layout.slotBase 0) l0) r1 else slot1Own ops kms M
+
+/-- **Slot 1's layout, compiled state and blocks**: slot 0's layout `l0` shifted, if slot 1's compile
+with it fits (`slotLayOk`), else slot 1's own two passes. (No `let`s: the proofs rewrite with the
+equations only, so that the kernel never reduces the choice.) -/
+def slot1Of (ops : List Op) (z0 : CS) (kms : List KM) (l0 : TLay) (M : List (TKey × Tpl)) :
+    TLay × CS × List Seg :=
+  slot1Pick ops z0 kms l0 M
+    (compMS (shiftLay (Layout.slotBase 1 - Layout.slotBase 0) l0) (slotP 1) M
+      (CS.init (Layout.slotBase 1)) ops none [])
+
+/-- **The plan's data** (S-E13): both slots compiled with a template memo (the skeleton's blocks
+recorded in the same pass; slot 1 with slot 0's layout shifted when it fits), their proto-pieces
+(`slotRP`), the grouping, and each slot's checked pieces. -/
+def planData (fin : Finals) :
+    Array GK × Array (List Lin) × Array (List Lin) × List Piece × List Piece :=
+  let ops := (gen fin .mux).ops
+  let z0 := compMS [] (slotP 0) [] (CS.init (Layout.slotBase 0)) ops none []
+  let kms := kmsOf z0.1
+  let l0 := mkLayI (infoOf kms) z0.1.nrows z0.1.next (keyCounts z0.1.tins)
+  let r0 := compMS l0 (slotP 0) z0.2.2 (CS.init (Layout.slotBase 0)) ops none []
+  let s1 := slot1Of ops z0.1 kms l0 r0.2.2
+  let p0 := slotRP oneL kms l0 0 r0.1 r0.2.1.reverse []
+  let rps0 := p0.1
+  let rps1 := (slotRP oneL kms s1.1 Layout.slotM s1.2.1 s1.2.2.reverse p0.2).1
+  let g := groupRP rps0 rps1
+  (g.1, g.2.1, g.2.2.1, piecesOf g.1 g.2.1 oneL rps0 g.2.2.2.1, piecesOf g.1 g.2.2.1 oneL rps1 g.2.2.2.2)
+
+theorem mkKM_info (k : TKey) :
+    ((mkKM k).rows.length, (mkKM k).cr, (mkKM k).nl) = ((tRows k).length, cregion k, tNlocs k) := by
+  have h := keyInfo_eq k
+  unfold mkKM; split
+  · simp [h]
+  · dsimp only; split <;> simp [h]
+
+theorem compMS_T (L : TLay) (P : Params) (base : ℕ) (ops : List Op) {M : List (TKey × Tpl)} (h : MOk M) :
+    (compMS L P M (CS.init base) ops none []).1 = compileT L P base ops ∧
+      MOk (compMS L P M (CS.init base) ops none []).2.2 :=
+  compMS_eq L P ops M _ none [] h
+
+theorem kmsOf_eq (z : CS) : kmsOf z = ((keyCounts z.tins).map Prod.fst).map mkKM := by
+  rw [kmsOf, List.map_map]; rfl
+
+theorem infoOf_eq (z : CS) (k : TKey) : infoOf (kmsOf z) k = ((tRows k).length, cregion k, tNlocs k) := by
+  rw [infoOf, kmsOf_eq, kmOf_map, mkKM_info]
+
+/-- A layout from the two passes' first: `layOf`. -/
+theorem lay_eq (z : CS) (P : Params) (base : ℕ) (ops : List Op) (hz : z = compileT [] P base ops)
+    (z' : CS) : mkLayI (infoOf (kmsOf z')) z.nrows z.next (keyCounts z.tins) = layOf P base ops := by
+  rw [mkLayI_eq _ (infoOf_eq z'), layOf, hz]
+
+theorem slot1Own_spec (fin : Finals) (z0 : CS) {M : List (TKey × Tpl)} (hM : MOk M) :
+    (slot1Own (gen fin .mux).ops (kmsOf z0) M).1 = layOf (slotP 1) (Layout.slotBase 1) (gen fin .mux).ops ∧
+      (slot1Own (gen fin .mux).ops (kmsOf z0) M).2.1 =
+        compileT (layOf (slotP 1) (Layout.slotBase 1) (gen fin .mux).ops) (slotP 1) (Layout.slotBase 1)
+          (gen fin .mux).ops := by
+  obtain ⟨hz1, -⟩ := compMS_T [] (slotP 1) (Layout.slotBase 1) (gen fin .mux).ops hM
+  have hl := lay_eq _ (slotP 1) (Layout.slotBase 1) (gen fin .mux).ops hz1 z0
+  rw [← lay1] at hl
+  rw [slot1Own, hl, comp1, withLay_1, withLay_2]
+  exact ⟨rfl, (compMS_T _ (slotP 1) (Layout.slotBase 1) (gen fin .mux).ops hM).1⟩
+
+theorem slot1Of_spec (fin : Finals) (z0 : CS) {M : List (TKey × Tpl)} (hM : MOk M) :
+    (slot1Of (gen fin .mux).ops (compileT [] (slotP 0) (Layout.slotBase 0) (gen fin .mux).ops)
+        (kmsOf z0) (slotLay0 fin) M).1 = slotLay fin 1 ∧
+      (slot1Of (gen fin .mux).ops (compileT [] (slotP 0) (Layout.slotBase 0) (gen fin .mux).ops)
+        (kmsOf z0) (slotLay0 fin) M).2.1 = slotCST fin 1 := by
+  obtain ⟨hr1, -⟩ := compMS_T (shiftLay (Layout.slotBase 1 - Layout.slotBase 0) (slotLay0 fin))
+    (slotP 1) (Layout.slotBase 1) (gen fin .mux).ops hM
+  obtain ⟨ho1, ho2⟩ := slot1Own_spec fin z0 hM
+  rw [slot1Of, slot1Pick, Bool.apply_cond Prod.fst, Bool.apply_cond (fun x : TLay × CS × List Seg => x.2.1),
+    withLay_1, withLay_2, ho1, ho2, hr1, slotCST, slotLay_one, slotLayS,
+    ← Bool.apply_cond (fun L => compileT L (slotP 1) (Layout.slotBase 1) (gen fin .mux).ops)]
+  exact ⟨rfl, rfl⟩
+
+/-- **The plan's data are the slots' rows**: slot `σ`'s pieces have the rows of `slotCST fin σ` at
+`slotLay fin σ`. -/
+theorem planData_rows (fin : Finals) :
+    (planData fin).2.2.2.1.flatMap (Piece.rows ((planData fin).1.map mkKey) (planData fin).2.1 oneL) =
+        slotIRows (slotLay fin 0) oneL 0 (slotCST fin 0) ∧
+      (planData fin).2.2.2.2.flatMap (Piece.rows ((planData fin).1.map mkKey) (planData fin).2.2.1 oneL) =
+        slotIRows (slotLay fin 1) oneL Layout.slotM (slotCST fin 1) := by
+  simp only [planData, piecesOf_rows]
+  obtain ⟨hz0, mz0⟩ := compMS_T [] (slotP 0) (Layout.slotBase 0) (gen fin .mux).ops (M := []) (by simp [MOk])
+  have hl0 := lay_eq _ (slotP 0) (Layout.slotBase 0) (gen fin .mux).ops hz0
+    (compMS [] (slotP 0) [] (CS.init (Layout.slotBase 0)) (gen fin .mux).ops none []).1
+  rw [← slotLay0] at hl0
+  obtain ⟨hr0, mr0⟩ := compMS_T (mkLayI (infoOf (kmsOf (compMS [] (slotP 0) [] (CS.init (Layout.slotBase 0))
+      (gen fin .mux).ops none []).1)) (compMS [] (slotP 0) [] (CS.init (Layout.slotBase 0)) (gen fin .mux).ops none []).1.nrows
+      (compMS [] (slotP 0) [] (CS.init (Layout.slotBase 0)) (gen fin .mux).ops none []).1.next
+      (keyCounts (compMS [] (slotP 0) [] (CS.init (Layout.slotBase 0)) (gen fin .mux).ops none []).1.tins))
+    (slotP 0) (Layout.slotBase 0) (gen fin .mux).ops mz0
+  rw [hl0] at hr0 ⊢
+  obtain ⟨h1, h2⟩ := slot1Of_spec fin (compMS [] (slotP 0) [] (CS.init (Layout.slotBase 0)) (gen fin .mux).ops none []).1 mr0
+  rw [← hz0, hl0] at h1 h2
+  rw [h1, h2, kmsOf_eq, slotRP_rows, slotRP_rows, hr0, slotCST, slotLay_zero]
+  exact ⟨rfl, rfl⟩
+
+/-- A plan at `slotLay fin`, `slotCST fin` from its pieces (the prepared forms derived). -/
+def mkPlanF (fin : Finals) (keys : Array Key) (sh0 sh1 : Array (List Lin)) (pc0 pc1 : List Piece)
+    (pats : Array (Array Pat)) (ok : keys.all (Key.ok 21) = true ∧
+      pc0.flatMap (Piece.rows keys sh0 oneL) = slotIRows (slotLay fin 0) oneL 0 (slotCST fin 0) ∧
+      pc1.flatMap (Piece.rows keys sh1 oneL) = slotIRows (slotLay fin 1) oneL Layout.slotM (slotCST fin 1)) :
+    Plan where
+  lay := slotLay fin
+  cs := slotCST fin
+  keys := keys
+  sh0 := sh0
+  sh1 := sh1
+  pc0 := pc0
+  pc1 := pc1
+  ok := ok
+  g0 := sh0.map (·.map (grp 4096))
+  g1 := sh1.map (·.map (grp 4096))
+  pats := pats
+  pbs := patBits pats
+  p0 := pc0.map (prepPiece pats)
+  p1 := pc1.map (prepPiece pats)
+  hg0 := rfl
+  hg1 := rfl
+  hp0 := rfl
+  hp1 := rfl
+
+theorem mkPlanF_lay (fin : Finals) (keys : Array Key) (sh0 sh1 : Array (List Lin)) (pc0 pc1 : List Piece)
+    (pats : Array (Array Pat)) (ok) :
+    (mkPlanF fin keys sh0 sh1 pc0 pc1 pats ok).lay = slotLay fin ∧
+      (mkPlanF fin keys sh0 sh1 pc0 pc1 pats ok).cs = slotCST fin := by
+  unfold mkPlanF; dsimp only; exact ⟨rfl, rfl⟩
+
+def planOfD (fin : Finals)
+    (d : Array GK × Array (List Lin) × Array (List Lin) × List Piece × List Piece)
+    (hd : d = planData fin) : Plan :=
+  if h : (d.1.map mkKey).all (Key.ok 21) = true then
+    mkPlanF fin (d.1.map mkKey) d.2.1 d.2.2.1 d.2.2.2.1 d.2.2.2.2
+      (mkPats (d.1.map mkKey).size (d.2.2.2.1 ++ d.2.2.2.2))
+      ⟨h, by subst hd; exact (planData_rows fin).1, by subst hd; exact (planData_rows fin).2⟩
+  else
+    mkPlanF fin #[] #[] #[] [.sp (slotIRows (slotLay fin 0) oneL 0 (slotCST fin 0))]
+      [.sp (slotIRows (slotLay fin 1) oneL Layout.slotM (slotCST fin 1))] #[]
+      ⟨by simp, List.flatMap_singleton .., List.flatMap_singleton ..⟩
+
+/-- **The node's plan** (S-E13; once per process, `FRNodePlan.nodePlan`): `planData`'s keys, shared
+forms and pieces, whose rows are the slots' rows by proof (`planData_rows`), not by a run-time
+comparison; the run patterns from both slots' pieces (`mkPats`; any patterns are sound: `prepOwn`
+checks each run); one sparse piece per slot if a key is not well formed. -/
+def planOf (fin : Finals) : Plan := planOfD fin (planData fin) rfl
+
+/-- The plan's slots are `slotLay` and `slotCST` (for S-G: `nodeIRows (planOf fin)` is
+`nodeIRows_planOf`). -/
+theorem planOfD_lay (fin : Finals) (d : Array GK × Array (List Lin) × Array (List Lin) × List Piece ×
+    List Piece) (hd : d = planData fin) : (planOfD fin d hd).lay = slotLay fin ∧
+      (planOfD fin d hd).cs = slotCST fin := by
+  unfold planOfD; split <;> exact mkPlanF_lay ..
+
+theorem planOf_lay (fin : Finals) : (planOf fin).lay = slotLay fin := (planOfD_lay fin _ rfl).1
+
+theorem planOf_cs (fin : Finals) : (planOf fin).cs = slotCST fin := (planOfD_lay fin _ rfl).2
+
 /-- **The node's indexed M rows**: slot `σ`'s at offset `σ · 2^20`. -/
 def nodeIRows (pl : Plan) : List (ℕ × Row) :=
   slotIRows (pl.lay 0) oneL 0 (pl.cs 0) ++ slotIRows (pl.lay 1) oneL Layout.slotM (pl.cs 1)
+
+/-- **The node's indexed M rows are both slots' templated compile** (S-G's `truthE` is stated over
+`nodeIRows (planOf fin)`). -/
+theorem nodeIRows_planOf (fin : Finals) :
+    nodeIRows (planOf fin) = slotIRows (slotLay fin 0) oneL 0 (slotCST fin 0) ++
+      slotIRows (slotLay fin 1) oneL Layout.slotM (slotCST fin 1) := by
+  rw [nodeIRows, planOf_lay, planOf_cs]
 
 /-- The node's value of matrix `s`, given the tables (the specification of `nodeV3`). -/
 def nodeV (pl : Plan) (s : Mat) (t u : ℕ → F) (tb : Tb) : F :=

@@ -78,6 +78,36 @@ def tplShiftMask (n m : ℕ) : Tpl :=
     [sepT 2045 ++ sepT 2049, sepT 2053 ++ sepT 2057 ++ (sepT 2061 ++ sepT 2065),
      L 2069 ++ L 2070]⟩
 
+/-! ## The template, computed with its tables once (S-E13: plan time) -/
+
+/-- `mEnt` over given tables. -/
+def mEntT (T : List (List Gate × List LinT)) (t i : ℕ) : LinT := (T.getD t ([], [])).2.getD i []
+
+/-- `mProds` over given tables. -/
+def mProdsT (T : List (List Gate × List LinT)) : List Gate :=
+  mulsG 256 (fun h => mEntT T 1 h) (fun h => mEntT T 3 h) ++
+  mulsG 256 (fun h => mEntT T 1 h) (fun h => mEntT T 3 (h + 1)) ++
+  mulsG 256 (fun l => mEntT T 0 l) (fun l => mEntT T 2 l) ++
+  mulsG 256 (fun l => mEntT T 0 l) (fun l => mEntT T 2 (l + 1)) ++
+  [.mul (mEntT T 0 255) (mEntT T 2 0)]
+
+/-- `mSP` over given tables. -/
+def mSPT (T : List (List Gate × List LinT)) : List (LinT × LinT) :=
+  mPts.flatMap (twoP fR fC) ++ mPts.flatMap (twoP fR fC1) ++ mPts.flatMap (twoP fR2 fC2) ++
+    [(mEntT T 2 0, mEntT T 3 0),
+     (mEntT T 2 (Layout.chainN % 256), mEntT T 3 (Layout.chainN / 256 % 256))]
+
+/-- **`tplShiftMask`, its four tables built once** (`mEnt` rebuilds them per entry: 1.5 s per
+template). -/
+def tplShiftMaskF (n m : ℕ) : Tpl :=
+  let T := mTabs n m
+  let sp := mSPT T
+  ⟨T.flatMap Prod.fst ++ mProdsT T ++ mulsG 26 (fun i => (sp.getD i ([], [])).1)
+      (fun i => (sp.getD i ([], [])).2),
+    [sepT 2045 ++ sepT 2049, sepT 2053 ++ sepT 2057 ++ (sepT 2061 ++ sepT 2065), L 2069 ++ L 2070]⟩
+
+theorem tplShiftMaskF_eq (n m : ℕ) : tplShiftMaskF n m = tplShiftMask n m := rfl
+
 /-! ## Correctness -/
 
 theorem ofFn_lo8 (τ : Array F) : List.ofFn (lo8 (Impl.ptA 16 τ)) = (List.range 8).map fun l => τ.getD l 0 :=
