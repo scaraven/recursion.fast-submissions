@@ -5,11 +5,12 @@ S-H1 and S-0; the combined `FR` builds (2,237 jobs).
 
 ## Running
 
-- Blueprint author (Fable): **F-7, the T_V redesign.** V ≈ 3.3 s on the VM against ≈ 264 ms (the node's untemplated skeleton has 1.23M sparse entries; templated evalM 1.13 s and evalMK 2.02 s). Options (a)–(e) are being costed. **This is the binding risk (FR-R9).**
-- S-G1i: concrete dooms and PhaseObl (the Ligerito tail, then the PIOP front).
-- S-H2f: extractor node decoding (seed block, chain wiring, interpolation, levels 1–4, decodeWit, 'N' case).
+- INT-1: integrate revision 3.12 across tracks (S-F finals, S-G finPf and constants, S-E chainN); restore `lake build FR`.
+- S-H2g: interpolation target loop, levels 1–4, decodeWit, the 'N' case, wiring.
 
 ## Waiting
+
+- **S-E5 (next, after INT-1): T_V, the skeleton.** Measured: V without evalM 150 ms VM; evalM 545 ms (flat evaluator), of which ≈ 440 ms is the untemplated skeleton (≈ 120k rows per slot: Merkle steps, finP4's Horner). To do: block templates by placing compile's rows into aligned regions (cell renaming preserves soundness; plan-time key check; roundtrip lemma; S-E4-RESULT §6); aligned cell allocation; F-9 (materialise `cur` in Merkle steps, ≈ +15k rows per slot); the import classes; finE's evalM with κ_E (Ã + κB̃ + κ²C̃). Target: V + evalM ≤ 230 ms VM.
 
 - **P2 node prover**: needs S-E3's node dump (logs/S-E3/nodedump/, which now has template groups and the WOTS order) and the F-7 outcome (it may change the node circuit). Leaf proofs are dump-exact (P2 §11).
 - **S-E (the H-side assembly of node_sound)**: the pack map from H trace/stream cells to the M imports. This covers the r17/r18 bindings (S-E3 §9), `input w` as an alias of the public seed cells (S-E3's proposal: no rows, `PubCells` binds vk/cᵢ), SigOk and the format facts, W-kind children, node_complete; the remaining templates (tensorW, rsWeight, walkA/B, kindInd, rowW, shiftTarget, the child's evalM/evalMK/evalL replay); F-8 (track kindInd/packFK); per-generator row counts for RowsFit (S-G's truthE_iff hypothesis; false for an arbitrary fin).
