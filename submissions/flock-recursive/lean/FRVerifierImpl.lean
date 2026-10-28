@@ -7,6 +7,7 @@ import FRRSEval
 import FRVerifier
 import FRBlockChain
 import FRPubTarget
+import FRVerifierImplNode
 
 /-!
 # `implC`, `specC`, `implC_meets`, `V` (with the node's M rows)
@@ -23,14 +24,14 @@ open Finset RecursionFast RecursionFast.Blake2s
 
 /-! ## The assembled record, `Meets`, `V` -/
 
-/-- **`implC`**: the computable ops. `fin` fixes the node's M rows (`evalM`), `lRows`
-the L rows (`evalL`; no module fixes them yet); `κs₀` is no longer used (`shiftTarget` takes `κ_s`
+/-- **`implC`**: the computable ops. `fin` fixes the node's M rows (`evalM`, `TEval.planOf`),
+`lRows` the L rows (`evalL`, templated by `TEval.planL`, S-E6); `κs₀` is no longer used (`shiftTarget` takes `κ_s`
 as an operand since S-0's interface pass). `targetS`, `slotW` and `linkW` receive the kind but are
-still the leaf kinds' functions at every kind (the node's are S-C's);
+the leaf kinds' functions except `targetS` at a node kind (S-CN's `targetSNodeI`, S-E6);
 `kindFoldWeight` is not used by revision 3.9's `gen` and is `0`. -/
-def implCWith (pl : TEval.Plan) (lRows : List Circ.Row) : OpImpl where
+def implCWith (pl : TEval.Plan) (lp : TEval.LPlan) : OpImpl where
   lagrangeS := lagrangeSI
-  targetS _ := targetSLeafI
+  targetS κ := if κ.isNode then NodeI.targetSNodeI else targetSLeafI
   eqZ := eqZI
   tensorW := tensorWI
   rsWeight := rsWeightI
@@ -38,7 +39,7 @@ def implCWith (pl : TEval.Plan) (lRows : List Circ.Row) : OpImpl where
   walkAB := Eval.walkImpl
   kindInd := Eval.kindIndImpl
   evalM := TEval.evalMT pl
-  evalL := Eval.evalLImpl lRows
+  evalL := TEval.evalLT lp
   shiftTarget := shiftTargetI
   slotW _ := slotWI
   kindFoldWeight _ _ _ := 0
@@ -46,15 +47,16 @@ def implCWith (pl : TEval.Plan) (lRows : List Circ.Row) : OpImpl where
   rowW := rowWI
   shiftEq := shiftEqI
 
-/-- `implC` at the node's plan (`TEval.planOf fin`: both slots' templated compile, once). -/
+/-- `implC` at the node's plan (`TEval.planOf fin`: both slots' templated compile, once) and L's
+plan (`TEval.planL lRows`, once). -/
 def implC (fin : Finals) (lRows : List Circ.Row) (_κs₀ : F) : OpImpl :=
-  implCWith (TEval.planOf fin) lRows
+  implCWith (TEval.planOf fin) (TEval.planL lRows)
 
 /-- **`specC`**: the specifications, field by field (the same parameters; `targetS` the leaf
 kinds' with `m = 30`, any `m` gives the same function; `linkW` the leaf kinds' `0`). -/
 noncomputable def specCWith (pl : TEval.Plan) (lRows : List Circ.Row) : OpSpec where
   lagrangeS := lagrangeSS
-  targetS _ := targetSLeafS 16
+  targetS κ := if κ.isNode then NodeT.targetSNodeS else targetSLeafS 16
   eqZ := eqZS
   tensorW := tensorWS
   rsWeight := rsWeightS
@@ -75,11 +77,14 @@ noncomputable def specC (fin : Finals) (lRows : List Circ.Row) (_κs₀ : F) : O
 
 /-- **`implC ⊨ specC`** (`OpImpl.Meets`, per op under `gen`'s operand lengths). -/
 theorem implCWith_meets (pl : TEval.Plan) (lRows : List Circ.Row) :
-    (implCWith pl lRows).Meets (specCWith pl lRows) := by
+    (implCWith pl (TEval.planL lRows)).Meets (specCWith pl lRows) := by
   simp only [OpImpl.Meets, implCWith, specCWith]
   refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
   · exact fun v l pe _ => lagrangeS_meets v l pe
-  · exact fun _ r => targetSLeaf_meets 16 r
+  · intro κ r
+    split_ifs
+    · exact NodeI.targetSNode_meets r
+    · exact targetSLeaf_meets 16 r
   · exact eqZ_meets
   · exact tensorW_meets
   · exact fun r ps k p h => rsWeight_meets r ps k p h
@@ -88,7 +93,7 @@ theorem implCWith_meets (pl : TEval.Plan) (lRows : List Circ.Row) :
     rewrite [← Eval.walkA_eq rw cw, ← Eval.walkB_eq rw cw]
     exact Prod.mk.eta.symm
   · exact TEval.evalMT_eq _
-  · exact Eval.evalL_eq lRows
+  · intro a b; rw [TEval.evalLT_eq, TEval.planL_rows]
   · exact Eval.kindInd_eq
   · exact fun k a b c _ => shiftTarget_meets k a b c
   · exact fun _ => slotW_meets
@@ -98,8 +103,8 @@ theorem implCWith_meets (pl : TEval.Plan) (lRows : List Circ.Row) :
   · exact fun a b h => shiftEq_meets a b h
 
 /-- `implC` is the templates' implementation (`ImplT`, the hypothesis of `compileT_sound`). -/
-theorem implCWith_implT (pl : TEval.Plan) (lRows : List Circ.Row) : Circ.ImplT (implCWith pl lRows) :=
-  by constructor <;> intros <;> simp only [implCWith]
+theorem implCWith_implT (pl : TEval.Plan) (lp : TEval.LPlan) : Circ.ImplT (implCWith pl lp) := by
+  constructor <;> intros <;> simp only [implCWith]
 
 theorem implC_implT (fin : Finals) (lRows : List Circ.Row) (κs₀ : F) :
     Circ.ImplT (implC fin lRows κs₀) := implCWith_implT _ _

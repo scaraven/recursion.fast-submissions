@@ -191,26 +191,27 @@ theorem regions_fit : hEnd ≤ lBase ∧ lBase + lUsed ≤ mBase ∧ mBase + mBl
 
 /-! ## The M rows (A.11's row model on the measured counts, per slot) -/
 
-/-- **Per slot, the row model of revision 3.12** (S-E5; BLUEPRINT §10 changes 17, `sizes.txt`),
-with S-E5's measured counts where the rows are emitted (`logs/S-E5/lay-2.log`): the skeleton
-(`compileT`'s own rows, 139,137, of which ≈ 29.5 k are the alignment's empty rows before the Merkle
-positions, the Horner blocks and the tensor `eqTable`'s products), the emitted templates in their
-aligned layout (361,856 − 139,137 = 222,719 rows, padding included; `Φ`'s claim 5 is now among
-them, 128 of the 640 `phiRS` instances); then the plan's figures for what is not emitted yet: the
-missing templates 118,639 (`tensorW` 37,335, `rsWeight` with claim 5 45,604 + 11,400, `linkW`'s
-families 20,000, `kindFoldWeight` 1,000, `kindInd` 500, `rowW`/`shiftTarget` 2,800), the fused
-`walkAB`'s 65,536 (the tables `rowW′`, `colW` and the two walks' product rows, `2^14` each), and
-the child's `evalM` replay at an F point 422,912. -/
+/-- **Per slot, the row model of revision 3.13** (S-E6; BLUEPRINT §10 changes 17 and 20,
+`sizes.txt`), with S-E6's measured counts where the rows are emitted (`logs/S-E6/lay-3.log`,
+`rows-per-generator.log`): the skeleton and every emitted template in their aligned layout, ending
+at row 406,016 (skeleton 143,088 of which 29,142 alignment padding; the templates of S-E3/S-E5 and
+S-E6's `tensorW` (882 instances) and `rowW`); then the figures for what is not emitted yet:
+`rsWeight` with 4 claims 45,604 (no claim 5), the fused `walkAB` 65,536, `shiftTarget` 100,
+`finPf`'s other 745 `tensorW` (aligned) 47,680, the node `targetS` 10,000 and `linkW`'s families
+20,000 (S-CN), and the child's `evalM`/`evalL` replay at an F point 422,912. -/
 def mRowModel : List ℕ :=
-  [139137,            -- skeleton, alignment padding included (measured, S-E5)
-   222719,            -- emitted templates, aligned (measured, S-E5)
-   118639,            -- templates still missing (changes 17)
+  [406016,            -- skeleton + emitted templates, aligned (measured, S-E6)
+   45604,             -- rsWeight, 4 claims (A.11)
    65536,             -- walkAB: rowW′, colW, 2 × 2^14 products
-   422912]            -- the child's evalM replay at an F point (changes 17)
+   100,               -- shiftTarget (A.11)
+   47680,             -- finPf's 745 tensorW still imported, aligned
+   10000,             -- the node targetS (S-CN, A.11)
+   20000,             -- linkW's families (S-CN, A.11)
+   422912]            -- the child's evalM/evalL replay at an F point (changes 17)
 
-theorem mRowModel_sum : mRowModel.sum = 968943 := by decide
+theorem mRowModel_sum : mRowModel.sum = 1017848 := by decide
 
-/-- **The M rows fit**: a slot's rows in its `2^20` half of M (margin `1.08`), the node's in
+/-- **The M rows fit**: a slot's rows in its `2^20` half of M (margin `1.03`), the node's in
 `N_M = 2^21`. -/
 theorem mRows_le : mRowModel.sum ≤ slotM ∧ 2 * mRowModel.sum ≤ nM := by
   rw [mRowModel_sum]; simp only [slotM, nM]; norm_num

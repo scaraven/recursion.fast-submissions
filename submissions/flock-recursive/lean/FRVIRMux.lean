@@ -1,5 +1,5 @@
 -- New for `flock-recursive` (BLUEPRINT §4.3 "The mux", §7, stage S-E2; B-2, B-7).
-import FRVIRCompile
+import FRVIRCompileSound
 
 /-!
 # The muxed node program: `compileMux`, `compile_mux_sound`

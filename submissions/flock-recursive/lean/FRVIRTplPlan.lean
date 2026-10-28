@@ -193,18 +193,28 @@ def _root_.FR.Circ.TLay.bits (L : TLay) (k : TKey) : ℕ :=
   | some (_, _, _, b) => b
   | none => 0
 
-/-- A template instance's proto-piece. -/
-def tinPP (L : TLay) (one : Lin) (off : ℕ) (t : TKey × ℕ × List Lin) : PP :=
+/-- A template instance's proto-pieces: the instance, or for a template of more than `2^12` rows
+(`rowW`, `maskRows`: row `k` writes local `k`) its 64-row chunks, each abstracted over the 64 cells
+it writes (S-E6). -/
+def tinPP (L : TLay) (one : Lin) (off : ℕ) (t : TKey × ℕ × List Lin) : List PP :=
   let T := tplOf t.1
-  let r : RawI := ⟨T.rows, t.2.2.toArray, off + L.rb t.1 + t.2.1 * 2 ^ T.rbits, L.cb t.1 t.2.1,
-    T.rbits, L.bits t.1⟩
-  if r.aligned then .raw r (tinIRows L one off t) else .sp (tinIRows L one off t)
+  let X := off + L.rb t.1 + t.2.1 * 2 ^ T.rbits
+  let cb := L.cb t.1 t.2.1
+  let r : RawI := ⟨T.rows, t.2.2.toArray, X, cb, T.rbits, L.bits t.1⟩
+  if 12 < T.rbits then
+    let rows := ((tinIRows L one off t).map (·.2)).toArray
+    let nb := rows.size / 64
+    let seg := fun (a b : ℕ) => (List.range (b - a)).map fun i => rows.getD (a + i) ⟨[], [], []⟩
+    let idx := fun (a b : ℕ) => (seg a b).zipIdx.map fun p => (X + a + p.2, p.1)
+    ((List.range nb).map fun c => blockPP (seg (64 * c) (64 * c + 64)) (X + 64 * c) (cb + 64 * c) 6) ++
+      [PP.sp (idx (64 * nb) rows.size)]
+  else if r.aligned then [.raw r (tinIRows L one off t)] else [.sp (tinIRows L one off t)]
 
 /-- A slot's proto-pieces. -/
 def slotPPs (X : Ext) (P : Params) (base : ℕ) (ops : List Op) (L : TLay) (one : Lin) (off : ℕ)
     (cs : CS) : Array PP :=
   let segs := (segsGo X P (CS.init base) ops none []).reverse
-  (skelPPs cs.rowList.toArray off segs ++ cs.tins.map (tinPP L one off)).toArray
+  (skelPPs cs.rowList.toArray off segs ++ cs.tins.flatMap (tinPP L one off)).toArray
 
 /-- The proto-pieces of an arbitrary row list (`evalL`'s L rows): aligned blocks of `2^a` rows, each
 with the aligned cell window of bits `a + 2` holding its least cell (a block whose cells run past

@@ -890,6 +890,10 @@ def planL (rows : List Row) : LPlan :=
       simp only [Bool.and_eq_true] at h; exact ⟨h.1, eqL_eq h.2⟩)
   else mkLPlanOf rows #[] #[] [.sp tgt] (by simp [Piece.rows, tgt])
 
+/-- L's plan keeps its rows. -/
+theorem planL_rows (rows : List Row) : (planL rows).rows = rows := by
+  simp only [planL]; split <;> rfl
+
 /-- **`evalL`, templated**: L's three matrices at `(τ, σ)` (15 and 23 coordinates). -/
 def evalLT (pl : LPlan) (τ σ : Array F) : F × F × F :=
   let t := fun l => τ.getD l 0; let u := fun l => σ.getD l 0

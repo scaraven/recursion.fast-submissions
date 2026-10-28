@@ -2,6 +2,8 @@
 import FRVIRTemplates
 import FRVIRTplTab
 import FRVIRTplLag
+import FRVIRTplRep
+import FRVIRCompileSound
 
 /-!
 # `compileT`: the compiler with the replay templates, and `compileT_sound`
@@ -39,6 +41,8 @@ def tplOf : TKey → Tpl
   | .lagrangeS n m => tplLagrangeS n m
   | .eqTableK v => tplEqTableK v
   | .dotKF n => tplDotKF n
+  | .tensorW n => tplTensorW n
+  | .rowW _ => tplRowW
   | _ => ⟨[], []⟩
 
 /-- **A layout**: per key, the group's row base (relative to the slot), cell base and cell bits. -/
@@ -86,10 +90,8 @@ def tplExt (tc : TCtx) : Ext := fun P cs op =>
     | some (.af n, lr), some (.f, la) => some (tplOut tc P cs (.phiRS n) (lr ++ la) [.f])
     | _, _ => none
   | .linkW .. | .kindFoldWeight .. => some (tplOut tc P cs .zero [] [.f])
-  | .targetS r =>
-    match cs.slot r with
-    | some (.af n, lr) => some (tplOut tc P cs (.targetS n) lr [.af 64])
-    | _ => none
+  -- `targetS` is the node's at a node kind (S-CN's `targetSNodeI`) and the leaf's otherwise, so
+  -- the leaf template no longer serves every kind: an import until `tplTargetSNode` (S-E6)
   | .slotW sm t r =>
     match cs.slot t, cs.slot r with
     | some (.af n, lt), some (.af m, lr) => some (tplOut tc P cs (.slotW sm n m) (lt ++ lr) [.f])
@@ -120,6 +122,20 @@ def tplExt (tc : TCtx) : Ext := fun P cs op =>
       let cells := (List.range n).map fun b => Lin.cell (cb + 2 * n + b)
       some { tplOut tc P cs (.dotKF n) (lw ++ cells) [.k] with aux := [(cells, col, .felems n)] }
     | _ => none
+  | .rowW lam rhi =>
+    match cs.slot lam, cs.slot rhi with
+    | some (.f, ll), some (.af n, lr) => some (tplOut tc P cs (.rowW n) (ll ++ lr) [.af (2 ^ 14)])
+    | _, _ => none
+  | .tensorW j r =>
+    match cs.slot r with
+    | some (.ak n, lr) =>
+      if n ≤ logNMax then
+        -- `j`'s 20 bits: auxiliary import cells (L bits) after the template's `5n` locals (S-E6)
+        let cb := tc.cb (.tensorW n) (cs.tcount (.tensorW n))
+        let cells := (List.range logNMax).map fun i => Lin.cell (cb + 5 * n + i)
+        some { tplOut tc P cs (.tensorW n) (lr ++ cells) [.k] with aux := [(cells, j, .bits logNMax)] }
+      else none
+    | _ => none
   | _ => none
 
 /-! ## Soundness -/
@@ -130,10 +146,11 @@ structure ImplT (impl : OpImpl) : Prop where
   phiRS : impl.phiRS = Impl.phiRSI
   linkW : ∀ κ a f c, impl.linkW κ a f c = 0
   kfw : ∀ a b c, impl.kindFoldWeight a b c = 0
-  targetS : ∀ κ, impl.targetS κ = Impl.targetSLeafI
   eqZ : impl.eqZ = Impl.eqZI
   lagrangeS : impl.lagrangeS = Impl.lagrangeSI
   slotW : ∀ κ, impl.slotW κ = Impl.slotWI
+  tensorW : impl.tensorW = Impl.tensorWI
+  rowW : impl.rowW = Impl.rowWI
 
 theorem outSlots_length (one : Lin) (ins : List Lin) (cb : ℕ) :
     ∀ (tys : List Ty) (os : List LinT), (outSlots one ins cb tys os).length = tys.length
@@ -243,16 +260,6 @@ theorem tplExt_ok {impl : OpImpl} (hT : ImplT impl) (L : TLay) : ExtOk impl L.ct
     obtain ⟨y, hy, hyl⟩ := rep_f (rep_slot hI ha)
     rw [hx, hy, hT.phiRS]
     exact outSlots_one rfl (tplPhiRS_ok (inpIs_of (by simp [hxl, hyl, Val.toF])) (tin_eqns hP.1 ht))
-  case targetS r =>
-    split at hX <;> simp only [Option.some.injEq, reduceCtorEq] at hX; subst hX
-    rename_i n lr hr
-    refine ⟨rfl, fun κ inp w regs hP hI => ⟨fun q => by simp [evalOp], fun _ ht _ vs ok he => ?_⟩⟩
-    simp only [evalOp, Res.vals.injEq] at he; obtain ⟨rfl, rfl⟩ := he
-    refine ⟨fun _ => ?_, fun _ => rfl⟩
-    obtain ⟨x, hx, rfl, hxl⟩ := rep_af (rep_slot hI hr)
-    rw [hx, hT.targetS]
-    exact outSlots_one (by simp [tyOf, Impl.targetSLeafI])
-      (tplTargetS_ok hP.1 (inpIs_of hxl) (tin_eqns hP.1 ht))
   case slotW sm t r =>
     split at hX <;> simp only [Option.some.injEq, reduceCtorEq] at hX; subst hX
     rename_i n lt m lr ht' hr
@@ -319,6 +326,33 @@ theorem tplExt_ok {impl : OpImpl} (hT : ImplT impl) (L : TLay) : ExtOk impl L.ct
     rw [hx']
     exact outSlots_one rfl (tplDotKF_ok rfl (inpIs_of (by rw [List.map_append, hxl, hc]; rfl))
       (tin_eqns (tc := L.ctx) (k := .dotKF x.size) (tys := [.k]) hP.1 ht))
+  case rowW lam rhi =>
+    split at hX <;> simp only [Option.some.injEq, reduceCtorEq] at hX; subst hX
+    rename_i ll n lr hl hr
+    refine ⟨rfl, fun κ inp w regs hP hI => ⟨fun q => by simp [evalOp], fun _ ht _ vs ok he => ?_⟩⟩
+    simp only [evalOp, Res.vals.injEq] at he; obtain ⟨rfl, rfl⟩ := he
+    refine ⟨fun _ => ?_, fun _ => rfl⟩
+    obtain ⟨x, hx, hxl⟩ := rep_f (rep_slot hI hl)
+    obtain ⟨y, hy, rfl, hyl⟩ := rep_af (rep_slot hI hr)
+    rw [hx, hy, hT.rowW]
+    exact outSlots_one (by simp [tyOf, rowWI_size])
+      (tplRowW_ok hP.1 (inpIs_of (by simp [hxl, hyl, Val.toF, Val.toAF])) (tin_eqns hP.1 ht))
+  case tensorW j r =>
+    split at hX
+    · rename_i n lr hr
+      split_ifs at hX with hn
+      · simp only [Option.some.injEq] at hX; subst hX
+        refine ⟨rfl, fun κ inp ww regs hP hI => ⟨fun q => by simp [evalOp], fun _ ht hx vs ok he => ?_⟩⟩
+        simp only [evalOp, Res.vals.injEq] at he; obtain ⟨rfl, rfl⟩ := he
+        refine ⟨fun _ => ?_, fun _ => rfl⟩
+        obtain ⟨x, hx', rfl, hxl⟩ := rep_ak (rep_slot hI hr)
+        have hc := hx _ (List.mem_singleton_self _)
+        simp only [Tpl.AuxK.val] at hc
+        rw [hx', hT.tensorW]
+        exact outSlots_one rfl (tplTensorW_ok hP.1 hn
+          (inpIs_of (by rw [List.map_append, hxl, hc]))
+          (tin_eqns (tc := L.ctx) (k := .tensorW x.size) (tys := [.k]) hP.1 ht))
+    · simp at hX
   all_goals first
     | (simp at hX; done)
     | skip
@@ -368,6 +402,7 @@ def keyCounts (tins : List (TKey × ℕ × List Lin)) : List (TKey × ℕ) :=
 def cregion (k : TKey) : ℕ :=
   match k with
   | .dotKF n => max (tplOf k).cbits (Nat.size (3 * n + 1))
+  | .tensorW n => max (tplOf k).cbits (Nat.size (5 * n + logNMax))
   | _ => (tplOf k).cbits
 
 /-- **The layout** from the counts: groups after the skeleton's rows `r0` and cells `c0`, each
@@ -376,8 +411,12 @@ def mkLay (r0 c0 : ℕ) : List (TKey × ℕ) → TLay
   | [] => []
   | (k, n) :: ks =>
     let T := tplOf k
-    let rb := alignUp r0 T.rbits; let cb := alignUp c0 (cregion k)
-    (k, rb, cb, cregion k) :: mkLay (rb + n * 2 ^ T.rbits) (cb + n * 2 ^ cregion k) ks
+    -- a template of more than `2^12` rows is evaluated in 64-row chunks (`FRVIRTplPlan.tinPP`),
+    -- so its rows need only 64-row alignment (S-E6)
+    let rb := alignUp r0 (if 12 < T.rbits then 6 else T.rbits); let cb := alignUp c0 (cregion k)
+    -- the next group starts after the last instance's rows, not its whole aligned region (S-E6)
+    (k, rb, cb, cregion k) :: mkLay (rb + (n - 1) * 2 ^ T.rbits + T.rows.length)
+      (cb + n * 2 ^ cregion k) ks
 
 /-- **The two-pass compile**: count with the zero layout, lay the groups out, compile again. -/
 def layOf (P : Params) (base : ℕ) (ops : List Op) : TLay :=
