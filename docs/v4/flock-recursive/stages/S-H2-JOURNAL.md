@@ -303,3 +303,42 @@ Base: branch `v4/flock-recursive`, HEAD `53c2e13`. Build tree `logs/fr-build-SH2
     - Profiles (sequential): FRXBaryTop 28.9 s, FRXReadLv 8.5 s, FRXRead 53.1 s (unchanged).
     - Stopped: context long. Handover in RESULT Part 15 §7 (folds, `Enc`, flags, per-level decode,
       output, `'N'` case, wiring).
+
+## Part 16
+
+29. Item 2 of Part 15 §7, bottom-up pieces (pure decode chain, `Enc`, the `eq` table).
+    - `FRXEncB` (pure): the forward butterflies `fwdLevel`/`fwdRun` (`bflyLevel`'s inverse,
+      top-down), `fwdRun_block` (block invariant by induction, `sum_novel_succ` and
+      `normW_block`), **`fwdRun_enc`**. A message zero-padded to `2^logN` gives `encF` at every
+      position in one run, so there are no cosets and no offset register (deviation 1 of
+      RESULT Part 16).
+    - `FRXLevel` (pure, imports `FRSoundnessTruths`): K coordinates (`foldAt_f₀/₁`, `encF_f₀/₁`,
+      `nextMsg_coords`, `mem_consSet_iff`), `chK_words`/`rdK_of_words`, and **`level_decode`**:
+      `¬ farL` plus `A_c = jointAgree` give `msgOf` as interpolation and butterflies in `F`.
+      `truthC` is not needed for the decode, because the flags test `consSet` itself.
+    - `FRXFwd`: the program was copied from `FRXBfly`'s pair/level proofs (script-substituted)
+      with a new arithmetic and a count-down level loop (`rKf`, `fPre`: `rLv := rK − 1`,
+      `rTr := tb + 40 rLv`). It compiled almost unchanged.
+    - `FRXEqT`: `eqtIR`, a direct product per entry (`ℓ` factors, `ite` on the bit), with
+      `eqBody_sem`, `eqEnt_sem`, `eqtIR_sem` and `sAt_words` (the chain answers become `eqtIR`'s
+      input, with positions kept symbolic through `phStart`).
+    - Pitfalls met:
+      - **A `.blk` named by a def, frame lemma by `rd_runPrims_of_not_writes` against
+        `semXIR I (.blk ps) s`**: this timed out (whnf, 200 k heartbeats) for `bitPs` (5 prims with
+        a `.const eK 8`) but not for `omPs`. Fix: `have e : semXIR I (.blk ps) s = ⟨runPrims ps
+        s.M, s.o⟩ := rfl; simp only [e]` inside a standalone lemma (journal item 26's trick
+        again). `have g : rd (semXIR …).M … := ⟨facts about runPrims⟩` (defeq ascription) also
+        timed out; state the block lemma on `semXIR` directly.
+      - `(by tauto)` to weaken a disjunction hypothesis timed out inside a loop step. Use
+        `hi.imp_right fun h => h.imp_right …`.
+      - The implicit `eb`/`cb` of a lemma must be given before the `(by omega)` arguments
+        (journal item 26 again), else omega sees metavariables.
+      - A heap-size fact is lost by `generalize` unless `size_sem` is taken before it.
+      - `simp` does not evaluate `Nat.testBit 1 1`; state it as `rfl` facts for the control.
+    - Upstream drift during the build: INT-2 (revision 3.13) is editing S-0's modules in the
+      worktree (`piSize = 797,888`), so `FRSoundnessDefs` and `FRXLog` (its `piSize_eq` use) no
+      longer build there. I verified on a snapshot of HEAD plus the four new modules
+      (`logs/fr-build-SH2s`).
+    - Coordinator's heads-up (3.13): the new code keeps positions symbolic (`phStart`, `ansB`,
+      parameters `cb`/`eb`/`tb`). The constants to update after INT-2 are the existing ones
+      (`nRep`, `chTab`/`fsMsgs`, `capW0`/`capOffL`, `piSize`-dependent tape facts).

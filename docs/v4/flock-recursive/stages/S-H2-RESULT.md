@@ -1910,3 +1910,198 @@ This is S-G's `wordOf κ L es i r q` with the cap entries read from π. The link
 - no `sorry`;
 - the source rule is clean;
 - `ext`, `computes` and the costs on `ext`'s path are unchanged.
+
+---
+
+## Part 16: the level decode, pure (`level_decode`); `Enc` by the forward butterflies; the `eq` table on the machine
+
+**Delivered.** This part covers the following pieces of Part 15 §7 item 1. The rest of item 1
+and items 2–4 are not started (§7). `decSnark`, `ext`, `computes` and every existing statement
+are unchanged; the new modules are not yet on `ext`'s import path.
+
+- **The pure decode chain of one level**, from S-G's objects to the machine's `F` arithmetic:
+  `level_decode`, `mem_consSet_iff` and `nextMsg_coords`.
+- **`Enc`**: the forward butterflies, pure (`fwdRun_enc`) and on the machine (`fwdIR_enc`).
+- **The challenges and the `eq` table**: `sAt_words` and `eqtIR_sem`.
+
+### 1. Files (code lines by the core's `scripts/loc.py`)
+
+| File | total / code / theorems | What |
+|---|---|---|
+| `FRXEncB` (new) | 181 / 131 / 7 | `fwdLevel`, `fwdRun`, `D_block`, `normW_block`, **`fwdRun_block`**, **`fwdRun_enc`**; controls `fwdRun_one`, `fwd_bfly_one` |
+| `FRXLevel` (new) | 228 / 145 / 19 | K coordinates (`K_sum_f₀/₁`, `algebraMap_mul_K`, `ofF_add_u_mul`); **`chK_words`**, `rdK_of_words`; `foldAt_f₀/₁`, `encF_f₀/₁`, **`mem_consSet_iff`**, **`nextMsg_coords`**; `bflyRun_map`, `interpF_map`; `consN`, `wordN`; **`level_decode`**, **`msgOf_embed`** |
+| `FRXFwd` (new) | 628 / 544 / 19 | the programs `farithIR`, `fpairBody`, `flevelIR`, `fPre`, `fStep`, **`fwdIR ℓ tb`**; `WF`, `NoLoopT`, `outs`, exact cost; `farith_sem`, `fpairBody_sem`, `flevelIR_sem`, `fPre_sem`, **`fwdIR_sem`**, **`fwdIR_enc`** |
+| `FRXEqT` (new) | 600 / 502 / 20 | the programs `eqBody`, `eqEnt`, **`eqtIR ℓ cb eb`**; `WF`, `NoLoopT`, `outs`, exact cost; `bitPs_sem`, `eqBody_sem`, `eqEnt_sem`, **`eqtIR_sem`**, **`sAt_words`**; control `eqBits_ctl` |
+
+The new code is 1,322 lines in total. The entry's code total was 36,791 at the start of this
+part.
+
+### 2. What is proved
+
+**One level's decoding** (`FRXLevel.level_decode`). For `i < 5`, assume:
+- `hfar : ¬ farL κ L es i`;
+- `hA : consSet κ L es i = jointAgree (wordK κ L es i) (decodeL κ L es i)` (what `final` supplies,
+  §10 changes 14).
+
+Then, for every row `r` and every `x < 2^mLog`:
+
+```lean
+algebraMap F K (bflyRun (M := F) D logNMax 0 (mLog κ i)
+    (interpF D (firstK (2 ^ (lvl κ i).logN) (consN κ L es i) (2 ^ mLog κ i)) (wordN κ L es i r))
+    x) = msgOf κ L es i r x
+```
+
+The left side is exactly what the machine computes in `F`:
+- the first `kᵢ` positions of `A_c` (`scanIR`, `firstK_scan`);
+- the barycentric interpolation of the word's row (`baryIR_interp`);
+- the butterflies (`bflyIR_sem`).
+
+The proof has three steps:
+- `exists_msg` and `msgOf_eq` (S-G's) give the codeword's message;
+- `decode_agree` gives the decode over `K`;
+- `bflyRun_map` and `interpF_map` bring it back to `F`.
+
+`truthC` is not a hypothesis. The flags test `consSet` itself, so only `A_c = jointAgree` is
+needed. `msgOf_embed` is the corollary that the decoded messages are `F`-valued.
+
+**The flags in `F`** (`mem_consSet_iff`). `j ∈ consSet` iff two equalities hold:
+- the fold's `f₀` equals `Enc` of the next message's `f₀` coordinates:
+  `Σ_r W[r][j]·(eqBits s ℓ r).f₀ = encF mLog (f₀ ∘ nextMsg) j`;
+- the same for `f₁`.
+
+Both sides are what the machine computes:
+- the fold is two `F` dot products of the column with the `eq` table's coordinates;
+- the encoding is two `F` forward runs.
+
+`nextMsg_coords`: below level 4, if level `i + 1`'s messages are `F`-valued, the next message's
+K element `x` is the pair of rows `2(x mod 8)` and `2(x mod 8) + 1` at column `x div 8`. So the
+two `F` rows to encode are read straight from level `i + 1`'s decoded rows.
+
+**`Enc` by the forward butterflies** (`FRXEncB`). `fwdLevel l` maps a block's halves `u`, `w` to
+`u + α w` and `u + α w + w`, with `α = Ŵ_l(D base)`. It is the inverse of `bflyLevel`
+(control `fwd_bfly_one`). `fwdRun ℓ` applies the levels `ℓ − 1, …, 0`.
+- `fwdRun_block`: block `b` of size `2^ℓ` ends holding
+  `Σ_x A(b 2^ℓ + x) X_x(D(b 2^ℓ + j))`.
+- `fwdRun_enc`: with a message of `2^m` coefficients zero-padded to `2^n` (`m ≤ n ≤ 20`),
+  `fwdRun n A j = encF m c j` for every `j < 2^n`.
+
+**On the machine** (`FRXFwd.fwdIR_sem`, `fwdIR_enc`). The hypotheses are `bflyIR_sem`'s: the row
+at `rA0`, the basis table (`wtabIR`) at `tb`, and the same layout. Under them
+`fwdIR ℓ tb` leaves `fwdRun ℓ Y`, and so `encF m c`, in the row, and keeps the heap outside it.
+
+**The `eq` table** (`FRXEqT.eqtIR_sem`). The input is the challenges `S v` (`rdK`) at
+`cb + 8v`, `v < ℓ`, with the challenges disjoint from the table. Then:
+- `rdK` at `eb + 4x` is `eqBits S ℓ x` for every `x < 2^ℓ`;
+- the heap outside `[eb, eb + 4·2^ℓ)` is kept.
+
+Each entry is the defining product `∏_{v<ℓ} (bit_v x ? s_v : 1 − s_v)`. `1 − s` is computed as
+`1 + s` on the words (`rdK_one_sub`), and the factor is chosen by `ite` on the bit.
+
+`sAt_words` supplies the input. If the chain left `ansAt es p` at `ansB + 4p` for P1.i's
+squeeze positions `p = phStart (26 + 5i) + 2v + 1`, then `rdK` at
+`ansB + 4(phStart (26 + 5i) + 1) + 8v` is `sAt es i v`. `chK_words` reads a K element off an
+answer's four packed words. The positions are symbolic, so revision 3.13's move does not touch
+this code.
+
+The bit order was checked: `eqBits r ℓ x` weighs bit `v` of `x` with `r_v`, little-endian, and
+`foldAt` uses it as such. `eqBits_ctl` makes this concrete: row 1 of a 2-variable table is
+`s₀(1 − s₁)` and row 2 is `(1 − s₀)s₁`.
+
+### 3. Costs (exact), against the budget
+
+| Program | Cost (`cost_*`) | Instances |
+|---|---|---|
+| `fwdIR ℓ tb` | `14 + ℓ (741 · 2^(ℓ−1) + 27)` | `ℓ = 18, 16, 14, 12, 10`: 1,748,238,836; 388,497,854; 84,984,200; 18,211,154; 3,794,204. Two rows (`f₀`, `f₁`) per level: `≈ 2^32.06` in all |
+| `eqtIR ℓ cb eb` | `12 + 2^ℓ (63 + 271 ℓ)` | `ℓ = 6`: 108,108; `ℓ = 4`: 18,364 |
+
+- Both programs are `loopK`-only, so the linear term is unchanged (`≈ 2,558·t` of `8,176·t`).
+- The constant term still has `≈ 2^45.99` left; Enc takes `2^32.06` of it.
+- Enc over a whole level costs `n log n / 2` butterflies, against `§6.3`'s naive `2^41.8`.
+
+### 4. Controls
+
+| Control | Kind | Shows |
+|---|---|---|
+| `fwdRun_one` | positive | one level on two points is `(u + α w, u + α w + w)` |
+| `fwd_bfly_one` | inverse | the forward level undoes `bflyRun`'s on two points, so it is the inverse NTT's inverse, not a second inverse NTT |
+| `eqBits_ctl` | value / bit order | `eqBits S 2 1 = S₀(1 − S₁)`, `eqBits S 2 2 = (1 − S₀)S₁` |
+| `level_decode`, `mem_consSet_iff` | universal | for every log, transcript and level with the stated hypotheses; `not_farL_nil` (S-G) shows `¬ farL` is satisfiable |
+| `fwdIR_sem`, `eqtIR_sem`, `eqEnt_sem` | universal | for every state meeting the layout hypotheses |
+
+### 5. Checks
+
+- **Build.** The worktree's S-0 modules are being edited by INT-2 (revision 3.13): `piSize` is
+  now 797,888, and `FRSoundnessDefs` and my `FRXLog` (through `piSize_eq`) fail there
+  (`logs/S-H2/build16.log`). The verification build therefore runs on a snapshot: `HEAD` plus the
+  four new modules, in `logs/fr-build-SH2s`, log `logs/S-H2/build16s.log`.
+  The snapshot build `lake build FRXEncB FRXFwd FRXLevel FRXEqT FRXReadLv FRXBaryTop FRXExt
+  FRXSpec FRXLeaf FRXAgree FRXComputes` is green: 2,286 jobs in 3 min 56 s, rebuilding the entry
+  from S-0's modules down.
+- **Axioms** (`logs/S-H2/axioms16.log`):
+  - `level_decode`, `msgOf_embed`, `mem_consSet_iff`, `nextMsg_coords`, `fwdRun_enc`,
+    `fwdIR_sem`, `fwdIR_enc`, `eqtIR_sem`, `sAt_words`, `chK_words`, `fwd_bfly_one` and
+    `eqBits_ctl` depend on `propext, Classical.choice, Quot.sound`;
+  - `cost_fwdIR` and `cost_eqtIR` depend on `propext`.
+- **Sequential profile** (`taskset -c 0`, `-DElab.async=false`;
+  `logs/S-H2/FRX{EncB,Level,Fwd,EqT}.{profile,time}`):
+
+  | Module | wall | max RSS | type checking |
+  |---|---|---|---|
+  | `FRXEncB` | 8.1 s | 2.66 GB | 0.37 s |
+  | `FRXLevel` | 7.9 s | 2.72 GB | 0.22 s |
+  | `FRXFwd` | 53.6 s | 2.82 GB | 4.47 s |
+  | `FRXEqT` | 36.7 s | 2.79 GB | 2.38 s |
+- **Source rule**: 115 files. The only finding is `FRVIRTplFast.lean:435` ("partial"), another
+  track's module in progress. The new `FRX*` files have none, and no `sorry`.
+
+### 6. Deviations
+
+1. **One forward run per level, not per coset.** Part 15 §7 proposed `Enc` by the forward
+   butterfly per coset of size `kᵢ`. Zero-padding the message to `nᵢ` and running all `logN`
+   levels gives `Enc` at every position in one run (`fwdRun_enc`). There are no coset offsets
+   (`α` stays `wAt D 20 l base`, so `alphaIR` and `pairPs` are reused unchanged). The cost is
+   `logN/mLog` times the per-coset figure, `≈ 2^32` in all.
+2. **The forward program is a copy of `FRXBfly`'s pair/level proofs**, not a parametrisation of
+   them, so `bflyIR` and its statements are untouched. It adds 544 code lines; the generalised form
+   would save ≈ 250.
+3. **The `eq` table by the definition, not by doubling.** The doubling needs a `loopK` whose count
+   (`2^v`) is below its cap. The DSL lemmas so far assume count = cap (`loopK_run`). The direct
+   product costs `≤ 384` K products, which is negligible.
+4. **`truthC` is not a hypothesis of the decode.** The handover listed it for the `'N'` case, but
+   `level_decode` needs only `¬ farL` and `A_c = jointAgree`. It may still be needed for the
+   output step (item 2) if `decodeWit`'s format is stated through `fTab`/`foldMsg`.
+
+### 7. What remains (in order; the next agent's list)
+
+1. **Item 1, continued**, now with the pure targets fixed:
+   - **The fold and flag program** `flagIR`. Per position `j < nᵢ`:
+     - `acc_c := Σ_r W[r][j]·E[r].f_c` (`W` at `cb + cs·j + 2r`, `E` at `eb + 4r + 2c`);
+     - `flag := [acc₀ = enc₀[j] ∧ acc₁ = enc₁[j]]` at `fb + j`.
+
+     Prove it against `mem_consSet_iff`. The inner loop is the `aLoop_sem` pattern; the outer
+     loop is the `eqtIR_sem` pattern.
+   - **The message rows**:
+     - for `i < 4`, the copy of level `i + 1`'s decoded rows into two zero-padded `F` rows
+       (`nextMsg_coords`: rows `2(x mod 8) + c`, column `x div 8`);
+     - for `i = 4`, `finalAt`'s coordinates read from π's tape at C.4's offset (`fsMsgs` at
+       position `nRep`, symbolic).
+   - **The composition per level**:
+     `eqtIR ; copy ; fwdIR (×2) ; flagIR ; scanIR ; baryIR k 16 ; bflyIR (×16)`, with one
+     `BaryLay` per level and the conclusion `level_decode`.
+   - **Level 0**: `ℓ = 6`, 64 rows, `bary0`, the column store at `colBase`.
+2. **The `decodeWit` output** (§1.4, A.5, A.7), from `msgOf … 0` (`msgOf_embed`, S-G's
+   `msgOf_F`/`fF`).
+3. **The `'N'` case of `ext_good_tape`**, with these hypotheses:
+   - `vkOf π = vk`;
+   - `¬ farL` and `consSet = jointAgree` per level;
+   - the chain link (`fmAns … p = some (ansAt es p)` for `p < nRep`), which feeds `sAt_words`;
+   - `capDig es i e = capPiL i π e`;
+   - `¬ StateHit L`.
+4. **The wiring into `decSnark`**: `WF`, `NoLoopT` and `outs` exist for `fwdIR` and `eqtIR`.
+5. **Revision 3.13** (when INT-2 lands with the coordinator's list):
+   - the existing constants: `nRep` (P1.4's end moves), `chTab`/`fsMsgs` (re-derived), and the
+     `capW0`/`capOffL` and `piSize` tape facts (`FRXLog`, `FRXReadDefs`, `FRXReadLv`,
+     `FRXChainFlock`, `FRXComputes`);
+   - then re-check `decOk_decLN2`/`computes`.
+
+   The Part 16 modules use no transcript constants.
