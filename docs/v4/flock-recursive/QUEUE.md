@@ -13,6 +13,8 @@ Last updated 2026-10-28. **Rebased onto core PR #20 (pin `6d05d00`, commit `987e
 
 ## Waiting
 
+- **Certificate build budget (H-cert, `0864c53`): over the cap.** `lake build FR` takes 611–712 s on the 7763 against `build_s` 600 s (kernel replay fits: 372 s, 1.6×). Levers, in order: G1 golf of the S-0/S-F finals (running); golf of the FRX* top modules after S-H3; **retire the 3.x-only modules from `lean/`** once the Rev4 theorem composes (X4: the 3.x S-G chain, the 3.x extractor paths, P30/tree remnants; move T4's 195 position-free imports to a shared module first); keep controls cheap. Question to the user (organiser): a larger `build_s` (the 30-minute job has room). Re-measure with `probe/cert-time` after each integration; S-I must run the real `evaluate.py cert` (gate 120 s, badge 180 s unmeasured).
+
 - **R4 (after P4a/P4b fix their `Rej*` names):** the program layer on `gen4` (`accept_chain`, views, `finLog`) and the front checks once (S-G13 §6).
 - **S-E12′ (after S-E13):** the Rev4 node circuit in Lean: N2/N4/N8 block-kind maps, targets, kind indicators, `StmtN`/`NodeResid` with 1 + k slots, `childOk4`, the aggregate's padding/counter claim (R-4-m2); all import rows, `R`, templates; dumps for P2's node prover.
 - **X4 (after T4, P4a/b, R4, S-E12′, S-H3):** per-kind `SegSoundLog`, nodes, the final Rev4 theorem via `ks4_of`; retire the 3.x S-G chain from the entry (build budget, S-G13 F4).
