@@ -210,3 +210,118 @@ The one `decide` is `BlockKind.chain ≠ .free` (a constructor inequality, as in
    That handoff is B′'s, so it is P4b's; P4a contributes phases 0–12 of `DF`.
 5. **The node half** (`L3BadN`, `PendLcN`, `truthSN`, `wN`, `indN`, `etN`) waits for S-E's Rev4 node
    maps (S-G13 F3).
+
+## Pass 3 (track P4c; HEAD `8b1ffe5`)
+
+- **Build tree** `logs/fr-build-P4c` (a copy of `fr-build-P4a`; `MINE.txt` lists the nine P4a
+  modules; `b.sh` logs to `logs/P4c/build-last.log`). Logs in `logs/P4c/`. Journal: `P4a-JOURNAL.md`,
+  "Pass 3".
+- Every lean/lake command ran in the 16G scope (12G for single files) under `timeout`. No
+  sub-agents. Nothing committed. Only P4a's modules were edited (`FRSoundness4P4aSeg`: `truthS`, see
+  D4). Four new modules, all in `FR.Snd.P4a` (every new name grepped first). No `Rej*` name changed.
+
+**Done** (handover items 1–3, and the S part of item 4):
+
+| Module | total / code / thm | Content |
+|---|---|---|
+| `FRSoundness4P4aS` | 311 / 228 / 23 | `ZwSame`, `capPos_zero4`, **`zwSame_zW`**; `resSegL`, `sum_TS`, **`trueSum_TS_seg`**; **`SNode`** (the node's S2 law, a parameter); `nJ4`, `resS4`, `TR4`, `TR4_size`, `TR4_mle`, **`trueSum_TS4`**, **`tr_ne4`**; reads (`nStmt_congr`, `lastL_congr`, `bndL_congr4`, `sbL_congr4`, `hbL_congr4`, `s1_congr4`, `endBits_congr4`, `c0S_agree4`, `zNodeC_same`, `resSegL_same`, `resS4_same`, **`truthS_same4`**); `s_unit_pos4`, `selC_coords4`, **`s1_hfin4`** |
+| `FRSoundness4P4aFin` | 318 / 254 / 13 | `eqAtR_padN`, `sum_eqAtR_padN`; `shSeg_eq`, `eqPoint_zero18`, **`final_seg`**; `tauLL`, **`wSumSeg`**, `sum_bits_self`, `lastAt_tauLL`, **`wSumSeg_eq`**, `wSumL4`, `claimSL4`, **`oSh4`**; `peL_range4`, `zrL_length`, `zrL_getD4`, `segPt_eq`, **`peL_seg`** |
+| `FRSoundness4P4aS2` | 223 / 159 / 17 | `absOKP4a`/`absOKP4a_eq` (one `seq4` certificate), **`p4a_abs`**; `WNLocal`, `wS_agree`, `TS_same4`, **`TS_local4`**, `TS_size4`, `nrS_le4`, **`habs_S2_4`**, **`single_S2_4`**, `chk_of_not_rejS2_4`, `append_S2_4`, `chkS_same4`, `rejS2_mono4`, **`rejS2_ok4`**, **`D2S_reads4`**; `rchsS_pts4`, `zS2`, **`endS4`** |
+| `FRSoundness4P4aCtrl3` | 75 / 39 / 9 | controls (below) |
+| P4a total (9 modules) | 2,097 / 1,422 / 123 | `logs/P4c/loc.txt` |
+
+**Main statements:**
+
+```lean
+theorem trueSum_TS_seg (hn : (kindOfC es).isNode = false) (hL : lastL es < 2 ^ nbC (kindOfC es)) :
+    trueSum innerExpr (TS wN zw L es) (nrS (kindOfC es)) = c0S es +
+      resSum (nbC (kindOfC es)) 2 (resSegL zw (kindOfC es) L es) (ptOf _ (tauL _ es)) (ptOf 10 (thL es)) (ksL es)
+theorem s1_hfin4 (hN : SNode wN truthSN zw) (hz : ZwSame zw) (hBg : T4.Reads 99 Bg)
+    (hprev : Dk (phOf4 98) = fun L es => Bg L es ∨ ¬ truthS truthSN zw L es)
+    (hfin : Dk (phOf4 99) = msD (Dk (phOf4 98)) (fun L es => Bg L es ∨ S2Bad wN zw L es) 98 15)
+    (L es₀) (hl : es₀.length = 99) : condCount (DPos (T4.Dp Dk)) L es₀ 15 [] ≤ deltaR
+theorem final_seg (hnb : nb ≤ 18) (τs rb bits) (hτ : τs.length = nb) (hrb : rb.length = nb) (hL : Lb < 2 ^ nb)
+    (hbits : Rev4.lastAt (τs ++ 0^(18−nb) ++ bits).toArray 18 = Lb) (θ rp κ) :
+    Σ_q Σ_y eqAtR (ptOf nb rb) y * eqAtR (ptA 10 rp) q * wSeg (ptOf nb τs) (ptA 10 θ) κ Lb y q =
+      sm.1 * slotWS 0 θ rp + (sm.2.1 + κ * sm.2.2) * slotWS 1 θ rp   -- sm := shiftSegS (τs‖0‖bits) (rb‖0)
+theorem peL_seg (hn : (kindOfC es).isNode = false)
+    (hr : ∀ l < (kindOfC es).m - 13, r.getD l 0 = coordAt es 2 l)
+    (hz : ∀ l, (kindOfC es).m - 13 ≤ l → l < 19 → r.getD l 0 = 0) (hL : Rev4.lastAt r 19 = lastL es) :
+    Rev4.targetSSegS r = Array.ofFn (peL (zlm4 indN etN) es)
+theorem endS4 (hNS : node → wNS κ es = Σ_q Σ_y eqAtR rb y * eqAtR rp q * wN κ es y q)
+    (hL : seg → lastL es < 2 ^ nbC κ) (h : D2S wN zw L es) (hl : 170 ≤ es.length) :
+    ¬ oSh4 wNS (kindOfC es) es (zS2 zw L es)
+```
+
+**Controls** (`FRSoundness4P4aCtrl3`):
+
+| Definition | Positive | Negative |
+|---|---|---|
+| `ZwSame` | `zwSame_zW` (T4's `zW`) | `not_zwSame_len` (a witness of the log's length) |
+| `truthS` (the guard) | `truthS_seg_out` (past the blocks it holds); `truthS_seg_in` (inside, it is `ShHoldsSeg`) | 3.x/pass 1's `not_shHoldsSeg_start` on the inside form |
+| `shSeg` (in `final_seg`) | `shSeg_link` (links `y ≠ L` kept) | `shSeg_cut` (no link out of `L`) |
+| `eqAtR_padN` | `eqAtR_padN_in` | `eqAtR_padN_out` (`0` past `2^a`) |
+| `oSh4` | `oSh4_self` (accepts `c_Sh / w`) | `oSh4_unique` (one value when `w ≠ 0`) |
+| `SNode`, `WNLocal` | parameters (S-E's node law); no instance yet | — |
+
+**Checks (pass 3):**
+- `lake build FR FRSoundness4P4aCtrl3`: green, 2,463 jobs (`logs/P4c/build-final.log`).
+- Axioms (`logs/fr-build-P4c/ax/AxP4c.lean`, `logs/P4c/axioms.log`): all 224 declarations of the
+  nine P4a modules within `propext`, `Classical.choice`, `Quot.sound`; no `sorryAx`.
+- Source rule: 243 files, 0 findings (`logs/P4c/source-rule.log`).
+- Sequential profiles (`taskset -c 0 lake env lean -DElab.async=false --profile`,
+  `logs/P4c/prof-*.log`):
+
+  | Module | wall (import ≈ 4 s) | type checking | max RSS |
+  |---|---|---|---|
+  | `FRSoundness4P4aSeg` (edited) | 9.6 s | 0.49 s | 2.96 GB |
+  | `FRSoundness4P4aS` | 9.2 s | 0.38 s | 2.99 GB |
+  | `FRSoundness4P4aFin` | 13.2 s | 0.66 s | 2.98 GB |
+  | `FRSoundness4P4aS2` | 12.3 s | 0.75 s (`absOKP4a_eq`'s certificate ≈ 0.4 s) | 3.00 GB |
+  | `FRSoundness4P4aCtrl3` | 6.7 s | 0.05 s | 2.95 GB |
+
+  The one new `decide` is `absOKP4a_eq` (`decide +kernel` over `seq4`'s items, P4b's
+  `absOK4_eq` pattern). No `trueSum` is evaluated at a concrete size.
+
+**Imports for `FR.lean`:** replace `import FRSoundness4P4aBridge` by `import FRSoundness4P4aCtrl3`
+(it pulls `S2` → `Fin` → `S` → `Bridge`).
+
+**Deviations and findings (pass 3):**
+- **D4. `truthS` at a segment is guarded by `lastL es < 2^nb`.** Without the guard, a log whose `n`
+  exceeds the kind's cap (so `L ≥ 2^nb`) fails the truth (block `L` does not exist), but its
+  residual (`resSeg` never meets `u = L`) can vanish, so S1 could not be charged (`tr_ne4` would
+  be false). Past the blocks S2's initial claim has no end term; nothing on the log refuses such an
+  `n`, and only `V_A`'s `n ≤ cap` (`SegSoundLog`'s hypotheses, F1) excludes it. On accepted runs,
+  `lastL_eq` gives the guard. No other module reads `truthS`.
+- **D5. The node's S law and weight are parameters**: `SNode wN truthSN zw` (the `J` residual
+  tables, the sum law, `ne`, congruence), `WNLocal wN`, and `endS4`'s `hNS` (a node's
+  `wNS` is its weight's extension). These are S-E's (S-G13 F3), as is the node half generally.
+- **F2 (for R4).** `wSumSeg` is the segment's `finSh` (ii) value as `E·slotW₀ + (Sh + κ_s E₀)·slotW₁`
+  over `shiftSegS (τ ‖ 0 ‖ L) (r_blk ‖ 0)`, with no link term. `gShCore` still runs
+  `linkWAll`/`linkOps` for a segment (3.x's leaf form was `linkSum (replicate nLinkFam 0) …`, which
+  is the same value by `linkSum_eq`). R4 must check that the Rev4 segment program's link weights
+  are zero (or add them to `wSumSeg` if they are not). `peL_seg`'s `hr`/`hz`/`hL` are what R4 must
+  read off `segPtOp`.
+
+**Handover (the rest of item 4, then item 5), in order:**
+1. **S1's entry and the Sh truth's congruence for nodes.** `s1_hfin4` is done for any `Bg` that
+   reads before 99. What remains is L3β → S1's entry, the 3.x `l3b_single` analogue at `CKind`.
+2. **Z (positions 2 … 68)** from 3.x's `FrZ` against T4: `zHolds_same`, `zHolds_reads`
+   (`T4.Reads 3`), `zEnd_reads`, **`z1_hfin`** (T4's `hfin_ml` at `(2, 10)`; needs `ZLM4.Bits`
+   for `zlm4`: S-E's `indN`/`etN` bit facts), `z2_habs`, `z2_single`, `z3_habs`, `z3_single`
+   (T4's `D3_single` with `TZ_local`), `zend_habs`, **`rejZ_ok`** (`p4a_abs.1`), `pendZ_reads`,
+   `z2Bad_reads`, `zendBad_reads`. Rename `kindOf → kindOfC`, `mm 6 → mC 6`, `Same/Reads/RejOK →
+   T4.*`, `fsItems/phOf → fsItems4/phOf4`. `ZLM4.Et` reads the log (a segment's `lastL`), so
+   `eZ`'s congruence needs `lastL_congr` (positions < 2) and the target maps' locality.
+3. **L (68 … 98)** from `FrL`/`FrLc`: `l1_single`, `l2_habs`, `l2_single`, **`rejL2_ok`** at
+   `T4.RejOK` (`p4a_abs.2.2.1`; 3.x's `RejL2` is kind-free but its `RejOK` is 3.x's), `l3_habs`,
+   `l3b_single` (needs `ZLM4.IndKinds`), `RejLc2`/`RejLcN` checks' `RejOK`, `pendLc_reads`,
+   `l3Bad_reads`.
+4. **The S/Z/L background and `DF` phases 0 … 12** at `seq4`, with the node parts and P4b's later
+   pending claims as parameters (3.x's `FrDF` `bgZ`/`bg5`/`bg10`, `D2F`, `D10F`, `DF 0 … 12`), and
+   the `FrontObl` fields restricted to phases 0 … 12 (`habs`, `hsingle`, `hfin`, `hstab` by
+   `T4.Reads.stab`). P4b's phases 13 … 25 join them; whoever composes `DF` needs both.
+5. **`trueL_two` at revision 4.1**: P4b's `trueL4` at claim 3 is `zS2` (3.x's proof with `nbC`),
+   so that `endS4` gives `PendBad4` (3.x's `pendS_pendBad`).
+6. **The node half** (`SNode`, `WNLocal`, `wNS`, `L3BadN`, `PendLcN`, `truthSN`, `indN`, `etN`)
+   from S-E12a's `FRNodeKinds4` (untracked at this pass: `indN4`, `etN4`, `kf4`, `cells4`).

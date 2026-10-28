@@ -313,12 +313,14 @@ def S2Bad (L es : Log) : Prop := c0S es ≠ trueSum innerExpr (TS wN zw L es) (n
 abbrev D2S : Log → Log → Prop :=
   T4.D2 114 16 readF (fun d => chF d 0) c0SL nrS innerExpr (TS wN zw)
 
-/-- **The S truth** by kind: a segment's masked `ShHoldsSeg` at `L` with the statement's boundary,
-a node's `truthSN`. -/
+/-- **The S truth** by kind: a segment's masked `ShHoldsSeg` at `L` with the statement's boundary
+when `L` is one of the kind's blocks (`L < 2^nb`: `V_A`'s `n ≤ cap`; past them S2's initial claim
+has no end term, `c0S_seg_out`), a node's `truthSN`. -/
 def truthS (L es : Log) : Prop :=
   if (kindOfC es).isNode then truthSN (kindOfC es) L es
-  else ShHoldsSeg (nbC (kindOfC es)) (lastL es) (zNodeC zw (kindOfC es) L es) (sbL (kindOfC es) es)
-    (hbL (kindOfC es) es)
+  else lastL es < 2 ^ nbC (kindOfC es) →
+    ShHoldsSeg (nbC (kindOfC es)) (lastL es) (zNodeC zw (kindOfC es) L es) (sbL (kindOfC es) es)
+      (hbL (kindOfC es) es)
 
 end S2
 

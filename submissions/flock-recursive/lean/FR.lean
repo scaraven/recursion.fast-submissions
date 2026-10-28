@@ -96,7 +96,7 @@ import FRSoundnessFrKS
 import FRSoundness4Frame
 import FRSoundness4Pos
 import FRSoundness4P4bB
-import FRSoundness4P4aBridge
+import FRSoundness4P4aCtrl3
 import FRSoundness4TailFront
 import FRSoundness4R4Ctrl
 import FRNodeMirror

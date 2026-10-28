@@ -81,3 +81,27 @@ supply `z = unpack f⁽⁰⁾` at `CKind`).
 - `FRSoundness4P4aBridge`: `testBit_lastL`, `lastBits_getD`, `eq_pad_last`, `c0S_seg`, `zW_bool`.
   Items 3–5 of the old §6 and the obligations are in the RESULT's pass-2 handover; my context ran
   short, so I stopped there.
+
+### Pass 3 (track P4c; HEAD `8b1ffe5`; build tree `logs/fr-build-P4c`, a copy of `fr-build-P4a`; logs `logs/P4c/`)
+
+- **Item 1 (S1)** `FRSoundness4P4aS`: `ZwSame` (the witness reads before 3) and `zwSame_zW`
+  (T4's `zW`); `resSegL`, `sum_TS`, **`trueSum_TS_seg`**; the node's S2 law as a parameter
+  structure **`SNode`** (`nJ`, `res`, the sum law, `ne`, `same`, `truth_same`); `nJ4`, `resS4`,
+  `TR4`, `TR4_mle`, **`trueSum_TS4`**, **`tr_ne4`**; the reads (`lastL_congr`, `bndL_congr4`,
+  `s1_congr4`, `c0S_agree4`, `zNodeC_same`, `resS4_same`, `truthS_same4`); `s_unit_pos4`,
+  `selC_coords4`; **`s1_hfin4`** (T4's `esc_msD_frame` + 3.x's `seq_round_le`/`doomS_step`).
+- **Deviation:** `truthS` at a segment is now guarded, `lastL es < 2^nb → ShHoldsSeg …`. Without
+  the guard, a log with `n > cap` (so `L ≥ 2^nb`) fails the truth (block `L` does not exist) but
+  leaves no nonzero residual (`resSeg` never sees `u = L`), so S1's charge would not hold. `V_A`'s
+  `n ≤ cap` gives the guard on accepted runs (`lastL_eq`).
+- **Items 2–3** `FRSoundness4P4aFin`: `eqAtR_padN`, `sum_eqAtR_padN` (zero-padded points);
+  `shSeg_eq` (masked = unmasked + the link at `L`, char 2), **`final_seg`** (through 3.x's
+  `final_leaf`), `tauLL`, `wSumSeg`, `sum_bits_self`, `lastAt_tauLL`, **`wSumSeg_eq`**, `wSumL4`,
+  `claimSL4`, **`oSh4`**; `peL_range4`, `zrL_length`, `zrL_getD4`, `segPt_eq`, **`peL_seg`**.
+- **Item 4 (S part)** `FRSoundness4P4aS2`: `p4a_abs` (one `seq4` certificate for Z/L/S absorbs),
+  `WNLocal`, S2's tables' locality, `habs_S2_4`, `single_S2_4`, `append_S2_4`, `rejS2_ok4`
+  (`T4.RejOK`), `D2S_reads4`, `endS4` (`zS2`). Controls `FRSoundness4P4aCtrl3`.
+- Checks: `lake build FR FRSoundness4P4aCtrl3` green (2,463 jobs); axioms 224 declarations clean;
+  source rule 243 files, 0 findings; profiles in `logs/P4c/prof-*.log`.
+- Stopped with Z, L, the phases 0 … 12 composition, `trueL_two` and the node half open (RESULT,
+  "Pass 3" handover), to keep the context short.
