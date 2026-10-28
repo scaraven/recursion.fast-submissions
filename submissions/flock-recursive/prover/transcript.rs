@@ -4,7 +4,7 @@
 //! reading order is the item order of A.4 while `π` is grouped by field.
 //!
 //! `Fs` can log every query it asks as an A.4 item (`ItemRec`: phase, query kind, payload length,
-//! Merkle level and depth, query length), the form of `logs/INT-2/dump/items.json` (the KAT).
+//! Merkle level and depth, query length), the form of `logs/INT-5/dump/items.json` (the KAT).
 
 use crate::blake2s::Digest;
 use crate::field::{F, K};

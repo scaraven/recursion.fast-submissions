@@ -714,3 +714,345 @@ node dump on the runner (it lives in `logs/`, gitignored), so it stays local:
 ```
 FLOCK_NODE_SHAPE=1 FLOCK_NODE_ROWS=$PWD/logs/S-E5/nodedump REPS=2 logs/P2/r37/run-service.sh $PWD/<prover> OUTDIR 30
 ```
+
+## 13. Pass 5 (revision 4.0): threads, segments of variable length, the aggregate, no `proofCap`
+
+Status: 2026-10-28, track P2′ (blueprint revision 4.0, changes 25; core pin `6d05d00`). Scope:
+items 1–6 of the brief, on the segment (leaf) prover; the node prover and the `first`/`step` modes
+wait for S-0′'s and S-E12′'s dumps (13.9). Logs: `logs/P2/r40/` (VM) and `logs/P2/run-<id>/`
+(runners, EPYC 7763, 4 vCPU); probe branches `probe/p2t-1` … `p2t-4`, each one commit on HEAD with
+`prover/`, `probe/p2t-prover/` and `.github/probe.conf`; all deleted after their run.
+
+### 13.1 The runner's CPUs (item 1)
+
+- **The prover is not pinned.** In the PR #20 harness only the checks run under `taskset` (one core,
+  `rfh/checks.py`); the prover's `Sandbox(…)` calls (`rfh/prover.py` lines 161, 184, 236) pass no
+  `cpus`, and PROVER.md §2 says "every CPU of the machine (shared with the service)". There is no
+  CPU cgroup limit.
+- **Measured** (probe p2t-1, run 40717768596): `nproc` 4, affinity `0–3`, `Cpus_allowed_list 0-3`,
+  `cpu.max` = `max 100000`. The machine is an EPYC 7763 with **2 cores × 2 SMT threads** and 1 MiB L2
+  per core. Every one of the 20+ earlier P2 runs reports 4 CPUs.
+- The thread count stays `available_parallelism()` = 4 (`FLOCK_THREADS` overrides it).
+
+### 13.2 Threads (item 2): already there; what 4 vCPUs give
+
+**The prover has been multi-threaded since P1** (`par.rs`: a persistent pool with nested jobs;
+the NTT/RS encoding, Merkle leaf batches, every sumcheck table, the zerocheck kernels, the ring-switch
+table and the witness are all parallel). Every runner figure in §2–§12 is `threads=4`.
+
+**The blueprint double-counts the threads.** §0 and changes 25 (b), (e) read P2's 5.47 s per `2^18`
+(7763) as a one-thread VM figure and then assume ×2.5 from 4 threads. 5.47 s already is the
+4-thread runner figure.
+
+Thread scaling, `prove-leaf` through `rf-oracle` on the 7763, total = prove + trace + SIGN, 2 reps
+(runs 40717768596 and 40722323237):
+
+| threads | m = 32, n = 2^18 (s) | m = 31, n = 2^17 (s) | speed-up (m = 32) |
+|---:|---:|---:|---:|
+| 1 | 12.93–13.04 | 6.38–6.46 | 1 |
+| 2 | 6.83–6.99 | 3.36–3.46 | ×1.87 |
+| 4 | 5.48–5.69 | 2.73–2.85 | **×2.34** |
+| 8 | 5.61–5.71 | — | ×2.29 |
+
+Per phase at m = 32 (1 / 2 / 4 threads, s): witness 2.23 / 1.20 / 0.53; commit 2.41 / 1.35 / 1.12;
+round 1 2.91 / 1.42 / 1.20; x₆ round 1.17 / 0.59 / 0.56; tail 0.59 / 0.30 / 0.25; lincheck 0.65 /
+0.33 / 0.30; ring switch 1.09 / 0.55 / 0.53; Ligerito 1.45 / 0.78 / 0.74.
+
+- From 2 to 4 threads only the witness gains (scalar BLAKE2s, ×2.3). The vector phases are bound by
+  the two cores' vector units: an SMT sibling adds nothing to them.
+- **×2.5 at 4 threads is not reachable on this runner.** Threads have reached their limit; what is
+  left is the arithmetic itself.
+- The VM (QEMU, 32 vCPU, no pclmulqdq, so the portable tier) is compute-bound and scales linearly:
+  m = 32 at 1 / 2 / 4 threads is 248.6 / 126.7 / 64.9 s (`logs/P2/r40/scale-base/`). It says nothing
+  about the runner.
+
+**A bug, fixed: a thread count that is not a power of two gave a wrong proof.**
+- Symptom: with `FLOCK_THREADS=3` (also 5, 6, 7) the native verifier rejected the proof; probe p2t-2
+  failed at m = 32 with 3 threads.
+- Cause: `ringswitch::weight_table` assumes its chunks start at multiples of `2^nlo`.
+  `par::for_each_chunk_mut` and `par::map_chunks` split at `n/k` with `k = 4·threads`. That split
+  is aligned only when the thread count is a power of two.
+- Fix: both now cut chunks at multiples of `min_chunk` (`par::chunk_len`).
+- Check: π is now byte-identical at 1, 2, 3, 4, 5, 6, 7 and 12 threads (m = 25, 28; and m = 28 with
+  n = 5,000). The m = 31 runner proof with 3 threads is accepted (p2t-3).
+- The runner always has 4 CPUs, so no earlier result was affected. But a different
+  `available_parallelism` would have produced rejected proofs.
+
+**Huge pages.** Large blocks (≥ 8 MiB) are now 2 MiB-aligned and advised `MADV_HUGEPAGE` (`alloc.rs`;
+`FLOCK_NO_THP` turns it off).
+- The 6,000 MiB pre-fault before `ready` drops from 0.82 to **0.22 s** on the 7763 (p2t-3). That is
+  stream wall time saved on every request.
+- The proving time does not change measurably: 5.48–5.80 s with THP against 5.56–5.61 s without.
+
+### 13.3 Segments of variable length, `L31`, the aggregate (item 3)
+
+**The segment prover** (`leaf::prove_seg(o, circ, vk, s, m, n)`, `1 ≤ n ≤ 2^(m−14)`):
+- **Witness.** The chain of `n` steps fills blocks `0 … n−1`. Blocks `≥ n` are zero (`a = b = z = 0`):
+  B-12's `free` blocks, with the zero witness.
+- **Work proportional to `n`.** Every per-block phase reads only the `n` chain blocks: Z's round 1,
+  the x₆ round and fold, the tail (a live prefix that halves each round; `sumcheck::fold_f_live`,
+  `zerocheck::round_tab(…, live)`), and the lincheck's partial fold.
+  - This replaces P2 §6's timing-only `USED_BLOCKS` global, which is removed. It is exact: a zero
+    block adds nothing to any sum.
+  - The range is split over the used part, so threads stay balanced.
+  - The commitment, ring switching and Ligerito stay at `2^m`.
+- **Protocol values that depend on `n`** (my reading of B-12 / S-C's list, pending S-0′):
+  - the statement `leafStmt h n` with `h = chainEnd s n`;
+  - Z2's `P^e` times `Σ_{b<n} eq(r_blk, b)` (`mle::range_eq`: the chain kind's target on the `n`
+    chain blocks, zero past them);
+  - `finSh`'s target `eq(τ, n−1)·h̃ + κ_s·s̃` (the last block from the statement, as `shiftTargetAt`'s
+    `bnd[4…21]`).
+  - The native verifier reads `n` from the statement and checks `1 ≤ n ≤ 2^(m−14)`.
+- **Unchanged under the zero witness:** the lincheck (`L3 = [v_chain, 0⁷]`), the shift tables and
+  the RS claims. They change only if S-0′ masks the weights by kind (see 13.9).
+- **`L31`** is the same prover at m = 31, with kind byte `0x4B`. That byte comes from S-0′'s
+  in-progress `FRShape4.SegKind.byte`, read after the runner measurements, which used `'P'`; the
+  timing does not depend on it.
+- **`pubStart` is not implemented.** If the segment start is public, the shift target's `κ_s·s̃`
+  term already pins block 0's input. The aggregate checks `s_{i+1} = e_i` across segments. S-0′'s
+  statement format decides whether the segment proof itself changes.
+
+**Byte-exactness.** At the full length `n = 2^(m−14)`, π is byte-identical to HEAD's:
+- m = 25, 28 and 30, BLAKE2s of π compared against a build of HEAD's sources (`logs/P2/r40/exact/`);
+- threads 1, 3, 4, 5, 6, 7, 12 and 32;
+- unit test `variable_length_segments` (`prove_seg` at full length = `prove`).
+
+**KATs against the Lean dumps.**
+- **INT-5's dump** (`logs/INT-5/dump`, revision 3.16) is now the default, with items identical to
+  INT-2's. `ir.rs` gains three things for it:
+  - 3.16's `rsWeight r [pts] κ β act ρ` form, with `β = 1` unless `act`;
+  - `linkWAll` and `shiftMask`: node-only, kept `false` in the leaf programs;
+  - `shiftTarget`'s `eq(τ, last)` from `bnd[4…21]`, with 3.13's all-ones fallback.
+- Results:
+  - the dumped `L` (m = 32) and `P` (m = 30) programs accept native proofs and reject the canary
+    (`test-leaf 30/32`);
+  - the 54 single-byte flips are rejected (`ir_kat_p30`);
+  - INT-2's dump still passes too (`logs/P2/r40/exact/ir-dumps.txt`).
+- **Variable `n` against a Lean `acc` waits for S-0′:** no dump has a segment program yet. Natively,
+  `test-leaf 28 --n 1/5000/16383/16384` and the unit test (m = 25, n = 1, 3, 1,000, 2,047, 2,048)
+  accept. They reject the statement of `n ± 1`, a flipped end and a flipped π byte (also run with
+  debug assertions, i.e. the prover's internal sum checks). `prove-leaf 31 --n 70000` through
+  `rf-oracle`:
+  - |tr| = 8,891 with every query length as `items.json` lists it;
+  - `reassemble(tr) = π`;
+  - the CLI `acc` accepts and the canary is rejected (`logs/P2/r40/local.txt`).
+
+**The aggregate leaf `A`** (`agg.rs`, new). Its bytes follow S-0′'s in-progress draft (`FRAgg.aggHdr`,
+`aggChecks`, `VAwith`; `FRSegment.segView`), not yet a dump:
+- **Split** (`agg::split`): `k = ⌈n/2^18⌉`; segments `1 … k−1` are full `L32`; the last is the
+  remainder `r`, in `L31` when `r ≤ 2^17`, else `L32`.
+- **Proof.** `π_A = 0x41 ‖ k ‖ 0^6 ‖ enc64 n ‖ e ‖ π_1 ‖ … ‖ π_k`. Segment `i + 1` starts at segment
+  `i`'s end. The runner probes p2t-3/p2t-4 ran the earlier `0x41 ‖ k ‖ 0^46` header, which costs the
+  same.
+- **Trace and signature.** One recorded trace `tr_A = tr_1 ‖ … ‖ tr_k`, one `SIGN`.
+- **Verifier.** `agg::verify` first checks the segments' views, with no query: `c = leafStmt e n`,
+  `1 ≤ k ≤ 4`, `1 ≤ n_i ≤ cap(kind_i)`, `Σ n_i = n`, the last end `= e`, `s_{i+1} = e_i`. Then it runs
+  the `k` segment verifiers in sequence on one oracle (`Seq` over `tr_A`, consumed exactly).
+- **Native `acc`** dispatches on the kind byte (`0x41`). `params::QV = 36,000` (B-17; `FRVerifier.qV`
+  is still 10,240 until S-0′).
+- **Unit tests** `split_rule` and `aggregate_roundtrip`, at small shapes:
+  - `V_A` accepts through the recorded trace;
+  - it rejects `n + 1`, a flipped end, a flipped `hdr_A` length, a flipped segment byte and a
+    broken link.
+- **Mode `prove-agg N`** runs through the service: prove, replay, SIGN, the file, the native `acc`
+  and the canary.
+
+**Cost against `n` on the 7763** (4 threads, through `rf-oracle`, prove + trace + SIGN; runs
+40719437801, 40721166772, 40722323237):
+
+| segment | n | s |
+|---|---:|---:|
+| L32 | 2^18 | 5.48–5.80 |
+| L32 | 3·2^16 | 4.83–4.95 |
+| L32 | 2^17 + 1 | 4.16–4.23 |
+| L31 | 2^17 | 2.76–2.85 |
+| L31 | 2^16 | 2.07–2.12 |
+| L31 | 1 | 1.35–1.44 |
+
+- Linear fits: **`L32(n) ≈ 2.76 + 2.86·n/2^18`**, **`L31(n) ≈ 1.37 + 1.43·n/2^17`**. About half of a
+  full segment is fixed: the commitment, ring switching and Ligerito at `2^m`, plus trace and SIGN.
+- The aggregate, `prove-agg` (one rep):
+
+| n | segments (s) | total incl. trace + SIGN (s) | peak RSS |
+|---|---|---:|---:|
+| 2^18 + 1 | L32 5.37, L31(1) 1.28 | 6.81 | 6.19 GB |
+| 3·2^18 | 3 × L32 5.28–5.34 | 16.24 | 6.19 GB |
+| 2^20 | 4 × L32 5.32–5.41 | 21.86 | 6.19 GB |
+
+  Every aggregate was accepted by the native `acc`, and its canary rejected.
+
+### 13.4 `proofCap` removed, `qV` (item 4)
+
+- `main.rs` `acc` now requires `|π| < 2^64` (`u64::try_from(|π|)`), mirroring `accWith`'s
+  `decide (p.π.size < 2 ^ 64)`.
+- `format.rs` no longer defines or cites `PROOF_CAP`; only `queryCap` remains.
+- `params::QV` is 36,000 (revision 4.0, B-17), so the native `acc` admits an aggregate trace of
+  `4 × 8,891`.
+
+### 13.5 Peak memory at 4 threads (item 5)
+
+All figures are `/usr/bin/time -v` on the 7763, against the 11 GiB `[memory] prover` cap:
+
+| request | peak RSS |
+|---|---:|
+| `L32`, n = 2^18 | 6.19 GB |
+| `L31`, n = 2^17 | 3.32 GB |
+| aggregate of 4 × `L32` (2^20) | 6.19 GB |
+
+- These peaks include the 6,000 / 3,200 MiB pre-fault. Without it, the VM's m = 32 `test-leaf`
+  peaks at 5.35 GB at 1, 2 and 4 threads alike.
+- Threads add no memory: the tables are shared, and each chunk's scratch is under 1 MB.
+- Segments proved one after another reuse the allocator's cached blocks, so `k` does not raise the
+  peak.
+- What `N4`/`N8` add (the node's witness and the replayed children, `sizes.py`: 4.6 / 7.7 GB) is the
+  node prover's; it runs after the segments, so the step's peak is the larger of the two.
+
+### 13.6 `prover.s` (item 6)
+
+- Regenerated with `build-asm.sh logs/P2/r40/asm` (rustc 1.99.0; `logs/P2/r40/build-asm-2.log`):
+  **6,713,303 bytes, sha256 `657a0ab07f9ac4dd5d8859226f901b1956abeb9c4187b9155a08baf93c773d3b`**.
+- The linked binary (`gcc -static -O2 -pthread`) is 2,179,944 bytes, sha256 `561b42d6…22ed`.
+- This build follows the switch to S-0′'s draft `hdr_A` and the `L31` byte. The build p2t-4 ran was
+  sha256 `e6ef7582…f8cc`; the runner reproduced it byte for byte (13.7).
+- No machine path appears in the `.s`.
+- On the VM the linked binary passes `selftest`, `test-leaf 30` (items KAT, INT-5 Lean program
+  accept, canary rejected) and `prove-leaf 30` / `31 --n 70000` through `rf-oracle`
+  (`logs/P2/r40/local2.txt`).
+- The crate is 9,186 `.rs` lines (was 8,811).
+
+### 13.7 The final build on the runner (probe p2t-4, run 40722323237, EPYC 7763)
+
+- The runner's `build-asm.sh` wrote the **same `prover.s` (sha256 `e6ef7582…f8cc`)** as the VM did
+  from the same sources. These are the sources before 13.6's last change (the `hdr_A` and `L31`
+  bytes).
+- `asm-compat.py` and the runner's link step gave the binary `d464c675…774c`; `SELFTEST` passed
+  (`tier=ymm`, checked pclmul, ymm and ymm-sim).
+- Every request below was accepted by the native `acc`, and its canary was rejected:
+
+| request | total (s) | pre-fault | peak RSS |
+|---|---:|---:|---:|
+| `L32` n = 2^18, 4 threads | 5.64–5.69 | 0.27 s | 6.19 GB |
+| `L32` n = 3·2^16 | 4.83–4.92 | 0.28 s | 6.19 GB |
+| `L31` n = 2^17 | 2.83–2.85 | 0.16 s | 3.32 GB |
+| `L31` n = 1 | 1.39–1.44 | 0.15 s | 3.32 GB |
+| aggregate 2^18 + 1 (L32 5.41 + L31 1.31) | 6.89 | 0.28 s | 6.19 GB |
+| aggregate 2^20 (4 × L32 5.33–5.38) | 21.87 | 0.26 s | 6.19 GB |
+| `L32` n = 2^18, 2 / 1 threads | 6.84–6.93 / 13.02–13.04 | — | 6.18 GB |
+
+### 13.8 What the measurements mean for `S` (estimates from 13.3 and `sizes.py`'s node figures)
+
+The model is `logs/P2/r40/model.py` (output in `model.txt`). Its inputs:
+- the measured segment fits of 13.3;
+- the `N4` node at `k = 1 / 2 / 4` = 1.7 / 3.4 / 4.1 s from `sizes.py` (`k = 3` interpolated);
+- `n ∝ 1/n²` on `[2^17, 2^20]`, `2·10^5` draws, and `P̄` as PROVER.md §3.
+
+|  | `P̄` (s) | mean step (s) | `n = 2^17` / `2^17+1` / `2^18` / `2^18+1` (s) |
+|---|---:|---:|---|
+| measured segments + `sizes.py` nodes | **8.58** | 9.99 | 4.50 / 5.89 / 7.32 / 10.39 |
+| measured segments, nodes free (a bound) | 6.37 | 7.49 | 2.80 / 4.19 / 5.62 / 6.99 |
+
+Against the blueprint's "4 threads ≈ 3.3 s":
+- this is **8.6 s**, because the threads are already counted (13.2);
+- `S ≈ P̄ + V̄ ≈ 8.6 + 0.84 ≈ 9.4 s` with today's V.
+
+**Stream budget (estimate).** Per step: the prover, plus about 2 s of runner overhead:
+- `ready` with the 0.22 s pre-fault;
+- two `V` measurements per check;
+- a calibration sample every 8 steps;
+- re-runs of at most 10 % of the steps.
+
+That is ≈ 12.0 s a step, so **the stream fits `M ≤ 80` steps of the 960 s**. `M = 64 + Geom(16)` is
+truncated at 112, so **≈ 36 % of evaluations would be truncated, hence unranked**. With free nodes:
+≈ 9.2 s a step, `M ≤ 104`, ≈ 8 %.
+
+**The stream budget, not only `P̄`, now needs about a 25 % faster step.** Neither more threads nor
+more memory provides it. The levers, in order of size:
+1. **The node.** Its estimate is about 25 % of a mean step. A step at `n ≤ 2^18` is one segment plus
+   one node, so the node's fixed cost dominates the cubic mean.
+2. **The fixed half of a segment** (2.76 s of `L32`): commit 1.12, ring switch 0.53, Ligerito 0.74,
+   trace + SIGN 0.18. Levers:
+   - the round-1 kernel (P2 §3, item 1);
+   - an `L30` kind for remainders `≤ 2^16`: about −0.7 s on those steps; it needs a third segment
+     kind in the node's mux (S-0′);
+   - overlapping segment `i + 1`'s scalar witness with segment `i`'s vector phases (the SMT
+     siblings): about −0.4 s per extra segment (estimate from the witness's 2 → 4 thread gain).
+3. **Level 0 at rate 1/4** (B-17) costs about +5 % prover time, so it does not help here.
+
+### 13.9 What P2′ needs from S-0′ and S-E12′
+
+**From S-0′** (the segment and aggregate kinds), as dumps under `logs/S-0p/dump/`:
+1. **The segment programs** `ops-L31.txt` and `ops-L32.txt` for a variable `n`, plus `items.json`
+   if the sequence changes. The `ir.rs` loader takes `FLOCK_IR_DUMP`. Points to fix:
+   - (a) where `n` enters: the statement's `enc64 n`, the `bnd` last block, and `P^e`'s range factor
+     (13.3);
+   - (b) **whether the free blocks past `n` change any weight the prover sees.** The candidates are
+     the shift weights masked to `y < n`, the kind indicators in L3 / claim 2 (3.16's `rsWeight`
+     with `act`), and `targetS`'s per-block E. If any is masked, the messages change even with the
+     zero witness, and the prover must use the same tables. Each is a local change (`leaf.rs`
+     `pe_on_s`, the S2 tables `e1`/`e2`, `ringswitch::weight_table`'s claim 1);
+   - (c) the kind bytes of `L31`/`L32` and whether `hdr` carries `n` or `pubStart`;
+   - (d) the `pubStart` form: a statement field, a gated row, or nothing in the segment proof (13.3);
+   - (e) KAT data: one dumped (n, π-independent) item list per kind, and the A.6 rows of any new kind
+     (a `chainPub` block 0, if the pin is a row).
+2. **The aggregate `A`.** Needed: `hdr_A`, the order of `π_A`'s parts, `V_A`'s checks (as in
+   B-11: `e_i = s_{i+1}`, `e_k = end`, `Σ n_i = n`, `n_i ≤ 2^18`, and whether the `L31`/`L32` choice
+   is checked), how `hashStmt` hashes the segment statements, and `qV`. `agg.rs` follows S-0′'s
+   in-progress `FRAgg` draft; if the final form differs, only the bytes change.
+3. **`N4`/`N8`'s `gen`** (`ops-N4.txt`, `ops-N8.txt`, `items.json` for `m = 32/33`), with the
+   finals that are new in 4.0, so that `ir.rs` can run the node programs.
+
+**From S-E12′** (the node circuit):
+- `compileMux`'s M and L rows for `N4`/`N8` (`1 + k` slots, the sub-slot mux over `{L31, L32}`,
+  slot 1 over `{N4, N8}`), with the register-to-cell map (`mregs`/`maux`), as S-E5's `nodedump`
+  format (`nodeshape::load` reads it);
+- the H layout: the block intervals of every kind, the `WM` mirror map, and the link families' slot
+  maps for `linkWAll`;
+- the pack map from the H trace/stream cells to the M imports;
+- `targetS`/`linkWAll`/`shiftMask` for the node kinds.
+
+With these, the node prover is the §12.4 port at the new sizes: H `2^17`/`2^18` blocks, M `2^23`,
+and `τ`/`σ` with 23 coordinates.
+
+**Blueprint changes requested** (I do not edit the blueprint):
+- §0's table and changes 25 (b), (e): the step costs are 4-thread 7763 figures. Drop the ×2.5. The
+  one-thread figure is 12.95 s per `2^18` (13.2). `P̄ ≈ 8.6 s` and the stream fits `M ≤ 80` with the
+  `sizes.py` nodes (13.8).
+- B-16: "multi-threaded on the runner's 4 vCPUs" is done. Add that the runner has **2 physical
+  cores**.
+
+### 13.10 Changes (files under `submissions/flock-recursive/prover/`; crate 9,186 `.rs` lines, was 8,811)
+
+| file | change |
+|---|---|
+| `agg.rs` | new, 158 lines: `split`, the aggregate prover and `V_A` (S-0′'s draft `hdr_A`/`aggChecks`), tests `split_rule` and `aggregate_roundtrip` |
+| `leaf.rs` | `prove_seg` / `prove_logged(…, n, …)`, `seg_c`; `P^e` range factor; tail by live prefix; verifier reads `n` and uses last block `n − 1`; test `variable_length_segments` |
+| `witness.rs` | `leaf_witness_fast(…, n)`: chain of `n` steps, zero blocks past it, `h = chainEnd s n` |
+| `zerocheck.rs`, `lincheck.rs`, `sumcheck.rs` | `used`/`live` parameters replace the `USED_BLOCKS` global; `fold_f_live` |
+| `mle.rs` | `range_eq` with test `range_eq_is_the_indicator_mle` |
+| `par.rs` | chunk boundaries at multiples of `min_chunk` (`chunk_len`): the thread-count bug; `USED_BLOCKS` removed |
+| `alloc.rs` | 2 MiB-aligned large blocks with `MADV_HUGEPAGE` (`FLOCK_NO_THP`) |
+| `main.rs` | `acc`: `|π| < 2^64`, `A` dispatch; `--n` for `test-leaf`/`prove-leaf`; mode `prove-agg N`; `pi_b2s` in `test-leaf`'s line |
+| `format.rs`, `params.rs` | `PROOF_CAP` removed; `QV = 36,000`; `KIND_L31 = 0x4B` |
+| `ir.rs` | 3.16 ops (`rsWeight … act`, `linkWAll`, `shiftMask`), `shiftTarget` at `bnd`'s last block |
+| `kat.rs`, `items.rs`, `transcript.rs` | dump path `logs/INT-5/dump` |
+| `prover.s` | regenerated (13.6) |
+| `probe/p2t-prover/run.sh` | new, 58 lines: CPU facts, `prove-leaf M --n N` and `prove-agg N` cases at chosen thread counts |
+
+**Checks:** `cargo test --release` passes (32 tests, 1 ignored); the debug-assertion build also
+passes (`target-dbg`).
+
+### 13.11 Remaining items, in order (after S-0′'s and S-E12′'s dumps)
+
+1. Make the segments exact for `L31`/`L32` against S-0′'s segment programs: (b)–(d) of 13.9, then
+   `ir.rs` on `ops-L31`/`ops-L32` at n = 1, 2^16, 2^17 (L31) and 2^17 + 1, 3·2^16, 2^18 (L32),
+   accept plus canary.
+2. Give the aggregate its final `hdr_A`, `hashStmt` and `V_A` bytes, and run `ir.rs` on S-0′'s `A`
+   program if it dumps one.
+3. Build the `N4`/`N8` prover from S-E12′'s dumps (§12.4's plan at the new sizes); `ir.rs` with
+   `evalM`/`evalL` on `ops-N4/N8`.
+4. Add the `prover first` (two chains: up to 8 segments, then `N8`) and `prover step` (`prev.stmt`,
+   `prev.bin`, `chain.json` → `A` + `N4`) modes with the handshake: `ready`, then the inputs renamed
+   in, `go`, `done`.
+5. Do the stream dry run on the PR #20 harness (`smoke.py --org`), with step times and peak memory
+   (the `N8` estimate is 7.7 GB) on a runner.
+6. Pursue the step-time levers of 13.8, chosen by the measured node cost.

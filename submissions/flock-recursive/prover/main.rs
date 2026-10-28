@@ -2,15 +2,19 @@
 //!
 //! Modes (development; the runner's `setup`/`tree`/`leaf`/`node` are stage P2):
 //!   flock-prover selftest                         tier kernels against the reference
-//!   flock-prover test-leaf M [--reps R]           prove + native verify, in-process keyed oracle
-//!   flock-prover prove-leaf M --start HEX --out FILE [--reps R]
+//!   flock-prover test-leaf M [--n N] [--reps R]   prove + native verify, in-process keyed oracle
+//!   flock-prover prove-leaf M [--n N] --start HEX --out FILE [--reps R]
 //!                                                 through the service at $RF_ORACLE: prove, record
 //!                                                 the verifier's trace, SIGN, write the signed file,
 //!                                                 check it with the native `acc`
+//!   flock-prover prove-agg N --start HEX --out FILE [--reps R]
+//!                                                 the aggregate leaf `A` of a chain of N steps
+//!                                                 (segments L32/L31) through the service, signed
 //!   flock-prover acc --vk HEX --stmt HEX FILE     the native `acc` on a signed-proof file
 //! Environment: FLOCK_THREADS (default all CPUs), FLOCK_TIER (force `portable`, `pclmul`, `ymm`).
 #![allow(clippy::needless_range_loop, clippy::too_many_arguments, dead_code)]
 
+mod agg;
 mod alloc;
 mod blake2s;
 mod circuit;
@@ -70,12 +74,12 @@ fn peak_rss_mb() -> f64 {
     0.0
 }
 
-/// The native `acc vk c p` (FORMAT.md): caps, the signature on the trace digest, and `V` run
-/// against the trace (`runSeq`).
+/// The native `acc vk c p` (FORMAT.md): `|π| < 2^64` (no `proofCap` since core PR #20), `|tr| ≤ qV`,
+/// `queryCap`, the signature on the trace digest, and `V` run against the trace (`runSeq`).
 pub fn acc(circ: &circuit::Circuit, vk: &Digest, c: &Digest, file: &[u8]) -> Result<(), String> {
     let p = format::from_file(file).ok_or("not a signed-proof file")?;
-    if p.pi.len() > format::PROOF_CAP {
-        return Err(format!("|π| = {} > proofCap", p.pi.len()));
+    if u64::try_from(p.pi.len()).is_err() {
+        return Err(format!("|π| = {} is not below 2^64", p.pi.len()));
     }
     if p.tr.len() > params::QV {
         return Err(format!("|tr| = {} > qV = {}", p.tr.len(), params::QV));
@@ -87,7 +91,8 @@ pub fn acc(circ: &circuit::Circuit, vk: &Digest, c: &Digest, file: &[u8]) -> Res
         return Err("SigOk fails".into());
     }
     let seq = Seq::new(&p.tr);
-    if !leaf::verify(&seq, circ, vk, c, &p.pi) {
+    let v = if p.pi.first() == Some(&agg::KIND_AGG) { agg::verify } else { leaf::verify };
+    if !v(&seq, circ, vk, c, &p.pi) {
         return Err("V rejects".into());
     }
     if !seq.consumed() {
@@ -96,7 +101,14 @@ pub fn acc(circ: &circuit::Circuit, vk: &Digest, c: &Digest, file: &[u8]) -> Res
     Ok(())
 }
 
-fn test_leaf(m: usize, reps: usize) {
+/// `--n N`: a segment of `N ≤ 2^(m−14)` steps (revision 4.0); default the full `2^(m−14)`.
+fn seg_n(args: &[String], m: usize) -> u64 {
+    let n = arg(args, "--n").map(|x| x.parse().expect("--n")).unwrap_or_else(|| params::leaf_n(m));
+    assert!((1..=params::leaf_n(m)).contains(&n), "--n: 1 … 2^(m−14)");
+    n
+}
+
+fn test_leaf(m: usize, n: u64, reps: usize) {
     let circ = circuit::Circuit::build();
     let o = oracle::Local::keyed(&[0x5Au8; 32]);
     let vk = [7u8; 32];
@@ -104,10 +116,9 @@ fn test_leaf(m: usize, reps: usize) {
     let want = kat::find_items_json().and_then(|p| kat::load_items(&p));
     for rep in 0..reps {
         let t = Instant::now();
-        let ((pi, tm), plog) = leaf::prove_logged(&o, &circ, &vk, &s, m, true);
+        let ((pi, tm), plog) = leaf::prove_logged(&o, &circ, &vk, &s, m, n, true);
         let pt = t.elapsed().as_secs_f64();
-        let n = params::leaf_n(m);
-        let c = leaf::leaf_c(&s, m);
+        let c = leaf::seg_c(&s, n);
         let t = Instant::now();
         let ok = leaf::verify(&o, &circ, &vk, &c, &pi);
         let vt = t.elapsed().as_secs_f64();
@@ -124,7 +135,7 @@ fn test_leaf(m: usize, reps: usize) {
         let bad1 = leaf::verify(&o, &circ, &vk, &c2, &pi);
         // the dumped Lean program (with the finals) on the same proof, for the Lean kinds
         let ir = match (m, kat::find_ir_dump()) {
-            (30 | 32, Some(d)) => {
+            (30 | 32, Some(d)) if n == params::leaf_n(m) => {
                 let k = if m == 32 { "L" } else { "P" };
                 let text = std::fs::read_to_string(d.join(format!("ops-{k}.txt"))).unwrap_or_default();
                 let r = ir::run(&text, &circ, &o, &vk, &c, &pi);
@@ -141,8 +152,9 @@ fn test_leaf(m: usize, reps: usize) {
             bad2 |= leaf::verify(&o, &circ, &vk, &c, &pi2);
         }
         println!(
-            "TEST-LEAF m={m} rep={rep} n={n} |pi|={} piSize={} prove_s={pt:.3} verify_s={vt:.3} accept={ok} flipped_stmt_accept={bad1} flipped_byte_accept={bad2} items_kat={kat} lean_ir={ir} peak_rss_mb={:.0} threads={} tier={} {}",
+            "TEST-LEAF m={m} rep={rep} n={n} |pi|={} pi_b2s={} piSize={} prove_s={pt:.3} verify_s={vt:.3} accept={ok} flipped_stmt_accept={bad1} flipped_byte_accept={bad2} items_kat={kat} lean_ir={ir} peak_rss_mb={:.0} threads={} tier={} {}",
             pi.len(),
+            blake2s::blake2s256(&pi).iter().map(|x| format!("{x:02x}")).collect::<String>(),
             params::PI_SIZE,
             peak_rss_mb(),
             par::threads(),
@@ -156,18 +168,13 @@ fn test_leaf(m: usize, reps: usize) {
     }
 }
 
-fn prove_leaf_service(m: usize, start: &Digest, out: &str, reps: usize) {
+fn prove_leaf_service(m: usize, n: u64, start: &Digest, out: &str, reps: usize) {
     let path = std::env::var("RF_ORACLE").unwrap_or_else(|_| service::fatal("RF_ORACLE is not set"));
     let svc = service::Service::connect(&path).unwrap_or_else(|e| service::fatal(&e));
     svc.warm(par::threads().min(service::MAX_CONNS));
     par::warm();
     let vk = svc.vk();
     let circ = circuit::Circuit::build();
-    let n = params::leaf_n(m);
-    if let Some(u) = std::env::var("FLOCK_USED_BLOCKS").ok().and_then(|x| x.parse().ok()) {
-        par::USED_BLOCKS.store(u, std::sync::atomic::Ordering::Relaxed);
-    }
-    let timing_only = par::used_blocks() < params::leaf_n(m) as usize;
     let pf: usize = std::env::var("FLOCK_PREFAULT_MIB").ok().and_then(|x| x.parse().ok()).unwrap_or(0);
     if pf > 0 {
         let t = Instant::now();
@@ -181,7 +188,7 @@ fn prove_leaf_service(m: usize, start: &Digest, out: &str, reps: usize) {
         let t0 = Instant::now();
         let mut rec = Recorder::new(&svc);
         rec.batch_max = 128;
-        let (pi, tm) = leaf::prove(&rec, &circ, &vk, start, m);
+        let (pi, tm) = leaf::prove_seg(&rec, &circ, &vk, start, m, n);
         let t_prove = t0.elapsed().as_secs_f64();
         let stats = rec.stats.report();
         let oracle_s = rec.stats.oracle_s();
@@ -191,7 +198,7 @@ fn prove_leaf_service(m: usize, start: &Digest, out: &str, reps: usize) {
         let c = leaf_stmt(&h, n);
         let mut rp = Replay::new(&table);
         rp.fallback = Some(&svc);
-        if !leaf::verify(&rp, &circ, &vk, &c, &pi) && !timing_only {
+        if !leaf::verify(&rp, &circ, &vk, &c, &pi) {
             service::fatal("the native verifier rejects the proof (replay)");
         }
         let (tr, missing) = rp.finish();
@@ -243,7 +250,69 @@ fn prove_leaf_service(m: usize, start: &Digest, out: &str, reps: usize) {
             tm.report(),
             svc.report()
         );
-        if (r.is_err() || canary || !reasm || tr_kat.starts_with("FAIL") || pi.len() != params::PI_SIZE) && !timing_only {
+        if r.is_err() || canary || !reasm || tr_kat.starts_with("FAIL") || pi.len() != params::PI_SIZE {
+            std::process::exit(1);
+        }
+    }
+}
+
+/// `prove-agg N`: the aggregate leaf of a chain of `N` steps through the service (one trace, one
+/// `SIGN`), the native `acc` on the file and the statement canary; per-segment times.
+fn prove_agg_service(n: u64, start: &Digest, out: &str, reps: usize) {
+    let path = std::env::var("RF_ORACLE").unwrap_or_else(|_| service::fatal("RF_ORACLE is not set"));
+    let svc = service::Service::connect(&path).unwrap_or_else(|e| service::fatal(&e));
+    svc.warm(par::threads().min(service::MAX_CONNS));
+    par::warm();
+    let vk = svc.vk();
+    let circ = circuit::Circuit::build();
+    let pf: usize = std::env::var("FLOCK_PREFAULT_MIB").ok().and_then(|x| x.parse().ok()).unwrap_or(0);
+    if pf > 0 {
+        let t = Instant::now();
+        alloc::prefault(pf << 20);
+        eprintln!("prefault {pf} MiB {:.3}s", t.elapsed().as_secs_f64());
+    }
+    let c = leaf::seg_c(start, n);
+    for rep in 0..reps {
+        let t0 = Instant::now();
+        let mut rec = Recorder::new(&svc);
+        rec.batch_max = 128;
+        let (pi, tms) = agg::prove(&rec, &circ, &vk, start, n, agg::M_SEG);
+        let t_prove = t0.elapsed().as_secs_f64();
+        let t = Instant::now();
+        let table = rec.into_table();
+        let mut rp = Replay::new(&table);
+        rp.fallback = Some(&svc);
+        if !agg::verify(&rp, &circ, &vk, &c, &pi) {
+            service::fatal("the native verifier rejects the aggregate (replay)");
+        }
+        let (tr, missing) = rp.finish();
+        if missing != 0 {
+            service::fatal(&format!("{missing} verifier queries were not asked while proving"));
+        }
+        let qs: Vec<&[u8]> = tr.iter().map(|(q, _)| q.as_slice()).collect();
+        let (_, sig) = svc.sign(&qs);
+        let t_trace_sign = t.elapsed().as_secs_f64();
+        let total = t0.elapsed().as_secs_f64();
+        let file = format::to_file(&format::Signed { pi: pi.clone(), tr: tr.clone(), sig });
+        std::fs::write(out, &file).expect("write");
+        let r = acc(&circ, &vk, &c, &file);
+        let mut c2 = c;
+        c2[31] ^= 1;
+        let canary = acc(&circ, &vk, &c2, &file).is_ok();
+        let segs: Vec<String> = agg::split(n, agg::M_SEG).iter().zip(tms.iter()).map(|((m, ni), tm)| format!("L{m}:{ni}:{:.3}", tm.total())).collect();
+        println!(
+            "PROVE-AGG n={n} rep={rep} k={} segs=[{}] total_s={total:.3} prove_s={t_prove:.3} trace_sign_s={t_trace_sign:.3} |pi|={} |tr|={} file={} acc={} canary_accept={canary} peak_rss_mb={:.0} threads={} tier={}",
+            tms.len(),
+            segs.join(","),
+            pi.len(),
+            tr.len(),
+            file.len(),
+            r.as_ref().map(|_| "accept".to_string()).unwrap_or_else(|e| e.clone()),
+            peak_rss_mb(),
+            par::threads(),
+            simd::tier_name(),
+        );
+        if r.is_err() || canary {
             std::process::exit(1);
         }
     }
@@ -373,12 +442,22 @@ fn main() {
                 std::process::exit(1);
             }
         },
-        "test-leaf" => test_leaf(args[2].parse().expect("M"), reps),
+        "test-leaf" => {
+            let m: usize = args[2].parse().expect("M");
+            test_leaf(m, seg_n(&args, m), reps)
+        }
         "prove-leaf" => {
             let m: usize = args[2].parse().expect("M");
+            let n = seg_n(&args, m);
             let start = unhex(&arg(&args, "--start").unwrap_or_else(|| "11".repeat(32)));
             let out = arg(&args, "--out").unwrap_or_else(|| "leaf.bin".into());
-            prove_leaf_service(m, &start, &out, reps);
+            prove_leaf_service(m, n, &start, &out, reps);
+        }
+        "prove-agg" => {
+            let n: u64 = args[2].parse().expect("N");
+            let start = unhex(&arg(&args, "--start").unwrap_or_else(|| "11".repeat(32)));
+            let out = arg(&args, "--out").unwrap_or_else(|| "agg.bin".into());
+            prove_agg_service(n, &start, &out, reps);
         }
         "acc" => {
             let vk = unhex(&arg(&args, "--vk").expect("--vk"));

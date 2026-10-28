@@ -132,13 +132,26 @@ fn nchunks(n: usize, min_chunk: usize) -> usize {
     }
 }
 
-/// Run `f(lo, hi)` over `[0, n)` split into chunks of at least `min_chunk`, in parallel, and
-/// return the per-chunk results in order.
+/// The chunk length for `n` items: about `n / nchunks`, rounded up to a multiple of `min_chunk`, so
+/// that every chunk but the last starts and ends at a multiple of `min_chunk` whatever the thread
+/// count (kernels may rely on that alignment; with a thread count that is not a power of two the
+/// plain split `n/k` is not aligned, P2 pass 5).
+fn chunk_len(n: usize, min_chunk: usize) -> usize {
+    let g = min_chunk.max(1);
+    n.div_ceil(nchunks(n, min_chunk).max(1)).div_ceil(g) * g
+}
+
+/// Run `f(lo, hi)` over `[0, n)` split into chunks of at least `min_chunk` (boundaries at multiples
+/// of `min_chunk`), in parallel, and return the per-chunk results in order.
 pub fn map_chunks<R: Send, F: Fn(usize, usize) -> R + Sync>(n: usize, min_chunk: usize, f: F) -> Vec<R> {
-    let k = nchunks(n, min_chunk);
+    if n == 0 {
+        return Vec::new();
+    }
+    let size = chunk_len(n, min_chunk);
+    let k = n.div_ceil(size);
     let out: Vec<Mutex<Option<R>>> = (0..k).map(|_| Mutex::new(None)).collect();
     run(k, &|c| {
-        let r = f(c * n / k, (c + 1) * n / k);
+        let r = f(c * size, ((c + 1) * size).min(n));
         *out[c].lock().unwrap() = Some(r);
     });
     out.into_iter().map(|r| r.into_inner().unwrap().unwrap()).collect()
@@ -169,7 +182,8 @@ impl<T> Base<T> {
     }
 }
 
-/// Call `f(offset, chunk)` on disjoint mutable chunks of `out`, in parallel.
+/// Call `f(offset, chunk)` on disjoint mutable chunks of `out` (offsets at multiples of
+/// `min_chunk`), in parallel.
 pub fn for_each_chunk_mut<T: Send, F: Fn(usize, &mut [T]) + Sync>(out: &mut [T], min_chunk: usize, f: F) {
     let n = out.len();
     let k = nchunks(n, min_chunk);
@@ -177,7 +191,7 @@ pub fn for_each_chunk_mut<T: Send, F: Fn(usize, &mut [T]) + Sync>(out: &mut [T],
         f(0, out);
         return;
     }
-    let size = n.div_ceil(k);
+    let size = chunk_len(n, min_chunk);
     let k = n.div_ceil(size);
     let base = Base(out.as_mut_ptr());
     run(k, &|c| {
@@ -258,12 +272,4 @@ pub fn uninit_vec<T: Copy>(n: usize) -> Vec<T> {
     // SAFETY: T is Copy (no drop), and every caller writes every element before reading it.
     unsafe { v.set_len(n) };
     v
-}
-
-/// Blocks that carry a computation (`Sel`'s prefix); the rest are zero blocks whose zerocheck
-/// weight `eq·Sel` vanishes, so the prover skips them. Default: every block. Set by the node-shape
-/// timing mode (P2 prototype of rev. 3.2's `Sel`).
-pub static USED_BLOCKS: AtomicUsize = AtomicUsize::new(usize::MAX);
-pub fn used_blocks() -> usize {
-    USED_BLOCKS.load(Ordering::Relaxed)
 }

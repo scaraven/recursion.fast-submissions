@@ -15,12 +15,12 @@ use crate::blake2s::{leaf_stmt, Digest};
 use crate::circuit::Circuit;
 use crate::field::{FAcc, F, K};
 use crate::lincheck;
-use crate::mle::{eq_at_int, eq_f, eq_table, shift_mle};
+use crate::mle::{eq_at_int, eq_f, eq_table, range_eq, shift_mle};
 use crate::oracle::Oracle;
 use crate::params::{self as pp, leaf_kind_byte, M_STAR};
 use crate::ringswitch;
 use crate::skipdom::{lagrange_weights, skip};
-use crate::sumcheck::{coeffs_f, eval2_f, fold_f, prove_pairs};
+use crate::sumcheck::{coeffs_f, eval2_f, fold_f, fold_f_live, prove_pairs};
 use crate::transcript::{Fs, ItemRec, Reader, Writer};
 use crate::witness::Witness;
 use crate::zerocheck;
@@ -71,20 +71,24 @@ pub fn packed(z: &[u64]) -> &[F] {
     unsafe { std::slice::from_raw_parts(z.as_ptr() as *const F, z.len() / 2) }
 }
 
-/// `P^e(σ) = Σ_{p ∈ E, p mod 64 = σ} eq(r_hi, ⌊p/64⌋)` on `S` (`Σ_blk eq(r_blk, ·) = 1`).
-fn pe_on_s(r_hi: &[F]) -> [F; 64] {
+/// `P^e(σ) = Σ_{blk < n} eq(r_blk, blk) · Σ_{p ∈ E, p mod 64 = σ} eq(r_hi, ⌊p/64⌋)` on `S`: the chain
+/// kind's target on the segment's `n` chain blocks, zero on the blocks past `n` (revision 4.0,
+/// B-12; `Σ_{blk < n} eq(r_blk, blk)` is 1 when `n = 2^(m−14)`, the 3.x leaf). `r` = `r_hi ‖ r_blk`.
+fn pe_on_s(r: &[F], n: u64) -> [F; 64] {
+    let (r_hi, r_blk) = r.split_at(8);
+    let g = range_eq(r_blk, n);
     let mut pe = [F::ZERO; 64];
     for &p in crate::circuit::e_positions() {
         pe[p & 63] += eq_at_int(r_hi, (p >> 6) as u64);
     }
-    pe
+    pe.map(|x| x * g)
 }
 
 /// **Z2's values** (`targetS`, `lagrangeS vals λ pe`, rev. 3.8): the message is `P^z` on `Λ` (64)
 /// then `P^{ab}` on `Λ₀ … Λ₆₂` (63); `P^z*(λ)` by Lagrange on `Λ`; `P^{ab}|_S := P^z|_S + P^e|_S`,
 /// `P^{ab}*(λ)` through the 127 nodes `S ∪ Λ₀…₆₂`. Returns `(P^{ab}*(λ), P^z*(λ))`: Z3's first claim
 /// and the c-claim `ẑ(r, λ)`.
-pub fn z2_value(pz: &[F], pab: &[F], r: &[F], lambda: F) -> (F, F) {
+pub fn z2_value(pz: &[F], pab: &[F], r: &[F], lambda: F, n: u64) -> (F, F) {
     assert_eq!((pz.len(), pab.len()), (64, 63));
     let sk = skip();
     let wl = lagrange_weights(&sk.l_pts, lambda);
@@ -92,7 +96,7 @@ pub fn z2_value(pz: &[F], pab: &[F], r: &[F], lambda: F) -> (F, F) {
     for i in 0..64 {
         pzl += wl[i] * pz[i];
     }
-    let pe = pe_on_s(&r[..8]);
+    let pe = pe_on_s(r, n);
     let mut vals = vec![F::ZERO; 127];
     for sg in 0..64 {
         let mut v = F::ZERO;
@@ -248,22 +252,34 @@ fn dummy_rounds(wr: &mut Writer, f: usize, n: usize, bytes: usize) {
 
 /// A leaf of `m` committed bits proves `chainEnd s n = h` (`n = 2^(m−14)`); `c = leafStmt h n`.
 pub fn leaf_c(s: &Digest, m: usize) -> Digest {
-    let n = pp::leaf_n(m);
+    seg_c(s, pp::leaf_n(m))
+}
+
+/// A segment of `n` steps from `s` proves `c = leafStmt (chainEnd s n) n` (revision 4.0).
+pub fn seg_c(s: &Digest, n: u64) -> Digest {
     leaf_stmt(&crate::blake2s::chain_end(s, n), n)
 }
 
 /// The leaf prover: `π` (`piSize` bytes) and the phase timings. `o` answers every query.
 pub fn prove(o: &dyn Oracle, circ: &Circuit, vk: &Digest, s: &Digest, m: usize) -> (Vec<u8>, Times) {
-    prove_logged(o, circ, vk, s, m, false).0
+    prove_logged(o, circ, vk, s, m, pp::leaf_n(m), false).0
 }
 
-/// `prove`, and the Fiat–Shamir items the prover asked (if `log`).
-pub fn prove_logged(o: &dyn Oracle, circ: &Circuit, vk: &Digest, s: &Digest, m: usize, log: bool) -> ((Vec<u8>, Times), Option<Vec<ItemRec>>) {
+/// The segment prover (revision 4.0, B-12): the chain of `n ≤ 2^(m−14)` steps from `s` in the
+/// `m`-bit shape, the blocks past `n` zero. Every phase whose work is per block (the witness, Z's
+/// round 1, the x₆ round and the tail, the lincheck's partial fold) reads only the `n` chain blocks.
+pub fn prove_seg(o: &dyn Oracle, circ: &Circuit, vk: &Digest, s: &Digest, m: usize, n: u64) -> (Vec<u8>, Times) {
+    prove_logged(o, circ, vk, s, m, n, false).0
+}
+
+/// `prove_seg`, and the Fiat–Shamir items the prover asked (if `log`).
+pub fn prove_logged(o: &dyn Oracle, circ: &Circuit, vk: &Digest, s: &Digest, m: usize, n: u64, log: bool) -> ((Vec<u8>, Times), Option<Vec<ItemRec>>) {
     assert!((25..=M_STAR).contains(&m), "leaf shapes m = 25 … 32");
+    assert!((1..=pp::leaf_n(m)).contains(&n), "a segment has 1 … 2^(m−14) steps");
     let mut tm = Times::default();
     let mut t = Instant::now();
-    let n = pp::leaf_n(m);
-    let w = crate::witness::leaf_witness_fast(circ, s, m);
+    let used = n as usize;
+    let w = crate::witness::leaf_witness_fast(circ, s, m, used);
     tm.mark("witness", &mut t);
     let c = leaf_stmt(&w.h, n);
     let hdr = header(m, s);
@@ -285,7 +301,7 @@ pub fn prove_logged(o: &dyn Oracle, circ: &Circuit, vk: &Digest, s: &Digest, m: 
     let mut r: Vec<F> = sk.rho.to_vec();
     r.extend_from_slice(r_out);
     let (ab, bb, zb) = (Witness::bytes(&w.a), Witness::bytes(&w.b), Witness::bytes(&w.z));
-    let r1 = zerocheck::round1(ab, bb, zb, r_out);
+    let r1 = zerocheck::round1(ab, bb, zb, r_out, used);
     let pz = zerocheck::pz_on_lambda(&r1);
     let mut msg = pz.to_vec();
     msg.extend_from_slice(&r1.pab[..63]);
@@ -293,7 +309,7 @@ pub fn prove_logged(o: &dyn Oracle, circ: &Circuit, vk: &Digest, s: &Digest, m: 
     wr.fs.phase = "Z2";
     wr.send_f(pp::F_Z2, &msg);
     let lambda = wr.fs.chal_f();
-    let (mut claim, pz_l) = z2_value(&pz, &r1.pab[..63], &r, lambda);
+    let (mut claim, pz_l) = z2_value(&pz, &r1.pab[..63], &r, lambda, n);
     // the c-claim ẑ(r, λ): its slices from round 1's banks (bank_b = eq(ρ₁, b)·Σ_y eq(r₁…, y) z(y, ·))
     let (i0, i1) = ((F::ONE + sk.rho[0]).inv(), sk.rho[0].inv());
     let mut s0v = vec![F::ZERO; 128];
@@ -309,8 +325,9 @@ pub fn prove_logged(o: &dyn Oracle, circ: &Circuit, vk: &Digest, s: &Digest, m: 
     let mut pref = F::ONE;
     let mut sz = Vec::with_capacity(m - 6);
     let (mut ta, mut tb) = (Vec::new(), Vec::new());
+    let mut live = used * 128; // the tables' nonzero prefix after the x₆ fold (128 row pairs a block)
     for k in 0..m - 6 {
-        let (h1, hi) = if k == 0 { zerocheck::round_x6(&tabs, ab, bb, &r[1..]) } else { zerocheck::round_tab(&ta, &tb, &r[k + 1..]) };
+        let (h1, hi) = if k == 0 { zerocheck::round_x6(&tabs, ab, bb, &r[1..], used) } else { zerocheck::round_tab(&ta, &tb, &r[k + 1..], live) };
         let h0 = zerocheck::h0_from_claim(claim, r[k], h1);
         wr.send_f(pp::F_Z3, &zerocheck::zc_coeffs(pref, r[k], h0, h1, hi));
         let x = wr.fs.chal_f();
@@ -318,12 +335,13 @@ pub fn prove_logged(o: &dyn Oracle, circ: &Circuit, vk: &Digest, s: &Digest, m: 
         pref *= F::ONE + r[k] + x;
         sz.push(x);
         if k == 0 {
-            ta = zerocheck::fold_x6(&tabs, ab, x);
-            tb = zerocheck::fold_x6(&tabs, bb, x);
+            ta = zerocheck::fold_x6(&tabs, ab, x, used);
+            tb = zerocheck::fold_x6(&tabs, bb, x, used);
             tm.mark("zc_round2", &mut t);
         } else {
-            ta = fold_f(&ta, x);
-            tb = fold_f(&tb, x);
+            ta = fold_f_live(&ta, x, live);
+            tb = fold_f_live(&tb, x, live);
+            live = live.div_ceil(2);
         }
     }
     dummy_rounds(&mut wr, pp::F_Z3, pp::Z3_ROUNDS - (m - 6), 48);
@@ -339,7 +357,7 @@ pub fn prove_logged(o: &dyn Oracle, circ: &Circuit, vk: &Digest, s: &Digest, m: 
     let alpha = wr.fs.chal_f();
     wr.fs.phase = "L2";
     let eta = lincheck::eta(circ, lambda, &sz[..8], alpha);
-    let zf = lincheck::partial_fold(&w.z, &sz[8..]);
+    let zf = lincheck::partial_fold(&w.z, &sz[8..], used);
     let zf_keep = zf.clone();
     let (tl, fin) = prove_pairs(vec![(eta, zf)], &mut |g| {
         wr.send_f(pp::F_L2, &coeffs_f(g));
@@ -480,7 +498,7 @@ fn node_surrogate(f: &[F], fs: &mut Fs) {
         let (mut a, mut b, mut c): (Vec<F>, Vec<F>, Vec<F>) = (f[..rows].to_vec(), f[rows..2 * rows].to_vec(), f[2 * rows..3 * rows].to_vec());
         let r: Vec<F> = (0..lg).map(|_| next()).collect();
         for k in 0..lg {
-            let (h1, hi) = zerocheck::round_tab(&a, &b, &r[k + 1..]);
+            let (h1, hi) = zerocheck::round_tab(&a, &b, &r[k + 1..], a.len());
             let cs = crate::simd::dot(&c, &c[..]);
             std::hint::black_box((h1, hi, cs));
             let s = next();
@@ -558,7 +576,10 @@ pub fn verify_logged(o: &dyn Oracle, circ: &Circuit, vk: &Digest, c: &Digest, pi
     let st = rd.recv(pp::F_STMT, 128);
     let h: Digest = st[1..33].try_into().unwrap();
     let n = u64::from_le_bytes(st[33..41].try_into().unwrap());
-    rd.check(st[0] == crate::blake2s::TAG_LEAF && n == pp::leaf_n(m) && st[41..].iter().all(|&x| x == 0));
+    // a segment's length (revision 4.0, B-12): `1 ≤ n ≤ 2^(m−14)`, the last chain block `n − 1`
+    let n_ok = (1..=pp::leaf_n(m)).contains(&n);
+    rd.check(st[0] == crate::blake2s::TAG_LEAF && n_ok && st[41..].iter().all(|&x| x == 0));
+    let n = if n_ok { n } else { 1 };
     rd.check(leaf_stmt(&h, n) == *c);
     rd.fs.phase = "cap0";
     let cap0 = ligerito::read_cap_slot(&mut rd, 0, ligerito::cap_log(m, 0));
@@ -573,7 +594,7 @@ pub fn verify_logged(o: &dyn Oracle, circ: &Circuit, vk: &Digest, c: &Digest, pi
     let msg = rd.recv_f(pp::F_Z2, 128);
     rd.check(msg[127].is_zero());
     let lambda = rd.fs.chal_f();
-    let (mut c_z, pz_l) = z2_value(&msg[..64], &msg[64..127], &r, lambda);
+    let (mut c_z, pz_l) = z2_value(&msg[..64], &msg[64..127], &r, lambda, n);
     rd.fs.phase = "Z3";
     let rp = v_rounds(&mut rd, pp::F_Z3, 3, pp::Z3_ROUNDS, m - 6, &mut c_z);
     rd.fs.phase = "Zend";
@@ -596,8 +617,7 @@ pub fn verify_logged(o: &dyn Oracle, circ: &Circuit, vk: &Digest, c: &Digest, pi
     let co = rd.fs.coords(pp::S1_SQ);
     let (tau, theta, kap_s) = (&co[..m - 14], &co[pp::S1_THETA..pp::S1_THETA + pp::THETA_LEN], co[pp::S1_KAPPA]);
     let eqt = theta_eq(theta);
-    let ones = (1u64 << (m - 14)) - 1;
-    let mut c_s = eq_at_int(tau, ones) * digest_mle(&h, &eqt) + kap_s * digest_mle(&s, &eqt);
+    let mut c_s = eq_at_int(tau, n - 1) * digest_mle(&h, &eqt) + kap_s * digest_mle(&s, &eqt);
     rd.fs.phase = "S2";
     let rs2 = v_rounds(&mut rd, pp::F_S2, 2, pp::S2_ROUNDS, m - 4, &mut c_s);
     let (taup, tpp) = (&rs2[..m - 14], &rs2[m - 14..]);
@@ -675,4 +695,38 @@ pub fn verify_logged(o: &dyn Oracle, circ: &Circuit, vk: &Digest, c: &Digest, pi
     assert!(rd.all_read());
     let log = rd.fs.log.take();
     (rd.ok, log)
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::oracle::Local;
+
+    /// Segments of variable length (revision 4.0, B-12) at m = 25 (`2^11` blocks): the native
+    /// verifier accepts `n = 1, 3, 1000, 2047, 2048` and rejects the proof against the statement of
+    /// `n ± 1` steps, a flipped end and a flipped π byte; the full length gives the 3.x leaf's π.
+    #[test]
+    fn variable_length_segments() {
+        let circ = crate::circuit::Circuit::build();
+        let o = Local::keyed(&[3u8; 32]);
+        let (vk, s, m) = ([5u8; 32], [0x21u8; 32], 25usize);
+        for n in [1u64, 3, 1000, 2047, 2048] {
+            let (pi, _) = super::prove_seg(&o, &circ, &vk, &s, m, n);
+            let c = super::seg_c(&s, n);
+            assert!(super::verify(&o, &circ, &vk, &c, &pi), "n = {n}");
+            for n2 in [n - 1, n + 1] {
+                if n2 >= 1 {
+                    assert!(!super::verify(&o, &circ, &vk, &super::seg_c(&s, n2), &pi), "n = {n} against {n2}");
+                }
+            }
+            let mut c2 = c;
+            c2[7] ^= 0x10;
+            assert!(!super::verify(&o, &circ, &vk, &c2, &pi));
+            let mut pi2 = pi.clone();
+            pi2[pi.len() / 3] ^= 1;
+            assert!(!super::verify(&o, &circ, &vk, &c, &pi2));
+            if n == 2048 {
+                assert_eq!(pi, super::prove(&o, &circ, &vk, &s, m).0);
+            }
+        }
+    }
 }

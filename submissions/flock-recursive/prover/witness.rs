@@ -210,12 +210,15 @@ pub fn block_fast(t: &Template, d: &Digest, z: &mut [u64; 256], a: &mut [u64; 25
 }
 
 /// The leaf witness by `block_fast` (blocks in parallel after the sequential chain).
-pub fn leaf_witness_fast(c: &Circuit, s: &Digest, m: usize) -> Witness {
+/// A segment's witness (revision 4.0, B-12): the chain of `n ≤ 2^(m−14)` steps from `s` in blocks
+/// `0 … n−1`; the blocks past `n` are zero (`a = b = z = 0`). `h` is the chain's end `chainEnd s n`.
+pub fn leaf_witness_fast(c: &Circuit, s: &Digest, m: usize, n: usize) -> Witness {
     let t0 = std::time::Instant::now();
     let nb = 1usize << (m - 14);
-    let mut ds = Vec::with_capacity(nb + 1);
+    assert!((1..=nb).contains(&n), "a segment has 1 … 2^(m−14) steps");
+    let mut ds = Vec::with_capacity(n + 1);
     ds.push(*s);
-    for i in 0..nb {
+    for i in 0..n {
         let n = chain_step(&ds[i]);
         ds.push(n);
     }
@@ -225,7 +228,7 @@ pub fn leaf_witness_fast(c: &Circuit, s: &Digest, m: usize) -> Witness {
     let words = nb * 256;
     let (mut z, mut a, mut b) = (alloc_u64(words), alloc_u64(words), alloc_u64(words));
     let (pz, pa, pb) = (par::SyncPtr(z.as_mut_ptr()), par::SyncPtr(a.as_mut_ptr()), par::SyncPtr(b.as_mut_ptr()));
-    let used = par::used_blocks().min(nb);
+    let used = n;
     par::run(nb.div_ceil(64), &|g| {
         let (pz, pa, pb) = (pz, pa, pb);
         for i in 64 * g..(64 * g + 64).min(nb) {
@@ -248,7 +251,7 @@ pub fn leaf_witness_fast(c: &Circuit, s: &Digest, m: usize) -> Witness {
     if std::env::var_os("FLOCK_VERBOSE").is_some() {
         eprintln!("  witness chain {t1:.3} template {:.3} blocks {:.3}", t2 - t1, t0.elapsed().as_secs_f64() - t2);
     }
-    Witness { m, z, a, b, h: ds[nb] }
+    Witness { m, z, a, b, h: ds[n] }
 }
 
 #[cfg(test)]

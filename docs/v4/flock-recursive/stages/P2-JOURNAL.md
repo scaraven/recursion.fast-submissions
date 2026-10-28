@@ -113,3 +113,47 @@
 - Node prover not built. The S-E5 dump is the 3.12 mux program without finPf; the M rows are 282 k
   of 969 k per slot; the imports are not tied to H; the node targetS/linkW are pending. RESULT §12.4.
 - prover.s sha256 `db43cee0…e8ea`.
+
+## 2026-10-28 (pass 5: revision 4.0, track P2′)
+
+- Item 1, the runner's CPUs: the PR #20 sandbox (`rfh/sandbox.py`) pins only the checks (`taskset`
+  on one core, `checks.py`); the prover's `Sandbox(…)` calls (`rfh/prover.py` 161, 184, 236) pass no
+  `cpus`, so the prover gets every CPU, shared with the service. Probe p2t-1 (run 40717768596, EPYC
+  7763): `nproc` 4, affinity 0–3, `cpu.max` "max 100000", **2 cores × 2 SMT threads**, 1 MiB L2 per
+  core. All 20+ earlier P2 runs report 4 CPUs.
+- **The prover was already multi-threaded** (`par.rs`, since P1; every P2 runner figure is
+  `threads=4`). The blueprint's "5.47 s per 2^18, one thread" is the 4-thread 7763 figure. Probe
+  p2t-1, m = 32 through `rf-oracle`: 1 / 2 / 4 threads **12.95 / 6.91 / 5.54 s** (×1.87, ×2.34);
+  m = 31: 6.42 / 3.41 / 2.76 s. From 2 to 4 threads only the witness (scalar BLAKE2s) gains: the
+  vector phases hold one SMT sibling's core. VM (portable tier, no pclmul) m = 32: 248.6 / 126.7 /
+  64.9 s (compute-bound software products, linear).
+- `proofCap` removed (`main.rs` `acc`: `|π| < 2^64`; `format.rs`).
+- Variable segment length: `prove_seg(…, m, n)`, `n ≤ 2^(m−14)`; the witness zero past `n`; the
+  per-block phases take `used = n` (round 1, x₆ round/fold, the tail by a live prefix, the lincheck
+  fold), the global `USED_BLOCKS` removed; `P^e` times `Σ_{b<n} eq(r_blk, b)` (`mle::range_eq`);
+  `finSh`'s last block `n − 1`; the verifier takes `1 ≤ n ≤ 2^(m−14)` from the statement. π at the
+  full length is byte-identical to HEAD's (m = 25, 28, 30; threads 1, 4, 32). Tests 30 + 1 ignored,
+  release and debug.
+- Probe p2t-2 (run 40719437801): segment cost against n (4 threads): L32 5.62 / 4.92 / 4.19 s at
+  2^18 / 3·2^16 / 2^17+1; L31 2.80 / 2.09 / 1.37 s at 2^17 / 2^16 / 1. 8 threads = 4. **3 threads:
+  the native verifier rejected the proof** — `ringswitch::weight_table` assumes chunk offsets at
+  multiples of `2^nlo`; `par`'s split `n/k` is aligned only for power-of-two thread counts. Fixed in
+  `par::chunk_len` (boundaries at multiples of `min_chunk`); π identical at 1–7, 12, 32 threads.
+- `agg.rs`: the aggregate leaf (split L32/L31, one trace, one SIGN, `V_A` with chaining; provisional
+  `hdr_A`), `prove-agg N`; `QV = 36,000`. THP for the large blocks (`alloc.rs`).
+- INT-5's dump (rev 3.16) needed `ir.rs` updates (`rsWeight … act`, `linkWAll`, `shiftMask`,
+  `shiftTarget` at `bnd`'s last block); the dumped L and P programs accept, canary rejected. KAT
+  default path → `logs/INT-5/dump`.
+- Probe p2t-3 (run 40721166772): THP pre-fault 6,000 MiB 0.82 → 0.22 s, proving unchanged; t = 3
+  accepted; aggregates 2^18+1 / 3·2^18 / 2^20: 6.81 / 16.24 / 21.86 s, all accepted, peak 6.19 GB.
+- `prover.s` regenerated: sha256 `e6ef7582…f8cc` (6,709,478 B). Model (`logs/P2/r40/model.py`):
+  P̄ ≈ 8.6 s with sizes.py's nodes; the stream fits M ≤ 80 (≈ 36 % truncated). The blueprint's ×2.5
+  is double-counted. RESULT §13.
+- Probe p2t-4 (run 40722323237): the runner's build-asm wrote the same prover.s as the VM
+  (`e6ef7582…`); L32 2^18 5.64–5.69 s, L31 2^17 2.83–2.85, L31(1) 1.39–1.44, aggregates 2^18+1
+  6.89 s and 2^20 21.87 s, all accepted, peak 6.19 GB; 2 / 1 threads 6.84–6.93 / 13.02–13.04 s.
+  Every `probe/p2t-*` branch is deleted.
+- Aligned with S-0′'s in-progress draft: `hdr_A = 0x41 ‖ k ‖ 0^6 ‖ enc64 n ‖ e` and `aggChecks` before
+  the segment verifiers (`FRAgg`), `L31` byte `0x4B` (`FRShape4`). `prover.s` regenerated: sha256
+  `657a0ab0…3d3b`; linked binary passes selftest, test-leaf 30 (INT-5 Lean accept), prove-leaf 30 and
+  31 --n 70000 through rf-oracle. Tests 32 + 1 ignored. Source rule: 0 findings.

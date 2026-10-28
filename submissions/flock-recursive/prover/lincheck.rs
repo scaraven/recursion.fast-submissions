@@ -27,17 +27,17 @@ pub fn transpose8(mut x: u64) -> u64 {
     x
 }
 
-/// `Z(j) = Σ_blk eq(s_out, blk) z(blk, j)` (`z` block-major words; at least 8 blocks).
-pub fn partial_fold(z: &[u64], s_out: &[F]) -> Vec<F> {
+/// `Z(j) = Σ_blk eq(s_out, blk) z(blk, j)` (`z` block-major words; at least 8 blocks; blocks `≥ used`
+/// are zero and skipped).
+pub fn partial_fold(z: &[u64], s_out: &[F], used: usize) -> Vec<F> {
     let nb = z.len() / 256;
     assert!(nb >= 8 && nb == 1 << s_out.len());
     let e = eq_table(s_out);
     let stripes = nb / 8;
-    let parts = par::map_chunks(stripes, 1, |lo, hi| {
+    let parts = par::map_chunks(stripes.min(used.div_ceil(8)), 1, |lo, hi| {
         let mut acc = vec![F::ZERO; BLOCK];
         let mut t = [F::ZERO; 256];
-        let used_s = crate::par::used_blocks().div_ceil(8);
-        for s in lo..hi.min(used_s) {
+        for s in lo..hi {
             t[0] = F::ZERO;
             for i in 0..8 {
                 let h = 1 << i;

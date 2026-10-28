@@ -178,13 +178,14 @@ pub const STAR_SIB: [usize; LEVELS] = [11, 10, 8, 6, 5];
 /// Rows per column (`2^ℓ`), the same for every kind.
 pub const STAR_ROWS: [usize; LEVELS] = [64, 16, 16, 16, 16];
 
-/// The kind byte of a leaf of `m` committed bits: `'L'` for `m = 32`, `'P'` otherwise (the `P30`
-/// leaf; `m = 25 … 29` are native test shapes with the `P30` byte).
+/// The kind byte of a leaf of `m` committed bits: `L32` (`'L'`) for `m = 32`, `L31` (`0x4B`, S-0′'s
+/// draft `FRShape4.SegKind.byte`) for `m = 31`, `'P'` otherwise (the 3.x `P30` leaf; `m = 25 … 29`
+/// are native test shapes with the `P30` byte).
 pub fn leaf_kind_byte(m: usize) -> u8 {
-    if m == M_STAR {
-        KIND_LEAF
-    } else {
-        KIND_P30
+    match m {
+        M_STAR => KIND_LEAF,
+        31 => KIND_L31,
+        _ => KIND_P30,
     }
 }
 
@@ -199,12 +200,14 @@ pub const TAG_MNOD: &[u8; 6] = b"FRMNOD";
 pub const TAG_MCOL: &[u8; 6] = b"FRMCOL";
 
 pub const KIND_LEAF: u8 = 0x4C;
+pub const KIND_L31: u8 = 0x4B;
 pub const KIND_P30: u8 = 0x50;
 pub const KIND_NODE: u8 = 0x4E;
 pub const HDR_LEN: usize = 48;
 
-/// `qV` (rev. 2 A.1).
-pub const QV: usize = 10240;
+/// `qV`: 36,000 in revision 4.0 (B-17; the aggregate verifier asks `≤ 4 × 8,891`). `FRVerifier.qV`
+/// is still 10,240 at INT-6; S-0′ moves it.
+pub const QV: usize = 36000;
 
 /// The leaf shapes: `m ∈ {30, 32}` (B-1); test shapes `m ≥ 25` use the same code.
 pub fn leaf_n(m: usize) -> u64 {

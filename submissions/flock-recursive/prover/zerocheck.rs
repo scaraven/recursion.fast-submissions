@@ -82,18 +82,18 @@ pub fn window_portable(sk: &Skip, a: &[u8], b: &[u8], z: &[u8], out: &mut [F; 19
     }
 }
 
-/// Round 1 over the whole witness (bytes of `a`, `b`, `z`), with `r_out` the coordinates of
-/// `x₁₃ … x_{m−1}` (`m − 13` of them).
-pub fn round1(a: &[u8], b: &[u8], z: &[u8], r_out: &[F]) -> R1 {
+/// Round 1 over the witness (bytes of `a`, `b`, `z`), with `r_out` the coordinates of
+/// `x₁₃ … x_{m−1}` (`m − 13` of them). Blocks `≥ used` are zero (`a = b = z = 0`: a segment's
+/// blocks past its length) and contribute nothing, so only the first `used` are read.
+pub fn round1(a: &[u8], b: &[u8], z: &[u8], r_out: &[F], used: usize) -> R1 {
     let sk = skip();
     let nw = a.len() / 1024;
     assert_eq!(nw, 1 << r_out.len());
     let eo = eq_table(r_out);
-    let parts = par::map_chunks(nw, 16, |lo, hi| {
+    let parts = par::map_chunks(nw.min(used.saturating_mul(2)), 16, |lo, hi| {
         let mut acc = vec![F::ZERO; 192];
         let mut w = [F::ZERO; 192];
-        let used_w = crate::par::used_blocks().saturating_mul(2);
-        for x in lo..hi.min(used_w) {
+        for x in lo..hi {
             let base = x * 1024;
             simd::round1_window(sk, &a[base..base + 1024], &b[base..base + 1024], &z[base..base + 1024], &mut w);
             simd::axpy(&mut acc, &w, eo[x]);
@@ -165,15 +165,15 @@ impl EqSplit {
 }
 
 /// The first tail round (variable `x₆`) from the bits: `(h(1), h(∞))` over row pairs, with the
-/// rows folded at `λ` on the fly. `rest` = the coordinates of `x₇ … x_{m−1}`.
-pub fn round_x6(t: &[F], a: &[u8], b: &[u8], rest: &[F]) -> (F, F) {
+/// rows folded at `λ` on the fly. `rest` = the coordinates of `x₇ … x_{m−1}`; blocks `≥ used` are zero.
+pub fn round_x6(t: &[F], a: &[u8], b: &[u8], rest: &[F], used: usize) -> (F, F) {
     let es = EqSplit::new(rest);
     let nlo = es.nlo;
-    let parts = par::map_chunks(es.hi.len(), 1, |lo, hi| {
+    // pair p is rows 2p, 2p+1; a block has 256 rows
+    let used_h = used.saturating_mul(128).div_ceil(1 << nlo);
+    let parts = par::map_chunks(es.hi.len().min(used_h), 1, |lo, hi| {
         let (mut s1, mut si) = (FAcc::default(), FAcc::default());
-        // pair p is rows 2p, 2p+1; a block has 256 rows
-        let used_h = crate::par::used_blocks().saturating_mul(128).div_ceil(1 << nlo);
-        for h in lo..hi.min(used_h) {
+        for h in lo..hi {
             let (i1, ii) = simd::x6_inner(t, a, b, h << nlo, &es.lo);
             s1.mac(es.hi[h], i1);
             si.mac(es.hi[h], ii);
@@ -188,11 +188,12 @@ pub fn round_x6(t: &[F], a: &[u8], b: &[u8], rest: &[F]) -> (F, F) {
     (s1.reduce(), si.reduce())
 }
 
-/// After `s₁`: the folded tables `A'[p] = A(2p) + s₁(A(2p) + A(2p+1))` from the bits.
-pub fn fold_x6(t: &[F], a: &[u8], s1: F) -> Vec<F> {
+/// After `s₁`: the folded tables `A'[p] = A(2p) + s₁(A(2p) + A(2p+1))` from the bits (blocks `≥ used`
+/// are zero: their `128·used …` entries are zero).
+pub fn fold_x6(t: &[F], a: &[u8], s1: F, used: usize) -> Vec<F> {
     let n = a.len() / 16;
     let mut out: Vec<F> = par::uninit_vec(n);
-    let used_p = crate::par::used_blocks().saturating_mul(128);
+    let used_p = used.saturating_mul(128);
     par::for_each_chunk_mut(&mut out, 1 << 12, |off, ch| {
         if off >= used_p {
             ch.iter_mut().for_each(|x| *x = F::ZERO);
@@ -203,11 +204,11 @@ pub fn fold_x6(t: &[F], a: &[u8], s1: F) -> Vec<F> {
     out
 }
 
-/// A later tail round on tables: `(h(1), h(∞))`.
-pub fn round_tab(a: &[F], b: &[F], rest: &[F]) -> (F, F) {
+/// A later tail round on tables: `(h(1), h(∞))`. Entries `≥ live` of both tables are zero.
+pub fn round_tab(a: &[F], b: &[F], rest: &[F], live: usize) -> (F, F) {
     let es = EqSplit::new(rest);
     let nlo = es.nlo;
-    let parts = par::map_chunks(es.hi.len(), 1, |lo, hi| {
+    let parts = par::map_chunks(es.hi.len().min(live.div_ceil(2 << nlo)), 1, |lo, hi| {
         let (mut s1, mut si) = (FAcc::default(), FAcc::default());
         for h in lo..hi {
             let (i1, ii) = simd::zc_inner(&a[(h << nlo) * 2..((h + 1) << nlo) * 2], &b[(h << nlo) * 2..((h + 1) << nlo) * 2], &es.lo);

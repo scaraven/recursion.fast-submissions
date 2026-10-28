@@ -192,7 +192,7 @@ mod tests {
         let recs = item_recs();
         assert_eq!(recs.len(), 8891);
         assert_eq!(recs.iter().filter(|r| r.q != "col" && r.q != "node").count(), 468);
-        let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../logs/INT-2/dump/items.json");
+        let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../logs/INT-5/dump/items.json");
         match crate::kat::load_items(&p) {
             Some(want) => crate::kat::compare(&recs, &want).unwrap(),
             None => eprintln!("items_seq_kat: items.json absent, counts only"),

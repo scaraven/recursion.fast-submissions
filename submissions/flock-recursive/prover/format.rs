@@ -10,8 +10,8 @@ pub const TAG_WOTS_LEAF: u8 = 0x4B;
 pub const TAG_SIG_NODE: u8 = 0x4D;
 pub const WOTS_LEN: usize = 133;
 pub const SIG_HEIGHT: usize = 16;
-/// `proofCap`, `queryCap` (`Contract/Relation.lean`).
-pub const PROOF_CAP: usize = 1 << 20;
+/// `queryCap` (`Contract/Relation.lean`). There is no `proofCap` since core PR #20: `acc` only
+/// requires `|π| < 2^64` (`FRVerifier.accWith`, `decide (p.π.size < 2 ^ 64)`).
 pub const QUERY_CAP: usize = 1 << 20;
 
 /// A signature (`Contract/Relation.lean`, `Sig`).

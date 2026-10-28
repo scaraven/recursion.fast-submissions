@@ -100,6 +100,20 @@ pub fn eq_at_int(r: &[F], i: u64) -> F {
     v
 }
 
+/// `Σ_{b < n} eq(r, b)` over the `2^|r|` points (`r` least significant coordinate first): the
+/// multilinear extension of the indicator of `[0, n)` (a segment's chain blocks, revision 4.0).
+pub fn range_eq(r: &[F], n: u64) -> F {
+    if n >> r.len() != 0 {
+        return F::ONE;
+    }
+    let mut v = F::ZERO; // Σ over b < (n mod 2^k), the low k coordinates
+    for (k, rk) in r.iter().enumerate() {
+        // extend from k to k + 1 coordinates: the prefix [0, n mod 2^(k+1))
+        v = if (n >> k) & 1 == 1 { (F::ONE + *rk) + *rk * v } else { (F::ONE + *rk) * v };
+    }
+    v
+}
+
 pub fn eq_at_int_k(r: &[K], i: u64) -> K {
     let mut v = K::ONE;
     for (k, rk) in r.iter().enumerate() {
@@ -162,6 +176,15 @@ pub fn shift_mle<T: Copy + std::ops::Add<Output = T> + std::ops::Mul<Output = T>
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn range_eq_is_the_indicator_mle() {
+        let r: Vec<F> = (0..5).map(|i| F::new(0x9E37_79B9 * (i + 3), 5 * i + 1)).collect();
+        for n in [0u64, 1, 2, 7, 16, 17, 31, 32, 40] {
+            let direct = (0..n.min(32)).fold(F::ZERO, |a, b| a + eq_at_int(&r, b));
+            assert_eq!(range_eq(&r, n), direct, "n = {n}");
+        }
+    }
+
     #[test]
     fn eq_and_shift() {
         let r: Vec<F> = (0..5).map(|i| F::new(3 + 7 * i, 11 * i)).collect();

@@ -10,6 +10,15 @@ use std::sync::Mutex;
 
 const BIG: usize = 8 << 20;
 const PAGE: usize = 4096;
+/// Large blocks are 2 MiB-aligned and advised as transparent huge pages (`MADV_HUGEPAGE`; the
+/// runners' THP mode is `madvise`): fewer faults in `prefault`, fewer TLB misses on the tables.
+/// `FLOCK_NO_THP` turns it off (measurements).
+const HUGE: usize = 2 << 20;
+
+extern "C" {
+    /// glibc's `madvise` (the prover is linked with glibc, `-static`).
+    fn madvise(addr: *mut u8, len: usize, advice: i32) -> i32;
+}
 
 pub struct Cache;
 
@@ -28,7 +37,12 @@ fn round(n: usize) -> usize {
 }
 
 unsafe fn map(bytes: usize) -> *mut u8 {
-    System.alloc(Layout::from_size_align_unchecked(bytes, PAGE))
+    let p = System.alloc(Layout::from_size_align_unchecked(bytes, HUGE));
+    if !p.is_null() && std::env::var_os("FLOCK_NO_THP").is_none() {
+        // MADV_HUGEPAGE = 14; a refusal only costs speed
+        madvise(p, bytes, 14);
+    }
+    p
 }
 
 unsafe impl GlobalAlloc for Cache {

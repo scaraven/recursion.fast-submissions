@@ -348,8 +348,15 @@ pub fn run(text: &str, circ: &crate::circuit::Circuit, o: &dyn Oracle, vk: &Dige
             }
             "phiRS" => vec![V::F(crate::ringswitch::phi(g(1).af(), g(2).f()))],
             "rsWeight" => {
-                let pts: Vec<Vec<K>> = t[2..t.len() - 2].iter().map(|s| gr(s).ak().to_vec()).collect();
-                let (kap, rho) = (gr(t[t.len() - 2]).f(), gr(t[t.len() - 1]).ak().to_vec());
+                // 3.13: `rsWeight r [pts] κ ρ`; 3.16: `rsWeight r [pts] κ β act ρ` (claim 2's kind
+                // factor with `β` when `act`, else `β = 1`: the plain eq weight, a leaf's)
+                let close = t.iter().position(|s| s.ends_with(']')).unwrap();
+                let pts: Vec<Vec<K>> = t[2..=close].iter().map(|s| gr(s).ak().to_vec()).collect();
+                let rest = &t[close + 1..];
+                if rest.len() == 4 && rest[2] == "true" {
+                    out.node_matrices_used = true; // the node's kind-weighted claim 2: not here
+                }
+                let (kap, rho) = (gr(rest[0]).f(), gr(rest[rest.len() - 1]).ak().to_vec());
                 vec![V::K(rs_weight_k(g(1).af(), &pts, kap, &rho))]
             }
             "tensorW" => vec![V::K(crate::ntt::xhat(g(1).n(), g(2).ak()))],
@@ -382,16 +389,29 @@ pub fn run(text: &str, circ: &crate::circuit::Circuit, o: &dyn Oracle, vk: &Dige
                     }
                     s
                 };
-                let mut p = F::ONE;
-                for x in tau {
-                    p *= *x;
-                }
                 let g4 = |i: usize| bnd.get(i).copied().unwrap_or(F::ZERO);
+                // eq(τ, last), `last = bnd[4 … 21]` (`shiftTargetI`, 18 coordinates, both zero-padded)
+                // (3.13 dumps: `bnd` = the 4 digest halves only, the last block all ones on τ)
+                let mut p = F::ONE;
+                for l in 0..18 {
+                    let x = tau.get(l).copied().unwrap_or(F::ZERO);
+                    let y = if bnd.len() > 4 { g4(4 + l) } else if l < tau.len() { F::ONE } else { F::ZERO };
+                    p *= x * y + (F::ONE + x) * (F::ONE + y);
+                }
                 vec![V::F(p * dig(g4(2), g4(3)) + kap_s * dig(g4(0), g4(1)))]
             }
             "eqPt" => vec![V::F(eq_point(g(1).af(), g(2).af()))],
             "shiftEq" => vec![V::F(crate::mle::shift_mle(g(1).af(), &pad(g(2).af(), g(1).af().len()), F::ONE))],
             "linkW" => vec![V::F(F::ZERO)],
+            // node-only (revision 3.16): a leaf kind's program keeps them `false`; zeros here
+            "linkWAll" => {
+                out.node_matrices_used = true;
+                vec![V::AF(vec![F::ZERO; 8])]
+            }
+            "shiftMask" => {
+                out.node_matrices_used = true;
+                vec![V::F(F::ZERO), V::F(F::ZERO), V::F(F::ZERO)]
+            }
             "evalL" | "evalM" => {
                 out.node_matrices_used = true;
                 vec![V::F(F::ZERO), V::F(F::ZERO), V::F(F::ZERO)]
@@ -522,9 +542,9 @@ mod tests {
     /// field of `π` (both reject).
     #[test]
     fn ir_kat_p30() {
-        let d = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../logs/INT-2/dump/ops-P.txt");
+        let d = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../logs/INT-5/dump/ops-P.txt");
         let Ok(text) = std::fs::read_to_string(&d) else {
-            eprintln!("ir_kat_p30: SKIP (logs/INT-2/dump/ops-P.txt absent)");
+            eprintln!("ir_kat_p30: SKIP (logs/INT-5/dump/ops-P.txt absent)");
             return;
         };
         let circ = crate::circuit::Circuit::build();

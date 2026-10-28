@@ -150,7 +150,7 @@ fn zerocheck(mut a: Vec<F>, mut b: Vec<F>, mut c: Vec<F>, next: &mut dyn FnMut()
     let lg = a.len().trailing_zeros() as usize;
     let r: Vec<F> = (0..lg).map(|_| next()).collect();
     for k in 0..lg {
-        let (h1, hi) = crate::zerocheck::round_tab(&a, &b, &r[k + 1..]);
+        let (h1, hi) = crate::zerocheck::round_tab(&a, &b, &r[k + 1..], a.len());
         let e = eq_table(&r[k + 1..]);
         let mut acc = FAcc::default();
         for (p, w) in e.iter().enumerate() {
