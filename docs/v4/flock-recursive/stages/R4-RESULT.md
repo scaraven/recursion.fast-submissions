@@ -488,3 +488,159 @@ for the next pass, with a negative each (`relE4` with a wrong E4-end message, �
    K-round views (port 3.x's `rounds_view` to `rounds_at4`'s form); `lvl4` needs level 4's column
    values (port `posT` for `posOps4`, R4's D2) and the flags of `gFinP 4`/`gFinPf` at `FinP`
    (`flag_finP4`, `flag_finPf`'s generalisation, not started).
+
+## Pass 4 (track R4d; HEAD `5eb34a6`, re-snapshotted to `c2c6fba`)
+
+- **Build tree** `logs/fr-build-R4d` (a copy of `fr-build-R4c`; `b.sh` logs to `logs/R4d/`; `MINE.txt`
+  adds `FRSoundness4R4Ex`, `FRSoundness4R4FrE`, `FRSoundness4R4FrCtrl`). Every lean/lake command ran
+  in the 16G scope (12G for single files) under `timeout`. No sub-agents. Nothing committed. Only new
+  `FRSoundness4R4*` modules written (every new short name grepped first); no existing module edited,
+  no statement changed.
+- **Re-snapshot.** Built first at `5eb34a6`, then at `c2c6fba` (blueprint 4.3, S-E12c, S-CN4), on the
+  coordinator's instruction. **INT-8 had not landed** when this pass stopped: its repairs are not
+  applied (see the handover).
+- **Imports for `FR.lean`:** add `import FRSoundness4R4FrCtrl` (it pulls `FRSoundness4R4FrE`,
+  `FRSoundness4R4Ex`).
+
+### Status
+
+| Item | State |
+|---|---|
+| `exAt` bookkeeping (`lrEx` holds `vLv4`) | **Done**: `baseAt`, `exAt_succ`, `fields_ex4`, `lrEx_eq4` |
+| `RejEndLr4` | **Done**: `lr_end4`, `not_rejEndLr4_node`, `not_rejEndLr4_seg` |
+| `RejEndE4` | **Done**: `relE4_of_accept`, `e_end4`, `not_rejEndE4_node/_seg` |
+| `RejInE4` | **Done**: `e_in4`, `not_rejInE4_node/_seg` |
+| `RejFinE4 srcE srcL` | **Done, with the node matrix facts as parameters** `hM`/`hL` (`evalM`/`evalL` = the node rows' `Eval.matMLE`): `e_fin4`, `not_rejFinE4_node/_seg` |
+| `RejL2` | **Done** (both kinds): `relLc4_of_accept`, `l2_chk4`, `not_rejL2_4` |
+| `relSh4`'s link term on a segment | **Done**: `linkSum_seg4` (`linkWAll_seg_of_meets` + `linkSum_zero`). The node chain (S-CN4 §5) is not started |
+| Controls for `relE4`, `relSh4`, `relRS4` | **Done**: `relE4_fin3P`, `relSh4_fin3P`, `relRS4_fin3P` (+), `relE4_rejects`, `relSh4_rejects`, `relRS4_rejects` (−) |
+| `RejZ`, `RejLc2`/`RejLcN`, `RejS2`, `RejRS4` | Not started (handover) |
+| `AcceptTail` | Not started (handover) |
+
+**Final checks** (HEAD `c2c6fba`, R4's 20 modules overlaid):
+- `lake build FR FRSoundness4R4FrCtrl`: **green, 2,503 jobs** (`logs/R4d/build-final.log`).
+- **Axioms** (`logs/R4d/axioms.log`, `logs/fr-build-R4d/ax/AxR4d.lean`; all 239 theorems of the 20 R4
+  modules): within `propext`, `Classical.choice`, `Quot.sound` (229 use some, 10 none); no `sorryAx`.
+- **Source rule** (`python3 -I logs/org20/scripts/source-rule.py submissions/flock-recursive`): 281
+  files, 0 findings (`logs/R4d/source-rule.log`). The word `export` was reworded in two comments
+  (coordinator's note).
+- **Times** (sequential, one core: `taskset -c 0 lake env lean -DElab.async=false --profile`;
+  `logs/R4d/prof-*.log`; import ≈ 4 s):
+
+  | Module | wall | type checking | tactic execution | max RSS |
+  |---|---|---|---|---|
+  | `FRSoundness4R4Ex` | 8.4 s | 0.51 s | 1.21 s | 3.0 GB |
+  | `FRSoundness4R4FrE` | 11.8 s | 1.34 s (incl. the two `fsMsgs4` certificates) | 1.58 s | 3.0 GB |
+  | `FRSoundness4R4FrCtrl` | 6.6 s | 0.02 s | 0.07 s | 3.0 GB |
+
+  Net kernel cost of the pass ≈ 1.9 s. No `decide` over a program, a register file or a sum: only the
+  two message-table certificates (`fsMsgs4_ends`: 213, 273, 325, 326; `fsMsgs4_front`: 67, 97) and
+  `cases ν <;> decide` on three-kind dimension facts. No `show` over a skeleton; typed op lists were
+  not needed (no op-list elaboration here).
+
+### What was built (`loc.py`, `logs/R4d/loc.txt`: total / code / thm)
+
+| Module | total / code / thm | Content |
+|---|---|---|
+| `FRSoundness4R4Ex` | 142 / 107 / 6 | `opsOut_gFinRS` (4,117), `gFinRS_ex_lt`; `baseAt`, `exAt_zero`, **`exAt_succ`**; **`fields_ex4`** (field `k` runs from `Rs k` with outputs list `Ex k`, `Ex (k+1) = (Ex k).push (field k's list at (Rs k).size)`, `zhat` in `Rs 0`); `lrEx_eq4` |
+| `FRSoundness4R4FrE` | 557 / 453 / 38 | views by name: `ph4`, `val_eqv_f4`, **`fsMsgs4_ends`**, **`msg_abs4`**, **`coordsR_view4`**, **`chals_view4`**, **`claimN3z_view4`**, **`one_name_view4`**; `kindOfC_acc_node/_seg`; Lr: `vEnd_lr4`, **`lr_end4`**, `not_rejEndLr4_*`; E: `hin_E`, `rest_gFinLr/E/Lc`, `opsOut_gFinLr` (14), **`relE4_of_accept`**, `vEnd_e4`, **`e_end4`**, `not_rejEndE4_*`, `chk2F_c0`, **`e_in4`**, `not_rejInE4_*`, `clR2_c0_succ`, **`e_fin4`**, `not_rejFinE4_*`; L: `fsMsgs4_front`, `hin_Lc`, **`relLc4_of_accept`**, **`l2_chk4`**, `not_rejL2_4`; `linkSum_seg4` |
+| `FRSoundness4R4FrCtrl` | 77 / 43 / 7 | controls (below) |
+| **new total** | 776 / 603 / 51 | R4 total now 4,431 / 3,465 / 239 |
+
+### Main statements
+
+```lean
+theorem fields_ex4 (P : FinP) (h : semIR impl (gen4 seq4 p (finOps4 P)) inp tr = some true) :
+    ∃ y, SkRun4 impl p inp tr y ∧ ∃ zh Rs Ex, (∀ k ≤ 12, ExtA (#[] ++ y.1.toArray) (Rs k)) ∧
+      (∀ x ∈ zh, x < (Rs 0).size) ∧ ∀ k (hk : k < 12), (Ex k).size = k + 1 ∧ ∃ L,
+        pureRun impl p.tix inp (((finalsOf P).rest[k] ⟨outs, zh, Ex k⟩ (Rs k).size).1.map (reloc P.S)) (Rs k) [] = some (L, true) ∧
+        Rs (k + 1) = Rs k ++ L.toArray ∧ Ex (k + 1) = (Ex k).push ((finalsOf P).rest[k] ⟨outs, zh, Ex k⟩ (Rs k).size).2
+theorem relE4_of_accept (P : FinP) (h : …) : ∃ y, SkRun4 impl p inp tr y ∧ ∃ fi R3 R,
+    fi.outs = (skeleton4 seq4 p).2.outs ∧ ExtA (#[] ++ y.1.toArray) R3 ∧ ExtA R3 R ∧ (∀ x ∈ fi.zhat, x < R.size) ∧
+    relE4 impl p.tix inp fi R P = true ∧ fv R (lrEx fi 0) = vLv4 inp fi R3 P ∧
+    (rd R (lrEx fi 1)).toAF = ((chals fi "Lr2" P.lrR).map (fv R3)).toArray
+theorem lr_end4 (h : semIR impl (gen4 seq4 (.ofNode ν) (finOps4 (nodeFinP ν cells))) inp tr = some true) (L : Log) :
+    clR 179 (fun _ _ => 0) L es (lrR ν) = eq (ptOf (lrR ν) (tauS (lrR ν) 169 es)) (ptOf (lrR ν) (rxs (lrR ν) 179 es)) *
+      (vEnd 17 179 es 0 * vEnd 17 179 es 1 + vEnd 17 179 es 2)            -- es = fsOf tr (itemsOf seq4)
+theorem e_end4 (h : … nodeFinP ν cells …) (L) : clR 227 (fun _ _ => 0) L es (e2R ν) = eq (…214…) (…227…) * (…)
+theorem e_in4 (h : … nodeFinP ν cells …) (L) : ∀ l < ncR ν, Chk2 275 16 readF (fun d => chF d 0) c4E4 L es l
+theorem e_fin4 (srcE srcL) (hM : ∀ r2 r4, r2.size = e2R ν → r4.size = ncR ν → impl.evalM r2 r4 = (matMLE (srcE ν).ea …, …))
+    (hL : ∀ rL r4, rL.size = lrR ν → r4.size = ncR ν → impl.evalL rL r4 = (matMLE (srcL ν).ea …, …)) (h) (L) :
+    clR2 275 16 readF (fun d => chF d 0) c4E4 L es (ncR ν) = mle (wEb4 srcE srcL ν es) (ptOf (ncR ν) (rPt4 ν es)) * readF (msgAt es 325) 0
+theorem l2_chk4 (P : FinP) (hP : P.S = seq4) (h : semIR impl (gen4 seq4 p (finOps4 P)) inp tr = some true) (L) :
+    ∀ l < 14, Chk2 69 16 readF (fun d => chF d 0) (fun _ es => c0L es) L es l
+-- and ¬ P4b.RejEndLr4 / RejEndE4 / RejInE4 / RejFinE4 srcE srcL, ¬ P4a.RejL2 on `fsOf tr (itemsOf seq4)`, per kind
+```
+
+On the chain of `runLog_chain4` these transfer by its `entriesOf L (pathOf L j) = fsOf tr (itemsOf seq4)`.
+
+### Design and deviations
+
+- **D10. `fields_ex4` restates `fields_of_accept4` with the fold's outputs** (it does not change it).
+  `accept_chain4` gives field `k` the list `exAt … k` computed at the fold's own bases; `baseAt`/
+  `exAt_succ` and `(Rs k).size = baseAt … k` (by `pureRun_len`) make `Ex (k+1)` the push of field
+  `k`'s list at the base it actually ran from. That is the whole of the `lrEx`-holds-`vLv4` bookkeeping.
+- **D11. Node matrix facts are parameters** (`hM`, `hL` of `e_fin4`): `evalM`/`evalL` equal the node
+  rows' `Eval.matMLE` at the points, the form `P4b.mle_wEb4` consumes. S-CN4's node ops do not
+  include `evalM`/`evalL` specs; whoever owns them discharges `hM`/`hL` (any spec giving the three
+  `matMLE`s implies them).
+- **D12. Few op-list facts, isolated** (for INT-8): `opsOut_gFinLr` (14 outputs), `gFinLr`'s two
+  outputs `[b + 13, b + 4]` (used by `rfl`/`show` in `relE4_of_accept`), `opsOut_gFinRS` (4,117) and
+  `gFinRS_ex_lt`, and the rest's indices `rest_gFinLc/Lr/E` (1, 3, 4). Everything else goes through
+  `FinP` fields, `flag_gFin*` and the views.
+- No value asserted by no final was met in this scope.
+
+### Controls (`FRSoundness4R4FrCtrl`)
+
+| Definition | Positive | Negative |
+|---|---|---|
+| `relE4` | `relE4_fin3P` (= 3.x's `relE`) | `relE4_rejects` (a wrong E4-end value register gives `false`, both kinds) |
+| `relSh4` | `relSh4_fin3P` (= 3.x's `relSh`) | `relSh4_rejects` (an S2 first-claim register without an F value gives `false`) |
+| `relRS4` | `relRS4_fin3P` (= 3.x's `relRS`) | `relRS4_rejects` (a leaf with nonzero fourth slices gives `false`) |
+| `baseAt`, `exAt` | `baseAt_ctl` (field 1's base is `b + 1`; `exAt` pushes `[b]`) | `baseAt_ctl` (the base is not `b`) |
+
+### Traps (new)
+
+1. `Nat.exists_eq_succ_of_ne_zero` gives `n.succ`: rewrites against `n + 1` then fail silently.
+   Use `⟨x - 1, by omega⟩`.
+2. `rw [ptA_toArray, ptA_toArray, …]` fails once the distinct instances are used up; `simp only`.
+3. `List.size_toArray` did not fire on `l.toArray.size` after `Array.size_append` (it became
+   `toList.length`); `have : ∀ l : List F, l.toArray.size = l.length := fun _ => rfl` or `simp`.
+4. Giving `fi` as `_` in the final `exact ⟨…, rfl, …⟩` against `(skeleton4 seq4 p).2.outs` hit R4c's
+   trap 1 (heartbeat timeout): give `⟨outs, zh, Ex k⟩` explicitly.
+5. `simp [relE4, Val.eqv]` unfolds every `eqv` into a 7-way match; rewrite the one conjunct to
+   `false` first and `simp only` the `&&`s.
+
+### Handover (remaining items, in order)
+
+0. **INT-8 repairs** when its commit appears: re-snapshot, apply INT-8's "For R4d" list. In this
+   pass's modules, look first at D12's lemmas (`opsOut_gFinLr`, `gFinLr`'s outputs used in
+   `relE4_of_accept`, `opsOut_gFinRS`, `gFinRS_ex_lt`, `rest_gFin*`) and at `fields_ex4` (it unfolds
+   nothing of `finOps4` beyond `finOps4_eq`/`accept_chain4`).
+1. **`RejS2`** (n = 12, `roundsF2_view4`, `nrS κ` real rounds): head = `relSh4` (i) =
+   `shiftTarget ks τ θ bnd` (`flag_gFinSh` needs a `relSh4_of_accept`: copy `relLc4_of_accept`,
+   field index 2, `hin` over `coordsR S1`, `chals S2`, `lastRegs`, `zeroReg`, `zhat 2`); then
+   `c0S es` needs the `shiftTarget` spec (segment: `implSegC_meets`; node: S-CN4's specs via
+   `implN4_meets`), `τ = pad18 (tauL)` by `coordsR_view4` (S1, n = 11), `θ = thL`, `ks = ksL`, and
+   `bnd`: a segment's `lastRegs` values are P4a's `run_lastOps` bits (`lastBits es`), a node's
+   `lastPad`. The `Chk2 … c0SL` transfer is `chk2F_c0`.
+2. **`relSh4`'s node link term**: S-CN4 §5's chain (`implN4_meets` → `shiftMask4S`, `slotWS`,
+   `linkWAll4S`; `linkSum_eq8`; `wSumNode4 ν es`; `wNS4_node4`), giving `oSh4 wNS4`; the segment's is
+   `linkSum_seg4` (done).
+3. **`RejZ`** (n = 5, `roundsF3_view4`, head = Z2's `b+s+133` from `uni_view4`; `segPt_lt` for a
+   segment's `hpt`; `targetS`: segment `implSegC_meets`, node the parameter `tS` until
+   `targetSNode4I` (S-CN4's next) with `peL_node4`); then `relZ4` (i) through `coordsR_view4` (Z1,
+   n = 3) and `chals_view4` (Z3), Zend's message by `fsMsgs4_front.1`.
+4. **`RejLc2`/`RejLcN`**: `relLc4` (ii) on `relLc4_of_accept` (done), 3.x's `lc_ii_run`/`lc_bridge`
+   path with `walkAB`/`rowW`/`eqZ` at their specs as parameters (3.x's `hW hR hZ`); L3's values
+   are `fsMsgs4_front.2` (`lcV4` = the log's `vL`).
+5. **`RejRS4 (okRS4 oZ oLc oSh)`**: `exec_gFinRS` (needs a `relRS4_of_accept`, field `finRS` on the
+   skeleton file itself: `accept_chain4`'s `L₀`) gives `α_j = rsAlpha4`; `sv4 = sliceL4` by
+   `msg_abs4` at 326 (`fsMsgs4_ends.2.2.2`), `rsW4 = cwL4` (weights from L2/S2/RS1 challenges by
+   `chals_view4`/`coordsR_view4`); the bindings: `oZ` from `relZ4` (ii), `oLc` from `relLc4` (iii)
+   (`zhat 1`), `oSh` from item 2, `okE4` from `relE4`'s `e4` (done in `e_fin4`'s `hα`).
+6. **`AcceptTail` (T4)**: `chain`, `len` from `runLog_chain4` (482 ≥ `pfStart + 14`); `rejF` from
+   items 1–5 and this pass; `p1`/`pf`: K-round views (port 3.x's `rounds_view` to `rounds_core4`'s
+   form, `roundKVals`); `lvl4`: level 4's column values (port `posT` for `posOps4`, R4's D2) and the
+   flags of `gFinP 4`/`gFinPf` at `FinP` (`flag_gFinP`, `flag_gFinPf`, not started; after INT-8, as
+   the final field becomes one zero-padded field).

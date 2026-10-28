@@ -122,3 +122,30 @@ relocated fields).
   `rcases … rfl`, or `List.mem_of_mem_drop` on `coordsR ⟨skeleton…⟩` whnf's `skeleton4` (heartbeat
   timeout). State register bounds for an abstract `fi` (`hin_Lr`) and instantiate.
 - Stopped with items 3 (rest) and 4 in the RESULT's Pass 3 handover (context long).
+
+### Pass 4 (R4d)
+
+- Build tree `logs/fr-build-R4d` (copy of R4c's; `b.sh` logs to `logs/R4d/`; `MINE.txt` adds
+  `FRSoundness4R4Ex`, `FRSoundness4R4FrE`). Baseline at HEAD `5eb34a6`: green (2,494 jobs).
+- Coordinator (mid-pass): blueprint 4.3 route (A), INT-8 will make `gen4` uniform per group; proofs
+  unfolding `finOps4 P` will need repair after INT-8 lands. Front checks here go through `FinP`
+  fields and the `flag_gFin*` lemmas; the few op-list facts used (`gFinLr`'s two exports and 14
+  outputs, `gFinRS`'s exports and 4,117 outputs) are isolated lemmas (`opsOut_gFinLr`,
+  `opsOut_gFinRS`, `gFinRS_ex_lt`).
+- **`exAt` bookkeeping** (`FRSoundness4R4Ex`): `baseAt`, `exAt_succ`, `fields_ex4` (field `k`'s file
+  `Rs k` has size `baseAt … k`, so `Ex (k+1) = (Ex k).push (field k's exports at (Rs k).size)`;
+  `zhat` registers lie in `Rs 0`), `lrEx_eq4`.
+- **Front checks** (`FRSoundness4R4FrE`): generic views by name (`coordsR_view4`, `chals_view4`,
+  `claimN3z_view4`, `one_name_view4`, `msg_abs4` + one table certificate `fsMsgs4_ends` for 213,
+  273, 325, 326). `RejEndLr4` (`lr_end4`), `relE4_of_accept` (with `lrEx`'s values), `RejEndE4`
+  (`e_end4`), `RejInE4` (`e_in4`, `chk2F_c0`), `RejFinE4` (`e_fin4`; `evalM`/`evalL` at the node
+  rows' `matMLE` are parameters `hM`, `hL`), each with a segment version through the gate.
+  Traps: `Nat.exists_eq_succ_of_ne_zero` gives `n.succ` (rewrites against `n + 1` fail);
+  `rw [ptA_toArray, ptA_toArray, …]` fails once the instances are exhausted (use `simp only`).
+- Also: `relLc4_of_accept` + `l2_chk4` (`RejL2`, both kinds; one more certificate `fsMsgs4_front`
+  for 67, 97); controls module `FRSoundness4R4FrCtrl` (`rel{E,Sh,RS}4_fin3P`, `*_rejects`,
+  `baseAt_ctl`); `linkSum_seg4`.
+- Coordinator notes: the source rule flags the word `export` in comments (reworded); S-CN4 committed
+  (`c2c6fba`): re-snapshotted, rebuilt green (2,503 jobs). INT-8 not landed at the stop.
+- Final: axioms 239 theorems clean; source rule 281 files 0 findings; profiles in `logs/R4d/`.
+  Stopped (context long) with the RESULT's Pass 4 handover: S2, Sh's node link, Z, Lc, RS, AcceptTail.

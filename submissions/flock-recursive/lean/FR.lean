@@ -102,6 +102,7 @@ import FRSoundness4R4Ctrl
 import FRSoundness4R4Rnd
 import FRSoundness4R4Link
 import FRSoundness4R4Acc
+import FRSoundness4R4FrCtrl
 import FRNodeMirror
 import FRVIRTplDag
 import FRVIRTplWalk
