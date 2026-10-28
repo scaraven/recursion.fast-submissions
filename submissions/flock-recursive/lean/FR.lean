@@ -80,6 +80,8 @@ import FRSoundnessAccSem
 import FRSoundnessAcc
 import FRSoundnessAccLog
 import FRSoundnessFrRS
+import FRSoundnessFrPend
+import FRSoundnessFrExt
 import FRNodeReadLayout
 import FRNodeRead
 import FRNodeReadW
