@@ -60,6 +60,44 @@ def tplOf : TKey → Tpl
   | .walkAB n m => tplWalkOf n m
   | _ => ⟨[], []⟩
 
+/-! ## The walk template's rows and sizes, computed once (S-E11: plan time) -/
+
+def tplWalk14Rows : List RowT := tplWalk14.rows
+def tplWalk14RB : ℕ := tplWalk14.rbits
+def tplWalk14CB : ℕ := tplWalk14.cbits
+def tplWalk14NL : ℕ := nlocs tplWalk14.gates
+
+/-- The node's walk key. -/
+def isWalk14 : TKey → Bool
+  | .walkAB n m => n == 2 ^ 14 && m == 2 ^ 14
+  | _ => false
+
+/-- A key's template rows (the walk's from the closed term). -/
+def tRows (k : TKey) : List RowT := if isWalk14 k then tplWalk14Rows else (tplOf k).rows
+/-- A key's row bits. -/
+def tRbits (k : TKey) : ℕ := if isWalk14 k then tplWalk14RB else (tplOf k).rbits
+/-- A key's cell bits. -/
+def tCbits (k : TKey) : ℕ := if isWalk14 k then tplWalk14CB else (tplOf k).cbits
+/-- A key's locals. -/
+def tNlocs (k : TKey) : ℕ := if isWalk14 k then tplWalk14NL else nlocs (tplOf k).gates
+
+theorem tplOf_walk14 {k : TKey} (h : isWalk14 k = true) : tplOf k = tplWalk14 := by
+  cases k <;> simp [isWalk14] at h
+  obtain ⟨rfl, rfl⟩ := h
+  show tplWalkOf _ _ = _
+  unfold tplWalkOf
+  rw [if_pos ⟨rfl, rfl⟩]
+
+theorem tRows_eq (k : TKey) : tRows k = (tplOf k).rows := by
+  unfold tRows; split_ifs with h
+  · rw [tplOf_walk14 h]; rfl
+  · rfl
+
+theorem tRbits_eq (k : TKey) : tRbits k = (tplOf k).rbits := by
+  unfold tRbits; split_ifs with h
+  · rw [tplOf_walk14 h]; rfl
+  · rfl
+
 /-- **A layout**: per key, the group's row base (relative to the slot), cell base and cell bits. -/
 abbrev TLay := List (TKey × ℕ × ℕ × ℕ)
 
@@ -466,7 +504,7 @@ def cregion (k : TKey) : ℕ :=
   match k with
   | .dotKF n => max (tplOf k).cbits (Nat.size (3 * n + 1))
   | .tensorW n => max (tplOf k).cbits (Nat.size (5 * n + logNMax))
-  | _ => (tplOf k).cbits
+  | _ => tCbits k
 
 /-- The walk's blocks (`G` gadgets at a `2^gBits` stride): its rows and cells are aligned to the
 block, and the next group's cells start after its last local (S-E10). -/
@@ -474,19 +512,48 @@ def isWalk : TKey → Bool
   | .walkAB .. => true
   | _ => false
 
+/-- **A split template** (S-E11, changes 22 (b)): its first `2^a` rows (the head) and the rest (the
+tail, at most `2^b` rows) are laid out in two aligned blocks, so that an instance takes
+`2^a + 2^b` rows instead of `2^(a+1)`: `phiRS 7` (134 rows) takes `128 + 8`. -/
+def splitOf : TKey → Option (ℕ × ℕ)
+  | .phiRS n => if 4 ≤ n then some (n, Nat.size (n - 2)) else none
+  | _ => none
+
+/-- **The row of a split instance**: groups of `g = 2^(a−b)` instances, each group `g` heads then
+`g` tails (`(g + 1)·2^a` rows); instance `i`'s row `j`. -/
+def splitRow (a b i j : ℕ) : ℕ :=
+  let g := 2 ^ (a - b)
+  i / g * ((g + 1) * 2 ^ a) + if j < 2 ^ a then i % g * 2 ^ a + j else g * 2 ^ a + i % g * 2 ^ b + (j - 2 ^ a)
+
+/-- (+) `phiRS 7` is split as 128 + 8 rows; instance 0's tail follows the group's 16 heads, instance
+16 starts the next group of `17 · 128` rows. -/
+theorem splitRow_phi : splitOf (.phiRS 7) = some (7, 3) ∧ splitRow 7 3 0 128 = 2048 ∧
+    splitRow 7 3 15 133 = 2173 ∧ splitRow 7 3 16 0 = 2176 := by
+  refine ⟨by simp only [splitOf]; decide, ?_, ?_, ?_⟩ <;> norm_num [splitRow]
+
+/-- (−) Other keys keep the `2^rbits` stride. -/
+theorem splitOf_walk (n m : ℕ) : splitOf (.walkAB n m) = none := rfl
+
 /-- **The layout** from the counts: groups after the skeleton's rows `r0` and cells `c0`, each
 aligned to its instance size. -/
 def mkLay (r0 c0 : ℕ) : List (TKey × ℕ) → TLay
   | [] => []
   | (k, n) :: ks =>
-    let T := tplOf k
+    -- the template's rows once (S-E11: plan time); `Nat.size (nr − 1)` is `Tpl.rbits`
+    let nr := (tRows k).length; let rbk := Nat.size (nr - 1); let cr := cregion k
     -- a template of more than `2^12` rows is evaluated in 64-row chunks (`FRVIRTplPlan.tinPP`),
     -- so its rows need only 64-row alignment (S-E6); the walk's in `2^gBits` blocks (S-E10)
-    let rb := alignUp r0 (if isWalk k then gBits else if 12 < T.rbits then 6 else T.rbits)
-    let cb := alignUp c0 (if isWalk k then gBits else cregion k)
-    -- the next group starts after the last instance's rows, not its whole aligned region (S-E6)
-    (k, rb, cb, cregion k) :: mkLay (rb + (n - 1) * 2 ^ T.rbits + T.rows.length)
-      (if isWalk k then cb + (n - 1) * 2 ^ cregion k + nlocs T.gates else cb + n * 2 ^ cregion k) ks
+    let rb := alignUp r0 (match splitOf k with
+      | some (a, _) => a
+      | none => if isWalk k then gBits else if 12 < rbk then 6 else rbk)
+    let cb := alignUp c0 (if isWalk k then gBits else cr)
+    -- the next group starts after the last instance's rows, not its whole aligned region (S-E6);
+    -- a split template's instances take `(g + 1)·2^a` rows per group of `g` (S-E11)
+    let re := match splitOf k with
+      | some (a, b) => rb + (n + 2 ^ (a - b) - 1) / 2 ^ (a - b) * ((2 ^ (a - b) + 1) * 2 ^ a)
+      | none => rb + (n - 1) * 2 ^ rbk + nr
+    (k, rb, cb, cr) :: mkLay re
+      (if isWalk k then cb + (n - 1) * 2 ^ cr + tNlocs k else cb + n * 2 ^ cr) ks
 
 /-- **The two-pass compile**: count with the zero layout, lay the groups out, compile again. -/
 def layOf (P : Params) (base : ℕ) (ops : List Op) : TLay :=

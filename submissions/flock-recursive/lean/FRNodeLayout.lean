@@ -259,30 +259,35 @@ theorem regions_fit : hEnd ≤ lBase ∧ lBase + lUsed ≤ mBase ∧ mBase + mBl
 
 /-! ## The M rows (A.11's row model on the measured counts, per slot) -/
 
-/-- **Per slot, the row model of revision 3.14** (S-E9; BLUEPRINT §10 changes 21 (D), `sizes.txt`),
-with S-E9's measured layout where the rows are emitted (`logs/S-E9/e5eval-2.log`: slot 1's last
-indexed row is `2^20 + 436,092`): the skeleton and every emitted template in their aligned layout,
-now with `shiftMask` (2,071 rows) and `maskRows` (its `packFK` operand muxed by kind, S-E9); then
-changes 21's figures for what is not emitted yet: `rsWeight` with 4 claims 45,604, the fused
-`walkAB` 65,536, `shiftTarget` 100, `finPf`'s other 745 `tensorW` (aligned) 47,680,
-`tplTargetSNode` 16,000, `tplLinkWAll` 15,000 and the replay `R` in §4.4's layout 259,000 (no
-claim-5 row). S-E9's RESULT §1 measures `R` and `walkAB` larger than these figures. -/
+/-- **Per slot, the row model of revision 3.16** (BLUEPRINT §10 changes 22–23; S-E11). Built and
+measured (`logs/S-E11/evbrk-3.log`: slot 0's last indexed row is `464,764`): the skeleton and every
+emitted template in their aligned layout, with the walk as the XOR DAG in `G` blocks (85,506 rows,
+S-E10) and the `phiRS` split layout (S-E11: −61,440). Not emitted yet (S-E12), at changes 22–23's
+figures (`sizes.py`): `rsWeight` with 4 claims 45,604 and its claim-2 kind factor 68,473 (R-V-M1),
+`shiftTarget` 1,300, `finPf`'s 745 `tensorW` (aligned) 47,680, `tplTargetSNode` 16,000,
+`tplLinkWAll` 15,000, the `free` term 80 (R-V-M2), and the replay `R` with the sparse-skeleton and
+instance-AP levers (changes 23: in the plan) 163,795 plus its closed-form share 3,000. -/
 def mRowModel : List ℕ :=
-  [436092,            -- skeleton + emitted templates, aligned (measured, S-E9)
+  [464765,            -- skeleton + emitted templates + walk DAG + phiRS split, aligned (measured)
    45604,             -- rsWeight, 4 claims (A.11)
-   65536,             -- walkAB: rowW′, colW, 2 × 2^14 products (A.11)
-   100,               -- shiftTarget (A.11)
+   68473,             -- rsWeight's claim-2 kind factor (changes 23, R-V-M1)
+   1300,              -- shiftTarget (changes 22)
    47680,             -- finPf's 745 tensorW still imported, aligned
    16000,             -- tplTargetSNode (changes 21)
    15000,             -- tplLinkWAll (changes 21)
-   259000]            -- the replay R in the layout of §4.4 (changes 21 (D))
+   80,                -- the free term (changes 23, R-V-M2)
+   166795]            -- the replay R with the levers (163,795) and its closed-form share (3,000)
 
-theorem mRowModel_sum : mRowModel.sum = 885012 := by decide
+theorem mRowModel_sum : mRowModel.sum = 825697 := by norm_num [mRowModel]
 
-/-- **The M rows fit**: a slot's rows in its `2^20` half of M (margin `1.18` on this model), the node's in
+/-- **The M rows fit**: a slot's rows in its `2^20` half of M (margin `1.27` on this model), the node's in
 `N_M = 2^21`. -/
 theorem mRows_le : mRowModel.sum ≤ slotM ∧ 2 * mRowModel.sum ≤ nM := by
   rw [mRowModel_sum]; simp only [slotM, nM]; norm_num
+
+/-- (−) The bound is not vacuous: S-E9's sized shape (1,065,133 rows per slot, the DAG walk replayed
+in `R`; changes 22 (1)) does not fit a slot. -/
+theorem mRows_neg : ¬ (1065133 ≤ slotM) := by simp only [slotM]; norm_num
 
 /-- **The used blocks fit** in `2^16` (H, L and the M rows of both slots, 128 per block). -/
 theorem usedBlocks_le : hEnd + lUsed + (2 * mRowModel.sum + 127) / 128 ≤ nodeBlocks := by

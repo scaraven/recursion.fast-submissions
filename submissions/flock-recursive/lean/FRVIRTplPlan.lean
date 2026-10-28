@@ -197,10 +197,24 @@ def _root_.FR.Circ.TLay.bits (L : TLay) (k : TKey) : ℕ :=
 (`rowW`, `maskRows`: row `k` writes local `k`) its 64-row chunks, each abstracted over the 64 cells
 it writes (S-E6). -/
 def tinPP (L : TLay) (one : Lin) (off : ℕ) (t : TKey × ℕ × List Lin) : List PP :=
-  let T := tplOf t.1
-  let X := off + L.rb t.1 + t.2.1 * 2 ^ T.rbits
+  let TR := tRows t.1; let rbk := tRbits t.1
+  let X := off + L.rb t.1 + t.2.1 * 2 ^ rbk
   let cb := L.cb t.1 t.2.1
-  let r : RawI := ⟨T.rows, t.2.2.toArray, X, cb, T.rbits, L.bits t.1⟩
+  let r : RawI := ⟨TR, t.2.2.toArray, X, cb, rbk, L.bits t.1⟩
+  match splitOf t.1 with
+  | some (a, b) =>
+    -- a split template (S-E11): the head and the tail blocks, each over the instance's cells
+    let rows := ((tinIRows L one off t).map (·.2)).toArray
+    let seg := fun (u v : ℕ) => (List.range (v - u)).map fun i => rows.getD (u + i) ⟨[], [], []⟩
+    let X0 := off + L.rb t.1
+    let hd := X0 + splitRow a b t.2.1 0
+    let tl := X0 + splitRow a b t.2.1 (2 ^ a)
+    let bl := fun (u v X B : ℕ) =>
+      let r : RawI := ⟨(TR.drop u).take (v - u), t.2.2.toArray, X, cb, B, L.bits t.1⟩
+      let idx := (seg u v).zipIdx.map fun p => (X + p.2, p.1)
+      if r.aligned then PP.raw r idx else PP.sp idx
+    [bl 0 (2 ^ a) hd a, bl (2 ^ a) rows.size tl b]
+  | none =>
   if isWalk t.1 then
     -- the walk's DAG (S-E10): its `2^gBits` blocks (the 80 `G` gadgets, the head, the tail), each
     -- abstracted over the block's cells, so that the `G` blocks are instances of one key
@@ -211,7 +225,7 @@ def tinPP (L : TLay) (one : Lin) (off : ℕ) (t : TKey × ℕ × List Lin) : Lis
     let idx := fun (a b : ℕ) => (seg a b).zipIdx.map fun p => (X + a + p.2, p.1)
     ((List.range nb).map fun c => blockPP (seg (B * c) (B * c + B)) (X + B * c) (cb + B * c) gBits) ++
       [PP.sp (idx (B * nb) rows.size)]
-  else if 12 < T.rbits then
+  else if 12 < rbk then
     let rows := ((tinIRows L one off t).map (·.2)).toArray
     let nb := rows.size / 64
     let seg := fun (a b : ℕ) => (List.range (b - a)).map fun i => rows.getD (a + i) ⟨[], [], []⟩
@@ -312,11 +326,29 @@ def kindWire (ks : Array IK) (i : ℕ) : Wire :=
   | some (.own j) => .inp j
   | none => .inp i
 
-/-- An instance's own forms. -/
+/-- An instance's own forms, in the order of their numbers. -/
 def ownOf (ks : Array IK) (r : RawI) : List Lin :=
-  (List.range ks.size).filterMap fun i => match ks[i]? with
-    | some (IK.own _) => some (r.ins.getD i [])
+  (((List.range ks.size).filterMap fun i => match ks[i]? with
+    | some (IK.own j) => some (j, r.ins.getD i [])
+    | _ => none).mergeSort (fun a b => a.1 ≤ b.1)).map (·.2)
+
+/-- **The own inputs renumbered by the cells of a member's forms** (S-E11), so that inputs reading
+consecutive cells get consecutive numbers: the evaluator's runs (`FRVIRTplRun`). One-cell forms
+first, by cell; the others after, in order. -/
+def sortOwn (r : RawI) (ks : Array IK) : Array IK :=
+  let own := (List.range ks.size).filterMap fun i => match ks[i]? with
+    | some (IK.own j) => some (i, j)
     | _ => none
+  let base := own.foldl (fun m p => min m p.2) (2 ^ 62)
+  let key := fun (i : ℕ) => match r.ins.getD i [] with
+    | [(c, _)] => c
+    | _ => 2 ^ 40 + i
+  let srt := own.mergeSort (fun a b => key a.1 ≤ key b.1)
+  let rk : Std.HashMap ℕ ℕ := srt.zipIdx.foldl (fun m q => m.insert q.1.1 q.2) {}
+  (List.range ks.size).toArray.map fun i => match ks[i]? with
+    | some (IK.own _) => IK.own (base + rk.getD i 0)
+    | some k => k
+    | none => IK.own 0
 
 /-- **The plan's data** for two slots' proto-pieces: the keys, each slot's shared forms and pieces.
 Members are grouped by template, then each group is split by its partition inputs' values. -/
@@ -338,7 +370,10 @@ def groupPPs (pp0 pp1 : Array PP) : Array Key × Array (List Lin) × Array (List
     let a := inputKinds m
     let labs := m.foldl (fun (acc : List (ℕ × List ℕ)) p =>
       let l := (p.1, partLabel a.2 p.1 p.2); if acc.contains l then acc else l :: acc) []
-    if 4 * labs.length ≤ m.length then a else inputKinds m false
+    let a := if 4 * labs.length ≤ m.length then a else inputKinds m false
+    match m with
+    | (_, r) :: _ => (sortOwn r a.1, a.2)
+    | [] => a
   -- the parts: key ids by (group, label)
   let st2 := (List.range mems.size).foldl (fun (q : Std.HashMap (ℕ × List ℕ) ℕ × Array (ℕ × List ℕ)) g =>
     (mems.getD g []).foldl (fun q m =>

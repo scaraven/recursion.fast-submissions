@@ -260,7 +260,20 @@ def _root_.FR.Circ.TLay.rb (L : TLay) (k : TKey) : ℕ :=
 
 /-- Instance `t`'s indexed rows in a slot at row offset `off`. -/
 def tinIRows (L : TLay) (one : Lin) (off : ℕ) (t : TKey × ℕ × List Lin) : List (ℕ × Row) :=
-  instIRows (tplOf t.1) one t.2.2 (off + L.rb t.1 + t.2.1 * 2 ^ (tplOf t.1).rbits) (L.cb t.1 t.2.1)
+  let ia := t.2.2.toArray
+  let cb := L.cb t.1 t.2.1
+  match splitOf t.1 with
+  | some (a, b) => (tRows t.1).zipIdx.map fun p =>
+      (off + L.rb t.1 + splitRow a b t.2.1 p.2, instRowA one ia cb p.1)
+  | none =>
+    let X := off + L.rb t.1 + t.2.1 * 2 ^ tRbits t.1
+    (tRows t.1).zipIdx.map fun p => (X + p.2, instRowA one ia cb p.1)
+
+theorem tinIRows_none (L : TLay) (one : Lin) (off : ℕ) (t : TKey × ℕ × List Lin)
+    (h : splitOf t.1 = none) :
+    tinIRows L one off t =
+      instIRows (tplOf t.1) one t.2.2 (off + L.rb t.1 + t.2.1 * 2 ^ (tplOf t.1).rbits) (L.cb t.1 t.2.1) := by
+  unfold tinIRows; rw [h]; simp only [instIRows, tRows_eq, tRbits_eq, instRowA_eq]
 
 /-- **A slot's indexed rows**: skeleton row `j` at `off + j`, then every instance's. -/
 def slotIRows (L : TLay) (one : Lin) (off : ℕ) (cs : CS) : List (ℕ × Row) :=
@@ -383,7 +396,7 @@ def instVal (s : Mat) (n m : ℕ) (τ σ : ℕ → R) (gt gs : ℕ → R) (L : T
   let A := p.A; let B := p.B
   let X := off + L.rb t.1 + t.2.1 * 2 ^ A
   let cb := L.cb t.1 t.2.1
-  if A ≤ n ∧ B ≤ m ∧ X % 2 ^ A = 0 ∧ cb % 2 ^ B = 0 then
+  if splitOf t.1 = none ∧ A ≤ n ∧ B ≤ m ∧ X % 2 ^ A = 0 ∧ cb % 2 ^ B = 0 then
     gNL (n - A) (fun l => τ (A + l)) (X / 2 ^ A) *
       (gNL (m - B) (fun l => σ (B + l)) (cb / 2 ^ B) * p.loc + p.one * linEI ι gs one +
         sumL (fun q => q.2 * linEI ι gs (t.2.2.getD q.1 [])) p.it)
@@ -449,11 +462,10 @@ theorem slotVal_eq (s : Mat) (n m : ℕ) (τ σ : ℕ → R) (L : TLay) (one : L
   simp only []
   split_ifs with h
   · simp only [prepOf, prepT] at h ⊢
-    obtain ⟨hA, hB, hX, hc⟩ := h
+    obtain ⟨hs, hA, hB, hX, hc⟩ := h
     obtain ⟨Xh, hXh⟩ := Nat.dvd_of_mod_eq_zero hX
     obtain ⟨Ch, hCh⟩ := Nat.dvd_of_mod_eq_zero hc
-    unfold tinIRows
-    rw [hXh, hCh, Nat.mul_div_cancel_left _ (Nat.two_pow_pos _),
+    rw [tinIRows_none _ _ _ _ hs, hXh, hCh, Nat.mul_div_cancel_left _ (Nat.two_pow_pos _),
       Nat.mul_div_cancel_left _ (Nat.two_pow_pos _),
       tpl_mle ι s τ σ (tplOf t.1) one t.2.2 _ _ hA hB (getD0 (loTab (tplOf t.1).rbits τ))
         (getD0 (loTab (tplOf t.1).cbits σ)) (heτ t.1) (heσ t.1)]

@@ -257,6 +257,23 @@ def instLin (one : Lin) (ins : List Lin) (cb : ℕ) (l : LinT) : Lin :=
 def instRow (one : Lin) (ins : List Lin) (cb : ℕ) (r : RowT) : Row :=
   ⟨instLin one ins cb r.a, instLin one ins cb r.b, instLin one ins cb r.c⟩
 
+/-- `instLin` with the inputs in an array (constant-time lookups; S-E11: the walk has `2^15`). -/
+def instLinA (one : Lin) (ins : Array Lin) (cb : ℕ) (l : LinT) : Lin :=
+  l.flatMap fun t => match t.1 with
+    | .one => one.smul t.2
+    | .inp i => (ins.getD i []).smul t.2
+    | .loc k => [(cb + k, t.2)]
+
+def instRowA (one : Lin) (ins : Array Lin) (cb : ℕ) (r : RowT) : Row :=
+  ⟨instLinA one ins cb r.a, instLinA one ins cb r.b, instLinA one ins cb r.c⟩
+
+theorem instRowA_eq (one : Lin) (ins : List Lin) (cb : ℕ) (r : RowT) :
+    instRowA one ins.toArray cb r = instRow one ins cb r := by
+  have : ∀ l, instLinA one ins.toArray cb l = instLin one ins cb l := fun l => by
+    simp only [instLinA, instLin, Array.getD_eq_getD_getElem?, List.getElem?_toArray,
+      List.getD_eq_getElem?_getD]
+  simp only [instRowA, instRow, this]
+
 /-- The wires pulled back along an instance. -/
 def envOf (w : Asg) (one : Lin) (ins : List Lin) (cb : ℕ) : Env :=
   ⟨one.ev w, fun i => (ins.getD i []).ev w, fun k => w (cb + k)⟩
