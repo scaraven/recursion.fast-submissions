@@ -2,6 +2,7 @@
 -- L-circ).
 import FRVIR4Mux
 import FRVIRTplFast
+import FRVIRTplSet
 import FRNodeKinds4
 import FRNodeRows4Hint
 
@@ -85,8 +86,12 @@ def protoProg (π : ℕ) : VProg := if π = 0 then progNodeG (N4c.cells4 .N4) el
 sound (`compileT_sound`); that the rows fit is `ProtoFit`, checked. -/
 def protoLay (π : ℕ) : TLay := if π = 0 then hintLay0 else hintLay1
 
-/-- **Prototype `π`'s templated compile.** -/
-def protoCS (π : ℕ) : CS := compileT (protoLay π) (protoP π) (baseR π) (protoProg π).ops
+/-- **Prototype `π`'s template set** (S-E12d, revision 4.3 (a)): revision 4.1's (`keys41`: 3.x's
+`shiftMask` template left out, the op an import) for both prototypes. -/
+def protoF (_π : ℕ) : TFilt := keys41
+
+/-- **Prototype `π`'s templated compile** (at its template set). -/
+def protoCS (π : ℕ) : CS := compileTF (protoF π) (protoLay π) (protoP π) (baseR π) (protoProg π).ops
 
 /-- **Prototype `π`'s indexed rows** (rows from `π·2^20`, M-relative cells). -/
 def protoRows (π : ℕ) : List (ℕ × Row) := slotIRows (protoLay π) (Lin.cell (oneR π)) (π * slotM4) (protoCS π)

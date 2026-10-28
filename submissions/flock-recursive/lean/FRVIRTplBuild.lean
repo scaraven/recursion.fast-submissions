@@ -61,8 +61,10 @@ theorem memoAdd_ok {M : List (TKey × Tpl)} (h : MOk M) (t : Option (TKey × Lis
   · exact h
 
 /-- **The compile with a template memo, recording the skeleton's blocks** (`segsGo`'s, in the
-same pass; `compMS_eq`: its state is `compileFromX`'s). -/
-def compMS (L : TLay) (P : Params) : List (TKey × Tpl) → CS → List Op → Option (ℕ × ℕ × ℕ) →
+same pass; `compMSX_eq`: its state is `compileFromX`'s), for a family of template extensions `X`
+(3.x's `tplExt`, or a revision's `tplExtF F`; S-E12d). -/
+def compMSX (X : TCtx → Ext) (L : TLay) (P : Params) : List (TKey × Tpl) → CS → List Op →
+    Option (ℕ × ℕ × ℕ) →
     List Seg → CS × List Seg × List (TKey × Tpl)
   | M, cs, [], _, acc => (cs, acc, M)
   | M, cs, op :: ops, cur, acc =>
@@ -79,25 +81,45 @@ def compMS (L : TLay) (P : Params) : List (TKey × Tpl) → CS → List Op → O
         else acc
       | _ => acc
     -- the op's key first (with empty templates: cheap), so that its template is built once
-    let M := memoAdd M ((tplExt ⟨fun _ => ⟨[], []⟩, L.cb⟩ P cs' op).bind (·.tin))
-    let o := stepOut (tplExt ⟨tlook M, L.cb⟩) P cs' op
+    let M := memoAdd M ((X ⟨fun _ => ⟨[], []⟩, L.cb⟩ P cs' op).bind (·.tin))
+    let o := stepOut (X ⟨tlook M, L.cb⟩) P cs' op
     let M := memoAdd M o.tin
     let cs2 := cs'.add op o
     match op, cur with
-    | .assertEq .., some (r0, c0, b) => compMS L P M cs2 ops none (⟨r0, cs2.nrows, c0, b⟩ :: acc)
-    | _, _ => compMS L P M cs2 ops cur acc
+    | .assertEq .., some (r0, c0, b) => compMSX X L P M cs2 ops none (⟨r0, cs2.nrows, c0, b⟩ :: acc)
+    | _, _ => compMSX X L P M cs2 ops cur acc
 
-theorem compMS_eq (L : TLay) (P : Params) : ∀ (ops : List Op) (M : List (TKey × Tpl)) (cs : CS)
-    (cur : Option (ℕ × ℕ × ℕ)) (acc : List Seg), MOk M →
-    (compMS L P M cs ops cur acc).1 = compileFromX (tplExt L.ctx) P cs ops ∧
-      MOk (compMS L P M cs ops cur acc).2.2
+theorem compMSX_eq (X : TCtx → Ext) (L : TLay) (P : Params) : ∀ (ops : List Op)
+    (M : List (TKey × Tpl)) (cs : CS) (cur : Option (ℕ × ℕ × ℕ)) (acc : List Seg), MOk M →
+    (compMSX X L P M cs ops cur acc).1 = compileFromX (X L.ctx) P cs ops ∧
+      MOk (compMSX X L P M cs ops cur acc).2.2
   | [], _, _, _, _, h => ⟨rfl, h⟩
   | op :: ops, M, cs, cur, acc, h => by
     have hc : ∀ x, (⟨tlook (memoAdd M x), L.cb⟩ : TCtx) = L.ctx := fun x => by
       rw [tlook_eq (memoAdd_ok h x)]; rfl
     rw [compileFromX_cons]
-    simp only [compMS, hc]
-    split <;> exact compMS_eq L P ops _ _ _ _ (memoAdd_ok (memoAdd_ok h _) _)
+    simp only [compMSX, hc]
+    split <;> exact compMSX_eq X L P ops _ _ _ _ (memoAdd_ok (memoAdd_ok h _) _)
+
+/-- **`compMSX` from a fresh state is `compileX`.** -/
+theorem compMSX_T (X : TCtx → Ext) (L : TLay) (P : Params) (base : ℕ) (ops : List Op)
+    {M : List (TKey × Tpl)} (h : MOk M) :
+    (compMSX X L P M (CS.init base) ops none []).1 = compileX (X L.ctx) P base ops ∧
+      MOk (compMSX X L P M (CS.init base) ops none []).2.2 :=
+  compMSX_eq X L P ops M _ none [] h
+
+/-- **3.x's plan compile** (`compMSX` at `tplExt`). -/
+def compMS (L : TLay) (P : Params) : List (TKey × Tpl) → CS → List Op → Option (ℕ × ℕ × ℕ) →
+    List Seg → CS × List Seg × List (TKey × Tpl) := compMSX tplExt L P
+
+/-- 3.x's instance is `compMSX`'s at `tplExt` by definition. -/
+theorem compMS_rfl : compMS = compMSX tplExt := rfl
+
+theorem compMS_eq (L : TLay) (P : Params) (ops : List Op) (M : List (TKey × Tpl)) (cs : CS)
+    (cur : Option (ℕ × ℕ × ℕ)) (acc : List Seg) (h : MOk M) :
+    (compMS L P M cs ops cur acc).1 = compileFromX (tplExt L.ctx) P cs ops ∧
+      MOk (compMS L P M cs ops cur acc).2.2 :=
+  compMSX_eq tplExt L P ops M cs cur acc h
 
 /-! ## The layout from per-key data -/
 
