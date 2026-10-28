@@ -228,3 +228,17 @@ v_base=169.4; v_mask=1.0; v_tpl=4.0; v_Dhat=1.5; v_R=7.0
 v15=v_base+v_mask+v_tpl+v_Dhat+v_R
 print(f"   V N30: 169.4 (S-E8) + maskRows shift class {v_mask} + remaining templates {v_tpl} + D-hat {v_Dhat} + R closed forms/Inc {v_R} = {v15:.0f} ms VM ({264/v15:.2f}x of 264) = {v15/1.28:.0f} ms runner ({205.9/(v15/1.28):.2f}x); S-E9's projection with two replayed walks was 231-240 ms")
 print(f"   stream link: P2 estimate ~3.0 s of 3.1 s (1.03x) before the ruling; nnz(M) falls by ~{(rows_E9-rows_B)/rows_E9*100:.0f}% (rows) -> P2 re-measures; target >= 1.05x = 2.95 s")
+# ---- stage-review changes 23 (revision 3.16): R-V-M1 (a) the Phi-aware kind factor in rsWeight's claim 2; R-V-M2 the free term as a
+# closed form; H-V's measured VM -> 7763 ratio 1.19 (not the checker's 1.28); cap 206.0 ms measured.
+RATIO=1.19; CAP=206.0
+kf_products=128*22*24           # 128 Frobenius stages x ~22 kind pattern-intervals x ~24 products (per-bit factors + dyadic range sums)
+kf_rows=kf_products+7*127       # + beta's Frobenius chains (7 kinds x 127 squarings)
+free_term=64+8+8                # (1+alpha) v_free <rowW, eq(r_k)>: 64-term sum + eqPt on 8 coordinates
+rows16=rows_B+kf_rows+free_term+3000     # changes-22 baseline (phiRS split) + kind factor + free term + R's closed-form share
+rows16_lever=rows16-lever_sparse-lever_inst
+v16=v15+kf_products*0.09/1000+0.05
+print("== stage-review changes 23 (revision 3.16)")
+print(f"   R-V-M1 (a): kind factor ~{kf_products} products (~{kf_products*0.09/1000:.1f} ms VM), rows +{kf_rows} per slot; items, piSize, error rows unchanged. (b) would cost items +36, pi +864 B, error 3*18/2^128 and a second 2^30-bit fold pass in the prover (~0.2-0.3 s on a 3.0 s link).")
+print(f"   rows per slot {rows16:.0f}, per node {2*rows16:.0f} = 2^{math.log2(2*rows16):.3f} ({2**21/(2*rows16):.3f}x); with the sparse-skeleton + instance-AP levers {rows16_lever:.0f} per slot ({2**21/(2*rows16_lever):.3f}x); M blocks {math.ceil(2*rows16*128/2**14)} of 16,384; used {47740+math.ceil(2*rows16*128/2**14)} ({65536/(47740+math.ceil(2*rows16*128/2**14)):.3f}x)")
+print(f"   T_V: {v16:.0f} ms VM -> {v16/RATIO:.0f} ms on the 7763 (ratio {RATIO}); cap {CAP} ms: {CAP/(v16/RATIO):.2f}x. Measured H-V: V N30 best 169.9-175.6 ms on the 7763 (maskRows slowdown included), cap 206.0: 1.17-1.21x; 183 ms VM (changes 22) = {183/RATIO:.0f} ms runner ({CAP/(183/RATIO):.2f}x)")
+print(f"   piSize 797904 (1.31x); items 8891 (1.15x); stream link: P2 estimate ~3.0 s of 3.1 s (re-measure)")
