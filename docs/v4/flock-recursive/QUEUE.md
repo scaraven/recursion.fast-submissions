@@ -37,6 +37,8 @@ S-A `8ff873c`; S-C `ebac8c2`; S-D `8e6dad7`; S-E1 `2d5a811`; S-H1 `40b2f81`; S-0
 
 ## Rulings
 
+- **Plan time, revising 3.15 (e), 2026-10-28 (orchestrator):** the badge's `NS` is the monotonic time of parsing π and evaluating `acc` only (`.contract/harness/badge/Verify.lean.in` lines 9–26, `timedCheck`), so a closed top-level plan constant, initialized at process start, is outside every check's `NS`. Process start counts only against the batch timeout `verify_s · n + 60 s ≥ 70 s` (`rfh/checks.py` `verify`). Ruling: the plan is built at process start, **≤ 5 s on the VM**; a control measures that a cold process's first check is not slower than its warm checks (the plan is not lazily computed inside `acc`). The 0.2 s bound is withdrawn (S-E10 showed literals need a kernel proof about `compileT`); the blueprint is to record this at the next revision.
+
 - **Blueprint 3.15 batch (to issue when S-E9 lands):** lBase 47,616 in A.7/§4.3; the S-G2 level-4 tail (§5.2 P3.4 row 0, A.10); `T_V` measured (169 ms VM) and the (D) frontier note; INT-3's `shiftMask` op (A.8), `slotW_in` selected in `finSh` by `keep`; **INT-3 decision 3 (checked, no hole)**: the node's Sh start term `κ_s(eq(0,·)+eq(N,·))` has target 0 in characteristic 2, so Sh binds only `In(0) = In(N)`; `h0` at **both** chain starts comes from the public target (`streamStart.h0Pin = true`, `nodeKind 0 = nodeKind chainN = streamStart.target`, `Kind.hIn_eq_h0`); state it in §4.2.
 - **P2 after S-E9:** `ir.rs` must interpret `linkWAll` and `shiftMask` (it still reads `linkW`), the A.6 mirror map, the chain mask, the `h_in` In slot, and the node's S2 initial claim 0.
 
