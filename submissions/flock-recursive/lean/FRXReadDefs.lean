@@ -18,7 +18,8 @@ column is read).
 * **The parsers on words** (`nodeChk_iff`, `colChk_iff`): `parseNode 0`/`parseCol 0` succeed
   iff the length word and the tag word say so (`tagNW`, `tagCW`).
 * **First preimages** (`pre_eq_ansIdx`): `FRMerkle.pre` is the entry at `FRLog.ansIdx`.
-* **The program** `readIR sib np` and its cost (`cost_readIR`).
+* **The program** `readIR i cw sb nw sib np` (level `i`, cap words from tape word `cw`, store
+  base `sb`, `nw` words a column), the level-0 instance `read0` and its cost (`cost_read0`).
 -/
 
 namespace FR.X
@@ -97,8 +98,17 @@ theorem tagWord_iff (l t : List UInt8) (hl : 8 ≤ l.length) (ht : t.length = 8)
 /-- The word of `"FRMNOD" ‖ 0 ‖ 0`. -/
 def tagNW : Word := toWord (ofLE (tagNode 0))
 
+/-- The word of `"FRMNOD" ‖ i ‖ 0` (level `i`). -/
+def tagNWl (i : ℕ) : Word := toWord (ofLE (tagNode i))
+
 /-- The word of `"FRMCOL" ‖ 0 ‖ 0`. -/
 def tagCW : Word := toWord (ofLE (tagCol 0))
+
+/-- The word of `"FRMCOL" ‖ i ‖ 0` (level `i`). -/
+def tagCWl (i : ℕ) : Word := toWord (ofLE (tagCol i))
+
+theorem tagNWl_zero : tagNWl 0 = tagNW := rfl
+theorem tagCWl_zero : tagCWl 0 = tagCW := rfl
 
 theorem tagNW_eq : tagNW = 0x0000444F4E4D5246 := by decide
 
@@ -114,39 +124,39 @@ variable (q : ByteArray)
 
 theorem size_toList : q.data.toList.length = q.size := Array.length_toList
 
-/-- **`parseNode 0` on words**: the length word is `72` and the first word is `tagNW`. -/
-theorem nodeChk_iff (hq : q.size < 2 ^ 64) :
-    (toWord q.size = toWord 72 ∧ (packBytes q.data.toList).getD 0 0 = tagNW) ↔
-      (q.data.toList.take 8 = tagNode 0 ∧ q.size = 72) := by
+/-- **`parseNode i` on words**: the length word is `72` and the first word is `tagNWl i`. -/
+theorem nodeChk_iff (i : ℕ) (hq : q.size < 2 ^ 64) :
+    (toWord q.size = toWord 72 ∧ (packBytes q.data.toList).getD 0 0 = tagNWl i) ↔
+      (q.data.toList.take 8 = tagNode i ∧ q.size = 72) := by
   constructor
   · rintro ⟨h1, h2⟩
     have hs : q.size = 72 := by
       have := congrArg BitVec.toNat h1; rwa [toNat_toWord hq, toNat_toWord (by norm_num)] at this
-    exact ⟨(tagWord_iff _ _ (by rw [size_toList]; omega) (tagNode_length 0)).1 h2, hs⟩
+    exact ⟨(tagWord_iff _ _ (by rw [size_toList]; omega) (tagNode_length i)).1 h2, hs⟩
   · rintro ⟨h1, h2⟩
-    exact ⟨by rw [h2], (tagWord_iff _ _ (by rw [size_toList]; omega) (tagNode_length 0)).2 h1⟩
+    exact ⟨by rw [h2], (tagWord_iff _ _ (by rw [size_toList]; omega) (tagNode_length i)).2 h1⟩
 
-theorem parseNode_eq_some (h : q.data.toList.take 8 = tagNode 0 ∧ q.size = 72) :
-    parseNode 0 q = some (bytesAt q 8 32, bytesAt q 40 32) := by
+theorem parseNode_eq_some {i : ℕ} (h : q.data.toList.take 8 = tagNode i ∧ q.size = 72) :
+    parseNode i q = some (bytesAt q 8 32, bytesAt q 40 32) := by
   simp only [parseNode, h, and_self, ite_true]
 
-theorem parseNode_eq_none (h : ¬ (q.data.toList.take 8 = tagNode 0 ∧ q.size = 72)) :
-    parseNode 0 q = none := by
+theorem parseNode_eq_none {i : ℕ} (h : ¬ (q.data.toList.take 8 = tagNode i ∧ q.size = 72)) :
+    parseNode i q = none := by
   simp only [parseNode]; rw [if_neg h]
 
-/-- **`parseCol 0` on words**: more than 7 bytes, and the first word is `tagCW`. -/
-theorem colChk_iff (hq : q.size < 2 ^ 64) :
-    (toWord 7 < toWord q.size ∧ (packBytes q.data.toList).getD 0 0 = tagCW) ↔
-      q.data.toList.take 8 = tagCol 0 := by
+/-- **`parseCol i` on words**: more than 7 bytes, and the first word is `tagCWl i`. -/
+theorem colChk_iff (i : ℕ) (hq : q.size < 2 ^ 64) :
+    (toWord 7 < toWord q.size ∧ (packBytes q.data.toList).getD 0 0 = tagCWl i) ↔
+      q.data.toList.take 8 = tagCol i := by
   rw [toWord_lt_toWord (by norm_num) hq]
   constructor
   · rintro ⟨h1, h2⟩
-    exact (tagWord_iff _ _ (by rw [size_toList]; omega) (tagCol_length 0)).1 h2
+    exact (tagWord_iff _ _ (by rw [size_toList]; omega) (tagCol_length i)).1 h2
   · intro h
     have h8 : 8 ≤ q.size := by
       have := congrArg List.length h
       rw [List.length_take, tagCol_length, size_toList] at this; omega
-    exact ⟨by omega, (tagWord_iff _ _ (by rw [size_toList]; omega) (tagCol_length 0)).2 h⟩
+    exact ⟨by omega, (tagWord_iff _ _ (by rw [size_toList]; omega) (tagCol_length i)).2 h⟩
 
 /-- The column's words are the query's words from word 1 on. -/
 theorem packBytes_col (w : ℕ) :
@@ -282,10 +292,10 @@ def ld4IR : XIR :=
     (.seq (.blk [.op .add rTA rTA cOne]) (.seq (.input rQ2 rTA)
       (.seq (.blk [.op .add rTA rTA cOne]) (.input rQ3 rTA))))))
 
-/-- The cap entry of position `p`: `rTA := capW0 + 4 (p >> sib)`, then its four words. -/
-def capPs (sib : ℕ) : List Prim :=
+/-- The cap entry of position `p`: `rTA := cw + 4 (p >> sib)`, then its four words. -/
+def capPs (cw sib : ℕ) : List Prim :=
   [.const rK2 (toWord sib), .op .shr rB rPp rK2, .const rK2 2, .op .shl rB rB rK2,
-   .const rK2 (toWord capW0), .op .add rTA rB rK2]
+   .const rK2 (toWord cw), .op .add rTA rB rK2]
 
 /-- After a successful lookup: `rXq := X[lo]` (the entry's position), `rQn := |q|`,
 `rV2 :=` the query's first word. -/
@@ -293,9 +303,10 @@ def getIR : XIR :=
   .seq (.blk [.const rK2 (toWord memX), .op .add rAd2 rLo rK2]) (.seq (.load rXq rAd2)
     (.seq (.input rQn rXq) (.seq (.blk [.op .add rTA rXq cOne]) (.input rV2 rTA))))
 
-/-- `rB := [|q| = 72 ∧ word₀ = tagNW]` (`parseNode 0`). -/
-def nodeChkPs : List Prim :=
-  [.const rK2 72, .op .eq rB rQn rK2, .const rK2 tagNW, .op .eq rMk rV2 rK2, .op .and rB rB rMk]
+/-- `rB := [|q| = 72 ∧ word₀ = tagNWl i]` (`parseNode i`). -/
+def nodeChkPs (i : ℕ) : List Prim :=
+  [.const rK2 72, .op .eq rB rQn rK2, .const rK2 (tagNWl i), .op .eq rMk rV2 rK2,
+   .op .and rB rB rMk]
 
 /-- The child at height `h = rHc − 1`: `rTA := X + 2 + 4 · bit_h(p)`. -/
 def childPs : List Prim :=
@@ -304,19 +315,20 @@ def childPs : List Prim :=
 
 /-- **One step down the tree**: look up the current digest, parse its node query, load the
 child digest picked by bit `h` of `p`; `rOk := 0` on a missing entry or a wrong shape. -/
-def nodeBody : XIR :=
-  .ite rOk (.seq lookIR (.ite rFd (.seq getIR (.seq (.blk nodeChkPs)
+def nodeBody (i : ℕ) : XIR :=
+  .ite rOk (.seq lookIR (.ite rFd (.seq getIR (.seq (.blk (nodeChkPs i))
     (.ite rB (.seq (.blk childPs) ld4IR) (.blk [.const rOk 0])))) (.blk [.const rOk 0])))
     (.blk [])
 
-/-- `rB := [7 < |q| ∧ word₀ = tagCW]` (`parseCol 0`). -/
-def colChkPs : List Prim :=
-  [.const rK2 7, .op .ltu rB rK2 rQn, .const rK2 tagCW, .op .eq rMk rV2 rK2, .op .and rB rB rMk]
+/-- `rB := [7 < |q| ∧ word₀ = tagCWl i]` (`parseCol i`). -/
+def colChkPs (i : ℕ) : List Prim :=
+  [.const rK2 7, .op .ltu rB rK2 rQn, .const rK2 (tagCWl i), .op .eq rMk rV2 rK2,
+   .op .and rB rB rMk]
 
 /-- **The leaf**: look up the current digest and parse its column query; `rQe := |q|` on
 success, else `0`. -/
-def colIR : XIR :=
-  .seq (.blk [.const rQe 0]) (.ite rOk (.seq lookIR (.ite rFd (.seq getIR (.seq (.blk colChkPs)
+def colIR (i : ℕ) : XIR :=
+  .seq (.blk [.const rQe 0]) (.ite rOk (.seq lookIR (.ite rFd (.seq getIR (.seq (.blk (colChkPs i))
     (.ite rB (.blk [.op .or rQe rQn rQn]) (.blk [])))) (.blk []))) (.blk []))
 
 /-- One column word: `M[rWA] := [8 (w + 1) < rQe] · tape[rTA]`; advance. -/
@@ -325,24 +337,27 @@ def copyBody : XIR :=
     .op .and rV2 rV2 rMk]) (.seq (.store rWA rV2)
       (.blk [.op .add rWA rWA cOne, .op .add rTA rTA cOne, .const rK2 8, .op .add r8 r8 rK2])))
 
-/-- **The copy**: the 128 column words from tape word `X + 2` (`0` past the query). -/
-def copyIR : XIR :=
-  .seq (.blk [.const rK2 2, .op .add rTA rXq rK2, .const r8 8, .const rNw 128])
-    (.loopK rCw rNw 128 copyBody)
+/-- **The copy**: the `nw` column words from tape word `X + 2` (`0` past the query). -/
+def copyIR (nw : ℕ) : XIR :=
+  .seq (.blk [.const rK2 2, .op .add rTA rXq rK2, .const r8 8, .const rNw (toWord nw)])
+    (.loopK rCw rNw (toWord nw) copyBody)
 
-/-- **One position**: the cap entry, `sib` steps down, the leaf, the copy, `p += 1`. -/
-def posBody (sib : ℕ) : XIR :=
-  .seq (.seq (.blk (capPs sib)) ld4IR) (.seq (.blk [.const rOk 1, .const rNH (toWord sib)])
-    (.seq (.loopK rHc rNH (toWord sib) nodeBody) (.seq colIR (.seq copyIR
+/-- **One position** of level `i`: the cap entry (from tape word `cw`), `sib` steps down, the
+leaf, the copy of `nw` words, `p += 1`. -/
+def posBody (i cw nw sib : ℕ) : XIR :=
+  .seq (.seq (.blk (capPs cw sib)) ld4IR) (.seq (.blk [.const rOk 1, .const rNH (toWord sib)])
+    (.seq (.loopK rHc rNH (toWord sib) (nodeBody i)) (.seq (colIR i) (.seq (copyIR nw)
       (.blk [.op .add rPp rPp cOne])))))
 
-/-- **The ladder read of level 0**: positions `0 … np − 1`, `sib` node steps each. -/
-def readIR (sib np : ℕ) : XIR :=
-  .seq (.blk [.const rPp 0, .const rWA (toWord colBase), .const rNp (toWord np)])
-    (.loopK rCp rNp (toWord np) (posBody sib))
+/-- **The ladder read of level `i`**: positions `0 … np − 1`, `sib` node steps each, the first
+`nw` words of position `p`'s column stored at `sb + nw·p`. -/
+def readIR (i cw sb nw sib np : ℕ) : XIR :=
+  .seq (.blk [.const rPp 0, .const rWA (toWord sb), .const rNp (toWord np)])
+    (.loopK rCp rNp (toWord np) (posBody i cw nw sib))
 
-/-- The `P30` instance (level 0: `2^18` positions, `9` node steps under a cap of `2^9`). -/
-def read0 : XIR := readIR 9 (2 ^ 18)
+/-- The `P30` instance of level 0: `2^18` positions, `9` node steps under a cap of `2^9`, 128
+words a column at `colBase`. -/
+def read0 : XIR := readIR 0 capW0 colBase 128 9 (2 ^ 18)
 
 /-! ## Well formed, cost, size -/
 
@@ -358,7 +373,7 @@ theorem lookIR_nw {r : ℕ} (h : 117 ≤ r) : ¬ Writes lookIR r := by
     rX, rPa, rKa, rG, rH, rF, cTmp]
   omega
 
-theorem wf_readIR (sib np : ℕ) : WF (readIR sib np) := by
+theorem wf_readIR (i cw sb nw sib np : ℕ) : WF (readIR i cw sb nw sib np) := by
   have h1 := wf_lookIR
   have h2 : ¬ Writes lookIR 130 := lookIR_nw (by omega)
   have h3 : ¬ Writes lookIR 119 := lookIR_nw (by omega)
@@ -367,11 +382,11 @@ theorem wf_readIR (sib np : ℕ) : WF (readIR sib np) := by
     rCw, rNw, rCp, rNp, rV2, rK2, rQe, rAd2, rQ0, rQ1, rQ2, rQ3, cTmp, regs, h1, h2, h3]
 
 /-- No tape-length loop: the read's loops are all `loopK`. -/
-theorem noLoopT_readIR (sib np : ℕ) : NoLoopT (readIR sib np) := by
+theorem noLoopT_readIR (i cw sb nw sib np : ℕ) : NoLoopT (readIR i cw sb nw sib np) := by
   simp [readIR, posBody, ld4IR, getIR, nodeBody, colIR, copyBody, copyIR, lookIR, bsBody, ansLtIR,
     cmpTWord, eqTWord, foundIR, aposIR, readAt, NoLoopT]
 
-theorem outs_readIR (sib np t : ℕ) : outs (readIR sib np) t = 0 := by
+theorem outs_readIR (i cw sb nw sib np t : ℕ) : outs (readIR i cw sb nw sib np) t = 0 := by
   simp [readIR, posBody, ld4IR, getIR, nodeBody, colIR, copyBody, copyIR, lookIR, bsBody, ansLtIR,
     cmpTWord, eqTWord, foundIR, aposIR, readAt, outs]
 
@@ -386,7 +401,7 @@ copy. -/
 theorem cost_read0 (t : ℕ) : cost read0 t = 18001952782 := by
   have a1 : (toWord (2 ^ 18)).toNat = 2 ^ 18 := toNat_toWord (by norm_num)
   have a2 : (toWord 9).toNat = 9 := toNat_toWord (by norm_num)
-  have a3 : (128 : Word).toNat = 128 := rfl
+  have a3 : (toWord 128).toNat = 128 := toNat_toWord (by norm_num)
   simp only [read0, readIR, posBody, ld4IR, capPs, getIR, nodeChkPs, childPs, nodeBody, colChkPs,
     colIR, copyBody, copyIR, cost, cost_lookIR, blkSteps, List.length_cons, List.length_nil, a1, a2,
     a3]
@@ -411,9 +426,9 @@ def decRead : XIR := .seq logIR read0
 
 /-- **The branch meets `DecOk`**: its cost is `2592 + ⌊t/5⌋ · 11871 + 18,001,952,783`. -/
 theorem decOk_decRead : DecOk decRead where
-  wf := ⟨wf_logIR, wf_readIR 9 (2 ^ 18)⟩
+  wf := ⟨wf_logIR, wf_readIR 0 capW0 colBase 128 9 (2 ^ 18)⟩
   safe := fun c π L hs _ ht => .seq (safe_logIR (tape_count_le c π L hs ht))
-    (safe_of_noLoopT (noLoopT_readIR 9 (2 ^ 18)))
+    (safe_of_noLoopT (noLoopT_readIR 0 capW0 colBase 128 9 (2 ^ 18)))
   cost := fun t => by
     simp only [decRead, cost, cost_logIR, cost_read0, decBudget, fuelBase, fuelPerWord]
     have h1 : t / 5 * 11871 ≤ 2380 * t := by omega

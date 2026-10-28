@@ -1677,3 +1677,236 @@ hypotheses:
 - every `FRX*` module and `FRVIRChain` build;
 - no `sorry`;
 - the source rule is clean.
+
+---
+
+## Part 15: the interpolation finished (`baryIR_sem`, level 0's layout); the read made per-level (levels 1–4)
+
+**Delivered.**
+- **Item 1 is complete.** It covers the target body, the target loop and the end-to-end
+  `baryIR_sem`, with `out[c][s] = interpF D J y_c s`. Level 0's concrete layout is instantiated
+  (`bary0_interp`).
+- **Item 2 is started.** The first sub-step is done: the ladder read is generic in the level, and
+  levels 1–4 have their `P30` instances, specs and costs. Three groups of statements are unchanged
+  and re-check:
+  - level 0's `read_spec`, `read_spec_F` and `cost_read0`;
+  - `decOk_decLN2` and `computes`;
+  - `E_leaf`.
+- **Not started:** the folds, `Enc`, the flags, the per-level decode, the `decodeWit` output, the
+  `'N'` case and the wiring (§7).
+
+### 1. Files (code lines by the core's `scripts/loc.py`)
+
+| File | total / code / theorems | What |
+|---|---|---|
+| `FRXBaryTop` (new) | 558 / 479 / 15 | `eqz_or` (the `[ℓ = 0]` flag on words); `wf_sBody`; **`sBody_sem`**; `BaryLay`, `cell_ne`, `sValM`, **`sLoop_sem`**; **`baryIR_sem`**, **`baryIR_interp`**; level 0's layout (`tb0 … ob0`, `bary0`, `lay0`, **`bary0_interp`**) |
+| `FRXReadDefs` | 494 / 327 / 40 (was 479) | The program is parametric: `readIR i cw sb nw sib np` (level byte `i`, cap word `cw`, store base `sb`, `nw` words a column). Supporting changes: `tagNWl i`, `tagCWl i`, and `nodeChk_iff`/`colChk_iff`/`parseNode_eq_*` at level `i`. **`read0 := readIR 0 capW0 colBase 128 9 (2^18)`**, so `cost_read0` and `sizeIR_read0` are unchanged. |
+| `FRXRead` | 1,351 / 1,139 / 71 (was 1,328) | Every lemma from `capLd_sem` to `readIR_sem` is generalised the same way. The cap is abstract: a function `cap` with the tape fact `hcap`. Level 0's `read_spec` is instantiated from it. |
+| `FRXReadLv` (new) | 183 / 108 / 17 | Levels 1–4: `capOffL`, `capLogL`, `logNL`, `sibL`, `capPiL`, `capWL`, `stB`, `readLv`; `tape_capL`; **`readLv_spec`**, **`readLv_spec_F`**; `cost_readIR` (general), `cost_readLv`; controls |
+
+### 2. What is proved
+
+**One target** (`sBody_sem`). Take a state with `bS = s₀`, `s₀ < k`, `s₀ < 2^20`. On a layout with
+its stated disjointness, the result holds for every `c < C`:
+
+```lean
+rdF (semXIR I (sBody k C jb djb wb eb cb cs ob tb) s).M (ob + 2 * k * c + 2 * s0) =
+  if ∏ t ∈ range k, (D s0 + rdF s.M (djb + 2 * t)) = 0 then rdF s.M (cb + cs * s0 + 2 * c)
+  else (∏ t ∈ range k, (D s0 + rdF s.M (djb + 2 * t))) *
+    ∑ t ∈ range k, rdF s.M (cb + cs * x t + 2 * c) *
+      (rdF s.M (wb + 2 * t) * (D s0 + rdF s.M (djb + 2 * t))⁻¹)
+```
+
+It also gives:
+- `bS := s₀ + 1`;
+- the heap outside the `E` row and the `C` output cells of `s₀` is kept.
+
+The proof composes `alphaD_sem` (giving `D(s₀)`), the copy into `fDs`, `eLoop_sem`, the flag
+block and `cLoop_sem`. The flag block rests on `eqz_or`:
+`XOp.eq.eval (a ||| b) 0 = bW (decide (⟨wB a, wB b⟩ = 0))`.
+
+**The layout** `BaryLay k C jb djb wb eb cb ob tb` is a linear order. From bottom to top:
+1. the basis table's row 0;
+2. `J`;
+3. `DJ`, `W` and `E`;
+4. the output rows (`2kC`);
+5. the column store.
+
+With this order every disjointness obligation is `omega`. Output cells of distinct targets are
+distinct (`cell_ne`: `kc + s` is injective for `s < k`).
+
+**The target loop** (`sLoop_sem`). Its invariant:
+- `bS = j`;
+- the cells of the targets `< j` hold `sValM`;
+- the heap outside `E` and the output rows is kept.
+
+**The program** (`baryIR_sem`). On `BaryLay`, with `k ≤ 2^20`, `J` at `jb` (entries below `2^20`)
+and the basis table's row 0 at `tb`:
+
+```lean
+∀ s0 < k, ∀ c < C, rdF (semXIR I (baryIR k C jb djb wb eb cb cs ob tb) s).M
+    (ob + 2 * k * c + 2 * s0) = baryVal Jl k s0 (fun j => rdF s.M (cb + cs * j + 2 * c))
+```
+
+Two further facts hold:
+- the heap outside `[djb, eb + 2k) ∪ [ob, ob + 2kC)` is kept;
+- `Inv` holds.
+
+`baryIR_interp` composes this with `baryVal_eq`. For `k = |Jl|`, `Jl` without repeats, the result
+is `interpF D Jl.toFinset y_c s0`.
+
+**Level 0** (`bary0_interp`, `bary0 = baryIR (2^17) 64 jb0 djb0 wb0 eb0 colBase 128 ob0 tb0`). The
+bases are:
+- `tb0 = 2^20`, `jb0 = 2^21`;
+- `djb0 = 2^22`, `wb0 = 2^22 + 2^19`, `eb0 = 2^22 + 2^20`;
+- `ob0 = 2^24`, so row `c` is at `2^24 + 2^18 c`.
+
+The column store is the read's (`colBase = 2^25`, 128 words a column). The interpolation keeps
+the heap below `2^22`, the heap in `[eb0 + 2^18, 2^24)` and the heap from `2^25` on. That
+includes the chain's answers (`[2^23, 2^23 + 6,144)`) and the log index (`memX`).
+
+**The per-level read** (`FRXRead`, generalised in place). `posBody`, `posLoop` and `readIR_sem`
+take an abstract cap `cap : ℕ → Digest` with `ncap` entries, through the tape fact
+
+```lean
+hcap : ∀ e < ncap, ∀ m < 4, (tp c π L).getD (cw + 4 * e + m) 0 = (packBytes (cap e).toList).getD m 0
+```
+
+They also take a store `sb + nw·np ≤ memX`. `readIR_sem` stores, at `sb + nw q + w`, word `w` of
+`colL (frEnc i) L (cap (q / 2^sib)) sib q`. Level 0's `read_spec` is the instance `cap = capPi π`
+(`tape_cap`). Levels 1–4 (`readLv_spec`, `readLv i = readIR i (capWL i) stB 32 (sibL i)
+(2^(logNL i))`) are the instances `cap = capPiL i π`:
+
+```lean
+theorem readLv_spec_F … {i : ℕ} (hi1 : 1 ≤ i) (hi : i ≤ 4) {q r : ℕ} (hq : q < 2 ^ logNL i) (hr : r < 16) :
+    rdF (semXIR (tp c π L) (readLv i) s).M (stB + 32 * q + 2 * r) =
+      ((colL (frEnc i) L (capPiL i π (q / 2 ^ sibL i)) (sibL i) q).map
+        fun col => F.ofBytes (bytesAt col (16 * r) 16)).getD 0
+```
+
+This is S-G's `wordOf κ L es i r q` with the cap entries read from π. The link
+`capDig es i e = capPiL i π e` is Q2's chain link at the C phases (`capOffL_fsMsgs`).
+- The 3.12 padding (48 zero bytes) is never copied: the read copies only the first 32 words of the
+  304-byte column, which are the 16 `F` elements.
+- The column parser still checks only `7 < |q|` and the tag.
+
+### 3. Costs (exact), against the budget
+
+| Program | Cost | Note |
+|---|---|---|
+| `readIR i cw sb nw sib np` | `14 + np (6,576 + 6,544 sib + 25 nw)` (`cost_readIR`) | level 0 (`np = 2^18`, `sib = 9`, `nw = 128`): `18,001,952,782`, `cost_read0` unchanged |
+| `readLv 1 … 4` | 3,914,334,222; 764,149,774; 137,429,006; 27,656,206 (`cost_readLv`) | `≈ 2^32.17` in all |
+| `bary0` | `8,147 · 2^34 + …` (Part 14) | `≈ 2^46.99`, unchanged |
+
+- The four reads are `loopK` only, so the linear term is unchanged: `≈ 2,558·t` of `8,176·t`.
+- The constant term has `≈ 2^46.0` left after level 0's interpolation (Part 14). It is `≈ 2^45.99`
+  after the reads.
+- Estimates for the rest of item 2. These are op counts, not yet `cost_*` lemmas:
+  - folds, `≈ 2^31` (level 0: `2^18` positions × 64 rows × one `K × F` product);
+  - `Enc` by the forward butterfly per coset, `≈ 2^32`;
+  - the per-level interpolations and butterflies, `≈ 2^31`;
+  - the scans, `≈ 2^23`.
+
+  They total `≈ 2^33.5`, far inside the margin.
+
+### 4. Controls
+
+| Control | Kind | Shows |
+|---|---|---|
+| `nodeStepP_lv1` (`decide +kernel`) | positive / negative | A level-1 node query is a level-1 step. `toyN`'s level-0 query reads `none` at level 1: the level byte is checked at every level. |
+| `nodeStepP_toy`, `nodeStepP_toy_none`, `colWord_toy*` | positive / negative | level 0, re-checked against the generalised program |
+| `tagNWl_one_ne` | negative | the level-1 tag words differ from level 0's |
+| `capOffL_fsMsgs` (`decide +kernel`) | value | `fsMsgs` at FS positions 359, 398, 425, 449 (`capPos 1 … 4`) absorbs π's `(capOffL i, 32·2^(capLogL i))` |
+| `capOffL_ctl` | value | the offsets and `sibL = 9, 8, 6, 4, 3`; `capPiL 0 = capPi` |
+| `eqz_or` | value | the flag word is `[ℓ = 0]` on both words of the `F` pair |
+| `baryIR_sem`, `sLoop_sem`, `sBody_sem`, `readLv_spec` | universal | for every state meeting the layout hypotheses |
+
+### 5. Checks
+
+- **Axioms** (`logs/S-H2/axioms15.log`).
+  - These depend on `propext, Classical.choice, Quot.sound`: `computes`, `E_leaf`, `read_spec`,
+    `read_spec_F`, `readIR_sem`, `readLv_spec`, `readLv_spec_F`, `cost_readLv`, `sBody_sem`,
+    `sLoop_sem`, `baryIR_sem`, `baryIR_interp`, `bary0_interp`, `decOk_decLN2`.
+  - `eqz_or` and `nodeStepP_toy_none` depend on `propext, Quot.sound`. `capOffL_fsMsgs` depends on
+    `propext`.
+- **Source rule**: 109 files, 0 findings. No `sorry`.
+- **Build**: green.
+  - `lake build FRXReadLv FRXBaryTop FRXDec FRXExt FRXSpec FRXLeaf FRXAgree FRVIRChain` takes
+    1 min 14 s (`logs/S-H2/build15.log`).
+  - The rebuild from `FRXRead` down takes 1 min 54 s (`build15c.log`).
+  - The final build is `build15e.log`.
+- **Sequential profile** (`taskset -c 0`, `-DElab.async=false`;
+  `logs/S-H2/FRX{BaryTop,ReadLv,Read}.{profile,time}`):
+
+  | Module | wall | max RSS | type checking | tactics |
+  |---|---|---|---|---|
+  | `FRXBaryTop` | 28.9 s | 2.77 GB | 5.28 s | 11.2 s |
+  | `FRXReadLv` | 8.5 s | 2.67 GB | 1.42 s | 0.37 s |
+  | `FRXRead` (generalised) | 53.1 s | 2.81 GB | 5.42 s | 30.5 s |
+
+  `FRXRead` took 53.1 s sequentially before the change (Part 9), so the generalisation costs
+  nothing.
+
+### 6. Deviations
+
+1. **The read is generalised in place.** The alternative was a copy for levels 1–4.
+   - `read0` is now an instance, and every downstream statement (`read_spec`, `cost_read0`,
+     `decOk`) is unchanged.
+   - The level-0 constants (`capW0`, `colBase`, 128, the tags) became parameters, and the cap
+     became an abstract `cap` with its tape fact.
+2. **The levels 1–4 store is `stB = 2^24`**, which is level 0's output-row region.
+   - That region is free until level 0's interpolation, which runs last (bottom-up).
+   - Level 1 needs `2^21` words.
+3. **`BaryLay` is a linear order** rather than pairwise disjointness. Level 0's layout satisfies
+   it (`lay0`), and so will the levels' layouts.
+4. The frames of `sLoop_sem` and `baryIR_sem` are stated precisely, as `[djb, eb + 2k) ∪ [ob,
+   ob + 2kC)`, not as one interval, so that the chain's answers between `E` and the output rows
+   are visibly kept.
+
+### 7. What remains (in order; the next agent's list)
+
+1. **Item 2, continued** (bottom-up `i = 4, 3, 2, 1`, then level 0).
+   - **The challenges.** `sAt es i l = kAt es (phStart (26 + 5i) + 2l + 1)`. The FS positions of
+     P1.i are `347, 390, 417, 441, 463` (S-0's `pos-3.12.txt`), with `ℓ = 6` at level 0 and 4 at
+     levels 1–4.
+     - On the machine the answer words sit at `ansB + 4p` (`chain_dec`).
+     - A lemma `rdK M (ansB + 4p) = chK a` from `packBytes a` is needed.
+     - `final` supplies `fmAns … p = some (ansAt es p)` (Q2 of Part 13).
+   - **The eq table.** `eqBits (sAt es i) ℓ r` for `r < 2^ℓ` in `K`, by doubling. Check `eqBits`'
+     bit order in `FRSoundnessWeights` first.
+   - **The fold.** `foldAt κ L es i j = Σ_r eqBits(s, ℓ, r) · W⁽ⁱ⁾[r][j]` is one `K × F` product
+     per row (two `mulF`). `W⁽ⁱ⁾[r][j]` is at `stB + 32j + 2r` (`readLv_spec_F`), or at
+     `colBase + 128j + 2r` at level 0.
+   - **`Enc`.** `encAt κ i m j = encF (mLog κ i) m j`, the novel basis on `D`. Compute it by the
+     forward butterfly per coset of size `kᵢ` (the inverse of `bflyIR`'s levels) on the two
+     `F` coordinates of `K`, and prove it against `encF`.
+   - **The message.** At level 4 it is `finalAt es x` (π's final field, 67,376, `2^7 · 32` B).
+     Otherwise it is `nextMsg`'s reshape of level `i + 1`'s decoded rows: K element `x` from rows
+     `2(x mod 8)`, `2(x mod 8) + 1`, column `x div 8`.
+   - **The flags.** `fb[j] := [fold(j) = Enc(j)]`, then `scanIR nᵢ kᵢ fb jb`. `firstK_scan` gives
+     the first `kᵢ` positions of `consSet`, which `final` makes `jointAgree` (`A_c = jointAgree`).
+   - **The decode.** `baryIR kᵢ 16 …` (`C = 16`: the 16 `F` rows) on a `BaryLay` for level `i`.
+     Then `bflyIR (mLog i)` per row gives `coeffsOfValuesD`, so the rows are `msgOf κ L es i r`.
+   - Proposed memory:
+     - the tables at `tb0`/`jb0`/`djb0`/`wb0`/`eb0`, reused with `kᵢ`;
+     - the output rows at `2^22 + 2^21`;
+     - the flags at `2^21 + 2^18`;
+     - the current message at `2^23 + 2^16` (`2^19` words), above the chain's `chEnd`.
+   - **Level 0 last.** Fold with `ℓ = 6`, `Enc₀(f⁽¹⁾)` on `2` cosets of `2^17`, then `scanIR 2^18
+     2^17`, `bary0` (`bary0_interp`), and `bflyIR 17` on the 64 rows (`bflyIR_decode`).
+2. **The `decodeWit` output** (§1.4, A.5, A.7), from `f⁽⁰⁾`'s rows.
+3. **The `'N'` case of `ext_good_tape`.** Its hypotheses:
+   - `vkOf π = vk`;
+   - `¬ farL`, `truthC` and `consSet = jointAgree` at every level;
+   - the chain link at positions `< nRep`, which also gives `capDig es i e = capPiL i π e` at
+     `capPos i`;
+   - `¬ StateHit L`.
+4. **The wiring into `decSnark`**, re-checking `decOk`/`computes`.
+   - Every new program is `loopK`-only, with exact costs.
+   - Each still needs `WF`/`NoLoopT`/`outs` lemmas; the reads and `baryIR` have them.
+
+**Stopped here.** The cause is context length. The state is commit-ready:
+- every `FRX*` module builds, and `FRVIRChain` builds;
+- no `sorry`;
+- the source rule is clean;
+- `ext`, `computes` and the costs on `ext`'s path are unchanged.

@@ -270,3 +270,36 @@ Base: branch `v4/flock-recursive`, HEAD `53c2e13`. Build tree `logs/fr-build-SH2
       `capW0_eq`/`tape_cap` (2,795/2,790) and `chTab` 1,888. `FRVIRChain` builds.
     - Profiles: `FRXBary` takes 91 s sequential; the others are under 14 s.
     - Stopped before `sBody_sem` (context long); handover in RESULT Part 14 §8.
+
+## Part 15
+
+28. The interpolation finished; the read made per-level.
+    - `FRXBaryTop`: `sBody_sem` compiled almost first time by composing the delivered loop lemmas,
+      generalising each intermediate state (`generalize … at … ⊢`). Then `sLoop_sem` (invariant
+      over targets, `cell_ne` for output-cell injectivity), `baryIR_sem`, `baryIR_interp`, and
+      level 0's layout (`bary0_interp`).
+    - `FRXReadDefs`/`FRXRead`: the read is generalised in place. The parameters are the level
+      byte, the cap word, the store base and the column words, and the cap is abstract (`cap`,
+      `hcap`). `read0` is an instance, so the level-0 statements and costs are unchanged.
+      `FRXReadLv` holds the levels 1–4 instances and costs.
+    - Pitfalls met:
+      - A `simp` discharger `(simp only [size_set]; exact …)` fails when there is no `size_set`
+        to rewrite ("no progress"), and `rd_set_self` then silently stays unapplied. Use
+        `((try simp only [size_set]); exact …)`.
+      - **A structure field named like a parameter** (`tb : regs ≤ tb`) shadows the parameter in
+        later fields. Name fields differently (`rt`, `tj`, …).
+      - `split_ifs` did not split an `ite` on the right whose `Decidable` instance came from
+        `simp only [baryVal, …]` unfolding (the instance's type mismatched under `implicit`
+        transparency). Use `rw [sValM, baryVal]`, then `by_cases h0` and `if_pos h0`/`if_neg h0`
+        on both sides.
+      - `rw [eAt]` fails under a `Finset.sum` binder. Rewrite inside `sum_congr`'s per-term goal.
+      - With a parametric stride `nw`, `omega` treats `nw * (j + 1)` and `nw * j` as unrelated
+        atoms. Supply `Nat.mul_succ` and `Nat.mul_le_mul_left` facts.
+      - `(by simp only [regs]; omega)` fails when the fact needed is a hypothesis `regs ≤ sb` (simp
+        only rewrites the goal). Plain `omega` works with `regs` as an atom.
+      - When a section variable `{i}` is used only in a proof term, `inv_sem I wf_nodeBody`
+        cannot infer it. Write `(wf_nodeBody (i := i))`. A `def` (`WalkSt`) gets an explicit
+        `(i : ℕ)`.
+    - Profiles (sequential): FRXBaryTop 28.9 s, FRXReadLv 8.5 s, FRXRead 53.1 s (unchanged).
+    - Stopped: context long. Handover in RESULT Part 15 §7 (folds, `Enc`, flags, per-level decode,
+      output, `'N'` case, wiring).

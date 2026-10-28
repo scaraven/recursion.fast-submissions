@@ -248,19 +248,21 @@ theorem ld4_sem (I : Array Word) (s : St) (hM : Inv s.M) {a : ℕ} (ha : a + 3 <
     toNat_toWord (by omega), toNat_toWord (by omega), toNat_toWord (by omega)]
 
 /-- **The cap entry's words**: after `capPs sib ; ld4IR`, `rQ0 … rQ3` hold `capPi π (p / 2^sib)`. -/
-theorem capLd_sem {c : Digest} {π : Proof} {L : Log} (hD : Dom c π L) (s : St) (hM : Inv s.M)
-    {sib p : ℕ} (hsib : sib < 64) (hp : p < 2 ^ 62) (he : p / 2 ^ sib < 512)
+theorem capLd_sem {c : Digest} {π : Proof} {L : Log} (s : St) (hM : Inv s.M)
+    {cw ncap : ℕ} {cap : ℕ → Digest} (hcw : cw + 4 * ncap < 2 ^ 62)
+    (hcap : ∀ e < ncap, ∀ m < 4, (tp c π L).getD (cw + 4 * e + m) 0 = (packBytes (cap e).toList).getD m 0)
+    {sib p : ℕ} (hsib : sib < 64) (hp : p < 2 ^ 62) (he : p / 2 ^ sib < ncap)
     (hP : rd s.M rPp = toWord p) :
-    [rd (semXIR (tp c π L) (.seq (.blk (capPs sib)) ld4IR) s).M rQ0,
-      rd (semXIR (tp c π L) (.seq (.blk (capPs sib)) ld4IR) s).M rQ1,
-      rd (semXIR (tp c π L) (.seq (.blk (capPs sib)) ld4IR) s).M rQ2,
-      rd (semXIR (tp c π L) (.seq (.blk (capPs sib)) ld4IR) s).M rQ3] =
-      packBytes (capPi π (p / 2 ^ sib)).toList := by
+    [rd (semXIR (tp c π L) (.seq (.blk (capPs cw sib)) ld4IR) s).M rQ0,
+      rd (semXIR (tp c π L) (.seq (.blk (capPs cw sib)) ld4IR) s).M rQ1,
+      rd (semXIR (tp c π L) (.seq (.blk (capPs cw sib)) ld4IR) s).M rQ2,
+      rd (semXIR (tp c π L) (.seq (.blk (capPs cw sib)) ld4IR) s).M rQ3] =
+      packBytes (cap (p / 2 ^ sib)).toList := by
   have hs := hM.1
   simp only [regs] at hs
-  have hw : WF (.blk (capPs sib)) := by simp [capPs, WF, Prim.dst, rK2, rB, rTA]
-  have hA : rd (semXIR (tp c π L) (.blk (capPs sib)) s).M rTA =
-      toWord (capW0 + 4 * (p / 2 ^ sib)) := by
+  have hw : WF (.blk (capPs cw sib)) := by simp [capPs, WF, Prim.dst, rK2, rB, rTA]
+  have hA : rd (semXIR (tp c π L) (.blk (capPs cw sib)) s).M rTA =
+      toWord (cw + 4 * (p / 2 ^ sib)) := by
     simp only [capPs, semXIR, runPrims, List.foldl, Prim.run]
     simp (disch := first | decide | (simp only [size_set, rK2, rB, rTA]; omega)) only
       [rd_set_self, rd_set_ne]
@@ -268,12 +270,9 @@ theorem capLd_sem {c : Digest} {π : Proof} {L : Log} (hD : Dom c π L) (s : St)
     rw [hP, shr_toWord (by omega) hsib, show (2 : Word) = toWord 2 from rfl,
       shl_toWord (by omega) (by omega), add_toWord]
     congr 1; omega
-  rw [semXIR_seq, ld4_sem _ _ (inv_sem _ hw hM) (by rw [capW0_eq]; omega) hA,
-    packBytes_digest_eq4]
-  simp only [tp, getD_toArray]
-  rw [← tape_cap c π L hD.hs he (show 0 < 4 by decide), ← tape_cap c π L hD.hs he
-    (show 1 < 4 by decide), ← tape_cap c π L hD.hs he (show 2 < 4 by decide),
-    ← tape_cap c π L hD.hs he (show 3 < 4 by decide)]
+  rw [semXIR_seq, ld4_sem _ _ (inv_sem _ hw hM) (by omega) hA, packBytes_digest_eq4,
+    ← hcap _ he 0 (by decide), ← hcap _ he 1 (by decide), ← hcap _ he 2 (by decide),
+    ← hcap _ he 3 (by decide)]
   simp only [Nat.add_zero]
 
 theorem wf_getIR : WF getIR := by simp [getIR, WF, Prim.dst, rK2, rAd2, rXq, rQn, rTA, rV2]
@@ -300,9 +299,9 @@ theorem getIR_sem (I : Array Word) (s : St) (hM : Inv s.M) {b x : ℕ} (hb : b <
   · rw [h1, add_one_toWord, toNat_toWord (by omega)]
 
 /-- The node test `nodeChkPs`. -/
-theorem nodeChk_sem (I : Array Word) (s : St) (hM : Inv s.M) :
-    rd (semXIR I (.blk nodeChkPs) s).M rB =
-      bW (decide (rd s.M rQn = toWord 72) && decide (rd s.M rV2 = tagNW)) := by
+theorem nodeChk_sem (I : Array Word) (i : ℕ) (s : St) (hM : Inv s.M) :
+    rd (semXIR I (.blk (nodeChkPs i)) s).M rB =
+      bW (decide (rd s.M rQn = toWord 72) && decide (rd s.M rV2 = tagNWl i)) := by
   have hs := hM.1
   simp only [regs] at hs
   simp only [nodeChkPs, semXIR, runPrims, List.foldl, Prim.run]
@@ -314,9 +313,9 @@ theorem ltu_bW (a b : Word) : XOp.ltu.eval a b = bW (decide (a < b)) := by
   by_cases h : a < b <;> simp [XOp.eval, bW, h]
 
 /-- The column test `colChkPs`. -/
-theorem colChk_sem (I : Array Word) (s : St) (hM : Inv s.M) :
-    rd (semXIR I (.blk colChkPs) s).M rB =
-      bW (decide ((7 : Word) < rd s.M rQn) && decide (rd s.M rV2 = tagCW)) := by
+theorem colChk_sem (I : Array Word) (i : ℕ) (s : St) (hM : Inv s.M) :
+    rd (semXIR I (.blk (colChkPs i)) s).M rB =
+      bW (decide ((7 : Word) < rd s.M rQn) && decide (rd s.M rV2 = tagCWl i)) := by
   have hs := hM.1
   simp only [regs] at hs
   simp only [colChkPs, semXIR, runPrims, List.foldl, Prim.run]
@@ -347,19 +346,19 @@ theorem child_sem (I : Array Word) (s : St) (hM : Inv s.M) {x p h : ℕ} (hp : p
 
 /-- **One step of `colL`** at height `h + 1`: the first preimage of `d`, parsed as a node query of
 level 0, gives the child picked by bit `h` of `p`. -/
-def nodeStepP (L : Log) (p h : ℕ) (d : Digest) : Option Digest :=
-  (pre L d).bind fun e => (parseNode 0 e.1).map fun ab => if p.testBit h then ab.2 else ab.1
+def nodeStepP (i : ℕ) (L : Log) (p h : ℕ) (d : Digest) : Option Digest :=
+  (pre L d).bind fun e => (parseNode i e.1).map fun ab => if p.testBit h then ab.2 else ab.1
 
-theorem colL_succ (L : Log) (d : Digest) (h p : ℕ) :
-    colL (frEnc 0) L d (h + 1) p = (nodeStepP L p h d).bind fun d' => colL (frEnc 0) L d' h p := by
-  have e0 : (frEnc 0).parseNode = parseNode 0 := rfl
+theorem colL_succ (i : ℕ) (L : Log) (d : Digest) (h p : ℕ) :
+    colL (frEnc i) L d (h + 1) p = (nodeStepP i L p h d).bind fun d' => colL (frEnc i) L d' h p := by
+  have e0 : (frEnc i).parseNode = parseNode i := rfl
   simp only [colL, nodeStepP, Option.bind_assoc, e0]
   congr 1; funext e
-  cases parseNode 0 e.1 <;> rfl
+  cases parseNode i e.1 <;> rfl
 
 section Node
 
-variable {c : Digest} {π : Proof} {L : Log}
+variable {c : Digest} {π : Proof} {L : Log} {i : ℕ}
 
 /-- The entry's length word on the tape. -/
 theorem tp_len (hD : Dom c π L) {k : ℕ} (hk : k < L.length) :
@@ -372,27 +371,27 @@ theorem tp_q (hD : Dom c π L) {k : ℕ} (hk : k < L.length) {j : ℕ}
     (tp c π L).getD (posE L k + 1 + j) 0 = (packBytes L[k].1.data.toList).getD j 0 := by
   rw [tp, getD_toArray]; exact tape_query c π L hD.hs hk hj
 
-/-- **The machine's node test is `parseNode 0`**. -/
+/-- **The machine's node test is `parseNode i`**. -/
 theorem nodeFlag (hD : Dom c π L) {k : ℕ} (hk : k < L.length) :
     (decide ((tp c π L).getD (posE L k) 0 = toWord 72) &&
-      decide ((tp c π L).getD (posE L k + 1) 0 = tagNW)) =
-      decide (L[k].1.data.toList.take 8 = tagNode 0 ∧ L[k].1.size = 72) := by
+      decide ((tp c π L).getD (posE L k + 1) 0 = tagNWl i)) =
+      decide (L[k].1.data.toList.take 8 = tagNode i ∧ L[k].1.size = 72) := by
   have hq := hD.hq _ (List.getElem_mem hk)
   rw [tp_len hD hk]
   by_cases h72 : L[k].1.size = 72
   · have h1 := tp_q hD hk (j := 0) (by omega)
     rw [Nat.add_zero] at h1
     rw [h1, ← Bool.decide_and]
-    exact decide_eq_decide.mpr (nodeChk_iff _ hq)
+    exact decide_eq_decide.mpr (nodeChk_iff _ i hq)
   · have hne : toWord L[k].1.size ≠ toWord 72 := fun e => h72 (by
       have := congrArg BitVec.toNat e; rwa [toNat_toWord hq, toNat_toWord (by norm_num)] at this)
     simp [hne, h72]
 
-/-- **The machine's column test is `parseCol 0`**. -/
+/-- **The machine's column test is `parseCol i`**. -/
 theorem colFlag (hD : Dom c π L) {k : ℕ} (hk : k < L.length) :
     (decide ((7 : Word) < (tp c π L).getD (posE L k) 0) &&
-      decide ((tp c π L).getD (posE L k + 1) 0 = tagCW)) =
-      decide (L[k].1.data.toList.take 8 = tagCol 0) := by
+      decide ((tp c π L).getD (posE L k + 1) 0 = tagCWl i)) =
+      decide (L[k].1.data.toList.take 8 = tagCol i) := by
   have hq := hD.hq _ (List.getElem_mem hk)
   rw [tp_len hD hk]
   by_cases h7 : (7 : Word) < toWord L[k].1.size
@@ -400,9 +399,9 @@ theorem colFlag (hD : Dom c π L) {k : ℕ} (hk : k < L.length) :
     have h1 := tp_q hD hk (j := 0) (by omega)
     rw [Nat.add_zero] at h1
     rw [h1, ← Bool.decide_and]
-    exact decide_eq_decide.mpr (colChk_iff _ hq)
-  · have : ¬ L[k].1.data.toList.take 8 = tagCol 0 := fun e =>
-      h7 ((colChk_iff _ hq).2 e).1
+    exact decide_eq_decide.mpr (colChk_iff _ i hq)
+  · have : ¬ L[k].1.data.toList.take 8 = tagCol i := fun e =>
+      h7 ((colChk_iff _ i hq).2 e).1
     rw [show decide ((7 : Word) < toWord L[k].1.size) = false from decide_eq_false h7,
       Bool.false_and, decide_eq_false this]
 
@@ -427,8 +426,8 @@ theorem child_words (hD : Dom c π L) {k : ℕ} (hk : k < L.length) (h72 : L[k].
   rw [← w 0 (by decide), ← w 1 (by decide), ← w 2 (by decide), ← w 3 (by decide)]
   simp only [Nat.add_zero]
 
-theorem wf_nodeChk : WF (.blk nodeChkPs) := by simp [nodeChkPs, WF, Prim.dst, rK2, rB, rMk]
-theorem wf_colChk : WF (.blk colChkPs) := by simp [colChkPs, WF, Prim.dst, rK2, rB, rMk]
+theorem wf_nodeChk {i : ℕ} : WF (.blk (nodeChkPs i)) := by simp [nodeChkPs, WF, Prim.dst, rK2, rB, rMk]
+theorem wf_colChk {i : ℕ} : WF (.blk (colChkPs i)) := by simp [colChkPs, WF, Prim.dst, rK2, rB, rMk]
 theorem wf_child : WF (.blk childPs) := by simp [childPs, WF, Prim.dst, rK2, rB, rTA]
 
 /-- **One machine step down the tree is `nodeStepP`**: from `rOk = 1` with the digest `d` in
@@ -439,11 +438,11 @@ theorem nodeBody_sem (hD : Dom c π L) {Xi : ℕ → Word} (hX : Sorted (tp c π
     (hh : h + 1 < 64) (hP : rd s.M rPp = toWord p) (hH : rd s.M rHc = toWord (h + 1))
     (hOk : rd s.M rOk = 1) {d : Digest}
     (hT : [rd s.M rQ0, rd s.M rQ1, rd s.M rQ2, rd s.M rQ3] = packBytes d.toList) :
-    (∀ d', nodeStepP L p h d = some d' → rd (semXIR (tp c π L) nodeBody s).M rOk = 1 ∧
-      [rd (semXIR (tp c π L) nodeBody s).M rQ0, rd (semXIR (tp c π L) nodeBody s).M rQ1,
-        rd (semXIR (tp c π L) nodeBody s).M rQ2, rd (semXIR (tp c π L) nodeBody s).M rQ3] =
+    (∀ d', nodeStepP i L p h d = some d' → rd (semXIR (tp c π L) (nodeBody i) s).M rOk = 1 ∧
+      [rd (semXIR (tp c π L) (nodeBody i) s).M rQ0, rd (semXIR (tp c π L) (nodeBody i) s).M rQ1,
+        rd (semXIR (tp c π L) (nodeBody i) s).M rQ2, rd (semXIR (tp c π L) (nodeBody i) s).M rQ3] =
         packBytes d'.toList) ∧
-    (nodeStepP L p h d = none → rd (semXIR (tp c π L) nodeBody s).M rOk = 0) := by
+    (nodeStepP i L p h d = none → rd (semXIR (tp c π L) (nodeBody i) s).M rOk = 0) := by
   set I := tp c π L with hI
   have hs := hM.1
   simp only [regs] at hs
@@ -458,7 +457,7 @@ theorem nodeBody_sem (hD : Dom c π L) {Xi : ℕ → Word} (hX : Sorted (tp c π
   rw [semXIR_ite]
   cases hk : FR.Snd.ansIdx L d with
   | none =>
-    have hn : nodeStepP L p h d = none := by simp [nodeStepP, pre_none hk]
+    have hn : nodeStepP i L p h d = none := by simp [nodeStepP, pre_none hk]
     rw [lk2 hk, if_pos rfl]
     refine ⟨fun d' h' => (by rw [hn] at h'; cases h'), fun _ => ?_⟩
     simp only [semXIR, runPrims, List.foldl, Prim.run]
@@ -478,23 +477,23 @@ theorem nodeBody_sem (hD : Dom c π L) {Xi : ℕ → Word} (hX : Sorted (tp c π
     have hM2 := inv_sem I wf_getIR lk4
     rw [semXIR_seq]
     generalize semXIR I getIR s1 = s2 at g1 g2 g3 fG hM2
-    have hB := nodeChk_sem I s2 hM2
+    have hB := nodeChk_sem I i s2 hM2
     rw [g2, g3, nodeFlag hD hkL] at hB
     have fC : ∀ r, r = rOk ∨ r = rPp ∨ r = rHc ∨ r = rXq →
-        rd (semXIR I (.blk nodeChkPs) s2).M r = rd s2.M r :=
-      fun r hr => frame I _ s2 wf_nodeChk hM2 r
+        rd (semXIR I (.blk (nodeChkPs i)) s2).M r = rd s2.M r :=
+      fun r hr => frame I _ s2 (wf_nodeChk (i := i)) hM2 r
         (by rcases hr with rfl | rfl | rfl | rfl <;> decide)
         (by rcases hr with rfl | rfl | rfl | rfl <;>
           simp [nodeChkPs, Writes, Prim.dst, rK2, rB, rMk, rOk, rPp, rHc, rXq])
-    have hM3 := inv_sem I wf_nodeChk hM2
+    have hM3 := inv_sem I (wf_nodeChk (i := i)) hM2
     rw [semXIR_seq]
-    generalize semXIR I (.blk nodeChkPs) s2 = s3 at hB fC hM3
+    generalize semXIR I (.blk (nodeChkPs i)) s2 = s3 at hB fC hM3
     have hs3 := hM3.1
     simp only [regs] at hs3
     rw [semXIR_ite, hB]
-    by_cases hC : L[k].1.data.toList.take 8 = tagNode 0 ∧ L[k].1.size = 72
+    by_cases hC : L[k].1.data.toList.take 8 = tagNode i ∧ L[k].1.size = 72
     · rw [decide_eq_true hC, if_neg bW_ne_zero]
-      have hsome : nodeStepP L p h d =
+      have hsome : nodeStepP i L p h d =
           some (if p.testBit h then bytesAt L[k].1 40 32 else bytesAt L[k].1 8 32) := by
         simp only [nodeStepP, hpre, Option.bind_some, parseNode_eq_some _ hC, Option.map_some]
       refine ⟨fun d' h' => ?_, fun h' => by rw [hsome] at h'; cases h'⟩
@@ -519,24 +518,24 @@ theorem nodeBody_sem (hD : Dom c π L) {Xi : ℕ → Word} (hX : Sorted (tp c π
       rw [ld4_sem I s4 hM4 (by omega) hA]
       exact child_words hD hkL hC.2 _
     · rw [decide_eq_false hC, if_pos bW_false]
-      have hnone : nodeStepP L p h d = none := by
+      have hnone : nodeStepP i L p h d = none := by
         simp only [nodeStepP, hpre, Option.bind_some, parseNode_eq_none _ hC, Option.map_none]
       refine ⟨fun d' h' => (by rw [hnone] at h'; cases h'), fun _ => ?_⟩
       simp only [semXIR, runPrims, List.foldl, Prim.run]
       exact rd_set_self (by simp only [rOk]; omega)
 
-theorem wf_nodeBody : WF nodeBody := by
+theorem wf_nodeBody : WF (nodeBody i) := by
   have := wf_lookIR
   simp [nodeBody, getIR, nodeChkPs, childPs, ld4IR, WF, Prim.dst, rK2, rAd2, rXq, rQn, rTA, rV2,
     rB, rMk, rOk, rQ0, rQ1, rQ2, rQ3, this]
 
-theorem loK_nodeBody : LoK nodeBody := by
+theorem loK_nodeBody : LoK (nodeBody i) := by
   have := loK_lookIR
   simp [nodeBody, getIR, nodeChkPs, childPs, ld4IR, LoK, Prim.dst, regs, rK2, rAd2, rXq, rQn, rTA,
     rV2, rB, rMk, rOk, rQ0, rQ1, rQ2, rQ3, this]
 
 /-- The registers the walk keeps across a node step. -/
-theorem nodeBody_nw {r : ℕ} (hr : r = rPp ∨ r = rWA ∨ r = rHc) : ¬ Writes nodeBody r := by
+theorem nodeBody_nw {r : ℕ} (hr : r = rPp ∨ r = rWA ∨ r = rHc) : ¬ Writes (nodeBody i) r := by
   have hl : ¬ Writes lookIR r := lookIR_nw (by rcases hr with rfl | rfl | rfl <;> decide)
   simp only [nodeBody, Writes, not_or]
   refine ⟨⟨hl, ?_⟩, ?_⟩ <;>
@@ -547,21 +546,21 @@ theorem nodeBody_nw {r : ℕ} (hr : r = rPp ∨ r = rWA ∨ r = rHc) : ¬ Writes
 /-- **The walk's state at height `h`**: either every entry so far was found and `rQ0 … rQ3` hold a
 digest `d` whose reading at height `h` is the reading under `d₀` at height `sib`, or an entry
 was missing and the reading under `d₀` is `none`. -/
-def WalkSt (L : Log) (d0 : Digest) (sib p h : ℕ) (M : Mem) : Prop :=
+def WalkSt (i : ℕ) (L : Log) (d0 : Digest) (sib p h : ℕ) (M : Mem) : Prop :=
   (rd M rOk = 1 ∧ ∃ d : Digest, [rd M rQ0, rd M rQ1, rd M rQ2, rd M rQ3] = packBytes d.toList ∧
-    colL (frEnc 0) L d0 sib p = colL (frEnc 0) L d h p) ∨
-  (rd M rOk = 0 ∧ colL (frEnc 0) L d0 sib p = none)
+    colL (frEnc i) L d0 sib p = colL (frEnc i) L d h p) ∨
+  (rd M rOk = 0 ∧ colL (frEnc i) L d0 sib p = none)
 
 /-- **One node step keeps the walk's state**, one level down. -/
 theorem nodeWalk (hD : Dom c π L) {Xi : ℕ → Word} (hX : Sorted (tp c π L) L Xi) (s : St)
     (hM : Inv s.M) (hXs : ∀ a < L.length, rd s.M (memX + a) = Xi a) {d0 : Digest} {sib p h : ℕ}
     (hp : p < 2 ^ 62) (hh : h + 1 < 64) (hP : rd s.M rPp = toWord p)
-    (hH : rd s.M rHc = toWord (h + 1)) (hW : WalkSt L d0 sib p (h + 1) s.M) :
-    WalkSt L d0 sib p h (semXIR (tp c π L) nodeBody s).M := by
+    (hH : rd s.M rHc = toWord (h + 1)) (hW : WalkSt i L d0 sib p (h + 1) s.M) :
+    WalkSt i L d0 sib p h (semXIR (tp c π L) (nodeBody i) s).M := by
   rcases hW with ⟨hOk, d, hT, hc⟩ | ⟨hOk, hc⟩
   · obtain ⟨n1, n2⟩ := nodeBody_sem hD hX s hM hXs hp hh hP hH hOk hT
     rw [colL_succ] at hc
-    cases hn : nodeStepP L p h d with
+    cases hn : nodeStepP i L p h d with
     | none =>
       rw [hn] at hc
       exact .inr ⟨n2 hn, hc⟩
@@ -569,7 +568,7 @@ theorem nodeWalk (hD : Dom c π L) {Xi : ℕ → Word} (hX : Sorted (tp c π L) 
       rw [hn] at hc
       obtain ⟨o1, o2⟩ := n1 d' hn
       exact .inl ⟨o1, d', o2, hc⟩
-  · have e : semXIR (tp c π L) nodeBody s = s := by
+  · have e : semXIR (tp c π L) (nodeBody i) s = s := by
       rw [nodeBody, semXIR_ite, hOk, if_pos rfl]; rfl
     rw [e]; exact .inr ⟨hOk, hc⟩
 
@@ -578,32 +577,32 @@ theorem nodeWalk (hD : Dom c π L) {Xi : ℕ → Word} (hX : Sorted (tp c π L) 
 theorem nodeLoop (hD : Dom c π L) {Xi : ℕ → Word} (hX : Sorted (tp c π L) L Xi) {d0 : Digest}
     {sib p : ℕ} (hp : p < 2 ^ 62) :
     ∀ (m : ℕ) (s : St), m < 64 → Inv s.M → (∀ a < L.length, rd s.M (memX + a) = Xi a) →
-      rd s.M rPp = toWord p → rd s.M rHc = toWord m → WalkSt L d0 sib p m s.M →
-      WalkSt L d0 sib p 0 (iterL (semXIR (tp c π L) nodeBody) rHc m s).M ∧
-      Inv (iterL (semXIR (tp c π L) nodeBody) rHc m s).M ∧
-      (∀ x, regs ≤ x → rd (iterL (semXIR (tp c π L) nodeBody) rHc m s).M x = rd s.M x) ∧
-      rd (iterL (semXIR (tp c π L) nodeBody) rHc m s).M rPp = rd s.M rPp ∧
-      rd (iterL (semXIR (tp c π L) nodeBody) rHc m s).M rWA = rd s.M rWA
+      rd s.M rPp = toWord p → rd s.M rHc = toWord m → WalkSt i L d0 sib p m s.M →
+      WalkSt i L d0 sib p 0 (iterL (semXIR (tp c π L) (nodeBody i)) rHc m s).M ∧
+      Inv (iterL (semXIR (tp c π L) (nodeBody i)) rHc m s).M ∧
+      (∀ x, regs ≤ x → rd (iterL (semXIR (tp c π L) (nodeBody i)) rHc m s).M x = rd s.M x) ∧
+      rd (iterL (semXIR (tp c π L) (nodeBody i)) rHc m s).M rPp = rd s.M rPp ∧
+      rd (iterL (semXIR (tp c π L) (nodeBody i)) rHc m s).M rWA = rd s.M rWA
   | 0, s, _, hM, _, _, _, hW => ⟨hW, hM, fun _ _ => rfl, rfl, rfl⟩
   | m + 1, s, hm, hM, hXs, hP, hH, hW => by
     set I := tp c π L
     have h1 := nodeWalk hD hX s hM hXs (h := m) hp (by omega) hP hH hW
-    have hM1 := inv_sem I wf_nodeBody hM
-    have hH1 := hframeK I nodeBody s loK_nodeBody
-    have fr : ∀ r, (r = rPp ∨ r = rWA ∨ r = rHc) → rd (semXIR I nodeBody s).M r = rd s.M r :=
-      fun r hr => frame I _ s wf_nodeBody hM r
+    have hM1 := inv_sem I (wf_nodeBody (i := i)) hM
+    have hH1 := hframeK I (nodeBody i) s loK_nodeBody
+    have fr : ∀ r, (r = rPp ∨ r = rWA ∨ r = rHc) → rd (semXIR I (nodeBody i) s).M r = rd s.M r :=
+      fun r hr => frame I _ s (wf_nodeBody (i := i)) hM r
         (by rcases hr with rfl | rfl | rfl <;> decide) (nodeBody_nw hr)
-    have hM' : Inv (decS rHc (semXIR I nodeBody s)).M := inv_decS hM1 (by decide)
-    have hHc : rd (decS rHc (semXIR I nodeBody s)).M rHc = toWord m :=
+    have hM' : Inv (decS rHc (semXIR I (nodeBody i) s)).M := inv_decS hM1 (by decide)
+    have hHc : rd (decS rHc (semXIR I (nodeBody i) s)).M rHc = toWord m :=
       rd_decS_self hM1 (by decide) (by rw [fr _ (.inr (.inr rfl)), hH]) (by omega)
-    have dk : ∀ r, r ≠ rHc → rd (decS rHc (semXIR I nodeBody s)).M r =
-        rd (semXIR I nodeBody s).M r := fun r hr => rd_decS (Ne.symm hr) _
-    have hW' : WalkSt L d0 sib p m (decS rHc (semXIR I nodeBody s)).M := by
+    have dk : ∀ r, r ≠ rHc → rd (decS rHc (semXIR I (nodeBody i) s)).M r =
+        rd (semXIR I (nodeBody i) s).M r := fun r hr => rd_decS (Ne.symm hr) _
+    have hW' : WalkSt i L d0 sib p m (decS rHc (semXIR I (nodeBody i) s)).M := by
       unfold WalkSt at h1 ⊢
       rw [dk rOk (by decide), dk rQ0 (by decide), dk rQ1 (by decide), dk rQ2 (by decide),
         dk rQ3 (by decide)]
       exact h1
-    have hHp : ∀ x, regs ≤ x → rd (decS rHc (semXIR I nodeBody s)).M x = rd s.M x :=
+    have hHp : ∀ x, regs ≤ x → rd (decS rHc (semXIR I (nodeBody i) s)).M x = rd s.M x :=
       fun x hx => (dk x (by simp only [rHc, regs] at *; omega)).trans (hH1 x hx)
     obtain ⟨a1, a2, a3, a4, a5⟩ := nodeLoop hD hX hp m _ (by omega) hM'
       (fun a ha => by rw [hHp _ (by simp only [regs, memX]; omega), hXs a ha])
@@ -622,15 +621,15 @@ def cpW (I : Array Word) (x : Word) (ql w : ℕ) : Word :=
 theorem cpW_zero (I : Array Word) (x : Word) (w : ℕ) : cpW I x 0 w = 0 := by simp [cpW]
 
 theorem colL_zero (L : Log) (d : Digest) (p : ℕ) :
-    colL (frEnc 0) L d 0 p = (pre L d).bind fun e => parseCol 0 e.1 := rfl
+    colL (frEnc i) L d 0 p = (pre L d).bind fun e => parseCol i e.1 := rfl
 
 /-- **The copy of a parsed column is its words**. -/
 theorem cpW_entry (hD : Dom c π L) {k : ℕ} (hk : k < L.length) (w : ℕ) :
     cpW (tp c π L) (toWord (posE L k))
-      (if L[k].1.data.toList.take 8 = tagCol 0 then L[k].1.size else 0) w =
-      colWord (parseCol 0 L[k].1) w := by
+      (if L[k].1.data.toList.take 8 = tagCol i then L[k].1.size else 0) w =
+      colWord (parseCol i L[k].1) w := by
   have hxl := hD.posE_lt hk
-  by_cases hC : L[k].1.data.toList.take 8 = tagCol 0
+  by_cases hC : L[k].1.data.toList.take 8 = tagCol i
   · simp only [hC, ite_true, parseCol, colWord]
     rw [packBytes_col, packBytes_getD, size_toList, cpW]
     by_cases hw : 8 * (w + 1) < L[k].1.size
@@ -640,16 +639,16 @@ theorem cpW_entry (hD : Dom c π L) {k : ℕ} (hk : k < L.length) (w : ℕ) :
     · rw [if_neg hw, if_neg (by omega)]
   · simp only [hC, ite_false, cpW_zero, parseCol, colWord]
 
-theorem wf_colIR : WF colIR := by
+theorem wf_colIR : WF (colIR i) := by
   have := wf_lookIR
   simp [colIR, getIR, colChkPs, WF, Prim.dst, rK2, rAd2, rXq, rQn, rTA, rV2, rB, rMk, rQe, this]
 
-theorem loK_colIR : LoK colIR := by
+theorem loK_colIR : LoK (colIR i) := by
   have := loK_lookIR
   simp [colIR, getIR, colChkPs, LoK, Prim.dst, regs, rK2, rAd2, rXq, rQn, rTA, rV2, rB, rMk, rQe,
     this]
 
-theorem colIR_nw {r : ℕ} (hr : r = rPp ∨ r = rWA) : ¬ Writes colIR r := by
+theorem colIR_nw {r : ℕ} (hr : r = rPp ∨ r = rWA) : ¬ Writes (colIR i) r := by
   have hl : ¬ Writes lookIR r := lookIR_nw (by rcases hr with rfl | rfl <;> decide)
   simp only [colIR, Writes, not_or]
   refine ⟨?_, ⟨hl, ?_⟩, ?_⟩ <;>
@@ -660,10 +659,10 @@ theorem colIR_nw {r : ℕ} (hr : r = rPp ∨ r = rWA) : ¬ Writes colIR r := by
 reading `colL` makes under `d₀` (`colWord`, zeros for `none`). -/
 theorem colIR_sem (hD : Dom c π L) {Xi : ℕ → Word} (hX : Sorted (tp c π L) L Xi) (s : St)
     (hM : Inv s.M) (hXs : ∀ a < L.length, rd s.M (memX + a) = Xi a) {d0 : Digest} {sib p : ℕ}
-    (hW : WalkSt L d0 sib p 0 s.M) :
-    ∃ ql < 2 ^ 64, rd (semXIR (tp c π L) colIR s).M rQe = toWord ql ∧
-      ∀ w, cpW (tp c π L) (rd (semXIR (tp c π L) colIR s).M rXq) ql w =
-        colWord (colL (frEnc 0) L d0 sib p) w := by
+    (hW : WalkSt i L d0 sib p 0 s.M) :
+    ∃ ql < 2 ^ 64, rd (semXIR (tp c π L) (colIR i) s).M rQe = toWord ql ∧
+      ∀ w, cpW (tp c π L) (rd (semXIR (tp c π L) (colIR i) s).M rXq) ql w =
+        colWord (colL (frEnc i) L d0 sib p) w := by
   set I := tp c π L with hI
   have hs := hM.1
   simp only [regs] at hs
@@ -676,7 +675,7 @@ theorem colIR_sem (hD : Dom c π L) {Xi : ℕ → Word} (hX : Sorted (tp c π L)
     simp only [semXIR, runPrims, List.foldl, Prim.run]; exact rd_set_ne (Ne.symm hr)
   have hXs0 : ∀ a < L.length, rd (semXIR I (.blk [.const rQe 0]) s).M (memX + a) = Xi a :=
     fun a ha => by rw [fr0 _ (by simp only [rQe, memX]; omega), hXs a ha]
-  have hW0 : WalkSt L d0 sib p 0 (semXIR I (.blk [.const rQe 0]) s).M := by
+  have hW0 : WalkSt i L d0 sib p 0 (semXIR I (.blk [.const rQe 0]) s).M := by
     unfold WalkSt at hW ⊢
     rw [fr0 rOk (by decide), fr0 rQ0 (by decide), fr0 rQ1 (by decide), fr0 rQ2 (by decide),
       fr0 rQ3 (by decide)]
@@ -713,20 +712,20 @@ theorem colIR_sem (hD : Dom c π L) {Xi : ℕ → Word} (hX : Sorted (tp c π L)
       have hM2 := inv_sem I wf_getIR lk4
       rw [semXIR_seq]
       generalize semXIR I getIR s1 = s2 at g1 g2 g3 hQ2 hM2
-      have hB := colChk_sem I s2 hM2
+      have hB := colChk_sem I i s2 hM2
       rw [g2, g3, colFlag hD hkL] at hB
       have fC : ∀ r, r = rQe ∨ r = rXq ∨ r = rQn →
-          rd (semXIR I (.blk colChkPs) s2).M r = rd s2.M r :=
-        fun r hr => frame I _ s2 wf_colChk hM2 r (by rcases hr with rfl | rfl | rfl <;> decide)
+          rd (semXIR I (.blk (colChkPs i)) s2).M r = rd s2.M r :=
+        fun r hr => frame I _ s2 (wf_colChk (i := i)) hM2 r (by rcases hr with rfl | rfl | rfl <;> decide)
           (by rcases hr with rfl | rfl | rfl <;>
             simp [colChkPs, Writes, Prim.dst, rK2, rB, rMk, rQe, rXq, rQn])
-      have hM3 := inv_sem I wf_colChk hM2
+      have hM3 := inv_sem I (wf_colChk (i := i)) hM2
       rw [semXIR_seq]
-      generalize semXIR I (.blk colChkPs) s2 = s3 at hB fC hM3
+      generalize semXIR I (.blk (colChkPs i)) s2 = s3 at hB fC hM3
       have hs3 := hM3.1
       simp only [regs] at hs3
       rw [semXIR_ite, hB]
-      by_cases hC : L[k].1.data.toList.take 8 = tagCol 0
+      by_cases hC : L[k].1.data.toList.take 8 = tagCol i
       · rw [decide_eq_true hC, if_neg bW_ne_zero]
         refine ⟨L[k].1.size, hq, ?_, fun w => ?_⟩
         · simp only [semXIR, runPrims, List.foldl, Prim.run]
@@ -741,7 +740,7 @@ theorem colIR_sem (hD : Dom c π L) {Xi : ℕ → Word} (hX : Sorted (tp c π L)
           show rd (runPrims [] s3.M) rQe = _
           rw [runPrims_nil, fC _ (.inl rfl), hQ2], fun w => ?_⟩
         rw [cpW_zero]
-        show (0 : Word) = colWord (parseCol 0 L[k].1) w
+        show (0 : Word) = colWord (parseCol i L[k].1) w
         simp only [parseCol, if_neg hC, colWord]
   · rw [hOk, if_pos rfl, hc]
     refine ⟨0, by norm_num, by
@@ -854,9 +853,9 @@ theorem copyBody_sem (I : Array Word) (s : St) (hM : Inv s.M) {x : Word} {ql a j
   · rw [reg _ (by decide) (by decide), fr1 _ (.inr (.inr (.inr (.inr (.inl rfl)))))]
 
 /-- **The copy loop**: `m` steps from word `j` store `cpW I x ql i` at `a + i`, `j ≤ i < j + m`. -/
-theorem copyLoop (I : Array Word) {x : Word} {ql a : ℕ} (hql : ql < 2 ^ 64) (ha : regs ≤ a)
-    (ha2 : a + 130 < 2 ^ 64) :
-    ∀ (m j : ℕ) (s : St), j + m ≤ 128 → Inv s.M → a + 128 ≤ s.M.size →
+theorem copyLoop (I : Array Word) {x : Word} {ql a nw : ℕ} (hql : ql < 2 ^ 64) (ha : regs ≤ a)
+    (ha2 : a + nw + 2 < 2 ^ 64) (hnw : nw < 2 ^ 60) :
+    ∀ (m j : ℕ) (s : St), j + m ≤ nw → Inv s.M → a + nw ≤ s.M.size →
       rd s.M rWA = toWord (a + j) → rd s.M rTA = x + toWord (2 + j) →
       rd s.M r8 = toWord (8 * (j + 1)) → rd s.M rQe = toWord ql →
       (∀ i, j ≤ i → i < j + m →
@@ -875,10 +874,10 @@ theorem copyLoop (I : Array Word) {x : Word} {ql a : ℕ} (hql : ql < 2 ^ 64) (h
     have hM' : Inv (decS rCw (semXIR I copyBody s)).M := inv_decS hM1 (by decide)
     have dk : ∀ r, r ≠ rCw → rd (decS rCw (semXIR I copyBody s)).M r =
         rd (semXIR I copyBody s).M r := fun r hr => rd_decS (Ne.symm hr) _
-    have hsz' : a + 128 ≤ (decS rCw (semXIR I copyBody s)).M.size := by
+    have hsz' : a + nw ≤ (decS rCw (semXIR I copyBody s)).M.size := by
       rw [size_decS, size_sem]; exact hsz
     have hy : ∀ y, regs ≤ y → y ≠ rCw := fun y hy => by simp only [rCw, regs] at *; omega
-    obtain ⟨d1, d2, d3, d4, d5⟩ := copyLoop I hql ha ha2 m (j + 1) _ (by omega) hM' hsz'
+    obtain ⟨d1, d2, d3, d4, d5⟩ := copyLoop I hql ha ha2 hnw m (j + 1) _ (by omega) hM' hsz'
       (by rw [dk _ (by decide), c3])
       (by rw [dk _ (by decide), c4]) (by rw [dk _ (by decide), c5]) (by rw [dk _ (by decide), c6])
     simp only [iterL]
@@ -892,38 +891,39 @@ theorem copyLoop (I : Array Word) {x : Word} {ql a : ℕ} (hql : ql < 2 ^ 64) (h
     · rw [d2 _ hy1 (by omega), dk _ (hy _ hy1), c2 _ hy1 (by omega)]
     · rw [d5, dk _ (by decide), c7]
 
-theorem wf_copyIR : WF copyIR := by
+theorem wf_copyIR {nw : ℕ} : WF (copyIR nw) := by
   simp [copyIR, copyBody, WF, Writes, Prim.dst, rV2, rMk, rK2, rWA, rTA, r8, rNw, rCw, cTmp, regs]
 
-/-- **The copy**: from `rXq = x`, `rQe = ql`, `rWA = a`, cells `a … a + 127` get
-`cpW I x ql ·`; every other heap cell is kept; `rWA` ends at `a + 128`. -/
-theorem copyIR_sem (I : Array Word) (s : St) (hM : Inv s.M) {x : Word} {ql a : ℕ}
-    (hql : ql < 2 ^ 64) (ha : regs ≤ a) (ha2 : a + 130 < 2 ^ 64) (hsz : a + 128 ≤ s.M.size)
+/-- **The copy**: from `rXq = x`, `rQe = ql`, `rWA = a`, cells `a … a + nw − 1` get
+`cpW I x ql ·`; every other heap cell is kept; `rWA` ends at `a + nw`. -/
+theorem copyIR_sem (I : Array Word) (s : St) (hM : Inv s.M) {x : Word} {ql a nw : ℕ}
+    (hql : ql < 2 ^ 64) (ha : regs ≤ a) (ha2 : a + nw + 2 < 2 ^ 64) (hnw : nw < 2 ^ 60)
+    (hsz : a + nw ≤ s.M.size)
     (hX : rd s.M rXq = x) (hQ : rd s.M rQe = toWord ql) (hA : rd s.M rWA = toWord a) :
-    (∀ i < 128, rd (semXIR I copyIR s).M (a + i) = cpW I x ql i) ∧
-    (∀ y, regs ≤ y → (y < a ∨ a + 128 ≤ y) → rd (semXIR I copyIR s).M y = rd s.M y) ∧
-    Inv (semXIR I copyIR s).M ∧ rd (semXIR I copyIR s).M rWA = toWord (a + 128) ∧
-    rd (semXIR I copyIR s).M rPp = rd s.M rPp := by
+    (∀ i < nw, rd (semXIR I (copyIR nw) s).M (a + i) = cpW I x ql i) ∧
+    (∀ y, regs ≤ y → (y < a ∨ a + nw ≤ y) → rd (semXIR I (copyIR nw) s).M y = rd s.M y) ∧
+    Inv (semXIR I (copyIR nw) s).M ∧ rd (semXIR I (copyIR nw) s).M rWA = toWord (a + nw) ∧
+    rd (semXIR I (copyIR nw) s).M rPp = rd s.M rPp := by
   have hs := hM.1
   simp only [regs] at hs
-  have wf0 : WF (.blk [.const rK2 2, .op .add rTA rXq rK2, .const r8 8, .const rNw 128]) := by
+  have wf0 : WF (.blk [.const rK2 2, .op .add rTA rXq rK2, .const r8 8, .const rNw (toWord nw)]) := by
     simp [WF, Prim.dst, rK2, rTA, r8, rNw]
   have hM0 := inv_sem I wf0 hM
-  have hH0 := hframe I (.blk [.const rK2 2, .op .add rTA rXq rK2, .const r8 8, .const rNw 128]) s
+  have hH0 := hframe I (.blk [.const rK2 2, .op .add rTA rXq rK2, .const r8 8, .const rNw (toWord nw)]) s
     (by simp [Lo, Prim.dst, regs, rK2, rTA, r8, rNw])
   have hsz0 := size_sem I (.blk [.const rK2 2, .op .add rTA rXq rK2, .const r8 8,
-    .const rNw 128]) s
-  have r0 : rd (semXIR I (.blk [.const rK2 2, .op .add rTA rXq rK2, .const r8 8, .const rNw 128])
+    .const rNw (toWord nw)]) s
+  have r0 : rd (semXIR I (.blk [.const rK2 2, .op .add rTA rXq rK2, .const r8 8, .const rNw (toWord nw)])
         s).M rTA = x + toWord (2 + 0) ∧
-      rd (semXIR I (.blk [.const rK2 2, .op .add rTA rXq rK2, .const r8 8, .const rNw 128])
+      rd (semXIR I (.blk [.const rK2 2, .op .add rTA rXq rK2, .const r8 8, .const rNw (toWord nw)])
         s).M r8 = toWord (8 * (0 + 1)) ∧
-      rd (semXIR I (.blk [.const rK2 2, .op .add rTA rXq rK2, .const r8 8, .const rNw 128])
-        s).M rNw = 128 ∧
-      rd (semXIR I (.blk [.const rK2 2, .op .add rTA rXq rK2, .const r8 8, .const rNw 128])
+      rd (semXIR I (.blk [.const rK2 2, .op .add rTA rXq rK2, .const r8 8, .const rNw (toWord nw)])
+        s).M rNw = toWord nw ∧
+      rd (semXIR I (.blk [.const rK2 2, .op .add rTA rXq rK2, .const r8 8, .const rNw (toWord nw)])
         s).M rQe = toWord ql ∧
-      rd (semXIR I (.blk [.const rK2 2, .op .add rTA rXq rK2, .const r8 8, .const rNw 128])
+      rd (semXIR I (.blk [.const rK2 2, .op .add rTA rXq rK2, .const r8 8, .const rNw (toWord nw)])
         s).M rWA = toWord (a + 0) ∧
-      rd (semXIR I (.blk [.const rK2 2, .op .add rTA rXq rK2, .const r8 8, .const rNw 128])
+      rd (semXIR I (.blk [.const rK2 2, .op .add rTA rXq rK2, .const r8 8, .const rNw (toWord nw)])
         s).M rPp = rd s.M rPp := by
     simp only [semXIR, runPrims, List.foldl, Prim.run]
     refine ⟨?_, ?_, ?_, ?_, ?_, ?_⟩ <;>
@@ -934,71 +934,75 @@ theorem copyIR_sem (I : Array Word) (s : St) (hM : Inv s.M) {x : Word} {ql a : �
     · exact hQ
     · exact hA
   rw [copyIR, semXIR_seq]
-  generalize semXIR I (.blk [.const rK2 2, .op .add rTA rXq rK2, .const r8 8, .const rNw 128])
+  generalize semXIR I (.blk [.const rK2 2, .op .add rTA rXq rK2, .const r8 8, .const rNw (toWord nw)])
     s = s0 at hM0 hH0 hsz0 r0
   obtain ⟨t0, e0, n0, q0, a0, p0⟩ := r0
-  have hE : ∀ i, i ≠ rCw → i ≠ cTmp → rd (entryK rCw rNw 128 s0.M) i = rd s0.M i :=
+  have hE : ∀ i, i ≠ rCw → i ≠ cTmp → rd (entryK rCw rNw (toWord nw) s0.M) i = rd s0.M i :=
     fun i h1 h2 => entryK_frame _ (Ne.symm h1) (Ne.symm h2)
-  have hcnt : rd (entryK rCw rNw 128 s0.M) rCw = 128 :=
+  have hcnt : rd (entryK rCw rNw (toWord nw) s0.M) rCw = toWord nw :=
     entryK_count hM0 (by decide) (by decide) (by decide) n0
-  have hME := inv_entryK (c := rCw) (n := rNw) (K := 128) hM0 (by decide)
-  have e : semXIR I (.loopK rCw rNw 128 copyBody) s0 =
-      iterL (semXIR I copyBody) rCw 128 ⟨entryK rCw rNw 128 s0.M, s0.o⟩ := by
-    simp only [semXIR, hcnt]; rfl
+  have hME := inv_entryK (c := rCw) (n := rNw) (K := toWord nw) hM0 (by decide)
+  have e : semXIR I (.loopK rCw rNw (toWord nw) copyBody) s0 =
+      iterL (semXIR I copyBody) rCw nw ⟨entryK rCw rNw (toWord nw) s0.M, s0.o⟩ := by
+    simp only [semXIR, hcnt, toNat_toWord (show nw < 2 ^ 64 by omega)]
   rw [e]
   have hy : ∀ y, regs ≤ y → y ≠ rCw ∧ y ≠ cTmp := fun y hy => by
     simp only [rCw, cTmp, regs] at *; omega
-  obtain ⟨d1, d2, d3, d4, d5⟩ := copyLoop I hql ha ha2 128 0 ⟨entryK rCw rNw 128 s0.M, s0.o⟩
+  obtain ⟨d1, d2, d3, d4, d5⟩ := copyLoop I hql ha ha2 hnw nw 0 ⟨entryK rCw rNw (toWord nw) s0.M, s0.o⟩
     (by omega) hME (by simp only [size_entryK]; omega) (by rw [hE _ (by decide) (by decide), a0])
     (by rw [hE _ (by decide) (by decide), t0]) (by rw [hE _ (by decide) (by decide), e0])
     (by rw [hE _ (by decide) (by decide), q0])
-  refine ⟨fun i hi => d1 i (by omega) (by omega), fun y hy1 hy2 => ?_, d3, by rw [d4], ?_⟩
+  refine ⟨fun i hi => d1 i (by omega) (by omega), fun y hy1 hy2 => ?_, d3, by rw [d4, Nat.zero_add], ?_⟩
   · rw [d2 y hy1 (by omega)]
-    show rd (entryK rCw rNw 128 s0.M) y = rd s.M y
+    show rd (entryK rCw rNw (toWord nw) s0.M) y = rd s.M y
     rw [hE y (hy y hy1).1 (hy y hy1).2, hH0 y hy1]
   · rw [d5]
-    show rd (entryK rCw rNw 128 s0.M) rPp = rd s.M rPp
+    show rd (entryK rCw rNw (toWord nw) s0.M) rPp = rd s.M rPp
     rw [hE _ (by decide) (by decide), p0]
 
 /-! ## One position -/
 
 section Pos
 
-variable {c : Digest} {π : Proof} {L : Log}
+variable {c : Digest} {π : Proof} {L : Log} {i : ℕ}
 
 /-- **One position**: the column words of position `p` at `a … a + 127`; `rPp := p + 1`,
 `rWA := a + 128`; every other heap cell kept. -/
 theorem posBody_sem (hD : Dom c π L) {Xi : ℕ → Word} (hX : Sorted (tp c π L) L Xi) (s : St)
-    (hM : Inv s.M) (hXs : ∀ a < L.length, rd s.M (memX + a) = Xi a) {sib p a : ℕ}
-    (hsib : sib < 64) (hp : p < 2 ^ 62) (he : p / 2 ^ sib < 512) (hP : rd s.M rPp = toWord p)
-    (hA : rd s.M rWA = toWord a) (ha : regs ≤ a) (ha2 : a + 130 < 2 ^ 64)
-    (hsz : a + 128 ≤ s.M.size) :
-    (∀ w < 128, rd (semXIR (tp c π L) (posBody sib) s).M (a + w) =
-      colWord (colL (frEnc 0) L (capPi π (p / 2 ^ sib)) sib p) w) ∧
-    (∀ y, regs ≤ y → (y < a ∨ a + 128 ≤ y) →
-      rd (semXIR (tp c π L) (posBody sib) s).M y = rd s.M y) ∧
-    Inv (semXIR (tp c π L) (posBody sib) s).M ∧
-    rd (semXIR (tp c π L) (posBody sib) s).M rWA = toWord (a + 128) ∧
-    rd (semXIR (tp c π L) (posBody sib) s).M rPp = toWord (p + 1) := by
+    (hM : Inv s.M) (hXs : ∀ a < L.length, rd s.M (memX + a) = Xi a) {cw nw ncap : ℕ}
+    {cap : ℕ → Digest} (hcw : cw + 4 * ncap < 2 ^ 62)
+    (hcap : ∀ e < ncap, ∀ m < 4,
+      (tp c π L).getD (cw + 4 * e + m) 0 = (packBytes (cap e).toList).getD m 0)
+    (hnw : nw < 2 ^ 60) {sib p a : ℕ}
+    (hsib : sib < 64) (hp : p < 2 ^ 62) (he : p / 2 ^ sib < ncap) (hP : rd s.M rPp = toWord p)
+    (hA : rd s.M rWA = toWord a) (ha : regs ≤ a) (ha2 : a + nw + 2 < 2 ^ 64)
+    (hsz : a + nw ≤ s.M.size) :
+    (∀ w < nw, rd (semXIR (tp c π L) (posBody i cw nw sib) s).M (a + w) =
+      colWord (colL (frEnc i) L (cap (p / 2 ^ sib)) sib p) w) ∧
+    (∀ y, regs ≤ y → (y < a ∨ a + nw ≤ y) →
+      rd (semXIR (tp c π L) (posBody i cw nw sib) s).M y = rd s.M y) ∧
+    Inv (semXIR (tp c π L) (posBody i cw nw sib) s).M ∧
+    rd (semXIR (tp c π L) (posBody i cw nw sib) s).M rWA = toWord (a + nw) ∧
+    rd (semXIR (tp c π L) (posBody i cw nw sib) s).M rPp = toWord (p + 1) := by
   set I := tp c π L with hI
-  set d0 := capPi π (p / 2 ^ sib)
+  set d0 := cap (p / 2 ^ sib)
   have hs := hM.1
   simp only [regs] at hs
   -- the cap entry
-  have wf1 : WF (.seq (.blk (capPs sib)) ld4IR) := ⟨by simp [capPs, WF, Prim.dst, rK2, rB, rTA],
+  have wf1 : WF (.seq (.blk (capPs cw sib)) ld4IR) := ⟨by simp [capPs, WF, Prim.dst, rK2, rB, rTA],
     wf_ld4IR⟩
-  have lo1 : Lo (.seq (.blk (capPs sib)) ld4IR) := ⟨by simp [capPs, Lo, Prim.dst, regs, rK2, rB,
+  have lo1 : Lo (.seq (.blk (capPs cw sib)) ld4IR) := ⟨by simp [capPs, Lo, Prim.dst, regs, rK2, rB,
     rTA], lo_ld4IR⟩
-  have q1 := capLd_sem hD s hM hsib hp he hP
+  have q1 := capLd_sem s hM hcw hcap hsib hp he hP
   have hH1 := hframe I _ s lo1
-  have f1 : ∀ r, r = rPp ∨ r = rWA → rd (semXIR I (.seq (.blk (capPs sib)) ld4IR) s).M r =
+  have f1 : ∀ r, r = rPp ∨ r = rWA → rd (semXIR I (.seq (.blk (capPs cw sib)) ld4IR) s).M r =
       rd s.M r := fun r hr => frame I _ s wf1 hM r (by rcases hr with rfl | rfl <;> decide)
     (by rcases hr with rfl | rfl <;>
       simp [capPs, ld4IR, Writes, Prim.dst, rK2, rB, rTA, rQ0, rQ1, rQ2, rQ3, rPp, rWA])
   have hM1 := inv_sem I wf1 hM
-  have hsz1 := size_sem I (.seq (.blk (capPs sib)) ld4IR) s
+  have hsz1 := size_sem I (.seq (.blk (capPs cw sib)) ld4IR) s
   rw [posBody, semXIR_seq]
-  generalize semXIR I (.seq (.blk (capPs sib)) ld4IR) s = s1 at q1 hH1 f1 hM1 hsz1
+  generalize semXIR I (.seq (.blk (capPs cw sib)) ld4IR) s = s1 at q1 hH1 f1 hM1 hsz1
   -- `rOk := 1`, the height count
   have wf2 : WF (.blk [.const rOk 1, .const rNH (toWord sib)]) := by simp [WF, Prim.dst, rOk, rNH]
   have hs1 := hM1.1
@@ -1018,7 +1022,7 @@ theorem posBody_sem (hD : Dom c π L) {Xi : ℕ → Word} (hX : Sorted (tp c π 
   have hsz2 := size_sem I (.blk [.const rOk 1, .const rNH (toWord sib)]) s1
   rw [semXIR_seq]
   generalize semXIR I (.blk [.const rOk 1, .const rNH (toWord sib)]) s1 = s2 at r2 o2 hM2 hsz2
-  have hW2 : WalkSt L d0 sib p sib s2.M := by
+  have hW2 : WalkSt i L d0 sib p sib s2.M := by
     refine .inl ⟨o2.1, d0, ?_, rfl⟩
     rw [r2 rQ0 (by decide) (by decide), r2 rQ1 (by decide) (by decide),
       r2 rQ2 (by decide) (by decide), r2 rQ3 (by decide) (by decide)]
@@ -1032,12 +1036,12 @@ theorem posBody_sem (hD : Dom c π L) {Xi : ℕ → Word} (hX : Sorted (tp c π 
   have hcnt : rd (entryK rHc rNH (toWord sib) s2.M) rHc = toWord sib :=
     entryK_count hM2 (by decide) (by decide) (by decide) o2.2
   have hME := inv_entryK (c := rHc) (n := rNH) (K := toWord sib) hM2 (by decide)
-  have e : semXIR I (.loopK rHc rNH (toWord sib) nodeBody) s2 =
-      iterL (semXIR I nodeBody) rHc sib ⟨entryK rHc rNH (toWord sib) s2.M, s2.o⟩ := by
+  have e : semXIR I (.loopK rHc rNH (toWord sib) (nodeBody i)) s2 =
+      iterL (semXIR I (nodeBody i)) rHc sib ⟨entryK rHc rNH (toWord sib) s2.M, s2.o⟩ := by
     simp only [semXIR, hcnt, toNat_toWord (show sib < 2 ^ 64 by omega)]
   have hyE : ∀ y, regs ≤ y → y ≠ rHc ∧ y ≠ cTmp := fun y hy => by
     simp only [rHc, cTmp, regs] at *; omega
-  have hWE : WalkSt L d0 sib p sib (entryK rHc rNH (toWord sib) s2.M) := by
+  have hWE : WalkSt i L d0 sib p sib (entryK rHc rNH (toWord sib) s2.M) := by
     unfold WalkSt at hW2 ⊢
     rw [hE rOk (by decide) (by decide), hE rQ0 (by decide) (by decide),
       hE rQ1 (by decide) (by decide), hE rQ2 (by decide) (by decide),
@@ -1052,45 +1056,45 @@ theorem posBody_sem (hD : Dom c π L) {Xi : ℕ → Word} (hX : Sorted (tp c π 
   obtain ⟨n1, n2, n3, n4, n5⟩ := nodeLoop hD hX hp sib ⟨entryK rHc rNH (toWord sib) s2.M, s2.o⟩
     hsib hME hXE hPE hcnt hWE
   have hH3 : ∀ y, regs ≤ y →
-      rd (iterL (semXIR I nodeBody) rHc sib ⟨entryK rHc rNH (toWord sib) s2.M, s2.o⟩).M y =
+      rd (iterL (semXIR I (nodeBody i)) rHc sib ⟨entryK rHc rNH (toWord sib) s2.M, s2.o⟩).M y =
         rd s.M y := fun y hy => by
     rw [n3 y hy]
     show rd (entryK rHc rNH (toWord sib) s2.M) y = _
     rw [hE y (hyE y hy).1 (hyE y hy).2, hH2 y hy]
-  have hP3 : rd (iterL (semXIR I nodeBody) rHc sib
+  have hP3 : rd (iterL (semXIR I (nodeBody i)) rHc sib
       ⟨entryK rHc rNH (toWord sib) s2.M, s2.o⟩).M rPp = toWord p := by
     rw [n4]
     show rd (entryK rHc rNH (toWord sib) s2.M) rPp = _
     rw [hE _ (by decide) (by decide), r2 _ (by decide) (by decide), f1 _ (.inl rfl), hP]
-  have hA3 : rd (iterL (semXIR I nodeBody) rHc sib
+  have hA3 : rd (iterL (semXIR I (nodeBody i)) rHc sib
       ⟨entryK rHc rNH (toWord sib) s2.M, s2.o⟩).M rWA = toWord a := by
     rw [n5]
     show rd (entryK rHc rNH (toWord sib) s2.M) rWA = _
     rw [hE _ (by decide) (by decide), r2 _ (by decide) (by decide), f1 _ (.inr rfl), hA]
-  have hsz3 : (iterL (semXIR I nodeBody) rHc sib
+  have hsz3 : (iterL (semXIR I (nodeBody i)) rHc sib
       ⟨entryK rHc rNH (toWord sib) s2.M, s2.o⟩).M.size = s.M.size := by
-    rw [size_iterL (fun s' => size_sem I nodeBody s')]
+    rw [size_iterL (fun s' => size_sem I (nodeBody i) s')]
     show (entryK rHc rNH (toWord sib) s2.M).size = _
     rw [size_entryK, hsz2, hsz1]
   rw [semXIR_seq, e]
-  generalize iterL (semXIR I nodeBody) rHc sib ⟨entryK rHc rNH (toWord sib) s2.M, s2.o⟩ = s3
+  generalize iterL (semXIR I (nodeBody i)) rHc sib ⟨entryK rHc rNH (toWord sib) s2.M, s2.o⟩ = s3
     at n1 n2 hH3 hP3 hA3 hsz3
   -- the leaf
   obtain ⟨ql, hql, c1, c2⟩ := colIR_sem hD hX s3 n2 (fun a' ha' => by
     rw [hH3 _ (by simp only [regs, memX]; omega), hXs a' ha']) n1
-  have hH4 := hframeK I colIR s3 loK_colIR
-  have hP4 : rd (semXIR I colIR s3).M rPp = toWord p := by
-    rw [frame I _ s3 wf_colIR n2 rPp (by decide) (colIR_nw (.inl rfl)), hP3]
-  have hA4 : rd (semXIR I colIR s3).M rWA = toWord a := by
-    rw [frame I _ s3 wf_colIR n2 rWA (by decide) (colIR_nw (.inr rfl)), hA3]
-  have hM4 := inv_sem I wf_colIR n2
-  have hsz4 := size_sem I colIR s3
+  have hH4 := hframeK I (colIR i) s3 loK_colIR
+  have hP4 : rd (semXIR I (colIR i) s3).M rPp = toWord p := by
+    rw [frame I _ s3 (wf_colIR (i := i)) n2 rPp (by decide) (colIR_nw (.inl rfl)), hP3]
+  have hA4 : rd (semXIR I (colIR i) s3).M rWA = toWord a := by
+    rw [frame I _ s3 (wf_colIR (i := i)) n2 rWA (by decide) (colIR_nw (.inr rfl)), hA3]
+  have hM4 := inv_sem I (wf_colIR (i := i)) n2
+  have hsz4 := size_sem I (colIR i) s3
   rw [semXIR_seq]
-  generalize semXIR I colIR s3 = s4 at c1 c2 hH4 hP4 hA4 hM4 hsz4
+  generalize semXIR I (colIR i) s3 = s4 at c1 c2 hH4 hP4 hA4 hM4 hsz4
   -- the copy
-  obtain ⟨k1, k2, k3, k4, k5⟩ := copyIR_sem I s4 hM4 hql ha ha2 (by omega) rfl c1 hA4
+  obtain ⟨k1, k2, k3, k4, k5⟩ := copyIR_sem I s4 hM4 hql ha ha2 hnw (by omega) rfl c1 hA4
   rw [semXIR_seq]
-  generalize semXIR I copyIR s4 = s5 at k1 k2 k3 k4 k5
+  generalize semXIR I (copyIR nw) s4 = s5 at k1 k2 k3 k4 k5
   have hs5 := k3.1
   simp only [regs] at hs5
   have hc5 : rd s5.M cOne = 1 := k3.2 0 (by decide)
@@ -1105,73 +1109,86 @@ theorem posBody_sem (hD : Dom c π L) {Xi : ℕ → Word} (hX : Sorted (tp c π 
   · simp only [semXIR, runPrims, List.foldl, Prim.run]
     rw [rd_set_self (by simp only [rPp]; omega), k5, hP4, hc5, add_one_toWord]
 
-theorem wf_posBody (sib : ℕ) : WF (posBody sib) := (wf_readIR sib 0).2.2.2.2
+theorem wf_posBody (i cw nw sib : ℕ) : WF (posBody i cw nw sib) :=
+  (wf_readIR i cw 0 nw sib 0).2.2.2.2
 
 /-- **The position loop**: `m` positions from `j` fill their columns' cells. -/
-theorem posLoop (hD : Dom c π L) {Xi : ℕ → Word} (hX : Sorted (tp c π L) L Xi) {sib np : ℕ}
-    (hsib : sib < 64) (hnp : np ≤ 2 ^ 18) (hcap : np ≤ 512 * 2 ^ sib) :
+theorem posLoop (hD : Dom c π L) {Xi : ℕ → Word} (hX : Sorted (tp c π L) L Xi) {cw nw ncap sb : ℕ}
+    {cap : ℕ → Digest} (hcw : cw + 4 * ncap < 2 ^ 62)
+    (hcap : ∀ e < ncap, ∀ m < 4,
+      (tp c π L).getD (cw + 4 * e + m) 0 = (packBytes (cap e).toList).getD m 0)
+    (hnw : nw < 2 ^ 60) {sib np : ℕ}
+    (hsib : sib < 64) (hnp : np ≤ 2 ^ 20) (hst : sb + nw * np ≤ memX) (hsb : regs ≤ sb)
+    (hcapn : np ≤ ncap * 2 ^ sib) :
     ∀ (m j : ℕ) (s : St), j + m ≤ np → Inv s.M → memX ≤ s.M.size →
       (∀ a < L.length, rd s.M (memX + a) = Xi a) → rd s.M rPp = toWord j →
-      rd s.M rWA = toWord (colBase + 128 * j) →
-      (∀ q, j ≤ q → q < j + m → ∀ w < 128,
-        rd (iterL (semXIR (tp c π L) (posBody sib)) rCp m s).M (colBase + 128 * q + w) =
-          colWord (colL (frEnc 0) L (capPi π (q / 2 ^ sib)) sib q) w) ∧
-      (∀ y, regs ≤ y → (y < colBase + 128 * j ∨ colBase + 128 * (j + m) ≤ y) →
-        rd (iterL (semXIR (tp c π L) (posBody sib)) rCp m s).M y = rd s.M y) ∧
-      Inv (iterL (semXIR (tp c π L) (posBody sib)) rCp m s).M
+      rd s.M rWA = toWord (sb + nw * j) →
+      (∀ q, j ≤ q → q < j + m → ∀ w < nw,
+        rd (iterL (semXIR (tp c π L) (posBody i cw nw sib)) rCp m s).M (sb + nw * q + w) =
+          colWord (colL (frEnc i) L (cap (q / 2 ^ sib)) sib q) w) ∧
+      (∀ y, regs ≤ y → (y < sb + nw * j ∨ sb + nw * (j + m) ≤ y) →
+        rd (iterL (semXIR (tp c π L) (posBody i cw nw sib)) rCp m s).M y = rd s.M y) ∧
+      Inv (iterL (semXIR (tp c π L) (posBody i cw nw sib)) rCp m s).M
   | 0, j, s, _, hM, _, _, _, _ => ⟨fun q h1 h2 => by omega, fun _ _ _ => rfl, hM⟩
   | m + 1, j, s, hjm, hM, hsz, hXs, hP, hA => by
     set I := tp c π L
-    have hcb : colBase = 2 ^ 25 := rfl
     have hm : memX = 2 ^ 26 := rfl
-    have hdiv : j / 2 ^ sib < 512 := by
+    have hdiv : j / 2 ^ sib < ncap := by
       rw [Nat.div_lt_iff_lt_mul (by positivity)]; omega
-    obtain ⟨b1, b2, b3, b4, b5⟩ := posBody_sem hD hX s hM hXs (sib := sib) (p := j)
-      (a := colBase + 128 * j) hsib (by omega) hdiv hP hA (by simp only [regs]; omega) (by omega)
-      (by omega)
-    have hM' : Inv (decS rCp (semXIR I (posBody sib) s)).M := inv_decS b3 (by decide)
-    have dk : ∀ r, r ≠ rCp → rd (decS rCp (semXIR I (posBody sib) s)).M r =
-        rd (semXIR I (posBody sib) s).M r := fun r hr => rd_decS (Ne.symm hr) _
+    have e1 : nw * (j + 1) = nw * j + nw := Nat.mul_succ nw j
+    have e2 : nw * (j + 1) ≤ nw * np := Nat.mul_le_mul_left nw (by omega)
+    have e3 : nw * (j + 1 + m) = nw * (j + (m + 1)) := by rw [show j + 1 + m = j + (m + 1) by omega]
+    have e4 : nw * (j + 1) ≤ nw * (j + (m + 1)) := Nat.mul_le_mul_left nw (by omega)
+    obtain ⟨b1, b2, b3, b4, b5⟩ := posBody_sem hD hX s hM hXs hcw hcap hnw (sib := sib) (p := j)
+      (a := sb + nw * j) hsib (by omega) hdiv hP hA (by omega) (by omega) (by omega)
+    have hM' : Inv (decS rCp (semXIR I (posBody i cw nw sib) s)).M := inv_decS b3 (by decide)
+    have dk : ∀ r, r ≠ rCp → rd (decS rCp (semXIR I (posBody i cw nw sib) s)).M r =
+        rd (semXIR I (posBody i cw nw sib) s).M r := fun r hr => rd_decS (Ne.symm hr) _
     have hy : ∀ y, regs ≤ y → y ≠ rCp := fun y hy => by simp only [rCp, regs] at *; omega
-    have hsz' : memX ≤ (decS rCp (semXIR I (posBody sib) s)).M.size := by
+    have hsz' : memX ≤ (decS rCp (semXIR I (posBody i cw nw sib) s)).M.size := by
       rw [size_decS, size_sem]; exact hsz
-    obtain ⟨d1, d2, d3⟩ := posLoop hD hX hsib hnp hcap m (j + 1) _ (by omega) hM' hsz'
+    obtain ⟨d1, d2, d3⟩ := posLoop hD hX hcw hcap hnw hsib hnp hst hsb hcapn m (j + 1) _ (by omega)
+      hM' hsz'
       (fun a ha => by
         rw [dk _ (hy _ (by simp only [regs]; omega)), b2 _ (by simp only [regs]; omega)
           (.inr (by omega)), hXs a ha])
       (by rw [dk _ (by decide), b5])
-      (by rw [dk _ (by decide), b4]; congr 1)
+      (by rw [dk _ (by decide), b4, e1, Nat.add_assoc])
+    rw [e3] at d2
     simp only [iterL]
     refine ⟨fun q h1 h2 w hw => ?_, fun y hy1 hy2 => ?_, d3⟩
     · by_cases hq : q = j
       · subst hq
-        rw [d2 _ (by simp only [regs]; omega) (.inl (by omega)),
-          dk _ (hy _ (by simp only [regs]; omega)), b1 w hw]
+        rw [d2 _ (by omega) (.inl (by omega)), dk _ (hy _ (by omega)), b1 w hw]
       · exact d1 q (by omega) (by omega) w hw
     · rw [d2 _ hy1 (by omega), dk _ (hy _ hy1), b2 _ hy1 (by omega)]
 
 /-- **The ladder read's semantics**: on a sorted index, `readIR sib np` stores at
-`colBase + 128 q + w` word `w` of the column `colL (frEnc 0)` reads under cap entry `q / 2^sib`
+`colBase + 128 q + w` word `w` of the column `colL (frEnc i)` reads under cap entry `q / 2^sib`
 at height `sib`, for every position `q < np`; it keeps the index. -/
 theorem readIR_sem (hD : Dom c π L) {Xi : ℕ → Word} (hX : Sorted (tp c π L) L Xi) (s : St)
-    (hM : Inv s.M) (hXs : ∀ a < L.length, rd s.M (memX + a) = Xi a) {sib np : ℕ}
-    (hsib : sib < 64) (hnp : np ≤ 2 ^ 18) (hcap : np ≤ 512 * 2 ^ sib) (hsz : memX ≤ s.M.size) :
-    (∀ q < np, ∀ w < 128, rd (semXIR (tp c π L) (readIR sib np) s).M (colBase + 128 * q + w) =
-      colWord (colL (frEnc 0) L (capPi π (q / 2 ^ sib)) sib q) w) ∧
-    (∀ a < L.length, rd (semXIR (tp c π L) (readIR sib np) s).M (memX + a) = Xi a) ∧
-    Inv (semXIR (tp c π L) (readIR sib np) s).M := by
+    (hM : Inv s.M) (hXs : ∀ a < L.length, rd s.M (memX + a) = Xi a) {cw nw ncap sb : ℕ}
+    {cap : ℕ → Digest} (hcw : cw + 4 * ncap < 2 ^ 62)
+    (hcap : ∀ e < ncap, ∀ m < 4,
+      (tp c π L).getD (cw + 4 * e + m) 0 = (packBytes (cap e).toList).getD m 0)
+    (hnw : nw < 2 ^ 60) {sib np : ℕ}
+    (hsib : sib < 64) (hnp : np ≤ 2 ^ 20) (hst : sb + nw * np ≤ memX) (hsb : regs ≤ sb)
+    (hcapn : np ≤ ncap * 2 ^ sib) (hsz : memX ≤ s.M.size) :
+    (∀ q < np, ∀ w < nw, rd (semXIR (tp c π L) (readIR i cw sb nw sib np) s).M (sb + nw * q + w) =
+      colWord (colL (frEnc i) L (cap (q / 2 ^ sib)) sib q) w) ∧
+    (∀ a < L.length, rd (semXIR (tp c π L) (readIR i cw sb nw sib np) s).M (memX + a) = Xi a) ∧
+    Inv (semXIR (tp c π L) (readIR i cw sb nw sib np) s).M := by
   set I := tp c π L
   have hs := hM.1
   simp only [regs] at hs
   have hm : memX = 2 ^ 26 := rfl
-  have hcb : colBase = 2 ^ 25 := rfl
-  have wf0 : WF (.blk [.const rPp 0, .const rWA (toWord colBase), .const rNp (toWord np)]) := by
+  have wf0 : WF (.blk [.const rPp 0, .const rWA (toWord sb), .const rNp (toWord np)]) := by
     simp [WF, Prim.dst, rPp, rWA, rNp]
-  have r0 : rd (semXIR I (.blk [.const rPp 0, .const rWA (toWord colBase),
+  have r0 : rd (semXIR I (.blk [.const rPp 0, .const rWA (toWord sb),
         .const rNp (toWord np)]) s).M rPp = toWord 0 ∧
-      rd (semXIR I (.blk [.const rPp 0, .const rWA (toWord colBase),
-        .const rNp (toWord np)]) s).M rWA = toWord (colBase + 128 * 0) ∧
-      rd (semXIR I (.blk [.const rPp 0, .const rWA (toWord colBase),
+      rd (semXIR I (.blk [.const rPp 0, .const rWA (toWord sb),
+        .const rNp (toWord np)]) s).M rWA = toWord (sb + nw * 0) ∧
+      rd (semXIR I (.blk [.const rPp 0, .const rWA (toWord sb),
         .const rNp (toWord np)]) s).M rNp = toWord np := by
     simp only [semXIR, runPrims, List.foldl, Prim.run]
     refine ⟨?_, ?_, ?_⟩ <;>
@@ -1179,13 +1196,13 @@ theorem readIR_sem (hD : Dom c π L) {Xi : ℕ → Word} (hX : Sorted (tp c π L
       [rd_set_self, rd_set_ne]
     · rfl
     · rw [Nat.mul_zero, Nat.add_zero]
-  have hH0 := hframe I (.blk [.const rPp 0, .const rWA (toWord colBase), .const rNp (toWord np)]) s
+  have hH0 := hframe I (.blk [.const rPp 0, .const rWA (toWord sb), .const rNp (toWord np)]) s
     (by simp [Lo, Prim.dst, regs, rPp, rWA, rNp])
   have hM0 := inv_sem I wf0 hM
-  have hsz0 := size_sem I (.blk [.const rPp 0, .const rWA (toWord colBase),
+  have hsz0 := size_sem I (.blk [.const rPp 0, .const rWA (toWord sb),
     .const rNp (toWord np)]) s
   rw [readIR, semXIR_seq]
-  generalize semXIR I (.blk [.const rPp 0, .const rWA (toWord colBase),
+  generalize semXIR I (.blk [.const rPp 0, .const rWA (toWord sb),
     .const rNp (toWord np)]) s = s0 at r0 hH0 hM0 hsz0
   obtain ⟨p0, a0, n0⟩ := r0
   have hE : ∀ i, i ≠ rCp → i ≠ cTmp → rd (entryK rCp rNp (toWord np) s0.M) i = rd s0.M i :=
@@ -1193,15 +1210,17 @@ theorem readIR_sem (hD : Dom c π L) {Xi : ℕ → Word} (hX : Sorted (tp c π L
   have hcnt : rd (entryK rCp rNp (toWord np) s0.M) rCp = toWord np :=
     entryK_count hM0 (by decide) (by decide) (by decide) n0
   have hME := inv_entryK (c := rCp) (n := rNp) (K := toWord np) hM0 (by decide)
-  have e : semXIR I (.loopK rCp rNp (toWord np) (posBody sib)) s0 =
-      iterL (semXIR I (posBody sib)) rCp np ⟨entryK rCp rNp (toWord np) s0.M, s0.o⟩ := by
+  have e : semXIR I (.loopK rCp rNp (toWord np) (posBody i cw nw sib)) s0 =
+      iterL (semXIR I (posBody i cw nw sib)) rCp np ⟨entryK rCp rNp (toWord np) s0.M, s0.o⟩ := by
     simp only [semXIR, hcnt, toNat_toWord (show np < 2 ^ 64 by omega)]
   rw [e]
   have hy : ∀ y, regs ≤ y → y ≠ rCp ∧ y ≠ cTmp := fun y hy => by
     simp only [rCp, cTmp, regs] at *; omega
   have hHE : ∀ y, regs ≤ y → rd (entryK rCp rNp (toWord np) s0.M) y = rd s.M y := fun y hy' => by
     rw [hE y (hy y hy').1 (hy y hy').2, hH0 y hy']
-  obtain ⟨d1, d2, d3⟩ := posLoop hD hX hsib hnp hcap np 0 ⟨entryK rCp rNp (toWord np) s0.M, s0.o⟩
+  have e0 : nw * (0 + np) = nw * np := by rw [Nat.zero_add]
+  obtain ⟨d1, d2, d3⟩ := posLoop hD hX hcw hcap hnw hsib hnp hst hsb hcapn np 0
+    ⟨entryK rCp rNp (toWord np) s0.M, s0.o⟩
     (by omega) hME (by simp only [size_entryK]; omega)
     (fun a ha => by
       show rd (entryK rCp rNp (toWord np) s0.M) (memX + a) = _
@@ -1209,7 +1228,7 @@ theorem readIR_sem (hD : Dom c π L) {Xi : ℕ → Word} (hX : Sorted (tp c π L
     (by show rd (entryK rCp rNp (toWord np) s0.M) rPp = _; rw [hE _ (by decide) (by decide), p0])
     (by show rd (entryK rCp rNp (toWord np) s0.M) rWA = _; rw [hE _ (by decide) (by decide), a0])
   refine ⟨fun q hq w hw => d1 q (by omega) (by omega) w hw, fun a ha => ?_, d3⟩
-  rw [d2 _ (by simp only [regs]; omega) (.inr (by omega))]
+  rw [d2 _ (by simp only [regs]; omega) (.inr (by rw [e0]; omega))]
   show rd (entryK rCp rNp (toWord np) s0.M) (memX + a) = _
   rw [hHE _ (by simp only [regs]; omega), hXs a ha]
 
@@ -1231,7 +1250,11 @@ theorem read_spec (c : Digest) (π : Proof) (L : Log) (hD : Dom c π L) (s : St)
   rw [semXIR_seq]
   generalize semXIR (tp c π L) idxIR s = s1 at r1 r2 r3 hM1 hsz1
   exact (readIR_sem hD (Xi := fun a => rd s1.M (memX + a)) ⟨r1, r2, r3⟩ s1 hM1 (fun _ _ => rfl)
-    (by norm_num) le_rfl (by norm_num) (by omega)).1 q hq w hw
+    (i := 0) (cw := capW0) (nw := 128) (ncap := 512) (sb := colBase) (cap := capPi π)
+    (by rw [capW0_eq]; norm_num)
+    (fun e he m hm => by simp only [tp, getD_toArray]; exact tape_cap c π L hD.hs he hm)
+    (by norm_num) (by norm_num) (by norm_num) (by simp only [colBase, memX]; norm_num)
+    (by simp only [regs, colBase]; norm_num) (by norm_num) (by omega)).1 q hq w hw
 
 /-! ## The store as `F` elements: S-G's reading -/
 
@@ -1300,13 +1323,13 @@ answered `dg 1`. -/
 def toyN : Log := [(colQ 0 ⟨#[1, 2, 3, 4, 5, 6, 7, 8, 9]⟩, dg 1), (nodeQ 0 (dg 1) (dg 2), dg 3)]
 
 /-- **Positive control of `nodeStepP`**: bit `h` of `p` picks the child. -/
-theorem nodeStepP_toy : nodeStepP toyN 0 0 (dg 3) = some (dg 1) ∧
-    nodeStepP toyN 1 0 (dg 3) = some (dg 2) := by decide +kernel
+theorem nodeStepP_toy : nodeStepP 0 toyN 0 0 (dg 3) = some (dg 1) ∧
+    nodeStepP 0 toyN 1 0 (dg 3) = some (dg 2) := by decide +kernel
 
 /-- **Negative controls of `nodeStepP`**: a digest with no preimage, and a node query of another
 level (the level byte is checked), give `none`. -/
-theorem nodeStepP_toy_none : nodeStepP toyN 0 0 (dg 4) = none ∧
-    nodeStepP [(nodeQ 1 (dg 1) (dg 2), dg 3)] 0 0 (dg 3) = none := by decide +kernel
+theorem nodeStepP_toy_none : nodeStepP 0 toyN 0 0 (dg 4) = none ∧
+    nodeStepP 0 [(nodeQ 1 (dg 1) (dg 2), dg 3)] 0 0 (dg 3) = none := by decide +kernel
 
 /-- **Positive control of the reading the store holds**: under `dg 3` at height 1, position 0
 reads the column `1, …, 9`; its first word is bytes `1 … 8`, its second byte `9`, its third `0`. -/
