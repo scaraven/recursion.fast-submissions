@@ -88,7 +88,7 @@ theorem ip_W0 {L es : Log} (hfar : ¬ farL (kindOf es) L es 0) :
 
 /-! ## `hsingle` at B′ -/
 
-theorem getD_map_lt {l : List ℕ} {f : ℕ → F} {k : ℕ} (hk : k < l.length) :
+theorem listGetD_map_lt {l : List ℕ} {f : ℕ → F} {k : ℕ} (hk : k < l.length) :
     (l.map f).getD k 0 = f (l.getD k 0) := by
   rw [List.getD_eq_getElem _ _ (by simpa using hk), List.getElem_map, List.getD_eq_getElem _ _ hk]
 
@@ -189,7 +189,7 @@ theorem single_B (L es : Log) (hl : es.length = 317) :
       refine sum_congr rfl fun k hk => ?_
       have hk' : k < Node.pubCells.length := by
         rw [(Node.pubCells_length (vkL es) (stL es 0) (stL es 1)).1]; exact mem_range.mp hk
-      rw [getD_map_lt hk']
+      rw [listGetD_map_lt hk']
       ring
   simp only [v, t]
   rw [bTerms_sum, bTerms_sum, ← pubHL_eq, ← hv, ← hfip, ← hw]
