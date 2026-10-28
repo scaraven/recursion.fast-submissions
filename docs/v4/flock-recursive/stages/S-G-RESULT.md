@@ -1615,3 +1615,134 @@ second. No `decide` runs over a program, a layout scan of all blocks, or a table
    P2's dump KAT.
 2. **Who proves `RowsFit (nodeRows fin) 21 23`** (§8 item 4)? It belongs with S-E2's/S-E3's row
    model (`mRows_le`) once `rows (compileMux (gen fin))` is linked to it.
+
+---
+
+# S-G1i: the Ligerito tail discharged; `PhaseObl` from the front's interface; `ChainStab`
+
+Base `ac43569` (S-G1h). Built against HEAD `f100c0d` (S-E3 and blueprint revision 3.12 landed;
+`logs/fr-build-SG/snap.sh`, `WT=FR`). **Status:**
+- item 1 (the Ligerito tail P1.0 → Pf) is done;
+- item 2 (the PIOP front) is not started; the front is an interface, `FrontObl` (§6 item 1);
+- item 3 is done for that split: **`phaseObl_of : FrontObl … → PhaseObl (RejC …) (DkC …)
+  (239·2^128)`** and **`kstate_of_front`**, whose only hypotheses are `FrontObl` and `FinalLaw`;
+- item 4 is done for the tail: **`chainStab_of`** gives `ChainStab` of the composed doom from the
+  front's part (`FrontChainStab`).
+
+`FR` builds as a whole (`logs/S-G/build-FR-S-G1i.log`, 2,316 jobs). No sorry, no warning in S-G's
+modules, no line over 100 characters. Axioms: `propext`, `Classical.choice`, `Quot.sound` only,
+for the 20 theorems of `logs/S-G/axioms-S-G1i.log` (`tailCls_check` uses only `propext` and
+`Quot.sound`). Source rule: 104 files, 0 findings.
+
+## 1. What was built (six new modules; code lines from `loc.py`)
+
+| Module | Code lines | Content |
+|---|---|---|
+| `FRSoundnessFold` | 271 | The far doom: intermediate folds `pf`, `closeP`, `closeP_zero` (`= ¬ far_i`), `closeP_succ`, `closeP_cover` (`fold_lift`, `round_bad_cover`), `closeP_of_truthP2`; P3's table `p3T`, `p3T_mle`, `vNext_sub`, `p3T_ne_zero`, `mlDoomF_step`, `not_mlDoom_nine` |
+| `FRSoundnessTail` | 224 | Positions (`cStart`, `p3S0`, `pfStart`, `nxStart`; `tail_pos_check`); **`Same`** and the read lemmas `*_same`; `bindL_range_getD`, `trueSum_tabs_fold` |
+| `FRSoundnessTailD` | 190 | The level chain `lvW`, `lvC`, `c1`, `lvT`, `foldSum`, `wPf`, `tPf` (`chain_same`); the dooms `D1`, `DCi`, `DP2`, `DP3`, `DPf`, **`DT`**; `RejT`; `phOf_bounds`, `rounds_check` |
+| `FRSoundnessTailO` | 268 | `habs_P1`, `habs_Pf`, `habs_C`, `habs_P1_next`, `habs_Pf_first`; `single_P1`, `single_Pf`, `p1_N_le`; **`rejT_ok`** |
+| `FRSoundnessTailM` | 250 | `tail_ph`, `ms_P2`, `ms_P3`, **`hfin_P2`**, **`hfin_P3`**; `D2_congrL` and **`DT_stab`** |
+| `FRSoundnessCompose` | 324 | `RejC`, `DkC`, `rejOK_or`, **`FrontObl`**, `tail_cls`, **`phaseObl_of`**, **`kstate_of_front`**, `same_chain`, **`chainStab_of`**, controls |
+
+`FR.lean` imports `FRSoundnessCompose`.
+
+## 2. The tail's dooms (A.10)
+
+The tail is parametric in level 0's table `W₀` and P1.0's initial claim `c₀` (the front's
+outputs: `w0F`, and `v*` as `finB′` computes it). They must read only what lies before P1.0
+(`FrontLocal`).
+
+- **The level chain.** `lvW (i+1) = nextW … (lvW i)`, `lvC (i+1) = vNext … (c1 i)`, where `c1 i`
+  is P1.i's running claim after its `ℓᵢ` rounds (`clR2`). P1.i's tables are `[Wᵢ, f⁽ⁱ⁾]` over
+  `ℓᵢ + mLog` variables; Pf's are `[W_f, final]` over 7, with `W_f` level 4's `wNext`, zero past
+  `2^mLog` (`P30`/`N30`).
+- **P1.i** (`D1`): `¬ closeP (hRnd)` (the fold so far is far) `∨ (¬ far_i ∧ D2 …)`, with the
+  asserted rounds over K and `Chk2` in `RejT`.
+  - At a round squeeze at most `2 + 2^(ℓᵢ−l−1)·C_mca ≤ 239·2^128` answers escape
+    (`single_P1`). That is `D2_single` with `M = 1`, plus the line bad sets of the round's pairs.
+  - After the rounds, the true sum is `foldSum = ⟨foldW Wᵢ, fold_z(f⁽ⁱ⁾)⟩`
+    (`trueSum_lvT_fold`).
+- **C.i** (`DCi`): `¬ truthP2 ∨ (¬ far_i ∧ c1 ≠ foldSum)`. A far fold refutes `truthP2`
+  (`habs_C`).
+- **P2.i** (`DP2 = msD DCi finP2`), with `finP2 = ¬ truthP3 ∨ (¬ far_i ∧ truthC ∧ c1 ≠ foldSum)`.
+  `hfin_P2` goes through `p2_hround` with `S = consSet` when `truthP2` fails. When `truthP2`
+  holds, `truthC_of` makes the escape impossible, so `S = ∅`.
+- **P3.i** (`DP3 = msD DP2 finP3`), with `finP3 = far_{i+1} ∨ lvC (i+1) ≠ ⟨W_{i+1}, f⁽ⁱ⁺¹⁾⟩`
+  (Pf's claim for `i = 4`). `hfin_P3` goes through `hfin_seq` over κ_c's 9 F coordinates,
+  embedded in K. The escape makes `p3T`'s extension vanish at κ_c (`vNext_sub`, `wSplit_sum`,
+  `p3T_mle`), while P2's final doom makes `p3T` nonzero (`p3T_ne_zero`).
+- **Pf** (`DPf`): `D2` over K, 7 rounds, `2` escapes per squeeze.
+- **Handoffs**: P3.i → P1.(i+1) at its first absorb (`habs_P1_next`; `closeP_zero`); P3.4 → Pf
+  (`habs_Pf_first`); B′ → P1.0 is the front's (`FrontObl.handoff`).
+- **Stability**: `DT_stab` holds for any two logs that are `Same` up to the chain's length.
+  `hstab` uses it via `same_stabX`; `ChainStab` uses it via `same_chain`, the chain itself, with
+  `wordK_stab` and `capOK_of_matches`.
+
+## 3. Controls
+
+| Control | Shows |
+|---|---|
+| `closeP_nil` | on the empty log every intermediate fold is close (positive) |
+| `D1_of_far` | a far word before P1.i's answers dooms P1.i: the far part is live (positive) |
+| `not_D1_nil` | before P1.i on the empty log P1.i is not doomed (negative) |
+| `p3T_ne_zero` / `p3T_zero` | P3's table is nonzero on an inconsistent query or offset, and zero when all are consistent with no offset |
+| `not_rejT_short` | no tail check fails before P1.0 (negative) |
+| `frontObl_false` | `FrontObl` is satisfiable (the empty front with constant `W₀`, `c₀`) |
+| `DT_Q` | the `Q` phases (no FS items) have the empty doom |
+
+## 4. Times (sequential, one core: `taskset -c 0 lean -DElab.async=false --profile`)
+
+| Module | Wall (≈ 3.5 s import) | Type checking (largest item) | Max RSS | Log |
+|---|---|---|---|---|
+| `FRSoundnessFold` | 8.9 s | 0.38 s | 2.75 GB | `logs/S-G/profile-FRSoundnessFold-S-G1i.log` |
+| `FRSoundnessTail` | 8.6 s | 0.52 s | 2.75 GB | `logs/S-G/profile-FRSoundnessTail-S-G1i.log` |
+| `FRSoundnessTailD` | 17.1 s | 4.55 s and 3.65 s (two declarations; the profile does not name them, presumably the kernel checks `rounds_check` and `phOf_check`) | 3.19 GB | `logs/S-G/profile-FRSoundnessTailD-S-G1i.log` |
+| `FRSoundnessTailO` | 10.9 s | 1.27 s | 2.89 GB | `logs/S-G/profile-FRSoundnessTailO-S-G1i.log` |
+| `FRSoundnessTailM` | 9.2 s | 0.35 s | 2.76 GB | `logs/S-G/profile-FRSoundnessTailM-S-G1i.log` |
+| `FRSoundnessCompose` | 16.2 s | 1.93 s (presumably `tailCls_check`) | 2.95 GB | `logs/S-G/profile-FRSoundnessCompose-S-G1i.log` |
+
+No `decide` runs over a program, a layout or a table; the position checks run once each.
+
+## 5. Deviations
+
+1. **`PhaseObl` is proved from `FrontObl`, not outright.** The PIOP front (phases 0–24: Z1 … B′)
+   is the structure `FrontObl RejF DF W₀ c₀`. It holds the front's obligations, restricted to
+   positions before P1.0, and the handoff into P1.0. `kstate_of_front` has `FrontObl` and
+   `FinalLaw` as its hypotheses. The front's truths of S-G1h (and E's under revision 3.12) go
+   into `FrontObl`.
+2. **P1.i's `D2` runs over all `ℓᵢ + mLog` variables.** Only the first `ℓᵢ` are real rounds, so
+   after them `trueSum` is the folded inner product (`trueSum_lvT_fold`). This matches the
+   existing `D2`/`D2_single` without changing them.
+3. **The far doom is stated on intermediate folds** (`¬ closeP l`): "the fold so far is far". A
+   round escapes it only on its line bad sets (`2^(ℓᵢ−l−1)·C_mca`). A.10 words this as "`far_i`
+   ∧ the fold is `eᵢ`-close". The row's count is unchanged (`≤ 2^66`).
+4. **P3's `Doom` carries the phase length as a guard**, because `hfin_seq`'s `h0` quantifies over
+   every `es₀`.
+5. **Position facts are kernel checks over `fsStarts`/`fsItems`/`fsRanges`.** They are
+   `tail_pos_check`, `tail_ph_check`, `rounds_check`, `phOf_check`, `tailCls_check` and
+   `front_check`; P1.0's start appears only as `p1Start 0`. Revision 3.12 inserts E4's 23 rounds
+   into the front, which moves every tail position. The checks re-run on S-0's new `gen`.
+   Explicit constants that must be updated then: `phOf_check`'s `List.range 451`,
+   `rounds_check`'s `fsItems.length == 451`, `pfStart_eq = 437`, and `phOf_ge`'s `437`.
+   `lvl_t_lt` (`tᵢ < 511`) does not change.
+
+## 6. Not done, in order
+
+1. **`FrontObl`** (item 2):
+   - the concrete front dooms for Z1 … B′ with S-G1h's truths;
+   - E under revision 3.12 (E4's lincheck, `J_z = 5`, RS1 `11/2^128`);
+   - `W₀ = ι ∘ w0F …` without `evalM` in `finPf`, and `c₀ = v*`;
+   - the B′ → P1.0 handoff.
+
+   S-E3 has landed `pubVals` without padding, so `truthB′`'s cells can now be `Node.pubCells []`.
+   The `nodeKind` WOTS order must be checked against S-E3's exported order.
+2. **S-G2 `FinalLaw`**: `chainStab_of` (with `FrontChainStab`) and `walk_back` give `¬ D` on every
+   prefix chain of an accepted chain; then `ligerito_final` and `node_sound`/`leaf_sound`. S-0's
+   `fsQ_gen` is available for the query link.
+
+## 7. Questions for the orchestrator
+
+1. Splitting the front off as `FrontObl` keeps the tail independent of the E changes in revision
+   3.12. Is that the intended unit boundary for the next invocation (front dooms against
+   `FrontObl`)?

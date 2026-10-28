@@ -317,3 +317,40 @@ symlinked; `.lake` copied from `fr-build-cert`). Every `lake`/`lean` run used th
     - In `FR.Snd`, `entriesOf` is the log's. The matrix one is `Eval.entriesOf`, and `tagNode`
       must be `RecursionFast.tagNode`, because `FR.Merkle.tagNode` shadows it.
     - The source rule flags "partial" in comments ("partials" passes).
+
+## 2026-10-28 (S-G1i)
+
+64. **Plan.** The Ligerito tail P1.0 → Pf first, concretely; the PIOP front as an interface
+    (`FrontObl`), so that `PhaseObl` is proved for the composed doom and `kstate_of_front` has
+    only `FrontObl` and `FinalLaw` open. The E phase changes of revision 3.12 fall inside the
+    front, so nothing in the tail depends on them.
+65. **The far doom** (`FRSoundnessFold`). `pf l` is the word after `l` fold rounds, ℕ-indexed rows
+    (`wN`). `pf_succ` is the top-bit split of `eqBits` (`bitSel_succ_lo/hi`). `closeP l` is
+    "jointly close" for the intermediate fold. Closeness survives folding without a bad-set
+    condition (`closeN_fold`); the converse goes through `fold_lift` with a reindexing equiv
+    `evOdd : Fin (2m) ≃ Bool × Fin m`. A far full fold refutes `truthP2` (`closeP_of_truthP2`).
+66. **P3's table.** `p3T` (512 entries: `consErr` + `d`) has extension `d + p3Batch` at `κ_c`
+    (`sum_eqBits_one`); since `tᵢ ≤ 290 < 511`, its last entry is `d`, so it is nonzero exactly
+    when a query is inconsistent or `d ≠ 0`.
+67. **Reads.** One notion, `Same L es L' es' p` (entries before `p`, and the words whose caps lie
+    before `p`), covers locality (one log, two chains) and stability (two logs, one chain). Every
+    ingredient has a `_same` lemma with its read bound. The level chain `lvW`/`lvC` is congruent by
+    induction (`chain_same`).
+68. **Binding.** `bindL_range_getD`: binding the first `ℓ` variables gives the `eq`-weighted
+    sums, so P1.i's true sum after its rounds is `foldSum` (`trueSum_lvT_fold`). P1.i's `D2` runs
+    over all `ℓᵢ + mLog` variables (only `ℓᵢ` rounds are real).
+69. **Composition.** `DkC` = front below phase 25, `DT` from 25 on. One kernel check classifies
+    every tail position with the phases of it and its predecessor (`tailCls_check`); the absorb /
+    squeeze / multi-squeeze contradictions come from `rounds_check`, `front_check`, `rangesOK_eq`.
+    `phaseObl_of` and `kstate_of_front`; `chainStab_of` (item 4) for the composed doom, with the
+    front's part as `FrontChainStab`.
+70. **Lean pitfalls.**
+    - `congr 1` on goals with `2 ^ 9`-sized `Fin` sums or `Array.ofFn` hit `whnf` timeouts (three
+      times). Use `congrArg₂`, `suffices`, or a `have … := by simp only [e]` with a pointwise `e`.
+    - `rw [← h]` with `h : … = 0` also rewrote the `0` default of `List.getD`. Use
+      `Eq.trans (sum_congr …) h`.
+    - `rw [sum_congr rfl …, sum_congr rfl …]`: the second elaborates against the first sum again.
+      State each sum equality as a `have`.
+    - `lvC` does not use `W₀`, so section variables drop it; call sites must not pass it.
+    - `hfin_seq`'s `h0` quantifies over every `es₀`, not only those of the phase's length; P3's
+      `Doom` carries the length as a guard.
