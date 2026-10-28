@@ -354,3 +354,44 @@ symlinked; `.lake` copied from `fr-build-cert`). Every `lake`/`lean` run used th
     - `lvC` does not use `W₀`, so section variables drop it; call sites must not pass it.
     - `hfin_seq`'s `h0` quantifies over every `es₀`, not only those of the phase's length; P3's
       `Doom` carries the length as a guard.
+
+## 2026-10-28 (S-G1j)
+
+71. **Reading the front against HEAD.** Before writing dooms for RS0 … B′, I checked where claim 5
+    (E's `f̂(r′)`, revision 3.12) gets its slices and its point:
+    - the slices come from RS0's message (`finRS`'s `sv inp 4 i`), at position 240;
+    - the point is E4's challenges (`eSrc`), at positions 301 … 345.
+
+    The honest prover cannot write RS0. A.10's RS1 doom is undefined for claim 5. This is
+    **defect 1** (`rs0_before_e4`). The fix is E before RS0.
+72. **Lr's point.** `finLr` passes Lr4's 15 challenges to `evalL`, which reads 23 cell
+    coordinates. The last 8 are then `0`, and every L row's cells are `≥ 2^15`, so `evalL ≡ 0`
+    there (**defect 2**, `evalL_short_zero`). With zero triples and zero round messages Lr passes
+    for every `z`. `lrSrc`'s 8-coordinate window cannot hold the L rows either, because M's `one`
+    cell is outside it.
+73. **`implC`'s node ops.** `targetS` (the leaf's at every kind) and `linkW` (`0`) are not the
+    node's. So the node S truth and Z1/Z2 over the node `targetS` would state what `V` does not
+    check. Left out.
+74. **Plan for the unblocked part.**
+    - The framework `Reads` with the frame lemmas: a phase doom `Bg ∨ U` whose background reads
+      before the phase.
+    - The **row Spartan unit**: generic in positions, it serves Lr now and E after the reorder.
+    - The small items: the WOTS order, B′'s cells, `frontLocal_of`.
+75. **Unit algebra.** S-C's `FRSpartan` R1–R4 (`outerTables`, `outer_start`, `outer_final`,
+    `triple_wrong`, `innerTables`, `batch_escape_le`, `inner_final`) fit the existing
+    `D3`/`D2` machinery directly. `T3`/`T4` are empty for the kinds the unit does not run on, so
+    leaves are never doomed by Lr/E.
+76. **The zerocheck needs `⌈a/2⌉` answers.** `tauS` reads `s0 + 1 + ⌊j/2⌋` for `j < a`, so the
+    read bound is `s0 + 1 + (a + 1)/2`, not `a/2` (odd `a = 15`, 21).
+77. **Lean pitfalls.**
+    - `omega` does not see through `Layout.chainN` and `wotsSlot`. Rewrite them to numerals (`rw
+      [hc] at h ⊢`) before dividing.
+    - `Subsingleton (Fin (2 ^ 0))` is not found. Use `Fin.ext` with `u.isLt`.
+    - `clR_congr`'s `l` is implicit and is fixed only by the `Agree` argument. Passing
+      `(h.1.mono (by omega))` leaves the target a metavariable, so pass `(l := a)`.
+    - A rewrite through `ext1 es d` needs the `Agree` stated on `ext1 es d`, not on
+      `es ++ [(squeezeQ …, d)]`.
+    - `split_ifs <;> simp <;> omega` trips the `<;>` linter. `split_ifs <;> (simp; try omega)`
+      does not.
+78. **WOTS order.** `nodeBK_wots`/`nodeKind_wots` against `Layout.wotsKindAt`, and `ind_nodeBK`
+    against `nodeLayout` on all blocks, structurally. The order of S-G1h deviation 3 is S-E3's.

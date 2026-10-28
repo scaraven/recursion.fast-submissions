@@ -1746,3 +1746,170 @@ No `decide` runs over a program, a layout or a table; the position checks run on
 1. Splitting the front off as `FrontObl` keeps the tail independent of the E changes in revision
    3.12. Is that the intended unit boundary for the next invocation (front dooms against
    `FrontObl`)?
+
+---
+
+# S-G1j: the front's framework and its row Spartan unit; two protocol defects block `FrontObl`
+
+Base HEAD `5fc7d3b` (INT-1, revision 3.12 integrated). Built in `logs/fr-build-SG` (HEAD's
+versions of other tracks' modules, S-G's modules symlinked; `snap.sh` now links every
+`FRSoundness*` module). **Status:**
+- **`FrontObl` is not discharged.** Two defects of the current protocol make part of the front
+  unprovable as specified (§1): A.10's doom for RS0 … B′ cannot be formed (defect 1), and Lr's
+  final check is vacuous (defect 2). Both are kernel-checked facts about HEAD, not conjectures.
+- Built (§2): the front's framework (`Reads`, the frame lemmas), the **row Spartan unit**
+  (zerocheck, outer rounds, end absorb, batching, inner rounds: every per-position obligation that
+  `FrontObl` asks of such a phase), instantiated for Lr's zerocheck half (phases 13–16); the
+  node's WOTS order proved equal to S-E3's export; B′'s cells; `frontLocal_of`.
+- Not built (§6): the Z, L and S units, the concrete `DF`, `FrontChainStab`, the node S truth and
+  Z1/Z2's tables over the node's `targetS` (both wait on `implC`'s node ops, §1.3).
+
+`FR` builds as a whole (`logs/S-G/build-FR-S-G1j.log`, 2,319 jobs; `FR.lean` gains the imports
+`FRSoundnessFront`, `FRSoundnessRows`). No sorry, no warning in the two new modules, no line over
+100 characters. Axioms (`logs/S-G/axioms-S-G1j.log`, 31 theorems): `propext`,
+`Classical.choice`, `Quot.sound` only; `nodeBK_wots`, `nodeKind_wots` use only `propext`,
+`Quot.sound`; `pfCells_eq`, `rs0_before_e4`, `lr_unit_pos` only `propext`. Source rule: 112
+files, 0 findings at the time of the build. A later run over the worktree found 113 files and 1
+finding, `partial` in `FRVIRTplFast.lean:430`, S-E5's uncommitted work, not S-G's.
+
+## 1. Two defects, kernel-checked (blocking)
+
+### 1.1 Defect 1: RS0 absorbs claim 5's slices before E4 draws claim 5's point (major)
+
+**`rs0_before_e4`**: `piopPhases[18]` is `RS0` and `piopPhases[24]` is `E4`; RS0 is at position
+240 (an absorb of `5·128·16` bytes), E4's first challenge at 301.
+- Revision 3.12 makes E's lincheck claim `f̂(r′)` ring switching's claim 5: `finRS` reads its
+  slices `s_{4,i}` from RS0's message (`sv inp 4 i`, `rsOff 4 i`), and `finPf`'s `rsWeight` takes
+  E4's 23 challenges as the claim's point (`eSrc`, `pfPts` point 17, `rsPtIx .N30 = [1,3,5,6,17]`).
+- The honest slices are `ẑ_i(r′)`, which depend on `r′`; `r′` is drawn from the transcript after
+  RS0. **The honest prover cannot compute RS0's message** (completeness fails).
+- For soundness, A.10's RS1 doom ("some `δ_j ≠ 0` and the batched switched claim is true") needs
+  every claim's true value at RS1. Claim 5's is not defined until E4, after `r″` and `κ` are
+  drawn. The ring-switching lemma (`rs1_joint`) needs `r″` drawn after the slices **and** after
+  the point. The protocol may still be sound by a different argument (with a case split on
+  whether `u ↦ Φ_{r″}(z(u))` is constant), but that is not the protocol any honest prover runs.
+- **Proposed fix (S-0, blueprint A.4):** run E before RS: `… Lr4, E1, E2, Eend, E3, E4, RS0, RS1,
+  B′`. Then every claim's point is fixed at RS0, A.10's RS rows apply unchanged with `J_z = 5`,
+  and the handoff into B′ is RS1's. Positions from 240 on move. Nothing else in `finRS`, `finE`
+  or `finPf` changes. The front's dooms for RS0 … B′ and the B′ → P1.0 handoff wait on this.
+
+### 1.2 Defect 2: `finLr` (iv)'s `evalL` is identically zero (major)
+
+**`evalL_short_zero`**: for every row point `τ` and every cell point `σ` of at most 15
+coordinates, `Eval.evalLImpl Layout.lRows τ σ = (0, 0, 0)`.
+- `finLr` passes Lr4's 15 challenges as `evalL`'s cell point. `evalL` reads it as 23 coordinates
+  (`ptOf 23`), so coordinates 15–22 are `0`. `eq((σ, 0), y)` then vanishes at every cell
+  `y ≥ 2^15`. Every L row reads only such cells: the L bits at `lBase·128 + σ·2^14 + 299 + j`
+  and M's `one` cell (**`lRows_cell_ge`**).
+- So `finLr` (iv) is `c_{Lr4} = 0`. With `â_L = b̂_L = ĉ_L = 0` and all-zero round messages, Lr2,
+  Lr4 and all four of `finLr`'s checks pass **for every `z`**. The node's L bits (WOTS digits,
+  step selectors, position and kind selectors) are not enforced. This is a soundness gap. An
+  honest prover whose `c_{Lr4}` is nonzero fails, which is a completeness gap.
+- This sharpens S-G1d's open point "the Lr point is provisional". `lrSrc`'s window (8 element
+  coordinates under `lrHi`) has the same problem: the L rows' cells do not fit one `2^15`-cell
+  window, because M's `one` cell is far outside it.
+- **Proposed fix (S-0/S-F, blueprint A.9):** make Lr4 a 23-round lincheck over the cells, as E4
+  is. Then `evalL(r_Lr, r₄)` gets the full 23-coordinate point, and RS claim 4 is `f̂(r₄)` with
+  the packing basis as inner weights, as claim 5 is. Lr4's items grow from 15 to 23 rounds.
+  The alternative is to keep 15 rounds, give L its own `one` cell inside the L window, and fix
+  the window's 8 high cell coordinates in both `evalL` and the RS point. The row Spartan unit
+  (§2) covers the first fix as is (`nc = 23`).
+
+### 1.3 Not defects of the protocol, but the node's ops are still the leaf's
+
+`FRVerifierImpl.implCWith` documents `targetS _ := targetSLeafI` (the leaf kinds' function at
+every kind) and `linkW _ _ _ _ := 0`. So the node's Z public target and its S link families
+(§4.2) have no verifier counterpart yet. A node S truth over the link families, or Z1/Z2's tables
+over a node `targetS`, would pin a statement that nothing in `V` checks. I did not build them
+(§6). They need the node's `targetS`/`linkW` (S-C/L-circ) and the mirror sub-region's cell map
+per family (`WM`'s `base + 256·t + p` per family is not pinned in A.6/A.7).
+
+## 2. What was built (code lines from `loc.py`)
+
+| Module | Code lines | Content |
+|---|---|---|
+| `FRSoundnessFront` (new) | 232 | Part A: `Reads p P` (reads before `p` under `Same`, on chains of `≥ p` entries) with `mono`/`or`/`and`/`not`, **`Reads.append`/`ext1`/`ext`** (locality), **`Reads.stab`** (`hstab` via `same_stabX`), **`Reads.chain`** (`FrontChainStab` via `same_chain`); **`card_frame`** (a background that reads before a single squeeze never escapes); **`esc_msD_frame`** (an escape of `msD (Bg ∨ U) (Bg ∨ U′)` is the phase's own escape with `¬ Bg`); **`frontLocal_of`**. Part B: `nodeBK`, **`nodeBK_wots`**, **`nodeKind_wots`** (`wotsTgt`), **`ind_nodeBK`**, `nodeKind_eq_none_iff`, `nodeBK_eq_free_iff`. Part C: **`pfCells_eq`** (`pfCells = Node.pubCells`, `rfl`), `cellsOf`, `truthBN`, **`cells_sum_of_pub`**. Part D: **`rs0_before_e4`**, `lRows_cell_ge`, `eq_short_zero`, **`evalL_short_zero`** |
+| `FRSoundnessRows` (new) | 468 | The row Spartan unit over `rows`, `a` row bits, `nc` cell bits, `on : Kind → Bool`, entered at `s0`, outer rounds from `b2` (end absorb `b2 + 2a`, `κ` at `b2 + 2a + 1`, inner rounds from `b2 + 2a + 2`): the doom parts `RowsBad`, `ZCw`, `D3 … T3`, `EndBad`, `BatBad`, `D4 = D2 … T4`, and the asserts `RejEnd`, `RejIn`; the obligations **`zc_hfin`**, **`habs_outer`**, **`single_outer`**, `outer_append`, **`habs_end`**, **`single_batch`**, **`habs_inner`**, **`single_inner`** (with `chk_of_not_rejIn`), `inner_append`; stability and reads `zcw_reads`, `rowsBad_reads`, `endBad_reads`, `batBad_reads`, `T3_local`, `T4_local`, `D3_same`, `D4_same`, **`D3_reads`**, **`D4_reads`** (finished round phases are backgrounds), **`rejEnd_ok`**, **`rejIn_ok`**; what `final` gets: **`rows_of_not_rowsBad`**, **`truthLr_of`**. Lr: `lrOn`, **`lr_unit_pos`** (positions and phase indices 169 … 210), `lr_outer_phase`, **`lr_zc_hfin`** (`15/2^128`), **`lr_single_batch`**, **`lr_rejEnd_ok`** |
+
+**The shape of the front's doom** (how `FrontObl` will be assembled). Phase `k`'s doom is
+`DF k = Bg_k ∨ U_k`.
+- `U_k` is the active sub-protocol's part: one of the unit's parts for Lr/E. Z/L and S will get
+  analogous units.
+- The background `Bg_k` is a disjunction of three kinds of terms:
+  - `far₀` (`farL κ L es 0`; it hands into `D1`'s first disjunct at P1.0, `closeP_zero`);
+  - the not-yet-reduced statements (`RowsBad` of E, the public cells' `¬ PubCells`);
+  - the finished sub-protocols' pending claims (`D3_reads`/`D4_reads`: a finished round phase's
+    doom reads only its own entries).
+- Every background term `Reads` before the phase, so:
+  - `card_frame`/`esc_msD_frame` reduce `hsingle`/`hfin` to the unit's counts;
+  - `Reads.append` gives `habs` for `Bg`;
+  - `Reads.stab`/`Reads.chain` give `hstab` and `FrontChainStab`.
+
+`RejF` is the disjunction of the units' asserts (`RejEnd`, `RejIn`, …), with `rejOK_or`. Each
+unit lemma is stated with the phase positions as parameters, so the reordering of defect 1 moves
+only the instantiation (`lr_unit_pos` is the pattern).
+
+**The WOTS order (S-G1h question 1) is S-E3's.**
+- `nodeBK_wots`: on every WOTS block of both slots, `nodeKind`'s class is `Layout.wotsKindAt` of
+  the offset.
+- `nodeKind_wots`: the target there is `wotsTgt off`, determined by that class and the offset.
+- `ind_nodeBK`: `nodeKind`'s classes agree with `nodeLayout`'s `Ind` on all `2^16` blocks. This
+  is proved structurally (the chains, `hashStmt`, `ind_wots`, the free region), not by
+  enumeration.
+
+## 3. Controls
+
+| Control | Shows |
+|---|---|
+| `rowsBad_of_row` | a failing row dooms a kind the unit runs on (positive) |
+| `not_rowsBad_off` | a kind the unit does not run on is never doomed by it (negative) |
+| `not_endBad_short` | before the end absorb no triple is wrong (negative) |
+| `not_reads_length` | `Reads` is not vacuous: the chain's length is not read before `0` (negative) |
+| `reads_false` | the empty background reads before any position (positive) |
+| `rs0_before_e4`, `evalL_short_zero` | the two defects, as facts about HEAD |
+| `nodeBK_wots`, `ind_nodeBK` | `nodeKind` against S-E3's export and `nodeLayout` |
+
+## 4. Times (sequential, one core: `taskset -c 0 lean -DElab.async=false --profile`)
+
+| Module | Wall (≈ 3.5 s import) | Type checking | Max RSS | Log |
+|---|---|---|---|---|
+| `FRSoundnessFront` | 15.1 s | 0.76 s | 2.78 GB | `logs/S-G/profile-FRSoundnessFront-S-G1j.log` |
+| `FRSoundnessRows` | 13.5 s | 1.72 s | 2.80 GB | `logs/S-G/profile-FRSoundnessRows-S-G1j.log` |
+
+`FR` as a whole: 75 s wall on the warm tree (16G scope). The only `decide +kernel` checks are on
+four `fsItems` positions; no `decide` runs over a layout, a program or a table.
+
+## 5. Deviations
+
+1. **`FrontObl` is not discharged** (§1). The unit lemmas carry exactly `FrontObl`'s per-position
+   obligations for the unit's phases; the assembly into `DF` waits on defects 1 and 2 (RS0 … B′
+   and Lr4 cannot be instantiated as specified) and on the Z/L/S units.
+2. **No concrete `W₀`, `c₀`.** `W₀ = ι ∘ w0F Wrs cells κ′` and `c₀ = v*` read RS0, RS1 and E4,
+   which defect 1 moves. `frontLocal_of` reduces `FrontLocal` to `Same`-congruence up to P1.0;
+   for the eventual readers this is `Reads`-style bookkeeping.
+3. **The unit's zerocheck needs `⌈a/2⌉` answers before the outer rounds**
+   (`s0 + 1 + ⌈a/2⌉ ≤ b2`). This holds for Lr (`169 + 1 + 8 = 178`) and E (`244 + 1 + 11 = 256`).
+
+## 6. Not done, in order (for the next invocation)
+
+1. **The protocol fixes** (S-0, S-F; orchestrator): defect 1 (E before RS0), defect 2 (Lr4 over
+   23 cell coordinates), and the node's `targetS`/`linkW` in `implC`.
+2. **The Z/L unit** (phases 2–10). The algebra exists (`FRSkip.skip_pair_bad_le`,
+   `FRSpartan.bz_*`, `lin_trueSum_kinds`, `lin_final_kinds`, `zfoldK_mle`, `lin_beta_claim`).
+   The unit needs Z2's message readers and the per-kind block tables. It is order-independent.
+3. **The S unit** (phases 11–12, `shift_sound`, `slotW_mle`, the link families). For nodes it
+   waits on §1.3.
+4. **The E instantiation** of the row Spartan unit, and RS0/RS1/B′ (`rs1_of_not_truthRS0`,
+   `truthBN`, `cells_sum_of_pub`, `batch_single`), after defect 1's reorder. The Lr inner half
+   comes after defect 2's fix.
+5. **The assembly**: the concrete `DF`, `RejF`, `W₀`, `c₀`; `FrontObl` by the position
+   classification (as `tailCls_check` does for the tail); `FrontChainStab` from `Reads.chain`.
+
+## 7. Questions for the orchestrator
+
+1. **Defect 1**: is the reorder `… Lr4, E1 … E4, RS0, RS1, B′` acceptable? It is the smallest
+   change that makes A.10's RS rows hold and the honest prover able to run.
+2. **Defect 2**: should Lr4 become a 23-round lincheck (as E4), or keep 15 rounds with an
+   in-window `one` cell and fixed high cell coordinates?
+3. Who supplies the node's `targetS` and `linkW` (and the `WM` cell map per link family), which
+   the node's Z and S truths need?

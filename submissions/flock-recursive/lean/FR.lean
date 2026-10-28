@@ -61,6 +61,8 @@ import FRSoundnessWalk
 import FRSoundnessPhases
 import FRSoundnessLigerito
 import FRSoundnessCompose
+import FRSoundnessFront
+import FRSoundnessRows
 import FRVIRFinalsSG
 import FRVIRChain
 
