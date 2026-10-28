@@ -1,14 +1,15 @@
 # `flock-recursive`: entry blueprint (normative)
 
-Status: phase 1 (B), **revision 3.5, frozen for implementation** (2026-10-27): four rounds of adversarial review (fix passes 1–4) and three stage-review changes, all recorded in §10; later changes only through stage reviews
-(`reviews/BP-crypto-review.md`, `reviews/BP-eng-review.md`; fix passes in §10), 2026-10-27, for
-the tracks S-0 (interfaces), L-field, L-piop, L-pcs, L-circ, L-ext, L-cert, P and H (`PLAN.md`
-§3). Contract: `.contract` at core `15dac52` (`RecursionFast/Contract/*.lean` is authoritative;
-where this file and the contract disagree, the contract wins and the disagreement is reported).
-Inputs: `PLAN.md` (FR-D0 … D7), the phase-0 reports `T-theory.md`, `I-reuse.md`,
-`C-calibration.md`, `M-measure.md`, `F-flock.md`, `K-kernels.md`, S-A's
-`stages/S-A-JOURNAL.md` ("Normative constants"). Decisions are `B-n`; T's decisions are inherited
-unless a `B-n` overrides them. Evidence tags: **paper**, **estimate**, **kernel**, **measured**.
+Status: **revision 4.0 (2026-10-29): the rebase onto core PR #20 (`v4/ivc-score`, head `6d05d00`,
+stacked on PR #19 `v4/ks-standard`, `8ad98e9`)** — one pure-IVC benchmark scored continuously
+(`S = P̄ + V̄`), `proofCap` removed, textbook `KS` with the potential as a library route. §0 and §10
+"Stage-review changes 25" carry the rebase plan and the redesign; revisions 3.x's text stands where
+4.0 is silent and is superseded where they differ (every superseded item is named in changes 25).
+Before 4.0: phase 1 (B), revision 3.5 frozen for implementation (2026-10-27), four fix passes and
+stage-review changes 1–24 in §10. The contract is `.contract` at core `15dac52` until the re-pin
+commit of changes 25 (a) moves it to `6d05d00`; `RecursionFast/Contract/*.lean` at the pin is
+authoritative (where this file and the contract disagree, the contract wins and the disagreement
+is reported).
 
 Every number below is computed by `logs/blueprint/sizes.py` (output `sizes.txt`) from the
 formulas stated next to it, or quoted from a phase-0 report; Lean probes are under
@@ -21,15 +22,38 @@ formulas stated next to it, or quoted from a phase-0 report; Lean probes are und
 
 A Flock-class batch-R1CS argument over GF(2) with a Ligerito commitment over F = GF(2^128) in the
 unique-decoding regime, fold challenges in K = GF(2^256), BLAKE2s everywhere, and **recursive SROM
-nodes**: a node proof commits to its two children's signed traces as the message slots of its own
-BLAKE2s blocks (hashing a trace and reading it are the same cells), checks one WOTS signature per
-child and replays each child's verifier as field-element rows. **Two verifier programs** share
-**one item sequence, one trace layout and one `piSize`**: `L32` (the tree leaf, `n = 2^18`,
-`m = 32`) and `P30` (every `m = 30` proof: the stream leaf and every node; a node's children are any
-two of `{L32, P30-leaf, P30-node}`, told apart in-circuit by a one-hot selector). Knowledge
-soundness is certified through `KState` with per-fresh-query error `εR = 15/2^124 = 2^-120.09`;
-the extractor decodes the node's commitment by erasure interpolation from the agreement set and a
-novel-basis change, within `2^47.5 + 2^12 t` steps.
+nodes**: a node proof commits to its children's signed traces as the message slots of its own
+BLAKE2s blocks, checks one WOTS signature per child and replays each child's verifier as
+field-element rows. **Revision 4.0 (the IVC stream, core PR #20):** a step's new chain of `n ∈
+[2^17, 2^20]` compressions is proved as **`k = ⌈n/2^18⌉ ≤ 4` segment SNARKs** (kinds `L32`:
+`2^17 < n_i ≤ 2^18`, and `L31`: `n_i ≤ 2^17`; variable length inside the shape; the first segment
+keeps the chain's secret start, the others pin a public start) assembled into **one signed
+aggregate leaf proof** (kind `A`: its verifier runs the `k` segment verifiers in sequence on one
+signed trace and checks the chaining; no further SNARK), and **one node proof per step** whose
+circuit has `1 + k` verifier slots: the previous step's node and the `k` segments (kind **`N4`**,
+`k ≤ 4`, `m = 32`; step 1 has no previous node and up to 8 segments: kind **`N8`**, `m = 33`). The
+`W` kind stays for completeness (`P := encode`, `δ = 0`). Knowledge soundness goes through the
+potential `KState` (now a library route, `KState.ks`, same `ε`) with per-fresh-query error `εR =
+15/2^124 = 2^-120.09`; `E` is the extractor program's denotation on the contract's domain and a
+computable witness search outside it; the step budget `2^47.5 + 2^12 t`.
+
+**The score and the budgets (revision 4.0; `sizes.py` "revision 4.0").** `S = P̄ + V̄`, seconds per
+`2^18`-compression step. Measured inputs: the `L32` segment prover 5.47 s and 6.19 GB per `2^18`
+compressions on the VM (P2), V (N30) 190–196 ms on the 7763 (H-V, INT-5), `|π|` 797,904 B.
+
+| Quantity | revision 4.0 | bound / knee | state |
+|---|---|---|---|
+| step time, one thread (VM) | `n = 2^17`: 4.9 s; `2^18`: 7.7; `1.19·2^18` (mean): 12.1; `2^19`: 14.9; `2^20`: 26.5 | `step_s = 60` | estimate from the measured leaf |
+| node prover (VM) | `N4` at `k = 1 / 2 / 4`: 1.7 / 3.4 / 4.1 s, 1.9 / 3.9 / 4.6 GB; `N8`: 6.8 s, 7.7 GB | memory 11 GiB | estimate ∝ witness bits |
+| `P̄` (7763, prover ratio 1.2 assumed) | **one thread 8.2 s; 4 threads (×2.5) 3.3 s** | — | the cubic mean over the `1/n²` draw |
+| stream wall time | one thread ≈ 1,009 s (**truncated, unranked**); 4 threads ≈ 460 s | `stream_s = 960` | threading is mandatory |
+| `V̄` | today `x = 193/177.8 + 0.76/2 = 1.47`, `V̄ = 0.84 s`; V 150 ms: 0.49 s; + `|π|` 0.65 MiB: 0.43 s; at the knee (110 ms, 0.6 MiB): 0.24 s | knee `x = 1` | `κ = 0.2667 s` |
+| **`S`** | **current design: fails** (leaves fixed at `2^18`/`2^16`); 4.0 one thread 9.0 s (truncated); **4.0 with 4 threads ≈ 4.1 s; with S-T1/S-E11's V and a 0.65 MiB proof ≈ 3.7 s** | lower is better | estimate |
+| plan build per verify process | 43–49 s today × ≈ 12 processes = 552 s of `stream_s` | **≤ 2 s** (ruling) | hard requirement |
+| `qV` | 36,000 (the aggregate verifier asks `≤ 4 × 8,891`) | `≤ 2^16` | — |
+
+The circuit-side table below (revision 3.17) stays for the `N4` node's *per-slot* figures; 4.0's
+nodes have `1 + k` slots at `2^20` cells each (`N_M = 2^23` rows, `τ` 23 coordinates, `σ` 23).
 
 | Quantity | value | bound | margin |
 |---|---|---|---|
@@ -57,6 +81,13 @@ novel-basis change, within `2^47.5 + 2^12 t` steps.
 | **B-8** | **`E := fun c π L => decodeWit (semXIR ext (extractorInput c π L))` — the DSL program's denotation, a total computable Lean function on every log (revision 3.17)**; `Computes` is `compile_runs`: on the contract's domain the machine `ext.run` reproduces `semXIR` within `fuel t` (`∃ n ≤ cost P t` under `BoundsOk`, counted on the compiled code); `final` is `ext_good_tape` over `semXIR` on every log `≤ logCap`. `XIR` with affine-in-`t` caps; the `W` copy is capped by `t`. | Probed; BP-E-M5/M6, BP-C-R2-M2, BP-E-R2-m1; S-N1 O3. |
 | **B-9** | **Prover: std Rust, one `prover.s`, CPUID dispatch, AVX2 + VPCLMULQDQ-256 tier of record.** | K. |
 | **B-10** | **`ε = 15/2^124`; `δ = 0` (`P := encode`, kind `W`); `qV = 10,240`; `fuel t = 211,106,232,532,992 + 4,096 t`.** Claim: `{"error": "15/21267647932558653966460912964485513216", "completeness_error": "0", "qV": 10240, "fuel_base": 211106232532992, "fuel_per_word": 4096}` (renders: `r2/render-r2.log`). | §5.2; BP-E-M7; §6.3. |
+| **B-11** (4.0) | **The IVC step.** A step proves its chain as `k = ⌈n/2^18⌉ ≤ 4` segment SNARKs of `≤ 2^18` compressions (`L32`; `L31` for a remainder `≤ 2^17`), assembled into one signed **aggregate leaf** (kind `A`) whose verifier runs the segment verifiers in sequence on one signed trace and checks `e_i = s_{i+1}`, `e_k = end`, `Σ n_i = n`, `n_i ≤ 2^18`; one node proof (`N4`: slots = the previous node + `k` segments; `N8` at step 1: up to 8 segments) per step. | The leaf clause is atomic (one signed proof of `leafStmt end n`), the relation needs a *signed* leaf child, and a `2^20`-chain in one Ligerito instance needs ≈ 24 GB at the measured 1.44 B/bit (11 GiB cap); a leaf child verified by the harness would be charged cubically, so the segments are verified only in-circuit (§0.3). |
+| **B-12** (4.0) | **Segments** are the `L32` circuit with a variable chain length `n_i ≤ 2^{m−14}` (the last block from the statement, as INT-4's `bnd`; blocks beyond `n_i` are `free`) and a statement flag `pubStart`: segment 1 keeps the secret start (the leaf witness), segments `i ≥ 2` pin `h_in` of block 0 to the public `s_i = e_{i−1}` (a gated row). KS: `s_1` is extracted from segment 1; segments `i ≥ 2` are soundness claims on public computations; `chainEnd s n = chainEnd (chainEnd s n₁) n₂` composes. | Reuses the leaf prover (dump-exact) and the leaf's soundness; no second shape family. |
+| **B-13** (4.0) | **Nodes `N4` (`m = 32`: H `2^17` blocks, M `2^23` cells, `τ`/`σ` 23 coordinates) and `N8` (`m = 33`: H `2^18` blocks)**; the first slot's kind is muxed over `{N4, N8, A}` (the previous step's node, or at step 1 nothing), the segment sub-slots are `{L31, L32}` with slot symmetry; unused sub-slots are inactive (selector 0). The stream leaf `P30` (`n = 2^16`) and the tree are **obsolete**. | The sizing table above; the one-hot mux of B-2 generalises to a per-slot activity selector. |
+| **B-14** (4.0) | **`KS` through `KState.ks`** (the library bridge, `Library/PaperTheorem.lean`): `kstate_front_ofR` → `FinalLaw` → `kstate_of` → `KState.ks` → the certificate's `secure`, at the **same** `ε = εR` (the doubling of `KSTextbook.ks` is for textbook ⇒ `KS`, which we do not use). | Verified against PR #19's `KS` and `Library/Security.lean` (`KState` verbatim). |
+| **B-15** (4.0) | **`E := fun c π L => if InDom c π L then E_den c π L else E_search c π`**, `E_den` the DSL denotation (3.17), `E_search` a total computable enumeration of the finite witness space of `Rel (acc (vkOf π)) c` (children `< 2^64` bytes, traces `≤ qV × queryCap`, signatures fixed) tested by `acc`; `Computes` at the new domain `|π| ≤ 8 · outCap` by `compile_runs`; `final` outside the domain by the domain-free existence of the decoded witness. | PR #20's D2 (128 MiB, closed under extraction) does **not** resolve S-H2m's O3′: the tape bound `≤ 2^64` words stays and `step` lets `2^62` junk entries precede an honest chain; the badge compiles the whole submission, so the contract's `choice_certificate` route is closed to us. |
+| **B-16** (4.0) | **The plan is data at ≤ 2 s per verify process** (12 processes per stream count against `stream_s`); the prover is **multi-threaded** on the runner's 4 vCPUs; peak memory ≤ 8 GB (`N8`). | The stream budget: one-threaded the stream truncates (≈ 1,009 s) and 43–49 s plans alone take 552 s. |
+| **B-17** (4.0) | **Proof size is priced, not capped**: `|π|` stays ≈ 0.78 MiB for every kind (the item sequence is one); the Ligerito parameters stay (UD regime, every index opened) — the only size lever within reach is level 0 at rate 1/4 (−115 KB, `V̄` −0.06 s, prover +≈ 5 %), deferred until `P̄` is below ≈ 4 s. `qV = 36,000`. | §0.3; `S-D`'s MCA proof covers the UD regime only, so the Johnson regime is out of reach. |
 
 ### 0.2 Drift (T §6's D-1 … D-17 stand)
 
@@ -314,6 +345,8 @@ with the `maskRows` slowdown (S-E9 (d)) still in the binary. The VM runs V **1.1
 (80–115 ms, then 225 ms VM) are history in §10.
 
 ### 3.3 The `W` kind and DoS
+
+**Revision 4.0:** the `W` kind stays (completeness, `P := encode`); the DoS column now targets the stream's last output `π_M` with inputs of up to the 64 MiB file cap, each within `10 × v_ref`: `V`'s parse rejects a wrong size per kind before any work, the aggregate kind `A` costs at most `4 × 170 ms`, and the `W` branch is bounded by `chainCap`.
 
 `RelW` is the baseline's `C`/`N` decision: a leaf recomputes `chainEnd s n` with the library's fast
 twin; a node checks `accWith V` on both children (`V` by well-founded recursion on `π.size`;
@@ -583,7 +616,7 @@ on 18 coordinates and their `_meets` lemmas use `eq((a ‖ 0^k), (b ‖ 0^k)) = 
 (`eq_pad_zero`), so the five become templates (S-0 the pack, S-C the specs, S-F2 the `_meets`,
 S-E the templates).
 
-**`planOf` (revision 3.17, the orchestrator's ruling revising 3.15 (e)).** The badge's `NS` is the
+**`planOf` (revision 4.0, B-16, superseding 3.17's ≤ 5 s):** under the stream every verify process (one per batch of 8 checks, ≈ 12 per stream) counts against `stream_s = 960 s`, so the plan costs **≤ 2 s per process** (43–49 s today = 552 s). The 3.17 text follows for the record. **`planOf` (revision 3.17, the orchestrator's ruling revising 3.15 (e)).** The badge's `NS` is the
 monotonic time of parsing `π` and evaluating `acc` only (`harness/badge/Verify.lean.in`,
 `timedCheck`), so a **closed top-level plan constant, initialised at process start, is outside
 every check's `NS`**; process start counts only against the batch timeout `verify_s · n + 60 s ≥
@@ -731,6 +764,8 @@ public cell fails its point claim; `pinned_rank`'s inverse
 ## 6. The extractor
 
 ### 6.1 Contract and B-8
+
+**Revision 4.0 (B-15):** `E` has the search branch outside `InDom`, and `Computes`' domain is `|π| ≤ 8 · outCap` (128 MiB); the rest of this section is 3.17's and stands for `E_den`. See §10 changes 25 (2).
 
 `Computes p E fuel` asks, on every tape of the domain (`|π| ≤ proofCap`, every query `< 2^64`
 bytes, a tape of `≤ 2^64` words), `∃ o, p.run … = some o ∧ o.length ≤ outCap ∧ decodeWit o = E c π
@@ -1908,4 +1943,43 @@ process-start constant, ≤ 5 s on the VM (§4.4).
 - **S-T1**: the kind factor's `q` side in F and shared endpoints (target ≤ 20 ms, better ≤ 8).
 - **S-I**: the certificate's `E` field is the `semXIR` denotation (computable); `acc` with `Impl.implCN`.
 - **P2**: none new (the mux rows' cells are the honest WOTS values already written; `v_κ` unchanged).
+
+### Stage-review changes 25 (revision 4.0): the rebase onto core PR #20 (`v4/ivc-score`) and PR #19 (`v4/ks-standard`)
+
+Sources read: PR #20's body; `docs/v4/BRIEF.md` §5c (V4-A10), §5d (V4-A11, deviations 1–7);
+`docs/DESIGN-v4-srom.md` §1.5, §3.6; `harness/PROVER.md` §3–§6; `harness/season.toml`;
+`harness/FORMAT.md`; the contract diff `15dac52 → 6d05d00` (`Certificate`, `Extractor`, `Oracle`,
+`Relation`, `Security`, `Tree`); `Library/KS.lean`, `Library/Security.lean`
+(`KState` verbatim), `Library/PaperTheorem.lean` (`KState.ks`), `Library/Compose.lean`;
+`stages/S-H2-RESULT.md` Part 22 (O3′); `stages/S-N1-RESULT.md`. Model: `sizes.py` "revision 4.0".
+
+**What was verified (the coordinator's items 1–5).**
+1. **KS.** PR #19 redefines `KS R V E ε qV` as the textbook game over `prob` (`∀ A Q, Q + qV ≤ logCap → prob (accept ∧ ¬extract) ≤ (Q + qV)·ε`, plus the `qV` bound). `KState` moved verbatim to `Library/Security.lean`; **`KState.ks : KState R V E ε → (∀ H c π, |queries| ≤ qV) → KS R V E ε qV` at the same `ε`** (`Library/PaperTheorem.lean`; the factor 2 is `KSTextbook.ks`, textbook ⇒ KS, not our route). So **`kstate_front_ofR` → `FinalLaw` → `kstate_of` → `KState.ks`** replaces `FRKState.ks_of`'s body; `εR = 15/2^124 ≤ errorCap` unchanged; the whole-run bound is the organiser's union bound (`≈ 513 · 2^30 · 2^-120 ≈ 2^-81`, BRIEF §5c; the stream's comb shape is paper). Our potential-based S-G work carries over unchanged in statement. (B-14)
+2. **`Computes` and `E`.** D2 changes the proof bound (`π.size ≤ proofCap` → `≤ 8 · outCap`, 128 MiB, closed under extraction) and keeps the tape bound (`≤ 2^64` words). **It does not resolve O3′**: on a log with `2^62` junk entries before the honest chain the 64-bit machine (and `semXIR`, its exact semantics) cannot read the chain, `step` allows such logs, and `final` ranges over them (`KState.ks` uses `final` on the game's final log of up to `logCap` entries). The contract's answer (a non-constructive `E` beyond the domain, `choice_certificate`) is closed to us because the badge compiles the whole `submission`. **Ruling (B-15): `E := if InDom then E_den else E_search`**, `E_search c π` a total computable enumeration of the finite witness space of `Rel (acc (vkOf π)) c` (for a node: two children with `|π_i| < 2^64`, traces `≤ qV` entries of `≤ queryCap` bytes, fixed-size signatures; a leaf: `s`, `n < 2^64`), tested by the decidable `acc`/`leafStmt`; `Computes` holds since `E = E_den` on the domain (`compile_runs`, now at `|π| ≤ 8 · outCap`: the `W` copy of a 128 MiB proof is exactly `outCap` words — the contract sized it so); `final` outside the domain: the decoded witness **exists** (`rel_readWit`, `rel_leaf_of_run` use no domain bound — S-N1 §O3; kernel lemma `exists_wit_of_accept`, owner S-N/S-G), so `E_search` returns one (`search_spec`, owner S-H2). S-H2m's half-built `FRSoundnessExtE` (`ExtIfaceE`, `kstate_front_ofEN`, `hOutN`) closes with it; `hOut` disappears. B-8's text is 3.17's for `E_den`.
+3. **The benchmark.** Confirmed against `PROVER.md` §3 and `season.toml`: step 1 `prover first` (two chains), steps `≥ 2` `prover step` (`prev.stmt`, `prev.bin`, `chain.json`), a fresh process each, state only in `π`; lengths i.i.d. `∝ 1/n²` on `[2^17, 2^20]` (mean `1.19·2^18`; `P(n ≤ 2^18) = 0.57`, `P(n > 2^19) = 0.14`); `M = 64 + Geom(16) ≤ 112`; `ready_s` 10, `step_s` 60, `stream_s` 960 for everything (requests, checks in batches of 8 — one verify process per batch —, canaries, calibration samples, re-runs); 11 GiB prover memory, `setup_s` 240 untimed, `setup_cap` 4 GiB, `build_s` 120. **The plan at 43–49 s per verify process is ≈ 552 s of the 960**: ruled to ≤ 2 s (B-16). Our leaf handles exactly `2^18` (and the stream leaf `2^16`): **the current design cannot run the benchmark.**
+4. **The score.** `S = P̄ + V̄` as `PROVER.md` §3 / design §3.6; `v_ref = T_triv/10 ≈ 177.8 ms`, `κ = 0.2667 s`, `s_ref = 2 MiB`, the cubic side above `x = 1`. Our node today: `x = 193/177.8 + 0.76/2 = 1.47`, `V̄ = 0.84 s`. **The Ligerito parameter set stays** (B-17): the UD regime is what S-D proved; the size lever within reach (level 0 at rate 1/4: 178 instead of 290 columns, −115 KB, prover +≈ 5 %) is worth `V̄ −0.06 s` and is deferred; `V̄`'s real lever is V (S-T1/S-E11: 150 ms → `V̄` 0.49 s). `P̄` dominates `S` (§0.3).
+5. **Memory and setup.** `N8` ≈ 7.7 GB and `L32` 6.19 GB fit 11 GiB; `setup` is untimed but is the prover's (the verifier's plan cannot be built there).
+
+| Item | Ruling / change |
+|---|---|
+| **(a) Re-pin** | In its own commit: `git -C .contract fetch origin v4/ivc-score` (the remote has the PR branch; re-pin to the merge commit once #20 lands on `main`), `git -C .contract checkout 6d05d00`, `git add .contract`, commit "pin: core 6d05d00 (PR #20 on #19)". `lake-manifest.json`, `lakefile.toml` and `lean-toolchain` are **unchanged** between `15dac52` and `6d05d00`, so the package tree `logs/pkgs` (= `.contract/.lake/packages`) stays; the organiser copy `logs/org` is re-cloned at `6d05d00` and rebuilt with `harness/org-setup.sh` (the badge `Verify.lean.in`, `gen_chaincheck.py`, `rfh/checks.py`, `bench.py`, `season.toml` changed). **What breaks in our Lean**: (i) `proofCap` is gone — `FRFormat.piSize_le_proofCap`, `FRVerifier.accWith` (`decide (p.π.size ≤ proofCap)` → `decide (p.π.size < 2 ^ 64)`) and `acc_eq`, `FRNodeCircuit`, `FRNodeSoundA`, `FRSoundnessAccRun`, `FRXComputes` (the domain hypothesis `π.size ≤ 8 * outCap`), `FRXLeaf`, `FRXSpec`; (ii) `KState` is `RecursionFast.Library.Security`'s (import paths in `FRKState`, `FRSoundnessCompose`, `FRSoundnessExtAll/ExtR/FrK/Hide/StepB/StepE`) and `KS` is the game: `FRKState.ks_of` becomes `KState.ks (kstate_of …) hq`; (iii) `failProb` is gone: `FRVerifier`'s `CompleteWithError` proof goes through `prob` (`completeWithError_iff`/`failProb_eq_prob` or `Complete ⇒ CompleteWithError` at `δ = 0`); (iv) `Submission`/`Certificate` fields are unchanged; `Tree.lean`, `chainCap`, `queryCap`, `outCap`, `logCap` unchanged; `acc`'s new first conjunct must be mirrored in `accWith` (AGENTS.md §7.5). |
+| **(b) Shapes** (B-11 … B-13) | **Leaf:** the chain is split into `k = ⌈n/2^18⌉ ≤ 4` segments; each is the `L32` circuit with a variable length `n_i ≤ 2^18` (`last` block from the statement, `free` beyond) and the `pubStart` flag (segment 1 secret start; `i ≥ 2` pin `s_i = e_{i−1}`); a remainder `≤ 2^17` uses `L31` (`m = 31`, ≈ 2.7 s). The **aggregate leaf** `A` is one signed proof `(π_A = hdr(k, n) ‖ π_1 ‖ … ‖ π_k, tr_A = tr_1 ‖ … ‖ tr_k, σ_A)`; `V_A` runs the `k` segment verifiers in sequence (`runSeq` on `tr_A`) and checks `e_i = s_{i+1}`, `e_k = end`, `Σ n_i = n`, `n_i ≤ 2^18`; **no SNARK of its own**; never checked by the harness (only step outputs are), verified in-circuit by the node. A one-large-leaf design (`m = 34`, ≈ 24 GB) and chain-in-the-node (`W` leaf, 49 % of chains over the `2^18` fit) are rejected on memory; `k` separately verified leaf proofs on the cubic `V̄`. **Node:** `N4` (steps ≥ 2): slots = the previous node (kind muxed over `{N4, N8}`) + `k ≤ 4` segments (`{L31, L32}`, slot-symmetric), H `2^17` blocks (117,030 used at `k = 4`, 1.12×), M `2^23` cells/rows (`5 × 838 k = 4.19 M` rows, 2.0×), `τ`/`σ` 23 coordinates, Z/E +2 rounds; `N8` (step 1): up to 8 segments, no previous node, H `2^18` blocks, `m = 33`. One item sequence and `|π| ≈ 0.78 MiB` for every kind; `qV = 36,000`. **Costs (VM, one thread, `sizes.py`):** segments 5.47 s per `2^18`; `N4` 1.7 / 3.4 / 4.1 s at `k = 1 / 2 / 4` (1.9 / 3.9 / 4.6 GB), `N8` 6.8 s (7.7 GB); step at `n = 2^17 / 2^18 / 1.19·2^18 / 2^19 / 2^20`: 4.9 / 7.7 / 12.1 / 14.9 / 26.5 s (≤ 60). Per compression ≈ 25–56 µs; the node is 63 % of a `2^17` step. |
+| **(c) Survives / adapt / obsolete** | **Survives unchanged:** S-A (fields), S-D (MCA, UD ladder), the Ligerito/ring-switching/skip theory, the IR, compiler, templates and the replay layout (L-circ), the soundness front (potential route, `kstate_front_ofR`; only the last bridge changes), the extractor DSL and its node decoding, WOTS/SROM, the item-sequence design, the leaf prover (now the segment prover). **Adapt:** the leaf circuit (variable `n_i`, `pubStart`), `hashStmt` (the `A` header and the segment statements), the kind set and the muxes (`{N4, N8}` for slot 1, `{L31, L32}` for sub-slots, activity selectors), `N_M = 2^23`/`τ` 23, the node layouts and `mRowModel` for `N4`/`N8`, S-G's truths over `1 + k` slots, `qV`, `accWith`/`acc_eq`, `FRKState` → `KState.ks`, `FRXComputes`' domain, `E` (B-15), the certificate assembly, P2 (segments, the aggregate, the node prover, threads, memory). **Obsolete:** the tree benchmark (`L32` as a tree leaf of 64; `T_tree`), the `P30` stream leaf at `n = 2^16`, every `proofCap` margin (the size is priced), the `T_V` gate (now the `V̄` knee: S-T1's work keeps its value), `hOut`. **The queued S-E circuit work (S-N1's O2/O2b, `hRes`) stays on the critical path**: the rows are the node's soundness and transfer to `N4`/`N8` (more slots, the same machinery). |
+| **(d) Critical path** (≤ 3 agents, FR-D8) | **1. INT-6 (one agent): the re-pin and the API adaptation** — (a)'s list, `FR` green. **2. In parallel (two agents): S-0′/S-E, the new shapes** — the segment circuit (variable `n`, `pubStart`), `V_A`, `gen` for `N4`/`N8` with the sub-slot muxes, layouts, `mRowModel`, the item sequence and `qV`; **S-H2n**, `E_search`, `exists_wit_of_accept`, `Computes` at `8 · outCap`, `FRSoundnessExtE` closed. **3. Then (two agents): S-E12′** (the O2/O2b rows, `R`, templates on `N4`/`N8`; the plan ≤ 2 s) and **S-G12′** (`truthE` over `nodeIRows`, the truths over `1 + k` slots, `KState.ks` bridge, `hRes`) — with **P2′** (the segment prover with variable `n` and `L31`, the aggregate assembly and one `SIGN`, the `N4`/`N8` prover from the dumps, **multi-threading**, the stream dry run on the PR #20 harness `smoke.py --org`). **4.** S-T1 (V) and the size lever after `P̄`. The per-track list is below. |
+| **(e) `S`** (7763; `c_P ≈ 1`; prover ratio VM/7763 1.2 assumed) | **Current design: fails** (cannot prove `2^17 … 2^20` chains; for reference, if every chain were `2^18`: `P̄ = (5.47 + 3.0)/1.2 = 7.1`, `V̄ = 0.83`, `S ≈ 7.9 s`). **Revision 4.0, one thread: `P̄ = 8.2 s`, `S ≈ 9.0 s`, but the stream takes ≈ 1,009 s > 960: truncated and unranked.** **Revision 4.0 with 4 threads (×2.5): `P̄ ≈ 3.3 s`, `S ≈ 4.1 s`; with S-T1/S-E11's V (150 ms): `V̄ 0.49`, `S ≈ 3.8 s`; with level 0 at rate 1/4 (`|π|` 0.65 MiB): `S ≈ 3.7 s`.** Arithmetic: `P̄ = 2^18 · (Σ n_i (P_i/n_i)³ / Σ n_i)^{1/3}` over `2·10^5` draws of the `1/n²` density with the step costs of (b); `V̄ = 0.2667 · max(x, x³)`, `x = V/177.8 ms + |π|/2 MiB`. `P̄` is 80–90 % of `S`: the prover's throughput (threads, then SIMD and the arithmetisation) is the lever; the node's fixed cost (the previous slot's replay: 23 k blocks + 838 k rows per slot) is the second, which smaller proofs also shrink. |
+| Plan time | **≤ 2 s per verify process** (B-16; supersedes 3.17's ≤ 5 s): `planOf` made `O(pieces · log)` or the plan as checked data; owner S-E. |
+| `V̄` | the `T_V` gate is gone; V is scored continuously: each −10 ms of V is `V̄ −0.08 s` on the cubic side today (`x = 1.47`), `−0.015 s` below the knee. S-T1 continues; target V ≤ 150 ms runner. |
+
+**Per-track list (revision 4.0):**
+- **INT-6 / S-0**: the re-pin commit (orchestrator) and (a)'s API changes; `accWith` with `p.π.size < 2^64`, `acc_eq`; `qV = 36,000`; the kinds `L31`, `L32` (with `pubStart`, variable `n`), `A`, `N4`, `N8`, `W`; the item sequence for `m ≤ 33`; `hashStmt` for the `A` header and the segment statements; `V_A` (sequential segment verifiers + chaining); `FRFormat` without `piSize_le_proofCap`.
+- **S-C**: the variable-length chain's `shiftTarget`/`targetS` with `last = n_i` from the statement (INT-4's `bnd` mechanism), the `pubStart` pin as a gated row in the block target; `kindInd`/intervals with a statement-dependent endpoint (`rangeEq_mle` with `n`'s bits).
+- **S-E (L-circ)**: `gen` for `N4`/`N8` (`1 + k` slots, activity selectors, slot symmetry over `{L31, L32}` sub-slots, slot-1 mux over `{N4, N8}`), `FRNodeLayout` for `m = 32/33` (H `2^17`/`2^18`, M `2^23`), `mRowModel`, the O2/O2b rows, `R`, the templates, **the plan ≤ 2 s**, the dumps for P2.
+- **S-F / S-F2**: `implC` for the new kinds; `finSh`'s variable last block; the `A` kind's `V` in `OpImpl`.
+- **S-G**: `FRKState.ks_of` through `KState.ks` (imports from `Library.Security`/`PaperTheorem`); `truthE` over `nodeIRows` for `N4`/`N8`; the per-slot truths over `1 + k` slots; the aggregate leaf's acceptance in `node_sound` (one signed trace, `k` sub-verifiers, the chaining equalities); `exists_wit_of_accept` with S-N.
+- **S-H2**: `E := if InDom then E_den else E_search` (B-15), `search_spec`, `computes_Eof` at `|π| ≤ 8 · outCap`, `FRSoundnessExtE` closed without `hOut`; the node decoding over `1 + k` children (the aggregate child's `k` sub-traces).
+- **S-I**: the certificate's `secure` via `KState.ks`, `computes` at the new domain, `E` computable (the badge builds the whole submission), `δ = 0` through `prob`.
+- **P2**: the segment prover (variable `n_i`, `L31`), the aggregate assembly (one `SIGN` for `tr_A`), the `N4`/`N8` prover, **multi-threading on 4 vCPUs** (mandatory for `stream_s`), memory ≤ 8 GB, `prover first`/`prover step` with the new handshake (`ready`, inputs renamed in, `done`, kill), the stream dry run on the PR #20 harness.
+- **H**: the PR #20 harness (`smoke.py --org`), the runner probe of V and of the step times; the two-model record is the organiser's open item.
+
+**Revision 4.0 (normative):** B-11 … B-17 (§0.1); the status header; §0's budget table; the pointers in §3.3, §4.4 and §6.1. Where 3.x text conflicts (the tree, `L32` as a tree leaf, the `P30` stream leaf, `proofCap` margins, the `T_V` gate, `hOut`, the ≤ 5 s plan, `qV = 10,240`), changes 25 wins.
 

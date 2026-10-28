@@ -257,3 +257,43 @@ kf_now=33.0; kf_ST1_full=8.0; kf_ST1_part=20.0; e11=12.0; tobind=7+1.5+4+1+0.3
 for lab,kf,ev in (("INT-5 as measured (226-233), + to-bind",kf_now,0),("S-T1 kind factor to ~20 ms, no S-E11 levers",kf_ST1_part,0),("S-T1 to ~20 ms + S-E11 levers",kf_ST1_part,e11),("S-T1 to ~8 ms (F-side, shared endpoints) + S-E11 levers",kf_ST1_full,e11)):
     v=base+kf+tobind-ev; print(f"   T_V ({lab}): {v:.0f} ms VM = {v/RATIO:.0f} ms on the 7763 -> {CAP/(v/RATIO):.2f}x")
 print(f"   >= 1.10x needs V <= {CAP/1.10*RATIO:.0f} ms VM ({CAP/1.10:.0f} ms runner); the floor with the current evaluator is ~{base+kf_ST1_full+tobind-e11:.0f} ms VM")
+# ---- revision 4.0 (stage-review changes 25): core PR #20 (v4/ivc-score, 6d05d00) on PR #19 (v4/ks-standard). One IVC stream,
+# S = Pbar + Vbar. Inputs measured on the VM: L32 leaf prove 5.47 s / 6.19 GB (P2 §: tree leaf m=32), ratio prover VM/7763 ~1.2 (assumed),
+# V N30 190-196 ms on the 7763 (H-V/INT-5), piSize 797,904 B. Chain lengths density 1/n^2 on [2^17, 2^20].
+import random
+LO,HI=2**17,2**20
+def draw(u): return int(1/(1/LO - u*(1/LO-1/HI)))     # inverse CDF of density ∝ 1/n^2
+Emean=math.log(HI/LO)/(1/LO-1/HI)
+print("== revision 4.0: the IVC stream")
+print(f"   chain length: mean {Emean:.0f} = {Emean/2**18:.2f}·2^18; P(n<=2^18) = {(1/LO-1/2**18)/(1/LO-1/HI):.2f}; P(n>2^19) = {(1/2**19-1/HI)/(1/LO-1/HI):.2f}")
+L32_s=5.47; L32_bits=2**32; L32_gb=6.19
+def leaf_cost(n):   # segments: full 2^18 pieces (L32) and a remainder: L31 if <= 2^17 else L32
+    k_full=n//2**18; r=n-k_full*2**18; segs=[(2**18,L32_s)]*k_full
+    if r>0: segs.append((r, L32_s/2 if r<=2**17 else L32_s))
+    return sum(s for _,s in segs), len(segs)
+def node_cost(k, prev=True):
+    slots=(1 if prev else 0)+k
+    Hblocks=slots*23146+2*498+12+292; Hb=2**math.ceil(math.log2(Hblocks))*2**14
+    Mcells=2**math.ceil(math.log2(slots*2**20)); Mb=Mcells*128
+    bits=Hb+Mb; return L32_s*bits/L32_bits, L32_gb*bits/L32_bits, bits, Hblocks, slots
+def step_cost(n, prev=True):
+    ls,k=leaf_cost(n); ns,gb,bits,Hb,slots=node_cost(k,prev); return ls+ns+0.5, k, ns, gb
+rnd=random.Random(20261029); N=200000
+acc3=0; accn=0; tot=0
+for _ in range(N):
+    n=draw(rnd.random()); P,k,ns,gb=step_cost(n); acc3+=n*(P/n)**3; accn+=n; tot+=P
+Pbar_vm=2**18*(acc3/accn)**(1/3); meanP=tot/N
+print(f"   per step (VM, one thread): n=2^17 {step_cost(2**17)[0]:.1f} s; n=2^18 {step_cost(2**18)[0]:.1f}; n=1.19·2^18 {step_cost(int(Emean))[0]:.1f}; n=2^19 {step_cost(2**19)[0]:.1f}; n=2^20 {step_cost(2**20)[0]:.1f} (k=4; step_s 60)")
+for k in (1,2,4): ns,gb,bits,Hb,slots=node_cost(k); print(f"   node N4 at k={k}: {slots} slots, H {Hb} blocks, 2^{math.log2(bits):.1f} bits -> {ns:.1f} s, {gb:.1f} GB")
+ns8,gb8,bits8,Hb8,sl8=node_cost(8,prev=False); print(f"   node N8 (step 1, k_A+k_B<=8): {sl8} slots, H {Hb8} blocks, 2^{math.log2(bits8):.1f} bits -> {ns8:.1f} s, {gb8:.1f} GB (11 GiB cap)")
+RP=1.2
+for lab,th in (("one thread",1.0),("4 threads (x2.5)",2.5)):
+    Pb=Pbar_vm/RP/th; mp=meanP/RP/th
+    stream=90*mp+12*(2+8*2*0.2)+12*2.6+9*mp
+    print(f"   {lab}: Pbar {Pb:.1f} s (VM {Pbar_vm/th:.1f}); mean step {mp:.1f} s; stream ~{stream:.0f} s of 960 (90 steps, 12 check batches at plan 2 s, calibration, 10% re-runs){' -> TRUNCATED' if stream>960 else ''}")
+def Vbar(V_ms, pi_bytes, vref=177.8): x=V_ms/vref+pi_bytes/2**21; return 0.2667*max(x,x**3), x
+for lab,V,pi in (("today: V 193 ms, |π| 797,904",193,797904),("S-T1/S-E11: V 150 ms",150,797904),("+ |π| 0.65 MiB (rate-1/4 level 0, −115 KB)",150,683000),("knee: V 110 ms, |π| 0.6 MiB",110,629000)):
+    vb,x=Vbar(V,pi); print(f"   Vbar ({lab}): x = {x:.2f}, Vbar = {vb:.2f} s")
+print(f"   S estimates (7763): current design cannot run (leaf fixed at 2^18 / 2^16): S = fail; if every chain were 2^18: Pbar {(L32_s+3.0)/RP:.1f} + Vbar 0.83 = {(L32_s+3.0)/RP+0.83:.1f} s")
+print(f"   4.0 one thread: S = {Pbar_vm/RP:.1f} + 0.83 = {Pbar_vm/RP+0.83:.1f} s but truncated; 4 threads: S = {Pbar_vm/RP/2.5:.1f} + 0.83 = {Pbar_vm/RP/2.5+0.83:.1f} s; + V 150 ms: {Pbar_vm/RP/2.5+Vbar(150,797904)[0]:.1f} s; + |π| 0.65 MiB: {Pbar_vm/RP/2.5+Vbar(150,683000)[0]:.1f} s")
+print(f"   plan time: 43-49 s x 12 verify processes = {46*12} s of stream_s 960 -> must be <= 2 s per process ({2*12} s)")

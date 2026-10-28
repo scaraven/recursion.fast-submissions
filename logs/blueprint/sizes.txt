@@ -76,3 +76,19 @@
    T_V (S-T1 to ~20 ms + S-E11 levers): 215 ms VM = 180 ms on the 7763 -> 1.14x
    T_V (S-T1 to ~8 ms (F-side, shared endpoints) + S-E11 levers): 203 ms VM = 170 ms on the 7763 -> 1.21x
    >= 1.10x needs V <= 223 ms VM (187 ms runner); the floor with the current evaluator is ~203 ms VM
+== revision 4.0: the IVC stream
+   chain length: mean 311493 = 1.19·2^18; P(n<=2^18) = 0.57; P(n>2^19) = 0.14
+   per step (VM, one thread): n=2^17 4.9 s; n=2^18 7.7; n=1.19·2^18 12.1; n=2^19 14.9; n=2^20 26.5 (k=4; step_s 60)
+   node N4 at k=1: 2 slots, H 47592 blocks, 2^30.3 bits -> 1.7 s, 1.9 GB
+   node N4 at k=2: 3 slots, H 70738 blocks, 2^31.3 bits -> 3.4 s, 3.9 GB
+   node N4 at k=4: 5 slots, H 117030 blocks, 2^31.6 bits -> 4.1 s, 4.6 GB
+   node N8 (step 1, k_A+k_B<=8): 8 slots, H 186468 blocks, 2^32.3 bits -> 6.8 s, 7.7 GB (11 GiB cap)
+   one thread: Pbar 8.2 s (VM 9.8); mean step 9.2 s; stream ~1009 s of 960 (90 steps, 12 check batches at plan 2 s, calibration, 10% re-runs) -> TRUNCATED
+   4 threads (x2.5): Pbar 3.3 s (VM 3.9); mean step 3.7 s; stream ~460 s of 960 (90 steps, 12 check batches at plan 2 s, calibration, 10% re-runs)
+   Vbar (today: V 193 ms, |π| 797,904): x = 1.47, Vbar = 0.84 s
+   Vbar (S-T1/S-E11: V 150 ms): x = 1.22, Vbar = 0.49 s
+   Vbar (+ |π| 0.65 MiB (rate-1/4 level 0, −115 KB)): x = 1.17, Vbar = 0.43 s
+   Vbar (knee: V 110 ms, |π| 0.6 MiB): x = 0.92, Vbar = 0.24 s
+   S estimates (7763): current design cannot run (leaf fixed at 2^18 / 2^16): S = fail; if every chain were 2^18: Pbar 7.1 + Vbar 0.83 = 7.9 s
+   4.0 one thread: S = 8.2 + 0.83 = 9.0 s but truncated; 4 threads: S = 3.3 + 0.83 = 4.1 s; + V 150 ms: 3.8 s; + |π| 0.65 MiB: 3.7 s
+   plan time: 43-49 s x 12 verify processes = 552 s of stream_s 960 -> must be <= 2 s per process (24 s)
