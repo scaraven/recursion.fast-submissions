@@ -293,6 +293,7 @@ inductive TKey where
   | tensorW (n : ℕ)
   | rsWeight (n : ℕ) (ps : List ℕ) (m : ℕ)
   | kindInd (n : ℕ)
+  | shiftMask (n m : ℕ)
   deriving DecidableEq, Inhabited
 
 /-- **The template context**: each key's template and each instance's cell base. -/

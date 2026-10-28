@@ -11,8 +11,9 @@ BLUEPRINT §4.3's region table and A.6/A.7 (revision 3.5). Blocks of `2^14` posi
 * **H** (from block 0): digest chain 1 `[0, 23,146)` and chain 2 `[23,146, 46,292)` (`streamStart`
   first, `stream` after), `hashStmt` (`hashA`, `hashB1`, `hashB2` per slot), WOTS per slot laid
   out consecutively (§4.2: the 399 `w43` chain steps, the key leaf `hashB1` + 65 `stream` +
-  `streamEnd41`, the 16 path steps `hashB1`, `hashB2`), the mirror sub-region `WM` (10 blocks per
-  slot, no kind), 8 spare;
+  `streamEnd41`, the 16 path steps `hashB1`, `hashB2`), the mirror sub-region `WM` (146 blocks per
+  slot after both WOTS runs, kind `free`; revision 3.14, A.6's pinned map: `mirBlock`, `mirPos`), 8
+  spare;
 * **L** at block 47,616 (revision 3.12: H grew by `2 × 760` blocks; the first multiple of 256
   after H, as 46,336 was), 124 used; **M** at `3 · 2^14 = 49,152`, `N_M = 2^21` elements (16,384
   blocks) to the end, slot `σ`'s rows at `Mbase + (σ − 1) · 2^20`.
@@ -38,9 +39,9 @@ def stmtBase : ℕ := 2 * chainN
 /-- WOTS: 133 chains × 3 steps, the key leaf's 67 blocks, the path's 16 × 2 per slot. -/
 def wotsBase : ℕ := stmtBase + 6
 def wotsSlot : ℕ := 133 * 3 + 67 + 2 * 16
-/-- The mirror sub-region `WM` (10 blocks per slot). -/
+/-- The mirror sub-region `WM` (revision 3.14, A.6: 146 blocks per slot, after both WOTS runs). -/
 def wmBase : ℕ := wotsBase + 2 * wotsSlot
-def wmSlot : ℕ := 10
+def wmSlot : ℕ := 146
 /-- The end of region H (after 8 spare blocks). -/
 def hEnd : ℕ := wmBase + 2 * wmSlot + 8
 /-- Region L: base and used blocks (revision 3.12: moved from 46,336 past H's end, 47,480 then;
@@ -172,6 +173,73 @@ theorem ind_wots {σ off : ℕ} (hσ : σ < 2) (ho : off < wotsSlot) :
     exact ind_of_mem (iv := ⟨.hashB2, b + 467 + 2 * t, b + 468 + 2 * t⟩) (hmem _ (by simp))
       (by simp only; omega) (by simp only; omega)
 
+/-! ## The mirror map (A.6, revision 3.14: S-CN D-2/D-3, the `WM` ruling) -/
+
+/-- **Slot `σ`'s first `WM` block** (`wmB σ = wmBase + 146 σ`). -/
+def wmB (σ : ℕ) : ℕ := wmBase + wmSlot * σ
+
+/-- **The first mirror source of family `f`** (A.6's `off_f`; families in A.8's order `x`, `j`,
+`end9`, `end41lo`, `end41hi`, `l`, `r0`, `r31`; `end41lo` and `end41hi` share their sources, `j`
+has one source). -/
+def mirOff : ℕ → ℕ
+  | 0 => 0 | 1 => 399 | 2 => 400 | 3 => 467 | 4 => 467 | 5 => 533 | 6 => 549 | 7 => 565 | _ => 0
+
+/-- The number of mirror sources of family `f` (`j`'s 400 links share one source). -/
+def mirN : ℕ → ℕ
+  | 0 => 399 | 1 => 1 | 2 => 67 | 3 => 66 | 4 => 66 | 5 => 16 | 6 => 16 | 7 => 16 | _ => 0
+
+/-- Mirror sources per slot: `0 … 580` (581 of the 584 positions of 146 blocks). -/
+def mirSources : ℕ := 581
+
+/-- **Mirror source `g`'s block** in slot `σ`: four sources per block. -/
+def mirBlock (σ g : ℕ) : ℕ := wmB σ + g / 4
+
+/-- **The position of bit `s` (`s < 256`) of mirror source `g`** in its block: elements
+`2 (g mod 4)`, `+1` (positions `< 1024`, the only ones the Sh collapse reaches). -/
+def mirPos (g s : ℕ) : ℕ := 256 * (g % 4) + s
+
+/-- The bit of `z` holding bit `s` of slot `σ`'s mirror source `g` (A.6: block-major, `2^14` bits
+per block). -/
+def mirBit (σ g s : ℕ) : ℕ := mirBlock σ g * 2 ^ 14 + mirPos g s
+
+/-- The `F` element of `f` (A.7's pack) holding half `k` (`k < 2`) of mirror source `g`. -/
+def mirElem (σ g k : ℕ) : ℕ := mirBlock σ g * 128 + 2 * (g % 4) + k
+
+theorem mirElem_bit (σ g s : ℕ) (hs : s < 256) :
+    mirBit σ g s / 128 = mirElem σ g (s / 128) := by
+  unfold mirBit mirElem mirPos
+  have h4 := Nat.mod_lt g (show 0 < 4 by norm_num)
+  omega
+
+/-- **Every family's mirror sources are below `mirSources`**, and the sources of distinct
+families are disjoint except `end41lo`/`end41hi`, which share theirs. -/
+theorem mir_sources (f : ℕ) (hf : f < 8) : mirOff f + mirN f ≤ mirSources := by
+  interval_cases f <;> decide
+
+theorem mir_disjoint : ∀ f < 7, mirOff f + mirN f ≤ mirOff (f + 1) ∨ (f = 3 ∧
+    mirOff 3 = mirOff 4 ∧ mirN 3 = mirN 4) := by decide
+
+/-- **The `WM` blocks fit**: slot `σ`'s mirrors lie in its 146 blocks, which end before `hEnd`,
+past both WOTS runs and before L. -/
+theorem mir_fits {σ g : ℕ} (hσ : σ < 2) (hg : g < mirSources) :
+    wotsBase + 2 * wotsSlot ≤ mirBlock σ g ∧ mirBlock σ g < wmB σ + wmSlot ∧
+      mirBlock σ g < hEnd ∧ hEnd ≤ lBase := by
+  simp only [mirBlock, wmB, hEnd, wmBase, wmSlot, mirSources, lBase, wotsBase, wotsSlot, stmtBase,
+    chainN] at hg ⊢
+  omega
+
+theorem mirPos_lt {g s : ℕ} (hs : s < 256) : mirPos g s < 1024 := by
+  unfold mirPos; have := Nat.mod_lt g (show 0 < 4 by norm_num); omega
+
+/-- Positive: the first and last sources' blocks (`47,294` and `47,585` for slot 2). -/
+theorem mir_controls : mirBlock 0 0 = 47294 ∧ mirBlock 1 580 = 47585 ∧ mirPos 7 3 = 771 ∧
+    mirElem 0 5 1 = 47295 * 128 + 3 := by decide
+
+/-- Negative: the 3.13 map's element `2 (off_f + t) + p` put source 400 (`end9`'s first) at
+element 800, past the slot coordinates; the pinned map puts it at element `0` of block `+100`. -/
+theorem mir_control_neg : mirElem 0 400 0 ≠ wmB 0 * 128 + 2 * 400 ∧ mirElem 0 400 0 = (wmB 0 + 100) * 128 := by
+  decide
+
 /-! ## The checks (B-2's kill test, closed form) -/
 
 theorem nodeLayout_length : nodeLayout.length = 83 := by decide
@@ -185,33 +253,33 @@ theorem nodeLayout_end : (nodeLayout.head?.map Iv.lo, nodeLayout.getLast?.map Iv
 
 /-- **The regions fit**: H ends before L, L's used blocks before M, M ends at `2^16`. -/
 theorem regions_fit : hEnd ≤ lBase ∧ lBase + lUsed ≤ mBase ∧ mBase + mBlocks = nodeBlocks ∧
-    hEnd = 47322 := by
+    hEnd = 47594 := by
   simp only [hEnd, wmBase, wmSlot, wotsBase, wotsSlot, stmtBase, chainN, lBase, lUsed, mBase,
     mBlocks, nM, nodeBlocks]; norm_num
 
 /-! ## The M rows (A.11's row model on the measured counts, per slot) -/
 
-/-- **Per slot, the row model of revision 3.13** (S-E6; BLUEPRINT §10 changes 17 and 20,
-`sizes.txt`), with S-E6's measured counts where the rows are emitted (`logs/S-E6/lay-3.log`,
-`rows-per-generator.log`): the skeleton and every emitted template in their aligned layout, ending
-at row 406,016 (skeleton 143,088 of which 29,142 alignment padding; the templates of S-E3/S-E5 and
-S-E6's `tensorW` (882 instances) and `rowW`); then the figures for what is not emitted yet:
-`rsWeight` with 4 claims 45,604 (no claim 5), the fused `walkAB` 65,536, `shiftTarget` 100,
-`finPf`'s other 745 `tensorW` (aligned) 47,680, the node `targetS` 10,000 and `linkW`'s families
-20,000 (S-CN), and the child's `evalM`/`evalL` replay at an F point 422,912. -/
+/-- **Per slot, the row model of revision 3.14** (S-E9; BLUEPRINT §10 changes 21 (D), `sizes.txt`),
+with S-E9's measured layout where the rows are emitted (`logs/S-E9/e5eval-2.log`: slot 1's last
+indexed row is `2^20 + 436,092`): the skeleton and every emitted template in their aligned layout,
+now with `shiftMask` (2,071 rows) and `maskRows` (its `packFK` operand muxed by kind, S-E9); then
+changes 21's figures for what is not emitted yet: `rsWeight` with 4 claims 45,604, the fused
+`walkAB` 65,536, `shiftTarget` 100, `finPf`'s other 745 `tensorW` (aligned) 47,680,
+`tplTargetSNode` 16,000, `tplLinkWAll` 15,000 and the replay `R` in §4.4's layout 259,000 (no
+claim-5 row). S-E9's RESULT §1 measures `R` and `walkAB` larger than these figures. -/
 def mRowModel : List ℕ :=
-  [406016,            -- skeleton + emitted templates, aligned (measured, S-E6)
+  [436092,            -- skeleton + emitted templates, aligned (measured, S-E9)
    45604,             -- rsWeight, 4 claims (A.11)
-   65536,             -- walkAB: rowW′, colW, 2 × 2^14 products
+   65536,             -- walkAB: rowW′, colW, 2 × 2^14 products (A.11)
    100,               -- shiftTarget (A.11)
    47680,             -- finPf's 745 tensorW still imported, aligned
-   10000,             -- the node targetS (S-CN, A.11)
-   20000,             -- linkW's families (S-CN, A.11)
-   422912]            -- the child's evalM/evalL replay at an F point (changes 17)
+   16000,             -- tplTargetSNode (changes 21)
+   15000,             -- tplLinkWAll (changes 21)
+   259000]            -- the replay R in the layout of §4.4 (changes 21 (D))
 
-theorem mRowModel_sum : mRowModel.sum = 1017848 := by decide
+theorem mRowModel_sum : mRowModel.sum = 885012 := by decide
 
-/-- **The M rows fit**: a slot's rows in its `2^20` half of M (margin `1.03`), the node's in
+/-- **The M rows fit**: a slot's rows in its `2^20` half of M (margin `1.18` on this model), the node's in
 `N_M = 2^21`. -/
 theorem mRows_le : mRowModel.sum ≤ slotM ∧ 2 * mRowModel.sum ≤ nM := by
   rw [mRowModel_sum]; simp only [slotM, nM]; norm_num

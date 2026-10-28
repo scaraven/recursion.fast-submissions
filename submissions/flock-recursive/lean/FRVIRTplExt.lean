@@ -4,6 +4,7 @@ import FRVIRTplTab
 import FRVIRTplLag
 import FRVIRTplRep
 import FRVIRCompileSound
+import FRVIRTplMask
 
 /-!
 # `compileT`: the compiler with the replay templates, and `compileT_sound`
@@ -43,6 +44,7 @@ def tplOf : TKey → Tpl
   | .dotKF n => tplDotKF n
   | .tensorW n => tplTensorW n
   | .rowW _ => tplRowW
+  | .shiftMask n m => tplShiftMask n m
   | _ => ⟨[], []⟩
 
 /-- **A layout**: per key, the group's row base (relative to the slot), cell base and cell bits. -/
@@ -90,7 +92,12 @@ def tplExt (tc : TCtx) : Ext := fun P cs op =>
     | some (.af n, lr), some (.f, la) => some (tplOut tc P cs (.phiRS n) (lr ++ la) [.f])
     | _, _ => none
   | .kindFoldWeight .. => some (tplOut tc P cs .zero [] [.f])
-  -- `linkWAll`, `shiftMask` (revision 3.14): imports until `tplLinkWAll` (S-E)
+  -- `linkWAll` (revision 3.14): an import until `tplLinkWAll` (S-E)
+  | .shiftMask t r =>
+    match cs.slot t, cs.slot r with
+    | some (.af n, lt), some (.af m, lr) =>
+      some (tplOut tc P cs (.shiftMask n m) (lt ++ lr) [.f, .f, .f])
+    | _, _ => none
   -- `targetS` is the node's at a node kind (S-CN's `targetSNodeI`) and the leaf's otherwise, so
   -- the leaf template no longer serves every kind: an import until `tplTargetSNode` (S-E6)
   | .slotW sm t r =>
@@ -151,6 +158,7 @@ structure ImplT (impl : OpImpl) : Prop where
   slotW : ∀ κ, impl.slotW κ = Impl.slotWI
   tensorW : impl.tensorW = Impl.tensorWI
   rowW : impl.rowW = Impl.rowWI
+  shiftMask : impl.shiftMask = NodeI.shiftMaskI
 
 theorem outSlots_length (one : Lin) (ins : List Lin) (cb : ℕ) :
     ∀ (tys : List Ty) (os : List LinT), (outSlots one ins cb tys os).length = tys.length
@@ -181,6 +189,21 @@ theorem outSlots_two {w : Asg} {one : Lin} {ins : List Lin} {cb : ℕ} {t₁ t�
   have h2 : (os.drop t₁.len).map (LinT.ev (envOf w one ins cb)) = encV v₂ := by
     rw [List.map_drop, ho, List.drop_left' (encV_length hv₁)]
   have := outSlots_one (one := one) (ins := ins) (cb := cb) hv₂ h2
+  simp only [outSlots] at this ⊢
+  refine List.Forall₂.cons ⟨hv₁, ?_⟩ this
+  rw [← h1, List.map_map]; exact List.map_congr_left fun l _ => by simp only [Function.comp_apply, instLin_ev]
+
+/-- Three outputs. -/
+theorem outSlots_three {w : Asg} {one : Lin} {ins : List Lin} {cb : ℕ} {t₁ t₂ t₃ : Ty}
+    {os : List LinT} {v₁ v₂ v₃ : Val} (hv₁ : tyOf v₁ = some t₁) (hv₂ : tyOf v₂ = some t₂)
+    (hv₃ : tyOf v₃ = some t₃)
+    (ho : os.map (LinT.ev (envOf w one ins cb)) = encV v₁ ++ encV v₂ ++ encV v₃) :
+    List.Forall₂ (RepS w) (outSlots one ins cb [t₁, t₂, t₃] os) [v₁, v₂, v₃] := by
+  have h1 : (os.take t₁.len).map (LinT.ev (envOf w one ins cb)) = encV v₁ := by
+    rw [List.map_take, ho, List.append_assoc, List.take_left' (encV_length hv₁)]
+  have h2 : (os.drop t₁.len).map (LinT.ev (envOf w one ins cb)) = encV v₂ ++ encV v₃ := by
+    rw [List.map_drop, ho, List.append_assoc, List.drop_left' (encV_length hv₁)]
+  have := outSlots_two (one := one) (ins := ins) (cb := cb) hv₂ hv₃ h2
   simp only [outSlots] at this ⊢
   refine List.Forall₂.cons ⟨hv₁, ?_⟩ this
   rw [← h1, List.map_map]; exact List.map_congr_left fun l _ => by simp only [Function.comp_apply, instLin_ev]
@@ -337,6 +360,17 @@ theorem tplExt_ok {impl : OpImpl} (hT : ImplT impl) (L : TLay) : ExtOk impl L.ct
     rw [hx, hy, hT.rowW]
     exact outSlots_one (by simp [tyOf, rowWI_size])
       (tplRowW_ok hP.1 (inpIs_of (by simp [hxl, hyl, Val.toF, Val.toAF])) (tin_eqns hP.1 ht))
+  case shiftMask t r =>
+    split at hX <;> simp only [Option.some.injEq, reduceCtorEq] at hX; subst hX
+    rename_i n lt m lr ht' hr
+    refine ⟨rfl, fun κ inp w regs hP hI => ⟨fun q => by simp [evalOp], fun _ ht _ vs ok he => ?_⟩⟩
+    simp only [evalOp, Res.vals.injEq] at he; obtain ⟨rfl, rfl⟩ := he
+    refine ⟨fun _ => ?_, fun _ => rfl⟩
+    obtain ⟨x, hx, rfl, hxl⟩ := rep_af (rep_slot hI ht')
+    obtain ⟨y, hy, rfl, hyl⟩ := rep_af (rep_slot hI hr)
+    rw [hx, hy, hT.shiftMask]
+    exact outSlots_three rfl rfl rfl
+      (tplShiftMask_ok (inpIs_of (by simp [hxl, hyl])) hP.1 (tin_eqns hP.1 ht))
   case tensorW j r =>
     split at hX
     · rename_i n lr hr

@@ -274,6 +274,30 @@ def eqTensor (P : Params) (cs : CS) (xs : List Lin) : Out :=
 /-- Both operands tracked. -/
 def both (a b : Slot) : Bool := a.isSome && b.isSome
 
+/-- **A kind-muxed element** (S-E9): element `i` of a `packFK` whose kinds' lists differ: their
+common register's form, or `c_L + c_P + c_N` over three fresh cells `c_κ = sel_κ · x_κ,i` (cells
+`3i … 3i + 2`), which is `x_κ,i` at the selected kind. -/
+def muxEl (P : Params) (cs : CS) (xs : Kind → List ℕ) (i : ℕ) : Lin × List Row :=
+  let r := fun κ => (xs κ).getD i 0
+  if r .L32 = r .P30 ∧ r .P30 = r .N30 then (asF (cs.slot (r .L32)), [])
+  else (cs.cell (3 * i) ++ cs.cell (3 * i + 1) ++ cs.cell (3 * i + 2),
+    [⟨P.sel .L32, asF (cs.slot (r .L32)), cs.cell (3 * i)⟩,
+     ⟨P.sel .P30, asF (cs.slot (r .P30)), cs.cell (3 * i + 1)⟩,
+     ⟨P.sel .N30, asF (cs.slot (r .N30)), cs.cell (3 * i + 2)⟩])
+
+theorem muxEl_pos {P : Params} {cs : CS} {xs : Kind → List ℕ} {i : ℕ}
+    (h : (xs .L32).getD i 0 = (xs .P30).getD i 0 ∧ (xs .P30).getD i 0 = (xs .N30).getD i 0) :
+    muxEl P cs xs i = (asF (cs.slot ((xs .L32).getD i 0)), []) := by
+  simp only [muxEl]; rw [if_pos h]
+
+theorem muxEl_neg {P : Params} {cs : CS} {xs : Kind → List ℕ} {i : ℕ}
+    (h : ¬ ((xs .L32).getD i 0 = (xs .P30).getD i 0 ∧ (xs .P30).getD i 0 = (xs .N30).getD i 0)) :
+    muxEl P cs xs i = (cs.cell (3 * i) ++ cs.cell (3 * i + 1) ++ cs.cell (3 * i + 2),
+      [⟨P.sel .L32, asF (cs.slot ((xs .L32).getD i 0)), cs.cell (3 * i)⟩,
+       ⟨P.sel .P30, asF (cs.slot ((xs .P30).getD i 0)), cs.cell (3 * i + 1)⟩,
+       ⟨P.sel .N30, asF (cs.slot ((xs .N30).getD i 0)), cs.cell (3 * i + 2)⟩]) := by
+  simp only [muxEl]; rw [if_neg h]
+
 /-- **One op's contribution.** -/
 def opOut (P : Params) (cs : CS) : Op → Out
   | .input _ => imports cs [.d]
@@ -332,6 +356,13 @@ def opOut (P : Params) (cs : CS) : Op → Out
     -- the same list for every kind (S-E6): `packF` of it
     if xs .L32 = xs .P30 ∧ xs .P30 = xs .N30 ∧ (xs .L32).all fun x => (cs.slot x).isSome then
       { slots := [some (.af (xs .L32).length, (xs .L32).map fun x => asF (cs.slot x))] }
+    -- lists of one length (S-E9): element `i` muxed by the selector, `Σ_κ sel_κ · x_κ,i`
+    else if (xs .L32).length = (xs .P30).length ∧ (xs .P30).length = (xs .N30).length ∧
+        kinds.all fun κ => (xs κ).all fun x => (cs.slot x).isSome then
+      { slots := [some (.af (xs .L32).length,
+          (List.range (xs .L32).length).map fun i => (muxEl P cs xs i).1)],
+        rows := (List.range (xs .L32).length).flatMap fun i => (muxEl P cs xs i).2,
+        fresh := 3 * (xs .L32).length }
     else skip 1
   | .packK xs =>
     if xs.all fun x => (cs.slot x).isSome then
@@ -446,6 +477,15 @@ abbrev compileFrom (P : Params) (cs : CS) (ops : List Op) : CS := compileFromX n
 
 /-- The initial state: fresh cells from `base`. -/
 def CS.init (base : ℕ) : CS := ⟨base, #[], [], [], [], [], [], 0⟩
+
+/-- (+) Lists that differ at an element emit its three selector products. -/
+theorem muxEl_rows_diff :
+    (muxEl ⟨[], fun _ => []⟩ (CS.init 0) (fun κ => if κ = .N30 then [1] else [0]) 0).2.length = 3 :=
+  rfl
+
+/-- (−) Lists that agree emit none (the element is the shared register's form). -/
+theorem muxEl_rows_same : (muxEl ⟨[], fun _ => []⟩ (CS.init 0) (fun _ => [0]) 0).2 = [] := rfl
+
 
 /-- **`compile`**: the rows, slots, imports and foreign assertions of an op list. -/
 def compile (P : Params) (base : ℕ) (ops : List Op) : CS := compileFrom P (CS.init base) ops
@@ -864,13 +904,49 @@ theorem opOut_sound {impl : OpImpl} {κ : Kind} {inp : Input} {w : Asg} {P : Par
       exact ⟨fun _ => List.map_congr_left fun x hx' => asF_slot hI (hx x hx'), fun _ => trivial⟩
     · simp [skip, RepS]
   case packFK xs =>
-    simp only [opOut]; split_ifs with hx
+    simp only [opOut]; split_ifs with hx hy
     · obtain ⟨h1, h2, hx⟩ := hx
       have hk : xs κ = xs .L32 := by cases κ <;> simp_all
       simp only [List.all_eq_true] at hx
       simp only [List.forall₂_cons, List.Forall₂.nil, and_true, RepS, tyOf, encV, List.size_toArray,
         List.length_map, List.toList_toArray, List.map_map, true_and, hk]
       exact ⟨fun _ => List.map_congr_left fun x hx' => asF_slot hI (hx x hx'), fun _ => trivial⟩
+    · have hr : ∀ r ∈ (List.range (xs .L32).length).flatMap (fun i => (muxEl P cs xs i).2),
+          r.Holds w := by
+        intro r hr'; apply hr; simp only [opOut, if_neg hx, if_pos hy]; exact hr'
+      obtain ⟨hl1, hl2, hall⟩ := hy
+      simp only [kinds, List.all_cons, List.all_nil, Bool.and_true, Bool.and_eq_true,
+        List.all_eq_true] at hall
+      have hlen : (xs κ).length = (xs .L32).length := by cases κ <;> simp_all
+      have hsome : ∀ κ' i, i < (xs .L32).length → (cs.slot ((xs κ').getD i 0)).isSome := by
+        intro κ' i hi
+        have hl : i < (xs κ').length := by cases κ' <;> simp_all
+        rw [List.getD_eq_getElem _ _ hl]
+        cases κ'
+        · exact hall.1 _ (List.getElem_mem hl)
+        · exact hall.2.1 _ (List.getElem_mem hl)
+        · exact hall.2.2 _ (List.getElem_mem hl)
+      refine ⟨fun _ => ?_, fun _ => trivial⟩
+      simp only [List.forall₂_cons, List.Forall₂.nil, and_true, RepS, tyOf, encV, List.size_toArray,
+        List.length_map, hlen, List.toList_toArray, List.map_map, true_and]
+      refine List.ext_getElem (by simp [hlen]) fun i h₁ h₂ => ?_
+      have hi : i < (xs .L32).length := by simpa using h₁
+      simp only [List.getElem_map, List.getElem_range, Function.comp_apply]
+      rw [show (xs κ)[i] = (xs κ).getD i 0 from (List.getD_eq_getElem _ _ (by omega)).symm]
+      by_cases heq : (xs .L32).getD i 0 = (xs .P30).getD i 0 ∧ (xs .P30).getD i 0 = (xs .N30).getD i 0
+      · rw [muxEl_pos heq]
+        obtain ⟨e1, e2⟩ := heq
+        rw [asF_slot hI (hsome .L32 i hi)]
+        cases κ <;> simp only [e1, e2]
+      · rw [muxEl_neg heq]
+        have hr3 := fun r hr' => hr r (List.mem_flatMap.2 ⟨i, List.mem_range.2 hi, by
+          rw [muxEl_neg heq]; exact hr'⟩)
+        have q1 := hr3 _ (List.mem_cons_self ..)
+        have q2 := hr3 _ (List.mem_cons_of_mem _ (List.mem_cons_self ..))
+        have q3 := hr3 _ (List.mem_cons_of_mem _ (List.mem_cons_of_mem _ (List.mem_cons_self ..)))
+        simp only [Row.Holds, CS.cell, Lin.ev_cell, asF_slot hI (hsome _ i hi), hP.2] at q1 q2 q3
+        simp only [Lin.ev_append, CS.cell, Lin.ev_cell, ← q1, ← q2, ← q3]
+        cases κ <;> simp
     · simp [skip, RepS]
   case packK xs =>
     simp only [opOut]; split_ifs with hx
