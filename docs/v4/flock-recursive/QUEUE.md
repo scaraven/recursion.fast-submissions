@@ -4,9 +4,9 @@ Last updated 2026-10-28. Blueprint at revision 3.13 (§10 changes 1–20). FR bu
 
 ## Running
 
-- S-H2i: the node decoder (`flagIR` loops, message rows, per-level composition, level 0, decodeWit output, 'N' case, decSnark wiring).
-- S-G2: `ligerito_final` (parametric in RS/B′'s claims; no FinalLaw or front dooms until 3.14 lands in Lean).
-- S-E7: **the T_V kill test first** (fused `walkAB`, the S-F2 hot spots; ≈ 255 ms VM projected against ≈ 264), then the replay `R` in 3.14 (D)'s uniform layout, the 3.14 S-E items, re-dump.
+- S-H2j: the decoder's level chain, exact costs, decodeWit output, the 'N' case of `ext_good_tape`, decSnark wiring (parts 1–18 done, `4603e74`).
+- S-G2 pass 2: the level-4 tail fix, then `FinalLaw`'s `hend` and the parts of `FinalLaw` not waiting on INT-3 (`ligerito_final` done, `59b225c`).
+- S-E8: **the T_V kill test** (proved-equal twins for dotKF, tensorWI, maskRows, idx, askNode; target ≤ 230 ms projected). After it, S-E9: (fused `walkAB`, the S-F2 hot spots; ≈ 255 ms VM projected against ≈ 264), then the replay `R` in 3.14 (D)'s uniform layout, the 3.14 S-E items, re-dump.
 
 ## Waiting
 
@@ -29,6 +29,8 @@ Last updated 2026-10-28. Blueprint at revision 3.13 (§10 changes 1–20). FR bu
 S-A `8ff873c`; S-C `ebac8c2`; S-D `8e6dad7`; S-E1 `2d5a811`; S-H1 `40b2f81`; S-0 `47158b1`; S-E2/S-E3 `8447c50`; S-F `c8e1869`; S-F2 `8f22b86`; S-G through `ac43569`; S-H2 through `11fb3a5`; INT-1 `5fc7d3b`; S-E5 `9dbab71`. FR builds as a whole.
 
 ## Rulings
+
+- **S-G2 level-4 ruling, 2026-10-28** (blueprint §5/§10 at the next revision): the tail follows the verifier. Level 4 is checked directly (`y_q = Enc₄(final)[p_q]`), Pf starts from `c1 4`, `finPf`'s weight covers levels 0–3 (`wPf` = zero-padded `wFold 4`), P3.4's doom `msD (DP2 4) (finP2 4) …` (its `κ_c⁽⁴⁾` squeezes stay in the transcript, unused), Pf's doom `¬ truthP3 4 ∨ D2`. No verifier change; the error rows can only go down.
 
 - **INT-2 decisions, ratified 2026-10-28** (to enter the blueprint as change 21, batched with S-CN's findings):
   (1) E4end absorbs 32 B (`f̂(r′)` ‖ 16 zero bytes), keeping the stream at 64 · 23,146 so that `stream_padded`
