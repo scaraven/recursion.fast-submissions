@@ -111,6 +111,7 @@ import FRNodeReadS
 import FRNodeReadP
 import FRXOut
 import FRXOutRun
+import FRX4Ext
 import FRShape4
 import FRSegment
 import FRAgg

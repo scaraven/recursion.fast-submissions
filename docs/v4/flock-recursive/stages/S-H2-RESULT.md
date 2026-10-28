@@ -3194,3 +3194,189 @@ everything in `FRSoundnessExtR`/`FRSoundnessAccRun`.
   - `E_node_out`'s caller in `extIfaceE_of`;
   - the node decoding over `1 + k` children (blueprint S-H2 entry).
 - **`hRes`** (S-N1 O1/O2, the node circuit's residual) is unchanged and is not part of this track.
+
+## Part 24 (track S-H3): the revision 4.1 extractor `E4X`: dispatch, aggregate, `computes4`, the frame's laws; the node decoder is over budget
+
+**Status.** HEAD `7e14be6`, build tree `logs/fr-build-SH3` (copy of `fr-build-SG13`, `logs/org20`;
+`MINE.txt` = `FRX4Prog FRX4Ext`), logs `logs/S-H3/`. Nothing committed. No existing module or
+statement was edited; the two modules are new, in namespace `FR.X.X4`.
+
+| Item | State |
+|---|---|
+| 1. Plan | **Done** (journal 61). |
+| 2. Kind dispatch A / N2 / N4 / N8 / W / bad, cost within the fuel | **Done.** The node branch `nd` is a parameter under `DecOk4` (cost within `decBudget`). |
+| 3. The aggregate leaf | **Done**, on every proof size (`den4_agg`, `E4X_agg`). |
+| 4. The node case (decode `f⁽⁰⁾` at `m`, output 1 + k children) | **Blocked: 3.x's decoder exceeds the contract's budget at `m = 31/32`** (F1). Not started. |
+| 5. `computes4`; B-15's out-of-domain dispatch | **Done** (`computes4`, `Eout4`). |
+| 6. The node law in `FRSoundness4Frame`'s form | **Done as an interface**: `NodeDec4` (the links and the cell map are parameters), `nodeExt_E4X`, `ks4_E4X`. |
+
+### F1. The node decoder does not fit the fuel at revision 4.1's node sizes (blocker)
+
+`cost_decLvIR`'s exact formula, per level of `ladderOf m` (`logs/S-H3/fuel-check.{py,txt}`):
+
+| `m` (kinds) | five levels | level 0 | against `B t = 2^48 + 2^16 t` |
+|---|---|---|---|
+| 30 (3.x `N30`) | 1.41·10^14 = `2^47.00` | 1.40·10^14 | fits (claim.json `3·2^46`) |
+| 31 (`N2`) | 5.63·10^14 = `2^49.00` | 5.60·10^14 | **2.0× over `2^48`** |
+| 32 (`N4`, `N8`) | 2.25·10^15 = `2^51.00` | 2.24·10^15 | **8.0× over `2^48`** |
+
+Level 0's barycentric interpolation (`baryIR`) costs `k²·(1363 + 106·rows)` with `k = 2^(m−13)`. It
+is quadratic, and `k` doubles per `m`. The per-word term cannot pay for it: an extractable node's log
+holds the level-0 columns, `t ≈ 2^27` words, so `2^16 t ≈ 2^43`. The contract's `2^48` assumes a
+quasi-linear decoder (`Extractor.lean`: "about `2^29` symbols, `2^38.7` field operations").
+
+**Options (coordinator's call):**
+- (i) A quasi-linear level-0 erasure decoder: an erasure locator by a subproduct tree, coset FFTs,
+  pointwise division, about 10^12 steps. It is a new program with new proofs.
+- (ii) Decode only what the output reads. H's message slots are rows 4–7 of level 0
+  (`e mod 64 ∈ {4..7}`), so the output needs only those rows. Two changes make this possible:
+  - S-E places every signature value the output needs in H's WOTS and path blocks, not in L. L's
+    cells spread over all 64 rows.
+  - A cheaper `baryIR` inner loop: one batched inversion, not one `invF` per pair. The per-pair cost
+    1,363 is mostly the inversion.
+
+  At `m = 32` this gives about 1.6·10^14 (estimate). It changes `decLvIR`/`baryIR` and their proofs.
+- (iii) A larger `ell0` for nodes. Ruled out: `ell0 = 6` is S-D3's ruling, and level 0 at `m = 32`
+  would need about `2^11` rows.
+
+Until then the certificate's branch is `ndNone` (no output): `E4X_ndNone_node` (in the domain a node
+proof extracts `none`). `NodeDec4` states what the decoder must meet.
+
+### 1. Files (`loc.py`, `logs/S-H3/loc.txt`)
+
+| File | total / code / thm | Content |
+|---|---|---|
+| `FRX4Prog` (new) | 278 / 169 / 26 | Registers `rIsA rIsN rNZ rMk` (248–251). `isW`, `eqPs`, `orPs`, `normPs`, `finPs`, `szPs`, **`kindPs4`**, `parse4`, `outW`, **`aggIR`**, **`ext4IRWith nd`**, **`DecOk4`**, `ext4With`, `ndNone`, `decOk4_ndNone`, **`ext4`**. `wf_*`, `cost_outW`/`cost_aggIR` (11/63), `cost_ext4IRWith` (`≤ 200 + cost nd + 8t`), `sizeIR_ext4IRWith`, **`fuel_covers4`**, `size_ext4With`. The parse's lemmas `runPrims_append`, `rd_eqPs`/`rd_orPs`/`rd_szPs`/`rd_normPs`/`rd_finPs`, `parse4_M`, **`parse4_sz/len/A/N/K`**. |
+| `FRX4Ext` (new) | 742 / 543 / 61 | Packed windows on every size: `ofLE_zeros`, `packBytes_pad`, `bytesAt_pad`, **`packBytes_bytesAt'`**, `packBytes_bytesAt4`, `bytesAt_succ`, `ofLE_bytesAt`, `rdLE64_eq`, `rdLE64_lt`, `toWord_rdLE64`. **`aggLeaf`**, **`aggWit_eq`**. Kinds: `kindOf4_eq`, `kindOf4_agg/node/W/bad`, `nodeOfByte_eq`, `segOfByte_eq`, `pos_of_byte`. Flags: `tape4`, `bOf_tape`, `st1`, `flagK_W`, **`flags`**, `isW_sz`. Denotations: `br4`, `den4_split`, **`den4_W`**, **`den4_bad`**, **`den4_node`**, `outW_sem`, `mask_word`, **`den4_agg`**. **`Ed4`**, **`Eout4`**, **`E4X`**, `E4X_W/agg/bad/node/node_out`, **`extOff_E4X`**. `boundsOk_br4`, **`halts4`**, **`computes4`**, `ext4_caps`. **`NodeDec4`**, `E4X_node_dec`, **`nodeExt_E4X`**, **`ks4_E4X`**. Controls (§4). |
+
+### 2. The program and `E4X`
+
+```
+ext4IRWith nd := parse4 ; ite rIsK (ite rIsA aggIR (ite rIsN (ite rIsSz nd skip) skip)) wIR
+rIsK = (byte ∈ {'A', N2, N4, N8, L30, L31, L32}) ∧ |π| ≠ 0,  rIsSz = (|π| = 798,192)
+aggIR := out 0 ; out (w8·[64 < |π|]) ; … ; out (w11·[88 < |π|]) ; out (w1·[8 < |π|])    (wj = tape word 5 + j)
+E4X nd A c π L := if InDomE c π L then Ed4 nd c π L else Eout4 A c π L
+Eout4: W ↦ decode π,  A ↦ some (aggLeaf π),  node ↦ search A (vkOf π) c,  bad ↦ none
+aggLeaf π := .leaf (bytesAt π 64 32) (rdLE64 π 8)
+```
+
+- **The empty proof.** `rIsK` is cleared on an empty proof. Tape word 5 is then the log's first word,
+  and without the clear an `'A'` there would output a leaf where `decode π = none` (3.x did not need
+  this).
+- **The mask.** A short aggregate proof reads zeros where the tape already holds the log
+  (`mask_word`). `packBytes_bytesAt'` and `toWord_rdLE64` hold on every size, so `den4_agg` needs only
+  `|π| < 2^64`.
+- **Statements.**
+  - `den4_W`: `den … = packBytes π` on every `W` proof (any size `< 2^64`, every log).
+  - `den4_bad`: `den … = []`.
+  - `den4_agg`: `den … = witWords (aggLeaf π)`.
+  - `den4_node`: the node branch's output from the parse's state `st1`.
+  - `halts4`: the program halts within `fuel` with at most `outCap` words on every domain tape. `W`:
+    `⌈|π|/8⌉ ≤ 2^24`; `A`: 6 words; a node: `outs_le` + `DecOk4.outs`.
+  - `computes4 hnd A : Computes (ext4With nd) (E4X nd A) fuel`.
+  - `ext4_caps`: `fuel ≤ B`, size `≤ progCap`.
+- **`extOff_E4X nd A : Rev4.ExtOff (E4X nd A)`** holds on every proof size, through `aggWit_eq`
+  (`aggWit = some (s, n) → aggLeaf π = .leaf s n`; segments are `798,192 ≥ 48` bytes).
+- **The node law.**
+  - `NodeDec4 nd` has three fields:
+    - `Links κ L es π c` (S-H2's `E_node` hypotheses at revision 4.1, a parameter);
+    - `readW κ L es` (the witness read off `f⁽⁰⁾`, a parameter: the revision 4.1 cell map is S-E's);
+    - `out`: under the links, on the domain, `nd` outputs `witWords (readW κ L es)`, and the witness
+      fits.
+  - `nodeExt_E4X D hq hN hL : NodeExtLog Vnode vk Good (E4X nd S.acc) (Rel (S.acc vk))`:
+    - outside the domain, from `NodeSoundLog` via `search_spec_acc` (as `nodeExt_E4`);
+    - on the domain, from `D` and S-G's `hL` (an accepted node run on a good log has `es` with
+      `Links` and `Rel c (readW κ L es)`).
+  - `ks4_E4X` is `ks4_of` at `S.E = E4X nd S.acc`.
+
+### 3. Costs (exact theorems)
+
+| part | steps | theorem |
+|---|---|---|
+| `outW j` | 11 | `cost_outW` |
+| `aggIR` | 63 | `cost_aggIR` |
+| program | `≤ 200 + cost nd t + 8t` | `cost_ext4IRWith` |
+| fuel | `memX + 3t + cost + 8 ≤ 3·2^46 + 2^13 t` whenever `cost nd ≤ decBudget` | `fuel_covers4` |
+
+`claim.json` was checked: `fuel_base = 211,106,232,532,992 = 3·2^46`, `fuel_per_word = 8,192 = 2^13`,
+as `FRXProg.fuelBase`/`fuelPerWord`. The memory is 3.x's (`2^26 + 3t`). A decoder at `m = 32` holds
+`f⁽⁰⁾`'s `2^25` cells and will need a larger `mem`.
+
+### 4. Controls
+
+| Control | Kind | Shows |
+|---|---|---|
+| `E4X_encode` | positive | a witness-sending proof is decoded (every `nd`) |
+| `E4X_bad_ctl` | negative | a bare `L32` byte, and an `N4` byte of the wrong size, give `none` |
+| `aggLeaf_ctl` (`decide +kernel`, 96 bytes) | positive / negative | the toy `'A'` proof is `agg`; `n` is read at bytes 8–15 (`= 5`), not 0–7; the start at byte 64 (`= 7`), byte 63 is not read |
+| `E4X_toyA` | positive | `E4X` returns the toy's `aggLeaf` |
+| `E4X_ndNone_node` | negative | the certificate's current node branch extracts nothing in the domain |
+| `not_nodeDec4_ndNone` | negative | no `NodeDec4 ndNone` has a linked node input: the decode law is not vacuous |
+| `nodeDec4_none` | positive | the law holds for any branch when no input is linked: it constrains only linked inputs |
+| `den4_*`, `halts4`, `computes4`, `extOff_E4X` | universal | for every log and proof (size `< 2^64`, or the domain) |
+| probe run | measurement | the compiled `E4X` (2^26-word denotation) on W: `true`; on a bare segment: `false`; on the toy aggregate: `leaf, s[0] = 7, n = 5` (`probe-run.log`) |
+
+No control is a concrete machine run in the kernel. The toy is a byte-level `decide +kernel` over 96
+bytes.
+
+### 5. Checks
+
+- **Build.** `lake build FR FRX4Prog FRX4Ext` is green: 2,430 jobs (`build-final.log`).
+- **Axioms** (`axioms.log`, 25 declarations, among them `computes4`, `halts4`, `extOff_E4X`,
+  `nodeExt_E4X`, `ks4_E4X`, the `den4_*` and every control): within `propext`, `Classical.choice`,
+  `Quot.sound`. There is no `sorryAx`.
+- **Source rule.** `python3 -I logs/org20/scripts/source-rule.py submissions/flock-recursive`: 235
+  files, 0 findings (`source-rule.log`).
+- **Compiled executable.** `logs/fr-build-SH3/probe/Probe.lean` (outside the entry) imports `FR` and
+  `FRX4Ext` and calls `E4X`, `Eout4` and `ext4`.
+  - `lake build probe`: 4,859 jobs, green (`probe-build.log`).
+  - Run: 49 s, 1.1 GB (`probe-run.log`). Module start-up is not delayed.
+  - So `E4X` is computable: nothing is `noncomputable`.
+- **Sequential profiles** (`taskset -c 0`, `-DElab.async=false`, `prof-*.log`):
+  - `FRX4Prog`: 9.5 s wall (import 3.7 s), kernel 0.42 s, 2.85 GB;
+  - `FRX4Ext`: 12.1 s wall (import 3.8 s), kernel 1.26 s, 2.98 GB.
+- **Names.** Everything is in `FR.X.X4`. A grep of `FR*.lean` found no other use of the namespace.
+
+### 6. Deviations and choices
+
+1. **The node branch is a parameter** (F1). The brief's items 4 and the decoding half of 6 need a
+   decoder within `B t`, and 3.x's is not one at `m = 31/32`.
+2. **`NodeDec4.Links` and `readW` are parameters.** 3.x's links (`farL`, `consSet`, `capDig`, `fmAns`
+   over `fsQ`) are stated over 3.x's `Kind` and positions. Their revision 4.1 forms come with P4b's
+   and R4's ports and S-E's cell map (`FRNodeKinds4`/`FRNodeRows4` have appeared untracked in the
+   worktree, from other tracks). The names follow S-H2's `E_node`.
+3. **`aggLeaf` reads `π` directly** (bytes 64–95 and 8–15), not through `aggWit`. It agrees with
+   `aggWit` whenever `aggWit` is `some` (`aggWit_eq`), and it is total, so the agg branch needs no
+   checks. Soundness needs only `ExtOff`'s clause.
+4. **One fuel and one memory with 3.x** (`memX`, `fuel`, `decBudget`). `claim.json` is unchanged.
+
+### 7. What remains (in order)
+
+1. **Coordinator: rule on F1** ((i) a quasi-linear level-0 decoder, or (ii) the partial decode plus
+   S-E's placement of the signature in H). Everything below waits on it.
+2. **The revision 4.1 node decoder `nd`** with `DecOk4` (at a possibly larger `mem`).
+   - The read and index carry over; positions come from `phStart4_shift`.
+   - `decLevels` at `ladderOf κ.m` per kind needs a kind flag at run time: N2's ladder is
+     `ladderOf 31`, N4/N8's `ladderOf 32`.
+   - The output `outIR4` covers `1 + k` children. The aggregate child's stream is
+     `0x54 ‖ tr₁ ‖ … ‖ tr_k` at H block `chainLenOf seq4` (`N2/N4`) or `aggChainLen 4` (`N8`'s
+     second). Segment `i ≥ 2` starts at stream byte `1 + (i − 1)·1,482,751`, which is unaligned
+     (shift `(i − 1)·7 mod 8`). It needs a shifted-copy leaf in the segment language, or a realign
+     pass into an aligned buffer, after which 3.x's `segIR` applies with linear addressing
+     `ap = (0, 1, 1)`. `hdr_A`'s `k`, `n`, `e` come from the statement preimage blocks (S-0′ O-1),
+     so this needs S-E's cell map.
+   - Then discharge `NodeDec4.out`.
+3. **S-G's side `hL`**: the links and `Rel c (readW …)` from an accepted node run (P4b/R4/X4).
+4. **`FR.lean`: add `import FRX4Ext`** (orchestrator; it pulls `FRX4Prog`). The certificate can then
+   use `S.E := E4X ndNone S.acc`, `S.ext := ext4`, with `computes4 decOk4_ndNone` and
+   `ext4_caps decOk4_ndNone`. Its node law stays open until item 2.
+
+### 8. Pitfalls (journal 62)
+
+- A 27-prim `rd` chain times out. Split it into small lists and use `runPrims_append` with
+  per-piece lemmas.
+- A `BoundsOk … (br4 nd) s` type in a `have` is whnf'd and evaluated on the concrete tape. Make
+  `br4` locally irreducible.
+- `simp; ring` over 8-term little-endian sums gives a kernel deep recursion under `lake build` only.
+  Prove by induction instead.
+- `simp` rewrites `byteAt` to `data[·]?`. Generalize the byte before the case analysis on `kindOf4`.

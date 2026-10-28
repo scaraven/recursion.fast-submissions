@@ -519,3 +519,64 @@ Base: branch `v4/flock-recursive`, HEAD `53c2e13`. Build tree `logs/fr-build-SH2
 58. `FRXSearch` (finders, `search`, `search_spec`, `sFits_of_acc`, controls) built with three repairs: `covers_fNat` via `Option.isSome_or`; `ByteArray` size via `Array.length_toList` + `rfl` (`simp [ByteArray.size]` hit max recursion); a `rw` of `d.toList.length` failed on a dependent motive, so `rwa [Vector.length_toList]` on the instance. Name clashes renamed (`relB` → `relDec`, `sound_bind` → `sound_fBind`, …). Pitfall: inside `FR.X`, `Rel` is not the contract's `Rel`; write `RecursionFast.Rel`.
 59. `FRXExt`: `Ed`, `InDomE`, `Eout`, `E A`, `computes A`. Restated `ext_W` (all sizes), `ext_bad`, `ext_encode`, `E_leaf`, `E_node`; new `E_node_out`. Soundness repairs pass `A` (`hE : S.E = X.E A`). `FRSoundnessExtE`: `wBeyond_E`, `ExtIfaceE`, `extIfaceE_of` (an out-of-domain node: `E_node_out` + `rel_readWit` + `vkOf_of_run`; no new hypothesis), `hExt_of_ifaceE`, `finalLaw_ofE`, `kstate_front_ofE'` (no `hOut`, no `hWB`). It built on the first try.
 60. Checks: `lake build FR` green (2,410 jobs); axioms standard (`logs/S-H2n/axioms.log`); source rule 188 files, 0 findings; probe executable `import FR` built (4,819 jobs) and ran (47 s, 1.1 GB; `E` on W/bad, `search` referenced); sequential profiles `logs/S-H2n/prof-summary.txt`. RESULT Part 23.
+61. **S-H3 (revision 4.1 extractor), plan (item 1), before any proof.** HEAD `7e14be6`, build tree
+    `logs/fr-build-SH3` (copy of `fr-build-SG13`, `logs/org20`), logs `logs/S-H3/`.
+    *Carries over unchanged:* the DSL (`FRXDsl`, `semXIR`, `cost`, `Safe`/`BoundsOk`, `toProg`,
+    `den`/`Eden`/`den_of_run`/`computes_Eof`); the parse helpers (`readAt`, tape lemmas
+    `tape_getD4`, `tape_getD_proof`, `tape_byte0`, `lowByte`); the `W` branch (`wIR`, `wIR_sem`,
+    `safe_wIR`; `E_W`'s argument); the read/sort/lookup machinery (`idxIR`, `look_spec`,
+    `read_spec`, parametric in the level); the search (`FRXSearch`, kind-free); the per-level
+    decode `decLvIR`/`level_decode` *as an algorithm* (parametric in `logN`, `mLog`, rows).
+    *Must change:* (a) the parse and the kind dispatch (`'A'` any size; `N2/N4/N8` at
+    `|π| = piSizeOf seq4 = 798,192`; bare segment bytes `bad`; else `W`; an empty proof must not
+    read the log's first word as a kind byte); (b) the aggregate leaf (new: `(s, n)` from `π`'s
+    bytes 64–95 and 8–15, any size); (c) the item positions at `seq4` (`phStart4_shift`: identity
+    below 170, then +1 … +14) in the chain replay; (d) the node's level decode at `m = 31/32`
+    (`ladderOf m`, `mLog 0 = m − 13`); (e) the output: two signed children, the second an
+    aggregate `hdr_A ‖ π₁ ‖ … ‖ π_k` with `tr_A = tr₁ ‖ … ‖ tr_k` (slot σ's stream at H block
+    `chainLenOf seq4` for `N2/N4`, `aggChainLen 4` for `N8`'s second child), segment `i`'s trace
+    starts at stream byte `1 + (i − 1)·1,482,751`, i.e. **unaligned** for `i ≥ 2` (shift
+    `(i − 1)·7 mod 8`), so 3.x's aligned `segIR` needs a shifted-copy leaf; (f) the fuel.
+    *Fuel check (f), done first (`logs/S-H3/fuel-check.{py,txt}`, the exact formula of
+    `cost_decLvIR` per level of `ladderOf m`):* the five levels cost `2^47.00` at `m = 30` (3.x),
+    **`2^49.00` at `m = 31` (`N2`) and `2^51.00` at `m = 32` (`N4`/`N8`)**, against the contract's
+    cap `B t = 2^48 + 2^16 t` (claim.json: `3·2^46 + 2^13 t`). Level 0's barycentric
+    interpolation is quadratic in `k = 2^(m−13)` (`k²·(1363 + 106·64)`): 5.6·10^14 at `m = 31`,
+    2.24·10^15 at `m = 32`. `2^16 t` cannot pay for it: the log of an extractable node has
+    `t ≈ 2^27` words. **So 3.x's node decoder does not carry over to any revision 4.1 node kind
+    within the contract's budget.** Options (for the coordinator; not this track's call):
+    (i) a quasi-linear erasure decoder at level 0 (what the contract's `2^48` term assumes:
+    erasure locator by a subproduct tree, coset FFTs; `≈ 10^12` steps); (ii) decode only the
+    rows the output reads (H's message slots are rows 4–7 of level 0, `e mod 64 ∈ {4..7}`), with
+    S-E placing every signature value in H's WOTS/path blocks instead of L, and a cheaper
+    weight loop (one batched inversion instead of one per pair): `m = 32` then ≈ 1.6·10^14.
+    *Plan for this track, given (f):* deliver everything that does not depend on the node
+    decoder, with the node branch a **parameter** `nd : XIR` under `DecOk4` (cost within the
+    fuel, loop bounds, outputs) and a semantic law (`NodeDecLaw4`), so that the decoder slots in:
+    `FRX4Prog` (parse, dispatch, `aggIR`, `DecOk4`, fuel), `FRX4Ext` (`den` on each kind,
+    `computes4`, `E4X` with B-15's out-of-domain dispatch, `ExtOff`, `NodeExtLog` from the node
+    law). The certificate instance uses `nd := .blk []` (no output) until the decoder exists.
+62. S-H3 build: `FRX4Prog` (parse4, `ext4IRWith`, `aggIR`, `DecOk4`, fuel) and `FRX4Ext` (denotations per
+    kind, `E4X`, `computes4`, `extOff_E4X`, `NodeDec4`, `nodeExt_E4X`, `ks4_E4X`, controls), namespace
+    `FR.X.X4`. Pitfalls:
+    - **A 27-prim block's `rd` chain** times out (`whnf`): `simp only [runPrims, List.foldl, Prim.run]`
+      builds a tower whose values embed the earlier arrays. Fix: build the flag block from small lists
+      joined by `++` (`eqPs`, `orPs`, `normPs`, `finPs`, `szPs`), `runPrims_append`, one lemma per piece
+      (`rd_eqPs` …), and skip non-writing pieces with `simp (disch := decide) only [rd_runPrims_of_not_writes]`.
+    - `decide` in a discharger evaluates array sizes; drop it from register chains (Part 21's pitfall).
+    - **`BoundsOk … (br4 nd) s` in a `have`** (even `:= by sorry`) hit "maximum recursion depth": the
+      elaborator/linter `whnf`s the type, unfolds `br4`, and evaluates the parse on the concrete tape.
+      Fix: `attribute [local irreducible] br4 in` and `ext4IRWith_eq` (`rfl`, stated outside).
+    - `run_toProg` against `initSt (memX + …)`: generalize the state and the tape first (3.x's
+      `halts_of_tape` pattern); a `rfl` that meets `initSt 2^26` evaluates it.
+    - `rdLE64_eq` by `simp; ring` hit **kernel deep recursion only under `lake build`** (async kernel
+      thread stack), not under `lake env lean`. Fix: an induction (`ofLE_bytesAt`), no big `ring` term.
+    - `simp` turns `byteAt π 0` into `π.data[0]?.getD 0`; `generalize byteAt π 0 = b` before case
+      analysis on `kindOf4` (`kindOf4_eq`, `rfl`).
+    - Literal `(1 : Word)` does not match `mul_one`'s pattern after `if_pos`; `have m1 : ∀ x : Word,
+      x * 1 = x := fun x => by simp`.
+63. S-H3 checks: `lake build FR FRX4Prog FRX4Ext` green (2,430 jobs, `logs/S-H3/build-final.log`); 25
+    axiom lines standard (`axioms.log`); source rule 235 files, 0 findings; probe `import FR` +
+    `import FRX4Ext` built (4,859 jobs) and ran 49 s / 1.1 GB (`probe-run.log`: `E4X` on W true, on a
+    bare segment false, on the toy aggregate `leaf s[0] = 7, n = 5`; `ext4` 170 statements); profiles
+    FRX4Prog 9.5 s (kernel 0.42 s), FRX4Ext 12.1 s (kernel 1.26 s). RESULT Part 24.
