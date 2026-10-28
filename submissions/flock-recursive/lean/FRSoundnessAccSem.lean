@@ -29,6 +29,15 @@ def runFields (outs : Array (List Reg)) (zh : List Reg) :
   | f :: fs, b, ex => (f ⟨outs, zh, ex⟩ b).1 ++
       runFields outs zh fs (b + opsOut (f ⟨outs, zh, ex⟩ b).1) (ex.push (f ⟨outs, zh, ex⟩ b).2)
 
+/-- **The exports the fold has pushed before field `k`** of `fs` (base `b`, exports `ex`): what
+`runFields` passes field `k` as `ex`. -/
+def exAt (outs : Array (List Reg)) (zh : List Reg) :
+    List FinField → ℕ → Array (List Reg) → ℕ → Array (List Reg)
+  | [], _, ex, _ => ex
+  | _ :: _, _, ex, 0 => ex
+  | f :: fs, b, ex, k + 1 =>
+    exAt outs zh fs (b + opsOut (f ⟨outs, zh, ex⟩ b).1) (ex.push (f ⟨outs, zh, ex⟩ b).2) k
+
 theorem foldl_step (outs : Array (List Reg)) (zh : List Reg) :
     ∀ (fs : List FinField) (A : List Op) (b : ℕ) (ex : Array (List Reg)),
       (fs.foldl (fun (acc : List Op × ℕ × Array (List Reg)) (f : FinField) =>
@@ -103,8 +112,8 @@ theorem fields_ok (outs : Array (List Reg)) (zh : List Reg) :
       (∀ f ∈ fs, ∀ fi b, (f fi b).1.filterMap Op.item? = []) →
       exec impl κ inp (runFields outs zh fs R.size ex ++ tail) ⟨R, ok⟩ tr = some (s, tr') →
       s.ok = true →
-      ok = true ∧ ∀ k (hk : k < fs.length), ∃ Rk : Array Val, ∃ exk : Array (List Reg),
-        ∃ L, ExtA R Rk ∧ pureRun impl κ inp ((fs[k]'hk) ⟨outs, zh, exk⟩ Rk.size).1 Rk [] =
+      ok = true ∧ ∀ k (hk : k < fs.length), ∃ Rk : Array Val, ∃ L, ExtA R Rk ∧
+        pureRun impl κ inp ((fs[k]'hk) ⟨outs, zh, exAt outs zh fs R.size ex k⟩ Rk.size).1 Rk [] =
           some (L, true)
   | [], R, ex, ok, tail, tr, s, tr', _, h, hs => by
     refine ⟨?_, fun k hk => absurd hk (by simp)⟩
@@ -124,9 +133,10 @@ theorem fields_ok (outs : Array (List Reg)) (zh : List Reg) :
       (fun g hg => hna g (List.mem_cons_of_mem _ hg)) h' hs
     refine ⟨hok, fun k hk => ?_⟩
     rcases k with _ | k
-    · exact ⟨R, ex, L, ⟨le_rfl, fun _ _ => rfl⟩, hL⟩
-    · obtain ⟨Rk, exk, Lk, hE, hk'⟩ := hrest k (by simpa using hk)
-      exact ⟨Rk, exk, Lk, (ExtA.app R L).trans hE, hk'⟩
+    · exact ⟨R, L, ⟨le_rfl, fun _ _ => rfl⟩, hL⟩
+    · obtain ⟨Rk, Lk, hE, hk'⟩ := hrest k (by simpa using hk)
+      rw [hsz] at hk'
+      exact ⟨Rk, Lk, (ExtA.app R L).trans hE, hk'⟩
 
 /-- The skeleton's next free register is the size of the register file it leaves. -/
 theorem genPhases_next : ∀ (ps : List Phase) (n : ℕ) (c : GCtx) (r : Array Val) (tr : Trace)
@@ -149,15 +159,21 @@ theorem genPhases_next : ∀ (ps : List Phase) (n : ℕ) (c : GCtx) (r : Array V
 
 /-- **An accepted run passes every phase and every final field**: the skeleton's registers `R`,
 every phase flag `true`, and each field of `finRS :: Finals.rest` runs to `true` from registers
-extending `R`. -/
+extending `R`, with the inputs the verifier gives it (R-V-m2): `finRS` with no `zhat` and no
+exports; field `k` of the rest with `zhat` = `finRS`'s exports and `ex` = the exports of
+`finRS` and the fields before it (`exAt`). -/
 theorem accept_fields (fin : Finals) {tr : Trace}
     (hna : ∀ f ∈ fin.finRS :: fin.rest, ∀ fi b, (f fi b).1.filterMap Op.item? = [])
     (h : semIR impl (gen fin (.fixed κ)) inp tr = some true) :
     ∃ y, refPhases impl κ inp phases 0 ctx₀ #[] tr = some y ∧ (∀ b ∈ y.2.1, b = true) ∧
-      (∃ Rk exk L, ExtA (#[] ++ y.1.toArray) Rk ∧ pureRun impl κ inp
-        (fin.finRS ⟨skeleton.2.outs, [], exk⟩ Rk.size).1 Rk [] = some (L, true)) ∧
-      ∃ zh, ∀ k (hk : k < fin.rest.length), ∃ Rk exk L, ExtA (#[] ++ y.1.toArray) Rk ∧
-        pureRun impl κ inp ((fin.rest[k]'hk) ⟨skeleton.2.outs, zh, exk⟩ Rk.size).1 Rk [] =
+      (∃ Rk L, ExtA (#[] ++ y.1.toArray) Rk ∧ pureRun impl κ inp
+        (fin.finRS ⟨skeleton.2.outs, [], #[]⟩ Rk.size).1 Rk [] = some (L, true)) ∧
+      ∀ k (hk : k < fin.rest.length), ∃ Rk L, ExtA (#[] ++ y.1.toArray) Rk ∧
+        pureRun impl κ inp ((fin.rest[k]'hk) ⟨skeleton.2.outs,
+          (fin.finRS ⟨skeleton.2.outs, [], #[]⟩ skeleton.2.next).2,
+          exAt skeleton.2.outs (fin.finRS ⟨skeleton.2.outs, [], #[]⟩ skeleton.2.next).2 fin.rest
+            (skeleton.2.next + opsOut (fin.finRS ⟨skeleton.2.outs, [], #[]⟩ skeleton.2.next).1)
+            #[(fin.finRS ⟨skeleton.2.outs, [], #[]⟩ skeleton.2.next).2] k⟩ Rk.size).1 Rk [] =
           some (L, true) := by
   unfold semIR at h
   split at h
@@ -179,8 +195,8 @@ theorem accept_fields (fin : Finals) {tr : Trace}
     obtain ⟨hok, hRS⟩ := hRS
     refine ⟨y, hy, ?_, ?_, ?_⟩
     · simpa using hok
-    · obtain ⟨Rk, exk, L, hE, hp⟩ := hRS 0 (by simp)
-      exact ⟨Rk, exk, L, hE, hp⟩
+    · obtain ⟨Rk, L, hE, hp⟩ := hRS 0 (by simp)
+      exact ⟨Rk, L, hE, hp⟩
     · -- the rest, after `finRS`
       obtain ⟨L, hL, -, h2⟩ := field_flag impl κ inp
         (hna _ (List.mem_cons_self ..) _ _) (by simpa only [runFields, List.append_nil] using hs') h
@@ -191,9 +207,11 @@ theorem accept_fields (fin : Finals) {tr : Trace}
       rw [← hsz] at h2
       obtain ⟨-, hrest⟩ := fields_ok impl κ inp skeleton.2.outs _ fin.rest _ _ true _ _ s []
         (fun f hf => hna f (List.mem_cons_of_mem _ hf)) h2 h
-      refine ⟨(fin.finRS ⟨skeleton.2.outs, [], #[]⟩ (#[] ++ y.1.toArray).size).2, fun k hk => ?_⟩
-      obtain ⟨Rk, exk, Lk, hE, hp⟩ := hrest k hk
-      exact ⟨Rk, exk, Lk, (ExtA.app _ L).trans hE, hp⟩
+      intro k hk
+      obtain ⟨Rk, Lk, hE, hp⟩ := hrest k hk
+      rw [hsz] at hp
+      rw [hn]
+      exact ⟨Rk, Lk, (ExtA.app _ L).trans hE, hp⟩
   · cases h
 
 end FR.Snd

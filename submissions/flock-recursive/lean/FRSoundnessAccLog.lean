@@ -288,8 +288,13 @@ theorem finLog_of_run {W₀ : Log → Log → ℕ → K} {c₀ : Log → Log →
       ∀ (fi : FinIn) (r' : Array Val), fi.outs = skeleton.2.outs → ExtA (#[] ++ y.1.toArray) r' →
         w0V impl k fi r' = wHatL W₀ L (fsOf tr items) 0) :
     ∃ yv, FinLog W₀ c₀ L (fsOf tr items) yv := by
-  obtain ⟨y, hy, hfl, -, zh, hrest⟩ :=
+  obtain ⟨y, hy, hfl, -, hrest'⟩ :=
     accept_fields impl k ⟨vk, c, π⟩ (sfFinals finP finPf) noAsk_sf hsem
+  obtain ⟨zh, hrest⟩ : ∃ zh, ∀ j (hj : j < (sfFinals finP finPf).rest.length), ∃ Rk exk Lk,
+      ExtA (#[] ++ y.1.toArray) Rk ∧ pureRun impl k ⟨vk, c, π⟩
+        (((sfFinals finP finPf).rest[j]'hj) ⟨skeleton.2.outs, zh, exk⟩ Rk.size).1 Rk [] =
+          some (Lk, true) :=
+    ⟨_, fun j hj => let ⟨Rk, Lk, hE, hp⟩ := hrest' j hj; ⟨Rk, _, Lk, hE, hp⟩⟩
   obtain ⟨hl, hq⟩ := fsQ_gen ⟨vk, c, π⟩ impl (sfFinals finP finPf) _ hsem
   have h : SkRun impl k ⟨vk, c, π⟩ tr y := ⟨hy, hfl, hl, hq⟩
   have hL : (L.map Prod.fst).Nodup := by
