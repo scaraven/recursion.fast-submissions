@@ -195,3 +195,22 @@ size: `trueSum_TEb4` is algebra over the symbolic `ncR κ`.
 2. Retiring 3.x: the generic unit and O1 are stated so that 3.x is an instance. If the 3.x chain is
    kept until integration, should `FRSoundnessRows` be restated through `…G` (by `Iff.rfl`, at no
    cost), or left alone?
+
+## Pass 2: item 1 (RS1, B′, W0 at 327 … 332)
+
+**Built:** `FRSoundness4P4bB` (427 / 310 code / 26 thm; `logs/P4b/loc2.txt`), importing `FRSoundness4P4bRS`. **Add `import FRSoundness4P4bB` to `FR.lean`** (it replaces `FRSoundness4P4bRS` as the top P4b import).
+
+- **Readers:** `rsCoL4` (`coordAt es 326`), `rsRL4`, `rsKL4`, `fsL4`, `kpL4` (331); `wrsL4 kf` (claim 2 times `kfT4`), `rsTvL4`, `vRSL4`, `fipL4`, `vStarL4` (`v_RS + [node] κ′²·pubH(κ′)`: `gFinB'` is `finB′`, so 3.x's `pubHL`/`pubL` over positions 0 and 1 are reused); `cellsC cells`, **`W₀L4 kf cells`**, **`c₀L4`**, `ipW`.
+- **Locality:** `frontLocal4` (both read before 332), `pubOK4_reads`, `dRS0_4_reads` (327), `dRS1_4_reads` (331), `dB4_reads` (332).
+- **RS1:** `PubOK4 R cells` (the concrete `Pub`), `DRS1_4`, `vRSL4_eq`, `wrsL4_eq`, `fipL4_eq`; **`rs1_hfin4`**: from `DRS0_4` at RS1's entry (327), every phase doom whose escapes clear `DRS1_4` costs `≤ 10/2^128` (`rs1_round_le`, `rs1_count4`).
+- **B′:** `DB4` (far, or `v* ≠ ⟨W₀, f⁽⁰⁾⟩` in F), `ipW_eq`, `bTerms4`; **`single_B4`** (`hsingle` at 331, `≤ 10·2^128`, with `Pub := PubOK4 R cells` and `hcells`: each node kind has nine public cells inside level 0, which is S-E's layout fact).
+- **Controls:** `vRSL4_zero` (+), `c₀L4_seg` (+: a segment's `c₀` is `v_RS` and its `W₀` the RS weight), `vStarL4_node_ne` (−: a node's `c₀` is not `v_RS`), `dB4_ctrl` (+ far dooms B′ / − the true claim clears it), `pubOK4_ctrl` (+ segment / − a node off `pubVals`).
+
+**Checks:** `lake build FR FRSoundness4P4bB` green (2,437 jobs, `logs/P4b/build-final2.log`); axioms of its 43 declarations within `propext`, `Classical.choice`, `Quot.sound`, no `sorryAx` (`logs/P4b/axioms2.log`); source rule 225 files, 0 findings (`logs/P4b/source-rule2.log`); sequential profile 9.8 s wall, 0.31 s kernel, 2.86 GB (`logs/P4b/prof-FRSoundness4P4bB.log`).
+
+**For X4 (B′ → P1.0 handoff):** T4's P1.0 doom `D1 0` compares `c₀` with `trueSum e2 (lvT W₀ 0)`. On a close level-0 word (`¬ F0`), T4's `fTab = ι ∘ fF` gives `trueSum e2 (lvT (W₀L4 kf cells) 0 L es) (m − 7) = ι (ipW (wrsL4 …) (cellsC …) (kpL4 es) (m − 7) (R.fz L es))` (3.x's `ip_W0` proof, with `ipW_eq`). Then `DB4` at 332 is `D1 0` after P1.0's first absorb (3.x's `handoff_B`), with `frontLocal4` for `FrontLocal`.
+
+**Remaining** (unchanged order):
+1. Item 2, DF/Obl/Stab at phases 13–25. This waits for P4a's and T4's finals.
+2. X4's instantiation, including the handoff above.
+3. S-E's `hfit` and `hcells`.

@@ -97,3 +97,22 @@ Dooms (with `R`, `srcE`, `srcL`): `RowsBadLr4`/`ZCwLr4`/`D3Lr4`/`EndBadLr4`/`Bat
 - Final: `lake build FR` + the four modules green (2,432 jobs), axioms (191 names) within the three,
   source rule 223 files 0 findings. Stopped here (context); RS1's frame, B′, W0, DF/Obl/Stab and
   the instantiation are the handover (RESULT §6).
+
+## 2. Pass 2 (item 1: RS1, B′, W0), after the commit `a8642c3`
+
+- Rulings: X4 instantiates `FSrc`, `srcE`/`srcL`, `kf`, `F0`, `Pub`; 3.x's `FRSoundnessRows` stays; F1
+  accepted (S-E proves `hfit` with distinct indices). Re-snapshotted from HEAD; `MINE.txt` =
+  `FRSoundness4P4bB`.
+- `gFinB'` is `finB′` verbatim, and the revision 4.1 node statement keeps `c₁`, `c₂` at bytes
+  1 and 33 of the statement (position 1), so `pubH` is 3.x's `pubHL` (positions 0, 1) and the public
+  values are 3.x's `pubL` (`Node.pubVals`, nine). The cells are per kind (`cells ν`, as
+  `nodeFinP κ cells`); `single_B4` takes S-E's layout facts as `hcells` (nine cells inside level 0).
+- `Pub` stays a parameter of `DPend4`/`DRS0_4`/`DRS1_4`; its concrete form `PubOK4 R cells` is the
+  one `single_B4` needs (the batch compares `pubL` with `f⁽⁰⁾` at the cells).
+- B′'s doom `DB4` is P1.0's `D1 0` in F (`v* ≠ ⟨W₀, f⁽⁰⁾⟩`, `ipW`). The step to T4's
+  `trueSum e2 (lvT W₀ 0)` (a close word's `fTab = ι ∘ fF`) is X4's; `ipW_eq` is 3.x `ip_W0`'s algebra.
+- RS1's charge (`rs1_hfin4`) uses the position-generic `rs1_round_le` directly; the frame (`esc_msD`
+  at `fsRanges4`) stays the composition's.
+- One trap: `rw` inside `ReadsS` on a lambda needs `beta_reduce` first.
+- Checks: `lake build FR FRSoundness4P4bB` green (2,437 jobs); axioms (43 names) within the three;
+  source rule 225 files, 0 findings.
