@@ -2,12 +2,20 @@
 
 Last updated 2026-10-28. **Rebased onto core PR #20 (pin `6d05d00`, commit `987e679`); blueprint revision 4.0** (§0.1 B-11…B-17, §10 changes 25). Build trees use `logs/org20`.
 
-## Running (revision 4.0)
+## Running (revision 4.1; 6 agents, FR-D8)
 
-- S-0′: the 4.0 shapes: the segment circuit (variable `n_i ≤ 2^18`, `pubStart`), `L31`, the aggregate leaf `A` (`V_A` over k ≤ 4 segment verifiers on one signed trace), `gen` for `N4`/`N8`, layouts, the one item sequence, `qV` 36,000.
-- P2′: the multi-threaded segment prover (variable n, `L31`), the aggregate and one SIGN, `prover/main.rs`'s `proofCap` check removed; then `N4`/`N8` from the dumps and a stream dry run on the PR #20 harness.
+- S-E13: the plan build ≤ 2 s per process (B-16), generic piece lemma replacing `Plan.ok`'s run-time comparison.
+- H-cert: the certificate's build/kernel time on a 4-vCPU runner against 600 s / 600 s.
+- T4: the Ligerito tail at `seq4` (+14 positions).
+- P4a: front Z, L, S, Sh at `seq4` with the segment deltas (`SegHolds`, range factor, masked successor, `lastOps`).
+- P4b: front Lr, E, RS, B′, W0 at shifted positions, per-kind node dims, O1 over `nodeIRows`.
+- S-H3: the Rev4 computable extractor (`V4with` dispatch, A and N2/N4/N8, `computes4`, the node law for `FRSoundness4Frame`).
 
 ## Waiting
+
+- **R4 (after P4a/P4b fix their `Rej*` names):** the program layer on `gen4` (`accept_chain`, views, `finLog`) and the front checks once (S-G13 §6).
+- **S-E12′ (after S-E13):** the Rev4 node circuit in Lean: N2/N4/N8 block-kind maps, targets, kind indicators, `StmtN`/`NodeResid` with 1 + k slots, `childOk4`, the aggregate's padding/counter claim (R-4-m2); all import rows, `R`, templates; dumps for P2's node prover.
+- **X4 (after T4, P4a/b, R4, S-E12′, S-H3):** per-kind `SegSoundLog`, nodes, the final Rev4 theorem via `ks4_of`; retire the 3.x S-G chain from the entry (build budget, S-G13 F4).
 
 - **4.0 critical path:** S-0′ → S-E12′ (all import rows, `R`, templates on N4/N8, plan ≤ 2 s per process) ∥ S-G12′ (`truthE` over `nodeIRows`, 1+k slot truths, `hRes`, the walk bridge, `hFrontV`, `kstate_front` via `ks_of_front`) → P2′ node prover on the full dumps → stream dry run (S ≈ 3.7–4.1 s projected) → S-I certificate (600 s build/kernel) → H evaluation on GitHub. The items below written for revision 3.x are superseded where §10 changes 25 (c) lists them obsolete (the tree, `P30`, `proofCap` margins, the `T_V` gate).
 
