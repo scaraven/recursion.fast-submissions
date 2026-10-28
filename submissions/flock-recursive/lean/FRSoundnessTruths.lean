@@ -367,9 +367,10 @@ agrees with it on `A_c`, both sets have at least `nᵢ − eᵢ` positions, so t
 `nᵢ − 2eᵢ ≥ kᵢ` positions (`card_inter_ge`, `lv_params`) and are equal (`rs_eq_of_agree`); `Enc` is
 injective (`enc_injective`).
 
-**`stream_padded`** (item 1 of S-G1e): the node's hashed stream is `1,486,400 = 64 · 23,225`
-bytes (`streamBytes_eq`), so its last block is full and `Stream.Padded` holds for every
-assignment: `stream_sound`'s padding hypothesis needs no point claim. -/
+**`stream_padded`** (item 1 of S-G1e): the node's hashed stream is `1,481,344 = 64 · 23,146`
+bytes (`streamBytes_eq`; revision 3.13 with E4 end's 16 zero bytes, INT-2), so its last block is
+full and `Stream.Padded` holds for every assignment: `stream_sound`'s padding hypothesis needs no
+point claim. -/
 
 /-- The level parameters the uniqueness argument uses (checked per level and kind). -/
 theorem lv_params (κ : Kind) {i : ℕ} (hi : i < 5) :

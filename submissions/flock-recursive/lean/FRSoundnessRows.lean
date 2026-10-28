@@ -1,4 +1,4 @@
--- New for `flock-recursive` (BLUEPRINT A.10 rows Lr1–Lr4 and E1–E4, §5.2; stage S-G1j).
+-- New for `flock-recursive` (BLUEPRINT A.10 rows Lr1–Lr3 and E1–E4, §5.2; stage S-G1j).
 import FRSoundnessFront
 
 /-!
@@ -9,8 +9,10 @@ A **row Spartan** proves that every row of a list `rows` (`a` row bits, `nc` cel
 at `s0`), `a` outer rounds of degree 3 from `b2` (`D3`, claim `0`), an end absorb at
 `pe = b2 + 2a` carrying `â, b̂, ĉ` (asserted against the outer claim: `RejEnd`), the batching
 squeeze `κ` at `pk = pe + 1`, and `nc` inner rounds of degree 2 from `b4 = pe + 2` (`D2`, its
-round checks asserted: `RejIn`). This is Lr1 … Lr4 (`lRows`, 15 and 23 bits; positions 169, 178,
-208, 209, 210) and E1 … E4 (the M rows, 21 and 23 bits). The algebra is S-C's
+round checks asserted: `RejIn`). This is E1 … E4 (the M rows, 21 and 23 bits; positions 209,
+221, 263, 264, 265 under revision 3.13) and Lr1 … Lr3 (`lRows`, 15 bits; positions 169,
+178, 208, 209), whose inner rounds are E4's since revision 3.13 (six claims batched by
+`κ_E`). The algebra is S-C's
 (`FRSpartan`: `zc_start`, `outer_trueSum`, `outer_final`, `triple_wrong`, `inner_trueSum`,
 `batch_escape_le`, `inner_final`).
 
@@ -29,9 +31,10 @@ switching). The obligations, each in the form `FrontObl`'s fields take for a pha
 * **`rejEnd_ok`**/**`rejIn_ok`** (`RejOK`), and the reads (**`rowsBad_reads`**, **`zcw_reads`**,
   **`endBad_reads`**, **`batBad_reads`**).
 
-**Lr4 does not instantiate the inner half**: `finLr` (iv) evaluates `evalL` at Lr4's 15
-challenges, which is `0` (`evalL_short_zero`), and Lr4 has 15 rounds where the cells need 23.
-E's inner half needs E before RS0 (`rs0_before_e4`). The zerocheck half is instantiated for Lr
+**Revision 3.13** withdrew Lr4 (its `evalL` point was 15 coordinates, `evalL_short_zero`) and put
+E before RS (`e4_before_rs0`); E4's lincheck now batches Lr's three claims with M's (`κ_E³`), so the
+unit's inner half is instantiated once, for E4 with the batched claim (S-G's next step; this
+module's batching is still the three-claim one). The zerocheck half is instantiated for Lr
 (`lr_unit_pos`).
 -/
 
@@ -459,7 +462,7 @@ theorem outer_append (hs : s0 + 1 + (a + 1) / 2 ≤ b2) (h3 : 3 ≤ b2) {L es : 
   D3_append_iff (by omega) (T3_local hs h3) x hlen hc
 
 open Classical in
-/-- **An inner round's squeeze** (A.10 Lr4/E4, `D2_single` with `card_chF_fiber`): with the
+/-- **An inner round's squeeze** (A.10 E4, `D2_single` with `card_chF_fiber`): with the
 round's check holding, at most `2·2^128` answers escape. -/
 theorem single_inner (h3 : 3 ≤ b2) (L es : Log)
     (hchk : ∀ j, es.length = b2 + 2 * a + 2 + 2 * j + 1 → j < nr4 nc on (kindOf es) →
@@ -586,14 +589,14 @@ end RowSpartan
 /-- Lr runs on nodes. -/
 def lrOn (κ : Kind) : Bool := κ.isNode
 
-/-- **Lr's positions** (A.4, revision 3.12): the zerocheck point after 169 (8 squeezes, phase 13),
+/-- **Lr's positions** (A.4, revision 3.13): the zerocheck point after 169 (8 squeezes, phase 13),
 the outer rounds from 178 (phase 14), the end absorb at 208 (phase 15, 48 bytes), `κ_L` at 209
-(phase 16, a single squeeze), the inner rounds from 210 (phase 17). -/
+(phase 16, a single squeeze); then E1's first squeeze at 210 (phase 17: Lr4 is withdrawn). -/
 theorem lr_unit_pos :
     (169, 8) ∈ fsRanges ∧ phOf 169 = 12 ∧ phOf 170 = 13 ∧ phOf 177 = 13 ∧ phOf 178 = 14 ∧
     phOf 207 = 14 ∧ phOf 208 = 15 ∧ phOf 209 = 16 ∧ phOf 210 = 17 ∧
     fsItems[208]? = some (.absorb 48) ∧ fsItems[209]? = some .squeeze ∧ fsRnd 209 = none ∧
-    fsItems[210]? = some (.absorb 48) := by
+    fsItems[210]? = some .squeeze := by
   refine ⟨by rw [fsRanges_eq]; simp, ?_⟩
   have hph : ∀ q, phOf q = (fsStarts.filter (· ≤ q)).length - 1 := fun _ => rfl
   simp only [hph, fsStarts_eq]

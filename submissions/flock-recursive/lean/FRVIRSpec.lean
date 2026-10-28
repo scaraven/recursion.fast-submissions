@@ -187,10 +187,10 @@ theorem items_gen (fin : FinOps) (hfin : ∀ outs b, (fin outs b).filterMap Op.i
     (m : Mode) : (genWith fin m).ops.filterMap Op.item? = items := by
   simp [genWith, skeleton, items_genPhases, hfin, List.filterMap_cons, Op.item?, items]
 
-/-- **`queries_gen`**: the verifier asks `8,874 ≤ qV` queries under every oracle. -/
+/-- **`queries_gen`**: the verifier asks `8,891 ≤ qV` queries under every oracle (revision 3.13). -/
 theorem queries_gen (fin : FinOps) (hfin : ∀ outs b, (fin outs b).filterMap Op.item? = [])
     (m : Mode) (H : ByteArray → Digest) :
-    ((runIR impl (genWith fin m) inp).queries H).length = 8920 := by
+    ((runIR impl (genWith fin m) inp).queries H).length = 8891 := by
   rw [queries_runIR, items_gen fin hfin, items_length]
 
 /-! ## The interpreter step by step; the shapes of phase Z -/

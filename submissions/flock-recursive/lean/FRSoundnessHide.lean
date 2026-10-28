@@ -48,7 +48,7 @@ def hEll (i : ℕ) : ℕ := (lvlStar i).ell
 theorem lvl_ell (κ : Kind) {i : ℕ} (hi : i < 5) : (lvl κ i).ell = hEll i := by
   cases κ <;> interval_cases i <;> rfl
 
-/-- Checked: P1's starts and rounds (`[347, 390, 417, 441, 463]`, `[6, 4, 4, 4, 4]`), each level's
+/-- Checked: P1's starts and rounds (`[318, 361, 388, 412, 434]`, `[6, 4, 4, 4, 4]`), each level's
 cap absorbed before its P1, and the P1 phases disjoint. -/
 theorem p1_check : (List.range 5).all (fun i => decide (capPos i < p1Start i) &&
     (List.range 5).all fun i' => i == i' || decide (p1Start i + 2 * hEll i ≤ p1Start i') ||
@@ -151,7 +151,7 @@ theorem DH_short {L es : Log} (h : es.length ≤ p1Start 0 + 1) : DH L es := by
   intro i hi
   refine noHide_zero ?_
   have := p1_phase hi
-  have hv : ∀ j, j < 5 → p1Start j = [347, 390, 417, 441, 463].getD j 0 := by
+  have hv : ∀ j, j < 5 → p1Start j = [318, 361, 388, 412, 434].getD j 0 := by
     intro j hj; unfold p1Start phStart; rw [fsStarts_eq]; interval_cases j <;> rfl
   have h0 := hv 0 (by norm_num)
   have hi' : p1Start 0 ≤ p1Start i := by

@@ -214,7 +214,7 @@ theorem rounds_Pf {l : ℕ} (hl : l < 7) :
   simp only [Bool.and_eq_true, List.all_eq_true, List.mem_range, beq_iff_eq] at h
   exact h.1.2 l hl
 
-theorem fsItems_length : fsItems.length = 497 := by
+theorem fsItems_length : fsItems.length = 468 := by
   have h := rounds_check
   simp only [Bool.and_eq_true, beq_iff_eq] at h
   exact h.2

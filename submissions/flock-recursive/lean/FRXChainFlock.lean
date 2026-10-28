@@ -5,15 +5,15 @@ import FRXChainTop
 /-!
 # The chain scan for Flock's verifier: the targets, the table, `chain_spec`
 
-* `fsMsgs`: per Fiat–Shamir position (A.4's 497 items), the π byte range `(o, len)` of the
+* `fsMsgs`: per Fiat–Shamir position (A.4's 468 items), the π byte range `(o, len)` of the
   absorbed message (the seed's: `hdr`, bytes `0 … 47`), `none` for a squeeze. It is read off the
   phase table exactly as `FRVIR.genPhase` asks (`phaseOff n f`, `j · roundBytes` per round).
-  Controls: `fsMsgs_length` (497), `fsMsgs_items` (the kinds and lengths are `fsItems`),
+  Controls: `fsMsgs_length` (468), `fsMsgs_items` (the kinds and lengths are `fsItems`),
   `fsMsgs_aligned` (every message is 8-byte aligned inside `piSize`).
 * `fsQ vk c π p st`: the query at position `p` when the previous answer is `st` (A.2).
 * `chTab`: the table words, `tabW_chTab`: they realise `fsQ` on every SNARK tape.
 * **`chain_spec`**: on a log with no state hit, the machine's answer at position `p < nRep`
-  (`nRep = 471`: through P1.4's last round) is the first-match chain's (`fmAns`), i.e. `runLog`'s.
+  (`nRep = 442`: through P1.4's last round) is the first-match chain's (`fmAns`), i.e. `runLog`'s.
   The seed block is a parameter (`SeedOK`): the seed `"FRSEED0" ‖ vk ‖ c ‖ hdr` carries `vk`,
   which the extractor is not given (V4-6); see S-H2-RESULT Part 13, Q1.
 -/
@@ -44,24 +44,24 @@ def msgItem : ℕ → Option (ℕ × ℕ) → Item
   | _ + 1, some (_, len) => .absorb len
   | _ + 1, none => .squeeze
 
-/-- Control: 497 positions. -/
-theorem fsMsgs_length : fsMsgs.length = 497 := by decide +kernel
+/-- Control: 468 positions. -/
+theorem fsMsgs_length : fsMsgs.length = 468 := by decide +kernel
 
 /-- **Control: the kinds and lengths are A.4's Fiat–Shamir items.** -/
-theorem fsMsgs_items : (List.range 497).map (fun p => msgItem p (fsMsgs.getD p none)) = fsItems := by
+theorem fsMsgs_items : (List.range 468).map (fun p => msgItem p (fsMsgs.getD p none)) = fsItems := by
   decide +kernel
 
 /-- Every message's check: 8-byte aligned, inside `piSize`. -/
 def msgOk : Option (ℕ × ℕ) → Bool
-  | some (o, len) => o % 8 == 0 && len % 8 == 0 && decide (o + len ≤ 800640)
+  | some (o, len) => o % 8 == 0 && len % 8 == 0 && decide (o + len ≤ 797904)
   | none => true
 
 /-- **Control: every message is aligned and inside π.** -/
 theorem fsMsgs_aligned : fsMsgs.all msgOk = true := by decide +kernel
 
 /-- Control: the seed's message is `hdr` (bytes `0 … 47`), position 2's is `cap₀` (the caps field
-at offset `22,320`, `16,384` bytes; `capOff`). -/
-theorem fsMsgs_ctl : fsMsgs.getD 0 none = some (0, 48) ∧ fsMsgs.getD 2 none = some (22320, 16384) ∧
+at offset `19,584`, `16,384` bytes; `capOff`). -/
+theorem fsMsgs_ctl : fsMsgs.getD 0 none = some (0, 48) ∧ fsMsgs.getD 2 none = some (19584, 16384) ∧
     fsMsgs.getD 3 none = none := by decide +kernel
 
 /-- **The query at Fiat–Shamir position `p`**, the previous answer being `st` (A.2). -/
@@ -72,13 +72,13 @@ def fsQ (vk c : Digest) (π : Proof) (p : ℕ) (st : Digest) : ByteArray :=
   | none => squeezeQ st
 
 /-- The positions replayed: through P1.4's last round (`phStart 45 + 2·4`). -/
-def nRep : ℕ := 471
+def nRep : ℕ := 442
 
-/-- Control: P1.4 (phase 46) starts at Fiat–Shamir position 463 and has 4 rounds (8 items), so
-`nRep = 463 + 8`: every P1.i challenge (`sAt es i l`, position `phStart (26 + 5i) + 2l + 1`) sits
+/-- Control: P1.4 (phase 46) starts at Fiat–Shamir position 434 and has 4 rounds (8 items), so
+`nRep = 434 + 8`: every P1.i challenge (`sAt es i l`, position `phStart (26 + 5i) + 2l + 1`) sits
 below `nRep`. -/
-theorem nRep_ctl : ((phases.take 46).map fun p => (p.shape.items.filter Item.isFS).length).sum = 463 ∧
-    ((phases.getD 46 finalPhase).shape.items.filter Item.isFS).length = 8 ∧ 463 + 8 = nRep := by
+theorem nRep_ctl : ((phases.take 46).map fun p => (p.shape.items.filter Item.isFS).length).sum = 434 ∧
+    ((phases.getD 46 finalPhase).shape.items.filter Item.isFS).length = 8 ∧ 434 + 8 = nRep := by
   decide +kernel
 
 theorem stateIn_fsQ (vk c : Digest) (π : Proof) {p : ℕ} (hp : 0 < p) (st : Digest) :
@@ -177,7 +177,7 @@ theorem extract_size (π : Proof) {o len : ℕ} (h : o + len ≤ π.size) :
 /-! ## The table realises the targets -/
 
 theorem msgOk_of {p o len : ℕ} (h : fsMsgs.getD p none = some (o, len)) :
-    o % 8 = 0 ∧ len % 8 = 0 ∧ o + len ≤ 800640 := by
+    o % 8 = 0 ∧ len % 8 = 0 ∧ o + len ≤ 797904 := by
   have hp : p < fsMsgs.length := by
     by_contra hc
     rw [List.getD_eq_default _ _ (by omega)] at h; cases h
@@ -190,7 +190,7 @@ theorem msgOk_of {p o len : ℕ} (h : fsMsgs.getD p none = some (o, len)) :
 /-- **The table realises Flock's targets** on every tape of a proof of `piSize` bytes. -/
 theorem tabW_chTab (vk c : Digest) (π : Proof) (L : Log) (hs : π.size = piSize) :
     TabW (extractorInput c π L).toArray (fsQ vk c π) nRep chTab := by
-  have hp : π.size = 800640 := hs.trans piSize_eq
+  have hp : π.size = 797904 := hs.trans piSize_eq
   refine ⟨chTab_length, fun p hp0 hpN => ⟨?_, fun hpN' st => ?_⟩⟩
   · rw [show 4 * p + 1 = 4 * p + 1 from rfl, chTab_getD hpN (by norm_num), tabEnt]
     split
@@ -241,7 +241,7 @@ theorem chain_spec (vk c : Digest) (π : Proof) (L : Log) (hs : π.size = piSize
     rd (semXIR (extractorInput c π L).toArray (chainIR nRep chTab sd) s).M (ansB + 4 * p + m) =
       (packBytes a.toList).getD m 0 := by
   have h119 : (fsQ vk c π 0 zeroD).size = 119 := by
-    have hp' : π.size = 800640 := hs.trans piSize_eq
+    have hp' : π.size = 797904 := hs.trans piSize_eq
     unfold fsQ
     rw [fsMsgs_ctl.1]
     simp only [if_true]

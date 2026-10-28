@@ -23,7 +23,7 @@ import FRSoundnessStepD
   **`kstate_step`**: the contract's `KState.step` law at `εD = εR − ε_H` for the potential of
   `DC Rej (Dp Dk)` (`stepObl_compose`, `step_epsD`). `hfin_ml`, `hfin_seq`, `hfin_rs1`, `hfin_p2`
   discharge `PhaseObl.hfin` per phase shape from Part A and `p2_hround`.
-* **Part E: the asserted rounds** (degree 2 over F: L2, S2, Lr4; over K: P1.i, Pf): **`D2`**
+* **Part E: the asserted rounds** (degree 2 over F: L2, S2, E4; over K: P1.i, Pf): **`D2`**
   (`Rej ∨ Wrong2` with the check in `Rej`), `D2_append_iff` (absorbs inside the phase), and
   **`D2_single`** (`2·M` escaping answers, `M = 2^128` for F, `1` for K).
 -/
@@ -477,7 +477,7 @@ theorem hfin_p2 (κ : Kind) (i : ℕ) (hi : i < 5) {Dk : ℕ → Log → Log →
   · rw [condCount_eq_zero fun as has he => hd (esc_msD hmem hfin hl as has he).1]
     exact zero_le
 
-/-! ## Part E: the asserted rounds (degree 2 over F: L2, S2, Lr4; over K: P1.i, Pf)
+/-! ## Part E: the asserted rounds (degree 2 over F: L2, S2, E4; over K: P1.i, Pf)
 
 Round `l`'s message is `c₀ ‖ c₁ ‖ c₂` (coefficients of width `wd` read by `rd`); the verifier
 asserts `g(0) + g(1) = claim` (`c₁ + c₂ = claim` in characteristic two), so under `¬ Rej` the
@@ -592,7 +592,7 @@ theorem wrong2_ext1 (hb1 : 1 ≤ b) (hTc : TruthLocal2 b c0 T) (L es : Log) (a :
   simp only [Wrong2, clR2, hg, hr, hrs', hT, hk, bindAll_append]
 
 open Classical in
-/-- **The asserted round row** (A.10: L2, S2, Lr4 over F with `M = 2^128`; P1.i, Pf over K with
+/-- **The asserted round row** (A.10: L2, S2, E4 over F with `M = 2^128`; P1.i, Pf over K with
 `M = 1`): from a doomed claim whose round check holds (`Chk2`, from `¬ Rej`), at most `2·M`
 answers make the next claim true. `hfib` is the challenge map's fiber count
 (`card_chF_fiber`, `card_chK_fiber`). -/
@@ -648,7 +648,7 @@ end Rounds2
 
 /-- Control: the phase map at a few positions (Z1's last squeeze, Z2's absorb, P3.0's first
 squeeze after the column queries, Pf's last round). -/
-theorem phOf_examples : phOf 12 = 3 ∧ phOf 13 = 4 ∧ phOf 385 = 30 ∧ phOf 496 = 51 := by
+theorem phOf_examples : phOf 12 = 3 ∧ phOf 13 = 4 ∧ phOf 356 = 30 ∧ phOf 467 = 51 := by
   unfold phOf; rw [fsStarts_eq]; decide
 
 /-- Control: inside the phase `msD` is the entry's doom, at the last answer `fin`. -/

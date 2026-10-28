@@ -20,8 +20,9 @@ are all computed from it, so the three cannot drift apart.
   `"FRMNOD" ‖ i ‖ 0`, column `"FRMCOL" ‖ i ‖ 0`.
 * Challenge maps (A.2): `chF a c` is bytes `16c … 16c + 15` of an answer as an F element; `chK a` all
   32 bytes as a K element; `idxOf b a i` bits `[ib, (i+1)b)` of `natLE a`.
-* `items_length : items.length = 8920` (`decide`, a closed form of the table), `fsItems_length`
-  (431), `streamBytes_eq` (the hashed stream `0x54 ‖ traceBytes`), `chainLen_eq` (compressions).
+* `items_length : items.length = 8891` (`decide`, a closed form of the table; revision 3.13),
+  `fsItems_length` (468), `streamBytes_eq` (the hashed stream `0x54 ‖ traceBytes`), `chainLen_eq`
+  (compressions).
 -/
 
 namespace FR
@@ -136,10 +137,13 @@ def fS2 : ℕ := 6
 def fLr : ℕ := 7
 /-- A.3 row 7′ (revision 3.7): Lr end, `â_L ‖ b̂_L ‖ ĉ_L`. -/
 def fLrEnd : ℕ := 8
-def fRS0 : ℕ := 9
-def fE : ℕ := 10
+/-- A.3 row 9: E2's and E4's rounds, then E4 end's `f̂(r′) ‖ 0^16` (revision 3.13, INT-2). The
+body follows the item order (A.3: fields 9, 9′ precede field 8), so E's fields are numbered before RS0's. -/
+def fE : ℕ := 9
 /-- A.3 row 9′ (revision 3.7): E end, `â_M ‖ b̂_M ‖ ĉ_M`. -/
-def fEEnd : ℕ := 11
+def fEEnd : ℕ := 10
+/-- A.3 row 8: RS0's `4 × 128` partials (after E4 since revision 3.13). -/
+def fRS0 : ℕ := 11
 def fP1 : ℕ := 12
 def fPf : ℕ := 13
 def fCaps : ℕ := 14
@@ -187,7 +191,10 @@ def mm (d : ℕ) (k : Kind) : ℕ := k.m - d
 /-- Real only for nodes. -/
 def nodeOnly (n : ℕ) (k : Kind) : ℕ := if k.isNode then n else 0
 
-/-- The Fiat–Shamir phases before the PCS (A.4 rows 0–21, revision 3.4: L3 added, E4 removed). -/
+/-- The Fiat–Shamir phases before the PCS (A.4 rows 0–21; revision 3.13: Lr4 withdrawn, E before
+RS: `… Lr3, E1, E2, Eend, E3, E4, E4end, RS0, RS1, B′`; E4end absorbs `f̂(r′) ‖ 0^16`, RS claim
+4's value and 16 zero bytes, which keep the hashed stream a multiple of 64 bytes: INT-2,
+`streamBytes_eq`, so the node's last block needs no padding claim). -/
 def piopPhases : List Phase :=
   [⟨"seed", .seed⟩, ⟨"stmt", .absorb fStmt 128⟩, ⟨"cap0", .absorb fCaps (2 ^ 9 * 32)⟩,
    ⟨"Z1", .squeezes 10 (.coords (mm 13))⟩, ⟨"Z2", .uni fZ2⟩,
@@ -197,11 +204,12 @@ def piopPhases : List Phase :=
    ⟨"S1", .squeezes 15 (.coords fun _ => 29)⟩, ⟨"S2", .rounds fS2 28 2 false (mm 4)⟩,
    ⟨"Lr1", .squeezes 8 (.coords (nodeOnly 15))⟩, ⟨"Lr2", .rounds fLr 15 3 false (nodeOnly 15)⟩,
    ⟨"Lrend", .absorb fLrEnd 48⟩,
-   ⟨"Lr3", .squeezes 1 (.one Kind.isNode)⟩, ⟨"Lr4", .rounds fLr 15 2 false (nodeOnly 15)⟩,
-   ⟨"RS0", .absorb fRS0 (5 * 128 * 16)⟩, ⟨"RS1", .squeezes 4 (.coords fun _ => 8)⟩,
+   ⟨"Lr3", .squeezes 1 (.one Kind.isNode)⟩,
    ⟨"E1", .squeezes 11 (.coords (nodeOnly 21))⟩, ⟨"E2", .rounds fE 21 3 false (nodeOnly 21)⟩,
    ⟨"Eend", .absorb fEEnd 48⟩,
    ⟨"E3", .squeezes 1 (.one Kind.isNode)⟩, ⟨"E4", .rounds fE 23 2 false (nodeOnly 23)⟩,
+   ⟨"E4end", .absorb fE 32⟩,
+   ⟨"RS0", .absorb fRS0 (4 * 128 * 16)⟩, ⟨"RS1", .squeezes 4 (.coords fun _ => 8)⟩,
    ⟨"B'", .squeezes 1 (.one fun _ => true)⟩]
 
 /-- The bytes absorbed after level `i`'s fold rounds: `cap_{i+1}`, or the final message. -/
@@ -265,9 +273,9 @@ def Item.isFS : Item → Bool
   | _ => true
 
 /-- **`items_length`** (A.4; `qV = 10,240`). -/
-theorem items_length : items.length = 8920 := by decide +kernel
+theorem items_length : items.length = 8891 := by decide +kernel
 
-theorem fsItems_length : (items.filter Item.isFS).length = 497 := by decide +kernel
+theorem fsItems_length : (items.filter Item.isFS).length = 468 := by decide +kernel
 
 /-! ## Tags and queries (A.2) -/
 
@@ -518,7 +526,7 @@ def Item.qlen : Item → ℕ
 per item. -/
 def streamBytes : ℕ := 1 + (items.map fun it => 8 + it.qlen + 32).sum
 
-theorem streamBytes_eq : streamBytes = 1486400 := by decide +kernel
+theorem streamBytes_eq : streamBytes = 1481344 := by decide +kernel
 
 /-- An item's bytes in the stream: `enc64 |q| ‖ q ‖ a`. -/
 def Item.slen (it : Item) : ℕ := 8 + it.qlen + 32
@@ -573,7 +581,7 @@ theorem streamOff_aligned (k : ℕ) (hk : 1 ≤ k) (hk' : k ≤ items.length) : 
 /-- **The digest chain's length** (compressions per slot, §4.2): `⌈|B| / 64⌉`. -/
 def chainLen : ℕ := (streamBytes + 63) / 64
 
-theorem chainLen_eq : chainLen = 23225 := by rw [chainLen, streamBytes_eq]
+theorem chainLen_eq : chainLen = 23146 := by rw [chainLen, streamBytes_eq]
 
 /-! ## Challenge maps (A.2) -/
 

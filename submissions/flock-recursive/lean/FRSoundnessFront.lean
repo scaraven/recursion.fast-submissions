@@ -3,7 +3,7 @@ import FRSoundnessCompose
 import FRNodeCircuit
 
 /-!
-# The PIOP front: reads, the frame, the node's block order, the B′ cells, two protocol defects
+# The PIOP front: reads, the frame, the node's block order, the B′ cells, the 3.13 order
 
 * **Part A: reads.** **`Reads p P`**: `P` reads only what lies before position `p` (the chain's
   entries and the words of earlier caps, `Same`), on chains of at least `p` entries. A phase's
@@ -21,11 +21,13 @@ import FRNodeCircuit
 * **Part C: B′'s cells.** **`pfCells_eq`**: `finPf`'s nine cells are `Node.pubCells` (no padding
   cells); **`cellsOf`**, **`truthBN`** (the B′ truth over them) and **`cells_sum_of_pub`** (on a
   word whose cells hold the public values, the cells' batched sum is the public values').
-* **Part D: two defects of the current protocol, kernel-checked** (S-G1j RESULT §1):
-  **`rs0_before_e4`** (RS0 absorbs ring switching's claim-5 slices at position 240, before E4
-  draws claim 5's point `r′` at 301 … 345), and **`evalL_short_zero`** (`finLr`'s `evalL` gets
-  Lr4's 15 challenges as a 23-coordinate cell point, and there it is identically `0`: every L row
-  reads cells at or above `2^15`).
+* **Part D: S-G1j's two defects, fixed by revision 3.13** (S-G1j RESULT §1; INT-2):
+  **`e4_before_rs0`** (the control of the fixed order: E4's 23 challenges `r′` at 265 … 310, E4
+  end at 311, then RS0's partials at 312 and RS1 from 313; S-G1j's `rs0_before_e4` no longer
+  holds and is withdrawn), and **`evalL_short_zero`**, kept as the negative control of `finE`'s
+  `evalL` point: at a cell point of at most 15 coordinates `evalL` is identically `0` (every L
+  row reads cells at or above `2^15`), which is why `finE` passes all 23 of E4's challenges
+  (`FRVIRFinalsSF.finE_evalL_point`); Lr4, whose 15 challenges were that point, is withdrawn.
 * **`frontLocal_of`**: `FrontLocal` from congruence under `Same` up to P1.0.
 -/
 
@@ -202,7 +204,7 @@ theorem nodeBK_eq_free_iff (blk : ℕ) : nodeBK blk = .free ↔ Layout.wmBase �
 blk`. -/
 theorem ind_nodeBK {blk : ℕ} (h : blk < Layout.nodeBlocks) :
     Layout.Ind (nodeBK blk) blk = true := by
-  have hc : Layout.chainN = 23225 := rfl
+  have hc : Layout.chainN = 23146 := rfl
   have hw : Layout.wotsSlot = 498 := rfl
   by_cases h1 : blk < 2 * Layout.chainN
   · have hσ : blk / Layout.chainN < 2 := by rw [hc] at h1 ⊢; omega
@@ -265,21 +267,20 @@ theorem cells_sum_of_pub {w : Circ.Asg} {vk c₁ c₂ : Digest} (h : Node.PubCel
   rw [List.getD_eq_getElem _ _ hk', ← h, List.getD_eq_getElem _ _ (by simpa using hk'),
     List.getElem_map]
 
-/-! ## Part D: two defects of the current protocol (kernel-checked) -/
+/-! ## Part D: S-G1j's defects under revision 3.13 -/
 
-/-- **Defect 1 (revision 3.12's order).** RS0, which absorbs ring switching's partials, the fifth
-claim's `s_{4,i}` included (`finRS`'s `sv inp 4 i`, `rsOff 4 i`), is phase 18 at position 240;
-E4, whose 23 challenges are claim 5's point `r′` (`eSrc`, `pfPts` point 17), is phase 24, its
-first challenge at position 301. The partials of claim 5 are absorbed before its point exists. -/
-theorem rs0_before_e4 :
-    (piopPhases[18]?.map (·.name)) = some "RS0" ∧ (piopPhases[24]?.map (·.name)) = some "E4" ∧
-    phStart 18 = 240 ∧ phStart 24 = 300 ∧
-    fsItems[240]? = some (.absorb (5 * 128 * 16)) ∧ fsItems[301]? = some .squeeze := by
-  refine ⟨rfl, rfl, ?_, ?_, ?_, ?_⟩
-  · rw [phStart, fsStarts_eq]; rfl
-  · rw [phStart, fsStarts_eq]; rfl
-  · decide +kernel
-  · decide +kernel
+/-- **Control: E before RS** (revision 3.13, fixing S-G1j defect 1). E4 is phase 21 (its rounds
+from position 265, its last challenge `r′₂₂` at 310), E4 end (`f̂(r′) ‖ 0^16`, 32 bytes) phase 22
+at 311, RS0 (the `4 × 128` partials, claim 4's `s_{3,i}` included) phase 23 at 312, RS1 (`r″`,
+`κ`) from 313: every claim's point is drawn before RS0 absorbs its slices. -/
+theorem e4_before_rs0 :
+    (piopPhases[21]?.map (·.name)) = some "E4" ∧ (piopPhases[22]?.map (·.name)) = some "E4end" ∧
+    (piopPhases[23]?.map (·.name)) = some "RS0" ∧ (piopPhases[24]?.map (·.name)) = some "RS1" ∧
+    phStart 21 = 265 ∧ phStart 22 = 311 ∧ phStart 23 = 312 ∧ phStart 24 = 313 ∧
+    fsItems[310]? = some .squeeze ∧ fsItems[311]? = some (.absorb 32) ∧
+    fsItems[312]? = some (.absorb (4 * 128 * 16)) ∧ fsItems[313]? = some .squeeze := by
+  refine ⟨rfl, rfl, rfl, rfl, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
+  all_goals first | (rw [phStart, fsStarts_eq]; rfl) | decide +kernel
 
 theorem lRows_cell_ge {r : Circ.Row} (hr : r ∈ Layout.lRows) {t : ℕ × F}
     (ht : t ∈ r.a ++ r.b ++ r.c) : 2 ^ 15 ≤ t.1 ∧ t.1 < 2 ^ 23 := by
@@ -310,10 +311,11 @@ theorem eq_short_zero {σ : Array F} (hσ : σ.size ≤ 15) (y : Fin (2 ^ 23)) (
     rw [Array.getElem?_eq_none (by omega)]; rfl
   simp [h0, cube, hb]
 
-/-- **Defect 2 (`finLr` (iv)).** `finLr` passes Lr4's 15 challenges as `evalL`'s cell point,
-which `evalL` reads as 23 coordinates (`ptOf 23`: the last 8 are `0`). Every L row reads cells
-`≥ 2^15` (the L bits at `lBase·128 + …`, M's `one` cell), so there `evalL` is `(0, 0, 0)` at
-every row point: `finLr`'s last check is `c_{Lr4} = 0`, whatever the rows. -/
+/-- **Negative control of `finE`'s `evalL` point** (S-G1j defect 2, fixed by revision 3.13): at a
+cell point of at most 15 coordinates, which `evalL` reads as 23 (`ptOf 23`: the last 8 are `0`),
+`evalL` is `(0, 0, 0)` at every row point, because every L row reads cells `≥ 2^15` (the L bits
+at `lBase·128 + …`, M's `one` cell). Revision 3.12's `finLr` (iv) passed Lr4's 15 challenges and
+was vacuous; `finE` passes E4's 23 (`finE_evalL_point`). -/
 theorem evalL_short_zero (τ σ : Array F) (hσ : σ.size ≤ 15) :
     Eval.evalLImpl Layout.lRows τ σ = (0, 0, 0) := by
   have key : ∀ sel : Circ.Row → Circ.Lin, (∀ r, ∀ t ∈ sel r, t ∈ r.a ++ r.b ++ r.c) →

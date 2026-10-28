@@ -496,10 +496,10 @@ theorem ChainOK_getD : ∀ {es : Trace} {ms : List (Option (ℕ × ℕ))} {p : �
 
 /-- **The query link** (stage-review changes 16; S-H2-RESULT Part 13 Q2): on a trace that a run of
 `gen fin mode` consumes completely, the Fiat–Shamir entries (the entries at `items`' FS items) are
-497, and entry `p` asks `fsQ vk c π p` of entry `p − 1`'s answer. -/
+468 (revision 3.13), and entry `p` asks `fsQ vk c π p` of entry `p − 1`'s answer. -/
 theorem fsQ_gen (fin : Finals) (mode : Mode) {es : Trace} {b : Bool}
     (h : semIR impl (gen fin mode) inp es = some b) :
-    (fsOf es items).length = 497 ∧ ∀ p < 497, ((fsOf es items).getD p default).1 =
+    (fsOf es items).length = 468 ∧ ∀ p < 468, ((fsOf es items).getD p default).1 =
       fsQ inp.vk inp.c inp.π p ((fsOf es items).getD (p - 1) default).2 := by
   unfold semIR at h
   split at h

@@ -28,7 +28,7 @@ import FRVIREval
   per slot, and per slot's WOTS run chain `i`'s steps `w43 i s` at offset `3i + s`, the key leaf
   (`hashB1 tagWotsLeaf`, `streamTarget 4265 k`, `streamEnd41`), the path's `hashB1 tagSigNode`,
   `hashB2` pairs. **`truthZN`**: the node's Z truth over `nodeKind`.
-* **Part E: the E and Lr truths** (A.10 E1–Eend, Lr1–Lr4; S-G1h). `rowMat sel rows`: a row list's
+* **Part E: the E and Lr truths** (A.10 E1–Eend, Lr1–Lr3; S-G1h). `rowMat sel rows`: a row list's
   `A`/`B`/`C` matrix (`FRVIREval.entriesOf`, as `evalM`/`evalL` read it); **`matVec_rowMat`**: its
   product with `w` is the rows' linear forms; **`sat_rowMat_iff`**: on rows that fit
   (`RowsFit`), the zerocheck tables' R1CS (`FRSpartan.Sat`) is "every row holds". **`truthE`**
@@ -128,7 +128,7 @@ theorem leaf_of_truthZ {κ : Kind} {L es : Log} {n : ℕ} (hn : 1 ≤ n) {s h : 
   Leaf.leaf_sound hn (zBlk κ L es) s h (fun i _ k => zBlk_bool κ L es i k) hZ hlinks
 
 /-- **The B′ truth** (A.10 B′; `finB′`'s `v*`, revision 3.12): the batched value is
-`v_RS + Σ_k κ′^(k+2)·f[cell_k]` with the true value `vRS` (E's claim is RS claim 5, inside
+`v_RS + Σ_k κ′^(k+2)·f[cell_k]` with the true value `vRS` (E4's claim is RS claim 4, inside
 `v_RS`) and the cells' true values. Parametric in the cell list: A.7's nine cells are
 `Node.pubCells []` once S-E3 drops the padding cells. -/
 def truthB' (κ : Kind) (L es : Log) (cells : List ℕ) (κ' vRS vStar : F) : Prop :=
@@ -149,13 +149,13 @@ theorem not_truthB'_of_ne (κ : Kind) (L es : Log) {κ' vRS v : F}
 open FR.Kinds FR.Stream in
 /-- **The public target of node block `blk`** (A.6, §4.2's consecutive WOTS layout, §4.3's region
 table; `none`: the `free` blocks). The digest chains' counters are `streamTarget streamBytes`
-(`streamBytes_eq`: `1,486,400`); a WOTS slot's offset `o` is chain `⌊o/3⌋`'s step `o mod 3`
+(`streamBytes_eq`: `1,481,344`); a WOTS slot's offset `o` is chain `⌊o/3⌋`'s step `o mod 3`
 (`o < 399`, `w43_step`), the key leaf (`399 … 465`: 67 blocks of a 4,265-byte stream), then the
 16 path steps (`hashB1 tagSigNode`, `hashB2`). -/
 def nodeKind (blk : ℕ) : Option Block.Target :=
   if blk < 2 * Layout.chainN then
     if blk % Layout.chainN = 0 then some streamStart.target
-    else some (streamTarget 1486400 (blk % Layout.chainN))
+    else some (streamTarget 1481344 (blk % Layout.chainN))
   else if blk < Layout.wotsBase then
     let o := (blk - Layout.stmtBase) % 3
     some (if o = 0 then hashA.target else if o = 1 then (hashB1 RecursionFast.tagNode).target
@@ -196,7 +196,7 @@ theorem nodeKind_controls :
 previous output), unlike its first. -/
 theorem nodeKind_inner : nodeKind 1 ≠ some Kinds.streamStart.target := by
   intro h
-  have h1 : nodeKind 1 = some (Stream.streamTarget 1486400 1) := rfl
+  have h1 : nodeKind 1 = some (Stream.streamTarget 1481344 1) := rfl
   rw [h1, Option.some.injEq] at h
   have := congrFun h 0
   simp [Stream.streamTarget, Stream.blockTarget, Kinds.Kind.target, Kinds.streamStart] at this
@@ -308,7 +308,7 @@ theorem sat_rowMat_iff (rows : List Row) {a b : ℕ} (hf : RowsFit rows a b) (w 
 def truthE (fin : Finals) (κ : Kind) (L es : Log) : Prop :=
   ∀ r ∈ Layout.nodeRows fin, r.Holds (fF κ L es)
 
-/-- **The Lr truth** (A.10 Lr1–Lr4; `lRows_sound`): every L row holds on `f⁽⁰⁾`. -/
+/-- **The Lr truth** (A.10 Lr1–Lr3, E4; `lRows_sound`): every L row holds on `f⁽⁰⁾`. -/
 def truthLr (κ : Kind) (L es : Log) : Prop := ∀ r ∈ Layout.lRows, r.Holds (fF κ L es)
 
 /-- E2's tables are the R1CS of the M rows (`evalM`'s matrices, 21 row and 23 cell variables). -/

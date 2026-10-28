@@ -55,7 +55,7 @@ theorem tail_pos {i : ℕ} (hi : i < 5) : capPos i < p1Start i ∧ 1 ≤ p1Start
   obtain ⟨⟨⟨⟨h1, h2⟩, h3⟩, h4⟩, h5⟩ := h i hi
   exact ⟨h1, h2, h3, h4, h5⟩
 
-theorem pfStart_eq : pfStart = 483 := by unfold pfStart phStart; rw [fsStarts_eq]; rfl
+theorem pfStart_eq : pfStart = 454 := by unfold pfStart phStart; rw [fsStarts_eq]; rfl
 
 theorem p1Start_lt_nx {i : ℕ} (hi : i < 5) : p1Start i < nxStart i := by
   obtain ⟨-, -, h3, h4, h5⟩ := tail_pos hi; omega

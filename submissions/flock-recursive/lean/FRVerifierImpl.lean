@@ -12,7 +12,9 @@ import FRPubTarget
 # `implC`, `specC`, `implC_meets`, `V` (with the node's M rows)
 
 The op implementations and specifications are in `FRVerifierImplOps` (split by S-E3); this module
-assembles them with the M-row ops (`evalM`, `evalL`; revision 3.12 removed `evalMK`).
+assembles them with the M-row ops (`evalM`, `evalL`; revision 3.12 removed `evalMK`). Since
+revision 3.13 both are called once, by `finE`, at E4's 23-coordinate cell point `r′` (`evalL`'s
+cell point is no longer Lr4's 15 challenges zero-padded: `FRVIRFinalsSF.finE_evalL_point`).
 -/
 
 namespace FR

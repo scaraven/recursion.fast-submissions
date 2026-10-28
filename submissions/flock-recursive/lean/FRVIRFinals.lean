@@ -6,8 +6,9 @@ import FRSkip
 # The phase-final checks (`Finals`, A.9) and `gen`
 
 `Finals` has one field per phase. A field sees the phases' outputs (`GCtx.outs`), the values ring
-switching certifies (`finRS`'s exports `α₁ … α₅`: `ẑ_Z`, Lc's claim, `ẑ_Sh,out`, `ẑ_Sh,in`,
-`ẑ_Lr`), and the exports of the fields run before it; it returns ops (asking nothing) and its own
+switching certifies (`finRS`'s exports `α₁ … α₄`: `ẑ_Z`, Lc's claim, Sh's claim, E4's
+`f̂(r′)`; then `v_RS`; revision 3.13), and the exports of the fields run before it (`FinIn.ex`:
+`finLr`'s `v_L`, `r_Lr` are read by `finE`); it returns ops (asking nothing) and its own
 exports. `gen fin mode` is the skeleton, then the fields in the order `finRS, finZ, finLc, finSh,
 finLr, finE, finB′, finP 0 … 4, finPf`, then `accept`.
 
@@ -64,7 +65,8 @@ theorem exec_field (impl : OpImpl) (κ : Kind) (inp : Input) (o₁ ops : List Op
 structure FinIn where
   /-- The phases' outputs (`GCtx.outs`, by phase number). -/
   outs : Array (List Reg)
-  /-- `finRS`'s exports: `α₁ … α₅` (`ẑ_Z`, Lc's claim, `ẑ_Sh,out`, `ẑ_Sh,in`, `ẑ_Lr`), `v_RS`. -/
+  /-- `finRS`'s exports: `α₁ … α₄` (`ẑ_Z`, Lc's claim, Sh's claim, E4's `f̂(r′)`), then `v_RS`
+  (revision 3.13, `J_z = 4`). -/
   zhat : List Reg
   /-- The exports of the fields run before, in run order. -/
   ex : Array (List Reg)
@@ -102,6 +104,17 @@ def gen (fin : Finals) (mode : Mode) : VProg := genWith fin.ops mode
 
 /-- A pending field (S-F's, S-G's until delivered): no ops, no exports. -/
 def pending : FinField := fun _ _ => ([], [])
+
+/-- `finLr`'s place in `FinIn.ex` (run order: `finRS` 0, then `rest`: `finZ`, `finLc`, `finSh`,
+`finLr`). -/
+def exLr : ℕ := 4
+
+/-- Control: `rest`'s entry `exLr − 1` is `finLr`, so its exports are `ex[exLr]` for the later
+fields. -/
+theorem rest_exLr (fin : Finals) : fin.rest[exLr - 1]? = some fin.finLr := rfl
+
+/-- `finLr`'s exports as `finE` sees them: `v_L` (index 0) and the point `r_Lr` (index 1). -/
+def lrEx (fi : FinIn) (j : ℕ) : Reg := (fi.ex.getD exLr []).getD j 0
 
 /-! ## S-0's fields -/
 
@@ -207,22 +220,20 @@ def finSh : FinField := fun fi b₀ =>
     .assertEq (b + 49) (claimN fi "S2") allK],
    [b + 7, b + 46])
 
-/-- **`finLr`** (A.9; node only): `â_L, b̂_L, ĉ_L` from the Lr-end absorb (A.3 row 7′, revision 3.7);
-(ii) `c_Lr2 = eq(r_Lr, r)·(â_L b̂_L + ĉ_L)`; (iii) `c₀^{Lr4} = â_L + κ_L b̂_L + κ_L² ĉ_L`; (iv) `c_Lr4 =
-(Ã + κ_L B̃ + κ_L² C̃)(r, r₄)·ẑ_Lr` (`evalL`); (i) `c₀^{Lr2} = 0` holds by `initClaim`. Exports the
-column point `r₄`. -/
+/-- **`finLr`** (A.9, revision 3.13; node only): `â_L, b̂_L, ĉ_L` from the Lr-end absorb (A.3 row
+7′); (ii) `c_Lr2 = eq(r_Lr, r)·(â_L b̂_L + ĉ_L)` (`r_Lr` Lr1's 15 coordinates, `r` Lr2's
+challenges); (i) `c₀^{Lr2} = 0` holds by `initClaim`; (iii) exports **`v_L = â_L + κ_L b̂_L + κ_L²
+ĉ_L`** and Lr2's point `r` (the row point of `evalL`, as `r_{E2}` is `evalM`'s) to `finE`, whose E4
+lincheck carries Lr's (Lr4 is withdrawn: S-G1j defect 2). A leaf's Lr-end message is asserted
+zero by `gen`, so its `v_L` is `0`. -/
 def finLr : FinField := fun fi b =>
   let kL := (outsOf fi "Lr3").headD 0
   ([.piElem fLrEnd 0, .piElem fLrEnd 16, .piElem fLrEnd 32,
     .packF ((coordsR fi "Lr1").take 15), .packF (chals fi "Lr2" 15), .eqPt (b + 3) (b + 4),
     .mulF b (b + 1), .addF (b + 6) (b + 2), .mulF (b + 5) (b + 7),
     .assertEq (b + 8) (claimN fi "Lr2") Kind.isNode,
-    .mulF kL (b + 1), .mulF kL kL, .mulF (b + 10) (b + 2), .addF b (b + 9), .addF (b + 12) (b + 11),
-    .assertEq (b + 13) (claim0 fi "Lr4") Kind.isNode,
-    .packF (chals fi "Lr4" 15), .evalL (b + 4) (b + 14), .mulF kL (b + 16), .mulF (b + 10) (b + 17),
-    .addF (b + 15) (b + 18), .addF (b + 20) (b + 19), .mulF (b + 21) (fi.zhat.getD 3 0),
-    .assertEq (b + 22) (claimN fi "Lr4") Kind.isNode],
-   [b + 14])
+    .mulF kL (b + 1), .mulF kL kL, .mulF (b + 10) (b + 2), .addF b (b + 9), .addF (b + 12) (b + 11)],
+   [b + 13, b + 4])
 
 /-- **The finals with S-0's fields** and the other owners' fields as arguments. -/
 def s0Finals (rs e b' : FinField) (p : ℕ → FinField) (pf : FinField) : Finals :=
@@ -378,48 +389,43 @@ theorem flag_finSh (hin : ∀ x ∈ coordsR fi "S1" ++ chals fi "S2" 28 ++
     Option.map_some, allK, Bool.not_true, Bool.false_or, Bool.true_and, Bool.and_true] <;>
   exact ⟨_, rfl⟩
 
-/-- **A.9's `finLr` relation** (node only) over the register values. -/
+/-- **A.9's `finLr` relation** (node only, revision 3.13: the end check (ii)) over the register
+values. -/
 def relLr : Bool :=
   let rLr := (((coordsR fi "Lr1").take 15).map (fv r)).toArray
   let rr := ((chals fi "Lr2" 15).map (fv r)).toArray
-  let r4 := ((chals fi "Lr4" 15).map (fv r)).toArray
-  let kL := fv r ((outsOf fi "Lr3").headD 0)
   let a := pe inp fLrEnd 0; let bb := pe inp fLrEnd 16; let c := pe inp fLrEnd 32
-  let m := impl.evalL rr r4
-  if κ.isNode then
-    (Val.f (eqPoint rLr rr * (a * bb + c))).eqv (rd r (claimN fi "Lr2")) &&
-    ((Val.f (a + kL * bb + kL * kL * c)).eqv (rd r (claim0 fi "Lr4")) &&
-    (Val.f ((m.1 + kL * m.2.1 + kL * kL * m.2.2) * fv r (fi.zhat.getD 3 0))).eqv
-      (rd r (claimN fi "Lr4")))
-  else true
+  if κ.isNode then (Val.f (eqPoint rLr rr * (a * bb + c))).eqv (rd r (claimN fi "Lr2")) else true
 
-theorem flag_finLr (hin : ∀ x ∈ (coordsR fi "Lr1").take 15 ++ chals fi "Lr2" 15 ++ chals fi "Lr4" 15 ++
-      [(outsOf fi "Lr3").headD 0, claimN fi "Lr2", claim0 fi "Lr4", claimN fi "Lr4",
-       fi.zhat.getD 3 0], x < r.size) :
-    ∃ L, pureRun impl κ inp (finLr fi r.size).1 r [] = some (L, relLr impl κ inp fi r) := by
+/-- `finLr`'s first export, **`v_L = â_L + κ_L b̂_L + κ_L² ĉ_L`** (A.9 (iii), revision 3.13). -/
+def vLv : F :=
+  let kL := fv r ((outsOf fi "Lr3").headD 0)
+  pe inp fLrEnd 0 + kL * pe inp fLrEnd 16 + kL * kL * pe inp fLrEnd 32
+
+/-- **`flag_finLr`**: `finLr` asks nothing; its flag is `relLr`; its exports are `v_L` and Lr2's
+point. -/
+theorem flag_finLr (hin : ∀ x ∈ (coordsR fi "Lr1").take 15 ++ chals fi "Lr2" 15 ++
+      [(outsOf fi "Lr3").headD 0, claimN fi "Lr2"], x < r.size) :
+    ∃ L, pureRun impl κ inp (finLr fi r.size).1 r [] = some (L, relLr κ inp fi r) ∧
+      (rd (r ++ L.toArray) ((finLr fi r.size).2.getD 0 0)).toF = vLv inp fi r ∧
+      (rd (r ++ L.toArray) ((finLr fi r.size).2.getD 1 0)).toAF =
+        ((chals fi "Lr2" 15).map (fv r)).toArray := by
   simp only [List.mem_append, List.mem_cons, List.not_mem_nil, or_false] at hin
-  have h1 := fun L => map_rd_app r L ((coordsR fi "Lr1").take 15) fun x hx => hin x (.inl (.inl (.inl hx)))
-  have h2 := fun L => map_rd_app r L (chals fi "Lr2" 15) fun x hx => hin x (.inl (.inl (.inr hx)))
-  have h3 := fun L => map_rd_app r L (chals fi "Lr4" 15) fun x hx => hin x (.inl (.inr hx))
+  have h1 := fun L => map_rd_app r L ((coordsR fi "Lr1").take 15) fun x hx => hin x (.inl (.inl hx))
+  have h2 := fun L => map_rd_app r L (chals fi "Lr2" 15) fun x hx => hin x (.inl (.inr hx))
   have tf : ∀ x, (Val.f x).toF = x := fun _ => rfl
   have taf : ∀ x, (Val.af x).toAF = x := fun _ => rfl
-  simp only [finLr, relLr]
+  simp only [finLr, relLr, vLv]
   generalize (outsOf fi "Lr3").headD 0 = kl at *
   generalize claimN fi "Lr2" = c2 at *
-  generalize claim0 fi "Lr4" = c40 at *
-  generalize claimN fi "Lr4" = c4 at *
-  generalize fi.zhat.getD 3 0 = zl at *
-  have hk := hin kl (.inr (.inl rfl)); have hc2 := hin c2 (.inr (.inr (.inl rfl)))
-  have hc40 := hin c40 (.inr (.inr (.inr (.inl rfl))))
-  have hc4 := hin c4 (.inr (.inr (.inr (.inr (.inl rfl)))))
-  have hzl := hin zl (.inr (.inr (.inr (.inr (.inr rfl)))))
+  have hk := hin kl (.inr (.inl rfl)); have hc2 := hin c2 (.inr (.inr rfl))
   cases hn : κ.isNode <;>
-  simp only [hn, pureRun, evalOp, tf, taf, List.nil_append, List.cons_append, h1, h2, h3,
-    rd_app, rd_app0, rd_app_left _ _ hk, rd_app_left _ _ hc2, rd_app_left _ _ hc40, rd_app_left _ _ hc4, rd_app_left _ _ hzl,
+  simp only [hn, pureRun, evalOp, tf, taf, List.nil_append, List.cons_append, h1, h2,
+    rd_app, rd_app0, rd_app_left _ _ hk, rd_app_left _ _ hc2,
     List.getD_cons_succ, List.getD_cons_zero,
     Option.map_some, Bool.not_true, Bool.not_false, Bool.false_or, Bool.true_or, Bool.true_and,
     Bool.and_true, ↓reduceIte, Bool.false_eq_true] <;>
-  exact ⟨_, rfl⟩
+  exact ⟨_, rfl, rfl, rfl⟩
 
 end Flags
 

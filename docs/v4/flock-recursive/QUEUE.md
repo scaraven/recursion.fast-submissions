@@ -4,7 +4,6 @@ Last updated 2026-10-28. Blueprint at revision 3.13 (§10 changes 1–20). FR bu
 
 ## Running
 
-- INT-2: integrate revision 3.13 in the S-0/S-F/S-G modules (phase order, Lr4 withdrawn, E4 batching, J_z = 4).
 - S-CN: the node `targetS`/`linkW` specs (S-C part) plus `targetSNodeI`/`linkWI` and `_meets` (S-F2 part), in new modules; wiring into `implC` after INT-2.
 - P2: the node prover driven by the dump (`logs/S-E5/nodedump/`), the mirror writes, tree/node modes, the stream-link measurement.
 
@@ -25,6 +24,13 @@ Last updated 2026-10-28. Blueprint at revision 3.13 (§10 changes 1–20). FR bu
 S-A `8ff873c`; S-C `ebac8c2`; S-D `8e6dad7`; S-E1 `2d5a811`; S-H1 `40b2f81`; S-0 `47158b1`; S-E2/S-E3 `8447c50`; S-F `c8e1869`; S-F2 `8f22b86`; S-G through `ac43569`; S-H2 through `11fb3a5`; INT-1 `5fc7d3b`; S-E5 `9dbab71`. FR builds as a whole.
 
 ## Rulings
+
+- **INT-2 decisions, ratified 2026-10-28** (to enter the blueprint as change 21, batched with S-CN's findings):
+  (1) E4end absorbs 32 B (`f̂(r′)` ‖ 16 zero bytes), keeping the stream at 64 · 23,146 so that `stream_padded`
+  holds with no padding cell; piSize **797,904** (1.31×), stream counter 1,481,344.
+  (2) `finE` (v) binds the E4end message (value = `α₄`, the extra half zero) for every kind.
+  (3) `r_Lr` is Lr2's final point (the lincheck's row point is the zerocheck's final point, as for `r_E2`).
+  Still to fix in the blueprint: A.9's `finB′` row (`κ′ v_E`); `mRowModel`'s claim-5 row (11,400 rows, an over-count).
 
 - FRVIRSpec budget: judged per shape, not ×15 phases. Re-check when the queries shape is proved.
 - The phase-final checks (`fin : Finals`) go to a new module `FRVIRFinals`, owned by S-F (the

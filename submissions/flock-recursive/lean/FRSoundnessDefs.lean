@@ -730,7 +730,7 @@ end Local
 /-! ## Part D: Flock's multi-squeeze phases -/
 
 /-- The multi-squeeze phases of A.4 as `(s0, r)`: `r ≥ 2` squeezes after the Fiat–Shamir entry
-`s0` (Z1, S1, Lr1, RS1, E1, and each level's P2 and P3). -/
+`s0` (Z1, S1, Lr1, E1, RS1, and each level's P2 and P3). -/
 def fsRanges : List (ℕ × ℕ) :=
   (phases.foldl (fun (acc : ℕ × List (ℕ × ℕ)) p =>
     let n := (p.shape.items.filter Item.isFS).length
@@ -748,11 +748,11 @@ def rangesOK : Bool :=
 
 theorem rangesOK_eq : rangesOK = true := by decide +kernel
 
-/-- Control: the 15 multi-squeeze phases (Z1 after `cap0`, S1, Lr1, RS1, E1 after RS1's last
-squeeze, then P2 and P3 of each level), 497 Fiat–Shamir items. -/
-theorem fsRanges_eq : fsRanges = [(2, 10), (98, 15), (169, 8), (240, 4), (244, 11), (359, 25),
-    (384, 5), (398, 13), (411, 5), (425, 10), (435, 5), (449, 8), (457, 5), (471, 6),
-    (477, 5)] := by
+/-- Control: the 15 multi-squeeze phases (Z1 after `cap0`, S1, Lr1, E1 after Lr3's squeeze, RS1
+after RS0, then P2 and P3 of each level), 468 Fiat–Shamir items (revision 3.13). -/
+theorem fsRanges_eq : fsRanges = [(2, 10), (98, 15), (169, 8), (209, 11), (312, 4), (330, 25),
+    (355, 5), (369, 13), (382, 5), (396, 10), (406, 5), (420, 8), (428, 5), (442, 6),
+    (448, 5)] := by
   decide +kernel
 
 theorem fsRnd_zero : fsRnd 0 = none := by

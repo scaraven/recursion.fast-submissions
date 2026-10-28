@@ -24,11 +24,11 @@ import FRNodeLayout
 * **`finPf`** (A.9, stage-review changes 11; the native `weight_eval`, `prover/ligerito.rs`): with
   `P₄ = s₄ ++ sf[..μ]` (`μ = m − 25`), `Pₖ = sₖ ++ Pₖ₊₁[1..]`, `û(β) = 1 + β(1 + u)` and
   `Ŵₖ(Pₖ) = û(Pₖ[0])·(Ŵₖ₋₁(Pₖ₋₁) + Σ_q eq(κ_c⁽ᵏ⁻¹⁾, bits₉(q))·tensorW(p_q⁽ᵏ⁻¹⁾, Pₖ[1..]))`,
-  `Ŵ₀(ρ) = rsWeight(r″, pts, κ, ρ) + [node] Σ_k κ′^(k+2) eq(cell_k, ρ)` (revision 3.12: no
-  `evalMK` term; E's claim is RS claim 5, whose outer point is E4's `r′`), the check is
+  `Ŵ₀(ρ) = rsWeight(r″, pts, κ, ρ) + [node] Σ_k κ′^(k+2) eq(cell_k, ρ)` (revisions 3.12–3.13: no
+  `evalMK` term; E4's claim is RS claim 4, whose outer point is E4's `r′`), the check is
   `claimN(Pf) = Ŵ₄(P₄) · Π_{x ∈ sf[μ..7)} (1 + x) · final̂(sf)`. The claim points `pts` are the
-  native `claim_points` (`zSrc`, `lcSrc`, `shSrc`; the node's `lrSrc` is provisional, its `eSrc`
-  E4's 23 challenges), the cells
+  native `claim_points` (`zSrc`, `lcSrc`, `shSrc`; the node's `eSrc`, E4's 23 challenges; revision
+  3.13 withdrew Lr's own claim and its provisional point), the cells
   are `finB′`'s nine (`pfCells`). **`flag_finPf`**: its flag is `relPf` (`relPf_iff`), with
   `Ŵ₄` as `wV` (`lvsV` over `lvStepV`), `final̂` as `finHat` (`fhVal_eq`) and the cells' sum
   `cellsVal_eq`; **`noAsk_finPf`**: it asks nothing. The proof runs block by block on a growing
@@ -648,36 +648,28 @@ def shSrc (fi : FinIn) (m : ℕ) : List PtSrc :=
   (((chals fi "S2" 28).drop (m - 7)).take 3).map .f ++ List.replicate 4 (.c 0) ++
     ((chals fi "S2" 28).take (m - 14)).map .f
 
-/-- **Provisional** (node only; the RESULT's open item): the Lr claim's 15 high coordinates, the
-bits of the L region's element offset `Lbase · 128 / 2^8`. -/
-def lrHi : List K := (List.range 15).map fun v => if (Layout.lBase / 2).testBit v then 1 else 0
-
-/-- The Lr claim's outer point (`m = 30`): Lr4's challenges `7 … 14`, then `lrHi`. -/
-def lrSrc (fi : FinIn) : List PtSrc := ((chals fi "Lr4" 15).drop 7).map .f ++ lrHi.map .c
-
-/-- The E claim's outer point (`m = 30`, revision 3.12): all of E4's 23 challenges `r′` (RS claim 5,
-`f̂(r′)`, has the packing basis as its inner weights). -/
+/-- The E4 claim's outer point (`m = 30`, revisions 3.12–3.13): all of E4's 23 challenges `r′` (RS
+claim 4, `f̂(r′)`, has the packing basis as its inner weights). -/
 def eSrc (fi : FinIn) : List PtSrc := (chals fi "E4" 23).map .f
 
-/-- The points `finPf` builds: the claim points `0 … 6` (Z, Lc, Sh at `m = 32, 30`; Lr), the
-tails `P₁[1..] … P₄[1..]` at `m = 32` (`7 … 10`) and `m = 30` (`11 … 14`), `P₀` (`15`, `16`),
-E's point (`17`). -/
+/-- The points `finPf` builds: the claim points `0 … 6` (Z, Lc, Sh at `m = 32, 30`; E4's `r′`), the
+tails `P₁[1..] … P₄[1..]` at `m = 32` (`7 … 10`) and `m = 30` (`11 … 14`), `P₀` (`15`, `16`). -/
 def pfPts (fi : FinIn) : List (List PtSrc) :=
-  [zSrc fi 32, zSrc fi 30, lcSrc fi 32, lcSrc fi 30, shSrc fi 32, shSrc fi 30, lrSrc fi] ++
+  [zSrc fi 32, zSrc fi 30, lcSrc fi 32, lcSrc fi 30, shSrc fi 32, shSrc fi 30, eSrc fi] ++
     (List.range 4).map (fun k => (tailRegs fi 32 (k + 1)).map .k) ++
     (List.range 4).map (fun k => (tailRegs fi 30 (k + 1)).map .k) ++
-    [(p0Regs fi 32).map .k, (p0Regs fi 30).map .k, eSrc fi]
+    [(p0Regs fi 32).map .k, (p0Regs fi 30).map .k]
 
 /-- The `m = 32` kind. -/
 def is32 : KC Bool := fun κ => decide (κ = .L32)
 
-/-- The claim points `rsWeight` takes (indices into `pfPts`): three for a leaf, five for a node
-(Z, Lc, Sh, Lr, E: `finRS`'s order). -/
+/-- The claim points `rsWeight` takes (indices into `pfPts`): three for a leaf, four for a node
+(Z, Lc, Sh, E4: `finRS`'s order, revision 3.13). -/
 def rsPtIx : KC (List ℕ) := fun κ =>
   match κ with
   | .L32 => [0, 2, 4]
   | .P30 => [1, 3, 5]
-  | .N30 => [1, 3, 5, 6, 17]
+  | .N30 => [1, 3, 5, 6]
 
 /-- **The public cells** (A.7's order, the nine of `finB′`'s `pubH`): M's `one` cell, then slot
 1's and slot 2's seed payload elements `0 … 3` (`vk`, `c` halves) as `Node.seedCell`. The six zero
@@ -1415,7 +1407,7 @@ def p0V : Array K := ((p0Regs fi κ.m).map fun x => (rd r x).toK).toArray
 /-- The claim points `rsWeight` gets. -/
 def rsPtsV : List (Array K) := (rsPtIx κ).map fun j => ptV r ((pfPts fi).getD j [])
 
-/-- **`Ŵ₀(P₀)`**: `rsWeight(r″, pts, κ, P₀)` (a node's five claims include E's, revision 3.12),
+/-- **`Ŵ₀(P₀)`**: `rsWeight(r″, pts, κ, P₀)` (a node's four claims end with E4's, revision 3.13),
 and for a node `Σ_k κ′^(k+2) eq(cell_k, P₀)`. -/
 def w0V : K :=
   let kp := fv r ((outsOf fi "B'").headD 0)
@@ -1537,8 +1529,8 @@ theorem flag_finPf (impl : OpImpl) (κ : Kind) (inp : Input) (fi : FinIn) (r : A
   set R2 := R1 ++ M2.toArray with hR2
   have sR2 : R2.size = b + 3 + pw := by simp [R2, sR1, hl2, hpw]
   have e12 : ExtA R1 R2 := ExtA.app R1 M2
-  have hlen : (pfPts fi).length = 18 := by simp [pfPts]
-  have hPv : ∀ j < 18, rd R2 (ptsOut (pfPts fi) (b + 3) j) = .ak (ptV r ((pfPts fi).getD j [])) ∧
+  have hlen : (pfPts fi).length = 17 := by simp [pfPts]
+  have hPv : ∀ j < 17, rd R2 (ptsOut (pfPts fi) (b + 3) j) = .ak (ptV r ((pfPts fi).getD j [])) ∧
       ptsOut (pfPts fi) (b + 3) j < R2.size := by
     intro j hj
     refine ⟨?_, ?_⟩
@@ -1547,7 +1539,7 @@ theorem flag_finPf (impl : OpImpl) (κ : Kind) (inp : Input) (fi : FinIn) (r : A
         exact List.getElem_mem _))]
     · rw [sR2, ← hpw]; exact ptsOut_lt _ _ _ (by omega)
   -- B3: the kind's tails and `P₀`
-  have hkeep : ∀ j j', j < 18 → j' < 18 → ∀ L : List Val,
+  have hkeep : ∀ j j', j < 17 → j' < 17 → ∀ L : List Val,
       evalOp impl κ inp (R2 ++ L.toArray) (.keep is32 (ptsOut (pfPts fi) (b + 3) j)
         (ptsOut (pfPts fi) (b + 3) j')) =
       .vals [if κ = .L32 then .ak (ptV r ((pfPts fi).getD j []))
@@ -1586,7 +1578,7 @@ theorem flag_finPf (impl : OpImpl) (κ : Kind) (inp : Input) (fi : FinIn) (r : A
   have e03 : ExtA r R3 := e01.trans (e12.trans e23)
   have rr : ∀ x < r.size, ∀ L : List Val, rd (R3 ++ L.toArray) x = rd r x := fun x hx L => by
     rw [rd_app_left R3 L (Nat.lt_of_lt_of_le hx e03.1), e03.rd hx]
-  have hix : ∀ j ∈ rsPtIx κ, j < 18 := by cases κ <;> decide
+  have hix : ∀ j ∈ rsPtIx κ, j < 17 := by cases κ <;> decide
   have hpts : (rsPtIx κ).map (fun j => (rd R3 (ptsOut (pfPts fi) (b + 3) j)).toAK) =
       rsPtsV κ fi r := by
     simp only [rsPtsV]
@@ -1854,12 +1846,7 @@ theorem pfCells_spec :
   simp only [pfCells, Layout.oneCell, Layout.mBase, Layout.chainN]
   decide
 
-/-- `lrHi` holds the bits of `Lbase · 128 / 2^8 = 23,808`. -/
-theorem lrHi_eq : lrHi = [0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 1, 1, 0, 1] := by
-  simp only [lrHi, Layout.lBase]
-  decide
-
-/-- `finPf` builds 18 points (`pfPts`'s index table). -/
-theorem pfPts_length (fi : FinIn) : (pfPts fi).length = 18 := by simp [pfPts]
+/-- `finPf` builds 17 points (`pfPts`'s index table; revision 3.13). -/
+theorem pfPts_length (fi : FinIn) : (pfPts fi).length = 17 := by simp [pfPts]
 
 end FR

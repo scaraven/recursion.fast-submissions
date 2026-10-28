@@ -25,7 +25,7 @@ evaluates (`lvStepV`, `w0V`).
   `(A + κ_E B + κ_E² C)(r_E2, ·)` over the M rows (`rowMat`); **`sum_wE`**: its inner product with
   `f⁽⁰⁾` is `â_M + κ_E b̂_M + κ_E² ĉ_M` at `r_E2` (`mle_matVec`); **`mle_wE`**: its extension is
   `M̃(r_E2, ρ)` (`evalM`'s spec, `mle_matMle`; since revision 3.12 `finE` evaluates it at the F
-  point `r′`). **`w0F Wrs cells κ′`**: the RS weight (E's claim is RS claim 5, inside it) and the
+  point `r′`). **`w0F Wrs cells κ′`**: the RS weight (E4's claim is RS claim 4, inside it) and the
   cells' indicators; **`truthP1_zero`**: from the RS claim's truth and the B′ truth,
   `truthP1 0 (ι ∘ w0F …) (ι v*)`; **`mleN_w0F`** with **`eqCellK_eq`**: its extension is `w0V`'s
   shape (`rsWeight + Σ_k κ′^(k+2) eq(cell_k, ρ)`).
@@ -192,8 +192,8 @@ theorem mle_wE (rows : List Row) (rE : Fin 21 → F) (kE : F) (ρ : Fin 23 → F
     exact sum_congr rfl fun x _ => by ring
   rw [h, mle_comb, mle_matMle, mle_matMle, mle_matMle]
 
-/-- **Level 0's table** (A.9 `Ŵ₀`, F-valued on the cube; revision 3.12): the RS weight `Wrs` (all
-five claims, E's included) and the public cells' indicators weighted `κ′^(k+2)` (A.7's order). -/
+/-- **Level 0's table** (A.9 `Ŵ₀`, F-valued on the cube; revision 3.13): the RS weight `Wrs` (all
+four claims, E4's included) and the public cells' indicators weighted `κ′^(k+2)` (A.7's order). -/
 def w0F (Wrs : ℕ → F) (cells : List ℕ) (kp : F) (y : ℕ) : F :=
   Wrs y + ∑ k ∈ range cells.length, kp ^ (k + 2) * if y = cells.getD k 0 then 1 else 0
 

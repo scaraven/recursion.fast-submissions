@@ -275,12 +275,12 @@ theorem chk2_same {b : ℕ} {c0 : Log → Log → K} {L L' es es' : Log} {p : �
 /-! ## Part D: the position facts -/
 
 /-- Checked: phase `phOf p`'s first position is at most `p`, and `p` lies before the next phase's
-(`p < 497`). -/
-theorem phOf_check : (List.range 497).all (fun p => decide (phStart (phOf p) ≤ p) &&
+(`p < 468`). -/
+theorem phOf_check : (List.range 468).all (fun p => decide (phStart (phOf p) ≤ p) &&
     decide (phOf p ≤ 51) && (decide (phOf p = 51) || decide (p < phStart (phOf p + 1)))) = true := by
   unfold phOf phStart; rw [fsStarts_eq]; decide +kernel
 
-theorem phOf_ge {p : ℕ} (hp : 483 ≤ p) : phOf p = 51 := by
+theorem phOf_ge {p : ℕ} (hp : 454 ≤ p) : phOf p = 51 := by
   unfold phOf
   rw [List.filter_eq_self.mpr fun x hx => by
     rw [fsStarts_eq] at hx; simp only [decide_eq_true_eq]; fin_cases hx <;> omega, fsStarts_eq]
@@ -290,7 +290,7 @@ theorem phOf_ge {p : ℕ} (hp : 483 ≤ p) : phOf p = 51 := by
 next phase's start. -/
 theorem phOf_bounds (p : ℕ) : phStart (phOf p) ≤ p ∧ phOf p ≤ 51 ∧
     (phOf p < 51 → p < phStart (phOf p + 1)) := by
-  by_cases hp : p < 497
+  by_cases hp : p < 468
   · have h := phOf_check
     simp only [List.all_eq_true, List.mem_range, Bool.and_eq_true, Bool.or_eq_true,
       decide_eq_true_eq] at h
@@ -301,12 +301,12 @@ theorem phOf_bounds (p : ℕ) : phStart (phOf p) ≤ p ∧ phOf p ≤ 51 ∧
     unfold phStart; rw [fsStarts_eq]; simp; omega
 
 /-- Checked: the rounds of P1.0 … P1.4 and Pf alternate a 96-byte absorb and a squeeze; there
-are 497 Fiat–Shamir items. -/
+are 468 Fiat–Shamir items. -/
 theorem rounds_check : ((List.range 5).all (fun i => (List.range (hEll i)).all fun l =>
       fsItems[p1Start i + 2 * l]? == some (.absorb 96) &&
         fsItems[p1Start i + 2 * l + 1]? == some .squeeze) &&
     (List.range 7).all (fun l => fsItems[pfStart + 2 * l]? == some (.absorb 96) &&
-        fsItems[pfStart + 2 * l + 1]? == some .squeeze) && fsItems.length == 497) = true := by
+        fsItems[pfStart + 2 * l + 1]? == some .squeeze) && fsItems.length == 468) = true := by
   unfold p1Start pfStart hEll phStart; rw [fsStarts_eq]; decide +kernel
 
 end FR.Snd

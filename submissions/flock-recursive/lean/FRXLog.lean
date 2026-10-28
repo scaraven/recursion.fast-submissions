@@ -31,7 +31,7 @@ namespace FR.X
 open RecursionFast
 
 /-- The tape word of `|L|` on a SNARK proof. -/
-def posL : ℕ := 5 + 100080
+def posL : ℕ := 5 + 99738
 
 /-! ## Registers (user registers `75 …`) -/
 
@@ -299,7 +299,7 @@ theorem length_logEntries (L : Log) : 5 * L.length ≤
 
 theorem tape_getD_posL (c : Digest) (π : Proof) (L : Log) (hs : π.size = piSize) :
     (extractorInput c π L).getD posL 0 = toWord L.length := by
-  have hp : π.size = 800640 := hs.trans piSize_eq
+  have hp : π.size = 797904 := hs.trans piSize_eq
   have hl : ((packBytes c.toList ++ [toWord π.size]) ++ packBytes π.data.toList).length = posL := by
     simp only [List.length_append, packBytes_length, ← WitnessSending.size_eq_length,
       hp, posL, Vector.length_toList, List.length_singleton]
@@ -311,7 +311,7 @@ theorem tape_count_le (c : Digest) (π : Proof) (L : Log) (hs : π.size = piSize
     ((extractorInput c π L).toArray.getD posL 0).toNat ≤ (extractorInput c π L).length / 5 := by
   have hlen : posL + 1 + 5 * L.length ≤ (extractorInput c π L).length := by
     have := length_logEntries L
-    have hp : π.size = 800640 := hs.trans piSize_eq
+    have hp : π.size = 797904 := hs.trans piSize_eq
     rw [tape_eq]
     simp only [List.length_append, packBytes_length, ← WitnessSending.size_eq_length,
       hp, logWords, List.length_cons, posL, Vector.length_toList, List.length_singleton]

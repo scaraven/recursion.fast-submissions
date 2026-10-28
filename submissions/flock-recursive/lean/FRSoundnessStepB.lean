@@ -488,7 +488,7 @@ theorem lr2_phase : RoundsPhase 178 15 (nodeOnly 15) :=
   roundsPhase_of (by norm_num) (by norm_num) (fun κ => by cases κ <;> decide)
     (by decide +kernel) (by rw [fsRanges_eq]; decide)
 
-theorem e2_phase : RoundsPhase 256 21 (nodeOnly 21) :=
+theorem e2_phase : RoundsPhase 221 21 (nodeOnly 21) :=
   roundsPhase_of (by norm_num) (by norm_num) (fun κ => by cases κ <;> decide)
     (by decide +kernel) (by rw [fsRanges_eq]; decide)
 
