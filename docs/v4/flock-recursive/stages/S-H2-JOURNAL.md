@@ -354,3 +354,42 @@ Base: branch `v4/flock-recursive`, HEAD `53c2e13`. Build tree `logs/fr-build-SH2
       progress, metavariables). Fix: a local `hh5 : ∀ i, regs ≤ i → rd s5.M i = rd s.M i`, then
       `rdF_eq (hh5 _ _) (hh5 _ _)`.
     - Stopped: context long. Handover in RESULT Part 17.
+
+## Part 18 (track S-H2i)
+
+31. `flagIR` finished (Part 17 §What remains, item 1), own tree `logs/fr-build-SH2i`.
+    - Program: `fEnt` = `zPs` (accumulators 0, `gE := eb`, row count) ; `addrPs gW gJ cb cs` ;
+      `loopK gC2 gN2 R fBody` ; `X[j]` load and `cmpPs` ; `Y[j]` load and `cmpPs2` ;
+      `addrPs gT gJ fb 1` ; `store` ; `gJ += 1`. `flagIR` loops it `n` times.
+      Cost `12 + n (92 + 156 R)` (`cost_flagIR`, read off a scratch `#eval` outside the entry).
+    - `cmp_word`: the zero test of the four word differences is `[a = e ∧ b = f]` in `F`.
+    - `fEnt_sem` (one position), `flagIR_sem` (the flags `flagV` of the initial heap, the heap
+      outside `[fb, fb + n)` kept), `flagV_consSet` (flag `≠ 0` iff `j ∈ consN`, through
+      `mem_consSet_iff`). Control `toyFlag_run` (`decide +kernel`): flags `[1, 0]`.
+    - Pitfalls: `rw [hd, b3]` closed `toWord (a + 2) = toWord (a + 2·(r+1))` by `rfl` in one
+      build and not in the next after an edit upstream of it; use `exact congrArg toWord (by ring)`.
+      `tauto` on a 3-way disjunction into `TK` timed out (whnf); give the injections. `open FR.Snd`
+      is needed for `nextMsg`/`sAt`/`consSet` (otherwise auto-bound implicits: "Function expected").
+32. The message rows (`FRXMsg`): `zeroIR`, `finIR` (tape, level 4), `gathIR` (levels 0–3),
+    `msgTIR`/`msgHIR`, and the `nextMsg` specs `msg4_next` (with `finalAt es = finPi π` as the C.4
+    chain-link hypothesis) and `msgH_next`.
+    - `finIn` as four `inW` blocks (one `input` + increment each); one flat block of four inputs
+      timed out in `simp` (whnf). Compose small block lemmas instead.
+    - `ring` does not identify `x / 2 ^ 3` with `x / 8`; rewrite `(2:ℕ)^3 = 8` first.
+    - `Nat.le_of_lt_succ (Nat.mod_lt x _)` gives `x % Nat.succ 7`, which omega treats as another
+      atom than `x % 8`; state `4k(x % 8) ≤ 4k·7` with `Nat.mul_le_mul_left _ (by omega)`.
+33. One level composed (`FRXDecLv`): `bfRowsIR` (unrolled rows), `decBack_sem`, `MsgOk`,
+    `decFront_sem`, `decLv_sem`, the instances `decLvU_sem`, `decLv0_sem`, `msgOk_four`,
+    `msgOk_lower`, `layLv`.
+    - **`set` on a list built from `List.range 2^18`** made `generalize` unify `Jl.length` with
+      `2^mLog` by evaluation (whnf timeout) when one hypothesis (`hM2`) still mentioned
+      `Jl.length`. Rewrite every hypothesis, and introduce such lists opaquely
+      (`obtain ⟨Jl, hJl⟩ : ∃ Jl, Jl = … := ⟨_, rfl⟩`).
+    - **omega hit "maximum recursion depth"** on simple goals in contexts with `hs : π.size =
+      piSize` (msgOk_four) and in some contexts with `Fin (lvl …).rows` binders. Not isolated;
+      the workaround is explicit `le_trans (by decide) …` for the constant comparisons.
+    - Higher-order unification of `fwdIR_enc`'s message `c` failed; pass it explicitly.
+    - Costs per level read off a scratch `#eval` (outside the entry): level 0 `1.40·10^14`,
+      level 1 `8.2·10^11`, the rest below `1.4·10^10`.
+    - Profiles: FRXFlag 44.8 s (kernel 15.2 s, the toy run), FRXMsg 71.2 s, FRXDecLv 24.2 s.
+    - Stopped: context long. Handover in RESULT Part 18 §7.

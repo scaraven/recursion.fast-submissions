@@ -2164,3 +2164,195 @@ loop.
 6. The wiring.
 
 **Stopped here.** The cause is context length.
+
+---
+
+## Part 18 (track S-H2i): `flagIR`, the message rows, one level's decode composed (levels 0–4)
+
+**Delivered** (Part 17's list, items 1–4, each as "one level, with its inputs in memory"):
+1. **`flagIR`** finished: the row loop, the comparison, the store at `fb + j`, the position loop;
+   `flagV_consSet` states the flags against `mem_consSet_iff`.
+2. **The message rows**: level 4 from π's final field at 64,640 (`msg4_next`), levels 0–3 from
+   the next level's decoded rows (`msgH_next`).
+3. **The per-level composition** `eqtIR ; msg ; fwdIR ×2 ; flagIR ; scanIR ; baryIR k R ;
+   bflyIR ×R`, concluding with `level_decode` (`decLv_sem`), one theorem for all five levels.
+4. **Level 0** (`decLv0_sem`: 64 rows, the word at `colBase`, `bary0`'s layout `lay0`).
+
+**Not delivered** (§7): chaining the five levels with the reads, `decodeWit`'s output, the `'N'`
+case, the wiring. `decSnark`, `ext`, `computes` and every earlier statement are unchanged; the
+new modules are not on `ext`'s import path.
+
+### 1. Files (code lines by the core's `scripts/loc.py`)
+
+| File | total / code / theorems | What |
+|---|---|---|
+| `FRXFlag` | 855 / 717 / 23 (was 249 / 196 / 3) | `zPs`, `cmpPs`, `cmpPs2`, **`fEnt`**, **`flagIR n R cs cb eb xb yb fb`**; `WF`, `NoLoopT`, `outs`, `cost_flagIR`; `xor_eq_zero_w`, `wB_inj`, **`cmp_word`**; `zPs_sem`, `cmpPs_sem`, `cmpPs2_sem`, `TK`, **`fEnt_sem`**, `flagV`, **`flagIR_sem`**, **`flagV_consSet`**; control `toyFlag_run` |
+| `FRXMsg` (new) | 984 / 837 / 37 | `zeroIR` (`zeroIR_sem`); `inW`, `finIn`, **`finIR`** (`finIR_sem`), `tapeF`; **`msgTIR`** (`msgTIR_sem`); `finOff`, `finW`, **`finPi`**, **`tapeF_fin`**; `gAd`, `gNx`, `gBody`, **`gathIR`** (`gathIR_sem`), `and7_toWord`; **`msgHIR`** (`msgHIR_sem`); **`msg4_next`**, **`msgH_next`**; costs |
+| `FRXDecLv` (new) | 701 / 581 / 17 | `setA`, **`bfRowsIR`** (`bfRows_sem`); the memory map `fbF`, `obL`, `eqB`, `xbM`, `ybM`; **`decBackIR`** (`decBack_sem`); `MsgOk`, **`decFrontIR`** (`decFront_sem`); **`decLvIR`** (**`decLv_sem`**); `layLv`, `layLv0`, **`msgOk_four`**, **`msgOk_lower`**; `cbS`, `phStart_P1`, `cbS_le`, **`decLvU_sem`**, **`decLv0_sem`** |
+| `FRXReadLv` | 183 / 108 / 17 | docstring table: the 3.13 cap offsets (no code change) |
+
+New code in this part: 2,059 lines (521 + 837 + 581 + 0 + controls).
+
+### 2. What is proved
+
+**The flags** (`FRXFlag`). `fEnt` computes, for the position `j` in `gJ`, the two folds over the
+`R` rows (`fBody`, the `eqEnt_sem` loop pattern), loads `Enc₀[j]`, `Enc₁[j]`, and stores
+`gZ = [acc₀ = X[j] ∧ acc₁ = Y[j]]` at `fb + j`. `cmp_word` is the comparison:
+`XOp.eq.eval ((a₀⊕e₀ | a₁⊕e₁) | (b₀⊕f₀ | b₁⊕f₁)) 0 = bW [⟨a₀,a₁⟩ = ⟨e₀,e₁⟩ ∧ ⟨b₀,b₁⟩ = ⟨f₀,f₁⟩]`.
+`flagIR_sem`: with the rows of a position inside its stride (`2R ≤ cs`) and the inputs disjoint
+from the flags,
+
+```lean
+(∀ j < n, rd (semXIR I (flagIR n R cs cb eb xb yb fb) s).M (fb + j) = flagV s.M R cs cb eb xb yb j) ∧
+(∀ i, regs ≤ i → (i < fb ∨ fb + n ≤ i) → rd (semXIR I (flagIR …) s).M i = rd s.M i) ∧ Inv …
+```
+
+`flagV M R cs cb eb xb yb j` is `bW [Σ_{r<R} W[r][j]·E[r].f₀ = X[j] ∧ Σ_{r<R} W[r][j]·E[r].f₁ = Y[j]]`
+on the heap. **`flagV_consSet`**: if `W` is `wordOf κ L es i`, `E` is `eqBits (sAt es i) ℓ`,
+`X`, `Y` are `encF (mLog κ i)` of the next message's coordinates, then for `j < 2^logN`,
+`j ∈ consN κ L es i ↔ flagV … j ≠ 0` (the `scanIR` input form of `firstK_scan`).
+
+**The message rows** (`FRXMsg`). Both rows of `2^n` entries are zeroed (`zeroIR`), then:
+- level 4 (`msgTIR 10 32 finW`): K element `x < 32` from tape words `finW + 4x … + 3`
+  (`finW = 5 + 64,640/8`). `tapeF_fin`: those pairs are `finPi π x = chK (bytesAt π (64,640 + 32x) 32)`.
+  **`msg4_next`**: with `hfin : ∀ x < 32, finalAt es x = finPi π x` (the chain link at C.4's absorb),
+  `X[j] = if j < 2^mLog then (nextMsg .N30 L es 4 j).f₀ else 0`, and `Y` with `.f₁`, for `j < 2^10`;
+- levels 0–3 (`msgHIR logN k obL`): `X[x]`, `Y[x]` are rows `2(x mod 8)` and `2(x mod 8) + 1` at
+  column `x div 8` of the next level's decoded rows (`x & 7`, `x >> 3` on the machine).
+  **`msgH_next`**: if the rows hold `msgOf (i+1)` as `F` values and `msgOf (i+1)` is `F`-valued,
+  `X`, `Y` are the coordinates of `nextMsg i` (`nextMsg_coords`), zero-padded.
+
+**One level** (`FRXDecLv`). `MsgOk I msg s n m g` is what a message step owes: from every state
+agreeing with `s` outside the `eq` table, `msg` lays out `g` as above and keeps the heap outside
+`[xbM, ybM + 2^19)`. `msgOk_four` and `msgOk_lower` discharge it for the two kinds of step.
+**`decLv_sem`**: for `κ = N30`, `i < 5`, assume:
+- the basis table at `tb0`, the word at `cb + cs·j + 2r` (`2^24 ≤ cb`), P1.i's challenges at `cbS`;
+- `MsgOk` for `nextMsg i`;
+- `¬ farL` and `A_c = jointAgree` (what `final` hands over);
+- the level's `BaryLay` and the region bounds.
+
+Then
+
+```lean
+∀ r < (lvl .N30 i).rows, ∀ x < 2 ^ mLog .N30 i,
+  algebraMap F K (rdF (semXIR I (decLvIR msg i cs cb cbS ob) s).M (ob + 2 * 2 ^ mLog .N30 i * r + 2 * x)) =
+    msgOf .N30 L es i r x
+```
+
+and the heap below `jb0`, in `[chB, eqB)` and from `2^24` on outside the rows is kept. The proof is
+`decFront_sem` (the flags mark `consN`) then `decBack_sem` (`scanIR_sem`, `firstK_scan`,
+`firstK_card` with `|A_c| ≥ k` from `decodeL_spec`, `baryIR_interp`, `bfRows_sem`,
+`interpF_congr`, `level_decode`). `decLvU_sem` (levels 1–4: `cs = 32`, `cb = stB`, `ob = obL`) and
+`decLv0_sem` (level 0: `cs = 128`, `cb = colBase`, `ob = ob0`) discharge the layout.
+
+**The memory map** (words):
+
+| region | base | size |
+|---|---|---|
+| basis table | `tb0 = 2^20` | 800 |
+| `J` (scan list) | `jb0 = 2^21` | `k ≤ 2^17` |
+| flags | `fbF = 2^21 + 2^18` | `n ≤ 2^18` |
+| `DJ`, `W`, `E` | `djb0`, `wb0`, `eb0` | `2k` each |
+| decoded rows, levels 1–4 | `obL = 2^22 + 2^21` | `2k·16 ≤ 2^19` |
+| chain (answers at `ansB`) | `chB = 2^23 … chEnd` | read |
+| `eq` table | `eqB = 2^23 + 2^15` | `4·2^ℓ ≤ 256` |
+| `X`, `Y` | `xbM = 2^23 + 2^16`, `ybM = xbM + 2^19` | `2n` each |
+| word of levels 1–4 / decoded rows of level 0 | `stB = ob0 = 2^24` | `2^21` / `2^24` |
+| word of level 0 | `colBase = 2^25` | `2^25` |
+
+Level `i + 1`'s rows at `obL` are read by level `i`'s gather before level `i`'s interpolation
+overwrites them. Level 0's rows go to `ob0 = stB`, free once level 1's flags are computed.
+
+### 3. Costs
+
+Exact `cost_*` lemmas: `flagIR` `12 + n (92 + 156 R)`; `zeroIR` `14 + 9 n`; `finIR` `16 + 48 k`;
+`gathIR` `16 + 560 k`; `msgTIR` `46 + 36·2^n + 48 k`; `msgHIR` `46 + 36·2^n + 560 k`;
+`bfRowsIR` `1 + R (17 + m (741·2^(m−1) + 23))`.
+
+Per level, `cost (decLvIR …) 0` evaluated in a scratch file outside the entry
+(`logs/S-H2/axioms18.log`; the per-level `cost_decLvIR` lemmas are not written yet):
+
+| level | 4 | 3 | 2 | 1 | 0 |
+|---|---|---|---|---|---|
+| steps | 14,546,064 | 261,035,116 | 13,186,204,712 | 823,525,089,508 | 140,024,626,811,056 |
+
+- Sum of the five levels: 140,861,613,686,456 (`≈ 2^47.0`). The interpolations dominate.
+- Add the four reads (4,843,569,208, `cost_readLv`), `decN` (`≤ 18,002·10^6 + 2,558 t`) and
+  `wtabIR` (79,606): `≈ 140,884,459,335,270 + 2,558 t`.
+- `decBudget t = 211,106,098,315,264 + 8,176 t` (`fuel_base` 211,106,232,532,992 less `2^27`;
+  `fuel_per_word` 8,192 less 16). About `7.02·10^13 ≈ 2^46.0` is left for the output.
+- Statements: `sizeIR` 7,882 (level 4) to 18,224 (level 0) per level.
+
+### 4. Controls
+
+| Control | Kind | Shows |
+|---|---|---|
+| `toyFlag_run` (`decide +kernel`) | positive / negative | a run of the compiled `flagIR` on a toy heap: position 0 agrees (`1·1 = X[0]`, `1·0 = Y[0]`) and is flagged `1`; position 1 does not (`X[1] = 0`) and is flagged `0` |
+| `flagV_consSet`, `decLv_sem`, `decFront_sem`, `decBack_sem` | universal | for every log, transcript and level (`N30`) with the stated hypotheses; `not_farL_nil` (S-G) shows `¬ farL` is satisfiable |
+| `msgOk_four`, `msgOk_lower` | inhabitants | `MsgOk` is met by the two message steps (it is not vacuous) |
+| `layLv`, `layLv0`, `cbS_le` (`decide`) | value | the memory map meets `BaryLay` at every level; the challenges fit below `eqB` |
+| `finOff_ctl` (`decide`) | value | the final message's offset follows level 4's cap (`capOffL 4 + 32·2^7`) and ends at the columns (68,736); `finW = 8,085` |
+
+Missing: negative controls for `MsgOk`, `finPi` and the message programs (toy kernel runs of
+`gathIR` and `finIR`).
+
+### 5. Checks
+
+- **Build**: `lake build FRXDecLv FRXMsg FRXFlag FRXEncB FRXFwd FRXLevel FRXEqT FRXReadLv
+  FRXBaryTop FRXExt FRXSpec FRXLeaf FRXAgree FRXComputes FRXSeed` in `logs/fr-build-SH2i`
+  (`logs/S-H2/build18.log`).
+- **Axioms** (`logs/S-H2/axioms18.log`):
+  - these depend on `propext, Classical.choice, Quot.sound`: `flagIR_sem`, `flagV_consSet`,
+    `fEnt_sem`, `finIR_sem`, `gathIR_sem`, `msgTIR_sem`, `msgHIR_sem`, `tapeF_fin`, `msg4_next`,
+    `msgH_next`, `bfRows_sem`, `decFront_sem`, `decBack_sem`, `decLv_sem`, `decLvU_sem`,
+    `decLv0_sem`, `msgOk_four`, `msgOk_lower`;
+  - `cmp_word`, `zeroIR_sem`, `toyFlag_run` depend on `propext, Quot.sound`; the cost lemmas and
+    `layLv` on `propext`.
+- **Source rule**: 123 files, 0 findings. No `sorry`.
+- **Sequential profile** (`taskset -c 0`, `-DElab.async=false`;
+  `logs/S-H2/FRX{Flag,Msg,DecLv}.{profile,time}`; the profiler printed no cumulative block, so
+  type checking is the sum of the listed entries above 100 ms):
+
+  | Module | wall | max RSS | type checking (listed) |
+  |---|---|---|---|
+  | `FRXFlag` | 44.8 s | 4.74 GB | 15.2 s (all of it `toyFlag_run`'s kernel run) |
+  | `FRXMsg` | 71.2 s | 2.97 GB | 3.5 s |
+  | `FRXDecLv` | 24.2 s | 2.88 GB | 1.8 s |
+
+### 6. Deviations
+
+1. **One level theorem for all five levels**, generic in the message step through `MsgOk`
+   (a semantic interface the two message programs discharge), instead of five compositions.
+2. **The level-4 link is a hypothesis**: `finalAt es x = finPi π x` (`x < 32`), the chain link at
+   C.4's absorb, discharged in the `'N'` case as `capDig es i e = capPiL i π e` is.
+3. **The gather is one loop** with `x & 7`, `x >> 3` per element, not a nested loop.
+4. **The butterflies on the rows are unrolled** (`bfRowsIR`), so no loop register has to survive
+   `bflyIR`.
+5. **`κ = N30` is fixed** in the level theorems: the decoder runs on node proofs, whose ladder
+   is `ladder30`.
+
+### 7. What remains (in order; the next agent's list)
+
+1. **A frame for the reads.** `readIR_sem` states the store and the index only. `posLoop` already
+   carries the heap frame outside `[sb, sb + nw·np)`. A `readIR_frame` corollary (a new theorem,
+   `readIR_sem` unchanged) is needed to keep the basis table, the chain's answers and level
+   `i + 1`'s rows across `readLv i`.
+2. **The five levels chained**, after `decN`:
+   `wtabIR tb0 ; readLv 4 ; decLvIR (msgTIR 10 32 finW xbM ybM) 4 32 stB (cbS 4) obL ; readLv 3 ;
+   decLvIR (msgHIR …) 3 … ; … ; decLvIR (msgHIR 18 (2^14) obL xbM ybM) 0 128 colBase (cbS 0) ob0`.
+   The theorem threads:
+   - `hT` from `wtabIR_sem`;
+   - `hS` from `chain_dec` and `sAt_words` (with `fmAns … p = some (ansAt es p)`);
+   - `hW` from `readLv_spec_F`/`read_spec_F` and `colL` ↔ `wordOf` through `capDig = capPiL`;
+   - `msgOk_lower`'s `hdec` from the previous level's `decLvU_sem`, and `hF` from `msgOf_embed`;
+   - the frames (`decLvU_sem`'s, the reads', `wtabIR_sem`'s).
+3. **`cost_decLvIR`** per level, exact, from the component lemmas (`cost_baryIR` in general form if
+   it is missing), and the sum within `decBudget` (§3's figures); `WF`, `NoLoopT`, `outs`, `size`
+   of `decLvIR` (the components have them).
+4. **`decodeWit`'s output** from `f⁽⁰⁾`'s rows at `ob0` (row `c` at `ob0 + 2^18 c`).
+5. **The `'N'` case of `ext_good_tape`**: `vkOf π = vk`; `¬ farL`, `A_c = jointAgree` per level; the
+   chain link (answers, `capDig = capPiL`, `finalAt = finPi`); `¬ StateHit L`.
+6. **The wiring** into `decSnark`, re-checking `decOk`/`computes`.
+
+**Stopped here.** The cause is context length. The state is commit-ready: the FRX targets build,
+no `sorry`, the source rule is clean, and `ext`, `computes` and the earlier statements are unchanged.

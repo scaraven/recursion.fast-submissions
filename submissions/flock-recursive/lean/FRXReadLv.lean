@@ -11,12 +11,12 @@ Flock's `P30` instances of levels 1–4 (BLUEPRINT §2.2, revision 3.13):
 
 | level | `log₂ n` | cap | `sib` | cap field offset (π) |
 |---|---|---|---|---|
-| 1 | 16 | `2^8` | 8 | 38,704 |
-| 2 | 14 | `2^8` | 6 | 46,896 |
-| 3 | 12 | `2^8` | 4 | 55,088 |
-| 4 | 10 | `2^7` | 3 | 63,280 |
+| 1 | 16 | `2^8` | 8 | 35,968 |
+| 2 | 14 | `2^8` | 6 | 44,160 |
+| 3 | 12 | `2^8` | 4 | 52,352 |
+| 4 | 10 | `2^7` | 3 | 60,544 |
 
-A column of levels 1–4 is 304 bytes: 16 `F` elements (256 bytes) and 48 zero bytes (3.12's
+(Revision 3.13 offsets.) A column of levels 1–4 is 304 bytes: 16 `F` elements (256 bytes) and 48 zero bytes (3.12's
 padding). The read copies the first 32 words, the 16 `F` elements, to `stB + 32 p` (`stB = 2^24`:
 the level-0 output rows' region, free until level 0's interpolation). The offsets are those
 of `FRXChainFlock.fsMsgs` at the C phases (`capOffL_ctl`).
