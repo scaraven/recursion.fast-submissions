@@ -96,7 +96,7 @@ import FRSoundnessFrKS
 import FRSoundness4Frame
 import FRSoundness4Pos
 import FRSoundness4P4bB
-import FRSoundness4P4aCtrl4
+import FRSoundness4P4aCtrl5
 import FRSoundness4TailFront
 import FRSoundness4R4Ctrl
 import FRSoundness4R4Rnd

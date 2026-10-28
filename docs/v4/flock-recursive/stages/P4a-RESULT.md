@@ -466,3 +466,141 @@ theorem hstab4a : ∀ k ≤ 12, ∀ L i, ¬ Bad L → G.IsChain L i → ∀ X, S
    - `PendLcN`'s binding (`trueL_node` with S-E's kind factor as P4b's `kf`);
    - `zHolds_iff_truthZN` against `truthZ4`.
 3. **Revision 4.1's `stmt_split`** (D6). It needs `StmtN4` and the segment statement (X4's).
+
+## Pass 5 (track P4e; HEAD `4919027`)
+
+- **Build tree** `logs/fr-build-P4e` (a copy of `fr-build-P4d`; `MINE.txt` lists the fourteen P4a
+  modules and the five new ones). Logs in `logs/P4e/`. Journal: `P4a-JOURNAL.md`, "Pass 5".
+- Every lean/lake command ran in the 16G scope (12G for single files) under `timeout`. No
+  sub-agents. Nothing committed. No existing module was edited and no statement changed. Five new
+  modules, all in `FR.Snd.P4a`. Every new name was grepped first. No `Rej*` name changed. HEAD did
+  not move during the pass, so the final build is on a fresh snapshot of `4919027` (RET-1's
+  uncommitted worktree edits are not in it).
+
+**Done:** P4d's handover items 1–3 (the RS0 bridges for Z and Lc, the node half, 4.1's
+`stmt_split`).
+
+| Module | total / code / thm | Content |
+|---|---|---|
+| `FRSoundness4P4aRS` | 361 / 286 / 19 | `zZ_eq4`, `cwF_zero`, `cwF_one`, `cwL4_zero`, `zPtL_length4`, `zrL_drop4`, **`trueL4_zero`**, **`pendZ4_pendBad4`**; `ptOf_rkL4`, `ptOf_rbLc4`, **`trueL4_one`**, **`zfL_eq4`**; **`oLc4`**, **`SegInd`**, **`KfInd`**, `segInd_zlm4`, `zfL_seg4`, **`pendLc4_pendBad4`**, **`trueL4_node`**, **`pendLcN4_pendBad4`**; **`pendF4a_pendBad4`**, **`dF4a12_pendBad4`** |
+| `FRSoundness4P4aNZ` | 138 / 96 / 9 | `zlm4_bits`, **`zlm4_bits4`**, **`kfInd4`**; `bkIdx4_eq`, `kindTgt_pins`, `zHolds_of_blocks4`, `mvZ_node4`, `zBk_zB4`, **`zHolds_iff_truthZ4`** |
+| `FRSoundness4P4aNS` | 433 / 331 / 23 | layout bounds (`nodeBK4_lt`, `chainLk4_lt`, `chLen0_lt`, `hUsedN_lt`, `fam_mir_lt`, `srcB4_lt`, `mirB4_lt`, `srcB4_inj`); **`ShHoldsN4`**, **`truthSN4`**, `zNodeC_zN4`, **`truthS4_iff`**; `lkW4`, `shN4`, `famW4`, **`wNode4`**, **`resNode4`**; `sum_swap22`, `sum_delta2`, `sum_famW4`, `sum_resF4`, `chainLk4_top`, **`sh_sum_node4`**; `resNode4_src`, `shHoldsN4_of_res`, **`res_ne_node4`**; **`wN4`**, `resN4`, **`wNS4`**, `hNS4`, **`wNLocal4`**, **`c0S_node4`**, `sum_wS_node`, **`sNode4`** |
+| `FRSoundness4P4aSplit` | 97 / 60 / 5 | **`front4`**, **`front4_ok`**; **`Stmt4`**, `NodeRest4`, **`stmt_split4`**; controls `stmt4_seg_iff`, `stmt4_node_iff`, `not_stmt4_seg` |
+| `FRSoundness4P4aCtrl5` | 68 / 31 / 9 | controls (below) |
+| pass 5 total | 1,097 / 804 / 65 | `loc.py`, `logs/P4e/loc.txt` |
+
+**Main statements:**
+
+```lean
+theorem trueL4_zero (R : P4b.FSrc) (kf) {zw : Wit} (hzw : WitOf R zw) (L es : Log) :
+    P4b.trueL4 R kf (kindOfC es) L es 0 = (pzT zw L es).eval (lamL es)
+theorem pendZ4_pendBad4 … (hzw : WitOf R zw) (h : PendZ zw L es) : P4b.PendBad4 R kf (P4b.okRS4 oZ oLc oSh) L es
+theorem trueL4_one … : P4b.trueL4 R kf (kindOfC es) L es 1 = ∑ t ∈ range (2 ^ qL (kindOfC es)), ∑ j ∈ range (2 ^ 14),
+    eqAtR (ptOf 14 (rkL es)) j * eqAtR (rbLc es) t * P4b.kfT4 kf (kindOfC es) es t * zw (kindOfC es) L es (j + 2 ^ 14 * t)
+def oLc4 (_κ : CKind) (es : Log) (v : F) : Prop := v = vBetaL es
+def SegInd (M : ZLM4) : Prop := ∀ σ t, M.Ind (.seg σ) 0 t = 1
+def KfInd (M : ZLM4) (kf) : Prop := ∀ ν β t, kf ν β t = ∑ i : Fin 8, β ^ i.val * M.Ind (.node ν) i.succ t
+theorem pendLc4_pendBad4 … (hS : SegInd M) (hzw : WitOf R zw) (h : PendLc M zw L es) : P4b.PendBad4 R kf (P4b.okRS4 oZ' oLc4 oSh) L es
+theorem pendLcN4_pendBad4 … (hkf : KfInd M kf) (hzw : WitOf R zw) (h : PendLcN M zw L es) : P4b.PendBad4 R kf (P4b.okRS4 oZ' oLc4 oSh) L es
+theorem dF4a12_pendBad4 (hS : SegInd P.M) (hkf : KfInd P.M kf) (hzw : WitOf R P.zw) (hNS : …) (hL : …)
+    (hl : 170 ≤ es.length) (h : DF4a P 12 L es) : P.BgA L es ∨ P4b.PendBad4 R kf (P4b.okRS4 oZ oLc4 (oSh4 wNS)) L es
+theorem kfInd4 : KfInd (zlm4 N4c.indN4 N4c.etN4) N4c.kf4
+theorem zHolds_iff_truthZ4 (hzw : WitOf R zw) (hb : WitBits zw) (hν : kindOfC es = .node ν) :
+    ZHolds (zlm4 N4c.indN4 N4c.etN4) zw L es ↔ N4c.truthZ4 ν (R.fz L es)
+theorem truthS4_iff (hzw : WitOf R zw) (hν : kindOfC es = .node ν) : N4c.truthS4 ν (R.fz L es) ↔ truthSN4 zw (kindOfC es) L es
+theorem sh_sum_node4 (τ : Fin (nbC (.node ν)) → F) (θ : Fin 10 → F) (κ : F) (z : ℕ → ℕ → F) :
+    ∑ q ∈ range (2 ^ 10), ∑ y ∈ range (2 ^ nbC (.node ν)), wNode4 ν τ θ κ y q * z y q = resSum (nbC (.node ν)) 10 (resNode4 ν z) τ θ κ
+theorem res_ne_node4 (h : ¬ ShHoldsN4 ν z) : ∃ j < 10, ∃ u < 2 ^ nbC (.node ν), ∃ q < 2 ^ 10, resNode4 ν z j u q ≠ 0
+def sNode4 (hz : ZwSame zw) : SNode wN4 (truthSN4 zw) zw
+theorem wNLocal4 : WNLocal wN4
+theorem front4_ok (hb : WitBits zw) (hz : ZwSame zw) (hBg : T4.Reads 3 BgA) : (front4 zw BgA).OK
+theorem stmt_split4 (hzw : WitOf R zw) (hb : WitBits zw)
+    (hBg : ∀ ν, kindOfC es = .node ν → ¬ NodeRest4 R lr er pv ν L es → BgA L es)
+    (h : ¬ Stmt4 R zw lr er pv L es) : DF4a (front4 zw BgA) 2 L es
+```
+
+**For the composer (X4):**
+- `P := front4 T4.zW BgA` (`front4_ok witBits_zW zwSame_zW hBgA`), `hN := sNode4 zwSame_zW`,
+  `wNS := wNS4` (`hNS4` is `rfl`), P4b's `kf := N4c.kf4` (`kfInd4`), `SegInd` by
+  `segInd_zlm4`, `WitOf` by `witOf_of`.
+- RS0's bindings: `P4b.okRS4 oZ oLc4 (oSh4 wNS4)`. E4 end's `DPend4` from phase 12's carried doom:
+  `dF4a12_pendBad4` (Z, Lc on both kinds, S2) together with P4b's `pendE4_pendBad4` (E); `BgA`'s far
+  and public parts are `DPend4`'s `F0`/`¬ Pub`.
+- Phase 2's entry: `stmt_split4` turns `¬ Stmt4` into `DF4a (front4 …) 2`, given that `BgA` holds
+  when a node's L rows, M rows or public cells fail (`NodeRest4`; P4b's parts).
+- `hL` (a segment's `lastL < 2^nb`) stays a hypothesis of `pendS4_pendBad4`/`dF4a12_pendBad4`
+  (`V_A`'s `n ≤ cap`, P4c's deviation).
+
+**Controls** (`FRSoundness4P4aCtrl5`, `FRSoundness4P4aSplit`):
+
+| Definition | Positive | Negative |
+|---|---|---|
+| `oLc4` | `oLc4_vBeta` | `not_oLc4_succ` |
+| `SegInd` | `segInd_zlm4` | `not_segInd_zero` (all-zero segment indicators) |
+| `KfInd` | `kfInd4` | `not_kfInd_zero` (a zero kind factor: `N2`'s block 0 has `B_1 = 1`) |
+| `ShHoldsN4`, `truthSN4` | `shHoldsN4_zero`, `truthSN4_seg` | `not_shHoldsN4_link` (block 1's `h_in` is not block 0's `h_out`) |
+| `resNode4` | `resNode4_zero_tbl` | `res_ne_node4` (a failed truth leaves a nonzero table) |
+| `Stmt4` | `stmt4_seg_iff`, `stmt4_node_iff` | `not_stmt4_seg` |
+| `front4` | `front4_ok` | — (parameters) |
+
+**Checks (pass 5):**
+- `lake build FR FRSoundness4P4aCtrl5`: green, 2,480 jobs at HEAD `4919027`
+  (`logs/P4e/build-final.log`).
+- Axioms: all 82 declarations of the five new modules use only `propext`, `Classical.choice` and
+  `Quot.sound`; no `sorryAx` (`logs/fr-build-P4e/ax/AxP4e.lean`, `logs/P4e/axioms.log`).
+- Source rule: 270 files, 0 findings (`logs/P4e/source-rule.log`).
+- Sequential profiles (`taskset -c 0 lake env lean -DElab.async=false --profile`,
+  `logs/P4e/prof-*.log`):
+
+  | Module | wall (import ≈ 4 s) | type checking | max RSS |
+  |---|---|---|---|
+  | `FRSoundness4P4aRS` | 10.6 s | 0.47 s | 2.99 GB |
+  | `FRSoundness4P4aNZ` | 8.2 s | 0.06 s | 2.97 GB |
+  | `FRSoundness4P4aNS` | 13.1 s | 0.57 s (simp 1.9 s) | 3.00 GB |
+  | `FRSoundness4P4aSplit` | 6.2 s | 0.01 s | 2.95 GB |
+  | `FRSoundness4P4aCtrl5` | 6.5 s | 0.02 s | 2.96 GB |
+
+  The only `decide` is `1 ≤ nAgg ν * ν.maxK` per node kind (`hUsedN_lt`, three small constants).
+  No `trueSum` is evaluated at a concrete size.
+- **Kernel lesson** (for G1): `cwF_zero`/`cwF_one` by `rfl` cost 1.1 s in the kernel (it unfolds
+  `eqZS`/`eqTab` on the right before the match on the left); by `rw [cwF]` they cost nothing
+  (RS 1.57 s → 0.47 s). 3.x's `cwL_zero` (`FRSoundnessFrBind`) states the same `show` and may pay
+  the same.
+
+**Imports for `FR.lean`:** replace `import FRSoundness4P4aCtrl4` with
+`import FRSoundness4P4aCtrl5`. It pulls `Ctrl4`, `Split`, `NS`, `NZ`, `RS`, and through `NZ`
+`FRNodeCircuit4` (already imported by `FRNodeCircuit4Dig`).
+
+**Deviations and findings (pass 5):**
+- **D10. The node's S2 weight keeps the start term.** S-E12a's `truthS4` drops 3.x's start
+  conjunct (its D4: both chain starts are `streamStart`, pinned by Z). `wNode4` keeps the
+  blueprint's A.9 `finSh` (ii) form, `κ_s([y = 0] + [y = chLen₀])` (power 1) and the families at
+  `κ_s^(f+2)`, so `resNode4` has `J = 10` tables, table 1 being `h_in(0) + h_in(chLen₀)`. This is
+  sound (an extra table only adds a check: `SNode.ne` needs a nonzero table when `truthS4` fails)
+  and complete (both starts' `h_in` are `h0`). If `implN`'s `finSh` drops the start term, drop it
+  from `wNode4`/`resNode4` too (`J = 9`); nothing else changes.
+- **D11. `wNS4` is the weight's extension by definition** (`hNS4 := rfl`). On a node the value the
+  verifier binds in `finSh` (ii) is computed by `implN κ`'s `shiftMask`/`slotW`/`linkWAll`
+  (`VnodeC`; parametric). R4 needs `implN κ`'s specification to compute `wNS4`: the chain mask at
+  `chainLk4` (two chains, `chLen ν 0` and `chLen ν 1` blocks, `nb = 17/18` coordinates) and the
+  families at `srcB4`/`mirB4`. 3.x's `shiftMaskS` (`chainN`, 16 coordinates) and `linkWAllS`
+  (3.x's `srcB`) do **not** compute it. **This is the one value here that no final is yet shown to
+  assert** (finSh (ii) asserts it only through `implN κ`, whose node specification does not exist
+  yet). I stopped on it rather than fix a specification that belongs to the node ops' owner.
+- **D12. `oLc4` (claim 2's binding) is `v = v_β` for every kind**, as 3.x's `oLcV` (ruling 3.16).
+  `gFinLc` reuses 3.x's `lcTail`, so R4 discharges `¬ RejRS4` at claim 2 as 3.x did.
+- **D13. `Stmt4`** (the composer's statement) is defined here: a node's `StmtN4` with its rows and
+  public digests as parameters, a segment's `ZHolds ∧ truthS` (what `segHolds_of_truths` reads).
+  X4 may prefer its own; `stmt_split4` only needs the node's parts to be `NodeRest4`.
+
+**Open questions:**
+1. D11: who specifies `implN κ`'s `shiftMask`/`linkWAll` at the 4.1 node layout (S-E12c? L-circ?),
+   and should it keep the start term (D10)?
+2. Should `Stmt4` move to X4 (with `pv` read from the log: `vk`, `c₁`, `c₂` from entry 0 / `stmt`)?
+
+**Handover (remaining for the P4a front, in order):** none of P4d's items remain. What is left
+belongs to other tracks:
+1. (R4 / the node ops' owner) `implN κ`'s `finSh` (ii) computes `wNS4` (D11), and `finLc` (iii)
+   asserts `oLc4` on both kinds (D12).
+2. (X4) Compose `FrontObl` with `front4`, `sNode4`, `dF4a12_pendBad4` + `pendE4_pendBad4`,
+   `stmt_split4`; supply `BgA`'s `NodeRest4` cover from P4b's row dooms.

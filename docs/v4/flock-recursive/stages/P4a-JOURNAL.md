@@ -131,3 +131,27 @@ supply `z = unpack f⁽⁰⁾` at `CKind`).
   `logs/P4d/prof-*.log`.
 - Stopped with the RS0 bridges for Z/Lc, the node half (S-E12a now committed) and 4.1's
   `stmt_split` open (RESULT, "Pass 4" handover).
+
+### Pass 5 (track P4e; HEAD `4919027`; build tree `logs/fr-build-P4e`, a copy of `fr-build-P4d`; logs `logs/P4e/`)
+
+- **Item 1** `FRSoundness4P4aRS` (3.x's `trueL_zero`, `trueL_one`, `zfL_eq`, `trueL_node` over
+  `WitOf`): `pendZ4_pendBad4`, `pendLc4_pendBad4` (segment, `SegInd`), `pendLcN4_pendBad4` (node,
+  `KfInd`: the kind factor is the batched indicators), `pendF4a_pendBad4`, `dF4a12_pendBad4`;
+  claim 2's binding `oLc4` (`v = v_β`, every kind). `rw`, not `show`, against `cwL4`.
+- Kernel: `cwF_zero`/`cwF_one` by `rfl` cost 1.1 s (kernel unfolds `eqZS` on the right); by
+  `rw [cwF]` they cost ~0 (bisected with scratch copies `scratch/B1…B6.lean`).
+- **Item 2** `FRSoundness4P4aNZ`: `zlm4_bits4`, `kfInd4` (`kf4` sums over `blockKinds.tail`;
+  `congr 1` closes each term by defeq), `kindTgt_pins` (S-E12a's `KindTgt` forms pin their kind's
+  rows: 3.x's `pins_*`), `zHolds_iff_truthZ4` (needs `WitBits` for the free blocks' `z² = z`).
+  Lesson: state the witness bridge as a function equality (`zBk … t = zB4 … t`) or `exact` runs to
+  max recursion trying to unify `zBk` with `zB4` (equal only through `WitOf`).
+- `FRSoundness4P4aNS`: the layout bounds from S-E12a's tiling (`nodeBK4_lt`: a non-free block is in
+  some interval, so inside the node), `ShHoldsN4`/`truthSN4` (`truthS4_iff`), `wNode4`/`resNode4`
+  (families as direct triple sums, no 2^16 `linkInd`), `sh_sum_node4`, `res_ne_node4`, `sNode4`,
+  `wNLocal4`, `wNS4`, `c0S_node4`. Lesson: `set nb := nbC …` re-abstracts `τ`'s type (shadowed
+  `τ✝`); write `nbC (.node ν)` throughout.
+- **Item 3** `FRSoundness4P4aSplit`: `front4`, `front4_ok`, `Stmt4`, `NodeRest4`, `stmt_split4`.
+- Controls `FRSoundness4P4aCtrl5`. Checks: `lake build FR FRSoundness4P4aCtrl5` green (2,480 jobs);
+  axioms 82 declarations clean; source rule 270 files, 0 findings; profiles `logs/P4e/prof-*.log`.
+- Stopped on D11 (RESULT pass 5): the node's `finSh` (ii) value `wNS4` is bound only through the
+  parametric `implN κ`, whose 4.1 node specification does not exist.
