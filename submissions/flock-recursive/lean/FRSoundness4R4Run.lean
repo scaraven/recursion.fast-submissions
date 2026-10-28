@@ -26,22 +26,32 @@ open RecursionFast Rev4
 theorem fsMsgs4_len : (fsMsgs4 seq4).length = 482 := by
   rw [fsMsgs4, seq4_eq]; decide +kernel
 
-theorem fsMsgs4_items :
-    (List.range 482).map (fun q => X.msgItem q ((fsMsgs4 seq4).getD q none)) = fsItems4 := by
+/-- **The item kinds of `seq4`'s messages are `fsItems4`** (a linear certificate: `X.msgItem` reads
+only whether the position is `0`). -/
+theorem fsMsgs4_items : .seed :: (fsMsgs4 seq4).tail.map (X.msgItem 1) = fsItems4 := by
   rw [fsMsgs4, fsItems4, seq4_eq]; decide +kernel
 
 theorem fsMsgs4_fit :
     (fsMsgs4 seq4).all (fun m => m.all fun ol => decide (ol.1 + ol.2 ≤ piSizeOf seq4)) = true := by
   rw [fsMsgs4, seq4_eq]; decide +kernel
 
-theorem fsMsgs4_head : ∃ ms, fsMsgs4 seq4 = some (0, 48) :: ms := ⟨_, rfl⟩
+/-- Message `0` is the seed's (for every `S`; proved without evaluating the table). -/
+theorem fsMsgs4_head (S : Seq) : ∃ ms, fsMsgs4 S = some (0, 48) :: ms := by
+  obtain ⟨ps, hps⟩ : ∃ ps, phasesOf S = ("seed", .seed) :: ps := ⟨_, rfl⟩
+  exact ⟨_, by rw [fsMsgs4, hps, msgsFrom4]; rfl⟩
+
+theorem msgItem_succ (q : ℕ) (m : Option (ℕ × ℕ)) : X.msgItem (q + 1) m = X.msgItem 1 m := by
+  cases m <;> rfl
 
 theorem fsItems4_getElem {q : ℕ} (hq : q < fsItems4.length) :
     fsItems4[q] = X.msgItem q ((fsMsgs4 seq4).getD q none) := by
-  have h := congrArg (fun l => l[q]?) fsMsgs4_items
-  simp only [List.getElem?_map, List.getElem?_range (show q < 482 by rw [← fsItems4_length]; exact hq),
-    Option.map_some, List.getElem?_eq_getElem hq, Option.some.injEq] at h
-  exact h.symm
+  obtain ⟨ms, hms⟩ := fsMsgs4_head seq4
+  have hl : fsItems4.length = ms.length + 1 := by rw [← fsMsgs4_items, hms]; simp
+  simp only [← fsMsgs4_items, hms, List.tail_cons]
+  rcases q with _ | q
+  · rfl
+  · rw [List.getElem_cons_succ, List.getElem_map, List.getD_cons_succ,
+      List.getD_eq_getElem _ _ (by omega), msgItem_succ q]
 
 theorem fit_getD {q o len : ℕ} (h : (fsMsgs4 seq4).getD q none = some (o, len)) :
     o + len ≤ piSizeOf seq4 := by
@@ -61,11 +71,11 @@ theorem fsCheck_qOf (inp : Input) (hπ : inp.π.size = piSizeOf seq4) {q : ℕ} 
   rw [fsItems4_getElem]
   rcases hm : (fsMsgs4 seq4).getD q none with _ | ⟨o, len⟩
   · rcases q with _ | q
-    · obtain ⟨ms, hms⟩ := fsMsgs4_head; rw [hms] at hm; cases hm
+    · obtain ⟨ms, hms⟩ := fsMsgs4_head seq4; rw [hms] at hm; cases hm
     · exact fsCheck_squeezeQ st
   · have hs := size_extract_of_le (π := inp.π) (o := o) (len := len) (by rw [hπ]; exact fit_getD hm)
     rcases q with _ | q
-    · obtain ⟨ms, hms⟩ := fsMsgs4_head
+    · obtain ⟨ms, hms⟩ := fsMsgs4_head seq4
       rw [hms, List.getD_cons_zero, Option.some.injEq, Prod.mk.injEq] at hm
       obtain ⟨rfl, rfl⟩ := hm
       exact fsCheck_seedQ inp.vk inp.c _ hs

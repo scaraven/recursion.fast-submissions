@@ -65,3 +65,26 @@ relocated fields).
   237 files 0 findings. Profiles: `FRSoundness4R4Chain` has one 33.9 s kernel check (not the
   `shOK_seq4` certificate, 18 ms alone): flagged as F2, first item of the handover.
 - Stopped here (context long). Handover: R4-RESULT §6.
+
+### Pass 2 (R4b)
+
+- Build tree `logs/fr-build-R4b` (copy of R4's; logs `logs/R4b/`). Re-snapshotted after P4c's commit
+  (`ed98f9e`).
+- **Item 0.** Bisected `FRSoundness4R4Chain` with prefix files: `refPhase4_chain` is 0.1 s; the 34 s
+  are `fsQ_gen4`, and inside it `∃ ms, fsMsgs4 S = some (0, 48) :: ms := ⟨_, rfl⟩` (sorry variants:
+  33.6 s with it, 0.5 s without). Fixed through `phasesOf S = ("seed", .seed) :: ps`. `-Dtrace.profiler`
+  names the kernel declaration: `fsMsgs4_items` 11.3 s (quadratic `getD` under `range 482`) →
+  linear restatement 2.05 s. Chain 34.3 → 0.49 s, Run 12.6 → 2.93 s.
+- **Coordinator (P4c F2).** `FRSoundness4R4Link`: segment `linkWAll = 0^8` (`rfl` at `.L32`),
+  `linkSum_zero`, `run_linkOps_zero` (family-by-family `pureRun`). Trap: `rd_app_left` rewrites the
+  first `rd (_ ++ _)` it meets; give the array explicitly.
+- **Item 1.** `FRSoundness4R4Rnd`: the log's message is read off the query (`msgAt_of_q`), so no
+  table certificate; `rounds3_log`/`rounds2_log` by induction with the log offset `P + 2j`; dummies
+  by `roundsT_dummy`. Traps: `Reg`-typed `<`/`∃ b` defeat `omega` (state `∃ b : ℕ`, `lt_reg`,
+  `replace h : u < _ := h` after generalizing to `u : ℕ`); `congr 1` on `Val.f` timed out (use
+  `congrArg Val.f`); `.uni`/`.rounds` dot constructors inside `some (…)` cost 11 s of header
+  elaboration (write `Sh.uni`).
+- Open questions answered: `piSize_node4`, `piSize_aggSegs`; S-H3 has no `fsQ4` (its node links are
+  the parameter `NodeDec4.Links`).
+- Final: 2,468 jobs green; 117 theorems' axioms clean; source rule 257 files, 0 findings.
+  Stopped with items 2–4 in the RESULT's Pass 2 handover (context long).

@@ -105,3 +105,29 @@ supply `z = unpack f⁽⁰⁾` at `CKind`).
   source rule 243 files, 0 findings; profiles in `logs/P4c/prof-*.log`.
 - Stopped with Z, L, the phases 0 … 12 composition, `trueL_two` and the node half open (RESULT,
   "Pass 3" handover), to keep the context short.
+
+### Pass 4 (track P4d; HEAD `ed98f9e`; build tree `logs/fr-build-P4d`, a copy of `fr-build-P4c`; logs `logs/P4d/`)
+
+- **Z** `FRSoundness4P4aZ` (green first try): two new hypotheses, `ZLM4.EtLocal` (targets read
+  before 2; `zlm4_etLocal`) and `WitBits` (`witBits_zW`); `z_unit_pos4`, `rejOK_at4`, the reads,
+  `z1_hfin4` (T4's `hfin_seq`; the `Σ b ≤ 239` by `simp`/`norm_num`, not `decide`), `z2_habs4`,
+  `z2_single4`, `z3_habs4`, `z3_single4`, `zend_habs4`, `rejZ_ok4`.
+- **L** `FRSoundness4P4aL`: `aStar_eq4`; reads; `l1_single4`, `l2_habs4`, `l2_single4`,
+  `rejL2_ok4` (P4a's `RejL2` is an `abbrev`: `show FR.Snd.RejL2 …` before `unfold`); `l3_core`
+  shared by `l3_habs4` (segment) and `l3N_habs4` (node); `l3b_single4`; the node's `L3BadN`,
+  `PendLcN` (`tNL`), `l3bN_single4` (generic in `M`, only `IndKinds`); `rejLc2_ok4`, `rejLcN_ok4`.
+- **Item 5** `FRSoundness4P4aT`: `WitOf R zw` (the witness is `unpack` of P4b's `R.fz`; `rfl` at
+  X4), `trueL4_two` (3.x's proof verbatim with `nbC`), `pendS4_pendBad4`.
+- **Items 4 and 1** `FRSoundness4P4aDF`: `Front4a` (`M`, `zw`, `wN`, `truthSN`, `BgA`) and
+  `Front4a.OK`; `DF4a` (3.x's `DF 0 … 12` with `BgA`, `L3BadN`/`PendLcN`; phase 2 the split
+  statement); `RejF4a`, `rejF4a_ok`; `ms4a`, `habs4a`, `hsingle4a` (L3β: `l3b_single4` +
+  `l3bN_single4`, 14·2^128), `hfin4a` (`z1_hfin4`, `s1_hfin4`), `hstab4a` (`SameStab4`).
+- Kernel: the first classification computed `phOf4` at every position (3.55 s); splitting it into
+  an item certificate and `phOf4_eq` (phase ranges from T4's `phOf_bounds` + `phStart4_mono`)
+  brought it to 1.34 s. `trueL4_two`'s `show … cwL4` cost 2.2–4.5 s in the kernel; `rw [cwL4, cwF]`
+  + `change` costs 0.2 s.
+- Controls `FRSoundness4P4aCtrl4`. Checks: `lake build FR FRSoundness4P4aCtrl4` green (2,471 jobs,
+  HEAD `60b65cc`); axioms 154 declarations clean; source rule 257 files, 0 findings; profiles
+  `logs/P4d/prof-*.log`.
+- Stopped with the RS0 bridges for Z/Lc, the node half (S-E12a now committed) and 4.1's
+  `stmt_split` open (RESULT, "Pass 4" handover).

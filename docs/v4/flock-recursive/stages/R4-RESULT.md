@@ -199,3 +199,128 @@ phase table, as S-G13's. None runs over a program, a register file or a `trueSum
    discharges it at revision 4.1 (`V4with`'s dispatch, or `acc`)? 3.x took `π.size = piSize` the same
    way.
 3. Unused-`simp`-argument linter warnings remain in `FRSoundness4R4Ref` (harmless; for the golf pass).
+
+## Pass 2 (track R4b; HEAD `ed98f9e`)
+
+- **Build tree** `logs/fr-build-R4b` (a copy of `fr-build-R4`; `b.sh` logs to `logs/R4b/`; `MINE.txt`
+  adds `FRSoundness4R4Rnd`, `FRSoundness4R4Link`). Re-snapshotted from HEAD after P4c's commit.
+  Every lean/lake command ran in the 16G scope (12G for single files) under `timeout`. No
+  sub-agents. Nothing committed. Only R4's modules edited, two new `FRSoundness4R4*` modules (every
+  new short name grepped first). No statement of another track changed.
+- **Checks.** `lake build FR FRSoundness4R4Ctrl FRSoundness4R4Rnd FRSoundness4R4Link`: green, 2,468
+  jobs (`logs/R4b/build-final.log`). Axioms (`logs/R4b/axioms.log`, all 117 theorems of the nine
+  modules): within `propext`, `Classical.choice`, `Quot.sound`; no `sorryAx`. Source rule: 257
+  files, 0 findings (`logs/R4b/source-rule.log`).
+- **Imports for `FR.lean`:** add `import FRSoundness4R4Rnd` and `import FRSoundness4R4Link` (next
+  to R4's `import FRSoundness4R4Ctrl`).
+
+### Item 0: kernel cost (done)
+
+| Module | type checking before | after | cause, fix |
+|---|---|---|---|
+| `FRSoundness4R4Chain` | 34.3 s | **0.49 s** | Not `refPhase4_chain` (0.1 s): `fsQ_gen4`'s zero case, `∃ ms, fsMsgs4 S = some (0, 48) :: ms := ⟨_, rfl⟩` (bisected with `#exit`-style prefixes, then `sorry` variants: 33.6 s on that term alone). Now `phasesOf S = ("seed", .seed) :: ps := ⟨_, rfl⟩` and `simp only [fsMsgs4, hps, msgsFrom4, phaseMsgs4, …, qOf]`. |
+| `FRSoundness4R4Run` | 12.6 s | **2.93 s** | `fsMsgs4_items` (11.3 s) indexed the 482-entry table with `getD q` under `List.range 482` (quadratic). Restated as the linear `.seed :: (fsMsgs4 seq4).tail.map (X.msgItem 1) = fsItems4` (2.05 s; `X.msgItem` reads only `q = 0`, `msgItem_succ`); `fsItems4_getElem` unchanged in statement. `fsMsgs4_head` is now proved for every `S` without evaluating the table (0.40 s → 0). |
+
+Per-declaration figures: `lean -DElab.async=false -Dtrace.profiler=true -Dtrace.profiler.threshold=300`
+(the `[Kernel]` lines name the declaration). Remaining: `fsMsgs4_items` 2.05 s, `fsMsgs4_fit` 0.59 s.
+
+### Coordinator's item (P4c's F2): a segment's `finSh` has no link weight — confirmed
+
+`FRSoundness4R4Link`:
+- `linkWAll_segC`/`linkWAll_segS` (`rfl`): on the segment program the kind index is
+  `(KindP.ofSeg σ).tix = .L32` (not a node), and `implSeg (implC …)` and `specSeg (specC …)` both
+  answer `Array.replicate nLinkFam 0`; `linkWAll_seg_of_meets`: so does every implementation meeting
+  `specSeg (specC …)` (`Meets`' 14th clause is unconditional).
+- `linkSum_zero`: `linkSum 0^8 κ_s n acc pow = acc` (`relSh`'s link term vanishes).
+- **`run_linkOps_zero`** (the program): if register `b + 25` holds `.af 0^8` (and `b + 22`,
+  `b + 26`, `ks` hold F values, `|r| = b + 27`), `linkOps ks b` passes, appends 32 registers, and
+  register `b + 57` (the `addF (b + 16) (b + 57)` operand) holds register `b + 22`'s value. Through
+  `pureRun_linkFam` (one family appends `0, 0, acc, pow·κ_s`) and `pureRun_linkFams` (induction).
+- Controls: `linkSum_ctl` (−: `W₀ = 1` moves the accumulator), `linkWAll_nodeC` (+: a node's is
+  `linkWAllI`).
+- So P4c's `wSumSeg` (no link term) is the program's value; the `gFinSh` flag lemma at `FinP`
+  (item 2 below) will meet `linkOps` with `b + 25 = linkWAll …` and close it with
+  `run_linkOps_zero`.
+
+### Item 1: the remaining views (done) — `FRSoundness4R4Rnd`
+
+No message table is needed: a round's query is `absorbQ d msg`, so the log's `msgAt` is the
+program's message (`msgAt_of_q`, `readF_piMsg`).
+- **Trace level**: `roundsT_dummy` (dummy rounds keep the claim), **`rounds3_log`** (degree 3: the
+  claim after `n` rounds from round `j ≤ real` is `clR P c₀ … (min real (j + n))`), **`rounds2_log`**
+  (degree 2: `clR2 P 16 readF (chF · 0) …`, and on a passing run every real round's `Chk2 P …`),
+  `round_entries`, `shift_entries`, `roundsT_first`.
+- **Phase level**: `rounds_at4` (a rounds phase of an accepted run: `roundsT` with
+  `realRounds p name k` real rounds from `clVal`, its `2k` entries are the log's from `phStart4 n`),
+  `genPhase4_rounds` (`outs[n] = clReg … :: rs ++ [last]`, every init), **`rounds_core4`**.
+- **Views** (any init: `.free`, `.zero` (Lr2, E2), `.uni` (Z3)): **`roundsF3_view4`** (Z3, Lr2,
+  E2) and **`roundsF2_view4`** (L2, S2, E4): `outs[n]`'s head holds `clVal …` (the claim the rounds
+  start from); `getD (j + 1)` holds `rch P es j`; the last register holds
+  `clR/clR2 P (fun _ _ => c) L es (min (realRounds p name k) k)` once the head holds `.f c`; degree
+  2 adds `∀ l < min real k, Chk2 P … (fun _ _ => c) L es l`. Real counts are the program's
+  (`realRounds_vals`: `p.d.seq.z3/s2/lr/e2/e4`, L2's 14).
+- **`uni_view4`** (Z2, node and segment): with `s = 0`/`1`, `outs[n] = [b+s+3, b+s+133, b+s+134]`;
+  `λ = fAt es (P+1) 0`; the two `lagrangeS` values on `uniEs` at `λ` with `targetS κ pe`; the
+  message's 127 coefficients are the log's (`readF (msgAt es P) (16 i)`); a node's `pe` is the `pt`
+  register's array; **a segment's `pe` is the packed operand in register `b`**, equal to the
+  `segPtRegs` registers' values once those precede the phase (`hpt`).
+- **By name**: `phases4_rounds` (indices 4, 5, 8, 12, 14, 18, 21 of `phasesOf S`, structural, any
+  `S`), `phaseIx4_rounds` (3.x's `phaseIx` gives the same numbers: from `phaseIx_vals`),
+  `initClaim_vals`, **`outsOf_skel`** (`outsOf`/`claim0`/`claimN` of a `FinIn` with
+  `fi.outs = (skeleton4 seq4 p).2.outs` are the views' head/last), `chals_getD`.
+- Controls: `clReg_ctl`, `clVal_ctl` (+/−), `roundsT_zero_ctl`.
+
+### R4's open questions
+
+1. **`inp.π.size = piSizeOf seq4`** — answered, two lemmas in `FRSoundness4R4Link`:
+   `piSize_node4 : kindOf4 π = .node ν → π.size = piSizeOf seq4` (`kindOf4` returns `.node` only at
+   that size; S-H3's `kindOf4_node` gives the literal `798192`), and `piSize_aggSegs : π.size = 48 +
+   k · segSize → ∀ s ∈ aggSegs segSize k π, s.size = segSize` (`VAwith (piSizeOf seq4)` checks the
+   size before running `Vseg` on `aggSegs`).
+2. **`X.fsQ4`**: S-H3 has **none**. `FRX4Prog`/`FRX4Ext` keep the node's chain links as the
+   parameter `NodeDec4.Links` (its doc names 3.x's `fsQ` "at seq4's positions"). When X4
+   instantiates `Links`, the table is `fsMsgs4 seq4` (`qOf inp q (fsMsgs4 seq4)[q]`, as `SkRun4.hq`);
+   no second chain exists to equate.
+
+### Times (sequential, `logs/R4b/prof-*.log`)
+
+| Module | wall | type checking | max RSS |
+|---|---|---|---|
+| `FRSoundness4R4Chain` | 15.5 s | **0.49 s** (was 34.3 s) | 2.9 GB |
+| `FRSoundness4R4Run` | 10.7 s | **2.93 s** (was 12.6 s) | 3.2 GB |
+| `FRSoundness4R4Rnd` (new) | 15.8 s | 1.41 s | 3.0 GB |
+| `FRSoundness4R4Link` (new) | 13.1 s | 0.48 s | 2.8 GB |
+
+Net kernel change for the certificate: −43.5 s + 1.9 s. Elaboration trap met: `phases4_rounds`
+with `.uni`/`.rounds` dot constructors in `some (…)` took 11.4 s in the header; `Sh.uni`/`Sh.rounds`
+fixed it (< 0.2 s).
+
+`loc.py` (`logs/R4b/loc.txt`): `FRSoundness4R4Rnd` 579 / 477 / 27, `FRSoundness4R4Link`
+176 / 120 / 15; R4 total now 2,243 / 1,756 / 117.
+
+### Handover (remaining items, in order)
+
+2. **The finals' flags at `FinP` on the relocated ops.** For each field `gFin*` of `finalsOf P`,
+   a `flag_*` lemma `∃ L, pureRun impl κ inp ((gFin* P fi b).1.map (reloc P.S)) r [] = some (L, rel*)`
+   with `rel*` the 3.x relation (`relZ`, `relLc`, `relSh`, `relLr`, `relE`, `relRS`, `relB'`) at
+   `P`'s sizes; `evalOp (reloc S op)` reads `absOff 0 (fieldOffOf S f + o)` (prove one
+   `evalOp_reloc` for general `S`, as `evalOp_reloc_seq3`). Template: 3.x's `flag_finSh`
+   (`FRVIRFinals`, one `simp only` over the ops) and its siblings; `finalsOf_seq3` relates the
+   fields at `fin3P`. For `gFinSh` with `P.vn` (segment), meet `linkOps` with `run_linkOps_zero`.
+3. **The front checks** on `runLog_chain4`'s chain, per kind (`.ofSeg σ`/`.ofNode ν`), each from
+   `accept_chain4` (finals as `relocFin P.S (finalsOf P)`, `finOps4_eq`), item 2's flags, and this
+   pass's views: `P4a.RejZ` (`roundsF3_view4` at Z3 (n = 5) + `relZ`; the init is `.uni`: Z2's
+   register `b+s+133` from `uni_view4`; `c0Z`'s `peL` reads the segment's `targetSSeg`, so needs
+   `implSegC_meets` and the `segPtRegs` bound `hpt`, i.e. "outs of earlier phases < next", not yet
+   proved for `gen4`), `RejL2` (`roundsF2_view4` at n = 8), `RejLc2`/`RejLcN` (`gFinLc`, 3.x's
+   `lc_ii_run` path), `RejS2` (`roundsF2_view4` at n = 12; `Chk2 … c0SL` from the head's value
+   `= c0S es` by `gFinSh` (i)), `P4b.RejEndLr4`/`RejEndE4` (`roundsF3_view4` at 14/18, init
+   `.zero`), `RejInE4` (`roundsF2_view4` at 21), `RejFinE4 srcE srcL` (`gFinE` (iv)),
+   `RejRS4 (okRS4 oZ oLc oSh)` (`gFinRS`). Two links are still needed for every check: (a) **the
+   program's kind is the chain's**: `kindOfC es` (byte 71 of the log) against `p` (so `mC 6
+   (kindOfC es) = p.d.seq.z3`, `nrS = p.d.seq.s2`, `ncR ν = p.d.seq.e4` …); (b) `min (realRounds …)
+   k = realRounds …` (`seg_fits`/node dims ≤ `seq4`).
+4. **`AcceptTail` (T4)**: `chain`, `len` from `runLog_chain4` (482 ≥ `pfStart + 14`); `rejF` from
+   item 3; `p1`/`pf` need K-round views (`inK = true`; this pass did F only: port 3.x's
+   `rounds_view` to `rounds_at4`'s form, `roundKVals`); `lvl4` needs level 4's column values
+   (port `posT` for `posOps4`, R4's D2) and `flag_gFinP 4`; `fin` from `flag_gFinPf`.

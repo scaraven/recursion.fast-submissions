@@ -276,8 +276,10 @@ theorem fsQ_gen4 (hS : ((phasesOf S).drop 1).all (fun ph => shOK4 ph.2 && !isSee
     refine ⟨hl, fun q hq => ?_⟩
     rw [ChainOK_getD inp h3 q (by omega), Nat.zero_add]
     rcases q with _ | q
-    · obtain ⟨ms, hms⟩ : ∃ ms, fsMsgs4 S = some (0, 48) :: ms := ⟨_, rfl⟩
-      rw [hms]; rfl
+    · -- Not `fsMsgs4 S = some (0, 48) :: _ := ⟨_, rfl⟩`: the kernel took 34 s on that (R4b).
+      obtain ⟨ps, hps⟩ : ∃ ps, phasesOf S = ("seed", .seed) :: ps := ⟨_, rfl⟩
+      simp only [fsMsgs4, hps, msgsFrom4, phaseMsgs4, List.cons_append, List.nil_append,
+        List.getD_cons_zero, qOf, ite_true]
     · rfl
   · cases h
 

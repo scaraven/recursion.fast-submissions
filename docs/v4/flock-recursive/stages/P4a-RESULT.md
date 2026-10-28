@@ -325,3 +325,144 @@ theorem endS4 (hNS : node → wNS κ es = Σ_q Σ_y eqAtR rb y * eqAtR rp q * wN
    so that `endS4` gives `PendBad4` (3.x's `pendS_pendBad`).
 6. **The node half** (`SNode`, `WNLocal`, `wNS`, `L3BadN`, `PendLcN`, `truthSN`, `indN`, `etN`)
    from S-E12a's `FRNodeKinds4` (untracked at this pass: `indN4`, `etN4`, `kf4`, `cells4`).
+
+## Pass 4 (track P4d; HEAD `ed98f9e` → `60b65cc` during the pass)
+
+- **Build tree** `logs/fr-build-P4d` (a copy of `fr-build-P4c`; `MINE.txt` lists the fourteen P4a
+  modules). Logs in `logs/P4d/`. Journal: `P4a-JOURNAL.md`, "Pass 4".
+- Every lean/lake command ran in the 16G scope (12G for single files) under `timeout`. No
+  sub-agents. Nothing committed. No existing module was edited and no statement changed. Five new
+  modules, all in `FR.Snd.P4a`. Every new name was grepped first. No `Rej*` name changed.
+
+**Done:** handover items 1–5. Item 1 is `l3b_single4`. Item 2 is Z, item 3 is L, item 4 is
+`DF4a` and the `FrontObl` fields for phases 0 … 12, and item 5 is `trueL4_two`.
+
+| Module | total / code / thm | Content |
+|---|---|---|
+| `FRSoundness4P4aZ` | 462 / 341 / 43 | **`ZLM4.EtLocal`**, `zlm4_etLocal`; **`WitBits`**, `witBits_zW`; **`z_unit_pos4`**, `mC6_eq4`, `m13_le4`, `mC6_le`, `same_ext1_4`, **`rejOK_at4`**; the reads (`zrL_agree4`, `zBk/aZ/bZ/zZ_same4`, `eZ_agree4`, `zHolds_same4`, `zHolds_reads4`, `zEnd_of4`, `zEnd_reads4`, `z2_agree14_4`, `z2_agree4`, `peL_agree4`, `c0Z_agree4`, `pzT_same4`, `pabT_same4`, `pendZ_reads4`, `z2Bad_reads4`, `TZ_same4`, `TZ_local4`, `TZ_size4`, `zDooms_log4`, `rZ_agree4`, `zendBad_reads4`, `rejZ_reads4`); `mvZ_bit4`, `zres_bit4`; `Z1Doom4`, **`z1_hfin4`**; **`z2_habs4`**, `z2_ext1_4`, **`z2_single4`**; **`z3_habs4`**, **`z3_single4`**, **`zend_habs4`**, **`rejZ_ok4`** |
+| `FRSoundness4P4aL` | 400 / 299 / 33 | `aStar_eq4`, `bStar_eq4`; the node's **`L3BadN`**, `tNL`, **`PendLcN`**; the reads (`lin_agree4`, `zN_same4`, `aLin_same4`, `l1Bad_reads4`, `TL_same4`, **`TL_local4`**, `TL_size4`, `rkL_agree4`, `zfL_same4`, `vM_agree4`, `l3Bad_reads4`, `l3BadN_reads4`, `vBetaL_agree4`, `pendLc_reads4`, `pendLcN_reads4`, `pLc_reads4`, `lDooms_log4`); **`l1_single4`**, **`l2_habs4`**, **`l2_single4`**, `append_L2_4`, **`rejL2_ok4`**; `l3_core`, **`l3_habs4`**, **`l3N_habs4`**, `l3b_ext1`, `vBetaL_ext1`, **`l3b_single4`**, **`l3bN_single4`**, **`rejLc2_ok4`**, **`rejLcN_ok4`** |
+| `FRSoundness4P4aT` | 139 / 116 / 3 | **`WitOf`**, `rpL_length4`, **`trueL4_two`**, **`pendS4_pendBad4`** |
+| `FRSoundness4P4aDF` | 526 / 395 / 37 | **`Front4a`**, **`Front4a.OK`**; `bgZ4`, `bg5_4`, `bg10_4`, `D2F4`, `D10F4`, **`DF4a`**; **`RejF4a`**, **`rejF4a_ok`**; the position certificates `frontCls4a_check` (items) and `ph_check4a` (phases), `phStart4_mono`, **`phOf4_eq`**, `abs_cls4a`, `sq_cls4a`, `fsRanges4_front`; `rd_bgZ4`, `rd_bg5_4`, `rd_bg10_4`, `card_frame2_4`, `card_or_le4`; **`ms4a`**, **`habs4a`**, **`hsingle4a`**, **`hfin4a`**; `SameStab4` (+ `up`/`or`/`not`, `ss_reads4`, `ss_log4`, `ss_msD4`), `df_ss4a`, **`hstab4a`** |
+| `FRSoundness4P4aCtrl4` | 131 / 70 / 16 | controls (below) |
+| P4a total (14 modules) | 3,755 / 2,643 / 255 | `loc.py` |
+
+**Main statements:**
+
+```lean
+theorem z1_hfin4 (hM : M.Bits) (hb : WitBits zw) (hz : ZwSame zw) (hE : M.EtLocal)
+    (hBg : T4.Reads 3 Bg) (hprev : ∀ L es, Dk (phOf4 2) L es → Bg L es ∨ ¬ ZHolds M zw L es)
+    (hfin : Dk (phOf4 3) = msD (Dk (phOf4 2)) fin 2 10) (hfinI : ∀ L es, Bg L es ∨ ZEnd M zw L es → fin L es)
+    (L es₀) (hl : es₀.length = 3) : condCount (DPos (T4.Dp Dk)) L es₀ 10 [] ≤ deltaR
+theorem l3b_single4 (hz : ZwSame zw) (hI : M.IndKinds) (L es) (hl : es.length = 98) :
+    (univ.filter fun a => L3Bad M zw L es ∧ ¬ PendLc M zw L (ext1 es a)).card ≤ 7 * 2 ^ 128
+theorem rejZ_ok4 (hE : M.EtLocal) : T4.RejOK (RejZ M)        -- also rejL2_ok4, rejLc2_ok4, rejLcN_ok4
+theorem trueL4_two (R : P4b.FSrc) (kf) (hzw : WitOf R zw) (L es) :
+    P4b.trueL4 R kf (kindOfC es) L es 2 = zS2 zw L es
+theorem habs4a (hP : P.OK) (hN : SNode P.wN P.truthSN P.zw) (L es x len)
+    (hit : fsItems4[es.length]? = some (.absorb len)) (hp : es.length < 170)
+    (hd : DF4a P (phOf4 (es.length - 1)) L es) :
+    RejF4a P.M L (es ++ [x]) ∨ DF4a P (phOf4 es.length) L (es ++ [x])
+theorem hsingle4a … (hr : ¬ RejF4a P.M L es) : (univ.filter …).card ≤ 239 * 2 ^ 128
+theorem hfin4a : ∀ s0 r, (s0, r) ∈ fsRanges4 → s0 + 1 < 170 → ∀ L es₀, es₀.length = s0 + 1 →
+    condCount (DPos (T4.Dp (DF4a P))) L es₀ r [] ≤ deltaR
+theorem hstab4a : ∀ k ≤ 12, ∀ L i, ¬ Bad L → G.IsChain L i → ∀ X, StabExt fsRnd4 … X →
+    phOf4 (X.length - 1) = k → (DF4a P k (L.take i) X ↔ DF4a P k L X)
+```
+
+**For the composer of `FrontObl` (X4, with P4b's phases 13 … 25):**
+- Take `DF k := if k ≤ 12 then DF4a P k else (P4b's)` and `RejF := RejF4a M ∨ (P4b's checks) ∨ …`
+  (`rejF4a_ok` with `T4.rejOK_or`).
+- `ms`, `habs` (positions `< 170`), `hsingle` (`< 170`), `hfin` (`s0 + 1 < 170`) and `hstab`
+  (`k ≤ 12`) are `ms4a`, `habs4a`, `hsingle4a`, `hfin4a` and `hstab4a`.
+- At 170, Lr1's `msD` entry reads `DF4a P 12 = bg10_4 ∨ D2S`.
+- **`BgA`** is the background that phases 0 … 12 carry: far at level 0, a false public cell, and
+  Lr's and E's rows (3.x's `far0 ∨ nPub ∨ nLr ∨ nE`, P4b's parts). `Front4a.OK.bgA` asks that it
+  read before 3.
+- **Phase 2's doom is the split statement** `bgZ4 ∨ ¬ ZHolds` (deviation D6). The composer proves
+  revision 4.1's `stmt_split`: far, or `¬ Stmt`, implies `DF4a P 2`.
+- Instantiate `M := zlm4 indN etN` (`zlm4_etLocal`; `Bits`/`IndKinds` from the node maps,
+  `zlm4_indKinds`), `zw := T4.zW` (`witBits_zW`, `zwSame_zW`; `WitOf` by `witOf_of`), and
+  `hN : SNode …` (the node's S law: S-E's).
+
+**Controls** (`FRSoundness4P4aCtrl4`):
+
+| Definition | Positive | Negative |
+|---|---|---|
+| `ZLM4.EtLocal` | `zlm4_etLocal` | `not_etLocal_len` (a target reading the log's length) |
+| `WitBits` | `witBits_zW` | `not_witBits` (a constant non-bit; `exists_not_bit` by `|F| = 2^128`) |
+| `WitOf` | `witOf_of` (any source with `fz = fF`) | — (a hypothesis; `trueL4_two` uses it) |
+| `rejOK_at4` | `rejZ_ok4`, `rejLc2_ok4`, `rejLcN_ok4` | `not_rejOK_at_sq` (from Z1's squeeze 3 it is no `RejOK`) |
+| `RejF4a` | `rejF4a_of_rejS2` | `not_rejF4a_short` (nothing before 68) |
+| `L3BadN`, `PendLcN` | `l3BadN_of` (a node's wrong masked value) | `not_l3BadN_seg`, `not_pendLcN_seg` |
+| `DF4a` | `DF4a_of_bgA` (the background dooms phases 2 … 12 but `msD`'s) | `not_DF4a_out` (phases 0, 1, ≥ 13 are `False`) |
+| `frontCls4a` | `frontCls4a_pos` | `frontCls4a_neg` (the classes separate absorbs and squeezes) |
+| `SameStab4` | `ss_false4_ctrl` | `not_ss_log4` (a predicate of `L` itself) |
+
+**Checks (pass 4):**
+- `lake build FR FRSoundness4P4aCtrl4`: green, 2,471 jobs at HEAD `60b65cc`
+  (`logs/P4d/build-final.log`).
+- Axioms: all 154 declarations of the five new modules use only `propext`, `Classical.choice`
+  and `Quot.sound`; no `sorryAx` (`logs/fr-build-P4d/ax/AxP4d.lean`, `logs/P4d/axioms.log`).
+- Source rule: 257 files, 0 findings (`logs/P4d/source-rule.log`).
+- Sequential profiles (`taskset -c 0 lake env lean -DElab.async=false --profile`,
+  `logs/P4d/prof-*.log`):
+
+  | Module | wall (import ≈ 4–5 s) | type checking | max RSS |
+  |---|---|---|---|
+  | `FRSoundness4P4aZ` | 12.2 s | 0.81 s | 2.98 GB |
+  | `FRSoundness4P4aL` | 8.6 s | 0.24 s | 2.97 GB |
+  | `FRSoundness4P4aT` | 7.9 s | 0.22 s | 2.98 GB |
+  | `FRSoundness4P4aDF` | 11.3 s | 1.34 s (`frontCls4a_check` ≈ 0.5 s) | 3.00 GB |
+  | `FRSoundness4P4aCtrl4` | 8.3 s | 0.12 s | 2.97 GB |
+
+  The `decide`s are all `decide +kernel` position certificates: `frontCls4a_check`, `ph_check4a`,
+  `frontCls4a_neg`/`_pos`, and `fsRnd4 3` in `not_rejOK_at_sq`. No `trueSum` is evaluated at a
+  concrete size.
+- **Kernel lessons** (recorded for G1/golf):
+  1. **`show` against `cwL4`.** `trueL4_two` first cost 2.2–4.5 s in the kernel. The cause was a
+     `show (eqTab xS.toArray).getD i 0 = _` against `P4b.cwL4 κ es ↑2 i`.
+     `rw [P4b.cwL4, show ((2 : Fin 4) : ℕ) = 2 from rfl, cwF]` followed by `change` costs 0.2 s.
+     3.x's `trueL_two` (`FRSoundnessFrS`) and `trueL_one` (`FRSoundnessFrZM`) use the same
+     `show` and probably pay the same.
+  2. **`phOf4` per position.** It costs about 8 ms per position in the kernel (1.4 s over 170
+     positions). The classification therefore checks only the items. The phases come from
+     `phOf4_eq` (any position between phase `k`'s start and the next is in phase `k`, from T4's
+     `phOf_bounds` and `phStart4_mono`), which took `DF4a` from 3.55 s to 1.34 s.
+
+**Imports for `FR.lean`:** replace `import FRSoundness4P4aCtrl3` with
+`import FRSoundness4P4aCtrl4`. It pulls `T` (and so `P4bRS`), `DF`, `L`, `Z`, and pass 3's chain.
+
+**Deviations and findings (pass 4):**
+- **D6. Phase 2's doom is the split statement** `bgZ4 ∨ ¬ ZHolds`, not 3.x's `far0 ∨ ¬ Stmt`.
+  Revision 4.1's statement (`StmtN4`, S-E12a, and the segment's) is not P4a's, so the split
+  (3.x's `stmt_split`) belongs to the composer, and `z1_hfin4`'s `hprev` is `id`.
+- **D7. The background is a parameter `BgA`**, the parts reduced after 169: far, the public cells,
+  and Lr's and E's rows. These are P4b's or T4's.
+- **D8. The node's L3 dooms are concrete.** `L3BadN`/`PendLcN` need only the matrices
+  (`IndKinds`), so they replace 3.x's `NodeLF` parameters `L3N`/`PendN`. `RejLcN M` is in
+  `RejF4a`. What stays with the node half is binding `PendLcN` to RS claim 2 (3.x's `trueL_node`,
+  through the kind factor).
+- **D9. Two hypotheses are new:** `ZLM4.EtLocal` (a segment's target reads `L` from `stmt`; 3.x's
+  targets did not read the log) and `WitBits` (3.x used `unpack_boolean` inline). Both are
+  discharged at the instance.
+- **No value asserted by no final.** Every check here is one of P4a's `Rej*` names, which R4
+  proves from the finals.
+
+**Handover (remaining, in order):**
+1. **RS0's pending-claim bridges for Z and Lc** (as `pendS4_pendBad4` for S).
+   - 3.x's `okF_pendZ` (`trueL_zero`) gives `PendZ zw → PendBad4` at claim 1.
+   - 3.x's `pendLc_pendBad` (`trueL_one` + `zfL_leaf`) gives a segment's `PendLc → PendBad4` at
+     claim 2: there `kfT4 = 1`, and the indicator is `chain` everywhere.
+   - Port both over `WitOf` (use `rw`/`change`, not `show`, against `cwL4`; see the kernel
+     lessons). Together with `pendS4_pendBad4` and P4b's `pendE4_pendBad4`, this gives E4 end's
+     `DPend4` (3.x's `dPend_of`).
+2. **The node half.** S-E12a is now committed (`60b65cc`): `FRNodeKinds4` (`nodeLayout4`, `Ind4`,
+   `Sel4`, `nodeBK4`, `nodeKind4`, the kind factor, `hcells4`) and `FRNodeCircuit4` (`truthZ4`,
+   `truthS4`, `StmtN4`, `NodeResid4`, `node_sound4`). The work is:
+   - `indN := Ind4`-based indicators and `etN` from `nodeKind4`'s targets;
+   - `ZLM4.Bits`/`IndKinds` for `zlm4 indN etN` (`layout_no_chain`, as 3.x's `zlmFR_bits`/
+     `zlmFR_indKinds`);
+   - `SNode` (the node's S2 law: `wN`, `res`, the sum law, `ne`), `WNLocal`, `wNS`/`hNS`;
+   - `PendLcN`'s binding (`trueL_node` with S-E's kind factor as P4b's `kf`);
+   - `zHolds_iff_truthZN` against `truthZ4`.
+3. **Revision 4.1's `stmt_split`** (D6). It needs `StmtN4` and the segment statement (X4's).
