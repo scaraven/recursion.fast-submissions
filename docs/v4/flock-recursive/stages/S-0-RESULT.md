@@ -507,3 +507,49 @@ This is S-F2's `get!` measurement (177–183 ms), now from the entry's own code.
 **Re-dump (`logs/S-0/dump/`, previous one in `prev/`):** 66,135 ops, 53,164 registers, asks =
 items = 8,874, and `items.json` is unchanged. The op count fell from 149,974 because of the
 other tracks' `finRS` change since the last dump, not this pass. `shiftTarget` prints 4 operands.
+
+### Stage-review changes 16: `vk` in an `'N'` header, and the query link (2026-10-28)
+
+**1. `V` asserts `hdr.pub = vk` for kind N.**
+- `stmtOps` (the `stmt` absorb phase) gains three ops: `piDigest fHdr 16`, `input 0` and
+  `assertEq … Kind.isNode`. The phase's width goes from 10 to 12.
+- The reference changes with it: `refPhase`'s `stmt` branch gains the two registers and the flag
+  conjunct `(!κ.isNode || decide (pub = inp.vk))`.
+- `exec_genPhase`, `genPhase_ctx`, `exec_skeleton` and the finals' flags re-check unchanged; the
+  finals read their registers through `outs`.
+- `FRFormat.hdrBytes`'s docstring now records that `pub` is `s` for a leaf and `vk` for a node.
+- **Node circuit:** `compileMux` compiles the assert like any other, as gated rows
+  (`P.gate isNode`) over two digest imports, so no template is needed. **S-E3 must confirm the
+  bindings:** the child's `input 0` import to the node's `vk` cells, and the `piDigest fHdr 16`
+  import to the child's `hdr` bytes 16–47 (seed payload elements 5–6).
+- **P2:** an `'N'` proof writes `vk` into `hdr` bytes 16–47. The dump has 2 more registers
+  (`r17`, `r18`); every later register shifts by 2.
+
+**2. The query link (`FRVIRChain`, new, 433 code lines).**
+- **`fsQ_gen`:** `semIR impl (gen fin mode) inp es = some b →
+  (fsOf es items).length = 451 ∧ ∀ p < 451, ((fsOf es items).getD p default).1 =
+  fsQ inp.vk inp.c inp.π p ((fsOf es items).getD (p − 1) default).2`.
+  Here `fsOf es items` is the trace's entries at `items`' FS items, and `fsQ` is S-H2's
+  (`FRXChainFlock`). The statement covers all 451 positions, so `nRep = 425` is included.
+- Per phase, `refPhase_chain`: a phase consumes one entry per item. Its FS entries are the
+  `ChainOK` chain of `FR.X.phaseMsgs n` from the state register, and the next context's state
+  register holds the last answer. It uses the trace lemmas `sqzT_chain`, `roundsT_chain`,
+  `stepsT_len` and `posAllT_len`.
+- `refPhases_chain` composes the phases (with `genPhase_ctx`), then `skeleton_chain`, then
+  `fsQ_gen` (through `exec_skeleton`).
+- Table facts, by `decide +kernel` on the phase table, never on `gen`:
+  - `phases_shapeOK`: fields `≤ nFields`, squeezes nonempty;
+  - `phases_seed`: only phase 0 is a seed;
+  - `fsMsgs_eq`: `fsMsgs = msgsFrom phases 0`, by induction.
+- Axioms: propext, Classical.choice and Quot.sound only (`logs/S-0/check/chain-axioms.log`).
+- For S-G2: compose `fsQ_gen` with `runLog`. The trace is `runLog`'s `es` for the verifier's run.
+
+**Checks:**
+- `FR` builds: 2,310 jobs under the 16G cap. `FR.lean` gains `import FRVIRChain`.
+- `source-rule`: 95 files, 5 findings, all `partial` in `FRSoundnessFold.lean` (S-G's, in progress),
+  none in S-0's files.
+- Code lines: FRVIR 448, FRVIRSpec 1,285.
+
+**Dump (`logs/S-0/dump/`, previous one in `prev/`):** the tool now imports `FRVIRFinalsSG` and dumps
+the full finals (`sfFinals finP finPf`, with no PENDING marks). Result: 105,703 ops, 53,166
+registers, asks = items = 8,874, and `items.json` is unchanged.

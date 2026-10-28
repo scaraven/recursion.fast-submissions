@@ -63,7 +63,8 @@ def phaseOff (n f : ℕ) : ℕ := ((phases.take n).map fun p => p.shape.bytesTo 
 
 /-! ## `hdr` and `stmt` (§1.1) -/
 
-/-- `hdr = kindByte ‖ m ‖ zero(14) ‖ pub(32)` (`pub` is the chain start `s` of a leaf kind). -/
+/-- `hdr = kindByte ‖ m ‖ zero(14) ‖ pub(32)` (`pub` is the chain start `s` of a leaf kind and `vk`
+for a node, which `V` asserts; stage-review changes 16). -/
 def hdrBytes (k : Kind) (pub : Digest) : List UInt8 :=
   [k.byte, k.m.toUInt8] ++ List.replicate 14 0 ++ pub.toList
 

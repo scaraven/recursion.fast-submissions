@@ -3,13 +3,12 @@
 -- a kind (or the mux) one per line, `opName operands… → dst`, registers numbered; `irdump summary`
 -- prints the counts. The phase-final checks are `gen`'s parameter; the dump uses none
 -- (`noFinals`), so it pins the skeleton: every query, challenge map and round check.
-import FRVIRFinalsSF
+import FRVIRFinalsSG
 
 open FR RecursionFast
 
-/-- The finals: S-0's four fields and S-F's (`sfFinals`); S-G's `finP`, `finPf` are pending (marked in
-the dump; S-G's private copy `logs/fr-build-SG/dump/IRDumpSG.lean` dumps them). -/
-def fins : Finals := sfFinals (fun _ => pending) pending
+/-- The full finals: S-0's four fields, S-F's (`sfFinals`), S-G's `finP` and `finPf`. -/
+def fins : Finals := sfFinals finP finPf
 
 def hex (l : List UInt8) : String :=
   String.join (l.map fun b =>
@@ -123,8 +122,8 @@ def dumpOps (m : Mode) : IO Unit := do
   let rs := fins.finRS ⟨outs, [], #[]⟩ n
   IO.println "-- final finRS (S-F)"
   let mut b ← dumpList m rs.1 n
-  let names := ["finZ", "finLc", "finSh", "finLr", "finE (S-F)", "finB' (S-F)"] ++ (List.range nLevels).map (fun i => s!"finP {i} (S-G): PENDING placeholder") ++
-    ["finPf (S-G): PENDING placeholder"]
+  let names := ["finZ", "finLc", "finSh", "finLr", "finE (S-F)", "finB' (S-F)"] ++ (List.range nLevels).map (fun i => s!"finP {i} (S-G)") ++
+    ["finPf (S-G)"]
   let mut ex : Array (List Reg) := #[rs.2]
   for (f, nm) in fins.rest.zip names do
     let x := f ⟨outs, rs.2, ex⟩ b

@@ -538,7 +538,8 @@ def absorbOps (f o len st b : ℕ) : List Op := [.piField f o len, .askAbsorb st
 
 /-- **`stmtOk`** after `stmt`'s absorb (§4.2, revision 3.3): the statement of `stmt` is `c`; the tag
 byte is the kind's; a leaf kind's `n = 2^(m−14)` and zero bytes `41 … 127`; a node's zero bytes
-`65 … 127`. -/
+`65 … 127`; a node's `hdr.pub` (bytes 16–47) is `vk` (stage-review changes 16: the extractor
+rebuilds a node's FS seed from it). -/
 def stmtOps (msg b : ℕ) : List Op :=
   [.hashStmt msg, .input 1, .assertEq b (b + 1) allK,
    .piField fStmt 0 1, .const (fun κ => .b (bytesOf [if κ.isNode then RecursionFast.tagNode else tagLeaf])),
@@ -546,7 +547,8 @@ def stmtOps (msg b : ℕ) : List Op :=
    .piField fStmt 33 8, .const (fun κ => .b (bytesOf (enc64 (leafN κ)))),
    .assertEq (b + 4) (b + 5) (fun κ => !κ.isNode),
    .piField fStmt 41 87, .assertZero (b + 6) (fun κ => !κ.isNode),
-   .piField fStmt 65 63, .assertZero (b + 7) Kind.isNode]
+   .piField fStmt 65 63, .assertZero (b + 7) Kind.isNode,
+   .piDigest fHdr 16, .input 0, .assertEq (b + 8) (b + 9) Kind.isNode]
 
 /-- The final message's padding is zero for the `m = 30` kinds. -/
 def finalOps (b : ℕ) : List Op :=
@@ -664,7 +666,7 @@ def genPhase (n : ℕ) (p : Phase) (c : GCtx) : List Op × GCtx :=
   match p.shape with
   | .seed => rec_ (seedOps b) 7 (b + 1) [b + 1]
   | .absorb f len =>
-    if f = fStmt then rec_ (absorbOps f (o f) len c.st b ++ stmtOps b (b + 2)) 10 (b + 1) [b]
+    if f = fStmt then rec_ (absorbOps f (o f) len c.st b ++ stmtOps b (b + 2)) 12 (b + 1) [b]
     else if f = fFinal then rec_ (absorbOps f (o f) len c.st b ++ finalOps (b + 2)) 3 (b + 1) [b]
     else if f = fLrEnd ∨ f = fEEnd then
       rec_ (absorbOps f (o f) len c.st b ++ [.assertZero b (fun κ => !κ.isNode)]) 2 (b + 1) [b]

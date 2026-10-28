@@ -61,6 +61,7 @@ import FRSoundnessWalk
 import FRSoundnessPhases
 import FRSoundnessLigerito
 import FRVIRFinalsSG
+import FRVIRChain
 
 /-!
 # `flock-recursive`

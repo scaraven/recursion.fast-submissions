@@ -1106,10 +1106,12 @@ def refPhase (n : ℕ) (p : Phase) (c : GCtx) (r : Array Val) (tr : Trace) :
         let s2 := msgAt inp fStmt 41 87; let s3 := msgAt inp fStmt 65 63
         let tag := bytesOf [if κ.isNode then RecursionFast.tagNode else tagLeaf]
         let nb := bytesOf (enc64 (leafN κ))
-        (base ++ [.d (stmtDigest κ m), .d inp.c, .b s0, .b tag, .b s1, .b nb, .b s2, .b s3],
+        let pub := bytesAt inp.π (absOff fHdr 16) 32
+        (base ++ [.d (stmtDigest κ m), .d inp.c, .b s0, .b tag, .b s1, .b nb, .b s2, .b s3, .d pub,
+            .d inp.vk],
           decide (stmtDigest κ m = inp.c) && decide (s0.data = tag.data) &&
             (κ.isNode || decide (s1.data = nb.data)) && (κ.isNode || (Val.b s2).isZero) &&
-            (!κ.isNode || (Val.b s3).isZero), x.2)
+            (!κ.isNode || (Val.b s3).isZero) && (!κ.isNode || decide (pub = inp.vk)), x.2)
       else if f = fFinal then
         let z := msgAt inp fFinal (2 ^ 5 * 32) ((finalElems - 2 ^ 5) * 32)
         (base ++ [.b z], decide (κ = .L32) || (Val.b z).isZero, x.2)
