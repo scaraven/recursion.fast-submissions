@@ -40,6 +40,8 @@ S-A `8ff873c`; S-C `ebac8c2`; S-D `8e6dad7`; S-E1 `2d5a811`; S-H1 `40b2f81`; S-0
 
 ## Rulings
 
+- **S-G12′, 2026-10-28:** F2 `AccFrontK` (with the proof's kind byte) is the right form; `AccFront` to be retired at the next integration. F3: generalising S-G's E chain over an entries source (so `truthE`/`nE`/`RejE4`/`hfit` read `nodeIRows`' indexed rows) is O1's ruled restatement.
+
 - **Lever 5 declined, 2026-10-28 (S-D3):** 32 rows at level 0 is sound (kernel-checked `pcsLevelsR_ok`), but priced with the proved sizes it gains S −0.02 s (the final message doubles: V +13 ms) and needs the domain bound 21 bits across four modules and qV 39,112 > 36,000. Alternative B (one more fold at level 1, −0.09 s) deferred. `FRLadder5` archived in `docs/v4/flock-recursive/attic/`, outside the entry.
 - **S-F4, 2026-10-28:** the segment's shift successor is masked at its last block `L` (required for soundness: `shift_unmasked_link`); `SegSound` replaced by `SegSoundOn`/`segSoundOn_of_KS` (extraction on good traces). Blueprint B-12 to state both.
 - **Agent budget:** FR-D8 raised to 6 concurrent agents (the user, 2026-10-28).
