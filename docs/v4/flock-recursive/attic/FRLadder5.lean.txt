@@ -1,0 +1,240 @@
+-- New for `flock-recursive` (BLUEPRINT §10 changes 26, lever 5; stage S-D3).
+import FRShape4
+import FRProximityFold
+
+/-!
+# Lever 5: rows `2^5` at Ligerito level 0 (candidate `seq4'`)
+
+BLUEPRINT §10 changes 26 (lever 5), §2.2, §5.2 rows P1–P3/Pf, §5.3. The ladder `ladderOfR ell0 m`
+(`FRShape4`) is already parametric in level 0's rows; this module re-checks the PCS at `ell0 = 5`
+and prices it, without switching the default (`seq4` keeps `ell0 = 6`).
+
+* **The domain.** At `m = 32` level 0 has `n₀ = 2^21 > nMax = 2^20` (`FRRS.logNMax`), so
+  `mca_ud_line_K`, `interp_F_D` and `encCode_D` do not apply as stated (`n0_gt_nMax`). `D` is
+  injective below `2^64` (`D_injOn`), so they hold on any `n ≤ 2^64`: `mca_ud_line_K64`,
+  `interp_F_D64`, `encCode_D64`, `Dpts_injective64` (same conclusions, the domain bound weakened).
+* **The levels** (`lvR`, `lvNR`, `lvKR`, `lvER`: §2.2's `n = 2^logN`, `k = n/2^(i+1)`,
+  `e = ⌊(n − k)/2⌋`) are `pcsLevels` at `ell0 = 6` (`pcsLevelsR_six`). `pcsLevelsR_ok`: at
+  `ell0 = 5` and `m ∈ {30, 31, 32}` every level has `2e + k ≤ n ≤ 2^21`, `C_mca ≤ 2^60`, the P1
+  count `2 + 2^5 C_mca ≤ 239 · 2^128` (`FRSoundnessTailO.p1_N_le`'s form), `t < 2^9 − 1` (P3),
+  `per · log₂ n ≤ 256` (P2's squeeze split) and the P2 row `(1 − e/n)^t ≤ 15/2^124 − 2/2^142 −
+  1/2^238` (`deltaR`, `FRSoundnessStepB.deltaR_coe`). `ladderR_consistent`: the folded level is the
+  next level's message (`2 k_i = k_{i+1} rows_{i+1}`), `k₀ rows₀ = 2^(m−7)` and `k₄ = 2^pf`.
+* **Sizes.** `colBytes`/`Item.qlen` (`FRTranscriptDefs`) read 3.x's rows (`lvlStar`), so
+  `piSizeOf`/`streamBytesOf` are not parametric in the column height (`piSizeOf_seq4'_wrong`). The
+  row-parametric twins `piSizeOfR`, `streamBytesOfR` agree with them on `seq4` and give `seq4'`'s
+  numbers.
+-/
+
+namespace FR
+namespace Rev4
+open RecursionFast
+
+/-! ## The protocol domain beyond `nMax` -/
+
+theorem Dpts_injective64 {M : Type*} [Field M] [Algebra F M] {n : ℕ} (hn : n ≤ 2 ^ 64) :
+    Function.Injective (Dpts (M := M) n) := fun a b h =>
+  Fin.ext (D_injOn (Set.mem_Iio.2 (a.2.trans_le hn)) (Set.mem_Iio.2 (b.2.trans_le hn))
+    ((algebraMap F M).injective h))
+
+/-- `encCode_D` on any `k ≤ 2^64`. -/
+theorem encCode_D64 {M : Type*} [Field M] [Algebra F M] {n k : ℕ} (hk : k ≤ 2 ^ 64) :
+    encCode (M := M) D n k = rsCode (Dpts n) k :=
+  encCode_eq_rsCode D_injOn hk
+
+/-- **`mca_ud_line_K` on any `n ≤ 2^64`** (level 0 at `ell0 = 5`, `m = 32` has `n = 2^21`). -/
+theorem mca_ud_line_K64 {n k e : ℕ} (hn : n ≤ 2 ^ 64) (h : 2 * e + k ≤ n) (u₀ u₁ : Fin n → FR.K) :
+    Nat.card (lineBad (encCode (M := FR.K) D n k) e u₀ u₁) ≤ cMca n k e := by
+  rw [encCode_D64 (by omega)]
+  exact mca_ud_line (Dpts_injective64 hn) h u₀ u₁
+
+/-- **`interp_F_D` on any `n ≤ 2^64`.** -/
+theorem interp_F_D64 {n k : ℕ} (hn : n ≤ 2 ^ 64) (hk : k ≤ 2 ^ 64) {v : Fin n → K}
+    (hv : v ∈ encCode (M := K) D n k) (f : Fin n → F) (A : Finset (Fin n)) (hA : k ≤ A.card)
+    (hvA : ∀ j ∈ A, v j = algebraMap F K (f j)) :
+    ∃ c : Fin k → F, v = enc (M := K) D n k (fun x => algebraMap F K (c x)) := by
+  rw [encCode_D64 hk] at hv
+  obtain ⟨v', hv', rfl⟩ := interp_F (Dpts_injective64 hn) hv f A hA hvA
+  rw [← encCode_D64 (M := F) hk] at hv'
+  obtain ⟨c, rfl⟩ := hv'
+  exact ⟨c, funext fun j => (enc_algebraMap D n k c j).symm⟩
+
+/-! ## The levels of `ladderOfR` -/
+
+/-- Level `i` of `ladderOfR ell0 m`. -/
+def lvR (ell0 m i : ℕ) : Level := (ladderOfR ell0 m).getD i ⟨0, 1, 0, 0⟩
+/-- `n` of level `i` (§2.2). -/
+def lvNR (ell0 m i : ℕ) : ℕ := 2 ^ (lvR ell0 m i).logN
+/-- `k = n / 2^(i+1)` (rate `2^-(i+1)`). -/
+def lvKR (ell0 m i : ℕ) : ℕ := lvNR ell0 m i / 2 ^ (i + 1)
+/-- `e = ⌊(n − k)/2⌋` (unique decoding). -/
+def lvER (ell0 m i : ℕ) : ℕ := (lvNR ell0 m i - lvKR ell0 m i) / 2
+
+/-- **Control:** at `ell0 = 6` the levels are `pcsLevels` (`P30` then `L32`), the list
+`pcsLevels_ok` and `FRSoundnessStepC.lv_eq_pcsLevels` check. -/
+theorem pcsLevelsR_six :
+    ((List.range 5).map fun i => (lvNR 6 30 i, lvKR 6 30 i, lvER 6 30 i)) ++
+      ((List.range 5).map fun i => (lvNR 6 32 i, lvKR 6 32 i, lvER 6 32 i)) = pcsLevels := by
+  decide
+
+/-- **Negative control (the obstruction):** at `ell0 = 5`, `m = 32`, level 0 exceeds the domain
+bound `nMax = 2^20` that `mca_ud_line_K`/`interp_F_D` and the soundness consumers assume. -/
+theorem n0_gt_nMax : nMax < lvNR 5 32 0 ∧ lvNR 5 32 0 = 2 ^ 21 ∧ lvNR 5 31 0 = nMax := by decide
+
+/-- The folds chain: `k₀ · rows₀ = 2^(m−7)` (`f`'s cells), level `i`'s folded row (`k_i` K = `2 k_i`
+F) is level `i+1`'s matrix (`k_{i+1} · rows_{i+1}`), and `k₄ = 2^pf` (the final message). -/
+def LadderConsistent (ell0 m : ℕ) : Prop :=
+  lvKR ell0 m 0 * (lvR ell0 m 0).rows = 2 ^ (m - 7) ∧
+    (∀ i < 4, 2 * lvKR ell0 m i = lvKR ell0 m (i + 1) * (lvR ell0 m (i + 1)).rows) ∧
+    lvKR ell0 m 4 = 2 ^ (m - 19 - ell0)
+
+instance (ell0 m : ℕ) : Decidable (LadderConsistent ell0 m) := by
+  unfold LadderConsistent; infer_instance
+
+theorem ladderR_consistent :
+    LadderConsistent 5 30 ∧ LadderConsistent 5 31 ∧ LadderConsistent 5 32 ∧
+      LadderConsistent 6 30 ∧ LadderConsistent 6 32 := by decide
+
+/-- Negative control: with `2^5` rows at level 0 but 3.x's `n₀` (`m = 32`: `log₂ n₀ = 20`), the
+fold no longer matches `f`'s `2^25` cells. -/
+theorem ladder_inconsistent_mixed :
+    ¬ (lvKR 6 32 0 * 2 ^ 5 = 2 ^ (32 - 7)) := by decide
+
+/-- **The PCS facts of one level** (§5.2 P1–P3, §5.3): `mca_ud_line`'s hypotheses on the extended
+domain, `C_mca ≤ 2^60`, the P1 count in `p1_N_le`'s form, P3's `t < 2^9 − 1`, P2's split of a
+squeeze, and the P2 row against `deltaR`'s value. -/
+def LevelOk (ell0 m i : ℕ) : Prop :=
+  2 * lvER ell0 m i + lvKR ell0 m i ≤ lvNR ell0 m i ∧ lvNR ell0 m i ≤ 2 ^ 21 ∧
+    cMca (lvNR ell0 m i) (lvKR ell0 m i) (lvER ell0 m i) ≤ 2 ^ 60 ∧
+    2 ^ ((lvR ell0 m i).ell - 1) ≤ 2 ^ 5 ∧
+    2 + 2 ^ 5 * cMca (lvNR ell0 m i) (lvKR ell0 m i) (lvER ell0 m i) ≤ 239 * 2 ^ 128 ∧
+    (lvR ell0 m i).t < 2 ^ 9 - 1 ∧ (lvR ell0 m i).per * (lvR ell0 m i).logN ≤ 256 ∧
+    (1 - (lvER ell0 m i : ℚ) / lvNR ell0 m i) ^ (lvR ell0 m i).t ≤
+      15 / 2 ^ 124 - 2 / 2 ^ 142 - 1 / 2 ^ 238
+
+instance (ell0 m i : ℕ) : Decidable (LevelOk ell0 m i) := by unfold LevelOk; infer_instance
+
+/-- **`pcsLevels_ok` at `ell0 = 5`**: every level of `L30`, `L31`/`N2` and `L32`/`N4`/`N8` meets
+§5.2's P1, P2 and P3 rows with the same `εR` (kernel arithmetic). -/
+theorem pcsLevelsR_ok {m : ℕ} (hm : m = 30 ∨ m = 31 ∨ m = 32) {i : ℕ} (hi : i < 5) :
+    LevelOk 5 m i := by
+  rcases hm with rfl | rfl | rfl <;> interval_cases i <;> decide +kernel
+
+/-- Positive control: 3.x's ladder (`ell0 = 6`) passes the same check. -/
+theorem pcsLevelsR_ok_six {i : ℕ} (hi : i < 5) : LevelOk 6 32 i := by
+  interval_cases i <;> decide +kernel
+
+/-- Negative control: one query fewer at level 0 (`t₀ = 289`) breaks the P2 row. -/
+theorem p2_row_fails_t289 :
+    ¬ ((1 - (lvER 5 32 0 : ℚ) / lvNR 5 32 0) ^ 289 ≤ 15 / 2 ^ 124 - 2 / 2 ^ 142 - 1 / 2 ^ 238) := by
+  decide +kernel
+
+/-! ## The candidate sequence `seq4'` -/
+
+/-- `seqOf` with `2^ell0` rows at level 0. -/
+def seqOfR (ell0 : ℕ) : List Dims → Seq
+  | [] => ⟨0, 0, 0, 0, 0, 0, 0, 0, 32, ell0⟩
+  | d :: ds => (d.seqR ell0).max (seqOfR ell0 ds)
+
+/-- Revision 4.1's six kinds with `2^ell0` rows at level 0 and E4 end's absorb `e4` bytes. -/
+def seq4R (ell0 e4 : ℕ) : Seq := { seqOfR ell0 (SegKind.dims .L30 :: SegKind.dims .L31 ::
+    SegKind.dims .L32 :: [NodeKind.dims .N2, NodeKind.dims .N4, NodeKind.dims .N8]) with e4end := e4 }
+
+/-- Control: at `ell0 = 6` it is `seq4`. -/
+theorem seq4R_six : seq4R 6 32 = seq4 := by decide
+
+/-- **Candidate `seq4'`** (lever 5): `2^5` rows at level 0, Pf 8 rounds; E4 end pads to 48 bytes so
+that the hashed stream stays a multiple of 64 bytes (`chainLenOfR_seq4'`). -/
+def seq4' : Seq := seq4R 5 48
+
+theorem seq4'_eq : seq4' = ⟨32, 19, 26, 28, 17, 23, 25, 8, 48, 5⟩ := by decide
+
+theorem seq4'_ladder : (List.range 5).map seq4'.lv =
+    [⟨5, 21, 290, 9⟩, ⟨4, 19, 178, 8⟩, ⟨4, 17, 145, 8⟩, ⟨4, 15, 132, 8⟩, ⟨4, 13, 126, 7⟩] := by
+  rw [seq4'_eq]; rfl
+
+/-- Squeezes and siblings per level of `seq4'`. -/
+theorem seq4'_sq_sib : ((List.range 5).map fun i => ((seq4'.lv i).sq, (seq4'.lv i).sib)) =
+    [(25, 12), (14, 11), (10, 9), (8, 7), (7, 6)] := by
+  rw [seq4'_eq]; decide
+
+/-- A kind's ladder fits the sequence's position by position, at `2^ell0` rows. -/
+def LadderFitsR (ell0 m mStar : ℕ) : Prop :=
+  ∀ i < nLevels, (lvR ell0 m i).sq ≤ (lvR ell0 mStar i).sq ∧
+    (lvR ell0 m i).sib ≤ (lvR ell0 mStar i).sib ∧ (lvR ell0 m i).ell = (lvR ell0 mStar i).ell ∧
+    (lvR ell0 m i).t = (lvR ell0 mStar i).t
+
+theorem seg_ladder_fitsR (κ : SegKind) : LadderFitsR 5 κ.m seq4'.mStar := by
+  intro i hi; simp only [nLevels] at hi; rw [seq4'_eq]; cases κ <;> interval_cases i <;> decide
+theorem node_ladder_fitsR (κ : NodeKind) : LadderFitsR 5 κ.m seq4'.mStar := by
+  intro i hi; simp only [nLevels] at hi; rw [seq4'_eq]; cases κ <;> interval_cases i <;> decide
+
+theorem seg_fitsR (κ : SegKind) : (κ.dims.seqR 5).Le seq4' := by
+  rw [seq4'_eq]; cases κ <;> decide
+theorem node_fitsR (κ : NodeKind) : (κ.dims.seqR 5).Le seq4' := by
+  rw [seq4'_eq]; cases κ <;> decide
+
+/-! ## Row-parametric sizes -/
+
+/-- A column query's payload at a level of `2^ell` rows (`colBytes` with the level's rows). -/
+def colBytesR (l : Level) : ℕ := (l.rows * 16 + 16 + 63) / 64 * 64 - 16
+
+theorem colBytesR_lvlStar (i : ℕ) : colBytesR (lvlStar i) = colBytes i := rfl
+
+/-- `Item.qlen` under the level map `lv`. -/
+def qlenR (lv : ℕ → Level) : Item → ℕ
+  | .col i => 8 + colBytesR (lv i)
+  | it => it.qlen
+
+/-- `Sh.bytesToL` with the column height from `lv`. -/
+def Sh.bytesToR (lv : ℕ → Level) (f : ℕ) : Sh → ℕ
+  | .queries i =>
+    if f = fCols then (lv i).t * colBytesR (lv i)
+    else if f = fSibs then (lv i).t * (lv i).sib * 32 else 0
+  | s => s.bytesToL lv f
+
+/-- The size of field `f` in `S`'s format, column heights from `S`. -/
+def fieldSizeOfR (S : Seq) (f : ℕ) : ℕ := ((phasesOf S).map fun p => p.2.bytesToR S.lv f).sum
+
+/-- **`piSize` of `S`'s format**, column heights from `S`. -/
+def piSizeOfR (S : Seq) : ℕ := ((List.range nFields).map (fieldSizeOfR S)).sum
+
+/-- The hashed stream's bytes, column heights from `S`. -/
+def streamBytesOfR (S : Seq) : ℕ := 1 + ((itemsOf S).map fun it => 8 + qlenR S.lv it + 32).sum
+
+/-- Compressions of the trace digest chain. -/
+def chainLenOfR (S : Seq) : ℕ := (streamBytesOfR S + 63) / 64
+
+/-- Control: on `seq4` the twins are `piSizeOf`/`streamBytesOf`. -/
+theorem piSizeOfR_seq4 : piSizeOfR seq4 = piSizeOf seq4 ∧ streamBytesOfR seq4 = streamBytesOf seq4 := by
+  rw [piSizeOf_seq4, streamBytesOf_seq4, seq4_eq]; exact ⟨by decide +kernel, by decide +kernel⟩
+
+/-! ## `seq4'`'s numbers -/
+
+theorem itemsOf_seq4'_length : (itemsOf seq4').length = 9778 := by
+  rw [seq4'_eq]; decide +kernel
+
+theorem fieldSizesOfR_seq4' : (List.range nFields).map (fieldSizeOfR seq4') = [48, 128, 2048, 1248,
+    32, 800, 1344, 816, 48, 2352, 48, 8192, 2016, 768, 45056, 8192, 339024, 269536] := by
+  rw [seq4'_eq]; decide +kernel
+
+theorem piSizeOfR_seq4' : piSizeOfR seq4' = 681696 := by
+  rw [piSizeOfR, fieldSizesOfR_seq4']; rfl
+
+/-- Negative control: `piSizeOf` (3.x's 64-row columns) misprices `seq4'`. -/
+theorem piSizeOf_seq4'_wrong : piSizeOf seq4' ≠ piSizeOfR seq4' := by
+  rw [piSizeOfR_seq4', seq4'_eq]; decide +kernel
+
+theorem streamBytesOfR_seq4' : streamBytesOfR seq4' = 1436096 := by rw [seq4'_eq]; decide +kernel
+
+/-- The stream is `64 · chainLen` bytes (no padding cell), and a sub-slot is 22,437 blocks. -/
+theorem chainLenOfR_seq4' : chainLenOfR seq4' = 22439 ∧ streamBytesOfR seq4' = 64 * 22439 := by
+  rw [chainLenOfR, streamBytesOfR_seq4']; decide
+
+/-- **`qV` (B-17) is too small for `seq4'`**: the aggregate leaf's `≤ 4` traces need `39,112 >
+36,000` queries, still `≤ 2^16`. -/
+theorem qV_seq4' : qV4 < 4 * (itemsOf seq4').length ∧ 4 * (itemsOf seq4').length ≤ 2 ^ 16 := by
+  rw [itemsOf_seq4'_length]; decide
+
+end Rev4
+end FR

@@ -40,6 +40,10 @@ S-A `8ff873c`; S-C `ebac8c2`; S-D `8e6dad7`; S-E1 `2d5a811`; S-H1 `40b2f81`; S-0
 
 ## Rulings
 
+- **Lever 5 declined, 2026-10-28 (S-D3):** 32 rows at level 0 is sound (kernel-checked `pcsLevelsR_ok`), but priced with the proved sizes it gains S −0.02 s (the final message doubles: V +13 ms) and needs the domain bound 21 bits across four modules and qV 39,112 > 36,000. Alternative B (one more fold at level 1, −0.09 s) deferred. `FRLadder5` archived in `docs/v4/flock-recursive/attic/`, outside the entry.
+- **S-F4, 2026-10-28:** the segment's shift successor is masked at its last block `L` (required for soundness: `shift_unmasked_link`); `SegSound` replaced by `SegSoundOn`/`segSoundOn_of_KS` (extraction on good traces). Blueprint B-12 to state both.
+- **Agent budget:** FR-D8 raised to 6 concurrent agents (the user, 2026-10-28).
+
 - **B-15 as built (S-H2n, `9398792`), accepted 2026-10-28:** outside the domain `E` dispatches on the proof's kind (decode on W, `search` under `vkOf π` on a node SNARK, the denotation on a leaf, `none` on bad), since `vkOf π` is the KS key only on an accepted node run; `E` takes the acceptance `A` as a parameter (`hE_of_accV` for `A := accV implC finC`); the search bounds traces by the certificate's 2^16. Blueprint text to follow at the next revision. Old routes with `hWB`/`hOut` to be retired once integration uses `kstate_front_ofE'`.
 
 - **S-N1, 2026-10-28 (orchestrator):** O0: `ExtIface` was false as stated (the chain is not tied to π); the linked route `RunLink`/`ExtIfaceR`/`kstate_front_ofR` is adopted. O1: the E truth must be stated over the templated rows V evaluates (`nodeIRows (planOf fin)`/`compileT`), not `Layout.nodeRows`: a stage after S-G11 (S-G12: `truthE`, `nE`, `RejE4`, `hfit`). O2/O2b (the circuit rows for every import: pack map, `R`, the templates, the WOTS selector/digit/mirror mux) are S-E's and make up `hRes : StmtN → NodeResid`. O3 to the blueprint.
