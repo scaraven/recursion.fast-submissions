@@ -17,15 +17,19 @@ a power-of-two H.
 * **H** from block 0, used `hUsed` blocks at full occupancy. One trace of `seq4` hashes to
   `chainLenOf seq4 = 23,168` blocks; the aggregate leaf's chain hashes `0x54 ‖ tr₁ ‖ … ‖ tr_k`:
   `aggChainLen k = ⌈(1 + k · (streamBytesOf seq4 − 1)) / 64⌉` (`k = 2`: 46,336 with 63 bytes in
-  its last block; `k = 4`: 92,672 with 61: **not** multiples of 64, so the last block needs the
-  padding claim; S-0′ RESULT I-5).
-* **L** at the first multiple of 256 after H (3.x's rule), `N_L = 2^logL` elements.
+  its last block; `k = 3`: 69,504 with 62; `k = 4`: 92,672 with 61: **not** multiples of 64 for any
+  `k ∈ {2, 3, 4}`, so the last block needs the `k`-gated padding, counter and final flag; S-0′ RESULT
+  I-5, R-4-m2). H holds the chain of an aggregate child of at most `maxK` segments (`N2`: 2,
+  `N4`/`N8`: 4); `FRVerifier4.childOk4` is the check that refuses a larger one (R-4-m2).
+* **L** at the first multiple of 256 after H (3.x's rule), `N_L = 2^logL` elements: a `2^14`
+  stride per verifier slot (`lSlots_fit`; `N8` exactly full).
 * **M** in the last `N_M / 128` blocks (`N_M = 2^logM` cells: `N2` `2^22`, `N4`/`N8` `2^23`); slot
   `σ`'s rows at `oneCell + (σ − 1) · 2^20`; M's `one` cell is `mBase · 128`.
 * **Coordinates**: `τ` (M rows) `logM` = 22 / 23 / 23, `σ` (`f`'s cells) `m − 7` = 24 / 25 / 25
   (S-0′ issue I-3).
 
-`hUsed_eq`, `regions_fit`, `mSlots_fit` are the closed-form checks (`decide` on numbers).
+`hUsed_eq`, `regions_fit`, `mSlots_fit`, `lSlots_fit` are the closed-form checks (`decide` on
+numbers).
 -/
 
 namespace FR
@@ -37,8 +41,9 @@ def NodeKind.blocks (κ : NodeKind) : ℕ := 2 ^ (κ.m - 14)
 def NodeKind.cells (κ : NodeKind) : ℕ := 2 ^ (κ.m - 7)
 /-- Verifier slots: the previous node (if any) and the segment sub-slots. -/
 def NodeKind.vslots (κ : NodeKind) : ℕ := (if κ.hasPrev then 1 else 0) + κ.segSlots
-/-- Segment sub-slots of the aggregate child(ren) (`N8`: two aggregates of `≤ 4`). -/
-def NodeKind.aggSegs (κ : NodeKind) : ℕ := if κ.hasPrev then κ.segSlots else 4
+/-- **The most segments of one aggregate child** (H holds its chain): `N2` 2, `N4` 4, `N8` 4 (two
+aggregates of `≤ 4`). -/
+def NodeKind.maxK (κ : NodeKind) : ℕ := if κ.hasPrev then κ.segSlots else 4
 
 /-- The aggregate leaf's digest-chain compressions with `k` segments. -/
 def aggChainLen (k : ℕ) : ℕ := (1 + k * (streamBytesOf seq4 - 1) + 63) / 64
@@ -71,6 +76,18 @@ theorem aggChainLen_eq : aggChainLen 2 = 46336 ∧ aggChainLen 4 = 92672 ∧
     (1 + 2 * (streamBytesOf seq4 - 1)) % 64 = 63 ∧ (1 + 4 * (streamBytesOf seq4 - 1)) % 64 = 61 := by
   simp only [aggChainLen, streamBytesOf_seq4]; decide
 
+/-- `k = 3` is unaligned too (R-4-m2). -/
+theorem aggChainLen_k3 : aggChainLen 3 = 69504 ∧ (1 + 3 * (streamBytesOf seq4 - 1)) % 64 = 62 := by
+  simp only [aggChainLen, streamBytesOf_seq4]; decide
+
+/-- `aggChainLen` is monotone: a child of `k ≤ maxK` segments has a chain no longer than H's
+`aggChainLen maxK` blocks. -/
+theorem aggChainLen_le {k k' : ℕ} (h : k ≤ k') : aggChainLen k ≤ aggChainLen k' :=
+  Nat.div_le_div_right (by have := Nat.mul_le_mul_right (streamBytesOf seq4 - 1) h; omega)
+
+/-- H's aggregate chains are `aggChainLen maxK` blocks. -/
+theorem maxK_eq : NodeKind.N2.maxK = 2 ∧ NodeKind.N4.maxK = 4 ∧ NodeKind.N8.maxK = 4 := ⟨rfl, rfl, rfl⟩
+
 theorem hUsed_eq : NodeKind.N2.hUsed = 70955 ∧ NodeKind.N4.hUsed = 117589 ∧
     NodeKind.N8.hUsed = 187540 := by
   simp only [NodeKind.hUsed, NodeKind.vslots, NodeKind.hasPrev, NodeKind.segSlots, chainLenOf_seq4.1,
@@ -89,6 +106,11 @@ theorem regions_fit (κ : NodeKind) :
 /-- **The verifier slots' M rows fit** `N_M` (`N2`: 3 of 4 slots of `2^20`; `N4`: 5 of 8; `N8`: 8
 of 8). -/
 theorem mSlots_fit (κ : NodeKind) : κ.vslots * slotM4 ≤ κ.nM := by cases κ <;> decide
+
+/-- **The L region holds the verifier slots** (S-0′ I-4's `2^14` stride; R-4-m4): `N2` 3 of 4,
+`N4` 5 of 8, `N8` 8 of 8 (`lSlots_N8_full`). -/
+theorem lSlots_fit (κ : NodeKind) : κ.vslots * 2 ^ 14 ≤ κ.nL := by cases κ <;> decide
+theorem lSlots_N8_full : NodeKind.N8.vslots * 2 ^ 14 = NodeKind.N8.nL := by decide
 
 /-- `τ`/`σ`: 22/24, 23/25, 23/25; `f`'s cells are `2^σ`, M's rows `2^τ`. -/
 theorem coords_eq : (NodeKind.N2.tauCoords, NodeKind.N2.sigmaCoords) = (22, 24) ∧

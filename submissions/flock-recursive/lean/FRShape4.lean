@@ -2,7 +2,7 @@
 import FRFormat
 
 /-!
-# Revision 4.0's shapes: kinds, ladders, the two item sequences, sizes
+# Revision 4.1's shapes: kinds, ladders, the item sequence, sizes
 
 BLUEPRINT B-11 … B-13, B-17 and §10 changes 25 (b). Everything here is **parametric** in the
 kind's dimensions (`Dims`: `m`, node or not, `log₂` of the L and M rows); the 3.x constants are
@@ -15,8 +15,10 @@ are used, with their exact values, by modules this stage may not edit (S-0′ JO
   previous node and `≤ 2` segments), `N4` (`m = 32`: the previous node and `≤ 4` segments), `N8`
   (`m = 32`, step 1: `≤ 8` segments), sized by total bits (tight packing), the aggregate leaf `A`
   (no SNARK of its own) and `W`.
-* **The ladder** of a kind is `ladderOfR ell0 m` (§2.2's rule; level 0 has `2^ell0` rows, 6 until
-  S-D re-checks `pcsLevels_ok` at 5: changes 26 lever 5); `ladderOf = ladderOfR 6`.
+* **The ladder** of a kind is `ladderOf m = ladderOfR 6 m` (§2.2's rule; level 0 has `2^6` rows).
+  `ell0 = 6` is the ruling: S-D3 declined lever 5 (`ell0 = 5`). The parameter `ell0` reaches only
+  `ladderOfR`/`Seq.lvK`; `colBytes` (`lvlStar`'s rows), `FRVIR4.finalOps4` (`2^(m − 25)`) and
+  `Dims.seq`/`seqOf` (`seqR 6`) hard-code 6, so another value would mis-size the format (R-4-m3).
 * **One item sequence** `seq4` (B-13: every kind at `m ≤ 32`): 3.x's sequence (`seq3`, `m* = 32`)
   with the node phases sized for `N_L = 2^17`, `N_M = 2^23` and `f`'s `2^25` cells (Lr 17, E2 23,
   E4 25 rounds: 14 more items than 3.x, all dummies for the segments): 8,905 items, `piSize`
@@ -111,8 +113,8 @@ structure Seq where
   /-- E4 end's absorb: `f̂(r′)` (16 B) zero-padded so that the hashed stream is a multiple of 64
   bytes (3.x: 32, INT-2; the node sequence: 64). -/
   e4end : ℕ := 32
-  /-- `log₂` of level 0's rows (revision 3.1: 6; changes 26 lever 5: 5 once S-D re-checks
-  `pcsLevels_ok`). -/
+  /-- `log₂` of level 0's rows: 6 (lever 5's `5` is declined, S-D3). Not threaded through the
+  format: `colBytes`, `finalOps4` and `seqOf` assume 6 (R-4-m3). -/
   ell0 : ℕ := 6
   deriving DecidableEq, Repr
 
@@ -183,7 +185,7 @@ theorem ladderOf_32 : ladderOf 32 = ladder32 := rfl
 theorem ladderOf_30 : ladderOf 30 = ladder30 := rfl
 theorem lvOf_32 (i : ℕ) : lvOf 32 i = lvlStar i := rfl
 
-/-- The squeezes and siblings of `m ∈ {31, 32, 33}` (31: `L31`; 33: `N8`). -/
+/-- The squeezes and siblings of `m = 31` (`L31`, `N2`) and `m = 30` (`L30`). -/
 theorem ladder_sq_sib :
     ((ladderOf 31).map Level.sq, (ladderOf 31).map Level.sib) = ([23, 12, 9, 7, 6], [10, 9, 7, 5, 4]) ∧
     ((ladderOf 30).map Level.sq, (ladderOf 30).map Level.sib) = ([21, 12, 9, 7, 6], [9, 8, 6, 4, 3]) := by
@@ -278,7 +280,8 @@ theorem _root_.FR.Shape.itemsL_toSh (s : Shape) : s.toSh.itemsL lvlStar = s.item
 /-- **The item sequence of `S`.** -/
 def itemsOf (S : Seq) : List Item := (phasesOf S).flatMap fun p => p.2.itemsL (S.lv)
 
-/-- **The segment sequence is 3.x's `items`.** -/
+/-- **`seq3`'s items are 3.x's `items`**: the generator's fidelity check (4.1's segments use
+`seq4`, `itemsOf_seq4_length`). -/
 theorem itemsOf_seq3 : itemsOf seq3 = items := by
   have h : seq3.lv = lvlStar := by rw [seq3_eq]; rfl
   rw [itemsOf, ← phasesOf_seq3, List.flatMap_map, h, items]
@@ -311,7 +314,8 @@ theorem fieldSizeOf_seq3 (f : ℕ) : fieldSizeOf seq3 f = fieldSize f := by
   rw [fieldSizeOf, ← phasesOf_seq3, List.map_map, h, fieldSize]
   exact congrArg List.sum (List.map_congr_left fun p _ => p.shape.bytesToL_toSh f)
 
-/-- **A segment proof has 3.x's `piSize`.** -/
+/-- **`seq3`'s format has 3.x's `piSize`** (797,904; a 4.1 segment proof has
+`piSizeOf seq4 = 798,192`). -/
 theorem piSizeOf_seq3 : piSizeOf seq3 = piSize := by
   rw [piSizeOf, piSize, fieldSizes]; exact congrArg List.sum (List.map_congr_left fun f _ => fieldSizeOf_seq3 f)
 

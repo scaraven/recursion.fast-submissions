@@ -1,5 +1,6 @@
 -- New for `flock-recursive` (BLUEPRINT revision 4.0, B-11; §10 changes 25 (b); stage S-0′).
 import FRSegment
+import RecursionFast.Library.Oracle
 
 /-!
 # The aggregate leaf `A` and its verifier `V_A` (B-11)
@@ -9,11 +10,13 @@ A step's new chain is proved by `k ≤ 4` segment SNARKs assembled into **one si
 
 * **Format.** `π_A = hdrA ‖ π₁ ‖ … ‖ π_k`, `hdrA = 'A' ‖ k ‖ 0^6 ‖ enc64 n ‖ e` (48 bytes), every
   `πᵢ` a segment proof of `segSize` bytes (`piSizeOf seq4 = 798,192`); `tr_A = tr₁ ‖ … ‖ tr_k`, one
-  trace signed once. A segment's queries are its 3.x item sequence (8,905 items), so the split of
+  trace signed once. A segment's queries are its `seq4` item sequence (8,905 items), so the split of
   `tr_A` is fixed; `V_A` does not need it (`VA_sound` recovers it).
-* **`V_A`** (`VAwith segSize Vseg`): parse; check `c = leafStmt e n`, `1 ≤ k ≤ 4`, every
-  `1 ≤ nᵢ ≤ cap κᵢ`, `Σ nᵢ = n`, `e_k = e`, and the chaining `s_{i+1} = e_i` (the public starts of
-  segments `i ≥ 2`, B-12); then run the segment verifiers in sequence on the one trace
+* **`V_A`** (`VAwith segSize Vseg`): parse (`|π| = 48 + k · segSize`, byte 0 `'A'`, `hdrA`'s bytes
+  2–7 zero: R-4-m5, so `π_A` is canonical given its segments, `n` and `e`); check
+  `c = leafStmt e n`, `1 ≤ k ≤ 4`, every
+  `1 ≤ nᵢ ≤ cap κᵢ`, `Σ nᵢ = n`, `e_k = e`, and the chaining `s_{i+1} = e_i` (every segment's
+  start is its `hdr.pub`, S-0′ I-2); then run the segment verifiers in sequence on the one trace
   (`seqAll`, `OProg.bind`), segment `i` against its statement `cᵢ = leafStmt eᵢ nᵢ` (`segC`).
   `Vseg κ vk cᵢ πᵢ` is the segment program of kind `κ`, a parameter here (its IR program with the
   variable last block is S-C/S-E12′'s; S-0′ RESULT).
@@ -22,10 +25,13 @@ A step's new chain is proved by `k ≤ 4` segment SNARKs assembled into **one si
   proves its chain; for the real programs the per-segment `leaf_sound` through S-G's potential),
   an accepting run yields the leaf witness: `aggWit π = some (s, n)` with `n ≤ chainCap` and
   `c = leafStmt (chainEnd s n) n` (`s` segment 1's start). **`VA_complete`**: the honest assembly is
-  accepted.
-* Controls: `ctrlA_pos` (two one-step segments, accepted), `ctrlA_bad_sum` (a wrong `n`),
-  `ctrlA_bad_start` (segment 2 not starting at segment 1's end), `ctrlA_bad_stmt` (the wrong
-  statement), all rejected.
+  accepted. **`VA_k_range`**, **`VA_pad`**: an accepting run has `1 ≤ k ≤ 4` and `hdrA`'s bytes
+  2–7 zero. **`VA_queries_le`**: `V_A` asks at most `4 ×` a segment program's queries (`k ≤ 4` is
+  checked before any query).
+* Controls: `ctrlA_pos` (two segments, accepted); rejected: `ctrlA_bad_sum` (a wrong `n`),
+  `ctrlA_bad_start` (segment 2 not starting at segment 1's end), `ctrlA_bad_end` (`e_k ≠ e`),
+  `ctrlA_bad_pad` (a nonzero byte 2), `ctrlA_k0`/`ctrlA_k5` (`k ∉ [1, 4]`), `ctrlA_cap_kind` (an
+  `L31` segment of `2^17 + 1` steps, within `L32`'s cap); `VA_reject_stmt` (the wrong statement).
 -/
 
 namespace FR
@@ -121,11 +127,12 @@ def segProgs (Vseg : SegKind → Digest → Digest → Proof → OProg Bool) (vk
     (segs : List Proof) (vs : List SegView) : List (OProg Bool) :=
   (segs.zip vs).map fun pv => Vseg pv.2.kind vk (segC pv.2) pv.1
 
-/-- **`V_A`** with segment proofs of `segSize` bytes and segment verifiers `Vseg`. -/
+/-- **`V_A`** with segment proofs of `segSize` bytes and segment verifiers `Vseg`. The parse checks
+the size, the kind byte and `hdrA`'s zero bytes 2–7 (R-4-m5). -/
 def VAwith (segSize : ℕ) (Vseg : SegKind → Digest → Digest → Proof → OProg Bool)
     (vk c : Digest) (π : Proof) : OProg Bool :=
   let k := (byteAt π 1).toNat
-  if π.size = 48 + k * segSize ∧ byteAt π 0 = aggByte then
+  if π.size = 48 + k * segSize ∧ byteAt π 0 = aggByte ∧ bytesAt π 2 6 = Vector.replicate 6 0 then
     let segs := aggSegs segSize k π
     match segs.mapM segView with
     | some vs =>
@@ -180,14 +187,14 @@ def SegKSOn (Vseg : SegKind → Digest → Digest → Proof → OProg Bool) (vk 
     (Good : Trace → Prop) : Prop :=
   ∀ π v t, segView π = some v → v.n ≤ v.kind.cap → Good t →
     (Vseg v.kind vk (segC v) π).runSeq t = some true →
-      ∃ (b : Bool) (z : ℕ → Block.Pos → F), SegHolds v.kind (v.stmt b) z
+      ∃ z : ℕ → Block.Pos → F, SegHolds v.kind v.stmt z
 
 /-- **`SegSoundOn` from the circuit's `leaf_sound`** (`seg_sound`): the chain half of a segment's
 soundness is proved; what remains is the SNARK's extraction (`SegKSOn`). -/
 theorem segSoundOn_of_KS {Vseg : SegKind → Digest → Digest → Proof → OProg Bool} {vk : Digest}
     {Good : Trace → Prop} (h : SegKSOn Vseg vk Good) : SegSoundOn Vseg vk Good :=
   fun π v t hv hn hg hacc => by
-    obtain ⟨b, z, hz⟩ := h π v t hv hn hg hacc
+    obtain ⟨z, hz⟩ := h π v t hv hn hg hacc
     exact seg_sound hz
 
 private theorem mapM_forall₂ {l : List Proof} {vs : List SegView} (h : l.mapM segView = some vs) :
@@ -200,29 +207,48 @@ private theorem mapM_forall₂ {l : List Proof} {vs : List SegView} (h : l.mapM 
     obtain ⟨v, hv, vs', hvs', rfl⟩ := h
     exact .cons hv (ih hvs')
 
-private theorem chainOk_tail : ∀ (a : SegView) (l : List SegView) (p : Bool),
-    chainOk (a :: l) = true → ChainedTail (a.stmt p) (l.map (SegView.stmt · true))
-  | _, [], _, _ => trivial
-  | a, b :: l, _, h => by
+private theorem chainOk_tail : ∀ (a : SegView) (l : List SegView),
+    chainOk (a :: l) = true → ChainedTail a.stmt (l.map SegView.stmt)
+  | _, [], _ => trivial
+  | a, b :: l, h => by
     simp only [chainOk, Bool.and_eq_true, decide_eq_true_eq] at h
-    exact ⟨h.1, rfl, chainOk_tail b l true h.2⟩
+    exact ⟨h.1, chainOk_tail b l h.2⟩
 
 private theorem compose_views (a : SegView) (l : List SegView) (hc : chainOk (a :: l) = true)
     (hs : ∀ v ∈ a :: l, chainEnd v.start v.n = v.h) :
     chainEnd a.start ((a :: l).map SegView.n).sum = ((a :: l).getLast (List.cons_ne_nil _ _)).h := by
-  have h := segs_compose (a.stmt false) (l.map (SegView.stmt · true)) (chainOk_tail a l false hc)
+  have h := segs_compose a.stmt (l.map SegView.stmt) (chainOk_tail a l hc)
     (by
       intro st hst
       simp only [List.mem_cons, List.mem_map] at hst
       rcases hst with rfl | ⟨v, hv, rfl⟩
       · exact hs a (by simp)
       · exact hs v (List.mem_cons_of_mem _ hv))
-  have ht : totalN (a.stmt false :: l.map (SegView.stmt · true)) = ((a :: l).map SegView.n).sum := by
+  have ht : totalN (a.stmt :: l.map SegView.stmt) = ((a :: l).map SegView.n).sum := by
     simp [totalN, SegView.stmt, Function.comp_def]
   rw [ht] at h; refine h.trans ?_
   cases l using List.reverseRecOn with
   | nil => rfl
   | append_singleton l x _ => simp [SegView.stmt]
+
+/-- **An accepting run has `1 ≤ k ≤ 4`** (the views are the `k` segments, `aggChecks` bounds them). -/
+theorem VA_k_range {segSize : ℕ} {Vseg : SegKind → Digest → Digest → Proof → OProg Bool}
+    {vk c : Digest} {π : Proof} {tr : Trace} (h : (VAwith segSize Vseg vk c π).runSeq tr = some true) :
+    1 ≤ (byteAt π 1).toNat ∧ (byteAt π 1).toNat ≤ 4 := by
+  obtain ⟨vs, -, hvs, hc, -⟩ := VA_sound h
+  have hl := (mapM_forall₂ hvs).length_eq
+  simp only [aggSegs, List.length_map, List.length_range] at hl
+  simp only [aggChecks, Bool.and_eq_true, decide_eq_true_eq] at hc
+  rw [hl]; exact hc.1.1.1.1.2
+
+/-- **An accepting run has `hdrA`'s bytes 2–7 zero** (R-4-m5). -/
+theorem VA_pad {segSize : ℕ} {Vseg : SegKind → Digest → Digest → Proof → OProg Bool}
+    {vk c : Digest} {π : Proof} {tr : Trace} (h : (VAwith segSize Vseg vk c π).runSeq tr = some true) :
+    bytesAt π 2 6 = Vector.replicate 6 0 := by
+  simp only [VAwith] at h
+  split at h
+  · next hh => exact hh.2.2
+  · rcases tr with _ | ⟨e, tr⟩ <;> simp [OProg.runSeq] at h
 
 /-- **`V_A` extracts the leaf witness**: with sound segments, an accepting run yields
 `aggWit π = some (s, n)`, `n ≤ chainCap` and `c = leafStmt (chainEnd s n) n`. -/
@@ -321,13 +347,50 @@ an accepting `V_A` run on the concatenated trace. -/
 theorem VA_complete {segSize : ℕ} {Vseg : SegKind → Digest → Digest → Proof → OProg Bool}
     {vk c : Digest} {π : Proof} {vs : List SegView} {trs : List Trace}
     (hsz : π.size = 48 + (byteAt π 1).toNat * segSize) (h0 : byteAt π 0 = aggByte)
+    (hpad : bytesAt π 2 6 = Vector.replicate 6 0)
     (hvs : (aggSegs segSize (byteAt π 1).toNat π).mapM segView = some vs)
     (hc : aggChecks c (rdLE64 π 8) (bytesAt π 16 32) vs = true)
     (hf : List.Forall₂ (fun p t => p.runSeq t = some true)
       (segProgs Vseg vk (aggSegs segSize (byteAt π 1).toNat π) vs) trs) :
     (VAwith segSize Vseg vk c π).runSeq trs.flatten = some true := by
-  simp only [VAwith, hsz, h0, and_self, ite_true, hvs, hc]
+  simp only [VAwith, hsz, h0, hpad, and_self, ite_true, hvs, hc]
   exact seqAll_of_forall₂ hf
+
+/-! ## Queries (`KS`'s first conjunct) -/
+
+/-- `seqAll` asks at most the sum of its programs' queries. -/
+theorem seqAll_queries_le (H : ByteArray → Digest) {q : ℕ} : ∀ {ps : List (OProg Bool)},
+    (∀ p ∈ ps, (p.queries H).length ≤ q) → ((seqAll ps).queries H).length ≤ ps.length * q
+  | [], _ => Nat.zero_le _
+  | p :: ps, h => by
+    have h₁ := h p (by simp)
+    have h₂ := seqAll_queries_le H (ps := ps) fun p hp => h p (List.mem_cons_of_mem _ hp)
+    rw [seqAll, OProg.queries_bind, List.length_append, List.length_cons, Nat.succ_mul]
+    generalize OProg.run H p = b
+    cases b
+    · simp only [Bool.false_eq_true, ite_false, OProg.queries, List.length_nil]; omega
+    · simp only [ite_true]; omega
+
+/-- **`V_A`'s queries**: at most `4 ×` a bound `qS` on every segment program's (`k ≤ 4` is
+checked before any query). -/
+theorem VA_queries_le {segSize qS : ℕ} {Vseg : SegKind → Digest → Digest → Proof → OProg Bool}
+    (H : ByteArray → Digest) (hS : ∀ κ vk c π, ((Vseg κ vk c π).queries H).length ≤ qS)
+    (vk c : Digest) (π : Proof) : ((VAwith segSize Vseg vk c π).queries H).length ≤ 4 * qS := by
+  simp only [VAwith]
+  split
+  · split
+    · next vs _ =>
+      split
+      · next hc =>
+        have hk : vs.length ≤ 4 := by
+          simp only [aggChecks, Bool.and_eq_true, decide_eq_true_eq] at hc; exact hc.1.1.1.1.2.2
+        refine (seqAll_queries_le H (q := qS) fun p hp => ?_).trans ?_
+        · obtain ⟨pv, -, rfl⟩ := List.mem_map.1 hp; exact hS _ _ _ _
+        · simp only [segProgs, List.length_map, List.length_zip]
+          exact Nat.mul_le_mul_right _ ((min_le_right _ _).trans hk)
+      · exact Nat.zero_le _
+    · exact Nat.zero_le _
+  · exact Nat.zero_le _
 
 /-! ## Rejection lemmas (used by the controls) -/
 
@@ -375,6 +438,38 @@ def ctrlA (n n₂ : ℕ) (s₂ : Digest) : Proof :=
 /-- The control's views. -/
 def ctrlViews (n₂ : ℕ) (s₂ : Digest) : List SegView := [⟨.L31, dC 0, dC 1, 1⟩, ⟨.L31, s₂, dC 2, n₂⟩]
 
+private theorem take_drop_flat {S : ℕ} : ∀ (segs : List (List UInt8)) (pre : List UInt8) (i : ℕ),
+    (∀ s ∈ segs, s.length = S) → (hi : i < segs.length) →
+      ((pre ++ segs.flatten).drop (pre.length + i * S)).take S = segs[i]
+  | s :: ss, pre, 0, hs, _ => by
+    simp [← hs s (by simp)]
+  | s :: ss, pre, i + 1, hs, hi => by
+    have := take_drop_flat ss (pre ++ s) i (fun t ht => hs t (by simp [ht])) (by simpa using hi)
+    rw [List.length_append, hs s (by simp), List.append_assoc] at this
+    simpa [List.flatten_cons, Nat.add_one_mul, Nat.add_assoc, Nat.add_comm S] using this
+
+/-- `aggSegs` of a header of 48 bytes followed by segments of `S` bytes: the segments. -/
+theorem aggSegs_flat {S k : ℕ} (hdr : List UInt8) (segs : List (List UInt8)) (hh : hdr.length = 48)
+    (hs : ∀ s ∈ segs, s.length = S) (hk : segs.length = k) :
+    aggSegs S k ⟨(hdr ++ segs.flatten).toArray⟩ = segs.map fun s => (⟨s.toArray⟩ : ByteArray) := by
+  subst hk
+  refine List.ext_getElem (by simp [aggSegs]) fun i h₁ _ => ?_
+  simp only [aggSegs, List.getElem_map, List.getElem_range]
+  ext1
+  simp only [ByteArray.data_extract, List.extract_toArray, List.extract_eq_take_drop]
+  have h : 48 + (i + 1) * S - (48 + i * S) = S := by rw [Nat.add_one_mul]; omega
+  rw [h, ← hh, take_drop_flat segs hdr i hs (by simpa [aggSegs] using h₁)]
+
+/-- The views of `ctrlA n n₂ s₂` are those of its two segments. -/
+theorem ctrlA_mapM (n n₂ : ℕ) (s₂ : Digest) (hk : (byteAt (ctrlA n n₂ s₂) 1).toNat = 2) :
+    (aggSegs 96 (byteAt (ctrlA n n₂ s₂) 1).toNat (ctrlA n n₂ s₂)).mapM segView =
+      [segView ⟨(ctrlSeg (dC 0) (dC 1) 1).toArray⟩, segView ⟨(ctrlSeg s₂ (dC 2) n₂).toArray⟩].mapM id := by
+  rw [hk, show ctrlA n n₂ s₂ = ⟨(aggHdr 2 n (dC 2) ++
+      [ctrlSeg (dC 0) (dC 1) 1, ctrlSeg s₂ (dC 2) n₂].flatten).toArray⟩ by simp [ctrlA],
+    aggSegs_flat (k := 2) (aggHdr 2 n (dC 2)) [ctrlSeg (dC 0) (dC 1) 1, ctrlSeg s₂ (dC 2) n₂]
+      (by simp [aggHdr, enc64]) (by simp [ctrlSeg, segHdr, stmtLeafBytes, enc64]) rfl]
+  rfl
+
 /-- Every segment program accepts with no query. -/
 def VsegTrue : SegKind → Digest → Digest → Proof → OProg Bool := fun _ _ _ _ => .ret true
 
@@ -391,19 +486,21 @@ theorem forall₂_true (vk : Digest) (segs : List Proof) (vs : List SegView) :
 theorem ctrlA_pos : (VAwith 96 VsegTrue (dC 9) (leafStmtF (dC 2) 3) (ctrlA 3 2 (dC 1))).runSeq [] =
     some true := by
   have hv : (aggSegs 96 (byteAt (ctrlA 3 2 (dC 1)) 1).toNat (ctrlA 3 2 (dC 1))).mapM segView =
-      some (ctrlViews 2 (dC 1)) := by decide +kernel
+      some (ctrlViews 2 (dC 1)) := by rw [ctrlA_mapM _ _ _ (by decide +kernel)]; decide +kernel
   have he : bytesAt (ctrlA 3 2 (dC 1)) 16 32 = dC 2 := by decide +kernel
   have hn : rdLE64 (ctrlA 3 2 (dC 1)) 8 = 3 := by decide +kernel
   have hc : aggChecks (leafStmtF (dC 2) 3) (rdLE64 (ctrlA 3 2 (dC 1)) 8)
       (bytesAt (ctrlA 3 2 (dC 1)) 16 32) (ctrlViews 2 (dC 1)) = true := by
     simp only [aggChecks_eq, he, hn, decide_true, Bool.true_and]; decide +kernel
-  have h := VA_complete (vk := dC 9) (by decide +kernel) (by decide +kernel) hv hc (forall₂_true _ _ _)
+  have h := VA_complete (vk := dC 9) (by decide +kernel) (by decide +kernel) (by decide +kernel) hv hc
+    (forall₂_true _ _ _)
   simpa using h
 
 /-- Negative: a wrong total (`hdrA`'s `n = 4`, the segments' `1 + 2`). -/
 theorem ctrlA_bad_sum : (VAwith 96 VsegTrue (dC 9) (leafStmtF (dC 2) 4) (ctrlA 4 2 (dC 1))).runSeq [] ≠
     some true :=
-  VA_reject_rest (vs := ctrlViews 2 (dC 1)) (by decide +kernel) (by decide +kernel) _
+  VA_reject_rest (vs := ctrlViews 2 (dC 1)) 
+    (by rw [ctrlA_mapM _ _ _ (by decide +kernel)]; decide +kernel) (by decide +kernel) _
 
 /-- Negative: a segment length out of its kind's range fails the checks (so `V_A` rejects,
 `VA_reject_rest`). -/
@@ -416,7 +513,42 @@ theorem aggRest_bad_n {n : ℕ} {e : Digest} {vs : List SegView} {v : SegView} (
 /-- Negative: segment 2 does not start at segment 1's end (its public start `s₂ = e₁` fails). -/
 theorem ctrlA_bad_start : (VAwith 96 VsegTrue (dC 9) (leafStmtF (dC 2) 3) (ctrlA 3 2 (dC 7))).runSeq [] ≠
     some true :=
-  VA_reject_rest (vs := ctrlViews 2 (dC 7)) (by decide +kernel) (by decide +kernel) _
+  VA_reject_rest (vs := ctrlViews 2 (dC 7)) 
+    (by rw [ctrlA_mapM _ _ _ (by decide +kernel)]; decide +kernel) (by decide +kernel) _
+
+/-- `π_A`'s header `hdr` followed by the two segments of `ctrlA 3 2 (dC 1)`. -/
+def ctrlAx (hdr : List UInt8) : Proof :=
+  ⟨(hdr ++ ctrlSeg (dC 0) (dC 1) 1 ++ ctrlSeg (dC 1) (dC 2) 2).toArray⟩
+
+/-- Negative (R-4-m5): `ctrlA_pos`'s bytes with `hdrA`'s byte 2 set to `1` are rejected. -/
+theorem ctrlA_bad_pad : (VAwith 96 VsegTrue (dC 9) (leafStmtF (dC 2) 3)
+    (ctrlAx ([aggByte, 2, 1] ++ List.replicate 5 0 ++ enc64 3 ++ (dC 2).toList))).runSeq [] ≠ some true :=
+  fun h => absurd (VA_pad h) (by decide +kernel)
+
+/-- Negative: `e_k ≠ e` (`hdrA`'s `e = d3`, the last segment ends at `d2`): `aggRest` fails, so
+`V_A` rejects (`VA_reject_rest`); with `e = d2` it holds (`ctrlA_pos`). -/
+theorem ctrlA_bad_end : aggRest 3 (dC 3) (ctrlViews 2 (dC 1)) = false ∧
+    aggRest 3 (dC 2) (ctrlViews 2 (dC 1)) = true := by
+  decide +kernel
+
+/-- Five chained one-step `L31` views `d0 → d1 → … → d5`. -/
+def ctrlViews5 : List SegView := (List.range 5).map fun i => ⟨.L31, dC i.toUInt8, dC (i + 1).toUInt8, 1⟩
+
+/-- Negative (`k ∉ [1, 4]`): `k = 0` (a bare 48-byte `hdrA`) is rejected; `k = 5` fails `aggRest` on
+five otherwise valid chained views, whose first four pass. -/
+theorem ctrlA_k0 : (VAwith 96 VsegTrue (dC 9) (leafStmtF (dC 0) 0)
+    ⟨(aggHdr 0 0 (dC 0)).toArray⟩).runSeq [] ≠ some true :=
+  fun h => absurd (VA_k_range h).1 (by decide +kernel)
+
+theorem ctrlA_k5 : aggRest 5 (dC 5) ctrlViews5 = false ∧ aggRest 4 (dC 4) (ctrlViews5.take 4) = true := by
+  decide +kernel
+
+/-- Negative (the cap is per kind): an `L31` segment of `2^17 + 1` steps fails `aggRest`; the same
+view of kind `L32` passes. -/
+theorem ctrlA_cap_kind :
+    aggRest (2 ^ 17 + 2) (dC 2) [⟨.L31, dC 0, dC 1, 1⟩, ⟨.L31, dC 1, dC 2, 2 ^ 17 + 1⟩] = false ∧
+      aggRest (2 ^ 17 + 2) (dC 2) [⟨.L31, dC 0, dC 1, 1⟩, ⟨.L32, dC 1, dC 2, 2 ^ 17 + 1⟩] = true := by
+  decide +kernel
 
 end Rev4
 end FR

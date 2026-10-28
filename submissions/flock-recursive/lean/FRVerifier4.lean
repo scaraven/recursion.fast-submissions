@@ -1,30 +1,40 @@
 -- New for `flock-recursive` (BLUEPRINT revision 4.0, B-11, B-13, B-17; §3; stage S-0′).
 import FRAgg
+import FRNodeLayout4
 import FRVerifier
 
 /-!
 # Revision 4.1's verifier `V4`: the top-level dispatch over `W`, `A`, `N2`, `N4`, `N8`
 
-BLUEPRINT §3 with revision 4.0's kinds (B-11, B-13). `V4with Vseg Vnode vk c π` reads byte 0:
+BLUEPRINT §3 with revision 4.1's kinds (B-11, B-13). `V4with Vseg Vnode vk c π` reads byte 0:
 
 * `'A'` (`aggByte`): the aggregate leaf, `V_A` (`FRAgg.VAwith`) with segment proofs of
   `piSizeOf seq4 = 798,192` bytes and the segment programs `Vseg`;
 * a node kind byte (`N2` `'M'`, `N4` `'N'`, `N8` `'O'`) with `|π| = piSizeOf seq4 = 798,192`: the node program
-  `Vnode κ`; another size: reject (`bad`), no query;
+  `Vnode κ`; another size: reject (`bad`), no query. A node's children are verified inside its
+  circuit, not by `V4with`: the check a node of kind `κ` applies to an aggregate child is
+  `childOk4 κ` (at most `κ.maxK` segments: `N2` refuses `k > 2`, R-4-m2), a row of the node circuit
+  (S-E) and a truth of its soundness (S-G);
 * a segment kind byte (`L30`, `L31`, `L32`): reject (`bad`): a segment is never a child of the relation,
   only a part of an aggregate leaf;
 * anything else: the witness-sending branch (`W`, completeness, `P := encode`), with **this**
   verifier for a node's children (`accWith4`, well-founded on `|π|`), as 3.x's `Vwith`.
 
-`Vseg` and `Vnode` are parameters: the programs `runIR impl (gen …)` of the 4.0 kinds need the
-kind-generic IR and finals (S-0′ RESULT, "For S-E12′"). `qV4 = 36,000` (B-17).
+`Vseg` and `Vnode` are parameters (the concrete programs are `FRVerifierC4`'s `VsegC`/`VnodeC`).
+`qV4 = 36,000` (B-17).
 
 * **`acc_eq4`**: the contract's `Submission.acc` with `V = V4with Vseg Vnode` and `qV = qV4` is
   `accV4`.
-* **`V4_W_sound`**, **`V4_encode`**, **`complete4`**: as 3.x's (`δ = 0`).
+* **`V4_W_sound`**, **`V4_encode`**, **`complete4`**: as 3.x's (`δ = 0`). `complete4` is the
+  contract's completeness for `P := encode` (the `W` path); it holds for every `Vseg`/`Vnode` and
+  is no evidence for the `A`/node path, whose completeness is `FRAgg.VA_complete` (R-4 Q3).
 * **`V4_agg_extract`**: an accepted `A` proof yields its leaf witness (`FRAgg.VA_extract`).
+* **`V4_queries_le`**, **`ks_queries4`**: `V4with` asks at most `qV4` queries on every input and
+  oracle, given per-program bounds (`A`: `4 ×` a segment program's; a node: its program's; `W`:
+  none): `KS`'s first conjunct (R-4-m4).
 * Controls: `ctrl4_W_leaf` (accepted), `ctrl4_bad_node_size`, `ctrl4_seg_top`, `ctrl4_bad_byte`
-  (rejected, no query).
+  (rejected, no query); `childOk4_ctrl` (`N2` takes an aggregate child of 2 segments and refuses 3;
+  `N4` takes 3).
 -/
 
 namespace FR
@@ -59,7 +69,7 @@ abbrev SegProgs := SegKind → Digest → Digest → Proof → OProg Bool
 /-- The node programs' type. -/
 abbrev NodeProgs := NodeKind → Digest → Digest → Proof → OProg Bool
 
-/-- **The verifier** of revision 4.0. -/
+/-- **The verifier** of revision 4.1. -/
 def V4with (Vseg : SegProgs) (Vnode : NodeProgs) (vk c : Digest) (π : Proof) : OProg Bool :=
   match kindOf4 π with
   | .agg => VAwith (piSizeOf seq4) Vseg vk c π
@@ -81,7 +91,7 @@ decreasing_by
   · rw [← _h, encodeF_eq]; exact (size_child_lt _ _ _ _).1
   · rw [← _h, encodeF_eq]; exact (size_child_lt _ _ _ _).2
 
-/-- **The acceptance predicate of the relation** (revision 4.0). -/
+/-- **The acceptance predicate of the relation** (revision 4.1). -/
 def accV4 (Vseg : SegProgs) (Vnode : NodeProgs) (vk c : Digest) (p : Signed) : Bool :=
   accWith4 vk p fun _ => V4with Vseg Vnode vk c p.π
 
@@ -139,6 +149,63 @@ theorem V4_agg_extract (h : kindOf4 π = .agg) (hS : SegSound Vseg vk) {tr : Tra
   rw [V4_agg Vseg Vnode vk c π h] at hacc; exact VA_extract hS hacc
 
 end Branches
+
+/-! ## Queries (`KS`'s first conjunct) -/
+
+/-- **`V4with`'s queries** under `H`: at most `qV4`, given a bound `qS` on every segment program's
+with `4 · qS ≤ qV4` (`A`: `k ≤ 4` is checked before any query) and `qV4` on every node program's.
+`W` and `bad` ask none. -/
+theorem V4_queries_le (Vseg : SegProgs) (Vnode : NodeProgs) (H : ByteArray → Digest) {qS : ℕ}
+    (hS : ∀ κ vk c π, ((Vseg κ vk c π).queries H).length ≤ qS)
+    (hN : ∀ κ vk c π, ((Vnode κ vk c π).queries H).length ≤ qV4) (hq : 4 * qS ≤ qV4)
+    (vk c : Digest) (π : Proof) : ((V4with Vseg Vnode vk c π).queries H).length ≤ qV4 := by
+  rcases h : kindOf4 π with _ | _ | _ | κ
+  · rw [V4_W Vseg Vnode vk c π h]; exact Nat.zero_le _
+  · rw [V4_bad Vseg Vnode vk c π h]; exact Nat.zero_le _
+  · rw [V4_agg Vseg Vnode vk c π h]; exact (VA_queries_le H hS vk c π).trans hq
+  · rw [V4_node Vseg Vnode vk c π h]; exact hN _ _ _ _
+
+/-- **`KS`'s first conjunct** for a submission with verifier `V4with Vseg Vnode` and `qV = qV4`. -/
+theorem ks_queries4 (Vseg : SegProgs) (Vnode : NodeProgs) (S : Submission)
+    (hV : S.V = V4with Vseg Vnode) (hq : S.qV = qV4) {qS : ℕ}
+    (hS : ∀ H κ vk c π, ((Vseg κ vk c π).queries H).length ≤ qS)
+    (hN : ∀ H κ vk c π, ((Vnode κ vk c π).queries H).length ≤ qV4) (h4 : 4 * qS ≤ qV4) (vk : Digest) :
+    ∀ H c π, ((S.V vk c π).queries H).length ≤ S.qV := fun H c π => by
+  rw [hV, hq]; exact V4_queries_le Vseg Vnode H (hS H) (hN H) h4 vk c π
+
+/-! ## A node's aggregate child (R-4-m2) -/
+
+/-- **The check a node of kind `κ` applies to a child proof**: an aggregate leaf (`'A'`) has at most
+`κ.maxK` segments (`N2`: 2; `N4`/`N8`: 4), so its digest chain fits H (`childOk4_chain`). Any other
+child is unaffected. The node circuit enforces it (S-E); `V4with` does not see a node's children. -/
+def childOk4 (κ : NodeKind) (π : Proof) : Bool :=
+  match kindOf4 π with
+  | .agg => decide ((byteAt π 1).toNat ≤ κ.maxK)
+  | _ => true
+
+/-- An aggregate child that passes `childOk4 κ` has a chain of at most H's `aggChainLen κ.maxK`
+blocks. -/
+theorem childOk4_chain {κ : NodeKind} {π : Proof} (h : childOk4 κ π = true) (ha : kindOf4 π = .agg) :
+    aggChainLen (byteAt π 1).toNat ≤ aggChainLen κ.maxK := by
+  simp only [childOk4, ha, decide_eq_true_eq] at h; exact aggChainLen_le h
+
+/-- **The check binds only `N2`**: for `N4`/`N8` (`maxK = 4`) every proof `V4with` accepts passes it
+(`V_A` checks `k ≤ 4`). -/
+theorem childOk4_of_accept {κ : NodeKind} (hκ : κ.maxK = 4) {Vseg : SegProgs} {Vnode : NodeProgs}
+    {vk c : Digest} {π : Proof} {tr : Trace} (h : (V4with Vseg Vnode vk c π).runSeq tr = some true) :
+    childOk4 κ π = true := by
+  unfold childOk4
+  split
+  · next ha =>
+    rw [V4_agg Vseg Vnode vk c π ha] at h
+    simpa [hκ] using (VA_k_range h).2
+  · rfl
+
+/-- Controls: `N2` takes an aggregate child of 2 segments and refuses 3; `N4` takes 3; a
+witness-sending proof is unaffected. -/
+theorem childOk4_ctrl : childOk4 .N2 ⟨#[aggByte, 2]⟩ = true ∧ childOk4 .N2 ⟨#[aggByte, 3]⟩ = false ∧
+    childOk4 .N4 ⟨#[aggByte, 3]⟩ = true ∧ childOk4 .N2 ⟨#[1, 3]⟩ = true := by
+  decide
 
 /-! ## Completeness (§5.5) -/
 

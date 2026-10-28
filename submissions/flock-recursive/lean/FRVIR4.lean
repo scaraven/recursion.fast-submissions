@@ -20,7 +20,8 @@ Differences from 3.x's `genPhase` (each forced by the 4.0 shapes):
 * **Statement** (`stmtOps4`): a segment asserts the leaf tag and zero bytes 41–127, **not**
   `n = 2^(m − 14)`: its length is variable and range-checked by `V_A` (B-12); a node asserts the
   node tag, zero bytes 65–127 and `hdr.pub = vk`.
-* **Final message**: zero beyond the kind's `2^(m − 25)` K elements.
+* **Final message**: zero beyond the kind's `2^(m − 25)` K elements (`2^(m − 19 − ell0)` at the
+  ruling's `ell0 = 6` only: R-4-m3).
 
 * **The variable last block** (a segment; S-F4): the `stmt` phase also reads `L = n − 1` from the
   statement (`lastOps`, its outputs `b :: lastOuts`), and Z2's `targetS` operand is Z1's point
@@ -73,7 +74,7 @@ def stmtOps4 (p : KindP) (so msg b : ℕ) : List Op :=
      .assertEq (b + 5) (b + 6) allK]
    else [.piField 0 (so + 41) 87, .assertZero (b + 4) allK])
 
-/-- The final message is zero beyond the kind's `2^(m − 25)` K elements. -/
+/-- The final message is zero beyond the kind's `2^(m − 25)` K elements (`ell0 = 6`). -/
 def finalOps4 (S : Seq) (p : KindP) (fo b : ℕ) : List Op :=
   [.piField 0 (fo + 2 ^ (p.d.m - 25) * 32) ((2 ^ S.pf - 2 ^ (p.d.m - 25)) * 32), .assertZero b allK]
 
@@ -204,7 +205,7 @@ def gen4 (S : Seq) (p : KindP) (fin : FinOps) : VProg :=
 def genSeg (κ : SegKind) (fin : FinOps) : VProg := gen4 seq4 (.ofSeg κ) fin
 def genNode (κ : NodeKind) (fin : FinOps) : VProg := gen4 seq4 (.ofNode κ) fin
 
-/-- The segment format's field offsets are 3.x's (A.3), the node format's are not. -/
+/-- `seq3`'s field offsets are 3.x's (A.3); `seq4`'s, which every 4.1 program uses, are not. -/
 theorem fieldOffs : (List.range 19).map (fieldOffOf seq3) = (List.range 19).map fieldOff ∧
     fieldOffOf seq4 fCols ≠ fieldOff fCols := by
   rw [seq3_eq, seq4_eq]; decide +kernel

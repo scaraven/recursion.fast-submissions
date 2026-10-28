@@ -51,7 +51,8 @@ def progNode (κ : NodeKind) (cells : List ℕ) : VProg := genNode κ (finOps4 (
 /-- **`Vseg`**: the segment program under the segment's ops. -/
 def VsegC (impl₀ : OpImpl) : SegProgs := fun κ vk c π => runIR (implSeg impl₀) (progSeg κ) ⟨vk, c, π⟩
 
-/-- **`Vnode`**: the node program under the node kind's ops. -/
+/-- **`Vnode`**: the node program under the node kind's ops. The node's children are checked in its
+circuit; on an aggregate child that includes `childOk4 κ` (`N2`: at most 2 segments; S-E's row). -/
 def VnodeC (implN : NodeKind → OpImpl) (cells : NodeKind → List ℕ) : NodeProgs :=
   fun κ vk c π => runIR (implN κ) (progNode κ (cells κ)) ⟨vk, c, π⟩
 
