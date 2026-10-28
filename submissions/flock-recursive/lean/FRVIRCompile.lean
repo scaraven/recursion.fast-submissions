@@ -461,11 +461,14 @@ def noExt : Ext := fun _ _ _ => none
 /-- One op's contribution under an extension. -/
 def stepOut (X : Ext) (P : Params) (cs : CS) (op : Op) : Out := (X P cs op).getD (opOut P cs op)
 
-/-- The Merkle steps that follow, up to the position's `shrN`. -/
+/-- The Merkle steps that follow, up to the position's `shrN`: one `askNode` per step (S-E12b: 3.x
+counted the sibling reads `piDigest fSibs`, which revision 4's absolute addressing reads as
+`piDigest 0`, so its positions were laid out unaligned and stayed sparse; the count is the same
+for 3.x's programs). -/
 def stepsAhead : List Op → ℕ
   | [] => 0
   | .shrN .. :: _ => 0
-  | .piDigest f _ :: ops => (if f = fSibs then 1 else 0) + stepsAhead ops
+  | .askNode .. :: ops => 1 + stepsAhead ops
   | _ :: ops => stepsAhead ops
 
 /-- **The alignment hint** of an op given the ops after it (S-E5, performance only): a Merkle
