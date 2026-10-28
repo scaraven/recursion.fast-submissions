@@ -159,11 +159,17 @@ def digBit (e₀ e₁ : F) (σ : ℕ) : Bool :=
 def digestMle (Eθ : Array F) (e₀ e₁ : F) : F :=
   sumTo 256 fun σ => if digBit e₀ e₁ σ then Eθ.getD σ 0 else 0
 
-/-- **`shiftTarget`** with `κ_s` (A.9 `finSh` (i); the leaf's native reading, P2 §7.5 (4)):
-`eq(τ, last) · h̃(θ) + κ_s · s̃(θ)`, `bnd = [s_lo, s_hi, h_lo, h_hi]`. -/
+/-- The last block of `shiftTarget`'s `bnd` as an 18-coordinate point (entries `4 … 21`; revision
+3.15: `1^(m−14) ‖ 0^(32−m)`, `finSh`'s `bndOps`). -/
+def lastOf (bnd : Array F) : Fin 18 → F := fun l => bnd.getD (4 + l.val) 0
+
+/-- **`shiftTarget`** with `κ_s` (A.9 `finSh` (i); the leaf's native reading, P2 §7.5 (4);
+revision 3.15: on 18 coordinates): `eq(τ, last) · h̃(θ) + κ_s · s̃(θ)`, `bnd = [s_lo, s_hi, h_lo,
+h_hi] ‖ last`. -/
 def shiftTargetI (κs : F) (τ θ bnd : Array F) : F :=
   let Eθ := eqTable (List.ofFn (ptA 10 θ))
-  prodTo τ.size (fun l => τ.getD l 0) * digestMle Eθ (bnd.getD 2 0) (bnd.getD 3 0) +
+  prodTo 18 (fun l => τ.getD l 0 * bnd.getD (4 + l) 0 + (1 - τ.getD l 0) * (1 - bnd.getD (4 + l) 0)) *
+      digestMle Eθ (bnd.getD 2 0) (bnd.getD 3 0) +
     κs * digestMle Eθ (bnd.getD 0 0) (bnd.getD 1 0)
 
 /-- The chain block's public target `E_chain` as 0/1 (A.6, `Chain.chainTarget`; `none` reads `0`). -/
@@ -219,10 +225,12 @@ def rsWeightS (r : Array F) (ps : List (Array K)) (κ : F) (ρ : Array K) : K :=
 /-- A digest's bits as a table over the 10-bit slot index (`0` from `σ = 256` on). -/
 def digTbl (e₀ e₁ : F) : Fin (2 ^ 10) → F := fun u => if u.val < 256 ∧ digBit e₀ e₁ u then 1 else 0
 
-/-- **`shiftTarget`'s specification** with `κ_s` (`FRShift.shiftTarget`): `eq(τ, last) h̃V(θ) +
-κ_s s̃V(θ)`, `sV`, `hV` the boundary digests `bnd[0,1]`, `bnd[2,3]` as bit tables. -/
+/-- **`shiftTarget`'s specification** with `κ_s` (`FRShift.shiftTargetAt`, revision 3.15: on 18
+coordinates): `eq(τ, last) h̃V(θ) + κ_s s̃V(θ)`, `sV`, `hV` the boundary digests `bnd[0,1]`,
+`bnd[2,3]` as bit tables, `last = bnd[4 … 21]` (`shiftTargetS_pad`: at a zero-padded `τ` and the
+kind's padded last block, `FRShift.shiftTarget` on `m − 14` coordinates). -/
 def shiftTargetS (κs : F) (τ θ bnd : Array F) : F :=
-  shiftTarget (ptA 10 θ) (ptA τ.size τ) κs (digTbl (bnd.getD 0 0) (bnd.getD 1 0))
+  shiftTargetAt (ptA 10 θ) (ptA 18 τ) (lastOf bnd) κs (digTbl (bnd.getD 0 0) (bnd.getD 1 0))
     (digTbl (bnd.getD 2 0) (bnd.getD 3 0))
 
 /-- **The leaf kinds' `targetS` specification** (`FRPubTarget.targetS` over the `8 + b` variables
@@ -497,12 +505,108 @@ theorem digestMle_eq (θ : Array F) (e₀ e₁ : F) :
 /-- **`shiftTarget` meets its specification** (at the same `κ_s`). -/
 theorem shiftTarget_meets (κs : F) (τ θ bnd : Array F) :
     shiftTargetI κs τ θ bnd = shiftTargetS κs τ θ bnd := by
-  unfold shiftTargetI shiftTargetS shiftTarget
+  unfold shiftTargetI shiftTargetS shiftTargetAt
   dsimp only
-  rw [digestMle_eq, digestMle_eq, prodTo_eq, eq_cube, ← Fin.prod_univ_eq_prod_range]
+  rw [digestMle_eq, digestMle_eq, prodTo_eq, ← Fin.prod_univ_eq_prod_range]
+  rfl
+
+/-! ## Zero-padded `τ` (revision 3.15, ruling (c))
+
+`finSh` gives `τ` and S2's block point `r_blk` 18 coordinates for every kind, P30's and N30's
+padded with `0` in coordinates 16–17 (`FRVIRFinals.padB`). On such operands `eqPt`, `shiftEq` and
+`shiftTarget` are their `m − 14`-coordinate forms (`eqPoint_pad`, `shiftEqS_pad`,
+`shiftTargetS_pad`; `FRShift.eq_pad_zero`, `shiftPair_pad`, `shiftTarget_pad`). -/
+
+theorem foldl_prod_range (g : ℕ → F) (n : ℕ) :
+    (List.range n).foldl (fun acc v => acc * g v) 1 = ∏ v ∈ range n, g v := by
+  induction n with
+  | zero => rfl
+  | succ n ih => rw [List.range_succ, List.foldl_append, ih, Finset.prod_range_succ]; rfl
+
+/-- `eqPoint` is `eq` at the arrays' points (over `a`'s length). -/
+theorem eqPoint_eq (a b : Array F) : eqPoint a b = eq (ptA a.size a) (ptA a.size b) := by
+  simp only [eqPoint]
+  rw [foldl_prod_range, eq, ← Fin.prod_univ_eq_prod_range (fun v => a.getD v 0 * b.getD v 0 +
+    (1 - a.getD v 0) * (1 - b.getD v 0))]
+  rfl
+
+theorem ptA_toArray (n : ℕ) (xs : List F) : ptA n xs.toArray = ptOf n xs := by
+  funext l; simp [ptA, ptOf, Array.getD_eq_getD_getElem?, List.getD_eq_getElem?_getD]
+
+/-- `eqPoint` on points of one length is `shiftPair`'s first component. -/
+theorem eqPoint_shiftPair (xs ys : List F) (h : xs.length = ys.length) :
+    eqPoint xs.toArray ys.toArray = (shiftPair xs ys).1 := by
+  rw [shiftPair_eq xs.length xs ys rfl h.symm, eqPoint_eq, List.size_toArray, ptA_toArray,
+    ptA_toArray]
+
+/-- **`eqPt` on zero-padded points** (`eq_pad_zero`). -/
+theorem eqPoint_pad (k : ℕ) (xs ys : List F) (h : xs.length = ys.length) :
+    eqPoint (xs ++ List.replicate k 0).toArray (ys ++ List.replicate k 0).toArray =
+      eqPoint xs.toArray ys.toArray := by
+  rw [eqPoint_shiftPair _ _ (by simp [h]), eqPoint_shiftPair _ _ h, shiftPair_pad k xs ys h]
+
+/-- **`shiftEq`'s specification on zero-padded points** (`shiftPair_pad`). -/
+theorem shiftEqS_pad (k : ℕ) (xs ys : List F) (h : xs.length = ys.length) :
+    shiftEqS (xs ++ List.replicate k 0).toArray (ys ++ List.replicate k 0).toArray =
+      shiftEqS xs.toArray ys.toArray := by
+  rw [← shiftEq_meets _ _ (by simp [h]), ← shiftEq_meets _ _ (by simp [h]), shiftEqI, shiftEqI,
+    List.toList_toArray, List.toList_toArray, shiftPair_pad k xs ys h]
+
+/-- The last block's padded point: `1^n ‖ 0^k` (`finSh`'s `bnd[4 … 21]`). -/
+def lastPad (n k : ℕ) : List F := List.replicate n 1 ++ List.replicate k 0
+
+theorem getD_pad (xs : List F) (k i : ℕ) :
+    (xs ++ List.replicate k 0).getD i 0 = xs.getD i 0 := by
+  rcases lt_or_ge i xs.length with hi | hi
+  · simp [List.getD_eq_getElem?_getD, List.getElem?_append_left hi]
+  · simp only [List.getD_eq_getElem?_getD, List.getElem?_append_right hi, List.getElem?_replicate,
+      List.getElem?_eq_none hi]
+    split_ifs <;> rfl
+
+/-- **`shiftTarget`'s specification at a zero-padded `τ`** and the kind's padded last block
+`1^n ‖ 0^k` (`n + k = 18`): `FRShift.shiftTarget` on the `n` block coordinates. -/
+theorem shiftTargetS_pad (κs : F) (θ : Array F) {n k : ℕ} (hnk : n + k = 18) (τ b4 : List F)
+    (hτ : τ.length = n) (hb : b4.length = 4) :
+    shiftTargetS κs (τ ++ List.replicate k 0).toArray θ (b4 ++ lastPad n k).toArray =
+      shiftTarget (ptA 10 θ) (ptOf n τ) κs (digTbl (b4.getD 0 0) (b4.getD 1 0))
+        (digTbl (b4.getD 2 0) (b4.getD 3 0)) := by
+  have hb' : ∀ j, j < 4 → (b4 ++ lastPad n k).toArray.getD j 0 = b4.getD j 0 := fun j hj => by
+    simp [Array.getD_eq_getD_getElem?, List.getD_eq_getElem?_getD,
+      List.getElem?_append_left (show j < b4.length by omega)]
+  have hl : ∀ l, (b4 ++ lastPad n k).toArray.getD (4 + l) 0 = if l < n then 1 else 0 := fun l => by
+    simp only [Array.getD_eq_getD_getElem?, List.getElem?_toArray, lastPad,
+      List.getElem?_append_right (show b4.length ≤ 4 + l by omega), hb, Nat.add_sub_cancel_left]
+    rcases lt_or_ge l n with h | h
+    · simp [List.getElem?_append_left (show l < (List.replicate n (1 : F)).length by simpa), h]
+    · simp only [List.getElem?_append_right (show (List.replicate n (1 : F)).length ≤ l by simpa),
+        List.getElem?_replicate, List.length_replicate, show ¬ l < n by omega, ite_false]
+      split_ifs <;> rfl
+  unfold shiftTargetS shiftTargetAt shiftTarget
+  rw [hb' 0 (by omega), hb' 1 (by omega), hb' 2 (by omega), hb' 3 (by omega)]
   congr 2
-  refine Finset.prod_congr rfl fun l _ => ?_
-  simp [lastBlk, Nat.testBit_two_pow_sub_one, ptA]
+  rw [eq_cube, eq]
+  simp only [ptA, lastOf, ptOf]
+  have e18 := Fin.prod_univ_eq_prod_range (fun l : ℕ => (τ ++ List.replicate k (0 : F)).toArray.getD l 0 *
+      (b4 ++ lastPad n k).toArray.getD (4 + l) 0 + (1 - (τ ++ List.replicate k (0 : F)).toArray.getD l 0) *
+      (1 - (b4 ++ lastPad n k).toArray.getD (4 + l) 0)) 18
+  have en := Fin.prod_univ_eq_prod_range
+    (fun l : ℕ => if (lastBlk n).val.testBit l then τ.getD l 0 else 1 - τ.getD l (0 : F)) n
+  rw [e18, en]
+  · rw [← hnk, Finset.prod_range_add]
+    have h2 : ∀ x ∈ range k, (τ ++ List.replicate k 0).toArray.getD (n + x) 0 *
+        (b4 ++ lastPad n k).toArray.getD (4 + (n + x)) 0 +
+        (1 - (τ ++ List.replicate k 0).toArray.getD (n + x) 0) *
+        (1 - (b4 ++ lastPad n k).toArray.getD (4 + (n + x)) 0) = 1 := fun x _ => by
+      rw [hl, if_neg (by omega)]
+      simp [Array.getD_eq_getD_getElem?, List.getElem?_append_right (show τ.length ≤ n + x by omega),
+        hτ]
+    rw [Finset.prod_eq_one h2, mul_one]
+    refine Finset.prod_congr rfl fun l hl' => ?_
+    have hln : l < n := Finset.mem_range.1 hl'
+    rw [hl, if_pos hln, show (lastBlk n).val = 2 ^ n - 1 from rfl, Nat.testBit_two_pow_sub_one,
+      decide_eq_true hln, if_pos rfl]
+    simp [Array.getD_eq_getD_getElem?, List.getD_eq_getElem?_getD,
+      List.getElem?_append_left (show l < τ.length by omega)]
 
 /-- **`targetS` meets the leaf kinds' specification**, for every number `b` of block bits. -/
 theorem targetSLeaf_meets (b : ℕ) (r : Array F) : targetSLeafI r = targetSLeafS b r := by

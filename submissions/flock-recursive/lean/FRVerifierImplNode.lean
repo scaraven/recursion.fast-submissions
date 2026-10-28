@@ -609,6 +609,19 @@ theorem shiftMask_meets (τ r : Array F) : shiftMaskI τ r = shiftMaskS τ r := 
     · exact (mask_succ_eq (ptA 16 τ) (ptA 16 r) (by have := hb k hk; omega)).symm
     · exact (mask_succ_eq (ptA 16 τ) (ptA 16 r) (hb k hk)).symm
 
+/-- `ptA 16` of a point padded by zeros is the point's (revision 3.15). -/
+theorem ptA16_pad (xs : List F) (k : ℕ) (h : xs.length = 16) :
+    ptA 16 (xs ++ List.replicate k 0).toArray = ptA 16 xs.toArray := by
+  funext l
+  simp [ptA, Array.getD_eq_getD_getElem?, List.getElem?_append_left (show l.val < xs.length by omega)]
+
+/-- **`shiftMask`'s specification on 18-coordinate zero-padded block points** (revision 3.15,
+ruling (c)): it reads the first 16 coordinates, so it is the 16-coordinate one. -/
+theorem shiftMaskS_pad (xs ys : List F) (k : ℕ) (hx : xs.length = 16) (hy : ys.length = 16) :
+    shiftMaskS (xs ++ List.replicate k 0).toArray (ys ++ List.replicate k 0).toArray =
+      shiftMaskS xs.toArray ys.toArray := by
+  simp only [shiftMaskS, ptA16_pad xs k hx, ptA16_pad ys k hy]
+
 end MaskMeets
 
 /-! ## Controls -/

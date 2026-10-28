@@ -171,8 +171,10 @@ inductive Op where
   | maskRows (kindW rowW : Reg)
   /-- Three F registers. -/
   | evalM (tau sigma : Reg) | evalL (tau sigma : Reg)
-  /-- F: the shift sumcheck's boundary term with the boundary values `bnd` (AF 4: a leaf's `s`, `h`
-  as two elements each; a node's `h0` twice; revision 3.9). -/
+  /-- F: the shift sumcheck's boundary term with the boundary values `bnd` (AF 22: a leaf's `s`, `h`
+  as two elements each, a node's zeros (revisions 3.9, 3.14); then the kind's last block
+  `1^(m−14) ‖ 0^(32−m)`, revision 3.15). `tau` has 18 coordinates for every kind (P30/N30
+  zero-padded, revision 3.15). -/
   | shiftTarget (tau theta bnd ks : Reg)
   /-- F: the slot weight of slot map `s` at `θ`, `r`. -/
   | slotW (s : ℕ) (theta r : Reg)
@@ -235,8 +237,8 @@ structure OpImpl where
   /-- The node's matrix MLEs (FRVIREval). -/
   evalM : Array F → Array F → F × F × F
   evalL : Array F → Array F → F × F × F
-  /-- The shift sumcheck's boundary term: `κ_s`, `τ`, `θ`, the boundary values (P1-D5, A.9
-  `finSh` (i); FRShift). -/
+  /-- The shift sumcheck's boundary term: `κ_s`, `τ` (18 coordinates), `θ`, the boundary values
+  and the kind's last block (P1-D5, A.9 `finSh` (i); FRShift; revision 3.15). -/
   shiftTarget : F → Array F → Array F → Array F → F
   /-- The collapse's slot weight of slot map `s` for the proof's kind, summed directly (S-C-m1;
   FRShift). -/
@@ -274,7 +276,7 @@ def OpImpl.Meets (impl : OpImpl) (spec : OpSpec) : Prop :=
   (∀ rw cw, rw.size = 2 ^ 14 → cw.size = 2 ^ 14 → impl.walkAB rw cw = spec.walkAB rw cw) ∧
   (∀ a b, impl.evalM a b = spec.evalM a b) ∧ (∀ a b, impl.evalL a b = spec.evalL a b) ∧
   (∀ a, impl.kindInd a = spec.kindInd a) ∧
-  (∀ k a b c, c.size = 4 → impl.shiftTarget k a b c = spec.shiftTarget k a b c) ∧
+  (∀ k a b c, c.size = 22 → impl.shiftTarget k a b c = spec.shiftTarget k a b c) ∧
   (∀ κ s a b, impl.slotW κ s a b = spec.slotW κ s a b) ∧
   (∀ a b c, impl.kindFoldWeight a b c = spec.kindFoldWeight a b c) ∧
   (∀ κ a c, impl.linkWAll κ a c = spec.linkWAll κ a c) ∧

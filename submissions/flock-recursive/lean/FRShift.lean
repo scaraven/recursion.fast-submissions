@@ -529,4 +529,45 @@ theorem chainLinks_batch {s n : ℕ} {O₁ I₁ O₂ I₂ : Fin (2 ^ (s + n)) �
   exact ⟨⟨fun σ y hy ↦ (L σ y hy).1, fun σ ↦ (H σ).1, fun σ ↦ (S σ).1⟩,
     ⟨fun σ y hy ↦ (L σ y hy).2, fun σ ↦ (H σ).2, fun σ ↦ (S σ).2⟩⟩
 
+/-! ### Zero-padded block points (revision 3.15, ruling (c))
+
+`τ` has 18 coordinates for every kind: P30's and N30's 16 block coordinates are padded with the
+constant `0` (coordinates 16–17), and so is S2's block point. Padding both points of `eq` or of the
+successor's extension by zeros changes nothing (`eq_pad_zero`, `shiftPair_pad`); the shift target
+takes its last block as a point (`shiftTargetAt`), the kind's `lastBlk` padded by zeros
+(`shiftTarget_pad`). -/
+
+/-- A point padded by `k` zero coordinates. -/
+def padZ (k : ℕ) {n : ℕ} (x : Fin n → R) : Fin (n + k) → R := Fin.append x 0
+
+/-- **`eq_pad_zero`**: `eq((a ‖ 0^k), (b ‖ 0^k)) = eq(a, b)`. -/
+theorem eq_pad_zero (k : ℕ) {n : ℕ} (a b : Fin n → R) : eq (padZ k a) (padZ k b) = eq a b := by
+  simp [eq, padZ, Fin.prod_univ_add]
+
+theorem shiftPair_zeros (k : ℕ) : shiftPair (List.replicate k (0 : R)) (List.replicate k 0) = (1, 0) := by
+  induction k with
+  | zero => rfl
+  | succ k ih => simp [List.replicate_succ, shiftPair, ih]
+
+/-- **`shiftPair_pad`**: `(eq, S)` of two points of one length padded by `k` zeros is theirs. -/
+theorem shiftPair_pad (k : ℕ) : ∀ (xs ys : List R), xs.length = ys.length →
+    shiftPair (xs ++ List.replicate k 0) (ys ++ List.replicate k 0) = shiftPair xs ys
+  | [], [], _ => by rw [List.nil_append, shiftPair_zeros]; rfl
+  | x :: xs, y :: ys, h => by
+    simp only [List.cons_append, shiftPair, shiftPair_pad k xs ys (by simpa using h)]
+  | [], _ :: _, h | _ :: _, [], h => by simp at h
+
+/-- **The shift target at a given last block** (revision 3.15): `eq(τ, last) · h̃V(θ) + κ ·
+s̃V(θ)`. `shiftTarget` is it at `cube (lastBlk n)`. -/
+def shiftTargetAt {s n : ℕ} (θ : Fin s → R) (τ last : Fin n → R) (κ : R)
+    (sV hV : Fin (2 ^ s) → R) : R :=
+  eq τ last * mle hV θ + κ * mle sV θ
+
+/-- **`shiftTarget_pad`**: on points padded by `k` zeros, with the last block `lastBlk n` padded
+too, the target is the `n`-block one. -/
+theorem shiftTarget_pad [CharP R 2] (k : ℕ) {s n : ℕ} (θ : Fin s → R) (τ : Fin n → R) (κ : R)
+    (sV hV : Fin (2 ^ s) → R) :
+    shiftTargetAt θ (padZ k τ) (padZ k (cube (lastBlk n))) κ sV hV = shiftTarget θ τ κ sV hV := by
+  rw [shiftTargetAt, eq_pad_zero, shiftTarget]
+
 end FR
