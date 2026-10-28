@@ -238,7 +238,7 @@ vector is the folded K message split into coordinates (`split`: F element `2x + 
 `x div 8` of level `i + 1` (16 rows). -/
 
 /-- P1.i's fold challenge `l` (K): the answer of round `l`'s squeeze. -/
-def sAt (es : Log) (i l : ℕ) : K := kAt es (phStart (25 + 5 * i) + 2 * l + 1)
+def sAt (es : Log) (i l : ℕ) : K := kAt es (phStart (26 + 5 * i) + 2 * l + 1)
 
 /-- **The column fold `y_j`** of level `i` at position `j`: `Σ_r eq(sᵢ, r)·W⁽ⁱ⁾[r][j]`. -/
 noncomputable def foldAt (κ : Kind) (L es : Log) (i : ℕ) (j : Fin (2 ^ (lvl κ i).logN)) : K :=
@@ -266,7 +266,7 @@ noncomputable def foldMsg (κ : Kind) (L es : Log) (i x : ℕ) : K :=
   ∑ r : Fin (lvl κ i).rows, eqBits (sAt es i) (lvl κ i).ell r * msgOf κ L es i r x
 
 /-- The final message's element `x` (absorbed at C.4, phase 46). -/
-def finalAt (es : Log) (x : ℕ) : K := readK (msgAt es (phStart 46)) (32 * x)
+def finalAt (es : Log) (x : ℕ) : K := readK (msgAt es (phStart 47)) (32 * x)
 
 /-- **`f⁽ⁱ⁺¹⁾` as level `i`'s folded message**: K element `x` from level `i + 1`'s rows
 `2(x mod 8)` and `2(x mod 8) + 1`, column `x div 8` (`i < 4`); the final message (`i = 4`). -/
@@ -302,11 +302,11 @@ def truthC (κ : Kind) (L es : Log) (i : ℕ) : Prop :=
   ∀ x < 2 ^ mLog κ i, nextMsg κ L es i x = foldMsg κ L es i x
 
 /-- P3.i's consistency coefficient point `κ_c` (the first 9 F coordinates of P3.i). -/
-def kcAt (es : Log) (i v : ℕ) : F := coordAt es (phStart (29 + 5 * i) - 1) v
+def kcAt (es : Log) (i v : ℕ) : F := coordAt es (phStart (30 + 5 * i) - 1) v
 
 /-- P2.i's queried position `q` (A.2: index `q mod per` of answer `q div per`). -/
 def qPos (κ : Kind) (es : Log) (i q : ℕ) : ℕ :=
-  posAt es (phStart (26 + 5 * i)) (lvl κ i).logN (lvl κ i).per q
+  posAt es (phStart (27 + 5 * i)) (lvl κ i).logN (lvl κ i).per q
 
 /-- The column fold at an `ℕ` position (`0` off the code). -/
 noncomputable def foldAtN (κ : Kind) (L es : Log) (i j : ℕ) : K :=
@@ -367,7 +367,7 @@ agrees with it on `A_c`, both sets have at least `nᵢ − eᵢ` positions, so t
 `nᵢ − 2eᵢ ≥ kᵢ` positions (`card_inter_ge`, `lv_params`) and are equal (`rs_eq_of_agree`); `Enc` is
 injective (`enc_injective`).
 
-**`stream_padded`** (item 1 of S-G1e): the node's hashed stream is `1,437,760 = 64 · 22,465`
+**`stream_padded`** (item 1 of S-G1e): the node's hashed stream is `1,486,400 = 64 · 23,225`
 bytes (`streamBytes_eq`), so its last block is full and `Stream.Padded` holds for every
 assignment: `stream_sound`'s padding hypothesis needs no point claim. -/
 

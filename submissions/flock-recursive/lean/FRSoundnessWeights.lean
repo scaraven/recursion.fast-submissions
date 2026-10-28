@@ -24,10 +24,11 @@ evaluates (`lvStepV`, `w0V`).
 * **Part C: level 0** (A.9 `finPf`'s `Ŵ₀`, A.10 B′). `wE`: the E claim's weight
   `(A + κ_E B + κ_E² C)(r_E2, ·)` over the M rows (`rowMat`); **`sum_wE`**: its inner product with
   `f⁽⁰⁾` is `â_M + κ_E b̂_M + κ_E² ĉ_M` at `r_E2` (`mle_matVec`); **`mle_wE`**: its extension is
-  `M̃(r_E2, ρ)` (`evalMK`'s spec, `mle_matMle`). **`w0F Wrs WE cells κ′`**: the RS weight, `κ′·WE`
-  and the cells' indicators; **`truthP1_zero`**: from the RS and E claims' truths and the B′
-  truth, `truthP1 0 (ι ∘ w0F …) (ι v*)`; **`mleN_w0F`** with **`eqCellK_eq`**: its extension is
-  `w0V`'s shape (`rsWeight + κ′·E + Σ_k κ′^(k+2) eq(cell_k, ρ)`).
+  `M̃(r_E2, ρ)` (`evalM`'s spec, `mle_matMle`; since revision 3.12 `finE` evaluates it at the F
+  point `r′`). **`w0F Wrs cells κ′`**: the RS weight (E's claim is RS claim 5, inside it) and the
+  cells' indicators; **`truthP1_zero`**: from the RS claim's truth and the B′ truth,
+  `truthP1 0 (ι ∘ w0F …) (ι v*)`; **`mleN_w0F`** with **`eqCellK_eq`**: its extension is `w0V`'s
+  shape (`rsWeight + Σ_k κ′^(k+2) eq(cell_k, ρ)`).
 
 What is left for `ligerito_final` (S-G2): the RS weight's extension (`weight_mle`, S-C) and the
 fold rounds' binding (the D2 doom's end), which are not stated here.
@@ -179,8 +180,7 @@ theorem sum_wE (rows : List Row) (rE : Fin 21 → F) (kE : F) (f : Fin (2 ^ 23) 
   simp only [mle_matVec, matMle_cube, wE, mul_sum, sum_mul, ← sum_add_distrib]
   refine sum_congr rfl fun y _ => sum_congr rfl fun x _ => by ring
 
-/-- **The E weight's extension** at an F point (`evalM`'s spec; `evalMK` reads it at a K point
-through the same matrices). -/
+/-- **The E weight's extension** at an F point (`evalM`'s spec, `finE` (iv)). -/
 theorem mle_wE (rows : List Row) (rE : Fin 21 → F) (kE : F) (ρ : Fin 23 → F) :
     mle (wE rows rE kE) ρ = matMle (rowMat Row.a rows 21 23) rE ρ +
       kE * matMle (rowMat Row.b rows 21 23) rE ρ +
@@ -192,27 +192,26 @@ theorem mle_wE (rows : List Row) (rE : Fin 21 → F) (kE : F) (ρ : Fin 23 → F
     exact sum_congr rfl fun x _ => by ring
   rw [h, mle_comb, mle_matMle, mle_matMle, mle_matMle]
 
-/-- **Level 0's table** (A.9 `Ŵ₀`, F-valued on the cube): the RS weight `Wrs`, `κ′` times the E
-weight `WE`, and the public cells' indicators weighted `κ′^(k+2)` (A.7's order). -/
-def w0F (Wrs WE : ℕ → F) (cells : List ℕ) (kp : F) (y : ℕ) : F :=
-  Wrs y + kp * WE y + ∑ k ∈ range cells.length, kp ^ (k + 2) * if y = cells.getD k 0 then 1 else 0
+/-- **Level 0's table** (A.9 `Ŵ₀`, F-valued on the cube; revision 3.12): the RS weight `Wrs` (all
+five claims, E's included) and the public cells' indicators weighted `κ′^(k+2)` (A.7's order). -/
+def w0F (Wrs : ℕ → F) (cells : List ℕ) (kp : F) (y : ℕ) : F :=
+  Wrs y + ∑ k ∈ range cells.length, kp ^ (k + 2) * if y = cells.getD k 0 then 1 else 0
 
-/-- **Level 0's claim** (A.10 B′ → P1.0): if `v_RS = ⟨Wrs, f⟩` (RS's truth), `v_E = ⟨WE, f⟩`
-(E's) and `v*` is the B′ truth with cells inside level 0's `2^n` elements, then
-`v* = ⟨w0F, f⁽⁰⁾⟩`: `truthP1 0` at `ι ∘ w0F` and `ι v*`. -/
-theorem truthP1_zero {κ : Kind} {L es : Log} {Wrs WE : ℕ → F} {cells : List ℕ}
-    {kp vRS vE vS : F}
+/-- **Level 0's claim** (A.10 B′ → P1.0): if `v_RS = ⟨Wrs, f⟩` (RS's truth) and `v*` is the B′
+truth with cells inside level 0's `2^n` elements, then `v* = ⟨w0F, f⁽⁰⁾⟩`: `truthP1 0` at
+`ι ∘ w0F` and `ι v*`. -/
+theorem truthP1_zero {κ : Kind} {L es : Log} {Wrs : ℕ → F} {cells : List ℕ}
+    {kp vRS vS : F}
     (hrs : vRS = ∑ y ∈ range (2 ^ ((lvl κ 0).ell + mLog κ 0)), Wrs y * fF κ L es y)
-    (hE : vE = ∑ y ∈ range (2 ^ ((lvl κ 0).ell + mLog κ 0)), WE y * fF κ L es y)
     (hc : ∀ c ∈ cells, c < 2 ^ ((lvl κ 0).ell + mLog κ 0))
-    (hB : truthB' κ L es cells kp vRS vE vS) :
-    truthP1 κ L es 0 (fun y => algebraMap F K (w0F Wrs WE cells kp y)) (algebraMap F K vS) := by
+    (hB : truthB' κ L es cells kp vRS vS) :
+    truthP1 κ L es 0 (fun y => algebraMap F K (w0F Wrs cells kp y)) (algebraMap F K vS) := by
   intro hfar
   set N := 2 ^ ((lvl κ 0).ell + mLog κ 0)
   have hf : ∀ y, fTab κ L es 0 y = algebraMap F K (fF κ L es y) := fTab_F hfar
   simp only [hf, ← map_mul, ← map_sum]
   congr 1
-  rw [hB, hrs, hE]
+  rw [hB, hrs]
   simp only [w0F, add_mul, sum_add_distrib, mul_assoc, ← mul_sum]
   congr 1
   rw [sum_mul_sum_comm]
@@ -262,17 +261,14 @@ theorem eqCellK_eq (ρ : Array K) (c : ℕ) :
   refine prod_congr rfl fun v _ => ?_
   simp only [CharTwo.sub_eq_add, add_comm (1 : K)]
 
-/-- **Level 0's extension** (`w0V`'s shape): the RS weight's, `κ′` times the E weight's, and
-`Σ_k κ′^(k+2) eq(cell_k, ρ)`. -/
-theorem mleN_w0F (Wrs WE : ℕ → F) (cells : List ℕ) (kp : F) {n : ℕ}
+/-- **Level 0's extension** (`w0V`'s shape): the RS weight's and `Σ_k κ′^(k+2) eq(cell_k, ρ)`. -/
+theorem mleN_w0F (Wrs : ℕ → F) (cells : List ℕ) (kp : F) {n : ℕ}
     (hc : ∀ c ∈ cells, c < 2 ^ n) (ρ : Fin n → K) :
-    mleN n (fun y => algebraMap F K (w0F Wrs WE cells kp y)) ρ =
+    mleN n (fun y => algebraMap F K (w0F Wrs cells kp y)) ρ =
       mleN n (fun y => algebraMap F K (Wrs y)) ρ +
-        algebraMap F K kp * mleN n (fun y => algebraMap F K (WE y)) ρ +
         ∑ k ∈ range cells.length, algebraMap F K (kp ^ (k + 2)) * eqCell ρ (cells.getD k 0) := by
-  have h : (fun u : Fin (2 ^ n) => algebraMap F K (w0F Wrs WE cells kp u)) =
+  have h : (fun u : Fin (2 ^ n) => algebraMap F K (w0F Wrs cells kp u)) =
       (fun u : Fin (2 ^ n) => algebraMap F K (Wrs u)) +
-        (fun u : Fin (2 ^ n) => algebraMap F K kp * algebraMap F K (WE u)) +
         fun u : Fin (2 ^ n) => ∑ k ∈ range cells.length, algebraMap F K (kp ^ (k + 2)) *
           (if (u : ℕ) = cells.getD k 0 then (1 : K) else 0) := by
     funext u
@@ -280,15 +276,15 @@ theorem mleN_w0F (Wrs WE : ℕ → F) (cells : List ℕ) (kp : F) {n : ℕ}
     congr 1
     refine sum_congr rfl fun k _ => ?_
     split_ifs <;> simp
-  rw [mleN, h, mle_add, mle_add, mle_smul, mle_sum]
+  rw [mleN, h, mle_add, mle_sum]
   congr 1
   refine sum_congr rfl fun k hk => ?_
   rw [mle_ind (hc _ (by rw [List.getD_eq_getElem _ _ (mem_range.mp hk)]; exact List.getElem_mem _))]
 
-/-- Control (positive): with no RS or E weight and one cell `c`, level 0's table reads `f[c]`
-weighted `κ′²`. -/
+/-- Control (positive): with no RS weight and one cell `c`, level 0's table reads `f[c]` weighted
+`κ′²`. -/
 theorem w0F_cell (kp : F) (c y : ℕ) :
-    w0F (fun _ => 0) (fun _ => 0) [c] kp y = if y = c then kp ^ 2 else 0 := by
+    w0F (fun _ => 0) [c] kp y = if y = c then kp ^ 2 else 0 := by
   simp [w0F]
 
 end Level0

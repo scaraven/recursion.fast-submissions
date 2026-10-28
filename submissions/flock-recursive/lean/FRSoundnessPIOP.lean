@@ -127,21 +127,21 @@ theorem leaf_of_truthZ {κ : Kind} {L es : Log} {n : ℕ} (hn : 1 ≤ n) {s h : 
     (hlinks : Leaf.ChainLinks n (zBlk κ L es) s h) : chainEnd s n = h :=
   Leaf.leaf_sound hn (zBlk κ L es) s h (fun i _ k => zBlk_bool κ L es i k) hZ hlinks
 
-/-- **The B′ truth** (A.10 B′; `finB′`'s `v*`): the batched value is `v_RS + κ′·v_E +
-Σ_k κ′^(k+2)·f[cell_k]` with the true values `vRS`, `vE` and the cells' true values. Parametric
-in the cell list: A.7's nine cells are `Node.pubCells []` once S-E3 drops the padding cells. -/
-def truthB' (κ : Kind) (L es : Log) (cells : List ℕ) (κ' vRS vE vStar : F) : Prop :=
-  vStar = vRS + κ' * vE +
-    ∑ k ∈ range cells.length, κ' ^ (k + 2) * fF κ L es (cells.getD k 0)
+/-- **The B′ truth** (A.10 B′; `finB′`'s `v*`, revision 3.12): the batched value is
+`v_RS + Σ_k κ′^(k+2)·f[cell_k]` with the true value `vRS` (E's claim is RS claim 5, inside
+`v_RS`) and the cells' true values. Parametric in the cell list: A.7's nine cells are
+`Node.pubCells []` once S-E3 drops the padding cells. -/
+def truthB' (κ : Kind) (L es : Log) (cells : List ℕ) (κ' vRS vStar : F) : Prop :=
+  vStar = vRS + ∑ k ∈ range cells.length, κ' ^ (k + 2) * fF κ L es (cells.getD k 0)
 
 /-- Control (positive): the B′ truth holds at its own batched value. -/
-theorem truthB'_self (κ : Kind) (L es : Log) (cells : List ℕ) (κ' vRS vE : F) :
-    truthB' κ L es cells κ' vRS vE (vRS + κ' * vE +
+theorem truthB'_self (κ : Kind) (L es : Log) (cells : List ℕ) (κ' vRS : F) :
+    truthB' κ L es cells κ' vRS (vRS +
       ∑ k ∈ range cells.length, κ' ^ (k + 2) * fF κ L es (cells.getD k 0)) := rfl
 
 /-- Control (negative): with no cells, a wrong batched value fails the B′ truth. -/
-theorem not_truthB'_of_ne (κ : Kind) (L es : Log) {κ' vRS vE v : F}
-    (h : v ≠ vRS + κ' * vE) : ¬ truthB' κ L es [] κ' vRS vE v := by
+theorem not_truthB'_of_ne (κ : Kind) (L es : Log) {κ' vRS v : F}
+    (h : v ≠ vRS) : ¬ truthB' κ L es [] κ' vRS v := by
   simpa [truthB'] using h
 
 /-! ## Part D: the node's per-block targets (A.6) -/
@@ -149,13 +149,13 @@ theorem not_truthB'_of_ne (κ : Kind) (L es : Log) {κ' vRS vE v : F}
 open FR.Kinds FR.Stream in
 /-- **The public target of node block `blk`** (A.6, §4.2's consecutive WOTS layout, §4.3's region
 table; `none`: the `free` blocks). The digest chains' counters are `streamTarget streamBytes`
-(`streamBytes_eq`: `1,437,760`); a WOTS slot's offset `o` is chain `⌊o/3⌋`'s step `o mod 3`
+(`streamBytes_eq`: `1,486,400`); a WOTS slot's offset `o` is chain `⌊o/3⌋`'s step `o mod 3`
 (`o < 399`, `w43_step`), the key leaf (`399 … 465`: 67 blocks of a 4,265-byte stream), then the
 16 path steps (`hashB1 tagSigNode`, `hashB2`). -/
 def nodeKind (blk : ℕ) : Option Block.Target :=
   if blk < 2 * Layout.chainN then
     if blk % Layout.chainN = 0 then some streamStart.target
-    else some (streamTarget 1437760 (blk % Layout.chainN))
+    else some (streamTarget 1486400 (blk % Layout.chainN))
   else if blk < Layout.wotsBase then
     let o := (blk - Layout.stmtBase) % 3
     some (if o = 0 then hashA.target else if o = 1 then (hashB1 RecursionFast.tagNode).target
@@ -196,7 +196,7 @@ theorem nodeKind_controls :
 previous output), unlike its first. -/
 theorem nodeKind_inner : nodeKind 1 ≠ some Kinds.streamStart.target := by
   intro h
-  have h1 : nodeKind 1 = some (Stream.streamTarget 1437760 1) := rfl
+  have h1 : nodeKind 1 = some (Stream.streamTarget 1486400 1) := rfl
   rw [h1, Option.some.injEq] at h
   have := congrFun h 0
   simp [Stream.streamTarget, Stream.blockTarget, Kinds.Kind.target, Kinds.streamStart] at this

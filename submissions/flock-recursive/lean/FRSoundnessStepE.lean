@@ -217,10 +217,10 @@ def phOf (p : ℕ) : ℕ := (fsStarts.filter (· ≤ p)).length - 1
 def Dp (Dk : ℕ → Log → Log → Prop) (p : ℕ) : Log → Log → Prop := Dk (phOf p)
 
 /-- The phases with no Fiat–Shamir item (each level's `Q`). -/
-def isQ (k : ℕ) : Bool := 28 ≤ k && k ≤ 48 && (k - 28) % 5 == 0
+def isQ (k : ℕ) : Bool := 29 ≤ k && k ≤ 49 && (k - 29) % 5 == 0
 
 /-- Checked: every phase with Fiat–Shamir items is the phase of its first position. -/
-theorem phOf_start : (List.range 51).all (fun k => isQ k || phOf (phStart k) == k) = true := by
+theorem phOf_start : (List.range 52).all (fun k => isQ k || phOf (phStart k) == k) = true := by
   unfold phOf phStart; rw [fsStarts_eq]; decide +kernel
 
 /-- The phase changes only at a phase start. -/
@@ -648,7 +648,7 @@ end Rounds2
 
 /-- Control: the phase map at a few positions (Z1's last squeeze, Z2's absorb, P3.0's first
 squeeze after the column queries, Pf's last round). -/
-theorem phOf_examples : phOf 12 = 3 ∧ phOf 13 = 4 ∧ phOf 339 = 29 ∧ phOf 450 = 50 := by
+theorem phOf_examples : phOf 12 = 3 ∧ phOf 13 = 4 ∧ phOf 385 = 30 ∧ phOf 496 = 51 := by
   unfold phOf; rw [fsStarts_eq]; decide
 
 /-- Control: inside the phase `msD` is the entry's doom, at the last answer `fin`. -/

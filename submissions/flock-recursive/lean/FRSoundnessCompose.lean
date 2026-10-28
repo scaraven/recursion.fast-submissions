@@ -6,8 +6,8 @@ import FRSoundnessPhases
 /-!
 # `PhaseObl` from the PIOP front's obligations and the Ligerito tail
 
-The whole transcript's doom is the front's for phases `0 … 24` and the tail's (`DT`) for phases
-`25 … 50` (**`DkC`**); `Rej` is the front's or the tail's asserted checks (**`RejC`**).
+The whole transcript's doom is the front's for phases `0 … 25` and the tail's (`DT`) for phases
+`26 … 51` (**`DkC`**); `Rej` is the front's or the tail's asserted checks (**`RejC`**).
 
 * **`FrontObl RejF DF W₀ c₀`**: what the PIOP front (Z1 … B′) still owes, for positions before
   P1.0 only: its `RejOK`, its `msD` forms, absorbs, single squeezes and multi-squeeze charges,
@@ -34,7 +34,7 @@ def RejC (RejF : Log → Log → Prop) (c₀ : Log → Log → K) (L es : Log) :
 /-- The phase dooms: the front's before P1.0, the tail's from P1.0 on. -/
 def DkC (DF : ℕ → Log → Log → Prop) (W₀ : Log → Log → ℕ → K) (c₀ : Log → Log → K) (k : ℕ) :
     Log → Log → Prop :=
-  if k < 25 then DF k else DT W₀ c₀ k
+  if k < 26 then DF k else DT W₀ c₀ k
 
 theorem rejOK_or {R₁ R₂ : Log → Log → Prop} (h₁ : RejOK R₁) (h₂ : RejOK R₂) :
     RejOK fun L es => R₁ L es ∨ R₂ L es where
@@ -43,7 +43,7 @@ theorem rejOK_or {R₁ R₂ : Log → Log → Prop} (h₁ : RejOK R₁) (h₂ : 
   stab L i hb hci X hX := or_congr (h₁.stab L i hb hci X hX) (h₂.stab L i hb hci X hX)
 
 open Classical in
-/-- **What the PIOP front still owes** (phases `0 … 24`, positions before P1.0). -/
+/-- **What the PIOP front still owes** (phases `0 … 25`, positions before P1.0). -/
 structure FrontObl (RejF : Log → Log → Prop) (DF : ℕ → Log → Log → Prop)
     (W₀ : Log → Log → ℕ → K) (c₀ : Log → Log → K) : Prop where
   loc : FrontLocal W₀ c₀
@@ -54,7 +54,7 @@ structure FrontObl (RejF : Log → Log → Prop) (DF : ℕ → Log → Log → P
     es.length < p1Start 0 → ¬ RejC RejF c₀ L es → DF (phOf (es.length - 1)) L es →
       RejC RejF c₀ L (es ++ [x]) ∨ DF (phOf es.length) L (es ++ [x])
   handoff : ∀ L es x len, Matches (es ++ [x]) → fsItems[es.length]? = some (.absorb len) →
-    es.length = p1Start 0 → ¬ RejC RejF c₀ L es → DF 24 L es →
+    es.length = p1Start 0 → ¬ RejC RejF c₀ L es → DF 25 L es →
       RejC RejF c₀ L (es ++ [x]) ∨ D1 W₀ c₀ 0 L (es ++ [x])
   hsingle : ∀ L es, Matches es → fsItems[es.length]? = some .squeeze → fsRnd es.length = none →
     es.length < p1Start 0 → ¬ RejC RejF c₀ L es →
@@ -62,23 +62,23 @@ structure FrontObl (RejF : Log → Log → Prop) (DF : ℕ → Log → Log → P
         ¬ DF (phOf es.length) L (ext1 es a)).card ≤ 239 * 2 ^ 128
   hfin : ∀ s0 r, (s0, r) ∈ fsRanges → s0 + 1 < p1Start 0 → ∀ L es₀, Matches es₀ →
     es₀.length = s0 + 1 → ¬ RejC RejF c₀ L es₀ → condCount (DPos (Dp DF)) L es₀ r [] ≤ deltaR
-  hstab : ∀ k < 25, ∀ L i, ¬ Bad L → IsChain L i → ∀ X,
+  hstab : ∀ k < 26, ∀ L i, ¬ Bad L → IsChain L i → ∀ X,
     StabExt fsRnd (entriesOf L (pathOf L i)) X → phOf (X.length - 1) = k →
       (DF k (L.take i) X ↔ DF k L X)
 
 /-! ## Position facts -/
 
-theorem front_check : ((List.range 26).all fun j => decide (p1Start 0 ≤ phStart (25 + j))) &&
-    ((List.range 25).all fun k => decide (phStart (k + 1) ≤ p1Start 0)) &&
-    phOf (p1Start 0 - 1) == 24 &&
+theorem front_check : ((List.range 26).all fun j => decide (p1Start 0 ≤ phStart (26 + j))) &&
+    ((List.range 26).all fun k => decide (phStart (k + 1) ≤ p1Start 0)) &&
+    phOf (p1Start 0 - 1) == 25 &&
     (List.range 5).all (fun i => fsItems[cStart i]? != some .squeeze) &&
     fsRanges.all (fun x => decide (x.1 + x.2 < p1Start 0) ||
       (List.range 5).any fun i => x == (cStart i, (lvlStar i).sq) || x == (p3S0 i, 5)) = true := by
   unfold p1Start cStart p3S0 phOf phStart
   rw [fsStarts_eq, fsRanges_eq]; decide +kernel
 
-theorem front_facts : (∀ j ≤ 25, p1Start 0 ≤ phStart (25 + j)) ∧
-    (∀ k < 25, phStart (k + 1) ≤ p1Start 0) ∧ phOf (p1Start 0 - 1) = 24 ∧
+theorem front_facts : (∀ j ≤ 25, p1Start 0 ≤ phStart (26 + j)) ∧
+    (∀ k < 26, phStart (k + 1) ≤ p1Start 0) ∧ phOf (p1Start 0 - 1) = 25 ∧
     (∀ i < 5, fsItems[cStart i]? ≠ some .squeeze) ∧
     ∀ x ∈ fsRanges, x.1 + x.2 < p1Start 0 ∨
       ∃ i < 5, x = (cStart i, (lvlStar i).sq) ∨ x = (p3S0 i, 5) := by
@@ -91,14 +91,14 @@ theorem front_facts : (∀ j ≤ 25, p1Start 0 ≤ phStart (25 + j)) ∧
   · exact Or.inl h
   · exact Or.inr ⟨i, hi, h⟩
 
-theorem phOf_lt_25 {p : ℕ} (hp : p < p1Start 0) : phOf p < 25 := by
+theorem phOf_lt_26 {p : ℕ} (hp : p < p1Start 0) : phOf p < 26 := by
   by_contra h
   obtain ⟨h1, h2, -⟩ := phOf_bounds p
-  have := front_facts.1 (phOf p - 25) (by omega)
-  rw [show 25 + (phOf p - 25) = phOf p by omega] at this
+  have := front_facts.1 (phOf p - 26) (by omega)
+  rw [show 26 + (phOf p - 26) = phOf p by omega] at this
   omega
 
-theorem phOf_ge_25 {p : ℕ} (hp : p1Start 0 ≤ p) : 25 ≤ phOf p := by
+theorem phOf_ge_26 {p : ℕ} (hp : p1Start 0 ≤ p) : 26 ≤ phOf p := by
   by_contra h
   obtain ⟨-, -, h3⟩ := phOf_bounds p
   have := front_facts.2.1 (phOf p) (by omega)
@@ -106,24 +106,24 @@ theorem phOf_ge_25 {p : ℕ} (hp : p1Start 0 ≤ p) : 25 ≤ phOf p := by
   omega
 
 theorem DkC_lt {DF : ℕ → Log → Log → Prop} {W₀ : Log → Log → ℕ → K} {c₀ : Log → Log → K}
-    {k : ℕ} (h : k < 25) : DkC DF W₀ c₀ k = DF k := by rw [DkC, ite_pos' h]
+    {k : ℕ} (h : k < 26) : DkC DF W₀ c₀ k = DF k := by rw [DkC, ite_pos' h]
 
 theorem DkC_ge {DF : ℕ → Log → Log → Prop} {W₀ : Log → Log → ℕ → K} {c₀ : Log → Log → K}
-    {k : ℕ} (h : 25 ≤ k) : DkC DF W₀ c₀ k = DT W₀ c₀ k := by rw [DkC, ite_neg' (by omega)]
+    {k : ℕ} (h : 26 ≤ k) : DkC DF W₀ c₀ k = DT W₀ c₀ k := by rw [DkC, ite_neg' (by omega)]
 
 /-- Checked: the class of every tail position (P1.i's absorb or squeeze, C.i, inside P2.i or
 P3.i, Pf's absorb or squeeze), with the phases of it and of its predecessor. -/
 def tailCls (p : ℕ) : Bool :=
   (List.range 5).any (fun i => (List.range (hEll i)).any fun l =>
-      (p == p1Start i + 2 * l && phOf p == 25 + 5 * i &&
-        ((l == 0 && phOf (p - 1) == 24 + 5 * i) || (l != 0 && phOf (p - 1) == 25 + 5 * i))) ||
-      (p == p1Start i + 2 * l + 1 && phOf p == 25 + 5 * i && phOf (p - 1) == 25 + 5 * i)) ||
-  (List.range 5).any (fun i => (p == cStart i && phOf p == 26 + 5 * i &&
-      phOf (p - 1) == 25 + 5 * i) || (decide (cStart i < p) && decide (p ≤ p3S0 i + 5))) ||
+      (p == p1Start i + 2 * l && phOf p == 26 + 5 * i &&
+        ((l == 0 && phOf (p - 1) == 25 + 5 * i) || (l != 0 && phOf (p - 1) == 26 + 5 * i))) ||
+      (p == p1Start i + 2 * l + 1 && phOf p == 26 + 5 * i && phOf (p - 1) == 26 + 5 * i)) ||
+  (List.range 5).any (fun i => (p == cStart i && phOf p == 27 + 5 * i &&
+      phOf (p - 1) == 26 + 5 * i) || (decide (cStart i < p) && decide (p ≤ p3S0 i + 5))) ||
   (List.range 7).any (fun l =>
-      (p == pfStart + 2 * l && phOf p == 50 &&
-        ((l == 0 && phOf (p - 1) == 49) || (l != 0 && phOf (p - 1) == 50))) ||
-      (p == pfStart + 2 * l + 1 && phOf p == 50 && phOf (p - 1) == 50))
+      (p == pfStart + 2 * l && phOf p == 51 &&
+        ((l == 0 && phOf (p - 1) == 50) || (l != 0 && phOf (p - 1) == 51))) ||
+      (p == pfStart + 2 * l + 1 && phOf p == 51 && phOf (p - 1) == 51))
 
 theorem tailCls_check : (List.range (fsItems.length - p1Start 0)).all
     (fun j => tailCls (p1Start 0 + j)) = true := by
@@ -132,15 +132,15 @@ theorem tailCls_check : (List.range (fsItems.length - p1Start 0)).all
   rw [fsStarts_eq]; decide +kernel
 
 theorem tail_cls {p : ℕ} (h1 : p1Start 0 ≤ p) (h2 : p < fsItems.length) :
-    (∃ i < 5, ∃ l < hEll i, p = p1Start i + 2 * l ∧ phOf p = 25 + 5 * i ∧
-      ((l = 0 ∧ phOf (p - 1) = 24 + 5 * i) ∨ (l ≠ 0 ∧ phOf (p - 1) = 25 + 5 * i))) ∨
-    (∃ i < 5, ∃ l < hEll i, p = p1Start i + 2 * l + 1 ∧ phOf p = 25 + 5 * i ∧
-      phOf (p - 1) = 25 + 5 * i) ∨
-    (∃ i < 5, p = cStart i ∧ phOf p = 26 + 5 * i ∧ phOf (p - 1) = 25 + 5 * i) ∨
+    (∃ i < 5, ∃ l < hEll i, p = p1Start i + 2 * l ∧ phOf p = 26 + 5 * i ∧
+      ((l = 0 ∧ phOf (p - 1) = 25 + 5 * i) ∨ (l ≠ 0 ∧ phOf (p - 1) = 26 + 5 * i))) ∨
+    (∃ i < 5, ∃ l < hEll i, p = p1Start i + 2 * l + 1 ∧ phOf p = 26 + 5 * i ∧
+      phOf (p - 1) = 26 + 5 * i) ∨
+    (∃ i < 5, p = cStart i ∧ phOf p = 27 + 5 * i ∧ phOf (p - 1) = 26 + 5 * i) ∨
     (∃ i < 5, cStart i < p ∧ p ≤ p3S0 i + 5) ∨
-    (∃ l < 7, p = pfStart + 2 * l ∧ phOf p = 50 ∧
-      ((l = 0 ∧ phOf (p - 1) = 49) ∨ (l ≠ 0 ∧ phOf (p - 1) = 50))) ∨
-    (∃ l < 7, p = pfStart + 2 * l + 1 ∧ phOf p = 50 ∧ phOf (p - 1) = 50) := by
+    (∃ l < 7, p = pfStart + 2 * l ∧ phOf p = 51 ∧
+      ((l = 0 ∧ phOf (p - 1) = 50) ∨ (l ≠ 0 ∧ phOf (p - 1) = 51))) ∨
+    (∃ l < 7, p = pfStart + 2 * l + 1 ∧ phOf p = 51 ∧ phOf (p - 1) = 51) := by
   have h := tailCls_check
   simp only [List.all_eq_true, List.mem_range] at h
   have hc := h (p - p1Start 0) (by omega)
@@ -191,7 +191,7 @@ theorem phaseObl_of (hFr : FrontObl RejF DF W₀ c₀) :
   ms s0 r hmem := by
     by_cases h : s0 + 1 < p1Start 0
     · obtain ⟨fin, hf⟩ := hFr.ms s0 r hmem h
-      exact ⟨fin, by rw [DkC_lt (phOf_lt_25 h), DkC_lt (phOf_lt_25 (by omega)), hf]⟩
+      exact ⟨fin, by rw [DkC_lt (phOf_lt_26 h), DkC_lt (phOf_lt_26 (by omega)), hf]⟩
     rcases front_facts.2.2.2.2 _ hmem with hx | ⟨i, hi, hx | hx⟩
     · have := (ms_phOf hmem).1; simp at hx; omega
     · simp only [Prod.mk.injEq] at hx; obtain ⟨rfl, rfl⟩ := hx
@@ -203,13 +203,13 @@ theorem phaseObl_of (hFr : FrontObl RejF DF W₀ c₀) :
   habs L es x len hm hit hr hd := by
     have hlt := lt_length_of_get hit
     by_cases hp : es.length < p1Start 0
-    · rw [DkC_lt (phOf_lt_25 (by omega))] at hd
-      rw [DkC_lt (phOf_lt_25 hp)]
+    · rw [DkC_lt (phOf_lt_26 (by omega))] at hd
+      rw [DkC_lt (phOf_lt_26 hp)]
       exact hFr.habs L es x len hm hit hp hr hd
     by_cases hp' : es.length = p1Start 0
     · rw [hp', front_facts.2.2.1, DkC_lt (by norm_num)] at hd
       have := hFr.handoff L es x len hm hit hp' hr hd
-      have hD : DT W₀ c₀ 25 = D1 W₀ c₀ 0 := DT_P1 W₀ c₀ (i := 0) (by norm_num)
+      have hD : DT W₀ c₀ 26 = D1 W₀ c₀ 0 := DT_P1 W₀ c₀ (i := 0) (by norm_num)
       rwa [hp', (tail_ph (show 0 < 5 by norm_num)).1, DkC_ge le_rfl, hD]
     rcases tail_cls (by omega) hlt with ⟨i, hi, l, hl, he, h1, h2⟩ | ⟨i, hi, l, hl, he, -, -⟩ |
       ⟨i, hi, he, h1, h2⟩ | ⟨i, hi, h1, h2⟩ | ⟨l, hl, he, h1, h2⟩ | ⟨l, hl, he, -, -⟩
@@ -220,7 +220,7 @@ theorem phaseObl_of (hFr : FrontObl RejF DF W₀ c₀) :
           rcases Nat.eq_zero_or_pos i with rfl | h
           · simp at he; omega
           · omega⟩
-        rw [h2, show 24 + 5 * (j + 1) = 29 + 5 * j by ring, DkC_ge (by omega),
+        rw [h2, show 25 + 5 * (j + 1) = 30 + 5 * j by ring, DkC_ge (by omega),
           DT_P3 W₀ c₀ (by omega), DP3, msD, ite_neg' (by
             have := (tail_pos (show j < 5 by omega)).2.2.2.2
             rw [nxStart_le hi] at this; omega)] at hd
@@ -236,7 +236,7 @@ theorem phaseObl_of (hFr : FrontObl RejF DF W₀ c₀) :
     · right
       rw [h1, DkC_ge (by omega), DT_Pf]
       rcases h2 with ⟨rfl, h2⟩ | ⟨hl0, h2⟩
-      · rw [h2, show (49 : ℕ) = 29 + 5 * 4 by norm_num, DkC_ge (by omega),
+      · rw [h2, show (50 : ℕ) = 30 + 5 * 4 by norm_num, DkC_ge (by omega),
           DT_P3 W₀ c₀ (by norm_num), DP3, msD, ite_neg' (by
             have := (tail_pos (show 4 < 5 by norm_num)).2.2.2.2
             have hnx : nxStart 4 = pfStart := rfl
@@ -248,7 +248,7 @@ theorem phaseObl_of (hFr : FrontObl RejF DF W₀ c₀) :
   hsingle L es hm hit hrnd hr := by
     have hlt := lt_length_of_get hit
     by_cases hp : es.length < p1Start 0
-    · rw [DkC_lt (phOf_lt_25 (by omega)), DkC_lt (phOf_lt_25 hp)]
+    · rw [DkC_lt (phOf_lt_26 (by omega)), DkC_lt (phOf_lt_26 hp)]
       exact hFr.hsingle L es hm hit hrnd hp hr
     have hrT : ¬ RejT c₀ L es := fun h => hr (Or.inr h)
     rcases tail_cls (by omega) hlt with ⟨i, hi, l, hl, he, -, -⟩ | ⟨i, hi, l, hl, he, h1, h2⟩ |
@@ -277,7 +277,7 @@ theorem phaseObl_of (hFr : FrontObl RejF DF W₀ c₀) :
       have hd : (ext es₀ as).dropLast.length = s0 + r := by
         rw [List.length_dropLast]; omega
       simp only [EscAtG, DPos, Dp, hd, hlx, hl, has]
-      rw [DkC_lt (phOf_lt_25 (by omega)), DkC_lt (phOf_lt_25 (by omega))]
+      rw [DkC_lt (phOf_lt_26 (by omega)), DkC_lt (phOf_lt_26 (by omega))]
     rcases front_facts.2.2.2.2 _ hmem with hx | ⟨i, hi, hx | hx⟩
     · have := (ms_phOf hmem).1; simp at hx; omega
     · simp only [Prod.mk.injEq] at hx; obtain ⟨rfl, rfl⟩ := hx
@@ -287,7 +287,7 @@ theorem phaseObl_of (hFr : FrontObl RejF DF W₀ c₀) :
       exact hfin_P3 hFr.loc hi (by rw [DkC_ge (by omega), DT_P2 W₀ c₀ hi])
         (by rw [DkC_ge (by omega), DT_P3 W₀ c₀ hi]) L es₀ hl
   hstab k L i hb hci X hX hk := by
-    by_cases h : k < 25
+    by_cases h : k < 26
     · rw [DkC_lt h]; exact hFr.hstab k h L i hb hci X hX hk
     rw [DkC_ge (by omega)]
     have hX1 : 1 ≤ X.length := by
@@ -333,7 +333,7 @@ theorem rejT_same (hF : FrontLocal W₀ c₀) {L L' Y : Log} {p : ℕ} (hS : Sam
 def FrontChainStab (RejF : Log → Log → Prop) (DF : ℕ → Log → Log → Prop) : Prop :=
   ∀ L j, ¬ Bad L → IsChain L j →
     (RejF (L.take j) (entriesOf L (pathOf L j)) ↔ RejF L (entriesOf L (pathOf L j))) ∧
-    ∀ k < 25, phOf ((entriesOf L (pathOf L j)).length - 1) = k →
+    ∀ k < 26, phOf ((entriesOf L (pathOf L j)).length - 1) = k →
       (DF k (L.take j) (entriesOf L (pathOf L j)) ↔ DF k L (entriesOf L (pathOf L j)))
 
 /-- **`ChainStab` for the whole transcript's doom** (what `final`'s walk needs, S-G1h deviation 1):
@@ -347,7 +347,7 @@ theorem chainStab_of (hF : FrontLocal W₀ c₀) (hFS : FrontChainStab RejF DF) 
   have h1 : 1 ≤ es.length := List.length_pos_iff.mpr (matches_ne_nil hci.2)
   unfold DC RejC DPos Dp
   refine or_congr (or_congr hR (rejT_same hF hS le_rfl)) ?_
-  by_cases hk : phOf (es.length - 1) < 25
+  by_cases hk : phOf (es.length - 1) < 26
   · rw [DkC_lt hk]; exact hD _ hk rfl
   rw [DkC_ge (by omega)]
   obtain ⟨b1, b2, -⟩ := phOf_bounds (es.length - 1)

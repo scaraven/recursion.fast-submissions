@@ -20,7 +20,7 @@ BLUEPRINT §3, B-2, B-7, A.8.
 * Assertions do not stop the program: they clear the `ok` flag, so every run asks **every** ask op
   (the item sequence is a constant, §1.2). The result is the flag.
 * `OpImpl` holds the op implementations other tracks supply (`lagrangeS`, `tensorW`, `rsWeight`,
-  `phiRS`, `walkAB`, `kindInd`, `evalM`, `evalMK`, `evalL`, `targetS`, `eqZ`, `shiftTarget`,
+  `phiRS`, `walkAB`, `kindInd`, `evalM`, `evalL`, `targetS`, `eqZ`, `shiftTarget`,
   `slotW`, `kindFoldWeight`, …; revision 3.9); `OpSpec` the same signatures as the
   mathematical reference; `OpImpl.Meets impl spec` is what `FRVIREval` proves.
 * `runIR impl P inp : OProg Bool` (the verifier's program) and `semIR impl P inp tr : Option Bool`
@@ -171,9 +171,6 @@ inductive Op where
   | maskRows (kindW rowW : Reg)
   /-- Three F registers. -/
   | evalM (tau sigma : Reg) | evalL (tau sigma : Reg)
-  /-- Three K registers: `evalM` at a K column point (`evalM(r_{E2}, ρ)`, `finPf`; stage-review
-  changes 11). -/
-  | evalMK (tau sigma : Reg)
   /-- F: the shift sumcheck's boundary term with the boundary values `bnd` (AF 4: a leaf's `s`, `h`
   as two elements each; a node's `h0` twice; revision 3.9). -/
   | shiftTarget (tau theta bnd ks : Reg)
@@ -232,8 +229,6 @@ structure OpImpl where
   /-- The node's matrix MLEs (FRVIREval). -/
   evalM : Array F → Array F → F × F × F
   evalL : Array F → Array F → F × F × F
-  /-- `evalM` at a K column point (FRVIREval). -/
-  evalMK : Array F → Array K → K × K × K
   /-- The shift sumcheck's boundary term: `κ_s`, `τ`, `θ`, the boundary values (P1-D5, A.9
   `finSh` (i); FRShift). -/
   shiftTarget : F → Array F → Array F → Array F → F
@@ -255,7 +250,7 @@ structure OpImpl where
 Owners of the concrete `OpSpec` and its lemmas (S-0-m2): S-C — `lagrangeS`, `tensorW`, `rsWeight`,
 `phiRS`,
 `shiftTarget`, `slotW`, `kindFoldWeight`, `linkW`, `rowW`, `shiftEq`; S-E1/S-E2 — `walkAB`,
-`evalM/MK/L`, `kindInd`; `FRPubTarget` — `targetS`; FRSkip — `eqZ`. -/
+`evalM/L`, `kindInd`; `FRPubTarget` — `targetS`; FRSkip — `eqZ`. -/
 abbrev OpSpec := OpImpl
 
 /-- **`impl ⊨ spec`, per op, on well-formed operands only** (S-0-m2): each implemented op equals its
@@ -269,7 +264,6 @@ def OpImpl.Meets (impl : OpImpl) (spec : OpSpec) : Prop :=
   (∀ r a, r.size = 7 → impl.phiRS r a = spec.phiRS r a) ∧
   (∀ rw cw, rw.size = 2 ^ 14 → cw.size = 2 ^ 14 → impl.walkAB rw cw = spec.walkAB rw cw) ∧
   (∀ a b, impl.evalM a b = spec.evalM a b) ∧ (∀ a b, impl.evalL a b = spec.evalL a b) ∧
-  (∀ a b, impl.evalMK a b = spec.evalMK a b) ∧
   (∀ a, impl.kindInd a = spec.kindInd a) ∧
   (∀ k a b c, c.size = 4 → impl.shiftTarget k a b c = spec.shiftTarget k a b c) ∧
   (∀ κ s a b, impl.slotW κ s a b = spec.slotW κ s a b) ∧
@@ -387,9 +381,6 @@ def evalOp (impl : OpImpl) (κ : Kind) (inp : Input) (regs : Array Val) : Op →
   | .evalL t s =>
     let x := impl.evalL (rd regs t).toAF (rd regs s).toAF
     .vals [.f x.1, .f x.2.1, .f x.2.2] true
-  | .evalMK t s =>
-    let x := impl.evalMK (rd regs t).toAF (rd regs s).toAK
-    .vals [.k x.1, .k x.2.1, .k x.2.2] true
   | .shiftTarget t h bd ks =>
     .vals [.f (impl.shiftTarget (rd regs ks).toF (rd regs t).toAF (rd regs h).toAF (rd regs bd).toAF)]
       true
@@ -475,7 +466,7 @@ def semIR (impl : OpImpl) (P : VProg) (inp : Input) (tr : Trace) : Option Bool :
 
 /-- The registers an op appends. -/
 def Op.outs : Op → ℕ
-  | .evalM .. | .evalMK .. | .evalL .. | .kindSel => 3
+  | .evalM .. | .evalL .. | .kindSel => 3
   | .lagrangeS .. | .walkAB .. => 2
   | .splitDigest _ => 2
   | .assertEq .. | .assertBit .. | .assertZero .. | .assertOneHot .. | .accept => 0

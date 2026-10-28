@@ -189,9 +189,9 @@ theorem habs_Pf_first (hlen : es.length = pfStart) :
   have hw' : wPf W₀ L (es ++ [x]) = wPf W₀ L es := by
     funext y
     simp only [wPf, hk, wFold_same hF hS h4 (by omega), wNext_same hS h4 _ (by omega)]
-  have h46 : cStart 4 = phStart 46 := rfl
+  have h46 : cStart 4 = phStart 47 := rfl
   have hf' : finalAt (es ++ [x]) = finalAt es := funext fun y => by
-    simp only [finalAt, msgAt, hS.1 (phStart 46) (by omega)]
+    simp only [finalAt, msgAt, hS.1 (phStart 47) (by omega)]
   unfold nxSum at hw
   rw [ite_neg' (by norm_num)] at hw
   rw [hw', hf']
@@ -214,7 +214,7 @@ theorem rounds_Pf {l : ℕ} (hl : l < 7) :
   simp only [Bool.and_eq_true, List.all_eq_true, List.mem_range, beq_iff_eq] at h
   exact h.1.2 l hl
 
-theorem fsItems_length : fsItems.length = 451 := by
+theorem fsItems_length : fsItems.length = 497 := by
   have h := rounds_check
   simp only [Bool.and_eq_true, beq_iff_eq] at h
   exact h.2
@@ -230,7 +230,7 @@ theorem p1_N_le (κ : Kind) {i : ℕ} (hi : i < 5) :
 theorem sAt_ext1 (es : Log) (a : Digest) {i l : ℕ} (h : es.length = p1Start i + 2 * l + 1) :
     sAt (ext1 es a) i l = chK a := by
   simp only [sAt, kAt, ansAt]
-  rw [show phStart (25 + 5 * i) + 2 * l + 1 = es.length by unfold p1Start at h; omega,
+  rw [show phStart (26 + 5 * i) + 2 * l + 1 = es.length by unfold p1Start at h; omega,
     entAt_ext1]
 
 open Classical in

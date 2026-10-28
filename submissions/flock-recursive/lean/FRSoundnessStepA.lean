@@ -7,7 +7,7 @@ import FRProximityFold
 /-!
 # The transcript read off a chain, and the committed words (BLUEPRINT §5.1, A.2–A.4)
 
-A chain's entries `es` follow the 451 Fiat–Shamir items `fsItems` (`Matches`), so a Fiat–Shamir
+A chain's entries `es` follow the 497 Fiat–Shamir items `fsItems` (`Matches`), so a Fiat–Shamir
 position `p` is an index into `es`.
 
 * **Readers** (A.2): the entry at `p` (`entAt`), the absorbed message (`msgAt`: the query from byte
@@ -96,19 +96,19 @@ def fsStarts : List ℕ :=
 /-- The first Fiat–Shamir position of phase `k` of `phases`. -/
 def phStart (k : ℕ) : ℕ := fsStarts.getD k 0
 
-/-- Control: the phase starts (A.4; `piopPhases` are phases `0 … 24`, level `i`'s `P1, C, P2, Q,
-P3` are `25 + 5i … 29 + 5i`, `Pf` is `50`). -/
+/-- Control: the phase starts (A.4; `piopPhases` are phases `0 … 25` (revision 3.12: E4 at 24), level `i`'s
+`P1, C, P2, Q, P3` are `26 + 5i … 30 + 5i`, `Pf` is `51`). -/
 theorem fsStarts_eq : fsStarts = [0, 1, 2, 3, 13, 15, 67, 68, 69, 97, 98, 99, 114, 170, 178, 208,
-    209, 210, 240, 241, 245, 256, 298, 299, 300, 301, 313, 314, 339, 339, 344, 352, 353, 366,
-    366, 371, 379, 380, 390, 390, 395, 403, 404, 412, 412, 417, 425, 426, 432, 432, 437] := by
+    209, 210, 240, 241, 245, 256, 298, 299, 300, 346, 347, 359, 360, 385, 385, 390, 398, 399, 412,
+    412, 417, 425, 426, 436, 436, 441, 449, 450, 458, 458, 463, 471, 472, 478, 478, 483] := by
   decide +kernel
 
 /-! ## (2) The committed words -/
 
-/-- The position of level `i`'s cap absorb: `cap₀` (phase 2), else `C.(i − 1)` (phase `21 + 5i`). -/
-def capPos (i : ℕ) : ℕ := if i = 0 then phStart 2 else phStart (21 + 5 * i)
+/-- The position of level `i`'s cap absorb: `cap₀` (phase 2), else `C.(i − 1)` (phase `22 + 5i`). -/
+def capPos (i : ℕ) : ℕ := if i = 0 then phStart 2 else phStart (22 + 5 * i)
 
-theorem capPos_eq : (List.range 5).map capPos = [2, 313, 352, 379, 403] := by
+theorem capPos_eq : (List.range 5).map capPos = [2, 359, 398, 425, 449] := by
   unfold capPos phStart; rw [fsStarts_eq]; rfl
 
 /-- Cap entry `c` of level `i`: the 32 bytes at offset `32c` of the cap's message (A.2). -/

@@ -39,8 +39,8 @@ set_option linter.constructorNameAsVariable false
 
 /-! ## Part A: the positions -/
 
-/-- P1.i's first Fiat–Shamir position (phase `25 + 5i`). -/
-def p1Start (i : ℕ) : ℕ := phStart (25 + 5 * i)
+/-- P1.i's first Fiat–Shamir position (phase `26 + 5i`). -/
+def p1Start (i : ℕ) : ℕ := phStart (26 + 5 * i)
 
 /-- P1.i's rounds `ℓᵢ` (the same for every kind, `lvl_ell`). -/
 def hEll (i : ℕ) : ℕ := (lvlStar i).ell
@@ -48,7 +48,7 @@ def hEll (i : ℕ) : ℕ := (lvlStar i).ell
 theorem lvl_ell (κ : Kind) {i : ℕ} (hi : i < 5) : (lvl κ i).ell = hEll i := by
   cases κ <;> interval_cases i <;> rfl
 
-/-- Checked: P1's starts and rounds (`[301, 344, 371, 395, 417]`, `[6, 4, 4, 4, 4]`), each level's
+/-- Checked: P1's starts and rounds (`[347, 390, 417, 441, 463]`, `[6, 4, 4, 4, 4]`), each level's
 cap absorbed before its P1, and the P1 phases disjoint. -/
 theorem p1_check : (List.range 5).all (fun i => decide (capPos i < p1Start i) &&
     (List.range 5).all fun i' => i == i' || decide (p1Start i + 2 * hEll i ≤ p1Start i') ||
@@ -151,7 +151,7 @@ theorem DH_short {L es : Log} (h : es.length ≤ p1Start 0 + 1) : DH L es := by
   intro i hi
   refine noHide_zero ?_
   have := p1_phase hi
-  have hv : ∀ j, j < 5 → p1Start j = [301, 344, 371, 395, 417].getD j 0 := by
+  have hv : ∀ j, j < 5 → p1Start j = [347, 390, 417, 441, 463].getD j 0 := by
     intro j hj; unfold p1Start phStart; rw [fsStarts_eq]; interval_cases j <;> rfl
   have h0 := hv 0 (by norm_num)
   have hi' : p1Start 0 ≤ p1Start i := by
@@ -188,7 +188,7 @@ theorem sList_ext1 (es : Log) (a : Digest) {i l : ℕ} (h : es.length = p1Start 
     sList_congr (l := l) (show Agree (ext1 es a) es _ from agree_append es _ (by omega))]
   have : sAt (ext1 es a) i l = chK a := by
     simp only [sAt, kAt, ansAt]
-    rw [show phStart (25 + 5 * i) + 2 * l + 1 = es.length by unfold p1Start at h; omega,
+    rw [show phStart (26 + 5 * i) + 2 * l + 1 = es.length by unfold p1Start at h; omega,
       entAt_ext1]
   rw [this]
 

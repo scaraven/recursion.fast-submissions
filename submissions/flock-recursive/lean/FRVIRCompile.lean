@@ -300,7 +300,6 @@ def opOut (P : Params) (cs : CS) : Op → Out
   | .shiftTarget .. | .slotW .. | .kindFoldWeight .. => imports cs [.f]
   | .eqZ .. => imports cs [.af 128]
   | .rsWeight .. => imports cs [.k]
-  | .evalMK .. => imports cs [.k, .k, .k]
   | .lagrangeS .. => imports cs [.f, .f]
   | .targetS .. => imports cs [.af 64]
   | .tensorW .. | .dotKF .. => imports cs [.k]
@@ -541,7 +540,7 @@ theorem muxOut_sound {w : Asg} {cs : CS} {g : Lin} {t : Ty} {lx ly : List Lin} {
 
 /-- The number of results of an op. -/
 def _root_.FR.Op.nOut : Op → ℕ
-  | .evalM .. | .evalMK .. | .evalL .. | .kindSel => 3
+  | .evalM .. | .evalL .. | .kindSel => 3
   | .splitDigest _ | .lagrangeS .. | .walkAB .. => 2
   | .assertEq .. | .assertBit .. | .assertZero .. | .assertOneHot .. | .accept => 0
   | _ => 1

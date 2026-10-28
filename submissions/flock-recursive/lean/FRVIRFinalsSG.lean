@@ -24,10 +24,11 @@ import FRNodeLayout
 * **`finPf`** (A.9, stage-review changes 11; the native `weight_eval`, `prover/ligerito.rs`): with
   `P₄ = s₄ ++ sf[..μ]` (`μ = m − 25`), `Pₖ = sₖ ++ Pₖ₊₁[1..]`, `û(β) = 1 + β(1 + u)` and
   `Ŵₖ(Pₖ) = û(Pₖ[0])·(Ŵₖ₋₁(Pₖ₋₁) + Σ_q eq(κ_c⁽ᵏ⁻¹⁾, bits₉(q))·tensorW(p_q⁽ᵏ⁻¹⁾, Pₖ[1..]))`,
-  `Ŵ₀(ρ) = rsWeight(r″, pts, κ, ρ) + [node] κ′·(Ã + κ_E B̃ + κ_E² C̃)(r_E2, ρ)
-  + [node] Σ_k κ′^(k+2) eq(cell_k, ρ)`, the check is
+  `Ŵ₀(ρ) = rsWeight(r″, pts, κ, ρ) + [node] Σ_k κ′^(k+2) eq(cell_k, ρ)` (revision 3.12: no
+  `evalMK` term; E's claim is RS claim 5, whose outer point is E4's `r′`), the check is
   `claimN(Pf) = Ŵ₄(P₄) · Π_{x ∈ sf[μ..7)} (1 + x) · final̂(sf)`. The claim points `pts` are the
-  native `claim_points` (`zSrc`, `lcSrc`, `shSrc`; the node's `lrSrc` is provisional), the cells
+  native `claim_points` (`zSrc`, `lcSrc`, `shSrc`; the node's `lrSrc` is provisional, its `eSrc`
+  E4's 23 challenges), the cells
   are `finB′`'s nine (`pfCells`). **`flag_finPf`**: its flag is `relPf` (`relPf_iff`), with
   `Ŵ₄` as `wV` (`lvsV` over `lvStepV`), `final̂` as `finHat` (`fhVal_eq`) and the cells' sum
   `cellsVal_eq`; **`noAsk_finPf`**: it asks nothing. The proof runs block by block on a growing
@@ -654,23 +655,29 @@ def lrHi : List K := (List.range 15).map fun v => if (Layout.lBase / 2).testBit 
 /-- The Lr claim's outer point (`m = 30`): Lr4's challenges `7 … 14`, then `lrHi`. -/
 def lrSrc (fi : FinIn) : List PtSrc := ((chals fi "Lr4" 15).drop 7).map .f ++ lrHi.map .c
 
+/-- The E claim's outer point (`m = 30`, revision 3.12): all of E4's 23 challenges `r′` (RS claim 5,
+`f̂(r′)`, has the packing basis as its inner weights). -/
+def eSrc (fi : FinIn) : List PtSrc := (chals fi "E4" 23).map .f
+
 /-- The points `finPf` builds: the claim points `0 … 6` (Z, Lc, Sh at `m = 32, 30`; Lr), the
-tails `P₁[1..] … P₄[1..]` at `m = 32` (`7 … 10`) and `m = 30` (`11 … 14`), `P₀` (`15`, `16`). -/
+tails `P₁[1..] … P₄[1..]` at `m = 32` (`7 … 10`) and `m = 30` (`11 … 14`), `P₀` (`15`, `16`),
+E's point (`17`). -/
 def pfPts (fi : FinIn) : List (List PtSrc) :=
   [zSrc fi 32, zSrc fi 30, lcSrc fi 32, lcSrc fi 30, shSrc fi 32, shSrc fi 30, lrSrc fi] ++
     (List.range 4).map (fun k => (tailRegs fi 32 (k + 1)).map .k) ++
     (List.range 4).map (fun k => (tailRegs fi 30 (k + 1)).map .k) ++
-    [(p0Regs fi 32).map .k, (p0Regs fi 30).map .k]
+    [(p0Regs fi 32).map .k, (p0Regs fi 30).map .k, eSrc fi]
 
 /-- The `m = 32` kind. -/
 def is32 : KC Bool := fun κ => decide (κ = .L32)
 
-/-- The claim points `rsWeight` takes (indices into `pfPts`): three for a leaf, four for a node. -/
+/-- The claim points `rsWeight` takes (indices into `pfPts`): three for a leaf, five for a node
+(Z, Lc, Sh, Lr, E: `finRS`'s order). -/
 def rsPtIx : KC (List ℕ) := fun κ =>
   match κ with
   | .L32 => [0, 2, 4]
   | .P30 => [1, 3, 5]
-  | .N30 => [1, 3, 5, 6]
+  | .N30 => [1, 3, 5, 6, 17]
 
 /-- **The public cells** (A.7's order, the nine of `finB′`'s `pubH`): M's `one` cell, then slot
 1's and slot 2's seed payload elements `0 … 3` (`vk`, `c` halves) as `Node.seedCell`. The six zero
@@ -746,7 +753,7 @@ def fhOut : List ℕ → ℕ → ℕ → ℕ
 
 /-- **`finPf`** (A.9). Registers from `b`: `1`, `1 + u`, `0` of K; the points (`pfPts`); the kind's
 tails `P₁[1..] … P₄[1..]` and `P₀` (`keep`, at `sb … sb + 4`); `Ŵ₀(P₀)` (`rsWeight`, and for a node
-`κ′·(Ã + κ_E B̃ + κ_E² C̃)(r_E2, P₀)` by `evalMK` and the cells); the four level steps; `final̂(sf)`
+the cells); the four level steps; `final̂(sf)`
 (`eqTableK`); the padding factor `Π_{x ∈ sf[μ..7)} (1 + x)`; the check against `claimN(Pf)`. -/
 def finPf : FinField := fun fi b =>
   let one := b
@@ -758,10 +765,9 @@ def finPf : FinField := fun fi b =>
   let wb := sb + 5
   let rs1 := coordsR fi "RS1"
   let kp := (outsOf fi "B'").headD 0
-  let kE := (outsOf fi "E3").headD 0
-  let cb := wb + 57
+  let cb := wb + 48
   let ce := cb + 1 + 26 * pfCells.length
-  let lb := ce + 3
+  let lb := ce + 2
   let fb := lb + lvsW fi [1, 2, 3, 4]
   let pd := fb + 2 + 4 * 128
   let sf := chals fi "Pf" 7
@@ -770,20 +776,16 @@ def finPf : FinField := fun fi b =>
    [.keep is32 (P 7) (P 11), .keep is32 (P 8) (P 12), .keep is32 (P 9) (P 13),
     .keep is32 (P 10) (P 14), .keep is32 (P 15) (P 16)] ++
    [.packF ((List.range 7).map fun p => rs1.getD p 0),
-    .rsWeight wb (fun κ => (rsPtIx κ).map P) (rs1.getD 7 0) (sb + 4),
-    .evalMK ((fi.ex.getD 5 []).getD 1 0) (sb + 4),
-    .mulKF (wb + 3) kE, .mulKF (wb + 4) kE, .mulKF (wb + 6) kE, .addK (wb + 2) (wb + 5),
-    .addK (wb + 8) (wb + 7), .mulKF (wb + 9) kp] ++
+    .rsWeight wb (fun κ => (rsPtIx κ).map P) (rs1.getD 7 0) (sb + 4)] ++
    (List.range 23).map (fun v => .getK (sb + 4) v) ++
-   (List.range 23).map (fun v => .addK one (wb + 11 + v)) ++
+   (List.range 23).map (fun v => .addK one (wb + 2 + v)) ++
    [.mulF kp kp] ++
-   cellsOps one (wb + 11) (wb + 34) kp pfCells z0 cb (cb + 1) ++
-   [.addK (wb + 10) (cellsAcc pfCells z0 (cb + 1)), .keep Kind.isNode ce z0,
-    .addK (wb + 1) (ce + 1)] ++
-   lvsOps fi one cu sb [1, 2, 3, 4] (ce + 2) lb ++
+   cellsOps one (wb + 2) (wb + 25) kp pfCells z0 cb (cb + 1) ++
+   [.keep Kind.isNode (cellsAcc pfCells z0 (cb + 1)) z0, .addK (wb + 1) ce] ++
+   lvsOps fi one cu sb [1, 2, 3, 4] (ce + 1) lb ++
    [.packK sf, .eqTableK fb] ++ fhOps (fb + 1) (List.range 128) z0 (fb + 2) ++
    [.addK one (sf.getD 5 0), .addK one (sf.getD 6 0), .mulK pd (pd + 1), .keep is32 one (pd + 2),
-    .mulK (lvsOut fi [1, 2, 3, 4] (ce + 2) lb) (pd + 3),
+    .mulK (lvsOut fi [1, 2, 3, 4] (ce + 1) lb) (pd + 3),
     .mulK (pd + 4) (fhOut (List.range 128) z0 (fb + 2)),
     .assertEq (pd + 5) (claimN fi "Pf") allK], [])
 
@@ -1399,8 +1401,8 @@ def PtSrc.regs : PtSrc → List ℕ
 def pfRefs (fi : FinIn) : List ℕ :=
   (pfPts fi).flatMap (fun s => s.flatMap PtSrc.regs) ++
     (List.range 8).map (fun p => (coordsR fi "RS1").getD p 0) ++
-    [(outsOf fi "B'").headD 0, (outsOf fi "E3").headD 0, (fi.ex.getD 5 []).getD 1 0,
-      claimN fi "Pf", (chals fi "Pf" 7).getD 5 0, (chals fi "Pf" 7).getD 6 0] ++ chals fi "Pf" 7 ++
+    [(outsOf fi "B'").headD 0, claimN fi "Pf", (chals fi "Pf" 7).getD 5 0,
+      (chals fi "Pf" 7).getD 6 0] ++ chals fi "Pf" 7 ++
     [1, 2, 3, 4].flatMap (lvRefs fi)
 
 section PfVal
@@ -1413,20 +1415,13 @@ def p0V : Array K := ((p0Regs fi κ.m).map fun x => (rd r x).toK).toArray
 /-- The claim points `rsWeight` gets. -/
 def rsPtsV : List (Array K) := (rsPtIx κ).map fun j => ptV r ((pfPts fi).getD j [])
 
-/-- `(Ã + κ_E B̃ + κ_E² C̃)(r_E2, P₀)` (`evalMK`). -/
-def eV : K :=
-  let x := impl.evalMK (rd r ((fi.ex.getD 5 []).getD 1 0)).toAF (p0V κ fi r)
-  let kE := fv r ((outsOf fi "E3").headD 0)
-  x.1 + K.smulF kE x.2.1 + K.smulF kE (K.smulF kE x.2.2)
-
-/-- **`Ŵ₀(P₀)`**: `rsWeight(r″, pts, κ, P₀)`, and for a node
-`κ′·E + Σ_k κ′^(k+2) eq(cell_k, P₀)`. -/
+/-- **`Ŵ₀(P₀)`**: `rsWeight(r″, pts, κ, P₀)` (a node's five claims include E's, revision 3.12),
+and for a node `Σ_k κ′^(k+2) eq(cell_k, P₀)`. -/
 def w0V : K :=
   let kp := fv r ((outsOf fi "B'").headD 0)
   impl.rsWeight (ptF r ((List.range 7).map fun p => (coordsR fi "RS1").getD p 0))
       (rsPtsV κ fi r) (fv r ((coordsR fi "RS1").getD 7 0)) (p0V κ fi r) +
-    (if κ.isNode then K.smulF kp (eV impl κ fi r) + cellsVal (p0V κ fi r) kp pfCells (kp * kp) 0
-     else 0)
+    (if κ.isNode then cellsVal (p0V κ fi r) kp pfCells (kp * kp) 0 else 0)
 
 /-- **`Ŵ₄(P₄)`**: the four level steps from `Ŵ₀(P₀)`. -/
 def wV : K := lvsV impl fi (rd r) (tailV κ fi r) [1, 2, 3, 4] (w0V impl κ fi r)
@@ -1496,8 +1491,8 @@ theorem flag_finPf (impl : OpImpl) (κ : Kind) (inp : Input) (fi : FinIn) (r : A
   have mB : ∀ p < 8, (coordsR fi "RS1").getD p 0 < r.size := fun p hp =>
     hin _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _
       (List.mem_append_right _ (List.mem_map.mpr ⟨p, List.mem_range.mpr hp, rfl⟩)))))
-  have mC : ∀ x ∈ [(outsOf fi "B'").headD 0, (outsOf fi "E3").headD 0, (fi.ex.getD 5 []).getD 1 0,
-      claimN fi "Pf", (chals fi "Pf" 7).getD 5 0, (chals fi "Pf" 7).getD 6 0], x < r.size :=
+  have mC : ∀ x ∈ [(outsOf fi "B'").headD 0, claimN fi "Pf", (chals fi "Pf" 7).getD 5 0,
+      (chals fi "Pf" 7).getD 6 0], x < r.size :=
     fun x hx =>
     hin x (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ hx)))
   have mD : ∀ x ∈ chals fi "Pf" 7, x < r.size := fun x hx =>
@@ -1513,11 +1508,7 @@ theorem flag_finPf (impl : OpImpl) (κ : Kind) (inp : Input) (fi : FinIn) (r : A
       exact mA y (List.mem_flatMap.mpr ⟨s, hs, List.mem_flatMap.mpr ⟨_, hx, by simp [PtSrc.regs]⟩⟩)
     | c v => trivial
   set kp := (outsOf fi "B'").headD 0 with hkp
-  set kE := (outsOf fi "E3").headD 0 with hkE
-  set rE := (fi.ex.getD 5 []).getD 1 0 with hrE
   have hkpr : kp < r.size := mC _ (by simp [hkp])
-  have hkEr : kE < r.size := mC _ (by simp [hkE])
-  have hrEr : rE < r.size := mC _ (by simp [hrE])
   have hcNr : claimN fi "Pf" < r.size := mC _ (by simp)
   simp only [finPf, List.append_assoc]
   rw [show pfCells.length = 9 from rfl]
@@ -1546,8 +1537,8 @@ theorem flag_finPf (impl : OpImpl) (κ : Kind) (inp : Input) (fi : FinIn) (r : A
   set R2 := R1 ++ M2.toArray with hR2
   have sR2 : R2.size = b + 3 + pw := by simp [R2, sR1, hl2, hpw]
   have e12 : ExtA R1 R2 := ExtA.app R1 M2
-  have hlen : (pfPts fi).length = 17 := by simp [pfPts]
-  have hPv : ∀ j < 17, rd R2 (ptsOut (pfPts fi) (b + 3) j) = .ak (ptV r ((pfPts fi).getD j [])) ∧
+  have hlen : (pfPts fi).length = 18 := by simp [pfPts]
+  have hPv : ∀ j < 18, rd R2 (ptsOut (pfPts fi) (b + 3) j) = .ak (ptV r ((pfPts fi).getD j [])) ∧
       ptsOut (pfPts fi) (b + 3) j < R2.size := by
     intro j hj
     refine ⟨?_, ?_⟩
@@ -1556,7 +1547,7 @@ theorem flag_finPf (impl : OpImpl) (κ : Kind) (inp : Input) (fi : FinIn) (r : A
         exact List.getElem_mem _))]
     · rw [sR2, ← hpw]; exact ptsOut_lt _ _ _ (by omega)
   -- B3: the kind's tails and `P₀`
-  have hkeep : ∀ j j', j < 17 → j' < 17 → ∀ L : List Val,
+  have hkeep : ∀ j j', j < 18 → j' < 18 → ∀ L : List Val,
       evalOp impl κ inp (R2 ++ L.toArray) (.keep is32 (ptsOut (pfPts fi) (b + 3) j)
         (ptsOut (pfPts fi) (b + 3) j')) =
       .vals [if κ = .L32 then .ak (ptV r ((pfPts fi).getD j []))
@@ -1591,34 +1582,27 @@ theorem flag_finPf (impl : OpImpl) (κ : Kind) (inp : Input) (fi : FinIn) (r : A
   have r3T : ∀ k < 4, rd R3 (b + 3 + pw + k) = .ak (tailV κ fi r (k + 1)) := by
     intro k hk; rw [hR3, ← sR2, rd_app]; interval_cases k <;> rfl
   have r3P : rd R3 (b + 3 + pw + 4) = .ak (p0V κ fi r) := by rw [hR3, ← sR2, rd_app]; rfl
-  -- B4: `rsWeight`, `evalMK` and the E combination
+  -- B4: `rsWeight`
   have e03 : ExtA r R3 := e01.trans (e12.trans e23)
   have rr : ∀ x < r.size, ∀ L : List Val, rd (R3 ++ L.toArray) x = rd r x := fun x hx L => by
     rw [rd_app_left R3 L (Nat.lt_of_lt_of_le hx e03.1), e03.rd hx]
-  have hix : ∀ j ∈ rsPtIx κ, j < 17 := by cases κ <;> decide
+  have hix : ∀ j ∈ rsPtIx κ, j < 18 := by cases κ <;> decide
   have hpts : (rsPtIx κ).map (fun j => (rd R3 (ptsOut (pfPts fi) (b + 3) j)).toAK) =
       rsPtsV κ fi r := by
     simp only [rsPtsV]
     refine List.map_congr_left fun j hj => ?_
     rw [e23.rd (hPv j (hix j hj)).2, (hPv j (hix j hj)).1]; rfl
-  set xE := impl.evalMK (rd r rE).toAF (p0V κ fi r)
-  set kEv := fv r kE
   set kpv := fv r kp
   set rsW := impl.rsWeight (ptF r ((List.range 7).map fun p => (coordsR fi "RS1").getD p 0))
       (rsPtsV κ fi r) (fv r ((coordsR fi "RS1").getD 7 0)) (p0V κ fi r)
   set V4 : List Val := [.af (ptF r ((List.range 7).map fun p => (coordsR fi "RS1").getD p 0)),
-    .k rsW, .k xE.1, .k xE.2.1, .k xE.2.2, .k (K.smulF kEv xE.2.1), .k (K.smulF kEv xE.2.2),
-    .k (K.smulF kEv (K.smulF kEv xE.2.2)), .k (xE.1 + K.smulF kEv xE.2.1),
-    .k (eV impl κ fi r), .k (K.smulF kpv (eV impl κ fi r))]
+    .k rsW]
   have hrpp : ∀ x ∈ (List.range 7).map (fun p => (coordsR fi "RS1").getD p 0), x < r.size := by
     intro x hx; obtain ⟨p, hp, rfl⟩ := List.mem_map.mp hx; exact mB p (by simp at hp; omega)
   have hB4 : pureRun impl κ inp
       [.packF ((List.range 7).map fun p => (coordsR fi "RS1").getD p 0),
        .rsWeight (b + 3 + pw + 5) (fun κ => (rsPtIx κ).map (ptsOut (pfPts fi) (b + 3)))
-         ((coordsR fi "RS1").getD 7 0) (b + 3 + pw + 4),
-       .evalMK rE (b + 3 + pw + 4), .mulKF (b + 3 + pw + 5 + 3) kE, .mulKF (b + 3 + pw + 5 + 4) kE,
-       .mulKF (b + 3 + pw + 5 + 6) kE, .addK (b + 3 + pw + 5 + 2) (b + 3 + pw + 5 + 5),
-       .addK (b + 3 + pw + 5 + 8) (b + 3 + pw + 5 + 7), .mulKF (b + 3 + pw + 5 + 9) kp] R3 [] =
+         ((coordsR fi "RS1").getD 7 0) (b + 3 + pw + 4)] R3 [] =
       some (V4, true) := by
     have hP4 : b + 3 + pw + 4 < R3.size := by rw [sR3]; omega
     have hPr : ∀ j ∈ rsPtIx κ, ptsOut (pfPts fi) (b + 3) j < R3.size := fun j hj =>
@@ -1632,14 +1616,14 @@ theorem flag_finPf (impl : OpImpl) (κ : Kind) (inp : Input) (fi : FinIn) (r : A
     rw [← sR3]
     simp only [pureRun, evalOp, List.nil_append, List.cons_append, rd_app, rd_app0,
       rd_app_left _ _ hP4, r3P, List.map_map, Function.comp_def, hptsL,
-      rr _ hkEr, rr _ hkpr, rr _ hrEr, rr _ (mB 7 (by omega)),
+      rr _ (mB 7 (by omega)),
       List.getD_cons_succ, List.getD_cons_zero, Option.map_some, Bool.and_true,
       Array.append_empty, hrpp']
     rfl
   set R4 := R3 ++ V4.toArray with hR4
-  have sR4 : R4.size = b + 3 + pw + 5 + 11 := by simp [R4, sR3, V4]
+  have sR4 : R4.size = b + 3 + pw + 5 + 2 := by simp [R4, sR3, V4]
   have e34 : ExtA R3 R4 := ExtA.app R3 V4
-  have r4 : ∀ j < 11, rd R4 (b + 3 + pw + 5 + j) = V4.getD j default := fun j _ => by
+  have r4 : ∀ j < 2, rd R4 (b + 3 + pw + 5 + j) = V4.getD j default := fun j _ => by
     rw [hR4, ← sR3, rd_app]
   -- B5, B6: `ρ_v` and `1 + ρ_v` of `P₀`'s 23 coordinates
   have hP4' : b + 3 + pw + 4 < R4.size := by rw [sR4]; omega
@@ -1657,80 +1641,80 @@ theorem flag_finPf (impl : OpImpl) (κ : Kind) (inp : Input) (fi : FinIn) (r : A
       rw [sR3]; omega), r3P, Val.toAK]
   rw [hV5, List.nil_append] at hB5
   set R5 := R4 ++ V5.toArray with hR5
-  have sR5 : R5.size = b + 3 + pw + 5 + 34 := by simp [R5, sR4, V5]
+  have sR5 : R5.size = b + 3 + pw + 5 + 25 := by simp [R5, sR4, V5]
   have e45 : ExtA R4 R5 := ExtA.app R4 V5
-  have r5 : ∀ v < 23, rd R5 (b + 3 + pw + 5 + 11 + v) = .k ((p0V κ fi r).getD v 0) := fun v hv => by
+  have r5 : ∀ v < 23, rd R5 (b + 3 + pw + 5 + 2 + v) = .k ((p0V κ fi r).getD v 0) := fun v hv => by
     rw [hR5, ← sR4, rd_app]; simp [V5, hv]
   have e15 : ExtA R1 R5 := e12.trans (e23.trans (e34.trans e45))
   have r5one : rd R5 b = .k 1 := by rw [e15.rd (by omega), r1one]
   have hB6 := run_base impl κ inp R5
-    ((List.range 23).map fun v => Op.addK b (b + 3 + pw + 5 + 11 + v)) []
+    ((List.range 23).map fun v => Op.addK b (b + 3 + pw + 5 + 2 + v)) []
     (fun op hop Y => by
       obtain ⟨v, hv, rfl⟩ := List.mem_map.mp hop
-      have : b + 3 + pw + 5 + 11 + v < R5.size := by rw [sR5]; simp at hv; omega
+      have : b + 3 + pw + 5 + 2 + v < R5.size := by rw [sR5]; simp at hv; omega
       simp only [evalOp, rd_app_left _ _ this, rd_app_left _ _ (show b < R5.size by omega)])
     (fun op hop => by obtain ⟨v, -, rfl⟩ := List.mem_map.mp hop; exact ⟨_, rfl⟩)
   set V6 : List Val := (List.range 23).map fun v => .k (1 + (p0V κ fi r).getD v 0)
-  have hV6 : ((List.range 23).map fun v => Op.addK b (b + 3 + pw + 5 + 11 + v)).map
+  have hV6 : ((List.range 23).map fun v => Op.addK b (b + 3 + pw + 5 + 2 + v)).map
       (baseVal impl κ inp R5) = V6 := by
     simp only [List.map_map, V6]
     refine List.map_congr_left fun v hv => ?_
     simp only [Function.comp_apply, baseVal, evalOp, r5one, r5 v (List.mem_range.mp hv), toK_k]
   rw [hV6, List.nil_append] at hB6
   set R6 := R5 ++ V6.toArray with hR6
-  have sR6 : R6.size = b + 3 + pw + 5 + 57 := by simp [R6, sR5, V6]
+  have sR6 : R6.size = b + 3 + pw + 5 + 48 := by simp [R6, sR5, V6]
   have e56 : ExtA R5 R6 := ExtA.app R5 V6
   -- B7: `κ′²`
   have e06 : ExtA r R6 := e03.trans (e34.trans (e45.trans e56))
   have hB7 : pureRun impl κ inp [.mulF kp kp] R6 [] = some ([.f (kpv * kpv)], true) := by
     simp only [pureRun, evalOp, List.nil_append, Array.append_empty, e06.rd hkpr]; rfl
   set R7 := R6 ++ [Val.f (kpv * kpv)].toArray with hR7
-  have sR7 : R7.size = b + 3 + pw + 5 + 57 + 1 := by simp [R7, sR6]
+  have sR7 : R7.size = b + 3 + pw + 5 + 48 + 1 := by simp [R7, sR6]
   have e67 : ExtA R6 R7 := ExtA.app R6 _
   -- B8: the cells
   have e17 : ExtA R1 R7 := e15.trans (e56.trans e67)
   have e57 : ExtA R5 R7 := e56.trans e67
-  obtain ⟨M8, hB8, hl8, hv8⟩ := run_cellsOps impl κ inp R7 b (b + 3 + pw + 5 + 11)
-    (b + 3 + pw + 5 + 34) kp (p0V κ fi r) kpv (by omega) (by rw [e17.rd (by omega), r1one])
+  obtain ⟨M8, hB8, hl8, hv8⟩ := run_cellsOps impl κ inp R7 b (b + 3 + pw + 5 + 2)
+    (b + 3 + pw + 5 + 25) kp (p0V κ fi r) kpv (by omega) (by rw [e17.rd (by omega), r1one])
     (Nat.lt_of_lt_of_le hkpr (e06.trans e67).1) (by rw [e06.trans e67 |>.rd hkpr])
     (fun v hv => ⟨by omega, by
       rw [e57.rd (by rw [sR5]; omega), r5 v hv]; rfl⟩)
     (fun v hv => ⟨by omega, by
-      rw [show b + 3 + pw + 5 + 34 + v = R5.size + v by rw [sR5],
+      rw [show b + 3 + pw + 5 + 25 + v = R5.size + v by rw [sR5],
         e67.rd (by rw [sR6]; omega), hR6, rd_app]; simp [V6, hv, toK_k]⟩)
-    pfCells (b + 2) (b + 3 + pw + 5 + 57) 0 (kpv * kpv) [] (by simp; omega)
+    pfCells (b + 2) (b + 3 + pw + 5 + 48) 0 (kpv * kpv) [] (by simp; omega)
     (by rw [app0, e17.rd (by omega), r1z])
     (by simp; omega)
     (by rw [app0, hR7, ← sR6, rd_app0]; rfl)
   simp only [List.length_nil, Nat.add_zero, List.nil_append, sR7] at hB8 hv8
   set R8 := R7 ++ M8.toArray with hR8
-  have sR8 : R8.size = b + 3 + pw + 5 + 57 + 1 + 26 * 9 := by simp [R8, sR7, hl8, pfCells]
+  have sR8 : R8.size = b + 3 + pw + 5 + 48 + 1 + 26 * 9 := by simp [R8, sR7, hl8, pfCells]
   have e78 : ExtA R7 R8 := ExtA.app R7 M8
   -- B9: `Ŵ₀(P₀)`
   have e48 : ExtA R4 R8 := e45.trans (e57.trans e78)
-  have r8a : rd R8 (b + 3 + pw + 5 + 10) = .k (K.smulF kpv (eV impl κ fi r)) := by
-    rw [e48.rd (by rw [sR4]; omega), r4 10 (by omega)]; rfl
   have r8w : rd R8 (b + 3 + pw + 5 + 1) = .k rsW := by
     rw [e48.rd (by rw [sR4]; omega), r4 1 (by omega)]; rfl
   have r8z : rd R8 (b + 2) = .k 0 := by rw [(e17.trans e78).rd (by omega), r1z]
-  set cv := K.smulF kpv (eV impl κ fi r) + cellsVal (p0V κ fi r) kpv pfCells (kpv * kpv) 0
-  set V9 : List Val := [.k cv, if κ.isNode then .k cv else .k 0, .k (w0V impl κ fi r)]
+  set cv := cellsVal (p0V κ fi r) kpv pfCells (kpv * kpv) 0
+  set V9 : List Val := [if κ.isNode then .k cv else .k 0, .k (w0V impl κ fi r)]
   have hB9 : pureRun impl κ inp
-      [.addK (b + 3 + pw + 5 + 10) (cellsAcc pfCells (b + 2) (b + 3 + pw + 5 + 57 + 1)),
-       .keep Kind.isNode (b + 3 + pw + 5 + 57 + 1 + 26 * 9) (b + 2),
-       .addK (b + 3 + pw + 5 + 1) (b + 3 + pw + 5 + 57 + 1 + 26 * 9 + 1)] R8 [] =
+      [.keep Kind.isNode (cellsAcc pfCells (b + 2) (b + 3 + pw + 5 + 48 + 1)) (b + 2),
+       .addK (b + 3 + pw + 5 + 1) (b + 3 + pw + 5 + 48 + 1 + 26 * 9)] R8 [] =
       some (V9, true) := by
+    have hca : cellsAcc pfCells (b + 2) (b + 3 + pw + 5 + 48 + 1) < R8.size := by
+      by_contra hc'
+      have h0 := hv8; rw [rd, Array.getElem?_eq_none (by simpa using hc')] at h0; cases h0
     rw [← sR8]
     simp only [pureRun, evalOp, List.nil_append, List.cons_append, rd_app, rd_app0, app0,
       rd_app_left _ _ (show b + 3 + pw + 5 + 1 < R8.size by omega),
-      rd_app_left _ _ (show b + 2 < R8.size by omega), r8a, r8w, r8z, hv8,
+      rd_app_left _ _ (show b + 2 < R8.size by omega), rd_app_left _ _ hca, r8w, r8z, hv8,
       List.getD_cons_succ, List.getD_cons_zero, Option.map_some, Bool.and_true]
     simp only [V9, w0V, cv, toK_k]
     cases κ.isNode <;> rfl
   set R9 := R8 ++ V9.toArray with hR9
-  have sR9 : R9.size = b + 3 + pw + 5 + 57 + 1 + 26 * 9 + 3 := by simp [R9, sR8, V9]
+  have sR9 : R9.size = b + 3 + pw + 5 + 48 + 1 + 26 * 9 + 2 := by simp [R9, sR8, V9]
   have e89 : ExtA R8 R9 := ExtA.app R8 V9
-  have r9w : rd R9 (b + 3 + pw + 5 + 57 + 1 + 26 * 9 + 2) = .k (w0V impl κ fi r) := by
+  have r9w : rd R9 (b + 3 + pw + 5 + 48 + 1 + 26 * 9 + 1) = .k (w0V impl κ fi r) := by
     rw [hR9, ← sR8, rd_app]; rfl
   -- B10: the levels
   have e09 : ExtA r R9 := e06.trans (e67.trans (e78.trans e89))
@@ -1738,7 +1722,7 @@ theorem flag_finPf (impl : OpImpl) (κ : Kind) (inp : Input) (fi : FinIn) (r : A
   have e19 : ExtA R1 R9 := e17.trans (e78.trans e89)
   obtain ⟨M10, hB10, hl10, hv10⟩ := run_lvsOps impl κ inp fi b (b + 1) (b + 3 + pw)
     (tailV κ fi r) R9 (by omega) (by rw [e19.rd (by omega), r1one]) (by omega)
-    (by rw [e19.rd (by omega), r1cu]) [1, 2, 3, 4] (b + 3 + pw + 5 + 57 + 1 + 26 * 9 + 2)
+    (by rw [e19.rd (by omega), r1cu]) [1, 2, 3, 4] (b + 3 + pw + 5 + 48 + 1 + 26 * 9 + 1)
     (w0V impl κ fi r) R9 le_rfl (fun _ _ => rfl)
     (fun k hk => by
       refine ⟨fun x hx => Nat.lt_of_lt_of_le (mE k hk x hx) e09.1, by
@@ -1749,11 +1733,11 @@ theorem flag_finPf (impl : OpImpl) (κ : Kind) (inp : Input) (fi : FinIn) (r : A
   rw [sR9] at hB10 hv10
   rw [lvsV_congr impl fi (tailV κ fi r) r.size (fun x hx => e09.rd hx) [1, 2, 3, 4] _ mE] at hv10
   set R10 := R9 ++ M10.toArray with hR10
-  have sR10 : R10.size = b + 3 + pw + 5 + 57 + 1 + 26 * 9 + 3 + lw := by
+  have sR10 : R10.size = b + 3 + pw + 5 + 48 + 1 + 26 * 9 + 2 + lw := by
     simp [R10, sR9, hl10, hlw]
   have e910 : ExtA R9 R10 := ExtA.app R9 M10
   -- B11: `sf` and `eq(sf, ·)`
-  set fb := b + 3 + pw + 5 + 57 + 1 + 26 * 9 + 3 + lw with hfb
+  set fb := b + 3 + pw + 5 + 48 + 1 + 26 * 9 + 2 + lw with hfb
   have e010 : ExtA r R10 := e09.trans e910
   set sfV := ((chals fi "Pf" 7).map fun x => (rd r x).toK).toArray
   set V11 : List Val := [.ak sfV, .ak (eqTab sfV)]
@@ -1780,15 +1764,15 @@ theorem flag_finPf (impl : OpImpl) (κ : Kind) (inp : Input) (fi : FinIn) (r : A
   -- B13: the padding and the check
   have e012 : ExtA r R12 := e010.trans (e1011.trans e1112)
   have e112 : ExtA R1 R12 := e19.trans (e910.trans (e1011.trans e1112))
-  have hWo : lvsOut fi [1, 2, 3, 4] (b + 3 + pw + 5 + 57 + 1 + 26 * 9 + 2)
-      (b + 3 + pw + 5 + 57 + 1 + 26 * 9 + 3) < R10.size := by
+  have hWo : lvsOut fi [1, 2, 3, 4] (b + 3 + pw + 5 + 48 + 1 + 26 * 9 + 1)
+      (b + 3 + pw + 5 + 48 + 1 + 26 * 9 + 2) < R10.size := by
     by_contra hc'
     have h0 := hv10; rw [rd, Array.getElem?_eq_none (by simpa [R10] using hc')] at h0; cases h0
   have hFo : fhOut (List.range 128) (b + 2) (fb + 2) < R12.size := by
     by_contra hc'
     have h0 := hv12; rw [rd, Array.getElem?_eq_none (by simpa [R12] using hc')] at h0; cases h0
-  have r12W : rd R12 (lvsOut fi [1, 2, 3, 4] (b + 3 + pw + 5 + 57 + 1 + 26 * 9 + 2)
-      (b + 3 + pw + 5 + 57 + 1 + 26 * 9 + 3)) = .k (wV impl κ fi r) := by
+  have r12W : rd R12 (lvsOut fi [1, 2, 3, 4] (b + 3 + pw + 5 + 48 + 1 + 26 * 9 + 1)
+      (b + 3 + pw + 5 + 48 + 1 + 26 * 9 + 2)) = .k (wV impl κ fi r) := by
     rw [(e1011.trans e1112).rd hWo, hv10]; rfl
   have h5 : (chals fi "Pf" 7).getD 5 0 < r.size := mC _ (by simp)
   have h6 : (chals fi "Pf" 7).getD 6 0 < r.size := mC _ (by simp)
@@ -1796,8 +1780,8 @@ theorem flag_finPf (impl : OpImpl) (κ : Kind) (inp : Input) (fi : FinIn) (r : A
   obtain ⟨V13, hB13⟩ : ∃ V13, pureRun impl κ inp
       [.addK b ((chals fi "Pf" 7).getD 5 0), .addK b ((chals fi "Pf" 7).getD 6 0),
        .mulK (fb + 2 + 4 * 128) (fb + 2 + 4 * 128 + 1), .keep is32 b (fb + 2 + 4 * 128 + 2),
-       .mulK (lvsOut fi [1, 2, 3, 4] (b + 3 + pw + 5 + 57 + 1 + 26 * 9 + 2)
-         (b + 3 + pw + 5 + 57 + 1 + 26 * 9 + 3)) (fb + 2 + 4 * 128 + 3),
+       .mulK (lvsOut fi [1, 2, 3, 4] (b + 3 + pw + 5 + 48 + 1 + 26 * 9 + 1)
+         (b + 3 + pw + 5 + 48 + 1 + 26 * 9 + 2)) (fb + 2 + 4 * 128 + 3),
        .mulK (fb + 2 + 4 * 128 + 4) (fhOut (List.range 128) (b + 2) (fb + 2)),
        .assertEq (fb + 2 + 4 * 128 + 5) (claimN fi "Pf") allK] R12 [] =
       some (V13, relPf impl κ inp fi r) := by
@@ -1870,12 +1854,12 @@ theorem pfCells_spec :
   simp only [pfCells, Layout.oneCell, Layout.mBase, Layout.chainN]
   decide
 
-/-- `lrHi` holds the bits of `Lbase · 128 / 2^8 = 23,168`. -/
-theorem lrHi_eq : lrHi = [0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 1, 1, 0, 1] := by
+/-- `lrHi` holds the bits of `Lbase · 128 / 2^8 = 23,808`. -/
+theorem lrHi_eq : lrHi = [0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 1, 1, 0, 1] := by
   simp only [lrHi, Layout.lBase]
   decide
 
-/-- `finPf` builds 17 points (`pfPts`'s index table). -/
-theorem pfPts_length (fi : FinIn) : (pfPts fi).length = 17 := by simp [pfPts]
+/-- `finPf` builds 18 points (`pfPts`'s index table). -/
+theorem pfPts_length (fi : FinIn) : (pfPts fi).length = 18 := by simp [pfPts]
 
 end FR

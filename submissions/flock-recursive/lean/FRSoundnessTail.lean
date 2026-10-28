@@ -5,7 +5,7 @@ import FRSoundnessFold
 # The Ligerito tail P1.0 → Pf: the concrete dooms and their per-phase obligations
 
 The tail is parametric in level 0's weight table `W₀` and P1.0's initial claim `c₀` (the front's
-outputs: `w0F` of RS's, E's and the cells' weights, and `v*` as `finB′` computes it), which read
+outputs: `w0F` of RS's and the cells' weights, and `v*` as `finB′` computes it), which read
 only entries before P1.0 (`LocalW`, `LocalC`).
 
 * **Part A: positions** (checked once): `cStart i` (C.i's absorb, P2.i's entry), `p3S0 i` (P3.i's
@@ -28,13 +28,13 @@ set_option linter.constructorNameAsVariable false
 /-! ## Part A: positions -/
 
 /-- C.i's absorb (the next cap or the final message), P2.i's entry. -/
-def cStart (i : ℕ) : ℕ := phStart (26 + 5 * i)
+def cStart (i : ℕ) : ℕ := phStart (27 + 5 * i)
 
 /-- P3.i's entry (P2.i's last answer). -/
-def p3S0 (i : ℕ) : ℕ := phStart (29 + 5 * i) - 1
+def p3S0 (i : ℕ) : ℕ := phStart (30 + 5 * i) - 1
 
 /-- Pf's first absorb. -/
-def pfStart : ℕ := phStart 50
+def pfStart : ℕ := phStart 51
 
 /-- The first position after P3.i (P1.(i+1)'s first absorb, or Pf's). -/
 def nxStart (i : ℕ) : ℕ := if i < 4 then p1Start (i + 1) else pfStart
@@ -55,7 +55,7 @@ theorem tail_pos {i : ℕ} (hi : i < 5) : capPos i < p1Start i ∧ 1 ≤ p1Start
   obtain ⟨⟨⟨⟨h1, h2⟩, h3⟩, h4⟩, h5⟩ := h i hi
   exact ⟨h1, h2, h3, h4, h5⟩
 
-theorem pfStart_eq : pfStart = 437 := by unfold pfStart phStart; rw [fsStarts_eq]; rfl
+theorem pfStart_eq : pfStart = 483 := by unfold pfStart phStart; rw [fsStarts_eq]; rfl
 
 theorem p1Start_lt_nx {i : ℕ} (hi : i < 5) : p1Start i < nxStart i := by
   obtain ⟨-, -, h3, h4, h5⟩ := tail_pos hi; omega
@@ -145,8 +145,8 @@ theorem nextMsg_same (hp : cStart i + 1 ≤ p) : nextMsg κ L es i = nextMsg κ 
   · simp only [hn, ite_false, finalAt, msgAt, entAt]
     have h4 : i = 4 := by unfold nLevels at hn; omega
     subst h4
-    have h46 : cStart 4 = phStart 46 := rfl
-    have := h.1 (phStart 46) (by omega)
+    have h46 : cStart 4 = phStart 47 := rfl
+    have := h.1 (phStart 47) (by omega)
     simp only [entAt] at this
     rw [this]
 

@@ -1613,3 +1613,12 @@ coordinator's example `R = 10`).
 | E4end absorb | **None.** Revision 3.12 item 1 and A.4's "E4end, 48 B", and A.3 row 9's "f̂(r′), 16 B", are withdrawn. The value of f̂(r′), RS claim 5, comes from RS0's fifth slice (α₅ = Σ bᵢ s₄,ᵢ), under revision 3.9's rule that the α_j are computed from RS0. The counts are the Lean values: 8,920 items, 497 FS items, piSize = 800,640. |
 | `finB′` | Drops the κ′·v_E term along with `finPf`'s evalMK term, since E is now a lincheck whose final is in `finE`. |
 | Positions | Phase indices ≥ 24 move by +1, FS and item positions ≥ 300 by +46 (S-0: logs/S-0/check/pos-3.12.txt). |
+
+### Stage-review changes 19 (INT-1, revision 3.12 integrated)
+
+| Point | Ruling |
+|---|---|
+| L's base | **`lBase = 47,616`**: with `chainN = 23,225`, H ends at block 47,480, so L starts at the first multiple of 256 after it (it was 46,336). A.7 and §4.3 are amended. The prover uses the same value. |
+| A.9 `finB′` | No `κ′·v_E` term (E's final is now `finE`'s lincheck check `evalM(r_E2, r′)·α_E` against E4's final claim, node-only). |
+| A.9 `finPf` | A node's `rsWeight` takes a fifth point, all of E4's `r′` (claim 5, `rsPtIx .N30 = [1, 3, 5, 6, 17]`), matching `v_RS = Σ κ^j T_j` with `T₄`. There is no evalMK term. |
+| `finRS` | `rsTail = T₃ + κ·T₄` for nodes. A leaf asserts claims 3–4's slices are zero. `nRS = 5`. |

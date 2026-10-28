@@ -20,7 +20,7 @@ what lies before P1.0).
   - `DP3 i` (P3.i): `msD` over `DP2 i` with `finP3 i` (the next level is far, or its initial
     claim is false).
   - `DPf` (Pf): `D2` over K on `[W_f, final]`.
-  - **`DT k`**: phase `k`'s doom for `k = 25 … 50`.
+  - **`DT k`**: phase `k`'s doom for `k = 26 … 51`.
 * **Part C: the asserted checks** `RejT`: some answered round of P1.i or Pf fails its check.
 * **Part D: the position facts** (checked once): the phase bounds `phOf_bounds`, the rounds'
   absorbs and squeezes.
@@ -163,9 +163,9 @@ theorem tPf_same (hp : pfStart ≤ p) : tPf W₀ L es = tPf W₀ L' es' := by
       wNext_same h (show 4 < 5 by norm_num) _ (by omega)]
   have hf : finalAt es = finalAt es' := by
     funext x
-    have h46 : cStart 4 = phStart 46 := rfl
+    have h46 : cStart 4 = phStart 47 := rfl
     simp only [finalAt, msgAt, entAt]
-    have := h.1 (phStart 46) (by omega)
+    have := h.1 (phStart 47) (by omega)
     simp only [entAt] at this
     rw [this]
   rw [tPf, tPf, hw, hf]
@@ -220,39 +220,39 @@ def DP3 (i : ℕ) : Log → Log → Prop := msD (DP2 W₀ c₀ i) (finP3 W₀ c�
 /-- **Pf's doom** (`D2` over K, 7 rounds). -/
 def DPf : Log → Log → Prop := D2 pfStart 32 readK chK (lvC c₀ 5) (fun _ => 7) e2 (tPf W₀)
 
-/-- **The tail's phase dooms** (`k = 25 + 5i + t`: P1.i, C.i, P2.i, Q, P3.i; `k = 50`: Pf). -/
+/-- **The tail's phase dooms** (`k = 26 + 5i + t`: P1.i, C.i, P2.i, Q, P3.i; `k = 51`: Pf). -/
 def DT (k : ℕ) : Log → Log → Prop :=
-  if k = 50 then DPf W₀ c₀
-  else if (k - 25) % 5 = 0 then D1 W₀ c₀ ((k - 25) / 5)
-  else if (k - 25) % 5 = 1 then DCi W₀ c₀ ((k - 25) / 5)
-  else if (k - 25) % 5 = 2 then DP2 W₀ c₀ ((k - 25) / 5)
-  else if (k - 25) % 5 = 3 then fun _ _ => False
-  else DP3 W₀ c₀ ((k - 25) / 5)
+  if k = 51 then DPf W₀ c₀
+  else if (k - 26) % 5 = 0 then D1 W₀ c₀ ((k - 26) / 5)
+  else if (k - 26) % 5 = 1 then DCi W₀ c₀ ((k - 26) / 5)
+  else if (k - 26) % 5 = 2 then DP2 W₀ c₀ ((k - 26) / 5)
+  else if (k - 26) % 5 = 3 then fun _ _ => False
+  else DP3 W₀ c₀ ((k - 26) / 5)
 
 variable {i : ℕ} (hi : i < 5)
 include hi
 
-theorem DT_P1 : DT W₀ c₀ (25 + 5 * i) = D1 W₀ c₀ i := by
+theorem DT_P1 : DT W₀ c₀ (26 + 5 * i) = D1 W₀ c₀ i := by
   unfold DT
-  rw [ite_neg' (by omega), ite_pos' (by omega), show (25 + 5 * i - 25) / 5 = i by omega]
+  rw [ite_neg' (by omega), ite_pos' (by omega), show (26 + 5 * i - 26) / 5 = i by omega]
 
-theorem DT_C : DT W₀ c₀ (26 + 5 * i) = DCi W₀ c₀ i := by
+theorem DT_C : DT W₀ c₀ (27 + 5 * i) = DCi W₀ c₀ i := by
   unfold DT
   rw [ite_neg' (by omega), ite_neg' (by omega), ite_pos' (by omega),
-    show (26 + 5 * i - 25) / 5 = i by omega]
+    show (27 + 5 * i - 26) / 5 = i by omega]
 
-theorem DT_P2 : DT W₀ c₀ (27 + 5 * i) = DP2 W₀ c₀ i := by
+theorem DT_P2 : DT W₀ c₀ (28 + 5 * i) = DP2 W₀ c₀ i := by
   unfold DT
   rw [ite_neg' (by omega), ite_neg' (by omega), ite_neg' (by omega), ite_pos' (by omega),
-    show (27 + 5 * i - 25) / 5 = i by omega]
+    show (28 + 5 * i - 26) / 5 = i by omega]
 
-theorem DT_P3 : DT W₀ c₀ (29 + 5 * i) = DP3 W₀ c₀ i := by
+theorem DT_P3 : DT W₀ c₀ (30 + 5 * i) = DP3 W₀ c₀ i := by
   unfold DT
   rw [ite_neg' (by omega), ite_neg' (by omega), ite_neg' (by omega), ite_neg' (by omega),
-    ite_neg' (by omega), show (29 + 5 * i - 25) / 5 = i by omega]
+    ite_neg' (by omega), show (30 + 5 * i - 26) / 5 = i by omega]
 
 omit hi in
-theorem DT_Pf : DT W₀ c₀ 50 = DPf W₀ c₀ := by unfold DT; rw [ite_pos' rfl]
+theorem DT_Pf : DT W₀ c₀ 51 = DPf W₀ c₀ := by unfold DT; rw [ite_pos' rfl]
 
 end Dooms
 
@@ -275,12 +275,12 @@ theorem chk2_same {b : ℕ} {c0 : Log → Log → K} {L L' es es' : Log} {p : �
 /-! ## Part D: the position facts -/
 
 /-- Checked: phase `phOf p`'s first position is at most `p`, and `p` lies before the next phase's
-(`p < 451`). -/
-theorem phOf_check : (List.range 451).all (fun p => decide (phStart (phOf p) ≤ p) &&
-    decide (phOf p ≤ 50) && (decide (phOf p = 50) || decide (p < phStart (phOf p + 1)))) = true := by
+(`p < 497`). -/
+theorem phOf_check : (List.range 497).all (fun p => decide (phStart (phOf p) ≤ p) &&
+    decide (phOf p ≤ 51) && (decide (phOf p = 51) || decide (p < phStart (phOf p + 1)))) = true := by
   unfold phOf phStart; rw [fsStarts_eq]; decide +kernel
 
-theorem phOf_ge {p : ℕ} (hp : 437 ≤ p) : phOf p = 50 := by
+theorem phOf_ge {p : ℕ} (hp : 483 ≤ p) : phOf p = 51 := by
   unfold phOf
   rw [List.filter_eq_self.mpr fun x hx => by
     rw [fsStarts_eq] at hx; simp only [decide_eq_true_eq]; fin_cases hx <;> omega, fsStarts_eq]
@@ -288,9 +288,9 @@ theorem phOf_ge {p : ℕ} (hp : 437 ≤ p) : phOf p = 50 := by
 
 /-- **The phase bounds**: `phStart (phOf p) ≤ p`, and before the last phase `p` lies before the
 next phase's start. -/
-theorem phOf_bounds (p : ℕ) : phStart (phOf p) ≤ p ∧ phOf p ≤ 50 ∧
-    (phOf p < 50 → p < phStart (phOf p + 1)) := by
-  by_cases hp : p < 451
+theorem phOf_bounds (p : ℕ) : phStart (phOf p) ≤ p ∧ phOf p ≤ 51 ∧
+    (phOf p < 51 → p < phStart (phOf p + 1)) := by
+  by_cases hp : p < 497
   · have h := phOf_check
     simp only [List.all_eq_true, List.mem_range, Bool.and_eq_true, Bool.or_eq_true,
       decide_eq_true_eq] at h
@@ -301,12 +301,12 @@ theorem phOf_bounds (p : ℕ) : phStart (phOf p) ≤ p ∧ phOf p ≤ 50 ∧
     unfold phStart; rw [fsStarts_eq]; simp; omega
 
 /-- Checked: the rounds of P1.0 … P1.4 and Pf alternate a 96-byte absorb and a squeeze; there
-are 451 Fiat–Shamir items. -/
+are 497 Fiat–Shamir items. -/
 theorem rounds_check : ((List.range 5).all (fun i => (List.range (hEll i)).all fun l =>
       fsItems[p1Start i + 2 * l]? == some (.absorb 96) &&
         fsItems[p1Start i + 2 * l + 1]? == some .squeeze) &&
     (List.range 7).all (fun l => fsItems[pfStart + 2 * l]? == some (.absorb 96) &&
-        fsItems[pfStart + 2 * l + 1]? == some .squeeze) && fsItems.length == 451) = true := by
+        fsItems[pfStart + 2 * l + 1]? == some .squeeze) && fsItems.length == 497) = true := by
   unfold p1Start pfStart hEll phStart; rw [fsStarts_eq]; decide +kernel
 
 end FR.Snd

@@ -120,7 +120,7 @@ def opName : Op → String
   | .eqTableK .. => "eqTableK" | .dotKF .. => "dotKF" | .lagrangeS .. => "lagrangeS"
   | .targetS .. => "targetS" | .eqZ .. => "eqZ" | .tensorW .. => "tensorW" | .rsWeight .. => "rsWeight"
   | .phiRS .. => "phiRS" | .walkAB .. => "walkAB" | .kindInd .. => "kindInd"
-  | .maskRows .. => "maskRows" | .evalM .. => "evalM" | .evalL .. => "evalL" | .evalMK .. => "evalMK"
+  | .maskRows .. => "maskRows" | .evalM .. => "evalM" | .evalL .. => "evalL"
   | .shiftTarget .. => "shiftTarget" | .slotW .. => "slotW" | .kindFoldWeight .. => "kindFoldWeight"
   | .eqPt .. => "eqPt" | .rowW .. => "rowW" | .shiftEq .. => "shiftEq" | .linkW .. => "linkW"
   | .splitDigest .. => "splitDigest" | .selectHalf .. => "selectHalf" | .keep .. => "keep"

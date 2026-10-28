@@ -24,20 +24,20 @@ set_option linter.constructorNameAsVariable false
 
 /-! ## Part A: the phase facts -/
 
-theorem tail_ph_check : (List.range 5).all (fun i => phOf (p1Start i) == 25 + 5 * i &&
-    phOf (cStart i) == 26 + 5 * i && phOf (cStart i + 1) == 27 + 5 * i &&
-    phOf (p3S0 i) == 27 + 5 * i && phOf (p3S0 i + 1) == 29 + 5 * i &&
-    phStart (27 + 5 * i) == cStart i + 1 && phStart (28 + 5 * i) == p3S0 i + 1 &&
-    phStart (29 + 5 * i) == p3S0 i + 1 && phStart (30 + 5 * i) == nxStart i &&
+theorem tail_ph_check : (List.range 5).all (fun i => phOf (p1Start i) == 26 + 5 * i &&
+    phOf (cStart i) == 27 + 5 * i && phOf (cStart i + 1) == 28 + 5 * i &&
+    phOf (p3S0 i) == 28 + 5 * i && phOf (p3S0 i + 1) == 30 + 5 * i &&
+    phStart (28 + 5 * i) == cStart i + 1 && phStart (29 + 5 * i) == p3S0 i + 1 &&
+    phStart (30 + 5 * i) == p3S0 i + 1 && phStart (31 + 5 * i) == nxStart i &&
     fsRanges.contains (cStart i, (lvlStar i).sq) && fsRanges.contains (p3S0 i, 5)) = true := by
   unfold nxStart p1Start pfStart cStart p3S0 phOf phStart
   rw [fsStarts_eq, fsRanges_eq]; decide +kernel
 
-theorem tail_ph {i : ℕ} (hi : i < 5) : phOf (p1Start i) = 25 + 5 * i ∧
-    phOf (cStart i) = 26 + 5 * i ∧ phOf (cStart i + 1) = 27 + 5 * i ∧
-    phOf (p3S0 i) = 27 + 5 * i ∧ phOf (p3S0 i + 1) = 29 + 5 * i ∧
-    phStart (27 + 5 * i) = cStart i + 1 ∧ phStart (28 + 5 * i) = p3S0 i + 1 ∧
-    phStart (29 + 5 * i) = p3S0 i + 1 ∧ phStart (30 + 5 * i) = nxStart i ∧
+theorem tail_ph {i : ℕ} (hi : i < 5) : phOf (p1Start i) = 26 + 5 * i ∧
+    phOf (cStart i) = 27 + 5 * i ∧ phOf (cStart i + 1) = 28 + 5 * i ∧
+    phOf (p3S0 i) = 28 + 5 * i ∧ phOf (p3S0 i + 1) = 30 + 5 * i ∧
+    phStart (28 + 5 * i) = cStart i + 1 ∧ phStart (29 + 5 * i) = p3S0 i + 1 ∧
+    phStart (30 + 5 * i) = p3S0 i + 1 ∧ phStart (31 + 5 * i) = nxStart i ∧
     (cStart i, (lvlStar i).sq) ∈ fsRanges ∧ (p3S0 i, 5) ∈ fsRanges := by
   have h := tail_ph_check
   simp only [List.all_eq_true, List.mem_range, Bool.and_eq_true, beq_iff_eq,
@@ -48,14 +48,14 @@ theorem tail_ph {i : ℕ} (hi : i < 5) : phOf (p1Start i) = 25 + 5 * i ∧
 variable {W₀ : Log → Log → ℕ → K} {c₀ : Log → Log → K}
 
 theorem ms_P2 {Dk : ℕ → Log → Log → Prop} {i : ℕ} (hi : i < 5)
-    (hC : Dk (26 + 5 * i) = DCi W₀ c₀ i) (hP : Dk (27 + 5 * i) = DP2 W₀ c₀ i) :
+    (hC : Dk (27 + 5 * i) = DCi W₀ c₀ i) (hP : Dk (28 + 5 * i) = DP2 W₀ c₀ i) :
     Dk (phOf (cStart i + 1)) = msD (Dk (phOf (cStart i))) (finP2 W₀ c₀ i) (cStart i)
       (lvlStar i).sq := by
   obtain ⟨-, h2, h3, -⟩ := tail_ph hi
   rw [h2, h3, hC, hP, DP2]
 
 theorem ms_P3 {Dk : ℕ → Log → Log → Prop} {i : ℕ} (hi : i < 5)
-    (hP : Dk (27 + 5 * i) = DP2 W₀ c₀ i) (hQ : Dk (29 + 5 * i) = DP3 W₀ c₀ i) :
+    (hP : Dk (28 + 5 * i) = DP2 W₀ c₀ i) (hQ : Dk (30 + 5 * i) = DP3 W₀ c₀ i) :
     Dk (phOf (p3S0 i + 1)) = msD (Dk (phOf (p3S0 i))) (finP3 W₀ c₀ i) (p3S0 i) 5 := by
   obtain ⟨-, -, -, h4, h5, -⟩ := tail_ph hi
   rw [h4, h5, hP, hQ, DP3]
@@ -68,7 +68,7 @@ theorem lvE_lt_lvN (κ : Kind) {i : ℕ} (hi : i < 5) : lvE κ i < lvN κ i := b
 open Classical in
 /-- **P2.i's charge** (A.10, `p2_hround`): at most `deltaR`. -/
 theorem hfin_P2 (hF : FrontLocal W₀ c₀) {Dk : ℕ → Log → Log → Prop} {i : ℕ} (hi : i < 5)
-    (hC : Dk (26 + 5 * i) = DCi W₀ c₀ i) (hP : Dk (27 + 5 * i) = DP2 W₀ c₀ i)
+    (hC : Dk (27 + 5 * i) = DCi W₀ c₀ i) (hP : Dk (28 + 5 * i) = DP2 W₀ c₀ i)
     (L es₀ : Log) (hl : es₀.length = cStart i + 1) :
     condCount (DPos (Dp Dk)) L es₀ (lvlStar i).sq [] ≤ deltaR := by
   obtain ⟨-, h2, -, -, -, -, -, -, -, hmem, -⟩ := tail_ph hi
@@ -158,7 +158,7 @@ theorem ofFn_coord_getD (X : Log) (i v : ℕ) (hv : v < 10) :
 open Classical in
 /-- **P3.i's charge** (A.10, `hfin_seq` over the 9 coordinates of `κ_c`): at most `9/2^128`. -/
 theorem hfin_P3 (hF : FrontLocal W₀ c₀) {Dk : ℕ → Log → Log → Prop} {i : ℕ} (hi : i < 5)
-    (hP : Dk (27 + 5 * i) = DP2 W₀ c₀ i) (hQ : Dk (29 + 5 * i) = DP3 W₀ c₀ i)
+    (hP : Dk (28 + 5 * i) = DP2 W₀ c₀ i) (hQ : Dk (30 + 5 * i) = DP3 W₀ c₀ i)
     (L es₀ : Log) (hl : es₀.length = p3S0 i + 1) :
     condCount (DPos (Dp Dk)) L es₀ 5 [] ≤ deltaR := by
   obtain ⟨-, -, -, h4, -, -, -, -, -, -, hmem⟩ := tail_ph hi
@@ -216,7 +216,7 @@ theorem D2_congrL {R : Type*} [Field R] {b wd : ℕ} {rd : ByteArray → ℕ →
   rw [hT, clR2_same (L' := L') (es' := Y) hc (fun _ _ => rfl)]
 
 theorem DT_Q (W₀ : Log → Log → ℕ → K) (c₀ : Log → Log → K) {i : ℕ} (hi : i < 5) :
-    DT W₀ c₀ (28 + 5 * i) = fun _ _ => False := by
+    DT W₀ c₀ (29 + 5 * i) = fun _ _ => False := by
   unfold DT
   rw [ite_neg' (by omega), ite_neg' (by omega), ite_neg' (by omega), ite_neg' (by omega),
     ite_pos' (by omega)]
@@ -286,25 +286,25 @@ theorem DPf_stab (hF : FrontLocal W₀ c₀) {L L' Y : Log} {p : ℕ} (h : Same 
 
 /-- **Every tail doom is stable** (`hstab`): on two logs whose words agree up to the chain's
 length, once the chain has reached phase `k`. -/
-theorem DT_stab (hF : FrontLocal W₀ c₀) {k : ℕ} (hk1 : 25 ≤ k) (hk2 : k ≤ 50) {L L' Y : Log}
+theorem DT_stab (hF : FrontLocal W₀ c₀) {k : ℕ} (hk1 : 26 ≤ k) (hk2 : k ≤ 51) {L L' Y : Log}
     {p : ℕ} (h : Same L Y L' Y p) (hY : Y.length ≤ p) (hp : phStart k + 1 ≤ p) :
     DT W₀ c₀ k L Y ↔ DT W₀ c₀ k L' Y := by
-  by_cases h50 : k = 50
+  by_cases h50 : k = 51
   · subst h50; rw [DT_Pf]; exact DPf_stab hF h (by unfold pfStart; omega)
-  obtain ⟨i, t, ht, rfl⟩ : ∃ i t, t < 5 ∧ k = 25 + 5 * i + t :=
-    ⟨(k - 25) / 5, (k - 25) % 5, Nat.mod_lt _ (by norm_num), by omega⟩
+  obtain ⟨i, t, ht, rfl⟩ : ∃ i t, t < 5 ∧ k = 26 + 5 * i + t :=
+    ⟨(k - 26) / 5, (k - 26) % 5, Nat.mod_lt _ (by norm_num), by omega⟩
   have hi : i < 5 := by omega
   obtain ⟨-, -, -, -, -, h27, h28, h29, -⟩ := tail_ph hi
   interval_cases t
   · rw [add_zero, DT_P1 W₀ c₀ hi]; exact D1_stab hF h hi hY hp
-  · rw [show 25 + 5 * i + 1 = 26 + 5 * i by ring, DT_C W₀ c₀ hi]
-    exact DCi_stab hF h hi (by rw [show 25 + 5 * i + 1 = 26 + 5 * i by ring] at hp; exact hp)
-  · rw [show 25 + 5 * i + 2 = 27 + 5 * i by ring, DT_P2 W₀ c₀ hi]
-    rw [show 25 + 5 * i + 2 = 27 + 5 * i by ring, h27] at hp
+  · rw [show 26 + 5 * i + 1 = 27 + 5 * i by ring, DT_C W₀ c₀ hi]
+    exact DCi_stab hF h hi (by rw [show 26 + 5 * i + 1 = 27 + 5 * i by ring] at hp; exact hp)
+  · rw [show 26 + 5 * i + 2 = 28 + 5 * i by ring, DT_P2 W₀ c₀ hi]
+    rw [show 26 + 5 * i + 2 = 28 + 5 * i by ring, h27] at hp
     exact DP2_stab hF hi h hY (by omega)
-  · rw [show 25 + 5 * i + 3 = 28 + 5 * i by ring, DT_Q W₀ c₀ hi]
-  · rw [show 25 + 5 * i + 4 = 29 + 5 * i by ring, DT_P3 W₀ c₀ hi]
-    rw [show 25 + 5 * i + 4 = 29 + 5 * i by ring, h29] at hp
+  · rw [show 26 + 5 * i + 3 = 29 + 5 * i by ring, DT_Q W₀ c₀ hi]
+  · rw [show 26 + 5 * i + 4 = 30 + 5 * i by ring, DT_P3 W₀ c₀ hi]
+    rw [show 26 + 5 * i + 4 = 30 + 5 * i by ring, h29] at hp
     exact DP3_stab hF hi h hY (by omega)
 
 end FR.Snd
