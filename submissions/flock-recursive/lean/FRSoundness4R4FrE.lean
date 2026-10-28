@@ -219,7 +219,7 @@ theorem rest_gFinE (P : FinP) :
 
 theorem opsOut_gFinLr (P : FinP) (fi : FinIn) (b : ℕ) :
     opsOut ((gFinLr P fi b).1.map (reloc P.S)) = 14 := by
-  rw [opsOut_reloc]; simp [gFinLr, opsOut, Op.outs]
+  rw [opsOut_reloc]; cases hc : P.ck <;> simp [gFinLr, opsOut, Op.outs, hc]
 
 /-- **`finE`'s relation on an accepted run**, with `lrEx`'s values: `v_L` (`vLv4` on `finLr`'s
 file `R3`) and Lr2's challenges. -/

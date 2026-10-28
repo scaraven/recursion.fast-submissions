@@ -125,8 +125,8 @@ theorem flag_gFinLr (hin : ∀ x ∈ (coordsR fi "Lr1").take P.lrR ++ chals fi "
   generalize (outsOf fi "Lr3").headD 0 = kl at *
   generalize claimN fi "Lr2" = c2 at *
   have hk := hin kl (.inr (.inl rfl)); have hc2 := hin c2 (.inr (.inr rfl))
-  cases hn : P.kv.node κ <;>
-  simp only [hn, pureRun, reloc, evalOp, absOff_zero, tf, taf, List.nil_append, List.cons_append,
+  cases hc : P.ck <;> cases hn : P.kv.node κ <;>
+  simp only [hc, Bool.cond_true, Bool.cond_false, hn, pureRun, reloc, evalOp, absOff_zero, tf, taf, List.nil_append, List.cons_append,
     h1, h2, rd_app, rd_app0, rd_app_left _ _ hk, rd_app_left _ _ hc2,
     List.getD_cons_succ, List.getD_cons_zero,
     Option.map_some, Bool.not_true, Bool.not_false, Bool.false_or, Bool.true_or, Bool.true_and,
@@ -193,8 +193,8 @@ theorem flag_gFinE (hin : ∀ x ∈ (coordsR fi "E1").take P.e2R ++ chals fi "E2
   have hkl := hin kl (.inr (.inr (.inr (.inr (.inr (.inr (.inl rfl)))))))
   have hvl := hin vl (.inr (.inr (.inr (.inr (.inr (.inr (.inr (.inl rfl))))))))
   have hrl := hin rl (.inr (.inr (.inr (.inr (.inr (.inr (.inr (.inr rfl))))))))
-  cases hn : P.kv.node κ <;>
-  simp only [hn, pureRun, reloc, evalOp, absOff_zero, tf, taf, List.nil_append,
+  cases hc : P.ck <;> cases hn : P.kv.node κ <;>
+  simp only [hc, Bool.cond_true, Bool.cond_false, hn, pureRun, reloc, evalOp, absOff_zero, tf, taf, List.nil_append,
     List.cons_append, h1, h2, h3,
     rd_app, rd_app0, rd_app_left _ _ hk, rd_app_left _ _ hc2, rd_app_left _ _ hc40,
     rd_app_left _ _ hc4, rd_app_left _ _ hze, rd_app_left _ _ hkl, rd_app_left _ _ hvl,

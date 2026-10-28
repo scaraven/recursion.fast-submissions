@@ -17,8 +17,9 @@ are used, with their exact values, by modules this stage may not edit (S-0′ JO
   (no SNARK of its own) and `W`.
 * **The ladder** of a kind is `ladderOf m = ladderOfR 6 m` (§2.2's rule; level 0 has `2^6` rows).
   `ell0 = 6` is the ruling: S-D3 declined lever 5 (`ell0 = 5`). The parameter `ell0` reaches only
-  `ladderOfR`/`Seq.lvK`; `colBytes` (`lvlStar`'s rows), `FRVIR4.finalOps4` (`2^(m − 25)`) and
-  `Dims.seq`/`seqOf` (`seqR 6`) hard-code 6, so another value would mis-size the format (R-4-m3).
+  `ladderOfR`/`Seq.lvK`; `colBytes` (`lvlStar`'s rows), the final tails (`2^(m − 25)`, revision 4.3:
+  `FRVIRFinals4.gTailOps`) and `Dims.seq`/`seqOf` (`seqR 6`) hard-code 6, so another value would
+  mis-size the format (R-4-m3).
 * **One item sequence** `seq4` (B-13: every kind at `m ≤ 32`): 3.x's sequence (`seq3`, `m* = 32`)
   with the node phases sized for `N_L = 2^17`, `N_M = 2^23` and `f`'s `2^25` cells (Lr 17, E2 23,
   E4 25 rounds: 14 more items than 3.x, all dummies for the segments): 8,905 items, `piSize`
@@ -114,7 +115,8 @@ structure Seq where
   bytes (3.x: 32, INT-2; the node sequence: 64). -/
   e4end : ℕ := 32
   /-- `log₂` of level 0's rows: 6 (lever 5's `5` is declined, S-D3). Not threaded through the
-  format: `colBytes`, `finalOps4` and `seqOf` assume 6 (R-4-m3). -/
+  format: `colBytes`, the final tails (`FRVIRFinals4.gTailOps`, `2^(m − 25)`) and `seqOf` assume 6
+  (R-4-m3). -/
   ell0 : ℕ := 6
   deriving DecidableEq, Repr
 

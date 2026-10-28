@@ -19,9 +19,14 @@ Differences from 3.x's `genPhase` (each forced by the 4.0 shapes):
   through `hdr`'s first 16 bytes, as 3.x does too).
 * **Statement** (`stmtOps4`): a segment asserts the leaf tag and zero bytes 41–127, **not**
   `n = 2^(m − 14)`: its length is variable and range-checked by `V_A` (B-12); a node asserts the
-  node tag, zero bytes 65–127 and `hdr.pub = vk`.
+  node tag, zero bytes 65–127 and `hdr.pub = vk`. Revision 4.3: the statement's digest is the
+  imported `c` (`.input 1`); the fact `stmtOk4` is checked outside the program (`FRVerifierC4`).
 * **Final message**: zero beyond the kind's `2^(m − 25)` K elements (`2^(m − 19 − ell0)` at the
-  ruling's `ell0 = 6` only: R-4-m3).
+  ruling's `ell0 = 6` only: R-4-m3). Revision 4.3: checked at the end of the finals
+  (`FRVIRFinals4.gTailOps`); the skeleton reads `m*`'s (empty) tail, the same for every kind.
+
+**Revision 4.3 (route (A)).** Within a group (`FRVIR4Mux.nodeGrp`, `segGrp`) the programs differ in
+kind tables only, so the group program read at index `ι` is `gen4 (G ι)` (`FRVIR4At`).
 
 * **The variable last block** (a segment; S-F4): the `stmt` phase also reads `L = n − 1` from the
   statement (`lastOps`, its outputs `b :: lastOuts`), and Z2's `targetS` operand is Z1's point
@@ -64,9 +69,13 @@ def seedOps4 (p : KindP) (b : ℕ) : List Op :=
    .const (fun _ => .f (F.ofBytes (bytesAt (bytesOf ([p.byte, p.d.m.toUInt8] ++ List.replicate 46 0)) 0 16))),
    .assertEq (b + 2) (b + 3) allK]
 
-/-- The statement's checks (`stmt` at absolute offset `so`; `msg` its register). -/
-def stmtOps4 (p : KindP) (so msg b : ℕ) : List Op :=
-  [.hashStmt msg, .input 1, .assertEq b (b + 1) allK,
+/-- The statement's checks (`stmt` at absolute offset `so`; `msg` its register). **Revision 4.3**
+(S-E12c (c)): the statement's digest is not computed here (`hashStmt` reads the run's kind, which a
+group program does not fix): the op is `.input 1`, the digest `c` imported, and the fact
+`stmtDigest p.tix stmt = c` (`stmtOk4`) is checked by `FRVerifierC4.VsegC`/`VnodeC` after the run and
+carried by the node circuit's slot interface (bound by H's `hashStmt` blocks). -/
+def stmtOps4 (p : KindP) (so _msg b : ℕ) : List Op :=
+  [.input 1, .input 1, .assertEq b (b + 1) allK,
    .piField 0 so 1, .const (fun _ => .b (bytesOf [if p.d.node then RecursionFast.tagNode else tagLeaf])),
    .assertEq (b + 2) (b + 3) allK] ++
   (if p.d.node then
@@ -74,9 +83,11 @@ def stmtOps4 (p : KindP) (so msg b : ℕ) : List Op :=
      .assertEq (b + 5) (b + 6) allK]
    else [.piField 0 (so + 41) 87, .assertZero (b + 4) allK])
 
-/-- The final message is zero beyond the kind's `2^(m − 25)` K elements (`ell0 = 6`). -/
-def finalOps4 (S : Seq) (p : KindP) (fo b : ℕ) : List Op :=
-  [.piField 0 (fo + 2 ^ (p.d.m - 25) * 32) ((2 ^ S.pf - 2 ^ (p.d.m - 25)) * 32), .assertZero b allK]
+/-- The final message's zero tail at `m*` (`ell0 = 6`; empty at `seq4`). **Revision 4.3**: one read,
+the same for every kind (a group program reads one field); the kind's own tail (zero beyond its
+`2^(m − 25)` K elements) is checked at the end of the finals (`FRVIRFinals4.gTailOps`). -/
+def finalOps4 (S : Seq) (_p : KindP) (fo b : ℕ) : List Op :=
+  [.piField 0 (fo + 2 ^ (S.mStar - 25) * 32) ((2 ^ S.pf - 2 ^ (S.mStar - 25)) * 32), .assertZero b allK]
 
 /-- The Merkle steps of one position (3.x's `merkleOps`, the kind's depth a constant). -/
 def merkleOps4 (sib : ℕ) (i : ℕ) (j : Reg) : ℕ → ℕ → Reg → ℕ → ℕ → List Op
@@ -200,6 +211,16 @@ def skeleton4 (S : Seq) (p : KindP) : List Op × GCtx :=
 /-- **`gen4 S p fin`**: the skeleton, the phase-final checks `fin`, `accept`. -/
 def gen4 (S : Seq) (p : KindP) (fin : FinOps) : VProg :=
   ⟨.fixed p.tix, (skeleton4 S p).1 ++ fin (skeleton4 S p).2.outs (skeleton4 S p).2.next ++ [.accept]⟩
+
+/-- The statement's bytes: `stmt`'s absorb (phase 1, 128 bytes at `fieldOffOf S fStmt + phaseOffOf S 1
+fStmt`), the message `stmtOps4`'s `msg` register held. -/
+def stmtBytes4 (S : Seq) (π : ByteArray) : ByteArray :=
+  π.extract (fieldOffOf S fStmt + phaseOffOf S 1 fStmt) (fieldOffOf S fStmt + phaseOffOf S 1 fStmt + 128)
+
+/-- **The statement fact** (revision 4.3): the statement's digest, for the kind's table index
+(`.L32`: `leafStmt`; `.N30`: `nodeStmt`), is `c`. -/
+def stmtOk4 (S : Seq) (p : KindP) (inp : Input) : Bool :=
+  decide (stmtDigest p.tix (stmtBytes4 S inp.π) = inp.c)
 
 /-- The programs of the segment and node kinds (one sequence, `seq4`). -/
 def genSeg (κ : SegKind) (fin : FinOps) : VProg := gen4 seq4 (.ofSeg κ) fin

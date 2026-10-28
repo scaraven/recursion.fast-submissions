@@ -132,7 +132,7 @@ theorem noAsk_gFinSh (P : FinP) (fi : FinIn) (b : ℕ) : (gFinSh P fi b).1.filte
   · simp only [cond, List.filterMap_cons, Op.item?]; exact noAsk_gShCore P fi (b + 1) b
 
 theorem noAsk_gFinLr (P : FinP) (fi : FinIn) (b : ℕ) : (gFinLr P fi b).1.filterMap Op.item? = [] := by
-  simp [gFinLr, Op.item?]
+  cases hc : P.ck <;> simp [gFinLr, Op.item?, hc]
 
 theorem noAsk_gFinRS (P : FinP) (fi : FinIn) (b : ℕ) : (gFinRS P fi b).1.filterMap Op.item? = [] := by
   simp only [gFinRS, List.filterMap_append,
@@ -141,7 +141,7 @@ theorem noAsk_gFinRS (P : FinP) (fi : FinIn) (b : ℕ) : (gFinRS P fi b).1.filte
   rfl
 
 theorem noAsk_gFinE (P : FinP) (fi : FinIn) (b : ℕ) : (gFinE P fi b).1.filterMap Op.item? = [] := by
-  simp [gFinE, Op.item?]
+  cases hc : P.ck <;> simp [gFinE, Op.item?, hc]
 
 theorem noAsk_gFinB' (P : FinP) (fi : FinIn) (b : ℕ) : (gFinB' P fi b).1.filterMap Op.item? = [] := by
   simp [gFinB', Op.item?]
@@ -160,9 +160,14 @@ theorem noAsk_gFinPf (P : FinP) (fi : FinIn) (b : ℕ) : (gFinPf P fi b).1.filte
   have h2 : ∀ (a c : Reg) (n : ℕ),
       ((List.range n).map fun v => Op.addK a (c + v)).filterMap Op.item? = [] :=
     fun _ _ _ => noAsk_map _ _ fun _ => rfl
-  simp only [gFinPf, List.filterMap_append, noAsk_ptsOps, noAsk_gCellsOps, noAsk_gLvsOps,
-    noAsk_fhOps, noAsk_padOps, h1, h2]
-  rfl
+  have h3 : ∀ (sel : KC Bool) (c : ℕ → Reg) (n pb : ℕ),
+      ((List.range n).map fun s => Op.keep sel (c s) (pb + s)).filterMap Op.item? = [] :=
+    fun _ _ _ _ => noAsk_map _ _ fun _ => rfl
+  cases hc : P.ck <;>
+  simp only [gFinPf, hc, Bool.cond_true, Bool.cond_false, List.filterMap_append, noAsk_ptsOps,
+    noAsk_gCellsOps, noAsk_gCellsOpsK, noAsk_gLvsOps, noAsk_fhOps, noAsk_padsOps, noAsk_selOps,
+    noAsk_gTailOps, List.filterMap_flatMap, List.filterMap_cons, Op.item?, h1, h2] <;>
+  simp [noAsk_map _ _ (fun _ => rfl : ∀ s : ℕ, (Op.keep _ _ _ : Op).item? = none)]
 
 /-- **Every field of `finalsOf P` asks nothing** (`accept_chain`'s hypothesis form). -/
 theorem noAsk_finalsOf (P : FinP) : ∀ f ∈ (finalsOf P).finRS :: (finalsOf P).rest,
@@ -208,13 +213,15 @@ theorem itemsOf_seq4_len : (itemsOf seq4).length = 8905 := itemsOf_seq4_length
 /-- **Every segment program asks 8,905 queries** under every oracle. -/
 theorem queries_VsegC (impl₀ : OpImpl) (H : ByteArray → Digest) (κ : SegKind) (vk c : Digest) (π : Proof) :
     ((VsegC impl₀ κ vk c π).queries H).length = 8905 := by
-  rw [VsegC, queries_runIR, progSeg, genSeg, items_gen4 _ _ _ (noAsk_finOps4 _), itemsOf_seq4_len]
+  rw [VsegC, runStmt_queries, queries_runIR, progSeg, genSeg, items_gen4 _ _ _ (noAsk_finOps4 _),
+    itemsOf_seq4_len]
 
 /-- **Every node program asks 8,905 queries** under every oracle. -/
 theorem queries_VnodeC (implN : NodeKind → OpImpl) (cells : NodeKind → List ℕ) (H : ByteArray → Digest)
     (κ : NodeKind) (vk c : Digest) (π : Proof) :
     ((VnodeC implN cells κ vk c π).queries H).length = 8905 := by
-  rw [VnodeC, queries_runIR, progNode, genNode, items_gen4 _ _ _ (noAsk_finOps4 _), itemsOf_seq4_len]
+  rw [VnodeC, runStmt_queries, queries_runIR, progNode, genNode, items_gen4 _ _ _ (noAsk_finOps4 _),
+    itemsOf_seq4_len]
 
 /-- **`KS`'s first conjunct for `VC4`** at `qV4` (`ks_queries4` with `qS = 8,905`). -/
 theorem ks_queriesC4 (impl₀ : OpImpl) (implN : NodeKind → OpImpl) (cells : NodeKind → List ℕ)

@@ -1,10 +1,11 @@
 -- New for `flock-recursive` (BLUEPRINT revision 4.1, B-13, §4.3 "The mux", changes 26; stage S-E12b,
 -- track L-circ).
-import FRVIRFinals4
+import FRVIR4At
+import FRVerifierC4
 import FRNodeLayout4
 
 /-!
-# Revision 4.1's slot programs: the group mux `gen4G`
+# Revision 4.1's slot programs: the group mux `gen4G` (revision 4.3: uniform groups)
 
 A 4.1 node replays `1 + k` children (B-13): the previous step's node, muxed over `{N2, N4, N8}`,
 and `k` segment sub-slots, each muxed over `{L30, L31, L32}` (changes 26, item 5). Each group has
@@ -13,25 +14,16 @@ unchanged: a **group** `G : Kind → KindP` names the kind each selector index s
 (`nodeGrp`, `segGrp`), and `gen4G S G fin` is `FRVIR4.gen4` with every kind-dependent datum a table
 over the index (`fun ι => … (G ι) …`) instead of a constant.
 
-What differs between the kinds of a group, and how `gen4G` carries it:
+**Revision 4.3 (route (A)).** The kinds of a group now differ in kind tables only (`FRVIRFinals4`:
+the finals read the counts from one `FinP` and the per-kind data of index `ι` from `Q ι`; the final
+tail and `hashStmt` are uniform, `FRVIR4`). The group programs are
 
-* constants (the kind byte in the seed check, `idx`'s bit count and position, `shrN`'s depth, the
-  real round counts, the Merkle steps' activity): `KC` tables, no structural change;
-* Z2's `targetS` operand of a segment (`segPtOp`): the kinds' lists have one length (`m − 13`
-  coordinates, zero-padded to `m* − 13`, then `L`'s 18 bits), so it is a `packFK` (the compiler's
-  element mux, `muxEl`);
-* the final message's zero tail (`finalOps4`): its offset and length depend on `m`, so the group
-  program reads one tail per distinct `m` of the group and gates each zero check by the kinds with
-  that `m` (`finalOpsG`);
-* the phase-final checks: a parameter `fin` as in `gen4`. **`finOps4` takes one `FinP` whose
-  `kv` tables are per kind but whose counts (`lrR`, `e2R`, `e4R`, `mB`, `nc`) are scalars**, so
-  `groupFinP` takes the group's representative's counts (`N4`, `L32`): exact for `N4`/`N8`/`L32`,
-  the representative's op structure for `N2`/`L30`/`L31` (S-E12b RESULT, deviation 1, with the
-  edit request to `FRVIRFinals4`).
+* `progNodeGK cells = gen4G seq4 nodeGrp (finals of nodeQ cells)`, `nodeQ cells ι` the finals'
+  parameters of `nodeAt ι` with its cells `cells (nodeAt ι)`;
+* `progSegG = gen4G seq4 segGrp (finals of segQ)`.
 
-The group program is a program of its own, not literally `gen4 (G ι)` (the final tail and the
-finals' counts differ structurally); its rows are what the node's M holds (`FRNodeRows4`). The
-bridge `semIR (gen4G at ι) = semIR (gen4 (G ι))` is S-E12a's/S-G's (open question 1 of the RESULT).
+**The group program read at `ι` is `gen4 (G ι)`** (`FRVIR4Uni`): op for op (`Op.at`), and so its
+run at `ι` is the kind's program's run (`progNodeGK_exec`, `progSegG_exec`).
 -/
 
 namespace FR
@@ -41,17 +33,23 @@ open RecursionFast
 /-- **A slot group**: the kind each of the compiler's three selector indices stands for. -/
 abbrev Grp := Kind → KindP
 
+/-- The node kind at each selector index (`N4`, `N2`, `N8` at `L32`, `P30`, `N30`). -/
+def nodeAt : Kind → NodeKind
+  | .L32 => .N4
+  | .P30 => .N2
+  | .N30 => .N8
+
+/-- The segment kind at each selector index (`L32`, `L30`, `L31` at `L32`, `P30`, `N30`). -/
+def segAt : Kind → SegKind
+  | .L32 => .L32
+  | .P30 => .L30
+  | .N30 => .L31
+
 /-- **The previous-node group** `{N4, N2, N8}` at indices `L32, P30, N30`. -/
-def nodeGrp : Grp
-  | .L32 => .ofNode .N4
-  | .P30 => .ofNode .N2
-  | .N30 => .ofNode .N8
+def nodeGrp : Grp := fun ι => .ofNode (nodeAt ι)
 
 /-- **The segment group** `{L32, L30, L31}` at indices `L32, P30, N30`. -/
-def segGrp : Grp
-  | .L32 => .ofSeg .L32
-  | .P30 => .ofSeg .L30
-  | .N30 => .ofSeg .L31
+def segGrp : Grp := fun ι => .ofSeg (segAt ι)
 
 /-- **A kind table, evaluated once** (its three values computed before the closure is built, so that
 an op's table costs a `match`, not a recomputation; `kt_eq`). -/
@@ -61,7 +59,7 @@ def kt {α : Type} (f : Kind → α) : Kind → α :=
 
 theorem kt_eq {α : Type} (f : Kind → α) : kt f = f := funext fun ι => by cases ι <;> rfl
 
-/-- The group's representative (index `L32`): its node flag and its finals' counts. -/
+/-- The group's representative (index `L32`): its node flag. -/
 def Grp.rep (G : Grp) : KindP := G .L32
 
 /-- Seed: `hdr`'s first 16 bytes against the selected kind's constant. -/
@@ -70,18 +68,6 @@ def seedOpsG (G : Grp) (b : ℕ) : List Op :=
    .const (kt fun ι => .f (F.ofBytes (bytesAt (bytesOf ([(G ι).byte, (G ι).d.m.toUInt8] ++
      List.replicate 46 0)) 0 16))),
    .assertEq (b + 2) (b + 3) allK]
-
-/-- The distinct `m` of a group, in index order. -/
-def Grp.ms (G : Grp) : List ℕ :=
-  Circ.kinds.foldl (fun acc ι => if acc.contains (G ι).d.m then acc else acc ++ [(G ι).d.m]) []
-
-/-- **The final message's zero tail per `m`**: for each distinct `m` of the group, its tail
-(`finalOps4`'s bytes) and a zero check active for the kinds with that `m`. Registers from `b`:
-two per distinct `m`. -/
-def finalOpsG (S : Seq) (G : Grp) (fo b : ℕ) : List Op :=
-  (G.ms.zipIdx).flatMap fun p =>
-    [.piField 0 (fo + 2 ^ (p.1 - 25) * 32) ((2 ^ S.pf - 2 ^ (p.1 - 25)) * 32),
-     .assertZero (b + p.2) (fun ι => decide ((G ι).d.m = p.1))]
 
 /-- The Merkle steps of one position (`merkleOps4`, the depth per kind). -/
 def merkleOpsG (sib : Kind → ℕ) (i : ℕ) (j : Reg) : ℕ → ℕ → Reg → ℕ → ℕ → List Op
@@ -124,7 +110,7 @@ def genPhaseG (S : Seq) (G : Grp) (n : ℕ) (ph : String × Sh) (c : GCtx) : Lis
         let b₂ := b + 2 + opsOut (stmtOps4 p (o f) b (b + 2))
         rec_ (absorbOps 0 (o f) len c.st b ++ stmtOps4 p (o f) b (b + 2) ++ lastOps (o f) b₂) (b + 1)
           (b :: lastOuts b₂)
-    else if f = fFinal then rec_ (absorbOps 0 (o f) len c.st b ++ finalOpsG S G (o f) (b + 2)) (b + 1) [b]
+    else if f = fFinal then rec_ (absorbOps 0 (o f) len c.st b ++ finalOps4 S p (o f) (b + 2)) (b + 1) [b]
     else if f = fLrEnd ∨ f = fEEnd then
       rec_ (absorbOps 0 (o f) len c.st b ++ [.assertZero b (fun _ => !p.d.node)]) (b + 1) [b]
     else rec_ (absorbOps 0 (o f) len c.st b) (b + 1) [b]
@@ -191,7 +177,7 @@ theorem fieldOffT_get (S : Seq) {f : ℕ} (hf : f < 19) : (fieldOffT S).getD f 0
   simp [fieldOffT, Array.getD_eq_getD_getElem?, hf]
 
 /-- **`reloc` by the offset table** (`relocT_eq`). -/
-def relocT (S : Seq) (tab : Array ℕ) : Op → Op
+def relocT (_S : Seq) (tab : Array ℕ) : Op → Op
   | .piField f o len => if f < 19 then .piField 0 (tab.getD f 0 + o) len else .piField f o len
   | .piElem f o => if f < 19 then .piElem 0 (tab.getD f 0 + o) else .piElem f o
   | .piElemK f o => if f < 19 then .piElemK 0 (tab.getD f 0 + o) else .piElemK f o
@@ -203,40 +189,44 @@ theorem relocT_eq (S : Seq) : relocT S (fieldOffT S) = reloc S := funext fun op 
   cases op <;> simp only [relocT, reloc] <;> split_ifs with h <;> first | rfl | simp [fieldOffT_get S h]
 
 /-- **`finOps4` with the table relocation** (`finOps4F_eq`). -/
-def finOps4F (P : FinP) : FinOps := fun outs b =>
+def finOps4F (P : FinP) (Q : Kind → FinP) : FinOps := fun outs b =>
   let tab := fieldOffT P.S
-  ((finalsOf P).ops outs b).map (relocT P.S tab)
+  ((finalsOf P Q).ops outs b).map (relocT P.S tab)
 
-theorem finOps4F_eq (P : FinP) : finOps4F P = finOps4 P := by
-  funext outs b; simp only [finOps4F, finOps4, relocT_eq]
+theorem finOps4F_eq (P : FinP) (Q : Kind → FinP) (outs : Array (List Reg)) (b : ℕ) :
+    finOps4F P Q outs b = finOps4 P outs b Q := by
+  simp only [finOps4F, finOps4, relocT_eq]
 
-/-- **The group's finals' parameters**: the kind tables per index, the counts of the
-representative (deviation 1). -/
-def groupFinP (G : Grp) (cells : List ℕ) : FinP :=
-  let p := G.rep
-  ⟨seq4, ⟨fun ι => (G ι).d.m, fun _ => p.d.node, fun _ => false,
-      fun _ => if p.d.node then [1, 3, 5, 6] else [1, 3, 5]⟩,
-    if p.d.node then p.d.logL else seq4.lr, if p.d.node then p.d.logM else seq4.e2,
-    if p.d.node then p.d.m - 7 else seq4.e4, p.d.m, cells, p.d.m - 7, !p.d.node⟩
+/-- **The node group's finals' parameters** (revision 4.3): index `ι`'s are its kind's, with its
+cells (`cells`: each node kind's public cells). -/
+def nodeQ (cells : NodeKind → List ℕ) : Kind → FinP := fun ι => nodeFinP (nodeAt ι) (cells (nodeAt ι))
 
-/-- **The previous-node slot's program** (`cells`: the child's public cells). -/
-def progNodeG (cells : List ℕ) : VProg := gen4G seq4 nodeGrp (finOps4F (groupFinP nodeGrp cells))
+/-- **The segment group's.** -/
+def segQ : Kind → FinP := fun ι => segFinP (segAt ι)
+
+/-- **The previous-node slot's program** (`cells`: each node kind's public cells; index `ι` verifies a
+child of kind `nodeAt ι` with its cells). The counts are index `L32`'s (every index's: `FRVIR4Uni`). -/
+def progNodeGK (cells : NodeKind → List ℕ) : VProg :=
+  gen4G seq4 nodeGrp (finOps4F (nodeQ cells .L32) (nodeQ cells))
+
+/-- The previous-node slot's program with one cell list for every kind (revision 4.1's signature;
+the slot programs use `progNodeGK` with each kind's cells). -/
+def progNodeG (cells : List ℕ) : VProg := progNodeGK fun _ => cells
 
 /-- **A segment sub-slot's program.** -/
-def progSegG : VProg := gen4G seq4 segGrp (finOps4F (groupFinP segGrp []))
+def progSegG : VProg := gen4G seq4 segGrp (finOps4F (segQ .L32) segQ)
 
 /-- The slot programs' finals are `finOps4`'s. -/
-theorem progG_fin (cells : List ℕ) :
-    progNodeG cells = gen4G seq4 nodeGrp (finOps4 (groupFinP nodeGrp cells)) ∧
-      progSegG = gen4G seq4 segGrp (finOps4 (groupFinP segGrp [])) := by
-  simp only [progNodeG, progSegG, finOps4F_eq, and_self]
+theorem progG_fin (cells : NodeKind → List ℕ) :
+    progNodeGK cells = gen4G seq4 nodeGrp (fun outs b => finOps4 (nodeQ cells .L32) outs b (nodeQ cells)) ∧
+      progSegG = gen4G seq4 segGrp (fun outs b => finOps4 (segQ .L32) outs b segQ) := by
+  simp only [progNodeGK, progSegG, ← finOps4F_eq]; exact ⟨trivial, trivial⟩
 
 /-! ## Controls -/
 
-/-- (+) The groups: the representative's kinds, and the distinct `m`. -/
+/-- (+) The groups: the representative's kinds, and a smaller `m` at another index. -/
 theorem grp_ctl : nodeGrp.rep = .ofNode .N4 ∧ segGrp.rep = .ofSeg .L32 ∧
-    nodeGrp.ms = [32, 31] ∧ segGrp.ms = [32, 30, 31] := by
-  refine ⟨rfl, rfl, ?_, ?_⟩ <;> decide
+    (nodeGrp .P30).d.m = 31 ∧ (segGrp .N30).d.m = 31 := ⟨rfl, rfl, rfl, rfl⟩
 
 /-- (+) The seed constant reads the selected kind's byte: `N2`'s at index `P30`; (−) the indices
 name distinct kinds. -/

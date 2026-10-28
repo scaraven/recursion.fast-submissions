@@ -27,18 +27,30 @@ open RecursionFast
 
 /-! ## Parameters and programs -/
 
-/-- The kind tables of a revision-4 kind (constants): `m`, node or not, `finPf`'s second family,
-its claim points (`Z`, `Lc`, `Sh` of the `mB` family, and a node's E4 point). -/
-def kvOf (m : ℕ) (node : Bool) : KV :=
-  ⟨fun _ => m, fun _ => node, fun _ => false, fun _ => if node then [1, 3, 5, 6] else [1, 3, 5]⟩
+/-- **The groups' counts** (revision 4.3): `finPf`'s point families besides `m* = 32` (one per smaller
+`m` of the group, which are also the final message's zero tails), and the node group's E4 lengths. -/
+def segFams : List ℕ := [30, 31]
+def nodeFams : List ℕ := [31]
+def nodeE4s : List ℕ := [25, 24]
 
-/-- **A segment's finals' parameters** (`vn`: the variable last block). -/
+/-- The kind tables of a revision-4 kind (constants) in a group with families `fams` and E4 lengths
+`e4s`: `m`, node or not, `finPf`'s family (`m*`'s, else its index in `fams`), its claim points (Z, Lc,
+Sh of its family; a node's E4 point of length `e4`). -/
+def kvOf (m : ℕ) (node : Bool) (fams e4s : List ℕ) (e4 : ℕ) : KV :=
+  let nf := fams.length; let i := fams.idxOf m; let a := decide (m = seq4.mStar)
+  let base := if a then [0, 1 + nf, 2 + 2 * nf] else [1 + i, 2 + nf + i, 3 + 2 * nf + i]
+  ⟨fun _ => m, fun _ => node, fun _ => a,
+   fun _ => if node then base ++ [3 + 3 * nf + e4s.idxOf e4] else base, fun _ => if a then 0 else i⟩
+
+/-- **A segment's finals' parameters** (`vn`: the variable last block; the segment group's counts). -/
 def segFinP (κ : SegKind) : FinP :=
-  ⟨seq4, kvOf κ.m false, seq4.lr, seq4.e2, seq4.e4, κ.m, [], κ.m - 7, true⟩
+  ⟨seq4, kvOf κ.m false segFams [seq4.e4] seq4.e4, seq4.lr, seq4.e2, seq4.e4, segFams, [seq4.e4], [],
+    seq4.mStar - 7, true, true, 0, segFams⟩
 
-/-- **A node's** (`cells`: its public cells, S-E12′'s layout). -/
+/-- **A node's** (`cells`: its public cells, S-E12′'s layout; the node group's counts). -/
 def nodeFinP (κ : NodeKind) (cells : List ℕ) : FinP :=
-  ⟨seq4, kvOf κ.m true, κ.dims.logL, κ.dims.logM, κ.m - 7, κ.m, cells, κ.m - 7, false⟩
+  ⟨seq4, kvOf κ.m true nodeFams nodeE4s (κ.m - 7), κ.dims.logL, κ.dims.logM, κ.m - 7, nodeFams, nodeE4s,
+    cells, seq4.mStar - 7, false, true, cells.length, nodeFams⟩
 
 /-- **The segment program.** -/
 def progSeg (κ : SegKind) : VProg := genSeg κ (finOps4 (segFinP κ))
@@ -46,15 +58,48 @@ def progSeg (κ : SegKind) : VProg := genSeg κ (finOps4 (segFinP κ))
 /-- **The node program.** -/
 def progNode (κ : NodeKind) (cells : List ℕ) : VProg := genNode κ (finOps4 (nodeFinP κ cells))
 
+/-! ## The statement fact after the run (revision 4.3) -/
+
+/-- **A run, then a check on its result** (`OProg.bind` into `ret`): the same queries. -/
+theorem queries_bind_ret {α β : Type} (H : ByteArray → Digest) (f : α → β) :
+    ∀ p : OProg α, (p.bind fun a => .ret (f a)).queries H = p.queries H
+  | .ret _ => rfl
+  | .query q k => by simp only [OProg.bind, OProg.queries, queries_bind_ret H f (k (H q))]
+
+theorem runSeq_bind_ret {α β : Type} (f : α → β) :
+    ∀ (p : OProg α) (tr : Trace), (p.bind fun a => .ret (f a)).runSeq tr = (p.runSeq tr).map f
+  | .ret _, [] => rfl
+  | .ret _, _ :: _ => rfl
+  | .query _ _, [] => rfl
+  | .query q k, (q', a) :: tr => by
+    simp only [OProg.bind, OProg.runSeq]; split_ifs
+    · exact runSeq_bind_ret f (k a) tr
+    · rfl
+
+theorem runLog_bind_ret {α β : Type} (f : α → β) (L : Log) :
+    ∀ p : OProg α, (p.bind fun a => .ret (f a)).runLog L = (p.runLog L).map f
+  | .ret _ => rfl
+  | .query q k => by
+    simp only [OProg.bind, OProg.runLog]
+    cases (L.find? fun e => e.1 = q) with
+    | none => rfl
+    | some e => exact runLog_bind_ret f L (k e.2)
+
+/-- **The program's run, and the statement fact** (`stmtOk4`): the verifier of one kind. -/
+def runStmt (impl : OpImpl) (P : VProg) (p : KindP) (inp : Input) : OProg Bool :=
+  (runIR impl P inp).bind fun ok => .ret (ok && stmtOk4 seq4 p inp)
+
 /-! ## The verifiers -/
 
-/-- **`Vseg`**: the segment program under the segment's ops. -/
-def VsegC (impl₀ : OpImpl) : SegProgs := fun κ vk c π => runIR (implSeg impl₀) (progSeg κ) ⟨vk, c, π⟩
+/-- **`Vseg`**: the segment program under the segment's ops, and the statement fact. -/
+def VsegC (impl₀ : OpImpl) : SegProgs := fun κ vk c π =>
+  runStmt (implSeg impl₀) (progSeg κ) (.ofSeg κ) ⟨vk, c, π⟩
 
-/-- **`Vnode`**: the node program under the node kind's ops. The node's children are checked in its
-circuit; on an aggregate child that includes `childOk4 κ` (`N2`: at most 2 segments; S-E's row). -/
+/-- **`Vnode`**: the node program under the node kind's ops, and the statement fact. The node's
+children are checked in its circuit; on an aggregate child that includes `childOk4 κ` (`N2`: at most
+2 segments; S-E's row). -/
 def VnodeC (implN : NodeKind → OpImpl) (cells : NodeKind → List ℕ) : NodeProgs :=
-  fun κ vk c π => runIR (implN κ) (progNode κ (cells κ)) ⟨vk, c, π⟩
+  fun κ vk c π => runStmt (implN κ) (progNode κ (cells κ)) (.ofNode κ) ⟨vk, c, π⟩
 
 /-- **The verifier** with the concrete programs. -/
 def VC4 (impl₀ : OpImpl) (implN : NodeKind → OpImpl) (cells : NodeKind → List ℕ) :
@@ -92,6 +137,39 @@ a node's real counts are its own (`N2`: Lr 16, E2 22, E4 24). -/
 theorem finP_ctrl : (segFinP .L30).vn = true ∧ (segFinP .L30).kv.m .L32 = 30 ∧
     (nodeFinP .N2 []).vn = false ∧ ((nodeFinP .N2 []).lrR, (nodeFinP .N2 []).e2R, (nodeFinP .N2 []).e4R) =
       (16, 22, 24) := ⟨rfl, rfl, rfl, rfl⟩
+
+/-- (+) **The groups' tables** (revision 4.3): a kind of `m* = 32` reads the `m*` family, `N2` and
+`L30`/`L31` their own; the claim points are the family's (and the node's E4 of its length). -/
+theorem kv_ctrl : (nodeFinP .N4 []).kv.ptIx .N30 = [0, 2, 4, 6] ∧
+    (nodeFinP .N2 []).kv.ptIx .N30 = [1, 3, 5, 7] ∧
+    (nodeFinP .N2 []).kv.selA .N30 = false ∧ (segFinP .L32).kv.ptIx .L32 = [0, 3, 6] ∧
+    (segFinP .L30).kv.ptIx .L32 = [1, 4, 7] ∧ (segFinP .L31).kv.ptIx .L32 = [2, 5, 8] ∧
+    (segFinP .L31).kv.fsel .L32 = 1 ∧ (segFinP .L30).kv.fsel .L32 = 0 := by decide
+
+/-- (+) **The run with the fact accepts iff the run accepts and the fact holds.** -/
+theorem runStmt_iff (impl : OpImpl) (P : VProg) (p : KindP) (inp : Input) (tr : Trace) :
+    (runStmt impl P p inp).runSeq tr = some true ↔
+      (runIR impl P inp).runSeq tr = some true ∧ stmtOk4 seq4 p inp = true := by
+  rw [runStmt, runSeq_bind_ret]
+  cases (runIR impl P inp).runSeq tr with
+  | none => simp
+  | some b => cases b <;> simp
+
+/-- (−) **A wrong statement fact rejects**, whatever the run; and of two digests at most one is the
+statement's (the fact is not vacuous). -/
+theorem runStmt_wrong (impl : OpImpl) (P : VProg) (p : KindP) (inp : Input) (tr : Trace)
+    (h : stmtOk4 seq4 p inp = false) : (runStmt impl P p inp).runSeq tr ≠ some true := by
+  rw [Ne, runStmt_iff, h]; simp
+
+theorem stmtOk4_unique (p : KindP) (vk c₁ c₂ : Digest) (π : ByteArray)
+    (h₁ : stmtOk4 seq4 p ⟨vk, c₁, π⟩ = true) (hne : c₂ ≠ c₁) : stmtOk4 seq4 p ⟨vk, c₂, π⟩ = false := by
+  simp only [stmtOk4, decide_eq_true_eq, decide_eq_false_iff_not] at h₁ ⊢
+  rw [h₁]; exact fun h => hne h.symm
+
+/-- (+) **The queries are the program's**: the fact asks nothing. -/
+theorem runStmt_queries (impl : OpImpl) (P : VProg) (p : KindP) (inp : Input) (H : ByteArray → Digest) :
+    (runStmt impl P p inp).queries H = (runIR impl P inp).queries H :=
+  queries_bind_ret H _ _
 
 /-- (−) **A segment kind byte at the top is rejected without a query**, and so is a node of the
 wrong size (`VC4` dispatches as `V4with`). -/
