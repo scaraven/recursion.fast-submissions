@@ -43,13 +43,13 @@ compressions on the VM (P2), V (N30) 190–196 ms on the 7763 (H-V, INT-5), `|π
 
 | Quantity | revision 4.0 | bound / knee | state |
 |---|---|---|---|
-| step time (7763, **4 threads — the prover has been threaded since P1; 2 cores × 2 SMT**; P2′ §13) | measured segments `L32(n) = 2.76 + 2.86·n/2^18 s`, `L31(n) = 1.37 + 1.43·n/2^17 s` (one thread: 12.95 s per `2^18`; ×2.34 at 4 threads, nothing more to gain); steps at `n = 2^17 / 2^18 / 2^18+1 / 2^20`: 4.5 / 7.3 / 10.4 / 26.6 s with the `sizes.py` nodes | `step_s = 60` | measured + node estimate |
-| node prover (7763, phase model: PCS 2.39 s per `2^32` bits + 10.8 µs per H block + 0.5 s) | 4.0's power-of-two H: `N4` at `k = 1 / 2 / 4` 2.2 / 3.7 / 4.2 s, `N8` 7.3 s (`m = 33`); **4.1 tight-packed: `N2` (k ≤ 2, `m = 31`) 2.5 s, `N4` (`m = 32`) 4.2 s, `N8` (`m = 32`) 4.9 s**; 4.0 / 3.3 / 4.6 GB | memory 11 GiB | estimate |
-| `P̄` (7763) | **4.0 as measured 8.7 s** (P2′'s model 8.6: the ×2.5 of 4.0 counted the threads twice); 4.1's design C′ 7.3 s; D 7.0 s | — | the cubic mean over the `1/n²` draw |
-| stream wall time per step (prover + overhead ≈ 1.6–1.8 s: `ready` 0.22, three V, calibration 0.55 incl. the `2^24` chain checker per sample, plan/8, re-runs) | as measured, plan 40 s: 16.6 s (fits `M ≤ 22`); plan 2 s: 11.9 s (`M ≤ 75`, **51 % truncated**); C′ 10.0 s (`M ≤ 90`, 21 %); D 9.6 s (`M ≤ 94`, 16 %) | `stream_s = 960`, `M ≤ 112` needs ≤ 8.05 s | **no design within reach fits `M = 112`** (changes 26) |
+| step time (7763, 4 threads; P2‴ fits) | segments `L32(n) = 2.57 + 2.68·n/2^18`, `L31(n) = 1.29 + 1.33·n/2^17`, `L30(n) = 0.67 + 0.60·n/2^16` (witness overlap 0); steps at `n = 2^17 / 2^18 / 2^18+1 / 1.19·2^18 / 2^20`: 4.2 / 6.8 / 8.3 / 8.8 / 25.1 s with the phase-model nodes | `step_s = 60` | measured segments + node estimate |
+| node prover (7763, phase model `PCS 2.39·2^(m−32) + 10.2 µs · H blocks + 0.5 s`, tight packing) | 2 slots (`k = 1`, `m = 30`) 1.6 s; `N2` 3 slots (`m = 31`) 2.4 s; `N4` 5 slots (`m = 32`) 4.1 s; `N8` 8 slots (`m = 32`) 4.8 s | memory 11 GiB | estimate |
+| `P̄` (7763) | as built (B: ladder `L30–L32`, tight packing) **7.68 s**; C′ (round-1 kernel −30 %) 7.34; D (`L(2)`) 7.04 | — | the cubic mean over the `1/n²` draw |
+| stream wall time per step (prover + overhead 1.6 s: `ready` 0.22, three V 0.45, calibration 0.55, plan 1.9/8, re-runs 2 %) | B 10.6 s (`M ≤ 85`, **28 % truncated, 19 % unranked medians**); C′ 10.1 (`M ≤ 89`, 22 %, 12 %); D 9.7 (`M ≤ 93`, 17 %, 8 %) | `stream_s = 960`, `M ≤ 112` needs ≤ 8.05 s | no design within reach fits `M = 112` (changes 26, 27) |
 | `V̄` | today `x = 193/177.8 + 0.76/2 = 1.47`, `V̄ = 0.84 s`; V 150 ms: 0.49 s; + `|π|` 0.65 MiB: 0.43 s; at the knee (110 ms, 0.6 MiB): 0.24 s | knee `x = 1` | `κ = 0.2667 s` |
-| **`S`** | **current design: fails**; 4.0 as measured 9.55 s (51 % truncated); **4.1 C′ ≈ 7.7 s (21 % of evaluations truncated, 11 % of ranking medians unranked); D ≈ 7.4 s (16 %, 7 %)** | lower is better | estimate (changes 26) |
-| plan build per verify process | 43–49 s today × ≈ 12 processes = 552 s of `stream_s` | **≤ 2 s** (ruling) | hard requirement |
+| **`S`** | **as built (B) ≈ 8.2 s; C′ ≈ 7.8; D ≈ 7.5** (`V̄ = 0.50` at V 151 ms runner, `x = 1.23`; 0.72 at 180 ms) | lower is better | estimate (changes 27) |
+| plan build per verify process | **1.87–1.98 s (S-E13, measured)**; ≈ 12–14 processes per stream | ≤ 2 s (B-16) | met |
 | `qV` | 36,000 (the aggregate verifier asks `≤ 4 × 8,891`) | `≤ 2^16` | — |
 
 The circuit-side table below (revision 3.17) stays for the `N4` node's *per-slot* figures; 4.0's
@@ -82,11 +82,11 @@ nodes have `1 + k` slots at `2^20` cells each (`N_M = 2^23` rows, `τ` 23 coordi
 | **B-9** | **Prover: std Rust, one `prover.s`, CPUID dispatch, AVX2 + VPCLMULQDQ-256 tier of record.** | K. |
 | **B-10** | **`ε = 15/2^124`; `δ = 0` (`P := encode`, kind `W`); `qV = 10,240`; `fuel t = 211,106,232,532,992 + 4,096 t`.** Claim: `{"error": "15/21267647932558653966460912964485513216", "completeness_error": "0", "qV": 10240, "fuel_base": 211106232532992, "fuel_per_word": 4096}` (renders: `r2/render-r2.log`). | §5.2; BP-E-M7; §6.3. |
 | **B-11** (4.0) | **The IVC step.** A step proves its chain as `k = ⌈n/2^18⌉ ≤ 4` segment SNARKs of `≤ 2^18` compressions (`L32`; `L31` for a remainder `≤ 2^17`), assembled into one signed **aggregate leaf** (kind `A`) whose verifier runs the segment verifiers in sequence on one signed trace and checks `e_i = s_{i+1}`, `e_k = end`, `Σ n_i = n`, `n_i ≤ 2^18`; one node proof (`N4`: slots = the previous node + `k` segments; `N8` at step 1: up to 8 segments) per step. | The leaf clause is atomic (one signed proof of `leafStmt end n`), the relation needs a *signed* leaf child, and a `2^20`-chain in one Ligerito instance needs ≈ 24 GB at the measured 1.44 B/bit (11 GiB cap); a leaf child verified by the harness would be charged cubically, so the segments are verified only in-circuit (§0.3). |
-| **B-12** (4.0; 4.1: the ladder) | **Segments** are the chain circuit at `m ∈ {30, 31, 32}` (`L30` = the former `P30` program with a variable length, `L31`, `L32`; a remainder goes to the smallest shape that holds it, `L29` optional) with a variable chain length `n_i ≤ 2^{m−14}` (the last block from the statement, as INT-4's `bnd`; blocks beyond `n_i` are `free`) and a statement flag `pubStart`: segment 1 keeps the secret start (the leaf witness), segments `i ≥ 2` pin `h_in` of block 0 to the public `s_i = e_{i−1}` (a gated row). KS: `s_1` is extracted from segment 1; segments `i ≥ 2` are soundness claims on public computations; `chainEnd s n = chainEnd (chainEnd s n₁) n₂` composes. | Reuses the leaf prover (dump-exact) and the leaf's soundness; no second shape family. |
-| **B-13** (4.0; 4.1: tight packing) | **Nodes are sized by their total witness bits, not by a power-of-two H region**: `N2` (`k ≤ 2`, 3 slots, `m = 31`), `N4` (`k = 3, 4`, 5 slots, `m = 32`), `N8` (step 1, ≤ 8 segments, `m = 32`) — H blocks `slots × 23,146 + WOTS + WM`, M `slots × 2^20` cells, `m = ⌈log₂(H bits + M bits)⌉`; **the largest `m` is 32, so one item sequence (L32's) serves every kind**; the first slot's kind is muxed over `{N4, N8, A}` (the previous step's node, or at step 1 nothing), the segment sub-slots are `{L31, L32}` with slot symmetry; unused sub-slots are inactive (selector 0). The stream leaf `P30` (`n = 2^16`) and the tree are **obsolete**. | The sizing table above; the one-hot mux of B-2 generalises to a per-slot activity selector. |
+| **B-12** (4.0; 4.1 the ladder; 4.2 as built) | **Segments** are the chain circuit at `m ∈ {30, 31, 32}` (`L30` = the former `P30` with a variable length, `L31`, `L32`; a remainder goes to the smallest shape that holds it) with a variable chain length `n_i ≤ 2^{m−14}`: the last block from the statement (INT-4's `bnd`), **the shift successor masked at `L`** (S-F4 `shift_unmasked_link`; the prover masks its own table: P2‴ `ir_unmasked_shift_rejected`), **`targetS` with a range factor** `Σ_{b<n} eq(r_blk, b)` on the chain kind's target, blocks past `n` `free` with the zero witness. **`pubStart` is gone: the start is positional** (INT-7) — segment 1's block 0 input is the leaf witness, segment `i ≥ 2`'s is pinned to `e_{i−1}` by its position in the aggregate. **The aggregate's padding and counter claim is a soundness obligation for `k = 2, 3, 4`** (R-4). KS: `s_1` from segment 1; `i ≥ 2` are soundness claims; `chainEnd s n = chainEnd (chainEnd s n₁) n₂`. | Reuses the leaf prover and the leaf's soundness. |
+| **B-13** (4.0; 4.1 tight packing; 4.2 as built) | **Nodes are sized by their total witness bits**: `N2` (`k ≤ 2`, 3 slots, `m = 31`; **`childOk4`: `N2` refuses `k > 2`**), `N4` (`k = 3, 4`, 5 slots, `m = 32`), `N8` (step 1, ≤ 8 segments, `m = 32`) — H blocks `slots × 23,146 + WOTS + WM`, M `slots × 2^20` cells; **`σ` has 24 / 25 / 25 coordinates and `τ` 22 / 23 / 23** (R-4); the largest `m` is 32, so one item sequence (L32's) serves every kind; slot 1 muxed over `{N2, N4, N8}` (step 1 none), sub-slots over `{L30, L31, L32}` with slot symmetry; unused sub-slots inactive. The stream leaf `P30` as a leaf and the tree are obsolete. | The sizing table; the one-hot mux of B-2 generalised to per-slot activity. |
 | **B-14** (4.0) | **`KS` through `KState.ks`** (the library bridge, `Library/PaperTheorem.lean`): `kstate_front_ofR` → `FinalLaw` → `kstate_of` → `KState.ks` → the certificate's `secure`, at the **same** `ε = εR` (the doubling of `KSTextbook.ks` is for textbook ⇒ `KS`, which we do not use). | Verified against PR #19's `KS` and `Library/Security.lean` (`KState` verbatim). |
-| **B-15** (4.0) | **`E := fun c π L => if InDom c π L then E_den c π L else E_search c π`**, `E_den` the DSL denotation (3.17), `E_search` a total computable enumeration of the finite witness space of `Rel (acc (vkOf π)) c` (children `< 2^64` bytes, traces `≤ qV × queryCap`, signatures fixed) tested by `acc`; `Computes` at the new domain `|π| ≤ 8 · outCap` by `compile_runs`; `final` outside the domain by the domain-free existence of the decoded witness. | PR #20's D2 (128 MiB, closed under extraction) does **not** resolve S-H2m's O3′: the tape bound `≤ 2^64` words stays and `step` lets `2^62` junk entries precede an honest chain; the badge compiles the whole submission, so the contract's `choice_certificate` route is closed to us. |
-| **B-16** (4.0; corrected 4.1) | **The plan is data at ≤ 2 s per verify process** (12–14 processes per stream count against `stream_s`: 43–49 s plans alone are 552 s). **The prover is already multi-threaded (since P1): the runner has 2 physical cores × 2 SMT, the vector phases saturate at 2 threads (×1.87) and only the scalar witness gains from SMT (×2.34 in all); every prover figure in this file is the 4-thread 7763 figure.** Peak memory 6.19 GB (segments), ≤ 5 GB (nodes). | P2′ §13.1–13.2; the stream budget is changes 26. |
+| **B-15** (4.0; 4.2 as built) | **`E := E4X nd A`: `if InDomE c π L then Ed4 nd c π L else Eout4 A c π L`** — the kind dispatch (`A`, `N2`, `N4`, `N8`, `W`, bad) **outside the domain too**, `E` taking the entry's `acc` (`A`) as a parameter; outside the domain `W ↦ decode π`, `A ↦ aggLeaf π`, a node `↦ search A (vkOf π) c` (the total computable witness search), bad `↦ none`; `Computes` at `|π| ≤ 8 · outCap` (`computes4`); `final` outside the domain from the domain-free existence of the witness (`search_spec_acc`). **The node branch `nd` is a parameter until the decoder fits the fuel (changes 27 (A))**; today's certificate uses `ndNone`. | S-H3 (Part 24): `E4X`, `den4_*`, `halts4`, `computes4`, `extOff_E4X`, `nodeExt_E4X`, `ks4_E4X`, all kernel-checked; PR #20's D2 keeps the tape bound, so the search branch stays. |
+| **B-16** (4.0; corrected 4.1; 4.2 met) | **The plan is data at ≤ 2 s per verify process** — **measured 1.87–1.98 s (S-E13)**; 12–14 processes per stream count against `stream_s`. **The prover is already multi-threaded (since P1): the runner has 2 physical cores × 2 SMT, the vector phases saturate at 2 threads (×1.87) and only the scalar witness gains from SMT (×2.34 in all); every prover figure in this file is the 4-thread 7763 figure.** Peak memory 6.19 GB (segments), ≤ 5 GB (nodes). | P2′ §13.1–13.2; the stream budget is changes 26. |
 | **B-17** (4.0) | **Proof size is priced, not capped**: `|π|` stays ≈ 0.78 MiB for every kind (the item sequence is one); the Ligerito parameters stay (UD regime, every index opened) — the only size lever within reach is level 0 at rate 1/4 (−115 KB, `V̄` −0.06 s, prover +≈ 5 %), deferred until `P̄` is below ≈ 4 s. `qV = 36,000`. | §0.3; `S-D`'s MCA proof covers the UD regime only, so the Johnson regime is out of reach. |
 
 ### 0.2 Drift (T §6's D-1 … D-17 stand)
@@ -616,7 +616,7 @@ on 18 coordinates and their `_meets` lemmas use `eq((a ‖ 0^k), (b ‖ 0^k)) = 
 (`eq_pad_zero`), so the five become templates (S-0 the pack, S-C the specs, S-F2 the `_meets`,
 S-E the templates).
 
-**`planOf` (revision 4.0, B-16, superseding 3.17's ≤ 5 s):** under the stream every verify process (one per batch of 8 checks, ≈ 12 per stream) counts against `stream_s = 960 s`, so the plan costs **≤ 2 s per process** (43–49 s today = 552 s). The 3.17 text follows for the record. **`planOf` (revision 3.17, the orchestrator's ruling revising 3.15 (e)).** The badge's `NS` is the
+**`planOf` (revision 4.0, B-16, superseding 3.17's ≤ 5 s; met in 4.2):** under the stream every verify process (one per batch of 8 checks, ≈ 12 per stream) counts against `stream_s = 960 s`, so the plan costs **≤ 2 s per process — measured 1.87–1.98 s (S-E13), was 43–49 s**. The 3.17 text follows for the record. **`planOf` (revision 3.17, the orchestrator's ruling revising 3.15 (e)).** The badge's `NS` is the
 monotonic time of parsing `π` and evaluating `acc` only (`harness/badge/Verify.lean.in`,
 `timedCheck`), so a **closed top-level plan constant, initialised at process start, is outside
 every check's `NS`**; process start counts only against the batch timeout `verify_s · n + 60 s ≥
@@ -2040,7 +2040,7 @@ step is 10 s, so `stream_s = 960 s` at `M ≤ 112` prices this design class out 
 | 2 | **Tight packing of the node** (B-13): `m` from total bits; `N2` for `k ≤ 2` (86 % of steps) 2.5 s instead of `N4` 4.2; `N8` at `m = 32` | **−1.3 s** (k=2: 3.7 → 2.5; k=1: 2.2 → 1.6) | −1.0 / 0 | S-0′ (`gen` at `m = 31` for `N2`), S-E (layouts), P2 (node prover); the `m = 33` ladder disappears | yes |
 | 3 | **Shape ladder `L30–L32`** (`L29` optional): a remainder in the smallest shape; `L30` is the former `P30` program with a variable `n` | −0.3 … −0.5 s (the PCS waste: 25 % of a shape on average) | −0.4 / 0 | S-0′ (one more kind byte and sub-slot mux entry), P2 (same prover at `m = 30`) | yes |
 | 4 | **Witness overlap**: segment `i+1`'s scalar witness on the SMT siblings during segment `i`'s vector phases | −0.4 s per extra segment: −0.25 s mean | −0.2 / 0 | P2 only | yes |
-| 5 | **Rows 32 at level 0** (columns `290 × 32 × 16 B`: −148 KB, `\|π\|` ≈ 0.65 MiB; +1 fold round, siblings +9 KB): a sub-slot's trace 23,146 → ≈ 19,400 blocks, so the node shrinks ≈ 12 % and `N4` stays at `m = 32` for `k = 4`; V −13 ms (`dotKF`) | −0.3 s (node) | −0.2 / **−0.09** (x 1.47 → 1.37) | S-0 (ladder constants), S-D (`pcsLevels_ok` re-check: `C_mca` unchanged), S-C/S-G (rounds), P2 | yes |
+| 5 | ~~Rows 32 at level 0~~ **declined (S-D3, revision 4.2)**: with `ell0 = 6` fixed and the ladder's query counts re-derived, a sub-slot's trace is 22,439 blocks (−3 % node), siblings +27.9 KB, V +13 ms, `S` −0.02 s | −0.1 s | ≈ 0 / ≈ 0 | — | **no** |
 | 6 | **Round-1 kernel** (1.20 s per `2^18`; P2 §3 item 1): −30 % assumed | −0.4 s | −0.4 / 0 | P2; unmeasured | yes (assumed) |
 | 7 | **V to 150 ms** (S-T1/S-E11): the three V runs per step −0.12 s; `V̄` 0.81 → 0.43 | −0.12 s | 0 / **−0.38** | S-T1, S-E | yes |
 | 8 | **`L(2)`: one PCS (commit, ring switch, Ligerito) over two segments' witnesses, two zerochecks** — saves one node sub-slot (`N2` → 2 slots ≈ 1.6 s) and one trace/SIGN; the PCS cost itself is per bit and does not shrink; memory ≈ 7 GB at `k = 2` (10 GB at `k = 4`: not allowed, so `A` holds ≤ 2 such proofs) | −0.45 s | −0.27 / 0 | S-0/S-C/S-G (a two-zerocheck leaf kind), P2: large | reserve (D) |
@@ -2066,4 +2066,94 @@ evaluations truncated, 11 % of ranking medians unranked.
 
 **Revision 4.1 (normative):** B-12 (the ladder `L30–L32`), B-13 (tight packing; `N2`/`N4`/`N8` at
 `m ≤ 32`), B-16 (corrected), §0's table, changes 25 (b)/(e) corrected; design C′ with D in reserve.
+
+### Stage-review changes 27 (revision 4.2): the node decoder's fuel (S-H3 F1), the certificate build (H-cert), text corrections
+
+**(A) The node decoder is over fuel at `m = 31/32` (S-H3 F1; `logs/S-H3/fuel-check.{py,txt}`).**
+3.x's per-level decode `cost_decLvIR` on the 4.1 ladders: `m = 30` `2^47.00` (fits), `m = 31` (`N2`)
+`2^49.00` (2.0× over `2^48`), `m = 32` (`N4`/`N8`) `2^51.00` (8.0× over). Level 0 is `≈ 99.4 %` of it:
+`baryIR` costs `k² · (1,363 + 106 · rows)` with `k = 2^(m−13)` (`2^19` at `m = 32`) and `rows = 64`
+(`ell0 = 6`): `2^38 · 8,147 = 2.24·10^15`. The per-word term is `2^16 · t ≈ 2^43` at `t ≈ 2^27` and
+cannot pay for a quadratic decoder; the contract's `2^48` assumes a quasi-linear one.
+
+| Route | Fuel at `m = 32` (level 0; levels 1–4 add `< 1 %`) | Soundness | Circuit / layout impact | Lean cost | Ruling |
+|---|---|---|---|---|---|
+| (i) quasi-linear erasure decoding at level 0: syndromes by the additive NTT (`FRXBfly`), the erasure locator `Λ = Π_{errors} (x − x_j)` by a subproduct tree (NTT products), Forney's formula for the erased values | ≈ `10^12` steps (`n log² n` at `n = 2^20`): `> 250×` under `2^48`, independent of `m` up to 36 | standard; the existing `agreement set` and `C_mca` arguments unchanged (it is the same unique codeword, found faster) | none | **large**: a new program (polynomial product and derivative via the NTT, the subproduct tree, Forney) with correctness proofs; `FRXBfly`'s butterflies and `FRXAgree` carry over | the structural reserve |
+| **(ii) decode only the rows the output reads** — H's message slots are level-0 rows 4–7 (`e mod 64 ∈ {4..7}`) — with a **batched inversion** in `baryIR` (one `invF` per row, Montgomery's trick: ≈ 60 steps per pair instead of 1,363) | `4 rows`: `k² · (60 + 106·4) = 2^38 · 484 ≈ 1.33·10^14`, plus the linear parts ≈ `1.4–1.6·10^14` (S-H3's estimate 1.6·10^14): **`1.3×` under `fuel_base = 3·2^46 = 2.11·10^14`, `1.75–2.0×` under `B`'s `2^48`**; `fuel_base` may rise to `2^48 − ε` if needed (`fuel ≤ B`) | the same unique codeword; only fewer rows are interpolated | **no layout move is needed**: every signature value the output needs already sits in rows 4–7 — `ots_i` is the `x` field of chain block `w_{i,0}` (the mux row `a_{i,0} = ots_i` holds for every digit), the path digests are the path blocks' `l`/`r` fields, the index is the key-leaf's `j` field; the kernel link is **`sig_of_H`** (S-G/S-E: the WOTS mux and link rows give `L`'s signature bits = those H fields on any word satisfying the circuit), so `readW` reads H, not L. If S-E prefers the physical move of the 4,772 B signature region from L into H blocks, it is equivalent and costs ≈ 300 blocks per slot | **moderate**: `decLvIR`/`baryIR` with a row subset and the batched inversion, their cost and semantics lemmas; `readW` on rows 4–7; `sig_of_H` | **adopted now** |
+| (iii) more rows at level 0 (`ell0 > 6`) | `rows ∝ 2^ell0` lowers `k` but raises `106·rows`: at `m = 32` level 0 would need `≈ 2^11` rows | — | the ladder, every query count | — | ruled out (S-D3 fixes `ell0 = 6`; lever 5 declined) |
+| the coordinator's example: **an affine-subspace agreement subset so that interpolation is an inverse additive NTT** (`O(k log k)` with `FRXBfly`) | would be `≈ 10^10` | **unsound in the unique-decoding regime**: the adversary chooses the error set `X` (`\|X\| ≤ e = ⌊(n−k)/2⌋`, `2^18` at level 0), and a `k`-dimensional affine subspace is error-free only if it avoids `X`; at rate 1/2 the subspaces are affine hyperplanes, and **`X` meets every one of the `2(n−1)` affine hyperplanes as soon as it affinely spans the domain — `ℓ + 1 = 21` well-placed errors suffice**; at lower rates (codimension-`c` flats, each of `n/2^c` points) an error set of `3n/8` points blocks every flat. So no fixed structured family of `k`-subsets is guaranteed inside the agreement set; the decoder must interpolate at an arbitrary `k`-subset, which is (i) or (ii) | — | — | **rejected** |
+
+**Ruling: (ii) now, (i) as the reserve.** Fuel arithmetic at `m = 32`: `1.4–1.6·10^14 ≤ 2.11·10^14`
+(`fuel_base`) `≤ 2.81·10^14` (`B`'s fixed term); at `m = 31` a quarter of that. Memory: `f⁽⁰⁾` at
+`m = 32` is `2^25` cells = `2^26` words, so `mem` moves from 3.x's `2^26` to **`2^27` words** (the
+decoder's working arrays: the agreement set, the 4 rows' weights); the `memX` term in `fuel_base`
+grows by `2^27` steps, negligible. `claim.json`'s `fuel_base = 3·2^46`, `fuel_per_word = 2^13` stand
+unless the measured cost needs `fuel_base` up to `2^48 − 2^47`. The `N2` kind runs `ladderOf 31`,
+`N4`/`N8` `ladderOf 32`: the decoder takes the kind at run time. Owner S-H3 (`nd`, `DecOk4`,
+`NodeDec4.out`), S-G/S-E (`sig_of_H`, the cell map `readW` over rows 4–7, the links at 4.1's
+positions), P4b/R4 (the links' ports).
+
+**(B) The certificate's build budget (H-cert): `lake build FR` 611–712 s on the 7763 against
+`build_s = 600 s`; the kernel replay 372 s fits.** The build is 190 modules, 2,119 CPU s in run
+40751551049 (4 jobs): the 43 `FRX*` modules 804 s (38 %), `FRVIR*` 379 s, `FRSoundness*` 425 s,
+the top 20 modules 790 s. **The Rev4 import closure already holds 217 of the 238 modules (94.7 k of
+98.5 k lines)**: `FRSoundness4Tail*` import 3.x's `FRSoundnessTailD → Tail → Fold → Weights →
+FRVIRFinalsSG → FRNodeLayout → FRVIRFinals/FRVIRSpec/FRVIRMux/FRVIRCompileSound`, and `FRX4Ext`
+imports `FRXSpec → FRXExt → FRXNode → FRXDecLv → FRXMsg/FRXFlag/FRXBaryTop/FRXBary/FRXEqT/FRXFwd …`
+(3.x's node extractor). So retiring only what is *outside* the closure gains little: the 21 modules
+(`FR`, `FRFieldControls`, `FRMLEControls`, `FRNodeDag`, `FRNodeMirror`, `FRNodePlan`,
+`FRNodeReadLayout`, `FRNodeSoundA`, `FRSoundnessExtAll/ExtE/ExtLinks`, `FRSoundnessFrKS/FrLN/FrLc/FrRnd/FrRndV/FrW0V/FrWalk`,
+`FRVIRTplControls`, `FRXLeaf`, `FRXNodeRun`), ≈ 3 % of the CPU — most of them drop out of
+`Solution`'s closure by themselves once `Solution` imports only the Rev4 certificate. **The plan,
+in order:**
+
+| Step | Modules | What must move first | Build CPU cut (7763, estimate from the per-module tables) |
+|---|---|---|---|
+| 1 | `Solution` imports only `FRVerifierC4`, `FRX4Ext`, `FRSoundness4Frame`/`Tail*` and the Rev4 controls | — | the 21 outside modules: ≈ 65 s |
+| 2 | **the 3.x node extractor**: `FRXNode`, `FRXNodeRun`, `FRXExt`, `FRXSpec`, `FRXDecLv`, `FRXOutRun`, `FRXComputes`, `FRXLog`, `FRXChain*` (≈ 5 % of the CPU) | the Rev4 decoder `nd` (A) must not import them: `FRX4Ext` imports `FRXSpec`/`FRXSeed`/`FRXSearch` today for the leaf and W cases and `ext_good_tape`'s shared lemmas — those lemmas move to `FRXCommon` (the parse, `packBytes`, `aggLeaf`, `search_spec`); `FRXBary*`, `FRXAgree`, `FRXBfly`, `FRXOut`, `FRXRead`, `FRXField`, `FRXFlag`, `FRXMsg`, `FRXEqT`, `FRXFwd` **stay** (the decoder's infrastructure, ≈ 400 s) | ≈ 110 s |
+| 3 | **the 3.x soundness front**: `FRSoundnessFr*`, `FRSoundnessAcc*`, `FRSoundnessStep{A..E}`, `FRSoundnessCompose`, `FRSoundnessExt*`, `FRSoundnessHide`, `FRSoundnessTail`/`TailD`, `FRSoundnessFold`, `FRSoundnessWeights`, `FRSoundnessLigFinal`, `FRSoundnessWalk`, `FRSoundnessPhases`, `FRSoundnessTruths`, `FRSoundnessDefs`, `FRKState` | **T4's 195 position-free declarations** (`logs/T4/keep.txt`; homes: `StepB` 30, `StepE` 28, `StepC` 18, `Weights` 17, `Tail` 14, `Truths` 13, `StepA` 11, `Hide` 11, `Fold` 11, `LigFinal` 11, `Walk` 10, `StepD` 6, `Phases` 3, `TailO` 2, 5 others) move to shared modules `FRSoundnessCore{Steps,Weights,Tail,Lig}` that import only the theory (`FRSpartan`, `FRSumcheck`, `FRRS`, `FRProximity*`, `FRRingSwitch`, `FRMLE`, `FRShift`, `FRSkip`) and **not** `FRVIRFinalsSG`/`FRNodeLayout`; `FRSoundness4Tail*` then import the core modules | the home modules are ≈ 11.5 % of the CPU (≈ 245 s); with the kept declarations out, ≈ 150 s; the rest of the front ≈ 100 s: **≈ 250 s** |
+| 4 | **the 3.x verifier shapes**: `FRVIRFinalsSG` (62–114 s), `FRNodeLayout`, `FRNodeCircuit`, `FRVIRMux`, `FRVIRCompileSound`, `FRVIRFinalsSF`, the 3.x `FRVerifier`/`FRVerifierImpl` | `FRVIRFinals4` imports `FRVIRFinals` and `FRVIRFinalsSG` for the per-phase checks: the checks Rev4 uses (`finZ`, `finLc`, `finSh`, `finLr`, `finE`, `finRS`, `finB′`, `finP`, `finPf` as *definitions* over `OpImpl`) move to `FRVIRFinalsCore`; the 3.x `gen` (`FRVIRChain`) stays for `FRVIR4` if it builds on its phases, else moves too | ≈ 150–200 s |
+| — | **total** | | **≈ 575–625 s of 2,119 (27–30 %)**: the build ≈ 611 → ≈ 440–460 s wall if the critical path shrinks in proportion (**1.3× under 600 s**); the 712 s run → ≈ 520 s |
+
+Golfing the top modules (`FRVIRFinalsSG` 1,526 lines against a 400-line budget; `FRXBary`,
+`FRXAgree`, `FRXFwd`, `FRXOut`: the extractor's proofs) is independent and adds to it; asking the
+core for a larger `build_s` is the fallback. Owners: S-I (step 1, `Solution`), S-H3 (step 2 with the
+decoder), T4/S-G (step 3: the 195 declarations' move is T4's `keep.txt` made physical), S-0′/S-E
+(step 4). The order matters: steps 2–4 each need their "move first" column before the retirement.
+
+**(C) Text corrections, entered:** B-12 (the masked shift successor at `L`, `targetS`'s range factor,
+positional start, the aggregate's padding/counter obligation for `k = 2, 3, 4`); B-13 (`childOk4`,
+`σ` 24/25/25, `τ` 22/23/23); lever 5 declined with S-D3's numbers (22,439 blocks, −3 % node, V +13 ms,
+siblings +27.9 KB, `S` −0.02); B-15 as built (`E4X`, dispatch outside the domain, `E` takes `A`,
+`nd` a parameter); B-16 and §4.4 (the plan 1.87–1.98 s, met); the prover fits and the zero overlap;
+V 179–181 ms on the VM (≈ 151 ms on the 7763 at 1.19).
+
+**The stream budget and `S`, recomputed (`sizes.py` "revision 4.2"; 7763, 4 threads; nodes by the
+phase model with tight packing: 2 slots 1.6 s at `m = 30`, `N2` 2.4 s, `N4` 4.1 s, `N8` 4.8 s; steps at
+`n = 2^17 / 2^18 / 2^18+1 / 1.19·2^18 / 2^20`: 4.2 / 6.8 / 8.3 / 8.8 / 25.1 s; overhead 1.6 s per step
+with the 1.9 s plan):**
+
+| Candidate | `P̄` | mean step + overhead | fits `M ≤` | truncated | unranked medians | `V̄` | `S` |
+|---|---|---|---|---|---|---|---|
+| **B: as built** (ladder `L30–L32`, tight packing, V 151 ms) | **7.68 s** | 8.91 + 1.64 = **10.55 s** | **85** | **28 %** | **19 %** | 0.50 (`x = 1.23`) | **8.17 s** |
+| C′: + the round-1 kernel −30 % (P2, unmeasured) | 7.34 | 10.13 | 89 | 22 % | 12 % | 0.50 | 7.84 |
+| D: C′ + `L(2)` (reserve) | 7.04 | 9.66 | 93 | 17 % | 8 % | 0.50 | 7.53 |
+| E: B with V 180 ms on the runner | 7.68 | 10.63 | 84 | 30 % | 21 % | 0.72 | 8.40 |
+
+Against 4.1's table the measured fits are ≈ 6 % cheaper per segment but the witness overlap is gone
+and lever 5 is declined: B ≈ 4.1's C′ on `P̄` (7.68 vs 7.27 projected) and `M ≤ 85`. The obstruction
+of changes 26 stands: `M = 112` needs ≤ 8.05 s per step, i.e. ≈ 13 µs per compression against ≈ 19
+today (`2.68 + 2.39·2^0.25`) / `1.19·2^18`.
+
+**Per-track list (revision 4.2):**
+- **S-H3**: the decoder (A)(ii): `baryIR` on rows 4–7 with the batched inversion, `decLvIR` per kind (`ladderOf 31/32`), `mem = 2^27`, the cost lemmas within `decBudget`, `readW` over rows 4–7, `NodeDec4.out`; then step 2 of (B) (`FRXCommon`, the 3.x node extractor retired). Reserve: (i).
+- **S-G / S-E**: `sig_of_H` (the WOTS mux and link rows give `L`'s signature bits = the H fields `x(w_{i,0})`, the path `l`/`r`, the key-leaf `j`); the cell map and links at 4.1's positions (P4b/R4); step 3 of (B): T4's 195 declarations into `FRSoundnessCore*`; the aggregate's padding/counter obligation (R-4) in the node truth.
+- **S-0′ / S-E**: step 4 of (B): `FRVIRFinalsCore` (the per-phase check definitions Rev4 uses) so that `FRVIRFinalsSG`/`FRNodeLayout` can go; B-12/B-13 as built (no further change).
+- **S-I**: `Solution` imports only the Rev4 certificate (step 1); `claim.json` unchanged unless `fuel_base` must rise (≤ `2^48 − 2^47`); the certificate's `E := E4X nd S.acc`, `ext := ext4` once `nd` lands.
+- **P2**: the round-1 kernel (measure before C′ is claimed), the `N2`/`N4`/`N8` prover, `first`/`step`, the stream dry run; the `L(2)` reserve.
+- **S-T1**: V on the runner (151 ms assumed from the VM's 180 at 1.19; E's row is the fallback).
+- **H**: re-measure `build_s` after each retirement step; the organiser's `build_s` is the fallback request.
+
+**Revision 4.2 (normative):** (A)(ii) with `mem = 2^27`; the retirement plan (B) steps 1–4 in order;
+B-12, B-13, B-15, B-16, lever 5 and §4.4 as corrected; the budget table above.
 

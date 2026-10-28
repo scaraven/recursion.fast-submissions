@@ -344,3 +344,30 @@ for lab,(Pb,st,Mf,tr,vb) in (("A'",A2),("B",B),("C'",C2),("D",D)):
 # the floor: a mean chain (1.19·2^18) needs >= 2^32.25 bits of instance: PCS >= 2.39·2^0.25 + per-block 2.86·1.19 + node(k=2 tight) 2.5 + 0.2
 floor=PCS32*2**0.25+0.18+2.86*1.19+2.5
 print(f"   floor for the mean step with today's kernels and a zero-waste split: {floor:.1f} s + overhead 1.4 = {floor+1.4:.1f} s > 8.05 needed for M = 112; M = 112 needs the per-compression cost ~{(8.05-1.4-2.5)/(1.19*2**18)*1e6:.0f} us incl. the PCS (today {(PCS32*2**0.25+2.86*1.19)/(1.19*2**18)*1e6:.0f} us)")
+# ---- revision 4.2 (stage-review changes 27): P2''' fits on the 7763 (4 threads): L32 2.57 + 2.68 n/2^18, L31 1.29 + 1.33 n/2^17, L30 0.67 + 0.60 n/2^16;
+# witness overlap 0; lever 5 declined (|π| 797,904, sub-slot 23,146 blocks); V 180 ms VM = 151 ms runner; plan 1.9 s per verify process.
+FIT42={32:(2.57,2.68),31:(1.29,1.33),30:(0.67,0.60)}
+def seg42(nseg,m,k1=1.0): a,b=FIT42[m]; return a+k1*b*nseg/2**(m-14)
+PERBLK42=2.68/2**18; PCS42=2.57-0.18
+def node42(slots,blk=23146,mcells=2**20):
+    Hblocks=slots*blk+2*498+304; bits=Hblocks*2**14+slots*mcells*128; m=math.ceil(math.log2(bits))
+    return PCS42*2**(m-32)+FIT42[32][0]-PCS42+PERBLK42*Hblocks+0.3, m
+def scen42(label, k1, lk, V, plan_s=1.9, pi=797904):
+    rng=random.Random(11); N=200000; num=den=tot=0.0; ks=[0]*9
+    for _ in range(N):
+        n=draw(rng.random()); segs=split(n,(30,31,32)); k=len(segs); ks[k]+=1
+        P=sum(seg42(r,m,k1) for r,m in segs)
+        slots=2 if lk else 1+k
+        P+=node42(slots)[0]; num+=n*(P/n)**3; den+=n; tot+=P
+    Pbar=2**18*(num/den)**(1/3); meanP=tot/N; ov=overhead(plan_s,V,0.02,meanP); step=meanP+ov
+    Mfit=int((960-14*plan_s-30)//step); trunc=0.0 if Mfit>=112 else min(1.0,(16/17)**max(0,Mfit-64)); unr=3*trunc**2-2*trunc**3
+    vb,x=Vbar(V*1000,pi)
+    print(f"   {label}: P-bar {Pbar:.2f} s; mean step {meanP:.2f} + overhead {ov:.2f} = {step:.2f} s; fits M <= {Mfit}; truncated {trunc*100:.0f}%, unranked medians {unr*100:.0f}%; V-bar {vb:.2f} (x {x:.2f}); S = {Pbar+vb:.2f} s")
+    return Pbar,step,Mfit,trunc,vb
+print("== revision 4.2: the stream budget with P2''' fits, lever 5 declined, V 151 ms runner, plan 1.9 s")
+print("   nodes (phase model, tight packing): "+"; ".join(f"{s} slots {node42(s)[0]:.1f} s (m={node42(s)[1]})" for s in (2,3,5,8)))
+print(f"   steps: n=2^17 {seg42(2**17,31)+node42(2)[0]:.1f} s; 2^18 {seg42(2**18,32)+node42(2)[0]:.1f}; 2^18+1 {seg42(2**18,32)+seg42(1,30)+node42(3)[0]:.1f}; 1.19·2^18 {seg42(2**18,32)+seg42(int(0.19*2**18),30)+node42(3)[0]:.1f}; 2^20 {4*seg42(2**18,32)+node42(5)[0]:.1f}")
+B42=scen42("B  ladder L30-L32 + tight packing (as built)",1.0,False,0.151)
+C42=scen42("C' + round-1 kernel -30% (P2, unmeasured)",0.87,False,0.151)
+D42=scen42("D  = C' + L(2) (reserve)",0.87,True,0.151)
+E42=scen42("E  = B with V 180 ms (no S-T1 gain on the runner)",1.0,False,0.180)

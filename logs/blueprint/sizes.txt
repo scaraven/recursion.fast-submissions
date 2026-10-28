@@ -108,3 +108,10 @@
    C': truncation 21% -> unranked median 11%
    D: truncation 16% -> unranked median 7%
    floor for the mean step with today's kernels and a zero-waste split: 8.9 s + overhead 1.4 = 10.3 s > 8.05 needed for M = 112; M = 112 needs the per-compression cost ~13 us incl. the PCS (today 20 us)
+== revision 4.2: the stream budget with P2''' fits, lever 5 declined, V 151 ms runner, plan 1.9 s
+   nodes (phase model, tight packing): 2 slots 1.6 s (m=30); 3 slots 2.4 s (m=31); 5 slots 4.1 s (m=32); 8 slots 4.8 s (m=32)
+   steps: n=2^17 4.2 s; 2^18 6.8; 2^18+1 8.3; 1.19·2^18 8.8; 2^20 25.1
+   B  ladder L30-L32 + tight packing (as built): P-bar 7.68 s; mean step 8.91 + overhead 1.64 = 10.55 s; fits M <= 85; truncated 28%, unranked medians 19%; V-bar 0.50 (x 1.23); S = 8.17 s
+   C' + round-1 kernel -30% (P2, unmeasured): P-bar 7.34 s; mean step 8.50 + overhead 1.63 = 10.13 s; fits M <= 89; truncated 22%, unranked medians 12%; V-bar 0.50 (x 1.23); S = 7.84 s
+   D  = C' + L(2) (reserve): P-bar 7.04 s; mean step 8.04 + overhead 1.62 = 9.66 s; fits M <= 93; truncated 17%, unranked medians 8%; V-bar 0.50 (x 1.23); S = 7.53 s
+   E  = B with V 180 ms (no S-T1 gain on the runner): P-bar 7.68 s; mean step 8.91 + overhead 1.73 = 10.63 s; fits M <= 84; truncated 30%, unranked medians 21%; V-bar 0.72 (x 1.39); S = 8.40 s
