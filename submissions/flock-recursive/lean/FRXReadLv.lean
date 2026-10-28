@@ -7,7 +7,7 @@ import FRXChainFlock
 
 `readIR` is parametric in the level (`FRXReadDefs`): the level byte of the node and column tags,
 the tape word of the cap's entry 0, the store's base and the words a column. This module fixes
-Flock's `P30` instances of levels 1–4 (BLUEPRINT §2.2, revision 3.12):
+Flock's `P30` instances of levels 1–4 (BLUEPRINT §2.2, revision 3.13):
 
 | level | `log₂ n` | cap | `sib` | cap field offset (π) |
 |---|---|---|---|---|
@@ -31,11 +31,11 @@ open RecursionFast FR.Merkle
 
 /-- The byte offset of level `i`'s cap in π (`i ≤ 4`; level 0 is `capOff`). -/
 def capOffL : ℕ → ℕ
-  | 0 => 22320
-  | 1 => 38704
-  | 2 => 46896
-  | 3 => 55088
-  | _ => 63280
+  | 0 => 19584
+  | 1 => 35968
+  | 2 => 44160
+  | 3 => 52352
+  | _ => 60544
 
 /-- `log₂` of level `i`'s cap. -/
 def capLogL (i : ℕ) : ℕ := if i = 0 then 9 else if i = 4 then 7 else 8
@@ -59,7 +59,7 @@ def stB : ℕ := 16777216
 def readLv (i : ℕ) : XIR := readIR i (capWL i) stB 32 (sibL i) (2 ^ logNL i)
 
 /-- The offsets are the C phases' messages (`fsMsgs`, positions `capPos 1 … 4`) and level 0's. -/
-theorem capOffL_ctl : (List.range 5).map capOffL = [22320, 38704, 46896, 55088, 63280] ∧
+theorem capOffL_ctl : (List.range 5).map capOffL = [19584, 35968, 44160, 52352, 60544] ∧
     (List.range 5).map sibL = [9, 8, 6, 4, 3] ∧ capPiL 0 = capPi := by
   refine ⟨by decide, by decide, ?_⟩
   funext π e; simp only [capPiL, capPi, capOffL, capOff_eq]
@@ -79,15 +79,15 @@ theorem tape_capL (c : Digest) (π : Proof) (L : Log) {off e m : ℕ} (h8 : off 
 theorem capOffL_mod (i : ℕ) : capOffL i % 8 = 0 := by
   unfold capOffL; split <;> decide
 
-theorem capOffL_le (i : ℕ) : capOffL i ≤ 63280 := by
+theorem capOffL_le (i : ℕ) : capOffL i ≤ 60544 := by
   unfold capOffL; split <;> decide
 
 theorem capLogL_le (i : ℕ) : capLogL i ≤ 9 := by
   unfold capLogL; split_ifs <;> decide
 
-/-- The cap fields lie inside π: level `i`'s `2^(capLogL i)` entries end by byte 67,376. -/
+/-- The cap fields lie inside π: level `i`'s `2^(capLogL i)` entries end by byte 64,640. -/
 theorem capOffL_fit {i : ℕ} (hi : i ≤ 4) :
-    capOffL i + 32 * 2 ^ capLogL i ≤ 67376 := by
+    capOffL i + 32 * 2 ^ capLogL i ≤ 64640 := by
   interval_cases i <;> decide
 
 variable {c : Digest} {π : Proof} {L : Log}
@@ -100,7 +100,7 @@ theorem readLv_spec (hD : Dom c π L) {Xi : ℕ → Word} (hX : Sorted (tp c π 
       colWord (colL (frEnc i) L (capPiL i π (q / 2 ^ sibL i)) (sibL i) q) w) ∧
     (∀ a < L.length, rd (semXIR (tp c π L) (readLv i) s).M (memX + a) = Xi a) ∧
     Inv (semXIR (tp c π L) (readLv i) s).M := by
-  have hps : π.size = 800640 := hD.hs.trans piSize_eq
+  have hps : π.size = 797904 := hD.hs.trans piSize_eq
   have hfit := capOffL_fit hi
   have hlog := capLogL_le i
   have hoff := capOffL_le i
@@ -169,13 +169,13 @@ and the level-0 query of `toyN` is none at level 1 (`nodeStepP_toy` is its level
 theorem nodeStepP_lv1 : nodeStepP 1 [(nodeQ 1 (dg 1) (dg 2), dg 3)] 0 0 (dg 3) = some (dg 1) ∧
     nodeStepP 1 toyN 0 0 (dg 3) = none := by decide +kernel
 
-/-- **The cap offsets are the C phases' messages**: `fsMsgs` at FS positions `359, 398, 425, 449`
-(`capPos 1 … 4`, revision 3.12) absorbs π's bytes `capOffL i … + 32·2^(capLogL i)`. -/
+/-- **The cap offsets are the C phases' messages**: `fsMsgs` at FS positions `330, 369, 396, 420`
+(`capPos 1 … 4`, revision 3.13) absorbs π's bytes `capOffL i … + 32·2^(capLogL i)`. -/
 theorem capOffL_fsMsgs :
-    fsMsgs.getD 359 none = some (capOffL 1, 32 * 2 ^ capLogL 1) ∧
-    fsMsgs.getD 398 none = some (capOffL 2, 32 * 2 ^ capLogL 2) ∧
-    fsMsgs.getD 425 none = some (capOffL 3, 32 * 2 ^ capLogL 3) ∧
-    fsMsgs.getD 449 none = some (capOffL 4, 32 * 2 ^ capLogL 4) := by decide +kernel
+    fsMsgs.getD 330 none = some (capOffL 1, 32 * 2 ^ capLogL 1) ∧
+    fsMsgs.getD 369 none = some (capOffL 2, 32 * 2 ^ capLogL 2) ∧
+    fsMsgs.getD 396 none = some (capOffL 3, 32 * 2 ^ capLogL 3) ∧
+    fsMsgs.getD 420 none = some (capOffL 4, 32 * 2 ^ capLogL 4) := by decide +kernel
 
 /-- The level tag words differ (`"FRMNOD" ‖ 1` against level 0's). -/
 theorem tagNWl_one_ne : tagNWl 1 ≠ tagNW ∧ tagCWl 1 ≠ tagCW := by decide

@@ -132,7 +132,7 @@ theorem tape_getD_c (c : Digest) (π : Proof) (L : Log) {i : ℕ} (hi : i < 4) :
 
 theorem seedPay_length (c : Digest) (π : Proof) (hs : π.size = piSize) :
     (seedPay c π).length = 112 := by
-  have hp : π.size = 800640 := hs.trans piSize_eq
+  have hp : π.size = 797904 := hs.trans piSize_eq
   have h48 : (π.extract 0 48).data.toList.length = 48 := by
     rw [Array.length_toList]; exact extract_size π (o := 0) (len := 48) (by omega)
   simp only [seedPay, List.length_append, Vector.length_toList, h48]
@@ -141,8 +141,8 @@ theorem seedPay_length (c : Digest) (π : Proof) (hs : π.size = piSize) :
 theorem tape_seed (c : Digest) (π : Proof) (L : Log) (hs : π.size = piSize) {k : ℕ}
     (hk : k < 14) :
     (extractorInput c π L).toArray.getD (sPos k) 0 = (packBytes (seedPay c π)).getD k 0 := by
-  have hp : π.size = 800640 := hs.trans piSize_eq
-  have hpl : ∀ j, j < 100080 → (extractorInput c π L).getD (5 + j) 0 =
+  have hp : π.size = 797904 := hs.trans piSize_eq
+  have hpl : ∀ j, j < 99738 → (extractorInput c π L).getD (5 + j) 0 =
       (packBytes π.data.toList).getD j 0 := fun j hj => by
     rw [tape_getD_proof c π L (by rw [hp]; omega), List.getD_eq_getElem]
   rw [getD_toArray, seedPay, packBytes_append8 _ _ (k := 4) (by simp)]

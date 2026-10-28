@@ -342,3 +342,15 @@ Base: branch `v4/flock-recursive`, HEAD `53c2e13`. Build tree `logs/fr-build-SH2
     - Coordinator's heads-up (3.13): the new code keeps positions symbolic (`phStart`, `ansB`,
       parameters `cb`/`eb`/`tb`). The constants to update after INT-2 are the existing ones
       (`nRep`, `chTab`/`fsMsgs`, `capW0`/`capOffL`, `piSize`-dependent tape facts).
+
+## Part 17
+
+30. Revision 3.13 and the fold's row step.
+    - The coordinator patched five `FRX` modules (INT-2's list). I fixed the other three
+      (`FRXReadLv`'s cap offsets and controls, `FRXLeaf`'s and `FRXSeed`'s `piSize` facts).
+      They are constants only, and the build is green (`build17c.log`).
+    - `FRXFlag`: `fBody_sem` was written in the `eqBody_sem` style. One pitfall: a long chained
+      `rdF_eq (… |>.trans …)` term for a heap cell after two frames failed (`simp` made no
+      progress, metavariables). Fix: a local `hh5 : ∀ i, regs ≤ i → rd s5.M i = rd s.M i`, then
+      `rdF_eq (hh5 _ _) (hh5 _ _)`.
+    - Stopped: context long. Handover in RESULT Part 17.

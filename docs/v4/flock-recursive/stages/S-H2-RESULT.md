@@ -2105,3 +2105,62 @@ The bit order was checked: `eqBits r ℓ x` weighs bit `v` of `x` with `r_v`, li
    - then re-check `decOk_decLN2`/`computes`.
 
    The Part 16 modules use no transcript constants.
+
+---
+
+## Part 17: revision 3.13 in the `FRX` modules; the fold's row step
+
+**Revision 3.13.** The coordinator applied INT-2's patch to five modules (`FRXChainFlock`, `FRXLog`,
+`FRXLogSpec`, `FRXLookup`, `FRXReadDefs`). I fixed the three modules still broken:
+- `FRXReadLv`:
+  - the cap offsets `capOffL` are now 19,584 / 35,968 / 44,160 / 52,352 / 60,544;
+  - `capOffL_le` is now 60,544, and `capOffL_fit` ends at byte 64,640 (the final message's
+    offset);
+  - the control `capOffL_fsMsgs` is re-stated at the new FS positions 330, 369, 396 and 420
+    (S-G's `capPos_eq`);
+  - `π.size = 797,904`;
+- `FRXLeaf`: `π.size = 797,904`;
+- `FRXSeed`: `π.size = 797,904`, and the word bound `j < 99,738`.
+
+No statement changed; only constants did. The Part 16 modules needed nothing, since their
+positions are symbolic.
+
+Two of 3.13's changes are not consumed yet:
+- `E4end` (32 B) and `J_z = 4` enter only through `fsMsgs`/`chTab`, which are derived;
+- the final message at 64,640 will be read by the level-4 message step (§3).
+
+**The fold's row step** (`FRXFlag`, new: 249 / 196 code / 3 theorems). The module holds the
+registers, the blocks `tPs` and `stepPs` with their lemmas, and **`fBody_sem`**. Take `W` at
+`M[gW] = w` and the `eq` table entry at `M[gE] = e`. Then:
+- `acc₀ += W·E.f₀` and `acc₁ += W·E.f₁` (`F`);
+- `gW += 2`, `gE += 4`;
+- the heap and the loop registers are kept.
+
+The rest of `flagIR` is not written: the row loop, the comparison and store, and the position
+loop.
+
+**Checks.**
+- Build (own tree `logs/fr-build-SH2`, on the worktree with INT-2's patch):
+  `lake build FRXFlag FRXEncB FRXFwd FRXLevel FRXEqT FRXReadLv FRXBaryTop FRXExt FRXSpec FRXLeaf
+  FRXAgree FRXComputes FRXSeed` is green, 2,287 jobs (`logs/S-H2/build17c.log`; the rebuild after
+  3.13 is `build17a/b.log`).
+- Axioms (`logs/S-H2/axioms17.log`):
+  - these depend on `propext, Classical.choice, Quot.sound`: `computes`, `E_leaf`,
+    `decOk_decLN2`, `readLv_spec_F`, `fBody_sem`, `level_decode`, `eqtIR_sem`, `fwdIR_enc`;
+  - `capOffL_fsMsgs` depends on `propext`.
+- Source rule: 117 files, 0 findings. No `sorry`.
+
+**What remains** (Part 16 §7, unchanged in order):
+1. `flagIR`:
+   - the row loop: the `eqEnt_sem` loop pattern over `fBody_sem`;
+   - the comparison: `eq`/`and` words, then `bW` of the two `F` equalities;
+   - the store at `fb + j`;
+   - the position loop: the `eqtIR_sem` pattern;
+   - the conclusion against `mem_consSet_iff`.
+2. The message rows (level 4: π's final field at 64,640).
+3. The per-level composition, then level 0.
+4. `decodeWit`'s output.
+5. The `'N'` case.
+6. The wiring.
+
+**Stopped here.** The cause is context length.

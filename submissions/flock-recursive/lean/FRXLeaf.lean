@@ -47,7 +47,7 @@ theorem tape_leafS (c : Digest) (π : Proof) (L : Log) (hs : π.size = piSize) :
     packBytes (bytesAt π 16 32).toList = [(extractorInput c π L).getD 7 0,
       (extractorInput c π L).getD 8 0, (extractorInput c π L).getD 9 0,
       (extractorInput c π L).getD 10 0] := by
-  have hp : π.size = 800640 := hs.trans piSize_eq
+  have hp : π.size = 797904 := hs.trans piSize_eq
   have w : ∀ m < 4, (packBytes (bytesAt π (8 * 2) 32).toList).getD m 0 =
       (extractorInput c π L).getD (5 + (2 + m)) 0 := fun m hm => by
     rw [packBytes_bytesAt _ (by omega) hm, tape_getD_proof c π L (by omega),
