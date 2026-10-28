@@ -79,6 +79,7 @@ import FRSoundnessAccPos
 import FRSoundnessAccSem
 import FRSoundnessAcc
 import FRSoundnessAccLog
+import FRSoundnessFrRS
 import FRNodeReadLayout
 import FRNodeRead
 import FRNodeReadW
