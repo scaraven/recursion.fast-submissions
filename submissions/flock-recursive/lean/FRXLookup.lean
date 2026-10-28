@@ -51,7 +51,7 @@ theorem tape_answer (c : Digest) (π : Proof) (L : Log) (hs : π.size = piSize) 
     (hk : k < L.length) {m : ℕ} (hm : m < 4) :
     (extractorInput c π L).getD (posL + 1 + entryOff L k + 1 + (L[k].1.size + 7) / 8 + m) 0 =
       (packBytes L[k].2.toList).getD m 0 := by
-  have hp : π.size = 755680 := hs.trans piSize_eq
+  have hp : π.size = 800640 := hs.trans piSize_eq
   have hl : ((packBytes c.toList ++ [toWord π.size]) ++ packBytes π.data.toList ++
       [toWord L.length]).length = posL + 1 := by
     simp only [List.length_append, packBytes_length, ← WitnessSending.size_eq_length,

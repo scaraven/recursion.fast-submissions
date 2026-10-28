@@ -147,9 +147,9 @@ def cntBody : XIR :=
 
 /-- **The count**: the log's words, `rCn5 := rP − posL − 1` after the walk. -/
 def cntIR : XIR :=
-  .seq (.seq (.blk [.const rP (toWord (posL + 1))]) (readAt rN posL))
-    (.seq (.loopT rCW rN ⟨0, 1, 5⟩ cntBody)
-      (.blk [.const rKd (toWord (posL + 1)), .op .sub rCn5 rP rKd]))
+  .seq (.seq (.seq (.blk [.const rP (toWord (posL + 1))]) (readAt rN posL))
+      (.loopT rCW rN ⟨0, 1, 5⟩ cntBody))
+    (.blk [.const rKd (toWord (posL + 1)), .op .sub rCn5 rP rKd])
 
 /-- Straight-line stores of the words `ws` at `b, b + 1, …`. -/
 def storesIR (b : ℕ) : List Word → XIR

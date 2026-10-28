@@ -210,7 +210,7 @@ theorem entries_getD_q : ∀ (L : Log) (k : ℕ) (hk : k < L.length) (j : ℕ),
 theorem tape_query (c : Digest) (π : Proof) (L : Log) (hs : π.size = piSize) {k : ℕ}
     (hk : k < L.length) {j : ℕ} (hj : j < (L[k].1.size + 7) / 8) :
     (extractorInput c π L).getD (posE L k + 1 + j) 0 = (packBytes L[k].1.data.toList).getD j 0 := by
-  have hp : π.size = 755680 := hs.trans piSize_eq
+  have hp : π.size = 800640 := hs.trans piSize_eq
   have hl : ((packBytes c.toList ++ [toWord π.size]) ++ packBytes π.data.toList ++
       [toWord L.length]).length = posL + 1 := by
     simp only [List.length_append, packBytes_length, ← WitnessSending.size_eq_length,
@@ -227,7 +227,7 @@ theorem tape_query (c : Digest) (π : Proof) (L : Log) (hs : π.size = piSize) {
 /-- The byte offset of the caps' field (A.3 row 12, field `fCaps`) in π. -/
 def capOff : ℕ := fieldOff fCaps
 
-theorem capOff_eq : capOff = 19168 := by
+theorem capOff_eq : capOff = 22320 := by
   rw [capOff, fieldOff, fieldSizes_eq]; decide
 
 /-- **Cap entry `c` of level 0** as π carries it: the 32 bytes at `capOff + 32c` (A.3, A.2). -/
@@ -236,17 +236,17 @@ def capPi (π : Proof) (c : ℕ) : Digest := bytesAt π (capOff + 32 * c) 32
 /-- The tape word of cap entry `0`'s first word. -/
 def capW0 : ℕ := 5 + capOff / 8
 
-theorem capW0_eq : capW0 = 2401 := by rw [capW0, capOff_eq]
+theorem capW0_eq : capW0 = 2795 := by rw [capW0, capOff_eq]
 
 /-- **The tape at cap entry `c < 512`**: word `m < 4` of `packBytes (capPi π c)`. -/
 theorem tape_cap (c : Digest) (π : Proof) (L : Log) (hs : π.size = piSize) {e : ℕ}
     (he : e < 512) {m : ℕ} (hm : m < 4) :
     (extractorInput c π L).getD (capW0 + 4 * e + m) 0 = (packBytes (capPi π e).toList).getD m 0 := by
-  have hp : π.size = 755680 := hs.trans piSize_eq
+  have hp : π.size = 800640 := hs.trans piSize_eq
   have ho := capOff_eq
-  rw [capPi, show capOff + 32 * e = 8 * (2396 + 4 * e) by omega,
+  rw [capPi, show capOff + 32 * e = 8 * (2790 + 4 * e) by omega,
     packBytes_bytesAt _ (by omega) hm, capW0, show 5 + capOff / 8 + 4 * e + m =
-      5 + (2396 + 4 * e + m) by omega, tape_getD_proof c π L (by omega),
+      5 + (2790 + 4 * e + m) by omega, tape_getD_proof c π L (by omega),
     List.getD_eq_getElem _ _]
 
 /-! ## Registers (user registers `117 …`) -/

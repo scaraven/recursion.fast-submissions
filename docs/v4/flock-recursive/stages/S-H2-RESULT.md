@@ -1473,3 +1473,207 @@ commit-ready:
 - no `sorry`;
 - the source rule is clean;
 - `ext`, `computes` and the costs are unchanged.
+
+---
+
+## Part 14: the seed block and `chainIR` on `ext`'s path; the barycentric interpolation (most of it); revision 3.12
+
+**Delivered.**
+- Item 1 is complete: the seed block, and `chainIR` wired before the log index in `decSnark`, with
+  `DecOk` and `computes` re-checked.
+- Item 2 (the barycentric interpolation) is done as far as the target loop:
+  - the pure form `interpF = baryVal`;
+  - the program, its well-formedness and its exact cost;
+  - the semantics of the tables `DJ` and `W`, of one target's `E` row and of the coordinate loop.
+  - Left: the target body, the target loop and the end-to-end `baryIR_sem` (§4).
+- Items 3–6 are not started.
+- The coordinator's revision 3.12 constants are applied in every `FRX*` module (§3). `FRVIRChain`
+  (S-0's `fsQ_gen`) builds against them.
+
+### 1. Files (code lines by the core's `scripts/loc.py`)
+
+| File | total / code / theorems | What |
+|---|---|---|
+| `FRXSeed` (new) | 425 / 316 / 37 | `vkOf π` (header bytes 16–47); `packBytes_shift7` (the words of `t ‖ s`, `|t| = 7`); `tape_seed`, `seedVal_eq`; the program `seedIR` (15 blocks `sdW j`); **`seedOK_seedIR`**; controls `shift7_ctl` and `shift7_ctl_neg` |
+| `FRXDec` (new) | 150 / 105 / 10 | `safe_cntIR`, **`safe_chainIR`**; `decN := chainIR nRep chTab seedIR ; decRead`; `decLN2`; **`decOk_decLN2`**; **`chain_dec`** |
+| `FRXBaryDefs` (new) | 317 / 214 / 19 | `interpF_self`, **`interpF_bary`**, **`baryVal_eq`**; the program `baryIR` (`djIR`, `wtIR`, `sBody`, `eBody`, `cBody`, `aBody`, `yIR`); `wf_baryIR`, `noLoopT_baryIR`, `outs_baryIR`, **`cost_baryIR`** |
+| `FRXBary` (new) | 1,363 / 1,250 / 36 | `loopK_run` (a generic loop invariant), `addrPs_sem`, `alphaD_sem`; `djBody_sem`, **`djIR_sem`**; `wInner_sem`, `wtBody_sem`, **`wtIR_sem`**; `eBody_sem`, **`eLoop_sem`**; `aBody_sem`, `aLoop_sem`, `cBody_sem`, **`cLoop_sem`** |
+| `FRXExt` | changed | `decSnark := decLN2` |
+| `FRXChain` | changed | `cntIR` re-associated as `(pre ; loopT) ; post`, the shape `Safe.loopT` needs. Same cost and size, and the proofs are unchanged. |
+| `FRXChainSem` | changed | `mul_toWord` renamed `mulW_toWord`: it clashed with `FRXBfly`'s once both are imported |
+| `FRXLeaf` | changed | `run_leaf` follows `decLN2`. A closing `rfl` became rewrites: the kernel hit deep recursion unfolding `semXIR` over the 1,888-word table (journal 27) |
+| `FRXChainFlock`, `FRXReadDefs`, `FRXLog`, `FRXLogSpec`, `FRXLookup`, `FRXLeaf` | changed | revision 3.12 constants (§3) |
+
+### 2. What is proved
+
+**The seed** (`FRXSeed`). An `'N'` proof carries `vk` in header bytes 16–47, and `V` asserts it
+(S-0). So the extractor takes `vkOf π := bytesAt π 16 32`.
+- The seed's payload `vk ‖ c ‖ hdr` is 14 tape words (`sPos`): `vk` at 7–10, `c` at 0–3, `hdr`
+  at 5–10.
+- The 7-byte tag shifts everything by 7 bytes. Seed word `j` is
+  `(j = 0 ? tag : S_{j−1} >> 8) + (S_j << 56)`, where `S₁₄ = 0` (`packBytes_shift7`; the two
+  parts occupy disjoint bytes, so `+` is `|`).
+
+```lean
+theorem seedOK_seedIR (c : Digest) (π : Proof) (L : Log) (hs : π.size = piSize) (st : Digest) :
+    SeedOK seedIR (extractorInput c π L).toArray (fsQ (vkOf π) c π 0 st)
+```
+
+**The chain on `ext`'s path** (`FRXDec`).
+- `decSnark := kindIR ; ite rKN decN leafIR`, with `decN := chainIR nRep chTab seedIR ; logIR ; read0`.
+- `safe_chainIR` gives the bounds of both of the chain's loops on every SNARK tape:
+  - the walk's count is `|L| ≤ t/5` (`tape_count_le`);
+  - the scan's count is `cnt_sem`'s `wordsOf L`, which is `≤ t` (`wordsOf_le`: `posL + 1 +
+    wordsOf L ≤ |tape|`).
+- `decOk_decLN2` holds. `computes`, `ext_caps`, `E_leaf`, `E_W` and the toy runs re-check.
+- The chain's memory `[2^23, 2^23 + 6,144)` lies below the column store (`2^25`) and the log
+  index (above `memX = 2^26`).
+
+```lean
+theorem chain_dec … (hS : ¬ StateHit L) (st₀ : Digest) (s : St) (hM : Inv s.M)
+    (hsz : chEnd ≤ s.M.size) {p : ℕ} (hp : p < nRep) {a : Digest}
+    (ha : fmAns (fsQ (vkOf π) c π) st₀ L p = some a) {m : ℕ} (hm : m < 4) :
+    rd (semXIR (extractorInput c π L).toArray (chainIR nRep chTab seedIR) s).M (ansB + 4 * p + m) =
+      (packBytes a.toList).getD m 0
+```
+
+S-G2's `final` supplies `ha` with `st₀ = zeroD`. It also supplies `vkOf π = vk` from `V`'s
+assertion, so `fsQ (vkOf π) = fsQ vk` is S-0's `fsQ_gen` query list.
+
+**The barycentric interpolation, pure form** (`FRXBaryDefs`).
+- `interpF_self`: on `J`, the value is returned (`pt` injective on `J`).
+- `interpF_bary`: off `J`, `interpF pt J y s = ℓ(s) · Σ_{i∈J} y i · w_i (pt s − pt i)⁻¹`.
+  Here `ℓ(s) = Π_{m∈J}(pt s − pt m)` and `w_i = (Π_{m∈J∖i}(pt i − pt m))⁻¹`.
+- The machine's value over `F`, with `J` the scan's list `Jl` (`dj`, `wgt`, `ellS`, `eAt`), is
+  `baryVal Jl k s y = (ℓ(s) = 0 ? y s : ℓ(s) Σ_t y(J_t) E_t)`:
+
+```lean
+theorem baryVal_eq {Jl : List ℕ} (hnd : Jl.Nodup) (hJ : ∀ j ∈ Jl, j < nMax) {s : ℕ}
+    (hs : s < nMax) (y : ℕ → F) : baryVal Jl Jl.length s y = interpF D Jl.toFinset y s
+```
+
+`ℓ(s) = 0` iff `s ∈ J` (`D` injective below `2^20`). The machine therefore needs no membership
+array.
+
+**The program** `baryIR k C jb djb wb eb cb cs ob tb`.
+- It works coordinate-wise over `F`: `C` coordinates per column, element `c` of position `j` at
+  `cb + cs·j + 2c`. Level 0 has `C = 64` and `cs = 128`. Levels 1–4 have the 16 `F`-coordinates
+  of 8 `K` elements.
+- `djIR`: `DJ[t] := D(J_t)`, by `alphaIR` on the basis table's row 0 (`alpha_D`: the row-0 sum
+  is `D x`, from `wAtD_eq`).
+- `wtIR`: `W[t] := (Π_{m≠t}(DJ[t] + DJ[m]))⁻¹`.
+- Per target `s` (`sBody`):
+  - `D(s)`;
+  - the `E` row `E[t] := W[t](D s + DJ[t])⁻¹` and `ℓ := Π_t(D s + DJ[t])` (`eBody`);
+  - the flag `[ℓ = 0]`;
+  - per coordinate (`cBody`): `acc := Σ_t y_c(J_t) E[t]` in registers (`aBody`, read-only), then
+    `out[c][s] := (flag ? y_c(s) : ℓ · acc)` at `ob + 2k·c + 2s`.
+
+**The semantics proved** (`FRXBary`). Each statement holds for every state meeting its layout
+hypotheses:
+- `djIR_sem`: `DJ[t] = D(J t)` for `t < k`, and the heap outside `DJ` is kept.
+- `wtIR_sem`: `W[t] = (Π_{m<k}(m = t ? 1 : G t + G m))⁻¹`, and the heap outside `W` is kept.
+- `eLoop_sem`: the `E` row and `ℓ`.
+- `cLoop_sem`: `out[c][s₀] = (ℓ = 0 ? y_c(s₀) : ℓ Σ_t y_c(x t) E[t])` for every `c < C`, and the
+  heap outside the `C` output cells is kept.
+- Register frames are given in the form "every register the body does not write".
+
+### 3. Revision 3.12 (the coordinator's list)
+
+| Constant | Was | Now |
+|---|---|---|
+| `fsMsgs_length`, `fsMsgs_items` | 451 | **497** (`decide +kernel`, re-checked) |
+| `fsMsgs_ctl` position 2 (`cap₀`) | `(19168, 16384)` | **`(22320, 16384)`** |
+| `nRep` (P1.4 = phase 46 at FS 463, 8 items) | 425 | **471** (`nRep_ctl` re-checked; P1.i is phase `26 + 5i`) |
+| `π.size` literals (`msgOk`, `FRXLog`, `FRXLogSpec`, `FRXLeaf`, `FRXLookup`, `FRXReadDefs`, `FRXSeed`) | 755,680 | **800,640** |
+| `posL` | `5 + 94460` | **`5 + 100080`** |
+| `capOff_eq`, `capW0_eq`, `tape_cap` | 19,168 / 2,401 / 2,396 | **22,320 / 2,795 / 2,790** |
+| `chTab` length | 1,704 | **1,888** (`cost_decN` and `sizeIR_decN` now go through `nRep`) |
+
+- **Columns** are 1,088 B at level 0 and 320 B at levels 1–4, with 48 zero bytes.
+  - The read's parser checks only `7 < |q|` and the tag. The read copies the first 128 words.
+  - `read_spec` is stated against S-0's `colL`, and it re-checks unchanged.
+  - Levels 1–4 (item 3) must use S-0's 3.12 column layout.
+- **Not done:** I did not build `FR` as a whole. Other tracks' modules are being fixed by the
+  integration agent.
+
+### 4. Costs (exact), against the budget
+
+| Program | Cost | Note |
+|---|---|---|
+| `seedIR` | `≤ 376` | 15 blocks |
+| `chainIR nRep chTab seedIR` | `34 + 9·1888 + cost seedIR + 24⌊t/5⌋ + 179t` | ≈ `17,400 + 183.8·t` |
+| `decN` | `≤ 18,002·10^6 + 2,558·t` | the linear term is 2,558 of 8,176 |
+| `baryIR k C …` | `38 + 2487k + 108kC + 1363k² + 106k²C` | the semantics of every loop are already proved against these programs |
+
+- **Level 0** (`k = 2^17`, `C = 64`): `8,147 · 2^34 ≈ 2^46.99` steps. That leaves `≈ 2^46.0`
+  of the constant `≈ 2^47.585`.
+- **Level 1** (`k = 2^14`, `C = 16`): `≈ 2^29.6`.
+- Part 11 estimated `2^46.6` for level 0. The actual figure is higher because `aBody` costs 106
+  steps per coordinate per pair: it recomputes `J_t`'s column address and reloads `E[t]` in every
+  coordinate.
+  - The fix, if needed, is a precomputed column-address table.
+  - It is not needed for the budget.
+
+### 5. Checks
+
+- **Axioms** (`logs/S-H2/axioms14.log`). These depend on `propext, Classical.choice,
+  Quot.sound`: `computes`, `chain_dec`, `seedOK_seedIR`, `decOk_decLN2`, `baryVal_eq`,
+  `djIR_sem`, `wtIR_sem`, `eLoop_sem`, `cLoop_sem`, `E_leaf`. `fsMsgs_items` depends on
+  `propext` alone.
+- **Source rule**: 106 files, 0 findings. No `sorry`.
+- **Build** (`logs/S-H2/build14.log`): `lake build FRXSeed FRXDec FRXExt FRXSpec FRXLeaf FRXBary
+  FRVIRChain` is green. The 3.12 rebuild from `FRXLog` down took 1 min 38 s.
+- **Sequential profile** (`taskset -c 0`, `-DElab.async=false`; `logs/S-H2/FRX{Seed,Dec,BaryDefs,Bary}.{profile,time}`):
+
+  | Module | wall | max RSS |
+  |---|---|---|
+  | `FRXSeed` | 13.2 s | 2.69 GB |
+  | `FRXDec` | 7.4 s | 2.61 GB |
+  | `FRXBaryDefs` | 12.0 s | 2.71 GB |
+  | `FRXBary` | **91.4 s** | 2.90 GB |
+
+  `FRXBary` is the largest. Its long proofs are step-by-step frame chains. The step lemmas could
+  be shared, which would make it a golf candidate.
+
+### 6. Controls
+
+| Control | Kind | Shows |
+|---|---|---|
+| `shift7_ctl` (`decide +kernel`) | positive | word 1 of `t ‖ s` is `(S₀ >> 8) + (S₁ << 56)` |
+| `shift7_ctl_neg` | negative | the unshifted payload word is not the seed word |
+| `seedOK_seedIR`, `chain_dec` | universal | on every SNARK tape and every initial state |
+| `interpF_self` / `interpF_bary` | the two branches | `baryVal_eq` uses both; `ℓ(s) = 0` iff `s ∈ J` |
+| `fsMsgs_items`, `fsMsgs_ctl`, `nRep_ctl` | value | re-checked at 3.12 |
+
+- There is no kernel toy run of `baryIR`: it would need kernel evaluation of `invF` (journal 24).
+- `baryVal`'s own controls are the two pure lemmas.
+
+### 7. Deviations
+
+1. **`vkOf π` instead of `vk`.** The seed is built from π's header, as changes 16 provide. The
+   link `vkOf π = vk` is `V`'s assertion, which S-G2 supplies.
+2. **No membership array.** `s ∈ J` is decided by `ℓ(s) = 0`.
+3. **Accumulators in registers.** The coordinate loop is outside the `t` loop, and the `E` row
+   lives on the heap. Every inner loop is then read-only, which keeps the semantics simple.
+4. `chain_spec`'s `zeroD` is an **auto-bound implicit**: `FRXChainFlock` does not import `FRVIR`.
+   The theorem therefore holds for every initial state, which is harmless and more general.
+   `chain_dec` names it `st₀`.
+
+### 8. What remains (in order)
+
+1. **Finish item 2** (`FRXBary`), from the delivered lemmas:
+   - `sBody_sem`: `alphaD_sem` for `D(s)`, the copy into `fDs`, `eLoop_sem`, the flag lemma
+     `XOp.eq.eval (a ||| b) 0 = bW (decide (⟨wB a, wB b⟩ = 0))`, `cLoop_sem`, then `s += 1`.
+   - The target loop.
+   - `baryIR_sem`, composing with `djIR_sem`, `wtIR_sem` and `baryVal_eq`: `out[c][s] = interpF
+     D J y_c s`.
+   - The layout `BaryLay` (bases, disjointness): `DJ`, `W`, `E` at `2^22 + {0, 2, 4}·2^18`; flags
+     and `J` list at `2^21`; basis table at `2^20`; output rows at `2^24`.
+2. Levels 1–4 (Part 12 item 3) with 3.12's padded 320-B columns. Then the `decodeWit` output, the
+   `'N'` case and the wiring (items 4–6, unchanged).
+
+**Stopped here.** The cause is context length. The state is commit-ready:
+- every `FRX*` module and `FRVIRChain` build;
+- no `sorry`;
+- the source rule is clean.

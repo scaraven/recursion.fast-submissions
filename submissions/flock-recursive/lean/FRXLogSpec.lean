@@ -69,7 +69,7 @@ theorem entries_getD : ∀ (L : Log) (k : ℕ) (hk : k < L.length),
 theorem tape_entry (c : Digest) (π : Proof) (L : Log) (hs : π.size = piSize) {k : ℕ}
     (hk : k < L.length) :
     (extractorInput c π L).getD (posL + 1 + entryOff L k) 0 = toWord L[k].1.size := by
-  have hp : π.size = 755680 := hs.trans piSize_eq
+  have hp : π.size = 800640 := hs.trans piSize_eq
   have hl : ((packBytes c.toList ++ [toWord π.size]) ++ packBytes π.data.toList ++
       [toWord L.length]).length = posL + 1 := by
     simp only [List.length_append, packBytes_length, ← WitnessSending.size_eq_length,
@@ -85,7 +85,7 @@ theorem tape_entry (c : Digest) (π : Proof) (L : Log) (hs : π.size = piSize) {
 /-- The end of the log on the tape. -/
 theorem tape_entries_end (c : Digest) (π : Proof) (L : Log) (hs : π.size = piSize) :
     posL + 1 + entryOff L L.length ≤ (extractorInput c π L).length := by
-  have hp : π.size = 755680 := hs.trans piSize_eq
+  have hp : π.size = 800640 := hs.trans piSize_eq
   have := entryOff_le_sum L L.length
   rw [tape_eq]
   simp only [List.length_append, packBytes_length, ← WitnessSending.size_eq_length,

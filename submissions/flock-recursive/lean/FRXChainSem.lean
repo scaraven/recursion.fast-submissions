@@ -337,7 +337,7 @@ theorem st4IR_sem (I : Array Word) (s : St) (hM : Inv s.M) {b : ℕ} (hA : rd s.
 
 /-! ## The record -/
 
-theorem mul_toWord (a b : ℕ) : XOp.mul.eval (toWord a) (toWord b) = toWord (a * b) := by
+theorem mulW_toWord (a b : ℕ) : XOp.mul.eval (toWord a) (toWord b) = toWord (a * b) := by
   apply BitVec.eq_of_toNat_eq
   simp only [XOp.eval, toWord, BitVec.toNat_mul, BitVec.toNat_ofNat, Nat.mul_mod, Nat.mod_mod]
 
@@ -398,7 +398,7 @@ theorem nextIR_sem (I : Array Word) (s : St) (hM : Inv s.M) {p : ℕ} (hp : p + 
     simp (disch := first | decide | omega | exact Nat.lt_of_lt_of_le (m := 256) (by decide) (by assumption) | (simp only [size_set]; exact Nat.lt_of_lt_of_le (m := 256) (by decide) (by assumption))) only [rd_set_self, rd_set_ne]
     rw [hP, h1, add_one_toWord]
     refine ⟨?_, rfl⟩
-    rw [show (4 : Word) = toWord 4 from rfl, mul_toWord, add_toWord]
+    rw [show (4 : Word) = toWord 4 from rfl, mulW_toWord, add_toWord]
     congr 1
     ring
   have f0 : ∀ i, i ≠ rPi → i ≠ rKd → i ≠ rAd4 → rd (semXIR I nextPre s).M i = rd s.M i :=
@@ -539,7 +539,7 @@ theorem recIR_sem (I : Array Word) (s : St) (hM : Inv s.M) {p : ℕ} (hp : p + 1
   have a0 : rd (semXIR I recPre s).M rAd4 = toWord (ansB + 4 * p) := by
     simp only [e0, recPs, runPrims, List.foldl, Prim.run]
     simp (disch := first | decide | omega | exact Nat.lt_of_lt_of_le (m := 256) (by decide) (by assumption) | (simp only [size_set]; exact Nat.lt_of_lt_of_le (m := 256) (by decide) (by assumption))) only [rd_set_self, rd_set_ne]
-    rw [hP, show (4 : Word) = toWord 4 from rfl, mul_toWord, add_toWord]
+    rw [hP, show (4 : Word) = toWord 4 from rfl, mulW_toWord, add_toWord]
     congr 1
     ring
   have f0 : ∀ i, i ≠ rKd → i ≠ rAd4 → rd (semXIR I recPre s).M i = rd s.M i :=

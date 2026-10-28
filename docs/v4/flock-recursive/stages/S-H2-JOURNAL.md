@@ -242,3 +242,31 @@ Base: branch `v4/flock-recursive`, HEAD `53c2e13`. Build tree `logs/fr-build-SH2
       12.4 s, of which `fsMsgs_items` (`decide +kernel` over 451 items) is 9.8 s.
     - Stopped with Part 12's items 2–6 untouched: item 1 waits on Q1, and this agent's context is
       long.
+
+## Part 14
+
+27. Seed block, wiring, interpolation, revision 3.12.
+    - `FRXSeed`: the 7-byte shift lemma (`packBytes_shift7`), proved through `ofLE_append` /
+      `ofLE_take1` / `ofLE_take8_div` and `toWord_shr8` / `toWord_shl56` (`Nat.mul_mod_mul_right`).
+      Seed word `j` is `(j = 0 ? tag : S_{j−1} >> 8) + (S_j << 56)`.
+    - `FRXDec`: `cntIR` re-associated, because `Safe.loopT` needs `.seq pre (.loopT …)` literally.
+      `decSnark := decLN2`.
+    - Pitfalls met:
+      - **`zeroD` was auto-bound** in `FRXChainFlock`: `FRVIR` is not imported. An unknown
+        lower-case name silently becomes an implicit argument.
+      - `run_leaf`'s closing `rfl` became a **kernel deep recursion** once `decSnark` contained
+        `chTab`: the kernel unfolds `semXIR`'s structural recursion over the whole program. Use
+        rewrites (`decSnark, decLN2, semXIR_seq`) instead.
+      - The shared name `mul_toWord` (FRXBfly / FRXChainSem) would clash on a joint import.
+        Renamed it in the chain module.
+      - `rw [← toWord_zero']` rewrote the `0` inside the program literal too. Use
+        `p1.trans toWord_zero'.symm`.
+      - `congr 1` and `rfl` on `runPrims [a, a'] M = runPrims [a'] (runPrims [a] M)` time out.
+        Split the list by `show … = [a] ++ [a'] from rfl` and `runPrims_append` twice.
+      - Heartbeats count per declaration, so a timeout may surface at a cheap step.
+      - Conditional `simp` lemmas (`bnw_mulF : … → (Writes (mulF d a b) i ↔ False)`) keep `WF`
+        and `Writes` goals from unfolding `mulFC`.
+    - Revision 3.12 (coordinator's message): every constant in the list, plus
+      `capW0_eq`/`tape_cap` (2,795/2,790) and `chTab` 1,888. `FRVIRChain` builds.
+    - Profiles: `FRXBary` takes 91 s sequential; the others are under 14 s.
+    - Stopped before `sBody_sem` (context long); handover in RESULT Part 14 §8.

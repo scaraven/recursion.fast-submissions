@@ -47,7 +47,7 @@ theorem tape_leafS (c : Digest) (π : Proof) (L : Log) (hs : π.size = piSize) :
     packBytes (bytesAt π 16 32).toList = [(extractorInput c π L).getD 7 0,
       (extractorInput c π L).getD 8 0, (extractorInput c π L).getD 9 0,
       (extractorInput c π L).getD 10 0] := by
-  have hp : π.size = 755680 := hs.trans piSize_eq
+  have hp : π.size = 800640 := hs.trans piSize_eq
   have w : ∀ m < 4, (packBytes (bytesAt π (8 * 2) 32).toList).getD m 0 =
       (extractorInput c π L).getD (5 + (2 + m)) 0 := fun m hm => by
     rw [packBytes_bytesAt _ (by omega) hm, tape_getD_proof c π L (by omega),
@@ -117,11 +117,12 @@ theorem run_leaf (c : Digest) (π : Proof) (L : Log) (hq : ∀ e ∈ L, e.1.size
     (by rw [hs0, hI]; exact hB) (fuel_covers hd.cost _)
   rw [hs0, hI] at hrun
   refine hrun.trans (congrArg some ?_)
-  have e : semXIR I (extIRWith decSnark) s0 = semXIR I (.ite rKN decRead leafIR)
+  have e : semXIR I (extIRWith decSnark) s0 = semXIR I (.ite rKN decN leafIR)
       (semXIR I kindIR s1) := by
-    rw [extIRWith, semXIR_seq, hs1, semXIR_ite, if_neg hk1, semXIR_ite, if_neg hz]; rfl
+    rw [extIRWith, semXIR_seq, hs1, semXIR_ite, if_neg hk1, semXIR_ite, if_neg hz, decSnark, decLN2,
+      semXIR_seq]
   obtain ⟨n1, n2, n3⟩ := kindIR_regs I s1 h1
-  have hM2 := inv_sem I decOk_decLN.wf.1 h1
+  have hM2 := inv_sem I decOk_decLN2.wf.1 h1
   rw [congrArg (fun s' : St => s'.o.toList) e]
   generalize semXIR I kindIR s1 = s2 at n1 n2 n3 hM2
   have hN : I.getD 5 0 &&& 0xFF ≠ 0x4E := by
