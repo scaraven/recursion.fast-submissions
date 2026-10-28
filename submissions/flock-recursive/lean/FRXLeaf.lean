@@ -150,7 +150,7 @@ theorem run_leaf (c : Digest) (π : Proof) (L : Log) (hq : ∀ e ∈ L, e.1.size
     simp only [kindOf, byteAt?_eq, hne, if_false] at hk
     split at hk <;> simp at hk
   obtain ⟨o, ho, -⟩ := halts_with decOk_decSnark c π L
-    (by rw [hs, piSize_eq, proofCap]; norm_num) hq ht
+    (by rw [hs, piSize_eq, outCap]; norm_num) hq ht
   show (extWith decSnark).run _ _ = _
   rw [ho, den_of_run (by simp only [regs, memX]; norm_num) (wf_extIRWith decOk_decSnark.wf) ho,
     den_leaf c π L hk hkn]

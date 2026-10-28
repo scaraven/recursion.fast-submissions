@@ -20,7 +20,7 @@ import FRSoundnessStepD
   `fin` false" (**`esc_msD`**).
 * **Part D: the whole transcript.** **`PhaseObl Rej Dk N`**: the per-phase obligations that are
   left (absorbs and handoffs, single squeezes, each multi-squeeze phase's charge, stability).
-  **`kstate_step`**: the contract's `KState.step` law at `εD = εR − ε_H` for the potential of
+  **`kstate_step`**: the library's `KState.step` law at `εD = εR − ε_H` for the potential of
   `DC Rej (Dp Dk)` (`stepObl_compose`, `step_epsD`). `hfin_ml`, `hfin_seq`, `hfin_rs1`, `hfin_p2`
   discharge `PhaseObl.hfin` per phase shape from Part A and `p2_hround`.
 * **Part E: the asserted rounds** (degree 2 over F: L2, S2, E4; over K: P1.i, Pf): **`D2`**

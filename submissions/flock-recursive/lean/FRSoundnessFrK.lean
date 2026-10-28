@@ -57,6 +57,7 @@ noncomputable def kstate_front_of (S : Submission) (vk : Digest) (κs₀ : F)
     {L3N PendN : Log → Log → Prop}
     (hV : S.V = VC finPf Layout.lRows κs₀) (hq : S.qV = qV)
     (hE : ∀ c π L, FR.kindOf π = .W → π.size < 2 ^ 64 → S.E c π L = WitnessSending.decode π)
+    (hWB : WBeyond S vk)
     (hI : ExtIface S vk W₀L c₀L (Stmt (finC finPf) SLeaf))
     (hN : NodeL (implC (finC finPf) Layout.lRows κs₀) vk oLc RejN L3N PendN)
     (hfit : RowsFit (Layout.nodeRows (finC finPf)) 21 23)
@@ -81,7 +82,7 @@ noncomputable def kstate_front_of (S : Submission) (vk : Digest) (κs₀ : F)
   kstate_of_front S vk (frontObl hN.toNodeLF hfit)
     (finalLaw_of S vk frontLocal_W0 (frontChainStab hN.toNodeLF)
       (hAcc_of_fin (implC (finC finPf) Layout.lRows κs₀) S vk hV hq
-        (tensorW_implC _ _ _) hE hStart hW0
+        (tensorW_implC _ _ _) hE hWB hStart hW0
         (fun k c π L tr j hb hπ hsem hin hci heq h =>
           (rejF_split h).elim (hFrontV k c π L tr j hb hπ hsem hin hci heq)
             (hN.front k c π L tr j hb hπ hsem hin hci heq)))

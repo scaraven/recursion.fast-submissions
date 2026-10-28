@@ -75,10 +75,12 @@ theorem extIfaceR_of {impl : OpImpl} {S : Submission} {vk : Digest}
       rel_readWit hT hp (c_node_of_run hsk) hLr hR⟩
 
 /-- **The knowledge state for the entry's verifier**, with `ExtIfaceR` discharged up to the node
-circuit's residual `hRes` (and the out-of-domain case `hOut`). -/
+circuit's residual `hRes` (and the out-of-domain case `hOut`, and the `W` proofs beyond the word
+`hWB`, core PR #20). -/
 noncomputable def kstate_front_ofE (S : Submission) (vk : Digest) (κs₀ : F)
     {L3N PendN : Log → Log → Prop}
     (hV : S.V = VC finPf Layout.lRows κs₀) (hq : S.qV = qV) (hE : S.E = X.E)
+    (hWB : WBeyond S vk)
     (hRes : ∀ L es, StmtN (finC finPf) .N30 L es →
       NodeResid (implC (finC finPf) Layout.lRows κs₀) (sfFinals finP finPf) (vkL es)
         (fF .N30 L es))
@@ -104,7 +106,7 @@ noncomputable def kstate_front_ofE (S : Submission) (vk : Digest) (κs₀ : F)
     (hFrontV : AccFront (implC (finC finPf) Layout.lRows κs₀) vk
       (RejF (finC finPf) oLc fun _ _ => False)) :
     KState (Rel (S.acc vk)) (S.V vk) S.E epsR :=
-  kstate_front_ofR S vk κs₀ hV hq (fun c π L hW hπ => hE ▸ X.ext_W c π L hW hπ)
+  kstate_front_ofR S vk κs₀ hV hq (fun c π L hW hπ => hE ▸ X.ext_W c π L hW hπ) hWB
     (extIfaceR_of hV hq hE (implCWith_implT _ _) hRes) hOut hN hfit hStart hW0 hFrontV
 
 /-! ## Controls -/

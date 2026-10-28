@@ -10,7 +10,8 @@ BLUEPRINT §6.5, §5.4 ("`W` is `Rel` by definition and `E` copies the proof (§
   word's low byte is not a kind byte (`kindFlag_eq_zero`);
 * **`E_W`**: on a proof of the `W` kind (`kindOf π = .W`, `FRFormat`) of fewer than `2^64` bytes,
   `E c π L = WitnessSending.decode π`, for every SNARK branch with `DecOk` and so for `ext`
-  (`ext_W`), **including proofs above `proofCap`** (no size guard, BP-C-R2-M2) and **on every log**
+  (`ext_W`), **including proofs above the contract's domain `8 · outCap`** (no size guard beyond
+  the word, BP-C-R2-M2) and **on every log**
   (no domain hypothesis): the program halts within `fuel` on every such tape, and its output is
   the denotation (`den_of_run`);
 * **`E_bad`**: on a kind byte with `|π| ≠ piSize` (`kindOf π = .bad`), `E c π L = none` (no
@@ -133,8 +134,8 @@ theorem run_W_tape {dec : XIR} (hd : DecOk dec) (inp : List Word) (a : ℕ) (ha 
     rw [congrArg (fun s' : St => s'.o.toList) e, ha0]
     simp [semXIR, hpo]
 
-/-- **The `W` case**: on a `W` proof of fewer than `2^64` bytes, any size above `proofCap`
-included, the program outputs the proof's packed words within the fuel. -/
+/-- **The `W` case**: on a `W` proof of fewer than `2^64` bytes, any size above the contract's
+domain `8 · outCap` included, the program outputs the proof's packed words within the fuel. -/
 theorem run_W {dec : XIR} (hd : DecOk dec) (c : Digest) (π : Proof) (L : Log)
     (hW : kindOf π = .W) (hπ : π.size < 2 ^ 64) :
     (extWith dec).run (extractorInput c π L) (fuel (extractorInput c π L).length) =

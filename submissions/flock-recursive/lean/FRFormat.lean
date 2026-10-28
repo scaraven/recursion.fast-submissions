@@ -54,7 +54,9 @@ theorem fieldSizes_eq : fieldSizes = [48, 128, 2048, 1248, 32, 800, 1344, 720, 4
 241,664`; the blueprint's 797,888 plus E4 end's 16 zero bytes, INT-2). -/
 theorem piSize_eq : piSize = 797904 := by rw [piSize, fieldSizes_eq]; rfl
 
-theorem piSize_le_proofCap : piSize ≤ proofCap := by rw [piSize_eq]; decide
+/-- A proof of `piSize` bytes passes `acc`'s first conjunct (revision 4.0: `|π| < 2^64`, core
+PR #20 removed `proofCap`). -/
+theorem piSize_lt_word : piSize < 2 ^ 64 := by rw [piSize_eq]; decide
 
 /-- The offset of field `f`. -/
 def fieldOff (f : ℕ) : ℕ := (fieldSizes.take f).sum

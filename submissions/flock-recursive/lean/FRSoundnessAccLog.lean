@@ -497,6 +497,7 @@ theorem hAcc_of_fin (impl : OpImpl) (S : Submission) (vk : Digest)
     (hV : S.V = Vwith impl (sfFinals finP finPf)) (hq : S.qV = qV)
     (ht : ∀ j r, impl.tensorW j r = Impl.tensorWS j r)
     (hE : ∀ c π L, FR.kindOf π = .W → π.size < 2 ^ 64 → S.E c π L = WitnessSending.decode π)
+    (hWB : WBeyond S vk)
     (hStart : ∀ (k : Kind) (c : Digest) (π : Proof) (L tr : Log) (y : List Val × List Bool × Trace),
       ¬ Bad L → π.size = piSize → FR.kindOf π = .snark k →
       semIR impl (gen (sfFinals finP finPf) (.fixed k)) ⟨vk, c, π⟩ tr = some true →
@@ -516,7 +517,7 @@ theorem hAcc_of_fin (impl : OpImpl) (S : Submission) (vk : Digest)
       (∃ w, S.E c π L = some w ∧ Rel (S.acc vk) c w) ∨ ∃ j, AcceptTail RejF W₀ c₀ L j := by
   intro L c π _ hb hrun
   rcases hk : FR.kindOf π with _ | _ | k
-  · exact .inl (acc_W impl _ S hV hq hE hk hrun)
+  · exact .inl (acc_W_all impl _ S hV hq hE hWB hk hrun)
   · exact absurd (hV ▸ hrun) (not_acc_bad impl _ hk)
   · have hπ := size_of_snark hk
     rw [hV, V_snark impl _ vk c π hk] at hrun

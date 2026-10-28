@@ -15,8 +15,15 @@ import FRVerifier
 * **`runLog_chain`**: an accepted SNARK run on a log without bad events has a chain `j`
   (`IsChain L j`) whose entries are the run's Fiat–Shamir entries, 468 of them; so
   `p3S0 4 < |es|` and `pfStart + 14 ≤ |es|`.
-* **`acc_W`**: the `W` branch: an accepted `W` proof is extracted (`E` copies it) to a witness of
-  `Rel (S.acc vk)`. It needs `|π| < 2^64`, which `size_encode_lt` gives from the relation's caps.
+* **`acc_W`**: the `W` branch: an accepted `W` proof of fewer than `2^64` bytes is extracted (`E`
+  copies it) to a witness of `Rel (S.acc vk)`.
+* **`WBeyond`** (INT-6, core PR #20): `acc` bounds a child's proof by the word (`|π| < 2^64`), no
+  longer by `proofCap`, so an accepted `W` node proof (two children of up to `2^64 − 1` bytes) may
+  itself have `2^64` bytes or more, where the extractor's 64-bit length word is ambiguous and
+  `FRXSpec.E_W` does not apply. `WBeyond S vk` is the `final` law on those proofs, a residual
+  until B-15's `E := if InDom then E_den else E_search` (S-H2n); **`acc_W_all`** is the whole `W`
+  branch from `acc_W` and `WBeyond`. Control: `wBeyond_of_decode` (an `E` whose `W` case is
+  `decode` on every size meets it, as the contract's witness-sending `E` does).
 -/
 
 namespace FR.Snd
@@ -205,9 +212,10 @@ theorem length_flatMap_le {α β : Type} (l : List α) (f : α → List β) {B :
     have := ih fun x hx => h x (List.mem_cons_of_mem _ hx)
     nlinarith
 
-/-- An accepted child's output words are fewer than `2^32`. -/
+/-- An accepted child's output words are fewer than `2^62` (core PR #20: its proof is below the
+word, `2^61` words; v4's `proofCap` gave `2^32`). -/
 theorem signedWords_length_lt {vk : Digest} {p : Signed} {v : Unit → OProg Bool}
-    (h : accWith vk p v = true) : (signedWords p).length < 2 ^ 32 := by
+    (h : accWith vk p v = true) : (signedWords p).length < 2 ^ 62 := by
   have hf := fits_of_accWith h
   simp only [accWith, Bool.and_eq_true, decide_eq_true_eq] at h
   obtain ⟨⟨⟨⟨hπ, htr⟩, hq⟩, -⟩, -⟩ := h
@@ -234,37 +242,57 @@ theorem signedWords_length_lt {vk : Digest} {p : Signed} {v : Unit → OProg Boo
   simp only [signedWords, List.length_append, bytesWords, List.length_cons, packBytes_length,
     Array.length_toList]
   change (p.π.size + 7) / 8 + 1 + (logWords p.tr).length + (sigWords p.σ).length < _
-  rw [proofCap] at hπ; rw [qV] at htr
+  rw [qV] at htr
   have : p.tr.length * (2 ^ 17 + 6) ≤ 10240 * (2 ^ 17 + 6) := Nat.mul_le_mul_right _ htr
   omega
 
-/-- **An accepted `W` witness's encoding is below `2^64` bytes.** -/
-theorem size_encode_lt {impl : OpImpl} {fin : Finals} {vk c : Digest} {w : Wit}
-    (h : Rel (accV impl fin vk) c w) : (WitnessSending.encode w).size < 2 ^ 64 := by
-  rw [WitnessSending.size_encode]
-  cases w with
-  | leaf s n => simp [witWords, packBytes_length]
-  | node c₁ c₂ p₁ p₂ =>
-    have h1 := signedWords_length_lt h.2.1
-    have h2 := signedWords_length_lt h.2.2
-    simp only [witWords, List.length_cons, List.length_append, packBytes_length,
-      Vector.length_toList]
-    omega
-
-/-- **The `W` branch of `hAcc`**: an accepted `W` proof is extracted, by `E` copying it, to a
-witness of `Rel (S.acc vk)`. `E` is any extractor whose `W` case is `decode` (`FRXSpec.E_W`). -/
-theorem acc_W (impl : OpImpl) (fin : Finals) (S : Submission) (hV : S.V = Vwith impl fin)
-    (hq : S.qV = qV)
-    (hE : ∀ c π L, FR.kindOf π = .W → π.size < 2 ^ 64 → S.E c π L = WitnessSending.decode π)
-    {vk c : Digest} {π : Proof} {L : Log} (hW : FR.kindOf π = .W)
+/-- An accepted `W` proof decodes to a witness of `Rel (S.acc vk)`. -/
+theorem acc_W_dec (impl : OpImpl) (fin : Finals) (S : Submission) (hV : S.V = Vwith impl fin)
+    (hq : S.qV = qV) {vk c : Digest} {π : Proof} {L : Log} (hW : FR.kindOf π = .W)
     (hrun : (S.V vk c π).runLog L = some true) :
-    ∃ w, S.E c π L = some w ∧ Rel (S.acc vk) c w := by
+    ∃ w, WitnessSending.decode π = some w ∧ Rel (S.acc vk) c w := by
   rw [hV, V_W impl fin vk c π hW] at hrun
   simp only [OProg.runLog, Option.some.injEq] at hrun
   have hret : Vwith impl fin vk c π = .ret true := by rw [V_W impl fin vk c π hW, hrun]
-  obtain ⟨w, hd, he, hR⟩ := V_W_sound impl fin vk c π hW hret
-  refine ⟨w, ?_, by rw [acc_eq impl fin S hV hq]; exact hR⟩
-  rw [hE c π L hW (he ▸ size_encode_lt hR), hd]
+  obtain ⟨w, hd, -, hR⟩ := V_W_sound impl fin vk c π hW hret
+  exact ⟨w, hd, by rw [acc_eq impl fin S hV hq]; exact hR⟩
+
+/-- **The `W` branch of `hAcc`**: an accepted `W` proof of fewer than `2^64` bytes is extracted,
+by `E` copying it, to a witness of `Rel (S.acc vk)`. `E` is any extractor whose `W` case below
+the word is `decode` (`FRXSpec.E_W`). -/
+theorem acc_W (impl : OpImpl) (fin : Finals) (S : Submission) (hV : S.V = Vwith impl fin)
+    (hq : S.qV = qV)
+    (hE : ∀ c π L, FR.kindOf π = .W → π.size < 2 ^ 64 → S.E c π L = WitnessSending.decode π)
+    {vk c : Digest} {π : Proof} {L : Log} (hW : FR.kindOf π = .W) (hπ : π.size < 2 ^ 64)
+    (hrun : (S.V vk c π).runLog L = some true) :
+    ∃ w, S.E c π L = some w ∧ Rel (S.acc vk) c w := by
+  obtain ⟨w, hd, hR⟩ := acc_W_dec impl fin S hV hq hW hrun
+  exact ⟨w, by rw [hE c π L hW hπ, hd], hR⟩
+
+/-- **The `W` proofs beyond the word** (core PR #20): every accepted `W` proof of `2^64` bytes or
+more is extracted to a witness of `Rel (S.acc vk)`. The residual of the `W` branch until B-15. -/
+def WBeyond (S : Submission) (vk : Digest) : Prop :=
+  ∀ L c π, FR.kindOf π = .W → 2 ^ 64 ≤ π.size → (S.V vk c π).runLog L = some true →
+    ∃ w, S.E c π L = some w ∧ Rel (S.acc vk) c w
+
+/-- **The whole `W` branch of `hAcc`**: `acc_W` below the word, `WBeyond` above it. -/
+theorem acc_W_all (impl : OpImpl) (fin : Finals) (S : Submission) (hV : S.V = Vwith impl fin)
+    (hq : S.qV = qV)
+    (hE : ∀ c π L, FR.kindOf π = .W → π.size < 2 ^ 64 → S.E c π L = WitnessSending.decode π)
+    {vk c : Digest} (hWB : WBeyond S vk) {π : Proof} {L : Log} (hW : FR.kindOf π = .W)
+    (hrun : (S.V vk c π).runLog L = some true) :
+    ∃ w, S.E c π L = some w ∧ Rel (S.acc vk) c w :=
+  if hπ : π.size < 2 ^ 64 then acc_W impl fin S hV hq hE hW hπ hrun
+  else hWB L c π hW (Nat.le_of_not_lt hπ) hrun
+
+/-- Control (positive): an extractor whose `W` case is `decode` on every size (the contract's
+witness-sending `E`) meets `WBeyond`. -/
+theorem wBeyond_of_decode (impl : OpImpl) (fin : Finals) (S : Submission)
+    (hV : S.V = Vwith impl fin) (hq : S.qV = qV)
+    (hE : ∀ c π L, FR.kindOf π = .W → S.E c π L = WitnessSending.decode π) (vk : Digest) :
+    WBeyond S vk := fun L c π hW _ hrun => by
+  obtain ⟨w, hd, hR⟩ := acc_W_dec impl fin S hV hq hW hrun
+  exact ⟨w, by rw [hE c π L hW, hd], hR⟩
 
 /-- **A `bad` proof is never accepted** (it is rejected with no query). -/
 theorem not_acc_bad (impl : OpImpl) (fin : Finals) {vk c : Digest} {π : Proof} {L : Log}

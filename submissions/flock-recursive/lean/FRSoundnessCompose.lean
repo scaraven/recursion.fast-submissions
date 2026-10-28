@@ -304,6 +304,15 @@ noncomputable def kstate_of_front (S : Submission) (vk : Digest) (hFr : FrontObl
     KState (Rel (S.acc vk)) (S.V vk) S.E epsR :=
   kstate_of S vk N_le (phaseObl_of hFr) hfin
 
+/-- **Knowledge soundness at `εR` from the front** (BLUEPRINT B-14, core PR #19's textbook `KS`):
+`kstate_of_front` through the library bridge `KState.ks`, at the same `ε`, given the verifier's
+query bound. -/
+theorem ks_of_front (S : Submission) (vk : Digest) (hFr : FrontObl RejF DF W₀ c₀)
+    (hfin : FinalLaw S vk (RejC RejF c₀) (DkC DF W₀ c₀))
+    (hq : ∀ H c π, ((S.V vk c π).queries H).length ≤ S.qV) :
+    KS (Rel (S.acc vk)) (S.V vk) S.E epsR S.qV :=
+  (kstate_of_front S vk hFr hfin).ks hq
+
 /-! ## Stability on the chain itself (`ChainStab`, S-G1h deviation 1) -/
 
 /-- On a non-bad log, a chain reads the same off the log before its last entry and off the log

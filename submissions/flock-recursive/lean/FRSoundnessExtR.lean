@@ -64,6 +64,7 @@ theorem hAcc_of_finR (impl : OpImpl) (S : Submission) (vk : Digest)
     (hV : S.V = Vwith impl (sfFinals finP finPf)) (hq : S.qV = qV)
     (ht : ∀ j r, impl.tensorW j r = Impl.tensorWS j r)
     (hE : ∀ c π L, FR.kindOf π = .W → π.size < 2 ^ 64 → S.E c π L = WitnessSending.decode π)
+    (hWB : WBeyond S vk)
     (hStart : ∀ (k : Kind) (c : Digest) (π : Proof) (L tr : Log) (y : List Val × List Bool × Trace),
       ¬ Bad L → π.size = piSize → FR.kindOf π = .snark k →
       semIR impl (gen (sfFinals finP finPf) (.fixed k)) ⟨vk, c, π⟩ tr = some true →
@@ -84,7 +85,7 @@ theorem hAcc_of_finR (impl : OpImpl) (S : Submission) (vk : Digest)
         ∃ j, AcceptTail RejF W₀ c₀ L j ∧ RunLink impl (sfFinals finP finPf) vk c π L j := by
   intro L c π _ hb hrun
   rcases hk : FR.kindOf π with _ | _ | k
-  · exact .inl (acc_W impl _ S hV hq hE hk hrun)
+  · exact .inl (acc_W_all impl _ S hV hq hE hWB hk hrun)
   · exact absurd (hV ▸ hrun) (not_acc_bad impl _ hk)
   · have hπ := size_of_snark hk
     rw [hV, V_snark impl _ vk c π hk] at hrun
@@ -161,6 +162,7 @@ noncomputable def kstate_front_ofR (S : Submission) (vk : Digest) (κs₀ : F)
     {L3N PendN : Log → Log → Prop}
     (hV : S.V = VC finPf Layout.lRows κs₀) (hq : S.qV = qV)
     (hE : ∀ c π L, FR.kindOf π = .W → π.size < 2 ^ 64 → S.E c π L = WitnessSending.decode π)
+    (hWB : WBeyond S vk)
     (hI : ExtIfaceR (implC (finC finPf) Layout.lRows κs₀) (sfFinals finP finPf) S vk W₀L c₀L
       (Stmt (finC finPf) SLeaf))
     (hOut : ∀ L c π, L.length ≤ logCap → ¬ Bad L → (S.V vk c π).runLog L = some true →
@@ -189,7 +191,7 @@ noncomputable def kstate_front_ofR (S : Submission) (vk : Digest) (κs₀ : F)
     (finalLaw_ofR (implC (finC finPf) Layout.lRows κs₀) (sfFinals finP finPf) S vk frontLocal_W0
       (frontChainStab hN.toNodeLF)
       (hAcc_of_finR (implC (finC finPf) Layout.lRows κs₀) S vk hV hq
-        (tensorW_implC _ _ _) hE hStart hW0
+        (tensorW_implC _ _ _) hE hWB hStart hW0
         (fun k c π L tr j hb hπ hsem hin hci heq h =>
           (rejF_split h).elim (hFrontV k c π L tr j hb hπ hsem hin hci heq)
             (hN.front k c π L tr j hb hπ hsem hin hci heq)))

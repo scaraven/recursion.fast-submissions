@@ -40,9 +40,10 @@ def qV : ℕ := 10240
 
 /-- **Acceptance of a signed proof under `vk`**, the verifier's program on its proof being `v ()`:
 `Submission.acc` with `qV` and the fast hashes (`v` delayed so that compiled code builds the
-child's program only after the cheap checks). -/
+child's program only after the cheap checks). The first conjunct is the contract's (core PR #20:
+the proof's length fits a 64-bit word; `proofCap` is gone). -/
 def accWith (vk : Digest) (p : Signed) (v : Unit → OProg Bool) : Bool :=
-  decide (p.π.size ≤ proofCap) && decide (p.tr.length ≤ qV) &&
+  decide (p.π.size < 2 ^ 64) && decide (p.tr.length ≤ qV) &&
     decide (∀ e ∈ p.tr, e.1.size ≤ queryCap) && SigOkF vk (traceDigestF p.tr) p.σ &&
     decide ((v ()).runSeq p.tr = some true)
 
@@ -133,7 +134,7 @@ theorem fits_of_accWith {vk : Digest} {p : Signed} {v : Unit → OProg Bool}
     (h : accWith vk p v = true) : p.Fits := by
   simp only [accWith, Bool.and_eq_true, decide_eq_true_eq, SigOkF_eq, SigOk] at h
   obtain ⟨⟨⟨⟨hπ, htr⟩, hq⟩, ⟨⟨hi, ho⟩, hp⟩, -⟩, -⟩ := h
-  exact ⟨hπ.trans_lt (by decide), htr.trans_lt (by decide), fun e he => (hq e he).trans_lt (by decide),
+  exact ⟨hπ, htr.trans_lt (by decide), fun e he => (hq e he).trans_lt (by decide),
     hi.trans (by decide), ho, hp⟩
 
 theorem fits_of_rel {impl : OpImpl} {fin : Finals} {vk c : Digest} {w : Wit}

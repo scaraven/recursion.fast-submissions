@@ -542,7 +542,7 @@ theorem err_le_epsH : (badCount : ℝ≥0) / 2 ^ 256 + (2 : ℝ≥0)⁻¹ ^ 238 
   rw [epsH]; gcongr; exact badCount_frac_le
 
 open Classical in
-/-- **`μ_Hide`'s step law** (§10 changes 15): the contract's `KState.step` law with error
+/-- **`μ_Hide`'s step law** (§10 changes 15): the library's `KState.step` law with error
 `ε_H = 2^-142 + 2^-238` for `muG DH (pRoundG DH fsRnd)`. -/
 theorem hide_step (L : Log) (q : ByteArray) (hl : L.length < logCap)
     (hμ : muG DH (pRoundG DH fsRnd) L < 1) (hq : q ∉ L.map Prod.fst) :

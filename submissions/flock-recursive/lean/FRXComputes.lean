@@ -17,7 +17,9 @@ with at most `outCap` words on every domain tape (`computes_Eof`).
 * `computesWith`: for every SNARK branch with `DecOk dec`, `Computes (extWith dec) (Eden …) fuel`.
 * `E_W` (`FRXSpec`): on a `W` proof (`kindOf π = .W`) of fewer than `2^64` bytes, on every log,
   `extWith dec` outputs `packBytes π`, so `Eden` is `WitnessSending.decode π` (the `W` case of
-  `ext_good_tape`, any size above `proofCap` included, BP-C-R2-M2).
+  `ext_good_tape`, on every size below the word, BP-C-R2-M2).
+* The domain (core PR #20, V4-A11): proofs of at most `8 · outCap` bytes (`proofCap` is gone); the
+  `W` copy of such a proof is at most `outCap` words (`halts_of_tape`).
 -/
 
 namespace FR.X
@@ -57,7 +59,7 @@ theorem den_of_run {mem mpw : ℕ} {P : XIR} {inp : List Word} {f : ℕ} {o : Li
 /-- **`Computes` for the denotation** (B-8, `compile_runs` + the fuel): it is halting within the
 fuel with at most `outCap` words on the domain, since a halting run's output is `den`. -/
 theorem computes_Eof {mem mpw : ℕ} {P : XIR} (fuel : ℕ → ℕ) (hmem : regs ≤ mem) (hP : WF P)
-    (h : ∀ c (π : Proof) (L : Log), π.size ≤ proofCap → (∀ e ∈ L, e.1.size < 2 ^ 64) →
+    (h : ∀ c (π : Proof) (L : Log), π.size ≤ 8 * outCap → (∀ e ∈ L, e.1.size < 2 ^ 64) →
       (extractorInput c π L).length ≤ 2 ^ 64 →
       ∃ o, (toProg mem mpw P).run (extractorInput c π L) (fuel (extractorInput c π L).length) =
         some o ∧ o.length ≤ outCap) :
@@ -222,12 +224,14 @@ theorem safe_parseIR (I : Array Word) (t : ℕ) : Safe I t parseIR :=
   .seq (.seq (.blk _) (.input _ _)) (.seq (.seq (.blk _) (.input _ _)) (.blk _))
 
 /-- **The program halts within the fuel with at most `outCap` words** on a tape whose word 4 is a
-length `a ≤ 2^20` followed by at least `⌈a/8⌉` words, when the SNARK branch satisfies `DecOk`
-and its loop bounds hold on the tape whenever `a = piSize`. -/
-theorem halts_of_tape {dec : XIR} (hd : DecOk dec) (inp : List Word) (a : ℕ) (ha : a ≤ 2 ^ 20)
+length `a ≤ 8 · outCap` (the contract's domain since core PR #20) followed by at least `⌈a/8⌉`
+words, when the SNARK branch satisfies `DecOk` and its loop bounds hold on the tape whenever
+`a = piSize`. -/
+theorem halts_of_tape {dec : XIR} (hd : DecOk dec) (inp : List Word) (a : ℕ) (ha : a ≤ 8 * outCap)
     (h4 : inp.toArray.getD 4 0 = toWord a) (hlen : (a + 7) / 8 + 6 ≤ inp.length)
     (hsafe : a = piSize → Safe inp.toArray inp.length dec) :
     ∃ o, (extWith dec).run inp (fuel inp.length) = some o ∧ o.length ≤ outCap := by
+  rw [outCap] at ha
   have hwf := wf_extIRWith hd.wf
   have hreg : regs ≤ memX := by simp only [regs, memX]; norm_num
   have h0 : Inv (initSt (memX + mpwX * inp.length)).M := inv_initSt (Nat.le_add_right_of_le hreg)
@@ -290,7 +294,7 @@ theorem halts_of_tape {dec : XIR} (hd : DecOk dec) (inp : List Word) (a : ℕ) (
 /-- **The program halts within the fuel** with at most `outCap` words on every domain tape, for
 every SNARK branch satisfying `DecOk`. -/
 theorem halts_with {dec : XIR} (hd : DecOk dec) (c : Digest) (π : Proof) (L : Log)
-    (hπ : π.size ≤ proofCap) (hq : ∀ e ∈ L, e.1.size < 2 ^ 64)
+    (hπ : π.size ≤ 8 * outCap) (hq : ∀ e ∈ L, e.1.size < 2 ^ 64)
     (ht : (extractorInput c π L).length ≤ 2 ^ 64) :
     ∃ o, (extWith dec).run (extractorInput c π L) (fuel (extractorInput c π L).length) = some o ∧
       o.length ≤ outCap :=

@@ -12,7 +12,7 @@ import FRSumcheck
   potential's `epsD = εR − ε_H` (`epsD_add_epsH`); `deltaR = εD − 2^-142` is the rows' budget,
   after the H row's `2^-142`. `StepObl D rnd δ N` packages `hloc_of`'s five per-position
   obligations; **`step_epsD`** turns them, at `δ = deltaR` and `N ≤ 2^256·deltaR`, into the
-  contract's `KState.step` law with error `εD`.
+  library's `KState.step` law with error `εD`.
 * **Part B: one phase end to end, the degree-3 F rounds** (Z3; also the shape of Lr2 and E2). The
   phase starts at Fiat–Shamir position `b` and has `nMax` items `(absorb, squeeze)`; the first
   `nr κ` rounds are real for kind `κ` (the rest are dummies, which keep the claim). Round `l`'s
@@ -107,7 +107,7 @@ structure StepObl (D : Log → Log → Prop) (rnd : ℕ → Option (ℕ × ℕ))
     (D (L.take i) X ↔ D L X)
 
 open Classical in
-/-- **`step_epsD`**: the contract's `KState.step` law with error `εD = εR − ε_H` for the potential
+/-- **`step_epsD`**: the library's `KState.step` law with error `εD = εR − ε_H` for the potential
 `muG D (pRoundG D fsRnd)`, from the obligations at `δ = deltaR` and `N ≤ 2^256·deltaR`. -/
 theorem step_epsD {D : Log → Log → Prop} {N : ℕ} (hN : (N : ℝ≥0) ≤ 2 ^ 256 * deltaR)
     (ob : StepObl D fsRnd deltaR N) (L : Log) (q : ByteArray) (hl : L.length < logCap)

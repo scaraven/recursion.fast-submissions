@@ -11,7 +11,7 @@ What the statement `StmtN` gives `node_sound` (`FRNodeCircuit`), and what it doe
 * **`PubOK` → `PubCells`** (definitional on a node), and **`PubCells` binds the children's
   statements**: `readStmt w (σ + 1)` is `PubCells`' `c_σ` (**`readStmt_of_pubCells`**, through
   `digestOf_halves`: a digest's two F halves read back as the digest).
-* **The format facts** of `readSigned σ w` (**`readSigned_fmt`**): `|π| = piSize ≤ proofCap`,
+* **The format facts** of `readSigned σ w` (**`readSigned_fmt`**): `|π| = piSize < 2^64` (`acc`'s word bound, core PR #20),
   `|tr| = 8,891 ≤ qV`, every query at most `queryCap` (**`items_qlen_le`**, per phase shape).
 * **`truthLr` → the selector cells are bits** (`SlotHolds.bits`, **`selBits_of_truthLr`**).
 * **The children are SNARKs** (`W`-kind children excluded): `SlotHolds`' one-hot rows and run fix
@@ -157,7 +157,7 @@ theorem readItems_qlen (B : List UInt8) : ∀ (o : ℕ) (its : List Item), ∀ e
 
 /-- **A read child's format facts**: its proof, trace and queries are within the caps. -/
 theorem readSigned_fmt (w : ℕ → F) (σ : ℕ) :
-    (readSigned σ w).π.size ≤ proofCap ∧ (readSigned σ w).tr.length ≤ qV ∧
+    (readSigned σ w).π.size < 2 ^ 64 ∧ (readSigned σ w).tr.length ≤ qV ∧
       ∀ e ∈ (readSigned σ w).tr, e.1.size ≤ queryCap := by
   refine ⟨?_, ?_, fun e he => ?_⟩
   · have h : (readSigned σ w).π.size = piSize := Read.reassemble_size w σ

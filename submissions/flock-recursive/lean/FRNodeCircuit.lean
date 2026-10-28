@@ -139,7 +139,7 @@ its signature (`wots_sound` over the chain digest), `PubCells` and the slot's `S
 contract-facing acceptance `accV impl fin vk c p` (S-F's `V_snark`, `runSeq_runIR`,
 `semIR_mux_eq`, `slot_sound`). -/
 theorem child_sound {impl : OpImpl} {fin : Finals} {vk c : Digest} {p : Signed} {k : FR.Kind}
-    {σ : ℕ} {w : Asg} (hk : kindOf p.π = .snark k) (hsize : p.π.size ≤ proofCap)
+    {σ : ℕ} {w : Asg} (hk : kindOf p.π = .snark k) (hsize : p.π.size < 2 ^ 64)
     (hq : p.tr.length ≤ qV) (hcap : ∀ e ∈ p.tr, e.1.size ≤ queryCap)
     (hsig : SigOk vk (traceDigest p.tr) p.σ = true) (hp : w oneCell = 1)
     (hT : ImplT impl) (hM : SlotHolds impl fin σ w ⟨vk, c, p.π⟩ p.tr) :
@@ -156,8 +156,8 @@ theorem child_sound {impl : OpImpl} {fin : Finals} {vk c : Digest} {p : Signed} 
 theorem node_sound {impl : OpImpl} {fin : Finals} {vk c₁ c₂ : Digest} {p₁ p₂ : Signed}
     {k₁ k₂ : FR.Kind} {w : Asg} (hT : ImplT impl) (hp : PubCells w vk c₁ c₂)
     (hk₁ : kindOf p₁.π = .snark k₁) (hk₂ : kindOf p₂.π = .snark k₂)
-    (hs₁ : p₁.π.size ≤ proofCap ∧ p₁.tr.length ≤ qV ∧ ∀ e ∈ p₁.tr, e.1.size ≤ queryCap)
-    (hs₂ : p₂.π.size ≤ proofCap ∧ p₂.tr.length ≤ qV ∧ ∀ e ∈ p₂.tr, e.1.size ≤ queryCap)
+    (hs₁ : p₁.π.size < 2 ^ 64 ∧ p₁.tr.length ≤ qV ∧ ∀ e ∈ p₁.tr, e.1.size ≤ queryCap)
+    (hs₂ : p₂.π.size < 2 ^ 64 ∧ p₂.tr.length ≤ qV ∧ ∀ e ∈ p₂.tr, e.1.size ≤ queryCap)
     (hg₁ : SigOk vk (traceDigest p₁.tr) p₁.σ = true) (hg₂ : SigOk vk (traceDigest p₂.tr) p₂.σ = true)
     (h₁ : SlotHolds impl fin 0 w ⟨vk, c₁, p₁.π⟩ p₁.tr)
     (h₂ : SlotHolds impl fin 1 w ⟨vk, c₂, p₂.π⟩ p₂.tr) :
