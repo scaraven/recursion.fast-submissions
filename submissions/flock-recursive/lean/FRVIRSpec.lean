@@ -80,7 +80,7 @@ theorem runSeq_runIR (P : VProg) (tr : Trace) : (runIR impl P inp).runSeq tr = s
 
 theorem item?_of_vals {regs : Array Val} {op : Op} {vs : List Val} {ok : Bool}
     (h : evalOp impl κ inp regs op = .vals vs ok) : op.item? = none := by
-  cases op <;> simp_all [evalOp, Op.item?]
+  cases op <;> first | rfl | simp [evalOp] at h
 
 theorem item?_of_ask {regs : Array Val} {op : Op} {q : ByteArray}
     (h : evalOp impl κ inp regs op = .ask q) : op.item?.isSome := by
@@ -256,6 +256,17 @@ theorem rd_app (r : Array Val) (L : List Val) (k : ℕ) : rd (r ++ L.toArray) (r
 theorem rd_app0 (r : Array Val) (L : List Val) : rd (r ++ L.toArray) r.size = L.getD 0 default := by
   simpa using rd_app r L 0
 
+/-- `rd_app` with the read left as an array lookup: on a list literal `L`, core's
+`Array.reduceGetElem?` reads entry `k` in one step instead of `k` steps of `List.getD_cons_succ`
+(G1). -/
+theorem rd_appT (r : Array Val) (L : List Val) (k : ℕ) :
+    rd (r ++ L.toArray) (r.size + k) = (L.toArray[k]?).getD default := by
+  simp [rd, Array.getElem?_append_right]
+
+theorem rd_appT0 (r : Array Val) (L : List Val) :
+    rd (r ++ L.toArray) r.size = (L.toArray[0]?).getD default := by
+  simpa using rd_appT r L 0
+
 theorem toD_d (x : Digest) : (Val.d x).toD = x := rfl
 theorem toF_f (x : F) : (Val.f x).toF = x := rfl
 theorem toK_k (x : K) : (Val.k x).toK = x := rfl
@@ -350,8 +361,10 @@ def uniEs (f o : ℕ) : List F := (List.range 127).map fun i => elemAt inp f (o 
 /-- The registers of a univariate round (`uniOps`). -/
 def uniVals (f o : ℕ) (pe : Array F) (a₁ a₂ : Digest) : List Val :=
   let x := impl.lagrangeS (uniEs inp f o).toArray (chF a₂ 0) pe
-  [.b (msgAt inp f o uniBytes), .d a₁, .d a₂, .f (chF a₂ 0)] ++ (uniEs inp f o).map .f ++
-    [.af (uniEs inp f o).toArray, .af pe, .f x.1, .f x.2, .b (msgAt inp f (o + 2032) 16)]
+  ([.b (msgAt inp f o uniBytes), .d a₁, .d a₂, .f (chF a₂ 0)] : List Val) ++
+    ((uniEs inp f o).map .f : List Val) ++
+    ([.af (uniEs inp f o).toArray, .af pe, .f x.1, .f x.2,
+      .b (msgAt inp f (o + 2032) 16)] : List Val)
 
 theorem exec_uni (f o st pt : ℕ) (r : Array Val) (ok : Bool) (ops : List Op) (d : Digest)
     (hst : st < r.size) (hpt : pt < r.size) (hd : (rd r st).toD = d) (q₁ q₂ : ByteArray)

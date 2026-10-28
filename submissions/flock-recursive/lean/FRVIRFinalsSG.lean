@@ -80,12 +80,10 @@ theorem lagV_eq_lagrangeWeight (l : F) {lo : ℕ} (hlo : lo < 64) :
     fun j _ => xS_of_lt j.isLt
   rw [lagV, wInv, foldl_mul_eq, foldl_mul_eq, one_mul, prod_others _ hlo, prod_others _ hlo,
     lagrangeWeight, mul_comm, xS_of_lt hlo]
-  congr 1
-  · refine Finset.prod_congr rfl fun j hj => ?_
-    rw [hx j hj, sub_eq_add_neg, CharTwo.neg_eq]
-  · congr 1
-    refine Finset.prod_congr rfl fun j hj => ?_
-    rw [hx j hj, sub_eq_add_neg, CharTwo.neg_eq]
+  have hp : ∀ c : F, ∏ j ∈ (Finset.univ : Finset (Fin 64)).erase ⟨lo, hlo⟩, (c + xS j) =
+      ∏ j ∈ (Finset.univ : Finset (Fin 64)).erase ⟨lo, hlo⟩, (c - sNodeF j) := fun c =>
+    Finset.prod_congr rfl fun j hj => by rw [hx j hj, sub_eq_add_neg, CharTwo.neg_eq]
+  rw [hp, hp]
 
 /-! ## `finP i` (A.9) -/
 
@@ -106,7 +104,7 @@ def kcOf (fi : FinIn) (i : ℕ) : List Reg := ((lvOuts fi i 4).drop 1).take 9
 def accOps (e : Reg) : List Reg → ℕ → Reg → ℕ → List Op
   | [], _, _, _ => []
   | y :: ys, q, acc, b =>
-    [.getF e q, .mulKF y b, .addK acc (b + 1)] ++ accOps e ys (q + 1) (b + 2) (b + 3)
+    ([.getF e q, .mulKF y b, .addK acc (b + 1)] : List Op) ++ accOps e ys (q + 1) (b + 2) (b + 3)
 
 /-- The register `accOps` leaves its sum in. -/
 def accOut : Reg → ℕ → List Reg → Reg
@@ -117,15 +115,17 @@ def accOut : Reg → ℕ → List Reg → Reg
 the batched claim. -/
 def finPLow (i : ℕ) : FinField := fun fi b =>
   let out := accOut (b + 3) (b + 4) (ysOf fi i)
-  ([.packF (kcOf fi i), .eqTable b, .const (fun _ => .k 0), .addK (p1ClaimN fi i) (b + 2)] ++
+  (([.packF (kcOf fi i), .eqTable b, .const (fun _ => .k 0),
+      .addK (p1ClaimN fi i) (b + 2)] : List Op) ++
     accOps (b + 1) (ysOf fi i) 0 (b + 3) (b + 4) ++
-    [.assertEq out (p1Claim0 fi (i + 1)) allK], [out])
+    ([.assertEq out (p1Claim0 fi (i + 1)) allK] : List Op), [out])
 
 /-- One Horner layer: `x'[c] = x[c] + w·x[c + n]` for `c < n` (`xs` of length `2n`), two registers
 per `c`. -/
 def layerOps (w : Reg) (xs : List Reg) (n b : ℕ) : ℕ → List Op
   | 0 => []
-  | k + 1 => layerOps w xs n b k ++ [.mulK w (xs.getD (k + n) 0), .addK (xs.getD k 0) (b + 2 * k)]
+  | k + 1 => layerOps w xs n b k ++
+      ([.mulK w (xs.getD (k + n) 0), .addK (xs.getD k 0) (b + 2 * k)] : List Op)
 
 /-- The registers a layer leaves. -/
 def layerOut (n b : ℕ) : List Reg := (List.range n).map fun c => b + 2 * c + 1
@@ -147,9 +147,9 @@ def encW : ℕ := 7 + 2 * (2 ^ 7 - 1)
 /-- `Enc₄(final)[p] = y`: `Ŵ_v(D[p])` for `v < 7` (`units` the registers of `e_v`), Horner over
 `fin` (the 128 final-message registers), the check. -/
 def encOps (units fin : List Reg) (j y b : ℕ) : List Op :=
-  (List.range 7).map (fun v => .tensorW j (units.getD v 0)) ++
+  ((List.range 7).map (fun v => .tensorW j (units.getD v 0)) : List Op) ++
     hornerKOps ((List.range 7).map (b + ·)) 7 fin (b + 7) ++
-    [.assertEq (hornerKOut 7 fin (b + 7)) y allK]
+    ([.assertEq (hornerKOut 7 fin (b + 7)) y allK] : List Op)
 
 /-- The unit vector `e_v` of `K^7`. -/
 def unitK (v : ℕ) : Array K := ((List.range 7).map fun u => if u = v then (1 : K) else 0).toArray
@@ -159,11 +159,11 @@ Registers: the 128 final elements, the 7 unit vectors, then `encW` per position.
 def finP4 : FinField := fun fi b =>
   let fin := (List.range 128).map (b + ·)
   let units := (List.range 7).map (b + 128 + ·)
-  ((List.range 128).map (fun c => .piElemK fFinal (32 * c)) ++
-    (List.range 7).map (fun v => .const fun _ => .ak (unitK v)) ++
+  (((List.range 128).map (fun c => .piElemK fFinal (32 * c)) : List Op) ++
+    ((List.range 7).map (fun v => .const fun _ => .ak (unitK v)) : List Op) ++
     (List.range (ysOf fi 4).length).flatMap (fun q =>
       encOps units fin ((ysOf fi 4).getD q 0 - 3) ((ysOf fi 4).getD q 0) (b + 135 + encW * q)) ++
-    [.assertEq (claim0 fi "Pf") (p1ClaimN fi 4) allK], [])
+    ([.assertEq (claim0 fi "Pf") (p1ClaimN fi 4) allK] : List Op), [])
 
 /-- **`finP i`** (A.9). -/
 def finP (i : ℕ) : FinField := if i < 4 then finPLow i else finP4
@@ -605,7 +605,7 @@ def srcOp (one z0 : Reg) : PtSrc → Op
 
 /-- A K point from `b`: its coordinates, then `packK`; the point lands at `b + |src|`. -/
 def ptOps (one z0 : Reg) (src : List PtSrc) (b : ℕ) : List Op :=
-  src.map (srcOp one z0) ++ [.packK ((List.range src.length).map (b + ·))]
+  src.map (srcOp one z0) ++ ([.packK ((List.range src.length).map (b + ·))] : List Op)
 
 /-- Points, one after the other. -/
 def ptsOps (one z0 : Reg) : List (List PtSrc) → ℕ → List Op
@@ -635,18 +635,20 @@ def p0Regs (fi : FinIn) (m : ℕ) : List Reg := sRegs fi 0 ++ tailRegs fi m 1
 /-- The Z claim's outer point at `m` (native `r[1..]`): `ρ₂ … ρ₇`, then Z1's `m − 13` free
 coordinates. -/
 def zSrc (fi : FinIn) (m : ℕ) : List PtSrc :=
-  ((List.ofFn pinnedRho).drop 1).map (fun x => .c (K.ofF x)) ++
-    ((coordsR fi "Z1").take (m - 13)).map .f
+  (((List.ofFn pinnedRho).drop 1).map (fun x => .c (K.ofF x)) : List PtSrc) ++
+    (((coordsR fi "Z1").take (m - 13)).map .f : List PtSrc)
 
 /-- The Lc claim's outer point: L2's challenges `7 … 13`, then Z3's real challenges from `8`. -/
 def lcSrc (fi : FinIn) (m : ℕ) : List PtSrc :=
-  ((chals fi "L2" 14).drop 7).map .f ++ (((chals fi "Z3" 26).take (m - 6)).drop 8).map .f
+  (((chals fi "L2" 14).drop 7).map .f : List PtSrc) ++
+    ((((chals fi "Z3" 26).take (m - 6)).drop 8).map .f : List PtSrc)
 
 /-- The Sh claim's outer point: S2's position challenges `7 … 9`, four zeros, S2's `m − 14` block
 challenges. -/
 def shSrc (fi : FinIn) (m : ℕ) : List PtSrc :=
-  (((chals fi "S2" 28).drop (m - 7)).take 3).map .f ++ List.replicate 4 (.c 0) ++
-    ((chals fi "S2" 28).take (m - 14)).map .f
+  ((((chals fi "S2" 28).drop (m - 7)).take 3).map .f : List PtSrc) ++
+    (List.replicate 4 (.c 0) : List PtSrc) ++
+    (((chals fi "S2" 28).take (m - 14)).map .f : List PtSrc)
 
 /-- The E4 claim's outer point (`m = 30`, revisions 3.12–3.13): all of E4's 23 challenges `r′` (RS
 claim 4, `f̂(r′)`, has the packing basis as its inner weights). -/
@@ -656,9 +658,9 @@ def eSrc (fi : FinIn) : List PtSrc := (chals fi "E4" 23).map .f
 tails `P₁[1..] … P₄[1..]` at `m = 32` (`7 … 10`) and `m = 30` (`11 … 14`), `P₀` (`15`, `16`). -/
 def pfPts (fi : FinIn) : List (List PtSrc) :=
   [zSrc fi 32, zSrc fi 30, lcSrc fi 32, lcSrc fi 30, shSrc fi 32, shSrc fi 30, eSrc fi] ++
-    (List.range 4).map (fun k => (tailRegs fi 32 (k + 1)).map .k) ++
-    (List.range 4).map (fun k => (tailRegs fi 30 (k + 1)).map .k) ++
-    [(p0Regs fi 32).map .k, (p0Regs fi 30).map .k]
+    ((List.range 4).map (fun k => (tailRegs fi 32 (k + 1)).map .k) : List (List PtSrc)) ++
+    ((List.range 4).map (fun k => (tailRegs fi 30 (k + 1)).map .k) : List (List PtSrc)) ++
+    ([(p0Regs fi 32).map .k, (p0Regs fi 30).map .k] : List (List PtSrc))
 
 /-- The `m = 32` kind. -/
 def is32 : KC Bool := fun κ => decide (κ = .L32)
@@ -686,7 +688,7 @@ def prodKOps : List Reg → Reg → ℕ → List Op
 `1 + ρ_v` (`h + v`); then `acc + κ′^(k+2)·eq` (the power in `pw`), then the next power. -/
 def cellOps (one g h kp : Reg) (cell acc pw b : ℕ) : List Op :=
   prodKOps ((List.range 23).map fun v => if cell.testBit v then g + v else h + v) one b ++
-    [.mulKF (b + 22) pw, .addK acc (b + 23), .mulF pw kp]
+    ([.mulKF (b + 22) pw, .addK acc (b + 23), .mulF pw kp] : List Op)
 
 /-- The cells, one after the other. -/
 def cellsOps (one g h kp : Reg) : List ℕ → Reg → Reg → ℕ → List Op
@@ -708,11 +710,11 @@ def tRegs (fi : FinIn) (i b : ℕ) : List Reg := (List.range (ysOf fi i).length)
 def lvOps (fi : FinIn) (k : ℕ) (one cu T W b : Reg) : List Op :=
   let ys := ysOf fi (k - 1)
   let a := b + 2 + 4 * ys.length
-  [.packF (kcOf fi (k - 1)), .eqTable b] ++
-    (List.range ys.length).map (fun q => .tensorW (ys.getD q 0 - 3) T) ++
+  ([.packF (kcOf fi (k - 1)), .eqTable b] : List Op) ++
+    ((List.range ys.length).map (fun q => .tensorW (ys.getD q 0 - 3) T) : List Op) ++
     accOps (b + 1) (tRegs fi (k - 1) b) 0 W (b + 2 + ys.length) ++
-    [.mulK ((sRegs fi k).headD 0) cu, .addK one a,
-     .mulK (a + 1) (accOut W (b + 2 + ys.length) (tRegs fi (k - 1) b))]
+    ([.mulK ((sRegs fi k).headD 0) cu, .addK one a,
+     .mulK (a + 1) (accOut W (b + 2 + ys.length) (tRegs fi (k - 1) b))] : List Op)
 
 /-- Level `k`'s width. -/
 def lvW (fi : FinIn) (k : ℕ) : ℕ := 4 * (ysOf fi (k - 1)).length + 5
@@ -735,7 +737,7 @@ def lvsW (fi : FinIn) (ks : List ℕ) : ℕ := (ks.map (lvW fi)).sum
 def fhOps (E : Reg) : List ℕ → Reg → ℕ → List Op
   | [], _, _ => []
   | c :: cs, acc, b =>
-    [.piElemK fFinal (32 * c), .getK E c, .mulK b (b + 1), .addK acc (b + 2)] ++
+    ([.piElemK fFinal (32 * c), .getK E c, .mulK b (b + 1), .addK acc (b + 2)] : List Op) ++
       fhOps E cs (b + 3) (b + 4)
 
 /-- The register `fhOps` leaves its sum in. -/
@@ -763,24 +765,24 @@ def finPf : FinField := fun fi b =>
   let fb := lb + lvsW fi [1, 2, 3, 4]
   let pd := fb + 2 + 4 * 128
   let sf := chals fi "Pf" 7
-  ([.const (fun _ => .k 1), .const (fun _ => .k (1 + K.u)), .const (fun _ => .k 0)] ++
+  (([.const (fun _ => .k 1), .const (fun _ => .k (1 + K.u)), .const (fun _ => .k 0)] : List Op) ++
    ptsOps one z0 pts (b + 3) ++
-   [.keep is32 (P 7) (P 11), .keep is32 (P 8) (P 12), .keep is32 (P 9) (P 13),
-    .keep is32 (P 10) (P 14), .keep is32 (P 15) (P 16)] ++
-   [.packF ((List.range 7).map fun p => rs1.getD p 0),
+   ([.keep is32 (P 7) (P 11), .keep is32 (P 8) (P 12), .keep is32 (P 9) (P 13),
+    .keep is32 (P 10) (P 14), .keep is32 (P 15) (P 16)] : List Op) ++
+   ([.packF ((List.range 7).map fun p => rs1.getD p 0),
     .rsWeight wb (fun κ => (rsPtIx κ).map P) (rs1.getD 7 0) ((outsOf fi "L3β").headD 0)
-      Kind.isNode (sb + 4)] ++
-   (List.range 23).map (fun v => .getK (sb + 4) v) ++
-   (List.range 23).map (fun v => .addK one (wb + 2 + v)) ++
-   [.mulF kp kp] ++
+      Kind.isNode (sb + 4)] : List Op) ++
+   ((List.range 23).map (fun v => .getK (sb + 4) v) : List Op) ++
+   ((List.range 23).map (fun v => .addK one (wb + 2 + v)) : List Op) ++
+   ([.mulF kp kp] : List Op) ++
    cellsOps one (wb + 2) (wb + 25) kp pfCells z0 cb (cb + 1) ++
-   [.keep Kind.isNode (cellsAcc pfCells z0 (cb + 1)) z0, .addK (wb + 1) ce] ++
+   ([.keep Kind.isNode (cellsAcc pfCells z0 (cb + 1)) z0, .addK (wb + 1) ce] : List Op) ++
    lvsOps fi one cu sb [1, 2, 3, 4] (ce + 1) lb ++
-   [.packK sf, .eqTableK fb] ++ fhOps (fb + 1) (List.range 128) z0 (fb + 2) ++
-   [.addK one (sf.getD 5 0), .addK one (sf.getD 6 0), .mulK pd (pd + 1), .keep is32 one (pd + 2),
+   ([.packK sf, .eqTableK fb] : List Op) ++ fhOps (fb + 1) (List.range 128) z0 (fb + 2) ++
+   ([.addK one (sf.getD 5 0), .addK one (sf.getD 6 0), .mulK pd (pd + 1), .keep is32 one (pd + 2),
     .mulK (lvsOut fi [1, 2, 3, 4] (ce + 1) lb) (pd + 3),
     .mulK (pd + 4) (fhOut (List.range 128) z0 (fb + 2)),
-    .assertEq (pd + 5) (claimN fi "Pf") allK], [])
+    .assertEq (pd + 5) (claimN fi "Pf") allK] : List Op), [])
 
 
 /-! ### `finPf` asks nothing -/
@@ -835,7 +837,7 @@ theorem noAsk_finPf (fi : FinIn) (b : ℕ) : (finPf fi b).1.filterMap Op.item? =
     fun _ _ _ => noAsk_map _ _ fun _ => rfl
   simp only [finPf, List.filterMap_append, noAsk_ptsOps, noAsk_cellsOps, noAsk_lvsOps,
     noAsk_fhOps, h1, h2]
-  rfl
+  simp only [List.filterMap_cons, List.filterMap_nil, Op.item?, List.append_nil]
 
 /-! ### `finPf` runs to its relation -/
 
@@ -1657,16 +1659,18 @@ theorem flag_finPf (impl : OpImpl) (κ : Kind) (inp : Input) (fi : FinIn) (r : A
   have e17 : ExtA R1 R7 := e15.trans (e56.trans e67)
   have e57 : ExtA R5 R7 := e56.trans e67
   obtain ⟨M8, hB8, hl8, hv8⟩ := run_cellsOps impl κ inp R7 b (b + 3 + pw + 5 + 2)
-    (b + 3 + pw + 5 + 25) kp (p0V κ fi r) kpv (by omega) (by rw [e17.rd (by omega), r1one])
+    (b + 3 + pw + 5 + 25) kp (p0V κ fi r) kpv (by rw [sR7]; omega)
+    (by rw [e17.rd (by rw [sR1]; omega), r1one])
     (Nat.lt_of_lt_of_le hkpr (e06.trans e67).1) (by rw [e06.trans e67 |>.rd hkpr])
-    (fun v hv => ⟨by omega, by
+    (fun v hv => ⟨by rw [sR7]; omega, by
       rw [e57.rd (by rw [sR5]; omega), r5 v hv]; rfl⟩)
-    (fun v hv => ⟨by omega, by
+    (fun v hv => ⟨by rw [sR7]; omega, by
       rw [show b + 3 + pw + 5 + 25 + v = R5.size + v by rw [sR5],
         e67.rd (by rw [sR6]; omega), hR6, rd_app]; simp [V6, hv, toK_k]⟩)
-    pfCells (b + 2) (b + 3 + pw + 5 + 48) 0 (kpv * kpv) [] (by simp; omega)
-    (by rw [app0, e17.rd (by omega), r1z])
-    (by simp; omega)
+    pfCells (b + 2) (b + 3 + pw + 5 + 48) 0 (kpv * kpv) []
+    (by rw [List.length_nil, Nat.add_zero, sR7]; omega)
+    (by rw [app0, e17.rd (by rw [sR1]; omega), r1z])
+    (by rw [List.length_nil, Nat.add_zero, sR7]; omega)
     (by rw [app0, hR7, ← sR6, rd_app0]; rfl)
   simp only [List.length_nil, Nat.add_zero, List.nil_append, sR7] at hB8 hv8
   set R8 := R7 ++ M8.toArray with hR8
@@ -1688,8 +1692,8 @@ theorem flag_finPf (impl : OpImpl) (κ : Kind) (inp : Input) (fi : FinIn) (r : A
       have h0 := hv8; rw [rd, Array.getElem?_eq_none (by simpa using hc')] at h0; cases h0
     rw [← sR8]
     simp only [pureRun, evalOp, List.nil_append, List.cons_append, rd_app, rd_app0, app0,
-      rd_app_left _ _ (show b + 3 + pw + 5 + 1 < R8.size by omega),
-      rd_app_left _ _ (show b + 2 < R8.size by omega), rd_app_left _ _ hca, r8w, r8z, hv8,
+      rd_app_left _ _ (show b + 3 + pw + 5 + 1 < R8.size by rw [sR8]; omega),
+      rd_app_left _ _ (show b + 2 < R8.size by rw [sR8]; omega), rd_app_left _ _ hca, r8w, r8z, hv8,
       List.getD_cons_succ, List.getD_cons_zero, Option.map_some, Bool.and_true]
     simp only [V9, w0V, cv, toK_k, rsW]
     cases κ.isNode <;> rfl
@@ -1703,15 +1707,16 @@ theorem flag_finPf (impl : OpImpl) (κ : Kind) (inp : Input) (fi : FinIn) (r : A
   have e39 : ExtA R3 R9 := e34.trans (e48.trans e89)
   have e19 : ExtA R1 R9 := e17.trans (e78.trans e89)
   obtain ⟨M10, hB10, hl10, hv10⟩ := run_lvsOps impl κ inp fi b (b + 1) (b + 3 + pw)
-    (tailV κ fi r) R9 (by omega) (by rw [e19.rd (by omega), r1one]) (by omega)
-    (by rw [e19.rd (by omega), r1cu]) [1, 2, 3, 4] (b + 3 + pw + 5 + 48 + 1 + 26 * 9 + 1)
+    (tailV κ fi r) R9 (by rw [sR9]; omega) (by rw [e19.rd (by rw [sR1]; omega), r1one])
+    (by rw [sR9]; omega) (by rw [e19.rd (by rw [sR1]; omega), r1cu]) [1, 2, 3, 4]
+    (b + 3 + pw + 5 + 48 + 1 + 26 * 9 + 1)
     (w0V impl κ fi r) R9 le_rfl (fun _ _ => rfl)
     (fun k hk => by
       refine ⟨fun x hx => Nat.lt_of_lt_of_le (mE k hk x hx) e09.1, by
-        simp at hk; rcases hk with rfl | rfl | rfl | rfl <;> omega, ?_⟩
+        rw [sR9]; simp at hk; rcases hk with rfl | rfl | rfl | rfl <;> omega, ?_⟩
       have hk' : k - 1 < 4 ∧ k - 1 + 1 = k := by simp at hk; omega
       rw [e39.rd (by rw [sR3]; omega), r3T (k - 1) hk'.1, hk'.2])
-    (by omega) r9w
+    (by rw [sR9]; omega) r9w
   rw [sR9] at hB10 hv10
   rw [lvsV_congr impl fi (tailV κ fi r) r.size (fun x hx => e09.rd hx) [1, 2, 3, 4] _ mE] at hv10
   set R10 := R9 ++ M10.toArray with hR10
@@ -1736,9 +1741,10 @@ theorem flag_finPf (impl : OpImpl) (κ : Kind) (inp : Input) (fi : FinIn) (r : A
   have sR11 : R11.size = fb + 2 := by simp [R11, sR10, V11]
   have e1011 : ExtA R10 R11 := ExtA.app R10 V11
   -- B12: `final̂(sf)`
-  obtain ⟨M12, hB12, hl12, hv12⟩ := run_fhOps impl κ inp R11 (fb + 1) (eqTab sfV) (by omega)
-    (by rw [hR11, ← sR10, rd_app]; rfl) (List.range 128) (b + 2) 0 []
-    (by simp; omega) (by rw [app0, (e19.trans (e910.trans e1011)).rd (by omega), r1z])
+  obtain ⟨M12, hB12, hl12, hv12⟩ := run_fhOps impl κ inp R11 (fb + 1) (eqTab sfV)
+    (by rw [sR11]; omega) (by rw [hR11, ← sR10, rd_app]; rfl) (List.range 128) (b + 2) 0 []
+    (by rw [List.length_nil, Nat.add_zero, sR11, hfb]; omega)
+    (by rw [app0, (e19.trans (e910.trans e1011)).rd (by omega), r1z])
   simp only [List.length_nil, Nat.add_zero, List.nil_append, sR11] at hB12 hv12
   set R12 := R11 ++ M12.toArray with hR12
   have sR12 : R12.size = fb + 2 + 4 * 128 := by simp [R12, sR11, hl12]

@@ -122,14 +122,14 @@ def dotAcc (a0 : F) (X Y : Array F) : ℕ → F
 def dotOps (x y z c : ℕ) : ℕ → List Op
   | 0 => []
   | n + 1 => dotOps x y z c n ++
-      [.getF x n, .getF y n, .mulF (c + 4 * n) (c + 4 * n + 1),
-       .addF (if n = 0 then z else c + 4 * n - 1) (c + 4 * n + 2)]
+      ([.getF x n, .getF y n, .mulF (c + 4 * n) (c + 4 * n + 1),
+       .addF (if n = 0 then z else c + 4 * n - 1) (c + 4 * n + 2)] : List Op)
 
 /-- The values `dotOps` appends. -/
 def dotVals (a0 : F) (X Y : Array F) : ℕ → List Val
   | 0 => []
-  | n + 1 => dotVals a0 X Y n ++ [.f (X.getD n 0), .f (Y.getD n 0), .f (X.getD n 0 * Y.getD n 0),
-      .f (dotAcc a0 X Y (n + 1))]
+  | n + 1 => dotVals a0 X Y n ++ ([.f (X.getD n 0), .f (Y.getD n 0), .f (X.getD n 0 * Y.getD n 0),
+      .f (dotAcc a0 X Y (n + 1))] : List Val)
 
 theorem dotVals_length (a0 : F) (X Y : Array F) (n : ℕ) : (dotVals a0 X Y n).length = 4 * n := by
   induction n with
@@ -276,11 +276,11 @@ switching computes it, for every kind. Exports `â`, `b̂` and `P^z*(λ)`. -/
 def finZ : FinField := fun fi b =>
   let co := coordsR fi "Z1"; let rs := chals fi "Z3" 26
   (pinOps ++
-   [.packFK (fun κ => [b, b + 1, b + 2, b + 3, b + 4, b + 5, b + 6] ++ co.take (κ.m - 13)),
+   ([.packFK (fun κ => [b, b + 1, b + 2, b + 3, b + 4, b + 5, b + 6] ++ co.take (κ.m - 13)),
     .packFK (fun κ => rs.take (κ.m - 6)), .eqPt (b + 7) (b + 8),
     .piElem fZend 0, .piElem fZend 16, .mulF (b + 9) (b + 10), .mulF (b + 12) (b + 11),
     .assertEq (b + 13) (claimN fi "Z3") allK,
-    .assertEq ((outsOf fi "Z2").getD 2 0) (fi.zhat.getD 0 0) allK],
+    .assertEq ((outsOf fi "Z2").getD 2 0) (fi.zhat.getD 0 0) allK] : List Op),
    [b + 10, b + 11, (outsOf fi "Z2").getD 2 0])
 
 /-- `v_β = Σ_{i<8} β^i v_i` by Horner from `v₇` (register `b + 13`), the `v_i` at `b + 6 + i`, into
@@ -304,19 +304,20 @@ def lcHead (fi : FinIn) (b : ℕ) : List Op :=
   let α := (outsOf fi "L1").headD 0; let β := (outsOf fi "L3β").headD 0
   let oL3 := phaseOff (phaseIx "L3") fL2
   let v := (List.range 8).map fun i => b + (6 + i)
-  [.piElem fZend 0, .piElem fZend 16, .mulF α (b + 1), .addF b (b + 2),
+  ([.piElem fZend 0, .piElem fZend 16, .mulF α (b + 1), .addF b (b + 2),
     .assertEq (b + 3) (claim0 fi "L2") allK,
-    .packFK (fun _ => (chals fi "Z3" 26).take 8), .rowW ((outsOf fi "Z2").headD 0) (b + 4)] ++
-   (List.range 8).map (fun i => .piElem fL2 (oL3 + 16 * i)) ++
-   [.const (fun _ => .f 0),
+    .packFK (fun _ => (chals fi "Z3" 26).take 8),
+    .rowW ((outsOf fi "Z2").headD 0) (b + 4)] : List Op) ++
+   ((List.range 8).map (fun i => .piElem fL2 (oL3 + 16 * i)) : List Op) ++
+   ([.const (fun _ => .f 0),
     .packFK (fun κ => if κ.isNode then (b + 14) :: (v.take 7 ++ [b + 14])
       else (b + 6) :: List.replicate 8 (b + 14)),
     .maskRows (b + 15) (b + 5), .packF (chals fi "L2" 14), .eqTable (b + 17),
-    .walkAB (b + 16) (b + 18), .mulF α (b + 20), .addF (b + 19) (b + 21)] ++
+    .walkAB (b + 16) (b + 18), .mulF α (b + 20), .addF (b + 19) (b + 21)] : List Op) ++
    hornerOps β b ++
-   [.assertEq (b + 36) (fi.zhat.getD 1 0) allK,
+   ([.assertEq (b + 36) (fi.zhat.getD 1 0) allK,
     .keep Kind.isNode (b + 13) (b + 14), .eqZ ((outsOf fi "Z2").headD 0) (b + 14),
-    .packF ((chals fi "L2" 14).take 6), .eqTable (b + 39)]
+    .packF ((chals fi "L2" 14).take 6), .eqTable (b + 39)] : List Op)
 
 /-- `finLc`'s last ops, own registers from `d` (`= b + 297`; the 64-term sum `Σ_s L_s(λ)
 eq(r_k[0..5], s)` is at `b + 296`): `eq(r′_hi, r_k[6..13])`, `X = sum · eq`, `Y = v_free·X`, the
@@ -375,7 +376,7 @@ def finSh : FinField := fun fi b₀ =>
   let co := coordsR fi "S1"; let rs := chals fi "S2" 28; let ks := co.getD 28 0
   let b := b₀ + 8
   (bndOps b₀ ++
-   [.packFK (fun κ => padB κ co (b₀ + 4)), .packF ((co.drop 18).take 10),
+   ([.packFK (fun κ => padB κ co (b₀ + 4)), .packF ((co.drop 18).take 10),
     .shiftTarget b (b + 1) (b₀ + 7) ks,
     .assertEq (b + 2) (claim0 fi "S2") allK,
     .packFK (fun κ => padB κ rs (b₀ + 4)), .packFK (fun κ => (rs.drop (κ.m - 14)).take 10),
@@ -389,10 +390,10 @@ def finSh : FinField := fun fi b₀ =>
     .mulF (b + 18) (b + 21),
     .packFK (fun κ => co.take (κ.m - 14) ++ (co.drop 18).take 10),
     .packFK (fun κ => rs.take (κ.m - 14) ++ (rs.drop (κ.m - 14)).take 10),
-    .linkWAll (b + 23) (b + 24), .mulF ks ks] ++
+    .linkWAll (b + 23) (b + 24), .mulF ks ks] : List Op) ++
    linkOps ks b ++
-   [.addF (b + 16) (b + 57), .mulF (b + 59) (fi.zhat.getD 2 0),
-    .assertEq (b + 60) (claimN fi "S2") allK],
+   ([.addF (b + 16) (b + 57), .mulF (b + 59) (fi.zhat.getD 2 0),
+    .assertEq (b + 60) (claimN fi "S2") allK] : List Op),
    [b + 16, b + 57])
 
 /-- **`finLr`** (A.9, revision 3.13; node only): `â_L, b̂_L, ĉ_L` from the Lr-end absorb (A.3 row
@@ -456,7 +457,8 @@ theorem flag_finZ (hin : ∀ x ∈ coordsR fi "Z1" ++ chals fi "Z3" 26 ++
   have h5 := hin cz (.inr (.inl rfl)); have h6 := hin pz (.inr (.inr (.inl rfl)))
   have h7 := hin az (.inr (.inr (.inr rfl)))
   simp only [pureRun, evalOp, tf, taf, List.nil_append, List.cons_append, List.map_append,
-    List.map_cons, List.map_nil, h1, h2, rd_app, rd_app0, rd_app_left _ _ h5, rd_app_left _ _ h6,
+    List.map_cons, List.map_nil, h1, h2, rd_appT, rd_appT0, Array.reduceGetElem?, Option.getD_some,
+    rd_app_left _ _ h5, rd_app_left _ _ h6,
     rd_app_left _ _ h7, List.getD_cons_succ,
     List.getD_cons_zero, Option.map_some, Val.eqv, allK, Bool.not_true, Bool.false_or, Bool.true_and,
     Bool.and_true]
@@ -588,7 +590,8 @@ theorem flag_finLc (hin : ∀ x ∈ (chals fi "Z3" 26).take 8 ++ chals fi "L2" 1
       refine ⟨?run, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
       case run =>
         simp only [lcHead, hk, pureRun, evalOp, tf, taf, List.nil_append, List.cons_append, h1, h2,
-            h2a, hornerOps, rd_app, rd_app0, rd_app_left _ _ ha, rd_app_left _ _ hb,
+            h2a, hornerOps, rd_appT, rd_appT0, Array.reduceGetElem?, Option.getD_some,
+            rd_app_left _ _ ha, rd_app_left _ _ hb,
             rd_app_left _ _ hl, rd_app_left _ _ hc0, rd_app_left _ _ hz, List.range_succ,
             List.range_zero, List.map_cons, List.map_nil, List.map_append,
             List.getD_cons_succ, List.getD_cons_zero,
@@ -636,8 +639,9 @@ theorem flag_finLc (hin : ∀ x ∈ (chals fi "Z3" 26).take 8 ++ chals fi "L2" 1
   obtain ⟨V3, hC⟩ : ∃ V3, pureRun impl κ inp (lcTail fi r.size R2.size) R2 [] =
       some (V3, (Val.f (lcWalk impl κ inp fi r + (lcFree impl κ inp fi r +
         fv r ((outsOf fi "L1").headD 0) * lcFree impl κ inp fi r))).eqv (rd r (claimN fi "L2"))) := by
-    simp only [lcTail, pureRun, evalOp, tf, taf, List.nil_append, List.cons_append, h2b, rd_app,
-      rd_app0, rv 4 (by norm_num), rv 22 (by norm_num), rv 37 (by norm_num), rs, g4, g22, g37,
+    simp only [lcTail, pureRun, evalOp, tf, taf, List.nil_append, List.cons_append, h2b, rd_appT,
+      rd_appT0, Array.reduceGetElem?, Option.getD_some,
+      rv 4 (by norm_num), rv 22 (by norm_num), rv 37 (by norm_num), rs, g4, g22, g37,
       rr _ ha, rr _ hb, rr _ hcN, List.getD_cons_succ, List.getD_cons_zero, Option.map_some,
       allK, Bool.not_true, Bool.false_or, Bool.true_and, Bool.and_true]
     exact ⟨_, rfl⟩
@@ -719,7 +723,8 @@ theorem flag_finSh (hin : ∀ x ∈ coordsR fi "S1" ++ chals fi "S2" 28 ++
     padB, List.map_append, List.map_replicate,
     nLinkFam, linkSum, List.range_succ, List.range_zero, List.flatMap_append, List.flatMap_cons,
     List.flatMap_nil, ↓reduceIte, Nat.reduceEqDiff, Nat.reduceAdd, Nat.reduceMul, Nat.reduceSub,
-    rd_app, rd_app0, rd_app_left _ _ hc0, rd_app_left _ _ hcN,
+    rd_appT, rd_appT0, Array.reduceGetElem?, Option.getD_some,
+    rd_app_left _ _ hc0, rd_app_left _ _ hcN,
     rd_app_left _ _ hzo, rd_app_left _ _ hk,
     List.getD_cons_succ, List.getD_cons_zero,
     Option.map_some, allK, Bool.not_true, Bool.false_or, Bool.true_and, Bool.and_true] <;>
@@ -757,7 +762,8 @@ theorem flag_finLr (hin : ∀ x ∈ (coordsR fi "Lr1").take 15 ++ chals fi "Lr2"
   have hk := hin kl (.inr (.inl rfl)); have hc2 := hin c2 (.inr (.inr rfl))
   cases hn : κ.isNode <;>
   simp only [hn, pureRun, evalOp, tf, taf, List.nil_append, List.cons_append, h1, h2,
-    rd_app, rd_app0, rd_app_left _ _ hk, rd_app_left _ _ hc2,
+    rd_appT, rd_appT0, Array.reduceGetElem?, Option.getD_some,
+    rd_app_left _ _ hk, rd_app_left _ _ hc2,
     List.getD_cons_succ, List.getD_cons_zero,
     Option.map_some, Bool.not_true, Bool.not_false, Bool.false_or, Bool.true_or, Bool.true_and,
     Bool.and_true, ↓reduceIte, Bool.false_eq_true] <;>

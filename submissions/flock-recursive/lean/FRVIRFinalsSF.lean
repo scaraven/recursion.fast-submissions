@@ -264,10 +264,10 @@ def finRS : FinField := fun fi b =>
   let c₀ := b + 7
   let cw := 1 + 128 * elemW
   let d := c₀ + 4 * cw
-  ([.const (fun _ => .f (pinnedRho 0)), .eqZ lam b,
+  (([.const (fun _ => .f (pinnedRho 0)), .eqZ lam b,
     .packF ((chals fi "L2" 14).take 7), .eqTable (b + 2),
     .packFK (fun κ => ((chals fi "S2" 28).drop (κ.m - 14)).take 7), .eqTable (b + 4),
-    .packF (rsFsRegs fi)] ++
+    .packF (rsFsRegs fi)] : List Op) ++
    claimOps 0 (fun i => .getF (b + 1) i) (b + 6) c₀ ++
    claimOps 1 (fun i => .getF (b + 3) i) (b + 6) (c₀ + cw) ++
    claimOps 2 (fun i => .getF (b + 5) i) (b + 6) (c₀ + 2 * cw) ++
@@ -608,7 +608,8 @@ theorem flag_finE (hin : ∀ x ∈ (coordsR fi "E1").take 21 ++ chals fi "E2" 21
   have hrl := hin rl (.inr (.inr (.inr (.inr (.inr (.inr (.inr (.inr rfl))))))))
   cases hn : κ.isNode <;>
   simp only [hn, pureRun, evalOp, tf, taf, List.nil_append, List.cons_append, h1, h2, h3,
-    rd_app, rd_app0, rd_app_left _ _ hk, rd_app_left _ _ hc2, rd_app_left _ _ hc40,
+    rd_appT, rd_appT0, Array.reduceGetElem?, Option.getD_some,
+    rd_app_left _ _ hk, rd_app_left _ _ hc2, rd_app_left _ _ hc40,
     rd_app_left _ _ hc4, rd_app_left _ _ hze, rd_app_left _ _ hkl, rd_app_left _ _ hvl,
     rd_app_left _ _ hrl,
     List.getD_cons_succ, List.getD_cons_zero, allK,
@@ -648,7 +649,8 @@ theorem flag_finB' (hin : ∀ x ∈ [(outsOf fi "B'").headD 0, fi.zhat.getD nRS 
   have hc := hin c0 (.inr (.inr rfl))
   cases hn : κ.isNode <;>
   simp only [hn, pureRun, evalOp, tf, td, tk, List.nil_append, List.cons_append,
-    rd_app, rd_app0, rd_app_left _ _ hk, rd_app_left _ _ hR, rd_app_left _ _ hc,
+    rd_appT, rd_appT0, Array.reduceGetElem?, Option.getD_some,
+    rd_app_left _ _ hk, rd_app_left _ _ hR, rd_app_left _ _ hc,
     List.getD_cons_succ, List.getD_cons_zero, Option.map_some, allK, Bool.not_true, Bool.false_or,
     Bool.true_and, Bool.and_true, ↓reduceIte, Bool.false_eq_true, ite_true, ite_false,
     digestAt_eq] <;>
@@ -681,11 +683,9 @@ theorem noAsk_finRS (fi : FinIn) (b : ℕ) : (finRS fi b).1.filterMap Op.item? =
     List.nil_append]
   rfl
 
-theorem noAsk_finE (fi : FinIn) (b : ℕ) : (finE fi b).1.filterMap Op.item? = [] := by
-  simp [finE, Op.item?]
+theorem noAsk_finE (fi : FinIn) (b : ℕ) : (finE fi b).1.filterMap Op.item? = [] := rfl
 
-theorem noAsk_finB' (fi : FinIn) (b : ℕ) : (finB' fi b).1.filterMap Op.item? = [] := by
-  simp [finB', Op.item?]
+theorem noAsk_finB' (fi : FinIn) (b : ℕ) : (finB' fi b).1.filterMap Op.item? = [] := rfl
 
 /-- **The finals with S-0's and S-F's fields**; S-G's `finP`, `finPf` as arguments. -/
 def sfFinals (p : ℕ → FinField) (pf : FinField) : Finals := s0Finals finRS finE finB' p pf
