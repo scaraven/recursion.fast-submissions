@@ -1,0 +1,383 @@
+-- New for `flock-recursive` (BLUEPRINT A.11, §4.3, stage S-E3; track L-circ).
+import FRVIRTemplates
+import FRVIRTplTab
+import FRVIRTplLag
+
+/-!
+# `compileT`: the compiler with the replay templates, and `compileT_sound`
+
+BLUEPRINT A.11. `tplExt` routes each structured op whose operands have the template's types to its
+template (`tplOf`): the op's result slots are the template's output forms at the instance's cells
+(`outSlots`), and the instance (key, input forms) is recorded; its rows are `Tpl.instRows`.
+**`tplExt_ok`**: the extension is sound for every `impl` whose fields are `implC`'s on the
+templated ops (`ImplT`): an instance's rows give the gate equations (`inst_eqns`), which give the
+op's value (`tplX_ok`). So **`compileT_sound`** (`compileX_sound` at `tplExt`) has as import
+hypotheses only the ops left without a template, plus the auxiliary imports (trace cells, L bits).
+
+**The layout** (A.11's alignment): a first pass (`cb = 0`) counts each key's instances; the groups
+are then laid out after the skeleton's cells and rows, each instance region `2^b` cells and `2^a`
+rows (`Tpl.cbits`, `Tpl.rbits`), aligned (`mkLay`). Soundness does not depend on the layout
+(overlapping regions only constrain more); the counts and the evaluator use it.
+-/
+
+namespace FR
+namespace Circ
+open Tpl RecursionFast
+
+/-! ## The template table -/
+
+/-- **The templates** by key (A.11's table; keys without a template yet have none). -/
+def tplOf : TKey → Tpl
+  | .eqPt n m => tplEqPt n m
+  | .shiftEq n m => tplShiftEq n m
+  | .phiRS n => tplPhiRS n
+  | .zero => tplZero
+  | .targetS n => tplTargetS n
+  | .slotW s n m => tplSlotW s n m
+  | .maskRows n m => tplMaskRows n m
+  | .eqZ => tplEqZ
+  | .lagrangeS n m => tplLagrangeS n m
+  | .eqTableK v => tplEqTableK v
+  | .dotKF n => tplDotKF n
+  | _ => ⟨[], []⟩
+
+/-- **A layout**: per key, the group's row base (relative to the slot), cell base and cell bits. -/
+abbrev TLay := List (TKey × ℕ × ℕ × ℕ)
+
+/-- The cell base of instance `i` of key `k`. -/
+def TLay.cb (L : TLay) (k : TKey) (i : ℕ) : ℕ :=
+  match L.find? (·.1 == k) with
+  | some (_, _, c, b) => c + i * 2 ^ b
+  | none => 0
+
+/-- The context of a layout. -/
+def TLay.ctx (L : TLay) : TCtx := ⟨tplOf, L.cb⟩
+
+/-! ## The extension -/
+
+/-- A slot's components. -/
+def comps : Slot → List Lin
+  | some (_, ls) => ls
+  | none => []
+
+/-- The output slots of an instance: the types `tys`, the template's outputs split by length. -/
+def outSlots (one : Lin) (ins : List Lin) (cb : ℕ) : List Ty → List LinT → List Slot
+  | [], _ => []
+  | t :: ts, os =>
+    some (t, (os.take t.len).map (instLin one ins cb)) :: outSlots one ins cb ts (os.drop t.len)
+
+/-- A template instance's contribution: no rows of its own (they are the instance's). -/
+def tplOut (tc : TCtx) (P : Params) (cs : CS) (k : TKey) (ins : List Lin) (tys : List Ty) : Out :=
+  { slots := outSlots P.one ins (tc.cb k (cs.tcount k)) tys (tc.tpl k).outs, tin := some (k, ins) }
+
+/-- **`tplExt`**: the templated ops, at their operands' types. -/
+def tplExt (tc : TCtx) : Ext := fun P cs op =>
+  match op with
+  | .eqPt a b =>
+    match cs.slot a, cs.slot b with
+    | some (.af n, la), some (.af m, lb) => some (tplOut tc P cs (.eqPt n m) (la ++ lb) [.f])
+    | _, _ => none
+  | .shiftEq a b =>
+    match cs.slot a, cs.slot b with
+    | some (.af n, la), some (.af m, lb) => some (tplOut tc P cs (.shiftEq n m) (la ++ lb) [.f])
+    | _, _ => none
+  | .phiRS r a =>
+    match cs.slot r, cs.slot a with
+    | some (.af n, lr), some (.f, la) => some (tplOut tc P cs (.phiRS n) (lr ++ la) [.f])
+    | _, _ => none
+  | .linkW .. | .kindFoldWeight .. => some (tplOut tc P cs .zero [] [.f])
+  | .targetS r =>
+    match cs.slot r with
+    | some (.af n, lr) => some (tplOut tc P cs (.targetS n) lr [.af 64])
+    | _ => none
+  | .slotW sm t r =>
+    match cs.slot t, cs.slot r with
+    | some (.af n, lt), some (.af m, lr) => some (tplOut tc P cs (.slotW sm n m) (lt ++ lr) [.f])
+    | _, _ => none
+  | .maskRows kw rw =>
+    match cs.slot kw, cs.slot rw with
+    | some (.af n, lk), some (.af m, lr) => some (tplOut tc P cs (.maskRows n m) (lk ++ lr) [.af m])
+    | _, _ => none
+  | .eqZ l r =>
+    match cs.slot l, cs.slot r with
+    | some (.f, ll), some (.f, lr) => some (tplOut tc P cs .eqZ (ll ++ lr) [.af 128])
+    | _, _ => none
+  | .lagrangeS v l pe =>
+    match cs.slot v, cs.slot l, cs.slot pe with
+    | some (.af n, lv), some (.f, ll), some (.af m, lp) =>
+      some (tplOut tc P cs (.lagrangeS n m) (lv ++ ll ++ lp) [.f, .f])
+    | _, _, _ => none
+  | .eqTableK r =>
+    match cs.slot r with
+    | some (.ak n, lr) => some (tplOut tc P cs (.eqTableK n) lr [.ak (2 ^ n)])
+    | _ => none
+  | .dotKF w col =>
+    match cs.slot w with
+    | some (.ak n, lw) =>
+      -- the column's `n` F elements: auxiliary import cells (trace cells), fresh at `cs.next`
+      let cells := (List.range n).map fun b => cs.cell b
+      some { tplOut tc P cs (.dotKF n) (lw ++ cells) [.k] with fresh := n, aux := [(cells, col, .felems n)] }
+    | _ => none
+  | _ => none
+
+/-! ## Soundness -/
+
+/-- **The implementation the templates mirror** (`implC`'s fields on the templated ops). -/
+structure ImplT (impl : OpImpl) : Prop where
+  shiftEq : impl.shiftEq = Impl.shiftEqI
+  phiRS : impl.phiRS = Impl.phiRSI
+  linkW : ∀ κ a f c, impl.linkW κ a f c = 0
+  kfw : ∀ a b c, impl.kindFoldWeight a b c = 0
+  targetS : ∀ κ, impl.targetS κ = Impl.targetSLeafI
+  eqZ : impl.eqZ = Impl.eqZI
+  lagrangeS : impl.lagrangeS = Impl.lagrangeSI
+  slotW : ∀ κ, impl.slotW κ = Impl.slotWI
+
+theorem outSlots_length (one : Lin) (ins : List Lin) (cb : ℕ) :
+    ∀ (tys : List Ty) (os : List LinT), (outSlots one ins cb tys os).length = tys.length
+  | [], _ => rfl
+  | _ :: ts, os => by simp [outSlots, outSlots_length one ins cb ts]
+
+theorem inpIs_of {w : Asg} {one : Lin} {cb : ℕ} {ins : List Lin} {xs : List F}
+    (h : ins.map (Lin.ev w) = xs) : InpIs (envOf w one ins cb) xs := fun i => getD_ev h i
+
+/-- One output: the template's outputs are the value's encoding. -/
+theorem outSlots_one {w : Asg} {one : Lin} {ins : List Lin} {cb : ℕ} {t : Ty} {os : List LinT}
+    {v : Val} (hv : tyOf v = some t) (ho : os.map (LinT.ev (envOf w one ins cb)) = encV v) :
+    List.Forall₂ (RepS w) (outSlots one ins cb [t] os) [v] := by
+  have hl : os.length = t.len := by rw [← encV_length hv, ← ho, List.length_map]
+  simp only [outSlots, List.forall₂_cons, List.Forall₂.nil, and_true, RepS, hv, true_and,
+    List.take_of_length_le hl.le, List.map_map]
+  rw [← ho]; exact List.map_congr_left fun l _ => by simp only [Function.comp_apply, instLin_ev]
+
+/-- Two outputs. -/
+theorem outSlots_two {w : Asg} {one : Lin} {ins : List Lin} {cb : ℕ} {t₁ t₂ : Ty} {os : List LinT}
+    {v₁ v₂ : Val} (hv₁ : tyOf v₁ = some t₁) (hv₂ : tyOf v₂ = some t₂)
+    (ho : os.map (LinT.ev (envOf w one ins cb)) = encV v₁ ++ encV v₂) :
+    List.Forall₂ (RepS w) (outSlots one ins cb [t₁, t₂] os) [v₁, v₂] := by
+  have hl := congrArg List.length ho
+  rw [List.length_map, List.length_append, encV_length hv₁, encV_length hv₂] at hl
+  have h1 : (os.take t₁.len).map (LinT.ev (envOf w one ins cb)) = encV v₁ := by
+    rw [List.map_take, ho, List.take_left' (encV_length hv₁)]
+  have h2 : (os.drop t₁.len).map (LinT.ev (envOf w one ins cb)) = encV v₂ := by
+    rw [List.map_drop, ho, List.drop_left' (encV_length hv₁)]
+  have := outSlots_one (one := one) (ins := ins) (cb := cb) hv₂ h2
+  simp only [outSlots] at this ⊢
+  refine List.Forall₂.cons ⟨hv₁, ?_⟩ this
+  rw [← h1, List.map_map]; exact List.map_congr_left fun l _ => by simp only [Function.comp_apply, instLin_ev]
+
+theorem eqStepL_length (l : List K) : ∀ t : List K, (l.foldl eqStepL t).length = t.length * 2 ^ l.length := by
+  induction l with
+  | nil => simp
+  | cons x l ih => intro t; simp [ih, eqStepL, pow_succ]; ring
+
+theorem eqTab_size (r : Array K) : (eqTab r).size = 2 ^ r.size := by
+  rw [← Array.length_toList, eqTab_toList, eqStepL_length]; simp
+
+/-- An `AK` operand. -/
+theorem rep_ak {w : Asg} {n : ℕ} {ls : List Lin} {v : Val} (h : RepS w (some (.ak n, ls)) v) :
+    ∃ x : Array K, v = .ak x ∧ x.size = n ∧ ls.map (Lin.ev w) = x.toList.flatMap encK := by
+  obtain ⟨h1, h2⟩ := h
+  rcases v with _ | _ | _ | _ | _ | _ | _ | x | _ <;> simp [tyOf] at h1
+  exact ⟨x, rfl, h1, h2⟩
+
+/-- An `AF` operand: its value is an array of that size, its forms evaluate to the elements. -/
+theorem rep_af {w : Asg} {n : ℕ} {ls : List Lin} {v : Val} (h : RepS w (some (.af n, ls)) v) :
+    ∃ x : Array F, v = .af x ∧ x.size = n ∧ ls.map (Lin.ev w) = x.toList := by
+  obtain ⟨h1, h2⟩ := h
+  rcases v with _ | _ | _ | _ | _ | _ | x | _ | _ <;> simp [tyOf] at h1
+  exact ⟨x, rfl, h1, h2⟩
+
+theorem rep_f {w : Asg} {ls : List Lin} {v : Val} (h : RepS w (some (.f, ls)) v) :
+    ∃ x : F, v = .f x ∧ ls.map (Lin.ev w) = [x] := by
+  obtain ⟨h1, h2⟩ := h
+  rcases v with x | _ | _ | _ | _ | _ | _ | _ | _ <;> simp [tyOf] at h1
+  exact ⟨x, rfl, h2⟩
+
+/-- The slot of a register (from the invariant). -/
+theorem rep_slot {w : Asg} {cs : CS} {regs : Array Val} (hI : ∀ i, RepS w (cs.slot i) (rd regs i))
+    {a : ℕ} {s : Slot} (h : cs.slot a = s) : RepS w s (rd regs a) := h ▸ hI a
+
+/-- The instance's gate equations from its rows. -/
+theorem tin_eqns {tc : TCtx} {P : Params} {cs : CS} {w : Asg} (hone : P.one.ev w = 1) {k : TKey}
+    {ins : List Lin} {tys : List Ty}
+    (h : ∀ t ∈ (tplOut tc P cs k ins tys).tin, ∀ r ∈ instRows tc P.one (t.1, cs.tcount t.1, t.2),
+      r.Holds w) :
+    Eqns (envOf w P.one ins (tc.cb k (cs.tcount k))) (tc.tpl k).gates 0 :=
+  inst_eqns hone ins _ (tc.tpl k) fun r hr =>
+    h (k, ins) rfl _ (List.mem_map.2 ⟨r, hr, rfl⟩)
+
+/-- **`tplExt` is sound** (A.11's `tplX_sound` for every templated op). -/
+theorem tplExt_ok {impl : OpImpl} (hT : ImplT impl) (L : TLay) : ExtOk impl L.ctx (tplExt L.ctx) := by
+  intro P cs op o hX
+  cases op <;> simp only [tplExt] at hX
+  case eqPt a b =>
+    split at hX <;> simp only [Option.some.injEq, reduceCtorEq] at hX; subst hX
+    rename_i n la m lb ha hb
+    refine ⟨rfl, fun κ inp w regs hP hI => ⟨fun q => by simp [evalOp], fun _ ht _ vs ok he => ?_⟩⟩
+    simp only [evalOp, Res.vals.injEq] at he; obtain ⟨rfl, rfl⟩ := he
+    refine ⟨fun _ => ?_, fun _ => rfl⟩
+    obtain ⟨x, hx, rfl, hxl⟩ := rep_af (rep_slot hI ha)
+    obtain ⟨y, hy, rfl, hyl⟩ := rep_af (rep_slot hI hb)
+    rw [hx, hy]
+    exact outSlots_one rfl (tplEqPt_ok hP.1 (inpIs_of (by simp [hxl, hyl])) (tin_eqns hP.1 ht))
+  case shiftEq a b =>
+    split at hX <;> simp only [Option.some.injEq, reduceCtorEq] at hX; subst hX
+    rename_i n la m lb ha hb
+    refine ⟨rfl, fun κ inp w regs hP hI => ⟨fun q => by simp [evalOp], fun _ ht _ vs ok he => ?_⟩⟩
+    simp only [evalOp, Res.vals.injEq] at he; obtain ⟨rfl, rfl⟩ := he
+    refine ⟨fun _ => ?_, fun _ => rfl⟩
+    obtain ⟨x, hx, rfl, hxl⟩ := rep_af (rep_slot hI ha)
+    obtain ⟨y, hy, rfl, hyl⟩ := rep_af (rep_slot hI hb)
+    rw [hx, hy, hT.shiftEq]
+    exact outSlots_one rfl (tplShiftEq_ok hP.1 (inpIs_of (by simp [hxl, hyl])) (tin_eqns hP.1 ht))
+  case phiRS r a =>
+    split at hX <;> simp only [Option.some.injEq, reduceCtorEq] at hX; subst hX
+    rename_i n lr la hr ha
+    refine ⟨rfl, fun κ inp w regs hP hI => ⟨fun q => by simp [evalOp], fun _ ht _ vs ok he => ?_⟩⟩
+    simp only [evalOp, Res.vals.injEq] at he; obtain ⟨rfl, rfl⟩ := he
+    refine ⟨fun _ => ?_, fun _ => rfl⟩
+    obtain ⟨x, hx, rfl, hxl⟩ := rep_af (rep_slot hI hr)
+    obtain ⟨y, hy, hyl⟩ := rep_f (rep_slot hI ha)
+    rw [hx, hy, hT.phiRS]
+    exact outSlots_one rfl (tplPhiRS_ok (inpIs_of (by simp [hxl, hyl, Val.toF])) (tin_eqns hP.1 ht))
+  case targetS r =>
+    split at hX <;> simp only [Option.some.injEq, reduceCtorEq] at hX; subst hX
+    rename_i n lr hr
+    refine ⟨rfl, fun κ inp w regs hP hI => ⟨fun q => by simp [evalOp], fun _ ht _ vs ok he => ?_⟩⟩
+    simp only [evalOp, Res.vals.injEq] at he; obtain ⟨rfl, rfl⟩ := he
+    refine ⟨fun _ => ?_, fun _ => rfl⟩
+    obtain ⟨x, hx, rfl, hxl⟩ := rep_af (rep_slot hI hr)
+    rw [hx, hT.targetS]
+    exact outSlots_one (by simp [tyOf, Impl.targetSLeafI])
+      (tplTargetS_ok hP.1 (inpIs_of hxl) (tin_eqns hP.1 ht))
+  case slotW sm t r =>
+    split at hX <;> simp only [Option.some.injEq, reduceCtorEq] at hX; subst hX
+    rename_i n lt m lr ht' hr
+    refine ⟨rfl, fun κ inp w regs hP hI => ⟨fun q => by simp [evalOp], fun _ ht _ vs ok he => ?_⟩⟩
+    simp only [evalOp, Res.vals.injEq] at he; obtain ⟨rfl, rfl⟩ := he
+    refine ⟨fun _ => ?_, fun _ => rfl⟩
+    obtain ⟨x, hx, rfl, hxl⟩ := rep_af (rep_slot hI ht')
+    obtain ⟨y, hy, rfl, hyl⟩ := rep_af (rep_slot hI hr)
+    rw [hx, hy, hT.slotW]
+    exact outSlots_one rfl (tplSlotW_ok hP.1 sm (inpIs_of (by simp [hxl, hyl])) (tin_eqns hP.1 ht))
+  case maskRows kw rw =>
+    split at hX <;> simp only [Option.some.injEq, reduceCtorEq] at hX; subst hX
+    rename_i n lk m lr hk hr
+    refine ⟨rfl, fun κ inp w regs hP hI => ⟨fun q => by simp [evalOp], fun _ ht _ vs ok he => ?_⟩⟩
+    simp only [evalOp, Res.vals.injEq] at he; obtain ⟨rfl, rfl⟩ := he
+    refine ⟨fun _ => ?_, fun _ => rfl⟩
+    obtain ⟨x, hx, rfl, hxl⟩ := rep_af (rep_slot hI hk)
+    obtain ⟨y, hy, rfl, hyl⟩ := rep_af (rep_slot hI hr)
+    rw [hx, hy]
+    exact outSlots_one (by simp [tyOf, maskRows, Val.toAF])
+      (tplMaskRows_ok (inpIs_of (by simp [hxl, hyl])) (tin_eqns hP.1 ht))
+  case eqZ l r =>
+    split at hX <;> simp only [Option.some.injEq, reduceCtorEq] at hX; subst hX
+    rename_i ll lr hl hr
+    refine ⟨rfl, fun κ inp w regs hP hI => ⟨fun q => by simp [evalOp], fun _ ht _ vs ok he => ?_⟩⟩
+    simp only [evalOp, Res.vals.injEq] at he; obtain ⟨rfl, rfl⟩ := he
+    refine ⟨fun _ => ?_, fun _ => rfl⟩
+    obtain ⟨x, hx, hxl⟩ := rep_f (rep_slot hI hl)
+    obtain ⟨y, hy, hyl⟩ := rep_f (rep_slot hI hr)
+    rw [hx, hy, hT.eqZ]
+    exact outSlots_one (by simp [tyOf, eqZI_size])
+      (tplEqZ_ok hP.1 (inpIs_of (by simp [hxl, hyl, Val.toF])) (tin_eqns hP.1 ht))
+  case lagrangeS v l pe =>
+    split at hX <;> simp only [Option.some.injEq, reduceCtorEq] at hX; subst hX
+    rename_i n lv ll m lp hv hl hp
+    refine ⟨rfl, fun κ inp w regs hP hI => ⟨fun q => by simp [evalOp], fun _ ht _ vs ok he => ?_⟩⟩
+    simp only [evalOp, Res.vals.injEq] at he; obtain ⟨rfl, rfl⟩ := he
+    refine ⟨fun _ => ?_, fun _ => rfl⟩
+    obtain ⟨x, hx, rfl, hxl⟩ := rep_af (rep_slot hI hv)
+    obtain ⟨y, hy, hyl⟩ := rep_f (rep_slot hI hl)
+    obtain ⟨z, hz, rfl, hzl⟩ := rep_af (rep_slot hI hp)
+    rw [hx, hy, hz, hT.lagrangeS]
+    exact outSlots_two rfl rfl (tplLagrangeS_ok hP.1
+      (inpIs_of (by simp [hxl, hyl, hzl, Val.toF, Val.toAF])) (tin_eqns hP.1 ht))
+  case eqTableK r =>
+    split at hX <;> simp only [Option.some.injEq, reduceCtorEq] at hX; subst hX
+    rename_i n lr hr
+    refine ⟨rfl, fun κ inp w regs hP hI => ⟨fun q => by simp [evalOp], fun _ ht _ vs ok he => ?_⟩⟩
+    simp only [evalOp, Res.vals.injEq] at he; obtain ⟨rfl, rfl⟩ := he
+    refine ⟨fun _ => ?_, fun _ => rfl⟩
+    obtain ⟨x, hx, rfl, hxl⟩ := rep_ak (rep_slot hI hr)
+    rw [hx]
+    exact outSlots_one (by simp [tyOf, Val.toAK, eqTab_size])
+      (tplEqTableK_ok hP.1 (inpIs_of hxl) (tin_eqns hP.1 ht))
+  case dotKF w col =>
+    split at hX <;> simp only [Option.some.injEq, reduceCtorEq] at hX; subst hX
+    rename_i n lw hw
+    refine ⟨rfl, fun κ inp ww regs hP hI => ⟨fun q => by simp [evalOp], fun _ ht hx vs ok he => ?_⟩⟩
+    simp only [evalOp, Res.vals.injEq] at he; obtain ⟨rfl, rfl⟩ := he
+    refine ⟨fun _ => ?_, fun _ => rfl⟩
+    obtain ⟨x, hx', rfl, hxl⟩ := rep_ak (rep_slot hI hw)
+    have hc := hx _ (List.mem_singleton_self _)
+    simp only [Tpl.AuxK.val] at hc
+    rw [hx']
+    exact outSlots_one rfl (tplDotKF_ok rfl (inpIs_of (by rw [List.map_append, hxl, hc]; rfl))
+      (tin_eqns (tc := L.ctx) (k := .dotKF x.size) (tys := [.k]) hP.1 ht))
+  all_goals first
+    | (simp at hX; done)
+    | skip
+  case linkW t f p =>
+    obtain rfl := Option.some.inj hX
+    refine ⟨rfl, fun κ inp w regs hP hI => ⟨fun q => by simp [evalOp], fun _ _ _ vs ok he => ?_⟩⟩
+    simp only [evalOp, Res.vals.injEq] at he; obtain ⟨rfl, rfl⟩ := he
+    rw [hT.linkW]
+    exact ⟨fun _ => outSlots_one rfl tplZero_ok, fun _ => rfl⟩
+  case kindFoldWeight r b ρ =>
+    obtain rfl := Option.some.inj hX
+    refine ⟨rfl, fun κ inp w regs hP hI => ⟨fun q => by simp [evalOp], fun _ _ _ vs ok he => ?_⟩⟩
+    simp only [evalOp, Res.vals.injEq] at he; obtain ⟨rfl, rfl⟩ := he
+    rw [hT.kfw]
+    exact ⟨fun _ => outSlots_one rfl tplZero_ok, fun _ => rfl⟩
+
+/-! ## `compileT` and `compileT_sound` -/
+
+/-- **`compileT`**: `compile` with the templates at layout `L`. -/
+def compileT (L : TLay) (P : Params) (base : ℕ) (ops : List Op) : CS :=
+  compileX (tplExt L.ctx) P base ops
+
+/-- **`compileT_sound`** (A.11): with `ImplT`, the template instances' rows and the auxiliary
+imports, the import hypotheses left are those of the ops without a template (and the trace / L /
+public imports of the skeleton): the run accepts and every tracked register is represented. -/
+theorem compileT_sound {impl : OpImpl} {κ : Kind} {inp : Input} {ops : List Op} {tr tr' : Trace}
+    {s : St} {w : Asg} {P : Params} (hT : ImplT impl) (L : TLay) (base : ℕ) (hP : SelOk w P κ)
+    (he : exec impl κ inp ops St.init tr = some (s, tr'))
+    (hr : ∀ r ∈ (compileT L P base ops).rows, r.Holds w)
+    (ht : ∀ r ∈ (compileT L P base ops).tplRows L.ctx P.one, r.Holds w)
+    (hx : ∀ a ∈ (compileT L P base ops).aux,
+      a.1.1.map (Lin.ev w) = a.1.2.2.val (rd (s.regs.extract 0 a.2) a.1.2.1))
+    (hi : ∀ i ∈ (compileT L P base ops).imp,
+      RepS w ((compileT L P base ops).slot i) (rd s.regs i))
+    (hf : ∀ p ∈ (compileT L P base ops).fors, flagOf impl κ inp (s.regs.extract 0 p.2) p.1 = true) :
+    s.ok = true ∧ ∀ i, RepS w ((compileT L P base ops).slot i) (rd s.regs i) :=
+  compileX_sound (tplExt_ok hT L) base hP he hr ht hx hi hf
+
+/-! ## The layout -/
+
+/-- Round `x` up to a multiple of `2^b`. -/
+def alignUp (x b : ℕ) : ℕ := (x + 2 ^ b - 1) / 2 ^ b * 2 ^ b
+
+/-- The keys in order of first appearance, with their instance counts. -/
+def keyCounts (tins : List (TKey × ℕ × List Lin)) : List (TKey × ℕ) :=
+  tins.reverse.foldl (fun acc t => if acc.any (·.1 == t.1) then
+    acc.map fun p => if p.1 == t.1 then (p.1, p.2 + 1) else p else acc ++ [(t.1, 1)]) []
+
+/-- **The layout** from the counts: groups after the skeleton's rows `r0` and cells `c0`, each
+aligned to its instance size. -/
+def mkLay (r0 c0 : ℕ) : List (TKey × ℕ) → TLay
+  | [] => []
+  | (k, n) :: ks =>
+    let T := tplOf k
+    let rb := alignUp r0 T.rbits; let cb := alignUp c0 T.cbits
+    (k, rb, cb, T.cbits) :: mkLay (rb + n * 2 ^ T.rbits) (cb + n * 2 ^ T.cbits) ks
+
+/-- **The two-pass compile**: count with the zero layout, lay the groups out, compile again. -/
+def layOf (P : Params) (base : ℕ) (ops : List Op) : TLay :=
+  let cs := compileT [] P base ops
+  mkLay cs.rows.length cs.next (keyCounts cs.tins)
+
+end Circ
+end FR

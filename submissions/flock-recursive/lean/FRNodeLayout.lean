@@ -104,6 +104,72 @@ def chained : List Iv → Bool
   | [a] => decide (a.lo < a.hi)
   | [] => true
 
+/-! ## The WOTS block order (exported for S-G's `nodeKind`, S-G1h) -/
+
+/-- **The kind of WOTS block `off` of a slot** (`off < wotsSlot = 498`), as `wotsIvs` lays them out:
+chain `i`'s step `s` at `3 i + s` (`off < 399`, kind `w43`); the key leaf at `399 … 465`
+(`hashB1` at 399, 65 `stream` blocks at 400–464, `streamEnd41` at 465); path step `t` at
+`466 + 2 t` (`hashB1`) and `467 + 2 t` (`hashB2`). -/
+def wotsKindAt (off : ℕ) : BlockKind :=
+  if off < 399 then .w43
+  else if off = 399 then .hashB1
+  else if off < 465 then .stream
+  else if off = 465 then .streamEnd41
+  else if (off - 466) % 2 = 0 then .hashB1 else .hashB2
+
+/-- The block of chain `i`'s step `s` (`i < 133`, `s < 3`) of slot `σ`. -/
+def wotsStepBlock (σ i s : ℕ) : ℕ := wotsBase + wotsSlot * σ + 3 * i + s
+/-- Block `j` (`j < 67`) of slot `σ`'s key leaf. -/
+def wotsLeafBlock (σ j : ℕ) : ℕ := wotsBase + wotsSlot * σ + 399 + j
+/-- Path step `t`'s block `h` (`t < 16`, `h < 2`: `hashB1`, `hashB2`) of slot `σ`. -/
+def wotsPathBlock (σ t h : ℕ) : ℕ := wotsBase + wotsSlot * σ + 466 + 2 * t + h
+
+theorem ind_of_mem {iv : Iv} (h : iv ∈ nodeLayout) {blk : ℕ} (h1 : iv.lo ≤ blk) (h2 : blk < iv.hi) :
+    Ind iv.kind blk = true := by
+  unfold Ind
+  exact List.any_eq_true.2 ⟨iv, h, by simp [h1, h2]⟩
+
+theorem wotsIvs_mem {σ : ℕ} (hσ : σ < 2) {iv : Iv} (h : iv ∈ wotsIvs σ) : iv ∈ nodeLayout := by
+  unfold nodeLayout
+  rcases (by omega : σ = 0 ∨ σ = 1) with rfl | rfl <;> simp [h]
+
+/-- **The order is `nodeLayout`'s**: WOTS block `off` of slot `σ` has kind `wotsKindAt off`. -/
+theorem ind_wots {σ off : ℕ} (hσ : σ < 2) (ho : off < wotsSlot) :
+    Ind (wotsKindAt off) (wotsBase + wotsSlot * σ + off) = true := by
+  have hw : wotsSlot = 498 := rfl
+  set b := wotsBase + wotsSlot * σ
+  unfold wotsKindAt
+  by_cases h1 : off < 399
+  · simp only [h1, if_true]
+    exact ind_of_mem (iv := ⟨.w43, b, b + 399⟩) (wotsIvs_mem hσ (by simp [wotsIvs, b])) (by simp)
+      (by simp; omega)
+  by_cases h2 : off = 399
+  · subst h2
+    exact ind_of_mem (iv := ⟨.hashB1, b + 399, b + 400⟩) (wotsIvs_mem hσ (by simp [wotsIvs, b]))
+      (by simp) (by simp)
+  by_cases h3 : off < 465
+  · simp only [h1, h2, h3, if_true, if_false]
+    exact ind_of_mem (iv := ⟨.stream, b + 400, b + 465⟩) (wotsIvs_mem hσ (by simp [wotsIvs, b]))
+      (by simp; omega) (by simp; omega)
+  by_cases h4 : off = 465
+  · subst h4
+    exact ind_of_mem (iv := ⟨.streamEnd41, b + 465, b + 466⟩)
+      (wotsIvs_mem hσ (by simp [wotsIvs, b])) (by simp) (by simp)
+  obtain ⟨t, ht, hh⟩ : ∃ t, t < 16 ∧ (off = 466 + 2 * t ∨ off = 467 + 2 * t) := by
+    refine ⟨(off - 466) / 2, by omega, by omega⟩
+  have hmem : ∀ iv ∈ [(⟨.hashB1, b + 466 + 2 * t, b + 467 + 2 * t⟩ : Iv),
+      ⟨.hashB2, b + 467 + 2 * t, b + 468 + 2 * t⟩], iv ∈ nodeLayout := fun iv hiv =>
+    wotsIvs_mem hσ (by
+      simp only [wotsIvs, List.mem_append, List.mem_flatMap, List.mem_range]
+      exact .inr ⟨t, ht, hiv⟩)
+  rcases hh with rfl | rfl
+  · simp only [h1, h2, h3, h4, if_false, show (466 + 2 * t - 466) % 2 = 0 by omega, if_true]
+    exact ind_of_mem (iv := ⟨.hashB1, b + 466 + 2 * t, b + 467 + 2 * t⟩) (hmem _ (by simp))
+      (by simp only; omega) (by simp only; omega)
+  · simp only [h1, h2, h3, h4, if_false, show ¬ (467 + 2 * t - 466) % 2 = 0 by omega]
+    exact ind_of_mem (iv := ⟨.hashB2, b + 467 + 2 * t, b + 468 + 2 * t⟩) (hmem _ (by simp))
+      (by simp only; omega) (by simp only; omega)
+
 /-! ## The checks (B-2's kill test, closed form) -/
 
 theorem nodeLayout_length : nodeLayout.length = 83 := by decide
@@ -121,34 +187,28 @@ theorem regions_fit : hEnd ≤ lBase ∧ lBase + lUsed ≤ mBase ∧ mBase + mBl
   simp only [hEnd, wmBase, wmSlot, wotsBase, wotsSlot, stmtBase, chainN, lBase, lUsed, mBase,
     mBlocks, nM, nodeBlocks]; norm_num
 
-/-! ## The M rows (§4.3's row model, per slot) -/
+/-! ## The M rows (A.11's row model on the measured counts, per slot) -/
 
-/-- §4.3's row count per slot, by category (revision 3.5's table). -/
+/-- **Per slot, A.11's row model** (revision 3.11), with S-E3's measured counts where the rows are
+emitted (`logs/S-E3/tpl.log`): the skeleton (`compileT`'s own rows, 120,597 with S-G's finals),
+the emitted templates in their aligned layout (`rowBase` of the last group plus its instances:
+310,656 − 120,597 = 190,059 rows, padding included), then A.11's estimates for the ops still
+without a template: `tensorW` 37,335, the walks 81,920, `rsWeight` 45,604, `kindInd`/`shiftTarget`/
+`rowW`/`linkW`'s families 20,000 + 16,000 + 628, the child's `evalM`/`evalMK`/`evalL` replay
+464,802. -/
 def mRowModel : List ℕ :=
-  [74521,             -- imports (revision 3.9)
-   54841,             -- folds
-   2 * 2 ^ 7 * 126,   -- final Enc₄
-   4 * 7552,          -- Merkle steps
-   400,               -- Z2 Lagrange
-   15000,             -- eq/tensor
-   4 * 128 * 136,     -- ring switching: Φ on 4 × 128 slice values
-   4032,              -- Z's Lagrange weights
-   4 * 128 * 25,      -- rsWeight
-   2000,              -- sumchecks
-   65536 + 16384 + 16384, -- lincheck replay, per-kind adjustment, the `free` kind's term
-   2 * 74521 + 2 * chainN + 2 ^ 14, -- evalM replay
-   8192,              -- evalL replay
-   2 * 451 + 2 * 871 + 600, -- gated asserts
-   2600,              -- mirror-cell mux
-   266,               -- selector–digit rows
-   8,                 -- gated stmt equalities
-   4]                 -- selector and kind rows
+  [120597,            -- skeleton (measured)
+   190059,            -- emitted templates, aligned (measured)
+   37335,             -- tensorW (A.11)
+   81920,             -- walkA/B (A.11)
+   45604,             -- rsWeight (A.11)
+   20000 + 16000 + 628, -- linkW families, rowW, small ops (A.11)
+   464802]            -- evalM/evalMK/evalL replay (A.11)
 
-theorem mRowModel_sum : mRowModel.sum = 618664 := by decide
+theorem mRowModel_sum : mRowModel.sum = 976945 := by decide
 
-/-- **The M rows fit**: a slot's rows in its `2^20` half of M, the node's in `N_M` (margin
-`2^20 / 618,664 ≈ 1.69`; revision 3.9 with `Φ`; its 1,237,344 per node is 16 above twice the
-listed numbers: F-3″). -/
+/-- **The M rows fit**: a slot's rows in its `2^20` half of M (margin `1.07`), the node's in
+`N_M = 2^21`. -/
 theorem mRows_le : mRowModel.sum ≤ slotM ∧ 2 * mRowModel.sum ≤ nM := by
   rw [mRowModel_sum]; simp only [slotM, nM]; norm_num
 
@@ -158,12 +218,12 @@ theorem usedBlocks_le : hEnd + lUsed + (2 * mRowModel.sum + 127) / 128 ≤ nodeB
 
 /-! ## The slots' compiled programs (the node's M rows) -/
 
-/-- Slot `σ`'s selector cells in L (A.7: after `sig` 299, digits 133, selectors 399, position bits
-7,552). -/
+/-- Slot `σ`'s selector cells in L (A.7, revision 3.11 F-5: after `sig` 299, the digits' 266
+bit-elements, selectors 399, position bits 7,552). -/
 def selCells (σ : ℕ) : FR.Kind → ℕ
-  | .L32 => lBase * 128 + σ * 2 ^ 14 + 8383
-  | .P30 => lBase * 128 + σ * 2 ^ 14 + 8384
-  | .N30 => lBase * 128 + σ * 2 ^ 14 + 8385
+  | .L32 => lBase * 128 + σ * 2 ^ 14 + 8516
+  | .P30 => lBase * 128 + σ * 2 ^ 14 + 8517
+  | .N30 => lBase * 128 + σ * 2 ^ 14 + 8518
 
 /-- Slot `σ`'s first fresh M cell (after the `one` cell). -/
 def slotBase (σ : ℕ) : ℕ := oneCell + 1 + σ * slotM
@@ -178,10 +238,11 @@ def nodeRows (fin : Finals) : List Circ.Row := (slotCS fin 0).rowList ++ (slotCS
 
 /-! ## L's rows (Lr, A.7) -/
 
-/-- Slot `σ`'s declared bit cells in L (A.7: after `sig`'s 299 elements, the digits 133, the step
-selectors 399, the position bits 7,552 and the kind selector 3, each a bit-element). -/
+/-- Slot `σ`'s declared bit cells in L (A.7, revision 3.11 F-5: after `sig`'s 299 elements, the
+digits' 266 bit-elements (two per base-4 digit, the checksum's included), the step selectors 399,
+the position bits 7,552 and the kind selector 3, each a bit-element). -/
 def lBitCells (σ : ℕ) : List ℕ :=
-  (List.range (133 + 399 + 7552 + 3)).map fun j => lBase * 128 + σ * 2 ^ 14 + 299 + j
+  (List.range (266 + 399 + 7552 + 3)).map fun j => lBase * 128 + σ * 2 ^ 14 + 299 + j
 
 /-- **L's rows** (`N_L = 2^15`): `b · (1 − b) = 0` for every declared bit of both slots, with M's
 `one` cell. -/
@@ -189,7 +250,7 @@ def lRows : List Circ.Row :=
   ((List.range 2).flatMap lBitCells).map fun b =>
     ⟨Circ.Lin.cell b, (Circ.Lin.cell oneCell).sub (Circ.Lin.cell b), []⟩
 
-theorem lRows_length : lRows.length = 16174 := by simp [lRows, lBitCells]
+theorem lRows_length : lRows.length = 16440 := by simp [lRows, lBitCells]
 
 /-- **Lr's rows make the declared cells bits.** -/
 theorem lRows_sound {w : Circ.Asg} (hone : w oneCell = 1) (h : ∀ r ∈ lRows, r.Holds w)
@@ -203,12 +264,16 @@ theorem lRows_sound {w : Circ.Asg} (hone : w oneCell = 1) (h : ∀ r ∈ lRows, 
 /-- The selector cells are among L's declared bits. -/
 theorem selCells_mem (σ : ℕ) (hσ : σ < 2) (κ : FR.Kind) :
     selCells σ κ ∈ (List.range 2).flatMap lBitCells := by
-  simp only [List.mem_flatMap, List.mem_range, lBitCells, List.mem_map]
-  refine ⟨σ, hσ, ?_⟩
+  have h : ∀ j, j < 266 + 399 + 7552 + 3 → lBase * 128 + σ * 2 ^ 14 + 299 + j ∈ lBitCells σ :=
+    fun j hj => List.mem_map.2 ⟨j, List.mem_range.2 hj, rfl⟩
+  refine List.mem_flatMap.2 ⟨σ, List.mem_range.2 hσ, ?_⟩
   cases κ
-  · exact ⟨8084, by omega, by simp only [selCells]⟩
-  · exact ⟨8085, by omega, by simp only [selCells]⟩
-  · exact ⟨8086, by omega, by simp only [selCells]⟩
+  · exact (show lBase * 128 + σ * 2 ^ 14 + 299 + 8217 = selCells σ .L32 by
+      show _ = lBase * 128 + σ * 2 ^ 14 + 8516; omega) ▸ h 8217 (by norm_num)
+  · exact (show lBase * 128 + σ * 2 ^ 14 + 299 + 8218 = selCells σ .P30 by
+      show _ = lBase * 128 + σ * 2 ^ 14 + 8517; omega) ▸ h 8218 (by norm_num)
+  · exact (show lBase * 128 + σ * 2 ^ 14 + 299 + 8219 = selCells σ .N30 by
+      show _ = lBase * 128 + σ * 2 ^ 14 + 8518; omega) ▸ h 8219 (by norm_num)
 
 /-! ## Controls -/
 
