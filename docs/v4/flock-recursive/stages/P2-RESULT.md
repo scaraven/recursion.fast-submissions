@@ -1269,3 +1269,170 @@ the blueprint's C′ booked for lever 6 (−0.4 s) and lever 4 (−0.25 s) toget
 - **The runner pool is mixed.** 6 of 14 probes today got EPYC 9V74/9V45 or Xeon 6973P-C, which
   are 20–40 % faster. A stream's `c_P` therefore depends on the draw.
 - **`seq4`** (S-0′, 47c5c6c): not adopted, as ruled. The re-baseline comes with S-F4's dumps.
+
+## 15. Pass 7 (revision 4.1, track P2‴): the segment and aggregate provers on S-F4's programs
+
+Status: 2026-10-28. Brief: re-baseline the segment prover and the aggregate to revision 4.1's verifier
+programs (`seq4`, S-F4's dumps `logs/S-F4/dump/`, SHA256SUMS checked), so that every proof the prover
+makes is accepted by the dumped Lean `acc`. Not in this pass: the N2/N4/N8 node prover. Logs:
+`logs/P2/r41p7/` (VM) and `logs/P2/run-40741779761`, `-40741784807`, `-40741790546` (runners, all
+three EPYC 7763). Probe branches `probe/p2t-7a/7b/7c`, one commit `5380659` on `633ab78` built from a
+temporary index (prover/, `probe/p2t7/run.sh`, `.github/probe.conf`, and S-F4's `ops-L30/31/32.txt` and
+`items.json`); all three deleted after their runs.
+
+### 15.1 What changed
+
+- **`seq4`** (`params.rs`): Lr 17 rounds (Lr1 9 squeezes), E2 23 (E1 12), E4 25. The Lr and E fields
+  are 816 and 2,336 B, `piSize` is 798,192, and there are 8,905 items, 482 of them Fiat–Shamir. A
+  segment sends the new rounds as zero dummies. The kind bytes already matched S-0′'s: L30 = 3.x's
+  `P` = `0x50`, L31 `0x4B`, L32 `0x4C`. `hdr` and `stmt` are unchanged (`pubStart` is positional, as
+  S-0′ I-2 has it).
+- **The masked shift successor** (`leaf.rs`), as in S-F4's `shiftSegI`:
+  - the prover's S2 weight table gets `e2[n] = 0` when `n < 2^(m−14)`, because `eq(τ, L)` cancels
+    `e1[L]` in characteristic two;
+  - the native verifier adds `eq(τ, L)·eq(τ′, L + 1)` to `w_in`.
+- **S-F4 §3.2/§5 is wrong on one point.** It says the prover's messages are unchanged with the zero
+  witness. That holds for the claimed sum, not for the S2 round messages.
+  - After the first fold, the changed entry `e2[n]` meets `inn(n − 1) ≠ 0` in the `X(1 − X)`
+    coefficient.
+  - Negative control `ir::tests::ir_unmasked_shift_rejected`: with 3.x's unmasked table (test hook
+    `leaf::NO_MASK`), the dumped L30 program and the native verifier both reject `n = 777` and both
+    accept the full `n = 2^16`.
+  - So the mask is required on the prover's side too, not only the verifier's.
+- **`ir.rs` interprets the segment ops:**
+  - `targetS` with the 37-entry operand: the leaf target × `range_eq(blk, L + 1)` (`targetSSegI`);
+  - `shiftMask` with operand `τ ‖ L`: `shiftSegI`'s three outputs;
+  - `shiftTarget`'s explicit fourth operand `κ_s`;
+  - `lastAt`. `lastOps` needs no new op.
+
+  Node-form `shiftMask`/`evalL`/`evalM`/`linkWAll` still return recorded zeros.
+- **`V_A`** (`ir::run_agg`). No `V_A` program is dumped, so I rebuilt `FRAgg.VAwith (piSizeOf seq4)`
+  in `ir.rs`:
+  - the shape, `segView` and `aggChecks`, with no query;
+  - then `seqAll` over the dumped segment programs, against `segC = leafStmt hᵢ nᵢ`, on one oracle,
+    stopping at the first rejection.
+
+  `agg::verify` (native) now matches it: it stops at the first rejected segment.
+- **`hdr_A` bytes 2–7.**
+  - HEAD's `VAwith` does not read them (R-4-m5, malleability).
+  - The fix in progress in the working tree (`FRAgg.lean`, not mine, uncommitted) adds the zero
+    check. Both `run_agg` and `agg::verify` follow that fix.
+  - The prover writes zeros, so its proofs pass both forms.
+- **Split** (`agg::split`): the remainder goes to the smallest of `L30` (`≤ 2^16`), `L31` (`≤ 2^17`)
+  or `L32`.
+- **Native `acc`** (`main.rs`) dispatches as `V4with`/`kindOf4`:
+  - `'A'` → `V_A`;
+  - a bare segment byte → reject;
+  - node bytes and `W` → reject, since they are not built natively.
+
+  `Top::Seg` (bare-segment check) and `Top::Lean` (`V_A` over the dumps) serve the measurement modes:
+  - `prove-leaf` prints `lean_seg`: the kind's Lean program on the signed file's trace, consumed
+    exactly;
+  - `prove-agg` prints `lean_acc`: `accWith4` with `V_A` over the dumps, plus its canary;
+  - `acc --lean` and `acc --seg` select them from the CLI.
+- **KAT paths** go to `logs/S-F4/dump` (`FLOCK_IR_DUMP` and `FLOCK_ITEMS_JSON` override them). The
+  3.x INT-5 KAT is retired.
+
+### 15.2 KATs (the new baselines)
+
+**Segments against the dumped Lean programs** (`test-leaf M --n N`, VM, `logs/P2/r41p7/kat.txt`):
+
+| kind | n |
+|---|---|
+| L30 | 1, 12,345, 2^16 |
+| L31 | 1, 2, 70,001, 2^17 |
+| L32 | 1, 2, 2^17 + 1, 3·2^16, 200,001, 2^18 − 1, 2^18 |
+
+- Every proof is accepted by `ops-L{m}.txt` with 8,905 asks, and by the native verifier.
+- The items KAT passes for both the verifier and the prover's Fiat–Shamir items.
+- The canaries are rejected by the Lean program: the flipped statement, and `leafStmt h (n + 1)`.
+- Three flipped π bytes are rejected natively.
+- The linked `prover.s` binary repeats this at L31 99,999 and L30 4,321 (`asm-check.txt`).
+
+**Unit tests** (`cargo test --release`: 35 passed, 1 ignored; `cargo-test.txt`):
+- `ir_kat_l30`: n = 1, 12,345, 2^16, with 3 canaries each. At n = 12,345, 54 single-byte flips are
+  rejected by both Lean and native.
+- `ir_unmasked_shift_rejected`: the (−) control of 15.1.
+- `ir_agg_l30`: `V_A` over the dumped L30 program, on two L30 segments.
+  - Accepted, with 2 × 8,905 asks.
+  - Rejected: the statement of `n + 1` and a flipped segment byte.
+  - Rejected with no query: a broken chaining and a nonzero `hdr_A` byte 2.
+- `split_rule` with the L30 tier, `aggregate_roundtrip`, and `items_seq_kat` / `items_kat_*` at 8,905
+  and 482.
+
+**The aggregate through `rf-oracle`.** Native `acc`, Lean `V_A` and both canaries were run on each
+case below. VM: `local-agg.txt`, `local-agg2.txt`. Runners: 7763 × 3.
+
+| n | segments | where |
+|---|---|---|
+| 2^16 | L30 | VM |
+| 2^18 + 1 | L32 + L30(1) | VM and runners |
+| 331,073 | L32 + L31(68,929) | VM |
+| 3·2^18 + 5 | 3 × L32 + L30(5) | VM |
+| 2^20 | 4 × L32, \|tr\| = 35,620 ≤ qV4 | VM and runners |
+
+- Native `acc` accepts every case, and so does `lean_acc`.
+- Both canaries are rejected in every case.
+
+On the runners: 72 canaries rejected; `lean_seg` accepted 66 of 66; `lean_acc` accepted 6 of 6.
+
+**Not kept: 3.x's L32 dump-exactness.** The sequence constants are compile-time `seq4`, so a 3.x
+mode would need a second item sequence. That is not cheap, so it is dropped. 3.x's π at full length
+differs from 4.1's only by the 14 dummy items (S-0′ I-1).
+
+### 15.3 Timings on the 7763 (item 4; 3 runs × 2 reps, 4 threads, total = prove + trace + SIGN)
+
+`logs/P2/r41p7/fit.py` → `fit.txt`:
+
+| segment | n | s |
+|---|---:|---|
+| L32 | 2^18 / 3·2^16 / 2^17 + 1 / 2^16 / 1 | 5.20–5.36 / 4.47–4.59 / 3.85–3.96 / 3.19–3.33 / 2.49–2.64 |
+| L31 | 2^17 / 2^16 / 1 | 2.58–2.65 / 1.92–1.98 / 1.24–1.34 |
+| L30 | 2^16 / 2^15 / 1 | 1.25–1.31 / 0.94–1.01 / 0.64–0.71 |
+| aggregate | 2^18 + 1 (L32 + L30(1)) | 5.84–5.92 |
+| aggregate | 2^20 (4 × L32) | 20.50–20.70 |
+
+**Fits:**
+- **`L32(n) = 2.57 + 2.68·n/2^18 s`** (pass 6: 2.58 + 2.66);
+- **`L31(n) = 1.29 + 1.33·n/2^17 s`** (pass 6: 1.30 + 1.32);
+- **`L30(n) = 0.67 + 0.60·n/2^16 s`** (new).
+
+`seq4`'s 14 dummy items cost nothing measurable. A remainder of at most `2^16` steps now costs
+0.67–1.27 s in `L30`, against 1.29–1.96 s in `L31`. The saving is about 0.6–0.7 s on those steps.
+
+Peak RSS: 6.19 GB for L32 and the aggregates; 3.32–3.33 GB for L31 and L30, with the 3,200 MiB
+pre-fault.
+
+### 15.4 `prover.s`
+
+- Regenerated with `build-asm.sh logs/P2/r41p7/asm` (`build-asm.log`): **7,007,702 bytes, sha256
+  `7c3b445b38dfef764ec150d288a742a1af985c24d2cf85e7304741a74ae7f2fd`**.
+- **All three runners' `build-asm.sh` reproduced it byte for byte.**
+- The runners' link gives the binary `8c9228cd…1560`, and `SELFTEST` passes (`tier=ymm`, checked pclmul,
+  ymm and ymm-sim).
+- No machine path appears in the `.s`.
+
+### 15.5 Changes (files under `submissions/flock-recursive/prover/`; crate 9,834 `.rs` lines, was 9,563)
+
+| file | change |
+|---|---|
+| `params.rs` | `seq4` counts, `FIELD_SIZES`, `PI_SIZE` 798,192, `N_ITEMS`/`N_FS_ITEMS` |
+| `leaf.rs` | the masked successor (prover table, native `w_in`); test hook `NO_MASK` |
+| `ir.rs` | segment `targetS`/`shiftMask`, `shiftTarget` `κ_s`, `last_at`, `seg_cap`, **`run_agg`** (`V_A`); tests `ir_kat_l30`, `ir_unmasked_shift_rejected`, `ir_agg_l30` (replace `ir_kat_p30`) |
+| `agg.rs` | three-tier split; `seqAll` early stop; `hdr_A` padding as R-4-m5 |
+| `main.rs` | `acc` as `V4with` (`Top`), `lean_seg`/`lean_acc` in `prove-leaf`/`prove-agg`, `acc --lean`/`--seg`, `test-leaf` runs `ops-L{m}` at any `n` |
+| `kat.rs`, `items.rs`, `transcript.rs` | dump path `logs/S-F4/dump`, 8,905 / 482 |
+| `prover.s` | regenerated (15.4) |
+| `probe/p2t7/run.sh` | new: the pass's cases through `p2t-prover/run.sh`, with the dumps and the Lean checks |
+
+### 15.6 For the orchestrator
+
+1. **S-F4 §3.2/§5's "prover messages unchanged" should be corrected** (15.1). The mask is needed in
+   the prover's S2 table as well as in the verifier. Any other prover of a segment (or of a node
+   whose last block masks the successor) must apply it too.
+2. **R-4-m5** (`hdr_A` bytes 2–7): the native and IR `V_A` already check zeros. If the in-progress
+   `FRAgg` fix is not adopted, drop that check in `agg::verify`/`ir::run_agg` to mirror HEAD.
+3. Source rule (`logs/org20/scripts/source-rule.py`): 1 finding, in the untracked
+   `lean/FRSoundness4Agg.lean:194` (`#queries`). That file is another track's in-progress module,
+   not this track's.
+4. Next for P2: the N2/N4/N8 node prover from S-E12′'s node rows and dumps (§13.11 items 3–6).

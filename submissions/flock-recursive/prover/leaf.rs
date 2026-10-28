@@ -48,6 +48,11 @@ impl Times {
     }
 }
 
+thread_local! {
+    /// Test hook (the negative control `ir_unmasked_shift_rejected`): 3.x's unmasked successor table.
+    pub static NO_MASK: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
 /// `hdr = kindByte ‖ m ‖ 0^14 ‖ pub` (§1.1; a leaf's `pub` is its start `s`).
 pub fn header(m: usize, s: &Digest) -> Vec<u8> {
     let mut h = vec![0u8; pp::HDR_LEN];
@@ -389,6 +394,11 @@ pub fn prove_logged(o: &dyn Oracle, circ: &Circuit, vk: &Digest, s: &Digest, m: 
     let mut e2 = vec![F::ZERO; e1.len()];
     e2[0] = kap_s;
     e2[1..].copy_from_slice(&e1[..e1.len() - 1]);
+    // revision 4.1 (S-F4, `shiftSegI`): the successor masked at the last block `L = n − 1`,
+    // `[y′ = y + 1 ∧ y ≠ L]`: the weight `eq(τ, L)` at `y′ = n` cancels (characteristic two)
+    if (n as usize) < e2.len() && !NO_MASK.with(|x| x.get()) {
+        e2[n as usize] = F::ZERO;
+    }
     wr.fs.phase = "S2";
     let (taup, fin) = prove_pairs(vec![(e1, out), (e2, inn)], &mut |g| {
         wr.send_f(pp::F_S2, &coeffs_f(g));
@@ -692,7 +702,10 @@ pub fn verify_logged(o: &dyn Oracle, circ: &Circuit, vk: &Digest, c: &Digest, pi
     let ep = eq_table(tpp);
     let zeros = vec![F::ZERO; m - 14];
     let w_out = eq_f(tau, taup) * dot(&wo, &ep);
-    let w_in = (shift_mle(tau, taup, F::ONE) + kap_s * eq_f(&zeros, taup)) * dot(&wi, &ep);
+    // the successor masked at `L = n − 1` (S-F4 `shiftSegI`: `+ eq(τ, L)·eq(τ′, L + 1)` when `L + 1`
+    // is a block of the segment)
+    let mask = if n < pp::leaf_n(m) { eq_at_int(tau, n - 1) * eq_at_int(taup, n) } else { F::ZERO };
+    let w_in = (shift_mle(tau, taup, F::ONE) + mask + kap_s * eq_f(&zeros, taup)) * dot(&wi, &ep);
     rd.check(c_s == (w_out + w_in) * ash);
 
     // ---- P (finB′: Ligerito's first claim is v_RS; finP, finPf inside; Ŵ by rsWeight, 3 points)

@@ -212,3 +212,46 @@
   L32 2^18 5.52–5.60 → 5.17–5.36 s; 2^20 aggregate 21.80–21.93 → 20.53–20.62 s.
   Fits (pooled): `L32(n) = 2.58 + 2.66·n/2^18` (was 2.73 + 2.81), `L31(n) = 1.30 + 1.32·n/2^17` (was
   1.38 + 1.40). `prover.s` sha256 `d25ca624…e552`. All `probe/p2t-*` branches deleted.
+
+## Pass 7 (track P2‴, revision 4.1: re-baseline to S-F4's dumps), 2026-10-28
+
+- Read S-0′ §6 and S-F4 §3.2/§5. `params.rs` to `seq4`: Lr 17 (Lr1 9), E2 23 (E1 12), E4 25;
+  fields Lr 816, E 2,336; piSize 798,192; 8,905 items (482 Fiat–Shamir). The kind bytes already
+  matched (L30 = 3.x's `P` = 0x50, L31 0x4B, L32 0x4C).
+- **The mask changes the prover's messages.** S-F4 §3.2/§5 say "with the zero witness the prover's
+  messages are the same either way". That holds for the claimed sum only. The S2 round polynomials
+  pair `e2` with the folded `inn`; changing `e2` at the Boolean point `n` changes the `X(1−X)`
+  coefficient through `inn(n − 1)` (nonzero) after the first fold. So `leaf.rs` masks the table:
+  `e2[n] = 0` when `n < 2^(m−14)` (`eq(τ, L)` cancels `e1[L]` in characteristic two); the native
+  verifier adds `eq(τ, L)·eq(τ′, L + 1)`. Negative control `ir_unmasked_shift_rejected`: with the
+  unmasked table (test hook `leaf::NO_MASK`), n = 777 is rejected by the dumped L30 program and the
+  native verifier; n = 2^16 (full) is accepted.
+- `ir.rs`: `targetS` with the 37-entry operand (leaf target × `range_eq(blk, L + 1)`), `shiftMask`
+  as `shiftSegI` when its operand is `τ ‖ L` (36), `shiftTarget`'s explicit `κ_s` (4th operand;
+  3.x's dumps found it from τ's pack), `lastAt`. `lastOps` needs nothing new.
+- First run: `test-leaf 30 --n 1`: the dumped L30 program accepts, 8,905 asks, canary rejected.
+- KATs (VM, portable, `logs/P2/r41p7/kat.txt`): L30 n = 1, 12,345, 2^16; L31 n = 1, 2, 70,001, 2^17;
+  L32 n = 1, 2, 2^17 + 1, 3·2^16, 200,001, 2^18 − 1, 2^18: all accepted by the dumped program of the
+  kind and by the native verifier; items KAT pass; canaries (flipped statement; `leafStmt h (n+1)`)
+  rejected; three flipped bytes rejected natively.
+- `ir::run_agg`: `V_A` reconstructed from `FRAgg.VAwith` (no `V_A` dump exists): shape, `segView`,
+  `aggChecks`, then `seqAll` over the dumped segment programs (stops at the first rejection).
+  Native `agg::verify` aligned to it: no check of `hdr_A` bytes 2–7 (Lean reads `k`, `n`, `e`
+  only), stops at the first rejected segment. Split: remainder to L30/L31/L32.
+- Native `acc` now dispatches as `V4with`: `'A'` → `V_A`; a bare segment → reject; node/W → reject
+  (not built). `prove-leaf` checks with `Top::Seg` and runs the Lean segment program on the file's
+  trace (`lean_seg`); `prove-agg` runs `Top::Lean` (`lean_acc`).
+- `cargo test --release`: 35 passed, 1 ignored (`logs/P2/r41p7/cargo-test.txt`).
+- Local rf-oracle (`logs/P2/r41p7/local-agg.txt`): agg 2^18 + 1 (L32 + L30(1)), 331,073 (L32 +
+  L31(68,929)), 2^16 (L30) and `prove-leaf 31 --n 70001`: native acc and Lean acc accept, canary
+  rejected, trace KAT pass.
+- HEAD moved to 633ab78 (R-4 review) mid-pass. R-4-m5 (`hdr_A` bytes 2–7) is being fixed in the
+  working tree's `FRAgg.lean` (another track). Native/IR `V_A` keep the zero check; the prover's
+  proofs pass either form. `ir_agg_l30` gains the padding rejection.
+- Local rf-oracle (`local-agg2.txt`): agg 2^20 (4 × L32, |tr| 35,620) and 3·2^18 + 5 (3 × L32 +
+  L30(5)): acc and Lean acc accept, canary rejected.
+- `prover.s` regenerated: sha256 `7c3b445b…f2fd` (7,007,702 B).
+- Probes p2t-7a/7b/7c (commit 5380659 on 633ab78, temporary index; runs 40741779761, 40741784807,
+  40741790546, all EPYC 7763): every runner rebuilt `prover.s` 7c3b445b… byte for byte; SELFTEST
+  ymm. 72 canaries rejected, lean_seg 66/66 and lean_acc 6/6 accepted. Fits: L32 2.57 + 2.68·x,
+  L31 1.29 + 1.33·x, L30 0.67 + 0.60·x (`fit.txt`). Branches deleted.

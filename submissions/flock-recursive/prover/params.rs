@@ -125,10 +125,11 @@ pub const F_SIBS: usize = 17;
 pub const N_FIELDS: usize = 18;
 /// A.3's sizes (`FRFormat.fieldSizes_eq`; `logs/S-0/dump/summary.txt`).
 pub const FIELD_SIZES: [usize; N_FIELDS] =
-    [48, 128, 2048, 1248, 32, 800, 1344, 720, 48, 2144, 48, 8192, 2112, 672, 45056, 4096, 487504, 241664];
-/// `piSize = 797,904` (rev. 3.13 as INT-2's Lean has it: E4 end absorbs `f̂(r′) ‖ 0^16`), the same
-/// for every SNARK kind.
-pub const PI_SIZE: usize = 797904;
+    [48, 128, 2048, 1248, 32, 800, 1344, 816, 48, 2336, 48, 8192, 2112, 672, 45056, 4096, 487504, 241664];
+/// `piSize = 798,192` (revision 4.1, `FRShape4.piSizeOf_seq4`; `logs/S-F4/dump/summary.txt`): 3.x's
+/// 797,904 plus Lr's 2 and E's 4 extra rounds (96 + 192 B, the `m = 32` node's phases), the same for
+/// every SNARK kind.
+pub const PI_SIZE: usize = 798192;
 
 /// The offset of field `f` in `π`.
 pub const fn field_off(f: usize) -> usize {
@@ -153,15 +154,17 @@ pub const S2_ROUNDS: usize = 28;
 pub const S1_THETA: usize = 18;
 pub const THETA_LEN: usize = 10;
 pub const S1_KAPPA: usize = 28;
-pub const LR1_SQ: usize = 8;
-pub const LR_ROUNDS: usize = 15;
+/// Revision 4.1 (`seq4`): Lr 17 rounds (Lr1 9 squeezes), E2 23 (E1 12), E4 25; 3.x had 15 (8), 21 (11),
+/// 23. A segment sends them all as zero dummies.
+pub const LR1_SQ: usize = 9;
+pub const LR_ROUNDS: usize = 17;
 /// `J_z = 4` (rev. 3.8: Z's quirky claim, Lc's, Sh's one claim, Lr's; a leaf's fourth is zero).
 pub const RS_CLAIMS: usize = 4;
 pub const RS1_SQ: usize = 4;
-pub const E1_SQ: usize = 11;
-pub const E2_ROUNDS: usize = 21;
-/// E4: the E lincheck (rev. 3.12/3.13), 23 degree-2 rounds; E4 end absorbs `f̂(r′) ‖ 0^16`.
-pub const E4_ROUNDS: usize = 23;
+pub const E1_SQ: usize = 12;
+pub const E2_ROUNDS: usize = 23;
+/// E4: the E lincheck (rev. 3.12/3.13), 25 degree-2 rounds at `seq4`; E4 end absorbs `f̂(r′) ‖ 0^16`.
+pub const E4_ROUNDS: usize = 25;
 pub const E4END_LEN: usize = 32;
 /// Column items are padded to a multiple of 64 B in the stream (rev. 3.12): 48 zero bytes after the
 /// column's F elements (query 8 + 16·rows + 48).
@@ -201,12 +204,15 @@ pub const TAG_MCOL: &[u8; 6] = b"FRMCOL";
 
 pub const KIND_LEAF: u8 = 0x4C;
 pub const KIND_L31: u8 = 0x4B;
+/// `L30` (`FRShape4.SegKind.byte`; 3.x's `P30` byte).
 pub const KIND_P30: u8 = 0x50;
+/// The item count of `seq4` (`itemsOf_seq4_length`) and its Fiat–Shamir items.
+pub const N_ITEMS: usize = 8905;
+pub const N_FS_ITEMS: usize = 482;
 pub const KIND_NODE: u8 = 0x4E;
 pub const HDR_LEN: usize = 48;
 
-/// `qV`: 36,000 in revision 4.0 (B-17; the aggregate verifier asks `≤ 4 × 8,891`). `FRVerifier.qV`
-/// is still 10,240 at INT-6; S-0′ moves it.
+/// `qV4 = 36,000` (`FRShape4.qV4`; the aggregate verifier asks `≤ 4 × 8,905`).
 pub const QV: usize = 36000;
 
 /// The leaf shapes: `m ∈ {30, 32}` (B-1); test shapes `m ≥ 25` use the same code.

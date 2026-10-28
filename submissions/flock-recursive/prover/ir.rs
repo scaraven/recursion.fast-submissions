@@ -309,7 +309,17 @@ pub fn run(text: &str, circ: &crate::circuit::Circuit, o: &dyn Oracle, vk: &Dige
                 let (a, b) = lagrange_s(r_full, g(2).f(), pe);
                 vec![V::F(a), V::F(b)]
             }
-            "targetS" => vec![V::AF(target_s_leaf(g(1).af()))],
+            // a segment's (revision 4.1, S-F4 `targetSSegI`): the operand is `r₀ ‖ blk(18) ‖ L(18)`,
+            // the leaf target times `Σ_{t ≤ L} eq(blk, t)`; 3.x's leaf: the operand is Z1's point
+            "targetS" => {
+                let x = g(1).af();
+                let mut v = target_s_leaf(x);
+                if x.len() == 37 {
+                    let g = crate::mle::range_eq(&x[1..19], last_at(x, 19) + 1);
+                    v.iter_mut().for_each(|e| *e *= g);
+                }
+                vec![V::AF(v)]
+            }
             "eqZ" => {
                 let (l, rho) = (g(1).f(), g(2).f());
                 let w = crate::skipdom::lagrange_weights(&sk.s_pts, l);
@@ -375,8 +385,12 @@ pub fn run(text: &str, circ: &crate::circuit::Circuit, o: &dyn Oracle, vk: &Dige
                 vec![V::F(acc)]
             }
             "shiftTarget" => {
-                let tau_src = src.get(&reg(t[1])).expect("τ is a pack");
-                let kap_s = regs[tau_src[0] + 42].f();
+                // revision 4.1 dumps carry `κ_s` as a fourth operand; 3.x's are found from `τ`'s pack
+                let kap_s = if t.len() > 4 {
+                    g(4).f()
+                } else {
+                    regs[src.get(&reg(t[1])).expect("τ is a pack")[0] + 42].f()
+                };
                 let (tau, theta, bnd) = (g(1).af(), g(2).af(), g(3).af());
                 let et = eq_table(&pad(theta, 10));
                 let dig = |e0: F, e1: F| -> F {
@@ -408,9 +422,21 @@ pub fn run(text: &str, circ: &crate::circuit::Circuit, o: &dyn Oracle, vk: &Dige
                 out.node_matrices_used = true;
                 vec![V::AF(vec![F::ZERO; 8])]
             }
+            // a segment's (revision 4.1, S-F4 `shiftSegI`): operand `τ(18) ‖ L(18)`, `r` the block
+            // point; `(eq(τ, r), shift(τ, r) + [L + 1 < 2^18] eq(τ, L)·eq(r, L + 1), eq(r, 0))`.
+            // A node's (another operand length) is not implemented here: zeros, recorded.
             "shiftMask" => {
-                out.node_matrices_used = true;
-                vec![V::F(F::ZERO), V::F(F::ZERO), V::F(F::ZERO)]
+                let tl = g(1).af();
+                if tl.len() == 36 {
+                    let tau = pad(&tl[..18], 18);
+                    let rho = pad(&g(2).af()[..g(2).af().len().min(18)], 18);
+                    let l = last_at(tl, 18);
+                    let mask = if l + 1 < 1 << 18 { crate::mle::eq_at_int(&tau, l) * crate::mle::eq_at_int(&rho, l + 1) } else { F::ZERO };
+                    vec![V::F(eq_point(&tau, &rho)), V::F(crate::mle::shift_mle(&tau, &rho, F::ONE) + mask), V::F(crate::mle::eq_at_int(&rho, 0))]
+                } else {
+                    out.node_matrices_used = true;
+                    vec![V::F(F::ZERO), V::F(F::ZERO), V::F(F::ZERO)]
+                }
             }
             "evalL" | "evalM" => {
                 out.node_matrices_used = true;
@@ -460,6 +486,69 @@ pub fn run(text: &str, circ: &crate::circuit::Circuit, o: &dyn Oracle, vk: &Dige
     }
     out.regs_out = regs.len();
     out
+}
+
+/// A segment kind's capacity `2^(m − 14)` from its byte (`FRShape4.SegKind.ofByte?`, `cap`).
+pub fn seg_cap(b: u8) -> Option<u64> {
+    match b {
+        0x50 => Some(1 << 16),
+        0x4B => Some(1 << 17),
+        0x4C => Some(1 << 18),
+        _ => None,
+    }
+}
+
+/// **`V_A`**, reconstructed from `FRAgg.VAwith (piSizeOf seq4)` (no `V_A` program is dumped: `A` has
+/// no SNARK of its own). `prog b` is the dumped segment program of kind byte `b` (`ops-L30/31/32`).
+/// The shape and `aggChecks` (on the views `FRSegment.segView`) are checked first, with no query;
+/// then `seqAll`: the segment programs in order on the one oracle, each against `segC = leafStmt hᵢ
+/// nᵢ`, stopping at the first rejection. The header's bytes 2–7 must be zero (R-4-m5's parse; HEAD's
+/// `VAwith` does not read them, and the prover writes zeros).
+pub fn run_agg(prog: &dyn Fn(u8) -> Option<String>, circ: &crate::circuit::Circuit, o: &dyn Oracle, vk: &Digest, c: &Digest, pi: &[u8]) -> Run {
+    let seg = crate::params::PI_SIZE;
+    let no = Run::default();
+    let k = pi.get(1).copied().unwrap_or(0) as usize;
+    if pi.len() != 48 + k * seg || pi[0] != 0x41 || pi[2..8].iter().any(|&x| x != 0) {
+        return no;
+    }
+    let le = |b: &[u8]| u64::from_le_bytes(b[..8].try_into().unwrap());
+    // the views: (kind byte, start, end, n)
+    let mut vs = Vec::with_capacity(k);
+    for i in 0..k {
+        let p = &pi[48 + i * seg..48 + (i + 1) * seg];
+        let Some(cap) = seg_cap(p[0]) else { return no };
+        let (st, h): (Digest, Digest) = (p[16..48].try_into().unwrap(), p[49..81].try_into().unwrap());
+        vs.push((p[0], cap, st, h, le(&p[81..89])));
+    }
+    let (n, e): (u64, Digest) = (le(&pi[8..16]), pi[16..48].try_into().unwrap());
+    let checks = *c == crate::blake2s::leaf_stmt(&e, n)
+        && (1..=4).contains(&k)
+        && vs.iter().all(|v| 1 <= v.4 && v.4 <= v.1)
+        && vs.iter().map(|v| v.4 as u128).sum::<u128>() == n as u128
+        && vs.last().map(|v| v.3) == Some(e)
+        && vs.windows(2).all(|w| w[1].2 == w[0].3);
+    if !checks {
+        return no;
+    }
+    let mut out = Run { ok: true, ..Default::default() };
+    for (i, v) in vs.iter().enumerate() {
+        let Some(text) = prog(v.0) else { return Run { ok: false, ..out } };
+        let ci = crate::blake2s::leaf_stmt(&v.3, v.4);
+        let r = run(&text, circ, o, vk, &ci, &pi[48 + i * seg..48 + (i + 1) * seg]);
+        out.asks += r.asks;
+        out.node_matrices_used |= r.node_matrices_used;
+        if !r.ok {
+            out.ok = false;
+            out.failed = r.failed.iter().map(|l| l + 1_000_000 * i).collect();
+            break;
+        }
+    }
+    out
+}
+
+/// `lastAt a o` (S-F4): the number whose bit `l < 18` is set iff entry `o + l` of `a` is `1`.
+fn last_at(a: &[F], o: usize) -> u64 {
+    (0..18).filter(|&l| a.get(o + l).is_some_and(|x| *x == F::ONE)).map(|l| 1u64 << l).sum()
 }
 
 fn pad(a: &[F], n: usize) -> Vec<F> {
@@ -537,35 +626,115 @@ mod tests {
     use super::*;
     use crate::params::{field_off, FIELD_SIZES, N_FIELDS};
 
-    /// The dumped Lean program of the `P30` leaf (all finals, S-G dump) accepts a native m = 30
-    /// proof, rejects the canary, and agrees with the native verifier on a flipped byte in every
-    /// field of `π` (both reject).
+    fn dump(name: &str) -> Option<String> {
+        let d = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../logs/S-F4/dump").join(name);
+        std::fs::read_to_string(&d).ok()
+    }
+
+    /// The dumped Lean program of `L30` (S-F4, revision 4.1, all finals) accepts native m = 30 segment
+    /// proofs at `n = 1`, an odd `n` and the full `2^16`, rejects the canaries (the statement of
+    /// `n ± 1`, a flipped end), and agrees with the native verifier on a flipped byte in every field
+    /// of `π` (both reject).
     #[test]
-    fn ir_kat_p30() {
-        let d = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../logs/INT-5/dump/ops-P.txt");
-        let Ok(text) = std::fs::read_to_string(&d) else {
-            eprintln!("ir_kat_p30: SKIP (logs/INT-5/dump/ops-P.txt absent)");
+    fn ir_kat_l30() {
+        let Some(text) = dump("ops-L30.txt") else {
+            eprintln!("ir_kat_l30: SKIP (logs/S-F4/dump/ops-L30.txt absent)");
             return;
         };
         let circ = crate::circuit::Circuit::build();
         let o = crate::oracle::Local::keyed(&[8u8; 32]);
         let (vk, s, m) = ([3u8; 32], [4u8; 32], 30usize);
-        let (pi, _) = crate::leaf::prove(&o, &circ, &vk, &s, m);
-        let c = crate::leaf::leaf_c(&s, m);
-        let r = run(&text, &circ, &o, &vk, &c, &pi);
-        assert!(r.ok, "failed lines {:?}", r.failed);
-        assert_eq!(r.asks, 8891);
-        let mut c2 = c;
-        c2[5] ^= 1;
-        assert!(!run(&text, &circ, &o, &vk, &c2, &pi).ok);
-        for f in 0..N_FIELDS {
-            for at in [0usize, FIELD_SIZES[f] / 2, FIELD_SIZES[f] - 1] {
-                let mut p2 = pi.clone();
-                p2[field_off(f) + at] ^= 0x10;
-                let native = crate::leaf::verify(&o, &circ, &vk, &c, &p2);
-                let lean = run(&text, &circ, &o, &vk, &c, &p2).ok;
-                assert_eq!((native, lean), (false, false), "field {f} byte {at}");
+        for n in [1u64, 12_345, 1 << 16] {
+            let (pi, _) = crate::leaf::prove_seg(&o, &circ, &vk, &s, m, n);
+            let c = crate::leaf::seg_c(&s, n);
+            let r = run(&text, &circ, &o, &vk, &c, &pi);
+            assert!(r.ok, "n {n}: failed lines {:?}", r.failed);
+            assert_eq!(r.asks, crate::params::N_ITEMS);
+            let h = crate::blake2s::chain_end(&s, n);
+            let mut bad = vec![crate::blake2s::leaf_stmt(&h, n + 1), crate::blake2s::leaf_stmt(&h, n - 1)];
+            let mut h2 = h;
+            h2[0] ^= 1;
+            bad.push(crate::blake2s::leaf_stmt(&h2, n));
+            for c2 in bad {
+                assert!(!run(&text, &circ, &o, &vk, &c2, &pi).ok, "n {n}: canary accepted");
+            }
+            if n != 12_345 {
+                continue;
+            }
+            for f in 0..N_FIELDS {
+                for at in [0usize, FIELD_SIZES[f] / 2, FIELD_SIZES[f] - 1] {
+                    let mut p2 = pi.clone();
+                    p2[field_off(f) + at] ^= 0x10;
+                    let native = crate::leaf::verify(&o, &circ, &vk, &c, &p2);
+                    let lean = run(&text, &circ, &o, &vk, &c, &p2).ok;
+                    assert_eq!((native, lean), (false, false), "field {f} byte {at}");
+                }
             }
         }
+    }
+
+    /// (−) **The mask is needed** (S-F4 `shift_unmasked_link`): with 3.x's unmasked successor table
+    /// at the last block, a segment of `n < 2^(m−14)` steps is rejected by the dumped program (and by
+    /// the native verifier), although the witness past `n` is zero; at the full length it is accepted.
+    #[test]
+    fn ir_unmasked_shift_rejected() {
+        let Some(text) = dump("ops-L30.txt") else {
+            eprintln!("ir_unmasked_shift_rejected: SKIP");
+            return;
+        };
+        let circ = crate::circuit::Circuit::build();
+        let o = crate::oracle::Local::keyed(&[10u8; 32]);
+        let (vk, s, m) = ([3u8; 32], [6u8; 32], 30usize);
+        crate::leaf::NO_MASK.with(|x| x.set(true));
+        let runs: Vec<(u64, bool, bool)> = [777u64, 1 << 16]
+            .iter()
+            .map(|&n| {
+                let (pi, _) = crate::leaf::prove_seg(&o, &circ, &vk, &s, m, n);
+                let c = crate::leaf::seg_c(&s, n);
+                (n, run(&text, &circ, &o, &vk, &c, &pi).ok, crate::leaf::verify(&o, &circ, &vk, &c, &pi))
+            })
+            .collect();
+        crate::leaf::NO_MASK.with(|x| x.set(false));
+        assert_eq!(runs, vec![(777, false, false), (1 << 16, true, true)]);
+    }
+
+    /// `V_A` reconstructed (`run_agg`) on the dumped `L30` program: an aggregate of two `L30`
+    /// segments (`2^16`, then 3 steps) is accepted with `2 × 8,905` asks; the statement of `n + 1` and
+    /// a flipped segment byte are rejected; a broken chaining and a nonzero `hdr_A` byte 2 are rejected
+    /// with no query.
+    #[test]
+    fn ir_agg_l30() {
+        let Some(text) = dump("ops-L30.txt") else {
+            eprintln!("ir_agg_l30: SKIP (logs/S-F4/dump/ops-L30.txt absent)");
+            return;
+        };
+        let prog = |b: u8| if b == 0x50 { Some(text.clone()) } else { None };
+        let circ = crate::circuit::Circuit::build();
+        let o = crate::oracle::Local::keyed(&[9u8; 32]);
+        let (vk, s) = ([3u8; 32], [5u8; 32]);
+        // two L30 segments (the aggregate's split at m* = 30: full 2^16, then 3)
+        let n = (1u64 << 16) + 3;
+        let (pi, _) = crate::agg::prove(&o, &circ, &vk, &s, n, 30);
+        let e = crate::blake2s::chain_end(&s, n);
+        let c = crate::blake2s::leaf_stmt(&e, n);
+        assert_eq!(pi[1], 2);
+        let r = run_agg(&prog, &circ, &o, &vk, &c, &pi);
+        assert!(r.ok && r.asks == 2 * crate::params::N_ITEMS, "{r:?}");
+        assert!(crate::agg::verify(&o, &circ, &vk, &c, &pi));
+        // rejections: the statement, n + 1, a segment byte, the chaining
+        let c2 = crate::blake2s::leaf_stmt(&e, n + 1);
+        assert!(!run_agg(&prog, &circ, &o, &vk, &c2, &pi).ok);
+        let mut p2 = pi.clone();
+        p2[48 + crate::params::PI_SIZE / 2] ^= 8;
+        assert!(!run_agg(&prog, &circ, &o, &vk, &c, &p2).ok);
+        let mut p3 = pi.clone();
+        p3[48 + crate::params::PI_SIZE + 20] ^= 1;
+        let r3 = run_agg(&prog, &circ, &o, &vk, &c, &p3);
+        assert!(!r3.ok && r3.asks == 0);
+        // R-4-m5: a nonzero `hdr_A` byte 2 is rejected with no query (natively too)
+        let mut p5 = pi.clone();
+        p5[2] = 1;
+        let r5 = run_agg(&prog, &circ, &o, &vk, &c, &p5);
+        assert!(!r5.ok && r5.asks == 0 && !crate::agg::verify(&o, &circ, &vk, &c, &p5));
     }
 }

@@ -76,9 +76,27 @@ fn peak_rss_mb() -> f64 {
     0.0
 }
 
-/// The native `acc vk c p` (FORMAT.md): `|π| < 2^64` (no `proofCap` since core PR #20), `|tr| ≤ qV`,
-/// `queryCap`, the signature on the trace digest, and `V` run against the trace (`runSeq`).
+/// Which verifier `acc` runs on the proof.
+#[derive(Clone, Copy, PartialEq)]
+pub enum Top {
+    /// `V4with` (`FRVerifier4.kindOf4`): `'A'` → `V_A`; a bare segment byte → reject; a node byte →
+    /// the node verifier (not built natively: reject); anything else → `W` (not built: reject).
+    V4,
+    /// A bare segment proof against its own kind's verifier (the measurement modes' check; not the
+    /// relation's `acc`, which rejects a bare segment).
+    Seg,
+    /// `V4with` with `V_A` over the dumped Lean segment programs (`ir::run_agg`) in `dir`.
+    Lean(&'static std::path::Path),
+}
+
+/// The native `acc vk c p` (FORMAT.md, `FRVerifier4.accWith4`): `|π| < 2^64`, `|tr| ≤ qV4`,
+/// `queryCap`, the signature on the trace digest, and `V` run against the trace (`runSeq`: the trace
+/// consumed exactly).
 pub fn acc(circ: &circuit::Circuit, vk: &Digest, c: &Digest, file: &[u8]) -> Result<(), String> {
+    acc_with(Top::V4, circ, vk, c, file)
+}
+
+pub fn acc_with(top: Top, circ: &circuit::Circuit, vk: &Digest, c: &Digest, file: &[u8]) -> Result<(), String> {
     let p = format::from_file(file).ok_or("not a signed-proof file")?;
     if u64::try_from(p.pi.len()).is_err() {
         return Err(format!("|π| = {} is not below 2^64", p.pi.len()));
@@ -93,14 +111,39 @@ pub fn acc(circ: &circuit::Circuit, vk: &Digest, c: &Digest, file: &[u8]) -> Res
         return Err("SigOk fails".into());
     }
     let seq = Seq::new(&p.tr);
-    let v = if p.pi.first() == Some(&agg::KIND_AGG) { agg::verify } else { leaf::verify };
-    if !v(&seq, circ, vk, c, &p.pi) {
+    let b = p.pi.first().copied().unwrap_or(0);
+    let ok = match (top, b) {
+        (Top::Seg, _) => ir::seg_cap(b).is_some() && leaf::verify(&seq, circ, vk, c, &p.pi),
+        (_, agg::KIND_AGG) => match top {
+            Top::Lean(dir) => {
+                let prog = |k: u8| -> Option<String> {
+                    let m = match k {
+                        0x50 => 30,
+                        0x4B => 31,
+                        _ => 32,
+                    };
+                    std::fs::read_to_string(dir.join(format!("ops-L{m}.txt"))).ok()
+                };
+                ir::run_agg(&prog, circ, &seq, vk, c, &p.pi).ok
+            }
+            _ => agg::verify(&seq, circ, vk, c, &p.pi),
+        },
+        _ if ir::seg_cap(b).is_some() => return Err("a bare segment proof (V4with: rejected)".into()),
+        (_, 0x4D..=0x4F) => return Err("a node proof: the node verifier is not built natively".into()),
+        _ => return Err("a W proof: not built natively".into()),
+    };
+    if !ok {
         return Err("V rejects".into());
     }
     if !seq.consumed() {
         return Err("V did not ask exactly the trace's queries".into());
     }
     Ok(())
+}
+
+/// The dumped Lean programs (`kat::find_ir_dump`), leaked for `Top::Lean`.
+fn lean_dir() -> Option<&'static std::path::Path> {
+    kat::find_ir_dump().map(|d| &*Box::leak(d.into_boxed_path()))
 }
 
 /// `--n N`: a segment of `N ≤ 2^(m−14)` steps (revision 4.0); default the full `2^(m−14)`.
@@ -136,13 +179,15 @@ fn test_leaf(m: usize, n: u64, reps: usize) {
         c2[0] ^= 1;
         let bad1 = leaf::verify(&o, &circ, &vk, &c2, &pi);
         // the dumped Lean program (with the finals) on the same proof, for the Lean kinds
+        // the dumped Lean segment program of the kind (S-F4, revision 4.1) on the same proof; the
+        // canaries: the flipped statement and the statement of `n + 1` (same end)
         let ir = match (m, kat::find_ir_dump()) {
-            (30 | 32, Some(d)) if n == params::leaf_n(m) => {
-                let k = if m == 32 { "L" } else { "P" };
-                let text = std::fs::read_to_string(d.join(format!("ops-{k}.txt"))).unwrap_or_default();
+            (30..=32, Some(d)) => {
+                let text = std::fs::read_to_string(d.join(format!("ops-L{m}.txt"))).unwrap_or_default();
                 let r = ir::run(&text, &circ, &o, &vk, &c, &pi);
-                let r2 = ir::run(&text, &circ, &o, &vk, &c2, &pi);
-                format!("{}(lines {:?}; canary_accept={}; asks={}; node_matrices_used={})", if r.ok { "accept" } else { "REJECT" }, r.failed, r2.ok, r.asks, r.node_matrices_used)
+                let c3 = leaf_stmt(&blake2s::chain_end(&s, n), n + 1);
+                let canary = ir::run(&text, &circ, &o, &vk, &c2, &pi).ok || ir::run(&text, &circ, &o, &vk, &c3, &pi).ok;
+                format!("{}(lines {:?}; canary_accept={}; asks={})", if r.ok { "accept" } else { "REJECT" }, r.failed, canary, r.asks)
             }
             _ => "skip".to_string(),
         };
@@ -220,13 +265,24 @@ fn prove_leaf_service(m: usize, n: u64, start: &Digest, out: &str, reps: usize) 
         let file = format::to_file(&format::Signed { pi: pi.clone(), tr: tr.clone(), sig });
         std::fs::write(out, &file).expect("write");
         let t = Instant::now();
-        let r = acc(&circ, &vk, &c, &file);
+        let r = acc_with(Top::Seg, &circ, &vk, &c, &file);
         let t_acc = t.elapsed().as_secs_f64();
+        // the dumped Lean segment program on the file's trace (`runSeq`), when the dumps are found
+        let lean = match lean_dir() {
+            Some(d) => {
+                let p = format::from_file(&file).unwrap();
+                let text = std::fs::read_to_string(d.join(format!("ops-L{m}.txt"))).unwrap_or_default();
+                let seq = Seq::new(&p.tr);
+                let ok = ir::run(&text, &circ, &seq, &vk, &c, &p.pi).ok && seq.consumed();
+                if ok { "accept" } else { "REJECT" }
+            }
+            None => "skip",
+        };
         let qbytes: usize = tr.iter().map(|(q, _)| q.len()).sum();
         let mut c2 = c;
         c2[31] ^= 1;
-        let canary = acc(&circ, &vk, &c2, &file).is_ok();
-        // the trace against A.4: |tr| = 8,891 and every query length as `items.json` lists it
+        let canary = acc_with(Top::Seg, &circ, &vk, &c2, &file).is_ok();
+        // the trace against A.4: |tr| = 8,905 (`seq4`) and every query length as `items.json` lists it
         let tr_kat = match kat::find_items_json().and_then(|p| kat::load_items(&p)) {
             None => "skip(no items.json)".to_string(),
             Some(w) => {
@@ -241,7 +297,7 @@ fn prove_leaf_service(m: usize, n: u64, start: &Digest, out: &str, reps: usize) 
         let reasm = items::reassemble(&tr).as_deref() == Some(&pi[..]);
         println!(
             "PROVE-LEAF m={m} rep={rep} n={n} trace_kat={tr_kat} reassemble_eq_pi={reasm} total_s={total:.3} prove_s={t_prove:.3} trace_s={t_trace:.3} sign_s={t_sign:.3} oracle_s={oracle_s:.3} \
-             compressions_per_s={:.0} |pi|={} |tr|={} trace_query_bytes={qbytes} file={} acc={} acc_s={t_acc:.3} canary_accept={canary} peak_rss_mb={:.0} threads={} tier={} | {} | {stats} | {}{}",
+             compressions_per_s={:.0} |pi|={} |tr|={} trace_query_bytes={qbytes} file={} acc={} acc_s={t_acc:.3} lean_seg={lean} canary_accept={canary} peak_rss_mb={:.0} threads={} tier={} | {} | {stats} | {}{}",
             n as f64 / total,
             pi.len(),
             tr.len(),
@@ -254,7 +310,7 @@ fn prove_leaf_service(m: usize, n: u64, start: &Digest, out: &str, reps: usize) 
             svc.report(),
             if prof_s.is_empty() { String::new() } else { format!(" | prof {prof_s}") }
         );
-        if r.is_err() || canary || !reasm || tr_kat.starts_with("FAIL") || pi.len() != params::PI_SIZE {
+        if r.is_err() || canary || !reasm || tr_kat.starts_with("FAIL") || pi.len() != params::PI_SIZE || lean == "REJECT" {
             std::process::exit(1);
         }
     }
@@ -303,9 +359,20 @@ fn prove_agg_service(n: u64, start: &Digest, out: &str, reps: usize) {
         let mut c2 = c;
         c2[31] ^= 1;
         let canary = acc(&circ, &vk, &c2, &file).is_ok();
+        // `V4with` with `V_A` over the dumped Lean segment programs (`ir::run_agg`), and its canary
+        let t = Instant::now();
+        let lean = match lean_dir() {
+            Some(d) => {
+                let a = acc_with(Top::Lean(d), &circ, &vk, &c, &file);
+                let cn = acc_with(Top::Lean(d), &circ, &vk, &c2, &file).is_ok();
+                format!("{}{}", a.map(|_| "accept".to_string()).unwrap_or_else(|e| format!("REJECT({e})")), if cn { ",CANARY_ACCEPTED" } else { "" })
+            }
+            None => "skip".into(),
+        };
+        let t_lean = t.elapsed().as_secs_f64();
         let segs: Vec<String> = agg::split(n, agg::M_SEG).iter().zip(tms.iter()).map(|((m, ni), tm)| format!("L{m}:{ni}:{:.3}", tm.total())).collect();
         println!(
-            "PROVE-AGG n={n} rep={rep} k={} segs=[{}] total_s={total:.3} prove_s={t_prove:.3} trace_sign_s={t_trace_sign:.3} |pi|={} |tr|={} file={} acc={} canary_accept={canary} peak_rss_mb={:.0} threads={} tier={}",
+            "PROVE-AGG n={n} rep={rep} k={} segs=[{}] total_s={total:.3} prove_s={t_prove:.3} trace_sign_s={t_trace_sign:.3} |pi|={} |tr|={} file={} acc={} lean_acc={lean} lean_s={t_lean:.2} canary_accept={canary} peak_rss_mb={:.0} threads={} tier={}",
             tms.len(),
             segs.join(","),
             pi.len(),
@@ -316,7 +383,7 @@ fn prove_agg_service(n: u64, start: &Digest, out: &str, reps: usize) {
             par::threads(),
             simd::tier_name(),
         );
-        if r.is_err() || canary {
+        if r.is_err() || canary || lean.contains("REJECT") || lean.contains("CANARY") {
             std::process::exit(1);
         }
     }
@@ -469,7 +536,13 @@ fn main() {
             let c = unhex(&arg(&args, "--stmt").expect("--stmt"));
             let f = std::fs::read(args.last().unwrap()).expect("read");
             let circ = circuit::Circuit::build();
-            match acc(&circ, &vk, &c, &f) {
+            let top = match (args.iter().any(|a| a == "--lean").then_some(()), lean_dir()) {
+                (Some(_), Some(d)) => Top::Lean(d),
+                (Some(_), None) => service::fatal("--lean: no dump found (FLOCK_IR_DUMP)"),
+                _ if args.iter().any(|a| a == "--seg") => Top::Seg,
+                _ => Top::V4,
+            };
+            match acc_with(top, &circ, &vk, &c, &f) {
                 Ok(()) => println!("accept"),
                 Err(e) => {
                     println!("reject: {e}");

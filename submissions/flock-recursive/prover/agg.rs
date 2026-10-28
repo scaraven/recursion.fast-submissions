@@ -1,14 +1,15 @@
 //! The aggregate leaf `A` (revision 4.0, B-11): a chain of `n` steps as `k = ⌈n/2^(M−14)⌉` segment
 //! proofs in sequence, the first `k − 1` full (`2^(M−14)` steps, shape `M`), the last the remainder
-//! `r`, in shape `M − 1` when `r ≤ 2^(M−15)` (`L31` beside `L32` at `M = 32`). `π_A = hdr_A ‖ π_1 ‖ … ‖
+//! `r`, in the smallest of `L30`, `L31`, `L32` that holds it (revision 4.1, S-0′ §6). `π_A = hdr_A ‖ π_1 ‖ … ‖
 //! π_k`; the verifier runs the `k` segment verifiers in sequence on one oracle (one signed trace
 //! `tr_A = tr_1 ‖ … ‖ tr_k`) and checks the chaining `s_{i+1} = h_i`, `c = leafStmt h_k (Σ n_i)`.
 //!
-//! **Format of S-0′'s draft** (`FRAgg.aggHdr`, `aggChecks`, `FRSegment.segView`; not final):
+//! **Format** (`FRAgg.aggHdr`, `aggChecks`, `VAwith`, `FRSegment.segView`; revision 4.1):
 //! `hdr_A = 0x41 ‖ k ‖ 0^6 ‖ enc64 n ‖ e`; a segment's view is its kind byte, start (`hdr` bytes
 //! 16–47), end and length (`stmt` bytes 1–32, 33–40). `V_A` checks first: `c = leafStmt e n`,
 //! `1 ≤ k ≤ 4`, `1 ≤ n_i ≤ cap(kind_i)`, `Σ n_i = n`, the last end `= e`, `s_{i+1} = e_i`; then runs
-//! the segment verifiers in sequence (none when a check fails).
+//! the segment verifiers in sequence (none when a check fails), stopping at the first rejection
+//! (`seqAll`). `ir::run_agg` is the same `V_A` over the dumped Lean segment programs.
 
 use crate::blake2s::{leaf_stmt, Digest};
 use crate::circuit::Circuit;
@@ -28,7 +29,11 @@ pub fn split(n: u64, mmax: usize) -> Vec<(usize, u64)> {
     let k = n.div_ceil(full);
     let mut v: Vec<(usize, u64)> = (1..k).map(|_| (mmax, full)).collect();
     let r = n - (k - 1) * full;
-    v.push((if 2 * r <= full { mmax - 1 } else { mmax }, r));
+    // the remainder in the smallest kind that holds it: `L30` (`≤ 2^16`), `L31` (`≤ 2^17`) or `L32`
+    // (S-0′ §6); test shapes below `m = 30` use `mmax − 1` or `mmax`
+    let lo = if mmax >= 30 { 30.max(mmax - 2) } else { mmax - 1 };
+    let mr = (lo..=mmax).find(|&m| r <= pp::leaf_n(m)).unwrap();
+    v.push((mr, r));
     v
 }
 
@@ -70,6 +75,8 @@ pub fn verify(o: &dyn Oracle, circ: &Circuit, vk: &Digest, c: &Digest, pi: &[u8]
         return false;
     }
     let k = pi[1] as usize;
+    // `hdr_A`'s bytes 2–7 zero: R-4-m5 (HEAD's `VAwith` does not read them; the fix in progress
+    // adds the check). The prover writes zeros, so its proofs pass both forms.
     if pi.len() != HDR_A + k * pp::PI_SIZE || pi[2..8].iter().any(|&x| x != 0) || !(1..=4).contains(&k) {
         return false;
     }
@@ -95,12 +102,11 @@ pub fn verify(o: &dyn Oracle, circ: &Circuit, vk: &Digest, c: &Digest, pi: &[u8]
     if !(ok && total == n && prev == Some(e)) {
         return false;
     }
-    let mut acc = true;
-    for p in &segs {
+    // `seqAll`: in order, stopping at the first rejection
+    segs.iter().all(|p| {
         let (h, ni) = seg_stmt(p);
-        acc &= leaf::verify(o, circ, vk, &leaf_stmt(&h, ni), p);
-    }
-    acc
+        leaf::verify(o, circ, vk, &leaf_stmt(&h, ni), p)
+    })
 }
 
 #[cfg(test)]
@@ -113,7 +119,11 @@ mod tests {
         assert_eq!(split(1 << 17, 32), vec![(31, 1 << 17)]);
         assert_eq!(split((1 << 17) + 1, 32), vec![(32, (1 << 17) + 1)]);
         assert_eq!(split(1 << 18, 32), vec![(32, 1 << 18)]);
-        assert_eq!(split((1 << 18) + 5, 32), vec![(32, 1 << 18), (31, 5)]);
+        assert_eq!(split((1 << 18) + 5, 32), vec![(32, 1 << 18), (30, 5)]);
+        assert_eq!(split(1 << 16, 32), vec![(30, 1 << 16)]);
+        assert_eq!(split((1 << 16) + 1, 32), vec![(31, (1 << 16) + 1)]);
+        assert_eq!(split((1 << 18) + (1 << 17), 32), vec![(32, 1 << 18), (31, 1 << 17)]);
+        assert_eq!(split((1 << 16) + 3, 30), vec![(30, 1 << 16), (30, 3)]);
         assert_eq!(split(1 << 20, 32), vec![(32, 1 << 18); 4]);
         assert_eq!(split(3 << 18 | 1 << 17 | 1, 32), vec![(32, 1 << 18), (32, 1 << 18), (32, 1 << 18), (32, (1 << 17) + 1)]);
     }
