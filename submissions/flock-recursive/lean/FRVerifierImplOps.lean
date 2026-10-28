@@ -136,6 +136,11 @@ def wEvalC (c : Array K) (r ρ : List K) : K :=
   (Nat.fold c.size (fun k _ (p : K × List K) =>
     (p.1 + c.getD k 0 * eqPtsC p.2 ρ, p.2.map fun a => a * a)) (0, r)).1
 
+/-- **`wEvalC` at a point in `F`** (S-T1; `wEvalCF_eq`): the point squared in `F` per stage. -/
+def wEvalCF (c : Array K) (r : Array F) (ρ : List K) : K :=
+  (Nat.fold c.size (fun k _ (p : K × Array F) =>
+    (p.1 + c.getD k 0 * eqPtsC (p.2.toList.map K.ofF) ρ, p.2.map F.sq)) (0, r)).1
+
 /-- Claim 2's stage fold (revision 3.16): `Σ_{k<|c|} c_k eq(q_hi, ρ_hi)·kwI(β^(2^k), q_blk, ρ_blk)`,
 `q = r^(2^k)` (hi: the first 7 coordinates; blk: the `|ρ| − 7` block coordinates). -/
 def wEvalKC (c : Array K) (β : K) (r ρ : List K) : K :=
@@ -145,6 +150,41 @@ def wEvalKC (c : Array K) (β : K) (r ρ : List K) : K :=
     (p.1 + c.getD k 0 * (eqPtsC (p.2.1.take 7) ρh *
         KW.kwI ρb.size p.2.2 (fun l => (p.2.1.drop 7).toArray.getD l 0) (fun l => ρb.getD l 0)),
      p.2.1.map fun a => a * a, p.2.2 * p.2.2)) (0, r, β)).1
+
+/-- One stage of `wEvalKF`: add `c_k eq(q_hi, ρ_hi) T_k` (`T_k` the two Horner sums over the levels,
+`s_l = 1 + q_l + ρ_l`), then square the point and the blocks' `F` factors. -/
+def kfStep (c : Array K) (ρh : List K) (oρ : Array K) (k : ℕ)
+    (st : K × Array F × List (List (F × K)) × List (List (F × K))) :
+    K × Array F × List (List (F × K)) × List (List (F × K)) :=
+  let q := st.2.1
+  let s : ℕ → K := fun l => K.ofF (q.getD (7 + l) 0) + oρ.getD l 0
+  (st.1 + c.getD k 0 * (eqPtsC ((q.toList.take 7).map K.ofF) ρh *
+      (KW.hornerK s 0 (st.2.2.1.map KW.gsum) + KW.hornerK s 1 (st.2.2.2.map KW.gsum))),
+    q.map F.sq, KW.sqG st.2.2.1, KW.sqG st.2.2.2)
+
+/-- **Claim 2's stage fold, fast** (S-T1; `wEvalKF_eq`): the claim point `r` in `F` (23
+coordinates), `ρ` of 23. The blocks' factors (`KW.mkEnt`: the point's side in `F`, `ρ`'s in `K`) are
+made once; per stage the `F` factors are squared (`KW.sqG`), one `smulF` per block. -/
+def wEvalKF (c : Array K) (β : F) (r : Array F) (ρ : List K) : K :=
+  let ρb := (ρ.drop 7).toArray
+  let gK : ℕ → Bool → K := fun l b => if b then ρb.getD l 0 else 1 - ρb.getD l 0
+  let fF : ℕ → Bool → F := fun l b => if b then r.getD (7 + l) 0 else 1 - r.getD (7 + l) 0
+  (Nat.fold c.size (fun k _ => kfStep c (ρ.take 7) (ρb.map (1 + ·)) k)
+    (0, r, KW.skelM.map (KW.mkEnt (β ^ ·) fF gK), KW.skelP.map (KW.mkEnt (β ^ ·) fF gK))).1
+
+/-- **`rsWeight`, fast** (S-T1; `rsWeightF_eq`): a claim point in `F` (every coordinate's `f₁` is
+`0`) runs `wEvalKF` (claim 2, at 23 coordinates and `|ρ| = 23`) or `wEvalCF`; otherwise as
+`rsWeightI`. -/
+def rsWeightF (r : Array F) (ps : List (Array K)) (κ β : F) (ρ : Array K) : K :=
+  let c := (phiTable r.toList).map K.ofF
+  ((ps.zipIdx).map fun p => K.ofF κ ^ p.2 *
+    (if p.1.all (·.f₁ == 0) then
+      (if p.2 = 1 then
+        (if p.1.size = 23 ∧ ρ.size = 23 then wEvalKF c β (p.1.map (·.f₀)) ρ.toList
+         else wEvalKC c (K.ofF β) p.1.toList ρ.toList)
+       else wEvalCF c (p.1.map (·.f₀)) ρ.toList)
+     else
+      (if p.2 = 1 then wEvalKC c (K.ofF β) p.1.toList ρ.toList else wEvalC c p.1.toList ρ.toList))).sum
 
 /-- **`rsWeight`** (A.8, revisions 3.9, 3.16): `Σ_j κ^j Ŵ_j(ρ)`, `Ŵ_j = Σ_{k<128} c_k(r″)
 eq(r_j^{2^k}, ρ)` except claim 2 (index 1), weighted by the kind factor (`wEvalKC`); the
@@ -380,6 +420,34 @@ theorem rowW_meets (l : F) (rhi : Array F) : rowWI l rhi = rowWS l rhi := by
   simp only [rowW, joinEquiv, Equiv.coe_fn_symm_mk, eq_cube, eqAtR]
   rfl
 
+/-- `n` squarings in `F` by `F.sq` (≈ 20 ns, against ≈ 100 ns for `a * a`). -/
+def sqItF : ℕ → F → F
+  | 0, a => a
+  | n + 1, a => sqItF n (F.sq a)
+
+theorem sqItF_eq : ∀ (n : ℕ) (a : F), sqItF n a = sqIter n a
+  | 0, _ => rfl
+  | n + 1, a => by rw [sqItF, sqItF_eq n, F.sq_eq_mul]; rfl
+
+/-- `FRRingSwitch.frobMapC` with `F.sq`. -/
+def frobMapF : List (ℕ × F) → F → F
+  | [], a => a
+  | (s, f) :: st, a => frobMapF st (a + f * sqItF s a)
+
+theorem frobMapF_eq : ∀ (st : List (ℕ × F)) (a : F), frobMapF st a = frobMapC st a
+  | [], _ => rfl
+  | (s, f) :: st, a => by rw [frobMapF, frobMapC, sqItF_eq, frobMapF_eq st]
+
+/-- **`phiRS`, fast** (S-T1; `phiRSF_eq`): `phiRSI` with its 127 squarings by `F.sq`. -/
+def phiRSF (r : Array F) (a : F) : F := frobMapF (stages (r.toList.length - 1) r.toList) a
+
+theorem phiRSF_eq (r : Array F) (a : F) : phiRSF r a = phiRSI r a := frobMapF_eq _ _
+
+/-- (+) One squaring stage: `sqItF 1 a = a * a`. (−) `sqItF` is not the identity: `sqItF 1 u ≠ u`
+for `F`'s `u = ⟨0, 1⟩` (`u^2 = u + β`). -/
+theorem sqItF_ctrl : sqItF 1 (⟨0, 1⟩ : F) = ⟨0, 1⟩ * ⟨0, 1⟩ ∧ sqItF 1 (⟨0, 1⟩ : F) ≠ ⟨0, 1⟩ := by
+  decide +kernel
+
 /-- **`phiRS` meets its specification** (`FRRingSwitch.phiApply_eq`). -/
 theorem phiRS_meets (r : Array F) (a : F) : phiRSI r a = phiRSS r a := phiApply_eq _ _
 
@@ -461,6 +529,53 @@ def tensorWF (j : ℕ) (r : Array K) : K :=
 theorem tensorWF_eq (j : ℕ) (r : Array K) : tensorWF j r = tensorWI j r :=
   congrArg (prodTo r.size) (funext fun v => by
     rw [wAtF_eq, K.smulF_eq_mul, ← K.algebraMap_eq_ofF, mul_comm])
+/-- **`tensorW` at a point in `F`** (S-T1; `tensorWG_eq`): every factor in `F` (two F products
+instead of a K product and a `smulF`); otherwise `tensorWF`. -/
+def tensorWG (j : ℕ) (r : Array K) : K :=
+  if r.all (·.f₁ == 0) then
+    K.ofF (prodTo r.size fun v => 1 - (r.getD v 0).f₀ + wAtF v j * (r.getD v 0).f₀)
+  else tensorWF j r
+
+theorem prodTo_ofF (n : ℕ) (f : ℕ → F) : K.ofF (prodTo n f) = prodTo n fun v => K.ofF (f v) := by
+  induction n with
+  | zero => rfl
+  | succ n ih =>
+    show K.ofF (prodTo n f * f n) = prodTo n (fun v => K.ofF (f v)) * K.ofF (f n)
+    rw [← ih]; exact map_mul K.ofFRingHom _ _
+
+theorem K_ofF_f0 : ∀ x : K, x.f₁ = 0 → x = K.ofF x.f₀
+  | ⟨_, _⟩, h => by subst h; rfl
+
+theorem getD_inF {r : Array K} (h : r.all (·.f₁ == 0) = true) (v : ℕ) :
+    r.getD v 0 = K.ofF (r.getD v 0).f₀ := by
+  rw [Array.all_eq_true] at h
+  rw [Array.getD_eq_getD_getElem?]
+  by_cases hv : v < r.size
+  · rw [Array.getElem?_eq_getElem hv, Option.getD_some]
+    have h1 : (r[v]).f₁ = 0 := by simpa using h v hv
+    exact K_ofF_f0 _ h1
+  · rw [Array.getElem?_eq_none (by omega)]; rfl
+
+theorem tensorWG_eq (j : ℕ) (r : Array K) : tensorWG j r = tensorWF j r := by
+  unfold tensorWG
+  split_ifs with h
+  · rw [prodTo_ofF, tensorWF]
+    refine congrArg (prodTo r.size) (funext fun v => ?_)
+    set x := (r.getD v 0).f₀
+    rw [getD_inF h v, K.smulF_eq_mul]
+    change K.ofFRingHom (1 - x + wAtF v j * x) = _
+    simp only [map_add, map_sub, map_mul, map_one]
+    rfl
+  · rfl
+
+/-- (+) The F path's reading of a point in `F` is exact (`K_ofF_f0`): `ofF 3` is `ofF 3`'s `f₀`. -/
+theorem inF_pos : (#[K.ofF 3]).all (·.f₁ == 0) = true ∧ K.ofF 3 = K.ofF (K.ofF 3).f₀ := by
+  decide +kernel
+
+/-- (−) Outside `F` the projection to `f₀` loses `u`, so the guard of `tensorWG` and `rsWeightF` is
+load-bearing: `u ≠ ofF u.f₀`, and the guard rejects it. -/
+theorem inF_neg : K.u ≠ K.ofF K.u.f₀ ∧ (#[K.u]).all (·.f₁ == 0) = false := by decide +kernel
+
 /-! #### Controls (S-E8) -/
 
 /-- (+) `tensorW` at `j = 0`: `Π (1 + r_v)`; the twin agrees (`tensorWF_eq`). -/
@@ -529,6 +644,153 @@ theorem wEvalKC_eq (c : Array K) (β : K) (r ρ : List K) (hρ : 23 ≤ ρ.lengt
   have hn : (ρ.drop 7).toArray.size = ρ.length - 7 := by simp
   rw [kwSL, hn, KW.kwI_eq (by omega), eqPtsC_eq]
   congr 3 <;> funext l <;> simp only [ptOf, toArray_getD_list]
+
+/-! ## S-T1: the fast folds meet the reference folds -/
+
+/-- A fold that commutes with a map of states. -/
+theorem fold_sim {σ τ : Type*} (g : σ → τ) (f1 : ℕ → σ → σ) (f2 : ℕ → τ → τ)
+    (h : ∀ k s, f2 k (g s) = g (f1 k s)) (s : σ) :
+    ∀ n, Nat.fold n (fun k _ => f2 k) (g s) = g (Nat.fold n (fun k _ => f1 k) s)
+  | 0 => rfl
+  | n + 1 => by rw [Nat.fold_succ, Nat.fold_succ, fold_sim g f1 f2 h s n, h]
+
+theorem ofF_mul' (a b : F) : K.ofF (a * b) = K.ofF a * K.ofF b := map_mul K.ofFRingHom a b
+
+theorem ofF_sq (a : F) : K.ofF (F.sq a) = K.ofF a * K.ofF a := by rw [F.sq_eq_mul, ofF_mul']
+
+/-- **`wEvalCF` is `wEvalC` at the embedded point.** -/
+theorem wEvalCF_eq (c : Array K) (r : Array F) (ρ : List K) :
+    wEvalCF c r ρ = wEvalC c (r.toList.map K.ofF) ρ := by
+  unfold wEvalCF wEvalC
+  have := fold_sim (fun p : K × Array F => (p.1, p.2.toList.map K.ofF))
+    (fun k (p : K × Array F) => (p.1 + c.getD k 0 * eqPtsC (p.2.toList.map K.ofF) ρ, p.2.map F.sq))
+    (fun k (p : K × List K) => (p.1 + c.getD k 0 * eqPtsC p.2 ρ, p.2.map fun a => a * a))
+    (fun k p => by simp [Array.toList_map, List.map_map, Function.comp_def, ofF_sq]) (0, r) c.size
+  exact (congrArg Prod.fst this).symm
+
+theorem sqIter_ofF (k : ℕ) (a : F) : sqIter k (K.ofF a) = K.ofF (sqIter k a) := by
+  rw [sqIter_eq, sqIter_eq]; exact (map_pow K.ofFRingHom a _).symm
+
+theorem sqIter_zeroF (k : ℕ) : sqIter k (0 : F) = 0 := by rw [sqIter_eq]; simp
+
+theorem sq_ne_zero_iff (a : F) : (F.sq a != 0) = (a != 0) := by
+  rw [F.sq_eq_mul, Bool.eq_iff_iff]
+  simp only [bne_iff_ne, ne_eq, mul_self_eq_zero]
+
+theorem filter_map_comm {α : Type*} (P : α → Bool) (f : α → α) (hP : ∀ x, P (f x) = P x) :
+    ∀ L : List α, (L.filter P).map f = (L.map f).filter P
+  | [] => rfl
+  | x :: L => by
+    simp only [List.filter_cons, List.map_cons, hP]
+    split <;> simp [filter_map_comm P f hP L]
+
+/-- **The next stage's blocks are the squares** (Frobenius on `F`). -/
+theorem mkEnt_sq (β : F) (q : ℕ → F) (gK : ℕ → Bool → K) (g : List (List (ℕ × Bool) × List ℕ)) :
+    (KW.mkEnt (β ^ ·) (fun l b => if b then q l else 1 - q l) gK g).map (fun p => (F.sq p.1, p.2)) =
+      KW.mkEnt (F.sq β ^ ·) (fun l b => if b then F.sq (q l) else 1 - F.sq (q l)) gK g := by
+  let φ : F →+* F := frobenius F 2
+  have hφ : ∀ a : F, F.sq a = φ a := fun a => by rw [F.sq_eq_mul, frobenius_def, pow_two]
+  unfold KW.mkEnt
+  rw [filter_map_comm _ _ (fun x => sq_ne_zero_iff x.1), List.map_map]
+  congr 1
+  refine List.map_congr_left fun p _ => ?_
+  simp only [Function.comp_apply, hφ, map_mul, map_list_sum, map_list_prod, List.map_map,
+    Function.comp_def, map_pow]
+  congr 3
+  exact List.map_congr_left fun b _ => by split_ifs <;> simp [map_sub, map_one]
+
+/-- Stage `k`'s blocks: the point's coordinates and `β` raised to `2^k`. -/
+def gmK (sk : List (List (List (ℕ × Bool) × List ℕ))) (β : F) (r : Array F) (gK : ℕ → Bool → K)
+    (k : ℕ) : List (List (F × K)) :=
+  sk.map (KW.mkEnt (sqIter k β ^ ·)
+    (fun l b => if b then sqIter k (r.getD (7 + l) 0) else 1 - sqIter k (r.getD (7 + l) 0)) gK)
+
+theorem sqG_gmK (sk : List (List (List (ℕ × Bool) × List ℕ))) (β : F) (r : Array F)
+    (gK : ℕ → Bool → K) (k : ℕ) : KW.sqG (gmK sk β r gK k) = gmK sk β r gK (k + 1) := by
+  unfold KW.sqG gmK
+  rw [List.map_map]
+  refine List.map_congr_left fun g _ => ?_
+  rw [Function.comp_apply, mkEnt_sq]
+  simp only [F.sq_eq_mul, ← sqIter_succ']
+
+/-- **The fast fold's invariant**: after `n` stages, the sum of the stage values, the point and
+the blocks at `2^n`. -/
+theorem kf_fold (c : Array K) (ρh : List K) (oρ : Array K) (β : F) (r : Array F)
+    (gK : ℕ → Bool → K) : ∀ n,
+    Nat.fold n (fun k _ => kfStep c ρh oρ k) (0, r, gmK KW.skelM β r gK 0, gmK KW.skelP β r gK 0) =
+    (∑ k ∈ range n, c.getD k 0 * (eqPtsC (((r.map (sqIter k)).toList.take 7).map K.ofF) ρh *
+        (KW.hornerK (fun l => K.ofF ((r.map (sqIter k)).getD (7 + l) 0) + oρ.getD l 0) 0
+            ((gmK KW.skelM β r gK k).map KW.gsum) +
+          KW.hornerK (fun l => K.ofF ((r.map (sqIter k)).getD (7 + l) 0) + oρ.getD l 0) 1
+            ((gmK KW.skelP β r gK k).map KW.gsum))),
+      r.map (sqIter n), gmK KW.skelM β r gK n, gmK KW.skelP β r gK n)
+  | 0 => by simp [sqIter]
+  | n + 1 => by
+    rw [Nat.fold_succ, kf_fold c ρh oρ β r gK n, kfStep]
+    simp only [sum_range_succ, sqG_gmK, Array.map_map, Function.comp_def, F.sq_eq_mul,
+      ← sqIter_succ']
+
+theorem getD_map_lt {α : Type*} (A : Array α) (f : α → α) (d : α) {i : ℕ} (hi : i < A.size) :
+    (A.map f).getD i d = f (A.getD i d) := by
+  simp [Array.getD_eq_getD_getElem?, hi]
+
+/-- **`wEvalKF` meets claim 2's stage sum** (`wEvalKC_eq`'s right side) at a point in `F`. -/
+theorem wEvalKF_eq (c : Array K) (β : F) (r : Array F) (ρ : List K) (hr : r.size = 23)
+    (hρ : ρ.length = 23) : wEvalKF c β r ρ = ∑ k ∈ range c.size,
+      c.getD k 0 * kwSL (sqIter k (K.ofF β)) ((r.toList.map K.ofF).map (sqIter k)) ρ := by
+  unfold wEvalKF
+  refine (congrArg Prod.fst (kf_fold c (ρ.take 7) ((ρ.drop 7).toArray.map (1 + ·)) β r
+    (fun l b => if b then (ρ.drop 7).toArray.getD l 0 else 1 - (ρ.drop 7).toArray.getD l 0)
+      c.size)).trans ?_
+  dsimp only
+  refine sum_congr rfl fun k _ => congrArg _ ?_
+  have h16 : ρ.length - 7 = 16 := by omega
+  rw [kwSL, h16, eqPtsC_eq]
+  congr 1
+  · simp [Array.toList_map, List.map_take, List.map_map, Function.comp_def, sqIter_ofF]
+  · have hq : ptOf 16 (((r.toList.map K.ofF).map (sqIter k)).drop 7) =
+        fun l : Fin 16 => K.ofF (sqIter k (r.getD (7 + l) 0)) := by
+      funext l
+      have := l.isLt
+      simp [ptOf, List.getD_eq_getElem?_getD, Array.getD_eq_getD_getElem?, hr, sqIter_ofF,
+        show 7 + l.val < 23 by omega]
+    have hρ' : ptOf 16 (ρ.drop 7) = fun l : Fin 16 => (ρ.drop 7).toArray.getD l 0 := by
+      funext l; simp only [ptOf, toArray_getD_list]
+    rw [hq, hρ', sqIter_ofF]
+    refine (KW.kwS_fast _ _ _ _ fun l hl => ?_).symm
+    have hb : ((ρ.drop 7).toArray).size = 16 := by simp; omega
+    rw [getD_map_lt _ _ _ (by rw [hr]; omega), getD_map_lt _ _ _ (by rw [hb]; exact hl)]
+
+theorem ofF_f0 (a : Array K) (h : a.all (·.f₁ == 0) = true) :
+    (a.map (·.f₀)).toList.map K.ofF = a.toList := by
+  rw [Array.toList_map, List.map_map]
+  conv_rhs => rw [← List.map_id a.toList]
+  refine List.map_congr_left fun x hx => ?_
+  rw [← Array.all_toList, List.all_eq_true] at h
+  have h1 : x.f₁ = 0 := by simpa using h x hx
+  obtain ⟨x0, x1⟩ := x
+  simp only at h1
+  subst h1
+  rfl
+
+/-- **`rsWeightF` is `rsWeightI`**, for every input. -/
+theorem rsWeightF_eq (r : Array F) (ps : List (Array K)) (κ β : F) (ρ : Array K) :
+    rsWeightF r ps κ β ρ = rsWeightI r ps κ β ρ := by
+  unfold rsWeightF rsWeightI
+  refine congrArg List.sum (List.map_congr_left fun p _ => congrArg _ ?_)
+  split_ifs with hF h1 h23
+  · rw [wEvalKF_eq _ _ _ _ (by simp [h23.1]) (by simp [h23.2]),
+      wEvalKC_eq _ _ _ _ (by simp [h23.2]), ofF_f0 _ hF]
+  · rfl
+  · rw [wEvalCF_eq, ofF_f0 _ hF]
+  · rfl
+  · rfl
+
+/-- (+) The guard takes the fast path at a point in `F`. -/
+theorem rsF_guard_pos : (#[K.ofF 1, K.ofF 0]).all (·.f₁ == 0) = true := by decide +kernel
+
+/-- (−) … and falls back at a point outside `F` (`u`). -/
+theorem rsF_guard_neg : (#[K.ofF 1, K.u]).all (·.f₁ == 0) = false := by decide +kernel
 
 /-- **`rsWeight` meets its specification** (`r″` of 7 coordinates, `ρ` of at least 23: the block
 coordinates cover the node layout's `2^16` blocks). -/

@@ -35,9 +35,9 @@ def implCWith (pl : TEval.Plan) (lp : TEval.LPlan) : OpImpl where
   lagrangeS := lagrangeSI
   targetS κ := if κ.isNode then NodeI.targetSNodeI else targetSLeafI
   eqZ := eqZI
-  tensorW := tensorWF
-  rsWeight := rsWeightI
-  phiRS := phiRSI
+  tensorW := tensorWG
+  rsWeight := rsWeightF
+  phiRS := phiRSF
   walkAB := Eval.walkImpl
   kindInd := Eval.kindIndImpl
   evalM := TEval.evalMT pl
@@ -93,9 +93,9 @@ theorem implCWith_meets (pl : TEval.Plan) (lRows : List Circ.Row) :
     · exact NodeI.targetSNode_meets r
     · exact targetSLeaf_meets 16 r
   · exact eqZ_meets
-  · exact fun j r => (tensorWF_eq j r).trans (tensorW_meets j r)
-  · exact fun r ps k b p h hp => rsWeight_meets r ps k b p h hp
-  · exact fun r a _ => phiRS_meets r a
+  · exact fun j r => (tensorWG_eq j r).trans ((tensorWF_eq j r).trans (tensorW_meets j r))
+  · exact fun r ps k b p h hp => (rsWeightF_eq r ps k b p).trans (rsWeight_meets r ps k b p h hp)
+  · exact fun r a _ => (phiRSF_eq r a).trans (phiRS_meets r a)
   · intro rw cw _ _
     rewrite [← Eval.walkA_eq rw cw, ← Eval.walkB_eq rw cw]
     exact Prod.mk.eta.symm
@@ -116,7 +116,8 @@ theorem implCWith_meets (pl : TEval.Plan) (lRows : List Circ.Row) :
 /-- `implC` is the templates' implementation (`ImplT`, the hypothesis of `compileT_sound`). -/
 theorem implCWith_implT (pl : TEval.Plan) (lp : TEval.LPlan) : Circ.ImplT (implCWith pl lp) := by
   constructor <;> intros <;> simp only [implCWith]
-  exact funext fun j => funext (tensorWF_eq j)
+  · exact funext fun r => funext (phiRSF_eq r)
+  exact funext fun j => funext fun r => (tensorWG_eq j r).trans (tensorWF_eq j r)
 
 theorem implC_implT (fin : Finals) (lRows : List Circ.Row) (κs₀ : F) :
     Circ.ImplT (implC fin lRows κs₀) := implCWith_implT _ _

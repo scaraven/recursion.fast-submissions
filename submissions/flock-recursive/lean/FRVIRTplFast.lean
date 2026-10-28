@@ -253,11 +253,11 @@ abbrev KP3 := KP × KP × KP
 /-- **The three preparations** (`kprepF`), the key's two tables from the evaluation's `tb`. -/
 def kprep3 (tb : Tb) (t u : ℕ → F) (K : Key) : KP3 :=
   let eτ := getD0 (tabOr tb.pt tb.lt t K.A); let eσ := getD0 (tabOr tb.pu tb.lu u K.B)
-  (kprepF .a eτ eσ K, kprepF .b eτ eσ K, kprepF .c eτ eσ K)
+  kprep3F eτ eσ K
 
 theorem kprep3_eq (n : ℕ) (t u : ℕ → F) (one : Lin) (nt ns lt lu : Array Bool) (K : Key) :
     kprep3 (tbOf n t u one nt ns lt lu) t u K = (kprep .a t u K, kprep .b t u K, kprep .c t u K) := by
-  simp only [kprep3, tbOf, tabOr_eq, kprepF_eq, kprep]
+  simp only [kprep3, tbOf, tabOr_eq, kprep3F_eq, kprepF_eq, kprep]
 
 /-- **A slot's context for the three matrices.** -/
 structure ECtx3 where
@@ -273,16 +273,25 @@ structure ECtx3 where
   ps : Array (Array Pat)
   inr : Array (Array F3)
 
-def ectx3 (n : ℕ) (tb : Tb) (t u : ℕ → F) (keys : Array Key) (kp : Array KP3)
-    (gsh : Array (List GForm)) (pats : Array (Array Pat)) : ECtx3 :=
+/-- The patterns' inner sums of a slot: they depend on the slot's shared forms only through their
+numbers `nl` (S-T1: so slots with equal numbers share them, `nodeV3`). -/
+def inr3 (tb : Tb) (u : ℕ → F) (kp : Array KP3) (dkp : KP3) (nl : Array ℕ)
+    (pats : Array (Array Pat)) : Array (Array F3) :=
+  (Array.range pats.size).map fun k => let P := kp.getD k dkp
+    inrOf3 P.1.u P.2.1.u P.2.2.u (tabOr tb.pu tb.lu u) (nl.getD k 0) (pats.getD k #[])
+
+/-- A slot's context with its patterns' inner sums given. -/
+def ectx3W (n : ℕ) (tb : Tb) (t u : ℕ → F) (keys : Array Key) (kp : Array KP3)
+    (gsh : Array (List GForm)) (pats : Array (Array Pat)) (inr : Array (Array F3)) : ECtx3 :=
   let dkp := kprep3 tb t u dkey
   ⟨n, tb, t, u, keys, kp, dkp,
     (Array.range gsh.size).map (fun k => let P := kp.getD k dkp
       ownSum3 P.1.u P.2.1.u P.2.2.u tb.slo tb.shi 0 (gsh.getD k [])),
-    gsh.map List.length, pats,
-    (Array.range pats.size).map fun k => let P := kp.getD k dkp
-      inrOf3 P.1.u P.2.1.u P.2.2.u (tabOr tb.pu tb.lu u) ((gsh.map List.length).getD k 0)
-        (pats.getD k #[])⟩
+    gsh.map List.length, pats, inr⟩
+
+def ectx3 (n : ℕ) (tb : Tb) (t u : ℕ → F) (keys : Array Key) (kp : Array KP3)
+    (gsh : Array (List GForm)) (pats : Array (Array Pat)) : ECtx3 :=
+  ectx3W n tb t u keys kp gsh pats (inr3 tb u kp (kprep3 tb t u dkey) (gsh.map List.length) pats)
 
 /-- **A prepared piece's three values.** -/
 def ppv3 (c : ECtx3) : PPc → F3
@@ -326,7 +335,7 @@ theorem slotV3_eq (n n' : ℕ) (t u : ℕ → F) (one : Lin) (nt ns lt lu : Arra
   simp only [slotV3, slotV, sum3_eq]
   refine Prod.ext ?_ (Prod.ext ?_ ?_) <;> simp only <;>
     refine congrArg (sumL · pps) (funext fun p => ?_) <;>
-    cases p <;> simp only [ppv3, ppv, ectx3, ectx, growsVal3_eq, kp3_getD, ownSum3_eq, getD_range3,
+    cases p <;> simp only [ppv3, ppv, ectx3, ectx3W, inr3, ectx, growsVal3_eq, kp3_getD, ownSum3_eq, getD_range3,
       ownSumP3_eq, range_getD_inr, range_getD_inr3, inrOf3_map1, inrOf3_map2, inrOf3_map3]
 
 /-! ## The node -/
@@ -444,14 +453,27 @@ theorem nodeV_eq (pl : Plan) (s : Mat) (t u : ℕ → F) (nt ns lt lu : Array Bo
 /-- The node's three matrices in one pass per slot. -/
 def nodeV3 (pl : Plan) (t u : ℕ → F) (tb : Tb) : F3 :=
   let kp := pl.keys.map (kprep3 tb t u)
-  add3 (slotV3 (ectx3 21 tb t u pl.keys kp pl.g0 pl.pats) pl.p0)
-    (slotV3 (ectx3 21 tb t u pl.keys kp pl.g1 pl.pats) pl.p1)
+  let dkp := kprep3 tb t u dkey
+  let n0 := pl.g0.map List.length; let n1 := pl.g1.map List.length
+  let i0 := inr3 tb u kp dkp n0 pl.pats
+  add3 (slotV3 (ectx3W 21 tb t u pl.keys kp pl.g0 pl.pats i0) pl.p0)
+    (slotV3 (ectx3W 21 tb t u pl.keys kp pl.g1 pl.pats
+      (if n1 = n0 then i0 else inr3 tb u kp dkp n1 pl.pats)) pl.p1)
+
+/-- `nodeV3` is the two slots' `slotV3` (the inner sums shared when the slots' numbers agree). -/
+theorem nodeV3_slots (pl : Plan) (t u : ℕ → F) (tb : Tb) : nodeV3 pl t u tb =
+    add3 (slotV3 (ectx3 21 tb t u pl.keys (pl.keys.map (kprep3 tb t u)) pl.g0 pl.pats) pl.p0)
+      (slotV3 (ectx3 21 tb t u pl.keys (pl.keys.map (kprep3 tb t u)) pl.g1 pl.pats) pl.p1) := by
+  simp only [nodeV3, ectx3]
+  split_ifs with h
+  · rw [h]
+  · rfl
 
 theorem nodeV3_eq (pl : Plan) (t u : ℕ → F) (nt ns lt lu : Array Bool) :
     nodeV3 pl t u (tbOf 21 t u oneL nt ns lt lu) =
       (nodeV pl .a t u (tbOf 21 t u oneL nt ns lt lu), nodeV pl .b t u (tbOf 21 t u oneL nt ns lt lu),
         nodeV pl .c t u (tbOf 21 t u oneL nt ns lt lu)) := by
-  simp only [nodeV3, nodeV, slotV3_eq, add3]
+  simp only [nodeV3_slots, nodeV, slotV3_eq, add3]
 
 /-- The tables' bit sets for keys `keys` and run chunk bits `pbs`. -/
 def tbOfK (n : ℕ) (t u : ℕ → F) (keys : Array Key) (pbs : List ℕ) : Tb :=

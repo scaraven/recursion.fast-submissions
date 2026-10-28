@@ -136,6 +136,81 @@ theorem kprepF_eq (s : Mat) (eτ eσ : ℕ → F) (K : Key) : kprepF s eτ eσ K
   · rw [oneSum_ttL, sumL_eq]
   · rw [denseIT, inpU, inpN, foldl_inpN, foldl_inpU]
 
+/-! ## The three matrices' preparations in one pass (S-T1) -/
+
+/-- One matrix's running preparation `(loc, one, U)`. -/
+abbrev KS := F × F × Array F
+
+/-- One term of a row form: its local part, its `one` part, its input coefficient (row factor `w`). -/
+@[inline] def tStep (eσ : ℕ → F) (w : F) (x : KS) (t : Wire × F) : KS :=
+  match t.1 with
+  | .loc k => (x.1 + cmulF t.2 (eσ k), x.2.1, x.2.2)
+  | .one => (x.1, x.2.1 + t.2, x.2.2)
+  | .inp i => (x.1, x.2.1, x.2.2.modify i (· + cmulF t.2 w))
+
+/-- Row `r` (row factor `w`) added to matrix `s`'s running preparation, its form read once. -/
+@[inline] def kp1 (s : Mat) (eσ : ℕ → F) (w : F) (r : RowT) (x : KS) : KS :=
+  let y := (s.t r).foldl (tStep eσ w) (0, 0, x.2.2)
+  (x.1 + mulNZ w y.1, x.2.1 + mulNZ w y.2.1, y.2.2)
+
+theorem foldl_tStep (eσ : ℕ → F) (w : F) : ∀ (l : LinT) (x : KS),
+    l.foldl (tStep eσ w) x =
+      (l.foldl (fun a t => a + match t.1 with | .loc k => cmulF t.2 (eσ k) | _ => 0) x.1,
+       l.foldl (fun a t => a + match t.1 with | .one => t.2 | _ => 0) x.2.1, l.foldl (uStep w) x.2.2)
+  | [], _ => rfl
+  | t :: l, x => by
+    rw [List.foldl_cons, foldl_tStep eσ w l, List.foldl_cons, List.foldl_cons, List.foldl_cons]
+    obtain ⟨wi, c⟩ := t
+    cases wi <;> simp [tStep, uStep]
+
+theorem kp1_eq (s : Mat) (eσ : ℕ → F) (w : F) (r : RowT) (x : KS) :
+    kp1 s eσ w r x = (x.1 + mulNZ w (locRow eσ (s.t r)), x.2.1 + mulNZ w (oneRow (s.t r)),
+      (s.t r).foldl (uStep w) x.2.2) := by
+  simp only [kp1, foldl_tStep, locRow, oneRow, sumL]
+
+/-- The rows from index `i`, once, for the three matrices. -/
+def kpGo (eτ eσ : ℕ → F) : ℕ → List RowT → KS × KS × KS → KS × KS × KS
+  | _, [], st => st
+  | i, r :: rs, st =>
+    let w := eτ i
+    kpGo eτ eσ (i + 1) rs (kp1 .a eσ w r st.1, kp1 .b eσ w r st.2.1, kp1 .c eσ w r st.2.2)
+
+/-- The number of inputs matrix `s` reads (`inpN` without the index). -/
+def inpNF (s : Mat) (T : List RowT) : ℕ := T.foldl (fun m r => (s.t r).foldl inpStep m) 0
+
+/-- **A key's three preparations in one pass over its rows** (`kprep3F_eq`). -/
+def kprep3F (eτ eσ : ℕ → F) (K : Key) : KP × KP × KP :=
+  let st := kpGo eτ eσ 0 K.rows ((0, 0, Array.replicate (inpNF .a K.rows) 0),
+    (0, 0, Array.replicate (inpNF .b K.rows) 0), (0, 0, Array.replicate (inpNF .c K.rows) 0))
+  (⟨st.1.1, st.1.2.1, st.1.2.2⟩, ⟨st.2.1.1, st.2.1.2.1, st.2.1.2.2⟩,
+    ⟨st.2.2.1, st.2.2.2.1, st.2.2.2.2⟩)
+
+/-- One matrix's part of the pass: its three folds over the indexed rows. -/
+def kOne (s : Mat) (eτ eσ : ℕ → F) (n : ℕ) (rs : List RowT) (x : KS) : KS :=
+  ((rs.zipIdx n).foldl (fun a p => a + mulNZ (eτ p.2) (locRow eσ (s.t p.1))) x.1,
+   (rs.zipIdx n).foldl (fun a p => a + mulNZ (eτ p.2) (oneRow (s.t p.1))) x.2.1,
+   (rs.zipIdx n).foldl (fun U p => (s.t p.1).foldl (uStep (eτ p.2)) U) x.2.2)
+
+theorem kpGo_eq (eτ eσ : ℕ → F) : ∀ (rs : List RowT) (n : ℕ) (st : KS × KS × KS),
+    kpGo eτ eσ n rs st = (kOne .a eτ eσ n rs st.1, kOne .b eτ eσ n rs st.2.1, kOne .c eτ eσ n rs st.2.2)
+  | [], _, _ => rfl
+  | r :: rs, n, st => by
+    rw [kpGo, kpGo_eq eτ eσ rs (n + 1)]
+    simp only [kOne, kp1_eq, List.zipIdx_cons, List.foldl_cons]
+
+theorem foldl_zipIdx_fst {α β : Type*} (g : β → α → β) : ∀ (T : List α) (n : ℕ) (m : β),
+    (T.zipIdx n).foldl (fun m p => g m p.1) m = T.foldl g m
+  | [], _, _ => rfl
+  | a :: T, n, m => by rw [List.zipIdx_cons, List.foldl_cons, List.foldl_cons, foldl_zipIdx_fst g T]
+
+theorem inpNF_eq (s : Mat) (T : List RowT) : inpNF s T = inpN s T :=
+  (foldl_zipIdx_fst (fun m r => (s.t r).foldl inpStep m) T 0 0).symm
+
+/-- **The one pass is the three preparations.** -/
+theorem kprep3F_eq (eτ eσ : ℕ → F) (K : Key) :
+    kprep3F eτ eσ K = (kprepF .a eτ eσ K, kprepF .b eτ eσ K, kprepF .c eτ eσ K) := by
+  simp only [kprep3F, kpGo_eq, kOne, kprepF, sumL, inpU, inpNF_eq]
+
 /-! ## The keys' `eq` tables, once per evaluation -/
 
 /-- `eq(t_{<A}, ·)` for every `A` with `need[A]` (the others empty). -/
