@@ -123,6 +123,8 @@ import FRVerifier4
 import FRNodeLayout4
 import FRNodeCircuit4Dig
 import FRNodeRows4Plan
+import FRNodeRows4Fit
+import FRNodeRows4Model
 import FRVIR4
 import FRVIRFinals4
 import FRSegTarget4

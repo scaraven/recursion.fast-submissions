@@ -3,6 +3,7 @@
 import FRVIR4Mux
 import FRVIRTplFast
 import FRNodeKinds4
+import FRNodeRows4Hint
 
 /-!
 # The N2/N4/N8 nodes' M rows: slots, prototypes, copies, link rows
@@ -79,8 +80,10 @@ def protoOf (κ : NodeKind) (σ : ℕ) : ℕ := if isPrevSlot κ σ then 0 else 
 representative `N4`, deviation 1 of the RESULT; the coordinator's ruling: `c_A` from `hashA`). -/
 def protoProg (π : ℕ) : VProg := if π = 0 then progNodeG (N4c.cells4 .N4) else progSegG
 
-/-- **Prototype `π`'s two-pass layout.** -/
-def protoLay (π : ℕ) : TLay := layOf (protoP π) (baseR π) (protoProg π).ops
+/-- **Prototype `π`'s layout**: `layOf`'s two-pass layout at S-E12b's programs, as constants
+(`FRNodeRows4Hint`; S-E12c: the process start then compiles each prototype once). Any layout is
+sound (`compileT_sound`); that the rows fit is `ProtoFit`, checked. -/
+def protoLay (π : ℕ) : TLay := if π = 0 then hintLay0 else hintLay1
 
 /-- **Prototype `π`'s templated compile.** -/
 def protoCS (π : ℕ) : CS := compileT (protoLay π) (protoP π) (baseR π) (protoProg π).ops
@@ -103,22 +106,65 @@ def absRows4 (κ : NodeKind) (rows : List (ℕ × Row)) : List (ℕ × Row) :=
 def slotRows4 (κ : NodeKind) (σ : ℕ) : List (ℕ × Row) :=
   absRows4 κ (mvRows (protoOf κ σ) σ (protoRows (protoOf κ σ)))
 
-/-- **Slot `σ`'s link rows** (absolute cells): `one′ = one` (σ ≥ 1), `s′_ι = s_ι`, and the one-hot
-products. -/
+/-- **Slot `σ`'s activity** `S_σ = Σ_ι s′_ι` (its selector copies' sum; a bit, as the copies are
+L bits with at most one set). -/
+def selSum (κ : NodeKind) (σ : ℕ) : Lin := Circ.kinds.flatMap fun ι => Lin.cell (κ.oneCell + selR σ ι)
+
+/-- Slot `σ`'s index among its aggregate's sub-slots (`N2`/`N4`: slots `1 …`; `N8`: `4a + i`). -/
+def subIx (κ : NodeKind) (σ : ℕ) : ℕ := if κ.hasPrev then σ - 1 else σ % 4
+
+/-- **The activity rows** (S-E12c): the previous node's slot and every aggregate's first sub-slot
+are active (`S_σ = 1`: exactly one selector); a later sub-slot is active only if the one before it
+is (`S_σ · (1 − S_{σ−1}) = 0`). With the selector bits, the copies and the one-hot products, an
+active slot selects exactly one kind and an inactive one none (`FRNodeRows4Fit`); which sub-slots are
+active is pinned by the aggregate's `k` (`ActK`, the pack map's). -/
+def actRows4 (κ : NodeKind) (σ : ℕ) : List Row :=
+  let one := Lin.cell κ.oneCell
+  if isPrevSlot κ σ || subIx κ σ == 0 then [⟨one, (selSum κ σ).sub one, []⟩]
+  else [⟨selSum κ σ, one.sub (selSum κ (σ - 1)), []⟩]
+
+/-- **Slot `σ`'s link rows** (absolute cells): `one′ = one` (σ ≥ 1), `s′_ι = s_ι`, the one-hot
+products, the activity row. -/
 def linkRows4 (κ : NodeKind) (σ : ℕ) : List Row :=
   let one := Lin.cell κ.oneCell
   let s := fun ι => Lin.cell (κ.oneCell + selR σ ι)
   (if σ = 0 then [] else [⟨one, (Lin.cell (κ.oneCell + oneR σ)).sub one, []⟩]) ++
   Circ.kinds.map (fun ι => ⟨one, (s ι).sub (Lin.cell (selCells4 κ σ ι)), []⟩) ++
-  [⟨s .L32, s .P30, []⟩, ⟨s .L32, s .N30, []⟩, ⟨s .P30, s .N30, []⟩]
+  [⟨s .L32, s .P30, []⟩, ⟨s .L32, s .N30, []⟩, ⟨s .P30, s .N30, []⟩] ++ actRows4 κ σ
 
 /-- Slot `σ`'s link rows at its region's last 8 rows. -/
 def linkIRows4 (κ : NodeKind) (σ : ℕ) : List (ℕ × Row) :=
   (linkRows4 κ σ).zipIdx.map fun p => (σ * slotM4 + slotM4 - 8 + p.2, p.1)
 
-/-- **The node's M rows** (absolute): per slot, its link rows and its rows. -/
-def nodeIRows4 (κ : NodeKind) : List (ℕ × Row) :=
-  (List.range κ.vslots).flatMap fun σ => linkIRows4 κ σ ++ slotRows4 κ σ
+/-! ## The rows' fit -/
+
+/-- A cell of region `π`. -/
+def inSB (π c : ℕ) : Bool := decide (π * slotM4 ≤ c) && decide (c < π * slotM4 + slotM4)
+/-- A form over region `π`'s cells. -/
+def linInB (π : ℕ) (l : Lin) : Bool := l.all fun t => inSB π t.1
+/-- A row index of region `π`, below its link rows. -/
+def idxInB (π r : ℕ) : Bool := decide (π * slotM4 ≤ r) && decide (r + 8 < π * slotM4 + slotM4)
+
+/-- **Rows of region `π`**: indices below its link rows, every cell of every matrix in it. -/
+def InSlot (π : ℕ) (rows : List (ℕ × Row)) : Prop :=
+  ∀ p ∈ rows, (π * slotM4 ≤ p.1 ∧ p.1 + 8 < π * slotM4 + slotM4) ∧
+    ∀ s : Mat, ∀ t ∈ s.r p.2, π * slotM4 ≤ t.1 ∧ t.1 < π * slotM4 + slotM4
+
+/-- **The prototypes fit**: each prototype's rows lie in its region, below its link rows, with
+distinct indices. -/
+def ProtoFit : Prop := ∀ π ≤ 1, InSlot π (protoRows π) ∧ ((protoRows π).map Prod.fst).Nodup
+
+/-- **The rejecting rows** (`one · one = 0`): the node's M rows when `ProtoFit` fails. -/
+def rejectRows (κ : NodeKind) : List (ℕ × Row) := [(0, ⟨Lin.cell κ.oneCell, Lin.cell κ.oneCell, []⟩)]
+
+/-- **The node's M rows** (absolute): per slot, its rows and then its link rows (indices increase
+along a slot); the rejecting row if the prototypes do not fit (never in practice: the plan checks
+`ProtoFit` on its pieces). Not compiled (a closed term of it would be evaluated at process start):
+`evalM` evaluates it from the plan (`FRNodeRows4Plan.evalMT4_eq`). -/
+noncomputable def nodeIRows4 (κ : NodeKind) : List (ℕ × Row) :=
+  open Classical in
+  if ProtoFit then (List.range κ.vslots).flatMap (fun σ => slotRows4 κ σ ++ linkIRows4 κ σ)
+  else rejectRows κ
 
 /-! ## L's rows -/
 
@@ -159,10 +205,13 @@ theorem selCells4_fit (κ : NodeKind) (ι : Kind) :
 /-- (+) The slots' regions fill at most M: `N8`'s eight end at `N_M`. -/
 theorem regions4_fit (κ : NodeKind) : κ.vslots * slotM4 ≤ κ.nM := mSlots_fit κ
 
-/-- (+) A slot's link rows: 7 (slot 0: no `one′` row), 6 for slot 0; (−) not 8. -/
+theorem actRows4_length (κ : NodeKind) (σ : ℕ) : (actRows4 κ σ).length = 1 := by
+  unfold actRows4; split <;> rfl
+
+/-- (+) A slot's link rows: 8, and 7 for slot 0 (no `one′` row); they fit the region's last 8. -/
 theorem linkRows4_length (κ : NodeKind) (σ : ℕ) :
-    (linkRows4 κ σ).length = if σ = 0 then 6 else 7 := by
-  unfold linkRows4; split_ifs <;> simp [Circ.kinds]
+    (linkRows4 κ σ).length = if σ = 0 then 7 else 8 := by
+  unfold linkRows4; split_ifs <;> simp [Circ.kinds, actRows4_length]
 
 end Rev4
 end FR

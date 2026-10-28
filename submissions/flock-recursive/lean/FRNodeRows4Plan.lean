@@ -33,20 +33,17 @@ theorem infoOf_map (ks : List TKey) (k : TKey) :
     infoOf (ks.map mkKM) k = ((tRows k).length, cregion k, tNlocs k) := by
   rw [infoOf, kmOf_map, mkKM_info]
 
-/-- **The plan's data**: both prototypes compiled with one template memo, laid out with one key
-table, their proto-pieces, **one grouping** (so that the keys, and their preparation in `evalM`,
-are shared), each prototype's checked pieces. -/
+/-- **The plan's data**: both prototypes compiled once at their layouts (`protoLay`, constants)
+with one template memo, their proto-pieces, **one grouping** (so that the keys, and their
+preparation in `evalM`, are shared), each prototype's checked pieces. -/
 def planData4 : Array GK × Array (List Lin) × Array (List Lin) × List Piece × List Piece :=
   let ops0 := (protoProg 0).ops
   let ops1 := (protoProg 1).ops
-  let z0 := compMS [] (protoP 0) [] (CS.init (baseR 0)) ops0 none []
-  let z1 := compMS [] (protoP 1) z0.2.2 (CS.init (baseR 1)) ops1 none []
-  -- both prototypes' keys (a closure over `z0` here would be specialised into the loop and
-  -- recompute the compile per key: measured 10 s at process start)
-  let kms := ((keyCounts (z1.1.tins ++ z0.1.tins)).map Prod.fst).map mkKM
-  let l0 := mkLayI (infoOf kms) z0.1.nrows z0.1.next (keyCounts z0.1.tins)
-  let l1 := mkLayI (infoOf kms) z1.1.nrows z1.1.next (keyCounts z1.1.tins)
-  let r0 := compMS l0 (protoP 0) z1.2.2 (CS.init (baseR 0)) ops0 none []
+  let l0 := protoLay 0
+  let l1 := protoLay 1
+  let ks0 := l0.map Prod.fst
+  let kms := (ks0 ++ (l1.map Prod.fst).filter (fun k => !ks0.contains k)).map mkKM
+  let r0 := compMS l0 (protoP 0) [] (CS.init (baseR 0)) ops0 none []
   let r1 := compMS l1 (protoP 1) r0.2.2 (CS.init (baseR 1)) ops1 none []
   let p0 := slotRP (oneP 0) kms l0 0 r0.1 r0.2.1.reverse []
   let rps1 := (slotRP (oneP 1) kms l1 (1 * slotM4) r1.1 r1.2.1.reverse p0.2).1
@@ -58,39 +55,32 @@ theorem planData4_rows :
     planData4.2.2.2.1.flatMap (Piece.rows (planData4.1.map mkKey) planData4.2.1 (oneP 0)) = protoRows 0 ∧
       planData4.2.2.2.2.flatMap (Piece.rows (planData4.1.map mkKey) planData4.2.2.1 (oneP 1)) = protoRows 1 := by
   simp only [planData4, piecesOf_rows]
-  obtain ⟨hz0, mz0⟩ := compMS_T [] (protoP 0) (baseR 0) (protoProg 0).ops (M := []) (by simp [MOk])
-  obtain ⟨hz1, mz1⟩ := compMS_T [] (protoP 1) (baseR 1) (protoProg 1).ops mz0
-  rw [mkLayI_eq _ (infoOf_map _), mkLayI_eq _ (infoOf_map _), hz0, hz1, ← layOf, ← layOf]
-  obtain ⟨hr0, mr0⟩ := compMS_T (layOf (protoP 0) (baseR 0) (protoProg 0).ops) (protoP 0) (baseR 0)
-    (protoProg 0).ops mz1
-  obtain ⟨hr1, -⟩ := compMS_T (layOf (protoP 1) (baseR 1) (protoProg 1).ops) (protoP 1) (baseR 1)
-    (protoProg 1).ops mr0
-  rw [slotRP_rows, slotRP_rows, hr0, hr1, protoRows, protoRows, protoCS, protoCS, protoLay, protoLay]
+  obtain ⟨hr0, mr0⟩ := compMS_T (protoLay 0) (protoP 0) (baseR 0) (protoProg 0).ops (M := []) (by simp [MOk])
+  obtain ⟨hr1, -⟩ := compMS_T (protoLay 1) (protoP 1) (baseR 1) (protoProg 1).ops mr0
+  rw [slotRP_rows, slotRP_rows, hr0, hr1, protoRows, protoRows,
+    protoCS, protoCS]
   exact ⟨rfl, by rw [one_mul]⟩
 
 /-! ## The region check -/
 
-/-- A cell of region `π`. -/
-def inSB (π c : ℕ) : Bool := decide (π * slotM4 ≤ c) && decide (c < π * slotM4 + slotM4)
-/-- A form over region `π`'s cells. -/
-def linInB (π : ℕ) (l : Lin) : Bool := l.all fun t => inSB π t.1
-/-- A row index of region `π`, below its link rows. -/
-def idxInB (π r : ℕ) : Bool := decide (π * slotM4 ≤ r) && decide (r + 8 < π * slotM4 + slotM4)
-
-/-- **A piece stays in region `π`** (its rows below the link rows, its cells in the region). -/
-def pieceInB (keys : Array Key) (sh : Array (List Lin)) (one : Lin) (π : ℕ) : Piece → Bool
+/-- **A piece stays in region `π`** (its rows below the link rows, its cells in the region);
+`shOk k`: key `k`'s shared input forms are in the region (checked once per key). -/
+def pieceInB (keys : Array Key) (shOk : Array Bool) (one : Lin) (π : ℕ) : Piece → Bool
   | .sp rs => rs.all fun p => idxInB π p.1 && linInB π p.2.a && linInB π p.2.b && linInB π p.2.c
   | .ins k xh ch own =>
     decide (π * slotM4 ≤ 2 ^ (keys.getD k dkey).A * xh) &&
     decide (2 ^ (keys.getD k dkey).A * xh + (keys.getD k dkey).rows.length + 8 ≤ π * slotM4 + slotM4) &&
     decide (π * slotM4 ≤ 2 ^ (keys.getD k dkey).B * ch) &&
     decide (2 ^ (keys.getD k dkey).B * ch + 2 ^ (keys.getD k dkey).B ≤ π * slotM4 + slotM4) &&
-    linInB π one && (sh.getD k [] ++ own).all (linInB π)
+    linInB π one && shOk.getD k false && own.all (linInB π)
 
-/-- **Rows of region `π`**: indices below its link rows, every cell of every matrix in it. -/
-def InSlot (π : ℕ) (rows : List (ℕ × Row)) : Prop :=
-  ∀ p ∈ rows, (π * slotM4 ≤ p.1 ∧ p.1 + 8 < π * slotM4 + slotM4) ∧
-    ∀ s : Mat, ∀ t ∈ s.r p.2, π * slotM4 ≤ t.1 ∧ t.1 < π * slotM4 + slotM4
+/-- The shared forms' check, once per key. -/
+def shInB (sh : Array (List Lin)) (π : ℕ) : Array Bool := sh.map fun l => l.all (linInB π)
+
+theorem shInB_get {sh : Array (List Lin)} {π k : ℕ} (h : (shInB sh π).getD k false = true) :
+    (sh.getD k []).all (linInB π) = true := by
+  simp only [shInB, Array.getD_eq_getD_getElem?, Array.getElem?_map] at h ⊢
+  cases e : sh[k]? <;> simp_all
 
 theorem linInB_spec {π : ℕ} {l : Lin} (h : linInB π l = true) {t : ℕ × F} (ht : t ∈ l) :
     π * slotM4 ≤ t.1 ∧ t.1 < π * slotM4 + slotM4 := by
@@ -103,7 +93,7 @@ theorem mem_smul {c : F} {l : Lin} {t : ℕ × F} (h : t ∈ l.smul c) : ∃ t' 
   exact ⟨t', ht', rfl⟩
 
 theorem pieceInB_spec {keys : Array Key} {sh : Array (List Lin)} {one : Lin} {π : ℕ}
-    (hk : keys.all (Key.ok 21) = true) {pc : Piece} (h : pieceInB keys sh one π pc = true) :
+    (hk : keys.all (Key.ok 21) = true) {pc : Piece} (h : pieceInB keys (shInB sh π) one π pc = true) :
     InSlot π (Piece.rows keys sh one pc) := by
   cases pc with
   | sp rs =>
@@ -118,7 +108,9 @@ theorem pieceInB_spec {keys : Array Key} {sh : Array (List Lin)} {one : Lin} {π
     · exact linInB_spec hc ht
   | ins k xh ch own =>
     simp only [pieceInB, Bool.and_eq_true, decide_eq_true_eq] at h
-    obtain ⟨⟨⟨⟨⟨h1, h2⟩, h3⟩, h4⟩, h5⟩, h6⟩ := h
+    obtain ⟨⟨⟨⟨⟨⟨h1, h2⟩, h3⟩, h4⟩, h5⟩, h6s⟩, h6o⟩ := h
+    have h6 : (sh.getD k [] ++ own).all (linInB π) = true := by
+      rw [List.all_append, shInB_get h6s, h6o]; rfl
     obtain ⟨-, -, -, hloc⟩ := Key.ok_spec (key_ok hk k)
     intro p hp
     simp only [Piece.rows, instIR, List.mem_map] at hp
@@ -154,11 +146,139 @@ theorem pieceInB_spec {keys : Array Key} {sh : Array (List Lin)} {one : Lin} {π
       constructor <;> omega
 
 theorem pcIn_spec {keys : Array Key} {sh : Array (List Lin)} {one : Lin} {π : ℕ}
-    (hk : keys.all (Key.ok 21) = true) {pc : List Piece} (h : pc.all (pieceInB keys sh one π) = true) :
+    (hk : keys.all (Key.ok 21) = true) {pc : List Piece}
+    (h : pc.all (pieceInB keys (shInB sh π) one π) = true) :
     InSlot π (pc.flatMap (Piece.rows keys sh one)) := by
   intro p hp
   obtain ⟨q, hq, hp⟩ := List.mem_flatMap.1 hp
   exact pieceInB_spec hk (List.all_eq_true.1 h q hq) p hp
+
+/-! ## Distinct row indices -/
+
+/-- The indices `[s, s + n)`. -/
+def ivIdx (iv : ℕ × ℕ) : List ℕ := (List.range iv.2).map (iv.1 + ·)
+
+/-- **A piece's row indices as intervals** `(start, length)`: an instance's rows, or each sparse
+row. -/
+def ivOf (keys : Array Key) : Piece → List (ℕ × ℕ)
+  | .sp rs => rs.map fun p => (p.1, 1)
+  | .ins k xh _ _ => [(2 ^ (keys.getD k dkey).A * xh, (keys.getD k dkey).rows.length)]
+
+theorem ivOf_idx (keys : Array Key) (sh : Array (List Lin)) (one : Lin) (pc : Piece) :
+    (Piece.rows keys sh one pc).map Prod.fst = (ivOf keys pc).flatMap ivIdx := by
+  cases pc with
+  | sp rs =>
+    simp only [Piece.rows, ivOf]
+    induction rs with
+    | nil => rfl
+    | cons p rs ih => simp [ivIdx, ih]
+  | ins k xh ch own =>
+    simp only [Piece.rows, instIR, ivOf, ivIdx, List.flatMap_singleton, List.map_map, Function.comp_def]
+    apply List.ext_getElem <;> simp
+
+/-- Sorted intervals, each ending before the next starts. -/
+def ivsOkB : List (ℕ × ℕ) → Bool
+  | a :: b :: l => decide (a.1 + a.2 ≤ b.1) && ivsOkB (b :: l)
+  | _ => true
+
+theorem ivsOkB_pairwise : ∀ l : List (ℕ × ℕ), ivsOkB l = true → l.Pairwise fun a b => a.1 + a.2 ≤ b.1
+  | [], _ => .nil
+  | [_], _ => List.pairwise_singleton _ _
+  | a :: b :: l, h => by
+    simp only [ivsOkB, Bool.and_eq_true, decide_eq_true_eq] at h
+    have ih := ivsOkB_pairwise (b :: l) h.2
+    refine List.Pairwise.cons (fun c hc => ?_) ih
+    rcases List.mem_cons.1 hc with rfl | hc
+    · exact h.1
+    · have := List.rel_of_pairwise_cons ih hc; omega
+
+/-- **Disjoint intervals give distinct indices** (checked after sorting by start). -/
+theorem ivs_nodup (l : List (ℕ × ℕ)) (h : ivsOkB (l.mergeSort fun a b => decide (a.1 ≤ b.1)) = true) :
+    (l.flatMap ivIdx).Nodup := by
+  have hp := (List.mergeSort_perm l fun a b => decide (a.1 ≤ b.1)).flatMap_right ivIdx
+  refine hp.nodup_iff.1 (List.nodup_flatMap.2 ⟨fun iv _ => ?_, ?_⟩)
+  · exact (List.nodup_range).map fun a b h => by simpa using h
+  · refine (ivsOkB_pairwise _ h).imp fun {a b} hab => ?_
+    show List.Disjoint (ivIdx a) (ivIdx b)
+    rw [List.disjoint_left]
+    intro x hxa hxb
+    simp only [ivIdx, List.mem_map, List.mem_range] at hxa hxb
+    omega
+
+/-- The pieces' index check. -/
+def idsOkB (keys : Array Key) (pc : List Piece) : Bool :=
+  ivsOkB ((pc.flatMap (ivOf keys)).mergeSort fun a b => decide (a.1 ≤ b.1))
+
+theorem idsOkB_spec {keys : Array Key} {sh : Array (List Lin)} {one : Lin} {pc : List Piece}
+    (h : idsOkB keys pc = true) : ((pc.flatMap (Piece.rows keys sh one)).map Prod.fst).Nodup := by
+  have e : (pc.flatMap (Piece.rows keys sh one)).map Prod.fst = (pc.flatMap (ivOf keys)).flatMap ivIdx := by
+    rw [List.map_flatMap, List.flatMap_assoc]
+    exact congrArg pc.flatMap (funext fun q => ivOf_idx keys sh one q)
+  rw [e]; exact ivs_nodup _ h
+
+/-! ## The fit, checked on rows (the fallback's) -/
+
+/-- Strictly increasing. -/
+def strictB : List ℕ → Bool
+  | a :: b :: l => decide (a < b) && strictB (b :: l)
+  | _ => true
+
+theorem strictB_iff : ∀ l : List ℕ, strictB l = true ↔ l.Pairwise (· < ·)
+  | [] => by simp [strictB]
+  | [_] => by simp [strictB]
+  | a :: b :: l => by
+    rw [strictB, Bool.and_eq_true, decide_eq_true_eq, strictB_iff (b :: l)]
+    constructor
+    · rintro ⟨hab, hl⟩
+      refine List.Pairwise.cons (fun c hc => ?_) hl
+      rcases List.mem_cons.1 hc with rfl | hc
+      · exact hab
+      · exact lt_trans hab (List.rel_of_pairwise_cons hl hc)
+    · intro h; exact ⟨List.rel_of_pairwise_cons h (List.mem_cons_self ..), h.of_cons⟩
+
+/-- **Distinct indices**, checked by sorting. -/
+def idxNodupB (rows : List (ℕ × Row)) : Bool := strictB ((rows.map Prod.fst).mergeSort fun a b => decide (a ≤ b))
+
+theorem idxNodupB_iff (rows : List (ℕ × Row)) : idxNodupB rows = true ↔ (rows.map Prod.fst).Nodup := by
+  have hp := List.mergeSort_perm (rows.map Prod.fst) fun a b => decide (a ≤ b)
+  rw [idxNodupB, strictB_iff, ← hp.nodup_iff]
+  constructor
+  · exact fun h => h.imp (ne_of_lt)
+  · intro hn
+    have hs := List.pairwise_mergeSort (le := fun a b : ℕ => decide (a ≤ b))
+      (fun a b c hab hbc => by simp only [decide_eq_true_eq] at *; omega)
+      (fun a b => by simp only [Bool.or_eq_true, decide_eq_true_eq]; omega) (rows.map Prod.fst)
+    exact (hs.and hn).imp fun ⟨h1, h2⟩ => lt_of_le_of_ne (by simpa using h1) h2
+
+/-- Rows of region `π` (Bool). -/
+def inSlotB (π : ℕ) (rows : List (ℕ × Row)) : Bool :=
+  rows.all fun p => idxInB π p.1 && linInB π p.2.a && linInB π p.2.b && linInB π p.2.c
+
+theorem linInB_iff {π : ℕ} {l : Lin} : linInB π l = true ↔ ∀ t ∈ l, π * slotM4 ≤ t.1 ∧ t.1 < π * slotM4 + slotM4 := by
+  simp [linInB, inSB]
+
+theorem inSlotB_iff (π : ℕ) (rows : List (ℕ × Row)) : inSlotB π rows = true ↔ InSlot π rows := by
+  simp only [inSlotB, InSlot, List.all_eq_true, Bool.and_eq_true, linInB_iff]
+  refine forall_congr' fun p => imp_congr_right fun _ => ?_
+  simp only [idxInB, Bool.and_eq_true, decide_eq_true_eq]
+  constructor
+  · rintro ⟨⟨⟨hi, ha⟩, hb⟩, hc⟩; exact ⟨hi, fun s => by cases s <;> assumption⟩
+  · rintro ⟨hi, hs⟩; exact ⟨⟨⟨hi, hs .a⟩, hs .b⟩, hs .c⟩
+
+/-- **A prototype's fit** (Bool, on its rows). -/
+def fitB (π : ℕ) (rows : List (ℕ × Row)) : Bool := inSlotB π rows && idxNodupB rows
+
+theorem fitB_iff (π : ℕ) (rows : List (ℕ × Row)) :
+    fitB π rows = true ↔ InSlot π rows ∧ (rows.map Prod.fst).Nodup := by
+  rw [fitB, Bool.and_eq_true, inSlotB_iff, idxNodupB_iff]
+
+theorem protoFit_iff : ProtoFit ↔ (fitB 0 (protoRows 0) && fitB 1 (protoRows 1)) = true := by
+  rw [Bool.and_eq_true, fitB_iff, fitB_iff]
+  constructor
+  · intro h; exact ⟨h 0 (by norm_num), h 1 le_rfl⟩
+  · rintro ⟨h0, h1⟩ π hπ
+    rcases Nat.le_one_iff_eq_zero_or_eq_one.1 hπ with rfl | rfl
+    exacts [h0, h1]
 
 /-- **`t` restricted to region `π`'s low coordinates**: `t` below 20, `π`'s bit at 20, `0` above
 (so that `eq(starPt t π, π·2^20 + j) = eq(t_<20, j)`). -/
@@ -191,7 +311,7 @@ structure Plan4 where
   hp0 : p0 = pc0.map (prepPiece pats)
   hp1 : p1 = pc1.map (prepPiece pats)
   inR : Bool
-  hR : inR = true → InSlot 0 (protoRows 0) ∧ InSlot 1 (protoRows 1) ∧ lowKeys keys = true
+  hR : inR = true → ProtoFit ∧ lowKeys keys = true
 
 /-- A plan from its pieces (the region and key checks computed here, once). -/
 def mkPlan4 (keys : Array Key) (sh0 sh1 : Array (List Lin)) (pc0 pc1 : List Piece)
@@ -214,16 +334,21 @@ def mkPlan4 (keys : Array Key) (sh0 sh1 : Array (List Lin)) (pc0 pc1 : List Piec
   hg1 := rfl
   hp0 := rfl
   hp1 := rfl
-  inR := pc0.all (pieceInB keys sh0 (oneP 0) 0) && pc1.all (pieceInB keys sh1 (oneP 1) 1) && lowKeys keys
+  inR := pc0.all (pieceInB keys (shInB sh0 0) (oneP 0) 0) && pc1.all (pieceInB keys (shInB sh1 1) (oneP 1) 1) &&
+    idsOkB keys pc0 && idsOkB keys pc1 && lowKeys keys
   hR := fun h => by
     simp only [Bool.and_eq_true] at h
-    exact ⟨ok.2.1 ▸ pcIn_spec ok.1 h.1.1, ok.2.2 ▸ pcIn_spec ok.1 h.1.2, h.2⟩
+    obtain ⟨⟨⟨⟨h0, h1⟩, i0⟩, i1⟩, hk⟩ := h
+    refine ⟨fun π hπ => ?_, hk⟩
+    rcases Nat.le_one_iff_eq_zero_or_eq_one.1 hπ with rfl | rfl
+    · exact ⟨ok.2.1 ▸ pcIn_spec ok.1 h0, ok.2.1 ▸ idsOkB_spec i0⟩
+    · exact ⟨ok.2.2 ▸ pcIn_spec ok.1 h1, ok.2.2 ▸ idsOkB_spec i1⟩
 
 def planOf4D (d : Array GK × Array (List Lin) × Array (List Lin) × List Piece × List Piece)
     (hd : d = planData4) : Plan4 :=
   if h : (d.1.map mkKey).all (Key.ok 21) = true then
     mkPlan4 (d.1.map mkKey) d.2.1 d.2.2.1 d.2.2.2.1 d.2.2.2.2
-      (mkPats (d.1.map mkKey).size (d.2.2.2.1 ++ d.2.2.2.2))
+      (mkPats (d.1.map mkKey).size d.2.2.2.1)
       ⟨h, by subst hd; exact planData4_rows.1, by subst hd; exact planData4_rows.2⟩
   else
     -- the fallback's rows depend on `d` (`protoRows (k − k)`), so that the compiler does not hoist
@@ -393,11 +518,11 @@ theorem copy_val {π σ lm : ℕ} (hπ : π ≤ 1) (hl : 20 ≤ lm) (hσ : σ < 
 /-- `c · x` over triples. -/
 def smul3 (c : F) (x : F3) : F3 := (c * x.1, c * x.2.1, c * x.2.2)
 
-/-- **Slot `σ`'s value** from its prototype's (`vN`, `vS`): link rows sparse, the rest scaled. -/
+/-- **Slot `σ`'s value** from its prototype's (`vN`, `vS`): the rest scaled, the link rows sparse. -/
 def slotV4 (κ : NodeKind) (t u : ℕ → F) (vN vS : F3) (σ : ℕ) : F3 :=
   let lm := κ.dims.logM
-  add3 (rows3 lm (lm + 2) t u (linkIRows4 κ σ))
-    (smul3 (hiF lm t σ * (hiF lm u σ * (u lm * u (lm + 1)))) (if protoOf κ σ = 0 then vN else vS))
+  add3 (smul3 (hiF lm t σ * (hiF lm u σ * (u lm * u (lm + 1)))) (if protoOf κ σ = 0 then vN else vS))
+    (rows3 lm (lm + 2) t u (linkIRows4 κ σ))
 
 /-- A prototype's rows from the plan's pieces (the fallback's; no closed `protoRows` constant in
 the compiled code). -/
@@ -405,18 +530,33 @@ def protoRowsP (pl : Plan4) (π : ℕ) : List (ℕ × Row) :=
   if π = 0 then pl.pc0.flatMap (Piece.rows pl.keys pl.sh0 (oneP 0))
   else pl.pc1.flatMap (Piece.rows pl.keys pl.sh1 (oneP 1))
 
-/-- `nodeIRows4` from the plan's pieces. -/
+theorem protoRowsP_eq (pl : Plan4) (π : ℕ) (hπ : π ≤ 1) : protoRowsP pl π = protoRows π := by
+  unfold protoRowsP; split_ifs with h
+  · subst h; exact pl.ok.2.1
+  · obtain rfl : π = 1 := by omega
+    exact pl.ok.2.2
+
+/-- `nodeIRows4` from the plan's pieces, the fit checked on them (the fallback's). -/
 def nodeIRowsP (pl : Plan4) (κ : NodeKind) : List (ℕ × Row) :=
-  (List.range κ.vslots).flatMap fun σ =>
-    linkIRows4 κ σ ++ absRows4 κ (mvRows (protoOf κ σ) σ (protoRowsP pl (protoOf κ σ)))
+  if (fitB 0 (protoRowsP pl 0) && fitB 1 (protoRowsP pl 1)) = true then
+    (List.range κ.vslots).flatMap fun σ =>
+      absRows4 κ (mvRows (protoOf κ σ) σ (protoRowsP pl (protoOf κ σ))) ++ linkIRows4 κ σ
+  else rejectRows κ
+
+theorem protoOf_le (κ : NodeKind) (σ : ℕ) : protoOf κ σ ≤ 1 := by unfold protoOf; split_ifs <;> omega
 
 theorem nodeIRowsP_eq (pl : Plan4) (κ : NodeKind) : nodeIRowsP pl κ = nodeIRows4 κ := by
-  have h : ∀ σ, protoRowsP pl (protoOf κ σ) = protoRows (protoOf κ σ) := fun σ => by
-    unfold protoRowsP protoOf; split_ifs <;> simp_all [pl.ok.2.1, pl.ok.2.2]
-  simp only [nodeIRowsP, nodeIRows4, slotRows4, h]
+  have h : ∀ σ, protoRowsP pl (protoOf κ σ) = protoRows (protoOf κ σ) := fun σ =>
+    protoRowsP_eq pl _ (protoOf_le κ σ)
+  unfold nodeIRowsP nodeIRows4
+  rw [protoRowsP_eq pl 0 (by norm_num), protoRowsP_eq pl 1 le_rfl]
+  by_cases hF : ProtoFit
+  · rw [if_pos (protoFit_iff.1 hF), if_pos hF]
+    simp only [slotRows4, h]
+  · rw [if_neg (mt protoFit_iff.2 hF), if_neg hF]
 
 /-- **`evalM` of a 4.1 node** (S-E12b): the two prototypes' values once, every slot from them;
-the sparse sum over `nodeIRows4 κ` if a region check failed. -/
+the sparse sum over `nodeIRows4 κ` if a check failed. -/
 def evalMT4 (pl : Plan4) (κ : NodeKind) (τ σ : Array F) : F3 :=
   let t := fun l => τ.getD l 0; let u := fun l => σ.getD l 0
   if pl.inR then
@@ -456,14 +596,16 @@ theorem evalMT4_eq (pl : Plan4) (κ : NodeKind) (τ σ : Array F) : evalMT4 pl �
   unfold evalMT4
   dsimp only
   by_cases hR : pl.inR = true
-  · rw [if_pos hR, ← hspec, nodeIRows4, rows3_flatMap]
-    obtain ⟨hR0, hR1, hk⟩ := pl.hR hR
+  · obtain ⟨hF, hk⟩ := pl.hR hR
+    rw [if_pos hR, ← hspec, nodeIRows4, if_pos hF, rows3_flatMap]
+    obtain ⟨hR0, -⟩ := hF 0 (by norm_num)
+    obtain ⟨hR1, -⟩ := hF 1 le_rfl
     obtain ⟨hl, hv⟩ := logM_ge κ
     obtain ⟨hv0, hv1⟩ := protoV4_eq pl hk (fun l => τ.getD l 0) (fun l => σ.getD l 0) κ.hasPrev
     refine sum3_congr fun s hs => ?_
     have hs' : s < 2 ^ (κ.dims.logM - 20) := lt_of_lt_of_le (List.mem_range.1 hs) hv
     rw [rows3_append, slotV4]
-    refine congrArg (add3 _) ?_
+    refine congrArg (add3 · _) ?_
     have hc : ∀ π : ℕ, π ≤ 1 → InSlot π (protoRows π) →
         smul3 (hiF κ.dims.logM (fun l => τ.getD l 0) s * (hiF κ.dims.logM (fun l => σ.getD l 0) s *
             (σ.getD κ.dims.logM 0 * σ.getD (κ.dims.logM + 1) 0)))
@@ -500,6 +642,14 @@ theorem pieceInB_ctl :
     pieceInB #[] #[] [] 1 (.sp [(2 ^ 20, ⟨[(2 ^ 20 + 1, 1)], [], []⟩)]) = true ∧
       pieceInB #[] #[] [] 1 (.sp [(2 ^ 20, ⟨[(5, 1)], [], []⟩)]) = false := by
   constructor <;> decide
+
+/-- (+) Sorted disjoint intervals pass the index check; (−) overlapping ones fail. -/
+theorem ivsOkB_ctl : ivsOkB [(0, 5), (5, 3)] = true ∧ ivsOkB [(0, 5), (4, 1)] = false := by
+  constructor <;> decide
+
+/-- (+) Distinct indices pass `idxNodupB`, in any order; (−) a repeated index fails it. -/
+theorem idxNodupB_ctl (r : Row) : idxNodupB [(3, r), (1, r)] = true ∧ idxNodupB [(1, r), (1, r)] ≠ true :=
+  ⟨(idxNodupB_iff _).2 (by simp), fun h => by simpa using (idxNodupB_iff _).1 h⟩
 
 end Rev4
 end FR
