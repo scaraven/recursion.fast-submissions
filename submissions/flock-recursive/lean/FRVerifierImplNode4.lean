@@ -2,6 +2,7 @@
 -- `FRVerifierImplNode` (`shiftMaskI`, `linkWOne`/`linkWAllI`).
 import FRNodeTarget4
 import FRVerifierImplNode
+import FRVerifierImplOps4
 
 /-!
 # The node's verifier ops at the revision 4.1 layout: computed forms
@@ -59,6 +60,64 @@ theorem shP_eq (n : ℕ) (m : Fin n → Bool → Bool → F) (c : ℕ) :
     simp only [Bool.toNat_false, Bool.toNat_true]
     split_ifs <;> first | ring1 | (exfalso; omega)
 
+/-! ## The prefix sums on index-shifted factors (the computed forms) -/
+
+/-- `Π_{l<n} g l` as a loop. -/
+def prodTo (n : ℕ) (g : ℕ → F) : F := Nat.fold n (fun i _ acc => acc * g i) 1
+
+theorem prodTo_eq (n : ℕ) (g : ℕ → F) : prodTo n g = ∏ i ∈ range n, g i := by
+  induction n with
+  | zero => rfl
+  | succ n ih => rw [prodTo, Nat.fold_succ, ← prodTo, ih, Finset.prod_range_succ]
+
+/-- `prodAt` on the coordinates `s, s + 1, …` of `e` (a loop, no `Fin` enumeration). -/
+def prodQ (e : ℕ → Bool → F) (n s d : ℕ) : F :=
+  if d < 2 ^ n then prodTo n fun l => e (s + l) (d.testBit l) else 0
+
+/-- `prefixP` on the coordinates `s, s + 1, …` of `e`. -/
+def prefixQ (e : ℕ → Bool → F) : ℕ → ℕ → ℕ → F
+  | 0, _, c => if 0 < c then 1 else 0
+  | n + 1, s, c => (e s false + e s true) * prefixQ e n (s + 1) (c / 2) +
+      if c % 2 = 1 then e s false * prodQ e n (s + 1) (c / 2) else 0
+
+/-- `shP` on the coordinates `s, s + 1, …` of `m`. -/
+def shQ (m : ℕ → Bool → Bool → F) : ℕ → ℕ → ℕ → F
+  | 0, _, _ => 0
+  | n + 1, s, c => m s false true * prefixQ (fun l b => m l b b) n (s + 1) ((c + 1) / 2) +
+      m s true false * shQ m n (s + 1) (c / 2)
+
+theorem prodQ_eq (e : ℕ → Bool → F) (n s d : ℕ) :
+    prodQ e n s d = prodAt (fun (l : Fin n) b => e (s + l.val) b) d := by
+  unfold prodQ prodAt
+  split_ifs
+  · rw [prodTo_eq, ← Fin.prod_univ_eq_prod_range (fun l => e (s + l) (d.testBit l))]
+  · rfl
+
+theorem prefixQ_eq (e : ℕ → Bool → F) (n s c : ℕ) :
+    prefixQ e n s c = prefixP n (fun (l : Fin n) b => e (s + l.val) b) c := by
+  induction n generalizing s c with
+  | zero => rfl
+  | succ n ih =>
+    have hf : (fun (l : Fin n) b => e (s + (Fin.succ l).val) b) = fun (l : Fin n) b => e (s + 1 + l.val) b :=
+      funext fun l => funext fun b => by rw [Fin.val_succ, show s + (l.val + 1) = s + 1 + l.val by omega]
+    rw [prefixQ, prefixP, ih, prodQ_eq, hf]
+    simp only [Fin.val_zero, add_zero]
+
+theorem shQ_eq (m : ℕ → Bool → Bool → F) (n s c : ℕ) :
+    shQ m n s c = shP n (fun (l : Fin n) b b' => m (s + l.val) b b') c := by
+  induction n generalizing s c with
+  | zero => rfl
+  | succ n ih =>
+    have hf : (fun (l : Fin n) b b' => m (s + (Fin.succ l).val) b b') =
+        fun (l : Fin n) b b' => m (s + 1 + l.val) b b' :=
+      funext fun l => funext fun b => funext fun b' => by
+        rw [Fin.val_succ, show s + (l.val + 1) = s + 1 + l.val by omega]
+    have hd : (fun (l : Fin n) b => m (s + (Fin.succ l).val) b b) =
+        fun (l : Fin n) b => m (s + 1 + l.val) b b :=
+      funext fun l => funext fun b => by rw [Fin.val_succ, show s + (l.val + 1) = s + 1 + l.val by omega]
+    rw [shQ, shP, ih, prefixQ_eq, hf, hd]
+    simp only [Fin.val_zero, add_zero]
+
 /-! ## `shiftMask` -/
 
 section Mask
@@ -68,16 +127,33 @@ variable (ν : NodeKind)
 def mF {n : ℕ} (τ r : Fin n → F) (l : Fin n) (b b' : Bool) : F :=
   (if b then τ l else 1 - τ l) * (if b' then r l else 1 - r l)
 
+/-- The four factors `m_l(b, b′)` of every coordinate, computed once. -/
+def mArr {n : ℕ} (τ r : Fin n → F) : Array (F × F × F × F) :=
+  Array.ofFn fun l => (mF τ r l false false, mF τ r l false true, mF τ r l true false, mF τ r l true true)
+
+/-- `m_l(b, b′)` read from `mArr`. -/
+def mQ (M : Array (F × F × F × F)) (l : ℕ) (b b' : Bool) : F :=
+  let q := M.getD l (0, 0, 0, 0)
+  if b then (if b' then q.2.2.2 else q.2.2.1) else (if b' then q.2.1 else q.1)
+
+theorem mQ_eq {n : ℕ} (τ r : Fin n → F) (l : Fin n) (b b' : Bool) :
+    mQ (mArr τ r) l.val b b' = mF τ r l b b' := by
+  unfold mQ mArr
+  rw [Array.getD_eq_getD_getElem?, Array.getElem?_ofFn, dif_pos l.isLt, Option.getD_some]
+  cases b <;> cases b' <;> rfl
+
 /-- **`shiftMask`, computed** (`c = chLen₀ + chLen₁ − 1`, `a = chLen₀ − 1`): the prefix sums
-`Σ_{y<c}` less chain 0's last block `a`, and the starts' two `eq`s. -/
+`Σ_{y<c}` less chain 0's last block `a`, and the starts' two `eq`s; the factors read from
+`mArr` (`prefixQ`, `shQ`: index-shifted, loops). -/
 def shiftMask4I (τ r : Array F) : F × F × F :=
   let n := nbN ν
   let τ' := ptA n τ; let r' := ptA n r
+  let M := mArr τ' r'
   let L0 := N4c.chLen ν 0
   let c := L0 + N4c.chLen ν 1 - 1
   let ea := eqAtR τ' (L0 - 1)
-  (prefixP n (fun l b => mF τ' r' l b b) c - ea * eqAtR r' (L0 - 1),
-   shP n (mF τ' r') c - ea * eqAtR r' L0,
+  (prefixQ (fun l b => mQ M l b b) n 0 c - ea * eqAtR r' (L0 - 1),
+   shQ (mQ M) n 0 c - ea * eqAtR r' L0,
    eqAtR r' 0 + eqAtR r' L0)
 
 theorem prod_mF {n : ℕ} (τ r : Fin n → F) (x y : ℕ) :
@@ -109,7 +185,13 @@ theorem shiftMask4_meets (τ r : Array F) : shiftMask4I ν τ r = shiftMask4S ν
   obtain ⟨h1, h2, h3, h4⟩ := chLen_facts ν
   have hw : N4c.wotsB ν 0 < N4c.hUsedN ν := by
     have := wotsB_hUsed ν (σ := 0) (by norm_num); omega
-  simp only [shiftMask4I, shiftMask4S, lkE, lkSh, lkE0]
+  have hM : ∀ {n : ℕ} (τ' r' : Fin n → F), (fun (l : Fin n) b b' => mQ (mArr τ' r') (0 + l.val) b b') =
+      mF τ' r' := fun τ' r' => funext fun l => funext fun b => funext fun b' => by
+    rw [zero_add, mQ_eq]
+  have hD : ∀ {n : ℕ} (τ' r' : Fin n → F), (fun (l : Fin n) b => mQ (mArr τ' r') (0 + l.val) b b) =
+      fun l b => mF τ' r' l b b := fun τ' r' => funext fun l => funext fun b => by
+    rw [zero_add, mQ_eq]
+  simp only [shiftMask4I, shiftMask4S, lkE, lkSh, lkE0, prefixQ_eq, shQ_eq, hM, hD]
   refine Prod.ext ?_ (Prod.ext ?_ rfl) <;> dsimp only
   · rw [sum_lk, prefixP_eq]
     simp only [prod_mF]
@@ -176,15 +258,61 @@ def linkWOne4 (ν : NodeKind) (Tτ Tr : BT) (Pr : Array F × Array F) (Eθ : Arr
     Tτ.eq (N4c.srcB4 ν σ f t) * (Tr.eq (N4c.srcB4 ν σ f t) * SW -
       Tr.eq (N4c.mirB4 ν σ f t) * MS.getD ((NodeT.fam f).mir t % 4) 0)
 
+/-- Family `f`'s weight from the per-block arrays of both slots (`EP σ`: `eq(τ, ·) eq(r_blk, ·)` on
+the WOTS blocks, `Eτ σ`: `eq(τ, ·)` on them, `EM σ`: `eq(r_blk, ·)` on the `WM` blocks): the field
+weight `SW` factored out of the source sum, two products per source. -/
+def linkWOneF (EP Eτ EM : ℕ → Array F) (Pr : Array F × Array F) (Eθ : Array F) (f : ℕ) : F :=
+  let L := NodeT.fbits f
+  let SW := sumTo L fun s => Eθ.getD s 0 * NodeI.eq10 Pr (NodeT.fpos f s)
+  let MI := sumTo L fun s => Eθ.getD s 0 * Pr.1.getD ((NodeT.fam f).mbo + s) 0
+  let MS := Array.ofFn (n := 4) fun c => Pr.2.getD c 0 * MI
+  sumTo 2 fun σ => SW * (sumTo (NodeT.fam f).n fun t => (EP σ).getD ((NodeT.fam f).src t) 0) -
+    sumTo (NodeT.fam f).n fun t => (Eτ σ).getD ((NodeT.fam f).src t) 0 *
+      (EM σ).getD ((NodeT.fam f).mir t / 4) 0 * MS.getD ((NodeT.fam f).mir t % 4) 0
+
 /-- **`linkWAll`, computed** on the packed points `tt = τ ‖ θ`, `rr = r_blk ‖ r_pos` (`nb + 10`
-entries each), the tables shared by the eight families. -/
+entries each): per slot the 498 WOTS blocks' `eq(τ, ·)` and `eq(τ, ·) eq(r_blk, ·)`, the 146 `WM`
+blocks' `eq(r_blk, ·)`, shared by the eight families. -/
 def linkWAll4I (ν : NodeKind) (tt rr : Array F) : Array F :=
   let n := nbN ν
   let Tτ := bt n tt; let Tr := bt n rr
   let Pθ := NodeI.tab10 (fun l => tt.getD (n + l) 0)
   let Pr := NodeI.tab10 (fun l => rr.getD (n + l) 0)
   let Eθ := Array.ofFn (n := 256) fun s => NodeI.eq10 Pθ s
-  Array.ofFn (n := nLinkFam) fun f => linkWOne4 ν Tτ Tr Pr Eθ f
+  let Eτ0 := Array.ofFn (n := 498) fun o => Tτ.eq (N4c.wotsB ν 0 + o)
+  let Eτ1 := Array.ofFn (n := 498) fun o => Tτ.eq (N4c.wotsB ν 1 + o)
+  let EP0 := Array.ofFn (n := 498) fun o => Eτ0.getD o 0 * Tr.eq (N4c.wotsB ν 0 + o)
+  let EP1 := Array.ofFn (n := 498) fun o => Eτ1.getD o 0 * Tr.eq (N4c.wotsB ν 1 + o)
+  let EM0 := Array.ofFn (n := 146) fun o => Tr.eq (N4c.wmB ν 0 + o)
+  let EM1 := Array.ofFn (n := 146) fun o => Tr.eq (N4c.wmB ν 1 + o)
+  Array.ofFn (n := nLinkFam) fun f => linkWOneF (fun σ => if σ = 0 then EP0 else EP1)
+    (fun σ => if σ = 0 then Eτ0 else Eτ1) (fun σ => if σ = 0 then EM0 else EM1) Pr Eθ f
+
+/-- **The shared form is the per-source form** (`linkWOne4`). -/
+theorem linkWOneF_eq (ν : NodeKind) (Tτ Tr : BT) (Pr : Array F × Array F) (Eθ : Array F) (f : ℕ) :
+    linkWOneF (fun σ => if σ = 0 then Array.ofFn (n := 498) fun o =>
+          (Array.ofFn (n := 498) fun o => Tτ.eq (N4c.wotsB ν 0 + o)).getD o 0 * Tr.eq (N4c.wotsB ν 0 + o)
+        else Array.ofFn (n := 498) fun o =>
+          (Array.ofFn (n := 498) fun o => Tτ.eq (N4c.wotsB ν 1 + o)).getD o 0 * Tr.eq (N4c.wotsB ν 1 + o))
+      (fun σ => if σ = 0 then Array.ofFn (n := 498) fun o => Tτ.eq (N4c.wotsB ν 0 + o)
+        else Array.ofFn (n := 498) fun o => Tτ.eq (N4c.wotsB ν 1 + o))
+      (fun σ => if σ = 0 then Array.ofFn (n := 146) fun o => Tr.eq (N4c.wmB ν 0 + o)
+        else Array.ofFn (n := 146) fun o => Tr.eq (N4c.wmB ν 1 + o)) Pr Eθ f =
+      linkWOne4 ν Tτ Tr Pr Eθ f := by
+  unfold linkWOneF linkWOne4
+  dsimp only
+  simp only [sumTo_eq]
+  refine Finset.sum_congr rfl fun σ hσ => ?_
+  have hσ' := Finset.mem_range.1 hσ
+  rw [Finset.mul_sum, ← Finset.sum_sub_distrib]
+  refine Finset.sum_congr rfl fun t ht => ?_
+  have ht' := Finset.mem_range.1 ht
+  have hs := fam_src_lt4 ht'
+  have hm : (NodeT.fam f).mir t / 4 < 146 := by have := fam_mir_lt4 ht'; omega
+  unfold N4c.srcB4 N4c.mirB4
+  rcases (by omega : σ = 0 ∨ σ = 1) with rfl | rfl <;>
+    simp only [if_true, one_ne_zero, if_false, Array.getD_eq_getD_getElem?, Array.getElem?_ofFn, hs, hm,
+      dite_true, Option.getD_some] <;> ring
 
 theorem linkWOne4_eq (ν : NodeKind) (f : ℕ) (τ rb : Array F) (θ' rp' : Fin 10 → F) :
     linkWOne4 ν (bt (nbN ν) τ) (bt (nbN ν) rb) (NodeI.tab10 rp')
@@ -233,24 +361,26 @@ theorem linkWAll4_meets (ν : NodeKind) (tt rr : Array F) : linkWAll4I ν tt rr 
   dsimp only
   congr 1
   funext f
-  exact linkWOne4_eq ν f tt rr _ _
+  exact (linkWOneF_eq ν _ _ _ _ f).trans (linkWOne4_eq ν f tt rr _ _)
 
 /-! ## The node's op implementation -/
 
 /-- **`implN4 base tS ν`**: the node kind `ν`'s ops for `VnodeC` (`implSeg`'s analogue): `base ν`
-(the node plan's other ops) with the 4.1 node's `shiftMask`, `linkWAll`, 3.x's `slotW` (kind-free,
-the node's slot maps 0 and 2), and `targetS` from `tS`. A node program's kind index is `N30`
+(the node plan's other ops) with the 4.1 node's `rsWeight` (S-T2's `rsWeightF4 ν`, by
+`Impl.withRS4`), `shiftMask`, `linkWAll`, 3.x's `slotW` (kind-free, the node's slot maps 0 and 2),
+and `targetS` from `tS`. A node program's kind index is `N30`
 (`KindP.ofNode`), so the node branch is the one taken. -/
 def implN4 (base : NodeKind → OpImpl) (tS : NodeKind → Array F → Array F) (ν : NodeKind) : OpImpl :=
-  { base ν with
+  { Impl.withRS4 (base ν) ν with
     targetS := fun κ r => if κ.isNode then tS ν r else (base ν).targetS κ r
     slotW := fun _ => slotWI
     linkWAll := fun κ tt rr => if κ.isNode then linkWAll4I ν tt rr else (base ν).linkWAll κ tt rr
     shiftMask := shiftMask4I ν }
 
-/-- Its specification (`targetSNode4S`, `slotWS`, `linkWAll4S`, `shiftMask4S` on a node). -/
+/-- Its specification (`rsWeightS4 ν`, and `targetSNode4S`, `slotWS`, `linkWAll4S`, `shiftMask4S` on a
+  node). -/
 def specN4 (base : NodeKind → OpSpec) (ν : NodeKind) : OpSpec :=
-  { base ν with
+  { Impl.withRS4S (base ν) ν with
     targetS := fun κ r => if κ.isNode then targetSNode4S ν r else (base ν).targetS κ r
     slotW := fun _ => slotWS
     linkWAll := fun κ tt rr => if κ.isNode then linkWAll4S ν tt rr else (base ν).linkWAll κ tt rr
@@ -260,7 +390,8 @@ def specN4 (base : NodeKind → OpSpec) (ν : NodeKind) : OpSpec :=
 theorem implN4_meets {base : NodeKind → OpImpl} {spec : NodeKind → OpSpec}
     {tS : NodeKind → Array F → Array F} (ν : NodeKind) (h : (base ν).Meets (spec ν))
     (htS : ∀ r, tS ν r = targetSNode4S ν r) : (implN4 base tS ν).Meets (specN4 spec ν) := by
-  obtain ⟨h1, h2, h3, h4, h5, h6, h7, h8, h9, h10, h11, -, h13, h14, -, h16, h17⟩ := h
+  obtain ⟨h1, h2, h3, h4, h5, h6, h7, h8, h9, h10, h11, -, h13, h14, -, h16, h17⟩ :=
+    Impl.withRS4_meets ν h
   refine ⟨h1, fun κ r => ?_, h3, h4, h5, h6, h7, h8, h9, h10, h11, fun _ s a b => slotW_meets s a b,
     h13, fun κ tt rr => ?_, shiftMask4_meets ν, h16, h17⟩
   · simp only [implN4, specN4]

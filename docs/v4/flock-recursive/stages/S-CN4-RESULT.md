@@ -182,3 +182,144 @@ ops: **`wNS4_node4 ν es : wNS4 (.node ν) es = wSumNode4 ν es`**. X4's chain:
      tables (3.x's `clsTab`, plus `blockTarget 0 true`), `G` on `p < 1153`, then the 64 outputs.
    - Controls: a Boolean block point reads that block's target; a `free` block point gives `0`.
    - Then instantiate `implN4 base (fun ν => targetSNode4I ν) ν` and measure it.
+
+## Pass 2 (track S-CN4b, 2026-10-28): `targetSNode4I`, `implN4T`, the two speed-ups, `rsWeight`
+
+HEAD at start `c2c6fba`, re-snapshotted at `1ee751b` (S-T2) for the `rsWeight` wiring. Build tree
+`logs/fr-build-SCN4b` (copy of `fr-build-SCN4`, `logs/org20`; `b.sh` = snapshot + capped build +
+the probe `scn4btime`). Logs in `logs/S-CN4b/`. Every lake/lean command in the 16G scope under
+`timeout`. No sub-agents, nothing committed. Names grepped first (namespaces `FR.NT4C`, `FR.NI4T`
+are new). Statements of S-CN4's theorems unchanged (`shiftMask4_meets`, `linkWAll4_meets`,
+`implN4_meets` keep their text; see "Deviations" for `specN4`).
+
+### P2.1 What was built
+
+| Module | total / code / thm | Content |
+|---|---|---|
+| `FRNodeTarget4C` (new, `FR.NT4C`) | 536 / 402 / 35 | **`tgtE_fin`** (the new bit lemma, any `t < 2^32`); `tF`, `blkW4`, `ivS`; **`sum_contig`** (a sum over a tiled range is the sum over the tiles); **`blkW4_layout`** (from `layout_contig` + `tgt_of_mem`, no evaluation of the layout); pieces `body_sum`, `fin_one`, `chain_piece`, `stmt_piece`, `wots_map`/`wots_piece` (3.x's `wots_part` at `wotsB`, any weight), `fin_target`, `tail_piece`; closed form `clsW`, `ctrS`, `ctrG`, `finG`, `stepG`, **`Gc4`**; **`blkW4_eq`** (`G = Gc4`, any block weight), `Gc4_hi`, `targetSNode4_blk`, **`targetS_node4_eq`**; `lay_bounds`, `lastB_lt`, `clsW_congr`, `finG_congr`, `stepG_congr` |
+| `FRVerifierImplNode4T` (new, `FR.NI4T`) | 533 / 404 / 29 | base 512: `pfx9`, `twoF9`, `sepSum9`, `tabs9` (over S-CN4's `bt`), `eq9`, `rangeI9`; counters `colT`, `sepD`, `cc`, `eOf`, `ctrK`, `ctrArr` (+ `_eq`s); `clsTab4`, `clsBit4`, `gAt4`, `gArr4`, `rbArr`, **`targetSNode4I`**, `gArr4_eq`, **`targetSNode4_meets`**; **`implN4T`**, **`implN4T_meets`**; controls |
+| `FRVerifierImplNode4` (S-CN4's, edited) | 498 / 383 / 21 (was 367 / 281 / 15) | `prodTo`, `prodQ`, `prefixQ`, `shQ` (+ `_eq` to `prodAt`/`prefixP`/`shP`), `mArr`, `mQ`: **`shiftMask4I`** in loop/array form; **`linkWOneF`** (+ `linkWOneF_eq`): **`linkWAll4I`** with per-block shared products; `implN4`/`specN4`/`implN4_meets` through S-T2's `Impl.withRS4`/`withRS4S`/`withRS4_meets` |
+| total | 1,567 / 1,189 / 85 | `logs/S-CN4b/loc.txt` |
+
+**Main statements.**
+
+```lean
+theorem tgtE_fin {t p : ℕ} (ht : t < 2 ^ 32) (hp : p < 2 ^ 14) (fin : Bool) :
+    tgtE (blockTarget t fin) p = tgtE (blockTarget 0 fin) p +
+      if 1024 ≤ p ∧ p < 1056 then bF (t.testBit (p - 1024)) else 0
+theorem sum_contig (f : ℕ → F) : contig ivs a b = true →
+    ∑ x ∈ range (b - a), f (a + x) = (ivs.map fun iv => ∑ o ∈ range (iv.hi - iv.lo), f (iv.lo + o)).sum
+theorem blkW4_eq (ν) (w : ℕ → F) (hp : p < 2 ^ 14) : blkW4 ν w p = Gc4 ν w p
+theorem targetS_node4_eq (ν) (r : Array F) : targetSNode4S ν r = Array.ofFn (n := 64) fun σ =>
+    ∑ hi ∈ range 19, eqAtR (zLo r) hi * Gc4 ν (eqAtR (rbOf4 ν r)) (σ + 64 * hi)
+theorem targetSNode4_meets (ν) (r : Array F) : targetSNode4I ν r = targetSNode4S ν r
+def implN4T (base : NodeKind → OpImpl) (ν) : OpImpl := implN4 base (fun ν => targetSNode4I ν) ν
+theorem implN4T_meets (ν) (h : (base ν).Meets (spec ν)) : (implN4T base ν).Meets (specN4 spec ν)
+```
+
+**`Gc4 ν w p`** (`w` any block weight; `w = eq(r_blk, ·)` for `targetS`): `Σ_{c<10} clsW c ·
+tgtE(cls4 c, p)` + `[1030 ≤ p < 1056] ctrG (p − 1030)` + `[1024 ≤ p < 1056] finG (p − 1024)` +
+`w43`'s two step fields. `cls4` is 3.x's `cls` with class 2 the counter-free final block
+`blockTarget 0 true`. Class weights: 0 `streamStart` (both chain starts); 1 stream bodies (both
+chain bodies `[chBase σ + 1, + chLen σ − 2)`, both key leaves `[wotsB σ + 400, + 65)`); 2 final
+blocks (`lastB ν σ = chBase σ + chLen σ − 1`, the tails' candidates `[finB a, + maxK − 1)`);
+3 `hashA` (`stmtB + 3v`, `cAB a`); 4 `hashB1 tagNode`; 5 `hashB2` (statements, paths); 6 `w43`;
+7 `hashB1 tagWotsLeaf`; 8 `streamEnd41`; 9 `hashB1 tagSigNode`. `finG j` = `Σ_σ w(lastB σ) bit_j
+(chBytes σ) + Σ_a Σ_i w(finB a + i) bit_j(aggB (i + 1))`.
+
+### P2.2 Build, kernel, VM times
+
+- `lake build FR FRNodeTarget4 FRVerifierImplNode4 FRNodeTarget4W FRNodeTarget4C
+  FRVerifierImplNode4T FRVerifierImplOps4`: green, 2,508 jobs, snapshot of HEAD `1ee751b` with
+  the five modules (`logs/S-CN4b/build-final.log`).
+- Sequential profiles (`taskset -c 0 lake env lean -DElab.async=false --profile`,
+  `logs/S-CN4b/prof-*.log`; import ≈ 3.9 s): `FRNodeTarget4C` 13.5 s wall, type checking 1.65 s;
+  `FRVerifierImplNode4T` 12.7 s, 1.52 s; `FRVerifierImplNode4` 16.9 s, 1.19 s (S-CN4: 11.2 s,
+  0.80 s). Max RSS 2.77 GB. No declaration over 0.35 s. The only `decide`s are on constants
+  (`chain_facts`, `maxK_le`, `lay_bounds`' `hEnd ≤ 2^nb`, the controls' bits); nothing evaluates
+  the layout, a table or a sum.
+- **VM** (`logs/S-CN4b/time-4.log`, compiled probe `logs/fr-build-SCN4b/probe/SCN4bTime.lean`,
+  `taskset -c 7`, best of 40; F product 82 ns, F addition 3.7 ns):
+
+  | Op | N2 | N4 | N8 | 3.x | S-CN4 |
+  |---|---|---|---|---|---|
+  | `targetSNode4I` | 1.503 ms | 1.670 ms | 1.799 ms | `targetSNodeI` 1.932 ms | — |
+  | `shiftMask4I` | 0.130 ms | 0.127 ms | 0.129 ms | `shiftMaskI` 0.395 ms | 0.38 ms |
+  | `linkWAll4I` | 1.694 ms | 1.799 ms | 1.815 ms | `linkWAllI` 1.849 ms | 2.07–2.19 ms |
+
+  `targetSNode4I`'s path to this (`time-1` … `time-3`): 3.26–3.75 ms with a 512-entry prefix
+  array per counter bit (the counters were 2.3 ms); `colT` (one pass over the columns cut at the
+  range's ends, the carry classes shared by all bits, rows summed directly) and short bodies
+  (`n < 512`: the key leaves) straight from their `eq` values brought it to 1.5–1.8 ms. Now:
+  `tabs9` 0.22–0.27 ms, one chain's counters 0.25 ms (N8: 0.38), the `gAt4` loop over 1,153
+  positions ≈ 0.4 ms, the final `Σ_hi` ≈ 0.1 ms.
+
+### P2.3 Controls
+
+| Definition | Positive | Negative |
+|---|---|---|
+| `targetSNode4I` | `targetSNode4I_blk`: at a Boolean block point `b` it reads block `b`'s target bits `nodeE4 ν b` | `targetSNode4I_free`: at a block point past `hEnd` it is `0` |
+| `Gc4`/`nodeE4` (evaluated, `N4`) | `nodeE4_ctrl`: chain 0's block 1 reads counter bit 7 (`t = 128`); chain 1's last block reads `t`'s bit 0 (`aggB 4` is odd: not a `64k` counter) and the final flag; the tail's `F_{0,1}` reads the flag and bit 13 of `aggB 1 = 0x16A000` | `nodeE4_ctrl`: block 1's bit 6 is `0`; chain 1's second-to-last block's flag is `0`; `F_{0,1}`'s bit 12 is `0` |
+| `blkW4` | `blkW4_cube` (Boolean point reads the block) | through `targetSNode4I_free` |
+| `implN4T` | `implN4T_meets` | — (parameter `base`) |
+
+Axioms (`logs/S-CN4b/axioms.log`): 23 statements, each `[propext, Classical.choice,
+Quot.sound]`. Source rule (`logs/S-CN4b/source-rule.log`): 293 files, 0 findings.
+
+### P2.4 Deviations
+
+- **`implN4T` instead of changing `implN4`'s signature**: `implN4 base tS ν` and `implN4_meets`
+  (with `htS`) stay; `implN4T base ν := implN4 base targetSNode4I ν`, `implN4T_meets` has no `tS`
+  hypothesis.
+- **`rsWeight` (coordinator's request, S-T2 §6, in place):** `implN4` is `{ Impl.withRS4 (base ν) ν
+  with … }`, `specN4` `{ Impl.withRS4S (base ν) ν with … }`, `implN4_meets` destructures
+  `Impl.withRS4_meets ν h`. `implN4_meets`' text is unchanged, but **`specN4`'s `rsWeight` is now
+  `rsWeightS4 ν`** (3.x's `rsWeightS` was the wrong spec for 4.1 nodes, S-T2's `kwS4_ne_3x`).
+  `FRVerifierImplNode4` imports `FRVerifierImplOps4`. R4d's uncommitted `FRSoundness4R4FrS`
+  (`nodeOps_of_meets`) reads `specN4`'s `shiftMask`/`linkWAll` fields only; I could not build it
+  (it is not in HEAD).
+- `shiftMask4I`/`linkWAll4I` are new definitions (same statements of `_meets`). `shiftMask4I` is
+  now `prefixQ`/`shQ` (index-shifted, `Nat.fold` products) over `mArr`; `linkWAll4I` is
+  `linkWOneF` over per-slot arrays. The old `linkWOne4` stays as the proof's reference.
+- `Gc4` is in class-weight form (not 3.x's per-piece `Gc`), so the computed side is a direct
+  congruence (`clsW_congr`, …) with no `ring`.
+
+### P2.5 Open questions
+
+1. `FR.lean`: add `import FRVerifierImplNode4T` (pulls `FRNodeTarget4C`, `FRVerifierImplNode4`,
+   `FRVerifierImplOps4`) and `import FRNodeTarget4W`.
+2. Whoever instantiates the node's ops (INT-8/X4) should use `implN4T base ν` (and
+   `implN4T_meets`), not `implN4 base tS ν`.
+3. Further cuts, not done: `gAt4` (0.4 ms: 10 nested-array lookups per position; a flat table or
+   per-position class lists); `linkWAll4I`'s field weights `SW`/`MI` (≈ 3 products per field bit
+   per family, now its largest part); `shQ` is `O(nb³)` (suffix products would make it `O(nb²)`).
+
+### P2.6 For S-E12d (the op shapes for the template)
+
+- **`targetSNode4I ν r`** (operand: `r[0]` and `r[1 … nb]`; output 64 F):
+  1. `zLo r` → `eqTable` (256 entries); `rb = r[1 … nb]` → `bt nb` (`A`: 512, `B`: `2^(nb−9)`),
+     prefix arrays `PA`, `PB` (513 entries each, additions).
+  2. Ten class weights `W_c` (`clsW` at `eq9`/`rangeI9`): single blocks (one product each,
+     `eq9 x = A[x mod 512]·B[⌊x/512⌋]`), ranges by `sepSum9` (4 products). Blocks read: chain
+     starts `chBase σ`, bodies `[chBase σ + 1, + chLen σ − 2)`, last blocks `lastB σ`, statements
+     `stmtB + 3v + {0,1,2}` (`v < vslots`), WOTS `wotsB σ + {0…398 (range), 399, 400…464 (range),
+     465, 466 + 2t, 467 + 2t}`, tails `[finB a, + maxK − 1)` (range) and `cAB a`.
+  3. Counter bits `CT[0…25]` (positions 1030…1055): per body `ctrArr` — key leaves (`n = 65`)
+     directly from 65 `eq9`s; chains by `ctrK`: bits `j < 9` one column pass (`colT`, cut at
+     `lo mod 512`, `(lo+n) mod 512`) with mask `bit_j((l + eOf lo) mod 512)`, rows
+     `[⌊lo/512⌋, ⌊(lo+n)/512⌋)` summed directly (`sepD`, 3 products); bits `j ≥ 9`: two carry
+     classes' column sums (`cc`, once per body), row masks `bit_{j−9}(h + ⌊e/512⌋ (+1) − Q)`; `0`
+     once `2^j > n + 1`.
+  4. Final-block bits `FB[0…31]` (positions 1024…1055): `Σ_σ eq9(lastB σ)·bit_j(chBytes σ) +
+     Σ_a Σ_i eq9(finB a + i)·bit_j(aggB (i+1))` (constants per kind: `chBytes ν σ`, `aggB k`).
+  5. `w43` fields `WI[0…7]`, `WS[0…7]` (positions 584…599): 2 × 399 `eq9` products, masked sums by
+     `⌊o/3⌋`, `o mod 3`.
+  6. `G[p]` for `p < 1153`: `Σ_c [clsBit4 c p] W_c + CT + FB + WI + WS` (`clsTab4`: 10 × 1153
+     constant bits, class 2 = `blockTarget 0 true`); then `out[σ] = Σ_{hi<19} eqTable[hi]·G[σ + 64 hi]`.
+  Constants per kind: `nb`, `chBase/chLen/chBytes ν σ`, `stmtB`, `vslots`, `wotsB ν σ`, `nAgg`,
+  `finB ν a`, `cAB ν a`, `maxK`.
+- **`shiftMask4I`**: as S-CN4 §6, but `prefixP`/`shP` are `prefixQ`/`shQ` over `mArr` (4 factors per
+  coordinate, `4 nb` products once); `prodQ` a loop.
+- **`linkWAll4I`**: per slot `σ`: `Eτ[o] = eq(τ, wotsB σ + o)` (498), `EP[o] = Eτ[o]·eq(r, wotsB σ +
+  o)` (498), `EM[o] = eq(r, wmB σ + o)` (146); per family `f`: `SW`, `MI`, `MS[c]` as before, then
+  `Σ_σ SW·Σ_t EP[src t] − Σ_t Eτ[src t]·EM[⌊mir t/4⌋]·MS[mir t mod 4]` (2 products per source).
