@@ -140,6 +140,7 @@ enum Tab {
 fn rounds(w: Tab, g: &[F], nrounds: usize, wr: &mut Writer, claim: &mut K) -> (Vec<K>, Vec<K>, Vec<K>) {
     // first round: g F-valued
     let n = g.len() / 2;
+    let sp = crate::prof::span(if g.len() > 1 << 22 { "lig0.round1" } else { "lig.round1" });
     let msg: [K; 3] = match &w {
         Tab::F(wf) => {
             let parts = par::map_chunks(n, 1 << 12, |lo, hi| crate::simd::round_ff(&wf[2 * lo..2 * hi], &g[2 * lo..2 * hi]));
@@ -162,11 +163,13 @@ fn rounds(w: Tab, g: &[F], nrounds: usize, wr: &mut Writer, claim: &mut K) -> (V
             r
         }
     };
+    drop(sp);
     debug_assert_eq!(msg[0] + msg[1], *claim);
     wr.send_k(pp::F_P1, &coeffs_k(msg));
     let s = wr.fs.chal_k();
     *claim = eval2_k(msg, s);
     let mut ch = vec![s];
+    let _sp = crate::prof::span(if g.len() > 1 << 22 { "lig0.folds" } else { "lig.folds" });
     let (mut wk, mut gk, mut nmsg) = fold_msg(&w, &FTab::F(g), s, nrounds > 1);
     for r in 1..nrounds {
         let msg = nmsg;

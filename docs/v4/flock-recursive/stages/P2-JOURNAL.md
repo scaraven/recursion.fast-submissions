@@ -157,3 +157,58 @@
   the segment verifiers (`FRAgg`), `L31` byte `0x4B` (`FRShape4`). `prover.s` regenerated: sha256
   `657a0ab0…3d3b`; linked binary passes selftest, test-leaf 30 (INT-5 Lean accept), prove-leaf 30 and
   31 --n 70000 through rf-oracle. Tests 32 + 1 ignored. Source rule: 0 findings.
+
+## Pass 6 (revision 4.1, track P2″): the prover's per-step time
+
+- Brief: per-phase profile of L32 at n = 2^18 and 2^17 on the 7763 (4 threads); lever 4 (witness
+  overlap); lever 6 (round 1, commit, ring switch kernels); other levers from the profile; re-fit
+  `L32(n)`, `L31(n)`. π byte-identical; the dumped Lean `acc` accepts, canary rejected; ≤ 11G.
+- Instrumentation (no effect on π): `prof.rs` (`FLOCK_PROF=1`: sub-phase spans, printed as
+  `| prof …` in the PROVE-LEAF line), spans in `ntt.rs` (copy / whole-buffer passes / in-block),
+  `merkle.rs` (leaves / nodes, level 0 apart), `zerocheck.rs` (round-1 windows), `leaf.rs` (x₆ round
+  and fold, tail rounds and folds, lincheck partial fold, ring-switch weight table), `ligerito.rs`
+  (level-0 first round, folds), `witness.rs` (blocks). `bench.rs` (mode `bench`): memory read /
+  write / copy GB/s over 1 GiB, and in-cache throughput of the round-1 window, the NTT butterfly,
+  `axpy` (F×F) and `phi_apply`, per thread count. Probe `probe/p2t6/run.sh` (wraps
+  `p2t-prover/run.sh`). Local π check: m = 28 `test-leaf` pi_b2s `756eecc0…2d15` = HEAD's.
+- Probe branches are pushed from a temporary index (`git commit-tree` on HEAD; no local ref moves).
+- Probe p2t-6a (run 40726261624, EPYC 7763, HEAD's prover + timers): L32 2^18 prove 5.41–5.48 s;
+  sub-phases r1.windows 1.295, ntt (copy .074 + passes .392 + in-block .263) .73, merkle0 leaves
+  .363 + nodes .086, rs.weight_table .558, wit.blocks .443 (+ chain .078), x₆ round .332 + fold
+  .230, lig0 folds .416, lc.partial_fold .302, tail .248. Bench: memory read 21 / 39 GB/s (1 / 4
+  threads), copy 22.5; round-1 window 4.1 µs per window per core, **no SMT gain** (4 threads =
+  2 threads); butterfly 1.74 ns (1 thread), 2 threads ×1.94, 4 = 2; F×F 3.3 ns; phi_apply 8.0 ns
+  per element (≈ 26 cycles), no SMT gain. Every vector kernel saturates at 2 threads: the NTT is
+  clmul-bound (19 layers × 2^25 butterflies / 1.11e9 per s = 0.57 s of the 0.65 s), not memory-bound.
+- Witness: the chain computed by chunk 0 of the pool job while the other chunks fill blocks behind
+  it (`leaf_witness_mode`): witness 0.521 → 0.471 s at 2^18 (p2t-6b, run 40727455347).
+- Lever 4 (p2t-6b): segment i+1's witness on an extra thread (solo) while the pool proves segment
+  i: **no gain**. 2 × L32: 10.984 s with overlap vs 10.974 without; 4 × L32: 21.81 vs 21.71;
+  2^18+1: 6.81 vs 6.77. The solo witness takes 2.3–2.8 s and slows the pool's commit0 (+0.19) and
+  round 1 (+0.25) by about what it saves (0.47): the 4 hw threads are all busy in the vector
+  phases, so the SMT siblings have nothing free. Peak +1.0–1.3 GB (7.33 GB at 2^20).
+- Probe p2t-6c (run 40728620249): (i) round-1 window's c-banks from one 32-byte table pair
+  (`conv2[bm][v] = (conv[v & 0x55], conv[v & 0xAA])`, one load for both banks): window 8.81 → 7.99 µs
+  per thread at 4 threads, r1.windows 1.295 → 1.205 s; (ii) `lincheck::partial_fold` stripe by a
+  64-byte bit transpose + 128-bit table XORs (`simd::pf_stripe`): 0.302 → 0.191 s; (iii)
+  `weight_table` by `simd::phi_add` on every element: **slower** (0.558 → 0.653): the old loop skipped
+  `elo[l] = 0`, and claim 2 (the shift claim) has only 64 of 1,024 nonzero `elo` entries. Fixed by
+  index lists (`phi_add_idx`). Lever 4 with the pool at 3 threads + the solo witness: 2 × L32
+  11.70 s vs 10.86 s at 4 threads without overlap — worse. **Lever 4 dropped** (code removed; the
+  chain pipelining stays).
+- S-0′'s note (47c5c6c): `seq4` (8,905 items, piSize 798,192) is not adopted in this pass; π stays
+  byte-identical to the pre-change prover.
+- Probes p2t-6d/6e/6g–6l landed on EPYC 9V74 / 9V45 / Xeon 6973P-C (off tier; kept in `logs/P2/run-*`
+  as cross-checks: π identical base vs new on every one). On 9V74: shift-reduced butterfly slower
+  than the clmul one (1.58 vs 1.37 ns), `vpclmulqdq ymm` ≈ 1.8e9/s per thread; the sparse
+  `weight_table` (products only at claim 2's 64 nonzero `elo`) 0.473 → 0.342.
+- x₆ fold by scaled tables (`(1+s)·t`, `s·t`, no products): no gain on 9V74 (0.229 → 0.233), worse on
+  the 7763 (0.230 → 0.263, run 40733248360: the two 32 KiB tables leave L1). **Reverted.**
+- `probe/p2t6/final.sh`: base (= branch HEAD's prover/, put into the probe commit as
+  `probe/p2t6/base/` from a temporary index) and new, both built and linked on the runner, run
+  alternately through one rf-oracle. Final (3 runs on the 7763: 40734390435, 40734399110,
+  40734406678): π identical base vs new in all 27 cases (L32 n = 1 … 2^18, L31 n = 1 … 2^17, the
+  2^20 aggregate), every proof accepted, every canary rejected, peak 6.19 / 3.32 GB unchanged.
+  L32 2^18 5.52–5.60 → 5.17–5.36 s; 2^20 aggregate 21.80–21.93 → 20.53–20.62 s.
+  Fits (pooled): `L32(n) = 2.58 + 2.66·n/2^18` (was 2.73 + 2.81), `L31(n) = 1.30 + 1.32·n/2^17` (was
+  1.38 + 1.40). `prover.s` sha256 `d25ca624…e552`. All `probe/p2t-*` branches deleted.

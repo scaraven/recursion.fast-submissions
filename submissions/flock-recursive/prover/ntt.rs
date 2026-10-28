@@ -133,6 +133,7 @@ impl Ntt {
         let p = par::SyncPtr(data.as_mut_ptr());
         let mut l = start;
         // radix-4: two layers per pass over the buffer (rows r, r + h/2, r + h, r + 3h/2)
+        let sp = crate::prof::span("ntt.passes");
         while ld - l > log_c + 1 {
             let half = 1usize << (ld - l - 1);
             let q = half / 2;
@@ -178,9 +179,11 @@ impl Ntt {
             });
             l += 1;
         }
+        drop(sp);
         if l >= ld {
             return;
         }
+        let _sp = crate::prof::span("ntt.blocks");
         let l0 = l;
         par::run(1usize << l0, &|b0| {
             let p = p;
@@ -213,6 +216,7 @@ impl Ntt {
         let h = msg.len();
         let po = par::SyncPtr(out.as_mut_ptr());
         let chunk = 1usize << 16;
+        let sp = crate::prof::span("ntt.copy");
         par::run(n.div_ceil(chunk), &|c| {
             let po = po;
             let (s, e) = (c * chunk, ((c + 1) * chunk).min(n));
@@ -220,6 +224,7 @@ impl Ntt {
                 unsafe { *po.0.add(k) = msg[k % h] };
             }
         });
+        drop(sp);
         self.forward(out, lanes, r);
     }
 }

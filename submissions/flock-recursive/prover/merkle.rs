@@ -37,8 +37,11 @@ impl Tree {
     pub fn commit(o: &dyn Oracle, level: u8, cw: &[F], rows: usize, cap_log: usize) -> Tree {
         let n = cw.len() / rows;
         let depth = n.trailing_zeros() as usize;
+        let sp = crate::prof::span(if level == 0 { "merkle0.leaves" } else { "merkle.leaves" });
         let mut leaves = vec![[0u8; 32]; n];
         o.ask_many(&mut leaves, &|p, buf: &mut Vec<u8>| col_query(level, &cw[p * rows..(p + 1) * rows], buf));
+        drop(sp);
+        let _sp = crate::prof::span(if level == 0 { "merkle0.nodes" } else { "merkle.nodes" });
         let mut layers = vec![leaves];
         for _ in 0..depth - cap_log {
             let prev = layers.last().unwrap();

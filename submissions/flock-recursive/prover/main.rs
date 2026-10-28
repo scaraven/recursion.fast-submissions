@@ -16,6 +16,7 @@
 
 mod agg;
 mod alloc;
+mod bench;
 mod blake2s;
 mod circuit;
 mod field;
@@ -33,6 +34,7 @@ mod ntt;
 mod oracle;
 mod par;
 mod params;
+mod prof;
 mod ringswitch;
 mod service;
 mod simd;
@@ -190,6 +192,7 @@ fn prove_leaf_service(m: usize, n: u64, start: &Digest, out: &str, reps: usize) 
         rec.batch_max = 128;
         let (pi, tm) = leaf::prove_seg(&rec, &circ, &vk, start, m, n);
         let t_prove = t0.elapsed().as_secs_f64();
+        let prof_s = prof::report();
         let stats = rec.stats.report();
         let oracle_s = rec.stats.oracle_s();
         let t = Instant::now();
@@ -238,7 +241,7 @@ fn prove_leaf_service(m: usize, n: u64, start: &Digest, out: &str, reps: usize) 
         let reasm = items::reassemble(&tr).as_deref() == Some(&pi[..]);
         println!(
             "PROVE-LEAF m={m} rep={rep} n={n} trace_kat={tr_kat} reassemble_eq_pi={reasm} total_s={total:.3} prove_s={t_prove:.3} trace_s={t_trace:.3} sign_s={t_sign:.3} oracle_s={oracle_s:.3} \
-             compressions_per_s={:.0} |pi|={} |tr|={} trace_query_bytes={qbytes} file={} acc={} acc_s={t_acc:.3} canary_accept={canary} peak_rss_mb={:.0} threads={} tier={} | {} | {stats} | {}",
+             compressions_per_s={:.0} |pi|={} |tr|={} trace_query_bytes={qbytes} file={} acc={} acc_s={t_acc:.3} canary_accept={canary} peak_rss_mb={:.0} threads={} tier={} | {} | {stats} | {}{}",
             n as f64 / total,
             pi.len(),
             tr.len(),
@@ -248,7 +251,8 @@ fn prove_leaf_service(m: usize, n: u64, start: &Digest, out: &str, reps: usize) 
             par::threads(),
             simd::tier_name(),
             tm.report(),
-            svc.report()
+            svc.report(),
+            if prof_s.is_empty() { String::new() } else { format!(" | prof {prof_s}") }
         );
         if r.is_err() || canary || !reasm || tr_kat.starts_with("FAIL") || pi.len() != params::PI_SIZE {
             std::process::exit(1);
@@ -435,6 +439,7 @@ fn main() {
             eprintln!("flock-prover {mode}: the node prover is not built yet (stage P2 waits for S-0's compileMux dump)");
             std::process::exit(2);
         }
+        "bench" => bench::run(),
         "selftest" => match simd::selftest() {
             Ok(s) => println!("SELFTEST pass {s}"),
             Err(e) => {

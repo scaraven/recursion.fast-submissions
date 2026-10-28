@@ -327,13 +327,16 @@ pub fn prove_logged(o: &dyn Oracle, circ: &Circuit, vk: &Digest, s: &Digest, m: 
     let (mut ta, mut tb) = (Vec::new(), Vec::new());
     let mut live = used * 128; // the tables' nonzero prefix after the x₆ fold (128 row pairs a block)
     for k in 0..m - 6 {
+        let sp = crate::prof::span(if k == 0 { "x6.round" } else { "tail.round" });
         let (h1, hi) = if k == 0 { zerocheck::round_x6(&tabs, ab, bb, &r[1..], used) } else { zerocheck::round_tab(&ta, &tb, &r[k + 1..], live) };
+        drop(sp);
         let h0 = zerocheck::h0_from_claim(claim, r[k], h1);
         wr.send_f(pp::F_Z3, &zerocheck::zc_coeffs(pref, r[k], h0, h1, hi));
         let x = wr.fs.chal_f();
         claim = eval2_f([h0, h1, hi], x);
         pref *= F::ONE + r[k] + x;
         sz.push(x);
+        let _sp = crate::prof::span(if k == 0 { "x6.fold" } else { "tail.fold" });
         if k == 0 {
             ta = zerocheck::fold_x6(&tabs, ab, x, used);
             tb = zerocheck::fold_x6(&tabs, bb, x, used);
@@ -357,7 +360,9 @@ pub fn prove_logged(o: &dyn Oracle, circ: &Circuit, vk: &Digest, s: &Digest, m: 
     let alpha = wr.fs.chal_f();
     wr.fs.phase = "L2";
     let eta = lincheck::eta(circ, lambda, &sz[..8], alpha);
+    let sp = crate::prof::span("lc.partial_fold");
     let zf = lincheck::partial_fold(&w.z, &sz[8..], used);
+    drop(sp);
     let zf_keep = zf.clone();
     let (tl, fin) = prove_pairs(vec![(eta, zf)], &mut |g| {
         wr.send_f(pp::F_L2, &coeffs_f(g));
@@ -457,7 +462,9 @@ pub fn prove_logged(o: &dyn Oracle, circ: &Circuit, vk: &Digest, s: &Digest, m: 
     let (rpp, kap) = (&ch[..7], ch[7]);
     let parts = [&s0v, &s1v, &s2v];
     let (coef, v_rs) = rs_batch(&parts, rpp, kap);
+    let sp = crate::prof::span("rs.weight_table");
     let wt = ringswitch::weight_table(&[(&his[0][..], coef[0]), (&his[1][..], coef[1]), (&his[2][..], coef[2])], rpp);
+    drop(sp);
     tm.mark("ringswitch", &mut t);
     wr.fs.phase = "B'";
     wr.fs.squeeze();

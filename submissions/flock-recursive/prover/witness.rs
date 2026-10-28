@@ -212,27 +212,38 @@ pub fn block_fast(t: &Template, d: &Digest, z: &mut [u64; 256], a: &mut [u64; 25
 /// The leaf witness by `block_fast` (blocks in parallel after the sequential chain).
 /// A segment's witness (revision 4.0, B-12): the chain of `n ≤ 2^(m−14)` steps from `s` in blocks
 /// `0 … n−1`; the blocks past `n` are zero (`a = b = z = 0`). `h` is the chain's end `chainEnd s n`.
+/// The witness of a segment of `n` steps, on the pool: the chain is computed by chunk 0 of the job
+/// while the other chunks fill the blocks behind it (pass 6); the words are the sequential
+/// definition's.
 pub fn leaf_witness_fast(c: &Circuit, s: &Digest, m: usize, n: usize) -> Witness {
+    use std::sync::atomic::{AtomicUsize, Ordering};
     let t0 = std::time::Instant::now();
     let nb = 1usize << (m - 14);
     assert!((1..=nb).contains(&n), "a segment has 1 … 2^(m−14) steps");
-    let mut ds = Vec::with_capacity(n + 1);
-    ds.push(*s);
-    for i in 0..n {
-        let n = chain_step(&ds[i]);
-        ds.push(n);
-    }
-    let t1 = t0.elapsed().as_secs_f64();
     let t = Template::new(c);
-    let t2 = t0.elapsed().as_secs_f64();
     let words = nb * 256;
     let (mut z, mut a, mut b) = (alloc_u64(words), alloc_u64(words), alloc_u64(words));
     let (pz, pa, pb) = (par::SyncPtr(z.as_mut_ptr()), par::SyncPtr(a.as_mut_ptr()), par::SyncPtr(b.as_mut_ptr()));
-    let used = n;
-    par::run(nb.div_ceil(64), &|g| {
-        let (pz, pa, pb) = (pz, pa, pb);
+    // ds[i] = d_i; `ready` = how many of ds[0 …] are written (Release after each write)
+    let mut ds: Vec<Digest> = vec![[0u8; 32]; n + 1];
+    ds[0] = *s;
+    let pds = par::SyncPtr(ds.as_mut_ptr());
+    let ready = AtomicUsize::new(1);
+    let chain = || {
+        let pds = pds;
+        let mut d = *s;
+        for i in 0..n {
+            d = chain_step(&d);
+            unsafe { *pds.0.add(i + 1) = d };
+            if i % 64 == 63 || i + 1 == n {
+                ready.store(i + 2, Ordering::Release);
+            }
+        }
+    };
+    let group = |g: usize| {
+        let (pz, pa, pb, pds) = (pz, pa, pb, pds);
         for i in 64 * g..(64 * g + 64).min(nb) {
-            if i >= used {
+            if i >= n {
                 unsafe {
                     std::ptr::write_bytes(pz.0.add(256 * i), 0, 256);
                     std::ptr::write_bytes(pa.0.add(256 * i), 0, 256);
@@ -240,16 +251,22 @@ pub fn leaf_witness_fast(c: &Circuit, s: &Digest, m: usize, n: usize) -> Witness
                 }
                 continue;
             }
+            while ready.load(Ordering::Acquire) <= i {
+                std::hint::spin_loop();
+            }
             unsafe {
                 let zw = &mut *(pz.0.add(256 * i) as *mut [u64; 256]);
                 let aw = &mut *(pa.0.add(256 * i) as *mut [u64; 256]);
                 let bw = &mut *(pb.0.add(256 * i) as *mut [u64; 256]);
-                block_fast(&t, &ds[i], zw, aw, bw);
+                block_fast(&t, &*pds.0.add(i), zw, aw, bw);
             }
         }
-    });
+    };
+    // chunk 0 is the chain (claimed first); the groups wait for their inputs
+    let _sp = crate::prof::span("wit.blocks");
+    par::run(nb.div_ceil(64) + 1, &|c| if c == 0 { chain() } else { group(c - 1) });
     if std::env::var_os("FLOCK_VERBOSE").is_some() {
-        eprintln!("  witness chain {t1:.3} template {:.3} blocks {:.3}", t2 - t1, t0.elapsed().as_secs_f64() - t2);
+        eprintln!("  witness {:.3}", t0.elapsed().as_secs_f64());
     }
     Witness { m, z, a, b, h: ds[n] }
 }

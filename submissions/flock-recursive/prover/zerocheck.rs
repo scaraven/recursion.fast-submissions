@@ -90,6 +90,7 @@ pub fn round1(a: &[u8], b: &[u8], z: &[u8], r_out: &[F], used: usize) -> R1 {
     let nw = a.len() / 1024;
     assert_eq!(nw, 1 << r_out.len());
     let eo = eq_table(r_out);
+    let _sp = crate::prof::span("r1.windows");
     let parts = par::map_chunks(nw.min(used.saturating_mul(2)), 16, |lo, hi| {
         let mut acc = vec![F::ZERO; 192];
         let mut w = [F::ZERO; 192];

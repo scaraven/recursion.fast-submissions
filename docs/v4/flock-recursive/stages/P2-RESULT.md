@@ -1056,3 +1056,216 @@ passes (`target-dbg`).
 5. Do the stream dry run on the PR #20 harness (`smoke.py --org`), with step times and peak memory
    (the `N8` estimate is 7.7 GB) on a runner.
 6. Pursue the step-time levers of 13.8, chosen by the measured node cost.
+
+## 14. Pass 6 (revision 4.1, track P2″): the prover's per-step time
+
+Status: 2026-10-28. Brief: profile the segment on the 7763; lever 4 (witness overlap); lever 6
+(round 1, commit, ring switch); other levers from the profile; re-fit `L32(n)`, `L31(n)`. π stays
+byte-identical to the pre-change prover (S-0′'s `seq4` is **not** adopted in this pass, as the
+coordinator ruled). Logs: `logs/P2/r41/` (VM) and `logs/P2/run-<id>/` (runners). Probe branches
+`probe/p2t-6a` … `6o` (one commit on HEAD each, made from a temporary index, no local ref moved); all
+deleted. Six of the fourteen runs landed on other CPUs (EPYC 9V74, 9V45, Xeon 6973P-C); those are
+off-tier, kept only as cross-checks, and are not quoted below as 7763 figures.
+
+### 14.1 Where the time goes (item 1; run 40726261624, EPYC 7763, 4 threads, HEAD's prover)
+
+New: `prof.rs` (`FLOCK_PROF=1`; sub-phase spans, printed as `| prof …` in the PROVE-LEAF line; no
+effect on π) and the mode `bench` (`bench.rs`: memory and in-cache kernel throughput).
+
+| sub-phase (s) | L32, n = 2^18 | L32, n = 2^17 | L31, n = 2^17 | kind |
+|---|---:|---:|---:|---|
+| witness (chain 0.078 + blocks) | 0.521 | 0.289 | 0.260 | per block, scalar |
+| NTT: copy / whole-buffer passes / in-block | 0.074 / 0.392 / 0.263 | 0.073 / 0.394 / 0.258 | 0.036 / 0.158 / 0.129 | fixed |
+| Merkle level 0: leaves / nodes (the service hashes) | 0.363 / 0.086 | 0.364 / 0.071 | 0.189 / 0.040 | fixed |
+| round 1 (windows) | 1.295 | 0.639 | 0.603 | per block |
+| x₆ round / fold | 0.332 / 0.230 | 0.165 / 0.128 | 0.166 / 0.114 | per block |
+| tail rounds / folds | 0.135 / 0.113 | 0.068 / 0.073 | 0.068 / 0.056 | per block |
+| lincheck partial fold | 0.302 | 0.153 | 0.153 | per block |
+| ring switch: weight table | 0.558 | 0.575 | 0.279 | fixed |
+| Ligerito level 0: first round / folds | 0.030 / 0.416 | 0.030 / 0.418 | 0.015 / 0.210 | fixed |
+| Ligerito levels 1–4: Merkle leaves + nodes, folds | 0.076, 0.019 | 0.081, 0.020 | 0.041, 0.010 | fixed |
+| prove (sum of phases) | 5.41–5.48 | 4.01–4.04 | 2.64–2.73 | |
+
+**Kernel throughput** (`bench`, same run; ns per item per thread; 1 / 2 / 4 threads):
+
+| kernel | 1 | 2 | 4 | what bounds it |
+|---|---:|---:|---:|---|
+| memory read / write / copy, GB/s (all threads) | 21 / 19.7 / 19.3 | 36.5 / 23.3 / 22.6 | 39.4 / 23.2 / 22.5 | — |
+| round-1 window (µs) | 4.11 | 4.12 | 8.81 | vector ALU (no SMT gain) |
+| NTT butterfly | 1.74 | 1.79 | 3.42 | carry-less multiply (no SMT gain) |
+| F × F product (`axpy`) | 3.33 | 3.37 | 6.37 | carry-less multiply + reduction |
+| `phi_apply` (16 byte tables) | 7.98 | 8.00 | 17.15 | L1/L2 loads |
+
+What this says:
+- **Every vector kernel saturates at 2 threads** (one per core). The SMT siblings add nothing to
+  any of them; this confirms §13.2 kernel by kernel.
+- **The NTT is compute-bound, not memory-bound.** It does 19 layers × 2^25 butterflies; at 1.11·10^9
+  butterflies/s that is 0.57 s of its 0.65–0.73 s. Fewer passes (radix-16) would cut memory traffic
+  that is not the bottleneck.
+- **The butterfly is about 80 % carry-less-multiply bound** (4 `vpclmulqdq ymm` per 2 butterflies).
+  A reduction by shifts instead of `clmul` is slower (14.3).
+- **The fixed half at m = 32 is about 2.6 s** (NTT 0.73, Merkle 0.45, weight table 0.56, Ligerito
+  0.55, trace + SIGN 0.18). The per-block half is about 2.85 s per 2^18 (round 1 1.30, x₆ 0.56,
+  witness 0.52, lincheck 0.30, tail 0.25).
+
+### 14.2 Lever 4, witness overlap (item 2): no gain, dropped
+
+Built and measured (probe p2t-6b, run 40727455347; p2t-6c, run 40728620249). Segment `i + 1`'s
+witness ran on an extra thread (single-threaded, scalar) while the pool proved segment `i`.
+
+| aggregate (7763, 4 threads) | without overlap (s) | with overlap (s) | peak |
+|---|---:|---:|---:|
+| 2^18 + 1 (L32 + L31(1)) | 6.77 | 6.81 | 6.19 → 6.19 GB |
+| 2 × L32 (2^19) | 10.97 | 10.98 | 6.19 → 7.07 GB |
+| 4 × L32 (2^20) | 21.71 | 21.81 | 6.19 → 7.33 GB |
+| 2 × L32, pool at 3 threads + the overlap thread | 10.86 (4 threads, no overlap) | 11.70 | |
+
+- The overlapped witness takes 2.3–2.8 s. It slows the pool's commit (+0.19 s) and round 1
+  (+0.25 s) by about the 0.47 s it saves.
+- **The SMT siblings are not idle during the vector phases: the pool's 4 threads occupy them.** The
+  blueprint's −0.4 s per extra segment (−0.25 s per mean step) does not exist on this runner.
+- The code is removed. What stays from this item is the chain pipelining (14.3 a).
+
+### 14.3 Lever 6 and the other kernels (items 3–4)
+
+Each change was measured inside the proof on the 7763 (sub-phase spans), and its kernel in `bench`.
+Before = HEAD's prover; after = this pass's. The final before/after (14.4) ran both binaries on the
+same runner.
+
+| # | change | sub-phase, L32 2^18 (s): before → after | kept? |
+|---|---|---|---|
+| a | **Witness: chain pipelined.** Chunk 0 of the pool job computes the chain; the other chunks fill blocks behind it (`witness::leaf_witness_fast`, spin on an atomic counter). | witness 0.516–0.517 → 0.469–0.486 | yes |
+| b | **Lincheck partial fold.** One 64-byte bit transpose per word (`simd::pf_stripe`) and 128-bit table XORs, instead of 8 scalar gathers + `transpose8` per byte. | lincheck 0.299–0.313 → 0.194–0.197 | yes |
+| c | **Ring-switch weight table.** (i) `simd::phi_add_idx`: the 16 byte-table lookups as `vmovdqa`/`vpxor`, two elements interleaved; (ii) only at `elo`'s nonzero positions — claim 2 (the shift claim) has 64 of 1,024 — both for the products and the lookups. Doing every position, as a first attempt did, was slower (0.558 → 0.653): the old loop already skipped zeros. | ringswitch 0.532–0.568 → 0.393–0.419 | yes |
+| d | **Round-1 window: one 32-byte table pair for both c-banks** (`conv2[bm][v] = (conv[v & 0x55], conv[v & 0xAA])`): one load instead of two, no masks. | `bench` window 8.81 → 7.99 µs per thread at 4 threads; **in the proof within noise** (zc_round1 1.19–1.25 → 1.19–1.29) | yes (neutral in the proof) |
+| e | x₆ fold from scaled tables `(1+s)·t`, `s·t` (no products) | x₆ fold 0.230 → 0.263 on the 7763 (run 40733248360): the two 32 KiB tables leave L1 | **reverted** |
+| f | NTT butterfly with the reduction by shifts instead of 2 `clmul` | 1.37 → 1.58 ns per butterfly (9V74 `bench`; it is a ymm-only kernel) | **not adopted** |
+| — | lever 4 (14.2) | — | dropped |
+
+**Round 1 is not cut (lever 6's −30 % is not reached).** Its window (4.1 µs per core, about 41 k
+vector ops) breaks down as:
+- about 60 % in the LDE table application and the bit-serial GF(2^8) products (`gf8mul`: about 50 ops
+  per 32 products; Zen 3 has no GFNI);
+- about 30 % in the 3 × 64 × 16 table lookups of the conversion;
+- the rest in the `axpy` by `eq`.
+
+The window is ALU-bound with no SMT gain. What is left is a different representation:
+- a tower GF(2^8) = GF(16)² with `vpshufb` log/exp products, about 34 ops per 32 products: an
+  estimated −10 % of round 1;
+- a bit-sliced conversion (`vpmovmskb` planes, four-Russians over constant masks): an estimated
+  −20 %.
+
+Neither is built. Both are changes of internal representation only (π unchanged).
+
+**Commit:**
+- The NTT is at the carry-less-multiply roofline (14.1).
+- The Merkle leaves are bound by the service's BLAKE2s on the same 4 hw threads (1 GiB in
+  0.36 s ≈ 2.9 GB/s). Pipelining the requests cannot add hw threads.
+- An NTT/hash overlap on SMT siblings (`clmul` against integer-ALU work) is the one remaining idea.
+  It is bounded by the in-block stage (0.26 s) and is unmeasured.
+
+### 14.4 Before/after on one runner, and the new fits (item 5)
+
+`probe/p2t6/final.sh` builds both provers on the runner (`build-asm.sh`, `asm-compat.py`, `gcc
+-static`), the base from the branch HEAD's `prover/` (sha256 `657a0ab0…3d3b`) and the new one
+(`d25ca624…e552`). It then runs them alternately through one `rf-oracle`.
+
+There were three runs, all on the EPYC 7763: 40734390435, 40734399110 and 40734406678. Each cell
+below is the range over 6 runs (3 runners × 2 reps), total = prove + trace + SIGN, 4 threads:
+
+| request | base (s) | new (s) | Δ |
+|---|---:|---:|---:|
+| L32 n = 2^18 | 5.52–5.60 | 5.17–5.36 | −0.31 |
+| L32 n = 3·2^16 | 4.76–4.84 | 4.51–4.57 | −0.27 |
+| L32 n = 2^17 + 1 | 4.10–4.21 | 3.87–4.01 | −0.21 |
+| L32 n = 2^16 | 3.38–3.47 | 3.21–3.29 | −0.17 |
+| L32 n = 1 | 2.69–2.78 | 2.52–2.61 | −0.16 |
+| L31 n = 2^17 | 2.73–2.81 | 2.60–2.65 | −0.14 |
+| L31 n = 2^16 | 2.04–2.11 | 1.92–2.00 | −0.11 |
+| L31 n = 1 | 1.33–1.41 | 1.26–1.34 | −0.07 |
+| aggregate 2^20 (4 × L32, one trace, one SIGN) | 21.80–21.93 | 20.53–20.62 | −1.30 |
+
+- **π is byte-identical** (sha256 of π from the file) between base and new in all 27 cases, and in
+  the 4 off-tier final runs.
+- Every proof is accepted by the native `acc`, and every canary is rejected.
+- Peak RSS is unchanged: 6.19 GB (L32, aggregate) and 3.32 GB (L31), against the 11 GiB cap.
+
+**Fits** (least squares over all points; `logs/P2/r41/fit.py`, output `fit-final.txt`):
+- **`L32(n) = 2.58 + 2.66·n/2^18 s`** (base on the same runs: 2.73 + 2.81; §13: 2.76 + 2.86);
+- **`L31(n) = 1.30 + 1.32·n/2^17 s`** (base: 1.38 + 1.40).
+
+**Per-step estimates** (`fit.py`: §13.8's model with these fits). The nodes use blueprint 4.1's
+phase model, not a measurement: `N2` 2.5 s for `k ≤ 2`, `N4` 4.2 s for `k = 3, 4`. `n ∝ 1/n²` on
+[2^17, 2^20]:
+
+| | base | new |
+|---|---:|---:|
+| segments at the mean chain `n = 1.19·2^18` (L32(2^18) + L31(49,807)) | 7.44 s | 7.04 s |
+| + node (`N2`) | 9.94 s | 9.54 s |
+| segments at `n = 2^20` (4 × L32) | 22.15 s (measured aggregate 21.80–21.93) | 20.95 s (measured 20.53–20.62) |
+| + node (`N4`) | 26.35 s | 25.15 s |
+| `P̄` (segments + nodes) / mean step | 8.85 / 10.13 s | 8.51 / 9.73 s |
+
+The pass gains about 4 % on the segments: −0.4 s per mean step, −0.34 s on `P̄`. That is about what
+the blueprint's C′ booked for lever 6 (−0.4 s) and lever 4 (−0.25 s) together, minus lever 4.
+
+### 14.5 Checks
+
+- `cargo test --release`: 33 passed, 1 ignored (`logs/P2/r41/cargo-test.txt`). New tests:
+  - unit test `simd::pass6_tests::avx2_table_kernels_match`: the AVX2 table kernels — the round-1
+    window with `conv2`, `phi_add`, `phi_add_idx` and `pf_stripe` — against their portable
+    references. It runs on the VM, which has AVX2 but no `pclmulqdq`;
+  - `selftest` checks `phi_add`, `phi_add_idx` and `pf_stripe` on every tier. It passed on the
+    runners (`tier=ymm checked=[pclmul,ymm,ymm-sim]`).
+- π against HEAD on the VM, `test-leaf` (portable tier), pi_b2s equal:
+  - m = 28: `756eecc0…`;
+  - m = 28, n = 5,000 at 1, 3 and 8 threads: `1e53c8a7…`;
+  - m = 30: `b7dc8ab7…`;
+  - m = 32: `e2412740…`.
+- **The dumped Lean `acc` accepts and the canary is rejected** (INT-5's `ops-P` at m = 30 and `ops-L`
+  at m = 32: `lean_ir=accept(lines []; canary_accept=false; asks=8891)`; `logs/P2/r41/test-leaf-30*.txt`,
+  `test-leaf-32.txt`). Items KAT pass (8,891). The m = 32 run used the build before 14.3 e's revert (that revert restores HEAD's x₆ code); the final build's m = 32 π equals the base's on the runners (14.4).
+- Source rule (`logs/org20/scripts/source-rule.py`): 0 findings.
+
+### 14.6 `prover.s`
+
+- Regenerated with `build-asm.sh logs/P2/r41/asm` (rustc 1.99.0; `logs/P2/r41/build-asm.log`):
+  **6,954,029 bytes, sha256 `d25ca624638722dd71526e6bfdab159b915378962e246e31e9f243831280e552`**.
+- The runners' `build-asm.sh` wrote the same sha from the same sources (14.4).
+- The linked binary passes `selftest` and `test-leaf 28/30` on the VM.
+- No machine path appears in the `.s`.
+
+### 14.7 Changes (files under `submissions/flock-recursive/prover/`; crate 9,563 `.rs` lines, was 9,186)
+
+| file | change |
+|---|---|
+| `prof.rs` | new, 39 lines: `FLOCK_PROF` sub-phase spans |
+| `bench.rs` | new: mode `bench` (memory GB/s; round-1 window, butterfly, `axpy`, `phi_add` throughput) |
+| `witness.rs` | `leaf_witness_fast`: the chain pipelined into the pool job |
+| `lincheck.rs` | `partial_fold` calls `simd::pf_stripe` |
+| `ringswitch.rs` | `weight_table`: nonzero-`elo` index lists, sparse products, `simd::phi_add_idx` |
+| `simd.rs` | `r1::conv2`, `r1::phi_add`, `r1::phi_add_idx`, `r1::pf_stripe` (AVX2) + dispatchers and portable references; `selftest` checks; test `pass6_tests` |
+| `main.rs` | `mod prof`, `mod bench`; mode `bench`; `| prof …` in PROVE-LEAF |
+| `ntt.rs`, `merkle.rs`, `leaf.rs`, `ligerito.rs`, `zerocheck.rs` | spans only |
+| `prover.s` | regenerated (14.6) |
+| `probe/p2t6/run.sh`, `probe/p2t6/final.sh` | new: profile/kernel probe; base-vs-new on one runner (`set` picks the case list) |
+
+### 14.8 For the blueprint and the orchestrator (I do not edit the blueprint)
+
+- **Lever 4 is zero on this runner** (14.2). Changes 26's C′ booked −0.25 s per mean step for it;
+  drop it.
+- **Lever 6, as measured:**
+  - round 1 is not cut (14.3 d);
+  - the pass's kernels give −0.31 s per 2^18 at L32 and −0.4 s per mean step all-in;
+  - the segment fits are now `L32(n) = 2.58 + 2.66·n/2^18`, `L31(n) = 1.30 + 1.32·n/2^17`.
+  - Net against C′'s booking (−0.65 s for levers 4 + 6): **about +0.25 s per mean step**, so C′'s
+    10.0 s step becomes ≈ 10.25 s, and `M ≤ 90` becomes `M ≤ 88` (estimate, same overhead).
+- **What is left on the prover side, by size** (all unmeasured estimates):
+  - round 1's representation (tower GF(2^8) products, bit-sliced conversion): −0.1 … −0.3 s per
+    2^18;
+  - the NTT/hash overlap: ≤ 0.15 s fixed;
+  - nothing else in the fixed half is above 10 %. The NTT and the folds are at the carry-less
+    roofline; the Merkle leaves are the service's.
+- **The runner pool is mixed.** 6 of 14 probes today got EPYC 9V74/9V45 or Xeon 6973P-C, which
+  are 20–40 % faster. A stream's `c_P` therefore depends on the draw.
+- **`seq4`** (S-0′, 47c5c6c): not adopted, as ruled. The re-baseline comes with S-F4's dumps.

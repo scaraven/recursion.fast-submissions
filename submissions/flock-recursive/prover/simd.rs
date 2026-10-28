@@ -274,6 +274,55 @@ pub fn xmac(acc: &mut [[u128; 2]], x: &[B64], c: F) {
     }
 }
 
+/// `out[i] += phi_apply(t, e[i])` (pass 6; `ringswitch::weight_table`).
+pub fn phi_add(t: &[F], e: &[F], out: &mut [F]) {
+    if tier() >= 3 {
+        unsafe { r1::phi_add(t, e, out) }
+    } else {
+        for (o, x) in out.iter_mut().zip(e) {
+            *o += crate::ringswitch::phi_apply(t, *x);
+        }
+    }
+}
+
+/// `out[l] += phi_apply(t, e[l])` for `l ∈ idx` (distinct indices).
+pub fn phi_add_idx(t: &[F], e: &[F], idx: &[u32], out: &mut [F]) {
+    assert!(idx.iter().all(|&l| (l as usize) < e.len().min(out.len())));
+    if tier() >= 3 {
+        unsafe { r1::phi_add_idx(t, e, idx, out) }
+    } else {
+        for &l in idx {
+            out[l as usize] += crate::ringswitch::phi_apply(t, e[l as usize]);
+        }
+    }
+}
+
+/// One 8-block stripe of `lincheck::partial_fold`: `acc[64 wi + j] += t[Σ_r 2^r · bit j of
+/// z[r·256 + wi]]`.
+pub fn pf_stripe(z: &[u64], t: &[F; 256], acc: &mut [F]) {
+    if tier() >= 3 {
+        unsafe { r1::pf_stripe(z, t, acc) }
+    } else {
+        pf_stripe_ref(z, t, acc)
+    }
+}
+
+pub fn pf_stripe_ref(z: &[u64], t: &[F; 256], acc: &mut [F]) {
+    for wi in 0..256 {
+        for byte in 0..8 {
+            let mut x = 0u64;
+            for r in 0..8 {
+                x |= ((z[r * 256 + wi] >> (8 * byte)) & 0xFF) << (8 * r);
+            }
+            let y = crate::lincheck::transpose8(x);
+            let p = wi * 64 + byte * 8;
+            for tt in 0..8 {
+                acc[p + tt] += t[((y >> (8 * tt)) & 0xFF) as usize];
+            }
+        }
+    }
+}
+
 /// One round-1 window (`zerocheck::window_portable` is the reference).
 pub fn round1_window(sk: &crate::skipdom::Skip, a: &[u8], b: &[u8], z: &[u8], out: &mut [F; 192]) {
     if tier() >= 3 {
@@ -828,6 +877,93 @@ pub mod r1 {
     #[repr(C, align(64))]
     struct A64([[u8; 64]; 16]);
 
+    /// `out[i] ^= Σ_p t[p·256 + bytes(e[i])_p]` (16 byte tables of F; `ringswitch::phi_apply` added
+    /// into `out`), two elements interleaved (pass 6).
+    #[target_feature(enable = "avx2")]
+    pub unsafe fn phi_add(t: &[F], e: &[F], out: &mut [F]) {
+        debug_assert!(t.len() >= 16 * 256 && out.len() == e.len());
+        let tp = t.as_ptr() as *const __m128i;
+        let n = e.len();
+        let eb = e.as_ptr() as *const u8;
+        let op = out.as_mut_ptr() as *mut __m128i;
+        let mut i = 0;
+        while i + 2 <= n {
+            let (b0, b1) = (eb.add(16 * i), eb.add(16 * i + 16));
+            let mut v0 = _mm_load_si128(tp.add(*b0 as usize));
+            let mut v1 = _mm_load_si128(tp.add(*b1 as usize));
+            for p in 1..16 {
+                v0 = _mm_xor_si128(v0, _mm_load_si128(tp.add(p * 256 + *b0.add(p) as usize)));
+                v1 = _mm_xor_si128(v1, _mm_load_si128(tp.add(p * 256 + *b1.add(p) as usize)));
+            }
+            _mm_store_si128(op.add(i), _mm_xor_si128(_mm_load_si128(op.add(i)), v0));
+            _mm_store_si128(op.add(i + 1), _mm_xor_si128(_mm_load_si128(op.add(i + 1)), v1));
+            i += 2;
+        }
+        if i < n {
+            out[i] += crate::ringswitch::phi_apply(t, e[i]);
+        }
+    }
+
+    /// `phi_add` at the positions `idx` only: `out[l] ^= Φ-tables(e[l])` for `l ∈ idx`.
+    #[target_feature(enable = "avx2")]
+    pub unsafe fn phi_add_idx(t: &[F], e: &[F], idx: &[u32], out: &mut [F]) {
+        let tp = t.as_ptr() as *const __m128i;
+        let eb = e.as_ptr() as *const u8;
+        let op = out.as_mut_ptr() as *mut __m128i;
+        let n = idx.len();
+        let mut i = 0;
+        while i + 2 <= n {
+            let (l0, l1) = (idx[i] as usize, idx[i + 1] as usize);
+            debug_assert!(l0 < e.len() && l1 < e.len() && l0 < out.len() && l1 < out.len());
+            let (b0, b1) = (eb.add(16 * l0), eb.add(16 * l1));
+            let mut v0 = _mm_load_si128(tp.add(*b0 as usize));
+            let mut v1 = _mm_load_si128(tp.add(*b1 as usize));
+            for p in 1..16 {
+                v0 = _mm_xor_si128(v0, _mm_load_si128(tp.add(p * 256 + *b0.add(p) as usize)));
+                v1 = _mm_xor_si128(v1, _mm_load_si128(tp.add(p * 256 + *b1.add(p) as usize)));
+            }
+            _mm_store_si128(op.add(l0), _mm_xor_si128(_mm_load_si128(op.add(l0)), v0));
+            _mm_store_si128(op.add(l1), _mm_xor_si128(_mm_load_si128(op.add(l1)), v1));
+            i += 2;
+        }
+        if i < n {
+            let l = idx[i] as usize;
+            out[l] += crate::ringswitch::phi_apply(t, e[l]);
+        }
+    }
+
+    /// One stripe of 8 blocks of `lincheck::partial_fold` (pass 6): for every word `wi < 256` and
+    /// bit `j < 64`, `acc[64 wi + j] ^= t[Σ_r 2^r · bit j of z[r·256 + wi]]`; the 8-bit indices of a
+    /// word come from one 64-byte bit transpose.
+    #[target_feature(enable = "avx2")]
+    pub unsafe fn pf_stripe(z: &[u64], t: &[F; 256], acc: &mut [F]) {
+        debug_assert!(z.len() >= 7 * 256 + 256 && acc.len() >= 256 * 64);
+        let mut buf = A64([[0u8; 64]; 16]);
+        let tp = t.as_ptr() as *const __m128i;
+        let ap = acc.as_mut_ptr() as *mut __m128i;
+        let zp = z.as_ptr();
+        for wi in 0..256 {
+            let w = buf.0[0].as_mut_ptr() as *mut u64;
+            for r in 0..8 {
+                *w.add(r) = *zp.add(r * 256 + wi);
+            }
+            bit_transpose(buf.0[0].as_ptr(), buf.0[1].as_mut_ptr());
+            let idx = &buf.0[1];
+            let a = ap.add(64 * wi);
+            for j in 0..64 {
+                let p = a.add(j);
+                _mm_store_si128(p, _mm_xor_si128(_mm_load_si128(p), _mm_load_si128(tp.add(idx[j] as usize))));
+            }
+        }
+    }
+
+    /// The c-side table pair (pass 6): `conv2[bm·256 + v] = (conv[v & 0x55], conv[v & 0xAA])`, one
+    /// 32-byte load for both banks.
+    fn conv2(sk: &Skip) -> &'static Vec<[F; 2]> {
+        static T: std::sync::OnceLock<Vec<[F; 2]>> = std::sync::OnceLock::new();
+        T.get_or_init(|| (0..16 * 256).map(|i| { let (bm, v) = (i / 256, i % 256); [sk.conv[bm * 256 + (v & 0x55)], sk.conv[bm * 256 + (v & 0xAA)]] }).collect())
+    }
+
     #[target_feature(enable = "avx2")]
     pub unsafe fn window(sk: &Skip, a: &[u8], b: &[u8], z: &[u8], out: &mut [F; 192]) {
         let poly = _mm256_set1_epi8((crate::field::gf8_poly() & 0xFF) as u8 as i8);
@@ -848,19 +984,18 @@ pub mod r1 {
             bit_transpose(z.as_ptr().add(bb), chunk_c.0[bm].as_mut_ptr());
         }
         let cv = sk.conv.as_ptr();
+        let c2 = conv2(sk).as_ptr();
         for lane in 0..64 {
-            let (mut cab, mut c0, mut c1) = (_mm_setzero_si128(), _mm_setzero_si128(), _mm_setzero_si128());
+            let (mut cab, mut c01) = (_mm_setzero_si128(), _mm256_setzero_si256());
             for bm in 0..16 {
-                let tb = cv.add(bm * 256);
                 let vab = chunk_ab.0[bm][lane] as usize;
                 let vc = chunk_c.0[bm][lane] as usize;
-                cab = _mm_xor_si128(cab, _mm_load_si128(tb.add(vab) as *const __m128i));
-                c0 = _mm_xor_si128(c0, _mm_load_si128(tb.add(vc & 0x55) as *const __m128i));
-                c1 = _mm_xor_si128(c1, _mm_load_si128(tb.add(vc & 0xAA) as *const __m128i));
+                cab = _mm_xor_si128(cab, _mm_load_si128(cv.add(bm * 256 + vab) as *const __m128i));
+                c01 = _mm256_xor_si256(c01, _mm256_loadu_si256(c2.add(bm * 256 + vc) as *const __m256i));
             }
             _mm_storeu_si128(out.as_mut_ptr().add(lane) as *mut __m128i, cab);
-            _mm_storeu_si128(out.as_mut_ptr().add(64 + lane) as *mut __m128i, c0);
-            _mm_storeu_si128(out.as_mut_ptr().add(128 + lane) as *mut __m128i, c1);
+            _mm_storeu_si128(out.as_mut_ptr().add(64 + lane) as *mut __m128i, _mm256_castsi256_si128(c01));
+            _mm_storeu_si128(out.as_mut_ptr().add(128 + lane) as *mut __m128i, _mm256_extracti128_si256::<1>(c01));
         }
     }
 }
@@ -925,6 +1060,13 @@ pub fn selftest() -> Result<String, String> {
     let x6r = x6_inner(&x6t, &wbytes[..1024], &wbytes[1024..2048], 3, &lo[..33]);
     let mut x6f = vec![F::ZERO; 33];
     x6_fold(&x6t, &wbytes[..1024], 5, sc, &mut x6f);
+    let pt = crate::ringswitch::phi_tables(&lo[..7], sc);
+    let mut ph_r = b[..33].to_vec();
+    phi_add(&pt, &a[..33], &mut ph_r);
+    let zw: Vec<u64> = (0..2048).map(|i| a[i % a.len()].lo ^ b[(7 * i) % b.len()].hi.rotate_left(i as u32)).collect();
+    let pft: [F; 256] = std::array::from_fn(|i| xs[i % 200] + lo[i % lo.len()]);
+    let mut pf_r = vec![F::ZERO; 16384];
+    pf_stripe(&zw, &pft, &mut pf_r);
     let mut tested = vec![];
     let mut fail = None;
     for &t in &tiers {
@@ -964,6 +1106,9 @@ pub fn selftest() -> Result<String, String> {
             ("axpy", { let mut o = a.clone(); axpy(&mut o, &b, sc); o == ax_r }),
             ("x6_inner", x6_inner(&x6t, &wbytes[..1024], &wbytes[1024..2048], 3, &lo[..33]) == x6r),
             ("x6_fold", { let mut o = vec![F::ZERO; 33]; x6_fold(&x6t, &wbytes[..1024], 5, sc, &mut o); o == x6f }),
+            ("phi_add", { let mut o = b[..33].to_vec(); phi_add(&pt, &a[..33], &mut o); o == ph_r }),
+            ("phi_add_idx", { let mut o = b[..33].to_vec(); let idx: Vec<u32> = (0..33).collect(); phi_add_idx(&pt, &a[..33], &idx, &mut o); o == ph_r }),
+            ("pf_stripe", { let mut o = vec![F::ZERO; 16384]; pf_stripe(&zw, &pft, &mut o); o == pf_r }),
         ];
         if let Some((k, _)) = checks.iter().find(|c| !c.1) {
             fail = Some(format!("{name}: {k}"));
@@ -975,5 +1120,52 @@ pub fn selftest() -> Result<String, String> {
     match fail {
         Some(e) => Err(e),
         None => Ok(format!("tier={} checked=[{}]", tier_name(), tested.join(","))),
+    }
+}
+
+#[cfg(test)]
+mod pass6_tests {
+    use super::*;
+    /// The AVX2 table kernels (round-1 window with `conv2`, `phi_add`, `pf_stripe`) against their
+    /// portable references, whenever the machine has AVX2 (they need no carry-less multiply).
+    #[test]
+    fn avx2_table_kernels_match() {
+        if !hw_avx2() {
+            return;
+        }
+        let mut s = 0x9E37_79B9_7F4A_7C15u64;
+        let mut rnd = move || { s ^= s << 13; s ^= s >> 7; s ^= s << 17; s };
+        let fv = |n: usize, r: &mut dyn FnMut() -> u64| -> Vec<F> { (0..n).map(|_| F::new(r(), r())).collect() };
+        let sk = crate::skipdom::skip();
+        for _ in 0..4 {
+            let wb: Vec<u8> = (0..3072).map(|_| rnd() as u8).collect();
+            let (mut w0, mut w1) = ([F::ZERO; 192], [F::ZERO; 192]);
+            crate::zerocheck::window_portable(sk, &wb[..1024], &wb[1024..2048], &wb[2048..], &mut w0);
+            unsafe { r1::window(sk, &wb[..1024], &wb[1024..2048], &wb[2048..], &mut w1) };
+            assert_eq!(w0, w1, "round-1 window");
+            let rpp = fv(7, &mut rnd);
+            let t = crate::ringswitch::phi_tables(&rpp, F::new(rnd(), rnd()));
+            let e = fv(1023, &mut rnd);
+            let o0: Vec<F> = fv(1023, &mut rnd);
+            let mut o1 = o0.clone();
+            unsafe { r1::phi_add(&t, &e, &mut o1) };
+            for i in 0..e.len() {
+                assert_eq!(o1[i], o0[i] + crate::ringswitch::phi_apply(&t, e[i]), "phi_add {i}");
+            }
+            let idx: Vec<u32> = (0..1023).filter(|i| i % 3 != 1).collect();
+            let mut o2 = o0.clone();
+            unsafe { r1::phi_add_idx(&t, &e, &idx, &mut o2) };
+            for i in 0..e.len() {
+                let want = if i % 3 != 1 { o0[i] + crate::ringswitch::phi_apply(&t, e[i]) } else { o0[i] };
+                assert_eq!(o2[i], want, "phi_add_idx {i}");
+            }
+            let z: Vec<u64> = (0..2048).map(|_| rnd()).collect();
+            let pt: [F; 256] = std::array::from_fn(|_| F::new(rnd(), rnd()));
+            let a0 = fv(16384, &mut rnd);
+            let (mut a1, mut a2) = (a0.clone(), a0.clone());
+            pf_stripe_ref(&z, &pt, &mut a1);
+            unsafe { r1::pf_stripe(&z, &pt, &mut a2) };
+            assert!(a1 == a2, "pf_stripe");
+        }
     }
 }

@@ -46,19 +46,7 @@ pub fn partial_fold(z: &[u64], s_out: &[F], used: usize) -> Vec<F> {
                 }
             }
             let base = 8 * s * 256;
-            for wi in 0..256 {
-                for byte in 0..8 {
-                    let mut x = 0u64;
-                    for r in 0..8 {
-                        x |= ((z[base + r * 256 + wi] >> (8 * byte)) & 0xFF) << (8 * r);
-                    }
-                    let y = transpose8(x);
-                    let p = wi * 64 + byte * 8;
-                    for tt in 0..8 {
-                        acc[p + tt] += t[((y >> (8 * tt)) & 0xFF) as usize];
-                    }
-                }
-            }
+            crate::simd::pf_stripe(&z[base..base + 8 * 256], &t, &mut acc);
         }
         acc
     });

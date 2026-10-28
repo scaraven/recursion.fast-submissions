@@ -149,6 +149,11 @@ pub fn weight_table(claims: &[(&[F], F)], rpp: &[F]) -> Vec<F> {
     let nlo = mu.min(10);
     let splits: Vec<(Vec<F>, Vec<F>)> = his.iter().map(|h| (eq_table(&h[..nlo]), eq_table(&h[nlo..]))).collect();
     let nhi = 1usize << (mu - nlo);
+    // the positions where elo_j ≠ 0 (Φ(0) = 0: the others add nothing)
+    let nz: Vec<Vec<u32>> = splits.iter().map(|(elo, _)| (0..elo.len() as u32).filter(|&l| !elo[l as usize].is_zero()).collect()).collect();
+    if std::env::var_os("FLOCK_VERBOSE").is_some() {
+        eprintln!("  weight_table nonzero lo entries {:?} of {}", nz.iter().map(|v| v.len()).collect::<Vec<_>>(), 1usize << nlo);
+    }
     let mut out = vec![F::ZERO; 1 << mu];
     par::for_each_chunk_mut(&mut out, 1 << nlo, |off, ch| {
         let mut e = vec![F::ZERO; 1 << nlo];
@@ -159,12 +164,20 @@ pub fn weight_table(claims: &[(&[F], F)], rpp: &[F]) -> Vec<F> {
                 if ehi[h].is_zero() {
                     continue;
                 }
-                e.iter_mut().for_each(|x| *x = F::ZERO);
-                crate::simd::axpy(&mut e, elo, ehi[h]);
-                for l in 0..blk.len() {
-                    if !elo[l].is_zero() {
-                        blk[l] += phi_apply(&tabs[j], e[l]);
+                if 4 * nz[j].len() < e.len() {
+                    // a sparse elo (the shift claim: 64 of 1,024): the products at its support only
+                    for &l in &nz[j] {
+                        e[l as usize] = elo[l as usize] * ehi[h];
                     }
+                } else {
+                    e.iter_mut().for_each(|x| *x = F::ZERO);
+                    crate::simd::axpy(&mut e, elo, ehi[h]);
+                }
+                if blk.len() == e.len() {
+                    crate::simd::phi_add_idx(&tabs[j], &e, &nz[j], blk);
+                } else {
+                    let idx: Vec<u32> = nz[j].iter().copied().filter(|&l| (l as usize) < blk.len()).collect();
+                    crate::simd::phi_add_idx(&tabs[j], &e, &idx, blk);
                 }
             }
         }
