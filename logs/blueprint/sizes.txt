@@ -115,3 +115,9 @@
    C' + round-1 kernel -30% (P2, unmeasured): P-bar 7.34 s; mean step 8.50 + overhead 1.63 = 10.13 s; fits M <= 89; truncated 22%, unranked medians 12%; V-bar 0.50 (x 1.23); S = 7.84 s
    D  = C' + L(2) (reserve): P-bar 7.04 s; mean step 8.04 + overhead 1.62 = 9.66 s; fits M <= 93; truncated 17%, unranked medians 8%; V-bar 0.50 (x 1.23); S = 7.53 s
    E  = B with V 180 ms (no S-T1 gain on the runner): P-bar 7.68 s; mean step 8.91 + overhead 1.73 = 10.63 s; fits M <= 84; truncated 30%, unranked medians 21%; V-bar 0.72 (x 1.39); S = 8.40 s
+== revision 4.3
+   V 179 ms runner: x = 1.39, V-bar = 0.71 s; S (B as built, P-bar 7.68) = 8.39 s
+   V 188 ms runner: x = 1.44, V-bar = 0.79 s; S (B as built, P-bar 7.68) = 8.47 s
+   V 203 ms runner: x = 1.52, V-bar = 0.94 s; S (B as built, P-bar 7.68) = 8.62 s
+   decoder (ii) at m = 32 with S-H4's 261 steps/pair on 4 rows: k^2·(261+424) = 1.88e+14 + linear ~1e+13 = 1.98e+14; fuel_base 3·2^46 = 2.11e+14 (1.06x); B 2^48 = 2.81e+14 (1.42x); m = 31: 5.68x under B
+   G1 golf: FRVIRFinalsSG 80.4 -> 40.5, FRVIRSpec 55.4 -> 52.2, FRVIRFinals 40.0 -> 21.2, FRVIRFinalsSF 25.6 -> 19.5, FRVIRFinals4 50.8 -> 11.3 CPU s (VM, min): 252 -> 145 (-43%); on the 7763 (/2) ~ -54 s of 2,119

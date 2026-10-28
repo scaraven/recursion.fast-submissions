@@ -371,3 +371,10 @@ B42=scen42("B  ladder L30-L32 + tight packing (as built)",1.0,False,0.151)
 C42=scen42("C' + round-1 kernel -30% (P2, unmeasured)",0.87,False,0.151)
 D42=scen42("D  = C' + L(2) (reserve)",0.87,True,0.151)
 E42=scen42("E  = B with V 180 ms (no S-T1 gain on the runner)",1.0,False,0.180)
+# ---- revision 4.3 (stage-review changes 28): V(N4) measured 213-223 ms VM best (179-188 ms runner); S-H4's level-0 method 261 steps/pair
+print("== revision 4.3")
+for V in (179,188,203):
+    vb,x=Vbar(V,797904); print(f"   V {V} ms runner: x = {x:.2f}, V-bar = {vb:.2f} s; S (B as built, P-bar 7.68) = {7.68+vb:.2f} s")
+k=2**19; q=k*k*(261+106*4); lin=0.1e14
+print(f"   decoder (ii) at m = 32 with S-H4's 261 steps/pair on 4 rows: k^2·(261+424) = {q:.3g} + linear ~{lin:.1g} = {q+lin:.3g}; fuel_base 3·2^46 = {3*2**46:.3g} ({3*2**46/(q+lin):.2f}x); B 2^48 = {2**48:.3g} ({2**48/(q+lin):.2f}x); m = 31: {2**48/((q+lin)/4):.2f}x under B")
+print("   G1 golf: FRVIRFinalsSG 80.4 -> 40.5, FRVIRSpec 55.4 -> 52.2, FRVIRFinals 40.0 -> 21.2, FRVIRFinalsSF 25.6 -> 19.5, FRVIRFinals4 50.8 -> 11.3 CPU s (VM, min): 252 -> 145 (-43%); on the 7763 (/2) ~ -54 s of 2,119")

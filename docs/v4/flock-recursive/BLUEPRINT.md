@@ -48,7 +48,7 @@ compressions on the VM (P2), V (N30) 190–196 ms on the 7763 (H-V, INT-5), `|π
 | `P̄` (7763) | as built (B: ladder `L30–L32`, tight packing) **7.68 s**; C′ (round-1 kernel −30 %) 7.34; D (`L(2)`) 7.04 | — | the cubic mean over the `1/n²` draw |
 | stream wall time per step (prover + overhead 1.6 s: `ready` 0.22, three V 0.45, calibration 0.55, plan 1.9/8, re-runs 2 %) | B 10.6 s (`M ≤ 85`, **28 % truncated, 19 % unranked medians**); C′ 10.1 (`M ≤ 89`, 22 %, 12 %); D 9.7 (`M ≤ 93`, 17 %, 8 %) | `stream_s = 960`, `M ≤ 112` needs ≤ 8.05 s | no design within reach fits `M = 112` (changes 26, 27) |
 | `V̄` | today `x = 193/177.8 + 0.76/2 = 1.47`, `V̄ = 0.84 s`; V 150 ms: 0.49 s; + `|π|` 0.65 MiB: 0.43 s; at the knee (110 ms, 0.6 MiB): 0.24 s | knee `x = 1` | `κ = 0.2667 s` |
-| **`S`** | **as built (B) ≈ 8.2 s; C′ ≈ 7.8; D ≈ 7.5** (`V̄ = 0.50` at V 151 ms runner, `x = 1.23`; 0.72 at 180 ms) | lower is better | estimate (changes 27) |
+| **`S`** | **as built (B) ≈ 8.4–8.5 s** with V(N4) measured 213–223 ms VM best = 179–188 ms on the 7763 (`x = 1.39–1.44`, `V̄ = 0.71–0.79`); C′ ≈ 8.1; D ≈ 7.8; at the VM median (231–241 ms, ≈ 203 ms runner) `V̄ = 0.94` | lower is better | estimate (changes 28) |
 | plan build per verify process | **1.87–1.98 s (S-E13, measured)**; ≈ 12–14 processes per stream | ≤ 2 s (B-16) | met |
 | `qV` | 36,000 (the aggregate verifier asks `≤ 4 × 8,891`) | `≤ 2^16` | — |
 
@@ -616,7 +616,7 @@ on 18 coordinates and their `_meets` lemmas use `eq((a ‖ 0^k), (b ‖ 0^k)) = 
 (`eq_pad_zero`), so the five become templates (S-0 the pack, S-C the specs, S-F2 the `_meets`,
 S-E the templates).
 
-**`planOf` (revision 4.0, B-16, superseding 3.17's ≤ 5 s; met in 4.2):** under the stream every verify process (one per batch of 8 checks, ≈ 12 per stream) counts against `stream_s = 960 s`, so the plan costs **≤ 2 s per process — measured 1.87–1.98 s (S-E13), was 43–49 s**. The 3.17 text follows for the record. **`planOf` (revision 3.17, the orchestrator's ruling revising 3.15 (e)).** The badge's `NS` is the
+**`planOf` (revision 4.0, B-16, superseding 3.17's ≤ 5 s; met in 4.2):** under the stream every verify process (one per batch of 8 checks, ≈ 12 per stream) counts against `stream_s = 960 s`, so the plan costs **≤ 2 s per process — measured 1.87–1.98 s (S-E13), 1.80–2.03 s at 4.1 (S-E12c), was 43–49 s**. **The M rows are the compiled rows when they fit (revision 4.3, S-E12c): `nodeIRows4 κ` is the prototypes' rows at the layout hint (`FRNodeRows4Hint`, a constant printed from `layOf`) followed by the link and activity rows when `ProtoFit` holds — every prototype's rows inside its region below the link rows, with distinct indices — and the single rejecting row `one · one = 0` otherwise; the plan checks `ProtoFit` at process start (`Plan4.hR`), so a stale layout after a program change leaves the node unprovable but sound.** The 3.17 text follows for the record. **`planOf` (revision 3.17, the orchestrator's ruling revising 3.15 (e)).** The badge's `NS` is the
 monotonic time of parsing `π` and evaluating `acc` only (`harness/badge/Verify.lean.in`,
 `timedCheck`), so a **closed top-level plan constant, initialised at process start, is outside
 every check's `NS`**; process start counts only against the batch timeout `verify_s · n + 60 s ≥
@@ -2079,15 +2079,14 @@ cannot pay for a quadratic decoder; the contract's `2^48` assumes a quasi-linear
 | Route | Fuel at `m = 32` (level 0; levels 1–4 add `< 1 %`) | Soundness | Circuit / layout impact | Lean cost | Ruling |
 |---|---|---|---|---|---|
 | (i) quasi-linear erasure decoding at level 0: syndromes by the additive NTT (`FRXBfly`), the erasure locator `Λ = Π_{errors} (x − x_j)` by a subproduct tree (NTT products), Forney's formula for the erased values | ≈ `10^12` steps (`n log² n` at `n = 2^20`): `> 250×` under `2^48`, independent of `m` up to 36 | standard; the existing `agreement set` and `C_mca` arguments unchanged (it is the same unique codeword, found faster) | none | **large**: a new program (polynomial product and derivative via the NTT, the subproduct tree, Forney) with correctness proofs; `FRXBfly`'s butterflies and `FRXAgree` carry over | the structural reserve |
-| **(ii) decode only the rows the output reads** — H's message slots are level-0 rows 4–7 (`e mod 64 ∈ {4..7}`) — with a **batched inversion** in `baryIR` (one `invF` per row, Montgomery's trick: ≈ 60 steps per pair instead of 1,363) | `4 rows`: `k² · (60 + 106·4) = 2^38 · 484 ≈ 1.33·10^14`, plus the linear parts ≈ `1.4–1.6·10^14` (S-H3's estimate 1.6·10^14): **`1.3×` under `fuel_base = 3·2^46 = 2.11·10^14`, `1.75–2.0×` under `B`'s `2^48`**; `fuel_base` may rise to `2^48 − ε` if needed (`fuel ≤ B`) | the same unique codeword; only fewer rows are interpolated | **no layout move is needed**: every signature value the output needs already sits in rows 4–7 — `ots_i` is the `x` field of chain block `w_{i,0}` (the mux row `a_{i,0} = ots_i` holds for every digit), the path digests are the path blocks' `l`/`r` fields, the index is the key-leaf's `j` field; the kernel link is **`sig_of_H`** (S-G/S-E: the WOTS mux and link rows give `L`'s signature bits = those H fields on any word satisfying the circuit), so `readW` reads H, not L. If S-E prefers the physical move of the 4,772 B signature region from L into H blocks, it is equivalent and costs ≈ 300 blocks per slot | **moderate**: `decLvIR`/`baryIR` with a row subset and the batched inversion, their cost and semantics lemmas; `readW` on rows 4–7; `sig_of_H` | **adopted now** |
+| **(ii) decode only the rows the output reads** — H's message slots are level-0 rows 4–7 (`e mod 64 ∈ {4..7}`) — with **S-H4's level-0 interpolation (revision 4.3, replacing 4.2's batched-inversion wording): the pairwise differences in GF(2^64), prefix/suffix products, 261 steps per pair** | `4 rows`: `k² · (261 + 106·4) = 2^38 · 685 ≈ 1.88·10^14`, plus the linear parts ≈ `1.98·10^14`: **1.06× under `fuel_base = 3·2^46 = 2.11·10^14`, 1.42× under `B`'s `2^48`** (`m = 31`: 5.7× under `B`); `fuel_base` stays (QUEUE) and may rise to `2^48` if the measured cost needs it (`fuel ≤ B`) | the same unique codeword; only fewer rows are interpolated | **no layout move is needed**: every signature value the output needs already sits in rows 4–7 — `ots_i` is the `x` field of chain block `w_{i,0}` (the mux row `a_{i,0} = ots_i` holds for every digit), the path digests are the path blocks' `l`/`r` fields, the index is the key-leaf's `j` field; the kernel link is **`sig_of_H`** (S-G/S-E: the WOTS mux and link rows give `L`'s signature bits = those H fields on any word satisfying the circuit), so `readW` reads H, not L. If S-E prefers the physical move of the 4,772 B signature region from L into H blocks, it is equivalent and costs ≈ 300 blocks per slot | **moderate**: `decLvIR`/`baryIR` with a row subset and the batched inversion, their cost and semantics lemmas; `readW` on rows 4–7; `sig_of_H` | **adopted now** |
 | (iii) more rows at level 0 (`ell0 > 6`) | `rows ∝ 2^ell0` lowers `k` but raises `106·rows`: at `m = 32` level 0 would need `≈ 2^11` rows | — | the ladder, every query count | — | ruled out (S-D3 fixes `ell0 = 6`; lever 5 declined) |
 | the coordinator's example: **an affine-subspace agreement subset so that interpolation is an inverse additive NTT** (`O(k log k)` with `FRXBfly`) | would be `≈ 10^10` | **unsound in the unique-decoding regime**: the adversary chooses the error set `X` (`\|X\| ≤ e = ⌊(n−k)/2⌋`, `2^18` at level 0), and a `k`-dimensional affine subspace is error-free only if it avoids `X`; at rate 1/2 the subspaces are affine hyperplanes, and **`X` meets every one of the `2(n−1)` affine hyperplanes as soon as it affinely spans the domain — `ℓ + 1 = 21` well-placed errors suffice**; at lower rates (codimension-`c` flats, each of `n/2^c` points) an error set of `3n/8` points blocks every flat. So no fixed structured family of `k`-subsets is guaranteed inside the agreement set; the decoder must interpolate at an arbitrary `k`-subset, which is (i) or (ii) | — | — | **rejected** |
 
 **Ruling: (ii) now, (i) as the reserve.** Fuel arithmetic at `m = 32`: `1.4–1.6·10^14 ≤ 2.11·10^14`
-(`fuel_base`) `≤ 2.81·10^14` (`B`'s fixed term); at `m = 31` a quarter of that. Memory: `f⁽⁰⁾` at
-`m = 32` is `2^25` cells = `2^26` words, so `mem` moves from 3.x's `2^26` to **`2^27` words** (the
-decoder's working arrays: the agreement set, the 4 rows' weights); the `memX` term in `fuel_base`
-grows by `2^27` steps, negligible. `claim.json`'s `fuel_base = 3·2^46`, `fuel_per_word = 2^13` stand
+(`fuel_base`) `≤ 2.81·10^14` (`B`'s fixed term); at `m = 31` a quarter of that. Memory (revision 4.3, S-H4): the decoder holds **the full level-0 codeword, so `mem` is `2^28`
+words** (not 4.2's `2^27`; 3.x had `2^26`); the `memX` term in `fuel_base` grows accordingly, within
+`fuel_base`'s unchanged `3·2^46`. `claim.json`'s `fuel_base = 3·2^46`, `fuel_per_word = 2^13` stand
 unless the measured cost needs `fuel_base` up to `2^48 − 2^47`. The `N2` kind runs `ladderOf 31`,
 `N4`/`N8` `ladderOf 32`: the decoder takes the kind at run time. Owner S-H3 (`nd`, `DecOk4`,
 `NodeDec4.out`), S-G/S-E (`sig_of_H`, the cell map `readW` over rows 4–7, the links at 4.1's
@@ -2146,7 +2145,7 @@ of changes 26 stands: `M = 112` needs ≤ 8.05 s per step, i.e. ≈ 13 µs per c
 today (`2.68 + 2.39·2^0.25`) / `1.19·2^18`.
 
 **Per-track list (revision 4.2):**
-- **S-H3**: the decoder (A)(ii): `baryIR` on rows 4–7 with the batched inversion, `decLvIR` per kind (`ladderOf 31/32`), `mem = 2^27`, the cost lemmas within `decBudget`, `readW` over rows 4–7, `NodeDec4.out`; then step 2 of (B) (`FRXCommon`, the 3.x node extractor retired). Reserve: (i).
+- **S-H3/S-H4**: the decoder (A)(ii): `baryIR` on rows 4–7 with S-H4's GF(2^64)-difference interpolation (261 steps per pair), `decLvIR` per kind (`ladderOf 31/32`), `mem = 2^28`, the cost lemmas within `decBudget`, `readW` over rows 4–7, `NodeDec4.out`; then step 2 of (B) (`FRXCommon`, the 3.x node extractor retired). Reserve: (i).
 - **S-G / S-E**: `sig_of_H` (the WOTS mux and link rows give `L`'s signature bits = the H fields `x(w_{i,0})`, the path `l`/`r`, the key-leaf `j`); the cell map and links at 4.1's positions (P4b/R4); step 3 of (B): T4's 195 declarations into `FRSoundnessCore*`; the aggregate's padding/counter obligation (R-4) in the node truth.
 - **S-0′ / S-E**: step 4 of (B): `FRVIRFinalsCore` (the per-phase check definitions Rev4 uses) so that `FRVIRFinalsSG`/`FRNodeLayout` can go; B-12/B-13 as built (no further change).
 - **S-I**: `Solution` imports only the Rev4 certificate (step 1); `claim.json` unchanged unless `fuel_base` must rise (≤ `2^48 − 2^47`); the certificate's `E := E4X nd S.acc`, `ext := ext4` once `nd` lands.
@@ -2156,4 +2155,60 @@ today (`2.68 + 2.39·2^0.25`) / `1.19·2^18`.
 
 **Revision 4.2 (normative):** (A)(ii) with `mem = 2^27`; the retirement plan (B) steps 1–4 in order;
 B-12, B-13, B-15, B-16, lever 5 and §4.4 as corrected; the budget table above.
+
+### Stage-review changes 28 (revision 4.3): how the node circuit certifies `gen4 κ` (S-E12c §1), and the pending items
+
+**The finding (S-E12c, pass 1).** A node slot's rows certify a run of a compiled *group* program
+(`progNodeG` for `{N2, N4, N8}`, `progSegG` for `{L30, L31, L32}`) at an execution index `ι` of the
+3-way kind mux. The bridge `soundN` needs "the group run at `ι` accepts ⇒ `gen4 κ'` accepts", and it
+is false in four places: (1) the finals' op counts differ per kind (`N2` 106,221 against `N4`/`N8`
+106,240; `L30/31/32` 106,064 / 106,072 / 106,081; agreement up to op 102,101, then inserted
+`mulKF`/`addK`/`getK`/`mulK`); registers are positional, so no kind table aligns them, and `E2`'s
+`eqPt` runs over 22 against 23 coordinates; (2) the final message's tail (`piField` offset and
+length depend on `m`; `piField` has no kind table); (3) `hashStmt` uses `stmtDigest ι` of the group
+index, so the node group at a leaf index computes a leaf statement; (4) the `shiftMask` template is
+3.x's (`tplExt`/`ImplT` fix `NodeI.shiftMaskI`), while `VsegC` runs `shiftSegI` and `VnodeC` needs
+4.1's `chainLk4` mask.
+
+| | (A) the coordinated `gen4` change | (B) a verified merge in L-circ |
+|---|---|---|
+| What | make each group's programs uniform: the finals' per-kind differences become **`FinP` tables and padded points** (the extra `eqPt` coordinate is a tabled `(0, 0)`, factor 1), the shorter kinds' missing ops become **gated dummies placed after the exports**; the final message is read as **one zero-padded field of the largest `m`** (the 3.x convention: `P30` zero-padded, `wFold` padded) so `finalOps4` is uniform; **`hashStmt` is an imported fact** per S-E12c (c): the op becomes `.input` and the fact `stmtDigest grp (stmt bytes) = c`, carried by `imp` and bound by H's `hashStmt` blocks. The group program at a fixed index then **is** `gen4 κ` by definition — no simulation theorem | keep `gen4` per kind; L-circ builds per-kind register renamings `f_ι`, ops equal up to tables become one op, the ≈ 4.1 k differing ops per kind become gated copies, an untrusted schedule aligns the lists, and one generic theorem says the merged run at `ι` simulates `gen4 (G ι)` when the merge flag is `true`; when it is `false` the slot program always rejects (sound, vacuous) |
+| Total work | S-0′/S-F4 edit `FRVIR4`/`FRVIRFinals4` (just golfed by G1: 11.3 CPU s); S-F4's dumps regenerate; P2 reloads `ir.rs` (the native verifier follows the dump; the transcript `seq4` is unchanged); L-circ compiles the uniform programs as the prototypes | `Op.mapReg` with its `evalOp` lemma over every constructor, the exec simulation, the merge, its schedule and its checker; `tplExt` with a filter either way |
+| R4 / P4 (committed) | **no statement changes.** P4's positions rest on `seq4`, unchanged (the skeleton up to op 102,101 is untouched). R4's `Fin*` modules are generic over `FinP`; `R4Acc`/`R4Run`/`R4Ref` unfold `finOps4 P` (3 + 3 + 3 places) and are re-run with the tabled finals; `noAsk_finOps4` still holds (dummies are pure); `R4Stmt`'s `hashStmt` lemmas become the imported-fact form | none in R4/P4; the merge is a new L-circ layer |
+| Kernel and build (the build is over `build_s`) | the uniform `gen4` is the same size as today; nothing new to check | a new large module (the generic simulation plus the merge's data): tens of CPU seconds in an over-budget build, and the merge's schedule is kernel data |
+| Risk | cross-track coordination (S-0′, S-F4, R4, P2, S-E12c) on one well-defined interface: the finals' tables; the dumps are the programs | contained in L-circ, but a renaming or schedule error makes the flag `false` and the node unprovable, found only at the plan's check; two artefacts to keep in step (V's `gen4 κ` and the circuit's merged program) |
+| The prover | one program per kind; the dump is what the circuit certifies | the circuit's program differs from the dumped verifier program by the merge |
+| V | the shorter kinds gain 9–19 gated dummy ops: negligible | unchanged |
+| **Ruling** | **adopted** | rejected |
+
+**Ruling: (A), with (a) and (c).** (a) the per-revision template set is needed either way
+(obstruction 4): `tplExt` with a template filter, `ImplT`/`compileT_sound` over it, the plan's
+proofs (`compMS_eq`, `compMS_T`, `slotRP_rows`, `planData4_rows`) generalised with 3.x's
+instantiation `rfl`-equal, the 4.x prototypes compiled with `shiftMask` an import until S-CN4's
+4.1 node ops (D11) give the node's `chainLk4` template and the segment's `shiftSegI`; then
+`FRNodeRows4Hint` and the dump regenerate. (c) `hashStmt` as the imported fact. (d) the tail
+dissolves under the zero-padded uniform field. **What R4/P4's committed work must change: nothing
+in statement**; `R4Acc`/`R4Run`/`R4Ref` re-run with the tabled `finOps4`, `R4Stmt` with the fact.
+
+**Also folded in (revision 4.3):**
+- **V(N4), measured (S-E12c §3, 3.x stand-ins for `evalL`/`targetS`/`linkWAll`/`shiftMask`):** 213–223 ms best, 231–241 ms median on the VM; ≈ 179–188 ms on the 7763 at 1.19 (medians 194–203). `evalM` ≈ 88 ms (`evalMT4`); the rest of the 4.1 program ≈ 125 ms against 3.x's ≈ 105: **+20 ms outside `evalM`, not yet profiled** (seq4's larger proof and rounds). Under PR #20 there is no gate; `x = V/v_ref + \|π\|/2 MiB = 1.39–1.44`, cubic side: **`V̄ = 0.71–0.79 s`** (0.94 at the VM median), so `S` (B as built) ≈ **8.4–8.5 s**. The profile of the +20 ms is S-E12c's next item.
+- **`mRowModel4` (S-E12c §5):** the previous-node slot is **948,182 rows** (prototype 551,805; `R` with the levers 240 k; `rsWeight` 45.6 k; the kind factor 68.5 k; `tplTargetSNode` 16 k; `tplLinkWAll` 15 k; `evalL`'s replay 10 k; `shiftTarget` 1.3 k) and **fits one `2^20` region only with `R`'s levers** (1.106×; `mRows4_neg`: S-E9's sized replay would need two regions); a segment slot 600,709 (with the WOTS rows in its slack). Per kind: `N2` 2,155,200 of `2^22` (1.95×), `N4` 3,356,634 of `2^23` (2.50×), `N8` 4,811,312 of `2^23` (1.74×).
+- **The plan (S-E12c §2):** process start 1.80–2.03 s with layouts as constants, keys from the layouts, run patterns from prototype 0 and the `ProtoFit` index check (70 ms); `evalMT4` N2 84.6 / N4 89.8 / N8 59.5 ms. §4.4 records that the M rows are the compiled rows when they fit, checked at process start.
+- **The activity rows** (`actRows4`, in the region's last 8 link rows; A.7 unchanged): `S_σ = 1` at the previous node's slot and each aggregate's first sub-slot, `S_σ·(1 − S_{σ−1}) = 0` at later sub-slots; `act_profile`, `selA_sel`, `selP_sel`; the tie to `k` is the pack map's (`ActK`: `F` has characteristic 2, so a row `Σ S_i = k` gives only `k`'s parity; the boundary is pinned from `k`'s bits). No new `NodeResid4` item.
+- **S-H4 (QUEUE):** the node decoder's memory is **`2^28` words** (the full level-0 codeword), and the level-0 interpolation is S-H4's GF(2^64)-difference method with prefix/suffix products, **261 steps per pair**: at `m = 32`, `2^38 · 685 ≈ 1.88·10^14` + linear ≈ `1.98·10^14`: 1.06× under `fuel_base = 3·2^46`, 1.42× under `B`; `fuel_base` stays (it may rise to `2^48` if the measured cost needs it). Changes 27 (A)(ii) amended.
+- **D10 (QUEUE):** the node's Sh start term is kept (`J = 10`). **D11:** the 4.1 node ops (`targetS`, `shiftMask`, `slotW`, `linkWAll` at `nodeLayout4`) are S-CN4's (`FRNodeTarget4*`, `FRVerifierImplNode4*`).
+- **G1's golf (build):** `FRVIRFinalsSG` 80.4 → 40.5, `FRVIRSpec` 55.4 → 52.2, `FRVIRFinals` 40.0 → 21.2, `FRVIRFinalsSF` 25.6 → 19.5, `FRVIRFinals4` 50.8 → 11.3 CPU s (VM minima): **252 → 145 s, −43 %**, kernel time unchanged; on the 7763 ≈ −54 s of the 2,119 CPU s, on top of changes 27 (B)'s retirement plan. RET-1's Core extraction is in; `tail_shift`'s move out of T4's closure is approved for the next retirement pass; the Rev4 closure still holds 62 3.x soundness modules through direct imports in P4a/P4b/R4/`FRSoundness4Pos`/`FRXLevel`, to be re-pointed at T4's copies or Core before retiring.
+
+**Per-track list (revision 4.3):**
+- **S-0′ / S-F4** (`FRVIR4`, `FRVIRFinals4`): the uniform finals — `FinP` tables and padded points (`E2`'s 23rd coordinate tabled `(0,0)` for `N2`; the `L30/31/32` and `N2` dummies gated and placed after the exports), `finalOps4` on the zero-padded uniform final field, `hashStmt` → `.input` + the fact; regenerate the S-F4 dumps (`ops-*.txt`, `items.json` unchanged).
+- **R4**: re-run `R4Acc`/`R4Run`/`R4Ref` with the tabled `finOps4`; `R4Stmt` with the imported `hashStmt` fact; no statement changes. **P4**: none (positions on `seq4`).
+- **S-E12c (L-circ)**: (a) the template filter in `tplExt`/`ImplT`/`compileT_sound` and the generalised plan proofs, 3.x `rfl`-equal; the prototypes from the uniform `gen4` (then `progNodeG`/`progSegG` at `ι` are `gen4 κ` by definition: `soundN`/`soundS` from `compileT_sound` at `slotAsg` without a simulation); `SlotIface4` (`imp` with the `hashStmt` fact); `hRes` items (`selP`/`selA` with the kind byte, `ActK` from the pack map, pack map, WOTS, `aggChk`, `kOk`, `aggPad`); the 4.1 templates (`shiftMask` over `chainLk4` / `shiftSegI`, `tplTargetSNode`, `tplLinkWAll`, `rsWeight` + kind factor, `evalL` over `lRows4`, the segment's `targetS`); `R` with the two-prototype structure and the levers (`mRows4_neg` says they are needed); the +20 ms profile; `FR.lean` imports `FRNodeRows4Fit`, `FRNodeRows4Model`.
+- **S-CN4**: the 4.1 node ops (D11) and their templates' specs.
+- **P2**: reload `ir.rs` from the regenerated dumps (the native `acc` mirrors the uniform finals); no transcript change.
+- **S-H4**: the decoder at `mem = 2^28` with the 261-steps-per-pair interpolation; the fuel lemma against `fuel_base` (1.06×: measure the compiled cost; raise `fuel_base` toward `2^48` only if needed).
+- **S-I / H**: `claim.json` unchanged for now; re-measure `build_s` with G1's golf and the retirement steps.
+
+**Revision 4.3 (normative):** (A) with (a) and (c): the group program at an index is `gen4 κ` by
+definition; the M rows are the compiled rows when `ProtoFit` holds, checked at process start
+(§4.4); `mem = 2^28`, S-H4's interpolation; D10, D11; `V̄` at the measured V(N4).
 
