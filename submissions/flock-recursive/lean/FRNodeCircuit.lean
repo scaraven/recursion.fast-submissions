@@ -1,6 +1,6 @@
 -- New for `flock-recursive` (BLUEPRINT §4.3, §5.4, §7, stage S-E2).
 import FRNodeLayout
-import FRVIRTplEval
+import FRVIRTplFast
 import FRWots
 import FRVerifier
 

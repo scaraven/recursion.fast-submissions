@@ -32,8 +32,77 @@ open RecursionFast RecursionFast.Blake2s ProductCircuit Blake2sCircuit
 /-- An array as a function on the circuit's positions. -/
 def onPos (a : Array F) (k : Pos Blake2sCircuit.m) : F := a.getD k.val 0
 
+/-- The input positions of the block (`k < 256 ∨ 512 ≤ k < 1152`: `h`, the message, the counter). -/
+def inPos : List ℕ := List.range 256 ++ List.range' 512 640
+
+/-- **`walkAB` with the input rows summed over the 896 input positions** (S-E4: `walkAB`'s two
+`Finset` sums over all `2^14` positions took 5.5 ms of its 14.5 ms; `walkABF_eq`). -/
+def walkABF (e wt : Pos Blake2sCircuit.m → F) : F × F :=
+  let o := walkOps e wt
+  let c := wt constPos
+  let r := o.compressW.run ⟨gateBase, (0, 0)⟩
+  let s₂ := (outPairs r.1).foldl (fun s p ↦ o.upd s p.1 p.2 c) r.2.acc
+  let se := inPos.foldl (fun a k => a + e (pos k) * wt (pos k)) 0
+  let sc := inPos.foldl (fun a k => a + e (pos k)) 0
+  (s₂.1 + se + e constPos * c, s₂.2 + sc * c + e constPos * c)
+
+theorem foldl_add_eq {α : Type*} (f : α → F) (l : List α) (a : F) :
+    l.foldl (fun x k => x + f k) a = a + (l.map f).sum := by
+  induction l generalizing a with
+  | nil => simp
+  | cons k l ih => simp [ih, add_assoc]
+
+theorem sum_range_list (h : ℕ → F) (N : ℕ) :
+    ∑ n ∈ Finset.range N, h n = ((List.range N).map h).sum := by
+  induction N with
+  | zero => simp
+  | succ N ih => rw [Finset.sum_range_succ, ih, List.range_succ, List.map_append, List.sum_append]; simp
+
+/-- The input rows' summand at position `n`. -/
+def inSum (f : Pos Blake2sCircuit.m → F) (n : ℕ) : F :=
+  if n < 256 ∨ (512 ≤ n ∧ n < 1152) then f (pos n) else 0
+
+/-- A sum over the input positions of the block. -/
+theorem sum_inPos (f : Pos Blake2sCircuit.m → F) :
+    (∑ k : Pos Blake2sCircuit.m, if k.val < 256 ∨ (512 ≤ k.val ∧ k.val < 1152) then f k else 0) =
+      (inPos.map fun k => f (pos k)).sum := by
+  have hf : ∀ k : Pos Blake2sCircuit.m,
+      (if k.val < 256 ∨ (512 ≤ k.val ∧ k.val < 1152) then f k else 0) = inSum f k.val := fun k => by
+    have : pos (m := Blake2sCircuit.m) k.val = k := Fin.ext (Nat.mod_eq_of_lt k.isLt)
+    simp only [inSum, this]
+  rw [Finset.sum_congr rfl (fun k _ => hf k), Fin.sum_univ_eq_sum_range (inSum f) (2 ^ 14)]
+  rw [Finset.range_eq_Ico, ← Finset.sum_Ico_consecutive _ (show 0 ≤ 256 by norm_num)
+    (show 256 ≤ 2 ^ 14 by norm_num), ← Finset.sum_Ico_consecutive _ (show 256 ≤ 512 by norm_num)
+    (show 512 ≤ 2 ^ 14 by norm_num), ← Finset.sum_Ico_consecutive _ (show 512 ≤ 1152 by norm_num)
+    (show 1152 ≤ 2 ^ 14 by norm_num)]
+  have h1 : ∑ n ∈ Finset.Ico 0 256, inSum f n = ∑ n ∈ Finset.range 256, f (pos n) := by
+    rw [← Finset.range_eq_Ico]
+    refine Finset.sum_congr rfl fun n hn => ?_
+    have := Finset.mem_range.1 hn
+    simp only [inSum, show n < 256 ∨ (512 ≤ n ∧ n < 1152) from Or.inl this, if_true]
+  have h2 : ∑ n ∈ Finset.Ico 256 512, inSum f n = 0 := Finset.sum_eq_zero fun n hn => by
+    have := Finset.mem_Ico.1 hn
+    simp only [inSum, show ¬ (n < 256 ∨ (512 ≤ n ∧ n < 1152)) by omega, if_false]
+  have h3 : ∑ n ∈ Finset.Ico 512 1152, inSum f n = ∑ i ∈ Finset.range 640, f (pos (512 + i)) := by
+    rw [Finset.sum_Ico_eq_sum_range]
+    refine Finset.sum_congr rfl fun i hi => ?_
+    have := Finset.mem_range.1 hi
+    simp only [inSum, show 512 + i < 256 ∨ (512 ≤ 512 + i ∧ 512 + i < 1152) by omega, if_true]
+  have h4 : ∑ n ∈ Finset.Ico 1152 (2 ^ 14), inSum f n = 0 := Finset.sum_eq_zero fun n hn => by
+    have := Finset.mem_Ico.1 hn
+    simp only [inSum, show ¬ (n < 256 ∨ (512 ≤ n ∧ n < 1152)) by omega, if_false]
+  rw [h1, h2, h3, h4, inPos, List.map_append, List.sum_append, List.range'_eq_map_range,
+    List.map_map, sum_range_list, sum_range_list, zero_add, add_zero]
+  rfl
+
+theorem walkABF_eq (e wt : Pos Blake2sCircuit.m → F) : walkABF e wt = walkAB e wt := by
+  unfold walkABF walkAB
+  dsimp only
+  rw [foldl_add_eq, foldl_add_eq, zero_add, zero_add]
+  simp only [sum_inPos, List.sum_map_mul_right]
+
 /-- The walk (implementation). -/
-def walkImpl (rowW colW : Array F) : F × F := walkAB (onPos rowW) (onPos colW)
+def walkImpl (rowW colW : Array F) : F × F := walkABF (onPos rowW) (onPos colW)
 
 /-- **`walkA`'s specification**: `Σ_k rowW[k] · (A₀ colW)_k`. -/
 noncomputable def walkSpecA (rowW colW : Array F) : F :=
@@ -44,10 +113,10 @@ noncomputable def walkSpecB (rowW colW : Array F) : F :=
   ∑ k, onPos rowW k * BlockR1CS.mulVec blake2sCircuit.toBlockR1CS.B (onPos colW) k
 
 theorem walkA_eq (rowW colW : Array F) : (walkImpl rowW colW).1 = walkSpecA rowW colW := by
-  simp only [walkImpl, walk_eq_sum, walkSpecA]
+  simp only [walkImpl, walkABF_eq, walk_eq_sum, walkSpecA]
 
 theorem walkB_eq (rowW colW : Array F) : (walkImpl rowW colW).2 = walkSpecB rowW colW := by
-  simp only [walkImpl, walk_eq_sum, walkSpecB]
+  simp only [walkImpl, walkABF_eq, walk_eq_sum, walkSpecB]
 
 /-! ## `kindInd` -/
 

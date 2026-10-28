@@ -153,7 +153,7 @@ def finLc : FinField := fun fi b =>
    [.const (fun _ => .f 0),
     .packFK (fun κ => if κ.isNode then (b + 14) :: v else (b + 6) :: List.replicate 8 (b + 14)),
     .maskRows (b + 15) (b + 5), .packF (chals fi "L2" 14), .eqTable (b + 17),
-    .walkA (b + 16) (b + 18), .walkB (b + 16) (b + 18), .mulF α (b + 20), .addF (b + 19) (b + 21),
+    .walkAB (b + 16) (b + 18), .mulF α (b + 20), .addF (b + 19) (b + 21),
     .assertEq (b + 22) (claimN fi "L2") allK] ++
    hornerOps β b ++
    [.assertEq (b + 36) (fi.zhat.getD 1 0) allK],
@@ -277,7 +277,7 @@ def relLc : Bool :=
   let cw := eqTab ((chals fi "L2" 14).map (fv r)).toArray
   let vβ := (v.reverse.drop 1).foldl (fun acc x => x + β * acc) (v.getD 7 0)
   (Val.f (pe inp fZend 0 + α * pe inp fZend 16)).eqv (rd r (claim0 fi "L2")) &&
-  ((Val.f (impl.walkA rw cw + α * impl.walkB rw cw)).eqv (rd r (claimN fi "L2")) &&
+  ((Val.f ((impl.walkAB rw cw).1 + α * (impl.walkAB rw cw).2)).eqv (rd r (claimN fi "L2")) &&
   (Val.f vβ).eqv (rd r (fi.zhat.getD 1 0)))
 
 

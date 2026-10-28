@@ -368,10 +368,13 @@ structure Prep (R : Type*) where
 def getD0 (a : Array R) (j : ℕ) : R := a.getD j 0
 
 @[specialize]
-def prepOf (s : Mat) (τ σ : ℕ → R) (k : TKey) : Prep R :=
-  let T := tplOf k
+def prepT (s : Mat) (τ σ : ℕ → R) (T : Tpl) : Prep R :=
   let tt := ttOf ι s T (getD0 (loTab T.rbits τ))
   ⟨T.rbits, T.cbits, locSum (getD0 (loTab T.cbits σ)) tt, oneSum tt, inpList tt⟩
+
+/-- A key's precomputation (`prepT` of its template). -/
+@[specialize]
+def prepOf (s : Mat) (τ σ : ℕ → R) (k : TKey) : Prep R := prepT ι s τ σ (tplOf k)
 
 /-- An instance's value: the closed form when aligned, else its rows' sparse value. -/
 @[specialize]
@@ -445,7 +448,7 @@ theorem slotVal_eq (s : Mat) (n m : ℕ) (τ σ : ℕ → R) (L : TLay) (one : L
   unfold instVal
   simp only []
   split_ifs with h
-  · simp only [prepOf] at h ⊢
+  · simp only [prepOf, prepT] at h ⊢
     obtain ⟨hA, hB, hX, hc⟩ := h
     obtain ⟨Xh, hXh⟩ := Nat.dvd_of_mod_eq_zero hX
     obtain ⟨Ch, hCh⟩ := Nat.dvd_of_mod_eq_zero hc
@@ -506,83 +509,6 @@ theorem rowsVal_K (s : Mat) (a b : ℕ) (τ : Array F) (σ : Array K) (rows : Li
   split_ifs
   · rw [eqAt_eqN, h2, h1', hm]; rfl
   · rfl
-
-/-! ## The node -/
-
-/-- Slot `σ`'s selector forms. -/
-def slotP (σ : ℕ) : Params := muxP Layout.oneCell (Layout.selCells σ)
-
-/-- Slot `σ`'s layout (the two-pass compile's first pass). -/
-def slotLay (fin : Finals) (σ : ℕ) : TLay := layOf (slotP σ) (Layout.slotBase σ) (gen fin .mux).ops
-
-/-- **Slot `σ`'s compiled program with the templates** (`compileT (gen fin .mux)`). -/
-def slotCST (fin : Finals) (σ : ℕ) : CS :=
-  compileT (slotLay fin σ) (slotP σ) (Layout.slotBase σ) (gen fin .mux).ops
-
-/-- The node's plan: both slots' layouts and compiled programs (computed once). -/
-structure Plan where
-  lay : ℕ → TLay
-  cs : ℕ → CS
-
-def planOf (fin : Finals) : Plan :=
-  let l0 := slotLay fin 0; let l1 := slotLay fin 1
-  let c0 := compileT l0 (slotP 0) (Layout.slotBase 0) (gen fin .mux).ops
-  let c1 := compileT l1 (slotP 1) (Layout.slotBase 1) (gen fin .mux).ops
-  ⟨fun σ => if σ = 0 then l0 else l1, fun σ => if σ = 0 then c0 else c1⟩
-
-/-- **The node's indexed M rows**: slot `σ`'s at offset `σ · 2^20`. -/
-def nodeIRows (pl : Plan) : List (ℕ × Row) :=
-  slotIRows (pl.lay 0) (Lin.cell Layout.oneCell) 0 (pl.cs 0) ++
-    slotIRows (pl.lay 1) (Lin.cell Layout.oneCell) Layout.slotM (pl.cs 1)
-
-/-- The node's value of matrix `s` (templated), over `R`. -/
-@[specialize]
-def nodeVal {R : Type*} [CommRing R] (ι : F →+* R) (s : Mat) (τ σ : ℕ → R) (pl : Plan) : R :=
-  let gt := splitAt (loTab 11 τ) (loTab 10 fun l => τ (11 + l)) 2048
-  let gs := splitAt (loTab 12 σ) (loTab 11 fun l => σ (12 + l)) 4096
-  slotVal ι s 21 23 τ σ gt gs (pl.lay 0) (Lin.cell Layout.oneCell) 0 (pl.cs 0) +
-    slotVal ι s 21 23 τ σ gt gs (pl.lay 1) (Lin.cell Layout.oneCell) Layout.slotM (pl.cs 1)
-
-theorem nodeVal_eq {R : Type*} [CommRing R] (ι : F →+* R) (s : Mat) (τ σ : ℕ → R) (pl : Plan) :
-    nodeVal ι s τ σ pl = rowsVal ι s 21 23 τ σ (nodeIRows pl) := by
-  have h1 : splitAt (loTab 11 τ) (loTab 10 fun l => τ (11 + l)) 2048 = gN 21 τ :=
-    splitE_eq (m := 21) (s := 11) (by norm_num) τ
-  have h2 : splitAt (loTab 12 σ) (loTab 11 fun l => σ (12 + l)) 4096 = gN 23 σ :=
-    splitE_eq (m := 23) (s := 12) (by norm_num) σ
-  simp only [nodeVal, h1, h2, slotVal_eq, nodeIRows, rowsVal_append]
-
-/-- **`evalM`, templated** (A.11): the node's three M matrices at `(τ, σ)`. -/
-def evalMT (pl : Plan) (τ σ : Array F) : F × F × F :=
-  let t := fun l => τ.getD l 0; let u := fun l => σ.getD l 0
-  (nodeVal (RingHom.id F) .a t u pl, nodeVal (RingHom.id F) .b t u pl, nodeVal (RingHom.id F) .c t u pl)
-
-/-- **`evalM`'s specification**: the MLEs of the node's M matrices (`FRVIREval.matMLE`). -/
-noncomputable def evalMS (pl : Plan) (τ σ : Array F) : F × F × F :=
-  (Eval.matMLE (entriesI .a (nodeIRows pl)) (Eval.ptOf 21 τ) (Eval.ptOf 23 σ),
-   Eval.matMLE (entriesI .b (nodeIRows pl)) (Eval.ptOf 21 τ) (Eval.ptOf 23 σ),
-   Eval.matMLE (entriesI .c (nodeIRows pl)) (Eval.ptOf 21 τ) (Eval.ptOf 23 σ))
-
-/-- **`evalM_eq`** (A.11: the sum of the templates' `tpl_mle` and the skeleton's `sparse_eq`). -/
-theorem evalMT_eq (pl : Plan) (τ σ : Array F) : evalMT pl τ σ = evalMS pl τ σ := by
-  simp only [evalMT, evalMS, nodeVal_eq, rowsVal_F, Eval.sparse_eq]
-
-/-- **`evalMK`, templated**: the M matrices at an F row point and a K column point. -/
-def evalMKT (pl : Plan) (τ : Array F) (σ : Array K) : K × K × K :=
-  let t := fun l => K.ofF (τ.getD l 0); let u := fun l => σ.getD l 0
-  (nodeVal K.ofFRingHom .a t u pl, nodeVal K.ofFRingHom .b t u pl, nodeVal K.ofFRingHom .c t u pl)
-
-/-- `evalMKT` is the sparse sum over `K` (`FRVerifierImpl.sparseEvalK`'s body). -/
-theorem evalMKT_eq (pl : Plan) (τ : Array F) (σ : Array K) :
-    evalMKT pl τ σ = (((entriesI .a (nodeIRows pl)).map fun e => if e.1 < 2 ^ 21 ∧ e.2.1 < 2 ^ 23 then
-        K.ofF (e.2.2 * Eval.eqAt (Eval.ptOf 21 τ) e.1) *
-          Impl.eqAtR (fun l : Fin 23 => σ.getD l 0) e.2.1 else 0).sum,
-      ((entriesI .b (nodeIRows pl)).map fun e => if e.1 < 2 ^ 21 ∧ e.2.1 < 2 ^ 23 then
-        K.ofF (e.2.2 * Eval.eqAt (Eval.ptOf 21 τ) e.1) *
-          Impl.eqAtR (fun l : Fin 23 => σ.getD l 0) e.2.1 else 0).sum,
-      ((entriesI .c (nodeIRows pl)).map fun e => if e.1 < 2 ^ 21 ∧ e.2.1 < 2 ^ 23 then
-        K.ofF (e.2.2 * Eval.eqAt (Eval.ptOf 21 τ) e.1) *
-          Impl.eqAtR (fun l : Fin 23 => σ.getD l 0) e.2.1 else 0).sum) := by
-  simp only [evalMKT, nodeVal_eq, rowsVal_K]
 
 end TEval
 end FR

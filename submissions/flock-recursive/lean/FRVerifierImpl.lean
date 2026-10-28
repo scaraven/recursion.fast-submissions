@@ -1,6 +1,6 @@
 -- New for `flock-recursive` (BLUEPRINT §3, A.8, A.9; stage S-F2, track L-cert).
 import FRVerifierImplOps
-import FRVIRTplEval
+import FRVIRTplFast
 import FRVIRFinalsSG
 import FRVIREval
 import FRRSEval
@@ -118,8 +118,7 @@ def implCWith (pl : TEval.Plan) (lRows : List Circ.Row) : OpImpl where
   tensorW := tensorWI
   rsWeight := rsWeightI
   phiRS := phiRSI
-  walkA rw cw := (Eval.walkImpl rw cw).1
-  walkB rw cw := (Eval.walkImpl rw cw).2
+  walkAB := Eval.walkImpl
   kindInd := Eval.kindIndImpl
   evalM := TEval.evalMT pl
   evalL := Eval.evalLImpl lRows
@@ -144,8 +143,7 @@ noncomputable def specCWith (pl : TEval.Plan) (lRows : List Circ.Row) : OpSpec w
   tensorW := tensorWS
   rsWeight := rsWeightS
   phiRS := phiRSS
-  walkA := Eval.walkSpecA
-  walkB := Eval.walkSpecB
+  walkAB rw cw := (Eval.walkSpecA rw cw, Eval.walkSpecB rw cw)
   kindInd := Eval.kindIndSpec
   evalM := TEval.evalMS pl
   evalL := Eval.evalRowsSpec 15 23 lRows
@@ -164,15 +162,16 @@ noncomputable def specC (fin : Finals) (lRows : List Circ.Row) (_κs₀ : F) : O
 theorem implCWith_meets (pl : TEval.Plan) (lRows : List Circ.Row) :
     (implCWith pl lRows).Meets (specCWith pl lRows) := by
   simp only [OpImpl.Meets, implCWith, specCWith]
-  refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
+  refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
   · exact fun v l pe _ => lagrangeS_meets v l pe
   · exact fun _ r => targetSLeaf_meets 16 r
   · exact eqZ_meets
   · exact tensorW_meets
   · exact fun r ps k p h => rsWeight_meets r ps k p h
   · exact fun r a _ => phiRS_meets r a
-  · exact fun rw cw _ _ => Eval.walkA_eq rw cw
-  · exact fun rw cw _ _ => Eval.walkB_eq rw cw
+  · intro rw cw _ _
+    rewrite [← Eval.walkA_eq rw cw, ← Eval.walkB_eq rw cw]
+    exact Prod.mk.eta.symm
   · exact TEval.evalMT_eq _
   · exact Eval.evalL_eq lRows
   · exact evalMK_meets _

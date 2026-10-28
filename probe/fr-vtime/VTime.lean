@@ -83,14 +83,13 @@ def timeOp (name : String) (reps : ℕ) (f : Unit → String) : IO Unit := do
 def hexF (x : F) : String := toString x.toBytes.toList.head!
 
 def timeRows : IO Unit := do
+  -- S-E4: the node's plan (both slots' templated compile and their flat forms), then `evalM`
   let t0 ← IO.monoNanosNow
-  let n := (Layout.nodeRows finC).length
+  let pl := TEval.planOf finC
+  IO.println s!"plan: {pl.fs0.insts.length} + {pl.fs1.insts.length} instances"
   let t1 ← IO.monoNanosNow
-  IO.println s!"nodeRows: {n} rows, built in {ms t0 t1}"
-  let ents := (Layout.nodeRows finC).foldl (fun a r => a + r.a.length + r.b.length + r.c.length) 0
-  IO.println s!"nodeRows entries (A+B+C): {ents}"
-  timeOp "evalM" 1 fun _ => hexF (Eval.evalMImpl finC (randAF 19 21) (randAF 20 23)).1
-  timeOp "evalMK" 1 fun _ => toString (Impl.evalMKI finC (randAF 19 21) (randAK 21 23)).1.toBytes.toList.head!
+  IO.println s!"planOf {ms t0 t1}"
+  timeOp "evalM (flat, TEval.evalMT)" 3 fun _ => hexF (TEval.evalMT pl (randAF 19 21) (randAF 20 23)).1
 
 def timeOps : IO Unit := do
   let l := randF 5
@@ -120,7 +119,7 @@ def opName : Op → String
   | .packFK .. => "packFK" | .getF .. => "getF" | .getK .. => "getK" | .eqTable .. => "eqTable"
   | .eqTableK .. => "eqTableK" | .dotKF .. => "dotKF" | .lagrangeS .. => "lagrangeS"
   | .targetS .. => "targetS" | .eqZ .. => "eqZ" | .tensorW .. => "tensorW" | .rsWeight .. => "rsWeight"
-  | .phiRS .. => "phiRS" | .walkA .. => "walkA" | .walkB .. => "walkB" | .kindInd .. => "kindInd"
+  | .phiRS .. => "phiRS" | .walkAB .. => "walkAB" | .kindInd .. => "kindInd"
   | .maskRows .. => "maskRows" | .evalM .. => "evalM" | .evalL .. => "evalL" | .evalMK .. => "evalMK"
   | .shiftTarget .. => "shiftTarget" | .slotW .. => "slotW" | .kindFoldWeight .. => "kindFoldWeight"
   | .eqPt .. => "eqPt" | .rowW .. => "rowW" | .shiftEq .. => "shiftEq" | .linkW .. => "linkW"

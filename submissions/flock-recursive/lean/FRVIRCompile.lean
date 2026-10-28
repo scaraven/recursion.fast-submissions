@@ -295,7 +295,8 @@ def opOut (P : Params) (cs : CS) : Op → Out
       let e := eqRows cs (asAF (cs.slot r)) [P.one] 0
       { slots := [some (.af e.1.length, e.1)], rows := e.2.1, fresh := e.2.2 }
     else skip 1
-  | .phiRS .. | .walkA .. | .walkB ..
+  | .walkAB .. => imports cs [.f, .f]
+  | .phiRS ..
   | .shiftTarget .. | .slotW .. | .kindFoldWeight .. => imports cs [.f]
   | .eqZ .. => imports cs [.af 128]
   | .rsWeight .. => imports cs [.k]
@@ -541,7 +542,7 @@ theorem muxOut_sound {w : Asg} {cs : CS} {g : Lin} {t : Ty} {lx ly : List Lin} {
 /-- The number of results of an op. -/
 def _root_.FR.Op.nOut : Op → ℕ
   | .evalM .. | .evalMK .. | .evalL .. | .kindSel => 3
-  | .splitDigest _ | .lagrangeS .. => 2
+  | .splitDigest _ | .lagrangeS .. | .walkAB .. => 2
   | .assertEq .. | .assertBit .. | .assertZero .. | .assertOneHot .. | .accept => 0
   | _ => 1
 

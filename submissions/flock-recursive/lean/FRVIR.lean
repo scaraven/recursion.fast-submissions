@@ -20,7 +20,7 @@ BLUEPRINT §3, B-2, B-7, A.8.
 * Assertions do not stop the program: they clear the `ok` flag, so every run asks **every** ask op
   (the item sequence is a constant, §1.2). The result is the flag.
 * `OpImpl` holds the op implementations other tracks supply (`lagrangeS`, `tensorW`, `rsWeight`,
-  `phiRS`, `walkA/B`, `kindInd`, `evalM`, `evalMK`, `evalL`, `targetS`, `eqZ`, `shiftTarget`,
+  `phiRS`, `walkAB`, `kindInd`, `evalM`, `evalMK`, `evalL`, `targetS`, `eqZ`, `shiftTarget`,
   `slotW`, `kindFoldWeight`, …; revision 3.9); `OpSpec` the same signatures as the
   mathematical reference; `OpImpl.Meets impl spec` is what `FRVIREval` proves.
 * `runIR impl P inp : OProg Bool` (the verifier's program) and `semIR impl P inp tr : Option Bool`
@@ -161,7 +161,9 @@ inductive Op where
   | rsWeight (r : Reg) (pts : KC (List Reg)) (kappa rho : Reg)
   /-- F: `Φ_{r″}(a)`, the staged Frobenius map (`FRRingSwitch.Phi`; revision 3.9). -/
   | phiRS (r a : Reg)
-  | walkA (rowW colW : Reg) | walkB (rowW colW : Reg)
+  /-- F × F: `(Â₀, B̂₀)` by one circuit walk at the (masked) row weights and the column weights
+  (revision 3.12, the fused walk; S-E4). -/
+  | walkAB (rowW colW : Reg)
   /-- AF: the indicator MLEs of the kinds at a point. -/
   | kindInd (r : Reg)
   /-- AF: `rowW′[k] = rowW[k] · Σ_{kind : k not pinned} v[kind]`, `v` the prover's per-kind
@@ -224,8 +226,7 @@ structure OpImpl where
   phiRS : Array F → F → F
   /-- `Â₀`, `B̂₀` by the circuit walk at the (masked) row weights and the column weights
   (`walkE_eq_sum`; FRBlake2sWalk). -/
-  walkA : Array F → Array F → F
-  walkB : Array F → Array F → F
+  walkAB : Array F → Array F → F × F
   /-- The indicator MLEs `Ĩnd_kind(r′)`, one per kind of `blockKinds` (FRNodeLayout). -/
   kindInd : Array F → Array F
   /-- The node's matrix MLEs (FRVIREval). -/
@@ -253,7 +254,7 @@ structure OpImpl where
 /-- **The specification record**: the same signatures, read as the mathematical definitions.
 Owners of the concrete `OpSpec` and its lemmas (S-0-m2): S-C — `lagrangeS`, `tensorW`, `rsWeight`,
 `phiRS`,
-`shiftTarget`, `slotW`, `kindFoldWeight`, `linkW`, `rowW`, `shiftEq`; S-E1/S-E2 — `walkA/B`,
+`shiftTarget`, `slotW`, `kindFoldWeight`, `linkW`, `rowW`, `shiftEq`; S-E1/S-E2 — `walkAB`,
 `evalM/MK/L`, `kindInd`; `FRPubTarget` — `targetS`; FRSkip — `eqZ`. -/
 abbrev OpSpec := OpImpl
 
@@ -266,8 +267,7 @@ def OpImpl.Meets (impl : OpImpl) (spec : OpSpec) : Prop :=
   (∀ j r, impl.tensorW j r = spec.tensorW j r) ∧
   (∀ r ps k p, r.size = 7 → impl.rsWeight r ps k p = spec.rsWeight r ps k p) ∧
   (∀ r a, r.size = 7 → impl.phiRS r a = spec.phiRS r a) ∧
-  (∀ rw cw, rw.size = 2 ^ 14 → cw.size = 2 ^ 14 → impl.walkA rw cw = spec.walkA rw cw) ∧
-  (∀ rw cw, rw.size = 2 ^ 14 → cw.size = 2 ^ 14 → impl.walkB rw cw = spec.walkB rw cw) ∧
+  (∀ rw cw, rw.size = 2 ^ 14 → cw.size = 2 ^ 14 → impl.walkAB rw cw = spec.walkAB rw cw) ∧
   (∀ a b, impl.evalM a b = spec.evalM a b) ∧ (∀ a b, impl.evalL a b = spec.evalL a b) ∧
   (∀ a b, impl.evalMK a b = spec.evalMK a b) ∧
   (∀ a, impl.kindInd a = spec.kindInd a) ∧
@@ -376,8 +376,9 @@ def evalOp (impl : OpImpl) (κ : Kind) (inp : Input) (regs : Array Val) : Op →
     .vals [.k (impl.rsWeight (rd regs r).toAF ((ps κ).map fun p => (rd regs p).toAK) (rd regs κ').toF
       (rd regs ρ).toAK)] true
   | .phiRS r a => .vals [.f (impl.phiRS (rd regs r).toAF (rd regs a).toF)] true
-  | .walkA r c => .vals [.f (impl.walkA (rd regs r).toAF (rd regs c).toAF)] true
-  | .walkB r c => .vals [.f (impl.walkB (rd regs r).toAF (rd regs c).toAF)] true
+  | .walkAB r c =>
+    let x := impl.walkAB (rd regs r).toAF (rd regs c).toAF
+    .vals [.f x.1, .f x.2] true
   | .kindInd r => .vals [.af (impl.kindInd (rd regs r).toAF)] true
   | .maskRows kw rw => .vals [.af (maskRows (rd regs kw).toAF (rd regs rw).toAF)] true
   | .evalM t s =>
@@ -475,7 +476,7 @@ def semIR (impl : OpImpl) (P : VProg) (inp : Input) (tr : Trace) : Option Bool :
 /-- The registers an op appends. -/
 def Op.outs : Op → ℕ
   | .evalM .. | .evalMK .. | .evalL .. | .kindSel => 3
-  | .lagrangeS .. => 2
+  | .lagrangeS .. | .walkAB .. => 2
   | .splitDigest _ => 2
   | .assertEq .. | .assertBit .. | .assertZero .. | .assertOneHot .. | .accept => 0
   | _ => 1
