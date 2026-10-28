@@ -110,3 +110,33 @@ alt=2*(per_slot_A11-evalM_rep+evalM_F)
 print(f"   fallback (E2 lincheck restored, evalM replay in F): per node {alt} = 2^{math.log2(alt):.2f} ({2**21/alt:.2f}x)")
 V_evalM = 2**16*3 + 2**14*3 + 2*(2*I_slot) + 2*20000*3
 print(f"== V: evalM over templates ~{V_evalM} F-products (tables shared by the slots); measured V (S-F2, VM, N30) 183 ms + ~{V_evalM*60e-9*1000:.0f} ms = ~{183+V_evalM*60e-9*1000:.0f} ms VM against 264 ms VM-equivalent cap")
+# ---- stage-review changes 17 (revision 3.12): F-7 redesign. E lincheck restored (one evalM at an F point, no evalMK),
+# column items padded to 64-B multiples (regular column imports), full templating, run-structured trace imports, fused walks.
+us=0.12   # VM planning cost of one F product in a flat table loop (us); the measured sparse boxed entry is ~1 us
+pad_col=cols*48; tb17=tb+pad_col+23*(8+8+32+RND+32)+23*(8+8+32+32)+128*16   # columns padded; E lincheck 23 rounds (absorb+squeeze); RS0 fifth claim
+comp17=math.ceil(tb17/64); pi17=pi+pad_col+23*RND+128*16; items17=items+46
+# evalM at an F point, fully templated, per node (imports per slot, the rest shared between the slots)
+tables=2**11+2**10+2**12+2**11+2*2**14
+walk=2*(2**14+60000*0.3)          # fused walkAB: products per row + XOR accumulation (an XOR ~0.3 of a product)
+loc=36000*2
+reg=1500*30
+runs=(sibs*3.5+sibs/8+451*2+512+2000)*2
+pref=3000
+per_slot_imports=reg+runs
+evalM_F17=tables+walk+loc+pref+2*per_slot_imports   # two slots' import terms, shared LOC/walks/tables
+evalM_sym=tables+walk+loc+pref+per_slot_imports     # slot-symmetric layout
+walk_now=2*15000/us                                  # the walks as implemented: 15 ms each
+print(f"== stage-review changes 17: F-7 redesign")
+print(f"   format: columns padded +{pad_col} B; E lincheck +{23*RND} B; RS0 +{128*16} B: piSize {pi17} B ({2**20/pi17:.2f}x); items {items17} (qV {10240/items17:.2f}x); compressions/slot {comp17} (+{comp17-comp})")
+print(f"   evalM (F point, one call) F-products: tables {tables:.0f}, walks {walk:.0f} (fused, optimised; as implemented {walk_now:.0f}), LOC {loc}, regular imports {reg}, run/irregular imports {runs:.0f}/slot, prefix {pref}")
+print(f"   evalM total: two slots {evalM_F17:.0f} F ~ {evalM_F17*us/1000:.0f} ms VM (walks as implemented: {(evalM_F17-walk+walk_now)*us/1000:.0f} ms); slot-symmetric layout {evalM_sym:.0f} F ~ {evalM_sym*us/1000:.0f} ms")
+base=166.3; finPf=8; evalL=3
+for lab,x,e in (("plan, walks as implemented",(evalM_F17-walk+walk_now)*us/1000,0),("plan + fused walks",evalM_F17*us/1000,0),("plan + fused walks + S-F2 hot spots (-40 ms)",evalM_F17*us/1000,40),("+ symmetric layout",evalM_sym*us/1000,40)):
+    v=base+finPf+evalL+x-e; print(f"   V N30 ({lab}): {v:.0f} ms VM = {v/1.28:.0f} ms runner; cap 205.9 ms runner: {205.9/(v/1.28):.2f}x")
+# node rows per slot: S-E3's measured skeleton+templates (246,627 rows in slot 0's dump) + the templates still missing (A.11) + the evalM replay as rows + claim 5
+replay_rows=tables+2*2**14+60000+loc+pref+2*per_slot_imports   # the child's evalM replay in F: XORs are linear (no rows) but the walk product rows are
+missing=37335+45604+11400+2500*8+1000+500+2800     # tensorW, rsWeight (+claim 5), linkW, kindFoldWeight, kindInd, rowW/shiftTarget (A.11 figures)
+rows17=246627+missing+128*134+replay_rows
+H17=2*comp17+6+2*498+8+2*10
+blocks17=H17+math.ceil(2*rows17*128/2**14)+L_blocks+1
+print(f"   node rows: per slot {rows17:.0f} (dump 246,627 + missing templates {missing} + Phi claim 5 {128*134} + evalM replay {replay_rows:.0f}); per node {2*rows17:.0f} = 2^{math.log2(2*rows17):.2f} ({2**21/(2*rows17):.2f}x); blocks {blocks17} of 65536 ({65536/blocks17:.2f}x)")

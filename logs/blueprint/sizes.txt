@@ -15,3 +15,12 @@
    per slot 863942; per node 1727884 = 2^20.72; N_M margin 1.21x; M blocks 13500; node blocks 59585 of 65536 (1.10x)
    fallback (E2 lincheck restored, evalM replay in F): per node 1320204 = 2^20.33 (1.59x)
 == V: evalM over templates ~663844 F-products (tables shared by the slots); measured V (S-F2, VM, N30) 183 ms + ~40 ms = ~223 ms VM against 264 ms VM-equivalent cap
+== stage-review changes 17: F-7 redesign
+   format: columns padded +41808 B; E lincheck +1104 B; RS0 +2048 B: piSize 800640 B (1.31x); items 8920 (qV 1.15x); compressions/slot 23225 (+760)
+   evalM (F point, one call) F-products: tables 41984, walks 68768 (fused, optimised; as implemented 250000), LOC 72000, regular imports 45000, run/irregular imports 61580/slot, prefix 3000
+   evalM total: two slots 398912 F ~ 48 ms VM (walks as implemented: 70 ms); slot-symmetric layout 292332 F ~ 35 ms
+   V N30 (plan, walks as implemented): 247 ms VM = 193 ms runner; cap 205.9 ms runner: 1.07x
+   V N30 (plan + fused walks): 225 ms VM = 176 ms runner; cap 205.9 ms runner: 1.17x
+   V N30 (plan + fused walks + S-F2 hot spots (-40 ms)): 185 ms VM = 145 ms runner; cap 205.9 ms runner: 1.42x
+   V N30 (+ symmetric layout): 172 ms VM = 135 ms runner; cap 205.9 ms runner: 1.53x
+   node rows: per slot 805330 (dump 246,627 + missing templates 118639 + Phi claim 5 17152 + evalM replay 422912); per node 1610660 = 2^20.62 (1.30x); blocks 60189 of 65536 (1.09x)
