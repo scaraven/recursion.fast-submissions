@@ -118,6 +118,7 @@ import FRSegment
 import FRAgg
 import FRVerifier4
 import FRNodeLayout4
+import FRNodeCircuit4Dig
 import FRVIR4
 import FRVIRFinals4
 import FRSegTarget4
