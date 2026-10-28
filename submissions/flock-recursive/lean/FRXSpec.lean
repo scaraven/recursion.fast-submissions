@@ -10,8 +10,9 @@ BLUEPRINT §6.5, §5.4 ("`W` is `Rel` by definition and `E` copies the proof (§
   word's low byte is not a kind byte (`kindFlag_eq_zero`);
 * **`E_W`**: on a proof of the `W` kind (`kindOf π = .W`, `FRFormat`) of fewer than `2^64` bytes,
   `E c π L = WitnessSending.decode π`, for every SNARK branch with `DecOk` and so for `ext`
-  (`ext_W`), **including proofs above `proofCap`** (no size guard, BP-C-R2-M2): the program halts
-  within `fuel` on every such tape;
+  (`ext_W`), **including proofs above `proofCap`** (no size guard, BP-C-R2-M2) and **on every log**
+  (no domain hypothesis): the program halts within `fuel` on every such tape, and its output is
+  the denotation (`den_of_run`);
 * **`E_bad`**: on a kind byte with `|π| ≠ piSize` (`kindOf π = .bad`), `E c π L = none` (no
   output; the negative control: an ill-formed tape halts within the fuel).
 
@@ -159,8 +160,10 @@ theorem run_W {dec : XIR} (hd : DecOk dec) (c : Digest) (π : Proof) (L : Log)
 /-- **`E` on a `W` proof is `WitnessSending.decode`** (§5.4: "`E` copies the proof"). -/
 theorem E_W {dec : XIR} (hd : DecOk dec) (c : Digest) (π : Proof) (L : Log)
     (hW : kindOf π = .W) (hπ : π.size < 2 ^ 64) :
-    Eof (extWith dec) fuel c π L = WitnessSending.decode π := by
-  simp only [Eof, run_W hd c π L hW hπ, Option.bind_some, WitnessSending.decode]
+    Eden memX mpwX (extIRWith dec) c π L = WitnessSending.decode π := by
+  rw [Eden, ← den_of_run (by simp only [regs, memX]; norm_num) (wf_extIRWith hd.wf)
+    (run_W hd c π L hW hπ)]
+  rfl
 
 /-- The run on a tape whose kind flag is set and whose word 4 is not `piSize`: no output. -/
 theorem run_bad_tape {dec : XIR} (hd : DecOk dec) (inp : List Word) (a : ℕ) (ha : a < 2 ^ 64)
@@ -200,7 +203,7 @@ within the fuel, so `E` is `none`. -/
 theorem E_bad {dec : XIR} (hd : DecOk dec) (c : Digest) (π : Proof) (L : Log)
     (hb : kindOf π = .bad) (hπ : π.size < 2 ^ 64) :
     (extWith dec).run (extractorInput c π L) (fuel (extractorInput c π L).length) = some [] ∧
-      Eof (extWith dec) fuel c π L = none := by
+      Eden memX mpwX (extIRWith dec) c π L = none := by
   obtain ⟨b, hb0⟩ : ∃ b, π.data[0]? = some b := by
     rcases h : π.data[0]? with _ | b
     · simp [kindOf, byteAt?_eq, h] at hb
@@ -214,7 +217,8 @@ theorem E_bad {dec : XIR} (hd : DecOk dec) (c : Digest) (π : Proof) (L : Log)
     simp only [kindOf, byteAt?_eq, hb0, Option.bind_some, h, ↓reduceIte] at hb
     revert hb; cases Kind.ofByte? b <;> simp
   have hr := run_bad_tape hd _ π.size hπ (by rw [getD_toArray, tape_getD4]) hs hk
-  exact ⟨hr, by simp only [Eof, hr, Option.bind_some]; rfl⟩
+  exact ⟨hr, by
+    rw [Eden, ← den_of_run (by simp only [regs, memX]; norm_num) (wf_extIRWith hd.wf) hr]; rfl⟩
 
 /-- `E_W` for `ext`. -/
 theorem ext_W (c : Digest) (π : Proof) (L : Log) (hW : kindOf π = .W) (hπ : π.size < 2 ^ 64) :

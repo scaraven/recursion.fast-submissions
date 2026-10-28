@@ -5,8 +5,8 @@ import FRXNode
 /-!
 # The extractor `ext`, its specification `E`, and `computes`
 
-`ext := extWith decSnark` with the SNARK branch delivered so far; `computes` and the caps follow
-from `computesWith` and `DecOk decSnark`.
+`ext := extWith decSnark` with the SNARK branch delivered so far; `E` is its program's denotation
+(revision 3.17); `computes` and the caps follow from `computesWith` and `DecOk decSnark`.
 -/
 
 namespace FR.X
@@ -28,8 +28,10 @@ theorem decOk_decSnark : DecOk decSnark := decOk_decLN3
 /-- **The extractor program** `ext := toProg 2^26 3 extIR` (§6.4). -/
 def ext : XProg := extWith decSnark
 
-/-- **The extractor specification** (B-8): `ext`'s decoded output within `fuel`. -/
-def E : Digest → Proof → Log → Option Wit := Eof ext fuel
+/-- **The extractor specification** (B-8, revision 3.17): the decoded denotation of `ext`'s
+program, `E c π L = decodeWit (semXIR extIR …).o` on the tape `extractorInput c π L`, a total
+computable function on every log (no fuel). On the domain it is `ext`'s output (`computes`). -/
+def E : Digest → Proof → Log → Option Wit := Eden memX mpwX (extIRWith decSnark)
 
 /-- **`Computes ext E fuel`**: the certificate's `computes` conjunct. -/
 theorem computes : Computes ext E fuel := computesWith decOk_decSnark

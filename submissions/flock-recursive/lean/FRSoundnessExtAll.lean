@@ -62,7 +62,7 @@ theorem extIfaceR_of {impl : OpImpl} {S : Submission} {vk : Digest}
   · -- a leaf kind
     rw [if_neg (by simp [hkn])] at hSt
     have hkN : k ≠ .N30 := by rintro rfl; cases hkn
-    exact ⟨_, X.E_leaf c π L hD.1 hD.2 hk hkN, rel_leaf_of_run hkn hk hsk _ hSt⟩
+    exact ⟨_, X.E_leaf c π L hk hkN, rel_leaf_of_run hkn hk hsk _ hSt⟩
   · -- a node
     obtain rfl : k = .N30 := by cases k <;> simp_all [Kind.isNode]
     rw [if_pos (show Kind.N30.isNode = true from rfl)] at hSt

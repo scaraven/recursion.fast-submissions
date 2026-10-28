@@ -2951,3 +2951,89 @@ a concrete machine run (S-H2k's ≈ 185 ms per operation).
   `rd_runPrims_of_not_writes`.
 - `exact lemma` against a goal stated with a folded program (`segIR ap d (.cp o n)`) timed out
   in unification: `rw [segIR, segOut]` first.
+
+## Part 22 (track S-H2m): `E` as the program's denotation (revision 3.17 O3); stopped at the coordinator's request
+
+**Status.** I stopped at a clean point when the coordinator ruled that core PR #20 (a 128 MiB
+`Computes` domain "closed under extraction in the kernel", no `proofCap` in `acc`, a new
+knowledge-soundness definition) probably supersedes 3.17's O3 ruling. Items 1 and 2 are done.
+Item 3 (`FRSoundnessExtE`) and items 4–5 (the out-of-domain controls, the profiles, the
+executable probe) were **not started**. The build is green, and nothing was committed.
+
+### 1. What changed (6 files, +104 / −57 lines)
+
+| File | Change |
+|---|---|
+| `FRXComputes` | New: **`den mem mpw P inp`**, `semXIR`'s output from `initSt (mem + mpw·t)`: a total function with no fuel. **`Eden mem mpw P c π L := decodeWit (den … (extractorInput c π L))`**. **`den_of_run`**: whenever `(toProg mem mpw P).run inp f = some o`, then `o = den …`. It holds for every fuel and needs no loop bound. The proof uses `runs_body`, the contract's `run_of_runs`, `run_eq` and `exec_mono`. **`computes_Eof` is restated** for `Eden`: halting within the fuel with at most `outCap` words on the domain gives `Computes (toProg …) (Eden …) fuel`. `Eof` was removed. `computesWith` now targets `Eden memX mpwX (extIRWith dec)`. |
+| `FRXExt` | **`E := Eden memX mpwX (extIRWith decSnark)`** (B-8, 3.17). `ext`, `computes : Computes ext E fuel` and `ext_caps` keep their statements. `computes`' proof is unchanged (`computesWith`). |
+| `FRXSpec` | `E_W` and `E_bad` are now stated over `Eden`, and proved by `run_W`/`run_bad_tape` + `den_of_run`. Their hypotheses are unchanged: only `π.size < 2^64`, nothing about the log. `ext_W`, `ext_bad` and `ext_encode` keep their statements. |
+| `FRXLeaf` | New: **`den_leaf`**, the denotation on a leaf proof, **on every log**. It is `run_leaf`'s old proof minus the loop bound and the run. `run_leaf` keeps its statement and is now `halts_with` + `den_of_run` + `den_leaf`. **`E_leaf` is restated without `hq`/`ht`**. |
+| `FRXNodeRun` | `E_node`'s proof is now `ext_node` + `den_of_run`. **Its statement is unchanged; it keeps `hq`/`ht`** (finding O3′). |
+| `FRSoundnessExtAll` | A minimal proof repair: `X.E_leaf c π L hk hkN` (the two domain arguments dropped). |
+
+**Statement changes, all as 3.17 rules:**
+- `E`'s definition.
+- `computes_Eof` (`Eof` → `Eden`; new hypotheses `hmem`, `hP`).
+- `computesWith`'s target.
+- `E_W`'s and `E_bad`'s left-hand sides.
+- `E_leaf` (no domain hypotheses).
+
+`ext`, `computes`, `ext_caps`, the cost lemmas, `run_leaf`, `ext_node`, `ext_W`, `ext_bad` and
+`E_node` are unchanged.
+
+### 2. Item 1: `semXIR` is total and computable, but it is the 64-bit machine (finding O3′)
+
+**Total and computable.** `semXIR` is structural recursion on `XIR`, and `iterL` is recursion
+on `ℕ`. There is no `partial` and no fuel. A loop runs `(rd M n).toNat < 2^64` times. `E` is a
+compiled `def`: `FRXExt` builds with no `noncomputable`, and every ingredient is computable
+(`decodeWit`, `extractorInput`, `initSt`'s `Array.replicate`). The executable probe (item 5) was
+not run.
+
+**The 3.17 premise does not hold.** The ruling says that "`final` follows from `ext_good_tape`,
+which is stated over `semXIR` and is domain-free". That is false for the node case:
+- `semXIR` is the machine's exact semantics (`compile_correct`). Every tape read is
+  `I.getD (rd M a).toNat`, where `rd M a` is a 64-bit word. So **no tape word at position
+  `2^64` or later is ever read**, and counts such as `toWord |L|` wrap.
+- The node case's semantic lemmas take `Dom` essentially: `read_spec`, `look_spec`,
+  `idxIR_sorted`, `nodeBody_sem`, `colIR_sem`, `posBody_sem`, and with them `decNode_sem`,
+  `decNode_out` and `ext_node`. For example, `Dom.small : |L| < 2^62` and `tp_posL`.
+- The contract's `step` lets a log hold 2^62 fresh junk entries before an honest chain while
+  `μ < 1`. On such a log the chain lies beyond tape word `2^64`. The denotation cannot see it,
+  so neither `E := semXIR` nor any compiled program can extract there.
+- `hOut` can therefore not be discharged for node proofs. It **can** be discharged for `W`,
+  `bad` and leaf proofs, because `E_W`, `E_bad` and `E_leaf` are now domain-free.
+
+The contract states this itself (`Security.lean`: "on longer logs `E` is unconstrained and may be
+a non-constructive choice", `choice_certificate`).
+
+**Fixes I see (not implemented):**
+- (a) A contract-side change, which PR #20 may make: a domain closed under extraction.
+- (b) `E := if InDom then Eden … else Eₒ`, with `Eₒ` a *computable* search over the finite space
+  of witnesses for `Rel (accV (vkOf π)) c`. `acc` is a `Bool` and bounds the proof, the trace and
+  the queries. `SigOk`'s bounds on `σ` would need checking.
+- (c) A pure computable twin of the extractor, with `ℕ` indices.
+
+### 3. What is half-done (in order, if 3.17 still stands)
+
+1. `FRSoundnessExtE`: `ExtIfaceE`, `extIfaceE_of`, `hExt_of_ifaceE`, `finalLaw_ofE` and
+   `kstate_front_ofEN`. The domain hypothesis would be `kindOf π = .snark .N30 → InDom c π L`, and
+   `hOut` would shrink to a node-only `hOutN`. This needs (b) or (c) to close.
+2. Controls:
+   - positive: `E` on a `W` or leaf proof with a log holding a `2^64`-byte query (`¬ InDom` from
+     `not_inDom_of_big`);
+   - negative: `E_bad` on every log, and a blindness lemma (`semXIR` depends only on the tape's
+     words below `2^64`, so `E c π (J ++ [e₁]) = E c π (J ++ [e₂])` when `J`'s tape has at least
+     `2^64` words and the two queries have the same size).
+3. Sequential profiles of `FRXComputes`, `FRXLeaf`, `FRXSpec` and `FRXNodeRun`; a compiled
+   executable that imports `FRXExt` and references `FR.X.E`.
+
+### 4. Checks
+
+- `lake build FR FRSoundnessExtAll FRXNodeRun` is green (2,405 jobs) in `logs/fr-build-SH2m`, a
+  HEAD `0e9460b` snapshot with my modules symlinked.
+- **Axioms** (`logs/S-H2/axioms22.log`): `computes`, `computes_Eof`, `den_of_run`, `ext_caps`,
+  `E_leaf`, `den_leaf`, `run_leaf`, `E_node`, `ext_W`, `ext_bad`, `ext_encode`, `extIfaceR_of` and
+  `kstate_front_ofE` each depend on `[propext, Classical.choice, Quot.sound]` only.
+- **Source rule** (`logs/S-H2/source22.log`): 183 files, 0 findings.
+- **Names** `den`, `Eden`, `den_of_run`, `den_leaf`: grepped across `FR*.lean`, no clash.
+- **Imports for `FR.lean`:** none new.

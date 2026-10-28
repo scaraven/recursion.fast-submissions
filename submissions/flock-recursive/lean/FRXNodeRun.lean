@@ -124,7 +124,9 @@ theorem ext_node (c : Digest) (π : Proof) (L : Log) (hq : ∀ e ∈ L, e.1.size
     exact decNode_sem c π L hD hS st₀ hfm hcap0 hcap hfin hfar hA _ hM2 hszK r hr x hx
 
 /-- **`E` on a node proof** (the node case of `ext_good_tape`): with the transcript facts `final`
-holds, the extractor's witness is the node witness read off `f⁽⁰⁾` (`FR.readWit`, A.5, A.7). -/
+holds, the extractor's witness is the node witness read off `f⁽⁰⁾` (`FR.readWit`, A.5, A.7). The
+domain hypotheses `hq`, `ht` stay: the denotation is the 64-bit machine's (`compile_correct`), so
+it reads no tape word from `2^64` on (S-H2 RESULT Part 22, finding O3′). -/
 theorem E_node (c : Digest) (π : Proof) (L : Log) (hq : ∀ e ∈ L, e.1.size < 2 ^ 64)
     (ht : (extractorInput c π L).length ≤ 2 ^ 64) (hk : kindOf π = .snark .N30)
     (hS : ¬ StateHit L) (st₀ : Digest) {es : Log}
@@ -135,8 +137,9 @@ theorem E_node (c : Digest) (π : Proof) (L : Log) (hq : ∀ e ∈ L, e.1.size <
     (hfar : ∀ i < 5, ¬ farL .N30 L es i)
     (hA : ∀ i < 5, consSet .N30 L es i = jointAgree (wordK .N30 L es i) (decodeL .N30 L es i)) :
     E c π L = some (FR.readWit fun e => (msgOf .N30 L es 0 (e % 64) (e / 64)).f₀) := by
-  show (ext.run (extractorInput c π L) (fuel (extractorInput c π L).length)).bind decodeWit = _
-  rw [(ext_node c π L hq ht hk hS st₀ hfm hcap0 hcap hfin hfar hA).1, Option.bind_some,
+  show decodeWit (den memX mpwX (extIRWith decSnark) (extractorInput c π L)) = _
+  rw [← den_of_run (by simp only [regs, memX]; norm_num) (wf_extIRWith decOk_decSnark.wf)
+    (ext_node c π L hq ht hk hS st₀ hfm hcap0 hcap hfin hfar hA).1,
     decodeWit_witWords _ (FR.Read.readWit_fits _)]
 
 end FR.X

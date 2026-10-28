@@ -11,8 +11,9 @@ the chain's start to it). Its chain length is `n = leafN k = 2^(m − 14)` (chec
 statement by the verifier). So the SNARK branch, on a kind byte other than `'N'`, outputs
 `witWords (.leaf s n)` and decodes nothing.
 
-**`E_leaf`**: on a domain tape of a leaf proof of `piSize` bytes,
-`E c π L = some (.leaf (bytesAt π 16 32) (leafN k))`.
+**`E_leaf`**: on a leaf proof of `piSize` bytes and **every log** (the denotation `den_leaf` reads
+only the header; revision 3.17), `E c π L = some (.leaf (bytesAt π 16 32) (leafN k))`. On a domain
+tape the machine halts with that output (`run_leaf`).
 -/
 
 namespace FR.X
@@ -74,13 +75,13 @@ theorem lowByte_eq {w : Word} {b : UInt8} (h : (w &&& 0xFF).toNat = b.toNat) (v 
     (u : UInt8) (hvu : v.toNat = u.toNat) : w &&& 0xFF = v ↔ b = u := by
   rw [← BitVec.toNat_inj, h, hvu, UInt8.toNat_inj]
 
-/-- **The run on a leaf proof**: the program halts within the fuel and outputs
-`witWords (.leaf s n)`, `s` header bytes `16 … 47`, `n = leafN k`. -/
-theorem run_leaf (c : Digest) (π : Proof) (L : Log) (hq : ∀ e ∈ L, e.1.size < 2 ^ 64)
-    (ht : (extractorInput c π L).length ≤ 2 ^ 64) {k : Kind} (hk : kindOf π = .snark k)
+/-- **The denotation on a leaf proof**, on every log: the program's `semXIR` output is
+`witWords (.leaf s n)`, `s` header bytes `16 … 47`, `n = leafN k`. No loop bound is needed: the
+leaf branch reads only the proof's header. -/
+theorem den_leaf (c : Digest) (π : Proof) (L : Log) {k : Kind} (hk : kindOf π = .snark k)
     (hkn : k ≠ .N30) :
-    ext.run (extractorInput c π L) (fuel (extractorInput c π L).length) =
-      some (witWords (.leaf (bytesAt π 16 32) (leafN k))) := by
+    den memX mpwX (extIRWith decSnark) (extractorInput c π L) =
+      witWords (.leaf (bytesAt π 16 32) (leafN k)) := by
   have hs : π.size = piSize := by
     by_contra hne
     simp only [kindOf, byteAt?_eq, hne, if_false] at hk
@@ -91,12 +92,11 @@ theorem run_leaf (c : Digest) (π : Proof) (L : Log) (hq : ∀ e ∈ L, e.1.size
   have hwf := wf_extIRWith hd.wf
   have hreg : regs ≤ memX := by simp only [regs, memX]; norm_num
   have h0 : Inv (initSt (memX + mpwX * inp.length)).M := inv_initSt (Nat.le_add_right_of_le hreg)
+  rw [den]
   generalize hs0 : initSt (memX + mpwX * inp.length) = s0 at h0
   have hIj : ∀ j, inp.toArray.getD j 0 = inp.getD j 0 := fun j => getD_toArray _ _
   have hI5 := hIj 5
   generalize hI : inp.toArray = I at hI5 hIj ⊢
-  have hsafe := hd.safe c π L hs hq ht
-  rw [← hinp, hI] at hsafe
   have h1 : Inv (semXIR I parseIR s0).M := inv_sem I hwf.1 h0
   have hz : rd (semXIR I parseIR s0).M rIsSz ≠ 0 := by
     rw [parse_regs I s0 h0, hIj, hinp, tape_getD4, hs]
@@ -108,15 +108,6 @@ theorem run_leaf (c : Digest) (π : Proof) (L : Log) (hq : ∀ e ∈ L, e.1.size
     simp
   have hpo : (semXIR I parseIR s0).o = #[] := by rw [parse_o, ← hs0, initSt_o]
   generalize hs1 : semXIR I parseIR s0 = s1 at h1 hz hk1 hpo
-  have hB : BoundsOk I inp.length (extIRWith decSnark) s0 := by
-    rw [extIRWith, boundsOk_seq]
-    refine ⟨boundsOk_of_safe (safe_parseIR _ _) hwf.1 _ h0, ?_⟩
-    rw [hs1, boundsOk_ite, if_neg hk1, boundsOk_ite, if_neg hz]
-    exact boundsOk_of_safe hsafe hd.wf _ h1
-  have hrun := run_toProg (P := extIRWith decSnark) (input := inp) (f := fuel inp.length) hreg hwf
-    (by rw [hs0, hI]; exact hB) (fuel_covers hd.cost _)
-  rw [hs0, hI] at hrun
-  refine hrun.trans (congrArg some ?_)
   have e : semXIR I (extIRWith decSnark) s0 = semXIR I (.ite rKN decNode leafIR)
       (semXIR I kindIR s1) := by
     rw [extIRWith, semXIR_seq, hs1, semXIR_ite, if_neg hk1, semXIR_ite, if_neg hz, decSnark, decLN3,
@@ -147,14 +138,31 @@ theorem run_leaf (c : Digest) (π : Proof) (L : Log) (hq : ∀ e ∈ L, e.1.size
     simp only [List.cons_append, List.nil_append, List.cons.injEq, and_true]
     exact ⟨by decide, by decide⟩
 
-/-- **`E` on a leaf proof** (the leaf case of `ext_good_tape`): the witness `.leaf s n` with
-`s` the header's chain start and `n = leafN k`. -/
-theorem E_leaf (c : Digest) (π : Proof) (L : Log) (hq : ∀ e ∈ L, e.1.size < 2 ^ 64)
+/-- **The run on a leaf proof**: on a domain tape, the program halts within the fuel and outputs
+`witWords (.leaf s n)`, `s` header bytes `16 … 47`, `n = leafN k` (`halts_with`, `den_leaf`). -/
+theorem run_leaf (c : Digest) (π : Proof) (L : Log) (hq : ∀ e ∈ L, e.1.size < 2 ^ 64)
     (ht : (extractorInput c π L).length ≤ 2 ^ 64) {k : Kind} (hk : kindOf π = .snark k)
     (hkn : k ≠ .N30) :
+    ext.run (extractorInput c π L) (fuel (extractorInput c π L).length) =
+      some (witWords (.leaf (bytesAt π 16 32) (leafN k))) := by
+  have hs : π.size = piSize := by
+    by_contra hne
+    simp only [kindOf, byteAt?_eq, hne, if_false] at hk
+    split at hk <;> simp at hk
+  obtain ⟨o, ho, -⟩ := halts_with decOk_decSnark c π L
+    (by rw [hs, piSize_eq, proofCap]; norm_num) hq ht
+  show (extWith decSnark).run _ _ = _
+  rw [ho, den_of_run (by simp only [regs, memX]; norm_num) (wf_extIRWith decOk_decSnark.wf) ho,
+    den_leaf c π L hk hkn]
+
+/-- **`E` on a leaf proof** (the leaf case of `ext_good_tape`), **on every log** (revision 3.17:
+no domain hypothesis): the witness `.leaf s n` with `s` the header's chain start and
+`n = leafN k`. -/
+theorem E_leaf (c : Digest) (π : Proof) (L : Log) {k : Kind} (hk : kindOf π = .snark k)
+    (hkn : k ≠ .N30) :
     E c π L = some (.leaf (bytesAt π 16 32) (leafN k)) := by
-  show (ext.run (extractorInput c π L) (fuel (extractorInput c π L).length)).bind decodeWit = _
-  rw [run_leaf c π L hq ht hk hkn, Option.bind_some, decodeWit_witWords]
+  show decodeWit (den memX mpwX (extIRWith decSnark) (extractorInput c π L)) = _
+  rw [den_leaf c π L hk hkn, decodeWit_witWords]
   show leafN k < 2 ^ 64
   cases k <;> simp [leafN, Kind.m]
 

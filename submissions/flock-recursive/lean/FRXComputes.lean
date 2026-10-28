@@ -5,16 +5,18 @@ import RecursionFast.Library.WitnessSending
 /-!
 # `ext` halts within its fuel: `Computes`
 
-BLUEPRINT §6.1 (B-8). The extractor specification is the program's decoded output,
-`Eof p fuel c π L = (p.run (extractorInput c π L) (fuel _)).bind decodeWit`, so `Computes p (Eof p
-fuel) fuel` asks only that the program halt within `fuel` with at most `outCap` words on every
-domain tape (`computes_Eof`).
+BLUEPRINT §6.1 (B-8, revision 3.17). The extractor specification is the program's **denotation**,
+`Eden mem mpw P c π L = decodeWit (den mem mpw P (extractorInput c π L))`, with `den` the output
+of `semXIR` from the prologue's state: a total, computable Lean function on every tape, with no
+fuel. On every tape on which the machine halts, its output is the denotation (`den_of_run`), so
+`Computes (toProg mem mpw P) (Eden mem mpw P) fuel` asks only that the program halt within `fuel`
+with at most `outCap` words on every domain tape (`computes_Eof`).
 
 * `parse_regs`: what the parse leaves in `rIsSz` (the `|π| = piSize` flag).
 * `wIR_sem`: **the `W` branch's output** is the tape words `5 … 5 + ⌈w/8⌉ − 1`, `w` tape word 4.
-* `computesWith`: for every SNARK branch with `DecOk dec`, `Computes (extWith dec) (Eof …) fuel`.
-* `ext_W`: on a `W` proof (`kindOf π = .W`) of fewer than `2^64 − 6` bytes whose tape fits, `extWith
-  dec` outputs `packBytes π`, so `Eof` is `WitnessSending.decode π` (the `W` case of
+* `computesWith`: for every SNARK branch with `DecOk dec`, `Computes (extWith dec) (Eden …) fuel`.
+* `E_W` (`FRXSpec`): on a `W` proof (`kindOf π = .W`) of fewer than `2^64` bytes, on every log,
+  `extWith dec` outputs `packBytes π`, so `Eden` is `WitnessSending.decode π` (the `W` case of
   `ext_good_tape`, any size above `proofCap` included, BP-C-R2-M2).
 -/
 
@@ -22,20 +24,47 @@ namespace FR.X
 
 open RecursionFast
 
-/-- **B-8**: the extractor specification as the program's decoded output. -/
-def Eof (p : XProg) (fuel : ℕ → ℕ) : Digest → Proof → Log → Option Wit :=
-  fun c π L => (p.run (extractorInput c π L) (fuel (extractorInput c π L).length)).bind decodeWit
+/-- **The denotation of `toProg mem mpw P`** on a tape (revision 3.17): the output of `semXIR`
+from the prologue's state on `mem + mpw · t` words. A total function of the tape: no fuel. -/
+def den (mem mpw : ℕ) (P : XIR) (inp : List Word) : List Word :=
+  (semXIR inp.toArray P (initSt (mem + mpw * inp.length))).o.toList
 
-/-- `Computes` for `Eof` is halting within the fuel with at most `outCap` words. -/
-theorem computes_Eof (p : XProg) (fuel : ℕ → ℕ)
+/-- **B-8 (revision 3.17)**: the extractor specification as the decoded denotation. -/
+def Eden (mem mpw : ℕ) (P : XIR) : Digest → Proof → Log → Option Wit :=
+  fun c π L => decodeWit (den mem mpw P (extractorInput c π L))
+
+/-- **A halting run outputs the denotation**, with any fuel: the compiled code runs to
+`semXIR`'s state in `steps + 8` steps (`runs_body`, no loop bound needed), and more fuel does not
+change a halting run (`exec_mono`). -/
+theorem den_of_run {mem mpw : ℕ} {P : XIR} {inp : List Word} {f : ℕ} {o : List Word}
+    (hmem : regs ≤ mem) (hP : WF P) (h : (toProg mem mpw P).run inp f = some o) :
+    o = den mem mpw P inp := by
+  have hr := runs_body (I := inp.toArray) P (m := mem + mpw * inp.length) (by omega) hP
+  have hm : (toProg mem mpw P).memFor inp.length = mem + mpw * inp.length := rfl
+  have hle : (toProg mem mpw P).memFor inp.length ≤ f := by
+    by_contra hlt
+    rw [XProg.run_lt_mem (by omega)] at h; cases h
+  generalize steps inp.toArray P (initSt (mem + mpw * inp.length)) + 8 = n at hr
+  have h1 : (toProg mem mpw P).run inp (f + (mem + mpw * inp.length + n)) =
+      some (den mem mpw P inp) :=
+    XProg.run_of_runs (p := toProg mem mpw P) (by rw [hm]; exact hr) (by omega)
+  rw [XProg.run_eq hle] at h
+  rw [XProg.run_eq (by omega), show f + (mem + mpw * inp.length + n) -
+      (toProg mem mpw P).memFor inp.length = f - (toProg mem mpw P).memFor inp.length +
+        (mem + mpw * inp.length + n) by omega, XStmt.exec_mono h] at h1
+  exact Option.some.inj h1
+
+/-- **`Computes` for the denotation** (B-8, `compile_runs` + the fuel): it is halting within the
+fuel with at most `outCap` words on the domain, since a halting run's output is `den`. -/
+theorem computes_Eof {mem mpw : ℕ} {P : XIR} (fuel : ℕ → ℕ) (hmem : regs ≤ mem) (hP : WF P)
     (h : ∀ c (π : Proof) (L : Log), π.size ≤ proofCap → (∀ e ∈ L, e.1.size < 2 ^ 64) →
       (extractorInput c π L).length ≤ 2 ^ 64 →
-      ∃ o, p.run (extractorInput c π L) (fuel (extractorInput c π L).length) = some o ∧
-        o.length ≤ outCap) :
-    Computes p (Eof p fuel) fuel := by
+      ∃ o, (toProg mem mpw P).run (extractorInput c π L) (fuel (extractorInput c π L).length) =
+        some o ∧ o.length ≤ outCap) :
+    Computes (toProg mem mpw P) (Eden mem mpw P) fuel := by
   intro c π L h1 h2 h3
   obtain ⟨o, ho, hl⟩ := h c π L h1 h2 h3
-  exact ⟨o, ho, hl, by simp [Eof, ho]⟩
+  exact ⟨o, ho, hl, by rw [den_of_run hmem hP ho]; rfl⟩
 
 /-! ## Words -/
 
@@ -270,7 +299,8 @@ theorem halts_with {dec : XIR} (hd : DecOk dec) (c : Digest) (π : Proof) (L : L
 
 /-- **`Computes`** for every SNARK branch with `DecOk`. -/
 theorem computesWith {dec : XIR} (hd : DecOk dec) :
-    Computes (extWith dec) (Eof (extWith dec) fuel) fuel :=
-  computes_Eof _ _ fun c π L h1 h2 h3 => halts_with hd c π L h1 h2 h3
+    Computes (extWith dec) (Eden memX mpwX (extIRWith dec)) fuel :=
+  computes_Eof fuel (by simp only [regs, memX]; norm_num) (wf_extIRWith hd.wf)
+    fun c π L h1 h2 h3 => halts_with hd c π L h1 h2 h3
 
 end FR.X
