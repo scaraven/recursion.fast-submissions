@@ -242,3 +242,18 @@ print(f"   R-V-M1 (a): kind factor ~{kf_products} products (~{kf_products*0.09/1
 print(f"   rows per slot {rows16:.0f}, per node {2*rows16:.0f} = 2^{math.log2(2*rows16):.3f} ({2**21/(2*rows16):.3f}x); with the sparse-skeleton + instance-AP levers {rows16_lever:.0f} per slot ({2**21/(2*rows16_lever):.3f}x); M blocks {math.ceil(2*rows16*128/2**14)} of 16,384; used {47740+math.ceil(2*rows16*128/2**14)} ({65536/(47740+math.ceil(2*rows16*128/2**14)):.3f}x)")
 print(f"   T_V: {v16:.0f} ms VM -> {v16/RATIO:.0f} ms on the 7763 (ratio {RATIO}); cap {CAP} ms: {CAP/(v16/RATIO):.2f}x. Measured H-V: V N30 best 169.9-175.6 ms on the 7763 (maskRows slowdown included), cap 206.0: 1.17-1.21x; 183 ms VM (changes 22) = {183/RATIO:.0f} ms runner ({CAP/(183/RATIO):.2f}x)")
 print(f"   piSize 797904 (1.31x); items 8891 (1.15x); stream link: P2 estimate ~3.0 s of 3.1 s (re-measure)")
+# ---- stage-review changes 24 (revision 3.17): S-N1's O2/O2b complete budget; INT-5's measured V; the T_V frontier.
+parts24={"measured aligned layout (S-E9: skeleton + bound templates)":436092,"rsWeight (4 claims)":45604,"rsWeight claim-2 kind factor":68473,
+ "walkAB (XOR DAG, G-template)":90851,"shiftTarget (bnd 22)":1300,"745 tensorW":47680,"tplTargetSNode":16000,"tplLinkWAll":15000,
+ "evalL replay (closed-form L regions; risk +30 k if chunked)":10000,"free term":80,"WOTS mux: selectors 266, a_{i,s} 1,596, e_i 532, path l/r 128, digit->h_out 266":2788,
+ "R (293,795 + 3,000 kind-factor share)":296795,"phiRS key split":-62464,"sparse-skeleton templating":-110000,"instance AP layout":-20000}
+rows24=sum(parts24.values())
+print("== stage-review changes 24 (revision 3.17): O2/O2b complete row budget per slot")
+for k,v in parts24.items(): print(f"   {v:>9} {k}")
+print(f"   total {rows24} per slot; {2*rows24} per node = 2^{math.log2(2*rows24):.3f} ({2**21/(2*rows24):.3f}x); with the evalL-replay risk {2**21/(2*(rows24+30000)):.3f}x; M blocks {math.ceil(2*rows24*128/2**14)} of 16,384; used {47740+math.ceil(2*rows24*128/2**14)} ({65536/(47740+math.ceil(2*rows24*128/2**14)):.3f}x)")
+# T_V frontier (VM ms; ratio 1.19; cap 206.0)
+base=192.9      # S-E11 HEAD (maskRows fixed, S-E11 evaluator), before the kind factor
+kf_now=33.0; kf_ST1_full=8.0; kf_ST1_part=20.0; e11=12.0; tobind=7+1.5+4+1+0.3
+for lab,kf,ev in (("INT-5 as measured (226-233), + to-bind",kf_now,0),("S-T1 kind factor to ~20 ms, no S-E11 levers",kf_ST1_part,0),("S-T1 to ~20 ms + S-E11 levers",kf_ST1_part,e11),("S-T1 to ~8 ms (F-side, shared endpoints) + S-E11 levers",kf_ST1_full,e11)):
+    v=base+kf+tobind-ev; print(f"   T_V ({lab}): {v:.0f} ms VM = {v/RATIO:.0f} ms on the 7763 -> {CAP/(v/RATIO):.2f}x")
+print(f"   >= 1.10x needs V <= {CAP/1.10*RATIO:.0f} ms VM ({CAP/1.10:.0f} ms runner); the floor with the current evaluator is ~{base+kf_ST1_full+tobind-e11:.0f} ms VM")

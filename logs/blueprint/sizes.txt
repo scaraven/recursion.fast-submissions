@@ -54,3 +54,25 @@
    rows per slot 955411, per node 1910822 = 2^20.866 (1.098x); with the sparse-skeleton + instance-AP levers 825411 per slot (1.270x); M blocks 14929 of 16,384; used 62669 (1.046x)
    T_V: 189 ms VM -> 159 ms on the 7763 (ratio 1.19); cap 206.0 ms: 1.30x. Measured H-V: V N30 best 169.9-175.6 ms on the 7763 (maskRows slowdown included), cap 206.0: 1.17-1.21x; 183 ms VM (changes 22) = 154 ms runner (1.34x)
    piSize 797904 (1.31x); items 8891 (1.15x); stream link: P2 estimate ~3.0 s of 3.1 s (re-measure)
+== stage-review changes 24 (revision 3.17): O2/O2b complete row budget per slot
+      436092 measured aligned layout (S-E9: skeleton + bound templates)
+       45604 rsWeight (4 claims)
+       68473 rsWeight claim-2 kind factor
+       90851 walkAB (XOR DAG, G-template)
+        1300 shiftTarget (bnd 22)
+       47680 745 tensorW
+       16000 tplTargetSNode
+       15000 tplLinkWAll
+       10000 evalL replay (closed-form L regions; risk +30 k if chunked)
+          80 free term
+        2788 WOTS mux: selectors 266, a_{i,s} 1,596, e_i 532, path l/r 128, digit->h_out 266
+      296795 R (293,795 + 3,000 kind-factor share)
+      -62464 phiRS key split
+     -110000 sparse-skeleton templating
+      -20000 instance AP layout
+   total 838199 per slot; 1676398 per node = 2^20.677 (1.251x); with the evalL-replay risk 1.208x; M blocks 13097 of 16,384; used 60837 (1.077x)
+   T_V (INT-5 as measured (226-233), + to-bind): 240 ms VM = 201 ms on the 7763 -> 1.02x
+   T_V (S-T1 kind factor to ~20 ms, no S-E11 levers): 227 ms VM = 191 ms on the 7763 -> 1.08x
+   T_V (S-T1 to ~20 ms + S-E11 levers): 215 ms VM = 180 ms on the 7763 -> 1.14x
+   T_V (S-T1 to ~8 ms (F-side, shared endpoints) + S-E11 levers): 203 ms VM = 170 ms on the 7763 -> 1.21x
+   >= 1.10x needs V <= 223 ms VM (187 ms runner); the floor with the current evaluator is ~203 ms VM

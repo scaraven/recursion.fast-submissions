@@ -36,11 +36,11 @@ novel-basis change, within `2^47.5 + 2^12 t` steps.
 | `piSize` (both kinds) | 797,904 B = 779 KiB (revision 3.14: E4 end 32 B) | `proofCap` 1,048,576 | 1.31× |
 | trace items (both kinds) | 8,891 | `qV = 10,240` | 1.15× |
 | hashed trace bytes / compressions | 1,481,344 = `64 · 23,146` / 23,146 (no padding cell) | — | — |
-| node circuit blocks | H + L end at 47,740 below `Mbase` 49,152 (exact); M 14,929 of 16,384 blocks (12,898 with the levers); used 62,669 (60,638) | 65,536 | 1.10× → 1.27× (M); 1.046× → 1.08× (used) |
-| M rows per node | **1,910,822 = `2^20.87`** with R-V-M1's kind factor (+68 k per slot) and the `free` term; **1,650,822 (1.27×) with the sparse-skeleton and instance-AP levers, now in the plan** | `N_M = 2^21` | 1.10× → 1.27× (changes 23) |
+| node circuit blocks | H + L end at 47,740 below `Mbase` 49,152 (exact); M 13,097 of 16,384 blocks; used 60,837 | 65,536 | 1.25× (M); 1.08× (used) |
+| M rows per node | **1,676,398 = `2^20.68`** (S-N1's O2/O2b complete budget per slot, 838,199: every unbound import's rows counted, the WOTS mux and the `evalL` replay included; levers in the plan) | `N_M = 2^21` | 1.25× (1.21× if the `evalL` replay is chunked, not closed-form) |
 | extractor steps (`m = 30` node) | `2^47.11 + 2^11 t` | `fuel = 2^47.5 + 2^12 t`; `B = 2^48 + 2^16 t` | 1.31×; 1.85× |
 | error per fresh query | `2^-120.36 + 2^-144` | `εR = 2^-120.093` | — |
-| verifier time (N30) | **H-V measured on the EPYC 7763 (tier of record): V best 169.9–175.6 ms, cap 206.0 ms (1.17–1.21×), with the `maskRows` slowdown still in the binary**; VM → 7763 ratio **1.19** (not the chain checker's 1.28). Projected after changes 22–23 (shift class, templates, `D̂`, `R`, the claim-2 kind factor): ≈ 189 ms VM ≈ 159 ms runner | `T_V` 206.0 ms | **1.30×** (projected), 1.17× (measured today) |
+| verifier time (N30) | **INT-5 measured 226–233 ms VM best** (S-E11's evaluator 192.9 + the claim-2 kind factor's K products +31–33); at the measured ratio 1.19: ≈ 190–196 ms on the 7763 against the 206.0 ms cap (1.05–1.08×). Still to bind ≈ 14 ms VM (`R` 7, `D̂` 1.5, templates 4, `evalL` replay 1); levers: S-T1's F-side kind factor (−13 … −25 ms), S-E11's `evalM` levers (−12) | `T_V` 206.0 ms | **1.14–1.21× projected** (≥ 1.10× needs V ≤ 223 ms VM); 1.05–1.08× measured today |
 | output words (node) | `2^19.3` | `outCap = 2^24` | — |
 
 ### 0.1 Decisions
@@ -54,7 +54,7 @@ novel-basis change, within `2^47.5 + 2^12 t` steps.
 | **B-5** | **Own mutual correlated agreement for lines in the UD regime over K-valued words and `C_K`**, **proved (S-D) with `C_mca(n,k,e) = k e + n`** by a counting argument (§5.3); P1 row `≤ 2^-214`. | I §2.5; `mca_ud_line_K`, `pcsLevels_ok` (kernel). |
 | **B-6** | **Wiring:** regions H (BLAKE2s blocks), L and P (in the H gap), M (element rows). A child's trace is the message slots of its chain's H blocks, read by irregular matrix entries evaluated with eq tables (one product per entry); M-internal patterns are templates; BLAKE2s matrices by the walk; the L matrices templated too. **Every per-block public constant is pinned by the zerocheck's public target `E`** (`(A₀z)∘(B₀z) = z + E` at `(0,0)`-row positions, P1-D2/D3); the public inputs and padding are point claims on `f`; the chain links and endpoints are the shift argument's (P1-D5). | No pattern sumcheck, no selector-linear patterns (BP-C-R3-M2 moot); the zerocheck pins constants bit by bit at its own random point; it is what the prover already does. |
 | **B-7** | **The verifier is an interpreter `runIR impl` of a straight-line IR**, parametrised by an op-implementation record `OpImpl` (`evalM`, `evalL`, `walk`, `rsWeight`, `lagrangeS` (`mbp` withdrawn in 3.9)); the lincheck has 14 multilinear rounds (P1-D4) and all `ẑ` claims are ring-switched at once into Ligerito's weight (P1-D6); `FRVIRSpec` states each phase's semantics against the record's specification; the circuit's M and L rows are compiled from the same IR (`compile`), with the per-slot mux as a compiler mode (`compileMux`, `compile_mux_sound`). | BP-E-R2-M4 (no cycle), BP-E-R2-M2 (a construction and a theorem for the mux). |
-| **B-8** | **`E := fun c π L => (ext.run (extractorInput c π L) (fuel t)).bind decodeWit`**; `XIR` with affine-in-`t` caps, `compile_runs` as `∃ n ≤ cost P t` under `BoundsOk`, counted on the compiled code; the `W` copy is capped by `t`. | Probed; BP-E-M5/M6, BP-C-R2-M2, BP-E-R2-m1. |
+| **B-8** | **`E := fun c π L => decodeWit (semXIR ext (extractorInput c π L))` — the DSL program's denotation, a total computable Lean function on every log (revision 3.17)**; `Computes` is `compile_runs`: on the contract's domain the machine `ext.run` reproduces `semXIR` within `fuel t` (`∃ n ≤ cost P t` under `BoundsOk`, counted on the compiled code); `final` is `ext_good_tape` over `semXIR` on every log `≤ logCap`. `XIR` with affine-in-`t` caps; the `W` copy is capped by `t`. | Probed; BP-E-M5/M6, BP-C-R2-M2, BP-E-R2-m1; S-N1 O3. |
 | **B-9** | **Prover: std Rust, one `prover.s`, CPUID dispatch, AVX2 + VPCLMULQDQ-256 tier of record.** | K. |
 | **B-10** | **`ε = 15/2^124`; `δ = 0` (`P := encode`, kind `W`); `qV = 10,240`; `fuel t = 211,106,232,532,992 + 4,096 t`.** Claim: `{"error": "15/21267647932558653966460912964485513216", "completeness_error": "0", "qV": 10240, "fuel_base": 211106232532992, "fuel_per_word": 4096}` (renders: `r2/render-r2.log`). | §5.2; BP-E-M7; §6.3. |
 
@@ -583,14 +583,37 @@ on 18 coordinates and their `_meets` lemmas use `eq((a ‖ 0^k), (b ‖ 0^k)) = 
 (`eq_pad_zero`), so the five become templates (S-0 the pack, S-C the specs, S-F2 the `_meets`,
 S-E the templates).
 
-**`planOf`.** The plan is run-time data computed from the layout constants on every verifier
-process; the harness runs non-`T_V` batches unwarmed under `verify_s = 10` s per check and DoS
-items under `10·T_V`, so a 12.8 s `planOf` (S-E9) fails them. The source rule forbids the two
-precomputation routes (`initialize`/`init`, elaboration-time code), and the compiler's closed-term
-extraction still runs at process start, inside `verify_s`. **Rule: `planOf` costs ≤ 0.2 s** —
-`O(pieces · log)` from per-key literals (`Array` literals are data and allowed), with the layout
-invariants proved from the literals' structure (`plan_wf`), never by evaluating the plan in the
-kernel. Owner S-E.
+**`planOf` (revision 3.17, the orchestrator's ruling revising 3.15 (e)).** The badge's `NS` is the
+monotonic time of parsing `π` and evaluating `acc` only (`harness/badge/Verify.lean.in`,
+`timedCheck`), so a **closed top-level plan constant, initialised at process start, is outside
+every check's `NS`**; process start counts only against the batch timeout `verify_s · n + 60 s ≥
+70 s` (`rfh/checks.py` `verify`). **Rule: the plan is built at process start, ≤ 5 s on the VM**
+(43–49 s today, under the 70 s floor; S-E's lever); a control measures that a cold process's first
+check is not slower than its warm checks (the plan is not lazily computed inside `acc`). The 0.2 s
+bound of 3.15 is withdrawn: literals would need a kernel proof about `compileT` (S-E10). The source
+rule's bans (`initialize`/`init`, elaboration-time code) are untouched: the constant is an ordinary
+closed term.
+
+**The E truth and the rows V evaluates (revision 3.17, S-N1 O1).** `truthE`, `nE`, `RejE4` and
+`RowsFit`/`hfit` are stated over **`nodeIRows (planOf fin)`**, the indexed templated rows of
+`compileT` that `evalMT` evaluates (`evalMT_eq`), not over `Layout.nodeRows` (`compileMux` without
+templates: a different row list with different cells for every templated op). `SlotHolds`,
+`node_sound` and the dooms then speak of one circuit. The E error row is unchanged (`21, 3, 5, 2
+per round`: SZ over the row coordinates and the rounds' degrees depend on `N_M = 2^21`, not on
+which rows), and `hfit` is `plan_rowsFit`: rows `< 2^21`, cells `< 2^23` for the templated layout
+(`mRows_le`, `usedBlocks_le`).
+
+**Every import has rows (S-N1 O2/O2b).** The registers `SlotHolds.run` assumes are bound by:
+the trace cells — no rows (the pack map is the register → H-cell binding; the cells are fixed by
+the digest chains and `cap_binding`); `rsWeight` (45,604 + the kind factor 68,473), `shiftTarget`
+(1,300), the 745 `tensorW` (47,680), `targetSNode` (16,000), `linkWAll` (15,000), `evalL` (the
+replay of `evalLT` as the closed form over A.7's strided L regions, ≈ 10,000; ≈ 40,000 if
+chunked), the child's `evalM` (`R`, 296,795 with the kind factor's share), the `free` term (80);
+and **the WOTS mux rows of §4.2** (per slot: the 266 selector–digit rows, the `a_{i,s}` mux 133 ×
+3 × 2 halves × 2 rows = 1,596, the ends `e_i` 532, the path's `l_t`/`r_t` 128, the digits →
+`h_out` linear rows 266: **2,788**; the mirror sources are the mux rows' output cells in `WM`, no
+extra rows). The full budget is A.11's and `sizes.py`'s "changes 24": **838,199 per slot,
+1,676,398 per node (1.25×)** with the levers of 3.16 in the plan.
 
 ### 4.5 Margins (`sizes.py`)
 
@@ -709,10 +732,26 @@ public cell fails its point claim; `pinned_rank`'s inverse
 
 ### 6.1 Contract and B-8
 
-`Computes p E fuel` asks, on every tape of the domain, `∃ o, p.run … = some o ∧ o.length ≤ outCap
-∧ decodeWit o = E c π L`. With `E := (ext.run …).bind decodeWit`: `Computes ⇐ ext_halts` (halting
-within `fuel` and the output cap on every tape of the domain) and `final ⇐ ext_good_tape`
-(§6.5). `E` is computable. Kernel-probed (`B8.lean`: `computes_Eof`, `fuel_le`).
+`Computes p E fuel` asks, on every tape of the domain (`|π| ≤ proofCap`, every query `< 2^64`
+bytes, a tape of `≤ 2^64` words), `∃ o, p.run … = some o ∧ o.length ≤ outCap ∧ decodeWit o = E c π
+L`. `KState.final` ranges over **every** log of `≤ logCap = 2^96` entries, so `E` must extract on
+logs far outside `Computes`' domain (about `2^61` entries). **The extractor's domain (revision
+3.17, S-N1 O3).** `E` is defined as **the DSL program's denotation, `E c π L := decodeWit (semXIR
+ext (extractorInput c π L))`**: `semXIR` (§6.4) is a total, computable Lean function with `Nat`
+indices and statically capped loops, so `E` is computable on every log and the badge, which
+compiles the whole `submission` (AGENTS.md §10: "the whole `submission` must be computable"),
+builds. `Computes ⇐ compile_runs`: on the domain the 64-bit machine `ext.run` reproduces `semXIR`
+within `fuel t` and the output cap (`BoundsOk` is where the `2^64` bounds are used). `final ⇐
+ext_good_tape` (§6.5), which is stated over `semXIR` and uses no domain bound, so it holds on every
+log `≤ logCap`: S-N1's `hOut` is discharged, not assumed. **Rejected**: S-N1's `S.E := if InDom
+then X.E else Eₛ` with a non-constructive `Eₛ` (`readWit (fF …)` through unique decoding) — the
+contract's `choice_certificate` admits it at the kernel, but a `noncomputable` field fails the
+badge build (AGENTS.md §7.5), and `X.E := ext.run` on an out-of-domain tape is unproven (the
+machine's words overflow); a potential that is `1` outside the domain breaks `step` (a jump of
+`1 ≫ ε`, or a ramp of `2^-61 ≫ ε` per entry). `E` takes no `vk`: on a node `vk` is `π`'s
+`hdr.pub` (`vkOf_of_run`), a leaf needs none; the linked route of O0 (`RunLink`) serves long logs
+too. Kernel-probed at B-8 (`B8.lean`: `computes_Eof`, `fuel_le`); S-H2 restates `computes_Eof`,
+`E_leaf`, `E_node` over `semXIR`.
 
 ### 6.2 The algorithm (`mem = 2^26`, `memPerWord = 3`)
 
@@ -1219,7 +1258,7 @@ writes the definitions named `truth*`; the count lemmas are S-C/S-D's.
 | S2 (28 rounds, degree 2) | tables `[eq(τ,·)·Out, (shift + κ_s eq(0,·) + Σ κ_s^f linkW)·In]` over blocks then the 10 slot bits (`FRShift.shift_sound`, `slotW_mle`) | `Rej ∨ Wrong2` | `round_escape_le`: `N = 2·2^128` | `finSh` (ii): `c_{Sh} ≠ (w_out + w_in)·ẑ(r_blk, r_pos)`; the claim `α_Sh` is RS's | — |
 | Lr1 (8 squeezes) / Lr2 (15 rounds, degree 3) / Lrend / Lr3 (`κ_L`); **Lr4 withdrawn (revision 3.13): the lincheck is E4's, over the `2^23` cells; `truthLr` keeps the zerocheck half, the lincheck truth is `truthE4`'s** | Spartan over the L rows (node only; `nodeOnly`): zerocheck tables `[eq(r_L,·), A_L z, B_L z, C_L z]` (`truthLr`), `Lrend` carries `â_L, b̂_L, ĉ_L`; lincheck of `â_L + κ_L b̂_L + κ_L² ĉ_L` with `evalL` (`FRVIREval`) | Lr1: `hround` form; Lr2: `D3` (`lr2_phase`); Lrend: `habs`; Lr3: `Wrong`; Lr4: `Rej ∨ Wrong2` | Lr1: SZ 15, `pair_bad_le`; Lr2: `D3_single`; Lr3: `batch_bad_le` at 3 (`2·2^128`); Lr4: `round_escape_le` | none: the L lincheck is E4's and its claim `f̂(r′)` is RS claim 3 (no Lr RS claim since 3.13) | reads `z`'s L region; `A_L` public |
 | RS0 (absorb `4 × 128` partials) / RS1 (4 squeezes: `r″`, `κ`) | per claim `j`: the column check **defines** `α_j` (`rs_column`); the switched claims `T_j = rsT` and `v_RS = Σ κ^j T_j`; truth `rsTruth` (`Σ_u Φ(g_j(u)) f(u)`) with `g_Z = eq(r,·)`, `g_Lc = eq((r′_blk, r_k),·)`, `g_Sh = eq((r_blk, r_pos),·)`, `g_Lr` (`truthRS`) | RS0: `habs` (a wrong partial, `δ_j ≠ 0`); RS1: `Wrong`: some `δ_j ≠ 0 ∧ Σ κ^j rsT = Σ κ^j rsTruth` | `hround`: **`rs1_joint`** (`(7 + J_z − 1) = 10` of `|F|^7` draws), `card_chF2_fiber` | `habs` at E1 (node) / at B′'s squeeze (leaf): `v_RS` as the running value | the partials are chain entries; `f⁽⁰⁾` the word |
-| E1 (11 squeezes) / E2 (21 rounds, degree 3) / Eend / E3 (`κ_E`, 6 claims) / **E4 (23 rounds, degree 2: the L and M linchecks, `truthE4`; then E4 end, RS0, RS1, B′ — revision 3.13 order)** | the element zerocheck over the M rows of `f⁽⁰⁾`: tables `[eq(r_E,·), A_M f, B_M f, C_M f]` (`truthE`, `evalM`'s matrices from `compileMux`); `Eend` carries `â_M, b̂_M, ĉ_M` at the final point `r_{E2}` | E1: `hround` form (`far_0 ∨ (¬ EHolds ∧ …)`); E2: `D3` (`e2_phase`); Eend: `habs` | E1: SZ 21 with `pair_bad_le`; E2: `D3_single` | E3's squeeze (`κ_E`): `Wrong` (`batch_bad_le` at 3, `2·2^128`); then B′ | reads `f⁽⁰⁾`'s M region |
+| E1 (11 squeezes) / E2 (21 rounds, degree 3) / Eend / E3 (`κ_E`, 6 claims) / **E4 (23 rounds, degree 2: the L and M linchecks, `truthE4`; then E4 end, RS0, RS1, B′ — revision 3.13 order)**; **the rows are `nodeIRows (planOf fin)`, the templated indexed rows `evalMT` evaluates (revision 3.17, S-N1 O1); `hfit` = `plan_rowsFit`** | the element zerocheck over the M rows of `f⁽⁰⁾`: tables `[eq(r_E,·), A_M f, B_M f, C_M f]` (`truthE`, `evalM`'s matrices from `compileMux`); `Eend` carries `â_M, b̂_M, ĉ_M` at the final point `r_{E2}` | E1: `hround` form (`far_0 ∨ (¬ EHolds ∧ …)`); E2: `D3` (`e2_phase`); Eend: `habs` | E1: SZ 21 with `pair_bad_le`; E2: `D3_single` | E3's squeeze (`κ_E`): `Wrong` (`batch_bad_le` at 3, `2·2^128`); then B′ | reads `f⁽⁰⁾`'s M region |
 | B′ (squeeze `κ′`) | `v* = v_RS + Σ_{k<9} κ′^{k+2} pub_k` (`truthB′`: the true `v_RS` and the 9 public cells' true values `f[cell_k]`; `pfCells`, INT-2) | `Wrong`: some term wrong `∧` the batched value equals the truth | `hsingle`: `batch_pow_bad_le` at degree 10 (`10/2^128`) | `habs` at P1.0's first absorb: `c₀^{P1.0} ≠ ⟨W, f⁽⁰⁾⟩` | the public cells are word entries |
 | P1.i (`ℓᵢ` K rounds, degree 2) | the fold sumcheck of `⟨W_i, f⁽ⁱ⁾⟩` over level `i`'s row variables; tables `[W_i, f⁽ⁱ⁾]` (K); truth: `¬ far_i → c_{P1.i} = Σ_x W_i(z,x) f⁽ⁱ⁾(x)` after the folds (`truthP1 i`); **the fold rounds also carry the proximity doom**: `far_i ∧ the fold is e_i-close` (`fold_preserves` fails only on `lineBad`) | `Rej ∨ Wrong2 ∨ (far_i-doom: the round's challenge `z ∈ round_bad_cover`)` | `round_escape_le` (K: `card_chK_fiber`, `N = 2`) **plus `round_bad_cover`** (`2^(ℓᵢ−r) C_mca`): `N = 2 + 2^(ℓᵢ−r)·C_mca ≤ 2^66` | `habs` at `C.i`'s absorb (the next cap or the final message): the committed next level | `wordOf … i` under `capᵢ` (absorbed at `C.(i−1)`, before this phase) |
 | C.i (absorb `capᵢ₊₁` / final) | the level-`(i+1)` word becomes readable; truth: `¬ far_{i+1} → f⁽ⁱ⁺¹⁾ = fold_z(f⁽ⁱ⁾)`'s message (`truthC i`) | `habs`: `far_{i+1} ∨ f⁽ⁱ⁺¹⁾ ≠ fold(f⁽ⁱ⁾)` | — | P2.i's first squeeze | `wordOf … (i+1)` under `capᵢ₊₁`: `colL_prefix` (the cap is absorbed here; its tree's nodes must precede: the window hit) |
@@ -1262,6 +1301,8 @@ blocks and slots (`irregular_mle`).
 | `targetS r → AF 64` (node: `targetSNode`) | per kind and interval the dyadic range sums of `eq(r,·)`, the `stream` counter's shifted bit forms, the single last blocks, `w43`'s 399-term table (A.8) | `r` | ≈ 16,000; 1 (revision 3.14: sized from `targetSNodeI`'s measured 2.0 ms) | local | 16 k |
 | `eqZ λ ρ₁ → AF 128` | `L_lo(λ) · eq(ρ₁, bit 6)` | the 64 Lagrange values (shared) | 128; 1 | shared | 128 |
 | the `free` term `(1 + α)·v_free·⟨rowW, eq(r_k,·)⟩` (node; R-V-M2) | `eqPt` on 8 coordinates, a 64-term sum of `L_s(λ)·eq(r_k[0..5], s)`, 2 products | `λ`'s Lagrange values (shared), `r_k`, `r′_hi`, `v_free`, `α` | ≈ 80; 1 | local | 0.1 k |
+| `evalL(r_Lr, r′)` replay (node; revision 3.17) | the closed form over A.7's strided L regions (the signature, digit, selector, position-bit and kind-selector regions at power-of-two strides; the `one` cell): per region the `eq` range products | `r_Lr`, `r′` (trace cells) | ≈ 10,000; 1 (≈ 40,000 if `evalLT`'s 64-row chunks are replayed instead) | local | 1 ms |
+| the WOTS mux rows (§4.2; S-N1 O2b) | selector–digit rows 266, `a_{i,s}` mux 1,596, ends `e_i` 532, path `l_t`/`r_t` 128, digits → `h_out` 266: the compiled `wots` rows of S-E2's construction, regular per chain/step | L bits (digits, selectors, index bits), H cells (`h_out`, `ots`, `sib`), `WM` outputs | 2,788; 1 | local (chain stride 3, path stride 2) | 0.3 ms |
 | `shiftEq τ r`, `eqPt`, `kindInd r′` | `eq`/`shift` closed forms: `O(m)` products | challenges | ≤ 60 each | local | 0.5 k |
 | `slotW θ pos r → F` | `eq(θ,σ)` tree (255), `eq(cube(pos σ), r)` as 9 products per `σ` (public bits), 256 products, the sum | `θ`, `r` | ≈ 2,800; 3 slot maps | local | 8.4 k |
 | `linkWAll (τ‖θ) (r_blk‖r_pos) → AF 8` (node) | the four eq tables, per family the `n_f`-term source and mirror sums, `slotW` range forms | `τ`, `θ`, `r_blk`, `r_pos` | ≈ 15,000 in all; 1 (revision 3.14, S-CN §7: ≈ `6 n_f + 24 len_f` per family) | local | 15 k |
@@ -1842,4 +1883,29 @@ layout are part of the plan, not reserve.
 - **S-E** (templates, `mRowModel`): the kind-factor template (≈ 68 k rows, regular), the `free` term's template (≈ 80 rows); `mRowModel` to 3.16's figures; the sparse-skeleton templating and the instance-AP layout now in scope (−130 k per slot).
 - **P2**: `v_RS` with the kind-weighted claim 2 (honest `v_κ` unchanged); `finLc`'s new term in the IR interpreter (`ir.rs`); `bnd` of 22; re-measure the N30 stream link.
 - **H / S-I**: `T_V` of record 206.0 ms on the 7763; the measured V 170–176 ms is the current binary (S-E10's `maskRows` fix pending).
+
+### Stage-review changes 24 (revision 3.17): S-N1's findings, INT-5's `T_V`, the plan time
+
+| Item | Ruling / change |
+|---|---|
+| O0 (ratified) | the linked route: `RunLink`/`ExtIfaceR`/`kstate_front_ofR` — the accepting chain `j` stays tied to `π` (`semIR … tr = some true`, `entriesOf L (pathOf L j) = fsOf tr items`); `ExtIface` over an arbitrary chain was false (a forgery log appended to an honest run). |
+| O1 (ratified) | `truthE`/`nE`/`RejE4`/`hfit` over `nodeIRows (planOf fin)` (§4.4, A.10). **Error row unchanged**; `RowsFit` becomes `plan_rowsFit` over the templated layout (`mRows_le`, `usedBlocks_le`). Owner S-G (restating) with S-E (`plan_rowsFit`). |
+| **O3, the extractor's domain** | **Ruling: `E := decodeWit ∘ semXIR ext ∘ extractorInput`, the DSL denotation, computable on every log; `Computes` by `compile_runs` on the domain; `final` by `ext_good_tape` over `semXIR` on every log `≤ logCap`; `hOut` discharged.** S-N1's choice branch is rejected: the contract's `choice_certificate` admits a non-constructive `E` beyond the domain at the kernel, but **the badge compiles the whole `submission` (AGENTS.md §10, §7.5), so a `noncomputable` `E` fails the badge build**; `E := ext.run` everywhere is unprovable beyond the domain (64-bit words); a potential equal to `1` beyond the domain breaks `step`. B-8 and §6.1 restated; `E`'s `vk` on a node is `π`'s `hdr.pub` (`vkOf_of_run`). Owners: S-H2 (`computes_Eof`, `E_leaf`, `E_node` over `semXIR`; `semXIR` total and computable — a compile fact the badge build checks), S-N1/S-G (`kstate_front_ofE` without `hOut`), S-I (the certificate's `E` field). |
+| **O2/O2b, the row budget** | every unbound import now has a budget row (§4.4, A.11): trace cells 0 (pack map), `rsWeight` 45,604 + kind factor 68,473, `shiftTarget` 1,300, 745 `tensorW` 47,680, `targetSNode` 16,000, `linkWAll` 15,000, **`evalL` replay 10,000 (closed form; 40,000 if chunked)**, `R` 296,795, `free` term 80, **WOTS mux 2,788** (selectors 266, `a_{i,s}` 1,596, `e_i` 532, path `l_t`/`r_t` 128, digits → `h_out` 266; mirror sources are the mux outputs). With the 3.16 levers (`phiRS` split −62,464, sparse-skeleton templating −110,000, instance AP −20,000): **838,199 per slot, 1,676,398 = `2^20.68` per node: 1.25× (1.21× with the `evalL` risk)** — 3.16's 1.27× holds within 2 %. Owner of `StmtN → NodeResid`: **S-E** (the rows: the WOTS mux rows are S-E2's `wots_sound` construction emitted into the compiled program; the templates; `R`), with S-N1/S-G consuming `NodeResid`'s discharge. |
+| **(4) `T_V` frontier** | INT-5: V 226–233 ms VM best = S-E11's 192.9 + `rsWeight`'s kind factor +31–33 (K×K products at ≈ 0.45 µs, not the 90 ns 3.16 assumed; 82 k products per call); at ratio 1.19 ≈ 190–196 ms on the 7763 against 206.0 ms: **1.05–1.08× today**. Still to bind ≈ 14 ms VM (`R` 7, `D̂` 1.5, templates 4, `evalL` 1, mux 0.3). Projections (`sizes.py`): as is + to-bind 240 ms VM → 1.02×; S-T1's kind factor to ≈ 20 ms (the `q` side in F, shared endpoints −20 %) → 227 → 1.08×; **+ S-E11's `evalM` levers (−12: shared pattern sums, folded `one` constants, additive low tables) → 215 ms VM ≈ 180 ms runner, 1.14×**; S-T1 to ≈ 8 ms → 203 → 1.21×. **≥ 1.10× needs V ≤ 223 ms VM (187 ms runner): S-T1's cut is mandatory and most of S-E11's levers.** If it is not reached: the smallest **rule** change is the `R` of `T_V = T_triv/R` (the measured cap would need ≈ 215 ms at 1.10×, i.e. `R ≈ 9.6`); the smallest **design** change is the per-kind machinery itself — one block kind with the pins as `(var k, one)` rows and all per-block values in `E` would remove `β`, `maskRows`, the kind factor and the 9-way muxes (≈ −40 ms VM), but it reopens S-E1-M2, S-C's `lin_trueSum_kinds` and S-G's L truths and is not proposed at this stage. |
+| (5) plan time | the orchestrator's ruling recorded in §4.4: a closed top-level constant built at process start, outside every check's `NS` (`timedCheck` = parse + `acc`), **≤ 5 s on the VM** (43–49 s today, under the 70 s batch floor `verify_s · n + 60 s`); a cold-process control; 3.15's 0.2 s bound withdrawn. Owner S-E. |
+| Margins (`sizes.py` "changes 24") | piSize 797,904 (1.31×); items 8,891 (1.15×); rows 1,676,398 (1.25×); M 13,097 of 16,384, used 60,837 (1.08×); `T_V` 1.14–1.21× projected (1.05–1.08× measured); stream link ≈ 3.0 s of 3.1 s (P2's estimate; re-measure). |
+
+**Revision 3.17 (normative):** (1) `E` is the DSL denotation `decodeWit ∘ semXIR ext ∘
+extractorInput` (B-8, §6.1); (2) the E truth and `hfit` over `nodeIRows (planOf fin)`; (3) the
+complete row budget incl. the `evalL` replay and the WOTS mux rows (§4.4, A.11); (4) the plan is a
+process-start constant, ≤ 5 s on the VM (§4.4).
+
+**What each track changes (revision 3.17):**
+- **S-H2**: `E` restated as `decodeWit ∘ semXIR ext ∘ extractorInput`; `computes_Eof` (= `compile_runs` + `fuel_le` on the domain), `E_leaf`/`E_node` over `semXIR` without `InDom`; confirm `semXIR` is a total computable `def` (the badge compiles it).
+- **S-N1 / S-G**: the linked route (`kstate_front_ofR`), `kstate_front_ofE` without `hOut`; `truthE`/`nE`/`RejE4` over `nodeIRows (planOf fin)`; `NodeResid` discharged from S-E's rows; `FR.lean` imports `FRSoundnessExtAll`.
+- **S-E**: `plan_rowsFit`; the WOTS mux rows emitted into the compiled program (`wots_sound`'s construction); the `evalL` replay as the closed form over A.7's regions; `mRowModel` to the changes-24 budget; the plan as a process-start constant ≤ 5 s with the cold-process control; S-E11's `evalM` levers.
+- **S-T1**: the kind factor's `q` side in F and shared endpoints (target ≤ 20 ms, better ≤ 8).
+- **S-I**: the certificate's `E` field is the `semXIR` denotation (computable); `acc` with `Impl.implCN`.
+- **P2**: none new (the mux rows' cells are the honest WOTS values already written; `v_κ` unchanged).
 
