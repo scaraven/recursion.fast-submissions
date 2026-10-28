@@ -200,3 +200,45 @@ Base: branch `v4/flock-recursive`, HEAD `53c2e13`. Build tree `logs/fr-build-SH2
     Build `logs/S-H2/build11b.log` (2 min 50 s, rebuilding from `FRXProg` down). Stopped:
     this agent's context is long; items 1–6 of the coordinator's new list handed over in RESULT
     Part 12.
+
+## Part 13
+
+26. Item 1 (the fold challenges).
+    - Design change: a query-keyed merge sort cannot be costed (a comparison costs a query's
+      length, charged at the loop cap; a bounded-prefix key leaves unbounded group scans). Instead,
+      one forward pass over the log's words with the next target in hand (`chainIR`, 176 steps a
+      word). It is proved equal to `runLog`'s first-match chain under `¬ StateHit`
+      (`scanC_fm`, by `reverseRecOn`).
+    - New modules: `FRXChainDefs`, `FRXChain`, `FRXChainSem`, `FRXChainLoop`, `FRXChainTop`,
+      `FRXChainFlock`. The fast loop: edit the module, copy it to `logs/fr-build-SH2/scratch/T*.lean`,
+      run `lake env lean` (10–20 s, no rebuild), and bisect timeouts by cutting the proof with
+      `sorry` (a small script).
+    - Pitfalls met:
+      - `omega` hits the **maximum recursion depth** on a hypothesis such as `ansB + 2 ^ 11 ≤ size`
+        when `ansB` is a def whose body is `2 ^ 23 + 2 ^ 12`. Define layout constants as literals
+        (`chB := 8388608`) and keep `2^k` out of the hypotheses omega sees (`chEnd`).
+      - `exact lemma _` against `rd (semXIR I (.blk ps) s).M i` timed out in `whnf` for a 5-prim
+        `ps` named by a def. Fix: `have e : semXIR I P s = ⟨runPrims ps s.M, s.o⟩ := rfl`, then
+        `simp only [e]` (it reduces the projection), then a standalone frame lemma
+        (`nextPs_frame`). `set P := …` plus `generalize` over it also timed out.
+      - `congr 1` on `bW (… && …) = bW (decide …)` and on `toWord a = toWord b` triggers expensive
+        `rfl` attempts (`whnf` timeouts, max recursion). Use `congrArg bW` and `decide_eq_decide`,
+        or rewrite with `show a = b by omega`.
+      - `split_ifs <;> first | rfl | …` timed out where `rfl` compared `rd M 206` with
+        `rd M (203 + (i − b))`. Put the cheap alternatives (`omega`, explicit `rw [show …]`)
+        before `rfl`.
+      - `if_neg (by …)` with an undetermined condition rewrites the *first* `ite` in the goal and
+        leaves a side goal the tactic cannot see. Give the condition: `if_neg (show ¬ … by …)`.
+      - Pass implicit arguments before `by` arguments (`st4IR_sem … (b := ansB + 4 * p)`,
+        `ansPs_sem (qw := qw) (m := m)`). Otherwise `omega` sees a metavariable and fails or
+        recurses.
+      - A multi-line `disch := …` or a `simp only […]` broken before `at` inside parentheses does
+        not parse. Keep each on one line.
+      - `generalize … at h` does not rewrite inside a structure hypothesis's fields (`he.ans`).
+        Rewrite the projected fact itself (`rw [hqw] at a0`).
+    - Blocked on `vk`: the seed carries `vk` and `E` takes none (V4-6). See RESULT Part 13 Q1 (the
+      proposal: `'N'` hdr's `pub := vk`, checked by `V`).
+    - Profiles: every new module is under 20 s on one core. `FRXChainFlock`'s type checking is
+      12.4 s, of which `fsMsgs_items` (`decide +kernel` over 451 items) is 9.8 s.
+    - Stopped with Part 12's items 2–6 untouched: item 1 waits on Q1, and this agent's context is
+      long.

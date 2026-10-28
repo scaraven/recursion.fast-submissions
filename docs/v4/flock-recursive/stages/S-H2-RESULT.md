@@ -1276,3 +1276,200 @@ The coordinator's answers (BLUEPRINT §10, stage-review changes 14):
    every level, and `A_c⁽ⁱ⁾ = jointAgree⁽ⁱ⁾`.
 6. **Wire into `decSnark`.** `bflyIR`, `wtabIR` and `scanIR` already have exact costs and `WF`,
    `NoLoopT` and `outs = 0` lemmas.
+
+---
+
+## Part 13: the fold challenges off the log (item 1), by a forward scan; the `vk` question
+
+**Delivered.** Item 1 of Part 12's handover, in a different form from the one it proposed
+(deviation 1), up to one open input: the seed block (Q1). Items 2–6 are not started.
+`decSnark`, `ext`, `computes` and every existing module are unchanged; the new modules are not yet
+on `ext`'s import path.
+
+### 1. Files (code lines by the core's `scripts/loc.py`)
+
+| File | total / code / theorems | What |
+|---|---|---|
+| `FRXChainDefs` (new) | 224 / 143 / 14 | the first-match chain `fmAns`, the forward scan `scanC`, **`scanC_fm`**, controls |
+| `FRXChain` (new) | 257 / 158 / 19 | the program `chainIR N tab sd` (registers `190 … 211`, memory `[2^23, 2^23 + 2^12 + 2^11)`), `WF`, exact cost, size, `outs` |
+| `FRXChainSem` (new) | 661 / 584 / 23 | the blocks of one word: `lenIR_sem`, `qryIR_sem`, `ansPs_sem`, `st4IR_sem`, `nextIR_sem`, `recIR_sem`, `lastIR_sem` |
+| `FRXChainLoop` (new) | 781 / 678 / 26 | the invariant `Stat`, `TabOK`, the four word cases, `qry_loop`, **`entry_sem`**, **`scan_sem`**, `entriesAt_tape` |
+| `FRXChainTop` (new) | 364 / 313 / 11 | `cnt_sem` (the word count, from every state), `storesIR_sem`, `TabW`, `SeedOK`, **`chainIR_sem`** |
+| `FRXChainFlock` (new) | 264 / 182 / 19 | Flock's targets: `fsMsgs`, `fsQ`, `nRep = 425`, the table `chTab`, **`tabW_chTab`**, **`chain_spec`** |
+
+### 2. Why a forward scan, not a second sort (deviation 1)
+
+Part 12 proposed a second instance of the merge sort keyed on the query (length word, then the
+words), then a binary search per Fiat–Shamir item. The cost model rules this out:
+
+- A comparison of two queries costs up to the shorter query's length. `loopK`/`loopT` charge
+  their cap, so a word-by-word comparison inside the merge step is charged `cap` per comparison:
+  `64 passes · (t/5) · cap(t)`, quadratic in `t`.
+- Keying on a bounded prefix (length, tag, state: 6 words) costs about the answer sort's
+  `2,374·t`. But then equal-prefix entries (same state, different messages) form groups that
+  must be scanned for the full match. A group can hold up to `t/5` entries, and on a bad log the
+  same group can be scanned once per item: no affine bound.
+
+The scan used instead runs **once over the log's words, in log order**, with the next target in
+hand. At an entry whose query is the target of position `p`, it records the answer and moves to
+`p + 1`. Every word costs a constant: `cost (wordIR N) t = 176`. The scan is
+`chainIR = cntIR ; storesIR chB chTab ; sd ; start ; loopT (count = the log's words, cap t)`, and
+
+```lean
+theorem cost_chainIR (N t : ℕ) (tab : List Word) (sd : XIR) :
+    cost (chainIR N tab sd) t = 34 + 9 * tab.length + cost sd t + t / 5 * 24 + t * 179
+```
+
+With `|chTab| = 1,704`, that is `≈ 15,370 + cost sd` constant and **`≈ 183.8·t`** linear, against
+the `≈ 5,800·t` Part 12 left for a second index. `sizeIR (chainIR …) = 284 + 10·|tab| + sizeIR sd`.
+
+Why it equals `runLog`'s first-match reading:
+
+```lean
+theorem scanC_fm {T : ℕ → Digest → ByteArray} {N : ℕ} {st₀ : Digest} {L : Log}
+    (hT : ∀ p st, 0 < p → stateIn (T p st) = some st) (hS : ¬ StateHit L) :
+    ScanInv T N st₀ L (scanC T N st₀ L)
+-- ScanInv … x : x.2.2.length = x.1 ∧ x.1 ≤ N ∧ fmPrev … x.1 = some x.2.1 ∧
+--   ∀ p < N, x.2.2[p]? = fmAns T st₀ L p
+```
+
+- `fmAns T st₀ L p` is the first-match chain: position `p`'s query is `T p a_{p−1}`, answered by
+  `L.find? (·.1 = q)`, exactly `OProg.runLog`'s reading.
+- Proof idea: a query that carries `a_{p−1}` as its state cannot be logged at or before the entry
+  that answered `a_{p−1}`. That would be a `StateHit`, one of `Bad`'s four disjuncts, which
+  `final` excludes. So the first entry with `p`'s target comes after the one found for `p − 1`.
+- The proof is by `List.reverseRecOn` (`scanInv_snoc`).
+- Controls (`decide +kernel`): `scan_toy` (positive), `scan_toy_hit` with `toy_stateHit`
+  (negative: on a log with a state hit, `fmAns` answers position 1 and the scan does not, so the
+  hypothesis is needed), `fm_toy_none` (the chain stops at an unanswered query).
+
+### 3. The machine proof
+
+- **The word step** (`wordIR N`).
+  - At a length word: `rQw := ⌈w/8⌉` and `rMt := [w = tl]`.
+  - At query word `j`: `rMt &&= [w = exW j]`, with `exW j` the header cell `hB + j` below `h`, else
+    the tape word `o + j − h`. The header is the seed's 15 words, or later the tag word and the 4
+    words of the previous answer. The tail is the message read in place from π's tape words.
+  - At answer word `m`: a branch-free select into `rS_m` (`maskSel`).
+  - After answer word 3, if `rMt` and `p < N` (`recIR`): store the answer at `ansB + 4p` and at
+    `H[1…4]`, load the next target (`tl`, `o`, tag) from the table, and set `h := 5`.
+- **The invariant** `Stat I T N M₀ x s`:
+  - `p` is in `rPi`, and the answers found are at `ansB + 4q`;
+  - when `p < N`, the current target's length is in `rTl` and its packed words are `exW`;
+  - `h ≤ 16` and `o < 2^62`;
+  - the heap outside `H` and the answers equals the loop's initial heap.
+- **The four cases** `word_len`, `word_qry`, `word_ans`, `word_last` each preserve `Stat` (and
+  `Keep`: `rPi, rTl, rTh, rTo` and the heap). `word_last` advances the scan state exactly when
+  `p < N` and the flag is set. Its record case rebuilds the next target from the table
+  (`TabOK`).
+- **`entry_sem`**: `qWords e` iterations do `scanStep T N x e`. The flag is
+  `[|q| = |T|] ∧ ∀ j < ⌈|q|/8⌉, word_j = exW j`, which is `q = T p st` by `eq_of_packBytes` (equal
+  sizes and equal packed words give equal bytes). **`scan_sem`** iterates over the entries.
+- **`chainIR_sem`**: on a domain tape of a SNARK proof, given `TabW` (the table realises the
+  targets) and `SeedOK sd` (the seed block writes the seed's 15 words into `H`):
+  - the answers at `ansB + 4q` are the scan's for `q < (scanC …).1`;
+  - the heap outside `[chB, chEnd)` is kept.
+- The count `cnt_sem` comes from a store-free walk, so it holds from **every** state. This is the
+  form `Safe`'s `loopT` constructor needs for the bound `count ≤ t`, and it does not clobber the
+  log index `X`.
+- **Flock** (`FRXChainFlock`).
+  - `fsMsgs` lists, per Fiat–Shamir position, the π range of the absorbed message. It is read off
+    the phase table as `FRVIR.genPhase` asks (`phaseOff n f`, round `j` at `+ j·roundBytes`,
+    `uni`, seed `hdr`).
+  - `fsQ vk c π p st` is `seedQ` / `absorbQ` / `squeezeQ` on it.
+  - Controls: `fsMsgs_length` (451), **`fsMsgs_items`** (the kinds and lengths are exactly
+    `fsItems`, A.4), `fsMsgs_aligned` (every message is 8-byte aligned inside `piSize`), and
+    `fsMsgs_ctl` (the seed is `hdr` `(0, 48)`, position 2 is `cap₀` at `19,168`, `16,384` bytes).
+  - `nRep_ctl`: P1.4 starts at FS position 417 with 8 items, so `nRep = 425` covers every
+    `sAt es i l`.
+  - `tabW_chTab`: the table realises `fsQ` on every tape of a proof of `piSize` bytes (absorb words
+    = tag, state, π's words at `5 + o/8`).
+
+```lean
+theorem chain_spec (vk c : Digest) (π : Proof) (L : Log) (hs : π.size = piSize)
+    (hq : ∀ e ∈ L, e.1.size < 2 ^ 64) (ht : (extractorInput c π L).length ≤ 2 ^ 64)
+    (hS : ¬ StateHit L) {sd : XIR}
+    (hsd : SeedOK sd (extractorInput c π L).toArray (fsQ vk c π 0 zeroD))
+    (s : St) (hM : Inv s.M) (hsz : chEnd ≤ s.M.size) {p : ℕ} (hp : p < nRep) {a : Digest}
+    (ha : fmAns (fsQ vk c π) zeroD L p = some a) {m : ℕ} (hm : m < 4) :
+    rd (semXIR (extractorInput c π L).toArray (chainIR nRep chTab sd) s).M (ansB + 4 * p + m) =
+      (packBytes a.toList).getD m 0
+```
+
+### 4. Checks
+
+- **Axioms** (`logs/S-H2/axioms13.log`).
+  - `chain_spec`, `chainIR_sem`, `scanC_fm`, `tabW_chTab` and `computes` depend on
+    `propext, Classical.choice, Quot.sound`.
+  - `fsMsgs_items` depends on `propext`, and `scan_toy_hit` on `propext, Quot.sound`.
+- **Source rule**: 92 files, 0 findings. No `sorry`.
+- **Build**: `lake build FRXChainFlock FRXExt FRXSpec FRXLeaf FRXAgree` takes 56.6 s
+  (`logs/S-H2/build13.log`).
+- **Sequential profile** (`taskset -c 0`, `-DElab.async=false`; `logs/S-H2/FRXChain*.profile`,
+  `.time`):
+
+  | Module | wall | max RSS | type checking | simp | tactics |
+  |---|---|---|---|---|---|
+  | `FRXChainDefs` | 7.9 s | 2.67 GB | 1.29 s | 0.13 s | 0.33 s |
+  | `FRXChain` | 14.1 s | 2.61 GB | 0.36 s | 3.66 s | 0.18 s |
+  | `FRXChainSem` | 18.9 s | 2.66 GB | 1.72 s | 3.71 s | 5.32 s |
+  | `FRXChainLoop` | 16.7 s | 2.69 GB | 2.16 s | 2.19 s | 3.13 s |
+  | `FRXChainTop` | 10.7 s | 2.63 GB | 1.02 s | 1.08 s | 1.43 s |
+  | `FRXChainFlock` | 19.7 s | 3.81 GB | 12.4 s (9.8 s `fsMsgs_items`) | 0.11 s | 0.50 s |
+
+### 5. Deviations
+
+1. **A forward scan, not a query-keyed sort and binary search** (§2). It is cheaper (`≈ 184·t`
+   against `≈ 2,374·t` plus an unbounded group scan) and its correctness needs `¬ StateHit L`,
+   which `final` has (`¬ Bad L`). §6.2 should list the step as "replay the Fiat–Shamir chain by
+   one forward pass over the log, `nRep = 425` items".
+2. **`TabW`/`SeedOK` as interfaces.** `chainIR_sem` is stated for any table and seed block
+   meeting them. Flock's table is proved (`tabW_chTab`); the seed block is not written (Q1).
+3. **Memory** `[2^23, 2^23 + 2^12 + 2^11)`: the table, `H`, and 425 answers of 4 words. The
+   constants are literals (`chB = 8388608`, …, `layout_eq`); see journal item 26 on `omega`.
+
+### 6. Open questions
+
+- **Q1 (`vk`; blocking the seed block, hence the wiring and the `'N'` case).** The chain starts at
+  the seed `"FRSEED0" ‖ vk ‖ c ‖ hdr`. `E` takes no `vk` (V4-6, `Certificate.lean`:
+  `secure : ∀ vk, KS … (S.V vk) S.E …`), so the extractor cannot build the seed query. No rule over
+  the log recovers it soundly:
+  - A seed with another `vk'` (and its whole chain) can be logged before the real one at no cost.
+  - Its challenges need not satisfy the truths, since `V vk'` need not accept.
+  - So "the first seed for `(c, hdr)`" or "the first complete chain" can follow the wrong chain.
+
+  **Proposal**: an `'N'` proof carries `vk` in `hdr`'s `pub` field (bytes `16 … 47`, unused for
+  `'N'`; §1.1), and `V` checks `pub = vk` for `'N'` (one `piField fHdr 16 32`, `input 0`,
+  `assertEq`). The node circuit's child check then needs a matching equality (the child's seed
+  payload elements 5–6 against the `vk` cells 0–1). This is S-0/S-E/P's territory.
+
+  With it, `sd` reads `vk` from tape words `7 … 10` and builds the 15 seed words with byte
+  shifts (`(S_{j−1} >> 8) | (S_j << 56)`). `SeedOK` then follows from an `ofLE` lemma. The rest
+  of item 1 is done.
+- **Q2 (the link to `es`).** `final` must supply, from `runLog_chain`, that the verifier's chain
+  agrees with the first-match chain on the first `nRep` positions:
+  `∀ p < nRep, fmAns (fsQ vk c π) zeroD L p = some (ansAt es p)`. With it, `sAt es i l` is the
+  machine's `chK` of the answer words at `ansB + 4(phStart(25+5i) + 2l + 1)`. That needs the
+  verifier's query list to be `fsQ` (`FRVIRSpec.queries_gen` against `fsMsgs`).
+  `fsMsgs_items` already pins the kinds and lengths. Who proves the message ranges against `gen`:
+  S-G2 or S-0?
+
+### 7. What remains (Part 12's items 2–6, unchanged)
+
+1. The seed block (after Q1). Then `chainIR` goes before `idxIR` in `decSnark`, with `Safe` from
+   `cnt_sem` and `tape_count_le`.
+2. The barycentric interpolation (Part 11 §4 step 4).
+3. Levels 1–4 (the generalised `readIR`), the folds with `z` from `ansB`, `Enc` and the flags.
+4. The `decodeWit` output.
+5. The `'N'` case of `ext_good_tape`. Its hypotheses: `¬ farL`, `truthC` and `A_c = jointAgree`
+   at every level, Q2's chain link, and `¬ StateHit L`. The cap link `capPi π e = capDig es 0 e`
+   follows from Q2's link at position 2 (`fsMsgs_ctl`: its message is π's `cap₀` field).
+6. The wiring into `decSnark`, re-checking `decOk`/`computes`.
+
+**Stopped here.** Item 1 is complete except for the seed block, which waits on Q1. The state is
+commit-ready:
+
+- every `FRX*` module builds;
+- no `sorry`;
+- the source rule is clean;
+- `ext`, `computes` and the costs are unchanged.

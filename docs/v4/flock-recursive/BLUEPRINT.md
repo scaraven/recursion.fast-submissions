@@ -1521,3 +1521,11 @@ Note (3.9): `sizes.py` carries S-0's 3.8.2 reconciliation of the item sequence (
 |---|---|
 | No padding cells | The hashed stream is `1,437,760 = 64·22,465` bytes, so every chain's last block is full and `Padded` holds trivially (`stream_padded`). The six "padding cells" of A.7/§4.3 do not exist (they would be trace cells), and pinning them would break completeness. They are dropped from A.7's public-cell list and from S-E2's `pubVals`/`PubCells`. The public cells are `one`, then `vk` and `c₁` halves, then `vk` and `c₂` halves. |
 | `Hide` in the potential | Hide gets a separate additive potential `μ_Hide`: the indicator that Hide occurred at some P1.i, charged ≤ eᵢℓᵢ/|K| at P1.i's fold squeezes (≈ 2^-238 per query) and frozen afterwards. The total `μ = μ_doom + μ_Hide`; the per-query sum stays ≤ εR = 15/2^124, kernel-checked. `final` gets ¬Hide, hence `A_c⁽ⁱ⁾ = jointAgree⁽ⁱ⁾`, from μ < 1. The claimed ε is unchanged. |
+
+### Stage-review changes 16 (S-H2 Part 13)
+
+| Point | Change |
+|---|---|
+| `vk` in a node proof | `E` takes no `vk` (V4-6), but the extractor must rebuild the FS seed `"FRSEED0" ‖ vk ‖ c ‖ hdr` to replay a node's fold challenges. As V4-6 provides ("a design whose encoding depends on vk writes vk into π"), an **'N' proof carries `vk` in hdr bytes 16–47** (the `pub` field: leaves keep `s` there), and **`V` asserts `hdr.pub = vk` for kind N**. The node circuit inherits the check on its children, since it replays the child's `V`. The prover writes the field. |
+| The challenge replay | One forward pass over the log (`chainIR`, ≈ 184 steps per word), proved equal to `runLog`'s first-match chain on a log with no state hit (`scanC_fm`), instead of a second sort (§6.2). |
+| The query link | S-0 proves that the extractor's FS query list `fsQ vk c π` is `gen`'s FS query sequence. S-G2 composes it with `runLog`, which also gives `capPi π e = capDig es 0 e`, so that is no longer a separate hypothesis. |
