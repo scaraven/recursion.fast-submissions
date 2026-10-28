@@ -24,7 +24,7 @@ pub enum It {
 
 /// The phases of A.4 with their items (`FRTranscriptDefs.phases`).
 pub fn items_seq() -> Vec<(&'static str, It)> {
-    let mut v: Vec<(&'static str, It)> = Vec::with_capacity(8874);
+    let mut v: Vec<(&'static str, It)> = Vec::with_capacity(8891);
     let ab = |v: &mut Vec<(&'static str, It)>, ph: &'static str, len: usize, field: usize| v.push((ph, It::Absorb { len, field }));
     let sq = |v: &mut Vec<(&'static str, It)>, ph: &'static str, n: usize| (0..n).for_each(|_| v.push((ph, It::Squeeze)));
     let rounds = |v: &mut Vec<(&'static str, It)>, ph: &'static str, n: usize, len: usize, field: usize| {
@@ -50,13 +50,14 @@ pub fn items_seq() -> Vec<(&'static str, It)> {
     rounds(&mut v, "Lr2", pp::LR_ROUNDS, 48, pp::F_LR);
     ab(&mut v, "Lrend", 48, pp::F_LREND);
     sq(&mut v, "Lr3", 1);
-    rounds(&mut v, "Lr4", pp::LR_ROUNDS, 48, pp::F_LR);
-    ab(&mut v, "RS0", pp::RS_CLAIMS * 128 * 16, pp::F_RS0);
-    sq(&mut v, "RS1", pp::RS1_SQ);
     sq(&mut v, "E1", pp::E1_SQ);
     rounds(&mut v, "E2", pp::E2_ROUNDS, 48, pp::F_E);
     ab(&mut v, "Eend", 48, pp::F_EEND);
     sq(&mut v, "E3", 1);
+    rounds(&mut v, "E4", pp::E4_ROUNDS, 48, pp::F_E);
+    ab(&mut v, "E4end", pp::E4END_LEN, pp::F_E);
+    ab(&mut v, "RS0", pp::RS_CLAIMS * 128 * 16, pp::F_RS0);
+    sq(&mut v, "RS1", pp::RS1_SQ);
     sq(&mut v, "B'", 1);
     let star = ladder(M_STAR);
     for i in 0..LEVELS {
@@ -87,7 +88,7 @@ pub fn item_recs() -> Vec<ItemRec> {
             It::Seed => ItemRec { phase, q: "seed", len: None, level: None, depth: None, qlen: 7 + 64 + pp::HDR_LEN },
             It::Absorb { len, .. } => ItemRec { phase, q: "absorb", len: Some(len), level: None, depth: None, qlen: 40 + len },
             It::Squeeze => ItemRec { phase, q: "squeeze", len: None, level: None, depth: None, qlen: 40 },
-            It::Col { level } => ItemRec { phase, q: "col", len: None, level: Some(level), depth: None, qlen: 8 + 16 * pp::STAR_ROWS[level] },
+            It::Col { level } => ItemRec { phase, q: "col", len: None, level: Some(level), depth: None, qlen: 8 + 16 * pp::STAR_ROWS[level] + pp::COL_PAD },
             It::Node { level, depth } => ItemRec { phase, q: "node", len: None, level: Some(level), depth: Some(depth), qlen: 72 },
         })
         .collect()
@@ -189,9 +190,9 @@ mod tests {
     #[test]
     fn items_seq_kat() {
         let recs = item_recs();
-        assert_eq!(recs.len(), 8874);
-        assert_eq!(recs.iter().filter(|r| r.q != "col" && r.q != "node").count(), 451);
-        let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../logs/S-0/dump/items.json");
+        assert_eq!(recs.len(), 8891);
+        assert_eq!(recs.iter().filter(|r| r.q != "col" && r.q != "node").count(), 468);
+        let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../logs/INT-2/dump/items.json");
         match crate::kat::load_items(&p) {
             Some(want) => crate::kat::compare(&recs, &want).unwrap(),
             None => eprintln!("items_seq_kat: items.json absent, counts only"),

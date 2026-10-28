@@ -384,8 +384,17 @@ pub fn prove_logged(o: &dyn Oracle, circ: &Circuit, vk: &Digest, s: &Digest, m: 
     tm.mark("shift", &mut t);
 
     if std::env::var_os("FLOCK_NODE_SHAPE").is_some() {
-        node_surrogate(f, &mut wr.fs);
-        tm.mark("node_extra", &mut t);
+        if crate::nodeshape::preload().is_some() {
+            // the node's E2, E4 and Lr on the dumped node circuit (timing only)
+            let (e2, e4, lr) = crate::nodeshape::run(f, F::from_bytes(&wr.fs.st[..16])).unwrap();
+            tm.phases.push(("node_E2", e2));
+            tm.phases.push(("node_E4", e4));
+            tm.phases.push(("node_Lr", lr));
+            t = Instant::now();
+        } else {
+            node_surrogate(f, &mut wr.fs);
+            tm.mark("node_extra", &mut t);
+        }
     }
 
     // ---- Lr (node only): zero for a leaf
@@ -397,8 +406,20 @@ pub fn prove_logged(o: &dyn Oracle, circ: &Circuit, vk: &Digest, s: &Digest, m: 
     wr.send(pp::F_LREND, &[0u8; 48]);
     wr.fs.phase = "Lr3";
     wr.fs.squeeze();
-    wr.fs.phase = "Lr4";
-    dummy_rounds(&mut wr, pp::F_LR, pp::LR_ROUNDS, 48);
+
+    // ---- E (node only): zero for a leaf (rev. 3.13: E before RS; E4 the 23-round lincheck)
+    wr.fs.phase = "E1";
+    wr.fs.squeezes(pp::E1_SQ);
+    wr.fs.phase = "E2";
+    dummy_rounds(&mut wr, pp::F_E, pp::E2_ROUNDS, 48);
+    wr.fs.phase = "Eend";
+    wr.send(pp::F_EEND, &[0u8; 48]);
+    wr.fs.phase = "E3";
+    wr.fs.squeeze();
+    wr.fs.phase = "E4";
+    dummy_rounds(&mut wr, pp::F_E, pp::E4_ROUNDS, 48);
+    wr.fs.phase = "E4end";
+    wr.send(pp::F_E, &[0u8; pp::E4END_LEN]);
 
     // ---- RS: J_z = 4 claims' slices (a leaf's fourth, Lr's, is zero)
     let his = claim_points(&r, &sz, &tl, &tpp, &taup);
@@ -420,16 +441,6 @@ pub fn prove_logged(o: &dyn Oracle, circ: &Circuit, vk: &Digest, s: &Digest, m: 
     let (coef, v_rs) = rs_batch(&parts, rpp, kap);
     let wt = ringswitch::weight_table(&[(&his[0][..], coef[0]), (&his[1][..], coef[1]), (&his[2][..], coef[2])], rpp);
     tm.mark("ringswitch", &mut t);
-
-    // ---- E (node only): zero for a leaf; B′
-    wr.fs.phase = "E1";
-    wr.fs.squeezes(pp::E1_SQ);
-    wr.fs.phase = "E2";
-    dummy_rounds(&mut wr, pp::F_E, pp::E2_ROUNDS, 48);
-    wr.fs.phase = "Eend";
-    wr.send(pp::F_EEND, &[0u8; 48]);
-    wr.fs.phase = "E3";
-    wr.fs.squeeze();
     wr.fs.phase = "B'";
     wr.fs.squeeze();
 
@@ -602,17 +613,8 @@ pub fn verify_logged(o: &dyn Oracle, circ: &Circuit, vk: &Digest, c: &Digest, pi
     rd.check(e.iter().all(|&x| x == 0));
     rd.fs.phase = "Lr3";
     rd.fs.squeeze();
-    rd.fs.phase = "Lr4";
-    v_rounds(&mut rd, pp::F_LR, 2, pp::LR_ROUNDS, 0, &mut zero);
 
-    // ---- RS
-    rd.fs.phase = "RS0";
-    let sv = rd.recv_f(pp::F_RS0, pp::RS_CLAIMS * 128);
-    rd.fs.phase = "RS1";
-    let ch = rd.fs.coords(pp::RS1_SQ);
-    let (rpp, kap) = (ch[..7].to_vec(), ch[7]);
-
-    // ---- E (node only): zero; B′
+    // ---- E (node only): zero (E before RS, rev. 3.13)
     rd.fs.phase = "E1";
     rd.fs.squeezes(pp::E1_SQ);
     rd.fs.phase = "E2";
@@ -622,6 +624,19 @@ pub fn verify_logged(o: &dyn Oracle, circ: &Circuit, vk: &Digest, c: &Digest, pi
     rd.check(e.iter().all(|&x| x == 0));
     rd.fs.phase = "E3";
     rd.fs.squeeze();
+    rd.fs.phase = "E4";
+    v_rounds(&mut rd, pp::F_E, 2, pp::E4_ROUNDS, 0, &mut zero);
+    rd.fs.phase = "E4end";
+    let e4 = rd.recv(pp::F_E, pp::E4END_LEN);
+    // finE (v): f̂(r′) = α₄ (zero for a leaf) and the zero half
+    rd.check(e4.iter().all(|&x| x == 0));
+
+    // ---- RS
+    rd.fs.phase = "RS0";
+    let sv = rd.recv_f(pp::F_RS0, pp::RS_CLAIMS * 128);
+    rd.fs.phase = "RS1";
+    let ch = rd.fs.coords(pp::RS1_SQ);
+    let (rpp, kap) = (ch[..7].to_vec(), ch[7]);
     rd.fs.phase = "B'";
     rd.fs.squeeze();
 

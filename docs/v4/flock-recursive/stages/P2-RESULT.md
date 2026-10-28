@@ -618,3 +618,99 @@ the current `run.sh` (`probe/p2-prover/run.sh OUTDIR`, env `P2_LEAF_REQS`, `P2_M
 | `test-leaf 30` (prover.s binary) | accept, rejections, items KAT pass, `lean_ir=accept`, canary rejected; prove 3.64 s |
 | `test-leaf 32` | accept, `lean_ir=accept`, canary rejected; prove 16.1 s (shared VM), 5.25 GB |
 | `prove-leaf 30` via `rf-oracle` | |tr| = 8,874, query lengths equal, `acc` accept, canary reject |
+
+## 12. Node prover (resumption 4)
+
+Status: 2026-10-28, partial. **Done: revision 3.13 for the leaf kinds, dump-exact (INT-2's dump),
+and a node-phase timing on the dumped node circuit. Not done: the N30 node prover, the `node`/`tree`
+modes and the stream-link measurement**, for the reasons in 12.4. Dumps: `logs/INT-2/dump/` (3.13:
+105,828 ops, asks = items = 8,891, piSize 797,904) and `logs/S-E5/nodedump/` (169 MB). Logs:
+`logs/P2/r312/`.
+
+### 12.1 Changes (crate 8,811 `.rs` lines)
+
+| file | lines | change |
+|---|---:|---|
+| `params.rs` | 262 → 270 | 3.13 fields (`F_E = 9`, `F_EEND = 10`, `F_RS0 = 11`; sizes `[…, 720, 48, 2144, 48, 8192, …, 487504, 241664]`), `PI_SIZE = 797,904`, `E4_ROUNDS = 23`, `E4END_LEN = 32`, `COL_PAD = 48` |
+| `leaf.rs` | 663 → 678 | phase order `… Lr1, Lr2, Lr end, Lr3, E1, E2, E end, E3, E4, E4 end, RS0, RS1, B′` (Lr4 withdrawn); a leaf's E4 rounds and E4 end are zero (finE (v): `f̂(r′) = α₄ = 0` and the zero half); the node-shape hook uses `nodeshape.rs` when `FLOCK_NODE_ROWS` is set |
+| `ligerito.rs`, `merkle.rs`, `transcript.rs` | 508 → 509, 60 → 62, 272 → 275 | column items padded with 48 zero bytes (query 8 + 16·rows + 48; field 16 holds the padded columns; the verifier hashes the π bytes as the Lean `askCol` does) |
+| `items.rs`, `kat.rs`, `ir.rs`, `main.rs` | 219, 209, 551, 401 | the 3.13 item table; KATs read `logs/INT-2/dump`; `ir.rs` gains `walkAB` (rev. 3.12's fused walk, two outputs) |
+| `nodeshape.rs` | new, 222 | timing surrogate on the dumped node circuit (12.3) |
+| `prover.s` | regenerated | 6,598,157 bytes, **sha256 `db43cee035fa3311d4c76cc6a4a1c4e38e55e9a1449c82898d8d0647d0fde8ea`** (`build-asm.sh logs/P2/r312/asm`); linked binary sha256 `2c8f58d8…f2fd`; no machine path; `selftest` pass |
+
+The π offsets match INT-2's table (Lr end 6,368; E 6,416, E4 end at +2,112; E end 8,560; RS0 8,608;
+P1 16,800; Pf 18,912; caps 19,584; final 64,640; columns 68,736; siblings 556,240).
+
+### 12.2 Leaf KATs and runs (3.13)
+
+- Items: the native verifier on zero proofs (m = 25, 28, 30, 32), a real m = 25 proof (prover FS
+  log and verifier log) and the static table: **8,891 items equal** (468 FS).
+- The dumped 3.13 program (`ir.rs`, all finals): **accepts** native m = 30 (`P`) and m = 32 (`L`)
+  proofs, rejects the canary, asks 8,891 items; `ir_kat_p30`'s 54 single-byte flips rejected by both
+  the native verifier and the dumped program. No disagreement.
+- `cargo test --release`: 28 passed, 1 ignored. `test-leaf 25, 28, 30, 32` pass (|π| = 797,904).
+  m = 30 prove 3.41 s; m = 32 prove 13.1 s, **peak RSS 5.37 GB** (`/usr/bin/time -v`; cap 11 GB).
+- `prove-leaf 30` through `rf-oracle` (prover.s binary, 2 reps): total 3.98 / 3.81 s, |tr| = 8,891,
+  query lengths = `items.json`, `reassemble(tr) = π`, `acc` accepts (in-process and CLI), canary
+  rejected; the `leaf` request (n = 2^16): done, accept, canary reject, **3.97 s on the VM**.
+
+### 12.3 The node's E/Lr work on the dumped circuit (VM, timing only)
+
+`nodeshape.rs` loads `mrows-0/1.txt` and `lrows.txt` (2,652,430 M entries, 49,320 L entries; 1.9 s,
+before the clock), builds the transpose once, and runs on the packed witness `f` (`2^23` F, the
+node's size): Lr (matrix products + 15 degree-3 rounds), E2 (`A_M f`, `B_M f`, `C_M f` over `2^21`
+rows + 21 degree-3 rounds), E4 (the table `(A_M + κB_M + κ²C_M)ᵀ eq(r_E2) + κ³(L)ᵀ eq(r_Lr)` over the
+`2^23` cells, one gather, + the 23-round lincheck). Measured inside `prove-leaf 30` (2 reps,
+`logs/P2/r312/node2/`): **E2 0.27–0.28 s, E4 0.53–0.56 s, Lr 0.015 s**; prove-leaf with them 4.26–4.55 s
+(without: 3.81–3.98 s); peak RSS 2.11 GB (incl. the loaded dump).
+
+**Estimates (not measurements):**
+- The dumped rows are S-E5's compiled ones, 282,319 per slot; the circuit model has 968,943 per slot
+  (the templates still missing). Only the sparse products and the gather scale with the entries.
+- Node on the VM ≈ the m = 30 PIOP (≈ 3.4 s) + E/Lr ≈ 0.8 s + the node witness (H blocks ≈ 46 k
+  compressions ≈ 2× the leaf's witness; the M replay of two children's verifiers ≈ 2 × 0.04 s plus a
+  row solve) ≈ **4.4–4.6 s VM**.
+- 7763 projection with the leaf ratio: VM `leaf` request 3.87–3.97 s against the 7763's 1.37–1.43 s
+  (§10), ratio ≈ 2.75. Node ≈ 4.5 / 2.75 ≈ **1.6 s**, link ≈ 1.4 + 1.6 ≈ **3.0 s** against the ≈ 3.1 s
+  cap. The coordinator's ≈ 2.94 s sits within that range. E4 is the largest added phase (a 2^23
+  degree-2 sumcheck on two tables); fusing its first round with the gather is the obvious cut.
+
+### 12.4 Why the node prover is not built, and what it needs
+
+1. **The node dump is not at 3.13.** `logs/S-E5/nodedump/`'s register map (`mregs`) is the 3.12 mux
+   program: its untracked registers fall on `piField`/`idx`/`shrN` there, but on `askNode`/
+   `piDigest`/… in INT-2's 3.13 `ops-M.txt`. It was also compiled with `finPf` pending
+   (`NodeDumpT`: `fins = finC pending`), so the dump has no `finPf` rows. A 3.13 child replayed against
+   it cannot satisfy its rows. The coordinator's re-dump from `logs/fr-build` is the input. The loaders
+   (`nodeshape::load`, path from `FLOCK_NODE_ROWS`) already read the format, so the re-dump needs no
+   code change.
+2. **The dumped M rows cover 282 k of the model's 969 k rows per slot.** The templates S-E has not
+   generated (child `evalM`/`evalL` replays, `walkAB`, `tensorW`, `rsWeight`, `kindInd`, `rowW`,
+   `shiftTarget`, `linkW`) have no rows yet. Their output registers are not bound by any row.
+3. **The import cells of M are not tied to H** (QUEUE: "the pack map from H trace/stream cells to the
+   M imports", S-E). So the circuit does not yet say which H stream cells the M imports alias. The
+   prover would fill both copies consistently, but the H side has no fixed form to KAT.
+4. **Node `targetS`/`linkW`** (S-CN, running): the node's Z target E over nine kinds and the 7 link
+   families are unspecified in code. A native placeholder is possible, but neither the Lean program
+   nor `ir.rs` on `ops-N` could check it until `implC` has them.
+5. **`evalM`/`evalL` for `ir.rs` on `ops-N`**: the dumped rows are enough (`nodeshape`'s matrices),
+   but only after 1–2 do they match the circuit `ops-N` evaluates.
+
+With 1–4 delivered, the prover is:
+- the H witness (stream blocks of both traces, `hashStmt`, WOTS with digit selectors, key leaf, path,
+  the WM mirrors at A.6's offsets);
+- the L bits;
+- the M region: the mux program run on each child by `ir.rs` (kind from `hdr`), registers written per
+  `mregs`, `maux` columns, template locals by a forward row solve;
+- the shared PIOP with nine kinds (`free` rows identity), the link families, Lr, E2/E4 on the loaded
+  matrices.
+
+Then `ir.rs` on `ops-N` with `evalM`/`evalL` from the same rows is the end-to-end check.
+
+**Modes and run.sh:** `node` and `tree` still exit 2. `run.sh` is unchanged. Its leaf, `prove-leaf
+30` and m = 32 measurements run as before. The node-shape run on the dumped circuit needs the 169 MB
+node dump on the runner (it lives in `logs/`, gitignored), so it stays local:
+
+```
+FLOCK_NODE_SHAPE=1 FLOCK_NODE_ROWS=$PWD/logs/S-E5/nodedump REPS=2 logs/P2/r37/run-service.sh $PWD/<prover> OUTDIR 30
+```

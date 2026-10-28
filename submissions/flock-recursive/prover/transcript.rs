@@ -4,11 +4,11 @@
 //! reading order is the item order of A.4 while `π` is grouped by field.
 //!
 //! `Fs` can log every query it asks as an A.4 item (`ItemRec`: phase, query kind, payload length,
-//! Merkle level and depth, query length), the form of `logs/S-0/dump/items.json` (the KAT).
+//! Merkle level and depth, query length), the form of `logs/INT-2/dump/items.json` (the KAT).
 
 use crate::blake2s::Digest;
 use crate::field::{F, K};
-use crate::merkle::{col_query, node_query};
+use crate::merkle::node_query;
 use crate::oracle::Oracle;
 use crate::params::{field_off, FIELD_SIZES, N_FIELDS, PI_SIZE, TAG_ABS, TAG_SEED, TAG_SQZ};
 
@@ -142,10 +142,13 @@ impl<'a> Fs<'a> {
         v
     }
     /// The column query of level `i` (a verifier item).
-    pub fn ask_col(&mut self, level: usize, col: &[F]) -> Digest {
+    pub fn ask_col(&mut self, level: usize, payload: &[u8]) -> Digest {
         let mut q = std::mem::take(&mut self.buf);
         q.clear();
-        col_query(level as u8, col, &mut q);
+        q.extend_from_slice(crate::params::TAG_MCOL);
+        q.push(level as u8);
+        q.push(0);
+        q.extend_from_slice(payload);
         let a = self.o.ask(&q);
         let qlen = q.len();
         self.buf = q;

@@ -102,3 +102,14 @@
   `nodeLayout`'s intervals and link maps exists (A.7 says the M bases are pinned by such a dump);
   the Lr point is provisional. Stopped per the Pace rule; RESULT §11.3 lists what is needed.
 - `prover.s` regenerated: sha256 `f3e33f44…f7a6`.
+
+## 2026-10-28 (resumption 4: rev. 3.13, node)
+
+- 3.13 for the leaf kinds against INT-2's dump: E before RS, Lr4 withdrawn, E4 (23 rounds) and
+  E4 end (32 B), columns padded by 48 B, piSize 797,904; `ir.rs` gains `walkAB`. Items 8,891 equal;
+  the dumped program accepts m = 30/32 proofs, canary rejected; prove-leaf via `rf-oracle` |tr| 8,891.
+- `nodeshape.rs`: E2/E4/Lr on S-E5's dumped node rows. VM: E2 0.27 s, E4 0.53 s (after moving the
+  gather to a prebuilt transpose: 1.07 → 0.53 s), Lr 0.015 s.
+- Node prover not built. The S-E5 dump is the 3.12 mux program without finPf; the M rows are 282 k
+  of 969 k per slot; the imports are not tied to H; the node targetS/linkW are pending. RESULT §12.4.
+- prover.s sha256 `db43cee0…e8ea`.

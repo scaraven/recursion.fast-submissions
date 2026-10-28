@@ -20,6 +20,8 @@ pub fn col_query(level: u8, col: &[F], out: &mut Vec<u8>) {
     for x in col {
         out.extend_from_slice(&x.to_bytes());
     }
+    // rev. 3.12: the column item is padded to a multiple of 64 bytes in the stream
+    out.extend_from_slice(&[0u8; crate::params::COL_PAD]);
 }
 
 pub fn node_query(level: u8, l: &Digest, r: &Digest, out: &mut Vec<u8>) {

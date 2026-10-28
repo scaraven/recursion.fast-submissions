@@ -332,6 +332,7 @@ pub fn prove(m: usize, f: &[F], w0: Vec<F>, claim0: F, c0: Commit0, wr: &mut Wri
             for x in col {
                 wr.put(pp::F_COLS, &x.to_bytes());
             }
+            wr.put(pp::F_COLS, &[0u8; pp::COL_PAD]);
             for d in tree.path(p as usize) {
                 wr.put(pp::F_SIBS, &d);
             }
@@ -452,9 +453,9 @@ pub fn verify(m: usize, cap0: &[Digest], claim0: F, rd: &mut Reader, w0: &dyn Fn
         let mut ys = Vec::with_capacity(ps.len());
         let sib = lv.code_log - lv.cap_log;
         for &p in &ps {
-            let cb = rd.take(pp::F_COLS, 16 * rows);
-            let col: Vec<F> = cb.chunks_exact(16).map(F::from_bytes).collect();
-            let mut cur = rd.fs.ask_col(i, &col);
+            let cb = rd.take(pp::F_COLS, 16 * rows + pp::COL_PAD);
+            let col: Vec<F> = cb[..16 * rows].chunks_exact(16).map(F::from_bytes).collect();
+            let mut cur = rd.fs.ask_col(i, cb);
             for d in 0..pp::STAR_SIB[i] {
                 let sd: Digest = rd.take(pp::F_SIBS, 32).try_into().unwrap();
                 if d < sib {

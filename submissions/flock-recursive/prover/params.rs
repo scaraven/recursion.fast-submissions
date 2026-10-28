@@ -3,8 +3,8 @@
 //! `docs/v4/flock-recursive/stages/P1-RESULT.md` §4 where the blueprint leaves a detail open).
 //! A change of the protocol is a change of this file (and of the phase code that reads it).
 //!
-//! Revision 3.9: the constants are A.1's (S-A), the layouts A.2–A.4's (S-0): the proof's eighteen
-//! fields (`FIELD_SIZES`, `piSize = 755,680`), the item counts of the phase table (`Z1_SQ` …), the
+//! Revision 3.13: the constants are A.1's (S-A), the layouts A.2–A.4's (S-0): the proof's eighteen
+//! fields (`FIELD_SIZES`, `piSize = 797,904`), the item counts of the phase table (`Z1_SQ` …), the
 //! `m* = 32` ladder that sizes the item sequence (`STAR_*`). The old P1 notes below that say
 //! "PLACEHOLDER" record where a value came from before S-A fixed it (the values did not change).
 
@@ -112,9 +112,10 @@ pub const F_L2: usize = 5;
 pub const F_S2: usize = 6;
 pub const F_LR: usize = 7;
 pub const F_LREND: usize = 8;
-pub const F_RS0: usize = 9;
-pub const F_E: usize = 10;
-pub const F_EEND: usize = 11;
+/// Rev. 3.13: E's fields precede RS0's (E before RS; A.3 "fields 9, 9′ precede field 8").
+pub const F_E: usize = 9;
+pub const F_EEND: usize = 10;
+pub const F_RS0: usize = 11;
 pub const F_P1: usize = 12;
 pub const F_PF: usize = 13;
 pub const F_CAPS: usize = 14;
@@ -124,9 +125,10 @@ pub const F_SIBS: usize = 17;
 pub const N_FIELDS: usize = 18;
 /// A.3's sizes (`FRFormat.fieldSizes_eq`; `logs/S-0/dump/summary.txt`).
 pub const FIELD_SIZES: [usize; N_FIELDS] =
-    [48, 128, 2048, 1248, 32, 800, 1344, 1440, 48, 8192, 1008, 48, 2112, 672, 45056, 4096, 445696, 241664];
-/// `piSize = 755,680` (A.3, rev. 3.8.2), the same for every SNARK kind.
-pub const PI_SIZE: usize = 755680;
+    [48, 128, 2048, 1248, 32, 800, 1344, 720, 48, 2144, 48, 8192, 2112, 672, 45056, 4096, 487504, 241664];
+/// `piSize = 797,904` (rev. 3.13 as INT-2's Lean has it: E4 end absorbs `f̂(r′) ‖ 0^16`), the same
+/// for every SNARK kind.
+pub const PI_SIZE: usize = 797904;
 
 /// The offset of field `f` in `π`.
 pub const fn field_off(f: usize) -> usize {
@@ -158,6 +160,12 @@ pub const RS_CLAIMS: usize = 4;
 pub const RS1_SQ: usize = 4;
 pub const E1_SQ: usize = 11;
 pub const E2_ROUNDS: usize = 21;
+/// E4: the E lincheck (rev. 3.12/3.13), 23 degree-2 rounds; E4 end absorbs `f̂(r′) ‖ 0^16`.
+pub const E4_ROUNDS: usize = 23;
+pub const E4END_LEN: usize = 32;
+/// Column items are padded to a multiple of 64 B in the stream (rev. 3.12): 48 zero bytes after the
+/// column's F elements (query 8 + 16·rows + 48).
+pub const COL_PAD: usize = 48;
 pub const PF_ROUNDS: usize = 7;
 /// P3: `κ_c` from 5 squeezes, the first 9 coordinates (rev. 3.8: `eq(κ_c, bits₉(j))`).
 pub const P3_SQ: usize = 5;
@@ -220,16 +228,16 @@ mod tests {
             (F_ZEND, 32),
             (F_L2, L2_ROUNDS * 48 + L3_KINDS * 16),
             (F_S2, S2_ROUNDS * 48),
-            (F_LR, 2 * LR_ROUNDS * 48),
+            (F_LR, LR_ROUNDS * 48),
             (F_LREND, 48),
             (F_RS0, RS_CLAIMS * 128 * 16),
-            (F_E, E2_ROUNDS * 48),
+            (F_E, (E2_ROUNDS + E4_ROUNDS) * 48 + E4END_LEN),
             (F_EEND, 48),
             (F_P1, ROW_LOG.iter().sum::<usize>() * 96),
             (F_PF, PF_ROUNDS * 96),
             (F_CAPS, CAP_LOG.iter().map(|c| 32 << c).sum()),
             (F_FINAL, FINAL_ELEMS * 32),
-            (F_COLS, (0..LEVELS).map(|i| l[i].queries * STAR_ROWS[i] * 16).sum()),
+            (F_COLS, (0..LEVELS).map(|i| l[i].queries * (STAR_ROWS[i] * 16 + COL_PAD)).sum()),
             (F_SIBS, (0..LEVELS).map(|i| l[i].queries * STAR_SIB[i] * 32).sum()),
         ];
         for (f, n) in want {

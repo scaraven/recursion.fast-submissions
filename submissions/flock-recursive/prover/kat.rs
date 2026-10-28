@@ -1,6 +1,6 @@
 //! Known-answer checks against the Lean dumps (stage P2, rev. 3.7):
 //!
-//! * the item sequence (A.4): `logs/S-0/dump/items.json` (`irdump items`, 8,874 items: phase, query
+//! * the item sequence (A.4): `logs/INT-2/dump/items.json` (`irdump items`, 8,891 items: phase, query
 //!   kind, payload length, Merkle level and depth, query length), compared item by item with what
 //!   the native verifier asks (`leaf::verify_logged`) and, for the Fiat–Shamir items, with what the
 //!   prover asks. The file is read where it is (env `FLOCK_ITEMS_JSON`, else `logs/S-0/dump/
@@ -13,7 +13,7 @@
 use crate::transcript::ItemRec;
 use std::path::PathBuf;
 
-/// `items.json`'s path: `FLOCK_ITEMS_JSON`, else `logs/S-0/dump/items.json` in the working directory
+/// `items.json`'s path: `FLOCK_ITEMS_JSON`, else `logs/INT-2/dump/items.json` in the working directory
 /// or one of its parents.
 pub fn find_items_json() -> Option<PathBuf> {
     if let Some(p) = std::env::var_os("FLOCK_ITEMS_JSON") {
@@ -21,7 +21,7 @@ pub fn find_items_json() -> Option<PathBuf> {
     }
     let mut d = std::env::current_dir().ok()?;
     loop {
-        let p = d.join("logs/S-0/dump/items.json");
+        let p = d.join("logs/INT-2/dump/items.json");
         if p.is_file() {
             return Some(p);
         }
@@ -32,14 +32,14 @@ pub fn find_items_json() -> Option<PathBuf> {
 }
 
 /// The dumped verifier programs with the finals (`ops-L.txt`, `ops-P.txt`): `FLOCK_IR_DUMP`, else
-/// `logs/S-G/dump` in the working directory or one of its parents.
+/// `logs/INT-2/dump` in the working directory or one of its parents.
 pub fn find_ir_dump() -> Option<PathBuf> {
     if let Some(p) = std::env::var_os("FLOCK_IR_DUMP") {
         return Some(PathBuf::from(p));
     }
     let mut d = std::env::current_dir().ok()?;
     loop {
-        let p = d.join("logs/S-G/dump");
+        let p = d.join("logs/INT-2/dump");
         if p.join("ops-P.txt").is_file() {
             return Some(p);
         }
@@ -104,22 +104,22 @@ mod tests {
 
     fn items_path() -> Option<PathBuf> {
         std::env::var_os("FLOCK_ITEMS_JSON").map(PathBuf::from).or_else(|| {
-            let p = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../logs/S-0/dump/items.json");
+            let p = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../logs/INT-2/dump/items.json");
             p.is_file().then_some(p)
         })
     }
 
-    /// The verifier asks A.4's 8,874 items for every leaf kind and test shape, whatever `π` holds
+    /// The verifier asks A.4's 8,891 items for every leaf kind and test shape, whatever `π` holds
     /// (here a zero proof with the kind's header).
     #[test]
     fn items_kat_verifier() {
         let Some(p) = items_path() else {
-            eprintln!("items_kat_verifier: SKIP (logs/S-0/dump/items.json absent)");
+            eprintln!("items_kat_verifier: SKIP (logs/INT-2/dump/items.json absent)");
             return;
         };
         let want = load_items(&p).unwrap();
-        assert_eq!(want.len(), 8874);
-        assert_eq!(want.iter().filter(|w| !w.contains("\"q\":\"col\"") && !w.contains("\"q\":\"node\"")).count(), 451);
+        assert_eq!(want.len(), 8891);
+        assert_eq!(want.iter().filter(|w| !w.contains("\"q\":\"col\"") && !w.contains("\"q\":\"node\"")).count(), 468);
         let circ = Circuit::build();
         let o = crate::oracle::Local::keyed(&[3u8; 32]);
         for m in [25usize, 28, 30, 32] {
@@ -137,7 +137,7 @@ mod tests {
     #[test]
     fn items_kat_prover() {
         let Some(p) = items_path() else {
-            eprintln!("items_kat_prover: SKIP (logs/S-0/dump/items.json absent)");
+            eprintln!("items_kat_prover: SKIP (logs/INT-2/dump/items.json absent)");
             return;
         };
         let want = load_items(&p).unwrap();

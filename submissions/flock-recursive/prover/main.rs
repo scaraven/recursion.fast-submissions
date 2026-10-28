@@ -24,6 +24,7 @@ mod ligerito;
 mod lincheck;
 mod merkle;
 mod mle;
+mod nodeshape;
 mod ntt;
 mod oracle;
 mod par;
@@ -173,6 +174,9 @@ fn prove_leaf_service(m: usize, start: &Digest, out: &str, reps: usize) {
         alloc::prefault(pf << 20);
         eprintln!("prefault {pf} MiB {:.3}s", t.elapsed().as_secs_f64());
     }
+    if std::env::var_os("FLOCK_NODE_SHAPE").is_some() {
+        let _ = nodeshape::preload();
+    }
     for rep in 0..reps {
         let t0 = Instant::now();
         let mut rec = Recorder::new(&svc);
@@ -212,7 +216,7 @@ fn prove_leaf_service(m: usize, start: &Digest, out: &str, reps: usize) {
         let mut c2 = c;
         c2[31] ^= 1;
         let canary = acc(&circ, &vk, &c2, &file).is_ok();
-        // the trace against A.4: |tr| = 8,874 and every query length as `items.json` lists it
+        // the trace against A.4: |tr| = 8,891 and every query length as `items.json` lists it
         let tr_kat = match kat::find_items_json().and_then(|p| kat::load_items(&p)) {
             None => "skip(no items.json)".to_string(),
             Some(w) => {

@@ -321,6 +321,20 @@ pub fn run(text: &str, circ: &crate::circuit::Circuit, o: &dyn Oracle, vk: &Dige
                 vec![V::AF(crate::lincheck::row_weights(g(1).f(), &rhi))]
             }
             "maskRows" => vec![V::AF(mask_rows(g(1).af(), g(2).af()))],
+            "walkAB" => {
+                // rev. 3.12: one op for `Â₀`, `B̂₀` (the fused walk)
+                let (rw, cw) = (g(1).af(), g(2).af());
+                let zeros = vec![F::ZERO; rw.len()];
+                let (ca, cb) = (circ.transpose(rw, &zeros), circ.transpose(&zeros, rw));
+                let dotp = |c: &[F]| -> F {
+                    let mut acc = F::ZERO;
+                    for (x, y) in c.iter().zip(cw.iter()) {
+                        acc += *x * *y;
+                    }
+                    acc
+                };
+                vec![V::F(dotp(&ca)), V::F(dotp(&cb))]
+            }
             "walkA" | "walkB" => {
                 let (rw, cw) = (g(1).af(), g(2).af());
                 let zeros = vec![F::ZERO; rw.len()];
@@ -508,9 +522,9 @@ mod tests {
     /// field of `π` (both reject).
     #[test]
     fn ir_kat_p30() {
-        let d = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../logs/S-G/dump/ops-P.txt");
+        let d = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../logs/INT-2/dump/ops-P.txt");
         let Ok(text) = std::fs::read_to_string(&d) else {
-            eprintln!("ir_kat_p30: SKIP (logs/S-G/dump/ops-P.txt absent)");
+            eprintln!("ir_kat_p30: SKIP (logs/INT-2/dump/ops-P.txt absent)");
             return;
         };
         let circ = crate::circuit::Circuit::build();
@@ -520,7 +534,7 @@ mod tests {
         let c = crate::leaf::leaf_c(&s, m);
         let r = run(&text, &circ, &o, &vk, &c, &pi);
         assert!(r.ok, "failed lines {:?}", r.failed);
-        assert_eq!(r.asks, 8874);
+        assert_eq!(r.asks, 8891);
         let mut c2 = c;
         c2[5] ^= 1;
         assert!(!run(&text, &circ, &o, &vk, &c2, &pi).ok);
