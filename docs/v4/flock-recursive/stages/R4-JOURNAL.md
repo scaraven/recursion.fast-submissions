@@ -182,3 +182,31 @@ relocated fields).
 - Controls `FRSoundness4R4FrCtrlB`. Final: axioms 311 theorems clean; source rule 295 files 0 findings;
   profiles in `logs/R4e/`. INT-8 still uncommitted at the stop. Stopped with the RESULT's Pass 5
   handover: INT-8 repairs, the RS weight bridge, `AcceptTail`, `hM`/`hL`.
+
+### Pass 6 (R4f)
+
+- Build tree `logs/fr-build-R4f` (copy of R4e's; `b.sh` logs to `logs/R4f/`; `MINE.txt` adds
+  `FRSoundness4R4W0`, `FRSoundness4R4RndK`). Baseline at HEAD `2e5b79a`: `lake build FR` green
+  (`logs/R4f/build-last.log` of the first run). INT-8 not committed at the start (its edits in the
+  shared working tree; the build tree snapshots HEAD).
+- **Item 1, the RS weight bridge** (`FRSoundness4R4W0`): `kf4_frob` (`kf4_eq`: one monomial per block,
+  so Frobenius is `β ↦ β^(2^k)`), `mle_kind4` (the extension of `eq(q,·)·kf4_γ(block)` over `7 + n`
+  coordinates is `kwSL4`; `mle_split` at `7 + n`, no use of `rsWeight_kind_eq`'s indicator form),
+  `termK4`, the generic claim-by-claim `mle_wTab` (claim 2's term a hypothesis), **`mleW_node4`**
+  (`rsWeightS4 ν` at L3β's `β`), **`mleW_seg4`** (3.x's `rsWeightS` at `β = 1`, any `kf`),
+  `rsWS4`/`mleW_spec4`, **`wHat0_spec4`** (T4's `Ŵ₀(P₀)` = `rsWS4` + the cells' `eqCell` sum). Built
+  first time except: `congr 1` on a `K` sum (R4e's trap 1 again: use `congrArg (· + _)`), a beta-redex
+  before `rw [K.algebraMap_eq_ofF]`.
+- **K rounds** (`FRSoundness4R4RndK`): `roundsK_log` (3.x's K rounds as `clR2 … 32 readK chK`, all real),
+  `clValK` (R4b's `clVal` reads `initVals … false`: a K phase's first claim needs `true`),
+  `genPhase4_roundsK` (stated for any `S`: at `seq4` the `simp` of `genPhase4` timed out),
+  `rounds_atK4`, **`roundsK_view4`**, **`p1_view4`**, **`pf_view4`**. Trap: unqualified `sAt` is 3.x's
+  (`phStart`); T4's is `T4.sAt` (`phStart4`).
+- **`AcceptTail`** (`FRSoundness4R4Tail`): `FinLog4` (3.x's `FinLog` at T4's reads; every name
+  qualified `T4.`), `acceptTail4_of_finLog` (built first time), `rounds_of_run4`, `FinRest4`,
+  `acceptTail4_of_run` (`chain`/`len` from `runLog_chain4`, rounds from the run, the rest named);
+  `not_rejF4a_seg4/node4`; controls.
+- Final: build `FR` + R4's controls + `FRSoundness4R4Tail` green (2,517 jobs); axioms 354 theorems
+  clean; source rule 299 files 0 findings (after rewording two "init" comments); profiles in `logs/R4f/`.
+  INT-8 still uncommitted at the stop. Stopped (context long) with the RESULT's Pass 6 handover:
+  INT-8 repairs, `start`, `cols` (`posOps4`), `link`, then `pf0`/`enc`/`fin` after INT-8.

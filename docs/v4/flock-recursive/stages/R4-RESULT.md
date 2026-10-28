@@ -796,3 +796,168 @@ lagrangeSS` at 127 values, `hTS`: `targetS` at the kind's spec, `hST`, `hSM`, `h
    becomes one zero-padded field). Read every field through `Fields4` (one `fields4_of_accept`).
 4. `RejFinE4`'s node matrix parameters `hM`/`hL` (R4d's D11) are still parameters: whoever owns the node
    plan's `evalM`/`evalL` specs discharges them (S-CN4b did not).
+
+## Pass 6 (track R4f; HEAD `2e5b79a`)
+
+- **Build tree** `logs/fr-build-R4f` (a copy of `fr-build-R4e`; `b.sh` logs to `logs/R4f/`; `MINE.txt`
+  adds `FRSoundness4R4W0`, `FRSoundness4R4RndK`, `FRSoundness4R4Tail`). Every lean/lake command ran in
+  the 16G scope (12G for single files) under `timeout`. No sub-agents. Nothing committed. Only new
+  `FRSoundness4R4*` modules written (every short name grepped first); no existing module edited, no
+  statement changed.
+- **INT-8 had not committed** when this pass stopped (`git log`: HEAD still `2e5b79a`; its edits are in
+  the shared working tree, and the build tree uses HEAD's files). So item 3 (INT-8's repairs) did not
+  arise, and the fields that read `gFinP 4`/`gFinPf` are left as named hypotheses (below).
+- **Imports for `FR.lean`:** add `import FRSoundness4R4Tail` (it pulls `FRSoundness4R4RndK` →
+  `FRSoundness4R4W0`, `FRSoundness4R4FrCtrlB`).
+
+### Status
+
+| Item | State |
+|---|---|
+| 1. The RS weight bridge | **Done**: `mleW_node4` (`wrsL4 N4c.kf4 (.node ν)` against `Impl.rsWeightS4 ν` at L3β's `β`), `mleW_seg4` (a segment's, any `kf`, against 3.x's `rsWeightS` at `β = 1`), `mleW_spec4` (both, via `rsWS4`), **`wHat0_spec4`** (T4's `Ŵ₀(P₀)` for `W₀ := P4b.W₀L4 N4c.kf4 cells`) |
+| 2a. `chain`, `len` | **Done** (`acceptTail4_of_run`, through `runLog_chain4`) |
+| 2b. `rejF` | **Done for P4a's checks**: `not_rejF4a_seg4`, `not_rejF4a_node4` (`RejZ ∨ RejL2 ∨ RejLc2 ∨ RejLcN ∨ RejS2`). P4b's checks (`RejRS4`, `RejEndLr4`, `RejEndE4`, `RejInE4`, `RejFinE4`) have their `not_rej*` (R4d, R4e); no composed `RejF` exists yet (X4's), so `acceptTail4_of_run` takes `¬ RejF` on the run's entries as a hypothesis |
+| 2c. The K-round views | **Done**: `roundsK_log`, `roundsK_view4` (3.x's `rounds_view`), `p1_view4`, `pf_view4`; they give `FinLog4.rnd`/`rndPf` (`rounds_of_run4`), so `AcceptTail.p1` rounds `l ≥ 1` and `pf` rounds `l ≥ 1` come from the run |
+| 2d. `posT` for `posOps4` (`cols`) | **Not started** (handover 3) |
+| 2e. `gFinP 4`/`gFinPf` flags (`pf0`, `enc`, `fin`) | **Named hypotheses** (`FinRest4.pf0`, `.enc`, `.fin`): INT-8 not committed (handover 5) |
+| also: `start`, `link` | **Named hypotheses** (`FinRest4.start`, `.link`; handover 2, 4) |
+| 3. INT-8's repairs | Did not arise (INT-8 not committed) |
+
+**Final checks** (HEAD `2e5b79a`, R4's 29 modules overlaid):
+- `lake build FR FRSoundness4R4FrCtrl FRSoundness4R4FrCtrlB FRSoundness4R4Tail`: **green, 2,517 jobs**
+  (`logs/R4f/build-final.log`).
+- **Axioms** (`logs/R4f/axioms.log`, `logs/fr-build-R4f/ax/AxR4f.lean`; all 354 theorems of the 29 R4
+  modules): within `propext`, `Classical.choice`, `Quot.sound`; no `sorryAx`.
+- **Source rule** (`python3 -I logs/org20/scripts/source-rule.py submissions/flock-recursive`): 299
+  files, 0 findings (`logs/R4f/source-rule.log`; two comments saying "init" reworded first).
+- **Times** (sequential, one core: `taskset -c 0 lake env lean -DElab.async=false --profile`;
+  `logs/R4f/prof-*.log`):
+
+  | Module | wall | import | type checking | tactic execution | max RSS |
+  |---|---|---|---|---|---|
+  | `FRSoundness4R4W0` | 9.7 s | 4.5 s | 0.11 s | 0.50 s | 2.9 GB |
+  | `FRSoundness4R4RndK` | 12.6 s | 4.5 s | 0.68 s | 1.64 s | 3.0 GB |
+  | `FRSoundness4R4Tail` | 9.5 s | 4.9 s | 0.11 s | 0.16 s | 2.9 GB |
+
+  Net kernel cost of the pass ≈ 0.9 s. No `decide` over a program or a table; `interval_cases i <;>
+  rfl` on five phase-table entries and `cases ν <;> decide` on kind constants.
+
+### What was built (`loc.py`, `logs/R4f/loc.txt`: total / code / thm)
+
+| Module | total / code / thm | Content |
+|---|---|---|
+| `FRSoundness4R4W0` | 234 / 163 / 14 | `kf4_frob`, `join_div7`, **`mle_kind4`**, **`termK4`**, `wTab`, **`mle_wTab`**, `rsRL4_length`, `rsPtsL4_len`, `wrsL4_wTab`, `node_m7`, **`mleW_node4`**, **`mleW_seg4`**, `rsWS4`, **`mleW_spec4`**, `nrP_zero4`, **`wHat0_spec4`** |
+| `FRSoundness4R4RndK` | 307 / 250 / 13 | `readK_piMsg`, `round_entriesK`, **`roundsK_log`**, `clValK`, `genPhase4_roundsK`, `rounds_atK4`, **`roundsK_view4`**, `phases4_p1`, `phases4_pf`, `seq4_ell`, `seq4_pf`, `lvOuts_eq4`, **`p1_view4`**, **`pf_view4`** |
+| `FRSoundness4R4Tail` | 249 / 160 / 16 | **`FinLog4`**, `y_eq_foldAtN4`, `p1_of_finLog4`, `pf_of_finLog4`, `lvl4_of_finLog4`, **`acceptTail4_of_finLog`**, `rounds_of_run4`, **`FinRest4`**, **`acceptTail4_of_run`**, **`not_rejF4a_seg4`**, **`not_rejF4a_node4`**; controls |
+| **new total** | 790 / 573 / 43 | R4 total now 6,715 / 5,223 / 354 |
+
+### Main statements
+
+```lean
+-- the RS weight bridge (A.8's Φ form at the 4.1 kind factor)
+theorem mleW_node4 (ν : NodeKind) (es : Log) (ρ : List K) (hρ : ρ.length = (CKind.node ν).m - 7) :
+    mleN ((CKind.node ν).m - 7) (fun y => algebraMap F K (P4b.wrsL4 N4c.kf4 (.node ν) es y)) (ptOf _ ρ) =
+      Impl.rsWeightS4 ν (P4b.rsRL4 es).toArray
+        ((P4b.rsPtsL4 (.node ν) es).map fun p => (p.map (algebraMap F K)).toArray)
+        (P4b.rsKL4 es) (fAt es 98 0) ρ.toArray
+theorem mleW_seg4 (σ) (kf) (es) (ρ) (hρ : ρ.length = (CKind.seg σ).m - 7) :
+    mleN … (P4b.wrsL4 kf (.seg σ) es …) … = Impl.rsWeightS … (P4b.rsKL4 es) 1 ρ.toArray
+theorem wHat0_spec4 (cells) (hc : ∀ ν, ∀ c ∈ cells ν, c < 2 ^ P4b.ncR ν) (L es : Log) (ρ : List K)
+    (hρ : ρ.length = (kindOfC es).m - 7) (hρv : ∀ v < (kindOfC es).m - 7, ρ.getD v 0 = T4.ptL es 0 v) :
+    T4.wHatL (P4b.W₀L4 N4c.kf4 cells) L es 0 = rsWS4 (kindOfC es) es ρ +
+      ∑ k ∈ range (P4b.cellsC cells (kindOfC es)).length,
+        algebraMap F K (P4b.kpL4 es ^ (k + 2)) * eqCell (ptOf _ ρ) ((P4b.cellsC cells (kindOfC es)).getD k 0)
+-- the K rounds
+theorem p1_view4 (h : SkRun4 impl p inp tr y) (hfi : fi.outs = (skeleton4 seq4 p).2.outs) (hi : i < 5) :
+    ∃ b, lvOuts fi i 0 = (b + 2) :: (List.range (hEll i)).map (b + 13 · + 6) ++ [b + 13 * hEll i + 2] ∧
+      (∀ j < hEll i, rd R (b + 13 * j + 6) = .k (T4.sAt es i j)) ∧ rd R (p1Claim0 fi i) = .k (rSum (T4.p1Start i) es 0) ∧
+      rd R (p1ClaimN fi i) = .k (rVal (T4.p1Start i) es (hEll i - 1)) ∧ (∀ x ∈ lvOuts fi i 0, x < R.size) ∧
+      ∀ l, l + 1 < hEll i → rSum (T4.p1Start i) es (l + 1) = rVal (T4.p1Start i) es l   -- and pf_view4
+-- the tail
+theorem acceptTail4_of_finLog (hb : ¬ Bad L) (hci : G.IsChain L j) (hlen : (entriesOf L (pathOf L j)).length = 482)
+    (hR : ¬ RejF L (entriesOf L (pathOf L j))) (h : FinLog4 W₀ c₀ L (entriesOf L (pathOf L j)) y) :
+    T4.AcceptTail RejF W₀ c₀ L j
+theorem acceptTail4_of_run (fin : FinOps) (hb : ¬ Bad L) (hπ : inp.π.size = piSizeOf seq4)
+    (hrun : (runIR impl (gen4 seq4 p fin) inp).runLog L = some true)
+    (hacc : ∀ tr, semIR impl (gen4 seq4 p fin) inp tr = some true → (∀ e ∈ tr, e ∈ L) →
+      ∃ y, SkRun4 impl p inp tr y ∧ ¬ RejF L (fsOf tr (itemsOf seq4)) ∧
+        ∃ yv, FinRest4 W₀ c₀ L (fsOf tr (itemsOf seq4)) yv) :
+    ∃ j, T4.AcceptTail RejF W₀ c₀ L j
+theorem not_rejF4a_seg4 (hLS hTS hW hR hZ hST) (indN etN) (h : semIR impl (gen4 seq4 (.ofSeg σ) (finOps4 (segFinP σ))) inp tr = some true) (L) :
+    ¬ P4a.RejF4a (P4a.zlm4 indN etN) L (fsOf tr (itemsOf seq4))      -- and not_rejF4a_node4 at zlm4 indN4 etN4
+```
+
+`FinRest4 W₀ c₀ L es y` is `FinLog4` without its two round fields (which the run gives): `start`,
+`cols`, `link`, `pf0`, `enc`, `fin`, each verbatim 3.x's `FinLog` field at T4's reads.
+
+### Design and deviations
+
+- **D17. The bridge is stated per kind and through `rsWS4`.** The node's target is S-T2's
+  `Impl.rsWeightS4 ν` at L3β's `β` (what `specN4`/`withRS4S` assign); a segment's `finPf` calls
+  `rsWeight` with `act = false`, so `β = 1` and the segment's spec is 3.x's `rsWeightS` (`specSeg` keeps
+  `specC`'s `rsWeight`): `mleW_seg4` reduces claim 2 to the plain weight by `kwSL_one` (`|ρ| ≥ 23`).
+  `mle_kind4` is proved directly (`mle_split` at `7 + n`, `mle_eqPt`), not through
+  `rsWeight_kind_eq`'s indicator form: `kf4` is a monomial per block (`kf4_eq`), so Frobenius is
+  `β ↦ β^(2^k)` with no indicator bookkeeping. The bridge is spec-side only (3.x's `wHat0_spec`); the
+  run side (3.x's `w0V_run`) reads `gFinPf`, which INT-8 rewrites (handover 5).
+- **D18. `clValK`.** R4b's `clVal` evaluates `initVals … false`; a K phase's first claim is
+  `initVals … true` (`.k` values), so the K view has its own `clValK` (control `clValK_ctl`).
+- **D19. `acceptTail4_of_run`'s `hacc` is over every run trace.** `runLog_chain4` produces its trace
+  existentially; the facts the tail needs (`¬ RejF`, `FinRest4`) are about that trace's entries, so they
+  are asked for every accepted trace inside the log. Every `not_rej*` theorem has this form already.
+- **D20. `rejF` is P4a's `RejF4a`** (the only composed reject predicate that exists). X4 composes the
+  front's `RejF` (P4a's `RejF4a` with P4b's checks); its negation on an accepted run is the conjunction of
+  `not_rejF4a_*` and R4d/R4e's `not_rejRS4_*`, `not_rejEndLr4_*`, `not_rejEndE4_*`, `not_rejInE4_*`,
+  `not_rejFinE4_*` (the last with `hM`/`hL`, INT-9's).
+- No value asserted by no final was met in this scope.
+
+### Controls (in `FRSoundness4R4Tail`)
+
+| Definition | Positive | Negative |
+|---|---|---|
+| `FinLog4` | `acceptTail4_of_finLog`; `finLog4_rounds_of_acceptTail` (converse: `AcceptTail` gives back `rnd`, `rndPf`, `start`, `pf0`, `fin`) | `not_finLog4_of_start` (a wrong first claim), `not_finLog4_nil` (no column opens on the empty log) |
+| `FinRest4` | `acceptTail4_of_run` | `not_finLog4_of_start` (second half) |
+| `wTab` | `wTab_one` (one claim, `Φ = id`: weight `1`) | `wTab_nil` (no claim: `0`) |
+| `clValK` | `clValK_ctl` (`.uni` reads the register; `.zero` is `.f 0`) | `clValK_ctl` (`.zero` is not `.k 0`) |
+| `rsWS4` | `rsWS4_ctl` (node: `rsWeightS4`; segment: `rsWeightS` at `β = 1`), `mleW_spec4` | `rsWS4_ctl` (S-T2's `kwS4_ne_3x`: the node's claim-2 weight is not 3.x's) |
+
+### Traps (new)
+
+1. Unqualified `sAt`, `p1Start`, `pfStart`, `qPos`, … inside `FR.Snd.R4` resolve to **3.x's** (`FR.Snd`,
+   `phStart`), not T4's (`phStart4`): qualify `T4.` everywhere a 4.1 read is meant.
+2. `simp only [genPhase4, …]` at `seq4` timed out (whnf on `fieldOffOf seq4`); state the out-list lemma
+   for an abstract `S` (`genPhase4_roundsK`) and instantiate.
+3. `congr 1` on `κ^i * mle … + rest = κ^i * Σ … + rest` in `K` timed out (R4e's trap 1 again):
+   `rw [K.algebraMap_eq_ofF κ']` then `congrArg (· + _) (congrArg (_ * ·) ?_)`.
+4. `rfl` between `.k (rch2 (phStart4 (26 + 5 * i)) …)` and `.k (T4.sAt …)` hit max recursion: unfold
+   (`simp only [rch2, T4.sAt, kAt]`).
+5. The source rule flags "`, init`" in comments.
+
+### Handover (remaining items, in order)
+
+1. **INT-8's repairs** when its commit appears (re-snapshot: `b.sh` snapshots HEAD each run), as Pass 5's
+   item 1; this pass's modules unfold no final (`FRSoundness4R4Tail` reads `finalsOf` nowhere).
+2. **`FinRest4.start`** (`rSum (p1Start 0) es 0 = c₀L4 L es = ι(vStarL4 κ es)`): `p1_view4`'s `h0` at
+   `i = 0` (`p1Claim0 fi 0 = claim0 fi "P1"`); `relB4` by `flag_gFinB'` on `Fields4` (field 6, the
+   template `relLc4_of_fields`): `K.smulF (vStar4 …) 1 = rd (claim0 P1)`; then `vStar4 = vStarL4`:
+   the `zhat nRS` register is `rsV4` (`exec_gFinRS`'s third conjunct; `rs_vals4`'s pattern) and
+   `rsV4 = vRSL4 κ es` (slices by `msg_abs4` at 326 as `rs_alpha4`, `phiRS` at its spec: a new op
+   parameter); `kp = kpL4 es` (`one_view4` at phase 25, position 331); `pubH4 … kp = pubHL es kp`
+   (`seed_bytesAt4` for `vk`, `stmt_msg4` for `c₁`, `c₂`). 3.x's analogue is the `hStart` hypothesis of
+   `finLog_of_run`.
+3. **`FinRest4.cols`** (`posT` for `posOps4`): port 3.x's `posT_path`/`posAllT_path` (`FRSoundnessAccQry`,
+   generic in the log) and `queries_view` (`FRSoundnessAccLvl`) to `genPhase4`'s `.queries i`
+   (`posOps4 S p i …`, `capOff4`, `posW4`); then 3.x's `ys_facts` (`FRSoundnessAccCol`: the opened
+   column's path to `capDig es i …`, `y_q` = `dotKF` with `eqTable` of `sᵢ`, `dotKF_eq_sum`).
+4. **`FinRest4.link`**: `gFinP P i = finPLow i` for `i < 4` (unchanged by INT-8); `flag_finPLow` on
+   relocated ops (`finPLow` reads no π, so `reloc` is the identity; check with a `reloc_*` lemma as
+   `dotOps_reloc`), the `kcOf` registers by `coords_view4` at phase `30 + 5i` (3.x's `kc_facts`), the
+   `ysOf` registers the `cols` folds (item 3), P1.(i+1)'s first claim by `p1_view4`.
+5. **After INT-8: `pf0`, `enc` (`gFinP 4`) and `fin` (`gFinPf`)**: `flag_gFinP4`/`flag_gFinPf` at
+   `FinP` on relocated ops (3.x's `flag_finP4`, `relPf`), then `pf0` from `relP4`'s assert with
+   `pf_view4`/`p1_view4`; `enc` from `encVal_eq_encAt` (`tensorW` at `tensorWS`) on the zero-padded final
+   field; `fin`: `wHatL W₀ … 4` through T4's `mleP_lvW_chain`, `Ŵ₀(P₀)` by **`wHat0_spec4`** (done) with
+   the run side of `finPf`'s `rsWeight` call (`rsWeight` at `rsWeightS4 ν` for `implN4T` by
+   `withRS4_meets`; `ρ` = the `P₀` registers = `T4.ptL es 0`; `gCellsOps`' value the `eqCell` sum),
+   the level steps (3.x's `lvStepV_eq`, `wV_eq`), `padOps` and `fhOps` (3.x's `fhVal_mle`).
+6. `RejFinE4`'s node matrix parameters `hM`/`hL`: INT-9's (unchanged).
