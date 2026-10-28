@@ -3380,3 +3380,157 @@ bytes.
 - `simp; ring` over 8-term little-endian sums gives a kernel deep recursion under `lake build` only.
   Prove by induction instead.
 - `simp` rewrites `byteAt` to `data[·]?`. Generalize the byte before the case analysis on `kindOf4`.
+
+## Part 25 (track S-H4, pass 1): the level-0 interpolation by prefix and suffix products (`FRXLag`); the fuel at revision 4.2; handover
+
+**Status.** HEAD `aa42b2d`, build tree `logs/fr-build-SH4` (copy of `fr-build-SH3`, `logs/org20`;
+`MINE` = `FRX4Prog FRX4Ext FRXLag`), logs `logs/S-H4/`. Nothing committed. One new module, `FRXLag`
+(namespace `FR.X`); no existing module or statement was edited. Item 1 is half proved (the weights and
+values on the machine); items 2–6 are not started. The handover (§6) lists what remains, in order.
+
+### 1. The method, and why it differs from the ruling's wording
+
+The ruling asks for Montgomery's batched inversion in `baryIR`. `FRXLag` does better with the same
+structure:
+
+- **The domain is `B64`.** `D x = ofB64 x` (`FRRS.D`). Every difference `D s − D J_u` is the one-word
+  `B64` value `s ⊕ J_u`. Its products cost `mulB`, 13 steps, against `mulF`'s 57.
+- **No inversion per target.** The Lagrange numerator `Π_{u ≠ t} (s ⊕ J_u)` is the prefix product
+  `P_t = Π_{u<t}`, stored by a forward pass, times the suffix product `Q_t = Π_{u>t}`, kept in a
+  register by a backward pass. This is Montgomery's pass without its one inversion. The barycentric
+  form needs `ℓ(s)⁻¹`; the Lagrange form needs only the product, so there is no case `ℓ(s) = 0`.
+- **The weights.** `W_t = (Π_{m ≠ t} (J_t ⊕ J_m))⁻¹` is computed as `Π_m ((J_t ⊕ J_m) ||| [J_t = J_m])`,
+  then one `invB` per `t` (`k` in all). It is folded into the values: `Y_c[t] = W_t · y_c(J_t)`, two
+  `B64` products per row.
+- **Per pair** (target, agreement point): 26 steps for the weight's factor, 29 for the forward pass,
+  `46 + 40 C` for the backward pass (`C` rows, each two `B64` products and two `xor`s).
+
+**`cost_lagIR`** (exact): `27 + k (1,122 + 72 C) + k² (101 + 40 C)`. At `C = 4` that is **261 steps per
+pair**. 3.x's `baryIR` costs 8,147 on 64 rows; the blueprint estimated 484 for (ii).
+
+### 2. The fuel (`logs/S-H4/fuel-check4.{py,txt}`)
+
+The model uses 3.x's exact per-level components (as `logs/S-H3/fuel-check.py`), with level 0's
+interpolation replaced by `lagIR` on 4 rows and its butterflies on 4 rows. Levels 1–4 are either 3.x's
+`baryIR` (16 rows) or `lagIR` with `C = 16`:
+
+| `m` (kinds) | five levels, 1–4 by `baryIR` | five levels, 1–4 by `lagIR` | `decBudget` (`2.11·10^14 + 8,176 t`) |
+|---|---|---|---|
+| 30 | 5.33·10^12 (`2^42.3`) | 4.70·10^12 | 40× under |
+| 31 (`N2`) | 2.13·10^13 (`2^44.3`) | 1.88·10^13 | 10–11× under |
+| 32 (`N4`, `N8`) | **8.51·10^13 (`2^46.3`)** | **7.50·10^13 (`2^46.1`)** | **2.5–2.8× under** |
+
+Level 0 at `m = 32` is 7.18·10^13; level 1 is 1.3·10^13 by `baryIR` and 3.2·10^12 by `lagIR`. The
+reads, the chain, the index and the output are about 10^11 + 2,558 t (3.x's figures, scaled). So
+`fuel_base = 3·2^46` stands, and `claim.json` needs no change. The figures are the model's: the
+decoder program `nd` is not yet written, so there is no `cost` theorem for it (item 5).
+
+**Levels 1–4 need every row.** Level `i`'s decoded message (all 16 rows) is level `i − 1`'s `nextMsg`:
+`msgHIR` reads rows `2(x mod 8)` and `2(x mod 8) + 1` for every `x`. So level `i − 1`'s agreement set
+depends on every row of level `i`. Level 0 needs all 64 rows of its *word* for the flags (a linear
+cost), and only rows 4–7 of its *message*.
+
+**Memory: `mem = 2^27` is too small (finding F2).** The level-0 decoder holds f⁽⁰⁾'s *codeword*. At
+`m = 32` that is 2^20 positions × 64 rows × 2 words = 2^27 words: 3.x stores the whole word at
+`colBase` for the flags. The blueprint's 2^27 counts the message (2^25 cells). With the other regions
+(level 1's word 2^23, `J`, `P`, `Y`, the flags, `X`/`Y`, the rows) the decoder needs about
+2^27 + 2^25 words. So **`memX` must be 2^28**. The fuel cost is 2^28 steps, which is negligible. The
+index base moves with it: 3.x hard-codes `memX` in `walkPre` and in the lookups. A streaming read
+that folds the 64 rows on the fly would avoid it, but it needs the chain before the read and a new read
+program. I do not propose it.
+
+### 3. Files (`loc.py`)
+
+| File | total / code / thm | Content |
+|---|---|---|
+| `FRXLag` (new) | 920 / 738 / 52 | Registers `lgJ … lgAc` (160–215). `fct`; the program: `wInL`, `yLd`, `ySt`, `yRowL`, `wyMid`, `wyBody`, **`yTabIR`**, `fwdL`, `accRow`, `accIR`, `bwdL`, `stRow`, `stAcc`, `zeroPs`, `tgBody`, `tgIR`, **`lagIR`**. Structure: `wf_lagIR` (with `nw_accIR`, `nw_stAcc`, `nw_invB`), `noLoopT_lagIR`, `outs_lagIR`, `cost_accIR`, `cost_stAcc`, `cost_wyBody`, `cost_tgBody`, **`cost_lagIR`**, `sizeIR_accIR`, `sizeIR_stAcc`. Pure: `jw`, `dif`, `preP`, `sufP`, `wgtB`, `yv`, `lagTerm`, **`lagVal`**, `D_sub_D`, `pre_suf`, `ofB64_prod`, `ofB64_inv`, `jw_inj`, `fct_eq`, **`lagVal_eq`**. Machine: `ld_M`, `inv_set`, `st_rd`, `semB`, `amm_run`, `wInL_sem`, `wLoop_sem`, `yLd_sem`, `ySt_sem`, `yRowL_sem`, `yLoop_sem`, `wyBody_sem`, `wgtJ`, **`yTab_sem`** |
+
+**What is proved.**
+- **`lagVal_eq`**: with `J` listed without repeats below `2^20`,
+  `lagVal Jl |Jl| s y = interpF D Jl.toFinset y s`. Here `lagVal = Σ_t P_t Q_t (W_t · y(J_t))` is
+  exactly what the machine accumulates.
+- **`yTab_sem`**: on a layout `regs ≤ jb`, `jb + k ≤ yb`, `yb + 2Ck ≤ cb`, `yTabIR` leaves
+  `rdB (yb + 2(Ct + c)) = rdB (cb + cs J_t + 2c₀ + 2c) · W_t` and the same at `+1`, for `t < k`,
+  `c < C`. The heap outside `[yb, yb + 2Ck)` is kept.
+- **`cost_lagIR`**, `wf_lagIR`, `noLoopT_lagIR`, `outs_lagIR = 0`.
+
+### 4. Checks
+
+- **Build.** `lake build FRXLag FR` is green in `logs/fr-build-SH4`: 2,476 jobs (`build1.log`).
+  `FR.lean` does not import `FRXLag`; the orchestrator adds it once `nd` uses it.
+- **Axioms** (`axioms.log`, 13 declarations): within `propext`, `Classical.choice`, `Quot.sound`.
+  There is no `sorryAx`.
+- **Source rule** (`source-rule.log`): 267 files, 1 finding, `FRVIRSpec.lean:259: simproc`. That file
+  is G1's work in progress (uncommitted, `git diff` +16 −3). `FRXLag` has no finding.
+- **Sequential profile** (`-DElab.async=false`, `prof-FRXLag.log`): 85 s wall, 2.86 GB. The kernel is
+  small (the listed type-checking entries are 0.13 s and 0.35 s). Elaboration dominates: three
+  `refine`s of 7–11 s each, the `loopK_run` invariants with `by decide`/`omega` arguments, plus
+  `nlinarith` (3–4 s each). This must be golfed before the certificate's build budget sees it: replace
+  `nlinarith` by stated products, and pass register disequalities as named lemmas.
+- **Compiled probe** (`logs/fr-build-SH4/probe/Probe.lean`, outside the entry; it imports `FR`,
+  `FRX4Ext` and `FRXLag`):
+  - `lake build probe`: 4,951 jobs, green (`probe-build.log`).
+  - Run: 5.8 s, 0.9 GB (`probe-run.log`). `E4X` on the S-H3 toys behaves as before.
+  - **`lagIR` toy:** 4 targets, rows 1–2 (`c₀ = 1`, `C = 2`), `J = [3, 7, 1, 12]`, run through compiled
+    `semXIR` on a 600-word heap. All 8 outputs equal a direct Lagrange interpolation in `F`: `true`.
+    The same outputs against rows 0–1 give `false`, so the row window is read.
+  - The target `s = 3 = J₀` returns `y(3)`: `true`.
+  - This is an empirical check of the half that is not yet proved (the target loop). It is not a
+    proof.
+  - `snap.sh` now re-adds the `probe` target when it rewrites the lakefile.
+
+### 5. Deviations
+
+1. **Prefix and suffix products, not a batched inversion** (§1). The cost is lower (261 against 484 per
+   pair), and there is no inversion and no `ℓ(s) = 0` branch.
+2. **`mem` must be 2^28, not 2^27** (§2, F2).
+3. **Levels 1–4 may use `lagIR` too.** With `C = 16` it costs a quarter of `baryIR` at level 1. Then one
+   interpolation program serves all levels. This also helps step 2 of the retirement plan:
+   `FRXBary*` can leave the decoder's closure.
+
+### 6. Handover: what remains, in order
+
+1. **Finish item 1: the target half of `lagIR`** (`FRXLag`; the program and its cost are final):
+   - `fwdL_sem`, then the forward loop: `P_t = preP` at `pb + t`, `lgP = preP s k`. The loop stores, so
+     state the heap frame outside `[pb, pb + k)`.
+   - `accRow_sem`, then `accIR_sem` by induction on `C`:
+     `rdF (lgAc + 2c) += smulBase e (rdF (lgX₀ + 2c))`, `lgX += 2C`. Use `amm_run` for the two products
+     and two `xor`s on the accumulator words, and `wB_xor`.
+   - `bwdL_sem`, then the backward loop. After `j` steps the invariant is
+     `Q = sufP (k − j)`, `acc_c = Σ_{t ∈ Ico (k−j) k} lagTerm`, with `lgA`, `lgB`, `lgY` decremented.
+   - `stAcc_sem` by induction: the `C` stores at `ob + 2s + 2kc`.
+   - `tgBody_sem`, then `tgIR_sem`: the target loop, with output cells for `s < j` and a frame outside
+     `[pb, pb + k) ∪ [ob, ob + 2kC)`.
+   - **`lagIR_sem`**: `rdF (ob + 2kc + 2s) = lagVal Jl k s (y_{c₀+c})`. Use `yTab_sem`; `yv` is
+     `smulBase` of `wgtJ`, by `mulBW_spec` and `mul_comm`.
+   - **`lagIR_interp`** through `lagVal_eq`.
+   - Pattern: flatten each body with `simp only [body, semXIR_seq, semB]`, generalize innermost-first
+     with `⊢`, and name every frame index (journal 65).
+2. **Item 2: the level-0 decode at `CKind`.** The 3.x level theorems (`decFront_sem`, `decBack_sem`,
+   `decLv_sem`, `level_decode`, `consN`, `flagV_consSet`, `msgH_next`) are stated at `.N30`, with 3.x's
+   `Kind`, `lvl`, `wordOf` and `msgOf` (`FRSoundnessTruths`), and on 3.x's fixed memory map.
+   - The revision 4.1 truths are T4's `CKind` copies in `FRSoundness4TailTruths` (`msgOf`, `consSet`,
+     `decodeL`, `farL`, `sAt` at `phStart4`). Other tracks are editing that file now (uncommitted
+     changes in the worktree).
+   - Port `level_decode` → `level_decode4` over `CKind`. It is pure: copy and rename, with
+     `lv_params` for `CKind.lv`.
+   - Then `decBack4` = `scanIR ; lagIR (2^mLog) 4 4 … ; bfRowsIR mLog ob tb 4`, on a memory map record
+     parametric in `m` (§2's sizes).
+2′. Re-derive `decFront_sem` (the `eq` table, `msg`, `fwdIR ×2`, `flagIR`) on that map, for `CKind`.
+   The programs are generic; the statements bind `.N30` and the 3.x constants (`fbF`, `xbM`, `ybM`,
+   `eqB`, `obL`, `memX`).
+3. **Item 3:** `decLevels4` takes the kind at run time. An `ite` on the node byte chooses
+   `ladderOf 31` (`N2`) or `ladderOf 32` (`N4`/`N8`); both branches are the same program at two
+   constant sets. Then `memX4 = 2^28`, with the index and read at `memX4`. `readIR` is parametric in
+   its base, but `walkPre` hard-codes `memX`: `walkPre4`, `idxIR4`, and the cap offsets at 4.1's
+   positions.
+4. **Item 4: the output** `outIR4`.
+   - It reads the `1 + k` children from rows 4–7 at `ob0` (stream cell `e` is row `4 + e mod 4`,
+     column `e / 4`, as `FRBlockStream.elem_slot`). Check S-E12a's block-kind map in `FRNodeCircuit4*`
+     (untracked in the worktree).
+   - The signature comes from the H fields (`sig_of_H` as a hypothesis).
+   - The aggregate child's segments 2–4 need a shifted copy (`(i − 1)·7 mod 8`).
+5. **Item 5:** `nd`, `DecOk4 nd` (with `decBudget4` at `memX4`), `NodeDec4.out`, the exact `cost`
+   theorem, and `fuel_covers4`.
+6. **Item 6:** controls stated from `_sem` lemmas (the probe's toy is a compiled run, not a kernel run).
+   Then golf `FRXLag`'s elaboration (§4).

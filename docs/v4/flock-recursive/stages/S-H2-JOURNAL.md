@@ -580,3 +580,43 @@ Base: branch `v4/flock-recursive`, HEAD `53c2e13`. Build tree `logs/fr-build-SH2
     `import FRX4Ext` built (4,859 jobs) and ran 49 s / 1.1 GB (`probe-run.log`: `E4X` on W true, on a
     bare segment false, on the toy aggregate `leaf s[0] = 7, n = 5`; `ext4` 170 statements); profiles
     FRX4Prog 9.5 s (kernel 0.42 s), FRX4Ext 12.1 s (kernel 1.26 s). RESULT Part 24.
+64. S-H4 (pass 1) design. Revision 4.2 (A)(ii) adopted with one change of method: the evaluation domain is
+    `D x = ofB64 x` (`FRRS.D`), so every difference `D s − D J_u` is the one-word `B64` value `s ⊕ J_u`
+    and its products cost `mulB` (13 steps), not `mulF` (57). The Lagrange numerator `Π_{u≠t}(s ⊕ J_u)`
+    is the prefix product `P_t` (stored by a forward pass) times the suffix product `Q_t` (a register in a
+    backward pass): Montgomery's pass without its inversion (the Lagrange form needs only the product;
+    no `ℓ(s) = 0` case). Weights `W_t` are `k` `invB`, folded into the values `Y_c[t] = W_t y_c(J_t)`.
+    Exact cost `27 + k(1,122 + 72C) + k²(101 + 40C)`: **261 steps per pair at C = 4** (blueprint's
+    estimate 60 + 424 = 484). Cost model `logs/S-H4/fuel-check4.py`: decoder levels at m = 32
+    7.5–8.5·10^13 (2^46.1–2^46.3), 2.5–2.8× under `decBudget`; m = 31 1.9–2.1·10^13.
+    Levels 1–4 need **all** rows: level i's decoded message (all 16 rows) is level i−1's `nextMsg`
+    (`msgHIR` reads rows `2(x mod 8)`, `2(x mod 8)+1` for every `x`), so the agreement set of level i−1
+    depends on every row. Level 0 needs all 64 rows of the *word* for its flags (linear) but only
+    rows 4–7 of the *message*.
+    **Memory finding**: f⁽⁰⁾'s codeword at m = 32 is 2^20 positions × 64 rows × 2 words = 2^27 words
+    (3.x stores it whole at `colBase`); the blueprint's `mem = 2^27` counts the message (2^25 cells).
+    With every other region the decoder needs ≈ 2^27 + 2^25 words: `memX` must be 2^28 (fuel cost
+    2^28 steps, negligible), and the index base (3.x hard-codes `memX` in `walkPre`) moves with it.
+65. S-H4 build of `FRXLag` (new, 920 lines / 738 code / 52 theorems): `lagIR` (`yTabIR` weights and
+    values, `tgIR` targets: `fwdL`, `bwdL` with `accIR C` unrolled rows, `stAcc C`), `lagVal`,
+    **`lagVal_eq`** (= `interpF D J y s`), `cost_lagIR`, `wf/noLoopT/outs_lagIR`, and the machine
+    semantics of the weights and values: `wInL_sem`, `wLoop_sem`, `yLd_sem`, `ySt_sem`, `yRowL_sem`,
+    `yLoop_sem`, `wyBody_sem`, **`yTab_sem`**. Not yet: the target half (`fwdL`/`bwdL`/`accIR`/
+    `stAcc`/`tgBody`/`tgIR`) and `lagIR_sem`. Pitfalls (new):
+    - `rw [semXIR_seq]` repeatedly rewrites the *outermost* `seq`, not the next one in program order:
+      flatten once with `simp only [body, semXIR_seq, semB]` and then `generalize` innermost-first.
+    - `generalize e = x at h₁ h₂` does **not** touch the goal: write `at h₁ h₂ ⊢`.
+    - `rd {M := m, o := o}.M i` against `rd m i` can time out in `whnf` (seen at `refine ⟨a1, …⟩`):
+      `dsimp only` then `generalize` the memory in hypotheses and goal.
+    - `toWord (x + 1 + 1)` against `toWord (x + 2)` times out: `h.trans (congrArg toWord (by omega))`.
+    - A frame lemma `f _ (by decide)` with the index left to unification elaborates `decide` on a
+      metavariable: give the index (`hb lgQ …`, `b4 (yb + 2 * (C * t + c)) …`).
+    - `obtain … := lemma …` has no expected type: pass implicit layout arguments (`(cb := cb)`) or
+      `omega` sees fresh atoms.
+    - `invB` as its own `XIR` node (not `invBC` spliced into a block) keeps `WF`/`Writes` by `simp` cheap
+      (`nw_invB`, `wfB_inv` at numerals) and costs the same (1,033 + 9 + 1 = 2·522 − 1).
+66. S-H4 checks: `lake build FRXLag FR` green (2,476 jobs); 13 axiom lines standard; source rule 267 files,
+    1 finding in G1's uncommitted `FRVIRSpec.lean:259` (not mine); `FRXLag` profile 85 s wall, kernel
+    < 0.5 s (elaboration: three `loopK_run` `refine`s 7–11 s, `nlinarith` 3–4 s; golf before the build
+    budget sees it). Probe (4,951 jobs, 5.8 s run): compiled `lagIR` on a 4-target, 2-row toy equals a
+    direct `F` Lagrange interpolation (and not the neighbouring rows). Handover in RESULT Part 25 §6.
