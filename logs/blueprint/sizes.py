@@ -140,3 +140,36 @@ rows17=246627+missing+128*134+replay_rows
 H17=2*comp17+6+2*498+8+2*10
 blocks17=H17+math.ceil(2*rows17*128/2**14)+L_blocks+1
 print(f"   node rows: per slot {rows17:.0f} (dump 246,627 + missing templates {missing} + Phi claim 5 {128*134} + evalM replay {replay_rows:.0f}); per node {2*rows17:.0f} = 2^{math.log2(2*rows17):.2f} ({2**21/(2*rows17):.2f}x); blocks {blocks17} of 65536 ({65536/blocks17:.2f}x)")
+# ---- stage-review changes 20 (revision 3.13): E before RS (S-G1j defect 1); Lr4 merged into the E4 lincheck (defect 2: one
+# 23-round lincheck over the cells for the L and M rows, J_z = 4 again); node targetS/linkW (no size effect).
+seq13=[]
+def add13(ph,a,q,ab=0): seq13.append((ph,a,q,ab))
+for ph,a,q,ab in seq:
+    if ph in ("Lr4","RS0","RS1","Ep"): continue
+    add13(ph,a,q,ab)
+    if ph=="E3":
+        add13("E4",23,23,RND); add13("E4end",1,0,16)
+        add13("RS0",1,0,4*128*16); add13("RS1",0,math.ceil((7+1)/2)); add13("Ep",0,1)
+pos=0; posmap={}
+for ph,a,q,ab in seq13:
+    posmap[ph]=(pos,pos+a+q-1); pos+=a+q
+fs13=pos
+print("== stage-review changes 20 (revision 3.13): phase order and FS positions")
+print("   "+"; ".join(f"{ph} {p[0]}" + (f"-{p[1]}" if p[1]>p[0] else "") for ph,p in posmap.items() if ph in ("Lr1","Lr2","Lrend","Lr3","E1","E2","Eend","E3","E4","E4end","RS0","RS1","Ep","P1.0")))
+items13=fs13+cols+sibs
+tb13=1
+for ph,a,q,ab in seq13:
+    if ph=="seed": tb13+=8+7+112+32
+    else: tb13+=a*(8+8+32+ab+32)+q*(8+8+32+32)
+tb13+=cols*(8+8+32)+colb+pad_col+sibs*(8+8+64+32)
+comp13=math.ceil(tb13/64)
+piop13=sum(a*ab for ph,a,q,ab in seq13 if ph not in("seed","stmt","cap0") and not ph.startswith("C."))
+pi13=48+128+piop13+caps+final+colb+pad_col+sibs*32
+H13=2*comp13+6+2*498+8+2*10
+rows13=rows17-11400-128*134        # rsWeight and Phi back to 4 claims
+blocks13=H13+math.ceil(2*rows13*128/2**14)+L_blocks+1
+print(f"   FS items {fs13} (was 451 + 46); items {items13} (qV {10240/items13:.2f}x); hashed bytes {tb13}, compressions/slot {comp13}")
+print(f"   piSize {pi13} B = {pi13/1024:.0f} KiB ({2**20/pi13:.2f}x): PIOP {piop13}, columns {colb+pad_col}, siblings {sibs*32}, caps {caps}, final {final}")
+print(f"   node rows per slot {rows13:.0f}, per node {2*rows13:.0f} = 2^{math.log2(2*rows13):.2f} ({2**21/(2*rows13):.2f}x); blocks {blocks13} of 65536 ({65536/blocks13:.2f}x)")
+v13=base+finPf-4+3+evalM_F17*us/1000
+print(f"   V N30: {v13:.0f} ms VM = {v13/1.28:.0f} ms runner ({205.9/(v13/1.28):.2f}x) with fused walks; {v13-40:.0f} ms VM = {(v13-40)/1.28:.0f} ms runner ({205.9/((v13-40)/1.28):.2f}x) with the S-F2 hot spots; stream link ~2.94 s of 3.1 s (one 2^23 lincheck pass, +0.14 s over 2.80 s)")

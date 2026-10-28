@@ -24,3 +24,9 @@
    V N30 (plan + fused walks + S-F2 hot spots (-40 ms)): 185 ms VM = 145 ms runner; cap 205.9 ms runner: 1.42x
    V N30 (+ symmetric layout): 172 ms VM = 135 ms runner; cap 205.9 ms runner: 1.53x
    node rows: per slot 805330 (dump 246,627 + missing templates 118639 + Phi claim 5 17152 + evalM replay 422912); per node 1610660 = 2^20.62 (1.30x); blocks 60189 of 65536 (1.09x)
+== stage-review changes 20 (revision 3.13): phase order and FS positions
+   Lr1 170-177; Lr2 178-207; Lrend 208; Lr3 209; E1 210-220; E2 221-262; Eend 263; E3 264; E4 265-310; E4end 311; RS0 312; RS1 313-316; Ep 317; P1.0 318-329
+   FS items 468 (was 451 + 46); items 8891 (qV 1.15x); hashed bytes 1481328, compressions/slot 23146
+   piSize 797888 B = 779 KiB (1.31x): PIOP 19392, columns 487504, siblings 241664, caps 45056, final 4096
+   node rows per slot 776778, per node 1553556 = 2^20.57 (1.35x); blocks 59585 of 65536 (1.10x)
+   V N30: 221 ms VM = 173 ms runner (1.19x) with fused walks; 181 ms VM = 142 ms runner (1.45x) with the S-F2 hot spots; stream link ~2.94 s of 3.1 s (one 2^23 lincheck pass, +0.14 s over 2.80 s)
