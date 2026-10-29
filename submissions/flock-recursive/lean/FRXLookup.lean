@@ -11,6 +11,10 @@ import FRLog
   prefix of `[0, n)`, 64 halvings from `(0, n)` end at the prefix's length.
 * `lookIR_sem` (the machine runs `bsRun` and sets the found flag) and `idx_lookup`
   (`lookup_spec`: after `idxIR`, any target's lookup finds its first preimage, `FRLog.ansIdx`).
+
+**Parameters (S-H4 pass 5).** The lookup takes the index base `bX` and the tape word `pL` of `|L|`
+(`lookIR4`, `Sorted4`, `posE4`, `idx_lookup4`); 3.x's `lookIR`, `Sorted`, `posE` are the instances at
+`memX`, `posL`.
 -/
 
 namespace FR.X
@@ -48,26 +52,6 @@ theorem entries_getD_ans : ∀ (L : Log) (k : ℕ) (hk : k < L.length) (m : ℕ)
     congr 1
     omega
 
-/-- **The tape at entry `k`'s answer**: word `m < 4` of `packBytes L[k].2`. -/
-theorem tape_answer (c : Digest) (π : Proof) (L : Log) (hs : π.size = piSize) {k : ℕ}
-    (hk : k < L.length) {m : ℕ} (hm : m < 4) :
-    (extractorInput c π L).getD (posL + 1 + entryOff L k + 1 + (L[k].1.size + 7) / 8 + m) 0 =
-      (packBytes L[k].2.toList).getD m 0 := by
-  have hp : π.size = 797904 := hs.trans piSize_eq
-  have hl : ((packBytes c.toList ++ [toWord π.size]) ++ packBytes π.data.toList ++
-      [toWord L.length]).length = posL + 1 := by
-    simp only [List.length_append, packBytes_length, ← WitnessSending.size_eq_length,
-      hp, posL, Vector.length_toList, List.length_singleton]
-  have e2 : extractorInput c π L = ((packBytes c.toList ++ [toWord π.size]) ++
-      packBytes π.data.toList ++ [toWord L.length]) ++
-      L.flatMap (fun e => bytesWords e.1.data.toList ++ packBytes e.2.toList) := by
-    rw [tape_eq, logWords]; simp
-  rw [e2, List.getD_eq_getElem?_getD, show posL + 1 + entryOff L k + 1 +
-      (L[k].1.size + 7) / 8 + m = (posL + 1) + (entryOff L k + 1 + (L[k].1.size + 7) / 8 + m) by
-      omega, ← hl, List.getElem?_append_right (by omega), Nat.add_sub_cancel_left,
-    ← List.getD_eq_getElem?_getD]
-  exact entries_getD_ans L k hk m hm
-
 /-- The four answer words of the entry at tape position `x`. -/
 def ansW (I : Array Word) (x : Word) : List Word :=
   [I.getD (aposW I x + 0).toNat 0, I.getD (aposW I x + 1).toNat 0,
@@ -76,44 +60,6 @@ def ansW (I : Array Word) (x : Word) : List Word :=
 theorem keyW_eq (I : Array Word) (x : Word) : keyW I x = ansW I x ++ [x] := rfl
 
 theorem ansW_length (I : Array Word) (x : Word) : (ansW I x).length = 4 := rfl
-
-/-- The tape position of entry `k`. -/
-def posE (L : Log) (k : ℕ) : ℕ := posL + 1 + entryOff L k
-
-/-- **The answer read at entry `k`'s position is `packBytes L[k].2`.** -/
-theorem ansW_entry (c : Digest) (π : Proof) (L : Log) (hs : π.size = piSize)
-    (hq : ∀ e ∈ L, e.1.size < 2 ^ 64) (ht : (extractorInput c π L).length ≤ 2 ^ 64) {k : ℕ}
-    (hk : k < L.length) :
-    ansW (extractorInput c π L).toArray (toWord (posE L k)) = packBytes L[k].2.toList := by
-  set I := (extractorInput c π L).toArray with hI
-  have hend := tape_entries_end c π L hs
-  have hq' := hq _ (List.getElem_mem hk)
-  have hk1 : entryOff L (k + 1) ≤ entryOff L L.length := by
-    rcases Nat.lt_or_ge (k + 1) L.length with h | h
-    · exact (entryOff_lt L h le_rfl).le
-    · rw [show k + 1 = L.length by omega]
-  rw [entryOff_succ L hk] at hk1
-  have hqw : qWords L[k] = 5 + (L[k].1.size + 7) / 8 := rfl
-  have hx : (toWord (posE L k)).toNat = posE L k := toNat_toWord (by simp only [posE]; omega)
-  have hap : ∀ j < 4, (aposW I (toWord (posE L k)) + toWord j).toNat =
-      posL + 1 + entryOff L k + 1 + (L[k].1.size + 7) / 8 + j := fun j hj => by
-    have h1 : I.getD (posE L k) 0 = toWord L[k].1.size := by
-      rw [hI, getD_toArray]; exact tape_entry c π L hs hk
-    simp only [aposW, hx, h1]
-    rw [BitVec.toNat_add, BitVec.toNat_add, BitVec.toNat_add, toNat_ceil8 hq', hx,
-      toNat_toWord (show j < 2 ^ 64 by omega), show (1 : Word).toNat = 1 from rfl]
-    simp only [posE] at hx ⊢
-    omega
-  apply List.ext_getElem (by simp [ansW_length, packBytes_digest_length])
-  intro m h1 h2
-  have hm : m < 4 := h1
-  rw [← List.getD_eq_getElem _ 0, ← List.getD_eq_getElem _ 0, ← tape_answer c π L hs hk hm,
-    ← getD_toArray (extractorInput c π L), ← hI]
-  interval_cases m
-  · exact congrArg (fun i => I.getD i 0) (hap 0 (by decide))
-  · exact congrArg (fun i => I.getD i 0) (hap 1 (by decide))
-  · exact congrArg (fun i => I.getD i 0) (hap 2 (by decide))
-  · exact congrArg (fun i => I.getD i 0) (hap 3 (by decide))
 
 /-- `packBytes` is injective on digests. -/
 theorem packBytes_digest_inj {d d' : Digest} (h : packBytes d.toList = packBytes d'.toList) :
@@ -227,94 +173,6 @@ theorem lexW_asymm {A B : List Word} (h : lexW A B = true) : lexW B A = false :=
 
 /-- The search predicate: the answer at slot `a` is below the target words `T`. -/
 def ltT (I : Array Word) (X : ℕ → Word) (T : List Word) (a : ℕ) : Bool := lexW (ansW I (X a)) T
-
-/-- What `idxIR_sorted` gives: `X[0..|L|)` is the set of entry positions, strictly sorted. -/
-structure Sorted (I : Array Word) (L : Log) (X : ℕ → Word) : Prop where
-  srt : ∀ a b, a < b → b < L.length → keyLt I (X a) (X b) = true
-  cov : ∀ a < L.length, ∃ k < L.length, X a = toWord (posE L k)
-  all : ∀ k < L.length, ∃ a < L.length, X a = toWord (posE L k)
-
-theorem posE_lt (c : Digest) (π : Proof) (L : Log) (hs : π.size = piSize)
-    (ht : (extractorInput c π L).length ≤ 2 ^ 64) {k : ℕ} (hk : k < L.length) :
-    posE L k < 2 ^ 64 := by
-  have := tape_entries_end c π L hs
-  have := entryOff_lt L hk le_rfl
-  simp only [posE]; omega
-
-/-- **The first preimage is the search's boundary.** On the sorted index, the predicate "the
-answer is below `packBytes t`" holds on a prefix; at the prefix's end `b` sits the first entry
-of `L` whose answer is `t` (`ansIdx`), and if there is none, no slot has answer `t`. -/
-theorem lookup_pure (c : Digest) (π : Proof) (L : Log) (hs : π.size = piSize)
-    (hq : ∀ e ∈ L, e.1.size < 2 ^ 64) (ht : (extractorInput c π L).length ≤ 2 ^ 64)
-    {X : ℕ → Word} (hX : Sorted (extractorInput c π L).toArray L X) (t : Digest) :
-    (∀ a b, a < b → b < L.length →
-      ltT (extractorInput c π L).toArray X (packBytes t.toList) b = true →
-      ltT (extractorInput c π L).toArray X (packBytes t.toList) a = true) ∧
-    ∀ b ≤ L.length,
-      (∀ a < b, ltT (extractorInput c π L).toArray X (packBytes t.toList) a = true) →
-      (∀ a, b ≤ a → a < L.length →
-        ltT (extractorInput c π L).toArray X (packBytes t.toList) a = false) →
-      (∀ k, FR.Snd.ansIdx L t = some k → b < L.length ∧ X b = toWord (posE L k)) ∧
-      (FR.Snd.ansIdx L t = none → ∀ a < L.length,
-        ansW (extractorInput c π L).toArray (X a) ≠ packBytes t.toList) := by
-  set I := (extractorInput c π L).toArray with hI
-  set T := packBytes t.toList with hT
-  have hA : ∀ a < L.length, ∃ k, ∃ hk : k < L.length, X a = toWord (posE L k) ∧
-      ansW I (X a) = packBytes L[k].2.toList := fun a ha => by
-    obtain ⟨k, hk, e⟩ := hX.cov a ha
-    exact ⟨k, hk, e, by rw [e]; exact ansW_entry c π L hs hq ht hk⟩
-  -- the key order splits into the answer order and, on equal answers, the position order
-  have hkey : ∀ a b, a < b → b < L.length → lexW (ansW I (X a)) (ansW I (X b)) = true ∨
-      (ansW I (X a) = ansW I (X b) ∧ X a < X b) := fun a b hab hb => by
-    have := hX.srt a b hab hb
-    rw [keyLt, keyW_eq, keyW_eq, lexW_append (ansW I (X a)) (ansW I (X b))
-      (by rw [ansW_length, ansW_length])] at this
-    simp only [Bool.or_eq_true, Bool.and_eq_true, decide_eq_true_eq] at this
-    exact this
-  have hmono : ∀ a b, a < b → b < L.length → ltT I X T b = true → ltT I X T a = true :=
-    fun a b hab hb h => by
-      rcases hkey a b hab hb with h' | ⟨h', -⟩
-      · exact lexW_trans _ _ _ h' h
-      · simpa [ltT, h'] using h
-  refine ⟨hmono, fun b hbn hlo hhi => ⟨fun k hk => ?_, fun hn a ha he => ?_⟩⟩
-  · obtain ⟨hkl, hkt, hfirst⟩ := List.findIdx?_eq_some_iff_getElem.mp hk
-    simp only [decide_eq_true_eq] at hkt
-    obtain ⟨a0, ha0, e0⟩ := hX.all k hkl
-    have hA0 : ansW I (X a0) = T := by rw [e0, ansW_entry c π L hs hq ht hkl, hkt]
-    -- `p` fails at `a0`, and holds below it
-    have hf0 : ltT I X T a0 = false := by simp [ltT, hA0, lexW_irrefl]
-    have ht0 : ∀ a < a0, ltT I X T a = true := fun a ha => by
-      rcases hkey a a0 ha ha0 with h' | ⟨h', hlt⟩
-      · rwa [hA0] at h'
-      · exfalso
-        obtain ⟨k', hk', e', hA'⟩ := hA a (by omega)
-        have hkt' : L[k'].2 = t := packBytes_digest_inj (by rw [← hA', h', hA0])
-        rw [e', e0, BitVec.lt_def, toNat_toWord (posE_lt c π L hs ht hk'),
-          toNat_toWord (posE_lt c π L hs ht hkl)] at hlt
-        have hkk : k' < k := by
-          by_contra hge
-          rcases Nat.lt_or_ge k k' with h2 | h2
-          · have := entryOff_lt L h2 hk'.le; simp only [posE] at hlt; omega
-          · have : k = k' := by omega
-            subst this; omega
-        have := hfirst k' hkk
-        simp [hkt'] at this
-    have hb1 : b ≤ a0 := by
-      by_contra h
-      have := hlo a0 (by omega)
-      rw [hf0] at this; exact absurd this (by decide)
-    have hb2 : a0 ≤ b := by
-      by_contra h
-      have h1 := ht0 b (by omega)
-      rw [hhi b le_rfl (by omega)] at h1; exact absurd h1 (by decide)
-    have : b = a0 := by omega
-    subst this
-    exact ⟨ha0, e0⟩
-  · obtain ⟨k, hk, -, hA'⟩ := hA a ha
-    have := List.findIdx?_eq_none_iff.mp hn L[k] (List.getElem_mem hk)
-    have e : L[k].2 = t := packBytes_digest_inj (by rw [← hA', he])
-    simp [e] at this
-
 
 /-! ## The machine: word helpers and the search registers -/
 
@@ -490,16 +348,273 @@ theorem bsStep_le {p : ℕ → Bool} {n lo len : ℕ} (h : lo + len ≤ n) :
     (bsStep p (lo, len)).1 + (bsStep p (lo, len)).2 ≤ n := by
   unfold bsStep; split_ifs <;> simp only <;> omega
 
+/-! ## The search loop and the found flag -/
+
+theorem SRegs.decS {s : St} {n lo len : ℕ} {T : List Word} (h : SRegs s.M n lo len T) :
+    SRegs (decS rCB s).M n lo len T :=
+  ⟨(rd_decS (by decide) s).trans h.lo, (rd_decS (by decide) s).trans h.len,
+    (rd_decS (by decide) s).trans h.n, by
+      rw [rd_decS (by decide), rd_decS (by decide), rd_decS (by decide), rd_decS (by decide)]
+      exact h.q⟩
+
+theorem bsRun_le {p : ℕ → Bool} {n : ℕ} :
+    ∀ (m lo len : ℕ), lo + len ≤ n → (bsRun p m (lo, len)).1 + (bsRun p m (lo, len)).2 ≤ n
+  | 0, _, _, h => h
+  | m + 1, lo, len, h => bsRun_le m _ _ (bsStep_le h)
+
+theorem eqTWord_sem (I : Array Word) (s : St) (hM : Inv s.M) {w r : ℕ}
+    (hr : r = rQ0 ∨ r = rQ1 ∨ r = rQ2 ∨ r = rQ3) :
+    rd (semXIR I (eqTWord w r) s).M rFd = XOp.and.eval (rd s.M rFd)
+      (XOp.eq.eval (I.getD (rd s.M rPa + BitVec.ofNat 64 w).toNat 0) (rd s.M r)) := by
+  have hs := hM.1
+  simp only [regs] at hs
+  rcases hr with rfl | rfl | rfl | rfl <;>
+  · simp only [eqTWord, semXIR, runPrims, List.foldl, Prim.run, rKc, rAd, rPa, rKa, rH, rFd,
+      rQ0, rQ1, rQ2, rQ3]
+    simp (disch := first | decide | omega | (simp only [size_set]; omega)) only [rd_set_self,
+      rd_set_ne]
+    rfl
+
+theorem wf_eqTWord (w r : ℕ) : WF (eqTWord w r) := by
+  simp +decide only [eqTWord, WF, Prim.dst, rKc, rAd, rKa, rH, rFd, List.mem_cons, List.mem_nil_iff,
+    forall_eq_or_imp, forall_eq, or_false, and_true]
+
+theorem eqTWord_frame (I : Array Word) (s : St) (hM : Inv s.M) (w r : ℕ) {q : ℕ}
+    (hq : q ∈ [rPa] ++ srL) : rd (semXIR I (eqTWord w r) s).M q = rd s.M q :=
+  frame I _ s (wf_eqTWord w r) hM q ((by decide : ∀ r ∈ [rPa] ++ srL, r < regs) q hq) (by
+    simp only [srL, List.cons_append, List.nil_append, List.mem_cons, List.mem_nil_iff,
+      or_false] at hq
+    rcases hq with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl <;>
+      simp +decide only [eqTWord, Writes, Prim.dst, rKc, rAd, rKa, rH, rFd, rPa, rLo, rLn, rN, rQ0,
+        rQ1, rQ2, rQ3, List.mem_cons, List.mem_nil_iff, exists_eq_or_imp, exists_eq_left, or_false])
+
+theorem decide_ansW (A : List Word) (hA : A.length = 4) (t0 t1 t2 t3 : Word) (p : Bool) :
+    (p && decide (A.getD 0 0 = t0) && decide (A.getD 1 0 = t1) && decide (A.getD 2 0 = t2) &&
+      decide (A.getD 3 0 = t3)) = (p && decide (A = [t0, t1, t2, t3])) := by
+  match A, hA with
+  | [a0, a1, a2, a3], _ => simp [Bool.and_assoc]
+
+/-! ## The lookup -/
+
+theorem entryKB {M : Mem} (hM : Inv M) (hN : rd M rNB = 64) :
+    rd (entryK rCB rNB 64 M) rCB = 64 := by
+  have hs := hM.1
+  simp only [regs] at hs
+  unfold entryK
+  dsimp only
+  have h1 : rd (M.setIfInBounds rCB 64) rNB = 64 := by rw [rd_set_ne (by decide), hN]
+  have h2 : rd (M.setIfInBounds rCB 64) rCB = 64 := rd_set_self (by simp only [rCB]; omega)
+  rw [h1, h2, rd_set_self (by simp only [size_set, cTmp]; omega)]
+  rw [if_pos (by decide), rd_set_ne (by decide), h2]
+
+/-! ## A lookup after the log index -/
+
+/-! ## The lookup at a parametric base and log position
+
+The index base `bX` and the tape word `pL` of `|L|` are parameters (S-H4 pass 5: one
+copy of each proof). 3.x's programs and statements are the instances at `bX = memX`,
+`pL = posL` (below); revision 4.1 instantiates them at its own base and log position. -/
+
+section Idx
+
+variable (bX pL : ℕ)
+
+/-- One halving step of the lower-bound search on `[lo, lo + len)`; nothing when `len = 0`. -/
+def bsBody4 : XIR :=
+  .ite rLn (.seq (.blk [.const rKc 1, .op .shr rHf rLn rKc, .op .add rMd rLo rHf,
+      .const rKc (BitVec.ofNat 64 bX), .op .add rAd rMd rKc]) (.seq (.load rX rAd)
+    (.seq ansLtIR (.ite rF (.blk [.op .add rLo rMd cOne, .op .sub rLn rLn rHf,
+      .op .sub rLn rLn cOne]) (.blk [.op .or rLn rHf rHf]))))) (.blk [])
+
+
+/-- After the search: `rFd := lo < n ∧ answer(X[lo]) = target`. -/
+def foundIR4 : XIR :=
+  .seq (.blk [.const rKc (BitVec.ofNat 64 bX), .op .add rAd rLo rKc]) (.seq (.load rX rAd)
+    (.seq (aposIR rPa rX) (.seq (.blk [.op .ltu rFd rLo rN]) (.seq (eqTWord 0 rQ0)
+      (.seq (eqTWord 1 rQ1) (.seq (eqTWord 2 rQ2) (eqTWord 3 rQ3)))))))
+
+
+/-- **The lookup** of the target `(rQ0 … rQ3)` in the sorted `X[0..n)`: `rLo :=` the first slot
+whose answer is not below the target (64 halvings), `rFd := 1` iff its answer is the target. -/
+def lookIR4 : XIR :=
+  .seq (.seq (readAt rN pL) (.blk [.const rLo 0, .op .or rLn rN rN, .const rNB 64]))
+    (.seq (.loopK rCB rNB 64 (bsBody4 bX)) (foundIR4 bX))
+
+
+
+/-- Before the search: `n` from tape word `pL`, `lo := 0`, `len := n`, the step count `64`. -/
+def lookPre4 : XIR := .seq (readAt rN pL) (.blk [.const rLo 0, .op .or rLn rN rN, .const rNB 64])
+
+
+/-- The tape position of entry `k`. -/
+def posE4 (L : Log) (k : ℕ) : ℕ := pL + 1 + entryOff L k
+
+
+/-- What `idxIR4_sorted` gives: `X[0..|L|)` is the set of entry positions, strictly sorted. -/
+structure Sorted4 (I : Array Word) (L : Log) (X : ℕ → Word) : Prop where
+  srt : ∀ a b, a < b → b < L.length → keyLt I (X a) (X b) = true
+  cov : ∀ a < L.length, ∃ k < L.length, X a = toWord (posE4 pL L k)
+  all : ∀ k < L.length, ∃ a < L.length, X a = toWord (posE4 pL L k)
+
+
+theorem lookIR4_eq : (lookIR4 bX pL) = .seq (lookPre4 pL) (.seq (.loopK rCB rNB 64 (bsBody4 bX)) (foundIR4 bX)) := rfl
+
+
+variable {bX pL} (hbX : regs ≤ bX) (hbX2 : bX ≤ 2 ^ 60) (hpL : pL ≤ 2 ^ 60)
+include hbX hbX2 hpL
+
+omit hbX hbX2 hpL in
+/-- **The tape at entry `k`'s answer**: word `m < 4` of `packBytes L[k].2`. -/
+theorem tape_answer4 (c : Digest) (π : Proof) (L : Log) (hs : 5 + (π.size + 7) / 8 = pL) {k : ℕ}
+    (hk : k < L.length) {m : ℕ} (hm : m < 4) :
+    (extractorInput c π L).getD (pL + 1 + entryOff L k + 1 + (L[k].1.size + 7) / 8 + m) 0 =
+      (packBytes L[k].2.toList).getD m 0 := by
+  have hl : ((packBytes c.toList ++ [toWord π.size]) ++ packBytes π.data.toList ++
+      [toWord L.length]).length = pL + 1 := by
+    simp only [List.length_append, packBytes_length, ← WitnessSending.size_eq_length,
+      Vector.length_toList, List.length_singleton] <;> omega
+  have e2 : extractorInput c π L = ((packBytes c.toList ++ [toWord π.size]) ++
+      packBytes π.data.toList ++ [toWord L.length]) ++
+      L.flatMap (fun e => bytesWords e.1.data.toList ++ packBytes e.2.toList) := by
+    rw [tape_eq, logWords]; simp
+  rw [e2, List.getD_eq_getElem?_getD, show pL + 1 + entryOff L k + 1 +
+      (L[k].1.size + 7) / 8 + m = (pL + 1) + (entryOff L k + 1 + (L[k].1.size + 7) / 8 + m) by
+      omega, ← hl, List.getElem?_append_right (by omega), Nat.add_sub_cancel_left,
+    ← List.getD_eq_getElem?_getD]
+  exact entries_getD_ans L k hk m hm
+
+
+omit hbX hbX2 hpL in
+/-- **The answer read at entry `k`'s position is `packBytes L[k].2`.** -/
+theorem ansW_entry4 (c : Digest) (π : Proof) (L : Log) (hs : 5 + (π.size + 7) / 8 = pL)
+    (hq : ∀ e ∈ L, e.1.size < 2 ^ 64) (ht : (extractorInput c π L).length ≤ 2 ^ 64) {k : ℕ}
+    (hk : k < L.length) :
+    ansW (extractorInput c π L).toArray (toWord (posE4 pL L k)) = packBytes L[k].2.toList := by
+  set I := (extractorInput c π L).toArray with hI
+  have hend := tape_entries_end4 c π L hs
+  have hq' := hq _ (List.getElem_mem hk)
+  have hk1 : entryOff L (k + 1) ≤ entryOff L L.length := by
+    rcases Nat.lt_or_ge (k + 1) L.length with h | h
+    · exact (entryOff_lt L h le_rfl).le
+    · rw [show k + 1 = L.length by omega]
+  rw [entryOff_succ L hk] at hk1
+  have hqw : qWords L[k] = 5 + (L[k].1.size + 7) / 8 := rfl
+  have hx : (toWord (posE4 pL L k)).toNat = posE4 pL L k := toNat_toWord (by simp only [posE4]; omega)
+  have hap : ∀ j < 4, (aposW I (toWord (posE4 pL L k)) + toWord j).toNat =
+      pL + 1 + entryOff L k + 1 + (L[k].1.size + 7) / 8 + j := fun j hj => by
+    have h1 : I.getD (posE4 pL L k) 0 = toWord L[k].1.size := by
+      rw [hI, getD_toArray]; exact tape_entry4 c π L hs hk
+    simp only [aposW, hx, h1]
+    rw [BitVec.toNat_add, BitVec.toNat_add, BitVec.toNat_add, toNat_ceil8 hq', hx,
+      toNat_toWord (show j < 2 ^ 64 by omega), show (1 : Word).toNat = 1 from rfl]
+    simp only [posE4] at hx ⊢
+    omega
+  apply List.ext_getElem (by simp [ansW_length, packBytes_digest_length])
+  intro m h1 h2
+  have hm : m < 4 := h1
+  rw [← List.getD_eq_getElem _ 0, ← List.getD_eq_getElem _ 0, ← tape_answer4 c π L hs hk hm,
+    ← getD_toArray (extractorInput c π L), ← hI]
+  interval_cases m
+  · exact congrArg (fun i => I.getD i 0) (hap 0 (by decide))
+  · exact congrArg (fun i => I.getD i 0) (hap 1 (by decide))
+  · exact congrArg (fun i => I.getD i 0) (hap 2 (by decide))
+  · exact congrArg (fun i => I.getD i 0) (hap 3 (by decide))
+
+
+omit hbX hbX2 hpL in
+theorem posE_lt4 (c : Digest) (π : Proof) (L : Log) (hs : 5 + (π.size + 7) / 8 = pL)
+    (ht : (extractorInput c π L).length ≤ 2 ^ 64) {k : ℕ} (hk : k < L.length) :
+    posE4 pL L k < 2 ^ 64 := by
+  have := tape_entries_end4 c π L hs
+  have := entryOff_lt L hk le_rfl
+  simp only [posE4]; omega
+
+
+omit hbX hbX2 hpL in
+/-- **The first preimage is the search's boundary.** On the sorted index, the predicate "the
+answer is below `packBytes t`" holds on a prefix; at the prefix's end `b` sits the first entry
+of `L` whose answer is `t` (`ansIdx`), and if there is none, no slot has answer `t`. -/
+theorem lookup_pure4 (c : Digest) (π : Proof) (L : Log) (hs : 5 + (π.size + 7) / 8 = pL)
+    (hq : ∀ e ∈ L, e.1.size < 2 ^ 64) (ht : (extractorInput c π L).length ≤ 2 ^ 64)
+    {X : ℕ → Word} (hX : Sorted4 pL (extractorInput c π L).toArray L X) (t : Digest) :
+    (∀ a b, a < b → b < L.length →
+      ltT (extractorInput c π L).toArray X (packBytes t.toList) b = true →
+      ltT (extractorInput c π L).toArray X (packBytes t.toList) a = true) ∧
+    ∀ b ≤ L.length,
+      (∀ a < b, ltT (extractorInput c π L).toArray X (packBytes t.toList) a = true) →
+      (∀ a, b ≤ a → a < L.length →
+        ltT (extractorInput c π L).toArray X (packBytes t.toList) a = false) →
+      (∀ k, FR.Snd.ansIdx L t = some k → b < L.length ∧ X b = toWord (posE4 pL L k)) ∧
+      (FR.Snd.ansIdx L t = none → ∀ a < L.length,
+        ansW (extractorInput c π L).toArray (X a) ≠ packBytes t.toList) := by
+  set I := (extractorInput c π L).toArray with hI
+  set T := packBytes t.toList with hT
+  have hA : ∀ a < L.length, ∃ k, ∃ hk : k < L.length, X a = toWord (posE4 pL L k) ∧
+      ansW I (X a) = packBytes L[k].2.toList := fun a ha => by
+    obtain ⟨k, hk, e⟩ := hX.cov a ha
+    exact ⟨k, hk, e, by rw [e]; exact ansW_entry4 c π L hs hq ht hk⟩
+  -- the key order splits into the answer order and, on equal answers, the position order
+  have hkey : ∀ a b, a < b → b < L.length → lexW (ansW I (X a)) (ansW I (X b)) = true ∨
+      (ansW I (X a) = ansW I (X b) ∧ X a < X b) := fun a b hab hb => by
+    have := hX.srt a b hab hb
+    rw [keyLt, keyW_eq, keyW_eq, lexW_append (ansW I (X a)) (ansW I (X b))
+      (by rw [ansW_length, ansW_length])] at this
+    simp only [Bool.or_eq_true, Bool.and_eq_true, decide_eq_true_eq] at this
+    exact this
+  have hmono : ∀ a b, a < b → b < L.length → ltT I X T b = true → ltT I X T a = true :=
+    fun a b hab hb h => by
+      rcases hkey a b hab hb with h' | ⟨h', -⟩
+      · exact lexW_trans _ _ _ h' h
+      · simpa [ltT, h'] using h
+  refine ⟨hmono, fun b hbn hlo hhi => ⟨fun k hk => ?_, fun hn a ha he => ?_⟩⟩
+  · obtain ⟨hkl, hkt, hfirst⟩ := List.findIdx?_eq_some_iff_getElem.mp hk
+    simp only [decide_eq_true_eq] at hkt
+    obtain ⟨a0, ha0, e0⟩ := hX.all k hkl
+    have hA0 : ansW I (X a0) = T := by rw [e0, ansW_entry4 c π L hs hq ht hkl, hkt]
+    -- `p` fails at `a0`, and holds below it
+    have hf0 : ltT I X T a0 = false := by simp [ltT, hA0, lexW_irrefl]
+    have ht0 : ∀ a < a0, ltT I X T a = true := fun a ha => by
+      rcases hkey a a0 ha ha0 with h' | ⟨h', hlt⟩
+      · rwa [hA0] at h'
+      · exfalso
+        obtain ⟨k', hk', e', hA'⟩ := hA a (by omega)
+        have hkt' : L[k'].2 = t := packBytes_digest_inj (by rw [← hA', h', hA0])
+        rw [e', e0, BitVec.lt_def, toNat_toWord (posE_lt4 c π L hs ht hk'),
+          toNat_toWord (posE_lt4 c π L hs ht hkl)] at hlt
+        have hkk : k' < k := by
+          by_contra hge
+          rcases Nat.lt_or_ge k k' with h2 | h2
+          · have := entryOff_lt L h2 hk'.le; simp only [posE4] at hlt; omega
+          · have : k = k' := by omega
+            subst this; omega
+        have := hfirst k' hkk
+        simp [hkt'] at this
+    have hb1 : b ≤ a0 := by
+      by_contra h
+      have := hlo a0 (by omega)
+      rw [hf0] at this; exact absurd this (by decide)
+    have hb2 : a0 ≤ b := by
+      by_contra h
+      have h1 := ht0 b (by omega)
+      rw [hhi b le_rfl (by omega)] at h1; exact absurd h1 (by decide)
+    have : b = a0 := by omega
+    subst this
+    exact ⟨ha0, e0⟩
+  · obtain ⟨k, hk, -, hA'⟩ := hA a ha
+    have := List.findIdx?_eq_none_iff.mp hn L[k] (List.getElem_mem hk)
+    have e : L[k].2 = t := packBytes_digest_inj (by rw [← hA', he])
+    simp [e] at this
+
+
 /-- **One halving step** of the machine is `bsStep` on the predicate `ltT`. -/
-theorem bsBody_sem (I : Array Word) (s : St) (hM : Inv s.M) {n lo len : ℕ} {T : List Word}
+theorem bsBody4_sem (I : Array Word) (s : St) (hM : Inv s.M) {n lo len : ℕ} {T : List Word}
     {X : ℕ → Word} (hR : SRegs s.M n lo len T) (hb : lo + len ≤ n) (hn : n < 2 ^ 62)
-    (hX : ∀ a < n, rd s.M (memX + a) = X a) :
-    SRegs (semXIR I bsBody s).M n (bsStep (ltT I X T) (lo, len)).1
+    (hX : ∀ a < n, rd s.M (bX + a) = X a) :
+    SRegs (semXIR I (bsBody4 bX) s).M n (bsStep (ltT I X T) (lo, len)).1
       (bsStep (ltT I X T) (lo, len)).2 T := by
   have hs := hM.1
-  have hm : memX = 2 ^ 26 := rfl
   simp only [regs] at hs
-  rw [bsBody, semXIR_ite, hR.len]
+  rw [bsBody4, semXIR_ite, hR.len]
   by_cases h0 : len = 0
   · subst h0
     have h00 : toWord 0 = (0 : Word) := rfl
@@ -514,16 +629,16 @@ theorem bsBody_sem (I : Array Word) (s : St) (hM : Inv s.M) {n lo len : ℕ} {T 
   rw [e]
   -- the probe
   have hwf1 : WF (.blk [.const rKc 1, .op .shr rHf rLn rKc, .op .add rMd rLo rHf,
-      .const rKc (BitVec.ofNat 64 memX), .op .add rAd rMd rKc]) := by
-    simp +decide only [WF, Prim.dst, rKc, rHf, rMd, rAd]
+      .const rKc (BitVec.ofNat 64 bX), .op .add rAd rMd rKc]) := by
+    simp +decide [WF, Prim.dst, rKc, rHf, rMd, rAd]
   have h1 : rd (semXIR I (.blk [.const rKc 1, .op .shr rHf rLn rKc, .op .add rMd rLo rHf,
-        .const rKc (BitVec.ofNat 64 memX), .op .add rAd rMd rKc]) s).M rHf = toWord (len / 2) ∧
+        .const rKc (BitVec.ofNat 64 bX), .op .add rAd rMd rKc]) s).M rHf = toWord (len / 2) ∧
       rd (semXIR I (.blk [.const rKc 1, .op .shr rHf rLn rKc, .op .add rMd rLo rHf,
-        .const rKc (BitVec.ofNat 64 memX), .op .add rAd rMd rKc]) s).M rMd =
+        .const rKc (BitVec.ofNat 64 bX), .op .add rAd rMd rKc]) s).M rMd =
         toWord (lo + len / 2) ∧
       rd (semXIR I (.blk [.const rKc 1, .op .shr rHf rLn rKc, .op .add rMd rLo rHf,
-        .const rKc (BitVec.ofNat 64 memX), .op .add rAd rMd rKc]) s).M rAd =
-        toWord (lo + len / 2 + memX) := by
+        .const rKc (BitVec.ofNat 64 bX), .op .add rAd rMd rKc]) s).M rAd =
+        toWord (lo + len / 2 + bX) := by
     simp only [semXIR, runPrims, List.foldl, Prim.run]
     refine ⟨?_, ?_, ?_⟩ <;>
     simp (disch := first | decide | (simp only [size_set, rKc, rHf, rMd, rAd]; omega)) only
@@ -532,16 +647,16 @@ theorem bsBody_sem (I : Array Word) (s : St) (hM : Inv s.M) {n lo len : ℕ} {T 
     · rw [hR.lo, add_toWord]
     · rw [hR.lo, add_toWord]; exact add_toWord _ _
   have hR1 := hR.sem (I := I) hM hwf1 (by
-    simp +decide only [srL, Writes, Prim.dst, rKc, rHf, rMd, rAd, rLo, rLn, rN, rQ0, rQ1, rQ2, rQ3,
+    simp +decide [srL, Writes, Prim.dst, rKc, rHf, rMd, rAd, rLo, rLn, rN, rQ0, rQ1, rQ2, rQ3,
       List.mem_cons, List.mem_nil_iff, forall_eq_or_imp, exists_eq_or_imp, forall_eq,
       exists_eq_left, or_false, and_true])
   have hM1 := inv_sem I hwf1 hM
   have hH1 := hframe I (.blk [.const rKc 1, .op .shr rHf rLn rKc, .op .add rMd rLo rHf,
-    .const rKc (BitVec.ofNat 64 memX), .op .add rAd rMd rKc]) s
-    (by simp +decide only [Lo, Prim.dst, regs, rKc, rHf, rMd, rAd])
+    .const rKc (BitVec.ofNat 64 bX), .op .add rAd rMd rKc]) s
+    (by simp +decide [Lo, Prim.dst, regs, rKc, rHf, rMd, rAd])
   rw [semXIR_seq]
   generalize semXIR I (.blk [.const rKc 1, .op .shr rHf rLn rKc, .op .add rMd rLo rHf,
-    .const rKc (BitVec.ofNat 64 memX), .op .add rAd rMd rKc]) s = s1 at h1 hR1 hM1 hH1
+    .const rKc (BitVec.ofNat 64 bX), .op .add rAd rMd rKc]) s = s1 at h1 hR1 hM1 hH1
   obtain ⟨hf1, hd1, ha1⟩ := h1
   have hs1 := hM1.1
   simp only [regs] at hs1
@@ -549,16 +664,16 @@ theorem bsBody_sem (I : Array Word) (s : St) (hM : Inv s.M) {n lo len : ℕ} {T 
   have hx2 : rd (semXIR I (.load rX rAd) s1).M rX = X (lo + len / 2) := by
     simp only [semXIR]
     rw [rd_set_self (by simp only [rX]; omega), ha1, toNat_toWord (by omega),
-      hH1 _ (by simp only [regs, hm]; omega), show lo + len / 2 + memX = memX + (lo + len / 2) by
+      hH1 _ (by simp only [regs] at hbX ⊢; omega), show lo + len / 2 + bX = bX + (lo + len / 2) by
       omega, hX _ (by omega)]
   have hfr2 : ∀ q ∈ [rHf, rMd] ++ srL, rd (semXIR I (.load rX rAd) s1).M q = rd s1.M q :=
     fun q hq => by
       simp only [semXIR]
       exact rd_set_ne ((by decide : ∀ r ∈ [rHf, rMd] ++ srL, rX ≠ r) q hq)
-  have hR2 := hR1.sem (I := I) (P := .load rX rAd) hM1 (by simp +decide only [WF, rX]) (by
-    simp +decide only [srL, Writes, rX, rLo, rLn, rN, rQ0, rQ1, rQ2, rQ3, List.mem_cons,
+  have hR2 := hR1.sem (I := I) (P := .load rX rAd) hM1 (by simp +decide [WF, rX]) (by
+    simp +decide [srL, Writes, rX, rLo, rLn, rN, rQ0, rQ1, rQ2, rQ3, List.mem_cons,
       List.mem_nil_iff, forall_eq_or_imp, forall_eq, or_false, and_true])
-  have hM2 := inv_sem I (P := .load rX rAd) (by simp +decide only [WF, rX]) hM1
+  have hM2 := inv_sem I (P := .load rX rAd) (by simp +decide [WF, rX]) hM1
   rw [semXIR_seq]
   generalize semXIR I (.load rX rAd) s1 = s2 at hx2 hfr2 hR2 hM2
   -- the comparison
@@ -599,115 +714,73 @@ theorem bsBody_sem (I : Array Word) (s : St) (hM : Inv s.M) {n lo len : ℕ} {T 
     · exact hR3.q
 
 
-/-! ## The search loop and the found flag -/
-
-theorem wf_bsBody : WF bsBody := by
-  simp +decide only [bsBody, ansLtIR, aposIR, ceil8Ps, cmpTWord, WF, Prim.dst, rQL, rKc, rT2, rPa,
+omit hbX hbX2 hpL in
+theorem wf_bsBody4 : WF (bsBody4 bX) := by
+  simp +decide [bsBody4, ansLtIR, aposIR, ceil8Ps, cmpTWord, WF, Prim.dst, rQL, rKc, rT2, rPa,
     rAd, rKa, rG, rH, rF, rHf, rMd, rX, rLo, rLn, and_true, List.cons_append, List.nil_append]
 
-theorem lo_bsBody : Lo bsBody := by
-  simp +decide only [bsBody, ansLtIR, aposIR, ceil8Ps, cmpTWord, Lo, Prim.dst, regs, rQL, rKc, rT2,
+
+omit hbX hbX2 hpL in
+theorem lo_bsBody4 : Lo (bsBody4 bX) := by
+  simp +decide [bsBody4, ansLtIR, aposIR, ceil8Ps, cmpTWord, Lo, Prim.dst, regs, rQL, rKc, rT2,
     rPa, rAd, rKa, rG, rH, rF, rHf, rMd, rX, rLo, rLn, and_true, List.cons_append, List.nil_append]
 
-theorem SRegs.decS {s : St} {n lo len : ℕ} {T : List Word} (h : SRegs s.M n lo len T) :
-    SRegs (decS rCB s).M n lo len T :=
-  ⟨(rd_decS (by decide) s).trans h.lo, (rd_decS (by decide) s).trans h.len,
-    (rd_decS (by decide) s).trans h.n, by
-      rw [rd_decS (by decide), rd_decS (by decide), rd_decS (by decide), rd_decS (by decide)]
-      exact h.q⟩
-
-theorem bsRun_le {p : ℕ → Bool} {n : ℕ} :
-    ∀ (m lo len : ℕ), lo + len ≤ n → (bsRun p m (lo, len)).1 + (bsRun p m (lo, len)).2 ≤ n
-  | 0, _, _, h => h
-  | m + 1, lo, len, h => bsRun_le m _ _ (bsStep_le h)
 
 /-- **The search loop**: `m` iterations run `bsRun` and leave the heap alone. -/
-theorem bsLoop (I : Array Word) {n : ℕ} {T : List Word} {X : ℕ → Word} (hn : n < 2 ^ 62) :
+theorem bsLoop4 (I : Array Word) {n : ℕ} {T : List Word} {X : ℕ → Word} (hn : n < 2 ^ 62) :
     ∀ (m : ℕ) (s : St) (lo len : ℕ), Inv s.M → SRegs s.M n lo len T → lo + len ≤ n →
-      (∀ a < n, rd s.M (memX + a) = X a) →
-      Inv (iterL (semXIR I bsBody) rCB m s).M ∧
-      SRegs (iterL (semXIR I bsBody) rCB m s).M n (bsRun (ltT I X T) m (lo, len)).1
+      (∀ a < n, rd s.M (bX + a) = X a) →
+      Inv (iterL (semXIR I (bsBody4 bX)) rCB m s).M ∧
+      SRegs (iterL (semXIR I (bsBody4 bX)) rCB m s).M n (bsRun (ltT I X T) m (lo, len)).1
         (bsRun (ltT I X T) m (lo, len)).2 T ∧
-      ∀ x, regs ≤ x → rd (iterL (semXIR I bsBody) rCB m s).M x = rd s.M x
+      ∀ x, regs ≤ x → rd (iterL (semXIR I (bsBody4 bX)) rCB m s).M x = rd s.M x
   | 0, _, _, _, hM, hR, _, _ => ⟨hM, hR, fun _ _ => rfl⟩
   | m + 1, s, lo, len, hM, hR, hb, hX => by
-    have h1 := bsBody_sem I s hM hR hb hn hX
-    have hH := hframe I bsBody s lo_bsBody
-    have hM1 := inv_sem I wf_bsBody hM
-    have hM' : Inv (decS rCB (semXIR I bsBody s)).M := inv_of_frame hM1 (size_decS ..)
+    have h1 := bsBody4_sem hbX hbX2 hpL I s hM hR hb hn hX
+    have hH := hframe I (bsBody4 bX) s (lo_bsBody4 (bX := bX))
+    have hM1 := inv_sem I (wf_bsBody4 (bX := bX)) hM
+    have hM' : Inv (decS rCB (semXIR I (bsBody4 bX) s)).M := inv_of_frame hM1 (size_decS ..)
       fun i hi => rd_decS (by simp only [rCB]; omega) _
-    have hH' : ∀ x, regs ≤ x → rd (decS rCB (semXIR I bsBody s)).M x = rd s.M x :=
+    have hH' : ∀ x, regs ≤ x → rd (decS rCB (semXIR I (bsBody4 bX) s)).M x = rd s.M x :=
       fun x hx => (rd_decS (by simp only [rCB, regs] at *; omega) _).trans (hH x hx)
-    obtain ⟨a, b, c⟩ := bsLoop I hn m _ _ _ hM' h1.decS (bsStep_le hb)
-      (fun a ha => by rw [hH' _ (by simp only [regs, memX]; omega), hX a ha])
+    obtain ⟨a, b, c⟩ := bsLoop4 I hn m _ _ _ hM' h1.decS (bsStep_le hb)
+      (fun a ha => by rw [hH' _ (by simp only [regs] at hbX ⊢; omega), hX a ha])
     simp only [iterL, bsRun]
     exact ⟨a, b, fun x hx => (c x hx).trans (hH' x hx)⟩
 
-theorem eqTWord_sem (I : Array Word) (s : St) (hM : Inv s.M) {w r : ℕ}
-    (hr : r = rQ0 ∨ r = rQ1 ∨ r = rQ2 ∨ r = rQ3) :
-    rd (semXIR I (eqTWord w r) s).M rFd = XOp.and.eval (rd s.M rFd)
-      (XOp.eq.eval (I.getD (rd s.M rPa + BitVec.ofNat 64 w).toNat 0) (rd s.M r)) := by
-  have hs := hM.1
-  simp only [regs] at hs
-  rcases hr with rfl | rfl | rfl | rfl <;>
-  · simp only [eqTWord, semXIR, runPrims, List.foldl, Prim.run, rKc, rAd, rPa, rKa, rH, rFd,
-      rQ0, rQ1, rQ2, rQ3]
-    simp (disch := first | decide | omega | (simp only [size_set]; omega)) only [rd_set_self,
-      rd_set_ne]
-    rfl
-
-theorem wf_eqTWord (w r : ℕ) : WF (eqTWord w r) := by
-  simp +decide only [eqTWord, WF, Prim.dst, rKc, rAd, rKa, rH, rFd, List.mem_cons, List.mem_nil_iff,
-    forall_eq_or_imp, forall_eq, or_false, and_true]
-
-theorem eqTWord_frame (I : Array Word) (s : St) (hM : Inv s.M) (w r : ℕ) {q : ℕ}
-    (hq : q ∈ [rPa] ++ srL) : rd (semXIR I (eqTWord w r) s).M q = rd s.M q :=
-  frame I _ s (wf_eqTWord w r) hM q ((by decide : ∀ r ∈ [rPa] ++ srL, r < regs) q hq) (by
-    simp only [srL, List.cons_append, List.nil_append, List.mem_cons, List.mem_nil_iff,
-      or_false] at hq
-    rcases hq with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl <;>
-      simp +decide only [eqTWord, Writes, Prim.dst, rKc, rAd, rKa, rH, rFd, rPa, rLo, rLn, rN, rQ0,
-        rQ1, rQ2, rQ3, List.mem_cons, List.mem_nil_iff, exists_eq_or_imp, exists_eq_left, or_false])
-
-theorem decide_ansW (A : List Word) (hA : A.length = 4) (t0 t1 t2 t3 : Word) (p : Bool) :
-    (p && decide (A.getD 0 0 = t0) && decide (A.getD 1 0 = t1) && decide (A.getD 2 0 = t2) &&
-      decide (A.getD 3 0 = t3)) = (p && decide (A = [t0, t1, t2, t3])) := by
-  match A, hA with
-  | [a0, a1, a2, a3], _ => simp [Bool.and_assoc]
 
 /-- **The found flag**: `rFd = [lo < n ∧ ansW(X[lo]) = T]`; `rLo` is kept. -/
-theorem foundIR_sem (I : Array Word) (s : St) (hM : Inv s.M) {n lo len : ℕ} {T : List Word}
+theorem foundIR4_sem (I : Array Word) (s : St) (hM : Inv s.M) {n lo len : ℕ} {T : List Word}
     (hR : SRegs s.M n lo len T) (hlo : lo ≤ n) (hn : n < 2 ^ 62) :
-    rd (semXIR I foundIR s).M rFd =
-      bW (decide (lo < n) && decide (ansW I (rd s.M (memX + lo)) = T)) ∧
-    rd (semXIR I foundIR s).M rLo = toWord lo := by
+    rd (semXIR I (foundIR4 bX) s).M rFd =
+      bW (decide (lo < n) && decide (ansW I (rd s.M (bX + lo)) = T)) ∧
+    rd (semXIR I (foundIR4 bX) s).M rLo = toWord lo := by
   have hs := hM.1
-  have hm : memX = 2 ^ 26 := rfl
   simp only [regs] at hs
-  set x := rd s.M (memX + lo)
+  set x := rd s.M (bX + lo)
   -- the address and the load
-  have hwf1 : WF (.seq (.blk [.const rKc (BitVec.ofNat 64 memX), .op .add rAd rLo rKc])
-      (.load rX rAd)) := by simp +decide only [WF, Prim.dst, rKc, rAd, rX, and_true]
-  have hx1 : rd (semXIR I (.seq (.blk [.const rKc (BitVec.ofNat 64 memX), .op .add rAd rLo rKc])
+  have hwf1 : WF (.seq (.blk [.const rKc (BitVec.ofNat 64 bX), .op .add rAd rLo rKc])
+      (.load rX rAd)) := by simp +decide [WF, Prim.dst, rKc, rAd, rX, and_true]
+  have hx1 : rd (semXIR I (.seq (.blk [.const rKc (BitVec.ofNat 64 bX), .op .add rAd rLo rKc])
       (.load rX rAd)) s).M rX = x := by
     simp only [semXIR, runPrims, List.foldl, Prim.run]
     rw [rd_set_self (by simp only [size_set, rX]; omega)]
     simp (disch := first | decide | (simp only [size_set, rKc, rAd]; omega)) only [rd_set_self,
       rd_set_ne]
-    rw [hR.lo, show XOp.add.eval (toWord lo) (BitVec.ofNat 64 memX) = toWord (lo + memX) from
-      add_toWord _ _, toNat_toWord (by omega), rd_set_ne (by simp only [rAd, hm]; omega),
-      rd_set_ne (by simp only [rKc, hm]; omega), show lo + memX = memX + lo by omega]
+    rw [hR.lo, show XOp.add.eval (toWord lo) (BitVec.ofNat 64 bX) = toWord (lo + bX) from
+      add_toWord _ _, toNat_toWord (by omega), rd_set_ne (by simp only [rAd, regs] at hbX ⊢; omega),
+      rd_set_ne (by simp only [rKc, regs] at hbX ⊢; omega), show lo + bX = bX + lo by omega]
   have hR1 := hR.sem (I := I) hM hwf1 (by
-    simp +decide only [srL, Writes, Prim.dst, rKc, rAd, rX, rLo, rLn, rN, rQ0, rQ1, rQ2, rQ3,
+    simp +decide [srL, Writes, Prim.dst, rKc, rAd, rX, rLo, rLn, rN, rQ0, rQ1, rQ2, rQ3,
       List.mem_cons, List.mem_nil_iff, forall_eq_or_imp, exists_eq_or_imp, forall_eq,
       exists_eq_left, or_false, and_true])
   have hM1 := inv_sem I hwf1 hM
-  have e : semXIR I foundIR s = semXIR I (.seq (aposIR rPa rX) (.seq (.blk [.op .ltu rFd rLo rN])
+  have e : semXIR I (foundIR4 bX) s = semXIR I (.seq (aposIR rPa rX) (.seq (.blk [.op .ltu rFd rLo rN])
       (.seq (eqTWord 0 rQ0) (.seq (eqTWord 1 rQ1) (.seq (eqTWord 2 rQ2) (eqTWord 3 rQ3))))))
-      (semXIR I (.seq (.blk [.const rKc (BitVec.ofNat 64 memX), .op .add rAd rLo rKc])
+      (semXIR I (.seq (.blk [.const rKc (BitVec.ofNat 64 bX), .op .add rAd rLo rKc])
         (.load rX rAd)) s) := rfl
   rw [e]
-  generalize semXIR I (.seq (.blk [.const rKc (BitVec.ofNat 64 memX), .op .add rAd rLo rKc])
+  generalize semXIR I (.seq (.blk [.const rKc (BitVec.ofNat 64 bX), .op .add rAd rLo rKc])
       (.load rX rAd)) s = s1 at hx1 hR1 hM1
   -- the answer position
   rw [semXIR_seq]
@@ -721,7 +794,7 @@ theorem foundIR_sem (I : Array Word) (s : St) (hM : Inv s.M) {n lo len : ℕ} {T
   rw [semXIR_seq]
   have hs2 := hM2.1
   simp only [regs] at hs2
-  have hwf3 : WF (.blk [.op .ltu rFd rLo rN]) := by simp +decide only [WF, Prim.dst, rFd]
+  have hwf3 : WF (.blk [.op .ltu rFd rLo rN]) := by simp +decide [WF, Prim.dst, rFd]
   have hf3 : rd (semXIR I (.blk [.op .ltu rFd rLo rN]) s2).M rFd = bW (decide (lo < n)) := by
     simp only [semXIR, runPrims, List.foldl, Prim.run]
     rw [rd_set_self (by simp only [rFd]; omega), hR2.lo, hR2.n, ltW_toWord (by omega) (by omega)]
@@ -757,57 +830,39 @@ theorem foundIR_sem (I : Array Word) (s : St) (hM : Inv s.M) {n lo len : ℕ} {T
   rw [f3, ← hR2.q, decide_ansW _ (ansW_length I x)]
 
 
-/-! ## The lookup -/
-
-/-- Before the search: `n` from tape word `posL`, `lo := 0`, `len := n`, the step count `64`. -/
-def lookPre : XIR := .seq (readAt rN posL) (.blk [.const rLo 0, .op .or rLn rN rN, .const rNB 64])
-
-theorem lookIR_eq : lookIR = .seq lookPre (.seq (.loopK rCB rNB 64 bsBody) foundIR) := rfl
-
-theorem entryKB {M : Mem} (hM : Inv M) (hN : rd M rNB = 64) :
-    rd (entryK rCB rNB 64 M) rCB = 64 := by
-  have hs := hM.1
-  simp only [regs] at hs
-  unfold entryK
-  dsimp only
-  have h1 : rd (M.setIfInBounds rCB 64) rNB = 64 := by rw [rd_set_ne (by decide), hN]
-  have h2 : rd (M.setIfInBounds rCB 64) rCB = 64 := rd_set_self (by simp only [rCB]; omega)
-  rw [h1, h2, rd_set_self (by simp only [size_set, cTmp]; omega)]
-  rw [if_pos (by decide), rd_set_ne (by decide), h2]
-
 /-- **The lookup's semantics**: `rLo` is the lower bound `bsRun` of the target `T` (the words in
 `rQ0 … rQ3`) on `X[0..n)`, `rFd` says whether that slot exists and its answer is `T`; the heap
 is unchanged. -/
-theorem lookIR_sem (I : Array Word) (s : St) (hM : Inv s.M) {n : ℕ} {T : List Word}
-    {X : ℕ → Word} (hn : I.getD posL 0 = toWord n) (hn2 : n < 2 ^ 62)
+theorem lookIR4_sem (I : Array Word) (s : St) (hM : Inv s.M) {n : ℕ} {T : List Word}
+    {X : ℕ → Word} (hn : I.getD pL 0 = toWord n) (hn2 : n < 2 ^ 62)
     (hT : [rd s.M rQ0, rd s.M rQ1, rd s.M rQ2, rd s.M rQ3] = T)
-    (hX : ∀ a < n, rd s.M (memX + a) = X a) :
-    rd (semXIR I lookIR s).M rLo = toWord (bsRun (ltT I X T) 64 (0, n)).1 ∧
-    rd (semXIR I lookIR s).M rFd = bW (decide ((bsRun (ltT I X T) 64 (0, n)).1 < n) &&
-      decide (ansW I (rd s.M (memX + (bsRun (ltT I X T) 64 (0, n)).1)) = T)) ∧
-    ∀ x, regs ≤ x → rd (semXIR I lookIR s).M x = rd s.M x := by
+    (hX : ∀ a < n, rd s.M (bX + a) = X a) :
+    rd (semXIR I (lookIR4 bX pL) s).M rLo = toWord (bsRun (ltT I X T) 64 (0, n)).1 ∧
+    rd (semXIR I (lookIR4 bX pL) s).M rFd = bW (decide ((bsRun (ltT I X T) 64 (0, n)).1 < n) &&
+      decide (ansW I (rd s.M (bX + (bsRun (ltT I X T) 64 (0, n)).1)) = T)) ∧
+    ∀ x, regs ≤ x → rd (semXIR I (lookIR4 bX pL) s).M x = rd s.M x := by
   have hs := hM.1
   simp only [regs] at hs
-  have hwf0 : WF lookPre := by simp +decide only [lookPre, readAt, WF, Prim.dst, rN, rA, rLo, rLn,
+  have hwf0 : WF (lookPre4 pL) := by simp +decide [lookPre4, readAt, WF, Prim.dst, rN, rA, rLo, rLn,
     rNB, and_true]
-  have hlo0 : Lo lookPre := by simp +decide only [lookPre, readAt, Lo, Prim.dst, regs, rN, rA, rLo,
+  have hlo0 : Lo (lookPre4 pL) := by simp +decide [lookPre4, readAt, Lo, Prim.dst, regs, rN, rA, rLo,
     rLn, rNB, and_true]
-  have hR0 : SRegs (semXIR I lookPre s).M n 0 n T ∧ rd (semXIR I lookPre s).M rNB = 64 := by
-    have hN := rd_readAt I s hM (d := rN) (pos := posL) (by decide) (by simp only [posL]; omega)
-    have hwfr : WF (readAt rN posL) := by simp +decide only [readAt, WF, Prim.dst, rN, rA, and_true]
+  have hR0 : SRegs (semXIR I (lookPre4 pL) s).M n 0 n T ∧ rd (semXIR I (lookPre4 pL) s).M rNB = 64 := by
+    have hN := rd_readAt I s hM (d := rN) (pos := pL) (by decide) (by omega)
+    have hwfr : WF (readAt rN pL) := by simp +decide [readAt, WF, Prim.dst, rN, rA, and_true]
     have hM' := inv_sem I hwfr hM
-    have hq' : [rd (semXIR I (readAt rN posL) s).M rQ0, rd (semXIR I (readAt rN posL) s).M rQ1,
-        rd (semXIR I (readAt rN posL) s).M rQ2, rd (semXIR I (readAt rN posL) s).M rQ3] = T := by
+    have hq' : [rd (semXIR I (readAt rN pL) s).M rQ0, rd (semXIR I (readAt rN pL) s).M rQ1,
+        rd (semXIR I (readAt rN pL) s).M rQ2, rd (semXIR I (readAt rN pL) s).M rQ3] = T := by
       have hf := fun r (hr : r ∈ [rQ0, rQ1, rQ2, rQ3]) => FR.X.frame I _ s hwfr hM r
         ((by decide : ∀ r ∈ [rQ0, rQ1, rQ2, rQ3], r < regs) r hr) (by
           simp only [List.mem_cons, List.mem_nil_iff, or_false] at hr
-          rcases hr with rfl | rfl | rfl | rfl <;> simp +decide only [readAt, Writes, Prim.dst, rN,
+          rcases hr with rfl | rfl | rfl | rfl <;> simp +decide [readAt, Writes, Prim.dst, rN,
             rA, rQ0, rQ1, rQ2, rQ3, or_false])
       rw [hf rQ0 (by simp), hf rQ1 (by simp), hf rQ2 (by simp), hf rQ3 (by simp)]
       exact hT
     rw [hn] at hN
-    rw [lookPre, semXIR_seq]
-    generalize semXIR I (readAt rN posL) s = s' at hN hM' hq'
+    rw [lookPre4, semXIR_seq]
+    generalize semXIR I (readAt rN pL) s = s' at hN hM' hq'
     have hs' := hM'.1
     simp only [regs] at hs'
     simp only [semXIR, runPrims, List.foldl, Prim.run]
@@ -819,12 +874,12 @@ theorem lookIR_sem (I : Array Word) (s : St) (hM : Inv s.M) {n : ℕ} {T : List 
     · exact hN
     · exact hq'
   have hM0 := inv_sem I hwf0 hM
-  have hH0 := hframe I lookPre s hlo0
-  rw [lookIR_eq, semXIR_seq, semXIR_seq]
-  generalize semXIR I lookPre s = s0 at hR0 hM0 hH0
+  have hH0 := hframe I (lookPre4 pL) s hlo0
+  rw [lookIR4_eq, semXIR_seq, semXIR_seq]
+  generalize semXIR I (lookPre4 pL) s = s0 at hR0 hM0 hH0
   obtain ⟨hR0, hB0⟩ := hR0
-  have e : semXIR I (.loopK rCB rNB 64 bsBody) s0 =
-      iterL (semXIR I bsBody) rCB 64 ⟨entryK rCB rNB 64 s0.M, s0.o⟩ := by
+  have e : semXIR I (.loopK rCB rNB 64 (bsBody4 bX)) s0 =
+      iterL (semXIR I (bsBody4 bX)) rCB 64 ⟨entryK rCB rNB 64 s0.M, s0.o⟩ := by
     simp only [semXIR, entryKB hM0 hB0]
     rfl
   rw [e]
@@ -840,18 +895,137 @@ theorem lookIR_sem (I : Array Word) (s : St) (hM : Inv s.M) {n : ℕ} {T : List 
   have hHE : ∀ x, regs ≤ x → rd (entryK rCB rNB 64 s0.M) x = rd s.M x := fun x hx => by
     rw [hE x (by simp only [rCB, regs] at *; omega) (by simp only [cTmp, regs] at *; omega),
       hH0 x hx]
-  obtain ⟨l1, l2, l3⟩ := bsLoop I (X := X) hn2 64 ⟨entryK rCB rNB 64 s0.M, s0.o⟩ 0 n hME hRE
-    (by omega) (fun a ha => by rw [hHE (memX + a) (by simp only [regs, memX]; omega), hX a ha])
-  generalize iterL (semXIR I bsBody) rCB 64 ⟨entryK rCB rNB 64 s0.M, s0.o⟩ = s1 at l1 l2 l3
+  obtain ⟨l1, l2, l3⟩ := bsLoop4 hbX hbX2 hpL I (X := X) hn2 64 ⟨entryK rCB rNB 64 s0.M, s0.o⟩ 0 n hME hRE
+    (by omega) (fun a ha => by rw [hHE (bX + a) (by simp only [regs] at hbX ⊢; omega), hX a ha])
+  generalize iterL (semXIR I (bsBody4 bX)) rCB 64 ⟨entryK rCB rNB 64 s0.M, s0.o⟩ = s1 at l1 l2 l3
   have hle := bsRun_le (p := ltT I X T) (n := n) 64 0 n (by omega)
-  obtain ⟨f1, f2⟩ := foundIR_sem I s1 l1 l2 (le_trans (Nat.le_add_right _ _) hle) hn2
+  obtain ⟨f1, f2⟩ := foundIR4_sem hbX hbX2 hpL I s1 l1 l2 (le_trans (Nat.le_add_right _ _) hle) hn2
   have hH1 : ∀ x, regs ≤ x → rd s1.M x = rd s.M x := fun x hx => (l3 x hx).trans (hHE x hx)
-  refine ⟨f2, ?_, fun x hx => (hframe I foundIR s1 (by
-    simp +decide only [foundIR, aposIR, ceil8Ps, eqTWord, Lo, Prim.dst, regs, rKc, rAd, rX, rQL,
+  refine ⟨f2, ?_, fun x hx => (hframe I (foundIR4 bX) s1 (by
+    simp +decide [foundIR4, aposIR, ceil8Ps, eqTWord, Lo, Prim.dst, regs, rKc, rAd, rX, rQL,
       rT2, rPa, rFd, rKa, rH, and_true, List.cons_append, List.nil_append]) x hx).trans (hH1 x hx)⟩
-  rw [f1, hH1 _ (by simp only [regs, memX]; omega)]
+  rw [f1, hH1 _ (by simp only [regs] at hbX ⊢; omega)]
 
-/-! ## A lookup after the log index -/
+
+/-- **`lookup_spec`**, parametric in the target `t`. On a domain tape of a SNARK proof, take a
+state `s₂` whose `X[0..|L|)` is the one `idxIR4` left and whose `rQ0 … rQ3` hold
+`packBytes t`. If `t` is the answer of some log entry, `(lookIR4 bX pL)` sets `rFd = 1` and `rLo` to a
+slot `b` whose `X[b]` is the tape position of the **first** such entry (`FRLog.ansIdx`);
+otherwise `rFd = 0`. `X` is unchanged, so it is still the sorted index. -/
+theorem idx_lookup4 (c : Digest) (π : Proof) (L : Log) (hs : 5 + (π.size + 7) / 8 = pL)
+    (hq : ∀ e ∈ L, e.1.size < 2 ^ 64) (ht : (extractorInput c π L).length ≤ 2 ^ 64)
+    (s : St) (hM : Inv s.M) (hsz : bX + L.length + L.length ≤ s.M.size) (t : Digest)
+    (s₂ : St) (hM₂ : Inv s₂.M)
+    (hX₂ : ∀ a < L.length, rd s₂.M (bX + a) =
+      rd (semXIR (extractorInput c π L).toArray (idxIR4 bX pL) s).M (bX + a))
+    (hT : [rd s₂.M rQ0, rd s₂.M rQ1, rd s₂.M rQ2, rd s₂.M rQ3] = packBytes t.toList) :
+    (∀ k, FR.Snd.ansIdx L t = some k → ∃ b < L.length,
+      rd (semXIR (extractorInput c π L).toArray (lookIR4 bX pL) s₂).M rLo = toWord b ∧
+      rd (semXIR (extractorInput c π L).toArray (lookIR4 bX pL) s₂).M rFd = 1 ∧
+      rd (semXIR (extractorInput c π L).toArray (lookIR4 bX pL) s₂).M (bX + b) = toWord (posE4 pL L k)) ∧
+    (FR.Snd.ansIdx L t = none →
+      rd (semXIR (extractorInput c π L).toArray (lookIR4 bX pL) s₂).M rFd = 0) ∧
+    Sorted4 pL (extractorInput c π L).toArray L
+      (fun a => rd (semXIR (extractorInput c π L).toArray (lookIR4 bX pL) s₂).M (bX + a)) := by
+  set I := (extractorInput c π L).toArray with hI
+  have hend := tape_entries_end4 c π L hs
+  have h5 : 5 * L.length ≤ entryOff L L.length := by
+    have := length_logEntries L
+    rwa [entries_length, ← entryOff_length] at this
+  obtain ⟨r1, r2, r3⟩ := idxIR4_sorted hbX hbX2 hpL c π L hs hq ht s hM hsz
+  generalize semXIR I (idxIR4 bX pL) s = s1 at r1 r2 r3 hX₂
+  set X : ℕ → Word := fun a => rd s1.M (bX + a) with hXd
+  have hSX : Sorted4 pL I L X := ⟨r1, r2, r3⟩
+  have hX₂' : ∀ a < L.length, rd s₂.M (bX + a) = X a := hX₂
+  obtain ⟨l1, l2, l3⟩ := lookIR4_sem hbX hbX2 hpL I s₂ hM₂ (n := L.length) (X := X)
+    (by rw [hI, getD_toArray, tape_getD_posL4 c π L hs]) (by omega) hT hX₂'
+  obtain ⟨hmono, hpure⟩ := lookup_pure4 c π L hs hq ht hSX t
+  obtain ⟨b1, b2, b3⟩ := bsRun_spec (p := ltT I X (packBytes t.toList)) (n := L.length)
+    (by omega) hmono
+  obtain ⟨hsome, hnone⟩ := hpure _ b1 b2 b3
+  have hXb : ∀ a < L.length, rd (semXIR I (lookIR4 bX pL) s₂).M (bX + a) = X a := fun a ha => by
+    rw [l3 _ (by simp only [regs] at hbX ⊢; omega), hX₂' a ha]
+  refine ⟨fun k hk => ?_, fun hk => ?_, ⟨fun a b hab hb => ?_, fun a ha => ?_, fun k hk => ?_⟩⟩
+  · obtain ⟨hb, e⟩ := hsome k hk
+    obtain ⟨hkl, hkc⟩ := FR.Snd.ansIdx_lt hk
+    refine ⟨_, hb, l1, ?_, by rw [hXb _ hb, e]⟩
+    rw [l2, hX₂' _ hb, e, ansW_entry4 c π L hs hq ht hkl, hkc]
+    simp [hb, bW]
+  · rw [l2]
+    by_cases hb : (bsRun (ltT I X (packBytes t.toList)) 64 (0, L.length)).1 < L.length
+    · rw [hX₂' _ hb]
+      have := hnone hk _ hb
+      simp [hb, bW]
+      exact this
+    · simp [hb, bW]
+  · rw [hXb a (by omega), hXb b hb]; exact r1 a b hab hb
+  · rw [hXb a ha]; exact r2 a ha
+  · obtain ⟨a, ha, e⟩ := r3 k hk
+    exact ⟨a, ha, by rw [hXb a ha]; exact e⟩
+
+
+
+end Idx
+
+/-! ## 3.x's instances (`memX`, `posL`) -/
+
+theorem lookIR_eq4 : lookIR = lookIR4 memX posL := rfl
+
+/-- The tape position of entry `k`. -/
+abbrev posE (L : Log) (k : ℕ) : ℕ := posE4 posL L k
+
+/-- What `idxIR_sorted` gives: `X[0..|L|)` is the set of entry positions, strictly sorted. -/
+abbrev Sorted (I : Array Word) (L : Log) (X : ℕ → Word) : Prop := Sorted4 posL I L X
+
+/-- **The tape at entry `k`'s answer**: word `m < 4` of `packBytes L[k].2`. -/
+theorem tape_answer (c : Digest) (π : Proof) (L : Log) (hs : π.size = piSize) {k : ℕ}
+    (hk : k < L.length) {m : ℕ} (hm : m < 4) :
+    (extractorInput c π L).getD (posL + 1 + entryOff L k + 1 + (L[k].1.size + 7) / 8 + m) 0 =
+      (packBytes L[k].2.toList).getD m 0 :=
+  tape_answer4 c π L (hs_posL hs) hk hm
+
+/-- **The answer read at entry `k`'s position is `packBytes L[k].2`.** -/
+theorem ansW_entry (c : Digest) (π : Proof) (L : Log) (hs : π.size = piSize)
+    (hq : ∀ e ∈ L, e.1.size < 2 ^ 64) (ht : (extractorInput c π L).length ≤ 2 ^ 64) {k : ℕ}
+    (hk : k < L.length) :
+    ansW (extractorInput c π L).toArray (toWord (posE L k)) = packBytes L[k].2.toList :=
+  ansW_entry4 c π L (hs_posL hs) hq ht hk
+
+theorem posE_lt (c : Digest) (π : Proof) (L : Log) (hs : π.size = piSize)
+    (ht : (extractorInput c π L).length ≤ 2 ^ 64) {k : ℕ} (hk : k < L.length) :
+    posE L k < 2 ^ 64 :=
+  posE_lt4 c π L (hs_posL hs) ht hk
+
+/-- **The first preimage is the search's boundary.** On the sorted index, the predicate "the
+answer is below `packBytes t`" holds on a prefix; at the prefix's end `b` sits the first entry
+of `L` whose answer is `t` (`ansIdx`), and if there is none, no slot has answer `t`. -/
+theorem lookup_pure (c : Digest) (π : Proof) (L : Log) (hs : π.size = piSize)
+    (hq : ∀ e ∈ L, e.1.size < 2 ^ 64) (ht : (extractorInput c π L).length ≤ 2 ^ 64)
+    {X : ℕ → Word} (hX : Sorted (extractorInput c π L).toArray L X) (t : Digest) :
+    (∀ a b, a < b → b < L.length →
+      ltT (extractorInput c π L).toArray X (packBytes t.toList) b = true →
+      ltT (extractorInput c π L).toArray X (packBytes t.toList) a = true) ∧
+    ∀ b ≤ L.length,
+      (∀ a < b, ltT (extractorInput c π L).toArray X (packBytes t.toList) a = true) →
+      (∀ a, b ≤ a → a < L.length →
+        ltT (extractorInput c π L).toArray X (packBytes t.toList) a = false) →
+      (∀ k, FR.Snd.ansIdx L t = some k → b < L.length ∧ X b = toWord (posE L k)) ∧
+      (FR.Snd.ansIdx L t = none → ∀ a < L.length,
+        ansW (extractorInput c π L).toArray (X a) ≠ packBytes t.toList) :=
+  lookup_pure4 c π L (hs_posL hs) hq ht hX t
+
+/-- **The lookup's semantics**: `rLo` is the lower bound `bsRun` of the target `T` (the words in
+`rQ0 … rQ3`) on `X[0..n)`, `rFd` says whether that slot exists and its answer is `T`; the heap
+is unchanged. -/
+theorem lookIR_sem (I : Array Word) (s : St) (hM : Inv s.M) {n : ℕ} {T : List Word}
+    {X : ℕ → Word} (hn : I.getD posL 0 = toWord n) (hn2 : n < 2 ^ 62)
+    (hT : [rd s.M rQ0, rd s.M rQ1, rd s.M rQ2, rd s.M rQ3] = T)
+    (hX : ∀ a < n, rd s.M (memX + a) = X a) :
+    rd (semXIR I lookIR s).M rLo = toWord (bsRun (ltT I X T) 64 (0, n)).1 ∧
+    rd (semXIR I lookIR s).M rFd = bW (decide ((bsRun (ltT I X T) 64 (0, n)).1 < n) &&
+      decide (ansW I (rd s.M (memX + (bsRun (ltT I X T) 64 (0, n)).1)) = T)) ∧
+    ∀ x, regs ≤ x → rd (semXIR I lookIR s).M x = rd s.M x :=
+  lookIR4_sem (bX := memX) (pL := posL) (by decide) (by decide) (by decide) I s hM hn hn2 hT hX
 
 /-- **`lookup_spec`**, parametric in the target `t`. On a domain tape of a SNARK proof, take a
 state `s₂` whose `X[0..|L|)` is the one `idxIR` left and whose `rQ0 … rQ3` hold
@@ -872,41 +1046,8 @@ theorem idx_lookup (c : Digest) (π : Proof) (L : Log) (hs : π.size = piSize)
     (FR.Snd.ansIdx L t = none →
       rd (semXIR (extractorInput c π L).toArray lookIR s₂).M rFd = 0) ∧
     Sorted (extractorInput c π L).toArray L
-      (fun a => rd (semXIR (extractorInput c π L).toArray lookIR s₂).M (memX + a)) := by
-  set I := (extractorInput c π L).toArray with hI
-  have hend := tape_entries_end c π L hs
-  have h5 : 5 * L.length ≤ entryOff L L.length := by
-    have := length_logEntries L
-    rwa [entries_length, ← entryOff_length] at this
-  obtain ⟨r1, r2, r3⟩ := idxIR_sorted c π L hs hq ht s hM hsz
-  generalize semXIR I idxIR s = s1 at r1 r2 r3 hX₂
-  set X : ℕ → Word := fun a => rd s1.M (memX + a) with hXd
-  have hSX : Sorted I L X := ⟨r1, r2, r3⟩
-  have hX₂' : ∀ a < L.length, rd s₂.M (memX + a) = X a := hX₂
-  obtain ⟨l1, l2, l3⟩ := lookIR_sem I s₂ hM₂ (n := L.length) (X := X)
-    (by rw [hI, getD_toArray, tape_getD_posL c π L hs]) (by omega) hT hX₂'
-  obtain ⟨hmono, hpure⟩ := lookup_pure c π L hs hq ht hSX t
-  obtain ⟨b1, b2, b3⟩ := bsRun_spec (p := ltT I X (packBytes t.toList)) (n := L.length)
-    (by omega) hmono
-  obtain ⟨hsome, hnone⟩ := hpure _ b1 b2 b3
-  have hXb : ∀ a < L.length, rd (semXIR I lookIR s₂).M (memX + a) = X a := fun a ha => by
-    rw [l3 _ (by simp only [regs, memX]; omega), hX₂' a ha]
-  refine ⟨fun k hk => ?_, fun hk => ?_, ⟨fun a b hab hb => ?_, fun a ha => ?_, fun k hk => ?_⟩⟩
-  · obtain ⟨hb, e⟩ := hsome k hk
-    obtain ⟨hkl, hkc⟩ := FR.Snd.ansIdx_lt hk
-    refine ⟨_, hb, l1, ?_, by rw [hXb _ hb, e]⟩
-    rw [l2, hX₂' _ hb, e, ansW_entry c π L hs hq ht hkl, hkc]
-    simp [hb, bW]
-  · rw [l2]
-    by_cases hb : (bsRun (ltT I X (packBytes t.toList)) 64 (0, L.length)).1 < L.length
-    · rw [hX₂' _ hb]
-      have := hnone hk _ hb
-      simp [hb, bW]
-      exact this
-    · simp [hb, bW]
-  · rw [hXb a (by omega), hXb b hb]; exact r1 a b hab hb
-  · rw [hXb a ha]; exact r2 a ha
-  · obtain ⟨a, ha, e⟩ := r3 k hk
-    exact ⟨a, ha, by rw [hXb a ha]; exact e⟩
+      (fun a => rd (semXIR (extractorInput c π L).toArray lookIR s₂).M (memX + a)) :=
+  idx_lookup4 (bX := memX) (pL := posL) (by decide) (by decide) (by decide) c π L (hs_posL hs) hq ht s hM hsz t s₂ hM₂ hX₂ hT
 
 end FR.X
+

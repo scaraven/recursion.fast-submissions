@@ -696,3 +696,38 @@ Base: branch `v4/flock-recursive`, HEAD `53c2e13`. Build tree `logs/fr-build-SH2
     25 axiom lines within the three (`axioms.log`); source rule 365 files, 0 findings. Not done in this
     pass: the read (`FRXRead`'s `getIR … readIR`, 1,200 lines on `lookIR`, `posL` and 3.x's cap offsets),
     the chain at `seq4`, items 4–7. Handover in RESULT Part 28 §6.
+79. **S-H4 pass 5** (2026-10-29). HEAD `6d79280`, build tree `logs/fr-build-SH4d` (copy of `fr-build-SH4c`),
+    logs and tools `logs/S-H4d/`. Ruling Q2: generalise the 3.x index/read/chain in place, one copy of each
+    proof. G3 held `FRXChain*`, `FRXLog`, `FRXNode`, `FRXOutRun` uncommitted at the start; so the index,
+    lookup and read went first (none of G3's), the chain after G3's commit (`302b523`, re-snapshot on
+    `4d5700c`).
+80. Index and lookup (`fold1.py`): `FRXRead4`'s parametric declarations moved, verbatim, into `FRXLogSpec`,
+    `FRXSortSim`, `FRXLookup` (one `section Idx` each: `variable (bX pL)` for the programs, then
+    `variable {bX pL} (hbX …) include` for the theorems); the 3.x statements replaced by term proofs
+    `X4 (bX := memX) (pL := posL) (by decide) ×3 … (hs_posL hs) …`. `Sorted`, `posE` became `abbrev`s of
+    `Sorted4 posL`, `posE4 posL` (the anonymous constructor in `FRXNode` needs a reducible head). Built on
+    the first try.
+81. Read (`fold2.py`, `fold3.py`): `FRXReadDefs`'s `getIR`/`nodeBody`/`colIR` take `bX pL` in place,
+    `posBody4`/`readIR4` new, 3.x `readIR` keeps its literal body. `FRXRead` partitioned by a token closure
+    (`cls.py`): independent lemmas first (`section Indep`), then `section Read4` with the `Dom4`-only
+    lemmas, the program lemmas, then `include hbX hbX2 hpL` and the machine lemmas. Pitfalls: the rename's
+    "inside brackets" test (meant for simp lists) also skipped list literals (`[(tp …).getD (posE L k …`):
+    fix by hand; a recursive theorem's self-call does not take the included hypotheses; `stmt()` cut at
+    the first `:= by` also cut a pattern-matching proof (`posLoop`'s arms); program lemmas with implicit
+    `bX pL` need `(bX := bX) (pL := pL)` at use sites. `FRXRead4` deleted; `lake build FR Solution …`
+    green (2,589 jobs, `build1.log`).
+82. CPU A/B, side by side (`cpu-before.txt`, `cpu-after.txt`): 179.2 → 144.3 CPU-s over the six modules
+    plus `FRXRead4` (44.6). `FR` alone +9.7 (it did not import `FRXRead4`).
+83. Chain (`fold4.py`), on G3's versions: `cntIR pL`, `startPs pL`, `chainIR pL N tab sd` in place;
+    `cnt_sem`, `chainIR_sem`, `entriesAt_tape`, `wordsOf_le`, `safe_chainIR` at `pL` with the 4.1 `hs`;
+    `safe_cntIR pL (hp : pL < 2^64)`; callers `chainIR posL nRep …`, `hs_posL hs`. Pitfall: the regex also
+    wrapped `startPs` inside simp lists (`[…, (startPs pL), …]`: "invalid simp theorem"). `FRXNode`'s
+    `readIR_frame` (a near copy of `readIR_sem`'s proof) moved to `FRXRead` as `readIR4_frame`, its 3.x
+    form an instance. Build green (`build2.log`, 2,589 jobs); 20 axiom lines standard; source rule 364
+    files, 0 findings. Not started: `FRXDec4Levels`, the 4.1 chain table (after A2′), `FRXOut4`, `FRXNd4`.
+    RESULT Part 29.
+84. Orchestrator notes during the pass: G3 committed (`302b523`), re-snapshotted; A2′ landed on `v4/rev44`
+    (cap 1,408 entries, `A` = 45,088 B, `piSizeOf seq4` = 843,280 there; main unchanged at 798,192):
+    `reassemble4` must take row 18's size as a parameter (or from `aBytes`); the `FRX4Prog`/`FRX4Ext`/
+    `FRSubmission4*` patch list applies on rev44. Final build on `1a37e37` (QUEUE-only after `4d5700c`):
+    2,589 jobs green (`build-final.log`); source rule 364 files, 0 findings.

@@ -3924,3 +3924,132 @@ and `Open4`'s `D` is then discharged by `X.nodeDec4_nd4` (item 6), which removes
   the certificate's closure (retirement plan step 2), the 3.x modules can go; until then the build pays
   for both. Should the orchestrator schedule the retirement before item 6, so that the build budget sees
   only one copy?
+
+## Part 29 (track S-H4, pass 5): one copy of the index, the lookup, the read and the chain, parametric in the index base and the log's position; FRXRead4 deleted; handover
+
+**Status.** Started at HEAD `6d79280`; re-snapshotted on `4d5700c` (G3 committed at `302b523`). Build tree
+`logs/fr-build-SH4d` (copy of `fr-build-SH4c`; `MINE` = the S-H4 modules + `FRXLogSpec FRXSortSim
+FRXLookup FRXReadDefs FRXRead FRXReadLv FRXChain FRXChainSem FRXChainLoop FRXChainTop FRXChainFlock
+FRXDec FRXLog FRXNode FRXOutRun`), logs `logs/S-H4d/`, tools `logs/S-H4d/tools/` (`blk.py` splits a module
+into declarations, `fold1.py` … `fold4.py` are this pass's edits as scripts). Nothing committed. The
+orchestrator's Q2 ruling (generalise in place, one copy of each proof) is done for the index, the lookup,
+the ladder read, the read's frame and the chain's count/start/scan. Items 1–4 of the handover
+(`FRXDec4Levels`, `FRXOut4`, `FRXNd4`, the controls and the `tgBody_sem` split) are **not started**
+(§5). `nd` does not exist yet; `Open4` still holds `∃ D : NodeDec4 ndNone`; the entry stays PROVISIONAL.
+
+### 1. What changed, file by file (`loc.py`; code lines before → after)
+
+| File | code | What |
+|---|---|---|
+| `FRXLogSpec` | 215 → 262 | The walk at parameters: `walkPre4 bX pL`, `walkIR4`, `wf_walkIR4`, `tape_getD_posL4`, `tape_count_le4`, `tape_entry4`, `tape_entries_end4`, `walkLoop4`, **`walk_spec4`** (moved from `FRXRead4`). 3.x's `tape_entry`, `tape_entries_end`, `walk_spec` are one-line instances at `memX`, `posL`; `hs_posL : π.size = piSize → 5 + (|π| + 7)/8 = posL`; `walkIR_eq : walkIR = walkIR4 memX posL` (`rfl`). 3.x's `walkLoop` (internal) is gone. |
+| `FRXSortSim` | 690 → 749 | `passPre4`/`passIR4`/`sortPre4`/`sortIR4`/`idxIR4`/`baseX4`, `wf/cost/sizeIR/outs/safe_idxIR4`, `passIR4_sem`, `sortIR4_sem`, **`idxIR4_sorted`**. 3.x's `idxIR_sorted` is an instance; `idxIR_eq` (`rfl`). 3.x's internal `passIR_sem`, `sortIR_sem`, `baseX*` are gone. |
+| `FRXLookup` | 771 → 847 | `bsBody4`, `foundIR4`, `lookIR4`, `lookPre4`, `posE4`, `Sorted4`, `tape_answer4`, `ansW_entry4`, `posE_lt4`, `lookup_pure4`, `bsBody4_sem`, `bsLoop4`, `foundIR4_sem`, **`lookIR4_sem`**, **`idx_lookup4`**. 3.x: `posE := posE4 posL`, `Sorted := Sorted4 posL` (`abbrev`s, so `⟨r1, r2, r3⟩` in `FRXNode` still elaborates); `tape_answer`, `ansW_entry`, `posE_lt`, `lookup_pure`, `lookIR_sem`, `idx_lookup` are instances; `lookIR_eq4` (`rfl`). |
+| `FRXReadDefs` | 327 → 353 | `getIR bX`, `nodeBody bX pL i`, `colIR bX pL i` (in place: no 3.x caller), `posBody4 bX pL …`, `readIR4 bX pL …`; 3.x `posBody := posBody4 memX posL`, `readIR` keeps its literal body (so `FRXNode`'s `rw [readIR, semXIR_seq]` is unchanged), `readIR_eq` (`rfl`). `tape_query4` (+ 3.x instance), `wf_lookIR4`, `lookIR4_nw`, `wf/noLoopT/outs_readIR4` (+ 3.x instances), `cost_lookIR4`, **`cost_readIR4`** (`14 + np(6,576 + 6,544 sib + 25 nw)`, any constants). |
+| `FRXRead` | 1,169 → 1,201 | `Dom4 pL` (`hs : 5 + (|π| + 7)/8 = pL`), `Dom.d4 : Dom → Dom4 posL`; every index-dependent lemma at `bX`, `pL` in `section Read4` (`Dom4.small`, `tp_posL4`, `look_spec`, `getIR_sem`, `nodeBody_sem`, `nodeWalk`, `nodeLoop`, `colIR_sem`, `posBody_sem`, **`posLoop4`**, **`readIR4_sem`**, **`readIR4_frame`** (moved from `FRXNode`)); 3.x's `posLoop`, `readIR_sem` are instances; `read_spec`, `read_spec_F` unchanged. |
+| `FRXReadLv` | 108 → 101 | `cost_readIR` is `cost_readIR4 memX posL`. |
+| `FRXChain` | 164 → 164 | In place: `cntIR pL`, `startPs pL`, `chainIR pL N tab sd`, `wf_cntIR pL`, `wf/cost/sizeIR/outs_chainIR pL …`. |
+| `FRXChainTop` | 318 → 318 | `cnt_sem`, `chainIR_sem` with `{pL}` and `hs : 5 + (|π| + 7)/8 = pL`; `cnt_heap`, `cnt_regs`, `startPs_vals`, `startPs_frame` take `pL`. |
+| `FRXChainLoop` | 688 → 688 | `entriesAt_tape` at `pL`. |
+| `FRXChainFlock`, `FRXDec`, `FRXNode` | 182, 105, 687 (unchanged counts) | The 3.x callers: `chainIR posL nRep …`, `hs_posL hs`; `safe_cntIR pL (hp : pL < 2^64)`, `wordsOf_le`, `safe_chainIR` at `pL`; `FRXNode.readIR_frame` is `readIR4_frame` at `memX`, `posL`. |
+| `FRXRead4` | 873 → **deleted** | Everything it held now lives once, in the modules above. |
+| **Total** (13 files) | **6,297 → 5,657** (−640) | |
+
+No 3.x statement changed apart from the added parameter (`chainIR posL …`, `cntIR posL`, the chain
+theorems' `hs` in `pL` form: 3.x callers pass `hs_posL hs`). Every instance is a term proof
+`X4 (bX := memX) (pL := posL) (by decide) (by decide) (by decide) …` of the parametric theorem.
+`FRXLog`'s 3.x programs (`walkIR`, `sortIR`, `lookIR`, `idxIR`) stay (G3's module at the time; four
+small definitions) and are `rfl`-equal to the parametric ones (`walkIR_eq`, `idxIR_eq`, `lookIR_eq4`).
+
+### 2. CPU, before and after (sequential `-DElab.async=false`, one module at a time; logs `logs/S-H4d/cpu-*.txt`, `prof-*.log`)
+
+Before = HEAD `6d79280` in `fr-build-SH4c`, after = this pass in `fr-build-SH4d`, run side by side (two
+processes, load ≈ 20–30):
+
+| Module | before | after |
+|---|---|---|
+| `FRXLogSpec` | 14.6 | 15.7 |
+| `FRXSortSim` | 28.7 | 33.7 |
+| `FRXLookup` | 25.3 | 27.9 |
+| `FRXReadDefs` | 20.8 | 19.2 |
+| `FRXRead` | 33.4 | 35.6 |
+| `FRXReadLv` | 11.8 | 12.2 |
+| `FRXRead4` | 44.6 (`prof-before-FRXRead4.log`) | — |
+| **total** | **179.2** | **144.3** (−35 CPU-s, −20 %) |
+
+`FR`'s closure did not import `FRXRead4`, so `FR` alone pays +9.7 CPU-s (the parametric proofs carry a
+few more hypotheses); the 4.1 node decoder, which needs these theorems at `memX4`, now adds nothing for
+them (it would have added 44.6). Later, at a lower load (`cpu-after2.txt`, `prof-after2-*.log`):
+`FRXRead` 24.1 (with `readIR4_frame`), `FRXChain` 10.4, `FRXChainTop` 10.8, `FRXDec` 7.7, `FRXNode`
+22.2 (without its copy of the frame proof). The chain's edits are a parameter only; not A/B-measured.
+
+### 3. Checks
+
+- **Build.** `lake build FR Solution FRXDec4Lv FRXDec4Map FRXLagT FRXChainFlock FRXDec FRXNode` green on
+  HEAD `4d5700c` + this pass: 2,589 jobs (`logs/S-H4d/build2.log`, 8 min 24 s wall); then `FRXNode
+  FRXReadLv` after `readIR4_frame` (2,279 jobs).
+- **Axioms** (`logs/S-H4d/axioms.log`, `logs/fr-build-SH4d/ax/AxSH4d.lean`, 20 declarations: the
+  parametric theorems and their 3.x instances, `read_spec`, `chain_spec`, `decLevels_sem`): all within
+  `propext`, `Classical.choice`, `Quot.sound`; no `sorryAx`.
+- **Source rule** (`logs/S-H4d/source-rule.log`): 364 files, 0 findings.
+- **Controls.** No new definition the certificate relies on: the parametric programs are the old ones
+  with two constants abstracted, and their 3.x instances are `rfl` (`walkIR_eq`, `idxIR_eq`, `lookIR_eq4`,
+  `readIR_eq`); the 3.x controls (`baseX4_ctl`, `bsRun_ctl`, `nodeStepP_toy*`, `colWord_toy*`, `fsMsgs_*`)
+  still check them at `memX`, `posL`.
+
+### 4. Deviations and findings
+
+1. **Names.** Where a 3.x module outside my reach used a theorem with its old signature (`FRXNode`,
+   `FRXChainLoop`, `FRXDec`, `FRXNodeRun` at the start of this pass, G3's), the parametric theorem has a
+   `4` name and the old name is its instance. Where no outside module used a lemma (`getIR`, `nodeBody`,
+   `colIR`, `look_spec`, `nodeBody_sem`, `colIR_sem`, …; the chain's `cntIR`, `startPs`, `chainIR`) it is
+   generalised in place under its own name.
+2. **`FRXLog` not edited.** G3 held it when this pass started. Its four 3.x programs remain beside the
+   parametric ones (equal by `rfl`); folding them is a few lines once someone next edits `FRXLog`.
+3. **`simp +decide only` → `simp +decide`** on `WF`/`Lo` side conditions where a constant word is now a
+   variable (`toWord bX`, `toWord (pL + 1)`): as pass 4's journal 77.
+4. **Lines over 100 columns**: 132 in the 11 edited modules (95 before, 32 of them in `FRXRead4`), from the
+   mechanical rename. A reflow is a golf item; the source rule does not check it.
+5. **The chain at revision 4.1 is not done.** `chainIR` now takes `pL`, but its table (`chTab`,
+   `fsMsgs`, `nRep`, `tabW_chTab`, `chain_spec`) is 3.x's transcript (`FRXChainFlock`). The 4.1 table comes
+   from `seq4`'s Fiat–Shamir positions, which A2′ is changing (`FRTranscriptDefs`, `FRShape4`); it is the
+   first item after A2′ lands (§5).
+
+### 5. Handover: what remains, in order
+
+1. **`FRXDec4Levels`** (new). `readLv4 i := readIR4 memX4 pL i (cw i) map4.lU.cb 32 (sib i) (2^logN i)`
+   with the 4.1 cap words `cw`, heights `sib` as parameters (their values from `FRShape4` after A2′);
+   `stepU4`, `lvStep4_sem` (port of `FRXNode.lvStep_sem`: `readIR4_sem` + `readIR4_frame` + `decLv4_sem` +
+   `msgOk4_lower`/`msgOk4_four`, on `map4.lU`, with `KeepR4` = below `lU.fb`, the chain's
+   `[chB, chEnd)`, from `map4.l0.cb` on); `lv0Step4_sem` on `map4.l0` (`c₀ = 4`, `C = 4`);
+   `decLevels4`, **`decLevels4_sem`** (port of `decLevels_sem`); the `ite` on the node byte (`m = 31`/`32`
+   share `map4`; only the ladder constants differ); exact `cost_decLevels4` (`cost_readIR4`,
+   `cost_decBack4IR`). The P1 challenges' positions `cbS4 i` come from the 4.1 chain (item 2): state them
+   as a hypothesis `hS` (as `decLv4_sem` does) until then.
+2. **The 4.1 chain table** (after A2′): `fsMsgs4`/`nRep4`/`chTab4` from `seq4`'s FS positions,
+   `tabW_chTab4`, `chain_spec4` (port of `FRXChainFlock`, with `chainIR pL4` and `hs` at `pL4 = 5 + piSizeOf
+   seq4 / 8`); `cbS4 i = ansB + 4(phStart4 (26 + 5i) + 1)` and `cbS4 i + 8ℓ + 4 ≤ chEnd ≤ map4.l0.fb`
+   (`LvMap.front`). Check `nRep4 < 2^9` (`chainIR_sem`'s `hN`) and that the answers fit `[ansB, chEnd)`.
+3. **`FRXOut4`**: `reassemble4` field by field (A.3 rows 0–18, row 18 the CapChk field `A`;
+   `reassemble4_field` by `rfl`), with **row 18's size a parameter or computed from `aBytes`**, so that one
+   module serves both branches: A2′ (on `v4/rev44`, worktree `recursion.fast-submissions-rev44`) found a
+   cap of 1,408 entries, so `A` is 1,408·32 + 32 = **45,088 B** and `piSizeOf seq4 = 843,280` there; main
+   keeps the current format (798,192). `outIR4` from level 0's rows 4–7 at `map4.l0.ob`.
+4. **`FRXNd4`**: `nd4 := idxIR4 memX4 pL4 ; readIR4 memX4 pL4 0 … ; chainIR pL4 nRep4 chTab4 seedIR4 ;
+   decLevels4 ; outIR4`, `decOk4_nd4` (`safe_idxIR4`, `safe_chainIR`, `noLoopT_readIR4`, `cost_*`),
+   `nodeDec4_nd4`, `cost_nd4`.
+5. Controls for `outIR4`, `nd4`; the `tgBody_sem` split in `FRXLagT` (Part 27 §1); the line reflow
+   (§4.4).
+
+### 6. The patch list for after A2′ (applies on `v4/rev44`, not on main)
+
+A2′ landed on the separate branch `v4/rev44`; on main `FRX4Prog`/`FRX4Ext` keep 798,192 and are not
+edited. Part 28 §7's list (`memX4`, `decBudget4`, `ext4With nd`, `sub4.E`, `Open4` over `NodeDec4 nd4`)
+applies on rev44, where `pL4 = 5 + 843,280 / 8 = 105,415`. Two updates: `FRXDec4Map`'s `memX4` is still the only definition of
+`memX4` (delete it there once `FRX4Prog` has it), and the read/index at 4.1 are now `readIR4 memX4 pL4 …`,
+`idxIR4 memX4 pL4` in the existing modules (no `FRXRead4`).
+
+### 7. Open questions
+
+- **Q1.** `FRXLog`'s four 3.x programs: fold them now (`def walkIR := walkIR4 memX posL` needs the
+  parametric definitions moved into `FRXLog`, a G3-golfed module), or leave them until the 3.x decoder
+  retires (retirement step 2)? They cost nothing measurable.

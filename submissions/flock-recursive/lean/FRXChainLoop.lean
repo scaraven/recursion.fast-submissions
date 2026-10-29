@@ -763,11 +763,11 @@ theorem scan_sem {I : Array Word} {T : ℕ → Digest → ByteArray} {N : ℕ} {
     obtain ⟨h2, w2, e2⟩ := scan_sem hTab hN L _ _ _ h1 w1 e1 hL.2
     exact ⟨h2, by rw [w2, Nat.add_assoc], e2⟩
 
-/-- **The extractor's tape holds the log's entries** from `posL + 1` on (`tape_entry`,
-`tape_query`, `tape_answer`). -/
-theorem entriesAt_tape (c : Digest) (π : Proof) (L : Log) (hs : π.size = piSize)
+/-- **The extractor's tape holds the log's entries** from `pL + 1` on (`tape_entry4`,
+`tape_query4`, `tape_answer4`). -/
+theorem entriesAt_tape {pL : ℕ} (c : Digest) (π : Proof) (L : Log) (hs : 5 + (π.size + 7) / 8 = pL)
     (hq : ∀ e ∈ L, e.1.size < 2 ^ 64) (ht : (extractorInput c π L).length ≤ 2 ^ 64) :
-    ∀ k, k ≤ L.length → EntriesAt (extractorInput c π L).toArray (posL + 1 + entryOff L k)
+    ∀ k, k ≤ L.length → EntriesAt (extractorInput c π L).toArray (pL + 1 + entryOff L k)
       (L.drop k) := by
   intro k hk
   induction h : L.length - k generalizing k with
@@ -776,16 +776,17 @@ theorem entriesAt_tape (c : Digest) (π : Proof) (L : Log) (hs : π.size = piSiz
   | succ n ih =>
     have hkL : k < L.length := by omega
     rw [List.drop_eq_getElem_cons hkL]
-    have hend := tape_entries_end c π L hs
+    have hend := tape_entries_end4 c π L hs
     have hle : entryOff L (k + 1) ≤ entryOff L L.length := by
       rw [entryOff_length]; exact entryOff_le_sum L (k + 1)
     rw [entryOff_succ L hkL] at hle
     refine ⟨⟨?_, hq _ (List.getElem_mem hkL), fun j hj => ?_, fun m hm => ?_, ?_⟩, ?_⟩
-    · rw [getD_toArray, tape_entry c π L hs hkL]
-    · rw [getD_toArray]; exact tape_query c π L hs hkL hj
-    · rw [getD_toArray]; exact tape_answer c π L hs hkL hm
+    · rw [getD_toArray, tape_entry4 c π L hs hkL]
+    · rw [getD_toArray]; exact tape_query4 c π L hs hkL hj
+    · rw [getD_toArray]; exact tape_answer4 c π L hs hkL hm
     · omega
     · have := ih (k + 1) (by omega) (by omega)
       rwa [entryOff_succ L hkL, ← Nat.add_assoc] at this
 
 end FR.X
+

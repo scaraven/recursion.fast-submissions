@@ -217,22 +217,27 @@ theorem entries_getD_q : ∀ (L : Log) (k : ℕ) (hk : k < L.length) (j : ℕ),
     omega
 
 /-- **The tape at entry `k`'s query**: word `j < ⌈|q|/8⌉` of `packBytes q`. -/
-theorem tape_query (c : Digest) (π : Proof) (L : Log) (hs : π.size = piSize) {k : ℕ}
+theorem tape_query4 {pL : ℕ} (c : Digest) (π : Proof) (L : Log) (hs : 5 + (π.size + 7) / 8 = pL) {k : ℕ}
     (hk : k < L.length) {j : ℕ} (hj : j < (L[k].1.size + 7) / 8) :
-    (extractorInput c π L).getD (posE L k + 1 + j) 0 = (packBytes L[k].1.data.toList).getD j 0 := by
-  have hp : π.size = 797904 := hs.trans piSize_eq
+    (extractorInput c π L).getD (posE4 pL L k + 1 + j) 0 = (packBytes L[k].1.data.toList).getD j 0 := by
   have hl : ((packBytes c.toList ++ [toWord π.size]) ++ packBytes π.data.toList ++
-      [toWord L.length]).length = posL + 1 := by
+      [toWord L.length]).length = pL + 1 := by
     simp only [List.length_append, packBytes_length, ← WitnessSending.size_eq_length,
-      hp, posL, Vector.length_toList, List.length_singleton]
+      Vector.length_toList, List.length_singleton] <;> omega
   have e2 : extractorInput c π L = ((packBytes c.toList ++ [toWord π.size]) ++
       packBytes π.data.toList ++ [toWord L.length]) ++
       L.flatMap (fun e => bytesWords e.1.data.toList ++ packBytes e.2.toList) := by
     rw [tape_eq, logWords]; simp
-  rw [e2, List.getD_eq_getElem?_getD, posE, show posL + 1 + entryOff L k + 1 + j =
-      (posL + 1) + (entryOff L k + 1 + j) by omega, ← hl, List.getElem?_append_right (by omega),
+  rw [e2, List.getD_eq_getElem?_getD, posE4, show pL + 1 + entryOff L k + 1 + j =
+      (pL + 1) + (entryOff L k + 1 + j) by omega, ← hl, List.getElem?_append_right (by omega),
     Nat.add_sub_cancel_left, ← List.getD_eq_getElem?_getD]
   exact entries_getD_q L k hk j hj
+
+/-- **The tape at entry `k`'s query** (3.x's `posL`). -/
+theorem tape_query (c : Digest) (π : Proof) (L : Log) (hs : π.size = piSize) {k : ℕ}
+    (hk : k < L.length) {j : ℕ} (hj : j < (L[k].1.size + 7) / 8) :
+    (extractorInput c π L).getD (posE L k + 1 + j) 0 = (packBytes L[k].1.data.toList).getD j 0 :=
+  tape_query4 c π L (hs_posL hs) hk hj
 
 /-- The byte offset of the caps' field (A.3 row 12, field `fCaps`) in π. -/
 def capOff : ℕ := fieldOff fCaps
@@ -299,8 +304,8 @@ def capPs (cw sib : ℕ) : List Prim :=
 
 /-- After a successful lookup: `rXq := X[lo]` (the entry's position), `rQn := |q|`,
 `rV2 :=` the query's first word. -/
-def getIR : XIR :=
-  .seq (.blk [.const rK2 (toWord memX), .op .add rAd2 rLo rK2]) (.seq (.load rXq rAd2)
+def getIR (bX : ℕ) : XIR :=
+  .seq (.blk [.const rK2 (toWord bX), .op .add rAd2 rLo rK2]) (.seq (.load rXq rAd2)
     (.seq (.input rQn rXq) (.seq (.blk [.op .add rTA rXq cOne]) (.input rV2 rTA))))
 
 /-- `rB := [|q| = 72 ∧ word₀ = tagNWl i]` (`parseNode i`). -/
@@ -315,8 +320,8 @@ def childPs : List Prim :=
 
 /-- **One step down the tree**: look up the current digest, parse its node query, load the
 child digest picked by bit `h` of `p`; `rOk := 0` on a missing entry or a wrong shape. -/
-def nodeBody (i : ℕ) : XIR :=
-  .ite rOk (.seq lookIR (.ite rFd (.seq getIR (.seq (.blk (nodeChkPs i))
+def nodeBody (bX pL i : ℕ) : XIR :=
+  .ite rOk (.seq (lookIR4 bX pL) (.ite rFd (.seq (getIR bX) (.seq (.blk (nodeChkPs i))
     (.ite rB (.seq (.blk childPs) ld4IR) (.blk [.const rOk 0])))) (.blk [.const rOk 0])))
     (.blk [])
 
@@ -327,8 +332,8 @@ def colChkPs (i : ℕ) : List Prim :=
 
 /-- **The leaf**: look up the current digest and parse its column query; `rQe := |q|` on
 success, else `0`. -/
-def colIR (i : ℕ) : XIR :=
-  .seq (.blk [.const rQe 0]) (.ite rOk (.seq lookIR (.ite rFd (.seq getIR (.seq (.blk (colChkPs i))
+def colIR (bX pL i : ℕ) : XIR :=
+  .seq (.blk [.const rQe 0]) (.ite rOk (.seq (lookIR4 bX pL) (.ite rFd (.seq (getIR bX) (.seq (.blk (colChkPs i))
     (.ite rB (.blk [.op .or rQe rQn rQn]) (.blk [])))) (.blk []))) (.blk []))
 
 /-- One column word: `M[rWA] := [8 (w + 1) < rQe] · tape[rTA]`; advance. -/
@@ -344,13 +349,22 @@ def copyIR (nw : ℕ) : XIR :=
 
 /-- **One position** of level `i`: the cap entry (from tape word `cw`), `sib` steps down, the
 leaf, the copy of `nw` words, `p += 1`. -/
-def posBody (i cw nw sib : ℕ) : XIR :=
+def posBody4 (bX pL i cw nw sib : ℕ) : XIR :=
   .seq (.seq (.blk (capPs cw sib)) ld4IR) (.seq (.blk [.const rOk 1, .const rNH (toWord sib)])
-    (.seq (.loopK rHc rNH (toWord sib) (nodeBody i)) (.seq (colIR i) (.seq (copyIR nw)
+    (.seq (.loopK rHc rNH (toWord sib) (nodeBody bX pL i)) (.seq (colIR bX pL i) (.seq (copyIR nw)
       (.blk [.op .add rPp rPp cOne])))))
 
+/-- 3.x's position (index at `memX`, `|L|` at `posL`). -/
+def posBody (i cw nw sib : ℕ) : XIR := posBody4 memX posL i cw nw sib
+
 /-- **The ladder read of level `i`**: positions `0 … np − 1`, `sib` node steps each, the first
-`nw` words of position `p`'s column stored at `sb + nw·p`. -/
+`nw` words of position `p`'s column stored at `sb + nw·p`; the sorted index at `bX`, `|L|` at tape
+word `pL`. -/
+def readIR4 (bX pL i cw sb nw sib np : ℕ) : XIR :=
+  .seq (.blk [.const rPp 0, .const rWA (toWord sb), .const rNp (toWord np)])
+    (.loopK rCp rNp (toWord np) (posBody4 bX pL i cw nw sib))
+
+/-- 3.x's read (index at `memX`, `|L|` at `posL`): `readIR4 memX posL`. -/
 def readIR (i cw sb nw sib np : ℕ) : XIR :=
   .seq (.blk [.const rPp 0, .const rWA (toWord sb), .const rNp (toWord np)])
     (.loopK rCp rNp (toWord np) (posBody i cw nw sib))
@@ -361,40 +375,64 @@ def read0 : XIR := readIR 0 capW0 colBase 128 9 (2 ^ 18)
 
 /-! ## Well formed, cost, size -/
 
-theorem wf_lookIR : WF lookIR := by
-  simp [lookIR, bsBody, ansLtIR, cmpTWord, eqTWord, foundIR, aposIR, ceil8Ps, readAt, WF, Writes,
-    Prim.dst, rQ0, rQ1, rQ2, rQ3, rLo, rLn, rHf, rMd, rCB, rNB, rFd, rA, rN, rQL, rT2, rKc, rAd, rX,
-    rPa, rKa, rG, rH, rF, cTmp, regs]
+theorem readIR_eq (i cw sb nw sib np : ℕ) :
+    readIR i cw sb nw sib np = readIR4 memX posL i cw sb nw sib np := rfl
 
-/-- `lookIR` writes only registers below `117` (none of this phase's). -/
-theorem lookIR_nw {r : ℕ} (h : 117 ≤ r) : ¬ Writes lookIR r := by
-  simp [lookIR, bsBody, ansLtIR, cmpTWord, eqTWord, foundIR, aposIR, ceil8Ps, readAt, Writes,
+theorem wf_lookIR4 (bX pL : ℕ) : WF (lookIR4 bX pL) := by
+  simp +decide [lookIR4, bsBody4, ansLtIR, cmpTWord, eqTWord, foundIR4, aposIR, ceil8Ps, readAt, WF,
+    Writes, Prim.dst, rQ0, rQ1, rQ2, rQ3, rLo, rLn, rHf, rMd, rCB, rNB, rFd, rA, rN, rQL, rT2, rKc,
+    rAd, rX, rPa, rKa, rG, rH, rF, cTmp, regs]
+
+/-- `lookIR4` writes only registers below `117` (none of this phase's). -/
+theorem lookIR4_nw (bX pL : ℕ) {r : ℕ} (h : 117 ≤ r) : ¬ Writes (lookIR4 bX pL) r := by
+  simp [lookIR4, bsBody4, ansLtIR, cmpTWord, eqTWord, foundIR4, aposIR, ceil8Ps, readAt, Writes,
     Prim.dst, rQ0, rQ1, rQ2, rQ3, rLo, rLn, rHf, rMd, rCB, rNB, rFd, rA, rN, rQL, rT2, rKc, rAd,
     rX, rPa, rKa, rG, rH, rF, cTmp]
   omega
 
-theorem wf_readIR (i cw sb nw sib np : ℕ) : WF (readIR i cw sb nw sib np) := by
-  have h1 := wf_lookIR
-  have h2 : ¬ Writes lookIR 130 := lookIR_nw (by omega)
-  have h3 : ¬ Writes lookIR 119 := lookIR_nw (by omega)
-  simp [readIR, posBody, ld4IR, capPs, getIR, nodeChkPs, childPs, nodeBody, colChkPs, colIR,
+theorem wf_readIR4 (bX pL i cw sb nw sib np : ℕ) : WF (readIR4 bX pL i cw sb nw sib np) := by
+  have h1 := wf_lookIR4 bX pL
+  have h2 : ¬ Writes (lookIR4 bX pL) 130 := lookIR4_nw bX pL (by omega)
+  have h3 : ¬ Writes (lookIR4 bX pL) 119 := lookIR4_nw bX pL (by omega)
+  simp +decide [readIR4, posBody4, ld4IR, capPs, getIR, nodeChkPs, childPs, nodeBody, colChkPs, colIR,
     copyBody, copyIR, WF, Writes, Prim.dst, rPp, rOk, rHc, rNH, rXq, rQn, rB, rTA, rWA, r8, rMk,
     rCw, rNw, rCp, rNp, rV2, rK2, rQe, rAd2, rQ0, rQ1, rQ2, rQ3, cTmp, regs, h1, h2, h3]
 
+theorem wf_readIR (i cw sb nw sib np : ℕ) : WF (readIR i cw sb nw sib np) :=
+  wf_readIR4 memX posL i cw sb nw sib np
+
 /-- No tape-length loop: the read's loops are all `loopK`. -/
-theorem noLoopT_readIR (i cw sb nw sib np : ℕ) : NoLoopT (readIR i cw sb nw sib np) := by
-  simp [readIR, posBody, ld4IR, getIR, nodeBody, colIR, copyBody, copyIR, lookIR, bsBody, ansLtIR,
-    cmpTWord, eqTWord, foundIR, aposIR, readAt, NoLoopT]
+theorem noLoopT_readIR4 (bX pL i cw sb nw sib np : ℕ) :
+    NoLoopT (readIR4 bX pL i cw sb nw sib np) := by
+  simp [readIR4, posBody4, ld4IR, getIR, nodeBody, colIR, copyBody, copyIR, lookIR4, bsBody4,
+    ansLtIR, cmpTWord, eqTWord, foundIR4, aposIR, readAt, NoLoopT]
 
-theorem outs_readIR (i cw sb nw sib np t : ℕ) : outs (readIR i cw sb nw sib np) t = 0 := by
-  simp [readIR, posBody, ld4IR, getIR, nodeBody, colIR, copyBody, copyIR, lookIR, bsBody, ansLtIR,
-    cmpTWord, eqTWord, foundIR, aposIR, readAt, outs]
+theorem noLoopT_readIR (i cw sb nw sib np : ℕ) : NoLoopT (readIR i cw sb nw sib np) :=
+  noLoopT_readIR4 memX posL i cw sb nw sib np
 
-theorem cost_lookIR (t : ℕ) : cost lookIR t = 6486 := by
-  simp only [lookIR, bsBody, ansLtIR, cmpTWord, eqTWord, foundIR, aposIR, ceil8Ps, readAt, cost,
+theorem outs_readIR4 (bX pL i cw sb nw sib np t : ℕ) :
+    outs (readIR4 bX pL i cw sb nw sib np) t = 0 := by
+  simp [readIR4, posBody4, ld4IR, getIR, nodeBody, colIR, copyBody, copyIR, lookIR4, bsBody4,
+    ansLtIR, cmpTWord, eqTWord, foundIR4, aposIR, readAt, outs]
+
+theorem outs_readIR (i cw sb nw sib np t : ℕ) : outs (readIR i cw sb nw sib np) t = 0 :=
+  outs_readIR4 memX posL i cw sb nw sib np t
+
+theorem cost_lookIR4 (bX pL t : ℕ) : cost (lookIR4 bX pL) t = 6486 := by
+  simp only [lookIR4, bsBody4, ansLtIR, cmpTWord, eqTWord, foundIR4, aposIR, ceil8Ps, readAt, cost,
     blkSteps, List.length_cons, List.length_nil, List.length_append]
   norm_num
 
+/-- **The read's cost** at any constants: `14 + np (6,576 + 6,544 sib + 25 nw)` (`np`, `sib`,
+`nw` below `2^64`). -/
+theorem cost_readIR4 (bX pL i cw sb nw sib np t : ℕ) (hnp : np < 2 ^ 64) (hsib : sib < 2 ^ 64)
+    (hnw : nw < 2 ^ 64) :
+    cost (readIR4 bX pL i cw sb nw sib np) t = 14 + np * 6576 + np * sib * 6544 + np * nw * 25 := by
+  simp only [readIR4, posBody4, ld4IR, capPs, getIR, nodeChkPs, childPs, nodeBody, colChkPs, colIR,
+    copyBody, copyIR, cost, cost_lookIR4, blkSteps, List.length_cons, List.length_nil,
+    toNat_toWord hnp, toNat_toWord hsib, toNat_toWord hnw]
+  norm_num
+  ring
 
 /-- **The read's cost** (a constant, `≈ 2^34.07`): `2^18` positions of 10 lookups and a 128-word
 copy. -/
@@ -402,14 +440,15 @@ theorem cost_read0 (t : ℕ) : cost read0 t = 18001952782 := by
   have a1 : (toWord (2 ^ 18)).toNat = 2 ^ 18 := toNat_toWord (by norm_num)
   have a2 : (toWord 9).toNat = 9 := toNat_toWord (by norm_num)
   have a3 : (toWord 128).toNat = 128 := toNat_toWord (by norm_num)
-  simp only [read0, readIR, posBody, ld4IR, capPs, getIR, nodeChkPs, childPs, nodeBody, colChkPs,
-    colIR, copyBody, copyIR, cost, cost_lookIR, blkSteps, List.length_cons, List.length_nil, a1, a2,
-    a3]
+  simp only [read0, readIR, posBody, posBody4, ld4IR, capPs, getIR, nodeChkPs, childPs, nodeBody,
+    colChkPs, colIR, copyBody, copyIR, cost, cost_lookIR4, blkSteps, List.length_cons, List.length_nil,
+    a1, a2, a3]
   norm_num
 
 theorem sizeIR_read0 : sizeIR read0 = 570 := by
-  simp only [read0, readIR, posBody, ld4IR, capPs, getIR, nodeChkPs, childPs, nodeBody, colChkPs,
-    colIR, copyBody, copyIR, lookIR, bsBody, ansLtIR, cmpTWord, eqTWord, foundIR, aposIR, ceil8Ps,
+  simp only [read0, readIR, posBody, posBody4, ld4IR, capPs, getIR, nodeChkPs, childPs, nodeBody,
+    colChkPs, colIR, copyBody, copyIR, lookIR4, bsBody4, ansLtIR, cmpTWord, eqTWord, foundIR4, aposIR,
+    ceil8Ps,
     readAt, sizeIR, blkSteps, List.length_cons, List.length_nil, List.length_append]
   norm_num
 

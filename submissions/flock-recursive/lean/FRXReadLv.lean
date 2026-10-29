@@ -140,15 +140,8 @@ theorem readLv_spec_F (hD : Dom c π L) {Xi : ℕ → Word} (hX : Sorted (tp c �
 /-- **The read's cost** for any level parameters. -/
 theorem cost_readIR (i cw sb nw sib np t : ℕ) (h1 : sib < 2 ^ 64) (h2 : nw < 2 ^ 64)
     (h3 : np < 2 ^ 64) :
-    cost (readIR i cw sb nw sib np) t = 14 + np * 6576 + np * sib * 6544 + np * nw * 25 := by
-  have a1 : (toWord np).toNat = np := toNat_toWord h3
-  have a2 : (toWord sib).toNat = sib := toNat_toWord h1
-  have a3 : (toWord nw).toNat = nw := toNat_toWord h2
-  simp only [readIR, posBody, ld4IR, capPs, getIR, nodeChkPs, childPs, nodeBody, colChkPs,
-    colIR, copyBody, copyIR, cost, cost_lookIR, blkSteps, List.length_cons, List.length_nil, a1, a2,
-    a3]
-  norm_num
-  ring
+    cost (readIR i cw sb nw sib np) t = 14 + np * 6576 + np * sib * 6544 + np * nw * 25 :=
+  cost_readIR4 memX posL i cw sb nw sib np t h3 h1 h2
 
 /-- The four reads cost `3,914,334,222 + 764,149,774 + 137,429,006 + 27,656,206 ≈ 2^32.17`. -/
 theorem cost_readLv (t : ℕ) :
