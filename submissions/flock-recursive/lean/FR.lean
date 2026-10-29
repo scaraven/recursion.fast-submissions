@@ -145,6 +145,7 @@ import FRVIR4Uni
 import FRVIRFinals4
 import FRSegTarget4
 import FRVerifierC4
+import FRNodeRows4WotsCtrl
 
 /-!
 # `flock-recursive`
