@@ -177,9 +177,9 @@ theorem flag_gFinLr (hin : ∀ x ∈ (coordsR fi "Lr1").take P.lrR ++ chals fi "
 
 /-! ## `finE` -/
 
-/-- **`relE` at `P`**: (ii)–(iv) for a node over its `P.e2R`/`P.e4R` real rounds, (v) (E4 end is
+/-- **`relE` at `P` without the reserve** (3.x, the segment group): (ii)–(iv) for a node over its `P.e2R`/`P.e4R` real rounds, (v) (E4 end is
 `f̂(r′) ‖ 0^16`, read at `S`'s E4-end offset) for every kind. -/
-def relE4 : Bool :=
+def relE4o : Bool :=
   let rE := (((coordsR fi "E1").take P.e2R).map (fv r)).toArray
   let r2 := ((chals fi "E2" P.e2R).map (fv r)).toArray
   let r4 := ((chals fi "E4" P.e4R).map (fv r)).toArray
@@ -201,13 +201,76 @@ def relE4 : Bool :=
       e4))
   else e4
 
-theorem flag_gFinE (hin : ∀ x ∈ (coordsR fi "E1").take P.e2R ++ chals fi "E2" P.e2R ++
+/-- **The reserve's child claim on the registers' input** (RSV2 §2.1, revision 4.4.2): `p_x` (23),
+`p_y` (25), `s` (9) from `fLrEnd` at `rsvRx`, `rsvRy`, `rsvS`. -/
+def rsvPx4 (inp : Input) (P : FinP) : List F :=
+  (List.range 23).map fun j => pe4 P.S inp fLrEnd (rsvRx + 16 * j)
+def rsvPy4 (inp : Input) (P : FinP) : List F :=
+  (List.range 25).map fun j => pe4 P.S inp fLrEnd (rsvRy + 16 * j)
+def rsvS4 (inp : Input) (P : FinP) : List F :=
+  (List.range 9).map fun j => pe4 P.S inp fLrEnd (rsvS + 16 * j)
+
+/-- **`relE` at `P`**. Without the reserve (`rsvOps` off: 3.x, the segment group): (ii)–(iv) for a
+node over its `P.e2R`/`P.e4R` real rounds, (v) (E4 end is `f̂(r′) ‖ 0^16`, read at `S`'s E4-end
+offset) for every kind. **With the reserve** (RSV2 §2.2): (v); `fEEnd[64, 112) = 0`; where the
+kind's `rsv` is off, `fLrEnd[48, 1008) = 0` and `fEEnd[48, 64) = 0`; `X₃[1] = X₃[2] = 0`; and on a node
+
+* (ii″) `claimN(E2) = eq(τ, r_E2)(âb̂ + ĉ) + eq(p_x, r_E2)·η·(m̂* + X)`;
+* (iii″) `claim0(E4) = â + κ_E b̂ + κ_E² ĉ + κ_E³ v_L + κ_E⁴ m̂*`;
+* (iv″) `claimN(E4) = X^P + κ_E³·L̃·f̂`, `X^P` the **one** `evalM` at the row point
+  `r_E2[<22] ‖ x̂₂₂ ‖ s^P` (32 entries) and the column point `r′[<24] ‖ ŷ₂₄` (25), with
+  `s^P_{3k+m} = [k = κ.ix]·f̂·κ_E^m + κ_E⁴·eq(p_y, r′)·s_{3k+m}` and the mixed entries
+  `x̂₂₂ = (r_E2 ‖ p_x[e2R, 23))[22]`, `ŷ₂₄ = (r′ ‖ p_y[e4R, 25))[24]`. -/
+def relE4 : Bool :=
+  let rE := (((coordsR fi "E1").take P.e2R).map (fv r)).toArray
+  let r2 := ((chals fi "E2" P.e2R).map (fv r)).toArray
+  let r4 := ((chals fi "E4" P.e4R).map (fv r)).toArray
+  let kE := fv r ((outsOf fi "E3").headD 0)
+  let kL := fv r ((outsOf fi "Lr3").headD 0)
+  let a := pe4 P.S inp fEEnd 0; let bb := pe4 P.S inp fEEnd 16; let c := pe4 P.S inp fEEnd 32
+  let l := impl.evalL (rd r (lrEx fi 1)).toAF r4
+  let wL := l.1 + kL * l.2.1 + kL * kL * l.2.2
+  let o := fieldOffOf P.S fE + (gOE4end P.S + 16)
+  let e4 := (Val.f (pe4 P.S inp fE (gOE4end P.S))).eqv (rd r (fi.zhat.getD 3 0)) &&
+    (inp.π.extract o (o + 16)).data.all (· == 0)
+  if P.rsvOps then
+    let px := rsvPx4 inp P; let py := rsvPy4 inp P; let s := rsvS4 inp P
+    let X0 := pe4 P.S inp fLrEnd rsvX
+    let mh := pe4 P.S inp fEEnd 48
+    let eta := fv r ((coordsR fi "E1").getD 23 0)
+    let fz := fv r (fi.zhat.getD 3 0)
+    let w := kE * kE * (kE * kE) * eqPoint (py.take P.e4R).toArray r4
+    let ind : ℕ → F := fun k => if P.kix = k then 1 else 0
+    let t : ℕ → F := fun m => [fz, fz * kE, fz * (kE * kE)].getD m 0
+    let sP := (List.range 9).map fun i => ind (i / 3) * t (i % 3) + w * s.getD i 0
+    let x22 := ((chals fi "E2" P.e2R).map (fv r) ++ px.drop P.e2R).getD 22 (fv r 0)
+    let y24 := ((chals fi "E4" P.e4R).map (fv r) ++ py.drop P.e4R).getD 24 (fv r 0)
+    let XP := (impl.evalM ((((chals fi "E2" P.e2R).map (fv r)).take 22 ++ [x22] ++ sP).toArray)
+      ((((chals fi "E4" P.e4R).map (fv r)).take 24 ++ [y24]).toArray)).1
+    let oE := fieldOffOf P.S fEEnd; let oL := fieldOffOf P.S fLrEnd
+    e4 && ((inp.π.extract (oE + 64) (oE + 64 + 48)).data.all (· == 0) &&
+      ((P.rsv || (inp.π.extract (oL + 48) (oL + 48 + 960)).data.all (· == 0)) &&
+      ((P.rsv || (inp.π.extract (oE + 48) (oE + 48 + 16)).data.all (· == 0)) &&
+      (decide (pe4 P.S inp fLrEnd (rsvX + 16) = 0) && (decide (pe4 P.S inp fLrEnd (rsvX + 32) = 0) &&
+      ((!P.kv.node κ || (Val.f (eqPoint rE r2 * (a * bb + c) +
+          eqPoint (px.take P.e2R).toArray r2 * (eta * (mh + X0)))).eqv (rd r (claimN fi "E2"))) &&
+      ((!P.kv.node κ || (Val.f (a + kE * bb + kE * kE * c + kE * kE * kE * fv r (lrEx fi 0) +
+          kE * kE * (kE * kE) * mh)).eqv (rd r (claim0 fi "E4"))) &&
+      (!P.kv.node κ || (Val.f (XP + kE * kE * kE * wL * fz)).eqv (rd r (claimN fi "E4"))))))))))
+  else relE4o impl κ inp fi r P
+
+/-- A read at a list entry is the entry of the reads (`List.getD_map`). -/
+theorem rd_getD_toF (R : Array Val) (l : List Reg) (i d : ℕ) :
+    (rd R (l.getD i d)).toF = (l.map fun x => (rd R x).toF).getD i (rd R d).toF := by
+  rw [List.getD_map]
+
+theorem flag_gFinE0 (hin : ∀ x ∈ (coordsR fi "E1").take P.e2R ++ chals fi "E2" P.e2R ++
       chals fi "E4" P.e4R ++
       [(outsOf fi "E3").headD 0, claimN fi "E2", claim0 fi "E4", claimN fi "E4",
        fi.zhat.getD 3 0, (outsOf fi "Lr3").headD 0, lrEx fi 0, lrEx fi 1], x < r.size) :
-    ∃ L, pureRun impl κ inp ((gFinE P fi r.size).1.map (reloc P.S)) r [] =
-        some (L, relE4 impl κ inp fi r P) ∧
-      (rd (r ++ L.toArray) ((gFinE P fi r.size).2.getD 0 0)).toAF =
+    ∃ L, pureRun impl κ inp ((gFinE0 P fi r.size (fun κ => P.kv.node κ) true).map (reloc P.S)) r [] =
+        some (L, relE4o impl κ inp fi r P) ∧
+      (rd (r ++ L.toArray) (r.size + 17)).toAF =
         ((chals fi "E4" P.e4R).map (fv r)).toArray := by
   simp only [List.mem_append, List.mem_cons, List.not_mem_nil, or_false] at hin
   have h1 := fun L => map_rd_app r L ((coordsR fi "E1").take P.e2R)
@@ -218,7 +281,7 @@ theorem flag_gFinE (hin : ∀ x ∈ (coordsR fi "E1").take P.e2R ++ chals fi "E2
   have taf : ∀ x, (Val.af x).toAF = x := fun _ => rfl
   have hEE : fEEnd < 19 := by decide
   have hE : fE < 19 := by decide
-  simp only [gFinE, relE4, List.map_cons, List.map_nil, reloc_piElem _ hEE, reloc_piElem _ hE,
+  simp only [gFinE0, relE4o, cond_true, List.cons_append, List.nil_append, List.map_append, List.map_cons, List.map_nil, reloc_piElem _ hEE, reloc_piElem _ hE,
     reloc_piField _ hE]
   generalize (outsOf fi "E3").headD 0 = ke at *
   generalize claimN fi "E2" = c2 at *
@@ -249,6 +312,33 @@ theorem flag_gFinE (hin : ∀ x ∈ (coordsR fi "E1").take P.e2R ++ chals fi "E2
     List.length_cons, List.length_nil, Nat.reduceAdd, Nat.reduceSub, Array.reduceGetElem?,
     Option.getD_some, taf]
 
+/-- **`finE`'s flag** (revision 4.4.2): without the reserve it is `relE4o` (`flag_gFinE0`). With the
+reserve (`rsvOps`) the op list is `gFinE0 … (fun _ => false) false ++ rsvEOps …` (RSV2 §2.2) and the
+flag is `relE4`'s first branch: **open** (RSV-S, `RSV-S-RESULT.md` §5: one `simp` over the 168 ops
+does not finish; the block proof with `pr_seq2` is the plan). -/
+theorem flag_gFinE (hin : ∀ x ∈ (coordsR fi "E1").take P.e2R ++ chals fi "E2" P.e2R ++
+      chals fi "E4" P.e4R ++
+      [(outsOf fi "E3").headD 0, claimN fi "E2", claim0 fi "E4", claimN fi "E4",
+       fi.zhat.getD 3 0, (outsOf fi "Lr3").headD 0, lrEx fi 0, lrEx fi 1, (coordsR fi "E1").getD 23 0, 0],
+      x < r.size) :
+    ∃ L, pureRun impl κ inp ((gFinE P fi r.size).1.map (reloc P.S)) r [] =
+        some (L, relE4 impl κ inp fi r P) ∧
+      (rd (r ++ L.toArray) ((gFinE P fi r.size).2.getD 0 0)).toAF =
+        ((chals fi "E4" P.e4R).map (fv r)).toArray := by
+  cases hr : P.rsvOps
+  · have h := flag_gFinE0 impl κ inp fi r P fun x hx => hin x (by
+      simp only [List.mem_append, List.mem_cons, List.not_mem_nil, or_false] at hx ⊢
+      rcases hx with ((h | h) | h) | h | h | h | h | h | h | h | h
+      exacts [.inl (.inl (.inl h)), .inl (.inl (.inr h)), .inl (.inr h), .inr (.inl h),
+        .inr (.inr (.inl h)), .inr (.inr (.inr (.inl h))), .inr (.inr (.inr (.inr (.inl h)))),
+        .inr (.inr (.inr (.inr (.inr (.inl h))))), .inr (.inr (.inr (.inr (.inr (.inr (.inl h)))))),
+        .inr (.inr (.inr (.inr (.inr (.inr (.inr (.inl h))))))),
+        .inr (.inr (.inr (.inr (.inr (.inr (.inr (.inr (.inl h))))))))])
+    simp only [gFinE, relE4, hr, cond_false, Bool.false_eq_true, ↓reduceIte, List.getD_cons_zero]
+    exact h
+  · simp only [gFinE, relE4, hr, cond_true, ↓reduceIte]
+    done
+
 /-! ## `finB′` -/
 
 /-- `pubH` at `P`: the statement's digests read at `S`'s `stmt` offset. -/
@@ -259,26 +349,36 @@ def pubH4 (kp : F) : F :=
   1 + kp * (vl + kp * (vh + kp * (dLo c₁ + kp * (dHi c₁ + kp * (vl + kp * (vh + kp * (dLo c₂ +
     kp * dHi c₂)))))))
 
-/-- `v*` at `P`. -/
-def vStar4 : F :=
+/-- `v*` at `P` without the reserve: `v_RS + [node] κ′²·pubH(κ′)` (`finB′`'s export). -/
+def vStar4o : F :=
   let kp := fv r ((outsOf fi "B'").headD 0)
   fv r (fi.zhat.getD nRS 0) + (if P.kv.node κ then kp * kp * pubH4 inp P kp else 0)
+
+/-- **`v*` at `P`** (revision 4.4.2, RSV2 §2.2): with the reserve on the kind (`rsvOps ∧ rsv`), the
+child claim's 60 values `v_i` (`finE`'s exports after `r′`) at `κ′^{11} … κ′^{70}`:
+`v*₀ + κ′^{11}·Σ_{i<60} κ′^i v_i`. -/
+def vStar4 : F :=
+  let kp := fv r ((outsOf fi "B'").headD 0)
+  if P.rsvOps && P.rsv then
+    vStar4o κ inp fi r P + kp ^ 11 * ∑ i ∈ Finset.range rsvN,
+      kp ^ i * fv r (((fi.ex.getD exE []).drop 1).getD i 0)
+  else vStar4o κ inp fi r P
 
 /-- **`relB` at `P`**: `v*` (in `K`) is P1.0's initial claim. -/
 def relB4 : Bool := (Val.k (K.smulF (vStar4 κ inp fi r P) 1)).eqv (rd r (claim0 fi "P1"))
 
-theorem flag_gFinB' (hin : ∀ x ∈ [(outsOf fi "B'").headD 0, fi.zhat.getD nRS 0, claim0 fi "P1"],
+theorem flag_gFinB'o (hr : P.rsvOps = false) (hin : ∀ x ∈ [(outsOf fi "B'").headD 0, fi.zhat.getD nRS 0, claim0 fi "P1"],
       x < r.size) :
     ∃ L, pureRun impl κ inp ((gFinB' P fi r.size).1.map (reloc P.S)) r [] =
         some (L, relB4 κ inp fi r P) ∧
-      (rd (r ++ L.toArray) ((gFinB' P fi r.size).2.getD 0 0)).toF = vStar4 κ inp fi r P := by
+      (rd (r ++ L.toArray) ((gFinB' P fi r.size).2.getD 0 0)).toF = vStar4o κ inp fi r P := by
   simp only [List.mem_cons, List.not_mem_nil, or_false] at hin
   have tf : ∀ x, (Val.f x).toF = x := fun _ => rfl
   have td : ∀ x, (Val.d x).toD = x := fun _ => rfl
   have tk : ∀ x, (Val.k x).toK = x := fun _ => rfl
   have hS : fStmt < 19 := by decide
-  simp only [gFinB', relB4, vStar4, pubH4, dLo, dHi, List.map_cons, List.map_nil,
-    reloc_piDigest _ hS]
+  simp only [gFinB', relB4, vStar4, vStar4o, pubH4, dLo, dHi, List.map_cons, List.map_nil,
+    reloc_piDigest _ hS, hr, cond_false, Bool.false_and, Bool.false_eq_true, ↓reduceIte, List.append_nil]
   generalize (outsOf fi "B'").headD 0 = kp at *
   generalize fi.zhat.getD nRS 0 = vR at *
   generalize claim0 fi "P1" = c0 at *
@@ -294,6 +394,18 @@ theorem flag_gFinB' (hin : ∀ x ∈ [(outsOf fi "B'").headD 0, fi.zhat.getD nRS
   refine ⟨_, rfl, ?_⟩ <;> simp only [List.getD_cons_zero, rd_revAcc,
     List.length_cons, List.length_nil, Nat.reduceAdd, Nat.reduceSub, Array.reduceGetElem?,
     Option.getD_some, tf]
+
+/-- **`finB′`'s flag** (revision 4.4.2). Without the reserve, `flag_gFinB'o`. With it, B′'s own
+assert is gated `¬rsv` and `rsvBOps` (Horner over the 60 exports, RSV2 §2.2) asserts `v*` where
+`rsv`: **open** (RSV-S, `RSV-S-RESULT.md` §5). The export is `v*₀` (`vStar4o`) in both cases. -/
+theorem flag_gFinB' (hin : ∀ x ∈ [(outsOf fi "B'").headD 0, fi.zhat.getD nRS 0, claim0 fi "P1"],
+      x < r.size) :
+    ∃ L, pureRun impl κ inp ((gFinB' P fi r.size).1.map (reloc P.S)) r [] =
+        some (L, relB4 κ inp fi r P) ∧
+      (rd (r ++ L.toArray) ((gFinB' P fi r.size).2.getD 0 0)).toF = vStar4o κ inp fi r P := by
+  cases hr : P.rsvOps
+  · exact flag_gFinB'o impl κ inp fi r P hr hin
+  · done
 
 end Flags
 

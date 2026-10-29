@@ -140,11 +140,19 @@ theorem noAsk_gFinRS (P : FinP) (fi : FinIn) (b : ℕ) : (gFinRS P fi b).1.filte
     noAsk_claimOps _ (fun i => Op.const (fun _ => .f (bb i))) (fun _ => rfl), List.append_nil]
   rfl
 
+theorem noAsk_gFinE0 (P : FinP) (fi : FinIn) (b : ℕ) (act : KC Bool) (own : Bool) :
+    (gFinE0 P fi b act own).filterMap Op.item? = [] := by
+  cases hc : P.ck <;> cases own <;> simp [gFinE0, Op.item?, hc]
+
 theorem noAsk_gFinE (P : FinP) (fi : FinIn) (b : ℕ) : (gFinE P fi b).1.filterMap Op.item? = [] := by
-  cases hc : P.ck <;> simp [gFinE, Op.item?, hc]
+  cases hr : P.rsvOps <;>
+  simp only [gFinE, hr, cond_true, cond_false, List.filterMap_append, noAsk_gFinE0, noAsk_rsvEOps,
+    List.append_nil]
 
 theorem noAsk_gFinB' (P : FinP) (fi : FinIn) (b : ℕ) : (gFinB' P fi b).1.filterMap Op.item? = [] := by
-  simp [gFinB', Op.item?]
+  cases hr : P.rsvOps <;>
+  simp only [gFinB', hr, cond_true, cond_false, List.filterMap_append, noAsk_rsvBOps, List.append_nil] <;>
+  rfl
 
 theorem noAsk_gFinP (P : FinP) (i : ℕ) (fi : FinIn) (b : ℕ) :
     (gFinP P i fi b).1.filterMap Op.item? = [] := by
@@ -163,8 +171,8 @@ theorem noAsk_gFinPf (P : FinP) (fi : FinIn) (b : ℕ) : (gFinPf P fi b).1.filte
   have h3 : ∀ (sel : KC Bool) (c : ℕ → Reg) (n pb : ℕ),
       ((List.range n).map fun s => Op.keep sel (c s) (pb + s)).filterMap Op.item? = [] :=
     fun _ _ _ _ => noAsk_map _ _ fun _ => rfl
-  cases hc : P.ck <;>
-  simp only [gFinPf, hc, Bool.cond_true, Bool.cond_false, List.filterMap_append, noAsk_ptsOps,
+  cases hc : P.ck <;> cases hr : P.rsvOps <;>
+  simp only [gFinPf, hc, hr, Bool.cond_true, Bool.cond_false, List.filterMap_append, noAsk_ptsOps,
     noAsk_gCellsOps, noAsk_gCellsOpsK, noAsk_gLvsOps, noAsk_fhOps, noAsk_padsOps, noAsk_selOps,
     noAsk_gTailOps, List.filterMap_flatMap, List.filterMap_cons, Op.item?, h1, h2] <;>
   simp [noAsk_map _ _ (fun _ => rfl : ∀ s : ℕ, (Op.keep _ _ _ : Op).item? = none)]

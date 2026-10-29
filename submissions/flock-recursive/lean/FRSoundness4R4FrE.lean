@@ -28,10 +28,10 @@ theorem ph4 {n : ℕ} {x : String × Sh} (h : (phasesOf seq4)[n]? = some x) :
 theorem val_eqv_f4 {a : F} {v : Val} (h : (Val.f a).eqv v = true) : v = .f a := by
   cases v <;> simp_all [Val.eqv]
 
-/-- **The absorbs' messages read by the front** (one table certificate): Lr end (213), E end
-(273), E4 end (325), RS0 (326). -/
-theorem fsMsgs4_ends : (fsMsgs4 seq4).getD 213 none = some (fieldOffOf seq4 fLrEnd, 48) ∧
-    (fsMsgs4 seq4).getD 273 none = some (fieldOffOf seq4 fEEnd, 48) ∧
+/-- **The absorbs' messages read by the front** (one table certificate): Lr end (213, 1,008 bytes
+with the reserve's child claim, RSV2 §2.1), E end (273, 112 bytes), E4 end (325), RS0 (326). -/
+theorem fsMsgs4_ends : (fsMsgs4 seq4).getD 213 none = some (fieldOffOf seq4 fLrEnd, 1008) ∧
+    (fsMsgs4 seq4).getD 273 none = some (fieldOffOf seq4 fEEnd, 112) ∧
     (fsMsgs4 seq4).getD 325 none = some (fieldOffOf seq4 fE + gOE4end seq4, 32) ∧
     (fsMsgs4 seq4).getD 326 none = some (fieldOffOf seq4 fRS0, 4 * 128 * 16) := by
   rw [fsMsgs4, gOE4end, seq4_eq]; decide +kernel
@@ -194,10 +194,11 @@ theorem hin_E {fi : FinIn} {n : ℕ} (hsk : ∀ name, ∀ x ∈ outsOf fi name, 
     (P : FinP) (hz : ∀ x ∈ fi.zhat, x < n) (h0 : lrEx fi 0 < n) (h1 : lrEx fi 1 < n) :
     ∀ x ∈ (coordsR fi "E1").take P.e2R ++ chals fi "E2" P.e2R ++ chals fi "E4" P.e4R ++
       [(outsOf fi "E3").headD 0, claimN fi "E2", claim0 fi "E4", claimN fi "E4",
-       fi.zhat.getD 3 0, (outsOf fi "Lr3").headD 0, lrEx fi 0, lrEx fi 1], x < n := by
+       fi.zhat.getD 3 0, (outsOf fi "Lr3").headD 0, lrEx fi 0, lrEx fi 1,
+       (coordsR fi "E1").getD 23 0, 0], x < n := by
   intro x hx
   simp only [List.mem_append, List.mem_cons, List.not_mem_nil, or_false] at hx
-  rcases hx with ((hx | hx) | hx) | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
+  rcases hx with ((hx | hx) | hx) | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
   · exact hsk "E1" x (List.mem_of_mem_drop (List.mem_of_mem_take hx))
   · exact hsk "E2" x (List.mem_of_mem_drop (List.mem_of_mem_take hx))
   · exact hsk "E4" x (List.mem_of_mem_drop (List.mem_of_mem_take hx))
@@ -209,6 +210,8 @@ theorem hin_E {fi : FinIn} {n : ℕ} (hsk : ∀ name, ∀ x ∈ outsOf fi name, 
   · exact headD_lt (hsk "Lr3") hn
   · exact h0
   · exact h1
+  · exact getD_lt hn (fun x hx => hsk "E1" x (List.mem_of_mem_drop hx)) 23
+  · exact hn
 
 theorem rest_gFinLr (P : FinP) :
     (finalsOf P).rest[3]'(by rw [rest_finalsOf_length]; decide) = gFinLr P := by

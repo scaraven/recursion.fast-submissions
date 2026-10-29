@@ -245,11 +245,11 @@ theorem hsingle_hi : ∀ L es, G.Matches es → fsItems4[es.length]? = some .squ
       simp only [DFhi, D16X, bg16X, bg12X] at h ⊢
       rcases h with (h | h) | h
       · exact .inl (.inl h)
-      · exact .inr h
+      · exact .inr (.inl h)
       · exact .inl (.inr h)
     · -- 274: E3's `κ_E`
       have hc := (P4b.e4_single_batchE X4.src4 NI4F.srcE4 NI4F.srcL4 L es he).trans
-        (show 3 * 2 ^ 128 ≤ 239 * 2 ^ 128 by norm_num)
+        (show 4 * 2 ^ 128 ≤ 239 * 2 ^ 128 by norm_num)
       refine le_trans (P4a.card_frame2_4 (Bg := bg20X)
         (U := fun L es => P4b.EndBadE4 X4.src4 NI4F.srcE4 L es ∨ P4b.BatBadLr4 X4.src4 NI4F.srcL4 L es)
         (U' := P4b.BatBadE4 X4.src4 NI4F.srcE4 NI4F.srcL4) rd_bg20X (by omega) ?_ (fun _ h => h))
@@ -323,7 +323,7 @@ theorem df12_split {L es : Log} (h : P4a.DF4a X4.P4X 12 L es) :
   · exact .inl (.inl (.inr (.inr (.inr (.inr (.inr h))))))
 
 /-- **`FrontHi.hfin`**: Lr1's charge (`lr4_zc_count`, `≤ lrR κ/2^128`), E1's (`e4_zc_count`,
-`≤ e2R κ/2^128`), RS1's (`rs1_hfin4`, `≤ 10/2^128`). -/
+`≤ 24/2^128`: the M rows or the child claim, RSV2 §2.6), RS1's (`rs1_hfin4`, `≤ 10/2^128`). -/
 theorem hfin_hi : ∀ s0 r, (s0, r) ∈ fsRanges4 → 170 ≤ s0 + 1 → s0 + 1 < T4.p1Start 0 → ∀ L es₀,
     G.Matches es₀ → es₀.length = s0 + 1 → ¬ T4.RejC X4.RejFX X4.c0X L es₀ →
       condCount (DPos (T4.Dp (X4.DFX DFhi))) L es₀ r [] ≤ deltaR := by
@@ -343,12 +343,12 @@ theorem hfin_hi : ∀ s0 r, (s0, r) ∈ fsRanges4 → 170 ≤ s0 + 1 → s0 + 1 
   · have hfin : X4.DFX DFhi (phOf4 (214 + 1)) = msD (X4.DFX DFhi (phOf4 214))
         (fun L es => bg16X L es ∨ P4b.ZCwE4 X4.src4 NI4F.srcE4 L es) 214 12 := by
       rw [p215, p214, X4.DFX_hi (by norm_num), X4.DFX_hi (by norm_num)]; rfl
-    refine hfin_frame (U := P4b.nE4 X4.src4 NI4F.srcE4) hmem hfin rd_bg16X (fun L es h => ?_) (fun L es h => h) hl
-      fun hU hesc => ?_
+    refine hfin_frame (U := fun L es => P4b.nE4 X4.src4 NI4F.srcE4 L es ∨ P4b.ChildBad4 NI4F.srcE4 L es)
+      hmem hfin rd_bg16X (fun L es h => ?_) (fun L es h => h) hl fun hU hesc => ?_
     · rw [p214, X4.DFX_hi (by norm_num)] at h; exact h
-    · obtain ⟨κ, hk, -⟩ := id hU
-      exact (P4b.e4_zc_count X4.src4 NI4F.srcE4 hk hl hU hesc).trans
-        (coord_le_deltaR (by have := (P4b.dims_le' κ).2.1; omega))
+    · obtain ⟨κ, hk, -⟩ : ∃ κ, kindOfC es₀ = .node κ ∧ True := by
+        rcases hU with ⟨κ, hk, -⟩ | ⟨κ, hk, -⟩ <;> exact ⟨κ, hk, trivial⟩
+      exact (P4b.e4_zc_count X4.src4 NI4F.srcE4 hk hl hU hesc).trans (coord_le_deltaR (by norm_num))
   · have hfin : X4.DFX DFhi (phOf4 (326 + 1)) = msD (X4.DFX DFhi (phOf4 326)) DRS1X 326 4 := by
       rw [p327, p326, X4.DFX_hi (by norm_num), X4.DFX_hi (by norm_num)]; rfl
     refine hfin_frame (Bg := fun _ _ => False) (U := DRS0X) hmem hfin (T4.reads_false _) (fun L es h => ?_)

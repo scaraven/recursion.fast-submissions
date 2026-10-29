@@ -6,6 +6,7 @@
 import FRSoundness4Pos
 import FRSoundnessCoreRows
 import FRVIRTplEval
+import FRSoundness4RsvMLE
 
 /-!
 # P4b's names: the front's Lr, E and RS dooms and checks at revision 4.1
@@ -178,17 +179,96 @@ def RejEndLr4 : Log → Log → Prop := OnNode fun κ => RejEndG (lrR κ) 169 17
 
 /-! ## E (E1 after 214, E2 from 227, 23 slots; Eend 273; E3 274; E4 from 275, 25 slots; 325) -/
 
+/-! ### The reserve's child claim (revision 4.4.2; RSV2 §2.1, §2.6)
+
+A node's proof carries one claim about the previous node, `X = Σ_i s_i·M̃_i(p)` over the nine
+matrices of the three node kinds (`i = 3·κ.ix + m`, each read at its own coordinates), in Lrend's
+message (213, from byte 48): the point `p = (p_x, p_y) ∈ F^23 × F^25`, the coefficients `s`, the
+value `X`. E2 is a zerocheck **plus** this linear claim, batched by `η` (E1's coordinate 23), and E4
+carries `m̂*` (Eend's message at 273, byte 48) batched by `κ_E⁴`. -/
+
+/-- The child claim's row coordinates `p_x` (23), column coordinates `p_y` (25), coefficients `s`
+(9) and value `X` (Lrend's message at 213; `FRVIRFinals4.rsvRx`, `rsvRy`, `rsvS`, `rsvX`). -/
+def pxL (es : Log) (j : ℕ) : F := readF (msgAt es 213) (48 + 16 * j)
+def pyL (es : Log) (j : ℕ) : F := readF (msgAt es 213) (416 + 16 * j)
+def sL (es : Log) (i : ℕ) : F := readF (msgAt es 213) (816 + 16 * i)
+def xL (es : Log) : F := readF (msgAt es 213) 960
+
+/-- `m̂*` (Eend's message at 273, byte 48). -/
+def mStL (es : Log) : F := readF (msgAt es 273) 48
+
+/-- `η`: E1's coordinate 23 (for every node kind). -/
+def etaL (es : Log) : F := coordAt es 214 23
+
+/-- **The stacked matrix's extension** at a row point `p` and a column point `q` (coordinate
+functions), with coefficients `s`: `Σ_κ Σ_m s_{3·κ.ix + m}·M̃_{κ,m}(p, q)`, kind `κ`'s matrices read
+at its own `e2R κ` row and `ncR κ` column coordinates (RSV2 §2.1). -/
+noncomputable def mStack (srcE : NodeKind → ESrc) (s : ℕ → F) (p q : ℕ → F) : F :=
+  (NodeKind.all.map fun κ =>
+    s (3 * κ.ix) * Eval.matMLE (srcE κ).ea (Rsv.lowA (e2R κ) p) (Rsv.lowA (ncR κ) q) +
+    s (3 * κ.ix + 1) * Eval.matMLE (srcE κ).eb (Rsv.lowA (e2R κ) p) (Rsv.lowA (ncR κ) q) +
+    s (3 * κ.ix + 2) * Eval.matMLE (srcE κ).ec (Rsv.lowA (e2R κ) p) (Rsv.lowA (ncR κ) q)).sum
+
+/-- **The child claim is true** (RSV2 §2.6): `X = Σ_i s_i·M̃_i(p)`. -/
+def truthChild4 (srcE : NodeKind → ESrc) (es : Log) : Prop :=
+  xL es = mStack srcE (sL es) (pxL es) (pyL es)
+
+/-- The child claim's defect `D = Σ_i s_i·M̃_i(p) − X`. -/
+noncomputable def dChild (srcE : NodeKind → ESrc) (es : Log) : F :=
+  mStack srcE (sL es) (pxL es) (pyL es) - xL es
+
+/-- **The child claim is false** (after Lrend): joins `nE4` in E1's escape. -/
+def ChildBad4 (srcE : NodeKind → ESrc) : Log → Log → Prop :=
+  OnNode fun _ _ es => 214 ≤ es.length ∧ ¬ truthChild4 srcE es
+
+/-- The mixed row point `x̂ = r_E2 ‖ p_x[e2R, 23)` (E2's real challenges, then the claim's). -/
+def xHat (κ : NodeKind) (es : Log) : ℕ → F := Rsv.hiPt (ptOf (e2R κ) (rxs (e2R κ) 227 es)) (pxL es)
+
+/-- E2's summand `eq(τ, x)(Az·Bz + Cz)(x) + η·eq(p_x, x)·Y(x)` (degree 3). -/
+def outerExprR : Expr := .add (.mul (.var 0) (.add (.mul (.var 1) (.var 2)) (.var 3))) (.mul (.var 4) (.var 5))
+
+/-- E4's summand `W(y)·z(y) + κ_E⁴·eq(p_y, y)·C(y)` (degree 2). -/
+def innerExprR : Expr := .add (.mul (.var 0) (.var 1)) (.mul (.var 2) (.var 3))
+
 section E
 variable (R : FSrc) (srcE srcL : NodeKind → ESrc)
 
 /-- **E's statement fails** (A.10 E1, O1): `f⁽⁰⁾` violates the node kind's M rows. -/
 def nE4 : Log → Log → Prop := OnNode fun κ => RowsBadG R (srcE κ) (e2R κ) (ncR κ)
-def ZCwE4 : Log → Log → Prop := OnNode fun κ => ZCwG R (srcE κ) (e2R κ) (ncR κ) 214
-def D3E4 : Log → Log → Prop := OnNode fun κ => D3G R (srcE κ) (e2R κ) (ncR κ) 214 227
-def EndBadE4 : Log → Log → Prop := OnNode fun κ => EndBadG R (srcE κ) (e2R κ) (ncR κ) 227 23
 
-/-- **E4's initial claim** (`finE` (iii)): `â_M + κ_E b̂_M + κ_E² ĉ_M + κ_E³ v_L`. -/
-def c4E4 (L es : Log) : F := c4 23 227 L es + kapB 23 227 es ^ 3 * c4 17 179 L es
+/-- **E1's doom** (RSV2 §2.6): the zerocheck polynomial plus the child term, `F̃(τ) + η·D`, is
+nonzero at the drawn `(τ, η)`. -/
+def ZCwE4 : Log → Log → Prop := OnNode fun κ L es =>
+  mle (residual (entMat (srcE κ).ea (e2R κ) (ncR κ)) (entMat (srcE κ).eb (e2R κ) (ncR κ))
+      (entMat (srcE κ).ec (e2R κ) (ncR κ)) (zCG R (ncR κ) L es)) (ptOf (e2R κ) (tauS (e2R κ) 214 es)) +
+    etaL es * dChild srcE es ≠ 0
+
+/-- **E2's tables**: the outer ones (`eq(τ, ·)`, `Az`, `Bz`, `Cz`), then `η·eq(p_x, ·)` and
+`Y(x) = Σ_i s_i·M̃_i(x ‖ p_x[e2R, 23), p_y) − X`. -/
+noncomputable def T3E4 (κ : NodeKind) (L es : Log) : Array (Array F) :=
+  #[eqTable (tauS (e2R κ) 214 es),
+    Array.ofFn (matVec (entMat (srcE κ).ea (e2R κ) (ncR κ)) (zCG R (ncR κ) L es)),
+    Array.ofFn (matVec (entMat (srcE κ).eb (e2R κ) (ncR κ)) (zCG R (ncR κ) L es)),
+    Array.ofFn (matVec (entMat (srcE κ).ec (e2R κ) (ncR κ)) (zCG R (ncR κ) L es)),
+    Array.ofFn fun x : Fin (2 ^ e2R κ) => etaL es * eq (Rsv.lowA (e2R κ) (pxL es)) (cube x),
+    Array.ofFn fun x : Fin (2 ^ e2R κ) =>
+      mStack srcE (sL es) (Rsv.hiPt (cube x) (pxL es)) (pyL es) - xL es]
+
+/-- **E2's doom** (the outer rounds over E2's tables, claim `0`). -/
+def D3E4 : Log → Log → Prop :=
+  OnNode fun κ => D3 227 (fun _ _ => 0) (fun _ => e2R κ) outerExprR (T3E4 R srcE κ)
+
+/-- `m̂*`'s true value: the stacked extension at the mixed point `(x̂, p_y)`. -/
+noncomputable def mHatT (κ : NodeKind) (es : Log) : F := mStack srcE (sL es) (xHat κ es) (pyL es)
+
+/-- **A wrong quadruple** after Eend (273): `(â, b̂, ĉ)` or `m̂*`. -/
+noncomputable def EndBadE4 : Log → Log → Prop := OnNode fun κ L es =>
+  273 < es.length ∧ ((vEnd 23 227 es 0, vEnd 23 227 es 1, vEnd 23 227 es 2) ≠
+    triTG R (srcE κ) (e2R κ) (ncR κ) 227 L es ∨ mStL es ≠ mHatT srcE κ es)
+
+/-- **E4's initial claim** (`finE` (iii″)): `â_M + κ_E b̂_M + κ_E² ĉ_M + κ_E³ v_L + κ_E⁴ m̂*`. -/
+def c4E4 (L es : Log) : F :=
+  c4 23 227 L es + kapB 23 227 es ^ 3 * c4 17 179 L es + kapB 23 227 es ^ 4 * mStL es
 
 /-- **E4's weight** (`evalM`, `evalL` at `r′`): M's batched by `κ_E`, plus `κ_E³` times Lr's batched
 by `κ_L`. -/
@@ -199,25 +279,36 @@ noncomputable def wEb4 (κ : NodeKind) (es : Log) (y : Fin (2 ^ ncR κ)) : F :=
       (entMat (srcL κ).eb (lrR κ) (ncR κ)) (entMat (srcL κ).ec (lrR κ) (ncR κ))
       (ptOf (lrR κ) (rxs (lrR κ) 179 es)) (kapB 17 179 es) y
 
-/-- E4's tables `[wEb4, z]`. -/
+/-- E4's child table `C(y) = Σ_i s_i·M̃_i(x̂, y ‖ p_y[ncR, 25))`. -/
+noncomputable def cTab4 (κ : NodeKind) (es : Log) (y : Fin (2 ^ ncR κ)) : F :=
+  mStack srcE (sL es) (xHat κ es) (Rsv.hiPt (cube y) (pyL es))
+
+/-- E4's tables `[wEb4, z, κ_E⁴·eq(p_y, ·), C]`. -/
 noncomputable def TEb4 (κ : NodeKind) (L es : Log) : Array (Array F) :=
-  #[Array.ofFn (wEb4 srcE srcL κ es), Array.ofFn (zCG R (ncR κ) L es)]
+  #[Array.ofFn (wEb4 srcE srcL κ es), Array.ofFn (zCG R (ncR κ) L es),
+    Array.ofFn fun y : Fin (2 ^ ncR κ) => kapB 23 227 es ^ 4 * eq (Rsv.lowA (ncR κ) (pyL es)) (cube y),
+    Array.ofFn (cTab4 srcE κ es)]
 
 /-- **E3's doom**: the batched claim is false after `κ_E`. -/
 noncomputable def BatBadE4 : Log → Log → Prop :=
-  OnNode fun κ L es => 274 < es.length ∧ c4E4 L es ≠ trueSum innerExpr (TEb4 R srcE srcL κ L es) (ncR κ)
+  OnNode fun κ L es => 274 < es.length ∧ c4E4 L es ≠ trueSum innerExprR (TEb4 R srcE srcL κ L es) (ncR κ)
 
 /-- E4's rounds at node kind `κ` (F, degree 2, from 275, `ncR κ` real rounds). -/
 abbrev D2Eb4 (κ : NodeKind) : Log → Log → Prop :=
-  D2 275 16 readF (fun d => chF d 0) c4E4 (fun _ => ncR κ) innerExpr (TEb4 R srcE srcL κ)
+  D2 275 16 readF (fun d => chF d 0) c4E4 (fun _ => ncR κ) innerExprR (TEb4 R srcE srcL κ)
 
 /-- **E4's doom**. -/
 def D4E4 : Log → Log → Prop := OnNode (D2Eb4 R srcE srcL)
 
 end E
 
-/-- **E's end check** (`finE` (ii); Eend at 273). -/
-def RejEndE4 : Log → Log → Prop := OnNode fun κ => RejEndG (e2R κ) 214 227 23
+/-- **E's end check** (`finE` (ii″); Eend at 273): the outer claim after `e2R κ` rounds is not
+`eq(τ, r)·(â b̂ + ĉ) + η·eq(p_x, r)·(m̂* − X)`. -/
+def RejEndE4 : Log → Log → Prop := OnNode fun κ L es =>
+  273 < es.length ∧ clR 227 (fun _ _ => 0) L es (e2R κ) ≠
+    eq (ptOf (e2R κ) (tauS (e2R κ) 214 es)) (ptOf (e2R κ) (rxs (e2R κ) 227 es)) *
+      (vEnd 23 227 es 0 * vEnd 23 227 es 1 + vEnd 23 227 es 2) +
+    etaL es * eq (Rsv.lowA (e2R κ) (pxL es)) (ptOf (e2R κ) (rxs (e2R κ) 227 es)) * (mStL es - xL es)
 
 /-- **E4's round checks fail** (`finE`'s rounds: `g(0) + g(1)` against the running claim). -/
 def RejInE4 : Log → Log → Prop :=
@@ -230,11 +321,14 @@ def okE4 (es : Log) (v : F) : Prop := v = readF (msgAt es 325) 0
 /-- E4's point `r′` (the real rounds' challenges). -/
 def rPt4 (κ : NodeKind) (es : Log) : List F := rchs2 275 (fun d => chF d 0) es (ncR κ)
 
-/-- **`finE` (iv) fails** (from 326): E4's last claim is not `W(r′)·α_E`. -/
+/-- **`finE` (iv″) fails** (from 326): E4's last claim is not
+`W(r′)·α_E + κ_E⁴·eq(p_y, r′)·Σ_i s_i·M̃_i(x̂, ŷ)`, `ŷ = r′ ‖ p_y[ncR, 25)`. -/
 noncomputable def RejFinE4 (srcE srcL : NodeKind → ESrc) : Log → Log → Prop :=
   OnNode fun κ L es => 326 ≤ es.length ∧
     clR2 275 16 readF (fun d => chF d 0) c4E4 L es (ncR κ) ≠
-      mle (wEb4 srcE srcL κ es) (ptOf (ncR κ) (rPt4 κ es)) * readF (msgAt es 325) 0
+      mle (wEb4 srcE srcL κ es) (ptOf (ncR κ) (rPt4 κ es)) * readF (msgAt es 325) 0 +
+      kapB 23 227 es ^ 4 * eq (Rsv.lowA (ncR κ) (pyL es)) (ptOf (ncR κ) (rPt4 κ es)) *
+        mStack srcE (sL es) (xHat κ es) (Rsv.hiPt (ptOf (ncR κ) (rPt4 κ es)) (pyL es))
 
 /-- **E's pending claim is false** (after E4 end): its value is not `ẑ(r′)`. -/
 noncomputable def PendE4 (R : FSrc) : Log → Log → Prop :=

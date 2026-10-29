@@ -185,8 +185,10 @@ def bg12X (L es : Log) : Prop := bg20X L es ∨ P4b.nE4 X4.src4 NI4F.srcE4 L es
 /-- **Lr3 … E end**: and Lr's pending batch (E3 reduces it; 3.x's `bg16`). -/
 def bg16X (L es : Log) : Prop := bg20X L es ∨ P4b.BatBadLr4 X4.src4 NI4F.srcL4 L es
 
-/-- **Lr3's doom** (E1's entry; 3.x's `D16F`). -/
-def D16X (L es : Log) : Prop := bg16X L es ∨ P4b.nE4 X4.src4 NI4F.srcE4 L es
+/-- **Lr3's doom** (E1's entry; 3.x's `D16F`; revision 4.4.2, RSV2 §2.6: or a false child claim,
+which E1's `η·D` term reduces). -/
+def D16X (L es : Log) : Prop :=
+  bg16X L es ∨ P4b.nE4 X4.src4 NI4F.srcE4 L es ∨ P4b.ChildBad4 NI4F.srcE4 L es
 
 /-- RS0's, RS1's and B′'s dooms at `far0X`, `PubX` and S-E's kind factor and cells. -/
 noncomputable def DRS0X : Log → Log → Prop := P4b.DRS0_4 X4.src4 N4c.kf4 far0X PubX
@@ -240,7 +242,16 @@ theorem rd_batLr : T4.Reads 215 (P4b.BatBadLr4 X4.src4 NI4F.srcL4) :=
 
 theorem rd_bg16X : T4.Reads 215 bg16X := (rd_bg20X.mono (by norm_num)).or rd_batLr
 
-theorem rd_D16X : T4.Reads 215 D16X := rd_bg16X.or (rd_nE4X.mono (by norm_num))
+/-- A false child claim reads Lrend's message (213). -/
+theorem rd_childX : T4.Reads 214 (P4b.ChildBad4 NI4F.srcE4) := fun L es L' es' h1 h2 hS => by
+  have hA : Agree es es' 214 := hS.1
+  obtain ⟨hx, hy, hs, hX⟩ := P4b.child_agree hA le_rfl
+  simp only [P4b.ChildBad4, P4b.OnNode, P4b.truthChild4, hx, hy, hs, hX,
+    kindOfC_congr (hA.mono (by norm_num))]
+  exact ⟨fun ⟨κ, hk, _, h⟩ => ⟨κ, hk, h2, h⟩, fun ⟨κ, hk, _, h⟩ => ⟨κ, hk, h1, h⟩⟩
+
+theorem rd_D16X : T4.Reads 215 D16X :=
+  rd_bg16X.or ((rd_nE4X.mono (by norm_num)).or (rd_childX.mono (by norm_num)))
 
 /-! ## E4 end's doom is RS0's `DPend4` -/
 
@@ -278,8 +289,7 @@ theorem ss_D3Lr4 : P4a.SameStab4 180 (P4b.D3Lr4 X4.src4 NI4F.srcL4) := fun L L' 
     179 hS (by omega) (by have := (P4b.dims_le' κ).1; omega)
 
 theorem ss_D3E4 : P4a.SameStab4 228 (P4b.D3E4 X4.src4 NI4F.srcE4) := fun L L' X hx hS =>
-  P4b.onNode_congr rfl fun κ _ => P4b.D3G_same X4.src4 (NI4F.srcE4 κ) (P4b.e2R κ) (P4b.ncR κ) 214
-    227 hS (by omega) (by have := (P4b.dims_le' κ).2.1; omega)
+  P4b.onNode_congr rfl fun κ _ => P4b.D3E4_same X4.src4 NI4F.srcE4 κ hS (by omega)
 
 theorem ss_batE4 : P4a.SameStab4 275 (P4b.BatBadE4 X4.src4 NI4F.srcE4 NI4F.srcL4) :=
   fun L L' X hx hS => P4b.onNode_congr rfl fun κ _ => by
@@ -301,9 +311,7 @@ theorem rd_zcwLr : T4.Reads 179 (P4b.ZCwLr4 X4.src4 NI4F.srcL4) :=
       (by have := (P4b.dims_le' κ).1; omega)
 
 theorem rd_zcwE : T4.Reads 227 (P4b.ZCwE4 X4.src4 NI4F.srcE4) :=
-  P4b.readsS_onNode (R := X4.src4) (by norm_num) fun κ =>
-    (P4b.zcwG_reads X4.src4 (NI4F.srcE4 κ) (P4b.e2R κ) (P4b.ncR κ) 214 (by omega)).mono
-      (by have := (P4b.dims_le' κ).2.1; omega)
+  P4b.readsS_onNode (R := X4.src4) (by norm_num) fun κ => P4b.zcwE4_reads X4.src4 NI4F.srcE4 κ
 
 theorem rd_endLr : T4.Reads 214 (P4b.EndBadLr4 X4.src4 NI4F.srcL4) :=
   P4b.readsS_onNode (R := X4.src4) (by norm_num) fun κ =>
@@ -311,9 +319,7 @@ theorem rd_endLr : T4.Reads 214 (P4b.EndBadLr4 X4.src4 NI4F.srcL4) :=
       (P4b.dims_le' κ).1
 
 theorem rd_endE : T4.Reads 274 (P4b.EndBadE4 X4.src4 NI4F.srcE4) :=
-  P4b.readsS_onNode (R := X4.src4) (by norm_num) fun κ =>
-    P4b.endBadG_reads X4.src4 (NI4F.srcE4 κ) (P4b.e2R κ) (P4b.ncR κ) 227 23 (by norm_num)
-      (P4b.dims_le' κ).2.1
+  P4b.readsS_onNode (R := X4.src4) (by norm_num) fun κ => P4b.endBadE4_reads X4.src4 NI4F.srcE4 κ
 
 theorem rd_DRS0X : T4.Reads 327 DRS0X := P4b.dRS0_4_reads (R := X4.src4) rd_far0X rd_PubX
 theorem rd_DRS1X : T4.Reads 331 DRS1X := P4b.dRS1_4_reads (R := X4.src4) rd_far0X rd_PubX
