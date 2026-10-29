@@ -209,3 +209,68 @@ the rows' sparse value; feeding them the plan's eq tables for the high parts giv
 3. The remaining cap-check cost in `evalMT4` (≈ 8 ms per prototype): the running sums' terms in the
    final asserts (3.7 ms). Materialising each MAC block's partial sum inside the block would make it
    O(1) per block; it changes the compiled rows (a new extension with its `ExtOk` proof).
+
+---
+
+## Run 2 (resumed after `21ade15`): where the arenas' cells come from
+
+Re-snapshotted on HEAD `21ade15` (B2′'s run 1 committed; the hint at HEAD is mine, `inR true`). New
+dev probe `PackDump` (`logs/B2p/packdump.log`): per template key, the cells an instance uses
+(`cregion`'s operands), its `2^cregion` window, and the best packing of `g` instances into one
+aligned window. Rows of a packed group are contiguous at the stride policy. These row figures are an
+upper estimate: the group is cut into aligned pieces as a skeleton block is.
+
+### R2.1 The demand and the supply (cells per slot region, `2^20`)
+
+| | p0 (node) | p1 (segment) |
+|---|---|---|
+| skeleton cells (end) | 276,535 | 277,047 |
+| template cells allocated today (`fitCells`, top-down) | 764,096 (≈ 748,047 + alignment of single keys) | 714,624 |
+| **free today** | **7,945** | **56,905** |
+| `rowW 8`'s unused tail (it is evaluated in 64-row chunks, so its `2^15` window is not a plan window) | +15,939 | +15,939 |
+| template window padding recoverable by packing (§R2.2 b′) | **+201,920** | **+166,080** |
+| **free after both** | **≈ 225,800** | **≈ 238,900** |
+
+Demand, PACK §5.2 as PK-M3 corrected: arena₁ 96,880 + arena₂ 132,096 (allocated) + bits 8,320 =
+**237,296**. Without arena₂'s own cells (option a): **105,200**.
+
+### R2.2 The options
+
+| Option | Cells needed vs free (p0 / p1) | V cost | Lean statements that change | Prover |
+|---|---|---|---|---|
+| **(a)** arena₁ copied straight into the consumers' import cells: no arena₂ cells. The position blocks' import cells sit at a fixed offset `off_q` in windows aligned per position (B0's stride policy) | 105,200 vs 7,945 / 56,905: **does not fit alone** | arena₁ 0.2–0.4 ms per slot (measured). Binding rows: the M side `Σ_q eq(t, R+p·2^a+q)·eq(u, W+p·2^b+off_q)` is one closed form **per level** (both sides aligned); the arena₁ side is the measured shift-window run per position: ≤ 23 ms per node with table lookups (one state per run instead of two) | none in the chain; `a2Rows` gains an offset map `off_q` (my module), and `arena_elem` becomes "import cell = stream element" (the B3/B4 interface) | witness = stream elements already known: negligible |
+| **(b)** a cell split for templates (two windows per instance) | ≈ +200 k: fits | ≈ +1 window factor per split instance | **yes**: `Tpl.instLin`'s `loc k ↦ cb + k` becomes a map; `instRow`, `envOf`, `inst_eqns`, `tpl_mle`/`slotV3_eq`'s proofs change. `compileT_sound`'s and `evalMT4_eq`'s statements keep their text but change meaning underneath | none |
+| **(b′)** **pack `g` instances of a key into one aligned window** (cells contiguous at the instance's used size; the group's rows contiguous; the plan cuts a group into aligned pieces over the group's cell window, as it does a skeleton block; `g` and the stride derived from the key, as B0 derives `splitOf`) | frees 201,920 / 166,080 at +4.6 k / +6.0 k template rows (estimate) | per-instance pieces drop ≈ 3,000–3,500 per prototype (one to three pieces per group of `g`: −3 to −5 ms per prototype at B0's ≈ 1 µs a piece); key preparation grows by ≈ 24 k template rows (≈ +5 ms on `kp`'s 26 ms). **≈ neutral**, to be measured | **none**: a layout and plan-search policy. `TLay.cb` (a group base plus a member offset), `mkLay`, `tinIRows`' row placement, `tinPP`/`tinRP`, `mkKM`, with `tinRP_rows`, `mkKM_*` and `tinIRows_none` re-proved under unchanged statements. `compileTF4_soundAt` holds at every layout; `evalMT4_eq`/`slotV3_eq` take the plan's checked pieces; `hfit4` takes `ProtoFit` as a hypothesis, which the plan checks at process start. All the modules involved are mine (`FRVIRTplExt`, `FRVIRTplEval`, `FRVIRTplBuild`, `FRVIRTplPlan`); `FRNodeDag` (the walk) is untouched because the walk is not packed | none (P2 re-embeds the plan form) |
+| (c1) arena₁ only over consumed elements | the position items (≈ 85.9 k elements) and the cap check's `D`, `A` and caps are all read: ≥ 89 % of the 96,880 elements, so ≤ 10 k saved | a few more diagonals per slot (one per range) | none | none |
+| (c2) arenas in another region | — | PK-M3: the binding becomes per slot (×5 at N4: ≈ 115 ms per node) | none | none |
+| (c3) `fitCells` counting only used cells for chunked keys | +15.9 k (the `rowW` tail) | 0 | none (hint generator only) | none |
+
+### R2.3 Recommendation: (a) + (b′) + (c3)
+
+- **Cells.** (b′) + (c3) leave ≈ 225.8 k (p0) / 238.9 k (p1) free.
+  - (a) needs 105.2 k: a margin of ≥ 120 k per region.
+  - The full PACK arena set (237.3 k) would fit p1 only, and p0 would be 11.5 k short. That is why (a) is part of the recommendation.
+- **Rows.** The N8 margin was 18,220 rows per segment region. (b′) adds ≈ 6.0 k rows (an upper estimate), which leaves ≈ 12 k. (a) keeps PACK's binding-row count: the 85,946 arena₂ rows become the import-cell copy rows, and `packMapN` already counts them.
+- **V.** Arena₁ costs ≈ 1–2 ms per node. The binding costs ≤ 23 ms per node: the shift-window run with table lookups, and less with one state per run. (b′) is ≈ neutral.
+- **No soundness statement changes**, and nothing in another track's module. The cost is a B0-sized layout stage in `FRVIRTplExt`, `FRVIRTplEval`, `FRVIRTplBuild` and `FRVIRTplPlan`, with re-proofs under unchanged statements, then the arena placement.
+
+### R2.4 Not implemented in this run (handover)
+
+I did not implement (b′) or place the arenas: my context is too long for a change of B0's size, so
+by the Pace rule I stop here with this plan. Nothing was edited in run 2 except the dev probe
+`PackDump`. The plan, in order:
+
+1. **(c3)** `FRVIRTplSet.fitCells`: a key with `12 < rbk` takes `(n − 1)·2^b + used` cells, as the walk does.
+2. **(b′)** `packOf k : ℕ × ℕ` (`g`, member stride = used cells), derived from the key like `splitOf`.
+   Apply it only to keys with `n ≥ 4·g` and a gain of at least 2 k cells: `dotKF 64`/`16`, `phiRS 7`,
+   `tensorW 7`, the four `tensorWK`.
+   - `TLay.cb k i = c + (i / g)·2^w + (i % g)·stride`, where `w` is the entry's bits (the group window).
+   - Rows: a group's members contiguous at `nr` rows each; groups at the stride policy (`strideBits (g·nr)`).
+   - The plan: `tinPP` emits each group as a block over the group's cell window (`cutSeg` + `blockPP`, which already work for any rows). For a packed key, `tinRP` and `mkKM` take the same path.
+   - Re-prove `tinIRows_none`/`tinRP_rows`/`mkKM_*` under unchanged statements.
+   - Phasing: `splitOf` keys (`phiRS 7`, `tensorWK`) can be packed without the split (a group's rows are cut anyway), so the split applies only to unpacked keys.
+3. Regenerate the hint, then measure: `inR`, `evalMT4` against `21ade15` (alternating), and `plan4t init` (the new target is ≤ 5 s).
+4. **(a)** `a2Rows` with an offset map `off : ℕ → ℕ` per level, and `a2V` with the M side as a closed form per level. Then place arena₁ (`R₁`, `A₁`) and the bits in the freed cells, at the same M-relative addresses in both prototypes. B3/B4 then bind each import class through `arena_elem`.
+5. Re-base `FRNodeRows4Model`: the template rows, and the N8 margin.
+
+Logs for run 2: `logs/B2p/packdump.log`.

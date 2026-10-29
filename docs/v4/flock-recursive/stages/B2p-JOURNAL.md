@@ -85,3 +85,10 @@ from HEAD). Logs `logs/B2p/`.
 - `FRNodeRows4Model` re-based: 699,648 / 686,080, the cap check inside the prototypes, pack map at
   today's stream (212,576). N8 7,843,392: 1.019× under `N_M/1.05`. `mRows4_neg` on A2″'s measured
   791,421-row segment prototype.
+
+## Run 2 (resumed, HEAD `21ade15`)
+
+- Re-snapshot: HEAD's hint is mine (`inR true`). New probe `PackDump`: packing `g` instances per
+  aligned window frees 201,920 (p0) / 166,080 (p1) template cells at ≈ +4.6 k / +6.0 k rows; `rowW`'s
+  chunk-evaluated window leaves 15,939 unused. Evaluation and recommendation in RESULT §Run 2:
+  (a) + (b′) + (c3), no soundness statement changes. Not implemented (context; handover in R2.4).
