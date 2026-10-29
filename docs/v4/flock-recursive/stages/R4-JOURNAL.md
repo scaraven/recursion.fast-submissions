@@ -279,3 +279,38 @@ relocated fields).
 - Final: build green (2,538 jobs, HEAD `39fb161`); axioms 492 theorems clean; source rule 319 files
   0 findings; profiles in `logs/R4h/`. Stopped (context long) with the RESULT's Pass 8 handover: `hW`
   (level steps, `Ŵ₀(P₀)` run side), `RunFacts4`, statement views/F4, `FR.lean` import.
+
+### Pass 9 (R4i)
+
+- Build tree `logs/fr-build-R4i` (copy of R4h's; `b.sh`/`chk.sh` log to `logs/R4i/`; `MINE.txt` adds
+  `FRSoundness4R4Wt`, `FRSoundness4R4W0R`, `FRSoundness4XRun`, `FRSoundness4XRunG`). Baseline at HEAD
+  `9060cbc`: `lake build FRSoundness4R4Full FRSoundness4P4fCtrl` green. Names grepped first (none of the
+  new short names existed; R4h's `mSlot` renamed `pfFamM` before use: `NodeKind.mSlot` exists).
+- **`FRSoundness4R4Wt`** (item 1a–c): `gPfPts` split as claims ++ tails ++ `P₀`s (`getD_flatMap4`),
+  `slot_tl4`/`slot_p04` (any `P`), `pfFamM_eq` (the `FinTabs4.pad` family is the chain kind's);
+  `tailList4` (3.x's `tailList` at T4's `sAt`/`pfP`/`ptL`), `tail_len4` (`tLen = T4.mLog`, decide over
+  the six kinds), `gSRegs_view4`, `tail_vals4`, `ys_view4` (Q.k's count and position registers),
+  `lvStepV_eq4`, `wV_eq4`. Trap: `hT` from `lv_facts4` is about `lvOf κ.m`, the goal about
+  `CKind.lv κ`: state it at `CKind.lv` (defeq) before `omega`.
+- **`FRSoundness4R4W0R`** (item 1d): `rchs_drop`/`rchs_take` (windows), `srcF_map`, `rsSrc4` and the
+  tables' choice of it (`ptIx_seg4`, `ptIx_node4`, `simp (decide := true)` on `kvOf`), the four claim
+  sources' values (`zSrc_val4`, `lcSrc_val4`, `shSrc_val4`, `eSrc_val4`, `rsSrc4_val`), `p0_vals4`,
+  `cellsVal4_sum`, `eqCellK4_eq` (zero padding past `m − 7`), `rsSpec4`, `w0V4_eq4`, `wV4_of_fields`.
+  Traps: `congr 1` on a `K` sum equation whose summands contain `eqCellK4` timed out (whnf): use
+  `congrArg₂ (· + ·)` with explicit sides, or `ring`. `wV_eq4 … rfl …` with `fi` left implicit timed
+  out at the declaration (`?fi.outs =?= …`): pass `(fi := …)`.
+- **`FRSoundness4XRun`** (items 2–3): `tensorW_segC/nodeC`, `rsWeight_segC/nodeC`, `implNodeC_meets`,
+  `nodeF_params` (`nodeC_params` at `implN4F`: passing `implN4T`'s parameters to `implN4F` hit max
+  recursion), `not_rejFX_seg/node`, `acceptRun4_seg/node` (the chain with the run's entries),
+  `vkOf_node4` (X4's F4: the node `stmt` phase's flag, `simp` through `stmtOps4`'s 11 ops),
+  `nodeLog4`, `segLog4`, `RunFacts4S`, `SegOut4`, `runStmt_acc`, `runFacts4S_C`, `runFacts4_node_C`,
+  `runFacts4_C`. Trap: `vkOf_node4 h` against `X.vkOf π = vk` with `inp` implicit timed out (whnf of
+  `X.vkOf ?inp.π`): pass `(inp := ⟨vk, c, π⟩)`.
+- **Finding F1 (stop on it):** `RunFacts4.seg` asks two values no op of the segment program asserts:
+  `π.size = piSizeOf seq4` (`runLog_chain4`'s `hπ`: a shorter π gives short absorbed messages, no
+  `G.Matches` chain) and `n ≤ cap` (`SegLog`'s `nStmt es = v.n`: the program reads `n mod 2^24`).
+  `V_A` asserts both before it runs a segment (`π.size = 48 + k·segSize`, `piSize_aggSegs`;
+  `aggChecks`), but neither `SegSoundLog` nor `RunFacts4.seg` carries them. Proved `RunFacts4.seg` on
+  the in-range proofs (`runFacts4S_C`) and named the rest `SegOut4`.
+- **`FRSoundness4XRunG`** (item 4): `ks_rev4G`, `Resid4G`, `resid4_of_G`, `certificate_rev4G`;
+  controls.

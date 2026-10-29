@@ -1262,3 +1262,159 @@ theorem acceptTail4_seg (hphi) (ht) (hb : ¬ Bad L) (hπ)
    `stmt_msg4`), `nStmt_eq4`/`segView_lastN`, `vkL_eq4`, `stL_eq4`; and a 4.1 `stmt_view` from
    `stmtOps4`'s `piDigest 0 16 = input 0` assert (`X.vkOf π = vk`) and `stmtOk4` (`c = nodeStmt …`).
 4. Add `import FRSoundness4R4Full` to `FR.lean`.
+
+## Pass 9 (track R4i; HEAD `9060cbc`)
+
+- **Build tree** `logs/fr-build-R4i` (a copy of `fr-build-R4h`; `b.sh`/`chk.sh` log to `logs/R4i/`;
+  `MINE.txt` adds the four modules below; `logs/org20`). Every lean/lake command ran in the 16G scope
+  (12G for single files) under `timeout`. No sub-agents. Nothing committed. Only new
+  `FRSoundness4R4*`/`FRSoundness4XRun*` modules written (names grepped first); no existing module
+  edited, no statement changed. R4h's planned name `mSlot` is `pfFamM` (`NodeKind.mSlot` exists).
+- **Imports for `FR.lean`:** `import FRSoundness4XRunG` (it pulls `XRun` → `R4W0R` → `R4Wt` →
+  `R4Full`, and `P4fObl`), in addition to Pass 7's `import FRSoundness4R4ColsCtrl`.
+
+### Status
+
+| Item | State |
+|---|---|
+| 1. `hW` | **Done**: `wV4_of_fields` (`wV4 … = T4.wHatL (P4b.W₀L4 N4c.kf4 cells) L es 4` on an accepted run's fields): slots (`slot_tl4`, `slot_p04`, `pfFamM_eq`), `tail_vals4`, `lvStepV_eq4`, `wV_eq4`, and `w0V4_eq4` (claim points `rsSrc4_val`, `P₀` `p0_vals4`, `r″`/`κ` `rs1_val4`, `β` at L3β, `κ′` at B′, cells `cellsVal4_sum` + `eqCellK4_eq`, `rsWeight` at `rsSpec4`). `acceptTail4_*` without `hW`: `acceptRun4_seg`/`_node` (which also return the run's entries) |
+| 2. X4's `RunFacts4` | **`node`: done** (`runFacts4_node_C`, unconditional). **`seg`: done on the segment proofs `V_A` runs** (`runFacts4S_C`: `π.size = piSizeOf seq4`, `n ≤ cap`); the rest is **`SegOut4`**: two values no final asserts (**F1**, stop) |
+| 3. `SegLog`/`NodeLog`, X4's F4 | **Done**: `segLog4` (for `n ≤ cap`), `nodeLog4`, **`vkOf_node4`** (`stmtOps4`'s `piDigest 0 16 = input 0`: `X.vkOf π = vk`), `c = nodeStmt …` from `stmtOk4` (`runStmt_acc`) |
+| 4. The theorem without residual 2 | **Done up to F1**: `ks_rev4G`, `certificate_rev4G` (`hRun`, resp. `Resid4.run`, replaced by `SegOut4`) |
+
+**Final checks** (HEAD `9060cbc`, R4's 49 modules overlaid):
+- `lake build FR FRSoundness4XRunG FRSoundness4R4Full FRSoundness4R4ColsCtrl FRSoundness4R4FrCtrl
+  FRSoundness4R4FrCtrlB FRSoundness4R4Tail FRSoundness4P4fCtrl`: **green, 2,546 jobs**
+  (`logs/R4i/build-final.log`).
+- **Axioms** (`logs/R4i/axioms.log`, `logs/fr-build-R4i/ax/AxR4i.lean`; all 553 theorems of R4's 45
+  modules and the four new ones, `ks_rev4G` and `certificate_rev4G` included): within `propext`,
+  `Classical.choice`, `Quot.sound`; no `sorryAx`.
+- **Source rule** (`logs/org20/scripts/source-rule.py submissions/flock-recursive`): 331 files, 0
+  findings (`logs/R4i/source-rule.log`).
+- **Times** (sequential, one core: `taskset -c 0 lake env lean -DElab.async=false --profile`;
+  `logs/R4i/prof-*.log`):
+
+  | Module | wall | import | type checking | tactic execution |
+  |---|---|---|---|---|
+  | `FRSoundness4R4Wt` | 11.7 s | 4.3 s | 0.95 s | 1.9 s |
+  | `FRSoundness4R4W0R` | 17.2 s | 8.1 s | 0.87 s | 1.3 s |
+  | `FRSoundness4XRun` | 11.1 s | 5.0 s | 0.15 s | 0.6 s |
+  | `FRSoundness4XRunG` | 8.0 s | 4.3 s | 0.04 s | 0.02 s |
+
+  Net kernel cost of the pass ≈ 2.0 s. No `decide` over a program, layout or table beyond `kvOf`'s
+  constants (`ptIx_seg4`/`_node4`, `simp (decide := true)`) and `tail_len4` (decide over the six
+  kinds' ladders). Max RSS 3.0 GB.
+
+### What was built (`loc.py`, `logs/R4i/loc.txt`: total / code / thm)
+
+| Module | total / code / thm | Content |
+|---|---|---|
+| `FRSoundness4R4Wt` | 338 / 273 / 22 | `getD_flatMap4`, **`pfFamM`** (def), `slotA_tl4`, `slotA_p04`, `slotI_tl4`, `slotI_p04`, **`slot_tl4`**, **`slot_p04`**, **`pfFamM_eq`**; **`tailList4`** (def), `tailList4_four_eq`, `tailList4_step`, `tailList4_eq`, `tail_len4`, `T4_ptL_zero`; `gSRegs_view4`, **`tail_vals4`**, `ys_view4`, **`lvStepV_eq4`**, **`wV_eq4`** |
+| `FRSoundness4R4W0R` | 296 / 233 / 17 | `rchs_drop`, `rchs_take`, `srcF_map`, **`rsSrc4`** (def), `seq4_mStar`, **`ptIx_seg4`**, **`ptIx_node4`**, `chalsK_view4`, `zSrc_val4`, `lcSrc_val4`, `shSrc_val4`, `eSrc_val4`, **`rsSrc4_val`**, **`p0_vals4`**, **`cellsVal4_sum`**, **`eqCellK4_eq`**, **`rsSpec4`** (def), **`w0V4_eq4`**, **`wV4_of_fields`** |
+| `FRSoundness4XRun` | 293 / 216 / 17 | `tensorW_segC`, `rsWeight_segC`, `implNodeC_meets`, `tensorW_nodeC`, `rsWeight_nodeC`, **`nodeF_params`**, **`not_rejFX_seg`**, **`not_rejFX_node`**, **`acceptRun4_seg`**, **`acceptRun4_node`**, **`vkOf_node4`**, **`nodeLog4`**, **`segLog4`**, **`RunFacts4S`**, **`SegOut4`** (defs), `runStmt_acc`, **`runFacts4S_C`**, **`runFacts4_node_C`**, **`runFacts4_C`** |
+| `FRSoundness4XRunG` | 106 / 66 / 9 | **`ks_rev4G`**, **`Resid4G`**, `resid4_of_G`, **`certificate_rev4G`**; controls |
+| **new total** | 1,033 / 788 / 65 | R4 total now 10,845 / 8,476 / 557 |
+
+### Main statements
+
+```lean
+theorem wV4_of_fields (hF : Fields4 impl p inp tr P y zh Rs Ex) (hk : kindOfC es = κc) (hT : FinTabs4 P p.tix κc)
+    (hpts : (P.kv.ptIx p.tix).map (fun j => (gPfPts P fi).getD j []) = rsSrc4 κc fi)
+    (hc : ∀ ν, ∀ c ∈ cells ν, c < 2 ^ P4b.ncR ν) (hcl : P.cells = P4b.cellsC cells κc)
+    (hncell : P.ncell = P.cells.length) (hnc : P.nc = 25)
+    (hrs : ∀ r ps k β ρ, r.size = 7 → 23 ≤ ρ.size → impl.rsWeight r ps k β ρ = rsSpec4 κc r ps k β ρ)
+    (ht : ∀ j r, impl.tensorW j r = Impl.tensorWS j r) (hb : ¬ Bad L) (hin) (hm : p.d.m = (kindOfC es).m) :
+    wV4 impl p.tix fi (Rs 11) P = T4.wHatL (P4b.W₀L4 N4c.kf4 cells) L es 4      -- fi = ⟨outs, zh, Ex 11⟩
+theorem acceptRun4_seg (fin lRows κs₀ σ) (hb : ¬ Bad L) (hπ : inp.π.size = piSizeOf seq4)
+    (hrun : (runIR (implSeg (Impl.implC fin lRows κs₀)) (gen4 seq4 (.ofSeg σ) (finOps4 (segFinP σ))) inp).runLog L = some true) :
+    ∃ tr y j, SkRun4 … tr y ∧ semIR … tr = some true ∧ entriesOf L (pathOf L j) = fsOf tr (itemsOf seq4) ∧
+      T4.AcceptTail RejFX W0X c0X L j                     -- and acceptRun4_node (implN4F, cells4)
+theorem vkOf_node4 (h : SkRun4 impl (.ofNode ν) inp tr y) : X.vkOf inp.π = inp.vk
+def RunFacts4S (Vseg vk) := ∀ L π v, ¬ Bad L → segView π = some v → π.size = piSizeOf seq4 → v.n ≤ v.kind.cap →
+    (Vseg v.kind vk (segC v) π).runLog L = some true → ∃ j, T4.AcceptTail RejFX W0X c0X L j ∧ SegLog v (entriesOf L (pathOf L j))
+def SegOut4 (Vseg vk) := ∀ L π v, ¬ Bad L → segView π = some v → (π.size ≠ piSizeOf seq4 ∨ v.kind.cap < v.n) →
+    (Vseg v.kind vk (segC v) π).runLog L = some true → ∃ j, T4.AcceptTail RejFX W0X c0X L j ∧ SegLog v (entriesOf L (pathOf L j))
+theorem runFacts4S_C (fin lRows κs₀ vk) : RunFacts4S (VsegC (Impl.implC fin lRows κs₀)) vk
+theorem runFacts4_C (fin lRows κs₀ vk) (hO : SegOut4 (VsegC (Impl.implC fin lRows κs₀)) vk) :
+    RunFacts4 (VsegC (Impl.implC fin lRows κs₀)) (VnodeC (NI4F.implN4F fun _ => Impl.implC fin lRows κs₀) N4c.cells4) vk
+theorem ks_rev4G (fin lRows κs₀ S vk) (hV : S.V = VC4 (Impl.implC fin lRows κs₀) (NI4F.implN4F fun _ => Impl.implC fin lRows κs₀) N4c.cells4)
+    (hq) (hE) (hε) (hO : SegOut4 (VsegC (Impl.implC fin lRows κs₀)) vk) (I rd hI hRes D hL) : KS (Rel (S.acc vk)) (S.V vk) S.E S.ε S.qV
+theorem certificate_rev4G (fin lRows κs₀ S) (hV hq hE hε hext hfuel hnd D) (hR : ∀ vk, Resid4G fin lRows κs₀ S nd D vk)
+    (hC) (hδ) : Certificate S                             -- Resid4G = X4's Resid4 with `run` replaced by `out : SegOut4`
+```
+
+**`ks_rev4G`'s remaining hypotheses** (`ks_rev4F`'s, with `hRun` gone):
+- definitional: `hV` (at the concrete ops; S-I's `implB = Impl.implCN = implC (finC finPf) Layout.lRows κs₀`
+  by `rfl`, `Impl.implCN_eq`), `hq`, `hE`, `hε`; for the certificate also `hext`, `hfuel`;
+- **`hO : SegOut4 …`** (F1, below);
+- residuals 3–4 (S-E): `I`, `rd`, `hI`, `hRes`;
+- residual 5 (S-H4): `D : NodeDec4 nd`; residual 6 (S-H4): `hL` (at `GoodX P4f.DFhi`);
+- certificate only: residual 7 `hnd : DecOk4 nd` (S-H4), residual 8 `hC` (completeness), residual 9 `hδ`.
+
+### Design and deviations
+
+- **F1 (stop): `RunFacts4.seg` asks two values no op of the segment program asserts.**
+  1. **`π.size = piSizeOf seq4`.** `runLog_chain4` (hence every `AcceptTail`) needs `π` to hold
+     every absorbed message (`fit_getD`, `size_extract_of_le`): a shorter `π` gives short messages,
+     `fsCheck` fails at the absorb items, and the run's entries are no `G.Matches` chain. The segment
+     program (`gen4`, `stmtOps4`'s segment branch) and `segView` read no size; `kindOf4` checks it
+     only for node bytes (`piSize_node4`).
+  2. **`v.n ≤ v.kind.cap`** (for `SegLog`'s `nStmt es = v.n`). The program reads `n mod 2^24`
+     (`lastN_eq`); `segView` reads 64 bits (`rdLE64 π 81`). They differ for `n ≥ 2^24`.
+
+  `V_A` asserts both before it runs a segment program: `VAwith`'s `π.size = 48 + k · segSize`
+  (`piSize_aggSegs`, segment size `piSizeOf seq4` at `V4with`) and `aggChecks`' `1 ≤ n ≤ cap`. But
+  `SegSoundLog` (`FRSoundness4Agg`) carries only the cap, and X4's `RunFacts4.seg` carries neither,
+  although `segSound_X` has `hcap` in scope. **Proposed amendment** (X4/Agg owners): add
+  `π.size = piSizeOf seq4 →` to `SegSoundLog` (`VA_extract_log` supplies it from `VAwith`'s size check
+  and `piSize_aggSegs`; `VA_sound_log` must return that check) and `π.size = piSizeOf seq4 →
+  v.n ≤ v.kind.cap →` to `RunFacts4.seg` (`segSound_X` passes both). The amended `RunFacts4.seg` is
+  literally `RunFacts4S`, proved by `runFacts4S_C`, and `SegOut4` disappears from `ks_rev4G`.
+  (The other route, a size op in the segment program, changes the programs: P2/S-E.)
+- **D31. `RunFacts4` is proved at the concrete ops** (`impl₀ = implC fin lRows κs₀`, `base = fun _ =>
+  implC …`), not for every `impl₀`: the run facts need `phiRS`, `tensorW`, `rsWeight` and the front's
+  op parameters at their specifications (`segC_params`, `nodeF_params`, `phiRS_segC`/`_nodeF`,
+  `implN4F_hM`/`_hL`). `ks_rev4G`/`certificate_rev4G` are therefore stated at those ops; S-I's
+  `implB` is one of them.
+- **D32. `hW` is proved for any `FinP` with the table facts named** (`FinTabs4`, `hpts`, the cells'
+  count, `nc = 25`); `ptIx_seg4`/`ptIx_node4` discharge `hpts` for `segFinP`/`nodeFinP` (any cells),
+  `hcells4P4b` the cells' range at `cells4`.
+- **D33. `acceptRun4_*` re-assemble `acceptTail4_seg`/`_node`** (Pass 8) so that the chain's entries
+  are the run's (`entriesOf L (pathOf L j) = fsOf tr …`), which the statement views need; Pass 8's
+  theorems are unchanged.
+- **D34. X4's F4 is closed** by `vkOf_node4` (phase 1's flag through `stmtOps4`'s node branch).
+- **D35. `nodeF_params`** restates `nodeC_params` at `implN4F` from `implNodeC_meets`: handing
+  `implN4T`'s parameters to `implN4F` (defeq) hit the maximum recursion depth.
+
+### Controls
+
+| Definition | Positive | Negative |
+|---|---|---|
+| `pfFamM` | `pfFamM_ctl` (`L32`: `32`; `L30`: `30`), `pfFamM_eq` | `pfFamM_ctl` (`L30`'s is not `m*`) |
+| `tailList4` | `tailList4_eq`, `tailList4_len` (19 at `m = 32`) | `tailList4_len` (`m = 30` differs) |
+| `rsSrc4` | `ptIx_seg4`, `ptIx_node4`, `rsSrc4_val` | `rsSrc4_ctl` (a segment has 3 points, a node 4) |
+| `rsSpec4` | `rsSpec4_ctl`, `rsWeight_segC`/`_nodeC` | — (a choice of function per kind) |
+| `eqCellK4` (R4h's) | `eqCellK4_ctl` (cell 1 at `ρ = [1]`: `1`), `eqCellK4_eq` | `eqCellK4_ctl` (cell 1 at `ρ = [0]`: `0`) |
+| `RunFacts4S`, `SegOut4` | `runFacts4S_C`, `runFacts4_C` | `segOut4_size_VA` (`V_A`'s segments are never in `SegOut4`'s size case) |
+| `Resid4G` | `resid4_of_G` | — (X4's `Resid4` minus `run`) |
+
+### Traps (new)
+
+1. A lemma whose implicit `Input` is fixed only through a projection (`X.vkOf ?inp.π`, `vkL … = ?inp.vk`)
+   against `⟨vk, c, π⟩`: whnf timeout. Pass `(inp := ⟨vk, c, π⟩)`.
+2. `wV_eq4 … rfl …` with `fi` determined by `rfl : ?fi.outs = …`: timeout at the declaration (no
+   line). Pass `(fi := …)`.
+3. `congr 1` on a `K` equation with `eqCellK4`/`rsWeightS` inside: whnf timeout. Use
+   `congrArg₂ (· + ·)` with each side closed by `simp only [defs]`, or `ring` after `sum_congr`.
+4. `lv_facts4`'s `t` fact is about `lvOf κ.m i`; restate it at `CKind.lv κ i` (defeq) before `omega`
+   or `rw`.
+5. The segment's `(segFinP σ).nc = 25`: `rw [segFinP, seq4_eq]` leaves an unreduced structure
+   projection; use `show seq4.mStar - 7 = 25 by rw [seq4_mStar]`.
+
+### Handover (remaining items, in order)
+
+1. **F1** (coordinator, X4/Agg owners): amend `SegSoundLog` with `π.size = piSizeOf seq4` and
+   `RunFacts4.seg` with that and `v.n ≤ v.kind.cap`; then `RunFacts4.seg` is `runFacts4S_C` and
+   `ks_rev4G` drops `hO`. Until then `SegOut4` is a named residual.
+2. Add `import FRSoundness4XRunG` to `FR.lean`.
+3. S-I: `certificate_rev4G` with `fin := finC finPf`, `lRows := Layout.lRows` (`Impl.implCN_eq`).
