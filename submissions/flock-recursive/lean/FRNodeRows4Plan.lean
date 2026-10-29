@@ -15,10 +15,12 @@ for the prototype's rows moved to region `σ` and made absolute (`copy_val`):
 
 where `MLE_lo` is the prototype's value at the point restricted to region `π`'s low coordinates
 (`starPt`): one evaluation per prototype, by the existing templated evaluator (21 row and 23 cell
-coordinates), whatever the kind. The link region (S-E12c's ≤ 8 link rows and S-E13a's pack rows,
-with H cells) is summed by split eq tables, one product per entry (`linkV4`). The region
-facts are checked once per process on the pieces (`pieceInB`, `pcIn_spec`), with the sparse sum as
-the fallback. **`evalMT4_eq`**: `evalMT4` is the MLE of `nodeIRows4 κ`'s three matrices.
+coordinates), whatever the kind. The link region (S-E12c's ≤ 8 link rows, S-E13a's pack rows,
+S-E13b's node rows, with H cells) is summed by split eq tables (`linkV4`) from data the plan prepares
+once (B5): its rows grouped (`LkG`), the node rows coded against a cell dictionary (`crowsVal3`),
+the pinned elements in runs and value classes whose inner sums the kinds share (`prIn`, `prVal`). The
+region facts are checked once per process on the pieces (`pieceInB`, `pcIn_spec`), with the sparse
+sum as the fallback. **`evalMT4_eq`**: `evalMT4` is the MLE of `nodeIRows4 κ`'s three matrices.
 -/
 
 namespace FR
@@ -286,6 +288,149 @@ theorem protoFit_iff : ProtoFit ↔ (fitB 0 (protoRows 0) && fitB 1 (protoRows 1
 (so that `eq(starPt t π, π·2^20 + j) = eq(t_<20, j)`). -/
 def starPt (t : ℕ → F) (π : ℕ) (l : ℕ) : F := if l < 20 then t l else if l = 20 then (if π = 1 then 1 else 0) else 0
 
+/-! ## The link regions' data, prepared once (B5)
+
+A slot's link region (S-E12c's link rows, S-E13a's kind tie and pinned elements, S-E13b's node rows)
+does not depend on the evaluation point. The plan holds, per kind and slot, the head rows and the
+node rows grouped by row block (`lkGOf`, lever (a)), and, per distinct `(first row, stream block)`,
+the pinned elements in runs of one row block and one cell block (`runsOf`, lever (b)). A run's inner
+sums read only the low tables, which every kind shares, so `evalMX4` computes them once per call. -/
+
+/-- The rows before the pinned elements: S-E12c's link rows and the kind tie. -/
+def linkHead4 (κ : NodeKind) (σ : ℕ) : List Row := linkRowsB4 κ σ ++ packHead4 κ σ
+
+/-- The link region's first row. -/
+def linkBase (σ : ℕ) : ℕ := σ * slotM4 + slotM4 - linkN
+
+/-- The number of pinned elements at slot `σ` (`(packWf4 κ σ).length`, without building the rows). -/
+def wfLen (κ : NodeKind) (σ : ℕ) : ℕ :=
+  match packB κ σ with
+  | some _ => wfSeg.length
+  | none => 0
+
+theorem wfLen_eq (κ : NodeKind) (σ : ℕ) : wfLen κ σ = (packWf4 κ σ).length := by
+  unfold wfLen packWf4; rcases packB κ σ with _ | ⟨b0, G⟩ <;> simp [wfRows]
+
+/-! ### S-E13b's node rows over a cell dictionary (B5)
+
+The node rows (≈ 8k per kind) have ≈ 36k terms over ≈ 11k distinct cells. Their forms are coded
+against a sorted cell dictionary, so that each distinct cell's `eq` value is one product per
+evaluation and a term is a lookup. The coding is checked once, at plan init, by decoding (`cokB`). -/
+
+/-- A form coded against a dictionary: `(cell index, coefficient)`. -/
+abbrev CForm := List (ℕ × F)
+
+/-- Coded rows by row block: `(row block, [(row low, a, b, c)])`. -/
+abbrev CRows := List (ℕ × List (ℕ × CForm × CForm × CForm))
+
+/-- Binary search in a sorted array: the last index whose entry is `≤ x` (fuel-bounded; the coding
+is checked). -/
+def bsGo (a : Array ℕ) (x : ℕ) (lo hi : ℕ) : ℕ → ℕ
+  | 0 => lo
+  | f + 1 => if lo + 1 ≥ hi then lo else
+    let m := (lo + hi) / 2
+    if a.getD m 0 ≤ x then bsGo a x m hi f else bsGo a x lo m f
+
+/-- Adjacent duplicates dropped. -/
+def dedupS : List ℕ → List ℕ
+  | a :: b :: l => if a = b then dedupS (b :: l) else a :: dedupS (b :: l)
+  | l => l
+
+/-- The rows' cells, sorted and distinct. -/
+def cellsOf (rows : List (ℕ × Row)) : Array ℕ :=
+  (dedupS (((rows.flatMap fun p => p.2.a ++ p.2.b ++ p.2.c).map (·.1)).mergeSort
+    fun a b => decide (a ≤ b))).toArray
+
+/-- A form coded against `cs`. -/
+def encF (cs : Array ℕ) (l : Lin) : CForm := l.map fun t => (bsGo cs t.1 0 cs.size 64, t.2)
+
+/-- **The coded rows**, grouped by row block. -/
+def crowsOf (cs : Array ℕ) (rows : List (ℕ × Row)) : CRows :=
+  rows.foldr (fun p G => let r := (p.1 % 2 ^ 11, encF cs p.2.a, encF cs p.2.b, encF cs p.2.c)
+    match G with
+    | g :: gs => if g.1 = p.1 / 2 ^ 11 then (g.1, r :: g.2) :: gs else (p.1 / 2 ^ 11, [r]) :: G
+    | [] => [(p.1 / 2 ^ 11, [r])]) []
+
+/-- A coded form decoded. -/
+def decF (cs : Array ℕ) (f : CForm) : Lin := f.map fun e => (cs.getD e.1 0, e.2)
+
+/-- A coded row decoded. -/
+def decR (cs : Array ℕ) (h : ℕ) (r : ℕ × CForm × CForm × CForm) : ℕ × Row :=
+  (h * 2 ^ 11 + r.1, ⟨decF cs r.2.1, decF cs r.2.2.1, decF cs r.2.2.2⟩)
+
+/-- The coded rows decoded. -/
+def decRows (cs : Array ℕ) (G : CRows) : List (ℕ × Row) := G.flatMap fun g => g.2.map (decR cs g.1)
+
+/-- Row lows below `2^11`, cell indices in the dictionary. -/
+def cbnd (cs : Array ℕ) (G : CRows) : Bool :=
+  G.all fun g => g.2.all fun r => decide (r.1 < 2 ^ 11) &&
+    (r.2.1 ++ r.2.2.1 ++ r.2.2.2).all fun e => decide (e.1 < cs.size)
+
+/-- **The coding check**: in bounds, and decoding gives back the rows. -/
+def cokB (cs : Array ℕ) (G : CRows) (rows : List (ℕ × Row)) : Bool := cbnd cs G && decide (decRows cs G = rows)
+
+/-- Slot `σ`'s node rows, indexed. -/
+def extIRows (κ : NodeKind) (σ : ℕ) : List (ℕ × Row) :=
+  ((extRowsC κ σ).zipIdx ((linkHead4 κ σ).length + wfLen κ σ)).map fun p => (linkBase σ + p.2, p.1)
+
+/-- **A slot's link rows, prepared** (lever (a)): the head's length, the head rows and S-E13b's node
+rows grouped by row block (`ex`, a thunk: grouped only if the coding check fails), and the node rows
+coded against their cell dictionary (`ec`, `eg`; used if `eok`, the coding check). -/
+structure LkG where
+  nh : ℕ
+  hd : GRows
+  ex : Thunk GRows
+  ec : Array ℕ
+  eg : CRows
+  eok : Bool
+
+/-- Slot `σ`'s prepared link rows. -/
+def lkGOf (κ : NodeKind) (σ : ℕ) : LkG :=
+  let rows := extIRows κ σ
+  let cs := cellsOf rows
+  let G := crowsOf cs rows
+  ⟨(linkHead4 κ σ).length, grows (2 ^ 11) (2 ^ 12) ((linkHead4 κ σ).zipIdx.map fun p => (linkBase σ + p.2, p.1)),
+    Thunk.mk fun _ => grows (2 ^ 11) (2 ^ 12) rows, cs, G, cokB cs G rows⟩
+
+/-- A kind's grouped link rows, slot by slot (a closed constant per kind). -/
+def lkArr (κ : NodeKind) : Array LkG := (Array.range κ.vslots).map (lkGOf κ)
+
+/-- **A run of pinned elements** (lever (b)): `(row block, cell block, [(row low, cell low)])`, the
+rows split at `2^11` and the cells at `2^12`, as `ltbOf`'s tables. -/
+abbrev PRun := ℕ × ℕ × List (ℕ × ℕ)
+
+/-- **The pinned elements by value** (`wfSeg` has 24 distinct values): `(value, [(row block, [row
+low])])`. -/
+abbrev PCls := List (F × List (ℕ × List ℕ))
+
+/-- Put the pinned element at row `x`, cell `c` in front of runs. -/
+def prStep (x c : ℕ) : List PRun → List PRun
+  | r :: rs => if r.1 = x / 2 ^ 11 ∧ r.2.1 = c / 2 ^ 12 then (r.1, r.2.1, (x % 2 ^ 11, c % 2 ^ 12) :: r.2.2) :: rs
+    else (x / 2 ^ 11, c / 2 ^ 12, [(x % 2 ^ 11, c % 2 ^ 12)]) :: r :: rs
+  | [] => [(x / 2 ^ 11, c / 2 ^ 12, [(x % 2 ^ 11, c % 2 ^ 12)])]
+
+/-- Put row `x` in front of a value's row blocks. -/
+def blkIns (x : ℕ) : List (ℕ × List ℕ) → List (ℕ × List ℕ)
+  | g :: gs => if g.1 = x / 2 ^ 11 then (g.1, x % 2 ^ 11 :: g.2) :: gs else (x / 2 ^ 11, [x % 2 ^ 11]) :: g :: gs
+  | [] => [(x / 2 ^ 11, [x % 2 ^ 11])]
+
+/-- Put the pinned element at row `x` with value `k` in its value's class. -/
+def clsIns (k : F) (x : ℕ) : PCls → PCls
+  | c :: cs => if c.1 = k then (c.1, blkIns x c.2) :: cs else c :: clsIns k x cs
+  | [] => [(k, blkIns x [])]
+
+/-- **The pinned elements `ps`** of a stream at block `b0`, at rows `j, j + 1, …`: in runs (for the
+cells) and by value (for the constants). -/
+def runsOf (b0 : ℕ) : ℕ → List (ℕ × F) → List PRun × PCls
+  | _, [] => ([], [])
+  | j, p :: ps => let r := runsOf b0 (j + 1) ps; (prStep j (sCell b0 p.1) r.1, clsIns p.2 j r.2)
+
+/-- The distinct `(first row, stream block)` of the slots with pinned elements, over the three kinds
+(`(0, 0)`-blocks of `N2`/`N4`/`N8`'s slot 0 coincide, and so do `N2`/`N4`'s slot 1). -/
+def pinKeys : List (ℕ × ℕ) :=
+  (NodeKind.all.flatMap fun κ => (List.range κ.vslots).filterMap fun σ =>
+    (packB κ σ).map fun b => (linkBase σ + (linkHead4 κ σ).length, b.1)).eraseDups
+
 /-! ## The plan -/
 
 /-- Every key's rows and locals fit 20 bits (so its preparation reads coordinates below 20 only,
@@ -314,6 +459,16 @@ structure Plan4 where
   hp1 : p1 = pc1.map (prepPiece pats)
   inR : Bool
   hR : inR = true → ProtoFit ∧ lowKeys keys = true
+  /-- Each kind's grouped link rows (B5). -/
+  lk2 : Array LkG
+  lk4 : Array LkG
+  lk8 : Array LkG
+  hlk2 : lk2 = lkArr .N2
+  hlk4 : lk4 = lkArr .N4
+  hlk8 : lk8 = lkArr .N8
+  /-- The pinned elements' runs, per `(first row, stream block)` (B5). -/
+  pkr : List ((ℕ × ℕ) × (List PRun × PCls))
+  hpkr : ∀ p ∈ pkr, p.2 = runsOf p.1.2 p.1.1 wfSeg
 
 /-- A plan from its pieces (the region and key checks computed here, once). -/
 def mkPlan4 (keys : Array Key) (sh0 sh1 : Array (List Lin)) (pc0 pc1 : List Piece)
@@ -345,6 +500,16 @@ def mkPlan4 (keys : Array Key) (sh0 sh1 : Array (List Lin)) (pc0 pc1 : List Piec
     rcases Nat.le_one_iff_eq_zero_or_eq_one.1 hπ with rfl | rfl
     · exact ⟨ok.2.1 ▸ pcIn_spec ok.1 h0, ok.2.1 ▸ idsOkB_spec i0⟩
     · exact ⟨ok.2.2 ▸ pcIn_spec ok.1 h1, ok.2.2 ▸ idsOkB_spec i1⟩
+  lk2 := lkArr .N2
+  lk4 := lkArr .N4
+  lk8 := lkArr .N8
+  hlk2 := rfl
+  hlk4 := rfl
+  hlk8 := rfl
+  pkr := pinKeys.map fun k => (k, runsOf k.2 k.1 wfSeg)
+  hpkr := fun p hp => by
+    obtain ⟨k, -, rfl⟩ := List.mem_map.1 hp
+    dsimp only
 
 def planOf4D (d : Array GK × Array (List Lin) × Array (List Lin) × List Piece × List Piece)
     (hd : d = planData4) : Plan4 :=
@@ -545,36 +710,6 @@ def wfSum (gt gs : ℕ → F) (e1 : F) (b0 : ℕ) : ℕ → List (ℕ × F) → 
     let r := gt j
     add3 (r * e1, r * (gs (sCell b0 p.1) - p.2 * e1), 0) (wfSum gt gs e1 b0 (j + 1) ps)
 
-/-- The rows before the pinned elements: S-E12c's link rows and the kind tie. -/
-def linkHead4 (κ : NodeKind) (σ : ℕ) : List Row := linkRowsB4 κ σ ++ packHead4 κ σ
-
-/-- The link region's first row. -/
-def linkBase (σ : ℕ) : ℕ := σ * slotM4 + slotM4 - linkN
-
-/-- The number of pinned elements at slot `σ` (`(packWf4 κ σ).length`, without building the rows). -/
-def wfLen (κ : NodeKind) (σ : ℕ) : ℕ :=
-  match packB κ σ with
-  | some _ => wfSeg.length
-  | none => 0
-
-theorem wfLen_eq (κ : NodeKind) (σ : ℕ) : wfLen κ σ = (packWf4 κ σ).length := by
-  unfold wfLen packWf4; rcases packB κ σ with _ | ⟨b0, G⟩ <;> simp [wfRows]
-
-/-- **A link region's value** (S-E13a: up to `8 + 8,906 + 8,680` rows with H and L cells): the
-head rows and S-E13b's node rows grouped by their row block (`growsVal3`), the pinned elements by
-`wfSum`; one product per entry, not `gN`'s `lm` products. -/
-def linkV4 (L : LTb) (κ : NodeKind) (σ : ℕ) : F3 :=
-  let gt := splitAt L.tlo L.thi (2 ^ 11)
-  let gs := splitAt L.slo L.shi (2 ^ 12)
-  let nh := (linkHead4 κ σ).length
-  add3 (add3 (growsVal3 L.tlo L.thi L.slo L.shi
-      (grows (2 ^ 11) (2 ^ 12) ((linkHead4 κ σ).zipIdx.map fun p => (linkBase σ + p.2, p.1))))
-    (match packB κ σ with
-      | some (b0, _) => wfSum gt gs (gs κ.oneCell) b0 (linkBase σ + nh) wfSeg
-      | none => (0, 0, 0)))
-    (growsVal3 L.tlo L.thi L.slo L.shi
-      (grows (2 ^ 11) (2 ^ 12) (((extRowsC κ σ).zipIdx (nh + wfLen κ σ)).map fun p => (linkBase σ + p.2, p.1))))
-
 theorem rows3_nil (n m : ℕ) (t u : ℕ → F) : rows3 n m t u [] = (0, 0, 0) := by
   simp [rows3, rowsVal]
 
@@ -596,9 +731,251 @@ theorem wfSum_eq (n m : ℕ) (t u : ℕ → F) (one b0 base : ℕ) :
       List.map_nil, List.sum_cons, List.sum_nil, List.cons_append, List.nil_append, RingHom.id_apply]
     refine Prod.ext ?_ (Prod.ext ?_ ?_) <;> simp only <;> ring
 
+/-! ### The pinned elements by runs and by value (B5, lever (b)) -/
+
+/-- The pinned elements' inner sums at the low tables: per run `Σ tlo[x]·slo[c]`, per value and row
+block `Σ tlo[x]` (additions only). They read the low tables only, so the kinds share them. -/
+abbrev PIn := List (ℕ × ℕ × F) × List (F × List (ℕ × F))
+
+/-- The inner sums. -/
+def prIn (tlo slo : Array F) (R : List PRun × PCls) : PIn :=
+  (R.1.map fun r => (r.1, r.2.1, sumL (fun it => tlo.getD it.1 0 * slo.getD it.2 0) r.2.2),
+   R.2.map fun c => (c.1, c.2.map fun g => (g.1, sumL (fun l => tlo.getD l 0) g.2)))
+
+/-- **The pinned elements' value from the inner sums**: with `B = Σ_r thi[r]·shi[r]·ΣB`,
+`A = Σ_{k, h} thi[h]·Σ_h` and `C = Σ_k k·Σ_h thi[h]·Σ_h`, the value `(e1·A, B − e1·C, 0)` (`wfSum`'s;
+`prVal_runs`). Two products per run and one per value and row block, not five per element. -/
+def prVal (thi shi : Array F) (e1 : F) (I : PIn) : F3 :=
+  let b := sumL (fun r => thi.getD r.1 0 * shi.getD r.2.1 0 * r.2.2) I.1
+  let ys := I.2.map fun c => (c.1, sumL (fun g => thi.getD g.1 0 * g.2) c.2)
+  (e1 * sumL (fun y => y.2) ys, b - e1 * sumL (fun y => y.1 * y.2) ys, 0)
+
+/-- The three sums, as plain sums (`prVal`'s specification). -/
+def prA (tlo thi : Array F) (C : PCls) : F :=
+  (C.map fun c => (c.2.map fun g => thi.getD g.1 0 * (g.2.map fun l => tlo.getD l 0).sum).sum).sum
+def prB (tlo thi slo shi : Array F) (R : List PRun) : F :=
+  (R.map fun r => thi.getD r.1 0 * shi.getD r.2.1 0 *
+    (r.2.2.map fun it => tlo.getD it.1 0 * slo.getD it.2 0).sum).sum
+def prC (tlo thi : Array F) (C : PCls) : F :=
+  (C.map fun c => c.1 * (c.2.map fun g => thi.getD g.1 0 * (g.2.map fun l => tlo.getD l 0).sum).sum).sum
+
+theorem prVal_eq (tlo thi slo shi : Array F) (e1 : F) (R : List PRun × PCls) :
+    prVal thi shi e1 (prIn tlo slo R) =
+      (e1 * prA tlo thi R.2, prB tlo thi slo shi R.1 - e1 * prC tlo thi R.2, 0) := by
+  simp only [prVal, prIn, sumL_eq, List.map_map, Function.comp_def, prA, prB, prC]
+
+theorem prStep_val (tlo thi slo shi : Array F) (x c : ℕ) (R : List PRun) :
+    prB tlo thi slo shi (prStep x c R) =
+      splitAt tlo thi (2 ^ 11) x * splitAt slo shi (2 ^ 12) c + prB tlo thi slo shi R := by
+  cases R with
+  | nil => simp only [prStep, prB, splitAt, List.map_cons, List.map_nil, List.sum_cons, List.sum_nil,
+      add_zero]; ring
+  | cons r rs =>
+    simp only [prStep]
+    split_ifs with h
+    · obtain ⟨h1, h2⟩ := h
+      simp only [prB, splitAt, List.map_cons, List.sum_cons, h1, h2]
+      ring
+    · simp only [prB, splitAt, List.map_cons, List.map_nil, List.sum_cons, List.sum_nil, add_zero]
+      ring
+
+theorem blkIns_val (tlo thi : Array F) (x : ℕ) (G : List (ℕ × List ℕ)) :
+    ((blkIns x G).map fun g => thi.getD g.1 0 * (g.2.map fun l => tlo.getD l 0).sum).sum =
+      splitAt tlo thi (2 ^ 11) x + (G.map fun g => thi.getD g.1 0 * (g.2.map fun l => tlo.getD l 0).sum).sum := by
+  cases G with
+  | nil => simp only [blkIns, splitAt, List.map_cons, List.map_nil, List.sum_cons, List.sum_nil,
+      add_zero]; ring
+  | cons g gs =>
+    simp only [blkIns]
+    split_ifs with h
+    · simp only [splitAt, List.map_cons, List.sum_cons, h]; ring
+    · simp only [splitAt, List.map_cons, List.map_nil, List.sum_cons, List.sum_nil, add_zero]; ring
+
+theorem clsIns_val (tlo thi : Array F) (k : F) (x : ℕ) :
+    ∀ C : PCls, prA tlo thi (clsIns k x C) = splitAt tlo thi (2 ^ 11) x + prA tlo thi C ∧
+      prC tlo thi (clsIns k x C) = k * splitAt tlo thi (2 ^ 11) x + prC tlo thi C
+  | [] => by
+    simp only [clsIns, prA, prC, List.map_cons, List.map_nil, List.sum_cons, List.sum_nil, add_zero,
+      blkIns_val]
+    constructor <;> first | trivial | ring
+  | c :: cs => by
+    simp only [clsIns]
+    split_ifs with h
+    · simp only [prA, prC, List.map_cons, List.sum_cons, blkIns_val, h]
+      constructor <;> ring
+    · obtain ⟨hA, hC⟩ := clsIns_val tlo thi k x cs
+      simp only [prA, prC, List.map_cons, List.sum_cons] at hA hC ⊢
+      rw [hA, hC]; constructor <;> ring
+
+/-- **The runs and classes give the pinned elements' value** (`wfSum`). -/
+theorem prVal_runs (tlo thi slo shi : Array F) (e1 : F) (b0 : ℕ) :
+    ∀ (j : ℕ) (ps : List (ℕ × F)), prVal thi shi e1 (prIn tlo slo (runsOf b0 j ps)) =
+      wfSum (splitAt tlo thi (2 ^ 11)) (splitAt slo shi (2 ^ 12)) e1 b0 j ps
+  | _, [] => by
+    simp only [prVal_eq, runsOf, wfSum, prA, prB, prC, List.map_nil, List.sum_nil, mul_zero, sub_zero]
+  | j, p :: ps => by
+    have ih := prVal_runs tlo thi slo shi e1 b0 (j + 1) ps
+    rw [prVal_eq] at ih ⊢
+    obtain ⟨hA, hC⟩ := clsIns_val tlo thi p.2 j (runsOf b0 (j + 1) ps).2
+    simp only [runsOf, prStep_val, hA, hC, wfSum, ← ih, add3]
+    refine Prod.ext ?_ (Prod.ext ?_ ?_) <;> simp only <;> ring
+
+/-! ### The node rows' value over the dictionary -/
+
+/-- `w · Σ c·E[i]` of a coded form, no product for an empty form. -/
+@[inline] def cfVal (E : Array F) (w : F) (f : CForm) : F :=
+  match f with
+  | [] => 0
+  | _ => w * sumL (fun e => cmulF e.2 (E.getD e.1 0)) f
+
+/-- **The coded rows' three values**, `E` the dictionary's cells' `eq` values. -/
+def crowsVal3 (tlo thi E : Array F) (G : CRows) : F3 :=
+  sum3 (fun h =>
+    let x := sum3 (fun r => let w := tlo.getD r.1 0; (cfVal E w r.2.1, cfVal E w r.2.2.1, cfVal E w r.2.2.2)) h.2
+    let y := thi.getD h.1 0
+    (y * x.1, y * x.2.1, y * x.2.2)) G
+
+theorem cfVal_eq (E : Array F) (w : F) (f : CForm) :
+    cfVal E w f = w * (f.map fun e => e.2 * E.getD e.1 0).sum := by
+  cases f with
+  | nil => simp [cfVal]
+  | cons _ _ => simp only [cfVal, sumL_eq, cmulF_eq]
+
+theorem getD_map_lt (cs : Array ℕ) (g : ℕ → F) {i : ℕ} (h : i < cs.size) :
+    (cs.map g).getD i 0 = g (cs.getD i 0) := by
+  simp [Array.getD_eq_getD_getElem?, Array.getElem?_map, Array.getElem?_eq_getElem h]
+
+theorem linEI_decF (cs : Array ℕ) (g : ℕ → F) (f : CForm) (hf : ∀ e ∈ f, e.1 < cs.size) :
+    linEI (RingHom.id F) g (decF cs f) = (f.map fun e => e.2 * (cs.map g).getD e.1 0).sum := by
+  simp only [linEI, decF, sumL_eq, List.map_map, Function.comp_def, cmul_eq, RingHom.id_apply]
+  exact congrArg List.sum (List.map_congr_left fun e he => by rw [getD_map_lt cs g (hf e he)])
+
+theorem sum_flatMap' {α : Type} (l : List α) (f : α → List F) :
+    (l.flatMap f).sum = (l.map fun a => (f a).sum).sum := by
+  induction l with
+  | nil => simp
+  | cons a l ih => simp [List.flatMap_cons, List.sum_append, ih]
+
+/-- One matrix of the coded rows (`sel` its forms, `s` the decoded rows' matrix). -/
+theorem crows_sel (tlo thi slo shi : Array F) (cs : Array ℕ) (G : CRows) (hb : cbnd cs G = true)
+    (sel : ℕ × CForm × CForm × CForm → CForm) (s : Mat)
+    (hs : ∀ h r, s.r (decR cs h r).2 = decF cs (sel r))
+    (hsel : ∀ r, ∀ e ∈ sel r, e ∈ r.2.1 ++ r.2.2.1 ++ r.2.2.2) :
+    (G.map fun g => thi.getD g.1 0 * (g.2.map fun r => cfVal (cs.map (splitAt slo shi (2 ^ 12)))
+        (tlo.getD r.1 0) (sel r)).sum).sum =
+      rowsValI (RingHom.id F) s (splitAt tlo thi (2 ^ 11)) (splitAt slo shi (2 ^ 12)) (decRows cs G) := by
+  simp only [rowsValI, decRows, sumL_eq, List.map_flatMap, sum_flatMap', List.map_map,
+    Function.comp_def]
+  refine congrArg List.sum (List.map_congr_left fun g hg => ?_)
+  rw [← List.sum_map_mul_left]
+  refine congrArg List.sum (List.map_congr_left fun r hr => ?_)
+  have hgb := List.all_eq_true.1 hb g hg
+  have hrb := List.all_eq_true.1 hgb r hr
+  simp only [Bool.and_eq_true, decide_eq_true_eq] at hrb
+  obtain ⟨hlo, hix⟩ := hrb
+  rw [hs, linEI_decF cs _ _ fun e he => by
+    simpa using List.all_eq_true.1 hix e (hsel r e he), cfVal_eq]
+  have e1 : (g.1 * 2 ^ 11 + r.1) % 2 ^ 11 = r.1 := by omega
+  have e2 : (g.1 * 2 ^ 11 + r.1) / 2 ^ 11 = g.1 := by omega
+  simp only [decR, splitAt, e1, e2]
+  ring
+
+/-- **The coded rows' value is the decoded rows'** (in bounds). -/
+theorem crowsVal3_eq (tlo thi slo shi : Array F) (cs : Array ℕ) (G : CRows) (hb : cbnd cs G = true) :
+    crowsVal3 tlo thi (cs.map (splitAt slo shi (2 ^ 12))) G =
+      (rowsValI (RingHom.id F) .a (splitAt tlo thi (2 ^ 11)) (splitAt slo shi (2 ^ 12)) (decRows cs G),
+       rowsValI (RingHom.id F) .b (splitAt tlo thi (2 ^ 11)) (splitAt slo shi (2 ^ 12)) (decRows cs G),
+       rowsValI (RingHom.id F) .c (splitAt tlo thi (2 ^ 11)) (splitAt slo shi (2 ^ 12)) (decRows cs G)) := by
+  rw [← crows_sel tlo thi slo shi cs G hb (·.2.1) .a (fun _ _ => rfl) (fun _ _ he => by simp [he]),
+    ← crows_sel tlo thi slo shi cs G hb (·.2.2.1) .b (fun _ _ => rfl) (fun _ _ he => by simp [he]),
+    ← crows_sel tlo thi slo shi cs G hb (·.2.2.2) .c (fun _ _ => rfl) (fun _ _ he => by simp [he])]
+  simp only [crowsVal3, sum3_eq, sumL_eq]
+
+/-! ### The link region's value -/
+
+/-- **The link regions' per-call context**: the tables at the point, and the plan's pinned runs'
+inner sums, each a thunk (computed by the first kind that reads it, shared with the others). -/
+structure LCx where
+  L : LTb
+  ths : List ((ℕ × ℕ) × Thunk PIn)
+
+/-- The thunks of the plan's runs at the low tables. -/
+def thsOf (pl : Plan4) (tlo slo : Array F) : List ((ℕ × ℕ) × Thunk PIn) :=
+  pl.pkr.map fun p => (p.1, Thunk.mk fun _ => prIn tlo slo p.2)
+
+/-- The inner sums of the runs at `(first row, stream block)` (regrouped if the plan lacks the key). -/
+def innAt (cx : LCx) (k : ℕ × ℕ) : PIn :=
+  match cx.ths.find? fun p => decide (p.1 = k) with
+  | some p => p.2.get
+  | none => prIn cx.L.tlo cx.L.slo (runsOf k.2 k.1 wfSeg)
+
+theorem thunk_get {α : Type} (f : Unit → α) : (Thunk.mk f).get = f () := rfl
+
+theorem innAt_thsOf (pl : Plan4) (L : LTb) (k : ℕ × ℕ) :
+    innAt ⟨L, thsOf pl L.tlo L.slo⟩ k = prIn L.tlo L.slo (runsOf k.2 k.1 wfSeg) := by
+  unfold innAt
+  split
+  · rename_i p hp
+    have hk := List.find?_some hp
+    simp only [decide_eq_true_eq] at hk
+    obtain ⟨q, hq, rfl⟩ := List.mem_map.1 (List.mem_of_find?_eq_some hp)
+    dsimp only at hk ⊢
+    rw [thunk_get, pl.hpkr q hq, hk]
+  · dsimp only
+
+/-- **`cx` is the context at `(t, u)`** over `lm` row coordinates. -/
+def CxAt (cx : LCx) (lm : ℕ) (t u : ℕ → F) : Prop :=
+  cx.L = ltbOf lm t u ∧ ∀ k, innAt cx k = prIn cx.L.tlo cx.L.slo (runsOf k.2 k.1 wfSeg)
+
+theorem cxAt_mk (pl : Plan4) (lm : ℕ) (t u : ℕ → F) (L : LTb) (hL : L = ltbOf lm t u) :
+    CxAt ⟨L, thsOf pl L.tlo L.slo⟩ lm t u :=
+  ⟨hL, innAt_thsOf pl L⟩
+
+/-- `cxAt_mk` at a table literal (its low tables named, so that no `loTab` is unfolded). -/
+theorem cxAt_lo (pl : Plan4) (lm : ℕ) (t u : ℕ → F) (lo so : Array F) (hi : Array F × Array F)
+    (hL : (⟨lo, hi.1, so, hi.2⟩ : LTb) = ltbOf lm t u) : CxAt ⟨⟨lo, hi.1, so, hi.2⟩, thsOf pl lo so⟩ lm t u :=
+  cxAt_mk pl lm t u _ hL
+
+theorem cxAt_of (pl : Plan4) (lm : ℕ) (t u : ℕ → F) :
+    CxAt ⟨ltbOf lm t u, thsOf pl (ltbOf lm t u).tlo (ltbOf lm t u).slo⟩ lm t u :=
+  ⟨rfl, innAt_thsOf pl _⟩
+
+/-- A kind's grouped link rows. -/
+def lkK (pl : Plan4) : NodeKind → Array LkG
+  | .N2 => pl.lk2
+  | .N4 => pl.lk4
+  | .N8 => pl.lk8
+
+/-- **Slot `σ`'s grouped link rows**, from the plan (grouped here past the kind's slots). -/
+def lkAt (pl : Plan4) (κ : NodeKind) (σ : ℕ) : LkG :=
+  match (lkK pl κ)[σ]? with
+  | some g => g
+  | none => lkGOf κ σ
+
+theorem lkAt_eq (pl : Plan4) (κ : NodeKind) (σ : ℕ) : lkAt pl κ σ = lkGOf κ σ := by
+  have h : lkK pl κ = lkArr κ := by cases κ; exacts [pl.hlk2, pl.hlk4, pl.hlk8]
+  unfold lkAt
+  rw [h, lkArr, Array.getElem?_map, Array.getElem?_range]
+  split_ifs <;> rfl
+
+/-- **A link region's value** (S-E13a: up to `9 + 8,783 + 8,680` rows with H and L cells): the
+head rows and S-E13b's node rows from the plan's grouping (`growsVal3`), the pinned elements from
+their runs' inner sums (`prVal`); one product per entry or run, not `gN`'s `lm` products. -/
+def linkV4 (pl : Plan4) (cx : LCx) (κ : NodeKind) (σ : ℕ) : F3 :=
+  let L := cx.L
+  let g := lkAt pl κ σ
+  add3 (add3 (growsVal3 L.tlo L.thi L.slo L.shi g.hd)
+    (match packB κ σ with
+      | some (b0, _) =>
+        prVal L.thi L.shi (splitAt L.slo L.shi (2 ^ 12) κ.oneCell) (innAt cx (linkBase σ + g.nh, b0))
+      | none => (0, 0, 0)))
+    (if g.eok then crowsVal3 L.tlo L.thi (g.ec.map (splitAt L.slo L.shi (2 ^ 12))) g.eg
+      else growsVal3 L.tlo L.thi L.slo L.shi g.ex.get)
+
 /-- **`linkV4` is the link rows' sparse value.** -/
-theorem linkV4_eq {lm : ℕ} (hl : 11 ≤ lm) (t u : ℕ → F) (κ : NodeKind) (σ : ℕ) :
-    linkV4 (ltbOf lm t u) κ σ = rows3 lm (lm + 2) t u (linkIRows4 κ σ) := by
+theorem linkV4_eq {lm : ℕ} (hl : 11 ≤ lm) (t u : ℕ → F) (pl : Plan4) {cx : LCx} (hc : CxAt cx lm t u)
+    (κ : NodeKind) (σ : ℕ) : linkV4 pl cx κ σ = rows3 lm (lm + 2) t u (linkIRows4 κ σ) := by
+  obtain ⟨hL, hI⟩ := hc
   have ht : splitAt (loTab 11 t) (loTab (lm - 11) fun l => t (11 + l)) (2 ^ 11) = gN lm t :=
     splitE_eq hl t
   have hu : splitAt (loTab 12 u) (loTab (lm + 2 - 12) fun l => u (12 + l)) (2 ^ 12) = gN (lm + 2) u :=
@@ -617,23 +994,36 @@ theorem linkV4_eq {lm : ℕ} (hl : 11 ≤ lm) (t u : ℕ → F) (κ : NodeKind) 
     simp only [ltbOf, growsVal3_eq, growsVal_grows, rows3]
     rw [ht, hu, rowsValI_eq, rowsValI_eq, rowsValI_eq]
   rw [hsplit, rows3_append, rows3_append]
-  simp only [linkV4]
-  rw [hg, hg]
+  have hx : (if (lkGOf κ σ).eok then crowsVal3 (ltbOf lm t u).tlo (ltbOf lm t u).thi
+        ((lkGOf κ σ).ec.map (splitAt (ltbOf lm t u).slo (ltbOf lm t u).shi (2 ^ 12))) (lkGOf κ σ).eg
+      else growsVal3 (ltbOf lm t u).tlo (ltbOf lm t u).thi (ltbOf lm t u).slo (ltbOf lm t u).shi
+        (lkGOf κ σ).ex.get) = rows3 lm (lm + 2) t u (extIRows κ σ) := by
+    split_ifs with h
+    · simp only [lkGOf, cokB, Bool.and_eq_true, decide_eq_true_eq] at h ⊢
+      rw [crowsVal3_eq _ _ _ _ _ _ h.1, h.2]
+      simp only [ltbOf, rows3]
+      rw [ht, hu, rowsValI_eq, rowsValI_eq, rowsValI_eq]
+    · simp only [lkGOf, thunk_get]
+      exact hg _
+  simp only [linkV4, lkAt_eq, hL]
+  rw [hx]
+  simp only [lkGOf]
+  rw [hg]
   congr 2
-  simp only [ltbOf]
-  rw [ht, hu]
   unfold packWf4
   rcases packB κ σ with _ | ⟨b0, G⟩
   · simp [rows3_nil]
   · dsimp only
-    rw [wfRows, wfSum_eq]
+    rw [hI, hL, prVal_runs]
+    simp only [ltbOf]
+    rw [ht, hu, wfRows, wfSum_eq]
 
 /-- **Slot `σ`'s value** from its prototype's (`vN`, `vS`): the rest scaled, the link region by
 `linkV4`. -/
-def slotV4 (κ : NodeKind) (t u : ℕ → F) (L : LTb) (vN vS : F3) (σ : ℕ) : F3 :=
+def slotV4 (pl : Plan4) (κ : NodeKind) (t u : ℕ → F) (cx : LCx) (vN vS : F3) (σ : ℕ) : F3 :=
   let lm := κ.dims.logM
   add3 (smul3 (hiF lm t σ * (hiF lm u σ * (u lm * u (lm + 1)))) (if protoOf κ σ = 0 then vN else vS))
-    (linkV4 L κ σ)
+    (linkV4 pl cx κ σ)
 
 /-- A prototype's rows from the plan's pieces (the fallback's; no closed `protoRows` constant in
 the compiled code). -/
@@ -673,7 +1063,7 @@ def evalMT4 (pl : Plan4) (κ : NodeKind) (τ σ : Array F) : F3 :=
   if pl.inR then
     let v := protoV4 pl t u κ.hasPrev
     let L := ltbOf κ.dims.logM t u
-    sum3 (slotV4 κ t u L v.1 v.2) (List.range κ.vslots)
+    sum3 (slotV4 pl κ t u ⟨L, thsOf pl L.tlo L.slo⟩ v.1 v.2) (List.range κ.vslots)
   else rows3 κ.dims.logM (κ.dims.logM + 2) t u (nodeIRowsP pl κ)
 
 /-- **`evalM`'s specification**: the MLEs of `nodeIRows4 κ`'s matrices (`τ`: `logM` coordinates,
@@ -696,48 +1086,62 @@ theorem rows3_flatMap (n m : ℕ) (t u : ℕ → F) (l : List ℕ) (f : ℕ → 
     rows3 n m t u (l.flatMap f) = sum3 (fun σ => rows3 n m t u (f σ)) l := by
   simp only [rows3, sum3_eq, sumL_eq, rowsVal_flatMap]
 
+theorem rows3_spec (κ : NodeKind) (τ σ : Array F) :
+    rows3 κ.dims.logM (κ.dims.logM + 2) (fun l => τ.getD l 0) (fun l => σ.getD l 0) (nodeIRows4 κ) =
+      evalMS4 κ τ σ := by
+  simp only [rows3, evalMS4, rowsVal_F, Eval.sparse_eq]
+
+/-- **A kind's slot sums are its `evalM`** (the plan's checks passed): at any context at the point,
+with the prototypes' values at `node = b`, `b` set if the kind replays the previous node. -/
+theorem slots_val (pl : Plan4) (hR : pl.inR = true) (κ : NodeKind) (τ σ : Array F) {cx : LCx}
+    (hc : CxAt cx κ.dims.logM (fun l => τ.getD l 0) (fun l => σ.getD l 0)) (b : Bool)
+    (hb : κ.hasPrev = true → b = true) :
+    sum3 (slotV4 pl κ (fun l => τ.getD l 0) (fun l => σ.getD l 0) cx
+        (protoV4 pl (fun l => τ.getD l 0) (fun l => σ.getD l 0) b).1
+        (protoV4 pl (fun l => τ.getD l 0) (fun l => σ.getD l 0) b).2) (List.range κ.vslots) =
+      evalMS4 κ τ σ := by
+  obtain ⟨hF, hk⟩ := pl.hR hR
+  rw [← rows3_spec, nodeIRows4, if_pos hF, rows3_flatMap]
+  obtain ⟨hR0, -⟩ := hF 0 (by norm_num)
+  obtain ⟨hR1, -⟩ := hF 1 le_rfl
+  obtain ⟨hl, hv⟩ := logM_ge κ
+  obtain ⟨hv0, hv1⟩ := protoV4_eq pl hk (fun l => τ.getD l 0) (fun l => σ.getD l 0) b
+  refine sum3_congr fun s hs => ?_
+  have hs' : s < 2 ^ (κ.dims.logM - 20) := lt_of_lt_of_le (List.mem_range.1 hs) hv
+  rw [rows3_append, slotV4]
+  rw [linkV4_eq (by omega) _ _ pl hc]
+  refine congrArg (add3 · _) ?_
+  have hc : ∀ π : ℕ, π ≤ 1 → InSlot π (protoRows π) →
+      smul3 (hiF κ.dims.logM (fun l => τ.getD l 0) s * (hiF κ.dims.logM (fun l => σ.getD l 0) s *
+          (σ.getD κ.dims.logM 0 * σ.getD (κ.dims.logM + 1) 0)))
+        (rows3 21 23 (starPt (fun l => τ.getD l 0) π) (starPt (fun l => σ.getD l 0) π) (protoRows π)) =
+      rows3 κ.dims.logM (κ.dims.logM + 2) (fun l => τ.getD l 0) (fun l => σ.getD l 0)
+        (absRows4 κ (mvRows π s (protoRows π))) := by
+    intro π hπ hr
+    have hab : absRows4 κ (mvRows π s (protoRows π)) =
+        (mvRows π s (protoRows π)).map fun p => (p.1, rowMapC (· + 3 * 2 ^ κ.dims.logM) p.2) := by
+      simp only [absRows4, oneCell_eq]
+    rw [hab]
+    simp only [smul3, rows3, copy_val hπ hl hs' _ (fun l => τ.getD l 0) (fun l => σ.getD l 0) hr]
+  simp only [slotRows4]
+  by_cases hp : protoOf κ s = 0
+  · have hk' : κ.hasPrev = true := by
+      by_contra hk'; simp [protoOf, isPrevSlot, hk'] at hp
+    rw [if_pos hp, hv0, if_pos (hb hk'), hp]
+    exact hc 0 (by norm_num) hR0
+  · have h1 : protoOf κ s = 1 := by
+      simp only [protoOf] at hp ⊢; split_ifs at hp ⊢ <;> simp_all
+    rw [if_neg hp, hv1, h1]
+    exact hc 1 le_rfl hR1
+
 /-- **`evalM_eq` for the 4.1 nodes.** -/
 theorem evalMT4_eq (pl : Plan4) (κ : NodeKind) (τ σ : Array F) : evalMT4 pl κ τ σ = evalMS4 κ τ σ := by
-  have hspec : rows3 κ.dims.logM (κ.dims.logM + 2) (fun l => τ.getD l 0) (fun l => σ.getD l 0) (nodeIRows4 κ) =
-      evalMS4 κ τ σ := by
-    simp only [rows3, evalMS4, rowsVal_F, Eval.sparse_eq]
   unfold evalMT4
   dsimp only
   by_cases hR : pl.inR = true
-  · obtain ⟨hF, hk⟩ := pl.hR hR
-    rw [if_pos hR, ← hspec, nodeIRows4, if_pos hF, rows3_flatMap]
-    obtain ⟨hR0, -⟩ := hF 0 (by norm_num)
-    obtain ⟨hR1, -⟩ := hF 1 le_rfl
-    obtain ⟨hl, hv⟩ := logM_ge κ
-    obtain ⟨hv0, hv1⟩ := protoV4_eq pl hk (fun l => τ.getD l 0) (fun l => σ.getD l 0) κ.hasPrev
-    refine sum3_congr fun s hs => ?_
-    have hs' : s < 2 ^ (κ.dims.logM - 20) := lt_of_lt_of_le (List.mem_range.1 hs) hv
-    rw [rows3_append, slotV4]
-    rw [linkV4_eq (by omega)]
-    refine congrArg (add3 · _) ?_
-    have hc : ∀ π : ℕ, π ≤ 1 → InSlot π (protoRows π) →
-        smul3 (hiF κ.dims.logM (fun l => τ.getD l 0) s * (hiF κ.dims.logM (fun l => σ.getD l 0) s *
-            (σ.getD κ.dims.logM 0 * σ.getD (κ.dims.logM + 1) 0)))
-          (rows3 21 23 (starPt (fun l => τ.getD l 0) π) (starPt (fun l => σ.getD l 0) π) (protoRows π)) =
-        rows3 κ.dims.logM (κ.dims.logM + 2) (fun l => τ.getD l 0) (fun l => σ.getD l 0)
-          (absRows4 κ (mvRows π s (protoRows π))) := by
-      intro π hπ hr
-      have hab : absRows4 κ (mvRows π s (protoRows π)) =
-          (mvRows π s (protoRows π)).map fun p => (p.1, rowMapC (· + 3 * 2 ^ κ.dims.logM) p.2) := by
-        simp only [absRows4, oneCell_eq]
-      rw [hab]
-      simp only [smul3, rows3, copy_val hπ hl hs' _ (fun l => τ.getD l 0) (fun l => σ.getD l 0) hr]
-    simp only [slotRows4]
-    by_cases hp : protoOf κ s = 0
-    · have hk' : κ.hasPrev = true := by
-        by_contra hk'; simp [protoOf, isPrevSlot, hk'] at hp
-      rw [if_pos hp, hv0, if_pos hk', hp]
-      exact hc 0 (by norm_num) hR0
-    · have h1 : protoOf κ s = 1 := by
-        simp only [protoOf] at hp ⊢; split_ifs at hp ⊢ <;> simp_all
-      rw [if_neg hp, hv1, h1]
-      exact hc 1 le_rfl hR1
-  · rw [if_neg hR, nodeIRowsP_eq]; exact hspec
+  · rw [if_pos hR]
+    exact slots_val pl hR κ τ σ (cxAt_of pl _ _ _) κ.hasPrev id
+  · rw [if_neg hR, nodeIRowsP_eq]; exact rows3_spec κ τ σ
 
 /-! ## Controls -/
 
@@ -759,6 +1163,32 @@ theorem ivsOkB_ctl : ivsOkB [(0, 5), (5, 3)] = true ∧ ivsOkB [(0, 5), (4, 1)] 
 /-- (+) Distinct indices pass `idxNodupB`, in any order; (−) a repeated index fails it. -/
 theorem idxNodupB_ctl (r : Row) : idxNodupB [(3, r), (1, r)] = true ∧ idxNodupB [(1, r), (1, r)] ≠ true :=
   ⟨(idxNodupB_iff _).2 (by simp), fun h => by simpa using (idxNodupB_iff _).1 h⟩
+
+/-- (+) Two pinned elements in one row block and one cell block share a run, and two with one value
+share a class; (−) an element 200 stream elements on (cell block 1) starts a run, and one with
+another value starts a class. -/
+theorem runsOf_ctl :
+    ((runsOf 0 0 [(0, 0), (1, 0)]).1.length, (runsOf 0 0 [(0, 0), (1, 0)]).2.length) = (1, 1) ∧
+      ((runsOf 0 0 [(0, 0), (200, 1)]).1.length, (runsOf 0 0 [(0, 0), (200, 1)]).2.length) = (2, 2) := by
+  decide
+
+/-- (+) A coding that decodes to the rows passes `cokB`; (−) one whose index points at another cell,
+or past the dictionary, fails it. -/
+theorem cokB_ctl :
+    cokB #[5, 9] [(0, [(1, [(0, 0)], [(1, 0)], [])])] [(1, ⟨[(5, 0)], [(9, 0)], []⟩)] = true ∧
+      cokB #[5, 9] [(0, [(1, [(1, 0)], [(1, 0)], [])])] [(1, ⟨[(5, 0)], [(9, 0)], []⟩)] = false ∧
+      cokB #[5, 9] [(0, [(1, [(2, 0)], [(1, 0)], [])])] [(1, ⟨[(0, 0)], [(9, 0)], []⟩)] = false := by
+  decide
+
+/-- (+) `crowsOf`'s coding against a sorted dictionary (`bsGo`) decodes to the rows (two rows, three
+cells, one repeated); (−) against a dictionary missing a cell it does not. (`cellsOf` builds the
+dictionary; it is not load-bearing: any dictionary is checked by `cokB`.) -/
+theorem crowsOf_ctl :
+    cokB #[2, 7, 9] (crowsOf #[2, 7, 9] [(3, ⟨[(7, 0)], [(2, 0)], []⟩), (4, ⟨[(2, 0)], [], [(9, 0)]⟩)])
+      [(3, ⟨[(7, 0)], [(2, 0)], []⟩), (4, ⟨[(2, 0)], [], [(9, 0)]⟩)] = true ∧
+    cokB #[2, 9] (crowsOf #[2, 9] [(3, ⟨[(7, 0)], [(2, 0)], []⟩), (4, ⟨[(2, 0)], [], [(9, 0)]⟩)])
+      [(3, ⟨[(7, 0)], [(2, 0)], []⟩), (4, ⟨[(2, 0)], [], [(9, 0)]⟩)] = false := by
+  decide
 
 end Rev4
 end FR

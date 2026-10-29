@@ -254,43 +254,42 @@ def dot3 (s x : F3) : F := s.1 * x.1 + s.2.1 * x.2.1 + s.2.2 * x.2.2
 
 theorem dot3_zero (x : F3) : dot3 (0, 0, 0) x = 0 := by simp [dot3]
 
+/-- The high tables `(eq(t_[11,lm), ·), eq(u_[12,lm+2), ·))` of `ltbOf` at `lm` row coordinates. -/
+def hiTabs (lm : ℕ) (t u : ℕ → F) : Array F × Array F :=
+  (loTab (lm - 11) (fun l => t (11 + l)), loTab (lm + 2 - 12) (fun l => u (12 + l)))
+
+theorem ltb_hi (lm : ℕ) (t u : ℕ → F) :
+    (⟨loTab 11 t, (hiTabs lm t u).1, loTab 12 u, (hiTabs lm t u).2⟩ : LTb) = ltbOf lm t u := rfl
+
 /-- **The stacked `evalM`** (RSV2 §2.1): at a 32-entry row point `τ = x̂ ‖ s` and a 25-entry column
 point `σ`, `X = Σ_κ ⟨s_κ, M̃_κ(x̂, σ)⟩` over the three node kinds' matrices, each read at its own
-coordinates. One prototype evaluation (`protoV4` at `node = true`: `protoV4` reads only coordinates
-below 20, so the kinds share it) and each kind's slot sums (the link tables `ltbOf` once per `logM`:
-`N4` and `N8` share theirs); a kind whose coefficients are zero is skipped. The sparse sums if the plan's
-check failed. -/
+coordinates. One prototype evaluation (`protoV4` reads only coordinates below 20, so the kinds share
+it; prototype 0, the previous node's, only if `N2` or `N4` is in the support) and each kind's slot
+sums; a kind whose coefficients are zero is skipped. B5: the link tables' low halves and the pinned
+elements' inner sums (`thsOf`, one thunk per key) are shared by the kinds, each computed on first use;
+the high halves once per `logM` (`N4` and `N8` share theirs), on first use. The sparse sums if the
+plan's check failed. -/
 def evalMX4 (pl : Plan4) (τ σ : Array F) : F :=
   let t := fun l => τ.getD l 0; let u := fun l => σ.getD l 0
   if pl.inR then
-    let v := protoV4 pl t u true
-    let L2 := ltbOf NodeKind.N2.dims.logM t u
-    let L4 := ltbOf NodeKind.N4.dims.logM t u
+    let v := protoV4 pl t u
+      (!(decide (sOf τ NodeKind.N2.ix = (0, 0, 0)) && decide (sOf τ NodeKind.N4.ix = (0, 0, 0))))
+    let tlo := loTab 11 t
+    let slo := loTab 12 u
+    let ths := thsOf pl tlo slo
+    let H2 := Thunk.mk fun _ => hiTabs NodeKind.N2.dims.logM t u
+    let H4 := Thunk.mk fun _ => hiTabs NodeKind.N4.dims.logM t u
     (NodeKind.all.map fun κ => if sOf τ κ.ix = (0, 0, 0) then 0 else
-      dot3 (sOf τ κ.ix) (sum3 (slotV4 κ t u (if κ = .N2 then L2 else L4) v.1 v.2) (List.range κ.vslots))).sum
+      let h := (if κ = .N2 then H2 else H4).get
+      dot3 (sOf τ κ.ix) (sum3 (slotV4 pl κ t u ⟨⟨tlo, h.1, slo, h.2⟩, ths⟩ v.1 v.2) (List.range κ.vslots))).sum
   else (NodeKind.all.map fun κ => dot3 (sOf τ κ.ix) (evalMT4 pl κ τ σ)).sum
 
 /-- **Its specification**: `Σ_κ ⟨s_κ, M̃_κ(x̂, σ)⟩`, `M̃_κ` the MLEs of `nodeIRows4 κ` (`evalMS4`). -/
 noncomputable def evalMXS4 (τ σ : Array F) : F :=
   (NodeKind.all.map fun κ => dot3 (sOf τ κ.ix) (evalMS4 κ τ σ)).sum
 
-theorem slotV4_noPrev {κ : NodeKind} (h : κ.hasPrev = false) (t u : ℕ → F) (L : LTb) (a a' b : F3)
-    (σ : ℕ) : slotV4 κ t u L a b σ = slotV4 κ t u L a' b σ := by
-  have hp : protoOf κ σ = 1 := by simp [protoOf, isPrevSlot, h]
-  simp only [slotV4, hp, one_ne_zero, if_false]
-
-theorem slots_true (pl : Plan4) (κ : NodeKind) (t u : ℕ → F) :
-    sum3 (slotV4 κ t u (ltbOf κ.dims.logM t u) (protoV4 pl t u true).1 (protoV4 pl t u true).2)
-        (List.range κ.vslots) =
-      sum3 (slotV4 κ t u (ltbOf κ.dims.logM t u) (protoV4 pl t u κ.hasPrev).1
-        (protoV4 pl t u κ.hasPrev).2) (List.range κ.vslots) := by
-  cases h : κ.hasPrev
-  · have h2 : (protoV4 pl t u true).2 = (protoV4 pl t u false).2 := rfl
-    rw [h2]
-    exact sum3_congr fun σ _ => slotV4_noPrev h t u _ _ _ _ σ
-  · rfl
-
-/-- **`evalMX4_eq`**: the stacked `evalM` is its specification (`evalMT4_eq` per kind, `slots_true`). -/
+/-- **`evalMX4_eq`**: the stacked `evalM` is its specification (`slots_val` per kind: the shared
+context is each kind's context at the point). -/
 theorem evalMX4_eq (pl : Plan4) (τ σ : Array F) : evalMX4 pl τ σ = evalMXS4 τ σ := by
   unfold evalMX4 evalMXS4
   split_ifs with hR
@@ -298,11 +297,23 @@ theorem evalMX4_eq (pl : Plan4) (τ σ : Array F) : evalMX4 pl τ σ = evalMXS4 
     by_cases h0 : sOf τ κ.ix = (0, 0, 0)
     · rw [if_pos h0, h0, dot3_zero]
     · rw [if_neg h0]
-      have hL : (if κ = .N2 then ltbOf NodeKind.N2.dims.logM (fun l => τ.getD l 0) (fun l => σ.getD l 0)
-          else ltbOf NodeKind.N4.dims.logM (fun l => τ.getD l 0) (fun l => σ.getD l 0)) =
-          ltbOf κ.dims.logM (fun l => τ.getD l 0) (fun l => σ.getD l 0) := by cases κ <;> rfl
-      rw [hL, ← evalMT4_eq pl κ τ σ]
-      simp only [evalMT4, if_pos hR, slots_true]
+      have hh : (if κ = .N2 then Thunk.mk fun _ => hiTabs NodeKind.N2.dims.logM (fun l => τ.getD l 0)
+            (fun l => σ.getD l 0)
+          else Thunk.mk fun _ => hiTabs NodeKind.N4.dims.logM (fun l => τ.getD l 0) (fun l => σ.getD l 0)).get =
+          hiTabs κ.dims.logM (fun l => τ.getD l 0) (fun l => σ.getD l 0) := by cases κ <;> rfl
+      dsimp only
+      rw [hh]
+      have hc : CxAt ⟨⟨loTab 11 (fun l => τ.getD l 0),
+          (hiTabs κ.dims.logM (fun l => τ.getD l 0) (fun l => σ.getD l 0)).1, loTab 12 (fun l => σ.getD l 0),
+          (hiTabs κ.dims.logM (fun l => τ.getD l 0) (fun l => σ.getD l 0)).2⟩,
+          thsOf pl (loTab 11 (fun l => τ.getD l 0)) (loTab 12 (fun l => σ.getD l 0))⟩ κ.dims.logM
+          (fun l => τ.getD l 0) (fun l => σ.getD l 0) :=
+        cxAt_lo pl _ _ _ _ _ _ (ltb_hi _ _ _)
+      refine congrArg _ (slots_val pl hR κ τ σ hc _ fun hp => ?_)
+      cases κ
+      · simp [h0]
+      · simp [h0]
+      · exact absurd hp (by decide)
   · exact congrArg List.sum (List.map_congr_left fun κ _ => by rw [evalMT4_eq])
 
 /-- **The node's `evalM`**: at a 32-entry row point (the reserve's stacked call) `(evalMX4, 0, 0)`,
