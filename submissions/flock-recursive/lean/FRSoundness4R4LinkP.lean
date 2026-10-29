@@ -136,6 +136,7 @@ theorem finRest4_of_fields (hphi : ∀ r a, r.size = 7 → impl.phiRS r a = Impl
     {P : FinP} {zh : List Reg} {Rs : ℕ → Array Val} {Ex : ℕ → Array (List Reg)}
     (hF : Fields4 impl p inp tr P y zh Rs Ex) (hPS : P.S = seq4)
     (hnode : P.kv.node p.tix = (kindOfC (fsOf tr (itemsOf seq4))).isNode)
+    (hrsv : P4b.nRsv (kindOfC (fsOf tr (itemsOf seq4))) = if (P.rsvOps && P.rsv) = true then rsvN else 0)
     (hm : p.d.m = (kindOfC (fsOf tr (itemsOf seq4))).m) {L : Log} (hb : ¬ Bad L) (hin : ∀ e ∈ tr, e ∈ L)
     (hπ : inp.π.size = piSizeOf seq4) {W₀ : Log → Log → ℕ → K}
     (hpf0 : rSum T4.pfStart (fsOf tr (itemsOf seq4)) 0 = T4.c1 P4b.c₀L4 4 L (fsOf tr (itemsOf seq4)))
@@ -147,7 +148,7 @@ theorem finRest4_of_fields (hphi : ∀ r a, r.size = 7 → impl.phiRS r a = Impl
         (∏ v ∈ Ico (T4.mLog (kindOfC (fsOf tr (itemsOf seq4))) 4) 7, (1 - T4.pfP (fsOf tr (itemsOf seq4)) v)) *
           mleN 7 (T4.finalAt (fsOf tr (itemsOf seq4))) (T4.pfPt (fsOf tr (itemsOf seq4)))) :
     FinRest4 W₀ P4b.c₀L4 L (fsOf tr (itemsOf seq4)) (yv4 p (#[] ++ y.1.toArray)) :=
-  ⟨start4_of_fields hphi hF hPS hnode L, cols4_of_run hF.sk hb hin hπ hm,
+  ⟨start4_of_fields hphi hF hPS hnode hrsv L, cols4_of_run hF.sk hb hin hπ hm,
     fun _ hi => link4_of_fields hF P4b.c₀L4 L hi, hpf0, henc, hfin,
     capChk4_of_fields hF hPS (by by_contra hr; exact hb (.inr (.inr (.inr hr)))) hin hm⟩
 

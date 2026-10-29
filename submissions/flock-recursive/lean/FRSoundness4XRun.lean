@@ -5,6 +5,7 @@ import FRSoundness4R4FrCtrlB
 import FRSoundness4R4ColsCtrl
 import FRSoundness4R4Stmt
 import FRSoundness4XLaws
+import FRSoundness4RsvHM
 
 /-!
 # X4's `RunFacts4` from the program layer
@@ -117,7 +118,7 @@ theorem not_rejFX_node (fin : Finals) (lRows : List Circ.Row) (κs₀ : F) {ν :
   · exact not_rejEndLr4_node h L h1
   · exact not_rejEndE4_node h L h2
   · exact not_rejInE4_node h L h3
-  · exact not_rejFinE4_node NI4F.srcE4 NI4F.srcL4 (NI4F.implN4F_hM _ ν) (NI4F.implN4F_hL _ ν) h L h4
+  · exact not_rejFinE4_node NI4F.srcE4 NI4F.srcL4 (implN4F_hMS _ ν) (NI4F.implN4F_hL _ ν) h L h4
   · exact not_rejRS4_node hZ hLS hST hSM hSW hLW h L h5
 
 /-! ## `AcceptTail` from an accepted run, with the run's entries -/

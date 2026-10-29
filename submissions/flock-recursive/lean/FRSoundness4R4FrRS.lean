@@ -193,6 +193,36 @@ theorem relE4_of_fields (hF : Fields4 impl p inp tr P y zh Rs Ex) :
       (by rw [hlr]; show (Rs 3).size + 13 < _; omega) (by rw [hlr]; show (Rs 3).size + 4 < _; omega))
   exact pureRun_det hL4 hLE
 
+/-- **`finE`'s exports after `r′` on the fields** (the reserve, RSV2 §2.2): the 60 registers
+`finB′` reads hold the child claim's values, Lrend's reads at `48 + 16 i`. -/
+theorem rsvEx_of_fields (hF : Fields4 impl p inp tr P y zh Rs Ex) :
+    ∀ i < rsvN, P.rsvOps = true →
+      fv (Rs 5) ((((Ex 5).getD exE []).drop 1).getD i 0) = pe4 P.S inp fLrEnd (48 + 16 * i) := by
+  obtain ⟨hs3, L3, hL3, he3, hx3⟩ := hF.fld 3 (by decide)
+  obtain ⟨hs4, L4, hL4, he4, hx4⟩ := hF.fld 4 (by decide)
+  rw [rest_gFinLr] at hL3 hx3
+  rw [rest_gFinE] at hL4 hx4
+  have hl3 := pureRun_len impl p.tix inp _ _ [] _ _ hL3
+  rw [opsOut_gFinLr, List.length_nil, Nat.zero_add] at hl3
+  have hsz4 : (Rs 4).size = (Rs 3).size + 14 := by rw [he3]; simp [hl3]
+  set fi : FinIn := ⟨(skeleton4 seq4 p).2.outs, zh, Ex 4⟩
+  have hlr : ∀ j, lrEx fi j = (gFinLr P ⟨(skeleton4 seq4 p).2.outs, zh, Ex 3⟩ (Rs 3).size).2.getD j 0 :=
+    lrEx_eq4 hs3 _ fi hx3
+  obtain ⟨LE, hLE, -, hv⟩ := flag_gFinE impl p.tix inp fi (Rs 4) P
+    (hin_E (hF.sk_lt (by decide) _) (hF.pos (by decide)) P (hF.zlt' (by decide))
+      (by rw [hlr]; show (Rs 3).size + 13 < _; omega) (by rw [hlr]; show (Rs 3).size + 4 < _; omega))
+  have hLL : L4 = LE := by
+    have e := hL4.symm.trans hLE
+    simp only [Option.some.injEq, Prod.mk.injEq] at e
+    exact e.1
+  intro i hi hr
+  have hfx : (Ex 5).getD exE [] = (gFinE P fi (Rs 4).size).2 := by
+    rw [hx4, exE, Array.getD_eq_getD_getElem?, Array.getElem?_push, hs4, if_pos rfl, Option.getD_some]
+  rw [hfx, he4, hLL]
+  have e := hv i hi hr
+  show (rd _ _).toF = _
+  rw [e]; rfl
+
 /-- **E's binding** (`relE4`'s `e4`): `α_E` is E4 end's value. -/
 theorem e_bind4 (hF : Fields4 impl p inp tr P y zh Rs Ex) (hPS : P.S = seq4) :
     P4b.okE4 (fsOf tr (itemsOf seq4)) (fv (Rs 4) (zh.getD 3 0)) := by
@@ -200,7 +230,7 @@ theorem e_bind4 (hF : Fields4 impl p inp tr P y zh Rs Ex) (hPS : P.S = seq4) :
   have he4 : ((Val.f (pe4 P.S inp fE (gOE4end P.S))).eqv (rd (Rs 4) (zh.getD 3 0)) &&
       (inp.π.extract (fieldOffOf P.S fE + (gOE4end P.S + 16))
         (fieldOffOf P.S fE + (gOE4end P.S + 16) + 16)).data.all (· == 0)) = true := by
-    revert hrel; simp only [relE4]; split <;> simp_all
+    revert hrel; simp only [relE4, relE4o]; split <;> (try split) <;> simp_all
   simp only [Bool.and_eq_true] at he4
   rw [P4b.okE4, fv, val_eqv_f4 he4.1, hPS,
     msg_abs4 hF.sk (by norm_num) (by norm_num) fsMsgs4_ends.2.2.1 (by norm_num), Nat.add_zero]

@@ -237,6 +237,6 @@ theorem ks_queriesC4 (impl₀ : OpImpl) (implN : NodeKind → OpImpl) (cells : N
     ∀ H c π, ((S.V vk c π).queries H).length ≤ S.qV :=
   ks_queries4 (VsegC impl₀) (VnodeC implN cells) S hV hq
     (fun H κ vk c π => (queries_VsegC impl₀ H κ vk c π).le)
-    (fun H κ vk c π => (queries_VnodeC implN cells H κ vk c π).le.trans (by decide)) (by rw [← itemsOf_seq4_len]; exact traces_le_qV) vk
+    (fun H κ vk c π => (queries_VnodeC implN cells H κ vk c π).le.trans (by decide)) (by rw [← itemsOf_seq4_len]; exact traces_spacers_le_qV) vk
 
 end FR.Rev4

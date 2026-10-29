@@ -31,13 +31,15 @@ structure FinTabs4 (P : FinP) (κ : Kind) (κc : CKind) : Prop where
   km : P.kv.m κ = κc.m
   tl : κc.m < 32 → κc.m ∈ P.tails
   node : P.kv.node κ = κc.isNode
+  /-- The program's reserve is the kind's (revision 4.4.2: 60 cells on `N2`/`N4`, none else). -/
+  rsv : P4b.nRsv κc = if (P.rsvOps && P.rsv) = true then rsvN else 0
 
 theorem finTabs4_seg (σ : SegKind) (κ : Kind) : FinTabs4 (segFinP σ) κ (.seg σ) := by
-  cases σ <;> refine ⟨rfl, rfl, ?_, ?_, ?_, ?_, rfl, ?_, rfl⟩ <;>
+  cases σ <;> refine ⟨rfl, rfl, ?_, ?_, ?_, ?_, rfl, ?_, rfl, rfl⟩ <;>
     simp (config := { decide := true }) [segFinP, kvOf, segFams, famI, selI, seq4_eq, SegKind.m, CKind.m]
 
 theorem finTabs4_node (ν : NodeKind) (cells : List ℕ) (κ : Kind) : FinTabs4 (nodeFinP ν cells) κ (.node ν) := by
-  cases ν <;> refine ⟨rfl, rfl, ?_, ?_, ?_, ?_, rfl, ?_, rfl⟩ <;>
+  cases ν <;> refine ⟨rfl, rfl, ?_, ?_, ?_, ?_, rfl, ?_, rfl, rfl⟩ <;>
     simp (config := { decide := true }) [nodeFinP, kvOf, nodeFams, nodeE4s, famI, selI, seq4_eq, NodeKind.m, CKind.m]
 
 section Acc
@@ -55,7 +57,7 @@ theorem finRest4_full (hphi : ∀ r a, r.size = 7 → impl.phiRS r a = Impl.phiR
     FinRest4 W₀ P4b.c₀L4 L (fsOf tr (itemsOf seq4)) (yv4 p (#[] ++ y.1.toArray)) := by
   have hix : ∀ j ∈ P.kv.ptIx p.tix, j < (gPfPts P ⟨(skeleton4 seq4 p).2.outs, zh, Ex 11⟩).length := by
     rw [gPfPts_length]; exact hT.ix
-  exact finRest4_of_fields hphi hF hT.S hT.node hm hb hin hπ (pf04_of_fields hF _ L)
+  exact finRest4_of_fields hphi hF hT.S hT.node hT.rsv hm hb hin hπ (pf04_of_fields hF _ L)
     (enc4_of_fields hF hT.S ht hb hin hm (hz_of_fields hF hT.S hT.ck hT.nc hT.nf hix hT.km hT.tl))
     (fin4_of_fields hF hT.S hT.ck hT.nc hT.nf hix hT.pad hW _)
 

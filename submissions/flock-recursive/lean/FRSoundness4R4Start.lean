@@ -124,7 +124,9 @@ input of `v*` the log's). -/
 theorem start4_of_fields (hphi : ∀ r a, r.size = 7 → impl.phiRS r a = phiRSS r a)
     {tr : Trace} {P : FinP} {y : List Val × List Bool × Trace} {zh : List Reg}
     {Rs : ℕ → Array Val} {Ex : ℕ → Array (List Reg)} (hF : Fields4 impl p inp tr P y zh Rs Ex)
-    (hPS : P.S = seq4) (hnode : P.kv.node p.tix = (kindOfC (fsOf tr (itemsOf seq4))).isNode) (L : Log) :
+    (hPS : P.S = seq4) (hnode : P.kv.node p.tix = (kindOfC (fsOf tr (itemsOf seq4))).isNode)
+    (hrsv : P4b.nRsv (kindOfC (fsOf tr (itemsOf seq4))) = if (P.rsvOps && P.rsv) = true then rsvN else 0)
+    (L : Log) :
     rSum (T4.p1Start 0) (fsOf tr (itemsOf seq4)) 0 = P4b.c₀L4 L (fsOf tr (itemsOf seq4)) := by
   set es := fsOf tr (itemsOf seq4)
   set fi : FinIn := ⟨(skeleton4 seq4 p).2.outs, zh, Ex 5⟩
@@ -139,9 +141,19 @@ theorem start4_of_fields (hphi : ∀ r a, r.size = 7 → impl.phiRS r a = phiRSS
   have hc0 : claim0 fi "P1" < (Rs 5).size := headD_lt (hF.sk_lt (by decide) _ "P1") hpos
   have hin1 : (outsOf fi "B'").headD 0 < (Rs 5).size := lt_of_lt_of_le hk1 hE.1
   have hin2 : fi.zhat.getD nRS 0 < (Rs 5).size := getD_lt hpos (hF.zlt' (by decide)) _
+  have hex : ∀ x ∈ (fi.ex.getD exE []).drop 1, x < (Rs 5).size := by
+    obtain ⟨hs4, L4, hL4, he4, hx4⟩ := hF.fld 4 (by decide)
+    rw [rest_gFinE] at hL4 hx4
+    have hl4 := pureRun_len impl p.tix inp _ _ [] _ _ hL4
+    rw [List.length_nil, Nat.zero_add] at hl4
+    have hfx : fi.ex.getD exE [] = (gFinE P ⟨(skeleton4 seq4 p).2.outs, zh, Ex 4⟩ (Rs 4).size).2 := by
+      rw [show fi.ex = Ex 5 from rfl, hx4, exE, Array.getD_eq_getD_getElem?, Array.getElem?_push, hs4,
+        if_pos rfl, Option.getD_some]
+    rw [hfx]
+    exact gFinE_ex_lt P _ he4 hl4
   obtain ⟨L', hL', -⟩ := flag_gFinB' (impl := impl) (κ := p.tix) (inp := inp) (fi := fi) (r := Rs 5)
     (P := P) (List.forall_mem_cons.2 ⟨hin1, List.forall_mem_cons.2 ⟨hin2,
-      List.forall_mem_cons.2 ⟨hc0, fun _ h => absurd h List.not_mem_nil⟩⟩⟩)
+      List.forall_mem_cons.2 ⟨hc0, fun _ h => absurd h List.not_mem_nil⟩⟩⟩) hex
   have h1 := val_eqv_k (pureRun_det hL5 hL')
   obtain ⟨b, hout, -, h0, -, hlt, -⟩ := p1_view4 hF.sk hfi (i := 0) (by norm_num)
   have hlt0 : p1Claim0 fi 0 < (#[] ++ y.1.toArray).size := by
@@ -154,9 +166,32 @@ theorem start4_of_fields (hphi : ∀ r a, r.size = 7 → impl.phiRS r a = phiRSS
   refine congrArg (algebraMap F K) ?_
   have hz : fv (Rs 5) (fi.zhat.getD nRS 0) = P4b.vRSL4 (kindOfC es) es := by
     rw [show fi.zhat = zh from rfl, hF.fv_zh (by decide), rsV4_zh hF, rsV4_eq hphi hF.sk hPS hnode]
-  simp only [vStar4, P4b.vStarL4, hz, hk2, hnode, pubH4_eq hF.sk hPS, P4b.kpL4,
-    show phStart4 25 = 331 by rw [phStart4, fsStarts4_eq]; rfl]
-  rfl
+  have hv0 : vStar4o p.tix inp fi (Rs 5) P = P4b.vRSL4 (kindOfC es) es +
+      if (kindOfC es).isNode then P4b.kpL4 es * P4b.kpL4 es * pubHL es (P4b.kpL4 es) else 0 := by
+    simp only [vStar4o, hz, hk2, hnode, pubH4_eq hF.sk hPS, P4b.kpL4,
+      show phStart4 25 = 331 by rw [phStart4, fsStarts4_eq]; rfl]
+    rfl
+  have hkp : fv (Rs 5) ((outsOf fi "B'").headD 0) = P4b.kpL4 es := by
+    rw [hk2, P4b.kpL4, show phStart4 25 = 331 by rw [phStart4, fsStarts4_eq]; rfl]
+  simp only [vStar4, P4b.vStarL4]
+  by_cases hc : (P.rsvOps && P.rsv) = true
+  · have h60 : P4b.nRsv (kindOfC es) = 60 := by rw [hrsv, if_pos hc]; rfl
+    have hnd : (kindOfC es).isNode = true := by
+      cases hk : kindOfC es with
+      | node ν => rfl
+      | seg σ => rw [hk] at h60; simp [P4b.nRsv] at h60
+    have hro : P.rsvOps = true := by simp only [Bool.and_eq_true] at hc; exact hc.1
+    rw [if_pos hc, hv0, if_pos hnd, if_pos hnd, P4b.rsvHL, h60, hkp]
+    have hs : ∀ i ∈ Finset.range rsvN, P4b.kpL4 es ^ i * fv (Rs 5) (((fi.ex.getD exE []).drop 1).getD i 0) =
+        P4b.kpL4 es ^ i * P4b.rsvV es i := fun i hi => by
+      rw [Finset.mem_range] at hi
+      rw [show fi.ex = Ex 5 from rfl, rsvEx_of_fields hF i hi hro, P4b.rsvV,
+        child_vals4 hF.sk (show i < 60 from hi), hPS]
+    rw [Finset.sum_congr rfl hs]
+    simp only [rsvN]; ring
+  · have h0 : P4b.nRsv (kindOfC es) = 0 := by rw [hrsv, if_neg hc]
+    rw [if_neg hc, hv0, P4b.rsvHL, h0]
+    split_ifs <;> simp
 
 /-! ## On an accepted run of the kind's program -/
 
@@ -165,7 +200,7 @@ theorem start4_seg (hphi : ∀ r a, r.size = 7 → impl.phiRS r a = phiRSS r a) 
     (h : semIR impl (gen4 seq4 (.ofSeg σ) (finOps4 (segFinP σ))) inp tr = some true) (L : Log) :
     rSum (T4.p1Start 0) (fsOf tr (itemsOf seq4)) 0 = P4b.c₀L4 L (fsOf tr (itemsOf seq4)) := by
   obtain ⟨y, zh, Rs, Ex, hF⟩ := fields4_of_accept (segFinP σ) h
-  exact start4_of_fields hphi hF rfl (by rw [kindOfC_acc_seg h]; rfl) L
+  exact start4_of_fields hphi hF rfl (by rw [kindOfC_acc_seg h]; rfl) (by rw [kindOfC_acc_seg h]; rfl) L
 
 /-- **`FinRest4.start` for a node.** -/
 theorem start4_node (hphi : ∀ r a, r.size = 7 → impl.phiRS r a = phiRSS r a) {ν : NodeKind}
@@ -173,7 +208,8 @@ theorem start4_node (hphi : ∀ r a, r.size = 7 → impl.phiRS r a = phiRSS r a)
     (h : semIR impl (gen4 seq4 (.ofNode ν) (finOps4 (nodeFinP ν cells))) inp tr = some true) (L : Log) :
     rSum (T4.p1Start 0) (fsOf tr (itemsOf seq4)) 0 = P4b.c₀L4 L (fsOf tr (itemsOf seq4)) := by
   obtain ⟨y, zh, Rs, Ex, hF⟩ := fields4_of_accept (nodeFinP ν cells) h
-  exact start4_of_fields hphi hF rfl (by rw [kindOfC_acc_node h]; rfl) L
+  exact start4_of_fields hphi hF rfl (by rw [kindOfC_acc_node h]; rfl)
+    (by rw [kindOfC_acc_node h]; cases ν <;> rfl) L
 
 /-! ## The op parameter `hphi` (controls) -/
 

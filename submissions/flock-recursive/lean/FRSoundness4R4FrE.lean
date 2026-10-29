@@ -5,6 +5,7 @@ import FRSoundness4R4View
 import FRSoundness4P4bE
 import FRSoundness4P4aNames
 import FRSoundness4R4Link
+import FRSoundness4RsvStack
 
 /-!
 # The front's Lr and E checks on an accepted run (P4b's `RejEndLr4`, `RejEndE4`, …)
@@ -48,6 +49,34 @@ theorem msg_abs4 {q o len : ℕ} (hq : q < 482) (hq0 : q ≠ 0)
   rw [hm] at e
   simp only [qOf, hq0, if_false] at e
   rw [msgAt_of_q e, readF, bytesAt_extract_of_le16 _ hoff]
+
+include h in
+/-- **The child claim's values on the log are π's** (Lrend's message at 213, bytes `48 + 16 j`). -/
+theorem child_vals4 {j : ℕ} (hj : j < 60) :
+    readF (Snd.msgAt (fsOf tr (itemsOf seq4)) 213) (48 + 16 * j) = pe4 seq4 inp fLrEnd (48 + 16 * j) := by
+  rw [msg_abs4 h (by norm_num) (by norm_num) fsMsgs4_ends.1 (by omega)]; rfl
+
+include h in
+theorem mStL_eq4 : P4b.mStL (fsOf tr (itemsOf seq4)) = pe4 seq4 inp fEEnd 48 := by
+  rw [P4b.mStL, msg_abs4 h (by norm_num) (by norm_num) fsMsgs4_ends.2.1 (by norm_num)]; rfl
+
+include h in
+theorem xL_eq4 : P4b.xL (fsOf tr (itemsOf seq4)) = pe4 seq4 inp fLrEnd rsvX := by
+  rw [P4b.xL, msg_abs4 h (by norm_num) (by norm_num) fsMsgs4_ends.1 (by norm_num)]; rfl
+
+include h in
+theorem pxL_eq4 {j : ℕ} (hj : j < 23) : P4b.pxL (fsOf tr (itemsOf seq4)) j = pe4 seq4 inp fLrEnd (rsvRx + 16 * j) := by
+  rw [P4b.pxL, child_vals4 h (by omega)]; rfl
+
+include h in
+theorem pyL_eq4 {j : ℕ} (hj : j < 25) : P4b.pyL (fsOf tr (itemsOf seq4)) j = pe4 seq4 inp fLrEnd (rsvRy + 16 * j) := by
+  rw [P4b.pyL, show 416 + 16 * j = 48 + 16 * (23 + j) by omega, child_vals4 h (by omega)]
+  simp only [rsvRy]; congr 1; omega
+
+include h in
+theorem sL_eq4 {i : ℕ} (hi : i < 9) : P4b.sL (fsOf tr (itemsOf seq4)) i = pe4 seq4 inp fLrEnd (rsvS + 16 * i) := by
+  rw [P4b.sL, show 816 + 16 * i = 48 + 16 * (48 + i) by omega, child_vals4 h (by omega)]
+  simp only [rsvS]; congr 1; omega
 
 variable {fi : FinIn} (hfi : fi.outs = (skeleton4 seq4 p).2.outs)
   {R : Array Val} (hR : ExtA (#[] ++ y.1.toArray) R)
@@ -224,6 +253,35 @@ theorem opsOut_gFinLr (P : FinP) (fi : FinIn) (b : ℕ) :
     opsOut ((gFinLr P fi b).1.map (reloc P.S)) = 14 := by
   rw [opsOut_reloc]; cases hc : P.ck <;> simp [gFinLr, opsOut, Op.outs, hc]
 
+theorem opsOut_gFinE (P : FinP) (fi : FinIn) (b : ℕ) :
+    opsOut ((gFinE P fi b).1.map (reloc P.S)) = if P.rsvOps then 168 else 38 := by
+  rw [opsOut_reloc]
+  cases hr : P.rsvOps
+  · cases hc : P.ck <;> simp [gFinE, gFinE0, opsOut, Op.outs, hc, hr]
+  · simp only [gFinE, hr, Bool.cond_true, rsvEOps_split, opsOut_append, if_true]
+    have hs : opsOut (rsvSOps (b + 38 + 72 + ·) (fun m => [fi.zhat.getD 3 0, b + 38 + 70, b + 38 + 71].getD m 0)
+        (b + 38 + 69) (b + 38 + 75) (b + 38 + 48 + ·) (b + 38 + 76)) = 36 := by
+      simp [rsvSOps, opsOut, Op.outs, List.map_append, List.sum_append, Function.comp_def]
+    rw [hs]
+    cases hc : P.ck <;> simp [gFinE0, rsvBC, rsvTl, opsOut, Op.outs, hc, Function.comp_def]
+
+/-- `finE`'s exports after `r′` (`finB′`'s reads) are registers of the file after `finE`. -/
+theorem gFinE_ex_lt (P : FinP) (fi : FinIn) {R R' : Array Val} {L : List Val} (hR' : R' = R ++ L.toArray)
+    (hl : L.length = opsOut ((gFinE P fi R.size).1.map (reloc P.S))) :
+    ∀ x ∈ (gFinE P fi R.size).2.drop 1, x < R'.size := by
+  intro x hx
+  rw [opsOut_gFinE] at hl
+  have hsz : R'.size = R.size + L.length := by rw [hR']; simp
+  rw [hsz, hl]
+  cases hr : P.rsvOps
+  · simp [gFinE, hr] at hx
+  · simp only [gFinE, hr, Bool.cond_true, List.drop_succ_cons, List.drop_zero, List.mem_map,
+      List.mem_range] at hx
+    obtain ⟨i, hi, rfl⟩ := hx
+    unfold rsvN at hi
+    have : R.size + 38 + i < R.size + 168 := by omega
+    simpa using this
+
 /-- **`finE`'s relation on an accepted run**, with `lrEx`'s values: `v_L` (`vLv4` on `finLr`'s
 file `R3`) and Lr2's challenges. -/
 theorem relE4_of_accept (P : FinP) {tr : Trace}
@@ -276,38 +334,79 @@ theorem vEnd_e4 {tr : Trace} {y : List Val × List Bool × Trace} (h : SkRun4 im
   refine ⟨?_, ?_, ?_⟩ <;> rw [vEnd, show 227 + 2 * 23 = 273 from rfl,
     msg_abs4 h (by norm_num) (by norm_num) hm (by norm_num)] <;> rfl
 
-/-- **E's end equation on an accepted node run** (`finE` (ii) through the views). -/
+/-- **E's end equation on an accepted node run** (`finE` (ii″) through the views; RSV2 §2.2: the
+child term `η·eq(p_x, r)·(m̂* − X)`, `+` in `V`, equal in characteristic 2). -/
 theorem e_end4 {ν : NodeKind} {cells : List ℕ} {tr : Trace}
     (h : semIR impl (gen4 seq4 (.ofNode ν) (finOps4 (nodeFinP ν cells))) inp tr = some true) (L : Log) :
     clR 227 (fun _ _ => 0) L (fsOf tr (itemsOf seq4)) (P4b.e2R ν) =
       eq (ptOf (P4b.e2R ν) (tauS (P4b.e2R ν) 214 (fsOf tr (itemsOf seq4))))
           (ptOf (P4b.e2R ν) (rxs (P4b.e2R ν) 227 (fsOf tr (itemsOf seq4)))) *
         (vEnd 23 227 (fsOf tr (itemsOf seq4)) 0 * vEnd 23 227 (fsOf tr (itemsOf seq4)) 1 +
-          vEnd 23 227 (fsOf tr (itemsOf seq4)) 2) := by
+          vEnd 23 227 (fsOf tr (itemsOf seq4)) 2) +
+      P4b.etaL (fsOf tr (itemsOf seq4)) *
+        eq (Rsv.lowA (P4b.e2R ν) (P4b.pxL (fsOf tr (itemsOf seq4))))
+          (ptOf (P4b.e2R ν) (rxs (P4b.e2R ν) 227 (fsOf tr (itemsOf seq4)))) *
+        (P4b.mStL (fsOf tr (itemsOf seq4)) - P4b.xL (fsOf tr (itemsOf seq4))) := by
   obtain ⟨y, hS, fi, R3, R, hfi, hE3, h3R, -, hrel, -, -⟩ := relE4_of_accept (nodeFinP ν cells) h
   have hE := hE3.trans h3R
   have hnode : (nodeFinP ν cells).kv.node (KindP.ofNode ν).tix = true := rfl
+  have hro : (nodeFinP ν cells).rsvOps = true := rfl
   have he2 : (nodeFinP ν cells).e2R = P4b.e2R ν := rfl
   have hS4 : (nodeFinP ν cells).S = seq4 := rfl
-  simp only [relE4, hnode, ite_true, he2, hS4, Bool.and_eq_true] at hrel
-  have hc := val_eqv_f4 hrel.1
+  simp only [relE4, hro, hnode, ite_true, he2, hS4, rsvPx4, Bool.not_true, Bool.false_or,
+    Bool.and_eq_true] at hrel
+  obtain ⟨-, -, -, -, -, -, h2, -, -⟩ := hrel
+  have hc := val_eqv_f4 h2
   obtain ⟨hn18, e18⟩ := ph4 (n := 18) (x := ("E2", Sh.rounds fE seq4.e2 3 false)) rfl
   obtain ⟨hn17, e17⟩ := ph4 (n := 17) (x := ("E1", Sh.squeezes 12 .coords)) (by rw [seq4_eq]; rfl)
   have hle := P4b.dims_le ν
+  have hle' := P4b.dims_le' ν
   obtain ⟨-, hcl⟩ := claimN3z_view4 hS hfi hE hn18 (by rw [e18]) phaseIx4_rounds.2.2.2.2.2.1
     (by rw [e18]) rfl L
   rw [hc, (realRounds_vals _ _).2.2.2.1, (dims_node4 ν).2.2.2.2.1, Nat.min_eq_left hle.2.1,
     show phStart4 18 = 227 by rw [phStart4, fsStarts4_eq]; rfl] at hcl
   have hco := coordsR_view4 hS hfi hE hn17 (by rw [e17]) (by norm_num)
     phaseIx_vals.2.2.2.2.2.2.2.2.2.2.2.1 (a := P4b.e2R ν) (by cases ν <;> decide)
+  have hco24 := coordsR_view4 hS hfi hE hn17 (by rw [e17]) (by norm_num)
+    phaseIx_vals.2.2.2.2.2.2.2.2.2.2.2.1 (a := 24) (by norm_num)
+  have heta : fv R ((coordsR fi "E1").getD 23 0) = P4b.etaL (fsOf tr (itemsOf seq4)) := by
+    rw [show fv R ((coordsR fi "E1").getD 23 0) = ((coordsR fi "E1").map (fv R)).getD 23 (fv R 0) by
+      rw [List.getD_map], ← getD_take' _ _ (show 23 < 24 by norm_num), ← List.map_take, hco24,
+      getD_mapRange _ _ (by norm_num), P4b.etaL, coordAt,
+      show phStart4 17 = 215 by rw [phStart4, fsStarts4_eq]; rfl]
   have hch := chals_view4 hS hfi hE hn18 (by rw [e18]) phaseIx4_rounds.2.2.2.2.2.1 hle.2.1
-  rw [hco, hch, show phStart4 17 = 215 by rw [phStart4, fsStarts4_eq]; rfl,
-    show phStart4 18 = 227 by rw [phStart4, fsStarts4_eq]; rfl, FR.Impl.eqPoint_eq] at hcl
+  rw [hco, hch, heta, show phStart4 17 = 215 by rw [phStart4, fsStarts4_eq]; rfl,
+    show phStart4 18 = 227 by rw [phStart4, fsStarts4_eq]; rfl, FR.Impl.eqPoint_eq,
+    FR.Impl.eqPoint_eq] at hcl
   obtain ⟨v0, v1, v2⟩ := vEnd_e4 hS
-  rw [v0, v1, v2, ← Val.f.inj hcl]
+  rw [v0, v1, v2, ← Val.f.inj hcl, mStL_eq4 hS, xL_eq4 hS, CharTwo.sub_eq_add]
   have hl : ∀ l : List F, l.toArray.size = l.length := fun _ => rfl
-  rw [hl, List.length_map, List.length_range, FR.Impl.ptA_toArray, FR.Impl.ptA_toArray]
-  rfl
+  rw [hl, hl, List.length_map, List.length_range, List.length_take, List.length_map, List.length_range,
+    Nat.min_eq_left hle'.2.1, FR.Impl.ptA_toArray, FR.Impl.ptA_toArray, FR.Impl.ptA_toArray]
+  have hpx : ptOf (P4b.e2R ν) (((List.range 23).map fun j => pe4 seq4 inp fLrEnd (rsvRx + 16 * j)).take
+      (P4b.e2R ν)) = Rsv.lowA (P4b.e2R ν) (P4b.pxL (fsOf tr (itemsOf seq4))) := by
+    funext j
+    have hj : (j : ℕ) < 23 := lt_of_lt_of_le j.isLt hle'.2.1
+    simp only [ptOf, Rsv.lowA]
+    rw [getD_take' _ _ j.isLt, getD_mapRange _ _ hj, pxL_eq4 hS hj]
+  rw [hpx, show tauS (P4b.e2R ν) 214 (fsOf tr (itemsOf seq4)) = (List.range (P4b.e2R ν)).map
+      (fun j => fAt (fsOf tr (itemsOf seq4)) (215 + j / 2) (j % 2)) from rfl,
+    show rxs (P4b.e2R ν) 227 (fsOf tr (itemsOf seq4)) = rchs 227 (fsOf tr (itemsOf seq4)) (P4b.e2R ν) from rfl]
+  ring
+
+/-- **The child claim's two zero outputs on an accepted node run** (`finE`'s asserts
+`X₃[1] = X₃[2] = 0`, read at Lrend's message, 213). -/
+theorem rsvZero4 {ν : NodeKind} {cells : List ℕ} {tr : Trace}
+    (h : semIR impl (gen4 seq4 (.ofNode ν) (finOps4 (nodeFinP ν cells))) inp tr = some true) :
+    readF (msgAt (fsOf tr (itemsOf seq4)) 213) (48 + 16 * 58) = 0 ∧
+      readF (msgAt (fsOf tr (itemsOf seq4)) 213) (48 + 16 * 59) = 0 := by
+  obtain ⟨y, hS, fi, R3, R, hfi, hE3, h3R, -, hrel, -, -⟩ := relE4_of_accept (nodeFinP ν cells) h
+  have hro : (nodeFinP ν cells).rsvOps = true := rfl
+  have hS4 : (nodeFinP ν cells).S = seq4 := rfl
+  simp only [relE4, hro, ite_true, hS4, Bool.and_eq_true, decide_eq_true_eq] at hrel
+  obtain ⟨-, -, -, -, h58, h59, -⟩ := hrel
+  rw [child_vals4 hS (by norm_num), child_vals4 hS (by norm_num)]
+  exact ⟨h58, h59⟩
 
 theorem not_rejEndE4_node {ν : NodeKind} {cells : List ℕ} {tr : Trace}
     (h : semIR impl (gen4 seq4 (.ofNode ν) (finOps4 (nodeFinP ν cells))) inp tr = some true) (L : Log) :
@@ -334,8 +433,10 @@ theorem e_in4 {ν : NodeKind} {cells : List ℕ} {tr : Trace}
   have hE := hE3.trans h3R
   have hnode : (nodeFinP ν cells).kv.node (KindP.ofNode ν).tix = true := rfl
   have hS4 : (nodeFinP ν cells).S = seq4 := rfl
-  simp only [relE4, hnode, ite_true, hS4, Bool.and_eq_true] at hrel
-  have hc := val_eqv_f4 hrel.2.1
+  have hro : (nodeFinP ν cells).rsvOps = true := rfl
+  simp only [relE4, hro, hnode, ite_true, hS4, Bool.not_true, Bool.false_or, Bool.and_eq_true] at hrel
+  obtain ⟨-, -, -, -, -, -, -, h3, -⟩ := hrel
+  have hc := val_eqv_f4 h3
   rw [hv0] at hc
   obtain ⟨hn21, e21⟩ := ph4 (n := 21) (x := ("E4", Sh.rounds fE seq4.e4 2 false)) rfl
   obtain ⟨hn20, e20⟩ := ph4 (n := 20) (x := ("E3", Sh.squeezes 1 .one)) rfl
@@ -355,7 +456,7 @@ theorem e_in4 {ν : NodeKind} {cells : List ℕ} {tr : Trace}
   obtain ⟨w0, w1, w2⟩ := vEnd_lr4 hS
   rw [show phStart4 20 = 274 by rw [phStart4, fsStarts4_eq]; rfl] at hkE
   rw [show phStart4 16 = 214 by rw [phStart4, fsStarts4_eq]; rfl] at hkL
-  simp only [vLv4, hS4, hkE, hkL, P4b.c4E4, c4, kapB, v0, v1, v2, w0, w1, w2]
+  simp only [vLv4, hS4, hkE, hkL, P4b.c4E4, c4, kapB, v0, v1, v2, w0, w1, w2, mStL_eq4 hS]
   ring
 
 theorem not_rejInE4_node {ν : NodeKind} {cells : List ℕ} {tr : Trace}
@@ -375,13 +476,13 @@ theorem clR2_c0_succ {c0 c0' : Log → Log → F} (b : ℕ) (L es : Log) (n : �
     clR2 b 16 readF (fun d => chF d 0) c0 L es (n + 1) = clR2 b 16 readF (fun d => chF d 0) c0' L es (n + 1) :=
   rfl
 
-/-- **`finE` (iv) on an accepted node run**: E4's last claim is `W(r′)·α_E`, for `evalM`/`evalL`
-meeting the node kind's M and L rows' matrix MLEs (`hM`, `hL`: the node op spec, a parameter). -/
+/-- **`finE` (iv″) on an accepted node run** (RSV2 §2.2): E4's last claim is
+`W(r′)·α_E + κ_E⁴·eq(p_y, r′)·Σ_i s_i M̃_i(x̂, ŷ)`, for `evalM`/`evalL` meeting the matrix MLEs (`hM`:
+the stacked call at a 32-entry row point, `implN4F_hMX`'s content in `mStack`'s form; `hL`: the node's
+L rows). -/
 theorem e_fin4 (srcE srcL : NodeKind → P4b.ESrc) {ν : NodeKind} {cells : List ℕ} {tr : Trace}
-    (hM : ∀ r2 r4 : Array F, r2.size = P4b.e2R ν → r4.size = P4b.ncR ν → impl.evalM r2 r4 =
-      (Eval.matMLE (srcE ν).ea (FR.Impl.ptA (P4b.e2R ν) r2) (FR.Impl.ptA (P4b.ncR ν) r4),
-       Eval.matMLE (srcE ν).eb (FR.Impl.ptA (P4b.e2R ν) r2) (FR.Impl.ptA (P4b.ncR ν) r4),
-       Eval.matMLE (srcE ν).ec (FR.Impl.ptA (P4b.e2R ν) r2) (FR.Impl.ptA (P4b.ncR ν) r4)))
+    (hM : ∀ τ σ : Array F, τ.size = 32 → impl.evalM τ σ =
+      (P4b.mStack srcE (fun i => τ.getD (23 + i) 0) (fun j => τ.getD j 0) (fun j => σ.getD j 0), 0, 0))
     (hL : ∀ rL r4 : Array F, rL.size = P4b.lrR ν → r4.size = P4b.ncR ν → impl.evalL rL r4 =
       (Eval.matMLE (srcL ν).ea (FR.Impl.ptA (P4b.lrR ν) rL) (FR.Impl.ptA (P4b.ncR ν) r4),
        Eval.matMLE (srcL ν).eb (FR.Impl.ptA (P4b.lrR ν) rL) (FR.Impl.ptA (P4b.ncR ν) r4),
@@ -389,7 +490,12 @@ theorem e_fin4 (srcE srcL : NodeKind → P4b.ESrc) {ν : NodeKind} {cells : List
     (h : semIR impl (gen4 seq4 (.ofNode ν) (finOps4 (nodeFinP ν cells))) inp tr = some true) (L : Log) :
     clR2 275 16 readF (fun d => chF d 0) P4b.c4E4 L (fsOf tr (itemsOf seq4)) (P4b.ncR ν) =
       mle (P4b.wEb4 srcE srcL ν (fsOf tr (itemsOf seq4))) (ptOf (P4b.ncR ν) (P4b.rPt4 ν (fsOf tr (itemsOf seq4)))) *
-        readF (msgAt (fsOf tr (itemsOf seq4)) 325) 0 := by
+        readF (msgAt (fsOf tr (itemsOf seq4)) 325) 0 +
+      kapB 23 227 (fsOf tr (itemsOf seq4)) ^ 4 *
+        eq (Rsv.lowA (P4b.ncR ν) (P4b.pyL (fsOf tr (itemsOf seq4))))
+          (ptOf (P4b.ncR ν) (P4b.rPt4 ν (fsOf tr (itemsOf seq4)))) *
+        P4b.mStack srcE (P4b.sL (fsOf tr (itemsOf seq4))) (P4b.xHat ν (fsOf tr (itemsOf seq4)))
+          (Rsv.hiPt (ptOf (P4b.ncR ν) (P4b.rPt4 ν (fsOf tr (itemsOf seq4)))) (P4b.pyL (fsOf tr (itemsOf seq4)))) := by
   obtain ⟨y, hS, fi, R3, R, hfi, hE3, h3R, -, hrel, -, hv1⟩ := relE4_of_accept (nodeFinP ν cells) h
   have hE := hE3.trans h3R
   have hnode : (nodeFinP ν cells).kv.node (KindP.ofNode ν).tix = true := rfl
@@ -397,9 +503,12 @@ theorem e_fin4 (srcE srcL : NodeKind → P4b.ESrc) {ν : NodeKind} {cells : List
   have he2 : (nodeFinP ν cells).e2R = P4b.e2R ν := rfl
   have he4 : (nodeFinP ν cells).e4R = P4b.ncR ν := rfl
   have hlr : (nodeFinP ν cells).lrR = P4b.lrR ν := rfl
-  simp only [relE4, hnode, ite_true, hS4, he2, he4, Bool.and_eq_true] at hrel
+  have hro : (nodeFinP ν cells).rsvOps = true := rfl
+  have hkix : (nodeFinP ν cells).kix = ν.ix := rfl
+  simp only [relE4, hro, hnode, ite_true, hS4, he2, he4, hkix, rsvPx4, rsvPy4, Bool.not_true, Bool.false_or,
+    Bool.and_eq_true] at hrel
   rw [hlr] at hv1
-  obtain ⟨-, h2, h3, h4, -⟩ := hrel
+  obtain ⟨⟨h4, -⟩, -, -, -, -, -, -, h2, h3⟩ := hrel
   have hc0 := val_eqv_f4 h2
   have hc := val_eqv_f4 h3
   have hz := val_eqv_f4 h4
@@ -434,24 +543,64 @@ theorem e_fin4 (srcE srcL : NodeKind → P4b.ESrc) {ν : NodeKind} {cells : List
   have hl : ∀ l : List F, l.toArray.size = l.length := fun _ => rfl
   rw [hc2, hc4, show phStart4 18 = 227 by rw [phStart4, fsStarts4_eq]; rfl,
     show phStart4 21 = 275 by rw [phStart4, fsStarts4_eq]; rfl] at *
-  rw [hv1, hcL, show phStart4 14 = 179 by rw [phStart4, fsStarts4_eq]; rfl,
-    hM _ _ (by rw [hl]; simp [rxs, rchs]) (by rw [hl]; simp [rchs]),
+  obtain ⟨g2, l2, g4, l4⟩ := P4b.e2R_ge ν
+  have hτ : ((rchs 227 (fsOf tr (itemsOf seq4)) (P4b.e2R ν)).take 22 ++
+      [(rchs 227 (fsOf tr (itemsOf seq4)) (P4b.e2R ν) ++ ((List.range 23).map fun j =>
+        pe4 seq4 inp fLrEnd (rsvRx + 16 * j)).drop (P4b.e2R ν)).getD 22 (fv R 0)] ++
+      (List.range 9).map fun i => (if ν.ix = i / 3 then 1 else 0) *
+        [fv R (fi.zhat.getD 3 0), fv R (fi.zhat.getD 3 0) * fv R ((outsOf fi "E3").headD 0),
+          fv R (fi.zhat.getD 3 0) * (fv R ((outsOf fi "E3").headD 0) * fv R ((outsOf fi "E3").headD 0))].getD
+          (i % 3) 0 +
+        fv R ((outsOf fi "E3").headD 0) * fv R ((outsOf fi "E3").headD 0) *
+          (fv R ((outsOf fi "E3").headD 0) * fv R ((outsOf fi "E3").headD 0)) *
+          eqPoint (((List.range 25).map fun j => pe4 seq4 inp fLrEnd (rsvRy + 16 * j)).take (P4b.ncR ν)).toArray
+            (rchs 275 (fsOf tr (itemsOf seq4)) (P4b.ncR ν)).toArray * (rsvS4 inp (nodeFinP ν cells)).getD i 0).toArray.size
+      = 32 := by
+    simp [rchs]; omega
+  rw [hv1, hcL, show phStart4 14 = 179 by rw [phStart4, fsStarts4_eq]; rfl, hM _ _ hτ,
     hL _ _ (by rw [hl]; simp [rxs, rchs]) (by rw [hl]; simp [rchs]),
-]
+    P4b.mStack_sP srcE ν _ _ (by simp [rchs]) (by simp [rchs])]
   simp only [FR.Impl.ptA_toArray]
   have hk1 : kapB 23 227 (fsOf tr (itemsOf seq4)) = fv R ((outsOf fi "E3").headD 0) := by
     rw [hkE, show phStart4 20 = 274 by rw [phStart4, fsStarts4_eq]; rfl]; rfl
   have hk2 : kapB 17 179 (fsOf tr (itemsOf seq4)) = fv R ((outsOf fi "Lr3").headD 0) := by
     rw [hkL, show phStart4 16 = 214 by rw [phStart4, fsStarts4_eq]; rfl]; rfl
-  rw [hk1, hk2, rxs, rxs]
+  have hst : P4b.mStack srcE (fun i => (rsvS4 inp (nodeFinP ν cells)).getD i 0)
+      (Rsv.hiPt (ptOf (P4b.e2R ν) (rchs 227 (fsOf tr (itemsOf seq4)) (P4b.e2R ν)))
+        fun j => pe4 seq4 inp fLrEnd (rsvRx + 16 * j))
+      (Rsv.hiPt (ptOf (P4b.ncR ν) (rchs 275 (fsOf tr (itemsOf seq4)) (P4b.ncR ν)))
+        fun j => pe4 seq4 inp fLrEnd (rsvRy + 16 * j)) =
+      P4b.mStack srcE (P4b.sL (fsOf tr (itemsOf seq4))) (P4b.xHat ν (fsOf tr (itemsOf seq4)))
+        (Rsv.hiPt (ptOf (P4b.ncR ν) (rchs 275 (fsOf tr (itemsOf seq4)) (P4b.ncR ν)))
+          (P4b.pyL (fsOf tr (itemsOf seq4)))) := by
+    refine P4b.mStack_congr' srcE (fun i hi => ?_) (fun j hj => ?_) (fun j hj => ?_)
+    · rw [rsvS4, getD_mapRange _ _ hi, sL_eq4 hS hi]; rfl
+    · simp only [P4b.xHat, Rsv.hiPt]; split_ifs
+      · rfl
+      · rw [pxL_eq4 hS hj]
+    · simp only [Rsv.hiPt]; split_ifs
+      · rfl
+      · rw [pyL_eq4 hS hj]
+  have hw : eqPoint (((List.range 25).map fun j => pe4 seq4 inp fLrEnd (rsvRy + 16 * j)).take (P4b.ncR ν)).toArray
+      (rchs 275 (fsOf tr (itemsOf seq4)) (P4b.ncR ν)).toArray =
+      eq (Rsv.lowA (P4b.ncR ν) (P4b.pyL (fsOf tr (itemsOf seq4))))
+        (ptOf (P4b.ncR ν) (rchs 275 (fsOf tr (itemsOf seq4)) (P4b.ncR ν))) := by
+    rw [FR.Impl.eqPoint_eq, hl, List.length_take, List.length_map, List.length_range, Nat.min_eq_left l4,
+      FR.Impl.ptA_toArray, FR.Impl.ptA_toArray]
+    have hpy : ptOf (P4b.ncR ν) (((List.range 25).map fun j => pe4 seq4 inp fLrEnd (rsvRy + 16 * j)).take
+        (P4b.ncR ν)) = Rsv.lowA (P4b.ncR ν) (P4b.pyL (fsOf tr (itemsOf seq4))) := by
+      funext j
+      have hj : (j : ℕ) < 25 := lt_of_lt_of_le j.isLt l4
+      simp only [ptOf, Rsv.lowA]
+      rw [getD_take' _ _ j.isLt, getD_mapRange _ _ hj, pyL_eq4 hS hj]
+    rw [hpy]
+  rw [hst, hw, hk1, hk2, rxs, rxs]
   ring
 
 /-- **`RejFinE4` never holds on an accepted node run** (for `evalM`/`evalL` at the spec). -/
 theorem not_rejFinE4_node (srcE srcL : NodeKind → P4b.ESrc) {ν : NodeKind} {cells : List ℕ} {tr : Trace}
-    (hM : ∀ r2 r4 : Array F, r2.size = P4b.e2R ν → r4.size = P4b.ncR ν → impl.evalM r2 r4 =
-      (Eval.matMLE (srcE ν).ea (FR.Impl.ptA (P4b.e2R ν) r2) (FR.Impl.ptA (P4b.ncR ν) r4),
-       Eval.matMLE (srcE ν).eb (FR.Impl.ptA (P4b.e2R ν) r2) (FR.Impl.ptA (P4b.ncR ν) r4),
-       Eval.matMLE (srcE ν).ec (FR.Impl.ptA (P4b.e2R ν) r2) (FR.Impl.ptA (P4b.ncR ν) r4)))
+    (hM : ∀ τ σ : Array F, τ.size = 32 → impl.evalM τ σ =
+      (P4b.mStack srcE (fun i => τ.getD (23 + i) 0) (fun j => τ.getD j 0) (fun j => σ.getD j 0), 0, 0))
     (hL : ∀ rL r4 : Array F, rL.size = P4b.lrR ν → r4.size = P4b.ncR ν → impl.evalL rL r4 =
       (Eval.matMLE (srcL ν).ea (FR.Impl.ptA (P4b.lrR ν) rL) (FR.Impl.ptA (P4b.ncR ν) r4),
        Eval.matMLE (srcL ν).eb (FR.Impl.ptA (P4b.lrR ν) rL) (FR.Impl.ptA (P4b.ncR ν) r4),
