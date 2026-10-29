@@ -143,6 +143,14 @@ pub fn phi_apply(t: &[F], x: F) -> F {
 /// The prover's weight table `W(y) = Σ_j c_j Φ(eq(hi_j, y))` for the claims `(hi_j, c_j)` (rev. 3.7:
 /// `c_j = κ^j`; claims at the same point are merged by adding their coefficients).
 pub fn weight_table(claims: &[(&[F], F)], rpp: &[F]) -> Vec<F> {
+    let cl: Vec<(&[F], F, Option<&[F]>)> = claims.iter().map(|c| (c.0, c.1, None)).collect();
+    weight_table_kf(&cl, rpp)
+}
+
+/// `weight_table` with an optional per-block factor per claim (a node's Lc claim, revision 3.16:
+/// the outer weight `eq(hi, y)·kf(y >> 7)`, `kf` per block of 128 packed elements; `Φ` is only
+/// `F₂`-linear, so the factor multiplies `eq` before `Φ`).
+pub fn weight_table_kf(claims: &[(&[F], F, Option<&[F]>)], rpp: &[F]) -> Vec<F> {
     let his: Vec<&[F]> = claims.iter().map(|c| c.0).collect();
     let mu = his[0].len();
     let tabs: Vec<Vec<F>> = claims.iter().map(|c| phi_tables(rpp, c.1)).collect();
@@ -172,6 +180,12 @@ pub fn weight_table(claims: &[(&[F], F)], rpp: &[F]) -> Vec<F> {
                 } else {
                     e.iter_mut().for_each(|x| *x = F::ZERO);
                     crate::simd::axpy(&mut e, elo, ehi[h]);
+                }
+                if let Some(kf) = claims[j].2 {
+                    // y = (h << nlo) | l, block y >> 7
+                    for &l in &nz[j] {
+                        e[l as usize] *= kf[((h << nlo) | l as usize) >> 7];
+                    }
                 }
                 if blk.len() == e.len() {
                     crate::simd::phi_add_idx(&tabs[j], &e, &nz[j], blk);

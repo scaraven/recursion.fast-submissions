@@ -33,7 +33,7 @@ pub struct Times {
     pub phases: Vec<(&'static str, f64)>,
 }
 impl Times {
-    fn mark(&mut self, name: &'static str, t: &mut Instant) {
+    pub(crate) fn mark(&mut self, name: &'static str, t: &mut Instant) {
         if std::env::var_os("FLOCK_VERBOSE").is_some() {
             eprintln!("phase {name} {:.3}", t.elapsed().as_secs_f64());
         }
@@ -94,14 +94,18 @@ fn pe_on_s(r: &[F], n: u64) -> [F; 64] {
 /// `P^{ab}*(λ)` through the 127 nodes `S ∪ Λ₀…₆₂`. Returns `(P^{ab}*(λ), P^z*(λ))`: Z3's first claim
 /// and the c-claim `ẑ(r, λ)`.
 pub fn z2_value(pz: &[F], pab: &[F], r: &[F], lambda: F, n: u64) -> (F, F) {
-    assert_eq!((pz.len(), pab.len()), (64, 63));
+    z2_value_pe(pz, pab, &pe_on_s(r, n), lambda)
+}
+
+/// `z2_value` with the target `P^e` on `S` given (a node's: `nodeops::target_s_node4`).
+pub fn z2_value_pe(pz: &[F], pab: &[F], pe: &[F], lambda: F) -> (F, F) {
+    assert_eq!((pz.len(), pab.len(), pe.len()), (64, 63, 64));
     let sk = skip();
     let wl = lagrange_weights(&sk.l_pts, lambda);
     let mut pzl = F::ZERO;
     for i in 0..64 {
         pzl += wl[i] * pz[i];
     }
-    let pe = pe_on_s(r, n);
     let mut vals = vec![F::ZERO; 127];
     for sg in 0..64 {
         let mut v = F::ZERO;
@@ -120,14 +124,14 @@ pub fn z2_value(pz: &[F], pab: &[F], r: &[F], lambda: F, n: u64) -> (F, F) {
 }
 
 /// `eq(θ, σ)` for the 256 slot positions `σ` of a digest (θ has 10 coordinates; `σ < 256`).
-fn theta_eq(theta: &[F]) -> Vec<F> {
+pub(crate) fn theta_eq(theta: &[F]) -> Vec<F> {
     let mut e = eq_table(theta);
     e.truncate(256);
     e
 }
 
 /// The θ byte tables: `T[p][v] = Σ_{i: v_i} eq(θ, 8p + i)` (32 × 256).
-fn theta_tables(eq_theta: &[F]) -> Vec<F> {
+pub(crate) fn theta_tables(eq_theta: &[F]) -> Vec<F> {
     let mut t = vec![F::ZERO; 32 * 256];
     for p in 0..32 {
         for v in 1..256usize {
@@ -139,7 +143,7 @@ fn theta_tables(eq_theta: &[F]) -> Vec<F> {
 }
 
 /// `Σ_{σ<256} eq(θ, σ) z[blk, base + σ]` for every block (`base` a multiple of 8).
-fn slot_collapse(z: &[u64], t: &[F], base: usize) -> Vec<F> {
+pub(crate) fn slot_collapse(z: &[u64], t: &[F], base: usize) -> Vec<F> {
     let bytes = Witness::bytes(z);
     let nb = z.len() / 256;
     par::collect_vec(nb, 1 << 10, |b| {
@@ -153,7 +157,7 @@ fn slot_collapse(z: &[u64], t: &[F], base: usize) -> Vec<F> {
 }
 
 /// `Z(j) = Σ_blk eq(τ, blk) z[blk, j]` for `j < 64·words` (by blocks, F per set bit).
-fn partial_fold_prefix(z: &[u64], tau: &[F], words: usize) -> Vec<F> {
+pub(crate) fn partial_fold_prefix(z: &[u64], tau: &[F], words: usize) -> Vec<F> {
     let e = eq_table(tau);
     let nb = z.len() / 256;
     let parts = par::map_chunks(nb, 64, |lo, hi| {
@@ -193,7 +197,7 @@ fn slot_weights(eq_theta: &[F]) -> (Vec<F>, Vec<F>) {
 }
 
 /// `Σ_{σ<256} eq(θ, σ) bit_σ(d)`.
-fn digest_mle(d: &[u8], eq_theta: &[F]) -> F {
+pub(crate) fn digest_mle(d: &[u8], eq_theta: &[F]) -> F {
     let mut s = F::ZERO;
     for j in 0..256 {
         if (d[j / 8] >> (j % 8)) & 1 == 1 {
@@ -203,7 +207,7 @@ fn digest_mle(d: &[u8], eq_theta: &[F]) -> F {
     s
 }
 
-fn dot(a: &[F], b: &[F]) -> F {
+pub(crate) fn dot(a: &[F], b: &[F]) -> F {
     let mut acc = FAcc::default();
     for (x, y) in a.iter().zip(b.iter()) {
         acc.mac(*x, *y);
@@ -213,7 +217,7 @@ fn dot(a: &[F], b: &[F]) -> F {
 
 /// RS claim 0's inner weights (Z's quirky claim `ẑ(r, λ)`, `eqZ λ ρ₁`): `w_(σ,b) = L^S_σ(λ)
 /// eq(ρ₁, b)`, `v = σ + 64 b` (bit 6's coordinate is the pinned `ρ₁ = r₀`, rev. 3.9).
-fn claim_weights_z(rp0: F, lambda: F) -> Vec<F> {
+pub(crate) fn claim_weights_z(rp0: F, lambda: F) -> Vec<F> {
     let l = lagrange_weights(&skip().s_pts, lambda);
     let mut w = vec![F::ZERO; 128];
     for sg in 0..64 {
@@ -226,7 +230,7 @@ fn claim_weights_z(rp0: F, lambda: F) -> Vec<F> {
 /// The packed (outer) points of the leaf's RS claims (A.9 `finRS`): 0, Z's `ẑ(r, λ)`: `r₁ …`
 /// (`ρ₂ … ρ₇, r_out`); 1, Lc's `β`-batched claim (a leaf: `ẑ(r_k, r′_blk)`): `(r_k,7…13, r′_blk)`;
 /// 2, Sh's one claim `ẑ(r_pos, r_blk)`: `(r_pos,7…9, 0⁴, r_blk)`.
-fn claim_points(r: &[F], rp: &[F], tl: &[F], tpp: &[F], taup: &[F]) -> [Vec<F>; 3] {
+pub(crate) fn claim_points(r: &[F], rp: &[F], tl: &[F], tpp: &[F], taup: &[F]) -> [Vec<F>; 3] {
     let a: Vec<F> = r[1..].to_vec();
     let mut b: Vec<F> = tl[7..14].to_vec();
     b.extend_from_slice(&rp[8..]);
@@ -237,7 +241,7 @@ fn claim_points(r: &[F], rp: &[F], tl: &[F], tpp: &[F], taup: &[F]) -> [Vec<F>; 
 }
 
 /// `Σ_{y_in} eq(hi_in, y_in) Z(128 y_in + v)` for `v < 128` (a claim's partials from a partial fold).
-fn partials_from_fold(z: &[F], hi_in: &[F]) -> Vec<F> {
+pub(crate) fn partials_from_fold(z: &[F], hi_in: &[F]) -> Vec<F> {
     let e = eq_table(hi_in);
     let mut sv = vec![F::ZERO; 128];
     for (yi, ey) in e.iter().enumerate() {
@@ -247,7 +251,7 @@ fn partials_from_fold(z: &[F], hi_in: &[F]) -> Vec<F> {
 }
 
 /// `n` dummy rounds of `bytes`-byte messages: zero message, squeeze ignored.
-fn dummy_rounds(wr: &mut Writer, f: usize, n: usize, bytes: usize) {
+pub(crate) fn dummy_rounds(wr: &mut Writer, f: usize, n: usize, bytes: usize) {
     let z = vec![0u8; bytes];
     for _ in 0..n {
         wr.send(f, &z);
@@ -487,7 +491,7 @@ pub fn prove_logged(o: &dyn Oracle, circ: &Circuit, vk: &Digest, s: &Digest, m: 
 }
 
 /// The RS batching: the coefficients `κ^j` and `v_RS = Σ_j κ^j T_j`, `T_j = Σ_v b_v Φ_{r″}(s_{j,v})`.
-fn rs_batch(parts: &[&Vec<F>], rpp: &[F], kap: F) -> (Vec<F>, F) {
+pub(crate) fn rs_batch(parts: &[&Vec<F>], rpp: &[F], kap: F) -> (Vec<F>, F) {
     let mut coef = Vec::with_capacity(parts.len());
     let mut c = F::ONE;
     let mut v = F::ZERO;
@@ -540,7 +544,7 @@ fn node_surrogate(f: &[F], fs: &mut Fs) {
 /// One F sumcheck round as `gen`'s `roundOpsF` checks it; returns the challenge. A real round of
 /// degree 2 checks `c₁ + c₂ = claim`; degree 3 completes `c₃ = claim + c₁ + c₂`; the next claim is
 /// `g(r)`. A dummy round's message must be zero and keeps the claim.
-fn v_round(rd: &mut Reader, f: usize, deg: usize, real: bool, claim: &mut F) -> F {
+pub(crate) fn v_round(rd: &mut Reader, f: usize, deg: usize, real: bool, claim: &mut F) -> F {
     let c = rd.recv_f(f, 3);
     let r = rd.fs.chal_f();
     if !real {
@@ -558,7 +562,7 @@ fn v_round(rd: &mut Reader, f: usize, deg: usize, real: bool, claim: &mut F) -> 
 }
 
 /// `n` rounds from `claim`: the challenges of the real ones (the first `real`).
-fn v_rounds(rd: &mut Reader, f: usize, deg: usize, n: usize, real: usize, claim: &mut F) -> Vec<F> {
+pub(crate) fn v_rounds(rd: &mut Reader, f: usize, deg: usize, n: usize, real: usize, claim: &mut F) -> Vec<F> {
     let mut rs = Vec::with_capacity(real);
     for j in 0..n {
         let r = v_round(rd, f, deg, j < real, claim);

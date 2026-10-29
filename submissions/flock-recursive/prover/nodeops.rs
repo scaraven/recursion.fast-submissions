@@ -139,18 +139,52 @@ fn eq_k(a: K, b: K) -> K {
     K::ONE + a + b
 }
 
+/// The node's blocks as maximal runs of one kind: `(start, end, BK::idx)`, covering `[0, 2^nb)`.
+pub fn kind_runs(k: NK) -> Vec<(usize, usize, usize)> {
+    let mut v: Vec<(usize, usize, usize)> = Vec::new();
+    for t in 0..k.blocks() {
+        let i = bk_at(k, t).idx();
+        match v.last_mut() {
+            Some(r) if r.2 == i && r.1 == t => r.1 = t + 1,
+            _ => v.push((t, t + 1, i)),
+        }
+    }
+    v
+}
+
+/// `Σ_{t < b} Π_l f_l(t_l)` for a product function on `n` bits (`f0`, `f1` the factor's values at
+/// 0 and 1, `low[l] = Π_{l' < l} (f0 + f1)`).
+fn prefix_k(f0: &[K], f1: &[K], low: &[K], b: usize) -> K {
+    let n = f0.len();
+    if b >> n != 0 {
+        return low[n];
+    }
+    let (mut acc, mut hi) = (K::ZERO, K::ONE);
+    for l in (0..n).rev() {
+        if (b >> l) & 1 == 1 {
+            acc += hi * f0[l] * low[l];
+            hi = hi * f1[l];
+        } else {
+            hi = hi * f0[l];
+        }
+    }
+    acc
+}
+
 /// **`rsWeightS4`**: `Σ_j κ^j Σ_{k<128} c_k(r″)·w_j^{(k)}(ρ)` with claim 2 (index 1) weighted by
-/// `kf4` at `β^(2^k)` over the block coordinates (`kwSL4`), the others by `eq`.
+/// `kf4` at `β^(2^k)` over the block coordinates (`kwSL4`), the others by `eq`. Claim 2's block sum
+/// `Σ_t kf(t) eq(q′, t) eq(ρ′, t)` is taken per run of one kind (`kind_runs`), each run by two prefix
+/// sums of the product function (`O(runs · nb)` per stage, not `O(2^nb)`).
 pub fn rs_weight4(k: NK, rpp: &[F], pts: &[Vec<K>], kap: F, beta: F, rho: &[K]) -> K {
     let ck = crate::ringswitch::phi_coeffs(rpp);
     let n = rho.len() - 7;
-    // the kind factor per block at β, then Frobenius powers alongside the points
-    let nbk = 1usize << n;
-    let mut kf: Vec<F> = (0..nbk).map(|t| kf4(k, beta, t)).collect();
+    let runs = kind_runs(k);
     let mut out = K::ZERO;
     let mut kj = F::ONE;
     for (j, p) in pts.iter().enumerate() {
         let mut q = p.clone();
+        // the kind factors β^(i−1), i = 1 … 8, raised to 2^k alongside the stages
+        let mut kf: Vec<F> = (0..9).map(|i| (1..i).fold(F::ONE, |a, _| a * beta)).collect();
         let mut acc = K::ZERO;
         for c in &ck {
             let e = if j == 1 {
@@ -158,22 +192,15 @@ pub fn rs_weight4(k: NK, rpp: &[F], pts: &[Vec<K>], kap: F, beta: F, rho: &[K]) 
                 for l in 0..7 {
                     hi = hi * eq_k(q[l], rho[l]);
                 }
-                // Σ_t kf(t) eq(q′, t) eq(ρ′, t)
-                let mut tab = vec![K::ONE; nbk];
-                let mut len = 1usize;
-                for l in (0..n).rev() {
-                    let (a, b) = (q[7 + l], rho[7 + l]);
-                    let (e1, e0) = (a * b, (K::ONE + a) * (K::ONE + b));
-                    for i in (0..len).rev() {
-                        let v = tab[i];
-                        tab[2 * i] = v * e0;
-                        tab[2 * i + 1] = v * e1;
-                    }
-                    len *= 2;
+                let f1: Vec<K> = (0..n).map(|l| q[7 + l] * rho[7 + l]).collect();
+                let f0: Vec<K> = (0..n).map(|l| (K::ONE + q[7 + l]) * (K::ONE + rho[7 + l])).collect();
+                let mut low = vec![K::ONE; n + 1];
+                for l in 0..n {
+                    low[l + 1] = low[l] * (f0[l] + f1[l]);
                 }
                 let mut s = K::ZERO;
-                for t in 0..nbk {
-                    s += tab[t].mulf(kf[t]);
+                for &(a, b, i) in &runs {
+                    s += (prefix_k(&f0, &f1, &low, b) + prefix_k(&f0, &f1, &low, a)).mulf(kf[i]);
                 }
                 hi * s
             } else {
@@ -188,9 +215,6 @@ pub fn rs_weight4(k: NK, rpp: &[F], pts: &[Vec<K>], kap: F, beta: F, rho: &[K]) 
             if j == 1 {
                 kf.iter_mut().for_each(|x| *x = x.sq());
             }
-        }
-        if j == 1 {
-            kf = (0..nbk).map(|t| kf4(k, beta, t)).collect();
         }
         out += acc.mulf(kj);
         kj *= kap;

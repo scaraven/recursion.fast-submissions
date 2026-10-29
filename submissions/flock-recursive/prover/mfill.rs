@@ -1,4 +1,4 @@
-//! The node's M region (BLUEPRINT §4.3–4.4, A.7; S-E12b–d's node dump, `logs/S-E12d/nodedump/`):
+//! The node's M region (BLUEPRINT §4.3–4.4, A.7; S-E12b–d and INT-9 node dump, `logs/INT-9/nodedump/`):
 //! the loader of the dumped prototype rows (`mrows-p{π}`), register forms (`mregs-p{π}`),
 //! auxiliary imports (`maux-p{π}`) and per-kind slot tables (`node-N*.txt`), and the **slot fill**:
 //! the prototype program run on the slot's child (`ir::run_regs`, at the slot's kind index), its
@@ -156,6 +156,10 @@ fn num(s: &str) -> usize {
 impl KindTab {
     pub fn load(path: &Path) -> KindTab {
         let text = std::fs::read_to_string(path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+        Self::parse(&text)
+    }
+    /// `node-N*.txt`'s text.
+    pub fn parse(text: &str) -> KindTab {
         let mut lines = text.lines();
         let h = lines.next().unwrap();
         let name = h.trim_start_matches("# ").split(':').next().unwrap().rsplit('.').next().unwrap().to_string();
@@ -410,6 +414,17 @@ pub fn fill(p: &Proto, run: SlotRun) -> (Vec<F>, FillStats) {
         let [a, b, c] = rw.eval(i, &|x| val[(x - base) as usize]);
         if a * b != c {
             st.failed_rows += 1;
+            if st.failed_rows <= 2 && std::env::var_os("FLOCK_FILL_DEBUG").is_some() {
+                let rg = rw.rng[i];
+                let mut d = format!("row {} a={a:?} b={b:?} c={c:?}:", rw.idx[i]);
+                for m in 0..3 {
+                    for t in rg[m] as usize..rg[m + 1] as usize {
+                        let l = (rw.cells[t] - base) as usize;
+                        d.push_str(&format!(" [{m}] {}={:x}{:x} k={}", rw.cells[t], val[l].hi, val[l].lo, known[l]));
+                    }
+                }
+                eprintln!("{d}");
+            }
             if st.first_failed.len() < 12 {
                 st.first_failed.push(rw.idx[i]);
             }
@@ -440,10 +455,13 @@ pub fn fill(p: &Proto, run: SlotRun) -> (Vec<F>, FillStats) {
 }
 
 /// One row with one unknown cell, solved in place: `(a0 + αx)(b0 + βx) = c0 + γx` with one of
-/// `α`, `β` zero gives `x·(a0β + αb0 + γ) = a0b0 + c0`. Returns the solved cell (region-local).
+/// `α`, `β` zero gives `x·(a0β + αb0 + γ) = a0b0 + c0`. A row whose `A` (or `B`) is known and zero
+/// is `C = 0`, solved for `C`'s one unknown whatever the other factor's (an inverse gate at `0`:
+/// `0·i = s` gives `s = 0`, S-E12e's `tplShiftSeg`). Returns the solved cell (region-local).
 fn try_row(rw: &Rows, base: u32, i: usize, val: &mut [F], known: &mut [bool]) -> Option<usize> {
     let rg = rw.rng[i];
-    let mut unk: Option<usize> = None;
+    let mut unk: [Option<usize>; 3] = [None; 3];
+    let mut multi = [false; 3];
     let mut kn = [F::ZERO; 3];
     let mut co = [F::ZERO; 3];
     for k in 0..3 {
@@ -452,27 +470,41 @@ fn try_row(rw: &Rows, base: u32, i: usize, val: &mut [F], known: &mut [bool]) ->
             if known[l] {
                 kn[k] += rw.coefs[t] * val[l];
             } else {
-                match unk {
-                    None => unk = Some(l),
+                match unk[k] {
+                    None => unk[k] = Some(l),
                     Some(u) if u == l => {}
-                    _ => return None,
+                    _ => multi[k] = true,
                 }
                 co[k] += rw.coefs[t];
             }
         }
     }
-    let u = unk?;
-    if !co[0].is_zero() && !co[1].is_zero() {
-        return None;
+    let solve = |u: usize, lin: F, rhs: F, val: &mut [F], known: &mut [bool]| -> Option<usize> {
+        if lin.is_zero() {
+            return None;
+        }
+        val[u] = if lin == F::ONE { rhs } else { rhs * lin.inv() };
+        known[u] = true;
+        Some(u)
+    };
+    let cells: Vec<usize> = {
+        let mut v: Vec<usize> = unk.iter().flatten().copied().collect();
+        v.sort_unstable();
+        v.dedup();
+        v
+    };
+    if cells.len() == 1 && !multi.iter().any(|&m| m) {
+        if !co[0].is_zero() && !co[1].is_zero() {
+            return None;
+        }
+        return solve(cells[0], kn[0] * co[1] + co[0] * kn[1] + co[2], kn[0] * kn[1] + kn[2], val, known);
     }
-    let lin = kn[0] * co[1] + co[0] * kn[1] + co[2];
-    if lin.is_zero() {
-        return None;
+    // a known zero factor: the row is `C = 0`
+    let zero_factor = (unk[0].is_none() && kn[0].is_zero()) || (unk[1].is_none() && kn[1].is_zero());
+    match (zero_factor, unk[2], multi[2]) {
+        (true, Some(u), false) => solve(u, co[2], kn[2], val, known),
+        _ => None,
     }
-    let rhs = kn[0] * kn[1] + kn[2];
-    val[u] = if lin == F::ONE { rhs } else { rhs * lin.inv() };
-    known[u] = true;
-    Some(u)
 }
 
 /// The worklist solve (cell → rows adjacency) to a fixed point; returns the order `(row, cell)`.
@@ -513,12 +545,12 @@ fn worklist(rw: &Rows, base: u32, val: &mut [F], known: &mut [bool]) -> Vec<(u32
     rec
 }
 
-/// The dump directory (`FLOCK_NODE_DUMP`, else `logs/S-E12d/nodedump` above the working directory)
+/// The dump directory (`FLOCK_NODE_DUMP`, else `logs/INT-9/nodedump` above the working directory)
 /// and the prototype programs' directory (`FLOCK_PROTO_DIR`, else the dump directory).
 pub fn find_dirs() -> Option<(std::path::PathBuf, std::path::PathBuf)> {
     let d = match std::env::var_os("FLOCK_NODE_DUMP") {
         Some(p) => std::path::PathBuf::from(p),
-        None => crate::kat::find_up("logs/S-E12d/nodedump/mrows-p0.txt")?.parent()?.to_path_buf(),
+        None => crate::kat::find_up("logs/INT-9/nodedump/mrows-p0.txt")?.parent()?.to_path_buf(),
     };
     let p = std::env::var_os("FLOCK_PROTO_DIR").map(std::path::PathBuf::from).unwrap_or_else(|| d.clone());
     Some((d, p))

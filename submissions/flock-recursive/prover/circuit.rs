@@ -279,6 +279,34 @@ impl Circuit {
         Self::build_with(false)
     }
 
+    /// **The base block matrix** (`FRBlake2sCircuit.toBlockR1CS blake2sCircuit`, A.6): the general
+    /// tape with every input row `(var k, one)` (`0 … 255`, `512 … 1151`) and `(one, one)` at the
+    /// constant position; a kind's matrix is this one with its pinned rows zeroed (`maskRows`). The
+    /// node's walk (`walkAB`) runs on it; on the chain kind's rows it equals `build()`'s.
+    pub fn build_base() -> Circuit {
+        let mut c = Self::build_with(false);
+        let mut var_of = vec![0u32; BLOCK];
+        for (i, nd) in c.nodes.iter().enumerate() {
+            if let Node::Var(p) = *nd {
+                if var_of[p as usize] == 0 {
+                    var_of[p as usize] = i as u32;
+                }
+            }
+        }
+        let one = c.v512;
+        for k in (0..256).chain(512..CPOS) {
+            assert!(c.rows[k].is_none(), "input position {k} has a gate");
+            let mut v = var_of[k];
+            if v == 0 {
+                c.nodes.push(Node::Var(k as u32));
+                v = (c.nodes.len() - 1) as u32;
+            }
+            c.rows[k] = Some((v, one));
+        }
+        c.rows[CPOS] = Some((one, one));
+        c
+    }
+
     fn build_with(chain: bool) -> Circuit {
         let mut b = Builder { nodes: vec![Node::Zero], var_of: vec![0; BLOCK], next: GATE_BASE, gates: vec![] };
         let v512 = b.var(CPOS);

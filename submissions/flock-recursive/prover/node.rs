@@ -450,11 +450,14 @@ pub struct AggIn<'a> {
 }
 
 /// A previous-node child: the signed proof, its statement, its kind index in prototype 0 (`N4` 0,
-/// `N2` 1, `N8` 2).
+/// `N2` 1, `N8` 2), and its kind's context for its program's node ops (the slot's run).
 pub struct PrevIn<'a> {
     pub signed: &'a format::Signed,
     pub c: Digest,
     pub ix: usize,
+    pub ctx: std::sync::Arc<crate::ir::NodeCtx>,
+    /// The base block matrix (`walkAB` of a node program).
+    pub base: &'a Circuit,
 }
 
 /// Split an aggregate's signed proof into its segments (`π_A = hdr_A ‖ π_1 ‖ …`, `tr_A = tr_1 ‖ …`).
@@ -767,7 +770,11 @@ pub fn witness(k: NK, vk: &Digest, prev: Option<&PrevIn>, aggs: &[AggIn], protos
         match j.run {
             Some((pi, tr, c, ix)) => {
                 let o = crate::oracle::Seq::new(tr);
-                let (r, regs) = crate::ir::run_regs(&crate::ir::spec_kind(&texts[j.proto], ix), lcirc, &o, vk, &c, pi);
+                let text = crate::ir::spec_kind(&texts[j.proto], ix);
+                let (r, regs) = match prev {
+                    Some(p) if j.proto == 0 => crate::ir::run_node_regs(&text, p.ctx.clone(), p.base, &o, vk, &c, pi),
+                    _ => crate::ir::run_regs(&text, lcirc, &o, vk, &c, pi),
+                };
                 let mut st = mfill::FillStats::default();
                 if !r.ok || !o.consumed() {
                     st.first_conflicts.push(format!("slot {v}: program run ok={} failed={:?} consumed={}", r.ok, r.failed, o.consumed()));

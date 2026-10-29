@@ -10,6 +10,10 @@
 //!   flock-prover prove-agg N --start HEX --out FILE [--reps R]
 //!                                                 the aggregate leaf `A` of a chain of N steps
 //!                                                 (segments L32/L31) through the service, signed
+//!   flock-prover first WORK | step WORK           the stream (PROVER.md §3): N8 from chainA/B.json;
+//!                                                 N2/N4 from prev.stmt, prev.bin, chain.json
+//!   flock-prover node-kat N8|N4|N2 [--prev FILE] [--agg N] [--prove] [--out-signed FILE]
+//!   flock-prover plan-build [--out FILE] | plan-kat   the embedded node data (plan form)
 //!   flock-prover acc --vk HEX --stmt HEX FILE     the native `acc` on a signed-proof file
 //! Environment: FLOCK_THREADS (default all CPUs), FLOCK_TIER (force `portable`, `pclmul`, `ymm`).
 #![allow(clippy::needless_range_loop, clippy::too_many_arguments, dead_code)]
@@ -31,17 +35,20 @@ mod merkle;
 mod mfill;
 mod node;
 mod nodeops;
+mod nodeprove;
 mod mle;
 mod nodeshape;
 mod ntt;
 mod oracle;
 mod par;
 mod params;
+mod plan;
 mod prof;
 mod ringswitch;
 mod service;
 mod simd;
 mod skipdom;
+mod stream;
 mod sumcheck;
 mod transcript;
 mod witness;
@@ -68,7 +75,7 @@ fn arg(args: &[String], name: &str) -> Option<String> {
     args.iter().position(|a| a == name).and_then(|i| args.get(i + 1).cloned())
 }
 
-fn peak_rss_mb() -> f64 {
+pub fn peak_rss_mb() -> f64 {
     let s = std::fs::read_to_string("/proc/self/status").unwrap_or_default();
     for l in s.lines() {
         if let Some(v) = l.strip_prefix("VmHWM:") {
@@ -132,7 +139,15 @@ pub fn acc_with(top: Top, circ: &circuit::Circuit, vk: &Digest, c: &Digest, file
             _ => agg::verify(&seq, circ, vk, c, &p.pi),
         },
         _ if ir::seg_cap(b).is_some() => return Err("a bare segment proof (V4with: rejected)".into()),
-        (_, 0x4D..=0x4F) => return Err("a node proof: the node verifier is not built natively".into()),
+        // a node: the kind's dumped program (prototype 0's at the kind's index, real cells) with its
+        // node ops, and the statement fact `stmtOk4` after the run (INT-8)
+        (_, 0x4D..=0x4F) => {
+            let k = node::NK::of_byte(b).unwrap();
+            let nd = plan::node_data();
+            let ctx = std::sync::Arc::new(ir::NodeCtx { k, protos: nd.protos.clone(), kt: std::sync::Arc::new(nd.kind_tab(k)) });
+            let base = circuit::Circuit::build_base();
+            ir::run_node(&nd.node_program(k), ctx, &base, &seq, vk, c, &p.pi).ok && nodeprove::stmt_ok4(&p.pi, c)
+        }
         _ => return Err("a W proof: not built natively".into()),
     };
     if !ok {
@@ -205,13 +220,21 @@ impl oracle::Oracle for Tape<'_> {
 fn node_kat(args: &[String]) {
     let kind = match args.get(2).map(|s| s.as_str()) {
         Some("N8") | None => node::NK::N8,
-        Some(k) => service::fatal(&format!("node-kat: {k} needs a previous node (not built yet)")),
+        Some("N4") => node::NK::N4,
+        Some("N2") => node::NK::N2,
+        Some(k) => service::fatal(&format!("node-kat: kind {k}")),
     };
-    let (dd, pd) = mfill::find_dirs().unwrap_or_else(|| service::fatal("no node dump (FLOCK_NODE_DUMP)"));
+    // `N2`/`N4`: the previous node (`--prev FILE`, a signed node proof, e.g. `--out-signed`'s)
+    let prev_signed = kind.has_prev().then(|| {
+        let p = arg(args, "--prev").unwrap_or_else(|| service::fatal("node-kat N2/N4: --prev FILE"));
+        format::from_file(&std::fs::read(&p).expect("read --prev")).unwrap_or_else(|| service::fatal("--prev: not a signed proof"))
+    });
+    // the node data: the embedded blob (plan form), or the dumps when FLOCK_NODE_DUMP is set
     let t = Instant::now();
-    let protos = [mfill::Proto::load(&dd, 0), mfill::Proto::load(&dd, 1)];
-    let texts = [0, 1].map(|p| std::fs::read_to_string(pd.join(format!("proto-p{p}.txt"))).unwrap_or_else(|_| service::fatal("proto-p*.txt (FLOCK_PROTO_DIR)")));
-    let kt = mfill::KindTab::load(&dd.join(format!("node-{}.txt", kind.name())));
+    let nd = plan::node_data();
+    let protos = nd.protos.clone();
+    let texts = nd.texts.clone();
+    let kt = std::sync::Arc::new(nd.kind_tab(kind));
     println!("NODE-KAT load {:.2}s", t.elapsed().as_secs_f64());
     let m: usize = arg(args, "--m").map(|x| x.parse().unwrap()).unwrap_or(32);
     let n = seg_n(args, m);
@@ -221,22 +244,32 @@ fn node_kat(args: &[String]) {
     let (vk, _) = format::toy_sign(9, &[0u8; 32]);
     let mut signed = Vec::new();
     for a in 0..kind.n_agg() {
-        let s: Digest = std::array::from_fn(|i| i as u8 ^ (0x33 + a as u8));
+        let s: Digest = std::array::from_fn(|i| i as u8 ^ (0x33 + a as u8 + 16 * kind.has_prev() as u8));
         let t = Instant::now();
-        let (p, _) = leaf::prove_seg(&o, &circ, &vk, &s, m, n);
-        let mut pi = vec![0u8; 48];
-        pi[0] = 0x41;
-        pi[1] = 1;
-        pi[8..16].copy_from_slice(&n.to_le_bytes());
+        // `--agg N`: the aggregate of N steps by the split rule; else one `L{m}` segment of `n`
+        let (n, pi) = match arg(args, "--agg") {
+            Some(x) => {
+                let na: u64 = x.parse().expect("--agg N");
+                (na, agg::prove(&o, &circ, &vk, &s, na, 32).0)
+            }
+            None => {
+                let (p, _) = leaf::prove_seg(&o, &circ, &vk, &s, m, n);
+                let mut pi = vec![0u8; 48];
+                pi[0] = 0x41;
+                pi[1] = 1;
+                pi[8..16].copy_from_slice(&n.to_le_bytes());
+                pi[16..48].copy_from_slice(&blake2s::chain_end(&s, n));
+                pi.extend_from_slice(&p);
+                (n, pi)
+            }
+        };
         let e = blake2s::chain_end(&s, n);
-        pi[16..48].copy_from_slice(&e);
-        pi.extend_from_slice(&p);
         let c = leaf_stmt(&e, n);
         let tape = Tape(&o, std::sync::Mutex::new(Vec::new()));
         let ok = agg::verify(&tape, &circ, &vk, &c, &pi);
         let tr = tape.1.into_inner().unwrap();
         let (_, sig) = format::toy_sign(9, &format::trace_digest(&tr));
-        println!("NODE-KAT aggregate {a}: L{m} n={n} prove {:.2}s V_A={ok} |tr|={}", t.elapsed().as_secs_f64(), tr.len());
+        println!("NODE-KAT aggregate {a}: k={} n={n} prove {:.2}s V_A={ok} |tr|={}", pi[1], t.elapsed().as_secs_f64(), tr.len());
         signed.push(format::Signed { pi, tr, sig });
     }
     let aggs: Vec<node::AggIn> = signed.iter().map(node::agg_in).collect();
@@ -244,7 +277,16 @@ fn node_kat(args: &[String]) {
     node::warm_plans(&protos);
     println!("NODE-KAT inactive plans {:.2}s (before a request)", t.elapsed().as_secs_f64());
     let t = Instant::now();
-    let w = node::witness(kind, &vk, None, &aggs, &protos, &texts, &gcirc, &circ);
+    let base = circuit::Circuit::build_base();
+    let prev_in = prev_signed.as_ref().map(|ps| {
+        let pk = node::NK::of_byte(ps.pi[0]).unwrap_or_else(|| service::fatal("--prev: not a node proof"));
+        let st = &ps.pi[params::field_off(params::F_STMT)..];
+        let c = nodeprove::node_c(&[st[1..33].try_into().unwrap(), st[33..65].try_into().unwrap()]);
+        let ctx = std::sync::Arc::new(ir::NodeCtx { k: pk, protos: protos.clone(), kt: std::sync::Arc::new(nd.kind_tab(pk)) });
+        println!("NODE-KAT previous node {} |tr|={}", pk.name(), ps.tr.len());
+        node::PrevIn { signed: ps, c, ix: [1, 0, 2][pk as usize], ctx, base: &base }
+    });
+    let w = node::witness(kind, &vk, prev_in.as_ref(), &aggs, &protos, &texts, &gcirc, &circ);
     println!("NODE-KAT witness {:.2}s {:?}", t.elapsed().as_secs_f64(), w.times);
     for (v, st) in w.mstats.iter().enumerate() {
         println!("NODE-KAT slot {v}: {st:?}");
@@ -252,6 +294,54 @@ fn node_kat(args: &[String]) {
     let t = Instant::now();
     let ch = node::check(&w, &protos, &kt);
     println!("NODE-KAT check {:.2}s {ch:?} peak_rss_mb={:.0}", t.elapsed().as_secs_f64(), peak_rss_mb());
+    if !args.iter().any(|a| a == "--prove") {
+        return;
+    }
+    // the node proof, then INT-8's dumped program of the kind on it (real cells), and the canaries
+    let cs: [Digest; 2] = match &prev_in {
+        Some(p) => [p.c, aggs[0].c],
+        None => [aggs[0].c, aggs[1].c],
+    };
+    let ni = nodeprove::NodeIn { k: kind, vk, cs, w: &w, mats: nodeprove::Mats { k: kind, kt: &kt, protos: &protos }, base: &base };
+    let t = Instant::now();
+    let (pi, tm) = nodeprove::prove(&o, &ni);
+    println!("NODE-PROVE {} {:.2}s |pi|={} pi_b2s={} {} peak_rss_mb={:.0}", kind.name(), t.elapsed().as_secs_f64(), pi.len(), hexs(&blake2s::blake2s256(&pi)), tm.report(), peak_rss_mb());
+    if let Some(p) = arg(args, "--out") {
+        std::fs::write(&p, &pi).expect("write");
+    }
+    let c = nodeprove::node_c(&cs);
+    let Some(d) = kat::find_ir_dump() else { service::fatal("no IR dump (FLOCK_IR_DUMP)") };
+    let raw = std::fs::read_to_string(d.join(format!("ops-{}.txt", kind.name()))).expect("ops-N*.txt");
+    let ph: Vec<usize> = (0..9).map(|j| kind.one_cell() + j).collect();
+    let text = ir::with_cells(&raw, &ph, &kind.cells4(), params::M_STAR - 7).unwrap_or_else(|| service::fatal("the dump's cells are not the placeholders"));
+    // the embedded group program at the kind's index is the dumped fixed program (INT-8 `Op.at`)
+    let gtext = nd.node_program(kind);
+    println!("NODE-IR proto-p0 at {} = ops-{} (real cells): {}", kind.name(), kind.name(), gtext == text);
+    let ctx = std::sync::Arc::new(ir::NodeCtx { k: kind, protos: protos.clone(), kt: kt.clone() });
+    let t = Instant::now();
+    let tape = Tape(&o, std::sync::Mutex::new(Vec::new()));
+    let r = ir::run_node(&text, ctx.clone(), &base, &tape, &vk, &c, &pi);
+    let tr = tape.1.into_inner().unwrap();
+    if let Some(p) = arg(args, "--out-signed") {
+        // the accepted proof with its trace, signed by the test signer (a later node's `--prev`)
+        let (_, sig) = format::toy_sign(9, &format::trace_digest(&tr));
+        std::fs::write(&p, format::to_file(&format::Signed { pi: pi.clone(), tr, sig })).expect("write");
+    }
+    let st = nodeprove::stmt_ok4(&pi, &c);
+    println!("NODE-IR {} ok={} stmtOk4={st} failed={:?} asks={} {:.2}s", kind.name(), r.ok, r.failed, r.asks, t.elapsed().as_secs_f64());
+    // canaries: another statement; a flipped byte in the E field; the placeholder-cell program
+    let mut c2 = c;
+    c2[3] ^= 0x40;
+    let k1 = ir::run_node(&text, ctx.clone(), &base, &o, &vk, &c2, &pi).ok && nodeprove::stmt_ok4(&pi, &c2);
+    let mut p2 = pi.clone();
+    p2[params::field_off(params::F_E) + 100] ^= 1;
+    let k2 = ir::run_node(&text, ctx.clone(), &base, &o, &vk, &c, &p2).ok;
+    let k3 = ir::run_node(&raw, ctx, &base, &o, &vk, &c, &pi).ok;
+    println!("NODE-IR canaries accepted: stmt={k1} flipped_E={k2} placeholder_cells={k3}");
+}
+
+fn hexs(b: &[u8]) -> String {
+    b.iter().map(|x| format!("{x:02x}")).collect()
 }
 
 fn test_leaf(m: usize, n: u64, reps: usize) {
@@ -617,6 +707,42 @@ fn main() {
         },
         "mfill-kat" => mfill_kat(&args),
         "node-kat" => node_kat(&args),
+        "first" | "step" => stream::run(args[1] == "first", std::path::Path::new(args.get(2).map(|s| s.as_str()).unwrap_or("."))),
+        "plan-build" => {
+            // the node blob from the dumps (FLOCK_NODE_DUMP, FLOCK_PROTO_DIR, FLOCK_IR_DUMP)
+            let (dd, _) = mfill::find_dirs().unwrap_or_else(|| service::fatal("no node dump"));
+            let t = Instant::now();
+            let (b64, rep) = plan::build_blob(&dd);
+            let out = arg(&args, "--out").unwrap_or_else(|| "nodeblob.b64".into());
+            std::fs::write(&out, &b64).expect("write");
+            print!("{rep}");
+            println!("PLAN-BUILD {} B to {out} in {:.1}s (from {})", b64.len(), t.elapsed().as_secs_f64(), dd.display());
+        }
+        "plan-kat" => {
+            // the embedded blob's rebuild against the full dump
+            let t = Instant::now();
+            let nd = plan::decode_blob(plan::BLOB);
+            let dt = t.elapsed().as_secs_f64();
+            let (dd, pd) = mfill::find_dirs().unwrap_or_else(|| service::fatal("no node dump"));
+            let mut ok = true;
+            for pi in 0..2 {
+                let p = mfill::Proto::load(&dd, pi);
+                let r = plan::proto_eq(&nd.protos[pi], &p);
+                println!("PLAN-KAT p{pi}: rows {} terms {} regs {} aux {}: {:?}", p.rows.len(), p.rows.cells.len(), p.regs.len(), p.aux.len(), r);
+                ok &= r.is_ok();
+                let tx = std::fs::read_to_string(pd.join(format!("proto-p{pi}.txt"))).unwrap_or_default();
+                println!("PLAN-KAT proto-p{pi}.txt equal: {}", tx == nd.texts[pi]);
+                ok &= tx == nd.texts[pi];
+            }
+            for (i, k) in ["N2", "N4", "N8"].iter().enumerate() {
+                let tx = std::fs::read_to_string(dd.join(format!("node-{k}.txt"))).unwrap_or_default();
+                ok &= tx == nd.kinds[i];
+            }
+            println!("PLAN-KAT decode {dt:.2}s (blob {} B) all equal: {ok}", plan::BLOB.len());
+            if !ok {
+                std::process::exit(1);
+            }
+        }
         "test-leaf" => {
             let m: usize = args[2].parse().expect("M");
             test_leaf(m, seg_n(&args, m), reps)

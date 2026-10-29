@@ -308,3 +308,75 @@
 - `cargo test --release`: 37 passed, 1 ignored. `prover.s` sha256 `a2890a65…ab42e` (8,108,075 B).
 - Stopped here (context): RESULT §16.6 is the handover (the node PIOP for N8 first; then N4/N2 on
   INT-8's re-dump with `proto-p*.txt`; modes; where the rows come from on the runner; timings).
+
+## Pass 9 (track P2⁵, revision 4.1/4.3: the node PIOP, N8 first), 2026-10-29
+
+- Read TRACK-RULES, P2-RESULT §15–§16 (§16.6 handover), INT-8-RESULT "For P2", the A.9 node finals
+  (`FRVIRFinals.lean`: `finLc`/`lcTail`'s `free` term, `finSh` node form, `finLr`; `FRVIRFinals4`:
+  `gFinE`, `gFinB'`, `gFinPf` with `gCellOpsK`), `FRBlake2sCircuit.rowOf` (the base block matrix:
+  inputs `(var k, one)` at 0…255, 512…1151; `(one, one)` at 1152).
+- Default dumps moved to `logs/INT-8/dump` (`items.json` byte-identical to S-F4's). Leaf KATs on
+  INT-8's uniform `ops-L30/31/32` at n = 777: accepted, canaries rejected, 8,905 asks.
+- `circuit.rs`: `Circuit::build_base()` (A.6's base matrix; the node's `walkAB`). On the chain
+  kind's rows it equals `build()`'s.
+- `nodeprove.rs` (new): Z (all blocks, `targetS` the node's), Lc (7 H kinds by `maskRows` on the
+  base matrix + `free` `(1+α)·rowW`, one 8-pair sumcheck; per-kind partial folds in one pass),
+  Sh (rank-one terms keyed by slot weight: `Out` masked by `chainLk4`, `In` = `shift_in_table`, the
+  8 link families' source and mirror slots at `κ_s^{f+2}`; then the 10-round collapse), Lr
+  (`b·(one+b)`, Gruen zerocheck from 0), E2 (M rows, `eq·(ab + c)`), E4 (`W_M(r_E2) + κ_E³ W_L(r_Lr)`
+  scattered, then the 25-round lincheck), RS (4 claims; Lc's outer weight × `kf4`, new
+  `ringswitch::weight_table_kf`), B′ (the 9 cells at `κ′^{j+2}` in Ligerito's weight and claim).
+- `ir::with_cells`: INT-8's `ops-N*.txt` carry the placeholder cells `oneCell + j`; the real cells
+  (`cells4`) enter only as `finPf`'s 9 × 25 `keep` flags, so the reader rewrites them (checking the
+  placeholders' bits first).
+- **First N8 node proof** (`node-kat N8 --m 32 --n 3 --prove`, two aggregates of one L32 segment,
+  S-E12d's M rows, `logs/P2/r41p9/node-prove-1.txt`): every prover-side sum check holds; **INT-8's
+  dumped `ops-N8` (real cells) accepts, 8,905 asks, `stmtOk4` holds**; canaries rejected: another
+  statement, a flipped E byte, and the placeholder-cell program. VM portable tier: prove 20.7 s
+  (round 1 6.3 s, E4 3.9 s, Ligerito 3.2 s), peak 5.9 GB; the IR run 35 s.
+- **Item 2, plan form.** First my own derivation from S-E12d's dump (templates = canonical
+  instances, 32 per prototype; 13.6 MB base64, KAT equal). Then INT-9 landed (`logs/INT-9/nodedump`,
+  `plan-form-p{π}.bin`, SHA256SUMS OK): `plan.rs` now reads INT-9's format (`read_planform`, by the
+  README), and the blob (`nodeblob.b64`, `include_str!`) holds the two plan forms raw, the register
+  forms and imports varint-coded, `proto-p{π}.txt`, `node-N*.txt`; LZ77 + base64: **5,429,184 B**
+  (raw 14.5 MB, LZ 4.07 MB). `plan-kat` (`plan-kat-2.txt`): rows 428,815 / 427,104 equal `mrows` in
+  order (cells, coefficients, ranges), register forms, imports, programs equal; decode 0.31 s.
+  My derivation was dropped. The node path reads the blob unless `FLOCK_NODE_DUMP` is set.
+- INT-9's prototypes: the fill failed 5 rows per active segment slot (S-E12e's `tplShiftSeg`: an
+  inverse gate at `x = 0` leaves `i, s` unsolvable by single-unknown rows, and a later product row
+  then has two unknowns). `try_row` now also solves a row with a known zero factor as `C = 0`.
+  After that all rows hold.
+- The proto-0 slot runs the previous node's program: it needs the node ops (`NodeCtx`) and the base
+  matrix for `walkAB`: `ir::run_node_regs`, `PrevIn { ctx, base }`.
+- `ir::with_cells`'s coordinate count is the group's `nc = m* − 7 = 25` for every node kind (N2 too).
+- **Item 3, all on INT-9's data from the blob** (`logs/P2/r41p9/`): N8 (2 × k=1 L32; 2 × k=2
+  L32+L31) → `n8.signed`; N4 on N8 (k = 2, 3); N2 on N8 (k = 2) → `n2.signed`; N4 on N4; N2 on N2.
+  Every proof accepted by the kind's dumped program (real cells; `proto-p0` at the kind's index is
+  the same program), `stmtOk4` holds, 8,905 asks; canaries (another statement, a flipped E byte,
+  the placeholder-cell program) rejected. Every node relation checked clean before proving.
+- VM times (portable F): N8 prove 19.5 s, N4 19 s, N2 9.6 s; the previous node's program run
+  inside the witness costs 35 s (N8/N4) / 17 s (N2) in the IR interpreter.
+- `rsWeight`'s node form (`nodeops::rs_weight4`) was a brute force over the 2^18 blocks per stage:
+  34 s of the previous node's 35 s program run (FLOCK_IRPROF). Now per run of one kind
+  (`kind_runs`) by two prefix sums of the product function: `node_ops_match_lean` (the Lean's 24 KAT
+  lines) still equal, the test 176 → 5 s; the slot-0 witness 39 → 5.6–7.5 s on the VM.
+- **Item 4, `first`/`step`** (`stream.rs`): chain files → aggregates (prove with the service's
+  answers recorded, replay, SIGN) → node witness → node proof (recorded) → the node's trace by
+  replaying the kind's program without its node ops (the item sequence does not depend on them;
+  0.2–0.35 s) → SIGN → `proof.bin`. `step` picks N2 for ≤ 2 segments, N4 for 3–4. The native
+  `acc` now accepts node files: the kind's program (prototype 0's at the kind's index) with its
+  node ops, then `stmtOk4`. `probe/p2t9/stream.sh` (local, `logs/P2/r41p9/stream-local2/`, the
+  asm-built binary, node data from the embedded blob only): first N8 (131,077 + 70,001), step N4
+  (524,295, k = 3), step N2 (150,001): every output accepted by the native `acc`, every canary
+  rejected; VM totals 44.7 / 58.3 / 26.4 s.
+- Test `nodeprove::tests::node_n8_accepted` (N8 over two signed aggregates; accepted, 8,905 asks,
+  `stmtOk4`; rejected: another statement, a flipped byte in Z2, L2, S2, Lr, E, RS0).
+  `cargo test --release`: 40 passed, 1 ignored (`cargo-test.txt`). Source rule: 313 files, 0.
+- `prover.s` regenerated: 14,630,224 B, sha256 `9b4e7690…eb57` (`build-asm.log`); the runner's
+  link (`gcc -static -O2 -pthread`, 4 cores) 1.14 s against `build_s = 120 s`.
+- Probes `probe/p2t-9a/9b/9c` (commit `ae083d0` on HEAD `39fb161`, temporary index: prover/,
+  probe/p2t9, `.github/probe.conf`): runs 40801562683, 40801564683, 40801567863.
+- Runner probes (3 × EPYC 7763): every runner rebuilt `prover.s` byte for byte; streams of 7 outputs
+  (N8, N2 ×4, N4 ×2): 21 accepted by the native `acc`, 21 canaries rejected. Node prove N8 7.4–7.5 s,
+  N4 7.5–7.9 s, N2 3.7–3.9 s (model 4.8 / 4.1 / 2.4); RS is the largest excess (1.45–1.7 s).
+  Branches deleted. RESULT §17 written (17.9: the handover).

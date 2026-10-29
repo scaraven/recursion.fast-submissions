@@ -217,6 +217,47 @@ pub fn spec_kind(text: &str, ix: usize) -> String {
     out
 }
 
+/// **The node program with its real public cells** (INT-8 dumped `progNode` with the placeholder
+/// cells `oneCell + j`, `IRDump8.cellsPH`; a cell enters only as `finPf`'s `nc` per-coordinate
+/// `keep (bit v of cell)` ops, `gCellOpsK`). Finds, after the `rsWeight` op, the `cells.len()` runs
+/// of `nc` consecutive `keep` ops, checks each run's flags are the placeholder's bits, and writes the
+/// real cell's bits. `None` if the program does not have that shape.
+pub fn with_cells(text: &str, ph: &[usize], real: &[usize], nc: usize) -> Option<String> {
+    let lines: Vec<&str> = text.lines().collect();
+    let start = lines.iter().position(|l| l.starts_with("rsWeight "))?;
+    let mut runs: Vec<usize> = Vec::new();
+    let mut i = start;
+    while i < lines.len() && runs.len() < ph.len() {
+        if lines[i].starts_with("keep ") {
+            let j = (i..lines.len()).find(|&j| !lines[j].starts_with("keep ")).unwrap_or(lines.len());
+            if j - i == nc {
+                runs.push(i);
+            }
+            i = j;
+        } else {
+            i += 1;
+        }
+    }
+    if runs.len() != ph.len() {
+        return None;
+    }
+    let mut out: Vec<String> = lines.iter().map(|l| l.to_string()).collect();
+    for (r, (&p, &c)) in runs.iter().zip(ph.iter().zip(real.iter())) {
+        for v in 0..nc {
+            let l = &lines[r + v];
+            let want = if (p >> v) & 1 == 1 { "keep true " } else { "keep false " };
+            if !l.starts_with(want) {
+                return None;
+            }
+            let rest = &l[want.len()..];
+            out[r + v] = format!("keep {} {rest}", (c >> v) & 1 == 1);
+        }
+    }
+    let mut s = out.join("\n");
+    s.push('\n');
+    Some(s)
+}
+
 /// A node kind's context for its program's node ops (`targetS`, `shiftMask`, `linkWAll`, the kind
 /// factor of `rsWeight`, `evalM`/`evalL` over the dumped rows): `nodeops.rs`'s specification forms.
 pub struct NodeCtx {
@@ -237,6 +278,14 @@ pub fn run_node(text: &str, ctx: std::sync::Arc<NodeCtx>, circ: &crate::circuit:
     r
 }
 
+/// `run_regs` of a node kind's program (its node ops from `ctx`): the M fill of a previous-node slot.
+pub fn run_node_regs(text: &str, ctx: std::sync::Arc<NodeCtx>, circ: &crate::circuit::Circuit, o: &dyn Oracle, vk: &Digest, c: &Digest, pi: &[u8]) -> (Run, Vec<V>) {
+    NODE.with(|n| *n.borrow_mut() = Some(ctx));
+    let r = run_regs(text, circ, o, vk, c, pi);
+    NODE.with(|n| *n.borrow_mut() = None);
+    r
+}
+
 fn node_ctx() -> Option<std::sync::Arc<NodeCtx>> {
     NODE.with(|n| n.borrow().clone())
 }
@@ -248,6 +297,7 @@ pub fn run_regs(text: &str, circ: &crate::circuit::Circuit, o: &dyn Oracle, vk: 
     let mut src: std::collections::HashMap<usize, Vec<usize>> = std::collections::HashMap::new();
     let mut out = Run { ok: true, ..Default::default() };
     let nctx = node_ctx();
+    let prof_on = std::env::var_os("FLOCK_IRPROF").is_some();
     let at = |f: usize, o: usize, n: usize| -> &[u8] { &pi[field_off(f) + o..field_off(f) + o + n] };
     let (sk, wtab) = (crate::skipdom::skip(), ());
     let _ = wtab;
@@ -279,6 +329,7 @@ pub fn run_regs(text: &str, circ: &crate::circuit::Circuit, o: &dyn Oracle, vk: 
             out.asks += 1;
             V::D(o.ask(q))
         };
+        let t_op = std::time::Instant::now();
         let new: Vec<V> = match t[0] {
             "input" => vec![V::D(if num(1) == 0 { *vk } else { *c })],
             "const" => vec![parse_val(t[1])],
@@ -556,6 +607,12 @@ pub fn run_regs(text: &str, circ: &crate::circuit::Circuit, o: &dyn Oracle, vk: 
             "accept" => vec![],
             op => panic!("line {}: unknown op {op}", ln + 1),
         };
+        if prof_on {
+            let dt = t_op.elapsed().as_secs_f64();
+            if dt > 0.02 {
+                eprintln!("  ir line {} {} {:.3}s", ln + 1, t[0], dt);
+            }
+        }
         assert_eq!(new.len(), dst.len(), "line {}: outputs", ln + 1);
         regs.extend(new);
     }
@@ -702,7 +759,7 @@ mod tests {
     use crate::params::{field_off, FIELD_SIZES, N_FIELDS};
 
     fn dump(name: &str) -> Option<String> {
-        let d = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../logs/S-F4/dump").join(name);
+        let d = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../logs/INT-8/dump").join(name);
         std::fs::read_to_string(&d).ok()
     }
 
@@ -713,7 +770,7 @@ mod tests {
     #[test]
     fn ir_kat_l30() {
         let Some(text) = dump("ops-L30.txt") else {
-            eprintln!("ir_kat_l30: SKIP (logs/S-F4/dump/ops-L30.txt absent)");
+            eprintln!("ir_kat_l30: SKIP (logs/INT-8/dump/ops-L30.txt absent)");
             return;
         };
         let circ = crate::circuit::Circuit::build();
@@ -780,7 +837,7 @@ mod tests {
     #[test]
     fn ir_agg_l30() {
         let Some(text) = dump("ops-L30.txt") else {
-            eprintln!("ir_agg_l30: SKIP (logs/S-F4/dump/ops-L30.txt absent)");
+            eprintln!("ir_agg_l30: SKIP (logs/INT-8/dump/ops-L30.txt absent)");
             return;
         };
         let prog = |b: u8| if b == 0x50 { Some(text.clone()) } else { None };
