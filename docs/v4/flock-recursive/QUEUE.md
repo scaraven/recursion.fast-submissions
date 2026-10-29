@@ -65,6 +65,8 @@ S-A `8ff873c`; S-C `ebac8c2`; S-D `8e6dad7`; S-E1 `2d5a811`; S-H1 `40b2f81`; S-0
 
 ## Rulings
 
+- **Re-pin to core `64378d2` (PR #20 head, 2026-10-29 09:32):** M = 96 constant, `stream_s` 1,920 s, **`build_s` 1,200 s** (certificate job 40 min, benchmark 50 min); harness/docs only, no Lean change (`logs/org20`'s harness files refreshed in place). The certificate build (696 s on the 7763) fits with 1.7×; the stream (96 × ≈ 11.1 s ≈ 1,066 s) fits with 1.8×. Build-budget tracks (RET-3, G4) wind down; the critical path is `nd` (S-H4) and rev44 (A2″ → A3′ ∥ B2′ → A1′ → … → E1).
+
 - **User, 2026-10-29 (announced, not yet in the core):** the stream length becomes **M = 96, constant**, and `stream_s` grows **1.5× or 2×** (1,440 or 1,920 s). Plan against it now: with P2⁹'s 11.10 s per step + overhead on the 7763, 96 steps ≈ 1,066 s — fits 1,440 s with ≈ 1.35× margin. The orchestrator watches the core's PR #20 head (`6d05d00`) and the open-PR list for the change, then re-pins (`logs/org20` successor) and re-measures.
 
 - **User, 2026-10-29:** no adversarial reviews of code — a submission the harness accepts under the rules is good enough; golf stays (it serves the build budget). No more review tracks; the bar is `HARNESS: ACCEPT`.
