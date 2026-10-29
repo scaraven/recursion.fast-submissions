@@ -38,6 +38,11 @@ pub fn partial_fold(z: &[u64], s_out: &[F], used: usize) -> Vec<F> {
         let mut acc = vec![F::ZERO; BLOCK];
         let mut t = [F::ZERO; 256];
         for s in lo..hi {
+            let base = 8 * s * 256;
+            // a stripe of zero blocks adds nothing (`t[0] = 0`; a node's free blocks)
+            if z[base..base + 8 * 256].iter().all(|&x| x == 0) {
+                continue;
+            }
             t[0] = F::ZERO;
             for i in 0..8 {
                 let h = 1 << i;
@@ -45,7 +50,6 @@ pub fn partial_fold(z: &[u64], s_out: &[F], used: usize) -> Vec<F> {
                     t[h + j] = t[j] + e[8 * s + i];
                 }
             }
-            let base = 8 * s * 256;
             crate::simd::pf_stripe(&z[base..base + 8 * 256], &t, &mut acc);
         }
         acc

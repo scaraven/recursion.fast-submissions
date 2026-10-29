@@ -127,8 +127,14 @@ pub struct Proto {
     pub aux: Vec<Aux>,
     pub fcells: Vec<u32>,
     pub fcoefs: Vec<F>,
-    /// The solve order of an inactive (`0`) and an active (`1`) fill, recorded by the first.
-    pub plan: [std::sync::OnceLock<Vec<(u32, u32)>>; 2],
+    /// The solve order of an inactive fill (`0`) and of an active fill at child index `ix` of a
+    /// full (`1 + ix`) or partial (`4 + ix`: a segment below its kind's cap) child, recorded by the
+    /// first such fill or loaded from `prover setup` (`load_plans`).
+    pub plan: [std::sync::OnceLock<Vec<(u32, u32)>>; PLAN_KEYS],
+    /// The cell → rows adjacency of `rows` (`worklist`), built once.
+    pub adj: std::sync::OnceLock<(Vec<u32>, Vec<u32>)>,
+    /// An inactive fill's cells (they do not depend on any child), from `prover setup`.
+    pub inactive: std::sync::OnceLock<Vec<F>>,
 }
 
 /// Per node kind (`node-N*.txt`): the slot table, the link rows, the public cells.
@@ -272,7 +278,7 @@ impl Proto {
             let terms = push(p.get(2).copied().unwrap_or(""), &mut fcells, &mut fcoefs);
             aux.push(Aux { reg: p[0].trim().parse().unwrap(), bits: k == "bits", n: n.parse().unwrap(), terms });
         }
-        Proto { pi, rows, regs, aux, fcells, fcoefs, plan: Default::default() }
+        Proto { pi, rows, regs, aux, fcells, fcoefs, plan: Default::default(), adj: Default::default(), inactive: Default::default() }
     }
 }
 
@@ -337,11 +343,40 @@ pub struct FillStats {
     pub first_failed: Vec<u32>,
     pub form_mismatch: usize,
     pub first_form_mismatch: Vec<u32>,
+    /// The solve replayed a recorded order.
+    pub replayed: bool,
 }
 
 /// **The slot fill** in the prototype's region coordinates (`local = cell − π·2^20`): returns the
 /// `2^20` cells (`one′` at 0, the selector copies at 1–3).
+/// The plan keys per prototype (`Proto::plan`).
+pub const PLAN_KEYS: usize = 7;
+
+static EXACT: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Replay only a fill's own key's order (`prover setup`: every key records its own).
+pub fn set_exact_plans(on: bool) {
+    EXACT.store(on, std::sync::atomic::Ordering::Relaxed);
+}
+
 pub fn fill(p: &Proto, run: SlotRun) -> (Vec<F>, FillStats) {
+    fill_part(p, run, false)
+}
+
+/// `fill`, for a child that is `partial` (a segment below its kind's cap: its own plan key).
+pub fn fill_part(p: &Proto, run: SlotRun, partial: bool) -> (Vec<F>, FillStats) {
+    if let (None, Some(v)) = (run, p.inactive.get()) {
+        return (v.clone(), FillStats { replayed: true, ..Default::default() });
+    }
+    let r = fill_with(p, run, partial, true);
+    if r.1.failed_rows == 0 || !r.1.replayed {
+        return r;
+    }
+    // a replayed order that left a solvable cell unknown (another child's data): solve afresh
+    fill_with(p, run, partial, false)
+}
+
+fn fill_with(p: &Proto, run: SlotRun, partial: bool, replay: bool) -> (Vec<F>, FillStats) {
     let t0 = std::time::Instant::now();
     let sp = crate::prof::span(if run.is_some() { "fill.solve" } else { "fill.solve_inactive" });
     let base = (p.pi * SLOT) as u32;
@@ -401,48 +436,104 @@ pub fn fill(p: &Proto, run: SlotRun) -> (Vec<F>, FillStats) {
     // same cells in every slot of the prototype), else the worklist to a fixed point
     let rw = &p.rows;
     let nr = rw.len();
-    let key = run.is_some() as usize;
-    let snap = p.plan[key].get().map(|_| (val.clone(), known.clone()));
+    let key = match run {
+        Some((_, ix)) => 1 + ix + 3 * partial as usize,
+        None => 0,
+    };
+    // this key's order, else (an active fill) another index's: the orders mostly agree
+    let cand = if !replay {
+        None
+    } else if key == 0 || EXACT.load(std::sync::atomic::Ordering::Relaxed) {
+        p.plan[key].get()
+    } else {
+        // the other variant of this index first
+        let twin = if key >= 4 { key - 3 } else { key + 3 };
+        p.plan[key].get().or_else(|| p.plan[twin].get()).or_else(|| p.plan[1..].iter().find_map(|o| o.get()))
+    };
     let mut done = false;
-    if let Some(pl) = p.plan[key].get() {
-        done = pl.iter().all(|&(r, c)| try_row(rw, base, r as usize, &mut val, &mut known) == Some(c as usize));
-        if done {
-            st.solved = pl.len();
+    if let Some(pl) = cand {
+        // tolerant replay: an entry that does not solve its cell here is retried after the rest
+        // (another child's data can change which row solves a cell first); the row check below
+        // decides (an assignment that satisfies every row agrees with the worklist's on every cell
+        // the worklist solves, and leaves the others zero as it does)
+        let mut miss: Vec<(u32, u32)> = Vec::new();
+        let mut solved = 0usize;
+        for &(r, c) in pl {
+            match try_row(rw, base, r as usize, &mut val, &mut known) {
+                Some(_) => solved += 1,
+                None if known[c as usize] => {}
+                None => miss.push((r, c)),
+            }
+        }
+        while !miss.is_empty() {
+            let before = miss.len();
+            miss.retain(|&(r, c)| {
+                if known[c as usize] {
+                    return false;
+                }
+                match try_row(rw, base, r as usize, &mut val, &mut known) {
+                    Some(_) => {
+                        solved += 1;
+                        false
+                    }
+                    None => true,
+                }
+            });
+            if miss.len() == before {
+                break;
+            }
+        }
+        st.solved = solved;
+        st.replayed = true;
+        done = true;
+        if std::env::var_os("FLOCK_VERBOSE").is_some() && (solved != pl.len() || !miss.is_empty()) {
+            eprintln!("  fill p{} replay: {solved} of {} entries solved, {} unsolved", p.pi, pl.len(), miss.len());
         }
     }
     if !done {
-        if let Some((v0, k0)) = snap {
-            (val, known) = (v0, k0);
-        }
-        let rec = worklist(rw, base, &mut val, &mut known);
+        let rec = worklist_with(p, base, &mut val, &mut known);
         st.solved = rec.len();
         let _ = p.plan[key].set(rec);
     }
     let t_solve = t0.elapsed().as_secs_f64();
     drop(sp);
     let _sp = crate::prof::span(if run.is_some() { "fill.check" } else { "fill.check_inactive" });
-    st.zeroed = known.iter().filter(|k| !**k).count();
-    // check every row, and the multi-cell register forms against the run's values
-    for i in 0..nr {
-        let [a, b, c] = rw.eval(i, &|x| val[(x - base) as usize]);
-        if a * b != c {
-            st.failed_rows += 1;
-            if st.failed_rows <= 2 && std::env::var_os("FLOCK_FILL_DEBUG").is_some() {
-                let rg = rw.rng[i];
-                let mut d = format!("row {} a={a:?} b={b:?} c={c:?}:", rw.idx[i]);
-                for m in 0..3 {
-                    for t in rg[m] as usize..rg[m + 1] as usize {
-                        let l = (rw.cells[t] - base) as usize;
-                        d.push_str(&format!(" [{m}] {}={:x}{:x} k={}", rw.cells[t], val[l].hi, val[l].lo, known[l]));
+    // check every row; a replay that falls short (another child's data) is completed by the
+    // worklist from where it stopped (the deduction's closure is the same) and checked again
+    for pass in 0..2 {
+        st.failed_rows = 0;
+        st.first_failed.clear();
+        for i in 0..nr {
+            let [a, b, c] = rw.eval(i, &|x| val[(x - base) as usize]);
+            if a * b != c {
+                st.failed_rows += 1;
+                if st.failed_rows <= 2 && std::env::var_os("FLOCK_FILL_DEBUG").is_some() {
+                    let rg = rw.rng[i];
+                    let mut d = format!("row {} a={a:?} b={b:?} c={c:?}:", rw.idx[i]);
+                    for m in 0..3 {
+                        for t in rg[m] as usize..rg[m + 1] as usize {
+                            let l = (rw.cells[t] - base) as usize;
+                            d.push_str(&format!(" [{m}] {}={:x}{:x} k={}", rw.cells[t], val[l].hi, val[l].lo, known[l]));
+                        }
                     }
+                    eprintln!("{d}");
                 }
-                eprintln!("{d}");
-            }
-            if st.first_failed.len() < 12 {
-                st.first_failed.push(rw.idx[i]);
+                if st.first_failed.len() < 12 {
+                    st.first_failed.push(rw.idx[i]);
+                }
             }
         }
+        if pass == 0 && st.failed_rows > 0 && st.replayed {
+            let rec = worklist_with(p, base, &mut val, &mut known);
+            if std::env::var_os("FLOCK_VERBOSE").is_some() {
+                eprintln!("  fill p{} replay completed by the worklist: {} more cells ({} rows failed)", p.pi, rec.len(), st.failed_rows);
+            }
+            st.solved += rec.len();
+            continue;
+        }
+        break;
     }
+    st.zeroed = known.iter().filter(|k| !**k).count();
     if let Some((regs, _)) = run {
         for (ri, r) in p.regs.iter().enumerate() {
             let Some(v) = regs.get(ri) else { continue };
@@ -462,7 +553,7 @@ pub fn fill(p: &Proto, run: SlotRun) -> (Vec<F>, FillStats) {
         }
     }
     if std::env::var_os("FLOCK_VERBOSE").is_some() {
-        eprintln!("  fill p{} solve {t_solve:.3} total {:.3}", p.pi, t0.elapsed().as_secs_f64());
+        eprintln!("  fill p{} solve {t_solve:.3} total {:.3} replayed {}", p.pi, t0.elapsed().as_secs_f64(), st.replayed);
     }
     (val, st)
 }
@@ -524,8 +615,19 @@ fn try_row(rw: &Rows, base: u32, i: usize, val: &mut [F], known: &mut [bool]) ->
     }
 }
 
-/// The worklist solve (cell → rows adjacency) to a fixed point; returns the order `(row, cell)`.
-fn worklist(rw: &Rows, base: u32, val: &mut [F], known: &mut [bool]) -> Vec<(u32, u32)> {
+/// Build the prototype's adjacency now (before a request).
+pub fn warm_adjacency(p: &Proto) {
+    let _ = p.adj.get_or_init(|| adjacency(&p.rows, (p.pi * SLOT) as u32));
+}
+
+/// `worklist` with the prototype's cached adjacency.
+fn worklist_with(p: &Proto, base: u32, val: &mut [F], known: &mut [bool]) -> Vec<(u32, u32)> {
+    let (deg, adj) = p.adj.get_or_init(|| adjacency(&p.rows, base));
+    worklist(&p.rows, base, deg, adj, val, known)
+}
+
+/// The cell → rows adjacency (CSR: `deg` offsets per region-local cell, `adj` the rows).
+fn adjacency(rw: &Rows, base: u32) -> (Vec<u32>, Vec<u32>) {
     let nr = rw.len();
     let mut deg = vec![0u32; SLOT + 1];
     for &c in &rw.cells {
@@ -545,6 +647,12 @@ fn worklist(rw: &Rows, base: u32, val: &mut [F], known: &mut [bool]) -> Vec<(u32
         }
     }
     drop(fillp);
+    (deg, adj)
+}
+
+/// The worklist solve to a fixed point from the current state; returns the order `(row, cell)`.
+fn worklist(rw: &Rows, base: u32, deg: &[u32], adj: &[u32], val: &mut [F], known: &mut [bool]) -> Vec<(u32, u32)> {
+    let nr = rw.len();
     let mut rec = Vec::new();
     let mut queued = vec![true; nr];
     let mut work: Vec<u32> = (0..nr as u32).rev().collect();
@@ -562,13 +670,116 @@ fn worklist(rw: &Rows, base: u32, val: &mut [F], known: &mut [bool]) -> Vec<(u32
     rec
 }
 
-/// The dump directory (`FLOCK_NODE_DUMP`, else `logs/S-E12f/nodedump` above the working directory)
+/// The dump directory (`FLOCK_NODE_DUMP`, else `logs/S-E13a/nodedump` above the working directory)
 /// and the prototype programs' directory (`FLOCK_PROTO_DIR`, else the dump directory).
 pub fn find_dirs() -> Option<(std::path::PathBuf, std::path::PathBuf)> {
     let d = match std::env::var_os("FLOCK_NODE_DUMP") {
         Some(p) => std::path::PathBuf::from(p),
-        None => crate::kat::find_up("logs/S-E12f/nodedump/mrows-p0.txt")?.parent()?.to_path_buf(),
+        None => crate::kat::find_up("logs/S-E13a/nodedump/mrows-p0.txt")?.parent()?.to_path_buf(),
     };
     let p = std::env::var_os("FLOCK_PROTO_DIR").map(std::path::PathBuf::from).unwrap_or_else(|| d.clone());
     Some((d, p))
+}
+
+/// The recorded solve orders of both prototypes (`Proto::plan`), as `prover setup` stores them:
+/// `FLPLAN02`, the node data's tag, then per prototype and key a length (`u32::MAX`: none) and the
+/// `(row, cell)` pairs (little-endian `u32`).
+pub fn save_plans(protos: &[Proto; 2], tag: &[u8; 32]) -> Vec<u8> {
+    let mut out = b"FLPLAN02".to_vec();
+    out.extend_from_slice(tag);
+    for p in protos.iter() {
+        for o in &p.plan {
+            match o.get() {
+                None => out.extend_from_slice(&u32::MAX.to_le_bytes()),
+                Some(v) => {
+                    out.extend_from_slice(&(v.len() as u32).to_le_bytes());
+                    for &(r, c) in v {
+                        out.extend_from_slice(&r.to_le_bytes());
+                        out.extend_from_slice(&c.to_le_bytes());
+                    }
+                }
+            }
+        }
+    }
+    out
+}
+
+/// Load `save_plans`' bytes into the prototypes' unset orders; `false` (nothing loaded) when the
+/// bytes are not plans of this node data. A loaded order is only a guess: `fill` checks every row
+/// and solves afresh when a replay leaves one unsatisfied.
+pub fn load_plans(protos: &[Proto; 2], tag: &[u8; 32], b: &[u8]) -> bool {
+    if b.len() < 40 || &b[..8] != b"FLPLAN02" || &b[8..40] != tag {
+        return false;
+    }
+    let mut parsed: Vec<Option<Vec<(u32, u32)>>> = Vec::new();
+    let mut i = 40;
+    let rd = |i: &mut usize| -> Option<u32> {
+        let x = b.get(*i..*i + 4)?;
+        *i += 4;
+        Some(u32::from_le_bytes(x.try_into().unwrap()))
+    };
+    for _ in 0..2 * PLAN_KEYS {
+        let Some(n) = rd(&mut i) else { return false };
+        if n == u32::MAX {
+            parsed.push(None);
+            continue;
+        }
+        let n = n as usize;
+        if b.len() < i + 8 * n {
+            return false;
+        }
+        let v: Vec<(u32, u32)> = b[i..i + 8 * n]
+            .chunks_exact(8)
+            .map(|c| (u32::from_le_bytes(c[..4].try_into().unwrap()), u32::from_le_bytes(c[4..].try_into().unwrap())))
+            .collect();
+        i += 8 * n;
+        parsed.push(Some(v));
+    }
+    if i != b.len() {
+        return false;
+    }
+    for (j, v) in parsed.into_iter().enumerate() {
+        if let Some(v) = v {
+            let _ = protos[j / PLAN_KEYS].plan[j % PLAN_KEYS].set(v);
+        }
+    }
+    true
+}
+
+#[cfg(test)]
+mod pass11_tests {
+    use super::*;
+
+    /// `save_plans` / `load_plans` round trip; a wrong tag or a cut file loads nothing.
+    #[test]
+    fn plans_round_trip() {
+        let mk = || Proto { pi: 0, rows: Rows::new(), regs: vec![], aux: vec![], fcells: vec![], fcoefs: vec![], plan: Default::default(), adj: Default::default(), inactive: Default::default() };
+        let a = [mk(), mk()];
+        let _ = a[0].plan[0].set(vec![(1, 2), (3, 4)]);
+        let _ = a[1].plan[2].set(vec![(5, 6)]);
+        let tag = [7u8; 32];
+        let b = save_plans(&a, &tag);
+        let c = [mk(), mk()];
+        assert!(!load_plans(&c, &[8u8; 32], &b));
+        assert!(!load_plans(&c, &tag, &b[..b.len() - 1]));
+        assert!(c.iter().all(|p| p.plan.iter().all(|o| o.get().is_none())));
+        assert!(load_plans(&c, &tag, &b));
+        assert_eq!(c[0].plan[0].get(), Some(&vec![(1, 2), (3, 4)]));
+        assert_eq!(c[1].plan[2].get(), Some(&vec![(5, 6)]));
+        assert!(c[0].plan[1].get().is_none() && c[1].plan[0].get().is_none());
+    }
+}
+
+/// An inactive fill's cells as bytes (`prover setup`'s `inactive-p{π}.bin`).
+pub fn save_inactive(v: &[F]) -> Vec<u8> {
+    v.iter().flat_map(|x| x.to_bytes()).collect()
+}
+
+/// Load `save_inactive`'s bytes as the prototype's inactive fill (`false`: not one).
+pub fn load_inactive(p: &Proto, b: &[u8]) -> bool {
+    if b.len() != 16 * SLOT {
+        return false;
+    }
+    let _ = p.inactive.set(b.chunks_exact(16).map(F::from_bytes).collect());
+    true
 }

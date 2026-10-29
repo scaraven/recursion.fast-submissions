@@ -349,3 +349,21 @@ mod tests {
         assert!(!sq.consumed());
     }
 }
+
+/// An oracle that records every query and answer of another (a verifier's trace).
+pub struct Tape<'a>(&'a dyn Oracle, std::sync::Mutex<Trace>);
+impl<'a> Tape<'a> {
+    pub fn new(o: &'a dyn Oracle) -> Tape<'a> {
+        Tape(o, std::sync::Mutex::new(Vec::new()))
+    }
+    pub fn into_trace(self) -> Trace {
+        self.1.into_inner().unwrap()
+    }
+}
+impl Oracle for Tape<'_> {
+    fn ask(&self, q: &[u8]) -> Digest {
+        let a = self.0.ask(q);
+        self.1.lock().unwrap().push((q.to_vec(), a));
+        a
+    }
+}

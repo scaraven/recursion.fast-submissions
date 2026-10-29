@@ -155,8 +155,8 @@ pub fn weight_table_kf(claims: &[(&[F], F, Option<&[F]>)], rpp: &[F]) -> Vec<F> 
     weight_table_rows(claims, rpp, lo)
 }
 
-/// The low variables of a row in `weight_table_rows` (16 elements, 256 B).
-pub const ROW_LO: usize = 4;
+/// The low variables of a row in `weight_table_rows` (64 elements, 1 KiB; pass 11, was 4).
+pub const ROW_LO: usize = 6;
 
 /// **The weight table by row tables** (pass 10). Split `y = l + 2^lo·h` (`l < 2^lo`): a claim's
 /// entry is `c Φ(e_lo(l)·e_hi(h))` with `e_lo = eq(hi[..lo], ·)`, `e_hi = eq(hi[lo..], ·)` (times
@@ -170,9 +170,10 @@ pub fn weight_table_rows(claims: &[(&[F], F, Option<&[F]>)], rpp: &[F], lo: usiz
     let mu = claims[0].0.len();
     let lo = lo.min(mu).min(7);
     let nl = 1usize << lo;
-    let tabs: Vec<(Vec<F>, Vec<F>)> = claims
-        .iter()
-        .map(|(hi, c, kf)| {
+    // the claims' tables in parallel (each `16·256·2^lo` elements)
+    let tabs: Vec<(Vec<F>, Vec<F>)> = par::collect_vec(claims.len(), 1, |ci| {
+        let (hi, c, kf) = &claims[ci];
+        {
             assert_eq!(hi.len(), mu);
             let elo = eq_table(&hi[..lo]);
             let mut ehi = eq_table(&hi[lo..]);
@@ -200,8 +201,8 @@ pub fn weight_table_rows(claims: &[(&[F], F, Option<&[F]>)], rpp: &[F], lo: usiz
                 }
             }
             (q, ehi)
-        })
-        .collect();
+        }
+    });
     let mut out: Vec<F> = par::uninit_vec(1 << mu);
     par::for_each_chunk_mut(&mut out, nl.max(1 << 10), |off, ch| {
         let mut offs = [0usize; 16];

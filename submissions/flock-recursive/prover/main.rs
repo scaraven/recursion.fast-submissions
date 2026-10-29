@@ -274,6 +274,7 @@ fn node_kat(args: &[String]) {
     }
     let aggs: Vec<node::AggIn> = signed.iter().map(node::agg_in).collect();
     let t = Instant::now();
+    stream::load_setup_plans(nd);
     node::warm_plans(&protos);
     println!("NODE-KAT inactive plans {:.2}s (before a request)", t.elapsed().as_secs_f64());
     let t = Instant::now();
@@ -286,7 +287,7 @@ fn node_kat(args: &[String]) {
         println!("NODE-KAT previous node {} |tr|={}", pk.name(), ps.tr.len());
         node::PrevIn { signed: ps, c, ix: [1, 0, 2][pk as usize], ctx, base: &base }
     });
-    let w = node::witness(kind, &vk, prev_in.as_ref(), &aggs, &protos, &texts, &gcirc, &circ);
+    let w = node::witness(kind, &vk, prev_in.as_ref(), &aggs, &protos, &texts, &gcirc, &circ, None);
     println!("NODE-KAT witness {:.2}s {:?}", t.elapsed().as_secs_f64(), w.times);
     for (v, st) in w.mstats.iter().enumerate() {
         println!("NODE-KAT slot {v}: {st:?}");
@@ -686,7 +687,7 @@ fn main() {
     let mode = args.get(1).map(String::as_str).unwrap_or("");
     let reps: usize = arg(&args, "--reps").and_then(|x| x.parse().ok()).unwrap_or(1);
     match mode {
-        "setup" => {}
+        "setup" => stream::setup(std::path::Path::new(args.get(2).map(String::as_str).unwrap_or("."))),
         "vk" => {
             let path = std::env::var("RF_ORACLE").unwrap_or_else(|_| service::fatal("RF_ORACLE is not set"));
             let svc = service::Service::connect(&path).unwrap_or_else(|e| service::fatal(&e));
@@ -698,6 +699,7 @@ fn main() {
             std::process::exit(2);
         }
         "bench" => bench::run(),
+        "bench-trace" => bench::run_trace(args.get(2).map(|s| s.as_str()).unwrap_or("N2")),
         "bench-rs" => bench::run_rs(args.get(2).and_then(|x| x.parse().ok()).unwrap_or(32)),
         "selftest" => match simd::selftest() {
             Ok(s) => println!("SELFTEST pass {s}"),
@@ -724,6 +726,9 @@ fn main() {
             let t = Instant::now();
             let nd = plan::decode_blob(plan::BLOB);
             let dt = t.elapsed().as_secs_f64();
+            if prof::on() {
+                println!("PLAN-KAT decode | prof {}", prof::report());
+            }
             let (dd, pd) = mfill::find_dirs().unwrap_or_else(|| service::fatal("no node dump"));
             let mut ok = true;
             for pi in 0..2 {

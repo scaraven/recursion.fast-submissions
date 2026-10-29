@@ -142,3 +142,66 @@ pub fn run_rs(m: usize) {
         }
     }
 }
+
+/// `bench-trace [N2|N4|N8]`: the node's H block trace (`node::trace_blocks`) on random inputs of the
+/// kind's H blocks: one thread per batch and all threads; checked equal to `trace_blocks_ref`.
+pub fn run_trace(kind: &str) {
+    use crate::node::{self, BlockIn, NK};
+    let k = match kind {
+        "N4" => NK::N4,
+        "N8" => NK::N8,
+        _ => NK::N2,
+    };
+    let c = node::general_circuit();
+    let gates = c.nodes.iter().filter(|n| matches!(n, crate::circuit::Node::Gate(..))).count();
+    let rows = c.rows.iter().filter(|r| r.is_some()).count();
+    let h_end = k.h_end();
+    let bks: Vec<node::BK> = (0..h_end).map(|b| node::bk_at(k, b)).collect();
+    let mut s = 0x7ace_u64;
+    let ins: Vec<BlockIn> = bks
+        .iter()
+        .map(|&bk| {
+            let h: [u32; 8] = std::array::from_fn(|_| rnd(&mut s) as u32);
+            let msg: Vec<u8> = (0..64).map(|_| rnd(&mut s) as u8).collect();
+            BlockIn::of(bk, h, &msg)
+        })
+        .collect();
+    let nbat = h_end.div_ceil(64);
+    println!("BENCH trace {} nodes={} gates={gates} rows={rows} h_end={h_end} batches={nbat} threads={}", k.name(), c.nodes.len(), par::threads());
+    let words = nbat * 64 * 256;
+    let run = |f: fn(&crate::circuit::Circuit, &[BlockIn], &[node::BK], &mut [u64], &mut [u64], &mut [u64]), nb: usize, par_on: bool| {
+        let (mut z, mut a, mut b) = (vec![0u64; words], vec![0u64; words], vec![0u64; words]);
+        let (pz, pa, pb) = (par::SyncPtr(z.as_mut_ptr()), par::SyncPtr(a.as_mut_ptr()), par::SyncPtr(b.as_mut_ptr()));
+        let body = |g: usize| {
+            let (pz, pa, pb) = (pz, pa, pb);
+            let (lo, hi) = (64 * g, (64 * g + 64).min(h_end));
+            let n = hi - lo;
+            let (zs, as_, bs) = unsafe {
+                (
+                    std::slice::from_raw_parts_mut(pz.0.add(256 * lo), 256 * n),
+                    std::slice::from_raw_parts_mut(pa.0.add(256 * lo), 256 * n),
+                    std::slice::from_raw_parts_mut(pb.0.add(256 * lo), 256 * n),
+                )
+            };
+            f(&c, &ins[lo..hi], &bks[lo..hi], zs, as_, bs);
+        };
+        let t = Instant::now();
+        if par_on {
+            par::run(nb, &body);
+        } else {
+            (0..nb).for_each(body);
+        }
+        (t.elapsed().as_secs_f64(), z, a, b)
+    };
+    let one = 16.min(nbat);
+    for rep in 0..2 {
+        let (tr, zr, ar, br) = run(node::trace_blocks_ref, one, false);
+        let (tn, zn, an, bn) = run(node::trace_blocks, one, false);
+        println!("BENCH trace 1 thread rep={rep}: {one} batches ref {:.3} ms/batch new {:.3} ms/batch equal={}", tr * 1e3 / one as f64, tn * 1e3 / one as f64, zr == zn && ar == an && br == bn);
+    }
+    for rep in 0..2 {
+        let (tr, zr, ar, br) = run(node::trace_blocks_ref, nbat, true);
+        let (tn, zn, an, bn) = run(node::trace_blocks, nbat, true);
+        println!("BENCH trace all rep={rep}: ref {tr:.3} s new {tn:.3} s equal={}", zr == zn && ar == an && br == bn);
+    }
+}

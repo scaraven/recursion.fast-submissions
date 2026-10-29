@@ -1906,3 +1906,181 @@ in the mean (2^20 costs 29 s).
    rows are about 30 % of `2^logM`).
 4. The leaf-shaped phases (commit, Z, Ligerito: 4.1 s of N4's 6.3 s) and the aggregate's segments
    are the bulk of every step. They are the levers for `M`.
+
+## 19. Pass 11 (track P2⁷): step time; S-E13a's matrices and S-E13b's cells
+
+Status: 2026-10-29. Logs: `logs/P2/r41p11/` (VM) and the runner runs `logs/P2/run-40812467041`
+(p2t-11a), `-40814845050` (11d), `-40817225300` (11e), and the final run **`-40820003716`** on S-E13a's data
+(§19.6). Each probe ran the base (HEAD's committed `prover.s`, `a3db3bb5…`) and the new prover on
+the same runner, through `probe/p2t11/` (branches `probe/p2t-11a … 11h`, temporary-index commits on
+HEAD, all deleted). Off-tier runs (EPYC 9V74: 11b, 11c, 11f, …) are acceptance only.
+**π is byte-identical** to pass 10's prover on every KAT (local oracle): N2 over pass 10's N8
+`9368bcae…` (k = 2), `f60dc083…` (k = 1, `--agg 131077`), N4 `a16ab6a3…` (k = 3), until the
+S-E13a data change (§19.5), which changes the node matrices and so π.
+
+### 19.1 What was built (crate 15,026 `.rs` lines, was 14,093)
+
+| file | change |
+|---|---|
+| `node.rs` | **`trace_blocks` rewritten** (`trace_prog`: the general tape compiled once, XOR forms in 573 reused slots, gates keep their rows' forms; inputs by 64×64 transposes; per-kind pin words; positions interleaved by four words so the output is AVX2 four-word transposes); `trace_blocks_ref` kept; `slot_fill`/`slot0_fill` (slot 0's fill callable on its own); every slot with a known order starts beside the H part; partial segments use their own plan key; **S-E13b's L cells** and the whole `r` mirror (§19.5); `Checks::first_bad_links`; test `trace_blocks_matches_ref` |
+| `mfill.rs` | plans keyed `0` inactive, `1 + ix` full child, `4 + ix` partial segment; **tolerant replay** (missed entries retried, then the row check; a short replay is **completed by the worklist from where it stopped**, adjacency cached per prototype); `save_plans`/`load_plans` (`FLPLAN02`, tagged by the node blob's hash), the inactive fills (`save/load_inactive`), `set_exact_plans`; test `plans_round_trip` |
+| `stream.rs` | **`prover setup DIR`** (§19.3); `Pre::new` loads the setup (plans, inactive fills), builds the adjacency and the trace tape; **slot 0's fill on its own thread beside the aggregate**; start-up breakdown `su=` in the `STREAM` line |
+| `zerocheck.rs` | **zero skips**: round 1 skips windows whose a, b, z are zero (the convert tables map 0 to 0, checked); `round_x6`, `round_tab` skip ranges where a or b is zero; `fold_x6` writes zeros for zero rows; test `round1_zero_windows_skipped_equal` |
+| `lincheck.rs`, `nodeprove.rs` | the block folds skip zero stripes; spans `sh.collapse/pairs/prefix` |
+| `ringswitch.rs` | `ROW_LO` 4 → 6; the claims' row tables built in parallel |
+| `oracle.rs` | `Tape` (a recording oracle; setup's toy chain) |
+| `plan.rs` | `data_tag`; decode spans; `nodeblob.b64` from `logs/S-E13a/nodedump` (7,397,352 B) |
+| `bench.rs`, `main.rs` | mode `bench-trace [N2/N4/N8]`; mode `setup` |
+| `probe/p2t11/run.sh`, `stream.sh` | base and new on one runner, `prover setup` timed and sized, optional A/B stream (`P2T11_ALT`), `acc` timed |
+
+### 19.2 Lever 1: the witness (7763)
+
+- **`trace_blocks`** (`bench-trace`, VM, one thread, checked equal): 1.39 → 0.53 ms per batch of 64
+  blocks (all threads 0.36 → 0.13 s for N2's 1,109 batches). On the 7763 `h_trace` 0.74 → 0.17 s
+  (N2), 0.29 s (N4, contended).
+- **Slot 0's fill** (the previous node's program run and its solve, 0.6–1.3 s) needs only
+  `prev.bin`: it runs on its own thread while the aggregate is proved. It costs the aggregate
+  +0.05…+0.36 s (largest at 2^17); nice 19 did not change that (run 40814845050: so the cost is the
+  shared core, not CPU share; nice removed). Inside the witness instead (`FLOCK_NO_PRE0=1`, run
+  40817225300) is ≈ 0.1 s worse per step.
+- **Every slot whose order is known starts beside the H part.**
+- **Zero windows**: a third of a node's witness is zero (N2: 87,875 of 262,144 round-1 windows: the
+  L region past its used part, the tail past M, holes in M).
+- Witness N2 1.15–1.50 → **0.37–0.55 s**, N4 1.64–1.81 → **0.67–0.89 s**, N8 1.91 → **0.67 s**.
+
+### 19.3 Lever 2: `prover setup` (240 s untimed, 4 GiB)
+
+`prover setup DIR` proves a toy chain with a local oracle and the test signer (no service exists
+then): N8 over two one-segment aggregates; N2 over it (a partial L32, 200,003 steps); N4 over it
+(L32, L32, L30); a witness over L32 + L31; slot 0's fill after the N2 and after the N4. Every fill
+records its own key's order (`set_exact_plans`): p0 at N4/N2/N8 (446,067 entries each), p1 inactive,
+L32 full/partial, L30 and L31 partial. Stored: `plans.bin` (33.2 MB) and the two inactive fills
+(16 MiB each). **7763: 63.9 s, peak 7.09 GB, 66.8 MB** (run 40817225300).
+
+A request loads them before `ready` and replays them. A replay can fall short when the child's data
+differs (a partial L32 at another `n`: 65 of 436,594 entries). Then the rows that fail the check are
+completed by the worklist from where the replay stopped. The deduction is monotone, so its closure
+does not depend on the order, and π equals the from-scratch solve's (KAT `f60dc083…`, base and new).
+A stale or foreign `plans.bin` is refused by its tag; with no setup the prover behaves as before.
+
+Start-up 0.71–0.74 → **0.48 s** (no inactive solves before `ready`; node data 0.14 s, prefault
+0.28 s).
+
+### 19.4 Levers 3–4: the node prove (7763)
+
+| phase change | N2 | N4 |
+|---|---|---|
+| round 1, zero windows skipped | 0.69 → ≈ 0.46 | 1.35 → ≈ 0.9 |
+| `round_x6`, `fold_x6`, `round_tab` on zero ranges | part of Z tail | |
+| RS `ROW_LO` 6, tables in parallel | −0.03…−0.05 per RS (node and segment) | |
+| **node prove** | 3.11–3.18 → **2.64–2.67** | 6.2 → **5.02–5.08** |
+
+N8 6.37 → 5.80–5.82 s.
+
+### 19.5 S-E13a's matrices, S-E13b's cells (the orchestrator's request)
+
+- `logs/S-E13a/nodedump` (SHA256SUMS OK) is the default dump; `plan-build` → `nodeblob.b64`
+  (7,397,352 B; raw 27.1 MB, was 14.7: the kind tables carry the new link rows); `plan-kat`: the
+  prototypes and plan forms equal.
+- **The completeness check S-E13a could not run** (the row checker, `node::check`, on honest
+  witnesses, before any prover change): **the pack rows (kind tie + 8,905 `wf` pins per aligned
+  slot) all hold.** **102 (N8) / 100 (N2) link rows fail, all S-E13b's WOTS rows in slot 1** (offsets
+  1,626–7,875 of slot 1's link region): the prover did not write S-E13b's L cells, and mirror
+  549 + t held only bytes 0–30 of `r`.
+- **Filled** (`h_part`, per signed child σ): 8704 + t the bits of `idx`; 8720 + i the running products
+  `R_i = Π_{j<i} f_j` (`f_j = x³·x⁻¹^{d_j}` for `j < 128`, `x⁻¹^{4^t c_t}` for the checksum digits,
+  `x = ⟨2, 0⟩`); 8960 + 128t + q the bits of mirror 549 + t's element 1; for an aggregate child
+  11008 + 2(k − 1) + h = the final block's `h_out` halves (`T_{j,h}`, zero for `j ≠ k`) and
+  11264 + 128(j − 2) + q the bits of main block `aggL j − 1`'s element 7 (2 ≤ j ≤ maxK). **Mirror
+  549 + t now holds the whole `r`**: the `r0` family links bytes 0–30 only; W5 compares whole
+  elements.
+- After: **no row fails on any honest witness**: N8 (two L32, n = 3), N2 over it (k = 2), N4 over it
+  (k = 3), N2 over that N2 (k = 1), N4 over that N4 (k = 4): `m_bad 0`, `link_rows_bad 0`. All five
+  proofs are accepted by the dumped programs with `stmtOk4`, and every canary is rejected
+  (`logs/P2/r41p11/p-*.txt`). Local stream on the new data (VM): N8, N2, N4, N2 accepted, canaries
+  rejected (`stream-p.out`).
+
+### 19.6 Final 7763 times (run 40820003716, S-E13a's data, base and new on one runner)
+
+Base = HEAD's `prover.s` (`a3db3bb5…`, S-E12f's matrices); new = this pass's (`5e1bab39…`, S-E13a's).
+`req_s` = `go` → `done`; ranges over the new prover's two streams.
+
+| step | kind | chain(s) | base request | **new request** | new: aggregate · witness · node prove |
+|---|---|---|---|---|---|
+| 1 | N8 | 2^18 + 2^18 | 19.12 | **17.13–17.23** | 10.37–10.42 · 0.67 · 5.94–6.00 |
+| 2, 8 | N2 | 2^17 | 7.20–7.38 | **6.13–6.25** | 2.87–2.98 · 0.37–0.38 · 2.77–2.81 |
+| 3 | N2 | 2^18 | 9.66 | **8.67–8.70** | 5.38–5.44 · 0.37–0.39 · 2.80–2.81 |
+| 4 | N2 | 311,951 | 11.09 | **9.93–9.96** | 6.44–6.51 · 0.52–0.60 · 2.79–2.82 |
+| 5 | N2 | 3·2^17 | 12.62 | **11.33–11.35** | 7.96–7.97 · 0.45–0.47 · 2.80–2.82 |
+| 6 | N4 | 3·2^18 | 23.86 | **21.69–21.76** | 15.62–15.65 · 0.73 · 5.21–5.23 |
+| 7 | N4 | 2^20 | 29.39 | **27.02–27.20** | 20.75–20.90 · 0.90–0.91 · 5.23–5.26 |
+
+- Start-up 0.75–0.78 → **0.59–0.63 s** (node data 0.20 s: the kind tables are larger now; plans
+  0.06 s; prefault ≈ 0.3 s). On S-E12f's data it was 0.48 s (run 40817225300).
+- `acc` (the native verifier, process start included, `acc_s`): N2 0.45, **N4 0.52–0.53**, N8 0.62 s
+  on the new matrices, against 0.40 / 0.48 / 0.57 s for the base on the old ones (+≈ 0.05 s).
+- Setup 64.9 s, peak 7.13 GB, 66.8 MB. Request peak RSS 7.01 GB (≤ 11 G).
+- 32/32 outputs accepted by `acc`, 32/32 canaries rejected (base and new); the same on the
+  off-tier runs (Xeon 8370C 40818830840, EPYC 9V74 40818835937 / 40820012760). Every runner
+  rebuilt `prover.s` byte for byte.
+
+**The stream projection** (`logs/P2/r41p11/project.py`; `project-final.txt`). It uses pass 10's
+model, with the node parts taken as request − aggregate fit, so they include slot 0's cost to the
+aggregate:
+
+| | base (same runner) | **new** |
+|---|---|---|
+| node parts N2 / N4 / N8 | 4.62 / 8.07 / 8.54 s | **3.49 / 5.94 / 6.62 s** |
+| start-up · overhead per step | 0.77 · 2.15 s | **0.61 · 1.99 s** |
+| steps 2^17 / 2^18 / 1.19·2^18 / 2^20 | 7.25 / 9.90 / 11.05 / 29.19 s | **6.12 / 8.77 / 9.93 / 27.06 s** |
+| mean step + overhead | 12.06 + 2.15 = 14.22 s | **10.80 + 1.99 = 12.78 s** |
+| stream fits | M ≤ 67 | **M ≤ 74** |
+| evaluations truncated (simulated) | 81.3 % | **52.5 %** |
+| P̄ | 10.75 s | **9.53 s** |
+
+The same prover on S-E12f's data (run 40817225300) gave M ≤ 76 and 46.1 %. S-E13a's matrices cost
+≈ 0.13 s of start-up and ≈ 0.13 s of node prove per step.
+
+### 19.7 Checks and `prover.s`
+
+- `cargo test --release`: **46 passed, 1 ignored** (`cargo-test-4.txt`). New tests:
+  `trace_blocks_matches_ref`, `round1_zero_windows_skipped_equal`, `plans_round_trip`.
+- Source rule (`logs/org20`): 357 files, 0 findings.
+- **`prover.s` 17,441,648 B, sha256 `5e1bab39fa16dbb432df0019b1f1bac4bd47ea09dc94af353174599e54c961bc`**
+  (`build-asm.log`). The 4 final runners rebuilt it byte for byte.
+
+### 19.8 Deviations, findings, open questions
+
+1. **`prover setup` now does work**: 65 s on the 7763 out of 240 s, 66.8 MB out of 4 GiB, peak
+   7.13 GB. With no setup, or a setup from other node data (tag mismatch), the prover solves as in
+   pass 10.
+2. **Replays are a guess that is checked.** Every fill checks every row. A replay that falls short
+   is completed by the worklist, and π is unchanged (the closure argument, §19.3; KATs with both
+   paths).
+3. **Slot 0 beside the aggregate costs the aggregate up to 0.36 s** (at 2^17), and lowering its
+   priority does not help. It is still ≈ 0.1 s better per step than running it inside the witness.
+4. **S-E13a/S-E13b**: the honest witnesses fail no row once S-E13b's cells are written and mirror
+   549 + t holds the whole `r`. Before that, the failing rows were exactly S-E13b's WOTS rows. The
+   pack rows held without any change. **For S-C (the `r31` proposal, S-E13b §2.2):** the prover now
+   writes `r`'s byte 31 at source 549 + t, so `mbo = 248` on that source is already consistent with
+   the witness.
+5. The node blob grew to 7.4 MB (raw 27.1 MB) because the kind tables carry the link rows as text.
+   A binary form, or the link rows generated from their families, would win back ≈ 0.1 s of start-up.
+
+### 19.9 Handover: what remains, in order of seconds per step
+
+1. **The aggregate's segments** are now ≈ 64 % of a mean step (≈ 6.9 of 10.8 s). Round 1
+   (≈ 1.25 s per 2^18) is the largest kernel. A bit-sliced round 1 was costed here and does not pay:
+   the LDE alone costs more bit-sliced (≈ 15 k ops per window) than the byte tables (11 k). What is
+   left is P2″'s tower-field products (−10 %) and the conversion (−20 % of its part).
+2. **The node prove** (N2 2.8 s, N4 5.2 s): commit, Z and Ligerito are still most of it. The zero
+   third of the witness could also be skipped in Ligerito's level-0 folds and messages, and in Sh's
+   `collapse_n` (0.12 s of Sh's 0.21 s on N2). E2's sumcheck over the M rows' support is worth
+   ≈ 0.07 s on N4 only.
+3. **Slot 0's interference with the aggregate** (+0.05…+0.36 s), and its own cost: `run_p0` ≈ 0.3 s,
+   replay 0.12 s, check 0.07 s. The check could run in parallel over rows.
+4. **Start-up 0.6 s**: node data 0.2 s (parse 85 %; a parsed binary image in `/setup`, read at
+   start-up, would cut most of it), prefault ≈ 0.3 s (zeroing, inherent; it only moves time out of
+   P).
+5. A partial L32 replays the 200,003-step order 65 entries short and is completed by the worklist
+   (≈ 0.15 s on the 7763, in parallel). Orders per `n` class near the segment end would remove this.

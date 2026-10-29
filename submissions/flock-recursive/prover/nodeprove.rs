@@ -179,6 +179,10 @@ pub fn partial_fold_kinds(z: &[u64], s_out: &[F], kind: &[u8]) -> Vec<Vec<F>> {
         let mut acc: Vec<Vec<F>> = vec![Vec::new(); 9];
         let mut t = [F::ZERO; 256];
         for s in lo..hi {
+            // a stripe of zero blocks adds nothing (`t[0] = 0`)
+            if z[8 * s * 256..(8 * s + 8) * 256].iter().all(|&x| x == 0) {
+                continue;
+            }
             let ks = &kind[8 * s..8 * s + 8];
             let seen = ks.iter().fold(0u16, |a, &x| a | 1 << x);
             for kk in 0..9u8 {
@@ -420,10 +424,13 @@ pub fn prove(o: &dyn Oracle, ni: &NodeIn) -> (Vec<u8>, Times) {
         }
         pw *= kap_s;
     }
+    let sp = crate::prof::span("sh.collapse");
     let cols: Vec<Vec<F>> = keys.iter().map(|&(b, n)| collapse_n(&w.z, &tt, b, n)).collect();
+    drop(sp);
     let pairs: Vec<(Vec<F>, Vec<F>)> = es.into_iter().zip(cols).collect();
     assert!(pairs.iter().map(|(p, q)| leaf::dot(p, q)).fold(F::ZERO, |a, b| a + b).is_zero(), "Sh's sum is 0");
     wr.fs.phase = "S2";
+    let sp = crate::prof::span("sh.pairs");
     let (taup, fin) = prove_pairs(pairs, &mut |g| {
         wr.send_f(pp::F_S2, &coeffs_f(g));
         wr.fs.chal_f()
@@ -434,7 +441,10 @@ pub fn prove(o: &dyn Oracle, ni: &NodeIn) -> (Vec<u8>, Times) {
             wsl[b + s] += *eb * eqt[s];
         }
     }
+    drop(sp);
+    let sp = crate::prof::span("sh.prefix");
     let zs = leaf::partial_fold_prefix(&w.z, &taup, 16);
+    drop(sp);
     let zs_keep = zs.clone();
     let (tpp, _) = prove_pairs(vec![(wsl, zs)], &mut |g| {
         wr.send_f(pp::F_S2, &coeffs_f(g));
@@ -616,7 +626,7 @@ mod tests {
             signed.push(format::Signed { pi, tr, sig });
         }
         let aggs: Vec<node::AggIn> = signed.iter().map(node::agg_in).collect();
-        let w = node::witness(k, &vk, None, &aggs, &nd.protos, &nd.texts, &gcirc, &circ);
+        let w = node::witness(k, &vk, None, &aggs, &nd.protos, &nd.texts, &gcirc, &circ, None);
         let kt = std::sync::Arc::new(nd.kind_tab(k));
         let ch = node::check(&w, &nd.protos, &kt);
         assert!(ch.h_bad_blocks + ch.chain_bad + ch.links_bad + ch.cells_bad + ch.l_bad + ch.m_bad + ch.link_rows_bad == 0, "{ch:?}");

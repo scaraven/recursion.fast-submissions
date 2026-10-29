@@ -365,7 +365,7 @@ pub fn general_circuit() -> Circuit {
 /// **Up to 64 blocks of any kinds, bit-sliced**: `z`, `A₀z`, `B₀z` per block (the kind's rows: a
 /// pinned input `(0, 0)`, a free input `(var k, one)`, gates and outputs their forms; `free`: `A₀ =
 /// B₀ = I`). Block `t`'s words go to `[256 t, 256 t + 256)`.
-pub fn trace_blocks(c: &Circuit, ins: &[BlockIn], bks: &[BK], zw: &mut [u64], aw: &mut [u64], bw: &mut [u64]) {
+pub fn trace_blocks_ref(c: &Circuit, ins: &[BlockIn], bks: &[BK], zw: &mut [u64], aw: &mut [u64], bw: &mut [u64]) {
     let k = ins.len();
     assert!(k <= 64 && bks.len() == k);
     const BLOCK: usize = 1 << 14;
@@ -574,9 +574,8 @@ fn wots_run(vk: &Digest, m: &Digest, s: &Sig) -> Wots {
         ins.push(b1);
         ins.push(b2);
         mir[533 + t] = l;
-        let mut r0 = [0u8; 32];
-        r0[..31].copy_from_slice(&r[..31]);
-        mir[549 + t] = r0;
+        // the whole `r` (S-E13b's W5 mux is on whole elements; the `r0` family links bytes 0–30)
+        mir[549 + t] = r;
         let mut r31 = [0u8; 32];
         r31[0] = r[31];
         mir[565 + t] = r31;
@@ -750,11 +749,115 @@ fn h_part(k: NK, vk: &Digest, prev: Option<&PrevIn>, aggs: &[AggIn], signed: &[&
             }
         }
     }
+    // S-E13b's L cells per signed child σ (stride σ, offsets 8704–11648; `S-E13b-RESULT` §6)
+    let el = |z: &[u64], c: usize| F::new(z[2 * c], z[2 * c + 1]);
+    let bit = |x: F, q: usize| F::new(((if q < 64 { x.lo } else { x.hi }) >> (q % 64)) & 1, 0);
+    let g = F::new(2, 0);
+    let gi = g.inv();
+    for sg in 0..2 {
+        let base = lb + sg * (1 << 14);
+        let s = &signed[sg].sig;
+        // 8704 + t: the index bits
+        for t in 0..16 {
+            fz(&mut z, base + 8704 + t, F::new((s.idx >> t) & 1, 0));
+        }
+        // 8720 + i: the checksum's running products R_i = Π_{j<i} f_j, f_j = g^{3−d_j} (j < 128),
+        // g^{−4^t c_t} (checksum digit t = j − 128)
+        let d = &wots[sg].digits;
+        let mut r = F::ONE;
+        for i in 1..=132 {
+            let j = i - 1;
+            let f = if j < 128 { g.pow(3) * gi.pow(d[j] as u128) } else { gi.pow((1u128 << (2 * (j - 128))) * d[j] as u128) };
+            r *= f;
+            fz(&mut z, base + 8720 + i, r);
+        }
+        // 8960 + 128 t + q: the bits of mirror 549 + t's element 1 (r's bytes 16–31)
+        for t in 0..16 {
+            let g549 = 549 + t;
+            let x = el(&z, (k.wm_b(sg) + g549 / 4) * 128 + 2 * (g549 % 4) + 1);
+            for q in 0..128 {
+                fz(&mut z, base + 8960 + 128 * t + q, bit(x, q));
+            }
+        }
+        if !k.is_agg(sg) {
+            continue;
+        }
+        let a = k.agg_of(sg);
+        let kk = aggs[a].segs.len();
+        // 11008 + 2(j − 1) + h: T_{j,h} = [k = j]·h_out(F_j)_h (F_maxK: the main chain's last block)
+        let fj = if kk == k.max_k() { k.ch_base(sg) + k.ch_len(sg) - 1 } else { k.fin_b(a) + kk - 1 };
+        for h in 0..2 {
+            let x = el(&z, fj * 128 + 2 + h);
+            fz(&mut z, base + 11008 + 2 * (kk - 1) + h, x);
+        }
+        // 11264 + 128(j − 2) + q, 2 ≤ j ≤ maxK: the bits of main block aggL j − 1's element 7
+        for j in 2..=k.max_k() {
+            let x = el(&z, (k.ch_base(sg) + agg_l(j) - 1) * 128 + 7);
+            for q in 0..128 {
+                fz(&mut z, base + 11264 + 128 * (j - 2) + q, bit(x, q));
+            }
+        }
+    }
     mark("l_mirrors", &mut times);
     (z, a, b, bks, times)
 }
 
-pub fn witness(k: NK, vk: &Digest, prev: Option<&PrevIn>, aggs: &[AggIn], protos: &[mfill::Proto; 2], texts: &[String; 2], circ: &Circuit, lcirc: &Circuit) -> NodeWit {
+/// A slot's fill: the M cells, the fill's report, the program run's bits.
+pub type Fill = (Vec<F>, mfill::FillStats, Vec<bool>);
+
+/// One verifier slot's fill: the prototype program's run at the child's index (`run`: the child's
+/// proof, trace, statement, index; `None`: inactive), then `mfill::fill`. Slot `v` names it in the report.
+#[allow(clippy::too_many_arguments)]
+fn slot_fill(p: &mfill::Proto, text: &str, p0: bool, run: Option<(&[u8], &[(Vec<u8>, Digest)], Digest, usize)>, prev: Option<&PrevIn>, vk: &Digest, lcirc: &Circuit, v: usize) -> Fill {
+    match run {
+        Some((pi, tr, c, ix)) => {
+            let o = crate::oracle::Seq::new(tr);
+            let sp = crate::prof::span(if p0 { "wit.run_p0" } else { "wit.run_p1" });
+            let spec = crate::ir::spec_kind(text, ix);
+            let (r, regs) = match prev {
+                Some(p) if p0 => crate::ir::run_node_regs(&spec, p.ctx.clone(), p.base, &o, vk, &c, pi),
+                _ => crate::ir::run_regs(&spec, lcirc, &o, vk, &c, pi),
+            };
+            drop(sp);
+            let mut st = mfill::FillStats::default();
+            if !r.ok || !o.consumed() {
+                st.first_conflicts.push(format!("slot {v}: program run ok={} failed={:?} consumed={}", r.ok, r.failed, o.consumed()));
+            }
+            let bits: Vec<bool> = regs.iter().zip(texts_bitof(text)).filter(|(_, b)| *b).map(|(r, _)| matches!(r, V::Bit(true))).collect();
+            // a segment below its kind's cap (`L32` 2^18, `P30` 2^16, `P31` 2^17 steps) has its own plan
+            let partial = !p0 && {
+                let so = pp::field_off(pp::F_STMT);
+                let n = u64::from_le_bytes(pi[so + 33..so + 41].try_into().unwrap());
+                n < [1u64 << 18, 1 << 16, 1 << 17][ix]
+            };
+            let (val, st2) = mfill::fill_part(p, Some((&regs, ix)), partial);
+            st.written = st2.written;
+            st.solved = st2.solved;
+            st.zeroed = st2.zeroed;
+            st.conflicts = st2.conflicts;
+            st.first_conflicts.extend(st2.first_conflicts);
+            st.failed_rows = st2.failed_rows;
+            st.first_failed = st2.first_failed;
+            st.form_mismatch = st2.form_mismatch;
+            st.first_form_mismatch = st2.first_form_mismatch;
+            st.replayed = st2.replayed;
+            (val, st, bits)
+        }
+        None => {
+            let (val, st) = mfill::fill(p, None);
+            (val, st, Vec::new())
+        }
+    }
+}
+
+/// Slot 0's fill of a node with a previous node (its program run on `prev` and the solve): it needs
+/// only `prev`, so a step computes it beside its aggregate and hands it to `witness`.
+pub fn slot0_fill(prev: &PrevIn, vk: &Digest, protos: &[mfill::Proto; 2], texts: &[String; 2], lcirc: &Circuit) -> Fill {
+    slot_fill(&protos[0], &texts[0], true, Some((&prev.signed.pi[..], &prev.signed.tr[..], prev.c, prev.ix)), Some(prev), vk, lcirc, 0)
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn witness(k: NK, vk: &Digest, prev: Option<&PrevIn>, aggs: &[AggIn], protos: &[mfill::Proto; 2], texts: &[String; 2], circ: &Circuit, lcirc: &Circuit, pre0: Option<Fill>) -> NodeWit {
     let mut times = Vec::new();
     let mut t0 = std::time::Instant::now();
     let mut mark = |n: &'static str, times: &mut Vec<(&'static str, f64)>| {
@@ -788,46 +891,29 @@ pub fn witness(k: NK, vk: &Digest, prev: Option<&PrevIn>, aggs: &[AggIn], protos
     let sp = crate::prof::span("wit.warm_plans");
     warm_plans(protos);
     drop(sp);
-    let firsts: Vec<usize> = (0..2).filter_map(|p| jobs.iter().position(|j| j.proto == p && j.run.is_some())).collect();
     let fill_job = |v: usize| {
         let j = &jobs[v];
-        let p = &protos[j.proto];
-        match j.run {
-            Some((pi, tr, c, ix)) => {
-                let o = crate::oracle::Seq::new(tr);
-                let sp = crate::prof::span(if j.proto == 0 { "wit.run_p0" } else { "wit.run_p1" });
-                let text = crate::ir::spec_kind(&texts[j.proto], ix);
-                let (r, regs) = match prev {
-                    Some(p) if j.proto == 0 => crate::ir::run_node_regs(&text, p.ctx.clone(), p.base, &o, vk, &c, pi),
-                    _ => crate::ir::run_regs(&text, lcirc, &o, vk, &c, pi),
-                };
-                drop(sp);
-                let mut st = mfill::FillStats::default();
-                if !r.ok || !o.consumed() {
-                    st.first_conflicts.push(format!("slot {v}: program run ok={} failed={:?} consumed={}", r.ok, r.failed, o.consumed()));
-                }
-                let bits: Vec<bool> = regs.iter().zip(texts_bitof(&texts[j.proto])).filter(|(_, b)| *b).map(|(r, _)| matches!(r, V::Bit(true))).collect();
-                let (val, st2) = mfill::fill(p, Some((&regs, ix)));
-                st.written = st2.written;
-                st.solved = st2.solved;
-                st.zeroed = st2.zeroed;
-                st.conflicts = st2.conflicts;
-                st.first_conflicts.extend(st2.first_conflicts);
-                st.failed_rows = st2.failed_rows;
-                st.first_failed = st2.first_failed;
-                st.form_mismatch = st2.form_mismatch;
-                st.first_form_mismatch = st2.first_form_mismatch;
-                (val, st, bits)
-            }
-            None => {
-                let (val, st) = mfill::fill(p, None);
-                (val, st, Vec::new())
+        slot_fill(&protos[j.proto], &texts[j.proto], j.proto == 0, j.run, prev, vk, lcirc, v)
+    };
+    // slot 0's fill when the caller computed it already (`slot0_fill`, during the aggregate)
+    let mut pre0 = pre0;
+    // the fills that start beside the H part: every slot whose solve order is known (recorded
+    // before the request, e.g. by `prover setup`), and the first active slot of a prototype
+    // without one (it records the order the others replay)
+    let known = |j: &SlotJob| match j.run {
+        Some(_) => protos[j.proto].plan[1..].iter().any(|o| o.get().is_some()),
+        None => protos[j.proto].plan[0].get().is_some(),
+    };
+    let mut firsts: Vec<usize> = (0..jobs.len()).filter(|&v| !(v == 0 && pre0.is_some()) && known(&jobs[v])).collect();
+    for p in 0..2 {
+        if let Some(v) = (0..jobs.len()).find(|&v| jobs[v].proto == p && jobs[v].run.is_some() && !(v == 0 && pre0.is_some()) && !firsts.contains(&v)) {
+            if !firsts.iter().any(|&f| jobs[f].proto == p && jobs[f].run.is_some()) {
+                firsts.push(v);
             }
         }
-    };
+    }
     // the H part (one task; its block trace is a parallel job of its own, taken by idle workers)
-    // beside the first fill of each prototype (a slot's program run and solve are serial)
-    type Fill = (Vec<F>, mfill::FillStats, Vec<bool>);
+    // beside those fills (a slot's program run and solve are serial)
     let h_out: std::sync::Mutex<Option<(Vec<u64>, Vec<u64>, Vec<u64>, Vec<BK>, Vec<(&'static str, f64)>)>> = std::sync::Mutex::new(None);
     let first_out: Vec<std::sync::Mutex<Option<Fill>>> = firsts.iter().map(|_| std::sync::Mutex::new(None)).collect();
     par::run(1 + firsts.len(), &|i| {
@@ -841,11 +927,12 @@ pub fn witness(k: NK, vk: &Digest, prev: Option<&PrevIn>, aggs: &[AggIn], protos
     times.extend(htimes);
     mark("h_first_fills", &mut times);
     let mut first_fills: Vec<Option<Fill>> = first_out.into_iter().map(|m| m.into_inner().unwrap()).collect();
-    let rest: Vec<usize> = (0..jobs.len()).filter(|v| !firsts.contains(v)).collect();
+    let rest: Vec<usize> = (0..jobs.len()).filter(|&v| !firsts.contains(&v) && !(v == 0 && pre0.is_some())).collect();
     let mut rest_fills: Vec<Option<Fill>> = par::collect_vec(rest.len(), 1, |i| Some(fill_job(rest[i])));
     let fills: Vec<Fill> = (0..jobs.len())
         .map(|v| match firsts.iter().position(|&f| f == v) {
             Some(i) => first_fills[i].take().unwrap(),
+            None if v == 0 && pre0.is_some() => pre0.take().unwrap(),
             None => rest_fills[rest.iter().position(|&r| r == v).unwrap()].take().unwrap(),
         })
         .collect();
@@ -894,6 +981,7 @@ pub fn witness(k: NK, vk: &Digest, prev: Option<&PrevIn>, aggs: &[AggIn], protos
 /// Record both prototypes' inactive solve plans (no child needed: done before a request).
 pub fn warm_plans(protos: &[mfill::Proto; 2]) {
     par::collect_vec(2, 1, |p| {
+        mfill::warm_adjacency(&protos[p]);
         if protos[p].plan[0].get().is_none() {
             mfill::fill(&protos[p], None);
         }
@@ -925,6 +1013,8 @@ pub struct Checks {
     pub m_rows: usize,
     pub m_bad: usize,
     pub link_rows_bad: usize,
+    /// The first failing link rows' global indices.
+    pub first_bad_links: Vec<u32>,
 }
 
 /// **Every relation of the node, checked directly on the witness.**
@@ -1023,7 +1113,302 @@ pub fn check(w: &NodeWit, protos: &[mfill::Proto; 2], kt: &mfill::KindTab) -> Ch
         let [a, b, c] = kt.links.eval(i, &|x| fv(x as usize));
         if a * b != c {
             ch.link_rows_bad += 1;
+            if ch.first_bad_links.len() < 400 {
+                ch.first_bad_links.push(kt.links.idx[i]);
+            }
         }
     }
     ch
+}
+
+/// The general tape compiled for `trace_blocks`: one slot per block position (an input's bit, a
+/// gate's value), a zero slot, and temporaries for the XOR forms, reused once dead (the tape's
+/// ~85 k forms live in a few hundred slots, so a batch's values stay in cache). An op is
+/// `(dst | GATE, a, b)`: a gate writes `a & b` to its position and keeps `a`, `b` (its row's forms).
+/// Position `p`'s slot is `tperm(p)`: four consecutive 64-position words interleaved, so that
+/// `trace_out` loads the four words' rows `j` at once.
+struct TraceProg {
+    ops: Vec<[u32; 3]>,
+    slots: usize,
+}
+
+const GATE_OP: u32 = 1 << 31;
+
+#[inline(always)]
+fn tperm(p: usize) -> usize {
+    (p & !255) | ((p & 63) << 2) | ((p >> 6) & 3)
+}
+
+fn trace_prog(c: &Circuit) -> &'static TraceProg {
+    static P: std::sync::OnceLock<TraceProg> = std::sync::OnceLock::new();
+    let p = P.get_or_init(|| {
+        const BLOCK: usize = 1 << 14;
+        let n = c.nodes.len();
+        let mut last = vec![usize::MAX; n];
+        for (i, nd) in c.nodes.iter().enumerate() {
+            if let Node::Xor(a, b) | Node::Gate(_, a, b) = *nd {
+                last[a as usize] = i;
+                last[b as usize] = i;
+            }
+        }
+        let mut is_gate = vec![false; BLOCK];
+        let mut slot = vec![u32::MAX; n];
+        let mut free: Vec<u32> = Vec::new();
+        let mut is_free = vec![false; n + BLOCK + 1];
+        let mut slots = BLOCK as u32 + 1;
+        let mut ops = Vec::new();
+        for (i, nd) in c.nodes.iter().enumerate() {
+            match *nd {
+                Node::Zero => slot[i] = BLOCK as u32,
+                Node::Var(p) => {
+                    assert!(!is_gate[p as usize], "a gate position read as an input");
+                    slot[i] = tperm(p as usize) as u32;
+                }
+                Node::Xor(a, b) | Node::Gate(_, a, b) => {
+                    let (sa, sb) = (slot[a as usize], slot[b as usize]);
+                    assert!(sa != u32::MAX && sb != u32::MAX);
+                    for &(x, sx) in &[(a, sa), (b, sb)] {
+                        if last[x as usize] == i && sx > BLOCK as u32 && !is_free[sx as usize] {
+                            is_free[sx as usize] = true;
+                            free.push(sx);
+                        }
+                    }
+                    if let Node::Gate(p, ..) = *nd {
+                        assert!(!is_gate[p as usize] && c.rows[p as usize] == Some((a, b)), "one gate per position, its row");
+                        is_gate[p as usize] = true;
+                        slot[i] = tperm(p as usize) as u32;
+                        ops.push([slot[i] | GATE_OP, sa, sb]);
+                    } else if last[i] != usize::MAX {
+                        let d = free.pop().unwrap_or_else(|| {
+                            slots += 1;
+                            slots - 1
+                        });
+                        is_free[d as usize] = false;
+                        slot[i] = d;
+                        ops.push([d, sa, sb]);
+                    }
+                }
+            }
+        }
+        assert_eq!(is_gate.iter().filter(|&&g| g).count(), c.rows.iter().filter(|r| r.is_some()).count(), "every row a gate's");
+        TraceProg { ops, slots: slots as usize }
+    });
+    p
+}
+
+/// Compile the general tape for `trace_blocks` now (before a request's clock).
+pub fn warm_trace(c: &Circuit) {
+    let _ = trace_prog(c);
+}
+
+/// The pinned input positions of a kind, as 19 words over positions `0 … 1215` (`BK::pinned`).
+fn pin_words(bk: BK) -> [u64; 19] {
+    let mut w = [0u64; 19];
+    if bk == BK::Free {
+        return w;
+    }
+    if bk.h0_pin() {
+        w[..4].fill(!0);
+    }
+    for b in 0..64 {
+        if bk.msg_pin(b).is_some() {
+            w[8 + b / 8] |= 0xFF << (8 * (b % 8));
+        }
+    }
+    w[16] = !0;
+    w[17] = !0;
+    w[18] = 1;
+    w
+}
+
+/// **Up to 64 blocks of any kinds, bit-sliced** (as `trace_blocks_ref`, faster): the inputs by
+/// 64×64 transposes, the compiled tape (`trace_prog`), the gates' forms kept at the gate, the
+/// inputs' rows `(z & !pin, !pin)` by the kinds' pin words, then `trace_out`.
+pub fn trace_blocks(c: &Circuit, ins: &[BlockIn], bks: &[BK], zw: &mut [u64], aw: &mut [u64], bw: &mut [u64]) {
+    const BLOCK: usize = 1 << 14;
+    let k = ins.len();
+    assert!(k <= 64 && bks.len() == k);
+    let prog = trace_prog(c);
+    let mut vals = vec![0u64; prog.slots];
+    let (mut ga, mut gb) = (vec![0u64; BLOCK], vec![0u64; BLOCK]);
+    let lanes = if k == 64 { !0 } else { (1u64 << k) - 1 };
+    let mut free = 0u64;
+    let mut groups: Vec<(BK, u64)> = Vec::new();
+    for (t, bk) in bks.iter().enumerate() {
+        if *bk == BK::Free {
+            free |= 1 << t;
+        }
+        match groups.iter_mut().find(|g| g.0 == *bk) {
+            Some(g) => g.1 |= 1 << t,
+            None => groups.push((*bk, 1 << t)),
+        }
+    }
+    let pins: Vec<([u64; 19], u64)> = groups.iter().map(|&(bk, mask)| (pin_words(bk), mask)).collect();
+    // the inputs: per 64-position word, the lanes' words transposed
+    let word = |b: &BlockIn, w: usize| -> u64 {
+        match w {
+            0..=3 => b.h[2 * w] as u64 | (b.h[2 * w + 1] as u64) << 32,
+            8..=15 => u64::from_le_bytes(b.msg[8 * (w - 8)..8 * (w - 7)].try_into().unwrap()),
+            16 => b.t,
+            17 => b.f0 as u64,
+            18 => 1,
+            _ => 0,
+        }
+    };
+    let mut m = [0u64; 64];
+    for w in (0..4).chain(8..19) {
+        for t in 0..64 {
+            m[t] = if t < k && free >> t & 1 == 0 { word(&ins[t], w) } else { 0 };
+        }
+        crate::circuit::transpose64(&mut m);
+        for j in 0..64 {
+            vals[tperm(64 * w + j)] = m[j];
+        }
+    }
+    {
+        let v = &mut vals[..];
+        for &[d, a, b] in &prog.ops {
+            let (x, y) = (v[a as usize], v[b as usize]);
+            if d & GATE_OP != 0 {
+                let p = (d & !GATE_OP) as usize;
+                ga[p] = x;
+                gb[p] = y;
+                v[p] = x & y;
+            } else {
+                v[d as usize] = x ^ y;
+            }
+        }
+    }
+    let hw = lanes & !free;
+    // the inputs' rows into the form arrays (every other non-gate position keeps the zero row)
+    for p in (0..256).chain(512..pp::ONE_POS) {
+        if c.rows[p].is_none() {
+            let mut pin = 0u64;
+            for (pw, mask) in &pins {
+                if pw[p / 64] >> (p % 64) & 1 == 1 {
+                    pin |= mask;
+                }
+            }
+            let q = tperm(p);
+            ga[q] = vals[q] & !pin;
+            gb[q] = !pin;
+        }
+    }
+    trace_out(&vals[..BLOCK], &ga, &gb, hw, free, k, zw, aw, bw);
+}
+
+/// `trace_blocks`' output (`z`, `ga`, `gb` in `tperm` order): per 64 positions, `z & hw`,
+/// `(A & hw) | (z & free)`, `(B & hw) | (z & free)` transposed to the lanes' words.
+#[allow(clippy::too_many_arguments)]
+fn trace_out(z: &[u64], ga: &[u64], gb: &[u64], hw: u64, free: u64, k: usize, zw: &mut [u64], aw: &mut [u64], bw: &mut [u64]) {
+    #[cfg(target_arch = "x86_64")]
+    if std::is_x86_feature_detected!("avx2") {
+        // SAFETY: AVX2 is present.
+        return unsafe { trace_out_avx2(z, ga, gb, hw, free, k, zw, aw, bw) };
+    }
+    let (mut mz, mut ma, mut mb) = ([0u64; 64], [0u64; 64], [0u64; 64]);
+    for wi in 0..z.len() / 64 {
+        for j in 0..64 {
+            let p = tperm(64 * wi + j);
+            let zf = z[p] & free;
+            mz[j] = z[p] & hw;
+            ma[j] = (ga[p] & hw) | zf;
+            mb[j] = (gb[p] & hw) | zf;
+        }
+        crate::circuit::transpose64(&mut mz);
+        crate::circuit::transpose64(&mut ma);
+        crate::circuit::transpose64(&mut mb);
+        for t in 0..k {
+            zw[256 * t + wi] = mz[t];
+            aw[256 * t + wi] = ma[t];
+            bw[256 * t + wi] = mb[t];
+        }
+    }
+}
+
+/// Four 64-position words at a time: lane `i` of a vector is word `4q + i`; each of the three
+/// matrices is transposed by six vertical stages and stored as four consecutive words per lane.
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx2")]
+#[allow(clippy::too_many_arguments)]
+unsafe fn trace_out_avx2(z: &[u64], ga: &[u64], gb: &[u64], hw: u64, free: u64, k: usize, zw: &mut [u64], aw: &mut [u64], bw: &mut [u64]) {
+    use std::arch::x86_64::*;
+    #[inline(always)]
+    unsafe fn stage<const W: i32>(m: &mut [__m256i; 64], mask: u64) {
+        let mv = _mm256_set1_epi64x(mask as i64);
+        let w = W as usize;
+        for i in 0..64 {
+            if i & w == 0 {
+                let t = _mm256_and_si256(_mm256_xor_si256(_mm256_srli_epi64::<W>(m[i]), m[i + w]), mv);
+                m[i + w] = _mm256_xor_si256(m[i + w], t);
+                m[i] = _mm256_xor_si256(m[i], _mm256_slli_epi64::<W>(t));
+            }
+        }
+    }
+    #[inline(always)]
+    unsafe fn transpose(m: &mut [__m256i; 64]) {
+        stage::<32>(m, 0x0000_0000_FFFF_FFFF);
+        stage::<16>(m, 0x0000_FFFF_0000_FFFF);
+        stage::<8>(m, 0x00FF_00FF_00FF_00FF);
+        stage::<4>(m, 0x0F0F_0F0F_0F0F_0F0F);
+        stage::<2>(m, 0x3333_3333_3333_3333);
+        stage::<1>(m, 0x5555_5555_5555_5555);
+    }
+    let (hv, fv) = (_mm256_set1_epi64x(hw as i64), _mm256_set1_epi64x(free as i64));
+    let ld = |s: &[u64], i: usize| _mm256_loadu_si256(s.as_ptr().add(i) as *const __m256i);
+    let mut m = [_mm256_setzero_si256(); 64];
+    for q in 0..z.len() / 256 {
+        let o = 256 * q;
+        for (s, dst) in [(0usize, &mut *zw), (1, &mut *aw), (2, &mut *bw)] {
+            for j in 0..64 {
+                let zj = ld(z, o + 4 * j);
+                m[j] = match s {
+                    0 => _mm256_and_si256(zj, hv),
+                    1 => _mm256_or_si256(_mm256_and_si256(ld(ga, o + 4 * j), hv), _mm256_and_si256(zj, fv)),
+                    _ => _mm256_or_si256(_mm256_and_si256(ld(gb, o + 4 * j), hv), _mm256_and_si256(zj, fv)),
+                };
+            }
+            transpose(&mut m);
+            for t in 0..k {
+                _mm256_storeu_si256(dst.as_mut_ptr().add(256 * t + 4 * q) as *mut __m256i, m[t]);
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod pass11_tests {
+    use super::*;
+
+    /// `trace_blocks` (compiled tape, transposes) equals `trace_blocks_ref` on full and partial
+    /// batches of mixed kinds, free blocks included.
+    #[test]
+    fn trace_blocks_matches_ref() {
+        let c = general_circuit();
+        let mut s = 0x1234_5678_9abc_def0u64;
+        let mut rnd = move || {
+            s ^= s << 13;
+            s ^= s >> 7;
+            s ^= s << 17;
+            s
+        };
+        let kinds = [BK::StreamStart, BK::Stream(128, false), BK::Stream(77, true), BK::StreamEnd41, BK::HashA, BK::HashB1(3), BK::HashB2, BK::W43(5, 9), BK::Free];
+        for &k in &[64usize, 37, 1] {
+            let bks: Vec<BK> = (0..k).map(|i| kinds[(rnd() as usize + i) % kinds.len()]).collect();
+            let ins: Vec<BlockIn> = bks
+                .iter()
+                .map(|&bk| {
+                    let h: [u32; 8] = std::array::from_fn(|_| rnd() as u32);
+                    let msg: Vec<u8> = (0..64).map(|_| rnd() as u8).collect();
+                    if bk == BK::Free { BlockIn::zero() } else { BlockIn::of(bk, h, &msg) }
+                })
+                .collect();
+            let n = 256 * k;
+            let (mut z0, mut a0, mut b0) = (vec![0u64; n], vec![0u64; n], vec![0u64; n]);
+            let (mut z1, mut a1, mut b1) = (vec![0u64; n], vec![0u64; n], vec![0u64; n]);
+            trace_blocks_ref(&c, &ins, &bks, &mut z0, &mut a0, &mut b0);
+            trace_blocks(&c, &ins, &bks, &mut z1, &mut a1, &mut b1);
+            assert!(z0 == z1 && a0 == a1 && b0 == b1, "k = {k}");
+        }
+    }
 }

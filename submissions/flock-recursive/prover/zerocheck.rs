@@ -91,11 +91,17 @@ pub fn round1(a: &[u8], b: &[u8], z: &[u8], r_out: &[F], used: usize) -> R1 {
     assert_eq!(nw, 1 << r_out.len());
     let eo = eq_table(r_out);
     let _sp = crate::prof::span("r1.windows");
+    // a window whose a, b and z are all zero adds nothing (its LDEs are zero and the convert
+    // tables map 0 to 0): skipped (a node's free and spare blocks, a third of its windows)
+    let skip0 = (0..16).all(|bm| sk.conv[bm * 256].is_zero());
     let parts = par::map_chunks(nw.min(used.saturating_mul(2)), 16, |lo, hi| {
         let mut acc = vec![F::ZERO; 192];
         let mut w = [F::ZERO; 192];
         for x in lo..hi {
             let base = x * 1024;
+            if skip0 && zero_bytes(&a[base..base + 1024]) && zero_bytes(&b[base..base + 1024]) && zero_bytes(&z[base..base + 1024]) {
+                continue;
+            }
             simd::round1_window(sk, &a[base..base + 1024], &b[base..base + 1024], &z[base..base + 1024], &mut w);
             simd::axpy(&mut acc, &w, eo[x]);
         }
@@ -175,6 +181,11 @@ pub fn round_x6(t: &[F], a: &[u8], b: &[u8], rest: &[F], used: usize) -> (F, F) 
     let parts = par::map_chunks(es.hi.len().min(used_h), 1, |lo, hi| {
         let (mut s1, mut si) = (FAcc::default(), FAcc::default());
         for h in lo..hi {
+            // a pair range whose a or b rows are all zero adds nothing
+            let (p0, p1) = (16 * (h << nlo), 16 * ((h + 1) << nlo));
+            if zero_bytes(&a[p0..p1]) || zero_bytes(&b[p0..p1]) {
+                continue;
+            }
             let (i1, ii) = simd::x6_inner(t, a, b, h << nlo, &es.lo);
             s1.mac(es.hi[h], i1);
             si.mac(es.hi[h], ii);
@@ -196,13 +207,28 @@ pub fn fold_x6(t: &[F], a: &[u8], s1: F, used: usize) -> Vec<F> {
     let mut out: Vec<F> = par::uninit_vec(n);
     let used_p = used.saturating_mul(128);
     par::for_each_chunk_mut(&mut out, 1 << 12, |off, ch| {
-        if off >= used_p {
-            ch.iter_mut().for_each(|x| *x = F::ZERO);
-        } else {
-            simd::x6_fold(t, a, off, s1, ch)
+        // sub-chunks of 1024 pairs; zero rows fold to zero (`t[·][0] = 0`)
+        for (i, sub) in ch.chunks_mut(1 << 10).enumerate() {
+            let o = off + (i << 10);
+            if o >= used_p || zero_bytes(&a[16 * o..16 * (o + sub.len())]) {
+                sub.iter_mut().for_each(|x| *x = F::ZERO);
+            } else {
+                simd::x6_fold(t, a, o, s1, sub)
+            }
         }
     });
     out
+}
+
+/// All bytes zero (word at a time).
+#[inline]
+pub fn zero_bytes(s: &[u8]) -> bool {
+    let (h, m, t) = unsafe { s.align_to::<u64>() };
+    h.iter().all(|&x| x == 0) && m.iter().all(|&x| x == 0) && t.iter().all(|&x| x == 0)
+}
+
+fn zero_f(s: &[F]) -> bool {
+    s.iter().all(|x| x.is_zero())
 }
 
 /// A later tail round on tables: `(h(1), h(∞))`. Entries `≥ live` of both tables are zero.
@@ -212,7 +238,11 @@ pub fn round_tab(a: &[F], b: &[F], rest: &[F], live: usize) -> (F, F) {
     let parts = par::map_chunks(es.hi.len().min(live.div_ceil(2 << nlo)), 1, |lo, hi| {
         let (mut s1, mut si) = (FAcc::default(), FAcc::default());
         for h in lo..hi {
-            let (i1, ii) = simd::zc_inner(&a[(h << nlo) * 2..((h + 1) << nlo) * 2], &b[(h << nlo) * 2..((h + 1) << nlo) * 2], &es.lo);
+            let (sa, sb) = (&a[(h << nlo) * 2..((h + 1) << nlo) * 2], &b[(h << nlo) * 2..((h + 1) << nlo) * 2]);
+            if zero_f(sa) || zero_f(sb) {
+                continue;
+            }
+            let (i1, ii) = simd::zc_inner(sa, sb, &es.lo);
             s1.mac(es.hi[h], i1);
             si.mac(es.hi[h], ii);
         }
@@ -237,4 +267,44 @@ pub fn zc_coeffs(p: F, r: F, h0: F, h1: F, hinf: F) -> [F; 3] {
     let e0 = F::ONE + r;
     let h1p = h0 + h1 + hinf;
     [p * e0 * h0, p * (h0 + e0 * h1p), p * (h1p + e0 * hinf)]
+}
+
+#[cfg(test)]
+mod pass11_tests {
+    use super::*;
+
+    /// Round 1 with zero windows skipped equals the sum over every window (pass 11).
+    #[test]
+    fn round1_zero_windows_skipped_equal() {
+        let r_out: Vec<F> = (0..4u64).map(|i| F::new(0x9e37_79b9 ^ (i * 77), i + 3)).collect();
+        let nw = 1usize << r_out.len();
+        let mut s = 0xfeed_beefu64;
+        let mut bytes = |zero: bool| -> Vec<u8> {
+            (0..nw * 1024)
+                .map(|i| {
+                    s ^= s << 13;
+                    s ^= s >> 7;
+                    s ^= s << 17;
+                    if zero && (i / 1024) % 3 != 1 { 0 } else { s as u8 }
+                })
+                .collect()
+        };
+        let (a, b, z) = (bytes(true), bytes(true), bytes(true));
+        let got = round1(&a, &b, &z, &r_out, nw);
+        let sk = skip();
+        let eo = eq_table(&r_out);
+        let mut acc = vec![F::ZERO; 192];
+        let mut w = [F::ZERO; 192];
+        for x in 0..nw {
+            simd::round1_window(sk, &a[x * 1024..x * 1024 + 1024], &b[x * 1024..x * 1024 + 1024], &z[x * 1024..x * 1024 + 1024], &mut w);
+            for i in 0..192 {
+                acc[i] += w[i] * eo[x];
+            }
+        }
+        for i in 0..64 {
+            assert_eq!(got.pab[i], acc[i] * sk.c_pin);
+            assert_eq!(got.bank[0][i], acc[64 + i] * sk.c_pin);
+            assert_eq!(got.bank[1][i], acc[128 + i] * sk.c_pin);
+        }
+    }
 }

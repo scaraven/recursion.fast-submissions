@@ -453,3 +453,109 @@ Base HEAD `cd195c5` (P2⁵), later `ef18e75` (S-E12f). Logs `logs/P2/r41p10/` (V
   of evaluations truncated, `P̄ ≈ 10.8 s`. All `probe/p2t-10*` branches deleted.
 - `cargo test --release` 43 passed, 1 ignored (`cargo-test-2.txt`); source rule 333 files, 0.
   `prover.s` 15,084,266 B, sha256 `a3db3bb5…abdd`. RESULT §18 written (18.9: the handover).
+
+## Pass 11 (track P2⁷, 2026-10-29): step time
+
+Base HEAD `48d25ef` (P2⁶). Logs `logs/P2/r41p11/` (VM) and `logs/P2/run-<id>/` (runners). Every
+cargo / prover command in a 16 GB scope with a timeout. π reference: `node-kat N2 --prev
+logs/P2/r41p10/n8.signed --agg 262147 --prove` → pi_b2s `9368bcae…` (pass 10's `f-N2.txt`).
+
+- Baseline on the VM (`base-N2.txt`, `base-N2-t4.txt`): at 4 threads `h_trace` 0.72 s (the 7763's
+  0.74 s), so the trace is ≈ 1.45 thread-s per N2 (1,109 batches of 64 blocks, 1.3–1.4 ms each).
+- **Lever 1, `trace_blocks`** (mode `bench-trace [N2|N4|N8]`, checked equal to `trace_blocks_ref`,
+  the old code kept): the general tape compiled once (`trace_prog`: 99,863 nodes → 98,965 ops in
+  16,958 slots; Var nodes alias their position, XOR forms in 573 reused temporaries, gates keep
+  their row's forms), inputs by 17 64×64 transposes (was 55 k bit sets), the pinned rows by per-kind
+  pin words (was `BK::pinned` per position per lane: 125 µs a batch), positions interleaved by four
+  words (`tperm`) so the output is three AVX2 6-stage transposes per four words with 32-byte stores.
+  VM, one thread: 1.39 → 0.53 ms per batch (eval 0.25, output ≈ 0.2); all threads 0.36 → 0.13 s.
+- **Slot 0 beside the aggregate**: `node::slot0_fill` (the previous node's program run and its
+  solve) needs only `prev.bin`; `stream::run` runs it on its own thread while the aggregate is
+  proved, and `witness` takes it (`pre0`). `FLOCK_NO_PRE0` restores the old schedule.
+- **Lever 2, `prover setup DIR`**: a toy chain (local oracle, test signer): N8 over two aggregates,
+  N2 and N4 over it (N4's aggregate 2·2^18 + 9: L32, L32, L30), then slot 0's fill over the N2 and
+  the N4. Plans keyed `0` inactive, `1 + ix` active; an active fill without its key's order tries
+  another index's (as pass 10 did across segment kinds). Setup records p0 `538138/-/-/446067`, p1
+  `530509/436594/436594/-`: p0's order at N8 replays over N2 and N4 (no new order recorded), p1's
+  at L32 over L30. Stored as `plans.bin` (19.1 MB, tag = blake2s of the node blob); `Pre::new` and
+  `node-kat` load it from `$RF_SETUP`. **Replay safety**: `mfill::fill` re-solves by worklist
+  when a replayed order leaves a row unsatisfied (no fatal from a stale order). VM setup 124 s at
+  16 threads (contended), peak 7.09 GB.
+- Witness schedule: every slot whose order is known starts beside the H part (was: the first of
+  each prototype; the rest after). VM N2 witness 5.23 → 2.57 s; π `9368bcae…` (`e-N2.txt`).
+- RS `ROW_LO` 4 → 6, the claims' row tables built in parallel.
+- `cargo test --release` 43 passed, 1 ignored (`cargo-test-1.txt`, before the RS change).
+- Probes `probe/p2t-11a/11b` (runs 40812467041, 40812469354): base (HEAD's prover.s) and new on
+  one runner, setup timed and sized.
+- **Runner 7763, run 40812467041** (p2t-11a; 11b, run 40812469354, got an EPYC 9V74): base vs new
+  (trace, slot 0 beside the aggregate, setup plans). Setup 48.8 s, 7.0 GB, `plans.bin` 19.1 MB.
+  Start-up 0.71–0.74 → 0.45–0.48 s (pre 0.18, prefault 0.28). Witness N2 1.15–1.50 → 0.59–0.85,
+  N4 1.64–1.81 → 0.87–0.91, N8 1.91 → 1.17 s. The aggregate +0.14–0.37 s (slot 0, 0.63–1.28 s,
+  shares the cores). Requests −0.28…−0.42 (N2), −0.61…−0.66 (N4), −0.68 (N8) s. 32/32 accepted,
+  canaries rejected.
+- Found there: the remaining p1 fills still ran after the H part (the schedule change came after
+  the push), and a p1 replay from setup's full-L32 order falls short on a partial segment (VM,
+  `--agg 131077`: 137 of 436,594 entries unsolvable, 53 rows fail). **Replay made tolerant**: an
+  entry that does not solve is retried after the rest; then the row check; rows failing after a
+  replay are completed by the worklist from where the replay stopped (adjacency cached per
+  prototype, built before `ready`), and checked again. The deduction is monotone, so its closure
+  does not depend on the order: the base binary gives the same π (`f60dc083…` both,
+  `base-N2-131077.txt`, `j-N2-131077.txt`).
+- **Zero skips**: a third of a node's windows are zero (N2: 87,875 of 262,144; the L region past its
+  used part, the tail past M, holes in M). Round 1 skips a window whose a, b, z are zero (the convert
+  tables map 0 to 0, checked); `round_x6`/`round_tab` skip a range where a or b is zero;
+  `fold_x6` writes zeros for zero rows (`t[·][0] = 0`). π `9368bcae…` (`g-N2.txt`).
+- Slot 0's thread at nice 19 (`FLOCK_PRE0_NICE=0`: off): it takes the cycles the aggregate leaves,
+  all of them once the caller waits for it. Probe p2t-11c/11d: base, new, and new with
+  `FLOCK_PRE0_NICE=0` (the A/B) per rep.
+- **Runner 7763, run 40814845050** (p2t-11d; 11c, run 40814841942, got a 9V74): base / new / alt
+  (alt = `FLOCK_PRE0_NICE=0`). 48/48 accepted, canaries rejected. Node prove N2 3.11–3.18 →
+  2.72–2.75, N4 6.2 → 5.2, N8 6.37 → 5.83 s (zero skips, RS lo 6). Witness N2 0.50–0.60, N4
+  0.92–1.13 s (N4: every L32 slot replayed setup's only p1 order, an L30 one, short by 1,976 cells,
+  then completed: 0.58 s a fill). The aggregate is still +0.36 s at 2^17 **with or without nice**
+  (nice only slows slot 0: 2.15 vs 1.26 s), so the cost is not CPU share but the shared core (SMT)
+  or memory. Projection (`r41p11/project.py`, this runner): base mean step 11.98 + 2.12 s, M ≤ 67,
+  79.3 % truncated → new 10.86 + 1.88 s, M ≤ 74, 51.6 % truncated, P̄ 10.69 → 9.58 s.
+- Nice removed. Setup now records **each key's own order** (`set_exact_plans`): keys `1 + ix` for a
+  full child, `4 + ix` for a partial segment (below its kind's cap; `fill_part`), the twin variant
+  tried first when a key has none. Setup chain: N8 over n = 3, 5 (L30 partial), N2 over 200,003
+  (L32 partial), N4 over 2·2^18 + 9 (L32 full, L30), a witness over 2^18 + 100,000 (L31 partial),
+  slot 0 after N2 and N4. p0 `538138/446067/446067/446067`, p1 `530509/436594/-/-/436594×3`;
+  plus the **inactive fills** (`inactive-p{0,1}.bin`, 16 MiB each; `fill(p, None)` returns them).
+  VM setup 173 s at 16 contended threads, 62 MB. KATs: N2 131077 `f60dc083…` (L32 partial vs
+  200,003's order: 65 short, completed), N2 262147 `9368bcae…`, N4 524291 `a16ab6a3…` (= pass 10's
+  `e-N4.txt`); no full replay falls short.
+- Lincheck's block fold skips zero stripes; Sh spans (`sh.collapse/pairs/prefix`). Unit tests
+  `trace_blocks_matches_ref`, `round1_zero_windows_skipped_equal`, `plans_round_trip`:
+  `cargo test --release` 46 passed, 1 ignored (`cargo-test-3.txt`). Source rule 353 files, 0.
+- Probes p2t-11e/11f: base / new / alt (alt = `FLOCK_NO_PRE0=1`: slot 0 inside the witness).
+- **Runner 7763, run 40817225300** (p2t-11e; 11f, run 40817228197, a 9V74): setup 63.9 s, 7.09 GB,
+  66.8 MB. 48/48 accepted, canaries rejected. new vs alt (`FLOCK_NO_PRE0=1`): slot 0 beside the
+  aggregate is ≈ 0.1 s better per step (N2 node part 3.30 vs 3.42 s). Witness N2 0.37–0.55, N4
+  0.67–0.89, N8 0.67 s. Sh: `collapse` 0.12, `pairs` 0.07, `prefix` 0.02 s (N2). Projection, this
+  runner: base 11.84 + 2.08 s, M ≤ 68, 75.1 % truncated → new **10.58 + 1.86 s, M ≤ 76, 46.1 %**,
+  P̄ 10.55 → 9.33 s. Node data decode (VM, `plan-kat` spans): b64 0.02, LZ 0.05, parse 0.41 s.
+- **S-E13a's re-dump (orchestrator, `8cc8ccd`)**: `logs/S-E13a/nodedump` (SHA256SUMS OK) is now the
+  default dump (`mfill::find_dirs`); `plan-build` → `nodeblob.b64` 7,397,352 B (raw 27.1 MB: the
+  three kind tables carry the 25–26 k link rows); `plan-kat` all equal. **Row check before any
+  prover change** (N8 `--m 32 --n 3`; N2 over pass 10's N8): pack rows 0 failures; **102 (N8) / 100
+  (N2) link rows fail, all in slot 1's link region past its first 1,626 rows: S-E13b's WOTS rows**
+  (plus slot 0's program run rejecting pass 10's N8, made on the old matrices).
+- **S-E13b's L cells** (`h_part`, per signed child σ, stride σ): 8704+t idx bits; 8720+i the running
+  products `R_i = Π_{j<i} f_j` (`f_j = x³·x⁻¹^{d_j}`, then `x⁻¹^{4^t c_t}`, `x = ⟨2,0⟩`); 8960+128t+q
+  the bits of mirror 549+t's element 1; aggregates: 11008+2(j−1)+h `T_{k,h}` = the final block's
+  `h_out` halves (others 0), 11264+128(j−2)+q the bits of main block `aggL j − 1`'s element 7.
+  **Mirror 549+t now holds the whole `r`** (it held bytes 0–30; W5's mux is on whole elements).
+  After: **every row holds** on honest N8 (`p-N8.txt`), N2/N8 k=2 (`p-N2.txt`), N4/N8 k=3
+  (`p-N4.txt`), N2/N2 k=1 (`p-N2N2.txt`), N4/N4 k=4 (`p-N4N4.txt`): `m_bad 0, link_rows_bad 0`;
+  all accepted by the dumped programs, `stmtOk4`, canaries rejected.
+- Local stream on the new data (VM, load ≈ 29; setup 166 s, 66.8 MB): N8, N2, N4, N2: 4/4
+  accepted, canaries rejected (`stream-p.out`); `acc` 1.3–1.8 s on the VM (portable tier, loaded).
+- `cargo test --release` 46 passed, 1 ignored (`cargo-test-4.txt`). **`prover.s` 17,441,648 B,
+  sha256 `5e1bab39…61bc`** (`build-asm.log`). Probes p2t-11g/11h: base / new on S-E13a's data.
+- **Final, runner 7763, run 40820003716** (p2t-11i; 11g Xeon 8370C, 11h/11j EPYC 9V74: acceptance):
+  S-E13a's data, `prover.s` `5e1bab39…` rebuilt by every runner. 32/32 accepted, canaries rejected.
+  Setup 64.9 s, 7.13 GB, 66.8 MB; start-up 0.59–0.63 s; `acc` N2 0.45, N4 0.52–0.53, N8 0.62 s.
+  Projection (`project-final.txt`): base 12.06 + 2.15 s, M ≤ 67, 81.3 % → **new 10.80 + 1.99 s,
+  M ≤ 74, 52.5 % truncated, P̄ 9.53 s**. All `probe/p2t-11*` branches deleted. RESULT §19 written
+  (§19.9: the handover).
