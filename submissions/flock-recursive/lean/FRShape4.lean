@@ -25,8 +25,9 @@ are used, with their exact values, by modules this stage may not edit (S-0′ JO
   E4 25 rounds: 14 more items than 3.x, all dummies for the segments) and, revision 4.4.1 (PACK-4.4
   §11, (β′)), the cap check (`CapD`: absorb the 871 path digests `D`; `CapZeta`: squeeze `ζ`;
   `CapChk`: absorb `A`, 1,536 K elements; `CapChkZ`: squeeze `z`) and level 4's cap at depth 8
-  (`Seq.cap4`, lever L2; 3.x's `seq3` keeps 7): 8,783 items, `piSize` 875,280, a stream of
-  `64 · 24,220` bytes; `4 × 8,783 + 3 ≤ qV = 36,000`.
+  (`Seq.cap4`, lever L2; 3.x's `seq3` keeps 7); revision 4.4.2 (the reserve, D1p §3): `Lrend` 880 and
+  `Eend` 112 bytes (`Seq.lrEnd`, `Seq.eEnd`, the previous node's `evalM` claim; no item added): 8,783
+  items, `piSize` 876,176, a stream of `64 · 24,234` bytes; `4 × 8,783 + 3 ≤ qV = 36,000`.
 -/
 
 namespace FR
@@ -127,13 +128,19 @@ structure Seq where
   /-- Revision 4.4.1 (PACK-4.4 §11.2, lever L2): level 4's cap depth (3.x: 7; `seq4`: 8, `sib` one
   less at level 4). Threaded into `ladderOfR`, so `seq3`'s ladder (and 3.x's `lvlStar`) is untouched. -/
   cap4 : ℕ := 7
+  /-- Revision 4.4.2 (the reserve, D1p §3): `Lrend`'s absorb (`fLrEnd`; 3.x: 48 = `â_L ‖ b̂_L ‖ ĉ_L`;
+  `seq4`: 880, the previous node's `evalM` claim `r̄*_x (23) ‖ r̄*_y (25) ‖ a* ‖ b* ‖ c* ‖ kindElem*`
+  after the three values) and `Eend`'s (`fEEnd`; 3.x: 48; `seq4`: 112, `â_M ‖ b̂_M ‖ ĉ_M ‖ m̂* ‖ 0^48`).
+  No item or phase is added, so no Fiat–Shamir position moves. -/
+  lrEnd : ℕ := 48
+  eEnd : ℕ := 48
   deriving DecidableEq, Repr
 
 /-- **The counts one kind needs** (§2.3): Z1 `m − 13`, Z3 `m − 6`, S2 `(m − 14) + 10`; node only:
 Lr `log N_L`, E2 `log N_M`, E4 `m − 7` (`f`'s cells); the final message `2^(m − 25)`. -/
 def Dims.seqR (ell0 : ℕ) (d : Dims) : Seq :=
   ⟨d.m, d.m - 13, d.m - 6, d.m - 4, if d.node then d.logL else 0, if d.node then d.logM else 0,
-   if d.node then d.m - 7 else 0, d.m - 19 - ell0, 32, ell0, false, 7⟩
+   if d.node then d.m - 7 else 0, d.m - 19 - ell0, 32, ell0, false, 7, 48, 48⟩
 
 /-- The counts at level-0 rows `2^6`. -/
 def Dims.seq (d : Dims) : Seq := d.seqR 6
@@ -142,11 +149,11 @@ def Dims.seq (d : Dims) : Seq := d.seqR 6
 def Seq.max (a b : Seq) : Seq :=
   ⟨Nat.max a.mStar b.mStar, Nat.max a.z1 b.z1, Nat.max a.z3 b.z3, Nat.max a.s2 b.s2,
    Nat.max a.lr b.lr, Nat.max a.e2 b.e2, Nat.max a.e4 b.e4, Nat.max a.pf b.pf, a.e4end, a.ell0,
-   a.capChk, a.cap4⟩
+   a.capChk, a.cap4, a.lrEnd, a.eEnd⟩
 
 /-- **The sequence of a kind group**: the componentwise maximum of its kinds' counts. -/
 def seqOf : List Dims → Seq
-  | [] => ⟨0, 0, 0, 0, 0, 0, 0, 0, 32, 6, false, 7⟩
+  | [] => ⟨0, 0, 0, 0, 0, 0, 0, 0, 32, 6, false, 7, 48, 48⟩
   | d :: ds => d.seq.max (seqOf ds)
 
 /-- `a` fits in `b`: every count of `a` is at most `b`'s (a kind's unused items are dummies). -/
@@ -166,10 +173,10 @@ kinds' maximum; its hashed stream is a multiple of 64 bytes with 3.x's 32-byte E
 (`cap4 := 8`, PACK-4.4 §11.2 L2). -/
 def seq4 : Seq := { seqOf (SegKind.dims .L30 :: SegKind.dims .L31 :: SegKind.dims .L32 ::
     [NodeKind.dims .N2, NodeKind.dims .N4, NodeKind.dims .N8]) with
-    e4end := 32, capChk := true, cap4 := 8 }
+    e4end := 32, capChk := true, cap4 := 8, lrEnd := 880, eEnd := 112 }
 
-theorem seq3_eq : seq3 = ⟨32, 19, 26, 28, 15, 21, 23, 7, 32, 6, false, 7⟩ := by decide
-theorem seq4_eq : seq4 = ⟨32, 19, 26, 28, 17, 23, 25, 7, 32, 6, true, 8⟩ := by decide
+theorem seq3_eq : seq3 = ⟨32, 19, 26, 28, 15, 21, 23, 7, 32, 6, false, 7, 48, 48⟩ := by decide
+theorem seq4_eq : seq4 = ⟨32, 19, 26, 28, 17, 23, 25, 7, 32, 6, true, 8, 880, 112⟩ := by decide
 
 /-- Every kind fits the sequence (its unused items are dummies). -/
 theorem seg_fits (κ : SegKind) : κ.dims.seq.Le seq4 := by cases κ <;> decide
@@ -301,9 +308,9 @@ def phasesOf (S : Seq) : List (String × Sh) :=
    ("Zend", .absorb fZend 32), ("L1", .squeezes 1 .one), ("L2", .rounds fL2 14 2 false),
    ("L3", .absorb fL2 (8 * 16)), ("L3β", .squeezes 1 .one),
    ("S1", .squeezes (half (S.mStar - 14 + 11)) .coords), ("S2", .rounds fS2 S.s2 2 false),
-   ("Lr1", .squeezes (half S.lr) .coords), ("Lr2", .rounds fLr S.lr 3 false), ("Lrend", .absorb fLrEnd 48),
+   ("Lr1", .squeezes (half S.lr) .coords), ("Lr2", .rounds fLr S.lr 3 false), ("Lrend", .absorb fLrEnd S.lrEnd),
    ("Lr3", .squeezes 1 .one), ("E1", .squeezes (half S.e2) .coords), ("E2", .rounds fE S.e2 3 false),
-   ("Eend", .absorb fEEnd 48), ("E3", .squeezes 1 .one), ("E4", .rounds fE S.e4 2 false),
+   ("Eend", .absorb fEEnd S.eEnd), ("E3", .squeezes 1 .one), ("E4", .rounds fE S.e4 2 false),
    ("E4end", .absorb fE S.e4end), ("RS0", .absorb fRS0 (4 * 128 * 16)), ("RS1", .squeezes 4 .coords),
    ("B'", .squeezes 1 .one)] : List (String × Sh)) ++
   (List.range nLevels).flatMap (fun i =>
@@ -420,15 +427,15 @@ theorem capChk_aligned : ((Item.absorb (dBytes seq4)).slen + Item.squeeze.slen) 
   rw [capEntries_seq4.2.1, capEntries_seq4.2.2.2]; decide
 
 theorem fieldSizesOf_seq4 : (List.range nFields4).map (fieldSizeOf seq4) = [48, 128, 2048, 1248, 32,
-    800, 1344, 816, 48, 2336, 48, 8192, 2112, 672, 49152, 4096, 487504, 237632, 27872, 49152] := by
+    800, 1344, 816, 880, 2336, 112, 8192, 2112, 672, 49152, 4096, 487504, 237632, 27872, 49152] := by
   rw [seq4_eq]; decide +kernel
 
-theorem piSizeOf_seq4 : piSizeOf seq4 = 875280 := by rw [piSizeOf, fieldSizesOf_seq4]; rfl
+theorem piSizeOf_seq4 : piSizeOf seq4 = 876176 := by rw [piSizeOf, fieldSizesOf_seq4]; rfl
 
-theorem streamBytesOf_seq4 : streamBytesOf seq4 = 1550080 := by rw [seq4_eq]; decide +kernel
+theorem streamBytesOf_seq4 : streamBytesOf seq4 = 1550976 := by rw [seq4_eq]; decide +kernel
 
 /-- The stream is `64 · chainLen` bytes: no padding cell (as INT-2's 3.x stream). -/
-theorem chainLenOf_seq4 : chainLenOf seq4 = 24220 ∧ streamBytesOf seq4 = 64 * 24220 := by
+theorem chainLenOf_seq4 : chainLenOf seq4 = 24234 ∧ streamBytesOf seq4 = 64 * 24234 := by
   rw [chainLenOf, streamBytesOf_seq4]; decide
 
 /-! ## `qV` (B-17) -/

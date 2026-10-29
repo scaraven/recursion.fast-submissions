@@ -42,15 +42,33 @@ def kvOf (m : ℕ) (node : Bool) (fams e4s : List ℕ) (e4 : ℕ) : KV :=
   ⟨fun _ => m, fun _ => node, fun _ => a,
    fun _ => if node then base ++ [3 + 3 * nf + e4s.idxOf e4] else base, fun _ => if a then 0 else i⟩
 
-/-- **A segment's finals' parameters** (`vn`: the variable last block; the segment group's counts). -/
+/-- **A segment's finals' parameters** (`vn`: the variable last block; the segment group's counts;
+no reserve). -/
 def segFinP (κ : SegKind) : FinP :=
   ⟨seq4, kvOf κ.m false segFams [seq4.e4] seq4.e4, seq4.lr, seq4.e2, seq4.e4, segFams, [seq4.e4], [],
-    seq4.mStar - 7, true, true, 0, segFams⟩
+    seq4.mStar - 7, true, true, 0, segFams, false, false, [], 0⟩
 
-/-- **A node's** (`cells`: its public cells, S-E12′'s layout; the node group's counts). -/
+/-- **The reserve's public cells of slot 0, M-relative** (revision 4.4.2, D1p §3; prototype 0's
+compile, read off `nodedump4`'s `mregs-p0.txt`, `logs/RSV/nodedump/`): the single import cells of the
+slot program's registers E2's 23 challenges, E4's 25, its own `evalM`'s three outputs, its kind
+element (`hdr[0…16)`, the seed's `piElem 0 0`). Regenerated with the prototypes (as
+`FRNodeRows4Hint`; B2′'s templates move them). -/
+def rsvRel : List ℕ :=
+  [1318, 1329, 1340, 1351, 1362, 1373, 1384, 1395, 1406, 1417, 1428, 1439, 1450, 1461, 1472, 1483,
+   1494, 1505, 1516, 1527, 1538, 1549, 1560,
+   1579, 1589, 1599, 1609, 1619, 1629, 1639, 1649, 1659, 1669, 1679, 1689, 1699, 1709, 1719, 1729,
+   1739, 1749, 1759, 1769, 1779, 1789, 1799, 1809, 1819,
+   116490, 116491, 116492, 6]
+
+/-- **A node's reserve cells** (absolute: M's `one` cell `3·2^logM` plus the relative cell; slot 0
+is the previous node's): none without a previous node (`N8`). -/
+def rsvCells (κ : NodeKind) : List ℕ := if κ.hasPrev then rsvRel.map (3 * 2 ^ κ.dims.logM + ·) else []
+
+/-- **A node's** (`cells`: its public cells, S-E12′'s layout; the node group's counts; revision 4.4.2:
+the reserve's ops for every node kind, on for a kind with a previous node, its 52 cells). -/
 def nodeFinP (κ : NodeKind) (cells : List ℕ) : FinP :=
   ⟨seq4, kvOf κ.m true nodeFams nodeE4s (κ.m - 7), κ.dims.logL, κ.dims.logM, κ.m - 7, nodeFams, nodeE4s,
-    cells, seq4.mStar - 7, false, true, cells.length, nodeFams⟩
+    cells, seq4.mStar - 7, false, true, cells.length, nodeFams, true, κ.hasPrev, rsvCells κ, 52⟩
 
 /-- **The segment program.** -/
 def progSeg (κ : SegKind) : VProg := genSeg κ (finOps4 (segFinP κ))

@@ -241,23 +241,109 @@ theorem evalL4I_eq (κ : NodeKind) (rL r4 : Array F) : evalL4I κ rL r4 = evalLS
     Finset.sum_congr rfl fun σ hσ => Finset.sum_congr rfl fun j hj => hrow σ hσ j hj
   rw [hA, hS]
 
+/-! ## The reserve's second `evalM` (revision 4.4.2, D1p §3) -/
+
+/-- A node kind's kind element: `hdr[0…16)` of its proofs (`FRVIR4.seedOps4`'s constant). -/
+def kindElemN (κ : NodeKind) : F :=
+  F.ofBytes (bytesAt (bytesOf ([κ.byte, κ.m.toUInt8] ++ List.replicate 46 0)) 0 16)
+
+/-- The node kind of a kind element (`none` for any other value). -/
+def kindOfElem (x : F) : Option NodeKind := [NodeKind.N2, .N4, .N8].find? fun κ => decide (kindElemN κ = x)
+
+/-- `x − y`, componentwise. -/
+def sub3 (x y : F3) : F3 := (x.1 - y.1, x.2.1 - y.2.1, x.2.2 - y.2.2)
+
+/-- **Two kinds' `evalM` difference with one prototype evaluation**: both kinds' slots from one
+`protoV4` (at `node = true`: a kind without a previous node reads only prototype 1's value, so the
+extra value is unused), the sparse sums if the plan's check failed. -/
+def evalMPair (pl : Plan4) (κ ν : NodeKind) (τ σ : Array F) : F3 :=
+  if pl.inR then
+    let t := fun l => τ.getD l 0; let u := fun l => σ.getD l 0
+    let v := protoV4 pl t u true
+    sub3 (sum3 (slotV4 κ t u (ltbOf κ.dims.logM t u) v.1 v.2) (List.range κ.vslots))
+      (sum3 (slotV4 ν t u (ltbOf ν.dims.logM t u) v.1 v.2) (List.range ν.vslots))
+  else sub3 (evalMT4 pl κ τ σ) (evalMT4 pl ν τ σ)
+
+theorem slotV4_noPrev {κ : NodeKind} (h : κ.hasPrev = false) (t u : ℕ → F) (L : LTb) (a a' b : F3)
+    (σ : ℕ) : slotV4 κ t u L a b σ = slotV4 κ t u L a' b σ := by
+  have hp : protoOf κ σ = 1 := by simp [protoOf, isPrevSlot, h]
+  simp only [slotV4, hp, one_ne_zero, if_false]
+
+theorem slots_true (pl : Plan4) (κ : NodeKind) (t u : ℕ → F) :
+    sum3 (slotV4 κ t u (ltbOf κ.dims.logM t u) (protoV4 pl t u true).1 (protoV4 pl t u true).2)
+        (List.range κ.vslots) =
+      sum3 (slotV4 κ t u (ltbOf κ.dims.logM t u) (protoV4 pl t u κ.hasPrev).1
+        (protoV4 pl t u κ.hasPrev).2) (List.range κ.vslots) := by
+  cases h : κ.hasPrev
+  · have h2 : (protoV4 pl t u true).2 = (protoV4 pl t u false).2 := rfl
+    rw [h2]
+    exact sum3_congr fun σ _ => slotV4_noPrev h t u _ _ _ _ σ
+  · rfl
+
+theorem evalMPair_eq (pl : Plan4) (κ ν : NodeKind) (τ σ : Array F) :
+    evalMPair pl κ ν τ σ = sub3 (evalMT4 pl κ τ σ) (evalMT4 pl ν τ σ) := by
+  unfold evalMPair
+  split_ifs with hR
+  · simp only [evalMT4, if_pos hR, slots_true]
+  · rfl
+
+/-- **The reserve's `evalM` at a tagged row point** (`finE`'s `rsvEOps`): `τ` is the mixed point's 23
+row coordinates, then the child's kind element `kindElem*` (entry 23). With `κ*` its kind, the
+difference `M̃_{κ*}(τ, σ) − M̃_ν(τ, σ)` of the two kinds' matrices (each reads only its own
+coordinates), `0` without evaluating when `κ* = ν` (the same-kind child is free), `0` for a value
+that is no node kind's. -/
+def evalMD4 (pl : Plan4) (ν : NodeKind) (τ σ : Array F) : F3 :=
+  match kindOfElem (τ.getD 23 0) with
+  | some κ => if κ = ν then (0, 0, 0) else evalMPair pl κ ν τ σ
+  | none => (0, 0, 0)
+
+/-- Its specification. -/
+noncomputable def evalMDS4 (ν : NodeKind) (τ σ : Array F) : F3 :=
+  match kindOfElem (τ.getD 23 0) with
+  | some κ => if κ = ν then (0, 0, 0) else sub3 (evalMS4 κ τ σ) (evalMS4 ν τ σ)
+  | none => (0, 0, 0)
+
+theorem evalMD4_eq (pl : Plan4) (ν : NodeKind) (τ σ : Array F) : evalMD4 pl ν τ σ = evalMDS4 ν τ σ := by
+  unfold evalMD4 evalMDS4
+  split
+  · split_ifs
+    · rfl
+    · rw [evalMPair_eq, evalMT4_eq, evalMT4_eq]
+  · rfl
+
+/-- **The node's `evalM`**: at a 24-entry row point (the reserve's tagged call) `evalMD4`, else the
+node's own matrices. -/
+def evalMN4 (pl : Plan4) (ν : NodeKind) (τ σ : Array F) : F3 :=
+  if τ.size = 24 then evalMD4 pl ν τ σ else evalMT4 pl ν τ σ
+
+/-- Its specification. -/
+noncomputable def evalMNS4 (ν : NodeKind) (τ σ : Array F) : F3 :=
+  if τ.size = 24 then evalMDS4 ν τ σ else evalMS4 ν τ σ
+
+theorem evalMN4_eq (pl : Plan4) (ν : NodeKind) (τ σ : Array F) : evalMN4 pl ν τ σ = evalMNS4 ν τ σ := by
+  unfold evalMN4 evalMNS4
+  split_ifs
+  · exact evalMD4_eq pl ν τ σ
+  · exact evalMT4_eq pl ν τ σ
+
 /-! ## The node's final ops -/
 
 /-- **`implN4F base ν`**: `implN4T base ν` (S-CN4's node ops with the computed `targetS`, S-T2's
-`rsWeight`) with the 4.1 node's `evalM` (`evalMT4 planOf4 ν`) and `evalL` (`evalL4I ν`). -/
+`rsWeight`) with the 4.1 node's `evalM` (`evalMT4 planOf4 ν`; revision 4.4.2: `evalMN4`, the
+reserve's tagged call besides) and `evalL` (`evalL4I ν`). -/
 def implN4F (base : NodeKind → OpImpl) (ν : NodeKind) : OpImpl :=
-  { implN4T base ν with evalM := evalMT4 planOf4 ν, evalL := evalL4I ν }
+  { implN4T base ν with evalM := evalMN4 planOf4 ν, evalL := evalL4I ν }
 
 /-- Its specification: `specN4` with the MLEs of `nodeIRows4 ν` and `lRows4 ν`. -/
 noncomputable def specN4F (spec : NodeKind → OpSpec) (ν : NodeKind) : OpSpec :=
-  { specN4 spec ν with evalM := evalMS4 ν, evalL := evalLS4 ν }
+  { specN4 spec ν with evalM := evalMNS4 ν, evalL := evalLS4 ν }
 
 /-- **`implN4F ⊨ specN4F`**, given the base's ops only. -/
 theorem implN4F_meets {base : NodeKind → OpImpl} {spec : NodeKind → OpSpec} (ν : NodeKind)
     (h : (base ν).Meets (spec ν)) : (implN4F base ν).Meets (specN4F spec ν) := by
   obtain ⟨h1, h2, h3, h4, h5, h6, h7, -, -, h10, h11, h12, h13, h14, h15, h16, h17⟩ :=
     implN4T_meets ν h
-  exact ⟨h1, h2, h3, h4, h5, h6, h7, fun a b => evalMT4_eq planOf4 ν a b, fun a b => evalL4I_eq ν a b,
+  exact ⟨h1, h2, h3, h4, h5, h6, h7, fun a b => evalMN4_eq planOf4 ν a b, fun a b => evalL4I_eq ν a b,
     h10, h11, h12, h13, h14, h15, h16, h17⟩
 
 /-! ## For R4: `RejFinE4`'s parameters `hM`, `hL` (R4d D11) -/
@@ -274,7 +360,11 @@ theorem implN4F_hM (base : NodeKind → OpImpl) (ν : NodeKind) :
       (Eval.matMLE (srcE4 ν).ea (FR.Impl.ptA (Snd.P4b.e2R ν) r2) (FR.Impl.ptA (Snd.P4b.ncR ν) r4),
        Eval.matMLE (srcE4 ν).eb (FR.Impl.ptA (Snd.P4b.e2R ν) r2) (FR.Impl.ptA (Snd.P4b.ncR ν) r4),
        Eval.matMLE (srcE4 ν).ec (FR.Impl.ptA (Snd.P4b.e2R ν) r2) (FR.Impl.ptA (Snd.P4b.ncR ν) r4)) :=
-  fun r2 r4 _ _ => by cases ν <;> exact evalMT4_eq planOf4 _ r2 r4
+  fun r2 r4 h2 _ => by
+    have h24 : r2.size ≠ 24 := by rw [h2]; cases ν <;> decide
+    show evalMN4 planOf4 ν r2 r4 = _
+    rw [evalMN4, if_neg h24]
+    cases ν <;> exact evalMT4_eq planOf4 _ r2 r4
 
 /-- **`hL`** in `FRSoundness4R4FrE.e_fin4`'s form, for `implN4F`. -/
 theorem implN4F_hL (base : NodeKind → OpImpl) (ν : NodeKind) :
@@ -330,18 +420,35 @@ theorem lRows4_ctl : (lRows4 .N4).length = 5 * 8220 ∧ (lRows4 .N2).length ≠ 
   obtain ⟨i, -, rfl⟩ := List.mem_map.1 hr
   rfl
 
-/-- (+) `implN4F`'s `evalM`/`evalL` are the 4.1 node's, its `shiftMask` S-CN4's; (−) its L source
-differs between kinds (`N4`: 5 slots of 8,220 entries in A, `N2`: 3). -/
+/-- (+) `implN4F`'s `evalM`/`evalL` are the 4.1 node's (`evalM` the reserve's dispatch, `evalMT4` at
+an untagged point), its `shiftMask` S-CN4's; (−) its L source differs between kinds (`N4`: 5 slots of
+8,220 entries in A, `N2`: 3). -/
 theorem implN4F_ctl (base : NodeKind → OpImpl) (ν : NodeKind) :
-    (implN4F base ν).evalM = evalMT4 planOf4 ν ∧ (implN4F base ν).evalL = evalL4I ν ∧
+    (implN4F base ν).evalM = evalMN4 planOf4 ν ∧
+      (∀ τ σ : Array F, τ.size ≠ 24 → (implN4F base ν).evalM τ σ = evalMT4 planOf4 ν τ σ) ∧
+      (implN4F base ν).evalL = evalL4I ν ∧
       (implN4F base ν).shiftMask = shiftMask4I ν ∧
       (srcL4 .N4).ea.length = 5 * 8220 ∧ (srcL4 .N2).ea.length = 3 * 8220 := by
-  refine ⟨by dsimp only [implN4F], by dsimp only [implN4F], by dsimp only [implN4F, implN4T, implN4],
-    ?_, ?_⟩ <;>
+  refine ⟨by dsimp only [implN4F], fun τ σ h => if_neg h, by dsimp only [implN4F],
+    by dsimp only [implN4F, implN4T, implN4], ?_, ?_⟩ <;>
   · simp only [srcL4, Snd.P4b.ESrc.ofRows, Eval.entriesOf, lRows4_eq, zipIdx_range_map,
       List.flatMap_map, rowL, Lin.cell, List.map_cons, List.map_nil, List.length_flatMap,
       List.length_cons, List.length_nil, List.map_const', List.length_range, List.sum_replicate]
     rfl
+
+/-- (+/−) **The reserve's dispatch**: the three kind elements are decoded, `0` is no kind's; a
+same-kind tag gives `0` (no evaluation), another kind's tag the difference of the two kinds'
+`evalMT4`, a value that is no kind's `0`. -/
+theorem evalMD4_ctl (pl : Plan4) (ν : NodeKind) (τ σ : Array F) :
+    (kindOfElem (kindElemN .N2) = some .N2 ∧ kindOfElem (kindElemN .N4) = some .N4 ∧
+      kindOfElem (kindElemN .N8) = some .N8 ∧ kindOfElem 0 = none) ∧
+    (kindOfElem (τ.getD 23 0) = some ν → evalMD4 pl ν τ σ = (0, 0, 0)) ∧
+    (∀ κ, κ ≠ ν → kindOfElem (τ.getD 23 0) = some κ →
+      evalMD4 pl ν τ σ = sub3 (evalMT4 pl κ τ σ) (evalMT4 pl ν τ σ)) ∧
+    (kindOfElem (τ.getD 23 0) = none → evalMD4 pl ν τ σ = (0, 0, 0)) := by
+  refine ⟨by decide, fun h => ?_, fun κ hk h => ?_, fun h => ?_⟩ <;> simp only [evalMD4, h]
+  · simp
+  · simp [hk, evalMPair_eq]
 
 end NI4F
 end FR

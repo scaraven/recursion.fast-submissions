@@ -118,7 +118,7 @@ def aggLeaf (π : Proof) : Wit := .leaf (bytesAt π 64 32) (Rev4.rdLE64 π 8)
 theorem aggWit_eq {π : Proof} {s : Digest} {n : ℕ} (h : Rev4.aggWit (Rev4.piSizeOf Rev4.seq4) π = some (s, n)) :
     aggLeaf π = .leaf s n := by
   generalize hps : Rev4.piSizeOf Rev4.seq4 = S at h
-  replace hps : S = 875280 := hps ▸ Rev4.piSizeOf_seq4
+  replace hps : S = 876176 := hps ▸ Rev4.piSizeOf_seq4
   simp only [Rev4.aggWit, Option.map_eq_some_iff, Option.bind_eq_some_iff] at h
   obtain ⟨v, ⟨π₁, hh, hv⟩, hvn⟩ := h
   simp only [Prod.mk.injEq] at hvn
@@ -184,7 +184,7 @@ theorem nodeOfByte_eq {b : UInt8} {κ : Rev4.NodeKind} (h : Rev4.NodeKind.ofByte
   split_ifs at h with h1 h2 h3 <;> cases h <;> assumption
 
 theorem kindOf4_node {κ : Rev4.NodeKind} (h : Rev4.kindOf4 π = .node κ) :
-    byteAt π 0 = κ.byte ∧ π.size = 875280 := by
+    byteAt π 0 = κ.byte ∧ π.size = 876176 := by
   rw [kindOf4_eq] at h
   generalize byteAt π 0 = b at h ⊢
   by_cases h1 : b = Rev4.aggByte
@@ -220,7 +220,7 @@ theorem segOfByte_eq {b : UInt8} {κ : Rev4.SegKind} (h : Rev4.SegKind.ofByte? b
   split_ifs at h with h1 h2 h3 <;> cases h <;> assumption
 
 theorem kindOf4_bad (h : Rev4.kindOf4 π = .bad) :
-    (∃ κ : Rev4.NodeKind, byteAt π 0 = κ.byte ∧ π.size ≠ 875280) ∨
+    (∃ κ : Rev4.NodeKind, byteAt π 0 = κ.byte ∧ π.size ≠ 876176) ∨
       ∃ κ : Rev4.SegKind, byteAt π 0 = κ.byte := by
   rw [kindOf4_eq] at h
   have hps := Rev4.piSizeOf_seq4
@@ -294,7 +294,7 @@ theorem flags (hs : π.size < 2 ^ 64) (hp : 0 < π.size) :
     rd (st1 c π L).M rIsA = (if (byteAt π 0).toNat = 65 then 1 else 0) ∧
     rd (st1 c π L).M rIsN = ((if (byteAt π 0).toNat = 77 then 1 else 0) |||
       (if (byteAt π 0).toNat = 78 then 1 else 0)) ||| (if (byteAt π 0).toNat = 79 then 1 else 0) ∧
-    rd (st1 c π L).M rIsSz = isW (toWord π.size) (BitVec.ofNat 64 875280) ∧
+    rd (st1 c π L).M rIsSz = isW (toWord π.size) (BitVec.ofNat 64 876176) ∧
     rd (st1 c π L).M rLen = toWord π.size := by
   have h0 : Inv (initSt (memX4 + mpwX * (extractorInput c π L).length)).M :=
     inv_initSt (Nat.le_add_right_of_le (by simp only [regs, memX4]; norm_num))
@@ -310,7 +310,7 @@ theorem flags (hs : π.size < 2 ^ 64) (hp : 0 < π.size) :
   · rw [st1, parse4_len _ _ h0, tape4]
 
 theorem isW_sz (hs : π.size < 2 ^ 64) :
-    isW (toWord π.size) (BitVec.ofNat 64 875280) = if π.size = 875280 then 1 else 0 := by
+    isW (toWord π.size) (BitVec.ofNat 64 876176) = if π.size = 876176 then 1 else 0 := by
   rw [isW]
   congr 1
   apply propext

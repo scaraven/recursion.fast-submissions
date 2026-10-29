@@ -86,12 +86,23 @@ structure FinP where
   /-- Count: the final message's zero tails checked at the end of `finPf`, one per `m < m*` of the
   group, each gated by the kind's `m` (revision 4.3; the skeleton's `finalOps4` reads `m*`'s). -/
   tails : List ℕ
+  /-- Count (revision 4.4.2, the reserve, D1p §3): the child-claim ops are emitted (`finE`'s
+  `rsvEOps`, `finB′`'s `rsvBOps`, `finPf`'s second cell chain): the node group. -/
+  rsvOps : Bool := false
+  /-- Per kind: the child-claim terms are on (a node with a previous node: `N2`, `N4`; off for `N8`
+  and the segments, whose child-claim bytes are asserted zero). -/
+  rsv : Bool := false
+  /-- Per kind: the reserve's public cells (slot 0's E2 and E4 challenges, its `evalM` outputs, its
+  kind element: `FRVerifierC4.rsvCells`), at `κ′^{j + 2}` after `cells`. -/
+  rcells : List ℕ := []
+  /-- Count: their number (52). -/
+  nrcell : ℕ := 0
 
 /-- 3.x's kind tables. -/
 def kv3 : KV := ⟨Kind.m, Kind.isNode, is32, rsPtIx, fun _ => 0⟩
 
 /-- **3.x's parameters.** -/
-def fin3P : FinP := ⟨seq3, kv3, 15, 21, 23, [30], [23], pfCells, 23, false, false, 0, []⟩
+def fin3P : FinP := ⟨seq3, kv3, 15, 21, 23, [30], [23], pfCells, 23, false, false, 0, [], false, false, [], 0⟩
 
 /-! ## S-0's fields -/
 
@@ -221,23 +232,75 @@ def gFinRS (P : FinP) (fi : FinIn) (b : ℕ) (Q : Kind → FinP := fun _ => P) :
 /-- E4 end's message inside the E field of `S`'s format. -/
 def gOE4end (S : Seq) : ℕ := phaseOffOf S (phaseIx "E4end") fE
 
-/-- `finE`: the E2 and E4 points are the kind's (`e2R`, `e4R`; kind tables if `ck`). -/
-def gFinE (P : FinP) (fi : FinIn) (b : ℕ) (Q : Kind → FinP := fun _ => P) : List Op × List Reg :=
+/-- **The child claim's offsets in `fLrEnd`** (revision 4.4.2, D1p §3): `r̄*_x` (23 F elements) from
+byte 48, `r̄*_y` (25) from 416, `a*`, `b*`, `c*` at 816, 832, 848, `kindElem*` at 864; `m̂*` at byte
+48 of `fEEnd`, then 48 zero bytes. -/
+def rsvRx : ℕ := 48
+def rsvRy : ℕ := 416
+def rsvAbc : ℕ := 816
+def rsvKind : ℕ := 864
+
+/-- **The reserve's child-claim block of `finE`** (revision 4.4.2, the reserve, D1p §3), registers
+from `c`, after `finE`'s own ops at `b` (`b + 4` the E2 point `r_E2`, `b + 8` E2's own final value,
+`b + 10` `κ_E²`, `b + 16` E4's own initial claim, `b + 17` the E4 point `r′`, `b + 18 … 20` the own
+`evalM`, `b + 35` E4's own final value). With `η` E1's coordinate 23, `v* = a* + η b* + η² c*`,
+`M̃*_η = Ã* + ηB̃* + η²C̃*` (the child's kind `κ*`):
+
+* E2 is the zerocheck of `own + η·eq(r̄*_x, x)·(M̃*_η(x ‖ hi_x, r̄*_y) − v*)` (claim `0`: `Σ_x eq = 1`),
+  so (ii) is `eq(τ, r_E2)(âb̂ − ĉ) + η·eq(r̄*_x, r_E2)·(m̂* − v*)`;
+* E4's claim gains `κ_E⁴·m̂*` and its summand `κ_E⁴·W*(y)·eq(r̄*_y, y)`, so (iv) gains
+  `κ_E⁴·eq(r̄*_y, r′)·W*_η` with `W* = M̃*_{κ*}(x̂, ŷ)`.
+
+The sums run over the parent's own coordinates (`e2R`, `e4R`); the child's coordinates above them
+are fixed (**the mixed point** `x̂ = r_E2 ‖ r̄*_x[e2R, 23)`, `ŷ = r′ ‖ r̄*_y[e4R, 25)`; a kind's `M̃` reads
+only its own coordinates). `W*` is the own `evalM` plus a second `evalM` whose row argument is
+`x̂ ‖ kindElem*` (24 entries): the node's `evalM` then returns `M̃_{κ*} − M̃_ν` at `(x̂, ŷ)`, `0` when
+`κ* = ν` (`FRVerifierImplNode4F`). The asserts are gated by the kind's `rsv`; without it the child
+claim's bytes are zero. -/
+def rsvEOps (P : FinP) (fi : FinIn) (b c : ℕ) (Q : Kind → FinP := fun _ => P) : List Op :=
+  let eta := (coordsR fi "E1").getD 23 0
+  let rsv : KC Bool := fun κ => (Q κ).rsv
+  let rx := (List.range 23).map (c + ·)
+  let ry := (List.range 25).map (c + 23 + ·)
+  ((List.range 23).map (fun j => Op.piElem fLrEnd (rsvRx + 16 * j))) ++
+  ((List.range 25).map (fun j => Op.piElem fLrEnd (rsvRy + 16 * j))) ++
+  [Op.piElem fLrEnd rsvAbc, Op.piElem fLrEnd (rsvAbc + 16), Op.piElem fLrEnd (rsvAbc + 32),
+   Op.piElem fLrEnd rsvKind, Op.piElem fEEnd 48,
+   Op.piField fEEnd 64 48, Op.assertZero (c + 53) allK,
+   Op.piField fLrEnd 48 832, Op.assertZero (c + 54) (fun κ => !rsv κ),
+   Op.piField fEEnd 48 16, Op.assertZero (c + 55) (fun κ => !rsv κ),
+   Op.packFK (fun κ => rx.take (Q κ).e2R), Op.eqPt (c + 56) (b + 4),
+   Op.packFK (fun κ => ry.take (Q κ).e4R), Op.eqPt (c + 58) (b + 17),
+   Op.packFK (fun κ => chals fi "E2" (Q κ).e2R ++ rx.drop (Q κ).e2R ++ [c + 51]),
+   Op.packFK (fun κ => chals fi "E4" (Q κ).e4R ++ ry.drop (Q κ).e4R),
+   Op.evalM (c + 60) (c + 61),
+   Op.addF (b + 18) (c + 62), Op.addF (b + 19) (c + 63), Op.addF (b + 20) (c + 64),
+   Op.mulF eta eta,
+   Op.mulF eta (c + 66), Op.mulF (c + 68) (c + 67), Op.addF (c + 65) (c + 69), Op.addF (c + 71) (c + 70),
+   Op.mulF eta (c + 49), Op.mulF (c + 68) (c + 50), Op.addF (c + 48) (c + 73), Op.addF (c + 75) (c + 74),
+   Op.addF (c + 52) (c + 76), Op.mulF eta (c + 77), Op.mulF (c + 57) (c + 78), Op.addF (b + 8) (c + 79),
+   Op.assertEq (c + 80) (claimN fi "E2") rsv,
+   Op.mulF (b + 10) (b + 10), Op.mulF (c + 81) (c + 52), Op.addF (b + 16) (c + 82),
+   Op.assertEq (c + 83) (claim0 fi "E4") rsv,
+   Op.mulF (c + 59) (c + 72), Op.mulF (c + 81) (c + 84), Op.addF (b + 35) (c + 85),
+   Op.assertEq (c + 86) (claimN fi "E4") rsv]
+
+/-- `finE`'s own ops (A.9; revision 4.4.2: its three claim asserts gated by `act`). -/
+def gFinE0 (P : FinP) (fi : FinIn) (b : ℕ) (act : KC Bool) (Q : Kind → FinP := fun _ => P) : List Op :=
   let kE := (outsOf fi "E3").headD 0
   let kL := (outsOf fi "Lr3").headD 0
   let fz := fi.zhat.getD 3 0
   let o := gOE4end P.S
-  let node : KC Bool := fun κ => (Q κ).kv.node κ
-  ([.piElem fEEnd 0, .piElem fEEnd 16, .piElem fEEnd 32,
+  [.piElem fEEnd 0, .piElem fEEnd 16, .piElem fEEnd 32,
     cond P.ck (.packFK fun κ => (coordsR fi "E1").take (Q κ).e2R)
       (.packF ((coordsR fi "E1").take (Q .L32).e2R)),
     cond P.ck (.packFK fun κ => chals fi "E2" (Q κ).e2R) (.packF (chals fi "E2" (Q .L32).e2R)),
     .eqPt (b + 3) (b + 4),
     .mulF b (b + 1), .addF (b + 6) (b + 2), .mulF (b + 5) (b + 7),
-    .assertEq (b + 8) (claimN fi "E2") node,
+    .assertEq (b + 8) (claimN fi "E2") act,
     .mulF kE (b + 1), .mulF kE kE, .mulF (b + 10) (b + 2), .addF b (b + 9), .addF (b + 12) (b + 11),
     .mulF (b + 10) kE, .mulF (b + 14) (lrEx fi 0), .addF (b + 13) (b + 15),
-    .assertEq (b + 16) (claim0 fi "E4") node,
+    .assertEq (b + 16) (claim0 fi "E4") act,
     cond P.ck (.packFK fun κ => chals fi "E4" (Q κ).e4R) (.packF (chals fi "E4" (Q .L32).e4R)),
     .evalM (b + 4) (b + 17), .mulF kE (b + 19),
     .mulF (b + 10) (b + 20),
@@ -245,15 +308,40 @@ def gFinE (P : FinP) (fi : FinIn) (b : ℕ) (Q : Kind → FinP := fun _ => P) : 
     .evalL (lrEx fi 1) (b + 17), .mulF kL (b + 26), .mulF kL kL, .mulF (b + 29) (b + 27),
     .addF (b + 25) (b + 28), .addF (b + 31) (b + 30),
     .mulF (b + 14) (b + 32), .addF (b + 24) (b + 33), .mulF (b + 34) fz,
-    .assertEq (b + 35) (claimN fi "E4") node,
+    .assertEq (b + 35) (claimN fi "E4") act,
     .piElem fE o, .assertEq (b + 36) fz allK, .piField fE (o + 16) 16,
-    .assertZero (b + 37) allK],
-   [b + 17])
+    .assertZero (b + 37) allK]
+
+/-- `finE`: the E2 and E4 points are the kind's (`e2R`, `e4R`; kind tables if `ck`). Revision 4.4.2:
+with `rsvOps`, the reserve's block (`rsvEOps`) after the own ops, which then assert only where the
+kind's `rsv` is off, and the child claim's 52 values exported after `r′` (for `finB′`). -/
+def gFinE (P : FinP) (fi : FinIn) (b : ℕ) (Q : Kind → FinP := fun _ => P) : List Op × List Reg :=
+  let node : KC Bool := fun κ => (Q κ).kv.node κ
+  cond P.rsvOps
+    (gFinE0 P fi b (fun κ => node κ && !(Q κ).rsv) Q ++ rsvEOps P fi b (b + 38) Q,
+     (b + 17) :: (List.range 52).map (b + 38 + ·))
+    (gFinE0 P fi b node Q, [b + 17])
+
+/-- `finE`'s place in `FinIn.ex` (run order: `finRS` 0, `finZ`, `finLc`, `finSh`, `finLr`, `finE`). -/
+def exE : ℕ := 5
+
+/-- **The reserve's values in `finB′`** (revision 4.4.2), registers from `d`: the child claim's 52
+values `v_i` (`finE`'s exports after `r′`) as `S = Σ_i κ′^i v_i` (Horner), `κ′^{11}` (from `κ′²` at
+`k2`), and `B′`'s claim `vRS + (κ′²·S₉ + κ′^{11}·S)` (`s9` the own cells' `κ′²·S₉`, `one` the K
+constant `1`) asserted where the kind's `rsv` holds: the 52 cells sit at `κ′^{11} … κ′^{62}`, after the
+nine. -/
+def rsvBOps (fi : FinIn) (kp k2 s9 vRS one d : ℕ) (rsv : KC Bool) : List Op :=
+  let vs := (fi.ex.getD exE []).drop 1
+  ((List.range 51).flatMap fun k =>
+    [Op.mulF kp (if k = 0 then vs.getD 51 0 else d + 2 * k - 1), Op.addF (vs.getD (50 - k) 0) (d + 2 * k)]) ++
+  [Op.mulF k2 k2, Op.mulF (d + 102) (d + 102), Op.mulF (d + 103) k2, Op.mulF (d + 104) kp,
+   Op.mulF (d + 105) (d + 101), Op.addF s9 (d + 106), Op.addF vRS (d + 107), Op.mulKF one (d + 108),
+   Op.assertEq (d + 109) (claim0 fi "P1") rsv]
 
 def gFinB' (P : FinP) (fi : FinIn) (b : ℕ) (Q : Kind → FinP := fun _ => P) : List Op × List Reg :=
   let kp := (outsOf fi "B'").headD 0
   let vRS := fi.zhat.getD nRS 0
-  ([.input 0, .splitDigest b, .piDigest fStmt 1, .splitDigest (b + 3), .piDigest fStmt 33,
+  (([.input 0, .splitDigest b, .piDigest fStmt 1, .splitDigest (b + 3), .piDigest fStmt 33,
     .splitDigest (b + 6), .const (fun _ => .f 1),
     .mulF kp (b + 8), .addF (b + 7) (b + 10), .mulF kp (b + 11), .addF (b + 2) (b + 12),
     .mulF kp (b + 13), .addF (b + 1) (b + 14), .mulF kp (b + 15), .addF (b + 5) (b + 16),
@@ -262,7 +350,9 @@ def gFinB' (P : FinP) (fi : FinIn) (b : ℕ) (Q : Kind → FinP := fun _ => P) :
     .mulF kp kp, .mulF (b + 26) (b + 25), .const (fun _ => .f 0),
     .keep (fun κ => (Q κ).kv.node κ) (b + 27) (b + 28),
     .addF vRS (b + 29),
-    .const (fun _ => .k 1), .mulKF (b + 31) (b + 30), .assertEq (b + 32) (claim0 fi "P1") allK],
+    .const (fun _ => .k 1), .mulKF (b + 31) (b + 30),
+    .assertEq (b + 32) (claim0 fi "P1") (cond P.rsvOps (fun κ => !(Q κ).rsv) allK)] : List Op) ++
+    cond P.rsvOps (rsvBOps fi kp (b + 26) (b + 29) vRS (b + 31) (b + 33) (fun κ => (Q κ).rsv)) [],
    [b + 30])
 
 /-! ## S-G's fields -/
@@ -420,7 +510,10 @@ def gFinPf (P : FinP) (fi : FinIn) (b : ℕ) (Q : Kind → FinP := fun _ => P) :
   let rs1 := coordsR fi "RS1"
   let kp := (outsOf fi "B'").headD 0
   let cb := wb + (2 + 2 * nc)
-  let ce := cond P.ck (cb + 1 + (2 * nc + 3) * P.ncell) (cb + 1 + (nc + 3) * (Q .L32).cells.length)
+  let c9 := cb + 1 + (2 * nc + 3) * P.ncell
+  let acc9 := gCellsAccK nc P.ncell z0 (cb + 1)
+  let cr := c9 + (2 * nc + 3) * P.nrcell
+  let ce := cond P.ck (cond P.rsvOps (cr + 1) c9) (cb + 1 + (nc + 3) * (Q .L32).cells.length)
   let lb := ce + 2
   let fb := lb + lvsW fi [1, 2, 3, 4]
   let pd := fb + 2 + 4 * 2 ^ S.pf
@@ -441,9 +534,11 @@ def gFinPf (P : FinP) (fi : FinIn) (b : ℕ) (Q : Kind → FinP := fun _ => P) :
    ((List.range nc).map (fun v => .addK one (wb + 2 + v)) : List Op) ++
    ([.mulF kp kp] : List Op) ++
    cond P.ck (gCellsOpsK nc one (wb + 2) (wb + (nc + 2)) kp (fun j κ => ((Q κ).cells).getD j 0) P.ncell 0
-       z0 cb (cb + 1))
+       z0 cb (cb + 1) ++
+       cond P.rsvOps (gCellsOpsK nc one (wb + 2) (wb + (nc + 2)) kp (fun j κ => ((Q κ).rcells).getD j 0)
+         P.nrcell 0 acc9 (c9 - 1) c9 ++ [.keep (fun κ => (Q κ).rsv) (gCellsAccK nc P.nrcell acc9 c9) acc9]) [])
      (gCellsOps nc one (wb + 2) (wb + (nc + 2)) kp (Q .L32).cells z0 cb (cb + 1)) ++
-   ([.keep node (cond P.ck (gCellsAccK nc P.ncell z0 (cb + 1)) (gCellsAcc nc (Q .L32).cells z0 (cb + 1))) z0,
+   ([.keep node (cond P.ck (cond P.rsvOps cr acc9) (gCellsAcc nc (Q .L32).cells z0 (cb + 1))) z0,
     .addK (wb + 1) ce] : List Op) ++
    gLvsOps S fi one cu sb [1, 2, 3, 4] (ce + 1) lb ++
    ([.packK sf, .eqTableK fb] : List Op) ++ fhOps (fb + 1) (List.range (2 ^ S.pf)) z0 (fb + 2) ++
@@ -474,6 +569,16 @@ theorem noAsk_gCellsOpsK (nc : ℕ) (one g h kp : Reg) (cells : ℕ → KC ℕ) 
     rw [gCellsOpsK, gCellOpsK, List.filterMap_append, List.filterMap_append, List.filterMap_append,
       noAsk_map _ _ fun _ => rfl, noAsk_prodKOps, noAsk_gCellsOpsK nc one g h kp cells n]; rfl
 
+/-- **The reserve's blocks ask nothing** (revision 4.4.2; for `FRSoundness4Qry`'s `noAsk_gFinE`,
+`noAsk_gFinB'`, `noAsk_gFinPf`). -/
+theorem noAsk_rsvEOps (P : FinP) (fi : FinIn) (b c : ℕ) (Q : Kind → FinP) :
+    (rsvEOps P fi b c Q).filterMap Op.item? = [] := by
+  simp [rsvEOps, Op.item?, List.filterMap_eq_nil_iff]
+
+theorem noAsk_rsvBOps (fi : FinIn) (kp k2 s9 vRS one d : ℕ) (rsv : KC Bool) :
+    (rsvBOps fi kp k2 s9 vRS one d rsv).filterMap Op.item? = [] := by
+  simp [rsvBOps, Op.item?, List.filterMap_eq_nil_iff, List.filterMap_flatMap]
+
 theorem noAsk_gTailOps (Q : Kind → FinP) (pf : ℕ) : ∀ ts r, (gTailOps Q pf ts r).filterMap Op.item? = []
   | [], _ => rfl
   | t :: ts, r => by rw [gTailOps, List.filterMap_append, noAsk_gTailOps Q pf ts]; rfl
@@ -494,7 +599,7 @@ theorem phaseOffOf_seq3 (n f : ℕ) : phaseOffOf seq3 n f = phaseOff n f := by
   rw [phaseOffOf, ← phasesOf_seq3, ← List.map_take, List.map_map, h, phaseOff]
   exact congrArg List.sum (List.map_congr_left fun p _ => p.shape.bytesToL_toSh f)
 
-theorem fin3P_S : fin3P.S = ⟨32, 19, 26, 28, 15, 21, 23, 7, 32, 6, false, 7⟩ := seq3_eq
+theorem fin3P_S : fin3P.S = ⟨32, 19, 26, 28, 15, 21, 23, 7, 32, 6, false, 7, 48, 48⟩ := seq3_eq
 
 theorem gFinZ_3 : gFinZ fin3P = finZ := by
   funext fi b; simp only [gFinZ, finZ, fin3P_S]; rfl
@@ -734,11 +839,13 @@ def capChkOps (S : Seq) (outs : Array (List Reg)) (b : ℕ) : List Op :=
     let zr := fun r => bb + 3 * M * r + 3 * M - 1
     let aD := fun r j => if r = 0 then b + 1 else db + 8 * (r - 1) + j
     let aA := fun k j => if k = 0 then b + 1 else ab + 9 * (k - 1) + j
+    let aO := fieldOffOf S fA
+    let cO := fieldOffOf S fCaps
     head ++ powChainOps b (b + 2) (R - 1) pb ++ powChainOps b (b + 3) (E - 1) qb ++
       (rds.zipIdx.flatMap fun x => bitPowOps b zp M x.1 (bb + 3 * M * x.2)) ++
       (rds.zipIdx.flatMap fun x => macDOps x.1 (powReg b pb x.2) (zr x.2) (aD x.2 3) (aD x.2 5)
         (aD x.2 7) (db + 8 * x.2)) ++
-      ((List.range E).flatMap fun k => macAOps (fieldOffOf S fA) (fieldOffOf S fCaps) k (powReg b qb k)
+      ((List.range E).flatMap fun k => macAOps aO cO k (powReg b qb k)
         (aA k 4) (aA k 6) (aA k 8) (ab + 9 * k)) ++
       [Op.assertEq (aD R 3) (aA E 4) allK, Op.assertEq (aD R 5) (aA E 6) allK,
         Op.assertEq (aD R 7) (aA E 8) allK]

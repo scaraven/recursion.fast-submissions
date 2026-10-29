@@ -116,6 +116,13 @@ def truthS4 (κ : NodeKind) (w : Asg) : Prop :=
 def PubCells4 (κ : NodeKind) (w : Asg) (vk c₁ c₂ : Digest) : Prop :=
   (cells4 κ).map w = Node.pubVals vk c₁ c₂
 
+/-- **The reserve's public cells** (revision 4.4.2, D1p §3; the V side's 52 cells after the nine,
+`Rev4.rsvCells`): slot 0's E2 challenges (23), E4 challenges (25), its own `evalM`'s three outputs and
+its kind element hold the node's own proof's child claim `ch` (`fLrEnd`'s `r̄*_x ‖ r̄*_y ‖ a* ‖ b* ‖ c* ‖
+kindElem*`, read by `finB′`). Empty for `N8`. Not yet a conjunct of `StmtN4` (the soundness track's). -/
+def PubCellsR4 (κ : NodeKind) (w : Asg) (ch : List F) : Prop :=
+  (Rev4.rsvCells κ).map w = ch
+
 /-- **`StmtN4`**: the node's truths on `w`, with the L rows `lr` and the indexed M rows `er`. -/
 def StmtN4 (κ : NodeKind) (lr : List Row) (er : List (ℕ × Row)) (vk c₁ c₂ : Digest) (w : Asg) : Prop :=
   truthZ4 κ w ∧ truthS4 κ w ∧ (∀ r ∈ lr, r.Holds w) ∧ Snd.P4b.truthEI er w ∧ PubCells4 κ w vk c₁ c₂
@@ -457,6 +464,15 @@ theorem not_pubCells4_zero (κ : NodeKind) (vk c₁ c₂ : Digest) : ¬ PubCells
   intro h
   have := congrArg List.head? h
   simp [cells4, Node.pubVals] at this
+
+/-- (+/−) **The reserve's cells** (revision 4.4.2): 52 for `N2`/`N4` (slot 0's E2 and E4
+challenges, `evalM`'s outputs, the kind element), none for `N8`; inside `f` and slot 0's M region,
+distinct, and disjoint from the nine public cells. -/
+theorem rsvCells_ctl : (Rev4.rsvCells .N2).length = 52 ∧ (Rev4.rsvCells .N4).length = 52 ∧
+    Rev4.rsvCells .N8 = [] ∧
+    (∀ κ, ∀ c ∈ Rev4.rsvCells κ, κ.oneCell ≤ c ∧ c < κ.oneCell + 2 ^ 20 ∧ c < 2 ^ (κ.m - 7)) ∧
+    (∀ κ, (Rev4.rsvCells κ).Nodup ∧ ∀ c ∈ Rev4.rsvCells κ, c ∉ cells4 κ) := by
+  refine ⟨rfl, rfl, rfl, fun κ => ?_, fun κ => ?_⟩ <;> cases κ <;> decide
 
 /-- (+) `AggPad4` holds on the zero assignment (every bit `0`: the links and the padding). -/
 theorem aggPad4_zero (κ : NodeKind) (a k : ℕ) : AggPad4 κ a k (fun _ => 0) := by

@@ -192,11 +192,12 @@ theorem segGrp_node (ι : Kind) : (segGrp ι).d.node = segGrp.rep.d.node := by c
 /-- **Every index of the node group has index `L32`'s counts** (the kinds' cells of one length). -/
 theorem nodeQ_counts (cells : NodeKind → List ℕ) (hl : ∀ κ, (cells κ).length = (cells .N4).length)
     (ι : Kind) : SameCounts (nodeQ cells .L32) (nodeQ cells ι) := by
-  refine ⟨rfl, rfl, rfl, rfl, rfl, rfl, ?_, rfl⟩
+  refine ⟨rfl, rfl, rfl, rfl, rfl, rfl, ?_, rfl, rfl, rfl⟩
   show (cells (nodeAt .L32)).length = (cells (nodeAt ι)).length
   rw [hl (nodeAt ι)]; rfl
 
-theorem segQ_counts (ι : Kind) : SameCounts (segQ .L32) (segQ ι) := ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
+theorem segQ_counts (ι : Kind) : SameCounts (segQ .L32) (segQ ι) :=
+  ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
 
 /-- The kinds' tables are constant: read at their own index they are themselves. -/
 theorem nodeQ_fix (cells : NodeKind → List ℕ) (ι : Kind) : finAt (nodeQ cells) ι = fun _ => nodeQ cells ι :=

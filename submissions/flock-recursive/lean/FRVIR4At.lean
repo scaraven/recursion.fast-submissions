@@ -296,12 +296,17 @@ theorem map_at_gFinRS : (gFinRS P fi b Q).1.map (Op.at h false ι) = (gFinRS P f
 
 theorem map_at_gFinE (hck : P.ck = true) :
     (gFinE P fi b Q).1.map (Op.at h false ι) = (gFinE P fi b (finAt Q ι)).1 := by
-  simp only [gFinE, hck, Bool.cond_true]
-  rfl
+  cases hr : P.rsvOps <;>
+    simp only [gFinE, gFinE0, rsvEOps, hr, hck, Bool.cond_true, Bool.cond_false, List.map_append,
+      List.map_cons, List.map_nil, List.map_map] <;> rfl
+
+theorem gFinE_ex (Q' : Kind → FinP) : (gFinE P fi b Q).2 = (gFinE P fi b Q').2 := by
+  unfold gFinE; cases P.rsvOps <;> rfl
 
 theorem map_at_gFinB' : (gFinB' P fi b Q).1.map (Op.at h false ι) = (gFinB' P fi b (finAt Q ι)).1 := by
-  simp only [gFinB']
-  rfl
+  cases hr : P.rsvOps <;>
+    simp only [gFinB', rsvBOps, hr, Bool.cond_true, Bool.cond_false, List.map_append, List.map_cons,
+      List.map_nil, List.map_flatMap, List.map_map] <;> rfl
 
 theorem map_at_gFinP (i : ℕ) : (gFinP P i fi b).1.map (Op.at h false ι) = (gFinP P i fi b).1 := by
   unfold gFinP
@@ -316,10 +321,10 @@ theorem map_at_gTailOps (p : ℕ) :
 
 theorem map_at_gFinPf (hck : P.ck = true) :
     (gFinPf P fi b Q).1.map (Op.at h false ι) = (gFinPf P fi b (finAt Q ι)).1 := by
-  simp only [gFinPf, hck, Bool.cond_true, List.map_append, List.map_cons, List.map_nil, map_at_ptsOps,
-    List.map_flatMap, map_at_selOps, map_at_gCellsOpsK, map_at_gLvsOps, map_at_fhOps, map_at_padsOps,
-    map_at_gTailOps, List.map_map]
-  rfl
+  cases hr : P.rsvOps <;>
+  simp only [gFinPf, hck, hr, Bool.cond_true, Bool.cond_false, List.map_append, List.map_cons,
+    List.map_nil, map_at_ptsOps, List.map_flatMap, map_at_selOps, map_at_gCellsOpsK, map_at_gLvsOps,
+    map_at_fhOps, map_at_padsOps, map_at_gTailOps, List.map_map, List.append_nil] <;> rfl
 
 theorem gFinSh_ex (Q' : Kind → FinP) : (gFinSh P fi b Q).2 = (gFinSh P fi b Q').2 := by
   unfold gFinSh; cases P.vn <;> rfl
@@ -405,7 +410,7 @@ theorem map_at_finOps4 {h : Reg → Op} (hh : ∀ s, (h s).outs = 1) (ι : Kind)
     · exact fun fi b => ⟨map_at_gFinLc h ι P Q fi b, rfl⟩
     · exact fun fi b => ⟨map_at_gFinSh h ι P Q fi b, gFinSh_ex P Q fi b _⟩
     · exact fun fi b => ⟨map_at_gFinLr h ι P Q fi b hck, rfl⟩
-    · exact fun fi b => ⟨map_at_gFinE h ι P Q fi b hck, rfl⟩
+    · exact fun fi b => ⟨map_at_gFinE h ι P Q fi b hck, gFinE_ex P Q fi b _⟩
     · exact fun fi b => ⟨map_at_gFinB' h ι P Q fi b, rfl⟩
     · apply forall₂_append
       · refine forall₂_self fun g hg => ?_
@@ -418,16 +423,17 @@ theorem map_at_finOps4 {h : Reg → Op} (hh : ∀ s, (h s).outs = 1) (ι : Kind)
 /-- **`P` and `P'` have the same counts** (the finals' ops and registers depend on these only). -/
 def SameCounts (P P' : FinP) : Prop :=
   P.S = P'.S ∧ P.fams = P'.fams ∧ P.e4s = P'.e4s ∧ P.nc = P'.nc ∧ P.vn = P'.vn ∧ P.ck = P'.ck ∧
-    P.ncell = P'.ncell ∧ P.tails = P'.tails
+    P.ncell = P'.ncell ∧ P.tails = P'.tails ∧ P.rsvOps = P'.rsvOps ∧ P.nrcell = P'.nrcell
 
 /-- **The finals read only `P`'s counts.** -/
 theorem finOps4_counts {P P' : FinP} (hc : SameCounts P P') (Q : Kind → FinP) (outs : Array (List Reg))
     (b : ℕ) : finOps4 P outs b Q = finOps4 P' outs b Q := by
-  obtain ⟨hS, hf, he, hn, hv, hk, hl, ht⟩ := hc
+  obtain ⟨hS, hf, he, hn, hv, hk, hl, ht, hr, hrc⟩ := hc
   have hT : gFinPTop P = gFinPTop P' := by funext fi b; simp only [gFinPTop, hS]
   have hP : gFinP P = gFinP P' := by funext i; simp only [gFinP, hT]
   simp only [finOps4, finalsOf, gFinRS, gRsTail, gFinZ, gFinLc, gLcHead, gFinSh, gShCore, gBndOps, gPadB,
-    gFinLr, gFinE, gFinB', hP, gFinPf, gPfPts, pfCand, pfCandA, hS, hf, he, hn, hv, hk, hl, ht]
+    gFinLr, gFinE, gFinE0, rsvEOps, gFinB', hP, gFinPf, gPfPts, pfCand, pfCandA, hS, hf, he, hn, hv, hk, hl, ht,
+    hr, hrc]
 
 /-- **A kind's own tables, read at any index, are its tables** (constant tables). -/
 theorem fixKV_const (P : FinP) (ι : Kind) (hm : ∀ κ, P.kv.m κ = P.kv.m ι) (hn : ∀ κ, P.kv.node κ = P.kv.node ι)

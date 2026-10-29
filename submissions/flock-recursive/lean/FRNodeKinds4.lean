@@ -42,9 +42,9 @@ open RecursionFast Rev4 Kinds FR.Stream
 /-! ## Numbers (literals, with their fidelity to `FRShape4`/`FRNodeLayout4`) -/
 
 /-- One trace's stream `0x54 ‖ traceBytes tr` at `seq4`, in bytes. -/
-def segB : ℕ := 1550080
+def segB : ℕ := 1550976
 /-- Its digest chain's blocks. -/
-def cLen : ℕ := 24220
+def cLen : ℕ := 24234
 /-- The aggregate stream `0x54 ‖ tr₁ ‖ … ‖ tr_k`, in bytes. -/
 def aggB (k : ℕ) : ℕ := 1 + k * (segB - 1)
 /-- Its digest chain's blocks. -/
@@ -418,7 +418,7 @@ theorem hEnd_le (κ : NodeKind) : hEnd κ ≤ κ.lBase ∧ hUsedN κ + nAgg κ *
   refine ⟨?_, by simp [hEnd, finB]⟩
   rw [NodeKind.lBase, ← hUsedN_eq]; cases κ <;> decide
 
-theorem hEnd_eq : hEnd .N2 = 73967 ∧ hEnd .N4 = 122415 ∧ hEnd .N8 = 195088 := by decide
+theorem hEnd_eq : hEnd .N2 = 74009 ∧ hEnd .N4 = 122485 ∧ hEnd .N8 = 195200 := by decide
 
 /-- A candidate final block is **the last block of a stream of `aggB k′` bytes**: its target's
 counter is `aggB k′` and its final flag is set. -/

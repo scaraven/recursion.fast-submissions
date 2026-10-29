@@ -62,7 +62,7 @@ def finPs : List Prim :=
   [.op .or rIsK rIsK rIsA, .op .or rIsK rIsK rIsN, .const rK 0, .op .ltu rNZ rK rLen,
    .op .and rIsK rIsK rNZ]
 /-- `rIsSz := (|π| = piSizeOf seq4)`. -/
-def szPs : List Prim := [.const rK (BitVec.ofNat 64 875280), .op .eq rIsSz rLen rK]
+def szPs : List Prim := [.const rK (BitVec.ofNat 64 876176), .op .eq rIsSz rLen rK]
 
 /-- The kind flags: `rIsA` (`'A'`), `rIsN` (`N2`/`N4`/`N8`), `rIsK` (`'A'`, a node or a segment
 byte, and `|π| ≠ 0`), `rIsSz` (`|π| = piSizeOf seq4`). -/
@@ -192,7 +192,7 @@ theorem rd_orPs {d : ℕ} (b : Word) (M : Mem) (hd : d ≠ rK) (hd2 : d ≠ rT) 
     [rd_set_self, rd_set_ne, XOp.eval, isW]
 
 theorem rd_szPs (M : Mem) (hM : 256 ≤ M.size) :
-    rd (runPrims szPs M) rIsSz = isW (rd M rLen) (BitVec.ofNat 64 875280) := by
+    rd (runPrims szPs M) rIsSz = isW (rd M rLen) (BitVec.ofNat 64 876176) := by
   simp only [szPs, runPrims, List.foldl, Prim.run, rK, rIsSz, rLen]
   simp (disch := first | omega | (simp only [size_set]; omega))
     [rd_set_self, rd_set_ne, XOp.eval, isW]
@@ -228,7 +228,7 @@ theorem parse4_M (I : Array Word) (s : St) (hM : Inv s.M) : ∃ M, 256 ≤ M.siz
   all_goals try exact hs
 
 theorem parse4_sz (I : Array Word) (s : St) (hM : Inv s.M) :
-    rd (semXIR I parse4 s).M rIsSz = isW (I.getD 4 0) (BitVec.ofNat 64 875280) := by
+    rd (semXIR I parse4 s).M rIsSz = isW (I.getD 4 0) (BitVec.ofNat 64 876176) := by
   obtain ⟨M, h0, h1, -, e⟩ := parse4_M I s hM
   rw [e, kindPs4]
   simp only [runPrims_append]
