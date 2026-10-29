@@ -7,8 +7,8 @@ Last updated 2026-10-28. **Rebased onto core PR #20 (pin `6d05d00`, commit `987e
 - S-H4: the node decoder (`lagIR` semantics, `level_decode4`, `nd`, `DecOk4`, `NodeDec4`; residuals 5–7: `D`, `hL`, `hnd`).
 - G2: speed golf of the heavy `FRX*` decoder-infrastructure modules (Bary, Msg, Agree, Out, Read, Fwd, Bfly, Flag, Field, BaryTop, EqT, Lookup, Dsl).
 - P2⁷: step-time levers (stream fits M ≤ 66 at `stream_s` 960).
-- S-E13a: `Gap4` 1–3 (pack map, `input` alias, `wf`, kind tie).
-- S-E13b: `Gap4` 4–6 (WOTS rows, `aggChk`, `aggPad`).
+- S-E13a: `Gap4` 1–3 (pack map, `input` alias, `wf`, kind tie); plus, from S-E13b's handover: the fold of `W4.extRows4` into `linkRows4`, `hfit4`'s structural bound, `mRowModel4`, and `aggChk` (a)–(c).
+- S-E14: `Gap4` 7, the replay `R` (10 registers per prototype: `evalM`×3, `evalL`×3, `targetS`, `shiftTarget`, `linkWAll`, `rsWeight`), new `FRNodeRows4Rep*` modules, fold handed over.
 - RET-2: retirement step 3 (the 3.x soundness front out of the Rev4 closure; `tail_shift` move).
 
 ## Waiting
@@ -60,6 +60,8 @@ Last updated 2026-10-28. **Rebased onto core PR #20 (pin `6d05d00`, commit `987e
 S-A `8ff873c`; S-C `ebac8c2`; S-D `8e6dad7`; S-E1 `2d5a811`; S-H1 `40b2f81`; S-0 `47158b1`; S-E2/S-E3 `8447c50`; S-F `c8e1869`; S-F2 `8f22b86`; S-G through `ac43569`; S-H2 through `11fb3a5`; INT-1 `5fc7d3b`; S-E5 `9dbab71`; … S-N2 `75eff21`; INT-10 `1c5a738`; S-I `2f437ed` (residuals 8–9 closed; `Solution` PROVISIONAL under `Open4`; **cert build 882 s on the 7763 > `build_s` 600 → REJECT**: 307 modules, 2,975 CPU-s, need ≤ 2,020 (≤ 1,550 for 1.3×); bench probe season S = 6.421, truncated at M = 63) (`SegOut4` gone: `ks_rev4H`/`certificate_rev4H`; open: drop `hO`/`out` from S-N2's `ks_rev4GH`, then delete the G forms, `SegOut4`, `runFacts4_C`). FR builds as a whole.
 
 ## Rulings
+
+- **S-E13b, 2026-10-29 (orchestrator):** committed `ce2a4ad`. Its proposal to give the `r31` link family source 549 + t with `mbo = 248` (saving 4,160 rows per node, ≈ 0.2 % of `N_M`) is **deferred**: it changes `linkWAll`'s spec, V and the prover for a small gain. Revisit after `R` and the build budget.
 
 - **INT-8 (`3b13ba5`), 2026-10-29:** each kind's exact final-tail check is kept (dropping it would let V accept higher-degree finals for N2/L30/L31: a protocol change); deviations 2–5 accepted (exact per-kind Lr/E point lists, all families computed then selected, the group-to-kind equality as a theorem, the statement fact checked in `VsegC`/`VnodeC`). The native `acc` checks `stmtDigest(tix, π[48..176)) = c` after the run.
 - **Node M rows on the runner (P2⁗), 2026-10-29:** embedded in `prover.s` in plan form (templates once, instance placements, sparse skeleton rows), rebuilt at prover start, KAT against the full dump; no Rust port of `compileTF`. INT-9 exports the plan form.
