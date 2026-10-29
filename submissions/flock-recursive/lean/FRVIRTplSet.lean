@@ -561,10 +561,50 @@ theorem compileTF4_soundAt {impl : OpImpl} {F : TFilt} {R : ShR} {κ : Kind} {in
     s.ok = true ∧ ∀ i, RepS w ((compileTF4 F R L P base ops).slot i) (rd s.regs i) :=
   compileX_soundK (tplExt4_okK hT hR L) base hP he hr ht hx hi hf
 
-/-- **The two-pass layout with the 4.1 route.** -/
+/-- The start of the first interval of `occ` that `[a, a + n)` meets. -/
+def meetsAt (a n : ℕ) (occ : List (ℕ × ℕ)) : Option ℕ :=
+  (occ.find? fun p => decide (a < p.2) && decide (p.1 < a + n)).map (·.1)
+
+/-- The highest `2^b`-aligned base whose `n` cells end at or below `c` and meet no interval of `occ`
+(each step passes one interval: fuel `|occ| + 1`). -/
+def fitDown (b n : ℕ) (occ : List (ℕ × ℕ)) : ℕ → ℕ → ℕ
+  | 0, c => (c - n) / 2 ^ b * 2 ^ b
+  | fuel + 1, c =>
+    let x := (c - n) / 2 ^ b * 2 ^ b
+    match meetsAt x n occ with
+    | some s => fitDown b n occ fuel s
+    | none => x
+
+/-- **Top-down cells** (B2′; it makes a hint only, which nothing trusts): a layout's groups re-based
+in cells, in decreasing cell bits, each at the highest base below `top` (the slot region's end, an
+aligned bound), aligned to its bits, whose cells meet no group placed before; the rows stay
+`mkLay`'s. A group takes `n·2^b` cells, the walk up to its last local. From an aligned top, groups of
+decreasing alignment pack without gaps; `mkLay`'s order leaves one before every group aligned more
+than the one before it (4.4.1's prototype 0: 27,392 cells before `rowW 8`), and a slot region's cells
+are nearly full (B2′'s RESULT). -/
+def fitCells (top : ℕ) (L : TLay) (ks : List (TKey × ℕ)) : TLay :=
+  let sz := fun (e : TKey × ℕ × ℕ × ℕ) =>
+    let n := ((ks.find? (·.1 == e.1)).map (·.2)).getD 1
+    if isWalk e.1 then (n - 1) * 2 ^ e.2.2.2 + tNlocs e.1 else n * 2 ^ e.2.2.2
+  let ord := (List.range (L.foldl (fun m e => max m e.2.2.2) 0 + 1)).reverse.flatMap fun b =>
+    L.filter (·.2.2.2 == b)
+  let placed := ord.foldl (fun (acc : List (TKey × ℕ) × List (ℕ × ℕ)) e =>
+    let c := fitDown e.2.2.2 (sz e) acc.2 (acc.2.length + 1) top
+    ((e.1, c) :: acc.1, (c, c + sz e) :: acc.2)) ([], [])
+  L.map fun e => (e.1, e.2.1, ((placed.1.find? (·.1 == e.1)).map (·.2)).getD e.2.2.1, e.2.2.2)
+
+/-- (+) Below 64, a 16-cell group goes to 48 and a 4-cell group right below it, at 44; (−) a group
+that would meet one placed before moves below it (8 cells at 56, then 4 at 52, not 60). -/
+theorem fitCells_ctl :
+    (fitCells 64 [(.zero, 0, 0, 2), (.eqZ, 0, 0, 4)] [(.zero, 1), (.eqZ, 1)]).map (·.2.2.1) = [44, 48] ∧
+    (fitCells 64 [(.zero, 0, 0, 2), (.eqZ, 0, 0, 2)] [(.zero, 2), (.eqZ, 1)]).map (·.2.2.1) = [56, 52] := by
+  decide
+
+/-- **The two-pass layout with the 4.1 route** (B2′: cells top-down from the `2^20`-cell region's end,
+`fitCells`). -/
 def layOfF4 (F : TFilt) (R : ShR) (P : Params) (base : ℕ) (ops : List Op) : TLay :=
   let cs := compileTF4 F R [] P base ops
-  mkLay cs.nrows cs.next (keyCounts cs.tins)
+  fitCells (alignUp (base + 1) 20) (mkLay cs.nrows cs.next (keyCounts cs.tins)) (keyCounts cs.tins)
 
 /-! ## Controls -/
 
