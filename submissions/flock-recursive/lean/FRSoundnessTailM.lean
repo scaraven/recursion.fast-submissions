@@ -1,5 +1,7 @@
 -- New for `flock-recursive` (BLUEPRINT A.10 P2.i, P3.i, §5.2; stage S-G1i).
+-- RET-2: the declarations revision 4.1 reads moved to `FRSoundnessCoreRows`.
 import FRSoundnessTailO
+import FRSoundnessCoreRows
 
 /-!
 # The Ligerito tail's multi-squeeze phases and the stability of its dooms
@@ -212,13 +214,6 @@ theorem hfin_P3 (hF : FrontLocal W₀ c₀) {Dk : ℕ → Log → Log → Prop} 
     rw [eqBits_congr fun v hv => ofFn_coord_getD X i v (by omega)]
 
 /-! ## Part D: stability -/
-
-theorem D2_congrL {R : Type*} [Field R] {b wd : ℕ} {rd : ByteArray → ℕ → R} {ch : Digest → R}
-    {c0 : Log → Log → R} {nr : Kind → ℕ} {e : Expr} {T : Log → Log → Array (Array R)}
-    {L L' Y : Log} (hT : T L Y = T L' Y) (hc : c0 L Y = c0 L' Y) :
-    D2 b wd rd ch c0 nr e T L Y ↔ D2 b wd rd ch c0 nr e T L' Y := by
-  unfold D2 Wrong2
-  rw [hT, clR2_same (L' := L') (es' := Y) hc (fun _ _ => rfl)]
 
 theorem DT_Q (W₀ : Log → Log → ℕ → K) (c₀ : Log → Log → K) {i : ℕ} (hi : i < 5) :
     DT W₀ c₀ (29 + 5 * i) = fun _ _ => False := by

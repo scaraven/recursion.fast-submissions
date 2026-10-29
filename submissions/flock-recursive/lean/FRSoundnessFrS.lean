@@ -1,5 +1,7 @@
 -- New for `flock-recursive` (BLUEPRINT A.9 `finSh`, A.10 S1/S2, §5.2 row S; stage S-G7).
+-- RET-2: the declarations revision 4.1 reads moved to `FRSoundnessCoreFront`.
 import FRSoundnessFrSh
+import FRSoundnessCoreFront
 
 /-!
 # S on the log: S1's charge, S2's rounds, and S's pending RS claim (positions 98 … 169)
@@ -46,13 +48,8 @@ theorem nbS_le (κ : Kind) : nbS κ ≤ 18 := by cases κ <;> decide
 theorem nbS_node {κ : Kind} (h : κ.isNode = true) : nbS κ = 16 := by
   cases κ <;> simp_all [Kind.isNode] <;> rfl
 
-/-- S1's coordinate `j`. -/
-def coS (es : Log) (j : ℕ) : F := coordAt es 98 j
-
 /-- S1's `τ` (the kind's `nb` read coordinates), `θ` (coordinates 18 … 27), `κ_s` (28). -/
 def tauL (κ : Kind) (es : Log) : List F := (List.range (nbS κ)).map (coS es)
-def thL (es : Log) : List F := (List.range 10).map fun l => coS es (18 + l)
-def ksL (es : Log) : F := coS es 28
 
 /-- S2's challenges: the block part `r_blk` (`nb`), the position part `r_pos` (10). -/
 def rbL (κ : Kind) (es : Log) : List F := (List.range (nbS κ)).map (rch 114 es)
@@ -79,24 +76,6 @@ def c0S (es : Log) : F :=
     (bndL (kindOf es) es ++ lastPad (nbS (kindOf es)) (18 - nbS (kindOf es))).toArray
 
 /-! ## The target and the tables -/
-
-theorem mle_digTbl (θ : Fin 10 → F) (e₀ e₁ : F) :
-    mle (digTbl e₀ e₁) θ = thS θ fun σ => if digBit e₀ e₁ σ then 1 else 0 := by
-  rw [mle]
-  rw [show (∑ u : Fin (2 ^ 10), eq θ (cube u) * digTbl e₀ e₁ u) = ∑ u : Fin (2 ^ 10),
-      (fun q => eqAtR θ q * if q < 256 then (if digBit e₀ e₁ q then 1 else 0) else 0) u.val from
-    sum_congr rfl fun u _ => by
-      rw [eq_cube_eqAtR, digTbl]; simp only [ite_and]]
-  rw [Fin.sum_univ_eq_sum_range (fun q => eqAtR θ q * if q < 256 then
-    (if digBit e₀ e₁ q then 1 else 0) else 0)]
-  simp only [mul_ite, mul_zero]
-  rw [sum_range_ite_lt (by norm_num), thS]
-  exact sum_congr rfl fun q _ => by split_ifs <;> simp
-
-theorem digBit_zero (σ : ℕ) : digBit 0 0 σ = false := by
-  have h0 : (F.c₀ 0).val = 0 := rfl
-  have h1 : (F.c₁ 0).val = 0 := rfl
-  unfold digBit bitF; split_ifs <;> simp [h0, h1]
 
 theorem tauL_length (κ : Kind) (es : Log) : (tauL κ es).length = nbS κ := by simp [tauL]
 theorem thL_length (es : Log) : (thL es).length = 10 := by simp [thL]
@@ -138,11 +117,6 @@ noncomputable def TS (L es : Log) : Array (Array F) :=
 def nrS (κ : Kind) : ℕ := nbS κ + 10
 
 theorem nrS_eq (κ : Kind) : nrS κ = mm 4 κ := by cases κ <;> rfl
-
-theorem idx_split {a y q : ℕ} (hy : y < 2 ^ a) :
-    (y + 2 ^ a * q) % 2 ^ a = y ∧ (y + 2 ^ a * q) / 2 ^ a = q := by
-  refine ⟨by rw [Nat.add_mul_mod_self_left, Nat.mod_eq_of_lt hy], ?_⟩
-  rw [Nat.add_mul_div_left _ _ (Nat.two_pow_pos a), Nat.div_eq_of_lt hy, zero_add]
 
 /-- The S residual by kind: a node's `J = 10` tables, a leaf's `2`. -/
 noncomputable def resS (κ : Kind) (L es : Log) (j u q : ℕ) : F :=
@@ -233,9 +207,6 @@ variable {L es L' es' : Log} {p : ℕ}
 theorem bndL_congr (h : Agree es es' p) (hp : 2 ≤ p) (κ : Kind) : bndL κ es = bndL κ es' := by
   simp only [bndL, h 0 (by omega), msgAt_congr h (show 1 < p by omega)]
 
-theorem coS_congr (h : Agree es es' p) {j : ℕ} (hj : 99 + j / 2 < p) : coS es j = coS es' j := by
-  simp only [coS, coordAt]; exact fAt_congr h (by omega) _
-
 theorem s1_congr (h : Agree es es' p) (hp : 114 ≤ p) (κ : Kind) :
     tauL κ es = tauL κ es' ∧ thL es = thL es' ∧ ksL es = ksL es' := by
   have hn := nbS_le κ
@@ -269,10 +240,6 @@ theorem TS_same (h : Same L es L' es' p) (hp : 114 ≤ p) : TS L es = TS L' es' 
 end Reads
 
 /-! ### The charge -/
-
-theorem coordS_getD (X : Log) {j : ℕ} (hj : j < 30) :
-    (List.ofFn fun i : Fin (15 * 2) => coordAt X 98 i).getD j 0 = coS X j := by
-  rw [List.getD_eq_getElem?_getD, List.getElem?_ofFn, dif_pos (by omega)]; rfl
 
 theorem selC_coords (κ : Kind) (X : Log) :
     ptOf (nbS κ) (selC (nbS κ) (List.ofFn fun i : Fin (15 * 2) => coordAt X 98 i)) =
@@ -447,18 +414,6 @@ theorem D2S_reads : Reads 170 D2S := fun L es L' es' h1 h2 h => by
 
 /-! ## S2's end: the Sh claim is RS claim 3 -/
 
-theorem sum_eqAtR_split (a b : ℕ) (g : ℕ → F) (P : List F) :
-    ∑ i ∈ range (2 ^ (a + b)), eqAtR (ptOf (a + b) P) i * g i =
-      ∑ q ∈ range (2 ^ b), ∑ y ∈ range (2 ^ a),
-        eqAtR (ptOf a P) y * eqAtR (ptOf b (P.drop a)) q * g (y + 2 ^ a * q) := by
-  rw [← mle_ofFn_split, tbl_ofFn, mle]
-  exact ((Fin.sum_univ_eq_sum_range (fun i => eqAtR (ptOf (a + b) P) i * g i) _).symm.trans
-    (sum_congr rfl fun u _ => by rw [eq_cube_eqAtR]))
-
-theorem eqAtR_zeros4 {h : ℕ} (hh : h < 16) :
-    eqAtR (ptOf 4 [(0 : F), 0, 0, 0]) h = if h = 0 then 1 else 0 := by
-  interval_cases h <;> simp [eqAtR, Fin.prod_univ_four, ptOf] <;> decide
-
 theorem kind_m (κ : Kind) : κ.m = nbS κ + 14 := by cases κ <;> rfl
 
 /-- **RS claim 3's true value is `ẑ` at S2's point** `(r_blk, r_pos)` over the block positions
@@ -604,15 +559,6 @@ theorem rchsS_pts (κ : Kind) (es : Log) :
   · have := l.isLt
     simp [ptOf, rchs2, rpL, List.getD_eq_getElem?_getD, this]
     rfl
-
-theorem mle_tab (a : ℕ) (f : ℕ → ℕ → F) (rs : List F) :
-    mle (tbl (a + 10) (Array.ofFn (n := 2 ^ (a + 10)) fun i => f (i.val % 2 ^ a) (i.val / 2 ^ a)))
-        (ptOf (a + 10) rs) =
-      ∑ q ∈ range (2 ^ 10), ∑ y ∈ range (2 ^ a),
-        eqAtR (ptOf a rs) y * eqAtR (ptOf 10 (rs.drop a)) q * f y q := by
-  refine (mle_ofFn_split a 10 (fun i => f (i % 2 ^ a) (i / 2 ^ a)) rs).trans ?_
-  exact sum_congr rfl fun q _ => sum_congr rfl fun u hu => by
-    obtain ⟨h1, h2⟩ := idx_split (q := q) (mem_range.1 hu); rw [h1, h2]
 
 /-- **At S2's end its doom is the Sh claim's binding failing at the true value** (RS claim 3). -/
 theorem endS {L es : Log} (h : D2S L es) (hl : 170 ≤ es.length) :

@@ -1,6 +1,8 @@
 -- New for `flock-recursive` (BLUEPRINT A.9 `finPf`'s `w0V`, revision 3.16; stage S-G11).
+-- RET-2: the declarations revision 4.1 reads moved to `FRSoundnessCoreRows`.
 import FRSoundnessFrRnd
 import FRSoundnessFrLN
+import FRSoundnessCoreRows
 
 /-!
 # `hW0`: the verifier's `Ŵ₀(P₀)` is the front's `wHatL W₀L … 0`
@@ -18,35 +20,6 @@ open RecursionFast Finset FR.Impl
 
 /-! ## The spec side -/
 
-theorem iota_Phi (fs : List F) (a : F) : algebraMap F K (Phi fs a) =
-    ∑ k ∈ range (2 ^ fs.length), algebraMap F K ((phiTable fs).getD k 0) *
-      algebraMap F K a ^ 2 ^ k := by
-  rw [Phi_eq_table]; simp only [map_sum, map_mul, map_pow]
-
-theorem iota_eqPts_bits {n : ℕ} {p : List F} (hp : p.length = n) (y : Fin (2 ^ n)) :
-    algebraMap F K (eqPts p (bitsL n y)) = eq (ptOf n (p.map (algebraMap F K))) (cube y) := by
-  rw [eqPts_eq _ _ hp (by simp [bitsL]), ptOf_bitsL y.val n y.isLt]
-  simp only [eq, map_prod, map_add, map_mul, map_sub, map_one, cube, apply_ite (algebraMap F K),
-    map_zero, ptOf, List.getD_eq_getElem?_getD, List.getElem?_map]
-  refine prod_congr rfl fun l _ => ?_
-  cases h : p[l.val]? <;> simp
-
-/-- `mle(eq(q, ·)^(2^k))(ρ) = eq(q^(2^k), ρ)`. -/
-theorem mle_eq_pow {n : ℕ} (q ρ : Fin n → K) (k : ℕ) :
-    mle (fun y : Fin (2 ^ n) => eq q (cube y) ^ 2 ^ k) ρ = eq (fun l => q l ^ 2 ^ k) ρ := by
-  simp only [mle, eq_frob]
-  rw [eq_swap _ ρ, ← eq_mle ρ]
-  exact sum_congr rfl fun u _ => by rw [eq_swap (cube u)]
-
-/-- **A plain claim's weight**: the extension of `y ↦ ι Φ(eq(p, y))` is `Σ_k c_k eq(p^(2^k), ρ)`. -/
-theorem mle_plain (fs : List F) {n : ℕ} {p : List F} (hp : p.length = n) (ρ : Fin n → K) :
-    mle (fun y : Fin (2 ^ n) => algebraMap F K (Phi fs (eqPts p (bitsL n y)))) ρ =
-      ∑ k ∈ range (2 ^ fs.length), algebraMap F K ((phiTable fs).getD k 0) *
-        eq (fun l => ptOf n (p.map (algebraMap F K)) l ^ 2 ^ k) ρ := by
-  simp only [iota_Phi, iota_eqPts_bits hp]
-  rw [mle_sum]
-  exact sum_congr rfl fun k _ => by rw [mle_eq_pow]
-
 /-- The node kinds' indicators in K (`KW.kwS`'s). -/
 def indK (i : Fin 8) (t : Fin (2 ^ 16)) : K := selOf (KW.ivsQ 16 (KW.nodeKinds.getD i .free)) t
 
@@ -62,14 +35,6 @@ theorem indK_bit (i : Fin 8) (t : Fin (2 ^ 16)) : indK i t = 0 ∨ indK i t = 1 
     simp only [indK, indKW, selOf, map_list_sum, List.map_map, Function.comp_def,
       apply_ite (algebraMap F K), map_one, map_zero]
   rw [e, h]; split_ifs <;> simp
-
-theorem ptOfK_split {a b : ℕ} (rs : List K) :
-    ptOf (a + b) rs = Fin.append (ptOf a rs) (ptOf b (rs.drop a)) := by
-  funext l
-  refine Fin.addCases (fun i => ?_) (fun i => ?_) l
-  · simp only [Fin.append_left, ptOf, Fin.val_castAdd]
-  · simp only [Fin.append_right, ptOf, Fin.val_natAdd, List.getD_eq_getElem?_getD,
-      List.getElem?_drop]
 
 /-- The extension of `eq(q, ·)·B_γ(block)` over `7 + 16` coordinates (`rsWeight_kind_eq` at
 `Φ = id`). -/
@@ -100,23 +65,6 @@ theorem kwSL_eq (γ : K) (q ρ : List K) (hq : q.length = 23) (hρ : ρ.length =
     ht q hq, ht ρ hρ, mul_sum, Finset.sum_range]
   exact sum_congr rfl fun κ _ => by simp only [indK]; ring
 
-theorem ptOf_sq (n k : ℕ) (q : List K) :
-    (fun l => ptOf n q l ^ 2 ^ k) = ptOf n (q.map (sqIter k)) := by
-  funext l
-  simp only [ptOf, List.getD_eq_getElem?_getD, List.getElem?_map]
-  cases q[l.val]? <;> simp [sqIter_eq]
-
-/-- **A plain claim's weight**, in `rsWeightS`'s form. -/
-theorem termP (fs : List F) {n : ℕ} {p : List F} (hp : p.length = n) (ρ : List K)
-    (hρ : ρ.length = n) :
-    mle (fun y : Fin (2 ^ n) => algebraMap F K (Phi fs (eqPts p (bitsL n y)))) (ptOf n ρ) =
-      ∑ k ∈ range (2 ^ fs.length), K.ofF ((phiTable fs).getD k 0) *
-        eqPts ((p.map (algebraMap F K)).map (sqIter k)) ρ := by
-  rw [mle_plain fs hp]
-  refine sum_congr rfl fun k _ => ?_
-  rw [ptOf_sq, eqPts_eq (ℓ := n) _ _ (by simp [hp]) hρ]
-  rfl
-
 /-- **Claim 2's weight on a node** (the kind factor), in `rsWeightS`'s form (`kwSL`). -/
 theorem termK (fs : List F) {p : List F} (hp : p.length = 23) (es : Log) (ρ : List K)
     (hρ : ρ.length = 23) :
@@ -133,20 +81,6 @@ theorem termK (fs : List F) {p : List F} (hp : p.length = 23) (es : Log) (ρ : L
     simp only [kindFac, sqIter_eq, ← pow_mul, mul_comm (2 ^ k)]; rfl
   simp only [hk]
   rw [mle_kind0, kwSL_eq _ _ _ (by simp [hp]) hρ]
-
-theorem eqPts_append (a b c d : List K) (h : a.length = c.length) :
-    eqPts (a ++ b) (c ++ d) = eqPts a c * eqPts b d := by
-  simp only [eqPts, List.zipWith_append h, List.prod_append]
-
-/-- At `β = 1` claim 2's weight is the plain one (`kwS_one`; `|ρ| ≥ 23`). -/
-theorem kwSL_one (q ρ : List K) (hq : q.length = ρ.length) (h : 23 ≤ ρ.length) :
-    kwSL 1 q ρ = eqPts q ρ := by
-  unfold kwSL
-  rw [KW.kwS_one (by omega), ← eqPts_eq _ _ (by simp [hq]) (by simp), ← eqPts_append _ _ _ _
-    (by simp [hq]), List.take_append_drop, List.take_append_drop]
-
-theorem mle_add' {n : ℕ} (f g : Fin (2 ^ n) → K) (r : Fin n → K) :
-    mle (fun u => f u + g u) r = mle f r + mle g r := mle_add f g r
 
 theorem rsRL_length (es : Log) : (rsRL es).length = 7 := by simp [rsRL]
 

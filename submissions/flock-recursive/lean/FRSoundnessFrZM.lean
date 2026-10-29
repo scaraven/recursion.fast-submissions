@@ -1,5 +1,7 @@
 -- New for `flock-recursive` (BLUEPRINT A.6, A.8 `targetS`/`maskRows`, A.10 Z1; stage S-G8).
+-- RET-2: the declarations revision 4.1 reads moved to `FRSoundnessCoreFront`.
 import FRSoundnessFrBind
+import FRSoundnessCoreFront
 
 /-!
 # The kinds' matrices `zlmFR`: Z's statement is the per-block R1CS
@@ -30,65 +32,6 @@ set_option linter.constructorNameAsVariable false
 /-! ## The pins of the targets -/
 
 section Pins
-
-theorem blockTarget_isNone (t : ℕ) (fin : Bool) (k : Block.Pos) :
-    (Stream.blockTarget t fin k).isNone = !(1024 ≤ k.val && k.val ≤ 1152) := by
-  unfold Stream.blockTarget
-  split_ifs <;> simp <;> omega
-
-theorem kindTarget_isNone (κ : Kinds.Kind) (k : Block.Pos) :
-    (κ.target k).isNone = !((k.val < 256 && κ.h0Pin) ||
-      (512 ≤ k.val && k.val < 1024 && (κ.msgPin ((k.val - 512) / 8)).isSome) ||
-      (1024 ≤ k.val && k.val ≤ 1152)) := by
-  unfold Kinds.Kind.target
-  split_ifs <;> (try rw [blockTarget_isNone]) <;> simp_all <;>
-    first
-    | omega
-    | exact ⟨Or.inl (Or.inl (by omega)), Or.inl (by omega)⟩
-    | simp [show ¬ (k.val < 256) by omega, show ¬ (1024 ≤ k.val) by omega]
-
-open Kinds in
-theorem pins_streamStart (k : Block.Pos) :
-    (streamStart.target k).isNone = !isZeroRow .streamStart k.val := by
-  rw [kindTarget_isNone]; simp [streamStart, isZeroRow, zeroRows] <;> (try rw [Bool.eq_iff_iff]) <;> (try simp) <;> omega
-
-theorem pins_stream (L i : ℕ) (k : Block.Pos) :
-    (Stream.streamTarget L i k).isNone = !isZeroRow .stream k.val := by
-  rw [Stream.streamTarget, blockTarget_isNone]; simp [isZeroRow, zeroRows]
-
-open Kinds in
-theorem pins_hashA (k : Block.Pos) : (hashA.target k).isNone = !isZeroRow .hashA k.val := by
-  rw [kindTarget_isNone]; simp only [hashA, isZeroRow, zeroRows]
-  by_cases h0 : (k.val - 512) / 8 = 0 <;> by_cases h1 : 41 ≤ (k.val - 512) / 8 <;> simp [h0, h1] <;> (try rw [Bool.eq_iff_iff]) <;> (try simp) <;> omega
-
-open Kinds in
-theorem pins_hashB1 (tag : UInt8) (k : Block.Pos) :
-    ((hashB1 tag).target k).isNone = !isZeroRow .hashB1 k.val := by
-  rw [kindTarget_isNone]; simp only [hashB1, isZeroRow, zeroRows]
-  by_cases h0 : (k.val - 512) / 8 = 0 <;> simp [h0] <;> (try rw [Bool.eq_iff_iff]) <;> (try simp) <;> omega
-
-open Kinds in
-theorem pins_hashB2 (k : Block.Pos) : (hashB2.target k).isNone = !isZeroRow .hashB2 k.val := by
-  rw [kindTarget_isNone]; simp only [hashB2, isZeroRow, zeroRows]
-  by_cases h1 : 1 ≤ (k.val - 512) / 8 <;> simp [h1] <;> (try rw [Bool.eq_iff_iff]) <;> (try simp) <;> omega
-
-open Kinds in
-theorem pins_streamEnd41 (k : Block.Pos) :
-    (streamEnd41.target k).isNone = !isZeroRow .streamEnd41 k.val := by
-  rw [kindTarget_isNone]; simp only [streamEnd41, isZeroRow, zeroRows]
-  by_cases h1 : 41 ≤ (k.val - 512) / 8 <;> simp [h1] <;> (try rw [Bool.eq_iff_iff]) <;> (try simp) <;> omega
-
-open Kinds in
-theorem pins_w43 (i s : UInt8) (k : Block.Pos) :
-    ((w43 i s).target k).isNone = !isZeroRow .w43 k.val := by
-  rw [kindTarget_isNone]; simp only [w43, isZeroRow, zeroRows]
-  by_cases h0 : (k.val - 512) / 8 = 0 <;> by_cases h9 : (k.val - 512) / 8 = 9 <;>
-    by_cases h10 : (k.val - 512) / 8 = 10 <;> by_cases h1 : 43 ≤ (k.val - 512) / 8 <;>
-    simp [h0, h9, h10, h1] <;> (try rw [Bool.eq_iff_iff]) <;> (try simp) <;> omega
-
-theorem pins_chain (k : Block.Pos) : (Chain.chainTarget k).isNone = !isZeroRow .chain k.val := by
-  unfold Chain.chainTarget; simp only [isZeroRow, zeroRows]
-  split_ifs <;> simp <;> (try rw [Bool.eq_iff_iff]) <;> (try simp) <;> omega
 
 end Pins
 
@@ -142,37 +85,6 @@ theorem ind_iff {blk : ℕ} (h : blk < nodeBlocks) (b : BlockKind) : Ind b blk =
 end Layout
 
 /-! ## The matrices -/
-
-/-- Kind `j` of A.6 (`blockKinds` order). -/
-def bkOf (j : Fin 9) : BlockKind := blockKinds.getD j.val .free
-
-/-- The index of a kind in `blockKinds`. -/
-def bkIdx : BlockKind → Fin 9
-  | .chain => 0 | .stream => 1 | .streamStart => 2 | .streamEnd41 => 3 | .hashA => 4
-  | .hashB1 => 5 | .hashB2 => 6 | .w43 => 7 | .free => 8
-
-theorem bkOf_idx (b : BlockKind) : bkOf (bkIdx b) = b := by cases b <;> rfl
-
-theorem bkOf_eq_iff (j : Fin 9) (b : BlockKind) : bkOf j = b ↔ j = bkIdx b := by
-  refine ⟨fun h => ?_, fun h => h ▸ bkOf_idx b⟩
-  subst h; fin_cases j <;> rfl
-
-/-- **Kind `j`'s matrix**: the circuit's row `p` where kind `j` pins nothing (`maskRows`), the
-identity for `free` (rows `(var k, var k)`), `0` on a pinned row. -/
-def kMat (C : Block.Pos → Block.Pos → Bool) (j : Fin 9) (p k : Fin (2 ^ 14)) : F :=
-  if isZeroRow (bkOf j) p.val then 0
-  else if bkOf j = .free then (if p = k then 1 else 0) else ProductCircuit.ofBool F (C p k)
-
-/-- **The kinds' matrices of the entry** (A.6, A.8). -/
-noncomputable def zlmFR : ZLM where
-  Ak := kMat Block.circuitR1CS.A
-  Bk := kMat Block.circuitR1CS.B
-  Ind κ j t := if κ.isNode then (if bkOf j = nodeBK t then 1 else 0) else (if j.val = 0 then 1 else 0)
-  Et κ t p := if κ.isNode then NodeT.nodeE t p.val else chainE p.val
-
-theorem kMat_bit (C : Block.Pos → Block.Pos → Bool) (j : Fin 9) (p k : Fin (2 ^ 14)) :
-    IsBitF (kMat C j p k) := by
-  unfold kMat ProductCircuit.ofBool; split_ifs <;> first | exact Or.inl rfl | exact Or.inr rfl
 
 theorem zlmFR_bits : zlmFR.Bits := by
   refine ⟨kMat_bit _, kMat_bit _, fun κ j t => ?_, fun κ t p => ?_⟩
@@ -235,38 +147,9 @@ theorem mvZ_jOf (C : Fin 9 → Fin (2 ^ 14) → Fin (2 ^ 14) → F) (κ : Kind) 
   rw [sum_eq_single (jOf κ t) (fun j _ hj => by rw [ind_jOf, if_neg hj, zero_mul])
     (fun h => absurd (mem_univ _) h), ind_jOf, if_pos rfl, one_mul]
 
-/-- A non-`free` kind's masked rows against a target that pins exactly the kind's rows are the
-block R1CS's rows. -/
-theorem kMat_mulVec (C : Block.Pos → Block.Pos → Bool) {b : BlockKind} (hb : b ≠ .free)
-    {tgt : Block.Target} (hp : ∀ p : Block.Pos, (tgt p).isNone = !isZeroRow b p.val)
-    (z : Fin (2 ^ 14) → F) (p : Fin (2 ^ 14)) :
-    ∑ k, kMat C (bkIdx b) p k * z k = BlockR1CS.mulVec (fun k j => (tgt k).isNone && C k j) z p := by
-  unfold kMat BlockR1CS.mulVec
-  refine sum_congr rfl fun k _ => ?_
-  show _ = if ((tgt p).isNone && C p k) = true then z k else 0
-  rw [bkOf_idx, if_neg hb, hp p]
-  cases isZeroRow b p.val <;> cases C p k <;> simp [ProductCircuit.ofBool]
-
-theorem kMat_free (C : Block.Pos → Block.Pos → Bool) (z : Fin (2 ^ 14) → F) (p : Fin (2 ^ 14)) :
-    ∑ k, kMat C (bkIdx .free) p k * z k = z p := by
-  unfold kMat
-  have h0 : isZeroRow .free p.val = false := rfl
-  simp only [bkOf_idx, h0, Bool.false_eq_true, if_false, if_true, ite_mul, one_mul, zero_mul]
-  rw [sum_ite_eq]; simp
-
 theorem zBk_eq_zBlk (κ : Kind) (L es : Log) (t : ℕ) (k : Fin (2 ^ 14)) :
     zBk κ L es t k = zBlk κ L es t k := by
   simp only [zBk, zBlk, mul_comm]
-
-theorem tgtE_eq (tgt : Block.Target) (k : Block.Pos) : NodeT.tgtE tgt k.val = Block.targetVal F tgt k := by
-  unfold NodeT.tgtE NodeT.bF Block.targetVal ProductCircuit.ofBool
-  rw [show ProductCircuit.pos k.val = k from Fin.ext (ProductCircuit.pos_val k.isLt)]
-  rcases tgt k with _ | _ | _ <;> rfl
-
-theorem chainE_eq (k : Block.Pos) : chainE k.val = Block.targetVal F Chain.chainTarget k := by
-  unfold chainE Block.targetVal ProductCircuit.ofBool
-  rw [show ProductCircuit.pos k.val = k from Fin.ext (ProductCircuit.pos_val k.isLt)]
-  rcases Chain.chainTarget k with _ | _ | _ <;> rfl
 
 theorem nodeTgt_eq (blk : ℕ) : NodeT.nodeTgt blk = nodeKind blk := rfl
 
@@ -282,9 +165,6 @@ theorem nodeKind_pins {blk : ℕ} {tgt : Block.Target} (h : nodeKind blk = some 
     | with_reducible exact pins_hashA p | with_reducible exact pins_hashB1 _ p
     | with_reducible exact pins_hashB2 p | with_reducible exact pins_w43 _ _ p
     | with_reducible exact pins_streamEnd41 p
-
-theorem bit_sq {x : F} (h : IsBitF x) : x * x = x + 0 := by
-  rcases h with rfl | rfl <;> simp
 
 /-- **A node's Z statement is `truthZN`** (the free blocks' rows `z² = z` hold on bits). -/
 theorem zHolds_iff_truthZN {L es : Log} (hn : kindOf es = .N30) :
@@ -343,13 +223,6 @@ theorem peL_range (M : ZLM) (es : Log) (σ : Fin 64) : peL M es σ =
   rw [← Fin.sum_univ_eq_sum_range (fun u => eqAtR (ptOf (mm 6 (kindOf es)) (zrL es)) u *
     M.Et (kindOf es) (u / 256) (pAt σ u))]
   exact sum_congr rfl fun u _ => by rw [eq_cube_eqAtR]
-
-theorem targetS_range {n : ℕ} (P : Fin n → F) (E : Fin 64 → Fin (2 ^ n) → F) (σ : Fin 64)
-    (E' : ℕ → F) (hE : ∀ u : Fin (2 ^ n), E σ u = E' u.val) :
-    FR.targetS P E σ = ∑ u ∈ range (2 ^ n), eqAtR P u * E' u := by
-  unfold FR.targetS
-  rw [← Fin.sum_univ_eq_sum_range (fun u => eqAtR P u * E' u)]
-  exact sum_congr rfl fun u _ => by rw [eq_cube_eqAtR, hE]
 
 theorem zrL_getD (es : Log) (l : ℕ) (hl : l < (kindOf es).m - 6) :
     (zrL es).getD l 0 = if h : l < 7 then pinnedRho ⟨l, h⟩ else coordAt es 2 (l - 7) := by

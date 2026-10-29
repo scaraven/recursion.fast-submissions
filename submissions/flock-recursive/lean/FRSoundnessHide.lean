@@ -1,8 +1,10 @@
 -- New for `flock-recursive` (BLUEPRINT §5.1, A.10 P1.i; §10 changes 14–15; stage S-G1g).
 -- RET-1: position-free declarations moved to `FRSoundnessCoreHide`.
+-- RET-2: the declarations revision 4.1 reads moved to `FRSoundnessCoreRows`.
 import FRSoundnessStepE
 import FRSoundnessLigerito
 import FRSoundnessCoreHide
+import FRSoundnessCoreRows
 
 /-!
 # The Hide potential `μ_Hide`, and the entry's potential `μ_doom + μ_Hide` (§10 changes 15)
@@ -190,23 +192,6 @@ theorem sList_ext1 (es : Log) (a : Digest) {i l : ℕ} (h : es.length = p1Start 
     rw [show phStart (26 + 5 * i) + 2 * l + 1 = es.length by unfold p1Start at h; omega,
       entAt_ext1]
   rw [this]
-
-/-- `decodeL` reads the word only. -/
-theorem decodeL_congr {κ : Kind} {L L' es es' : Log} {i : ℕ}
-    (h : wordK κ L es i = wordK κ L' es' i) : decodeL κ L es i = decodeL κ L' es' i := by
-  have key : ∀ (U U' : Fin (lvl κ i).rows → Fin (2 ^ (lvl κ i).logN) → K) (hU : U = U')
-      (p : ∃ V : Fin (lvl κ i).rows → Fin (2 ^ (lvl κ i).logN) → K, (∀ r, V r ∈ codeK κ i) ∧
-        2 ^ (lvl κ i).logN - lvE κ i ≤ (jointAgree U V).card)
-      (p' : ∃ V : Fin (lvl κ i).rows → Fin (2 ^ (lvl κ i).logN) → K, (∀ r, V r ∈ codeK κ i) ∧
-        2 ^ (lvl κ i).logN - lvE κ i ≤ (jointAgree U' V).card),
-      Classical.choose p = Classical.choose p' := by
-    intro U U' hU p p'; subst hU; rfl
-  have hf : farL κ L es i ↔ farL κ L' es' i := by simp only [farL, h]
-  unfold decodeL
-  by_cases hn : farL κ L es i
-  · simp only [hn, hf.mp hn, not_true_eq_false, dite_false]
-  · simp only [hn, (not_congr hf).mp hn, not_false_eq_true, dite_true]
-    exact key _ _ h _ _
 
 /-- Appending where the rounds answered do not change keeps level `i`'s Hide state. -/
 theorem noHide_append {κ : Kind} {L es : Log} {i : ℕ} (hi : i < 5) (x : ByteArray × Digest)

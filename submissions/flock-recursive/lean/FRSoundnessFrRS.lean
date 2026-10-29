@@ -1,5 +1,7 @@
 -- New for `flock-recursive` (BLUEPRINT A.10 RS0/RS1, §5.2 row RS1; stage S-G5).
+-- RET-2: the declarations revision 4.1 reads moved to `FRSoundnessCoreRows`.
 import FRSoundnessFrB
+import FRSoundnessCoreRows
 
 /-!
 # RS1: the ring-switching batch (`hfin` at RS1's range `(312, 4)`)
@@ -48,8 +50,6 @@ theorem rsPtsL_length (κ : Kind) (es : Log) :
   cases κ <;> rfl
 
 /-! ## `v_RS` and its truth as batches -/
-
-theorem Phi_zero' (fs : List F) : Phi fs 0 = 0 := frobMap_zero _
 
 theorem rsTvL_eq (es : Log) (j : ℕ) :
     rsTvL es j = ∑ i : Fin 128, bitBasis i * Phi (rsRL es) (sliceL es j i) := by

@@ -1,9 +1,11 @@
 -- New for `flock-recursive` (BLUEPRINT A.10, §5.4; stage S-G1c).
 -- RET-1: position-free declarations moved to `FRSoundnessCoreSteps`.
+-- RET-2: the declarations revision 4.1 reads moved to `FRSoundnessCoreTruths`.
 import FRSoundnessStepC
 import FRRSEval
 import FRBlockStream
 import FRSoundnessCoreSteps
+import FRSoundnessCoreTruths
 
 /-!
 # The per-phase truths (BLUEPRINT A.10): Ligerito's words, and the stability of word reads
@@ -34,41 +36,6 @@ set_option linter.constructorNameAsVariable false
 
 /-! ## Part A: the level words -/
 
-/-- Level `i`'s word in K. -/
-noncomputable def wordK (κ : Kind) (L es : Log) (i : ℕ) :
-    Fin (lvl κ i).rows → Fin (2 ^ (lvl κ i).logN) → K :=
-  fun r p => algebraMap F K (wordOf κ L es i r p)
-
-/-- Level `i`'s code: `RS[K, D, kᵢ]` on the `nᵢ` points `D j` (`encCode_eq_rsCode`). -/
-noncomputable def codeK (κ : Kind) (i : ℕ) : Submodule K (Fin (2 ^ (lvl κ i).logN) → K) :=
-  rsCode (Dpts (2 ^ (lvl κ i).logN)) (lvK κ i)
-
-/-- **`far_i`**: no agreement set makes level `i`'s word jointly `eᵢ`-close to the code. -/
-def farL (κ : Kind) (L es : Log) (i : ℕ) : Prop :=
-  ∀ A, ¬ JointClose (codeK κ i) (lvE κ i) (wordK κ L es i) A
-
-theorem not_farL_iff {κ : Kind} {L es : Log} {i : ℕ} :
-    ¬ farL κ L es i ↔ ∃ V : Fin (lvl κ i).rows → Fin (2 ^ (lvl κ i).logN) → K,
-      (∀ r, V r ∈ codeK κ i) ∧
-        2 ^ (lvl κ i).logN - lvE κ i ≤ (jointAgree (wordK κ L es i) V).card := by
-  simp only [farL, JointClose, not_forall, not_not]
-  constructor
-  · rintro ⟨A, hA, V, hV, rfl⟩; exact ⟨V, hV, hA⟩
-  · rintro ⟨V, hV, hA⟩; exact ⟨_, hA, V, hV, rfl⟩
-
-open Classical in
-/-- **`decodeL`**: the codeword rows of a close word (A.10's `f⁽ⁱ⁾`, before `interp_F` /
-`coeffs_of_values`); `0` when far. -/
-noncomputable def decodeL (κ : Kind) (L es : Log) (i : ℕ) :
-    Fin (lvl κ i).rows → Fin (2 ^ (lvl κ i).logN) → K :=
-  if h : ¬ farL κ L es i then Classical.choose (not_farL_iff.mp h) else 0
-
-theorem decodeL_spec {κ : Kind} {L es : Log} {i : ℕ} (h : ¬ farL κ L es i) :
-    (∀ r, decodeL κ L es i r ∈ codeK κ i) ∧
-      2 ^ (lvl κ i).logN - lvE κ i ≤ (jointAgree (wordK κ L es i) (decodeL κ L es i)).card := by
-  rw [decodeL, dite_eq_left h]
-  exact Classical.choose_spec (not_farL_iff.mp h)
-
 /-- The words depend on the entries up to the cap's absorb only. -/
 theorem farL_congr {κ : Kind} (L : Log) {es es' : Log} {i : ℕ}
     (h : Agree es es' (capPos i + 1)) : farL κ L es i ↔ farL κ L es' i := by
@@ -98,53 +65,9 @@ vector is the folded K message split into coordinates (`split`: F element `2x + 
 `b` of K element `x`), so K element `x` of the fold sits in rows `2(x mod 8) + b`, column
 `x div 8` of level `i + 1` (16 rows). -/
 
-/-- P1.i's fold challenge `l` (K): the answer of round `l`'s squeeze. -/
-def sAt (es : Log) (i l : ℕ) : K := kAt es (phStart (26 + 5 * i) + 2 * l + 1)
-
-/-- **The column fold `y_j`** of level `i` at position `j`: `Σ_r eq(sᵢ, r)·W⁽ⁱ⁾[r][j]`. -/
-noncomputable def foldAt (κ : Kind) (L es : Log) (i : ℕ) (j : Fin (2 ^ (lvl κ i).logN)) : K :=
-  ∑ r : Fin (lvl κ i).rows, eqBits (sAt es i) (lvl κ i).ell r * wordK κ L es i r j
-
-/-- `log₂ kᵢ`: level `i`'s message length is `kᵢ = nᵢ / 2^(i+1) = 2^mLog`. -/
-def mLog (κ : Kind) (i : ℕ) : ℕ := (lvl κ i).logN - (i + 1)
-
-/-- **Row `r`'s message** of level `i`'s decoded word (`f⁽ⁱ⁾`'s row `r`: novel-basis
-coefficients by `coeffs_of_values` on `D[0, kᵢ)`); `0` past the rows or the message. -/
-noncomputable def msgOf (κ : Kind) (L es : Log) (i r : ℕ) : ℕ → K := fun x =>
-  if hr : r < (lvl κ i).rows then
-    if hx : x < 2 ^ mLog κ i then
-      coeffsOfValuesD (mLog κ i) (fun j => if hj : j < 2 ^ (lvl κ i).logN then
-        decodeL κ L es i ⟨r, hr⟩ ⟨j, hj⟩ else 0) ⟨x, hx⟩
-    else 0
-  else 0
-
-/-- `f⁽ⁱ⁾` as a table over level `i`'s variables (row bits first, as P1.i folds them). -/
-noncomputable def fTab (κ : Kind) (L es : Log) (i y : ℕ) : K :=
-  msgOf κ L es i (y % (lvl κ i).rows) (y / (lvl κ i).rows)
-
 /-- **`fold_z(f⁽ⁱ⁾)`**: the decoded messages folded by P1.i's challenges. -/
 noncomputable def foldMsg (κ : Kind) (L es : Log) (i x : ℕ) : K :=
   ∑ r : Fin (lvl κ i).rows, eqBits (sAt es i) (lvl κ i).ell r * msgOf κ L es i r x
-
-/-- The final message's element `x` (absorbed at C.4, phase 46). -/
-def finalAt (es : Log) (x : ℕ) : K := readK (msgAt es (phStart 47)) (32 * x)
-
-/-- **`f⁽ⁱ⁺¹⁾` as level `i`'s folded message**: K element `x` from level `i + 1`'s rows
-`2(x mod 8)` and `2(x mod 8) + 1`, column `x div 8` (`i < 4`); the final message (`i = 4`). -/
-noncomputable def nextMsg (κ : Kind) (L es : Log) (i x : ℕ) : K :=
-  if i + 1 < nLevels then
-    msgOf κ L es (i + 1) (2 * (x % 8)) (x / 8) +
-      K.u * msgOf κ L es (i + 1) (2 * (x % 8) + 1) (x / 8)
-  else finalAt es x
-
-/-- Level `i`'s encoding of a message at position `j` (`Enc_{kᵢ}` in the novel basis on `D`). -/
-noncomputable def encAt (κ : Kind) (i : ℕ) (m : ℕ → K) (j : ℕ) : K :=
-  encF (mLog κ i) (fun x => m x) j
-
-/-- **P2.i's consistency set `A_c`** (A.10): the positions where the column fold agrees with the
-next level's codeword. -/
-noncomputable def consSet (κ : Kind) (L es : Log) (i : ℕ) : Finset (Fin (2 ^ (lvl κ i).logN)) :=
-  univ.filter fun j => foldAt κ L es i j = encAt κ i (nextMsg κ L es i) j
 
 /-- **`truthP2 i`**: the next level's codeword is `eᵢ`-close to the fold (`|A_c| ≥ nᵢ − eᵢ`).
 P2.i is doomed when this fails and every queried index lands in `A_c`. -/
@@ -231,32 +154,6 @@ injective (`enc_injective`).
 bytes (`streamBytes_eq`; revision 3.13 with E4 end's 16 zero bytes, INT-2), so its last block is
 full and `Stream.Padded` holds for every assignment: `stream_sound`'s padding hypothesis needs no
 point claim. -/
-
-/-- The level parameters the uniqueness argument uses (checked per level and kind). -/
-theorem lv_params (κ : Kind) {i : ℕ} (hi : i < 5) :
-    2 * lvE κ i + lvK κ i ≤ lvN κ i ∧ lvN κ i ≤ nMax ∧ mLog κ i ≤ logNMax ∧
-      lvK κ i = 2 ^ mLog κ i ∧ lvN κ i = 2 ^ (lvl κ i).logN := by
-  cases κ <;> interval_cases i <;> decide
-
-/-- A codeword of level `i`'s code is `Enc` of a message of `2^mLog` coefficients. -/
-theorem exists_msg {κ : Kind} {i : ℕ} (hi : i < 5) {v : Fin (2 ^ (lvl κ i).logN) → K}
-    (hv : v ∈ codeK κ i) : ∃ c : Fin (2 ^ mLog κ i) → K, enc D _ _ c = v := by
-  obtain ⟨-, hN, -, hk, hn⟩ := lv_params κ hi
-  rw [codeK, hk, ← encCode_D (by rw [← hk]; unfold lvK; exact (Nat.div_le_self _ _).trans hN)]
-    at hv
-  exact LinearMap.mem_range.mp hv
-
-/-- `coeffs_of_values` gives back the message of a codeword. -/
-theorem msgOf_eq {κ : Kind} {L es : Log} {i : ℕ} (hi : i < 5) {r : Fin (lvl κ i).rows}
-    {c : Fin (2 ^ mLog κ i) → K} (hc : enc D _ _ c = decodeL κ L es i r) (x : Fin (2 ^ mLog κ i)) :
-    msgOf κ L es i r x = c x := by
-  obtain ⟨-, hN, hm, hk, hn⟩ := lv_params κ hi
-  have hkn : 2 ^ mLog κ i ≤ 2 ^ (lvl κ i).logN := by
-    rw [← hk, ← hn]; unfold lvK; exact Nat.div_le_self _ _
-  simp only [msgOf, r.2, x.2, dite_true]
-  rw [coeffsOfValuesD, coeffs_unique D_xor D_injOn_nMax hm _ c fun j hj => ?_]
-  simp only [show j < 2 ^ (lvl κ i).logN from lt_of_lt_of_le hj hkn, dite_true]
-  rw [← hc, enc_eq_encN]
 
 /-- **The uniqueness lemma** (A.10, C.i from P2.i): if level `i`'s word is close (`¬ far_i`) and
 the next level's codeword agrees with the column fold on at least `nᵢ − eᵢ` positions

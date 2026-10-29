@@ -1,6 +1,7 @@
 -- New for `flock-recursive` (BLUEPRINT revision 4.1, B-12, A.10 rows Z1 and S1 for a segment; stage P4a).
+-- RET-2: import re-pointed at Core: `FRSoundnessExtLeaf` → `FRSoundnessCoreAcc`.
 import FRSoundness4P4aNames
-import FRSoundnessExtLeaf
+import FRSoundnessCoreAcc
 import FRSegment
 
 /-!

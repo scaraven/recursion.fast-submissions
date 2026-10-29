@@ -1,8 +1,9 @@
 -- New for `flock-recursive` (BLUEPRINT revision 4.1, A.8 `rsWeight` claim 2 at the 4.1 node layouts,
 -- A.9 `finPf`'s `w0V`; track R4f). The 3.x template is `FRSoundnessFrW0V`'s spec side.
+-- RET-2: import re-pointed at Core: `FRSoundnessFrW0V` → `FRSoundnessCoreRows`.
 import FRSoundness4P4bB
 import FRVerifierImplOps4
-import FRSoundnessFrW0V
+import FRSoundnessCoreRows
 import FRSoundness4TailLig
 
 /-!

@@ -1,6 +1,7 @@
 -- New for `flock-recursive` (BLUEPRINT revision 4.1, A.4, A.9; stage R4b).
+-- RET-2: import re-pointed at Core: `FRSoundnessFrRndV` → `FRSoundnessCoreAcc`.
 import FRSoundness4R4View
-import FRSoundnessFrRndV
+import FRSoundnessCoreAcc
 
 /-!
 # The F rounds of an accepted `gen4` run, on the log (real round counts, every init)

@@ -1,7 +1,9 @@
 -- New for `flock-recursive` (BLUEPRINT A.10 P1.i, C.i, P2.i, P3.i, Pf; stage S-G1i).
 -- RET-1: position-free declarations moved to `FRSoundnessCoreTail`.
+-- RET-2: the declarations revision 4.1 reads moved to `FRSoundnessCoreRows`.
 import FRSoundnessFold
 import FRSoundnessCoreTail
+import FRSoundnessCoreRows
 
 /-!
 # The Ligerito tail P1.0 → Pf: the concrete dooms and their per-phase obligations
@@ -67,25 +69,10 @@ theorem nxStart_le {i : ℕ} (hi : i + 1 < 5) : nxStart i = p1Start (i + 1) := b
 
 /-! ## Part B: reads -/
 
-/-- **The pairs `(L, es)` and `(L', es')` read the same before position `p`**: the chain entries,
-and the level words whose caps lie before `p`. -/
-def Same (L es L' es' : Log) (p : ℕ) : Prop :=
-  Agree es es' p ∧ ∀ κ, ∀ i < 5, capPos i < p → wordK κ L es i = wordK κ L' es' i
-
 variable {L es L' es' : Log} {p : ℕ}
-
-theorem Same.mono (h : Same L es L' es' p) {q : ℕ} (hq : q ≤ p) : Same L es L' es' q :=
-  ⟨h.1.mono hq, fun κ i hi hc => h.2 κ i hi (by omega)⟩
-
-theorem same_of_agree (L : Log) (h : Agree es es' p) : Same L es L es' p :=
-  ⟨h, fun κ i _ hc => by
-    funext r j; simp only [wordK, wordOf, colOf_congr κ L i j (h.mono (by omega))]⟩
 
 theorem same_append (L es : Log) (xs : Log) : Same L (es ++ xs) L es es.length :=
   same_of_agree L (agree_append es xs le_rfl)
-
-theorem Same.kind (h : Same L es L' es' p) (hp : 1 ≤ p) : kindOf es = kindOf es' :=
-  kindOf_congr (h.1.mono hp)
 
 /-- On a `StabExt` extension, the charging log and the whole log read the same. -/
 theorem same_stabX (hb : ¬ Bad L) {n : ℕ} (hci : IsChain L n) {X : Log}
@@ -106,19 +93,8 @@ theorem sAt_same_lt (hp : cStart i ≤ p) (hi : i < 5) :
 
 include hi
 
-theorem wordK_same (hp : capPos i < p) : wordK κ L es i = wordK κ L' es' i := h.2 κ i hi hp
-
 theorem farL_same (hp : capPos i < p) : farL κ L es i ↔ farL κ L' es' i := by
   simp only [farL, wordK_same h hi κ hp]
-
-theorem decodeL_same (hp : capPos i < p) : decodeL κ L es i = decodeL κ L' es' i :=
-  decodeL_congr (wordK_same h hi κ hp)
-
-theorem msgOf_same (hp : capPos i < p) : msgOf κ L es i = msgOf κ L' es' i := by
-  funext r x; simp only [msgOf, decodeL_same h hi κ hp]
-
-theorem fTab_same (hp : capPos i < p) : fTab κ L es i = fTab κ L' es' i := by
-  funext y; simp only [fTab, msgOf_same h hi κ hp]
 
 theorem foldAt_same (hp : cStart i ≤ p) : foldAt κ L es i = foldAt κ L' es' i := by
   have hc := (tail_pos hi).1

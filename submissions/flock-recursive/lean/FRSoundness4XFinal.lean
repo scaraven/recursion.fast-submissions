@@ -1,9 +1,10 @@
 -- New for `flock-recursive` (BLUEPRINT revision 4.1, B-11 … B-15, §5; stage X4, items 4–5): the
 -- knowledge soundness of `V4with VsegC VnodeC` with every remaining gap a named hypothesis, and the
 -- map onto the contract's `Certificate` (core `6d05d00`).
+-- RET-2: import re-pointed at Core: `FRKState` → `FRSoundnessCoreRows`.
 import FRSoundness4XLaws
 import FRX4Ext
-import FRKState
+import FRSoundnessCoreRows
 
 /-!
 # `ks_rev4`: revision 4.1's knowledge soundness, composed

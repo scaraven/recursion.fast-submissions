@@ -2,9 +2,11 @@
 -- `submissions/spartan-srom/lean/SpartanSromSoundnessDefs.lean` (`SumWrong`, `clOut`) and
 -- `SpartanSromSoundnessKS.lean` (the round rows), re-stated for Flock's positions.
 -- RET-1: position-free declarations moved to `FRSoundnessCoreSteps`.
+-- RET-2: the declarations revision 4.1 reads moved to `FRSoundnessCoreTruths`.
 import FRSoundnessStepA
 import FRSumcheck
 import FRSoundnessCoreSteps
+import FRSoundnessCoreTruths
 
 /-!
 # The step law at `εR = 15/2^124`, and the degree-3 sumcheck rounds (BLUEPRINT §5.1–§5.2)
@@ -75,124 +77,9 @@ variable (c0 : Log → Log → F)
 
 variable (nr : Kind → ℕ)
 
-/-- The rounds answered by the entries `es`: `min (nr (kindOf es)) ⌊(|es| − b)/2⌋`. -/
-def ans3 (es : Log) : ℕ := min (nr (kindOf es)) ((es.length - b) / 2)
-
 variable (e : Expr) (T : Log → Log → Array (Array F))
 
-/-- The claim after `l` rounds is not the true sum of the tables bound at the first `l`
-challenges. -/
-def Wrong3 (L es : Log) (l : ℕ) : Prop :=
-  clR b c0 L es l ≠ trueSum e (bindAll (T L es) (rchs b es l)) (nr (kindOf es) - l)
-
-/-- **The round doom** (§5.2 row Z3): past the phase's first absorb, the running claim after the
-answered rounds is false. -/
-def D3 (L es : Log) : Prop := b < es.length ∧ Wrong3 b c0 nr e T L es (ans3 b nr es)
-
 variable {b c0 nr e T}
-
-theorem wrong3_congr (hb1 : 1 ≤ b) (hTc : TruthLocal b c0 T) {L es es' : Log} {l : ℕ}
-    (h : Agree es es' (b + 2 * l)) : Wrong3 b c0 nr e T L es l ↔ Wrong3 b c0 nr e T L es' l := by
-  have hb := h.mono (show b ≤ b + 2 * l by omega)
-  obtain ⟨hT, hc⟩ := hTc L es es' hb
-  simp only [Wrong3, clR_congr hc h, rchs_congr h, hT, kindOf_congr (hb.mono hb1)]
-
-theorem kindOf_append {es : Log} (x : ByteArray × Digest) (h : 0 < es.length) :
-    kindOf (es ++ [x]) = kindOf es :=
-  kindOf_congr (agree_append es [x] h)
-
-/-- When the next position is not a real round's squeeze, appending keeps the answered rounds and
-the doom. -/
-theorem D3_append_iff (hb1 : 1 ≤ b) (hTc : TruthLocal b c0 T) {L es : Log}
-    (x : ByteArray × Digest) (hlen : b < es.length)
-    (hc : (es.length - b) % 2 = 0 ∨ nr (kindOf es) ≤ (es.length - b) / 2) :
-    D3 b c0 nr e T L (es ++ [x]) ↔ D3 b c0 nr e T L es := by
-  have hk := kindOf_append x (show 0 < es.length by omega)
-  have ha : ans3 b nr (es ++ [x]) = ans3 b nr es := by
-    simp only [ans3, hk, List.length_append, List.length_singleton]
-    rcases hc with hc | hc
-    · rw [show (es.length + 1 - b) / 2 = (es.length - b) / 2 by omega]
-    · rw [min_eq_left hc, min_eq_left (le_trans hc (Nat.div_le_div_right (by omega)))]
-  have hle : b + 2 * ans3 b nr es ≤ es.length := by
-    have : ans3 b nr es ≤ (es.length - b) / 2 := min_le_right _ _
-    omega
-  simp only [D3, ha, List.length_append, List.length_singleton]
-  rw [wrong3_congr hb1 hTc (agree_append es [x] hle)]
-  exact ⟨fun h => ⟨hlen, h.2⟩, fun h => ⟨by omega, h.2⟩⟩
-
-theorem not_D3_short {L es : Log} (h : es.length ≤ b) : ¬ D3 b c0 nr e T L es :=
-  fun hd => by have := hd.1; omega
-
-/-- At a real round's squeeze, the extension answers one more round, and its claim and truth
-are the round polynomial and the bound tables at the answer's first F coordinate. -/
-theorem wrong3_ext1 (hb1 : 1 ≤ b) (hTc : TruthLocal b c0 T) (L es : Log) (a : Digest) {j : ℕ}
-    (hj : es.length = b + 2 * j + 1) :
-    Wrong3 b c0 nr e T L (ext1 es a) (j + 1) ↔
-      peval (g3At b es j (clR b c0 L es j)) (chF a 0) ≠
-        trueSum e ((bindAll (T L es) (rchs b es j)).map (bind0 · (chF a 0)))
-          (nr (kindOf es) - (j + 1)) := by
-  have hA : Agree (ext1 es a) es (b + 2 * j + 1) := agree_append es _ (by omega)
-  have hk : kindOf (ext1 es a) = kindOf es := kindOf_append _ (by omega)
-  have hr : rch b (ext1 es a) j = chF a 0 := by
-    simp only [rch, fAt, ansAt]
-    rw [← hj, entAt_ext1]
-  obtain ⟨hT, hc0⟩ := hTc L (ext1 es a) es (hA.mono (by omega))
-  have hcl : clR b c0 L (ext1 es a) j = clR b c0 L es j :=
-    clR_congr (l := j) hc0 (hA.mono (by omega))
-  have hg : g3At b (ext1 es a) j (clR b c0 L es j) = g3At b es j (clR b c0 L es j) := by
-    simp only [g3At, msgAt, hA (b + 2 * j) (by omega)]
-  have hrs : rchs b (ext1 es a) j = rchs b es j := rchs_congr (l := j) (hA.mono (by omega))
-  simp only [Wrong3, clR, hcl, hg, hr, rchs_succ, hrs, hT, hk, bindAll_append]
-
-set_option linter.constructorNameAsVariable false in
-open Classical in
-/-- **The round row** (§5.2 Z3): from a doomed claim, at most `3·2^128` answers make the next
-claim true. -/
-theorem D3_single (hb1 : 1 ≤ b) (hTc : TruthLocal b c0 T) (he : e.deg = 3)
-    (hsz : ∀ L es, ∀ t ∈ T L es, t.size = 2 ^ nr (kindOf es)) (L es : Log) :
-    (Finset.univ.filter fun a => D3 b c0 nr e T L es ∧ ¬ D3 b c0 nr e T L (ext1 es a)).card ≤
-      3 * 2 ^ 128 := by
-  by_cases hlen : b < es.length
-  swap
-  · rw [Finset.filter_false_of_mem fun a _ h => not_D3_short (by omega) h.1]; simp
-  by_cases hc : (es.length - b) % 2 = 0 ∨ nr (kindOf es) ≤ (es.length - b) / 2
-  · rw [Finset.filter_false_of_mem fun a _ h =>
-      h.2 ((D3_append_iff hb1 hTc _ hlen hc).mpr h.1)]
-    simp
-  simp only [not_or, not_le] at hc
-  obtain ⟨j, hjdef⟩ : ∃ j, j = (es.length - b) / 2 := ⟨_, rfl⟩
-  have hj : j < nr (kindOf es) := hjdef ▸ hc.2
-  have hlj : es.length = b + 2 * j + 1 := by omega
-  have hans : ans3 b nr es = j := by rw [ans3, hjdef]; exact min_eq_right hc.2.le
-  by_cases hw : Wrong3 b c0 nr e T L es j
-  swap
-  · rw [Finset.filter_false_of_mem fun a _ h => hw (hans ▸ h.1.2)]; simp
-  have hts : ∀ t ∈ bindAll (T L es) (rchs b es j), t.size = 2 ^ (nr (kindOf es) - j - 1 + 1) := by
-    refine bindAll_size (rchs b es j) _ fun t ht => ?_
-    rw [hsz L es t ht]; congr 1; simp only [rchs, List.length_map, List.length_range]; omega
-  have hesc := round_escape_le e (bindAll (T L es) (rchs b es j)) hts
-    (claim := clR b c0 L es j) (by
-      rw [show nr (kindOf es) - j - 1 + 1 = nr (kindOf es) - j by omega]; exact hw)
-    (g3At b es j (clR b c0 L es j))
-  refine le_trans (Finset.card_le_card (t := Finset.univ.filter fun a : Digest => chF a 0 ∈ _)
-    fun a ha => ?_) (by rw [card_chF_fiber]; exact Nat.mul_le_mul_right _ (hesc.trans he.le))
-  have hnd : ¬ D3 b c0 nr e T L (ext1 es a) := by
-    rw [Finset.mem_filter] at ha; exact ha.2.2
-  have hans' : ans3 b nr (ext1 es a) = j + 1 := by
-    have hk : kindOf (ext1 es a) = kindOf es := kindOf_append _ (by omega)
-    rw [ans3, hk, show (ext1 es a).length = es.length + 1 by simp [ext1],
-      min_eq_right (by omega)]
-    omega
-  have hnw : ¬ Wrong3 b c0 nr e T L (ext1 es a) (j + 1) := fun h =>
-    hnd ⟨by simp [ext1]; omega, by rw [hans']; exact h⟩
-  rw [wrong3_ext1 hb1 hTc L es a hlj, not_not] at hnw
-  simp only [Finset.mem_filter, Finset.mem_univ, true_and]
-  refine ⟨⟨by rw [he]; rfl, g3_check es j _⟩, ?_⟩
-  rw [hnw, show nr (kindOf es) - (j + 1) = nr (kindOf es) - j - 1 by omega]
-
-theorem D3_log_congr {L L' X : Log} (hT : T L' X = T L X) (hc : c0 L' X = c0 L X) :
-    D3 b c0 nr e T L' X ↔ D3 b c0 nr e T L X := by
-  simp only [D3, Wrong3, clR_log_congr hc, hT]
 
 /-- **The position facts of a rounds phase**: it starts at `b ≥ 1`, has `nMax ≥ 1` items
 `(absorb, squeeze)` of which at most `nMax` are real, and no multi-squeeze phase meets it. -/

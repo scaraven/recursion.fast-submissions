@@ -1,11 +1,13 @@
 -- New for `flock-recursive` (BLUEPRINT A.7, A.10; stage S-G1g).
 -- RET-1: position-free declarations moved to `FRSoundnessCoreWeights`.
+-- RET-2: the declarations revision 4.1 reads moved to `FRSoundnessCoreRows`.
 import FRSoundnessHide
 import FRLeafCircuit
 import FRRingSwitch
 import FRBlockKinds
 import FRVIREval
 import FRSoundnessCoreWeights
+import FRSoundnessCoreRows
 
 /-!
 # The PIOP truths over the decoded witness (A.10), part 1: `f⁽⁰⁾` in F, `z = unpack f⁽⁰⁾`
@@ -53,10 +55,6 @@ namespace FR.Snd
 open RecursionFast FR.Merkle Finset
 
 /-! ## Part A: the level-0 message in F -/
-
-/-- **A.10's `f⁽⁰⁾` in F**: element `e` is the constant coefficient of the decoded level-0
-message's element `e` (`fTab`, row bits first). -/
-noncomputable def fF (κ : Kind) (L es : Log) (e : ℕ) : F := (fTab κ L es 0 e).f₀
 
 /-- **A close level-0 word decodes to F-messages** (`interp_F_D`): every decoded row's message is
 F-valued. -/
@@ -205,103 +203,6 @@ theorem nodeKind_inner : nodeKind 1 ≠ some Kinds.streamStart.target := by
 
 section Rows
 open Circ Eval
-
-/-- A row list's `A` (`sel = Row.a`), `B` or `C` matrix over `2^a` rows and `2^b` cells, as
-`evalM`/`evalL` read it (`entriesOf`). -/
-def rowMat (sel : Row → Lin) (rows : List Row) (a b : ℕ) : Fin (2 ^ a) → Fin (2 ^ b) → F :=
-  fun x y => entry (Eval.entriesOf sel rows) x y
-
-/-- The rows fit `2^a` rows and their cells `2^b` cells. -/
-def RowsFit (rows : List Row) (a b : ℕ) : Prop :=
-  rows.length ≤ 2 ^ a ∧ ∀ r ∈ rows, ∀ t ∈ r.a ++ r.b ++ r.c, t.1 < 2 ^ b
-
-theorem sum_entry_mul (E : Entries) (x : ℕ) {b : ℕ} (w : Asg) (hE : ∀ e ∈ E, e.2.1 < 2 ^ b) :
-    ∑ y : Fin (2 ^ b), entry E x y * w y =
-      (E.map fun e => if e.1 = x then e.2.2 * w e.2.1 else 0).sum := by
-  induction E with
-  | nil => simp [entry]
-  | cons e E ih =>
-    have he : ∀ y : ℕ, entry (e :: E) x y =
-        (if e.1 = x ∧ e.2.1 = y then e.2.2 else 0) + entry E x y := fun y => by
-      simp only [entry, List.filter_cons]
-      by_cases h : e.1 = x ∧ e.2.1 = y <;> simp [h]
-    simp only [he, add_mul, Finset.sum_add_distrib, List.map_cons, List.sum_cons]
-    rw [ih fun e' h' => hE e' (List.mem_cons_of_mem _ h')]
-    congr 1
-    have hb := hE e List.mem_cons_self
-    rw [Finset.sum_eq_single ⟨e.2.1, hb⟩]
-    · by_cases h : e.1 = x <;> simp [h]
-    · intro y _ hy
-      have : e.2.1 ≠ y.val := fun h => hy (Fin.ext h.symm)
-      simp [this]
-    · simp
-
-theorem sum_entriesOf (sel : Row → Lin) (w : Asg) (x : ℕ) :
-    ∀ (rows : List Row) (k : ℕ),
-      List.sum (List.map (fun e : ℕ × ℕ × F => if e.1 = x then e.2.2 * w e.2.1 else 0)
-          ((rows.zipIdx k).flatMap (fun p => (sel p.1).map fun t => (p.2, t.1, t.2)))) =
-        if h : k ≤ x ∧ x - k < rows.length then (sel rows[x - k]).ev w else 0
-  | [], k => by simp
-  | r :: rows, k => by
-    rw [List.zipIdx_cons, List.flatMap_cons, List.map_append, List.sum_append,
-      sum_entriesOf sel w x rows (k + 1)]
-    have h1 : List.sum (List.map (fun e : ℕ × ℕ × F => if e.1 = x then e.2.2 * w e.2.1 else 0)
-        ((sel r).map fun t => (k, t.1, t.2))) = if k = x then (sel r).ev w else 0 := by
-      by_cases hk : k = x
-      · simp [hk, Lin.ev, Function.comp_def]
-      · simp [hk, Function.comp_def]
-    rw [h1]
-    by_cases hk : k = x
-    · subst hk; simp
-    · by_cases h2 : k + 1 ≤ x ∧ x - (k + 1) < rows.length
-      · have h3 : k ≤ x ∧ x - k < (r :: rows).length := ⟨by omega, by simp; omega⟩
-        rw [dite_eq_left h2, dite_eq_left h3, ite_neg' hk, zero_add]
-        congr 2
-        rw [List.getElem_cons]
-        simp only [show x - k ≠ 0 by omega, dite_false, Nat.sub_sub]
-      · have h3 : ¬ (k ≤ x ∧ x - k < (r :: rows).length) := by
-          intro h; apply h2; simp at h; omega
-        simp only [h2, h3, hk, dite_false, ite_false, add_zero]
-
-/-- **The matrix product is the rows' linear forms**: on rows whose cells fit, `(M w)(x)` is row
-`x`'s form at `w` (`0` past the rows). -/
-theorem matVec_rowMat (sel : Row → Lin) (rows : List Row) {a b : ℕ}
-    (hc : ∀ r ∈ rows, ∀ t ∈ sel r, t.1 < 2 ^ b) (w : Asg) (x : Fin (2 ^ a)) :
-    matVec (rowMat sel rows a b) (fun y => w y) x =
-      if h : x.val < rows.length then (sel rows[x.val]).ev w else 0 := by
-  have hE : ∀ e ∈ Eval.entriesOf sel rows, e.2.1 < 2 ^ b := by
-    intro e he
-    simp only [Eval.entriesOf, List.mem_flatMap, List.mem_map] at he
-    obtain ⟨p, hp, t, ht, rfl⟩ := he
-    exact hc p.1 (List.fst_mem_of_mem_zipIdx hp) t ht
-  rw [matVec]
-  simp only [rowMat]
-  rw [sum_entry_mul _ _ w hE, Eval.entriesOf, sum_entriesOf sel w x rows 0]
-  simp
-
-/-- **The zerocheck tables' R1CS is "every row holds"** (A.10 E1/Lr1): on rows that fit, the
-matrices `rowMat` satisfy `(Az)(x)·(Bz)(x) = (Cz)(x)` on the cube iff every row holds at `w`
-(past the rows the three forms are `0`). -/
-theorem sat_rowMat_iff (rows : List Row) {a b : ℕ} (hf : RowsFit rows a b) (w : Asg) :
-    Sat (rowMat Row.a rows a b) (rowMat Row.b rows a b) (rowMat Row.c rows a b) (fun y => w y) ↔
-      ∀ r ∈ rows, r.Holds w := by
-  have hc : ∀ sel : Row → Lin, (∀ r, ∀ t ∈ sel r, t ∈ r.a ++ r.b ++ r.c) →
-      ∀ r ∈ rows, ∀ t ∈ sel r, t.1 < 2 ^ b := fun sel hs r hr t ht => hf.2 r hr t (hs r t ht)
-  have ha := hc Row.a fun r t h => by simp [h]
-  have hb := hc Row.b fun r t h => by simp [h]
-  have hcc := hc Row.c fun r t h => by simp [h]
-  unfold Sat
-  simp only [matVec_rowMat _ _ ha, matVec_rowMat _ _ hb, matVec_rowMat _ _ hcc]
-  constructor
-  · intro h r hr
-    obtain ⟨x, hx, rfl⟩ := List.getElem_of_mem hr
-    have := h ⟨x, lt_of_lt_of_le hx hf.1⟩
-    simp only [hx, dite_true] at this
-    exact this
-  · intro h x
-    by_cases hx : x.val < rows.length
-    · simp only [hx, dite_true]; exact h _ (List.getElem_mem _)
-    · simp [hx]
 
 /-- **The E truth** (A.10 E1–Eend; `SlotHolds.rows`): every compiled M row of both slots holds on
 `f⁽⁰⁾`. -/

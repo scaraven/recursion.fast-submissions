@@ -1,5 +1,7 @@
 -- New for `flock-recursive` (BLUEPRINT §3, A.9, A.10; stage S-G4, `hFin` steps 2b and 6).
+-- RET-2: the declarations revision 4.1 reads moved to `FRSoundnessCoreAcc`.
 import FRSoundnessAccLvl
+import FRSoundnessCoreAcc
 
 /-!
 # `hFin`: the finals' registers, by level, on the log
@@ -22,9 +24,6 @@ open RecursionFast FR.Merkle Finset
 
 /-! ## The levels' parameters (A.5's ladders) -/
 
-theorem hEll_pos {i : ℕ} (hi : i < 5) : 0 < hEll i := by
-  unfold hEll; interval_cases i <;> decide
-
 /-- The ladder facts the views use (per kind and level, `decide` on the two ladders). -/
 theorem lvl_facts (κ : Kind) {i : ℕ} (hi : i < 5) :
     (lvl κ i).t = (lvlStar i).t ∧ (lvl κ i).sib ≤ (lvlStar i).sib ∧
@@ -41,11 +40,6 @@ theorem lvOuts_eq {fi : FinIn} (hfi : fi.outs = skeleton.2.outs) (i k : ℕ) :
 
 theorem phase_lvl_shape {i k : ℕ} (hi : i < 5) (hk : k < 5) :
     phases[26 + 5 * i + k]'(by rw [phases_length]; omega) = (levelPhases i)[k] := phases_lvl hi hk
-
-theorem take_rs (b K : ℕ) (z : ℕ) :
-    (((List.range K).map (fun j => b + 13 * j + 6) ++ [z]).take K) =
-      (List.range K).map (fun j => b + 13 * j + 6) :=
-  List.take_left' (by simp)
 
 theorem sAt_eq (es : Log) (i j : ℕ) : sAt es i j = chK (ansAt es (phStart (26 + 5 * i) + 2 * j + 1)) :=
   rfl

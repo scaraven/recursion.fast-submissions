@@ -1,7 +1,9 @@
 -- New for `flock-recursive` (BLUEPRINT §5.4, A.9, A.10; stage S-G4, `hFin` assembled).
+-- RET-2: the declarations revision 4.1 reads moved to `FRSoundnessCoreAcc`.
 import FRSoundnessAccW
 import FRSoundnessAcc
 import FRNodeCircuit
+import FRSoundnessCoreAcc
 
 /-!
 # `hFin` discharged: an accepted run's finals are `FinLog`
@@ -84,16 +86,6 @@ theorem kindOf_fsQ {vk c : Digest} {π : Proof} {es : Log} {k : Kind}
 
 /-! ## Small list facts -/
 
-theorem headD_lt {l : List ℕ} {n : ℕ} (h : ∀ x ∈ l, x < n) (hn : 0 < n) : l.headD 0 < n := by
-  cases l with
-  | nil => exact hn
-  | cons a l => exact h a (List.mem_cons_self ..)
-
-theorem getLastD_lt {l : List ℕ} {n : ℕ} (h : ∀ x ∈ l, x < n) (hn : 0 < n) : l.getLastD 0 < n := by
-  rcases List.eq_nil_or_concat l with rfl | ⟨L, b, rfl⟩
-  · exact hn
-  · rw [List.concat_eq_append, List.getLastD_concat]; exact h b (by simp)
-
 theorem c1_eq (c₀ : Log → Log → K) {i : ℕ} (hi : i < 5) (L es : Log) :
     c1 c₀ i L es = rVal (p1Start i) es (hEll i - 1) := by
   obtain ⟨e, he⟩ : ∃ e, hEll i = e + 1 := ⟨hEll i - 1, by have := hEll_pos hi; omega⟩
@@ -126,11 +118,6 @@ theorem finalAt_fsQ {vk c : Digest} {π : Proof} {es : Log}
 
 /-! ## The flags of `finP i` and `finPf` from `accept_fields` -/
 
-theorem pureRun_det {impl : OpImpl} {κ : Kind} {inp : Input} {o : List Op} {r : Array Val}
-    {L L' : List Val} {f : Bool} (h1 : pureRun impl κ inp o r [] = some (L, true))
-    (h2 : pureRun impl κ inp o r [] = some (L', f)) : f = true := by
-  rw [h1] at h2; cases h2; rfl
-
 variable {impl : OpImpl} {κ : Kind} {inp : Input} {tr : Trace} {y : List Val × List Bool × Trace}
 
 /-- The field at position `k` of `rest` from `accept_fields`' family. -/
@@ -145,29 +132,9 @@ theorem rest_at {P : FinField → Prop} (hall : ∀ k (hk : k < (sfFinals finP f
 section Refs
 variable {fi : FinIn} {N : ℕ}
 
-theorem sub_lt {l l' : List ℕ} (h : ∀ x ∈ l, x < N) (hs : ∀ x ∈ l', x ∈ l) : ∀ x ∈ l', x < N :=
-  fun x hx => h x (hs x hx)
-
-theorem getD_lt (hN : 0 < N) {l : List ℕ} (h : ∀ x ∈ l, x < N) (n : ℕ) : l.getD n 0 < N := by
-  rw [List.getD_eq_getElem?_getD]
-  rcases hl : l[n]? with _ | z
-  · exact hN
-  · exact h z (List.mem_of_getElem? hl)
-
 variable (hN : 0 < N) (hO : ∀ n, ∀ x ∈ fi.outs.getD n [], x < N)
 include hN hO
 
-theorem outsOf_lt (s : String) : ∀ x ∈ outsOf fi s, x < N := hO _
-theorem chals_lt (s : String) (k : ℕ) : ∀ x ∈ chals fi s k, x < N :=
-  sub_lt (outsOf_lt hN hO s) fun _ hx => List.mem_of_mem_drop (List.mem_of_mem_take hx)
-theorem coordsR_lt (s : String) : ∀ x ∈ coordsR fi s, x < N :=
-  sub_lt (outsOf_lt hN hO s) fun _ hx => List.mem_of_mem_drop hx
-theorem lvOuts_lt (i k : ℕ) : ∀ x ∈ lvOuts fi i k, x < N := hO _
-theorem sRegs_lt (i : ℕ) : ∀ x ∈ sRegs fi i, x < N :=
-  sub_lt (lvOuts_lt hN hO i 0) fun _ hx => List.mem_of_mem_drop (List.mem_of_mem_take hx)
-theorem kcOf_lt (i : ℕ) : ∀ x ∈ kcOf fi i, x < N :=
-  sub_lt (lvOuts_lt hN hO i 4) fun _ hx => List.mem_of_mem_drop (List.mem_of_mem_take hx)
-theorem ysOf_lt (i : ℕ) : ∀ x ∈ ysOf fi i, x < N := lvOuts_lt hN hO i 3
 theorem tailRegs_lt (m k : ℕ) : ∀ x ∈ tailRegs fi m k, x < N := by
   intro x hx
   rw [tailRegs, List.mem_append, List.mem_flatMap] at hx
@@ -180,32 +147,6 @@ theorem p0Regs_lt (m : ℕ) : ∀ x ∈ p0Regs fi m, x < N := by
   rcases hx with hx | hx
   · exact sRegs_lt hN hO 0 x hx
   · exact tailRegs_lt hN hO m 1 x hx
-
-omit hN hO in
-theorem srcs_f {l : List ℕ} (h : ∀ x ∈ l, x < N) : ∀ p ∈ l.map PtSrc.f, ∀ x ∈ p.regs, x < N := by
-  intro p hp x hx
-  obtain ⟨z, hz, rfl⟩ := List.mem_map.1 hp
-  simp only [PtSrc.regs, List.mem_singleton] at hx; subst hx; exact h _ hz
-
-omit hN hO in
-theorem srcs_k {l : List ℕ} (h : ∀ x ∈ l, x < N) : ∀ p ∈ l.map PtSrc.k, ∀ x ∈ p.regs, x < N := by
-  intro p hp x hx
-  obtain ⟨z, hz, rfl⟩ := List.mem_map.1 hp
-  simp only [PtSrc.regs, List.mem_singleton] at hx; subst hx; exact h _ hz
-
-omit hN hO in
-theorem srcs_c {α : Type} (l : List α) (g : α → K) :
-    ∀ p ∈ l.map (fun a => PtSrc.c (g a)), ∀ x ∈ p.regs, x < N := by
-  intro p hp x hx
-  obtain ⟨z, -, rfl⟩ := List.mem_map.1 hp
-  simp [PtSrc.regs] at hx
-
-omit hN hO in
-theorem srcs_app {a b : List PtSrc} (ha : ∀ p ∈ a, ∀ x ∈ p.regs, x < N)
-    (hb : ∀ p ∈ b, ∀ x ∈ p.regs, x < N) : ∀ p ∈ a ++ b, ∀ x ∈ p.regs, x < N := by
-  intro p hp
-  rcases List.mem_append.1 hp with h | h
-  exacts [ha p h, hb p h]
 
 theorem pfPts_lt : ∀ s ∈ pfPts fi, ∀ p ∈ s, ∀ x ∈ p.regs, x < N := by
   have hz : ∀ m, ∀ p ∈ zSrc fi m, ∀ x ∈ p.regs, x < N := fun m => srcs_app
@@ -261,16 +202,6 @@ theorem pfRefs_lt : ∀ x ∈ pfRefs fi, x < N := by
     · exact ysOf_lt hN hO _ x hx
 
 end Refs
-
-theorem accVal_kc {g : ℕ → F} (Ys : List K) (A : K) (ht : Ys.length < 2 ^ 9) :
-    accVal (eqTab ((List.range 9).map g).toArray) Ys 0 A =
-      A + ∑ q ∈ range Ys.length, K.smulF (eqBits g 9 q) (Ys.getD q 0) := by
-  rw [accVal_eq, ← List.sum_toFinset _ List.nodup_range, List.toFinset_range]
-  refine congrArg (A + ·) (sum_congr rfl fun q hq => ?_)
-  have hq' := mem_range.1 hq
-  rw [Nat.zero_add, eqTab_getD _ (by simp; omega)]
-  simp only [List.size_toArray, List.length_map, List.length_range]
-  rw [eqBits_congr (r' := g) (fun v hv => by simp [Array.getD_eq_getD_getElem?, hv])]
 
 /-! ## `FinLog` on an accepted run -/
 

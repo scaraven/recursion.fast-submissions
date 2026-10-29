@@ -1,5 +1,6 @@
 -- New for `flock-recursive` (BLUEPRINT revision 4.1, A.10 rows Z1 … S2, B-12; stage P4a).
-import FRSoundnessFrZM
+-- RET-2: import re-pointed at Core: `FRSoundnessFrZM` → `FRSoundnessCoreFront`.
+import FRSoundnessCoreFront
 import FRSoundness4Pos
 import FRSegTarget4
 import FRSoundness4TailStep

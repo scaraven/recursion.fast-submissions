@@ -1,5 +1,7 @@
 -- New for `flock-recursive` (BLUEPRINT §4.2 `stmtOk`, §5.4, A.9; stage S-N1).
+-- RET-2: the declarations revision 4.1 reads moved to `FRSoundnessCoreAcc`.
 import FRSoundnessExtR
+import FRSoundnessCoreAcc
 
 /-!
 # The accepted run's statement check, and the chain's public values
@@ -52,13 +54,6 @@ theorem stmt_view (h : SkRun impl κ inp tr y) :
     · exact h3
 
 /-! ## The chain's public values -/
-
-theorem bytesAt_extract_le (π : ByteArray) {o len off n : ℕ} (h : off + n ≤ len) :
-    bytesAt (π.extract o (o + len)) off n = bytesAt π (o + off) n := by
-  ext k hk
-  rw [getElem_bytesAt _ _ _ _ hk, getElem_bytesAt _ _ _ _ hk, toList_extract,
-    Nat.add_sub_cancel_left, List.getD_eq_getElem?_getD, List.getD_eq_getElem?_getD,
-    List.getElem?_take_of_lt (by omega), List.getElem?_drop, Nat.add_assoc]
 
 variable {vk c : Digest} {π : Proof} {es : Log}
 

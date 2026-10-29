@@ -1,5 +1,7 @@
 -- New for `flock-recursive` (BLUEPRINT §3, A.9; stage S-G3 pass 2, `hFin` step 1).
+-- RET-2: the declarations revision 4.1 reads moved to `FRSoundnessCoreAcc`.
 import FRSoundnessAccPos
+import FRSoundnessCoreAcc
 
 /-!
 # `hFin`, step 1: an accepted run passes every phase and every final field
@@ -20,123 +22,6 @@ namespace FR.Snd
 open RecursionFast
 
 variable (impl : OpImpl) (κ : Kind) (inp : Input)
-
-/-- `Finals.ops`'s fold over fields, as a recursion: each field's ops at the next free register,
-its exports pushed. -/
-def runFields (outs : Array (List Reg)) (zh : List Reg) :
-    List FinField → ℕ → Array (List Reg) → List Op
-  | [], _, _ => []
-  | f :: fs, b, ex => (f ⟨outs, zh, ex⟩ b).1 ++
-      runFields outs zh fs (b + opsOut (f ⟨outs, zh, ex⟩ b).1) (ex.push (f ⟨outs, zh, ex⟩ b).2)
-
-/-- **The exports the fold has pushed before field `k`** of `fs` (base `b`, exports `ex`): what
-`runFields` passes field `k` as `ex`. -/
-def exAt (outs : Array (List Reg)) (zh : List Reg) :
-    List FinField → ℕ → Array (List Reg) → ℕ → Array (List Reg)
-  | [], _, ex, _ => ex
-  | _ :: _, _, ex, 0 => ex
-  | f :: fs, b, ex, k + 1 =>
-    exAt outs zh fs (b + opsOut (f ⟨outs, zh, ex⟩ b).1) (ex.push (f ⟨outs, zh, ex⟩ b).2) k
-
-theorem foldl_step (outs : Array (List Reg)) (zh : List Reg) :
-    ∀ (fs : List FinField) (A : List Op) (b : ℕ) (ex : Array (List Reg)),
-      (fs.foldl (fun (acc : List Op × ℕ × Array (List Reg)) (f : FinField) =>
-        (acc.1 ++ (f ⟨outs, zh, acc.2.2⟩ acc.2.1).1, acc.2.1 + opsOut (f ⟨outs, zh, acc.2.2⟩ acc.2.1).1,
-          acc.2.2.push (f ⟨outs, zh, acc.2.2⟩ acc.2.1).2)) (A, b, ex)).1 =
-        A ++ runFields outs zh fs b ex
-  | [], A, _, _ => by simp [runFields]
-  | f :: fs, A, b, ex => by
-    rw [List.foldl_cons, foldl_step outs zh fs, runFields, List.append_assoc]
-
-/-- `Finals.ops` is `finRS`'s ops, then the rest's, with `finRS`'s exports as `zhat`. -/
-theorem finals_ops_eq (fin : Finals) (outs : Array (List Reg)) (b : ℕ) :
-    fin.ops outs b = runFields outs [] [fin.finRS] b #[] ++
-      runFields outs (fin.finRS ⟨outs, [], #[]⟩ b).2 fin.rest
-        (b + opsOut (fin.finRS ⟨outs, [], #[]⟩ b).1) #[(fin.finRS ⟨outs, [], #[]⟩ b).2] := by
-  rw [Finals.ops]
-  dsimp only
-  rw [foldl_step, List.nil_append, runFields, runFields, List.append_nil]
-
-/-- Ops that ask nothing run purely. -/
-theorem pureRun_noAsk (R : Array Val) :
-    ∀ (o : List Op) (L₀ : List Val), o.filterMap Op.item? = [] →
-      ∃ L f, pureRun impl κ inp o R L₀ = some (L, f)
-  | [], L₀, _ => ⟨L₀, true, rfl⟩
-  | op :: o, L₀, h => by
-    have hop : op.item? = none := by
-      by_contra hne
-      obtain ⟨it, hit⟩ := Option.ne_none_iff_exists'.mp hne
-      simp [hit] at h
-    have ho : o.filterMap Op.item? = [] := by simpa [List.filterMap_cons, hop] using h
-    simp only [pureRun]
-    split
-    · next vs ok _ =>
-      obtain ⟨L, f, hL⟩ := pureRun_noAsk R o (L₀ ++ vs) ho
-      exact ⟨L, ok && f, by rw [hL]; rfl⟩
-    · next q hq => exact absurd (item?_of_ask impl κ inp hq) (by simp [hop])
-
-/-- A run whose flag is down stays down. -/
-theorem exec_ok_false : ∀ (ops : List Op) (R : Array Val) (tr : Trace) (s : St) (tr' : Trace),
-    exec impl κ inp ops ⟨R, false⟩ tr = some (s, tr') → s.ok = false
-  | [], R, tr, s, tr', h => by simp [exec] at h; rw [← h.1]
-  | op :: ops, R, tr, s, tr', h => by
-    simp only [exec] at h
-    split at h
-    · exact exec_ok_false ops _ tr s tr' (by simpa using h)
-    · split at h
-      · cases h
-      · split at h
-        · exact exec_ok_false ops _ _ s tr' h
-        · cases h
-
-/-- **One field**: on an accepted run, a field that asks nothing has flag `true`, the flag before
-it was `true`, and the run continues from the extended registers. -/
-theorem field_flag {o ops : List Op} {R : Array Val} {ok : Bool} {tr : Trace} {s : St}
-    {tr' : Trace} (hna : o.filterMap Op.item? = [])
-    (h : exec impl κ inp (o ++ ops) ⟨R, ok⟩ tr = some (s, tr')) (hs : s.ok = true) :
-    ∃ L, pureRun impl κ inp o R [] = some (L, true) ∧ ok = true ∧
-      exec impl κ inp ops ⟨R ++ L.toArray, true⟩ tr = some (s, tr') := by
-  obtain ⟨L, f, hL⟩ := pureRun_noAsk impl κ inp R o [] hna
-  rw [exec_field impl κ inp o ops R L f ok tr hL] at h
-  cases hok : ok && f
-  · rw [hok] at h; rw [exec_ok_false impl κ inp ops _ tr s tr' h] at hs; cases hs
-  · rw [hok] at h
-    simp only [Bool.and_eq_true] at hok
-    exact ⟨L, by rw [hL, hok.2], hok.1, h⟩
-
-/-- **Every field of `runFields`** has flag `true`, each from a register file extending `R` whose
-size is the field's base. -/
-theorem fields_ok (outs : Array (List Reg)) (zh : List Reg) :
-    ∀ (fs : List FinField) (R : Array Val) (ex : Array (List Reg)) (ok : Bool) (tail : List Op)
-      (tr : Trace) (s : St) (tr' : Trace),
-      (∀ f ∈ fs, ∀ fi b, (f fi b).1.filterMap Op.item? = []) →
-      exec impl κ inp (runFields outs zh fs R.size ex ++ tail) ⟨R, ok⟩ tr = some (s, tr') →
-      s.ok = true →
-      ok = true ∧ ∀ k (hk : k < fs.length), ∃ Rk : Array Val, ∃ L, ExtA R Rk ∧
-        pureRun impl κ inp ((fs[k]'hk) ⟨outs, zh, exAt outs zh fs R.size ex k⟩ Rk.size).1 Rk [] =
-          some (L, true)
-  | [], R, ex, ok, tail, tr, s, tr', _, h, hs => by
-    refine ⟨?_, fun k hk => absurd hk (by simp)⟩
-    cases ok
-    · rw [runFields, List.nil_append] at h
-      rw [exec_ok_false impl κ inp tail R tr s tr' h] at hs; cases hs
-    · rfl
-  | f :: fs, R, ex, ok, tail, tr, s, tr', hna, h, hs => by
-    rw [runFields, List.append_assoc] at h
-    obtain ⟨L, hL, hok, h'⟩ := field_flag impl κ inp
-      (hna f (List.mem_cons_self ..) _ _) h hs
-    have hsz : (R ++ L.toArray).size = R.size + opsOut (f ⟨outs, zh, ex⟩ R.size).1 := by
-      have hl := pureRun_len impl κ inp R _ [] L true hL
-      simp [hl]
-    rw [← hsz] at h'
-    obtain ⟨-, hrest⟩ := fields_ok outs zh fs (R ++ L.toArray) _ true tail tr s tr'
-      (fun g hg => hna g (List.mem_cons_of_mem _ hg)) h' hs
-    refine ⟨hok, fun k hk => ?_⟩
-    rcases k with _ | k
-    · exact ⟨R, L, ⟨le_rfl, fun _ _ => rfl⟩, hL⟩
-    · obtain ⟨Rk, Lk, hE, hk'⟩ := hrest k (by simpa using hk)
-      rw [hsz] at hk'
-      exact ⟨Rk, Lk, (ExtA.app R L).trans hE, hk'⟩
 
 /-- The skeleton's next free register is the size of the register file it leaves. -/
 theorem genPhases_next : ∀ (ps : List Phase) (n : ℕ) (c : GCtx) (r : Array Val) (tr : Trace)

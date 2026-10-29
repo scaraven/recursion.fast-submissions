@@ -1,5 +1,7 @@
 -- New for `flock-recursive` (BLUEPRINT §3, A.9 `finPf`, A.10; stage S-G4, `hFin` step 6).
+-- RET-2: the declarations revision 4.1 reads moved to `FRSoundnessCoreAcc`.
 import FRSoundnessAccCol
+import FRSoundnessCoreAcc
 
 /-!
 # `hFin`, step 6: `finPf`'s level steps are `wHatL`'s
@@ -38,18 +40,6 @@ different number (17) at `m = 30`. -/
 theorem tailList_len (es : Log) : (tailList es 32 1).length = 19 ∧
     (tailList es 30 1).length ≠ (tailList es 32 1).length := by
   simp [tailList, hEll, lvlStar, lvl, ladder, ladder32, List.range'_succ]
-
-theorem map_range_append {α : Type} (a b : ℕ) (f g : ℕ → α) :
-    (List.range a).map f ++ (List.range b).map g =
-      (List.range (a + b)).map (fun v => if v < a then f v else g (v - a)) := by
-  refine List.ext_getElem (by simp) fun v h1 h2 => ?_
-  simp only [List.length_append, List.length_map, List.length_range] at h1
-  by_cases hv : v < a
-  · rw [List.getElem_append_left (by simpa using hv)]; simp [hv]
-  · rw [List.getElem_append_right (by simpa using hv)]; simp [hv]
-
-/-- The tail's length sum from level `k`. -/
-def tLen (m k : ℕ) : ℕ := ((List.range' k (5 - k)).map fun j => hEll j - 1).sum + (m - 25)
 
 theorem tailList_four_eq (es : Log) (m : ℕ) :
     tailList es m 4 = (List.range (tLen m 4)).map (fun v => ptL es 4 (v + 1)) := by
@@ -100,12 +90,6 @@ theorem tail_len (κ : Kind) {k : ℕ} (hk1 : 1 ≤ k) (hk4 : k ≤ 4) :
   cases κ <;> interval_cases k <;> decide
 
 variable {impl : OpImpl} {κ : Kind} {inp : Input} {tr : Trace} {y : List Val × List Bool × Trace}
-
-theorem drop_one_map_range (g : ℕ → ℕ) (n : ℕ) :
-    ((List.range n).map g).drop 1 = (List.range (n - 1)).map fun t => g (t + 1) := by
-  rcases n with _ | n
-  · rfl
-  · rw [List.range_succ_eq_map, List.map_cons, List.map_map]; rfl
 
 /-- **The tail registers hold `ptL`** (`k = 1 … 4`, any registers extending the skeleton's). -/
 theorem tail_vals (h : SkRun impl κ inp tr y) {fi : FinIn} (hfi : fi.outs = skeleton.2.outs)
@@ -215,11 +199,6 @@ theorem lvStepV_eq (h : SkRun impl κ inp tr y) {L : Log} (hL : (L.map Prod.fst)
   have hg : (tailV κ fi r' (k + 1)).getD v 0 = ptL (fsOf tr items) (k + 1) (v + 1) := by
     rw [tailV, Array.getD_eq_getD_getElem?, List.getElem?_toArray, htv]; simp [hv']
   rw [hg, if_pos hv']
-
-theorem lvsV_snoc (impl : OpImpl) (fi : FinIn) (rv : ℕ → Val) (tl : ℕ → Array K) (x : ℕ) :
-    ∀ (l : List ℕ) (W : K), lvsV impl fi rv tl (l ++ [x]) W = lvStepV impl fi rv tl x (lvsV impl fi rv tl l W)
-  | [], _ => rfl
-  | k :: l, W => by simp only [List.cons_append, lvsV]; exact lvsV_snoc impl fi rv tl x l _
 
 /-- **`finPf`'s `Ŵ₄(P₄)` at the spec is `wHatL … 4`**, from `Ŵ₀(P₀)` (the front's). -/
 theorem wV_eq (h : SkRun impl κ inp tr y) {L : Log} (hL : (L.map Prod.fst).Nodup)

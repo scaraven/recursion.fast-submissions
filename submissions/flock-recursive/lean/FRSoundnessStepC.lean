@@ -1,7 +1,9 @@
 -- New for `flock-recursive` (BLUEPRINT §5.1–§5.2, A.10; stage S-G1c).
 -- RET-1: position-free declarations moved to `FRSoundnessCoreSteps`.
+-- RET-2: the declarations revision 4.1 reads moved to `FRSoundnessCoreTruths`.
 import FRSoundnessStepB
 import FRSoundnessCoreSteps
+import FRSoundnessCoreTruths
 
 /-!
 # The composed doom `Rej ∨ D_φ` and the generic rows (BLUEPRINT A.10, §5.2)
@@ -116,12 +118,6 @@ theorem stepObl_compose {Rej : Log → Log → Prop} {Dp : ℕ → Log → Log �
 /-! ## Part B: the single-squeeze rows -/
 
 /-! ## Part C: the P2 row -/
-
-/-- The proximity parameters of level `i` of kind `κ`: `n = 2^log₂n`, `k = n/2^(i+1)`,
-`e = ⌊(n − k)/2⌋` (§2.2). -/
-def lvN (κ : Kind) (i : ℕ) : ℕ := 2 ^ (lvl κ i).logN
-def lvK (κ : Kind) (i : ℕ) : ℕ := lvN κ i / 2 ^ (i + 1)
-def lvE (κ : Kind) (i : ℕ) : ℕ := (lvN κ i - lvK κ i) / 2
 
 /-- Control: the parameters are `pcsLevels`'s (the levels `mca_ud_line` is checked at). -/
 theorem lv_eq_pcsLevels :

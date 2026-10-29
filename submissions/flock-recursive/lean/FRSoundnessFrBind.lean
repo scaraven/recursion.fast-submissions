@@ -1,6 +1,8 @@
 -- New for `flock-recursive` (BLUEPRINT A.10 Z3 → RS0, L3β → RS0, §5.2; stage S-G8).
+-- RET-2: the declarations revision 4.1 reads moved to `FRSoundnessCoreFront`.
 import FRSoundnessFrL
 import FRSoundnessFrS
+import FRSoundnessCoreFront
 
 /-!
 # The pending Z and Lc claims as RS0's `PendBad`
@@ -26,20 +28,6 @@ theorem zZ_eq (ℓ : ℕ) (κ : Kind) (L es : Log) (σ : Fin 64) (u : Fin (2 ^ �
   have := Nat.div_add_mod u.val 256
   norm_num
   omega
-
-/-- RS claim 1's inner weight: the Lagrange weight of the low 6 bits times `eq(ρ₁, ·)` at bit 6. -/
-theorem cwL_zero (κ : Kind) (es : Log) {σ y : ℕ} (hσ : σ < 64) (hy : y < 2) :
-    cwL κ es 0 (σ + 64 * y) = lagrangeWeight sNodeF (lamL es) ⟨σ, hσ⟩ *
-      eqAtR (ptOf 1 [pinnedRho 0]) y := by
-  have hi : σ + 64 * y < 128 := by omega
-  have hb : (σ + 64 * y).testBit 6 = y.testBit 0 := by
-    have h6 : (σ + 64 * y) / 2 ^ 6 = y := by norm_num; omega
-    rw [show (6 : ℕ) = 0 + 6 from rfl, ← Nat.testBit_div_two_pow, h6]
-  have hm : (σ + 64 * y) % 64 = σ := by omega
-  show (eqZS (fAt es 14 0) (pinnedRho 0)).getD (σ + 64 * y) 0 = _
-  simp only [eqZS, Array.getD_eq_getD_getElem?, Array.getElem?_ofFn, hi, dite_true,
-    Option.getD_some, hb, hm, eqAtR, Fin.prod_univ_one, Fin.val_zero, ptOf, List.getD_cons_zero]
-  rfl
 
 theorem zPtL_length (κ : Kind) (es : Log) : (zPtL κ.m es).length = nrP 0 κ := by
   rw [nrP_zero, zPtL]; cases κ <;> simp [Kind.m]

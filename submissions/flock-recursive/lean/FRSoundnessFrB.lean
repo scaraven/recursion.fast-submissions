@@ -1,6 +1,8 @@
 -- New for `flock-recursive` (BLUEPRINT A.10 RS1, B′ → P1.0, §5.2 row B′; stage S-G5).
+-- RET-2: the declarations revision 4.1 reads moved to `FRSoundnessCoreRows`.
 import FRSoundnessFrW0
 import FRSoundnessRows
+import FRSoundnessCoreRows
 
 /-!
 # The front's last phase: B′ (`κ′`) and the handoff into P1.0
@@ -22,13 +24,6 @@ open RecursionFast Finset
 set_option linter.constructorNameAsVariable false
 
 /-! ## The doom parts -/
-
-/-- The public values on the log (`Node.pubVals` of the seed's `vk` and the statement's digests). -/
-def pubL (es : Log) : List F := Node.pubVals (vkL es) (stL es 0) (stL es 1)
-
-/-- **The public cells hold** on `f⁽⁰⁾` (a node; `Node.PubCells`). -/
-def PubOK (κ : Kind) (L es : Log) : Prop :=
-  κ.isNode = true → Node.PubCells (fF κ L es) (vkL es) (stL es 0) (stL es 1)
 
 /-- **The true `v_RS`**: `⟨W_rs, f⁽⁰⁾⟩` over level 0's `2^(nrP 0)` elements. -/
 noncomputable def fipL (κ : Kind) (L es : Log) : F :=
@@ -58,15 +53,6 @@ theorem cells_lt {κ : Kind} : ∀ c ∈ cellsOf κ, c < 2 ^ nrP 0 κ := by
   · decide
   · simp only [Kind.m]; omega
 
-/-- The public cells' Horner sum is the batch of `pubL`. -/
-theorem pubHL_eq (es : Log) (kp : F) :
-    pubHL es kp = ∑ k ∈ range 9, kp ^ k * (pubL es).getD k 0 := by
-  simp only [pubHL, pubL, Node.pubVals, Node.halves, Finset.sum_range_succ, Finset.sum_range_zero]
-  simp only [List.cons_append, List.nil_append, List.getD_cons_zero, List.getD_cons_succ]
-  change _ = _ + kp ^ 1 * dLo _ + kp ^ 2 * dHi _ + kp ^ 3 * dLo _ + kp ^ 4 * dHi _ +
-    kp ^ 5 * dLo _ + kp ^ 6 * dHi _ + kp ^ 7 * dLo _ + kp ^ 8 * dHi _
-  ring
-
 /-- `⟨W₀, f⁽⁰⁾⟩` is `v_RS`'s truth plus the cells' batch (`truthP1_zero`'s computation). -/
 theorem ip_W0 {L es : Log} (hfar : ¬ farL (kindOf es) L es 0) :
     trueSum e2 (lvT W₀L 0 L es) (nrP 0 (kindOf es)) = algebraMap F K (fipL (kindOf es) L es +
@@ -88,11 +74,6 @@ theorem ip_W0 {L es : Log} (hfar : ¬ farL (kindOf es) L es 0) :
 
 /-! ## `hsingle` at B′ -/
 
-theorem listGetD_map_lt {l : List ℕ} {f : ℕ → F} {k : ℕ} (hk : k < l.length) :
-    (l.map f).getD k 0 = f (l.getD k 0) := by
-  rw [List.getD_eq_getElem _ _ (by simpa using hk), List.getElem_map, List.getD_eq_getElem _ _ hk]
-
-
 /-- The batched terms: `v_RS`, `0`, and (a node) the nine public values (`v`), or their truths
 (`t`). -/
 def bTerms (κ : Kind) (v0 : F) (pub : List F) (i : Fin 11) : F :=
@@ -107,17 +88,6 @@ theorem bTerms_sum (κ : Kind) (v0 kp : F) (pub : List F) :
 
 theorem same_ext1 (L es : Log) (a : Digest) : Same L (ext1 es a) L es es.length :=
   same_append L es _
-
-open Classical in
-/-- A batch of `k + 1` terms by the answer's first F coordinate: if some term is false, at most
-`k·2^128` answers make the batch true (`batch_pow_bad_le`, `card_chF_fiber`). -/
-theorem batch_count {k : ℕ} (P : Digest → Prop) [DecidablePred P] (v t : Fin (k + 1) → F)
-    (hvt : v ≠ t) (h : ∀ a, P a → ∑ i, chF a 0 ^ i.val * v i = ∑ i, chF a 0 ^ i.val * t i) :
-    (univ.filter P).card ≤ k * 2 ^ 128 := by
-  refine le_trans (card_le_card (t := univ.filter fun a : Digest => chF a 0 ∈
-    univ.filter fun c : F => ∑ i, c ^ i.val * v i = ∑ i, c ^ i.val * t i) fun a ha => ?_) ?_
-  · simp only [mem_filter, mem_univ, true_and] at ha ⊢; exact h a ha
-  · rw [card_chF_fiber]; exact Nat.mul_le_mul_right _ (batch_pow_bad_le hvt)
 
 open Classical in
 /-- **`hsingle` at B′** (position 317, §5.2's `10/2^128`): from RS1's doom, at most `10·2^128`

@@ -1,5 +1,7 @@
 -- New for `flock-recursive` (BLUEPRINT A.10 E4 end → RS0, A.9 finals' bindings; stage S-G6).
+-- RET-2: the declarations revision 4.1 reads moved to `FRSoundnessCoreRows`.
 import FRSoundnessFrE
+import FRSoundnessCoreRows
 
 /-!
 # The RS claims' bindings, and E4 end's claim as RS claim 4
@@ -21,9 +23,6 @@ open RecursionFast FR.Merkle Finset
 set_option linter.constructorNameAsVariable false
 
 /-! ## The bindings -/
-
-/-- `v_β` on the log: L3's eight values (position 97) batched by L3β's `β` (position 98). -/
-def vBetaL (es : Log) : F := ∑ i ∈ range 8, fAt es 98 0 ^ i * readF (msgAt es 97) (16 * i)
 
 /-- **The RS claims' bindings**: Z's and Sh's are parameters; Lc's is `v_β`; E's is E4 end's value. -/
 def okRS (oZ oSh : Kind → Log → F → Prop) (κ : Kind) (es : Log) (j : ℕ) (v : F) : Prop :=
@@ -50,11 +49,6 @@ theorem okRS_reads {oZ oSh : Kind → Log → F → Prop}
   · simp only [okRS, he]
 
 /-! ## E4 end's claim is RS claim 4 -/
-
-theorem ptOf_bitsL (u : ℕ) (n : ℕ) (hu : u < 2 ^ n) :
-    ptOf n (bitsL n u) = cube (ℓ := n) ⟨u, hu⟩ := by
-  funext l
-  simp [ptOf, bitsL, cube, List.getD_eq_getElem?_getD, l.isLt]
 
 theorem ePtL_eq (es : Log) : ePtL es = rE4 es := by
   unfold ePtL rE4 rchs2; exact List.map_congr_left fun _ _ => rfl

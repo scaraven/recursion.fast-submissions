@@ -1,7 +1,9 @@
 -- New for `flock-recursive` (BLUEPRINT A.9 `finRS`/`finB′`/`finPf`, A.10 B′ → P1.0; stage S-G5).
+-- RET-2: the declarations revision 4.1 reads moved to `FRSoundnessCoreRows`.
 import FRSoundnessFront
 import FRSoundnessWeights
 import FRKindWeight
+import FRSoundnessCoreRows
 
 /-!
 # The front's level-0 weight `W₀` and claim `c₀`, read off the chain
@@ -39,21 +41,6 @@ theorem frW0_starts : phStart 3 = 3 ∧ phStart 5 = 15 ∧ phStart 8 = 69 ∧ ph
 
 /-! ## The claim points -/
 
-/-- The Z claim's point (`zSrc`): `ρ₂ … ρ₇`, then Z1's first `m − 13` coordinates. -/
-def zPtL (m : ℕ) (es : Log) : List F :=
-  (List.ofFn pinnedRho).drop 1 ++ (List.range (m - 13)).map (coordAt es 2)
-
-/-- The Lc claim's point (`lcSrc`): L2's challenges `7 … 13`, then Z3's from `8` to `m − 7`. -/
-def lcPtL (m : ℕ) (es : Log) : List F :=
-  (List.range 7).map (fun l => rch 69 es (7 + l)) ++
-    (List.range (m - 14)).map (fun l => rch 15 es (8 + l))
-
-/-- The Sh claim's point (`shSrc`): S2's position challenges `m − 7 … m − 5`, four zeros, S2's
-`m − 14` block challenges. -/
-def shPtL (m : ℕ) (es : Log) : List F :=
-  (List.range 3).map (fun l => rch 114 es (m - 7 + l)) ++ List.replicate 4 0 ++
-    (List.range (m - 14)).map (rch 114 es)
-
 /-- The E4 claim's point (`eSrc`): E4's 23 challenges `r′`. -/
 def ePtL (es : Log) : List F := (List.range 23).map (rch 265 es)
 
@@ -75,9 +62,6 @@ def rsKL (es : Log) : F := rsCoL es 7
 
 /-- B′'s challenge `κ′`. -/
 def kpL (es : Log) : F := fAt es 317 0
-
-/-- Bit `l` of `y`, `n` coordinates, as F (the cube point). -/
-def bitsL (n y : ℕ) : List F := (List.range n).map fun l => if y.testBit l then 1 else 0
 
 /-! ## The node's kind factor (revision 3.16, R-V-M1) -/
 
@@ -109,19 +93,6 @@ noncomputable def vRSL (κ : Kind) (es : Log) : F :=
   rsTvL es 0 + rsKL es * (rsTvL es 1 + rsKL es * (rsTvL es 2 +
     rsKL es * (if κ.isNode then rsTvL es 3 else 0)))
 
-/-- The verification key, read off the seed's query (`"FRSEED0" ‖ vk ‖ c ‖ hdr`). -/
-def vkL (es : Log) : Digest := bytesAt (entAt es 0).1 7 32
-
-/-- Statement digest `c_σ` (`σ = 0, 1`), read off the statement's absorbed message (bytes
-`1 + 32σ …`, `pubH`'s `absOff fStmt (1 + 32σ)`). -/
-def stL (es : Log) (σ : ℕ) : Digest := bytesAt (msgAt es 1) (1 + 32 * σ) 32
-
-/-- **The public cells' Horner sum** (`pubH`) on the log's `vk`, `c₁`, `c₂`. -/
-def pubHL (es : Log) (kp : F) : F :=
-  let vl := dLo (vkL es); let vh := dHi (vkL es)
-  1 + kp * (vl + kp * (vh + kp * (dLo (stL es 0) + kp * (dHi (stL es 0) + kp * (vl + kp * (vh +
-    kp * (dLo (stL es 1) + kp * dHi (stL es 1))))))))
-
 /-- **`v*`** (`vStar`): `v_RS + [node] κ′²·pubH(κ′)`. -/
 noncomputable def vStarL (κ : Kind) (es : Log) : F :=
   vRSL κ es + if κ.isNode then kpL es * kpL es * pubHL es (kpL es) else 0
@@ -139,17 +110,6 @@ noncomputable def c₀L (_ : Log) (es : Log) : K := algebraMap F K (vStarL (kind
 /-! ## Locality -/
 
 variable {es es' : Log} {n : ℕ}
-
-theorem fAt_congr (h : Agree es es' n) {p : ℕ} (hp : p < n) (c : ℕ) : fAt es p c = fAt es' p c := by
-  simp only [fAt, ansAt, h p hp]
-
-theorem msgAt_congr (h : Agree es es' n) {p : ℕ} (hp : p < n) : msgAt es p = msgAt es' p := by
-  simp only [msgAt, h p hp]
-
-theorem Kind.m_le (κ : Kind) : κ.m ≤ 32 := by cases κ <;> decide
-
-theorem rch_congr (h : Agree es es' n) {b l : ℕ} (hl : b + 2 * l + 1 < n) :
-    rch b es l = rch b es' l := fAt_congr h hl 0
 
 theorem rsPtsL_congr (h : Agree es es' 311) (κ : Kind) : rsPtsL κ es = rsPtsL κ es' := by
   have hm := Kind.m_le κ
@@ -195,10 +155,6 @@ theorem vRSL_congr (h : Agree es es' 317) (κ : Kind) : vRSL κ es = vRSL κ es'
     simp only [sliceL, msgAt_congr h (show 312 < 317 by norm_num)]
   have hT : ∀ j, rsTvL es j = rsTvL es' j := fun j => by simp only [rsTvL, hs, rsRL_congr h]
   simp only [vRSL, hT, rsKL, rsCoL_congr h (show 7 < 8 by norm_num)]
-
-theorem pubHL_congr (h : Agree es es' 2) : pubHL es = pubHL es' := by
-  funext kp
-  simp only [pubHL, vkL, stL, h 0 (by norm_num), msgAt_congr h (show 1 < 2 by norm_num)]
 
 theorem vStarL_congr (h : Agree es es' 318) (κ : Kind) : vStarL κ es = vStarL κ es' := by
   simp only [vStarL, vRSL_congr (h.mono (by norm_num)) κ, pubHL_congr (h.mono (by norm_num)), kpL,

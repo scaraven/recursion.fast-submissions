@@ -1,6 +1,8 @@
 -- New for `flock-recursive` (BLUEPRINT A.10 rows Z1–Zend, §5.2 rows Z1–Z3; stage S-G7).
+-- RET-2: the declarations revision 4.1 reads moved to `FRSoundnessCoreRows`.
 import FRSoundnessFrExt
 import FRSoundnessFrPend
+import FRSoundnessCoreRows
 
 /-!
 # Z: the block zerocheck with the univariate skip (positions 3 … 67)
@@ -34,29 +36,12 @@ noncomputable section
 
 /-! ## The kinds' matrices (a parameter) -/
 
-/-- **The kinds' block matrices**: `Ak j`, `Bk j` over the `2^14` positions of a block of kind
-`j` (A.6's nine kinds in `blockKinds` order, `free` included), the indicators `Ind κ j t` (block
-`t` of a `κ` proof is of kind `j`) and the public target bits `Et κ t p`. -/
-structure ZLM where
-  Ak : Fin 9 → Fin (2 ^ 14) → Fin (2 ^ 14) → F
-  Bk : Fin 9 → Fin (2 ^ 14) → Fin (2 ^ 14) → F
-  Ind : Kind → Fin 9 → ℕ → F
-  Et : Kind → ℕ → Fin (2 ^ 14) → F
-
-/-- A bit of F. -/
-abbrev IsBitF (x : F) : Prop := x = 0 ∨ x = 1
-
 /-- The matrices, indicators and targets are bit-valued. -/
 def ZLM.Bits (M : ZLM) : Prop :=
   (∀ j p k, IsBitF (M.Ak j p k)) ∧ (∀ j p k, IsBitF (M.Bk j p k)) ∧
     (∀ κ j t, IsBitF (M.Ind κ j t)) ∧ ∀ κ t p, IsBitF (M.Et κ t p)
 
 /-! ## The slice tables -/
-
-/-- Position `σ + 64·(u mod 256)` of a block (6 skip bits low, 8 high bits). -/
-def pAt (σ : Fin 64) (u : ℕ) : Fin (2 ^ 14) :=
-  ⟨σ.val + 64 * (u % 256), by
-    have h1 := σ.isLt; have h2 := Nat.mod_lt u (show 256 > 0 by norm_num); show _ < 16384; omega⟩
 
 variable (M : ZLM)
 
@@ -88,22 +73,11 @@ def zres (L es : Log) (i : Fin 64) : Fin (2 ^ mm 6 (kindOf es)) → F :=
   bzRes (aZ M _ (kindOf es) L es) (bZ M _ (kindOf es) L es) (zZ _ (kindOf es) L es)
     (eZ M _ (kindOf es)) i
 
-/-- **Z1's point** `r = (ρ₁ … ρ₇, Z1's first m − 13 coordinates)` (`relZ`'s `rr`). -/
-def zrL (es : Log) : List F :=
-  List.ofFn pinnedRho ++ (List.range ((kindOf es).m - 13)).map (coordAt es 2)
-
 /-- **Z1's final doom**: some residual slice's extension at `r` is nonzero. -/
 def ZEnd (L es : Log) : Prop :=
   ∃ i : Fin 64, mle (zres M L es i) (ptOf (mm 6 (kindOf es)) (zrL es)) ≠ 0
 
 /-! ## Z2 on the log -/
-
-/-- `λ` (position 14). -/
-def lamL (es : Log) : F := fAt es 14 0
-
-/-- Z2's message: `P^z` on `Λ` (64 values), `P^{ab}` on `Λ₀ … Λ₆₂` (63). -/
-def pzL (es : Log) : Fin 64 → F := fun k => readF (msgAt es 13) (16 * k.val)
-def pabL (es : Log) : Fin 63 → F := fun k => readF (msgAt es 13) (16 * (64 + k.val))
 
 /-- `P^e` on `S`: `Σ_u eq(r, u) E(σ, u)` (the verifier's `targetS r`). -/
 def peL (es : Log) : Fin 64 → F := fun σ =>
@@ -111,9 +85,6 @@ def peL (es : Log) : Fin 64 → F := fun σ =>
 
 /-- **Z3's initial claim** `P^{ab}*(λ)` (`lagrangeS`'s first value). -/
 def c0Z (es : Log) : F := interpolateAt node127 (z2Vals (pzL es) (pabL es) (peL M es)) (lamL es)
-
-/-- **The c-claim** `P^z*(λ)` (`lagrangeS`'s second value; `finZ` binds it to RS claim 1). -/
-def pzStar (es : Log) : F := interpolateAt lNode (pzL es) (lamL es)
 
 /-- The true `P^{ab}`, `P^z` at Z1's point. -/
 def pabT (L es : Log) : Polynomial F :=
@@ -140,12 +111,6 @@ def TZ (L es : Log) : Array (Array F) :=
 
 /-- **Z3's rounds' doom** (`D3` from 15, `m − 6` real rounds, `w·a·b`). -/
 abbrev D3Z : Log → Log → Prop := D3 15 (fun _ es => c0Z M es) (mm 6) bzExpr (TZ M)
-
-/-- Zend's message: `â` (offset 0), `b̂` (16). -/
-def vZ (es : Log) (j : ℕ) : F := readF (msgAt es 67) (16 * j)
-
-/-- Z3's challenges `r′`. -/
-def rZ (es : Log) : List F := rchs 15 es (mm 6 (kindOf es))
 
 /-- The true pair at `(λ, r′)`. -/
 def aStar (L es : Log) : F :=
@@ -186,22 +151,10 @@ theorem z_unit_pos :
 
 theorem mm6_eq (κ : Kind) : mm 6 κ = 7 + (κ.m - 13) := by cases κ <;> rfl
 
-theorem m13_le (κ : Kind) : κ.m - 13 ≤ 19 := by cases κ <;> decide
-
 /-! ## Reads -/
 
 section Reads
 variable {M} {L es L' es' : Log} {p : ℕ}
-
-theorem zrL_agree (h : Agree es es' 13) : zrL es = zrL es' := by
-  have hk : kindOf es = kindOf es' := kindOf_congr (h.mono (by norm_num))
-  have hm := m13_le (kindOf es)
-  unfold zrL
-  rw [← hk]
-  refine congrArg _ (List.map_congr_left fun j hj => ?_)
-  simp only [List.mem_range] at hj
-  unfold coordAt
-  exact fAt_congr h (by omega) _
 
 theorem zBk_same (h : Same L es L' es' p) (hp : 3 ≤ p) (κ : Kind) :
     zBk κ L es = zBk κ L' es' := by
@@ -246,10 +199,6 @@ end Reads
 
 /-! ## Bits -/
 
-theorem sum_bitF {ι : Type*} (s : Finset ι) (f : ι → F) (h : ∀ i ∈ s, IsBitF (f i)) :
-    IsBitF (∑ i ∈ s, f i) :=
-  Finset.sum_induction f IsBitF (fun _ _ ha hb => isBit_add ha hb) (Or.inl rfl) h
-
 theorem zBk_bit (κ : Kind) (L es : Log) (t : ℕ) (k : Fin (2 ^ 14)) : IsBitF (zBk κ L es t k) :=
   unpack_boolean _ _
 
@@ -267,26 +216,6 @@ theorem zres_bit (hM : M.Bits) (L es : Log) (i : Fin 64) (u : Fin (2 ^ mm 6 (kin
     (fun _ _ => zBk_bit _ L es _ _) (fun _ _ => hM.2.2.2 _ _ _) i u
 
 /-! ## Z1 (`hfin`, positions 3 … 12) -/
-
-/-- **The pinned coordinates lose nothing** (`pinned_sound`): a nonzero bit table on `7 + k`
-variables has, after fixing the low 7 at `ρ`, a nonzero table `t` on `k` variables whose extension
-is the table's at `(ρ, ·)`. -/
-theorem pinned_table {ℓ k : ℕ} (hℓ : ℓ = 7 + k) (f : Fin (2 ^ ℓ) → F) (hbit : ∀ u, IsBitF (f u))
-    (hf : f ≠ 0) :
-    ∃ t : Array F, t.size = 2 ^ k ∧ tbl k t ≠ 0 ∧ ∀ cs : List F, cs.length = k →
-      mle (tbl k t) (ptOf k cs) = mle f (ptOf ℓ (List.ofFn pinnedRho ++ cs)) := by
-  subst hℓ
-  refine ⟨Array.ofFn (fixLow f pinnedRho), by simp, ?_, fun cs hc => ?_⟩
-  · rw [tbl_ofFn]; exact pinned_sound pinned_rank f hbit hf
-  rw [tbl_ofFn, ← mle_fixLow]
-  congr 1
-  funext l
-  refine Fin.addCases (fun i => ?_) (fun i => ?_) l
-  · simp only [Fin.append_left, ptOf, Fin.val_castAdd]
-    rw [List.getD_append _ _ _ _ (by simp), List.getD_eq_getElem _ _ (by simp), List.getElem_ofFn]
-  · simp only [Fin.append_right, ptOf, Fin.val_natAdd]
-    rw [List.getD_append_right _ _ _ _ (by simp)]
-    simp
 
 /-- Z1's doom on the coordinate list: the background, or a pinned-fixed residual slice whose
 extension is nonzero at the coordinates bound so far (`mlDoom`). -/
@@ -339,21 +268,6 @@ theorem z1_hfin (hM : M.Bits) {Dk : ℕ → Log → Log → Prop} {Bg : Log → 
 
 section Reads2
 variable {L es L' es' X : Log} {p : ℕ}
-
-theorem z2_agree14 (h : Agree es es' 14) :
-    kindOf es = kindOf es' ∧ zrL es = zrL es' ∧ pzL es = pzL es' ∧ pabL es = pabL es' := by
-  refine ⟨kindOf_congr (h.mono (by norm_num)), zrL_agree (h.mono (by norm_num)), ?_, ?_⟩ <;>
-  · funext k; simp only [pzL, pabL, msgAt_congr h (show 13 < 14 by norm_num)]
-
-theorem z2_agree (h : Agree es es' 15) :
-    kindOf es = kindOf es' ∧ zrL es = zrL es' ∧ lamL es = lamL es' ∧ pzL es = pzL es' ∧
-      pabL es = pabL es' := by
-  obtain ⟨h1, h2, h3, h4⟩ := z2_agree14 (h.mono (by norm_num))
-  exact ⟨h1, h2, fAt_congr h (by norm_num) 0, h3, h4⟩
-
-theorem pzStar_agree (h : Agree es es' 15) : pzStar es = pzStar es' := by
-  obtain ⟨-, -, hl, hp, -⟩ := z2_agree h
-  unfold pzStar; rw [hl, hp]
 
 theorem c0Z_agree (h : Agree es es' 15) : c0Z M es = c0Z M es' := by
   obtain ⟨hk, hz, hl, hp, hq⟩ := z2_agree h
@@ -460,13 +374,6 @@ theorem z2_ext1 (L es : Log) (a : Digest) (hl : es.length = 14) :
   refine ⟨?_, ?_, pabT_same hS (by norm_num), pzT_same hS (by norm_num), hlam⟩
   · unfold c0Z peL; rw [hk, hz, hp, hq, hlam]
   · unfold pzStar; rw [hp, hlam]
-
-/-- `single_F_le` for any decidability instance of the escape predicate. -/
-theorem single_F_le' (P : Digest → Prop) [DecidablePred P] (S : Finset F) {s : ℕ}
-    (hS : S.card ≤ s) (h : ∀ a, P a → chF a 0 ∈ S) : (univ.filter P).card ≤ s * 2 ^ 128 := by
-  refine le_trans (card_le_card (t := univ.filter fun a : Digest => chF a 0 ∈ S) fun a ha => ?_) ?_
-  · simp only [mem_filter, mem_univ, true_and] at ha ⊢; exact h a ha
-  · rw [card_chF_fiber]; exact Nat.mul_le_mul_right _ hS
 
 open Classical in
 /-- **Z2's squeeze** (§5.2 row Z2, `126·2^128`; `skip_pair_bad_le`): from Z1's final doom, at most

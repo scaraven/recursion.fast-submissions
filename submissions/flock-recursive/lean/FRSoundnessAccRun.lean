@@ -1,7 +1,9 @@
 -- New for `flock-recursive` (BLUEPRINT §5.4, A.10 "What `final` then gets"; stage S-G3).
+-- RET-2: the declarations revision 4.1 reads moved to `FRSoundnessCoreAcc`.
 import FRSoundnessLigFinal
 import FRVIRChain
 import FRVerifier
+import FRSoundnessCoreAcc
 
 /-!
 # An accepted run's chain (`runLog_chain`) and the `W` branch of `hAcc`
@@ -31,66 +33,9 @@ open RecursionFast FR.Merkle
 
 /-! ## A run on a log is a run on a trace of its entries -/
 
-/-- **`runLog_trace`**: a verdict on the log is a verdict on a trace of the log's entries. -/
-theorem runLog_trace {α : Type} {L : Log} :
-    ∀ (p : OProg α) {b : α}, p.runLog L = some b → ∃ tr : Trace, p.runSeq tr = some b ∧ ∀ e ∈ tr, e ∈ L
-  | .ret a, b, h => ⟨[], h, by simp⟩
-  | .query q k, b, h => by
-    obtain ⟨e, he, rfl, hk⟩ := runLog_query h
-    obtain ⟨tr, h1, h2⟩ := runLog_trace (k e.2) hk
-    refine ⟨e :: tr, ?_, ?_⟩
-    · rw [show e = (e.1, e.2) from rfl, OProg.runSeq_query]; exact h1
-    · intro x hx
-      rcases List.mem_cons.mp hx with rfl | hx
-      · exact he
-      · exact h2 x hx
-
 /-! ## Linked entries are a forest path -/
 
-/-- **Entries linked to the previous answer, from an entry with no state, are the forest path of
-the last one** (on a log without bad events, every entry in the log). -/
-theorem path_of_links {L : Log} (hb : ¬ Bad L) {es : Log} (hin : ∀ e ∈ es, e ∈ L)
-    (h0 : ∀ h : 0 < es.length, stateIn (es[0]'h).1 = none)
-    (hs : ∀ n (h : n + 1 < es.length), stateIn (es[n + 1]'h).1 = some (es[n]'(by omega)).2) :
-    ∀ n (h : n < es.length), ∃ j, ∃ hj : j < L.length, L[j] = es[n] ∧
-      entriesOf L (pathOf L j) = es.take (n + 1) := by
-  intro n
-  induction n with
-  | zero =>
-    intro h
-    obtain ⟨j, hj, hje⟩ := List.getElem_of_mem (hin _ (List.getElem_mem h))
-    refine ⟨j, hj, hje, ?_⟩
-    have hp : predIdx L j = none := by
-      simp only [predIdx, List.getElem?_eq_getElem hj, Option.bind_some, hje, h0 h,
-        Option.bind_none]
-    rw [pathOf, back, hp]
-    dsimp only
-    simp only [entriesOf, List.map_cons, List.map_nil, getElem!_pos L j hj, hje]
-    rw [List.take_add_one, List.take_zero, List.nil_append, List.getElem?_eq_getElem h]; rfl
-  | succ n ih =>
-    intro h
-    obtain ⟨i, hi, hie, hpi⟩ := ih (by omega)
-    obtain ⟨j, hj, hje⟩ := List.getElem_of_mem (hin _ (List.getElem_mem h))
-    have hp : predIdx L j = some i := by
-      simp only [predIdx, List.getElem?_eq_getElem hj, Option.bind_some, hje, hs n h, ← hie,
-        ansIdx_self hb hi]
-    have hij : i < j := predIdx_lt hb hp
-    refine ⟨j, hj, hje, ?_⟩
-    rw [pathOf, back, hp]
-    dsimp only
-    rw [ite_pos' hij, back_fuel L j i hij, ← pathOf]
-    simp only [entriesOf, List.map_append, List.map_cons, List.map_nil] at hpi ⊢
-    rw [hpi, getElem!_pos L j hj, hje]
-    conv_rhs => rw [List.take_add_one, List.getElem?_eq_getElem h]
-    rfl
-
 /-! ## The Fiat–Shamir entries of a run match the items -/
-
-theorem mem_fsOf {seg : Trace} {its : List Item} {e : ByteArray × Digest} (h : e ∈ fsOf seg its) :
-    e ∈ seg := by
-  simp only [fsOf, List.mem_map, List.mem_filter] at h
-  obtain ⟨⟨e', it⟩, ⟨hm, -⟩, rfl⟩ := h
-  exact (List.of_mem_zip hm).1
 
 theorem fsItems_getElem {p : ℕ} (hp : p < fsItems.length) :
     fsItems[p] = X.msgItem p (X.fsMsgs.getD p none) := by
@@ -108,24 +53,6 @@ theorem msgOk_getD {p o len : ℕ} (h : X.fsMsgs.getD p none = some (o, len)) :
   rw [h] at hm
   simp only [X.msgOk, Bool.and_eq_true, beq_iff_eq, decide_eq_true_eq] at hm
   exact hm.2
-
-theorem size_extract_of_le {π : Proof} {o len : ℕ} (h : o + len ≤ π.size) :
-    (π.extract o (o + len)).size = len := by
-  rw [ByteArray.size_extract]; omega
-
-theorem fsCheck_absorbQ (st : Digest) (msg : ByteArray) :
-    fsCheck (.absorb msg.size) (absorbQ st msg) = true := by
-  have hc : (absorbQ st msg).data.toList.take 8 = tagAbs := by rw [absorbQ_data]; simp [tagAbs]
-  simp [fsCheck, hc, absorbQ_size]
-
-theorem fsCheck_squeezeQ (st : Digest) : fsCheck .squeeze (squeezeQ st) = true := by
-  have hc : (squeezeQ st).data.toList.take 8 = tagSqz := by rw [squeezeQ_data]; simp [tagSqz]
-  simp [fsCheck, hc, squeezeQ_size]
-
-theorem fsCheck_seedQ (vk c : Digest) (hdr : ByteArray) (hh : hdr.size = 48) :
-    fsCheck .seed (seedQ vk c hdr) = true := by
-  have h := (matches_seed vk c hdr hh zeroD).1
-  simpa using h
 
 /-- **The query of position `p` passes position `p`'s item check** on a proof of `piSize` bytes. -/
 theorem fsCheck_fsQ (vk c : Digest) {π : Proof} (hπ : π.size = piSize) {p : ℕ} (hp : p < 468)

@@ -1,5 +1,7 @@
 -- New for `flock-recursive` (BLUEPRINT §3, A.4, A.9; stage S-G4, `hFin` step 2b).
+-- RET-2: the declarations revision 4.1 reads moved to `FRSoundnessCoreAcc`.
 import FRSoundnessAccQry
+import FRSoundnessCoreAcc
 
 /-!
 # `hFin`, step 2b: the squeeze, query and final-message phases on the log
@@ -68,14 +70,7 @@ theorem rd_pre {M X : List Val} {R : Array Val} (hext : ExtA (#[] ++ (M ++ X).to
   rw [hext.2 _ hlt, show (#[] : Array Val) ++ (M ++ X).toArray = (#[] ++ M.toArray) ++ X.toArray
     by simp, rd_app_left _ _ (by simpa using hx)]
 
-theorem size_le_of_ext {M X : List Val} {R : Array Val} (hext : ExtA (#[] ++ (M ++ X).toArray) R) :
-    M.length + X.length ≤ R.size := by
-  have := hext.1; simpa using this
-
 /-! ## Squeezes -/
-
-theorem replicate_sq_fs (k : ℕ) : ∀ it ∈ List.replicate k Item.squeeze, it.isFS = true := by
-  intro it hit; rw [List.eq_of_mem_replicate hit]; rfl
 
 /-- A squeeze phase's answers are the chain's entries from `phStart n`. -/
 theorem sqz_entries {tr trk : Trace} {n k : ℕ} (hn : n < phases.length) {ch : Chal}
@@ -226,13 +221,6 @@ theorem final_view {tr : Trace} {y : List Val × List Bool × Trace} (h : SkRun 
   obtain ⟨xa, -, rfl⟩ := Option.map_eq_some_iff.1 hx
   have := h.flags _ hflag
   simpa [Val.isZero] using this
-
-theorem allZero_mem {a : ByteArray} (h : a.data.all (· == 0) = true) : ∀ b ∈ a.data.toList, b = 0 := by
-  intro b hb
-  obtain ⟨k, hk, rfl⟩ := List.getElem_of_mem hb
-  simp only [Array.all_eq_true] at h
-  have := h k (by simpa using hk)
-  simpa using this
 
 /-- On a 30-kind, the final message's π elements `32 … 127` are zero. -/
 theorem finV_zero {π : Proof} {vk c : Digest} (hπ : π.size = piSize)

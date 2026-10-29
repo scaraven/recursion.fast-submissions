@@ -1,6 +1,8 @@
 -- New for `flock-recursive` (BLUEPRINT §4.1 `leaf_sound`, A.10 S1/Z1 for a leaf; stage S-N1).
+-- RET-2: the declarations revision 4.1 reads moved to `FRSoundnessCoreAcc`.
 import FRSoundnessExtStmt
 import FRSoundnessFrDF
+import FRSoundnessCoreAcc
 
 /-!
 # The leaf case: `SLeaf` on the run's chain gives the leaf witness
@@ -24,66 +26,6 @@ open RecursionFast Finset ProductCircuit Blake2sCircuit
 set_option linter.constructorNameAsVariable false
 
 /-! ## Bits of bytes -/
-
-theorem testBit_ofListLE : ∀ (l : List UInt8) (j : ℕ),
-    (CompPoly.Bytes.ofListLE l).testBit j = ((l.getD (j / 8) 0).toNat).testBit (j % 8)
-  | [], j => by simp [CompPoly.Bytes.ofListLE]
-  | b :: l, j => by
-    rw [CompPoly.Bytes.ofListLE_cons, Nat.add_comm, show (256 : ℕ) = 2 ^ 8 from rfl,
-      Nat.testBit_two_pow_mul_add _ (by simpa using b.toNat_lt)]
-    split_ifs with h
-    · rw [Nat.div_eq_of_lt h, Nat.mod_eq_of_lt h]; rfl
-    · rw [testBit_ofListLE l (j - 8)]
-      obtain ⟨t, rfl⟩ : ∃ t, j = t + 8 := ⟨j - 8, by omega⟩
-      rw [Nat.add_sub_cancel, show (t + 8) / 8 = t / 8 + 1 by omega, Nat.add_mod_right]
-      rfl
-
-theorem getLsbD_ofBytes (v : Vector UInt8 8) (j : ℕ) :
-    (B64.ofBytes v).val.toBitVec.getLsbD j = ((v.toList.getD (j / 8) 0).toNat).testBit (j % 8) := by
-  rw [BitVec.getLsbD, ← UInt64.toNat, B64.ofBytes_toNat, CompPoly.Bytes.ofVecLE, testBit_ofListLE]
-
-/-- **Bit `j` of a decoded F element is bit `j mod 8` of byte `j / 8`.** -/
-theorem bitF_ofBytes (v : Vector UInt8 16) (j : Fin 128) :
-    FR.bitF (F.ofBytes v) j = ((v.toList.getD (j.val / 8) 0).toNat).testBit (j.val % 8) := by
-  have hj := j.isLt
-  unfold FR.bitF F.ofBytes
-  split_ifs with h
-  · rw [getLsbD_ofBytes]
-    congr 2
-    simp only [Vector.toList_ofFn, List.getD_eq_getElem?_getD, List.getElem?_ofFn,
-      show j.val / 8 < 8 by omega, dite_true, Option.getD_some, Vector.getElem_toList,
-      List.getElem?_eq_getElem (show j.val / 8 < v.toList.length by simp; omega)]
-  · rw [getLsbD_ofBytes]
-    rw [show (j.val - 64) % 8 = j.val % 8 by omega]
-    congr 2
-    simp only [Vector.toList_ofFn, List.getD_eq_getElem?_getD, List.getElem?_ofFn,
-      show (j.val - 64) / 8 < 8 by omega, dite_true, Option.getD_some,
-      List.getElem?_eq_getElem (show j.val / 8 < v.toList.length by simp; omega)]
-    simp only [Vector.getElem_toList]
-    congr 1; omega
-
-theorem bytesAt_toList_getD (q : ByteArray) (o n k : ℕ) (hk : k < n) :
-    (bytesAt q o n).toList.getD k 0 = q.data.toList.getD (o + k) 0 := by
-  rw [List.getD_eq_getElem?_getD, List.getElem?_eq_getElem (by simpa using hk), Option.getD_some,
-    Vector.getElem_toList, getElem_bytesAt _ _ _ _ hk]
-
-theorem digestBit_bytesAt (q : ByteArray) (o : ℕ) {σ : ℕ} (hσ : σ < 256) :
-    Block.digestBit (bytesAt q o 32) σ = ((q.data.toList.getD (o + σ / 8) 0).toNat).testBit (σ % 8) := by
-  simp only [Block.digestBit, hσ, dite_true]
-  rw [getElem_bytesAt _ _ _ _ (by omega)]
-  rfl
-
-/-- **The boundary bits are the digest's bits**: `digBit` of the two 16-byte halves at `o` and
-`o + 16` is `digestBit` of the 32 bytes at `o`. -/
-theorem digBit_readF (q : ByteArray) (o : ℕ) {σ : ℕ} (hσ : σ < 256) :
-    Impl.digBit (readF q o) (readF q (o + 16)) σ = Block.digestBit (bytesAt q o 32) σ := by
-  rw [digestBit_bytesAt q o hσ, Impl.digBit]
-  split_ifs with h
-  · rw [readF, bitF_ofBytes, bytesAt_toList_getD _ _ _ _ (by omega)]
-  · rw [readF, bitF_ofBytes, bytesAt_toList_getD _ _ _ _ (by simp only; omega)]
-    simp only
-    rw [show (σ - 128) % 128 % 8 = σ % 8 by omega,
-      show o + 16 + (σ - 128) % 128 / 8 = o + σ / 8 by omega]
 
 /-! ## `ShHoldsL` is `ChainLinks` -/
 

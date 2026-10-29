@@ -1,5 +1,7 @@
 -- New for `flock-recursive` (BLUEPRINT A.10 RS0, §5.2 row RS0; stage S-G6).
+-- RET-2: the declarations revision 4.1 reads moved to `FRSoundnessCoreRows`.
 import FRSoundnessFrRS
+import FRSoundnessCoreRows
 
 /-!
 # RS0: the column checks (`habs` at RS0's absorb, position 312) and `RejF`'s slice part
@@ -27,23 +29,6 @@ open RecursionFast Finset
 set_option linter.constructorNameAsVariable false
 
 /-! ## The inner weights and the two values of a claim -/
-
-/-- **The inner weights** `c_{j,i}` (`rsW`'s values): Z's `eqZ(λ, ρ₁)` (λ is Z2's challenge,
-position 14), `eq` at L2's challenges 0–6 (Lc), at S2's challenges `m − 14 … m − 8` (Sh), and
-the packing basis for E4's `f̂(r′)`. -/
-def cwF (lam : F) (xL xS : List F) (j i : ℕ) : F :=
-  match j with
-  | 0 => (Impl.eqZS lam (pinnedRho 0)).getD i 0
-  | 1 => (eqTab xL.toArray).getD i 0
-  | 2 => (eqTab xS.toArray).getD i 0
-  | _ => bb i
-
-/-- Lc's low point (L2's challenges 0–6) and Sh's (S2's challenges `m − 14 … m − 8`). -/
-def xLL (es : Log) : List F := (List.range 7).map (rch 69 es)
-def xSL (κ : Kind) (es : Log) : List F := (List.range 7).map fun l => rch 114 es (κ.m - 14 + l)
-
-/-- `cwF` at the log's values. -/
-def cwL (κ : Kind) (es : Log) (j i : ℕ) : F := cwF (fAt es 14 0) (xLL es) (xSL κ es) j i
 
 /-- **Claim `j`'s value from RS0's slices**, `α_j = Σ_i c_{j,i} s_{j,i}` (`rsAlpha`). -/
 def alphaL (κ : Kind) (es : Log) (j : Fin 4) : F := ∑ i : Fin 128, cwL κ es j i * sL κ es j i
@@ -93,10 +78,6 @@ theorem cwL_congr (h : Agree es es' 312) (κ : Kind) : cwL κ es = cwL κ es' :=
 
 theorem alphaL_congr (h : Agree es es' 313) (κ : Kind) : alphaL κ es = alphaL κ es' := by
   funext j; simp only [alphaL, cwL_congr (h.mono (by norm_num)) κ, sL_congr h κ]
-
-theorem fF_same (h : Same L es L' es' p) (hp : 3 ≤ p) (κ : Kind) : fF κ L es = fF κ L' es' := by
-  funext y
-  simp only [fF, fTab_same h (i := 0) (by norm_num) κ (by rw [capPos_zero]; omega)]
 
 theorem trueL_same (h : Same L es L' es' p) (hp : 312 ≤ p) (κ : Kind) :
     trueL κ L es = trueL κ L' es' := by
@@ -213,7 +194,6 @@ theorem rejRS_false (L es : Log) (hl : 313 ≤ es.length) : RejRS (fun _ _ _ _ =
 
 /-- Control: the E claim's inner weight is the packing basis. -/
 theorem cwL_three (κ : Kind) (es : Log) (i : ℕ) : cwL κ es 3 i = bb i := rfl
-
 
 /-- Control (positive): with RS0's truth, a claim's slice value is its true value. -/
 theorem alphaL_true {κ : Kind} {L es : Log} (h : truthRS0 κ L es (gL κ es) (sL κ es)) (j : Fin 4) :

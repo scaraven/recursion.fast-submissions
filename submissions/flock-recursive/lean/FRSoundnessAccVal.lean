@@ -1,5 +1,7 @@
 -- New for `flock-recursive` (BLUEPRINT §3, A.4, A.9; stage S-G4, `hFin` step 2b).
+-- RET-2: the declarations revision 4.1 reads moved to `FRSoundnessCoreAcc`.
 import FRSoundnessAccSeg
+import FRSoundnessCoreAcc
 
 /-!
 # `hFin`, step 2b: the skeleton's registers by shape, read on the log
@@ -20,42 +22,6 @@ namespace FR.Snd
 open RecursionFast
 
 /-! ## The K rounds' registers -/
-
-theorem sqAns_succ (q₁ q₂ : ByteArray) (a₁ a₂ : Digest) (tr : Trace) (l : ℕ) :
-    sqAns ((q₁, a₁) :: (q₂, a₂) :: tr) (l + 1) = sqAns tr l := by
-  simp only [sqAns, show 2 * (l + 1) + 1 = 2 * l + 1 + 1 + 1 by ring, List.getD_cons_succ]
-
-/-- **`roundsT_vals`**: `n` K rounds leave 13 registers each; register `3` of round `l` is its
-challenge `chK a₂`, register `12` (a real round) its `g(r)`. -/
-theorem roundsT_vals (inp : Input) (f o real : ℕ) :
-    ∀ (n j : ℕ) (d : Digest) (cv : Val) (tr : Trace) (x : List Val × Bool × Trace),
-      roundsT inp f o 2 true real n j d cv tr = some x →
-      x.1.length = 13 * n ∧ ∀ l < n, x.1.getD (13 * l + 3) default = .k (chK (sqAns tr l)) ∧
-        (j + l < real → x.1.getD (13 * l + 12) default =
-          .k (gK inp f (o + (j + l) * 96) (sqAns tr l)))
-  | 0, _, _, _, _, x, h => by
-    simp only [roundsT, Option.some.injEq] at h; subst h
-    exact ⟨rfl, fun l hl => absurd hl (by omega)⟩
-  | n + 1, j, d, cv, (q₁, a₁) :: (q₂, a₂) :: tr, x, h => by
-    simp only [roundsT, ite_true] at h
-    split_ifs at h with hq
-    obtain ⟨x', hx', rfl⟩ := Option.map_eq_some_iff.mp h
-    obtain ⟨ih1, ih2⟩ := roundsT_vals inp f o real n (j + 1) a₂ _ tr x' hx'
-    have hl13 : (roundKVals inp f (o + j * roundBytes true) (decide (j < real)) a₁ a₂ cv).length =
-      13 := rfl
-    refine ⟨by rw [List.length_append, hl13, ih1]; ring, fun l hl => ?_⟩
-    rcases l with _ | l
-    · refine ⟨rfl, fun hj => ?_⟩
-      simp [roundKVals, sqAns, roundBytes, show j < real by omega]
-    · obtain ⟨i1, i2⟩ := ih2 l (by omega)
-      rw [show 13 * (l + 1) + 3 = 13 + (13 * l + 3) by ring,
-        show 13 * (l + 1) + 12 = 13 + (13 * l + 12) by ring,
-        List.getD_append_right _ _ _ _ (by omega), List.getD_append_right _ _ _ _ (by omega), hl13,
-        Nat.add_sub_cancel_left, Nat.add_sub_cancel_left, sqAns_succ]
-      refine ⟨i1, fun hj => ?_⟩
-      rw [i2 (by omega), show j + 1 + l = j + (l + 1) by omega]
-  | _ + 1, _, _, _, [], _, h => by simp [roundsT] at h
-  | _ + 1, _, _, _, [_], _, h => by simp [roundsT] at h
 
 variable {impl : OpImpl} {κ : Kind} {inp : Input}
 
@@ -126,20 +92,6 @@ theorem skRun_of_accept {impl : OpImpl} {κ : Kind} {inp : Input} (fin : Finals)
 theorem not_skRun_nil {impl : OpImpl} {κ : Kind} {inp : Input} (y : List Val × List Bool × Trace) :
     ¬ SkRun impl κ inp [] y := fun h => by
   have := h.len; simp [fsOf] at this
-
-/-- On an all-Fiat–Shamir phase, the trace's entries are the chain's from `phStart`. -/
-theorem seg_entries {es trk seg rest : Trace} {s : ℕ} {its more : List Item}
-    (hdrop : es.drop s = fsOf trk (its ++ more)) (htrk : trk = seg ++ rest)
-    (hl : seg.length = its.length) (hfs : ∀ it ∈ its, it.isFS = true) (hne : 0 < its.length) :
-    s + its.length ≤ es.length ∧ ∀ m < its.length, trk.getD m default = es.getD (s + m) default := by
-  rw [htrk, fsOf_append hl, fsOf_all hfs hl] at hdrop
-  have hlen := congrArg List.length hdrop
-  simp only [List.length_drop, List.length_append] at hlen
-  refine ⟨by omega, fun m hm => ?_⟩
-  have := congrArg (fun l => l.getD m default) hdrop
-  simp only [List.getD_eq_getElem?_getD, List.getElem?_drop] at this
-  rw [htrk, List.getD_eq_getElem?_getD, List.getD_eq_getElem?_getD,
-    List.getElem?_append_left (by omega), this, List.getElem?_append_left (by omega)]
 
 theorem rounds_items_fs (f K deg : ℕ) (inK : Bool) (real : KC ℕ) :
     ∀ it ∈ (Shape.rounds f K deg inK real).items, it.isFS = true := by

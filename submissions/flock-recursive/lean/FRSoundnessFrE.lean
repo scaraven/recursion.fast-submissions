@@ -1,5 +1,7 @@
 -- New for `flock-recursive` (BLUEPRINT A.10 rows E1–E4 end, §5.2; stage S-G6).
+-- RET-2: the declarations revision 4.1 reads moved to `FRSoundnessCoreRows`.
 import FRSoundnessFrRS0
+import FRSoundnessCoreRows
 
 /-!
 # E: the Rows unit at the M rows, with E4's batched inner rounds (positions 209 … 311)
@@ -107,18 +109,6 @@ theorem lr_habs_end {L es : Log} (x : ByteArray × Digest) (hl : es.length = 208
 
 /-! ## The inner half: E4 with Lr's claim batched in -/
 
-/-- Counting under an implication, the decidability instances taken from the context (so that
-two classical `filter`s with different instance terms compare without unfolding them). -/
-theorem card_filter_imp {P Q : Digest → Prop} {iP : DecidablePred P} {iQ : DecidablePred Q}
-    (h : ∀ d, P d → Q d) : (@filter _ P iP univ).card ≤ (@filter _ Q iQ univ).card := by
-  refine card_le_card fun a ha => ?_
-  simp only [mem_filter, mem_univ, true_and] at ha ⊢; exact h a ha
-
-/-- A row Spartan's inner weight at `(r_x, ρ)` (`innerTables`' first table). -/
-noncomputable def wInn {a nc : ℕ} (A B C : Fin (2 ^ a) → Fin (2 ^ nc) → F) (rx : Fin a → F) (ρ : F)
-    (y : Fin (2 ^ nc)) : F :=
-  matMle A rx (cube y) + ρ * matMle B rx (cube y) + ρ ^ 2 * matMle C rx (cube y)
-
 section Inner
 variable (rows : List Circ.Row)
 
@@ -208,25 +198,6 @@ theorem batBadE_reads : Reads 265 (BatBadE rows) := fun L es L' es' h1 h2 h => b
   have hk := h.kind (by omega)
   simp only [BatBadE, hk, T4E_same h le_rfl, c4E_agree (L := L) (L' := L') h.1 le_rfl]
   exact and_congr_right fun _ => ⟨fun h' => ⟨by omega, h'.2⟩, fun h' => ⟨by omega, h'.2⟩⟩
-
-/-- **Four claims batched by one challenge** (`batch_count` at degree 3, over abstract values so
-that no concrete claim is ever unfolded by the kernel). -/
-theorem batch_count4 (P : Digest → Prop) [DecidablePred P] {v0 v1 v2 v3 t0 t1 t2 t3 : F}
-    (hvt : v0 ≠ t0 ∨ v1 ≠ t1 ∨ v2 ≠ t2 ∨ v3 ≠ t3)
-    (h : ∀ a, P a → v0 + chF a 0 * v1 + chF a 0 ^ 2 * v2 + chF a 0 ^ 3 * v3 =
-      t0 + chF a 0 * t1 + chF a 0 ^ 2 * t2 + chF a 0 ^ 3 * t3) :
-    (univ.filter P).card ≤ 3 * 2 ^ 128 := by
-  refine batch_count (k := 3) P ![v0, v1, v2, v3] ![t0, t1, t2, t3] ?_ fun a ha => ?_
-  · intro he
-    rcases hvt with h0 | h0 | h0 | h0
-    · exact h0 (by simpa using congrFun he 0)
-    · exact h0 (by simpa using congrFun he 1)
-    · exact h0 (by simpa using congrFun he 2)
-    · exact h0 (by simpa using congrFun he 3)
-  · have := h a ha
-    simp only [Fin.sum_univ_succ, Fin.sum_univ_zero, Fin.val_zero, Fin.val_succ,
-      Matrix.cons_val_zero, Matrix.cons_val_succ, pow_zero, one_mul, add_zero]
-    linear_combination this
 
 open Classical in
 /-- **E3's count** (`hsingle` at 264, A.10 E3): from a wrong M triple or a false Lr claim, at
@@ -374,12 +345,6 @@ theorem rejInE_ok (habs4 : ∀ j < 23, fsItems[265 + 2 * j]? ≠ some .squeeze) 
       not_congr (chkE_same hS (by omega))
 
 /-! ## E4 end (311) -/
-
-theorem innerExpr_eval2 {R : Type*} [CommRing R] (v : ℕ → R) : innerExpr.eval v = v 0 * v 1 := rfl
-
-theorem arrGetD_pair0 {α : Type*} (a b d : α) : (#[a, b] : Array α).getD 0 d = a := rfl
-
-theorem arrGetD_pair1 {α : Type*} (a b d : α) : (#[a, b] : Array α).getD 1 d = b := rfl
 
 theorem rE4_def (es : Log) : rchs2 265 (fun d => chF d 0) es 23 = rE4 es := rfl
 

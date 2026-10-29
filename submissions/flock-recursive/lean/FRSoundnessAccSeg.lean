@@ -1,5 +1,7 @@
 -- New for `flock-recursive` (BLUEPRINT §3, A.4, A.9; stage S-G4, `hFin` step 2a).
+-- RET-2: the declarations revision 4.1 reads moved to `FRSoundnessCoreAcc`.
 import FRSoundnessAccSem
+import FRSoundnessCoreAcc
 
 /-!
 # `hFin`, step 2a: the phase segments of an accepted skeleton
@@ -76,20 +78,6 @@ theorem refPhases_at : ∀ (ps : List Phase) (n : ℕ) (c : GCtx) (r : Array Val
       · rw [← app_app, ← app_app]
         simpa [app_app, List.append_assoc] using e6
       · exact List.mem_cons_of_mem _ e7
-
-/-- The length of `fsOf` on a segment of the items' length: the number of Fiat–Shamir items. -/
-theorem fsOf_length {seg : Trace} {its : List Item} (h : seg.length = its.length) :
-    (fsOf seg its).length = (its.filter Item.isFS).length := by
-  induction seg generalizing its with
-  | nil => cases its <;> simp_all [fsOf]
-  | cons e seg ih =>
-    cases its with
-    | nil => simp at h
-    | cons it its =>
-      simp only [List.length_cons, Nat.add_right_cancel_iff] at h
-      have := ih h
-      simp only [fsOf, List.zip_cons_cons, List.filter_cons] at this ⊢
-      split <;> simp_all
 
 theorem psItems_filter_length (ps : List Phase) :
     ((psItems ps).filter Item.isFS).length =
@@ -183,16 +171,6 @@ theorem skeleton_outs {k : ℕ} (hk : k < phases.length) :
 
 /-! ## The named rows of the phase table -/
 
-theorem piopPhases_length : piopPhases.length = 26 := rfl
-
-theorem levelPhases_length (i : ℕ) : (levelPhases i).length = 5 := rfl
-
-theorem flatMap_level_length (n : ℕ) : ((List.range n).flatMap levelPhases).length = 5 * n := by
-  induction n with
-  | zero => rfl
-  | succ n ih =>
-    rw [List.range_succ, List.flatMap_append, List.length_append, ih]; simp [levelPhases_length]; ring
-
 theorem flatMap_level_getElem {n i k : ℕ} (hi : i < n) (hk : k < 5) :
     ((List.range n).flatMap levelPhases)[5 * i + k]'(by rw [flatMap_level_length]; omega) =
       (levelPhases i)[k] := by
@@ -223,25 +201,6 @@ theorem phases_pf : phases[51]'(by rw [phases_length]; omega) = finalPhase := by
   simp only [phases]
   rw [List.getElem_append_right (by
     simp only [List.length_append, piopPhases_length, flatMap_level_length, nLevels]; omega)]
-  simp only [List.length_append, piopPhases_length, flatMap_level_length, nLevels]; rfl
-
-/-- The table's first row named `P1` is row 26 (the names of rows `0 … 25` are A.4's PIOP
-names). -/
-theorem phaseIx_P1 : phaseIx "P1" = 26 := by
-  rw [phaseIx, phases, List.append_assoc, List.findIdx_append, List.findIdx_eq_length.2 (by decide)]
-  simp [piopPhases_length, List.range_succ_eq_map, levelPhases, nLevels]; rfl
-
-/-- The table's first row named `Pf` is row 51. -/
-theorem phaseIx_Pf : phaseIx "Pf" = 51 := by
-  have h : ∀ p ∈ piopPhases ++ (List.range nLevels).flatMap levelPhases,
-      decide (p.name = "Pf") = false := by
-    intro p hp
-    simp only [List.mem_append, List.mem_flatMap, List.mem_range] at hp
-    rcases hp with hp | ⟨i, -, hp⟩
-    · revert p; decide
-    · simp only [levelPhases, List.mem_cons, List.not_mem_nil, or_false] at hp
-      rcases hp with rfl | rfl | rfl | rfl | rfl <;> rfl
-  rw [phaseIx, phases, List.findIdx_append, List.findIdx_eq_length.2 h]
   simp only [List.length_append, piopPhases_length, flatMap_level_length, nLevels]; rfl
 
 end FR.Snd

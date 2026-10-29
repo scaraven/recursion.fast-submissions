@@ -1,7 +1,9 @@
 -- New for `flock-recursive` (BLUEPRINT §5.1, §5.4; stage S-G1g, the frame of S-G2's `kstate`).
+-- RET-2: the declarations revision 4.1 reads moved to `FRSoundnessCoreRows`.
 import FRSoundnessHide
 import RecursionFast.Contract.Certificate
 import RecursionFast.Library.PaperTheorem
+import FRSoundnessCoreRows
 
 /-!
 # The knowledge state `kstate vk` (frame; `final` is S-G2's)
@@ -53,11 +55,5 @@ theorem ks_of (S : Submission) (vk : Digest) {Rej : Log → Log → Prop}
     (hq : ∀ H c π, ((S.V vk c π).queries H).length ≤ S.qV) :
     KS (Rel (S.acc vk)) (S.V vk) S.E epsR S.qV :=
   (kstate_of S vk hN ob hfin).ks hq
-
-/-- The claimed error is within the contract's cap: `εR = 15/2^124 ≤ 2^-120`. -/
-theorem epsR_le_errorCap : epsR ≤ errorCap := by
-  rw [← NNReal.coe_le_coe, epsR, errorCap]
-  push_cast
-  norm_num
 
 end FR.Snd

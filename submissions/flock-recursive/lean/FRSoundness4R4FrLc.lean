@@ -1,6 +1,7 @@
 -- New for `flock-recursive` (BLUEPRINT revision 4.1, A.9 `finLc` (ii), A.10 L3; stage R4e).
+-- RET-2: import re-pointed at Core: `FRSoundnessFrLc` → `FRSoundnessCoreWalk`.
 import FRSoundness4R4FrZ
-import FRSoundnessFrLc
+import FRSoundnessCoreWalk
 
 /-!
 # L2's last claim on an accepted run (P4a's `RejLc2`, `RejLcN`)

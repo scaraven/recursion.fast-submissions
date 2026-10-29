@@ -4,8 +4,10 @@
 -- Part A (this repository, `v4/flock-recursive` at `cf2f7b3`), with one change: a chain's charge
 -- reads the log strictly before its **last** entry (`L₀ L j = L.take j`), not before its cut.
 -- RET-1: position-free declarations moved to `FRSoundnessCoreDefs`.
+-- RET-2: the declarations revision 4.1 reads moved to `FRSoundnessCoreChain`.
 import FRLog
 import FRSoundnessCoreDefs
+import FRSoundnessCoreChain
 
 /-!
 # The potential over chains and its `step` law (BLUEPRINT §5.1)
@@ -44,11 +46,6 @@ variable (D : Log → Log → Prop) (φ : Log → Log → ℝ≥0)
 /-- **`Esc`**: some chain of `L` escapes at its last entry. -/
 def EscG (L : Log) : Prop := ∃ j ∈ chains L, EscAtG D (L₀ L j) (entriesOf L (pathOf L j))
 
-open Classical in
-/-- The charge of chain `j` in `L`: its `φ` if its last entry is on the frontier, else `0`. -/
-noncomputable def termG (L : Log) (j : ℕ) : ℝ≥0 :=
-  if OnFrontier L L[j]! then φ (L₀ L j) (entriesOf L (pathOf L j)) else 0
-
 /-- The sum of the frontier charges over the chains of `L`. -/
 noncomputable def sumG (L : Log) : ℝ≥0 := ((chains L).map (termG φ L)).sum
 
@@ -72,55 +69,11 @@ theorem muG_lt_one {L : Log} (h : muG D φ L < 1) : ¬ Bad L ∧ ¬ EscG D L := 
   rw [muG, ite_eq_left (by tauto)] at h
   exact lt_irrefl _ h
 
-/-- A function supported on one index sums, over a duplicate-free list, to its value there. -/
-theorem sum_map_single {l : List ℕ} (hl : l.Nodup) (f : ℕ → ℝ≥0) (i : ℕ)
-    (hf : ∀ j ∈ l, j ≠ i → f j = 0) : (l.map f).sum = if i ∈ l then f i else 0 := by
-  classical
-  rw [← List.sum_toFinset f hl]
-  split_ifs with hi
-  · exact Finset.sum_eq_single i (fun j hj hji => hf j (List.mem_toFinset.mp hj) hji)
-      (fun h => absurd (List.mem_toFinset.mpr hi) h)
-  · exact Finset.sum_eq_zero fun j hj => hf j (List.mem_toFinset.mp hj)
-      (fun h => hi (h ▸ List.mem_toFinset.mp hj))
-
-theorem sum_map_zero {l : List ℕ} (f : ℕ → ℝ≥0) (hf : ∀ j ∈ l, f j = 0) : (l.map f).sum = 0 := by
-  rw [List.map_congr_left hf]; simp
-
 variable {D φ}
 
 section Step
 
 variable {L : Log} {q : ByteArray} {a : Digest}
-
-theorem L₀_append {x : ByteArray × Digest} {j : ℕ} (hj : j < L.length) :
-    L₀ (L ++ [x]) j = L₀ L j := by
-  unfold L₀; rw [List.take_append_of_le_length hj.le]
-
-theorem L₀_new : L₀ (L ++ [(q, a)]) L.length = L := by simp [L₀]
-
-/-- An old chain's charge after appending a fresh non-bad entry, plus the charge it loses when the
-query is its squeeze, is its charge before. -/
-theorem termG_append (hq : q ∉ L.map Prod.fst) (hb : ¬ Bad (L ++ [(q, a)])) {j : ℕ}
-    (hj : j < L.length) :
-    termG φ (L ++ [(q, a)]) j +
-        (if q = squeezeQ L[j]!.2 then φ (L₀ L j) (entriesOf L (pathOf L j)) else 0) =
-      termG φ L j := by
-  classical
-  have hget : (L ++ [(q, a)])[j]! = L[j]! := by
-    rw [getElem!_pos (L ++ [(q, a)]) j (by simp; omega), getElem!_pos L j hj,
-      List.getElem_append_left hj]
-  have hmem : L[j]! ∈ L := by rw [getElem!_pos L j hj]; exact List.getElem_mem hj
-  unfold termG
-  rw [hget, L₀_append hj, entriesOf_pathOf_append hb hj]
-  have hfr := frontier_append (q := q) (a := a) hmem
-  generalize L[j]! = e at hmem hfr ⊢
-  by_cases hs : q = squeezeQ e.2
-  · have hf : OnFrontier L e := ⟨hmem, hs ▸ hq⟩
-    rw [ite_eq_right (fun h => (hfr.mp h).2 hs), ite_eq_left hs, ite_eq_left hf, zero_add]
-  · rw [ite_eq_right hs, add_zero]
-    by_cases hf : OnFrontier L e
-    · rw [ite_eq_left (hfr.mpr ⟨hf, hs⟩), ite_eq_left hf]
-    · rw [ite_eq_right (fun h => hf (hfr.mp h).1), ite_eq_right hf]
 
 /-- The sum over the chains of an extended (non-bad) log: the old chains, then the new entry. -/
 theorem sumG_append (hb : ¬ Bad (L ++ [(q, a)])) :
@@ -164,14 +117,6 @@ theorem new_seed (hseed : ∀ L₀ e, Matches [e] → φ L₀ [e] = 0) (hb : ¬ 
   · rw [hes]; rintro ⟨h2, -⟩; simp at h2
 
 end Step
-
-open Classical in
-/-- `Bad` of a log with an entry appended, as a sum of indicators, is at most the H row's count. -/
-theorem card_bad_le {L : Log} {q : ByteArray} (hb : ¬ Bad L) (hq : q ∉ L.map Prod.fst)
-    (hl : L.length < logCap) :
-    (∑ a : Digest, (if Bad (L ++ [(q, a)]) then 1 else 0 : ℝ≥0)) ≤ (badCount : ℝ≥0) := by
-  rw [Finset.sum_boole]
-  exact_mod_cast bad_step_frac hb hq hl
 
 open Classical in
 /-- **`muG_step`**: the contract's `step` law for the potential `muG D φ`, with error the H row's
@@ -348,29 +293,6 @@ section Ext
 
 variable (D : Log → Log → Prop)
 
-theorem condCount_split (L₀ es₀ : Log) {r : ℕ} {pre : List Digest} (h : pre.length < r) :
-    ∑ a : Digest, condCount D L₀ es₀ r (pre ++ [a]) = 2 ^ 256 * condCount D L₀ es₀ r pre := by
-  classical
-  unfold condCount
-  obtain ⟨k, hk⟩ : ∃ k, r - pre.length = k + 1 := ⟨r - pre.length - 1, by omega⟩
-  have hk' : ∀ a : Digest, r - (pre ++ [a]).length = k := fun a => by simp; omega
-  simp only [hk', hk]
-  simp only [div_eq_mul_inv, ← Finset.sum_mul]
-  rw [← Nat.cast_sum, extCount_split, show 256 * (k + 1) = 256 * k + 256 by ring, pow_add, mul_inv]
-  have h2 : (2 : ℝ≥0) ^ 256 ≠ 0 := by positivity
-  have h3 : (2 : ℝ≥0) ^ (256 * k) ≠ 0 := by positivity
-  field_simp
-
-open Classical in
-theorem condCount_last (L₀ es₀ : Log) {r : ℕ} {pre : List Digest} (h : pre.length = r) :
-    condCount D L₀ es₀ r pre = if EscAtG D L₀ (ext es₀ pre) then 1 else 0 := by
-  classical
-  unfold condCount
-  rw [h, Nat.sub_self, mul_zero, pow_zero, div_one, extCount, Finset.card_filter,
-    Finset.univ_unique, Finset.sum_singleton]
-  simp only [List.ofFn_zero, List.append_nil]
-  split_ifs <;> simp
-
 end Ext
 
 /-! ## Part C: the local inequality from per-position facts (`hloc_of`)
@@ -384,35 +306,6 @@ section Local
 
 theorem lastAns_append (es : Log) (x : ByteArray × Digest) : lastAns (es ++ [x]) = x.2 := by
   simp [lastAns]
-
-theorem lastAns_of_getLast? {es : Log} {e : ByteArray × Digest} (h : es.getLast? = some e) :
-    lastAns es = e.2 := by
-  simp [lastAns, h]
-
-/-- A 40-byte query is its first 8 bytes and its 32-byte state. -/
-theorem split40 (q : ByteArray) (hs : q.size = 40) :
-    q.data.toList = q.data.toList.take 8 ++ (bytesAt q 8 32).toList := by
-  have hl : q.data.toList.length = 40 := by rw [Array.length_toList]; exact hs
-  have ht : (q.data.toList.take 8).length = 8 := by rw [List.length_take, hl]; rfl
-  refine List.ext_getElem (by rw [List.length_append, ht, hl]; simp) fun k h₁ h₂ => ?_
-  by_cases k8 : k < 8
-  · rw [List.getElem_append_left (by rw [ht]; omega), List.getElem_take]
-  · rw [List.getElem_append_right (by rw [ht]; omega), Vector.getElem_toList, getElem_bytesAt,
-      List.getD_eq_getElem _ _ (by omega)]
-    congr 1; rw [ht]; omega
-
-/-- A query of the squeeze item with state `st` is `squeezeQ st`. -/
-theorem eq_squeezeQ {q : ByteArray} {st : Digest} (hm : fsCheck .squeeze q = true)
-    (hs : stateIn q = some st) : q = squeezeQ st := by
-  simp only [fsCheck, Bool.and_eq_true, beq_iff_eq] at hm
-  obtain ⟨ht, hsz⟩ := hm
-  simp only [stateIn, ht, hsz, and_true, or_true, ↓reduceIte, Option.some.injEq] at hs
-  apply Merkle.byteArray_ext_toList
-  rw [squeezeQ_data, split40 q hsz, ht, hs]
-
-theorem fsCheck_absorb_or {it : Item} {q : ByteArray} (h : fsCheck it q = true) :
-    it = .seed ∨ it = .squeeze ∨ ∃ len, it = .absorb len := by
-  cases it <;> simp_all [fsCheck]
 
 /-- **`Matches` extends exactly by the next item, linked to the last answer.** -/
 theorem matches_append_iff {es : Log} (hm : Matches es) (x : ByteArray × Digest) :
@@ -483,10 +376,6 @@ def RndOK (rnd : ℕ → Option (ℕ × ℕ)) : Prop :=
     ∀ p', s0 < p' → p' ≤ s0 + r → fsItems[p']? = some .squeeze ∧ rnd p' = some (s0, r)
 
 variable (D : Log → Log → Prop) (rnd : ℕ → Option (ℕ × ℕ))
-
-theorem pRoundG_seed (L : Log) (e : ByteArray × Digest) (h0 : rnd 0 = none) :
-    pRoundG D rnd L [e] = 0 := by
-  simp [pRoundG, h0]
 
 variable {D rnd}
 

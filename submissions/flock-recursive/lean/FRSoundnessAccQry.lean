@@ -1,5 +1,7 @@
 -- New for `flock-recursive` (BLUEPRINT §3, A.4, A.9, §5.1; stage S-G4, `hFin` step 2b).
+-- RET-2: the declarations revision 4.1 reads moved to `FRSoundnessCoreAcc`.
 import FRSoundnessAccEq
+import FRSoundnessCoreAcc
 
 /-!
 # `hFin`, step 2b: the squeezes and the queries of the accepted skeleton, on the log
@@ -16,22 +18,6 @@ namespace FR.Snd
 open RecursionFast FR.Merkle
 
 /-! ## Merkle paths from the trace -/
-
-/-- On a log that repeats no query, an entry is the first one for its query. -/
-theorem find_of_mem {L : Log} (hL : (L.map Prod.fst).Nodup) {e : ByteArray × Digest}
-    (he : e ∈ L) : L.find? (fun x => decide (x.1 = e.1)) = some e := by
-  obtain ⟨e', he'⟩ := Option.isSome_iff_exists.mp
-    (List.find?_isSome.mpr ⟨e, he, by simp⟩ : (L.find? fun x => decide (x.1 = e.1)).isSome)
-  have hm := List.mem_of_find?_eq_some he'
-  have hq : e'.1 = e.1 := by simpa using List.find?_some he'
-  rw [he', List.inj_on_of_nodup_map hL hm he hq]
-
-theorem runLog_query_mem {α : Type} {L : Log} (hL : (L.map Prod.fst).Nodup) {q : ByteArray}
-    {a : Digest} (he : (q, a) ∈ L) (k : Digest → OProg α) :
-    (OProg.query q k).runLog L = (k a).runLog L := by
-  simp only [OProg.runLog]
-  rw [show (fun e : ByteArray × Digest => decide (e.1 = q)) = fun x => decide (x.1 = (q, a).1)
-    from rfl, find_of_mem hL he, Option.bind_some]
 
 variable (κ : Kind) (inp : Input)
 

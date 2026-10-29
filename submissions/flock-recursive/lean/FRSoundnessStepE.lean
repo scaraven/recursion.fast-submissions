@@ -1,7 +1,9 @@
 -- New for `flock-recursive` (BLUEPRINT §5.1–§5.2, A.10; stage S-G1e).
 -- RET-1: position-free declarations moved to `FRSoundnessCoreSteps`.
+-- RET-2: the declarations revision 4.1 reads moved to `FRSoundnessCoreRows`.
 import FRSoundnessStepD
 import FRSoundnessCoreSteps
+import FRSoundnessCoreRows
 
 /-!
 # The per-phase dooms, the multi-squeeze bad sets, and `KState.step` for the whole transcript
@@ -285,116 +287,7 @@ variable (c0 : Log → Log → R)
 
 variable (nr : Kind → ℕ) (e : Expr) (T : Log → Log → Array (Array R))
 
-/-- The claim after `l` rounds is not the true sum of the bound tables. -/
-def Wrong2 (L es : Log) (l : ℕ) : Prop :=
-  clR2 b wd rd ch c0 L es l ≠ trueSum e (bindAll (T L es) (rchs2 b ch es l)) (nr (kindOf es) - l)
-
-/-- **The asserted rounds' doom** (A.10's `Wrong2`): past the phase's first absorb, the running
-claim after the answered rounds (`ans3`) is false. -/
-def D2 (L es : Log) : Prop := b < es.length ∧ Wrong2 b wd rd ch c0 nr e T L es (ans3 b nr es)
-
 variable {b wd rd ch c0 nr e T}
-
-theorem wrong2_congr (hb1 : 1 ≤ b) (hTc : TruthLocal2 b c0 T) {L es es' : Log} {l : ℕ}
-    (h : Agree es es' (b + 2 * l)) :
-    Wrong2 b wd rd ch c0 nr e T L es l ↔ Wrong2 b wd rd ch c0 nr e T L es' l := by
-  have hb := h.mono (show b ≤ b + 2 * l by omega)
-  obtain ⟨hT, hc⟩ := hTc L es es' hb
-  simp only [Wrong2, clR2_congr hc h, rchs2_congr h, hT, kindOf_congr (hb.mono hb1)]
-
-/-- **`habs` inside the phase**: appending where no real round is answered keeps the doom. -/
-theorem D2_append_iff (hb1 : 1 ≤ b) (hTc : TruthLocal2 b c0 T) {L es : Log}
-    (x : ByteArray × Digest) (hlen : b < es.length)
-    (hc : (es.length - b) % 2 = 0 ∨ nr (kindOf es) ≤ (es.length - b) / 2) :
-    D2 b wd rd ch c0 nr e T L (es ++ [x]) ↔ D2 b wd rd ch c0 nr e T L es := by
-  have hk := kindOf_append x (show 0 < es.length by omega)
-  have ha : ans3 b nr (es ++ [x]) = ans3 b nr es := by
-    simp only [ans3, hk, List.length_append, List.length_singleton]
-    rcases hc with hc | hc
-    · rw [show (es.length + 1 - b) / 2 = (es.length - b) / 2 by omega]
-    · rw [min_eq_left hc, min_eq_left (le_trans hc (Nat.div_le_div_right (by omega)))]
-  have hle : b + 2 * ans3 b nr es ≤ es.length := by
-    have : ans3 b nr es ≤ (es.length - b) / 2 := min_le_right _ _
-    omega
-  simp only [D2, ha, List.length_append, List.length_singleton]
-  rw [wrong2_congr hb1 hTc (agree_append es [x] hle)]
-  exact ⟨fun h => ⟨hlen, h.2⟩, fun h => ⟨by omega, h.2⟩⟩
-
-theorem not_D2_short {L es : Log} (h : es.length ≤ b) : ¬ D2 b wd rd ch c0 nr e T L es :=
-  fun hd => by have := hd.1; omega
-
-theorem wrong2_ext1 (hb1 : 1 ≤ b) (hTc : TruthLocal2 b c0 T) (L es : Log) (a : Digest) {j : ℕ}
-    (hj : es.length = b + 2 * j + 1) :
-    Wrong2 b wd rd ch c0 nr e T L (ext1 es a) (j + 1) ↔
-      peval (g2At b wd rd es j) (ch a) ≠
-        trueSum e ((bindAll (T L es) (rchs2 b ch es j)).map (bind0 · (ch a)))
-          (nr (kindOf es) - (j + 1)) := by
-  have hA : Agree (ext1 es a) es (b + 2 * j + 1) := agree_append es _ (by omega)
-  have hk : kindOf (ext1 es a) = kindOf es := kindOf_append _ (by omega)
-  have hr : rch2 b ch (ext1 es a) j = ch a := by
-    simp only [rch2, ansAt]
-    rw [← hj, entAt_ext1]
-  obtain ⟨hT, -⟩ := hTc L (ext1 es a) es (hA.mono (by omega))
-  have hg : g2At b wd rd (ext1 es a) j = g2At b wd rd es j := by
-    simp only [g2At, msgAt, hA (b + 2 * j) (by omega)]
-  have hrs : rchs2 b ch (ext1 es a) j = rchs2 b ch es j := rchs2_congr (l := j) (hA.mono (by omega))
-  have hrs' : rchs2 b ch (ext1 es a) (j + 1) = rchs2 b ch es j ++ [ch a] := by
-    simp only [rchs2, List.range_succ, List.map_append, List.map_singleton]
-    rw [show (List.range j).map (rch2 b ch (ext1 es a)) = rchs2 b ch (ext1 es a) j from rfl,
-      hrs, hr]
-    rfl
-  simp only [Wrong2, clR2, hg, hr, hrs', hT, hk, bindAll_append]
-
-open Classical in
-/-- **The asserted round row** (A.10: L2, S2, E4 over F with `M = 2^128`; P1.i, Pf over K with
-`M = 1`): from a doomed claim whose round check holds (`Chk2`, from `¬ Rej`), at most `2·M`
-answers make the next claim true. `hfib` is the challenge map's fiber count
-(`card_chF_fiber`, `card_chK_fiber`). -/
-theorem D2_single [Fintype R] [DecidableEq R] (hb1 : 1 ≤ b) (hTc : TruthLocal2 b c0 T)
-    (he : e.deg = 2) {M : ℕ}
-    (hfib : ∀ S : Finset R, (univ.filter fun a : Digest => ch a ∈ S).card = S.card * M)
-    (hsz : ∀ L es, ∀ t ∈ T L es, t.size = 2 ^ nr (kindOf es)) (L es : Log)
-    (hchk : ∀ j, es.length = b + 2 * j + 1 → j < nr (kindOf es) → Chk2 b wd rd ch c0 L es j) :
-    (univ.filter fun a => D2 b wd rd ch c0 nr e T L es ∧
-      ¬ D2 b wd rd ch c0 nr e T L (ext1 es a)).card ≤ 2 * M := by
-  by_cases hlen : b < es.length
-  swap
-  · rw [Finset.filter_false_of_mem fun a _ h => not_D2_short (by omega) h.1]; simp
-  by_cases hc : (es.length - b) % 2 = 0 ∨ nr (kindOf es) ≤ (es.length - b) / 2
-  · rw [Finset.filter_false_of_mem fun a _ h =>
-      h.2 ((D2_append_iff hb1 hTc _ hlen hc).mpr h.1)]
-    simp
-  simp only [not_or, not_le] at hc
-  obtain ⟨j, hjdef⟩ : ∃ j, j = (es.length - b) / 2 := ⟨_, rfl⟩
-  have hj : j < nr (kindOf es) := hjdef ▸ hc.2
-  have hlj : es.length = b + 2 * j + 1 := by omega
-  have hans : ans3 b nr es = j := by rw [ans3, hjdef]; exact min_eq_right hc.2.le
-  by_cases hw : Wrong2 b wd rd ch c0 nr e T L es j
-  swap
-  · rw [Finset.filter_false_of_mem fun a _ h => hw (hans ▸ h.1.2)]; simp
-  have hts : ∀ t ∈ bindAll (T L es) (rchs2 b ch es j),
-      t.size = 2 ^ (nr (kindOf es) - j - 1 + 1) := by
-    refine bindAll_size (rchs2 b ch es j) _ fun t ht => ?_
-    rw [hsz L es t ht]; congr 1; simp only [rchs2, List.length_map, List.length_range]; omega
-  have hesc := round_escape_le e (bindAll (T L es) (rchs2 b ch es j)) hts
-    (claim := clR2 b wd rd ch c0 L es j) (by
-      rw [show nr (kindOf es) - j - 1 + 1 = nr (kindOf es) - j by omega]; exact hw)
-    (g2At b wd rd es j)
-  refine le_trans (Finset.card_le_card (t := univ.filter fun a : Digest => ch a ∈ _)
-    fun a ha => ?_) (by rw [hfib]; exact Nat.mul_le_mul_right _ (hesc.trans he.le))
-  have hnd : ¬ D2 b wd rd ch c0 nr e T L (ext1 es a) := by
-    rw [Finset.mem_filter] at ha; exact ha.2.2
-  have hans' : ans3 b nr (ext1 es a) = j + 1 := by
-    have hk : kindOf (ext1 es a) = kindOf es := kindOf_append _ (by omega)
-    rw [ans3, hk, show (ext1 es a).length = es.length + 1 by simp [ext1],
-      min_eq_right (by omega)]
-    omega
-  have hnw : ¬ Wrong2 b wd rd ch c0 nr e T L (ext1 es a) (j + 1) := fun h =>
-    hnd ⟨by simp [ext1]; omega, by rw [hans']; exact h⟩
-  rw [wrong2_ext1 hb1 hTc L es a hlj, not_not] at hnw
-  simp only [Finset.mem_filter, Finset.mem_univ, true_and]
-  refine ⟨⟨by rw [he]; rfl, hchk j hlj hj⟩, ?_⟩
-  rw [hnw, show nr (kindOf es) - (j + 1) = nr (kindOf es) - j - 1 by omega]
 
 end Rounds2
 

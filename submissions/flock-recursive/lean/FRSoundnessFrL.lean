@@ -1,5 +1,7 @@
 -- New for `flock-recursive` (BLUEPRINT A.10 rows L1–L3β, §5.2 rows L1–L3; stage S-G7).
+-- RET-2: the declarations revision 4.1 reads moved to `FRSoundnessCoreRows`.
 import FRSoundnessFrZ
+import FRSoundnessCoreRows
 
 /-!
 # L: the per-kind lincheck (positions 68 … 98)
@@ -28,52 +30,6 @@ noncomputable section
 
 /-! ## Zend's pair in the lincheck's form -/
 
-theorem ptOf_split {a b : ℕ} (rs : List F) :
-    ptOf (a + b) rs = Fin.append (ptOf a rs) (ptOf b (rs.drop a)) := by
-  funext l
-  refine Fin.addCases (fun i => ?_) (fun i => ?_) l
-  · simp only [Fin.append_left, ptOf, Fin.val_castAdd]
-  · simp only [Fin.append_right, ptOf, Fin.val_natAdd, List.getD_eq_getElem?_getD,
-      List.getElem?_drop]
-
-theorem pAt_join {q : ℕ} (σ : Fin 64) (h : Fin (2 ^ 8)) (t : Fin (2 ^ q)) :
-    pAt σ (join h t).val = join (a := 6) (b := 8) σ h := by
-  apply Fin.ext
-  simp only [pAt, join]
-  have := h.isLt
-  omega
-
-theorem div_join {q : ℕ} (h : Fin (2 ^ 8)) (t : Fin (2 ^ q)) : (join h t).val / 256 = t.val := by
-  simp only [join]; have := h.isLt; omega
-
-theorem aStar_bridge {ℓ q : ℕ} (hℓ : ℓ = 8 + q) (A : Fin 9 → Fin (2 ^ 14) → Fin (2 ^ 14) → F) (Ind : Fin 9 → ℕ → F)
-    (z : ℕ → F) (l : F) (rs : List F) :
-    mle (fun u : Fin (2 ^ ℓ) => (skipExt fun σ => ∑ j : Fin 9, Ind j (u.val / 256) *
-        ∑ k, A j (pAt σ u.val) k * z (2 ^ 14 * (u.val / 256) + k.val)).eval l) (ptOf ℓ rs) =
-      linAK A (fun j t => Ind j t.val) (rowW (p := 8) l (ptOf 8 rs)) (ptOf q (rs.drop 8))
-        (fun y : Fin (2 ^ (14 + q)) => z y.val) := by
-  subst hℓ
-  have ev_sum : ∀ (c : Fin 9 → F) (g : Fin 9 → Fin 64 → F),
-      (skipExt fun σ => ∑ j, c j * g j σ).eval l = ∑ j, c j * (skipExt (g j)).eval l := by
-    intro c g
-    simp only [skipExt_eval, Finset.mul_sum]
-    rw [Finset.sum_comm]
-    exact Finset.sum_congr rfl fun _ _ => Finset.sum_congr rfl fun _ _ => by ring
-  have hR : ∀ T : Fin (2 ^ 14) → F, ∑ k, rowW (p := 8) l (ptOf 8 rs) k * T k =
-      ∑ h : Fin (2 ^ 8), eq (ptOf 8 rs) (cube h) *
-        (skipExt fun i => T (join (a := 6) (b := 8) i h)).eval l := fun T => rowW_eq (p := 8) l _ T
-  rw [ptOf_split, mle_split]
-  unfold linAK
-  simp only [div_join, pAt_join, mle, ev_sum]
-  simp only [hR]
-  simp only [join, Fin.val_mk, Finset.mul_sum]
-  rw [Finset.sum_comm (s := (univ : Finset (Fin (2 ^ 8)))) (t := (univ : Finset (Fin (2 ^ q))))]
-  refine Finset.sum_congr rfl fun t _ => ?_
-  rw [Finset.sum_comm (s := (univ : Finset (Fin (2 ^ 8)))) (t := (univ : Finset (Fin 9)))]
-  refine Finset.sum_congr rfl fun j _ => Finset.sum_congr rfl fun h _ => ?_
-  ring
-
-
 variable (M : ZLM)
 
 /-- A kind's block bits `q = m − 14`. -/
@@ -81,8 +37,6 @@ def qL (κ : Kind) : ℕ := κ.m - 14
 
 theorem mm6_q (κ : Kind) : mm 6 κ = 8 + qL κ := by cases κ <;> rfl
 
-/-- `α` (position 68), the row point's 8 high bits and the block point (Z3's `r′`). -/
-def alL (es : Log) : F := fAt es 68 0
 def rhiL (es : Log) : Fin 8 → F := ptOf 8 (rZ es)
 def rbLc (es : Log) : Fin (qL (kindOf es)) → F := ptOf _ ((rZ es).drop 8)
 
@@ -110,9 +64,6 @@ theorem bStar_eq (L es : Log) : bStar M L es = bLin M L es :=
 def L1Bad (L es : Log) : Prop :=
   69 ≤ es.length ∧ vZ es 0 + alL es * vZ es 1 ≠ aLin M L es + alL es * bLin M L es
 
-/-- L2's initial claim `â + α b̂` (`finLc` (i)). -/
-def c0L (es : Log) : F := vZ es 0 + alL es * vZ es 1
-
 /-- L2's tables: per kind `M_α` and the folded column `z̄_j` (`kindTables`). -/
 def TL (L es : Log) : Array (Array F) :=
   kindTables (K := 8) (fun j => linM (M.Ak j) (M.Bk j) (rwL es) (alL es))
@@ -122,21 +73,11 @@ def TL (L es : Log) : Array (Array F) :=
 abbrev D2L : Log → Log → Prop :=
   D2 69 16 readF (fun d => chF d 0) (fun _ es => c0L es) (fun _ => 14) (kindExpr 8) (TL M)
 
-/-- **L2's round checks fail** (round 0's is `finLc` (i), the others the rounds' `assertEq`). -/
-def RejL2 (L es : Log) : Prop :=
-  ∃ l < 14, 69 + 2 * l < es.length ∧ ¬ Chk2 69 16 readF (fun d => chF d 0) (fun _ es => c0L es) L es l
-
 /-! ## L3, L3β -/
-
-/-- L3's eight values. -/
-def vL (es : Log) (i : ℕ) : F := readF (msgAt es 97) (16 * i)
 
 /-- **The kind-masked values** (`finLc`'s `packFK`): a node's `0 :: v`, a leaf's `v₀ :: 0^8`. -/
 def vM (κ : Kind) (es : Log) (j : Fin 9) : F :=
   if κ.isNode then (if j.val = 0 then 0 else vL es (j.val - 1)) else (if j.val = 0 then vL es 0 else 0)
-
-/-- L2's challenges `r_k`. -/
-def rkL (es : Log) : List F := rchs 69 es 14
 
 /-- The per-kind true values `z̄̃_j(r_k)`. -/
 def zfL (L es : Log) (j : Fin 9) : F :=
@@ -171,20 +112,6 @@ def ZLM.IndKinds : Prop :=
 section Reads
 variable {M} {L es L' es' X : Log} {p : ℕ}
 
-theorem rZ_agree (h : Agree es es' 67) : rZ es = rZ es' := by
-  have hk : kindOf es = kindOf es' := kindOf_congr (h.mono (by norm_num))
-  unfold rZ rchs; rw [hk]
-  refine List.map_congr_left fun j hj => ?_
-  have := Kind.m_le (kindOf es'); simp only [List.mem_range, mm] at hj
-  exact rch_congr h (by omega)
-
-theorem lin_agree (h : Agree es es' 69) :
-    kindOf es = kindOf es' ∧ lamL es = lamL es' ∧ rZ es = rZ es' ∧ alL es = alL es' ∧
-      vZ es 0 = vZ es' 0 ∧ vZ es 1 = vZ es' 1 := by
-  refine ⟨kindOf_congr (h.mono (by norm_num)), fAt_congr h (by norm_num) 0,
-    rZ_agree (h.mono (by norm_num)), fAt_congr h (by norm_num) 0, ?_, ?_⟩ <;>
-  simp only [vZ, msgAt_congr h (show 67 < 69 by norm_num)]
-
 theorem aLin_same (h : Same L es L' es' p) (hp : 67 ≤ p) :
     aLin M L es = aLin M L' es' ∧ bLin M L es = bLin M L' es' := by
   have hk : kindOf es = kindOf es' := kindOf_congr (h.1.mono (by omega))
@@ -207,10 +134,6 @@ theorem TL_same (h : Same L es L' es' p) (hp : 69 ≤ p) : TL M L es = TL M L' e
     funext q b; simp only [zN, zW_same h (by omega)]
   unfold TL rbLc rwL rhiL
   rw [hz, hk, hl, hr, ha]
-
-theorem c0L_agree (h : Agree es es' 69) : c0L es = c0L es' := by
-  obtain ⟨-, -, -, ha, h0, h1⟩ := lin_agree h
-  unfold c0L; rw [ha, h0, h1]
 
 theorem TL_local : TruthLocal2 69 (fun _ es => c0L es) (TL M) := fun L es es' h =>
   ⟨TL_same (same_of_agree L h) le_rfl, c0L_agree h⟩
@@ -293,7 +216,6 @@ theorem l1_single (L es : Log) (hl : es.length = 68) :
       exact hn ⟨by rw [length_ext1]; omega, by rw [hal, hv, hv, e1, e2]; exact hc⟩
     simpa [Fin.sum_univ_two] using hn'
 
-
 /-- **Into L2** (`habs` at 69): a false `â + α b̂` is L2's false initial claim
 (`lin_trueSum_kinds`). -/
 theorem l2_habs {L es : Log} (x : ByteArray × Digest) (hl : es.length = 69) (hb : L1Bad M L es) :
@@ -316,30 +238,6 @@ theorem l2_single (L es : Log)
       Chk2 69 16 readF (fun d => chF d 0) (fun _ es => c0L es) L es j) :
     (univ.filter fun d => D2L M L es ∧ ¬ D2L M L (ext1 es d)).card ≤ 2 * 2 ^ 128 :=
   D2_single (by norm_num) TL_local (kindExpr_deg 8) card_chF_fiber (TL_size (M := M)) L es hchk
-
-theorem chk_of_not_rejL2 {L es : Log} (hr : ¬ RejL2 L es) (j : ℕ)
-    (hj : es.length = 69 + 2 * j + 1) (hjn : j < 14) :
-    Chk2 69 16 readF (fun d => chF d 0) (fun _ es => c0L es) L es j := by
-  by_contra hc; exact hr ⟨j, hjn, by omega, hc⟩
-
-theorem clR2L_log (L L' X : Log) (l : ℕ) :
-    clR2 69 16 readF (fun d => chF d 0) (fun _ es => c0L es) L X l =
-      clR2 69 16 readF (fun d => chF d 0) (fun _ es => c0L es) L' X l := by
-  cases l <;> rfl
-
-theorem chkL_agree {L es es' : Log} {l : ℕ} (h : Agree es es' (69 + 2 * l + 1)) :
-    Chk2 69 16 readF (fun d => chF d 0) (fun _ es => c0L es) L es l ↔
-      Chk2 69 16 readF (fun d => chF d 0) (fun _ es => c0L es) L es' l := by
-  have hg : g2At 69 16 readF es l = g2At 69 16 readF es' l := by
-    simp only [g2At, msgAt, h (69 + 2 * l) (by omega)]
-  have hc := clR2_congr (b := 69) (wd := 16) (rd := readF) (ch := fun d => chF d 0)
-    (c0 := fun _ es => c0L es) (L := L) (c0L_agree (h.mono (by omega))) (l := l) (h.mono (by omega))
-  simp only [Chk2, hg, hc]
-
-theorem rejL2_mono {L es : Log} (x : ByteArray × Digest) (h : RejL2 L es) : RejL2 L (es ++ [x]) := by
-  obtain ⟨j, hj, hlt, hc⟩ := h
-  exact ⟨j, hj, by simp; omega,
-    fun h' => hc ((chkL_agree (agree_append es [x] (by omega))).mp h')⟩
 
 /-- **L2's round checks are a `RejOK`** (the rounds' absorbs are not squeezes). -/
 theorem rejL2_ok (habs2 : ∀ j < 14, fsItems[69 + 2 * j]? ≠ some .squeeze) : RejOK RejL2 where
@@ -394,11 +292,6 @@ theorem l3_habs {L es : Log} (x : ByteArray × Digest) (hl : es.length = 97)
   refine hw (hchk.trans (Finset.sum_congr rfl fun j _ => ?_))
   rw [hall j, mul_comm]
 
-theorem mle_zfoldK_zero {q : ℕ} {Ind : Fin 9 → Fin (2 ^ q) → F} {j : Fin 9} (hI : ∀ t, Ind j t = 0)
-    (rb : Fin q → F) (z : Fin (2 ^ (14 + q)) → F) (r : Fin 14 → F) :
-    mle (zfoldK Ind rb z j) r = 0 := by
-  simp [mle, zfoldK, hI]
-
 open Classical in
 /-- **L3β's squeeze** (§5.2 row L3, `7·2^128 ≤ 8·2^128`; `batch_count` at 8 values): from a wrong
 masked value, at most `7·2^128` answers `β` make `v_β` equal the true batch. -/
@@ -434,7 +327,6 @@ theorem l3b_single (hI : M.IndKinds) (L es : Log) (hl : es.length = 98) :
         by rw [hβ, ht]; exact hc⟩
     rw [← hn', vBetaL, hβ, hm, Finset.sum_range (fun i => chF a 0 ^ i * readF (msgAt es 97) (16 * i))]
     rfl
-
 
 /-! ## Controls -/
 

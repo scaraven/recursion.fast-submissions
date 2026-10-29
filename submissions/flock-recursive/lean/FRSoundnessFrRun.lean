@@ -1,5 +1,7 @@
 -- New for `flock-recursive` (BLUEPRINT §5.1, A.9 `finRS`/`finB′`, A.10 B′ → P1.0; stage S-G10).
+-- RET-2: the declarations revision 4.1 reads moved to `FRSoundnessCoreAcc`.
 import FRSoundnessFrK
+import FRSoundnessCoreAcc
 
 /-!
 # The front's run facts, step 1: the fields' register chain and the readers on the log
@@ -23,47 +25,6 @@ open RecursionFast Finset FR.Impl
 
 section Chain
 variable (impl : OpImpl) (κ : Kind) (inp : Input)
-
-/-- **Every field of `runFields`, with the register files chained**: field `k` runs from
-`Rs k` to flag `true`, and `Rs (k + 1)` is `Rs k` with its output appended. -/
-theorem fields_chain (outs : Array (List Reg)) (zh : List Reg) :
-    ∀ (fs : List FinField) (R : Array Val) (ex : Array (List Reg)) (ok : Bool) (tail : List Op)
-      (tr : Trace) (s : St) (tr' : Trace),
-      (∀ f ∈ fs, ∀ fi b, (f fi b).1.filterMap Op.item? = []) →
-      exec impl κ inp (runFields outs zh fs R.size ex ++ tail) ⟨R, ok⟩ tr = some (s, tr') →
-      s.ok = true →
-      ∃ Rs : ℕ → Array Val, Rs 0 = R ∧ ∀ k (hk : k < fs.length), ∃ L,
-        pureRun impl κ inp ((fs[k]'hk) ⟨outs, zh, exAt outs zh fs R.size ex k⟩ (Rs k).size).1
-          (Rs k) [] = some (L, true) ∧ Rs (k + 1) = Rs k ++ L.toArray
-  | [], R, _, _, _, _, _, _, _, _, _ => ⟨fun _ => R, rfl, fun k hk => absurd hk (by simp)⟩
-  | f :: fs, R, ex, ok, tail, tr, s, tr', hna, h, hs => by
-    rw [runFields, List.append_assoc] at h
-    obtain ⟨L, hL, -, h'⟩ := field_flag impl κ inp (hna f (List.mem_cons_self ..) _ _) h hs
-    have hsz : (R ++ L.toArray).size = R.size + opsOut (f ⟨outs, zh, ex⟩ R.size).1 := by
-      have hl := pureRun_len impl κ inp R _ [] L true hL
-      simp [hl]
-    rw [← hsz] at h'
-    obtain ⟨Rs, h0, hrest⟩ := fields_chain outs zh fs (R ++ L.toArray) _ true tail tr s tr'
-      (fun g hg => hna g (List.mem_cons_of_mem _ hg)) h' hs
-    refine ⟨fun k => Nat.casesOn k R fun k => Rs k, rfl, fun k hk => ?_⟩
-    rcases k with _ | k
-    · refine ⟨L, hL, ?_⟩
-      change Rs 0 = R ++ L.toArray
-      exact h0
-    · obtain ⟨Lk, hLk, hnext⟩ := hrest k (by simpa using hk)
-      rw [hsz] at hLk
-      exact ⟨Lk, hLk, hnext⟩
-
-/-- The chained files extend one another. -/
-theorem chain_ext {Rs : ℕ → Array Val} {N : ℕ} (h : ∀ k < N, ExtA (Rs k) (Rs (k + 1))) :
-    ∀ {j k : ℕ}, j ≤ k → k ≤ N → ExtA (Rs j) (Rs k)
-  | j, k, hjk, hkN => by
-    induction k with
-    | zero => rw [Nat.le_zero.1 hjk]; exact ⟨le_rfl, fun _ _ => rfl⟩
-    | succ k ih =>
-      rcases Nat.lt_or_ge j (k + 1) with hj | hj
-      · exact (ih (by omega) (by omega)).trans (h k (by omega))
-      · rw [show j = k + 1 by omega]; exact ⟨le_rfl, fun _ _ => rfl⟩
 
 /-- **An accepted run, with its register files** (`accept_fields` keeping the files): the
 skeleton's registers `R₀ = #[] ++ y.1`; `finRS` runs from `R₀` itself to `L₀`; the rest's field
@@ -222,18 +183,6 @@ end Pub
 
 /-! ## The phase numbers of the names the finals read -/
 
-theorem phaseIx_piop {name : String} (h : piopPhases.findIdx (·.name = name) < 26) :
-    phaseIx name = piopPhases.findIdx (·.name = name) := by
-  rw [phaseIx, phases, List.append_assoc, List.findIdx_append, if_pos (by rwa [piopPhases_length])]
-
-theorem phaseIx_vals : phaseIx "Z1" = 3 ∧ phaseIx "Z2" = 4 ∧ phaseIx "Z3" = 5 ∧
-    phaseIx "L1" = 7 ∧ phaseIx "L2" = 8 ∧ phaseIx "L3β" = 10 ∧ phaseIx "S1" = 11 ∧
-    phaseIx "S2" = 12 ∧ phaseIx "Lr1" = 13 ∧ phaseIx "Lr2" = 14 ∧ phaseIx "Lr3" = 16 ∧
-    phaseIx "E1" = 17 ∧ phaseIx "E2" = 18 ∧ phaseIx "E3" = 20 ∧ phaseIx "E4" = 21 ∧
-    phaseIx "RS1" = 24 ∧ phaseIx "B'" = 25 := by
-  refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩ <;>
-    rw [phaseIx_piop (by decide)] <;> decide
-
 /-! ## Register views by name -/
 
 section ViewsR
@@ -287,25 +236,6 @@ end ViewsR
 
 /-! ## `finRS`'s exports are its registers -/
 
-theorem opsOut_append (a b : List Op) : opsOut (a ++ b) = opsOut a + opsOut b := by
-  simp [opsOut]
-
-theorem opsOut_elemsOps (j : ℕ) (wop : ℕ → Op) (hw : ∀ i, (wop i).outs = 1) (R : Reg) :
-    ∀ n i aA aT b, opsOut (elemsOps j wop R n i aA aT b) = n * elemW
-  | 0, _, _, _, _ => rfl
-  | n + 1, i, aA, aT, b => by
-    rw [elemsOps, opsOut_append, opsOut_elemsOps j wop hw R n]
-    simp only [elemOps, opsOut, List.map_cons, List.map_nil, List.sum_cons, List.sum_nil]
-    rw [hw]
-    simp only [Op.outs, elemW]
-    ring
-
-theorem opsOut_claimOps (j : ℕ) (wop : ℕ → Op) (R b : ℕ) (hw : ∀ i, (wop i).outs = 1) :
-    opsOut (claimOps j wop R b) = 1 + 128 * elemW := by
-  rw [claimOps, show ∀ o os, opsOut (o :: os) = Op.outs o + opsOut os from fun _ _ => by
-    simp [opsOut], opsOut_elemsOps j wop hw R]
-  rfl
-
 /-- `finRS` appends `7 + 4·(1 + 128·8) + 10` registers. -/
 theorem opsOut_finRS (fi : FinIn) (b : ℕ) : opsOut (finRS fi b).1 = 4117 := by
   simp only [finRS, opsOut_append]
@@ -330,14 +260,6 @@ theorem finRS_ex_lt (fi : FinIn) (b : ℕ) :
 
 section Start
 variable {impl : OpImpl} {κ : Kind} {inp : Input} {tr : Trace} {y : List Val × List Bool × Trace}
-
-theorem K.smulF_one (c : F) : K.smulF c 1 = algebraMap F K c := by
-  rw [K.algebraMap_eq_ofF]
-  show (⟨c * 1, c * 0⟩ : K) = ⟨c, 0⟩
-  rw [mul_one, mul_zero]
-
-theorem val_eqv_k {a : K} {v : Val} (h : (Val.k a).eqv v = true) : v = .k a := by
-  cases v <;> simp_all [Val.eqv]
 
 theorem rest_get {k : ℕ} {f : FinField} (h : (sfFinals finP finPf).rest[k]? = some f)
     (hk : k < (sfFinals finP finPf).rest.length) : (sfFinals finP finPf).rest[k]'hk = f := by

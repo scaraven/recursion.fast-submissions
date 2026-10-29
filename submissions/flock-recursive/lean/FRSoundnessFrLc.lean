@@ -1,7 +1,9 @@
 -- New for `flock-recursive` (BLUEPRINT A.9 `finLc`, A.10; stage S-G12′, S-G11 handover §7 item 1b).
+-- RET-2: the declarations revision 4.1 reads moved to `FRSoundnessCoreAcc`.
 import FRSoundnessFrWalk
 import FRSoundnessFrRndV
 import FRSoundnessFrW0V
+import FRSoundnessCoreAcc
 
 /-!
 # `finLc` (ii) on an accepted run: the lincheck's last claim is the per-kind sum
@@ -22,8 +24,6 @@ open RecursionFast Finset FR.Impl
 
 theorem phStart_lc : phStart 4 = 13 ∧ phStart 7 = 68 ∧ phStart 9 = 97 := by
   simp only [phStart, fsStarts_eq]; decide
-
-theorem phaseIx_L3 : phaseIx "L3" = 9 := by rw [phaseIx_piop (by decide)]; decide
 
 theorem mm6_ge8 (κ : Kind) : 8 ≤ mm 6 κ ∧ mm 6 κ ≤ 26 := by cases κ <;> decide
 

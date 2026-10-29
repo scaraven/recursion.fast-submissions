@@ -1,5 +1,7 @@
 -- New for `flock-recursive` (BLUEPRINT §3, A.4, A.9; stage S-G12′, S-G11 handover §7 item 1a).
+-- RET-2: the declarations revision 4.1 reads moved to `FRSoundnessCoreAcc`.
 import FRSoundnessFrRnd
+import FRSoundnessCoreAcc
 
 /-!
 # The front's degree-2 F rounds: the claims on the skeleton's registers
@@ -28,12 +30,6 @@ def rSumF (b : ℕ) (es : Log) (l : ℕ) : F :=
 def rValF (b : ℕ) (es : Log) (l : ℕ) : F :=
   peval (g2At b 16 readF es l) (rch2 b (fun d => chF d 0) es l)
 
-theorem charTwo_peval01F (a b c : F) : peval #[a, b, c] 0 + peval #[a, b, c] 1 = b + c := by
-  rw [peval_three, peval_three]
-  have h : a + a = 0 := CharTwo.add_self_eq_zero a
-  ring_nf
-  linear_combination h
-
 theorem rSumF_eq (b : ℕ) (es : Log) (l : ℕ) :
     rSumF b es l = readF (msgAt es (b + 2 * l)) 16 + readF (msgAt es (b + 2 * l)) 32 := by
   rw [rSumF, g2At, charTwo_peval01F]
@@ -52,21 +48,12 @@ theorem rValF_eq_clR2 (b : ℕ) (c0 : Log → Log → F) (L es : Log) (l : ℕ) 
 theorem chk2_iff (b : ℕ) (c0 : Log → Log → F) (L es : Log) (l : ℕ) :
     Chk2 b 16 readF (fun d => chF d 0) c0 L es (l + 1) ↔ rSumF b es (l + 1) = rValF b es l := Iff.rfl
 
-theorem bytesAt_extract_of_le16 (π : Proof) {o len off : ℕ} (h : off + 16 ≤ len) :
-    bytesAt (π.extract o (o + len)) off 16 = bytesAt π (o + off) 16 := by
-  ext k hk
-  rw [getElem_bytesAt _ _ _ _ hk, getElem_bytesAt _ _ _ _ hk, toList_extract,
-    Nat.add_sub_cancel_left, List.getD_eq_getElem?_getD, List.getD_eq_getElem?_getD,
-    List.getElem?_take_of_lt (by omega), List.getElem?_drop, Nat.add_assoc]
-
 theorem readF_fsQ {vk c : Digest} {π : Proof} {es : Log}
     (hq : ∀ p < 468, (es.getD p default).1 = X.fsQ vk c π p (es.getD (p - 1) default).2)
     {p o len off : ℕ} (hp : p < 468) (hp0 : 0 < p) (hm : X.fsMsgs.getD p none = some (o, len))
     (hoff : off + 16 ≤ len) :
     readF (msgAt es p) off = F.ofBytes (bytesAt π (o + off) 16) := by
   rw [readF, msgAt_fsQ hq hp hp0 hm, bytesAt_extract_of_le16 π hoff]
-
-theorem eqv_f (a b : F) : (Val.f a).eqv (Val.f b) = true ↔ a = b := by simp [Val.eqv]
 
 /-! ## The degree-2 F rounds' registers and flags -/
 

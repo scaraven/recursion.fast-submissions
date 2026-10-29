@@ -2,8 +2,9 @@
 -- names of the soundness front's Lr, E, RS dooms and checks at `seq4`, fixed first so that R4 (the
 -- program layer) can state its front checks against them. `FRSoundnessRows`, `FRSoundnessFrE`,
 -- `FRSoundnessFrRS0`, `FRSoundnessFrW0` are the 3.x templates.
+-- RET-2: import re-pointed at Core: `FRSoundnessFrPend` → `FRSoundnessCoreRows`.
 import FRSoundness4Pos
-import FRSoundnessFrPend
+import FRSoundnessCoreRows
 import FRVIRTplEval
 
 /-!

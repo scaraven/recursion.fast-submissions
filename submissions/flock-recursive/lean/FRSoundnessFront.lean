@@ -1,6 +1,8 @@
 -- New for `flock-recursive` (BLUEPRINT A.6, A.7, A.9, A.10; stage S-G1j).
+-- RET-2: the declarations revision 4.1 reads moved to `FRSoundnessCoreRows`.
 import FRSoundnessCompose
 import FRNodeCircuit
+import FRSoundnessCoreRows
 
 /-!
 # The PIOP front: reads, the frame, the node's block order, the B′ cells, the 3.13 order
@@ -39,11 +41,6 @@ set_option linter.constructorNameAsVariable false
 
 /-! ## Part A: reads and the frame -/
 
-/-- **`P` reads only what lies before position `p`** (entries and the words of earlier caps), on
-chains of at least `p` entries. -/
-def Reads (p : ℕ) (P : Log → Log → Prop) : Prop :=
-  ∀ L es L' es', p ≤ es.length → p ≤ es'.length → Same L es L' es' p → (P L es ↔ P L' es')
-
 variable {p : ℕ} {P Q : Log → Log → Prop}
 
 theorem Reads.mono (h : Reads p P) {q : ℕ} (hq : p ≤ q) : Reads q P :=
@@ -67,14 +64,6 @@ theorem Reads.append (h : Reads p P) (L es xs : Log) (hp : p ≤ es.length) :
 
 theorem Reads.ext1 (h : Reads p P) (L es : Log) (a : Digest) (hp : p ≤ es.length) :
     P L (ext1 es a) ↔ P L es := h.append L es _ hp
-
-theorem ext_eq_append (es : Log) : ∀ as : List Digest, ∃ ys, ext es as = es ++ ys := by
-  intro as
-  induction as using List.reverseRecOn with
-  | nil => exact ⟨[], by simp [ext_nil]⟩
-  | append_singleton as a ih =>
-    obtain ⟨ys, hy⟩ := ih
-    exact ⟨ys ++ [(squeezeQ (lastAns (ext es as)), a)], by rw [ext_append, ext1, hy]; simp⟩
 
 theorem Reads.ext (h : Reads p P) (L es : Log) (as : List Digest) (hp : p ≤ es.length) :
     P L (ext es as) ↔ P L es := by
@@ -132,17 +121,6 @@ theorem frontLocal_of {W₀ : Log → Log → ℕ → K} {c₀ : Log → Log →
   ⟨hW L es L' es' (hS.mono hp), hc L es L' es' (hS.mono hp)⟩
 
 /-! ## Part B: the node's WOTS block order (S-E3's export) -/
-
-/-- **The block class of `nodeKind`** (A.6 per region; the WOTS class is S-E3's
-`Layout.wotsKindAt`). -/
-def nodeBK (blk : ℕ) : BlockKind :=
-  if blk < 2 * Layout.chainN then
-    (if blk % Layout.chainN = 0 then .streamStart else .stream)
-  else if blk < Layout.wotsBase then
-    (if (blk - Layout.stmtBase) % 3 = 0 then .hashA
-      else if (blk - Layout.stmtBase) % 3 = 1 then .hashB1 else .hashB2)
-  else if blk < Layout.wmBase then Layout.wotsKindAt ((blk - Layout.wotsBase) % Layout.wotsSlot)
-  else .free
 
 theorem wots_blk {σ off : ℕ} (hσ : σ < 2) (ho : off < Layout.wotsSlot) :
     ¬ Layout.wotsBase + Layout.wotsSlot * σ + off < 2 * Layout.chainN ∧

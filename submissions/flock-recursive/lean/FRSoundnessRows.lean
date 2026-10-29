@@ -1,5 +1,7 @@
 -- New for `flock-recursive` (BLUEPRINT A.10 rows Lr1–Lr3 and E1–E4, §5.2; stage S-G1j).
+-- RET-2: the declarations revision 4.1 reads moved to `FRSoundnessCoreRows`.
 import FRSoundnessFront
+import FRSoundnessCoreRows
 
 /-!
 # The front's row Spartan unit (Lr, and E once it precedes RS)
@@ -44,29 +46,11 @@ open scoped NNReal
 
 set_option linter.constructorNameAsVariable false
 
-theorem capPos_zero : capPos 0 = 2 := by
-  simp only [capPos]; rw [phStart, fsStarts_eq]; rfl
-
 section RowSpartan
 
 variable (rows : List Circ.Row) (a nc : ℕ) (on : Kind → Bool)
 
-/-- The rows' `A`, `B`, `C` (`rowMat`). -/
-abbrev mA : Fin (2 ^ a) → Fin (2 ^ nc) → F := rowMat Circ.Row.a rows a nc
-abbrev mB : Fin (2 ^ a) → Fin (2 ^ nc) → F := rowMat Circ.Row.b rows a nc
-abbrev mC : Fin (2 ^ a) → Fin (2 ^ nc) → F := rowMat Circ.Row.c rows a nc
-
-/-- `f⁽⁰⁾` on the cells. -/
-noncomputable def zC (L es : Log) : Fin (2 ^ nc) → F := fun y => fF (kindOf es) L es y
-
-/-- **The unit's statement fails**: for a kind it runs on, `f⁽⁰⁾` violates the rows' R1CS. -/
-def RowsBad (L es : Log) : Prop :=
-  on (kindOf es) = true ∧ ¬ Sat (mA rows a nc) (mB rows a nc) (mC rows a nc) (zC nc L es)
-
 variable (s0 b2 : ℕ)
-
-/-- The zerocheck point: the phase's first `a` F coordinates. -/
-def tauS (es : Log) : List F := (List.range a).map (coordAt es s0)
 
 /-- **The zerocheck's final doom**: the residual's extension at the point is nonzero. -/
 noncomputable def ZCw (L es : Log) : Prop :=
@@ -81,37 +65,6 @@ def nr3 (κ : Kind) : ℕ := if on κ then a else 0
 noncomputable def T3 (L es : Log) : Array (Array F) :=
   if on (kindOf es) then outerTables (tauS a s0 es) (mA rows a nc) (mB rows a nc) (mC rows a nc)
     (zC nc L es) else #[]
-
-/-- The outer rounds' challenges. -/
-def rxs (es : Log) : List F := rchs b2 es a
-
-/-- The end absorb's three values `â, b̂, ĉ`. -/
-def vEnd (es : Log) (j : ℕ) : F := readF (msgAt es (b2 + 2 * a)) (16 * j)
-
-/-- The true triple at the outer rounds' point. -/
-noncomputable def triT (L es : Log) : F × F × F :=
-  (mle (matVec (mA rows a nc) (zC nc L es)) (ptOf a (rxs a b2 es)),
-   mle (matVec (mB rows a nc) (zC nc L es)) (ptOf a (rxs a b2 es)),
-   mle (matVec (mC rows a nc) (zC nc L es)) (ptOf a (rxs a b2 es)))
-
-/-- **A wrong triple** after the end absorb. -/
-noncomputable def EndBad (L es : Log) : Prop :=
-  on (kindOf es) = true ∧ b2 + 2 * a < es.length ∧
-    (vEnd a b2 es 0, vEnd a b2 es 1, vEnd a b2 es 2) ≠ triT rows a nc b2 L es
-
-/-- **The end check** (`finLr` (ii), `finE` (ii)) fails: the outer claim is not
-`eq(τ, r)·(â b̂ + ĉ)`. -/
-def RejEnd (L es : Log) : Prop :=
-  on (kindOf es) = true ∧ b2 + 2 * a < es.length ∧
-    clR b2 (fun _ _ => 0) L es a ≠ eq (ptOf a (tauS a s0 es)) (ptOf a (rxs a b2 es)) *
-      (vEnd a b2 es 0 * vEnd a b2 es 1 + vEnd a b2 es 2)
-
-/-- The batching challenge `κ` (at `pk = b2 + 2a + 1`). -/
-def kapB (es : Log) : F := fAt es (b2 + 2 * a + 1) 0
-
-/-- The batched claim `â + κ b̂ + κ² ĉ` (`finLr` (iii), `finE` (iii)): the inner rounds' start. -/
-def c4 (_L es : Log) : F :=
-  vEnd a b2 es 0 + kapB a b2 es * vEnd a b2 es 1 + kapB a b2 es ^ 2 * vEnd a b2 es 2
 
 /-- The inner rounds' real count. -/
 def nr4 (κ : Kind) : ℕ := if on κ then nc else 0
@@ -146,13 +99,6 @@ theorem zC_same {L es L' es' : Log} {p : ℕ} (h : Same L es L' es' p) (hp : 3 �
   simp only [zC, fF, h.kind (by omega),
     fTab_same h (by norm_num : 0 < 5) (kindOf es') (by rw [capPos_zero]; omega)]
 
-theorem tauS_agree {es es' : Log} {p : ℕ} (h : Agree es es' p) (hp : s0 + 1 + (a + 1) / 2 ≤ p) :
-    tauS a s0 es = tauS a s0 es' := by
-  refine List.map_congr_left fun j hj => ?_
-  have hj := List.mem_range.1 hj
-  simp only [coordAt, fAt, ansAt]
-  rw [h (s0 + 1 + j / 2) (by omega)]
-
 theorem rowsBad_reads : Reads 3 (RowsBad rows a nc on) :=
   fun L es L' es' _ _ h => by simp only [RowsBad, h.kind (by norm_num), zC_same h le_rfl]
 
@@ -160,18 +106,6 @@ theorem zcw_reads (hp : 3 ≤ s0 + 1 + (a + 1) / 2) :
     Reads (s0 + 1 + (a + 1) / 2) (ZCw rows a nc on s0) :=
   fun L es L' es' _ _ h => by
     simp only [ZCw, h.kind (by omega), zC_same h hp, tauS_agree h.1 le_rfl]
-
-theorem rxs_agree {es es' : Log} {p : ℕ} (h : Agree es es' p) (hp : b2 + 2 * a ≤ p) :
-    rxs a b2 es = rxs a b2 es' := by
-  unfold rxs; exact rchs_congr (h.mono hp)
-
-theorem vEnd_agree {es es' : Log} {p : ℕ} (h : Agree es es' p) (hp : b2 + 2 * a + 1 ≤ p)
-    (j : ℕ) : vEnd a b2 es j = vEnd a b2 es' j := by
-  simp only [vEnd, msgAt, h (b2 + 2 * a) (by omega)]
-
-theorem kapB_agree {es es' : Log} {p : ℕ} (h : Agree es es' p) (hp : b2 + 2 * a + 2 ≤ p) :
-    kapB a b2 es = kapB a b2 es' := by
-  simp only [kapB, fAt, ansAt, h (b2 + 2 * a + 1) (by omega)]
 
 theorem triT_same {L es L' es' : Log} {p : ℕ} (h : Same L es L' es' p) (hp3 : 3 ≤ p)
     (hp : b2 + 2 * a ≤ p) : triT rows a nc b2 L es = triT rows a nc b2 L' es' := by
@@ -188,10 +122,6 @@ theorem T4_same {L es L' es' : Log} {p : ℕ} (h : Same L es L' es' p) (hp3 : 3 
     (hp : b2 + 2 * a + 2 ≤ p) : T4 rows a nc on b2 L es = T4 rows a nc on b2 L' es' := by
   simp only [T4, h.kind (by omega), zC_same h hp3, rxs_agree h.1 (by omega : b2 + 2 * a ≤ p),
     kapB_agree h.1 hp]
-
-theorem c4_agree {L L' es es' : Log} {p : ℕ} (h : Agree es es' p) (hp : b2 + 2 * a + 2 ≤ p) :
-    c4 a b2 L es = c4 a b2 L' es' := by
-  simp only [c4, vEnd_agree h (by omega : b2 + 2 * a + 1 ≤ p), kapB_agree h hp]
 
 theorem batBad_reads (h3 : 3 ≤ b2) : Reads (b2 + 2 * a + 2) (BatBad rows a nc on b2) :=
   fun L es L' es' h1 h2 h => by
@@ -230,26 +160,6 @@ theorem T4_size (L es : Log) :
   · simp
 
 /-! ### The zerocheck's charge (`hfin`) -/
-
-theorem tbl0_ne_zero (X : Array F) : tbl 0 X ≠ 0 ↔ tbl 0 X 0 ≠ 0 := by
-  constructor
-  · intro h h0; apply h; funext u
-    rw [show u = 0 from Fin.ext (by have := u.isLt; simp at this; omega), h0]; rfl
-  · intro h h0; exact h (by rw [h0]; rfl)
-
-theorem mlDoom_full {n : ℕ} (t : Array F) (ht : t.size = 2 ^ n) (l : List F) (hl : n ≤ l.length) :
-    mlDoom n t l ↔ mle (tbl n t) (ptOf n (l.take n)) ≠ 0 := by
-  have hlen : (l.take n).length = n := by simp; omega
-  have hb := bindL_mle (l.take n) t (by rw [hlen, ht])
-  rw [pt_eq_ptOf, hlen] at hb
-  unfold mlDoom
-  rw [hlen, Nat.sub_self, tbl0_ne_zero, hb]
-
-theorem take_ofFn_coord (es : Log) {r : ℕ} (ha : a ≤ r * 2) :
-    (List.ofFn fun j : Fin (r * 2) => coordAt es s0 j).take a = tauS a s0 es := by
-  apply List.ext_getElem (by simp [tauS]; omega)
-  intro j h1 h2
-  simp [tauS]
 
 open Classical in
 /-- **The zerocheck's charge** (A.10 Lr1/E1, `ml_round_le`): with the doom of the phase's entry

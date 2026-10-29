@@ -1,7 +1,8 @@
 -- New for `flock-recursive` (BLUEPRINT revision 4.1, §5.4, A.9, A.10; stage R4).
+-- RET-2: import re-pointed at Core: `FRSoundnessFrRun` → `FRSoundnessCoreAcc`.
 import FRSoundness4R4Chain
 import FRSoundness4Pos
-import FRSoundnessFrRun
+import FRSoundnessCoreAcc
 
 /-!
 # An accepted `gen4` run: its chain (`runLog_chain4`) and its register files (`accept_chain4`)

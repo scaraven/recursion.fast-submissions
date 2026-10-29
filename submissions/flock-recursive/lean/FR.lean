@@ -98,6 +98,7 @@ import FRSoundness4Pos
 import FRSoundness4P4bB
 import FRSoundness4P4aCtrl5
 import FRSoundness4TailFront
+import FRSoundness4TailShift
 import FRSoundness4R4Ctrl
 import FRSoundness4R4Rnd
 import FRSoundness4R4Link

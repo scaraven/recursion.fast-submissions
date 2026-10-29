@@ -1,9 +1,10 @@
 -- New for `flock-recursive` (BLUEPRINT A.4, B-12, B-13, §5.1; stage S-G13, route C2): the
 -- revision 4.1 chain's positions and kinds. `FRSoundnessStepA`/`FRSoundnessDefs` Part D are the
 -- 3.x templates (`fsStarts`, `phStart`, `fsRanges`, `fsRnd`, `kindOf`).
-import FRSoundnessFrChain
+-- RET-2: import re-pointed at Core: `FRSoundnessFrChain` → `FRSoundnessCoreChain`, `FRSoundnessStepA` → `FRSoundnessCoreTruths`.
+import FRSoundnessCoreChain
 import FRShape4
-import FRSoundnessStepA
+import FRSoundnessCoreTruths
 
 /-!
 # Revision 4.1's chains: the item list `fsItems4`, the phase starts, the multi-squeeze phases, the kind

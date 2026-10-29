@@ -1,5 +1,7 @@
 -- New for `flock-recursive` (BLUEPRINT §3, A.4, A.9; stage S-G10).
+-- RET-2: the declarations revision 4.1 reads moved to `FRSoundnessCoreAcc`.
 import FRSoundnessFrRun
+import FRSoundnessCoreAcc
 
 /-!
 # The front's F rounds on the skeleton's registers
@@ -12,40 +14,6 @@ accepted skeleton (`SkRun`), round `j`'s challenge register (`chals fi name K`'s
 
 namespace FR.Snd
 open RecursionFast Finset FR.Impl
-
-theorem roundF_spec (inp : Input) (f o deg : ℕ) (re : Bool) (a₁ a₂ : Digest) (c : Val) :
-    (if deg = 3 then round3V inp f o re a₁ a₂ c else round2Vals inp f o re a₁ a₂ c).length =
-        roundW deg ∧
-      (if deg = 3 then round3V inp f o re a₁ a₂ c else round2Vals inp f o re a₁ a₂ c).getD 3
-        default = .f (chF a₂ 0) := by
-  by_cases h : deg = 3 <;> simp [h, round3V, round2Vals, roundW]
-
-/-- **`roundsT_chalF`**: `n` F rounds leave `roundW deg` registers each; register `3` of round
-`l` is its challenge `chF a₂ 0`. -/
-theorem roundsT_chalF (inp : Input) (f o deg real : ℕ) :
-    ∀ (n j : ℕ) (d : Digest) (cv : Val) (tr : Trace) (x : List Val × Bool × Trace),
-      roundsT inp f o deg false real n j d cv tr = some x →
-      x.1.length = roundW deg * n ∧
-        ∀ l < n, x.1.getD (roundW deg * l + 3) default = .f (chF (sqAns tr l) 0)
-  | 0, _, _, _, _, x, h => by
-    simp only [roundsT, Option.some.injEq] at h; subst h
-    exact ⟨rfl, fun l hl => absurd hl (by omega)⟩
-  | n + 1, j, d, cv, (q₁, a₁) :: (q₂, a₂) :: tr, x, h => by
-    simp only [roundsT, Bool.false_eq_true, ite_false] at h
-    obtain ⟨hl, h3⟩ := roundF_spec inp f (o + j * roundBytes false) deg (decide (j < real)) a₁ a₂ cv
-    have hw : 4 ≤ roundW deg := by unfold roundW; split <;> omega
-    split_ifs at h hl h3 with hq hd
-    all_goals
-      obtain ⟨x', hx', rfl⟩ := Option.map_eq_some_iff.mp h
-      obtain ⟨ih1, ih2⟩ := roundsT_chalF inp f o deg real n (j + 1) a₂ _ tr x' hx'
-      refine ⟨by rw [List.length_append, hl, ih1]; ring, fun l hl' => ?_⟩
-      rcases l with _ | l
-      · rw [Nat.mul_zero, Nat.zero_add, List.getD_append _ _ _ _ (by omega), h3]; rfl
-      · rw [show roundW deg * (l + 1) + 3 = roundW deg + (roundW deg * l + 3) by ring,
-          List.getD_append_right _ _ _ _ (by omega), hl, Nat.add_sub_cancel_left,
-          ih2 l (by omega), sqAns_succ]
-  | _ + 1, _, _, _, [], _, h => by simp [roundsT] at h
-  | _ + 1, _, _, _, [_], _, h => by simp [roundsT] at h
 
 variable {impl : OpImpl} {κ : Kind} {inp : Input}
 
@@ -60,10 +28,6 @@ theorem refPhase_roundsF {n : ℕ} {p : Phase} {c : GCtx} {r : Array Val} {tr : 
   simp only [refPhase] at hx
   obtain ⟨xr, h1, rfl⟩ := Option.map_eq_some_iff.1 hx
   exact ⟨_, xr, h1, rfl⟩
-
-theorem initValsF_length (init : Init) (f o : ℕ) :
-    (initVals inp init f o false).length = init.width := by
-  cases init <;> rfl
 
 /-- An F rounds phase's out list. -/
 theorem genPhase_roundsF {n : ℕ} {p : Phase} (c : GCtx) {f K deg : ℕ} {real : KC ℕ}

@@ -1,5 +1,7 @@
 -- New for `flock-recursive` (BLUEPRINT §5.4, A.4, A.9; stage S-G3 pass 2, `hFin` steps 3–4).
+-- RET-2: the declarations revision 4.1 reads moved to `FRSoundnessCoreAcc`.
 import FRSoundnessAccFin
+import FRSoundnessCoreAcc
 
 /-!
 # `hFin`, steps 3–4: the Fiat–Shamir positions and the K rounds' arithmetic
@@ -134,25 +136,12 @@ theorem fsMsgs_round {n f K deg : ℕ} {inK : Bool} {real : KC ℕ} (hn : n < ph
 
 /-! ## Step 4: the rounds' arithmetic -/
 
-theorem charTwo_peval01 (a b c : K) : peval #[a, b, c] 0 + peval #[a, b, c] 1 = b + c := by
-  rw [peval_three, peval_three]
-  have h : a + a = 0 := CharTwo.add_self_eq_zero a
-  ring_nf
-  linear_combination h
-
-/-- `rSum` is `c₁ + c₂` of round `l`'s message. -/
-theorem rSum_eq (b : ℕ) (es : Log) (l : ℕ) :
-    rSum b es l = readK (msgAt es (b + 2 * l)) 32 + readK (msgAt es (b + 2 * l)) 64 := by
-  rw [rSum, g2At, charTwo_peval01]
-
 /-- `rVal` is `c₀ + r·(c₁ + r·c₂)`. -/
 theorem rVal_eq (b : ℕ) (es : Log) (l : ℕ) :
     rVal b es l = readK (msgAt es (b + 2 * l)) 0 + chK (ansAt es (b + 2 * l + 1)) *
       (readK (msgAt es (b + 2 * l)) 32 + chK (ansAt es (b + 2 * l + 1)) *
         readK (msgAt es (b + 2 * l)) 64) := by
   rw [rVal, g2At, rch2, peval_three]; ring
-
-theorem eqv_k (a b : K) : (Val.k a).eqv (Val.k b) = true ↔ a = b := by simp [Val.eqv]
 
 theorem absOff_eq {f : ℕ} (hf : f ≤ nFields) (o : ℕ) : absOff f o = fieldOff f + o := by
   rw [absOff, fieldOffA_getD hf]
@@ -186,9 +175,6 @@ theorem rVal_fsQ {vk c : Digest} {π : Proof} {es : Log}
   simp only [gK, elemKAt, absOff_eq hf, Nat.add_assoc, Nat.add_zero]
 
 /-! ## The K rounds' flags -/
-
-/-- The answers of the squeezes of `n` rounds on a trace (entry `2l + 1`). -/
-def sqAns (tr : Trace) (l : ℕ) : Digest := (tr.getD (2 * l + 1) default).2
 
 /-- **An accepted run of real K rounds checks each round against the previous one**: round
 `l + 1`'s `c₁ + c₂` is round `l`'s `gK` at its squeeze's answer, and round `0`'s is the claim. -/

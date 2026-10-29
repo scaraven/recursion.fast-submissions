@@ -1,5 +1,7 @@
 -- New for `flock-recursive` (BLUEPRINT §5.4, A.9 finals, A.10 rows; stage S-G3).
+-- RET-2: the declarations revision 4.1 reads moved to `FRSoundnessCoreAcc`.
 import FRSoundnessAccRun
+import FRSoundnessCoreAcc
 
 /-!
 # The finals on the log: `FinLog` and `AcceptTail` (`hAcc`'s SNARK branch, the bridges)
@@ -36,13 +38,6 @@ open RecursionFast FR.Merkle Finset
 
 variable {W₀ : Log → Log → ℕ → K} {c₀ : Log → Log → K}
 
-/-- `g(0) + g(1)` of round `l`'s message of the K rounds starting at `b`. -/
-def rSum (b : ℕ) (es : Log) (l : ℕ) : K :=
-  peval (g2At b 32 readK es l) 0 + peval (g2At b 32 readK es l) 1
-
-/-- `g_l(r_l)`: round `l`'s message at its challenge. -/
-def rVal (b : ℕ) (es : Log) (l : ℕ) : K := peval (g2At b 32 readK es l) (rch2 b chK es l)
-
 /-- **What the accepted verifier's checks say on the log** (A.9's `finP i`, `finPf` and the K
 rounds), the verifier's column folds being `y i q`. -/
 structure FinLog (W₀ : Log → Log → ℕ → K) (c₀ : Log → Log → K) (L es : Log)
@@ -72,12 +67,6 @@ structure FinLog (W₀ : Log → Log → ℕ → K) (c₀ : Log → Log → K) (
     (∏ v ∈ Ico (mLog (kindOf es) 4) 7, (1 - pfP es v)) * mleN 7 (finalAt es) (pfPt es)
 
 /-! ## Part A: from `FinLog` to the tail's checks -/
-
-theorem chk2_succ (b : ℕ) (c0 : Log → Log → K) (L es : Log) (l : ℕ) :
-    Chk2 b 32 readK chK c0 L es (l + 1) ↔ rSum b es (l + 1) = rVal b es l := Iff.rfl
-
-theorem chk2_zero (b : ℕ) (c0 : Log → Log → K) (L es : Log) :
-    Chk2 b 32 readK chK c0 L es 0 ↔ rSum b es 0 = c0 L es := Iff.rfl
 
 /-- **The verifier's fold of a query is `foldAtN`** (the column is the committed one). -/
 theorem y_eq_foldAtN {L es : Log} {y : ℕ → ℕ → K} (hc : ¬ Collision L) (h : FinLog W₀ c₀ L es y)
@@ -165,17 +154,6 @@ entries (`fsQ_gen`) an absorb's message is π's bytes at its `fsMsgs` range (`ms
 element the tail reads (`readK`) is the one the verifier reads (`readK_fsQ`). `padV` at Pf's
 challenges is the tail's padding (`padV_eq`). -/
 
-theorem extract40_absorbQ (st : Digest) (m : ByteArray) :
-    (absorbQ st m).extract 40 (absorbQ st m).size = m := by
-  have h : ((absorbQ st m).extract 40 (absorbQ st m).size).data.toList = m.data.toList := by
-    rw [toList_extract, absorbQ_data, absorbQ_size]
-    simp [tagAbs]
-  have h2 := Array.ext' h
-  calc (absorbQ st m).extract 40 (absorbQ st m).size
-      = ⟨((absorbQ st m).extract 40 (absorbQ st m).size).data⟩ := rfl
-    _ = ⟨m.data⟩ := by rw [h2]
-    _ = m := rfl
-
 /-- **The log's message at an absorb position is π's bytes there** (on the run's Fiat–Shamir
 entries, `fsQ_gen`'s form). -/
 theorem msgAt_fsQ {vk c : Digest} {π : Proof} {es : Log}
@@ -189,13 +167,6 @@ theorem msgAt_fsQ {vk c : Digest} {π : Proof} {es : Log}
   dsimp only
   rw [ite_neg' (by omega)]
   exact extract40_absorbQ _ _
-
-theorem bytesAt_extract_of_le (π : Proof) {o len off : ℕ} (h : off + 32 ≤ len) :
-    bytesAt (π.extract o (o + len)) off 32 = bytesAt π (o + off) 32 := by
-  ext k hk
-  rw [getElem_bytesAt _ _ _ _ hk, getElem_bytesAt _ _ _ _ hk, toList_extract,
-    Nat.add_sub_cancel_left, List.getD_eq_getElem?_getD, List.getD_eq_getElem?_getD,
-    List.getElem?_take_of_lt (by omega), List.getElem?_drop, Nat.add_assoc]
 
 /-- **A K element read on the log is π's** (at offset `off` of the absorb at `p`). -/
 theorem readK_fsQ {vk c : Digest} {π : Proof} {es : Log}
