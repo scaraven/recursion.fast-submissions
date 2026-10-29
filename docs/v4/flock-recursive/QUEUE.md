@@ -7,14 +7,24 @@ Last updated 2026-10-28. **Rebased onto core PR #20 (pin `6d05d00`, commit `987e
 Main (`v4/flock-recursive`, core `422f2f9`; the certificate assumes only `Open4F := Gaps4`):
 - G5: kernel-time golf (`realign_sem` 44.8 s first; target ≥ 150 s off the comparator's 461.7 s).
 
-`v4/rev44` (HEAD `b156c27` = RSV-V2 + main merged + B5 + RSV-S WIP; red at RSV-V's 7 declarations and possibly decoder literals):
+`v4/rev44` (HEAD `e464756` = RSV-V2 + main merged + B5 + RSV-S WIP + A1′; red at RSV-V's 7 declarations and possibly decoder literals):
 - RSV-S2a: continues RSV-S (WIP `b156c27`, partial; handover RSV-S-RESULT §5 items 1–4). It owns `R4Fin`, `R4FrE`, `R4PfFlag`/`PfFin`, `FrRS`, `Start` and `Qry`. Its first task is the reserve branches of `flag_gFinE`/`flag_gFinB'`, proved in blocks with `pr_seq2`; one `simp` over 168 ops hit 4M heartbeats and then 16G OOM.
 - RSV-S2b: §5 items 5–7, in parallel with S2a. It owns `P4bB`, `P4fDF`/`Obl`/`Ctrl`, `XFront`, `RsvMLE` and the RunFacts modules.
 - **The review of RSV-S found no soundness issue.** Every challenge comes after every value it batches, `ChildBad4` is charged at 24/2^128 through E1's exit, and εR stays 15/2^124. It settled the two open questions:
   - **Q2, B′'s 60 extra cells:** `PubOKR4` goes only into `DRS0X`/`DRS1X`'s `Pub` argument (phase 23 is a post-doom). `bg16X`/`bg20X` are unchanged.
   - **Q1, the node statement:** `StmtN4` keeps its signature. `nodeLaws4C'` and its two siblings are generalised over `St → StmtN4`, and a downstream `StmtN4R := StmtN4 ∧ PubCellsR4 ∧ truthChildV` is used on the gap4Imp path. That edit to `FRNodeCircuit4` waits until A1′ has landed.
   - The four controls for `ChildBad4` are required.
-- A1′: R-A′ spacers (aligned sub-slots; `kindS`/`wf` at i ≥ 1). Told to build against B5's `FRNodeRows4Plan`/`FRVerifierImplNode4F`.
+- PORT: brings the decoder, S-L4 and B3 back to green at 4.4.1's format, using A1′'s list. It deletes `realign`/`realign_sem` (44.8 s of kernel), `cso_realign`, `FRXOut4C` and `FRXOut4Ctrl`, adds the spacer entries in `aggTr`, and fixes `fsMsgs4_*` (1,008/112) and `gap4Imp_of_run`. It owns FRX*, FRNodeLinks4*, FRNodeRun4* and FRSubmission4*.
+- B4: `aggChk`, with PK-m7's `hashA`/`hashB` rows on the arenas, and its rows folded into `nodeIRows4`/B5's plan. It owns FRNodeRows4Agg/AggChk*/Arena*. After B4, `Gap4R` = `imp` only.
+- Cheap Opus review of A1′.
+
+Landed on rev44: **A1′ `e464756`**.
+- `Gap4R` is now `imp`, `aggChk`.
+- The stride is 64·24,238 (whole blocks); N8 still fits with 256 blocks spare.
+- V(N4) rises by 8.3 ms for own kind and 25.3 ms for all kinds, because each sub-slot now has its own pinned block. The lever is to share runs across sub-slots, which differ only by an offset.
+- Pins are ungated, so the prover writes phantom constants at inactive sub-slots.
+- `VA_sound_log`'s proof line changed (intersperse).
+- `ks_queriesC4` needs `traces_spacers_le_qV`; that is routed to S2a.
 - Review of B5 (cheap Opus) found no blockers; the fast path is fully covered by `linkV4_eq`/`slots_val`. The should-fix items:
   - **(a) Clash with A1′.** `pinKeys`/`hpkr`/`extIRows`/`wfLen` assume one pinned block per slot, equal to `wfSeg`. A1′'s per-sub-slot blocks need a segment-carrying key and a re-proof of `linkV4_eq`. A1′ has been told; `innAt`'s `find?` should become an indexed `Array`.
   - **(b) Silent slowdown.** If `cokB` fails at runtime, V silently falls back to `growsVal3`. The bench and E1 should print `(lkArr κ).all (·.eok)`.
@@ -22,7 +32,7 @@ Main (`v4/flock-recursive`, core `422f2f9`; the certificate assumes only `Open4F
 
 Landed on rev44: **B5 `9a41aac`**. V(N4) with own kind only 276.6 → 263.8 ms; with all three kinds 347.6 → 288.4 ms. Each extra kind now costs +16–18 ms, against +37–38 ms before. `protoV4` (≈ 125 ms) is now the bulk of the own-kind call. Its open lever is sharing prototype 1's low tables with prototype 0, worth about 5 ms.
 
-**Then:** B4 (ask templates on the arenas meeting B3's `ATOk`, `aggChk`, the fold into `nodeIRows4`/`evalMT4`) → PORT (decoder/S-L4/B3 recompiled at rev44's format; A1′'s list) → C1 (remaining replay keys: `targetS`, `shiftTarget`, `linkWAll`, `rsWeight`, `evalL`) → `Gaps4` discharged → E1 (prover: D/A fields, L1/L2, reserve's E2/E4 terms and 1,008/112-B fields, spacers, arenas, packed plan form) → cert probe → evaluation.
+**Then:** C1 (remaining replay keys: `targetS`, `shiftTarget`, `linkWAll`, `rsWeight`, `evalL`) → `Gaps4` discharged → E1 (prover: D/A fields, L1/L2, reserve's E2/E4 terms and 1,008/112-B fields, spacers, arenas, packed plan form) → cert probe → evaluation.
 
 ## Waiting
 
