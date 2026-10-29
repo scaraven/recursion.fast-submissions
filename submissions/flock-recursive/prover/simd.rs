@@ -77,11 +77,31 @@ pub fn tier_name() -> &'static str {
 
 // ---------------------------------------------------------------- dispatched kernels
 
+/// The butterfly's reduction by shifts (`ymm::butterfly`) where `vpclmulqdq` is slow: AMD family
+/// 19h without AVX-512, i.e. Zen 3 (the EPYC 7763: −7 %); elsewhere pass 11's `butterfly_cl`
+/// (Xeon 8573C: the shift form is +8 %). `FLOCK_BFLY=sh|cl` forces one (pass 12; same result).
+pub fn bfly_shift() -> bool {
+    static B: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *B.get_or_init(|| match std::env::var("FLOCK_BFLY").as_deref() {
+        Ok("sh") => true,
+        Ok("cl") => false,
+        _ => {
+            use std::arch::x86_64::__cpuid;
+            let (v, f) = (__cpuid(0), __cpuid(1));
+            let amd = (v.ebx, v.edx, v.ecx) == (0x6874_7541, 0x6974_6e65, 0x444d_4163);
+            let family = ((f.eax >> 8) & 0xF) + ((f.eax >> 20) & 0xFF);
+            amd && family == 0x19 && !std::arch::is_x86_feature_detected!("avx512f")
+        }
+    })
+}
+
 /// `top[i] += bot[i]·t; bot[i] += top[i]` (the additive-NTT butterfly).
 pub fn butterfly(top: &mut [F], bot: &mut [F], t: B64) {
-    match tier() {
-        3 => unsafe { ymm::butterfly(top, bot, t) },
-        4 => unsafe { ymm_sim::butterfly(top, bot, t) },
+    match (tier(), bfly_shift()) {
+        (3, true) => unsafe { ymm::butterfly(top, bot, t) },
+        (3, false) => unsafe { ymm::butterfly_cl(top, bot, t) },
+        (4, true) => unsafe { ymm_sim::butterfly(top, bot, t) },
+        (4, false) => unsafe { ymm_sim::butterfly_cl(top, bot, t) },
         _ => butterfly_ref(top, bot, t),
     }
 }
@@ -260,6 +280,36 @@ pub fn axpy(acc: &mut [F], x: &[F], c: F) {
     }
 }
 
+/// `acc ^= x·c` unreduced, in `mac_u`'s layout (pass 12): per pair `i` of `x` (even length),
+/// `acc[6i + h]`, `acc[6i + 2 + h]`, `acc[6i + 4 + h]` are `p₀`, `p₁`, `p_m` of `x_{2i+h}·c`.
+pub fn mac_u(acc: &mut [u128], x: &[F], c: F) {
+    assert!(x.len() % 2 == 0 && acc.len() == 3 * x.len());
+    match tier() {
+        3 => unsafe { ymm::mac_u(acc, x, c) },
+        4 => unsafe { ymm_sim::mac_u(acc, x, c) },
+        _ => mac_u_ref(acc, x, c),
+    }
+}
+pub fn mac_u_ref(acc: &mut [u128], x: &[F], c: F) {
+    use crate::field::clmul;
+    for (j, v) in x.iter().enumerate() {
+        let (i, h) = (j / 2, j % 2);
+        acc[6 * i + h] ^= clmul(v.lo, c.lo);
+        acc[6 * i + 2 + h] ^= clmul(v.hi, c.hi);
+        acc[6 * i + 4 + h] ^= clmul(v.lo ^ v.hi, c.lo ^ c.hi);
+    }
+}
+/// The F values of a `mac_u` accumulator.
+pub fn red_u(acc: &[u128]) -> Vec<F> {
+    (0..acc.len() / 3)
+        .map(|j| {
+            let (i, h) = (j / 2, j % 2);
+            let (c0, c1) = crate::field::combine_f(acc[6 * i + h], acc[6 * i + 2 + h], acc[6 * i + 4 + h]);
+            F { lo: c0, hi: c1 }
+        })
+        .collect()
+}
+
 /// `acc[l] ^= (c.lo ⊗ x_l, c.hi ⊗ x_l)` unreduced (the consistency-weight accumulation).
 pub fn xmac(acc: &mut [[u128; 2]], x: &[B64], c: F) {
     match tier() {
@@ -340,8 +390,24 @@ pub fn pf_stripe_ref(z: &[u64], t: &[F; 256], acc: &mut [F]) {
     }
 }
 
+/// The AVX2 round-1 window is used on every CPU with AVX2 (it needs no carry-less product), unless
+/// `FLOCK_TIER=portable` (pass 12: so a CPU without `pclmulqdq`, as this VM, runs it too).
+fn r1_avx2() -> bool {
+    static A: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *A.get_or_init(|| hw_avx2() && std::env::var("FLOCK_TIER").map_or(true, |t| t != "portable"))
+}
+
 /// One round-1 window (`zerocheck::window_portable` is the reference).
 pub fn round1_window(sk: &crate::skipdom::Skip, a: &[u8], b: &[u8], z: &[u8], out: &mut [F; 192]) {
+    if tier() >= 3 || r1_avx2() {
+        unsafe { r1::window_t(sk, a, b, z, out) }
+    } else {
+        crate::zerocheck::window_portable(sk, a, b, z, out)
+    }
+}
+
+/// Pass 11's round-1 window (the reference of `r1::window_t`).
+pub fn round1_window_ref(sk: &crate::skipdom::Skip, a: &[u8], b: &[u8], z: &[u8], out: &mut [F; 192]) {
     if tier() >= 3 {
         unsafe { r1::window(sk, a, b, z, out) }
     } else {
@@ -400,10 +466,11 @@ macro_rules! ymm_kernels {
                 _mm256_xor_si256(_mm256_xor_si256(v, t), u)
             }
 
-            /// Two F products: lanes `[x₀ x₁]·[y₀ y₁]`.
+            /// Two F products: lanes `[x₀ x₁]·[y₀ y₁]`, the reductions by carry-less products (pass
+            /// 11's `mul`; the reference of `mul`).
             #[inline]
             #[target_feature(enable = $feat)]
-            pub unsafe fn mul(x: __m256i, y: __m256i) -> __m256i {
+            pub unsafe fn mul_cl(x: __m256i, y: __m256i) -> __m256i {
                 let p0 = cl::<0x00>(x, y);
                 let p1 = cl::<0x11>(x, y);
                 let xk = _mm256_xor_si256(x, _mm256_shuffle_epi32::<0x4E>(x));
@@ -451,8 +518,9 @@ macro_rules! ymm_kernels {
                 }
             }
 
+            /// Pass 11's butterfly (reductions by carry-less products; the reference of `butterfly`).
             #[target_feature(enable = $feat)]
-            pub unsafe fn butterfly(top: &mut [F], bot: &mut [F], t: B64) {
+            pub unsafe fn butterfly_cl(top: &mut [F], bot: &mut [F], t: B64) {
                 let n = top.len();
                 let tv = _mm256_set_epi64x(0, t.0 as i64, 0, t.0 as i64);
                 let r = _mm256_set_epi64x(0, 0x1B, 0, 0x1B);
@@ -481,6 +549,82 @@ macro_rules! ymm_kernels {
                 }
                 if i < n {
                     super::butterfly_ref(&mut top[i..], &mut bot[i..], t);
+                }
+            }
+
+            /// `h·(x⁴ + x³ + x + 1) mod x^64`-folded: each 64-bit lane `h` (the high half of a
+            /// 128-bit product) as its reduction term, by shifts (no carry-less product; pass 12).
+            #[inline]
+            #[target_feature(enable = $feat)]
+            pub unsafe fn red_terms_sh(h: __m256i) -> __m256i {
+                let ov = _mm256_xor_si256(_mm256_xor_si256(_mm256_srli_epi64::<63>(h), _mm256_srli_epi64::<61>(h)), _mm256_srli_epi64::<60>(h));
+                let h2 = _mm256_xor_si256(h, ov);
+                _mm256_xor_si256(
+                    _mm256_xor_si256(h2, _mm256_slli_epi64::<1>(h2)),
+                    _mm256_xor_si256(_mm256_slli_epi64::<3>(h2), _mm256_slli_epi64::<4>(h2)),
+                )
+            }
+
+            /// `top[i] += bot[i]·t; bot[i] += top[i]`, two per ymm; the reduction by shifts (pass 12:
+            /// −7 % on the 7763, whose `vpclmulqdq` is slow; `butterfly_cl` is pass 11's).
+            #[target_feature(enable = $feat)]
+            pub unsafe fn butterfly(top: &mut [F], bot: &mut [F], t: B64) {
+                let n = top.len();
+                let tv = _mm256_set_epi64x(0, t.0 as i64, 0, t.0 as i64);
+                let mut i = 0;
+                while i + 2 <= n {
+                    let a = ld(top.as_ptr().add(i));
+                    let b = ld(bot.as_ptr().add(i));
+                    let p = cl::<0x00>(b, tv);
+                    let q = cl::<0x01>(b, tv);
+                    let h = _mm256_unpackhi_epi64(p, q);
+                    let l = _mm256_unpacklo_epi64(p, q);
+                    let bt = _mm256_xor_si256(l, red_terms_sh(h));
+                    let na = _mm256_xor_si256(a, bt);
+                    st(top.as_mut_ptr().add(i), na);
+                    st(bot.as_mut_ptr().add(i), _mm256_xor_si256(b, na));
+                    i += 2;
+                }
+                if i < n {
+                    super::butterfly_ref(&mut top[i..], &mut bot[i..], t);
+                }
+            }
+
+            /// Two F products: lanes `[x₀ x₁]·[y₀ y₁]` (Karatsuba, 3 carry-less products), the three
+            /// reductions by shifts, two of them in one register (pass 12: −12 % on the 7763;
+            /// `mul_cl` is pass 11's).
+            #[inline]
+            #[target_feature(enable = $feat)]
+            pub unsafe fn mul(x: __m256i, y: __m256i) -> __m256i {
+                let p0 = cl::<0x00>(x, y);
+                let p1 = cl::<0x11>(x, y);
+                let xk = _mm256_xor_si256(x, _mm256_shuffle_epi32::<0x4E>(x));
+                let yk = _mm256_xor_si256(y, _mm256_shuffle_epi32::<0x4E>(y));
+                let pm = cl::<0x00>(xk, yk);
+                // the three high halves reduced together: [p1.hi, p0.hi] and [pm.hi, ·]
+                let r1 = _mm256_xor_si256(p1, red_terms_sh(_mm256_bsrli_epi128::<8>(p1)));
+                let b = _mm256_unpacklo_epi64(_mm256_slli_epi64::<63>(r1), _mm256_srli_epi64::<1>(r1));
+                let v0 = _mm256_xor_si256(p0, b);
+                let v1 = _mm256_xor_si256(pm, p0);
+                // reduce v0 and v1 (low = l, high = h) at once
+                let h = _mm256_unpackhi_epi64(v0, v1);
+                let l = _mm256_unpacklo_epi64(v0, v1);
+                _mm256_xor_si256(l, red_terms_sh(h))
+            }
+
+            /// `axpy` with `mul_cl` (bench, tests).
+            #[target_feature(enable = $feat)]
+            pub unsafe fn axpy_cl(acc: &mut [F], x: &[F], c: F) {
+                let cv = bcast(c);
+                let n = acc.len();
+                let mut i = 0;
+                while i + 2 <= n {
+                    let p = acc.as_mut_ptr().add(i);
+                    st(p, _mm256_xor_si256(ld(p), mul_cl(ld(x.as_ptr().add(i)), cv)));
+                    i += 2;
+                }
+                if i < n {
+                    acc[i] += x[i] * c;
                 }
             }
 
@@ -764,6 +908,24 @@ macro_rules! ymm_kernels {
                 }
             }
 
+            /// `acc ^= x·c` unreduced (pass 12; `mac_u_ref` is the reference): per pair `(x_{2i},
+            /// x_{2i+1})` the Karatsuba parts `[p₀ | p₁ | p_m]` of both, 6 u128 (`red_u` reduces).
+            #[target_feature(enable = $feat)]
+            pub unsafe fn mac_u(acc: &mut [u128], x: &[F], c: F) {
+                debug_assert!(x.len() % 2 == 0 && acc.len() == 3 * x.len());
+                let cv = bcast(c);
+                let ck = _mm256_xor_si256(cv, _mm256_shuffle_epi32::<0x4E>(cv));
+                let ap = acc.as_mut_ptr() as *mut __m256i;
+                for i in 0..x.len() / 2 {
+                    let xv = ld(x.as_ptr().add(2 * i));
+                    let xk = _mm256_xor_si256(xv, _mm256_shuffle_epi32::<0x4E>(xv));
+                    let p = ap.add(3 * i);
+                    _mm256_storeu_si256(p, _mm256_xor_si256(_mm256_loadu_si256(p), cl::<0x00>(xv, cv)));
+                    _mm256_storeu_si256(p.add(1), _mm256_xor_si256(_mm256_loadu_si256(p.add(1)), cl::<0x11>(xv, cv)));
+                    _mm256_storeu_si256(p.add(2), _mm256_xor_si256(_mm256_loadu_si256(p.add(2)), cl::<0x00>(xk, ck)));
+                }
+            }
+
             /// `acc[l] ^= [c.lo ⊗ x_l | c.hi ⊗ x_l]` (unreduced 128-bit products, one ymm per `l`).
             #[target_feature(enable = $feat)]
             pub unsafe fn xmac(acc: &mut [[u128; 2]], x: &[B64], c: F) {
@@ -1044,6 +1206,343 @@ pub mod r1 {
             _mm_storeu_si128(out.as_mut_ptr().add(128 + lane) as *mut __m128i, _mm256_extracti128_si256::<1>(c01));
         }
     }
+
+    // ------------------------------------------------------------ pass 12: the tower form
+
+    /// The tower form of the window's tables (pass 12; `window` is the reference). GF(2^8) is
+    /// also `GF(16)[w]/(w² + w + λ)`, `GF(16) = GF(2)[u]/(u⁴ + u + 1)`: a byte `h·16 + l` is
+    /// `h(U)·W + l(U)` for a root `U` of `u⁴ + u + 1` and a root `W` of `w² + w + λ(U)` in A.1's
+    /// GF(2^8) (`phi`: tower byte → A.1 byte, GF(2)-linear and bijective). The LDE table holds the
+    /// tower bytes (`t0[v][i] = phi⁻¹(skip t0[v][i])`), so a product is three GF(16) products
+    /// (Karatsuba: `hi = (a₀+a₁)(b₀+b₁) + a₀b₀`, `lo = a₀b₀ + λa₁b₁`), each one `vpshufb` log,
+    /// a log sum mod 15 and one `vpshufb` into a table `w[k][t]` that maps the log sum to the
+    /// product's A.1 byte times `ζ^k` (the `ζ^k` weight of the window's GF(2^8) sum, so no Horner
+    /// step). `log[0] = 0xF0`: a sum with a zero factor keeps bit 7 set after the mod-15 step, and
+    /// `vpshufb` maps it to 0.
+    #[repr(C, align(64))]
+    pub struct Tw {
+        pub t0: [[u8; 64]; 256],
+        pub log: [u8; 32],
+        /// `w[k][t][s]` for `t` = `a₀b₀`, `a₁b₁`, `(a₀+a₁)(b₀+b₁)`; `s < 15` the log sum, `w[·][·][15] = 0`.
+        pub w: [[[u8; 32]; 3]; 8],
+        /// `phi`, and the tower's `λ` (tests).
+        pub phi: [u8; 256],
+        pub lam: u8,
+    }
+
+    pub fn tower(sk: &Skip) -> &'static Tw {
+        static T: std::sync::OnceLock<Box<Tw>> = std::sync::OnceLock::new();
+        T.get_or_init(|| {
+            let mul = crate::field::gf8_mul;
+            let pw = |a: u8, e: usize| (0..e).fold(1u8, |r, _| mul(r, a));
+            let u = (2..=255u8).find(|&u| pw(u, 4) ^ u ^ 1 == 0).expect("u⁴ + u + 1 has a root");
+            let g16 = |n: u8| (0..4).fold(0u8, |r, i| if (n >> i) & 1 == 1 { r ^ pw(u, i) } else { r });
+            let (lam, w) = (1..16u8)
+                .filter(|&l| (0..16u8).all(|n| { let x = g16(n); mul(x, x) ^ x ^ g16(l) != 0 }))
+                .find_map(|l| (0..=255u8).find(|&w| mul(w, w) ^ w ^ g16(l) == 0).map(|w| (l, w)))
+                .expect("an irreducible w² + w + λ");
+            let phi_of = |t: u8| g16(t & 15) ^ mul(g16(t >> 4), w);
+            let mut phi = [0u8; 256];
+            let mut inv = [0u16; 256];
+            for t in 0..256usize {
+                phi[t] = phi_of(t as u8);
+                assert_eq!(inv[phi[t] as usize], 0, "phi is bijective");
+                inv[phi[t] as usize] = t as u16 + 1;
+            }
+            let iso = |v: u8| (inv[v as usize] - 1) as u8;
+            let g16inv = |x: u8| (0..16u8).find(|&n| g16(n) == x).expect("in GF(16)");
+            let m16 = |a: u8, b: u8| g16inv(mul(g16(a), g16(b)));
+            let exp16: Vec<u8> = (0..15).map(|i| g16inv(pw(u, i))).collect();
+            let mut tw = Box::new(Tw { t0: [[0; 64]; 256], log: [0; 32], w: [[[0; 32]; 3]; 8], phi, lam });
+            for v in 0..256 {
+                for i in 0..64 {
+                    tw.t0[v][i] = iso(unsafe { *sk.t0p().add(v * 64 + i) });
+                }
+            }
+            for h in 0..2 {
+                tw.log[16 * h] = 0xF0;
+                for (i, &e) in exp16.iter().enumerate() {
+                    tw.log[16 * h + e as usize] = i as u8;
+                }
+            }
+            for k in 0..8 {
+                let zk = pw(2, k);
+                for s in 0..15 {
+                    let e = exp16[s];
+                    let v = [phi[(e << 4 | e) as usize], phi[m16(lam, e) as usize], phi[(e << 4) as usize]];
+                    for t in 0..3 {
+                        tw.w[k][t][s] = mul(zk, v[t]);
+                        tw.w[k][t][16 + s] = mul(zk, v[t]);
+                    }
+                }
+            }
+            tw
+        })
+    }
+
+    /// The LDE of one row in the tower basis: `Σ_b P_b(t0[byte_b])`, with `P_b` the lane
+    /// permutation `i ↦ i ⊕ 8b`, grouped as `G₀ + P₃G₁ + P₄(G₂ + P₃G₃)` with `G_c = t0[byte_c] +
+    /// P₅ t0[byte_{c+4}]` (`P₃`: 8-byte halves in a 16-byte lane, `P₄`: the 16-byte lanes, `P₅`:
+    /// the two ymm): 6 shuffles instead of 14.
+    #[inline]
+    #[target_feature(enable = "avx2")]
+    unsafe fn apply_t(t0: *const u8, bytes: *const u8) -> (__m256i, __m256i) {
+        macro_rules! g {
+            ($c:literal) => {{
+                let r = t0.add(*bytes.add($c) as usize * 64);
+                let q = t0.add(*bytes.add($c + 4) as usize * 64);
+                (
+                    _mm256_xor_si256(_mm256_load_si256(r as *const __m256i), _mm256_load_si256(q.add(32) as *const __m256i)),
+                    _mm256_xor_si256(_mm256_load_si256(r.add(32) as *const __m256i), _mm256_load_si256(q as *const __m256i)),
+                )
+            }};
+        }
+        let (g0, g1, g2, g3) = (g!(0), g!(1), g!(2), g!(3));
+        let h0 = _mm256_xor_si256(g2.0, _mm256_shuffle_epi32::<0x4E>(g3.0));
+        let h1 = _mm256_xor_si256(g2.1, _mm256_shuffle_epi32::<0x4E>(g3.1));
+        (
+            _mm256_xor_si256(_mm256_xor_si256(g0.0, _mm256_shuffle_epi32::<0x4E>(g1.0)), _mm256_permute4x64_epi64::<0x4E>(h0)),
+            _mm256_xor_si256(_mm256_xor_si256(g0.1, _mm256_shuffle_epi32::<0x4E>(g1.1)), _mm256_permute4x64_epi64::<0x4E>(h1)),
+        )
+    }
+
+    /// The logs of a vector's three GF(16) parts: `x₀`, `x₁`, `x₀ + x₁`.
+    #[inline]
+    #[target_feature(enable = "avx2")]
+    unsafe fn logs3(x: __m256i, m4: __m256i, lg: __m256i) -> [__m256i; 3] {
+        let x0 = _mm256_and_si256(x, m4);
+        let x1 = _mm256_and_si256(_mm256_srli_epi16::<4>(x), m4);
+        [_mm256_shuffle_epi8(lg, x0), _mm256_shuffle_epi8(lg, x1), _mm256_shuffle_epi8(lg, _mm256_xor_si256(x0, x1))]
+    }
+
+    /// One GF(16) product's table lookup: `w[log a + log b mod 15]` (0 if a factor is 0).
+    #[inline]
+    #[target_feature(enable = "avx2")]
+    unsafe fn plook(la: __m256i, lb: __m256i, w: __m256i, c15: __m256i) -> __m256i {
+        let s = _mm256_add_epi8(la, lb);
+        _mm256_shuffle_epi8(w, _mm256_min_epu8(s, _mm256_sub_epi8(s, c15)))
+    }
+
+    /// `ζ^k·a·b` in A.1's bytes from the logs of `a` and `b` (the tables of `k`).
+    #[inline]
+    #[target_feature(enable = "avx2")]
+    unsafe fn prod3(la: [__m256i; 3], lb: [__m256i; 3], w: [__m256i; 3], c15: __m256i) -> __m256i {
+        _mm256_xor_si256(_mm256_xor_si256(plook(la[0], lb[0], w[0], c15), plook(la[1], lb[1], w[1], c15)), plook(la[2], lb[2], w[2], c15))
+    }
+
+    /// The window in the tower form with the `vpshufb` conversion (pass 12); equal to `window` and
+    /// `zerocheck::window_portable`.
+    #[target_feature(enable = "avx2")]
+    pub unsafe fn window_t(sk: &Skip, a: &[u8], b: &[u8], z: &[u8], out: &mut [F; 192]) {
+        let mut ch = Chunks(A64([[0u8; 64]; 16]), A64([[0u8; 64]; 16]));
+        rows_t(sk, a, b, z, &mut ch, true);
+        convert_t(sk, &ch, out);
+    }
+
+    /// The tower rows with pass 11's conversion (`convert`; bench and tests).
+    #[target_feature(enable = "avx2")]
+    pub unsafe fn window_t1(sk: &Skip, a: &[u8], b: &[u8], z: &[u8], out: &mut [F; 192]) {
+        let mut ch = Chunks(A64([[0u8; 64]; 16]), A64([[0u8; 64]; 16]));
+        rows_t(sk, a, b, z, &mut ch, false);
+        convert(sk, &ch, out);
+    }
+
+    /// A window's GF(2^8) sums (`ch.0[bm][lane]`) and transposed `z` (`ch.1`).
+    pub struct Chunks(A64, A64);
+    impl Chunks {
+        pub fn new() -> Chunks {
+            Chunks(A64([[0u8; 64]; 16]), A64([[0u8; 64]; 16]))
+        }
+    }
+
+    /// The window's rows (tower form): the GF(2^8) sums and the `z` transposes (`eo`: rows in
+    /// `bit_transpose_eo`'s order, for `convert_t`).
+    #[target_feature(enable = "avx2")]
+    pub unsafe fn rows_t(sk: &Skip, a: &[u8], b: &[u8], z: &[u8], ch: &mut Chunks, eo: bool) {
+        let tw = tower(sk);
+        let t0 = tw.t0.as_ptr() as *const u8;
+        let m4 = _mm256_set1_epi8(0x0F);
+        let c15 = _mm256_set1_epi8(15);
+        let lg = _mm256_load_si256(tw.log.as_ptr() as *const __m256i);
+        for bm in 0..16 {
+            let bb = bm * 64;
+            let (mut s0, mut s1) = (_mm256_setzero_si256(), _mm256_setzero_si256());
+            for k in 0..8 {
+                let wk = &tw.w[k];
+                let w = [
+                    _mm256_load_si256(wk[0].as_ptr() as *const __m256i),
+                    _mm256_load_si256(wk[1].as_ptr() as *const __m256i),
+                    _mm256_load_si256(wk[2].as_ptr() as *const __m256i),
+                ];
+                let (a0, a1) = apply_t(t0, a.as_ptr().add(bb + k * 8));
+                let (b0, b1) = apply_t(t0, b.as_ptr().add(bb + k * 8));
+                s0 = _mm256_xor_si256(s0, prod3(logs3(a0, m4, lg), logs3(b0, m4, lg), w, c15));
+                s1 = _mm256_xor_si256(s1, prod3(logs3(a1, m4, lg), logs3(b1, m4, lg), w, c15));
+            }
+            _mm256_store_si256(ch.0 .0[bm].as_mut_ptr() as *mut __m256i, s0);
+            _mm256_store_si256(ch.0 .0[bm].as_mut_ptr().add(32) as *mut __m256i, s1);
+            if eo {
+                bit_transpose_eo(z.as_ptr().add(bb), ch.1 .0[bm].as_mut_ptr());
+            } else {
+                bit_transpose(z.as_ptr().add(bb), ch.1 .0[bm].as_mut_ptr());
+            }
+        }
+    }
+
+    /// Pass 12's conversion tables (16 KiB, L1-resident; `convert` is the reference). `conv[bm]`
+    /// is GF(2)-linear, so a byte splits into nibbles: `ab[(2bm + h)·16 + o]` = byte `o` of
+    /// `conv[bm][n·16^h]` for `n < 16`; `zb[b][bm·16 + o]` = byte `o` of `conv[bm][Σ_j n_j
+    /// 2^(2j+b)]` (bank `b`'s bits `k ≡ b mod 2`, which `bit_transpose_eo` puts in nibble `b`).
+    pub struct Ct {
+        ab: Vec<[u8; 16]>,
+        zb: [Vec<[u8; 16]>; 2],
+    }
+
+    fn conv_t(sk: &Skip) -> &'static Ct {
+        static T: std::sync::OnceLock<Ct> = std::sync::OnceLock::new();
+        T.get_or_init(|| {
+            let byte = |bm: usize, v: usize, o: usize| -> u8 { unsafe { *(&sk.conv[bm * 256 + v] as *const F as *const u8).add(o) } };
+            let mut ab = vec![[0u8; 16]; 32 * 16];
+            let mut zb = [vec![[0u8; 16]; 16 * 16], vec![[0u8; 16]; 16 * 16]];
+            for bm in 0..16 {
+                for h in 0..2 {
+                    for o in 0..16 {
+                        for n in 0..16usize {
+                            ab[(2 * bm + h) * 16 + o][n] = byte(bm, n << (4 * h), o);
+                            let v = (0..4).fold(0, |v, j| v | (((n >> j) & 1) << (2 * j + h)));
+                            zb[h][bm * 16 + o][n] = byte(bm, v, o);
+                        }
+                    }
+                }
+            }
+            Ct { ab, zb }
+        })
+    }
+
+    /// `bit_transpose` with the rows taken in the order `0, 2, 4, 6, 1, 3, 5, 7`: output bit `j` of
+    /// byte `8b + t` is input row `2j` (`j < 4`) or `2(j − 4) + 1`.
+    #[inline]
+    #[target_feature(enable = "avx2")]
+    unsafe fn bit_transpose_eo(inp: *const u8, out: *mut u8) {
+        let mut buf = A64([[0u8; 64]; 16]);
+        let (src, dst) = (inp as *const u64, buf.0[0].as_mut_ptr() as *mut u64);
+        for (i, r) in [0usize, 2, 4, 6, 1, 3, 5, 7].into_iter().enumerate() {
+            *dst.add(i) = std::ptr::read_unaligned(src.add(r));
+        }
+        bit_transpose(buf.0[0].as_ptr(), out);
+    }
+
+    /// Byte planes `pl[g][o]` (group `g` of 32 lanes, output byte `o`) of `Σ_{bm,s} tab[(ns·bm +
+    /// s)·16 + o][nib[ns·bm + s][g]]`, four output bytes per pass (8 accumulators, one table load
+    /// for both groups).
+    #[inline]
+    #[target_feature(enable = "avx2")]
+    unsafe fn planes(nib: &[[__m256i; 2]], tab: &[[u8; 16]], pl: &mut [[__m256i; 16]; 2]) {
+        let tp = tab.as_ptr() as *const __m128i;
+        for o4 in 0..4 {
+            let mut acc = [[_mm256_setzero_si256(); 4]; 2];
+            for (c, nv) in nib.iter().enumerate() {
+                for q in 0..4 {
+                    let t = _mm256_broadcastsi128_si256(_mm_loadu_si128(tp.add(c * 16 + 4 * o4 + q)));
+                    acc[0][q] = _mm256_xor_si256(acc[0][q], _mm256_shuffle_epi8(t, nv[0]));
+                    acc[1][q] = _mm256_xor_si256(acc[1][q], _mm256_shuffle_epi8(t, nv[1]));
+                }
+            }
+            for g in 0..2 {
+                for q in 0..4 {
+                    pl[g][4 * o4 + q] = acc[g][q];
+                }
+            }
+        }
+    }
+
+    /// 16 byte planes of 32 lanes → 32 F at `out` (lane `j` of the planes is `out[j]`).
+    #[inline]
+    #[target_feature(enable = "avx2")]
+    unsafe fn planes_to_f(p: &[__m256i; 16], out: *mut F) {
+        let mut a = [_mm256_setzero_si256(); 16];
+        for i in 0..8 {
+            a[2 * i] = _mm256_unpacklo_epi8(p[2 * i], p[2 * i + 1]);
+            a[2 * i + 1] = _mm256_unpackhi_epi8(p[2 * i], p[2 * i + 1]);
+        }
+        // a[2i + h1]: word q = bytes 2i, 2i+1 of lane 8h1 + q
+        let mut b = [_mm256_setzero_si256(); 16];
+        for i in 0..4 {
+            for h1 in 0..2 {
+                let (x, y) = (a[2 * (2 * i) + h1], a[2 * (2 * i + 1) + h1]);
+                b[(i * 2 + h1) * 2] = _mm256_unpacklo_epi16(x, y);
+                b[(i * 2 + h1) * 2 + 1] = _mm256_unpackhi_epi16(x, y);
+            }
+        }
+        // b[(i·2 + h1)·2 + h2]: dword d = bytes 4i … 4i+3 of lane 8h1 + 4h2 + d
+        let mut c = [_mm256_setzero_si256(); 16];
+        for i in 0..2 {
+            for h in 0..4 {
+                let (x, y) = (b[(2 * i) * 4 + h], b[(2 * i + 1) * 4 + h]);
+                c[(i * 4 + h) * 2] = _mm256_unpacklo_epi32(x, y);
+                c[(i * 4 + h) * 2 + 1] = _mm256_unpackhi_epi32(x, y);
+            }
+        }
+        // c[(i·4 + h1·2 + h2)·2 + h3]: qword q = bytes 8i … 8i+7 of lane 8h1 + 4h2 + 2h3 + q
+        for h in 0..8 {
+            let (x, y) = (c[h], c[8 + h]);
+            for (h4, d) in [_mm256_unpacklo_epi64(x, y), _mm256_unpackhi_epi64(x, y)].into_iter().enumerate() {
+                let j = 2 * h + h4;
+                _mm_storeu_si128(out.add(j) as *mut __m128i, _mm256_castsi256_si128(d));
+                _mm_storeu_si128(out.add(16 + j) as *mut __m128i, _mm256_extracti128_si256::<1>(d));
+            }
+        }
+    }
+
+    /// The conversion by `vpshufb` (pass 12): `ch.1` must come from `bit_transpose_eo`.
+    #[target_feature(enable = "avx2")]
+    pub unsafe fn convert_t(sk: &Skip, ch: &Chunks, out: &mut [F; 192]) {
+        let ct = conv_t(sk);
+        let m4 = _mm256_set1_epi8(0x0F);
+        let mut nab = [[_mm256_setzero_si256(); 2]; 32];
+        let mut nz0 = [[_mm256_setzero_si256(); 2]; 16];
+        let mut nz1 = [[_mm256_setzero_si256(); 2]; 16];
+        for bm in 0..16 {
+            for g in 0..2 {
+                let x = _mm256_load_si256(ch.0 .0[bm].as_ptr().add(32 * g) as *const __m256i);
+                nab[2 * bm][g] = _mm256_and_si256(x, m4);
+                nab[2 * bm + 1][g] = _mm256_and_si256(_mm256_srli_epi16::<4>(x), m4);
+                let y = _mm256_load_si256(ch.1 .0[bm].as_ptr().add(32 * g) as *const __m256i);
+                nz0[bm][g] = _mm256_and_si256(y, m4);
+                nz1[bm][g] = _mm256_and_si256(_mm256_srli_epi16::<4>(y), m4);
+            }
+        }
+        let mut pl = [[_mm256_setzero_si256(); 16]; 2];
+        let op = out.as_mut_ptr();
+        planes(&nab, &ct.ab, &mut pl);
+        planes_to_f(&pl[0], op);
+        planes_to_f(&pl[1], op.add(32));
+        for (b, nz) in [nz0, nz1].iter().enumerate() {
+            planes(nz, &ct.zb[b], &mut pl);
+            planes_to_f(&pl[0], op.add(64 + 64 * b));
+            planes_to_f(&pl[1], op.add(64 + 64 * b + 32));
+        }
+    }
+
+    /// The window's conversion: `out[lane] = Σ_bm conv[bm][ab]`, the two banks by `conv2`.
+    #[target_feature(enable = "avx2")]
+    pub unsafe fn convert(sk: &Skip, ch: &Chunks, out: &mut [F; 192]) {
+        let (chunk_ab, chunk_c) = (&ch.0, &ch.1);
+        let cv = sk.conv.as_ptr();
+        let c2 = conv2(sk).as_ptr();
+        for lane in 0..64 {
+            let (mut cab, mut c01) = (_mm_setzero_si128(), _mm256_setzero_si256());
+            for bm in 0..16 {
+                let vab = chunk_ab.0[bm][lane] as usize;
+                let vc = chunk_c.0[bm][lane] as usize;
+                cab = _mm_xor_si128(cab, _mm_load_si128(cv.add(bm * 256 + vab) as *const __m128i));
+                c01 = _mm256_xor_si256(c01, _mm256_loadu_si256(c2.add(bm * 256 + vc) as *const __m256i));
+            }
+            _mm_storeu_si128(out.as_mut_ptr().add(lane) as *mut __m128i, cab);
+            _mm_storeu_si128(out.as_mut_ptr().add(64 + lane) as *mut __m128i, _mm256_castsi256_si128(c01));
+            _mm_storeu_si128(out.as_mut_ptr().add(128 + lane) as *mut __m128i, _mm256_extracti128_si256::<1>(c01));
+        }
+    }
 }
 
 // ---------------------------------------------------------------- self-test
@@ -1088,7 +1587,7 @@ pub fn selftest() -> Result<String, String> {
     let dr = dot(&a, &b);
     let sk = crate::skipdom::skip();
     let mut w_r = [F::ZERO; 192];
-    round1_window(sk, wa, wb, wz, &mut w_r);
+    crate::zerocheck::window_portable(sk, wa, wb, wz, &mut w_r);
     let ka: Vec<crate::field::K> = a.chunks(2).map(|c| crate::field::K { a: c[0], b: c[1] }).collect();
     let kb: Vec<crate::field::K> = b.chunks(2).map(|c| crate::field::K { a: c[0], b: c[1] }).collect();
     let ks = crate::field::K { a: sc, b: lo[0] };
@@ -1155,6 +1654,32 @@ pub fn selftest() -> Result<String, String> {
             ("phi_add", { let mut o = b[..33].to_vec(); phi_add(&pt, &a[..33], &mut o); o == ph_r }),
             ("phi_add_idx", { let mut o = b[..33].to_vec(); let idx: Vec<u32> = (0..33).collect(); phi_add_idx(&pt, &a[..33], &idx, &mut o); o == ph_r }),
             ("pf_stripe", { let mut o = vec![F::ZERO; 16384]; pf_stripe(&zw, &pft, &mut o); o == pf_r }),
+            ("butterfly (both reductions)", {
+                let (mut t2, mut b2, mut t3, mut b3) = (a[..n].to_vec(), b[..n].to_vec(), a[..n].to_vec(), b[..n].to_vec());
+                match t {
+                    3 => unsafe { ymm::butterfly_cl(&mut t2, &mut b2, tw); ymm::butterfly(&mut t3, &mut b3, tw) },
+                    4 => unsafe { ymm_sim::butterfly_cl(&mut t2, &mut b2, tw); ymm_sim::butterfly(&mut t3, &mut b3, tw) },
+                    _ => { butterfly_ref(&mut t2, &mut b2, tw); butterfly_ref(&mut t3, &mut b3, tw) }
+                }
+                t2 == top_r && b2 == bot_r && t3 == top_r && b3 == bot_r
+            }),
+            ("axpy_cl", {
+                let mut o = a.clone();
+                match t {
+                    3 => unsafe { ymm::axpy_cl(&mut o, &b, sc) },
+                    4 => unsafe { ymm_sim::axpy_cl(&mut o, &b, sc) },
+                    _ => axpy(&mut o, &b, sc),
+                }
+                o == ax_r
+            }),
+            ("round-1 window (pass 11)", { let mut o = [F::ZERO; 192]; round1_window_ref(sk, wa, wb, wz, &mut o); o == w_r }),
+            ("mac_u", {
+                let mut u = vec![0u128; 3 * 72];
+                mac_u(&mut u, &a[..72], sc);
+                mac_u(&mut u, &b[..72], lo[1]);
+                let want: Vec<F> = (0..72).map(|i| a[i] * sc + b[i] * lo[1]).collect();
+                red_u(&u) == want
+            }),
         ];
         if let Some((k, _)) = checks.iter().find(|c| !c.1) {
             fail = Some(format!("{name}: {k}"));
@@ -1165,7 +1690,7 @@ pub fn selftest() -> Result<String, String> {
     set_tier(base);
     match fail {
         Some(e) => Err(e),
-        None => Ok(format!("tier={} checked=[{}]", tier_name(), tested.join(","))),
+        None => Ok(format!("tier={} checked=[{}] bfly={}", tier_name(), tested.join(","), if bfly_shift() { "sh" } else { "cl" })),
     }
 }
 
@@ -1213,5 +1738,65 @@ mod pass6_tests {
             unsafe { r1::pf_stripe(&z, &pt, &mut a2) };
             assert!(a1 == a2, "pf_stripe");
         }
+    }
+}
+
+#[cfg(test)]
+mod pass12_tests {
+    use super::*;
+    /// The tower-form window against pass 11's AVX2 window and the portable reference, on random,
+    /// sparse and zero-row windows; `phi` is a field isomorphism; `mac_u_ref` + `red_u` is the
+    /// reduced sum of products.
+    #[test]
+    fn tower_window_matches() {
+        let sk = crate::skipdom::skip();
+        let mut s = 0x2545_F491_4F6C_DD1Du64;
+        let mut rnd = move || { s ^= s << 13; s ^= s >> 7; s ^= s << 17; s };
+        if hw_avx2() {
+            let tw = r1::tower(sk);
+            let lam_t = tw.lam as usize; // the nibble λ, low half
+            let _ = lam_t;
+            for x in 0..256usize {
+                for y in 0..256usize {
+                    // the tower product by the Karatsuba formula, mapped by phi, is the A.1 product
+                    let (a0, a1, b0, b1) = (x & 15, x >> 4, y & 15, y >> 4);
+                    let m = |p: usize, q: usize| -> usize {
+                        // GF(16) product through phi on the low nibble (phi(n) = g16(n) for n < 16)
+                        let v = crate::field::gf8_mul(tw.phi[p], tw.phi[q]);
+                        (0..16).find(|&n| tw.phi[n] == v).unwrap()
+                    };
+                    let (m00, m11, mss) = (m(a0, b0), m(a1, b1), m(a0 ^ a1, b0 ^ b1));
+                    let t = ((mss ^ m00) << 4) | (m00 ^ m(tw.lam as usize, m11));
+                    assert_eq!(tw.phi[t], crate::field::gf8_mul(tw.phi[x], tw.phi[y]), "{x} {y}");
+                }
+            }
+            for case in 0..12 {
+                let wb: Vec<u8> = (0..3072)
+                    .map(|i| match case % 4 {
+                        0 => rnd() as u8,
+                        1 => if (i / 8) % 5 == 0 { rnd() as u8 } else { 0 },
+                        2 => if (i % 1024) < 512 { 0 } else { rnd() as u8 & rnd() as u8 },
+                        _ => if rnd() % 3 == 0 { 0xFF } else { 0 },
+                    })
+                    .collect();
+                let (mut w0, mut w1, mut w2) = ([F::ZERO; 192], [F::ZERO; 192], [F::ZERO; 192]);
+                crate::zerocheck::window_portable(sk, &wb[..1024], &wb[1024..2048], &wb[2048..], &mut w0);
+                unsafe { r1::window(sk, &wb[..1024], &wb[1024..2048], &wb[2048..], &mut w1) };
+                unsafe { r1::window_t(sk, &wb[..1024], &wb[1024..2048], &wb[2048..], &mut w2) };
+                assert_eq!(w0, w1, "pass 11 window, case {case}");
+                assert_eq!(w0, w2, "tower window, case {case}");
+                let mut w3 = [F::ZERO; 192];
+                unsafe { r1::window_t1(sk, &wb[..1024], &wb[1024..2048], &wb[2048..], &mut w3) };
+                assert_eq!(w0, w3, "tower rows + pass 11 conversion, case {case}");
+            }
+        }
+        let xs: Vec<F> = (0..40).map(|_| F::new(rnd(), rnd())).collect();
+        let cs: Vec<F> = (0..3).map(|_| F::new(rnd(), rnd())).collect();
+        let mut u = vec![0u128; 3 * 40];
+        for c in &cs {
+            mac_u_ref(&mut u, &xs, *c);
+        }
+        let want: Vec<F> = xs.iter().map(|x| *x * cs[0] + *x * cs[1] + *x * cs[2]).collect();
+        assert_eq!(red_u(&u), want);
     }
 }

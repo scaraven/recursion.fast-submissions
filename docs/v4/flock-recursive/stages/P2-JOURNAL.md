@@ -559,3 +559,90 @@ logs/P2/r41p10/n8.signed --agg 262147 --prove` → pi_b2s `9368bcae…` (pass 10
   Projection (`project-final.txt`): base 12.06 + 2.15 s, M ≤ 67, 81.3 % → **new 10.80 + 1.99 s,
   M ≤ 74, 52.5 % truncated, P̄ 9.53 s**. All `probe/p2t-11*` branches deleted. RESULT §19 written
   (§19.9: the handover).
+
+## Pass 12 (track P2⁸, 2026-10-29): the segments' round 1, the node's zero skips
+
+Base HEAD `5e99fba` (P2⁷, `prover.s` `5e1bab39…`). Logs `logs/P2/r41p12/` (VM) and
+`logs/P2/run-<id>/` (runners). Every cargo / prover command in a 16 GB scope with a timeout. Probes
+`probe/p2t-12a … 12m` (temporary-index commits on HEAD, `probe/p2t12/`), all deleted.
+
+- **π references.** The brief's KATs (`9368bcae…`, `f60dc083…`, `a16ab6a3…`) were made on S-E12f's
+  data with pass 10's N8; since pass 11 (S-E13a's matrices, S-E13b's cells) HEAD gives other π on
+  those inputs. The references used: pass 11's final KATs on S-E13a's data (`r41p11/p-*.txt`): N8
+  `d8b25c6a…`, N2 `515f21b3…`, N4 `c5d6ae84…`, N2 k = 1 `816a1f84…`, N4 k = 4 `a3c6e71b…`; the
+  segments by `test-leaf` (28 `62f91a4b…`, 30, 31 `--n 77777`, 32), always HEAD's binary (built from
+  `git archive HEAD`, `flock-prover-base`) against the new one. Stream proof files are not
+  byte-deterministic between two runs of one binary (`pi_sha` differs base vs base), so stream π
+  cannot be compared; the KATs carry the identity.
+- **Round 1, the tower window** (`simd::r1::window_t`, pass 11's `r1::window` kept). GF(2^8) as
+  `GF(16)[w]/(w² + w + λ)`, `GF(16) = GF(2)[u]/(u⁴ + u + 1)`; the LDE table holds tower bytes; a
+  product is three GF(16) products (Karatsuba) by `vpshufb` logs, a mod-15 sum (`min(s, s − 15)`,
+  `log 0 = 0xF0` keeps bit 7 and `vpshufb` gives 0) and one `vpshufb` per product into a table that
+  already holds the A.1 byte times `ζ^k` (no Horner step); the LDE's eight lane permutations grouped
+  as `G₀ + P₃G₁ + P₄(G₂ + P₃G₃)` (6 shuffles, was 14). Equal to `window_portable` and pass 11's
+  window on random, sparse, zero and all-ones windows (test `tower_window_matches`, which also checks
+  the Karatsuba formula through `phi` on all 65,536 pairs).
+- Probe 12a (7763, run 40823004790): window 4.53 → 3.27 µs; parts `rows_t` 1.66, conversion 1.47
+  (L2-bound byte tables, 64 + 128 KiB), `mac_u` 0.28 vs `axpy` 0.66 µs; round 1 at m = 32 1.26 →
+  0.92 s, equal.
+- **The conversion by `vpshufb`** (`r1::convert_t`, pass 11's `convert` kept): `conv[bm]` is
+  GF(2)-linear, so 4-bit tables (16 KiB, L1): byte planes of 32 lanes accumulated four output bytes
+  at a time (one table load for both lane groups), then a 16×16 byte transpose; the `z` rows taken in
+  the order 0, 2, 4, 6, 1, 3, 5, 7 (`bit_transpose_eo`) so each bank reads one nibble. 12b/12c (EPYC
+  9V74, runs 40823704213, 40823915867): conversion 1.30 → 0.52 µs, round 1 0.95 → 0.58 s.
+- **`mac_u`**: the windows' `eq` weights accumulated unreduced (three Karatsuba parts per pair,
+  reduced once per chunk; `mac_u_ref` and `axpy` are the references).
+- A `rows_t` variant with the table offsets precomputed by `vpmovzxbw` did nothing (12d/12e:
+  1.67–1.79 vs 1.66 µs): reverted.
+- **Shift reductions** (`bench-k`): the F product with its three reductions by shifts, two in one
+  register (`mul`; pass 11's is `mul_cl`) and the butterfly's (`butterfly`; `butterfly_cl`). 7763
+  (12d/12e, runs 40824432457, 40824435759): butterfly 1.745 → 1.62, `axpy` 3.33 → 2.92–2.95 ns; 9V45
+  (12f): `axpy` 2.38 → 2.16, butterfly ±; Xeon 8573C (12j): butterfly 1.17–1.20 → 1.29 (worse), `axpy`
+  equal. `mul` is the shift form everywhere; the butterfly's form is chosen by CPU (`bfly_shift`: AMD
+  family 19h without AVX-512 = Zen 3; `FLOCK_BFLY=sh|cl`); the selftest checks both forms.
+- The AVX2 round-1 window runs on every AVX2 CPU (`r1_avx2`, unless `FLOCK_TIER=portable`), so this
+  VM (AVX2, no `pclmulqdq`) runs it inside the prover: the local KATs cover it (N2 VM zc_round1 6.23
+  → 0.64 s).
+- **Item 2, node zero skips.** Sh: `collapse_keys` (one pass over the blocks for every key, a key's
+  bytes skipped when zero; `collapse_n` the reference, `debug_assert`). Ligerito level 0: round 1
+  skips zero 4,096-pair ranges of `g`; `fold_msg` writes zeros for a zero block of `g` and skips its
+  message part (`W` still folds). **Item 3**, E2 (`zc_abc`): the `c` part skips zero stretches;
+  `fold_f_sparse` (zeros for zero 1,024-pair stretches) for `a`, `b`, `c` and for the node's Z tail.
+  Tests `collapse_keys_matches`, `fold_sparse_matches`.
+- First streams (12g/12h, 7763, runs 40824961318, 40824964462): N2 2^18 8.71 → 7.77–7.85 s, but
+  pass 11's probe gave the base no `RF_SETUP` (unfair to HEAD's base, which reads the setup); fixed
+  in `probe/p2t12/run.sh` (both get it), plus the KATs (`kat.txt`, `kat-check.txt`) and pass 6's
+  segment-fit cases (`fit.txt`, `fit12.py`) on the runner.
+- 12i/12j (7763 run 40826290907, Xeon 8573C run 40826296002): **KATs on the ymm path: base = new on
+  all 8** (5 node, 3 segment), selftest pass. Streams (7763, base with the setup): every step −10 …
+  −12 %. The fit loop's case list was one word (a quoted default inside `${…:-"…"}`), which made an
+  artifact path with colons, and the upload failed; results read from the job logs (`run-step.log`).
+- **Items 4/6, a short replay's completion.** `fill p1 replay: 434612 of 436594 entries solved,
+  1976 unsolved` on an L30 child at n = 49,807 (setup's L30 order is at n = 5): the completion ran the
+  worklist from all ~600 k rows, then the check again over all rows. Now the worklist starts from the
+  rows that touch an unknown cell (a row without one solves nothing: `try_row`; the closure is the
+  same) and the second check covers only the rows that failed or touch a cell the completion solved
+  (every other row reads the same values). `FLOCK_FULL_RECHECK=1` restores both. VM, N2 over 311,951
+  (L32 + L30): π `db9942b1…` with the setup (narrowed), with `FLOCK_FULL_RECHECK=1`, without the setup
+  (from scratch) and HEAD's base with the setup; the short fill's check + completion 1.10 → 0.46 s
+  (VM). Per-`n`-class orders are not needed now.
+- **Item 5, the node data's image** (`plan::save_image`/`load_image`, `nodedata.bin` in `/setup`,
+  written by `prover setup`, tagged by the blob's hash; the blob format unchanged; `decode_blob` the
+  fallback). The decoded data is 298 MB (5.3 M nonzeros per prototype, each with a 16-byte
+  coefficient, only 513 distinct): 7763 `bench-nd` blob 0.147–0.173 → image 0.070–0.083 s. Test
+  `image_round_trip`. `data_tag` computed once.
+- Item 4's slot 0: unchanged beyond the completion; a parallel row check does not cut CPU, and slot 0
+  runs beside the aggregate on the same cores.
+- `cargo test --release`: 51 passed, 1 ignored (`cargo-test-2.txt`). Source rule (`logs/org20`): 359
+  files, 0 findings. **`prover.s` 18,042,211 B, sha256 `f0841393…0187`** (`build-asm.log`).
+- **Final** (12k 7763 run 40828606971; 12l Xeon 8573C 40828619224, 12m EPYC 9V45 40828630557): every
+  runner rebuilt `prover.s` byte for byte; KATs base = new (8/8) and the 11 fit cases' π base = new on
+  all three; 32/32 outputs accepted and 32/32 canaries rejected per runner. 7763 fits: L32 2.476 +
+  2.720·n/2^18 → 2.149 + 2.415, L31 1.239 + 1.350 → 1.072 + 1.203, L30 0.654 + 0.602 → 0.567 + 0.531
+  s. Projection (each prover with its own fits, `project-final.txt`): base 10.67 + 1.95 s, M ≤ 75,
+  49.1 % → **new 9.54 + 1.87 s, M ≤ 83, 30.4 % truncated, P̄ 9.41 → 8.43 s**. Setup 59.2 s, peak
+  7.12 GB, 365 MB (the image 298 MB); request peak 7.10 GB.
+- Over the 7763 streams' 8 steps: `lig0.folds` −14 %, tail rounds/folds −11 %, NTT passes −5 %,
+  blocks −8 %, but `x6.fold` +4 % (the shift reduction beside its table loads): `x6_fold` should take
+  `mul_cl` (≈ 0.015 s per step; not done, it would have needed another final round).
+- All `probe/p2t-12*` branches deleted. RESULT §20 written.

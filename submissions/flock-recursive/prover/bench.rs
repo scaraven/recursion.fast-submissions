@@ -205,3 +205,243 @@ pub fn run_trace(kind: &str) {
         println!("BENCH trace all rep={rep}: ref {tr:.3} s new {tn:.3} s equal={}", zr == zn && ar == an && br == bn);
     }
 }
+
+/// `bench-r1 [m]` (pass 12): round 1's window kernels, one thread and all threads (in-cache
+/// windows; pass 11's `r1::window` and the tower form `r1::window_t`, checked equal), then
+/// `zerocheck::round1` vs `round1_ref` over a random witness of `2^m` bits (default 30).
+pub fn run_r1(m: usize) {
+    let sk = crate::skipdom::skip();
+    let nwin = 16;
+    let mut s = 7u64;
+    let data: Vec<u8> = (0..3 * 1024 * nwin).map(|_| rnd(&mut s) as u8).collect();
+    let win = |w: usize| (&data[w * 1024..w * 1024 + 1024], &data[(nwin + w) * 1024..(nwin + w) * 1024 + 1024], &data[(2 * nwin + w) * 1024..(2 * nwin + w) * 1024 + 1024]);
+    let mut eq = true;
+    for w in 0..nwin {
+        let (a, b, z) = win(w);
+        let (mut o0, mut o1) = ([F::ZERO; 192], [F::ZERO; 192]);
+        crate::zerocheck::window_portable(sk, a, b, z, &mut o0);
+        if crate::simd::hw_avx2() {
+            unsafe { crate::simd::r1::window_t(sk, a, b, z, &mut o1) };
+            eq &= o0 == o1;
+        }
+    }
+    println!("BENCH r1 tier={} window_t_equal={eq}", crate::simd::tier_name());
+    if !crate::simd::hw_avx2() {
+        return;
+    }
+    type Wf = unsafe fn(&crate::skipdom::Skip, &[u8], &[u8], &[u8], &mut [F; 192]);
+    let kernels: [(&str, Wf); 3] = [("window", crate::simd::r1::window), ("window_t1", crate::simd::r1::window_t1), ("window_t", crate::simd::r1::window_t)];
+    for thr in [1usize, par::threads()] {
+        for rep in 0..2 {
+            for (name, f) in kernels {
+                let it = 20_000;
+                let (_, sec) = timed(|| {
+                    par::run(thr, &|_| {
+                        let mut out = [F::ZERO; 192];
+                        let mut acc = F::ZERO;
+                        for i in 0..it {
+                            let (a, b, z) = win(i % nwin);
+                            unsafe { f(sk, a, b, z, &mut out) };
+                            acc += out[i % 192];
+                        }
+                        std::hint::black_box(acc);
+                    })
+                });
+                println!("BENCH r1 {name} threads={thr} rep={rep} ns_per_window_per_thread={:.0}", sec * 1e9 / it as f64);
+            }
+        }
+    }
+    // the parts of window_t: rows (LDE, products, z transposes) and the conversion
+    for thr in [1usize, par::threads()] {
+        for rep in 0..2 {
+            let it = 20_000;
+            let (_, sr) = timed(|| {
+                par::run(thr, &|_| {
+                    let mut ch = crate::simd::r1::Chunks::new();
+                    for i in 0..it {
+                        let (a, b, z) = win(i % nwin);
+                        unsafe { crate::simd::r1::rows_t(sk, a, b, z, &mut ch, true) };
+                        std::hint::black_box(&ch);
+                    }
+                })
+            });
+            let (_, sc) = timed(|| {
+                par::run(thr, &|_| {
+                    let mut ch = crate::simd::r1::Chunks::new();
+                    let mut out = [F::ZERO; 192];
+                    let mut acc = F::ZERO;
+                    for i in 0..it {
+                        let (a, b, z) = win(i % nwin);
+                        if i < nwin {
+                            unsafe { crate::simd::r1::rows_t(sk, a, b, z, &mut ch, false) };
+                        }
+                        unsafe { crate::simd::r1::convert(sk, std::hint::black_box(&ch), &mut out) };
+                        acc += out[i % 192];
+                    }
+                    std::hint::black_box(acc);
+                })
+            });
+            let (_, st) = timed(|| {
+                par::run(thr, &|_| {
+                    let mut ch = crate::simd::r1::Chunks::new();
+                    let mut out = [F::ZERO; 192];
+                    let mut acc = F::ZERO;
+                    for i in 0..it {
+                        let (a, b, z) = win(i % nwin);
+                        if i < nwin {
+                            unsafe { crate::simd::r1::rows_t(sk, a, b, z, &mut ch, true) };
+                        }
+                        unsafe { crate::simd::r1::convert_t(sk, std::hint::black_box(&ch), &mut out) };
+                        acc += out[i % 192];
+                    }
+                    std::hint::black_box(acc);
+                })
+            });
+            let (_, sm) = timed(|| {
+                par::run(thr, &|w| {
+                    let mut u = vec![0u128; 576];
+                    let x: Vec<F> = (0..192).map(|i| F::new(i as u64 * 77 + w as u64, 5)).collect();
+                    for i in 0..it {
+                        crate::simd::mac_u(&mut u, &x, F::new(i as u64 | 1, 9));
+                    }
+                    std::hint::black_box(&u);
+                })
+            });
+            let (_, sa) = timed(|| {
+                par::run(thr, &|w| {
+                    let mut u = vec![F::ZERO; 192];
+                    let x: Vec<F> = (0..192).map(|i| F::new(i as u64 * 77 + w as u64, 5)).collect();
+                    for i in 0..it {
+                        crate::simd::axpy(&mut u, &x, F::new(i as u64 | 1, 9));
+                    }
+                    std::hint::black_box(&u);
+                })
+            });
+            let ns = |x: f64| x * 1e9 / it as f64;
+            println!("BENCH r1 parts threads={thr} rep={rep} ns_per_window_per_thread: rows_t={:.0} convert={:.0} convert_t={:.0} mac_u={:.0} axpy={:.0}", ns(sr), ns(sc), ns(st), ns(sm), ns(sa));
+        }
+    }
+    // the whole round 1 over 2^m bits
+    let n = 1usize << (m - 3);
+    let mk = |seed: u64| -> Vec<u8> {
+        let mut v = vec![0u8; n];
+        par::for_each_chunk_mut(&mut v, 1 << 19, |off, ch| {
+            let mut s = (seed ^ (off as u64).wrapping_mul(0x9e37_79b9_7f4a_7c15)) | 1;
+            ch.iter_mut().for_each(|x| *x = rnd(&mut s) as u8);
+        });
+        v
+    };
+    let (a, b, z) = (mk(1), mk(2), mk(3));
+    let mut s = 0x77u64;
+    let r_out: Vec<F> = (0..m - 13).map(|_| F::new(rnd(&mut s), rnd(&mut s))).collect();
+    let used = n / 2048;
+    for rep in 0..2 {
+        let (x, t1) = timed(|| crate::zerocheck::round1_ref(&a, &b, &z, &r_out, used));
+        let (y, t2) = timed(|| crate::zerocheck::round1(&a, &b, &z, &r_out, used));
+        println!("BENCH r1 round1 m={m} rep={rep} ref_s={t1:.3} new_s={t2:.3} equal={}", x.pab == y.pab && x.bank == y.bank);
+    }
+}
+
+/// `bench-k` (pass 12): the butterfly and the F product with the reductions by carry-less products
+/// (pass 11's `butterfly_cl`, `axpy_cl`) and by shifts (`butterfly`, `axpy`), one thread and all threads, in
+/// cache; checked equal. Needs the ymm tier.
+pub fn run_k() {
+    if crate::simd::tier() != 3 {
+        println!("BENCH k: tier {} (needs ymm)", crate::simd::tier_name());
+        return;
+    }
+    use crate::simd::ymm;
+    let mk = |w: usize, n: usize| -> Vec<F> {
+        let mut s = 99 + w as u64;
+        (0..n).map(|_| F::new(rnd(&mut s), rnd(&mut s))).collect()
+    };
+    let (mut t0, mut b0) = (mk(1, 512), mk(2, 512));
+    let (mut t1, mut b1) = (t0.clone(), b0.clone());
+    unsafe {
+        ymm::butterfly_cl(&mut t0, &mut b0, B64(0x1234_5678_9abc_def1));
+        ymm::butterfly(&mut t1, &mut b1, B64(0x1234_5678_9abc_def1));
+    }
+    let (mut a0, x) = (mk(3, 512), mk(4, 512));
+    let mut a1 = a0.clone();
+    unsafe {
+        ymm::axpy_cl(&mut a0, &x, F::new(77, 99));
+        ymm::axpy(&mut a1, &x, F::new(77, 99));
+    }
+    println!("BENCH k equal butterfly={} axpy={}", t0 == t1 && b0 == b1, a0 == a1);
+    for thr in [1usize, par::threads()] {
+        for rep in 0..2 {
+            let it = 100_000;
+            let bf = |sh: bool| {
+                timed(|| {
+                    par::run(thr, &|w| {
+                        let (mut top, mut bot) = (mk(w, 512), mk(w + 7, 512));
+                        for i in 0..it {
+                            let t = B64(0x1234_5678_9abc_def0 ^ i as u64);
+                            unsafe {
+                                if sh {
+                                    ymm::butterfly(&mut top, &mut bot, t)
+                                } else {
+                                    ymm::butterfly_cl(&mut top, &mut bot, t)
+                                }
+                            }
+                        }
+                        std::hint::black_box(&top);
+                    })
+                })
+                .1 * 1e9
+                    / (it as f64 * 512.0)
+            };
+            let ax = |sh: bool| {
+                timed(|| {
+                    par::run(thr, &|w| {
+                        let (mut acc, x) = (mk(w, 512), mk(w + 7, 512));
+                        for i in 0..it {
+                            let c = F::new(i as u64 | 1, 3);
+                            unsafe {
+                                if sh {
+                                    ymm::axpy(&mut acc, &x, c)
+                                } else {
+                                    ymm::axpy_cl(&mut acc, &x, c)
+                                }
+                            }
+                        }
+                        std::hint::black_box(&acc);
+                    })
+                })
+                .1 * 1e9
+                    / (it as f64 * 512.0)
+            };
+            println!(
+                "BENCH k threads={thr} rep={rep} ns_per_item_per_thread: butterfly_cl={:.3} butterfly={:.3} axpy_cl={:.3} axpy={:.3}",
+                bf(false),
+                bf(true),
+                ax(false),
+                ax(true)
+            );
+        }
+    }
+}
+
+/// `bench-nd [DIR]` (pass 12): the node data from the embedded blob (`decode_blob`) and from its
+/// image (`save_image` written to `DIR/nodedata.bin`, read back and `load_image`d), twice each.
+pub fn run_nd(dir: &str) {
+    let tag = crate::plan::data_tag();
+    let path = std::path::Path::new(dir).join(crate::plan::IMAGE);
+    for rep in 0..2 {
+        let (nd, td) = timed(|| crate::plan::decode_blob(crate::plan::BLOB));
+        let img = crate::plan::save_image(&nd, &tag);
+        if rep == 0 {
+            for p in nd.protos.iter() {
+                let nf: usize = p.regs.iter().map(|r| r.forms.len()).sum();
+                let mut cf: Vec<F> = p.rows.coefs.iter().chain(p.fcoefs.iter()).copied().collect();
+                cf.sort_by_key(|x| (x.lo, x.hi));
+                cf.dedup();
+                println!("BENCH nd proto {}: rows {} nnz {} regs {} forms {} aux {} fcells {} distinct coefs {}", p.pi, p.rows.idx.len(), p.rows.cells.len(), p.regs.len(), nf, p.aux.len(), p.fcells.len(), cf.len());
+            }
+        }
+        std::fs::write(&path, &img).expect("write the image");
+        drop(nd);
+        let (ok, ti) = timed(|| std::fs::read(&path).ok().and_then(|b| crate::plan::load_image(&b, &tag)).is_some());
+        println!("BENCH nd rep={rep} blob_s={td:.3} image_s={ti:.3} image_bytes={} loaded={ok}", img.len());
+    }
+}

@@ -141,7 +141,8 @@ fn toy_agg(o: &dyn crate::oracle::Oracle, circ: &circuit::Circuit, vk: &Digest, 
 /// meet, each recorded on its own key from a toy chain (a local oracle, the test signer): `N8` over
 /// two aggregates (prototype 1 at `L30`), `N2` and `N4` over it (prototype 0 after `N8`; prototype 1
 /// at a partial `L32`), a witness over `L32 + L31`, then prototype 0's fill after the `N2` and the
-/// `N4`; stored as `DIR/plans.bin`, with the inactive fills (`inactive-p{0,1}.bin`). A request replays them (`mfill::fill`
+/// `N4`; stored as `DIR/plans.bin`, with the inactive fills (`inactive-p{0,1}.bin`) and the decoded
+/// node data's image (`nodedata.bin`, pass 12). A request replays them (`mfill::fill`
 /// checks every row and solves afresh if a replay falls short).
 pub fn setup(dir: &Path) {
     let t = Instant::now();
@@ -182,6 +183,10 @@ pub fn setup(dir: &Path) {
     let b = crate::mfill::save_plans(&pre.nd.protos, &plan::data_tag());
     std::fs::create_dir_all(dir).unwrap_or_else(|e| service::fatal(&format!("{}: {e}", dir.display())));
     std::fs::write(dir.join(PLANS), &b).unwrap_or_else(|e| service::fatal(&format!("{}: {e}", dir.display())));
+    // the decoded node data's image (pass 12; not with `FLOCK_NODE_DUMP`, whose tag is fixed)
+    if std::env::var_os("FLOCK_NODE_DUMP").is_none() {
+        std::fs::write(dir.join(plan::IMAGE), plan::save_image(pre.nd, &plan::data_tag())).unwrap_or_else(|e| service::fatal(&format!("{}: {e}", dir.display())));
+    }
     for (i, p) in pre.nd.protos.iter().enumerate() {
         let (v, st) = crate::mfill::fill(p, None);
         if st.failed_rows != 0 || st.conflicts != 0 {

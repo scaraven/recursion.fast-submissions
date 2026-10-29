@@ -499,11 +499,17 @@ fn fill_with(p: &Proto, run: SlotRun, partial: bool, replay: bool) -> (Vec<F>, F
     drop(sp);
     let _sp = crate::prof::span(if run.is_some() { "fill.check" } else { "fill.check_inactive" });
     // check every row; a replay that falls short (another child's data) is completed by the
-    // worklist from where it stopped (the deduction's closure is the same) and checked again
+    // worklist from where it stopped (the deduction's closure is the same) and checked again: pass
+    // 12 re-checks only the rows that failed or touch a cell the completion solved (every other
+    // row reads the same values as before; `FLOCK_FULL_RECHECK=1` re-checks all, the reference)
+    let mut recheck: Option<Vec<u32>> = None;
     for pass in 0..2 {
         st.failed_rows = 0;
         st.first_failed.clear();
-        for i in 0..nr {
+        let mut failed: Vec<u32> = Vec::new();
+        let n_check = recheck.as_ref().map_or(nr, |v| v.len());
+        for q in 0..n_check {
+            let i = recheck.as_ref().map_or(q, |v| v[q] as usize);
             let [a, b, c] = rw.eval(i, &|x| val[(x - base) as usize]);
             if a * b != c {
                 st.failed_rows += 1;
@@ -521,14 +527,27 @@ fn fill_with(p: &Proto, run: SlotRun, partial: bool, replay: bool) -> (Vec<F>, F
                 if st.first_failed.len() < 12 {
                     st.first_failed.push(rw.idx[i]);
                 }
+                failed.push(i as u32);
             }
         }
         if pass == 0 && st.failed_rows > 0 && st.replayed {
-            let rec = worklist_with(p, base, &mut val, &mut known);
+            let rec = worklist_unknown(p, base, &mut val, &mut known);
             if std::env::var_os("FLOCK_VERBOSE").is_some() {
                 eprintln!("  fill p{} replay completed by the worklist: {} more cells ({} rows failed)", p.pi, rec.len(), st.failed_rows);
             }
             st.solved += rec.len();
+            if std::env::var_os("FLOCK_FULL_RECHECK").is_none() {
+                let (deg, adj) = p.adj.get().expect("the completion built the adjacency");
+                let mut mark = vec![false; nr];
+                let mut v: Vec<u32> = Vec::new();
+                for &i in failed.iter().chain(rec.iter().flat_map(|&(_, u)| adj[deg[u as usize] as usize..deg[u as usize + 1] as usize].iter())) {
+                    if !std::mem::replace(&mut mark[i as usize], true) {
+                        v.push(i);
+                    }
+                }
+                v.sort_unstable();
+                recheck = Some(v);
+            }
             continue;
         }
         break;
@@ -626,6 +645,32 @@ fn worklist_with(p: &Proto, base: u32, val: &mut [F], known: &mut [bool]) -> Vec
     worklist(&p.rows, base, deg, adj, val, known)
 }
 
+/// The completion of a short replay (pass 12; `worklist_with` is the reference,
+/// `FLOCK_FULL_RECHECK=1` uses it): the worklist started from the rows that touch an unknown cell,
+/// in row order. A row with no unknown cell solves nothing (`try_row`), and every row the full
+/// worklist would reach later is pushed here too when one of its cells is solved, so the closure
+/// (the solved cells and their values) is the same.
+fn worklist_unknown(p: &Proto, base: u32, val: &mut [F], known: &mut [bool]) -> Vec<(u32, u32)> {
+    let (deg, adj) = p.adj.get_or_init(|| adjacency(&p.rows, base));
+    if std::env::var_os("FLOCK_FULL_RECHECK").is_some() {
+        return worklist(&p.rows, base, deg, adj, val, known);
+    }
+    let nr = p.rows.len();
+    let mut queued = vec![false; nr];
+    let mut start: Vec<u32> = Vec::new();
+    for l in 0..SLOT {
+        if !known[l] {
+            for &r in &adj[deg[l] as usize..deg[l + 1] as usize] {
+                if !std::mem::replace(&mut queued[r as usize], true) {
+                    start.push(r);
+                }
+            }
+        }
+    }
+    start.sort_unstable_by(|a, b| b.cmp(a));
+    worklist_q(&p.rows, base, deg, adj, val, known, queued, start)
+}
+
 /// The cell → rows adjacency (CSR: `deg` offsets per region-local cell, `adj` the rows).
 fn adjacency(rw: &Rows, base: u32) -> (Vec<u32>, Vec<u32>) {
     let nr = rw.len();
@@ -653,9 +698,13 @@ fn adjacency(rw: &Rows, base: u32) -> (Vec<u32>, Vec<u32>) {
 /// The worklist solve to a fixed point from the current state; returns the order `(row, cell)`.
 fn worklist(rw: &Rows, base: u32, deg: &[u32], adj: &[u32], val: &mut [F], known: &mut [bool]) -> Vec<(u32, u32)> {
     let nr = rw.len();
+    worklist_q(rw, base, deg, adj, val, known, vec![true; nr], (0..nr as u32).rev().collect())
+}
+
+/// The worklist loop from the queue `work` (popped from the end), `queued` its membership.
+#[allow(clippy::too_many_arguments)]
+fn worklist_q(rw: &Rows, base: u32, deg: &[u32], adj: &[u32], val: &mut [F], known: &mut [bool], mut queued: Vec<bool>, mut work: Vec<u32>) -> Vec<(u32, u32)> {
     let mut rec = Vec::new();
-    let mut queued = vec![true; nr];
-    let mut work: Vec<u32> = (0..nr as u32).rev().collect();
     while let Some(i) = work.pop() {
         queued[i as usize] = false;
         let Some(u) = try_row(rw, base, i as usize, val, known) else { continue };

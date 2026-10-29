@@ -2084,3 +2084,149 @@ The same prover on S-E12f's data (run 40817225300) gave M ≤ 76 and 46.1 %. S-E
    P).
 5. A partial L32 replays the 200,003-step order 65 entries short and is completed by the worklist
    (≈ 0.15 s on the 7763, in parallel). Orders per `n` class near the segment end would remove this.
+
+## 20. Pass 12 (track P2⁸): the segments' round 1, shift reductions, the node's zero skips
+
+Status: 2026-10-29. Logs: `logs/P2/r41p12/` (VM) and the runner runs `logs/P2/run-<id>/`. Every probe
+ran the base (HEAD's committed `prover.s`, `5e1bab39…`) and the new prover on the same runner, through
+`probe/p2t12/` (branches `probe/p2t-12a … 12m`, temporary-index commits on HEAD, all deleted). **The
+final run is `40828606971` (EPYC 7763)**; `40828619224` (Xeon 8573C) and `40828630557` (EPYC 9V45) are
+off-tier acceptance. **π is byte-identical** to HEAD's prover on every KAT (§20.5).
+
+### 20.1 What was built (crate 16,258 `.rs` lines, was 15,026)
+
+| file | change (the reference each change keeps) |
+|---|---|
+| `simd.rs` | **`r1::window_t`**: the round-1 window in a tower form (`r1::tower`: GF(2^8) = GF(16)[w]/(w² + w + λ); LDE table in tower bytes; a product = three GF(16) products by `vpshufb` logs, the `ζ^k` weight folded into the exp tables, no Horner step; the LDE's permutations grouped, 6 shuffles instead of 14) (pass 11's `r1::window`, `zerocheck::window_portable`); **`r1::convert_t`**: the conversion by 4-bit `vpshufb` tables (16 KiB, L1), byte planes and a 16×16 byte transpose, `z` rows even/odd (`bit_transpose_eo`) (`r1::convert`); **`mac_u`** (unreduced `eq` accumulation; `mac_u_ref`, `axpy`); **`mul`** with the reductions by shifts (`mul_cl`); **`butterfly`** with the reduction by shifts, chosen on Zen 3 (`bfly_shift`, `FLOCK_BFLY`) (`butterfly_cl`); the AVX2 window on every AVX2 CPU (`r1_avx2`); selftest checks for both butterflies, `axpy_cl`, `mac_u`, pass 11's window; test `pass12_tests::tower_window_matches` |
+| `zerocheck.rs` | `round1` = tower window + `mac_u`; `round1_ref` = pass 11's; test `round1_matches_ref` |
+| `nodeprove.rs` | Sh: **`collapse_keys`** (one pass for every key, zero key ranges skipped; `collapse_n`); E2 `zc_abc`: zero `c` stretches skipped, **`fold_f_sparse`** for E2 and the Z tail (`fold_f`); tests `collapse_keys_matches`, `fold_sparse_matches` |
+| `ligerito.rs` | level 0: round 1 skips zero 4,096-pair ranges of `g`; `fold_msg` writes zeros for a zero block of `g` and skips its message part |
+| `sumcheck.rs` | `fold_f_sparse` |
+| `mfill.rs` | a short replay's completion: **`worklist_unknown`** (the worklist from the rows touching an unknown cell) and the second check over the failed rows and the rows touching a newly solved cell only (`FLOCK_FULL_RECHECK=1`: `worklist_with` and the full check) |
+| `plan.rs` | **`save_image`/`load_image`**: the decoded node data as a flat image (`nodedata.bin`, tagged by the blob's hash; the blob format unchanged; `decode_blob` the fallback); `data_tag` once; test `image_round_trip` |
+| `stream.rs` | `prover setup` writes `nodedata.bin` |
+| `bench.rs`, `main.rs` | modes `bench-r1 [m]` (window kernels and parts, round 1 new vs ref), `bench-k` (butterflies, products), `bench-nd` (blob vs image) |
+| `prover.s` | regenerated (§20.6) |
+| `probe/p2t12/` | `run.sh` (pass 11's, plus benches, **the KATs on the runner** with both binaries, pass 6's segment-fit cases, `RF_SETUP` for the base too), `stream.sh` (`pi_sha`), `kat/` (pass 11's signed N8/N2/N4 on S-E13a's data, 3 × 2.3 MB) |
+
+### 20.2 Round 1 (item 1; 7763, `bench-r1`, one thread, equal to the references)
+
+| kernel (µs per window) | pass 11 | pass 12 |
+|---|---:|---:|
+| window (LDE, products, z transposes, conversion) | 4.28–4.58 | **2.30–2.40** |
+| rows (LDE + products + transposes) | — (not timed alone) | 1.66–1.79 |
+| conversion | 1.38–1.47 | **0.61–0.62** |
+| `eq` accumulation (`axpy` → `mac_u`) | 0.64–0.67 | **0.27–0.28** |
+| **round 1 over 2^32 bits (4 threads, s)** | 1.17–1.32 | **0.68–0.70** |
+
+In the proof (run 40828606971, step 3): the L32 segment's zc_round1 1.21 → 0.76 s, the N2 node's 0.41 → 0.26 s.
+
+### 20.3 Shift reductions (`bench-k`, ns per item, one thread)
+
+| | butterfly: carry-less → shifts | F product (`axpy`): carry-less → shifts |
+|---|---|---|
+| EPYC 7763 | 1.745 → **1.63** | 3.32 → **2.92–2.98** |
+| EPYC 9V45 | 1.127 → 1.09–1.27 | 2.38 → 2.16 |
+| Xeon 8573C | 1.17–1.20 → 1.29 (worse) | 2.82 → 2.80 |
+
+`mul` takes the shift form everywhere; the butterfly only on Zen 3. Over the final 7763 streams' 8
+steps: Ligerito level-0 folds −14 %, tail rounds and folds −11 %, NTT passes −5 % and blocks −8 %;
+`x6.fold` **+4 %** (its table loads compete with the shifts; §20.8).
+
+### 20.4 The node (items 2–6) and start-up
+
+- **Zero skips** (N2 node, step 3, phase times): Sh (`shift`) 0.26 → 0.17 s (`collapse_keys`),
+  Ligerito 0.37 → 0.30, E2 0.148 → 0.136, Z tail 0.33 → 0.31.
+- **A short replay** (a partial child whose setup order was recorded at another `n`, e.g. L30 at
+  n = 49,807: 1,976 entries short): the completion and the second check now touch only the rows
+  that can change. Witness on step 4 (311,951 = L32 + L30): 0.59–0.61 → 0.47–0.52 s. Per-`n`-class
+  orders (§19.9 item 5) are no longer needed.
+- **Start-up** 0.54–0.59 → **0.47–0.51 s** (the image: 7763 `bench-nd` 0.147–0.173 → 0.070–0.083 s).
+- Slot 0 (item 4): unchanged beyond the completion. A parallel row check does not cut CPU, and slot 0
+  shares the cores with the aggregate.
+
+### 20.5 Checks
+
+- **KATs, base (HEAD) = new**: on the VM (portable products, AVX2 window) and on three runners (ymm
+  path): N8 `d8b25c6a…`, N2 `515f21b3…`, N4 `c5d6ae84…`, N2 k = 1 `816a1f84…`, N4 k = 4 `a3c6e71b…`
+  (pass 11's `p-*.txt` on S-E13a's data), `test-leaf` 28 `62f91a4b…`, 30 `02997486…`, 32
+  `559306ee…`, 31 `--n 77777` `aac62938…`, and the 11 fit cases' π. The short-replay case (N2 over
+  311,951, VM): `db9942b1…` with the setup, with `FLOCK_FULL_RECHECK=1`, without the setup, and HEAD's
+  base with the setup. **The brief's KATs** (`9368bcae…`, `f60dc083…`, `a16ab6a3…`) are S-E12f-era
+  (pass 10's N8): since pass 11's data change HEAD no longer reproduces them, so they cannot be the
+  reference.
+- `cargo test --release`: **51 passed, 1 ignored** (`cargo-test-2.txt`). Source rule (`logs/org20`):
+  359 files, 0 findings.
+- Streams: **32/32 outputs accepted by `acc`, 32/32 canaries rejected** on each of the three final
+  runners, base and new.
+
+### 20.6 `prover.s`
+
+**18,042,211 B, sha256 `f08413937517e2adc1ddfa723881e44caa02cc6a6e62fcc2c161d08ece7e0187`**
+(`logs/P2/r41p12/build-asm.log`). All three final runners rebuilt it byte for byte; selftest
+`tier=ymm checked=[pclmul,ymm,ymm-sim]`, `bfly=sh` on the 7763, `cl` on the Xeon and the 9V45.
+
+### 20.7 Final 7763 times (run 40828606971, base and new on one runner, both with `RF_SETUP`)
+
+| step | kind | chain(s) | base request | **new request** | new: aggregate · witness · node prove |
+|---|---|---|---|---|---|
+| 1 | N8 | 2^18 + 2^18 | 16.87–16.92 | **15.20–15.24** | 9.17–9.25 · 0.68–0.74 · 5.16–5.18 |
+| 2, 8 | N2 | 2^17 | 6.06–6.28 | **5.48–5.55** | 2.58–2.66 · 0.40–0.41 · 2.39–2.41 |
+| 3 | N2 | 2^18 | 8.49–8.51 | **7.66–7.76** | 4.79–4.83 · 0.39–0.41 · 2.38–2.42 |
+| 4 | N2 | 311,951 | 9.82–9.84 | **8.73–8.80** | 5.73–5.77 · 0.47–0.52 · 2.41–2.42 |
+| 5 | N2 | 3·2^17 | 11.22–11.30 | **10.10–10.13** | 7.11 · 0.48–0.51 · 2.41–2.42 |
+| 6 | N4 | 3·2^18 | 21.43–21.58 | **19.10–19.14** | 13.76–13.85 · 0.69 · 4.46–4.51 |
+| 7 | N4 | 2^20 | 26.88–26.91 | **23.99–24.02** | 18.42–18.43 · 0.93–0.96 · 4.49–4.50 |
+
+- **Segment fits** (prove-leaf through rf-oracle, prove + trace + SIGN, `fit-final.txt`): L32
+  2.476 + 2.720·n/2^18 → **2.149 + 2.415**, L31 1.239 + 1.350·n/2^17 → **1.072 + 1.203**, L30
+  0.654 + 0.602·n/2^16 → **0.567 + 0.531** s.
+- Setup 59.2 s, peak 7.12 GB, **365 MB** (the image 298 MB; was 66.8 MB). Request peak RSS 7.10 GB.
+- The native `acc` (the prover binary's verifier, not the scored one) also fell: N2 0.43–0.45 →
+  0.39–0.40, N4 0.52 → 0.48, N8 0.62 → 0.57 s.
+
+**The stream projection** (`logs/P2/r41p12/project.py` = pass 11's, with each prover's own fits by
+`--seg`; `project-final.txt`):
+
+| | base (same runner) | **new** |
+|---|---|---|
+| node parts N2 / N4 / N8 | 3.49 / 6.01 / 6.50 s | **3.23 / 5.59 / 6.09 s** |
+| start-up · overhead per step | 0.565 · 1.95 s | **0.487 · 1.87 s** |
+| steps 2^17 / 2^18 / 1.19·2^18 / 2^20 | 6.08 / 8.68 / 9.80 / 26.80 s | **5.50 / 7.79 / 8.76 / 23.84 s** |
+| mean step + overhead | 10.67 + 1.95 = 12.61 s | **9.54 + 1.87 = 11.41 s** |
+| stream fits | M ≤ 75 | **M ≤ 83** |
+| evaluations truncated (simulated) | 49.1 % | **30.4 %** |
+| P̄ | 9.41 s | **8.43 s** |
+
+The base here is better than §19.6's (M ≤ 74, 52.5 %) because this probe gives HEAD's base the setup
+too (pass 11's probe did not). Off-tier, same code: Xeon 8573C M ≤ 83 → 90 (30.6 → 19.3 %), EPYC
+9V45 M ≤ 121 → 132.
+
+### 20.8 Deviations, findings, open questions
+
+1. **The brief's KAT hashes are stale** (§20.5); the references are pass 11's S-E13a-era KATs and
+   HEAD's binary on the same inputs.
+2. **Stream proofs are not byte-deterministic** between two runs of one binary (`pi_sha` differs base
+   vs base), so π identity rests on the KATs (now also run on the runners, where the ymm kernels
+   run).
+3. **`/setup` grows to 365 MB** (the node data image). Without it, or with a foreign tag, the blob is
+   decoded as before.
+4. **The butterfly's reduction is chosen by CPU** (Zen 3: shifts). The result is the same either way.
+5. Pass 11's probe gave the base streams no `RF_SETUP`; pass 12's base figures include it.
+6. `probe/p2t12/kat/` holds 6.9 MB of signed nodes (probe inputs); the orchestrator may drop them (the
+   KAT section then reports empty π and `DIFFER`).
+
+### 20.9 Handover: what remains, in order of seconds per step
+
+1. **The segments** are still ≈ 60 % of a step. Per L32 at 2^18 (step 3): commit 1.15 (NTT ≈ 0.6, the
+   service's leaf hashes ≈ 0.36), round 1 0.76 (`rows_t` ≈ 1.7 µs a window: 32 table loads and
+   ≈ 130 vector ops a row, no SMT gain), Ligerito 0.68, x₆ 0.59, witness 0.58, ring switch 0.31, tail
+   0.22, lincheck 0.20. `x6_fold` should go back to `mul_cl` (+4 % with the shift product; ≈ 0.015 s
+   per step).
+2. **The node prove** (N2 2.4 s, N4 4.5 s): commit 0.51, E4 0.38, Z tail 0.31, Ligerito 0.30, Z
+   round 1 0.26, ring switch 0.23, Sh 0.17.
+3. **The node data in memory**: 5.3 M nonzeros per prototype carry 16-byte coefficients with only 513
+   distinct values. `u16` indices into a table would cut the image (298 MB) and start-up further, and
+   the memory traffic of `fill.check`, `m_matvec` and `m_scatter`.
+4. **The node witness's critical path** is slot 1's sequential replay (0.25 s for 436,594 entries);
+   slot 0's fill (run_p0 ≈ 0.3–0.46 s, replay, check) still runs beside the aggregate.

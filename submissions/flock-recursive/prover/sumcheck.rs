@@ -61,6 +61,25 @@ pub fn fold_f_live(t: &[F], s: F, live: usize) -> Vec<F> {
     out
 }
 
+/// `fold_f` that writes zeros for zero input stretches without reading them twice (pass 12: the
+/// node's E2 tables over the M rows, whose slots end in holes; same result as `fold_f`).
+pub fn fold_f_sparse(t: &[F], s: F) -> Vec<F> {
+    let n = t.len() / 2;
+    let mut out: Vec<F> = par::uninit_vec(n);
+    par::for_each_chunk_mut(&mut out, 1 << 12, |off, ch| {
+        for (i, sub) in ch.chunks_mut(1 << 10).enumerate() {
+            let o = off + (i << 10);
+            let src = &t[2 * o..2 * (o + sub.len())];
+            if src.iter().all(|x| x.is_zero()) {
+                sub.iter_mut().for_each(|x| *x = F::ZERO);
+            } else {
+                crate::simd::fold(src, s, sub);
+            }
+        }
+    });
+    out
+}
+
 pub fn fold_f(t: &[F], s: F) -> Vec<F> {
     let n = t.len() / 2;
     let mut out: Vec<F> = par::uninit_vec(n);

@@ -503,17 +503,143 @@ pub fn decode_blob(b64: &str) -> NodeData {
     NodeData { protos: std::sync::Arc::new([p0, p1]), texts, kinds }
 }
 
+// ---------------------------------------------------------------- the decoded image (pass 12)
+
+/// The decoded node data as a flat image (`prover setup` writes it as `nodedata.bin` beside the
+/// plans; the blob's format is unchanged): `FLNDIMG1`, the blob's tag, then per prototype its
+/// fields as length-prefixed little-endian arrays, then the texts. A request loads it with bulk
+/// copies instead of the blob's base64, LZ and varint decoding (start-up 0.18 s on the 7763).
+pub const IMAGE: &str = "nodedata.bin";
+
+struct Wi(Vec<u8>);
+impl Wi {
+    fn u(&mut self, x: u64) {
+        self.0.extend_from_slice(&x.to_le_bytes());
+    }
+    fn raw<T: Copy>(&mut self, v: &[T]) {
+        self.u(v.len() as u64);
+        // SAFETY: plain-data element types (u32, [u32; 4], (u32, u32), F), read back by `Ri::raw`
+        self.0.extend_from_slice(unsafe { std::slice::from_raw_parts(v.as_ptr() as *const u8, std::mem::size_of_val(v)) });
+    }
+}
+struct Ri<'a> {
+    b: &'a [u8],
+    p: usize,
+}
+impl Ri<'_> {
+    fn u(&mut self) -> Option<u64> {
+        let x = u64::from_le_bytes(self.b.get(self.p..self.p + 8)?.try_into().ok()?);
+        self.p += 8;
+        Some(x)
+    }
+    fn raw<T: Copy>(&mut self) -> Option<Vec<T>> {
+        let n = usize::try_from(self.u()?).ok()?;
+        let bytes = n.checked_mul(std::mem::size_of::<T>())?;
+        let src = self.b.get(self.p..self.p.checked_add(bytes)?)?;
+        let mut v: Vec<T> = Vec::with_capacity(n);
+        // SAFETY: `bytes` bytes are copied into the capacity of `n` elements of a plain-data type
+        unsafe {
+            std::ptr::copy_nonoverlapping(src.as_ptr(), v.as_mut_ptr() as *mut u8, bytes);
+            v.set_len(n);
+        }
+        self.p += bytes;
+        Some(v)
+    }
+}
+
+fn ty_code(t: Ty) -> (u64, u64) {
+    match t {
+        Ty::Untracked => (0, 0),
+        Ty::F => (1, 0),
+        Ty::K => (2, 0),
+        Ty::D => (3, 0),
+        Ty::Bit => (4, 0),
+        Ty::AF(n) => (5, n as u64),
+        Ty::AK(n) => (6, n as u64),
+    }
+}
+
+/// The image of `nd` (tagged with `tag`, the blob's `data_tag`).
+pub fn save_image(nd: &NodeData, tag: &[u8; 32]) -> Vec<u8> {
+    let mut w = Wi(b"FLNDIMG1".to_vec());
+    w.0.extend_from_slice(tag);
+    for p in nd.protos.iter() {
+        w.u(p.pi as u64);
+        w.raw(&p.rows.idx);
+        w.raw(&p.rows.rng);
+        w.raw(&p.rows.cells);
+        w.raw(&p.rows.coefs);
+        // the registers: (imp, type, n, form count) per register, then all forms in one array
+        let head: Vec<[u64; 4]> = p.regs.iter().map(|r| { let (c, n) = ty_code(r.ty); [r.imp as u64, c, n, r.forms.len() as u64] }).collect();
+        let forms: Vec<(u32, u32)> = p.regs.iter().flat_map(|r| r.forms.iter().copied()).collect();
+        w.raw(&head);
+        w.raw(&forms);
+        let aux: Vec<[u64; 5]> = p.aux.iter().map(|a| [a.reg as u64, a.bits as u64, a.n as u64, a.terms.0 as u64, a.terms.1 as u64]).collect();
+        w.raw(&aux);
+        w.raw(&p.fcells);
+        w.raw(&p.fcoefs);
+    }
+    for t in nd.texts.iter().chain(nd.kinds.iter()) {
+        w.raw(t.as_bytes());
+    }
+    w.0
+}
+
+/// The node data from an image, if it is one and carries `tag`.
+pub fn load_image(b: &[u8], tag: &[u8; 32]) -> Option<NodeData> {
+    if b.len() < 40 || &b[..8] != b"FLNDIMG1" || &b[8..40] != tag {
+        return None;
+    }
+    let mut r = Ri { b, p: 40 };
+    let mut ps = Vec::with_capacity(2);
+    for _ in 0..2 {
+        let pi = r.u()? as usize;
+        let rows = Rows { idx: r.raw()?, rng: r.raw()?, cells: r.raw()?, coefs: r.raw()? };
+        let head: Vec<[u64; 4]> = r.raw()?;
+        let forms: Vec<(u32, u32)> = r.raw()?;
+        let mut at = 0usize;
+        let mut regs = Vec::with_capacity(head.len());
+        for h in &head {
+            let ty = match h[1] {
+                0 => Ty::Untracked,
+                1 => Ty::F,
+                2 => Ty::K,
+                3 => Ty::D,
+                4 => Ty::Bit,
+                5 => Ty::AF(h[2] as usize),
+                6 => Ty::AK(h[2] as usize),
+                _ => return None,
+            };
+            let e = at.checked_add(h[3] as usize)?;
+            regs.push(Reg { imp: h[0] == 1, ty, forms: forms.get(at..e)?.to_vec() });
+            at = e;
+        }
+        let aux = r.raw::<[u64; 5]>()?.into_iter().map(|a| Aux { reg: a[0] as u32, bits: a[1] == 1, n: a[2] as usize, terms: (a[3] as u32, a[4] as u32) }).collect();
+        let (fcells, fcoefs) = (r.raw()?, r.raw()?);
+        ps.push(Proto { pi, rows, regs, aux, fcells, fcoefs, plan: Default::default(), adj: Default::default(), inactive: Default::default() });
+    }
+    let mut s = || String::from_utf8(r.raw::<u8>()?).ok();
+    let texts = [s()?, s()?];
+    let kinds = [s()?, s()?, s()?];
+    let p1 = ps.pop()?;
+    let p0 = ps.pop()?;
+    (p0.pi == 0 && p1.pi == 1).then(|| NodeData { protos: std::sync::Arc::new([p0, p1]), texts, kinds })
+}
+
 /// The embedded blob (`nodeblob.b64`, generated by `flock-prover plan-build`).
 pub static BLOB: &str = include_str!("nodeblob.b64");
 
 /// A tag of the node data in use (`mfill::save_plans`): the embedded blob's hash, or a fixed tag for
 /// the dump directories (`FLOCK_NODE_DUMP`).
 pub fn data_tag() -> [u8; 32] {
-    if std::env::var_os("FLOCK_NODE_DUMP").is_some() || BLOB.len() < 16 {
-        crate::blake2s::blake2s256(b"flock-recursive node dump")
-    } else {
-        crate::blake2s::blake2s256(BLOB.as_bytes())
-    }
+    static T: std::sync::OnceLock<[u8; 32]> = std::sync::OnceLock::new();
+    *T.get_or_init(|| {
+        if std::env::var_os("FLOCK_NODE_DUMP").is_some() || BLOB.len() < 16 {
+            crate::blake2s::blake2s256(b"flock-recursive node dump")
+        } else {
+            crate::blake2s::blake2s256(BLOB.as_bytes())
+        }
+    })
 }
 
 /// The node data: from the dumps when `FLOCK_NODE_DUMP` is set (development), else the embedded
@@ -530,7 +656,12 @@ pub fn node_data() -> &'static NodeData {
                 kinds: ["N2", "N4", "N8"].map(|k| rd(dd.join(format!("node-{k}.txt")))),
             }
         } else {
-            decode_blob(BLOB)
+            // `prover setup`'s image of this blob, if there is one (pass 12), else the blob
+            let img = std::env::var_os("RF_SETUP").and_then(|d| std::fs::read(std::path::Path::new(&d).join(IMAGE)).ok());
+            let sp = crate::prof::span("nd.image");
+            let nd = img.and_then(|b| load_image(&b, &data_tag()));
+            drop(sp);
+            nd.unwrap_or_else(|| decode_blob(BLOB))
         }
     })
 }
@@ -589,5 +720,34 @@ mod tests {
             let p = crate::mfill::Proto::load(&dd, pi);
             super::proto_eq(&nd.protos[pi], &p).unwrap();
         }
+    }
+}
+
+#[cfg(test)]
+mod pass12_tests {
+    use super::*;
+
+    /// The image round-trips the embedded blob's node data (every field: the image of the loaded
+    /// image is the same bytes, and the bulk arrays are equal), and a foreign tag or a cut image is
+    /// refused.
+    #[test]
+    fn image_round_trip() {
+        if BLOB.len() < 16 {
+            return;
+        }
+        let nd = decode_blob(BLOB);
+        let tag = [7u8; 32];
+        let img = save_image(&nd, &tag);
+        let back = load_image(&img, &tag).expect("image loads");
+        assert_eq!(save_image(&back, &tag), img);
+        for (p, q) in nd.protos.iter().zip(back.protos.iter()) {
+            assert!(p.rows.idx == q.rows.idx && p.rows.rng == q.rows.rng && p.rows.cells == q.rows.cells && p.rows.coefs == q.rows.coefs);
+            assert!(p.fcells == q.fcells && p.fcoefs == q.fcoefs && p.regs.len() == q.regs.len() && p.aux.len() == q.aux.len());
+            assert!(p.regs.iter().zip(&q.regs).all(|(a, b)| a.imp == b.imp && a.ty == b.ty && a.forms == b.forms));
+            assert!(p.aux.iter().zip(&q.aux).all(|(a, b)| a.reg == b.reg && a.bits == b.bits && a.n == b.n && a.terms == b.terms));
+        }
+        assert!(nd.texts == back.texts && nd.kinds == back.kinds);
+        assert!(load_image(&img, &[8u8; 32]).is_none());
+        assert!(load_image(&img[..img.len() - 1], &tag).is_none());
     }
 }

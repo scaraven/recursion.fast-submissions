@@ -700,6 +700,9 @@ fn main() {
         }
         "bench" => bench::run(),
         "bench-trace" => bench::run_trace(args.get(2).map(|s| s.as_str()).unwrap_or("N2")),
+        "bench-r1" => bench::run_r1(args.get(2).and_then(|x| x.parse().ok()).unwrap_or(30)),
+        "bench-k" => bench::run_k(),
+        "bench-nd" => bench::run_nd(args.get(2).map(|s| s.as_str()).unwrap_or(".")),
         "bench-rs" => bench::run_rs(args.get(2).and_then(|x| x.parse().ok()).unwrap_or(32)),
         "selftest" => match simd::selftest() {
             Ok(s) => println!("SELFTEST pass {s}"),

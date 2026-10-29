@@ -96,6 +96,16 @@ fn fold_msg(w: &Tab, g: &FTab, s: K, msg: bool) -> (Vec<K>, Vec<K>, [K; 3]) {
                 Tab::F(x) => crate::simd::kfold_f(&x[2 * a..2 * e], s, wo),
                 Tab::K(x) => crate::simd::kfold(&x[2 * a..2 * e], s, wo),
             }
+            // a zero block of `g` (a node's zero third, a partial segment's tail) folds to zero
+            // and adds nothing to the next message (pass 12)
+            let gz = match g {
+                FTab::F(x) => x[2 * a..2 * e].iter().all(|v| v.is_zero()),
+                FTab::K(x) => x[2 * a..2 * e].iter().all(|v| v.a.is_zero() && v.b.is_zero()),
+            };
+            if gz {
+                go.iter_mut().for_each(|v| *v = K::ZERO);
+                continue;
+            }
             match g {
                 FTab::F(x) => crate::simd::kfold_f(&x[2 * a..2 * e], s, go),
                 FTab::K(x) => crate::simd::kfold(&x[2 * a..2 * e], s, go),
@@ -143,7 +153,17 @@ fn rounds(w: Tab, g: &[F], nrounds: usize, wr: &mut Writer, claim: &mut K) -> (V
     let sp = crate::prof::span(if g.len() > 1 << 22 { "lig0.round1" } else { "lig.round1" });
     let msg: [K; 3] = match &w {
         Tab::F(wf) => {
-            let parts = par::map_chunks(n, 1 << 12, |lo, hi| crate::simd::round_ff(&wf[2 * lo..2 * hi], &g[2 * lo..2 * hi]));
+            let parts = par::map_chunks(n, 1 << 12, |lo, hi| {
+                let mut r = [F::ZERO; 3];
+                for l in (lo..hi).step_by(1 << 12) {
+                    let h = (l + (1 << 12)).min(hi);
+                    if !zero_f(&g[2 * l..2 * h]) {
+                        let m = crate::simd::round_ff(&wf[2 * l..2 * h], &g[2 * l..2 * h]);
+                        (0..3).for_each(|j| r[j] += m[j]);
+                    }
+                }
+                r
+            });
             let mut r = [F::ZERO; 3];
             for p in parts {
                 for j in 0..3 {
@@ -153,7 +173,17 @@ fn rounds(w: Tab, g: &[F], nrounds: usize, wr: &mut Writer, claim: &mut K) -> (V
             [K::f(r[0]), K::f(r[1]), K::f(r[2])]
         }
         Tab::K(wk) => {
-            let parts = par::map_chunks(n, 1 << 12, |lo, hi| crate::simd::round_kf(&wk[2 * lo..2 * hi], &g[2 * lo..2 * hi]));
+            let parts = par::map_chunks(n, 1 << 12, |lo, hi| {
+                let mut r = [K::ZERO; 3];
+                for l in (lo..hi).step_by(1 << 12) {
+                    let h = (l + (1 << 12)).min(hi);
+                    if !zero_f(&g[2 * l..2 * h]) {
+                        let m = crate::simd::round_kf(&wk[2 * l..2 * h], &g[2 * l..2 * h]);
+                        (0..3).for_each(|j| r[j] += m[j]);
+                    }
+                }
+                r
+            });
             let mut r = [K::ZERO; 3];
             for p in parts {
                 for j in 0..3 {
@@ -185,6 +215,11 @@ fn rounds(w: Tab, g: &[F], nrounds: usize, wr: &mut Writer, claim: &mut K) -> (V
         nmsg = c;
     }
     (wk, gk, ch)
+}
+
+/// All entries zero (pass 12's skips; the products with a zero `g` are zero).
+fn zero_f(g: &[F]) -> bool {
+    crate::zerocheck::zero_bytes(unsafe { std::slice::from_raw_parts(g.as_ptr() as *const u8, 16 * g.len()) })
 }
 
 /// `K` vector as its F coordinates (index `2c + b`).

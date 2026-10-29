@@ -84,8 +84,19 @@ pub fn window_portable(sk: &Skip, a: &[u8], b: &[u8], z: &[u8], out: &mut [F; 19
 
 /// Round 1 over the witness (bytes of `a`, `b`, `z`), with `r_out` the coordinates of
 /// `x₁₃ … x_{m−1}` (`m − 13` of them). Blocks `≥ used` are zero (`a = b = z = 0`: a segment's
-/// blocks past its length) and contribute nothing, so only the first `used` are read.
+/// blocks past its length) and contribute nothing, so only the first `used` are read. Pass 12:
+/// the tower-form window (`simd::r1::window_t`) and the windows' `eq` weights accumulated
+/// unreduced (`simd::mac_u`); `round1_ref` is pass 11's.
 pub fn round1(a: &[u8], b: &[u8], z: &[u8], r_out: &[F], used: usize) -> R1 {
+    round1_with(a, b, z, r_out, used, false)
+}
+
+/// Pass 11's round 1 (the reference): `simd::round1_window_ref`, reduced `axpy` per window.
+pub fn round1_ref(a: &[u8], b: &[u8], z: &[u8], r_out: &[F], used: usize) -> R1 {
+    round1_with(a, b, z, r_out, used, true)
+}
+
+fn round1_with(a: &[u8], b: &[u8], z: &[u8], r_out: &[F], used: usize, reference: bool) -> R1 {
     let sk = skip();
     let nw = a.len() / 1024;
     assert_eq!(nw, 1 << r_out.len());
@@ -96,14 +107,24 @@ pub fn round1(a: &[u8], b: &[u8], z: &[u8], r_out: &[F], used: usize) -> R1 {
     let skip0 = (0..16).all(|bm| sk.conv[bm * 256].is_zero());
     let parts = par::map_chunks(nw.min(used.saturating_mul(2)), 16, |lo, hi| {
         let mut acc = vec![F::ZERO; 192];
+        let mut accu = vec![0u128; 576];
         let mut w = [F::ZERO; 192];
         for x in lo..hi {
             let base = x * 1024;
             if skip0 && zero_bytes(&a[base..base + 1024]) && zero_bytes(&b[base..base + 1024]) && zero_bytes(&z[base..base + 1024]) {
                 continue;
             }
-            simd::round1_window(sk, &a[base..base + 1024], &b[base..base + 1024], &z[base..base + 1024], &mut w);
-            simd::axpy(&mut acc, &w, eo[x]);
+            let (wa, wb, wz) = (&a[base..base + 1024], &b[base..base + 1024], &z[base..base + 1024]);
+            if reference {
+                simd::round1_window_ref(sk, wa, wb, wz, &mut w);
+                simd::axpy(&mut acc, &w, eo[x]);
+            } else {
+                simd::round1_window(sk, wa, wb, wz, &mut w);
+                simd::mac_u(&mut accu, &w, eo[x]);
+            }
+        }
+        if !reference {
+            acc = simd::red_u(&accu);
         }
         acc
     });
@@ -305,6 +326,54 @@ mod pass11_tests {
             assert_eq!(got.pab[i], acc[i] * sk.c_pin);
             assert_eq!(got.bank[0][i], acc[64 + i] * sk.c_pin);
             assert_eq!(got.bank[1][i], acc[128 + i] * sk.c_pin);
+        }
+    }
+}
+
+#[cfg(test)]
+mod pass12_tests {
+    use super::*;
+
+    /// Pass 12's round 1 (tower window, unreduced accumulation) equals pass 11's, with zero and
+    /// unused windows.
+    #[test]
+    fn round1_matches_ref() {
+        let r_out: Vec<F> = (0..5u64).map(|i| F::new(0x51ed_270b ^ (i * 91), 7 * i + 1)).collect();
+        let nw = 1usize << r_out.len();
+        let mut s = 0x0dd_ba11u64;
+        let mut bytes = || -> Vec<u8> {
+            (0..nw * 1024)
+                .map(|i| {
+                    s ^= s << 13;
+                    s ^= s >> 7;
+                    s ^= s << 17;
+                    if (i / 1024) % 4 == 2 { 0 } else { s as u8 }
+                })
+                .collect()
+        };
+        let (a, b, z) = (bytes(), bytes(), bytes());
+        for used in [nw / 2, nw / 2 - 3, 5] {
+            let (x, y) = (round1(&a, &b, &z, &r_out, used), round1_ref(&a, &b, &z, &r_out, used));
+            assert!(x.pab == y.pab && x.bank == y.bank, "used {used}");
+        }
+        if crate::simd::hw_avx2() {
+            // the AVX2 windows directly (this VM's tier may be portable)
+            let sk = skip();
+            let eo = eq_table(&r_out);
+            let mut acc = vec![F::ZERO; 192];
+            let mut u = vec![0u128; 576];
+            let (mut w0, mut w1) = ([F::ZERO; 192], [F::ZERO; 192]);
+            for x in 0..nw {
+                let o = x * 1024;
+                window_portable(sk, &a[o..o + 1024], &b[o..o + 1024], &z[o..o + 1024], &mut w0);
+                unsafe { simd::r1::window_t(sk, &a[o..o + 1024], &b[o..o + 1024], &z[o..o + 1024], &mut w1) };
+                assert_eq!(w0, w1);
+                for i in 0..192 {
+                    acc[i] += w0[i] * eo[x];
+                }
+                simd::mac_u_ref(&mut u, &w1, eo[x]);
+            }
+            assert_eq!(simd::red_u(&u), acc);
         }
     }
 }

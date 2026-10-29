@@ -232,6 +232,32 @@ fn collapse_n(z: &[u64], t: &[F], base: usize, nbytes: usize) -> Vec<F> {
     })
 }
 
+/// `collapse_n` for every key at once (pass 12; `collapse_n` is the reference): one pass over the
+/// blocks, a key's bytes skipped when they are all zero (a zero byte's table entry is 0; a third of
+/// a node's blocks are zero). `cols[i][blk]` for key `i`.
+fn collapse_keys(z: &[u64], t: &[F], keys: &[(usize, usize)]) -> Vec<Vec<F>> {
+    let bytes = Witness::bytes(z);
+    let nb = z.len() / 256;
+    let mut cols: Vec<Vec<F>> = keys.iter().map(|_| par::uninit_vec(nb)).collect();
+    let ptrs: Vec<par::SyncPtr<F>> = cols.iter_mut().map(|c| par::SyncPtr(c.as_mut_ptr())).collect();
+    par::map_chunks(nb, 1 << 10, |lo, hi| {
+        for b in lo..hi {
+            for (i, &(base, n)) in keys.iter().enumerate() {
+                let o = b * 2048 + base / 8;
+                let src = &bytes[o..o + n];
+                let mut acc = F::ZERO;
+                if !zerocheck::zero_bytes(src) {
+                    for (p, &v) in src.iter().enumerate() {
+                        acc += t[p * 256 + v as usize];
+                    }
+                }
+                unsafe { *ptrs[i].0.add(b) = acc };
+            }
+        }
+    });
+    cols
+}
+
 /// One degree-3 zerocheck of `Σ_x eq(r, x)·(a(x) b(x) + c(x)) = claim₀` in Gruen's form (the leaf's Z3
 /// rounds, with a linear `c`; `c = None` for `c ≡ 0`): the messages through `send`, the challenges
 /// from `chal`. Returns the challenges and `(â, b̂, ĉ)`.
@@ -249,6 +275,11 @@ fn zc_abc(r: &[F], mut a: Vec<F>, mut b: Vec<F>, mut c: Option<Vec<F>>, claim0: 
             let parts = par::map_chunks(es.hi.len(), 1, |lo, hh| {
                 let mut acc = FAcc::default();
                 for h in lo..hh {
+                    // a zero stretch of c adds nothing (the holes after each slot's rows; pass 12)
+                    let blk = &c[2 * (h << es.nlo)..2 * ((h + 1) << es.nlo)];
+                    if blk.iter().all(|x| x.is_zero()) {
+                        continue;
+                    }
                     let mut inner = FAcc::default();
                     for (l, el) in es.lo.iter().enumerate() {
                         inner.mac(*el, c[2 * ((h << es.nlo) | l) + 1]);
@@ -266,10 +297,10 @@ fn zc_abc(r: &[F], mut a: Vec<F>, mut b: Vec<F>, mut c: Option<Vec<F>>, claim0: 
         claim = eval2_f([h0, h1, hi], x);
         pref *= F::ONE + r[kk] + x;
         xs.push(x);
-        a = crate::sumcheck::fold_f(&a, x);
-        b = crate::sumcheck::fold_f(&b, x);
+        a = crate::sumcheck::fold_f_sparse(&a, x);
+        b = crate::sumcheck::fold_f_sparse(&b, x);
         if let Some(cc) = c.as_mut() {
-            *cc = crate::sumcheck::fold_f(cc, x);
+            *cc = crate::sumcheck::fold_f_sparse(cc, x);
         }
     }
     let cv = c.map(|c| c[0]).unwrap_or(F::ZERO);
@@ -350,8 +381,8 @@ pub fn prove(o: &dyn Oracle, ni: &NodeIn) -> (Vec<u8>, Times) {
             ta = zerocheck::fold_x6(&tabs, ab, x, blocks);
             tb = zerocheck::fold_x6(&tabs, bb, x, blocks);
         } else {
-            ta = crate::sumcheck::fold_f(&ta, x);
-            tb = crate::sumcheck::fold_f(&tb, x);
+            ta = crate::sumcheck::fold_f_sparse(&ta, x);
+            tb = crate::sumcheck::fold_f_sparse(&tb, x);
         }
     }
     leaf::dummy_rounds(&mut wr, pp::F_Z3, pp::Z3_ROUNDS - (m - 6), 48);
@@ -425,7 +456,8 @@ pub fn prove(o: &dyn Oracle, ni: &NodeIn) -> (Vec<u8>, Times) {
         pw *= kap_s;
     }
     let sp = crate::prof::span("sh.collapse");
-    let cols: Vec<Vec<F>> = keys.iter().map(|&(b, n)| collapse_n(&w.z, &tt, b, n)).collect();
+    let cols = collapse_keys(&w.z, &tt, &keys);
+    debug_assert!(keys.iter().zip(&cols).all(|(&(b, n), c)| *c == collapse_n(&w.z, &tt, b, n)));
     drop(sp);
     let pairs: Vec<(Vec<F>, Vec<F>)> = es.into_iter().zip(cols).collect();
     assert!(pairs.iter().map(|(p, q)| leaf::dot(p, q)).fold(F::ZERO, |a, b| a + b).is_zero(), "Sh's sum is 0");
@@ -646,6 +678,41 @@ mod tests {
             let mut p2 = pi.clone();
             p2[params::field_off(f) + params::FIELD_SIZES[f] / 2] ^= 2;
             assert!(!ir::run_node(&text, ctx.clone(), &base, &o, &vk, &c, &p2).ok, "field {f}");
+        }
+    }
+}
+
+#[cfg(test)]
+mod pass12_tests {
+    use super::*;
+
+    /// `fold_f_sparse` equals `fold_f` on a table with zero stretches.
+    #[test]
+    fn fold_sparse_matches() {
+        let t: Vec<F> = (0..(1u64 << 15)).map(|i| if (i >> 11) % 3 == 1 || (i >> 9) % 7 == 2 { F::new(i * 77 + 1, i ^ 9) } else { F::ZERO }).collect();
+        let s = F::new(0x1234_5678, 0x9abc);
+        assert_eq!(crate::sumcheck::fold_f_sparse(&t, s), crate::sumcheck::fold_f(&t, s));
+    }
+
+    /// `collapse_keys` equals `collapse_n` key by key, with zero and nonzero blocks.
+    #[test]
+    fn collapse_keys_matches() {
+        let nb = 37;
+        let mut s = 0x5151_7e57u64;
+        let z: Vec<u64> = (0..nb * 256)
+            .map(|i| {
+                s ^= s << 13;
+                s ^= s >> 7;
+                s ^= s << 17;
+                if (i / 256) % 3 == 0 || (i % 256) % 5 == 1 { 0 } else { s }
+            })
+            .collect();
+        let eqt: Vec<F> = (0..256u64).map(|i| F::new(i * 0x9e37 + 1, i ^ 0x55)).collect();
+        let tt = leaf::theta_tables(&eqt);
+        let keys = [(0usize, 32usize), (512, 9), (1024 + 64, 3), (256, 32), (8 * 1000, 17)];
+        let cols = collapse_keys(&z, &tt, &keys);
+        for (k, &(b, n)) in keys.iter().enumerate() {
+            assert_eq!(cols[k], collapse_n(&z, &tt, b, n), "key {k}");
         }
     }
 }
