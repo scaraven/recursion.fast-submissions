@@ -661,3 +661,38 @@ Base: branch `v4/flock-recursive`, HEAD `53c2e13`. Build tree `logs/fr-build-SH2
     nested state as an expected type; split it into per-phase lemmas next. The tape is not in memory
     (`toProg` = `mem + mpw·t` zero words; `.input` reads the tape), so the map's only fixed neighbour
     is the index at `memX`. Context long: handover in RESULT Part 27 §3.
+74. **S-H4 pass 4** (2026-10-29). HEAD `632a20f`, build tree `logs/fr-build-SH4c` (copy of `fr-build-SH4b`,
+    `snap.sh` on HEAD, `MINE` = the six S-H4 modules + `FRXDec4Msg FRXDec4Map FRXRead4`), logs
+    `logs/S-H4c/`. Baseline `lake build FRXDec4Lv FRXLagT FRX4Ext FR` green, 2,581 jobs (`build0.log`).
+    A2′ has not landed (`A2p-RESULT.md` is a draft; its worktree edits to `FRShape4`, `FRX4Prog`, … were
+    not used: `snap.sh` takes every non-`MINE` module from HEAD).
+75. Item 1, `FRXDec4Msg`: `msg4_params` (per kind and level: `kᵢ = 8kᵢ₊₁`, `8kᵢ₊₁ ≤ nᵢ`, `log nᵢ ≤ 20`;
+    `decide`), `msgH4_next`, **`msgOk4_lower`**, `nextMsg4_four`, **`msgOk4_four`** (the tape link `hfin`
+    is a hypothesis: the final field's offset is A2′'s), controls `msg4_four_ctl`, `msgOk4_empty_neg`.
+    Pitfalls: `kᵢ₊₁ ≤ 2^14` (3.x) is false at `m = 32` (`k₁ = 2^16`); `semXIR I (.blk []) s = s` is no
+    longer `rfl` under `local irreducible runPrims` (`rw [semB, runPrims_nil]`); after `rw [e.1, e.2]` the
+    goal `0 = 0 ∧ 0 = 0` is not closed by `rw`'s `rfl` (state the goal as `e` itself).
+76. Item 2, `FRXDec4Map`: `LvMap`, `LvMap.Ok` (the level's regions in order, `ob + 2k(C + 1) ≤ eb`),
+    `Map4`, `Map4.Ok m` (numerals only: sizes `2^(m − 12 − 2i)`/`2^(m − 13 − 3i)`, the chain's region
+    `[chB, chEnd)` between `tb` and the levels, levels 1–4 keep level 0's word, level 1's rows below
+    level 0's `eq` table, `l0.cb + l0.cs·2^(m−12) ≤ ix = memX4 = 2^28`), the literal `map4` (one record
+    for `m = 31` and `32`), `map4_ok31`/`map4_ok32` by `decide`; controls (−) overlap, slack, fit, rows.
+    Pitfall: write the sizes as `m - 12 - 2 * 1` (not `m - 14`) so that `interval_cases i` leaves the
+    literal conjunct syntactically; `Rev4.NodeKind`, not `Snd.NodeKind`.
+77. Item 3 (first half), `FRXRead4`. **Finding: `posL` is hard-coded as well as `memX`.** Every index,
+    lookup and read program reads `|L|` at `posL = 5 + 99,738` (3.x's `piSize`): `walkPre`, `passPre`,
+    `sortPre`, `lookIR`, and the chain (`FRXChain*`, 21 uses). A 4.1 node proof has `|π| = piSizeOf seq4`
+    (798,192 at HEAD; 859,664 after A2′), so all of them need the log's position as a parameter, not
+    only the base. Ported mechanically (a Python rename `memX ↦ bX`, `posL ↦ pL`, defs applied to their
+    parameters outside `simp` lists, `hs : 5 + (|π| + 7)/8 = pL` for `π.size = piSize`, `hm : memX = 2^26`
+    replaced by section hypotheses `regs ≤ bX ≤ 2^60`, `pL ≤ 2^60` with `include`/`omit … in`): walk and
+    sort (`walk_spec4`, `passIR4_sem`, `sortIR4_sem`, **`idxIR4_sorted`**), `wf/cost/size/outs/safe_idxIR4`,
+    the lookup (`bsBody4_sem`, `bsLoop4`, `foundIR4_sem`, `lookIR4_sem`, **`idx_lookup4`**,
+    `Sorted4`, `posE4`). Pitfalls: `simp +decide only [WF, Prim.dst, …]` cannot decide `WF` once a
+    constant word is a variable (`BitVec.ofNat 64 pL`): use `simp +decide [ … ]`; a lemma with included
+    hypotheses takes them first (`walkLoop4 hbX hbX2 hpL I …`), but its own recursive call does not;
+    `omit … in` must precede the doc comment. 1,015 lines; 40.8 CPU-s sequential.
+78. Checks: `lake build FRXRead4 FRXDec4Map FRXLagT FR Solution` green, 2,590 jobs (`build-final.log`);
+    25 axiom lines within the three (`axioms.log`); source rule 365 files, 0 findings. Not done in this
+    pass: the read (`FRXRead`'s `getIR … readIR`, 1,200 lines on `lookIR`, `posL` and 3.x's cap offsets),
+    the chain at `seq4`, items 4–7. Handover in RESULT Part 28 §6.

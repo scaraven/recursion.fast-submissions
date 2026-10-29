@@ -3734,3 +3734,193 @@ holds the nested state.
    - `FRX4Ext`: `sub4.E := E4X nd S.acc`, `ext := ext4With nd`, `Open4` over `NodeDec4 nd`
      (`FRSubmission4`, `FRSubmission4Cert`).
 8. **Item 6**: controls for `Map4`, `outIR4`, `nd`; the `tgBody_sem` split (§1).
+
+## Part 28 (track S-H4, pass 4): the message steps, the memory map `Map4`, the log index and lookup at a parametric base and log position; handover
+
+**Status.** HEAD `632a20f`. Build tree `logs/fr-build-SH4c` (copy of `fr-build-SH4b`, re-snapshotted on
+HEAD; `MINE` = `FRXLag FRXLagT FRXDec4Level FRXDec4Back FRXDec4Front FRXDec4Lv FRXDec4Msg FRXDec4Map
+FRXRead4`), logs `logs/S-H4c/`. Nothing committed. Three new modules; no existing module was edited.
+A2′ has not landed (`A2p-RESULT.md` is a draft), so nothing here uses its worktree edits. Handover
+items 1 and 2 (Part 27 §3) are done; item 3 is half done (the index and the lookup, not the read);
+items 4–7 are not started (§6).
+
+### 1. Files (`loc.py`: total / code / thm; CPU sequential, `-DElab.async=false`, one module at a time)
+
+| File | loc | CPU (wall) | Content |
+|---|---|---|---|
+| `FRXDec4Msg` (new) | 177 / 127 / 8 | 8.0 s (11.0 s) | Item 1: `msg4_params`, `msg4_four_params`, `msgH4_next`, **`msgOk4_lower`**, `nextMsg4_four`, **`msgOk4_four`**; controls `msg4_four_ctl`, `msgOk4_empty_neg`. |
+| `FRXDec4Map` (new) | 201 / 109 / 16 | 6.1 s (9.0 s) | Item 2: `memX4 = 2^28`, `LvMap`, `LvMap.Ok`, `Map4`, `Map4.Ok`, **`map4`**, **`map4_ok31`**, **`map4_ok32`**, `LvMap.back`/`.front`/`.store`, `lv0_sizes`, `lvU_sizes`, `node_m`, `map4_ok`, `map4_lvU`, `map4_l0`; controls (§4). |
+| `FRXRead4` (new) | 1,015 / 873 / 29 | 40.8 s (44.4 s) | Item 3, first half: `walkPre4`, `walkIR4`, `passPre4`, `passIR4`, `sortPre4`, `sortIR4`, **`idxIR4 bX pL`**, `baseX4`; `wf/cost/sizeIR/outs/safe_idxIR4`; `tape_getD_posL4`, `tape_count_le4`, `tape_entry4`, `tape_entries_end4`, `walkLoop4`, `walk_spec4`, `passIR4_sem`, `sortIR4_sem`, **`idxIR4_sorted`**; the lookup `bsBody4`, `foundIR4`, `lookPre4`, **`lookIR4 bX pL`**, `posE4`, `Sorted4`, `tape_answer4`, `ansW_entry4`, `posE_lt4`, `lookup_pure4`, `bsBody4_sem`, `bsLoop4`, `foundIR4_sem`, `lookIR4_sem`, **`idx_lookup4`**. |
+
+Profiles: `logs/S-H4c/prof-*.log`. `FRXRead4`'s cost is that of the 3.x proofs it copies (`FRXLogSpec`,
+the sort half of `FRXSortSim`, `FRXLookup`); its hot spots are one `obtain` (5.8 s) and one `refine`
+(3.9 s), and `simp` 4.6 s in all (the `simp +decide [ … ]` side conditions, §5.3).
+
+### 2. What is proved
+
+- **`msgOk4_lower`** (levels 0–3, any 4.1 kind): if level `i + 1`'s 16 decoded rows sit at `ob` (row
+  `r` at `ob + 2kr`, `k = 2^mLog (i + 1)`: `decLv4_sem`'s output at `c₀ = 0`, `C = 16`) as the `F` values
+  of `msgOf (i + 1)`, and `ob + 32k ≤ eb`, `eb + 256 ≤ xb`, `xb + 2n ≤ yb`, then
+  `MsgOk4 I (msgHIR n k ob xb yb) s eb xb yb n (mLog i) (nextMsg i)`.
+- **`msgOk4_four`** (level 4): `MsgOk4 I (msgTIR n k₄ tw xb yb) …  (nextMsg 4)` given the tape link
+  `finalAt es x = (tapeF (tw + 4x), tapeF (tw + 4x + 2))` for `x < k₄`. `k₄ = 2^mLog 4` is 32, 64, 128
+  at `m = 30, 31, 32` (`msg4_four_ctl`). The link to π's final field at 4.1's offset belongs where the
+  format is fixed (after A2′).
+- **`map4_ok31`, `map4_ok32`**: the literal `map4` meets `Map4.Ok` at `m = 31` and `m = 32` (numeral
+  inequalities, `decide`). The map:
+
+  | region | base | end at `m = 32` |
+  |---|---|---|
+  | basis table | `2^20` | `2^20 + 800` |
+  | the chain (`chB` … `chEnd`, 3.x's constants) | `2^23` | `2^23 + 6,144` |
+  | levels 1–4: flags, `J`, `P`, `Y`, rows, `eq`, `X`, `Y` | `2^24` | `2^24 + 2^23 + 2^20 + 256` |
+  | level 0: the same regions | `2^24` | `2^25 + 2^22 + 256` |
+  | levels 1–4's word (32 words a position) | `2^26` | `2^26 + 2^23` |
+  | level 0's word (128 words a position) | `2^27` | `2^28` |
+  | the log index | `memX4 = 2^28` | `2^28 + 2|L|` |
+
+  Levels 1–4 run before level 0 and share one map (3.x's `obL` design). `Map4.Ok` asks, besides each
+  level's order and `2k` slack, that levels 1–4 keep level 0's word, that level 1's rows (read by
+  level 0's message step) lie below level 0's `eq` table, and that level 0's word ends at the index.
+  `map4_lvU`/`map4_l0` restate it at a node kind's `2^logN`, `2^mLog`; `LvMap.back`/`LvMap.front` give
+  `BackLay4`, `FrontLay4` and `decLv4_sem`'s `hoe`.
+- **`idxIR4_sorted`** (3.x's `idxIR_sorted` with `memX ↦ bX`, `posL ↦ pL`): on a tape with
+  `5 + ⌈|π|/8⌉ = pL`, `regs ≤ bX ≤ 2^60`, `pL ≤ 2^60`, after `idxIR4 bX pL` the cells `bX + a`,
+  `a < |L|`, hold exactly the tape positions `pL + 1 + entryOff L k`, strictly sorted by the key.
+  **`idx_lookup4`**: `lookIR4 bX pL` finds the first entry with answer `t` (`FRLog.ansIdx`), or sets
+  `rFd = 0`, and keeps the index sorted. `cost_idxIR4 = 2592 + ⌊t/5⌋·11871` (3.x's), `safe_idxIR4`.
+
+### 3. Checks (logs in `logs/S-H4c/`)
+
+- **Build.** `lake build FRXRead4 FRXDec4Map FRXLagT FR Solution` green on HEAD + the S-H4 modules:
+  2,590 jobs (`build-final.log`). `FR.lean` imports none of the S-H4 modules (the orchestrator adds them
+  with `nd`).
+- **Axioms** (`axioms.log`, 25 declarations: the main theorems and every control): all within
+  `propext`, `Classical.choice`, `Quot.sound`.
+- **Source rule** (`source-rule.log`): 365 files, 0 findings.
+
+### 4. Controls
+
+| Control | Kind | What it shows |
+|---|---|---|
+| `msgOk4_empty_neg` | − | `MsgOk4` is not trivial: the empty step does not lay out a nonzero message over a zero `X` row |
+| `msg4_four_ctl` | value | the final message's sizes per `m` (32, 64, 128) |
+| `map4_ok31`, `map4_ok32` | + | the map fits both node sizes |
+| `map4_ctl` | value | the bases are the table's powers of two; `ix = memX4` |
+| `not_map4_overlap` | − | level 0's `X` on its `eq` table is rejected |
+| `not_map4_slack` | − | level 0's `eq` table at `ob + 2kC` (no `2k` slack) is rejected |
+| `not_map4_fit` | − | level 0's word one position higher (into the index) is rejected |
+| `not_map4_rows` | − | level 1's rows above level 0's `eq` table are rejected |
+
+`idxIR4_sorted`/`idx_lookup4` are 3.x's theorems at parameters; their controls are 3.x's (`baseX4_ctl`,
+and 3.x's `FRXLookup`/`FRXSortSim` controls at `bX = memX`, `pL = posL`).
+
+### 5. Deviations and findings
+
+1. **`posL` is hard-coded too (finding).** Part 26/27 said only the index base needed a parameter. Every
+   index, lookup and read program also reads `|L|` at tape word `posL = 5 + 99,738`, which is 3.x's
+   `piSize/8`: `walkPre`, `passPre`, `sortPre`, `lookIR` (so `getIR` and the whole ladder read), and the
+   chain (`FRXChain`, `FRXChainTop`: 21 uses). A 4.1 node proof has `|π| = piSizeOf seq4` (798,192 at
+   HEAD, 859,664 after A2′). So the 4.1 versions take the log's position `pL` as a parameter, with
+   `hs : 5 + (|π| + 7)/8 = pL`; the node branch instantiates `pL = 5 + piSizeOf seq4 / 8` once A2′ fixes
+   it. This also makes them independent of A2′'s numbers.
+2. **One map for `m = 31` and `m = 32`** (`map4`), not two records: both fit, and the memory is `2^28`
+   either way. `decLevels4`'s run-time `ite` still chooses between the two ladders (their constants
+   differ); the map does not.
+3. **`simp +decide [ … ]` instead of `simp +decide only [ … ]`** in `FRXRead4`'s side conditions: with a
+   variable constant word (`BitVec.ofNat 64 pL`) `decide` cannot close `WF`/`Lo`, and the `only` set
+   leaves `Prim.dst`'s `match` unreduced. It costs a few seconds (§1); a golf can restore `only` lists
+   with `Prim.dst`'s equation lemmas.
+4. **The chain stays at 3.x's constants** (`chB = 2^23`, `ansB`, `chEnd`) in `map4`: the chain's region
+   is between the basis table and the levels. If the 4.1 chain moves, `Map4.Ok`'s two chain conjuncts
+   move with it.
+
+### 6. Handover: what remains, in order
+
+1. **Item 3, second half: the ladder read at 4.1** (`FRXRead4b`, new; or append to `FRXRead4`).
+   - Port `FRXRead`'s `getIR`, `nodeBody`, `colIR`, `posBody`, `readIR` and their semantics
+     (`getIR_sem`, `nodeBody_sem`, `nodeLoop`, `colIR_sem`, `posBody_sem`, `posLoop`, **`readIR_sem`**,
+     **`read_spec`**, `read_spec_F`, `readIR_frame`), about 1,200 lines, on `lookIR4 bX pL`, `Sorted4`,
+     `posE4` (this pass's), by the same mechanical method (journal 77; the extraction and rename scripts are in
+     `logs/S-H4c/port-tools/`: `ext.py` cuts declarations out of a 3.x module, `port.py` renames).
+   - The cap offsets at 4.1 (`capOff`, `capW0`, `capOffL`, `capWL`, `capLogL`, `tape_cap`,
+     `tape_capL`): from `fieldOff`/`phStart4` at `seq4`, as parameters with their values checked after
+     A2′. `readLv4 i` at `map4.lU.cb`, `nw = 32`; `read04` at `map4.l0.cb`, `nw = 128`, `np = 2^(m − 12)`.
+   - The read's store must stay below the index: `cb + nw·np ≤ bX` (`map4_ok`'s fit gives it).
+2. **The chain at `seq4`**: `chainIR nRep chTab seedIR` reads `posL` (21 uses in `FRXChainTop`) and its
+   table is built from 3.x's `phStart`. Port with `pL` and `phStart4`; `cbS4 i = ansB + 4(phStart4
+   (26 + 5i) + 1)`, and prove `cbS4 i + 8ℓ + 4 ≤ chEnd ≤ map4.l0.fb` (for `LvMap.front`).
+3. **Item 4, `FRXDec4Levels`**: `decLevels4 m` (levels 4 → 1 on `map4.lU`, then level 0 on `map4.l0`
+   with `c₀ = 4`, `C = 4`), each `read ; decLv4IR` with `msgOk4_lower`/`msgOk4_four`; `decLevels4_sem`
+   (3.x's `decLevels_sem`); the `ite` on the node byte; the exact cost.
+4. **Item 5, `FRXOut4`**: as Part 27 §3 item 5 (`reassemble4` field by field, A.3 rows 0–18, row 18 =
+   `A`; `outIR4`).
+5. **Item 6, `FRXNd4`**: `nd4 := idxIR4 memX4 pL4 ; read04 ; chain4 ; decLevels4 ; outIR4`,
+   `decOk4_nd4`, `nodeDec4_nd4`, `cost_nd4`, with `pL4 = 5 + piSizeOf seq4 / 8`.
+6. **Item 7**: controls for `outIR4`, `nd4`; the `tgBody_sem` split in `FRXLagT` (Part 27 §1: one lemma per
+   phase on a bare memory; 25 s to remove).
+
+### 7. The patch list for after A2′ (exact; for the orchestrator to schedule; not applied)
+
+`FRX4Prog.lean` (A2′'s):
+
+```diff
++/-- The node decoder's memory below the log index (S-H4, Part 25 F2; `FRXDec4Map`): `2^28` words. -/
++def memX4 : ℕ := 2 ^ 28
++
++/-- What the node branch may cost at `memX4`: `decBudget` less the extra `2^28` words cleared. -/
++def decBudget4 (t : ℕ) : ℕ := fuelBase - 2 ^ 29 + (fuelPerWord - 16) * t
+@@ structure DecOk4
+-  cost : ∀ t, cost nd t ≤ decBudget t
++  cost : ∀ t, cost nd t ≤ decBudget4 t
+@@
+-def ext4With (nd : XIR) : XProg := toProg memX mpwX (ext4IRWith nd)
++def ext4With (nd : XIR) : XProg := toProg memX4 mpwX (ext4IRWith nd)
+@@ theorem decOk4_ndNone
+-  cost := fun t => by simp [ndNone, cost, blkSteps, decBudget, fuelBase, fuelPerWord]; omega
++  cost := fun t => by simp [ndNone, cost, blkSteps, decBudget4, fuelBase, fuelPerWord]; omega
+@@
+-theorem fuel_covers4 {nd : XIR} (h : ∀ t, cost nd t ≤ decBudget t) (t : ℕ) :
+-    memX + mpwX * t + cost (ext4IRWith nd) t + 8 ≤ fuel t := by
++theorem fuel_covers4 {nd : XIR} (h : ∀ t, cost nd t ≤ decBudget4 t) (t : ℕ) :
++    memX4 + mpwX * t + cost (ext4IRWith nd) t + 8 ≤ fuel t := by
+   have := h t
+   have := cost_ext4IRWith nd t
+-  simp only [memX, mpwX, fuel, fuelBase, fuelPerWord, decBudget] at *
++  simp only [memX4, mpwX, fuel, fuelBase, fuelPerWord, decBudget4] at *
+   omega
+```
+
+Then `FRXDec4Map`'s own `def memX4` is deleted and `FRXDec4Map` uses `X4.memX4` (one definition).
+
+`FRX4Ext.lean` (A2′'s): every `memX` that is the program's memory becomes `memX4` (lines 259, 262,
+271, 299–300, 329, 335, 347, 368, 415, 459, 569–576, 609 at HEAD: `initSt (memX + mpwX * …)`,
+`den memX mpwX`, `Eden memX mpwX`, and the side conditions `by simp only [regs, memX]; norm_num` →
+`[regs, memX4]`).
+
+`FRSubmission4.lean`, `FRSubmission4Cert.lean`, once `FRXNd4` exists:
+
+```diff
+-  ext := X.X4.ext4With X.X4.ndNone
++  ext := X.X4.ext4With X.nd4
+-def sub4 : Submission := { sub0 with E := X.X4.E4X X.X4.ndNone sub0.acc }
++def sub4 : Submission := { sub0 with E := X.X4.E4X X.nd4 sub0.acc }
+@@ structure Open4
+-  resid : ∃ D : NodeDec4 ndNone, ∀ vk, Snd.R4.Resid4H (Impl.finC finPf) Layout.lRows 0 sub4 ndNone D vk
++  resid : ∃ D : NodeDec4 X.nd4, ∀ vk, Snd.R4.Resid4H (Impl.finC finPf) Layout.lRows 0 sub4 X.nd4 D vk
+@@ theorem certificate_sub4
+-    sub4_ext sub4_fuel decOk4_ndNone D hR complete_rev4 delta_rev4
++    sub4_ext sub4_fuel X.decOk4_nd4 D hR complete_rev4 delta_rev4
+```
+
+and `Open4`'s `D` is then discharged by `X.nodeDec4_nd4` (item 6), which removes `resid`'s `∃ D`.
+
+### 8. Open questions
+
+- **Q1.** The chain: keep 3.x's constants (`chB = 2^23`, 512 answer slots; 4.1's P1 positions are below
+  `phStart4 46 + 1 ≤ 449`, to be checked) and port only `pL` and the table, or move it? `map4` assumes
+  the former.
+- **Q2.** `FRXRead4` copies about 870 code lines of 3.x proofs (40.8 CPU-s). Once the 3.x decoder leaves
+  the certificate's closure (retirement plan step 2), the 3.x modules can go; until then the build pays
+  for both. Should the orchestrator schedule the retirement before item 6, so that the build budget sees
+  only one copy?
