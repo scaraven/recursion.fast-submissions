@@ -83,8 +83,7 @@ theorem slotRows_hold {κ : NodeKind} {v : ℕ} {w : Asg} (hF : ProtoFit) (hv : 
     obtain ⟨p, hp, rfl⟩ := List.mem_map.1 hr
     have hm : (mvC (protoOf κ v) v p.1,
         rowMapC (· + κ.oneCell) (rowMapC (mvC (protoOf κ v) v) p.2)) ∈ nodeIRows4 κ := by
-      rw [nodeIRows4, if_pos hF]
-      refine List.mem_flatMap.2 ⟨v, List.mem_range.2 hv, List.mem_append_left _ ?_⟩
+      refine mem_node_slot hF hv ?_
       simp only [slotRows4, absRows4, mvRows, List.map_map]
       exact List.mem_map.2 ⟨p, hp, rfl⟩
     have := hE _ hm

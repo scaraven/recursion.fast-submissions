@@ -127,10 +127,10 @@ coordinates) -/
 def a1V4 (n m : ℕ) (t u : ℕ → F) (κ : NodeKind) (σ b0 : ℕ) : F3 :=
   a1V n m 17 t u κ.oneCell (κ.oneCell + σ * slotM4 + arA1) (σ * slotM4 + arR1) b0 arN
 
-theorem a1V4_eq {n m : ℕ} (hn : 17 ≤ n) (hm : 24 ≤ m) (t u : ℕ → F) (κ : NodeKind) (σ b0 : ℕ) :
+theorem a1V4_eq {n m : ℕ} (hn : 17 ≤ n) (hm : 22 ≤ m) (t u : ℕ → F) (κ : NodeKind) (σ b0 : ℕ) :
     a1V4 n m t u κ σ b0 = (rowsVal (RingHom.id F) .a n m t u (a1Rows4 κ σ b0),
       rowsVal (RingHom.id F) .b n m t u (a1Rows4 κ σ b0), rowsVal (RingHom.id F) .c n m t u (a1Rows4 κ σ b0)) :=
-  a1V_eq hn (by omega) t u _ _ _ _ _ arena_cells.2.2.1
+  a1V_eq hn (by omega) (by omega) t u _ _ _ _ _ arena_cells.2.2.1
 
 /-- The binding's value of a level in slot `σ` (`a2V`: the import side once per level, one run per
 position on arena₁'s side). -/

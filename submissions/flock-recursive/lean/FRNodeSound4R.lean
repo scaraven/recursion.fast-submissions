@@ -54,8 +54,7 @@ theorem linkRows_hold {κ : NodeKind} {σ : ℕ} {w : Asg} (hF : ProtoFit) (hσ 
   have hm : r ∈ (linkIRows4 κ σ).map Prod.snd := by
     rw [linkIRows4, map_snd_zipIdx_map']; exact hr
   obtain ⟨p, hp, rfl⟩ := List.mem_map.1 hm
-  rw [nodeIRows4, if_pos hF] at hE
-  exact hE p (List.mem_flatMap.2 ⟨σ, List.mem_range.2 hσ, List.mem_append_right _ hp⟩)
+  exact hE p (mem_node_link hF hσ hp)
 
 /-- **The reader's segment count meets `ActK`**: the activity rows make the sub-slots below the
 first inactive one active, the first sub-slot is active, and the activity is a bit. -/

@@ -284,6 +284,49 @@ theorem protoFit_iff : ProtoFit ↔ (fitB 0 (protoRows 0) && fitB 1 (protoRows 1
     rcases Nat.le_one_iff_eq_zero_or_eq_one.1 hπ with rfl | rfl
     exacts [h0, h1]
 
+/-! ## The arena rows' checks (ASK-P) -/
+
+/-- Template rows indexed in the binding's range (`askPI`'s form, at any rows). -/
+def idxAr (π : ℕ) (l : List Row) : List (ℕ × Row) := l.zipIdx.map fun p => (π * slotM4 + arR2 + p.2, p.1)
+
+theorem askPI_eq (π : ℕ) : askPI π = idxAr π (askRowsT π) := rfl
+
+/-- **The arenas' fit of prototype `π`** (Bool, on its rows): its rows below the binding's range, its
+template rows at most `arR2N` and in the region (`ArFit`'s conjuncts). -/
+def arFitB (π : ℕ) (rows : List (ℕ × Row)) (ar : List Row) : Bool :=
+  rows.all (fun p => decide (p.1 < π * slotM4 + arR2)) && decide (ar.length ≤ arR2N) && inSlotB π (idxAr π ar)
+
+theorem arFitB_iff (π : ℕ) (rows : List (ℕ × Row)) (ar : List Row) :
+    arFitB π rows ar = true ↔
+      (∀ p ∈ rows, p.1 < π * slotM4 + arR2) ∧ ar.length ≤ arR2N ∧ InSlot π (idxAr π ar) := by
+  simp only [arFitB, Bool.and_eq_true, List.all_eq_true, decide_eq_true_eq, inSlotB_iff, and_assoc]
+
+theorem arFit_iff : ArFit ↔ (arFitB 0 (protoRows 0) (askRowsT 0) && arFitB 1 (protoRows 1) (askRowsT 1)) = true := by
+  rw [Bool.and_eq_true, arFitB_iff, arFitB_iff]
+  constructor
+  · intro h; exact ⟨h 0 (by norm_num), h 1 le_rfl⟩
+  · rintro ⟨h0, h1⟩ π hπ
+    rcases Nat.le_one_iff_eq_zero_or_eq_one.1 hπ with rfl | rfl
+    exacts [h0, h1]
+
+/-- **The pieces' row indices lie below `b`** (Bool, on the pieces' intervals: the plan's check). -/
+def ivBelow (keys : Array Key) (pc : List Piece) (b : ℕ) : Bool :=
+  (pc.flatMap (ivOf keys)).all fun iv => decide (iv.1 + iv.2 ≤ b)
+
+theorem ivBelow_spec {keys : Array Key} {sh : Array (List Lin)} {one : Lin} {pc : List Piece} {b : ℕ}
+    (h : ivBelow keys pc b = true) : ∀ p ∈ pc.flatMap (Piece.rows keys sh one), p.1 < b := by
+  intro p hp
+  have e : (pc.flatMap (Piece.rows keys sh one)).map Prod.fst = (pc.flatMap (ivOf keys)).flatMap ivIdx := by
+    rw [List.map_flatMap, List.flatMap_assoc]
+    exact congrArg pc.flatMap (funext fun q => ivOf_idx keys sh one q)
+  have hm : p.1 ∈ (pc.flatMap (ivOf keys)).flatMap ivIdx := e ▸ List.mem_map_of_mem hp
+  obtain ⟨iv, hiv, hx⟩ := List.mem_flatMap.1 hm
+  have hb := List.all_eq_true.1 h iv hiv
+  simp only [decide_eq_true_eq] at hb
+  simp only [ivIdx, List.mem_map, List.mem_range] at hx
+  obtain ⟨j, hj, hj'⟩ := hx
+  omega
+
 /-- **`t` restricted to region `π`'s low coordinates**: `t` below 20, `π`'s bit at 20, `0` above
 (so that `eq(starPt t π, π·2^20 + j) = eq(t_<20, j)`). -/
 def starPt (t : ℕ → F) (π : ℕ) (l : ℕ) : F := if l < 20 then t l else if l = 20 then (if π = 1 then 1 else 0) else 0
@@ -458,7 +501,7 @@ structure Plan4 where
   hp0 : p0 = pc0.map (prepPiece pats)
   hp1 : p1 = pc1.map (prepPiece pats)
   inR : Bool
-  hR : inR = true → ProtoFit ∧ lowKeys keys = true
+  hR : inR = true → ProtoFit ∧ lowKeys keys = true ∧ ArFit
   /-- Each kind's grouped link rows (B5). -/
   lk2 : Array LkG
   lk4 : Array LkG
@@ -469,12 +512,21 @@ structure Plan4 where
   /-- The pinned elements' runs, per `(first row, stream block)` (B5). -/
   pkr : List ((ℕ × ℕ) × (List PRun × PCls))
   hpkr : ∀ p ∈ pkr, p.2 = runsOf p.1.2 p.1.1 wfSeg
+  /-- The prototypes' template rows (ASK-P; computed with the template memo, `arOf`). -/
+  ar0 : List Row
+  ar1 : List Row
+  har : ar0 = askRowsT 0 ∧ ar1 = askRowsT 1
+  /-- Their indexed rows, grouped (the prototype's split eq tables). -/
+  ag0 : GRows
+  ag1 : GRows
+  hag : ag0 = grows (2 ^ 11) (2 ^ 12) (askPI 0) ∧ ag1 = grows (2 ^ 11) (2 ^ 12) (askPI 1)
 
 /-- A plan from its pieces (the region and key checks computed here, once). -/
 def mkPlan4 (keys : Array Key) (sh0 sh1 : Array (List Lin)) (pc0 pc1 : List Piece)
     (pats : Array (Array Pat))
     (ok : keys.all (Key.ok 21) = true ∧ pc0.flatMap (Piece.rows keys sh0 (oneP 0)) = protoRows 0 ∧
-      pc1.flatMap (Piece.rows keys sh1 (oneP 1)) = protoRows 1) : Plan4 where
+      pc1.flatMap (Piece.rows keys sh1 (oneP 1)) = protoRows 1) (ar0 ar1 : List Row)
+    (har : ar0 = askRowsT 0 ∧ ar1 = askRowsT 1) : Plan4 where
   keys := keys
   sh0 := sh0
   sh1 := sh1
@@ -492,14 +544,22 @@ def mkPlan4 (keys : Array Key) (sh0 sh1 : Array (List Lin)) (pc0 pc1 : List Piec
   hp0 := rfl
   hp1 := rfl
   inR := pc0.all (pieceInB keys (shInB sh0 0) (oneP 0) 0) && pc1.all (pieceInB keys (shInB sh1 1) (oneP 1) 1) &&
-    idsOkB keys pc0 && idsOkB keys pc1 && lowKeys keys
+    idsOkB keys pc0 && idsOkB keys pc1 && lowKeys keys &&
+    (ivBelow keys pc0 (0 * slotM4 + arR2) && ivBelow keys pc1 (1 * slotM4 + arR2) &&
+      decide (ar0.length ≤ arR2N) && decide (ar1.length ≤ arR2N) && inSlotB 0 (idxAr 0 ar0) &&
+      inSlotB 1 (idxAr 1 ar1))
   hR := fun h => by
-    simp only [Bool.and_eq_true] at h
-    obtain ⟨⟨⟨⟨h0, h1⟩, i0⟩, i1⟩, hk⟩ := h
-    refine ⟨fun π hπ => ?_, hk⟩
-    rcases Nat.le_one_iff_eq_zero_or_eq_one.1 hπ with rfl | rfl
-    · exact ⟨ok.2.1 ▸ pcIn_spec ok.1 h0, ok.2.1 ▸ idsOkB_spec i0⟩
-    · exact ⟨ok.2.2 ▸ pcIn_spec ok.1 h1, ok.2.2 ▸ idsOkB_spec i1⟩
+    simp only [Bool.and_eq_true, decide_eq_true_eq] at h
+    obtain ⟨⟨⟨⟨⟨h0, h1⟩, i0⟩, i1⟩, hk⟩, ⟨⟨⟨⟨⟨b0, b1⟩, l0⟩, l1⟩, s0⟩, s1⟩⟩ := h
+    refine ⟨fun π hπ => ?_, hk, fun π hπ => ?_⟩
+    · rcases Nat.le_one_iff_eq_zero_or_eq_one.1 hπ with rfl | rfl
+      · exact ⟨ok.2.1 ▸ pcIn_spec ok.1 h0, ok.2.1 ▸ idsOkB_spec i0⟩
+      · exact ⟨ok.2.2 ▸ pcIn_spec ok.1 h1, ok.2.2 ▸ idsOkB_spec i1⟩
+    · rcases Nat.le_one_iff_eq_zero_or_eq_one.1 hπ with rfl | rfl
+      · rw [askPI_eq, ← har.1, ← ok.2.1, ← inSlotB_iff]
+        exact ⟨ivBelow_spec b0, l0, s0⟩
+      · rw [askPI_eq, ← har.2, ← ok.2.2, ← inSlotB_iff]
+        exact ⟨ivBelow_spec b1, l1, s1⟩
   lk2 := lkArr .N2
   lk4 := lkArr .N4
   lk8 := lkArr .N8
@@ -510,18 +570,33 @@ def mkPlan4 (keys : Array Key) (sh0 sh1 : Array (List Lin)) (pc0 pc1 : List Piec
   hpkr := fun p hp => by
     obtain ⟨k, -, rfl⟩ := List.mem_map.1 hp
     dsimp only
+  ar0 := ar0
+  ar1 := ar1
+  har := har
+  ag0 := grows (2 ^ 11) (2 ^ 12) (idxAr 0 ar0)
+  ag1 := grows (2 ^ 11) (2 ^ 12) (idxAr 1 ar1)
+  hag := by rw [har.1, har.2]; exact ⟨rfl, rfl⟩
+
+/-- **Prototype `π`'s template rows**, by the memoized trail (`trailMS`: each template built once). -/
+def arOf (π : ℕ) : List Row :=
+  (trailMS (tplExt4 (protoF π) (protoR π)) (protoLay π) (protoP π) (askTG π) [] (CS.init (baseR π)) none 0
+    (protoProg π).ops []).reverse
+
+theorem arOf_eq (π : ℕ) : arOf π = askRowsT π := trailMS_T _ _ _ _ _ _ (by simp [MOk])
 
 def planOf4D (d : Array GK × Array (List Lin) × Array (List Lin) × List Piece × List Piece)
     (hd : d = planData4) : Plan4 :=
   if h : (d.1.map mkKey).all (Key.ok 21) = true then
     mkPlan4 (d.1.map mkKey) d.2.1 d.2.2.1 d.2.2.2.1 d.2.2.2.2
       (mkPats (d.1.map mkKey).size d.2.2.2.1)
-      ⟨h, by subst hd; exact planData4_rows.1, by subst hd; exact planData4_rows.2⟩
+      ⟨h, by subst hd; exact planData4_rows.1, by subst hd; exact planData4_rows.2⟩ (arOf 0) (arOf 1)
+      ⟨arOf_eq 0, arOf_eq 1⟩
   else
     -- the fallback's rows depend on `d` (`protoRows (k − k)`), so that the compiler does not hoist
     -- `protoRows 0` into a closed constant built at every process start (S-E13's kernel and init traps)
     mkPlan4 #[] #[] #[] [.sp (protoRows (d.1.size - d.1.size))] [.sp (protoRows (d.1.size - d.1.size + 1))] #[]
       ⟨by simp, by rw [Nat.sub_self]; exact List.flatMap_singleton .., by rw [Nat.sub_self]; exact List.flatMap_singleton ..⟩
+      (arOf 0) (arOf 1) ⟨arOf_eq 0, arOf_eq 1⟩
 
 /-- **The 4.1 nodes' plan, built once per process** (B-16): from proved pieces, no run-time row
 comparison. -/
@@ -552,30 +627,56 @@ theorem kp_shared (pl : Plan4) (hk : lowKeys pl.keys = true) (t u : ℕ → F) :
   simp only [Bool.and_eq_true, decide_eq_true_eq] at h
   simp only [tb4, kprep3_eq, kprep_star _ t u 0 1 h.1 h.2]
 
-/-- **The two prototypes' values at `(t, u)`**: one key preparation, each prototype at its point. -/
-def protoV4 (pl : Plan4) (t u : ℕ → F) (node : Bool) : F3 × F3 :=
-  let t0 := starPt t 0; let u0 := starPt u 0; let t1 := starPt t 1; let u1 := starPt u 1
-  let tb0 := tb4 pl 0 t0 u0
-  let kp := pl.keys.map (kprep3 tb0 t0 u0)
-  (if node then slotV3 (ectx3 21 tb0 t0 u0 pl.keys kp pl.g0 pl.pats) pl.p0 else (0, 0, 0),
-   slotV3 (ectx3 21 (tb4 pl 1 t1 u1) t1 u1 pl.keys kp pl.g1 pl.pats) pl.p1)
-
 /-- The three matrices of rows, sparse. -/
 def rows3 (n m : ℕ) (t u : ℕ → F) (rows : List (ℕ × Row)) : F3 :=
   (rowsVal (RingHom.id F) .a n m t u rows, rowsVal (RingHom.id F) .b n m t u rows,
     rowsVal (RingHom.id F) .c n m t u rows)
 
+theorem rows3_append (n m : ℕ) (t u : ℕ → F) (a b : List (ℕ × Row)) :
+    rows3 n m t u (a ++ b) = add3 (rows3 n m t u a) (rows3 n m t u b) := by
+  simp [rows3, add3, rowsVal_append]
+
+/-- **Grouped rows' value at a prototype's point** (ASK-P: the template rows, `askPI`), by its split eq
+tables over 21 row and 23 cell coordinates (sparse; one product per entry). -/
+def askV (G : GRows) (t u : ℕ → F) : F3 :=
+  growsVal3 (loTab 11 t) (loTab 10 fun l => t (11 + l)) (loTab 12 u) (loTab 11 fun l => u (12 + l)) G
+
+theorem askV_eq (t u : ℕ → F) (rows : List (ℕ × Row)) :
+    askV (grows (2 ^ 11) (2 ^ 12) rows) t u = rows3 21 23 t u rows := by
+  have ht : splitAt (loTab 11 t) (loTab 10 fun l => t (11 + l)) (2 ^ 11) = gN 21 t :=
+    splitE_eq (m := 21) (s := 11) (by norm_num) t
+  have hu : splitAt (loTab 12 u) (loTab 11 fun l => u (12 + l)) (2 ^ 12) = gN 23 u :=
+    splitE_eq (m := 23) (s := 12) (by norm_num) u
+  unfold askV
+  rw [growsVal3_eq, growsVal_grows, growsVal_grows, growsVal_grows, ht, hu, rowsValI_eq, rowsValI_eq,
+    rowsValI_eq]
+  rfl
+
+/-- **The two prototypes' values at `(t, u)`**: one key preparation, each prototype at its point, its
+template rows added (ASK-P). -/
+def protoV4 (pl : Plan4) (t u : ℕ → F) (node : Bool) : F3 × F3 :=
+  let t0 := starPt t 0; let u0 := starPt u 0; let t1 := starPt t 1; let u1 := starPt u 1
+  let tb0 := tb4 pl 0 t0 u0
+  let kp := pl.keys.map (kprep3 tb0 t0 u0)
+  (if node then add3 (slotV3 (ectx3 21 tb0 t0 u0 pl.keys kp pl.g0 pl.pats) pl.p0) (askV pl.ag0 t0 u0)
+   else (0, 0, 0),
+   add3 (slotV3 (ectx3 21 (tb4 pl 1 t1 u1) t1 u1 pl.keys kp pl.g1 pl.pats) pl.p1) (askV pl.ag1 t1 u1))
+
 theorem protoV4_eq (pl : Plan4) (hk : lowKeys pl.keys = true) (t u : ℕ → F) (node : Bool) :
-    (protoV4 pl t u node).1 = (if node then rows3 21 23 (starPt t 0) (starPt u 0) (protoRows 0) else (0, 0, 0)) ∧
-      (protoV4 pl t u node).2 = rows3 21 23 (starPt t 1) (starPt u 1) (protoRows 1) := by
+    (protoV4 pl t u node).1 =
+        (if node then rows3 21 23 (starPt t 0) (starPt u 0) (protoRows 0 ++ askPI 0) else (0, 0, 0)) ∧
+      (protoV4 pl t u node).2 = rows3 21 23 (starPt t 1) (starPt u 1) (protoRows 1 ++ askPI 1) := by
   simp only [protoV4]
   refine ⟨?_, ?_⟩
   · split_ifs
-    · simp only [tb4, slotV3_eq]
+    · rw [rows3_append, pl.hag.1, askV_eq]
+      refine congrArg (add3 · _) ?_
+      simp only [tb4, slotV3_eq]
       rw [pl.hg0, pl.hp0]
       simp only [slotV_eq _ (by norm_num : 11 ≤ 21) _ _ _ _ _ _ _ _ _ _ pl.ok.1, pl.ok.2.1, rows3]
     · rfl
-  · rw [kp_shared pl hk]
+  · rw [kp_shared pl hk, rows3_append, pl.hag.2, askV_eq]
+    refine congrArg (add3 · _) ?_
     simp only [tb4, slotV3_eq]
     rw [pl.hg1, pl.hp1]
     simp only [slotV_eq _ (by norm_num : 11 ≤ 21) _ _ _ _ _ _ _ _ _ _ pl.ok.1, pl.ok.2.2, rows3]
@@ -696,10 +797,6 @@ structure LTb where
 /-- The tables at a point. -/
 def ltbOf (lm : ℕ) (t u : ℕ → F) : LTb :=
   ⟨loTab 11 t, loTab (lm - 11) (fun l => t (11 + l)), loTab 12 u, loTab (lm + 2 - 12) (fun l => u (12 + l))⟩
-
-theorem rows3_append (n m : ℕ) (t u : ℕ → F) (a b : List (ℕ × Row)) :
-    rows3 n m t u (a ++ b) = add3 (rows3 n m t u a) (rows3 n m t u b) := by
-  simp [rows3, add3, rowsVal_append]
 
 /-- **The pinned elements' value** (S-E13a): the rows `pinRow one (sCell b0 e) c` of the list
 `ps`, at indices `j, j + 1, …`: for each, the row factor `r = eq(τ, j)` times `E(one)` (matrix
@@ -1018,12 +1115,23 @@ theorem linkV4_eq {lm : ℕ} (hl : 11 ≤ lm) (t u : ℕ → F) (pl : Plan4) {cx
     simp only [ltbOf]
     rw [ht, hu, wfRows, wfSum_eq]
 
+/-- **Slot `σ`'s arena₁ and bits** (ASK-P): their closed forms at the node's point (`a1V4`, `bitV4`:
+a few automaton runs per slot). -/
+def arV4 (κ : NodeKind) (t u : ℕ → F) (σ : ℕ) : F3 :=
+  add3 (a1V4 κ.dims.logM (κ.dims.logM + 2) t u κ σ (slotB0 κ σ)) (bitV4 κ.dims.logM (κ.dims.logM + 2) t u κ σ)
+
+theorem arV4_eq (κ : NodeKind) (t u : ℕ → F) (σ : ℕ) (hl : 20 ≤ κ.dims.logM) :
+    arV4 κ t u σ = add3 (rows3 κ.dims.logM (κ.dims.logM + 2) t u (a1Rows4 κ σ (slotB0 κ σ)))
+      (rows3 κ.dims.logM (κ.dims.logM + 2) t u (bitRows4 κ σ)) := by
+  rw [arV4, a1V4_eq (n := κ.dims.logM) (m := κ.dims.logM + 2) (by omega) (by omega),
+    bitV4_eq (n := κ.dims.logM) (m := κ.dims.logM + 2) (by omega) (by omega)]; rfl
+
 /-- **Slot `σ`'s value** from its prototype's (`vN`, `vS`): the rest scaled, the link region by
 `linkV4`. -/
 def slotV4 (pl : Plan4) (κ : NodeKind) (t u : ℕ → F) (cx : LCx) (vN vS : F3) (σ : ℕ) : F3 :=
   let lm := κ.dims.logM
-  add3 (smul3 (hiF lm t σ * (hiF lm u σ * (u lm * u (lm + 1)))) (if protoOf κ σ = 0 then vN else vS))
-    (linkV4 pl cx κ σ)
+  add3 (add3 (smul3 (hiF lm t σ * (hiF lm u σ * (u lm * u (lm + 1)))) (if protoOf κ σ = 0 then vN else vS))
+    (arV4 κ t u σ)) (linkV4 pl cx κ σ)
 
 /-- A prototype's rows from the plan's pieces (the fallback's; no closed `protoRows` constant in
 the compiled code). -/
@@ -1037,14 +1145,42 @@ theorem protoRowsP_eq (pl : Plan4) (π : ℕ) (hπ : π ≤ 1) : protoRowsP pl �
   · obtain rfl : π = 1 := by omega
     exact pl.ok.2.2
 
+theorem protoOf_le (κ : NodeKind) (σ : ℕ) : protoOf κ σ ≤ 1 := by unfold protoOf; split_ifs <;> omega
+
+/-- The arenas' fit on the plan's rows (the fallback's; `arFit_iff`). -/
+def arFitP (pl : Plan4) : Bool := arFitB 0 (protoRowsP pl 0) pl.ar0 && arFitB 1 (protoRowsP pl 1) pl.ar1
+
+/-- Prototype `π`'s template rows from the plan. -/
+def arP (pl : Plan4) (π : ℕ) : List Row := if π = 0 then pl.ar0 else pl.ar1
+
+theorem arP_eq (pl : Plan4) (π : ℕ) (hπ : π ≤ 1) : arP pl π = askRowsT π := by
+  unfold arP; split_ifs with h
+  · subst h; exact pl.har.1
+  · obtain rfl : π = 1 := by omega
+    exact pl.har.2
+
+/-- `arIRows4` from the plan's rows (the fallback's). -/
+def arIRowsP (pl : Plan4) (κ : NodeKind) (σ : ℕ) : List (ℕ × Row) :=
+  if arFitP pl = true then
+    a1Rows4 κ σ (slotB0 κ σ) ++ absRows4 κ (mvRows (protoOf κ σ) σ (idxAr (protoOf κ σ) (arP pl (protoOf κ σ)))) ++
+      bitRows4 κ σ
+  else [(arRej σ, rejR κ)]
+
+theorem arIRowsP_eq (pl : Plan4) (κ : NodeKind) (σ : ℕ) : arIRowsP pl κ σ = arIRows4 κ σ := by
+  have hf : arFitP pl = true ↔ ArFit := by
+    rw [arFit_iff, arFitP, protoRowsP_eq pl 0 (by norm_num), protoRowsP_eq pl 1 le_rfl, pl.har.1, pl.har.2]
+  unfold arIRowsP arIRows4
+  by_cases hA : ArFit
+  · rw [if_pos (hf.2 hA), if_pos hA, arP_eq pl _ (protoOf_le κ σ), ← askPI_eq]
+  · rw [if_neg (mt hf.1 hA), if_neg hA]
+
 /-- `nodeIRows4` from the plan's pieces, the fit checked on them (the fallback's). -/
 def nodeIRowsP (pl : Plan4) (κ : NodeKind) : List (ℕ × Row) :=
   if (fitB 0 (protoRowsP pl 0) && fitB 1 (protoRowsP pl 1)) = true then
     (List.range κ.vslots).flatMap fun σ =>
-      absRows4 κ (mvRows (protoOf κ σ) σ (protoRowsP pl (protoOf κ σ))) ++ linkIRows4 κ σ
+      absRows4 κ (mvRows (protoOf κ σ) σ (protoRowsP pl (protoOf κ σ))) ++ arIRowsP pl κ σ ++ linkIRows4 κ σ
   else rejectRows κ
 
-theorem protoOf_le (κ : NodeKind) (σ : ℕ) : protoOf κ σ ≤ 1 := by unfold protoOf; split_ifs <;> omega
 
 theorem nodeIRowsP_eq (pl : Plan4) (κ : NodeKind) : nodeIRowsP pl κ = nodeIRows4 κ := by
   have h : ∀ σ, protoRowsP pl (protoOf κ σ) = protoRows (protoOf κ σ) := fun σ =>
@@ -1053,7 +1189,7 @@ theorem nodeIRowsP_eq (pl : Plan4) (κ : NodeKind) : nodeIRowsP pl κ = nodeIRow
   rw [protoRowsP_eq pl 0 (by norm_num), protoRowsP_eq pl 1 le_rfl]
   by_cases hF : ProtoFit
   · rw [if_pos (protoFit_iff.1 hF), if_pos hF]
-    simp only [slotRows4, h]
+    simp only [slotRows4, h, arIRowsP_eq]
   · rw [if_neg (mt protoFit_iff.2 hF), if_neg hF]
 
 /-- **`evalM` of a 4.1 node** (S-E12b): the two prototypes' values once, every slot from them;
@@ -1100,7 +1236,7 @@ theorem slots_val (pl : Plan4) (hR : pl.inR = true) (κ : NodeKind) (τ σ : Arr
         (protoV4 pl (fun l => τ.getD l 0) (fun l => σ.getD l 0) b).1
         (protoV4 pl (fun l => τ.getD l 0) (fun l => σ.getD l 0) b).2) (List.range κ.vslots) =
       evalMS4 κ τ σ := by
-  obtain ⟨hF, hk⟩ := pl.hR hR
+  obtain ⟨hF, hk, hA⟩ := pl.hR hR
   rw [← rows3_spec, nodeIRows4, if_pos hF, rows3_flatMap]
   obtain ⟨hR0, -⟩ := hF 0 (by norm_num)
   obtain ⟨hR1, -⟩ := hF 1 le_rfl
@@ -1108,31 +1244,51 @@ theorem slots_val (pl : Plan4) (hR : pl.inR = true) (κ : NodeKind) (τ σ : Arr
   obtain ⟨hv0, hv1⟩ := protoV4_eq pl hk (fun l => τ.getD l 0) (fun l => σ.getD l 0) b
   refine sum3_congr fun s hs => ?_
   have hs' : s < 2 ^ (κ.dims.logM - 20) := lt_of_lt_of_le (List.mem_range.1 hs) hv
-  rw [rows3_append, slotV4]
+  rw [rows3_append, rows3_append, slotV4]
   rw [linkV4_eq (by omega) _ _ pl hc]
   refine congrArg (add3 · _) ?_
-  have hc : ∀ π : ℕ, π ≤ 1 → InSlot π (protoRows π) →
+  have hcp : ∀ π : ℕ, π ≤ 1 → ∀ rows, InSlot π rows →
       smul3 (hiF κ.dims.logM (fun l => τ.getD l 0) s * (hiF κ.dims.logM (fun l => σ.getD l 0) s *
           (σ.getD κ.dims.logM 0 * σ.getD (κ.dims.logM + 1) 0)))
-        (rows3 21 23 (starPt (fun l => τ.getD l 0) π) (starPt (fun l => σ.getD l 0) π) (protoRows π)) =
+        (rows3 21 23 (starPt (fun l => τ.getD l 0) π) (starPt (fun l => σ.getD l 0) π) rows) =
       rows3 κ.dims.logM (κ.dims.logM + 2) (fun l => τ.getD l 0) (fun l => σ.getD l 0)
-        (absRows4 κ (mvRows π s (protoRows π))) := by
-    intro π hπ hr
-    have hab : absRows4 κ (mvRows π s (protoRows π)) =
-        (mvRows π s (protoRows π)).map fun p => (p.1, rowMapC (· + 3 * 2 ^ κ.dims.logM) p.2) := by
+        (absRows4 κ (mvRows π s rows)) := by
+    intro π hπ rows hr
+    have hab : absRows4 κ (mvRows π s rows) =
+        (mvRows π s rows).map fun p => (p.1, rowMapC (· + 3 * 2 ^ κ.dims.logM) p.2) := by
       simp only [absRows4, oneCell_eq]
     rw [hab]
     simp only [smul3, rows3, copy_val hπ hl hs' _ (fun l => τ.getD l 0) (fun l => σ.getD l 0) hr]
-  simp only [slotRows4]
-  by_cases hp : protoOf κ s = 0
-  · have hk' : κ.hasPrev = true := by
-      by_contra hk'; simp [protoOf, isPrevSlot, hk'] at hp
-    rw [if_pos hp, hv0, if_pos (hb hk'), hp]
-    exact hc 0 (by norm_num) hR0
-  · have h1 : protoOf κ s = 1 := by
-      simp only [protoOf] at hp ⊢; split_ifs at hp ⊢ <;> simp_all
-    rw [if_neg hp, hv1, h1]
-    exact hc 1 le_rfl hR1
+  have hin : ∀ π : ℕ, π ≤ 1 → InSlot π (protoRows π ++ askPI π) := fun π hπ p hp => by
+    rcases List.mem_append.1 hp with hp | hp
+    · exact (hF π hπ).1 p hp
+    · exact (hA π hπ).2.2 p hp
+  have hsm : ∀ (c : F) (x y : F3), smul3 c (add3 x y) = add3 (smul3 c x) (smul3 c y) := fun c x y => by
+    simp only [smul3, add3, mul_add]
+  have key : smul3 (hiF κ.dims.logM (fun l => τ.getD l 0) s * (hiF κ.dims.logM (fun l => σ.getD l 0) s *
+          (σ.getD κ.dims.logM 0 * σ.getD (κ.dims.logM + 1) 0)))
+        (rows3 21 23 (starPt (fun l => τ.getD l 0) (protoOf κ s)) (starPt (fun l => σ.getD l 0) (protoOf κ s))
+          (protoRows (protoOf κ s) ++ askPI (protoOf κ s))) =
+      add3 (rows3 κ.dims.logM (κ.dims.logM + 2) (fun l => τ.getD l 0) (fun l => σ.getD l 0) (slotRows4 κ s))
+        (rows3 κ.dims.logM (κ.dims.logM + 2) (fun l => τ.getD l 0) (fun l => σ.getD l 0)
+          (absRows4 κ (mvRows (protoOf κ s) s (askPI (protoOf κ s))))) := by
+    rw [hcp _ (protoOf_le κ s) _ (hin _ (protoOf_le κ s)), ← rows3_append, slotRows4, absRows4, absRows4,
+      absRows4, mvRows, mvRows, mvRows, List.map_append, List.map_append]
+  have hvv : (if protoOf κ s = 0 then
+        (protoV4 pl (fun l => τ.getD l 0) (fun l => σ.getD l 0) b).1
+      else (protoV4 pl (fun l => τ.getD l 0) (fun l => σ.getD l 0) b).2) =
+      rows3 21 23 (starPt (fun l => τ.getD l 0) (protoOf κ s)) (starPt (fun l => σ.getD l 0) (protoOf κ s))
+        (protoRows (protoOf κ s) ++ askPI (protoOf κ s)) := by
+    by_cases hp : protoOf κ s = 0
+    · have hk' : κ.hasPrev = true := by
+        by_contra hk'; simp [protoOf, isPrevSlot, hk'] at hp
+      rw [if_pos hp, hv0, if_pos (hb hk'), hp]
+    · have h1 : protoOf κ s = 1 := by
+        simp only [protoOf] at hp ⊢; split_ifs at hp ⊢ <;> simp_all
+      rw [if_neg hp, hv1, h1]
+  rw [hvv, key, arV4_eq κ _ _ s hl, arIRows4, if_pos hA, rows3_append, rows3_append]
+  simp only [add3]
+  refine Prod.ext ?_ (Prod.ext ?_ ?_) <;> dsimp only <;> abel
 
 /-- **`evalM_eq` for the 4.1 nodes.** -/
 theorem evalMT4_eq (pl : Plan4) (κ : NodeKind) (τ σ : Array F) : evalMT4 pl κ τ σ = evalMS4 κ τ σ := by

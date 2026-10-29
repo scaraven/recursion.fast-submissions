@@ -240,7 +240,8 @@ def a1V (n m k : ℕ) (t u : ℕ → F) (one A1 R1 b0 N : ℕ) : F3 :=
   (gN m u one * rs, dm - kH u * dh, 0)
 
 /-- **`a1V` is arena₁'s sparse value.** -/
-theorem a1V_eq {n m k : ℕ} (hk : k ≤ n) (hm : k + 7 ≤ m) (t u : ℕ → F) (one A1 R1 b0 N : ℕ) (hN : N ≤ 2 ^ k) :
+theorem a1V_eq {n m k : ℕ} (hk : k ≤ n) (hm : k + 5 ≤ m) (hm7 : 7 ≤ m) (t u : ℕ → F) (one A1 R1 b0 N : ℕ)
+    (hN : N ≤ 2 ^ k) :
     a1V n m k t u one A1 R1 b0 N = (rowsVal (RingHom.id F) .a n m t u (a1Rows one A1 R1 b0 N),
       rowsVal (RingHom.id F) .b n m t u (a1Rows one A1 R1 b0 N), rowsVal (RingHom.id F) .c n m t u (a1Rows one A1 R1 b0 N)) := by
   obtain ⟨ha, hb, hc⟩ := a1_val n m t u one A1 R1 b0 N

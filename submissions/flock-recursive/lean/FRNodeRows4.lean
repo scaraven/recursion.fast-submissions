@@ -7,6 +7,7 @@ import FRNodeKinds4
 import FRNodeRows4Hint
 import FRNodeRows4Pack
 import FRNodeRows4Ext
+import FRNodeRows4AskPosT
 
 /-!
 # The N2/N4/N8 nodes' M rows: slots, prototypes, copies, link rows
@@ -264,17 +265,84 @@ def InSlot (π : ℕ) (rows : List (ℕ × Row)) : Prop :=
 distinct indices. -/
 def ProtoFit : Prop := ∀ π ≤ 1, InSlot π (protoRows π) ∧ ((protoRows π).map Prod.fst).Nodup
 
+/-! ## The arena rows (track ASK-P): arena₁, the node's template rows, the bits
+
+Every slot region holds, above its prototype's rows and below its link region (B2″'s placement,
+`FRNodeRows4ArenaPlace`): **arena₁** (`a1Rows4`: the slot's stream segment copied into M, rows
+`[arR1, arR1 + arN)`), the **node's template rows** in the binding's range `[arR2, arR2 + arR2N)` (the
+ask templates' rows of the slot's prototype, `askRowsT`: B3's `askIRows4` at `b = arR2`, moved like
+the prototype), and the **bits** (`bitRows4`, rows `[arRb, arRb + arNb)`). They are folded if they fit
+(`ArFit`, checked by the plan at process start like `ProtoFit`); otherwise the slot gets one
+rejecting row instead (so `ArFit` follows from the statement's rows, `FRNodeRows4AskPosF`). -/
+
+/-- **Prototype `π`'s template extension** (`FRNodeRows4Rep.Xof`, by definition). -/
+def XofT (π : ℕ) : Ext := tplExt4 (protoF π) (protoR π) (protoLay π).ctx
+
+/-- **The node's row generator of prototype `π`**: the ask templates' rows (B3's `AT` with these
+fields is SRA's `FRNodeRsvLink.withRsv`'s). Today: the empty template, IMP's `input` template
+(`inpTG`), SRA's reserve template (`rsvTG`); ASK-T and IMPC replace `TG.none` by their classes
+(`TG.add`). -/
+def askTG (π : ℕ) : TG := (TG.none.add (inpTG (XofT π) π)).add (rsvTG (XofT π) π)
+
+/-- **Prototype `π`'s template rows** (its frame), along its compile's trail (`askRowsP`'s fold). -/
+def askRowsT (π : ℕ) : List Row :=
+  trailRows (XofT π) (protoP π) (askTG π) (CS.init (baseR π)) none 0 (protoProg π).ops
+
+/-- **Prototype `π`'s template rows, indexed**: rows `π·2^20 + arR2 + k` (the binding's range). -/
+def askPI (π : ℕ) : List (ℕ × Row) := (askRowsT π).zipIdx.map fun p => (π * slotM4 + arR2 + p.2, p.1)
+
+/-- **The arena rows fit** (both prototypes): the prototype's rows below the binding's range, the
+template rows inside it (at most `arR2N`) with their cells in the region. -/
+def ArFit : Prop :=
+  ∀ π ≤ 1, (∀ p ∈ protoRows π, p.1 < π * slotM4 + arR2) ∧ (askRowsT π).length ≤ arR2N ∧ InSlot π (askPI π)
+
+/-- **Slot `σ`'s stream block** (`packB`'s: its segment's first H block). -/
+def slotB0 (κ : NodeKind) (σ : ℕ) : ℕ :=
+  if isPrevSlot κ σ then N4c.chBase κ 0 else N4c.chBase κ (N4c.aggChild κ (aggSlot κ σ)) + subIx κ σ * N4c.sBlk
+
+theorem packB_b0 (κ : NodeKind) (σ : ℕ) : (packB κ σ).map Prod.fst = some (slotB0 κ σ) := by
+  unfold packB slotB0; split_ifs <;> rfl
+
+/-- The row index of slot `σ`'s rejecting arena row (its region's last row: the link rows end before it). -/
+def arRej (σ : ℕ) : ℕ := σ * slotM4 + slotM4 - 1
+
+/-- **Slot `σ`'s arena rows** (absolute cells): arena₁ of its stream, its prototype's template rows
+moved (`askPI`), its bits; one rejecting row if they do not fit. -/
+noncomputable def arIRows4 (κ : NodeKind) (σ : ℕ) : List (ℕ × Row) :=
+  open Classical in
+  if ArFit then a1Rows4 κ σ (slotB0 κ σ) ++ absRows4 κ (mvRows (protoOf κ σ) σ (askPI (protoOf κ σ))) ++
+    bitRows4 κ σ
+  else [(arRej σ, rejR κ)]
+
 /-- **The rejecting rows** (`one · one = 0`): the node's M rows when `ProtoFit` fails. -/
 def rejectRows (κ : NodeKind) : List (ℕ × Row) := [(0, ⟨Lin.cell κ.oneCell, Lin.cell κ.oneCell, []⟩)]
 
-/-- **The node's M rows** (absolute): per slot, its rows and then its link rows (indices increase
-along a slot); the rejecting row if the prototypes do not fit (never in practice: the plan checks
+/-- **The node's M rows** (absolute): per slot, its rows, its arena rows (ASK-P) and then its link
+rows (indices increase along a slot); the rejecting row if the prototypes do not fit (never in practice: the plan checks
 `ProtoFit` on its pieces). Not compiled (a closed term of it would be evaluated at process start):
 `evalM` evaluates it from the plan (`FRNodeRows4Plan.evalMT4_eq`). -/
 noncomputable def nodeIRows4 (κ : NodeKind) : List (ℕ × Row) :=
   open Classical in
-  if ProtoFit then (List.range κ.vslots).flatMap (fun σ => slotRows4 κ σ ++ linkIRows4 κ σ)
+  if ProtoFit then (List.range κ.vslots).flatMap (fun σ => slotRows4 κ σ ++ arIRows4 κ σ ++ linkIRows4 κ σ)
   else rejectRows κ
+
+/-- **A slot's prototype rows are the node's.** -/
+theorem mem_node_slot {κ : NodeKind} {σ : ℕ} {p : ℕ × Row} (hF : ProtoFit) (hσ : σ < κ.vslots)
+    (hp : p ∈ slotRows4 κ σ) : p ∈ nodeIRows4 κ := by
+  rw [nodeIRows4, if_pos hF]
+  exact List.mem_flatMap.2 ⟨σ, List.mem_range.2 hσ, List.mem_append_left _ (List.mem_append_left _ hp)⟩
+
+/-- **A slot's arena rows are the node's.** -/
+theorem mem_node_ar {κ : NodeKind} {σ : ℕ} {p : ℕ × Row} (hF : ProtoFit) (hσ : σ < κ.vslots)
+    (hp : p ∈ arIRows4 κ σ) : p ∈ nodeIRows4 κ := by
+  rw [nodeIRows4, if_pos hF]
+  exact List.mem_flatMap.2 ⟨σ, List.mem_range.2 hσ, List.mem_append_left _ (List.mem_append_right _ hp)⟩
+
+/-- **A slot's link rows are the node's.** -/
+theorem mem_node_link {κ : NodeKind} {σ : ℕ} {p : ℕ × Row} (hF : ProtoFit) (hσ : σ < κ.vslots)
+    (hp : p ∈ linkIRows4 κ σ) : p ∈ nodeIRows4 κ := by
+  rw [nodeIRows4, if_pos hF]
+  exact List.mem_flatMap.2 ⟨σ, List.mem_range.2 hσ, List.mem_append_right _ hp⟩
 
 /-! ## L's rows -/
 
