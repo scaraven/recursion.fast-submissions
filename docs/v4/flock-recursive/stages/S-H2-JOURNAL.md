@@ -783,3 +783,36 @@ Base: branch `v4/flock-recursive`, HEAD `53c2e13`. Build tree `logs/fr-build-SH2
     (`axioms.log`); source rule 372 files, 0 findings. Sequential CPU: `FRXDec4Levels` 22.1 s,
     `FRXChain4` 28.9 s, `FRXDec4F0` 20.2 s (`cpu-summary.txt`). Not done: item 3 (`FRXOut4`), hence `nd`,
     `NodeDec4 nd`, the plug of `nd`. RESULT Part 30, handover §6.
+92. **S-H4 pass 7** (2026-10-29). HEAD `5f39f5a`, build tree `logs/fr-build-SH4f` (copy of `fr-build-SH4e`,
+    `snap.sh` on HEAD; `MINE` adds `FRXOut4 FRSubmission4 FRSubmission4Cert`), logs `logs/S-H4f/`. Baseline
+    rebuilt the soundness tree (HEAD moved since SH4e's snapshot): 2,592 jobs, green.
+93. **Finding: rows 4–7 do not hold everything `readW` reads.** Level 0 has 64 rows (`ladderOfR 6`), cell `e`
+    is row `e mod 64`. H's message slots are rows 4–7, but the aggregates' segment count `kAct` reads the
+    selector cells `κ.oneCell + selR σ ι` (rows 1–3: `oneCell ≡ 0 mod 128`, `selR = σ·2^20 + 1 + selIx`), and
+    an aggregate's statement `stC κ σ h = cAB·128 + 2 + h` is its `c_A` block's `h_out` (rows 2–3). L's
+    signature cells `lBase·128 + σ·2^14 + j` cover all 64 rows. No H message determines `k` (the `k`-mux reads
+    `selSum`, M rows). Kernel-checked: `out_cells_rows`. Fix inside the decoder: level 0 decodes rows 1–7
+    (`c₀ = 1`, `C = 7`); cost +3.3·10^13 at `N4` (`1.08·10^14` total, `decBudget4 = 2.11·10^14`).
+94. Rows 1–7: `map4.l0` re-laid (`ob = 26,214,400`, `eb = 34,603,008`, `xb`, `yb` after; `Map4.Ok` at `C = 7`);
+    `dec04 … 7 1 …`; `lv0Step4_sem`, `decLevels4_sem`, `decF04_sem` now `∀ q < 7, … msgOf … 0 (1 + q)`;
+    exact costs recomputed by the cost formula (Python) and checked by the existing `rfl` proofs:
+    `27,032,496,972,783` (`N2`), `108,050,895,689,694` (`N4`, `N8`). All proofs went through unchanged
+    otherwise (`decLv4_sem` is parametric in `c₀`, `C ≤ 16`).
+95. `FRXOut4` (new, 253 code lines): `Dec0`, `wF` (= `T4.fF (.node κ)` unfolded), `wAddr`, **`decF04_wF`**;
+    `out_cells_dec0`, `out_cells_rows`; **`kSel`** (computable segment count) and **`kSel_eq`** (`= kAct`,
+    via `Nat.find_eq_iff` and a `find?`-on-`range` lemma); **`stD`**, **`stD_of_pubCells`** (statements read
+    from cells need no link: `digestOf_halves`); **`reassemble4 S aB`** (3.x's `ctbs` over `Sh`, every
+    contribution fitted to its size by `qB4`, so the layout is trace-independent), `pf4`, `aBytes4 = 0`,
+    **`pfHdr_reassemble4`** (S-E13a's `PfHdr`), **`reassemble4_size`**; **`LinksD4`**, **`sgnX`**, **`readW4 sg`**,
+    `sgnX_eq`, **`readW4_eq`** (on `PubCells4` and `sig_of_H`, `readW4` is `.node c₁ c₂ (rd4 pf4 …)`).
+    Pitfall: `ByteArray.extract` past the end is short, so a 3.x-style `reassemble` violates `PfHdr` on a short
+    seed query; `qB4 = fitL n ∘ extract` fixes the length.
+96. Coordinator's PATH-review notes applied to the plug's statement: `Open4` restated over S-E13a's route
+    (`gap : Gaps4` = `StmtN4 → Gap4R` at `pf4`; `dec : ∃ D : NodeDec4 ndNone, Links4 ndNone D`, `Links4`
+    named for S-L4); `resid4H_of` composes `I4`, `rd4 pf4`, `resid4_of ∘ gap4_of_rows`; `certificate_sub4` via
+    `certificate_rev4H` (no `SegOut4`), `decOk4_ndNone` proved; `not_boundsOK_qV` at `qV4 − 1`. Pitfall:
+    `X4.GoodX` is `Snd.X4.GoodX` from `FR.Sub4`.
+97. Checks: `lake build FR Solution FRSubmission4Cert FRXOut4 FRXDec4F0 FRXLagT` green, 2,593 jobs
+    (`build-final.log`); 28 axiom lines within the three (`axioms.log`, incl. `certificate_sub4`,
+    `certified`); source rule 373 files, 0 findings. `FRXOut4` 11.6 s sequential. Not done: `outIR4`, `nd`,
+    `nodeDec4_nd`, the plug of `nd`, item 4 (`tgBody_sem`, reflow). RESULT Part 31.

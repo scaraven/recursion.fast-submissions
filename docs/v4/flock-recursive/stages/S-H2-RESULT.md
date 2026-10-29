@@ -4243,3 +4243,181 @@ sequentially; they are not yet in the certificate's closure (`FR`/`FRSubmission4
 - **Q2.** `sub4.ext` now runs on `2^28 + 3t` words (2 GiB of 8-byte words before the tape). The contract
   only bounds the fuel; if a runner or the badge ever evaluates `ext`/`E` on a domain input, it allocates
   that array. Accept (Part 25 F2's ruling), or keep `ndNone`'s branch at `memX` until `nd` lands?
+
+## Part 31 (track S-H4, pass 7): level 0 decodes rows 1–7; the output's cell map, `reassemble4`, `readW4`; `Open4` over S-E13a's route; handover
+
+**Status.** HEAD `5f39f5a`, build tree `logs/fr-build-SH4f` (`MINE` = pass 6's + `FRXOut4 FRSubmission4
+FRSubmission4Cert`), logs `logs/S-H4f/`. Nothing committed. **`nd` does not exist yet**: `outIR4` (the
+output program and its semantics) is not written, so `NodeDec4 nd`, `decOk4_nd` and the plug of `nd` are
+not done, and `Open4` still carries `∃ D : NodeDec4 ndNone` (the entry stays PROVISIONAL). What this pass
+did: (1) found and fixed a blocker in the rows the decoder decodes; (2) the pure half of `FRXOut4`
+(the heap-to-witness map, the computable segment count, the statements, `reassemble4` with `PfHdr`, the
+decoder's `Links` and `readW`); (3) the coordinator's PATH-review changes to `Open4`/`certificate_sub4`.
+
+### 1. Finding F1: rows 4–7 do not hold what `readW` reads (fixed: level 0 decodes rows 1–7)
+
+Level 0 has 64 rows (`ladderOfR 6`); cell `e` of `f` is coefficient `e / 64` of row `e mod 64`. H's
+message slots are rows 4–7 (revision 4.3's (A)(ii)), but:
+
+- **the aggregates' segment count** `kAct κ a w` (`FRNodeRead4`) is the first sub-slot whose selector sum
+  `selSum κ σ = Σ_ι w (κ.oneCell + selR σ ι)` is not 1. Those cells are in rows 1–3 (`oneCell ≡ 0 mod
+  128`, `selR σ ι = σ·2^20 + 1 + selIx ι`). Nothing in H's messages determines `k` (S-E13b's `k`-mux reads
+  `selSum` too);
+- **an aggregate's statement** `stC κ σ h = cAB κ a · 128 + 2 + h` (the `c_A` block's `h_out`, `PubCells4`'s
+  cell) is in rows 2–3;
+- (as the blueprint already says) L's signature cells cover all 64 rows, so the signature is read from H
+  (`sig_of_H`).
+
+`out_cells_rows` checks the three facts in the kernel. **Fix, inside S-H4's modules:** level 0 decodes rows
+`1 … 7` (`c₀ = 1`, `C = 7`; `decLv4_sem` is parametric). Cost: `+8.25·10^12` at `N2`, `+3.30·10^13` at
+`N4`/`N8`; the decode is now `≤ 1.081·10^14 + 2,558 t` against `decBudget4 t = 2.111·10^14 + 8,176 t`.
+Rows 1–7 hold every cell the output reads except L (`out_cells_dec0`), so the statements and `k` need no
+link (Q1, below). This is a deviation from (A)(ii)'s "4 rows" (cost estimate `1.4–1.6·10^14` there; measured
+model now `1.08·10^14`).
+
+### 2. Files (`loc.py`: total / comment / blank / code / theorems)
+
+| File | loc | Content |
+|---|---|---|
+| `FRXOut4` (new) | 388 / 51 / 84 / 253 / 20 | `Dec0`, `wF`, `wAddr`, `cells_cols`, **`decF04_wF`**; `msg_dec0`, **`out_cells_dec0`**, **`out_cells_rows`**; **`kSel`**, `find_range_getD`, **`kSel_eq`**; **`stD`**, **`stD_of_pubCells`**; `qB4`, `trM4`, `sib4`, `posOf4`, `ctb4`, `ansOf4`, `ctbs4`, **`reassemble4`**, `aBytes4`, **`pf4`**, `fitL_extract_getD`, **`pfHdr_reassemble4`**, `ctb4_length`, `ctbs4_length`, **`reassemble4_size`**; **`LinksD4`**, **`sgnX`**, **`readW4`**, `sgnX_eq`, **`readW4_eq`**; controls. 11.6 s sequential (`cpu-FRXOut4.txt`). |
+| `FRXDec4Map` | 202 / – / – / 108 / 16 (−1 code) | `map4.l0` re-laid for 7 rows (`ob = 26,214,400`, `eb = 34,603,008`, `xb = 34,603,264`, `yb = 36,700,416`); `Map4.Ok`'s level 0 at `C = 7`; `map4_ctl`, `not_map4_slack`, `map4_l0` restated. |
+| `FRXDec4Levels` | 677 / – / – / 507 / 35 (±0) | `dec04` at `7 1`; `map4_nums`, `lv0Step4_sem`, `decLevels4_sem`, `cost_dec04`, `cost_decLevels4` restated (§4). |
+| `FRXDec4F0` | 393 / – / – / 273 / 19 (±0) | `decF04_sem`, `cost_le_decF04` restated (§4). |
+| `FRSubmission4Cert` | 104 / – / – / 48 / 6 (+18 code) | `Vnode4`, **`Links4`**, **`Gaps4`**, `Open4` (new fields), `pfHdr_pf4`, **`resid4H_of`**, `certificate_sub4` (new proof), `not_boundsOK_qV` at `qV4 − 1`; imports `FRNodeRows4PackSound`, `FRXOut4`. |
+
+### 3. What is proved
+
+- **`decF04_wF`**: under `decF04_sem`'s hypotheses, after `decF04 κ`, every cell `e` with `1 ≤ e mod 64 < 8`
+  and `e < 2^(m − 7)` sits at `wAddr κ e = map4.l0.ob + 2^(mLog 0 + 1)(e mod 64 − 1) + 2⌊e/64⌋` as
+  `wF κ L es e`, which is `T4.fF (.node κ) L es e` (S-G's witness, `fTab` unfolded).
+- **`kSel_eq`**: the computable `kSel κ a w` (first `i < maxK` with `selSum … ≠ 1`, else `maxK`) is `kAct`.
+- **`stD_of_pubCells`**: on `PubCells4 κ w vk c₁ c₂`, the cells `stC κ σ 0, 1` read back `c₁`, `c₂`.
+- **`reassemble4 S aB tr`** (the slots' `pf`, `pf4 := reassemble4 seq4 aBytes4`, `aBytes4 = 0` on main): 3.x's
+  field-by-field `ctbs` over `phasesOf S` with the kind's ladder for the siblings (`sib4`: the node query's
+  half by the position bit below `K.sib`, 32 zero bytes above it, `posOps4`'s rule) and the positions
+  (`posOf4`: `per`, `logN` of `S.lvK m i`); field 18 fitted to `aB`. Every contribution is fitted to its size
+  (`qB4`), so **`reassemble4_size`**: `|reassemble4 S aB tr| = piSizeOf S + aB` on every trace, and
+  **`pfHdr_reassemble4`**: byte 0 is byte 71 of the seed query (S-E13a's `PfHdr`, unconditionally; a 3.x-style
+  `extract` is short on a short seed query and breaks it).
+- **`readW4 sg κ L es := .node (stD κ 0 w) (stD κ 1 w) (sgnX sg κ 0 w) (sgnX sg κ 1 w)`**, `w = wF κ L es`,
+  `sgnX` = the reader's proof and trace (`rd4 pf4`) with the signature by `sg` (H's cell map).
+  **`readW4_eq`**: on `PubCells4` and `sg = readSig4` (`sig_of_H`), `readW4 sg κ L es = .node c₁ c₂ ((rd4
+  pf4).sgn κ 0 w) ((rd4 pf4).sgn κ 1 w)`, the witness `node_sound4` proves related. This is the bridge S-L4's
+  `hL_of_res` needs.
+- **`LinksD4 κ L es π c`**: `decF04_sem`'s hypotheses (`¬ StateHit L`, the chain with an existential initial
+  state, caps, final message, `¬ farL`, `A_c = jointAgree`): the `Links` of the coming `nodeDec4_nd`.
+- **`resid4H_of`**: `Gaps4` and `Links4 nd D` give `Resid4H … sub4 nd D vk` (slots `I4`, `rd4 pf4`,
+  `resid4_of ∘ gap4_of_rows pf4 pfHdr_pf4`).
+
+### 4. Statement changes (every one)
+
+- `Map4.Ok`: level 0's conjunct at `C = 7` (was 4). `map4` (the literal): `l0`'s `ob`, `eb`, `xb`, `yb`.
+  `map4_ctl`: `map4.l0.eb = 2^25 + 2^20` (was `2^25`). `not_map4_slack`: the perturbed `eb` is
+  `26,214,400 + 2·2^19·7`. `map4_l0`: `… 7 64`.
+- `map4_nums`: `l0.ob = 26214400`, `l0.eb = 34603008`, `l0.xb = 34603264`, `l0.yb = 36700416`.
+- `lv0Step4_sem`, `decLevels4_sem`, `decF04_sem`: conclusion `∀ q < 7, … = msgOf (.node κ) L es 0 (1 + q) x`
+  (was `q < 4`, `4 + q`). Hypotheses unchanged.
+- `cost_dec04`: `72 * 7`, `40 * 7`, `7 * (17 + …)` (was 4). `cost_decLevels4`: `27,032,496,972,783` (`N2`),
+  `108,050,895,689,694` (`N4`, `N8`). `cost_le_decF04`: `27032496972783 + …`, `108050895689694 + …`.
+- **`Open4`** (was `resid : ∃ D : NodeDec4 ndNone, ∀ vk, Resid4H … sub4 ndNone D vk`): now
+  `gap : Gaps4` and `dec : ∃ D : NodeDec4 ndNone, Links4 ndNone D`. Equivalent content routed through
+  S-E13a's `Gap4R` (strictly weaker than `Resid4H.slots`: `PfHdr`, `kindN`, `kindS@0`, `wf@0`, `wots`,
+  `aggPad` are theorems), at the fixed `pf4`.
+- `certificate_sub4`, `certificateR_sub4`, `Solution.certified`: same statements (`Open4 → …`), new proof of
+  `certificate_sub4` (`resid4H_of`).
+- `not_boundsOK_qV`: query bound `qV4 − 1` (was the literal `35999`).
+
+### 5. Controls
+
+| Control | Kind | What it shows |
+|---|---|---|
+| `out_cells_dec0` | + | every selector cell and both statements' cells are in rows 1–7 |
+| `out_cells_rows` | − / value | a selector is in row 1, an aggregate's statement cell in row 2 (outside 4–7); L's first signature cell is not decoded |
+| `kSel_ctl` | − / + | on the zero witness `kSel = 0`; `kSel ≤ maxK` |
+| `pf4_size` | value | `|pf4 tr| = 798,192` on every trace |
+| `pf4_hdr_ctl` | + / − | a seed query with `N4`'s byte at 71 gives a proof starting with it; an all-zero seed does not |
+| `readW4_eq`, `stD_of_pubCells`, `kSel_eq`, `decF04_wF` | + (universal) | the output's map agrees with the reader's and the decode's |
+| `not_map4_slack` | − | level 0's `eq` table at the end of 7 rows (no `2k` slack) is rejected |
+| `map4_ok31`, `map4_ok32` | + | the 7-row map is sound at both ladders |
+| `not_boundsOK_qV` | − | a declared query bound `qV4 − 1` fails the bounds |
+
+### 6. Checks (logs in `logs/S-H4f/`)
+
+- **Build:** `lake build FR Solution FRSubmission4Cert FRXOut4 FRXDec4F0 FRXLagT` green, **2,593 jobs**
+  (`build-final.log`; baseline `build0.log`, 2,592).
+- **Axioms** (`axioms.log`, `logs/fr-build-SH4f/ax/AxSH4f.lean`, 28 declarations incl. **`certificate_sub4`**,
+  **`RecursionFast.Challenge.certified`**, `resid4H_of`, `decF04_sem`, `decLevels4_sem`, `cost_le_decF04`):
+  within `propext`, `Classical.choice`, `Quot.sound`; no `sorryAx`.
+- **Source rule** (`source-rule.log`): 373 files, 0 findings.
+
+### 7. What `Open4` assumes after this pass (exact)
+
+1. `gap : Gaps4` — `∀ vk κ w c₁ c₂, StmtN4 κ (lRows4 κ) (nodeIRows4 κ) vk c₁ c₂ w → Gap4R implB (fun _ =>
+   implB) pf4 κ vk c₁ c₂ w`: `imp` (`SlotImp`), `kindS` and `wf` at sub-slots `i ≥ 1`, `aggChk`. Owners
+   B1′ … B4, A1′ (PATH-review F1 rows 4–6). `PfHdr pf4` is discharged (`pfHdr_pf4`).
+2. `dec : ∃ D : NodeDec4 ndNone, Links4 ndNone D` — unsatisfiable while an accepted node proof lies in the
+   domain (`not_nodeDec4_ndNone`). When `nd` lands it becomes `Links4 nd nodeDec4_nd` with
+   `nodeDec4_nd.Links = LinksD4` and `.readW = readW4 sg` (S-L4: `hL_of_res`, via `readW4_eq`, which needs
+   `sig_of_H` for the chosen `sg`).
+
+`DecOk4` is proved (`decOk4_ndNone`; `decOk4_nd` when `nd` lands). Everything else of
+`certificate_rev4H` is closed.
+
+### 8. Deviations
+
+1. **Level 0 decodes rows 1–7, not 4–7** (§1; BLUEPRINT (A)(ii)). Reason: `k` and `c_A` are only in rows 1–3;
+   within budget.
+2. **`Open4` fixes `pf := pf4`** instead of the review's `∃ pf, PfHdr pf ∧ …`: `readW4` reads the slots'
+   proofs with `pf4`, so `Links4` (whose `Rel` is about `readW`) is provable only at the same `pf`; `PfHdr
+   pf4` is a theorem.
+3. **`readW4`'s signature reader `sg` is a parameter.** The H fields (`ots_i` = the `x` field of chain block
+   `w_{i,0}`, the path blocks' `l`/`r` by the index bit, the index from the key leaf's `j` field) are S-E's
+   layout (`FRNodeRows4WotsS`'s link families); S-G/S-E own `sig_of_H` (BLUEPRINT §(A)). `nd` needs a fixed
+   `sg`.
+4. **The statements come from the cells** (`stD`), not from π's `stmt` bytes (Q1 ruling: the option without a
+   new hypothesis; `stD_of_pubCells` makes S-L4's side a rewrite, and `NodeLog`'s `c = nodeStmt (stL es 0)
+   (stL es 1)` with `PubCells4` at `pvL` closes `Rel`'s first conjunct).
+5. **`reassemble4`'s `aB`** fits field 18's contributions (`ctbs4 … 18`) to `aB` bytes; on main no phase
+   writes field 18 and `aBytes4 = 0`.
+6. Not done: item 4 (`tgBody_sem` split, reflow), `FRX4Prog`'s literal `798192` in `szPs`/`kindOf4_node`
+   (PATH-review F4.5: to restate through `piSizeOf seq4` during the rev44 port).
+
+### 9. Handover: what remains, in order
+
+1. **Fix `sg`** (with S-E/S-G): `sigH κ σ w : Sig` over H message cells (rows 4–7), per §8.3. If S-E prefers,
+   move the signature into H blocks (BLUEPRINT's alternative). State `sig_of_H : StmtN4 … → ∀ σ < 2, sigH κ σ w
+   = readSig4 κ σ w` as S-G/S-E's obligation (it feeds `readW4_eq`).
+2. **`outIR4 κ`** (`FRXOut4`, second half; 3.x's `FRNodeReadS`/`FRNodeReadP`/`FRXOut`/`FRXOutRun`, ≈ 2,000 code
+   lines there). The words of `witWords (readW4 sigH κ L es)`, all loads from `wAddr` (`decF04_wF`):
+   - tag `1`; `packBytes (stD κ σ w) = elemWords (w (stC κ σ 0)) ++ elemWords (w (stC κ σ 1))`
+     (`packBytes_digestOf`), four loads each;
+   - per signed child: `bytesWords π` (length word `|π|`, then π's words), `logWords tr`, `sigWords σ`.
+     A previous node: `π = fitL piSize (pf4 (segTr κ 0 0 0 w))` (exactly `piSize` bytes, `pf4_size`), `tr =
+     segTr`. An aggregate: `k = kSel κ a w` computed at run time (three selector loads, XOR, compare with
+     `1`, per sub-slot); `π = aggHdr k n e ++ k slot proofs` (`n`, `e` from `hA`, the `cAB` block's message);
+     `tr = k segment traces`. Unroll over `i < maxK` with an `ite` on `i < k` (`maxK ≤ 4`).
+   - The stream words: stream byte `p` of `chainBytes4 κ σ k w` is byte `p mod 16` of cell
+     `blkOf κ σ k ⌊p/64⌋ · 128 + 4 + (p mod 64)/16`. Segment `i` starts at byte `1 + i(segB − 1)`, i.e.
+     `1 − i mod 8`: words straddle cells by a segment-dependent shift (3.x's `shw`). The last stream block
+     of an aggregate with `k < maxK` is `finBlk` (not the main chain's): the address map is per `(σ, k)`.
+   - The proof bytes (`ctbs4` over `phasesOf seq4`) are fixed slices of item queries, i.e. of stream bytes,
+     plus the sibling choice (`sib4`, a bit of an answer word) and zero padding: 3.x's `proof_words` at
+     `seq4`, with the kind's ladder from stream byte `1 + 71 + …` (the seed query's byte 71).
+   - Generalise `FRXOut.addrW`'s row stride `<<< 18` to a parameter (here `2^(mLog 0 + 1)`, `2^20`/`2^19`)
+     in place, and the row offset `e mod 64 − 1`.
+3. **`FRXNd4`:** `nd := ndK4 (.seq (decF04 .N2) (outIR4 .N2)) (.seq (decF04 .N4) (outIR4 .N4)) (.seq
+   (decF04 .N8) (outIR4 .N8))`; `decOk4_nd` (cost: `cost_le_decF04` + the output's, `≤ 1.09·10^14 + 2,558 t`
+   leaves `≈ 10^14` for it); `nodeDec4_nd := ⟨LinksD4, readW4 sigH, out⟩` with `out` from `ndK4_sem`,
+   `decF04_wF` (domain facts: `kindOf4_node` gives the size, `InDomE` the tape bounds, `st1` the state) and
+   `outIR4_sem`.
+4. **The plug:** `sub0.ext := ext4With nd`, `sub4.E := E4X nd sub0.acc`; `Open4.dec : Links4 nd nodeDec4_nd`
+   (the `∃ D` goes); `certificate_sub4` with `decOk4_nd`, `nodeDec4_nd`. One-line changes now
+   (`resid4H_of` is generic in `nd`, `D`).
+5. Item 4 of Part 30 §6 (`tgBody_sem`, reflow), unchanged.
+
+### 10. Open questions
+
+- **Q1 (for the orchestrator / S-E).** Accept rows 1–7 at level 0 (§1, §8.1), or have S-E put `k` and `c_A`
+  into H message slots and keep 4 rows? The decoder side is done for rows 1–7; the alternative needs circuit
+  rows and changes `kAct`'s definition.
+- **Q2 (S-E/S-G).** Which H cells are the signature (§8.3, §9.1)? `nd` cannot be written before `sg` is fixed.

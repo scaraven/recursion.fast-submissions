@@ -20,7 +20,7 @@ chain's answers); `fmt4_ctl` checks them against `fsMsgs4 seq4` at the cap and f
 **`decF04_sem`**: on a domain tape of a node proof of kind `κ` whose log has no state hit, if the
 log's transcript `es` is the first-match chain the replay reads (`fmAns … = ansAt es`), its cap and
 final absorbs are π's fields (`capPi4`, `finPi4`), and every level's word is close with
-`A_c = jointAgree`, then level 0's rows `4 … 7` sit at `map4.l0.ob` as `msgOf κ L es 0 (4 + q)`.
+`A_c = jointAgree`, then level 0's rows `1 … 7` sit at `map4.l0.ob` as `msgOf κ L es 0 (1 + q)`.
 
 **`kindNd4`** reads the node byte (tape word 5's low byte) into two flags for the branch's `ite`
 (`N2`: `m = 31`; `N4`: `m = 32`; `N8` shares `N4`'s ladder, `decLevels4_m`).
@@ -207,12 +207,12 @@ def decF04 (κ : NodeKind) : XIR :=
   .seq (idxIR4 memX4 pL4) (.seq (readK4 pL4 (.node κ) 0 (cw4 0) map4.l0.cb 128)
     (.seq (chainIR pL4 nRep4 (chTab4 seq4 nRep4) seedIR) (decLevels4 (.node κ) pL4 cw4 cbS4 tw4)))
 
-/-- **The decode at a node kind leaves `f⁽⁰⁾`'s rows `4 … 7`** (BLUEPRINT §6.2 steps 2–4; 3.x's
+/-- **The decode at a node kind leaves `f⁽⁰⁾`'s rows `1 … 7`** (BLUEPRINT §6.2 steps 2–4; 3.x's
 `decF0_sem`): on a domain tape of a proof of `piSizeOf seq4` bytes whose log has no state hit, if
 the log's transcript `es` is the first-match chain the replay reads, its cap absorbs are π's caps
 (`capPi4`), its final absorb is π's final field (`finPi4`), and every level's word is close with
 `A_c = jointAgree`, then after `decF04 κ` the heap at `map4.l0.ob + 2^(mLog 0 + 1) q + 2x` holds,
-as an `F` value, coefficient `x` of row `4 + q` of `f⁽⁰⁾` (`msgOf κ L es 0`). -/
+as an `F` value, coefficient `x` of row `1 + q` of `f⁽⁰⁾` (`msgOf κ L es 0`). -/
 theorem decF04_sem (κ : NodeKind) (c : Digest) (π : Proof) (L : Log) (hD : Dom4 pL4 c π L)
     (hps : π.size = piSizeOf seq4) (hS : ¬ StateHit L) (st₀ : Digest) {es : Log}
     (hfm : ∀ p < nRep4, fmAns (fsQ4 seq4 (vkOf π) c π) st₀ L p = some (ansAt es p))
@@ -222,9 +222,9 @@ theorem decF04_sem (κ : NodeKind) (c : Digest) (π : Proof) (L : Log) (hD : Dom
     (hA : ∀ i < 5, T4.consSet (.node κ) L es i =
       jointAgree (T4.wordK (.node κ) L es i) (T4.decodeL (.node κ) L es i))
     (s : St) (hM : Inv s.M) (hsz : memX4 + L.length + L.length ≤ s.M.size) :
-    ∀ q < 4, ∀ x < 2 ^ T4.mLog (.node κ) 0,
+    ∀ q < 7, ∀ x < 2 ^ T4.mLog (.node κ) 0,
       algebraMap F K (rdF (semXIR (tp c π L) (decF04 κ) s).M
-        (map4.l0.ob + 2 * 2 ^ T4.mLog (.node κ) 0 * q + 2 * x)) = T4.msgOf (.node κ) L es 0 (4 + q) x := by
+        (map4.l0.ob + 2 * 2 ^ T4.mLog (.node κ) 0 * q + 2 * x)) = T4.msgOf (.node κ) L es 0 (1 + q) x := by
   set I := tp c π L
   obtain ⟨hpL, hcv, hfv, hsv⟩ := fmt4_vals
   obtain ⟨e1, e2, e3, e4, e5, e6, e7, e8, e9, e10, e11, e12, e13, e14, e15, e16⟩ := map4_nums
@@ -332,14 +332,14 @@ theorem cost_decF04_eq (κ : NodeKind) (t : ℕ) : cost (decF04 κ) t = (2592 + 
   rw [decF04, cost, cost, cost, cost_idxIR4, cost_chainIR, chTab4_length]
   ring
 
-/-- **The decode's cost** at each node kind: `≤ 18,866,590,018,289 + 2,558 t` at `N2`
-(`m = 31`) and `≤ 75,140,093,025,947 + 2,558 t` at `N4`, `N8` (`m = 32`): the five levels
+/-- **The decode's cost** at each node kind: `≤ 27,118,228,566,014 + 2,558 t` at `N2`
+(`m = 31`) and `≤ 108,136,627,282,925 + 2,558 t` at `N4`, `N8` (`m = 32`): the five levels
 (`cost_decLevels4`), level 0's read (`≤ 85,731,573,774`, `m = 32`'s), and `19,457` for the
 index's and the chain's constants, the seed block and the sequencing. -/
 theorem cost_le_decF04 (t : ℕ) :
-    cost (decF04 .N2) t ≤ 18780858425058 + 85731573774 + 19457 + 2558 * t ∧
-    cost (decF04 .N4) t ≤ 75054361432716 + 85731573774 + 19457 + 2558 * t ∧
-    cost (decF04 .N8) t ≤ 75054361432716 + 85731573774 + 19457 + 2558 * t := by
+    cost (decF04 .N2) t ≤ 27032496972783 + 85731573774 + 19457 + 2558 * t ∧
+    cost (decF04 .N4) t ≤ 108050895689694 + 85731573774 + 19457 + 2558 * t ∧
+    cost (decF04 .N8) t ≤ 108050895689694 + 85731573774 + 19457 + 2558 * t := by
   have hs := cost_seedIR t
   obtain ⟨d2, d4, d8⟩ := cost_decLevels4 pL4 cw4 cbS4 tw4 t
   have r : ∀ κ : NodeKind, cost (readK4 pL4 (.node κ) 0 (cw4 0) map4.l0.cb 128) t ≤ 85731573774 := by

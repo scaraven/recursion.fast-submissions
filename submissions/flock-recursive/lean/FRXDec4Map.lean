@@ -14,7 +14,7 @@ log index from `memX4` on (Part 25 F2; the coordinator's Q2 ruling). `Map4` plac
 | basis table (`wtabIR`) | `tb = 2^20` | `800` |
 | the chain (`chainIR`: targets, `H`, answers) | `chB = 2^23` … `chEnd` | `6,144` |
 | levels 1–4 (`lU`): flags, `J`, `P`, `Y`, rows, `eq`, `X`, `Y` | `2^24` … `2^24 + 2^23 + 2^20` | |
-| level 0 (`l0`): flags, `J`, `P`, `Y`, rows, `eq`, `X`, `Y` | `2^24` … `2^25 + 2^22 + 256` | |
+| level 0 (`l0`): flags, `J`, `P`, `Y`, rows 1–7, `eq`, `X`, `Y` | `2^24` … `36,700,416 + 2^21` | |
 | levels 1–4's word | `lU.cb = 2^26` | `32 · 2^18` |
 | level 0's word | `l0.cb = 2^27` | `128 · 2^20 = 2^27` |
 | the log index | `ix = memX4 = 2^28` | `3t` |
@@ -72,12 +72,13 @@ structure Map4 where
 
 /-- **The map is sound at `m`** (numerals only): the chain's region `[chB, chEnd)` between the
 basis table and both levels' regions; level 0 at `2^(m − 12)` positions, `2^(m − 13)` targets,
-rows 4–7 decoded (`C = 4`) of 64; levels `i = 1 … 4` at `2^(m − 12 − 2i)` positions,
-`2^(m − 13 − 3i)` targets, all 16 rows; levels 1–4 keep level 0's word; level 1's rows lie below
-level 0's `eq` table; level 0's word ends at the index, at `2^28`. -/
+rows 1–7 decoded (`C = 7`: the selector and `h_out` cells the output reads, S-H4 pass 7) of
+64; levels `i = 1 … 4` at `2^(m − 12 − 2i)` positions, `2^(m − 13 − 3i)` targets, all 16 rows;
+levels 1–4 keep level 0's word; level 1's rows lie below level 0's `eq` table; level 0's word
+ends at the index, at `2^28`. -/
 def Map4.Ok (M : Map4) (m : ℕ) : Prop :=
   regs ≤ M.tb ∧ M.tb + 800 ≤ chB ∧ chEnd ≤ M.l0.fb ∧ chEnd ≤ M.lU.fb ∧
-    M.l0.Ok M.tb (2 ^ (m - 12)) (2 ^ (m - 13)) 4 64 ∧
+    M.l0.Ok M.tb (2 ^ (m - 12)) (2 ^ (m - 13)) 7 64 ∧
     M.lU.Ok M.tb (2 ^ (m - 12 - 2 * 1)) (2 ^ (m - 13 - 3 * 1)) 16 16 ∧
     M.lU.Ok M.tb (2 ^ (m - 12 - 2 * 2)) (2 ^ (m - 13 - 3 * 2)) 16 16 ∧
     M.lU.Ok M.tb (2 ^ (m - 12 - 2 * 3)) (2 ^ (m - 13 - 3 * 3)) 16 16 ∧
@@ -94,8 +95,8 @@ instance (M : Map4) (m : ℕ) : Decidable (M.Ok m) := by
 `map4.tb + c` in an `omega` goal is then a literal sum, not a unary unfolding of `c`. -/
 abbrev map4 : Map4 where
   tb := 1048576
-  l0 := { fb := 16777216, jb := 17825792, pb := 18350080, yl := 18874368, ob := 23068672,
-          eb := 33554432, xb := 33554688, yb := 35651840, cb := 134217728, cs := 128 }
+  l0 := { fb := 16777216, jb := 17825792, pb := 18350080, yl := 18874368, ob := 26214400,
+          eb := 34603008, xb := 34603264, yb := 36700416, cb := 134217728, cs := 128 }
   lU := { fb := 16777216, jb := 17039360, pb := 17104896, yl := 17170432, ob := 19267584,
           eb := 25165824, xb := 25166080, yb := 25690368, cb := 67108864, cs := 32 }
   ix := 268435456
@@ -107,7 +108,7 @@ theorem map4_ok32 : map4.Ok 32 := by decide
 theorem map4_ok31 : map4.Ok 31 := by decide
 
 /-- (value) `map4`'s bases are the table's powers of two. -/
-theorem map4_ctl : map4.tb = 2 ^ 20 ∧ map4.l0.fb = 2 ^ 24 ∧ map4.l0.eb = 2 ^ 25 ∧
+theorem map4_ctl : map4.tb = 2 ^ 20 ∧ map4.l0.fb = 2 ^ 24 ∧ map4.l0.eb = 2 ^ 25 + 2 ^ 20 ∧
     map4.l0.cb = 2 ^ 27 ∧ map4.lU.cb = 2 ^ 26 ∧ map4.lU.eb = 2 ^ 24 + 2 ^ 23 ∧ map4.ix = memX4 := by
   decide
 
@@ -118,7 +119,7 @@ theorem not_map4_overlap : ¬ ({ map4 with l0 := { map4.l0 with xb := map4.l0.eb
 /-- (−) **The slack is required**: level 0's `eq` table moved to the end of its rows
 (`ob + 2kC`, no `2k` slack). -/
 theorem not_map4_slack :
-    ¬ ({ map4 with l0 := { map4.l0 with eb := 23068672 + 2 * 2 ^ 19 * 4 } } : Map4).Ok 32 := by
+    ¬ ({ map4 with l0 := { map4.l0 with eb := 26214400 + 2 * 2 ^ 19 * 7 } } : Map4).Ok 32 := by
   decide
 
 /-- (−) **The fit is required**: level 0's word one position higher runs into the index. -/
@@ -193,7 +194,7 @@ theorem map4_lvU (κ : Rev4.NodeKind) {i : ℕ} (hi1 : 1 ≤ i) (hi : i ≤ 4) :
 
 /-- `map4`'s level-0 regions are sound at a node kind's level 0. -/
 theorem map4_l0 (κ : Rev4.NodeKind) :
-    map4.l0.Ok map4.tb (2 ^ (Snd.CKind.lv (.node κ) 0).logN) (2 ^ Snd.T4.mLog (.node κ) 0) 4 64 := by
+    map4.l0.Ok map4.tb (2 ^ (Snd.CKind.lv (.node κ) 0).logN) (2 ^ Snd.T4.mLog (.node κ) 0) 7 64 := by
   obtain ⟨e1, e2, -, -⟩ := lv0_sizes κ
   rw [e1, e2]
   exact (map4_ok κ).2.2.2.2.1

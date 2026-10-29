@@ -3,25 +3,28 @@
 -- tracks still own bundled as one hypothesis, and the bounds against the rendered claim.
 import FRSubmission4
 import FRSoundness4XRunG
+import FRNodeRows4PackSound
+import FRXOut4
 
 /-!
 # `certificateR_sub4`: the certificate of `sub4`, given the open residuals
 
 **`Open4`** is what INT-10's `certificate_rev4H` (at `fin := finC finPf`, `lRows := Layout.lRows`,
-`κs₀ := 0`, where `implC` is `implB` by `Impl.implCN_eq`) still asks for `sub4`. X4's rows 1
-(`FrontHi`, P4f) and 2 (`RunFacts4`, R4i and INT-10) are closed; rows 8–9 (completeness,
-`δ`) are `complete_rev4`, `delta_rev4`; row 7 (`DecOk4`) is `decOk4_ndNone`.
+`κs₀ := 0`, where `implC` is `implB` by `Impl.implCN_eq`) still asks for `sub4`, stated over
+S-E13a's route (S-H4 pass 7, `reviews/PATH-review.md` F1): `Resid4H.slots` is `I4`, `rd4 pf4` and
+`resid4_of ∘ gap4_of_rows`, so what remains of it is `Gap4R` at `pf4 = reassemble4 seq4 aBytes4`
+(`PfHdr pf4` is `pfHdr_reassemble4`). X4's rows 1 (`FrontHi`) and 2 (`RunFacts4`) are closed;
+rows 8–9 are `complete_rev4`, `delta_rev4`; row 7 (`DecOk4`) is `decOk4_ndNone`, proved.
 
-| field | X4 row | owner |
+| field | what | owner |
 |---|---|---|
-| `D : NodeDec4 ndNone` | 5 | S-H4 (the node decoder) |
-| `resid vk : Resid4H …`, `slots` (`SlotIface4`, `NodeResid4`) | 3, 4 | S-N2 (instance `I4`, `rd4`; `Gap4` open) |
-| `resid vk`, `links` | 6 | S-H4 |
+| `gap` | `StmtN4 → Gap4R` at `pf4` (`imp`, `kindS`/`wf` at `i ≥ 1`, `aggChk`) | B1′ … B4, A1′ |
+| `dec` | `D : NodeDec4 ndNone` and **`Links4 ndNone D`** (`hL`) | S-H4 (`nd`), S-L4 (`hL_of_res`) |
 
 **`Open4` is not satisfiable as it stands** whenever an accepted node proof lies in the extractor's
 domain: `ndNone` extracts nothing from a node (`not_nodeDec4_ndNone`). It is the statement of what
 is missing, not a claim that it holds: the node branch `nd` (S-H4) replaces `ndNone` in
-`sub4.E`/`sub4.ext` and in `Open4`.
+`sub4.E`/`sub4.ext` and in `Open4`, whose `dec` field then becomes `Links4 nd nodeDec4_nd`.
 
 **`certificateR_sub4`**: `Open4 → CertificateR D sub4` for every declared claim `D` whose numbers
 are at least the submission's and whose fuel is within the budget (`boundsOK`); **`boundsOK_claim`**
@@ -32,15 +35,45 @@ namespace FR.Sub4
 open RecursionFast FR.Rev4 FR.X.X4
 open scoped NNReal
 
+/-- The node verifier `sub4` runs (`sub4_V`). -/
+abbrev Vnode4 : NodeProgs := VnodeC (NI4F.implN4F fun _ => implB) N4c.cells4
+
+/-- **The node links `hL`** (S-L4's `hL_of_res`): on a good log, an accepted in-domain node run
+has a transcript `es` meeting the decode law's links, and the witness read off it is a witness of
+the relation. -/
+def Links4 (nd : X.XIR) (D : NodeDec4 nd) : Prop :=
+  ∀ vk κ L c π, Snd.X4.GoodX Snd.P4f.DFhi L → kindOf4 π = .node κ → X.InDomE c π L →
+    (Vnode4 κ vk c π).runLog L = some true →
+      ∃ es, D.Links κ L es π c ∧ Rel (sub4.acc vk) c (D.readW κ L es)
+
+/-- **The circuit's open gaps** at the slots' proof decoder `pf4` (S-E13a's `Gap4R`). -/
+def Gaps4 : Prop :=
+  ∀ vk κ w c₁ c₂, N4c.StmtN4 κ (lRows4 κ) (nodeIRows4 κ) vk c₁ c₂ w →
+    N4s.Gap4R implB (fun _ => implB) X.pf4 κ vk c₁ c₂ w
+
 /-- **The residuals of revision 4.1's certificate still open** (owners in the module doc). -/
 structure Open4 : Prop where
-  resid : ∃ D : NodeDec4 ndNone, ∀ vk, Snd.R4.Resid4H (Impl.finC finPf) Layout.lRows 0 sub4 ndNone D vk
+  gap : Gaps4
+  dec : ∃ D : NodeDec4 ndNone, Links4 ndNone D
 
-/-- **The contract's `Certificate` of `sub4`, given `Open4`** (INT-10's `certificate_rev4H`). -/
+/-- `PfHdr pf4` (`pfHdr_reassemble4`). -/
+theorem pfHdr_pf4 : N4s.PfHdr X.pf4 := fun e tr => X.pfHdr_reassemble4 X.aBytes4 e tr
+
+/-- **`Resid4H` from `Open4`'s parts**: the slots are `I4`, `rd4 pf4` with
+`resid4_of ∘ gap4_of_rows`; the links are `Links4`. -/
+theorem resid4H_of {nd : X.XIR} {D : NodeDec4 nd} (hG : Gaps4) (hL : Links4 nd D) (vk : Digest) :
+    Snd.R4.Resid4H (Impl.finC finPf) Layout.lRows 0 sub4 nd D vk := by
+  exact ⟨⟨N4s.I4 _ _ (Impl.implCWith_implT _ _) fun _ => Impl.implCWith_implT _ _, N4s.rd4 X.pf4,
+    N4s.I4_rows _ _ _ _, fun κ w c₁ c₂ hS => N4s.resid4_of _ _ X.pf4 hS
+      (N4s.gap4_of_rows X.pf4 pfHdr_pf4 hS (hG vk κ w c₁ c₂ hS))⟩,
+    fun κ L c π hG' hk hd hr => hL vk κ L c π hG' hk hd hr⟩
+
+/-- **The contract's `Certificate` of `sub4`, given `Open4`** (INT-10's `certificate_rev4H`, with
+`DecOk4 ndNone` proved). -/
 theorem certificate_sub4 (h : Open4) : Certificate sub4 := by
-  obtain ⟨D, hR⟩ := h.resid
+  obtain ⟨D, hL⟩ := h.dec
   exact Snd.R4.certificate_rev4H (Impl.finC finPf) Layout.lRows 0 sub4 sub4_V sub4_qV sub4_E sub4_ε
-    sub4_ext sub4_fuel decOk4_ndNone D hR complete_rev4 delta_rev4
+    sub4_ext sub4_fuel decOk4_ndNone D (resid4H_of h.gap hL) complete_rev4 delta_rev4
 
 /-- **The bounds of `CertificateR`** against a declared claim `D`. -/
 def boundsOK (D : Declared) : Prop :=
@@ -61,8 +94,11 @@ theorem boundsOK_claim :
 
 /-- (−) **The bounds are not vacuous**: a declared query bound below `qV4` fails them. -/
 theorem not_boundsOK_qV :
-    ¬ boundsOK ⟨(15 : ℝ≥0) / 21267647932558653966460912964485513216, 0, 35999,
+    ¬ boundsOK ⟨(15 : ℝ≥0) / 21267647932558653966460912964485513216, 0, qV4 - 1,
       fun t => 211106232532992 + 8192 * t⟩ := fun h => by
-  have := h.2.2.1; simp [sub4, sub0, qV4] at this
+  have h1 := h.2.2.1
+  have h2 : 0 < qV4 := by decide
+  simp only [sub4, sub0] at h1
+  omega
 
 end FR.Sub4
