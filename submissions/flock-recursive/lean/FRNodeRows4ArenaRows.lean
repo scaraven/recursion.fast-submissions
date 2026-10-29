@@ -10,16 +10,18 @@ stream (its first H block `b0`, `N` elements: `sCell b0 e`, `FRNodeRows4Pack`) i
 
 * **arena₁**: cell `A₁ + e` holds element `e`, by the row `R₁ + e`: `one·(M(A₁+e) − H(sCell b0 e)) = 0`
   (`a1Rows`);
-* **arena₂**: per level `i` (an `ALv`: `t` positions, `S` elements a position, instance bits `a`,
-  the level's row and cell offsets `B`, `C`, its first element `E`), cell `A₂ + C + p·2^a + q` holds
-  element `E + S·p + q` of arena₁, by the row `R₂ + B + p·2^a + q`:
-  `one·(M(A₂ + C + p·2^a + q) − M(A₁ + E + S·p + q)) = 0` (`a2Rows`).
+* **the binding** (B2″, B2′'s option (a): arena₂ has no cells of its own): per level `i` (an
+  `ALv`: `t` positions, `S` elements a position, the rows at a `2^a` stride from `B`, the level's
+  first element `E`; the **consumers' import cells**: position `p`'s window at `C + p·2^c`, element
+  `q` at the offset `off q` in it), the row `R₂ + B + p·2^a + q` ties the import cell
+  `A₂ + C + p·2^c + off q` to arena₁'s `A₁ + E + S·p + q`:
+  `one·(M(A₂ + C + p·2^c + off q) − M(A₁ + E + S·p + q)) = 0` (`a2Rows`);
+* **bits** (`bitRows`): row `R_b + j` is `x·x = x` on the cell `B_t + j`, so it holds a bit.
 
-**What the rows give** (the interface for B3/B4, `a1_cells`, `a2_cells`, `arena_elem`): with
-`w one = 1`, arena₂'s cell of position `p`, element `q` is the stream element `E + S·p + q`, i.e.
-the H cell `sCell b0 (E + S·p + q)`. A consumer (a position template's import, a pin, a cap-check
-input) reads that cell as a **fixed** M cell at a power-of-two stride (the `local`/`shared` classes):
-the binding of each import class to its arena cell is B3/B4's.
+**What the rows give** (the interface for B3/B4, `a1_cells`, `a2_cells`, `arena_elem`, `bit_cells`):
+with `w one = 1`, the import cell of position `p`, element `q` is the stream element `E + S·p + q`,
+i.e. the H cell `sCell b0 (E + S·p + q)`. Which import class reads which element (`E`, `S`, `off`)
+is B3/B4's; `FRNodeRows4ArenaPlace` places arena₁, the binding's rows and the bits.
 
 **Their values** (the matrices' MLEs at `(t, u)`, `rowsVal`): `a1_val` and `a2_val` state them as
 diagonal sums, and `a1V`, `a2V` evaluate those by the carry automaton (`FRNodeRows4Arena.dRun`,
@@ -45,21 +47,33 @@ theorem cpRow_holds {w : Asg} {one x y : ℕ} (hone : w one = 1) (h : (cpRow one
 def a1Rows (one A1 R1 b0 N : ℕ) : List (ℕ × Row) :=
   (List.range N).map fun e => (R1 + e, cpRow one (A1 + e) (sCell b0 e))
 
-/-- A level of arena₂: `t` positions of `S` elements at a `2^a` stride, row and cell offsets `B`,
-`C`, the level's first element `E` (in arena₁). -/
+/-- **A level of the binding** (B2″): `t` positions of `S` elements; their rows at a `2^a` stride from
+`B`; their import cells, position `p`'s window at `C + p·2^c`, element `q` at `off q`; the level's
+first element `E` (in arena₁). -/
 structure ALv where
   t : ℕ
   S : ℕ
   a : ℕ
   B : ℕ
+  c : ℕ
   C : ℕ
+  off : ℕ → ℕ
   E : ℕ
 
-/-- **Arena₂'s rows of a level**: row `R₂ + B + p·2^a + q` copies arena₁'s `A₁ + E + S·p + q` to
-`A₂ + C + p·2^a + q`. -/
+/-- The import cell of position `p`, element `q` (from the base `A₂`). -/
+def aCell (A2 : ℕ) (v : ALv) (p q : ℕ) : ℕ := A2 + v.C + p * 2 ^ v.c + v.off q
+
+/-- **The binding's rows of a level**: row `R₂ + B + p·2^a + q` copies arena₁'s `A₁ + E + S·p + q`
+to the import cell `aCell A₂ v p q`. -/
 def a2Rows (one A1 A2 R2 : ℕ) (v : ALv) : List (ℕ × Row) :=
   (List.range v.t).flatMap fun p => (List.range v.S).map fun q =>
-    (R2 + v.B + p * 2 ^ v.a + q, cpRow one (A2 + v.C + p * 2 ^ v.a + q) (A1 + v.E + v.S * p + q))
+    (R2 + v.B + p * 2 ^ v.a + q, cpRow one (aCell A2 v p q) (A1 + v.E + v.S * p + q))
+
+/-- The bit row `x·x = x`. -/
+def bitRow (x : ℕ) : Row := ⟨Lin.cell x, Lin.cell x, Lin.cell x⟩
+
+/-- **The bits' rows**: row `R_b + j` makes the cell `B_t + j` a bit, `j < n`. -/
+def bitRows (Bt Rb n : ℕ) : List (ℕ × Row) := (List.range n).map fun j => (Rb + j, bitRow (Bt + j))
 
 /-! ## What they give (B3/B4's interface) -/
 
@@ -69,20 +83,49 @@ theorem a1_cells {w : Asg} {one A1 R1 b0 N : ℕ} (hone : w one = 1)
   cpRow_holds hone (h (R1 + e, cpRow one (A1 + e) (sCell b0 e))
     (List.mem_map.2 ⟨e, List.mem_range.2 he, rfl⟩))
 
-/-- **Arena₂ holds arena₁'s windows**: `M(A₂ + C + p·2^a + q) = M(A₁ + E + S·p + q)`. -/
+/-- **An import cell holds arena₁'s element**: `M(aCell A₂ v p q) = M(A₁ + E + S·p + q)`. -/
 theorem a2_cells {w : Asg} {one A1 A2 R2 : ℕ} {v : ALv} (hone : w one = 1)
     (h : ∀ p ∈ a2Rows one A1 A2 R2 v, p.2.Holds w) {p q : ℕ} (hp : p < v.t) (hq : q < v.S) :
-    w (A2 + v.C + p * 2 ^ v.a + q) = w (A1 + v.E + v.S * p + q) :=
-  cpRow_holds hone (h (R2 + v.B + p * 2 ^ v.a + q, cpRow one (A2 + v.C + p * 2 ^ v.a + q) (A1 + v.E + v.S * p + q))
+    w (aCell A2 v p q) = w (A1 + v.E + v.S * p + q) :=
+  cpRow_holds hone (h (R2 + v.B + p * 2 ^ v.a + q, cpRow one (aCell A2 v p q) (A1 + v.E + v.S * p + q))
     (List.mem_flatMap.2 ⟨p, List.mem_range.2 hp, List.mem_map.2 ⟨q, List.mem_range.2 hq, rfl⟩⟩))
 
-/-- **An arena₂ cell is its stream element** (both arenas' rows hold, the element in arena₁). -/
+/-- **An import cell is its stream element** (the binding's and arena₁'s rows hold, the element in
+arena₁). -/
 theorem arena_elem {w : Asg} {one A1 R1 b0 N A2 R2 : ℕ} {v : ALv} (hone : w one = 1)
     (h1 : ∀ p ∈ a1Rows one A1 R1 b0 N, p.2.Holds w) (h2 : ∀ p ∈ a2Rows one A1 A2 R2 v, p.2.Holds w)
     {p q : ℕ} (hp : p < v.t) (hq : q < v.S) (hN : v.E + v.S * p + q < N) :
-    w (A2 + v.C + p * 2 ^ v.a + q) = w (sCell b0 (v.E + v.S * p + q)) := by
+    w (aCell A2 v p q) = w (sCell b0 (v.E + v.S * p + q)) := by
   rw [a2_cells hone h2 hp hq, show A1 + v.E + v.S * p + q = A1 + (v.E + v.S * p + q) by ring]
   exact a1_cells hone h1 hN
+
+/-- **The bits' cells are bits.** -/
+theorem bit_cells {w : Asg} {Bt Rb n : ℕ} (h : ∀ p ∈ bitRows Bt Rb n, p.2.Holds w) {j : ℕ} (hj : j < n) :
+    w (Bt + j) = 0 ∨ w (Bt + j) = 1 := by
+  have := h (Rb + j, bitRow (Bt + j)) (List.mem_map.2 ⟨j, List.mem_range.2 hj, rfl⟩)
+  simp only [bitRow, Row.Holds, Lin.ev_cell] at this
+  have h2 : w (Bt + j) * (w (Bt + j) - 1) = 0 := by rw [mul_sub, this, mul_one, sub_self]
+  rcases mul_eq_zero.1 h2 with h0 | h1
+  · exact Or.inl h0
+  · exact Or.inr (sub_eq_zero.1 h1)
+
+/-- (−) Not vacuous: the bit row fails at `y` (`F`'s generator, `y² ≠ y`); (+) it holds at `0` and `1`. -/
+theorem bitRow_ctl : ¬ (bitRow 0).Holds (fun _ => F.y) ∧ (bitRow 0).Holds (fun _ => 0) ∧
+    (bitRow 0).Holds (fun _ => 1) := by
+  refine ⟨fun h => ?_, ?_, ?_⟩
+  · simp only [bitRow, Row.Holds, Lin.ev_cell] at h
+    exact (by decide +kernel : F.y * F.y ≠ F.y) h
+  · simp [bitRow, Row.Holds, Lin.ev_cell]
+  · simp [bitRow, Row.Holds, Lin.ev_cell]
+
+/-- (+) The offset map places a level's elements: position 1's element 2 of a level with windows of
+`2^4` cells at `C = 32` and `off q = 2·q + 1` is the import cell `32 + 16 + 5`, tied to arena₁'s
+`E + S + 2`; (−) not to the unshifted `32 + 16 + 2`. -/
+theorem aCell_ctl : aCell 0 ⟨2, 3, 2, 0, 4, 32, fun q => 2 * q + 1, 7⟩ 1 2 = 53 ∧
+    aCell 0 ⟨2, 3, 2, 0, 4, 32, fun q => 2 * q + 1, 7⟩ 1 2 ≠ 50 ∧
+    (a2Rows 0 100 0 1000 ⟨2, 3, 2, 0, 4, 32, fun q => 2 * q + 1, 7⟩).map (·.1) =
+      [1000, 1001, 1002, 1004, 1005, 1006] := by
+  refine ⟨rfl, by decide, by decide⟩
 
 /-- (−) Not vacuous: a copy row with `M(x) ≠ M(y)` fails (`one = 1`, `x ↦ 1`, `y ↦ 0`). -/
 theorem cpRow_ctl : ¬ (cpRow 0 1 2).Holds (fun i => if i ≤ 1 then 1 else 0) ∧
@@ -222,11 +265,11 @@ theorem a1V_eq {n m k : ℕ} (hk : k ≤ n) (hm : k + 7 ≤ m) (t u : ℕ → F)
     refine Finset.sum_congr rfl fun e _ => ?_
     rw [gN_sCell (by omega)]; ring
 
-/-- **Arena₂'s value of a level**: per position `p`, `Σ_q eq(t, r_p + q)·(eq(u, A₂ + C + p·2^a + q) − eq(u, A₁ + E + S·p + q))`,
-`r_p = R₂ + B + p·2^a`. -/
+/-- **The binding's value of a level**: per position `p`,
+`Σ_q eq(t, r_p + q)·(eq(u, aCell A₂ v p q) − eq(u, A₁ + E + S·p + q))`, `r_p = R₂ + B + p·2^a`. -/
 theorem a2_val (n m : ℕ) (t u : ℕ → F) (one A1 A2 R2 : ℕ) (v : ALv) :
     rowsVal (RingHom.id F) .b n m t u (a2Rows one A1 A2 R2 v) =
-      ∑ p ∈ range v.t, ((∑ q ∈ range v.S, gN n t (R2 + v.B + p * 2 ^ v.a + q) * gN m u (A2 + v.C + p * 2 ^ v.a + q)) -
+      ∑ p ∈ range v.t, ((∑ q ∈ range v.S, gN n t (R2 + v.B + p * 2 ^ v.a + q) * gN m u (aCell A2 v p q)) -
         ∑ q ∈ range v.S, gN n t (R2 + v.B + p * 2 ^ v.a + q) * gN m u (A1 + v.E + v.S * p + q)) := by
   rw [a2Rows, rowsVal_flatMap, list_sum_range]
   refine Finset.sum_congr rfl fun p _ => ?_
@@ -234,22 +277,81 @@ theorem a2_val (n m : ℕ) (t u : ℕ → F) (one A1 A2 R2 : ℕ) (v : ALv) :
   refine Finset.sum_congr rfl fun q _ => ?_
   rw [(linE_cp m u _ _ _).2.1, mul_sub]
 
-/-- **Arena₂'s value of a level by the automaton**: per position one run from two states (the aligned
-arena₂ side with coefficient `1`, the shifted arena₁ window with `−1`: the shift-window automaton). -/
-def a2V (n m k : ℕ) (t u : ℕ → F) (A1 A2 R2 : ℕ) (v : ALv) : F :=
-  ((List.range v.t).map fun p =>
-    dRun (hiG n k t) (hiG m k u) k (eqF t) (eqF u)
-      [(1, R2 + v.B + p * 2 ^ v.a, A2 + v.C + p * 2 ^ v.a, v.S),
-       (-1, R2 + v.B + p * 2 ^ v.a, A1 + v.E + v.S * p, v.S)]).sum
+/-- **The import side of a level in closed form** (rows aligned to `2^a`, windows to `2^c`): the
+positions' diagonal `Σ_p eq(t_{≥a}, P₀ + p)·eq(u_{≥c}, Q₀ + p)` (one automaton run, `t ≤ 2^k'`)
+times the window's `Σ_q eq(t_{<a}, q)·eq(u_{<c}, off q)` (`S` products), once per level. -/
+def a2M (n m k' : ℕ) (t u : ℕ → F) (A2 R2 : ℕ) (v : ALv) : F :=
+  dRun (hiG (n - v.a) k' (fun l => t (v.a + l))) (hiG (m - v.c) k' (fun l => u (v.c + l))) k'
+      (eqF (fun l => t (v.a + l))) (eqF (fun l => u (v.c + l)))
+      [(1, (R2 + v.B) / 2 ^ v.a, (A2 + v.C) / 2 ^ v.c, v.t)] *
+    ((List.range v.S).map fun q => eqN v.a t q * eqN v.c u (v.off q)).sum
 
-theorem a2V_eq {n m k : ℕ} (hk : k ≤ n) (hm : k ≤ m) (t u : ℕ → F) (one A1 A2 R2 : ℕ) (v : ALv)
-    (hS : v.S ≤ 2 ^ k) :
-    a2V n m k t u A1 A2 R2 v = rowsVal (RingHom.id F) .b n m t u (a2Rows one A1 A2 R2 v) := by
-  rw [a2_val, a2V, list_sum_range]
+/-- **The binding's value of a level by the automaton**: the import side `a2M`, minus per position
+one run of the shift-window automaton on arena₁'s side (one state). -/
+def a2V (n m k k' : ℕ) (t u : ℕ → F) (A1 A2 R2 : ℕ) (v : ALv) : F :=
+  a2M n m k' t u A2 R2 v - ((List.range v.t).map fun p =>
+    dRun (hiG n k t) (hiG m k u) k (eqF t) (eqF u) [(1, R2 + v.B + p * 2 ^ v.a, A1 + v.E + v.S * p, v.S)]).sum
+
+/-- The import side's closed form. -/
+theorem a2M_eq {n m k' : ℕ} (t u : ℕ → F) (A2 R2 : ℕ) (v : ALv) (ha : v.a ≤ n) (hc : v.c ≤ m)
+    (hk1 : k' ≤ n - v.a) (hk2 : k' ≤ m - v.c) (ht : v.t ≤ 2 ^ k') (hR : 2 ^ v.a ∣ R2 + v.B)
+    (hC : 2 ^ v.c ∣ A2 + v.C) (hSa : v.S ≤ 2 ^ v.a) (hoff : ∀ q < v.S, v.off q < 2 ^ v.c) :
+    a2M n m k' t u A2 R2 v =
+      ∑ p ∈ range v.t, ∑ q ∈ range v.S, gN n t (R2 + v.B + p * 2 ^ v.a + q) * gN m u (aCell A2 v p q) := by
+  obtain ⟨P0, hP⟩ := hR
+  obtain ⟨Q0, hQ⟩ := hC
+  have hr : ∀ p q, q < v.S → gN n t (R2 + v.B + p * 2 ^ v.a + q) =
+      eqN v.a t q * gN (n - v.a) (fun l => t (v.a + l)) (P0 + p) := fun p q hq => by
+    rw [show R2 + v.B + p * 2 ^ v.a + q = 2 ^ v.a * (P0 + p) + q by rw [hP]; ring]
+    exact gN_split ha t _ (by omega)
+  have hu : ∀ p q, q < v.S → gN m u (aCell A2 v p q) =
+      eqN v.c u (v.off q) * gN (m - v.c) (fun l => u (v.c + l)) (Q0 + p) := fun p q hq => by
+    rw [aCell, show A2 + v.C + p * 2 ^ v.c + v.off q = 2 ^ v.c * (Q0 + p) + v.off q by
+      rw [hQ]; ring]
+    exact gN_split hc u _ (hoff q hq)
+  have hd := diag_eq (hiG (n - v.a) k' (fun l => t (v.a + l))) (hiG (m - v.c) k' (fun l => u (v.c + l)))
+    (eqF (fun l => t (v.a + l))) (eqF (fun l => u (v.c + l))) P0 Q0 v.t hk1 hk2 ht
+    (hiG_pB (n - v.a) k' _) (hiG_pB (m - v.c) k' _)
+  have h2a : 0 < 2 ^ v.a := by positivity
+  have h2c : 0 < 2 ^ v.c := by positivity
+  rw [a2M, show (R2 + v.B) / 2 ^ v.a = P0 by rw [hP, Nat.mul_div_cancel_left _ h2a],
+    show (A2 + v.C) / 2 ^ v.c = Q0 by rw [hQ, Nat.mul_div_cancel_left _ h2c], hd, list_sum_range,
+    Finset.sum_mul_sum]
+  refine Finset.sum_congr rfl fun p _ => Finset.sum_congr rfl fun q hq => ?_
+  rw [hr p q (Finset.mem_range.1 hq), hu p q (Finset.mem_range.1 hq), ← gN_pB, ← gN_pB]
+  ring
+
+/-- **`a2V` is the binding's sparse value.** -/
+theorem a2V_eq {n m k k' : ℕ} (hk : k ≤ n) (hm : k ≤ m) (t u : ℕ → F) (one A1 A2 R2 : ℕ) (v : ALv)
+    (hS : v.S ≤ 2 ^ k) (ha : v.a ≤ n) (hc : v.c ≤ m) (hk1 : k' ≤ n - v.a) (hk2 : k' ≤ m - v.c)
+    (ht : v.t ≤ 2 ^ k') (hR : 2 ^ v.a ∣ R2 + v.B) (hC : 2 ^ v.c ∣ A2 + v.C) (hSa : v.S ≤ 2 ^ v.a)
+    (hoff : ∀ q < v.S, v.off q < 2 ^ v.c) :
+    a2V n m k k' t u A1 A2 R2 v = rowsVal (RingHom.id F) .b n m t u (a2Rows one A1 A2 R2 v) := by
+  rw [a2_val, a2V, a2M_eq t u A2 R2 v ha hc hk1 hk2 ht hR hC hSa hoff, list_sum_range,
+    Finset.sum_sub_distrib]
+  congr 1
   refine Finset.sum_congr rfl fun p _ => ?_
-  rw [dRun_sum _ _ _ _ _ hk hm (by simp [hS]) (hiG_pB n k t) (hiG_pB m k u)]
-  simp only [List.map_cons, List.map_nil, List.sum_cons, List.sum_nil, one_mul, neg_one_mul, add_zero,
-    ← gN_pB, ← sub_eq_add_neg, add_assoc]
+  rw [diag_eq _ _ _ _ _ _ _ hk hm hS (hiG_pB n k t) (hiG_pB m k u)]
+  simp only [← gN_pB]
+
+/-- **The bits' value**: each matrix is `Σ_j eq(t, R_b + j)·eq(u, B_t + j)`, one automaton run
+(`n ≤ 2^k`). -/
+def bitV (n m k : ℕ) (t u : ℕ → F) (Bt Rb N : ℕ) : F3 :=
+  let d := dRun (hiG n k t) (hiG m k u) k (eqF t) (eqF u) [(1, Rb, Bt, N)]
+  (d, d, d)
+
+theorem bitV_eq {n m k : ℕ} (hk : k ≤ n) (hm : k ≤ m) (t u : ℕ → F) (Bt Rb N : ℕ) (hN : N ≤ 2 ^ k) :
+    bitV n m k t u Bt Rb N = (rowsVal (RingHom.id F) .a n m t u (bitRows Bt Rb N),
+      rowsVal (RingHom.id F) .b n m t u (bitRows Bt Rb N), rowsVal (RingHom.id F) .c n m t u (bitRows Bt Rb N)) := by
+  have hd : dRun (hiG n k t) (hiG m k u) k (eqF t) (eqF u) [(1, Rb, Bt, N)] =
+      ∑ j ∈ range N, gN n t (Rb + j) * gN m u (Bt + j) := by
+    rw [diag_eq _ _ _ _ _ _ _ hk hm hN (hiG_pB n k t) (hiG_pB m k u)]; simp only [← gN_pB]
+  have hr : ∀ s : Mat, rowsVal (RingHom.id F) s n m t u (bitRows Bt Rb N) =
+      ∑ j ∈ range N, gN n t (Rb + j) * gN m u (Bt + j) := fun s => by
+    rw [bitRows, rowsVal_map, list_sum_range]
+    refine Finset.sum_congr rfl fun j _ => ?_
+    cases s <;> simp [bitRow, Mat.r, linE, Lin.cell]
+  simp only [bitV, hd, hr]
 
 end Rev4
 end FR

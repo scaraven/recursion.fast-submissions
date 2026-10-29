@@ -112,14 +112,38 @@ theorem tRbits_eq (k : TKey) : tRbits k = (tplOf k).rbits := by
   · rw [tplOf_walk14 h, tplWalk14RB, tplWalk14Rows, Tpl.rbits]
   · rfl
 
-/-- **A layout**: per key, the group's row base (relative to the slot), cell base and cell bits. -/
+/-- **A layout**: per key, the group's row base (relative to the slot), cell base and cell field
+(`cW`, `cG`: the instances' cell windows). -/
 abbrev TLay := List (TKey × ℕ × ℕ × ℕ)
 
-/-- The cell base of instance `i` of key `k`. -/
-def TLay.cb (L : TLay) (k : TKey) (i : ℕ) : ℕ :=
+/-- A layout entry's cell field `f` is `b` (one instance per `2^b`-cell window) or, for a **packed**
+key (B2″), `w + 64·g` with `2 ≤ g`: `g` instances per `2^w`-cell window, at the stride `cS f =
+2^w / g`. The window's bits. -/
+def cW (f : ℕ) : ℕ := f % 64
+/-- The instances per window (`1` if not packed). -/
+def cG (f : ℕ) : ℕ := max 1 (f / 64)
+/-- The member stride of a packed window. -/
+def cS (f : ℕ) : ℕ := 2 ^ cW f / cG f
+
+/-- The base of the `2^cW`-cell window holding instance `i` of key `k`. -/
+def TLay.gb (L : TLay) (k : TKey) (i : ℕ) : ℕ :=
   match L.find? (·.1 == k) with
-  | some (_, _, c, b) => c + i * 2 ^ b
+  | some (_, _, c, f) => c + i / cG f * 2 ^ cW f
   | none => 0
+
+/-- Instance `i`'s offset in its window (`0` if the key is not packed). -/
+def TLay.mo (L : TLay) (k : TKey) (i : ℕ) : ℕ :=
+  match L.find? (·.1 == k) with
+  | some (_, _, _, f) => i % cG f * cS f
+  | none => 0
+
+/-- The cell base of instance `i` of key `k` (`c + i·2^b` for an unpacked entry `(k, r, c, b)`). -/
+def TLay.cb (L : TLay) (k : TKey) (i : ℕ) : ℕ := L.gb k i + L.mo k i
+
+/-- (+) An unpacked entry places instance `i` at `c + i·2^b`; (−) a packed one (`g = 3` per `2^8`,
+stride 85) does not: instance 4 is window 1's member 1. -/
+theorem TLay.cb_ctl : TLay.cb [(.zero, 0, 100, 4)] .zero 3 = 148 ∧
+    TLay.cb [(.zero, 0, 0, 8 + 64 * 3)] .zero 4 = 256 + 85 := by decide
 
 /-- The context of a layout. -/
 def TLay.ctx (L : TLay) : TCtx := ⟨tplOf, L.cb⟩
@@ -524,6 +548,64 @@ def cregion (k : TKey) : ℕ :=
   | .tensorW n => max (tplOf k).cbits (Nat.size (5 * n + logNMax))
   | .tensorWK ns => max (tplOf k).cbits (Nat.size (twkLocs ns + logNMax))
   | _ => tCbits k
+
+/-- The cells after a template's locals that its extension writes (auxiliary import cells:
+`dotKF`'s column, `tensorW`'s and `tensorWK`'s bits; `cregion`'s operands). -/
+def auxEnd : TKey → ℕ
+  | .dotKF n => 3 * n + 1
+  | .tensorW n => 5 * n + logNMax
+  | .tensorWK ns => twkLocs ns + logNMax
+  | _ => 0
+
+/-- The largest local template rows read. -/
+def rowsMaxLoc (rows : List RowT) : ℕ :=
+  (rows.map fun r => max r.a.maxLoc (max r.b.maxLoc r.c.maxLoc)).foldl max 0
+
+/-- **The cells an instance uses**, from its template's rows and locals: every local a row reads,
+every local the template writes, its auxiliary cells. -/
+def usedN (k : TKey) (rows : List RowT) (nl : ℕ) : ℕ := max (rowsMaxLoc rows + 1) (max nl (auxEnd k))
+
+/-- A key's used cells. -/
+def cUsed (k : TKey) : ℕ := usedN k (tRows k) (tNlocs k)
+
+/-- The keys packed (B2″, PK-M3: the eight keys whose window padding frees the arenas' cells). -/
+def pkKey : TKey → Bool
+  | .dotKF n => n == 64 || n == 16
+  | .phiRS n => n == 7
+  | .tensorW n => n == 7
+  | .tensorWK _ => true
+  | _ => false
+
+/-- The most instances a packed window holds (B2″): each member is a key of its own, whose
+preparation (`kprep3`, ≈ 2.7 µs a template row per evaluation) every evaluation pays; at 16 the
+eight keys' members cost ≈ +35 ms of `kp` (`logs/B2pp/plan4t-1.log`). -/
+def packMax : ℕ := 4
+
+/-- **The packing policy** (B2″, B2′'s option (b′); performance only, soundness does not depend
+on the layout): for `u` used cells in a `2^cr` window, the window bits `w ∈ (cr, cr + 4]`, `w ≤ 13`,
+holding `g = 2^w / u` instances (`2 ≤ g ≤ packMax`) at the fewest cells an instance (`2^w / g`), if
+fewer than `2^cr`; ties take the smaller `w`. The stride `2^w / g` is at least `u`. -/
+def packN (cr u : ℕ) : Option (ℕ × ℕ) :=
+  (List.range 4).foldl (fun (best : Option (ℕ × ℕ)) d =>
+    let w := cr + 1 + d
+    let g := 2 ^ w / max u 1
+    if w ≤ 13 ∧ 2 ≤ g ∧ g ≤ packMax ∧ 2 ^ w / g < 2 ^ cr then
+      match best with
+      | some (w', g') => if 2 ^ w * g' < 2 ^ w' * g then some (w, g) else best
+      | none => some (w, g)
+    else best) none
+
+/-- A key's packing from its cell region and used cells. -/
+def packOfN (k : TKey) (cr u : ℕ) : Option (ℕ × ℕ) := if pkKey k then packN cr u else none
+
+/-- **A key's packing** `(w, g)`. -/
+def packOf (k : TKey) : Option (ℕ × ℕ) := packOfN k (cregion k) (cUsed k)
+
+/-- (+) `phiRS 7`'s 134 cells take three per `2^9` (170 each, from 256), a 306-cell `tensorWK`
+three per `2^10`; (−) `dotKF 64`'s 193 gain nothing within `packMax` (two per `2^9`), nor 251
+cells in `2^8`, nor 16 in `2^4`. -/
+theorem packN_ctl : packN 8 134 = some (9, 3) ∧ packN 8 193 = none ∧
+    packN 9 306 = some (10, 3) ∧ packN 8 251 = none ∧ packN 4 16 = none := by decide
 
 /-- The walk's blocks (`G` gadgets at a `2^gBits` stride): its rows and cells are aligned to the
 block, and the next group's cells start after its last local (S-E10). -/

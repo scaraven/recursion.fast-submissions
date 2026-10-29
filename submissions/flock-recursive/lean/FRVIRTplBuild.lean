@@ -278,8 +278,35 @@ consults first, so that an instance does not rebuild its template's rows). -/
 def blkSize (k : TKey) (rb : ℕ) : Option ℕ :=
   if isWalk k then some (2 ^ gBits) else if 12 < rb then some 64 else none
 
+/-- A wire with its local moved by `d` (B2″: a packed window's member). -/
+def shW (d : ℕ) : Wire → Wire
+  | .loc k => .loc (d + k)
+  | w => w
+
+/-- Template rows with their locals moved by `d`. -/
+def shRows (d : ℕ) (T : List RowT) : List RowT :=
+  T.map fun r => ⟨r.a.map (fun t => (shW d t.1, t.2)), r.b.map (fun t => (shW d t.1, t.2)),
+    r.c.map (fun t => (shW d t.1, t.2))⟩
+
+/-- **A packed key's members** (B2″): its cell field `f` (`w + 64·g`) and, per member `j < g`, its
+rows (a split key's head) and its tail with their locals moved by `j·cS f`, with their hashes (built
+once per key, so that a member's instances share one object: `toPiece`'s `withPtrEq`). -/
+structure PK where
+  f : ℕ
+  a : Array (List RowT × UInt64)
+  b : Array (List RowT × UInt64)
+
+/-- The members of `T` for the cell field `f`. -/
+def mkPK (f : ℕ) (T : List RowT) : Array (List RowT × UInt64) :=
+  (Array.range (cG f)).map fun j => let S := shRows (j * cS f) T; (S, hash S)
+
+/-- A key's members under the packing policy (`packOfN`), for rows `A` and tail `B`. -/
+def pkOf (k : TKey) (cr u : ℕ) (A B : List RowT) : Option PK :=
+  (packOfN k cr u).map fun p => ⟨p.1 + 64 * p.2, mkPK (p.1 + 64 * p.2) A, mkPK (p.1 + 64 * p.2) B⟩
+
 /-- **A key's data**: its template's rows, row bits, cell region, locals, and (for a split key) its
-head and tail, (for a blocked key) its re-templated blocks; the hashes only group. -/
+head and tail, (for a blocked key) its re-templated blocks, (for a packed key) its members; the
+hashes only group. -/
 structure KM where
   k : TKey
   rows : List RowT
@@ -297,6 +324,8 @@ structure KM where
   /-- A split key's head and tail inputs (`rowsInps`; `hd`/`tl` are renumbered by them: B0). -/
   hdI : List ℕ
   tlI : List ℕ
+  /-- Its members, if packed (B2″). -/
+  pk : Option PK
 
 /-- The inputs template rows read, without repeats (B0: a split key's head and tail each carry
 only theirs, so that a half's own inputs are not the whole instance's). -/
@@ -382,17 +411,20 @@ def mkKM (k : TKey) : KM :=
   let ki := keyInfo k
   let rows := ki.1
   let rb := ki.2.1
+  let u := usedN k rows ki.2.2.2
   match splitOfN k rows.length with
   | some (a, b) =>
     let hd0 := rows.take (2 ^ a); let tl0 := rows.drop (2 ^ a)
     let hi := rowsInps hd0; let ti := rowsInps tl0
     let hd := renRows hi hd0; let tl := renRows ti tl0
-    ⟨k, rows, rb, ki.2.2.1, ki.2.2.2, 0, hd, tl, hash hd, hash tl, [], some (a, b), hi, ti⟩
+    ⟨k, rows, rb, ki.2.2.1, ki.2.2.2, 0, hd, tl, hash hd, hash tl, [], some (a, b), hi, ti,
+      pkOf k ki.2.2.1 u hd tl⟩
   | none =>
     match blkSize k rb with
     | some S => ⟨k, rows, rb, ki.2.2.1, ki.2.2.2, 0, [], [], 0, 0, mkBlks S (rows.length / S) 0 [] rows, none,
-        [], []⟩
-    | none => ⟨k, rows, rb, ki.2.2.1, ki.2.2.2, hash rows, [], [], 0, 0, [], none, [], []⟩
+        [], [], none⟩
+    | none => ⟨k, rows, rb, ki.2.2.1, ki.2.2.2, hash rows, [], [], 0, 0, [], none, [], [],
+        pkOf k ki.2.2.1 u rows []⟩
 
 /-- A key's data from a memo (computed for a key it lacks). -/
 def kmOf (Ms : List KM) (k : TKey) : KM :=
@@ -540,9 +572,31 @@ def blkRPs (one : Lin) (ia : Array Lin) (cb X S : ℕ) : ℕ → List Blk → Li
     mkRaw one bk.T (bk.src.map (srcLin ia cb)) (X + S * c) (cb + S * c) (Nat.size (S - 1))
       (Nat.size (S - 1)) bk.h :: blkRPs one ia cb X S (c + 1) bks
 
+/-- A key's members if the layout packs it as the key's data does (else the instance is laid out
+as unpacked, or the layout is stale: `tinRPu`). -/
+def pkSel (e : KM) (f : ℕ) : Option PK :=
+  match e.pk with
+  | some P => if P.f == f then some P else none
+  | none => none
+
+/-- **A packed instance's proto-pieces** (B2″): as `tinRPu`'s, each over its member's rows at its
+window's base `L.gb` with the window's bits (so that the members' instances are keys). -/
+def tinRPp (one : Lin) (e : KM) (P : PK) (L : TLay) (off : ℕ) (t : TKey × ℕ × List Lin) : List RP :=
+  let j := t.2.1 % cG P.f
+  let gb := L.gb t.1 t.2.1
+  let bb := L.bits t.1
+  let ma := P.a.getD j ([], 0)
+  match e.sp with
+  | some (a, b) =>
+    let X0 := off + L.rb t.1
+    let mb := P.b.getD j ([], 0)
+    [mkRaw one ma.1 (insOf e.hdI t.2.2).toArray (X0 + splitRow a b t.2.1 0) gb a bb ma.2,
+     mkRaw one mb.1 (insOf e.tlI t.2.2).toArray (X0 + splitRow a b t.2.1 (2 ^ a)) gb b bb mb.2]
+  | none => [mkRaw one ma.1 t.2.2.toArray (off + L.rb t.1 + t.2.1 * 2 ^ e.rb) gb e.rb bb ma.2]
+
 /-- **A template instance's proto-pieces** (`tinPP`'s cut): split keys their head and tail, blocked
 keys their blocks and the rest sparse, other keys the whole instance. -/
-def tinRP (one : Lin) (Ms : List KM) (L : TLay) (off : ℕ) (t : TKey × ℕ × List Lin) : List RP :=
+def tinRPu (one : Lin) (Ms : List KM) (L : TLay) (off : ℕ) (t : TKey × ℕ × List Lin) : List RP :=
   let e := kmOf Ms t.1
   let ia := t.2.2.toArray
   let cb := L.cb t.1 t.2.1
@@ -559,6 +613,15 @@ def tinRP (one : Lin) (Ms : List KM) (L : TLay) (off : ℕ) (t : TKey × ℕ × 
       blkRPs one ia cb X S 0 e.blks ++
       [RP.sp (instIR (e.rows.drop (S * e.blks.length)) one t.2.2 (X + S * e.blks.length) cb)]
     | none => [mkRaw one e.rows ia X cb e.rb bb e.h]
+
+/-- **A template instance's proto-pieces**: a packed key's as its member's (`tinRPp`), any other's
+as `tinRPu`. -/
+def tinRP (one : Lin) (Ms : List KM) (L : TLay) (off : ℕ) (t : TKey × ℕ × List Lin) : List RP :=
+  let e := kmOf Ms t.1
+  match pkSel e (L.cf t.1) with
+  | some P => if (e.sp.isNone && (blkSize t.1 e.rb).isSome) then tinRPu one Ms L off t
+      else tinRPp one e P L off t
+  | none => tinRPu one Ms L off t
 
 /-- **A slot's proto-pieces**: the skeleton's, then every instance's. -/
 def slotRP (one : Lin) (Ms : List KM) (L : TLay) (off : ℕ) (cs : CS) (segs : List Seg) (cand : Cands) :
@@ -1306,13 +1369,13 @@ theorem split_rows {α β : Type*} (R : List α) (f : α → β) (g : ℕ → �
       rw [hhi]
     · rw [List.drop_eq_nil_of_le (by omega)]; rfl
 
-/-- **A template instance's proto-pieces have its rows.** -/
-theorem tinRP_rows (one : Lin) (ks : List TKey) (L : TLay) (off : ℕ) (t : TKey × ℕ × List Lin) :
-    (tinRP one (ks.map mkKM) L off t).flatMap (RP.rows one) = tinIRows L one off t := by
+/-- An unpacked instance's proto-pieces have its rows. -/
+theorem tinRPu_rows (one : Lin) (ks : List TKey) (L : TLay) (off : ℕ) (t : TKey × ℕ × List Lin) :
+    (tinRPu one (ks.map mkKM) L off t).flatMap (RP.rows one) = tinIRows L one off t := by
   obtain ⟨hr, hrb⟩ := mkKM_rows t.1
   have hA : ∀ r, instRowA one t.2.2.toArray (L.cb t.1 t.2.1) r = instRow one t.2.2 (L.cb t.1 t.2.1) r :=
     instRowA_eq one t.2.2 _
-  unfold tinRP tinIRows
+  unfold tinRPu tinIRows
   simp only [kmOf_map, hA, mkKM_sp]
   cases hs : splitOf t.1 with
   | some ab =>
@@ -1338,6 +1401,92 @@ theorem tinRP_rows (one : Lin) (ks : List TKey) (L : TLay) (off : ℕ) (t : TKey
     | none =>
       simp only [List.flatMap_cons, List.flatMap_nil, List.append_nil, mkRaw_rows, instIR, hr,
         List.toList_toArray]
+
+/-- **Moved locals instantiate at the moved cell base.** -/
+theorem shRows_inst (one : Lin) (ins : List Lin) (cb d : ℕ) (T : List RowT) :
+    (shRows d T).map (instRow one ins cb) = T.map (instRow one ins (cb + d)) := by
+  have hl : ∀ l : LinT, instLin one ins cb (l.map fun t => (shW d t.1, t.2)) = instLin one ins (cb + d) l := by
+    intro l
+    unfold instLin
+    rw [List.flatMap_map]
+    refine List.flatMap_congr fun t _ => ?_
+    obtain ⟨w, c⟩ := t
+    cases w <;> simp [shW, add_assoc]
+  simp only [shRows, List.map_map]
+  refine List.map_congr_left fun r _ => ?_
+  simp only [Function.comp_apply, instRow, hl]
+
+theorem mkPK_get (f : ℕ) (T : List RowT) {j : ℕ} (hj : j < cG f) :
+    ((mkPK f T).getD j ([], 0)).1 = shRows (j * cS f) T := by
+  simp [mkPK, Array.getD_eq_getD_getElem?, hj]
+
+theorem pkOf_get {k : TKey} {cr u : ℕ} {A B : List RowT} {P : PK} (h : pkOf k cr u A B = some P)
+    {j : ℕ} (hj : j < cG P.f) :
+    (P.a.getD j ([], 0)).1 = shRows (j * cS P.f) A ∧ (P.b.getD j ([], 0)).1 = shRows (j * cS P.f) B := by
+  unfold pkOf at h
+  obtain ⟨p, -, rfl⟩ := Option.map_eq_some_iff.1 h
+  exact ⟨mkPK_get _ _ hj, mkPK_get _ _ hj⟩
+
+/-- A key's members are its rows' (a split key's head's) and its tail's, moved. -/
+theorem mkKM_pk {k : TKey} {P : PK} (h : (mkKM k).pk = some P) :
+    ∃ cr u, pkOf k cr u (match (mkKM k).sp with
+      | some _ => (mkKM k).hd
+      | none => (mkKM k).rows) (mkKM k).tl = some P := by
+  revert h; unfold mkKM; dsimp only; split
+  · exact fun h => ⟨_, _, h⟩
+  · split
+    · intro h; cases h
+    · exact fun h => ⟨_, _, h⟩
+
+theorem TLay.cb_eq (L : TLay) (k : TKey) (i : ℕ) : L.cb k i = L.gb k i + i % cG (L.cf k) * cS (L.cf k) := by
+  unfold TLay.cb TLay.mo TLay.cf
+  cases List.find? (fun x => x.1 == k) L <;> simp [cG, Nat.mod_one]
+
+theorem pkSel_spec {e : KM} {f : ℕ} {P : PK} (h : pkSel e f = some P) : e.pk = some P ∧ P.f = f := by
+  unfold pkSel at h; split at h
+  · split_ifs at h with hf; cases h; exact ⟨by assumption, eq_of_beq hf⟩
+  · cases h
+
+/-- A packed instance's proto-pieces have its unpacked proto-pieces' rows. -/
+theorem tinRPp_rows (one : Lin) (ks : List TKey) (L : TLay) (off : ℕ) (t : TKey × ℕ × List Lin) {P : PK}
+    (hP : pkSel (mkKM t.1) (L.cf t.1) = some P)
+    (hg : ¬ ((mkKM t.1).sp.isNone && (blkSize t.1 (mkKM t.1).rb).isSome) = true) :
+    (tinRPp one (mkKM t.1) P L off t).flatMap (RP.rows one) =
+      (tinRPu one (ks.map mkKM) L off t).flatMap (RP.rows one) := by
+  obtain ⟨hpk, hf⟩ := pkSel_spec hP
+  obtain ⟨cr, u, hc⟩ := mkKM_pk hpk
+  have hj : t.2.1 % cG P.f < cG P.f := Nat.mod_lt _ (by unfold cG; omega)
+  have hcb := TLay.cb_eq L t.1 t.2.1
+  rw [← hf] at hcb
+  unfold tinRPp tinRPu
+  simp only [kmOf_map]
+  cases hs : (mkKM t.1).sp with
+  | some ab =>
+    obtain ⟨a, b⟩ := ab
+    simp only [hs] at hc
+    obtain ⟨ha, hb⟩ := pkOf_get hc hj
+    simp only [List.flatMap_cons, List.flatMap_nil, List.append_nil, mkRaw_rows, instIR_eq, ha, hb,
+      shRows_inst, hcb]
+  | none =>
+    simp only [hs] at hc hg
+    obtain ⟨ha, -⟩ := pkOf_get hc hj
+    have hbk : blkSize t.1 (mkKM t.1).rb = none := by
+      revert hg; cases blkSize t.1 (mkKM t.1).rb <;> simp
+    simp only [hbk, List.flatMap_cons, List.flatMap_nil, List.append_nil, mkRaw_rows, instIR_eq, ha,
+      shRows_inst, hcb]
+
+/-- **A template instance's proto-pieces have its rows.** -/
+theorem tinRP_rows (one : Lin) (ks : List TKey) (L : TLay) (off : ℕ) (t : TKey × ℕ × List Lin) :
+    (tinRP one (ks.map mkKM) L off t).flatMap (RP.rows one) = tinIRows L one off t := by
+  rw [← tinRPu_rows one ks L off t]
+  unfold tinRP
+  simp only [kmOf_map]
+  split
+  · rename_i P hP
+    split_ifs with hg
+    · rfl
+    · exact tinRPp_rows one ks L off t hP hg
+  · rfl
 
 /-- **A slot's proto-pieces have the slot's rows.** -/
 theorem slotRP_rows (one : Lin) (ks : List TKey) (L : TLay) (off : ℕ) (cs : CS) (segs : List Seg)

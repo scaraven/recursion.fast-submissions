@@ -219,10 +219,16 @@ def skelPPs (sk : Array Row) (off : ℕ) (segs : List Seg) : List PP :=
     (blk :: gap.reverse ++ q.1, s.r1)) ([], 0)
   (PP.sp (run r.2 sk.size) :: r.1).reverse
 
-/-- A key's cell bits in a layout. -/
+/-- A key's cell window bits in a layout (`cW` of its cell field; B2″). -/
 def _root_.FR.Circ.TLay.bits (L : TLay) (k : TKey) : ℕ :=
   match L.find? (·.1 == k) with
-  | some (_, _, _, b) => b
+  | some (_, _, _, f) => cW f
+  | none => 0
+
+/-- A key's cell field in a layout (B2″: `w + 64·g` if packed). -/
+def _root_.FR.Circ.TLay.cf (L : TLay) (k : TKey) : ℕ :=
+  match L.find? (·.1 == k) with
+  | some (_, _, _, f) => f
   | none => 0
 
 /-- A template instance's proto-pieces: the instance, or for a template of more than `2^12` rows

@@ -575,30 +575,41 @@ def fitDown (b n : ℕ) (occ : List (ℕ × ℕ)) : ℕ → ℕ → ℕ
     | some s => fitDown b n occ fuel s
     | none => x
 
+/-- A layout entry's cell field and cells (B2″) for `n` instances: the walk and a template of more
+than `2^12` rows (evaluated in 64-row chunks, so its window is not a plan window: B2′'s (c3)) up to
+the last instance's used cells; a packed key (`packOf`) `w + 64·g`, its full windows and the last
+one's members; any other `n·2^b`. -/
+def cellsOf (e : TKey × ℕ × ℕ × ℕ) (n : ℕ) : ℕ × ℕ :=
+  let b := e.2.2.2
+  if isWalk e.1 then (b, (n - 1) * 2 ^ b + tNlocs e.1)
+  else if 12 < tRbits e.1 then (b, (n - 1) * 2 ^ b + cUsed e.1)
+  else match packOf e.1 with
+    | some (w, g) => (w + 64 * g, (n - 1) / g * 2 ^ w + ((n - 1) % g + 1) * (2 ^ w / g))
+    | none => (b, n * 2 ^ b)
+
 /-- **Top-down cells** (B2′; it makes a hint only, which nothing trusts): a layout's groups re-based
-in cells, in decreasing cell bits, each at the highest base below `top` (the slot region's end, an
-aligned bound), aligned to its bits, whose cells meet no group placed before; the rows stay
-`mkLay`'s. A group takes `n·2^b` cells, the walk up to its last local. From an aligned top, groups of
-decreasing alignment pack without gaps; `mkLay`'s order leaves one before every group aligned more
-than the one before it (4.4.1's prototype 0: 27,392 cells before `rowW 8`), and a slot region's cells
-are nearly full (B2′'s RESULT). -/
+in cells, in decreasing window bits, each at the highest base below `top` (the slot region's end, an
+aligned bound), aligned to its window, whose cells meet no group placed before; the rows stay
+`mkLay`'s. A group takes `cellsOf`'s cells (B2″: packed keys, used cells for chunked keys). From an
+aligned top, groups of decreasing alignment pack without gaps; `mkLay`'s order leaves one before every
+group aligned more than the one before it (4.4.1's prototype 0: 27,392 cells before `rowW 8`), and a
+slot region's cells are nearly full (B2′'s RESULT). -/
 def fitCells (top : ℕ) (L : TLay) (ks : List (TKey × ℕ)) : TLay :=
-  let sz := fun (e : TKey × ℕ × ℕ × ℕ) =>
-    let n := ((ks.find? (·.1 == e.1)).map (·.2)).getD 1
-    if isWalk e.1 then (n - 1) * 2 ^ e.2.2.2 + tNlocs e.1 else n * 2 ^ e.2.2.2
-  let ord := (List.range (L.foldl (fun m e => max m e.2.2.2) 0 + 1)).reverse.flatMap fun b =>
-    L.filter (·.2.2.2 == b)
+  let cf := fun (e : TKey × ℕ × ℕ × ℕ) => cellsOf e (((ks.find? (·.1 == e.1)).map (·.2)).getD 1)
+  let L' := L.map fun e => (e, cf e)
+  let ord := (List.range (L'.foldl (fun m e => max m (cW e.2.1)) 0 + 1)).reverse.flatMap fun b =>
+    L'.filter (cW ·.2.1 == b)
   let placed := ord.foldl (fun (acc : List (TKey × ℕ) × List (ℕ × ℕ)) e =>
-    let c := fitDown e.2.2.2 (sz e) acc.2 (acc.2.length + 1) top
-    ((e.1, c) :: acc.1, (c, c + sz e) :: acc.2)) ([], [])
-  L.map fun e => (e.1, e.2.1, ((placed.1.find? (·.1 == e.1)).map (·.2)).getD e.2.2.1, e.2.2.2)
+    let c := fitDown (cW e.2.1) e.2.2 acc.2 (acc.2.length + 1) top
+    ((e.1.1, c) :: acc.1, (c, c + e.2.2) :: acc.2)) ([], [])
+  L'.map fun e => (e.1.1, e.1.2.1, ((placed.1.find? (·.1 == e.1.1)).map (·.2)).getD e.1.2.2.1, e.2.1)
 
 /-- (+) Below 64, a 16-cell group goes to 48 and a 4-cell group right below it, at 44; (−) a group
 that would meet one placed before moves below it (8 cells at 56, then 4 at 52, not 60). -/
 theorem fitCells_ctl :
     (fitCells 64 [(.zero, 0, 0, 2), (.eqZ, 0, 0, 4)] [(.zero, 1), (.eqZ, 1)]).map (·.2.2.1) = [44, 48] ∧
     (fitCells 64 [(.zero, 0, 0, 2), (.eqZ, 0, 0, 2)] [(.zero, 2), (.eqZ, 1)]).map (·.2.2.1) = [56, 52] := by
-  decide
+  decide +kernel
 
 /-- **The two-pass layout with the 4.1 route** (B2′: cells top-down from the `2^20`-cell region's end,
 `fitCells`). -/
