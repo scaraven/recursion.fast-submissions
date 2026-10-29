@@ -56,7 +56,12 @@ Running on rev44:
   - **Templates:** `askTG` in the low module FRNodeRows4AskPosT. ASK-T replaces `TG.none`; IMPC adds `.add impcTG`, and the orchestrator merges it.
   - **Cost:** V(N4) +11/+15 ms, plan init 7.07 s.
   - **Open:** the arena₁ last-4 tie to `aggPad`; the N8 sparse plan check is too slow (> 1,800 s).
-- ASK-T: the `ATAsk` generator for all 8,783 asks (FS links, Merkle mux, pins, seed, columns).
+- **ASK-T landed `ae8b8d8`.**
+  - **`ATAsk`:** holds for every ask, including the last item (via `AggPad4`).
+  - **`askTG`:** `askTGT` + `inpTG` + `rsvTG` + `impcTG`.
+  - **`gap4Imp_of_askT`:** `Gap4.imp` follows from `RepOk` + the replay fold + `SlotRunA` (withImpc). `Gaps4`'s text is unchanged.
+  - **Fixed:** a V start-up stack overflow (`provLT`).
+  - **Cost:** V(N4) 445/489 ms VM, which is not a cap issue. Plan init is 7.8–8.0 s wall VM, which is binding through stream_s. Levers: `pfLoc` caching (to INIT), and answer-slot aliasing in the compile.
 - **IMPC landed `87519f4`.** The generators are `impcTG`/`colTG`.
   - **Covered by `impcTG`:** `piElem` 4,199/4,201, `piElemK` all, `piDigest` 872/8,300, `chF`/`chK` all; cap reads under (β′) are proof reads. About 34 ms V per node.
   - **`colTG`:** the `felems` aux facts, 871/871. About 110 ms V per node; deferred.
