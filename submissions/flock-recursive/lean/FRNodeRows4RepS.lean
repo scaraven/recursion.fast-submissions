@@ -14,23 +14,13 @@ of prototype 1's `linkWAll` import is eight rows `one · out_j = 0` on its `af 8
   (the previous node's `linkWAll` is `linkWAll4I ν`, JOURNAL §1.4).
 * **`rtLinkSeg_ok`**: `RTOk` at every index, given that the base's `linkWAll` at `L32` is `0^8`
   (**`LinkZero impl₀`**; `linkZero_implC`: it holds at the submission's `implC`).
-* **`repOk_rtSeg`**: `RepOk rtSeg impl₀ base`, so `slotImp_of_rep`/`gap4Imp_of_rep` apply with it.
+* (REPF: `repOk_rtSeg` removed: `RepOk` is now the `RTOkW` form, which `rtLinkSeg`, without its
+  output cells' bound check, does not meet; `FRNodeRows4RepN.rtLinkSegW` is its checked form.)
 -/
 
 namespace FR
 namespace N4s
 open RecursionFast Rev4 Circ
-
-/-- **`one · ℓ = 0` per output cell** of an `af 8` slot; the rejecting row on any other slot. -/
-def zeroRows (P : Params) : List Slot → List Row
-  | [some (t, ls)] =>
-    if t = .af 8 ∧ ls.length = 8 then ls.map fun l => ⟨P.one, l, []⟩ else [⟨P.one, P.one, []⟩]
-  | _ => [⟨P.one, P.one, []⟩]
-
-/-- Whether an op is `linkWAll`. -/
-def isLinkW : Op → Bool
-  | .linkWAll .. => true
-  | _ => false
 
 /-- **The segment's `linkWAll` replay.** -/
 def rtLinkSeg : RT := ⟨isLinkW, fun P _ op outs => if isLinkW op then zeroRows P outs else []⟩
@@ -90,14 +80,6 @@ theorem rtLinkSeg_ok {impl₀ : OpImpl} (base : NodeKind → OpImpl) (hZ : LinkZ
     simp only [implP, one_ne_zero, if_false, OpImpl.fixK, implSeg]; exact hZ _ _
   rw [hv]
   exact zeroRows_sound hP.1 (fun r hr => hrows r (by simp only [rtLinkSeg, isLinkW, if_true]; exact hr))
-
-/-- **`RepOk` for `rtSeg`.** -/
-theorem repOk_rtSeg {impl₀ : OpImpl} (base : NodeKind → OpImpl) (hZ : LinkZero impl₀) :
-    RepOk rtSeg impl₀ base := by
-  intro π hπ ι
-  by_cases h : π = 1
-  · subst h; exact rtLinkSeg_ok base hZ ι
-  · simp only [rtSeg, h, if_false]; exact RT.none_ok _ _ _
 
 end N4s
 end FR

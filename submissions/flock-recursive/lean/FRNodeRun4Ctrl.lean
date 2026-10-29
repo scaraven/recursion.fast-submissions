@@ -157,8 +157,8 @@ theorem run_ctl (impl : OpImpl) (tc : Tpl.TCtx) :
       [⟨Lin.cell 0, Lin.cell 3, (Lin.cell 0).smul (dlo zeroD)⟩,
         ⟨Lin.cell 0, Lin.cell 4, (Lin.cell 0).smul (dhi zeroD)⟩] := rfl
   have := compileX_run (ops := progCtl) (inp := inpCtl) (tr := [(squeezeQ zeroD, zeroD)]) (rt := RT.none) (A := pinSq zeroD) (P := pCtl) (tc := tc)
-    (s := ⟨#[.d zeroD, .d zeroD], true⟩) (tr' := []) hX (RT.none_ok _ _ _)
-    (pinSq_ok impl .L32 inpCtl wCtl zeroD) 1 selOk_ctl rfl (by simp [hrows])
+    (s := ⟨#[.d zeroD, .d zeroD], true⟩) (tr' := []) hX (RT.none_okW _ _ _ 0)
+    (pinSq_ok impl .L32 inpCtl wCtl zeroD) 1 selOk_ctl selOk_ctl (fun _ _ => rfl) rfl (by simp [hrows])
     (by simp [CS.tplRows, htins]) (by simp [haux])
     (fun i hi => by
       rw [himp, List.mem_singleton] at hi

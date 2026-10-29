@@ -31,11 +31,6 @@ open RecursionFast Rev4 Circ Tpl
 
 /-! ## Combining replay templates -/
 
-/-- **`rt₁` where it covers, else `rt₂`.** -/
-def _root_.FR.Circ.RT.orElse (rt₁ rt₂ : RT) : RT :=
-  ⟨fun op => rt₁.cov op || rt₂.cov op,
-   fun P cs op outs => if rt₁.cov op then rt₁.rows P cs op outs else rt₂.rows P cs op outs⟩
-
 theorem _root_.FR.Circ.RT.orElse_ok {impl : OpImpl} {X : Ext} {κ : Kind} {rt₁ rt₂ : RT} (h₁ : RTOk impl X rt₁ κ)
     (h₂ : RTOk impl X rt₂ κ) : RTOk impl X (rt₁.orElse rt₂) κ := by
   intro P cs op hc
@@ -45,9 +40,6 @@ theorem _root_.FR.Circ.RT.orElse_ok {impl : OpImpl} {X : Ext} {κ : Kind} {rt₁
   · have h' : rt₂.cov op = true := by simpa [RT.orElse, h] using hc
     obtain ⟨ha, hb⟩ := h₂ P cs op h'
     exact ⟨ha, fun inp w regs vs ok hP hI hr => hb inp w regs vs ok hP hI (by simpa [RT.orElse, h] using hr)⟩
-
-/-- The rejecting row `one · one = 0`. -/
-def rejRow (P : Params) : Row := ⟨P.one, P.one, []⟩
 
 theorem rej_false {P : Params} {w : Asg} (hone : P.one.ev w = 1) {l : List Row} (hm : rejRow P ∈ l)
     (h : ∀ r ∈ l, r.Holds w) : False :=
@@ -66,21 +58,6 @@ theorem _root_.FR.Circ.RT.orElse_okW {impl : OpImpl} {X : Ext} {κ : Kind} {B : 
       hb inp w w' regs vs ok hP hP' hI hA (by simpa [RT.orElse, h] using hr)⟩
 
 /-! ## The output side: copy rows on the import's cells -/
-
-/-- The output slots have the types `tys`, each with one form per component. -/
-def outsOk : List Ty → List Slot → Bool
-  | [], [] => true
-  | t :: ts, some (t', ls) :: os => t == t' && ls.length == t.len && outsOk ts os
-  | _, _ => false
-
-/-- The output slots' forms, in order. -/
-def outF (outs : List Slot) : List Lin := outs.flatMap fun s => match s with
-  | some (_, ls) => ls
-  | none => []
-
-/-- **The copy rows** `one · out_c = o_c` (`o`: the instantiated template outputs). -/
-def copyRows (P : Params) (outs : List Slot) (o : List Lin) : List Row :=
-  (outF outs).zipIdx.map fun p => ⟨P.one, p.1, o.getD p.2 []⟩
 
 theorem outF_cons (t : Ty) (ls : List Lin) (os : List Slot) : outF (some (t, ls) :: os) = ls ++ outF os :=
   rfl
@@ -127,14 +104,6 @@ theorem copyRows_ev {P : Params} {w : Asg} (hone : P.one.ev w = 1) {outs : List 
 
 /-! ## The input side: the operands' forms at each index -/
 
-/-- **The operands' types and forms at index `ι`** (`none` if one has no slot or the wrong number
-of forms). -/
-def kOps (cs : CS) (ι : Kind) : List ℕ → Option (List Ty × List Lin)
-  | [] => some ([], [])
-  | a :: as => match cs.slotK a ι, kOps cs ι as with
-    | some (t, ls), some (ts, fs) => if ls.length = t.len then some (t :: ts, ls ++ fs) else none
-    | _, _ => none
-
 /-- **Where the forms represent the operands** (`InvK`), they evaluate to the operands' encodings,
 and the types are the operands' types. -/
 theorem kOps_rep {w : Asg} {cs : CS} {regs : Array Val} {ι : Kind}
@@ -162,55 +131,6 @@ theorem inpIs_envOf (w : Asg) (one : Lin) (ins : List Lin) (cb : ℕ) :
   cases ins[i]? <;> rfl
 
 /-! ## The kind-muxed op template -/
-
-/-- **A kind-muxed op replay**: the op's operand registers at each index, its sub-template per node
-kind and operand types, its output types. -/
-structure KOp where
-  cov : Op → Bool
-  args : Op → Kind → List ℕ
-  /-- The operand types the sub-templates serve (checked at every index). -/
-  inOk : List Ty → Bool
-  T : Op → NodeKind → List Ty → Tpl
-  tys : List Ty
-
-/-- The selector index of a kind (its position in `Circ.kinds`). -/
-def kIx : Kind → ℕ
-  | .L32 => 0
-  | .P30 => 1
-  | .N30 => 2
-
-/-- The three indices' operand blocks, in `Circ.kinds`' order. -/
-def kBlocks (K : KOp) (cs : CS) (op : Op) : Option (List (List Ty × List Lin)) :=
-  match kOps cs .L32 (K.args op .L32), kOps cs .P30 (K.args op .P30), kOps cs .N30 (K.args op .N30) with
-  | some a, some b, some c => some [a, b, c]
-  | _, _, _ => none
-
-/-- What sub-template `j` reads as its input `i`: block `j` (widths `ws`); `0` past it. -/
-def kSig (ws : List ℕ) (j i : ℕ) : LinT := if i < ws.getD j 0 then I ((ws.take j).sum + i) else []
-
-/-- **The op's kind-muxed template** over the blocks `bs` (inputs: the blocks, then the three
-selectors). -/
-def kTpl (K : KOp) (op : Op) (bs : List (List Ty × List Lin)) : Tpl :=
-  let ws := bs.map fun b => b.2.length
-  kmuxT (kSig ws) ws.sum (K.tys.map Ty.len).sum
-    [K.T op .N4 (bs.getD 0 ([], [])).1, K.T op .N2 (bs.getD 1 ([], [])).1, K.T op .N8 (bs.getD 2 ([], [])).1]
-
-/-- The instance's input forms: the blocks' forms, then the selectors. -/
-def kIns (P : Params) (bs : List (List Ty × List Lin)) : List Lin :=
-  (bs.map (·.2)).flatten ++ kinds.map P.sel
-
-/-- **The replay rows of a kind-muxed op**, its locals from cell `cb`. -/
-def kRows (K : KOp) (B cb : ℕ) (P : Params) (cs : CS) (op : Op) (outs : List Slot) : List Row :=
-  match kBlocks K cs op with
-  | some bs =>
-    if outsOk K.tys outs && bs.all (fun b => K.inOk b.1) && (kIns P bs ++ outF outs).all (linLt B) then
-      (kTpl K op bs).rows.map (instRow P.one (kIns P bs) cb) ++
-        copyRows P outs ((kTpl K op bs).outs.map (instLin P.one (kIns P bs) cb))
-    else [rejRow P]
-  | none => [rejRow P]
-
-/-- **The replay template of a kind-muxed op.** -/
-def rtK (K : KOp) (B cb : ℕ) : RT := ⟨K.cov, fun P cs op outs => if K.cov op then kRows K B cb P cs op outs else []⟩
 
 /-- **The per-op obligation** (pure functions): at index `ι`, the op never asks, its sub-templates
 have one output per component, and the sub-template of `nodeAt ι` at the operands' types computes
@@ -292,6 +212,15 @@ theorem kTpl_ok {e : Env} (h1 : e.one = 1) {K : KOp} {op : Op} {bs : List (List 
       List.getD_eq_getElem _ [] (hvl ▸ hjl)]
   · rw [ev_nil, List.getD_eq_getElem?_getD, List.getElem?_eq_none (by omega)]; rfl
 
+theorem gatesAtGo_eq : ∀ (gs : List Gate) (k : ℕ) (acc : List (ℕ × Gate)),
+    gatesAtGo gs k acc = (gatesAt gs k).reverse ++ acc
+  | [], _, _ => rfl
+  | g :: gs, k, acc => by
+    rw [gatesAtGo, gatesAtGo_eq gs, gatesAt, List.reverse_cons, List.append_assoc]; rfl
+
+theorem rowsTR_eq (T : Tpl) : rowsTR T = T.rows := by
+  rw [rowsTR, gatesAtGo_eq, List.append_nil, List.reverse_reverse]; rfl
+
 theorem rtK_rows {K : KOp} {B cb : ℕ} {P : Params} {cs : CS} {op : Op} {outs : List Slot}
     (hc : K.cov op = true) : (rtK K B cb).rows P cs op outs = kRows K B cb P cs op outs := by
   unfold rtK; dsimp only; rw [ite_cond_eq_true _ _ (eq_true hc)]
@@ -306,6 +235,7 @@ theorem rtK_okW {impl : OpImpl} {X : Ext} {ι : Kind} {K : KOp} (B cb : ℕ) (hK
   generalize (stepOut X P cs op).slots = outs at hrows ⊢
   rw [rtK_rows hc] at hrows
   unfold kRows at hrows
+  simp only [rowsTR_eq] at hrows
   split at hrows
   · rename_i bs hbs
     split_ifs at hrows with hoi
@@ -349,36 +279,12 @@ theorem rtK_okW {impl : OpImpl} {X : Ext} {ι : Kind} {K : KOp} (B cb : ℕ) (hK
 
 /-! ## Prototype 0's `shiftTarget`: zero -/
 
-/-- A form whose coefficients are all zero (`0` at every assignment). -/
-def zeroLin (l : Lin) : Bool := l.all fun t => t.2 == 0
-
 theorem zeroLin_ev {l : Lin} (h : zeroLin l = true) (w : Asg) : l.ev w = 0 := by
   induction l with
   | nil => rfl
   | cons t l ih =>
     simp only [zeroLin, List.all_cons, Bool.and_eq_true, beq_iff_eq] at h
     rw [Lin.ev_cons, h.1, zero_mul, zero_add, ih h.2]
-
-/-- **`bnd`'s two digests are the zero forms at every index** (its first four forms). -/
-def bndZ (cs : CS) (bd : ℕ) : Bool :=
-  kinds.all fun ι => match cs.slotK bd ι with
-    | some (.af _, ls) => (List.range 4).all fun j => zeroLin (ls.getD j [])
-    | _ => false
-
-/-- Whether an op is `shiftTarget`. -/
-def isST : Op → Bool
-  | .shiftTarget .. => true
-  | _ => false
-
-/-- `one · out = 0` on the import's cell, if `bnd`'s digests are zero; else the rejecting row. -/
-def stOut (B : ℕ) (P : Params) (cs : CS) (bd : ℕ) : List Slot → List Row
-  | [some (.f, [o])] => if bndZ cs bd && linLt B o then [⟨P.one, o, []⟩] else [rejRow P]
-  | _ => [rejRow P]
-
-/-- The rows of a `shiftTarget` (`stOut`); the rejecting row on any other op. -/
-def stRows (B : ℕ) (P : Params) (cs : CS) : Op → List Slot → List Row
-  | .shiftTarget _ _ bd _ => stOut B P cs bd
-  | _ => fun _ => [rejRow P]
 
 theorem stOut_ok {B : ℕ} {P : Params} {cs : CS} {bd : ℕ} {outs : List Slot} {w w' : Asg}
     (hA : Agree B w w') (hone : P.one.ev w' = 1)
@@ -394,9 +300,6 @@ theorem stOut_ok {B : ℕ} {P : Params} {cs : CS} {bd : ℕ} {outs : List Slot} 
       exact ⟨hb.1, .cons ⟨rfl, by simp only [List.map_cons, List.map_nil, encV, this]⟩ .nil⟩
     · rw [ite_cond_eq_false _ _ (eq_false hb)] at hr; exact (rej_false hone (List.mem_singleton_self _) hr).elim
   · exact (rej_false hone (List.mem_singleton_self _) hr).elim
-
-/-- **Prototype 0's `shiftTarget` replay.** -/
-def rtST0 (B : ℕ) : RT := ⟨isST, fun P cs op outs => if isST op then stRows B P cs op outs else []⟩
 
 theorem digBit_zero (σ : ℕ) : Impl.digBit 0 0 σ = false := by
   unfold Impl.digBit; split_ifs <;> exact bitF_zero _

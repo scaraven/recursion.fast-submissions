@@ -267,7 +267,8 @@ coordinates. One prototype evaluation (`protoV4` reads only coordinates below 20
 it; prototype 0, the previous node's, only if `N2` or `N4` is in the support) and each kind's slot
 sums; a kind whose coefficients are zero is skipped. B5: the link tables' low halves and the pinned
 elements' inner sums (`thsOf`, one thunk per key) are shared by the kinds, each computed on first use;
-the high halves once per `logM` (`N4` and `N8` share theirs), on first use. The sparse sums if the
+the high halves once per `logM` (`N4` and `N8` share theirs), on first use. REPF: the previous node's
+replay rows' local values (`rvOf`, one thunk) are shared by `N2` and `N4`. The sparse sums if the
 plan's check failed. -/
 def evalMX4 (pl : Plan4) (τ σ : Array F) : F :=
   let t := fun l => τ.getD l 0; let u := fun l => σ.getD l 0
@@ -277,11 +278,12 @@ def evalMX4 (pl : Plan4) (τ σ : Array F) : F :=
     let tlo := loTab 11 t
     let slo := loTab 12 u
     let ths := thsOf pl tlo slo
+    let rv := rvOf pl tlo slo t u
     let H2 := Thunk.mk fun _ => hiTabs NodeKind.N2.dims.logM t u
     let H4 := Thunk.mk fun _ => hiTabs NodeKind.N4.dims.logM t u
     (NodeKind.all.map fun κ => if sOf τ κ.ix = (0, 0, 0) then 0 else
       let h := (if κ = .N2 then H2 else H4).get
-      dot3 (sOf τ κ.ix) (sum3 (slotV4 pl κ t u ⟨⟨tlo, h.1, slo, h.2⟩, ths⟩ v.1 v.2) (List.range κ.vslots))).sum
+      dot3 (sOf τ κ.ix) (sum3 (slotV4 pl κ t u ⟨⟨tlo, h.1, slo, h.2⟩, ths, rv⟩ v.1 v.2) (List.range κ.vslots))).sum
   else (NodeKind.all.map fun κ => dot3 (sOf τ κ.ix) (evalMT4 pl κ τ σ)).sum
 
 /-- **Its specification**: `Σ_κ ⟨s_κ, M̃_κ(x̂, σ)⟩`, `M̃_κ` the MLEs of `nodeIRows4 κ` (`evalMS4`). -/
@@ -306,7 +308,9 @@ theorem evalMX4_eq (pl : Plan4) (τ σ : Array F) : evalMX4 pl τ σ = evalMXS4 
       have hc : CxAt ⟨⟨loTab 11 (fun l => τ.getD l 0),
           (hiTabs κ.dims.logM (fun l => τ.getD l 0) (fun l => σ.getD l 0)).1, loTab 12 (fun l => σ.getD l 0),
           (hiTabs κ.dims.logM (fun l => τ.getD l 0) (fun l => σ.getD l 0)).2⟩,
-          thsOf pl (loTab 11 (fun l => τ.getD l 0)) (loTab 12 (fun l => σ.getD l 0))⟩ κ.dims.logM
+          thsOf pl (loTab 11 (fun l => τ.getD l 0)) (loTab 12 (fun l => σ.getD l 0)),
+          rvOf pl (loTab 11 (fun l => τ.getD l 0)) (loTab 12 (fun l => σ.getD l 0)) (fun l => τ.getD l 0)
+            (fun l => σ.getD l 0)⟩ κ.dims.logM
           (fun l => τ.getD l 0) (fun l => σ.getD l 0) :=
         cxAt_lo pl _ _ _ _ _ _ (ltb_hi _ _ _)
       refine congrArg _ (slots_val pl hR κ τ σ hc _ fun hp => ?_)

@@ -26,30 +26,6 @@ open RecursionFast Rev4 Circ Tpl
 
 /-! ## `linkWAll` -/
 
-/-- Whether an op is `linkWAll`. -/
-def isLW : Op → Bool
-  | .linkWAll .. => true
-  | _ => false
-
-/-- `linkWAll`'s operands (`tt`, `rr`) at every index. -/
-def lwArgs : Op → Kind → List ℕ
-  | .linkWAll t p, _ => [t, p]
-  | _, _ => []
-
-/-- The operand types the template serves: two `AF`s. -/
-def lwIn : List Ty → Bool
-  | [.af _, .af _] => true
-  | _ => false
-
-/-- The sub-template at node kind `ν` (`tplLW` on two `AF`s; eight empty outputs otherwise, which
-`lwIn` rejects). -/
-def lwT : Op → Rev4.NodeKind → List Ty → Tpl
-  | _, ν, [.af a, .af b] => tplLW ν a b
-  | _, _, _ => ⟨[], List.replicate nLinkFam []⟩
-
-/-- **`linkWAll`'s kind-muxed replay.** -/
-def kLW : KOp := ⟨isLW, lwArgs, lwIn, lwT, [.af nLinkFam]⟩
-
 theorem implP0_linkWAll {impl₀ : OpImpl} {base : Rev4.NodeKind → OpImpl} (ι : Kind) (tt rr : Array F) :
     (implP impl₀ base 0 ι).linkWAll ι tt rr = NI4.linkWAll4I (nodeAt ι) tt rr := by
   simp only [implP, ite_true, OpImpl.fixK, NI4F.implN4F, NI4T.implN4T, NI4.implN4]
@@ -106,11 +82,6 @@ theorem forall2_agree {B : ℕ} {w w' : Asg} (hA : Agree B w w') :
     exact .cons (rep_agree hA h hl.1) (forall2_agree hA hs hl.2)
   | none :: os, v :: vs, .cons _ hs, hl => .cons trivial (forall2_agree hA hs hl)
 
-/-- **S-E14's segment `linkWAll` replay** with its output cells checked below `B`. -/
-def rtLinkSegW (B : ℕ) : RT :=
-  ⟨isLinkW, fun P _ op outs =>
-    if isLinkW op then (if (outF outs).all (linLt B) then zeroRows P outs else [rejRow P]) else []⟩
-
 theorem rtLinkSegW_ok {impl₀ : OpImpl} (base : Rev4.NodeKind → OpImpl) (hZ : LinkZero impl₀) (B : ℕ)
     (ι : Kind) : RTOkW (implP impl₀ base 1 ι) (Xof 1) (rtLinkSegW B) ι B := by
   intro P cs op hc
@@ -131,17 +102,6 @@ theorem rtLinkSegW_ok {impl₀ : OpImpl} (base : Rev4.NodeKind → OpImpl) (hZ :
   · exact (rej_false hP'.1 (List.mem_singleton_self _) hrows).elim
 
 /-! ## Prototype 0's templates, and both prototypes' -/
-
-/-- **The replay frame's bound**: every cell of a prototype's compile is below it (its frame is two
-regions, `< 2^21`); the replay templates' locals are above it (`FRNodeRows4RepW.repMapC` puts them
-in the spare region). -/
-def repB : ℕ := 2 ^ 40
-
-/-- `linkWAll`'s locals (the first block above the frame). -/
-def cbLW : ℕ := repB
-
-/-- **Prototype 0's replay templates**: `shiftTarget` (zero) and `linkWAll`. -/
-def rtN0 : RT := (rtST0 repB).orElse (rtK kLW repB cbLW)
 
 /-- **The replay templates per prototype**: `rtN0` at prototype 0, the segment's `linkWAll` at
 prototype 1. -/

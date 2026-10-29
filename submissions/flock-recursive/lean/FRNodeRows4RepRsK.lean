@@ -22,17 +22,6 @@ open RecursionFast Rev4 Circ Tpl
 
 /-! ## Operand shapes and input forms -/
 
-/-- All `AK`: their sizes. -/
-def akS : List Ty → Option (List ℕ)
-  | [] => some []
-  | .ak n :: r => (akS r).map (n :: ·)
-  | _ => none
-
-/-- The operand types `af 7, f, f, ak m, ak n₀, …`: `(m, [n₀, …])`. -/
-def rsShape : List Ty → Option (ℕ × List ℕ)
-  | .af 7 :: .f :: .f :: .ak m :: r => (akS r).map (m, ·)
-  | _ => none
-
 theorem akS_eq : ∀ {r : List Ty} {ns : List ℕ}, akS r = some ns → r = ns.map .ak
   | [], ns, h => by simp only [akS, Option.some.injEq] at h; subst h; rfl
   | .ak n :: r, ns, h => by
@@ -49,22 +38,6 @@ theorem rsShape_eq {ts : List Ty} {m : ℕ} {ns : List ℕ} (h : rsShape ts = so
     obtain ⟨ns', h', rfl, rfl⟩ := h
     rw [akS_eq h']
   · simp at h
-
-/-- `K` inputs `o, o+1, …`: `n` pairs. -/
-def kIn (o n : ℕ) : List KF := (List.range n).map fun l => (I (o + 2 * l), I (o + 2 * l + 1))
-
-/-- The claims' inputs from `o`, sizes `ns`. -/
-def cIn : ℕ → List ℕ → List (List KF)
-  | _, [] => []
-  | o, n :: ns => kIn o n :: cIn (o + 2 * n) ns
-
-/-- **The node kind `ν`'s `rsWeight` sub-template.** -/
-def rsT (ν : NodeKind) (ts : List Ty) : Tpl :=
-  match rsShape ts with
-  | some (m, ns) =>
-    let g := rsG ν ((List.range 7).map I) (cIn (9 + 2 * m) ns) (I 7) (I 8) (kIn 9 m) 0
-    ⟨g.1, [g.2.1, g.2.2]⟩
-  | none => ⟨[], [[], []]⟩
 
 theorem rsT_outs (ν : NodeKind) (ts : List Ty) : (rsT ν ts).outs.length = 2 := by
   unfold rsT; split <;> rfl
@@ -107,22 +80,6 @@ theorem fIn_ev {xs pre post : List F} {x : List F} (h : InpIs e xs) (hx : xs = p
   rw [h, hx, getD_mid _ _ _ h1, List.getD_eq_getElem _ _ h1]
 
 /-! ## The `KOp` -/
-
-/-- An `rsWeight` op active at every index. -/
-def isRS : Op → Bool
-  | .rsWeight _ _ _ _ act _ => act .L32 && act .P30 && act .N30
-  | _ => false
-
-/-- `rsWeight`'s operands at index `ι`: `r″`, `κ`, `β`, `ρ`, then the claims. -/
-def rsArgs : Op → Kind → List ℕ
-  | .rsWeight r ps κ β _ ρ, ι => [r, κ, β, ρ] ++ ps ι
-  | _, _ => []
-
-/-- The operand types the template serves. -/
-def rsIn (ts : List Ty) : Bool := (rsShape ts).isSome
-
-/-- **`rsWeight`'s kind-muxed replay.** -/
-def kRS : KOp := ⟨isRS, rsArgs, rsIn, fun _ ν ts => rsT ν ts, [.k]⟩
 
 theorem implP0_rsWeight {impl₀ : OpImpl} {base : Rev4.NodeKind → OpImpl} (ι : Kind) :
     (implP impl₀ base 0 ι).rsWeight = Impl.rsWeightF4 (nodeAt ι) := by
@@ -222,18 +179,9 @@ theorem kRS_ok {impl₀ : OpImpl} {base : Rev4.NodeKind → OpImpl} (ι : Kind) 
 
 /-! ## The replay templates -/
 
-/-- `rsWeight`'s locals: after `linkWAll`'s (42,592 < `2^16`). -/
-def cbRS : ℕ := repB + 2 ^ 16
-
-/-- **`rsWeight`'s replay template** (prototype 0). -/
-def rtRs : RT := rtK kRS repB cbRS
-
 theorem rtRs_okW {impl₀ : OpImpl} {base : Rev4.NodeKind → OpImpl} (ι : Kind) :
     RTOkW (implP impl₀ base 0 ι) (Xof 0) rtRs ι repB :=
   rtK_okW repB cbRS (kRS_ok ι)
-
-/-- **Prototype 0's replay templates with `rsWeight`**: C1's `rtN0`, then `rtRs`. -/
-def rtN0R : RT := rtN0.orElse rtRs
 
 /-- **The replay templates per prototype** (`rtC1` with `rsWeight` at prototype 0). -/
 def rtR3 (π : ℕ) : RT := if π = 0 then rtN0R else if π = 1 then rtLinkSegW repB else RT.none

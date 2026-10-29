@@ -25,25 +25,6 @@ open RecursionFast Rev4 Circ Tpl
 
 /-! ## `targetS` -/
 
-def isTS : Op → Bool
-  | .targetS .. => true
-  | _ => false
-
-def tsArgs : Op → Kind → List ℕ
-  | .targetS r, _ => [r]
-  | _, _ => []
-
-def tsIn : List Ty → Bool
-  | [.af _] => true
-  | _ => false
-
-def tsTpl : Op → Rev4.NodeKind → List Ty → Tpl
-  | _, ν, [.af a] => tplTS ν a
-  | _, _, _ => ⟨[], List.replicate 64 []⟩
-
-/-- **`targetS`'s kind-muxed replay.** -/
-def kTS : KOp := ⟨isTS, tsArgs, tsIn, tsTpl, [.af 64]⟩
-
 theorem implP0_targetS {impl₀ : OpImpl} {base : Rev4.NodeKind → OpImpl} (ι : Kind) (rr : Array F) :
     (implP impl₀ base 0 ι).targetS ι rr = NI4T.targetSNode4I (nodeAt ι) rr := by
   simp only [implP, ite_true, OpImpl.fixK, NI4F.implN4F, NI4T.implN4T, NI4.implN4]
@@ -79,25 +60,6 @@ theorem kTS_ok {impl₀ : OpImpl} {base : Rev4.NodeKind → OpImpl} (ι : Kind) 
       exact tplTS_ok (by simpa using hi) h1 hE
 
 /-! ## `evalL` -/
-
-def isEvL : Op → Bool
-  | .evalL .. => true
-  | _ => false
-
-def evArgs : Op → Kind → List ℕ
-  | .evalL t s, _ => [t, s]
-  | _, _ => []
-
-def evIn : List Ty → Bool
-  | [.af _, .af _] => true
-  | _ => false
-
-def evTpl : Op → Rev4.NodeKind → List Ty → Tpl
-  | _, ν, [.af a, .af b] => tplEvL ν a b
-  | _, _, _ => ⟨[], List.replicate 3 []⟩
-
-/-- **`evalL`'s kind-muxed replay.** -/
-def kEvL : KOp := ⟨isEvL, evArgs, evIn, evTpl, [.f, .f, .f]⟩
 
 theorem implP0_evalL {impl₀ : OpImpl} {base : Rev4.NodeKind → OpImpl} (ι : Kind) (rL r4 : Array F) :
     (implP impl₀ base 0 ι).evalL rL r4 = NI4F.evalL4I (nodeAt ι) rL r4 := by
@@ -137,13 +99,6 @@ theorem kEvL_ok {impl₀ : OpImpl} {base : Rev4.NodeKind → OpImpl} (ι : Kind)
 
 /-! ## Prototype 0's templates, and both prototypes' -/
 
-/-- `targetS`'s locals (`kTS`'s instance): above `linkWAll`'s (from `repB`, 42,592) and R3's
-`rsWeight` (from `cbRS = repB + 2^16`, 472,310: up to `repB + 537,846`). -/
-def cbTS : ℕ := repB + (2 ^ 19 + 2 ^ 14)
-
-/-- `evalL`'s locals, above `targetS`'s (11.8 k). -/
-def cbEvL : ℕ := repB + (2 ^ 19 + 2 ^ 15)
-
 /-- **Prototype 0's replay templates**: `shiftTarget`, `linkWAll` (C1), `targetS`, `evalL`. -/
 def rtN0b : RT := rtN0.orElse ((rtK kTS repB cbTS).orElse (rtK kEvL repB cbEvL))
 
@@ -165,13 +120,6 @@ theorem rtC1b_ok {impl₀ : OpImpl} {base : Rev4.NodeKind → OpImpl} (hZ : Link
 /-- **`RepOkW` for `rtC1b`.** -/
 theorem repOkW_rtC1b {impl₀ : OpImpl} {base : Rev4.NodeKind → OpImpl} (hZ : LinkZero impl₀) (hB : STBase base) :
     RepOkW rtC1b impl₀ base := fun _ hπ ι => rtC1b_ok hZ hB hπ ι
-
-/-- **Prototype 0's replay templates with R3's `rsWeight`** (`rtN0R`): `shiftTarget`, `linkWAll`,
-`rsWeight`, `targetS`, `evalL`. -/
-def rtN0c : RT := rtN0R.orElse ((rtK kTS repB cbTS).orElse (rtK kEvL repB cbEvL))
-
-/-- **The replay templates per prototype**, all five of prototype 0. -/
-def rtC1c (π : ℕ) : RT := if π = 0 then rtN0c else if π = 1 then rtLinkSegW repB else RT.none
 
 theorem rtC1c_ok {impl₀ : OpImpl} {base : Rev4.NodeKind → OpImpl} (hZ : LinkZero impl₀) (hB : STBase base)
     {π : ℕ} (hπ : π ≤ 1) (ι : Kind) : RTOkW (implP impl₀ base π ι) (Xof π) (rtC1c π) ι repB := by

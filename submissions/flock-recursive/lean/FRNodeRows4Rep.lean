@@ -36,12 +36,6 @@ open RecursionFast
 
 /-! ## Replay templates -/
 
-/-- **A replay template**: the ops it covers, and for a compile state, an op and the op's output
-slots, the rows that compute the outputs from the operands' slots. -/
-structure RT where
-  cov : Op → Bool
-  rows : Params → CS → Op → List Slot → List Row
-
 /-- **A replay template is sound at kind `κ`**: a covered op never asks, and where it is an import,
 its rows with the invariant at the op give its outputs' representation. -/
 def RTOk (impl : OpImpl) (X : Ext) (rt : RT) (κ : Kind) : Prop :=
@@ -52,20 +46,8 @@ def RTOk (impl : OpImpl) (X : Ext) (rt : RT) (κ : Kind) : Prop :=
       evalOp impl κ inp regs op = .vals vs ok → (stepOut X P cs op).imp = true →
       List.Forall₂ (RepS w) (stepOut X P cs op).slots vs
 
-/-- The template that covers nothing. -/
-def RT.none : RT := ⟨fun _ => false, fun _ _ _ _ => []⟩
-
 theorem RT.none_ok (impl : OpImpl) (X : Ext) (κ : Kind) : RTOk impl X RT.none κ :=
   fun _ _ _ h => absurd h Bool.false_ne_true
-
-/-- **The replay rows along the compile's trail** (the alignment and the step exactly as
-`compileFromX`). -/
-def repRowsX (X : Ext) (P : Params) (rt : RT) : CS → List Op → List Row
-  | _, [] => []
-  | cs, op :: ops =>
-    let c := cs.align (alignOf op ops)
-    (if rt.cov op then rt.rows P c op (stepOut X P c op).slots else []) ++
-      repRowsX X P rt (c.add op (stepOut X P c op)) ops
 
 /-- **The import registers the template does not cover**, along the trail. -/
 def impRX (X : Ext) (P : Params) (rt : RT) : CS → List Op → List ℕ
@@ -291,9 +273,6 @@ it reads have their cells below `B` (`linLt`). -/
 /-- Two assignments agree below `B`. -/
 def Agree (B : ℕ) (w w' : Asg) : Prop := ∀ c < B, w' c = w c
 
-/-- A form's cells are below `B`. -/
-def linLt (B : ℕ) (l : Lin) : Bool := l.all fun t => decide (t.1 < B)
-
 theorem ev_agree {B : ℕ} {w w' : Asg} (hA : Agree B w w') {l : Lin} (h : linLt B l = true) :
     l.ev w' = l.ev w := by
   have hm : ∀ t ∈ l, t.1 < B := fun t ht => of_decide_eq_true (List.all_eq_true.1 h t ht)
@@ -315,7 +294,6 @@ def RTOkW (impl : OpImpl) (X : Ext) (rt : RT) (κ : Kind) (B : ℕ) : Prop :=
 
 theorem RT.none_okW (impl : OpImpl) (X : Ext) (κ : Kind) (B : ℕ) : RTOkW impl X RT.none κ B :=
   fun _ _ _ h => absurd h Bool.false_ne_true
-
 
 /-- **`compileFromX_soundR` with the replay rows at `w'`** (agreeing with `w` below `B`, `RTOkW`). -/
 theorem compileFromX_soundRW {impl : OpImpl} {κ : Kind} {inp : Input} {w : Asg} {P : Params}
@@ -474,13 +452,7 @@ end Circ
 namespace N4s
 open RecursionFast Rev4 Circ
 
-/-- Prototype `π`'s compiler extension (`protoCS π = compileX (Xof π) …`). -/
-def Xof (π : ℕ) : Ext := tplExt4 (protoF π) (protoR π) (protoLay π).ctx
-
 theorem protoCS_X (π : ℕ) : protoCS π = compileX (Xof π) (protoP π) (baseR π) (protoProg π).ops := rfl
-
-/-- **Prototype `π`'s replay rows** (its frame: M-relative cells of region `π`). -/
-def repRowsP (rt : RT) (π : ℕ) : List Row := repRowsX (Xof π) (protoP π) rt (CS.init (baseR π)) (protoProg π).ops
 
 /-- Prototype `π`'s import registers `rt` does not cover. -/
 def impRP (rt : RT) (π : ℕ) : List ℕ := impRX (Xof π) (protoP π) rt (CS.init (baseR π)) (protoProg π).ops
@@ -499,26 +471,15 @@ def SlotImpR (rt : ℕ → RT) (impl₀ : OpImpl) (base : NodeKind → OpImpl) (
     SlotRunR (rt (protoOf κ v)) (implP impl₀ base (protoOf κ v) ι) (protoOf κ v) ι inp tr (slotAsg κ v w) ∧
       stmtOk4 seq4 (kindP (protoOf κ v) ι) inp = true
 
-/-- **The replay rows hold** at slot `v` (in its prototype's frame, at the slot's assignment). -/
+/-- **The replay rows hold** at slot `v` (in its prototype's frame; REPF: at the replay assignment
+`w ∘ repMapC κ v`, C1's `repAsg`: the slot's frame below `repB`, the spare region above). -/
 def RepHolds (rt : ℕ → RT) (κ : NodeKind) (v : ℕ) (w : Asg) : Prop :=
-  ∀ r ∈ repRowsP (rt (protoOf κ v)) (protoOf κ v), r.Holds (slotAsg κ v w)
+  ∀ r ∈ repRowsP (rt (protoOf κ v)) (protoOf κ v), r.Holds (w ∘ repMapC κ v)
 
-/-- **The templates are sound** for every prototype and index (under `implP`). -/
+/-- **The templates are sound** for every prototype and index (under `implP`; REPF: `RTOkW` at
+`repB`, the rows at an assignment agreeing with the slot's below the frame bound). -/
 def RepOk (rt : ℕ → RT) (impl₀ : OpImpl) (base : NodeKind → OpImpl) : Prop :=
-  ∀ π ≤ 1, ∀ ι, RTOk (implP impl₀ base π ι) (Xof π) (rt π) ι
-
-/-- **The discharge at a slot**: its rows, its replay rows and `SlotImpR` give `SlotImp`. -/
-theorem slotImp_of_rep {rt : ℕ → RT} {impl₀ : OpImpl} {base : NodeKind → OpImpl} (hT₀ : ImplT impl₀)
-    (hT : ∀ ν, ImplT (base ν)) (hok : RepOk rt impl₀ base) {κ : NodeKind} {v : ℕ} {w : Asg}
-    {inp : Input} {tr : Trace} (hrows : SlotRows κ v w) (hrep : RepHolds rt κ v w)
-    (h : SlotImpR rt impl₀ base κ v w inp tr) : SlotImp impl₀ base κ v w inp tr := by
-  intro ι hS
-  obtain ⟨⟨s, he, hx, hi, hf⟩, hst⟩ := h ι hS
-  have hπ := protoOf_le' κ v
-  have hX := tplExt4_okK (implTF_implP hT₀ hT (protoOf κ v) ι) (routeOk_implP impl₀ base hπ ι)
-    (protoLay (protoOf κ v))
-  have key := compileX_soundR hX (hok _ hπ ι) (baseR (protoOf κ v)) hS he hrows.1 hrows.2 hx hi hrep hf
-  exact ⟨⟨s, he, hx, fun i _ => key.2 i, hf⟩, hst⟩
+  ∀ π ≤ 1, ∀ ι, RTOkW (implP impl₀ base π ι) (Xof π) (rt π) ι repB
 
 /-- (+) The converse: `SlotImp` gives `SlotImpR` (an uncovered import is an import), so
 `SlotImpR` asks nothing `SlotImp` does not. -/
@@ -531,14 +492,11 @@ theorem slotImpR_of_imp (rt : ℕ → RT) {impl₀ : OpImpl} {base : NodeKind �
 
 /-! ## The node's indexed replay rows (JOURNAL §0) -/
 
-/-- **The replay rows' first row in a slot region** (`23·2^15`: after the prototypes' 730,493 rows
-and a 3 % gap, `2^18` rows before the link region). -/
-def repBase : ℕ := 23 * 2 ^ 15
-
-/-- **Slot `v`'s replay rows** (absolute cells, the prototype's rows moved), at `v·2^20 + repBase + k`. -/
+/-- **Slot `v`'s replay rows** (absolute cells; REPF: `repIRowsW`'s placement, slot 0's in the spare
+region, a segment slot's at `v·2^20 + repSegB`, cells by `repMapC`). -/
 def repIRows4 (rt : ℕ → RT) (κ : NodeKind) (v : ℕ) : List (ℕ × Row) :=
   (repRowsP (rt (protoOf κ v)) (protoOf κ v)).zipIdx.map fun p =>
-    (v * slotM4 + repBase + p.2, rowMapC (fun c => mvC (protoOf κ v) v c + κ.oneCell) p.1)
+    (repRow0 κ v + p.2, rowMapC (repMapC κ v) p.1)
 
 /-- Every element of `l` has its image in `l.zipIdx.map g` (generic, so that no list is evaluated). -/
 theorem mem_zipIdx_map {α β : Type*} {l : List α} {r : α} (hr : r ∈ l) (g : α × ℕ → β) :
@@ -546,39 +504,6 @@ theorem mem_zipIdx_map {α β : Type*} {l : List α} {r : α} (hr : r ∈ l) (g 
   obtain ⟨k, hkl, hrk⟩ := List.mem_iff_getElem.1 hr
   refine ⟨k, List.mem_map_of_mem (List.mem_iff_getElem.2 ⟨k, by rw [List.length_zipIdx]; exact hkl, ?_⟩)⟩
   rw [List.getElem_zipIdx, hrk]; simp
-
-/-- **The node's rows give the replay rows** once they are folded in (`hfold`). -/
-theorem repHolds_of {rt : ℕ → RT} {κ : NodeKind} {v : ℕ} {w : Asg}
-    (hfold : ∀ p ∈ repIRows4 rt κ v, p ∈ nodeIRows4 κ) (hE : Snd.P4b.truthEI (nodeIRows4 κ) w) :
-    RepHolds rt κ v w := by
-  unfold RepHolds
-  unfold repIRows4 at hfold
-  generalize repRowsP (rt (protoOf κ v)) (protoOf κ v) = l at hfold ⊢
-  generalize hF : (fun c => mvC (protoOf κ v) v c + κ.oneCell) = F at hfold
-  intro r hr
-  obtain ⟨k, hm⟩ := mem_zipIdx_map hr fun p : Row × ℕ => (v * slotM4 + repBase + p.2, rowMapC F p.1)
-  have hm' : (v * slotM4 + repBase + k, rowMapC F r) ∈ nodeIRows4 κ := hfold _ hm
-  have h3 := hE _ hm'
-  dsimp only at h3
-  rw [holds_rowMapC, ← hF] at h3
-  exact h3
-
-/-- **`Gap4.imp` from the replay rows**: with the fold, `StmtN4`'s rows and `SlotImpR` at every
-active slot give `SlotImp` there. -/
-theorem gap4Imp_of_rep {rt : ℕ → RT} {impl₀ : OpImpl} {base : NodeKind → OpImpl} (hT₀ : ImplT impl₀)
-    (hT : ∀ ν, ImplT (base ν)) (hok : RepOk rt impl₀ base) (pf : Trace → Proof) {κ : NodeKind}
-    {vk c₁ c₂ : Digest} {w : Asg}
-    (hfold : ∀ v < κ.vslots, ∀ p ∈ repIRows4 rt κ v, p ∈ nodeIRows4 κ)
-    (hS : N4c.StmtN4 κ (lRows4 κ) (nodeIRows4 κ) vk c₁ c₂ w)
-    (h : ∀ v, N4c.Active4 (rd4 pf) κ w v →
-      SlotImpR rt impl₀ base κ v w (N4c.slotIn (rd4 pf) κ vk c₁ w v) ((rd4 pf).slotTr κ v w)) :
-    ∀ v, N4c.Active4 (rd4 pf) κ w v →
-      SlotImp impl₀ base κ v w (N4c.slotIn (rd4 pf) κ vk c₁ w v) ((rd4 pf).slotTr κ v w) := by
-  intro v hv
-  obtain ⟨-, -, -, hE, hP⟩ := hS
-  have hlt := active_lt pf hv
-  exact slotImp_of_rep hT₀ hT hok (slotRows_of (one_of_pubCells hP) hlt hE)
-    (repHolds_of (hfold v hlt) hE) (h v hv)
 
 end N4s
 end FR

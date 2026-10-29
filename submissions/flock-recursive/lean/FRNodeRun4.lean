@@ -364,9 +364,10 @@ theorem drop_cons_get {tr : Trace} {k : ℕ} {e : ByteArray × Digest} {t : Trac
 
 /-- **The run along the compile's trail** (`compileFromX_soundR` with the trace threaded): the
 answer-driven run from entry `k` is `exec`'s, and the invariant holds at its end. -/
-theorem compileFromX_run {impl : OpImpl} {κ : Kind} {inp : Input} {w : Asg} {P : Params}
+theorem compileFromX_run {impl : OpImpl} {κ : Kind} {inp : Input} {w w' : Asg} {B : ℕ} {P : Params}
     {tc : Tpl.TCtx} {X : Ext} {rt : RT} {A : AT} {tr : Trace} (hX : ExtOkK impl tc X κ)
-    (hP : SelOk w P κ) (hR : RTOk impl X rt κ) (hA : ATOk impl X A κ inp w tr) :
+    (hP : SelOk w P κ) (hP' : SelOk w' P κ) (hAg : Agree B w w') (hR : RTOkW impl X rt κ B)
+    (hA : ATOk impl X A κ inp w tr) :
     ∀ (ops : List Op) (cs : CS) (pre : Option Op) (k : ℕ) (s s' : St) (tr' : Trace),
     InvK w cs s.regs κ → PrevOk impl κ inp pre s.regs →
     execA impl κ inp ops s (tr.drop k) = some (s', tr') →
@@ -375,7 +376,7 @@ theorem compileFromX_run {impl : OpImpl} {κ : Kind} {inp : Input} {w : Asg} {P 
     (∀ a ∈ (compileFromX X P cs ops).aux,
       a.1.1.map (Lin.ev w) = a.1.2.2.val (rd (s'.regs.extract 0 a.2) a.1.2.1)) →
     (∀ i ∈ impAX X P rt A cs ops, RepS w ((compileFromX X P cs ops).slot i) (rd s'.regs i)) →
-    (∀ r ∈ repRowsX X P rt cs ops, r.Holds w) →
+    (∀ r ∈ repRowsX X P rt cs ops, r.Holds w') →
     (∀ r ∈ askRowsX X P A cs pre k ops, r.Holds w) →
     (∀ p ∈ (compileFromX X P cs ops).fors,
       flagOf impl κ inp (s'.regs.extract 0 p.2) p.1 = true) →
@@ -429,7 +430,7 @@ theorem compileFromX_run {impl : OpImpl} {κ : Kind} {inp : Input} {w : Asg} {P 
       rcases hXo : X P cs op with _ | o'
       · simp only [ho, stepOut, hXo, Option.getD_none]; exact opOut_len P cs op
       · simp only [ho, stepOut, hXo, Option.getD_some]; exact (hX P cs op o' hXo).1
-    have hrr' : ∀ r ∈ repRowsX X P rt (cs.add op o) ops, r.Holds w :=
+    have hrr' : ∀ r ∈ repRowsX X P rt (cs.add op o) ops, r.Holds w' :=
       fun r h => hrr r (List.mem_append_right _ h)
     have hi' : ∀ i ∈ impAX X P rt A (cs.add op o) ops,
         RepS w ((compileFromX X P (cs.add op o) ops).slot i) (rd s'.regs i) :=
@@ -474,15 +475,15 @@ theorem compileFromX_run {impl : OpImpl} {κ : Kind} {inp : Input} {w : Asg} {P 
                 ⟨hP, hI, hpv, fun r h => hra r (List.mem_append_left _ (by rw [if_pos hac]; exact h))⟩
               exact fun j hj => (List.forall₂_iff_get.1
                 (hA.2 P cs pre op k s.regs vs ok hac hctx hev hio)).2 j hj _
-          · have hrows : ∀ r ∈ rt.rows P cs op o.slots, r.Holds w :=
+          · have hrows : ∀ r ∈ rt.rows P cs op o.slots, r.Holds w' :=
               fun r h => hrr r (List.mem_append_left _ (by rw [if_pos hc]; exact h))
             exact fun j hj => (List.forall₂_iff_get.1
-              ((hR P cs op hc).2 inp w s.regs vs ok hP hI hrows hev hio)).2 j hj _
+              ((hR P cs op hc).2 inp w w' s.regs vs ok hP hP' hI hAg hrows hev hio)).2 j hj _
       have hok : ok = true := by
         cases hfo : o.foreign
         · exact hsnd.2.1 hfo
         · have := flag vs _ rfl hm hfo; simpa [flagOf, hev] using this
-      have ih := compileFromX_run hX hP hR hA ops _ (some op) k _ s' tr'
+      have ih := compileFromX_run hX hP hP' hAg hR hA ops _ (some op) k _ s' tr'
         (invK_add hI o op hl hnew hsnd.2.2 hpos) ⟨s.regs, .inl ⟨vs, ok, hev, rfl⟩⟩ he hr ht hx hi' hrr'
         hra' hf
       refine ⟨?_, by rw [ih.2.1, hok, Bool.and_true], ih.2.2⟩
@@ -503,7 +504,7 @@ theorem compileFromX_run {impl : OpImpl} {κ : Kind} {inp : Input} {w : Asg} {P 
       have hl : o.slots.length = [Val.d a].length := by rw [hlen, ask_nOut hev]; rfl
       have hnew : ∀ j (hj : j < o.slots.length), RepS w o.slots[j] ([Val.d a][j]'(hl ▸ hj)) :=
         fun j hj => (List.forall₂_iff_get.1 hans).2 j hj _
-      have ih := compileFromX_run hX hP hR hA ops _ (some op) (k + 1) ⟨s.regs.push (.d a), s.ok⟩ s' tr'
+      have ih := compileFromX_run hX hP hP' hAg hR hA ops _ (some op) (k + 1) ⟨s.regs.push (.d a), s.ok⟩ s' tr'
         (invK_add hI o op hl hnew (fun f v hf => by rw [ho', opOut_kin] at hf; cases hf) hpos)
         ⟨s.regs, .inr ⟨q, a, hev, rfl⟩⟩ he hr ht hx hi' hrr' (fun r h => hra r (List.mem_append_right _ h)) hf
       refine ⟨?_, ih.2.1, ih.2.2⟩
@@ -515,20 +516,21 @@ theorem compileFromX_run {impl : OpImpl} {κ : Kind} {inp : Input} {w : Asg} {P 
 `tr`, with the rows, templates, replay and ask rows and the residual facts at its final state, is
 `exec`'s run; its flag is set and every register is represented. -/
 theorem compileX_run {impl : OpImpl} {κ : Kind} {inp : Input} {ops : List Op} {tr tr' : Trace}
-    {s : St} {w : Asg} {P : Params} {tc : Tpl.TCtx} {X : Ext} {rt : RT} {A : AT}
-    (hX : ExtOkK impl tc X κ) (hR : RTOk impl X rt κ) (hA : ATOk impl X A κ inp w tr) (base : ℕ)
-    (hP : SelOk w P κ) (he : execA impl κ inp ops St.init tr = some (s, tr'))
+    {s : St} {w w' : Asg} {B : ℕ} {P : Params} {tc : Tpl.TCtx} {X : Ext} {rt : RT} {A : AT}
+    (hX : ExtOkK impl tc X κ) (hR : RTOkW impl X rt κ B) (hA : ATOk impl X A κ inp w tr) (base : ℕ)
+    (hP : SelOk w P κ) (hP' : SelOk w' P κ) (hAg : Agree B w w')
+    (he : execA impl κ inp ops St.init tr = some (s, tr'))
     (hr : ∀ r ∈ (compileX X P base ops).rows, r.Holds w)
     (ht : ∀ r ∈ (compileX X P base ops).tplRows tc P.one, r.Holds w)
     (hx : ∀ a ∈ (compileX X P base ops).aux,
       a.1.1.map (Lin.ev w) = a.1.2.2.val (rd (s.regs.extract 0 a.2) a.1.2.1))
     (hi : ∀ i ∈ impAX X P rt A (CS.init base) ops, RepS w ((compileX X P base ops).slot i) (rd s.regs i))
-    (hrr : ∀ r ∈ repRowsX X P rt (CS.init base) ops, r.Holds w)
+    (hrr : ∀ r ∈ repRowsX X P rt (CS.init base) ops, r.Holds w')
     (hra : ∀ r ∈ askRowsX X P A (CS.init base) none 0 ops, r.Holds w)
     (hf : ∀ p ∈ (compileX X P base ops).fors, flagOf impl κ inp (s.regs.extract 0 p.2) p.1 = true) :
     exec impl κ inp ops St.init tr = some (s, tr') ∧ s.ok = true ∧
       ∀ i, RepS w ((compileX X P base ops).slot i) (rd s.regs i) := by
-  have h := compileFromX_run hX hP hR hA ops (CS.init base) none 0 St.init s tr'
+  have h := compileFromX_run hX hP hP' hAg hR hA ops (CS.init base) none 0 St.init s tr'
     ⟨⟨rfl, fun i => by simp [CS.slot, CS.init, RepS]⟩, fun p hp => by simp [CS.init] at hp,
       fun i => by simp [CS.slotK, CS.slot, CS.init, RepS]⟩ trivial (by simpa using he) hr
     (fun t htm r hr' => ht r (List.mem_flatMap.2 ⟨t, htm, hr'⟩)) hx hi hrr hra hf

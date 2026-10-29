@@ -165,6 +165,8 @@ import FRNodeLinks4SigH
 import FRSubmission4Fin
 import FRXOut4Ctrl
 import FRNodeRun4Ctrl
+import FRNodeRows4RepF
+import FRNodeRows4RepFCtrl
 
 /-!
 # `flock-recursive`

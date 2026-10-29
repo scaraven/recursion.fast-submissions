@@ -24,22 +24,18 @@ open RecursionFast Rev4 Circ
 
 /-! ## At the node's slots -/
 
-/-- **Where a replay cell lives** (slot `v` of a node of kind `κ`): a frame cell where the slot's
-assignment reads it; a local (`c ≥ repB`) in the spare region, from cell `κ.vslots·2^20`. -/
-def repMapC (κ : Rev4.NodeKind) (v c : ℕ) : ℕ :=
-  if c < repB then mvC (protoOf κ v) v c + κ.oneCell else κ.vslots * slotM4 + (c - repB) + κ.oneCell
-
 /-- **The replay rows' assignment** at slot `v`. -/
 def repAsg (κ : Rev4.NodeKind) (v : ℕ) (w : Asg) : Asg := w ∘ repMapC κ v
 
 theorem agree_repAsg (κ : Rev4.NodeKind) (v : ℕ) (w : Asg) : Agree repB (slotAsg κ v w) (repAsg κ v w) :=
   fun c hc => by simp only [repAsg, Function.comp_apply, repMapC, hc, ite_true, slotAsg]
 
-/-- **The replay rows hold** at slot `v` (at `repAsg`). -/
+/-- **The replay rows hold** at slot `v` (at `repAsg`; REPF: S-E14's `RepHolds`, now this form). -/
 def RepHoldsW (rt : ℕ → RT) (κ : Rev4.NodeKind) (v : ℕ) (w : Asg) : Prop :=
   ∀ r ∈ repRowsP (rt (protoOf κ v)) (protoOf κ v), r.Holds (repAsg κ v w)
 
-/-- **The templates are sound** for every prototype and index (`RTOkW` at `repB`). -/
+/-- **The templates are sound** for every prototype and index (`RTOkW` at `repB`; REPF: S-E14's
+`RepOk`, now this form). -/
 def RepOkW (rt : ℕ → RT) (impl₀ : OpImpl) (base : Rev4.NodeKind → OpImpl) : Prop :=
   ∀ π ≤ 1, ∀ ι, RTOkW (implP impl₀ base π ι) (Xof π) (rt π) ι repB
 
@@ -78,15 +74,6 @@ theorem repOkW_rtC1 {impl₀ : OpImpl} {base : Rev4.NodeKind → OpImpl} (hZ : L
 
 /-! ## The node's indexed replay rows -/
 
-/-- **Slot `v`'s replay rows' first row**: slot 0 of a node with a previous node (prototype 0) in
-the spare region (`κ.vslots·2^20`); a segment slot at S-E14's `v·2^20 + repBase`. -/
-def repRow0 (κ : Rev4.NodeKind) (v : ℕ) : ℕ := if protoOf κ v = 0 then κ.vslots * slotM4 else v * slotM4 + repBase
-
-/-- **Slot `v`'s replay rows** (absolute cells: `repMapC`). -/
-def repIRowsW (rt : ℕ → RT) (κ : Rev4.NodeKind) (v : ℕ) : List (ℕ × Row) :=
-  (repRowsP (rt (protoOf κ v)) (protoOf κ v)).zipIdx.map fun p =>
-    (repRow0 κ v + p.2, rowMapC (repMapC κ v) p.1)
-
 /-- **The node's rows give the replay rows** once they are folded in (`hfold`). -/
 theorem repHoldsW_of {rt : ℕ → RT} {κ : Rev4.NodeKind} {v : ℕ} {w : Asg}
     (hfold : ∀ p ∈ repIRowsW rt κ v, p ∈ nodeIRows4 κ) (hE : Snd.P4b.truthEI (nodeIRows4 κ) w) :
@@ -117,6 +104,42 @@ theorem gap4Imp_of_repW {rt : ℕ → RT} {impl₀ : OpImpl} {base : Rev4.NodeKi
   have hlt := active_lt pf hv
   exact slotImp_of_repW hT₀ hT hok (slotRows_of (one_of_pubCells hP) hlt hE)
     (repHoldsW_of (hfold v hlt) hE) (h v hv)
+
+/-! ## S-E14's names in the `RTOkW` form (REPF)
+
+`RepOk`, `RepHolds` and `repIRows4` (`FRNodeRows4Rep`) are now `RepOkW`, `RepHoldsW` and `repIRowsW`
+by definition, so B3's run (`FRNodeRun4S`) and every theorem stated over them take the replay rows at
+the spare region's assignment. S-E14's three theorems, at the same statements: -/
+
+theorem repOk_iff {rt : ℕ → RT} {impl₀ : OpImpl} {base : Rev4.NodeKind → OpImpl} :
+    RepOk rt impl₀ base ↔ RepOkW rt impl₀ base := Iff.rfl
+
+theorem repIRows4_eq (rt : ℕ → RT) (κ : Rev4.NodeKind) (v : ℕ) : repIRows4 rt κ v = repIRowsW rt κ v := rfl
+
+/-- **The discharge at a slot** (S-E14's statement): its rows, its replay rows and `SlotImpR` give `SlotImp`. -/
+theorem slotImp_of_rep {rt : ℕ → RT} {impl₀ : OpImpl} {base : Rev4.NodeKind → OpImpl} (hT₀ : ImplT impl₀)
+    (hT : ∀ ν, ImplT (base ν)) (hok : RepOk rt impl₀ base) {κ : Rev4.NodeKind} {v : ℕ} {w : Asg}
+    {inp : Input} {tr : Trace} (hrows : SlotRows κ v w) (hrep : RepHolds rt κ v w)
+    (h : SlotImpR rt impl₀ base κ v w inp tr) : SlotImp impl₀ base κ v w inp tr :=
+  slotImp_of_repW hT₀ hT hok hrows hrep h
+
+/-- **The node's rows give the replay rows** once they are folded in (`hfold`; S-E14's statement). -/
+theorem repHolds_of {rt : ℕ → RT} {κ : Rev4.NodeKind} {v : ℕ} {w : Asg}
+    (hfold : ∀ p ∈ repIRows4 rt κ v, p ∈ nodeIRows4 κ) (hE : Snd.P4b.truthEI (nodeIRows4 κ) w) :
+    RepHolds rt κ v w :=
+  repHoldsW_of hfold hE
+
+/-- **`Gap4.imp` from the replay rows** (S-E14's statement). -/
+theorem gap4Imp_of_rep {rt : ℕ → RT} {impl₀ : OpImpl} {base : Rev4.NodeKind → OpImpl} (hT₀ : ImplT impl₀)
+    (hT : ∀ ν, ImplT (base ν)) (hok : RepOk rt impl₀ base) (pf : Trace → Proof) {κ : Rev4.NodeKind}
+    {vk c₁ c₂ : Digest} {w : Asg}
+    (hfold : ∀ v < κ.vslots, ∀ p ∈ repIRows4 rt κ v, p ∈ nodeIRows4 κ)
+    (hS : N4c.StmtN4 κ (lRows4 κ) (nodeIRows4 κ) vk c₁ c₂ w)
+    (h : ∀ v, N4c.Active4 (rd4 pf) κ w v →
+      SlotImpR rt impl₀ base κ v w (N4c.slotIn (rd4 pf) κ vk c₁ w v) ((rd4 pf).slotTr κ v w)) :
+    ∀ v, N4c.Active4 (rd4 pf) κ w v →
+      SlotImp impl₀ base κ v w (N4c.slotIn (rd4 pf) κ vk c₁ w v) ((rd4 pf).slotTr κ v w) :=
+  gap4Imp_of_repW hT₀ hT hok pf hfold hS h
 
 end N4s
 end FR

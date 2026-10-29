@@ -188,51 +188,102 @@ def lwT : List Gate × List (List LinT) := tabsG (lwCs ν a b) 0
 /-- Entry `i` of table `j`. -/
 def lwE (j i : ℕ) : LinT := ((lwT ν a b).2.getD j []).getD i []
 
-/-- The stages' first locals. -/
+/-- The stages' first locals (`k8`: the tables' local count). -/
 def lwK8 : ℕ := nlocs (lwT ν a b).1
-def lwK9 : ℕ := lwK8 ν a b + 256
-def lwK10 : ℕ := lwK9 ν a b + 996
-def lwK11 : ℕ := lwK10 ν a b + 996
-def lwK12 : ℕ := lwK11 ν a b + 996
-def lwK13 : ℕ := lwK12 ν a b + 292
+
+end LW
+
+/-! ### The template over a context (REPF): the tables and their local count built once
+
+`tplLW` builds its tables once (`let`) and reads them through `E`/`k8`; reading `lwE ν a b j i`
+(which rebuilds the tables) per accessor made the process start take 216 s (C1b-RESULT §4.2). The
+spec accessors (`lwE`, `lwK8`) are the context's at `mkLW` (`tplLW_eq`). -/
+
+section LWg
+variable (ν : Rev4.NodeKind) (E : ℕ → ℕ → LinT) (k8 : ℕ)
+
+def lwK9g : ℕ := k8 + 256
+def lwK10g : ℕ := lwK9g k8 + 996
+def lwK11g : ℕ := lwK10g k8 + 996
+def lwK12g : ℕ := lwK11g k8 + 996
+def lwK13g : ℕ := lwK12g k8 + 292
 
 /-- The WOTS block of product `i < 996` (slot `i / 498`) and the `WM` block of `i < 292`. -/
 def xw (i : ℕ) : ℕ := N4c.wotsB ν (i / 498) + i % 498
 def ym (i : ℕ) : ℕ := N4c.wmB ν (i / 146) + i % 146
 
 /-- The accessors of the per-block arrays. -/
-def lwEθ (s : ℕ) : LinT := pL (lwK8 ν a b) 256 s
-def lwEτ (σ o : ℕ) : LinT := if σ < 2 ∧ o < 498 then L (lwK9 ν a b + (498 * σ + o)) else []
-def lwEP (σ o : ℕ) : LinT := if σ < 2 ∧ o < 498 then L (lwK11 ν a b + (498 * σ + o)) else []
-def lwEM (σ o : ℕ) : LinT := if σ < 2 ∧ o < 146 then L (lwK12 ν a b + (146 * σ + o)) else []
+def lwEθg (s : ℕ) : LinT := pL k8 256 s
+def lwEτg (σ o : ℕ) : LinT := if σ < 2 ∧ o < 498 then L (lwK9g k8 + (498 * σ + o)) else []
+def lwEPg (σ o : ℕ) : LinT := if σ < 2 ∧ o < 498 then L (lwK11g k8 + (498 * σ + o)) else []
+def lwEMg (σ o : ℕ) : LinT := if σ < 2 ∧ o < 146 then L (lwK12g k8 + (146 * σ + o)) else []
 
 /-- The eight families, one after the other. -/
-def lwFams : List ℕ → ℕ → List Gate × List LinT
+def lwFamsg : List ℕ → ℕ → List Gate × List LinT
   | [], _ => ([], [])
   | f :: fs, k =>
-    let F := famG (lwEθ ν a b) (lwE ν a b 6) (lwE ν a b 7) (lwEτ ν a b) (lwEP ν a b) (lwEM ν a b) f k
-    let r := lwFams fs (k + nlocs F.1)
+    let F := famG (lwEθg k8) (E 6) (E 7) (lwEτg k8) (lwEPg k8) (lwEMg k8) f k
+    let r := lwFamsg fs (k + nlocs F.1)
     (F.1 ++ r.1, F.2 :: r.2)
 
-/-- **The node kind `ν`'s `linkWAll` template** (inputs `tt : AF a`, then `rr : AF b`). -/
+/-- **The template over a context**: the tables' gates `gT` (entries `E`, `k8` locals). -/
+def tplLWg (gT : List Gate) : Tpl :=
+  ⟨gT ++
+    (mulsG 256 (E 4) (fun _ => E 5 0) ++
+    (mulsG 996 (fun i => E 0 (xw ν i % 512)) (fun i => E 1 (xw ν i / 512)) ++
+    (mulsG 996 (fun i => E 2 (xw ν i % 512)) (fun i => E 3 (xw ν i / 512)) ++
+    (mulsG 996 (fun i => L (lwK9g k8 + i)) (fun i => L (lwK10g k8 + i)) ++
+    (mulsG 292 (fun i => E 2 (ym ν i % 512)) (fun i => E 3 (ym ν i / 512)) ++
+    (lwFamsg E k8 (List.range nLinkFam) (lwK13g k8)).1))))),
+   (lwFamsg E k8 (List.range nLinkFam) (lwK13g k8)).2⟩
+
+end LWg
+
+section LW
+variable (ν : Rev4.NodeKind) (a b : ℕ)
+
+abbrev lwK9 : ℕ := lwK9g (lwK8 ν a b)
+abbrev lwK10 : ℕ := lwK10g (lwK8 ν a b)
+abbrev lwK11 : ℕ := lwK11g (lwK8 ν a b)
+abbrev lwK12 : ℕ := lwK12g (lwK8 ν a b)
+abbrev lwK13 : ℕ := lwK13g (lwK8 ν a b)
+abbrev lwEθ (s : ℕ) : LinT := lwEθg (lwK8 ν a b) s
+abbrev lwEτ (σ o : ℕ) : LinT := lwEτg (lwK8 ν a b) σ o
+abbrev lwEP (σ o : ℕ) : LinT := lwEPg (lwK8 ν a b) σ o
+abbrev lwEM (σ o : ℕ) : LinT := lwEMg (lwK8 ν a b) σ o
+abbrev lwFams (fs : List ℕ) (k : ℕ) : List Gate × List LinT := lwFamsg (lwE ν a b) (lwK8 ν a b) fs k
+
+/-- **The node kind `ν`'s `linkWAll` template** (inputs `tt : AF a`, then `rr : AF b`): its tables
+built once, their entries read from arrays. -/
 def tplLW : Tpl :=
-  ⟨(lwT ν a b).1 ++
-    (mulsG 256 (lwE ν a b 4) (fun _ => lwE ν a b 5 0) ++
-    (mulsG 996 (fun i => lwE ν a b 0 (xw ν i % 512)) (fun i => lwE ν a b 1 (xw ν i / 512)) ++
-    (mulsG 996 (fun i => lwE ν a b 2 (xw ν i % 512)) (fun i => lwE ν a b 3 (xw ν i / 512)) ++
-    (mulsG 996 (fun i => L (lwK9 ν a b + i)) (fun i => L (lwK10 ν a b + i)) ++
-    (mulsG 292 (fun i => lwE ν a b 2 (ym ν i % 512)) (fun i => lwE ν a b 3 (ym ν i / 512)) ++
-    (lwFams ν a b (List.range nLinkFam) (lwK13 ν a b)).1))))),
-   (lwFams ν a b (List.range nLinkFam) (lwK13 ν a b)).2⟩
+  let T := lwT ν a b
+  let A := T.2.toArray.map List.toArray
+  tplLWg ν (fun j i => (A.getD j #[]).getD i []) (nlocs T.1) T.1
 
 end LW
 
-theorem lwFams_len (ν : Rev4.NodeKind) (a b : ℕ) : ∀ (fs : List ℕ) (k : ℕ), (lwFams ν a b fs k).2.length = fs.length
+theorem lwFamsg_len (E : ℕ → ℕ → LinT) (k8 : ℕ) : ∀ (fs : List ℕ) (k : ℕ),
+    (lwFamsg E k8 fs k).2.length = fs.length
   | [], _ => rfl
-  | f :: fs, k => by simp [lwFams, lwFams_len ν a b fs]
+  | f :: fs, k => by simp [lwFamsg, lwFamsg_len E k8 fs]
+
+theorem getD_toArray2 {α : Type} (l : List (List α)) (j i : ℕ) (d : α) :
+    ((l.toArray.map List.toArray).getD j #[]).getD i d = (l.getD j []).getD i d := by
+  simp only [Array.getD_eq_getD_getElem?, List.getD_eq_getElem?_getD, Array.getElem?_map,
+    List.getElem?_toArray]
+  rcases l[j]? with _ | x <;> simp
+
+/-- **`tplLW` is the template over the spec accessors** (`lwE`, `lwK8`). -/
+theorem tplLW_eq (ν : Rev4.NodeKind) (a b : ℕ) :
+    tplLW ν a b = tplLWg ν (lwE ν a b) (lwK8 ν a b) (lwT ν a b).1 := by
+  have h : (fun j i => (((lwT ν a b).2.toArray.map List.toArray).getD j #[]).getD i []) = lwE ν a b :=
+    funext fun j => funext fun i => getD_toArray2 _ j i []
+  simp only [tplLW]
+  rw [h]
+  rfl
 
 theorem tplLW_outs (ν : Rev4.NodeKind) (a b : ℕ) : (tplLW ν a b).outs.length = nLinkFam := by
-  simp [tplLW, lwFams_len]
+  rw [tplLW_eq]; simp [tplLWg, lwFamsg_len]
 
 /-! ## Correctness -/
 
@@ -256,8 +307,8 @@ theorem lwFams_ev {ν : Rev4.NodeKind} {a b : ℕ} (h1 : e.one = 1) {EP Eτ EM :
     (lwFams ν a b fs k).2.map (LinT.ev e) = fs.map (linkWOneF EP Eτ EM Pr Eθ)
   | [], _, _, _ => rfl
   | f :: fs, k, hf, h => by
-    simp only [lwFams, Eqns.append] at h
-    simp only [lwFams, List.map_cons]
+    simp only [lwFams, lwFamsg, Eqns.append] at h
+    simp only [lwFams, lwFamsg, List.map_cons]
     rw [famG_ev h1 f k (fam_pos (hf f (List.mem_cons_self ..))) heθ hpA hpB heτ hep hem h.1,
       lwFams_ev h1 heθ hpA hpB heτ hep hem fs _ (fun g hg => hf g (List.mem_cons_of_mem _ hg)) h.2]
 
@@ -332,17 +383,19 @@ set_option maxHeartbeats 1000000 in
 /-- **The node kind `ν`'s `linkWAll` template computes `linkWAll4I ν`.** -/
 theorem tplLW_ok (h1 : e.one = 1) (h : Eqns e (tplLW ν tt.size rr.size).gates 0) :
     (tplLW ν tt.size rr.size).outs.map (LinT.ev e) = encV (.af (linkWAll4I ν tt rr)) := by
-  simp only [tplLW, Eqns.append, mulsG_nlocs, zero_add] at h
+  rw [tplLW_eq] at h ⊢
+  simp only [tplLWg, Eqns.append, mulsG_nlocs, zero_add] at h
   obtain ⟨hT, h9, h10, h11, h12, h13, hF⟩ := h
   have hE := lwE_ev hi h1 hT
   have h9' : Eqns e (mulsG 256 (lwE ν tt.size rr.size 4) fun _ => lwE ν tt.size rr.size 5 0)
     (lwK8 ν tt.size rr.size) := h9
-  have e10 := mulsG_eqns (k := lwK9 ν tt.size rr.size) h10
-  have e11 := mulsG_eqns (k := lwK10 ν tt.size rr.size) h11
-  have e12 := mulsG_eqns (k := lwK11 ν tt.size rr.size) h12
-  have e13 := mulsG_eqns (k := lwK12 ν tt.size rr.size) h13
+  have e10 := mulsG_eqns (k := lwK9g (lwK8 ν tt.size rr.size)) h10
+  have e11 := mulsG_eqns (k := lwK10g (lwK8 ν tt.size rr.size)) h11
+  have e12 := mulsG_eqns (k := lwK11g (lwK8 ν tt.size rr.size)) h12
+  have e13 := mulsG_eqns (k := lwK12g (lwK8 ν tt.size rr.size)) h13
   have hF' : Eqns e (lwFams ν tt.size rr.size (List.range nLinkFam) (lwK13 ν tt.size rr.size)).1
     (lwK13 ν tt.size rr.size) := hF
+  show (lwFams ν tt.size rr.size (List.range nLinkFam) (lwK13 ν tt.size rr.size)).2.map (LinT.ev e) = _
   rw [linkWAll4I_eq']
   simp only [encV, Array.toList_ofFn]
   rw [ofFn_eq_range _ _ fun f => rfl]
@@ -351,25 +404,25 @@ theorem tplLW_ok (h1 : e.one = 1) (h : Eqns e (tplLW ν tt.size rr.size).gates 0
     h1 ?_ (fun i => (hE i).2.2.2.2.2.2.1) (fun i => (hE i).2.2.2.2.2.2.2) ?_ ?_ ?_
     (List.range nLinkFam) (lwK13 ν tt.size rr.size) (fun f hf => List.mem_range.1 hf) hF'
   · intro s
-    rw [lwEθ, pL_ev h9', lwEθA, ofFn_getD]
+    rw [lwEθ, lwEθg, pL_ev h9', lwEθA, ofFn_getD]
     split_ifs with hs
     · rw [(hE s).2.2.2.2.1, (hE 0).2.2.2.2.2.1, NodeI.eq10, Nat.mod_eq_of_lt hs, Nat.div_eq_of_lt hs]; rfl
     · rfl
   · intro σ hσ o
-    unfold lwEτ
+    unfold lwEτ lwEτg
     split_ifs with ho
     · obtain ⟨d1, d2, d3⟩ := xw_split hσ ho.2
       rw [ev_L, e10 _ d3, (hE _).1, (hE _).2.1, xw, d1, d2, lwEτA, ofFn_getD, dif_pos ho.2, bt_eq_mul]
     · rw [lwEτA, ofFn_getD, dif_neg fun h' => ho ⟨hσ, h'⟩]; rfl
   · intro σ hσ o
-    unfold lwEP
+    unfold lwEP lwEPg
     split_ifs with ho
     · obtain ⟨d1, d2, d3⟩ := xw_split hσ ho.2
       rw [ev_L, e12 _ d3, ev_L, ev_L, e10 _ d3, e11 _ d3, (hE _).1, (hE _).2.1, (hE _).2.2.1, (hE _).2.2.2.1,
         xw, d1, d2, lwEPA, ofFn_getD, dif_pos ho.2, lwEτA, ofFn_getD, dif_pos ho.2, bt_eq_mul, bt_eq_mul]
     · rw [lwEPA, ofFn_getD, dif_neg fun h' => ho ⟨hσ, h'⟩]; rfl
   · intro σ hσ o
-    unfold lwEM
+    unfold lwEM lwEMg
     split_ifs with ho
     · obtain ⟨d1, d2, d3⟩ := ym_split hσ ho.2
       rw [ev_L, e13 _ d3, (hE _).2.2.1, (hE _).2.2.2.1, ym, d1, d2, lwEMA, ofFn_getD, dif_pos ho.2, bt_eq_mul]

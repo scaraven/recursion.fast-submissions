@@ -2,6 +2,7 @@
 -- the twin of S-E14's `slotImp_of_rep`/`gap4Imp_of_rep` (`FRNodeRows4Rep`).
 import FRNodeRun4
 import FRSoundness4Qry
+import FRNodeRows4RepW
 
 /-!
 # The slot's run on the reader's trace
@@ -97,7 +98,8 @@ theorem slotImp_of_runA {rt : ℕ → RT} {A : ℕ → AT} {impl₀ : OpImpl} {b
     (protoLay (protoOf κ v))
   obtain ⟨s, he⟩ := execA_proto (implP impl₀ base (protoOf κ v) ι) (protoOf κ v) ι inp hl
   obtain ⟨hx, hi, hf⟩ := hR s he
-  have key := compileX_run hX (hok _ hπ ι) hA (baseR (protoOf κ v)) hS he hrows.1 hrows.2 hx hi hrep hask hf
+  have key := compileX_run hX (hok _ hπ ι) hA (baseR (protoOf κ v)) hS (selOk_repAsg hS) (agree_repAsg κ v w) he
+    hrows.1 hrows.2 hx hi hrep hask hf
   exact ⟨⟨s, key.1, hx, fun i _ => key.2.2 i, hf⟩, hst⟩
 
 /-! ## The node's indexed ask rows -/
