@@ -101,11 +101,13 @@ theorem flag_gFinLc (hin : ∀ x ∈ (chals fi "Z3" P.S.z3).take 8 ++ chals fi "
       apply Exists.intro
       refine ⟨?run, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
       case run =>
+        rw [pureRun_nil_rev]
         simp only [gLcHead, hk, List.map_cons, List.map_nil, hZ, hL2, reloc, absOff_zero, pureRun, evalOp, tf, taf, List.nil_append, List.cons_append, h1, h2,
-            h2a, hornerOps, rd_app, rd_app0, rd_app_left _ _ ha, rd_app_left _ _ hb,
+            h2a, hornerOps, rd_revAcc, rd_revAcc0, revAcc_app_cons, List.append_nil,
+            List.length_cons, List.length_nil, Array.reduceGetElem?, rd_app_left _ _ ha,
+            rd_app_left _ _ hb,
             rd_app_left _ _ hl, rd_app_left _ _ hc0, rd_app_left _ _ hz, List.range_succ,
             List.range_zero, List.map_cons, List.map_nil, List.map_append,
-            List.getD_cons_succ, List.getD_cons_zero,
             Option.getD_some, Option.map_some, allK, Bool.not_true, Bool.false_or, Bool.true_and,
             Bool.and_true, List.take_succ_cons, List.take_zero, List.replicate_succ,
             List.replicate_zero, ite_true, ite_false, Bool.false_eq_true, List.flatMap_append,
@@ -113,14 +115,17 @@ theorem flag_gFinLc (hin : ∀ x ∈ (chals fi "Z3" P.S.z3).take 8 ++ chals fi "
             Nat.reduceMul, Nat.reduceSub]
         rfl
       all_goals
+        try simp only [List.length_reverse, List.length_cons, List.length_nil, getD_revAcc,
+          Nat.reduceAdd, Nat.reduceSub, Array.reduceGetElem?, Option.getD_some]
+      all_goals
         try simp only [lcWalk4, lcV4, lcRhi4, lcRk, lcVf4, nodeKindW, hk, ite_true, ite_false,
           Bool.false_eq_true, List.range_succ, List.range_zero, List.map_cons, List.map_nil,
           List.map_append, List.nil_append, List.cons_append, List.getD_cons_succ,
           List.getD_cons_zero, List.take_succ_cons, List.take_zero, List.headD_cons,
-          List.replicate_succ, List.replicate_zero, List.length_cons, List.length_nil,
-          List.reverse_cons, List.reverse_nil, List.drop_succ_cons, List.drop_zero,
+          List.replicate_succ, List.replicate_zero, List.reverse_cons, List.reverse_nil,
+          List.drop_succ_cons, List.drop_zero,
           List.foldl_cons, List.foldl_nil, List.getD_eq_getElem?_getD, List.getElem?_cons_succ,
-          List.getElem?_cons_zero, Option.getD_some, Nat.reduceMul, Nat.reduceAdd]
+          List.getElem?_cons_zero, Option.getD_some, Nat.reduceMul]
       all_goals rfl
   -- the 64-term sum: registers `b + 41 … b + 296`
   have hsz : (r ++ V1.toArray).size = r.size + 41 := by simp [hlen]
@@ -150,9 +155,11 @@ theorem flag_gFinLc (hin : ∀ x ∈ (chals fi "Z3" P.S.z3).take 8 ++ chals fi "
   obtain ⟨V3, hC⟩ : ∃ V3, pureRun impl κ inp (lcTail fi r.size R2.size) R2 [] =
       some (V3, (Val.f (lcWalk4 impl κ inp fi r P + (lcFree4 impl κ inp fi r P +
         fv r ((outsOf fi "L1").headD 0) * lcFree4 impl κ inp fi r P))).eqv (rd r (claimN fi "L2"))) := by
-    simp only [lcTail, pureRun, evalOp, tf, taf, List.nil_append, List.cons_append, h2b, rd_app,
-      rd_app0, rv 4 (by norm_num), rv 22 (by norm_num), rv 37 (by norm_num), rs, g4, g22, g37,
-      rr _ ha, rr _ hb, rr _ hcN, List.getD_cons_succ, List.getD_cons_zero, Option.map_some,
+    rw [pureRun_nil_rev]
+    simp only [lcTail, pureRun, evalOp, tf, taf, h2b, rd_revAcc, rd_revAcc0, revAcc_app_cons,
+      List.append_nil, List.length_cons, List.length_nil, Nat.reduceAdd, Nat.reduceSub,
+      Array.reduceGetElem?, Option.getD_some, rv 4 (by norm_num), rv 22 (by norm_num),
+      rv 37 (by norm_num), rs, g4, g22, g37, rr _ ha, rr _ hb, rr _ hcN, Option.map_some,
       allK, Bool.not_true, Bool.false_or, Bool.true_and, Bool.and_true]
     exact ⟨_, rfl⟩
   have e : (gFinLc P fi r.size).1.map (reloc P.S) =

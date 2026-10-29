@@ -55,6 +55,43 @@ theorem evalOp_piDigest0 (x : ℕ) :
 
 end Reloc
 
+/-! ## Running the flags on a reversed accumulator
+
+`pureRun` appends each op's outputs to its accumulator, `L ++ vs`. A `simp` that keeps `L` as one
+list literal pays `List.cons_append` over the whole of `L` at every op, and `List.getD_cons_succ`
+up to the read at every read: quadratic in the program's length (G3 §3). The flag proofs below
+keep the accumulator as `M.reverse` (`M` the outputs, newest first): an op's output is consed onto
+`M` (`revAcc_app_cons`), and a read is one lookup in the literal `default :: M` (`rd_revAcc`, by
+`Array.reduceGetElem?`) at the distance back from the newest output. -/
+
+/-- Entry `k` of `M.reverse` is entry `M.length - k` of `default :: M`; the `default` stands for
+every read past the end. -/
+theorem getD_revAcc (M : List Val) (k : ℕ) :
+    M.reverse.getD k default = (((default : Val) :: M).toArray[M.length - k]?).getD default := by
+  rw [List.getD_eq_getElem?_getD, List.getElem?_toArray]
+  rcases Nat.lt_or_ge k M.length with h | h
+  · rw [List.getElem?_reverse h, show M.length - k = (M.length - 1 - k) + 1 by omega]; rfl
+  · rw [List.getElem?_eq_none (by simpa using h), Nat.sub_eq_zero_of_le h]; rfl
+
+/-- A read of `r ++ M.reverse` at `r.size + k`: one lookup in the literal `default :: M`. -/
+theorem rd_revAcc (r : Array Val) (M : List Val) (k : ℕ) :
+    rd (r ++ M.reverse.toArray) (r.size + k) =
+      (((default : Val) :: M).toArray[M.length - k]?).getD default := by
+  rw [rd_app, getD_revAcc]
+
+theorem rd_revAcc0 (r : Array Val) (M : List Val) :
+    rd (r ++ M.reverse.toArray) r.size =
+      (((default : Val) :: M).toArray[M.length]?).getD default := by
+  simpa using rd_revAcc r M 0
+
+/-- An op's outputs join a reversed accumulator at its head. -/
+theorem revAcc_app_cons (M : List Val) (a : Val) (as : List Val) :
+    M.reverse ++ a :: as = (a :: M).reverse ++ as := by simp
+
+/-- A run from `[]` is a run from the empty reversed accumulator. -/
+theorem pureRun_nil_rev (impl : OpImpl) (κ : Kind) (inp : Input) (ops : List Op) (r : Array Val) :
+    pureRun impl κ inp ops r [] = pureRun impl κ inp ops r ([] : List Val).reverse := rfl
+
 section Flags
 variable (impl : OpImpl) (κ : Kind) (inp : Input) (fi : FinIn) (r : Array Val) (P : FinP)
 
@@ -87,11 +124,12 @@ theorem flag_gFinZ (hin : ∀ x ∈ coordsR fi "Z1" ++ chals fi "Z3" P.S.z3 ++
   generalize fi.zhat.getD 0 0 = az at *
   have h5 := hin cz (.inr (.inl rfl)); have h6 := hin pz (.inr (.inr (.inl rfl)))
   have h7 := hin az (.inr (.inr (.inr rfl)))
-  simp only [pureRun, reloc, evalOp, absOff_zero, tf, taf, List.nil_append, List.cons_append,
-    List.map_cons, h1, h2, rd_app, rd_app0, rd_app_left _ _ h5,
-    rd_app_left _ _ h6, rd_app_left _ _ h7, List.getD_cons_succ,
-    List.getD_cons_zero, Option.map_some, Val.eqv, allK, Bool.not_true, Bool.false_or, Bool.true_and,
-    Bool.and_true]
+  rw [pureRun_nil_rev]
+  simp only [pureRun, reloc, evalOp, absOff_zero, tf, taf, List.map_cons, h1, h2, rd_revAcc,
+    rd_revAcc0, revAcc_app_cons, List.append_nil, List.length_cons, List.length_nil, Nat.reduceAdd,
+    Nat.reduceSub, Array.reduceGetElem?, Option.getD_some, rd_app_left _ _ h5,
+    rd_app_left _ _ h6, rd_app_left _ _ h7, Option.map_some, Val.eqv, allK, Bool.not_true,
+    Bool.false_or, Bool.true_and, Bool.and_true]
   exact ⟨_, rfl⟩
 
 /-! ## `finLr` -/
@@ -125,13 +163,17 @@ theorem flag_gFinLr (hin : ∀ x ∈ (coordsR fi "Lr1").take P.lrR ++ chals fi "
   generalize (outsOf fi "Lr3").headD 0 = kl at *
   generalize claimN fi "Lr2" = c2 at *
   have hk := hin kl (.inr (.inl rfl)); have hc2 := hin c2 (.inr (.inr rfl))
+  rw [pureRun_nil_rev]
   cases hc : P.ck <;> cases hn : P.kv.node κ <;>
-  simp only [hc, Bool.cond_true, Bool.cond_false, hn, pureRun, reloc, evalOp, absOff_zero, tf, taf, List.nil_append, List.cons_append,
-    h1, h2, rd_app, rd_app0, rd_app_left _ _ hk, rd_app_left _ _ hc2,
-    List.getD_cons_succ, List.getD_cons_zero,
+  simp only [hc, Bool.cond_true, Bool.cond_false, hn, pureRun, reloc, evalOp, absOff_zero, tf, taf,
+    h1, h2, rd_revAcc, rd_revAcc0, revAcc_app_cons, List.append_nil, List.length_cons,
+    List.length_nil, Nat.reduceAdd, Nat.reduceSub, Array.reduceGetElem?, Option.getD_some,
+    rd_app_left _ _ hk, rd_app_left _ _ hc2,
     Option.map_some, Bool.not_true, Bool.not_false, Bool.false_or, Bool.true_or, Bool.true_and,
     Bool.and_true, ↓reduceIte, Bool.false_eq_true] <;>
-  exact ⟨_, rfl, rfl, rfl⟩
+  refine ⟨_, rfl, ?_, ?_⟩ <;> simp only [List.getD_cons_succ, List.getD_cons_zero, rd_revAcc,
+    List.length_cons, List.length_nil, Nat.reduceAdd, Nat.reduceSub, Array.reduceGetElem?,
+    Option.getD_some, tf, taf] <;> rfl
 
 /-! ## `finE` -/
 
@@ -193,16 +235,19 @@ theorem flag_gFinE (hin : ∀ x ∈ (coordsR fi "E1").take P.e2R ++ chals fi "E2
   have hkl := hin kl (.inr (.inr (.inr (.inr (.inr (.inr (.inl rfl)))))))
   have hvl := hin vl (.inr (.inr (.inr (.inr (.inr (.inr (.inr (.inl rfl))))))))
   have hrl := hin rl (.inr (.inr (.inr (.inr (.inr (.inr (.inr (.inr rfl))))))))
+  rw [pureRun_nil_rev]
   cases hc : P.ck <;> cases hn : P.kv.node κ <;>
-  simp only [hc, Bool.cond_true, Bool.cond_false, hn, pureRun, reloc, evalOp, absOff_zero, tf, taf, List.nil_append,
-    List.cons_append, h1, h2, h3,
-    rd_app, rd_app0, rd_app_left _ _ hk, rd_app_left _ _ hc2, rd_app_left _ _ hc40,
+  simp only [hc, Bool.cond_true, Bool.cond_false, hn, pureRun, reloc, evalOp, absOff_zero, tf, taf,
+    h1, h2, h3, rd_revAcc, rd_revAcc0, revAcc_app_cons, List.append_nil, List.length_cons,
+    List.length_nil, Nat.reduceAdd, Nat.reduceSub, Array.reduceGetElem?, Option.getD_some,
+    rd_app_left _ _ hk, rd_app_left _ _ hc2, rd_app_left _ _ hc40,
     rd_app_left _ _ hc4, rd_app_left _ _ hze, rd_app_left _ _ hkl, rd_app_left _ _ hvl,
-    rd_app_left _ _ hrl,
-    List.getD_cons_succ, List.getD_cons_zero, allK,
+    rd_app_left _ _ hrl, allK,
     Option.map_some, Bool.not_true, Bool.not_false, Bool.false_or, Bool.true_or, Bool.true_and,
     Bool.and_true, ↓reduceIte, Bool.false_eq_true, Val.isZero] <;>
-  exact ⟨_, rfl, rfl⟩
+  refine ⟨_, rfl, ?_⟩ <;> simp only [List.getD_cons_zero, rd_revAcc,
+    List.length_cons, List.length_nil, Nat.reduceAdd, Nat.reduceSub, Array.reduceGetElem?,
+    Option.getD_some, taf]
 
 /-! ## `finB′` -/
 
@@ -239,12 +284,16 @@ theorem flag_gFinB' (hin : ∀ x ∈ [(outsOf fi "B'").headD 0, fi.zhat.getD nRS
   generalize claim0 fi "P1" = c0 at *
   have hk := hin kp (.inl rfl); have hR := hin vR (.inr (.inl rfl))
   have hc := hin c0 (.inr (.inr rfl))
+  rw [pureRun_nil_rev]
   cases hn : P.kv.node κ <;>
-  simp only [hn, pureRun, reloc, evalOp, absOff_zero, tf, td, tk, List.nil_append,
-    List.cons_append, rd_app, rd_app0, rd_app_left _ _ hk, rd_app_left _ _ hR, rd_app_left _ _ hc,
-    List.getD_cons_succ, List.getD_cons_zero, Option.map_some, allK, Bool.not_true, Bool.false_or,
+  simp only [hn, pureRun, reloc, evalOp, absOff_zero, tf, td, tk, rd_revAcc, rd_revAcc0,
+    revAcc_app_cons, List.append_nil, List.length_cons, List.length_nil, Nat.reduceAdd,
+    Nat.reduceSub, Array.reduceGetElem?, Option.getD_some, rd_app_left _ _ hk, rd_app_left _ _ hR,
+    rd_app_left _ _ hc, Option.map_some, allK, Bool.not_true, Bool.false_or,
     Bool.true_and, Bool.and_true, ↓reduceIte, Bool.false_eq_true, digestAt_eq] <;>
-  exact ⟨_, rfl, rfl⟩
+  refine ⟨_, rfl, ?_⟩ <;> simp only [List.getD_cons_zero, rd_revAcc,
+    List.length_cons, List.length_nil, Nat.reduceAdd, Nat.reduceSub, Array.reduceGetElem?,
+    Option.getD_some, tf]
 
 end Flags
 

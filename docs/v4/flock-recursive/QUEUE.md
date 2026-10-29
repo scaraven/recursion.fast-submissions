@@ -2,21 +2,16 @@
 
 Last updated 2026-10-28. **Rebased onto core PR #20 (pin `6d05d00`, commit `987e679`); blueprint revision 4.0** (§0.1 B-11…B-17, §10 changes 25). Build trees use `logs/org20`.
 
-## Running — as of 2026-10-29 (6 agents)
+## Running — as of 2026-10-29 night
 
-Main (`v4/flock-recursive`, core `64378d2`):
-- S-H4 pass 7: `FRXOut4`, `FRXNd4` (`nd`), the plug; `Open4` restated over S-E13a's route with `Links4 nd` named.
-- S-L4: `hL_of_res` (residual `hL`, the node links; unowned until PATH-review finding 1).
-- RET-4: `FRNodeRead4`'s 3.x `FRNodeSoundA` import (≈ 75 modules, ≈ 597 CPU-s on the PackSound route).
-- D1-probe: the `replay_mle` fixed point — D1 vs §8's reserve, decided before A2″'s `seq4` is final.
-- G4: golf (winding down).
+Main (`v4/flock-recursive`, core `422f2f9`):
+- H-cert3: build/kernel/badge re-measured with `nd` in the closure.
 
-`v4/rev44`:
-- A2″: (β′) V change + L1 + L2.
+`v4/rev44` (HEAD `213c407`, WIP: red at RSV-V's 7 declarations):
+- B2″: (c3) + (b′) instance packing + (a) arena placement; re-measure V and process start (target 5 s; not scored).
+- RSV-V2: RSV2's stacked `evalM` (60 single cells, `fLrEnd` 1,008 B) per `design/RSV2.md` + `reviews/RSV2-review.md`; lands after B2″.
 
-Held for commit: RET-3 (isolation build running).
-
-**Next (PATH-review):** after A2″ — merge main (B0, P2⁹, RET-3) into rev44; A3′ ∥ B2′ (templates) ∥ B3's generic `compileFromX_run` ∥ C1's `R` keys; A1′ (stride 24,222 under (β′)+L2); B4 (aggChk) before C0's aggChk part; S-H4's port of `nd` to rev44's format; a real-closure cert probe (Solution importing the PackSound route; build **and kernel**, `kernel_s` 600); E1 with a worst-case `prover first` check (`step_s` 60); a clean submission branch touching only `submissions/flock-recursive/`.
+**Then:** RSV-S (P4b E-phase restatement, per D-RSV2) → B4 (ask templates on the arenas, `aggChk`) → A1′ (spacers) → C1 (remaining `R` keys) → merge main (nd, S-L4, B3) and recompile → E1 (prover) → evaluation.
 
 ## Waiting
 
@@ -64,9 +59,15 @@ Held for commit: RET-3 (isolation build running).
 
 ## Closed
 
-S-A `8ff873c`; S-C `ebac8c2`; S-D `8e6dad7`; S-E1 `2d5a811`; S-H1 `40b2f81`; S-0 `47158b1`; S-E2/S-E3 `8447c50`; S-F `c8e1869`; S-F2 `8f22b86`; S-G through `ac43569`; S-H2 through `11fb3a5`; INT-1 `5fc7d3b`; S-E5 `9dbab71`; … S-N2 `75eff21`; INT-10 `1c5a738`; RET-2 `1a342e7`; S-H4 p5 `a84753a`; G3 `302b523` (12 modules −30 % CPU; the finals' flag modules need a block-wise read lemma, ≈ 66 CPU-s); S-H4 p4 `6d79280`; S-H4 p2–3 `170c2ee` (lagIR, level decode at CKind); P2⁸ `2d9dd8c` (7763: step + overhead 11.41 s, M ≤ 83, truncated 30.4 %, P̄ 8.43 s; prover.s f0841393…); G2 `4ac68fc` (15 FRX modules −42 % CPU); PACK-4.4.1 + review; S-E13b `ce2a4ad`; D-PK memo `PACK-4.4.md` (committed, under review); P2⁷ `5e99fba` (7763: step + overhead 12.78 s, M ≤ 74, truncated ≈ 52 %; S-E13a/b's matrices and cells, 0 failing rows on honest witnesses; prover.s 5e1bab39…); S-E14 `f5ad181` (replay mechanism; segment `linkWAll` only); S-E13a `8cc8ccd` (kindN, kindS@0, wf@0, wots, aggPad closed through `gap4_of_rows : StmtN4 → PfHdr pf → Gap4R → Gap4`; `Gap4R` = imp, kindS/wf at i ≥ 1, aggChk; V(N4) +≈30 ms; new node dump for P2); S-I `2f437ed` (residuals 8–9 closed; `Solution` PROVISIONAL under `Open4`; **cert build 882 s on the 7763 > `build_s` 600 → REJECT**: 307 modules, 2,975 CPU-s, need ≤ 2,020 (≤ 1,550 for 1.3×); bench probe season S = 6.421, truncated at M = 63) (`SegOut4` gone: `ks_rev4H`/`certificate_rev4H`; open: drop `hO`/`out` from S-N2's `ks_rev4GH`, then delete the G forms, `SegOut4`, `runFacts4_C`). FR builds as a whole.
+S-A `8ff873c`; S-C `ebac8c2`; S-D `8e6dad7`; S-E1 `2d5a811`; S-H1 `40b2f81`; S-0 `47158b1`; S-E2/S-E3 `8447c50`; S-F `c8e1869`; S-F2 `8f22b86`; S-G through `ac43569`; S-H2 through `11fb3a5`; INT-1 `5fc7d3b`; S-E5 `9dbab71`; … S-N2 `75eff21`; INT-10 `1c5a738`; RET-2 `1a342e7`; RET-3 `0aaa99b`; RET-4 `ea3e130`; S-H4 p6–8 `5f39f5a`/`b562c50`/`cb849a3`; S-L4 `00e308f` (hL discharged); **S-H4 pass 11 `1782ab4`: `nd` complete — the certificate assumes only `Open4F := Gaps4`**; B3 `1f400d9` (compileFromX_run); rev44: A2″ `1987618`, A3′ run 2 `e14db30`; B2′ `21ade15` (cap check templated, V(N4) 275 ms); RSV-V `213c407` (chain green on (β′) at εR; guard RejG := RejC ∧ cdOK; GoodX now over RejG — accepted); S-H4 p5 `a84753a`; G3 `302b523` (12 modules −30 % CPU; the finals' flag modules need a block-wise read lemma, ≈ 66 CPU-s); S-H4 p4 `6d79280`; S-H4 p2–3 `170c2ee` (lagIR, level decode at CKind); P2⁸ `2d9dd8c` (7763: step + overhead 11.41 s, M ≤ 83, truncated 30.4 %, P̄ 8.43 s; prover.s f0841393…); G2 `4ac68fc` (15 FRX modules −42 % CPU); PACK-4.4.1 + review; S-E13b `ce2a4ad`; D-PK memo `PACK-4.4.md` (committed, under review); P2⁷ `5e99fba` (7763: step + overhead 12.78 s, M ≤ 74, truncated ≈ 52 %; S-E13a/b's matrices and cells, 0 failing rows on honest witnesses; prover.s 5e1bab39…); S-E14 `f5ad181` (replay mechanism; segment `linkWAll` only); S-E13a `8cc8ccd` (kindN, kindS@0, wf@0, wots, aggPad closed through `gap4_of_rows : StmtN4 → PfHdr pf → Gap4R → Gap4`; `Gap4R` = imp, kindS/wf at i ≥ 1, aggChk; V(N4) +≈30 ms; new node dump for P2); S-I `2f437ed` (residuals 8–9 closed; `Solution` PROVISIONAL under `Open4`; **cert build 882 s on the 7763 > `build_s` 600 → REJECT**: 307 modules, 2,975 CPU-s, need ≤ 2,020 (≤ 1,550 for 1.3×); bench probe season S = 6.421, truncated at M = 63) (`SegOut4` gone: `ks_rev4H`/`certificate_rev4H`; open: drop `hO`/`out` from S-N2's `ks_rev4GH`, then delete the G forms, `SegOut4`, `runFacts4_C`). FR builds as a whole.
 
 ## Rulings
+
+- **H-cert3, 2026-10-30 (at `1782ab4`):** build 804 s direct on the 7763 (1.49×), badge 61 s (2.9×), gate 13.5 s — but the **kernel is tight**: `certified` 413.8 / 461.7 s on two 7763s (**1.30×**), upper set 566.5 s (1.06×); comparator peak 8.7 GiB. Dominant: `FR.X.realign_sem` 44.8 s kernel (S-H4 pass 10), `FRXNd4` 12.1 s, `FRSkip` 9.1 s, ≈ 20 new `FRX*` modules at 2–5 s. rev44's `Gaps4` proofs will add more → G5 (kernel golf) now.
+
+- **H-cert2, 2026-10-29 (at `ea3e130`):** every certificate cap fits — build ≈ 736 s scaled to the 7763 (679.7 s direct) vs 1,200 (1.63×); kernel (comparator on `certified` + `submission`) 265.2 s vs 600 (2.26×), upper bound over the whole FR closure 441.4 s (1.36×) — watch the kernel as rev44's `Gaps4` proofs join the closure; `probe/cert2` measures it.
+
+- **D1 vs reserve, 2026-10-29 (D1-probe):** the `replay_mle` fixed point closes (Lean scratch `attic/FRD1pScratch.lean.txt`: `placed_eq`, `ublock_chat`, `fixed_point`), but D1 costs 26–79 ms VM (≥ the 25 ms kill line) for its gather blocks. **The reserve is adopted, as corrected by D1-probe**: the child's `evalM` claim batched into E2 (η = E1's spare coordinate) and E4 (`κ_E⁴·W*`), both points carried in π and bound by point claims, gated off for N8's missing previous node and for leaves; **no new item or phase**: `fLrEnd` 48 → 880 B, `fEEnd` 48 → 112 B; |π| 876,176, stream 64·24,234, N8 `hUsed` 195,192 (lBase 195,328 ≤ 195,584); εR unchanged; `Gap4.imp`'s three `evalM` registers are discharged by the point claims and `truthChild`, not by R. Folded into rev44 by RSV-V (V side) then RSV-S (S-C/S-G: E2 zerocheck + linear claim, `truthChild`).
 
 - **Re-pin to core `64378d2` (PR #20 head, 2026-10-29 09:32):** M = 96 constant, `stream_s` 1,920 s, **`build_s` 1,200 s** (certificate job 40 min, benchmark 50 min); harness/docs only, no Lean change (`logs/org20`'s harness files refreshed in place). The certificate build (696 s on the 7763) fits with 1.7×; the stream (96 × ≈ 11.1 s ≈ 1,066 s) fits with 1.8×. Build-budget tracks (RET-3, G4) wind down; the critical path is `nd` (S-H4) and rev44 (A2″ → A3′ ∥ B2′ → A1′ → … → E1).
 

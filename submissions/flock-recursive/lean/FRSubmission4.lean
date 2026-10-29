@@ -1,7 +1,7 @@
 -- New for `flock-recursive` (BLUEPRINT revision 4.1, §3, §5.5, §9; stage S-I, items 1–2): the
 -- revision 4.1 `Submission` term, compiled for the badge, its completeness and `δ`.
 import FRSubmission4V
-import FRX4Ext
+import FRXNd4
 
 /-!
 # The revision 4.1 submission `sub4`
@@ -11,8 +11,8 @@ The fields (X4-RESULT §3):
 * `V := V4F` (`FRSubmission4V`), which is `VC4 implB (NI4F.implN4F fun _ => implB) N4c.cells4`
   (`V4F_eq`), `implB := Impl.implCN`, every program and op set a closed constant.
 * `P := fun _ _ w => ret (encodeF w)`: the witness-sending prover of `complete4`.
-* `E := E4X ndNone acc` and `ext := ext4With ndNone`: S-H3's extractor with the node branch not
-  yet delivered (`ndNone`, S-H4's).
+* `E := E4X nd acc` and `ext := ext4With nd`: S-H3's extractor with S-H4's node branch `nd`
+  (`FRXNd4`: the decode `decF04 κ`, then the output `outIR4 κ`, per node kind).
 * `ε := epsRQ`, the cast of the rational `15/2^124` (`epsRQ_eq`: it is `epsR`), so that the
   structure has compiled code (AGENTS.md: the badge compiles the whole `submission`).
 * `δ := 0`, `qV := qV4 = 36000`, `fuel := X.fuel` (`3 · 2^46 + 2^13 t`).
@@ -39,23 +39,23 @@ def sub0 : Submission where
   V := V4F
   P := fun _ _ w => .ret (encodeF w)
   E := fun _ _ _ => none
-  ext := X.X4.ext4With X.X4.ndNone
+  ext := X.X4.ext4With X.X4.nd
   ε := epsRQ
   δ := 0
   qV := qV4
   fuel := X.fuel
 
-/-- **The revision 4.1 submission**: `sub0` with `E := E4X ndNone sub0.acc`. -/
-def sub4 : Submission := { sub0 with E := X.X4.E4X X.X4.ndNone sub0.acc }
+/-- **The revision 4.1 submission**: `sub0` with `E := E4X nd sub0.acc`. -/
+def sub4 : Submission := { sub0 with E := X.X4.E4X X.X4.nd sub0.acc }
 
 /-- `acc` reads only `V` and `qV`. -/
 theorem sub4_acc : sub4.acc = sub0.acc := rfl
 
 theorem sub4_V : sub4.V = VC4 implB (NI4F.implN4F fun _ => implB) N4c.cells4 := V4F_eq
 theorem sub4_qV : sub4.qV = qV4 := rfl
-theorem sub4_E : sub4.E = X.X4.E4X X.X4.ndNone sub4.acc := rfl
+theorem sub4_E : sub4.E = X.X4.E4X X.X4.nd sub4.acc := rfl
 theorem sub4_ε : sub4.ε = Snd.epsR := epsRQ_eq
-theorem sub4_ext : sub4.ext = X.X4.ext4With X.X4.ndNone := rfl
+theorem sub4_ext : sub4.ext = X.X4.ext4With X.X4.nd := rfl
 theorem sub4_fuel : sub4.fuel = X.fuel := rfl
 theorem sub4_P : sub4.P = fun _ _ w => .ret (encodeF w) := rfl
 

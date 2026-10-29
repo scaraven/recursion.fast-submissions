@@ -11,7 +11,7 @@ import FRXRead
 `wtabIR ; (readK4 4 ; decLv4IR msgT 4) ; (readK4 3 ; decLv4IR msgU 3) ; … ; decLv4IR msgU 0`.
 
 Levels 4 … 1 decode all 16 rows into `map4.lU.ob` (level `i + 1`'s rows are level `i`'s message);
-level 0 decodes rows `4 … 7` (`c₀ = 4`, `C = 4`) into `map4.l0.ob`, from its word at
+level 0 decodes rows `1 … 7` (`c₀ = 1`, `C = 7`) into `map4.l0.ob`, from its word at
 `map4.l0.cb` (read before, `readK4 0`).
 
 What the format fixes is a parameter: the cap fields' tape words `cw i` (with the tape link to
@@ -21,7 +21,7 @@ the heights `sib` and the sizes.
 
 * **`readK4_sem`**: the ladder read of level `i` stores the committed word `wordOf κ L es i`;
 * **`lvStep4_sem`**, **`lv0Step4_sem`**: one level's read and decode, keeping `KeepR4`;
-* **`decLevels4_sem`**: level 0's rows `4 … 7` at `map4.l0.ob` are `msgOf κ L es 0 (4 + c)`;
+* **`decLevels4_sem`**: level 0's rows `1 … 7` at `map4.l0.ob` are `msgOf κ L es 0 (1 + c)`;
 * **`cost_decLevels4`**: the exact cost at a kind.
 -/
 
@@ -123,11 +123,11 @@ def decU4 (cbS : ℕ) (msg : XIR) (i : ℕ) : XIR :=
     16 0 32 map4.lU.cb cbS map4.tb map4.lU.fb map4.lU.jb map4.lU.pb map4.lU.yl map4.lU.ob map4.lU.eb
     map4.lU.xb map4.lU.yb
 
-/-- **The decode of level 0**: rows `4 … 7` into `map4.l0.ob`, from the word at `map4.l0.cb` (128
+/-- **The decode of level 0**: rows `1 … 7` into `map4.l0.ob`, from the word at `map4.l0.cb` (128
 words a position). -/
 def dec04 (cbS : ℕ) : XIR :=
   decLv4IR (msg04 κ) (Snd.CKind.lv κ 0).ell (Snd.CKind.lv κ 0).logN (Snd.T4.mLog κ 0)
-    (Snd.CKind.lv κ 0).rows 4 4 128 map4.l0.cb cbS map4.tb map4.l0.fb map4.l0.jb map4.l0.pb map4.l0.yl
+    (Snd.CKind.lv κ 0).rows 7 1 128 map4.l0.cb cbS map4.tb map4.l0.fb map4.l0.jb map4.l0.pb map4.l0.yl
     map4.l0.ob map4.l0.eb map4.l0.xb map4.l0.yb
 
 /-- **Read and decode level `i ∈ [1, 4]`.** -/
@@ -171,8 +171,8 @@ theorem lv04_nums (κ : Rev4.NodeKind) :
 /-- `map4`'s numbers (the literal). -/
 theorem map4_nums : map4.tb = 1048576 ∧ map4.lU.fb = 16777216 ∧ map4.lU.ob = 19267584 ∧
     map4.lU.eb = 25165824 ∧ map4.lU.xb = 25166080 ∧ map4.lU.yb = 25690368 ∧
-    map4.lU.cb = 67108864 ∧ map4.lU.cs = 32 ∧ map4.l0.fb = 16777216 ∧ map4.l0.ob = 23068672 ∧
-    map4.l0.eb = 33554432 ∧ map4.l0.xb = 33554688 ∧ map4.l0.yb = 35651840 ∧
+    map4.lU.cb = 67108864 ∧ map4.lU.cs = 32 ∧ map4.l0.fb = 16777216 ∧ map4.l0.ob = 26214400 ∧
+    map4.l0.eb = 34603008 ∧ map4.l0.xb = 34603264 ∧ map4.l0.yb = 36700416 ∧
     map4.l0.cb = 134217728 ∧ map4.l0.cs = 128 ∧ memX4 = 268435456 := by
   decide
 
@@ -333,7 +333,7 @@ theorem msg04_ok {κ : Rev4.NodeKind} {L es : Log} (I : Array Word) (s : St)
 
 /-! ## Level 0, and the five levels -/
 
-/-- **Level 0's decode** at a node kind (`decLv4_sem` on `map4.l0`, rows `4 … 7`), from a state
+/-- **Level 0's decode** at a node kind (`decLv4_sem` on `map4.l0`, rows `1 … 7`), from a state
 agreeing with `s₀` on `KeepR4`. -/
 theorem lv0Step4_sem (I : Array Word) (s₀ s : St) (hM : Inv s.M) (hsz : memX4 ≤ s.M.size)
     (hK : ∀ y, regs ≤ y → KeepR4 y → rd s.M y = rd s₀.M y)
@@ -350,9 +350,9 @@ theorem lv0Step4_sem (I : Array Word) (s₀ s : St) (hM : Inv s.M) (hsz : memX4 
         Snd.T4.msgOf (.node κ) L es 1 r x)
     (hF : ∀ r x, Snd.T4.msgOf (.node κ) L es 1 r x =
       algebraMap F K (Snd.T4.msgOf (.node κ) L es 1 r x).f₀) :
-    (∀ c < 4, ∀ x < 2 ^ Snd.T4.mLog (.node κ) 0,
+    (∀ c < 7, ∀ x < 2 ^ Snd.T4.mLog (.node κ) 0,
       algebraMap F K (rdF (semXIR I (dec04 (.node κ) cbS) s).M
-        (map4.l0.ob + 2 * 2 ^ Snd.T4.mLog (.node κ) 0 * c + 2 * x)) = Snd.T4.msgOf (.node κ) L es 0 (4 + c) x) ∧
+        (map4.l0.ob + 2 * 2 ^ Snd.T4.mLog (.node κ) 0 * c + 2 * x)) = Snd.T4.msgOf (.node κ) L es 0 (1 + c) x) ∧
     Inv (semXIR I (dec04 (.node κ) cbS) s).M := by
   obtain ⟨n1, n2, n3, n4, -⟩ := lv04_nums κ
   obtain ⟨e1, e2, e3, e4, e5, e6, e7, e8, e9, e10, e11, e12, e13, e14, e15, e16⟩ := map4_nums
@@ -379,8 +379,8 @@ theorem lv0Step4_sem (I : Array Word) (s₀ s : St) (hM : Inv s.M) (hsz : memX4 
   obtain ⟨hB, hoe⟩ := LvMap.back hok (by simp only [regs]; omega)
   have hF0 := LvMap.front hok (by simp only [regs]; omega) (by simp only [regs]; omega) hcS2
   obtain ⟨st1, -, st3⟩ := LvMap.store hok
-  obtain ⟨b1, -, b3⟩ := decLv4_sem I s hM (κ := .node κ) (L := L) (es := es) (i := 0) (C := 4)
-    (c0 := 4) (cs := 128) (msg := msg04 (.node κ)) (by omega) hfar hA (by norm_num) (by norm_num)
+  obtain ⟨b1, -, b3⟩ := decLv4_sem I s hM (κ := .node κ) (L := L) (es := es) (i := 0) (C := 7)
+    (c0 := 1) (cs := 128) (msg := msg04 (.node κ)) (by omega) hfar hA (by norm_num) (by norm_num)
     (by omega) hB hF0 hoe (by omega) (by omega) st1 (by omega) hT1 hW1 hS1 hmsg1
   exact ⟨b1, b3⟩
 
@@ -392,8 +392,8 @@ variable {c : Digest} {π : Proof} {L : Log} {pL : ℕ}
 with the sorted index at `memX4`, level 0's word at `map4.l0.cb` (`readK4 0`), the P1 challenges
 at `cbS i` (the chain's answers), and, as the log's transcript `es` provides them, the cap links
 (tape words `cw i`), the final-message link (tape word `tw`), and at every level a close word with
-`A_c = jointAgree`: level 0's rows `4 … 7` sit at `map4.l0.ob` as the `F` values of
-`msgOf κ L es 0 (4 + c)` (row `c` at `map4.l0.ob + 2^(mLog 0 + 1) c`). -/
+`A_c = jointAgree`: level 0's rows `1 … 7` sit at `map4.l0.ob` as the `F` values of
+`msgOf κ L es 0 (1 + c)` (row `c` at `map4.l0.ob + 2^(mLog 0 + 1) c`). -/
 theorem decLevels4_sem (hpL : pL ≤ 2 ^ 60) (hD : Dom4 pL c π L) {Xi : ℕ → Word}
     (hX : Sorted4 pL (tp c π L) L Xi) (s : St) (hM : Inv s.M) (hsz : memX4 ≤ s.M.size)
     (hXs : ∀ a < L.length, rd s.M (memX4 + a) = Xi a)
@@ -411,10 +411,10 @@ theorem decLevels4_sem (hpL : pL ≤ 2 ^ 60) (hD : Dom4 pL c π L) {Xi : ℕ →
     (hfar : ∀ i < 5, ¬ Snd.T4.farL (.node κ) L es i)
     (hA : ∀ i < 5, Snd.T4.consSet (.node κ) L es i =
       jointAgree (Snd.T4.wordK (.node κ) L es i) (Snd.T4.decodeL (.node κ) L es i)) :
-    (∀ q < 4, ∀ x < 2 ^ Snd.T4.mLog (.node κ) 0,
+    (∀ q < 7, ∀ x < 2 ^ Snd.T4.mLog (.node κ) 0,
       algebraMap F K (rdF (semXIR (tp c π L) (decLevels4 (.node κ) pL cw cbS tw) s).M
         (map4.l0.ob + 2 * 2 ^ Snd.T4.mLog (.node κ) 0 * q + 2 * x)) =
-        Snd.T4.msgOf (.node κ) L es 0 (4 + q) x) ∧
+        Snd.T4.msgOf (.node κ) L es 0 (1 + q) x) ∧
     Inv (semXIR (tp c π L) (decLevels4 (.node κ) pL cw cbS tw) s).M := by
   set I := tp c π L
   obtain ⟨e1, e2, e3, e4, e5, e6, e7, e8, e9, e10, e11, e12, e13, e14, e15, e16⟩ := map4_nums
@@ -600,9 +600,9 @@ theorem cost_dec04 (κ : Rev4.NodeKind) (cbS t : ℕ) :
         560 * 2 ^ Snd.T4.mLog (.node κ) 1) + (12 + 2 ^ 6 * (63 + 6 * 271)) +
       2 * (14 + (Snd.CKind.lv (.node κ) 0).logN * (741 * 2 ^ ((Snd.CKind.lv (.node κ) 0).logN - 1) + 27)) +
       (12 + 2 ^ (Snd.CKind.lv (.node κ) 0).logN * (92 + 156 * 64)) +
-      ((16 + 2 ^ (Snd.CKind.lv (.node κ) 0).logN * 32) + (27 + 2 ^ Snd.T4.mLog (.node κ) 0 * (1122 + 72 * 4) +
-        (2 ^ Snd.T4.mLog (.node κ) 0) ^ 2 * (101 + 40 * 4)) +
-        (1 + 4 * (17 + Snd.T4.mLog (.node κ) 0 * (741 * 2 ^ (Snd.T4.mLog (.node κ) 0 - 1) + 23))) + 2) + 9 := by
+      ((16 + 2 ^ (Snd.CKind.lv (.node κ) 0).logN * 32) + (27 + 2 ^ Snd.T4.mLog (.node κ) 0 * (1122 + 72 * 7) +
+        (2 ^ Snd.T4.mLog (.node κ) 0) ^ 2 * (101 + 40 * 7)) +
+        (1 + 7 * (17 + Snd.T4.mLog (.node κ) 0 * (741 * 2 ^ (Snd.T4.mLog (.node κ) 0 - 1) + 23))) + 2) + 9 := by
   obtain ⟨n1, -, n3, n4, -⟩ := lv04_nums κ
   obtain ⟨-, hn, -⟩ := lv4_read (.node κ) (i := 0) (by omega)
   obtain ⟨-, hm, -⟩ := lv4_bounds (.node κ) (i := 0) (by omega)
@@ -636,13 +636,13 @@ theorem cost_msgU4 (κ : Rev4.NodeKind) {i : ℕ} (hi1 : 1 ≤ i) (hi : i < 4) (
   obtain ⟨-, m2, -⟩ := lvU4_nums κ (i := i + 1) (by omega) (by omega)
   rw [msgU4, cost_msgHIR _ _ _ _ _ t (by omega) (by omega)]
 
-/-- **The five levels' exact cost**: `18,780,858,425,058 ≈ 2^44.1` at `N2` (`m = 31`) and
-`75,054,361,432,716 ≈ 2^46.1` at `N4`, `N8` (`m = 32`), of which level 0 is `1.80·10^13` and
-`7.18·10^13` (Part 25's model). -/
+/-- **The five levels' exact cost**: `27,032,496,972,783 ≈ 2^44.6` at `N2` (`m = 31`) and
+`108,050,895,689,694 ≈ 2^46.6` at `N4`, `N8` (`m = 32`), of which level 0 (rows `1 … 7`) is
+`2.62·10^13` and `1.05·10^14` (Part 25's model at `C = 7`). -/
 theorem cost_decLevels4 (pL : ℕ) (cw cbS : ℕ → ℕ) (tw t : ℕ) :
-    cost (decLevels4 (.node .N2) pL cw cbS tw) t = 18780858425058 ∧
-    cost (decLevels4 (.node .N4) pL cw cbS tw) t = 75054361432716 ∧
-    cost (decLevels4 (.node .N8) pL cw cbS tw) t = 75054361432716 := by
+    cost (decLevels4 (.node .N2) pL cw cbS tw) t = 27032496972783 ∧
+    cost (decLevels4 (.node .N4) pL cw cbS tw) t = 108050895689694 ∧
+    cost (decLevels4 (.node .N8) pL cw cbS tw) t = 108050895689694 := by
   refine ⟨?_, ?_, ?_⟩ <;>
   · rw [cost_decLevels4_eq, cost_stepU4 _ _ (by norm_num) le_rfl, cost_stepU4 _ _ (by norm_num) (by norm_num),
       cost_stepU4 _ _ (by norm_num) (by norm_num), cost_stepU4 _ _ le_rfl (by norm_num), cost_dec04,

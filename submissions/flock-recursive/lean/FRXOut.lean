@@ -10,9 +10,9 @@ import FRXRead
 segment is compiled to `XIR` (`segIR ap d`), with no store: every word is read from the heap by
 one computed load (`ldw ap`). The source word `n` sits at the address
 
-`addrW ap R n = R + (((n >>> 1) &&& m₁) <<< 18) + ((n >>> s₃) <<< s₄) + (n &&& 1)`
+`addrW ap R n = R + (((n >>> 1) &&& m₁) <<< st) + ((n >>> s₃) <<< s₄) + (n &&& 1)`
 
-(`ap = (m₁, s₃, s₄)`): the stream words of a slot (`apS`) and its L words (`apL`) are both of this
+(`ap = (m₁, s₃, s₄, st)`; 3.x's shapes have `st = 18`): the stream words of a slot (`apS`) and its L words (`apL`) are both of this
 shape over `f⁽⁰⁾`'s rows at `ob0` (`FRXOutRun`). The base offset of a segment is register
 `oBd d` at nesting depth `d`; a `rep` at depth `d` counts in `oCd d` and moves the base of depth
 `d + 1`.
@@ -62,16 +62,18 @@ attribute [local irreducible] entryK storeM runPrims
 
 /-! ## Specification: the address block and the compiled segments -/
 
-/-- An address shape `(m₁, s₃, s₄)`. -/
+/-- An address shape `(m₁, s₃, s₄)` at row shift `st` (3.x: `18`, `f⁽⁰⁾`'s row stride `2^18`;
+revision 4.1: `mLog 0 + 1`). -/
 structure AP where
   m1 : ℕ
   s3 : ℕ
   s4 : ℕ
+  st : ℕ
 
 /-- **The address of source word `x`** from the base `R`, as the machine computes it. -/
 def addrW (ap : AP) (R x : Word) : Word :=
   XOp.add.eval (XOp.add.eval (XOp.add.eval R
-    (XOp.shl.eval (XOp.and.eval (XOp.shr.eval x (toWord 1)) (toWord ap.m1)) (toWord 18)))
+    (XOp.shl.eval (XOp.and.eval (XOp.shr.eval x (toWord 1)) (toWord ap.m1)) (toWord ap.st)))
     (XOp.shl.eval (XOp.shr.eval x (toWord ap.s3)) (toWord ap.s4))) (XOp.and.eval x 1)
 
 /-- **The source**: word `n` is the heap word at `addrW ap R n`. -/
@@ -80,7 +82,7 @@ def src (M : Mem) (ap : AP) (R : ℕ) (n : ℕ) : Word := rd M (addrW ap (toWord
 /-- The address block: `oAd := addrW ap oR oU`. -/
 def ldPs (ap : AP) : List Prim :=
   [.const oK (toWord 1), .op .shr oT1 oU oK, .const oK (toWord ap.m1), .op .and oT1 oT1 oK,
-   .const oK (toWord 18), .op .shl oT1 oT1 oK, .const oK (toWord ap.s3), .op .shr oT2 oU oK,
+   .const oK (toWord ap.st), .op .shl oT1 oT1 oK, .const oK (toWord ap.s3), .op .shr oT2 oU oK,
    .const oK (toWord ap.s4), .op .shl oT2 oT2 oK, .op .and oT3 oU cOne, .op .add oAd oR oT1,
    .op .add oAd oAd oT2, .op .add oAd oAd oT3]
 

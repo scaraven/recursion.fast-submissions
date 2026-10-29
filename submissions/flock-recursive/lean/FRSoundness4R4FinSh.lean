@@ -91,6 +91,7 @@ theorem flag_gFinSh (hin : ∀ x ∈ coordsR fi "S1" ++ chals fi "S2" P.S.s2 ++ 
   have hzo := hin zo (.inr (.inr (.inr (.inl rfl))))
   have hzr := hin zr (.inr (.inr (.inr (.inr (.inl rfl)))))
   have hk := hin ks (.inr (.inr (.inr (.inr (.inr rfl)))))
+  rw [pureRun_nil_rev]
   cases hv : P.vn <;> cases hκ : P.kv.node κ <;>
   simp only [hκ, Bool.cond_true, Bool.cond_false, Bool.true_or, Bool.false_or,
     Bool.false_eq_true, Nat.add_assoc, List.map_cons, List.map_nil, List.cons_append,
@@ -99,9 +100,9 @@ theorem flag_gFinSh (hin : ∀ x ∈ coordsR fi "S1" ++ chals fi "S2" P.S.s2 ++ 
     List.map_append, List.map_replicate,
     nLinkFam, linkSum, List.range_succ, List.range_zero, List.flatMap_append, List.flatMap_cons,
     List.flatMap_nil, ↓reduceIte, Nat.reduceEqDiff, Nat.reduceAdd, Nat.reduceMul, Nat.reduceSub,
-    rd_app, rd_app0, rd_app_left _ _ hc0, rd_app_left _ _ hcN,
+    rd_revAcc, rd_revAcc0, revAcc_app_cons, List.append_nil, List.length_cons, List.length_nil,
+    Array.reduceGetElem?, Option.getD_some, rd_app_left _ _ hc0, rd_app_left _ _ hcN,
     rd_app_left _ _ hzo, rd_app_left _ _ hk, rd_app_left _ _ hzr,
-    List.getD_cons_succ, List.getD_cons_zero,
     Option.map_some, allK, Bool.not_true, Bool.false_or, Bool.true_and, Bool.and_true] <;>
   exact ⟨_, rfl⟩
 

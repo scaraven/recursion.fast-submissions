@@ -1,7 +1,7 @@
 -- New for `flock-recursive` (BLUEPRINT revision 4.1, §4.3, A.5, A.7; R-4-m2; stage S-N2: S-E12a's D6,
 -- the concrete `N4c.Read4`). The 3.x analogue is `FRNodeRead` (`readTrace`, `readSig`, `readSigned`).
 import FRNodeSound4
-import FRNodeSoundA
+import FRNodeReadCore
 
 /-!
 # The revision 4.1 node's reader: its children read off `f⁽⁰⁾`

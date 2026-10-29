@@ -4243,3 +4243,703 @@ sequentially; they are not yet in the certificate's closure (`FR`/`FRSubmission4
 - **Q2.** `sub4.ext` now runs on `2^28 + 3t` words (2 GiB of 8-byte words before the tape). The contract
   only bounds the fuel; if a runner or the badge ever evaluates `ext`/`E` on a domain input, it allocates
   that array. Accept (Part 25 F2's ruling), or keep `ndNone`'s branch at `memX` until `nd` lands?
+
+## Part 31 (track S-H4, pass 7): level 0 decodes rows 1–7; the output's cell map, `reassemble4`, `readW4`; `Open4` over S-E13a's route; handover
+
+**Status.** HEAD `5f39f5a`, build tree `logs/fr-build-SH4f` (`MINE` = pass 6's + `FRXOut4 FRSubmission4
+FRSubmission4Cert`), logs `logs/S-H4f/`. Nothing committed. **`nd` does not exist yet**: `outIR4` (the
+output program and its semantics) is not written, so `NodeDec4 nd`, `decOk4_nd` and the plug of `nd` are
+not done, and `Open4` still carries `∃ D : NodeDec4 ndNone` (the entry stays PROVISIONAL). What this pass
+did: (1) found and fixed a blocker in the rows the decoder decodes; (2) the pure half of `FRXOut4`
+(the heap-to-witness map, the computable segment count, the statements, `reassemble4` with `PfHdr`, the
+decoder's `Links` and `readW`); (3) the coordinator's PATH-review changes to `Open4`/`certificate_sub4`.
+
+### 1. Finding F1: rows 4–7 do not hold what `readW` reads (fixed: level 0 decodes rows 1–7)
+
+Level 0 has 64 rows (`ladderOfR 6`); cell `e` of `f` is coefficient `e / 64` of row `e mod 64`. H's
+message slots are rows 4–7 (revision 4.3's (A)(ii)), but:
+
+- **the aggregates' segment count** `kAct κ a w` (`FRNodeRead4`) is the first sub-slot whose selector sum
+  `selSum κ σ = Σ_ι w (κ.oneCell + selR σ ι)` is not 1. Those cells are in rows 1–3 (`oneCell ≡ 0 mod
+  128`, `selR σ ι = σ·2^20 + 1 + selIx ι`). Nothing in H's messages determines `k` (S-E13b's `k`-mux reads
+  `selSum` too);
+- **an aggregate's statement** `stC κ σ h = cAB κ a · 128 + 2 + h` (the `c_A` block's `h_out`, `PubCells4`'s
+  cell) is in rows 2–3;
+- (as the blueprint already says) L's signature cells cover all 64 rows, so the signature is read from H
+  (`sig_of_H`).
+
+`out_cells_rows` checks the three facts in the kernel. **Fix, inside S-H4's modules:** level 0 decodes rows
+`1 … 7` (`c₀ = 1`, `C = 7`; `decLv4_sem` is parametric). Cost: `+8.25·10^12` at `N2`, `+3.30·10^13` at
+`N4`/`N8`; the decode is now `≤ 1.081·10^14 + 2,558 t` against `decBudget4 t = 2.111·10^14 + 8,176 t`.
+Rows 1–7 hold every cell the output reads except L (`out_cells_dec0`), so the statements and `k` need no
+link (Q1, below). This is a deviation from (A)(ii)'s "4 rows" (cost estimate `1.4–1.6·10^14` there; measured
+model now `1.08·10^14`).
+
+### 2. Files (`loc.py`: total / comment / blank / code / theorems)
+
+| File | loc | Content |
+|---|---|---|
+| `FRXOut4` (new) | 388 / 51 / 84 / 253 / 20 | `Dec0`, `wF`, `wAddr`, `cells_cols`, **`decF04_wF`**; `msg_dec0`, **`out_cells_dec0`**, **`out_cells_rows`**; **`kSel`**, `find_range_getD`, **`kSel_eq`**; **`stD`**, **`stD_of_pubCells`**; `qB4`, `trM4`, `sib4`, `posOf4`, `ctb4`, `ansOf4`, `ctbs4`, **`reassemble4`**, `aBytes4`, **`pf4`**, `fitL_extract_getD`, **`pfHdr_reassemble4`**, `ctb4_length`, `ctbs4_length`, **`reassemble4_size`**; **`LinksD4`**, **`sgnX`**, **`readW4`**, `sgnX_eq`, **`readW4_eq`**; controls. 11.6 s sequential (`cpu-FRXOut4.txt`). |
+| `FRXDec4Map` | 202 / – / – / 108 / 16 (−1 code) | `map4.l0` re-laid for 7 rows (`ob = 26,214,400`, `eb = 34,603,008`, `xb = 34,603,264`, `yb = 36,700,416`); `Map4.Ok`'s level 0 at `C = 7`; `map4_ctl`, `not_map4_slack`, `map4_l0` restated. |
+| `FRXDec4Levels` | 677 / – / – / 507 / 35 (±0) | `dec04` at `7 1`; `map4_nums`, `lv0Step4_sem`, `decLevels4_sem`, `cost_dec04`, `cost_decLevels4` restated (§4). |
+| `FRXDec4F0` | 393 / – / – / 273 / 19 (±0) | `decF04_sem`, `cost_le_decF04` restated (§4). |
+| `FRSubmission4Cert` | 104 / – / – / 48 / 6 (+18 code) | `Vnode4`, **`Links4`**, **`Gaps4`**, `Open4` (new fields), `pfHdr_pf4`, **`resid4H_of`**, `certificate_sub4` (new proof), `not_boundsOK_qV` at `qV4 − 1`; imports `FRNodeRows4PackSound`, `FRXOut4`. |
+
+### 3. What is proved
+
+- **`decF04_wF`**: under `decF04_sem`'s hypotheses, after `decF04 κ`, every cell `e` with `1 ≤ e mod 64 < 8`
+  and `e < 2^(m − 7)` sits at `wAddr κ e = map4.l0.ob + 2^(mLog 0 + 1)(e mod 64 − 1) + 2⌊e/64⌋` as
+  `wF κ L es e`, which is `T4.fF (.node κ) L es e` (S-G's witness, `fTab` unfolded).
+- **`kSel_eq`**: the computable `kSel κ a w` (first `i < maxK` with `selSum … ≠ 1`, else `maxK`) is `kAct`.
+- **`stD_of_pubCells`**: on `PubCells4 κ w vk c₁ c₂`, the cells `stC κ σ 0, 1` read back `c₁`, `c₂`.
+- **`reassemble4 S aB tr`** (the slots' `pf`, `pf4 := reassemble4 seq4 aBytes4`, `aBytes4 = 0` on main): 3.x's
+  field-by-field `ctbs` over `phasesOf S` with the kind's ladder for the siblings (`sib4`: the node query's
+  half by the position bit below `K.sib`, 32 zero bytes above it, `posOps4`'s rule) and the positions
+  (`posOf4`: `per`, `logN` of `S.lvK m i`); field 18 fitted to `aB`. Every contribution is fitted to its size
+  (`qB4`), so **`reassemble4_size`**: `|reassemble4 S aB tr| = piSizeOf S + aB` on every trace, and
+  **`pfHdr_reassemble4`**: byte 0 is byte 71 of the seed query (S-E13a's `PfHdr`, unconditionally; a 3.x-style
+  `extract` is short on a short seed query and breaks it).
+- **`readW4 sg κ L es := .node (stD κ 0 w) (stD κ 1 w) (sgnX sg κ 0 w) (sgnX sg κ 1 w)`**, `w = wF κ L es`,
+  `sgnX` = the reader's proof and trace (`rd4 pf4`) with the signature by `sg` (H's cell map).
+  **`readW4_eq`**: on `PubCells4` and `sg = readSig4` (`sig_of_H`), `readW4 sg κ L es = .node c₁ c₂ ((rd4
+  pf4).sgn κ 0 w) ((rd4 pf4).sgn κ 1 w)`, the witness `node_sound4` proves related. This is the bridge S-L4's
+  `hL_of_res` needs.
+- **`LinksD4 κ L es π c`**: `decF04_sem`'s hypotheses (`¬ StateHit L`, the chain with an existential initial
+  state, caps, final message, `¬ farL`, `A_c = jointAgree`): the `Links` of the coming `nodeDec4_nd`.
+- **`resid4H_of`**: `Gaps4` and `Links4 nd D` give `Resid4H … sub4 nd D vk` (slots `I4`, `rd4 pf4`,
+  `resid4_of ∘ gap4_of_rows pf4 pfHdr_pf4`).
+
+### 4. Statement changes (every one)
+
+- `Map4.Ok`: level 0's conjunct at `C = 7` (was 4). `map4` (the literal): `l0`'s `ob`, `eb`, `xb`, `yb`.
+  `map4_ctl`: `map4.l0.eb = 2^25 + 2^20` (was `2^25`). `not_map4_slack`: the perturbed `eb` is
+  `26,214,400 + 2·2^19·7`. `map4_l0`: `… 7 64`.
+- `map4_nums`: `l0.ob = 26214400`, `l0.eb = 34603008`, `l0.xb = 34603264`, `l0.yb = 36700416`.
+- `lv0Step4_sem`, `decLevels4_sem`, `decF04_sem`: conclusion `∀ q < 7, … = msgOf (.node κ) L es 0 (1 + q) x`
+  (was `q < 4`, `4 + q`). Hypotheses unchanged.
+- `cost_dec04`: `72 * 7`, `40 * 7`, `7 * (17 + …)` (was 4). `cost_decLevels4`: `27,032,496,972,783` (`N2`),
+  `108,050,895,689,694` (`N4`, `N8`). `cost_le_decF04`: `27032496972783 + …`, `108050895689694 + …`.
+- **`Open4`** (was `resid : ∃ D : NodeDec4 ndNone, ∀ vk, Resid4H … sub4 ndNone D vk`): now
+  `gap : Gaps4` and `dec : ∃ D : NodeDec4 ndNone, Links4 ndNone D`. Equivalent content routed through
+  S-E13a's `Gap4R` (strictly weaker than `Resid4H.slots`: `PfHdr`, `kindN`, `kindS@0`, `wf@0`, `wots`,
+  `aggPad` are theorems), at the fixed `pf4`.
+- `certificate_sub4`, `certificateR_sub4`, `Solution.certified`: same statements (`Open4 → …`), new proof of
+  `certificate_sub4` (`resid4H_of`).
+- `not_boundsOK_qV`: query bound `qV4 − 1` (was the literal `35999`).
+
+### 5. Controls
+
+| Control | Kind | What it shows |
+|---|---|---|
+| `out_cells_dec0` | + | every selector cell and both statements' cells are in rows 1–7 |
+| `out_cells_rows` | − / value | a selector is in row 1, an aggregate's statement cell in row 2 (outside 4–7); L's first signature cell is not decoded |
+| `kSel_ctl` | − / + | on the zero witness `kSel = 0`; `kSel ≤ maxK` |
+| `pf4_size` | value | `|pf4 tr| = 798,192` on every trace |
+| `pf4_hdr_ctl` | + / − | a seed query with `N4`'s byte at 71 gives a proof starting with it; an all-zero seed does not |
+| `readW4_eq`, `stD_of_pubCells`, `kSel_eq`, `decF04_wF` | + (universal) | the output's map agrees with the reader's and the decode's |
+| `not_map4_slack` | − | level 0's `eq` table at the end of 7 rows (no `2k` slack) is rejected |
+| `map4_ok31`, `map4_ok32` | + | the 7-row map is sound at both ladders |
+| `not_boundsOK_qV` | − | a declared query bound `qV4 − 1` fails the bounds |
+
+### 6. Checks (logs in `logs/S-H4f/`)
+
+- **Build:** `lake build FR Solution FRSubmission4Cert FRXOut4 FRXDec4F0 FRXLagT` green, **2,593 jobs**
+  (`build-final.log`; baseline `build0.log`, 2,592).
+- **Axioms** (`axioms.log`, `logs/fr-build-SH4f/ax/AxSH4f.lean`, 28 declarations incl. **`certificate_sub4`**,
+  **`RecursionFast.Challenge.certified`**, `resid4H_of`, `decF04_sem`, `decLevels4_sem`, `cost_le_decF04`):
+  within `propext`, `Classical.choice`, `Quot.sound`; no `sorryAx`.
+- **Source rule** (`source-rule.log`): 373 files, 0 findings.
+
+### 7. What `Open4` assumes after this pass (exact)
+
+1. `gap : Gaps4` — `∀ vk κ w c₁ c₂, StmtN4 κ (lRows4 κ) (nodeIRows4 κ) vk c₁ c₂ w → Gap4R implB (fun _ =>
+   implB) pf4 κ vk c₁ c₂ w`: `imp` (`SlotImp`), `kindS` and `wf` at sub-slots `i ≥ 1`, `aggChk`. Owners
+   B1′ … B4, A1′ (PATH-review F1 rows 4–6). `PfHdr pf4` is discharged (`pfHdr_pf4`).
+2. `dec : ∃ D : NodeDec4 ndNone, Links4 ndNone D` — unsatisfiable while an accepted node proof lies in the
+   domain (`not_nodeDec4_ndNone`). When `nd` lands it becomes `Links4 nd nodeDec4_nd` with
+   `nodeDec4_nd.Links = LinksD4` and `.readW = readW4 sg` (S-L4: `hL_of_res`, via `readW4_eq`, which needs
+   `sig_of_H` for the chosen `sg`).
+
+`DecOk4` is proved (`decOk4_ndNone`; `decOk4_nd` when `nd` lands). Everything else of
+`certificate_rev4H` is closed.
+
+### 8. Deviations
+
+1. **Level 0 decodes rows 1–7, not 4–7** (§1; BLUEPRINT (A)(ii)). Reason: `k` and `c_A` are only in rows 1–3;
+   within budget.
+2. **`Open4` fixes `pf := pf4`** instead of the review's `∃ pf, PfHdr pf ∧ …`: `readW4` reads the slots'
+   proofs with `pf4`, so `Links4` (whose `Rel` is about `readW`) is provable only at the same `pf`; `PfHdr
+   pf4` is a theorem.
+3. **`readW4`'s signature reader `sg` is a parameter.** The H fields (`ots_i` = the `x` field of chain block
+   `w_{i,0}`, the path blocks' `l`/`r` by the index bit, the index from the key leaf's `j` field) are S-E's
+   layout (`FRNodeRows4WotsS`'s link families); S-G/S-E own `sig_of_H` (BLUEPRINT §(A)). `nd` needs a fixed
+   `sg`.
+4. **The statements come from the cells** (`stD`), not from π's `stmt` bytes (Q1 ruling: the option without a
+   new hypothesis; `stD_of_pubCells` makes S-L4's side a rewrite, and `NodeLog`'s `c = nodeStmt (stL es 0)
+   (stL es 1)` with `PubCells4` at `pvL` closes `Rel`'s first conjunct).
+5. **`reassemble4`'s `aB`** fits field 18's contributions (`ctbs4 … 18`) to `aB` bytes; on main no phase
+   writes field 18 and `aBytes4 = 0`.
+6. Not done: item 4 (`tgBody_sem` split, reflow), `FRX4Prog`'s literal `798192` in `szPs`/`kindOf4_node`
+   (PATH-review F4.5: to restate through `piSizeOf seq4` during the rev44 port).
+
+### 9. Handover: what remains, in order
+
+1. **Fix `sg`** (with S-E/S-G): `sigH κ σ w : Sig` over H message cells (rows 4–7), per §8.3. If S-E prefers,
+   move the signature into H blocks (BLUEPRINT's alternative). State `sig_of_H : StmtN4 … → ∀ σ < 2, sigH κ σ w
+   = readSig4 κ σ w` as S-G/S-E's obligation (it feeds `readW4_eq`).
+2. **`outIR4 κ`** (`FRXOut4`, second half; 3.x's `FRNodeReadS`/`FRNodeReadP`/`FRXOut`/`FRXOutRun`, ≈ 2,000 code
+   lines there). The words of `witWords (readW4 sigH κ L es)`, all loads from `wAddr` (`decF04_wF`):
+   - tag `1`; `packBytes (stD κ σ w) = elemWords (w (stC κ σ 0)) ++ elemWords (w (stC κ σ 1))`
+     (`packBytes_digestOf`), four loads each;
+   - per signed child: `bytesWords π` (length word `|π|`, then π's words), `logWords tr`, `sigWords σ`.
+     A previous node: `π = fitL piSize (pf4 (segTr κ 0 0 0 w))` (exactly `piSize` bytes, `pf4_size`), `tr =
+     segTr`. An aggregate: `k = kSel κ a w` computed at run time (three selector loads, XOR, compare with
+     `1`, per sub-slot); `π = aggHdr k n e ++ k slot proofs` (`n`, `e` from `hA`, the `cAB` block's message);
+     `tr = k segment traces`. Unroll over `i < maxK` with an `ite` on `i < k` (`maxK ≤ 4`).
+   - The stream words: stream byte `p` of `chainBytes4 κ σ k w` is byte `p mod 16` of cell
+     `blkOf κ σ k ⌊p/64⌋ · 128 + 4 + (p mod 64)/16`. Segment `i` starts at byte `1 + i(segB − 1)`, i.e.
+     `1 − i mod 8`: words straddle cells by a segment-dependent shift (3.x's `shw`). The last stream block
+     of an aggregate with `k < maxK` is `finBlk` (not the main chain's): the address map is per `(σ, k)`.
+   - The proof bytes (`ctbs4` over `phasesOf seq4`) are fixed slices of item queries, i.e. of stream bytes,
+     plus the sibling choice (`sib4`, a bit of an answer word) and zero padding: 3.x's `proof_words` at
+     `seq4`, with the kind's ladder from stream byte `1 + 71 + …` (the seed query's byte 71).
+   - Generalise `FRXOut.addrW`'s row stride `<<< 18` to a parameter (here `2^(mLog 0 + 1)`, `2^20`/`2^19`)
+     in place, and the row offset `e mod 64 − 1`.
+3. **`FRXNd4`:** `nd := ndK4 (.seq (decF04 .N2) (outIR4 .N2)) (.seq (decF04 .N4) (outIR4 .N4)) (.seq
+   (decF04 .N8) (outIR4 .N8))`; `decOk4_nd` (cost: `cost_le_decF04` + the output's, `≤ 1.09·10^14 + 2,558 t`
+   leaves `≈ 10^14` for it); `nodeDec4_nd := ⟨LinksD4, readW4 sigH, out⟩` with `out` from `ndK4_sem`,
+   `decF04_wF` (domain facts: `kindOf4_node` gives the size, `InDomE` the tape bounds, `st1` the state) and
+   `outIR4_sem`.
+4. **The plug:** `sub0.ext := ext4With nd`, `sub4.E := E4X nd sub0.acc`; `Open4.dec : Links4 nd nodeDec4_nd`
+   (the `∃ D` goes); `certificate_sub4` with `decOk4_nd`, `nodeDec4_nd`. One-line changes now
+   (`resid4H_of` is generic in `nd`, `D`).
+5. Item 4 of Part 30 §6 (`tgBody_sem`, reflow), unchanged.
+
+### 10. Open questions
+
+- **Q1 (for the orchestrator / S-E).** Accept rows 1–7 at level 0 (§1, §8.1), or have S-E put `k` and `c_A`
+  into H message slots and keep 4 rows? The decoder side is done for rows 1–7; the alternative needs circuit
+  rows and changes `kAct`'s definition.
+- **Q2 (S-E/S-G).** Which H cells are the signature (§8.3, §9.1)? `nd` cannot be written before `sg` is fixed.
+
+## Part 32 (track S-H4, pass 8): the signature reader `sigH` and `sig_of_H`; the signature's output words; handover for `outIR4`
+
+**Status.** HEAD `b562c50`, build tree `logs/fr-build-SH4g` (`MINE` = pass 7's + `FRXSig4 FRXSig4H
+FRXSig4W`), logs `logs/S-H4g/`. Nothing committed. **Item 1 (Q2 ruling) is done with no new
+hypothesis**: `sg := sigH`, `sig_of_H` from `StmtN4` alone. Item 2 is started (the signature's output
+words, pure, and the heap address of H's message words). **`outIR4` (traces, proofs, `π_A`), `FRXNd4`
+and the plug are not done**; `Open4` is unchanged (`dec` still over `ndNone`).
+
+### 1. Files (`loc.py`: total / blank / comment / code / theorems)
+
+| File | loc | Content |
+|---|---|---|
+| `FRXSig4` (new) | 73 / 18 / 29 / 26 / 3 | `hMB` (H message byte), `hMD`, **`idxH`**, `rFH`, `sibFH`, **`sigH`**; `hMB_eq` (= `msgBytes` byte), **`hMB_dec0`** (every cell read is in rows 4–7); `wIdx1`, **`sigH_ctl`**. |
+| `FRXSig4H` (new) | 161 / 13 / 26 / 122 / 6 | **`xRows_of_stmt`**, **`idxH_eq`**, **`otsH_eq`**, **`sibFH_eq`**, **`sig_of_H`**, **`readW4_sigH`**. |
+| `FRXSig4W` (new) | 252 / 30 / 46 / 176 / 14 | `hMBs`, **`hMW`**, **`shWd`**, `wOf`; `wordBytes_getD`, `elemWords_byte`, `hMW_byte`, `wOf_eq`, `shift_digit`, **`shWd_byte`**, `wOf_congr`, **`wOf_hMBs`**, `packBytes_ofFn32`, **`packBytes_hMBs`**, `hMBs_blk`, **`sigWords_sigH`**; **`hAddr`**, **`hAddr_eq`**, **`hMW_heap`**. |
+| `FRSubmission4Cert` | 110 / – / – / 50 / 6 (+2 code) | imports `FRXSig4H`, `FRXSig4W`; module doc. No statement changed. |
+
+### 2. `sigH` (revision 4.3 (A)(ii), the H rows checked)
+
+`sigH κ σ w : Sig` reads only H message slots (`hMB w b p` = byte `p mod 16` of element `4 + ⌊p/16⌋` of
+block `b`, i.e. rows 4–7 of `f⁽⁰⁾`: `hMB_dec0`), WOTS block `o` = `W4.wb κ σ o`:
+
+- `idx` = `ofLE` of message bytes 1–8 of block `399` (the key leaf's `j` field);
+- `ots_i` = message bytes 11–42 of block `3i` (chain `i`'s first step block, its `x` field);
+- `path_t` = the `l` field (bytes 1–32 of block `466 + 2t`) if bit `t` of `idx` is `1`, else the `r` field
+  (bytes 33–63 of block `466 + 2t`, then byte 0 of block `467 + 2t`).
+
+All of them lie in rows 4–7 (the blueprint's rows; no use of rows 1–3, no L cell).
+
+### 3. `sig_of_H` (every H ↔ L equality has a row; none missing)
+
+```lean
+theorem sig_of_H (hS : StmtN4 κ (lRows4 κ) (nodeIRows4 κ) vk c₁ c₂ w) :
+    ∀ σ < 2, sigH κ σ w = N4s.readSig4 κ σ w
+theorem readW4_sigH (hS : StmtN4 κ (lRows4 κ) (nodeIRows4 κ) vk c₁ c₂ (wF κ L es)) :
+    readW4 sigH κ L es = .node c₁ c₂ ((N4s.rd4 pf4).sgn κ 0 (wF κ L es)) ((N4s.rd4 pf4).sgn κ 1 (wF κ L es))
+```
+
+| L field | H field | rows / families used (S-E13b) |
+|---|---|---|
+| `idx` (`Lc 0`, `c₀`) | key leaf bytes 1–8 | `j` family (`j_byte`), index row `mc 399 0 = Lc 0` (`j_mirror`); `ofLE_enc64` |
+| `ots_i` (`Lc (1+2i)`, `+1`) | block `3i` bytes 11–42 | `x` family (`fam_byte`, `f = 0`), chain row `x_{i,0} = ots_i` (`chainRowsI`, first row) |
+| `path_t` (`Lc (267+2t)`, `+1`) | `l` / `r` fields | `l`, `r0`, `r31` families (`f = 5, 6, 7`), mux rows `l = b ? sib : cur`, `r = b ? cur : sib` (`mux_rows`), index bits (`idx_bit`), `r31_byte` |
+
+The node rows' truth comes from `StmtN4` (`xRows_of_stmt`: S-E13a's fold, `xOkK` or the rejecting row), so
+**no hypothesis is added**. `readW4_sigH` is `readW4_eq` at `sg := sigH`: S-L4's `hL_of_res` can use it as is.
+
+### 4. The signature's output words and the heap (item 2's first piece)
+
+- **The H message word stream** `hMW w n` (word `n mod 8` of block `⌊n/8⌋`'s message) has byte `k` =
+  stream byte `8n + k` (`hMW_byte`). The machine's word at a byte offset `8n + s` (`0 < s < 8`) is
+  `shWd W s n = (W n >>> 8s) + (W (n + 1) <<< (64 − 8s))` (`wOf_hMBs`).
+- **`sigWords_sigH`**: `sigWords (sigH κ σ w) = shWd 1 (8·b₃₉₉) :: (⋃_{i<133} [shWd 3 (8·b_{3i} + 1 + j)]_{j<4})
+  ++ ⋃_{t<16} [shWd 1 (8·b_{466+2t} + (bit_t ? 0 : 4) + j)]_{j<4}` over `hMW w` (597 words).
+- **`hAddr_eq`**: word `n` sits at `ob + 2^(mLog0+1)·(3 + (n >>> 1) & 3) + 4·(n >>> 3) + (n & 1)` —
+  3.x's `addrW` shape `(m₁, s₃, s₄) = (3, 3, 2)` with the row shift `mLog 0 + 1` for 3.x's 18 and the base
+  `ob + 3·stride`; **`hMW_heap`**: that heap word is `hMW (wF κ L es) n` after the decode (from
+  `decF04_wF`'s conclusion, for blocks inside `f`).
+
+### 5. Controls and checks
+
+| Control | Kind | What it shows |
+|---|---|---|
+| `sigH_ctl` | + / − | on `wIdx1` (key leaf element 4 = 256) `sigH`'s index is 1 while L's index cell reads 0: the readers differ off the statement, so `sig_of_H` needs the rows; on the zero witness `idx = 0` (`decide +kernel`, 2.5 s) |
+| `hMB_dec0` | + | every cell `sigH` reads is decoded (rows 4–7) |
+| `sig_of_H`, `readW4_sigH`, `sigWords_sigH`, `hMW_heap` | + (universal) | the H reader agrees with L's on every statement's witness; its words are the heap's shifted pairs |
+
+- **Build:** `lake build FR Solution FRSubmission4Cert FRXSig4H FRXSig4W` green, **2,601 jobs**
+  (`logs/S-H4g/build1.log`; baseline `build0.log`, 2,598).
+- **Axioms** (`logs/S-H4g/axioms.log`, `logs/fr-build-SH4g/ax/AxSH4g.lean`, 15 declarations incl.
+  **`certificate_sub4`**, **`certificateR_sub4`**, **`RecursionFast.Challenge.certified`**, **`sig_of_H`**):
+  within `propext`, `Classical.choice`, `Quot.sound`; no `sorryAx`.
+- **Source rule** (`logs/S-H4g/source-rule.log`): 380 files, 0 findings.
+- **Sequential times** (`profile-*.log`): `FRXSig4` 8.8 s (kernel 2.5 s), `FRXSig4H` 7.6 s, `FRXSig4W` 11.0 s.
+
+### 6. What `Open4` still assumes (exact; unchanged by this pass)
+
+1. `gap : Gaps4` — `∀ vk κ w c₁ c₂, StmtN4 κ (lRows4 κ) (nodeIRows4 κ) vk c₁ c₂ w → Gap4R implB (fun _ => implB)
+   pf4 κ vk c₁ c₂ w` (`imp`, `kindS`/`wf` at `i ≥ 1`, `aggChk`).
+2. `dec : ∃ D : NodeDec4 ndNone, Links4 ndNone D` — unsatisfiable while `nd` is missing (`not_nodeDec4_ndNone`).
+   When `nd` lands: `Links4 nd nodeDec4_nd`, with `nodeDec4_nd = ⟨LinksD4, readW4 sigH, out⟩`; S-L4's side is
+   then `readW4_sigH` + `LinksD4`.
+
+### 7. Deviations
+
+1. None in the statements. The names `hMB`/`rFH`/`sibFH`/`shWd` avoid 3.x's `FR.X.hB`, `rH`, `sibH` and
+   `FR.shW`.
+2. `sigH` uses the `r` field's byte 31 from block `467 + 2t` (the `r31` family's source), as the blueprint's
+   (A)(ii) "path blocks' `l`/`r` fields" implies; `sibFH` chooses by the index read off H (`idxH`).
+
+### 8. Handover: what remains, in order (the design worked out this pass)
+
+**Key fact.** Signed child `σ`'s chain stream is H's message byte stream too: stream byte `p` of
+`chainBytes4 κ σ k w` is `hMBs w (64·chBase κ σ + p)` for `p < 64·(streamL − 1)`, and its last block is
+`blkOf … (streamL − 1)` (= `finBlk κ σ k`; for a previous node and for `k = maxK` this is again `chBase +
+streamL − 1`, contiguous). So **one loader** serves the signature, the traces, the proofs and `π_A`'s
+`(n, e)` (the `cAB` block's message is H too): the shifted pair `shWd (hMW w) s n` at `hAddr`, with a
+**redirect** of the last stream block to `finBlk` for an aggregate with `k < maxK`.
+
+1. **`FRXOut`'s `AP`, in place** (FRX module, already in the certificate's closure): add the row shift `st`
+   (3.x: 18) and the byte shift `sh` (3.x: 0; `shWd … 0 n = W n` since `<<< 64` is 0 — extend `shWd_byte`
+   to `s = 0`), and a redirect (registers `qL`, `Δ`: add `Δ` when `n >>> 3 = qL`). Then `segIR_sem`
+   (`segOut (src …)`) carries over with `src` the shifted, redirected H word; 3.x's `apS`/`apL` set
+   `st = 18`, `sh = 0`, no redirect (`FRXOutRun` unchanged otherwise).
+2. **Segment shifts**: segment `i` starts at stream byte `1 + i·(segB − 1)`; with `segB = streamBytesOf
+   seq4 ≡ 0 mod 8` (main: `1,482,752`) the item words of segment `i` sit at byte offsets `≡ 1 − i mod 8`, i.e.
+   a 3.x segment (stream byte 1 = the seed entry) over the source re-based at word `⌊i(segB − 1)/8⌋` with byte
+   shift `i(segB − 1) mod 8` (`0, 7, 6, 5` for `i = 0 … 3`, on top of 3.x's own `shw` for the seed). Compile
+   one copy per `i < maxK`. State through `streamBytesOf seq4` (rev44 portability), not the literal.
+3. **The words** (3.x's `slotSeg`/`proof_words` at `seq4`): per signed child `bytesWords π ++ logWords tr ++
+   sigWords σ`. `logWords (segTr …)`: 3.x's `logWords_tSegs` over `itemsOf seq4`; `π = fitL piSize (pf4
+   tr)` = `reassemble4 seq4 0`: 3.x's `proof_words` re-done for `ctbs4` (fitted contributions `qB4`, `sib4`
+   with `S.lvK m i`, `posOf4`); an aggregate's `π_A = aggHdr k n e ++ k proofs`, `n`, `e` from `hA` (the
+   `cAB` block's message words, `hMW` again), `k = kSel` (three selector loads per sub-slot, rows 1–3,
+   `kSel_eq`); unroll over `i < maxK` with `ite (i < k)`. The signature: `sigWords_sigH` (done) — its program
+   is two loops (133 chains × 4 `shWd 3`, 16 levels × 4 `shWd 1` at offset `bit ? 0 : 4`, the bit from the
+   index word kept in a register).
+4. `outIR4_sem` (`= witWords (readW4 sigH κ L es)` from `decF04_wF` → `hMW_heap`), its exact cost
+   (3.x's node output: 21.6 M steps; far inside the `≈ 10^14` left by `cost_le_decF04`), outs, size.
+5. `FRXNd4`, the plug (Part 31 §9 items 3–4, one-line changes), item 5 (`tgBody_sem` split, reflow).
+
+### 9. Open questions
+
+- **Q1 (S-L4).** `readW4_sigH` takes `StmtN4` at `wF κ L es`: is that the form `hL_of_res` has, or does S-L4
+  prefer `readW4_eq`'s two hypotheses (`PubCells4`, `sig_of_H`'s conclusion)? Both are available.
+- **Q2 (orchestrator).** Editing `FRXOut`'s `AP` in place (§8.1) touches a 3.x module still in the
+  certificate's closure (via `FRXNode`); RET may prefer a copy of `FRXOut`'s generic half (Seg compile,
+  `Ctx`, loops, `ldw`) into a 4.x core module first. Which?
+
+## Part 33 (track S-H4, pass 9): `outIR4`'s pure half (the output words as segments over each segment's realigned words); `AP.st`; handover for the machine half, `FRXNd4` and the plug
+
+**Status.** HEAD `cb849a3`, build tree `logs/fr-build-SH4h` (copy of `fr-build-SH4g`, `snap.sh` on HEAD;
+`MINE` = pass 8's + `FRXOut FRXOutRun FRXTr4 FRXPf4 FRXOut4W`), logs `logs/S-H4h/`. Nothing committed.
+**Done: every pure fact `outIR4_sem` needs** — `witWords (readW4 sigH κ L es)` as the tag, the statements'
+cell words, and per signed child explicit segments (`FRXOut4R`'s `segIR` input) over each segment's
+realigned stream words, plus `readW4_fits`. **Not done: the machine half of `outIR4`, `FRXNd4`, the plug**
+(nor the coordinator's `FRSubmission4Fin`, which needs `nd`). `Open4` is unchanged; the entry stays
+PROVISIONAL. §7 is the handover.
+
+### 1. Files (`loc.py`: total / blank / comment / code / theorems)
+
+| File | loc | Content |
+|---|---|---|
+| `FRXTr4` (new) | 226 / 28 / 38 / 160 / 10 | `tPh4`, `tSegs4`, `restSh4`, **`trSeg4 S`**, **`TrOk4 S`**; `entryW_alignedL`, `readItems_wordsL`, `entryW_seedL`, `trW_eqL`, `segOut_tPh4`, `segOut_tSegs4`, `itemsOf_cons`, **`logWords_trSeg4`**, **`trOk4_seq4`**, `trOk4_ctl`. 11.1 s sequential. |
+| `FRXPf4` (new) | 568 / 71 / 63 / 434 / 28 | `sOff4`, `wo4`, `nextA4`, `sibS4`, `pPh4`, `pRest4`, `fSeg4`, **`pSeg4 S m`**, `qPrev4`, `qHead4`, `qOk4`, **`PfOk4`**, **`LadOk4`**, **`mOfB`**; item/offset lemmas (`sOff4_drop`, `drop_cons_item4`, `drop_rep4`, `sOff4_slen_le`, `sOff4_mod8`, `mem_rest4`, …), `trOf`, `trOf_getD`, `qBytes4`, `fitL_self`, `cpSlice4`, `ans_bit4`, `testBit_posOf4`, `sib_one4`, `PrevInv4`, `lv_t_out`, `posItemsL_slen`, `pPh4_spec`, `pRest4_spec`, **`trM4_eq`**, **`proof_words4`**, **`pfOk4_seq4`**, **`ladOk4_seq4`**, `mOfB_mem`; controls `qOk4_ctl`, `mOfB_ctl`. 14.9 s. |
+| `FRXOut4W` (new) | 339 / 50 / 41 / 248 / 32 | **`vS`**, `trBody4`, `hdrWords`; `readItems_drop`, `readItems_take`, `wordsBytes_packBytes8`, `chainBytes4_length`, `streamBytesOf_rest`, **`segTr_eq`**, `vS_length`, `pf4_words`, `logWords_segTr`, `entries_segTr`, `aggHdr_words`, `hAn_lt`, `sgnX_π`, `sgnX_tr`, `aggPf_eq`, **`signedWords_prev`**, **`signedWords_agg`**, `logWords_flatten`, **`witWords_readW4`**, `sgnX_fits`, **`readW4_fits`**. 9.3 s. |
+| `FRXOut` (edited) | 1,042 / – / – / 893 / 49 (+2 lines) | `AP` gains the row shift `st`; `addrW`, `ldPs` use `toWord ap.st` where they had `18`. |
+| `FRXOutRun` (edited) | 385 (±0) | `apS := ⟨3, 3, 2, 18⟩`, `apL := ⟨63, 7, 1, 18⟩`. |
+
+New code: 842 lines (3 modules, not yet in the certificate's closure).
+
+### 2. What is proved
+
+- **`logWords_trSeg4`** (any `S` with `TrOk4 S`, any word list `Ws`, any `W` agreeing with it, the stream
+  long enough): `logWords (readItems (wordsBytes Ws) 1 (itemsOf S)) = segOut W κ 0 (trSeg4 S)` — the count,
+  the seed's entry (`seedSeg`, stream byte 1), then per later item its length word and `qlen/8 + 4` words.
+- **`proof_words4`** (`PfOk4 S`, `LadOk4 S m`, `trM4 tr = m`): `bl (reassemble4 S 0 tr) = wordsBytes (segOut W κ
+  0 (pSeg4 S m))` for `tr = readItems (wordsBytes Ws) 1 (itemsOf S)`; **`trM4_eq`**: `trM4 tr = mOfB` of word
+  10's low byte. Only field 17 (`fSibs`, the last) depends on `m`.
+- **`segTr_eq`**: segment `i`'s trace is `trOf seq4 (vS κ σ k i w)` whenever `i(segB − 1) + segB ≤ streamB κ σ k`
+  (the bytes before and after it are not read: `readItems_drop`, `readItems_take`).
+- **`signedWords_prev`** (`κ.hasPrev`, child 0) and **`signedWords_agg`** (aggregate `a < nAgg κ`, `k = kSel κ a w`,
+  any `V i` agreeing with `vS … i`):
+  `signedWords (sgnX sigH κ σ w)` = `|π|`, the proofs' segments, the count, the traces' bodies, then
+  `sigWords (sigH κ σ w)` (pass 8's `sigWords_sigH` gives those as H words). The aggregate's `|π_A| = 48 +
+  k·piSizeOf seq4`, its header words `hdrWords k (hAn) (hAe)` (`aggHdr_words`, `k ≤ 4`, `hAn < 2^64`), its count
+  `k · |itemsOf seq4|`.
+- **`witWords_readW4`**: `witWords (readW4 sigH κ L es) = 1 :: (stmt cells' words) ++ signedWords σ₀ ++ signedWords σ₁`.
+- **`readW4_fits`**: `(readW4 sigH κ L es).Fits` (the `Fits` half of `NodeDec4.out`).
+
+### 3. Statement changes (every one)
+
+- `FRXOut.AP`: new field `st`. `addrW ap R x` shifts the row part by `ap.st` (was the literal `18`); `ldPs ap`
+  likewise. Every theorem of `FRXOut`/`FRXOutRun`/`FRXNode`/`FRXNodeRun` keeps its statement (at `apS`, `apL`
+  the shift is `18`); the exact costs, outs and sizes are re-decided unchanged.
+- Nothing else. `Open4`, `certificate_sub4`, `certified` unchanged.
+
+### 4. Controls
+
+| Control | Kind | What it shows |
+|---|---|---|
+| `trOk4_ctl` | − | `seq4` with a 33-byte `E4end` (a 73-byte query) is not aligned |
+| `trOk4_seq4`, `pfOk4_seq4`, `ladOk4_seq4` | + | `seq4`'s format meets the segment conditions at all three ladders |
+| `qOk4_ctl` | − / + | a `queries` phase not after its `P2` phase is rejected; `seq4`'s table passes |
+| `mOfB_ctl` | value | `L30`'s byte reads ladder 30, `N2`'s 31, `N4`'s 32, `'A'` (no kind) 32 |
+| `proof_words4`, `logWords_trSeg4`, `signedWords_*`, `witWords_readW4`, `readW4_fits` | + (universal) | the output words are the segments' over each segment's words |
+
+Measured (scratch `#eval`, `logs/S-H4h/SegSz.lean`, not in the entry): `pSeg4 seq4 32` compiles to 4,940
+statements (field 17: 1,245), `trSeg4 seq4` to 4,904; 99,774 and 185,345 words; `depthSeg 1`; `okSeg` at all
+three ladders; 4,186,985 and 6,603,369 steps.
+
+### 5. Checks (logs in `logs/S-H4h/`)
+
+- **Build:** `lake build FR Solution FRSubmission4Cert FRXOut4W` green, **2,609 jobs** (`build-final.log`;
+  baseline `build0.log`, 2,602).
+- **Axioms** (`axioms.log`, `logs/fr-build-SH4h/ax/AxSH4h.lean`, 20 declarations incl. **`certificate_sub4`**,
+  **`RecursionFast.Challenge.certified`**, `proof_words4`, `signedWords_agg`, `readW4_fits`, `cost_outIR`):
+  within `propext`, `Classical.choice`, `Quot.sound`; no `sorryAx`.
+- **Source rule** (`source-rule.log`): 384 files, 0 findings.
+
+### 6. Deviations
+
+1. **The byte shifts and the `finBlk` redirect are not in `AP`** (the pass-8 ruling's letter): the output
+   will copy `finBlk`'s 8 message words onto the main chain's last block and realign each segment into an
+   aligned buffer, then run `segIR` unchanged over the buffer (linear shape `⟨0, 1, 1, _⟩`). Reason: a shift
+   in `ldw` needs scratch and parameter registers that `LW`/`OW`/`Prot`/`Ctx` would have to admit, i.e. every
+   3.x segment proof re-threaded; the buffer keeps `segIR_sem` literally as is. `AP` gains only the row
+   stride (`st`), which the H loader needs. 3.x's statements unchanged (§3).
+2. The handover's "redo `proof_words`/`logWords_tSegs` for `reassemble4 seq4 0` and `itemsOf seq4`" is done
+   parametric in `S` (decided side conditions `TrOk4`, `PfOk4`, `LadOk4`), so the rev44 port re-decides them at
+   that branch's `seq4` (whose `aBytes4 ≠ 0` adds field 18: `proof_words4` is stated at `aB = 0`; rev44 needs
+   the field-18 slice, one more `cpSlice4` case).
+
+### 7. Handover: what remains, in order
+
+1. **Chain words ↔ heap (pure).** `chW κ σ k w n := hMW w (8·blkOf κ σ k (n/8) + n % 8)`; chain byte `p <
+   streamB` is byte `p mod 8` of `chW (p/8)` (`hMB_eq`, the block's `msgBytes`/`readByte`, `hMW_byte`);
+   `(vS κ σ k i w)[u] = shWd chW s (q + u)` (`s > 0`) or `chW (q + u)` (`s = 0`), `q = D/8`, `s = D mod 8`,
+   `D = i(segB − 1)` (`wOf_eq`, `shWd_byte` — generic in `W`). Header: `hAe` = `shWd (hMW w) 1 (8·cAB + j)`,
+   `j < 4`; `hAn` = `shWd (hMW w) 1 (8·cAB + 4)` (`hA` is the `cAB` block's message bytes 0–40).
+2. **`FRXOut4R`, the programs** (all new code; `FRXOut` is done):
+   - the H loader `apH κ := ⟨3, 3, 2, mLog 0 + 1⟩` at `R = map4.l0.ob + 3·2^(mLog 0 + 1)` (`addrW apH R n =
+     hAddr κ n`, `hAddr_eq`);
+   - `finCopy`: 8 load/store pairs from `8·finBlk κ σ k + j` to `8·(chBase κ σ + aggL k − 1) + j` (`k` in a register);
+   - the realign loop (`loopK` over `segB/8` words; `D = i·(segB − 1)` by `mul`, `q = D >>> 3`, `a = (D & 7) <<< 3`,
+     `b = 63 − a`; word `(H(n) >>> a) + ((H(n+1) <<< 1) <<< b)` stored at `buf + u`): proof with `ldw_sem` and a
+     custom invariant (heap outside the buffer kept), not `Ctx`;
+   - emission: `Ctx M₁ buf κ` and `segIR ⟨0,1,1,0⟩ 0` of `catL (fSeg4 seq4 m f, f < 17)` once and `fSeg4 seq4 m 17`
+     three times (`ite` on `b = 0x50`, `b ∈ {0x4B, 0x4D}`, `b` = buffer word 10's low byte; `mOfB`), `trSeg4`/`trBody4`;
+   - aggregates: `k = kSel` (per `i < maxK`: XOR of the three selector cells' words, compare with `(1, 0)`;
+     `kSel_eq`), length word `48 + k·piSize` (`mul`), `hdrWords`, loop `i < k` (`loopK` with the count register `k`,
+     cap `maxK`) over realign + proof, count word `k·8905`, loop over realign + trace body;
+   - the signature: two loops over `sigWords_sigH`'s shifted pairs; the statements: 4 loads each at `wAddr κ (stC κ σ h) + j`.
+   Size estimate from §4's measurement: ≈ 13·10³ statements a child, ≈ 8·10⁴ for the three kinds, with the
+   decoders ≈ 2.5·10⁵ ≤ `2^19`; cost ≈ 3·10⁷ a segment (far inside `decBudget4`); output ≤ 2.3·10⁶ ≤ `outCap`.
+3. **`outIR4_sem`**: from `decF04_wF`'s conclusion, `outIR4 κ` appends `witWords (readW4 sigH κ L es)`
+   (`witWords_readW4`, `signedWords_prev`/`_agg` with `V i u` the buffer's words, `sigWords_sigH`, `hMW_heap`);
+   `wf`, `outs`, cost bound, `sizeIR` (component lemmas, not one `decide`).
+4. **`FRXNd4`**: `nd := ndK4 (.seq (decF04 .N2) (outIR4 .N2)) …`; `decOk4_nd`; `nodeDec4_nd := ⟨LinksD4, readW4 sigH,
+   out⟩` (`out` from `ndK4_sem`, `decF04_sem`, `outIR4_sem`, `readW4_fits`).
+5. **The plug (coordinator's ruling, 2026-10-29):** `FRSubmission4`: `ext := ext4With nd`, `E := E4X nd sub0.acc`;
+   `FRSubmission4Cert`: `Open4 := gap ∧ dec` with `dec : Links4 nd nodeDec4_nd` (the `∃ D` goes),
+   `certificate_sub4` with `decOk4_nd`; new **`FRSubmission4Fin`** (imports `FRXNd4`, `FRNodeLinks4SigH`):
+   `Open4F := Gaps4`, `certificate_sub4F : Open4F → Certificate sub4` via `⟨h, links4_sigH nodeDec4_nd (fun _ _ _ _ _
+   h => h) rfl h⟩`; `Solution.lean` imports it and `certified` takes `Open4F`.
+6. Part 30 §6 item 4 (`tgBody_sem` split, reflow), unchanged.
+
+### 8. What `Open4` still assumes (exact; unchanged by this pass)
+
+1. `gap : Gaps4` — `∀ vk κ w c₁ c₂, StmtN4 κ (lRows4 κ) (nodeIRows4 κ) vk c₁ c₂ w → Gap4R implB (fun _ => implB) pf4
+   κ vk c₁ c₂ w`.
+2. `dec : ∃ D : NodeDec4 ndNone, Links4 ndNone D` — unsatisfiable while `nd` is missing. After items 4–5 it goes:
+   S-L4's `links4_sigH` discharges `Links4 nd nodeDec4_nd` from `Gaps4`, so `Open4F = Gaps4` alone.
+
+### 9. Open questions
+
+- **Q1 (orchestrator).** Accept §6.1 (realign buffer + copy instead of shift/redirect registers in `AP`)?
+  The pass-8 ruling's goal — `segIR_sem` carried over, 3.x's statements true at their instances — holds
+  with fewer edits to 3.x.
+
+## Part 34 (track S-H4, pass 10): the chain words and the realign loop (items 1 and 2's core); handover for the emitters, `outIR4_sem`, `FRXNd4` and the plug
+
+**Status.** HEAD `1f400d9` (pass 9 = `8e88890`), build tree `logs/fr-build-SH4i` (copy of `fr-build-SH4h`,
+`snap.sh` on HEAD; `MINE` = pass 9's + `FRXOut4C`), logs `logs/S-H4i/`. Nothing committed. **Done: item 1
+and the machine core of item 2** (the chain loader with the `finBlk` redirect in registers, and the realign
+loop into the buffer, proved). **Not done: the emitters (signature, ladder, `kSel`, header, child and node
+programs), `outIR4_sem`, `FRXNd4`, the plug.** `Open4`, `certificate_sub4`, `certified` unchanged; the
+entry stays PROVISIONAL. §6 is the handover.
+
+### 1. Files (`loc.py`: total / blank / comment / code / theorems)
+
+| File | loc | Content |
+|---|---|---|
+| `FRXOut4C` (new) | 133 / 22 / 26 / 85 / 11 | **`chW`**; `shWd_zero`, **`wOf_shift`** (any `s < 8`), `streamBytes_getD'`, **`chainBytes4_getD`**, `getD_packBytes`, **`vS_get`**, `hA_getD`, **`hAe_words`**, `ofLE_append'`, `ofLE_range8`, **`hAn_word`**. |
+| `FRXOut4R` (new) | 532 / 55 / 48 / 429 / 27 | registers `qN … qM` (100–120, below `FRXOut`'s); `apH κ = ⟨3,3,2,mLog 0 + 1⟩`, `hBase κ`, `apB = ⟨3,3,2,20⟩`, `bufB = 2^27`, `nW = 185,344`, `bufA`; **`ldC κ`**, **`rlBody κ`**, **`realign κ`**; `addrH_toNat` (any `st ≤ 20`), **`hAddr_apH`**, `bufA_apB`, `hAddr_lt`, `regs_hAddr`, `bufA_inj`, `bufA_ge/lt`; **`OF`** (the output phase's frame: heap below `bufB` kept), `of_loK`, `of_decS`, `of_entryK`; `ldIx`, `eq_toWord`, `ite_mul_toWord`, **`ldC_sem`**, `wf_ldC`, `loK_ldC`, `keep_ldC`, `ldPs_oAd`, `ldPs_keep`; **`RlInv`**, `shl_shl_one`, `shr_8s`, **`rlBody_step`**, `rlInv_entryK`, `wf_rlBody`, `wf_realign`, **`realign_sem`**. |
+
+New code: 514 lines; neither module is in the certificate's closure yet (nothing imports them).
+
+### 2. What is proved
+
+- **`vS_get`** (with `hD : i(segB − 1) + segB ≤ streamB κ σ k`): `(vS κ σ k i w)[u] = shWd (chW κ σ k w) (D mod 8)
+  (⌊D/8⌋ + u)`, `D = i(segB − 1)`, `chW κ σ k w n = hMW w (8·blkOf κ σ k ⌊n/8⌋ + n mod 8)`; at `s = 0` the pair is
+  the word (`shWd_zero`). Via **`chainBytes4_getD`**: chain byte `p` is byte `p mod 8` of `chW ⌊p/8⌋`.
+- **`hAe_words`**: `packBytes (hAe κ a w) = [shWd (hMW w) 1 (8·c_A + j)]_{j<4}`; **`hAn_word`**: `toWord (hAn κ a w) =
+  shWd (hMW w) 1 (8·c_A + 4)` (`c_A = cAB κ a`). With `aggHdr_words` the header is `toWord (0x41 + 256k)` and five
+  shift-1 pairs.
+- **`ldC_sem`**: with `oR = hBase κ`, `qM = n`, `qCB = cb`, `qJ = jL`, `qDl = Δ`, the loader leaves in `oX` the heap
+  word at `hAddr κ (ldIx cb jL Δ n)`, `ldIx cb jL Δ n = n + cb + [⌊n/8⌋ = jL]·Δ` (**the `finBlk` redirect is a
+  register product, not a copy**: H is never written).
+- **`realign_sem`** (`OF M₀ s`, `i ≤ 4`, `qI = i`, bounds, `hlow`: every loaded H word lies below `bufB`): after
+  `realign κ`, `OF M₀` holds (the heap below the buffer is `M₀`'s), the output is unchanged, and for every `u < nW`
+  the buffer word at `bufA u` is `shWd (fun n => rd M₀ (hAddr κ (ldIx cb jL Δ n))) (D mod 8) (⌊D/8⌋ + u)`. The loop
+  body computes `(C n >>> 8s) + ((C (n+1) <<< 1) <<< (63 − 8s))` (`shl_shl_one`: `= C (n+1) <<< (64 − 8s)`, `0` at
+  `s = 0`) and stores it with the guarded store (`rd_storeM`); `RlInv` is the loop invariant (`rlBody_step`).
+
+### 3. Statement changes
+
+None. `Open4`, `certificate_sub4`, `certified`, every pass-9 statement unchanged.
+
+### 4. Deviation from the ruling (the copy)
+
+The accepted ruling had **`finCopy`** (copy `finBlk`'s 8 message words onto the main chain's last block, in H).
+This pass **redirects in the loader instead**: `ldIx` adds `Δ = 8·(finBlk − chBase − jL)` to the H word index when
+the chain word's block is the stream's last (`jL = streamL − 1`), from registers. Same effect on the realigned
+words; the heap below the buffer is never written, so one frame (`OF`: heap below `bufB` = the decode's) serves the
+whole output (no per-child "copied block" exception), and `Δ = 0` for a previous node and for `k = maxK`
+(`finBlk = chBase + chLen − 1 = chBase + jL`), so one loader serves every child. The realign into the buffer and
+`segIR` over `apB` are as ruled.
+
+### 5. Controls and checks (logs in `logs/S-H4i/`)
+
+- Controls: none new yet (the pieces are universal lemmas; the negative controls belong with the programs:
+  §6 lists them).
+- **Build:** `lake build FR Solution FRSubmission4Cert FRXOut4R` green on HEAD `1f400d9`, **2,614 jobs**
+  (`build2.log`; on the old HEAD `91d74b0` + pass 9: `build1.log`, 2,611; baseline `build0.log`, 2,609).
+- **Axioms** (`axioms.log`, `logs/fr-build-SH4i/ax/AxSH4i.lean`, 11 declarations incl. **`certificate_sub4`**,
+  **`RecursionFast.Challenge.certified`**, `vS_get`, `hAn_word`, `ldC_sem`, `rlBody_step`, `realign_sem`): within
+  `propext`, `Classical.choice`, `Quot.sound`; no `sorryAx`.
+- **Source rule** (`source-rule.log`): 389 files, 0 findings.
+- Elaboration (`lake env lean`, one module): `FRXOut4R` ≈ 8 s wall; `FRXOut4C` ≈ 6 s.
+
+### 6. Handover: what remains, in order (design fixed by this pass)
+
+Registers `qN … qM` (100–120) are below `FRXOut`'s (200–255), so `segIR` keeps them (`frame` + `wrL`).
+`apH κ`/`hBase κ` read H (`hAddr_apH`); `apB`/`bufB` read the buffer (`bufA_apB`). Every emitter after the decode
+runs under `OF M₀` with `M₀` the heap after `decF04 κ` (`hMW_heap` gives `rd M₀ (hAddr κ n) = hMW (wF κ L es) n`,
+`decF04_wF` the statement and selector cells).
+
+1. **Chain registers for child `σ` with `k` segments** (static for a previous node: `cb = 8·chBase κ 0`,
+   `jL = cLen − 1`, `Δ = 0`; at run time for aggregate `a`, `σ = aggChild κ a`): `qCB := 8·chBase κ σ`,
+   `qJ := (qK·(segB − 1)) >>> 6` (`= aggL k − 1`), `qDl := [qK <ᵤ maxK]·8·(finB κ a + qK − 1 − chBase κ σ − qJ)`.
+   Pure lemma: for `n/8 ≤ jL`, `ldIx cb jL Δ n = 8·blkOf κ σ k (n/8) + n mod 8`, hence `rd M₀ (hAddr κ (ldIx …)) =
+   chW κ σ k (wF) n`; a `shWd_congr` (agreement on `n`, and on `n + 1` when `s ≠ 0`) then turns `realign_sem`'s
+   buffer into `(vS κ σ k i (wF))[u]` (`vS_get`). `hlow` from `hAddr_lt` (all blocks `< hEnd κ`, per-kind numerals).
+2. **Emitters** (new, `FRXOut4R` or a sibling `FRXOut4E`):
+   - `shwIR ap s` (two `ldw`, shifts `8s` / `64 − 8s`, `out`): `shWd (src M₀ ap R) s n`, the pattern of `segIR`'s
+     `.shw` case generalised to `0 < s < 8` (shift 3 is needed by the chain values).
+   - `sigIR κ σ`: the index (`shwIR 1` at `8·wb 399`, kept in a register), `loopK` over 133 chains (four `shwIR 3`
+     from `qP`, `qP += 24`), `loopK` over 16 levels (bit `(idx >>> t) & 1`, base `qP + 4 − 4·bit`, four `shwIR 1`,
+     `qP += 16`): `= sigWords (sigH κ σ w)` by `sigWords_sigH` and `toWord idx = shWd …` (its `e1`).
+   - `pfIR`: `segIR apB 0` over `catL ((range 17).map (fSeg4 seq4 32))`, then buffer word 10 `&&& 255` and the ladder
+     `ite (= 0x50) (field 17 at 30) (ite (= 0x4B ∨ = 0x4D) (… 31) (… 32))`. Pure lemmas: `fSeg4 S m f = fSeg4 S 32 f`
+     for `f ≠ fSibs` (induction on `pRest4`), `segOut` of `catL` = flatMap, `mOfB b = if b = 0x50 then 30 else if b =
+     0x4B ∨ b = 0x4D then 31 else 32` (`decide` over `UInt8`). `okSeg`/`depthSeg` of the four segments by
+     `decide +kernel` (pass 9's scratch: all hold, depth 1).
+   - `kSelIR κ a`: per `i < maxK` (unrolled) XOR the three selector cells' two words (F addition is
+     coefficientwise XOR, `FRField128.add`), flag `= (1, 0)`, `alive &&= flag`, `qK += alive`; pure lemma: that sum
+     is `kSel` (`find_range_getD`).
+   - statements: per cell two loads at `wAddr κ (stC κ σ h)` (`elemWords_rdF`, `out_cells_dec0`, `decF04_wF`).
+3. **Children and `outIR4 κ`**: prev = `|π|`, realign `i = 0`, `pfIR`, `segIR apB 0 (trSeg4 seq4)`, `sigIR`;
+   aggregate = `kSelIR`, `48 + k·piSize`, `hdrWords` (`0x41 + 256k`, then `shwIR 1` at `8·c_A + 4` and `+ j`),
+   `loopK qSc qK maxK (realign; pfIR; qI += 1)`, `k·|items|`, `loopK (realign; segIR (trBody4 seq4); qI += 1)`,
+   `sigIR`. `loopK` with a run-time count `k ≤ K` needs an `entryK` lemma for `rd n = toWord k`, `k ≤ K` (the count
+   is `min`: `entryK`'s `ltu` branch), and `loopK_emit` re-stated for it. `outIR4 κ` = tag `1`, the four statement
+   cells, child 0 (prev for `N2`/`N4`, aggregate 0 for `N8`), child 1 (the aggregate). `outIR4_sem` composes
+   `signedWords_prev`/`_agg` (with `V i u := rd M_i (bufA u)`), `witWords_readW4`.
+4. Cost/outs/size/wf: every piece is `NoLoopT`; cost is an upper bound only (`DecOk4.cost` has
+   `decBudget4 − cost_le_decF04 ≈ 1.03·10^14` free; the output is `≈ 10^8`): `realign` = `8 + nW·(cost rlBody + 3)`
+   (`rlBody` ≈ 70 steps), segments by `decide +kernel` on `cost (segIR apB 0 seg) 0`. Sizes by `decide +kernel`
+   per segment (pass 9: 4,940 + 3·1,245 + 4,904 per child).
+5. `FRXNd4`, the plug, `FRSubmission4Fin`, `Solution` (Part 33 §7 items 4–5, unchanged), then item 6.
+
+### 7. Open questions
+
+- **Q1 (orchestrator).** Accept §4 (loader redirect `ldIx` in registers instead of `finCopy`)? It keeps H
+  unwritten and needs no per-child heap exception; the ruling's buffer and `segIR` are unchanged.
+
+## Part 35 (track S-H4, pass 11): the emitters, the child programs, `outIR4_sem`, `FRXNd4` and the plug — the certificate assumes `Gaps4` only
+
+**Status.** Started on HEAD `1f400d9` with pass 10 uncommitted; pass 10 landed as `7a0afa8` during the pass, HEAD
+`b4d7457` at the end. Build tree `logs/fr-build-SH4j` (copy of `fr-build-SH4i`, `snap.sh` on HEAD, `MINE` adds
+`FRXOut4E FRXOut4F FRXOut4K FRXOut4P FRXOut4A FRXOut4O FRXNd4 FRSubmission4Fin FRXOut4Ctrl FR`), logs `logs/S-H4j/`.
+Nothing committed. **Items 1–5 of Part 34 §6 are done and item 6's controls; `Open4F = Gaps4`** (§4). The
+`tgBody_sem` split (Part 30 §6 item 4) is not done.
+
+### 1. Files (`loc.py`: total / blank / comment / code / theorems)
+
+| File | loc | Content |
+|---|---|---|
+| `FRXOut4E` (new) | 667 / 60 / 54 / 553 / 27 | registers `qIx … qS5` (121–136); `ldG` (the loader's word), **`shwC`**/`shwO`/`shw4` (the shifted pair without the store), `ldA`, `outAs`; `keepW`, `LdR`, `SwR`, **`shwC_sem`**, **`shwO_sem`**, **`shw4_sem`**, `ldA_sem`, **`outAs_sem`**, `entryK_countR`, **`loopK_emitR`** (count `k ≤ K` in a register); the signature `otsB`, `pathB`, `sigHd`, `otsIR`, `pathIR`, **`sigIR`**, `offB`, **`sigL`**, `offB_eval`, `sigHd_sem`, `otsIR_sem`, `pathIR_sem`, **`sigIR_sem`**, WF/LoK. |
+| `FRXOut4F` (new) | 188 / 27 / 28 / 133 / 12 | `setB`, **`bufSeg`**, `ladF`, `pfS`, **`pfIR`** (three ladder copies); **`mOfB_eq`**, `hA_B`, `src_bufA`, `okSeg_pf`, `okSeg_tr` (`decide +kernel`), `low_iff`, `low_eq`, `setB_ctx`, **`bufSeg_sem`**, `ladF_sem`, **`pfIR_sem`**. |
+| `FRXOut4K` (new) | 231 / 25 / 28 / 178 / 8 | `selA`, `kPs`, `kStep`, **`kSelIR`**, `kc`; **`kc_find`**, `F_one_iff`, **`sum3_one`**, `ite_and_w`, `KInv`, `kStep_sem`, `kSelIR_run`, **`kSelIR_sem`** (`qK = kSel κ a w`). |
+| `FRXOut4P` (new) | 197 / 24 / 28 / 145 / 10 | **`HeapW`**, `hEnd_fit`, `hMW_heapW`, `hAddr_lt'`, **`ChR`**, **`rl_vS`**, `prevRegs`, **`prevIR`**, `chR_prev`, `wb_fit`, `idx_word`, **`sigL_eq`**, `src_congr`, **`prevIR_sem`**. |
+| `FRXOut4A` (new) | 497 / 47 / 40 / 410 / 23 | `lenW`, `aggHd`, `dC`, `aggRegs`, **`segLoop`**, `aggTr`, **`aggIR4`**; `noW_lo`, WF of the emitters, `noW_pfIR`, `pfIR_keep`, `noW_bufSeg`, `bufSeg_keep`, `realign_keep`, `AgR`, **`segLoop_sem`**, `rd_const_self`, `aggL_eq'`, **`AggN`**/`aggN` (layout facts per kind), `dV`, **`chR_agg`**, `ltu_toWord`, `lenW_val`, **`aggHd_sem`**, `aggRegs_sem`, `sel_ok`, **`aggIR4_sem`**. |
+| `FRXOut4O` (new) | 233 / 43 / 24 / 166 / 30 | `stA`, **`outIR4`**; `stC_ok`, `stA_words`, **`outIR4_sem`**; WF and NoLoopT of every program; `cso_*` (cost, outputs, size of the components; `decide +kernel` on `pfIR` and both trace segments), **`cso_outIR4`**. |
+| `FRXNd4` (new) | 136 / 23 / 27 / 86 / 10 | **`nd`**, `noLoopT_kindNd4`, `cost_kindNd4`, `outs_kindNd4`, `sizeIR_decF04` (`decide +kernel`), `cost_outIR4`, `outs_outIR4`, **`decOk4_nd`**, `pickNd_eq`, **`nd_out`**, **`nodeDec4_nd`**, `nd_ne_ndNone`. |
+| `FRSubmission4Fin` (new) | 43 / 12 / 19 / 12 / 5 | **`Open4F`**, `open4_of_F`, **`certificate_sub4F`**, **`certificateR_sub4F`**; controls `nodeDec4_nd_parts`, `sub4_ext_ne_none`. |
+| `FRXOut4Ctrl` (new, `FR` only) | 49 / 11 / 23 / 15 / 5 | `redirect_ctl`, `ladder_ctl`, `offB_ctl`, `kc_ctl`, `nd_ctl`. |
+| `FRSubmission4` | 88 (±0) | imports `FRXNd4` (was `FRX4Ext`); `ext := ext4With nd`, `E := E4X nd sub0.acc`; doc. |
+| `FRSubmission4Cert` | 108 (−2) | `Open4.dec : Links4 nd nodeDec4_nd`; `certificate_sub4` with `decOk4_nd`, `nodeDec4_nd`; doc. |
+| `Solution` | 35 (±0) | imports `FRSubmission4Fin`; `certified (h : FR.Sub4.Open4F)`; header. |
+| `FR` | +2 | imports `FRSubmission4Fin`, `FRXOut4Ctrl`. |
+
+New code: 1,698 lines (9 modules). `FRNodeLinks4*`, `FRNodeRun4*`, 3.x modules untouched.
+
+### 2. What is proved
+
+- **`outIR4_sem`** (`FRXOut4O`): on a heap holding `wF κ L es`'s decoded cells (`HeapW`, `decF04_wF`'s conclusion) with
+  room for the buffer (`bufB + 2^22 ≤ |M|`), `outIR4 κ` appends **`witWords (readW4 sigH κ L es)`**. It composes
+  `outAs_sem` (the statement cells), `prevIR_sem` (= `signedWords_prev`), `aggIR4_sem` (= `signedWords_agg`).
+- **`aggIR4_sem`**: `kSelIR_sem` puts `kSel κ a w` in `qK`; `aggHd_sem` emits `48 + k·piSize` and `hdrWords` (via
+  `hAn_word`, `hAe_words`); `aggRegs_sem` sets the loader for `k` segments; two `segLoop_sem` runs (proofs, traces), each
+  iteration `realign` then `pfIR` / `bufSeg (trBody4 seq4)`, whose words are `packBytes (bl (pf4 (segTr …)))` and
+  `(segTr …).flatMap entryW` (`pf4_words`, `entries_segTr` over the buffer: `rl_vS`); `sigIR_sem` + `sigL_eq`.
+- **`chR_agg`**: for `1 ≤ k ≤ maxK`, the loader with `cb = 8·chBase σ`, `jL = ⌊k(segB−1)/64⌋`, `Δ = dV κ a k` reads chain
+  word `n` at H word `8·blkOf κ σ k ⌊n/8⌋ + n mod 8` for every `n` (the redirect hits exactly the stream's last block),
+  all blocks below `hEnd κ`.
+- **`decOk4_nd`**: `WF nd`; `Safe` on every domain tape (`safe_decF04`, the output has no `loopT`); `cost nd t ≤
+  decBudget4 t` (`cost_le_decF04` + `cost (outIR4 κ) ≤ 6·10^8`); `outs nd t ≤ outCap` (`≤ 2.3·10^6`); `sizeIR nd ≤ 2^19`
+  (`3·(57,067 + 45,000) + 20`).
+- **`nd_out`**/**`nodeDec4_nd`**: on a node proof in the domain with `LinksD4 κ L es π c`, `nd` from the parse's state
+  outputs `witWords (readW4 sigH κ L es)` (`ndK4_sem`, `kindNd4_sem`, `decF04_wF`, the decode's empty output by `outs_le`,
+  `outIR4_sem`); `Fits` by `readW4_fits`.
+- **`certificate_sub4F : Open4F → Certificate sub4`**, `certificateR_sub4F`, and `certified (h : Open4F)`.
+
+Exact numbers (`#eval`, `logs/fr-build-SH4j/scratch/N4.lean`): `outIR4` cost `163,163,886` / `289,278,962` /
+`504,585,753`, outputs `856,567` / `1,426,803` / `2,282,163`, size `42,850` / `42,938` / `43,885` at `N2`/`N4`/`N8`.
+
+### 3. Statement changes (every one)
+
+- `FRSubmission4`: `sub0.ext = ext4With nd`, `sub4.E = E4X nd sub0.acc`; **`sub4_E`**, **`sub4_ext`** now name `nd`
+  (were `ndNone`). `sub4_V`, `sub4_qV`, `sub4_ε`, `sub4_fuel`, `sub4_P`, `complete_rev4`, `delta_rev4`, the controls unchanged.
+- `FRSubmission4Cert`: **`Open4.dec : Links4 nd nodeDec4_nd`** (was `∃ D : NodeDec4 ndNone, Links4 ndNone D`).
+  `certificate_sub4 : Open4 → Certificate sub4`, `certificateR_sub4`, `Links4`, `Gaps4`, `resid4H_of`, `boundsOK*` unchanged.
+- New `FRSubmission4Fin`: `Open4F`, `certificate_sub4F`, `certificateR_sub4F`.
+- `Solution.certified`: hypothesis **`FR.Sub4.Open4F`** (was `FR.Sub4.Open4`); conclusion unchanged.
+- No other statement changed (pass 10's `FRXOut4R`, `FRXOut4C` unchanged).
+
+### 4. What the certificate assumes (exact)
+
+```lean
+def Open4F : Prop := Gaps4
+def Gaps4 : Prop :=
+  ∀ vk κ w c₁ c₂, N4c.StmtN4 κ (lRows4 κ) (nodeIRows4 κ) vk c₁ c₂ w →
+    N4s.Gap4R implB (fun _ => implB) X.pf4 κ vk c₁ c₂ w
+theorem certified (h : FR.Sub4.Open4F) : CertificateR declared submission
+```
+
+`Open4.dec` is discharged by S-L4's `links4_sigH nodeDec4_nd (fun _ _ _ _ _ h => h) rfl` (`open4_of_F`).
+
+### 5. Controls
+
+| Control | Kind | What it shows |
+|---|---|---|
+| `redirect_ctl` | + / − | `N2`, one segment: chain word `8·jL` is read from `finB .N2 0`, word `8·jL − 1` from the main chain; with `maxK` segments `dV = 0` |
+| `ladder_ctl` | value | `L30`'s byte reads ladder 30, `L31`'s and `N2`'s 31, `N4`'s 32 (`mOfB_eq`) |
+| `offB_ctl` | + / − | index `0b101`: level 0 takes the `l` field (offset 0), level 1 the `r` field (offset 4) |
+| `kc_ctl` | + / − | flags `1,1,0,1` count 2 (not 3); all set 4; none 0 — the count stops at the first failing sub-slot |
+| `nd_ctl`, `sub4_ext_ne_none` | + / − | `nd` outputs at most `outCap` words; it is not `ndNone`; `sub4.ext` runs `nd` |
+| `nodeDec4_nd_parts` | + | the decode law's links are `LinksD4`, its witness `readW4 sigH` (the side conditions of `links4_sigH`) |
+| `outIR4_sem`, `nd_out`, `aggIR4_sem`, `prevIR_sem`, `sigIR_sem`, `kSelIR_sem` | + (universal) | the programs emit exactly the witness's words |
+
+Pass 7's `not_nodeDec4_ndNone` (−) stays: the empty branch has no decode law with a linked input.
+
+### 6. Checks (logs in `logs/S-H4j/`)
+
+- **Build:** `lake build FR Solution FRSubmission4Fin` green, **2,623 jobs** (`build2.log`; `build1.log` 2,622 before the
+  controls module; baseline `build0.log` 2,614).
+- **Axioms** (`axioms.log`, `logs/fr-build-SH4j/ax/AxSH4j.lean`, 18 declarations incl. **`certificate_sub4F`**,
+  **`certificateR_sub4F`**, **`certificate_sub4`**, **`RecursionFast.Challenge.certified`**, `decOk4_nd`, `nd_out`,
+  `outIR4_sem`): within `propext`, `Classical.choice`, `Quot.sound`; no `sorryAx`.
+- **Source rule** (`source-rule.log`, `python3 -I logs/org20/scripts/source-rule.py submissions/flock-recursive`):
+  398 files, 0 findings.
+- Final run after the kernel fixes (§7): `build3.log`, 2,623 jobs, green; `axioms.log` and `source-rule.log` re-run on it.
+
+### 7. Times (sequential `-DElab.async=false --profile`, one module at a time, wall incl. ≈ 4–5 s of imports; `prof-*.log`)
+
+| Module | wall | kernel (type checking) |
+|---|---|---|
+| `FRXOut4E` | 20.1 s | 1.4 s |
+| `FRXOut4F` | 11.4 s | 2.6 s (`okSeg_pf`, `okSeg_tr`) |
+| `FRXOut4K` | 17.0 s | 0.3 s |
+| `FRXOut4P` | 9.6 s | 0.7 s |
+| `FRXOut4A` | 23.3 s | 3.0 s |
+| `FRXOut4O` | 16.4 s | 6.9 s (`cso_pfIR`, `cso_trS`, `cso_trB`) |
+| `FRXNd4` | 42.3 s | 35.6 s (`sizeIR_decF04`: three 57,067-statement `decide +kernel`, ≈ 12 s each) |
+| `FRSubmission4Fin`, `FRXOut4Ctrl` | 6.5 s, 7.1 s | < 0.01 s |
+
+New kernel time on the certificate's route ≈ 51 s (this machine). **Two kernel traps found and fixed** (first profile:
+`kStep_sem` 70.6 s, `aggIR4_sem` 97.8 s): (a) closing `rd t.M (selA … + 0) = …` against a hypothesis about
+`rd t.M (selA …)` made the kernel unfold `selA`/`wAddr` (delta on both sides) — use the exact form; (b) a `set V := fun i
+u => (vS …).getD u 0` let-binding made the kernel re-evaluate `vS` (1.4 MB of chain bytes) when checking `hV` — use an
+opaque `V` (`obtain ⟨V, hVd⟩ : ∃ V, V = …`). Also: closing `[] ++ witWords X = witWords X` by `rfl` in `nd_out` made
+the kernel unfold `witWords (readW4 …)` (deterministic timeout) — rewrite with `Array.toList_empty, List.nil_append`.
+
+### 8. Deviations
+
+1. **Ladder by three copies, not a field-17 split** (Part 34 §6 item 2's `fSeg4 S m f = fSeg4 S 32 f` lemma not needed):
+   `pfIR` runs one of `pSeg4 seq4 30/31/32` (14,878 statements for the three); `outIR4` stays ≤ 45,000 statements, `nd`
+   ≤ `3·(57,067 + 45,000) + 20 = 306,221 ≤ 2^19`.
+2. **Realign twice per aggregate segment** (once in the proofs' loop, once in the traces' loop: `signedWords_agg`'s order
+   is all proofs, then the count, then all traces). Cost `4·26.1 M` more per aggregate; total `outIR4` cost ≤ `6·10^8`
+   against `≈ 1.03·10^14` free in `decBudget4`.
+3. **Loop outputs as pure functions of the segment index** (`segLoop_sem`): iteration `i` emits `packBytes (bl (pf4 (segTr
+   … i w)))` and `(segTr … i w).flatMap entryW` (by `pf4_words`/`entries_segTr` over the buffer), not `segOut (V i) …`
+   with `V i` the machine's buffer; `signedWords_agg` is then applied with `V i u := (vS … i w).getD u 0`.
+4. **The signature and the header use the chain loader with `cb = jL = Δ = 0`** (`ldIx 0 jL 0 n = n`): one shifted-pair
+   emitter (`shwC`) for the realign body, the signature and the header.
+5. The statement cells are 8 constant-address loads (`outAs (stA κ)`), not a segment.
+6. **The controls of the programs are in `FRXOut4Ctrl`**, imported by `FR` only (outside the certificate's closure).
+7. Literals that `rev44` must re-decide: `N4c.segB - 1 = 1482751` (`rfl` in `chR_agg`, `aggRegs_sem`, `aggL_eq'`), pass 10's
+   `nW = 185344`, the `cso_*` values, `AggN`/`aggN`, `sel_ok`, `stC_ok`, `wb_fit`, `hEnd_fit` (all `decide` per kind; a
+   changed layout fails them loudly). Everything else is stated through `seq4` (`piSizeOf seq4`, `itemsOf seq4`,
+   `pSeg4 seq4 m`, `trSeg4 seq4`, `trBody4 seq4`).
+
+### 9. Handover: what remains
+
+1. **`Gaps4`** (B1′ … B4, A1′; `Open4F`'s only content).
+2. Re-measure the H-cert2 margins: `Solution`'s closure grows by 17 modules (the `FRXOut4*`, `FRXNd4`, `FRNodeLinks4*`,
+   `FRSubmission4Fin`), `FRSubmission4`'s (the badge) by 35 (the decode and output modules, `FRNodeSound4R`,
+   `FRNodeRead4*`, `FRNodeRows4Fit`, `FRSoundness4TailTruths`, `FRXLag*`, …): `sub4.ext` now runs `nd`.
+3. Part 30 §6 item 4 (`tgBody_sem` split, reflow), unchanged.
+4. The rev44 port of this pass (§8.7).
+
+### 10. Open questions
+
+- **Q1 (orchestrator).** The badge path now compiles the node branch's whole closure (§9.2). Is that within the badge
+  job's cap, or should `FRSubmission4` keep `nd` behind a lighter module (the program `nd` needs only `FRXOut4O`'s
+  definitions; the proofs could move to a module the badge does not import)?
+- **Q2 (orchestrator).** `sizeIR_decF04` costs ≈ 36 s of kernel time. A structural size lemma for `decF04` (S-H3's
+  components) would remove it; worth a track?
