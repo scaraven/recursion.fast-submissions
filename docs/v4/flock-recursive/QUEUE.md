@@ -52,6 +52,9 @@ S-A `8ff873c`; S-C `ebac8c2`; S-D `8e6dad7`; S-E1 `2d5a811`; S-H1 `40b2f81`; S-0
 
 ## Rulings
 
+- **INT-8 (`3b13ba5`), 2026-10-29:** each kind's exact final-tail check is kept (dropping it would let V accept higher-degree finals for N2/L30/L31: a protocol change); deviations 2–5 accepted (exact per-kind Lr/E point lists, all families computed then selected, the group-to-kind equality as a theorem, the statement fact checked in `VsegC`/`VnodeC`). The native `acc` checks `stmtDigest(tix, π[48..176)) = c` after the run.
+- **Node M rows on the runner (P2⁗), 2026-10-29:** embedded in `prover.s` in plan form (templates once, instance placements, sparse skeleton rows), rebuilt at prover start, KAT against the full dump; no Rust port of `compileTF`. INT-9 exports the plan form.
+
 - **2026-10-28 (P4e, S-H4, RET-1):** D10 keep the node Sh start term (J = 10). D11: the 4.1 node ops (`targetS`, `shiftMask`, `slotW`, `linkWAll` at `nodeLayout4`) are S-CN4's. S-H4's level-0 interpolation (GF(2^64) differences, prefix/suffix products, 261 steps/pair) replaces the batched-inversion wording of 4.2 (A); the node decoder's memory is **2^28** words (the full level-0 codeword), not 2^27; `fuel_base` stays. RET-1's Core extraction is in; `tail_shift`'s move out of T4's closure is approved for the next retirement pass; the Rev4 closure still holds 62 3.x soundness modules through direct 3.x imports in P4a/P4b/R4/`FRSoundness4Pos`/`FRXLevel` (re-point at T4's copies or Core before retiring).
 
 - **S-E12a, 2026-10-28:** an aggregate child's public statement cells are its `hashA` block's output `c_A` (`N4c.cells4`), not the trace's seed payload (segment 1's statement): S-E12b's provisional `pfCells4` must follow. D1 (candidate final blocks per k′ for the aggregate's padding obligation), D2 (one `hashA` per aggregate), D3–D6 accepted; blueprint A.6/A.7 and B-13's mux set {N2, N4, N8} to be updated.
