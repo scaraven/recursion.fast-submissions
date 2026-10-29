@@ -65,6 +65,8 @@ S-A `8ff873c`; S-C `ebac8c2`; S-D `8e6dad7`; S-E1 `2d5a811`; S-H1 `40b2f81`; S-0
 
 ## Rulings
 
+- **User, 2026-10-29 (announced, not yet in the core):** the stream length becomes **M = 96, constant**, and `stream_s` grows **1.5× or 2×** (1,440 or 1,920 s). Plan against it now: with P2⁹'s 11.10 s per step + overhead on the 7763, 96 steps ≈ 1,066 s — fits 1,440 s with ≈ 1.35× margin. The orchestrator watches the core's PR #20 head (`6d05d00`) and the open-PR list for the change, then re-pins (`logs/org20` successor) and re-measures.
+
 - **User, 2026-10-29:** no adversarial reviews of code — a submission the harness accepts under the rules is good enough; golf stays (it serves the build budget). No more review tracks; the bar is `HARNESS: ACCEPT`.
 
 - **(β′), 2026-10-29:** adopted (PACK §11 + review PB: soundness confirmed value by value, ε unchanged; L1 + L2 both needed; L4 rejected — a lost stream ends the evaluation). The doom chain is PB-M1's carried form (`DT 52 := DPf ∨ ¬truthCap`, 53 gates on Σ ≠ 0, 54/55 split on `A = Â(ζ)`), not §11's literal `DT 53/55`.
