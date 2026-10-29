@@ -494,7 +494,7 @@ theorem phaseOffOf_seq3 (n f : ℕ) : phaseOffOf seq3 n f = phaseOff n f := by
   rw [phaseOffOf, ← phasesOf_seq3, ← List.map_take, List.map_map, h, phaseOff]
   exact congrArg List.sum (List.map_congr_left fun p _ => p.shape.bytesToL_toSh f)
 
-theorem fin3P_S : fin3P.S = ⟨32, 19, 26, 28, 15, 21, 23, 7, 32, 6⟩ := seq3_eq
+theorem fin3P_S : fin3P.S = ⟨32, 19, 26, 28, 15, 21, 23, 7, 32, 6, false⟩ := seq3_eq
 
 theorem gFinZ_3 : gFinZ fin3P = finZ := by
   funext fi b; simp only [gFinZ, finZ, fin3P_S]; rfl
@@ -625,16 +625,150 @@ theorem exec_reloc_seq3 (impl : OpImpl) (κ : Kind) (inp : Input) :
       · rfl
       · simp only [exec_reloc_seq3 impl κ inp ops]
 
-/-- **The relocated finals** (`FRVIR4.gen4`'s `fin`; a group program's with `Q`). -/
+/-! ## The batched cap check (revision 4.4.1, PACK-4.4 §3.3, B2 (β))
+
+The positions no longer compare their path's digest with the cap entry at the witness index
+`k = j >>> sib` (3.x's `piDigestAt; assertEq`, `FRVIR4.posOps4`). Instead, after `Pf`, phase
+`CapChk` absorbs `A ∈ K^1408` (field `fA`; `A_k` meant to be `Σ_{r : k_r = k} ζ^r`) and `CapChkZ`
+squeezes `z`; `ζ` is `P3.4`'s first answer (as a K element), which follows every query. With the
+reads `r = 0 … 870` in item order (`cur_r` the path digest, `k_r` its cap index plus the level's
+offset `offᵢ`), the finals check
+
+* (I) `Σ_r ζ^r·cur_r = Σ_k A_k·cap[k]`, one identity per F half of a digest;
+* (II) `Σ_r ζ^r·z^{k_r} = Σ_k A_k·z^k`.
+
+`z^{k_r}` is the bit product `z^{offᵢ}·Π_t (bit t of k ? z^{2^t} : 1)` (existing ops: `bitOf`,
+`selectHalf`, `mulK`). No register before the cap check moves: its ops follow every other final. -/
+
+/-- The largest cap depth (`seq4`: 9): `z^{2^t}` is needed for `t ≤ capMax`. -/
+def capMax (S : Seq) : ℕ := ((List.range nLevels).map fun i => (S.lv i).cap).foldr Nat.max 0
+
+/-- Bit `t` of a read's cap index (registers `c + 7 + 3t …`): the bit, `z^{2^t}` or `1`, the product.
+(Constructors written out: the dot forms cost seconds of elaboration here.) -/
+def capBitOps (one : Reg) (zp : ℕ → Reg) (k c t : ℕ) : List Op :=
+  [Op.bitOf k t, Op.selectHalf (c + 7 + 3 * t) one (zp t), Op.mulK (c + 6 + 3 * t) (c + 8 + 3 * t)]
+
+/-- **One read** (registers from `c`; width `9 + 3·nb`): split the path digest `cur`, add
+`ζ^r·cur` to `aL`/`aH`, `ζ^r·z^{off}·Π_t …` to `aZ`, and the next power `ζ^{r+1}`. Outputs: `aL`
+at `c + 3`, `aH` at `c + 5`, `aZ` at `c + 7 + 3·nb`, `ζ^{r+1}` at `c + 8 + 3·nb`. -/
+def capReadOps (one zeta : Reg) (zp : ℕ → Reg) (w : Reg) (nb cur k p aL aH aZ c : ℕ) : List Op :=
+  [Op.splitDigest cur, Op.mulKF p c, Op.addK aL (c + 2), Op.mulKF p (c + 1), Op.addK aH (c + 4),
+    Op.mulK p w] ++ (List.range nb).flatMap (capBitOps one zp k c) ++
+  [Op.addK aZ (c + 6 + 3 * nb), Op.mulK p zeta]
+
+/-- A read: its path digest, its cap index, its bits, its level's weight `z^{offᵢ}`. -/
+structure CapRead where
+  cur : Reg
+  k : Reg
+  nb : ℕ
+  w : Reg
+
+/-- **The reads in item order**, with the accumulators `(ζ^r, aL, aH, aZ)` threaded; the ops and the
+final accumulators `(aL, aH, aZ)`. -/
+def capReadsOps (one zeta : Reg) (zp : ℕ → Reg) :
+    List CapRead → Reg → Reg → Reg → Reg → ℕ → List Op × Reg × Reg × Reg
+  | [], _, aL, aH, aZ, _ => ([], aL, aH, aZ)
+  | rd :: rs, p, aL, aH, aZ, c =>
+    let r := capReadsOps one zeta zp rs (c + 8 + 3 * rd.nb) (c + 3) (c + 5) (c + 7 + 3 * rd.nb)
+      (c + 9 + 3 * rd.nb)
+    (capReadOps one zeta zp rd.w rd.nb rd.cur rd.k p aL aH aZ c ++ r.1, r.2)
+
+/-- **One cap entry `k`** (registers from `c`; width 10): `A_k` (field `fA`), the entry's two F halves
+(field `fCaps`), `A_k·cap[k]` into `sL`/`sH`, `A_k·z^k` into `sZ`, the next power `z^{k+1}`. Outputs:
+`sL` at `c + 4`, `sH` at `c + 6`, `sZ` at `c + 8`, `z^{k+1}` at `c + 9`. -/
+def capEntryOps (z : Reg) (k zk sL sH sZ c : ℕ) : List Op :=
+  [Op.piElemK fA (32 * k), Op.piElem fCaps (32 * k), Op.piElem fCaps (32 * k + 16), Op.mulKF c (c + 1),
+   Op.addK sL (c + 3), Op.mulKF c (c + 2), Op.addK sH (c + 5), Op.mulK c zk, Op.addK sZ (c + 7),
+   Op.mulK zk z]
+
+/-- The entries `k₀ … k₀ + n − 1`, the sums threaded; the ops and the final sums `(sL, sH, sZ)`. -/
+def capEntriesOps (z : Reg) : ℕ → ℕ → Reg → Reg → Reg → Reg → ℕ → List Op × Reg × Reg × Reg
+  | 0, _, _, sL, sH, sZ, _ => ([], sL, sH, sZ)
+  | n + 1, k, zk, sL, sH, sZ, c =>
+    let r := capEntriesOps z n (k + 1) (c + 9) (c + 4) (c + 6) (c + 8) (c + 10)
+    (capEntryOps z k zk sL sH sZ c ++ r.1, r.2)
+
+/-- The reads of `S`'s levels, in item order (`FinIn`'s column folds `y`: `FRVIR4.curOfY`/`kOfY`),
+level `i`'s weight register `w i`. -/
+def capReads (S : Seq) (fi : FinIn) (w : ℕ → Reg) : List CapRead :=
+  (List.range nLevels).flatMap fun i =>
+    (ysOf fi i).map fun y => ⟨curOfY (S.lv i).sib y, kOfY (S.lv i).sib y, (S.lv i).cap, w i⟩
+
+/-- **`capChkOps S outs b`**: the batched cap check after the other finals (registers from `b`); empty
+unless `S.capChk`. Registers: `b` the K constant `1`, `b + 1` `0`, `b + 2` `ζ` (`chK` of `P3.4`'s
+first answer), `b + 3 + t` `z^{2^t}` (`t ≤ capMax`; `z` the `CapChkZ` answer's `chK`), then the
+levels' weights `z^{offᵢ}` (`i = 1 … 4`), the reads, the entries, three `assertEq`s. -/
+def capChkOps (S : Seq) (outs : Array (List Reg)) (b : ℕ) : List Op :=
+  if S.capChk then
+    let fi : FinIn := ⟨outs, [], #[]⟩
+    let za := (fi.outs.getD ((phasesOf S).length - 1) []).headD 0 - 1
+    let zetaA := (lvOuts fi 4 4).getD 1 0 - 1
+    let M := capMax S
+    let zp := fun t => b + 3 + t
+    let wb := b + 4 + M
+    let w := fun i => if i = 0 then b else wb + (i - 1)
+    let head : List Op :=
+      [Op.const (fun _ => Val.k 1), Op.const (fun _ => Val.k 0), Op.chK zetaA, Op.chK za] ++
+      (List.range M).map (fun t => Op.mulK (zp t) (zp t)) ++
+      (List.range (nLevels - 1)).map (fun i => Op.mulK (w i) (zp (S.lv i).cap))
+    let rb := wb + (nLevels - 1)
+    let rd := capReadsOps b (b + 2) zp (capReads S fi w) b (b + 1) (b + 1) (b + 1) rb
+    let eb := rb + opsOut rd.1
+    let en := capEntriesOps (b + 3) (capEntries S) 0 b (b + 1) (b + 1) (b + 1) eb
+    head ++ rd.1 ++ en.1 ++
+      [Op.assertEq rd.2.1 en.2.1 allK, Op.assertEq rd.2.2.1 en.2.2.1 allK,
+        Op.assertEq rd.2.2.2 en.2.2.2 allK]
+  else []
+
+theorem noAsk_capReadsOps (one zeta : Reg) (zp : ℕ → Reg) :
+    ∀ rs p aL aH aZ c, (capReadsOps one zeta zp rs p aL aH aZ c).1.filterMap Op.item? = []
+  | [], _, _, _, _, _ => rfl
+  | rd :: rs, p, aL, aH, aZ, c => by
+    simp only [capReadsOps, List.filterMap_append, noAsk_capReadsOps one zeta zp rs, capReadOps,
+      List.filterMap_flatMap]
+    simp [capBitOps, List.filterMap_cons, Op.item?]
+
+theorem noAsk_capEntriesOps (z : Reg) :
+    ∀ n k zk sL sH sZ c, (capEntriesOps z n k zk sL sH sZ c).1.filterMap Op.item? = []
+  | 0, _, _, _, _, _, _ => rfl
+  | n + 1, k, zk, sL, sH, sZ, c => by
+    simp only [capEntriesOps, List.filterMap_append, noAsk_capEntriesOps z n, capEntryOps]
+    rfl
+
+/-- **The cap check asks nothing** (its two items are the skeleton's `CapChk`/`CapChkZ`). -/
+theorem noAsk_capChkOps (S : Seq) (outs : Array (List Reg)) (b : ℕ) :
+    (capChkOps S outs b).filterMap Op.item? = [] := by
+  unfold capChkOps
+  split
+  · simp only [List.filterMap_append, noAsk_capReadsOps, noAsk_capEntriesOps, List.filterMap_map]
+    simp [List.filterMap_cons, Op.item?, List.filterMap_eq_nil_iff]
+  · rfl
+
+/-- (−) **No cap check without the flag**: 3.x's sequence gets none. -/
+theorem capChkOps_off (outs : Array (List Reg)) (b : ℕ) : capChkOps seq3 outs b = [] := by
+  rw [capChkOps, seq3_eq]; rfl
+
+/-- (+) **The cap check's head at `seq4`**: the constants `1`, `0`, then `ζ` and `z` as K elements
+(`chK`), then `z^{2^t}` for `t ≤ 9` (`capMax seq4 = 9`). -/
+theorem capChkOps_head (outs : Array (List Reg)) (b : ℕ) : capMax seq4 = 9 ∧
+    ((capChkOps seq4 outs b).take 4).map Op.outs = [1, 1, 1, 1] := by
+  refine ⟨by rw [seq4_eq]; decide, ?_⟩
+  rw [capChkOps, if_pos (by rw [seq4_eq])]
+  rfl
+
+/-- **The relocated finals** (`FRVIR4.gen4`'s `fin`; a group program's with `Q`); revision 4.4.1:
+then the cap check. -/
 def finOps4 (P : FinP) (outs : Array (List Reg)) (b : ℕ) (Q : Kind → FinP := fun _ => P) : List Op :=
-  ((finalsOf P Q).ops outs b).map (reloc P.S)
+  ((finalsOf P Q).ops outs b ++ capChkOps P.S outs (b + opsOut ((finalsOf P Q).ops outs b))).map
+    (reloc P.S)
 
 /-- **At 3.x's parameters the relocated finals run exactly as today's.** -/
 theorem finOps4_seq3 (impl : OpImpl) (κ : Kind) (inp : Input) (outs : Array (List Reg)) (b : ℕ)
     (s : St) (tr : Trace) :
     exec impl κ inp (finOps4 fin3P outs b) s tr = exec impl κ inp ((sfFinals finP finPf).ops outs b) s tr := by
-  show exec impl κ inp (((finalsOf fin3P).ops outs b).map (reloc seq3)) s tr = _
-  rw [exec_reloc_seq3, finalsOf_seq3]
+  have h : capChkOps fin3P.S outs (b + opsOut ((finalsOf fin3P).ops outs b)) = [] := capChkOps_off _ _
+  show exec impl κ inp (((finalsOf fin3P).ops outs b ++ _).map (reloc seq3)) s tr = _
+  rw [h, List.append_nil, exec_reloc_seq3, finalsOf_seq3]
 
 /-! ## Controls -/
 

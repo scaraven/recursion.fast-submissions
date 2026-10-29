@@ -15,9 +15,9 @@ a power-of-two H.
   verifier slot: the `hashStmt` blocks of its statement (3), the mirror `WM` (146), a `2^14`-element
   L stride and `2^20` M cells.
 * **H** from block 0, used `hUsed` blocks at full occupancy. One trace of `seq4` hashes to
-  `chainLenOf seq4 = 23,168` blocks; the aggregate leaf's chain hashes `0x54 ‖ tr₁ ‖ … ‖ tr_k`:
-  `aggChainLen k = ⌈(1 + k · (streamBytesOf seq4 − 1)) / 64⌉` (`k = 2`: 46,336 with 63 bytes in
-  its last block; `k = 3`: 69,504 with 62; `k = 4`: 92,672 with 61: **not** multiples of 64 for any
+  `chainLenOf seq4 = 23,875` blocks (revision 4.4.1, A2′'s cap check); the aggregate leaf's chain hashes `0x54 ‖ tr₁ ‖ … ‖ tr_k`:
+  `aggChainLen k = ⌈(1 + k · (streamBytesOf seq4 − 1)) / 64⌉` (`k = 2`: 47,750 with 63 bytes in
+  its last block; `k = 3`: 71,625 with 62; `k = 4`: 95,500 with 61: **not** multiples of 64 for any
   `k ∈ {2, 3, 4}`, so the last block needs the `k`-gated padding, counter and final flag; S-0′ RESULT
   I-5, R-4-m2). H holds the chain of an aggregate child of at most `maxK` segments (`N2`: 2,
   `N4`/`N8`: 4); `FRVerifier4.childOk4` is the check that refuses a larger one (R-4-m2).
@@ -72,12 +72,12 @@ def NodeKind.mSlot (κ : NodeKind) (σ : ℕ) : ℕ := κ.oneCell + (σ - 1) * s
 def NodeKind.tauCoords (κ : NodeKind) : ℕ := κ.dims.logM
 def NodeKind.sigmaCoords (κ : NodeKind) : ℕ := κ.m - 7
 
-theorem aggChainLen_eq : aggChainLen 2 = 46336 ∧ aggChainLen 4 = 92672 ∧
+theorem aggChainLen_eq : aggChainLen 2 = 47750 ∧ aggChainLen 4 = 95500 ∧
     (1 + 2 * (streamBytesOf seq4 - 1)) % 64 = 63 ∧ (1 + 4 * (streamBytesOf seq4 - 1)) % 64 = 61 := by
   simp only [aggChainLen, streamBytesOf_seq4]; decide
 
 /-- `k = 3` is unaligned too (R-4-m2). -/
-theorem aggChainLen_k3 : aggChainLen 3 = 69504 ∧ (1 + 3 * (streamBytesOf seq4 - 1)) % 64 = 62 := by
+theorem aggChainLen_k3 : aggChainLen 3 = 71625 ∧ (1 + 3 * (streamBytesOf seq4 - 1)) % 64 = 62 := by
   simp only [aggChainLen, streamBytesOf_seq4]; decide
 
 /-- `aggChainLen` is monotone: a child of `k ≤ maxK` segments has a chain no longer than H's
@@ -88,14 +88,14 @@ theorem aggChainLen_le {k k' : ℕ} (h : k ≤ k') : aggChainLen k ≤ aggChainL
 /-- H's aggregate chains are `aggChainLen maxK` blocks. -/
 theorem maxK_eq : NodeKind.N2.maxK = 2 ∧ NodeKind.N4.maxK = 4 ∧ NodeKind.N8.maxK = 4 := ⟨rfl, rfl, rfl⟩
 
-theorem hUsed_eq : NodeKind.N2.hUsed = 70955 ∧ NodeKind.N4.hUsed = 117589 ∧
-    NodeKind.N8.hUsed = 187540 := by
+theorem hUsed_eq : NodeKind.N2.hUsed = 73076 ∧ NodeKind.N4.hUsed = 121124 ∧
+    NodeKind.N8.hUsed = 193196 := by
   simp only [NodeKind.hUsed, NodeKind.vslots, NodeKind.hasPrev, NodeKind.segSlots, chainLenOf_seq4.1,
     aggChainLen_eq.1, aggChainLen_eq.2.1, wotsSlot4, wmSlot4]; decide
 
 /-- **The regions are disjoint and inside the node** (tight packing): H `[0, hUsed)`, L
 `[lBase, lBase + N_L/128)`, M `[mBase, blocks)`; `f` has `blocks · 128` cells. Slack before M:
-`N2` 26,624 blocks, `N4` 77,824, `N8` 7,936 (1.04×). -/
+`N2` 24,576 blocks, `N4` 74,240, `N8` 2,304 (revision 4.4.1, before R-A′'s spacers). -/
 theorem regions_fit (κ : NodeKind) :
     κ.hUsed ≤ κ.lBase ∧ κ.lBase + κ.nL / 128 ≤ κ.mBase ∧ κ.mBase + κ.nM / 128 = κ.blocks ∧
       κ.cells = κ.blocks * 128 := by

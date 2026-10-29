@@ -22,8 +22,9 @@ are used, with their exact values, by modules this stage may not edit (S-0′ JO
   mis-size the format (R-4-m3).
 * **One item sequence** `seq4` (B-13: every kind at `m ≤ 32`): 3.x's sequence (`seq3`, `m* = 32`)
   with the node phases sized for `N_L = 2^17`, `N_M = 2^23` and `f`'s `2^25` cells (Lr 17, E2 23,
-  E4 25 rounds: 14 more items than 3.x, all dummies for the segments): 8,905 items, `piSize`
-  798,192, a stream of `64 · 23,168` bytes; `4 × 8,905 ≤ qV = 36,000`.
+  E4 25 rounds: 14 more items than 3.x, all dummies for the segments) and, revision 4.4.1, the cap
+  check (`CapChk`: absorb `A`, 1,408 K elements and 32 zero bytes; `CapChkZ`: squeeze `z`): 8,907
+  items, `piSize` 843,280, a stream of `64 · 23,875` bytes; `4 × 8,907 + 3 ≤ qV = 36,000`.
 -/
 
 namespace FR
@@ -118,13 +119,16 @@ structure Seq where
   format: `colBytes`, the final tails (`FRVIRFinals4.gTailOps`, `2^(m − 25)`) and `seqOf` assume 6
   (R-4-m3). -/
   ell0 : ℕ := 6
+  /-- Revision 4.4.1 (PACK-4.4 §3.3, B2 (β)): the batched cap check `CapChk`/`CapChkZ` after `Pf`
+  (absorb field `fA`, squeeze `z`), which replaces the per-position cap reads. `seq4` only. -/
+  capChk : Bool := false
   deriving DecidableEq, Repr
 
 /-- **The counts one kind needs** (§2.3): Z1 `m − 13`, Z3 `m − 6`, S2 `(m − 14) + 10`; node only:
 Lr `log N_L`, E2 `log N_M`, E4 `m − 7` (`f`'s cells); the final message `2^(m − 25)`. -/
 def Dims.seqR (ell0 : ℕ) (d : Dims) : Seq :=
   ⟨d.m, d.m - 13, d.m - 6, d.m - 4, if d.node then d.logL else 0, if d.node then d.logM else 0,
-   if d.node then d.m - 7 else 0, d.m - 19 - ell0, 32, ell0⟩
+   if d.node then d.m - 7 else 0, d.m - 19 - ell0, 32, ell0, false⟩
 
 /-- The counts at level-0 rows `2^6`. -/
 def Dims.seq (d : Dims) : Seq := d.seqR 6
@@ -132,11 +136,12 @@ def Dims.seq (d : Dims) : Seq := d.seqR 6
 /-- The componentwise maximum. -/
 def Seq.max (a b : Seq) : Seq :=
   ⟨Nat.max a.mStar b.mStar, Nat.max a.z1 b.z1, Nat.max a.z3 b.z3, Nat.max a.s2 b.s2,
-   Nat.max a.lr b.lr, Nat.max a.e2 b.e2, Nat.max a.e4 b.e4, Nat.max a.pf b.pf, a.e4end, a.ell0⟩
+   Nat.max a.lr b.lr, Nat.max a.e2 b.e2, Nat.max a.e4 b.e4, Nat.max a.pf b.pf, a.e4end, a.ell0,
+   a.capChk⟩
 
 /-- **The sequence of a kind group**: the componentwise maximum of its kinds' counts. -/
 def seqOf : List Dims → Seq
-  | [] => ⟨0, 0, 0, 0, 0, 0, 0, 0, 32, 6⟩
+  | [] => ⟨0, 0, 0, 0, 0, 0, 0, 0, 32, 6, false⟩
   | d :: ds => d.seq.max (seqOf ds)
 
 /-- `a` fits in `b`: every count of `a` is at most `b`'s (a kind's unused items are dummies). -/
@@ -151,12 +156,13 @@ def seq3 : Seq := seqOf [Kind.dims .L32, Kind.dims .P30, Kind.dims .N30]
 /-- **The item sequence of revision 4.1** (B-13: every kind at `m ≤ 32`, one sequence): the six
 kinds' maximum; its hashed stream is a multiple of 64 bytes with 3.x's 32-byte E4 end
 (`chainLenOf_seq4`). It is 3.x's sequence with the node phases sized for `N_L = 2^17`,
-`N_M = 2^23` and `f`'s `2^25` cells (`seq4_eq`, `seq3_eq`). -/
+`N_M = 2^23` and `f`'s `2^25` cells (`seq4_eq`, `seq3_eq`); revision 4.4.1: with the cap check
+`CapChk`/`CapChkZ` after `Pf` (`capChk := true`). -/
 def seq4 : Seq := { seqOf (SegKind.dims .L30 :: SegKind.dims .L31 :: SegKind.dims .L32 ::
-    [NodeKind.dims .N2, NodeKind.dims .N4, NodeKind.dims .N8]) with e4end := 32 }
+    [NodeKind.dims .N2, NodeKind.dims .N4, NodeKind.dims .N8]) with e4end := 32, capChk := true }
 
-theorem seq3_eq : seq3 = ⟨32, 19, 26, 28, 15, 21, 23, 7, 32, 6⟩ := by decide
-theorem seq4_eq : seq4 = ⟨32, 19, 26, 28, 17, 23, 25, 7, 32, 6⟩ := by decide
+theorem seq3_eq : seq3 = ⟨32, 19, 26, 28, 15, 21, 23, 7, 32, 6, false⟩ := by decide
+theorem seq4_eq : seq4 = ⟨32, 19, 26, 28, 17, 23, 25, 7, 32, 6, true⟩ := by decide
 
 /-- Every kind fits the sequence (its unused items are dummies). -/
 theorem seg_fits (κ : SegKind) : κ.dims.seq.Le seq4 := by cases κ <;> decide
@@ -239,9 +245,28 @@ def half (x : ℕ) : ℕ := (x + 1) / 2
 def capBytesOf (S : Seq) (i : ℕ) : ℕ :=
   if i + 1 < nLevels then 2 ^ (S.lv (i + 1)).cap * 32 else 2 ^ S.pf * 32
 
-/-- **The phase table of a sequence** (§2.3, A.4; 3.x's order, counts from `S`). -/
+/-- **The cap check's entries** (PACK-4.4 §3.3): the five caps' digests, `Σᵢ 2^capᵢ` (`seq4`: `512 +
+256 + 256 + 256 + 128 = 1,408`). Entry `offᵢ + k` is `capᵢ[k]`, `offᵢ = capEntriesBelow S i`. -/
+def capEntriesBelow (S : Seq) (i : ℕ) : ℕ := ((List.range i).map fun i' => 2 ^ (S.lv i').cap).sum
+
+/-- All five caps' entries. -/
+def capEntries (S : Seq) : ℕ := capEntriesBelow S nLevels
+
+/-- **`A`'s bytes** (A.3 row 18): one K element (32 bytes) per cap entry, then 32 zero bytes, so that
+the phase `CapChk ‖ CapChkZ` (an absorb item `80 + len`, a squeeze item `80`) is a whole number of
+64-byte blocks (`capChk_aligned`; PK-M1's block alignment). -/
+def aBytes (S : Seq) : ℕ := capEntries S * 32 + 32
+
+/-- The cap check's two phases (revision 4.4.1): absorb `A` (field `fA`), squeeze `z`; `ζ` is the
+first answer of `P3.4` (PACK-4.4 §3.3, the orchestrator's ruling). -/
+def capChkPh (S : Seq) : List (String × Sh) :=
+  if S.capChk then [("CapChk", .absorb fA (aBytes S)), ("CapChkZ", .squeezes 1 .one)] else []
+
+/-- **The phase table of a sequence** (§2.3, A.4; 3.x's order, counts from `S`; revision 4.4.1: then
+the cap check, `capChkPh`). -/
 def phasesOf (S : Seq) : List (String × Sh) :=
-  [("seed", .seed), ("stmt", .absorb fStmt 128), ("cap0", .absorb fCaps (2 ^ (S.lv 0).cap * 32)),
+  -- the ascription: without it the `++` chain's elaboration takes ≈ 19 s (A2′'s profile)
+  ([("seed", .seed), ("stmt", .absorb fStmt 128), ("cap0", .absorb fCaps (2 ^ (S.lv 0).cap * 32)),
    ("Z1", .squeezes (half S.z1) .coords), ("Z2", .uni fZ2), ("Z3", .rounds fZ3 S.z3 3 false),
    ("Zend", .absorb fZend 32), ("L1", .squeezes 1 .one), ("L2", .rounds fL2 14 2 false),
    ("L3", .absorb fL2 (8 * 16)), ("L3β", .squeezes 1 .one),
@@ -250,11 +275,11 @@ def phasesOf (S : Seq) : List (String × Sh) :=
    ("Lr3", .squeezes 1 .one), ("E1", .squeezes (half S.e2) .coords), ("E2", .rounds fE S.e2 3 false),
    ("Eend", .absorb fEEnd 48), ("E3", .squeezes 1 .one), ("E4", .rounds fE S.e4 2 false),
    ("E4end", .absorb fE S.e4end), ("RS0", .absorb fRS0 (4 * 128 * 16)), ("RS1", .squeezes 4 .coords),
-   ("B'", .squeezes 1 .one)] ++
+   ("B'", .squeezes 1 .one)] : List (String × Sh)) ++
   (List.range nLevels).flatMap (fun i =>
     [("P1", .rounds fP1 (S.lv i).ell 2 true), ("C", .absorb (capField i) (capBytesOf S i)),
      ("P2", .squeezes (S.lv i).sq (.pos i)), ("Q", .queries i), ("P3", .squeezes 5 .coords)]) ++
-  [("Pf", .rounds fPf S.pf 2 true)]
+  [("Pf", .rounds fPf S.pf 2 true)] ++ capChkPh S
 
 /-- **The 3.x table is `phasesOf seq3`** (names, shapes and counts). -/
 theorem phasesOf_seq3 : phases.map (fun p => (p.name, p.shape.toSh)) = phasesOf seq3 := by
@@ -308,8 +333,12 @@ theorem _root_.FR.Shape.bytesToL_toSh (f : ℕ) (s : Shape) : s.toSh.bytesToL lv
 /-- The size of field `f` in `S`'s format. -/
 def fieldSizeOf (S : Seq) (f : ℕ) : ℕ := ((phasesOf S).map fun p => p.2.bytesToL (S.lv) f).sum
 
-/-- **`piSize` of `S`'s format** (`hdr ‖ stmt ‖ body`, A.3's fields). -/
-def piSizeOf (S : Seq) : ℕ := ((List.range nFields).map (fieldSizeOf S)).sum
+/-- The fields of revision 4.4's format: 3.x's 18 and `fA` (A.3 row 18). -/
+def nFields4 : ℕ := 19
+
+/-- **`piSize` of `S`'s format** (`hdr ‖ stmt ‖ body`, A.3's fields; `fA` empty without the cap
+check). -/
+def piSizeOf (S : Seq) : ℕ := ((List.range nFields4).map (fieldSizeOf S)).sum
 
 theorem fieldSizeOf_seq3 (f : ℕ) : fieldSizeOf seq3 f = fieldSize f := by
   have h : seq3.lv = lvlStar := by rw [seq3_eq]; rfl
@@ -319,7 +348,10 @@ theorem fieldSizeOf_seq3 (f : ℕ) : fieldSizeOf seq3 f = fieldSize f := by
 /-- **`seq3`'s format has 3.x's `piSize`** (797,904; a 4.1 segment proof has
 `piSizeOf seq4 = 798,192`). -/
 theorem piSizeOf_seq3 : piSizeOf seq3 = piSize := by
-  rw [piSizeOf, piSize, fieldSizes]; exact congrArg List.sum (List.map_congr_left fun f _ => fieldSizeOf_seq3 f)
+  rw [piSizeOf, nFields4, List.range_succ, List.map_append, List.sum_append, piSize, fieldSizes]
+  have h18 : fieldSizeOf seq3 18 = 0 := by rw [fieldSizeOf_seq3]; decide +kernel
+  rw [List.map_singleton, h18, List.sum_singleton, Nat.add_zero]
+  exact congrArg List.sum (List.map_congr_left fun f _ => fieldSizeOf_seq3 f)
 
 /-- The hashed stream's bytes of `S`'s trace (`0x54 ‖ traceBytes`). -/
 def streamBytesOf (S : Seq) : ℕ := 1 + ((itemsOf S).map fun it => 8 + it.qlen + 32).sum
@@ -332,18 +364,32 @@ theorem streamBytesOf_seq3 : streamBytesOf seq3 = streamBytes := by
 
 /-! ## The sequence's numbers -/
 
-theorem itemsOf_seq4_length : (itemsOf seq4).length = 8905 := by
+theorem itemsOf_seq4_length : (itemsOf seq4).length = 8907 := by
   rw [seq4_eq]; decide +kernel
 
-theorem fieldSizesOf_seq4 : (List.range nFields).map (fieldSizeOf seq4) = [48, 128, 2048, 1248, 32, 800, 1344, 816, 48, 2336, 48, 8192, 2112, 672, 45056, 4096, 487504, 241664] := by
+/-- The cap check's sizes at `seq4`: 1,408 entries, `A` 45,088 bytes. -/
+theorem capEntries_seq4 : capEntries seq4 = 1408 ∧ aBytes seq4 = 45088 := by
+  rw [seq4_eq]; decide
+
+/-- (+) `seq4` has the cap check: `A` (45,088 bytes) then `z`; (−) `seq3` (3.x's) has none. -/
+theorem capChkPh_ctl : capChkPh seq4 = [("CapChk", .absorb fA 45088), ("CapChkZ", .squeezes 1 .one)] ∧
+    capChkPh seq3 = [] := by
+  rw [seq4_eq, seq3_eq]; decide
+
+/-- **The cap check is block-aligned** (PK-M1): its two items take `(80 + |A|) + 80` stream bytes,
+a multiple of 64; so the stream stays whole blocks (`chainLenOf_seq4`). -/
+theorem capChk_aligned : ((Item.absorb (aBytes seq4)).slen + Item.squeeze.slen) % 64 = 0 := by
+  rw [capEntries_seq4.2]; decide
+
+theorem fieldSizesOf_seq4 : (List.range nFields4).map (fieldSizeOf seq4) = [48, 128, 2048, 1248, 32, 800, 1344, 816, 48, 2336, 48, 8192, 2112, 672, 45056, 4096, 487504, 241664, 45088] := by
   rw [seq4_eq]; decide +kernel
 
-theorem piSizeOf_seq4 : piSizeOf seq4 = 798192 := by rw [piSizeOf, fieldSizesOf_seq4]; rfl
+theorem piSizeOf_seq4 : piSizeOf seq4 = 843280 := by rw [piSizeOf, fieldSizesOf_seq4]; rfl
 
-theorem streamBytesOf_seq4 : streamBytesOf seq4 = 1482752 := by rw [seq4_eq]; decide +kernel
+theorem streamBytesOf_seq4 : streamBytesOf seq4 = 1528000 := by rw [seq4_eq]; decide +kernel
 
 /-- The stream is `64 · chainLen` bytes: no padding cell (as INT-2's 3.x stream). -/
-theorem chainLenOf_seq4 : chainLenOf seq4 = 23168 ∧ streamBytesOf seq4 = 64 * 23168 := by
+theorem chainLenOf_seq4 : chainLenOf seq4 = 23875 ∧ streamBytesOf seq4 = 64 * 23875 := by
   rw [chainLenOf, streamBytesOf_seq4]; decide
 
 /-! ## `qV` (B-17) -/
@@ -353,6 +399,10 @@ def qV4 : ℕ := 36000
 
 /-- The aggregate leaf's trace (`≤ 4` segments) and a node's trace fit `qV`. -/
 theorem traces_le_qV : 4 * (itemsOf seq4).length ≤ qV4 := by
+  rw [itemsOf_seq4_length]; decide
+
+/-- Revision 4.4.1: with R-A′'s three spacers between four segments, `4 · 8,907 + 3 = 35,631 ≤ qV`. -/
+theorem traces_spacers_le_qV : 4 * (itemsOf seq4).length + 3 ≤ qV4 := by
   rw [itemsOf_seq4_length]; decide
 
 /-! ## `hdr` and `stmt` -/

@@ -150,8 +150,11 @@ def fCaps : ℕ := 14
 def fFinal : ℕ := 15
 def fCols : ℕ := 16
 def fSibs : ℕ := 17
-/-- Number of fields. -/
+/-- Number of fields (3.x's format; revision 4.4's `seq4` adds field 18, `fA`: `FRShape4.nFields4`). -/
 def nFields : ℕ := 18
+/-- A.3 row 18 (revision 4.4.1, PACK-4.4 §3.3): the cap check's aggregated selectors `A`, absorbed
+by phase `CapChk` after `Pf` (`seq4` only; `FRShape4.phasesOf`). -/
+def fA : ℕ := 18
 
 /-! ## The phase table (A.4): the one place the counts live -/
 

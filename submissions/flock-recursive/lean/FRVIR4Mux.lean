@@ -84,15 +84,14 @@ def segPtOpG (S : Seq) (G : Grp) (outs : Array (List Reg)) : Op :=
   .packFK fun ι => ((outs.getD 3 []).drop 1).take ((G ι).d.m - 13) ++
     List.replicate (S.mStar - (G ι).d.m) (st.getD 1 0) ++ st.drop 2
 
-/-- One position `p` of level `i` (`posOps4`, the kind's ladder per index). -/
-def posOpsG (L : Level) (K : Kind → Level) (i co so capO : ℕ) (ans : List Reg) (w : Reg) (p b : ℕ) :
+/-- One position `p` of level `i` (`posOps4`, the kind's ladder per index; revision 4.4.1: ends
+with the cap index, the cap check is the finals' `capChkOps`). -/
+def posOpsG (L : Level) (K : Kind → Level) (i co so : ℕ) (ans : List Reg) (w : Reg) (p b : ℕ) :
     List Op :=
-  let cur := b + 4 + 6 * L.sib - 1
   [.idx (kt fun ι => ans.getD (p / (K ι).per) 0) (fun ι => (K ι).logN) (kt fun ι => p % (K ι).per),
    .piField 0 (co + p * colBytes i) (colBytes i), .askCol i (b + 1), .dotKF w (b + 1)] ++
   merkleOpsG (fun ι => (K ι).sib) i b L.sib 0 (b + 2) (so + p * L.sib * 32) (b + 4) ++
-  [.shrN b (fun ι => (K ι).sib), .piDigestAt 0 capO (b + 4 + 6 * L.sib),
-   .assertEq (if L.sib = 0 then b + 2 else cur) (b + 4 + 6 * L.sib + 1) allK]
+  [.shrN b (fun ι => (K ι).sib)]
 
 /-- **One phase** of the group program (`genPhase4` with the kind tables per index). -/
 def genPhaseG (S : Seq) (G : Grp) (n : ℕ) (ph : String × Sh) (c : GCtx) : List Op × GCtx :=
@@ -147,10 +146,10 @@ def genPhaseG (S : Seq) (G : Grp) (n : ℕ) (ph : String × Sh) (c : GCtx) : Lis
   | .queries i =>
     let L := S.lv i
     let K := kt fun ι => S.lvK (G ι).d.m i
-    let co := o fCols; let so := o fSibs; let capO := fieldOffOf S fCaps + capOff4 S i
+    let co := o fCols; let so := o fSibs
     let pw := posW4 S i
     let ops := [.packK c.foldR, .eqTableK b] ++ (List.range L.t).flatMap fun q =>
-      posOpsG L K i co so capO c.posAns (b + 1) q (b + 2 + pw * q)
+      posOpsG L K i co so c.posAns (b + 1) q (b + 2 + pw * q)
     rec_ ops c.st ((List.range L.t).map fun q => b + 2 + pw * q + 3)
 
 /-- The phases from number `n`. -/
@@ -191,7 +190,8 @@ theorem relocT_eq (S : Seq) : relocT S (fieldOffT S) = reloc S := funext fun op 
 /-- **`finOps4` with the table relocation** (`finOps4F_eq`). -/
 def finOps4F (P : FinP) (Q : Kind → FinP) : FinOps := fun outs b =>
   let tab := fieldOffT P.S
-  ((finalsOf P Q).ops outs b).map (relocT P.S tab)
+  let fo := (finalsOf P Q).ops outs b
+  (fo ++ capChkOps P.S outs (b + opsOut fo)).map (relocT P.S tab)
 
 theorem finOps4F_eq (P : FinP) (Q : Kind → FinP) (outs : Array (List Reg)) (b : ℕ) :
     finOps4F P Q outs b = finOps4 P outs b Q := by

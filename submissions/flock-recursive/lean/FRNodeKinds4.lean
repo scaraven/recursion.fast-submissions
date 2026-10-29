@@ -14,7 +14,7 @@ nonempty and tile `[0, blocks)`) gives every per-block fact by a generic argumen
 `ind4_iff`), with no evaluation over blocks.
 
 **H** (blocks of `2^14` positions), in order:
-* the signed children's digest chains: `N2`/`N4` the previous node's trace (`23,168` blocks,
+* the signed children's digest chains: `N2`/`N4` the previous node's trace (`23,875` blocks,
   `0x54 ‖ tr`) and the aggregate's (`aggChainLen maxK` blocks, `0x54 ‖ tr₁ ‖ … ‖ tr_maxK`); `N8`
   two aggregates. Block 0 `streamStart`, then `stream` with the full chain's counters (the last
   block is final at `k = maxK`);
@@ -42,9 +42,9 @@ open RecursionFast Rev4 Kinds FR.Stream
 /-! ## Numbers (literals, with their fidelity to `FRShape4`/`FRNodeLayout4`) -/
 
 /-- One trace's stream `0x54 ‖ traceBytes tr` at `seq4`, in bytes. -/
-def segB : ℕ := 1482752
+def segB : ℕ := 1528000
 /-- Its digest chain's blocks. -/
-def cLen : ℕ := 23168
+def cLen : ℕ := 23875
 /-- The aggregate stream `0x54 ‖ tr₁ ‖ … ‖ tr_k`, in bytes. -/
 def aggB (k : ℕ) : ℕ := 1 + k * (segB - 1)
 /-- Its digest chain's blocks. -/
@@ -412,12 +412,12 @@ theorem tgt_of_mem {κ : NodeKind} {iv : TIv} (h : iv ∈ nodeLayout4 κ) {blk :
 /-! ## Region facts -/
 
 /-- **H fits before L** (with the new tail): `hEnd ≤ lBase`, so H, L, M are disjoint
-(`regions_fit`). `N2` 70,957 ≤ 71,168; `N4` 117,593 ≤ 117,760; `N8` 187,548 ≤ 187,648. -/
+(`regions_fit`). `N2` 73,078 ≤ 73,216; `N4` 121,128 ≤ 121,344; `N8` 193,204 ≤ 193,280 (revision 4.4.1). -/
 theorem hEnd_le (κ : NodeKind) : hEnd κ ≤ κ.lBase ∧ hUsedN κ + nAgg κ * κ.maxK = hEnd κ := by
   refine ⟨?_, by simp [hEnd, finB]⟩
   rw [NodeKind.lBase, ← hUsedN_eq]; cases κ <;> decide
 
-theorem hEnd_eq : hEnd .N2 = 70957 ∧ hEnd .N4 = 117593 ∧ hEnd .N8 = 187548 := by decide
+theorem hEnd_eq : hEnd .N2 = 73078 ∧ hEnd .N4 = 121128 ∧ hEnd .N8 = 193204 := by decide
 
 /-- A candidate final block is **the last block of a stream of `aggB k′` bytes**: its target's
 counter is `aggB k′` and its final flag is set. -/

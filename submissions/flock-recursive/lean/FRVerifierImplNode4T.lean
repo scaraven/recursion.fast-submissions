@@ -487,13 +487,13 @@ theorem tgtE_bit (t : Block.Target) (p : ℕ) :
 /-- (+/−) **The bits on `N4`**: chain 0's block 1 (counter `128`) reads `t_lo` bit 7 as `1` and
 bit 6 as `0`; chain 1's last block (final, `t = aggB 4`, odd) reads bit 0 and the final flag as
 `1`, its second-to-last block reads the flag as `0`; the tail's candidate `F_{0,1}` (final,
-`t = aggB 1 = 0x16A000`) reads the flag and bit 13 as `1`, bit 12 as `0`. -/
+`t = aggB 1 = 0x1750C0`, revision 4.4.1) reads the flag and bit 12 as `1`, bit 13 as `0`. -/
 theorem nodeE4_ctrl :
     nodeE4 .N4 1 1031 = 1 ∧ nodeE4 .N4 1 1030 = 0 ∧
     nodeE4 .N4 (lastB .N4 1) 1024 = 1 ∧ nodeE4 .N4 (lastB .N4 1) 1088 = 1 ∧
     nodeE4 .N4 (lastB .N4 1 - 1) 1088 = 0 ∧
-    nodeE4 .N4 (N4c.finB .N4 0) 1088 = 1 ∧ nodeE4 .N4 (N4c.finB .N4 0) 1037 = 1 ∧
-    nodeE4 .N4 (N4c.finB .N4 0) 1036 = 0 := by
+    nodeE4 .N4 (N4c.finB .N4 0) 1088 = 1 ∧ nodeE4 .N4 (N4c.finB .N4 0) 1036 = 1 ∧
+    nodeE4 .N4 (N4c.finB .N4 0) 1037 = 0 := by
   have hc0 : (⟨.stream, N4c.chBase .N4 0 + 1, N4c.chBase .N4 0 + N4c.chLen .N4 0,
       fun o => some (streamTarget (N4c.chBytes .N4 0) (o + 1))⟩ : N4c.TIv) ∈ N4c.nodeLayout4 .N4 := by
     simp only [N4c.nodeLayout4, N4c.chainIvs, List.mem_append, List.mem_cons, true_or, or_true]

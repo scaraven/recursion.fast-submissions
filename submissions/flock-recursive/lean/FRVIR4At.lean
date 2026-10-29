@@ -326,6 +326,37 @@ theorem gFinSh_ex (Q' : Kind → FinP) : (gFinSh P fi b Q).2 = (gFinSh P fi b Q'
 
 end Fields
 
+section Cap
+variable (h : Reg → Op) (pf : Bool) (ι : Kind)
+
+theorem map_at_capReadsOps (one zeta : Reg) (zp : ℕ → Reg) :
+    ∀ rs p aL aH aZ c, (capReadsOps one zeta zp rs p aL aH aZ c).1.map (Op.at h pf ι) =
+      (capReadsOps one zeta zp rs p aL aH aZ c).1
+  | [], _, _, _, _, _ => rfl
+  | rd :: rs, p, aL, aH, aZ, c => by
+    simp only [capReadsOps, List.map_append, map_at_capReadsOps one zeta zp rs, capReadOps, List.map_flatMap,
+      capBitOps]
+    rfl
+
+theorem map_at_capEntriesOps (z : Reg) :
+    ∀ n k zk sL sH sZ c, (capEntriesOps z n k zk sL sH sZ c).1.map (Op.at h pf ι) =
+      (capEntriesOps z n k zk sL sH sZ c).1
+  | 0, _, _, _, _, _, _ => rfl
+  | n + 1, k, zk, sL, sH, sZ, c => by
+    simp only [capEntriesOps, List.map_append, map_at_capEntriesOps z n]
+    rfl
+
+/-- **The cap check reads no kind table** (revision 4.4.1). -/
+theorem map_at_capChkOps (S : Seq) (outs : Array (List Reg)) (b : ℕ) :
+    (capChkOps S outs b).map (Op.at h pf ι) = capChkOps S outs b := by
+  unfold capChkOps
+  split
+  · simp only [List.map_append, map_at_capReadsOps, map_at_capEntriesOps, List.map_map]
+    rfl
+  · rfl
+
+end Cap
+
 /-- One step of `Finals.ops`' fold. -/
 def finStep (outs : Array (List Reg)) (zh : List Reg) (acc : List Op × ℕ × Array (List Reg)) (f : FinField) :
     List Op × ℕ × Array (List Reg) :=
@@ -381,6 +412,8 @@ theorem map_at_finOps4 {h : Reg → Op} (hh : ∀ s, (h s).outs = 1) (ι : Kind)
     funext (reloc_at false ι P.S hr)
   rw [e, ← List.map_map]
   refine congrArg (List.map (reloc P.S)) ?_
+  suffices hF : ((finalsOf P Q).ops outs b).map (Op.at h false ι) = (finalsOf P (finAt Q ι)).ops outs b by
+    rw [List.map_append, hF, map_at_capChkOps, ← hF, opsOut_map_at hh]
   have hrest : List.Forall₂ (FMap (Op.at h false ι)) (finalsOf P Q).rest (finalsOf P (finAt Q ι)).rest := by
     simp only [Finals.rest, finalsOf]
     refine .cons ?_ (.cons ?_ (.cons ?_ (.cons ?_ (.cons ?_ (.cons ?_ ?_)))))

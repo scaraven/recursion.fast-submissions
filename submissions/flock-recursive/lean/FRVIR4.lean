@@ -123,19 +123,28 @@ def segPtOp (S : Seq) (p : KindP) (outs : Array (List Reg)) : Op :=
   .packF (((outs.getD 3 []).drop 1).take (p.d.m - 13) ++ List.replicate (S.mStar - p.d.m) (st.getD 1 0) ++
     st.drop 2)
 
-/-- One position `p` of level `i` (3.x's `posOps`; absolute offsets `co`, `so`, `cap`). -/
-def posOps4 (S : Seq) (k : KindP) (i co so capO : ℕ) (ans : List Reg) (w : Reg) (p b : ℕ) : List Op :=
+/-- One position `p` of level `i` (3.x's `posOps`; absolute offsets `co`, `so`). **Revision 4.4.1**
+(PACK-4.4 §3.3, (β)): the position ends with its cap index `k = j >>> sib` (`shrN`); the path's
+digest (register `b + 4 + 6·sL − 1`, or the column's `b + 2` at `sL = 0`) is **not** compared with
+the cap entry here (3.x's `piDigestAt; assertEq`): the finals' batched cap check `capChkOps`
+(`FRVIRFinals4`) reads both registers after the cap check's challenges. -/
+def posOps4 (S : Seq) (k : KindP) (i co so : ℕ) (ans : List Reg) (w : Reg) (p b : ℕ) : List Op :=
   let L := S.lv i
   let K := S.lvK k.d.m i
-  let cur := b + 4 + 6 * L.sib - 1
   [.idx (fun _ => ans.getD (p / K.per) 0) (fun _ => K.logN) (fun _ => p % K.per),
    .piField 0 (co + p * colBytes i) (colBytes i), .askCol i (b + 1), .dotKF w (b + 1)] ++
   merkleOps4 K.sib i b L.sib 0 (b + 2) (so + p * L.sib * 32) (b + 4) ++
-  [.shrN b (fun _ => K.sib), .piDigestAt 0 capO (b + 4 + 6 * L.sib),
-   .assertEq (if L.sib = 0 then b + 2 else cur) (b + 4 + 6 * L.sib + 1) allK]
+  [.shrN b (fun _ => K.sib)]
 
-/-- The width of one position of level `i` in `S`. -/
-def posW4 (S : Seq) (i : ℕ) : ℕ := 4 + 6 * (S.lv i).sib + 2
+/-- The width of one position of level `i` in `S` (revision 4.4.1: the cap index last). -/
+def posW4 (S : Seq) (i : ℕ) : ℕ := 4 + 6 * (S.lv i).sib + 1
+
+/-- **A position's path digest**, from its column fold `y` (`= b + 3`): the last Merkle step's
+`keep` (`b + 4 + 6·sL − 1`), or the column's answer (`b + 2`) at `sL = 0`. -/
+def curOfY (sL y : Reg) : Reg := if sL = 0 then y - 1 else y + 6 * sL
+
+/-- **A position's cap index** `k = j >>> sib` (`shrN`, `b + 4 + 6·sL`), from its column fold `y`. -/
+def kOfY (sL y : Reg) : Reg := y + 6 * sL + 1
 
 /-- Level `i`'s cap in the caps field. -/
 def capOff4 (S : Seq) (i : ℕ) : ℕ := ((List.range i).map fun i' => 2 ^ (S.lv i').cap * 32).sum
@@ -192,8 +201,7 @@ def genPhase4 (S : Seq) (p : KindP) (n : ℕ) (ph : String × Sh) (c : GCtx) : L
   | .queries i =>
     let L := S.lv i
     let ops := [.packK c.foldR, .eqTableK b] ++ (List.range L.t).flatMap fun q =>
-      posOps4 S p i (o fCols) (o fSibs) (fieldOffOf S fCaps + capOff4 S i) c.posAns (b + 1) q
-        (b + 2 + posW4 S i * q)
+      posOps4 S p i (o fCols) (o fSibs) c.posAns (b + 1) q (b + 2 + posW4 S i * q)
     rec_ ops c.st ((List.range L.t).map fun q => b + 2 + posW4 S i * q + 3)
 
 /-- The phases from number `n`. -/

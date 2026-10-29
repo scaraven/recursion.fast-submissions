@@ -107,10 +107,10 @@ theorem segView_of {π : Proof} {κ : SegKind} (hb : byteAt π 0 = κ.byte) :
   ⟨⟨κ, bytesAt π 16 32, bytesAt π 49 32, rdLE64 π 81⟩,
     by simp only [segView, hb, SegKind.ofByte?_byte, Option.map_some], rfl⟩
 
-theorem segTr_length (κ : NodeKind) (σ k i : ℕ) (w : Asg) : (segTr κ σ k i w).length = 8905 := by
+theorem segTr_length (κ : NodeKind) (σ k i : ℕ) (w : Asg) : (segTr κ σ k i w).length = 8907 := by
   rw [segTr, Read.readItems_length, itemsOf_seq4_length]
 
-theorem slotTr4_length (κ : NodeKind) (v : ℕ) (w : Asg) : (slotTr4 κ v w).length = 8905 := by
+theorem slotTr4_length (κ : NodeKind) (v : ℕ) (w : Asg) : (slotTr4 κ v w).length = 8907 := by
   unfold slotTr4; split_ifs <;> exact segTr_length ..
 
 theorem slotPf_length (pf : Trace → Proof) (κ : NodeKind) (v : ℕ) (w : Asg) :
@@ -123,7 +123,7 @@ theorem aggPf_size (pf : Trace → Proof) (κ : NodeKind) (a : ℕ) (w : Asg) :
     List.length_range, List.sum_replicate, smul_eq_mul]
 
 theorem aggTr_length (κ : NodeKind) (k : ℕ) (f : ℕ → ℕ) (w : Asg) :
-    ((List.range k).map fun i => slotTr4 κ (f i) w).flatten.length = k * 8905 := by
+    ((List.range k).map fun i => slotTr4 κ (f i) w).flatten.length = k * 8907 := by
   simp only [List.length_flatten, List.map_map, Function.comp_def, slotTr4_length, List.map_const',
     List.length_range, List.sum_replicate, smul_eq_mul]
 

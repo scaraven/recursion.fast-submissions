@@ -10,8 +10,8 @@ import FRSoundnessCoreTruths
 # Revision 4.1's chains: the item list `fsItems4`, the phase starts, the multi-squeeze phases, the kind
 
 All six SNARK programs of revision 4.1 ask one item sequence, `itemsOf seq4` (S-0′). Its
-Fiat–Shamir items (482) are **`fsItems4`**, and **`fsSeq4`** makes them the chains' list for the
-generic potential (`FRSoundnessFrChain`).
+Fiat–Shamir items (484 since revision 4.4.1's cap check) are **`fsItems4`**, and **`fsSeq4`** makes
+them the chains' list for the generic potential (`FRSoundnessFrChain`).
 
 * **Phase starts** (`fsStarts4`, `phStart4 k`): the Fiat–Shamir position of phase `k`'s first item,
   `fsStarts4_eq` pins them. They are 3.x's (`fsStarts_eq`) up to `Lr1` (phases 0–13, positions
@@ -32,7 +32,7 @@ open RecursionFast FR.Rev4
 /-- **`seq4`'s Fiat–Shamir items**: the item sequence without the column and node queries. -/
 def fsItems4 : List Item := (itemsOf seq4).filter Item.isFS
 
-theorem fsItems4_length : fsItems4.length = 482 := by
+theorem fsItems4_length : fsItems4.length = 484 := by
   rw [fsItems4, seq4_eq]; decide +kernel
 
 /-- **The chains of revision 4.1** follow `fsItems4`. -/
@@ -51,10 +51,11 @@ def fsStarts4 : List ℕ :=
 def phStart4 (k : ℕ) : ℕ := fsStarts4.getD k 0
 
 /-- **The phase starts** (phases `0 … 25` the PIOP, level `i`'s `P1, C, P2, Q, P3` are
-`26 + 5i … 30 + 5i`, `Pf` is `51`). -/
+`26 + 5i … 30 + 5i`, `Pf` is `51`; revision 4.4.1: `CapChk` `52` at 482, `CapChkZ` `53` at 483). -/
 theorem fsStarts4_eq : fsStarts4 = [0, 1, 2, 3, 13, 15, 67, 68, 69, 97, 98, 99, 114, 170, 179, 213,
     214, 215, 227, 273, 274, 275, 325, 326, 327, 331, 332, 344, 345, 370, 370, 375, 383, 384, 397,
-    397, 402, 410, 411, 421, 421, 426, 434, 435, 443, 443, 448, 456, 457, 463, 463, 468] := by
+    397, 402, 410, 411, 421, 421, 426, 434, 435, 443, 443, 448, 456, 457, 463, 463, 468, 482,
+    483] := by
   rw [fsStarts4, seq4_eq]; decide +kernel
 
 /-- **Against 3.x**: the same starts through `Lr1` (phase 13), then the shifts `+1`, `+5`, `+6`,

@@ -318,8 +318,8 @@ theorem linkRowsB4_length (κ : NodeKind) (σ : ℕ) :
     (linkRowsB4 κ σ).length = if σ = 0 then 7 else 8 := by
   unfold linkRowsB4; split_ifs <;> simp [Circ.kinds, actRows4_length]
 
-/-- A slot's pack rows: `1 + 8,905` for an aligned slot, else none. -/
-theorem packRows4_length_le (κ : NodeKind) (σ : ℕ) : (packRows4 κ σ).length ≤ 8906 := by
+/-- A slot's pack rows: `1 + 8,907` for an aligned slot, else none. -/
+theorem packRows4_length_le (κ : NodeKind) (σ : ℕ) : (packRows4 κ σ).length ≤ 8908 := by
   unfold packRows4 packHead4 packWf4
   rcases packB κ σ with _ | ⟨b0, G⟩ <;> simp [wfRows, wfSeg_length]
 
@@ -333,7 +333,7 @@ theorem extRowsC_length_le (κ : NodeKind) (σ : ℕ) : (extRowsC κ σ).length 
   · simp
   · simp
 
-/-- (+) A slot's link rows fit its link region (at most `8 + 8,906 + 8,680` of `2^15`). -/
+/-- (+) A slot's link rows fit its link region (at most `8 + 8,908 + 8,680` of `2^15`). -/
 theorem linkRows4_length_le (κ : NodeKind) (σ : ℕ) : (linkRows4 κ σ).length < linkN := by
   have h1 := linkRowsB4_length κ σ
   have h2 := packRows4_length_le κ σ

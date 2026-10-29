@@ -4,7 +4,7 @@ import FRVerifierC4
 import FRVIRSpec
 
 /-!
-# The revision 4.1 programs ask the item sequence `itemsOf seq4` (8,905 queries)
+# The revision 4.1 programs ask the item sequence `itemsOf seq4` (8,907 queries)
 
 * **`items_genPhase4`**: one phase of `gen4 S p` asks exactly its shape's items under `S.lv`
   (`Sh.itemsL`), for every kind `p` (a segment's `lastOps` and Z2 operand ask nothing; a level's
@@ -12,8 +12,8 @@ import FRVIRSpec
 * **`items_gen4`**: `gen4 S p fin` asks `itemsOf S` when `fin` asks nothing; **`noAsk_finOps4`**:
   the relocated finals `finOps4 P` ask nothing (each of `finalsOf P`'s nine fields).
 * **`queries_VsegC`**, **`queries_VnodeC`**: every segment and node program asks
-  `(itemsOf seq4).length = 8,905` queries under every oracle. **`ks_queriesC4`**: `KS`'s first
-  conjunct for `VC4` at `qV4` (INT-7's `ks_queries4` with `qS = 8,905`).
+  `(itemsOf seq4).length = 8,907` queries under every oracle. **`ks_queriesC4`**: `KS`'s first
+  conjunct for `VC4` at `qV4` (INT-7's `ks_queries4` with `qS = 8,907`).
 -/
 
 namespace FR.Rev4
@@ -30,8 +30,8 @@ theorem items_merkleOps4 (sib i : ℕ) (j : Reg) (n h cur so b : ℕ) :
       List.map_map]
     simp [List.filterMap_cons, Op.item?, Function.comp_def, Nat.add_assoc, Nat.add_comm 1]
 
-theorem items_posOps4 (S : Seq) (k : KindP) (i co so capO : ℕ) (ans : List Reg) (w : Reg) (p b : ℕ) :
-    (posOps4 S k i co so capO ans w p b).filterMap Op.item? = posItemsL S.lv i := by
+theorem items_posOps4 (S : Seq) (k : KindP) (i co so : ℕ) (ans : List Reg) (w : Reg) (p b : ℕ) :
+    (posOps4 S k i co so ans w p b).filterMap Op.item? = posItemsL S.lv i := by
   simp [posOps4, posItemsL, List.filterMap_cons, Op.item?, items_merkleOps4]
 
 theorem noAsk_lastOps (so b : ℕ) : (lastOps so b).filterMap Op.item? = [] := by
@@ -204,26 +204,26 @@ theorem noAsk_finOps4 (P : FinP) (outs : Array (List Reg)) (b : ℕ) :
     (finOps4 P outs b).filterMap Op.item? = [] := by
   rw [finOps4, List.filterMap_map]
   have : (Op.item? ∘ reloc P.S) = Op.item? := funext fun op => item_reloc P.S op
-  rw [this]; exact noAsk_ops _ (noAsk_finalsOf P) outs b
+  rw [this, List.filterMap_append, noAsk_ops _ (noAsk_finalsOf P) outs b, noAsk_capChkOps]; rfl
 
 /-! ## The bounds -/
 
-theorem itemsOf_seq4_len : (itemsOf seq4).length = 8905 := itemsOf_seq4_length
+theorem itemsOf_seq4_len : (itemsOf seq4).length = 8907 := itemsOf_seq4_length
 
-/-- **Every segment program asks 8,905 queries** under every oracle. -/
+/-- **Every segment program asks 8,907 queries** under every oracle. -/
 theorem queries_VsegC (impl₀ : OpImpl) (H : ByteArray → Digest) (κ : SegKind) (vk c : Digest) (π : Proof) :
-    ((VsegC impl₀ κ vk c π).queries H).length = 8905 := by
+    ((VsegC impl₀ κ vk c π).queries H).length = 8907 := by
   rw [VsegC, runStmt_queries, queries_runIR, progSeg, genSeg, items_gen4 _ _ _ (noAsk_finOps4 _),
     itemsOf_seq4_len]
 
-/-- **Every node program asks 8,905 queries** under every oracle. -/
+/-- **Every node program asks 8,907 queries** under every oracle. -/
 theorem queries_VnodeC (implN : NodeKind → OpImpl) (cells : NodeKind → List ℕ) (H : ByteArray → Digest)
     (κ : NodeKind) (vk c : Digest) (π : Proof) :
-    ((VnodeC implN cells κ vk c π).queries H).length = 8905 := by
+    ((VnodeC implN cells κ vk c π).queries H).length = 8907 := by
   rw [VnodeC, runStmt_queries, queries_runIR, progNode, genNode, items_gen4 _ _ _ (noAsk_finOps4 _),
     itemsOf_seq4_len]
 
-/-- **`KS`'s first conjunct for `VC4`** at `qV4` (`ks_queries4` with `qS = 8,905`). -/
+/-- **`KS`'s first conjunct for `VC4`** at `qV4` (`ks_queries4` with `qS = 8,907`). -/
 theorem ks_queriesC4 (impl₀ : OpImpl) (implN : NodeKind → OpImpl) (cells : NodeKind → List ℕ)
     (S : Submission) (hV : S.V = VC4 impl₀ implN cells) (hq : S.qV = qV4) (vk : Digest) :
     ∀ H c π, ((S.V vk c π).queries H).length ≤ S.qV :=
