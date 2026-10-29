@@ -84,9 +84,9 @@ theorem map_at_merkleOpsG (sib : Kind → ℕ) (i : ℕ) (j : Reg) :
     rw [merkleOpsG, merkleOps4, List.map_append, map_at_merkleOpsG sib i j n]
     simp only [kt_eq]; rfl
 
-theorem map_at_posOpsG (S : Seq) (G : Grp) (i co so : ℕ) (ans : List Reg) (w : Reg) (p b : ℕ) :
-    (posOpsG (S.lv i) (kt fun ι => S.lvK (G ι).d.m i) i co so ans w p b).map (Op.at h pf ι) =
-      posOps4 S (G ι) i co so ans w p b := by
+theorem map_at_posOpsG (S : Seq) (G : Grp) (i co so dO : ℕ) (ans : List Reg) (w : Reg) (p b : ℕ) :
+    (posOpsG (S.lv i) (kt fun ι => S.lvK (G ι).d.m i) i co so dO ans w p b).map (Op.at h pf ι) =
+      posOps4 S (G ι) i co so dO ans w p b := by
   simp only [posOpsG, posOps4, kt_eq, List.map_append, map_at_merkleOpsG]; rfl
 
 end Skel
@@ -158,11 +158,11 @@ theorem genPhaseG_at {h : Reg → Op} (hh : ∀ s, (h s).outs = 1) (S : Seq) (G 
     simp only [genPhaseG, genPhase4]
     have e : ([Op.packK c.foldR, Op.eqTableK c.next] ++ (List.range (S.lv i).t).flatMap fun q =>
         posOpsG (S.lv i) (kt fun ι => S.lvK (G ι).d.m i) i (fieldOffOf S fCols + phaseOffOf S n fCols)
-          (fieldOffOf S fSibs + phaseOffOf S n fSibs) c.posAns
+          (fieldOffOf S fSibs + phaseOffOf S n fSibs) (dOff4 S i) c.posAns
           (c.next + 1) q (c.next + 2 + posW4 S i * q)).map (Op.at h true ι) =
         [Op.packK c.foldR, Op.eqTableK c.next] ++ (List.range (S.lv i).t).flatMap fun q =>
         posOps4 S (G ι) i (fieldOffOf S fCols + phaseOffOf S n fCols)
-          (fieldOffOf S fSibs + phaseOffOf S n fSibs) c.posAns
+          (fieldOffOf S fSibs + phaseOffOf S n fSibs) (dOff4 S i) c.posAns
           (c.next + 1) q (c.next + 2 + posW4 S i * q) := by
       rw [List.map_append, List.map_flatMap]
       simp only [map_at_posOpsG]; rfl

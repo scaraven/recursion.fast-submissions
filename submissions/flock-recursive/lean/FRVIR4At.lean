@@ -329,29 +329,13 @@ end Fields
 section Cap
 variable (h : Reg → Op) (pf : Bool) (ι : Kind)
 
-theorem map_at_capReadsOps (one zeta : Reg) (zp : ℕ → Reg) :
-    ∀ rs p aL aH aZ c, (capReadsOps one zeta zp rs p aL aH aZ c).1.map (Op.at h pf ι) =
-      (capReadsOps one zeta zp rs p aL aH aZ c).1
-  | [], _, _, _, _, _ => rfl
-  | rd :: rs, p, aL, aH, aZ, c => by
-    simp only [capReadsOps, List.map_append, map_at_capReadsOps one zeta zp rs, capReadOps, List.map_flatMap,
-      capBitOps]
-    rfl
-
-theorem map_at_capEntriesOps (z : Reg) :
-    ∀ n k zk sL sH sZ c, (capEntriesOps z n k zk sL sH sZ c).1.map (Op.at h pf ι) =
-      (capEntriesOps z n k zk sL sH sZ c).1
-  | 0, _, _, _, _, _, _ => rfl
-  | n + 1, k, zk, sL, sH, sZ, c => by
-    simp only [capEntriesOps, List.map_append, map_at_capEntriesOps z n]
-    rfl
-
 /-- **The cap check reads no kind table** (revision 4.4.1). -/
 theorem map_at_capChkOps (S : Seq) (outs : Array (List Reg)) (b : ℕ) :
     (capChkOps S outs b).map (Op.at h pf ι) = capChkOps S outs b := by
   unfold capChkOps
   split
-  · simp only [List.map_append, map_at_capReadsOps, map_at_capEntriesOps, List.map_map]
+  · simp only [List.map_append, List.map_flatMap, List.map_map, powChainOps, bitPowOps, macDOps,
+      macAOps, List.map_cons, List.map_nil]
     rfl
   · rfl
 

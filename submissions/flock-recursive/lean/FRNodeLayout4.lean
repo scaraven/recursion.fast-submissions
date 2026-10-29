@@ -12,12 +12,13 @@ a power-of-two H.
   leaf; `N8`: the two aggregate leaves of step 1) and **verifier slots** (`vslots`): `N2` the
   previous node and `≤ 2` segments (3), `N4` the previous node and `≤ 4` segments (5), `N8` `≤ 8`
   segments. Per signed child: one digest chain of its trace in H, one WOTS run (`wotsSlot4`); per
-  verifier slot: the `hashStmt` blocks of its statement (3), the mirror `WM` (146), a `2^14`-element
-  L stride and `2^20` M cells.
+  verifier slot: the `hashStmt` blocks of its statement (3), a `2^14`-element L stride and `2^20` M
+  cells; per signed child (revision 4.4.1, PACK-4.4 §11.2 lever L1), the mirror `WM` (146): only the
+  two signed children have WOTS runs and mirrors.
 * **H** from block 0, used `hUsed` blocks at full occupancy. One trace of `seq4` hashes to
-  `chainLenOf seq4 = 23,875` blocks (revision 4.4.1, A2′'s cap check); the aggregate leaf's chain hashes `0x54 ‖ tr₁ ‖ … ‖ tr_k`:
-  `aggChainLen k = ⌈(1 + k · (streamBytesOf seq4 − 1)) / 64⌉` (`k = 2`: 47,750 with 63 bytes in
-  its last block; `k = 3`: 71,625 with 62; `k = 4`: 95,500 with 61: **not** multiples of 64 for any
+  `chainLenOf seq4 = 24,220` blocks (revision 4.4.1, the (β′) cap check and level 4's cap at depth 8); the aggregate leaf's chain hashes `0x54 ‖ tr₁ ‖ … ‖ tr_k`:
+  `aggChainLen k = ⌈(1 + k · (streamBytesOf seq4 − 1)) / 64⌉` (`k = 2`: 48,440 with 63 bytes in
+  its last block; `k = 3`: 72,660 with 62; `k = 4`: 96,880 with 61: **not** multiples of 64 for any
   `k ∈ {2, 3, 4}`, so the last block needs the `k`-gated padding, counter and final flag; S-0′ RESULT
   I-5, R-4-m2). H holds the chain of an aggregate child of at most `maxK` segments (`N2`: 2,
   `N4`/`N8`: 4); `FRVerifier4.childOk4` is the check that refuses a larger one (R-4-m2).
@@ -49,14 +50,14 @@ def NodeKind.maxK (κ : NodeKind) : ℕ := if κ.hasPrev then κ.segSlots else 4
 def aggChainLen (k : ℕ) : ℕ := (1 + k * (streamBytesOf seq4 - 1) + 63) / 64
 /-- WOTS blocks per signed child (3.x's `Layout.wotsSlot`). -/
 def wotsSlot4 : ℕ := 133 * 3 + 67 + 2 * 16
-/-- The mirror sub-region per verifier slot (3.x's `Layout.wmSlot`). -/
+/-- The mirror sub-region per signed child (3.x's `Layout.wmSlot`). -/
 def wmSlot4 : ℕ := 146
 
 /-- H's used blocks at full occupancy: the children's chains, `hashStmt` (3 per verifier slot),
-WOTS (per signed child), `WM` (per verifier slot), 8 spare. -/
+WOTS and `WM` (per signed child: revision 4.4.1's lever L1, PACK-4.4 §11.2), 8 spare. -/
 def NodeKind.hUsed (κ : NodeKind) : ℕ :=
   (if κ.hasPrev then chainLenOf seq4 + aggChainLen κ.segSlots else 2 * aggChainLen 4) +
-    3 * κ.vslots + 2 * wotsSlot4 + wmSlot4 * κ.vslots + 8
+    3 * κ.vslots + 2 * wotsSlot4 + wmSlot4 * 2 + 8
 
 /-- L's base block (the first multiple of 256 after H) and elements. -/
 def NodeKind.lBase (κ : NodeKind) : ℕ := (κ.hUsed + 255) / 256 * 256
@@ -72,12 +73,12 @@ def NodeKind.mSlot (κ : NodeKind) (σ : ℕ) : ℕ := κ.oneCell + (σ - 1) * s
 def NodeKind.tauCoords (κ : NodeKind) : ℕ := κ.dims.logM
 def NodeKind.sigmaCoords (κ : NodeKind) : ℕ := κ.m - 7
 
-theorem aggChainLen_eq : aggChainLen 2 = 47750 ∧ aggChainLen 4 = 95500 ∧
+theorem aggChainLen_eq : aggChainLen 2 = 48440 ∧ aggChainLen 4 = 96880 ∧
     (1 + 2 * (streamBytesOf seq4 - 1)) % 64 = 63 ∧ (1 + 4 * (streamBytesOf seq4 - 1)) % 64 = 61 := by
   simp only [aggChainLen, streamBytesOf_seq4]; decide
 
 /-- `k = 3` is unaligned too (R-4-m2). -/
-theorem aggChainLen_k3 : aggChainLen 3 = 71625 ∧ (1 + 3 * (streamBytesOf seq4 - 1)) % 64 = 62 := by
+theorem aggChainLen_k3 : aggChainLen 3 = 72660 ∧ (1 + 3 * (streamBytesOf seq4 - 1)) % 64 = 62 := by
   simp only [aggChainLen, streamBytesOf_seq4]; decide
 
 /-- `aggChainLen` is monotone: a child of `k ≤ maxK` segments has a chain no longer than H's
@@ -88,14 +89,15 @@ theorem aggChainLen_le {k k' : ℕ} (h : k ≤ k') : aggChainLen k ≤ aggChainL
 /-- H's aggregate chains are `aggChainLen maxK` blocks. -/
 theorem maxK_eq : NodeKind.N2.maxK = 2 ∧ NodeKind.N4.maxK = 4 ∧ NodeKind.N8.maxK = 4 := ⟨rfl, rfl, rfl⟩
 
-theorem hUsed_eq : NodeKind.N2.hUsed = 73076 ∧ NodeKind.N4.hUsed = 121124 ∧
-    NodeKind.N8.hUsed = 193196 := by
+theorem hUsed_eq : NodeKind.N2.hUsed = 73965 ∧ NodeKind.N4.hUsed = 122411 ∧
+    NodeKind.N8.hUsed = 195080 := by
   simp only [NodeKind.hUsed, NodeKind.vslots, NodeKind.hasPrev, NodeKind.segSlots, chainLenOf_seq4.1,
     aggChainLen_eq.1, aggChainLen_eq.2.1, wotsSlot4, wmSlot4]; decide
 
 /-- **The regions are disjoint and inside the node** (tight packing): H `[0, hUsed)`, L
 `[lBase, lBase + N_L/128)`, M `[mBase, blocks)`; `f` has `blocks · 128` cells. Slack before M:
-`N2` 24,576 blocks, `N4` 74,240, `N8` 2,304 (revision 4.4.1, before R-A′'s spacers). -/
+`N2` 23,808 blocks, `N4` 72,960, `N8` 256 (revision 4.4.1 (β′) with levers L1 and L2, before R-A′'s
+spacers; neither lever alone fits `N8`: `regions_need_levers`). -/
 theorem regions_fit (κ : NodeKind) :
     κ.hUsed ≤ κ.lBase ∧ κ.lBase + κ.nL / 128 ≤ κ.mBase ∧ κ.mBase + κ.nM / 128 = κ.blocks ∧
       κ.cells = κ.blocks * 128 := by
@@ -118,6 +120,20 @@ theorem coords_eq : (NodeKind.N2.tauCoords, NodeKind.N2.sigmaCoords) = (22, 24) 
     (NodeKind.N8.tauCoords, NodeKind.N8.sigmaCoords) = (23, 25) ∧
     ∀ κ : NodeKind, κ.cells = 2 ^ κ.sigmaCoords ∧ κ.nM = 2 ^ κ.tauCoords :=
   ⟨rfl, rfl, rfl, fun _ => ⟨rfl, rfl⟩⟩
+
+/-- `N8`'s H at a segment stream of `sb` bytes with `wm` mirror sub-regions (`NodeKind.hUsed`'s
+`N8` case as a function of the two levers' quantities). -/
+def hUsedN8At (sb wm : ℕ) : ℕ := 2 * ((1 + 4 * (sb - 1) + 63) / 64) + 3 * 8 + 2 * wotsSlot4 + wmSlot4 * wm + 8
+
+/-- **Both levers are needed** (PACK-4.4 §11.2, PB-m5): (+) with L1 (2 mirror sub-regions) and L2
+(`seq4`'s stream) `N8`'s L fits before M; (−) without L1 (8 sub-regions, one per verifier slot) it
+does not, nor (−) without L2 (the (β′) stream at level 4's cap depth 7: 1,556,032 bytes). -/
+theorem regions_need_levers :
+    hUsedN8At (streamBytesOf seq4) 2 = NodeKind.N8.hUsed ∧
+    (hUsedN8At (streamBytesOf seq4) 2 + 255) / 256 * 256 + 1024 ≤ NodeKind.N8.mBase ∧
+    ¬ (hUsedN8At (streamBytesOf seq4) 8 + 255) / 256 * 256 + 1024 ≤ NodeKind.N8.mBase ∧
+    ¬ (hUsedN8At 1556032 2 + 255) / 256 * 256 + 1024 ≤ NodeKind.N8.mBase := by
+  rw [hUsed_eq.2.2, streamBytesOf_seq4]; decide
 
 /-- Negative (why `N2` is `m = 31` and `N8` cannot be `m = 31`): `N8`'s H alone exceeds `2^17`
 blocks, and the 3.x M (`2^21` cells) does not hold `N2`'s three slots. -/

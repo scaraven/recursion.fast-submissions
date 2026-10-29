@@ -10,7 +10,7 @@ import FRSoundnessCoreTruths
 # Revision 4.1's chains: the item list `fsItems4`, the phase starts, the multi-squeeze phases, the kind
 
 All six SNARK programs of revision 4.1 ask one item sequence, `itemsOf seq4` (S-0′). Its
-Fiat–Shamir items (484 since revision 4.4.1's cap check) are **`fsItems4`**, and **`fsSeq4`** makes
+Fiat–Shamir items (486 since revision 4.4.1's cap check, (β′)) are **`fsItems4`**, and **`fsSeq4`** makes
 them the chains' list for the generic potential (`FRSoundnessFrChain`).
 
 * **Phase starts** (`fsStarts4`, `phStart4 k`): the Fiat–Shamir position of phase `k`'s first item,
@@ -21,7 +21,7 @@ them the chains' list for the generic potential (`FRSoundnessFrChain`).
 * **Multi-squeeze phases** (`fsRanges4`, `fsRnd4`), with **`fsRnd4_ok : RndOK fsRnd4`** (checked).
 * **The chain's kind** (`CKind`, `kindOfC es`): byte 71 of the seed query (`hdr`'s first byte),
   one of the six SNARK kinds; `L32` if it is not one. Its `m`, `isNode`, and ladder `lvC κ i =
-  lvOf κ.m i` (`ladderOf 30/31/32`).
+  lvOf κ.m i = seq4.lvK κ.m i` (revision 4.4.1: level 4's cap at depth 8).
 -/
 
 namespace FR.Snd
@@ -32,7 +32,7 @@ open RecursionFast FR.Rev4
 /-- **`seq4`'s Fiat–Shamir items**: the item sequence without the column and node queries. -/
 def fsItems4 : List Item := (itemsOf seq4).filter Item.isFS
 
-theorem fsItems4_length : fsItems4.length = 484 := by
+theorem fsItems4_length : fsItems4.length = 486 := by
   rw [fsItems4, seq4_eq]; decide +kernel
 
 /-- **The chains of revision 4.1** follow `fsItems4`. -/
@@ -51,11 +51,12 @@ def fsStarts4 : List ℕ :=
 def phStart4 (k : ℕ) : ℕ := fsStarts4.getD k 0
 
 /-- **The phase starts** (phases `0 … 25` the PIOP, level `i`'s `P1, C, P2, Q, P3` are
-`26 + 5i … 30 + 5i`, `Pf` is `51`; revision 4.4.1: `CapChk` `52` at 482, `CapChkZ` `53` at 483). -/
+`26 + 5i … 30 + 5i`, `Pf` is `51`; revision 4.4.1 (β′): `CapD` `52` at 482, `CapZeta` `53` at 483,
+`CapChk` `54` at 484, `CapChkZ` `55` at 485). -/
 theorem fsStarts4_eq : fsStarts4 = [0, 1, 2, 3, 13, 15, 67, 68, 69, 97, 98, 99, 114, 170, 179, 213,
     214, 215, 227, 273, 274, 275, 325, 326, 327, 331, 332, 344, 345, 370, 370, 375, 383, 384, 397,
     397, 402, 410, 411, 421, 421, 426, 434, 435, 443, 443, 448, 456, 457, 463, 463, 468, 482,
-    483] := by
+    483, 484, 485] := by
   rw [fsStarts4, seq4_eq]; decide +kernel
 
 /-- **Against 3.x**: the same starts through `Lr1` (phase 13), then the shifts `+1`, `+5`, `+6`,
@@ -147,8 +148,9 @@ theorem ofByte?_byte (κ : CKind) : ofByte? κ.byte = some κ := by
   | seg κ => cases κ <;> decide
   | node κ => cases κ <;> decide
 
-/-- Level `i` of the kind's ladder (`ladderOf m`). -/
-def lv (κ : CKind) (i : ℕ) : Level := lvOf κ.m i
+/-- Level `i` of the kind's ladder in `seq4` (revision 4.4.1: level 4's cap at depth 8, PACK-4.4
+§11.2 L2; `= lvOf κ.m i` by definition). -/
+def lv (κ : CKind) (i : ℕ) : Level := seq4.lvK κ.m i
 
 theorem m_mem (κ : CKind) : κ.m = 30 ∨ κ.m = 31 ∨ κ.m = 32 := by
   rcases κ with κ | κ <;> cases κ <;> decide

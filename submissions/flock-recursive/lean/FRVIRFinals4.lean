@@ -494,7 +494,7 @@ theorem phaseOffOf_seq3 (n f : ℕ) : phaseOffOf seq3 n f = phaseOff n f := by
   rw [phaseOffOf, ← phasesOf_seq3, ← List.map_take, List.map_map, h, phaseOff]
   exact congrArg List.sum (List.map_congr_left fun p _ => p.shape.bytesToL_toSh f)
 
-theorem fin3P_S : fin3P.S = ⟨32, 19, 26, 28, 15, 21, 23, 7, 32, 6, false⟩ := seq3_eq
+theorem fin3P_S : fin3P.S = ⟨32, 19, 26, 28, 15, 21, 23, 7, 32, 6, false, 7⟩ := seq3_eq
 
 theorem gFinZ_3 : gFinZ fin3P = finZ := by
   funext fi b; simp only [gFinZ, finZ, fin3P_S]; rfl
@@ -573,7 +573,10 @@ theorem finalsOf_seq3 : finalsOf fin3P = sfFinals finP finPf := by
 /-! ## Relocation to `S`'s format -/
 
 /-- **`reloc S`**: a proof read at field `f < 19`, offset `o` becomes the absolute read
-`fieldOffOf S f + o` (field `0`, offset `0`: `absOff 0 x = x`). -/
+`fieldOffOf S f + o` (field `0`, offset `0`: `absOff 0 x = x`). The bound stays 3.x's `19` (fields
+`0 … 17` and `fD`): field 19 (`fA`) has no 3.x offset, so relocating it would break
+`evalOp_reloc_seq3`; the cap check's reads of `fA` (and the positions' of `fD`) are absolute
+already (`macAOps`, `FRVIR4.dOff4`; PB-m1's honest-proof failure does not arise). -/
 def reloc (S : Seq) : Op → Op
   | .piField f o len => if f < 19 then .piField 0 (fieldOffOf S f + o) len else .piField f o len
   | .piElem f o => if f < 19 then .piElem 0 (fieldOffOf S f + o) else .piElem f o
@@ -625,84 +628,93 @@ theorem exec_reloc_seq3 (impl : OpImpl) (κ : Kind) (inp : Input) :
       · rfl
       · simp only [exec_reloc_seq3 impl κ inp ops]
 
-/-! ## The batched cap check (revision 4.4.1, PACK-4.4 §3.3, B2 (β))
+/-! ## The batched cap check (revision 4.4.1, PACK-4.4 §11, B2 (β′))
 
-The positions no longer compare their path's digest with the cap entry at the witness index
-`k = j >>> sib` (3.x's `piDigestAt; assertEq`, `FRVIR4.posOps4`). Instead, after `Pf`, phase
-`CapChk` absorbs `A ∈ K^1408` (field `fA`; `A_k` meant to be `Σ_{r : k_r = k} ζ^r`) and `CapChkZ`
-squeezes `z`; `ζ` is `P3.4`'s first answer (as a K element), which follows every query. With the
-reads `r = 0 … 870` in item order (`cur_r` the path digest, `k_r` its cap index plus the level's
-offset `offᵢ`), the finals check
+The positions no longer compare their path's root with the cap entry at the witness index
+`k = j >>> sib` (3.x's dynamic `piDigestAt; assertEq`). Instead each position asserts its root equal
+to its **committed** path digest `D_r` (a static read of field `fD`, `FRVIR4.posOps4`), and after
+`Pf` the phases `CapD` (absorb `D`), `CapZeta` (squeeze `ζ`), `CapChk` (absorb `A`, field `fA`;
+`A_k` meant to be `Σ_{r : offᵢ + k_r = k} ζ^r`) and `CapChkZ` (squeeze `z`) run. With the reads
+`r = 0 … 870` in item order (`k_r` the cap index, `offᵢ` its level's first entry), the finals check
 
-* (I) `Σ_r ζ^r·cur_r = Σ_k A_k·cap[k]`, one identity per F half of a digest;
-* (II) `Σ_r ζ^r·z^{k_r} = Σ_k A_k·z^k`.
+* (I) `Σ_r ζ^r·D_r = Σ_k A_k·cap[k]`, one identity per F half of a digest;
+* (II) `Σ_r ζ^r·z^{offᵢ + k_r} = Σ_k A_k·z^k`.
 
-`z^{k_r}` is the bit product `z^{offᵢ}·Π_t (bit t of k ? z^{2^t} : 1)` (existing ops: `bitOf`,
-`selectHalf`, `mulK`). No register before the cap check moves: its ops follow every other final. -/
+Every summand is in the chain before the challenge it is multiplied by (`D`, the caps and the `k_r`
+before `ζ`; `A` before `z`): that is what A2′'s form, with `ζ` from `P3.4` and the uncommitted
+roots, lacked (A3′'s attack).
+
+**Interim form** (track A2″): existing ops, in five **regular op families**, one per future keyed
+template (PACK-4.4 §11.7, track B2′), each a run of equal-width blocks at a constant stride:
+
+1. the head: the constants `1`, `0`, `ζ`, `z`, the squarings `z^{2^t}` (`tplSqChain`), the level
+   weights `z^{offᵢ}`;
+2. the power chains `ζ^r` (`r < 871`) and `z^k` (`k < 1,536`): one `mulK` each (`tplPowChain`);
+3. per read, the bit power `z^{offᵢ}·Π_{t < capMax} (bit t of k_r ? z^{2^t} : 1)`: width `3·capMax`,
+   the same for every read and level (`tplBitPow`);
+4. per read, the MACs `ζ^r·D_r` (two F halves) and `ζ^r·z^{offᵢ + k_r}` into the running sums:
+   width 8 (`tplMacD`);
+5. per cap entry, the MACs `A_k·cap[k]` and `A_k·z^k`: width 9 (`tplMacA`);
+
+then the three `assertEq`. No register before the cap check moves: its ops follow every other
+final. The π reads are absolute (field `0`; `reloc` keeps them). -/
 
 /-- The largest cap depth (`seq4`: 9): `z^{2^t}` is needed for `t ≤ capMax`. -/
 def capMax (S : Seq) : ℕ := ((List.range nLevels).map fun i => (S.lv i).cap).foldr Nat.max 0
 
-/-- Bit `t` of a read's cap index (registers `c + 7 + 3t …`): the bit, `z^{2^t}` or `1`, the product.
-(Constructors written out: the dot forms cost seconds of elaboration here.) -/
-def capBitOps (one : Reg) (zp : ℕ → Reg) (k c t : ℕ) : List Op :=
-  [Op.bitOf k t, Op.selectHalf (c + 7 + 3 * t) one (zp t), Op.mulK (c + 6 + 3 * t) (c + 8 + 3 * t)]
+/-- **A power chain** (`tplPowChain`): `g^1 … g^n` at registers `pb … pb + n − 1`, each one `mulK`
+(`powReg`). -/
+def powChainOps (one g : Reg) (n pb : ℕ) : List Op :=
+  (List.range n).map fun r => Op.mulK (if r = 0 then one else pb + r - 1) g
 
-/-- **One read** (registers from `c`; width `9 + 3·nb`): split the path digest `cur`, add
-`ζ^r·cur` to `aL`/`aH`, `ζ^r·z^{off}·Π_t …` to `aZ`, and the next power `ζ^{r+1}`. Outputs: `aL`
-at `c + 3`, `aH` at `c + 5`, `aZ` at `c + 7 + 3·nb`, `ζ^{r+1}` at `c + 8 + 3·nb`. -/
-def capReadOps (one zeta : Reg) (zp : ℕ → Reg) (w : Reg) (nb cur k p aL aH aZ c : ℕ) : List Op :=
-  [Op.splitDigest cur, Op.mulKF p c, Op.addK aL (c + 2), Op.mulKF p (c + 1), Op.addK aH (c + 4),
-    Op.mulK p w] ++ (List.range nb).flatMap (capBitOps one zp k c) ++
-  [Op.addK aZ (c + 6 + 3 * nb), Op.mulK p zeta]
+/-- Register of `g^r` in `powChainOps one g _ pb` (`g^0` is `one`). -/
+def powReg (one pb r : ℕ) : Reg := if r = 0 then one else pb + r - 1
 
-/-- A read: its path digest, its cap index, its bits, its level's weight `z^{offᵢ}`. -/
+/-- A read: its committed path digest `D_r`, its cap index, its level's weight `z^{offᵢ}`. -/
 structure CapRead where
-  cur : Reg
+  d : Reg
   k : Reg
-  nb : ℕ
   w : Reg
 
-/-- **The reads in item order**, with the accumulators `(ζ^r, aL, aH, aZ)` threaded; the ops and the
-final accumulators `(aL, aH, aZ)`. -/
-def capReadsOps (one zeta : Reg) (zp : ℕ → Reg) :
-    List CapRead → Reg → Reg → Reg → Reg → ℕ → List Op × Reg × Reg × Reg
-  | [], _, aL, aH, aZ, _ => ([], aL, aH, aZ)
-  | rd :: rs, p, aL, aH, aZ, c =>
-    let r := capReadsOps one zeta zp rs (c + 8 + 3 * rd.nb) (c + 3) (c + 5) (c + 7 + 3 * rd.nb)
-      (c + 9 + 3 * rd.nb)
-    (capReadOps one zeta zp rd.w rd.nb rd.cur rd.k p aL aH aZ c ++ r.1, r.2)
+/-- **The bit power of one read** (`tplBitPow`; registers from `c`, width `3·nb`): per bit `t < nb`
+of `k`, the bit, `z^{2^t}` or `1`, the running product from `w`. Output `c + 3·nb − 1`. (Constructors
+written out: the dot forms cost seconds of elaboration here.) -/
+def bitPowOps (one : Reg) (zp : ℕ → Reg) (nb : ℕ) (rd : CapRead) (c : ℕ) : List Op :=
+  (List.range nb).flatMap fun t =>
+    [Op.bitOf rd.k t, Op.selectHalf (c + 3 * t) one (zp t),
+     Op.mulK (if t = 0 then rd.w else c + 3 * t - 1) (c + 3 * t + 1)]
 
-/-- **One cap entry `k`** (registers from `c`; width 10): `A_k` (field `fA`), the entry's two F halves
-(field `fCaps`), `A_k·cap[k]` into `sL`/`sH`, `A_k·z^k` into `sZ`, the next power `z^{k+1}`. Outputs:
-`sL` at `c + 4`, `sH` at `c + 6`, `sZ` at `c + 8`, `z^{k+1}` at `c + 9`. -/
-def capEntryOps (z : Reg) (k zk sL sH sZ c : ℕ) : List Op :=
-  [Op.piElemK fA (32 * k), Op.piElem fCaps (32 * k), Op.piElem fCaps (32 * k + 16), Op.mulKF c (c + 1),
-   Op.addK sL (c + 3), Op.mulKF c (c + 2), Op.addK sH (c + 5), Op.mulK c zk, Op.addK sZ (c + 7),
-   Op.mulK zk z]
+/-- **The MACs of one read** (`tplMacD`; registers from `c`, width 8): split `D_r`, add `ζ^r·lo`,
+`ζ^r·hi`, `ζ^r·zk` to the sums `aL`, `aH`, `aZ`. Outputs `aL` at `c + 3`, `aH` at `c + 5`, `aZ` at
+`c + 7`. -/
+def macDOps (rd : CapRead) (p zk aL aH aZ c : ℕ) : List Op :=
+  [Op.splitDigest rd.d, Op.mulKF p c, Op.addK aL (c + 2), Op.mulKF p (c + 1), Op.addK aH (c + 4),
+   Op.mulK p zk, Op.addK aZ (c + 6)]
 
-/-- The entries `k₀ … k₀ + n − 1`, the sums threaded; the ops and the final sums `(sL, sH, sZ)`. -/
-def capEntriesOps (z : Reg) : ℕ → ℕ → Reg → Reg → Reg → Reg → ℕ → List Op × Reg × Reg × Reg
-  | 0, _, _, sL, sH, sZ, _ => ([], sL, sH, sZ)
-  | n + 1, k, zk, sL, sH, sZ, c =>
-    let r := capEntriesOps z n (k + 1) (c + 9) (c + 4) (c + 6) (c + 8) (c + 10)
-    (capEntryOps z k zk sL sH sZ c ++ r.1, r.2)
+/-- **The MACs of one cap entry `k`** (`tplMacA`; registers from `c`, width 9): `A_k` (absolute
+`aO + 32k`), the entry's two F halves (absolute `cO + 32k`, `+ 16`), `A_k·cap[k]` into `sL`/`sH`,
+`A_k·z^k` into `sZ`. Outputs `sL` at `c + 4`, `sH` at `c + 6`, `sZ` at `c + 8`. -/
+def macAOps (aO cO : ℕ) (k zk sL sH sZ c : ℕ) : List Op :=
+  [Op.piElemK 0 (aO + 32 * k), Op.piElem 0 (cO + 32 * k), Op.piElem 0 (cO + 32 * k + 16),
+   Op.mulKF c (c + 1), Op.addK sL (c + 3), Op.mulKF c (c + 2), Op.addK sH (c + 5), Op.mulK c zk,
+   Op.addK sZ (c + 7)]
 
-/-- The reads of `S`'s levels, in item order (`FinIn`'s column folds `y`: `FRVIR4.curOfY`/`kOfY`),
+/-- The reads of `S`'s levels, in item order (`FinIn`'s column folds `y`: `FRVIR4.dOfY`/`kOfY`),
 level `i`'s weight register `w i`. -/
 def capReads (S : Seq) (fi : FinIn) (w : ℕ → Reg) : List CapRead :=
   (List.range nLevels).flatMap fun i =>
-    (ysOf fi i).map fun y => ⟨curOfY (S.lv i).sib y, kOfY (S.lv i).sib y, (S.lv i).cap, w i⟩
+    (ysOf fi i).map fun y => ⟨dOfY (S.lv i).sib y, kOfY (S.lv i).sib y, w i⟩
 
-/-- **`capChkOps S outs b`**: the batched cap check after the other finals (registers from `b`); empty
-unless `S.capChk`. Registers: `b` the K constant `1`, `b + 1` `0`, `b + 2` `ζ` (`chK` of `P3.4`'s
-first answer), `b + 3 + t` `z^{2^t}` (`t ≤ capMax`; `z` the `CapChkZ` answer's `chK`), then the
-levels' weights `z^{offᵢ}` (`i = 1 … 4`), the reads, the entries, three `assertEq`s. -/
+/-- **`capChkOps S outs b`**: the batched cap check after the other finals (registers from `b`);
+empty unless `S.capChk`. Registers: `b` the K constant `1`, `b + 1` `0`, `b + 2` `ζ` (`chK` of
+`CapZeta`'s answer), `b + 3 + t` `z^{2^t}` (`t ≤ capMax`; `z` the `chK` of `CapChkZ`'s answer), the
+levels' weights `z^{offᵢ}` (`i = 1 … 4`); then the families 2–5 (module doc) and three `assertEq`. -/
 def capChkOps (S : Seq) (outs : Array (List Reg)) (b : ℕ) : List Op :=
   if S.capChk then
     let fi : FinIn := ⟨outs, [], #[]⟩
-    let za := (fi.outs.getD ((phasesOf S).length - 1) []).headD 0 - 1
-    let zetaA := (lvOuts fi 4 4).getD 1 0 - 1
+    let nP := (phasesOf S).length
+    let zetaA := (fi.outs.getD (nP - 3) []).headD 0 - 1
+    let za := (fi.outs.getD (nP - 1) []).headD 0 - 1
     let M := capMax S
     let zp := fun t => b + 3 + t
     let wb := b + 4 + M
@@ -711,37 +723,34 @@ def capChkOps (S : Seq) (outs : Array (List Reg)) (b : ℕ) : List Op :=
       [Op.const (fun _ => Val.k 1), Op.const (fun _ => Val.k 0), Op.chK zetaA, Op.chK za] ++
       (List.range M).map (fun t => Op.mulK (zp t) (zp t)) ++
       (List.range (nLevels - 1)).map (fun i => Op.mulK (w i) (zp (S.lv i).cap))
-    let rb := wb + (nLevels - 1)
-    let rd := capReadsOps b (b + 2) zp (capReads S fi w) b (b + 1) (b + 1) (b + 1) rb
-    let eb := rb + opsOut rd.1
-    let en := capEntriesOps (b + 3) (capEntries S) 0 b (b + 1) (b + 1) (b + 1) eb
-    head ++ rd.1 ++ en.1 ++
-      [Op.assertEq rd.2.1 en.2.1 allK, Op.assertEq rd.2.2.1 en.2.2.1 allK,
-        Op.assertEq rd.2.2.2 en.2.2.2 allK]
+    let rds := capReads S fi w
+    let R := rds.length
+    let E := capEntries S
+    let pb := wb + (nLevels - 1)
+    let qb := pb + (R - 1)
+    let bb := qb + (E - 1)
+    let db := bb + 3 * M * R
+    let ab := db + 8 * R
+    let zr := fun r => bb + 3 * M * r + 3 * M - 1
+    let aD := fun r j => if r = 0 then b + 1 else db + 8 * (r - 1) + j
+    let aA := fun k j => if k = 0 then b + 1 else ab + 9 * (k - 1) + j
+    head ++ powChainOps b (b + 2) (R - 1) pb ++ powChainOps b (b + 3) (E - 1) qb ++
+      (rds.zipIdx.flatMap fun x => bitPowOps b zp M x.1 (bb + 3 * M * x.2)) ++
+      (rds.zipIdx.flatMap fun x => macDOps x.1 (powReg b pb x.2) (zr x.2) (aD x.2 3) (aD x.2 5)
+        (aD x.2 7) (db + 8 * x.2)) ++
+      ((List.range E).flatMap fun k => macAOps (fieldOffOf S fA) (fieldOffOf S fCaps) k (powReg b qb k)
+        (aA k 4) (aA k 6) (aA k 8) (ab + 9 * k)) ++
+      [Op.assertEq (aD R 3) (aA E 4) allK, Op.assertEq (aD R 5) (aA E 6) allK,
+        Op.assertEq (aD R 7) (aA E 8) allK]
   else []
 
-theorem noAsk_capReadsOps (one zeta : Reg) (zp : ℕ → Reg) :
-    ∀ rs p aL aH aZ c, (capReadsOps one zeta zp rs p aL aH aZ c).1.filterMap Op.item? = []
-  | [], _, _, _, _, _ => rfl
-  | rd :: rs, p, aL, aH, aZ, c => by
-    simp only [capReadsOps, List.filterMap_append, noAsk_capReadsOps one zeta zp rs, capReadOps,
-      List.filterMap_flatMap]
-    simp [capBitOps, List.filterMap_cons, Op.item?]
-
-theorem noAsk_capEntriesOps (z : Reg) :
-    ∀ n k zk sL sH sZ c, (capEntriesOps z n k zk sL sH sZ c).1.filterMap Op.item? = []
-  | 0, _, _, _, _, _, _ => rfl
-  | n + 1, k, zk, sL, sH, sZ, c => by
-    simp only [capEntriesOps, List.filterMap_append, noAsk_capEntriesOps z n, capEntryOps]
-    rfl
-
-/-- **The cap check asks nothing** (its two items are the skeleton's `CapChk`/`CapChkZ`). -/
+/-- **The cap check asks nothing** (its four items are the skeleton's `CapD` … `CapChkZ`). -/
 theorem noAsk_capChkOps (S : Seq) (outs : Array (List Reg)) (b : ℕ) :
     (capChkOps S outs b).filterMap Op.item? = [] := by
   unfold capChkOps
   split
-  · simp only [List.filterMap_append, noAsk_capReadsOps, noAsk_capEntriesOps, List.filterMap_map]
-    simp [List.filterMap_cons, Op.item?, List.filterMap_eq_nil_iff]
+  · simp [powChainOps, bitPowOps, macDOps, macAOps, List.filterMap_flatMap, List.filterMap_cons,
+      Op.item?, List.filterMap_eq_nil_iff]
   · rfl
 
 /-- (−) **No cap check without the flag**: 3.x's sequence gets none. -/

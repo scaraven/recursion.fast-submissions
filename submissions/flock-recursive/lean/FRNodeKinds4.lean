@@ -42,9 +42,9 @@ open RecursionFast Rev4 Kinds FR.Stream
 /-! ## Numbers (literals, with their fidelity to `FRShape4`/`FRNodeLayout4`) -/
 
 /-- One trace's stream `0x54 ‖ traceBytes tr` at `seq4`, in bytes. -/
-def segB : ℕ := 1528000
+def segB : ℕ := 1550080
 /-- Its digest chain's blocks. -/
-def cLen : ℕ := 23875
+def cLen : ℕ := 24220
 /-- The aggregate stream `0x54 ‖ tr₁ ‖ … ‖ tr_k`, in bytes. -/
 def aggB (k : ℕ) : ℕ := 1 + k * (segB - 1)
 /-- Its digest chain's blocks. -/
@@ -73,8 +73,9 @@ def stmtB (κ : NodeKind) : ℕ := chLen κ 0 + chLen κ 1
 def wotsB (κ : NodeKind) (σ : ℕ) : ℕ := stmtB κ + 3 * κ.vslots + wotsSlot4 * σ
 /-- Signed child `σ`'s first `WM` block (its WOTS run's mirrors). -/
 def wmB (κ : NodeKind) (σ : ℕ) : ℕ := wotsB κ 2 + wmSlot4 * σ
-/-- H's used blocks (`FRNodeLayout4.hUsed`, `hUsedN_eq`). -/
-def hUsedN (κ : NodeKind) : ℕ := wotsB κ 2 + wmSlot4 * κ.vslots + 8
+/-- H's used blocks (`FRNodeLayout4.hUsed`, `hUsedN_eq`; revision 4.4.1's lever L1: one `WM` per
+signed child, not per verifier slot). -/
+def hUsedN (κ : NodeKind) : ℕ := wotsB κ 2 + wmSlot4 * 2 + 8
 /-- Aggregate `a`'s candidate final blocks and `c_A` block start here. -/
 def finB (κ : NodeKind) (a : ℕ) : ℕ := hUsedN κ + a * κ.maxK
 /-- The end of H. -/
@@ -412,12 +413,12 @@ theorem tgt_of_mem {κ : NodeKind} {iv : TIv} (h : iv ∈ nodeLayout4 κ) {blk :
 /-! ## Region facts -/
 
 /-- **H fits before L** (with the new tail): `hEnd ≤ lBase`, so H, L, M are disjoint
-(`regions_fit`). `N2` 73,078 ≤ 73,216; `N4` 121,128 ≤ 121,344; `N8` 193,204 ≤ 193,280 (revision 4.4.1). -/
+(`regions_fit`). `N2` 73,967 ≤ 73,984; `N4` 122,415 ≤ 122,624; `N8` 195,088 ≤ 195,328 (revision 4.4.1 (β′), L1, L2). -/
 theorem hEnd_le (κ : NodeKind) : hEnd κ ≤ κ.lBase ∧ hUsedN κ + nAgg κ * κ.maxK = hEnd κ := by
   refine ⟨?_, by simp [hEnd, finB]⟩
   rw [NodeKind.lBase, ← hUsedN_eq]; cases κ <;> decide
 
-theorem hEnd_eq : hEnd .N2 = 73078 ∧ hEnd .N4 = 121128 ∧ hEnd .N8 = 193204 := by decide
+theorem hEnd_eq : hEnd .N2 = 73967 ∧ hEnd .N4 = 122415 ∧ hEnd .N8 = 195088 := by decide
 
 /-- A candidate final block is **the last block of a stream of `aggB k′` bytes**: its target's
 counter is `aggB k′` and its final flag is set. -/

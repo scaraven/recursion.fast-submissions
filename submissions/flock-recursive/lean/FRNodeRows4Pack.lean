@@ -57,7 +57,7 @@ def wfData : ℕ → List Item → List (ℕ × F)
   | _, [] => []
   | o, it :: its => (o / 16, winF o it) :: wfData (o + it.slen) its
 
-/-- **One trace's pinned elements** (`seq4`'s 8,907 items from offset 1; a closed constant). -/
+/-- **One trace's pinned elements** (`seq4`'s 8,783 items from offset 1; a closed constant). -/
 def wfSeg : List (ℕ × F) := wfData 1 (itemsOf seq4)
 
 /-! ## The rows -/
@@ -105,7 +105,7 @@ theorem wfData_length : ∀ (o : ℕ) (its : List Item), (wfData o its).length =
   | _, [] => rfl
   | o, _ :: its => by simp [wfData, wfData_length _ its]
 
-theorem wfSeg_length : wfSeg.length = 8907 := by
+theorem wfSeg_length : wfSeg.length = 8783 := by
   rw [wfSeg, wfData_length, itemsOf_seq4_length]
 
 /-- The bytes an item's stream occupies. -/
