@@ -895,3 +895,23 @@ Base: branch `v4/flock-recursive`, HEAD `53c2e13`. Build tree `logs/fr-build-SH2
 112. Not done: the machine half of `outIR4` (chain words ↔ heap, the copy, the realign loop, kSel, header,
     signature and statement emitters, `outIR4_sem`, cost), `FRXNd4`, the plug (coordinator's ruling:
     `FRSubmission4Fin`), item 4. RESULT Part 33 §7 is the handover.
+113. **S-H4 pass 10** (2026-10-29). Started on HEAD `91d74b0` with pass 9 uncommitted in the worktree (snapshot
+     + `MINE` symlinks); pass 9 landed as `8e88890` during the pass, HEAD `1f400d9` at the end; re-snapshotted and
+     rebuilt green (2,614 jobs). Build tree `logs/fr-build-SH4i` (copy of `SH4h`), logs `logs/S-H4i/`; `e.sh`
+     prints only a module's errors.
+114. **Item 1 (`FRXOut4C`, 85 code lines):** `chW`, `chainBytes4_getD`, `vS_get` (the virtual word is
+     `shWd chW (D mod 8) (⌊D/8⌋ + u)` at every shift, `shWd_zero`), `hAe_words`, `hAn_word`. Pitfalls: a literal
+     `List.range 41`/`ofLE` over `List.range 8` unfolded by `simp`/`ring` hit kernel deep recursion (3.5 min, then
+     the error); a generic `streamBytes_getD'` and an inductive `ofLE_range8` fix both.
+115. **Design change: the redirect in the loader, not `finCopy`.** `ldIx cb jL Δ n = n + cb + [⌊n/8⌋ = jL]·Δ`,
+     three registers; `Δ = 0` except an aggregate with `k < maxK`. H is never written; one frame `OF` (heap below
+     `bufB = 2^27` kept) holds for the whole output. Buffer shape `apB = ⟨3,3,2,20⟩` (3.x's stream shape: `hA` holds
+     for every word; a linear shape would wrap at `2^64` and fail `segIR_sem`'s `hA`).
+116. **`FRXOut4R` (429 code lines):** `ldC_sem`, `rlBody_step` (one realigned word: two loads through the loader,
+     `shr`/`shl`/`shl`/`add`, the address block, the guarded store; ≈ 150 lines of register bookkeeping),
+     `realign_sem` (setup block, `loopK_emit` with `RlInv`). Pitfall: a Python patch that replaced up to the end of
+     the file dropped `end FR.X` and silently made a later append a no-op (the file still elaborated); re-appended.
+117. Checks: build green (`build2.log`), 11 axiom lines within the three (`axioms.log`), source rule 389 files,
+     0 findings.
+118. Not done (context): the emitters (`shwIR`, `sigIR`, `pfIR` ladder, `kSelIR`, statements), the child programs,
+     `outIR4_sem`, cost/size, `FRXNd4`, the plug, item 6. RESULT Part 34 §6 is the handover.

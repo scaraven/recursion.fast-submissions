@@ -4681,3 +4681,110 @@ three ladders; 4,186,985 and 6,603,369 steps.
 - **Q1 (orchestrator).** Accept §6.1 (realign buffer + copy instead of shift/redirect registers in `AP`)?
   The pass-8 ruling's goal — `segIR_sem` carried over, 3.x's statements true at their instances — holds
   with fewer edits to 3.x.
+
+## Part 34 (track S-H4, pass 10): the chain words and the realign loop (items 1 and 2's core); handover for the emitters, `outIR4_sem`, `FRXNd4` and the plug
+
+**Status.** HEAD `1f400d9` (pass 9 = `8e88890`), build tree `logs/fr-build-SH4i` (copy of `fr-build-SH4h`,
+`snap.sh` on HEAD; `MINE` = pass 9's + `FRXOut4C`), logs `logs/S-H4i/`. Nothing committed. **Done: item 1
+and the machine core of item 2** (the chain loader with the `finBlk` redirect in registers, and the realign
+loop into the buffer, proved). **Not done: the emitters (signature, ladder, `kSel`, header, child and node
+programs), `outIR4_sem`, `FRXNd4`, the plug.** `Open4`, `certificate_sub4`, `certified` unchanged; the
+entry stays PROVISIONAL. §6 is the handover.
+
+### 1. Files (`loc.py`: total / blank / comment / code / theorems)
+
+| File | loc | Content |
+|---|---|---|
+| `FRXOut4C` (new) | 133 / 22 / 26 / 85 / 11 | **`chW`**; `shWd_zero`, **`wOf_shift`** (any `s < 8`), `streamBytes_getD'`, **`chainBytes4_getD`**, `getD_packBytes`, **`vS_get`**, `hA_getD`, **`hAe_words`**, `ofLE_append'`, `ofLE_range8`, **`hAn_word`**. |
+| `FRXOut4R` (new) | 532 / 55 / 48 / 429 / 27 | registers `qN … qM` (100–120, below `FRXOut`'s); `apH κ = ⟨3,3,2,mLog 0 + 1⟩`, `hBase κ`, `apB = ⟨3,3,2,20⟩`, `bufB = 2^27`, `nW = 185,344`, `bufA`; **`ldC κ`**, **`rlBody κ`**, **`realign κ`**; `addrH_toNat` (any `st ≤ 20`), **`hAddr_apH`**, `bufA_apB`, `hAddr_lt`, `regs_hAddr`, `bufA_inj`, `bufA_ge/lt`; **`OF`** (the output phase's frame: heap below `bufB` kept), `of_loK`, `of_decS`, `of_entryK`; `ldIx`, `eq_toWord`, `ite_mul_toWord`, **`ldC_sem`**, `wf_ldC`, `loK_ldC`, `keep_ldC`, `ldPs_oAd`, `ldPs_keep`; **`RlInv`**, `shl_shl_one`, `shr_8s`, **`rlBody_step`**, `rlInv_entryK`, `wf_rlBody`, `wf_realign`, **`realign_sem`**. |
+
+New code: 514 lines; neither module is in the certificate's closure yet (nothing imports them).
+
+### 2. What is proved
+
+- **`vS_get`** (with `hD : i(segB − 1) + segB ≤ streamB κ σ k`): `(vS κ σ k i w)[u] = shWd (chW κ σ k w) (D mod 8)
+  (⌊D/8⌋ + u)`, `D = i(segB − 1)`, `chW κ σ k w n = hMW w (8·blkOf κ σ k ⌊n/8⌋ + n mod 8)`; at `s = 0` the pair is
+  the word (`shWd_zero`). Via **`chainBytes4_getD`**: chain byte `p` is byte `p mod 8` of `chW ⌊p/8⌋`.
+- **`hAe_words`**: `packBytes (hAe κ a w) = [shWd (hMW w) 1 (8·c_A + j)]_{j<4}`; **`hAn_word`**: `toWord (hAn κ a w) =
+  shWd (hMW w) 1 (8·c_A + 4)` (`c_A = cAB κ a`). With `aggHdr_words` the header is `toWord (0x41 + 256k)` and five
+  shift-1 pairs.
+- **`ldC_sem`**: with `oR = hBase κ`, `qM = n`, `qCB = cb`, `qJ = jL`, `qDl = Δ`, the loader leaves in `oX` the heap
+  word at `hAddr κ (ldIx cb jL Δ n)`, `ldIx cb jL Δ n = n + cb + [⌊n/8⌋ = jL]·Δ` (**the `finBlk` redirect is a
+  register product, not a copy**: H is never written).
+- **`realign_sem`** (`OF M₀ s`, `i ≤ 4`, `qI = i`, bounds, `hlow`: every loaded H word lies below `bufB`): after
+  `realign κ`, `OF M₀` holds (the heap below the buffer is `M₀`'s), the output is unchanged, and for every `u < nW`
+  the buffer word at `bufA u` is `shWd (fun n => rd M₀ (hAddr κ (ldIx cb jL Δ n))) (D mod 8) (⌊D/8⌋ + u)`. The loop
+  body computes `(C n >>> 8s) + ((C (n+1) <<< 1) <<< (63 − 8s))` (`shl_shl_one`: `= C (n+1) <<< (64 − 8s)`, `0` at
+  `s = 0`) and stores it with the guarded store (`rd_storeM`); `RlInv` is the loop invariant (`rlBody_step`).
+
+### 3. Statement changes
+
+None. `Open4`, `certificate_sub4`, `certified`, every pass-9 statement unchanged.
+
+### 4. Deviation from the ruling (the copy)
+
+The accepted ruling had **`finCopy`** (copy `finBlk`'s 8 message words onto the main chain's last block, in H).
+This pass **redirects in the loader instead**: `ldIx` adds `Δ = 8·(finBlk − chBase − jL)` to the H word index when
+the chain word's block is the stream's last (`jL = streamL − 1`), from registers. Same effect on the realigned
+words; the heap below the buffer is never written, so one frame (`OF`: heap below `bufB` = the decode's) serves the
+whole output (no per-child "copied block" exception), and `Δ = 0` for a previous node and for `k = maxK`
+(`finBlk = chBase + chLen − 1 = chBase + jL`), so one loader serves every child. The realign into the buffer and
+`segIR` over `apB` are as ruled.
+
+### 5. Controls and checks (logs in `logs/S-H4i/`)
+
+- Controls: none new yet (the pieces are universal lemmas; the negative controls belong with the programs:
+  §6 lists them).
+- **Build:** `lake build FR Solution FRSubmission4Cert FRXOut4R` green on HEAD `1f400d9`, **2,614 jobs**
+  (`build2.log`; on the old HEAD `91d74b0` + pass 9: `build1.log`, 2,611; baseline `build0.log`, 2,609).
+- **Axioms** (`axioms.log`, `logs/fr-build-SH4i/ax/AxSH4i.lean`, 11 declarations incl. **`certificate_sub4`**,
+  **`RecursionFast.Challenge.certified`**, `vS_get`, `hAn_word`, `ldC_sem`, `rlBody_step`, `realign_sem`): within
+  `propext`, `Classical.choice`, `Quot.sound`; no `sorryAx`.
+- **Source rule** (`source-rule.log`): 389 files, 0 findings.
+- Elaboration (`lake env lean`, one module): `FRXOut4R` ≈ 8 s wall; `FRXOut4C` ≈ 6 s.
+
+### 6. Handover: what remains, in order (design fixed by this pass)
+
+Registers `qN … qM` (100–120) are below `FRXOut`'s (200–255), so `segIR` keeps them (`frame` + `wrL`).
+`apH κ`/`hBase κ` read H (`hAddr_apH`); `apB`/`bufB` read the buffer (`bufA_apB`). Every emitter after the decode
+runs under `OF M₀` with `M₀` the heap after `decF04 κ` (`hMW_heap` gives `rd M₀ (hAddr κ n) = hMW (wF κ L es) n`,
+`decF04_wF` the statement and selector cells).
+
+1. **Chain registers for child `σ` with `k` segments** (static for a previous node: `cb = 8·chBase κ 0`,
+   `jL = cLen − 1`, `Δ = 0`; at run time for aggregate `a`, `σ = aggChild κ a`): `qCB := 8·chBase κ σ`,
+   `qJ := (qK·(segB − 1)) >>> 6` (`= aggL k − 1`), `qDl := [qK <ᵤ maxK]·8·(finB κ a + qK − 1 − chBase κ σ − qJ)`.
+   Pure lemma: for `n/8 ≤ jL`, `ldIx cb jL Δ n = 8·blkOf κ σ k (n/8) + n mod 8`, hence `rd M₀ (hAddr κ (ldIx …)) =
+   chW κ σ k (wF) n`; a `shWd_congr` (agreement on `n`, and on `n + 1` when `s ≠ 0`) then turns `realign_sem`'s
+   buffer into `(vS κ σ k i (wF))[u]` (`vS_get`). `hlow` from `hAddr_lt` (all blocks `< hEnd κ`, per-kind numerals).
+2. **Emitters** (new, `FRXOut4R` or a sibling `FRXOut4E`):
+   - `shwIR ap s` (two `ldw`, shifts `8s` / `64 − 8s`, `out`): `shWd (src M₀ ap R) s n`, the pattern of `segIR`'s
+     `.shw` case generalised to `0 < s < 8` (shift 3 is needed by the chain values).
+   - `sigIR κ σ`: the index (`shwIR 1` at `8·wb 399`, kept in a register), `loopK` over 133 chains (four `shwIR 3`
+     from `qP`, `qP += 24`), `loopK` over 16 levels (bit `(idx >>> t) & 1`, base `qP + 4 − 4·bit`, four `shwIR 1`,
+     `qP += 16`): `= sigWords (sigH κ σ w)` by `sigWords_sigH` and `toWord idx = shWd …` (its `e1`).
+   - `pfIR`: `segIR apB 0` over `catL ((range 17).map (fSeg4 seq4 32))`, then buffer word 10 `&&& 255` and the ladder
+     `ite (= 0x50) (field 17 at 30) (ite (= 0x4B ∨ = 0x4D) (… 31) (… 32))`. Pure lemmas: `fSeg4 S m f = fSeg4 S 32 f`
+     for `f ≠ fSibs` (induction on `pRest4`), `segOut` of `catL` = flatMap, `mOfB b = if b = 0x50 then 30 else if b =
+     0x4B ∨ b = 0x4D then 31 else 32` (`decide` over `UInt8`). `okSeg`/`depthSeg` of the four segments by
+     `decide +kernel` (pass 9's scratch: all hold, depth 1).
+   - `kSelIR κ a`: per `i < maxK` (unrolled) XOR the three selector cells' two words (F addition is
+     coefficientwise XOR, `FRField128.add`), flag `= (1, 0)`, `alive &&= flag`, `qK += alive`; pure lemma: that sum
+     is `kSel` (`find_range_getD`).
+   - statements: per cell two loads at `wAddr κ (stC κ σ h)` (`elemWords_rdF`, `out_cells_dec0`, `decF04_wF`).
+3. **Children and `outIR4 κ`**: prev = `|π|`, realign `i = 0`, `pfIR`, `segIR apB 0 (trSeg4 seq4)`, `sigIR`;
+   aggregate = `kSelIR`, `48 + k·piSize`, `hdrWords` (`0x41 + 256k`, then `shwIR 1` at `8·c_A + 4` and `+ j`),
+   `loopK qSc qK maxK (realign; pfIR; qI += 1)`, `k·|items|`, `loopK (realign; segIR (trBody4 seq4); qI += 1)`,
+   `sigIR`. `loopK` with a run-time count `k ≤ K` needs an `entryK` lemma for `rd n = toWord k`, `k ≤ K` (the count
+   is `min`: `entryK`'s `ltu` branch), and `loopK_emit` re-stated for it. `outIR4 κ` = tag `1`, the four statement
+   cells, child 0 (prev for `N2`/`N4`, aggregate 0 for `N8`), child 1 (the aggregate). `outIR4_sem` composes
+   `signedWords_prev`/`_agg` (with `V i u := rd M_i (bufA u)`), `witWords_readW4`.
+4. Cost/outs/size/wf: every piece is `NoLoopT`; cost is an upper bound only (`DecOk4.cost` has
+   `decBudget4 − cost_le_decF04 ≈ 1.03·10^14` free; the output is `≈ 10^8`): `realign` = `8 + nW·(cost rlBody + 3)`
+   (`rlBody` ≈ 70 steps), segments by `decide +kernel` on `cost (segIR apB 0 seg) 0`. Sizes by `decide +kernel`
+   per segment (pass 9: 4,940 + 3·1,245 + 4,904 per child).
+5. `FRXNd4`, the plug, `FRSubmission4Fin`, `Solution` (Part 33 §7 items 4–5, unchanged), then item 6.
+
+### 7. Open questions
+
+- **Q1 (orchestrator).** Accept §4 (loader redirect `ldIx` in registers instead of `finCopy`)? It keeps H
+  unwritten and needs no per-child heap exception; the ruling's buffer and `segIR` are unchanged.
