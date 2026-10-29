@@ -10,7 +10,10 @@ Main (`v4/flock-recursive`, core `422f2f9`; the certificate assumes only `Open4F
 `v4/rev44` (HEAD `9a41aac` = RSV-V2 + main merged + B5; red at RSV-V's 7 declarations and possibly decoder literals):
 - RSV-S: E-phase soundness for RSV2 (P4b, B′ 69 cells, `gap4Imp_of_rsv`).
 - A1′: R-A′ spacers (aligned sub-slots; `kindS`/`wf` at i ≥ 1). Told to build against B5's `FRNodeRows4Plan`/`FRVerifierImplNode4F`.
-- Cheap Opus review of B5 (findings feed A1′/B4).
+- Review of B5 (cheap Opus) found no blockers; the fast path is fully covered by `linkV4_eq`/`slots_val`. The should-fix items:
+  - **(a) Clash with A1′.** `pinKeys`/`hpkr`/`extIRows`/`wfLen` assume one pinned block per slot, equal to `wfSeg`. A1′'s per-sub-slot blocks need a segment-carrying key and a re-proof of `linkV4_eq`. A1′ has been told; `innAt`'s `find?` should become an indexed `Array`.
+  - **(b) Silent slowdown.** If `cokB` fails at runtime, V silently falls back to `growsVal3`. The bench and E1 should print `(lkArr κ).all (·.eok)`.
+  - **(c) Sharing may shrink.** Per-sub-slot blocks may reduce sharing across kinds, so re-measure V(N4) after A1′.
 
 Landed on rev44: **B5 `9a41aac`**. V(N4) with own kind only 276.6 → 263.8 ms; with all three kinds 347.6 → 288.4 ms. Each extra kind now costs +16–18 ms, against +37–38 ms before. `protoV4` (≈ 125 ms) is now the bulk of the own-kind call. Its open lever is sharing prototype 1's low tables with prototype 0, worth about 5 ms.
 
