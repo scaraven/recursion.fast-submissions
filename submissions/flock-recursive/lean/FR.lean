@@ -106,6 +106,7 @@ import FRSoundness4R4FrCtrl
 import FRSoundness4R4FrCtrlB
 import FRSoundness4R4Tail
 import FRSoundness4R4ColsCtrl
+import FRSoundness4R4Full
 import FRSoundness4XCtrl
 import FRSoundness4P4fCtrl
 import FRNodeMirror

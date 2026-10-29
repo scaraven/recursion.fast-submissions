@@ -249,3 +249,33 @@ relocated fields).
   `sum_congr`.
 - Controls `FRSoundness4R4ColsCtrl`.
 - Final: build `FR` + R4's controls + `FRSoundness4R4Tail` + `FRSoundness4R4ColsCtrl` green (2,529 jobs, HEAD `faa2f4b`); axioms 418 theorems clean; source rule 306 files 0 findings; profiles in `logs/R4g/`. Stopped with all three items done; RESULT's Pass 7 handover: `pf0`/`enc`/`fin`, X4's assembly, `FR.lean` import.
+
+### Pass 8 (R4h)
+
+- Build tree `logs/fr-build-R4h` (copy of R4g's; `b.sh` logs to `logs/R4h/`; `MINE.txt` adds
+  `FRSoundness4R4P4`, `FRSoundness4R4PfRun`, `FRSoundness4R4PfFlag`). Re-snapshotted to X4 (`39fb161`)
+  mid-pass (coordinator).
+- **`FRSoundness4R4P4`**: `gFinPTop`'s relocated flag (`relP44`, `flag_gFinP4`, generic `run_gEncOps`,
+  `run_gPositions` over `2^pf` elements); `encVal4_eq` (3.x's `encVal_eq_encAt` for any `n ≤ 7`);
+  `finalMsg4`, `finalAt_eq4`, `posReg4` (Q.i's position register holds `qPos`); **`pf04_of_fields`**
+  (any `c₀`), **`enc4_of_fields`** (hypothesis: the final message's zero tail `hz`, from `finPf`'s tail flag).
+  Traps: `exact toK_k _` against `encF … (Val.n x).toN` exhausted 8G (defeq unfolds `encF`'s sum):
+  rewrite `toN_n4` first. `set es/κ` then `posReg4` (stated on the unfolded terms) mismatched; dropped the `set`s.
+  `omega` fails on goals with `2 ^ pf` atoms (use `Nat.add_lt_add_left`) and on some `Reg` sums.
+- **`FRSoundness4R4PfRun`**: block runs of INT-8's `finPf`: `run_selOps` (`selI`), `run_gCellsOpsK`
+  (`eqCellK4`, `cellsVal4`), `run_fhOps4` (`fhVal4`), `run_padOps`/`run_padsOps` (`padF4`),
+  `run_gTailOps` (`tailOk4`), reloc lemmas, `gLvsOps_4` (seq4's ladder is `lvlStar`).
+- **`FRSoundness4R4PfFlag`**: `slotIx`/`famI`/`candIx`, `gFinPfR` + `gFinPf_reloc`, the relation
+  `relPf4` (`wV4`, `w0V4`, `padV4`, `finHat4`, `tailOk4`), `run_selSlots`, `pr_seq2`, **`flag_pfTail4`**
+  (blocks 11–17) and **`flag_gFinPf4`** (blocks 1–10 then the tail). Trap: the one-theorem form hit
+  the 1M heartbeat limit (2.5 min); splitting blocks 11–17 into `flag_pfTail4` makes the module 25 s.
+- **`FRSoundness4R4PfFin`**: `gPfPts_lt`/`_ok` (3.x `pfPts_lt` for every family), `relPf4_of_fields`,
+  `finHat4_eq`, `padF4_eq`, `tail_zero4`, **`fin4_of_fields`** (hypothesis `hW`: `wV4 = wHatL … 4`),
+  `hz_of_fields` (enc's tail).
+- **`FRSoundness4R4Full`**: `FinTabs4` (discharged per kind by `simp (decide := true)` on `kvOf`),
+  `finRest4_full`, `acceptTail4_seg`, `acceptTail4_node`; controls.
+- Coordinator mid-pass: X4 committed (`39fb161`); `RunFacts4` requested if context allows: not
+  started (handover items 2–3).
+- Final: build green (2,538 jobs, HEAD `39fb161`); axioms 492 theorems clean; source rule 319 files
+  0 findings; profiles in `logs/R4h/`. Stopped (context long) with the RESULT's Pass 8 handover: `hW`
+  (level steps, `Ŵ₀(P₀)` run side), `RunFacts4`, statement views/F4, `FR.lean` import.

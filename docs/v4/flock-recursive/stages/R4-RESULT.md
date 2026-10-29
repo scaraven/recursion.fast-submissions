@@ -1110,3 +1110,155 @@ theorem finRest4_of_fields (hphi) (hF) (hPS) (hnode) (hm) (hb) (hin) (hπ) (hpf0
    `finRest4_of_fields` (`hm` by `dm_seg4`/`dm_node4`, `hnode` by `kindOfC_acc_*`, `hphi` by
    `phiRS_*`), `¬ RejF` from R4d–R4f's `not_rej*` (node `hM`/`hL` now INT-9's `implN4F_hM/_hL`).
 3. Add `import FRSoundness4R4ColsCtrl` to `FR.lean`.
+
+## Pass 8 (track R4h; HEAD `bb5d352`, re-snapshotted to X4 `39fb161`)
+
+- **Build tree** `logs/fr-build-R4h` (a copy of `fr-build-R4g`; `b.sh` logs to `logs/R4h/`; `MINE.txt`
+  adds the five modules below). Every lean/lake command ran in the 16G scope (8–12G for single
+  files) under `timeout`. No sub-agents. Nothing committed. Only new `FRSoundness4R4*` modules written
+  (names grepped first); no existing module edited, no statement changed.
+- **Imports for `FR.lean`:** `import FRSoundness4R4Full` (it pulls `PfFin` → `PfFlag` → `PfRun` → `P4`
+  → `LinkP`), in addition to Pass 7's `import FRSoundness4R4ColsCtrl`.
+
+### Status
+
+| Item | State |
+|---|---|
+| 1. `pf0` | **Done**: `pf04_of_fields` (any `c₀`), from `relP44` (`flag_gFinP4`, `gFinPTop`'s relocated flag) with `pf_view4`, `p1_view4`, `c1_eq4` |
+| 2. `enc` | **Done**: `enc4_of_fields` (`encFlag4` per query, `posReg4`, `encVal4_eq`, `finalAt_eq4`) with the zero tail **`hz_of_fields`** from `finPf`'s tail flag (`tailOk4`, `tail_zero4`) |
+| 3. `fin` | **Done up to one named hypothesis `hW`** (`wV4 … = T4.wHatL W₀ L es 4`: the level steps and `Ŵ₀(P₀)` on the run): `fin4_of_fields` from `relPf4` (`flag_gFinPf4`, INT-8's uniform `finPf` relocated), `finHat4_eq` (`finHat` maps to `mleN 7 finalAt`), `padV4` → `Π(1 − ρ)` (`padF4_eq`), `claimN(Pf)` → `clR2 … 7` |
+| 4. `acceptTail4_full` | **Done with `hW` and `¬ RejF` as hypotheses**: `finRest4_full` (every `FinRest4` field proved; table facts `FinTabs4` discharged per kind: `finTabs4_seg`, `finTabs4_node`), `acceptTail4_seg`, `acceptTail4_node` |
+| X4's `RunFacts4` (coordinator, mid-pass) | **Not started** (handover 2–3) |
+
+**Final checks** (HEAD `39fb161`, R4's 40 modules overlaid):
+- `lake build FR FRSoundness4R4Full FRSoundness4R4ColsCtrl FRSoundness4R4FrCtrl FRSoundness4R4FrCtrlB
+  FRSoundness4R4Tail`: **green, 2,538 jobs** (`logs/R4h/build-last.log`).
+- **Axioms** (`logs/R4h/axioms.log`, `logs/fr-build-R4h/ax/AxR4h.lean`; all 492 theorems of the 40 R4
+  modules): within `propext`, `Classical.choice`, `Quot.sound`; no `sorryAx`.
+- **Source rule** (`logs/org20/scripts/source-rule.py submissions/flock-recursive`): 319 files, 0
+  findings (`logs/R4h/source-rule.log`).
+- **Times** (sequential, one core: `taskset -c 0 lake env lean -DElab.async=false --profile`;
+  `logs/R4h/prof-*.log`):
+
+  | Module | wall | import | type checking | tactic execution |
+  |---|---|---|---|---|
+  | `FRSoundness4R4P4` | 9.6 s | 3.9 s | 0.70 s | 1.0 s |
+  | `FRSoundness4R4PfRun` | 13.8 s | 4.2 s | 1.04 s | 2.5 s |
+  | `FRSoundness4R4PfFlag` | 30.7 s | 4.0 s | 2.86 s | 15.1 s |
+  | `FRSoundness4R4PfFin` | 9.4 s | 3.8 s | 0.59 s | 0.9 s |
+  | `FRSoundness4R4Full` | 7.4 s | 3.7 s | 0.05 s | 0.2 s |
+
+  Net kernel cost of the pass ≈ 5.2 s. One `decide +kernel` table certificate (`finalMsg4`); the
+  per-kind table facts by `simp (decide := true)` on `kvOf`'s constant tables.
+
+### What was built (`loc.py`, `logs/R4h/loc.txt`: total / code / thm)
+
+| Module | total / code / thm | Content |
+|---|---|---|
+| `FRSoundness4R4P4` | 397 / 322 / 17 | `layerOps_reloc`, `hornerKOps_reloc`, `gEncOps_reloc`, `rest_gFinP4`; `finV4`, `encVal4`, `encFlag4`, **`relP44`** (defs); `run_gEncOps`, `run_gPositions`, **`flag_gFinP4`**; **`encVal4_eq`**, `mLog4_eq`, `toN_n4`; `finalMsg4`, **`finalAt_eq4`**, **`posReg4`**, `relP44_of_fields`, **`pf04_of_fields`**, **`enc4_of_fields`** |
+| `FRSoundness4R4PfRun` | 471 / 397 / 19 | `selI`, `eqCellK4`, `cellsVal4`, `fhVal4`, `padF4`, `tailBytes4`, **`tailOk4`** (defs); reloc lemmas (`prodKOps`, `ptsOps`, `selOps`, `gCellsOpsK`, `gLvsOps`, `padsOps`), `gLvsOps_4`; **`run_selOps`**, **`run_gCellsOpsK`**, **`run_fhOps4`**, `run_padOps`, **`run_padsOps`**, **`run_gTailOps`** |
+| `FRSoundness4R4PfFlag` | 597 / 500 / 13 | `candIx`, `candAIx`, `famI`, **`slotIx`**, `gFinPfR`, `ptPf`, `tl4`, `rho4`, `kp4`, **`w0V4`**, **`wV4`**, `sfv4`, **`padV4`**, **`finHat4`**, **`relPf4`** (defs); `gPfPts_length`, `gFinPf_reloc`, `map_reloc_of`, `pr_seq2`, `run_selSlots`, **`flag_pfTail4`**, **`flag_gFinPf4`** |
+| `FRSoundness4R4PfFin` | 281 / 223 / 16 | `gSRegs_lt`, `gTailRegs_lt`, `gP0Regs_lt`, `gPfPts_lt`, `gPfPts_ok`, `lvRefs_lt4`, `rest_gFinPf`, **`relPf4_of_fields`**, `fhVal4_eq`, `fhVal4_mle`, `padF4_eq`, **`tail_zero4`**, **`finHat4_eq`**, **`fin4_of_fields`**, **`hz_of_fields`** |
+| `FRSoundness4R4Full` | 122 / 80 / 9 | **`FinTabs4`**, `finTabs4_seg`, `finTabs4_node`, **`finRest4_full`**, **`acceptTail4_seg`**, **`acceptTail4_node`**; controls |
+| **new total** | 1,868 / 1,522 / 74 | R4 total now 9,812 / 7,688 / 492 |
+
+### Main statements
+
+```lean
+theorem flag_gFinP4 (P : FinP) (fi : FinIn) (hin : ∀ x ∈ ysOf fi 4 ++ [claim0 fi "Pf", p1ClaimN fi 4], x < r.size) :
+    ∃ L, pureRun impl κ inp ((gFinPTop P fi r.size).1.map (reloc P.S)) r [] = some (L, relP44 impl inp r P.S fi)
+theorem encVal4_eq (ht : ∀ j r, impl.tensorW j r = Impl.tensorWS j r) (inp) {n} (hle : n ≤ 7) (m p)
+    (hm : ∀ c < 2 ^ n, finV4 seq4 inp c = m c) (hz : ∀ c, 2 ^ n ≤ c → c < 2 ^ 7 → finV4 seq4 inp c = 0) :
+    encVal4 impl seq4 inp p = encF n (fun x => m x) p
+theorem pf04_of_fields (hF : Fields4 …) (c₀) (L) : rSum T4.pfStart es 0 = T4.c1 c₀ 4 L es
+theorem enc4_of_fields (hF) (hPS : P.S = seq4) (ht) (hb : ¬ Bad L) (hin) (hm)
+    (hz : ∀ c, 2 ^ T4.mLog (kindOfC es) 4 ≤ c → c < 2 ^ 7 → finV4 seq4 inp c = 0) :
+    ∀ q < (CKind.lv (kindOfC es) 4).t, yv4 p R 4 q = T4.encAt (kindOfC es) 4 (T4.finalAt es) (T4.qPos (kindOfC es) es 4 q)
+-- INT-8's finPf (fixed kind, ck): the flag
+theorem flag_gFinPf4 (r P) (hS : P.S = seq4) (hnc : 0 < P.nc) (hnf : 0 < P.fams.length) (fi) (hpos) (hO) (hpts) (hix) (hlv) :
+    ∃ L, pureRun impl κ inp (gFinPfR P fi r.size) r [] = some (L, relPf4 impl κ inp fi r P)
+-- relPf4 := (Val.k (wV4 * padV4 * finHat4)).eqv (rd r (claimN fi "Pf")) && tailOk4 P κ inp
+theorem fin4_of_fields (hF) (hPS) (hck) (hnc) (hnf) (hix) (hpad)
+    (hW : wV4 impl p.tix ⟨outs, zh, Ex 11⟩ (Rs 11) P = T4.wHatL W₀ L es 4) (c₀) :
+    clR2 T4.pfStart 32 readK chK (T4.lvC c₀ 5) L es 7 =
+      T4.wHatL W₀ L es 4 * (∏ v ∈ Ico (T4.mLog (kindOfC es) 4) 7, (1 - T4.pfP es v)) * mleN 7 (T4.finalAt es) (T4.pfPt es)
+theorem finRest4_full (hphi) (ht) (hF) (hT : FinTabs4 P p.tix (kindOfC es)) (hm) (hb) (hin) (hπ) (hW) :
+    FinRest4 W₀ P4b.c₀L4 L es (yv4 p (#[] ++ y.1.toArray))
+theorem acceptTail4_seg (hphi) (ht) (hb : ¬ Bad L) (hπ)
+    (hrun : (runIR impl (gen4 seq4 (.ofSeg σ) (finOps4 (segFinP σ))) inp).runLog L = some true)
+    (hR : ∀ tr, semIR … tr = some true → (∀ e ∈ tr, e ∈ L) → ¬ RejF L (fsOf tr (itemsOf seq4)))
+    (hW : ∀ tr y zh Rs Ex, semIR … tr = some true → (∀ e ∈ tr, e ∈ L) → Fields4 … → wV4 … = T4.wHatL W₀ L es 4) :
+    ∃ j, T4.AcceptTail RejF W₀ P4b.c₀L4 L j            -- and acceptTail4_node (nodeFinP ν cells)
+```
+
+### Design and deviations
+
+- **D26. INT-8's `finPf` is read through its kind tables, generically.** The flag (`flag_gFinPf4`) is
+  proved once for any fixed-kind `P` with `P.S = seq4`, `P.ck`, `0 < P.nc`, `0 < |P.fams|`; the kind's
+  slot is `slotIx P κ s` (`selA` → `m*`'s candidate; else family `famI = selI fsel (|fams| − 1)`,
+  what the chain of `keep`s leaves). The per-kind facts (`FinTabs4`: claim indices in range, pad
+  family = the chain kind's `m`, the kind's `m` among `tails` when `< 32`, node flag) are decided on
+  `kvOf`'s constant tables (`finTabs4_seg`, `finTabs4_node`).
+- **D27. `nc = 25` is not needed by the flag**: it is generic in `nc` (`run_gCellsOpsK`, `eqCellK4`);
+  the cells' extra factor `1` (N2) belongs to the `Ŵ₀(P₀)` bridge (handover 1d).
+- **D28. `fin` is proved with `hW` named** (`wV4 = wHatL W₀ L es 4`): 3.x also split this
+  (`wV_eq` from `hW0`, `w0V_run` separately). The flag's `wV4` is literally 3.x's `lvsV` over the kind's
+  tails (`gLvsOps_4`: `seq4`'s ladder is `lvlStar`), so 3.x's `lvStepV` and its spec lemma shape carry
+  over (handover 1).
+- **D29. `enc`'s zero tail comes from field 11** (`finPf`'s `gTailOps`), as INT-8 moved it; `enc` uses
+  field 10's flag plus field 11's tail flag (`hz_of_fields`).
+- **D30. Splitting `flag_gFinPf4`**: blocks 11–17 are `flag_pfTail4` (one theorem hit 1M heartbeats).
+- No value asserted by no final was met: every `FinRest4` field and every quantity of `relPf4`
+  (`wHatL`, `Π(1 − ρ)`, `mleN 7 finalAt`, the kind's tail) is asserted by `finP 4` or `finPf`.
+
+### Controls
+
+| Definition | Positive | Negative |
+|---|---|---|
+| `selI` | `selI_ctl` (`selI (· = 1) 1 = 1`) | `selI_ctl` (no selection: `0`) |
+| `padF4` | `padF4_ctl` (`m = 30`: two factors); `padF4_eq` | `padF4_ctl` (`m*`: the empty pad `1`) |
+| `tailOk4` | `tailOk4_ctl` (no tails: `true`); `tail_zero4` | — (a flag; its content is `tail_zero4`) |
+| `FinTabs4` | `finTabs4_seg`, `finTabs4_node` | `finTabs4_ctl` (`L30`'s program tables at an `L32` chain fail) |
+| `relP44`, `encVal4` | `flag_gFinP4`, `encVal4_eq`, `pf04_of_fields`, `enc4_of_fields` | R4f's `not_finLog4_of_start` (`FinRest4`) |
+| `relPf4`, `wV4`, `w0V4`, `padV4`, `finHat4` | `flag_gFinPf4`, `fin4_of_fields`, `finHat4_eq` | — (the relation is an equation; `padF4_ctl`'s two cases separate the pads) |
+
+### Traps (new)
+
+1. `exact toK_k _` against `(Val.k (encF … (Val.n x).toN)).toK = encF … x` exhausted 8G (the unifier
+   unfolded `encF`'s sum). Rewrite `(Val.n x).toN = x` (`toN_n4`) first.
+2. `set es`/`set κ` and a lemma stated on the unfolded terms (`posReg4`) give terms that only agree
+   through the `set` definitions; with them the same blow-up. Drop the `set`s where a lemma's
+   statement must match.
+3. `omega` drops facts with `2 ^ pf` (variable exponent): prove such bounds with `Nat.add_lt_add_left`
+   or `generalize 2 ^ (t − 25) = A`.
+4. A 400-line `pureRun` proof hits the declaration's heartbeat limit: split at a register-file
+   boundary (`flag_pfTail4` takes the file `R` and its facts).
+5. Inside a theorem with parameters before the colon, a structural recursive call needs them too
+   (`run_padsOps one sf sfv pf ms …`).
+
+### Handover (remaining items, in order)
+
+1. **`hW`: `wV4 … (Rs 11) P = T4.wHatL W0X L es 4`** on an accepted run's fields, per kind:
+   a. the slots' points: `(gPfPts P fi).getD (slotIx P κ s) [] = (gTailRegs seq4 fi κc.m (s + 1)).map .k`
+      (`s < 4`) and `(gP0Regs seq4 fi κc.m).map .k` (`s = 4`), for `segFinP σ`/`nodeFinP ν cells` (`simp`
+      on the concrete `fams`/`e4s`; `gTailRegs seq4 = tailRegs`, `gP0Regs seq4 = p0Regs`);
+   b. `tail_vals4` (3.x `tail_vals` with `p1_view4`, `pf_view4`; `tLen κ.m k = T4.mLog κ (k − 1)` by
+      `decide` over `CKind`);
+   c. `lvStepV_eq4`, `wV_eq4` (3.x `lvStepV_eq`/`wV_eq` with `kc_view4`, `posReg4`, the Q.i outs bound,
+      `ht`; target `T4.wHatL`'s step), reducing `hW` to `w0V4 … = T4.wHatL W0X L es 0`;
+   d. `w0V4_run` (3.x `w0V_run`): `wHat0_spec4` with `ρ = rho4` (`T4.ptL es 0`), the run side:
+      `rsWeight` at the kind's spec (op parameter in `Meets`' form, `p.size ≥ 23` holds: `m − 7 ≥ 23`;
+      node: `rsWeightS4 ν` via `withRS4_meets`/`implN4F`, segment: `rsWeightS` at `β = 1`), the claim
+      points `ptIx.map ptPf = rsPtsL4` (3.x `zSrc_val`, `lcSrc_val`, `shSrc_val`, `eSrc_val` with
+      `chals_view4`, `coordsR_view4`), `κ`, `r″` (`rs1_val4`), `β` (`one_name_view4` at L3β), `κ′`
+      (`kpL4`), and the cells: `cellsVal4 25 ρ κ′ cells n 0 (κ′²) 0 = Σ_k ι(κ′^(k+2))·eqCell(ptOf ρ) c_k`
+      (`eqCellK4 25` on the zero-padded `ρ`: coordinate `v ≥ m − 7` has bit `0` and `ρ_v = 0`, factor 1).
+2. **X4's `RunFacts4`** (`FRSoundness4XLaws`): per kind, unwrap `runStmt` (`runLog_bind_ret`: the run
+   accepts and `stmtOk4` holds), identify `progSeg κ`/`progNode κ cells4` with `gen4 seq4 p (finOps4 …)`,
+   then `acceptTail4_seg`/`_node` at `W0X`, `c0X = P4b.c₀L4`, `RejFX` (`¬ RejFX` from `not_rejF4a_*`
+   and P4b's five `not_rej*`, at `VsegC`/`VnodeC`'s ops: `hphi` by `phiRS_segC`/`phiRS_nodeF`, `ht` from
+   `Meets`' fourth conjunct).
+3. **`SegLog`/`NodeLog` and X4's F4**: `kindOfC_acc_*`, the start/end digests (`seed_bytesAt4`,
+   `stmt_msg4`), `nStmt_eq4`/`segView_lastN`, `vkL_eq4`, `stL_eq4`; and a 4.1 `stmt_view` from
+   `stmtOps4`'s `piDigest 0 16 = input 0` assert (`X.vkOf π = vk`) and `stmtOk4` (`c = nodeStmt …`).
+4. Add `import FRSoundness4R4Full` to `FR.lean`.
