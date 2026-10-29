@@ -531,27 +531,61 @@ def isWalk : TKey → Bool
   | .walkAB .. => true
   | _ => false
 
-/-- **A split template** (S-E11, changes 22 (b)): its first `2^a` rows (the head) and the rest (the
-tail, at most `2^b` rows) are laid out in two aligned blocks, so that an instance takes
-`2^a + 2^b` rows instead of `2^(a+1)`: `phiRS 7` (134 rows) takes `128 + 8`. -/
-def splitOf : TKey → Option (ℕ × ℕ)
-  | .phiRS n => if 4 ≤ n then some (n, Nat.size (n - 2)) else none
-  | _ => none
+/-- The rows a split must save per instance (B0: below it, the extra piece costs `evalM` more than
+the rows are worth; `tensorW 7`'s 64 → 36 saves 28 and is not split). -/
+def splitMin : ℕ := 32
 
-/-- **The row of a split instance**: groups of `g = 2^(a−b)` instances, each group `g` heads then
-`g` tails (`(g + 1)·2^a` rows); instance `i`'s row `j`. -/
+/-- **The split policy** (B0, generalising S-E11's `phiRS` split, changes 22 (b)): a template of
+`nr` rows with `2^(r−1) < nr ≤ 2^r` whose rows past the head `2^a` (`a = r − 1`) fit `2^b` rows with
+`b < a` is laid out as a head block and a tail block, so that an instance takes `2^a + 2^b` rows of
+the layout instead of its aligned stride `2^r`, if that saves at least `splitMin` rows an instance
+(a split instance is one more piece for the evaluator, ≈ 1.5–2 µs of `evalM`: B0's `piececost`).
+Templates of at most 16 rows, and of more than `2^12` rows (evaluated in 64-row chunks), are not
+split. The policy reads only the template's row count: it is generic in the program (performance
+only; soundness does not depend on the layout). -/
+def splitN (nr : ℕ) : Option (ℕ × ℕ) :=
+  let r := Nat.size (nr - 1)
+  if 4 < r ∧ r ≤ 12 then
+    let b := Nat.size (nr - 2 ^ (r - 1) - 1)
+    if b < r - 1 ∧ 2 ^ (r - 1) + 2 ^ b + splitMin ≤ 2 ^ r then some (r - 1, b) else none
+  else none
+
+/-- A key's split from its row count `nr` (the walk is laid out in blocks, never split). -/
+def splitOfN (k : TKey) (nr : ℕ) : Option (ℕ × ℕ) := if isWalk k then none else splitN nr
+
+/-- **A split template**: `splitN` of its row count (`phiRS 7`: 134 = 128 + 6 rows, (7, 3);
+`tensorWK [19, 18, 19]`: 286 = 256 + 30, (8, 5)). -/
+def splitOf (k : TKey) : Option (ℕ × ℕ) := splitOfN k (tRows k).length
+
+/-- **The row of a split instance**: groups of `g = 2^(a−b)` instances; a group's `g` tails first
+(`g · 2^b = 2^a` rows), then its `g` heads (`(g + 1)·2^a` rows a group); instance `i`'s row `j`.
+The tails come first so that a last group of `m < g` instances takes `(m + 1)·2^a` rows
+(`splitEnd`): a key with one instance takes `2^(a+1)`, its unsplit stride. -/
 def splitRow (a b i j : ℕ) : ℕ :=
   let g := 2 ^ (a - b)
-  i / g * ((g + 1) * 2 ^ a) + if j < 2 ^ a then i % g * 2 ^ a + j else g * 2 ^ a + i % g * 2 ^ b + (j - 2 ^ a)
+  i / g * ((g + 1) * 2 ^ a) + if j < 2 ^ a then 2 ^ a + i % g * 2 ^ a + j else i % g * 2 ^ b + (j - 2 ^ a)
 
-/-- (+) `phiRS 7` is split as 128 + 8 rows; instance 0's tail follows the group's 16 heads, instance
-16 starts the next group of `17 · 128` rows. -/
-theorem splitRow_phi : splitOf (.phiRS 7) = some (7, 3) ∧ splitRow 7 3 0 128 = 2048 ∧
-    splitRow 7 3 15 133 = 2173 ∧ splitRow 7 3 16 0 = 2176 := by
-  refine ⟨by simp only [splitOf]; decide, ?_, ?_, ?_⟩ <;> norm_num [splitRow]
+/-- The rows a split key's `n` instances take: the full groups, then the last group's tail block and
+heads. -/
+def splitEnd (a b n : ℕ) : ℕ :=
+  let g := 2 ^ (a - b)
+  n / g * ((g + 1) * 2 ^ a) + if n % g = 0 then 0 else (n % g + 1) * 2 ^ a
 
-/-- (−) Other keys keep the `2^rbits` stride. -/
-theorem splitOf_walk (n m : ℕ) : splitOf (.walkAB n m) = none := rfl
+/-- (+) The policy splits `phiRS 7`'s 134 rows as (7, 3), a 72-row template as (6, 3) and the
+`tensorWK` rows 286 and 151 as (8, 5) and (7, 5); instance 0's tail is the group's first row, its
+head follows the group's 16 tails; instance 16 starts the next group of `17 · 128` rows; 512
+instances take `32 · 17 · 128` rows. -/
+theorem splitRow_phi : splitN 134 = some (7, 3) ∧ splitN 72 = some (6, 3) ∧ splitN 286 = some (8, 5) ∧
+    splitN 151 = some (7, 5) ∧ splitRow 7 3 0 128 = 0 ∧ splitRow 7 3 0 0 = 128 ∧
+    splitRow 7 3 15 133 = 125 ∧ splitRow 7 3 16 0 = 2304 ∧ splitEnd 7 3 512 = 69632 := by
+  refine ⟨by decide, by decide, by decide, by decide, ?_, ?_, ?_, ?_, ?_⟩ <;> norm_num [splitRow, splitEnd]
+
+/-- (−) Rows that fill their stride, whose tail does not fit half the head (`241 = 128 + 113`), or
+whose split saves fewer than `splitMin` rows (`tensorW 7`'s 35: 28) are not split, nor a template
+of more than `2^12` rows, nor the walk. -/
+theorem splitOf_walk (n m : ℕ) : splitOf (.walkAB n m) = none ∧ splitN 128 = none ∧ splitN 241 = none ∧
+    splitN 35 = none ∧ splitN 16 = none ∧ splitN 4200 = none := by
+  refine ⟨rfl, by decide, by decide, by decide, by decide, by decide⟩
 
 /-- **The layout** from the counts: groups after the skeleton's rows `r0` and cells `c0`, each
 aligned to its instance size. -/
@@ -562,14 +596,14 @@ def mkLay (r0 c0 : ℕ) : List (TKey × ℕ) → TLay
     let nr := (tRows k).length; let rbk := Nat.size (nr - 1); let cr := cregion k
     -- a template of more than `2^12` rows is evaluated in 64-row chunks (`FRVIRTplPlan.tinPP`),
     -- so its rows need only 64-row alignment (S-E6); the walk's in `2^gBits` blocks (S-E10)
-    let rb := alignUp r0 (match splitOf k with
+    let rb := alignUp r0 (match splitOfN k nr with
       | some (a, _) => a
       | none => if isWalk k then gBits else if 12 < rbk then 6 else rbk)
     let cb := alignUp c0 (if isWalk k then gBits else cr)
     -- the next group starts after the last instance's rows, not its whole aligned region (S-E6);
-    -- a split template's instances take `(g + 1)·2^a` rows per group of `g` (S-E11)
-    let re := match splitOf k with
-      | some (a, b) => rb + (n + 2 ^ (a - b) - 1) / 2 ^ (a - b) * ((2 ^ (a - b) + 1) * 2 ^ a)
+    -- a split template's instances take `(g + 1)·2^a` rows per group of `g` (S-E11, `splitEnd`)
+    let re := match splitOfN k nr with
+      | some (a, b) => rb + splitEnd a b n
       | none => rb + (n - 1) * 2 ^ rbk + nr
     (k, rb, cb, cr) :: mkLay re
       (if isWalk k then cb + (n - 1) * 2 ^ cr + tNlocs k else cb + n * 2 ^ cr) ks

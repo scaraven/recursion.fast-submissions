@@ -881,7 +881,9 @@ macro_rules! ymm_kernels {
                     let p = p0 + i;
                     let e = _mm256_set_m128i(row(2 * p + 2), row(2 * p));
                     let o = _mm256_set_m128i(row(2 * p + 3), row(2 * p + 1));
-                    st(out.as_mut_ptr().add(i), _mm256_xor_si256(e, mul(_mm256_xor_si256(e, o), sv)));
+                    // `mul_cl`, not `mul`: the shift reduction competes with the table loads here
+                    // (pass 12's streams: `x6.fold` +4 % with `mul`; pass 13)
+                    st(out.as_mut_ptr().add(i), _mm256_xor_si256(e, mul_cl(_mm256_xor_si256(e, o), sv)));
                     i += 2;
                 }
                 if i < n {

@@ -272,7 +272,13 @@ pub fn read_planform(b: &[u8]) -> (usize, Rows) {
             (0..nf).map(|_| lin(&mut r, &mut pc)).collect()
         })
         .collect();
-    let mut rows = Rows { idx: Vec::with_capacity(nrows), rng: Vec::with_capacity(nrows), cells: Vec::new(), coefs: Vec::new() };
+    let mut rows = Rows::new();
+    rows.idx.reserve(nrows);
+    rows.rng.reserve(nrows);
+    // the coefficients' indices in `rows.cv`: the table's by its index, a product `cf[c]·cf[d]` by
+    // the pair (pass 13), so the interning hash runs once per distinct value or pair
+    let cfi: Vec<u16> = cf.iter().map(|&x| rows.intern(x)).collect();
+    let mut prod: HashMap<(u32, u32), u16> = HashMap::new();
     let np = r.u() as usize;
     let mut prow = 0i64;
     for _ in 0..np {
@@ -287,7 +293,7 @@ pub fn read_planform(b: &[u8]) -> (usize, Rows) {
                 for m in 0..3 {
                     for (c, k) in lin(&mut r, &mut pc) {
                         rows.cells.push(c);
-                        rows.coefs.push(cf[k as usize]);
+                        rows.coefs.push(cfi[k as usize]);
                     }
                     rg[m + 1] = rows.cells.len() as u32;
                 }
@@ -309,23 +315,31 @@ pub fn read_planform(b: &[u8]) -> (usize, Rows) {
                 let mut rg = [a0; 4];
                 for m in 0..3 {
                     for &(wire, c) in &tr[m] {
-                        let cv = cf[c as usize];
+                        let ci = cfi[c as usize];
                         match wire & 3 {
                             0 => {
                                 rows.cells.push(one);
-                                rows.coefs.push(cv);
+                                rows.coefs.push(ci);
                             }
                             1 => {
                                 if let Some(l) = inp((wire >> 2) as usize) {
                                     for &(cell, d) in l {
+                                        let i = match prod.get(&(c, d)) {
+                                            Some(&i) => i,
+                                            None => {
+                                                let i = rows.intern(cf[c as usize] * cf[d as usize]);
+                                                prod.insert((c, d), i);
+                                                i
+                                            }
+                                        };
                                         rows.cells.push(cell);
-                                        rows.coefs.push(cv * cf[d as usize]);
+                                        rows.coefs.push(i);
                                     }
                                 }
                             }
                             _ => {
                                 rows.cells.push(cb + (wire >> 2) as u32);
-                                rows.coefs.push(cv);
+                                rows.coefs.push(ci);
                             }
                         }
                     }
@@ -337,6 +351,7 @@ pub fn read_planform(b: &[u8]) -> (usize, Rows) {
         }
     }
     assert_eq!(rows.idx.len(), nrows, "plan form row count");
+    rows.done();
     (pi, rows)
 }
 
@@ -424,7 +439,7 @@ pub fn decode_proto(pf: &[u8], regs: &[u8], cf: &[F]) -> Proto {
         let terms = get_terms(r, &mut fcells, &mut fcoefs, &mut pc);
         aux.push(Aux { reg, bits, n, terms });
     }
-    Proto { pi, rows, regs, aux, fcells, fcoefs, plan: Default::default(), adj: Default::default(), inactive: Default::default() }
+    Proto { pi, rows, regs, aux, fcells, fcoefs, plan: Default::default(), adj: Default::default(), inactive: Default::default(), fcinv: Default::default(), bycell: Default::default(), sched: Default::default() }
 }
 
 // ---------------------------------------------------------------- the blob
@@ -506,8 +521,10 @@ pub fn decode_blob(b64: &str) -> NodeData {
 // ---------------------------------------------------------------- the decoded image (pass 12)
 
 /// The decoded node data as a flat image (`prover setup` writes it as `nodedata.bin` beside the
-/// plans; the blob's format is unchanged): `FLNDIMG1`, the blob's tag, then per prototype its
-/// fields as length-prefixed little-endian arrays, then the texts. A request loads it with bulk
+/// plans; the blob's format is unchanged): `FLNDIMG2`, the blob's tag, then per prototype its
+/// fields as length-prefixed little-endian arrays, then the texts. Version 2 (pass 13): the rows'
+/// coefficients as `u16` indices, then the table `cv` (version 1's 16-byte coefficients are
+/// refused, so an old `/setup` falls back to the blob). A request loads it with bulk
 /// copies instead of the blob's base64, LZ and varint decoding (start-up 0.18 s on the 7763).
 pub const IMAGE: &str = "nodedata.bin";
 
@@ -518,7 +535,7 @@ impl Wi {
     }
     fn raw<T: Copy>(&mut self, v: &[T]) {
         self.u(v.len() as u64);
-        // SAFETY: plain-data element types (u32, [u32; 4], (u32, u32), F), read back by `Ri::raw`
+        // SAFETY: plain-data element types (u16, u32, [u32; 4], (u32, u32), F), read back by `Ri::raw`
         self.0.extend_from_slice(unsafe { std::slice::from_raw_parts(v.as_ptr() as *const u8, std::mem::size_of_val(v)) });
     }
 }
@@ -561,7 +578,7 @@ fn ty_code(t: Ty) -> (u64, u64) {
 
 /// The image of `nd` (tagged with `tag`, the blob's `data_tag`).
 pub fn save_image(nd: &NodeData, tag: &[u8; 32]) -> Vec<u8> {
-    let mut w = Wi(b"FLNDIMG1".to_vec());
+    let mut w = Wi(b"FLNDIMG2".to_vec());
     w.0.extend_from_slice(tag);
     for p in nd.protos.iter() {
         w.u(p.pi as u64);
@@ -569,6 +586,7 @@ pub fn save_image(nd: &NodeData, tag: &[u8; 32]) -> Vec<u8> {
         w.raw(&p.rows.rng);
         w.raw(&p.rows.cells);
         w.raw(&p.rows.coefs);
+        w.raw(&p.rows.cv);
         // the registers: (imp, type, n, form count) per register, then all forms in one array
         let head: Vec<[u64; 4]> = p.regs.iter().map(|r| { let (c, n) = ty_code(r.ty); [r.imp as u64, c, n, r.forms.len() as u64] }).collect();
         let forms: Vec<(u32, u32)> = p.regs.iter().flat_map(|r| r.forms.iter().copied()).collect();
@@ -587,14 +605,14 @@ pub fn save_image(nd: &NodeData, tag: &[u8; 32]) -> Vec<u8> {
 
 /// The node data from an image, if it is one and carries `tag`.
 pub fn load_image(b: &[u8], tag: &[u8; 32]) -> Option<NodeData> {
-    if b.len() < 40 || &b[..8] != b"FLNDIMG1" || &b[8..40] != tag {
+    if b.len() < 40 || &b[..8] != b"FLNDIMG2" || &b[8..40] != tag {
         return None;
     }
     let mut r = Ri { b, p: 40 };
     let mut ps = Vec::with_capacity(2);
     for _ in 0..2 {
         let pi = r.u()? as usize;
-        let rows = Rows { idx: r.raw()?, rng: r.raw()?, cells: r.raw()?, coefs: r.raw()? };
+        let rows = Rows::from_parts(r.raw()?, r.raw()?, r.raw()?, r.raw()?, r.raw()?)?;
         let head: Vec<[u64; 4]> = r.raw()?;
         let forms: Vec<(u32, u32)> = r.raw()?;
         let mut at = 0usize;
@@ -616,7 +634,7 @@ pub fn load_image(b: &[u8], tag: &[u8; 32]) -> Option<NodeData> {
         }
         let aux = r.raw::<[u64; 5]>()?.into_iter().map(|a| Aux { reg: a[0] as u32, bits: a[1] == 1, n: a[2] as usize, terms: (a[3] as u32, a[4] as u32) }).collect();
         let (fcells, fcoefs) = (r.raw()?, r.raw()?);
-        ps.push(Proto { pi, rows, regs, aux, fcells, fcoefs, plan: Default::default(), adj: Default::default(), inactive: Default::default() });
+        ps.push(Proto { pi, rows, regs, aux, fcells, fcoefs, plan: Default::default(), adj: Default::default(), inactive: Default::default(), fcinv: Default::default(), bycell: Default::default(), sched: Default::default() });
     }
     let mut s = || String::from_utf8(r.raw::<u8>()?).ok();
     let texts = [s()?, s()?];
@@ -672,7 +690,7 @@ pub fn proto_eq(a: &Proto, b: &Proto) -> Result<(), String> {
         return Err("pi".into());
     }
     let (x, y) = (&a.rows, &b.rows);
-    if x.idx != y.idx || x.rng != y.rng || x.cells != y.cells || x.coefs != y.coefs {
+    if x.idx != y.idx || x.rng != y.rng || x.cells != y.cells || x.coef_values() != y.coef_values() {
         let i = (0..x.idx.len().min(y.idx.len())).find(|&i| x.idx[i] != y.idx[i] || x.rng[i] != y.rng[i]).unwrap_or(0);
         return Err(format!("rows differ (lengths {} / {}, first at {i})", x.idx.len(), y.idx.len()));
     }
@@ -741,7 +759,7 @@ mod pass12_tests {
         let back = load_image(&img, &tag).expect("image loads");
         assert_eq!(save_image(&back, &tag), img);
         for (p, q) in nd.protos.iter().zip(back.protos.iter()) {
-            assert!(p.rows.idx == q.rows.idx && p.rows.rng == q.rows.rng && p.rows.cells == q.rows.cells && p.rows.coefs == q.rows.coefs);
+            assert!(p.rows.idx == q.rows.idx && p.rows.rng == q.rows.rng && p.rows.cells == q.rows.cells && p.rows.coefs == q.rows.coefs && p.rows.cv == q.rows.cv);
             assert!(p.fcells == q.fcells && p.fcoefs == q.fcoefs && p.regs.len() == q.regs.len() && p.aux.len() == q.aux.len());
             assert!(p.regs.iter().zip(&q.regs).all(|(a, b)| a.imp == b.imp && a.ty == b.ty && a.forms == b.forms));
             assert!(p.aux.iter().zip(&q.aux).all(|(a, b)| a.reg == b.reg && a.bits == b.bits && a.n == b.n && a.terms == b.terms));

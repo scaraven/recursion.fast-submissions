@@ -2230,3 +2230,219 @@ too (pass 11's probe did not). Off-tier, same code: Xeon 8573C M ≤ 83 → 90 (
    the memory traffic of `fill.check`, `m_matvec` and `m_scatter`.
 4. **The node witness's critical path** is slot 1's sequential replay (0.25 s for 436,594 entries);
    slot 0's fill (run_p0 ≈ 0.3–0.46 s, replay, check) still runs beside the aggregate.
+
+## 21. Pass 13 (track P2⁹): determinism, the node's fills, indexed coefficients
+
+Status: 2026-10-29. Logs: `logs/P2/r41p13/` (VM) and the runner runs `logs/P2/run-<id>/`. Every probe
+ran the base (HEAD's committed `prover.s`, `f0841393…`, with its own `prover setup`) and the new
+prover on the same runner, through `probe/p2t13/` (branches `probe/p2t-13a … 13e`, temporary-index
+commits on HEAD, all deleted). **The final runs are `40838740210` (record), `40838753998` and
+`40838766566`, all EPYC 7763.** **π is byte-identical** to HEAD's prover on every KAT (§21.5).
+
+### 21.1 Determinism (item 1)
+
+- **The prover is deterministic given the oracle.** Two streams against a service built with the
+  feature `insecure-test-keys` and the same fixed keys give byte-identical `proof.bin` files at every
+  step (N8, N2, N4): on the VM (portable products), on the 9V74 and on four 7763 runs (ymm path, 4
+  threads, the parallel replay), all with the same hashes (`d204d5df…`, `d416c365…`, `ddac2ea2…`;
+  `det.txt`).
+- **The cause of pass 12's difference** (§20.8 item 2) is the service: `rf-oracle` draws a fresh PRF
+  key and signing seed from `getrandom` at every start (`service/src/main.rs`). Every Fiat–Shamir
+  challenge, Merkle hash and signature depends on them. Nothing in the prover is nondeterministic:
+  no hash-map iteration order, no uninitialised read and no reduction order affects an output.
+  Parallel sums are XOR sums, and the new parallel replay is level-scheduled (§21.3).
+- **The rules do not ask for determinism.** `PROVER.md` §3 and `harness/rfh/bench.py` `retime`
+  re-run a slow step as a fresh process on the same inputs, under the same service lifetime. The
+  re-run's output must be accepted. The faster run's `P`, `V` and `|π|` are scored, and the first
+  output stays the next step's child. Nothing compares bytes, and identical bytes are impossible
+  anyway: a re-run's signatures take later one-time keys, and a node's π commits to the signatures
+  of the leaf children it signs during the step.
+- **Every variant verifies.** `stream.sh` `P2T13_RERUN=1` (det-3) re-runs every step under the same
+  lifetime, as `retime` does. Every re-run's π differs from the first, every re-run is accepted by
+  `acc` against the step's statement, and every canary of a re-run is rejected, on all five runners.
+
+### 21.2 What was built (crate 16,883 `.rs` lines, was 16,258)
+
+| file | change (the reference each change keeps) |
+|---|---|
+| `mfill.rs` | `Rows`: **coefficients as `u16` indices** into `cv` (`cv[0] = 1`), `term`/`intern`/`done`, `cmul`, `coef_values` (the 16-byte form), `cvinv`; `Proto::fcinv`; **`ByCell`** (terms by cell); **`Sched`/`schedule`/`replay_levels`** (the replay by levels; `FLOCK_SEQ_REPLAY=1` the sequential one), `try_row_p` (`try_row` on pointers, `want`); the **row check in parallel**; `save_scheds`/`load_scheds` (`sched.bin`); tests `schedules_levels_and_round_trip` |
+| `plan.rs` | `read_planform` interns the coefficients (table once, products per pair); image **`FLNDIMG2`** (indices + table; version 1 refused, the blob the fallback); `proto_eq` by values |
+| `nodeprove.rs` | **`m_scatter` as a gather by cell** (`m_scatter_ref` = pass 12's, `FLOCK_SCATTER_REF=1`); `m_matvec` sums the coefficient-1 terms apart; test `scatter_gather_and_matvec_match` (N2, N4, node data) |
+| `nodeops.rs` | `eval_m`/`eval_m_ref` read the indexed coefficients |
+| `node.rs` | `warm_plans`: the per-prototype tables and the schedules as separate jobs over all threads |
+| `stream.rs` | `prover setup` writes `sched.bin`; a request loads it with the plans |
+| `field.rs` | `B64::inv` by an addition chain (`inv_ref`); test `inv_chain_matches_ref` |
+| `ntt.rs` | `encode`: the replication **fused into the first radix-4 pass** (`first_pass_from`; `FLOCK_NTT_COPY=1` the reference) |
+| `simd.rs` | `x6_fold`'s ymm kernel with **`mul_cl`** |
+| `bench.rs` | `bench-nd` prints the coefficient-1 share and the table size |
+| `prover.s` | regenerated (§21.6) |
+| `probe/p2t13/` | `run.sh` (pass 12's, plus the short-replay KAT, the base's own setup, `P2T13_DET`: the fixed-key service and streams det-1/2/3), `stream.sh` (`RF_ORACLE_ARGS`, `P2T13_RERUN`, `file_sha`) |
+
+### 21.3 The node's fills (item 4) and the coefficients (item 3)
+
+- **Indexed coefficients**: the node data's 5.3 M nonzeros per prototype take 2 bytes each, not 16
+  (513 distinct values). The image is 298 → **150 MB**, and `/setup` 365 → **230 MB** (with
+  `sched.bin`, 12.8 MB).
+- **The replay by levels.** A recorded order (≈ 440 k entries) has 15,872 levels. The 17 levels of
+  at least 4,096 entries hold 72 % of the entries and run in parallel; the rest run on the calling
+  thread. Each entry sees exactly the cells it saw in the sequential replay. An entry that would
+  solve a cell other than its own is a miss and is retried in order (the short-replay case: 21,876
+  misses, the same 1,976 unsolved cells and the same π).
+- **7763 (run 40838740210, both ranges over 2 streams):**
+  - node witness:
+
+    | node | base (s) | new (s) |
+    |---|---|---|
+    | N2 | 0.39–0.40 | **0.27–0.28** |
+    | N2 over 1.19·2^18 | 0.49–0.52 | 0.35 |
+    | N4 | 0.74 / 0.93 | **0.55 / 0.64** |
+    | N8 | 0.68–0.69 | 0.58 |
+
+  - node prove N2: 2.40 → 2.30–2.34 s;
+  - step 3's spans:
+    - `fill.solve` 0.495 → 0.332 and `fill.check` 0.195 → 0.184 (slot 0 runs beside the aggregate);
+    - `ne4.scatter` 0.141 → 0.118.
+- The inverse caches (`cvinv`, `fcinv`, the addition chain) changed nothing measurable (the VM's
+  sequential replay: 0.45 s either way; inversions are rare). They are kept, with references.
+
+### 21.4 Segments (items 2, 5)
+
+- NTT (step 3): `ntt.copy` + `ntt.passes` 0.105 + 0.517 → `ntt.first` + `ntt.passes` 0.174 + 0.392 s.
+- `x6.fold` 0.263 → 0.229 s (`mul_cl`).
+- **Tried and reverted**: the x₆ fold by two scaled tables (no product per entry). On the 7763,
+  2^22 pairs took 0.0145 → 0.0172 s, because two 32 KiB tables do not fit L1 together.
+- Fits (prove-leaf + trace + SIGN), base → new:
+
+  | segment | base | new |
+  |---|---|---|
+  | L32 | 2.151 + 2.434·n/2^18 | 2.112 + 2.448 |
+  | L31 | 1.083 + 1.210·n/2^17 | 1.068 + 1.216 |
+  | L30 | 0.580 + 0.541·n/2^16 | 0.577 + 0.520 |
+
+  The aggregate is still ≈ 63 % of a step at 2^18 (4.69 of 7.40 s).
+
+### 21.5 Checks
+
+- **KATs, base (HEAD) = new.** They ran on the VM (versions a, b, c and e, with and without the
+  setup) and on all five runners (9/9). The values:
+  - N8 `d8b25c6a…`, N2 `515f21b3…`, N4 `c5d6ae84…`;
+  - N2 k = 1 `816a1f84…`, N4 k = 4 `a3c6e71b…`;
+  - the short replay, N2 over 311,951: `db9942b1…`;
+  - `test-leaf` 28 `62f91a4b…`, 30 `02997486…`, 32 `559306ee…`, 31 `--n 77777` `aac62938…`.
+
+  The 11 fit cases' π are also base = new.
+- `cargo test --release`: **54 passed, 1 ignored** (`cargo-test-2.txt`).
+- Source rule (`logs/org20`): 364 files, 0 findings.
+- **44/44 outputs accepted and 44/44 canaries rejected** on each final runner: the 32 stream
+  outputs, det-1 and det-2, and det-3's outputs and re-runs.
+
+### 21.6 `prover.s`
+
+On S-E13a's data: **18,366,894 B, sha256 `7c8704443aca72d25d2bff00b75e7383173eba659653e9c5d567b9ec696c471f`**
+(`logs/P2/r41p13/build-asm-e.log`). **The final `prover.s`, with B0's blob (§21.10): 18,408,878 B, sha256
+`1b84a5f1cbc19be63082ade61ef89fb00a649fc4b7a45ff210a0db7fc74ed47f`** (`build-asm-f.log`), rebuilt
+byte for byte on runs 40845544755 (7763) and 40845523456 (9V45). All three final runners rebuilt it byte for byte. The selftest
+gave `tier=ymm checked=[pclmul,ymm,ymm-sim]`, `bfly=sh`.
+
+### 21.7 Final 7763 times (run 40838740210, base and new on one runner, each with its own setup)
+
+| step | kind | chain(s) | base request | **new request** | new: aggregate · witness · node prove |
+|---|---|---|---|---|---|
+| 1 | N8 | 2^18 + 2^18 | 15.19–15.25 | **14.78–14.83** | 9.03–9.05 · 0.58 · 5.03–5.06 |
+| 2, 8 | N2 | 2^17 | 5.46–5.60 | **5.14–5.31** | 2.49–2.61 · 0.28 · 2.26–2.34 |
+| 3 | N2 | 2^18 | 7.71–7.76 | **7.38–7.41** | 4.68–4.70 · 0.27–0.28 · 2.32–2.33 |
+| 4 | N2 | 311,951 | 8.73–8.76 | **8.41–8.46** | 5.62–5.67 · 0.35 · 2.33–2.34 |
+| 5 | N2 | 3·2^17 | 10.08–10.14 | **9.74–9.78** | 6.95–6.98 · 0.35 · 2.35 |
+| 6 | N4 | 3·2^18 | 19.17–19.23 | **18.65–18.75** | 13.65–13.66 · 0.55 · 4.32–4.41 |
+| 7 | N4 | 2^20 | 24.05–24.07 | **23.33–23.38** | 18.19–18.26 · 0.64 · 4.34–4.36 |
+
+**The stream projection** (`logs/P2/r41p13/project.py` = pass 12's, each prover with its own fits by
+`--seg`; `project-final.txt` holds all three runs):
+
+| | base (same runner) | **new** |
+|---|---|---|
+| node parts N2 / N4 / N8 | 3.21 / 5.58 / 6.05 s | **2.91 / 5.07 / 5.68 s** |
+| start-up · overhead per step | 0.489 · 1.87 s | 0.530 · 1.91 s |
+| steps 2^17 / 2^18 / 1.19·2^18 / 2^20 | 5.50 / 7.79 / 8.78 / 23.92 s | **5.19 / 7.47 / 8.44 / 23.31 s** |
+| mean step + overhead | 9.55 + 1.87 = 11.42 s | **9.19 + 1.91 = 11.10 s** |
+| stream fits | M ≤ 83 | **M ≤ 86** |
+| evaluations truncated (simulated) | 30.6 % | **26.5 %** |
+| P̄ | 8.44 s | **8.09 s** |
+
+The other two final runs give mean step + overhead 11.49 → 11.21 s (M ≤ 83 → 85, truncated 31.5 →
+27.9 %) and 11.52 → 11.23 s (M ≤ 82 → 84, 31.9 → 28.1 %). Setup: 56 s, 230 MB.
+
+### 21.8 Deviations, findings, open questions
+
+1. **Nondeterminism is the service's fresh keys, not the prover** (§21.1). Byte identity of stream
+   outputs cannot be a check. The KATs and the fixed-key streams carry π identity.
+2. **Start-up rose by 0.04 s**: `pre.warm_plans` went 0.028 → 0.071 s (`ByCell`, `fcinv`); the
+   schedules come from `/setup`. Start-up is untimed, but it does count in `stream_s`. `ByCell`
+   could move into the image, and `fcinv` could skip the hash for coefficient 1.
+3. `/setup` adds `sched.bin`, and the image is now `FLNDIMG2`. An older `/setup` still works: its
+   image is refused and the blob is decoded, and without `sched.bin` the schedules are built at
+   start-up. The blob format is unchanged.
+4. `load_scheds` checks the shape of a schedule (its lengths, monotone levels, a permutation), not
+   its level property. Like the plans, the file is the entry's own setup output, tagged by the node
+   data. The row check after the replay decides the values in every case.
+5. A2′'s CapChk field and E1's port were not started; the node data's format is untouched beyond the
+   in-memory encoding.
+
+### 21.9 Handover: what remains, in order of seconds per step
+
+1. **The segments** (≈ 63 % of a 2^18 step). Per L32 at 2^18:
+   - commit ≈ 1.06 s, of which NTT ≈ 0.57 and the service's leaf hashes ≈ 0.36;
+   - round 1 0.76;
+   - Ligerito 0.68 (level-0 folds);
+   - x₆ 0.56;
+   - witness 0.58;
+   - ring switch 0.31.
+
+   The ring switch's weight table (0.31 s segment, 0.22 s node) is 48 row reads per output element
+   over 3–4 claims.
+2. **The node prove** (N2 2.3 s, N4 4.35 s): commit 0.43, E4 0.29, Z tail 0.27, Ligerito 0.25,
+   Z round 1 0.23, ring switch 0.18, Sh 0.14.
+3. **Start-up** (§21.8 item 2).
+4. **Slot 1's fill** (now 0.17 s on the 9V74): the 15,855 small levels (28 % of the entries) run
+   sequentially. Its check could be skipped for rows the replay itself solved.
+
+### 21.10 Added item: B0's row layout (the orchestrator's request)
+
+- **Re-embedded.** `nodeblob.b64` is rebuilt from `logs/B0/nodedump`: 7,439,340 B, sha256
+  `6ae3e6d8…`. `find_dirs` now defaults to that directory.
+- **The plan-form KAT passes** (`plan-kat`). `proto_eq` holds for p0 (580,620 rows) and p1 (573,389
+  rows), and the programs are equal. The prover needed no change: B0's split halves are ordinary
+  keys of the unchanged plan-form format.
+- **The node KATs' π change, because the matrices' rows move.** The new signed KAT nodes are in
+  `probe/p2t13/kat/` (local), each accepted by its kind's dumped program. The new references are:
+  - N8 `0277148e…`, N2 `b7ab5cb7…`, N4 `87865636…`;
+  - N2 k = 1 `2571a475…`, N4 k = 4 `06a1664c…`;
+  - the short replay, N2 over 311,951: `edbd211a…`.
+
+  The new code gives the same π as every reference path, with and without the setup. The leaf KATs
+  are unchanged. The runners reproduce the VM's values (`kat-expected.txt`).
+- **The Lean V built with B0's modules accepts the prover's outputs.**
+  - The V is the harness's badge `verify`, rendered around `Solution` in `logs/fr-build-P2t13`, a
+    copy of B0's tree. Its B0 modules equal the worktree's live files; only 13 FRX modules differ,
+    G3's in-progress golf. The binary is also saved as `logs/P2/r41p13/verify-B0`.
+  - The outputs were made on the runners (7763 run 40845544755, 9V45 run 40845523456) and checked
+    by this `verify`. Each run kept 17 outputs: fixed-key N8, N2 and N4 with their re-runs, and a
+    random-key stream of 8 steps. **17/17 were accepted and 17/17 canaries rejected.**
+  - On the VM: 6/6 accepted, 6/6 canaries rejected.
+  - Control: the pre-B0 prover's outputs are rejected by this V (2/2), so the check depends on the
+    row layout.
+  - The Lean V was built on the VM, not on the runners (a runner has no Lean build of the entry); the
+    outputs it checked came from the runners.
+- **Node prove time does not change measurably.** On the 7763, pass 13's code on S-E13a's layout
+  vs on B0's, same runner:
+
+  | node | S-E13a's layout (s) | B0's (s) |
+  |---|---|---|
+  | N2 | 2.32–2.39 | 2.31–2.43 |
+  | N4 | 4.36–4.43 | 4.33–4.37 |
+  | N8 | 5.11–5.12 | 5.05–5.08 |
+
+  E2 and E4 are 2–6 % lower. The projection is 11.21 → 11.16 s (M ≤ 85 both). The node's matrices
+  keep their 2^20-row slots; only about 4 % fewer rows carry terms.
+- Checks: `cargo test --release` 54 passed, 1 ignored. Source rule: 371 files, 0 findings. 44/44
+  outputs accepted and 44/44 canaries rejected per runner.

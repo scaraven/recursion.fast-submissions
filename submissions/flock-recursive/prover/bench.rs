@@ -433,10 +433,11 @@ pub fn run_nd(dir: &str) {
         if rep == 0 {
             for p in nd.protos.iter() {
                 let nf: usize = p.regs.iter().map(|r| r.forms.len()).sum();
-                let mut cf: Vec<F> = p.rows.coefs.iter().chain(p.fcoefs.iter()).copied().collect();
+                let mut cf: Vec<F> = p.rows.cv.iter().chain(p.fcoefs.iter()).copied().collect();
                 cf.sort_by_key(|x| (x.lo, x.hi));
                 cf.dedup();
-                println!("BENCH nd proto {}: rows {} nnz {} regs {} forms {} aux {} fcells {} distinct coefs {}", p.pi, p.rows.idx.len(), p.rows.cells.len(), p.regs.len(), nf, p.aux.len(), p.fcells.len(), cf.len());
+                let ones = p.rows.coefs.iter().filter(|&&i| i == crate::mfill::ONE_IX).count();
+                println!("BENCH nd proto {}: rows {} nnz {} (coefficient 1: {ones}) regs {} forms {} aux {} fcells {} distinct coefs {} (rows {})", p.pi, p.rows.idx.len(), p.rows.cells.len(), p.regs.len(), nf, p.aux.len(), p.fcells.len(), cf.len(), p.rows.cv.len());
             }
         }
         std::fs::write(&path, &img).expect("write the image");

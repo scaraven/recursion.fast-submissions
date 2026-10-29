@@ -486,14 +486,29 @@ def stepsAhead : List Op → ℕ
   | .askNode .. :: ops => 1 + stepsAhead ops
   | _ :: ops => stepsAhead ops
 
+/-- **The stride policy** (B0, performance only): the row alignment bits of a block of at most
+`n` rows: `r − 2` if `n ≤ 3·2^(r−2)` (`r = size (n − 1)`), else `r`. A block then takes `3·2^(r−2)`
+or `2^r` rows (S-E5 took `2^r` always: S-E6's skeleton padding), and wherever it starts on that
+alignment the plan cuts it into at most two aligned pieces (`FRVIRTplPlan.cutSeg`: `3u = 2u + u`
+or `u + 2u`). -/
+def strideBits (n : ℕ) : ℕ :=
+  let r := Nat.size (n - 1)
+  if 2 ≤ r ∧ n ≤ 3 * 2 ^ (r - 2) then r - 2 else r
+
+/-- (+) A Horner block (383 rows) is aligned to 128 (a stride of 384, not 512), a 42-row position
+to 16; (−) a 54-row position keeps 64, a block of 64 rows its 64. -/
+theorem strideBits_ctl : strideBits 383 = 7 ∧ strideBits 42 = 4 ∧ strideBits 54 = 6 ∧ strideBits 64 = 6 := by
+  decide
+
 /-- **The alignment hint** of an op given the ops after it (S-E5, performance only): a Merkle
-position (`posOps`, from its `idx`; `4s + 10` rows and at most `9s + 8` cells for `s` steps) and a
-Horner block (`encOps`, from the first of its 7 `tensorW`; 383 rows, 395 cells). -/
+position (`posOps`, from its `idx`; at most `4s + 10` rows and `9s + 8` cells for `s` steps) and a
+Horner block (`encOps`, from the first of its 7 `tensorW`; 383 rows, 395 cells); the rows by the
+stride policy (B0), the cells to the block's window. -/
 def alignOf : Op → List Op → Option (ℕ × ℕ)
-  | .idx .., ops => let s := stepsAhead ops; some (Nat.size (4 * s + 9), Nat.size (9 * s + 7))
+  | .idx .., ops => let s := stepsAhead ops; some (strideBits (4 * s + 10), Nat.size (9 * s + 7))
   | .tensorW .., ops =>
     match ops.drop 6 with
-    | .mulK .. :: _ => if (ops.take 6).all (fun o => o matches .tensorW ..) then some (9, 9) else none
+    | .mulK .. :: _ => if (ops.take 6).all (fun o => o matches .tensorW ..) then some (strideBits 383, 9) else none
     | _ => none
   | _, _ => none
 
