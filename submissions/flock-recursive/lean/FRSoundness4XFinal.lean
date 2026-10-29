@@ -46,7 +46,7 @@ theorem nodeSound_X (impl₀ : OpImpl) (implN : NodeKind → OpImpl) (S : Submis
       N4c.NodeResid4 I rd κ vk c₁ c₂ w) :
     NodeSoundLog (VnodeC implN N4c.cells4) vk (GoodX DFhi) (Rel (S.acc vk)) := by
   obtain ⟨hl, hi⟩ := hI
-  refine (N4c.nodeLaws4C' impl₀ implN N4c.cells4 S vk hV hq I rd ?_ ?_).1
+  refine (N4c.nodeLaws4C' impl₀ implN N4c.cells4 S vk hV hq I rd (fun _ _ _ _ h => h) ?_ ?_).1
   · rw [hl, hi]; exact nodeRun_X hHi hRun
   · rw [hl, hi]; exact hRes
 

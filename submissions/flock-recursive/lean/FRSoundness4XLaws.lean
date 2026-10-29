@@ -40,6 +40,11 @@ statement digests. -/
 def NodeLog (κ : NodeKind) (vk c : Digest) (π : Proof) (es : Log) : Prop :=
   kindOfC es = .node κ ∧ X.vkOf π = vk ∧ vkL es = vk ∧ c = nodeStmt (stL es 0) (stL es 1)
 
+/-- **The reserve's zero outputs on the log** (revision 4.4.2, RSV2 §2.2): the child claim's
+`X₃[1]`, `X₃[2]` (Lrend's message, values 58 and 59) are `0`, as `finE` asserts on every node kind.
+`RunFacts4.node` carries them with `NodeLog`. -/
+def RsvZero (es : Log) : Prop := P4b.rsvV es 58 = 0 ∧ P4b.rsvV es 59 = 0
+
 /-- **The program layer's residual**: every accepted run on a log without collisions or state hits
 has a chain that is an `AcceptTail` of the composed front and whose statement reads are the
 run's. A segment run is asked for only on the proofs `V_A` runs (INT-10, R4i's F1): `π` of
@@ -49,7 +54,8 @@ structure RunFacts4 (Vseg : SegProgs) (Vnode : NodeProgs) (vk : Digest) : Prop w
     (Vseg v.kind vk (segC v) π).runLog L = some true →
     ∃ j, T4.AcceptTail RejFX W0X c0X L j ∧ SegLog v (entriesOf L (pathOf L j))
   node : ∀ κ L c π, ¬ Bad L → kindOf4 π = .node κ → (Vnode κ vk c π).runLog L = some true →
-    ∃ j, T4.AcceptTail RejFX W0X c0X L j ∧ NodeLog κ vk c π (entriesOf L (pathOf L j))
+    ∃ j, T4.AcceptTail RejFX W0X c0X L j ∧ NodeLog κ vk c π (entriesOf L (pathOf L j)) ∧
+      RsvZero (entriesOf L (pathOf L j))
 
 theorem agree_take3 {es : Log} (h : 3 ≤ es.length) : Agree (es.take 3) es 3 := by
   have e := agree_append (es.take 3) (es.drop 3) (n := 3) (by simp; omega)
@@ -114,7 +120,7 @@ theorem nodeRun_X {DFhi : ℕ → Log → Log → Prop} (hH : FrontHi DFhi) {Vse
         N4c.StmtN4 κ (lRows4 κ) (nodeIRows4 κ) vk c₁ c₂ w := by
   intro κ L c π hG hk hrun
   obtain ⟨hb, -, -⟩ := T4.muT_lt_one hG.2
-  obtain ⟨j, hT, hkC, hvk, hvkL, hc⟩ := hR.node κ L c π hb hk hrun
+  obtain ⟨j, hT, ⟨hkC, hvk, hvkL, hc⟩, -⟩ := hR.node κ L c π hb hk hrun
   obtain ⟨hlen, hSt⟩ := stmt4_of_tail hH hG hT
   set es := entriesOf L (pathOf L j)
   have hA := agree_take3 hlen

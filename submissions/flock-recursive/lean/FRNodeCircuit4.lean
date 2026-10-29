@@ -375,28 +375,33 @@ variable {Vseg : SegProgs} {Vnode : NodeProgs}
 /-- **`NodeSoundLog` from the node circuit**: if an accepted node run on a good log carries the key
 and its truths `StmtN4` hold on some `f⁽⁰⁾` for `c = nodeStmt c₁ c₂` (`hRun`: the PIOP's per-run
 soundness, X4/S-G), and the truths give the residual (`hRes`: S-E12b's rows), then the statement has
-a witness (`node_sound4`). -/
+a witness (`node_sound4`). Revision 4.4.2: the per-run statement is any `St` that implies `StmtN4`
+(`hSt`), e.g. the reserve's `StmtN4R`; `hRes` may use all of it. -/
 theorem nodeSoundLog4_of (I : SlotIface4 Vseg Vnode) (rd : Read4) {vk : Digest} {Good : Log → Prop}
+    {St : NodeKind → Asg → Digest → Digest → Prop}
+    (hSt : ∀ κ w c₁ c₂, St κ w c₁ c₂ → StmtN4 κ (I.lrows κ) (I.irows κ) vk c₁ c₂ w)
     (hD : ∀ κ, DigLemma4 κ)
     (hRun : ∀ κ L c π, Good L → kindOf4 π = .node κ → (Vnode κ vk c π).runLog L = some true →
-      X.vkOf π = vk ∧ ∃ w c₁ c₂, c = nodeStmt c₁ c₂ ∧ StmtN4 κ (I.lrows κ) (I.irows κ) vk c₁ c₂ w)
-    (hRes : ∀ κ w c₁ c₂, StmtN4 κ (I.lrows κ) (I.irows κ) vk c₁ c₂ w → NodeResid4 I rd κ vk c₁ c₂ w) :
+      X.vkOf π = vk ∧ ∃ w c₁ c₂, c = nodeStmt c₁ c₂ ∧ St κ w c₁ c₂)
+    (hRes : ∀ κ w c₁ c₂, St κ w c₁ c₂ → NodeResid4 I rd κ vk c₁ c₂ w) :
     NodeSoundLog Vnode vk Good (Rel (accV4 Vseg Vnode vk)) := fun κ L c π hG hk h => by
   obtain ⟨hvk, w, c₁, c₂, rfl, hS⟩ := hRun κ L c π hG hk h
-  exact ⟨hvk, _, (node_sound4 hS (hRes κ w c₁ c₂ hS) (hD κ)).1⟩
+  exact ⟨hvk, _, (node_sound4 (hSt κ w c₁ c₂ hS) (hRes κ w c₁ c₂ hS) (hD κ)).1⟩
 
 /-- **`NodeExtLog`** for an extractor that, on an accepted node run on a good log with the run's
 key, returns a witness whenever one exists (S-H3's interface, a parameter: `hE`). -/
 theorem nodeExtLog4_of (I : SlotIface4 Vseg Vnode) (rd : Read4) {vk : Digest} {Good : Log → Prop}
+    {St : NodeKind → Asg → Digest → Digest → Prop}
+    (hSt : ∀ κ w c₁ c₂, St κ w c₁ c₂ → StmtN4 κ (I.lrows κ) (I.irows κ) vk c₁ c₂ w)
     {E : Digest → Proof → Log → Option Wit} (hD : ∀ κ, DigLemma4 κ)
     (hRun : ∀ κ L c π, Good L → kindOf4 π = .node κ → (Vnode κ vk c π).runLog L = some true →
-      X.vkOf π = vk ∧ ∃ w c₁ c₂, c = nodeStmt c₁ c₂ ∧ StmtN4 κ (I.lrows κ) (I.irows κ) vk c₁ c₂ w)
-    (hRes : ∀ κ w c₁ c₂, StmtN4 κ (I.lrows κ) (I.irows κ) vk c₁ c₂ w → NodeResid4 I rd κ vk c₁ c₂ w)
+      X.vkOf π = vk ∧ ∃ w c₁ c₂, c = nodeStmt c₁ c₂ ∧ St κ w c₁ c₂)
+    (hRes : ∀ κ w c₁ c₂, St κ w c₁ c₂ → NodeResid4 I rd κ vk c₁ c₂ w)
     (hE : ∀ κ L c π, Good L → kindOf4 π = .node κ → (Vnode κ vk c π).runLog L = some true →
       X.vkOf π = vk → (∃ w, Rel (accV4 Vseg Vnode vk) c w) →
         ∃ w, E c π L = some w ∧ Rel (accV4 Vseg Vnode vk) c w) :
     NodeExtLog Vnode vk Good E (Rel (accV4 Vseg Vnode vk)) := fun κ L c π hG hk h => by
-  obtain ⟨hvk, hw⟩ := nodeSoundLog4_of I rd hD hRun hRes κ L c π hG hk h
+  obtain ⟨hvk, hw⟩ := nodeSoundLog4_of I rd hSt hD hRun hRes κ L c π hG hk h
   exact hE κ L c π hG hk h hvk hw
 
 /-- **At the concrete verifier** (`VC4`, `acc_eqC4`): `NodeSoundLog` with the submission's `acc`,
@@ -405,14 +410,16 @@ and `NodeExtLog` at the specification extractor `E4 S.acc` (`nodeExt_E4`), the f
 theorem nodeLaws4C (impl₀ : OpImpl) (implN : NodeKind → OpImpl) (cells : NodeKind → List ℕ)
     (S : Submission) (vk : Digest) (hV : S.V = VC4 impl₀ implN cells) (hq : S.qV = qV4)
     {Good : Log → Prop} (I : SlotIface4 (VsegC impl₀) (VnodeC implN cells)) (rd : Read4)
+    {St : NodeKind → Asg → Digest → Digest → Prop}
+    (hSt : ∀ κ w c₁ c₂, St κ w c₁ c₂ → StmtN4 κ (I.lrows κ) (I.irows κ) vk c₁ c₂ w)
     (hD : ∀ κ, DigLemma4 κ)
     (hRun : ∀ κ L c π, Good L → kindOf4 π = .node κ → (VnodeC implN cells κ vk c π).runLog L = some true →
-      X.vkOf π = vk ∧ ∃ w c₁ c₂, c = nodeStmt c₁ c₂ ∧ StmtN4 κ (I.lrows κ) (I.irows κ) vk c₁ c₂ w)
-    (hRes : ∀ κ w c₁ c₂, StmtN4 κ (I.lrows κ) (I.irows κ) vk c₁ c₂ w → NodeResid4 I rd κ vk c₁ c₂ w) :
+      X.vkOf π = vk ∧ ∃ w c₁ c₂, c = nodeStmt c₁ c₂ ∧ St κ w c₁ c₂)
+    (hRes : ∀ κ w c₁ c₂, St κ w c₁ c₂ → NodeResid4 I rd κ vk c₁ c₂ w) :
     NodeSoundLog (VnodeC implN cells) vk Good (Rel (S.acc vk)) ∧
       NodeExtLog (VnodeC implN cells) vk Good (E4 S.acc) (Rel (S.acc vk)) := by
   have h : NodeSoundLog (VnodeC implN cells) vk Good (Rel (S.acc vk)) := by
-    rw [acc_eqC4 impl₀ implN cells S hV hq]; exact nodeSoundLog4_of I rd hD hRun hRes
+    rw [acc_eqC4 impl₀ implN cells S hV hq]; exact nodeSoundLog4_of I rd hSt hD hRun hRes
   exact ⟨h, nodeExt_E4 hq h⟩
 
 end Laws

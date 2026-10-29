@@ -194,8 +194,12 @@ theorem ss_rejFX : P4a.SameStab4 0 RejFX := fun L L' X _ hS => by
 noncomputable def DFX (DFhi : ℕ → Log → Log → Prop) (k : ℕ) : Log → Log → Prop :=
   if k ≤ 12 then P4a.DF4a P4X k else DFhi k
 
+/-- **The cells B′ batches** (revision 4.4.2, RSV2 §2.2): a node kind's nine public cells, then its
+60 reserve cells (`Rev4.rsvCells`, none on `N8`), at `κ′² … κ′^{70}` (`finPf`'s two cell chains). -/
+def cellsX (ν : NodeKind) : List ℕ := N4c.cells4 ν ++ Rev4.rsvCells ν
+
 /-- The level-0 weight and claim the front hands the tail (P4b's readers at S-E's maps). -/
-noncomputable def W0X : Log → Log → ℕ → K := P4b.W₀L4 N4c.kf4 N4c.cells4
+noncomputable def W0X : Log → Log → ℕ → K := P4b.W₀L4 N4c.kf4 cellsX
 
 /-- The front's claim `c₀ = ι v*`. -/
 noncomputable def c0X : Log → Log → K := P4b.c₀L4
@@ -251,7 +255,7 @@ theorem DFX_hi {DFhi : ℕ → Log → Log → Prop} {k : ℕ} (hk : 12 < k) : D
 theorem frontObl_X {DFhi : ℕ → Log → Log → Prop} (hH : FrontHi DFhi) :
     T4.FrontObl RejFX (DFX DFhi) W0X c0X where
   loc L es L' es' p hS hp :=
-    P4b.frontLocal4 N4c.kf4 N4c.cells4 L L' (hS.1.mono (by rw [← p1Start_zero4]; exact hp))
+    P4b.frontLocal4 N4c.kf4 cellsX L L' (hS.1.mono (by rw [← p1Start_zero4]; exact hp))
   rej := rejOK_X
   ms s0 r hm hp := by
     by_cases hlo : s0 + 1 < 170

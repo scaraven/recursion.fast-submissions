@@ -122,6 +122,12 @@ theorem not_rejFX_node (fin : Finals) (lRows : List Circ.Row) (κs₀ : F) {ν :
 
 /-! ## `AcceptTail` from an accepted run, with the run's entries -/
 
+/-- B′'s cells (`X4.cellsX`: the nine public cells and the reserve's) lie inside level 0. -/
+theorem hcellsX (ν : NodeKind) : ∀ c ∈ X4.cellsX ν, c < 2 ^ P4b.ncR ν := fun c hc => by
+  rcases List.mem_append.1 hc with h | h
+  · exact (N4c.hcells4P4b ν).2 c h
+  · exact (N4c.rsvCells_ctl.2.2.2.1 ν c h).2.2
+
 /-- **An accepted segment run's chain is an `AcceptTail` of the composed front**, and its entries
 are the run's. -/
 theorem acceptRun4_seg (fin : Finals) (lRows : List Circ.Row) (κs₀ : F) (σ : SegKind) {inp : Input}
@@ -137,8 +143,8 @@ theorem acceptRun4_seg (fin : Finals) (lRows : List Circ.Row) (κs₀ : F) (σ :
   have hk := kindOfC_acc_seg hsem
   have hT : FinTabs4 (segFinP σ) (KindP.ofSeg σ).tix (kindOfC (fsOf tr (itemsOf seq4))) := by
     rw [hk]; exact finTabs4_seg σ _
-  have hW := wV4_of_fields hF hk (finTabs4_seg σ _) (ptIx_seg4 σ _ _) (cells := N4c.cells4)
-    (fun ν => (N4c.hcells4P4b ν).2) rfl rfl (show seq4.mStar - 7 = 25 by rw [seq4_mStar]) (rsWeight_segC fin lRows κs₀ σ)
+  have hW := wV4_of_fields hF hk (finTabs4_seg σ _) (ptIx_seg4 σ _ _) (cells := X4.cellsX)
+    hcellsX rfl rfl (show seq4.mStar - 7 = 25 by rw [seq4_mStar]) (rsWeight_segC fin lRows κs₀ σ)
     (tensorW_segC fin lRows κs₀) hb hin (dm_seg4 hF.sk)
   have hFR := finRest4_full (phiRS_segC fin lRows κs₀) (tensorW_segC fin lRows κs₀) hF hT (dm_seg4 hF.sk)
     hb hin hπ hW
@@ -162,8 +168,8 @@ theorem acceptRun4_node (fin : Finals) (lRows : List Circ.Row) (κs₀ : F) (ν 
   have hk := kindOfC_acc_node hsem
   have hT : FinTabs4 (nodeFinP ν (N4c.cells4 ν)) (KindP.ofNode ν).tix (kindOfC (fsOf tr (itemsOf seq4))) := by
     rw [hk]; exact finTabs4_node ν _ _
-  have hW := wV4_of_fields hF hk (finTabs4_node ν _ _) (ptIx_node4 ν _ _ _) (cells := N4c.cells4)
-    (fun ν => (N4c.hcells4P4b ν).2) rfl rfl (show seq4.mStar - 7 = 25 by rw [seq4_mStar]) (rsWeight_nodeC fin lRows κs₀ ν)
+  have hW := wV4_of_fields hF hk (finTabs4_node ν _ _) (ptIx_node4 ν _ _ _) (cells := X4.cellsX)
+    hcellsX rfl rfl (show seq4.mStar - 7 = 25 by rw [seq4_mStar]) (rsWeight_nodeC fin lRows κs₀ ν)
     (tensorW_nodeC fin lRows κs₀ ν) hb hin (dm_node4 hF.sk)
   have hFR := finRest4_full (phiRS_nodeF fin lRows κs₀ ν) (tensorW_nodeC fin lRows κs₀ ν) hF hT
     (dm_node4 hF.sk) hb hin hπ hW
@@ -266,16 +272,18 @@ theorem runFacts4S_C (vk : Digest) : RunFacts4S (VsegC (Impl.implC fin lRows κs
   obtain ⟨tr, y, j, hS, hsem, hes, hT⟩ := acceptRun4_seg fin lRows κs₀ v.kind (inp := ⟨vk, segC v, π⟩) hb hπ hrun'
   exact ⟨j, hT, hes ▸ segLog4 hS hsem hv rfl hcap⟩
 
-/-- **`RunFacts4.node` at the concrete node ops** (INT-9's `implN4F`, `cells4`). -/
+/-- **`RunFacts4.node` at the concrete node ops** (INT-9's `implN4F`, `cells4`; the zero outputs from
+`finE`'s asserts, RSV-S2a's `rsvZero4`). -/
 theorem runFacts4_node_C (vk : Digest) :
     ∀ κ L c π, ¬ Bad L → kindOf4 π = .node κ →
       (VnodeC (NI4F.implN4F fun _ => Impl.implC fin lRows κs₀) N4c.cells4 κ vk c π).runLog L = some true →
-      ∃ j, T4.AcceptTail RejFX W0X c0X L j ∧ NodeLog κ vk c π (entriesOf L (pathOf L j)) := by
+      ∃ j, T4.AcceptTail RejFX W0X c0X L j ∧ NodeLog κ vk c π (entriesOf L (pathOf L j)) ∧
+        RsvZero (entriesOf L (pathOf L j)) := by
   intro κ L c π hb hk hrun
   obtain ⟨hrun', hst⟩ := runStmt_acc hrun
   obtain ⟨tr, y, j, hS, hsem, hes, hT⟩ :=
     acceptRun4_node fin lRows κs₀ κ (inp := ⟨vk, c, π⟩) hb (piSize_node4 hk) hrun'
-  exact ⟨j, hT, hes ▸ nodeLog4 hS hsem hst⟩
+  exact ⟨j, hT, hes ▸ nodeLog4 hS hsem hst, hes ▸ rsvZero4 hsem⟩
 
 /-- **X4's `RunFacts4` at the concrete ops** (INT-10: unconditional; `RunFacts4.seg` is
 `RunFacts4S`). -/

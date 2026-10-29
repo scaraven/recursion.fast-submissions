@@ -205,7 +205,7 @@ theorem habs_hi : ∀ L es x len, G.Matches (es ++ [x]) → fsItems4[es.length]?
       rcases P4b.habs_RS0_4 (R := X4.src4) X4.okReads_X rd_far0X rd_PubX x he
         (dPend_X (by omega) hd) with h' | h'
       · exact .inl (.inl (.inr (.inr (.inr (.inr (.inr h'))))))
-      · right; simp only [DFhi]; exact h'
+      · right; simp only [DFhi]; exact P4b.dRS0_4_mono (fun _ _ h => h.1) h'
   · simp only [rndPhHi, List.mem_cons, Prod.mk.injEq, List.not_mem_nil, or_false] at hy
     dsimp only at hq he hpar ha hb
     rw [ha] at hd; rw [hb]; right
@@ -219,6 +219,13 @@ theorem habs_hi : ∀ L es x len, G.Matches (es ++ [x]) → fsItems4[es.length]?
         (P4b.e4_inner_appendE X4.src4 NI4F.srcE4 NI4F.srcL4 x (by omega) (Or.inl hpar)).mpr
 
 /-! ## `hsingle` -/
+
+/-- **P4b's `hrcells`** at `Rev4.rsvCells` (`rsvCells_ctl`): 60 cells on `N2`/`N4`, none on `N8`, inside
+level 0. -/
+theorem hrcellsX : ∀ ν, (Rev4.rsvCells ν).length = P4b.nRsv (.node ν) ∧
+    ∀ c ∈ Rev4.rsvCells ν, c < 2 ^ P4b.ncR ν :=
+  fun ν => ⟨by cases ν <;> rfl, fun c hc => (N4c.rsvCells_ctl.2.2.2.1 ν c hc).2.2⟩
+
 
 open Classical in
 /-- **`FrontHi.hsingle`**: at every single squeeze from 170 to 331 at most `239·2^128` answers
@@ -262,7 +269,8 @@ theorem hsingle_hi : ∀ L es, G.Matches es → fsItems4[es.length]? = some .squ
       · exact .inr (.inl h)
     · -- 331: B′'s `κ′`
       refine le_trans (P4a.card_frame2_4 (U := DRS1X) (U' := DBX) (T4.reads_false 0) (Nat.zero_le _)
-        ?_ ?_) ((P4b.single_B4 (R := X4.src4) rd_far0X N4c.hcells4P4b L es he).trans (by norm_num))
+        ?_ ?_) ((P4b.single_B4 (R := X4.src4) rd_far0X N4c.hcells4P4b hrcellsX L es he).trans
+          (by norm_num))
       · intro h
         simp only [DFhi, msD, if_neg (show ¬ es.length ≤ 326 + 4 by omega)] at h
         exact .inr h
@@ -354,7 +362,7 @@ theorem hfin_hi : ∀ s0 r, (s0, r) ∈ fsRanges4 → 170 ≤ s0 + 1 → s0 + 1 
     refine hfin_frame (Bg := fun _ _ => False) (U := DRS0X) hmem hfin (T4.reads_false _) (fun L es h => ?_)
       (fun L es h => h.elim False.elim id) hl fun hU hesc => ?_
     · rw [p326, X4.DFX_hi (by norm_num)] at h; exact .inr h
-    · exact (P4b.rs1_hfin4 (R := X4.src4) rd_far0X rd_PubX hl hU hesc).trans
+    · exact (P4b.rs1_hfin4 (R := X4.src4) rd_far0X (rd_PubRSX.mono (by norm_num)) hl hU hesc).trans
         (coord_le_deltaR (by norm_num))
 
 /-! ## The handoff: B′ → P1.0 -/
@@ -364,14 +372,14 @@ theorem nrP0 (κ : CKind) : T4.nrP 0 κ = κ.m - 7 := by
 
 /-- `W0X`, `c0X` read only the entries before P1.0 (`frontLocal4`). -/
 theorem locX : T4.FrontLocal X4.W0X X4.c0X := fun L es L' es' _ hS hp =>
-  P4b.frontLocal4 N4c.kf4 N4c.cells4 L L' (hS.1.mono (by rw [← X4.p1Start_zero4]; exact hp))
+  P4b.frontLocal4 N4c.kf4 X4.cellsX L L' (hS.1.mono (by rw [← X4.p1Start_zero4]; exact hp))
 
 /-- **`⟨W₀, f⁽⁰⁾⟩` in P1.0's form** on a close level-0 word (3.x's `ip_W0`): T4's `trueSum` of
 `lvT W0X 0` is `ι` of B′'s `ipW` (`fTab_F`, `trueSum_tabs`). -/
 theorem ip_W0X {L es : Log} (hnf : ¬ T4.farL (kindOfC es) L es 0) :
     trueSum e2 (T4.lvT X4.W0X 0 L es) (T4.nrP 0 (kindOfC es)) =
       algebraMap F K (P4b.ipW (P4b.wrsL4 N4c.kf4 (kindOfC es) es)
-        (P4b.cellsC N4c.cells4 (kindOfC es)) (P4b.kpL4 es) ((kindOfC es).m - 7) (X4.src4.fz L es)) := by
+        (P4b.cellsC X4.cellsX (kindOfC es)) (P4b.kpL4 es) ((kindOfC es).m - 7) (X4.src4.fz L es)) := by
   rw [T4.lvT, trueSum_tabs, nrP0]
   simp only [T4.lvW, X4.W0X, P4b.W₀L4, T4.fTab_F hnf, ← map_mul, ← map_sum, P4b.ipW]
   rfl

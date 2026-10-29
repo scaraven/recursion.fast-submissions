@@ -190,10 +190,19 @@ which E1's `η·D` term reduces). -/
 def D16X (L es : Log) : Prop :=
   bg16X L es ∨ P4b.nE4 X4.src4 NI4F.srcE4 L es ∨ P4b.ChildBad4 NI4F.srcE4 L es
 
-/-- RS0's, RS1's and B′'s dooms at `far0X`, `PubX` and S-E's kind factor and cells. -/
-noncomputable def DRS0X : Log → Log → Prop := P4b.DRS0_4 X4.src4 N4c.kf4 far0X PubX
-noncomputable def DRS1X : Log → Log → Prop := P4b.DRS1_4 X4.src4 N4c.kf4 far0X PubX
-noncomputable def DBX : Log → Log → Prop := P4b.DB4 X4.src4 N4c.kf4 N4c.cells4 far0X
+/-- **The reserve's cells hold** (revision 4.4.2, RSV2 §2.4): `f⁽⁰⁾` at `Rev4.rsvCells` is the node's
+own child claim (Lrend's message, 213). It enters only RS0's and RS1's `Pub` (`PubRSX`): RS0's doom
+is a post-doom (read at 327 > 214), so the backgrounds of phases 16 … 22 keep `PubX` alone. -/
+def PubRX : Log → Log → Prop := P4b.PubOKR4 X4.src4 Rev4.rsvCells
+
+/-- RS0's and RS1's `Pub`: the nine public cells and the 60 reserve cells. -/
+def PubRSX (L es : Log) : Prop := PubX L es ∧ PubRX L es
+
+/-- RS0's, RS1's and B′'s dooms at `far0X`, `PubRSX` and S-E's kind factor; B′ batches `X4.cellsX`
+(the nine public cells and the reserve's). -/
+noncomputable def DRS0X : Log → Log → Prop := P4b.DRS0_4 X4.src4 N4c.kf4 far0X PubRSX
+noncomputable def DRS1X : Log → Log → Prop := P4b.DRS1_4 X4.src4 N4c.kf4 far0X PubRSX
+noncomputable def DBX : Log → Log → Prop := P4b.DB4 X4.src4 N4c.kf4 X4.cellsX far0X
 
 /-- **The front's phase dooms 13 … 25** (3.x's `DF 13 … 25`): Lr1 is `msD` over phase 12's doom
 (P4a's `DF4a P4X 12`, which carries `BgA4`). -/
@@ -221,6 +230,11 @@ theorem rd_far0X : T4.Reads 3 far0X := fun L es L' es' _ _ hS => by
   exact T4.farL_same hS (i := 0) (by norm_num) _ (by rw [P4a.capPos_zero4]; omega)
 
 theorem rd_PubX : T4.Reads 3 PubX := P4b.pubOK4_reads X4.src4 N4c.cells4
+
+theorem rd_PubRX : T4.Reads 214 PubRX := P4b.pubOKR4_reads X4.src4 Rev4.rsvCells
+
+theorem rd_PubRSX : T4.Reads 214 PubRSX :=
+  P4b.ReadsS.and (R := X4.src4) (rd_PubX.mono (by norm_num)) rd_PubRX
 
 theorem rd_bg20X : T4.Reads 170 bg20X :=
   (rd_far0X.mono (by norm_num)).or ((rd_PubX.not.mono (by norm_num)).or
@@ -321,8 +335,10 @@ theorem rd_endLr : T4.Reads 214 (P4b.EndBadLr4 X4.src4 NI4F.srcL4) :=
 theorem rd_endE : T4.Reads 274 (P4b.EndBadE4 X4.src4 NI4F.srcE4) :=
   P4b.readsS_onNode (R := X4.src4) (by norm_num) fun κ => P4b.endBadE4_reads X4.src4 NI4F.srcE4 κ
 
-theorem rd_DRS0X : T4.Reads 327 DRS0X := P4b.dRS0_4_reads (R := X4.src4) rd_far0X rd_PubX
-theorem rd_DRS1X : T4.Reads 331 DRS1X := P4b.dRS1_4_reads (R := X4.src4) rd_far0X rd_PubX
+theorem rd_DRS0X : T4.Reads 327 DRS0X :=
+  P4b.dRS0_4_reads (R := X4.src4) rd_far0X (rd_PubRSX.mono (by norm_num))
+theorem rd_DRS1X : T4.Reads 331 DRS1X :=
+  P4b.dRS1_4_reads (R := X4.src4) rd_far0X (rd_PubRSX.mono (by norm_num))
 theorem rd_DBX : T4.Reads 332 DBX := P4b.dB4_reads (R := X4.src4) rd_far0X
 
 theorem ss_df12 : P4a.SameStab4 170 (P4a.DF4a X4.P4X 12) := by
