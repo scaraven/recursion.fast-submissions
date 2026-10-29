@@ -27,7 +27,7 @@ def line(name, s, cap, memcap):
 
 m = re.search(r"([\d.]+)", rd("build.wall"))
 if m:
-    print(line("build", float(m[1]), 600, "12G"))
+    print(line("build", float(m[1]), int(os.environ.get("BUILD_CAP", "600")), "12G"))
 
 for wall in sorted(glob.glob(os.path.join(out, "comparator*.wall"))):
     name = os.path.basename(wall)[:-5]
@@ -59,7 +59,7 @@ for wall in sorted(glob.glob(os.path.join(out, "comparator*.wall"))):
               f"margin 600/that {600 / adj:.2f}x")
 
 rows = re.findall(r"\[\d+/\d+\] Built (\S+) \(([\d.]+)(m?s)\)", rd("build.log"))
-fr = sorted(((float(v) / (1000 if u == "ms" else 1), m) for m, v, u in rows if m.startswith("FR")), reverse=True)
+fr = sorted(((float(v) / (1000 if u == "ms" else 1), m) for m, v, u in rows if m.startswith("FR") or m == "Solution"), reverse=True)
 if fr:
     other = [m for m, _, _ in rows if not m.startswith("FR")]
     print(f"build: {len(fr)} FR modules built, sum of their job times {sum(t for t, _ in fr):.0f} s; "
