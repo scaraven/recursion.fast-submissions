@@ -172,12 +172,14 @@ def chainIR (N : ℕ) (tab : List Word) (sd : XIR) : XIR :=
 /-! ## Well formed, cost, size -/
 
 theorem wf_storesIR : ∀ (b : ℕ) (ws : List Word), WF (storesIR b ws)
-  | _, [] => by simp [storesIR, WF]
-  | b, _ :: ws => ⟨by simp [WF, Prim.dst, rAd4, rKd, cTmp], wf_storesIR (b + 1) ws⟩
+  | _, [] => by simp +decide only [storesIR, WF]
+  | b, _ :: ws => ⟨by simp +decide only [WF, Prim.dst, rAd4, rKd, cTmp, List.mem_cons,
+    List.mem_nil_iff, forall_eq_or_imp, forall_eq, or_false, and_true], wf_storesIR (b + 1) ws⟩
 
 theorem lo_free_storesIR : ∀ (b : ℕ) (ws : List Word) (i : ℕ), i ≠ rAd4 → i ≠ rKd → i ≠ cTmp →
     ¬ Writes (storesIR b ws) i
-  | _, [], i, _, _, _ => by simp [storesIR, Writes]
+  | _, [], i, _, _, _ => by simp +decide only [storesIR, Writes, List.mem_nil_iff, false_and,
+    exists_false]
   | b, _ :: ws, i, h1, h2, h3 => by
     simp only [storesIR, Writes, List.mem_cons, List.mem_nil_iff, or_false, exists_eq_or_imp,
       Prim.dst, exists_eq_left, not_or]
@@ -204,23 +206,27 @@ theorem outs_storesIR (t : ℕ) : ∀ (b : ℕ) (ws : List Word), outs (storesIR
   | b, _ :: ws => by simp only [storesIR, outs, outs_storesIR t (b + 1) ws]
 
 theorem wf_wordIR (N : ℕ) : WF (wordIR N) := by
-  simp [wordIR, lenIR, qryIR, ansIR, ansPs, setSPs, lastIR, recIR, recPre, recPs, st4IR, nextIR, nextPre, nextPs, stAt, stNext, ceil8Ps, WF,
-    Prim.dst, rWd, rWp, rEo, rQw, rMt, rTl, rTh, rTo, rPi, rZ, rKj, rAd4, rE, rS0, rS1, rS2, rS3,
-    rTg, rKd, rMk5, rKc, rT2, cTmp]
+  simp +decide only [wordIR, lenIR, qryIR, ansIR, ansPs, setSPs, lastIR, recIR, recPre, recPs,
+    st4IR, nextIR, nextPre, nextPs, stAt, stNext, ceil8Ps, WF, Prim.dst, rWd, rWp, rEo, rQw, rMt,
+    rTl, rTh, rTo, rPi, rZ, rKj, rAd4, rE, rS0, rS1, rS2, rS3, rTg, rKd, rMk5, rKc, rT2, cTmp,
+    List.mem_cons, List.mem_nil_iff, forall_eq_or_imp, forall_eq, or_false, and_true,
+    List.cons_append, List.nil_append]
 
 theorem not_writes_wordIR_rCC (N : ℕ) : ¬ Writes (wordIR N) rCC := by
-  simp [wordIR, lenIR, qryIR, ansIR, ansPs, setSPs, lastIR, recIR, recPre, recPs, st4IR, nextIR, nextPre, nextPs, stAt, stNext, ceil8Ps, Writes,
-    Prim.dst, rWd, rWp, rEo, rQw, rMt, rTl, rTh, rTo, rPi, rZ, rKj, rAd4, rE, rS0, rS1, rS2, rS3,
-    rTg, rKd, rMk5, rKc, rT2, cTmp, rCC]
+  simp +decide only [wordIR, lenIR, qryIR, ansIR, ansPs, setSPs, lastIR, recIR, recPre, recPs,
+    st4IR, nextIR, nextPre, nextPs, stAt, stNext, ceil8Ps, Writes, Prim.dst, rWd, rWp, rEo, rQw,
+    rMt, rTl, rTh, rTo, rPi, rZ, rKj, rAd4, rE, rS0, rS1, rS2, rS3, rTg, rKd, rMk5, rKc, rT2, cTmp,
+    rCC, List.mem_cons, List.mem_nil_iff, exists_eq_or_imp, exists_eq_left, or_false,
+    List.cons_append, List.nil_append]
 
 theorem wf_cntIR : WF cntIR := by
-  simp [cntIR, cntBody, readAt, ceil8Ps, WF, Writes, Prim.dst, rP, rN, rA, rCW, rQL, rT1, rT2, rKc,
-    rKd, rCn5, cTmp, regs]
+  simp +decide only [cntIR, cntBody, readAt, ceil8Ps, WF, Writes, Prim.dst, rP, rN, rA, rCW, rQL,
+    rT1, rT2, rKc, rKd, rCn5, cTmp, regs, or_false, and_true, List.cons_append, List.nil_append]
 
 theorem wf_chainIR (N : ℕ) (tab : List Word) {sd : XIR} (hsd : WF sd) (hc : ¬ Writes sd rCC) :
     WF (chainIR N tab sd) := by
-  refine ⟨⟨wf_cntIR, wf_storesIR _ _, hsd, by simp [startPs, WF, Prim.dst, rWp, rEo, rPi, rTl,
-    rTh, rTo, rMt]⟩, ⟨by decide, by decide, by decide⟩, by decide, not_writes_wordIR_rCC N,
+  refine ⟨⟨wf_cntIR, wf_storesIR _ _, hsd,
+    by simp +decide only [startPs, WF, Prim.dst, rWp, rEo, rPi, rTl, rTh, rTo, rMt]⟩, ⟨by decide, by decide, by decide⟩, by decide, not_writes_wordIR_rCC N,
     wf_wordIR N⟩
 
 theorem cost_wordIR (N t : ℕ) : cost (wordIR N) t = 176 := by

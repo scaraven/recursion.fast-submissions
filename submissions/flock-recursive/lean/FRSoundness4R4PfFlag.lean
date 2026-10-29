@@ -121,7 +121,8 @@ theorem map_reloc_of (S : Seq) {l : List Op} (h : ∀ op ∈ l, reloc S op = op)
 
 theorem gFinPf_reloc (P : FinP) (hck : P.ck = true) (fi : FinIn) (b : ℕ) :
     (gFinPf P fi b).1.map (reloc P.S) = gFinPfR P fi b := by
-  simp only [gFinPf, gFinPfR, hck, cond_true, List.map_append, ptsOps_reloc, selOps_reloc,
+  delta gFinPfR
+  simp only [gFinPf, hck, cond_true, List.map_append, ptsOps_reloc, selOps_reloc,
     gCellsOpsK_reloc, gLvsOps_reloc, padsOps_reloc, List.map_flatMap]
   rw [map_reloc_of P.S (l := [.const (fun _ => .k 1), .const (fun _ => .k (1 + K.u)), .const (fun _ => .k 0)])
     (List.forall_mem_cons.2 ⟨rfl, List.forall_mem_cons.2 ⟨rfl, List.forall_mem_cons.2 ⟨rfl, fun _ h => absurd h (List.not_mem_nil)⟩⟩⟩)]
@@ -289,7 +290,8 @@ theorem flag_pfTail4 (r R : Array Val) (P : FinP) (hS : P.S = seq4) (hnf : 0 < P
   have e013 : ExtA r R13 := eR.trans eR13
   -- B14: the pad chains
   obtain ⟨M14, hB14, hl14, hv14⟩ := run_padsOps impl κ inp b (chals fi "Pf" P.S.pf) (sfv4 fi r P) P.S.pf
-    P.fams R13 (Nat.lt_of_lt_of_le (by omega : b < R.size) eR13.1) (by rw [eR13.rd (by omega), r1one])
+    P.fams R13 (Nat.lt_of_lt_of_le (by omega : b < R.size) eR13.1)
+    (by rw [eR13.rd (by clear * - hb; omega), r1one])
     (fun v _ => ⟨Nat.lt_of_lt_of_le (hsf v) e013.1, by rw [e013.rd (hsf v)]; rfl⟩)
   rw [sR13] at hB14 hv14
   set R14 := R13 ++ M14.toArray with hR14
@@ -327,7 +329,7 @@ theorem flag_pfTail4 (r R : Array Val) (P : FinP) (hS : P.S = seq4) (hnf : 0 < P
       .k (lvsV impl fi (rd r) (tl4 κ fi r P) [1, 2, 3, 4] w0) := by rw [e1115.rd hWo, hv11]
   have r15F : rd R15 (fhOut (List.range (2 ^ P.S.pf)) (b + 2) (ce + 2 + lw + 2)) = .k (finHat4 inp fi r P) := by
     rw [e1315.rd hFo, hv13]; rfl
-  have r15one : rd R15 b = .k 1 := by rw [eR15.rd (by omega), r1one]
+  have r15one : rd R15 b = .k 1 := by rw [eR15.rd (by clear * - hb; omega), r1one]
   have hsel : selOut (padsReg b P.S.pf P.fams (ce + 2 + lw + 2 + 4 * 2 ^ P.S.pf)) P.fams.length pe < R15.size := by
     by_contra hc'
     have h0 := r15pad; rw [rd, Array.getElem?_eq_none (by simpa using hc')] at h0; cases h0
@@ -339,11 +341,11 @@ theorem flag_pfTail4 (r R : Array Val) (P : FinP) (hS : P.S = seq4) (hnf : 0 < P
        .assertEq (pe + P.fams.length + 1) (claimN fi "Pf") allK] R15 [] =
       some (V16, (Val.k (lvsV impl fi (rd r) (tl4 κ fi r P) [1, 2, 3, 4] w0 * padV4 κ fi r P *
         finHat4 inp fi r P)).eqv (rd r (claimN fi "Pf"))) := by
-    rw [show pe + P.fams.length + 1 = R15.size + 2 by rw [sR15]; omega,
-      show pe + P.fams.length = R15.size + 1 by rw [sR15]; omega,
+    rw [show pe + P.fams.length + 1 = R15.size + 2 by rw [sR15]; clear * - hnf; omega,
+      show pe + P.fams.length = R15.size + 1 by rw [sR15]; clear * - hnf; omega,
       show pe + (P.fams.length - 1) = R15.size from sR15.symm]
     simp only [pureRun, evalOp, List.nil_append, List.cons_append, app0, rd_app, rd_app0,
-      rd_app_left _ _ (show b < R15.size by have := eR15.1; omega), r15one,
+      rd_app_left _ _ (show b < R15.size by have := eR15.1; clear * - this hb; omega), r15one,
       rd_app_left _ _ hsel, r15pad,
       rd_app_left _ _ (Nat.lt_of_lt_of_le hcNr (eR.trans eR15).1), (eR.trans eR15).rd hcNr,
       rd_app_left _ _ (Nat.lt_of_lt_of_le hWo e1115.1), rd_app_left _ _ (Nat.lt_of_lt_of_le hFo e1315.1),
@@ -357,7 +359,8 @@ theorem flag_pfTail4 (r R : Array Val) (P : FinP) (hS : P.S = seq4) (hnf : 0 < P
   obtain ⟨M17, hB17⟩ := run_gTailOps impl κ inp P.S P P.tails R16
   have hl16 : V16.length = 3 := by
     have := pureRun_len impl κ inp R15 _ [] V16 _ hB16; simpa [opsOut, Op.outs] using this
-  have sR16 : R16.size = pe + P.fams.length + 2 := by simp [R16, sR15, hl16]; omega
+  have sR16 : R16.size = pe + P.fams.length + 2 := by
+    simp [R16, sR15, hl16]; clear * - hnf; omega
   rw [sR16] at hB17
   exact ⟨_, pr_seq impl κ inp hB11 (pr_seq impl κ inp hB12 (pr_seq impl κ inp hB13
     (pr_seq impl κ inp hB14 (pr_seq impl κ inp hB15 (pr_seq2 impl κ inp hB16 hB17)))))⟩
@@ -382,7 +385,8 @@ theorem flag_gFinPf4 (r : Array Val) (P : FinP) (hS : P.S = seq4) (hnc : 0 < P.n
   have hsf : ∀ v, (chals fi "Pf" P.S.pf).getD v 0 < r.size := getD_lt hpos hsfm
   have hlvs : ∀ (one cu Ts W b' : ℕ), gLvsOps P.S fi one cu Ts [1, 2, 3, 4] W b' =
       lvsOps fi one cu Ts [1, 2, 3, 4] W b' := fun _ _ _ _ _ => by rw [hS, gLvsOps_4]
-  simp only [gFinPfR, hlvs, List.append_assoc]
+  delta gFinPfR
+  simp only [hlvs, List.append_assoc]
   generalize hpw : ptsW (gPfPts P fi) = pw
   set b := r.size with hb
   set kp := (outsOf fi "B'").headD 0 with hkp
@@ -536,17 +540,18 @@ theorem flag_gFinPf4 (r : Array Val) (P : FinP) (hS : P.S = seq4) (hnc : 0 < P.n
   have e18 : ExtA R1 R8 := e16.trans (e67.trans e78)
   have e58 : ExtA R5 R8 := e56.trans (e67.trans e78)
   obtain ⟨M9, hB9, hl9, hv9⟩ := run_gCellsOpsK impl κ inp P.nc b (sb + 5 + 2) (sb + 5 + (P.nc + 2)) kp
-    (fun j _ => P.cells.getD j 0) (rho4 κ fi r P) kpv R8 (by rw [sR8]; omega)
+    (fun j _ => P.cells.getD j 0) (rho4 κ fi r P) kpv R8 (by rw [sR8, hsb]; clear * -; omega)
     (by rw [e18.rd (by rw [sR1]; omega), r1one])
     (Nat.lt_of_lt_of_le hkpr (e07.trans e78).1) (by rw [(e07.trans e78).rd hkpr]; rfl)
-    (fun v hv => ⟨by rw [sR8]; omega, by rw [(e67.trans e78).rd (by rw [sR6]; omega), r6 v hv]⟩)
-    (fun v hv => ⟨by rw [sR8]; omega, by
-      rw [show sb + 5 + (P.nc + 2) + v = R6.size + v by rw [sR6]; omega,
-        e78.rd (by rw [sR7]; omega), hR7, rd_app]; simp [V7, hv]⟩) hnc
+    (fun v hv => ⟨by rw [sR8]; clear * - hv; omega,
+      by rw [(e67.trans e78).rd (by rw [sR6]; clear * - hv; omega), r6 v hv]⟩)
+    (fun v hv => ⟨by rw [sR8]; clear * - hv; omega, by
+      rw [show sb + 5 + (P.nc + 2) + v = R6.size + v by rw [sR6]; clear * -; omega,
+        e78.rd (by rw [sR7, sR6]; clear * - hv; omega), hR7, rd_app]; simp [V7, hv]⟩) hnc
     P.ncell 0 (b + 2) (sb + 5 + (2 + 2 * P.nc)) 0 (kpv * kpv) []
-    (by rw [List.length_nil, Nat.add_zero, sR8]; omega)
+    (by rw [List.length_nil, Nat.add_zero, sR8, hsb]; clear * -; omega)
     (by rw [app0, e18.rd (by rw [sR1]; omega), r1z])
-    (by rw [List.length_nil, Nat.add_zero, sR8]; omega)
+    (by rw [List.length_nil, Nat.add_zero, sR8, hsb]; clear * -; omega)
     (by rw [app0, hR8, ← sR7, rd_app0]; rfl)
   simp only [List.length_nil, Nat.add_zero, List.nil_append, sR8] at hB9 hv9
   set R9 := R8 ++ M9.toArray with hR9
@@ -569,8 +574,9 @@ theorem flag_gFinPf4 (r : Array Val) (P : FinP) (hS : P.S = seq4) (hnc : 0 < P.n
       some (V10, true) := by
     rw [← hce, ← sR9]
     simp only [pureRun, evalOp, List.nil_append, List.cons_append, rd_app, rd_app0, app0,
-      rd_app_left _ _ (show sb + 5 + 1 < R9.size by rw [sR9]; omega),
-      rd_app_left _ _ (show b + 2 < R9.size by rw [sR9]; omega), rd_app_left _ _ hca, r9w, r9z, hv9,
+      rd_app_left _ _ (show sb + 5 + 1 < R9.size by rw [sR9, hce]; clear * -; omega),
+      rd_app_left _ _ (show b + 2 < R9.size by rw [sR9, hce]; clear * - hsb; omega),
+      rd_app_left _ _ hca, r9w, r9z, hv9,
       List.getD_cons_succ, List.getD_cons_zero, Option.map_some, Bool.and_true]
     simp only [V10, w0V4, cv, toK_k, rsW, kpv, kp4]
     cases P.kv.node κ <;> simp <;> rfl
@@ -582,11 +588,12 @@ theorem flag_gFinPf4 (r : Array Val) (P : FinP) (hS : P.S = seq4) (hnc : 0 < P.n
   have e410 : ExtA R4 R10 := e45.trans (e59.trans e910)
   have e110 : ExtA R1 R10 := e18.trans (e89.trans e910)
   obtain ⟨LT, hT⟩ := flag_pfTail4 impl κ inp r R10 P hS hnf fi b sb ce (w0V4 impl κ fi r P) hpos hO hlv
-    e010 sR10 (by have := e110.1; rw [sR1] at this; omega) (by rw [e110.rd (by rw [sR1]; omega), r1one])
+    e010 sR10 (by have := e110.1; rw [sR1] at this; exact this)
+    (by rw [e110.rd (by rw [sR1]; omega), r1one])
     (by rw [e110.rd (by rw [sR1]; omega), r1cu]) (by rw [e110.rd (by rw [sR1]; omega), r1z])
     (fun k hk => by
       have hk' : k - 1 < 5 := by simp at hk; omega
-      refine ⟨by rw [sR10]; omega, ?_⟩
+      refine ⟨by rw [sR10, hce]; clear * - hk'; omega, ?_⟩
       rw [e410.rd (by rw [sR4]; omega), r4T (k - 1) hk']; rfl) r10w
   exact ⟨_, pr_seq impl κ inp hB1 (pr_seq impl κ inp hB2 (pr_seq impl κ inp hB3
     (pr_seq impl κ inp hB4 (pr_seq impl κ inp hB5 (pr_seq impl κ inp hB6 (pr_seq impl κ inp hB7

@@ -41,7 +41,8 @@ theorem cntBody_sem (I : Array Word) (s : St) (hM : Inv s.M) {p : ℕ} (hp : rd 
   omega
 
 theorem wf_cntBody : WF cntBody := by
-  simp [cntBody, ceil8Ps, WF, Prim.dst, rP, rQL, rT1, rT2, rKc]
+  simp +decide only [cntBody, ceil8Ps, WF, Prim.dst, rP, rQL, rT1, rT2, rKc, and_true,
+    List.cons_append, List.nil_append]
 
 theorem cntLoop (I : Array Word) (n : ℕ) (pos : ℕ → ℕ)
     (hpos : ∀ j < n, pos j < 2 ^ 64 ∧ pos (j + 1) = pos j + 5 + (ceil8 (I.getD (pos j) 0)).toNat) :
@@ -80,13 +81,14 @@ theorem cnt_sem (c : Digest) (π : Proof) (L : Log) (hs : π.size = piSize)
     simp only [qWords] at hend' ⊢
     omega
   have w0 : WF (.seq (.blk [.const rP (toWord (posL + 1))]) (readAt rN posL)) := by
-    simp [readAt, WF, Prim.dst, rP, rN, rA]
+    simp +decide only [readAt, WF, Prim.dst, rP, rN, rA, and_true]
   have hM1 := inv_sem I w0 hM
   have hs1 := hM1.1
   simp only [regs] at hs1
   have hn1 : rd (semXIR I (.seq (.blk [.const rP (toWord (posL + 1))]) (readAt rN posL)) s).M rN =
       I.getD posL 0 :=
-    rd_seq_readAt I _ s (by simp [WF, Prim.dst, rP]) hM (by decide) (by simp only [posL]; omega)
+    rd_seq_readAt I _ s (by simp +decide only [WF, Prim.dst, rP]) hM (by decide)
+      (by simp only [posL]; omega)
   have hp1 : rd (semXIR I (.seq (.blk [.const rP (toWord (posL + 1))]) (readAt rN posL)) s).M rP =
       toWord (posL + 1) := by
     have := hM.1; simp only [regs] at this
@@ -121,10 +123,11 @@ theorem cnt_sem (c : Digest) (π : Proof) (L : Log) (hs : π.size = piSize)
 theorem cnt_heap (I : Array Word) (s : St) (hM : Inv s.M) {y : ℕ} (hy : regs ≤ y) :
     rd (semXIR I cntIR s).M y = rd s.M y := by
   have lo1 : Lo (.seq (.blk [.const rP (toWord (posL + 1))]) (readAt rN posL)) := by
-    simp [Lo, readAt, Prim.dst, regs, rP, rN, rA]
-  have lob : Lo cntBody := by simp [Lo, cntBody, ceil8Ps, Prim.dst, regs, rP, rQL, rT1, rT2, rKc]
+    simp +decide only [Lo, readAt, Prim.dst, regs, rP, rN, rA, and_true]
+  have lob : Lo cntBody := by simp +decide only [Lo, cntBody, ceil8Ps, Prim.dst, regs, rP, rQL, rT1,
+    rT2, rKc, and_true, List.cons_append, List.nil_append]
   have w1 : WF (.seq (.blk [.const rP (toWord (posL + 1))]) (readAt rN posL)) := by
-    simp [readAt, WF, Prim.dst, rP, rN, rA]
+    simp +decide only [readAt, WF, Prim.dst, rP, rN, rA, and_true]
   rw [cntIR, semXIR_seq, semXIR_seq]
   have hM1 := inv_sem I w1 hM
   have h1 := hframe I _ s lo1 y hy
@@ -147,7 +150,8 @@ theorem cnt_regs (I : Array Word) (s : St) (hM : Inv s.M) {r : ℕ} (hr : r < re
       r ≠ rCn5) : rd (semXIR I cntIR s).M r = rd s.M r := by
   obtain ⟨a, b, c, d, e, f, g, k, l, m⟩ := hw
   refine frame I cntIR s wf_cntIR hM r hr ?_
-  simp [cntIR, cntBody, readAt, ceil8Ps, Writes, Prim.dst]
+  simp +decide only [cntIR, cntBody, readAt, ceil8Ps, Writes, Prim.dst, List.mem_cons,
+    List.mem_nil_iff, exists_eq_or_imp, exists_eq_left, or_false, List.cons_append, List.nil_append]
   simp only [rP, rN, rA, rCW, rQL, rT1, rT2, rKc, rKd, rCn5] at *
   omega
 
@@ -166,7 +170,8 @@ theorem storesIR_sem (I : Array Word) : ∀ (ws : List Word) (b : ℕ) (s : St),
     simp only [regs] at hs hb
     simp only [List.length_cons] at hbs hb2
     have hM1 := inv_sem I (P := .blk [.const rAd4 (toWord b), .const rKd w])
-      (by simp [WF, Prim.dst, rAd4, rKd]) hM
+      (by simp +decide only [WF, Prim.dst, rAd4, rKd, List.mem_cons, List.mem_nil_iff,
+        forall_eq_or_imp, forall_eq, or_false, and_true]) hM
     have a1 : rd (semXIR I (.blk [.const rAd4 (toWord b), .const rKd w]) s).M rAd4 = toWord b := by
       simp only [semXIR, runPrims, List.foldl, Prim.run]
       rw [rd_set_ne (by decide), rd_set_self (by simp only [rAd4]; omega)]
@@ -185,7 +190,7 @@ theorem storesIR_sem (I : Array Word) : ∀ (ws : List Word) (b : ℕ) (s : St),
       fun i hi => by
         rw [rd_storeM hM1 a1 (by simp only [regs]; omega) (by omega) (by omega) (by decide)
           (by decide) hi, k1]
-    have hM2 := inv_sem I (P := .store rAd4 rKd) (by simp [WF, rAd4, cTmp]) hM1
+    have hM2 := inv_sem I (P := .store rAd4 rKd) (by simp +decide only [WF, rAd4, cTmp]) hM1
     rw [e2] at hM2
     obtain ⟨r1, r2, r3, r4⟩ := storesIR_sem I ws (b + 1) ⟨storeM s1.M rAd4 rKd, s1.o⟩ hM2
       (by simp only [regs]; omega) (by simp only [size_storeM]; omega) (by omega)

@@ -210,12 +210,12 @@ def logIR : XIR := idxIR
 /-! ## Well formed, cost, size -/
 
 theorem wf_logIR : WF logIR := by
-  simp [logIR, idxIR, lookIR, bsBody, ansLtIR, cmpTWord, eqTWord, foundIR, rQ0, rQ1, rQ2,
-    rQ3, rLo, rLn, rHf, rMd, rCB, rNB, rFd, walkIR, walkPre, walkBody, sortIR, sortPre, passIR, passPre, swapPs, stepIR,
-    blockIR, cmpIR, cmpWord, aposIR, ceil8Ps, minPs, readAt, WF, Writes, Prim.dst, List.mem_cons,
-    List.mem_append, List.mem_nil_iff, rA, rN, rP, rXA, rQL, rT1, rT2, rKc, rCW, rW2, rSrc, rDst,
-    rI, rIE, rJ, rJE, rKk, rAd, rX, rY, rPa, rPb, rKa, rKb, rF, rG, rH, rCP, rNP, rCS, rNS, rV,
-    regs, cTmp, cOne]
+  simp +decide only [logIR, idxIR, lookIR, bsBody, ansLtIR, cmpTWord, eqTWord, foundIR, rQ0, rQ1,
+    rQ2, rQ3, rLo, rLn, rHf, rMd, rCB, rNB, rFd, walkIR, walkPre, walkBody, sortIR, sortPre, passIR,
+    passPre, swapPs, stepIR, blockIR, cmpIR, cmpWord, aposIR, ceil8Ps, minPs, readAt, WF, Writes,
+    Prim.dst, List.mem_append, rA, rN, rP, rXA, rQL, rT1, rT2, rKc, rCW, rW2, rSrc, rDst, rI, rIE,
+    rJ, rJE, rKk, rAd, rX, rY, rPa, rPb, rKa, rKb, rF, rG, rH, rCP, rNP, rCS, rNS, rV, regs, cTmp,
+    cOne, or_false, and_true, List.cons_append, List.nil_append]
 
 theorem cost_logIR (t : ℕ) : cost logIR t = 2592 + t / 5 * 11871 := by
   simp only [logIR, idxIR, walkIR,
@@ -279,10 +279,11 @@ theorem safe_logIR {I : Array Word} {t : ℕ} (h : (I.getD posL 0).toNat ≤ t /
       rw [rd_seq_readAt I p s hP hM hd (by simp only [posL]; omega)]
       simpa [Aff.eval] using h
   refine .seq (.loopT (safe_of_noLoopT (by simp [walkPre, readAt, NoLoopT]))
-    (hcnt _ rN (by simp [WF, Prim.dst, rP, rXA]) (by simp [rN, regs]))
+    (hcnt _ rN (by simp +decide only [WF, Prim.dst, rP, rXA]) (by simp [rN, regs]))
     (safe_of_noLoopT (by simp [walkBody, NoLoopT]))) (.seq (safe_of_noLoopT (by
       simp [sortPre, readAt, NoLoopT])) (.loopK (.seq (.loopT (safe_of_noLoopT (by
-      simp [passPre, readAt, NoLoopT])) (hcnt _ rNS (by simp [WF, Prim.dst, rI, rIE, rJ, rJE, rKk])
+      simp [passPre, readAt, NoLoopT])) (hcnt _ rNS (by simp +decide only [WF, Prim.dst, rI, rIE,
+        rJ, rJE, rKk])
       (by simp [rNS, regs])) (safe_of_noLoopT (by
         simp [stepIR, blockIR, cmpIR, cmpWord, aposIR, NoLoopT]))) (.blk _))))
 

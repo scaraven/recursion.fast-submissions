@@ -26,6 +26,8 @@ namespace FR.X
 
 open RecursionFast FR FR.Snd FR.Merkle
 
+attribute [local irreducible] entryK storeM
+
 /-! ## The read keeps the heap outside its store -/
 
 section Pos
@@ -49,7 +51,8 @@ theorem readIR_frame (hD : Dom c π L) {Xi : ℕ → Word} (hX : Sorted (tp c π
   simp only [regs] at hs
   have hm : memX = 2 ^ 26 := rfl
   have wf0 : WF (.blk [.const rPp 0, .const rWA (toWord sb), .const rNp (toWord np)]) := by
-    simp [WF, Prim.dst, rPp, rWA, rNp]
+    simp +decide only [WF, Prim.dst, rPp, rWA, rNp, List.mem_cons, List.mem_nil_iff,
+      forall_eq_or_imp, forall_eq, or_false, and_true]
   have r0 : rd (semXIR I (.blk [.const rPp 0, .const rWA (toWord sb),
         .const rNp (toWord np)]) s).M rPp = toWord 0 ∧
       rd (semXIR I (.blk [.const rPp 0, .const rWA (toWord sb),
@@ -63,7 +66,8 @@ theorem readIR_frame (hD : Dom c π L) {Xi : ℕ → Word} (hX : Sorted (tp c π
     · rfl
     · rw [Nat.mul_zero, Nat.add_zero]
   have hH0 := hframe I (.blk [.const rPp 0, .const rWA (toWord sb), .const rNp (toWord np)]) s
-    (by simp [Lo, Prim.dst, regs, rPp, rWA, rNp])
+    (by simp +decide only [Lo, Prim.dst, regs, rPp, rWA, rNp, List.mem_cons, List.mem_nil_iff,
+      forall_eq_or_imp, forall_eq, or_false, and_true])
   have hM0 := inv_sem I wf0 hM
   have hsz0 := size_sem I (.blk [.const rPp 0, .const rWA (toWord sb),
     .const rNp (toWord np)]) s
@@ -442,7 +446,8 @@ theorem decLevels_sem (hD : Dom c π L) {Xi : ℕ → Word} (hX : Sorted (tp c �
 
 /-! ## Well formed, no `loopT`, no output; the exact cost -/
 
-theorem wf_setA (b : ℕ) : WF (setA b) := by simp [setA, WF, Prim.dst, rA0]
+theorem wf_setA (b : ℕ) : WF (setA b) := by simp +decide only [setA, WF, Prim.dst, rA0,
+  List.mem_cons, List.mem_nil_iff, forall_eq, or_false]
 theorem noLoopT_setA (b : ℕ) : NoLoopT (setA b) := trivial
 theorem outs_setA (b t : ℕ) : outs (setA b) t = 0 := rfl
 
@@ -583,10 +588,10 @@ theorem outs_decNode (t : ℕ) : outs decNode t = 571019 := by
   rw [decNode, outs, outs_decF0, outs_outIR]
 
 theorem decOk_decLN3 : DecOk decLN3 where
-  wf := ⟨by simp [kindIR, readAt, WF, Prim.dst, rB, rK2, rKN, rKL, rA],
+  wf := ⟨by simp +decide only [kindIR, readAt, WF, Prim.dst, rB, rK2, rKN, rKL, rA, and_true],
     ⟨⟨decOk_decRead.wf, wf_chainIR nRep chTab (wf_sdList _) (noWrite_seedIR (by decide) (by decide)
       (by decide) (by decide) (by decide) (by decide)), wf_decLevels⟩, wf_outIR⟩,
-    by simp [leafIR, outAt, readAt, WF, Prim.dst, rK2, rV2, rA]⟩
+    by simp +decide only [leafIR, outAt, readAt, WF, Prim.dst, rK2, rV2, rA, and_true]⟩
   safe := fun c π L hs hq ht => .seq (safe_of_noLoopT noLoopT_leaf.1)
     (.ite (.seq (.seq (decOk_decRead.safe c π L hs hq ht)
       (.seq (safe_chainIR c π L hs hq ht nRep chTab (noLoopT_sdList _) (wf_sdList _)
@@ -737,8 +742,8 @@ theorem loK_outIR : LoK outIR := by
   have h1 := loK_segIR apS FR.Read.slotSeg 0 (by have := okSeg_slot.2; omega)
   have h2 := loK_segIR apL FR.Read.sigSeg 0 (by have := okSeg_sig.2; omega)
   have h3 := loK_segIR apS (.cp 6 4) 0 (by simp [depthSeg])
-  have hk : LoK kflagIR := ⟨by simp [LoK, Prim.dst, oU, regs], loK_ldw apS,
-    by simp [LoK, Prim.dst, oK, oX, oT1, oT2, oKF, regs]⟩
+  have hk : LoK kflagIR := ⟨by simp +decide only [LoK, Prim.dst, oU, regs], loK_ldw apS,
+    by simp +decide only [LoK, Prim.dst, oK, oX, oT1, oT2, oKF, regs]⟩
   simp only [outIR, slotIR, setR, LoK]
   refine ⟨by simp [Prim.dst, oBd, oKF, oX, regs], trivial, by simp [Prim.dst, oR, regs], h3,
     by simp [Prim.dst, oR, regs], h3, ⟨by simp [Prim.dst, oR, regs], hk, h1, by simp [Prim.dst, oR, regs],

@@ -54,7 +54,7 @@ theorem prodE_hi {e : ℕ → Bool → R} {n t : ℕ} (ht : t < 2 ^ n) :
     prodE e (n + 1) (2 ^ n + t) = prodE e n t * e n true := by
   rw [prodE, prod_range_succ, Nat.testBit_two_pow_add_eq, Nat.testBit_lt_two_pow ht,
     Bool.not_false]
-  congr 1
+  refine congrArg (· * e n true) ?_
   exact prod_congr rfl fun l hl ↦ by rw [Nat.testBit_two_pow_add_gt (mem_range.1 hl)]
 
 theorem sum_range_pow_succ {M : Type*} [AddCommMonoid M] (f : ℕ → M) (n : ℕ) :
@@ -68,7 +68,7 @@ theorem sum_prodE (e : ℕ → Bool → R) (n : ℕ) :
   | zero => simp [prodE]
   | succ n ih =>
     rw [sum_range_pow_succ, prod_range_succ, ← ih, mul_add, sum_mul, sum_mul]
-    congr 1 <;> refine sum_congr rfl fun t ht ↦ ?_
+    refine congrArg₂ (· + ·) ?_ ?_ <;> refine sum_congr rfl fun t ht ↦ ?_
     · rw [prodE_lo (mem_range.1 ht)]
     · rw [prodE_hi (mem_range.1 ht)]
 
@@ -76,7 +76,7 @@ theorem psum_succ (e : ℕ → Bool → R) (n x : ℕ) :
     psum e (n + 1) x = (∑ t ∈ range (2 ^ n), if t < x then prodE e n t * e n false else 0) +
       ∑ t ∈ range (2 ^ n), if 2 ^ n + t < x then prodE e n t * e n true else 0 := by
   rw [psum, sum_range_pow_succ]
-  congr 1 <;> refine sum_congr rfl fun t ht ↦ ?_
+  refine congrArg₂ (· + ·) ?_ ?_ <;> refine sum_congr rfl fun t ht ↦ ?_
   · rw [prodE_lo (mem_range.1 ht)]
   · rw [prodE_hi (mem_range.1 ht)]
 
@@ -103,7 +103,7 @@ theorem pfx_eq (e : ℕ → Bool → R) (e0 e1 lw sp : ℕ → R) (n : ℕ)
     rw [pfx, psum_succ]
     split_ifs with hx hb
     · rw [hs _ le_rfl, ← sum_prodE, sum_range_pow_succ]
-      congr 1 <;> refine sum_congr rfl fun t ht ↦ ?_
+      refine congrArg₂ (· + ·) ?_ ?_ <;> refine sum_congr rfl fun t ht ↦ ?_
       · rw [if_pos (by have := mem_range.1 ht; omega), prodE_lo (mem_range.1 ht)]
       · rw [if_pos (by have := mem_range.1 ht; omega), prodE_hi (mem_range.1 ht)]
     · have hge : 2 ^ n ≤ x := by
@@ -112,7 +112,7 @@ theorem pfx_eq (e : ℕ → Bool → R) (e0 e1 lw sp : ℕ → R) (n : ℕ)
         exact absurd hb (by simp)
       rw [hl n (by omega), hs n (by omega), ← sum_prodE, ih', psum, sum_mul, mul_sum,
         h1 n (by omega)]
-      congr 1 <;> refine sum_congr rfl fun t ht ↦ ?_
+      refine congrArg₂ (· + ·) ?_ ?_ <;> refine sum_congr rfl fun t ht ↦ ?_
       · rw [if_pos (by have := mem_range.1 ht; omega)]
       · by_cases h : t < x - 2 ^ n
         · rw [if_pos h, if_pos (by omega)]; ring
@@ -139,14 +139,14 @@ theorem sum_range_two_mul {M : Type*} [AddCommMonoid M] (f : ℕ → M) (m : ℕ
 theorem prodE_even (e : ℕ → Bool → R) (n u : ℕ) :
     prodE e (n + 1) (2 * u) = prodE (fun l ↦ e (l + 1)) n u * e 0 false := by
   rw [prodE, prod_range_succ']
-  congr 1
+  refine congrArg₂ (· * ·) ?_ ?_
   · exact prod_congr rfl fun l _ ↦ by rw [Nat.testBit_add_one, Nat.mul_div_cancel_left _ two_pos]
   · simp [Nat.testBit_zero]
 
 theorem prodE_odd (e : ℕ → Bool → R) (n u : ℕ) :
     prodE e (n + 1) (2 * u + 1) = prodE (fun l ↦ e (l + 1)) n u * e 0 true := by
   rw [prodE, prod_range_succ']
-  congr 1
+  refine congrArg₂ (· * ·) ?_ ?_
   · refine prod_congr rfl fun l _ ↦ ?_
     rw [Nat.testBit_add_one, show (2 * u + 1) / 2 = u by omega]
   · simp [Nat.testBit_zero, Nat.add_mod]
@@ -836,7 +836,7 @@ theorem kwS_keys {m : ℕ} (hn : 16 ≤ m + 1) (β : K) (qf ρf : ℕ → K) :
       ((allKeys (m + 1)).map fun p => β ^ p.1 * keyW (ew qf ρf) (m + 1) p.2).sum := by
   rw [← kwS_items, allKeys, sum_flatMap]
   simp only [← termV_keys, sum_flatMap, ← item_terms, ← lsum_range, ← List.sum_map_mul_left]
-  congr 1
+  refine congrArg List.sum ?_
   refine List.map_congr_left fun i hi => congrArg _ (List.map_congr_left fun it hit => ?_)
   rw [List.sum_map_mul_left, lsum_range, item_val _ m it (plan_wf hn (List.mem_range.1 hi) it hit)]
 
@@ -993,7 +993,7 @@ theorem hornerK_eq (s : ℕ → K) : ∀ (o : ℕ) (Y : List K),
   | _, [] => by simp [hornerK]
   | o, y :: ys => by
     rw [hornerK, hornerK_eq s (o + 1) ys, List.length_cons, sum_range_succ', mul_sum, add_comm]
-    congr 1
+    refine congrArg₂ (· + ·) ?_ ?_
     · refine sum_congr rfl fun j _ => ?_
       rw [prod_range_succ', List.getD_cons_succ, add_zero,
         prod_congr rfl fun l _ => congrArg s (show o + (l + 1) = o + 1 + l by omega)]
@@ -1026,7 +1026,7 @@ theorem kwS_fast (β : F) (qF : ℕ → F) (ρf : ℕ → K) (s : ℕ → K)
   rw [keys_grp 15 (K.ofF β ^ ·) (keyW e (15 + 1)), hornerK_eq,
     hornerK_eq, skelM, skelP, List.map_map, List.map_map, List.length_map, List.length_map,
     List.length_range, List.length_range, show (15 : ℕ) + 1 = 16 from rfl]
-  congr 1
+  refine congrArg₂ (· + ·) ?_ ?_
   · refine sum_congr rfl fun j hj => ?_
     have hj := mem_range.1 hj
     rw [getD_range_map _ _ hj, Function.comp_apply, gsum_mkEnt, List.map_map,

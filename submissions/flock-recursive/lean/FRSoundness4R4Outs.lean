@@ -55,7 +55,9 @@ theorem opsOut_roundOpsF (f o deg : ℕ) (real : KC Bool) (st claim b : ℕ) :
   split_ifs <;> simp only [opsOut_append, opsOut_cons, Op.outs, opsOut_nil]
 
 theorem opsOut_roundOpsK (f o : ℕ) (real : KC Bool) (st claim b : ℕ) :
-    opsOut (roundOpsK f o real st claim b) = 13 := rfl
+    opsOut (roundOpsK f o real st claim b) = 13 := by
+  simp only [roundOpsK, opsOut, List.map_cons, List.map_nil, Op.outs, List.sum_cons, List.sum_nil,
+    Nat.reduceAdd]
 
 theorem opsOut_roundsOps (f o deg : ℕ) (inK : Bool) (real : KC ℕ) :
     ∀ n j st claim b, opsOut (roundsOps f o deg inK real n j st claim b) =
@@ -130,11 +132,18 @@ theorem genPhase4_out_lt (n : ℕ) (ph : String × Sh) (c : GCtx) (hu : ph.2 = .
     intro x hx
     · have := key _ hR c.uni (c.next + 0) (by omega) x hx; simp only [opsOut] at *; omega
     · have := key 13 (by omega) c.uni (c.next + 0) (by omega) x hx; simp only [opsOut] at *; omega
-    · have := key _ hR c.next (c.next + 1) (by omega) x hx; simp [opsOut, Op.outs] at *; omega
-    · have := key 13 (by omega) c.next (c.next + 1) (by omega) x hx; simp [opsOut, Op.outs] at *; omega
-    · have := key _ hR (c.next + 2) (c.next + 3) (by omega) x hx; simp [opsOut, Op.outs] at *; omega
+    · have := key _ hR c.next (c.next + 1) (by omega) x hx
+      simp only [opsOut_cons, opsOut_nil, Op.outs, Nat.reduceAdd] at this ⊢
+      omega
+    · have := key 13 (by omega) c.next (c.next + 1) (by omega) x hx
+      simp only [opsOut_cons, opsOut_nil, Op.outs, Nat.reduceAdd] at this ⊢
+      omega
+    · have := key _ hR (c.next + 2) (c.next + 3) (by omega) x hx
+      simp only [opsOut_cons, opsOut_nil, Op.outs, Nat.reduceAdd] at this ⊢
+      omega
     · have := key 13 (by omega) (c.next + 2) (c.next + 3) (by omega) x hx
-      simp [opsOut, Op.outs] at *; omega
+      simp only [opsOut_cons, opsOut_nil, Op.outs, Nat.reduceAdd] at this ⊢
+      omega
   | queries i =>
     simp only [genPhase4, Array.back?_push, Option.getD_some, List.mem_map, List.mem_range,
       opsOut_cons, opsOut_flatMap _ _ (fun q => opsOut_posOps4 S _ _ _ _ _ _ _ _ _)]

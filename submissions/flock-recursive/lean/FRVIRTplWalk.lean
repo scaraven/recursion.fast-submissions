@@ -321,7 +321,7 @@ theorem relT_cellW {x : Vector F 32} {x' : Vector LinT 32} (h : WE e x x') :
   have := relT_vec (e := e) (G := G) (R := VE e) 32 (fun i => x[i]) (fun i => dcell x'[i])
     (fun i => relT_cell hE (h i)) (fun _ => dg_cell _)
   rw [ofFn_getFin] at this
-  exact fun g s hs hp => (this g s hs hp).imp id fun h i => h i
+  exact this
 
 omit hE hri in
 theorem we_inW (b : ℕ) : WE e ((walkOps ew wt).inW b) (dinW ci b) := fun i => by
@@ -382,7 +382,7 @@ theorem relT_sumW {p q : Vector F 32} {p' q' : Vector LinT 32} {cs : List F} {cs
     (fun i => (walkOps ew wt).xor ((walkOps ew wt).xor p[i] q[i]) (cs.getD i (walkOps ew wt).zero))
     (fun i => dcell (dx (dx p'[i] q'[i]) (cs'.getD i [])))
     (fun i => relT_cell hE (ev_dx (ev_dx (hp i) (hq i)) (getD_f2 hc i))) (fun _ => dg_cell _)
-  exact fun g s hs hpp => (this g s hs hpp).imp id fun h i => h i
+  exact this
 
 theorem relT_addCarries {x y : Vector F 32} {x' y' : Vector LinT 32} (hx : WE e x x') (hy : WE e y y') :
     ∀ (n : ℕ) {c : F} {c' : LinT}, c'.ev e = c →
@@ -551,7 +551,7 @@ theorem relT_initW : RelT e G (pure (walkOps ew wt).initW) (dvec 16 (dinitWord c
   have key := relT_vec (e := e) (G := G) (R := WE e) 16 (fun w => (walkOps ew wt).initW[w])
     (dinitWord ci) (fun w => ?_) (fun w => ?_)
   · rw [ofFn_getFin] at key
-    exact fun g s hs hp => (key g s hs hp).imp id fun h j => h j
+    exact key
   · have hw : (walkOps ew wt).initW[w] = if w.val < 8 then (walkOps ew wt).inW (32 * w) else
         if w.val < 12 then (walkOps ew wt).litW constPos iv[w.val - 8] else (walkOps ew wt).xorW
           ((walkOps ew wt).litW constPos iv[w.val - 8]) ((walkOps ew wt).inW
@@ -564,14 +564,14 @@ theorem relT_initW : RelT e G (pure (walkOps ew wt).initW) (dvec 16 (dinitWord c
     · have := relT_vec (e := e) (G := G) (R := VE e) 32 (fun i => ((walkOps ew wt).litW constPos
         iv[w.val - 8])[i]) _ (fun i => relT_copy hE ((we_litW (ew := ew) hci _) i)) (fun _ => dg_copy _)
       rw [ofFn_getFin] at this
-      exact fun g s hs hp => (this g s hs hp).imp id fun h i => h i
+      exact this
     · have hx := we_xorW (ew := ew) (wt := wt) (we_litW (ew := ew) hci iv[w.val - 8])
         (we_inW (ew := ew) hci (counterLo + 32 * (w.val - 12)))
       have := relT_vec (e := e) (G := G) (R := VE e) 32 (fun i => ((walkOps ew wt).xorW
         ((walkOps ew wt).litW constPos iv[w.val - 8]) ((walkOps ew wt).inW
           (counterLo + 32 * (w.val - 12))))[i]) _ (fun i => relT_copy hE (hx i)) (fun _ => dg_copy _)
       rw [ofFn_getFin] at this
-      exact fun g s hs hp => (this g s hs hp).imp id fun h i => h i
+      exact this
   · unfold dinitWord
     split_ifs
     · exact dg_pure _
@@ -602,7 +602,7 @@ theorem relT_compressW : RelT e G (walkOps ew wt).compressW (dcompressW ri ci) (
       ((walkOps ew wt).inW (32 * w))) (dfinWord ci v')
     (fun w => relT_cellW hE (we_xorW (we_xorW (hv ⟨w, by omega⟩) (hv ⟨w.val + 8, by omega⟩))
       (we_inW (ew := ew) hci (32 * w)))) (fun _ => dg_cellW _)
-  exact fun g s hs hp => (this g s hs hp).imp id fun h w => h w
+  exact this
 
 end Gad
 

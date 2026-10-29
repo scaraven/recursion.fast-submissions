@@ -25,6 +25,8 @@ namespace FR.X
 
 open RecursionFast FR.Read
 
+attribute [local irreducible] entryK storeM runPrims
+
 /-! ## Specification -/
 
 /-- The stream words' address shape. -/
@@ -260,7 +262,8 @@ theorem sig_step (I : Array Word) {M₀ : Mem} {σ : ℕ} (hσ : σ = 1 ∨ σ =
   have hs := hb.1.1
   simp only [regs] at hs
   have e : semXIR I (.seq (setR (baseL σ)) (.seq (.blk [.const oKF 0]) (segIR apL 0 sigSeg))) t =
-      semXIR I (segIR apL 0 sigSeg) ⟨runPrims [.const oR (toWord (baseL σ)), .const oKF 0] t.M, t.o⟩ := rfl
+      semXIR I (segIR apL 0 sigSeg) ⟨runPrims [.const oR (toWord (baseL σ)), .const oKF 0] t.M, t.o⟩ :=
+    by with_unfolding_all rfl
   rw [e]
   have hb5 := base_blk (ps := [.const oR (toWord (baseL σ)), .const oKF 0]) (by simp [Prim.dst, oKF, oR, oBd, regs]) hb
   have c5 : Ctx M₀ (baseL σ) false ⟨runPrims [.const oR (toWord (baseL σ)), .const oKF 0] t.M, t.o⟩ := by

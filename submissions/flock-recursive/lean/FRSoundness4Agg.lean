@@ -132,13 +132,14 @@ theorem VA_extract_log {Vseg : SegProgs} {vk c : Digest} {π : Proof} {L : Log}
     ∃ s n, aggWit (piSizeOf seq4) π = some (s, n) ∧ n ≤ chainCap ∧
       c = leafStmt (chainEnd s n) n := by
   obtain ⟨hsz, vs, hvs, hc, hf⟩ := VA_sound_log h
-  set segs := aggSegs (piSizeOf seq4) (byteAt π 1).toNat π
   have hsz' := Snd.R4.piSize_aggSegs hsz
+  set segs := aggSegs (piSizeOf seq4) (byteAt π 1).toNat π
   have h2 := mapM_segView_forall₂ hvs
   simp only [aggChecks, Bool.and_eq_true, decide_eq_true_eq, List.all_eq_true] at hc
   obtain ⟨⟨⟨⟨⟨hst, hk⟩, hr⟩, hsum⟩, hlast⟩, hch⟩ := hc
   have hseg : ∀ v ∈ vs, chainEnd v.start v.n = v.h := by
     intro v hv
+    clear_value segs
     obtain ⟨i, hi, rfl⟩ := List.getElem_of_mem hv
     have hl := h2.length_eq
     have hpi : segView segs[i] = some vs[i] := (List.forall₂_iff_get.1 h2).2 i (by omega) hi

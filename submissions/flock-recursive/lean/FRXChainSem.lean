@@ -16,6 +16,8 @@ namespace FR.X
 
 open RecursionFast
 
+attribute [local irreducible] entryK storeM runPrims
+
 /-- The expected word `j` of the current target: header cell `hB + j` below `h`, else the tape
 word `o + j − h`. -/
 def exW (I : Array Word) (M : Mem) (h o j : ℕ) : Word :=
@@ -29,10 +31,12 @@ theorem toWord_sub_one (j : ℕ) (hj : j + 1 < 2 ^ 64) :
 /-! ## The length word -/
 
 theorem lo_lenIR : Lo lenIR := by
-  simp [lenIR, ceil8Ps, Lo, Prim.dst, regs, rQw, rWd, rMt, rTl, rEo, rKc, rT2]
+  simp +decide only [lenIR, ceil8Ps, Lo, Prim.dst, regs, rQw, rWd, rMt, rTl, rEo, rKc, rT2,
+    List.cons_append, List.nil_append]
 
 theorem wf_lenIR : WF lenIR := by
-  simp [lenIR, ceil8Ps, WF, Prim.dst, rQw, rMt, rEo, rKc, rT2]
+  simp +decide only [lenIR, ceil8Ps, WF, Prim.dst, rQw, rMt, rEo, rKc, rT2, List.cons_append,
+    List.nil_append]
 
 theorem lenIR_sem (I : Array Word) (s : St) (hM : Inv s.M) :
     rd (semXIR I lenIR s).M rQw = ceil8 (rd s.M rWd) ∧
@@ -48,10 +52,10 @@ theorem lenIR_sem (I : Array Word) (s : St) (hM : Inv s.M) :
 /-! ## A query word -/
 
 theorem lo_qryIR : Lo qryIR := by
-  simp [qryIR, Lo, Prim.dst, regs, rKj, rZ, rKd, rAd4, rE, rMt, rEo]
+  simp +decide only [qryIR, Lo, Prim.dst, regs, rKj, rZ, rKd, rAd4, rE, rMt, rEo, and_true]
 
 theorem wf_qryIR : WF qryIR := by
-  simp [qryIR, WF, Prim.dst, rKj, rZ, rKd, rAd4, rE, rMt, rEo]
+  simp +decide only [qryIR, WF, Prim.dst, rKj, rZ, rKd, rAd4, rE, rMt, rEo, and_true]
 
 theorem qryIR_sem (I : Array Word) (s : St) (hM : Inv s.M) {j h o : ℕ} {b : Bool}
     (hj : j + 2 < 2 ^ 64) (hh : h ≤ 16) (ho : o + j < 2 ^ 64)
@@ -63,7 +67,7 @@ theorem qryIR_sem (I : Array Word) (s : St) (hM : Inv s.M) {j h o : ℕ} {b : Bo
   have h1 : rd s.M cOne = 1 := hM.2 0 (by decide)
   simp only [regs] at hs
   have w1 : WF (.blk [.op .sub rKj rEo cOne, .op .ltu rZ rKj rTh]) := by
-    simp [WF, Prim.dst, rKj, rZ]
+    simp +decide only [WF, Prim.dst, rKj, rZ]
   have hM1 := inv_sem I w1 hM
   have hk1 : rd (semXIR I (.blk [.op .sub rKj rEo cOne, .op .ltu rZ rKj rTh]) s).M rKj =
       toWord j := by
@@ -80,7 +84,7 @@ theorem qryIR_sem (I : Array Word) (s : St) (hM : Inv s.M) {j h o : ℕ} {b : Bo
     fun r hr h1 h2 => rd_runPrims_of_not_writes (by simp [Prim.dst]; exact ⟨Ne.symm h1, Ne.symm h2⟩) _
   have hp1 : ∀ x, regs ≤ x →
       rd (semXIR I (.blk [.op .sub rKj rEo cOne, .op .ltu rZ rKj rTh]) s).M x = rd s.M x :=
-    fun x hx => hframe I _ s (by simp [Lo, Prim.dst, regs, rKj, rZ]) x hx
+    fun x hx => hframe I _ s (by simp +decide only [Lo, Prim.dst, regs, rKj, rZ]) x hx
   rw [qryIR, semXIR_seq]
   generalize semXIR I (.blk [.op .sub rKj rEo cOne, .op .ltu rZ rKj rTh]) s = s1
     at hM1 hk1 hz1 fr1 hp1
@@ -100,7 +104,8 @@ theorem qryIR_sem (I : Array Word) (s : St) (hM : Inv s.M) {j h o : ℕ} {b : Bo
         rw [hk1, add_toWord]
       have hp : rd (semXIR I (.blk [.const rKd (toWord hB), .op .add rAd4 rKd rKj]) s1).M
           (hB + j) = rd s.M (hB + j) := by
-        rw [hframe I _ s1 (by simp [Lo, Prim.dst, regs, rKd, rAd4]) _ (by simp only [regs, hB_eq]; omega),
+        rw [hframe I _ s1 (by simp +decide only [Lo, Prim.dst, regs, rKd, rAd4]) _
+            (by simp only [regs, hB_eq]; omega),
           hp1 _ (by simp only [regs, hB_eq]; omega)]
       have z2 := size_sem I (.blk [.const rKd (toWord hB), .op .add rAd4 rKd rKj]) s1
       generalize semXIR I (.blk [.const rKd (toWord hB), .op .add rAd4 rKd rKj]) s1 = s2
@@ -121,11 +126,12 @@ theorem qryIR_sem (I : Array Word) (s : St) (hM : Inv s.M) {j h o : ℕ} {b : Bo
   have fr2 : ∀ r, r < regs → r ≠ rKd → r ≠ rAd4 → r ≠ rE → rd (semXIR I (.ite rZ (.seq (.blk
       [.const rKd (toWord hB), .op .add rAd4 rKd rKj]) (.load rE rAd4)) (.seq (.blk [.op .add rAd4
       rTo rKj, .op .sub rAd4 rAd4 rTh]) (.input rE rAd4))) s1).M r = rd s1.M r :=
-    fun r hr a b c => frame I _ s1 (by simp [WF, Prim.dst, rKd, rAd4, rE]) hM1 r hr (by
-      simp [Writes, Prim.dst]; exact ⟨⟨⟨Ne.symm a, Ne.symm b⟩, c⟩, Ne.symm b, c⟩)
+    fun r hr a b c =>
+      frame I _ s1 (by simp +decide only [WF, Prim.dst, rKd, rAd4, rE, and_true]) hM1 r hr (by
+        simp [Writes, Prim.dst]; exact ⟨⟨⟨Ne.symm a, Ne.symm b⟩, c⟩, Ne.symm b, c⟩)
   have hM2 := inv_sem I (P := .ite rZ (.seq (.blk [.const rKd (toWord hB), .op .add rAd4 rKd rKj])
     (.load rE rAd4)) (.seq (.blk [.op .add rAd4 rTo rKj, .op .sub rAd4 rAd4 rTh]) (.input rE rAd4)))
-    (by simp [WF, Prim.dst, rKd, rAd4, rE]) hM1
+    (by simp +decide only [WF, Prim.dst, rKd, rAd4, rE, and_true]) hM1
   rw [semXIR_seq]
   generalize semXIR I (.ite rZ (.seq (.blk [.const rKd (toWord hB), .op .add rAd4 rKd rKj])
     (.load rE rAd4)) (.seq (.blk [.op .add rAd4 rTo rKj, .op .sub rAd4 rAd4 rTh])
@@ -177,10 +183,10 @@ theorem setSPs_run (M : Mem) (hs : 256 ≤ M.size) {m r k : ℕ} (hr : r ∈ [rS
   by_cases h : k = m <;> simp [h]
 
 theorem lo_ansPs : Lo (.blk ansPs) := by
-  simp [ansPs, setSPs, Lo, Prim.dst, regs, rKj, rKd, rMk5, rS0, rS1, rS2, rS3, rZ]
+  simp +decide only [ansPs, setSPs, Lo, Prim.dst, regs, rKj, rKd, rMk5, rS0, rS1, rS2, rS3, rZ]
 
 theorem wf_ansPs : WF (.blk ansPs) := by
-  simp [ansPs, setSPs, WF, Prim.dst, rKj, rKd, rMk5, rS0, rS1, rS2, rS3, rZ]
+  simp +decide only [ansPs, setSPs, WF, Prim.dst, rKj, rKd, rMk5, rS0, rS1, rS2, rS3, rZ]
 
 /-- **An answer word** `m = eo − qw − 1`: `rS_m := w`, `rZ := [m = 3]`. -/
 theorem ansPs_sem (I : Array Word) (s : St) (hM : Inv s.M) {qw m : ℕ} (hm : m < 4)
@@ -269,7 +275,8 @@ theorem stNext_sem (I : Array Word) (s : St) (hM : Inv s.M) {a r : ℕ} (hr : r 
   have hs := hM.1
   have h1 : rd s.M cOne = 1 := hM.2 0 (by decide)
   simp only [regs] at hs hr ha
-  have hM1 := inv_sem I (P := .blk [.op .add rAd4 rAd4 cOne]) (by simp [WF, Prim.dst, rAd4]) hM
+  have hM1 := inv_sem I (P := .blk [.op .add rAd4 rAd4 cOne]) (by simp +decide only [WF, Prim.dst,
+    rAd4]) hM
   have ha1 : rd (semXIR I (.blk [.op .add rAd4 rAd4 cOne]) s).M rAd4 = toWord (a + 1) := by
     simp only [semXIR, runPrims, List.foldl, Prim.run]
     simp (disch := first | decide | omega | exact Nat.lt_of_lt_of_le (m := 256) (by decide) (by assumption) | (simp only [size_set]; exact Nat.lt_of_lt_of_le (m := 256) (by decide) (by assumption))) only [rd_set_self, rd_set_ne]
@@ -281,7 +288,8 @@ theorem stNext_sem (I : Array Word) (s : St) (hM : Inv s.M) {a r : ℕ} (hr : r 
   generalize semXIR I (.blk [.op .add rAd4 rAd4 cOne]) s = s1 at hM1 ha1 hf1 z1
   have e : semXIR I (.store rAd4 r) s1 = ⟨storeM s1.M rAd4 r, s1.o⟩ := rfl
   rw [e]
-  refine ⟨?_, fun i hi hiA => ?_, inv_sem I (P := .store rAd4 r) (by simp [WF, rAd4, cTmp]) hM1⟩
+  refine ⟨?_, fun i hi hiA => ?_, inv_sem I (P := .store rAd4 r) (by simp +decide only [WF, rAd4,
+    cTmp]) hM1⟩
   · rw [storeM_frame hM1 (by decide) (by decide) (by decide), ha1]
   · rw [rd_storeM hM1 ha1 ha ha2 (by omega) (by decide) hr4 hi, hf1 r hrA, hf1 i hiA]
 
@@ -295,7 +303,7 @@ theorem st4IR_sem (I : Array Word) (s : St) (hM : Inv s.M) {b : ℕ} (hA : rd s.
   have hs := hM.1
   simp only [regs] at hs hb
   have e0 : semXIR I (.store rAd4 rS0) s = ⟨storeM s.M rAd4 rS0, s.o⟩ := rfl
-  have hM0 := inv_sem I (P := .store rAd4 rS0) (by simp [WF, rAd4, cTmp]) hM
+  have hM0 := inv_sem I (P := .store rAd4 rS0) (by simp +decide only [WF, rAd4, cTmp]) hM
   rw [e0] at hM0
   have a0 : rd (storeM s.M rAd4 rS0) rAd4 = toWord b := by
     rw [storeM_frame hM (by decide) (by decide) (by decide), hA]
@@ -389,7 +397,7 @@ theorem nextIR_sem (I : Array Word) (s : St) (hM : Inv s.M) {p : ℕ} (hp : p + 
   have hc : chB + 4 * (p + 1) + 3 < hB := by simp only [chB_eq, hB_eq]; omega
   have hcs : hB + 16 ≤ s.M.size := by simp only [hB_eq, ansB_eq] at hsz ⊢; omega
   have e0 : semXIR I nextPre s = ⟨runPrims nextPs s.M, s.o⟩ := rfl
-  have w0 : WF nextPre := by simp [nextPre, nextPs, WF, Prim.dst, rPi, rKd, rAd4]
+  have w0 : WF nextPre := by simp +decide only [nextPre, nextPs, WF, Prim.dst, rPi, rKd, rAd4]
   have hM0 := inv_sem I w0 hM
   have a0 : rd (semXIR I nextPre s).M rAd4 = toWord (chB + 4 * (p + 1)) ∧
       rd (semXIR I nextPre s).M rPi = toWord (p + 1) := by
@@ -409,27 +417,29 @@ theorem nextIR_sem (I : Array Word) (s : St) (hM : Inv s.M) {p : ℕ} (hp : p + 
   obtain ⟨a0, p0⟩ := a0
   -- three loads
   obtain ⟨l1, g1⟩ := load_sem I s0 hM0 (d := rTl) (a := rAd4) (by decide)
-  have hM1 := inv_sem I (P := .load rTl rAd4) (by simp [WF, rTl]) hM0
+  have hM1 := inv_sem I (P := .load rTl rAd4) (by simp +decide only [WF, rTl]) hM0
   have z1 := size_sem I (.load rTl rAd4) s0
   rw [semXIR_seq]
   generalize semXIR I (.load rTl rAd4) s0 = s1 at l1 g1 hM1 z1
   obtain ⟨n1, k1⟩ := addOne_sem I s1 hM1 (a := chB + 4 * (p + 1)) (by rw [g1 _ (by decide), a0])
-  have hM2 := inv_sem I (P := .blk [.op .add rAd4 rAd4 cOne]) (by simp [WF, Prim.dst, rAd4]) hM1
+  have hM2 := inv_sem I (P := .blk [.op .add rAd4 rAd4 cOne]) (by simp +decide only [WF, Prim.dst,
+    rAd4]) hM1
   have z2 := size_sem I (.blk [.op .add rAd4 rAd4 cOne]) s1
   rw [semXIR_seq]
   generalize semXIR I (.blk [.op .add rAd4 rAd4 cOne]) s1 = s2 at n1 k1 hM2 z2
   obtain ⟨l2, g2⟩ := load_sem I s2 hM2 (d := rTo) (a := rAd4) (by decide)
-  have hM3 := inv_sem I (P := .load rTo rAd4) (by simp [WF, rTo]) hM2
+  have hM3 := inv_sem I (P := .load rTo rAd4) (by simp +decide only [WF, rTo]) hM2
   have z3 := size_sem I (.load rTo rAd4) s2
   rw [semXIR_seq]
   generalize semXIR I (.load rTo rAd4) s2 = s3 at l2 g2 hM3 z3
   obtain ⟨n2, k2⟩ := addOne_sem I s3 hM3 (a := chB + 4 * (p + 1) + 1) (by rw [g2 _ (by decide), n1])
-  have hM4 := inv_sem I (P := .blk [.op .add rAd4 rAd4 cOne]) (by simp [WF, Prim.dst, rAd4]) hM3
+  have hM4 := inv_sem I (P := .blk [.op .add rAd4 rAd4 cOne]) (by simp +decide only [WF, Prim.dst,
+    rAd4]) hM3
   have z4 := size_sem I (.blk [.op .add rAd4 rAd4 cOne]) s3
   rw [semXIR_seq]
   generalize semXIR I (.blk [.op .add rAd4 rAd4 cOne]) s3 = s4 at n2 k2 hM4 z4
   obtain ⟨l3, g3⟩ := load_sem I s4 hM4 (d := rTg) (a := rAd4) (by decide)
-  have hM5 := inv_sem I (P := .load rTg rAd4) (by simp [WF, rTg]) hM4
+  have hM5 := inv_sem I (P := .load rTg rAd4) (by simp +decide only [WF, rTg]) hM4
   have z5 := size_sem I (.load rTg rAd4) s4
   rw [semXIR_seq]
   generalize semXIR I (.load rTg rAd4) s4 = s5 at l3 g3 hM5 z5
@@ -460,7 +470,7 @@ theorem nextIR_sem (I : Array Word) (s : St) (hM : Inv s.M) {p : ℕ} (hp : p + 
   have vPi : rd s5.M rPi = toWord (p + 1) := by
     rw [g3 _ (by decide), k2 _ (by decide), g2 _ (by decide), k1 _ (by decide), g1 _ (by decide), p0]
   -- `h := 5`, then the tag's store
-  have hM6 := inv_sem I (P := .blk [.const rTh 5]) (by simp [WF, Prim.dst, rTh]) hM5
+  have hM6 := inv_sem I (P := .blk [.const rTh 5]) (by simp +decide only [WF, Prim.dst, rTh]) hM5
   have t6 : rd (semXIR I (.blk [.const rTh 5]) s5).M rTh = 5 := by
     have := hM5.1; simp only [regs] at this
     simp only [semXIR, runPrims, List.foldl, Prim.run]
@@ -470,7 +480,8 @@ theorem nextIR_sem (I : Array Word) (s : St) (hM : Inv s.M) {p : ℕ} (hp : p + 
   have z6 := size_sem I (.blk [.const rTh 5]) s5
   rw [semXIR_seq]
   generalize semXIR I (.blk [.const rTh 5]) s5 = s6 at hM6 t6 f6 z6
-  have hM7 := inv_sem I (P := .blk [.const rAd4 (toWord hB)]) (by simp [WF, Prim.dst, rAd4]) hM6
+  have hM7 := inv_sem I (P := .blk [.const rAd4 (toWord hB)]) (by simp +decide only [WF, Prim.dst,
+    rAd4]) hM6
   have a7 : rd (semXIR I (.blk [.const rAd4 (toWord hB)]) s6).M rAd4 = toWord hB := by
     have := hM6.1; simp only [regs] at this
     simp only [semXIR, runPrims, List.foldl, Prim.run]
@@ -487,7 +498,7 @@ theorem nextIR_sem (I : Array Word) (s : St) (hM : Inv s.M) {p : ℕ} (hp : p + 
       (by omega) (by decide) (by decide) hi
   have r7 : ∀ i, i ≠ rAd4 → i ≠ rTh → rd s7.M i = rd s5.M i := fun i a b => by rw [f7 i a, f6 i b]
   refine ⟨?_, ?_, ?_, ?_, fun x hx => ?_, fun i hi c a k x1 x2 x3 x4 x5 => ?_,
-    inv_sem I (P := .store rAd4 rTg) (by simp [WF, rAd4, cTmp]) hM7⟩
+    inv_sem I (P := .store rAd4 rTg) (by simp +decide only [WF, rAd4, cTmp]) hM7⟩
   · rw [st8 _ (by decide), if_neg (by simp only [rPi, hB_eq]; omega), r7 _ (by decide) (by decide), vPi]
   · rw [st8 _ (by decide), if_neg (by simp only [rTl, hB_eq]; omega), r7 _ (by decide) (by decide), vTl]
   · rw [st8 _ (by decide), if_neg (by simp only [rTo, hB_eq]; omega), r7 _ (by decide) (by decide), vTo]
@@ -535,7 +546,8 @@ theorem recIR_sem (I : Array Word) (s : St) (hM : Inv s.M) {p : ℕ} (hp : p + 1
   have q6 : hB + 1 + 4 ≤ s.M.size := by rw [hB_eq]; simp only [chEnd] at hsz; omega
   have q7 : ∀ k < 3, regs ≤ chB + 4 * (p + 1) + k := fun k _ => by rw [chB_eq]; simp only [regs]; omega
   have e0 : semXIR I recPre s = ⟨runPrims recPs s.M, s.o⟩ := rfl
-  have hM0 := inv_sem I (P := recPre) (by simp [recPre, recPs, WF, Prim.dst, rKd, rAd4]) hM
+  have hM0 :=
+    inv_sem I (P := recPre) (by simp +decide only [recPre, recPs, WF, Prim.dst, rKd, rAd4]) hM
   have a0 : rd (semXIR I recPre s).M rAd4 = toWord (ansB + 4 * p) := by
     simp only [e0, recPs, runPrims, List.foldl, Prim.run]
     simp (disch := first | decide | omega | exact Nat.lt_of_lt_of_le (m := 256) (by decide) (by assumption) | (simp only [size_set]; exact Nat.lt_of_lt_of_le (m := 256) (by decide) (by assumption))) only [rd_set_self, rd_set_ne]
@@ -554,7 +566,8 @@ theorem recIR_sem (I : Array Word) (s : St) (hM : Inv s.M) {p : ℕ} (hp : p + 1
   rw [semXIR_seq]
   generalize semXIR I st4IR s0 = s1 at a1 f1 hM1 z1
   -- `rAd4 := hB + 1`
-  have hM2 := inv_sem I (P := .blk [.const rAd4 (toWord (hB + 1))]) (by simp [WF, Prim.dst, rAd4])
+  have hM2 := inv_sem I (P := .blk [.const rAd4 (toWord (hB + 1))]) (by simp +decide only [WF,
+    Prim.dst, rAd4])
     hM1
   have a2 : rd (semXIR I (.blk [.const rAd4 (toWord (hB + 1))]) s1).M rAd4 = toWord (hB + 1) := by
     have := hM1.1; simp only [regs] at this
@@ -637,7 +650,8 @@ theorem lastIR_sem (I : Array Word) (s : St) (hM : Inv s.M) {N p : ℕ} {b : Boo
         (if p < N ∧ b = true then semXIR I recIR s₁ else s₁) := by
   have hs := hM.1
   simp only [regs] at hs
-  refine ⟨semXIR I (.blk (lastPs N)) s, inv_sem I (by simp [lastPs, WF, Prim.dst, rKd, rZ]) hM,
+  refine ⟨semXIR I (.blk (lastPs N)) s, inv_sem I (by simp +decide only [lastPs, WF, Prim.dst, rKd,
+    rZ, List.mem_cons, List.mem_nil_iff, forall_eq_or_imp, forall_eq, or_false, and_true]) hM,
     size_sem .., fun i a b => rd_runPrims_of_not_writes (by
       simp only [lastPs, List.mem_cons, List.mem_nil_iff, or_false]
       rintro q (rfl | rfl | rfl)
@@ -656,6 +670,6 @@ theorem lastIR_sem (I : Array Word) (s : St) (hM : Inv s.M) {N p : ℕ} {b : Boo
       · have : b = false := by simpa [h1] using h
         rw [this]; simp; rfl
       · rw [decide_eq_false h1]; rfl)]
-    rfl
+    with_unfolding_all rfl
 
 end FR.X

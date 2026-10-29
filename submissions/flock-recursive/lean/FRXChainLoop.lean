@@ -103,7 +103,7 @@ theorem pre_sem (I : Array Word) (s : St) (hM : Inv s.M) {pos : ℕ} (hW : rd s.
     Inv (semXIR I (.blk w2Ps) (semXIR I (.input rWd rWp) s)).M := by
   have hs := hM.1
   simp only [regs] at hs
-  have hM1 := inv_sem I (P := .input rWd rWp) (by simp [WF, rWd]) hM
+  have hM1 := inv_sem I (P := .input rWd rWp) (by simp +decide only [WF, rWd]) hM
   have i1 : rd (semXIR I (.input rWd rWp) s).M rWd = I.getD pos 0 := by
     simp only [semXIR]
     rw [rd_set_self (by simp only [rWd]; omega), hW, toNat_toWord hpos]
@@ -113,7 +113,8 @@ theorem pre_sem (I : Array Word) (s : St) (hM : Inv s.M) {pos : ℕ} (hW : rd s.
   have hs1 := hM1.1
   simp only [regs] at hs1
   have e : semXIR I (.blk w2Ps) s1 = ⟨runPrims w2Ps s1.M, s1.o⟩ := rfl
-  refine ⟨?_, ?_, fun i a b c => ?_, inv_sem I (by simp [w2Ps, WF, Prim.dst, rKd, rZ]) hM1⟩
+  refine ⟨?_, ?_, fun i a b c => ?_,
+    inv_sem I (by simp +decide only [w2Ps, WF, Prim.dst, rKd, rZ]) hM1⟩
   · simp only [e]
     rw [rd_runPrims_of_not_writes (by simp [w2Ps, Prim.dst, rKd, rZ, rWd]) _]; exact i1
   · rw [e]
@@ -135,7 +136,7 @@ theorem inc_sem (I : Array Word) (s : St) (hM : Inv s.M) {pos : ℕ} (hW : rd s.
   have h1 : rd s.M cOne = 1 := hM.2 0 (by decide)
   simp only [regs] at hs
   refine ⟨?_, fun i hi => rd_runPrims_of_not_writes (by simp [incPs, Prim.dst]; exact Ne.symm hi) _,
-    inv_sem I (by simp [incPs, WF, Prim.dst, rWp]) hM⟩
+    inv_sem I (by simp +decide only [incPs, WF, Prim.dst, rWp]) hM⟩
   simp only [semXIR, incPs, runPrims, List.foldl, Prim.run]
   rw [rd_set_self (by simp only [rWp]; omega), hW, h1, add_one_toWord]
 
@@ -165,7 +166,7 @@ theorem word_len {I : Array Word} {T : ℕ → Digest → ByteArray} {N : ℕ} {
   have hM := h.inv
   obtain ⟨p1, p2, p3, p4⟩ := pre_sem I s hM hW (by omega)
   have hh2 := hframe I (.seq (.input rWd rWp) (.blk w2Ps)) s (by
-    simp [Lo, w2Ps, Prim.dst, regs, rWd, rKd, rZ])
+    simp +decide only [Lo, w2Ps, Prim.dst, regs, rWd, rKd, rZ, and_true])
   have z2 := size_sem I (.seq (.input rWd rWp) (.blk w2Ps)) s
   simp only [semXIR_seq] at hh2 z2
   rw [word_head I s hM N]
@@ -179,15 +180,16 @@ theorem word_len {I : Array Word} {T : ℕ → Digest → ByteArray} {N : ℕ} {
     fun i hi hw => frame I lenIR s2 wf_lenIR p4 i hi hw
   generalize semXIR I lenIR s2 = s3 at l1 l2 l3 hh3 z3 hM3 f3
   have w3 : rd s3.M rWp = toWord pos := by
-    rw [f3 _ (by decide) (by simp [lenIR, ceil8Ps, Writes, Prim.dst, rWp, rQw, rMt, rEo, rKc, rT2]),
+    rw [f3 _ (by decide) (by simp +decide only [lenIR, ceil8Ps, Writes, Prim.dst, rWp, rQw, rMt,
+      rEo, rKc, rT2, List.cons_append, List.nil_append]),
       p3 _ (by decide) (by decide) (by decide), hW]
   obtain ⟨i1, i2, hM4⟩ := inc_sem I s3 hM3 w3
   have hl : ∀ r, (r = rPi ∨ r = rTl ∨ r = rTh ∨ r = rTo) → rd (semXIR I (.blk incPs) s3).M r =
       rd s.M r := fun r hr => by
     have hr' : r < regs ∧ ¬ Writes lenIR r ∧ r ≠ rWd ∧ r ≠ rKd ∧ r ≠ rZ ∧ r ≠ rWp := by
       rcases hr with rfl | rfl | rfl | rfl <;>
-        simp [lenIR, ceil8Ps, Writes, Prim.dst, regs, rWp, rQw, rMt, rEo, rKc, rT2, rPi, rTl, rTh,
-          rTo, rWd, rKd, rZ]
+        simp +decide only [lenIR, ceil8Ps, Writes, Prim.dst, regs, rWp, rQw, rMt, rEo, rKc, rT2,
+          rPi, rTl, rTh, rTo, rWd, rKd, rZ, and_true, List.cons_append, List.nil_append]
     rw [i2 r hr'.2.2.2.2.2, f3 r hr'.1 hr'.2.1, p3 r hr'.2.2.1 hr'.2.2.2.1 hr'.2.2.2.2.1]
   have hH : ∀ y, regs ≤ y → rd (semXIR I (.blk incPs) s3).M y = rd s.M y := fun y hy => by
     rw [i2 y (by simp only [rWp, regs] at hy ⊢; omega), hh3 y hy, hh2 y hy]
@@ -210,7 +212,7 @@ theorem word_qry {I : Array Word} {T : ℕ → Digest → ByteArray} {N : ℕ} {
   have hM := h.inv
   obtain ⟨p1, p2, p3, p4⟩ := pre_sem I s hM hW (by omega)
   have hh2 := hframe I (.seq (.input rWd rWp) (.blk w2Ps)) s (by
-    simp [Lo, w2Ps, Prim.dst, regs, rWd, rKd, rZ])
+    simp +decide only [Lo, w2Ps, Prim.dst, regs, rWd, rKd, rZ, and_true])
   have z2 := size_sem I (.seq (.input rWd rWp) (.blk w2Ps)) s
   simp only [semXIR_seq] at hh2 z2
   rw [word_head I s hM N]
@@ -232,8 +234,10 @@ theorem word_qry {I : Array Word} {T : ℕ → Digest → ByteArray} {N : ℕ} {
     rfl
   have g1 : ∀ i, i ≠ rZ → rd (semXIR I (.blk [.op .ltu rZ rQw rEo]) s2).M i = rd s2.M i :=
     fun i hi => rd_runPrims_of_not_writes (by simp [Prim.dst]; exact Ne.symm hi) _
-  have hM5 := inv_sem I (P := .blk [.op .ltu rZ rQw rEo]) (by simp [WF, Prim.dst, rZ]) p4
-  have hh5 := hframe I (.blk [.op .ltu rZ rQw rEo]) s2 (by simp [Lo, Prim.dst, regs, rZ])
+  have hM5 :=
+    inv_sem I (P := .blk [.op .ltu rZ rQw rEo]) (by simp +decide only [WF, Prim.dst, rZ]) p4
+  have hh5 := hframe I (.blk [.op .ltu rZ rQw rEo]) s2 (by simp +decide only [Lo, Prim.dst, regs,
+    rZ])
   have z5 := size_sem I (.blk [.op .ltu rZ rQw rEo]) s2
   generalize semXIR I (.blk [.op .ltu rZ rQw rEo]) s2 = s5 at q1 g1 hM5 hh5 z5
   rw [semXIR_ite, q1, if_pos rfl]
@@ -259,15 +263,16 @@ theorem word_qry {I : Array Word} {T : ℕ → Digest → ByteArray} {N : ℕ} {
   rw [wd, ex] at k1
   generalize semXIR I qryIR s5 = s6 at k1 k2 hh6 z6 hM6 f6
   have w6 : rd s6.M rWp = toWord pos := by
-    rw [f6 _ (by decide) (by simp [qryIR, Writes, Prim.dst, rWp, rKj, rZ, rKd, rAd4, rE, rMt, rEo]),
+    rw [f6 _ (by decide) (by simp +decide only [qryIR, Writes, Prim.dst, rWp, rKj, rZ, rKd, rAd4,
+      rE, rMt, rEo, or_false]),
       r5 _ (by decide) (by decide) (by decide), hW]
   obtain ⟨i1, i2, hM7⟩ := inc_sem I s6 hM6 w6
   have hl : ∀ r, (r = rPi ∨ r = rTl ∨ r = rTh ∨ r = rTo ∨ r = rQw) →
       rd (semXIR I (.blk incPs) s6).M r = rd s.M r := fun r hr => by
     have hr' : r < regs ∧ ¬ Writes qryIR r ∧ r ≠ rWd ∧ r ≠ rKd ∧ r ≠ rZ ∧ r ≠ rWp := by
       rcases hr with rfl | rfl | rfl | rfl | rfl <;>
-        simp [qryIR, Writes, Prim.dst, regs, rWp, rKj, rZ, rKd, rAd4, rE, rMt, rEo, rPi, rTl, rTh,
-          rTo, rWd, rQw]
+        simp +decide only [qryIR, Writes, Prim.dst, regs, rWp, rKj, rZ, rKd, rAd4, rE, rMt, rEo,
+          rPi, rTl, rTh, rTo, rWd, rQw, or_false, and_true]
     rw [i2 r hr'.2.2.2.2.2, f6 r hr'.1 hr'.2.1, r5 r hr'.2.2.2.2.1 hr'.2.2.1 hr'.2.2.2.1]
   have hH : ∀ y, regs ≤ y → rd (semXIR I (.blk incPs) s6).M y = rd s.M y := fun y hy => by
     rw [i2 y (by simp only [rWp, regs] at hy ⊢; omega), hh6 y hy, hh5 y hy, hh2 y hy]
@@ -295,7 +300,7 @@ theorem word_ans_path {I : Array Word} {T : ℕ → Digest → ByteArray} {N : �
   have hM := h.inv
   obtain ⟨p1, p2, p3, p4⟩ := pre_sem I s hM hW (by omega)
   have hh2 := hframe I (.seq (.input rWd rWp) (.blk w2Ps)) s (by
-    simp [Lo, w2Ps, Prim.dst, regs, rWd, rKd, rZ])
+    simp +decide only [Lo, w2Ps, Prim.dst, regs, rWd, rKd, rZ, and_true])
   have z2 := size_sem I (.seq (.input rWd rWp) (.blk w2Ps)) s
   simp only [semXIR_seq] at hh2 z2
   rw [word_head I s hM N]
@@ -315,8 +320,10 @@ theorem word_ans_path {I : Array Word} {T : ℕ → Digest → ByteArray} {N : �
       decide_eq_true (by omega)]
   have g1 : ∀ i, i ≠ rZ → rd (semXIR I (.blk [.op .ltu rZ rQw rEo]) s2).M i = rd s2.M i :=
     fun i hi => rd_runPrims_of_not_writes (by simp [Prim.dst]; exact Ne.symm hi) _
-  have hM5 := inv_sem I (P := .blk [.op .ltu rZ rQw rEo]) (by simp [WF, Prim.dst, rZ]) p4
-  have hh5 := hframe I (.blk [.op .ltu rZ rQw rEo]) s2 (by simp [Lo, Prim.dst, regs, rZ])
+  have hM5 :=
+    inv_sem I (P := .blk [.op .ltu rZ rQw rEo]) (by simp +decide only [WF, Prim.dst, rZ]) p4
+  have hh5 := hframe I (.blk [.op .ltu rZ rQw rEo]) s2 (by simp +decide only [Lo, Prim.dst, regs,
+    rZ])
   have z5 := size_sem I (.blk [.op .ltu rZ rQw rEo]) s2
   generalize semXIR I (.blk [.op .ltu rZ rQw rEo]) s2 = s5 at q1 g1 hM5 hh5 z5
   rw [semXIR_ite, q1, if_neg (by decide), ansIR, semXIR_seq]
@@ -331,7 +338,8 @@ theorem word_ans_path {I : Array Word} {T : ℕ → Digest → ByteArray} {N : �
       p3 (rS0 + i) (by simp only [rS0, rWd]; omega) (by simp only [rS0, rKd]; omega)
       (by simp only [rS0, rZ]; omega)]
   · rw [frame I _ s5 wf_ansPs hM5 r hr (by
-      simp [Writes, ansPs, setSPs, Prim.dst]
+      simp +decide only [Writes, ansPs, setSPs, Prim.dst, List.mem_cons, List.mem_nil_iff,
+        exists_eq_or_imp, exists_eq_left, or_false, List.cons_append, List.nil_append]
       simp only [rKj, rKd, rMk5, rS0, rS1, rS2, rS3, rZ] at *
       omega), r5 r c a b]
 
@@ -360,8 +368,10 @@ theorem word_ans {I : Array Word} {T : ℕ → Digest → ByteArray} {N : ℕ} {
       add_one_toWord, Nat.add_assoc]
   have g1 : ∀ i, i ≠ rEo → rd (semXIR I (.blk [.op .add rEo rEo cOne]) s3).M i = rd s3.M i :=
     fun i hi => rd_runPrims_of_not_writes (by simp [Prim.dst]; exact Ne.symm hi) _
-  have hM4 := inv_sem I (P := .blk [.op .add rEo rEo cOne]) (by simp [WF, Prim.dst, rEo]) hM3
-  have hh4 := hframe I (.blk [.op .add rEo rEo cOne]) s3 (by simp [Lo, Prim.dst, regs, rEo])
+  have hM4 := inv_sem I (P := .blk [.op .add rEo rEo cOne]) (by simp +decide only [WF, Prim.dst,
+    rEo]) hM3
+  have hh4 := hframe I (.blk [.op .add rEo rEo cOne]) s3 (by simp +decide only [Lo, Prim.dst, regs,
+    rEo])
   have z4 := size_sem I (.blk [.op .add rEo rEo cOne]) s3
   generalize semXIR I (.blk [.op .add rEo rEo cOne]) s3 = s4 at k1 g1 hM4 hh4 z4
   have w4 : rd s4.M rWp = toWord pos := by
@@ -398,7 +408,7 @@ theorem word_tail (I : Array Word) (s : St) (hM : Inv s.M) {pos : ℕ} (hW : rd 
     (semXIR I (.blk incPs) (semXIR I (.blk [.const rEo 0]) s)).M.size = s.M.size := by
   have hs := hM.1
   simp only [regs] at hs
-  have hM1 := inv_sem I (P := .blk [.const rEo 0]) (by simp [WF, Prim.dst, rEo]) hM
+  have hM1 := inv_sem I (P := .blk [.const rEo 0]) (by simp +decide only [WF, Prim.dst, rEo]) hM
   have e1 : rd (semXIR I (.blk [.const rEo 0]) s).M rEo = 0 := by
     simp only [semXIR, runPrims, List.foldl, Prim.run]
     exact rd_set_self (by simp only [rEo]; omega)
