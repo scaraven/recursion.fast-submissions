@@ -5,7 +5,10 @@ Last updated 2026-10-28. **Rebased onto core PR #20 (pin `6d05d00`, commit `987e
 ## Running — as of 2026-10-30
 
 Main (`v4/flock-recursive`, core `422f2f9`; the certificate assumes only `Open4F := Gaps4`):
-- G5: kernel-time golf (`realign_sem` 44.8 s first; target ≥ 150 s off the comparator's 461.7 s).
+- **G5 landed `edf11b4`.** On a 7763 `certified` takes 379.7 s, down from 461.7 (margin 1.58×). KReplay went 224.3 → 154.8 s and the comparator's peak memory 8.7 → 4.5 GiB. No statement changed.
+  - **Root cause:** the kernel unfolds `HAdd.hAdd` before user definitions, so a defeq step between differently shaped closed ℕ sums evaluates them in full. G5-golf.md has the fix patterns; the tools are in logs/G5/tool/.
+  - **Why 150 s is out of reach:** what remains is about 52.8 s of 17.5k declarations under 50 ms each, 44 s in FRSoundness4*/FRNodeRows4*, and 30 s outside FR (14.5 s of it core-owned `basePoly_irreducible`).
+  - **Merge into rev44:** after PORT lands, since G5 touched FRX*. PORT carries G5's FRXNd4/FRXChain*/`cso_outIR4` changes by hand.
 
 `v4/rev44` (HEAD `50a7f52` = RSV-V2 + main merged + B5 + RSV-S WIP + A1′ + RSV-S2b + RSV-S2a; red at RSV-V's 7 declarations and possibly decoder literals):
 - **RSV-S2a landed `50a7f52`** (WIP).
