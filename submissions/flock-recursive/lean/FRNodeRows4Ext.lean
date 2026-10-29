@@ -35,9 +35,15 @@ def extRows4 (κ : NodeKind) (σ : ℕ) : List Row := if σ = 1 then xRows κ el
 /-- **The node rows' count**: `N2` 7,992, `N4` 8,266, `N8` 8,680 (per child 3,926 for a previous node,
 `3,924 + 2·maxK + 2` for an aggregate; `aggPad` `135·(maxK − 1) + 1` per aggregate). -/
 theorem xRows_length : (xRows .N2).length = 7992 ∧ (xRows .N4).length = 8266 ∧ (xRows .N8).length = 8680 := by
-  simp [xRows, wotsRows, idxRows, selRows, chainRows, chainRowsI, leafRows, pathRows, pathRowsT, rootRows,
-    digRows, sumRows, padRows, List.length_flatMap, NodeKind.maxK, N4c.nAgg, NodeKind.hasPrev,
-    N4c.isAgg, N4c.aggChild, NodeKind.segSlots, RecursionFast.wotsLen, RecursionFast.sigHeight, N4c.aggOf]
+  -- the kind is a variable while the rows unfold: the kernel never evaluates the closed row lists
+  refine ⟨?_, ?_, ?_⟩ <;> [generalize hk : NodeKind.N2 = k; generalize hk : NodeKind.N4 = k;
+    generalize hk : NodeKind.N8 = k] <;>
+  simp only [xRows, wotsRows, idxRows, selRows, chainRows, chainRowsI, leafRows, pathRows, pathRowsT, rootRows,
+    digRows, sumRows, padRows, List.length_flatMap, List.length_append, List.length_map, List.length_range,
+    List.length_cons, List.length_nil, N4c.isAgg, N4c.aggChild, RecursionFast.wotsLen, RecursionFast.sigHeight,
+    N4c.aggOf] <;>
+  subst hk <;>
+  simp [NodeKind.maxK, N4c.nAgg, NodeKind.hasPrev, NodeKind.segSlots, List.length_flatMap]
 
 /-- **They fit S-E13a's link region** after its rows (`2^15 − 8 − 8,906 = 23,854`). -/
 theorem extRows4_length_le (κ : NodeKind) (σ : ℕ) : (extRows4 κ σ).length ≤ 8680 := by

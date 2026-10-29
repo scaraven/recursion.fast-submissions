@@ -516,7 +516,7 @@ theorem realign_sem (I : Array Word) (κ : NodeKind) {M₀ : Mem} {s : St} (hO :
   have O1 : OF M₀ ⟨runPrims ps s.M, s.o⟩ := of_loK I (P := .blk ps) (by simp +decide [hps, LoK, regs])
     (by simp +decide [hps, WF]) hO
   have h0 : RlInv κ M₀ s.o cb jL Δ (D % 8) (D / 8) 0 ⟨runPrims ps s.M, s.o⟩ :=
-    ⟨O1, rfl, by rw [vn]; rfl, vu, va, vb, by rw [kp _ (by decide)]; exact hcb,
+    ⟨O1, rfl, by rw [Nat.add_zero]; exact vn, vu, va, vb, by rw [kp _ (by decide)]; exact hcb,
       by rw [kp _ (by decide)]; exact hjr, by rw [kp _ (by decide)]; exact hd,
       fun u hu => absurd hu (Nat.not_lt_zero u)⟩
   have L := loopK_emit I (c := qLc) (n := qLn) (K := nW) (b := rlBody κ)

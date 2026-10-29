@@ -214,7 +214,7 @@ def msgItem4 : ℕ → Option (ℕ × ℕ) → Item
 /-- **Control: the kinds and lengths are `seq4`'s Fiat–Shamir items** (`T4.fsItems4`). -/
 theorem fsMsgs4_items :
     (List.range 482).map (fun p => msgItem4 p ((fsMsgs4 seq4).getD p none)) = fsItems4 := by
-  decide +kernel
+  rw [← fsMsgs4_length, map_range_getD]; decide +kernel
 
 /-- **Control: every message of `seq4` is aligned and inside a proof of `piSizeOf seq4` bytes.** -/
 theorem fsMsgs4_aligned : (fsMsgs4 seq4).all (msgOkB (piSizeOf seq4)) = true := by

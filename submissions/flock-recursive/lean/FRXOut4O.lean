@@ -211,23 +211,28 @@ theorem cso_outAs (κ : NodeKind) : cost (outAs (stA κ)) 0 = 49 ∧ outs (outAs
 `43,885` at `N2`, `N4`, `N8`). -/
 theorem cso_outIR4 (κ : NodeKind) : cost (outIR4 κ) 0 ≤ 600000000 ∧ outs (outIR4 κ) 0 ≤ 2300000 ∧
     sizeIR (outIR4 κ) ≤ 45000 := by
-  obtain ⟨p1, p2, p3⟩ := cso_pfIR
+  -- κ stays a variable and the closed programs are opaque (`PF`, `PS`, `PB`): the kernel never
+  -- evaluates a closed cost or size while checking the `simp` steps
   obtain ⟨r1, r2, r3⟩ := cso_realign κ
-  obtain ⟨a1, a2, a3⟩ := cso_trS
-  obtain ⟨b1, b2, b3⟩ := cso_trB
   obtain ⟨s1, s2, s3⟩ := cso_sigIR κ (σ := 0) (by norm_num)
-  obtain ⟨u1, u2, u3⟩ := cso_sigIR κ (σ := 1) (by norm_num)
+  obtain ⟨u1, u2, u3⟩ := cso_sigIR κ (σ := N4c.aggChild κ 0) (by cases κ <;> decide)
+  obtain ⟨v1, v2, v3⟩ := cso_sigIR κ (σ := N4c.aggChild κ 1) (by cases κ <;> decide)
   obtain ⟨h1, h2, h3⟩ := cso_aggHd κ (a := 0) (by norm_num)
   obtain ⟨g1, g2, g3⟩ := cso_aggHd κ (a := 1) (by norm_num)
   obtain ⟨k1, k2, k3⟩ := cso_kSel κ (a := 0) (by norm_num)
   obtain ⟨l1, l2, l3⟩ := cso_kSel κ (a := 1) (by norm_num)
   obtain ⟨o1, o2, o3⟩ := cso_outAs κ
-  have t2 : (toWord 2).toNat = 2 := rfl
-  have t4 : (toWord 4).toNat = 4 := rfl
-  cases κ <;> simp only [NodeKind.maxK, NodeKind.segSlots, NodeKind.hasPrev, ↓reduceIte, Bool.false_eq_true] at k1 k2 k3 l1 l2 l3 ⊢ <;>
-  simp [outIR4, NodeKind.hasPrev, prevIR, aggIR4, aggTr, segLoop, prevRegs, aggRegs, cost, outs, sizeIR, blkSteps,
-    lenW, NodeKind.maxK, NodeKind.segSlots, N4c.aggChild, t2, t4, p1, p2, p3, r1, r2, r3, a1, a2, a3, b1, b2, b3, s1,
-    s2, s3, u1, u2, u3, h1, h2, h3, g1, g2, g3, k2, l2, o1, o2, o3] <;>
+  have hm : BitVec.toNat (toWord κ.maxK) ≤ 4 := by cases κ <;> decide
+  obtain ⟨PF, hF⟩ : ∃ P, pfIR = P := ⟨_, rfl⟩
+  obtain ⟨PS, hS⟩ : ∃ P, bufSeg (trSeg4 seq4) = P := ⟨_, rfl⟩
+  obtain ⟨PB, hB⟩ : ∃ P, bufSeg (trBody4 seq4) = P := ⟨_, rfl⟩
+  obtain ⟨p1, p2, p3⟩ := hF ▸ cso_pfIR
+  obtain ⟨a1, a2, a3⟩ := hS ▸ cso_trS
+  obtain ⟨b1, b2, b3⟩ := hB ▸ cso_trB
+  simp only [outIR4, prevIR, aggIR4, aggTr, segLoop, prevRegs, aggRegs, hF, hS, hB]
+  cases κ.hasPrev <;>
+  simp [cost, outs, sizeIR, blkSteps, lenW, p1, p2, p3, r1, r2, r3, a1, a2, a3, b1, b2, b3, s1, s2, s3, u1, u2, u3,
+    v1, v2, v3, h1, h2, h3, g1, g2, g3, k2, l2, o1, o2, o3] <;>
   omega
 
 end FR.X
