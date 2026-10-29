@@ -48,7 +48,10 @@ Landed since the last update:
 Running on rev44:
 - **ASK-P:** the positional machinery (reader spec, element alignment, `reassemble4` per field, the arena₁ bridge) and the arena folds into `nodeIRows4`/the plan. It feeds ASK-T and IMPC.
 - **SRA:** the prefix form of `compileX_run`, then `gap4Imp_of_rsv` and the switch of `Gaps4` to `StmtN4R` (with no growth of the top hypothesis), then the foreign flags. The replay stays an explicit hypothesis.
-- **R1:** the V side of R-OPS. It adds 108 public cells, `tdot`, V(P) recompute/assert, the repack and tags, the fit literals and a KAT. Soundness is left to R2.
+- **R1 (stopped, `4838ac0`): the public-op route is unsound at recursion depth ≥ 2.** V(P)'s recompute ops become free imports when the grandparent replays V(P). R-OPS is marked superseded.
+  - **New route:** replay templates at slot 0 for `evalL`, `targetS` and `linkWAll` (C1's `tplLW`), with no format change, at ≈ +90 ms V.
+  - RSV2's stacked `evalM` is unaffected, because it is a fixed point.
+- C1b: replay templates for `evalL` and `targetS` with C1's `KOp`/`RTOkW`. Plan init for all templates must stay < 3 s extra (ready_s). The fold is specified but not done (the import cycle split comes after ASK-P).
 - **R3:** the closed-form chain template library. It first prices `rsWeight` against the 10 ms line, and if over, stops and reports the §5.3 fallback.
 - **E1 landed `200b531`.**
   - **Acceptance:** the native prover at 4.4.1 is accepted end to end by rev44's Lean V. That covers a 10-node chain with kind changes and k = 1..4, the rf-oracle streams including the full-length first step, and canaries rejected. The decoder's output-stage KAT matches.
@@ -58,7 +61,7 @@ Running on rev44:
 
 **Then:**
 - ASK-T (the `ATAsk` templates: FS links, Merkle mux, pins, seed, columns) ∥ IMPC (the `ATImp` classes: proof fields, siblings, `chF`/`chK`, `bitOf`, cap reads), both after ASK-P;
-- R2 (soundness for R-OPS) after R1;
+- the replay fold (C1/C1b/R3 rows into `nodeIRows4`, split FRNodeRows4's definitions, B3 → `RTOkW`, `repRowsP` replaced) after ASK-P and C1b;
 - R4 (`rsWeight`) after R3;
 - R5 (segment slots), with `targetSSegI`'s 560-row rewrite owned by R5;
 - `Gaps4` = ∅;
