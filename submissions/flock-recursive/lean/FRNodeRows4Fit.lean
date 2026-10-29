@@ -11,10 +11,11 @@ P4b's O1 per node kind (`N4c.HFit4`): the indexed rows `nodeIRows4 κ` have dist
 with no evaluation of the rows:
 
 * if the prototypes fit (`ProtoFit`: each prototype's rows lie in its `2^20` region below the
-  link rows, with distinct indices), slot `σ`'s rows are a prototype's moved into region `σ`
-  (indices `σ·2^20 + j`, `j < 2^20 − 8`), its link rows take the region's last rows, and the
-  regions are disjoint and inside M (`regions4_fit`); every cell is M's (below
-  `oneCell + vslots·2^20 ≤ 2^(logM+2)`) or a selector bit in L (below `oneCell`);
+  link region, with distinct indices), slot `σ`'s rows are a prototype's moved into region `σ`
+  (indices `σ·2^20 + j`, `j < 2^20 − 2^15`), its link rows take the region's link region (the
+  last `2^15` rows), and the regions are disjoint and inside M (`regions4_fit`); every cell is M's
+  (below `oneCell + vslots·2^20 ≤ 2^(logM+2)`), a selector bit in L or an H stream cell of the pack
+  rows (below `oneCell`: `sCell_lt`);
 * otherwise the rows are the one rejecting row (`rejectRows`), which fits.
 
 `ProtoFit` holds in practice: the plan checks it on its pieces (`FRNodeRows4Plan.Plan4.hR`), and
@@ -34,14 +35,72 @@ def linkCells (κ : NodeKind) (σ : ℕ) : List ℕ :=
   [κ.oneCell, κ.oneCell + oneR σ] ++ Circ.kinds.map (κ.oneCell + selR σ ·) ++ Circ.kinds.map (selCells4 κ σ) ++
     Circ.kinds.map (κ.oneCell + selR (σ - 1) ·)
 
-theorem linkRows4_cells (κ : NodeKind) (σ : ℕ) :
-    ∀ r ∈ linkRows4 κ σ, ∀ t ∈ r.a ++ r.b ++ r.c, t.1 ∈ linkCells κ σ := by
+theorem linkRowsB4_cells (κ : NodeKind) (σ : ℕ) :
+    ∀ r ∈ linkRowsB4 κ σ, ∀ t ∈ r.a ++ r.b ++ r.c, t.1 ∈ linkCells κ σ := by
   intro r hr t ht
-  have key : ∀ x ∈ (linkRows4 κ σ).flatMap (fun r => (r.a ++ r.b ++ r.c).map Prod.fst), x ∈ linkCells κ σ := by
-    unfold linkRows4 actRows4
+  have key : ∀ x ∈ (linkRowsB4 κ σ).flatMap (fun r => (r.a ++ r.b ++ r.c).map Prod.fst), x ∈ linkCells κ σ := by
+    unfold linkRowsB4 actRows4
     split_ifs <;>
       simp [selSum, Lin.sub, Lin.smul, Lin.cell, linkCells, Circ.kinds, or_assoc]
   exact key _ (List.mem_flatMap.2 ⟨r, hr, List.mem_map.2 ⟨t, ht, rfl⟩⟩)
+
+/-- The signed children's main chains end before M (`chBase σ + cLen ≤ mBase`, `σ < 2`). -/
+theorem chBase_cLen_le (κ : NodeKind) {σ : ℕ} (hσ : σ < 2) : N4c.chBase κ σ + N4c.cLen ≤ κ.mBase := by
+  interval_cases σ <;> cases κ <;> decide
+
+/-- **An H stream cell of a segment** (`16 e < segB`) of a signed child's stream lies below M. -/
+theorem sCell_lt (κ : NodeKind) {σ e : ℕ} (hσ : σ < 2) (he : 16 * e < N4c.segB) :
+    sCell (N4c.chBase κ σ) e < κ.oneCell := by
+  have h := chBase_cLen_le κ hσ
+  have hs : N4c.segB = 64 * N4c.cLen := by decide
+  simp only [sCell, NodeKind.oneCell]
+  have : e / 4 + 1 ≤ N4c.cLen := by omega
+  have : e % 4 < 4 := Nat.mod_lt _ (by norm_num)
+  nlinarith
+
+/-- The aggregate child of a slot's aggregate is a signed child (`< 2`). -/
+theorem aggChild_lt (κ : NodeKind) (σ : ℕ) (hσ : σ < κ.vslots) : N4c.aggChild κ (aggSlot κ σ) < 2 := by
+  cases κ <;> simp only [N4c.aggChild, aggSlot, NodeKind.hasPrev, NodeKind.vslots, NodeKind.segSlots,
+    if_true, Bool.false_eq_true, if_false] at hσ ⊢ <;> omega
+
+/-- **The pack rows' cells**: M's `one`, the slot's selector copies, and H stream cells below M. -/
+theorem packRows4_cells (κ : NodeKind) {σ : ℕ} (hσ : σ < κ.vslots) :
+    ∀ r ∈ packRows4 κ σ, ∀ t ∈ r.a ++ r.b ++ r.c,
+      t.1 = κ.oneCell ∨ (∃ ι, t.1 = κ.oneCell + selR σ ι) ∨ t.1 < κ.oneCell := by
+  have hw : ∀ b0, b0 < 2 → ∀ r ∈ wfRows κ.oneCell (N4c.chBase κ b0), ∀ t ∈ r.a ++ r.b ++ r.c,
+      t.1 = κ.oneCell ∨ (∃ ι, t.1 = κ.oneCell + selR σ ι) ∨ t.1 < κ.oneCell := by
+    intro b0 hb r hr t ht
+    obtain ⟨p, hp, rfl⟩ := List.mem_map.1 hr
+    simp only [pinRow, Lin.sub, Lin.cell, Lin.smul, List.map_cons, List.map_nil, List.cons_append,
+      List.nil_append, List.append_nil, List.mem_cons, List.not_mem_nil, or_false] at ht
+    rcases ht with rfl | rfl | rfl
+    · exact Or.inl rfl
+    · exact Or.inr (Or.inr (sCell_lt κ hb (wfSeg_lt p hp)))
+    · exact Or.inl rfl
+  have hk : ∀ b0, b0 < 2 → ∀ G, ∀ t ∈ (kindRow κ.oneCell (sCell (N4c.chBase κ b0) 5)
+      (fun ι => κ.oneCell + selR σ ι) G).a ++ (kindRow κ.oneCell (sCell (N4c.chBase κ b0) 5)
+      (fun ι => κ.oneCell + selR σ ι) G).b ++ (kindRow κ.oneCell (sCell (N4c.chBase κ b0) 5)
+      (fun ι => κ.oneCell + selR σ ι) G).c,
+      t.1 = κ.oneCell ∨ (∃ ι, t.1 = κ.oneCell + selR σ ι) ∨ t.1 < κ.oneCell := by
+    intro b0 hb G t ht
+    simp only [kindRow, Lin.sub, Lin.cell, Lin.smul, Circ.kinds, List.map_cons, List.map_nil,
+      List.cons_append, List.nil_append, List.append_nil, List.mem_cons, List.not_mem_nil, or_false] at ht
+    rcases ht with rfl | rfl | rfl | rfl | rfl
+    · exact Or.inl rfl
+    · exact Or.inr (Or.inr (sCell_lt κ hb (by decide)))
+    · exact Or.inr (Or.inl ⟨.L32, rfl⟩)
+    · exact Or.inr (Or.inl ⟨.P30, rfl⟩)
+    · exact Or.inr (Or.inl ⟨.N30, rfl⟩)
+  intro r hr
+  unfold packRows4 packHead4 packWf4 packB at hr
+  split_ifs at hr with h1 h2 <;> simp only [List.mem_append, List.mem_singleton, List.not_mem_nil,
+    or_false] at hr
+  · rcases hr with rfl | hr
+    · exact hk 0 (by norm_num) _
+    · exact hw 0 (by norm_num) r hr
+  · rcases hr with rfl | hr
+    · exact hk _ (aggChild_lt κ σ hσ) _
+    · exact hw _ (aggChild_lt κ σ hσ) r hr
 
 /-- The kinds' constants the bounds use. -/
 theorem fitConsts (κ : NodeKind) :
@@ -87,9 +146,8 @@ theorem slot_mem (κ : NodeKind) (hF : ProtoFit) {σ : ℕ} (hσ : σ < κ.vslot
     obtain ⟨⟨r, j⟩, hj, rfl⟩ := hp
     have hjl := List.mk_mem_zipIdx_iff_getElem?.1 hj
     obtain ⟨hjn, hr⟩ := List.getElem?_eq_some_iff.1 hjl
-    have hlen : j < 8 := by
-      have := linkRows4_length κ σ; split_ifs at this <;> omega
-    have hs8 : 8 ≤ slotM4 := by decide
+    have hlen : j < linkN := lt_of_lt_of_le hjn (le_of_lt (linkRows4_length_le κ σ))
+    have hs8 : linkN ≤ slotM4 := by decide
     refine ⟨by omega, fun t ht => ?_⟩
     have hrm : r ∈ linkRows4 κ σ := hr ▸ List.getElem_mem hjn
     have hsel : ∀ ι, selCells4 κ σ ι < κ.oneCell := fun ι => by
@@ -97,7 +155,28 @@ theorem slot_mem (κ : NodeKind) (hF : ProtoFit) {σ : ℕ} (hσ : σ < κ.vslot
         simp only [selCells4]; cases ι <;> simp only [selIx] <;> omega
       have := Nat.mul_le_mul_right (2 ^ 14) (Nat.succ_le_of_lt hσ)
       omega
-    have hc := linkRows4_cells κ σ r hrm t ht
+    have e2' : ∀ ι, selR σ ι < σ * slotM4 + slotM4 := fun ι => by
+      simp only [selR, slotM4]; cases ι <;> simp only [selIx] <;> omega
+    rcases List.mem_append.1 hrm with hrm | hrm
+    swap
+    · have hσM : κ.vslots * slotM4 ≤ 2 ^ κ.dims.logM := hv
+      unfold extRowsC at hrm
+      split_ifs at hrm with hs1 hok
+      · rw [xOkK_eq] at hok
+        have := List.all_eq_true.1 (List.all_eq_true.1 hok r hrm) t ht
+        simp only [decide_eq_true_eq] at this
+        omega
+      · simp only [List.mem_singleton] at hrm; subst hrm
+        simp only [rejR, Lin.cell, List.append_nil, List.mem_append, List.mem_singleton] at ht
+        rcases ht with rfl | rfl <;> omega
+      · simp at hrm
+    rcases List.mem_append.1 hrm with hrm | hrm
+    swap
+    · rcases packRows4_cells κ hσ r hrm t ht with h | ⟨ι, h⟩ | h
+      · rw [h]; omega
+      · rw [h]; have := e2' ι; omega
+      · omega
+    have hc := linkRowsB4_cells κ σ r hrm t ht
     simp only [linkCells, Circ.kinds, List.map_cons, List.map_nil, List.cons_append, List.nil_append,
       List.mem_cons, List.mem_nil_iff, or_false] at hc
     have e1 : oneR σ < σ * slotM4 + slotM4 := by simp only [oneR, slotM4]; omega
@@ -126,7 +205,7 @@ theorem slot_nodup (κ : NodeKind) (hF : ProtoFit) (σ : ℕ) :
     have := (hin q hq).1.1; have := (hin q' hq').1.1
     simp only [mvC] at h; omega
   · simp only [linkIRows4, List.map_map, Function.comp_def]
-    rw [show (fun p : Row × ℕ => σ * slotM4 + slotM4 - 8 + p.2) = (σ * slotM4 + slotM4 - 8 + ·) ∘ Prod.snd
+    rw [show (fun p : Row × ℕ => σ * slotM4 + slotM4 - linkN + p.2) = (σ * slotM4 + slotM4 - linkN + ·) ∘ Prod.snd
       from rfl, ← List.map_map]
     rw [List.zipIdx_map_snd]
     exact (List.nodup_range' 1).map fun a b h => by simpa using h
@@ -202,7 +281,7 @@ theorem link_facts {κ : NodeKind} {σ : ℕ} {w : Asg} (hone : w κ.oneCell = 1
       ∀ r ∈ actRows4 κ σ, r.Holds w := by
   have hcopy : ∀ ι, w (κ.oneCell + selR σ ι) = w (selCells4 κ σ ι) := fun ι => by
     have := hk ⟨Lin.cell κ.oneCell, (Lin.cell (κ.oneCell + selR σ ι)).sub (Lin.cell (selCells4 κ σ ι)), []⟩
-      (by cases ι <;> simp [linkRows4, Circ.kinds])
+      (List.mem_append_left _ <| List.mem_append_left _ (by cases ι <;> simp [linkRowsB4, Circ.kinds]))
     simp only [Row.Holds, Lin.ev_cell, Lin.ev_sub, hone, one_mul, Lin.ev_nil] at this
     exact sub_eq_zero.1 this
   have hbit : ∀ ι, w (selCells4 κ σ ι) = 0 ∨ w (selCells4 κ σ ι) = 1 := fun ι => by
@@ -216,18 +295,18 @@ theorem link_facts {κ : NodeKind} {σ : ℕ} {w : Asg} (hone : w κ.oneCell = 1
     · exact Or.inl h
     · exact Or.inr (sub_eq_zero.1 h).symm
   refine ⟨?_, fun ι => hcopy ι ▸ hbit ι, fun ι ι' hne => ?_,
-    fun r hr => hk r (by simp only [linkRows4, List.mem_append]; exact Or.inr hr)⟩
+    fun r hr => hk r (List.mem_append_left _ <| List.mem_append_left _ (by simp only [linkRowsB4, List.mem_append]; exact Or.inr hr))⟩
   · by_cases h0 : σ = 0
     · subst h0; simpa [oneR] using hone
     · have := hk ⟨Lin.cell κ.oneCell, (Lin.cell (κ.oneCell + oneR σ)).sub (Lin.cell κ.oneCell), []⟩
-        (by simp [linkRows4, h0])
+        (List.mem_append_left _ <| List.mem_append_left _ (by simp [linkRowsB4, h0]))
       simp only [Row.Holds, Lin.ev_cell, Lin.ev_sub, hone, one_mul, Lin.ev_nil] at this
       exact sub_eq_zero.1 this
   · have p := fun (x y : Kind) (h : (⟨Lin.cell (κ.oneCell + selR σ x), Lin.cell (κ.oneCell + selR σ y), []⟩ : Row) ∈
         linkRows4 κ σ) => hk _ h
-    have p1 := p .L32 .P30 (by simp [linkRows4])
-    have p2 := p .L32 .N30 (by simp [linkRows4])
-    have p3 := p .P30 .N30 (by simp [linkRows4])
+    have p1 := p .L32 .P30 (List.mem_append_left _ <| List.mem_append_left _ (by simp [linkRowsB4]))
+    have p2 := p .L32 .N30 (List.mem_append_left _ <| List.mem_append_left _ (by simp [linkRowsB4]))
+    have p3 := p .P30 .N30 (List.mem_append_left _ <| List.mem_append_left _ (by simp [linkRowsB4]))
     simp only [Row.Holds, Lin.ev_cell, Lin.ev_nil] at p1 p2 p3
     cases ι <;> cases ι' <;> simp_all [mul_comm]
 

@@ -5,6 +5,8 @@ import FRVIRTplFast
 import FRVIRTplSet
 import FRNodeKinds4
 import FRNodeRows4Hint
+import FRNodeRows4Pack
+import FRNodeRows4Ext
 
 /-!
 # The N2/N4/N8 nodes' M rows: slots, prototypes, copies, link rows
@@ -16,9 +18,12 @@ step's node when `κ.hasPrev` (`N2`, `N4`), every other slot a segment (`N8`: al
 slot `σ` owns the M-relative cells and the rows `[σ·2^20, (σ+1)·2^20)`. Its cell `σ·2^20` is its
 own `one` (slot 0's is M's `one`), `σ·2^20 + 1 … + 3` its selector copies, and its program is
 compiled from `σ·2^20 + 4` with these as the selector forms (`protoP`). Rows that leave the region
-are the slot's **link rows** (`linkRows4`, at the region's last 8 rows): `one′ = one` (σ ≥ 1),
-`s′_ι = s_ι` (the selector bits in L, A.7's offset 8,516 of the slot's `2^14` L stride), and the
-one-hot products `s′_ι s′_ι′ = 0`.
+are the slot's **link rows** (`linkRows4`, in the region's **link region**, its last `linkN = 2^15`
+rows; S-E13a: was the last 8): `one′ = one` (σ ≥ 1), `s′_ι = s_ι` (the selector bits in L, A.7's
+offset 8,516 of the slot's `2^14` L stride), the one-hot products `s′_ι s′_ι′ = 0`, the activity
+row (`linkRowsB4`), then the slot's **pack rows** (`packRows4`, S-E13a: the kind tie and the
+stream's pinned elements, `FRNodeRows4Pack`), then at slot 1 S-E13b's node rows (`extRowsC`: WOTS
+and `aggPad`, `FRNodeRows4Ext`).
 
 **Prototypes and copies.** There are two programs (`FRVIR4Mux`): the previous-node mux
 `progNodeG` and the segment mux `progSegG`. Each is compiled **once**, as prototype `π` (`0`: the
@@ -146,18 +151,95 @@ def actRows4 (κ : NodeKind) (σ : ℕ) : List Row :=
   if isPrevSlot κ σ || subIx κ σ == 0 then [⟨one, (selSum κ σ).sub one, []⟩]
   else [⟨selSum κ σ, one.sub (selSum κ (σ - 1)), []⟩]
 
-/-- **Slot `σ`'s link rows** (absolute cells): `one′ = one` (σ ≥ 1), `s′_ι = s_ι`, the one-hot
-products, the activity row. -/
-def linkRows4 (κ : NodeKind) (σ : ℕ) : List Row :=
+/-- **Slot `σ`'s link rows of S-E12c** (absolute cells): `one′ = one` (σ ≥ 1), `s′_ι = s_ι`, the
+one-hot products, the activity row. -/
+def linkRowsB4 (κ : NodeKind) (σ : ℕ) : List Row :=
   let one := Lin.cell κ.oneCell
   let s := fun ι => Lin.cell (κ.oneCell + selR σ ι)
   (if σ = 0 then [] else [⟨one, (Lin.cell (κ.oneCell + oneR σ)).sub one, []⟩]) ++
   Circ.kinds.map (fun ι => ⟨one, (s ι).sub (Lin.cell (selCells4 κ σ ι)), []⟩) ++
   [⟨s .L32, s .P30, []⟩, ⟨s .L32, s .N30, []⟩, ⟨s .P30, s .N30, []⟩] ++ actRows4 κ σ
 
-/-- Slot `σ`'s link rows at its region's last 8 rows. -/
+/-- The aggregate a segment slot belongs to (`N2`/`N4`: 0; `N8`: `σ / 4`). -/
+def aggSlot (κ : NodeKind) (σ : ℕ) : ℕ := if κ.hasPrev then 0 else σ / 4
+
+/-- **Slot `σ`'s packed stream** (S-E13a): the first block of the stream segment it reads and its
+kind group, for a slot whose segment is 16-aligned: the previous node's (signed child 0, the node
+group) and each aggregate's first sub-slot (segment 0 of the aggregate's stream, the segment
+group). An aggregate's later segments start at `1 + i·(segB − 1) ≡ 1 − i (mod 16)`: no linear row
+reaches their fields (S-E13a's B1), so they have none. -/
+def packB (κ : NodeKind) (σ : ℕ) : Option (ℕ × Grp) :=
+  if isPrevSlot κ σ then some (N4c.chBase κ 0, nodeGrp)
+  else if subIx κ σ = 0 then some (N4c.chBase κ (N4c.aggChild κ (aggSlot κ σ)), segGrp)
+  else none
+
+/-- The kind tie of slot `σ` (stream element 5 `= Σ_ι K_ι s′_ι`, `FRNodeRows4Pack.kindRow`). -/
+def packHead4 (κ : NodeKind) (σ : ℕ) : List Row :=
+  match packB κ σ with
+  | some (b0, G) => [kindRow κ.oneCell (sCell b0 5) (fun ι => κ.oneCell + selR σ ι) G]
+  | none => []
+
+/-- The pinned elements of slot `σ`'s stream segment (`FRNodeRows4Pack.wfRows`). -/
+def packWf4 (κ : NodeKind) (σ : ℕ) : List Row :=
+  match packB κ σ with
+  | some (b0, _) => wfRows κ.oneCell b0
+  | none => []
+
+/-- **Slot `σ`'s pack rows** (S-E13a; `FRNodeRows4Pack`): the kind tie, then the stream's pinned
+elements (the tag, each item's length word and query tag). -/
+def packRows4 (κ : NodeKind) (σ : ℕ) : List Row := packHead4 κ σ ++ packWf4 κ σ
+
+/-! ### S-E13b's node rows (WOTS, `aggPad`), folded in at slot 1 -/
+
+/-- S-E13b's node rows per kind (`W4.xRows`), closed constants (built once per process). -/
+def xRowsN2 : List Row := W4.xRows .N2
+def xRowsN4 : List Row := W4.xRows .N4
+def xRowsN8 : List Row := W4.xRows .N8
+
+/-- The node rows of kind `κ`, read off the closed constants. -/
+def xRowsK : NodeKind → List Row
+  | .N2 => xRowsN2
+  | .N4 => xRowsN4
+  | .N8 => xRowsN8
+
+theorem xRowsK_eq (κ : NodeKind) : xRowsK κ = W4.xRows κ := by cases κ <;> rfl
+
+/-- A row's cells are below `b`. -/
+def rowCellsLt (b : ℕ) (r : Row) : Bool := (r.a ++ r.b ++ r.c).all fun t => decide (t.1 < b)
+
+/-- **The node rows' cell check** (run once per process on the closed constants, like
+`ProtoFit`): every cell below the end of the slots' M cells. -/
+def xOkOf (κ : NodeKind) (rs : List Row) : Bool := rs.all (rowCellsLt (κ.oneCell + κ.vslots * slotM4))
+
+def xOkN2 : Bool := xOkOf .N2 xRowsN2
+def xOkN4 : Bool := xOkOf .N4 xRowsN4
+def xOkN8 : Bool := xOkOf .N8 xRowsN8
+
+/-- The check's result per kind. -/
+def xOkK : NodeKind → Bool
+  | .N2 => xOkN2
+  | .N4 => xOkN4
+  | .N8 => xOkN8
+
+theorem xOkK_eq (κ : NodeKind) : xOkK κ = xOkOf κ (xRowsK κ) := by cases κ <;> rfl
+
+/-- The rejecting row `one · one = 0`. -/
+def rejR (κ : NodeKind) : Row := ⟨Lin.cell κ.oneCell, Lin.cell κ.oneCell, []⟩
+
+/-- **S-E13b's node rows at slot 1** (`W4.extRows4`), if their cells check; the rejecting row
+otherwise (never in practice). -/
+def extRowsC (κ : NodeKind) (σ : ℕ) : List Row :=
+  if σ = 1 then (if xOkK κ then xRowsK κ else [rejR κ]) else []
+
+/-- **Slot `σ`'s link rows**: S-E12c's, the pack rows, then S-E13b's node rows (slot 1). -/
+def linkRows4 (κ : NodeKind) (σ : ℕ) : List Row := linkRowsB4 κ σ ++ packRows4 κ σ ++ extRowsC κ σ
+
+/-- **The link region**: a slot region's last `2^15` rows. -/
+def linkN : ℕ := 2 ^ 15
+
+/-- Slot `σ`'s link rows, from the start of its link region. -/
 def linkIRows4 (κ : NodeKind) (σ : ℕ) : List (ℕ × Row) :=
-  (linkRows4 κ σ).zipIdx.map fun p => (σ * slotM4 + slotM4 - 8 + p.2, p.1)
+  (linkRows4 κ σ).zipIdx.map fun p => (σ * slotM4 + slotM4 - linkN + p.2, p.1)
 
 /-! ## The rows' fit -/
 
@@ -165,15 +247,15 @@ def linkIRows4 (κ : NodeKind) (σ : ℕ) : List (ℕ × Row) :=
 def inSB (π c : ℕ) : Bool := decide (π * slotM4 ≤ c) && decide (c < π * slotM4 + slotM4)
 /-- A form over region `π`'s cells. -/
 def linInB (π : ℕ) (l : Lin) : Bool := l.all fun t => inSB π t.1
-/-- A row index of region `π`, below its link rows. -/
-def idxInB (π r : ℕ) : Bool := decide (π * slotM4 ≤ r) && decide (r + 8 < π * slotM4 + slotM4)
+/-- A row index of region `π`, below its link region. -/
+def idxInB (π r : ℕ) : Bool := decide (π * slotM4 ≤ r) && decide (r + linkN < π * slotM4 + slotM4)
 
-/-- **Rows of region `π`**: indices below its link rows, every cell of every matrix in it. -/
+/-- **Rows of region `π`**: indices below its link region, every cell of every matrix in it. -/
 def InSlot (π : ℕ) (rows : List (ℕ × Row)) : Prop :=
-  ∀ p ∈ rows, (π * slotM4 ≤ p.1 ∧ p.1 + 8 < π * slotM4 + slotM4) ∧
+  ∀ p ∈ rows, (π * slotM4 ≤ p.1 ∧ p.1 + linkN < π * slotM4 + slotM4) ∧
     ∀ s : Mat, ∀ t ∈ s.r p.2, π * slotM4 ≤ t.1 ∧ t.1 < π * slotM4 + slotM4
 
-/-- **The prototypes fit**: each prototype's rows lie in its region, below its link rows, with
+/-- **The prototypes fit**: each prototype's rows lie in its region, below its link region, with
 distinct indices. -/
 def ProtoFit : Prop := ∀ π ≤ 1, InSlot π (protoRows π) ∧ ((protoRows π).map Prod.fst).Nodup
 
@@ -231,10 +313,34 @@ theorem regions4_fit (κ : NodeKind) : κ.vslots * slotM4 ≤ κ.nM := mSlots_fi
 theorem actRows4_length (κ : NodeKind) (σ : ℕ) : (actRows4 κ σ).length = 1 := by
   unfold actRows4; split <;> rfl
 
-/-- (+) A slot's link rows: 8, and 7 for slot 0 (no `one′` row); they fit the region's last 8. -/
-theorem linkRows4_length (κ : NodeKind) (σ : ℕ) :
-    (linkRows4 κ σ).length = if σ = 0 then 7 else 8 := by
-  unfold linkRows4; split_ifs <;> simp [Circ.kinds, actRows4_length]
+/-- (+) S-E12c's link rows: 8, and 7 for slot 0 (no `one′` row). -/
+theorem linkRowsB4_length (κ : NodeKind) (σ : ℕ) :
+    (linkRowsB4 κ σ).length = if σ = 0 then 7 else 8 := by
+  unfold linkRowsB4; split_ifs <;> simp [Circ.kinds, actRows4_length]
+
+/-- A slot's pack rows: `1 + 8,905` for an aligned slot, else none. -/
+theorem packRows4_length_le (κ : NodeKind) (σ : ℕ) : (packRows4 κ σ).length ≤ 8906 := by
+  unfold packRows4 packHead4 packWf4
+  rcases packB κ σ with _ | ⟨b0, G⟩ <;> simp [wfRows, wfSeg_length]
+
+/-- S-E13b's node rows at a slot: at most 8,680. -/
+theorem extRowsC_length_le (κ : NodeKind) (σ : ℕ) : (extRowsC κ σ).length ≤ 8680 := by
+  unfold extRowsC
+  split_ifs with h1 h2
+  · subst h1; rw [xRowsK_eq]
+    have := W4.extRows4_length_le κ 1
+    simpa [W4.extRows4] using this
+  · simp
+  · simp
+
+/-- (+) A slot's link rows fit its link region (at most `8 + 8,906 + 8,680` of `2^15`). -/
+theorem linkRows4_length_le (κ : NodeKind) (σ : ℕ) : (linkRows4 κ σ).length < linkN := by
+  have h1 := linkRowsB4_length κ σ
+  have h2 := packRows4_length_le κ σ
+  have h3 := extRowsC_length_le κ σ
+  rw [linkRows4, List.length_append, List.length_append]
+  simp only [linkN]
+  split_ifs at h1 <;> omega
 
 end Rev4
 end FR

@@ -15,7 +15,8 @@ for the prototype's rows moved to region `σ` and made absolute (`copy_val`):
 
 where `MLE_lo` is the prototype's value at the point restricted to region `π`'s low coordinates
 (`starPt`): one evaluation per prototype, by the existing templated evaluator (21 row and 23 cell
-coordinates), whatever the kind. The link rows (≤ 7 per slot) are summed directly. The region
+coordinates), whatever the kind. The link region (S-E12c's ≤ 8 link rows and S-E13a's pack rows,
+with H cells) is summed by split eq tables, one product per entry (`linkV4`). The region
 facts are checked once per process on the pieces (`pieceInB`, `pcIn_spec`), with the sparse sum as
 the fallback. **`evalMT4_eq`**: `evalMT4` is the MLE of `nodeIRows4 κ`'s three matrices.
 -/
@@ -64,13 +65,13 @@ theorem planData4_rows :
 
 /-! ## The region check -/
 
-/-- **A piece stays in region `π`** (its rows below the link rows, its cells in the region);
+/-- **A piece stays in region `π`** (its rows below the link region, its cells in the region);
 `shOk k`: key `k`'s shared input forms are in the region (checked once per key). -/
 def pieceInB (keys : Array Key) (shOk : Array Bool) (one : Lin) (π : ℕ) : Piece → Bool
   | .sp rs => rs.all fun p => idxInB π p.1 && linInB π p.2.a && linInB π p.2.b && linInB π p.2.c
   | .ins k xh ch own =>
     decide (π * slotM4 ≤ 2 ^ (keys.getD k dkey).A * xh) &&
-    decide (2 ^ (keys.getD k dkey).A * xh + (keys.getD k dkey).rows.length + 8 ≤ π * slotM4 + slotM4) &&
+    decide (2 ^ (keys.getD k dkey).A * xh + (keys.getD k dkey).rows.length + linkN ≤ π * slotM4 + slotM4) &&
     decide (π * slotM4 ≤ 2 ^ (keys.getD k dkey).B * ch) &&
     decide (2 ^ (keys.getD k dkey).B * ch + 2 ^ (keys.getD k dkey).B ≤ π * slotM4 + slotM4) &&
     linInB π one && shOk.getD k false && own.all (linInB π)
@@ -481,7 +482,7 @@ theorem copy_term {π σ lm : ℕ} (hπ : π ≤ 1) (hl : 20 ≤ lm) (hσ : σ <
 
 /-- **One moved, absolute row** against the prototype's. -/
 theorem copy_row {π σ lm : ℕ} (hπ : π ≤ 1) (hl : 20 ≤ lm) (hσ : σ < 2 ^ (lm - 20)) (s : Mat) (t u : ℕ → F)
-    {p : ℕ × Row} (hp : (π * slotM4 ≤ p.1 ∧ p.1 + 8 < π * slotM4 + slotM4) ∧
+    {p : ℕ × Row} (hp : (π * slotM4 ≤ p.1 ∧ p.1 + linkN < π * slotM4 + slotM4) ∧
       ∀ s' : Mat, ∀ q ∈ s'.r p.2, π * slotM4 ≤ q.1 ∧ q.1 < π * slotM4 + slotM4) :
     gN lm t (mvC π σ p.1) * linE (RingHom.id F) (lm + 2) u
         (s.r (rowMapC (· + 3 * 2 ^ lm) (rowMapC (mvC π σ) p.2))) =
@@ -519,11 +520,120 @@ theorem copy_val {π σ lm : ℕ} (hπ : π ≤ 1) (hl : 20 ≤ lm) (hσ : σ < 
 /-- `c · x` over triples. -/
 def smul3 (c : F) (x : F3) : F3 := (c * x.1, c * x.2.1, c * x.2.2)
 
-/-- **Slot `σ`'s value** from its prototype's (`vN`, `vS`): the rest scaled, the link rows sparse. -/
-def slotV4 (κ : NodeKind) (t u : ℕ → F) (vN vS : F3) (σ : ℕ) : F3 :=
+/-- **The link regions' eq tables** (S-E13a; once per evaluation point): `eq(τ, ·)` over `lm` row
+coordinates split at `2^11`, `eq(u, ·)` over `lm + 2` cell coordinates split at `2^12`. -/
+structure LTb where
+  tlo : Array F
+  thi : Array F
+  slo : Array F
+  shi : Array F
+
+/-- The tables at a point. -/
+def ltbOf (lm : ℕ) (t u : ℕ → F) : LTb :=
+  ⟨loTab 11 t, loTab (lm - 11) (fun l => t (11 + l)), loTab 12 u, loTab (lm + 2 - 12) (fun l => u (12 + l))⟩
+
+theorem rows3_append (n m : ℕ) (t u : ℕ → F) (a b : List (ℕ × Row)) :
+    rows3 n m t u (a ++ b) = add3 (rows3 n m t u a) (rows3 n m t u b) := by
+  simp [rows3, add3, rowsVal_append]
+
+/-- **The pinned elements' value** (S-E13a): the rows `pinRow one (sCell b0 e) c` of the list
+`ps`, at indices `j, j + 1, …`: for each, the row factor `r = eq(τ, j)` times `E(one)` (matrix
+`a`) and times `E(cell) − c·E(one)` (matrix `b`); one product per factor. -/
+def wfSum (gt gs : ℕ → F) (e1 : F) (b0 : ℕ) : ℕ → List (ℕ × F) → F3
+  | _, [] => (0, 0, 0)
+  | j, p :: ps =>
+    let r := gt j
+    add3 (r * e1, r * (gs (sCell b0 p.1) - p.2 * e1), 0) (wfSum gt gs e1 b0 (j + 1) ps)
+
+/-- The rows before the pinned elements: S-E12c's link rows and the kind tie. -/
+def linkHead4 (κ : NodeKind) (σ : ℕ) : List Row := linkRowsB4 κ σ ++ packHead4 κ σ
+
+/-- The link region's first row. -/
+def linkBase (σ : ℕ) : ℕ := σ * slotM4 + slotM4 - linkN
+
+/-- The number of pinned elements at slot `σ` (`(packWf4 κ σ).length`, without building the rows). -/
+def wfLen (κ : NodeKind) (σ : ℕ) : ℕ :=
+  match packB κ σ with
+  | some _ => wfSeg.length
+  | none => 0
+
+theorem wfLen_eq (κ : NodeKind) (σ : ℕ) : wfLen κ σ = (packWf4 κ σ).length := by
+  unfold wfLen packWf4; rcases packB κ σ with _ | ⟨b0, G⟩ <;> simp [wfRows]
+
+/-- **A link region's value** (S-E13a: up to `8 + 8,906 + 8,680` rows with H and L cells): the
+head rows and S-E13b's node rows grouped by their row block (`growsVal3`), the pinned elements by
+`wfSum`; one product per entry, not `gN`'s `lm` products. -/
+def linkV4 (L : LTb) (κ : NodeKind) (σ : ℕ) : F3 :=
+  let gt := splitAt L.tlo L.thi (2 ^ 11)
+  let gs := splitAt L.slo L.shi (2 ^ 12)
+  let nh := (linkHead4 κ σ).length
+  add3 (add3 (growsVal3 L.tlo L.thi L.slo L.shi
+      (grows (2 ^ 11) (2 ^ 12) ((linkHead4 κ σ).zipIdx.map fun p => (linkBase σ + p.2, p.1))))
+    (match packB κ σ with
+      | some (b0, _) => wfSum gt gs (gs κ.oneCell) b0 (linkBase σ + nh) wfSeg
+      | none => (0, 0, 0)))
+    (growsVal3 L.tlo L.thi L.slo L.shi
+      (grows (2 ^ 11) (2 ^ 12) (((extRowsC κ σ).zipIdx (nh + wfLen κ σ)).map fun p => (linkBase σ + p.2, p.1))))
+
+theorem rows3_nil (n m : ℕ) (t u : ℕ → F) : rows3 n m t u [] = (0, 0, 0) := by
+  simp [rows3, rowsVal]
+
+theorem rows3_cons (n m : ℕ) (t u : ℕ → F) (p : ℕ × Row) (l : List (ℕ × Row)) :
+    rows3 n m t u (p :: l) = add3 (rows3 n m t u [p]) (rows3 n m t u l) := by
+  rw [← rows3_append]; rfl
+
+/-- **`wfSum` is the pin rows' sparse value.** -/
+theorem wfSum_eq (n m : ℕ) (t u : ℕ → F) (one b0 base : ℕ) :
+    ∀ (ps : List (ℕ × F)) (k : ℕ),
+      rows3 n m t u (((ps.map fun p => pinRow one (sCell b0 p.1) p.2).zipIdx k).map
+        fun q => (base + q.2, q.1)) = wfSum (gN n t) (gN m u) (gN m u one) b0 (base + k) ps
+  | [], _ => by simp [wfSum, rows3_nil]
+  | p :: ps, k => by
+    rw [List.map_cons, List.zipIdx_cons, List.map_cons, rows3_cons, wfSum_eq n m t u one b0 base ps (k + 1),
+      wfSum, show base + (k + 1) = base + k + 1 by omega]
+    congr 1
+    simp only [rows3, rowsVal, linE, pinRow, Mat.r, Lin.sub, Lin.cell, Lin.smul, List.map_cons,
+      List.map_nil, List.sum_cons, List.sum_nil, List.cons_append, List.nil_append, RingHom.id_apply]
+    refine Prod.ext ?_ (Prod.ext ?_ ?_) <;> simp only <;> ring
+
+/-- **`linkV4` is the link rows' sparse value.** -/
+theorem linkV4_eq {lm : ℕ} (hl : 11 ≤ lm) (t u : ℕ → F) (κ : NodeKind) (σ : ℕ) :
+    linkV4 (ltbOf lm t u) κ σ = rows3 lm (lm + 2) t u (linkIRows4 κ σ) := by
+  have ht : splitAt (loTab 11 t) (loTab (lm - 11) fun l => t (11 + l)) (2 ^ 11) = gN lm t :=
+    splitE_eq hl t
+  have hu : splitAt (loTab 12 u) (loTab (lm + 2 - 12) fun l => u (12 + l)) (2 ^ 12) = gN (lm + 2) u :=
+    splitE_eq (by omega) u
+  have hsplit : linkIRows4 κ σ = ((linkHead4 κ σ).zipIdx.map fun p => (linkBase σ + p.2, p.1)) ++
+      (((packWf4 κ σ).zipIdx (linkHead4 κ σ).length).map fun p => (linkBase σ + p.2, p.1)) ++
+      (((extRowsC κ σ).zipIdx ((linkHead4 κ σ).length + wfLen κ σ)).map fun p => (linkBase σ + p.2, p.1)) := by
+    rw [linkIRows4, linkRows4, packRows4, wfLen_eq, ← List.append_assoc,
+      List.zipIdx_append, List.zipIdx_append, List.map_append, List.map_append, Nat.zero_add,
+      Nat.zero_add]
+    rw [show (linkRowsB4 κ σ ++ packHead4 κ σ ++ packWf4 κ σ).length =
+      (linkRowsB4 κ σ ++ packHead4 κ σ).length + (packWf4 κ σ).length from List.length_append ..]
+    rfl
+  have hg : ∀ rows : List (ℕ × Row), growsVal3 (ltbOf lm t u).tlo (ltbOf lm t u).thi (ltbOf lm t u).slo
+      (ltbOf lm t u).shi (grows (2 ^ 11) (2 ^ 12) rows) = rows3 lm (lm + 2) t u rows := fun rows => by
+    simp only [ltbOf, growsVal3_eq, growsVal_grows, rows3]
+    rw [ht, hu, rowsValI_eq, rowsValI_eq, rowsValI_eq]
+  rw [hsplit, rows3_append, rows3_append]
+  simp only [linkV4]
+  rw [hg, hg]
+  congr 2
+  simp only [ltbOf]
+  rw [ht, hu]
+  unfold packWf4
+  rcases packB κ σ with _ | ⟨b0, G⟩
+  · simp [rows3_nil]
+  · dsimp only
+    rw [wfRows, wfSum_eq]
+
+/-- **Slot `σ`'s value** from its prototype's (`vN`, `vS`): the rest scaled, the link region by
+`linkV4`. -/
+def slotV4 (κ : NodeKind) (t u : ℕ → F) (L : LTb) (vN vS : F3) (σ : ℕ) : F3 :=
   let lm := κ.dims.logM
   add3 (smul3 (hiF lm t σ * (hiF lm u σ * (u lm * u (lm + 1)))) (if protoOf κ σ = 0 then vN else vS))
-    (rows3 lm (lm + 2) t u (linkIRows4 κ σ))
+    (linkV4 L κ σ)
 
 /-- A prototype's rows from the plan's pieces (the fallback's; no closed `protoRows` constant in
 the compiled code). -/
@@ -562,7 +672,8 @@ def evalMT4 (pl : Plan4) (κ : NodeKind) (τ σ : Array F) : F3 :=
   let t := fun l => τ.getD l 0; let u := fun l => σ.getD l 0
   if pl.inR then
     let v := protoV4 pl t u κ.hasPrev
-    sum3 (slotV4 κ t u v.1 v.2) (List.range κ.vslots)
+    let L := ltbOf κ.dims.logM t u
+    sum3 (slotV4 κ t u L v.1 v.2) (List.range κ.vslots)
   else rows3 κ.dims.logM (κ.dims.logM + 2) t u (nodeIRowsP pl κ)
 
 /-- **`evalM`'s specification**: the MLEs of `nodeIRows4 κ`'s matrices (`τ`: `logM` coordinates,
@@ -574,10 +685,6 @@ noncomputable def evalMS4 (κ : NodeKind) (τ σ : Array F) : F3 :=
 
 theorem logM_ge (κ : NodeKind) : 20 ≤ κ.dims.logM ∧ κ.vslots ≤ 2 ^ (κ.dims.logM - 20) := by
   cases κ <;> decide
-
-theorem rows3_append (n m : ℕ) (t u : ℕ → F) (a b : List (ℕ × Row)) :
-    rows3 n m t u (a ++ b) = add3 (rows3 n m t u a) (rows3 n m t u b) := by
-  simp [rows3, add3, rowsVal_append]
 
 theorem sum3_congr {f g : ℕ → F3} {l : List ℕ} (h : ∀ x ∈ l, f x = g x) : sum3 f l = sum3 g l := by
   simp only [sum3_eq, sumL_eq]
@@ -606,6 +713,7 @@ theorem evalMT4_eq (pl : Plan4) (κ : NodeKind) (τ σ : Array F) : evalMT4 pl �
     refine sum3_congr fun s hs => ?_
     have hs' : s < 2 ^ (κ.dims.logM - 20) := lt_of_lt_of_le (List.mem_range.1 hs) hv
     rw [rows3_append, slotV4]
+    rw [linkV4_eq (by omega)]
     refine congrArg (add3 · _) ?_
     have hc : ∀ π : ℕ, π ≤ 1 → InSlot π (protoRows π) →
         smul3 (hiF κ.dims.logM (fun l => τ.getD l 0) s * (hiF κ.dims.logM (fun l => σ.getD l 0) s *
