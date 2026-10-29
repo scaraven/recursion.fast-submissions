@@ -19,6 +19,9 @@ represent their registers **at the op**. So the discharge is a staged soundness:
   evaluates a program).
 * **`compileFromX_soundR`**: `compileFromX_soundK`'s induction with `hi` restricted to `impRX` and
   the rows `repRowsX`; **`compileX_soundR`**.
+* (C1) **`RTOkW`**, **`compileFromX_soundRW`**, **`compileX_soundRW`**: the same with the replay rows at
+  a second assignment `w'` that agrees with `w` below a bound (`Agree`): a template's own cells
+  (locals) then live outside the slot's region.
 
 At the node (namespace `N4s`): `repRowsP rt π` (prototype `π`'s replay rows, its frame),
 **`SlotRunR`**/**`SlotImpR`** (S-N2's `SlotRun`/`SlotImp` with the covered imports removed),
@@ -272,6 +275,193 @@ theorem compileX_soundR {impl : OpImpl} {κ : Kind} {inp : Input} {ops : List Op
     (hf : ∀ p ∈ (compileX X P base ops).fors, flagOf impl κ inp (s.regs.extract 0 p.2) p.1 = true) :
     s.ok = true ∧ ∀ i, RepS w ((compileX X P base ops).slot i) (rd s.regs i) := by
   have h := compileFromX_soundR hX hP hR ops (CS.init base) St.init s tr tr'
+    ⟨⟨rfl, fun i => by simp [CS.slot, CS.init, RepS]⟩, fun p hp => by simp [CS.init] at hp,
+      fun i => by simp [CS.slotK, CS.slot, CS.init, RepS]⟩ he hr
+    (fun t htm r hr' => ht r (List.mem_flatMap.2 ⟨t, htm, hr'⟩)) hx hi hrr hf
+  exact ⟨h.1, h.2.1.2⟩
+
+/-! ## Replay rows at a second assignment
+
+The replay's own cells (a template's locals) are not the prototype's: the fold puts them in slot 0's
+spare region, so the replay rows hold at an assignment `w'` that **agrees** with the slot's `w`
+below the frame bound `B` (every cell of the compile) and reads the spare region above it.
+**`RTOkW`** is `RTOk` with the rows at `w'`; each template checks at compile time that the forms
+it reads have their cells below `B` (`linLt`). -/
+
+/-- Two assignments agree below `B`. -/
+def Agree (B : ℕ) (w w' : Asg) : Prop := ∀ c < B, w' c = w c
+
+/-- A form's cells are below `B`. -/
+def linLt (B : ℕ) (l : Lin) : Bool := l.all fun t => decide (t.1 < B)
+
+theorem ev_agree {B : ℕ} {w w' : Asg} (hA : Agree B w w') {l : Lin} (h : linLt B l = true) :
+    l.ev w' = l.ev w := by
+  have hm : ∀ t ∈ l, t.1 < B := fun t ht => of_decide_eq_true (List.all_eq_true.1 h t ht)
+  unfold Lin.ev
+  exact congrArg List.sum (List.map_congr_left fun t ht => by rw [hA _ (hm t ht)])
+
+theorem map_ev_agree {B : ℕ} {w w' : Asg} (hA : Agree B w w') {ls : List Lin}
+    (h : ls.all (linLt B) = true) : ls.map (Lin.ev w') = ls.map (Lin.ev w) :=
+  List.map_congr_left fun l hl => ev_agree hA (List.all_eq_true.1 h l hl)
+
+/-- **A replay template is sound at kind `κ`, its rows at an assignment agreeing below `B`.** -/
+def RTOkW (impl : OpImpl) (X : Ext) (rt : RT) (κ : Kind) (B : ℕ) : Prop :=
+  ∀ P cs op, rt.cov op = true →
+    (∀ inp regs q, evalOp impl κ inp regs op ≠ .ask q) ∧
+    ∀ inp w w' regs vs ok, SelOk w P κ → SelOk w' P κ → InvK w cs regs κ → Agree B w w' →
+      (∀ r ∈ rt.rows P cs op (stepOut X P cs op).slots, r.Holds w') →
+      evalOp impl κ inp regs op = .vals vs ok → (stepOut X P cs op).imp = true →
+      List.Forall₂ (RepS w) (stepOut X P cs op).slots vs
+
+theorem RT.none_okW (impl : OpImpl) (X : Ext) (κ : Kind) (B : ℕ) : RTOkW impl X RT.none κ B :=
+  fun _ _ _ h => absurd h Bool.false_ne_true
+
+
+/-- **`compileFromX_soundR` with the replay rows at `w'`** (agreeing with `w` below `B`, `RTOkW`). -/
+theorem compileFromX_soundRW {impl : OpImpl} {κ : Kind} {inp : Input} {w : Asg} {P : Params}
+    {tc : Tpl.TCtx} {X : Ext} {rt : RT} {w' : Asg} {B : ℕ} (hX : ExtOkK impl tc X κ) (hP : SelOk w P κ)
+    (hP' : SelOk w' P κ) (hA : Agree B w w') (hR : RTOkW impl X rt κ B) :
+    ∀ (ops : List Op) (cs : CS) (s s' : St) (tr tr' : Trace),
+    InvK w cs s.regs κ → exec impl κ inp ops s tr = some (s', tr') →
+    (∀ r ∈ (compileFromX X P cs ops).rows, r.Holds w) →
+    (∀ t ∈ (compileFromX X P cs ops).tins, ∀ r ∈ Tpl.instRows tc P.one t, r.Holds w) →
+    (∀ a ∈ (compileFromX X P cs ops).aux,
+      a.1.1.map (Lin.ev w) = a.1.2.2.val (rd (s'.regs.extract 0 a.2) a.1.2.1)) →
+    (∀ i ∈ impRX X P rt cs ops, RepS w ((compileFromX X P cs ops).slot i) (rd s'.regs i)) →
+    (∀ r ∈ repRowsX X P rt cs ops, r.Holds w') →
+    (∀ p ∈ (compileFromX X P cs ops).fors,
+      flagOf impl κ inp (s'.regs.extract 0 p.2) p.1 = true) →
+    s'.ok = s.ok ∧ InvK w (compileFromX X P cs ops) s'.regs κ
+  | [], cs, s, s', tr, tr', hI, he, _, _, _, _, _, _ => by
+    simp [exec] at he; obtain ⟨rfl, rfl⟩ := he; exact ⟨rfl, hI⟩
+  | op :: ops, cs, s, s', tr, tr', hI, he, hr, ht, hx, hi, hrr, hf => by
+    rw [impRX_cons] at hi
+    rw [repRowsX_cons] at hrr
+    rw [compileFromX_cons] at hr ht hx hi hf ⊢
+    have hI' : InvK w (cs.align (alignOf op ops)) s.regs κ :=
+      ⟨⟨by simp [hI.1.1], fun i => by rw [CS.align_slot]; exact hI.1.2 i⟩,
+        fun p hp => by rw [CS.align_kslots] at hp; rw [CS.align_slots]; exact hI.2.1 p hp,
+        fun i => by rw [CS.align_slotK]; exact hI.2.2 i⟩
+    generalize cs.align (alignOf op ops) = cs at hI' hr ht hx hi hrr hf ⊢
+    clear hI
+    rename' hI' => hI
+    set o := stepOut X P cs op with ho
+    obtain ⟨ss, rs, hsl, hrw, -, hfor, htin, haux⟩ := compileFromX_mono X P ops (cs.add op o)
+    have hro : ∀ r ∈ o.rows, r.Holds w := fun r h =>
+      hr r (by
+        rw [hrw]; simp only [CS.add, List.reverseAux_eq]
+        exact List.mem_append_right _ (List.mem_append_left _ (List.mem_reverse.2 h)))
+    have hto : ∀ t ∈ o.tin, ∀ r ∈ Tpl.instRows tc P.one (t.1, cs.tcount t.1, t.2), r.Holds w :=
+      fun t htm r hr' => ht _ (htin (by simp only [CS.add, Option.mem_def.1 htm]; simp)) r hr'
+    have hpre : ∀ (m : Array Val), (s.regs ++ m).extract 0 cs.slots.size = s.regs := fun m => by
+      rw [hI.1.1, Array.extract_append_left, Array.extract_size]
+    -- an uncovered import's registers: from `hi`
+    have fin : ∀ (vs : List Val) (s1 : St), s1.regs = s.regs ++ vs.toArray →
+        (∃ m, s'.regs = s1.regs ++ m) → o.imp = true → rt.cov op = false →
+        (hl : o.slots.length = vs.length) →
+        ∀ j (hj : j < o.slots.length), RepS w o.slots[j] (vs[j]'(hl ▸ hj)) := by
+      intro vs s1 hs1 ⟨m, hm⟩ hio hc hl j hj
+      have := hi (cs.slots.size + j) (List.mem_append_left _ (by
+        simp only [← ho, hio, hc, Bool.not_false, Bool.and_self, if_true, List.mem_range'_1]; omega))
+      have hs := slot_append_right cs.slots o.slots ss hj
+      have hv := rd_append_right s.regs vs m (by omega : j < vs.length)
+      rw [CS.slot, hsl] at this; simp only [CS.add] at this
+      rw [hs, hm, hs1, hI.1.1, hv] at this; exact this
+    have flag : ∀ (vs : List Val) (s1 : St), s1.regs = s.regs ++ vs.toArray →
+        (∃ m, s'.regs = s1.regs ++ m) → o.foreign = true →
+        flagOf impl κ inp s.regs op = true := by
+      intro vs s1 hs1 ⟨m, hm⟩ hfo
+      have := hf (op, cs.slots.size) (hfor (by simp [CS.add, hfo]))
+      rwa [hm, hs1, Array.append_assoc, hpre] at this
+    have hauxo : ∀ (vs : List Val) (s1 : St), s1.regs = s.regs ++ vs.toArray →
+        (∃ m, s'.regs = s1.regs ++ m) →
+        ∀ a ∈ o.aux, a.1.map (Lin.ev w) = a.2.2.val (rd s.regs a.2.1) := by
+      intro vs s1 hs1 ⟨m, hm⟩ a ha
+      have := hx (a, cs.slots.size) (haux (by simp [CS.add, ha]))
+      rwa [hm, hs1, Array.append_assoc, hpre] at this
+    have hstep : (∀ q, evalOp impl κ inp s.regs op ≠ .ask q) ∨ X P cs op = none := by
+      rcases hXo : X P cs op with _ | o'
+      · exact .inr rfl
+      · exact .inl ((hX P cs op o' hXo).2.2 inp w s.regs hP hI.1.2 hI.2.2).1
+    have hpos : o.kin.isSome → 0 < o.slots.length := by
+      rcases hXo : X P cs op with _ | o'
+      · simp [ho, stepOut, hXo, opOut_kin]
+      · simp only [ho, stepOut, hXo, Option.getD_some]; exact (hX P cs op o' hXo).2.1
+    have hlen : o.slots.length = op.nOut := by
+      rcases hXo : X P cs op with _ | o'
+      · simp only [ho, stepOut, hXo, Option.getD_none]; exact opOut_len P cs op
+      · simp only [ho, stepOut, hXo, Option.getD_some]; exact (hX P cs op o' hXo).1
+    have hrr' : ∀ r ∈ repRowsX X P rt (cs.add op o) ops, r.Holds w' :=
+      fun r h => hrr r (List.mem_append_right _ h)
+    have hi' : ∀ i ∈ impRX X P rt (cs.add op o) ops,
+        RepS w ((compileFromX X P (cs.add op o) ops).slot i) (rd s'.regs i) :=
+      fun i h => hi i (List.mem_append_right _ h)
+    simp only [exec] at he
+    split at he
+    · rename_i vs ok hev
+      have hl := hlen.trans (evalOp_len hev).symm
+      have hm := exec_prefix ops _ _ he
+      have hsnd : (o.imp = false → List.Forall₂ (RepS w) o.slots vs) ∧ (o.foreign = false → ok = true) ∧
+          (∀ f v, o.kin = some f → vs.head? = some v → RepS w (f κ) v) := by
+        rcases hXo : X P cs op with _ | o'
+        · simp only [ho, stepOut, hXo, Option.getD_none] at hro ⊢
+          exact ⟨(opOut_sound hP hI.1.2 op hro hev).1, (opOut_sound hP hI.1.2 op hro hev).2,
+            fun f v hf => by rw [opOut_kin] at hf; cases hf⟩
+        · have eo : o = o' := by simp [ho, stepOut, hXo]
+          rw [eo] at hro hto ⊢
+          exact ((hX P cs op o' hXo).2.2 inp w s.regs hP hI.1.2 hI.2.2).2 hro hto
+            (eo ▸ hauxo vs _ rfl hm) vs ok hev
+      have hnew : ∀ j (hj : j < o.slots.length), RepS w o.slots[j] (vs[j]'(hl ▸ hj)) := by
+        cases hio : o.imp
+        · exact fun j hj => (List.forall₂_iff_get.1 (hsnd.1 hio)).2 j hj _
+        · cases hc : rt.cov op
+          · exact fin vs _ rfl hm hio hc hl
+          · have hrows : ∀ r ∈ rt.rows P cs op o.slots, r.Holds w' :=
+              fun r h => hrr r (List.mem_append_left _ (by rw [if_pos hc]; exact h))
+            exact fun j hj => (List.forall₂_iff_get.1
+              ((hR P cs op hc).2 inp w w' s.regs vs ok hP hP' hI hA hrows hev hio)).2 j hj _
+      have hok : ok = true := by
+        cases hfo : o.foreign
+        · exact hsnd.2.1 hfo
+        · have := flag vs _ rfl hm hfo; simpa [flagOf, hev] using this
+      have ih := compileFromX_soundRW hX hP hP' hA hR ops _ _ s' tr tr'
+        (invK_add hI o op hl hnew hsnd.2.2 hpos) he hr ht hx hi' hrr' hf
+      exact ⟨by rw [ih.1, hok, Bool.and_true], ih.2⟩
+    · rename_i q hev
+      have hXn : X P cs op = none := hstep.resolve_left fun h => h q hev
+      have ho' : o = opOut P cs op := by simp [ho, stepOut, hXn]
+      have hc : rt.cov op = false := by
+        cases hc : rt.cov op
+        · rfl
+        · exact absurd hev ((hR P cs op hc).1 inp s.regs q)
+      split at he
+      · simp at he
+      · rename_i q' a tr0
+        split at he
+        · have hio : o.imp = true := ho' ▸ ask_imp P cs hev
+          have hl : o.slots.length = [Val.d a].length := by
+            rw [hlen, ask_nOut hev]; rfl
+          have hm := exec_prefix ops _ _ he
+          have hnew := fin [.d a] ⟨s.regs.push (.d a), s.ok⟩ rfl hm hio hc hl
+          exact compileFromX_soundRW hX hP hP' hA hR ops _ ⟨s.regs.push (.d a), s.ok⟩ s' tr0 tr'
+            (invK_add hI o op hl hnew (fun f v hf => by rw [ho', opOut_kin] at hf; cases hf) hpos)
+            he hr ht hx hi' hrr' hf
+        · simp at he
+
+/-- **`compileX_soundR` with the replay rows at `w'`.** -/
+theorem compileX_soundRW {impl : OpImpl} {κ : Kind} {inp : Input} {ops : List Op} {tr tr' : Trace}
+    {s : St} {w w' : Asg} {B : ℕ} {P : Params} {tc : Tpl.TCtx} {X : Ext} {rt : RT} (hX : ExtOkK impl tc X κ)
+    (hR : RTOkW impl X rt κ B) (base : ℕ) (hP : SelOk w P κ) (hP' : SelOk w' P κ) (hA : Agree B w w')
+    (he : exec impl κ inp ops St.init tr = some (s, tr'))
+    (hr : ∀ r ∈ (compileX X P base ops).rows, r.Holds w)
+    (ht : ∀ r ∈ (compileX X P base ops).tplRows tc P.one, r.Holds w)
+    (hx : ∀ a ∈ (compileX X P base ops).aux,
+      a.1.1.map (Lin.ev w) = a.1.2.2.val (rd (s.regs.extract 0 a.2) a.1.2.1))
+    (hi : ∀ i ∈ impRX X P rt (CS.init base) ops, RepS w ((compileX X P base ops).slot i) (rd s.regs i))
+    (hrr : ∀ r ∈ repRowsX X P rt (CS.init base) ops, r.Holds w')
+    (hf : ∀ p ∈ (compileX X P base ops).fors, flagOf impl κ inp (s.regs.extract 0 p.2) p.1 = true) :
+    s.ok = true ∧ ∀ i, RepS w ((compileX X P base ops).slot i) (rd s.regs i) := by
+  have h := compileFromX_soundRW hX hP hP' hA hR ops (CS.init base) St.init s tr tr'
     ⟨⟨rfl, fun i => by simp [CS.slot, CS.init, RepS]⟩, fun p hp => by simp [CS.init] at hp,
       fun i => by simp [CS.slotK, CS.slot, CS.init, RepS]⟩ he hr
     (fun t htm r hr' => ht r (List.mem_flatMap.2 ⟨t, htm, hr'⟩)) hx hi hrr hf
