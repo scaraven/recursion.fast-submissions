@@ -4,6 +4,46 @@ Last updated 2026-10-28. **Rebased onto core PR #20 (pin `6d05d00`, commit `987e
 
 ## Running — as of 2026-10-30
 
+**Milestone, rev44 `616b57c`:** the whole certificate (`FR`, `Solution`, `FRSubmission4Fin`) builds green with no sorry, and the axioms of `certified` are clean. Its only hypothesis is `Gaps4` = `Gap4R.imp`: per active slot, `SlotImp`.
+
+Landed since the last update:
+- **IMP `616b57c`:**
+  - **Gap:** `aggChk` is discharged at the top.
+  - **PK-m7 statement rows:** built, with `stmtOk4` proved at every active slot. The `input` import class is discharged.
+  - **Composition:** `pfView_pf4`, and `AT.add` to combine import classes.
+  - **Orchestrator fixes:** `FR.lean` imports, and `FRNodeRows4RepNCtrl`'s `ctlP` renamed to `ctlPN`.
+- **R0 `4f6e694`:**
+  - **Cells:** N′ = 108 with `tdot`. B′'s row is 176/178 ≤ 239, N8 has 140 blocks of margin, and |π| is 878,032.
+  - **V cost:** ΔV of 14/17/22 ms for an N2/N4/N8 child, against a 25 ms kill line.
+  - **Constraints for R1:**
+    - N′ ≡ 0 mod 4;
+    - the `tt` repack erases position 17;
+    - the tdot tag is 21;
+    - the pads are zero-asserted;
+    - a `none` kind fails.
+  - **`rsWeight`:** 5.8–12.5 ms as closed-form chains, which is marginal against its 10 ms line.
+
+Running on rev44:
+- **ASK-P:** the positional machinery (reader spec, element alignment, `reassemble4` per field, the arena₁ bridge) and the arena folds into `nodeIRows4`/the plan. It feeds ASK-T and IMPC.
+- **SRA:** the prefix form of `compileX_run`, then `gap4Imp_of_rsv` and the switch of `Gaps4` to `StmtN4R` (with no growth of the top hypothesis), then the foreign flags. The replay stays an explicit hypothesis.
+- **R1:** the V side of R-OPS. It adds 108 public cells, `tdot`, V(P) recompute/assert, the repack and tags, the fit literals and a KAT. Soundness is left to R2.
+- **R3:** the closed-form chain template library. It first prices `rsWeight` against the 10 ms line, and if over, stops and reports the §5.3 fallback.
+- **E1:** the prover port at 4.4.1, now also with B4's and IMP's rows. It will also need R1's field changes.
+
+**Then:**
+- ASK-T (the `ATAsk` templates: FS links, Merkle mux, pins, seed, columns) ∥ IMPC (the `ATImp` classes: proof fields, siblings, `chF`/`chK`, `bitOf`, cap reads), both after ASK-P;
+- R2 (soundness for R-OPS) after R1;
+- R4 (`rsWeight`) after R3;
+- R5 (segment slots), with `targetSSegI`'s 560-row rewrite owned by R5;
+- `Gaps4` = ∅;
+- G6 (golf, including G5's deferred `FRNodeLayout4`/`FRNodeRows4Ext` changes);
+- a cert probe on the runner;
+- a clean submission branch;
+- the evaluation.
+
+### Earlier entries (this session)
+
+
 Main (`v4/flock-recursive`, core `422f2f9`; the certificate assumes only `Open4F := Gaps4`):
 - **G5 landed `edf11b4`.** On a 7763 `certified` takes 379.7 s, down from 461.7 (margin 1.58×). KReplay went 224.3 → 154.8 s and the comparator's peak memory 8.7 → 4.5 GiB. No statement changed.
   - **Root cause:** the kernel unfolds `HAdd.hAdd` before user definitions, so a defeq step between differently shaped closed ℕ sums evaluates them in full. G5-golf.md has the fix patterns; the tools are in logs/G5/tool/.
