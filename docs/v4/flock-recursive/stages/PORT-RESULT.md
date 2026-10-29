@@ -171,3 +171,12 @@ B3's `gap4Imp_of_run` + B4's ask templates, and `aggChk`, B4) and RSV-S's HEAD-r
 `FRXOut4Ctrl`, `FRNodeLinks4`, `FRNodeLinks4Run`, `FRNodeRun4S`, `FRSubmission4Cert` (`.lean`);
 `docs/v4/flock-recursive/stages/PORT-RESULT.md`, `PORT-JOURNAL.md`. Build tree and logs: `logs/fr-build-PORT/`,
 `logs/PORT/`.
+
+## Erratum (orchestrator, from the review of `c4eca2b`)
+
+"`pf4` was 77,872 bytes short" (§ on `reassemble4`, and the commit message) is wrong. Fields 0–17
+sum to 799,280 at rev44, so the old `pf4` was short by 876,304 − 799,280 = **77,024** = 27,872 (D) +
+49,152 (A). The review found no blockers; its notes: the literals `486` (`FRNodeLinks4Run:67,71`) and
+`8783` (`FRNodeRun4S:48,90`) could be stated as `(fsMsgs4 seq4).length` / `(itemsOf seq4).length`
+(safe today: the decided length lemmas would fail loudly), and `FRShape4:389`'s docstring still says
+`piSizeOf seq4 = 798,192`.
