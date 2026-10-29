@@ -10,12 +10,17 @@ Main (`v4/flock-recursive`, core `422f2f9`; the certificate assumes only `Open4F
   - **Why 150 s is out of reach:** what remains is about 52.8 s of 17.5k declarations under 50 ms each, 44 s in FRSoundness4*/FRNodeRows4*, and 30 s outside FR (14.5 s of it core-owned `basePoly_irreducible`).
   - **Merge into rev44:** after PORT lands, since G5 touched FRX*. PORT carries G5's FRXNd4/FRXChain*/`cso_outIR4` changes by hand.
 
-`v4/rev44` (HEAD `6a93cc8` = RSV-V2 + main merged + B5 + RSV-S WIP + A1′ + RSV-S2b + RSV-S2a + PORT + main merge + B4 + C1 (partial); red at RSV-V's 7 declarations and possibly decoder literals):
+`v4/rev44` (HEAD `953838d` = RSV-V2 + main merged + B5 + RSV-S WIP + A1′ + RSV-S2b + RSV-S2a + PORT + main merge + B4 + C1 (partial) + RSV-S3; red at RSV-V's 7 declarations and possibly decoder literals):
 - **RSV-S2a landed `50a7f52`** (WIP).
   - **Proved:** the reserve branches of `flag_gFinE`/`flag_gFinB'` (in blocks; `R4Fin` builds in 11 s), `R4FrE`'s `e_end4`/`e_in4`/`e_fin4` (`mStack_sP`, `implN4F_hMS`), `rsvZero4`, `FrRS`/`Start` at the stacked form, and `Qry` with spacers.
   - **Orchestrator edit:** XRun now uses `implN4F_hMS` plus its import.
   - **Red:** `R4PfFlag.gFinPf_reloc`; `gFinPfR` lacks the second chain.
-- RSV-S3: finishes S2a §5. It adds `gFinPfR`'s second chain, `w0V4`'s rcell weights, `flag_gFinPf4` and `R4W0R`'s `hcl`, then rechecks PfFin/R4Full/XRun/XFinal and switches `hRes` to `StmtN4R`. It finishes with a full FR build in its tree, the axiom check and kernel profiles. It owns FRSoundness4*, FRNodeStmtR4 and FRNodeSound4K.
+- **RSV-S3 landed `953838d`.**
+  - **Proofs:** finPf's second chain, `w0V4`'s reserve cells (`hcl`, `hrc`), and the `StmtN4R` forms (`Resid4R`, `certificate_rev4R`, `ks_rev4HR`, `certificate_rev4HR`); the old `ks_rev4H`/`certificate_rev4H` keep their statements.
+  - **Build:** `FR` and `Solution` are green in its tree, and the axioms are clean on `certificate_sub4`'s path. Kernel time is at H-cert3's level (48.1 vs 46.2 s over FRSoundness4*).
+  - **Orchestrator edit:** the 2-line FRNodeLinks4 fix (`cellsX`).
+  - **Worktree red:** only `FRXSig4H.xRows_of_stmt` (max recursion since B4), now with IMP.
+  - **Open:** `gap4Imp_of_rsv` needs a prefix form of `compileX_run` (RSV-S3-RESULT §5.4), in FRNodeRun4*. It is scheduled after IMP. Then `Gaps4` goes to `StmtN4R` (§5.5).
 - **RSV-S2b landed `7bbbf49`.**
   - **B′ at 69 cells via the DRS `Pub` route:** `single_B4` is `Fin 71`, 70·2^128, and εR is unchanged.
   - **The four reserve controls:** in `FRSoundness4RsvCtrl`.
