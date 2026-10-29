@@ -1,0 +1,191 @@
+-- Track D1-probe scratch (not in `lean/`): the core lemma of the replay fixed point (BLUEPRINT §4.4).
+import FRVIRTplEval
+
+/-!
+# The replay fixed point: u-rows over aligned bases
+
+`Ĉ(τ, σ) = Σ_{r,c} C[r,c]·eq(τ_lo, r)·eq(σ_lo, c)` (`chat`). A block `C` placed at row base `2^a·X`
+and cell base `2^b·Y` has MLE `eq(τ_hi, X)·eq(σ_hi, Y)·Ĉ` (`placed_eq`). The replay's u-rows
+`u_r = Σ_c C[r,c]·e_c` with `e = eq(σ*_lo, ·)` give `Σ_r eq(τ*_lo, r)·u_r = Ĉ(τ*, σ*)` (`replay_val`).
+The u-block as an R1CS block (the table at local cells `[0, 2^b)`, the outputs at `2^b + r`) has MLE
+`(1 − σ_b)·Ĉ − σ_b·diag` (`ublock_chat`), `diag` an `O(log)` product (`diag_eq`). Hence
+`fixed_point`: the MLE of `C`'s instances **and** its u-block, at any point, is a closed form in the
+single value `Ĉ(τ_lo, σ_lo)`; at the child's point that value is the one the u-rows compute.
+-/
+
+namespace FR
+namespace D1p
+open Finset TEval
+
+variable {R : Type*} [CommRing R]
+
+/-- `Ĉ(τ, σ)`: the MLE of a constant `2^a × 2^b` block at the low coordinates. -/
+def chat (a b : ℕ) (C : ℕ → ℕ → R) (τ σ : ℕ → R) : R :=
+  ∑ r ∈ range (2 ^ a), ∑ c ∈ range (2 ^ b), C r c * eqN a τ r * eqN b σ c
+
+/-- The sparse MLE of block `C` placed at row base `2^a·X`, cell base `2^b·Y`, in `n × m` bits. -/
+def placed (n m a b : ℕ) (C : ℕ → ℕ → R) (X Y : ℕ) (τ σ : ℕ → R) : R :=
+  ∑ r ∈ range (2 ^ a), ∑ c ∈ range (2 ^ b),
+    C r c * eqN n τ (2 ^ a * X + r) * eqN m σ (2 ^ b * Y + c)
+
+/-- The high factor `eq(t_{≥a}, X)`. -/
+def hi (n a : ℕ) (t : ℕ → R) (X : ℕ) : R := eqN (n - a) (fun l ↦ t (a + l)) X
+
+/-- **`placed_eq`**: a block at aligned bases is `eq(τ_hi, X)·eq(σ_hi, Y)·Ĉ(τ_lo, σ_lo)`. -/
+theorem placed_eq {n m a b : ℕ} (ha : a ≤ n) (hb : b ≤ m) (C : ℕ → ℕ → R) (X Y : ℕ) (τ σ : ℕ → R) :
+    placed n m a b C X Y τ σ = hi n a τ X * hi m b σ Y * chat a b C τ σ := by
+  unfold placed chat hi
+  rw [mul_sum]
+  refine sum_congr rfl fun r hr ↦ ?_
+  rw [mul_sum]
+  refine sum_congr rfl fun c hc ↦ ?_
+  rw [eqN_split ha τ X (mem_range.1 hr), eqN_split hb σ Y (mem_range.1 hc)]
+  ring
+
+/-- **`replay_val`** (the replay's semantics): the u-rows `u_r = Σ_c C[r,c]·e_c` over the eq table
+`e = eq(σ_lo, ·)`, summed with `eq(τ_lo, ·)`, give `Ĉ(τ, σ)`. -/
+theorem replay_val {a b : ℕ} (C : ℕ → ℕ → R) (τ σ e u : ℕ → R)
+    (he : ∀ c < 2 ^ b, e c = eqN b σ c) (hu : ∀ r < 2 ^ a, u r = ∑ c ∈ range (2 ^ b), C r c * e c) :
+    ∑ r ∈ range (2 ^ a), eqN a τ r * u r = chat a b C τ σ := by
+  unfold chat
+  refine sum_congr rfl fun r hr ↦ ?_
+  rw [hu r (mem_range.1 hr), mul_sum]
+  refine sum_congr rfl fun c hc ↦ ?_
+  rw [he c (mem_range.1 hc)]; ring
+
+/-- The diagonal `Σ_{r < 2^a} eq(τ, r)·eq(σ, r)` (the outputs' and the v-rows' stride-1 class). -/
+def diag (a b : ℕ) (τ σ : ℕ → R) : R := ∑ r ∈ range (2 ^ a), eqN a τ r * eqN b σ r
+
+theorem eqN_zero (k : ℕ) (t : ℕ → R) : eqN k t 0 = ∏ l ∈ range k, (1 - t l) := by
+  simp [eqN]
+
+theorem eqN_one_zero (t : ℕ → R) : eqN 1 t 0 = 1 - t 0 := by simp [eqN]
+theorem eqN_one_one (t : ℕ → R) : eqN 1 t 1 = t 0 := by simp [eqN]
+
+/-- Splitting a sum over `2^(k+1)` at the top bit. -/
+theorem sum_pow_succ {M : Type*} [AddCommMonoid M] (k : ℕ) (f : ℕ → M) :
+    ∑ x ∈ range (2 ^ (k + 1)), f x =
+      ∑ j ∈ range (2 ^ k), f (2 ^ k * 0 + j) + ∑ j ∈ range (2 ^ k), f (2 ^ k * 1 + j) := by
+  rw [pow_succ, mul_two, sum_range_add]; simp
+
+/-- **`diag_eq`**: the diagonal is an `O(b)` product (no sum over `2^a`). -/
+theorem diag_eq {a b : ℕ} (hab : a ≤ b) (τ σ : ℕ → R) :
+    diag a b τ σ = (∏ l ∈ range a, (τ l * σ l + (1 - τ l) * (1 - σ l))) *
+      ∏ l ∈ range (b - a), (1 - σ (a + l)) := by
+  have hsplit : ∀ r < 2 ^ a, eqN b σ r = eqN a σ r * ∏ l ∈ range (b - a), (1 - σ (a + l)) := by
+    intro r hr
+    have := eqN_split hab σ 0 hr
+    rw [mul_zero, zero_add] at this
+    rw [this, eqN_zero]
+  have hd : diag a b τ σ = (∑ r ∈ range (2 ^ a), eqN a τ r * eqN a σ r) *
+      ∏ l ∈ range (b - a), (1 - σ (a + l)) := by
+    rw [diag, sum_mul]
+    exact sum_congr rfl fun r hr ↦ by rw [hsplit r (mem_range.1 hr)]; ring
+  rw [hd]; congr 1
+  clear hd hsplit hab
+  induction a with
+  | zero => simp [eqN]
+  | succ k ih =>
+    rw [sum_pow_succ, prod_range_succ, ← ih]
+    have h1 : ∀ (t : ℕ → R) (H : ℕ) (j : ℕ), H < 2 → j < 2 ^ k →
+        eqN (k + 1) t (2 ^ k * H + j) = eqN k t j * eqN 1 (fun l ↦ t (k + l)) H := by
+      intro t H j _ hj
+      have := eqN_split (show k ≤ k + 1 by omega) t H hj
+      rwa [show k + 1 - k = 1 by omega] at this
+    have e0 : ∀ j ∈ range (2 ^ k), eqN (k + 1) τ (2 ^ k * 0 + j) * eqN (k + 1) σ (2 ^ k * 0 + j) =
+        (1 - τ k) * (1 - σ k) * (eqN k τ j * eqN k σ j) := by
+      intro j hj
+      rw [h1 τ 0 j (by omega) (mem_range.1 hj), h1 σ 0 j (by omega) (mem_range.1 hj)]
+      simp only [eqN_one_zero, add_zero]; ring
+    have e1 : ∀ j ∈ range (2 ^ k), eqN (k + 1) τ (2 ^ k * 1 + j) * eqN (k + 1) σ (2 ^ k * 1 + j) =
+        τ k * σ k * (eqN k τ j * eqN k σ j) := by
+      intro j hj
+      rw [h1 τ 1 j (by omega) (mem_range.1 hj), h1 σ 1 j (by omega) (mem_range.1 hj)]
+      simp only [eqN_one_one, add_zero]; ring
+    rw [sum_congr rfl e0, sum_congr rfl e1, ← mul_sum, ← mul_sum]; ring
+
+/-- The u-block of `C` as one `2^a × 2^(b+1)` block (its B-side with the C-side output folded in):
+the eq table at local cells `[0, 2^b)` with `C`'s coefficients, output `u_r` at `2^b + r` with `−1`. -/
+def ublock (b : ℕ) (C : ℕ → ℕ → R) (r c : ℕ) : R :=
+  if c < 2 ^ b then C r c else if c = 2 ^ b + r then -1 else 0
+
+/-- **`ublock_chat`**: the u-block's local MLE is `(1 − σ_b)·Ĉ(τ, σ) − σ_b·diag` — the same `Ĉ`. -/
+theorem ublock_chat {a b : ℕ} (hab : a ≤ b) (C : ℕ → ℕ → R) (τ σ : ℕ → R) :
+    chat a (b + 1) (ublock b C) τ σ = (1 - σ b) * chat a b C τ σ - σ b * diag a b τ σ := by
+  have h1 : ∀ (H j : ℕ), j < 2 ^ b →
+      eqN (b + 1) σ (2 ^ b * H + j) = eqN b σ j * eqN 1 (fun l ↦ σ (b + l)) H := by
+    intro H j hj
+    have := eqN_split (show b ≤ b + 1 by omega) σ H hj
+    rwa [show b + 1 - b = 1 by omega] at this
+  unfold chat diag
+  rw [mul_sum, mul_sum, ← sum_sub_distrib]
+  refine sum_congr rfl fun r hr ↦ ?_
+  have hr' : r < 2 ^ b := lt_of_lt_of_le (mem_range.1 hr) (Nat.pow_le_pow_right (by omega) hab)
+  rw [sum_pow_succ]
+  have hlo : ∀ j ∈ range (2 ^ b), ublock b C r (2 ^ b * 0 + j) * eqN a τ r *
+      eqN (b + 1) σ (2 ^ b * 0 + j) = (1 - σ b) * (C r j * eqN a τ r * eqN b σ j) := by
+    intro j hj
+    rw [h1 0 j (mem_range.1 hj), eqN_one_zero]
+    simp only [ublock, mul_zero, zero_add, if_pos (mem_range.1 hj), add_zero]; ring
+  have hhi : ∀ j ∈ range (2 ^ b), ublock b C r (2 ^ b * 1 + j) * eqN a τ r *
+      eqN (b + 1) σ (2 ^ b * 1 + j) = if j = r then -(σ b * (eqN a τ r * eqN b σ r)) else 0 := by
+    intro j hj
+    rw [h1 1 j (mem_range.1 hj), eqN_one_one]
+    simp only [ublock, mul_one, show ¬ 2 ^ b + j < 2 ^ b by omega, if_false, add_zero]
+    by_cases hjr : j = r
+    · subst hjr; simp; ring
+    · simp [hjr]
+  rw [sum_congr rfl hlo, sum_congr rfl hhi, sum_ite_eq' _ r, if_pos (mem_range.2 hr'), ← mul_sum]
+  ring
+
+/-- **`fixed_point`** (the core of `replay_mle`): `C` used by instances at aligned bases `insts`
+(row/cell high parts, bits `(a, b)`) and by its own u-block at `(Xu, Yu)` (bits `(a, b + 1)`).
+(i) At any point the MLE of all of them is a closed form in the **one** value `Ĉ(τ_lo, σ_lo)`;
+(ii) at the child's point `(τ*, σ*)`, the u-rows' replayed value `Σ_r eq(τ*_lo, r)·u_r` is that
+value, so the replay evaluates its own block from its own output: no cycle, no new matrix. -/
+theorem fixed_point {n m a b : ℕ} (ha : a ≤ n) (hb : b + 1 ≤ m) (hab : a ≤ b) (C : ℕ → ℕ → R)
+    (insts : List (ℕ × ℕ)) (Xu Yu : ℕ) (τ σ e u : ℕ → R)
+    (he : ∀ c < 2 ^ b, e c = eqN b σ c) (hu : ∀ r < 2 ^ a, u r = ∑ c ∈ range (2 ^ b), C r c * e c) :
+    (insts.map fun p ↦ placed n m a b C p.1 p.2 τ σ).sum + placed n m a (b + 1) (ublock b C) Xu Yu τ σ =
+      ((insts.map fun p ↦ hi n a τ p.1 * hi m b σ p.2).sum + hi n a τ Xu * hi m (b + 1) σ Yu * (1 - σ b)) *
+          (∑ r ∈ range (2 ^ a), eqN a τ r * u r) -
+        hi n a τ Xu * hi m (b + 1) σ Yu * σ b * diag a b τ σ := by
+  rw [replay_val C τ σ e u he hu, placed_eq ha hb, ublock_chat hab,
+    List.map_congr_left fun p _ ↦ placed_eq ha (by omega) C p.1 p.2 τ σ, add_mul,
+    ← List.sum_map_mul_right]
+  ring
+
+/-- **The gather is self-replaying** (the irregular classes): the u-rows of the incidence matrix of
+`addr` are the gather rows `u_r = e(addr r)` themselves. -/
+theorem gather_self {a b : ℕ} (addr : ℕ → ℕ) (haddr : ∀ r, addr r < 2 ^ b) (τ σ e : ℕ → R)
+    (he : ∀ c < 2 ^ b, e c = eqN b σ c) :
+    ∑ r ∈ range (2 ^ a), eqN a τ r * e (addr r) =
+      chat a b (fun r c ↦ if c = addr r then (1 : R) else 0) τ σ :=
+  replay_val _ τ σ e (fun r ↦ e (addr r)) he fun r _ ↦ by
+    simp [ite_mul, haddr r]
+
+/-! ## Controls -/
+
+/-- (+) `chat` is the MLE: the `2 × 2` identity at `(t, s)` is `t s + (1 − t)(1 − s)`. -/
+theorem chat_ctl (t s : ℤ) :
+    chat 1 1 (fun r c ↦ if r = c then (1 : ℤ) else 0) (fun _ ↦ t) (fun _ ↦ s) =
+      t * s + (1 - t) * (1 - s) := by
+  simp [chat, eqN, sum_range_succ]; ring
+
+/-- (−) Alignment is load-bearing: the `2 × 2` identity at the **unaligned** row base 1 (rows 1–2
+of `2^2`, cells `0–1` of `2^1`) is not `eq(τ_hi, X)·eq(σ_hi, Y)·Ĉ` for either high part `X`. -/
+theorem unaligned_ctl (X : ℕ) (hX : X < 2) :
+    (∑ r ∈ range 2, ∑ c ∈ range 2, (if r = c then (1 : ℤ) else 0) *
+        eqN 2 (fun _ ↦ (2 : ℤ)) (1 + r) * eqN 1 (fun _ ↦ (3 : ℤ)) c) ≠
+      hi 2 1 (fun _ ↦ (2 : ℤ)) X * hi 1 1 (fun _ ↦ (3 : ℤ)) 0 *
+        chat 1 1 (fun r c ↦ if r = c then (1 : ℤ) else 0) (fun _ ↦ 2) (fun _ ↦ 3) := by
+  interval_cases X <;> simp [hi, chat, eqN, sum_range_succ, prod_range_succ, Nat.testBit] <;> norm_num
+
+/-- (−) The table is load-bearing in `replay_val`: u-rows over a zero table give `0 ≠ Ĉ = 1`. -/
+theorem table_ctl :
+    (∑ r ∈ range (2 ^ 0), eqN 0 (fun _ ↦ (0 : ℤ)) r * ∑ c ∈ range (2 ^ 0), (1 : ℤ) * 0) ≠
+      chat 0 0 (fun _ _ ↦ (1 : ℤ)) (fun _ ↦ 0) (fun _ ↦ 0) := by
+  simp [chat, eqN]
+
+end D1p
+end FR
