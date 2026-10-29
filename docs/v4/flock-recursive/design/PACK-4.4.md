@@ -1,5 +1,7 @@
 # PACK-4.4: binding the node circuit's imports (the pack map, B1–B4, the replay `R`) — a proposal for blueprint revision 4.4
 
+**Revision 4.4.1 (2026-10-29): re-issued after `reviews/PACK-4.4-review.md` (adopt with fixes). §2, §3.3–§3.4, §5.2, §6.1, §6.3, §7, §8, §9 are re-issued; §0's figures corrected; the fix log is §10. Superseded text is not kept.**
+
 Design track D-PK, 2026-10-29. Base: HEAD after S-E13a/S-E13b/S-E14 (worktree `v4/flock-recursive`).
 Nothing here is built; every row count that is not marked *measured* is a count from the dumps
 (`logs/S-E12f/nodedump`, `logs/S-E13a/nodedump`) or from the formulas given next to it. Sources
@@ -37,9 +39,9 @@ pieces, evaluated through the plan's keys and the copy identity) ≈ 0.06 µs: I
    **sibling** (`piDigest fSibs`, which A.5 defines as "the half not at bit `h`") and the **cap
    read** (`piDigestAt`, a witness-indexed lookup, B2). The sibling disappears in
    characteristic 2 (`sib = l + r + cur`, §1.3); the cap read needs a protocol change (§3).
-2. **B1 (§2): adopt R-A′ in its general form**: `V_A` asks one spacer absorb between segments,
-   its length chosen so that the segment stride is `≡ 0 mod 64` and `≡ 1 mod 16`. With the B2
-   change below the spacer is **81 B** (an absorb of a 1-byte message), not 129. There is no
+2. **B1 (§2): adopt R-A′ as S-E13a proposed**: `V_A` asks the 129-B spacer absorb between
+   segments; with the block-aligned CapChk the segment stride is `64·24,133` and the aggregate
+   stream is whole blocks for every `k` (`aggB k = 64·(24,133k − 2)`). There is no
    alternative: a byte-shifted field is GF(2)-linear, not F-linear, and binding it costs
    130 rows per element (S-E13b's `r31` pattern), ≈ 12 M rows per sub-slot.
 3. **B2 (§3): replace the 871 cap lookups by a batched polynomial check** ("(β)"): the segment
@@ -47,9 +49,11 @@ pieces, evaluated through the plan's keys and the copy identity) ≈ 0.06 µs: I
    transcript's last `κ_c` as `ζ`; one final phase absorbs `A` and squeezes `z ∈ K`; `V` checks
    `Σ_r ζ^r cur_r = Σ_k A_k cap[k]` and `Σ_k A_k z^k = Σ_r ζ^r z^{k_r}`. In the circuit every cap
    read becomes a static read and the
-   checks are ≈ 37 k template rows per slot. Costs: `|π|` +7.7 % (+0.047 s of S), V's own check
-   +≈ 5 ms VM (+0.03 s), stream +4.2 % per segment — **N8 fits H with 324 blocks to spare**
-   (§3.4), ε unchanged (two SZ rows at `≤ 2^{-245}`). The alternatives (full paths, smaller
+   checks are ≈ 48 k template rows per slot. The phase is block-aligned (`A` padded to 61,472 B):
+   `piSizeOf seq4` 798,192 → 859,664, items 8,905 → 8,907, the segment stream 23,168 → 24,131
+   blocks. Costs: `|π|` +7.7 % (+0.03 s of S), V's own check +5–6 ms VM (+0.04 s), stream +4.2 %
+   per segment — **N8 fits H with 256 blocks to spare** (§3.4), ε unchanged (two SZ rows at
+   `≤ 2^{-245}`). R4's `cols` and S-G's tail are *restated* (§9.1), not re-run. The alternatives (full paths, smaller
    caps, a lookup PIOP with a second commitment, the mux) are priced and rejected in §3.2.
 4. **B4 (§4): one generic theorem `compileFromX_run`**, the trace-building twin of S-E14's
    `compileFromX_soundR`: an induction along the compile trail, never over the 106 k ops of a
@@ -59,30 +63,32 @@ pieces, evaluated through the plan's keys and the copy identity) ≈ 0.06 µs: I
 5. **Layout (§5): two arenas per slot.** Arena₁ (92,672 cells, one per stream element, rows at
    `R₁ + e`) binds H by the `O(log)` diagonal; arena₂ (≈ 88 k cells, one per element a template
    consumes, laid at power-of-two instance strides per level) is bound to arena₁ by M-to-M copy
-   rows whose MLE is a shift-window automaton: ≈ 60 products per position, 52 k products per
-   prototype, and **identical for both prototypes** (one item sequence), so ≈ 11 ms VM per node.
+   rows whose MLE is a shift-window automaton: ≈ 150 products per position, 131 k products per
+   prototype, and **identical for both prototypes** (one item sequence), so ≈ 26 ms VM per node
+   (4.4.1: was 60 / 11 ms; PK-m2).
    Every consuming row of the prototype then reads M cells inside aligned pieces (0.06 µs/row).
-6. **The row budget (§6)** forces one layout change: **the previous-node slot owns two `2^20`
-   regions** (its prototype in one; its arenas, `R` and the `evalM` replay in the other). Then
-   N2 = 4 regions of 4, N4 = 6 of 8, N8 = 8 of 8 (the segment slot at ≈ 995 k of 1,048 k rows:
-   N8 needs the two prototype levers S-E6 §5 lists, −90 k, to stay under `N_M/1.05`).
-7. **The V budget (§6.3):** V(N4) ≈ 215 (today, without S-E13a/b's rows) + 19 (pack map) + 10
-   (cap check) + 7 (`R` without `evalM`, keyed) + 7–15 (`evalM` replay) + 7 (WOTS/aggChk)
-   ≈ **265–273 ms VM ≈ 223–229 ms runner** (worst case 309/260 if the sparse skeleton is not
-   templated), `x ≈ 1.49–1.52`, `V̄ ≈ 0.88–0.93 s` against 0.71–0.79 today: **+0.1 … +0.2 s of
-   S** (worst +0.5), the price of a sound node. S-T1/S-E11's levers (−25 ms) are unchanged and
-   would bring it back to ≈ 0.75–0.80. `R`'s six ops cost 7 ms only as *keyed* templates
-   (§6.2); as sparse pieces they are S-E14's 130 ms.
-8. **Build order (§7):** (A) the protocol changes first, since every position in R4/P4 depends
-   on `seq4` — B2's final phase is *appended* (no existing item moves), R-A′ changes only `V_A`;
-   (B) the compiler: aliases, arenas, the staged run theorem; (C) the `R` templates;
-   (D) `evalM`'s replay in the spare region with S-E12b's levers; (E) P2.
-9. **If (D) does not fit V** (its 7–33 ms is the least certain figure), the least-bad scope
-   change is §8's: keep the previous node's `evalM` as the *one* remaining import, discharged
-   not by rows but by the **parent's E-phase**: the child's `evalM` claim is folded into the
-   parent's own lincheck as a second point claim on `f` (the blueprint's option (c) of
-   S-E6 §4), which removes `R`'s fixed point from the circuit at the price of one extra
-   sumcheck phase (23 F rounds, +1,104 B of π, +≈ 2 ms of V).
+6. **The row budget (§6)**: every slot's region holds its prototype, its arenas and its cap
+   check (the copy identity needs them together: PK-M3); the previous-node slot's spare region
+   holds `R` and the `evalM` replay. The segment slot is at 1,060 k rows — **S-E6 §5's two
+   prototype levers (−91 k, track B0) are a prerequisite**, after which N2 = 4 regions of 4,
+   N4 = 6 of 8, N8 = 8 of 8 at 1.03× under `N_M/1.05`. The Merkle `selectHalf`/`keep` rows stay
+   as compiled (PK-M4); only the sibling import cells go.
+7. **The V budget (§6.3), on the measured basis** (S-I: V 157.9 ms runner, `v_ref` 206.6,
+   `V̄ = 0.400`): ΔV ≈ 60 ms VM best (arena₂ automaton 26 at 150 products per instance, cap check
+   11, `R` keyed 7, `evalM` replay 7, templates/rows 9) to 124 worst → V runner 208–262,
+   `x = 1.42–1.68`, **`V̄ = 0.76–1.26 s`: ΔS ≈ +0.36 s best, +0.86 worst**, the price of a sound
+   node against S = 6.42. 4.4's "+0.1 … +0.2" mixed two `v_ref`s and is withdrawn. `R`'s ops
+   cost 7 ms only as *keyed* templates (§6.2); as sparse pieces they are S-E14's 130 ms.
+8. **Build order (§7): the review's corrected one** — A2′ (CapChk) → A1′ (R-A′) → A3′ (the
+   restated `cols`/dooms) ∥ B0 (the prototype levers) → B1′ → B2′ → C0 (template the WOTS/link
+   rows) → B3/B4 → C1/C2 → D1 or the reserve → E1, with RET (changes 27 (B), G2) in parallel
+   from A2′ on, and F's done including `evaluate.py cert ≤ 600 s`. Track briefs for A2′, A1′,
+   A3′, B0 in §7.1; the build-budget account in §7.2 (≈ 3,400 CPU-s before retirement against
+   2,020: the organiser's `build_s` question must be asked now).
+9. **§8 decides D1 against the reserve on the measured basis:** D1 first (ΔS +0.05 best) with a
+   kill line at 25 ms VM of replay cost, beyond which the reserve (the child's `evalM` claim in
+   the parent's E-phase, ΔS ≈ +0.21–0.25 from the extra lincheck's prover time) wins. N8 with 7
+   slots is not needed.
 
 ---
 
@@ -125,65 +131,65 @@ copied from arena₁ (M-to-M, once per node in V), arena₁ from H (`O(log)` per
 |---|---|---|---|---|---|---|
 | oracle answers `askSeed/Absorb/Squeeze/Node/Col` | 8,905 D = 17,810 F | the item's answer, 2 aligned elements | slot := arena cells (alias) | 0 own; share arena₁/₂ | in the arena total (§5.4): ≈ 0.05 ms per slot + ≈ 11 ms per node | writes the arenas (copies) |
 | proof fields `piElem`/`piDigest`/`piElemK` **except siblings** | ≈ 2.8 k F + 1,068 D + 355 K | = query payload elements of their item (A.5 rows 0–16) | alias to the arena cells of the payload (B3: `pf`'s positional spec is a lemma, no row) | 0 | 0 beyond the arena | — |
-| **siblings** `piDigest fSibs` | 7,552 D | the half of the node payload *not* at bit `h` (A.5) | **linear form** `sib = l + r + cur` (char 2; `l`, `r` the payload's arena cells, `cur` the previous answer's), sound given the Merkle mux row below | 0 | 0 | — |
-| Merkle mux (B4's node links; replaces `selectHalf`'s 4 `muxOut` rows per step) | 7,552 steps | `cur` is the half at bit `b_h`: `b·(l + r) = cur + l` per half | 2 product rows per step, inside the position template (arena₂, regular) | **15,104** (−30,208 `muxOut` rows: net −15 k) | structured: 15 k × 0.06 µs ≈ 0.9 ms per prototype | — |
-| FS links (absorb/squeeze state = previous answer) | 468 items × 2 | arena₁ cells at fixed offsets | linear rows `M(st_k) = M(ans_{k−1})`, M-to-M | 936 | irregular-in-region: 936 × 0.6 ≈ 0.6 ms per prototype (×1 per node via the copy) | — |
+| **siblings** `piDigest fSibs` | 7,552 D | the half of the node payload *not* at bit `h` (A.5) | **per-kind form** `sib = l + r + v`, `v = a·cur` (char 2; `l`, `r` the payload's arena cells, `cur` the previous answer's, `a` the depth's activity: at a dummy depth `v = 0`, as `assertZero` demands — PK-M4/m3) | 3,484 (2 per kind-varying depth per position) | structured | — |
+| Merkle mux (B4's node links) | 7,552 steps | `selectHalf`'s `muxOut` rows and `keep`'s, **kept as compiled** (they are gated by construction; an ungated `b·(l + r) = cur + l` forces `cur = 0` at dummy depths: PK-M4); their operands become arena₂ cells | 0 new | structured | — |
+| FS links (absorb/squeeze state = previous answer) | 467 items × 2 (the seed has no state) | arena₁ cells at fixed offsets | linear rows `M(st_k) = M(ans_{k−1})`, M-to-M | 934 | `shared` class: ≈ 0.6 ms per prototype (×1 per node via the copy) | — |
 | `wf` pins (tag, length words) | 8,905 | item starts | pins on arena cells: inside the position templates for Q items (7,552 + 871), 482 FS pins as rows | 8,905 (replacing S-E13a's H-cell pins) | templates: ≈ 0.5 ms; 482 × 0.6 ≈ 0.3 ms per prototype | — |
-| answer bits `bitOf` | 7,552 (node) / 7,570 (seg) | bit `i·b_κ + h` of a P2 squeeze answer | slot := the L position-bit cell, **per-kind** (`Out.kin`, S-E12f: the bit index depends on `b_κ`); the 62 answers' 256 bits tied by 124 linear rows `H_half = Σ_j x^j b_j` on arena₁; the 8,320 bits L does not hold are M Boolean cells (`b(1−b) = 0`, a stride-1 template) | 124 + 8,320 | structured: 8.4 k × 0.06 ≈ 0.5 ms per prototype | writes 8,320 bits |
+| answer bits `bitOf` | 7,552 (node) / 7,570 (seg) | bit `i·b_κ + h` of a P2 squeeze answer | slot := the L position bit at `p·maxb + h` (kind-independent: bottom-aligned per position, §5.2); the 62 answers' 256 bits tied by **3 gated decomposition rows per half** `s_κ·(H − Σ_j x^j b_{π_κ(j)}) = 0` (372); the 8,320 bits L does not hold are M Boolean cells; the 9 cap bits per read (`sib_κ + t`: kind-dependent) by kind-mux rows (7,839) | 372 + 8,320 + 7,839 | structured: ≈ 1 ms per prototype | writes 8,320 bits |
 | `tensorW` index bits (aux `bits 20`) | 745 × 20 | the same L bits | the same cells (the `idx` register's bits are the answer's bits) | 0 | 0 | — |
 | `dotKF` column words (aux `felems 64/16`) | 290 × 64 + 581 × 16 = 27,856 | the column payload's elements | aux cells := arena₂ cells of the column (regular instance stride) | 0 | 0 beyond the arena | — |
 | challenge conversions `chF`/`chK` | 289 + 29 | halves / both halves of a squeeze answer | alias (a `chK` is the two halves' form) | 0 | 0 | — |
-| `input` (`vk`, `c`) | 4 / 3 | `vk`, `c₁`: the public seed cells (`PubCells4`); a segment's `c`: `leafStmt e n` | `vk`/`c₁`: alias to `seedC σ 0..3` (S-E3 §9's proposal, no row); a segment's `c`: alias to the slot's `hashA` block's `h_out` cells (elements 2–3), tied to the stmt payload by §4.2's 8 gated rows (exist in the model, not yet in `nodeIRows4`) | 8 | 8 × 0.6 ≈ 5 µs | — |
+| `input` (`vk`, `c`) | 4 / 3 | `vk`, `c₁`: the public seed cells (`PubCells4`); a segment's `c`: `leafStmt e n` | `vk`/`c₁`: alias to `seedC σ 0..3` (S-E3 §9's proposal, no row); a segment's `c`: alias to the slot's `hashA` block's `h_out` cells (elements 2–3), tied to the stmt payload by §4.2's 8 gated rows; the previous node's `hashB1`/`hashB2` messages tied to the proof's `stmt` field (8 rows) and `hashB2.h_in = hashB1.h_out` (2): PK-m7, stated once in B4 | 18 | 18 × 0.6 ≈ 11 µs | — |
 | `hashStmt` fact `stmtOk4` | 1 | `stmtDigest grp (stmt) = c` | for a segment: true by the reader's definition (`slotIn`'s `c := leafStmt (view)`, and `hashA`'s output *is* that digest: `hashA_leafStmt`); for the previous node: `hashB1/B2` blocks + `PubCells4`'s `c₁` | 0 | 0 | — |
-| **cap reads** `piDigestAt` | 871 D | cap entry at witness index `k = j >> sib` | **no static binding**: §3 | §3: ≈ 37 k template rows | §3: ≈ 2 ms per prototype | writes `A`, the powers |
+| **cap reads** `piDigestAt` | 871 D | cap entry at witness index `k = j >> sib` | **no static binding**: §3 | §3: ≈ 40 k template rows (+7.8 k kind-mux rows counted above) | §3: ≈ 2.5 ms per prototype | writes `A`, the powers |
 | foreign flags | 12 / 79 | ops `opOut` leaves foreign (`assertBit`, type-failed asserts, `.hashStmt`) | per op: a lemma on the generator (the flag is `true` on every run) or a row; list from `fors` in the dump | ≤ 100 | — | — |
 | the ten replay registers | 10 | the slot's own ops | `R` (§6; S-E14's mechanism) | §6 | §6 | — |
 | the run's existence | 1 | — | B4's theorem (§4), no rows beyond the above | 0 | 0 | — |
 
-**Per-slot total of the pack map proper:** arena₁ 92,672 + arena₂ ≈ 88,000 + mux 15,104 −
-30,208 + FS 936 + pins 8,905 + bits 8,444 + `input` 8 ≈ **184 k rows, 189 k cells**, against
-S-E13a's 63 k irregular rows. More rows, ≈ 50× less V: **≈ 2.5 ms per prototype + ≈ 11 ms per
-node for the arena₂ link + 0.05 ms per slot** (§5.4), against ≈ 38 ms per slot.
+**Per-slot total of the pack map proper (4.4.1):** arena₁ 96,524 + arena₂ 85,946 + sibling 3,484
++ FS 934 + pins 8,907 + bits 16,531 + `input`/`stmt` 18 = **212,344 rows**, ≈ 277 k cells with
+the cap check, against S-E13a's 63 k irregular rows. More rows, ≈ 10–20× less V: **≈ 3 ms per
+prototype + 26 ms per node for the arena₂ link + 0.1 ms per slot** (§5.4), against ≈ 38 ms per
+slot.
 
 ---
 
-## 2. B1: the aggregate's unaligned segments — ruling recommendation
+## 2. B1: the aggregate's unaligned segments — ruling recommendation (4.4.1)
 
-**The fact.** `|traceBytes tr| = segB − 1 = 1,482,751 ≡ 15 (mod 16)`; segment `i` of the aggregate
-stream `0x54 ‖ tr₁ ‖ … ‖ tr_k` starts at byte `1 + i·1,482,751 ≡ 1 − i (mod 16)`. Every field of a
-sub-slot `i ≥ 1` straddles two H elements (S-E13a B1).
+**The fact.** `streamBytesOf seq4 = 1,482,752 = 64·23,168` (`chainLenOf_seq4`): a single proof's
+stream is whole blocks today, so `traceBytes = segB − 1 ≡ 63 (mod 64)`, `≡ 15 (mod 16)`; segment
+`i` of `0x54 ‖ tr₁ ‖ … ‖ tr_k` starts at byte `1 + i·(segB − 1) ≡ 1 − i (mod 16)`: every field of a
+sub-slot `i ≥ 1` straddles two H elements (S-E13a B1). Any appended CapChk phase (§3) keeps
+`traceBytes ≡ 63 (mod 64)` because every item after the seed has `slen ≡ 0 (mod 16)`
+(`items_aligned`) and §3's phase is `≡ 0 (mod 64)`; the misalignment is the `0x54 ‖ seed` prefix,
+so **no spacer-free variant exists** (PK-M1, PK-review Q7).
 
-**Why no binding exists without re-alignment.** The pack `f[e] = bits [128e, 128e+128)` makes a
-byte shift inside F a GF(2)-linear map that is not F-linear (multiplication by `x^8` is not a
-scalar). The only encodings of a shifted equality are (i) the element's 128 bits as Boolean cells
-plus two pack rows (S-E13b's `r31`: 130 rows per element) — 92,672 elements × 130 ≈ **12 M rows per
-sub-slot**, 11× a region; (ii) Frobenius rows (`a² = c`, 127 per element, S-E13b's `phiRS` pattern)
-— same order. Neither fits. So the H layout must put every segment at a 16-aligned offset.
+**Why no binding exists without re-alignment.** A byte shift inside F is GF(2)-linear, not
+F-linear; the only encodings are the 128-bit decomposition (S-E13b's `r31` pattern, 130 rows per
+element: `96,524 × 130 ≈ 12.5 M` rows per sub-slot, 12× a region) or Frobenius rows (same order).
 
 **The options.**
 
 | Option | Change | Owners | Cost |
 |---|---|---|---|
-| **R-A′ (general form): `V_A` asks a spacer absorb between consecutive segments**, `absorbQ 0³² 0^s` with `s` such that the segment stride `(segB − 1) + Δ_B2 + (49 + s)` is `≡ 0 mod 64` (and `≡ 1 mod 16`, automatic) | `FRAgg.VAwith` (`seqAll` with the spacer between the `segProgs`), `aggTr`/the reader (`segTr`'s offset `1 + i·stride`), `FRNodeKinds4` (`aggB k = 64·L·k − 128` whole blocks; `aggL`), the prover (writes the spacer's item), `qV` +3 | S-0′/FRAgg, S-E (reader, layout), P2 | `k − 1` queries and `(k−1)·(49+s)` stream bytes: **with §3's B2 change the spacer is 81 B** (`s = 1`): `1,482,751 + 61,680 = 1,544,431 ≡ 47 (mod 64)`, so `49 + s ≡ 17`, `s = 1`. Without B2: 129 B as S-E13a proposed. |
-| R-B: pad `seq4` so `|traceBytes| ≡ 0 mod 16` (a 1-byte-longer item) | every segment proof, `FRTranscriptDefs`, R4/P4 positions | all | rejected: moves every position in R4/P4 for the same effect |
-| R-C: hash each segment in its own digest chain | changes the signed message (`SigOk vk (traceDigest tr_A)`), `FRAgg`, the WOTS statement | all | rejected: the aggregate is one signed trace by B-11 |
+| **R-A′ (S-E13a's form): `V_A` asks the spacer `absorbQ 0³² 0⁴⁹` (129 B) between consecutive segments** | `FRAgg.VAwith` (the spacer program between `segProgs`, `seqAll`), the reader (`sgn4`/`segTr`: spacer entries inserted, offset `1 + i·(segB − 1 + 129)`), `FRNodeKinds4` (`aggB k = 64·(24,133·k − 2)`, `aggL`, `tailIvs`), `FRNodeCircuit4.AggPad4` (`r = 64`), `FRNodeRows4Agg` (`padRows` without the element-7 decomposition), the spacer pins (9 elements per spacer: length word, tag, state, message), `VA_queries_le` (`4·qS + 3`), `qV` arithmetic, P2 | S-0′/FRAgg, S-E, P2 | `k − 1` queries, `129·(k−1)` stream bytes (+2 blocks per added segment, +6 per aggregate); `qV`: `4·8,907 + 3 = 35,631 ≤ 36,000` |
+| R-B: pad `seq4` by one byte | every segment proof, R4/P4 positions | all | rejected: moves every position for the same effect |
+| R-C: one digest chain per segment | the signed message, `FRAgg`, WOTS | all | rejected: the aggregate is one signed trace (B-11) |
 
-**Ruling recommended: R-A′, general form.** Two consequences, both simplifications:
-- sub-slot `i`'s stream is sub-slot 0's shifted by `L_seg·i` blocks (`L_seg = 24,133` with B2,
-  23,170 without), so every per-slot row family is the same family at a block offset — exactly
-  the shape `copy_val` and §5's arena bind need (`kindS`/`wf` at `i ≥ 1` follow by S-E13a's
-  lemmas with `chainBytes4_elem` at the shifted element);
-- the aggregate stream of `k` segments is `L_seg·k − 2` **whole** blocks, so R-4-m2's
-  partial last block disappears: `AggPad4`'s message-prefix clause becomes "the candidate final
-  block `F_{a,k}` carries the main chain's block `aggL k − 1` entirely" (its `h_in` the main chain's
-  block `aggL k − 2`'s output, its message the block's; only the counter/flag target differs);
-  S-E13b's `padRows` lose the element-7 decomposition (−130 rows per candidate) and `lastR` is 64.
+**Ruling recommended: R-A′ at 129 B, with §3's CapChk block-aligned** (`≡ 0 mod 64`). With
+`traceBytes = 1,544,383 ≡ 63 (mod 64)` the stride is `1,544,512 = 64·24,133` blocks and the
+aggregate of `k` segments is `1 + k·1,544,383 + 129(k−1) = 64·(24,133k − 2)` bytes: **whole blocks
+for every `k`** (`k = 4`: 96,530). Consequences, now true as stated: sub-slot `i`'s stream is
+sub-slot 0's shifted by `24,133·i` blocks (so `kindS`/`wf` at `i ≥ 1` follow by S-E13a's lemmas
+at the shifted element, and every per-slot row family is one family at a block offset); R-4-m2's
+partial last block is gone: `AggPad4`'s `r = aggB k − 64(aggL k − 1) = 64`, so the candidate final
+block `F_{a,k}` carries main block `aggL k − 1`'s message entirely (`h_in` = block `aggL k − 2`'s
+output) and S-E13b's `padRows` lose their element-7 decomposition (−130 rows per candidate).
+`aggChainLen_eq`'s residues (63/61/62) become 0. The spacer's query bytes are constants: 9 pin
+rows per spacer on arena₁ (PK-m4); its answer is unused by `V_A` and unconstrained.
 
-Modules touched: `FRAgg` (`VAwith`, `VA_sound`, `VA_extract*`, `VA_queries_le`, `aggRest`, the
-controls), `FRNodeRead4.segTr`, `FRNodeKinds4` (`segB`→stride, `aggB`, `aggL`, `tailIvs`),
-`FRNodeCircuit4.AggPad4`, `FRNodeRows4Agg`, `FRNodeRows4PackSound` (`packB` for every sub-slot),
-`FRVerifier4` (`qV` arithmetic: `4·8,894 + 3 = 35,579 ≤ 36,000`), P2 (`prover.s`: the spacer item;
-its answer is unused).
+What does not move: `π_A`, `aggSegs`, `segView`, `VAwith`'s size check, the extractor's segment
+parse, INT-10's size hypotheses (PK-m13); `seq4`'s positions (R-A′ is `V_A`'s program).
 
 ---
 
@@ -210,73 +216,75 @@ over `{N2, N4, N8}`, B-13) — not a local change.
 
 | Option | What changes | Rows / slot | Stream / segment | `\|π\|` | V (own) | Prover | ε | Verdict |
 |---|---|---|---|---|---|---|---|---|
-| (a) full paths to a single root (caps of size 1) | `seq4`: +9/8/8/8/7 node queries per position = +7,132 items (8,891 → 16,023); every position moves in R4/P4 | +14 k (mux rows) | +7,132 × 112 B = +12.5 k blocks (**+54 %**) | +228 KB −45 KB: **+183 KB** (+0.14 s S) | +0.7 ms | +0.67 s per N4 node (12.5 k × 5 × 10.8 µs) | — | **rejected**: N8 ✗, `qV = 64,092 + 3 > 36,000` (fits `2^16` barely) |
+| (a) full paths to a single root (caps of size 1) | `seq4`: +9/8/8/8/7 node queries per position = +7,132 items (8,905 → 16,037); every position moves in R4/P4 | +14 k (mux rows) | +7,132 × 112 B = +12.5 k blocks (**+54 %**) | +228 KB −45 KB: **+183 KB** (+0.14 s S) | +0.7 ms | +0.67 s per N4 node (12.5 k × 5 × 10.8 µs) | — | **rejected**: N8 ✗, `qV = 64,092 + 3 > 36,000` (fits `2^16` barely) |
 | (j) caps at depth 4 (16 entries) + mux | `seq4`: +3,648 items; caps 2.5 KB | +42 k (templated mux, `shared` class) | +6,384 blocks (**+28 %**) | +74 KB (+0.06 s) | ≈ 0 | +0.35 s per N4 | — | **rejected**: N8 ✗ |
 | (j″) caps at depth 6 + mux | +1,906 items | +166 k | +3,336 blocks (**+14 %**) | +26 KB | ≈ 0 | +0.18 s per N4 | — | **rejected**: N8 ✗ |
 | (j‴) caps at depth 7 | +1,035 items | +333 k | +1,811 blocks (+7.8 %) | +5 KB | — | — | — | rejected: rows ✗ (segment slot 725 k + 333 k + arenas > `2^20`), N8 ✗ |
 | (b) a lookup argument with a prover-committed auxiliary (logUp inverses, a permutation) | a second Ligerito commitment after the challenge | small | — | — | — | +≈ 30 % | new | **rejected**: a second PCS instance per proof |
 | (b′) LogUp-GKR (no second commitment) | a new multi-layer sumcheck phase in `seq4` (dummy in segments) | ≈ 10 k | +≈ 2 KB | +≈ 2 ms | small | small | new sumcheck family | not recommended: a new proof system for S-C/S-G, R4/P4 positions move |
-| **(β) batched polynomial check with prover-supplied aggregated selectors** (§3.3) | **one final phase appended to `seq4`** (1 absorb of 61,440 B, 1 K squeeze); `piDigestAt` → static `piDigest`; `gen4`'s cap assert → the two identities | **≈ 37 k** (templates: power chains, bit-products, shared-cell MACs) | **+965 blocks (+4.2 %)** | **+61,440 B (+7.7 %; +0.047 s S)** | **+≈ 5 ms VM (+0.03 s S)** | computes `A` (trivial) | +2 rows `≤ 2^{-245}` | **adopt** |
+| **(β) batched polynomial check with prover-supplied aggregated selectors** (§3.3) | **one final phase appended to `seq4`** (1 absorb of 61,472 B — `A` padded to a block-aligned phase — and 1 K squeeze); `piDigestAt` → static `piDigest`; `gen4`'s cap assert → the two identities; R4's `cols` and S-G's tail restated (§9.1) | **≈ 48 k** (templates: power chains, bit-products, shared-cell MACs, cap-bit kind-mux rows) | **+963 blocks (+4.2 %)** | **+61,472 B (+7.7 %; +0.03 s S)** | **+5–6 ms VM (+0.04 s S)** | computes `A` (trivial) | +2 rows `≤ 2^{-245}` | **adopt** |
 | (c) the mux at depth 9 | none | 1.34 M | — | — | — | — | — | does not fit |
 
-### 3.3 The construction (β)
+### 3.3 The construction (β) (4.4.1: block-aligned, `seq4`'s constants)
 
-Let the reads of all five levels be indexed `r = 0 … 870` in item order, with index `k_r` (the
-register `k`, `c_i` bits), path output `cur_r` (a digest = 2 F), and let `cap` be the 1,920
-entries of all caps concatenated (`cap_i[k]` at `off_i + k`, `off = 0, 512, 768, 1024, 1280`).
+Reads `r = 0 … 870` in item order over the five levels, index `k_r = j_r >> sib_κ` (the cap's 9/8/8/8/7
+bits), path output `cur_r` (a digest, 2 F halves), `cap` the 1,920 entries of the five caps
+concatenated (`cap_i[k]` at `off_i + k`, `off = 0, 512, 768, 1024, 1280`).
 
-- **Proof:** a new field `A` of `1,920` K elements (61,440 B), appended after the siblings (A.3
-  row 18). Its honest value needs a challenge that is already in the transcript when `A` is
-  written (the prover absorbs `A` before the final squeeze): take `ζ` **= the first K coordinate
-  of `P3.4`'s `κ_c` squeeze**, which follows every query (A.4 row 46). The prover sends
-  `A_{off_i+k} = Σ_{r at level i, k_r = k} ζ^r`, the final phase squeezes `z ∈ K`, and the check is:
-  - (I) `Σ_r ζ^r·cur_r = Σ_k A_k·cap[k]` (over K, `cur`/`cap` as F-halves: two identities);
-  - (II) `Σ_k A_k·z^k = Σ_r ζ^r·z^{k_r + off_{lvl(r)}}`.
-- **Soundness.** (II) is an identity of two polynomials in `z` of degree `< 1,920`, checked at
-  a fresh `z ∈ K` after `A` is fixed: by SZ, except with probability `1,919/2^256 < 2^{-245}`,
-  `A_k = Σ_{r: k_r = k} ζ^r` for every `k`. Substituting into (I): `Σ_r ζ^r (cur_r − cap[k_r]) = 0`
-  with `cur, k, cap` fixed before `ζ` was squeezed (they are determined by the items up to Q.4,
-  and P3.4's squeeze follows them): a polynomial of degree `≤ 870` in `ζ`, so except with
-  probability `870/2^256`, `cur_r = cap[k_r]` for all `r` — the truth today's `assertEq` gives.
-  Both are per-fresh-query error rows `≪ εR = 15/2^124`; `εR` is unchanged. (If the reviewer
-  prefers `ζ` fresh, add a second K squeeze to the final phase: +80 B of stream, same bound.)
-- **`V` (`gen4`):** at each position `piDigestAt … ; assertEq` is replaced by `mulK`
-  accumulations: `acc_I += ζ^r·cur_r` (a K×F product per half), `acc_II += ζ^r·zpow(k_r)`; after
-  the final phase: `zpow(k)` for `k < 1,920` by one K power chain (1,919 products), `Σ A_k cap[k]`
-  (1,920 K×F ×2), `Σ A_k z^k` (1,920 K), `z^{k_r}` as `Π_b (1 + bit_b(k_r)·(z^{2^b} − 1))`
-  (9 K products per read, `z^{2^b}` by 11 squarings) — ≈ 1,919 + 3,840 + 1,920 + 7,839 ≈ 15.5 k
-  K-equivalent products ≈ **5 ms VM** (a K product ≈ 3 F products). The native `acc` (P2's
-  `ir.rs`) follows the dump.
-- **Circuit (per slot, templates with regular instances):** the `ζ^r` chain 871 K products
-  (2,613 rows), `z^{2^b}` 11 K squarings (33), per read `z^{k_r}` 9 K products (27 rows × 871 =
-  23.5 k; the bits are the L position bits already bound), `ζ^r·cur_r` and `ζ^r·z^{k_r}` (871 × 5
-  = 4.4 k), `A_k·cap[k]` and `A_k·z^k` (1,920 × 5 = 9.6 k, `cap`/`A` arena cells at fixed
-  addresses: the `shared` class), the sums linear: **≈ 40 k rows per slot**, all `local`/`shared`
-  classes, ≈ 2.4 ms VM per prototype at 0.06 µs.
-- **Items:** `seq4` gains, after `Pf`, phase `CapChk = [absorb fA 61,440; squeeze z]` (A.4 row
-  48). `items_length` 8,891 → 8,893; `piSize` 797,904 → 859,344; the stream per segment
-  `1,482,752 → 1,544,432` B (+61,680: the absorb item 61,520 + the squeeze 80 + the 80 of a
-  second squeeze if `ζ` is made fresh); blocks 23,168 → 24,133 (+4.2 %).
+- **Challenges.** `ζ ∈ K` := the first 32 bytes of P3.4's first squeeze (`kcAt es 4 0`): it follows
+  every query (`fsStarts4`: P3.4 at entry 463, after Q.4) and is unused today (`finP3 4 = finP2 4`,
+  "κ_c⁽⁴⁾ changes nothing"). `z ∈ K` := the CapChk squeeze. A fresh `ζ` buys nothing (PK Q1).
+- **Proof.** A new field `A` (A.3 row 18, after the siblings): `A_{off_i+k} = Σ_{r at level i, k_r = k} ζ^r`,
+  1,920 K elements = 61,440 B, **padded with 32 zero bytes to 61,472 B** so that the CapChk phase is
+  `≡ 0 (mod 64)` in the stream (the absorb item `80 + 61,472 = 61,552`, the squeeze 80: 61,632 =
+  64·963). `piSizeOf seq4`: **798,192 → 859,664**; `items`: **8,905 → 8,907**; the segment stream
+  **1,482,752 → 1,544,384 = 64·24,131** (whole blocks kept: `chainLenOf_seq4`'s invariant).
+- **The check (`V`, after `Pf`):** (I) `Σ_r ζ^r·cur_r = Σ_k A_k·cap[k]` (two identities, one per
+  F half; `ζ^r·cur_r` a K×F product); (II) `Σ_k A_k·z^k = Σ_r ζ^r·z^{k_r + off_{lvl(r)}}`.
+- **Soundness.** (II) is an identity of polynomials in `z` of degree `< 1,920` at a fresh `z`
+  after `A` is absorbed: except with probability `1,919/2^256`, `A_k = Σ_{r: k_r = k} ζ^r` for all
+  `k`. Then (I) reads `Σ_r ζ^r (cur_r − cap[k_r]) = 0`, a polynomial of degree `≤ 870` in `ζ` whose
+  coefficients are fixed by items `≤ Q.4`, before `ζ`: except with probability `870/2^256`,
+  `cur_r = cap[k_r]` for every `r` — today's per-position `assertEq`. Both are per-fresh-query rows
+  `≤ 2^-245`; the maximum row stays P2's `2^-120.36`; **`εR = 15/2^124` and `claim.json` are
+  unchanged** (PK-m5).
+- **`V` (`gen4`):** per position, `piDigestAt; assertEq` → `acc_I += ζ^r·cur_r`, `acc_II += ζ^r·zpow[k_r + off]`
+  with `zpow[k]` a native power table (1,919 K products once; indexed, not bit-products: PK-m11),
+  `ζ^r` by one chain (870); after CapChk `Σ A_k cap[k]` (3,840 K×F), `Σ A_k z^k` (1,920 K): ≈ 8.5 k
+  K-equivalents ≈ 3 F products each ≈ **5–6 ms VM**. The native `acc` follows the dump.
+- **Circuit (per slot, keyed templates):** the `ζ^r` chain (871 K: 2,613 rows), `z^{2^b}` (11 K
+  squarings: 33), `z^{k_r + off}` as `z^{off}·Π_t (1 + c_t·(z^{2^t} − 1))` over the 9 cap bits
+  (27 rows × 871 = 23,517; the cap bits are **kind-muxed** linear rows `c_t = Σ_κ s_κ·L(p·maxb + sib_κ + t)`,
+  9 per read = 7,839: PK-m3, §5.2), `ζ^r·cur_r` and `ζ^r·z^{k_r}` (871 × 5 = 4,355), `A_k·cap[k]`
+  and `A_k·z^k` (1,920 × 5 = 9,600; `A`/`cap` at fixed arena₁ addresses: the `shared` class), the
+  sums linear: **≈ 40 k + 7.8 k rows per slot**, `local`/`shared` classes, ≈ 2.5 ms VM per
+  prototype at 0.06 µs.
+- **Items:** `seq4` gains phase 52 `CapChk = [absorb fA 61,472; squeeze z]` after `Pf` (A.4 row
+  48): FS entries 468 → 470 (`fsStarts4` entry 470, `phOf_ge`'s `468`/`51` → `470`/`52`, `DT 52`).
 
-### 3.4 Fit and costs of (β)
+### 3.4 Fit and costs of (β) with R-A′ (4.4.1)
 
-- **N8's H:** `8 × 24,133 = 193,064` chain blocks + 2,196 (hashStmt, WOTS, WM, spare, tails as
-  today) = 195,260 ≤ 196,608 − 1,024: **fits by 324 blocks**. With R-A′'s 81-B spacers the
-  aggregate chain is `4·1,544,431 + 3·81 + 1 = 6,177,968 B = 96,531` blocks, two of them
-  193,062: the same. There is no room for anything else in N8's H; a future change that adds a
-  stream byte must take it from `A` (e.g. `A` over F with two independent `ζ`s: same bytes; or
-  caps at depth 8 at level 0: `A` −8 KB, siblings +9 KB — no).
-- **N2/N4:** chains `+965` blocks per slot; N4 `hUsed` 117,589 → ≈ 122,500 of 196,608 − 1,024.
-- **`|π|`:** +61,440 B → `x` +0.0293 → **`V̄` +0.047 s**. **V:** +5 ms VM ≈ +4 ms runner →
-  **+0.03 s**. Total **≈ +0.08 s of S**.
-- **Prover (segment):** `A` is 871 K additions; the extra absorb ≈ 0. Node prover: +965 H blocks
-  per slot × 10.8 µs ≈ +10 ms per slot (+0.05 s per N4 node).
-- **What moves:** R4's `Fin*`/`R4Acc`/`R4Run` (the cap assert's final-phase form; positions are
-  *appended*, nothing before `Pf` moves), P4 (none: positions on `seq4` up to `Pf` unchanged),
-  S-C (the two identities' lemma: `capChk_sound`), S-G (the Q-phase truth unchanged, the doom
-  gains the two SZ rows), S-0′ (`gen4`'s `posOpsG`/`finalOps4`), `FRTranscriptDefs` (`items`,
-  `fA`, `piSize`), `FRFormat`, P2 (`ir.rs`, `prover.s`: `A`, the spacer), L-circ (the templates
-  `tplPowChain`, `tplBitPow`, `tplMacShared`).
+- **N8's H** (`hUsed_eq`: 187,540 = 2·92,672 + 2,196; the bound is `lBase ≤ 196,608 − 1,024 =
+  195,584`, `lBase = ⌈hUsed/256⌉·256`, `hEnd = hUsed + 8 ≤ lBase`): chains `2 × 96,530 = 193,060`,
+  `hUsed = 195,256`, `hEnd = 195,264`, `lBase = 195,328`: **fits, 256 blocks to spare (0.13 %)**.
+  Nothing else may enter N8's H; a future stream byte must come out of `A` (e.g. caps at depth 8
+  at level 0 trade 8 KB of `A` for 9 KB of siblings: no). N4: `hUsed` 117,589 → 122,410
+  (previous node 24,131, aggregate 96,530, 1,749 fixed). N2: 24,131 + 2·24,133 − 2 + fixed.
+- **`|π|`:** 859,664 B, `x_size = 0.4099` (was 0.3806): **+0.03 s of `V̄`** at `x ≈ 1.4`
+  (`dV̄/dx = 0.2667·3x² ≈ 1.57`). **V:** +5–6 ms VM ≈ +5 ms runner: +0.04 s. **Total ≈ +0.07 s of S.**
+- **Prover.** Segment: `A` is 871 K additions; the absorb ≈ 0. Node: +963 H blocks per slot
+  (`24,131 − 23,168`) × 10.8 µs ≈ +10 ms per slot, +0.05 s per N4 node.
+- **What moves (PK-M2, PK-m10) — a restatement, not a re-run:** `FRTranscriptDefs` (`items`,
+  `fA`, `piSize`, `streamBytes`, the shape `decide`s), `FRFormat`, `FRShape4`
+  (`itemsOf_seq4_length 8907`, `piSizeOf_seq4 859664`, `streamBytesOf_seq4`, `chainLenOf_seq4
+  24131`, `traces_le_qV` at `4·8,907 + 3`), `FRVIR4`/`FRVIR4Mux` (`posOpsG` accumulators,
+  `capChkOps`), `FRVIRFinals4` (`finCap`), `FRX4Prog.szPs`/`FRX4Ext` (the `798192` literal), S-H4's
+  `reassemble` (row 18), `FRSoundness4Pos` (`fsItems_length 470`), `FRNodeRead4`
+  (`segTr_length`/`slotTr4_length` 8,907), **R4** (`FinLog4.cols`/`FinRest4.cols`, `ys_facts4`/
+  `cols4_of_run`: §9's exact statements), **S-G** (`D_ζ`, `D_z`, `DT 52`, `truthCap`, the bridge
+  into `truthP3_four_of_cols` and the level-`i` `DP3 i`: §9), P2 (`ir.rs`, `prover.s`: `A`, the
+  spacer), L-circ (`tplPowChain`, `tplBitPow` kind-muxed, `tplMacShared`). Positions before `Pf`
+  do not move, so P4's position lemmas re-run unchanged.
 
 ---
 
@@ -376,26 +384,34 @@ elements** (`len‖tag ‖ l(2) ‖ r(2) ‖ ans(2)`): the position group is **1
 the whole difficulty: a template instance at a non-aligned base costs `≈ 60` products (the
 shift-window automaton, §5.3) instead of `O(1)`.
 
-### 5.2 The two arenas (M-relative, per slot; the same addresses in both prototypes)
+### 5.2 The two arenas (M-relative, **in the slot's own region**; the same addresses in both prototypes) (4.4.1)
 
-| Region (M-relative cells of the slot's region) | Size | Content | Bound by |
+PK-M3: the arenas must sit in the region of the slot whose prototype reads them, or
+`InSlot`/`ProtoFit`/`slotV4`'s copy identity fails and prototype 0's consuming rows become
+per-slot irregular. So **every slot's region holds its prototype, its arenas, the bit rows and the
+cap-check templates at the same M-relative offsets; the previous-node slot's *spare* region holds
+only `R` and the `evalM` replay** (keyed closed forms that may read region A's cells, as S-E14
+planned). `R`'s cells stay at S-E14's `[2^19, 2^20)` of the spare region; the arenas take the
+prototype's region's cells `[190,584 + …, 2^19)`: arena₁ 96,524 + arena₂ 132,096 allocated + bits
+8,320 + cap-check cells ≈ 40 k ≈ **277 k cells**, packed above the prototype's 190.6 k without the
+`2^17` alignment of 4.4 (`A₁`'s diagonal then carries a constant offset: the shift-by-constant
+automaton on the M side too, +160 products per slot).
+
+| Region (M-relative cells of the slot's own region) | Size | Content | Bound by |
 |---|---|---|---|
-| **arena₁** `A₁ + e`, `e < 96,527` (`A₁ = 2^18`, aligned to `2^17`) | 96,527 cells | stream element `e` | **copy rows** `R₁ + e : one·(M(A₁+e) − H(sCell b0 e)) = 0`, `R₁` aligned to `2^17` |
-| **arena₂** `A₂ + lvlBase_i + p·2^{a_i} + q`, `q < stride_i` (`2^{a_0} = 256`, `2^{a_{1..4}} = 128/128/64/64`) | `Σ_i t_i·2^{a_i} = 290·256 + 178·128 + 145·128 + 132·64 + 126·64 ≈ 132 k` cells (≈ 88 k used) | position `p` of level `i`: its 147/92/78/64/57 elements, in stream order | **M-to-M copy rows** `R₂ + lvlBase_i + p·2^{a_i} + q : M(A₂…+q) = M(A₁ + E_i + S_i·p + q)` |
-| the FS items' elements | — | read directly in arena₁ (468 items at fixed addresses: `shared` class) | — |
+| **arena₁** `A₁ + e`, `e < 96,524` | 96,524 cells | stream element `e` | copy rows `R₁ + e : one·(M(A₁+e) − H(sCell b0 e)) = 0` |
+| **arena₂** `A₂ + lvlBase_i + p·2^{a_i} + q`, `q < S_i` (`S = 147/92/78/64/57`, `2^a = 256/128/128/64/64`; level 3 has no slack) | 132,096 allocated, **85,946 used** (PK-m1: `Σ_i t_i·S_i`) | position `p` of level `i`, its `S_i` elements in stream order | M-to-M copy rows `R₂ + … : M(A₂ …) = M(A₁ + E_i + S_i p + q)` |
+| the FS items' elements | — | read in arena₁ at fixed addresses (`shared` class) | — |
+| **position bits (L)** | the 7,552 L bits per slot, laid **bottom-aligned per position**: bit `h` of position `p` at `L(p·maxb + h)` (kind-independent for `bitOf j h`); the cap bits `sib_κ + t` are kind-dependent and reach rows through 9 kind-mux linear rows per read | — | the 62 answers' 256 bits tied by **3 gated decomposition rows per half** `s_κ·(H − Σ_j x^j b_{π_κ(j)}) = 0` (372 rows) over the L bits and 8,320 M Boolean cells |
+| the **sibling** | no cells: the per-kind form `l + r + v` with `v = a·cur` (`a` the activity selector of the depth: at a dummy depth `v = 0`, so the form is `0` as `assertZero` demands; PK-M4/PK-m3) | — | 2 product rows per kind-varying depth per position: `871 × 2 × 2 = 3,484` rows |
 
-- **The prototype's consuming rows** read arena₂ (the position templates: column fold `dotKF`,
-  the Merkle mux rows, the `wf` pins of the Q items, the cap-check products) and arena₁'s FS
-  elements (fixed addresses). Every such row is inside an aligned piece of the prototype →
-  structured, 0.06 µs, evaluated **once per prototype** by the copy identity.
-- **Why two arenas.** Arena₁ gives the per-slot H bind as a stride-(1,1) diagonal — `O(log)`
-  per slot, which matters because the H base differs per slot (`4·b0_σ`); arena₂ gives the
-  templates power-of-two instance strides. One arena cannot do both: a template reading
-  arena₁ has instance stride 147 and costs ≈ 60 products *per instance per slot* (≈ 52 k × 5
-  slots ≈ 52 ms per node), while an arena laid out regularly and bound to H directly costs the
-  same 60 per instance per slot on the H side. The arena₁↔arena₂ link is M-to-M, so it is paid
-  once per prototype — and since both prototypes have the same item sequence and the same
-  arena addresses, its low-coordinate MLE is the same value for both: **once per node**.
+- **`selectHalf` and `keep` stay as compiled** (PK-M4): the mux rows are already gated by
+  construction (`muxOut`), and an ungated replacement forces `cur = 0` at dummy depths. The 4.4
+  "−15 k" saving is withdrawn; only the sibling *import cells* go (−15,104 cells).
+- **Why two arenas** (unchanged): arena₁ gives the per-slot H bind as a stride-(1,1) diagonal,
+  `O(log)` per slot; arena₂ gives the templates power-of-two instance strides. The arena₁↔arena₂
+  link is M-to-M at the same addresses in both prototypes, so its low-coordinate MLE is one
+  value per node.
 
 ### 5.3 The closed forms
 
@@ -415,8 +431,10 @@ point. The slot factors `eq(τ_hi, σ)·eq(u_hi, σ)` are `copy_val`'s (already 
    The arena₂ term is aligned (`eq(u_hi, p)·D_{S_i}`): `O(log)`. The arena₁ term needs, per `p`,
    `W(X_p) = Σ_{q<S_i} eq(τ_lo', q)·eq(u, X_p + q)` at `X_p = A₁ + E_i + S_i p`: the
    **shift-window automaton** (`q`'s 8 bits, carry `∈ {0,1}`, range `q < S_i`, then the high part
-   `eq(u_hi, (X_p + q)_hi)` for the two possible carries): **≈ 60 products per instance**. Total
-   `871 × 60 ≈ 52 k products ≈ 10.5 ms`, **once per node** (both prototypes share it). The
+   `eq(u_hi, (X_p + q)_hi)` for the two possible carries): per bit 4 states × 2 transitions ×
+   (a τ-factor, a u-factor, an accumulate) ≈ 16 products, 8 bits, plus the high part ≈ 24:
+   **≈ 150 products per instance** (PK-m2; 4.4's 60 counted the transitions only). Total
+   `871 × 150 ≈ 131 k products ≈ 26 ms`, **once per node** (both prototypes share it). The
    `eq(τ_hi', p)` factors are table lookups.
 3. **Pins on arena cells inside the position templates** are ordinary template rows (`one` and
    a constant per level): part of `Â_tpl`, no extra cost. The 482 FS pins and 936 FS links:
@@ -433,52 +451,51 @@ point. The slot factors `eq(τ_hi, σ)·eq(u_hi, σ)` are `copy_val`'s (already 
 
 | Part | Rows per slot | Baseline (irregular, 0.6 µs/row) | This layout |
 |---|---|---|---|
-| arena₁ ↔ H | 96,527 | 58 ms per slot | 0.1 ms per slot |
-| arena₂ ↔ arena₁ | ≈ 88 k | 53 ms per slot | 10.5 ms **per node** |
-| Merkle mux, FS links, pins, bit rows, cap-check templates | ≈ 70 k | 42 ms per slot | ≈ 4 ms per prototype (0.06 µs/row) |
-| **N4 (5 slots, 2 prototypes)** | | **≈ 760 ms** (S-E13a's 40 ms/slot was for 63 k rows without the cap check: 200 ms) | **≈ 19 ms VM** |
+| arena₁ ↔ H | 96,524 | 58 ms per slot | 0.1 ms per slot |
+| arena₂ ↔ arena₁ | 85,946 | 52 ms per slot | **26 ms per node** (150 products × 871 instances; 52 at a 2× miss) |
+| sibling rows, FS links, pins, bit rows, cap-check templates | ≈ 78 k | 47 ms per slot | ≈ 3 ms per prototype (0.03–0.06 µs/row, PK-m8) |
+| **N4 (5 slots, 2 prototypes)** | | **≈ 785 ms** (S-E13a's 40 ms/slot was for 63 k rows without the cap check: 200 ms) | **≈ 33 ms VM** (59 at a 2× miss on the automaton) |
 
-The uncertainty is the automaton's constant (60 products per instance is a count of its
-transitions; the measured F product is 0.2 µs). A 2× miss gives 30 ms. Either is far below the
-baseline. The row cost is the price: ≈ 190 k rows and ≈ 230 k cells per slot (§6).
+The automaton's 150 products per instance is a transition count at 0.2 µs per F product; it is
+the largest single line of §6.3 and the first thing B2′ must measure. The row cost is the price:
+≈ 252 k rows and ≈ 277 k cells per slot (§6).
 
 ---
 
 ## 6. The integrated feasibility: pack map + `R` against `N_M` and V
 
-### 6.1 Rows per slot region (`2^20 = 1,048,576`; prototypes measured, `logs/S-E13a/nodedump4-run.log`)
+### 6.1 Rows per slot region (`2^20 = 1,048,576`; prototypes measured, `logs/S-E13a/nodedump4-run.log`) (4.4.1)
 
-| Part | Previous-node slot (prototype 0) | Segment slot (prototype 1) | Source |
+| Part | Previous-node slot, region A | Segment slot | Source |
 |---|---|---|---|
-| prototype as compiled today | 730,493 | 725,885 | measured |
-| − `muxOut` rows of `selectHalf` (replaced by the Merkle mux rows below) | −30,208 | −30,208 | 2 × 2 per step × 7,552 |
-| − the cap `assertEq`/`piDigestAt` (→ §3's templates) | ≈ 0 | ≈ 0 | |
-| pack map: arena₁ 96,527 + arena₂ 83,333 + Merkle mux 15,104 + FS links 936 + pins 8,905 + bit rows 8,444 + `input` 8 | 213,257 | 213,257 | §1.3, §5.2 |
-| §3's cap check | 40,000 | 40,000 | §3.3 |
-| `R` without `evalM` (S-E14 §2: `targetS` 24 k, `linkWAll` 35 k, `shiftTarget` 2.2 k, `rsWeight` + kind factor 135 k, `evalL` 25 k) | 221,000 | 49,000 (after the dead `evalM`/`evalL` are dropped from the generator) | S-E14 |
-| `evalM` replay (`R` proper): eq trees 48 k, keys 30 k, the child's arena₂ automaton as a 60-row template × 871 instances 52 k, the sparse skeleton's companions 55 k (templated, S-E12b lever) … 120 k (not), closed forms 8 k, outputs 1 k | **≈ 250–320 k** (S-E14's 90 k for the child's irregular link region is gone: the child's pack map is §5's) | — | §4.4, S-E9's classes, §5 |
-| link region (S-E12c rows, WOTS/aggPad 8–8.7 k at slot 1, aggChk ≈ 2.7 k per aggregate) | reserved 32,768 | reserved 32,768 | S-E13a/b |
-| **total in one region** | **1,457–1,527 k ✗** | **1,030,702 (98.3 %)** | |
-| prototype levers (S-E6 §5: `phiRS` 134 rows in 256-row pieces −62 k; skeleton padding −29 k) | −91 k | −91 k | S-E6 |
-| **total with levers** | 1,366–1,436 k ✗ | **939,702 (89.6 %)** | |
+| prototype as compiled (`selectHalf`/`keep` kept; the sibling and cap imports lose cells only) | 730,493 | 725,885 | measured |
+| arena₁ 96,524 + arena₂ 85,946 + FS links 934 (467 items × 2) + pins 8,907 + bit rows 8,320 + 372 + cap-bit kind-mux 7,839 + sibling rows 3,484 + `input`/`stmt` rows 18 | 212,344 | 212,344 | §1.3, §5.2, PK-m1/m3/m7 |
+| cap-check templates (§3.3) | 40,000 | 40,000 | |
+| link region (S-E12c rows; WOTS/`aggPad` 8–8.7 k and `aggChk` ≈ 2.7 k at slot 1) | 32,768 reserved | 32,768 reserved | |
+| **total, one region** | **1,015,605 (96.9 %)** | **1,059,997 ✗ (101.1 %)** | |
+| S-E6 §5's two prototype levers (`phiRS` 134-in-256 pieces −62 k; skeleton padding −29 k): **track B0, a prerequisite of B2′** | −91,000 | −91,000 | PK-M4 |
+| **total with B0** | **924,605 (88.2 %)** | **968,997 (92.4 %)** | |
+| **spare region (previous-node slot only):** `R` without `evalM` 221 k + `evalM` replay 330–400 k (§6.2, the child's WOTS/`aggPad`/link/`aggChk` replay included: PK-M6) | 551–621 k (53–59 %) | — | S-E14, §6.2 |
+| `R` without `evalM` (segment: after C2 drops the dead `evalM`/`evalL`) | — | 49,000 **(inside the 968,997 above)** | S-E14 |
 
-**The previous-node slot does not fit one region under any combination** (even without
-`evalM` it is 1,207 k; without `evalM` and with the levers 1,116 k). **Layout rule for 4.4: the
-previous-node slot owns two regions** — region A: the prototype (700,285 + the levers) and the
-link region; region B: its arenas, `R` and the `evalM` replay (213 + 40 + 221 + 250–320 =
-724–794 k, 69–76 %). The segment slots stay one region each. Cells: region A the prototype's
-190.6 k; region B arena₁/₂ 180 k + bits 8 k + `R`'s (S-E14: `[2^19, 2^20)`) — fits.
+**The segment slot does not fit without B0** (1.1 % over); with B0 it is at 92.4 %. **The
+previous-node slot keeps one region for its prototype + arenas and one spare region for `R`** —
+no change to `nodeLayout4`, `N_M`, the mux or `lSlots`; `NodeKind.mSlot`, `InSlot`, `hfit4`'s
+"selector copies below `oneCell + vslots·2^20`" bound and `ProtoFit`'s check learn that region
+`vslots` (N2: 3, N4: 5) is slot 0's spare. `mRows4_le` (stale `protoRowsN = 551,805`) is re-based
+on the measured prototypes or retired in favour of `ProtoFit` per region (PK Q4).
 
-| Kind | Regions used / available | Rows used | `N_M/1.05` | Margin |
+| Kind | Regions used / available | Rows used (with B0) | `N_M/1.05` | Margin |
 |---|---|---|---|---|
-| N2 (`m = 31`, `2^22`) | 2 + 2 = 4 / 4 | 733 k + 794 k + 2 × 940–1,031 k = 3.41–3.59 M | 3.99 M | 1.11–1.17× |
-| N4 (`m = 32`, `2^23`) | 2 + 4 = 6 / 8 | 1.53 M + 4 × 940–1,031 k = 5.29–5.65 M | 7.99 M | 1.41–1.51× |
-| N8 (`2^23`) | 8 / 8 | 8 × 940 k = **7.52 M** (without the levers 8.25 M ✗) | 7.99 M | **1.06× with the levers** |
+| N2 (`m = 31`, `2^22`) | 1 + 1 + 2 = 4 / 4 | 925 k + 571 k + 2 × 969 k = 3.43 M | 3.99 M | 1.16× |
+| N4 (`m = 32`, `2^23`) | 1 + 1 + 4 = 6 / 8 | 1.50 M + 4 × 969 k = 5.37 M | 7.99 M | 1.49× |
+| N8 (`2^23`) | 8 / 8 | 8 × 969 k = **7.75 M** (without B0: 8.48 M ✗) | 7.99 M | **1.03×** |
 
-So N8 depends on the two prototype levers (both are layout/alignment changes inside the compile
-hint, no statement changes). A second N8 lever if needed: arena₂ holds only the consumed
-elements (today 83 k; dropping the 3 padding elements per column item and the `len‖tag` elements
-of node items to arena₁-side `shared` pins saves ≈ 10 k rows at +5 ms per prototype).
+N8's margin is thin; the levers in reserve for it, in order: (i) arena₂ restricted to the
+elements templates consume (the 3 padding elements per column item: −2,613 rows; the node items'
+`len‖tag` elements pinned on arena₁ instead: −7,552 rows at +4.5 ms per prototype); (ii) the
+cap-check bit-products as 3 sub-templates per kind instead of kind-mux rows (−7.8 k, +47 k: no);
+(iii) `segSlots N8 = 7` (§8: not needed on the figures above).
 
 ### 6.2 What `R` costs in V, and the two kinds of "template"
 
@@ -498,103 +515,282 @@ Each of them has instance structure and can be keyed:
 | `evalL4I ν` | 15–25 k | the carry automaton per dyadic piece (≤ 14 instances) | ≈ 3 k → 0.6 |
 | `shiftTarget` | 2.2 k | `Eθ` tree, `eq(τ, last)` | ≈ 0.5 k → 0.1 |
 | **total** | 221 k | | **≈ 37 k products ≈ 7 ms VM per node** (as sparse pieces: 130 ms) |
-| `evalM` replay | 250–320 k | u-rows share `Ĉ` with the parent's own keys (free), v-rows/sums `O(log)`, the arena₂ automaton key (871 instances), the sparse companions **if templated** | **≈ 7–15 ms**; +25 ms if the sparse skeleton stays sparse (S-E12b's lever not built) |
+| `evalM` replay | 330–400 k | u-rows share `Ĉ` with the parent's own keys (free), v-rows/sums `O(log)`, the arena₂ automaton key (871 instances), the sparse companions **if templated**, the child's WOTS/link rows **if C0 templated them** | **≈ 7–15 ms**; +25 ms if the sparse skeleton stays sparse (S-E12b's lever not built); +10–18 ms without C0 (PK-M6) |
 
-### 6.3 The V budget (N4, VM ms, best)
+### 6.3 The V budget on the measured basis (PK-M5) (4.4.1)
 
-| Part | ms | Note |
-|---|---|---|
-| today, without S-E13a/b's rows (the brief: 213–225; INT-9 `implN4F` 178–179 unloaded) | 215 | S-E13a/b's +30 ms are replaced |
-| pack map (§5.4) | 19 (–30) | 10.5 per node + 2.5 per prototype + 0.1 per slot |
-| cap check: V's own identities 5 + templates 2 × 2.4 | 10 | §3.3 |
-| `R` without `evalM`, keyed (§6.2) | 7 | 130 if left as sparse pieces |
-| `evalM` replay | 7–15 (–40) | needs S-E12b's sparse-skeleton lever |
-| WOTS/aggPad/aggChk link rows (≈ 11 k irregular at slot 1; S-E13a measured 17 ms at the fold's load) | 7 | templatable to ≈ 2 (chain stride 3, path stride 2) |
-| **V(N4)** | **265–273 (worst 309)** VM ≈ **223–229 (260) runner** | |
-| `x = V/206.6 + 859,344/2^21` | 1.49–1.52 (1.67) | |
-| `V̄ = 0.2667·x³` | **0.88–0.93 (1.24) s** | today 0.71–0.79 |
-| with S-T1's F-side kind factor and S-E11's `evalM` levers (−25 ms VM) | 0.75–0.80 | |
+**Basis.** S-I's season run 40809858010 on the 7763: `v_ref = 206.6 ms` (`T_triv/10`), `V_i =
+143.6–162.4 ms, mean 157.9`, `|π| = 798,192`, `x = 157.9/206.6 + 0.3806 = 1.145`, **`V̄ = 0.400 s`**
+(HEAD `48d25ef`: before S-E13a/b's rows and before `R`). Every Δ below is added to **157.9 ms
+runner** (≈ 188 ms VM at 1.19); S-E13a/b's +30 ms VM are replaced by this layout, not added.
+`dV̄/dV = 0.2667·3x²/206.6 ≈ 0.0076 s per runner ms` at `x ≈ 1.4`.
 
-**ΔS ≈ +0.1 … +0.2 s (worst +0.5)**, of which 0.08 is B2's `|π|` and own check. P̄ gains the
-node prover's +10 ms per slot for the longer stream (+0.05 s per N4) and `A`'s negligible cost.
+| Part (VM ms) | best | worst | Note |
+|---|---|---|---|
+| arena₁↔H `O(log)` per slot (5 slots) | 0.5 | 1 | §5.3 item 1 (+160 for the M-side offset) |
+| arena₂↔arena₁ shift-window automaton, **150 products per instance** (PK-m2), 871 instances, once per node | 26 | 52 | 4.4 said 10.5 (60/instance) |
+| position templates, FS links/pins, bit rows (≈ 2 × 70 k structured rows at 0.03–0.06 µs) | 5 | 8 | PK-m8 |
+| cap check: V's own identities 5–6 + templates 2 × 2.5 | 11 | 14 | §3.3, PK-m11 |
+| `R` without `evalM`, keyed (§6.2) | 7 | 14 | 130 if left as sparse pieces |
+| `evalM` replay (D1) | 7 | 15 (+25 if the sparse skeleton is not templated) | needs S-E12b's lever |
+| the child's WOTS/`aggPad`/link/`aggChk` rows in the parent (after C0 templates them) and in `R` | 4 | 20 (without C0: 7 + 10–18 muxed ×3) | PK-M6 |
+| **ΔV (VM)** | **60** | **124 (149)** | |
+| **ΔV (runner, ÷1.19)** | **50** | **104 (125)** | |
+| V runner | 208 | 262 (283) | |
+| `x = V/206.6 + 0.4099` | 1.417 | 1.678 (1.780) | |
+| **`V̄ = 0.2667·x³`** | **0.76** | **1.26 (1.50)** | today **0.400** |
+| **Δ`V̄` = ΔS (V side)** | **+0.36** | **+0.86 (+1.10)** | |
+
+Plus the prover side: +0.05 s per N4 node for the longer stream (≈ +0.03 s of P̄). **The price of
+a sound node on the measured basis is ≈ +0.4 s of S at best, +0.9 s as the worst case of every
+line, against S = 6.42.** The two largest and least certain lines are the arena₂ automaton (26–52)
+and the replays (11–35); S-T1's F-side kind factor and S-E11's `evalM` levers (−25 ms VM, outside
+this memo) would recover ≈ 0.16 s. 4.4's "+0.1 … +0.2 s" mixed `v_ref = 177.8` (changes 28's
+"today") with 206.6 and is withdrawn.
 
 ### 6.4 Options the orchestrator asked to be weighed
 
 | Option | Effect | Verdict |
 |---|---|---|
-| (1) closed forms per op (§6.2) and the two arenas (§5) | the design above: every `R` op and every import keyed; V +50–60 ms VM; two regions for the node slot | **recommended** |
-| (2) move the child's `evalM` into the parent's PIOP (S-E6 §4 (c)): the child's `evalM(r_E2, r′)` claim becomes a point claim the *parent's* E-phase proves — the parent's lincheck is run on the matrix `[M_parent ; R-free]` with a second evaluation point folded by `κ_E` | removes `R` proper (−250–320 k rows, −7–40 ms V, the fixed point gone) at +1 E-phase (23 F rounds, +1,104 B of π, +≈ 2 ms V) — **but** the child's point `(r_E2, r′)` is witness (H cells), and a sumcheck at a witness point is not a lincheck: the parent would prove `Σ_x eq(r_child, x)·M(x)·…` with `eq(r_child, ·)` a *witness* table — a degree-3 sumcheck over `2^23` cells with a witness multiplier: 23 rounds of degree 3, and the eq table itself (2^23 K) is never materialised; the verifier's final check needs `eq(r_child, r_parent)` — computable from the H cells. Sound and standard ("proof-carrying" evaluation), but a new phase in S-C/S-G and the prover (+1 lincheck ≈ +0.3 s per node) | **the reserve** (§8): take it only if (1)'s `evalM` replay misses V by > 30 ms |
+| (1) closed forms per op (§6.2) and the two arenas (§5) | the design above: every `R` op and every import keyed; ΔV +60 ms VM best (§6.3); a spare region for the node slot's `R` | **recommended** |
+| (2) move the child's `evalM` into the parent's PIOP (S-E6 §4 (c)): the child's `evalM(r_E2, r′)` claim becomes a point claim the *parent's* E-phase proves — the parent's lincheck is run on the matrix `[M_parent ; R-free]` with a second evaluation point folded by `κ_E` | removes `R` proper (−330–400 k rows, −7–58 ms V, the fixed point gone) at +1 E-phase (23 F rounds, +1,104 B of π, +≈ 2 ms V) — **but** the child's point `(r_E2, r′)` is witness (H cells), and a sumcheck at a witness point is not a lincheck: the parent would prove `Σ_x eq(r_child, x)·M(x)·…` with `eq(r_child, ·)` a *witness* table — a degree-3 sumcheck over `2^23` cells with a witness multiplier: 23 rounds of degree 3, and the eq table itself (2^23 K) is never materialised; the verifier's final check needs `eq(r_child, r_parent)` — computable from the H cells. Sound and standard ("proof-carrying" evaluation), but a new phase in S-C/S-G and the prover (+1 lincheck ≈ +0.3 s per node) | **the reserve** (§8): take it if (1)'s `evalM` replay measures above §8's kill line (25 ms VM) |
 | (3) smaller children (`m = 31` segments only, `L32` dropped) | `R` unchanged in structure; the item sequence shrinks (positions 290 → fewer bits, same `t_i`), stream −3 %: nothing structural | no |
-| (4) split a slot across two `2^20` regions | adopted for the previous-node slot (§6.1); a segment slot does not need it | adopted |
+| (4) a second region for the previous-node slot | adopted for `R` and the `evalM` replay only (§6.1); the prototype, arenas and cap check stay together in the slot's own region (PK-M3) | adopted as corrected |
 | (5) a different recursion shape (no previous-node slot: every step's node verifies only segments, the chain of nodes replaced by a tree) | removes prototype 0's `R` entirely (−221–540 k rows, −14–55 ms) but PR #20's step relation needs the previous node's acceptance in the step's witness (`Rel`'s node clause); a tree of nodes brings back 3.x's `P30`/tree costs (B-1 withdrawn) | no |
 | (6) the `evalL` replay at `lRows4`'s `2^14` strides as 64-row chunks (S-E14's 125 k) | fits V only as the automaton key | subsumed by (1) |
 
 ---
 
-## 7. Build plan
+## 7. Build plan (4.4.1: the review's corrected order, with the build budget)
 
-Tracks, in dependency order. Every stage keeps the build green and the kernel structural (the
-new theorems are inductions along the compile trail; the only `decide +kernel` stay the shape
-facts). Owners as in the blueprint's §7; "L-circ" is S-E.
+Owners as in the blueprint's §7 ("L-circ" is S-E). Every stage records its modules' CPU-s
+(`lean -DElab.async=false --profile`, one core) in its RESULT and re-measures `plan4t init`
+(PK-m6); the kernel stays structural (inductions along the compile trail; the `decide +kernel`
+facts on `seq4` stay on shape parameters).
 
-| # | Track | Modules | Depends on | Delivers |
-|---|---|---|---|---|
-| A1 | **S-0′ / FRAgg: R-A′ general form** | `FRAgg` (`VAwith`, `VA_sound`, `VA_extract*`, `VA_queries_le`, controls), `FRVerifier4` (`qV` arithmetic) | — | the spacer absorb (`49 + s` B, `s` from A2's `seq4`); `kindS`/`wf` at `i ≥ 1` follow by S-E13a's lemmas |
-| A2 | **S-0′ / FRTranscriptDefs: the `CapChk` phase** (§3.3) | `FRTranscriptDefs` (`items`, `fA`, `piSize`, `streamBytes`), `FRFormat`, `FRVIR4`/`FRVIR4Mux` (`posOpsG` accumulators, `finalOps4` + `capChkOps`), `FRVIRFinals4` (`finCap`) | — | `piDigestAt` gone from the programs; `items_length = 8,893`; dumps regenerate (positions before `Pf` unchanged) |
-| A3 | **S-C: `capChk_sound`**; **S-G: the Q-phase doom** gains the two SZ rows | `FRVIRSpec`/`FRVIRFinalsCore`, the Rev4 truths (`truthQ4`) | A2 | the error accounting (§9) |
-| A4 | **R4/P4**: re-run with the appended phase (`R4Acc`/`R4Run`/`R4Ref`, `R4Stmt`); P4's positions unchanged | — | A2 | no statement changes |
-| B1 | **L-circ: aliases in the compile** — `opOut` takes an `Arena` parameter (per-prototype arena bases and the item→element table from `itemsOf seq4`, built once at process start like `wfSeg`); `piElem`/`piDigest`/`askX`/`chF`/`chK`/`input`/`felems` aux → arena/seed/`hashA` forms; `bitOf` → per-kind L slots (`Out.kin`); the sibling → the linear form; `selectHalf` on Merkle operands → the 2 mux rows | `FRVIRCompile` (an `Arena` field in `Params`, the import cases), `FRVIRCompileSound` (`RepS` of the alias forms as hypotheses `ArenaOk`), `FRNodeRows4Pack` (the element table), `FRNodeRows4Hint` | A2 | prototypes with ≈ 26 k fewer import registers; `compileX_soundK` with `ArenaOk` |
-| B2 | **L-circ: the arenas' rows and their MLE** — `arenaRows κ σ` (arena₁↔H, arena₂↔arena₁, FS links, FS pins, bit rows), the position templates (one key per level), `tplArena_mle` (the diagonal range sum, the shift-by-constant and shift-window automata, with their proofs), the two-region node slot in `nodeIRows4`/`InSlot`/`ProtoFit`/`copy_val` | `FRNodeRows4`, `FRNodeRows4Plan`, `FRNodeRows4Fit`, new `FRNodeRows4Arena`, `FRVIRTplArena` | B1 | `evalMT4_eq` re-proved; V measured (`VTime4`); the row model updated (`protoRowsN` 730,493 − 30,208) |
-| B3 | **L-circ: `compileFromX_run`** (§4) with `AskBound`, `gap4Imp_of_arena`; the foreign flags enumerated from `fors` (lemma or row each) | new `FRNodeRows4Run`, `FRNodeSound4R` (`Gap4` loses `imp`), `FRNodeRows4PackSound` | B2, S-H4's `reassemble` field lemmas (B3 of S-E13a) | **`Gap4` = `aggChk (c)` only** |
-| B4 | **L-circ: `aggChk (c)`** (the views' chaining/sum/end/cap as rows: element decompositions 130 rows per element, a 64-bit adder) | `FRNodeRows4Agg` | A1, B2 | `Gap4 = ∅`; `ks_rev4GR` without `hGap` |
-| C1 | **L-circ: the `R` keys** (§6.2): `rsWeight` claims (reuse `tplRsWeight`), the kind factor, `targetSNode`, `linkWAll`, `evalL`'s automaton, `shiftTarget`; each an `RT` with `RTOk` (S-E14's mechanism) and a key in the plan | `FRNodeRows4Rep*`, `FRVIRTpl*` | B2 | `SlotImpR` down to `evalM` |
-| C2 | **S-0′: drop the segment group's `evalM`/`evalL`** (or the non-interference lemma) | `FRVIR4Mux` | — | prototype 1's six dead imports gone |
-| D1 | **L-circ: `evalM`'s replay** in region B: the u/v-row layout over the plan's keys, the sparse-skeleton templating (S-E12b lever), the instance AP, the child's arena automaton key; `replay_mle`, `replay_sound` | `FRNodeRows4RepM` (new), `FRNodeRows4Plan` | B2, C1, S-E12b's levers | `SlotImpR = ∅`; `rep` discharged; V measured |
-| E1 | **P2**: `ir.rs` (the `CapChk` phase, `A`), `prover.s` (the spacer, `A`, the arenas = copies, the 8,320 bit cells, the power chains, the `R` cells), the two-region node slot, the KAT against the dumps | — | A2, B2, C1, D1 | the honest node witness; the completeness KAT S-E13a/b asked for |
-| F | **S-I**: `claim.json` (`qV` unchanged at 36,000; `ε` unchanged), the certificate on `ks_rev4GR` without `hGap` | — | all | |
+| # | Stage | Modules (existing: S-I CPU-s from `logs/S-I/run-40810876665/build-modules.txt`) | Depends on | Delivers | Δ CPU-s (estimate, §7.2) |
+|---|---|---|---|---|---|
+| A2′ | CapChk, block-aligned (§3.3) | `FRTranscriptDefs` 17, `FRFormat` 4.4, `FRShape4` 23, `FRVIR4` 11, `FRVIR4Mux` 8.1, `FRVIRFinals4` 25, `FRX4Prog` 5, `FRX4Ext` 9.2, `FRSoundness4Pos` 16, S-H4's `reassemble` | — | `piDigestAt` gone; `items 8,907`, `piSizeOf seq4 859,664`; dumps regenerate | +10 |
+| A1′ | R-A′ at 129 B (§2) | `FRAgg` 15, `FRNodeKinds4` 14, `FRNodeCircuit4` 6.2, `FRNodeRead4`, `FRNodeRows4Agg`, `FRNodeRows4Pack` (spacer pins), `FRVerifier4` | A2′ (the stride) | whole-block aggregates, spacer entries in the reader, `4·qS + 3` | +8 |
+| A3′ | the restated `cols` and the two dooms (§9.1) | `FRSoundness4R4Tail` 2.3, `FRSoundness4R4Cols` 3.0 (+Ctrl 2.3), `FRSoundness4TailTruths` 7.3, `FRSoundness4TailD` 18, `FRSoundness4TailLig` 11, `FRSoundness4R4Run` 6, `R4Ref` 15, `R4Acc` 2.7 | A2′ | `truthCap` from `¬D_ζ ∧ ¬D_z`; the tail composes again | +20 |
+| B0 | S-E6 §5's prototype levers | `FRVIRCompile` 26 (`CS.align` for `phiRS` 134→ a 134-row piece in 256 with the gap used, the skeleton padding), `FRNodeRows4Hint` 3.3, `FRNodeRows4Model` | — | prototypes ≤ 640 k rows each (measured) | +3 |
+| B1′ | compiler aliases | `FRVIRCompile` 26, `FRVIRCompileSound` 7.3, `FRVIRTplKMux` 5.3 | A2′, B0 | `Params.Arena`; `piElem`/`piDigest`/`askX`/`chF`/`chK`/`input`/`felems` as alias forms; `bitOf` L slots; the sibling's per-kind form; `compileX_soundK` with `ArenaOk` | +15 |
+| B2′ | arenas, links, pins, bits, cap-check templates in the slot's own region (§5.2) | `FRNodeRows4` 6.9, `FRNodeRows4Fit` 14, `FRNodeRows4Plan` 9.5, new `FRNodeRows4Arena`, `FRVIRTplArena` (three automata + `tpl_mle`), `FRNodeRows4PackSound` | B1′ | `evalMT4_eq` re-proved; V and plan time measured | +55 |
+| C0 | template S-E13b's WOTS/`aggPad`, S-E12c's link rows, B4's `aggChk` rows | `FRNodeRows4Wots*` (12 modules, S-E13b), `FRNodeRows4Ext` | B2′ | their `Ĉ` closed (parent 7 → 2 ms; `R` −25 k rows) | +15 (−12 if `xRows_length`'s 11.7 s `simp` goes) |
+| B3 | `compileFromX_run`, `AskBound`, `gap4Imp_of_arena`; the 12/79 foreign flags listed and discharged | new `FRNodeRows4Run`, `FRNodeSound4R`, `FRNodeRows4PackSound` | B2′, A2′ (`reassemble_field`) | `Gap4 = aggChk (c)` | +30 |
+| B4 | `aggChk (c)` (views' chaining/sum/end/cap; PK-m7's `hashA`/`hashB` rows stated once) | `FRNodeRows4Agg` | A1′, B2′ | `Gap4 = ∅` | +10 |
+| C1 | the six `R` keys (§6.2) | `FRNodeRows4Rep*`, `FRVIRTpl*` | B2′ | `SlotImpR` down to `evalM` | +60 |
+| C2 | drop the segment group's `evalM`/`evalL` | `FRVIR4Mux` | — | prototype 1's six dead imports gone | 0 |
+| **D1 / §8** | the `evalM` replay in the spare region **or** the §8 reserve — decided on §8's kill line | `FRNodeRows4RepM` (new) or S-C/S-G's new E instance | C0, C1, S-E12b's levers | `SlotImpR = ∅` | +40 / +60 |
+| E1 | P2 | `prover.s`, `ir.rs` | A, B, C, D | the honest node witness; the completeness KAT | — |
+| **RET** | changes 27 (B) steps 2–4, RET-3, G2 | the 3.x extractor/front/shapes | can run from A on | build CPU −575 … −625 (27 (B)), G2 on the 43 `FRX*` (804 s) | −900 … −1,000 |
+| F | S-I | `Solution`, `claim.json` unchanged (`ε`, `qV = 36,000`) | all | **`evaluate.py cert` ≤ 600 s is part of done**, not only `HARNESS: ACCEPT` | — |
 
-What P2 must change, in one list: the segment prover writes `A` (871 K additions) and absorbs
-it; the aggregate prover writes the spacer items; the node prover fills arena₁ (a copy of the
-stream, 96,527 cells per slot), arena₂ (83 k copies), the 8,320 non-position bits of the P2
-answers, the cap-check chains (`ζ^r`, `z^{2^b}`, `z^{k_r}`, the MACs), `R`'s cells as S-E14 §1.9,
-and lays the previous-node slot over two regions; the native `acc` mirrors the new finals.
+### 7.1 Track briefs (for the orchestrator to start A2′, A1′, A3′, B0)
+
+**A2′ — CapChk (S-0′ / FRTranscriptDefs).** Modules: `FRTranscriptDefs` (`fA := 18`, `nFields 19`,
+`piopPhases` unchanged, a new `capChkPhase : Phase := ⟨"CapChk", .absorb fA 61,472⟩` followed by
+`⟨"CapChkZ", .squeezes 1 (.one fun _ => true)⟩` appended after `finalPhase`; `streamBytes_eq`,
+`items_aligned`'s successor lemma, `fsStarts` entries 469–470), `FRFormat` (`fieldSize fA = 61,472`,
+`piSize = 859,664`), `FRShape4` (`itemsOf_seq4_length : 8907`, `piSizeOf_seq4 : 859664`,
+`streamBytesOf_seq4 : 1544384`, `chainLenOf_seq4 : 24131`, `qV4`'s `traces_le_qV` at
+`4·8907 + 3 ≤ 36000`), `FRVIR4Mux`/`FRVIR4` (`posOpsG`: replace `shrN; piDigestAt; assertEq` by
+`shrN k; mulKF ζpow_r cur → t; addK acc_I t; mulK ζpow_r zpow[k + off] → t'; addK acc_II t'` where
+`ζpow_r` is a chain register and `zpow` is read by a new op `powIdx z k` (V: a table lookup; the
+template: the bit-product), `finalOps4` gains `capChkOps`: `piElemK fA 32k → A_k` (1,920 reads),
+the two sums, `assertEq acc_I Σ A_k cap[k]`, `assertEq acc_II Σ A_k z^k`), `FRVIRFinals4`
+(`finCap` as a `Finals` field over `OpImpl`), `FRX4Prog.szPs`/`FRX4Ext` (the `798192` literal and
+its lemmas → `859664`), S-H4's `reassemble` (row 18 `A` from the CapChk absorb's payload, bytes
+`0 … 61,440`). Statements that change: every literal above; `kcAt es 4 0`'s first 32 bytes are
+read as `ζ` by a new `zetaAt es : K`. Definition of done: `lake build FR` green with the regenerated
+dumps (`ops-*.txt`, `items.json`); `streamBytesOf_seq4 = 64·24,131` by `decide +kernel` on shape
+parameters only; the S-F4 dumps' KAT; the dump's CapChk item at FS entries 469–470; the plan-form
+KAT (P2⁗) re-run; CPU-s of each module in the RESULT.
+
+**A1′ — R-A′ (S-0′ / FRAgg, S-E reader).** Modules: `FRAgg` (`spacerQ := absorbQ (Vector.replicate
+32 0) (List.replicate 49 0)`, `spacer : OProg Bool := .ask spacerQ (fun _ => .ret true)`;
+`VAwith` runs `seqAll (intersperse spacer (segProgs …))`; `VA_sound`'s `trs` gains the spacer
+entries between the segment runs; `VA_extract`/`VA_extract_on`/`VA_complete` through it;
+`VA_queries_le : … ≤ 4·qS + 3`; `seqAll_queries_le` unchanged), `FRVerifier4` (`V4_queries_le`,
+`ks_queries4` at `35,631`), `FRNodeKinds4` (`segB := 1544384`, `cLen := 24131`, `spacerB := 129`,
+`aggB k := 64·(24133·k − 2)`, `aggL k := 24133·k − 2`, `aggL_eq`, `tailIvs` targets
+`streamTarget (aggB (j+1)) (aggL (j+1) − 1)`), `FRNodeLayout4` (`aggChainLen`, `hUsed_eq`:
+N2/N4/N8 recomputed, `regions_fit`), `FRNodeRead4` (`segTr κ σ k i w` at offset `1 + i·(segB − 1 +
+129)`; `sgn4`'s aggregate trace = `intersperse [(spacerQ, answer read at the spacer's offset)]`
+over the sub-slot traces), `FRNodeCircuit4` (`AggPad4` with `r = 64`: the message-prefix clause
+is the whole block), `FRNodeRows4Agg`/`FRNodeRows4Wots` (`padRows` without the element-7
+decomposition; `lastR k = 64`), `FRNodeRows4Pack`/`FRNodeRows4` (`packB` for every sub-slot at
+`b0 + 24133·i`; 9 pin rows per spacer: `enc64 89 ‖ "FRABS000"`, the 32 zero state bytes, the 49
+zero message bytes, as whole elements), `FRNodeRows4PackSound` (`kindS`/`wf` at `i ≥ 1`:
+`chainBytes4_elem` at the shifted element). Definition of done: `Gap4R` loses `kindS`/`wf` at
+`i ≥ 1`; `aggChainLen_eq`'s residues are 0; `hUsed_eq` N8 = 195,256 and `regions_fit` by
+`decide` on the literals; the row dump's spacer pins; the aggregate control (`ctrlA_*`) with
+spacers; CPU-s recorded.
+
+**A3′ — the restated `cols` and the two dooms (one owner for R4 + S-G).** Modules:
+`FRSoundness4R4Tail` (`FinLog4.cols`/`FinRest4.cols` as in §9.1 (a)), `FRSoundness4R4Cols`
+(`ys_facts4`/`cols4_of_run` produce the computed `d_{i,q}` and `capChk4 es` from the finals'
+`finCap`; `capDig_eq4` unchanged), `FRSoundness4TailTruths` (`truthCap`, `D_ζ`, `D_z`),
+`FRSoundness4TailD` (`DT 52 := D_z`, `finCap` in the phase table, `phOf_ge : 470 ≤ p → phOf4 p =
+52`, `fsStarts4` entry 470, the Pf doom's background hypothesis replaced by `truthCap`),
+`FRSoundness4TailLig` (`truthP3_four_of_cols` and the level-`i` `colOf_of_path`/`foldAt_of_cols`
+take `truthCap` as the hypothesis; `cap_of_chk : accept es → ¬D_ζ es → ¬D_z es → truthCap es`),
+`FRSoundness4R4Run`/`R4Ref`/`R4Acc` (re-run with the tabled `finOps4` + `capChkOps`). Statements
+that change: §9.1 lists them verbatim. Definition of done: `ks_rev4GR` (or its successor) builds
+with the same `ε` (`εR = 15/2^124`, the row table gains `D_ζ 870/2^256`, `D_z 1919/2^256`); the
+controls `dZeta_ctl` (a wrong `cur_r` at a bad `ζ` is in `D_ζ`), `dz_ctl`, `capChk_pos`
+(an honest `A` passes) and `capChk_neg` (a wrong `A_k` fails (II) at a generic `z`); CPU-s
+recorded; `FRSoundness4TailD`'s 18 s does not grow by more than the one new phase.
+
+**B0 — the prototype levers (L-circ).** Modules: `FRVIRCompile` (`CS.align`'s policy: a template
+of 134 rows aligned to 256 wastes 122 rows per instance — allocate `phiRS`'s 512 instances at a
+134-row stride inside one 2^16-row piece with `instRows` padded to 136 (= 8·17) and the evaluator's
+instance eq over `inst·136` by the stride-136 range form, **or** keep the 256 alignment and fill
+the 122-row gap with the next key's instances; the skeleton's inter-group padding (`29,142` rows,
+S-E6 §5) removed by aligning only groups above `2^12` rows as S-E6 did for templates),
+`FRVIRTplFast`/`FRNodeRows4Plan` (the evaluator's instance stride), `FRNodeRows4Hint`
+(regenerated by `LayDump4`), `FRNodeRows4Model` (`protoRowsN := the measured value`). Statements
+that change: none in the soundness chain (`compileT_sound` holds at any layout; `ProtoFit` is
+checked at process start); `mRows4_le` re-based. Definition of done: `nodedump4-run.log` shows
+each prototype's region ≤ 640,000 rows (today 730,493 / 725,885: −91 k is the target, −62 k the
+minimum for N8's fit at `segSlots = 8`); `inR true`; `evalMT4` not slower than S-E12c's 84–90 ms;
+`plan4t init` ≤ 2.0 s; CPU-s recorded.
+
+### 7.2 The build budget (PK-M7)
+
+S-I: 2,975 CPU-s over 307 modules (`build-modules.txt`), `lake build FR` 882 s wall against
+`build_s = 600`; the target is ≤ 2,020 CPU-s (≤ 1,550 for 1.3×). The 12 modules ≥ 30 s are 533 s,
+eleven of them `FRX*`. Not in that run (HEAD `48d25ef`): S-E13a's six modules (≈ 50 CPU-s by their
+profiles, 88 s wall minus imports), S-E13b's twelve (≈ 80; `FRNodeRows4Ext` 11.7 s of kernel for
+one `simp` length proof), S-E14's three (≈ 35): **+165 already queued**. This plan's Δ column
+sums to **+265 (D1) / +285 (reserve) CPU-s**, by S-E13a/b's measured rate for modules of the same
+shape (an automaton `tpl_mle` ≈ `FRNodeRows4Fit`'s 14–25 s; an `RT` with `RTOk` ≈ S-E14's 10–12).
+So the build arrives at **≈ 3,400 CPU-s before retirement**, and must lose ≈ 1,400 to reach
+2,020: changes 27 (B) steps 2–4 (−575 … −625, estimated there), G2's golf of the 13 `FRX*`
+decoder modules (their 804 s: −250 … −350 at G1's measured −43 %), the retirement of the 3.x
+`FRX` node extractor (step 2, inside the 575), `xRows_length`'s 11.7 s and S-E13b's per-row
+`simp`s (−20). **That reaches ≈ 2,400–2,500, not 2,020**: the certificate stays over `build_s`
+by ≈ 20 % unless the organiser raises `build_s` (QUEUE's open question: ask it now, with these
+numbers) or the 3.x decoder infrastructure (`FRXBary` 69, `FRXMsg` 54, `FRXAgree` 53, `FRXOut` 47,
+`FRXRead` 46: 269 s) is replaced by S-H4's smaller decoder. F's definition of done is therefore
+`evaluate.py cert ≤ 600 s`, and RET runs in parallel from A2′ on, not after D1.
 
 ---
 
-## 8. If the `evalM` replay does not fit V: the least-bad scope change
+## 8. The scope decision on the measured basis (PK-M5)
 
-The one figure with a 5× spread is the `evalM` replay (7–40 ms). If after D1 it measures above
-≈ 30 ms VM, take option (2) of §6.4: **the child's `evalM` claim is proved by the parent's
-PIOP, not replayed.** Concretely: the previous-node slot's `evalM` register stays an *import*
-(2 × 3 F cells); the node's E-phase gains a second lincheck instance at the child's point — the
-parent's prover proves `Σ_x eq(r_child, x)·A_parent(x)… = evalM_child` — and the verifier's `finE`
-gains the check `eq(r_child, r_parent)`-weighted. Rows: −250–320 k; V: −7–40 + 2 ms; π: +1,104 B;
-prover: +1 lincheck per node (≈ +0.3 s per N4, ΔP̄ ≈ +0.1 s); Lean: S-C's lincheck lemma at a
-witness-valued `eq` table (the table is the shift argument's `eqPt` structure evaluated on H
-cells; `FRSumcheck`'s generic soundness applies), S-G's E truth with two instances, no change to
-`KState`/`ε`. It is a bounded protocol change and it removes the fixed point for good; it is
-*not* recommended first because (1) keeps the PIOP as it is and its cost is within +0.2 s.
+**D1 (the `evalM` replay) against the reserve (the child's `evalM` claim in the parent's E-phase):**
 
-If instead **the row budget** fails (N8 over `N_M/1.05` after the levers), the least-bad change
-is N8 with 7 segment slots (`segSlots N8 = 7`): step 1 covers `≤ 7·2^18` compressions, which
-exceeds the step cap `2^20` already; nothing in PR #20 needs 8.
+| | D1: replay in the spare region | Reserve: a second E instance at the child's point |
+|---|---|---|
+| V (VM) | 7–15 ms best, +25 if the sparse skeleton stays sparse, +10–18 for the child's WOTS rows without C0: **7–58** | ≈ 2 ms (23 rounds of a degree-3 sumcheck, `eq(r_child, r_parent)` from H cells) |
+| Δ`V̄` at `x ≈ 1.4` (0.0076 s per runner ms) | **+0.045 … +0.37 s** | **+0.013 s** |
+| `|π|` | 0 | +1,104 B (23 F rounds × 48): +0.0008 s |
+| Prover | `R`'s cells (one pass over the run) ≈ 0 | one more lincheck per node: +≈ 0.3 s per N2/N4 node; a step is ≈ 8.9 s: **+0.2 s of P̄** (every step has a node) |
+| Rows | 330–400 k in the spare region | 0 (the spare region holds `R`'s 221 k only) |
+| ε | 0 | one new per-fresh-query row `≤ 3/2^128` per round within `εR` (PK-m9) |
+| Lean | `replay_mle`/`replay_sound` + the fixed point (S-E6 §4's blocker, unproved so far), S-E12b's two levers, ≈ 40 CPU-s | a new sumcheck family in S-C (a witness multiplier, `FRSumcheck` generic) + an S-G phase + R4/P4 positions for a new phase in `seq4` (every node proof grows a phase; the segment proofs carry it as dummies), ≈ 60 CPU-s |
+| Score, best → worst | **+0.05 → +0.37 s** | **+0.21 → +0.25 s** |
+
+**Decision.** D1 first, with a **kill line: if the `evalM` replay's measured `evalMT4` cost
+exceeds 25 ms VM (≈ +0.16 s), or `replay_mle`'s fixed point is not closed within C1's budget,
+switch to the reserve.** Below the line D1 wins by ≈ 0.1–0.2 s and keeps the PIOP as it is; above
+it the reserve wins and also removes the fixed point for good. The reserve's protocol change must
+be priced into A2′'s item sequence *now* only if we want its phase appended at the same time as
+CapChk (one dump regeneration instead of two): recommended if the orchestrator expects the kill
+line to be hit; otherwise it is appended later at the same cost.
+
+**N8 with 7 segment slots: not needed.** With B0's −91 k N8 is at 1.03× under `N_M/1.05` and its
+H has 256 blocks to spare (§3.4, §6.1). `segSlots N8 = 7` stays the fallback if B0 delivers less
+than −62 k (the point where 8 × segment slot exceeds `N_M/1.05`).
 
 ---
 
-## 9. ε accounting, and open questions
+## 9. The restated statements (PK-M2), ε accounting, and open questions
 
-- **ε.** Two new per-fresh-query rows, both `≤ 2^{-245}`: (II)'s SZ at `z` (degree `< 1,920` over
-  K) and (I)'s at `ζ` (degree `≤ 870`, charged to P3.4's squeeze, which already carries the
-  `κ_c` doom `≤ 9/2^128`: the row becomes `9/2^128 + 870/2^256`). `εR = 15/2^124` is unchanged; the
-  per-fresh-query maximum stays the E/Z rows'. R-A′'s spacer answers are unused: no row. The pack
-  map, `R` and B4 add no error: they are circuit rows (soundness is `compile*_sound`).
-- **`qV`:** segment 8,893 items; aggregate `4·8,893 + 3 = 35,575 ≤ 36,000`.
-- **Open for the orchestrator.** (i) `ζ` as P3.4's `κ_c` (reuse) or a fresh K squeeze (+80 B
-  stream per segment; N8's 324-block slack holds 8 × 2 blocks). (ii) The two-region node slot
-  changes `copy_val`'s slot factor for region B (no prototype there: B's rows are the arenas and
-  `R`, evaluated by their own closed forms) — confirm that `ProtoFit`'s index check extends to
-  region pairs. (iii) The 79 foreign flags of prototype 1 must be listed before B3 is sized.
-  (iv) S-H4's `reassemble` should be written field by field (A.3 rows) so that `reassemble_field`
-  is definitional. (v) Whether to keep S-E13a's H-cell `wf` pins and kind tie until B2 lands
-  (they are sound and cost 15 ms) or retire them with the arenas (recommended: retire, the pins
-  move into the position templates and the 482 FS pins).
+### 9.1 R4's `cols` and S-G's dooms — exact statements
+
+Today (`FRSoundness4R4Tail`): `FinLog4.cols` / `FinRest4.cols` say, for every level `i < 5` and
+query `q`:
+`∃ col ss, ss.length = sib i ∧ (openPath (frEnc i) col (qPos es i q) ss).runLog L = some (capDig es i (qPos es i q / 2^(sib i))) ∧ y i q = Σ_r eq(s_i, r)·col_r`,
+derived by `R4Cols.ys_facts4`/`cols4_of_run` from the per-position `assertEq cur c` through
+`capDig_eq4`. (β) deletes that compare, so:
+
+(a) **`FinRest4.cols` (and `FinLog4.cols`) become:**
+`∃ col ss d, ss.length = sib i ∧ (openPath (frEnc i) col (qPos es i q) ss).runLog L = some d ∧ pathDig es i q = d ∧ y i q = Σ_r eq(s_i, r)·col_r`
+— the path's digest is *computed* (`pathDig es i q`, a function of the log), not compared —
+**plus one new conjunct of the record**, `capChk4 es`:
+`Σ_{(i,q)} ζ(es)^{r(i,q)}·pathDig es i q = Σ_k A(es)_k·capAll es k ∧ Σ_k A(es)_k·z(es)^k = Σ_{(i,q)} ζ(es)^{r(i,q)}·z(es)^{qPos es i q / 2^(sib i) + off i}`
+with `ζ es := chK (kcAt es 4 0)`, `z es := chK (the CapChk squeeze's answer)`, `A es` the
+absorbed field, `capAll es` the five caps concatenated, `r(i,q)` the read's ordinal. `capDig_eq4`
+stays (it is about the absorbed cap). `ys_facts4`/`cols4_of_run` produce (a) from the run facts of
+`posOpsG`'s accumulators and `finCap`.
+
+(b) **The two dooms** (`FRSoundness4TailTruths`), both prefix-determined:
+`D_ζ es := (∃ i q, pathDig es i q ≠ capDig es i (qPos es i q / 2^(sib i))) ∧ Σ_{(i,q)} ζ(es)^{r(i,q)}·(pathDig es i q − capDig es i …) = 0`
+(the bad `ζ`s are the roots of a nonzero polynomial of degree `≤ 870` over `K`: `|bad| ≤ 870`,
+charged `870/2^256` at P3.4's first squeeze, whose row is 0 today);
+`D_z es := A es ≠ (fun k => Σ_{(i,q): qPos …/2^sib + off i = k} ζ(es)^{r(i,q)}) ∧ (the second identity holds)`
+(`|bad| ≤ 1,919`, charged `1,919/2^256` at phase 52's squeeze: `DT 52 := D_z`).
+
+(c) **The truth and the bridge:** `truthCap es := ∀ i q, pathDig es i q = capDig es i (qPos es i q / 2^(sib i))`;
+`cap_of_chk : capChk4 es → ¬ D_ζ es → ¬ D_z es → truthCap es` (two SZ steps, over K);
+`truthP3_four_of_cols` and the level-`i` bridges `colOf_of_path`/`foldAt_of_cols` take `truthCap
+es` where they took the per-query `openPath … = capDig` conjunct; the Pf doom's background
+hypothesis becomes `truthCap`, discharged by the final case split (`accept ∧ ¬D_ζ ∧ ¬D_z`).
+Literals: `fsStarts4` entry 470, `phOf_ge : 470 ≤ p → phOf4 p = 52`, `DT 52`, `fsItems_length =
+470`.
+
+### 9.2 ε
+
+Two new per-fresh-query rows, `870/2^256` (at P3.4's first squeeze, row 0 today) and
+`1,919/2^256` (phase 52); the per-fresh-query maximum stays P2's `2^-120.36`; `εR = 15/2^124`,
+`claim.json` unchanged. R-A′'s spacer answers are unused: no row. The pack map, `R` and B4 are
+circuit rows: no error term. If §8's reserve is taken: 23 rows of `3/2^128` (degree-3 rounds),
+below `εR`.
+
+### 9.3 Open for the orchestrator
+
+(i) `ζ` reused from P3.4 (recommended; no circularity, PK Q1) or a fresh squeeze (+80 B per
+segment: N8's 256 blocks hold `8 × 2`). (ii) Whether to append the reserve's E phase to `seq4` in
+A2′ (§8). (iii) The 12/79 foreign flags, to be listed from `fors` before B3 is sized. (iv) S-H4's
+`reassemble` written field by field (A.3 rows 0–18) so `reassemble_field` is definitional.
+(v) Retire S-E13a's H-cell pins and kind tie with B2′ (they cost 15 ms and are superseded).
+(vi) The organiser's `build_s` question, with §7.2's numbers.
+
+---
+
+## 10. Fix log (revision 4.4.1, against `reviews/PACK-4.4-review.md`)
+
+**Majors — all applied.**
+
+| # | Fix |
+|---|---|
+| PK-M1 | The block-aligned CapChk (`A` padded to 61,472 B; the phase 61,632 B = 64·963), the 129-B spacer, `seq4`'s constants (8,905 → 8,907 items, `piSizeOf` 798,192 → 859,664, the segment stream 23,168 → 24,131 blocks, the stride 24,133, `aggB k = 64·(24,133k − 2)`). §2, §3.3, §3.4 re-issued; N8's spare recomputed at 256 blocks (`lBase` 195,328 ≤ 195,584); `qV` 35,631. The 81-B variant and the "whole blocks in the 81-B variant" claim are withdrawn. |
+| PK-M2 | §9.1 gives `FinLog4.cols`/`FinRest4.cols`'s new statement, `capChk4`, `D_ζ`, `D_z`, `truthCap`, `cap_of_chk` and the literals that move (`fsStarts4` 470, `phOf_ge`, `DT 52`, `fsItems_length`); A3′'s brief names the modules; §3.4's "what moves" lists R4/S-G/FRX/S-H4; "no statement changes" is withdrawn. |
+| PK-M3 | §5.2/§6.1: the arenas, bit rows and cap check sit in the slot's own region with the prototype; the spare region holds `R` and the `evalM` replay only; the cell plan packs ≈ 277 k cells below `2^19` without the `2^17` alignment (one more shift-by-constant on the M side). |
+| PK-M4 | `selectHalf`/`keep` kept as compiled; the sibling is a per-kind form `l + r + a·cur` (2 rows per kind-varying depth, 3,484 per slot); the −15 k saving withdrawn; B0 (S-E6's levers) is a prerequisite of B2′ with its own brief. |
+| PK-M5 | §6.3 re-done on S-I's run (V 157.9 ms runner, `v_ref` 206.6, `V̄` 0.400): ΔS +0.36 best, +0.86 worst; §0 and §8 use it. |
+| PK-M6 | C0 added before D1 (template S-E13b's WOTS/`aggPad`, S-E12c's link rows, B4's `aggChk` rows); the `evalM` replay's row and V lines carry the child's link-row replay (+30 k / +10–18 ms without C0). |
+| PK-M7 | §7.2: the build arrives at ≈ 3,400 CPU-s (2,975 + 165 queued + 265–285 planned) and reaches ≈ 2,400–2,500 after changes 27 (B), G2 and the `simp` cleanups — still over 2,020; RET runs from A2′ on, F's done includes `evaluate.py cert ≤ 600 s`, and the organiser's `build_s` question is to be asked now. |
+
+**Minors.**
+
+| # | Answer |
+|---|---|
+| PK-m1 | Fixed: arena₂ 85,946 rows (`Σ t_i S_i`), 132,096 allocated cells; level 3 noted at zero slack. |
+| PK-m2 | Fixed: 150 products per instance, 26 ms per node (52 at 2×); §5.3, §5.4, §6.3 updated. |
+| PK-m3 | Decided: the position bits are laid bottom-aligned per position so `bitOf j h` is a kind-free L cell (no `kin`); the decomposition is 3 gated rows per half (372); the 9 cap bits per read reach rows through kind-mux linear rows (7,839 per slot, counted in §6.1); the sibling's per-kind form through `CS.slotK` with `a·cur`; `tensorW`'s `bits 20/19` read the same cells through its existing `tensorWK` kind mux. |
+| PK-m4 | Fixed in A1′'s brief: spacer entries in `sgn4`/`segTr`, 9 pin rows per spacer (length word, tag, state, message), `VA_queries_le` at `4·qS + 3`, `segTr`'s offset `1 + i·(segB − 1 + 129)`. |
+| PK-m5 | Fixed (§3.3, §9.2): P3.4's row is 0 today; the maximum row is P2's `2^-120.36`. |
+| PK-m6 | Fixed: every B/C/D stage re-measures `plan4t init` ≤ 2.0 s (the arena tables are closed constants built like `wfSeg`; the `R` keys and the extended `ProtoFit` are the risk). |
+| PK-m7 | Fixed: 467 FS links; the `hashB1`/`hashB2` rows (8 + 2) and the segment's `hashA` rows stated once in B4 (§1.3's `input` row). |
+| PK-m8 | Accepted: 0.03 µs for structured rows, 0.6 for sparse; the per-prototype figures are kept conservative at 0.06. |
+| PK-m9 | Accepted: the reserve's error row (`3/2^128` per round, 23 rounds) and its S-C/S-G phase are now in §8's table and §9.2. |
+| PK-m10 | Fixed: the literals are listed in §3.4 and A2′/A3′'s briefs (`szPs`, `fsItems_length`, `segTr_length`, `traces_le_qV`, `aggChainLen_eq`, `reassemble` row 18); INT-10's hypotheses unaffected. |
+| PK-m11 | Fixed: V indexes `zpow[k]` (5–6 ms); the bit-product form is the circuit's only. |
+| PK-m12 | Fixed: §5.3 item 1's `one` and M terms are shared across slots; the per-slot cost is the H term's 160 + the offset's 160. |
+| PK-m13 | Noted in §2: `π_A`, `aggSegs`, `segView`, `VAwith`'s size check and INT-10's hypotheses are untouched. |
+
+**Build order:** the review's corrected order adopted as §7 without change, with C0 and RET placed
+as it says; the briefs for A2′, A1′, A3′, B0 are §7.1.
