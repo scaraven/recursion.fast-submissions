@@ -18,7 +18,7 @@ binds. Item by item:
 | `slotP`, `aggTr`, `aggFmt`, `kOk` | the reader (`rd4`): `π_A`'s header with the circuit's `k`, fitted slot proofs |
 | `pack` | the reader: sizes, trace lengths `≤ qV4` (`traces_le_qV`), queries `≤ queryCap` (`itemsOf_qlen_le`, one `decide` over `seq4`'s phase shapes) |
 | `imp` | **gap**: the run on the trace, the auxiliary/import/foreign facts and the statement fact (`SlotImp`): no pack map, no `R` |
-| `chainMsg` | `chainMsg_of_wf` from **gap** `wf`: the stream's tag byte and the items' length words (constant bytes at fixed stream offsets) are not pinned by any target or row |
+| `chainMsg` | `chainMsg_of_wf` from **gap** `wf`: the stream's tag byte, the items' length words and (R-A′) the spacers' length words and queries (constant bytes at fixed stream offsets) are not pinned by any target or row |
 | `aggChk` | **gap**: no row checks `V_A`'s checks against `c_A` (statement, `1 ≤ k ≤ 4`, lengths, sum, end, chaining) |
 | `aggPad` | **gap**: no row links the candidate final block `F_{a,k}` (R-4-m2) to the main chain at `k` |
 | `wots` | **gap**: the WOTS rows (the `k`-mux, the digits, the mirrors) are not built (O2b) |
@@ -122,10 +122,10 @@ theorem aggPf_size (pf : Trace → Proof) (κ : NodeKind) (a : ℕ) (w : Asg) :
     List.length_flatten, List.map_map, Function.comp_def, slotPf_length, List.map_const',
     List.length_range, List.sum_replicate, smul_eq_mul]
 
-theorem aggTr_length (κ : NodeKind) (k : ℕ) (f : ℕ → ℕ) (w : Asg) :
-    ((List.range k).map fun i => slotTr4 κ (f i) w).flatten.length = k * 8783 := by
-  simp only [List.length_flatten, List.map_map, Function.comp_def, slotTr4_length, List.map_const',
-    List.length_range, List.sum_replicate, smul_eq_mul]
+/-- **An aggregate's read trace length** (R-A′): `k` segments and `k − 1` spacer entries. -/
+theorem aggTr_length (κ : NodeKind) (k : ℕ) (f : ℕ → ℕ) (ans : ℕ → Digest) (w : Asg) :
+    (aggTrace ans ((List.range k).map fun i => slotTr4 κ (f i) w)).length = k * 8783 + (k - 1) :=
+  aggTrace_length ans _ 8783 (fun i => slotTr4_length κ (f i) w) k
 
 /-- A `seq4` phase shape's largest query (3.x's `shapeQ` on `Sh`). -/
 def shQ4 : Sh → ℕ
@@ -183,9 +183,10 @@ theorem sgn4_qcap (pf : Trace → Proof) (κ : NodeKind) (σ : ℕ) (w : Asg) :
   intro e he
   unfold sgn4 at he
   split_ifs at he
-  · obtain ⟨t, ht, he⟩ := List.mem_flatten.1 he
-    obtain ⟨i, -, rfl⟩ := List.mem_map.1 ht
-    exact slotTr4_qcap κ _ w e he
+  · rcases mem_aggTrace he with ⟨i, -, he⟩ | ⟨i, rfl⟩
+    · exact slotTr4_qcap κ _ w e he
+    · show spacerQ.size ≤ queryCap
+      rw [spacerQ_size]; decide
   · exact slotTr4_qcap κ 0 w e he
 
 /-! ## The chain's message from the stream's constant bytes -/
@@ -205,12 +206,12 @@ theorem slotTr4_sub (κ : NodeKind) {a i : ℕ} (ha : a < N4c.nAgg κ) (hi : i <
   rw [slotTr4, if_neg (by simp [hp]), slotA_sub κ ha hi, hx]
 
 /-- **`NodeResid4.chainMsg` from the streams' constant bytes**: if signed child `σ`'s stream starts
-with the tag and has every item's length word in place, it is `0x54 ‖ traceBytes` of the read
-trace. -/
+with the tag and has every item's length word and (R-A′) every spacer's length word and query in
+place, it is `0x54 ‖ traceBytes` of the read trace. -/
 theorem chainMsg_of_wf (pf : Trace → Proof) {κ : NodeKind} {σ : ℕ} {w : Asg} (hσ : σ < 2)
     (h0 : (N4c.chainBytes4 κ σ (N4c.kOf (rd4 pf) κ w σ) w).head? = some tagTrace)
-    (hw : ∀ i < nSeg κ σ w, WfAt (N4c.chainBytes4 κ σ (N4c.kOf (rd4 pf) κ w σ) w) (1 + i * (N4c.segB - 1))
-      (itemsOf seq4)) :
+    (hw : ∀ i < nSeg κ σ w, WfAt (N4c.chainBytes4 κ σ (N4c.kOf (rd4 pf) κ w σ) w) (1 + i * N4c.strideB)
+      (itemsOf seq4) ∧ (0 < i → SpAt (N4c.chainBytes4 κ σ (N4c.kOf (rd4 pf) κ w σ) w) (i * N4c.strideB - 128))) :
     N4c.chainBytes4 κ σ (N4c.kOf (rd4 pf) κ w σ) w = tagTrace :: traceBytes ((rd4 pf).sgn κ σ w).tr := by
   have hlen : ∀ k, (N4c.chainBytes4 κ σ k w).length = N4c.streamB κ σ k := fun k =>
     Stream.streamBytes_length _ _
@@ -221,12 +222,14 @@ theorem chainMsg_of_wf (pf : Trace → Proof) {κ : NodeKind} {σ : ℕ} {w : As
     have hn : nSeg κ σ w = kAct κ (N4c.aggOf κ σ) w := by rw [nSeg, if_pos hA]
     rw [hk] at h0 hw ⊢
     rw [hn] at hw
-    rw [stream_of_wf (by rw [hlen, N4c.streamB, if_pos hA, N4c.aggB]) h0 hw]
+    rw [stream_of_wf (by rw [hlen, N4c.streamB, if_pos hA]) h0 (fun i hi => (hw i hi).1)
+      (fun i hi => (hw i hi).2)]
     congr 2
     conv_rhs => rw [← hc]
     show _ = (sgn4 pf κ (N4c.aggChild κ (N4c.aggOf κ σ)) w).tr
     rw [sgn4_agg pf κ ha]
     dsimp only
+    rw [hc]
     congr 1
     refine List.map_congr_left fun i hi => ?_
     have hi' := List.mem_range.1 hi
@@ -239,9 +242,10 @@ theorem chainMsg_of_wf (pf : Trace → Proof) {κ : NodeKind} {σ : ℕ} {w : As
     have hn : nSeg κ 0 w = 1 := by rw [nSeg, if_neg hA]
     rw [hk] at h0 hw ⊢
     rw [hn] at hw
-    rw [stream_of_wf (n := 1) (by rw [hlen, N4c.streamB, if_neg hA, N4c.segB]) h0 hw]
+    rw [stream_of_wf (n := 1) (by rw [hlen, N4c.streamB, if_neg hA]; rfl) h0 (fun i hi => (hw i hi).1)
+      (fun i hi => (hw i hi).2)]
     simp only [rd4, sgn4, if_neg hA, slotTr4, isPrevSlot, hp, Bool.true_and, beq_self_eq_true, if_true,
-      List.range_one, List.map_cons, List.map_nil, List.flatten_cons, List.flatten_nil, List.append_nil,
+      List.range_one, List.map_cons, List.map_nil, aggTrace, aggTrAt, List.nil_append, List.append_nil,
       zero_mul, add_zero]
     rfl
 
@@ -261,11 +265,12 @@ structure Gap4 (impl₀ : OpImpl) (base : NodeKind → OpImpl) (pf : Trace → P
   /-- An active sub-slot's proof has the selected segment kind's byte. -/
   kindS : ∀ a < N4c.nAgg κ, ∀ i < kAct κ a w, ∀ ι, SelOk (slotAsg κ (N4c.sub κ a i) w) (protoP 1) ι →
     byteAt ((rd4 pf).slotπ κ (N4c.sub κ a i) w) 0 = (segAt ι).byte
-  /-- H's streams' constant bytes (for `NodeResid4.chainMsg`): the tag `0x54` at byte 0, and each
-  read item's 8-byte length word `enc64 |q|` at its offset. -/
+  /-- H's streams' constant bytes (for `NodeResid4.chainMsg`): the tag `0x54` at byte 0, each read
+  item's 8-byte length word `enc64 |q|` at its offset, and (R-A′) before each later segment the
+  spacer's length word and query `enc64 89 ‖ spacerQ`. -/
   wf : ∀ σ < 2, (N4c.chainBytes4 κ σ (N4c.kOf (rd4 pf) κ w σ) w).head? = some tagTrace ∧
-    ∀ i < nSeg κ σ w, WfAt (N4c.chainBytes4 κ σ (N4c.kOf (rd4 pf) κ w σ) w) (1 + i * (N4c.segB - 1))
-      (itemsOf seq4)
+    ∀ i < nSeg κ σ w, WfAt (N4c.chainBytes4 κ σ (N4c.kOf (rd4 pf) κ w σ) w) (1 + i * N4c.strideB)
+      (itemsOf seq4) ∧ (0 < i → SpAt (N4c.chainBytes4 κ σ (N4c.kOf (rd4 pf) κ w σ) w) (i * N4c.strideB - 128))
   /-- `NodeResid4.aggChk`: `V_A`'s checks against `c_A`. -/
   aggChk : ∀ a < N4c.nAgg κ, ∃ vs, (aggSegs (piSizeOf seq4) (N4c.kA (rd4 pf) κ w a)
       ((rd4 pf).sgn κ (N4c.aggChild κ a) w).π).mapM segView = some vs ∧
@@ -338,7 +343,7 @@ theorem resid4_of (hS : N4c.StmtN4 κ (lRows4 κ) (nodeIRows4 κ) vk c₁ c₂ w
       · simp only [rd4, sgn4, hA, Bool.false_eq_true, ite_false, ByteArray.size, List.size_toArray,
           slotPf_length, piSizeOf_seq4]
         norm_num
-    · have hq := traces_le_qV
+    · have hq := traces_spacers_le_qV
       rw [itemsOf_seq4_length] at hq
       by_cases hA : N4c.isAgg κ σ = true
       · obtain ⟨ha, hc⟩ := N4c.agg_of_isAgg κ hσ hA
@@ -346,7 +351,8 @@ theorem resid4_of (hS : N4c.StmtN4 κ (lRows4 κ) (nodeIRows4 κ) vk c₁ c₂ w
         simp only [rd4, sgn4_agg pf κ ha, aggTr_length]
         have := kAct_le κ (N4c.aggOf κ σ) w
         have h4 : κ.maxK ≤ 4 := by cases κ <;> decide
-        nlinarith
+        have h48 := Nat.mul_le_mul_right 8783 (this.trans h4)
+        exact le_trans (Nat.add_le_add h48 (Nat.sub_le_sub_right (this.trans h4) 1)) hq
       · simp only [rd4, sgn4, hA, Bool.false_eq_true, ite_false, slotTr4_length]
         omega
   · -- aggFmt
@@ -366,7 +372,7 @@ theorem resid4_of (hS : N4c.StmtN4 κ (lRows4 κ) (nodeIRows4 κ) vk c₁ c₂ w
   · -- aggTr
     intro a ha
     rw [hk a ha]
-    simp only [rd4, sgn4_agg pf κ ha]
+    exact ⟨spAns κ (N4c.aggChild κ a) (kAct κ a w) w, by simp only [rd4, sgn4_agg pf κ ha]⟩
   · -- kOk
     intro a ha
     rw [hk a ha]; exact kAct_le κ a w

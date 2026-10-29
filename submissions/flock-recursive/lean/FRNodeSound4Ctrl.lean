@@ -160,18 +160,13 @@ theorem wfAt_of_take (B : List UInt8) : ∀ (its : List Item) (tr : Trace) (o : 
       rw [List.take_take, Nat.min_eq_left (by omega)]
     rw [← this, h1, List.append_assoc, List.take_left' (enc64_length _), h.1]
 
-theorem drop_take_blocks {S : ℕ} : ∀ (blocks : List (List UInt8)) (i : ℕ), (∀ b ∈ blocks, b.length = S) →
-    (hi : i < blocks.length) → (blocks.flatten.drop (i * S)).take S = blocks[i]
-  | b :: bs, 0, hS, _ => by simp [← hS b (by simp)]
-  | b :: bs, i + 1, hS, hi => by
-    rw [List.flatten_cons, Nat.add_one_mul, Nat.add_comm, ← List.drop_drop, List.drop_left' (hS b (by simp))]
-    exact drop_take_blocks bs i (fun t ht => hS t (by simp [ht])) (by simpa using hi)
-
-/-- The reader's trace of signed child `σ` is its stream's segments read at their offsets. -/
+/-- The reader's trace of signed child `σ` is `V_A`'s trace of its stream's segments read at their
+offsets (R-A′: the spacer entries between them; one segment and no spacer for a previous node). -/
 theorem sgn4_tr (pf : Trace → Proof) {κ : NodeKind} {σ : ℕ} (hσ : σ < 2) (w : Asg) :
-    ((rd4 pf).sgn κ σ w).tr = ((List.range (nSeg κ σ w)).map fun i =>
-      Read.readItems (N4c.chainBytes4 κ σ (N4c.kOf (rd4 pf) κ w σ) w) (1 + i * (N4c.segB - 1))
-        (itemsOf seq4)).flatten := by
+    ((rd4 pf).sgn κ σ w).tr = aggTrace
+      (fun i => spAnsB (N4c.chainBytes4 κ σ (N4c.kOf (rd4 pf) κ w σ) w) (i * N4c.strideB - 128))
+      ((List.range (nSeg κ σ w)).map fun i =>
+        Read.readItems (N4c.chainBytes4 κ σ (N4c.kOf (rd4 pf) κ w σ) w) (1 + i * N4c.strideB) (itemsOf seq4)) := by
   by_cases hA : N4c.isAgg κ σ = true
   · obtain ⟨ha, hc⟩ := N4c.agg_of_isAgg κ hσ hA
     have hk : N4c.kOf (rd4 pf) κ w σ = kAct κ (N4c.aggOf κ σ) w := by
@@ -181,6 +176,7 @@ theorem sgn4_tr (pf : Trace → Proof) {κ : NodeKind} {σ : ℕ} (hσ : σ < 2)
     conv_lhs => rw [← hc]
     rw [sgn4_agg pf κ ha]
     dsimp only
+    rw [hc]
     congr 1
     refine List.map_congr_left fun i hi => ?_
     rw [slotTr4_sub κ ha (lt_of_lt_of_le (List.mem_range.1 hi) (kAct_le κ _ w)) w, hc]
@@ -190,49 +186,134 @@ theorem sgn4_tr (pf : Trace → Proof) {κ : NodeKind} {σ : ℕ} (hσ : σ < 2)
     obtain ⟨hp, rfl⟩ := hp
     rw [nSeg, if_neg hA, N4c.kOf, if_neg hA]
     simp only [rd4, sgn4, if_neg hA, slotTr4, isPrevSlot, hp, Bool.true_and, beq_self_eq_true, if_true,
-      List.range_one, List.map_cons, List.map_nil, List.flatten_cons, List.flatten_nil, List.append_nil,
+      List.range_one, List.map_cons, List.map_nil, aggTrace, aggTrAt, List.nil_append, List.append_nil,
       zero_mul, add_zero]
     rfl
 
 theorem chain_len (pf : Trace → Proof) {κ : NodeKind} {σ : ℕ} (hσ : σ < 2) (w : Asg) :
-    (N4c.chainBytes4 κ σ (N4c.kOf (rd4 pf) κ w σ) w).length = 1 + nSeg κ σ w * (N4c.segB - 1) := by
+    (N4c.chainBytes4 κ σ (N4c.kOf (rd4 pf) κ w σ) w).length = N4c.aggB (nSeg κ σ w) := by
   rw [N4c.chainBytes4, Stream.streamBytes_length, N4c.streamB, nSeg, N4c.kOf]
   by_cases hA : N4c.isAgg κ σ = true
   · obtain ⟨ha, -⟩ := N4c.agg_of_isAgg κ hσ hA
-    rw [if_pos hA, if_pos hA, if_pos hA, kA_rd4 pf κ ha, N4c.aggB]
-  · rw [if_neg hA, if_neg hA, N4c.segB]
+    rw [if_pos hA, if_pos hA, if_pos hA, kA_rd4 pf κ ha]
+  · rw [if_neg hA, if_neg hA]; rfl
 
-theorem wf_of_eq {B : List UInt8} {n : ℕ} (hl : B.length = 1 + n * (N4c.segB - 1))
-    (h : B = tagTrace :: traceBytes ((List.range n).map fun i =>
-      Read.readItems B (1 + i * (N4c.segB - 1)) (itemsOf seq4)).flatten) :
-    B.head? = some tagTrace ∧ ∀ i < n, WfAt B (1 + i * (N4c.segB - 1)) (itemsOf seq4) := by
-  have hfit : ∀ i < n, 1 + i * (N4c.segB - 1) + slenS (itemsOf seq4) ≤ B.length := fun i hi => by
-    rw [slenS_seq4, hl]
-    have : (i + 1) * (N4c.segB - 1) ≤ n * (N4c.segB - 1) := Nat.mul_le_mul_right _ (by omega)
-    rw [Nat.add_one_mul] at this; omega
-  refine ⟨by rw [h]; rfl, fun i hi => wfAt_of_take B _ _ _ (readItems_sizes B _ _ (hfit i hi)) (hfit i hi) ?_⟩
-  have hX : B.drop 1 = (((List.range n).map fun i =>
-      Read.readItems B (1 + i * (N4c.segB - 1)) (itemsOf seq4)).map traceBytes).flatten := by
+theorem aggB_mono {m m' : ℕ} (h : m ≤ m') : N4c.aggB m ≤ N4c.aggB m' := by
+  simp only [N4c.aggB]
+  have := Nat.mul_le_mul_right (N4c.segB - 1) h
+  have := Nat.mul_le_mul_right N4c.spacerB (Nat.sub_le_sub_right h 1)
+  omega
+
+theorem aggB_step (i : ℕ) : N4c.aggB (i + 1) - N4c.aggB i = (if i = 0 then 0 else 129) + (N4c.segB - 1) := by
+  rcases Nat.eq_zero_or_pos i with rfl | hi
+  · simp [N4c.aggB]
+  · rw [N4c.aggB_succ i hi, if_neg (by omega)]; simp only [N4c.spacerB]; omega
+
+theorem traceBytes_flatten' (trs : List Trace) : traceBytes trs.flatten = (trs.map traceBytes).flatten := by
+  induction trs with
+  | nil => rfl
+  | cons t ts ih => simp only [List.flatten_cons, traceBytes, List.flatMap_append, List.map_cons] at ih ⊢; rw [ih]
+
+/-- **The stream of `0x54 ‖ V_A`'s trace has its constant bytes** (the converse of `stream_of_wf`). -/
+theorem wf_of_eq {B : List UInt8} {n : ℕ} (hl : B.length = N4c.aggB n)
+    (h : B = tagTrace :: traceBytes (aggTrace (fun i => spAnsB B (i * N4c.strideB - 128))
+      ((List.range n).map fun i => Read.readItems B (1 + i * N4c.strideB) (itemsOf seq4)))) :
+    B.head? = some tagTrace ∧ ∀ i < n, WfAt B (1 + i * N4c.strideB) (itemsOf seq4) ∧
+      (0 < i → SpAt B (i * N4c.strideB - 128)) := by
+  rw [aggTrace_range] at h
+  set g : ℕ → Trace := fun i => (if i = 0 then [] else [spEntry (spAnsB B (i * N4c.strideB - 128))]) ++
+    Read.readItems B (1 + i * N4c.strideB) (itemsOf seq4) with hg
+  have hT := slenS_seq4
+  have hfit : ∀ i < n, 1 + i * N4c.strideB + slenS (itemsOf seq4) ≤ B.length := fun i hi => by
+    have := aggB_mono (show i + 1 ≤ n by omega)
+    rw [hl, hT]
+    rcases Nat.eq_zero_or_pos i with rfl | hi0
+    · simp only [N4c.aggB] at this ⊢; omega
+    · have h1 := N4c.aggB_succ i hi0
+      have h2 := (N4c.aggB_blocks hi0).2.2
+      have : 128 ≤ i * N4c.strideB := le_trans (by decide) (Nat.le_mul_of_pos_left N4c.strideB hi0)
+      simp only [N4c.spacerB] at h1; omega
+  have hsz : ∀ i < n, (traceBytes (Read.readItems B (1 + i * N4c.strideB) (itemsOf seq4))).length =
+      N4c.segB - 1 := fun i hi => by
+    rw [traceBytes_length_of (readItems_sizes B _ _ (hfit i hi)), hT]
+  have hgl : ∀ i < n, (traceBytes (g i)).length = N4c.aggB (i + 1) - N4c.aggB i := fun i hi => by
+    rw [aggB_step, hg]; dsimp only
+    rw [traceBytes_append, List.length_append, hsz i hi]
+    split_ifs
+    · rfl
+    · rw [spacer_entry_length]
+  have hpre : ∀ m ≤ n, (traceBytes ((List.range m).map g).flatten).length = N4c.aggB m - 1 := by
+    intro m
+    induction m with
+    | zero => intro _; simp [N4c.aggB, traceBytes]
+    | succ m ih =>
+      intro hm
+      rw [List.range_succ, List.map_append, List.flatten_append, traceBytes_append, List.length_append,
+        ih (by omega), List.map_singleton, List.flatten_singleton, hgl m (by omega)]
+      have := aggB_mono (Nat.le_add_right m 1)
+      have : 1 ≤ N4c.aggB m := by simp only [N4c.aggB]; omega
+      omega
+  -- block `i`: `B.drop (aggB i)` starts with `traceBytes (g i)`
+  have hblk : ∀ i < n, (B.drop (N4c.aggB i)).take (N4c.aggB (i + 1) - N4c.aggB i) = traceBytes (g i) := by
+    intro i hi
+    have hr : List.range n = List.range i ++ i :: List.range' (i + 1) (n - (i + 1)) := by
+      obtain ⟨d, rfl⟩ : ∃ d, n = i + 1 + d := ⟨n - (i + 1), by omega⟩
+      rw [show i + 1 + d - (i + 1) = d by omega, List.range_eq_range', List.range_eq_range',
+        show i + 1 + d = i + (d + 1) by omega, ← List.range'_append, List.range'_succ]
+      simp
+    have hb1 : 1 ≤ N4c.aggB i := by simp only [N4c.aggB]; omega
+    rw [hr, List.map_append, List.map_cons, List.flatten_append, List.flatten_cons, traceBytes_append,
+      traceBytes_append] at h
     conv_lhs => rw [h]
-    rw [List.drop_one, List.tail_cons, traceBytes_flatten]
-  have hblk : ∀ b ∈ (((List.range n).map fun j =>
-      Read.readItems B (1 + j * (N4c.segB - 1)) (itemsOf seq4)).map traceBytes), b.length = slenS (itemsOf seq4) := by
-    intro b hb
-    obtain ⟨t, ht, rfl⟩ := List.mem_map.1 hb
-    obtain ⟨j, hj, rfl⟩ := List.mem_map.1 ht
-    exact traceBytes_length_of (readItems_sizes B _ _ (hfit j (List.mem_range.1 hj)))
-  have hd := drop_take_blocks _ i hblk (by simpa using hi)
-  rw [slenS_seq4] at hd ⊢
-  rw [← List.drop_drop, hX, hd]
-  simp
+    rw [show N4c.aggB i = (N4c.aggB i - 1) + 1 by omega, List.drop_succ_cons,
+      List.drop_left' (hpre i (by omega)), Nat.sub_add_cancel hb1, ← hgl i hi, List.take_left' rfl]
+  refine ⟨by rw [h]; rfl, fun i hi => ?_⟩
+  have hb := hblk i hi
+  rw [aggB_step, hg] at hb
+  dsimp only at hb
+  rcases Nat.eq_zero_or_pos i with rfl | hi0
+  · -- segment 0
+    have hb0 : (B.drop 1).take (slenS (itemsOf seq4)) = traceBytes (Read.readItems B 1 (itemsOf seq4)) := by
+      rw [hT]; simpa [N4c.aggB] using hb
+    have hf0 : 1 + slenS (itemsOf seq4) ≤ B.length := by simpa using hfit 0 hi
+    refine ⟨?_, fun h => absurd h (lt_irrefl 0)⟩
+    simp only [Nat.zero_mul, Nat.add_zero]
+    exact wfAt_of_take B _ _ _ (readItems_sizes B _ _ hf0) hf0 hb0
+  · simp only [if_neg (Nat.pos_iff_ne_zero.1 hi0)] at hb
+    rw [traceBytes_append, List.take_add] at hb
+    have e1 : i * N4c.strideB - 128 = N4c.aggB i := (N4c.aggB_blocks hi0).2.2.symm
+    have e2 : N4c.aggB i + 129 = 1 + i * N4c.strideB := by
+      have h3 : N4c.strideB ≤ i * N4c.strideB := Nat.le_mul_of_pos_left _ hi0
+      have h4 : 128 ≤ N4c.strideB := by simp only [N4c.strideB, N4c.segB, N4c.spacerB]; omega
+      omega
+    have hfi := hfit i hi
+    rw [hT, ← e2] at hfi
+    rw [e1] at hb ⊢
+    rw [← e2] at hb ⊢
+    generalize N4c.aggB i = o at hb hfi ⊢
+    have hsl := spacer_entry_length (spAnsB B o)
+    obtain ⟨h1, h2⟩ := List.append_inj hb (by rw [List.length_take, List.length_drop, hsl]; omega)
+    have hfit' : o + 129 + slenS (itemsOf seq4) ≤ B.length := by rw [hT]; omega
+    refine ⟨wfAt_of_take B _ _ _ (readItems_sizes B _ _ hfit') hfit' ?_, fun _ => ?_⟩
+    · rw [List.drop_drop] at h2
+      rw [hT, h2]
+    · unfold SpAt
+      have : ((B.drop o).take 129).take 97 = (B.drop o).take 97 := by
+        rw [List.take_take]; rfl
+      have h97 : (enc64 spacerQ.size ++ spacerQ.data.toList).length = 97 := by
+        rw [List.length_append, enc64_length, Array.length_toList]; exact congrArg (8 + ·) spacerQ_size
+      rw [← this, h1, traceBytes, List.flatMap_singleton]
+      show (enc64 spacerQ.size ++ spacerQ.data.toList ++ _).take 97 = _
+      rw [List.take_left' h97, spacerQ_size]
 
 /-- **The well-formedness gap from `chainMsg`**: if the stream is `0x54 ‖ traceBytes` of the read
-trace, its tag and length words are in place. -/
+trace, its tag, its length words and its spacers' constant bytes are in place. -/
 theorem wf_of_chainMsg (pf : Trace → Proof) {κ : NodeKind} {σ : ℕ} {w : Asg} (hσ : σ < 2)
     (h : N4c.chainBytes4 κ σ (N4c.kOf (rd4 pf) κ w σ) w = tagTrace :: traceBytes ((rd4 pf).sgn κ σ w).tr) :
     (N4c.chainBytes4 κ σ (N4c.kOf (rd4 pf) κ w σ) w).head? = some tagTrace ∧
-      ∀ i < nSeg κ σ w, WfAt (N4c.chainBytes4 κ σ (N4c.kOf (rd4 pf) κ w σ) w) (1 + i * (N4c.segB - 1))
-        (itemsOf seq4) := by
+      ∀ i < nSeg κ σ w, WfAt (N4c.chainBytes4 κ σ (N4c.kOf (rd4 pf) κ w σ) w) (1 + i * N4c.strideB)
+        (itemsOf seq4) ∧
+      (0 < i → SpAt (N4c.chainBytes4 κ σ (N4c.kOf (rd4 pf) κ w σ) w) (i * N4c.strideB - 128)) := by
   rw [sgn4_tr pf hσ w] at h
   exact wf_of_eq (chain_len pf (κ := κ) hσ w) h
 

@@ -45,15 +45,37 @@ open RecursionFast Rev4 Kinds FR.Stream
 def segB : ℕ := 1551104
 /-- Its digest chain's blocks. -/
 def cLen : ℕ := 24236
-/-- The aggregate stream `0x54 ‖ tr₁ ‖ … ‖ tr_k`, in bytes. -/
-def aggB (k : ℕ) : ℕ := 1 + k * (segB - 1)
+/-- **The spacer entry's bytes** (R-A′: `FRAgg.spacerQ`'s entry, `enc64 89 ‖ absorbQ 0³² 0⁴⁹ ‖ a`). -/
+def spacerB : ℕ := 129
+/-- **The stride** between consecutive segments of an aggregate's stream: a trace and a spacer. -/
+def strideB : ℕ := segB - 1 + spacerB
+/-- The stride in blocks: `strideB = 64 · sBlk` (`strideB_eq`). -/
+def sBlk : ℕ := 24238
+/-- The aggregate stream `0x54 ‖ tr₁ ‖ sp ‖ tr₂ ‖ … ‖ sp ‖ tr_k` (`k − 1` spacers), in bytes. -/
+def aggB (k : ℕ) : ℕ := 1 + k * (segB - 1) + (k - 1) * spacerB
 /-- Its digest chain's blocks. -/
 def aggL (k : ℕ) : ℕ := (aggB k + 63) / 64
 
 theorem segB_eq : segB = streamBytesOf seq4 := streamBytesOf_seq4.symm
 theorem cLen_eq : cLen = chainLenOf seq4 := chainLenOf_seq4.1.symm
+theorem spacerB_eq : spacerB = spacerBytes := rfl
 theorem aggL_eq (k : ℕ) : aggL k = aggChainLen k := by
-  simp only [aggL, aggB, aggChainLen, segB_eq]
+  simp only [aggL, aggB, aggChainLen, segB_eq, spacerB_eq]
+
+/-- **The stride is whole blocks**: `1,551,232 = 64 · 24,238`, two blocks more than a trace's chain. -/
+theorem strideB_eq : strideB = 64 * sBlk ∧ sBlk = cLen + 2 ∧ segB = 64 * cLen := by decide
+
+/-- **Segment `i` starts at `1 + i · strideB`** (after the tag, `i` traces and `i` spacers). -/
+theorem aggB_succ (k : ℕ) (hk : 1 ≤ k) : aggB (k + 1) = aggB k + spacerB + (segB - 1) := by
+  simp only [aggB]
+  rw [show k + 1 - 1 = (k - 1) + 1 by omega, Nat.add_one_mul, Nat.add_one_mul]; ring
+
+/-- **Whole blocks** (R-A′): `aggB k = 64 · (24,238 k − 2)`, `aggL k = 24,238 k − 2` (`k ≥ 1`). -/
+theorem aggB_blocks {k : ℕ} (hk : 1 ≤ k) : aggB k = 64 * aggL k ∧ aggL k = sBlk * k - 2 ∧
+    aggB k = k * strideB - 128 := by
+  obtain ⟨j, rfl⟩ : ∃ j, k = j + 1 := ⟨k - 1, by omega⟩
+  simp only [aggL, aggB, strideB, sBlk, segB, spacerB]
+  refine ⟨by omega, by omega, by omega⟩
 
 /-- Aggregate children: `N2`/`N4` one (signed child 1), `N8` two. -/
 def nAgg (κ : NodeKind) : ℕ := if κ.hasPrev then 1 else 2
@@ -413,12 +435,13 @@ theorem tgt_of_mem {κ : NodeKind} {iv : TIv} (h : iv ∈ nodeLayout4 κ) {blk :
 /-! ## Region facts -/
 
 /-- **H fits before L** (with the new tail): `hEnd ≤ lBase`, so H, L, M are disjoint
-(`regions_fit`). `N2` 73,967 ≤ 73,984; `N4` 122,415 ≤ 122,624; `N8` 195,088 ≤ 195,328 (revision 4.4.1 (β′), L1, L2). -/
+(`regions_fit`). `N2` 74,017 ≤ 74,240; `N4` 122,501 ≤ 122,624; `N8` 195,228 ≤ 195,328 (revision 4.4.1 (β′), L1, L2;
+4.4.2's reserve; R-A′'s spacers). -/
 theorem hEnd_le (κ : NodeKind) : hEnd κ ≤ κ.lBase ∧ hUsedN κ + nAgg κ * κ.maxK = hEnd κ := by
   refine ⟨?_, by simp [hEnd, finB]⟩
   rw [NodeKind.lBase, ← hUsedN_eq]; cases κ <;> decide
 
-theorem hEnd_eq : hEnd .N2 = 74015 ∧ hEnd .N4 = 122495 ∧ hEnd .N8 = 195216 := by decide
+theorem hEnd_eq : hEnd .N2 = 74017 ∧ hEnd .N4 = 122501 ∧ hEnd .N8 = 195228 := by decide
 
 /-- A candidate final block is **the last block of a stream of `aggB k′` bytes**: its target's
 counter is `aggB k′` and its final flag is set. -/
@@ -590,11 +613,12 @@ theorem nodeKind4_fin2 : nodeKind4 .N4 (finB .N4 0 + 1) = some (streamTarget (ag
   rw [tgt_of_mem hm (by simp [TIv.mem])]
 
 /-- (−) **Why the candidate blocks**: in `N4`'s main aggregate chain the block where a 2-segment
-aggregate ends is not final (its counter is `64 · aggL 2`, not `aggB 2`; R-4-m2). -/
+aggregate ends is not final (R-4-m2). With R-A′'s whole blocks its counter is right (`64 · aggL 2 =
+aggB 2`), but its final flag is not set. -/
 theorem main_not_final2 :
     nodeKind4 .N4 (cLen + aggL 2 - 1) = some (streamTarget (aggB 4) (aggL 2 - 1)) ∧
-      ctrAt (aggB 4) (aggL 2 - 1) ≠ aggB 2 := by
-  refine ⟨?_, by decide⟩
+      ctrAt (aggB 4) (aggL 2 - 1) = aggB 2 ∧ flagAt (aggB 4) (aggL 2 - 1) ≠ flagAt (aggB 2) (aggL 2 - 1) := by
+  refine ⟨?_, by decide, by decide⟩
   have hm := chainIvs_mem .N4 (σ := 1) (by norm_num) ⟨.stream, chBase .N4 1 + 1, chBase .N4 1 + chLen .N4 1,
     fun o => some (streamTarget (chBytes .N4 1) (o + 1))⟩ (by simp [chainIvs])
   rw [tgt_of_mem hm (by decide)]

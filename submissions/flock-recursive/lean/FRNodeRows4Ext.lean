@@ -11,8 +11,8 @@ kind has one): both signed children's WOTS rows (`W4.wotsRows`) and every aggreg
 equal to `Rev4.selSum` of the sub-slot).
 
 * **`extRows4 κ σ`**: the list; empty at every slot but 1;
-* **`xRows_length`**, **`extRows4_length_le`**: `N2` 7,992, `N4` 8,266, `N8` 8,680 rows, inside
-  the 23,854 the link region leaves after S-E13a's rows.
+* **`xRows_length`**, **`extRows4_length_le`**: `N2` 7,862, `N4` 7,878, `N8` 7,904 rows (R-A′: `aggPad`
+  without the element-7 decompositions), inside the link region after the pack rows.
 -/
 
 namespace FR
@@ -32,15 +32,15 @@ def xRows (κ : NodeKind) : List Row :=
 /-- **Slot `σ`'s node rows** (S-E13b): the node rows at slot 1, none elsewhere. -/
 def extRows4 (κ : NodeKind) (σ : ℕ) : List Row := if σ = 1 then xRows κ else []
 
-/-- **The node rows' count**: `N2` 7,992, `N4` 8,266, `N8` 8,680 (per child 3,926 for a previous node,
-`3,924 + 2·maxK + 2` for an aggregate; `aggPad` `135·(maxK − 1) + 1` per aggregate). -/
-theorem xRows_length : (xRows .N2).length = 7992 ∧ (xRows .N4).length = 8266 ∧ (xRows .N8).length = 8680 := by
+/-- **The node rows' count**: `N2` 7,862, `N4` 7,878, `N8` 7,904 (per child 3,926 for a previous node,
+`3,924 + 2·maxK + 2` for an aggregate; `aggPad` `6·(maxK − 1)` per aggregate). -/
+theorem xRows_length : (xRows .N2).length = 7862 ∧ (xRows .N4).length = 7878 ∧ (xRows .N8).length = 7904 := by
   simp [xRows, wotsRows, idxRows, selRows, chainRows, chainRowsI, leafRows, pathRows, pathRowsT, rootRows,
     digRows, sumRows, padRows, List.length_flatMap, NodeKind.maxK, N4c.nAgg, NodeKind.hasPrev,
     N4c.isAgg, N4c.aggChild, NodeKind.segSlots, RecursionFast.wotsLen, RecursionFast.sigHeight, N4c.aggOf]
 
-/-- **They fit S-E13a's link region** after its rows (`2^15 − 8 − 8,906 = 23,854`). -/
-theorem extRows4_length_le (κ : NodeKind) (σ : ℕ) : (extRows4 κ σ).length ≤ 8680 := by
+/-- **They fit S-E13a's link region** after its rows (`2^15 − 8 − 8,919 = 23,841`). -/
+theorem extRows4_length_le (κ : NodeKind) (σ : ℕ) : (extRows4 κ σ).length ≤ 7904 := by
   unfold extRows4
   split_ifs
   · obtain ⟨h2, h4, h8⟩ := xRows_length

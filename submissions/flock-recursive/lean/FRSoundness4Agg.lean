@@ -88,7 +88,7 @@ theorem VA_sound_log {segSize : ℕ} {Vseg : SegProgs} {vk c : Digest} {π : Pro
     split at h
     · next vs hvs =>
       split at h
-      · next hc => exact ⟨hsz.1, vs, hvs, hc, runLog_seqAll h⟩
+      · next hc => exact ⟨hsz.1, vs, hvs, hc, fun p hp => runLog_seqAll h p (mem_intersperse_of_mem hp)⟩
       · simp [OProg.runLog] at h
     · simp [OProg.runLog] at h
   · simp [OProg.runLog] at h

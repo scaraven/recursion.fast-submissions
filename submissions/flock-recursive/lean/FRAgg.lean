@@ -28,7 +28,13 @@ A step's new chain is proved by `k ≤ 4` segment SNARKs assembled into **one si
   accepted. **`VA_k_range`**, **`VA_pad`**: an accepting run has `1 ≤ k ≤ 4` and `hdrA`'s bytes
   2–7 zero. **`VA_queries_le`**: `V_A` asks at most `4 ×` a segment program's queries (`k ≤ 4` is
   checked before any query).
-* Controls: `ctrlA_pos` (two segments, accepted); rejected: `ctrlA_bad_sum` (a wrong `n`),
+* **R-A′** (revision 4.4.1): between consecutive segment programs `V_A` asks the **spacer**
+  `absorbQ 0³² 0⁴⁹` (`spacerQ`, its entry 129 bytes), so that in the aggregate's stream every
+  segment starts at `1 (mod 64)` as a single proof's does; its answer is unused. `V_A`'s trace is
+  `aggTrace ans trs`: the segments' traces with the spacer entries between them.
+  **`VA_queries_le`**: `4 · qS + 3`.
+* Controls: `ctrlA_pos` (two segments and the spacer, accepted); rejected: `ctrlA_no_spacer` (the
+  same proof without the spacer's query), `ctrlA_bad_sum` (a wrong `n`),
   `ctrlA_bad_start` (segment 2 not starting at segment 1's end), `ctrlA_bad_end` (`e_k ≠ e`),
   `ctrlA_bad_pad` (a nonzero byte 2), `ctrlA_k0`/`ctrlA_k5` (`k ∉ [1, 4]`), `ctrlA_cap_kind` (an
   `L31` segment of `2^17 + 1` steps, within `L32`'s cap); `VA_reject_stmt` (the wrong statement).
@@ -127,8 +133,28 @@ def segProgs (Vseg : SegKind → Digest → Digest → Proof → OProg Bool) (vk
     (segs : List Proof) (vs : List SegView) : List (OProg Bool) :=
   (segs.zip vs).map fun pv => Vseg pv.2.kind vk (segC pv.2) pv.1
 
+/-! ## The spacer (revision 4.4.1, R-A′) -/
+
+/-- **The spacer query** `absorbQ 0³² 0⁴⁹` (R-A′, PACK-4.4 §2): `V_A` asks it between consecutive
+segments. Its trace entry is `8 + 89 + 32 = 129 ≡ 1 (mod 64)` bytes and a segment's trace
+`segB − 1 ≡ 63 (mod 64)` (`spacer_entry_length`), so every segment of the aggregate's stream
+`0x54 ‖ tr₁ ‖ sp ‖ tr₂ ‖ … ‖ tr_k` starts at `1 (mod 64)`, as a single proof's does. -/
+def spacerQ : ByteArray := absorbQ (Vector.replicate 32 0) (bytesOf (List.replicate 49 0))
+
+/-- **The spacer program**: one query, its answer unused. -/
+def spacer : OProg Bool := .query spacerQ fun _ => .ret true
+
+/-- The spacer's trace entry with answer `a`. -/
+def spEntry (a : Digest) : ByteArray × Digest := (spacerQ, a)
+
+/-- **`V_A`'s programs**: the segment programs with the spacer between consecutive ones. -/
+def aggProgs (Vseg : SegKind → Digest → Digest → Proof → OProg Bool) (vk : Digest)
+    (segs : List Proof) (vs : List SegView) : List (OProg Bool) :=
+  (segProgs Vseg vk segs vs).intersperse spacer
+
 /-- **`V_A`** with segment proofs of `segSize` bytes and segment verifiers `Vseg`. The parse checks
-the size, the kind byte and `hdrA`'s zero bytes 2–7 (R-4-m5). -/
+the size, the kind byte and `hdrA`'s zero bytes 2–7 (R-4-m5); the segment programs then run in
+order on the one trace, the spacer query between consecutive ones (R-A′). -/
 def VAwith (segSize : ℕ) (Vseg : SegKind → Digest → Digest → Proof → OProg Bool)
     (vk c : Digest) (π : Proof) : OProg Bool :=
   let k := (byteAt π 1).toNat
@@ -136,10 +162,136 @@ def VAwith (segSize : ℕ) (Vseg : SegKind → Digest → Digest → Proof → O
     let segs := aggSegs segSize k π
     match segs.mapM segView with
     | some vs =>
-      if aggChecks c (rdLE64 π 8) (bytesAt π 16 32) vs then seqAll (segProgs Vseg vk segs vs)
+      if aggChecks c (rdLE64 π 8) (bytesAt π 16 32) vs then seqAll (aggProgs Vseg vk segs vs)
       else .ret false
     | none => .ret false
   else .ret false
+
+/-! ## The spaced trace -/
+
+/-- **`V_A`'s trace from segment `j` on**: segment `i`'s trace, preceded (for `i ≥ 1`) by the
+spacer's entry with answer `ans i`. -/
+def aggTrAt (ans : ℕ → Digest) : ℕ → List Trace → Trace
+  | _, [] => []
+  | j, t :: ts => (if j = 0 then [] else [spEntry (ans j)]) ++ t ++ aggTrAt ans (j + 1) ts
+
+/-- **`V_A`'s trace** of the segments' traces `trs` with the spacer answers `ans` (spacer `i`,
+`1 ≤ i < k`, sits before segment `i`). -/
+def aggTrace (ans : ℕ → Digest) (trs : List Trace) : Trace := aggTrAt ans 0 trs
+
+/-- The pieces of a spaced run: the segments' traces and, between them, `sep j`. -/
+def withSp (sep : ℕ → Trace) : ℕ → List Trace → List Trace
+  | _, [] => []
+  | _, [t] => [t]
+  | j, t :: t' :: ts => t :: sep (j + 1) :: withSp sep (j + 1) (t' :: ts)
+
+theorem withSp_flatten (ans : ℕ → Digest) : ∀ (j : ℕ) (t : Trace) (ts : List Trace),
+    (withSp (fun i => [spEntry (ans i)]) j (t :: ts)).flatten = t ++ aggTrAt ans (j + 1) ts
+  | _, t, [] => by simp [withSp, aggTrAt]
+  | j, t, t' :: ts => by
+    rw [withSp, List.flatten_cons, List.flatten_cons, withSp_flatten ans (j + 1) t' ts, aggTrAt,
+      if_neg (Nat.succ_ne_zero j)]
+    simp
+
+theorem aggTrace_eq (ans : ℕ → Digest) (trs : List Trace) :
+    aggTrace ans trs = (withSp (fun i => [spEntry (ans i)]) 0 trs).flatten := by
+  cases trs with
+  | nil => rfl
+  | cons t ts => rw [withSp_flatten, aggTrace, aggTrAt, if_pos rfl, List.nil_append]
+
+/-- **`aggTrace` over an index range**: segment `i`'s trace, preceded for `i ≥ 1` by spacer `i`. -/
+theorem aggTrAt_range' (ans : ℕ → Digest) (f : ℕ → Trace) : ∀ (n j : ℕ),
+    aggTrAt ans j ((List.range' j n).map f) =
+      ((List.range' j n).map fun i => (if i = 0 then [] else [spEntry (ans i)]) ++ f i).flatten
+  | 0, _ => rfl
+  | n + 1, j => by
+    rw [List.range'_succ, List.map_cons, aggTrAt, aggTrAt_range' ans f n (j + 1), List.map_cons,
+      List.flatten_cons]
+
+theorem aggTrace_range (ans : ℕ → Digest) (f : ℕ → Trace) (k : ℕ) :
+    aggTrace ans ((List.range k).map f) =
+      ((List.range k).map fun i => (if i = 0 then [] else [spEntry (ans i)]) ++ f i).flatten := by
+  rw [aggTrace, List.range_eq_range', aggTrAt_range']
+
+/-- **`V_A`'s trace length**: the segments' entries and `k − 1` spacer entries. -/
+theorem aggTrace_length (ans : ℕ → Digest) (f : ℕ → Trace) (L : ℕ) (hf : ∀ i, (f i).length = L) :
+    ∀ k, (aggTrace ans ((List.range k).map f)).length = k * L + (k - 1)
+  | 0 => by simp [aggTrace, aggTrAt]
+  | k + 1 => by
+    have ih := aggTrace_length ans f L hf k
+    rw [aggTrace_range] at ih ⊢
+    rw [List.range_succ, List.map_append, List.flatten_append, List.length_append, ih]
+    simp only [List.map_cons, List.map_nil, List.flatten_cons, List.flatten_nil, List.append_nil,
+      List.length_append, hf]
+    rcases k with _ | k
+    · simp
+    · simp only [Nat.add_one_ne_zero, if_false, List.length_singleton]
+      rw [Nat.add_one_mul (k + 1)]; omega
+
+/-- **An entry of `V_A`'s trace** is a segment's or a spacer's. -/
+theorem mem_aggTrace {ans : ℕ → Digest} {f : ℕ → Trace} {k : ℕ} {e : ByteArray × Digest}
+    (h : e ∈ aggTrace ans ((List.range k).map f)) : (∃ i < k, e ∈ f i) ∨ ∃ i, e = spEntry (ans i) := by
+  rw [aggTrace_range] at h
+  obtain ⟨t, ht, he⟩ := List.mem_flatten.1 h
+  obtain ⟨i, hi, rfl⟩ := List.mem_map.1 ht
+  rcases List.mem_append.1 he with he | he
+  · split_ifs at he
+    · simp at he
+    · exact .inr ⟨i, List.mem_singleton.1 he⟩
+  · exact .inl ⟨i, List.mem_range.1 hi, he⟩
+
+/-- **Runs of the programs and of the separator give a run of the spaced programs.** -/
+theorem forall₂_intersperse {R : OProg Bool → Trace → Prop} {s : OProg Bool} {sep : ℕ → Trace}
+    (hs : ∀ j, R s (sep j)) : ∀ {ps : List (OProg Bool)} {trs : List Trace} (j : ℕ),
+    List.Forall₂ R ps trs → List.Forall₂ R (ps.intersperse s) (withSp sep j trs)
+  | _, _, _, .nil => .nil
+  | _, _, _, .cons h .nil => .cons h .nil
+  | _, _, j, .cons h (.cons h' hf) => by
+    rw [List.intersperse_cons_cons, withSp]
+    exact .cons h (.cons (hs _) (forall₂_intersperse hs (j + 1) (.cons h' hf)))
+
+/-- A program of the list is one of the spaced list. -/
+theorem mem_intersperse_of_mem {α : Type} {s p : α} : ∀ {l : List α}, p ∈ l → p ∈ l.intersperse s
+  | [], h => by simp at h
+  | [_], h => h
+  | a :: b :: l, h => by
+    rw [List.intersperse_cons_cons]
+    rcases List.mem_cons.1 h with rfl | h
+    · exact List.mem_cons_self
+    · exact List.mem_cons_of_mem _ (List.mem_cons_of_mem _ (mem_intersperse_of_mem h))
+
+/-- The spacer accepts its entry, whatever the answer. -/
+theorem spacer_run (a : Digest) : spacer.runSeq [spEntry a] = some true := by
+  simp [spacer, spEntry, OProg.runSeq]
+
+/-- The spacer rejects the empty trace (it asks its query). -/
+theorem spacer_run_nil : spacer.runSeq [] = none := rfl
+
+/-- **The spacer's entry is 129 bytes** (`8 + 89 + 32`): `≡ 1 (mod 64)`. -/
+theorem spacerQ_size : spacerQ.size = 89 := by decide
+
+theorem spacerQ_bytes : spacerQ.data.toList = tagAbs ++ List.replicate 81 0 := by decide
+
+theorem spacer_entry_length (a : Digest) : (traceBytes [spEntry a]).length = 129 := by
+  simp [traceBytes, spEntry, enc64, spacerQ_size]
+
+theorem Forall₂_exists_mem {α β : Type} {R : α → β → Prop} {p : α} :
+    ∀ {l : List α} {ts : List β}, List.Forall₂ R l ts → p ∈ l → ∃ t ∈ ts, R p t
+  | _, _, .nil, h => by simp at h
+  | _, _, .cons (b := t) hr hf, h => by
+    rcases List.mem_cons.1 h with rfl | h
+    · exact ⟨t, List.mem_cons_self, hr⟩
+    · obtain ⟨t', ht', hr'⟩ := Forall₂_exists_mem hf h
+      exact ⟨t', List.mem_cons_of_mem _ ht', hr'⟩
+
+/-- The segment program of view `i` is one of `V_A`'s programs. -/
+theorem segProg_mem_aggProgs (Vseg : SegKind → Digest → Digest → Proof → OProg Bool) (vk : Digest)
+    {segs : List Proof} {vs : List SegView} {i : ℕ} (h1 : i < segs.length) (h2 : i < vs.length) :
+    Vseg vs[i].kind vk (segC vs[i]) segs[i] ∈ aggProgs Vseg vk segs vs := by
+  refine mem_intersperse_of_mem ?_
+  have hi : i < (segProgs Vseg vk segs vs).length := by simp [segProgs]; omega
+  have := List.getElem_mem hi
+  simpa [segProgs, List.getElem_map, List.getElem_zip] using this
 
 /-- **The leaf witness `V_A` certifies**: segment 1's start and `hdrA`'s `n`. -/
 def aggWit (segSize : ℕ) (π : Proof) : Option (Digest × ℕ) :=
@@ -148,13 +300,14 @@ def aggWit (segSize : ℕ) (π : Proof) : Option (Digest × ℕ) :=
 /-! ## Soundness -/
 
 /-- **`V_A`'s soundness reduction**: an accepting run on `tr` has views `vs` of its segments
-meeting `aggChecks`, and `tr` is the concatenation of accepting runs of the segment programs. -/
+meeting `aggChecks`, and `tr` is the concatenation of accepting runs of `V_A`'s programs (the segment
+programs with the spacer between them). -/
 theorem VA_sound {segSize : ℕ} {Vseg : SegKind → Digest → Digest → Proof → OProg Bool}
     {vk c : Digest} {π : Proof} {tr : Trace} (h : (VAwith segSize Vseg vk c π).runSeq tr = some true) :
     ∃ vs trs, (aggSegs segSize (byteAt π 1).toNat π).mapM segView = some vs ∧
       aggChecks c (rdLE64 π 8) (bytesAt π 16 32) vs = true ∧ tr = trs.flatten ∧
       List.Forall₂ (fun p t => p.runSeq t = some true)
-        (segProgs Vseg vk (aggSegs segSize (byteAt π 1).toNat π) vs) trs := by
+        (aggProgs Vseg vk (aggSegs segSize (byteAt π 1).toNat π) vs) trs := by
   simp only [VAwith] at h
   split at h
   · split at h
@@ -267,9 +420,7 @@ theorem VA_extract {segSize : ℕ} {Vseg : SegKind → Digest → Digest → Pro
     obtain ⟨i, hi, rfl⟩ := List.getElem_of_mem hv
     have hl := h2.length_eq
     have hpi : segView segs[i] = some vs[i] := (List.forall₂_iff_get.1 h2).2 i (by omega) hi
-    have hf' := (List.forall₂_iff_get.1 hf).2 i (by simp [segProgs]; omega) (by
-      have := hf.length_eq; simp [segProgs] at this; omega)
-    simp only [segProgs, List.get_eq_getElem, List.getElem_map, List.getElem_zip] at hf'
+    obtain ⟨t, -, hf'⟩ := Forall₂_exists_mem hf (segProg_mem_aggProgs Vseg vk (by omega) hi)
     exact hS _ _ _ hpi (hr _ hv).2 hf'
   obtain ⟨a, l, rfl⟩ : ∃ a l, vs = a :: l := by
     cases vs with
@@ -312,11 +463,8 @@ theorem VA_extract_on {segSize : ℕ} {Vseg : SegKind → Digest → Digest → 
     obtain ⟨i, hi, rfl⟩ := List.getElem_of_mem hv
     have hl := h2.length_eq
     have hpi : segView segs[i] = some vs[i] := (List.forall₂_iff_get.1 h2).2 i (by omega) hi
-    have hf' := (List.forall₂_iff_get.1 hf).2 i (by simp [segProgs]; omega) (by
-      have := hf.length_eq; simp [segProgs] at this; omega)
-    simp only [segProgs, List.get_eq_getElem, List.getElem_map, List.getElem_zip] at hf'
-    have hlt : i < trs.length := by have := hf.length_eq; simp [segProgs] at this; omega
-    exact hS _ _ _ hpi (hr _ hv).2 (hG trs htr _ (List.getElem_mem hlt)) hf'
+    obtain ⟨t, ht, hf'⟩ := Forall₂_exists_mem hf (segProg_mem_aggProgs Vseg vk (by omega) hi)
+    exact hS _ _ _ hpi (hr _ hv).2 (hG trs htr _ ht) hf'
   obtain ⟨a, l, rfl⟩ : ∃ a l, vs = a :: l := by
     cases vs with
     | nil => simp at hk
@@ -343,7 +491,8 @@ theorem VA_extract_on {segSize : ℕ} {Vseg : SegKind → Digest → Digest → 
 /-! ## Completeness -/
 
 /-- **The honest assembly is accepted**: views meeting the checks and accepting segment runs give
-an accepting `V_A` run on the concatenated trace. -/
+an accepting `V_A` run on the segments' traces with the spacer entries between them, whatever the
+spacer's answers `ans`. -/
 theorem VA_complete {segSize : ℕ} {Vseg : SegKind → Digest → Digest → Proof → OProg Bool}
     {vk c : Digest} {π : Proof} {vs : List SegView} {trs : List Trace}
     (hsz : π.size = 48 + (byteAt π 1).toNat * segSize) (h0 : byteAt π 0 = aggByte)
@@ -351,10 +500,11 @@ theorem VA_complete {segSize : ℕ} {Vseg : SegKind → Digest → Digest → Pr
     (hvs : (aggSegs segSize (byteAt π 1).toNat π).mapM segView = some vs)
     (hc : aggChecks c (rdLE64 π 8) (bytesAt π 16 32) vs = true)
     (hf : List.Forall₂ (fun p t => p.runSeq t = some true)
-      (segProgs Vseg vk (aggSegs segSize (byteAt π 1).toNat π) vs) trs) :
-    (VAwith segSize Vseg vk c π).runSeq trs.flatten = some true := by
+      (segProgs Vseg vk (aggSegs segSize (byteAt π 1).toNat π) vs) trs) (ans : ℕ → Digest) :
+    (VAwith segSize Vseg vk c π).runSeq (aggTrace ans trs) = some true := by
   simp only [VAwith, hsz, h0, hpad, and_self, ite_true, hvs, hc]
-  exact seqAll_of_forall₂ hf
+  rw [aggTrace_eq]
+  exact seqAll_of_forall₂ (forall₂_intersperse (fun j => spacer_run (ans j)) 0 hf)
 
 /-! ## Queries (`KS`'s first conjunct) -/
 
@@ -371,11 +521,33 @@ theorem seqAll_queries_le (H : ByteArray → Digest) {q : ℕ} : ∀ {ps : List 
     · simp only [Bool.false_eq_true, ite_false, OProg.queries, List.length_nil]; omega
     · simp only [ite_true]; omega
 
-/-- **`V_A`'s queries**: at most `4 ×` a bound `qS` on every segment program's (`k ≤ 4` is
-checked before any query). -/
+/-- `seqAll` asks at most its programs' queries. -/
+theorem seqAll_queries_le_sum (H : ByteArray → Digest) : ∀ ps : List (OProg Bool),
+    ((seqAll ps).queries H).length ≤ (ps.map fun p => (p.queries H).length).sum
+  | [] => Nat.zero_le _
+  | p :: ps => by
+    have h₂ := seqAll_queries_le_sum H ps
+    rw [seqAll, OProg.queries_bind, List.length_append, List.map_cons, List.sum_cons]
+    generalize OProg.run H p = b
+    cases b
+    · simp only [Bool.false_eq_true, ite_false, OProg.queries, List.length_nil]; omega
+    · simp only [ite_true]; omega
+
+theorem sum_intersperse {α : Type} (f : α → ℕ) (s : α) : ∀ l : List α,
+    ((l.intersperse s).map f).sum = (l.map f).sum + (l.length - 1) * f s
+  | [] => by simp
+  | [a] => by simp
+  | a :: b :: l => by
+    rw [List.intersperse_cons_cons, List.map_cons, List.map_cons, List.sum_cons, List.sum_cons,
+      sum_intersperse f s (b :: l)]
+    simp only [List.map_cons, List.sum_cons, List.length_cons]
+    rw [show l.length + 1 + 1 - 1 = (l.length + 1 - 1) + 1 by omega, Nat.succ_mul]; ring
+
+/-- **`V_A`'s queries**: at most `4 ×` a bound `qS` on every segment program's, plus the three
+spacers (`k ≤ 4` is checked before any query). -/
 theorem VA_queries_le {segSize qS : ℕ} {Vseg : SegKind → Digest → Digest → Proof → OProg Bool}
     (H : ByteArray → Digest) (hS : ∀ κ vk c π, ((Vseg κ vk c π).queries H).length ≤ qS)
-    (vk c : Digest) (π : Proof) : ((VAwith segSize Vseg vk c π).queries H).length ≤ 4 * qS := by
+    (vk c : Digest) (π : Proof) : ((VAwith segSize Vseg vk c π).queries H).length ≤ 4 * qS + 3 := by
   simp only [VAwith]
   split
   · split
@@ -384,10 +556,20 @@ theorem VA_queries_le {segSize qS : ℕ} {Vseg : SegKind → Digest → Digest �
       · next hc =>
         have hk : vs.length ≤ 4 := by
           simp only [aggChecks, Bool.and_eq_true, decide_eq_true_eq] at hc; exact hc.1.1.1.1.2.2
-        refine (seqAll_queries_le H (q := qS) fun p hp => ?_).trans ?_
-        · obtain ⟨pv, -, rfl⟩ := List.mem_map.1 hp; exact hS _ _ _ _
-        · simp only [segProgs, List.length_map, List.length_zip]
-          exact Nat.mul_le_mul_right _ ((min_le_right _ _).trans hk)
+        refine (seqAll_queries_le_sum H _).trans ?_
+        rw [aggProgs, sum_intersperse]
+        set ps := segProgs Vseg vk (aggSegs segSize (byteAt π 1).toNat π) vs
+        have hl : ps.length ≤ 4 := by
+          simp only [ps, segProgs, List.length_map, List.length_zip]; exact (min_le_right _ _).trans hk
+        have hsum : (ps.map fun p => (p.queries H).length).sum ≤ ps.length * qS := by
+          have := List.sum_le_length_nsmul (ps.map fun p => (p.queries H).length) qS (by
+            intro x hx; obtain ⟨p, hp, rfl⟩ := List.mem_map.1 hx
+            obtain ⟨pv, -, rfl⟩ := List.mem_map.1 hp; exact hS _ _ _ _)
+          simpa using this
+        have h1 : (spacer.queries H).length = 1 := rfl
+        rw [h1, Nat.mul_one]
+        have := Nat.mul_le_mul_right qS hl
+        omega
       · exact Nat.zero_le _
     · exact Nat.zero_le _
   · exact Nat.zero_le _
@@ -482,9 +664,10 @@ theorem forall₂_true (vk : Digest) (segs : List Proof) (vs : List SegView) :
   | cons _ _ ih => exact .cons rfl ih
 
 /-- Positive: the two chained segments (`d0 → d1 → d2`, `1 + 2` steps) are accepted against
-`leafStmt d2 3`, with the empty trace. -/
-theorem ctrlA_pos : (VAwith 96 VsegTrue (dC 9) (leafStmtF (dC 2) 3) (ctrlA 3 2 (dC 1))).runSeq [] =
-    some true := by
+`leafStmt d2 3`, on the trace of the one spacer query between them (any answer). -/
+theorem ctrlA_pos (a : Digest) :
+    (VAwith 96 VsegTrue (dC 9) (leafStmtF (dC 2) 3) (ctrlA 3 2 (dC 1))).runSeq [spEntry a] =
+      some true := by
   have hv : (aggSegs 96 (byteAt (ctrlA 3 2 (dC 1)) 1).toNat (ctrlA 3 2 (dC 1))).mapM segView =
       some (ctrlViews 2 (dC 1)) := by rw [ctrlA_mapM _ _ _ (by decide +kernel)]; decide +kernel
   have he : bytesAt (ctrlA 3 2 (dC 1)) 16 32 = dC 2 := by decide +kernel
@@ -493,8 +676,39 @@ theorem ctrlA_pos : (VAwith 96 VsegTrue (dC 9) (leafStmtF (dC 2) 3) (ctrlA 3 2 (
       (bytesAt (ctrlA 3 2 (dC 1)) 16 32) (ctrlViews 2 (dC 1)) = true := by
     simp only [aggChecks_eq, he, hn, decide_true, Bool.true_and]; decide +kernel
   have h := VA_complete (vk := dC 9) (by decide +kernel) (by decide +kernel) (by decide +kernel) hv hc
-    (forall₂_true _ _ _)
-  simpa using h
+    (forall₂_true _ _ _) (fun _ => a)
+  have hl : ((aggSegs 96 (byteAt (ctrlA 3 2 (dC 1)) 1).toNat (ctrlA 3 2 (dC 1))).zip
+      (ctrlViews 2 (dC 1))).length = 2 := by
+    rw [List.length_zip, show (byteAt (ctrlA 3 2 (dC 1)) 1).toNat = 2 by decide +kernel]
+    simp [aggSegs, ctrlViews]
+  rw [hl] at h
+  simpa [aggTrace, aggTrAt] using h
+
+/-- Negative (R-A′): the same proof on the empty trace is rejected: `V_A` asks the spacer between the
+two segments. -/
+theorem ctrlA_no_spacer :
+    (VAwith 96 VsegTrue (dC 9) (leafStmtF (dC 2) 3) (ctrlA 3 2 (dC 1))).runSeq [] ≠ some true := fun h => by
+  obtain ⟨vs, ts, hvs, -, hts, hf⟩ := VA_sound h
+  have hv : (aggSegs 96 (byteAt (ctrlA 3 2 (dC 1)) 1).toNat (ctrlA 3 2 (dC 1))).mapM segView =
+      some (ctrlViews 2 (dC 1)) := by rw [ctrlA_mapM _ _ _ (by decide +kernel)]; decide +kernel
+  rw [hv, Option.some.injEq] at hvs
+  subst hvs
+  have hs : (aggSegs 96 (byteAt (ctrlA 3 2 (dC 1)) 1).toNat (ctrlA 3 2 (dC 1))).length = 2 := by
+    rw [show (byteAt (ctrlA 3 2 (dC 1)) 1).toNat = 2 by decide +kernel]; simp [aggSegs]
+  obtain ⟨x, y, hxy⟩ := List.length_eq_two.1 hs
+  have hmem : spacer ∈ aggProgs VsegTrue (dC 9)
+      (aggSegs 96 (byteAt (ctrlA 3 2 (dC 1)) 1).toNat (ctrlA 3 2 (dC 1))) (ctrlViews 2 (dC 1)) := by
+    rw [hxy]; simp [aggProgs, segProgs, ctrlViews]
+  obtain ⟨t, ht, hr⟩ := Forall₂_exists_mem hf hmem
+  rw [List.flatten_eq_nil_iff.1 hts.symm t ht, spacer_run_nil] at hr
+  cases hr
+
+/-- (+/−) **`V_A`'s trace** of two segments: the spacer's entry sits between them, with its answer
+`ans 1`; the plain concatenation is not it. -/
+theorem aggTrace_ctl (e₁ e₂ : ByteArray × Digest) (ans : ℕ → Digest) :
+    aggTrace ans [[e₁], [e₂]] = [e₁, spEntry (ans 1), e₂] ∧ aggTrace ans [[e₁], [e₂]] ≠ [e₁, e₂] := by
+  refine ⟨by simp [aggTrace, aggTrAt], fun h => ?_⟩
+  simp [aggTrace, aggTrAt] at h
 
 /-- Negative: a wrong total (`hdrA`'s `n = 4`, the segments' `1 + 2`). -/
 theorem ctrlA_bad_sum : (VAwith 96 VsegTrue (dC 9) (leafStmtF (dC 2) 4) (ctrlA 4 2 (dC 1))).runSeq [] ≠

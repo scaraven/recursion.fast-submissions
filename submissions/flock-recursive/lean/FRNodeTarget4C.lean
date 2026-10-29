@@ -305,7 +305,7 @@ theorem lsum_range_map {α : Type*} (n : ℕ) (g : ℕ → α) (f : α → F) :
 theorem maxK_le (ν : NodeKind) : 1 ≤ ν.maxK ∧ ν.maxK ≤ 8 := by cases ν <;> decide
 
 theorem aggB_lt {k : ℕ} (hk : k ≤ 8) : N4c.aggB k < 2 ^ 32 := by
-  simp only [N4c.aggB, N4c.segB]; omega
+  simp only [N4c.aggB, N4c.segB, N4c.spacerB]; omega
 
 /-- **A candidate final block** `F_{a,k′}`: the last block of a stream of `aggB k′` bytes. -/
 theorem fin_target (k : ℕ) :

@@ -109,7 +109,7 @@ theorem protoCS_soundAt (π : ℕ) {impl : OpImpl} {κ : Kind} {inp : Input} {tr
 
 /-- (+) The node route's constants are the group's in selector order: `N4` (18 coordinates, a
 segment's chain then a 4-segment aggregate's), `N2` (17), `N8` (two aggregates). -/
-theorem protoR_ctl : protoR 0 = .node [(18, 24236, 96944), (17, 24236, 48472), (18, 96944, 96944)] ∧
+theorem protoR_ctl : protoR 0 = .node [(18, 24236, 96950), (17, 24236, 48474), (18, 96950, 96950)] ∧
     protoR 1 = .seg := by
   exact ⟨rfl, rfl⟩
 

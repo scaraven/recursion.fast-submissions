@@ -17,10 +17,23 @@ one trace starting at stream offset 1 the fields the rows need are whole element
 * **element 5** is `hdr[0…16)` (the seed query's bytes 71–86): `kind ‖ m ‖ 0¹⁴`, the constant the
   slot's program asserts (`seedOpsG`'s `const`).
 
+**R-A′ (revision 4.4.1).** An aggregate's stream is `0x54 ‖ tr₁ ‖ sp ‖ tr₂ ‖ … ‖ sp ‖ tr_k` with
+the 129-byte spacer entry `sp` (`FRAgg.spacerQ`), so segment `s` starts at `1 + s·strideB` with
+`strideB = 64 · 24,238`: its elements are segment 0's shifted by `s·sBlk` blocks. Two elements per
+spacer are not whole constants, because an entry ends with its (random) answer:
+* the segment's **element 0** is the spacer answer's last byte, then `enc64 119 ‖ "FRSEED0"`: it is
+  `seedM` plus 8 Boolean cells at bits 0–7 (`decRow`), so bytes 1–15 are pinned;
+* the spacer's **element 6** is its query's last byte (`0`), then 15 answer bytes: it is 120
+  Boolean cells at bits 8–127, so byte 0 is zero.
+The spacer's elements 0–5 (`enc64 89 ‖ "FRABS000"`, the zero state, the message's first 48 zero
+bytes) are whole constants (`spPin`). `headRows` are these rows; a stream's segment 0 has instead
+its element 0 pinned whole (`seedW`).
+
 This module has the data: `sCell`, the per-item element values (`winF`, `wfData`, the closed
-`wfSeg`), the pin row `pinRow`, the stream rows `wfRows`, the kind constants `kConst` and the kind
-tie `kindRow`. `FRNodeRows4` places them in the slots' link regions (`packRows4`);
-`FRNodeRows4PackSound` proves what they give.
+`wfSeg`: every item's first element but the seed's), the pin row `pinRow`, the stream rows
+`wfRows`, the head rows `headRows`, the kind constants `kConst` and the kind tie `kindRow`.
+`FRNodeRows4` places them in the slots' link regions (`packRows4`); `FRNodeRows4PackSound` proves
+what they give.
 -/
 
 namespace FR
@@ -57,8 +70,9 @@ def wfData : ℕ → List Item → List (ℕ × F)
   | _, [] => []
   | o, it :: its => (o / 16, winF o it) :: wfData (o + it.slen) its
 
-/-- **One trace's pinned elements** (`seq4`'s 8,783 items from offset 1; a closed constant). -/
-def wfSeg : List (ℕ × F) := wfData 1 (itemsOf seq4)
+/-- **One trace's pinned elements past element 0** (`seq4`'s items from offset 1 but the seed's
+element 0, which `headRows` binds: 8,782; a closed constant). -/
+def wfSeg : List (ℕ × F) := (wfData 1 (itemsOf seq4)).tail
 
 /-! ## The rows -/
 
@@ -67,6 +81,47 @@ def pinRow (one x : ℕ) (c : F) : Row := ⟨Lin.cell one, (Lin.cell x).sub ((Li
 
 /-- **The `wf` rows of a stream at block `b0`**: each item's first element pinned. -/
 def wfRows (one b0 : ℕ) : List Row := wfSeg.map fun p => pinRow one (sCell b0 p.1) p.2
+
+/-! ## A segment's element 0 and the spacer (R-A′) -/
+
+/-- **Element 0 of a stream's segment 0**: `0x54 ‖ enc64 119 ‖ "FRSEED0"`. -/
+def seedW : F := winF 1 .seed
+
+/-- Element 0 of a later segment with its byte 0 (the spacer answer's last byte) zero. -/
+def seedM : F := winFB ([0] ++ enc64 119 ++ tagSeed)
+
+/-- **The spacer entry's constant bytes**: `enc64 89 ‖ "FRABS000" ‖ 0^81` (`enc64 |q| ‖ q`,
+`q = FRAgg.spacerQ`; `FRNodeRows4PackSound.spBytes_eq`). -/
+def spBytes : List UInt8 := enc64 89 ++ tagAbs ++ List.replicate 81 0
+
+/-- The spacer's whole constant element `j < 6`. -/
+def spPin (j : ℕ) : F := winFB ((spBytes.drop (16 * j)).take 16)
+
+/-- `c` is a bit: `c · (one − c) = 0`. -/
+def boolRow (one c : ℕ) : Row := ⟨Lin.cell c, (Lin.cell one).sub (Lin.cell c), []⟩
+
+/-- The bits `cell q` (`q < n`) at the element's bit positions `d + q`: `Σ_q x^(d+q) · cell q`. -/
+def packAt (cell : ℕ → ℕ) (d n : ℕ) : Lin :=
+  (List.range n).map fun q => (cell q, bitBasis ⟨(d + q) % 128, Nat.mod_lt _ (by norm_num)⟩)
+
+/-- **`one · (x − c · one − bits) = 0`**: cell `x` is the constant `c` plus the packed bits. -/
+def decRow (one x : ℕ) (c : F) (bits : Lin) : Row :=
+  ⟨Lin.cell one, ((Lin.cell x).sub ((Lin.cell one).smul c)).sub bits, []⟩
+
+/-- **The head rows of segment `s` of a stream, at block `b0`** (R-A′): for `s = 0` its element 0
+pinned (`seedW`); for `s ≥ 1` the spacer before it (blocks `b0 − 2`, `b0 − 1`): elements 0–5
+pinned, element 6 as 120 bits at positions 8–127 (`cell 0 … 119`), and the segment's element 0 as
+`seedM` plus 8 bits at positions 0–7 (`cell 120 … 127`); 136 rows. -/
+def headRows (one b0 s : ℕ) (cell : ℕ → ℕ) : List Row :=
+  if s = 0 then [pinRow one (sCell b0 0) seedW]
+  else (List.range 6).map (fun j => pinRow one (sCell (b0 - 2) j) (spPin j)) ++
+    (List.range 128).map (fun q => boolRow one (cell q)) ++
+    [decRow one (sCell (b0 - 2) 6) 0 (packAt cell 8 120),
+     decRow one (sCell b0 0) seedM (packAt (fun q => cell (120 + q)) 0 8)]
+
+/-- **Spacer `s`'s 128 bit cells** of signed child `σ` (`s ≥ 1`): L elements `11,264 + 128 (s − 1) + q`
+of `σ`'s stride (S-E13b's `padRows` decomposition cells, which R-A′'s whole blocks free). -/
+def spC (κ : NodeKind) (σ s q : ℕ) : ℕ := κ.lBase * 128 + σ * 2 ^ 14 + 11264 + 128 * (s - 1) + q
 
 /-- **The kind constant** of index `ι` of group `G`: `hdr[0…16)` of a `G ι` proof, as the slot
 program's seed check has it (`FRVIR4Mux.seedOpsG`). -/
@@ -105,8 +160,8 @@ theorem wfData_length : ∀ (o : ℕ) (its : List Item), (wfData o its).length =
   | _, [] => rfl
   | o, _ :: its => by simp [wfData, wfData_length _ its]
 
-theorem wfSeg_length : wfSeg.length = 8783 := by
-  rw [wfSeg, wfData_length, itemsOf_seq4_length]
+theorem wfSeg_length : wfSeg.length = 8782 := by
+  rw [wfSeg, List.length_tail, wfData_length, itemsOf_seq4_length]
 
 /-- The bytes an item's stream occupies. -/
 def slenL (its : List Item) : ℕ := (its.map Item.slen).sum
@@ -130,8 +185,12 @@ theorem wfSeg_lt : ∀ p ∈ wfSeg, 16 * p.1 < N4c.segB := fun p hp => by
   have hb : 1 + slenL (itemsOf seq4) = N4c.segB := by
     rw [N4c.segB_eq, streamBytesOf, slenL]
     congr 2
-  have := wfData_lt 1 (itemsOf seq4) p hp
+  have := wfData_lt 1 (itemsOf seq4) p (List.mem_of_mem_tail hp)
   omega
+
+theorem headRows_length (one b0 s : ℕ) (cell : ℕ → ℕ) :
+    (headRows one b0 s cell).length = if s = 0 then 1 else 136 := by
+  unfold headRows; split_ifs <;> simp
 
 /-- (+) The kind constants' first byte is the kind byte (node group, segment group). -/
 theorem kConst_byte (ι : Kind) :

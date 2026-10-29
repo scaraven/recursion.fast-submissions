@@ -205,9 +205,10 @@ structure NodeResid4 {Vseg : SegProgs} {Vnode : NodeProgs} (I : SlotIface4 Vseg 
     bytesAt (rd.sgn κ (aggChild κ a) w).π 2 6 = Vector.replicate 6 0 ∧
     aggSegs (piSizeOf seq4) (kA rd κ w a) (rd.sgn κ (aggChild κ a) w).π =
       (List.range (kA rd κ w a)).map fun i => rd.slotπ κ (sub κ a i) w
-  /-- `tr_A` is the active sub-slots' traces in order. -/
-  aggTr : ∀ a < nAgg κ, (rd.sgn κ (aggChild κ a) w).tr =
-    ((List.range (kA rd κ w a)).map fun i => rd.slotTr κ (sub κ a i) w).flatten
+  /-- `tr_A` is `V_A`'s trace (R-A′): the active sub-slots' traces in order, the spacer's entry
+  `(spacerQ, ans i)` before sub-slot `i ≥ 1`. -/
+  aggTr : ∀ a < nAgg κ, ∃ ans, (rd.sgn κ (aggChild κ a) w).tr =
+    aggTrace ans ((List.range (kA rd κ w a)).map fun i => rd.slotTr κ (sub κ a i) w)
   /-- `V_A`'s checks against the aggregate's statement `c_A` (the `hashA` block, O-1). -/
   aggChk : ∀ a < nAgg κ, ∃ vs, (aggSegs (piSizeOf seq4) (kA rd κ w a)
       (rd.sgn κ (aggChild κ a) w).π).mapM segView = some vs ∧
@@ -295,7 +296,7 @@ theorem sig_of (hS : StmtN4 κ (I.lrows κ) (I.irows κ) vk c₁ c₂ w) (hR : N
 
 /-- **An aggregate child is accepted** (`V_A` through `VA_complete`): its parse (`aggFmt`), the
 checks (`aggChk`), and every active sub-slot's segment program accepting its trace (`soundS` with
-`selA`, `imp`, `rep`, `tpl`), on `tr_A` (`aggTr`). -/
+`selA`, `imp`, `rep`, `tpl`), on `tr_A` (`aggTr`: the spacer entries between them). -/
 theorem agg_acc (hS : StmtN4 κ (I.lrows κ) (I.irows κ) vk c₁ c₂ w) (hR : NodeResid4 I rd κ vk c₁ c₂ w)
     (hD : DigLemma4 κ) {a : ℕ} (ha : a < nAgg κ) :
     accV4 Vseg Vnode vk (stOf c₁ c₂ (aggChild κ a)) (rd.sgn κ (aggChild κ a) w) = true ∧
@@ -306,8 +307,9 @@ theorem agg_acc (hS : StmtN4 κ (I.lrows κ) (I.irows κ) vk c₁ c₂ w) (hR : 
     show (if byteAt _ 0 = aggByte then _ else _) = _
     rw [if_pos h0]
   refine ⟨sig_of hS hR hD (aggChild_lt κ ha) ?_, ?_⟩
-  · rw [V4_agg Vseg Vnode vk _ _ hkind, hR.aggTr a ha]
-    refine VA_complete hsz h0 hpad hvs hck ?_
+  · obtain ⟨ans, htr⟩ := hR.aggTr a ha
+    rw [V4_agg Vseg Vnode vk _ _ hkind, htr]
+    refine VA_complete hsz h0 hpad hvs hck ?_ ans
     change List.Forall₂ _ (segProgs Vseg vk (aggSegs (piSizeOf seq4) (kA rd κ w a) _) vs) _
     rw [hsegs] at hvs ⊢
     have hF := mapM_forall₂4 hvs

@@ -153,11 +153,12 @@ end Branches
 /-! ## Queries (`KS`'s first conjunct) -/
 
 /-- **`V4with`'s queries** under `H`: at most `qV4`, given a bound `qS` on every segment program's
-with `4 · qS ≤ qV4` (`A`: `k ≤ 4` is checked before any query) and `qV4` on every node program's.
+with `4 · qS + 3 ≤ qV4` (`A`: `k ≤ 4` is checked before any query, and three spacers; R-A′) and
+`qV4` on every node program's.
 `W` and `bad` ask none. -/
 theorem V4_queries_le (Vseg : SegProgs) (Vnode : NodeProgs) (H : ByteArray → Digest) {qS : ℕ}
     (hS : ∀ κ vk c π, ((Vseg κ vk c π).queries H).length ≤ qS)
-    (hN : ∀ κ vk c π, ((Vnode κ vk c π).queries H).length ≤ qV4) (hq : 4 * qS ≤ qV4)
+    (hN : ∀ κ vk c π, ((Vnode κ vk c π).queries H).length ≤ qV4) (hq : 4 * qS + 3 ≤ qV4)
     (vk c : Digest) (π : Proof) : ((V4with Vseg Vnode vk c π).queries H).length ≤ qV4 := by
   rcases h : kindOf4 π with _ | _ | _ | κ
   · rw [V4_W Vseg Vnode vk c π h]; exact Nat.zero_le _
@@ -169,9 +170,13 @@ theorem V4_queries_le (Vseg : SegProgs) (Vnode : NodeProgs) (H : ByteArray → D
 theorem ks_queries4 (Vseg : SegProgs) (Vnode : NodeProgs) (S : Submission)
     (hV : S.V = V4with Vseg Vnode) (hq : S.qV = qV4) {qS : ℕ}
     (hS : ∀ H κ vk c π, ((Vseg κ vk c π).queries H).length ≤ qS)
-    (hN : ∀ H κ vk c π, ((Vnode κ vk c π).queries H).length ≤ qV4) (h4 : 4 * qS ≤ qV4) (vk : Digest) :
+    (hN : ∀ H κ vk c π, ((Vnode κ vk c π).queries H).length ≤ qV4) (h4 : 4 * qS + 3 ≤ qV4) (vk : Digest) :
     ∀ H c π, ((S.V vk c π).queries H).length ≤ S.qV := fun H c π => by
   rw [hV, hq]; exact V4_queries_le Vseg Vnode H (hS H) (hN H) h4 vk c π
+
+/-- **The spacer's entry is `spacerBytes` bytes** (`FRNodeLayout4`'s constant is `FRAgg.spacerQ`'s). -/
+theorem spacerBytes_eq (a : Digest) : (traceBytes [spEntry a]).length = spacerBytes :=
+  spacer_entry_length a
 
 /-! ## A node's aggregate child (R-4-m2) -/
 

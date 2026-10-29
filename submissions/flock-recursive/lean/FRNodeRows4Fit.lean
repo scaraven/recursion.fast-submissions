@@ -63,45 +63,6 @@ theorem aggChild_lt (κ : NodeKind) (σ : ℕ) (hσ : σ < κ.vslots) : N4c.aggC
   cases κ <;> simp only [N4c.aggChild, aggSlot, NodeKind.hasPrev, NodeKind.vslots, NodeKind.segSlots,
     if_true, Bool.false_eq_true, if_false] at hσ ⊢ <;> omega
 
-/-- **The pack rows' cells**: M's `one`, the slot's selector copies, and H stream cells below M. -/
-theorem packRows4_cells (κ : NodeKind) {σ : ℕ} (hσ : σ < κ.vslots) :
-    ∀ r ∈ packRows4 κ σ, ∀ t ∈ r.a ++ r.b ++ r.c,
-      t.1 = κ.oneCell ∨ (∃ ι, t.1 = κ.oneCell + selR σ ι) ∨ t.1 < κ.oneCell := by
-  have hw : ∀ b0, b0 < 2 → ∀ r ∈ wfRows κ.oneCell (N4c.chBase κ b0), ∀ t ∈ r.a ++ r.b ++ r.c,
-      t.1 = κ.oneCell ∨ (∃ ι, t.1 = κ.oneCell + selR σ ι) ∨ t.1 < κ.oneCell := by
-    intro b0 hb r hr t ht
-    obtain ⟨p, hp, rfl⟩ := List.mem_map.1 hr
-    simp only [pinRow, Lin.sub, Lin.cell, Lin.smul, List.map_cons, List.map_nil, List.cons_append,
-      List.nil_append, List.append_nil, List.mem_cons, List.not_mem_nil, or_false] at ht
-    rcases ht with rfl | rfl | rfl
-    · exact Or.inl rfl
-    · exact Or.inr (Or.inr (sCell_lt κ hb (wfSeg_lt p hp)))
-    · exact Or.inl rfl
-  have hk : ∀ b0, b0 < 2 → ∀ G, ∀ t ∈ (kindRow κ.oneCell (sCell (N4c.chBase κ b0) 5)
-      (fun ι => κ.oneCell + selR σ ι) G).a ++ (kindRow κ.oneCell (sCell (N4c.chBase κ b0) 5)
-      (fun ι => κ.oneCell + selR σ ι) G).b ++ (kindRow κ.oneCell (sCell (N4c.chBase κ b0) 5)
-      (fun ι => κ.oneCell + selR σ ι) G).c,
-      t.1 = κ.oneCell ∨ (∃ ι, t.1 = κ.oneCell + selR σ ι) ∨ t.1 < κ.oneCell := by
-    intro b0 hb G t ht
-    simp only [kindRow, Lin.sub, Lin.cell, Lin.smul, Circ.kinds, List.map_cons, List.map_nil,
-      List.cons_append, List.nil_append, List.append_nil, List.mem_cons, List.not_mem_nil, or_false] at ht
-    rcases ht with rfl | rfl | rfl | rfl | rfl
-    · exact Or.inl rfl
-    · exact Or.inr (Or.inr (sCell_lt κ hb (by decide)))
-    · exact Or.inr (Or.inl ⟨.L32, rfl⟩)
-    · exact Or.inr (Or.inl ⟨.P30, rfl⟩)
-    · exact Or.inr (Or.inl ⟨.N30, rfl⟩)
-  intro r hr
-  unfold packRows4 packHead4 packWf4 packB at hr
-  split_ifs at hr with h1 h2 <;> simp only [List.mem_append, List.mem_singleton, List.not_mem_nil,
-    or_false] at hr
-  · rcases hr with rfl | hr
-    · exact hk 0 (by norm_num) _
-    · exact hw 0 (by norm_num) r hr
-  · rcases hr with rfl | hr
-    · exact hk _ (aggChild_lt κ σ hσ) _
-    · exact hw _ (aggChild_lt κ σ hσ) r hr
-
 /-- The kinds' constants the bounds use. -/
 theorem fitConsts (κ : NodeKind) :
     κ.oneCell = 3 * 2 ^ κ.dims.logM ∧ Snd.P4b.ncR κ = κ.dims.logM + 2 ∧ Snd.P4b.e2R κ = κ.dims.logM ∧
@@ -112,6 +73,129 @@ theorem fitConsts (κ : NodeKind) :
   have hd : κ.nL / 128 * 128 = κ.nL := by cases κ <;> decide
   simp only [NodeKind.oneCell]
   nlinarith
+
+/-- **Every slot's stream segment lies in H** (R-A′: sub-slot `i` at block `chBase + i·sBlk`): its
+`cLen` blocks end before M, a later sub-slot has the spacer's two blocks before it, and the spacer's
+bit cells are in its aggregate's L stride. -/
+theorem packB_fit (κ : NodeKind) : ∀ σ < κ.vslots,
+    (if isPrevSlot κ σ then N4c.chBase κ 0 else N4c.chBase κ (N4c.aggChild κ (aggSlot κ σ)) + subIx κ σ * N4c.sBlk) +
+      N4c.cLen ≤ κ.mBase ∧
+    (segIx κ σ ≠ 0 → 2 ≤ (if isPrevSlot κ σ then N4c.chBase κ 0 else
+      N4c.chBase κ (N4c.aggChild κ (aggSlot κ σ)) + subIx κ σ * N4c.sBlk)) ∧
+    segIx κ σ < 4 ∧ N4c.aggChild κ (aggSlot κ σ) < 2 := by
+  cases κ <;> decide
+
+theorem pinRow_cells {one x : ℕ} {c : F} {t : ℕ × F}
+    (ht : t ∈ (pinRow one x c).a ++ (pinRow one x c).b ++ (pinRow one x c).c) : t.1 = one ∨ t.1 = x := by
+  simp only [pinRow, Lin.sub, Lin.cell, Lin.smul, List.map_cons, List.map_nil, List.cons_append,
+    List.nil_append, List.append_nil, List.mem_cons, List.not_mem_nil, or_false] at ht
+  rcases ht with rfl | rfl | rfl <;> simp
+
+theorem boolRow_cells {one c : ℕ} {t : ℕ × F}
+    (ht : t ∈ (boolRow one c).a ++ (boolRow one c).b ++ (boolRow one c).c) : t.1 = one ∨ t.1 = c := by
+  simp only [boolRow, Lin.sub, Lin.cell, Lin.smul, List.map_cons, List.map_nil, List.cons_append,
+    List.nil_append, List.append_nil, List.mem_cons, List.not_mem_nil, or_false] at ht
+  rcases ht with rfl | rfl | rfl <;> simp
+
+theorem decRow_cells {one x : ℕ} {c : F} {cell : ℕ → ℕ} {d n : ℕ} {t : ℕ × F}
+    (ht : t ∈ (decRow one x c (packAt cell d n)).a ++ (decRow one x c (packAt cell d n)).b ++
+      (decRow one x c (packAt cell d n)).c) : t.1 = one ∨ t.1 = x ∨ ∃ q < n, t.1 = cell q := by
+  simp only [decRow, Lin.sub, Lin.cell, Lin.smul, packAt, List.map_cons, List.map_nil, List.cons_append,
+    List.nil_append, List.append_nil, List.mem_cons, List.map_map, List.mem_map,
+    List.mem_range, Function.comp_def] at ht
+  rcases ht with rfl | rfl | rfl | ⟨q, hq, rfl⟩
+  · simp
+  · simp
+  · simp
+  · exact Or.inr (Or.inr ⟨q, hq, rfl⟩)
+
+/-- **The pack rows' cells**: M's `one`, the slot's selector copies, H stream cells and the spacer's L
+bit cells, all below M. -/
+theorem packRows4_cells (κ : NodeKind) {σ : ℕ} (hσ : σ < κ.vslots) :
+    ∀ r ∈ packRows4 κ σ, ∀ t ∈ r.a ++ r.b ++ r.c,
+      t.1 = κ.oneCell ∨ (∃ ι, t.1 = κ.oneCell + selR σ ι) ∨ t.1 < κ.oneCell := by
+  obtain ⟨hb, h2, hs4, hσa⟩ := packB_fit κ σ hσ
+  set b0 := (if isPrevSlot κ σ then N4c.chBase κ 0 else
+    N4c.chBase κ (N4c.aggChild κ (aggSlot κ σ)) + subIx κ σ * N4c.sBlk) with hb0
+  have hpk : packB κ σ = some (b0, if isPrevSlot κ σ then nodeGrp else segGrp) := by
+    rw [hb0]; unfold packB; split_ifs <;> rfl
+  obtain ⟨-, -, -, -, hL⟩ := fitConsts κ
+  have hv3 : 3 ≤ κ.vslots := by cases κ <;> decide
+  have hone : κ.oneCell = κ.mBase * 128 := rfl
+  have hH : ∀ e, e / 4 < N4c.cLen → sCell b0 e < κ.oneCell := fun e he => by
+    have : e % 4 < 4 := Nat.mod_lt _ (by norm_num)
+    simp only [sCell]; nlinarith
+  have hH2 : ∀ j < 8, segIx κ σ ≠ 0 → sCell (b0 - 2) j < κ.oneCell := fun j hj hs => by
+    have := h2 hs
+    have h0 := hH 0 (by decide)
+    simp only [sCell] at h0 ⊢
+    have : j / 4 ≤ 1 := by omega
+    have : j % 4 < 4 := Nat.mod_lt _ (by norm_num)
+    have : (b0 - 2 + j / 4) * 128 + 4 + j % 4 < b0 * 128 := by
+      have : b0 - 2 + j / 4 + 1 ≤ b0 := by omega
+      nlinarith
+    omega
+  have hC : ∀ q < 128, spC κ (N4c.aggChild κ (aggSlot κ σ)) (segIx κ σ) q < κ.oneCell := fun q hq => by
+    simp only [spC]
+    have : N4c.aggChild κ (aggSlot κ σ) * 2 ^ 14 ≤ 2 ^ 14 := by
+      have := hσa; interval_cases (N4c.aggChild κ (aggSlot κ σ)) <;> simp
+    have : 128 * (segIx κ σ - 1) ≤ 384 := by omega
+    have : 3 * 2 ^ 14 ≤ κ.vslots * 2 ^ 14 := Nat.mul_le_mul_right _ hv3
+    omega
+  have hok : ∀ x, x = κ.oneCell ∨ x < κ.oneCell →
+      x = κ.oneCell ∨ (∃ ι, x = κ.oneCell + selR σ ι) ∨ x < κ.oneCell := fun x h => by
+    rcases h with h | h
+    · exact Or.inl h
+    · exact Or.inr (Or.inr h)
+  intro r hr t ht
+  rw [packRows4, packHead4, packWf4, hpk] at hr
+  simp only [List.mem_append, List.mem_cons] at hr
+  rcases hr with (rfl | hr) | hr
+  · -- the kind tie
+    simp only [kindRow, Lin.sub, Lin.cell, Lin.smul, Circ.kinds, List.map_cons, List.map_nil,
+      List.cons_append, List.nil_append, List.append_nil, List.mem_cons, List.not_mem_nil, or_false] at ht
+    rcases ht with rfl | rfl | rfl | rfl | rfl
+    · exact Or.inl rfl
+    · exact Or.inr (Or.inr (hH 5 (by decide)))
+    · exact Or.inr (Or.inl ⟨.L32, rfl⟩)
+    · exact Or.inr (Or.inl ⟨.P30, rfl⟩)
+    · exact Or.inr (Or.inl ⟨.N30, rfl⟩)
+  · -- the head rows
+    unfold headRows at hr
+    split_ifs at hr with hs0
+    · simp only [List.mem_singleton] at hr; subst hr
+      rcases pinRow_cells ht with h | h <;> rw [h]
+      · exact Or.inl rfl
+      · exact Or.inr (Or.inr (hH 0 (by decide)))
+    · rcases List.mem_append.1 hr with hr | hr
+      rcases List.mem_append.1 hr with hr | hr
+      · obtain ⟨j, hj, rfl⟩ := List.mem_map.1 hr
+        have hj := List.mem_range.1 hj
+        rcases pinRow_cells ht with h | h <;> rw [h]
+        · exact Or.inl rfl
+        · exact Or.inr (Or.inr (hH2 j (by omega) hs0))
+      · obtain ⟨q, hq, rfl⟩ := List.mem_map.1 hr
+        have hq := List.mem_range.1 hq
+        rcases boolRow_cells ht with h | h <;> rw [h]
+        · exact Or.inl rfl
+        · exact Or.inr (Or.inr (hC q hq))
+      rcases List.mem_cons.1 hr with rfl | hr
+      · rcases decRow_cells ht with h | h | ⟨q, hq, h⟩ <;> rw [h]
+        · exact Or.inl rfl
+        · exact Or.inr (Or.inr (hH2 6 (by norm_num) hs0))
+        · exact Or.inr (Or.inr (hC q (by omega)))
+      rw [List.mem_singleton] at hr; subst hr
+      · rcases decRow_cells ht with h | h | ⟨q, hq, h⟩ <;> rw [h]
+        · exact Or.inl rfl
+        · exact Or.inr (Or.inr (hH 0 (by decide)))
+        · exact Or.inr (Or.inr (hC _ (by omega)))
+  · -- the pinned elements
+    obtain ⟨p, hp, rfl⟩ := List.mem_map.1 hr
+    rcases pinRow_cells ht with h | h <;> rw [h]
+    · exact Or.inl rfl
+    · have := wfSeg_lt p hp
+      have hs : N4c.segB = 64 * N4c.cLen := by decide
+      exact Or.inr (Or.inr (hH _ (by omega)))
 
 /-- **A slot's rows and link rows**: indices in its region, cells below `2^(logM + 2)`. -/
 theorem slot_mem (κ : NodeKind) (hF : ProtoFit) {σ : ℕ} (hσ : σ < κ.vslots) {p : ℕ × Row}

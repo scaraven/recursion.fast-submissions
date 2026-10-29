@@ -163,20 +163,25 @@ def linkRowsB4 (κ : NodeKind) (σ : ℕ) : List Row :=
 /-- The aggregate a segment slot belongs to (`N2`/`N4`: 0; `N8`: `σ / 4`). -/
 def aggSlot (κ : NodeKind) (σ : ℕ) : ℕ := if κ.hasPrev then 0 else σ / 4
 
-/-- **Slot `σ`'s packed stream** (S-E13a): the first block of the stream segment it reads and its
-kind group, for a slot whose segment is 16-aligned: the previous node's (signed child 0, the node
-group) and each aggregate's first sub-slot (segment 0 of the aggregate's stream, the segment
-group). An aggregate's later segments start at `1 + i·(segB − 1) ≡ 1 − i (mod 16)`: no linear row
-reaches their fields (S-E13a's B1), so they have none. -/
+/-- **Slot `σ`'s packed stream** (S-E13a; R-A′): the first block of the stream segment it reads and
+its kind group: the previous node's (signed child 0, the node group) and every aggregate sub-slot
+`i` (segment `i` of the aggregate's stream, the segment group). With R-A′'s spacers segment `i`
+starts at `1 + i·strideB`, `strideB = 64·sBlk`, so its block is the aggregate's first plus
+`i·sBlk` and its elements are segment 0's shifted (S-E13a's B1 closed). -/
 def packB (κ : NodeKind) (σ : ℕ) : Option (ℕ × Grp) :=
   if isPrevSlot κ σ then some (N4c.chBase κ 0, nodeGrp)
-  else if subIx κ σ = 0 then some (N4c.chBase κ (N4c.aggChild κ (aggSlot κ σ)), segGrp)
-  else none
+  else some (N4c.chBase κ (N4c.aggChild κ (aggSlot κ σ)) + subIx κ σ * N4c.sBlk, segGrp)
 
-/-- The kind tie of slot `σ` (stream element 5 `= Σ_ι K_ι s′_ι`, `FRNodeRows4Pack.kindRow`). -/
+/-- Slot `σ`'s segment index in its stream (`0` for the previous node). -/
+def segIx (κ : NodeKind) (σ : ℕ) : ℕ := if isPrevSlot κ σ then 0 else subIx κ σ
+
+/-- **Slot `σ`'s head rows**: the kind tie (stream element 5 `= Σ_ι K_ι s′_ι`,
+`FRNodeRows4Pack.kindRow`), then its segment's element 0 and, for a later sub-slot, the spacer
+before it (`headRows`, with the spacer's bit cells `spC` of its aggregate). -/
 def packHead4 (κ : NodeKind) (σ : ℕ) : List Row :=
   match packB κ σ with
-  | some (b0, G) => [kindRow κ.oneCell (sCell b0 5) (fun ι => κ.oneCell + selR σ ι) G]
+  | some (b0, G) => kindRow κ.oneCell (sCell b0 5) (fun ι => κ.oneCell + selR σ ι) G ::
+      headRows κ.oneCell b0 (segIx κ σ) (spC κ (N4c.aggChild κ (aggSlot κ σ)) (segIx κ σ))
   | none => []
 
 /-- The pinned elements of slot `σ`'s stream segment (`FRNodeRows4Pack.wfRows`). -/
@@ -185,8 +190,8 @@ def packWf4 (κ : NodeKind) (σ : ℕ) : List Row :=
   | some (b0, _) => wfRows κ.oneCell b0
   | none => []
 
-/-- **Slot `σ`'s pack rows** (S-E13a; `FRNodeRows4Pack`): the kind tie, then the stream's pinned
-elements (the tag, each item's length word and query tag). -/
+/-- **Slot `σ`'s pack rows** (S-E13a; `FRNodeRows4Pack`): the kind tie and the head rows, then the
+stream's pinned elements (each later item's length word and query tag). -/
 def packRows4 (κ : NodeKind) (σ : ℕ) : List Row := packHead4 κ σ ++ packWf4 κ σ
 
 /-! ### S-E13b's node rows (WOTS, `aggPad`), folded in at slot 1 -/
@@ -318,13 +323,16 @@ theorem linkRowsB4_length (κ : NodeKind) (σ : ℕ) :
     (linkRowsB4 κ σ).length = if σ = 0 then 7 else 8 := by
   unfold linkRowsB4; split_ifs <;> simp [Circ.kinds, actRows4_length]
 
-/-- A slot's pack rows: `1 + 8,783` for an aligned slot, else none. -/
-theorem packRows4_length_le (κ : NodeKind) (σ : ℕ) : (packRows4 κ σ).length ≤ 8784 := by
+/-- A slot's pack rows: `1 + 1 + 8,782` for a segment 0, `1 + 136 + 8,782` for a later sub-slot. -/
+theorem packRows4_length_le (κ : NodeKind) (σ : ℕ) : (packRows4 κ σ).length ≤ 8919 := by
   unfold packRows4 packHead4 packWf4
-  rcases packB κ σ with _ | ⟨b0, G⟩ <;> simp [wfRows, wfSeg_length]
+  rcases packB κ σ with _ | ⟨b0, G⟩
+  · simp
+  · simp only [List.length_append, List.length_cons, headRows_length, wfRows, List.length_map, wfSeg_length]
+    split_ifs <;> omega
 
-/-- S-E13b's node rows at a slot: at most 8,680. -/
-theorem extRowsC_length_le (κ : NodeKind) (σ : ℕ) : (extRowsC κ σ).length ≤ 8680 := by
+/-- S-E13b's node rows at a slot: at most 7,904. -/
+theorem extRowsC_length_le (κ : NodeKind) (σ : ℕ) : (extRowsC κ σ).length ≤ 7904 := by
   unfold extRowsC
   split_ifs with h1 h2
   · subst h1; rw [xRowsK_eq]
@@ -333,7 +341,7 @@ theorem extRowsC_length_le (κ : NodeKind) (σ : ℕ) : (extRowsC κ σ).length 
   · simp
   · simp
 
-/-- (+) A slot's link rows fit its link region (at most `8 + 8,908 + 8,680` of `2^15`). -/
+/-- (+) A slot's link rows fit its link region (at most `8 + 8,919 + 7,904` of `2^15`). -/
 theorem linkRows4_length_le (κ : NodeKind) (σ : ℕ) : (linkRows4 κ σ).length < linkN := by
   have h1 := linkRowsB4_length κ σ
   have h2 := packRows4_length_le κ σ

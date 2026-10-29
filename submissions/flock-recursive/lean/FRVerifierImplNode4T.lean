@@ -485,12 +485,13 @@ theorem tgtE_bit (t : Block.Target) (p : ℕ) :
     tgtE t p = bF (t (ProductCircuit.pos p) == some true) := rfl
 
 /-- (+/−) **The bits on `N4`**: chain 0's block 1 (counter `128`) reads `t_lo` bit 7 as `1` and
-bit 6 as `0`; chain 1's last block (final, `t = aggB 4`, odd) reads bit 0 and the final flag as
-`1`, its second-to-last block reads the flag as `0`; the tail's candidate `F_{0,1}` (final,
+bit 6 as `0`; chain 1's last block (final, `t = aggB 4 = 64 · 96,950`, R-A′'s whole blocks) reads
+bit 7 and the final flag as `1` and bit 0 as `0`, its second-to-last block reads the flag as `0`; the tail's candidate `F_{0,1}` (final,
 `t = aggB 1 = 0x17AB00`, revision 4.4.2, RSV2) reads the flag and bit 13 as `1`, bit 12 as `0`. -/
 theorem nodeE4_ctrl :
     nodeE4 .N4 1 1031 = 1 ∧ nodeE4 .N4 1 1030 = 0 ∧
-    nodeE4 .N4 (lastB .N4 1) 1024 = 1 ∧ nodeE4 .N4 (lastB .N4 1) 1088 = 1 ∧
+    nodeE4 .N4 (lastB .N4 1) 1031 = 1 ∧ nodeE4 .N4 (lastB .N4 1) 1024 = 0 ∧
+    nodeE4 .N4 (lastB .N4 1) 1088 = 1 ∧
     nodeE4 .N4 (lastB .N4 1 - 1) 1088 = 0 ∧
     nodeE4 .N4 (N4c.finB .N4 0) 1088 = 1 ∧ nodeE4 .N4 (N4c.finB .N4 0) 1037 = 1 ∧
     nodeE4 .N4 (N4c.finB .N4 0) 1036 = 0 := by
@@ -523,9 +524,9 @@ theorem nodeE4_ctrl :
     have : 3 ≤ N4c.chLen .N4 1 := by decide
     rw [hl]; omega
   have hL : 3 ≤ N4c.chLen .N4 1 := by decide
-  rw [m0, m0, hl', hl, m1 _ (by omega), m1 _ (by omega), m1 _ (by omega), mt, mt, mt]
+  rw [m0, m0, hl', hl, m1 _ (by omega), m1 _ (by omega), m1 _ (by omega), m1 _ (by omega), mt, mt, mt]
   simp only [tgtE_bit]
-  refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩ <;> rw [bF] <;> decide
+  refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩ <;> rw [bF] <;> decide
 
 end Controls
 

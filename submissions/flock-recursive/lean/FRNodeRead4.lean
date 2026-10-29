@@ -15,8 +15,11 @@ committed witness `w`:
   are active.
 * **The traces** are read off H, as 3.x's `readTrace`: signed child `σ`'s chain hashes the stream
   `chainBytes4 κ σ k w` (S-E12a), and segment `i`'s trace is the item sequence `itemsOf seq4` read
-  from stream offset `1 + i·(segB − 1)` (`segTr`). A previous node's is segment 0 of its stream.
-  An aggregate's trace is its active sub-slots' traces in order.
+  from stream offset `1 + i·strideB` (`segTr`; revision 4.4.1, R-A′: `strideB = segB − 1 + 129`, a
+  trace and a spacer entry). A previous node's is segment 0 of its stream. An aggregate's trace is
+  `V_A`'s: its active sub-slots' traces in order with the spacer entry `(spacerQ, a_i)` before
+  sub-slot `i ≥ 1`, its answer `a_i` read off the stream (`spAns`, at the spacer's offset
+  `i·strideB − 128`); its query is the constant `spacerQ`.
 * **The proofs.** A slot's proof is `pf` of its trace (`pf`: the child proof its trace carries,
   A.5; for `seq4` this is S-H4's reassembly, a parameter here), fitted to `piSizeOf seq4` bytes.
   An aggregate's `π_A` is `hdrA = 'A' ‖ k ‖ 0⁶ ‖ enc64 n ‖ e` followed by its active sub-slots'
@@ -47,9 +50,20 @@ theorem kAct_le (κ : NodeKind) (a : ℕ) (w : Asg) : kAct κ a w ≤ κ.maxK :=
 /-! ## The traces, proofs and signatures -/
 
 /-- Segment `i`'s trace in signed child `σ`'s stream (`k` segments): `seq4`'s items from offset
-`1 + i·(segB − 1)`. -/
+`1 + i·strideB` (R-A′). -/
 noncomputable def segTr (κ : NodeKind) (σ k i : ℕ) (w : Asg) : Trace :=
-  Read.readItems (N4c.chainBytes4 κ σ k w) (1 + i * (N4c.segB - 1)) (itemsOf seq4)
+  Read.readItems (N4c.chainBytes4 κ σ k w) (1 + i * N4c.strideB) (itemsOf seq4)
+
+/-- **The spacer's item** (`absorbQ 0³² 0⁴⁹`: an absorb of 49 bytes, 129 stream bytes). -/
+def spItem : Item := .absorb 49
+
+/-- The answer of the entry at offset `o` of the stream `B`, read as a spacer entry. -/
+def spAnsB (B : List UInt8) (o : ℕ) : Digest := (Read.entryAt B o spItem).2
+
+/-- **Spacer `i`'s answer** (`1 ≤ i < k`) in signed child `σ`'s stream: the last 32 bytes of the
+spacer's entry at offset `i·strideB − 128` (before segment `i`). -/
+noncomputable def spAns (κ : NodeKind) (σ k : ℕ) (w : Asg) (i : ℕ) : Digest :=
+  spAnsB (N4c.chainBytes4 κ σ k w) (i * N4c.strideB - 128)
 
 /-- The aggregate a segment slot belongs to. -/
 def slotA (κ : NodeKind) (v : ℕ) : ℕ := if κ.hasPrev then 0 else v / 4
@@ -94,12 +108,14 @@ def readSig4 (κ : NodeKind) (σ : ℕ) (w : Asg) : Sig where
   path := (List.range sigHeight).map fun t =>
     Read.digestOf w (sigCell κ σ (1 + 2 * wotsLen + 2 * t)) (sigCell κ σ (2 + 2 * wotsLen + 2 * t))
 
-/-- **Signed child `σ`**: an aggregate's `π_A`, its sub-slots' traces in order; a previous node's
+/-- **Signed child `σ`**: an aggregate's `π_A`, its sub-slots' traces in order with the spacer
+entries between them (`V_A`'s trace, `FRAgg.aggTrace`); a previous node's
 slot-0 proof and trace; the signature. -/
 noncomputable def sgn4 (pf : Trace → Proof) (κ : NodeKind) (σ : ℕ) (w : Asg) : Signed :=
   if N4c.isAgg κ σ then
     ⟨aggPf pf κ (N4c.aggOf κ σ) w,
-      ((List.range (kAct κ (N4c.aggOf κ σ) w)).map fun i => slotTr4 κ (N4c.sub κ (N4c.aggOf κ σ) i) w).flatten,
+      aggTrace (spAns κ σ (kAct κ (N4c.aggOf κ σ) w) w)
+        ((List.range (kAct κ (N4c.aggOf κ σ) w)).map fun i => slotTr4 κ (N4c.sub κ (N4c.aggOf κ σ) i) w),
       readSig4 κ σ w⟩
   else ⟨⟨(slotPf pf κ 0 w).toArray⟩, slotTr4 κ 0 w, readSig4 κ σ w⟩
 
@@ -125,7 +141,8 @@ theorem aggHdr_length (k n : ℕ) (e : Digest) : (aggHdr k n e).length = 48 := b
 
 theorem sgn4_agg (pf : Trace → Proof) (κ : NodeKind) {a : ℕ} (ha : a < N4c.nAgg κ) (w : Asg) :
     sgn4 pf κ (N4c.aggChild κ a) w =
-      ⟨aggPf pf κ a w, ((List.range (kAct κ a w)).map fun i => slotTr4 κ (N4c.sub κ a i) w).flatten,
+      ⟨aggPf pf κ a w, aggTrace (spAns κ (N4c.aggChild κ a) (kAct κ a w) w)
+          ((List.range (kAct κ a w)).map fun i => slotTr4 κ (N4c.sub κ a i) w),
         readSig4 κ (N4c.aggChild κ a) w⟩ := by
   rw [sgn4, if_pos (N4c.isAgg_aggChild κ a), N4c.aggOf_aggChild κ ha]
 
