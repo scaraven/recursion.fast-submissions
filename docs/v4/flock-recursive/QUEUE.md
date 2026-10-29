@@ -9,8 +9,11 @@ Main (`v4/flock-recursive`, core `422f2f9`; the certificate assumes only `Open4F
 
 `v4/rev44` (HEAD `b156c27` = RSV-V2 + main merged + B5 + RSV-S WIP; red at RSV-V's 7 declarations and possibly decoder literals):
 - RSV-S2a: continues RSV-S (WIP `b156c27`, partial; handover RSV-S-RESULT §5 items 1–4). It owns `R4Fin`, `R4FrE`, `R4PfFlag`/`PfFin`, `FrRS`, `Start` and `Qry`. Its first task is the reserve branches of `flag_gFinE`/`flag_gFinB'`, proved in blocks with `pr_seq2`; one `simp` over 168 ops hit 4M heartbeats and then 16G OOM.
-- Cheap Opus review of RSV-S's statement changes and its two questions: the `PubOKR4` doom for B′'s 60 cells, and changing `StmtN4`'s signature vs a wrapper.
-- **Next:** RSV-S2b (§5 items 5–7: B′ at 69 cells/`PubOKR4`, the chain, `gap4Imp_of_rsv`, controls). It owns `P4bB`, `P4fDF`/`Obl`/`Ctrl`, `XFront` and `RsvMLE`, and starts once the review has answered Q1/Q2. Any change to `StmtN4` waits for A1′, which is editing `FRNodeCircuit4`.
+- RSV-S2b: §5 items 5–7, in parallel with S2a. It owns `P4bB`, `P4fDF`/`Obl`/`Ctrl`, `XFront`, `RsvMLE` and the RunFacts modules.
+- **The review of RSV-S found no soundness issue.** Every challenge comes after every value it batches, `ChildBad4` is charged at 24/2^128 through E1's exit, and εR stays 15/2^124. It settled the two open questions:
+  - **Q2, B′'s 60 extra cells:** `PubOKR4` goes only into `DRS0X`/`DRS1X`'s `Pub` argument (phase 23 is a post-doom). `bg16X`/`bg20X` are unchanged.
+  - **Q1, the node statement:** `StmtN4` keeps its signature. `nodeLaws4C'` and its two siblings are generalised over `St → StmtN4`, and a downstream `StmtN4R := StmtN4 ∧ PubCellsR4 ∧ truthChildV` is used on the gap4Imp path. That edit to `FRNodeCircuit4` waits until A1′ has landed.
+  - The four controls for `ChildBad4` are required.
 - A1′: R-A′ spacers (aligned sub-slots; `kindS`/`wf` at i ≥ 1). Told to build against B5's `FRNodeRows4Plan`/`FRVerifierImplNode4F`.
 - Review of B5 (cheap Opus) found no blockers; the fast path is fully covered by `linkV4_eq`/`slots_val`. The should-fix items:
   - **(a) Clash with A1′.** `pinKeys`/`hpkr`/`extIRows`/`wfLen` assume one pinned block per slot, equal to `wfSeg`. A1′'s per-sub-slot blocks need a segment-carrying key and a re-proof of `linkV4_eq`. A1′ has been told; `innAt`'s `find?` should become an indexed `Array`.
