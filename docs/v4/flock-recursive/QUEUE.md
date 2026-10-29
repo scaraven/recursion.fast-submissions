@@ -83,6 +83,7 @@ Running on rev44:
   - **Cost:** init about +1.0 s (target 0.5). The lever is the compile placing the `bitOf`/`tensorW` cells directly on the bit cells, about +0.3 s; it is with INIT.
   - **Fold:** waits on REPF's `repSegB`. The patch is `logs/IMPC2-orch-copy/patch.py`.
 - **HEAD fix `b52ee6e`:** ASK-T's `ctlP` clashed with RepCtrl's, so `FR` did not build at `ae8b8d8`. Renamed to `ctlPT`. Lesson: build `FR` from a clean snapshot before every commit that adds modules to FR.
+- **Note:** at HEAD, `FRNodeRows4AskBS` (outside FR) fails to build unpatched (line 171), because it assumes the folded `askTG`. The fold stage must make it build. The clean submission branch must contain no non-building modules.
 - IMPC2b: `atImp_bitR`, the run proofs (`execA_idx`, `bitOf`/`bits`/`flag_stmt`, `SlotRunB`, `gap4Imp_of_bitsR`). The goal is `Gaps4` from the rows alone.
 - **Collision guard:** ASK-T (the `askTG` line and imports) and REPF (the split and fold) both edit FRNodeRows4.lean. Each was told to touch only its own hunks; the orchestrator merges at freeze.
 - **SRA landed `27459d9`.**
