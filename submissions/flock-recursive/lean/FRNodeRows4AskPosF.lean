@@ -13,7 +13,8 @@ whose fields are `askTG`'s) and the bits (`bitRows4`), once they fit (`ArFit`). 
 * **`askRowsX_trail`**: B3's `askRowsX` is `trailRows` at the template's fields; **`askRowsP_eq`**.
 * **`askFold`**: `askIRows4 A κ v arR2 ⊆ nodeIRows4 κ` for every template `A` with `askTG`'s fields
   (the hypothesis `hfoldA` of B3's `gap4Imp_of_run`, IMP's `gap4Imp_of_runI`, SRA's `gap4Imp_of_rsv`);
-  **`askFold_rsv`**: at `withRsv (fun _ => AT.none)`, today's template (`input` + reserve).
+  today's template and its fold are `FRNodeRun4AskT.withImpc_askT`, `askFold_askT` (ASK-T's asks,
+  `input`, the reserve, IMPC's import classes).
 * **`a1_slot`** (the arena₁ bridge, prototype frame): at slot `v`'s assignment, arena₁'s cell
   `π·2^20 + arA1 + e` is the H cell of the slot's stream element `e`; **`bit_slot`**: the bits' cells
   are bits.
@@ -40,11 +41,8 @@ theorem askRowsP_eq {A : AT} {π : ℕ} (hc : A.cov = (askTG π).cov) (hr : A.ro
     askRowsP A π = askRowsT π := by
   rw [askRowsP, askRowsX_trail, askRowsT, hc, hr]; rfl
 
-/-- **Today's template** (SRA's `withRsv` at the empty ask template: IMP's `input`, SRA's reserve)
-has `askTG`'s fields. -/
-theorem withRsv_none (π : ℕ) :
-    (withRsv (fun _ => AT.none) π).cov = (askTG π).cov ∧ (withRsv (fun _ => AT.none) π).rows = (askTG π).rows :=
-  ⟨rfl, rfl⟩
+/-- **The node's ask template** (ASK-T): the ask generator `askTGT` as B3's template. -/
+def askAq (π : ℕ) : AT := (askTGT (Xof π) π).toAT
 
 /-! ## The fit from the statement's rows -/
 
@@ -88,12 +86,6 @@ theorem askFold {A : ℕ → AT} (hA : ∀ π ≤ 1, (A π).cov = (askTG π).cov
   refine ⟨(r, k), hk, ?_⟩
   simp only [rowMapC_comp, Prod.mk.injEq]
   refine ⟨by simp only [mvC]; omega, rfl⟩
-
-/-- **Today's fold** (`input` + reserve: SRA-RESULT §6.1's request): `askIRows4 (withRsv (fun _ =>
-AT.none)) κ v arR2 ⊆ nodeIRows4 κ`. -/
-theorem askFold_rsv {κ : NodeKind} {w : Asg} (hone : w κ.oneCell = 1) (hE : Snd.P4b.truthEI (nodeIRows4 κ) w) :
-    ∀ v < κ.vslots, ∀ p ∈ askIRows4 (withRsv fun _ => AT.none) κ v arR2, p ∈ nodeIRows4 κ :=
-  askFold (fun π _ => withRsv_none π) hone hE
 
 /-! ## Arena₁ and the bits at a slot's assignment (the prototype frame) -/
 

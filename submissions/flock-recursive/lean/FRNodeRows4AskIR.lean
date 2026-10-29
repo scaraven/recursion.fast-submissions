@@ -294,7 +294,7 @@ def colOk (pv : List (ℕ × ℕ × ℕ × ℕ)) (a : (List Lin × ℕ × AuxK) 
   | .bits _ => false
 
 /-- Prototype `π`'s `piField` registers. -/
-def pvP (π : ℕ) : List (ℕ × ℕ × ℕ × ℕ) := provL 0 (protoProg π).ops
+def pvP (π : ℕ) : List (ℕ × ℕ × ℕ × ℕ) := provLT 0 (protoProg π).ops
 
 theorem slotπ_size (κ : NodeKind) (v : ℕ) (w : Asg) : ((rd4 X.pf4).slotπ κ v w).size = piSizeOf seq4 := by
   show (⟨(slotPf X.pf4 κ v w).toArray⟩ : ByteArray).size = _
@@ -324,7 +324,7 @@ theorem slotRunA_of_impc {rt : RT} {A : AT} {impl : OpImpl} {π : ℕ} {ι : Kin
   have hone := hsel.1
   have hprov : ∀ {r f o len}, provOf (pvP π) r = some (f, o, len) →
       s.regs[r]? = some (.b (inp.π.extract (absOff f o) (absOff f o + len))) := fun hp =>
-    execA_prov _ _ _ he (provOf_mem hp)
+    execA_prov _ _ _ he (by rw [← provLT_eq]; exact provOf_mem hp)
   refine ⟨fun a ha => ?_, hi, fun p hp => ?_⟩
   · cases hc : colOk (pvP π) a
     · exact hx a ha hc
@@ -427,8 +427,8 @@ theorem gap4Imp_of_impcR {rt : ℕ → RT} {Aq : ℕ → AT} {impl₀ : OpImpl} 
 def askTGIC (π : ℕ) : TG := (askTGI π).add (colTG (XofT π) π (pvP π))
 
 /-- (+) **The edit composes**: today's template with both has `askTGIC`'s fields. -/
-theorem withImpcC_none (π : ℕ) :
-    (withImpcC (fun _ => AT.none) π).cov = (askTGIC π).cov ∧ (withImpcC (fun _ => AT.none) π).rows = (askTGIC π).rows :=
+theorem withImpcC_askT (π : ℕ) :
+    (withImpcC askAq π).cov = (askTGIC π).cov ∧ (withImpcC askAq π).rows = (askTGIC π).rows :=
   ⟨rfl, rfl⟩
 
 /-! ## Controls -/

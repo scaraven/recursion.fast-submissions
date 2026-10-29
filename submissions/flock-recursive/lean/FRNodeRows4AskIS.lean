@@ -348,7 +348,7 @@ theorem atImp_col {impl : OpImpl} {X : Ext} {π : ℕ} {pv : List (ℕ × ℕ ×
 
 /-- Prototype `π`'s template: SRA's `withRsv` (the ask template `Aq π`, `input`, the reserve), then the
 import classes. -/
-def withImpc (Aq : ℕ → AT) (π : ℕ) : AT := (withRsv Aq π).add (impcTG (Xof π) π (provL 0 (protoProg π).ops)).toAT
+def withImpc (Aq : ℕ → AT) (π : ℕ) : AT := (withRsv Aq π).add (impcTG (Xof π) π (provLT 0 (protoProg π).ops)).toAT
 
 /-- **`imp` with the import classes discharged** (SRA's `gap4Imp_of_rsv` plus `atImp_impc`): what remains
 per active slot and selectable index is the ask template's `ATOk` and the residual run facts, whose
@@ -372,13 +372,13 @@ theorem gap4Imp_of_impc {rt : ℕ → RT} {Aq : ℕ → AT} {impl₀ : OpImpl} {
 
 /-! ## Controls -/
 
-/-- The node's generator with the import classes (the `askTG` edit: `… .add (impcTG (XofT π) π)`). -/
-def askTGI (π : ℕ) : TG := (askTG π).add (impcTG (XofT π) π (provL 0 (protoProg π).ops))
+/-- The node's generator with the import classes (`askTG`, which now folds `impcTG`: ASK-T). -/
+def askTGI (π : ℕ) : TG := askTG π
 
-/-- (+) **The edit composes**: today's template with the import classes has `askTGI`'s fields (so
-`askFold`'s hypothesis holds by `rfl` once `askTG` is edited). -/
-theorem withImpc_none (π : ℕ) :
-    (withImpc (fun _ => AT.none) π).cov = (askTGI π).cov ∧ (withImpc (fun _ => AT.none) π).rows = (askTGI π).rows :=
+/-- (+) **The edit composes**: today's template (ASK-T's ask template `askAq` with the import classes)
+has `askTGI`'s fields, so `askFold`'s hypothesis holds by `rfl`. -/
+theorem withImpc_askT (π : ℕ) :
+    (withImpc askAq π).cov = (askTGI π).cov ∧ (withImpc askAq π).rows = (askTGI π).rows :=
   ⟨rfl, rfl⟩
 
 /-- (+) The generator covers the challenge conversions; (−) not a third challenge coordinate or an

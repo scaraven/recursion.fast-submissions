@@ -8,6 +8,8 @@ import FRNodeRows4Hint
 import FRNodeRows4Pack
 import FRNodeRows4Ext
 import FRNodeRows4AskPosT
+import FRNodeRows4AskT
+import FRNodeRows4AskI
 
 /-!
 # The N2/N4/N8 nodes' M rows: slots, prototypes, copies, link rows
@@ -279,10 +281,13 @@ rejecting row instead (so `ArFit` follows from the statement's rows, `FRNodeRows
 def XofT (π : ℕ) : Ext := tplExt4 (protoF π) (protoR π) (protoLay π).ctx
 
 /-- **The node's row generator of prototype `π`**: the ask templates' rows (B3's `AT` with these
-fields is SRA's `FRNodeRsvLink.withRsv`'s). Today: the empty template, IMP's `input` template
-(`inpTG`), SRA's reserve template (`rsvTG`); ASK-T and IMPC replace `TG.none` by their classes
-(`TG.add`). -/
-def askTG (π : ℕ) : TG := (TG.none.add (inpTG (XofT π) π)).add (rsvTG (XofT π) π)
+fields is SRA's `FRNodeRsvLink.withRsv`'s): IMP's `input` template
+(`inpTG`), SRA's reserve template (`rsvTG`), and ASK-T's ask generator (`askTGT`: every ask's query
+and answer, `FRNodeRows4AskT`), IMPC's import classes (`impcTG`, `FRNodeRows4AskI`; `colTG` not yet
+folded). -/
+def askTG (π : ℕ) : TG :=
+  (((askTGT (XofT π) π).add (inpTG (XofT π) π)).add (rsvTG (XofT π) π)).add
+    (impcTG (XofT π) π (provLT 0 (protoProg π).ops))
 
 /-- **Prototype `π`'s template rows** (its frame), along its compile's trail (`askRowsP`'s fold). -/
 def askRowsT (π : ℕ) : List Row :=

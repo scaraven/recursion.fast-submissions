@@ -133,6 +133,26 @@ def provL : ℕ → List Op → List (ℕ × ℕ × ℕ × ℕ)
   | n, op :: ops =>
     (match op with | .piField f o len => [(n, f, o, len)] | _ => []) ++ provL (n + op.outs) ops
 
+/-- `provL`'s fold, accumulated in reverse (tail-recursive: the process start runs it over a prototype's
+≈ 155 k ops, which `provL`'s non-tail recursion overflows; ASK-T). -/
+def provAcc : ℕ → List Op → List (ℕ × ℕ × ℕ × ℕ) → List (ℕ × ℕ × ℕ × ℕ)
+  | _, [], acc => acc
+  | n, op :: ops, acc =>
+    provAcc (n + op.outs) ops (match op with | .piField f o len => (n, f, o, len) :: acc | _ => acc)
+
+/-- **`provL`, tail-recursive** (`provLT_eq`). -/
+def provLT (n : ℕ) (ops : List Op) : List (ℕ × ℕ × ℕ × ℕ) := (provAcc n ops []).reverse
+
+theorem provAcc_eq : ∀ (n : ℕ) (ops : List Op) (acc : List (ℕ × ℕ × ℕ × ℕ)),
+    provAcc n ops acc = (provL n ops).reverse ++ acc
+  | _, [], _ => by simp [provAcc, provL]
+  | n, op :: ops, acc => by
+    have ih := provAcc_eq (n + op.outs) ops
+    cases op <;> simp [provAcc, provL, ih]
+
+theorem provLT_eq (n : ℕ) (ops : List Op) : provLT n ops = provL n ops := by
+  rw [provLT, provAcc_eq, List.append_nil, List.reverse_reverse]
+
 /-- Register `r`'s `piField` (its field, offset, length), if a `piField` appended it. -/
 def provOf (pv : List (ℕ × ℕ × ℕ × ℕ)) (r : ℕ) : Option (ℕ × ℕ × ℕ) :=
   (pv.find? (·.1 == r)).map (·.2)
