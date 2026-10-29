@@ -7,8 +7,10 @@ Last updated 2026-10-28. **Rebased onto core PR #20 (pin `6d05d00`, commit `987e
 Main (`v4/flock-recursive`, core `422f2f9`; the certificate assumes only `Open4F := Gaps4`):
 - G5: kernel-time golf (`realign_sem` 44.8 s first; target ≥ 150 s off the comparator's 461.7 s).
 
-`v4/rev44` (HEAD `9a41aac` = RSV-V2 + main merged + B5; red at RSV-V's 7 declarations and possibly decoder literals):
-- RSV-S: E-phase soundness for RSV2 (P4b, B′ 69 cells, `gap4Imp_of_rsv`).
+`v4/rev44` (HEAD `b156c27` = RSV-V2 + main merged + B5 + RSV-S WIP; red at RSV-V's 7 declarations and possibly decoder literals):
+- RSV-S2a: continues RSV-S (WIP `b156c27`, partial; handover RSV-S-RESULT §5 items 1–4). It owns `R4Fin`, `R4FrE`, `R4PfFlag`/`PfFin`, `FrRS`, `Start` and `Qry`. Its first task is the reserve branches of `flag_gFinE`/`flag_gFinB'`, proved in blocks with `pr_seq2`; one `simp` over 168 ops hit 4M heartbeats and then 16G OOM.
+- Cheap Opus review of RSV-S's statement changes and its two questions: the `PubOKR4` doom for B′'s 60 cells, and changing `StmtN4`'s signature vs a wrapper.
+- **Next:** RSV-S2b (§5 items 5–7: B′ at 69 cells/`PubOKR4`, the chain, `gap4Imp_of_rsv`, controls). It owns `P4bB`, `P4fDF`/`Obl`/`Ctrl`, `XFront` and `RsvMLE`, and starts once the review has answered Q1/Q2. Any change to `StmtN4` waits for A1′, which is editing `FRNodeCircuit4`.
 - A1′: R-A′ spacers (aligned sub-slots; `kindS`/`wf` at i ≥ 1). Told to build against B5's `FRNodeRows4Plan`/`FRVerifierImplNode4F`.
 - Review of B5 (cheap Opus) found no blockers; the fast path is fully covered by `linkV4_eq`/`slots_val`. The should-fix items:
   - **(a) Clash with A1′.** `pinKeys`/`hpkr`/`extIRows`/`wfLen` assume one pinned block per slot, equal to `wfSeg`. A1′'s per-sub-slot blocks need a segment-carrying key and a re-proof of `linkV4_eq`. A1′ has been told; `innAt`'s `find?` should become an indexed `Array`.
