@@ -57,7 +57,17 @@ Running on rev44:
   - **Cost:** V(N4) +11/+15 ms, plan init 7.07 s.
   - **Open:** the arena₁ last-4 tie to `aggPad`; the N8 sparse plan check is too slow (> 1,800 s).
 - ASK-T: the `ATAsk` generator for all 8,783 asks (FS links, Merkle mux, pins, seed, columns).
-- IMPC: the `ATImp` classes (proof fields, siblings, `chF`/`chK`, `bitOf`, cap reads), the aux facts, foreign flags (zero pins, kind byte) and the `execA` byte invariant.
+- **IMPC landed `87519f4`.** The generators are `impcTG`/`colTG`.
+  - **Covered by `impcTG`:** `piElem` 4,199/4,201, `piElemK` all, `piDigest` 872/8,300, `chF`/`chK` all; cap reads under (β′) are proof reads. About 34 ms V per node.
+  - **`colTG`:** the `felems` aux facts, 871/871. About 110 ms V per node; deferred.
+  - **Also proved:** the `execA_prov` byte invariant and the zero-pin flags (12/13, 77/78).
+  - **Wiring:** `impcTG` goes into `askTG` via ASK-T.
+  - **Open, for a later track IMPC2:**
+    - `bitOf` (not an `ATImp` class; via `SlotRunA` on the concrete run);
+    - siblings and `bits 20` (bit decomposition, about 15.9k bit cells vs the 8,320-cell bit area);
+    - 2 mid-element flags per prototype (the stmt tag byte and the zero tail);
+    - 4 unaligned statement reads.
+- **Collision guard:** ASK-T (the `askTG` line and imports) and REPF (the split and fold) both edit FRNodeRows4.lean. Each was told to touch only its own hunks; the orchestrator merges at freeze.
 - **SRA landed `27459d9`.**
   - **`Gaps4`:** now over `StmtN4R`; the top hypothesis only shrank.
   - **Reserve link:** `gap4Imp_of_rsv` via the `AT.rsv` summand, in FRNodeRsvLink, which `FR` imports. The prefix form of `compileX_run` was not needed.
