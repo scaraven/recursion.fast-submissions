@@ -4,7 +4,7 @@ Last updated 2026-10-28. **Rebased onto core PR #20 (pin `6d05d00`, commit `987e
 
 ## Running — as of 2026-10-29 evening
 
-Main (`v4/flock-recursive`, core `64378d2`):
+Main (`v4/flock-recursive`, core `422f2f9` = core main after PR #20's merge, tree-identical to `64378d2`):
 - S-H4 pass 9: `outIR4`, `FRXNd4` (`nd`), the plug, `FRSubmission4Fin` (`Open4F := Gaps4`; `dec` discharged by S-L4's `links4_sigH`).
 - H-cert2: build and kernel probes on the certified closure.
 - G4: golf (winding down).
