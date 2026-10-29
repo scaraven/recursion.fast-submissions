@@ -510,7 +510,7 @@ theorem wots_aggPad_of_rows (hS : N4c.StmtN4 κ (lRows4 κ) (nodeIRows4 κ) vk c
   by_cases h : xOkK κ = true
   · refine W4.gap4_wots_aggPad pf (fun r hr => ?_) hS
     refine List.mem_append_right _ ?_
-    rw [extRowsC, if_pos rfl, if_pos h, xRowsK_eq]; exact hr
+    rw [extRowsC, if_pos rfl, if_pos h, xRowsK_eq]; exact List.mem_append_left _ hr
   · exfalso
     obtain ⟨-, -, -, hE, hP⟩ := hS
     have hone := one_of_pubCells hP
@@ -641,6 +641,24 @@ theorem wf_of_rows (hS : N4c.StmtN4 κ (lRows4 κ) (nodeIRows4 κ) vk c₁ c₂ 
         (by rw [hB]; omega) hpin hh
       simpa using this
 
+/-- **`Gap4.kindS` from the pack rows** (every sub-slot; R-A′): an active sub-slot's proof has the
+selected segment kind's byte. -/
+theorem kindS_of_rows (hpf : PfHdr pf) (hS : N4c.StmtN4 κ (lRows4 κ) (nodeIRows4 κ) vk c₁ c₂ w) :
+    ∀ a < N4c.nAgg κ, ∀ i < kAct κ a w, ∀ ι, SelOk (slotAsg κ (N4c.sub κ a i) w) (protoP 1) ι →
+      byteAt ((rd4 pf).slotπ κ (N4c.sub κ a i) w) 0 = (segAt ι).byte := by
+  have hone := one_of_pubCells hS.2.2.2.2
+  intro a ha i hi ι hι
+  have hkm := kAct_le κ a w
+  have hi' : i < κ.maxK := by omega
+  obtain ⟨-, hx, hpv, -⟩ := sub_facts κ ha hi'
+  obtain ⟨-, hrow, -⟩ := pins_of hS (sub_facts κ ha (i := i) hi').1 (packB_sub (i := i) ha hi')
+  have h5 := kindRow_sel hone hrow (by rw [protoOf_seg hpv]; exact hι)
+  show byteAt (⟨(slotPf pf κ (N4c.sub κ a i) w).toArray⟩ : Proof) 0 = _
+  rw [byteAt_slotPf]
+  simp only [slotTr4, hpv, Bool.false_eq_true, if_false, slotA_sub κ ha (by omega : i < κ.maxK), hx]
+  rw [kind_byte pf hpf (segi_elem w (N4c.isAgg_aggChild κ a) hi (by norm_num) (by decide)), h5]
+  exact (kConst_byte ι).2
+
 /-- **`gap4_of_rows`**: the node's truths, `PfHdr pf` and `Gap4R` give S-N2's `Gap4`. -/
 theorem gap4_of_rows (hpf : PfHdr pf) (hS : N4c.StmtN4 κ (lRows4 κ) (nodeIRows4 κ) vk c₁ c₂ w)
     (hG : Gap4R impl₀ base pf κ vk c₁ c₂ w) : Gap4 impl₀ base pf κ vk c₁ c₂ w := by
@@ -663,17 +681,7 @@ theorem gap4_of_rows (hpf : PfHdr pf) (hS : N4c.StmtN4 κ (lRows4 κ) (nodeIRows
       h5]
     exact (kConst_byte ι).1
   · -- kindS, every sub-slot
-    intro a ha i hi ι hι
-    have hkm := kAct_le κ a w
-    have hi' : i < κ.maxK := by omega
-    obtain ⟨-, hx, hpv, -⟩ := sub_facts κ ha hi'
-    obtain ⟨-, hrow, -⟩ := pins_of hS (sub_facts κ ha (i := i) hi').1 (packB_sub (i := i) ha hi')
-    have h5 := kindRow_sel hone hrow (by rw [protoOf_seg hpv]; exact hι)
-    show byteAt (⟨(slotPf pf κ (N4c.sub κ a i) w).toArray⟩ : Proof) 0 = _
-    rw [byteAt_slotPf]
-    simp only [slotTr4, hpv, Bool.false_eq_true, if_false, slotA_sub κ ha (by omega : i < κ.maxK), hx]
-    rw [kind_byte pf hpf (segi_elem w (N4c.isAgg_aggChild κ a) hi (by norm_num) (by decide)), h5]
-    exact (kConst_byte ι).2
+    exact kindS_of_rows pf hpf hS
 
 /-- (Converse) `Gap4` gives `Gap4R`: nothing beyond `Gap4` is asked. -/
 theorem gap4R_of_gap4 (hG : Gap4 impl₀ base pf κ vk c₁ c₂ w) : Gap4R impl₀ base pf κ vk c₁ c₂ w :=

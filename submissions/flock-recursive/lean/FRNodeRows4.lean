@@ -194,12 +194,12 @@ def packWf4 (κ : NodeKind) (σ : ℕ) : List Row :=
 stream's pinned elements (each later item's length word and query tag). -/
 def packRows4 (κ : NodeKind) (σ : ℕ) : List Row := packHead4 κ σ ++ packWf4 κ σ
 
-/-! ### S-E13b's node rows (WOTS, `aggPad`), folded in at slot 1 -/
+/-! ### S-E13b's node rows (WOTS, `aggPad`) and B4's aggregate checks, folded in at slot 1 -/
 
-/-- S-E13b's node rows per kind (`W4.xRows`), closed constants (built once per process). -/
-def xRowsN2 : List Row := W4.xRows .N2
-def xRowsN4 : List Row := W4.xRows .N4
-def xRowsN8 : List Row := W4.xRows .N8
+/-- S-E13b's node rows and B4's check rows per kind (`W4.xRowsA`), closed constants (built once per process). -/
+def xRowsN2 : List Row := W4.xRowsA .N2
+def xRowsN4 : List Row := W4.xRowsA .N4
+def xRowsN8 : List Row := W4.xRowsA .N8
 
 /-- The node rows of kind `κ`, read off the closed constants. -/
 def xRowsK : NodeKind → List Row
@@ -207,7 +207,7 @@ def xRowsK : NodeKind → List Row
   | .N4 => xRowsN4
   | .N8 => xRowsN8
 
-theorem xRowsK_eq (κ : NodeKind) : xRowsK κ = W4.xRows κ := by cases κ <;> rfl
+theorem xRowsK_eq (κ : NodeKind) : xRowsK κ = W4.xRowsA κ := by cases κ <;> rfl
 
 /-- A row's cells are below `b`. -/
 def rowCellsLt (b : ℕ) (r : Row) : Bool := (r.a ++ r.b ++ r.c).all fun t => decide (t.1 < b)
@@ -332,7 +332,7 @@ theorem packRows4_length_le (κ : NodeKind) (σ : ℕ) : (packRows4 κ σ).lengt
     split_ifs <;> omega
 
 /-- S-E13b's node rows at a slot: at most 7,904. -/
-theorem extRowsC_length_le (κ : NodeKind) (σ : ℕ) : (extRowsC κ σ).length ≤ 7904 := by
+theorem extRowsC_length_le (κ : NodeKind) (σ : ℕ) : (extRowsC κ σ).length ≤ 12056 := by
   unfold extRowsC
   split_ifs with h1 h2
   · subst h1; rw [xRowsK_eq]
@@ -341,7 +341,7 @@ theorem extRowsC_length_le (κ : NodeKind) (σ : ℕ) : (extRowsC κ σ).length 
   · simp
   · simp
 
-/-- (+) A slot's link rows fit its link region (at most `8 + 8,919 + 7,904` of `2^15`). -/
+/-- (+) A slot's link rows fit its link region (at most `8 + 8,919 + 12,056` of `2^15`). -/
 theorem linkRows4_length_le (κ : NodeKind) (σ : ℕ) : (linkRows4 κ σ).length < linkN := by
   have h1 := linkRowsB4_length κ σ
   have h2 := packRows4_length_le κ σ

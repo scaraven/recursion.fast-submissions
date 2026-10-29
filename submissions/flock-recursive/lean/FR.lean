@@ -151,6 +151,7 @@ import FRSegTarget4
 import FRVerifierC4
 import FRNodeRows4WotsCtrl
 import FRNodeRows4PackSound
+import FRNodeRows4AggChkCtrl
 import FRNodeRows4RepCtrl
 import FRNodeLinks4SigH
 import FRSubmission4Fin
