@@ -10,7 +10,7 @@ Main (`v4/flock-recursive`, core `422f2f9`; the certificate assumes only `Open4F
   - **Why 150 s is out of reach:** what remains is about 52.8 s of 17.5k declarations under 50 ms each, 44 s in FRSoundness4*/FRNodeRows4*, and 30 s outside FR (14.5 s of it core-owned `basePoly_irreducible`).
   - **Merge into rev44:** after PORT lands, since G5 touched FRX*. PORT carries G5's FRXNd4/FRXChain*/`cso_outIR4` changes by hand.
 
-`v4/rev44` (HEAD `7537acd` = RSV-V2 + main merged + B5 + RSV-S WIP + A1′ + RSV-S2b + RSV-S2a + PORT + main merge + B4; red at RSV-V's 7 declarations and possibly decoder literals):
+`v4/rev44` (HEAD `6a93cc8` = RSV-V2 + main merged + B5 + RSV-S WIP + A1′ + RSV-S2b + RSV-S2a + PORT + main merge + B4 + C1 (partial); red at RSV-V's 7 declarations and possibly decoder literals):
 - **RSV-S2a landed `50a7f52`** (WIP).
   - **Proved:** the reserve branches of `flag_gFinE`/`flag_gFinB'` (in blocks; `R4Fin` builds in 11 s), `R4FrE`'s `e_end4`/`e_in4`/`e_fin4` (`mStack_sP`, `implN4F_hMS`), `rsvZero4`, `FrRS`/`Start` at the stacked form, and `Qry` with spacers.
   - **Orchestrator edit:** XRun now uses `implN4F_hMS` plus its import.
@@ -47,7 +47,12 @@ Main (`v4/flock-recursive`, core `422f2f9`; the certificate assumes only `Open4F
   - the wiring of `gap4_of_rowsI` into FRSubmission4*.
   It owns Arena*/Agg*/FRNodeRun4*/FRNodeLinks4*/FRSubmission4*.
 - Review of PORT (cheap Opus): no blockers. A doc erratum was appended to PORT-RESULT: `pf4` was short by 77,024 B, not 77,872. Two hard-coded lengths (486, 8783) are guarded by the decided length lemmas.
-- C1: keyed replay `R` keys (`targetS`, `shiftTarget`, `linkWAll`, `rsWeight`, `evalL`, the kind factor if in `R`) in slot 0's spare region. It aims at `SlotImpR = ∅` with the reserve covering `evalM`, and runs C2's dead-op drop if cheap. It owns FRNodeRows4Rep*/FRVIRTplRep and keeps its plan/fit edits isolated for merging with B4.
+- **C1 landed `6a93cc8`** (partial; additions only).
+  - **Proved by replay rows:** `shiftTarget` (constant 0 at prototype 0: one row, `STBase`) and `linkWAll` (`tplLW`, 13.8–14.4k rows), evaluated at a second assignment in slot 0's spare region (`RTOkW`, `compileFromX_soundRW`).
+  - **Problem:** V costs 52–60 ms per call for these two alone, against PACK §6.2's 7–14 ms budget for all of R. `evalL` would be about 82k products per kind, and `repRowsP` takes 131 s if computed at plan init.
+  - **Not done:** the fold into `nodeIRows4`, which is an import cycle with FRNodeRows4.
+  - `FR.lean` imports `FRNodeRows4RepNCtrl`.
+- **Design (Fable): R-OPS.md.** It decides replay vs extending the reserve (as for evalM) vs closed form, op by op, for `evalL`, `targetS`, `linkWAll`, `rsWeight`/kind factor and `shiftTarget`. IMP keeps `SlotImpR` as an explicit hypothesis and does not switch B3 to `RTOkW` until this decision lands.
 - E1: prover port to 4.4.1's format: D/A fields, L1/L2, the reserve's 1,008/112-B fields and E2/E4 terms, spacers, arenas, the packed plan form and phantom pins. It runs end to end against rev44's Lean V, covering kind-changing chains, k = 1/2/4 and the worst-case first step against step_s 60. It prints B5's `eok`. It leaves a hook for B4's `aggChk` rows and owns `prover/`.
 - Review of A1′ (cheap Opus): no blockers.
   - **Soundness:** the free spacer bytes enter only the ignored spacer answer, `wf` is proved for every segment and spacer, and `ctrlA_no_spacer` is a real control. S2b is asked to confirm that no ROM-consistency argument ranges over spacer entries.
