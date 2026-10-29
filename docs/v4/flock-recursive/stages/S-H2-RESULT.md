@@ -4421,3 +4421,132 @@ model now `1.08·10^14`).
   into H message slots and keep 4 rows? The decoder side is done for rows 1–7; the alternative needs circuit
   rows and changes `kAct`'s definition.
 - **Q2 (S-E/S-G).** Which H cells are the signature (§8.3, §9.1)? `nd` cannot be written before `sg` is fixed.
+
+## Part 32 (track S-H4, pass 8): the signature reader `sigH` and `sig_of_H`; the signature's output words; handover for `outIR4`
+
+**Status.** HEAD `b562c50`, build tree `logs/fr-build-SH4g` (`MINE` = pass 7's + `FRXSig4 FRXSig4H
+FRXSig4W`), logs `logs/S-H4g/`. Nothing committed. **Item 1 (Q2 ruling) is done with no new
+hypothesis**: `sg := sigH`, `sig_of_H` from `StmtN4` alone. Item 2 is started (the signature's output
+words, pure, and the heap address of H's message words). **`outIR4` (traces, proofs, `π_A`), `FRXNd4`
+and the plug are not done**; `Open4` is unchanged (`dec` still over `ndNone`).
+
+### 1. Files (`loc.py`: total / blank / comment / code / theorems)
+
+| File | loc | Content |
+|---|---|---|
+| `FRXSig4` (new) | 73 / 18 / 29 / 26 / 3 | `hMB` (H message byte), `hMD`, **`idxH`**, `rFH`, `sibFH`, **`sigH`**; `hMB_eq` (= `msgBytes` byte), **`hMB_dec0`** (every cell read is in rows 4–7); `wIdx1`, **`sigH_ctl`**. |
+| `FRXSig4H` (new) | 161 / 13 / 26 / 122 / 6 | **`xRows_of_stmt`**, **`idxH_eq`**, **`otsH_eq`**, **`sibFH_eq`**, **`sig_of_H`**, **`readW4_sigH`**. |
+| `FRXSig4W` (new) | 252 / 30 / 46 / 176 / 14 | `hMBs`, **`hMW`**, **`shWd`**, `wOf`; `wordBytes_getD`, `elemWords_byte`, `hMW_byte`, `wOf_eq`, `shift_digit`, **`shWd_byte`**, `wOf_congr`, **`wOf_hMBs`**, `packBytes_ofFn32`, **`packBytes_hMBs`**, `hMBs_blk`, **`sigWords_sigH`**; **`hAddr`**, **`hAddr_eq`**, **`hMW_heap`**. |
+| `FRSubmission4Cert` | 110 / – / – / 50 / 6 (+2 code) | imports `FRXSig4H`, `FRXSig4W`; module doc. No statement changed. |
+
+### 2. `sigH` (revision 4.3 (A)(ii), the H rows checked)
+
+`sigH κ σ w : Sig` reads only H message slots (`hMB w b p` = byte `p mod 16` of element `4 + ⌊p/16⌋` of
+block `b`, i.e. rows 4–7 of `f⁽⁰⁾`: `hMB_dec0`), WOTS block `o` = `W4.wb κ σ o`:
+
+- `idx` = `ofLE` of message bytes 1–8 of block `399` (the key leaf's `j` field);
+- `ots_i` = message bytes 11–42 of block `3i` (chain `i`'s first step block, its `x` field);
+- `path_t` = the `l` field (bytes 1–32 of block `466 + 2t`) if bit `t` of `idx` is `1`, else the `r` field
+  (bytes 33–63 of block `466 + 2t`, then byte 0 of block `467 + 2t`).
+
+All of them lie in rows 4–7 (the blueprint's rows; no use of rows 1–3, no L cell).
+
+### 3. `sig_of_H` (every H ↔ L equality has a row; none missing)
+
+```lean
+theorem sig_of_H (hS : StmtN4 κ (lRows4 κ) (nodeIRows4 κ) vk c₁ c₂ w) :
+    ∀ σ < 2, sigH κ σ w = N4s.readSig4 κ σ w
+theorem readW4_sigH (hS : StmtN4 κ (lRows4 κ) (nodeIRows4 κ) vk c₁ c₂ (wF κ L es)) :
+    readW4 sigH κ L es = .node c₁ c₂ ((N4s.rd4 pf4).sgn κ 0 (wF κ L es)) ((N4s.rd4 pf4).sgn κ 1 (wF κ L es))
+```
+
+| L field | H field | rows / families used (S-E13b) |
+|---|---|---|
+| `idx` (`Lc 0`, `c₀`) | key leaf bytes 1–8 | `j` family (`j_byte`), index row `mc 399 0 = Lc 0` (`j_mirror`); `ofLE_enc64` |
+| `ots_i` (`Lc (1+2i)`, `+1`) | block `3i` bytes 11–42 | `x` family (`fam_byte`, `f = 0`), chain row `x_{i,0} = ots_i` (`chainRowsI`, first row) |
+| `path_t` (`Lc (267+2t)`, `+1`) | `l` / `r` fields | `l`, `r0`, `r31` families (`f = 5, 6, 7`), mux rows `l = b ? sib : cur`, `r = b ? cur : sib` (`mux_rows`), index bits (`idx_bit`), `r31_byte` |
+
+The node rows' truth comes from `StmtN4` (`xRows_of_stmt`: S-E13a's fold, `xOkK` or the rejecting row), so
+**no hypothesis is added**. `readW4_sigH` is `readW4_eq` at `sg := sigH`: S-L4's `hL_of_res` can use it as is.
+
+### 4. The signature's output words and the heap (item 2's first piece)
+
+- **The H message word stream** `hMW w n` (word `n mod 8` of block `⌊n/8⌋`'s message) has byte `k` =
+  stream byte `8n + k` (`hMW_byte`). The machine's word at a byte offset `8n + s` (`0 < s < 8`) is
+  `shWd W s n = (W n >>> 8s) + (W (n + 1) <<< (64 − 8s))` (`wOf_hMBs`).
+- **`sigWords_sigH`**: `sigWords (sigH κ σ w) = shWd 1 (8·b₃₉₉) :: (⋃_{i<133} [shWd 3 (8·b_{3i} + 1 + j)]_{j<4})
+  ++ ⋃_{t<16} [shWd 1 (8·b_{466+2t} + (bit_t ? 0 : 4) + j)]_{j<4}` over `hMW w` (597 words).
+- **`hAddr_eq`**: word `n` sits at `ob + 2^(mLog0+1)·(3 + (n >>> 1) & 3) + 4·(n >>> 3) + (n & 1)` —
+  3.x's `addrW` shape `(m₁, s₃, s₄) = (3, 3, 2)` with the row shift `mLog 0 + 1` for 3.x's 18 and the base
+  `ob + 3·stride`; **`hMW_heap`**: that heap word is `hMW (wF κ L es) n` after the decode (from
+  `decF04_wF`'s conclusion, for blocks inside `f`).
+
+### 5. Controls and checks
+
+| Control | Kind | What it shows |
+|---|---|---|
+| `sigH_ctl` | + / − | on `wIdx1` (key leaf element 4 = 256) `sigH`'s index is 1 while L's index cell reads 0: the readers differ off the statement, so `sig_of_H` needs the rows; on the zero witness `idx = 0` (`decide +kernel`, 2.5 s) |
+| `hMB_dec0` | + | every cell `sigH` reads is decoded (rows 4–7) |
+| `sig_of_H`, `readW4_sigH`, `sigWords_sigH`, `hMW_heap` | + (universal) | the H reader agrees with L's on every statement's witness; its words are the heap's shifted pairs |
+
+- **Build:** `lake build FR Solution FRSubmission4Cert FRXSig4H FRXSig4W` green, **2,601 jobs**
+  (`logs/S-H4g/build1.log`; baseline `build0.log`, 2,598).
+- **Axioms** (`logs/S-H4g/axioms.log`, `logs/fr-build-SH4g/ax/AxSH4g.lean`, 15 declarations incl.
+  **`certificate_sub4`**, **`certificateR_sub4`**, **`RecursionFast.Challenge.certified`**, **`sig_of_H`**):
+  within `propext`, `Classical.choice`, `Quot.sound`; no `sorryAx`.
+- **Source rule** (`logs/S-H4g/source-rule.log`): 380 files, 0 findings.
+- **Sequential times** (`profile-*.log`): `FRXSig4` 8.8 s (kernel 2.5 s), `FRXSig4H` 7.6 s, `FRXSig4W` 11.0 s.
+
+### 6. What `Open4` still assumes (exact; unchanged by this pass)
+
+1. `gap : Gaps4` — `∀ vk κ w c₁ c₂, StmtN4 κ (lRows4 κ) (nodeIRows4 κ) vk c₁ c₂ w → Gap4R implB (fun _ => implB)
+   pf4 κ vk c₁ c₂ w` (`imp`, `kindS`/`wf` at `i ≥ 1`, `aggChk`).
+2. `dec : ∃ D : NodeDec4 ndNone, Links4 ndNone D` — unsatisfiable while `nd` is missing (`not_nodeDec4_ndNone`).
+   When `nd` lands: `Links4 nd nodeDec4_nd`, with `nodeDec4_nd = ⟨LinksD4, readW4 sigH, out⟩`; S-L4's side is
+   then `readW4_sigH` + `LinksD4`.
+
+### 7. Deviations
+
+1. None in the statements. The names `hMB`/`rFH`/`sibFH`/`shWd` avoid 3.x's `FR.X.hB`, `rH`, `sibH` and
+   `FR.shW`.
+2. `sigH` uses the `r` field's byte 31 from block `467 + 2t` (the `r31` family's source), as the blueprint's
+   (A)(ii) "path blocks' `l`/`r` fields" implies; `sibFH` chooses by the index read off H (`idxH`).
+
+### 8. Handover: what remains, in order (the design worked out this pass)
+
+**Key fact.** Signed child `σ`'s chain stream is H's message byte stream too: stream byte `p` of
+`chainBytes4 κ σ k w` is `hMBs w (64·chBase κ σ + p)` for `p < 64·(streamL − 1)`, and its last block is
+`blkOf … (streamL − 1)` (= `finBlk κ σ k`; for a previous node and for `k = maxK` this is again `chBase +
+streamL − 1`, contiguous). So **one loader** serves the signature, the traces, the proofs and `π_A`'s
+`(n, e)` (the `cAB` block's message is H too): the shifted pair `shWd (hMW w) s n` at `hAddr`, with a
+**redirect** of the last stream block to `finBlk` for an aggregate with `k < maxK`.
+
+1. **`FRXOut`'s `AP`, in place** (FRX module, already in the certificate's closure): add the row shift `st`
+   (3.x: 18) and the byte shift `sh` (3.x: 0; `shWd … 0 n = W n` since `<<< 64` is 0 — extend `shWd_byte`
+   to `s = 0`), and a redirect (registers `qL`, `Δ`: add `Δ` when `n >>> 3 = qL`). Then `segIR_sem`
+   (`segOut (src …)`) carries over with `src` the shifted, redirected H word; 3.x's `apS`/`apL` set
+   `st = 18`, `sh = 0`, no redirect (`FRXOutRun` unchanged otherwise).
+2. **Segment shifts**: segment `i` starts at stream byte `1 + i·(segB − 1)`; with `segB = streamBytesOf
+   seq4 ≡ 0 mod 8` (main: `1,482,752`) the item words of segment `i` sit at byte offsets `≡ 1 − i mod 8`, i.e.
+   a 3.x segment (stream byte 1 = the seed entry) over the source re-based at word `⌊i(segB − 1)/8⌋` with byte
+   shift `i(segB − 1) mod 8` (`0, 7, 6, 5` for `i = 0 … 3`, on top of 3.x's own `shw` for the seed). Compile
+   one copy per `i < maxK`. State through `streamBytesOf seq4` (rev44 portability), not the literal.
+3. **The words** (3.x's `slotSeg`/`proof_words` at `seq4`): per signed child `bytesWords π ++ logWords tr ++
+   sigWords σ`. `logWords (segTr …)`: 3.x's `logWords_tSegs` over `itemsOf seq4`; `π = fitL piSize (pf4
+   tr)` = `reassemble4 seq4 0`: 3.x's `proof_words` re-done for `ctbs4` (fitted contributions `qB4`, `sib4`
+   with `S.lvK m i`, `posOf4`); an aggregate's `π_A = aggHdr k n e ++ k proofs`, `n`, `e` from `hA` (the
+   `cAB` block's message words, `hMW` again), `k = kSel` (three selector loads per sub-slot, rows 1–3,
+   `kSel_eq`); unroll over `i < maxK` with `ite (i < k)`. The signature: `sigWords_sigH` (done) — its program
+   is two loops (133 chains × 4 `shWd 3`, 16 levels × 4 `shWd 1` at offset `bit ? 0 : 4`, the bit from the
+   index word kept in a register).
+4. `outIR4_sem` (`= witWords (readW4 sigH κ L es)` from `decF04_wF` → `hMW_heap`), its exact cost
+   (3.x's node output: 21.6 M steps; far inside the `≈ 10^14` left by `cost_le_decF04`), outs, size.
+5. `FRXNd4`, the plug (Part 31 §9 items 3–4, one-line changes), item 5 (`tgBody_sem` split, reflow).
+
+### 9. Open questions
+
+- **Q1 (S-L4).** `readW4_sigH` takes `StmtN4` at `wF κ L es`: is that the form `hL_of_res` has, or does S-L4
+  prefer `readW4_eq`'s two hypotheses (`PubCells4`, `sig_of_H`'s conclusion)? Both are available.
+- **Q2 (orchestrator).** Editing `FRXOut`'s `AP` in place (§8.1) touches a 3.x module still in the
+  certificate's closure (via `FRXNode`); RET may prefer a copy of `FRXOut`'s generic half (Seg compile,
+  `Ctx`, loops, `ldw`) into a 4.x core module first. Which?

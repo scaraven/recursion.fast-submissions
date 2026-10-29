@@ -5,6 +5,8 @@ import FRSubmission4
 import FRSoundness4XRunG
 import FRNodeRows4PackSound
 import FRXOut4
+import FRXSig4H
+import FRXSig4W
 
 /-!
 # `certificateR_sub4`: the certificate of `sub4`, given the open residuals
@@ -20,6 +22,10 @@ rows 8–9 are `complete_rev4`, `delta_rev4`; row 7 (`DecOk4`) is `decOk4_ndNone
 |---|---|---|
 | `gap` | `StmtN4 → Gap4R` at `pf4` (`imp`, `kindS`/`wf` at `i ≥ 1`, `aggChk`) | B1′ … B4, A1′ |
 | `dec` | `D : NodeDec4 ndNone` and **`Links4 ndNone D`** (`hL`) | S-H4 (`nd`), S-L4 (`hL_of_res`) |
+
+**The signature reader is fixed** (S-H4 pass 8): `sg := sigH` (H's message slots, rows 4–7), and
+`readW4_sigH` (`readW4_eq` with **`sig_of_H`**, no hypothesis beyond `StmtN4`) is the bridge
+`hL_of_res` uses; `sigWords_sigH` gives its output words as shifted H message words.
 
 **`Open4` is not satisfiable as it stands** whenever an accepted node proof lies in the extractor's
 domain: `ndNone` extracts nothing from a node (`not_nodeDec4_ndNone`). It is the statement of what

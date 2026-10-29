@@ -816,3 +816,35 @@ Base: branch `v4/flock-recursive`, HEAD `53c2e13`. Build tree `logs/fr-build-SH2
     (`build-final.log`); 28 axiom lines within the three (`axioms.log`, incl. `certificate_sub4`,
     `certified`); source rule 373 files, 0 findings. `FRXOut4` 11.6 s sequential. Not done: `outIR4`, `nd`,
     `nodeDec4_nd`, the plug of `nd`, item 4 (`tgBody_sem`, reflow). RESULT Part 31.
+98. **S-H4 pass 8** (2026-10-29). HEAD `b562c50`, build tree `logs/fr-build-SH4g` (copy of `fr-build-SH4f`,
+    `snap.sh` on HEAD; `MINE` adds `FRXSig4 FRXSig4H FRXSig4W`), logs `logs/S-H4g/`. Baseline (HEAD moved:
+    RET-3) rebuilt to 2,598 jobs, green (`build0.log`).
+99. **Q2 ruling applied: `sg := sigH`** (`FRXSig4`, new). `sigH κ σ w` reads H message bytes only
+    (`hMB w b p` = byte `p mod 16` of element `4 + ⌊p/16⌋` of block `b`, rows 4–7, `hMB_dec0`): the index is
+    `ofLE` of the key leaf's `j` field (block `wb 399`, bytes 1–8); `ots_i` = block `wb 3i`'s `x` field
+    (bytes 11–42); sibling `t` = the `l` field (block `wb (466+2t)`, bytes 1–32) if index bit `t` is 1,
+    else the `r` field (bytes 33–63 of that block, byte 0 of `wb (467+2t)`). All in rows 4–7: no extra rows.
+100. **`sig_of_H`** (`FRXSig4H`, new): `StmtN4 … w → ∀ σ < 2, sigH κ σ w = readSig4 κ σ w`, **no hypothesis
+    beyond `StmtN4`** — every H↔L equality has a row or family: index (`j` family `fam_byte`/`j_byte`, the
+    index row `j_mirror`, `ofLE_enc64`); `ots` (`x` family, chain row `x_{i,0} = ots_i`); siblings (`l`,
+    `r0`, `r31` families, the two mux rows by the index bit `idx_bit`, `r31_byte`). The node rows' truth
+    `xRows_of_stmt` is S-E13a's fold split (`xOkK`, `rejR`) as in `wots_aggPad_of_rows`. Corollary
+    **`readW4_sigH`**: on `StmtN4` at `wF κ L es`, `readW4 sigH κ L es = .node c₁ c₂ (rd4 pf4 …)` (for S-L4).
+    Pitfalls: names `hB`, `rH`, `sibH`, `hB_eq` already exist in `FR.X` (3.x `FRXOut`), `shW` in `FR`
+    (`FRShift`): renamed `hMB`, `hMD`, `rFH`, `sibFH`, `shWd`; `W4.idxOf` vs `FR.idxOf` (qualify).
+101. **The signature's output words** (`FRXSig4W`, new, item 2's first piece): H's message slots as a byte
+    stream (`hMBs`, block `⌊p/64⌋`) and word stream (`hMW w n`: word `n mod 2` of element `4 + (n mod 8)/2`
+    of block `⌊n/8⌋`); the machine's shifted pair `shWd W s n = (W n >>> 8s) + (W (n+1) <<< (64 − 8s))`;
+    **`wOf_hMBs`** (any `0 < s < 8`, via `shift_digit`, `shWd_byte`), **`packBytes_hMBs`**,
+    **`sigWords_sigH`**: `sigWords (sigH κ σ w) = shWd 1 (8·b₃₉₉) :: ⋃ᵢ 4×shWd 3 (8·b_{3i}+1+j) ++
+    ⋃ₜ 4×shWd 1 (8·b_{466+2t} + (bit ? 0 : 4) + j)` (the `r` field runs into the next block, as the stream
+    does). Heap side: **`hAddr_eq`** (3.x's `addrW` shape `(3,3,2)` at stride `2^(mLog 0 + 1)`, base
+    `ob + 3·stride`), **`hMW_heap`** (from `decF04_wF`'s conclusion).
+102. Checks: `lake build FR Solution FRSubmission4Cert FRXSig4H FRXSig4W` green, **2,601 jobs**
+    (`build1.log`); 15 axiom lines within the three (`axioms.log`, incl. `certificate_sub4`, `certified`,
+    `sig_of_H`); source rule 380 files, 0 findings. Sequential: `FRXSig4` 8.8 s (2.5 s kernel: the
+    `decide +kernel` control), `FRXSig4H` 7.6 s, `FRXSig4W` 11.0 s (`profile-*.log`). `FRSubmission4Cert`
+    imports the two (doc updated; `Open4` unchanged).
+103. Not done: `outIR4` (beyond the signature's pure half), `FRXNd4`, the plug, item 5. RESULT Part 32 §6 is
+    the handover with the design worked out (the chain stream is the same H message word stream, so one
+    shifted, redirected loader serves the signature, the traces and the proofs).
