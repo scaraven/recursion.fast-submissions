@@ -2,16 +2,57 @@
 
 Last updated 2026-10-28. **Rebased onto core PR #20 (pin `6d05d00`, commit `987e679`); blueprint revision 4.0** (§0.1 B-11…B-17, §10 changes 25). Build trees use `logs/org20`.
 
-## Running — as of 2026-10-29 night
+## Running — as of 2026-10-30
 
-Main (`v4/flock-recursive`, core `422f2f9`):
-- H-cert3: build/kernel/badge re-measured with `nd` in the closure.
+Main (`v4/flock-recursive`, core `422f2f9`; the certificate assumes only `Open4F := Gaps4`):
+- **G5 landed `edf11b4`.** On a 7763 `certified` takes 379.7 s, down from 461.7 (margin 1.58×). KReplay went 224.3 → 154.8 s and the comparator's peak memory 8.7 → 4.5 GiB. No statement changed.
+  - **Root cause:** the kernel unfolds `HAdd.hAdd` before user definitions, so a defeq step between differently shaped closed ℕ sums evaluates them in full. G5-golf.md has the fix patterns; the tools are in logs/G5/tool/.
+  - **Why 150 s is out of reach:** what remains is about 52.8 s of 17.5k declarations under 50 ms each, 44 s in FRSoundness4*/FRNodeRows4*, and 30 s outside FR (14.5 s of it core-owned `basePoly_irreducible`).
+  - **Merge into rev44:** after PORT lands, since G5 touched FRX*. PORT carries G5's FRXNd4/FRXChain*/`cso_outIR4` changes by hand.
 
-`v4/rev44` (HEAD `213c407`, WIP: red at RSV-V's 7 declarations):
-- B2″: (c3) + (b′) instance packing + (a) arena placement; re-measure V and process start (target 5 s; not scored).
-- RSV-V2: RSV2's stacked `evalM` (60 single cells, `fLrEnd` 1,008 B) per `design/RSV2.md` + `reviews/RSV2-review.md`; lands after B2″.
+`v4/rev44` (HEAD `50a7f52` = RSV-V2 + main merged + B5 + RSV-S WIP + A1′ + RSV-S2b + RSV-S2a; red at RSV-V's 7 declarations and possibly decoder literals):
+- **RSV-S2a landed `50a7f52`** (WIP).
+  - **Proved:** the reserve branches of `flag_gFinE`/`flag_gFinB'` (in blocks; `R4Fin` builds in 11 s), `R4FrE`'s `e_end4`/`e_in4`/`e_fin4` (`mStack_sP`, `implN4F_hMS`), `rsvZero4`, `FrRS`/`Start` at the stacked form, and `Qry` with spacers.
+  - **Orchestrator edit:** XRun now uses `implN4F_hMS` plus its import.
+  - **Red:** `R4PfFlag.gFinPf_reloc`; `gFinPfR` lacks the second chain.
+- RSV-S3: finishes S2a §5. It adds `gFinPfR`'s second chain, `w0V4`'s rcell weights, `flag_gFinPf4` and `R4W0R`'s `hcl`, then rechecks PfFin/R4Full/XRun/XFinal and switches `hRes` to `StmtN4R`. It finishes with a full FR build in its tree, the axiom check and kernel profiles. It owns FRSoundness4*, FRNodeStmtR4 and FRNodeSound4K.
+- **RSV-S2b landed `7bbbf49`.**
+  - **B′ at 69 cells via the DRS `Pub` route:** `single_B4` is `Fin 71`, 70·2^128, and εR is unchanged.
+  - **The four reserve controls:** in `FRSoundness4RsvCtrl`.
+  - **`FRNodeStmtR4`:** `StmtN4R`, `nodeRunR_X`, `evalM_childV` and `ks_rev4R`. The `FRNodeCircuit4` laws are generalised over `St → StmtN4`.
+  - **Still open:**
+    - `gap4Imp_of_rsv`. This is S2b item 4, wiring `evalM_childV` into `SlotRunA`'s slot-0 imports, and it waits on PORT's `gap4Imp_of_run`.
+    - The switch of `hRes` to `StmtN4R` downstream. It is mechanical.
+  - Three requests routed to S2a: `rsvZero4`, `R4W0R`'s `hcl`, and the new form for `start4_of_fields`. XRun stays red until S2a delivers them.
+- **The review of RSV-S found no soundness issue.** Every challenge comes after every value it batches, `ChildBad4` is charged at 24/2^128 through E1's exit, and εR stays 15/2^124. It settled the two open questions:
+  - **Q2, B′'s 60 extra cells:** `PubOKR4` goes only into `DRS0X`/`DRS1X`'s `Pub` argument (phase 23 is a post-doom). `bg16X`/`bg20X` are unchanged.
+  - **Q1, the node statement:** `StmtN4` keeps its signature. `nodeLaws4C'` and its two siblings are generalised over `St → StmtN4`, and a downstream `StmtN4R := StmtN4 ∧ PubCellsR4 ∧ truthChildV` is used on the gap4Imp path. That edit to `FRNodeCircuit4` waits until A1′ has landed.
+  - The four controls for `ChildBad4` are required.
+- PORT: brings the decoder, S-L4 and B3 back to green at 4.4.1's format, using A1′'s list. It deletes `realign`/`realign_sem` (44.8 s of kernel), `cso_realign`, `FRXOut4C` and `FRXOut4Ctrl`, adds the spacer entries in `aggTr`, and fixes `fsMsgs4_*` (1,008/112) and `gap4Imp_of_run`. It owns FRX*, FRNodeLinks4*, FRNodeRun4* and FRSubmission4*.
+- B4: `aggChk`, with PK-m7's `hashA`/`hashB` rows on the arenas, and its rows folded into `nodeIRows4`/B5's plan. It owns FRNodeRows4Agg/AggChk*/Arena*. After B4, `Gap4R` = `imp` only.
+- C1: keyed replay `R` keys (`targetS`, `shiftTarget`, `linkWAll`, `rsWeight`, `evalL`, the kind factor if in `R`) in slot 0's spare region. It aims at `SlotImpR = ∅` with the reserve covering `evalM`, and runs C2's dead-op drop if cheap. It owns FRNodeRows4Rep*/FRVIRTplRep and keeps its plan/fit edits isolated for merging with B4.
+- E1: prover port to 4.4.1's format: D/A fields, L1/L2, the reserve's 1,008/112-B fields and E2/E4 terms, spacers, arenas, the packed plan form and phantom pins. It runs end to end against rev44's Lean V, covering kind-changing chains, k = 1/2/4 and the worst-case first step against step_s 60. It prints B5's `eok`. It leaves a hook for B4's `aggChk` rows and owns `prover/`.
+- Review of A1′ (cheap Opus): no blockers.
+  - **Soundness:** the free spacer bytes enter only the ignored spacer answer, `wf` is proved for every segment and spacer, and `ctrlA_no_spacer` is a real control. S2b is asked to confirm that no ROM-consistency argument ranges over spacer entries.
+  - **For E1:** prove or test that the main chain after `aggL k − 1` is message-free, so phantom pins never conflict. Exercise it with k = 1 and k = 2.
+  - **Minor cleanup (later golf):** `lastR_no_spacer` and `aggChainLen_eq`'s 5th conjunct are bare arithmetic. Restate them through the definitions or rename them. `pbC` (FRNodeRows4Wots:109) may be dead.
+  - **For B4:** `main_not_final2` now distinguishes k = 2 by the final flag only; B4 has been told. B4's fit is in the link region (≈ 19.5k of 32,768), not H.
 
-**Then:** RSV-S (P4b E-phase restatement, per D-RSV2) → B4 (ask templates on the arenas, `aggChk`) → A1′ (spacers) → C1 (remaining `R` keys) → merge main (nd, S-L4, B3) and recompile → E1 (prover) → evaluation.
+Landed on rev44: **A1′ `e464756`**.
+- `Gap4R` is now `imp`, `aggChk`.
+- The stride is 64·24,238 (whole blocks); N8 still fits with 256 blocks spare.
+- V(N4) rises by 8.3 ms for own kind and 25.3 ms for all kinds, because each sub-slot now has its own pinned block. The lever is to share runs across sub-slots, which differ only by an offset.
+- Pins are ungated, so the prover writes phantom constants at inactive sub-slots.
+- `VA_sound_log`'s proof line changed (intersperse).
+- `ks_queriesC4` needs `traces_spacers_le_qV`; that is routed to S2a.
+- Review of B5 (cheap Opus) found no blockers; the fast path is fully covered by `linkV4_eq`/`slots_val`. The should-fix items:
+  - **(a) Clash with A1′.** `pinKeys`/`hpkr`/`extIRows`/`wfLen` assume one pinned block per slot, equal to `wfSeg`. A1′'s per-sub-slot blocks need a segment-carrying key and a re-proof of `linkV4_eq`. A1′ has been told; `innAt`'s `find?` should become an indexed `Array`.
+  - **(b) Silent slowdown.** If `cokB` fails at runtime, V silently falls back to `growsVal3`. The bench and E1 should print `(lkArr κ).all (·.eok)`.
+  - **(c) Sharing may shrink.** Per-sub-slot blocks may reduce sharing across kinds, so re-measure V(N4) after A1′.
+
+Landed on rev44: **B5 `9a41aac`**. V(N4) with own kind only 276.6 → 263.8 ms; with all three kinds 347.6 → 288.4 ms. Each extra kind now costs +16–18 ms, against +37–38 ms before. `protoV4` (≈ 125 ms) is now the bulk of the own-kind call. Its open lever is sharing prototype 1's low tables with prototype 0, worth about 5 ms.
+
+**Then:** `Gaps4` discharged (S2b item 4 `gap4Imp_of_rsv` after PORT; the `hRes` switch to `StmtN4R`) → E1 (prover: D/A fields, L1/L2, reserve's E2/E4 terms and 1,008/112-B fields, spacers, arenas, packed plan form) → cert probe → evaluation.
 
 ## Waiting
 
@@ -59,7 +100,7 @@ Main (`v4/flock-recursive`, core `422f2f9`):
 
 ## Closed
 
-S-A `8ff873c`; S-C `ebac8c2`; S-D `8e6dad7`; S-E1 `2d5a811`; S-H1 `40b2f81`; S-0 `47158b1`; S-E2/S-E3 `8447c50`; S-F `c8e1869`; S-F2 `8f22b86`; S-G through `ac43569`; S-H2 through `11fb3a5`; INT-1 `5fc7d3b`; S-E5 `9dbab71`; … S-N2 `75eff21`; INT-10 `1c5a738`; RET-2 `1a342e7`; RET-3 `0aaa99b`; RET-4 `ea3e130`; S-H4 p6–8 `5f39f5a`/`b562c50`/`cb849a3`; S-L4 `00e308f` (hL discharged); **S-H4 pass 11 `1782ab4`: `nd` complete — the certificate assumes only `Open4F := Gaps4`**; B3 `1f400d9` (compileFromX_run); rev44: A2″ `1987618`, A3′ run 2 `e14db30`; B2′ `21ade15` (cap check templated, V(N4) 275 ms); RSV-V `213c407` (chain green on (β′) at εR; guard RejG := RejC ∧ cdOK; GoodX now over RejG — accepted); S-H4 p5 `a84753a`; G3 `302b523` (12 modules −30 % CPU; the finals' flag modules need a block-wise read lemma, ≈ 66 CPU-s); S-H4 p4 `6d79280`; S-H4 p2–3 `170c2ee` (lagIR, level decode at CKind); P2⁸ `2d9dd8c` (7763: step + overhead 11.41 s, M ≤ 83, truncated 30.4 %, P̄ 8.43 s; prover.s f0841393…); G2 `4ac68fc` (15 FRX modules −42 % CPU); PACK-4.4.1 + review; S-E13b `ce2a4ad`; D-PK memo `PACK-4.4.md` (committed, under review); P2⁷ `5e99fba` (7763: step + overhead 12.78 s, M ≤ 74, truncated ≈ 52 %; S-E13a/b's matrices and cells, 0 failing rows on honest witnesses; prover.s 5e1bab39…); S-E14 `f5ad181` (replay mechanism; segment `linkWAll` only); S-E13a `8cc8ccd` (kindN, kindS@0, wf@0, wots, aggPad closed through `gap4_of_rows : StmtN4 → PfHdr pf → Gap4R → Gap4`; `Gap4R` = imp, kindS/wf at i ≥ 1, aggChk; V(N4) +≈30 ms; new node dump for P2); S-I `2f437ed` (residuals 8–9 closed; `Solution` PROVISIONAL under `Open4`; **cert build 882 s on the 7763 > `build_s` 600 → REJECT**: 307 modules, 2,975 CPU-s, need ≤ 2,020 (≤ 1,550 for 1.3×); bench probe season S = 6.421, truncated at M = 63) (`SegOut4` gone: `ks_rev4H`/`certificate_rev4H`; open: drop `hO`/`out` from S-N2's `ks_rev4GH`, then delete the G forms, `SegOut4`, `runFacts4_C`). FR builds as a whole.
+S-A `8ff873c`; S-C `ebac8c2`; S-D `8e6dad7`; S-E1 `2d5a811`; S-H1 `40b2f81`; S-0 `47158b1`; S-E2/S-E3 `8447c50`; S-F `c8e1869`; S-F2 `8f22b86`; S-G through `ac43569`; S-H2 through `11fb3a5`; INT-1 `5fc7d3b`; S-E5 `9dbab71`; … S-N2 `75eff21`; INT-10 `1c5a738`; RET-2 `1a342e7`; RET-3 `0aaa99b`; RET-4 `ea3e130`; S-H4 p6–8 `5f39f5a`/`b562c50`/`cb849a3`; S-L4 `00e308f` (hL discharged); **S-H4 pass 11 `1782ab4`: `nd` complete — the certificate assumes only `Open4F := Gaps4`**; B3 `1f400d9` (compileFromX_run); rev44: A2″ `1987618`, A3′ run 2 `e14db30`; B2′ `21ade15` (cap check templated, V(N4) 275 ms); RSV-V `213c407`; B2″ `7602c97` (arenas placed); RSV-V2 `06375d6` (chain green on (β′) at εR; guard RejG := RejC ∧ cdOK; GoodX now over RejG — accepted); S-H4 p5 `a84753a`; G3 `302b523` (12 modules −30 % CPU; the finals' flag modules need a block-wise read lemma, ≈ 66 CPU-s); S-H4 p4 `6d79280`; S-H4 p2–3 `170c2ee` (lagIR, level decode at CKind); P2⁸ `2d9dd8c` (7763: step + overhead 11.41 s, M ≤ 83, truncated 30.4 %, P̄ 8.43 s; prover.s f0841393…); G2 `4ac68fc` (15 FRX modules −42 % CPU); PACK-4.4.1 + review; S-E13b `ce2a4ad`; D-PK memo `PACK-4.4.md` (committed, under review); P2⁷ `5e99fba` (7763: step + overhead 12.78 s, M ≤ 74, truncated ≈ 52 %; S-E13a/b's matrices and cells, 0 failing rows on honest witnesses; prover.s 5e1bab39…); S-E14 `f5ad181` (replay mechanism; segment `linkWAll` only); S-E13a `8cc8ccd` (kindN, kindS@0, wf@0, wots, aggPad closed through `gap4_of_rows : StmtN4 → PfHdr pf → Gap4R → Gap4`; `Gap4R` = imp, kindS/wf at i ≥ 1, aggChk; V(N4) +≈30 ms; new node dump for P2); S-I `2f437ed` (residuals 8–9 closed; `Solution` PROVISIONAL under `Open4`; **cert build 882 s on the 7763 > `build_s` 600 → REJECT**: 307 modules, 2,975 CPU-s, need ≤ 2,020 (≤ 1,550 for 1.3×); bench probe season S = 6.421, truncated at M = 63) (`SegOut4` gone: `ks_rev4H`/`certificate_rev4H`; open: drop `hO`/`out` from S-N2's `ks_rev4GH`, then delete the G forms, `SegOut4`, `runFacts4_C`). FR builds as a whole.
 
 ## Rulings
 
