@@ -85,6 +85,14 @@ Running on rev44:
 - **HEAD fix `b52ee6e`:** ASK-T's `ctlP` clashed with RepCtrl's, so `FR` did not build at `ae8b8d8`. Renamed to `ctlPT`. Lesson: build `FR` from a clean snapshot before every commit that adds modules to FR.
 - **Note:** at HEAD, `FRNodeRows4AskBS` (outside FR) fails to build unpatched (line 171), because it assumes the folded `askTG`. The fold stage must make it build. The clean submission branch must contain no non-building modules.
 - IMPC2b: `atImp_bitR`, the run proofs (`execA_idx`, `bitOf`/`bits`/`flag_stmt`, `SlotRunB`, `gap4Imp_of_bitsR`). The goal is `Gaps4` from the rows alone.
+- **IMPC2b reported.**
+  - **Proved:** the run proofs (`execA_ri`, bit order, `StmtBits`/`PosBits` from rows, `impA_bits`, `aux_bits`, `flag_stmt`) and `bitTGS`/`atImp_bitS`. `gaps4_of_runS` reduces `Gaps4` to `SlotRunB`.
+  - **Remaining in `SlotRunB`:**
+    - p0/p1: 7,426 sibling reads (the kind tie; route in IMPC2b-RESULT §5) and 871 `felems` (`colTG`);
+    - **p1: 5 replay ops of the segment program** (`rsWeight`, `evalL`, `evalM`, `shiftTarget`, `targetS`), which `rtC1c 1` does not cover;
+    - a closure generator, to make `SlotRunB` vacuous in the kernel.
+  - **Integration (FOLD2):** the orchestrator is integrating IMPC2 + IMPC2b into `askTG` (arena constants, RepF/RepFCtrl edits).
+- **Process lesson:** after committing from a build tree's copies, sync the worktree files (`git checkout HEAD -- …`). Stale FRNodeRun4*/FR.lean sat in the worktree after REPF's commit.
 - **Collision guard:** ASK-T (the `askTG` line and imports) and REPF (the split and fold) both edit FRNodeRows4.lean. Each was told to touch only its own hunks; the orchestrator merges at freeze.
 - **SRA landed `27459d9`.**
   - **`Gaps4`:** now over `StmtN4R`; the top hypothesis only shrank.
