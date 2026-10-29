@@ -3534,3 +3534,203 @@ program. I do not propose it.
    theorem, and `fuel_covers4`.
 6. **Item 6:** controls stated from `_sem` lemmas (the probe's toy is a compiled run, not a kernel run).
    Then golf `FRXLag`'s elaboration (§4).
+
+## Part 26 (track S-H4, pass 2): `lagIR` proved; one level's decode at revision 4.1's kinds on a parametric memory map; handover
+
+**Status.** Started at HEAD `a91d355`, re-snapshotted on `1263569` (after G2 and RET-2 landed). Build tree
+`logs/fr-build-SH4b` (copy of `fr-build-SH4`; `MINE` = `FRXLag FRXLagT FRXDec4Level FRXDec4Back
+FRXDec4Front FRXDec4Lv`), logs `logs/S-H4b/`. Nothing committed. Five new modules; no existing module
+or statement was edited. `FRX4Prog`/`FRX4Ext` are untouched (A2′ owns them). Handover items 1, 2 and 2′
+(Part 25 §6) are done; items 3–6 remain (§6 below).
+
+### 1. Files (`loc.py`: total / code / thm)
+
+| File | loc | Content |
+|---|---|---|
+| `FRXLagT` (new) | 1,027 / 926 / 30 | Item 1, the target half of `lagIR`: `fwd_blk`, `fwdL_sem`, `fwdLoop_sem` (prefix products `preP` at `pb + t`), `rdF_mk`, `accRow_sem`, `accIR_sem`, `bwd_ptr`, `bwd_mul`, `bwdL_sem`, `bwdLoop_sem` (`acc_c = Σ_t (P_t · sufP (t+1)) · Y_c[t]`), `stRow_sem`, `stAcc_sem`, `rd_zeros`, `tgBody_sem`, `out_ne`, `outC_lt`, `tgIR_sem`, **`lagIR_sem`**, **`lagIR_interp`**; WF/`Writes` helpers; controls `lagIR_node_ctl` (+), `lagIR_row_ctl` (−). |
+| `FRXDec4Level` (new) | 115 / 78 / 7 | Item 2, pure: `foldAt4_f₀/f₁`, `mem_consSet4_iff`, `nextMsg4_coords`, `consN4`, `wordN4`, `mem_consN4`, **`level_decode4`**, `msgOf4_embed` (3.x's `FRXLevel` over T4's `CKind` truths). |
+| `FRXDec4Back` (new) | 217 / 163 / 9 | Item 2, the back half: `BackLay4` (memory map), **`decBack4IR`** `= scanIR ; lagIR 2^m C c₀ ; bfRowsIR m`, `wf/noLoopT/outs_decBack4IR`, **`cost_decBack4IR`** (exact), `lv4_bounds`, **`decBack4_sem`**; controls `backLay4_m32` (+), `not_backLay4_overlap` (−), `cost_back0_m32`. |
+| `FRXDec4Front` (new) | 237 / 198 / 3 | Item 2′: `flagV_consSet4`, `FrontLay4`, **`decFront4IR`** (3.x's front half with every base a parameter), `MsgOk4` (3.x's `MsgOk` at the map's `eb`, `xb`, `yb`, `X`/`Y` of `2^n` entries), `lv4_front`, **`decFront4_sem`**. |
+| `FRXDec4Lv` (new) | 102 / 73 / 3 | Items 2 + 2′ composed: **`decLv4IR`**, **`decLv4_sem`**; controls `frontLay4_m32` (+), `not_frontLay4_overlap` (−). |
+
+### 2. What is proved
+
+- **`lagIR_sem`** (`FRXLagT`): on `regs ≤ jb`, `jb + k ≤ pb`, `pb + k ≤ yb`, `yb + 2Ck ≤ ob`,
+  `yb + 2Ck ≤ cb`, `ob + 2k(C + 1) ≤ |M|` (one row of slack), `1 ≤ k`, `C ≤ 16`, with `J` listed at `jb`:
+  for every target `s < k` and `c < C`, the `F` cell at `ob + 2s + 2kc` is `lagVal J k s y_{c₀+c}`
+  (`y_c(j)` the `F` element at `cb + cs·j + 2(c₀ + c)`); the heap outside `[pb, ob + 2kC)` is kept.
+  **`lagIR_interp`**: with `J` without repeats below `2^20` and `k = |J|`, that cell is
+  `interpF D J y s` (`lagVal_eq`, pass 1).
+- **`level_decode4`** (`FRXDec4Level`): 3.x's `level_decode` at every `CKind` (`Snd.T4.msgOf`,
+  `consSet`, `decodeL`, `farL`, `mLog`, ladder `CKind.lv`).
+- **`decBack4_sem`**: if the flags at `fb` mark `A_c` (`consN4`), the word at `cb + cs·j + 2r` is
+  close and `A_c = jointAgree`, then row `c` at `ob + 2kc` holds the `F` values of
+  `Snd.T4.msgOf κ L es i (c₀ + c)`, `c < C` (level 0: `c₀ = 4`, `C = 4`; levels 1–4: `c₀ = 0`, `C = 16`).
+- **`decFront4_sem`**: the flag at `fb + j` is nonzero iff `j ∈ A_c`, given the basis table, the
+  word, P1.i's challenges at `cbS` and a message step meeting `MsgOk4`.
+- **`decLv4_sem`**: the two composed on the map `tb < fb < [jb, pb, yl, ob] < eb < xb < yb ≤ cb`.
+- **`cost_decBack4IR`**: `(16 + 32n) + (27 + k(1,122 + 72C) + k²(101 + 40C)) + (1 + C(17 + m(741·2^(m−1) + 23))) + 2`,
+  `k = 2^m`. **`cost_back0_m32`**: level 0 at `m = 32` (`n = 2^20`, `k = 2^19`, `C = 4`) costs
+  **71,758,669,416,262** (`7.18·10^13`), equal to Part 25's model. Levels 1–4 (`C = 16`, from the same
+  formula, not yet a theorem): 3.19·10^12, 5.04·10^10, 8.4·10^8, 1.8·10^7.
+
+### 3. Checks (logs in `logs/S-H4b/`)
+
+- **Build.** `lake build FRXDec4Lv FRX4Ext FRSubmission4Cert` green on HEAD `1263569` + the five
+  modules: 2,479 jobs (`build8.log`). `FR.lean` imports none of them yet (the orchestrator adds
+  them with `nd`).
+- **Axioms** (`axioms.log`, 18 declarations: the main theorems and every control): all
+  `[propext, Classical.choice, Quot.sound]`.
+- **Source rule** (`source-rule.log`): 362 files, 0 findings.
+- **Sequential profiles** (`-DElab.async=false`, one core; `prof-*.log`, `prof2-FRXLagT.log`):
+
+  | Module | wall | CPU | note |
+  |---|---|---|---|
+  | `FRXLagT` | 74.9 s (87 s before a golf of `bwd_ptr`/`tgBody_sem`) | 72.1 s | tactic execution dominates: four `refine`s 6–19 s (the `loopK_run` initial states and `tgBody_sem`'s final tuple); kernel (type checking) ≈ 6 s |
+  | `FRXDec4Level` | 7.9 s | 5.2 s | |
+  | `FRXDec4Back` | 13.5 s | 10.6 s | type checking 3.2 s |
+  | `FRXDec4Front` | 16.1 s | 12.9 s | type checking 3.8 s |
+  | `FRXDec4Lv` | 11.3 s | 8.3 s | |
+
+  `FRXLagT` needs a golf before the certificate's build budget sees it (§6, item 6).
+
+### 4. Controls
+
+| Control | Kind | What it shows |
+|---|---|---|
+| `lagIR_node_ctl` | + | at a listed target `s ∈ J`, `lagIR` outputs row `c₀ + c`'s own value `y(s)` (from `lagIR_interp` + `interpF_self`): the output is the data, not a constant |
+| `lagIR_row_ctl` | − | where rows `c₀ + c` and `c₀ + c + 1` differ at `s`, output row `c` is not row `c₀ + c + 1`'s value: the row window is read where stated |
+| `backLay4_m32` / `not_backLay4_overlap` | + / − | the back half's map fits at `m = 32`, level 0; an output region on top of `Y` is rejected |
+| `frontLay4_m32` / `not_frontLay4_overlap` | + / − | the front half's map fits at `m = 32`, level 0, after the back half's regions (`2^23 + 2^22 + 5·2^20 ≤ 2^25`); `X` on the `eq` table is rejected |
+| `cost_back0_m32` | value | the level-0 cost is the model's number |
+
+Pass 1's compiled toy (`probe`, 4 targets × 2 rows against a direct Lagrange interpolation) is now
+covered by a theorem (`lagIR_sem`).
+
+### 5. Deviations
+
+1. **Every base is a parameter** (`BackLay4`, `FrontLay4`), as asked: the node's memory map, the
+   children's offsets and the segment stride enter only through hypotheses. 3.x's fixed constants
+   (`tb0`, `fbF`, `jb0`, `eqB`, `xbM`, `ybM`, `memX`) do not appear in the new statements.
+2. **`lagIR_sem` asks for `2k` words of slack after the output** (`ob + 2k(C + 1) ≤ |M|`): `stAcc_sem`'s
+   bound is stated at `o + 2kC` with `o = ob + 2s`. Any map with the column store or the `eq` table
+   after the output meets it.
+3. **The column store must lie above `Y`** (`yb + 2Ck ≤ cb`, pass 1's `yTab_sem`) and above `Y` of the
+   front half (`yb + 2n ≤ cb`): the level-0 codeword (`2^27` words at `m = 32`) goes on top of the map.
+4. **`MsgOk4`** replaces 3.x's `MsgOk` (the `X`/`Y` region is `2·2^n` words, not `2^19`). The message
+   steps (`msgHIR` for levels 0–3, `msgTIR` for level 4) still need their `MsgOk4` lemmas (item 3).
+
+### 6. Handover: what remains, in order
+
+1. **Item 3, the five levels** (`FRXDec4Levels`, new):
+   - `msgOk4_lower` / `msgOk4_four`: port `FRXDecLv.msgOk_lower`/`msgOk_four` to `MsgOk4` (their
+     programs `msgHIR`/`msgTIR` are parametric; the statements bind `xbM`, `ybM`, `eqB`, `.N30`).
+     Level 4's final message is `Snd.T4.finalAt` at `phStart4 47`.
+   - The memory map record `Map4 m` (one per `m ∈ {31, 32}`), with `decLv4_sem`'s hypotheses
+     discharged by `decide`/`norm_num` (as `backLay4_m32`, `frontLay4_m32`), level 0 with
+     `c₀ = 4`, `C = 4`, levels 1–4 with `c₀ = 0`, `C = 16`; levels 1–4 write their rows where level
+     `i − 1`'s `msgHIR` reads them.
+   - `memX4 = 2^28` (Part 25 F2). The read and the index are parametric in their base except
+     `walkPre` (`FRXReadDefs:303`) and the lookup (`FRXLookup:517`, `:689`), which hard-code `memX`:
+     add `walkPre4`/`idxIR4` at `memX4`, and the cap offsets at 4.1's positions (`phStart4`, A1′'s
+     stride). `ext4With` uses `toProg memX mpwX`: the switch to `memX4` is in `FRX4Prog` (A2′'s
+     module; `decBudget` is `fuelBase − 2^27 + …` and becomes `fuelBase − 2^29 + …`).
+   - `decLevels4`: an `ite` on the node byte chooses the `m = 31` or `m = 32` map (same program at
+     two constant sets), chained as 3.x's `decLevels_sem` (`lvStep_sem`, `lv0Step_sem`).
+2. **Item 4, the output `outIR4`**: the `1 + k` children from rows 4–7 of level 0 at `ob0` (stream
+   cell `e` is row `4 + e mod 4`, column `e / 4`; with `decBack4_sem` row `c` holds
+   `msgOf … (4 + c)`); the signature from the H fields; the aggregate child's segments 2–4 by a
+   shifted copy (`(i − 1)·7 mod 8`, or A1′'s new spacer's shift). PACK-4.4 §9.3 (iv): **write
+   `reassemble` field by field** (A.3 rows 0–18, row 18 the CapChk field `A`, 61,472 B) so that
+   `reassemble_field` is `rfl`; `piSizeOf seq4` is 859,664 after A2′.
+3. **Item 5**: `nd := decRead4 ; chain ; decLevels4 ; outIR4`, `DecOk4 nd`, `NodeDec4 nd` (`out` from
+   items 3–4), the exact cost and `fuel_covers4`. If A2′ has not landed, write the plug as its own
+   module stating what `FRX4Ext` needs.
+4. **Item 6**: controls for `Map4` and `outIR4`; golf `FRXLagT` (the four `refine`s of 6–19 s: pass
+   register facts as named `have`s before `loopK_run`, as done for `tgBody_sem`'s `hP1 hS1 hJ1`) and
+   `FRXLag` (Part 25 §4).
+
+### 7. Open questions
+
+- **Q1.** `lagIR_sem`'s `2k` words of slack (§5.2): acceptable, or should `stAcc_sem` be restated at
+  `o + 2k(C − 1) + 2`? It costs nothing in the maps proposed.
+- **Q2.** The level-0 map at `m = 32` (`backLay4_m32`, `frontLay4_m32`) uses `[2^20, 2^25 + 2^22]`
+  for scratch; the codeword (`2^27` words) then sits at `2^27` and ends at `2^28 = memX4`. That leaves
+  no room for the log index above it: the index base moves to `memX4` and `toProg`'s memory must be
+  `memX4 + mpw·t` as today. Confirm before item 3 fixes `Map4`.
+
+## Part 27 (track S-H4, pass 3, first step): G2's `local irreducible` in the decoder modules; handover for items 3–6
+
+**Status.** On top of Part 26 (build tree `logs/fr-build-SH4b`, HEAD `1263569` + the S-H4 modules).
+The coordinator's answers: Q1 (the `2k` slack) accepted, to be a field of `Map4` with a
+non-overlap control; Q2 confirmed with conditions (below). Done in this step: the build-budget
+fix only. Items 3–6 are not started; this context is too long to carry them, so §3 is the handover.
+
+### 1. The golf (statements unchanged)
+
+- `attribute [local irreducible] entryK storeM runPrims` after `open` in `FRXLag`, `FRXLagT`,
+  `FRXDec4Level`, `FRXDec4Back`, `FRXDec4Front`, `FRXDec4Lv` (G2's fix, `reviews/G2-golf.md`).
+- Two base cases closed by `rfl` through `runPrims [] M = M` (`accIR_sem`, `stAcc_sem` at `0`) now
+  rewrite with `accIR`/`stAcc`, `semB`, `runPrims_nil`.
+- `tgBody_sem`: the `have c3` block's `refine` split into `refine ⟨?_, …⟩` plus `intro`s, the last
+  block's memory generalised; `bwd_ptr`: a `runPrims_append` instance instead of `show`.
+
+**CPU, sequential (`-DElab.async=false`), back to back on the shared VM** (load average 20–24; the
+"before" file is the same source without the attribute line, `logs/fr-build-SH4b/scratch/noattr/`):
+
+| Module | before | after | change |
+|---|---|---|---|
+| `FRXLag` | 89.2 s, 100.4 s (two runs) | 53.3 s, 65.4 s | −35 … −40 % |
+| `FRXLagT` | 73.6 s (Part 26: 72.1 s at a lower load) | 57.6 s (45.6 s at a lower load, `prof3-FRXLagT.log`) | −22 … −37 % |
+| `FRXDec4Level`, `-Back`, `-Front`, `-Lv` | 5.2, 10.6, 12.9, 8.3 s | 5.3, 11.4, 12.9, 6.3 s | unchanged (no loops) |
+
+`FRXLagT`'s remaining hot spot: `tgBody_sem`, 25 s of elaboration, almost all in one step whose
+trace (`trace-FRXLagT.log`, `-Dtrace.profiler.threshold=1500`) shows the **ungeneralised** goal
+(nested `semXIR … {M := runPrims …}` states) as its expected type: some `generalize` there does not
+reach the goal through the `{M := …, o := …}` structure. Next fix: state the five phases of
+`tgBody` as separate lemmas (`tgFwd_sem`, `tgZero_sem`, …) on bare memories, so the composite never
+holds the nested state.
+
+**Checks after the golf:** `lake build FRXDec4Lv FRX4Ext FRSubmission4Cert` green, 2,479 jobs
+(`build9.log`); 18 axiom lines standard (`axioms2.log`); source rule 362 files, 0 findings. loc:
+`FRXLag` 923 / 739 / 52, `FRXLagT` 1,038 / 935 / 30.
+
+### 2. The coordinator's conditions on the map (Q2), and what `FRX4Ext` fixes
+
+- `Map4 m` (`m ∈ {31, 32}`) carries, **as kernel-checked literals** (`decide` on numerals only, never
+  on a layout computation): non-overlap of every region, `MsgOk4`'s `X`/`Y` regions, the `2k` slack
+  after each output, and the fit under `2^28`.
+- `toProg mem mpw P` runs on `mem + mpw·t` zero words (`initSt`); the tape (`c`, `|π|`, `π`'s words,
+  the log) is **not** in memory: `.input` reads it. So the parse places nothing in memory, and the
+  only fixed region is the log index at `[memX, memX + 3t)` (`walkPre`, the lookups). The map must
+  stay below `memX4 = 2^28`, with the index at `memX4`.
+
+### 3. Handover for pass 3 (items 3–6, in order; all in new modules, A2′ owns `FRX4Prog`/`FRX4Ext`)
+
+1. **`FRXDec4Msg`**: `msgOk4_lower` (levels 0–3: `msgHIR` from level `i + 1`'s decoded rows, now at
+   `ob + 2kc` with `C = 16`) and `msgOk4_four` (level 4: `msgTIR` from π's final field and
+   `Snd.T4.finalAt` at `phStart4 47`), ports of `FRXDecLv.msgOk_lower`/`msgOk_four` to `MsgOk4`.
+2. **`FRXDec4Map`**: `structure Map4` (fields: `tb`, per level `fb jb pb yl ob eb xb yb cbS cb cs`,
+   the index base), `map31`, `map32` as literals; `Map4.ok : BackLay4 … ∧ FrontLay4 … ∧ slack ∧ fit`
+   proved by `decide` on the literal record; controls: `map32.ok` (+) and a perturbed record that
+   overlaps (−), one for the slack.
+3. **`FRXRead4`**: `walkPre4 base`, `idxIR4 base` (the index base a parameter; 3.x hard-codes `memX`
+   at `FRXReadDefs:303`, `FRXLookup:517`, `:689`), their `_sem` by re-running 3.x's proofs with
+   `base` for `memX`; the cap offsets at 4.1's positions (`phStart4`, A1′'s stride).
+4. **`FRXDec4Levels`**: `decLevels4 m` (levels 4 → 0, each `read ; decLv4IR` on `Map4 m`; level 0
+   with `c₀ = 4`, `C = 4`), `decLevels4_sem` (port of `FRXNode.decLevels_sem`), and the run-time
+   `ite` on the node byte (`N2` → `m = 31`, `N4`/`N8` → `m = 32`); exact `cost_decLevels4`.
+5. **`FRXOut4`** (item 4): `reassemble4` **field by field** (A.3 rows 0–18; row 18 = the CapChk field
+   `A`, 61,472 B; `piSizeOf seq4 = 859,664`), `reassemble4_field` by `rfl`; `outIR4`: the `1 + k`
+   children from rows 4–7 at level 0's `ob` (stream cell `e` = row `4 + e mod 4`, column `e / 4`,
+   which is `decBack4_sem`'s row `e mod 4`), the signature from H, the aggregate child's segments
+   2–4 by a shifted copy (A1′'s spacer).
+6. **`FRXNd4`** (item 5): `nd := decRead4 ; chain ; decLevels4 ; outIR4`, `decOk4_nd : DecOk4 nd`,
+   `nodeDec4_nd : NodeDec4 nd`, `cost_nd`, and the statement of what `FRX4Ext` needs.
+7. **The patch list for after A2′** (the coordinator schedules it):
+   - `FRX4Prog`: `ext4With nd := toProg memX4 mpwX (ext4IRWith nd)` with `memX4 = 2^28`;
+   - `FRX4Prog`/`FRXProg`: `decBudget4 t := fuelBase − 2^29 + (fuelPerWord − 16) t` (the prologue
+     clears `2^28` words: two steps each), and `fuel_covers4` at `decBudget4`;
+   - `FRX4Ext`: `sub4.E := E4X nd S.acc`, `ext := ext4With nd`, `Open4` over `NodeDec4 nd`
+     (`FRSubmission4`, `FRSubmission4Cert`).
+8. **Item 6**: controls for `Map4`, `outIR4`, `nd`; the `tgBody_sem` split (§1).

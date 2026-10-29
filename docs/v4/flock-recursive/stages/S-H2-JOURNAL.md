@@ -620,3 +620,44 @@ Base: branch `v4/flock-recursive`, HEAD `53c2e13`. Build tree `logs/fr-build-SH2
     < 0.5 s (elaboration: three `loopK_run` `refine`s 7–11 s, `nlinarith` 3–4 s; golf before the build
     budget sees it). Probe (4,951 jobs, 5.8 s run): compiled `lagIR` on a 4-target, 2-row toy equals a
     direct `F` Lagrange interpolation (and not the neighbouring rows). Handover in RESULT Part 25 §6.
+67. **S-H4 pass 2** (2026-10-29). HEAD `a91d355`, build tree `logs/fr-build-SH4b` (copy of `fr-build-SH4`,
+    `snap.sh` on HEAD, `MINE` = `FRXLag FRXLagT` + the new modules), logs `logs/S-H4b/`. The worktree
+    has other tracks' uncommitted edits (RET-2's `FRSoundnessCore*`, G2's golf); not touched.
+68. Item 1 done in a new module **`FRXLagT`** (the target half of `lagIR`): `fwd_blk`, `fwdL_sem`,
+    `fwdLoop_sem` (prefix products at `pb + t`), `accRow_sem`, `accIR_sem` (induction on `C`),
+    `bwd_ptr`, `bwd_mul`, `bwdL_sem`, `bwdLoop_sem` (invariant over `Ico (k − j) k`, `sufP (k − j)`),
+    `stRow_sem`, `stAcc_sem`, `rd_zeros`, `tgBody_sem`, `out_ne`/`outC_lt` (distinct targets' cells by
+    `mod k`), `tgIR_sem`, **`lagIR_sem`** (output row `c` at `ob + 2s + 2kc` is
+    `lagVal J k s y_{c₀+c}`; heap outside `[pb, ob + 2kC)` kept) and **`lagIR_interp`** (`= interpF D J y s`).
+    Layout: `regs ≤ jb`, `jb + k ≤ pb`, `pb + k ≤ yb`, `yb + 2Ck ≤ ob`, `yb + 2Ck ≤ cb`, and
+    `ob + 2k(C + 1) ≤ |M|` (one row of slack: `stAcc_sem`'s bound is stated at `o + 2kC`).
+    Pitfalls: a frame lemma applied as `b3 _ (by decide) …` with the index left to `rw` fails
+    ("expected type must not contain free variables"): give the index. `rw [rdB]` unfolds only the
+    first instance: `unfold rdB`. `omega` treats `2 * k * c` and `k * c` as unrelated atoms:
+    `Nat.mul_assoc` first. A `let` invariant `P` must be `dsimp only [P]` before `rw` on its
+    `k − (j + 1)`.
+69. Re-snapshot on HEAD `1263569` (G2 and RET-2 landed). Pitfall: `lake env lean` on a module whose
+    imports' oleans are stale reports "environment already contains" clashes (an old
+    `FRSoundness4TailTruths` olean still importing `FRSoundnessDefs`): build new modules as `lake build`
+    targets (`snap.sh` with `MINE` lists them as roots).
+70. Item 2 (`FRXDec4Level`, `FRXDec4Back`): 3.x's `level_decode` ported verbatim over T4's `CKind`
+    truths; `decBack4IR = scanIR ; lagIR 2^m C c₀ ; bfRowsIR m` with the map `BackLay4` as a parameter;
+    `decBack4_sem` follows `decBack_sem` with `lagIR_sem` for `baryIR_sem`. Pitfalls: inside
+    `namespace FR.X`, `T4.x` does not resolve (write `Snd.T4.x`), and an unqualified `CKind` becomes
+    an auto-bound implicit (write `Snd.CKind`); `rw [← hlen]` rewrote every `2^m`: rewrite a
+    specialised `lagVal_eq` instance at `hlen` instead. `cost_back0_m32 = 71,758,669,416,262`.
+71. Item 2′ (`FRXDec4Front`, `FRXDec4Lv`): `decFront_sem` ported with every base a parameter
+    (`FrontLay4`, `MsgOk4`); it built on the first try. `decLv4_sem` composes the halves on
+    `tb < fb < [jb, pb, yl, ob] < eb < xb < yb ≤ cb`; `omega` needed `2·2^m·(C + 1) = 2·2^m·C + 2·2^m`.
+72. Checks: build green (2,479 jobs with `FRX4Ext`, `FRSubmission4Cert`); 18 axiom lines standard;
+    source rule 362 files, 0 findings. Profiles: `FRXLagT` 75 s (was 87 s; a `show` across a
+    `let`-bound `runPrims` of four prims took 8 s each: rewrite with a `runPrims_append` instance
+    normalised by `simp only [List.cons_append, List.nil_append]`), the others 8–16 s. RESULT Part 26;
+    handover §6 there.
+73. Pass 3, first step (coordinator: Q1/Q2 answered; G2's fix first). `attribute [local irreducible]
+    entryK storeM runPrims` in the six S-H4 modules. Two `rfl` base cases (`runPrims [] M = M`) then
+    failed: rewrite with `semB, runPrims_nil`. Back-to-back CPU (load 20–24): `FRXLag` 89–100 s →
+    53–65 s, `FRXLagT` 73.6 s → 57.6 s. `tgBody_sem` still 25 s: the trace shows an ungeneralised
+    nested state as an expected type; split it into per-phase lemmas next. The tape is not in memory
+    (`toProg` = `mem + mpw·t` zero words; `.input` reads the tape), so the map's only fixed neighbour
+    is the index at `memX`. Context long: handover in RESULT Part 27 §3.

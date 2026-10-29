@@ -39,6 +39,9 @@ namespace FR.X
 
 open RecursionFast FR Finset
 
+-- G2: `entryK`/`storeM`/`runPrims` are never unfolded while unifying states (elaboration time).
+attribute [local irreducible] entryK storeM runPrims
+
 /-! ## Registers (`160 …`) -/
 
 /-- A loaded `J` word. -/ def lgJ : ℕ := 160
