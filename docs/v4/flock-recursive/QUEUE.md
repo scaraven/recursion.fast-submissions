@@ -106,7 +106,13 @@ Running on rev44:
   - **Levers if RUN1's runner numbers make it tight:**
     - `rsWeight` in closed form (R3 §4.2, −0.7 s);
     - `evalL` by carry-split (C1b §6, −0.32 s).
-- REPF: the replay fold.
+- **REPF landed `407260d`.**
+  - **Fold:** the replay rows (`rtC1c`) are in `nodeIRows4`, and the replay part of `Gaps4` is discharged (`gaps4_of_runA`: `Gaps4` from `SlotRunA` at `rtC1c` alone). B3 is switched to RTOkW, with FRNodeRows4Defs split out.
+  - **Over the caps:**
+    - V(N4) 1.78 s VM (≈ 1.5 s runner vs the 2.06 s DoS cap);
+    - plan init 20 s wall VM (+12.5 s ≈ +375 s of stream: **breaks stream_s**);
+    - memory 1.95 GB.
+- CF: closed-form evaluation for the rsWeight and evalL blocks (R3 §4.2, C1b §6.1). Targets: V ≤ 0.7 s VM, init ≤ 9 s wall VM.
   - The import-cycle split (a FRNodeRows4 defs module).
   - Replay rows into `nodeIRows4`, with the plan built in one pass from the final compile.
   - The fix for `tplLW`'s 216 s init.
