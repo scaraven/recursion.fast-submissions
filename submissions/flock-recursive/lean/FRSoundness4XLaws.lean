@@ -25,9 +25,10 @@ open RecursionFast FR.Merkle FR.Rev4 Finset
 
 set_option linter.constructorNameAsVariable false
 
-/-- **The good logs** for the composed front: within `logCap`, below potential `1`. -/
+/-- **The good logs** for the composed front: within `logCap`, below potential `1` (revision 4.4.1:
+the composed checks guarded by the cap truth, `T4.RejG`). -/
 def GoodX (DFhi : ℕ → Log → Log → Prop) (L : Log) : Prop :=
-  L.length ≤ logCap ∧ T4.muT (T4.RejC RejFX c0X) (T4.DkC (DFX DFhi) W0X c0X) L < 1
+  L.length ≤ logCap ∧ T4.muT (T4.RejG RejFX c0X) (T4.DkC (DFX DFhi) W0X c0X) L < 1
 
 /-- **A segment's statement on the log**: the chain's kind, start digest, end digest and count. -/
 def SegLog (v : SegView) (es : Log) : Prop :=
@@ -61,7 +62,7 @@ theorem stmt4_of_tail {DFhi : ℕ → Log → Log → Prop} (hH : FrontHi DFhi) 
     3 ≤ (entriesOf L (pathOf L j)).length ∧
       P4a.Stmt4 src4 T4.zW lRows4 nodeIRows4 pvL L ((entriesOf L (pathOf L j)).take 3) := by
   have hlen : 3 ≤ (entriesOf L (pathOf L j)).length := by
-    have := hT.len; rw [T4.pfStart_eq] at this; omega
+    have := hT.len; rw [T4.capPh_pos.2.2.2] at this; omega
   refine ⟨hlen, ?_⟩
   by_contra h
   obtain ⟨hnd, -⟩ := T4.tail_of_accept (frontObl_X hH).loc (frontChainStab_X hH) hG.2 hT

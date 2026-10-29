@@ -63,7 +63,7 @@ structure FrontObl (RejF : Log → Log → Prop) (DF : ℕ → Log → Log → P
 
 /-! ## Position facts -/
 
-theorem front_check : ((List.range 26).all fun j => decide (p1Start 0 ≤ phStart4 (26 + j))) &&
+theorem front_check : ((List.range 30).all fun j => decide (p1Start 0 ≤ phStart4 (26 + j))) &&
     ((List.range 26).all fun k => decide (phStart4 (k + 1) ≤ p1Start 0)) &&
     phOf4 (p1Start 0 - 1) == 25 &&
     (List.range 5).all (fun i => fsItems4[cStart i]? != some .squeeze) &&
@@ -72,7 +72,7 @@ theorem front_check : ((List.range 26).all fun j => decide (p1Start 0 ≤ phStar
   unfold p1Start cStart p3S0 phOf4 phStart4
   rw [fsStarts4_eq, fsRanges4_eq]; decide +kernel
 
-theorem front_facts : (∀ j ≤ 25, p1Start 0 ≤ phStart4 (26 + j)) ∧
+theorem front_facts : (∀ j ≤ 29, p1Start 0 ≤ phStart4 (26 + j)) ∧
     (∀ k < 26, phStart4 (k + 1) ≤ p1Start 0) ∧ phOf4 (p1Start 0 - 1) = 25 ∧
     (∀ i < 5, fsItems4[cStart i]? ≠ some .squeeze) ∧
     ∀ x ∈ fsRanges4, x.1 + x.2 < p1Start 0 ∨
@@ -120,13 +120,14 @@ def tailCls (p : ℕ) : Bool :=
         ((l == 0 && phOf4 (p - 1) == 50) || (l != 0 && phOf4 (p - 1) == 51))) ||
       (p == pfStart + 2 * l + 1 && phOf4 p == 51 && phOf4 (p - 1) == 51))
 
-theorem tailCls_check : (List.range (fsItems4.length - p1Start 0)).all
+/-- Checked up to the cap check (`phStart4 52`, revision 4.4.1); its four positions are
+`cap_items`'. -/
+theorem tailCls_check : (List.range (phStart4 52 - p1Start 0)).all
     (fun j => tailCls (p1Start 0 + j)) = true := by
-  rw [fsItems4_length]
   unfold tailCls p1Start cStart p3S0 pfStart hEll phOf4 phStart4
   rw [fsStarts4_eq]; decide +kernel
 
-theorem tail_cls {p : ℕ} (h1 : p1Start 0 ≤ p) (h2 : p < fsItems4.length) :
+theorem tail_cls {p : ℕ} (h1 : p1Start 0 ≤ p) (h2 : p < phStart4 52) :
     (∃ i < 5, ∃ l < hEll i, p = p1Start i + 2 * l ∧ phOf4 p = 26 + 5 * i ∧
       ((l = 0 ∧ phOf4 (p - 1) = 25 + 5 * i) ∨ (l ≠ 0 ∧ phOf4 (p - 1) = 26 + 5 * i))) ∨
     (∃ i < 5, ∃ l < hEll i, p = p1Start i + 2 * l + 1 ∧ phOf4 p = 26 + 5 * i ∧
@@ -172,15 +173,166 @@ theorem sq_tail {i p : ℕ} (hi : i < 5) (h1 : cStart i < p) (h2 : p ≤ p3S0 i 
 theorem lt_length_of_get {p : ℕ} {it : Item} (h : fsItems4[p]? = some it) : p < fsItems4.length := by
   by_contra hc; rw [List.getElem?_eq_none (by omega)] at h; simp at h
 
-/-! ## `PhaseObl` -/
+/-! ## The cap check's positions and the guarded checks (revision 4.4.1, A3′ run 2) -/
+
+/-- The cap check's items (`CapD` absorb, `CapZeta` squeeze, `CapChk` absorb, `CapChkZ` squeeze), single
+squeezes, at the end of the chain. -/
+theorem cap_items : fsItems4[phStart4 52]? = some (.absorb 27872) ∧ fsItems4[phStart4 53]? = some .squeeze ∧
+    fsItems4[phStart4 54]? = some (.absorb 49152) ∧ fsItems4[phStart4 55]? = some .squeeze ∧
+    fsRnd4 (phStart4 53) = none ∧ fsRnd4 (phStart4 55) = none ∧ fsItems4.length = phStart4 55 + 1 := by
+  obtain ⟨p52, p53, p54, p55⟩ := capPh_pos
+  rw [p52, p53, p54, p55, fsItems4_length]
+  refine ⟨?_, ?_, ?_, ?_, ?_, ?_, rfl⟩
+  all_goals first
+    | (rw [fsItems4, Rev4.seq4_eq]; decide +kernel)
+    | (unfold fsRnd4; rw [fsRanges4_eq]; decide)
+
+/-- **Before `D`, or `D` true**: the guard of the composed checks. -/
+def cdOK (es : Log) : Prop := es.length ≤ phStart4 52 ∨ truthCap es
+
+/-- **The composed checks, guarded by the cap truth** (A3′ run 2, journal R2.2): once `D` is in the
+chain, a failed level check (`RejT`'s round 0 of P1.(i+1) reads the committed words) counts only if
+`D` is true; a false `D` is a doom (`DCapD`). On an accepted chain `RejG` fails either way. -/
+def RejG (RejF : Log → Log → Prop) (c₀ : Log → Log → K) (L es : Log) : Prop :=
+  RejC RejF c₀ L es ∧ cdOK es
+
+theorem cdOK_append {es : Log} (h : es.length ≠ phStart4 52) (x : ByteArray × Digest) :
+    cdOK (es ++ [x]) ↔ cdOK es := by
+  unfold cdOK
+  rw [List.length_append, List.length_singleton]
+  rcases Nat.lt_or_ge es.length (phStart4 52) with hl | hl
+  · exact ⟨fun _ => Or.inl (by omega), fun _ => Or.inl (by omega)⟩
+  · have hl' : phStart4 53 ≤ es.length := by have := capPh_pos; omega
+    rw [(capD_congr (agree_append es [x] hl')).2.2]
+    exact ⟨fun h' => h'.resolve_left (by omega) |> Or.inr, fun h' => h'.resolve_left (by omega) |> Or.inr⟩
+
+theorem rejG_of {RejF : Log → Log → Prop} {c₀ : Log → Log → K} {L es : Log}
+    (h : RejC RejF c₀ L es) (hl : es.length ≤ phStart4 52) : RejG RejF c₀ L es := ⟨h, Or.inl hl⟩
+
+theorem not_rejC_of {RejF : Log → Log → Prop} {c₀ : Log → Log → K} {L es : Log}
+    (h : ¬ RejG RejF c₀ L es) (hl : es.length ≤ phStart4 52) : ¬ RejC RejF c₀ L es := fun h' => h ⟨h', Or.inl hl⟩
+
+theorem rejG_sq {RejF : Log → Log → Prop} {c₀ : Log → Log → K} (hR : RejOK (RejC RejF c₀)) :
+    RejSq (RejG RejF c₀) where
+  sq L es x hit := by
+    have h52 : es.length ≠ phStart4 52 := fun h => by rw [h, cap_items.1] at hit; cases hit
+    unfold RejG; rw [hR.sq L es x hit, cdOK_append h52]
+  stab L i hb hci X hX := by unfold RejG; rw [hR.stab L i hb hci X hX]
+
+theorem phOf_cap : phOf4 (phStart4 52 - 1) = 51 ∧ phOf4 (phStart4 52) = 52 ∧ phOf4 (phStart4 53) = 53 ∧
+    phOf4 (phStart4 54) = 54 ∧ phOf4 (phStart4 55) = 55 := by
+  have e : pfStart = 468 := by unfold pfStart phStart4; rw [fsStarts4_eq]; rfl
+  obtain ⟨p52, p53, p54, p55⟩ := capPh_pos
+  refine ⟨(phOf_ge (by omega)).1 (by omega), (phOf_ge (by omega)).2.1 rfl, (phOf_ge (by omega)).2.2.1 rfl,
+    (phOf_ge (by omega)).2.2.2.1 rfl, (phOf_ge (by omega)).2.2.2.2 le_rfl⟩
 
 variable {RejF : Log → Log → Prop} {DF : ℕ → Log → Log → Prop} {W₀ : Log → Log → ℕ → K}
   {c₀ : Log → Log → K}
 
+/-- **`hrej`**: at an absorb a guarded check that held still holds, or (at `CapD`) `D` is false. -/
+theorem hrej_G (hR : RejOK (RejC RejF c₀)) (L es : Log) (x : ByteArray × Digest)
+    (h : RejG RejF c₀ L es) :
+    RejG RejF c₀ L (es ++ [x]) ∨ DkC DF W₀ c₀ (phOf4 es.length) L (es ++ [x]) := by
+  have hr := hR.mono L es x h.1
+  by_cases h52 : es.length = phStart4 52
+  · by_cases ht : truthCap (es ++ [x])
+    · exact Or.inl ⟨hr, Or.inr ht⟩
+    · right
+      rw [h52, phOf_cap.2.1, DkC_ge (by norm_num), (DT_cap W₀ c₀).1]
+      exact Or.inr ht
+  · exact Or.inl ⟨hr, (cdOK_append h52 x).2 h.2⟩
+
+/-- **The cap check's absorbs** (`CapD`, `CapChk`): an absorb never undooms. -/
+theorem habs_cap (hF : FrontLocal W₀ c₀) {L es : Log} {x : ByteArray × Digest} {len : ℕ}
+    (hit : fsItems4[es.length]? = some (.absorb len)) (h52 : phStart4 52 ≤ es.length)
+    (hd : DT W₀ c₀ (phOf4 (es.length - 1)) L es) : DT W₀ c₀ (phOf4 es.length) L (es ++ [x]) := by
+  obtain ⟨i52, i53, i54, i55, -, -, hlen⟩ := cap_items
+  obtain ⟨p52, p53, p54, p55⟩ := capPh_pos
+  obtain ⟨f51, f52, f53, f54, f55⟩ := phOf_cap
+  obtain ⟨d52, d53, d54, d55⟩ := DT_cap W₀ c₀
+  have hlt := lt_length_of_get hit
+  have hpf : pfStart + 14 ≤ es.length := by rw [pfStart_eq]; omega
+  have e : es.length = phStart4 52 ∨ es.length = phStart4 54 := by
+    rcases (show es.length = 482 ∨ es.length = 483 ∨ es.length = 484 ∨ es.length = 485 by omega) with
+      h | h | h | h
+    · exact Or.inl (by omega)
+    · rw [show es.length = phStart4 53 by omega, i53] at hit; cases hit
+    · exact Or.inr (by omega)
+    · rw [show es.length = phStart4 55 by omega, i55] at hit; cases hit
+  rcases e with e | e
+  · rw [e, f52, d52]
+    rw [show es.length - 1 = phStart4 52 - 1 by omega, f51, DT_Pf] at hd
+    exact Or.inl ((DPf_append hF hpf x).2 hd)
+  · rw [e, f54, d54]
+    rw [show es.length - 1 = phStart4 53 by omega, f53, d53] at hd
+    have hag : Agree (es ++ [x]) es (phStart4 54) := agree_append es [x] (by omega)
+    have ht := (capD_congr (hag.mono (by omega))).2.2
+    have hs := (capZeta_congr hag).2.2.2.1
+    rcases hd with ⟨hp, htc⟩ | ⟨htc, hsg⟩
+    · exact Or.inl ⟨(DPf_append hF hpf x).2 hp, ht.2 htc⟩
+    · by_cases ha : aHon (es ++ [x])
+      · exact Or.inr (Or.inl ⟨ha, fun h => htc (ht.1 h), fun h => hsg (hs.1 h)⟩)
+      · exact Or.inr (Or.inr ha)
+
+open Classical in
+/-- **The cap check's squeezes** (`CapZeta`, `CapChkZ`): the escapes are `DZeta` (`≤ 870`) and
+`DZ` (`≤ 1,535`) answers. -/
+theorem single_cap (hF : FrontLocal W₀ c₀) {L es : Log} (hit : fsItems4[es.length]? = some .squeeze)
+    (h52 : phStart4 52 ≤ es.length) :
+    (univ.filter fun a => DT W₀ c₀ (phOf4 (es.length - 1)) L es ∧
+      ¬ DT W₀ c₀ (phOf4 es.length) L (ext1 es a)).card ≤ 239 * 2 ^ 128 := by
+  obtain ⟨i52, i53, i54, i55, -, -, hlen⟩ := cap_items
+  obtain ⟨p52, p53, p54, p55⟩ := capPh_pos
+  obtain ⟨f51, f52, f53, f54, f55⟩ := phOf_cap
+  obtain ⟨d52, d53, d54, d55⟩ := DT_cap W₀ c₀
+  have hlt := lt_length_of_get hit
+  have hpf : pfStart + 14 ≤ es.length := by rw [pfStart_eq]; omega
+  have hP : ∀ a, DPf W₀ c₀ L (ext1 es a) ↔ DPf W₀ c₀ L es := fun a => DPf_append hF hpf _
+  have e : es.length = phStart4 53 ∨ es.length = phStart4 55 := by
+    rcases (show es.length = 482 ∨ es.length = 483 ∨ es.length = 484 ∨ es.length = 485 by omega) with
+      h | h | h | h
+    · rw [show es.length = phStart4 52 by omega, i52] at hit; cases hit
+    · exact Or.inl (by omega)
+    · rw [show es.length = phStart4 54 by omega, i54] at hit; cases hit
+    · exact Or.inr (by omega)
+  rcases e with e | e
+  · rw [e, f53, d53, show phStart4 53 - 1 = phStart4 52 by omega, f52, d52]
+    have hag : ∀ a, Agree (ext1 es a) es (phStart4 53) := fun a => by
+      rw [ext1]; exact agree_append es _ (by omega)
+    have ht : ∀ a, truthCap (ext1 es a) ↔ truthCap es := fun a => (capD_congr (hag a)).2.2
+    by_cases htc : truthCap es
+    · rw [filter_false_of_mem fun a _ h => h.2 (Or.inl ⟨(hP a).2 (h.1.resolve_right (not_not.2 htc)),
+        (ht a).2 htc⟩)]
+      simp
+    · refine le_trans (card_le_card fun a ha => ?_) ((card_dZeta e htc).trans (by norm_num))
+      simp only [mem_filter, mem_univ, true_and] at ha ⊢
+      by_contra hs
+      exact ha.2 (Or.inr ⟨fun h => htc ((ht a).1 h), hs⟩)
+  · rw [e, f55, d55, show phStart4 55 - 1 = phStart4 54 by omega, f54, d54]
+    have hag : ∀ a, Agree (ext1 es a) es (phStart4 55) := fun a => by
+      rw [ext1]; exact agree_append es _ (by omega)
+    have ht : ∀ a, truthCap (ext1 es a) ↔ truthCap es := fun a => (capD_congr ((hag a).mono (by omega))).2.2
+    have hs : ∀ a, capSig0 (ext1 es a) ↔ capSig0 es := fun a => (capZeta_congr ((hag a).mono (by omega))).2.2.2.1
+    have hon : ∀ a, aHon (ext1 es a) ↔ aHon es := fun a => (capA_congr (hag a)).2
+    by_cases ha : aHon es
+    · rw [filter_false_of_mem fun a _ h => ?_]
+      · simp
+      rcases h.1 with ⟨hp, htc⟩ | ⟨-, htc, hsg⟩ | hna
+      · exact h.2 (Or.inl ⟨(hP a).2 hp, (ht a).2 htc⟩)
+      · exact h.2 (Or.inr (Or.inl ⟨(hon a).2 ha, fun h' => htc ((ht a).1 h'), fun h' => hsg ((hs a).1 h')⟩))
+      · exact hna ha
+    · refine le_trans (card_le_card fun a hm => ?_) ((card_dZ e ha).trans (by norm_num))
+      simp only [mem_filter, mem_univ, true_and] at hm ⊢
+      by_contra hne
+      exact hm.2 (Or.inr (Or.inr ⟨fun h' => ha ((hon a).1 h'), hne⟩))
+
+/-! ## `PhaseObl` -/
+
 /-- **The per-phase obligations of the whole transcript**, from the front's and the tail's. -/
 theorem phaseObl_of (hFr : FrontObl RejF DF W₀ c₀) :
-    PhaseObl (RejC RejF c₀) (DkC DF W₀ c₀) (239 * 2 ^ 128) where
-  rej := rejOK_or hFr.rej (rejT_ok hFr.loc)
+    PhaseObl (RejG RejF c₀) (DkC DF W₀ c₀) (239 * 2 ^ 128) where
+  rej := rejG_sq (rejOK_or hFr.rej (rejT_ok hFr.loc))
+  hrej L es x _ _ _ h := hrej_G (rejOK_or hFr.rej (rejT_ok hFr.loc)) L es x h
   ms s0 r hmem := by
     by_cases h : s0 + 1 < p1Start 0
     · obtain ⟨fin, hf⟩ := hFr.ms s0 r hmem h
@@ -195,16 +347,24 @@ theorem phaseObl_of (hFr : FrontObl RejF DF W₀ c₀) :
         (by rw [DkC_ge (by omega), DT_P3 W₀ c₀ hi])⟩
   habs L es x len hm hit hr hd := by
     have hlt := lt_length_of_get hit
+    have h0 : p1Start 0 < phStart4 52 := by
+      unfold p1Start phStart4; rw [fsStarts4_eq]; decide
+    by_cases hcap : phStart4 52 ≤ es.length
+    · right
+      rw [DkC_ge (phOf_ge_26 (by omega))] at hd
+      rw [DkC_ge (phOf_ge_26 (by omega))]
+      exact habs_cap hFr.loc hit hcap hd
+    have hr' := not_rejC_of hr (by omega)
     by_cases hp : es.length < p1Start 0
     · rw [DkC_lt (phOf_lt_26 (by omega))] at hd
       rw [DkC_lt (phOf_lt_26 hp)]
-      exact hFr.habs L es x len hm hit hp hr hd
+      exact (hFr.habs L es x len hm hit hp hr' hd).imp_left fun h => rejG_of h (by simp; omega)
     by_cases hp' : es.length = p1Start 0
     · rw [hp', front_facts.2.2.1, DkC_lt (by norm_num)] at hd
-      have := hFr.handoff L es x len hm hit hp' hr hd
+      have := (hFr.handoff L es x len hm hit hp' hr' hd).imp_left fun h => rejG_of h (by simp; omega)
       have hD : DT W₀ c₀ 26 = D1 W₀ c₀ 0 := DT_P1 W₀ c₀ (i := 0) (by norm_num)
       rwa [hp', (tail_ph (show 0 < 5 by norm_num)).1, DkC_ge le_rfl, hD]
-    rcases tail_cls (by omega) hlt with ⟨i, hi, l, hl, he, h1, h2⟩ | ⟨i, hi, l, hl, he, -, -⟩ |
+    rcases tail_cls (by omega) (by omega : es.length < phStart4 52) with ⟨i, hi, l, hl, he, h1, h2⟩ | ⟨i, hi, l, hl, he, -, -⟩ |
       ⟨i, hi, he, h1, h2⟩ | ⟨i, hi, h1, h2⟩ | ⟨l, hl, he, h1, h2⟩ | ⟨l, hl, he, -, -⟩
     · right
       rw [h1, DkC_ge (by omega), DT_P1 W₀ c₀ hi]
@@ -240,11 +400,22 @@ theorem phaseObl_of (hFr : FrontObl RejF DF W₀ c₀) :
     · have := (rounds_Pf hl).2; rw [← he, hit] at this; simp at this
   hsingle L es hm hit hrnd hr := by
     have hlt := lt_length_of_get hit
+    have h0 : p1Start 0 < phStart4 52 := by
+      unfold p1Start phStart4; rw [fsStarts4_eq]; decide
+    by_cases hcap : phStart4 52 ≤ es.length
+    · have e1 : 26 ≤ phOf4 (es.length - 1) := phOf_ge_26 (by omega)
+      have e2 : 26 ≤ phOf4 es.length := phOf_ge_26 (by omega)
+      have hc := single_cap hFr.loc hit hcap (L := L)
+      refine le_trans (card_le_card ?_) hc
+      intro a ha
+      simp only [mem_filter, mem_univ, true_and] at ha ⊢
+      rwa [DkC_ge e1, DkC_ge e2] at ha
+    have hr' := not_rejC_of hr (by omega)
     by_cases hp : es.length < p1Start 0
     · rw [DkC_lt (phOf_lt_26 (by omega)), DkC_lt (phOf_lt_26 hp)]
-      exact hFr.hsingle L es hm hit hrnd hp hr
-    have hrT : ¬ RejT c₀ L es := fun h => hr (Or.inr h)
-    rcases tail_cls (by omega) hlt with ⟨i, hi, l, hl, he, -, -⟩ | ⟨i, hi, l, hl, he, h1, h2⟩ |
+      exact hFr.hsingle L es hm hit hrnd hp hr'
+    have hrT : ¬ RejT c₀ L es := fun h => hr' (Or.inr h)
+    rcases tail_cls (by omega) (by omega : es.length < phStart4 52) with ⟨i, hi, l, hl, he, -, -⟩ | ⟨i, hi, l, hl, he, h1, h2⟩ |
       ⟨i, hi, he, -, -⟩ | ⟨i, hi, h1, h2⟩ | ⟨l, hl, he, -, -⟩ | ⟨l, hl, he, h1, h2⟩
     · have := (rounds_P1 hi hl).1; rw [← he, hit] at this; simp at this
     · rw [h1, h2, DkC_ge (by omega), DT_P1 W₀ c₀ hi]
@@ -264,8 +435,10 @@ theorem phaseObl_of (hFr : FrontObl RejF DF W₀ c₀) :
           have h0 : p1Start 0 ≤ p1Start i := front_facts.1 (5 * i) (by omega)
           obtain ⟨-, -, h3, h4, -⟩ := tail_pos hi
           omega
+      have h0 : p1Start 0 < phStart4 52 := by
+        unfold p1Start phStart4; rw [fsStarts4_eq]; decide
       refine le_trans (le_of_eq (condCount_congr fun as has => ?_))
-        (hFr.hfin s0 r hmem h L es₀ hm hl hr)
+        (hFr.hfin s0 r hmem h L es₀ hm hl (not_rejC_of hr (by omega)))
       have hlx := length_ext as es₀
       have hd : (ext es₀ as).dropLast.length = s0 + r := by
         rw [List.length_dropLast]; omega
@@ -291,14 +464,14 @@ theorem phaseObl_of (hFr : FrontObl RejF DF W₀ c₀) :
     exact DT_stab hFr.loc (by omega) h2 (same_stabX hb hci hX) le_rfl (by omega)
 
 /-- T4: **the potential's laws at `εR` from the front's obligations** (3.x's `kstate_of_front`
-without 3.x's `KState`/`FinalLaw`, whose verifier is 3.x's): `muT (RejC …) (DkC …)` starts at `0`
+without 3.x's `KState`/`FinalLaw`, whose verifier is 3.x's): `muT (RejG …) (DkC …)` starts at `0`
 and meets the contract's `step` law at `εR = 15/2^124`. These are `ks4_of`'s `h0` and `hstep`
 (`ks4_of_front`, `FRSoundness4TailLig`). -/
 theorem muT_laws_of_front (hFr : FrontObl RejF DF W₀ c₀) :
-    muT (RejC RejF c₀) (DkC DF W₀ c₀) [] = 0 ∧
-    ∀ L q, L.length < logCap → muT (RejC RejF c₀) (DkC DF W₀ c₀) L < 1 → q ∉ L.map Prod.fst →
-      ∑ a : Digest, muT (RejC RejF c₀) (DkC DF W₀ c₀) (L ++ [(q, a)]) ≤
-        (muT (RejC RejF c₀) (DkC DF W₀ c₀) L + epsR) * 2 ^ 256 :=
+    muT (RejG RejF c₀) (DkC DF W₀ c₀) [] = 0 ∧
+    ∀ L q, L.length < logCap → muT (RejG RejF c₀) (DkC DF W₀ c₀) L < 1 → q ∉ L.map Prod.fst →
+      ∑ a : Digest, muT (RejG RejF c₀) (DkC DF W₀ c₀) (L ++ [(q, a)]) ≤
+        (muT (RejG RejF c₀) (DkC DF W₀ c₀) L + epsR) * 2 ^ 256 :=
   ⟨muT_empty _ _, fun L q hl hμ hq => muT_step N_le (phaseObl_of hFr) L q hl hμ hq⟩
 
 /-! ## Stability on the chain itself (`ChainStab`, S-G1h deviation 1) -/
@@ -333,17 +506,18 @@ def FrontChainStab (RejF : Log → Log → Prop) (DF : ℕ → Log → Log → P
     ∀ k < 26, phOf4 ((entriesOf L (pathOf L j)).length - 1) = k →
       (DF k (L.take j) (entriesOf L (pathOf L j)) ↔ DF k L (entriesOf L (pathOf L j)))
 
-/-- **`ChainStab` for the whole transcript's doom** (what `final`'s walk needs, S-G1h deviation 1):
+/-- **`ChainStab` for the whole transcript's doom** (what `final`'s walk needs, S-G1h deviation 1;
+revision 4.4.1: the checks guarded, `RejG`):
 the tail's part is proved (`same_chain`, `DT_stab`, `rejT_same`); the front's is `FrontChainStab`. -/
 theorem chainStab_of (hF : FrontLocal W₀ c₀) (hFS : FrontChainStab RejF DF) :
-    ChainStab (DC (RejC RejF c₀) (Dp (DkC DF W₀ c₀))) := by
+    ChainStab (DC (RejG RejF c₀) (Dp (DkC DF W₀ c₀))) := by
   intro L j hb hci
   set es := entriesOf L (pathOf L j)
   have hS := same_chain hb hci
   obtain ⟨hR, hD⟩ := hFS L j hb hci
   have h1 : 1 ≤ es.length := List.length_pos_iff.mpr (G.matches_ne_nil hci.2)
-  unfold DC RejC DPos Dp
-  refine or_congr (or_congr hR (rejT_same hF hS le_rfl)) ?_
+  unfold DC RejG RejC DPos Dp
+  refine or_congr (and_congr (or_congr hR (rejT_same hF hS le_rfl)) Iff.rfl) ?_
   by_cases hk : phOf4 (es.length - 1) < 26
   · rw [DkC_lt hk]; exact hD _ hk rfl
   rw [DkC_ge (by omega)]
@@ -382,7 +556,7 @@ theorem not_rejT_short {L es : Log} (hl : es.length ≤ p1Start 0) : ¬ RejT c�
   rintro (⟨i, hi, j, -, hlt, -⟩ | ⟨j, -, hlt, -⟩)
   · have : p1Start 0 ≤ p1Start i := front_facts.1 (5 * i) (by omega)
     omega
-  · have : p1Start 0 ≤ pfStart := front_facts.1 25 le_rfl
+  · have : p1Start 0 ≤ pfStart := front_facts.1 25 (by norm_num)
     omega
 
 open Classical in

@@ -220,9 +220,8 @@ theorem D2_congrL {R : Type*} [Field R] {b wd : ℕ} {rd : ByteArray → ℕ →
 
 theorem DT_Q (W₀ : Log → Log → ℕ → K) (c₀ : Log → Log → K) {i : ℕ} (hi : i < 5) :
     DT W₀ c₀ (29 + 5 * i) = fun _ _ => False := by
-  unfold DT
-  rw [ite_neg' (by omega), ite_neg' (by omega), ite_neg' (by omega), ite_neg' (by omega),
-    ite_pos' (by omega)]
+  rw [DT_lvl W₀ c₀ (by omega)]; unfold DTl
+  rw [ite_neg' (by omega), ite_neg' (by omega), ite_neg' (by omega), ite_pos' (by omega)]
 
 section Stab
 
@@ -292,13 +291,36 @@ theorem DPf_stab (hF : FrontLocal W₀ c₀) {L L' Y : Log} {p : ℕ} (h : Same 
   rw [truthP3_same h (show 4 < 5 by norm_num) _ (by omega)]
   exact or_congr Iff.rfl (D2_congrL (tPf_same hF h hp) (lvC5_same hF h hp))
 
+/-- **Pf's doom after Pf** reads nothing past Pf's last round (the cap check's phases keep it). -/
+theorem DPf_append (hF : FrontLocal W₀ c₀) {L es : Log} (hl : pfStart + 14 ≤ es.length)
+    (x : ByteArray × Digest) : DPf W₀ c₀ L (es ++ [x]) ↔ DPf W₀ c₀ L es := by
+  have hS := same_append L es [x]
+  have h4 := (tail_pos (show 4 < 5 by norm_num)).2.2.2.2
+  have hnx : nxStart 4 = pfStart := rfl
+  have hb1 : 1 ≤ pfStart := by rw [pfStart_eq]; norm_num
+  unfold DPf
+  rw [hS.kind (by omega), truthP3_same hS (show 4 < 5 by norm_num) _ (by omega),
+    D2_append_iff hb1 (pf_local hF) x (by omega) (Or.inr (by show 7 ≤ _; omega))]
+
+/-- The cap check's dooms read `L` only through Pf's. -/
+theorem DCap_stab (hF : FrontLocal W₀ c₀) {k : ℕ} {L L' Y : Log} {p : ℕ} (h : Same L Y L' Y p)
+    (hp : pfStart ≤ p) : DCap W₀ c₀ k L Y ↔ DCap W₀ c₀ k L' Y := by
+  have e := DPf_stab hF h hp
+  unfold DCap DCapD DCapZeta DCapA DCapZ
+  split_ifs <;> simp only [e]
+
 /-- **Every tail doom is stable** (`hstab`): on two logs whose words agree up to the chain's
 length, once the chain has reached phase `k`. -/
-theorem DT_stab (hF : FrontLocal W₀ c₀) {k : ℕ} (hk1 : 26 ≤ k) (hk2 : k ≤ 51) {L L' Y : Log}
+theorem DT_stab (hF : FrontLocal W₀ c₀) {k : ℕ} (hk1 : 26 ≤ k) (hk2 : k ≤ 55) {L L' Y : Log}
     {p : ℕ} (h : Same L Y L' Y p) (hY : Y.length ≤ p) (hp : phStart4 k + 1 ≤ p) :
     DT W₀ c₀ k L Y ↔ DT W₀ c₀ k L' Y := by
   by_cases h50 : k = 51
   · subst h50; rw [DT_Pf]; exact DPf_stab hF h (by unfold pfStart; omega)
+  by_cases h52 : 51 < k
+  · have hk : phStart4 51 ≤ phStart4 k := by
+      unfold phStart4; rw [fsStarts4_eq]; interval_cases k <;> decide
+    unfold DT; rw [ite_neg' h50, ite_pos' h52]
+    exact DCap_stab hF h (by unfold pfStart; omega)
   obtain ⟨i, t, ht, rfl⟩ : ∃ i t, t < 5 ∧ k = 26 + 5 * i + t :=
     ⟨(k - 26) / 5, (k - 26) % 5, Nat.mod_lt _ (by norm_num), by omega⟩
   have hi : i < 5 := by omega

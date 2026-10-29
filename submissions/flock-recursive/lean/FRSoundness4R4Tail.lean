@@ -14,12 +14,15 @@ import FRSoundness4R4RndK
 * `rnd`, `rndPf`: P1.i's and Pf's in-phase round checks, rounds `l ≥ 1` (**proved from the run**:
   `rounds_of_run4`, through `p1_view4`/`pf_view4`);
 * `start`: P1.0's first claim is `c₀`;
-* `cols`: P2.i's opened columns (a path to the cap entry, `y_q` their fold at `sᵢ`);
+* `cols`: P2.i's opened columns (revision 4.4.1, (β′): a path to the committed digest `D_r =
+  T4.dAt es i q`, `y_q` their fold at `sᵢ`);
+* `cap`: the batched cap check's three asserts (`T4.capChk4`);
 * `link`: `finP i`, `i < 4`; `pf0`: `finP 4`'s assert; `enc`: `finP 4`'s direct checks;
 * `fin`: `finPf`'s `relPf` at the spec.
 
 **`acceptTail4_of_finLog`** (3.x's `acceptTail_of_finLog`): on a log without bad events, a chain of
-482 entries with `FinLog4` and `¬ RejF` is a `T4.AcceptTail`. **`acceptTail4_of_run`**: an accepted
+486 entries with `FinLog4` and `¬ RejF` is a `T4.AcceptTail` (the checks that read the committed words
+given `T4.truthCap`). **`acceptTail4_of_run`**: an accepted
 run of `gen4 seq4 p fin` on a log without bad events has a chain `j` (`runLog_chain4`) whose entries
 are the run's, so `chain`, `len`, `rnd`, `rndPf` come from the run; `¬ RejF` and the remaining
 `FinLog4` fields are its hypotheses, stated on the run's own entries `fsOf tr (itemsOf seq4)`.
@@ -37,11 +40,10 @@ structure FinLog4 (W₀ : Log → Log → ℕ → K) (c₀ : Log → Log → K) 
   rndPf : ∀ l, l + 1 < 7 → rSum T4.pfStart es (l + 1) = rVal T4.pfStart es l
   /-- P1.0's first claim is the front's `c₀`. -/
   start : rSum (T4.p1Start 0) es 0 = c₀ L es
-  /-- P2.i's opened columns: a path to the cap entry, and `y_q` their fold at `sᵢ`. -/
+  /-- P2.i's opened columns: a path to the committed digest `D_r`, and `y_q` their fold at `sᵢ`. -/
   cols : ∀ i < 5, ∀ q < (CKind.lv (kindOfC es) i).t, ∃ col : ByteArray, ∃ ss : List Digest,
     ss.length = (CKind.lv (kindOfC es) i).sib ∧
-    (openPath (frEnc i) col (T4.qPos (kindOfC es) es i q) ss).runLog L =
-      some (T4.capDig es i (T4.qPos (kindOfC es) es i q / 2 ^ (CKind.lv (kindOfC es) i).sib)) ∧
+    (openPath (frEnc i) col (T4.qPos (kindOfC es) es i q) ss).runLog L = some (T4.dAt es i q) ∧
     y i q = ∑ r : Fin (CKind.lv (kindOfC es) i).rows,
       eqBits (T4.sAt es i) (CKind.lv (kindOfC es) i).ell r * algebraMap F K (readF col (16 * r))
   /-- `finP i`, `i < 4`: P1.(i+1)'s first claim is P1.i's last plus the batched folds. -/
@@ -55,23 +57,24 @@ structure FinLog4 (W₀ : Log → Log → ℕ → K) (c₀ : Log → Log → K) 
   /-- `finPf`'s `relPf` at the spec. -/
   fin : clR2 T4.pfStart 32 readK chK (T4.lvC c₀ 5) L es 7 = T4.wHatL W₀ L es 4 *
     (∏ v ∈ Ico (T4.mLog (kindOfC es) 4) 7, (1 - T4.pfP es v)) * mleN 7 (T4.finalAt es) (T4.pfPt es)
+  /-- The batched cap check's three asserts (revision 4.4.1). -/
+  cap : T4.capChk4 es
 
 variable {W₀ : Log → Log → ℕ → K} {c₀ : Log → Log → K}
 
 /-! ## From `FinLog4` to the tail's checks -/
 
-/-- **The verifier's fold of a query is `foldAtN`** (the column is the committed one). -/
-theorem y_eq_foldAtN4 {L es : Log} {y : ℕ → ℕ → K} (hc : ¬ Collision L) (h : FinLog4 W₀ c₀ L es y)
-    {i : ℕ} (hi : i < 5) {q : ℕ} (hq : q < (CKind.lv (kindOfC es) i).t) :
+/-- **The verifier's fold of a query is `foldAtN`** (with `D` true the column is the committed one). -/
+theorem y_eq_foldAtN4 {L es : Log} {y : ℕ → ℕ → K} (hc : ¬ Collision L) (ht : T4.truthCap es)
+    (h : FinLog4 W₀ c₀ L es y) {i : ℕ} (hi : i < 5) {q : ℕ} (hq : q < (CKind.lv (kindOfC es) i).t) :
     y i q = T4.foldAtN (kindOfC es) L es i (T4.qPos (kindOfC es) es i q) := by
   obtain ⟨col, ss, hss, hpath, hy⟩ := h.cols i hi q hq
-  have hlt : T4.qPos (kindOfC es) es i q < 2 ^ (CKind.lv (kindOfC es) i).logN := idx_lt _ _ _
-  rw [T4.foldAtN, dite_eq_left_of_eq_true (eq_true hlt), hy,
-    T4.foldAt_of_cols (j := ⟨_, hlt⟩) hc hss hpath]
+  rw [hy, T4.foldAt_of_dcols hc ht hi hq hss hpath]
 
 /-- **P1.i's round checks** from `FinLog4` (round 0: `start` for `i = 0`, `link` and the folds for
 `i ≥ 1`). -/
-theorem p1_of_finLog4 {L es : Log} {y : ℕ → ℕ → K} (hc : ¬ Collision L) (h : FinLog4 W₀ c₀ L es y) :
+theorem p1_of_finLog4 {L es : Log} {y : ℕ → ℕ → K} (hc : ¬ Collision L) (ht : T4.truthCap es)
+    (h : FinLog4 W₀ c₀ L es y) :
     ∀ i < 5, ∀ l < hEll i, Chk2 (T4.p1Start i) 32 readK chK (T4.lvC c₀ i) L es l := by
   intro i hi l hl
   rcases l with _ | l
@@ -80,7 +83,7 @@ theorem p1_of_finLog4 {L es : Log} {y : ℕ → ℕ → K} (hc : ¬ Collision L)
     · exact h.start
     · rw [T4.lvC_succ c₀ (by omega), h.link i (by omega), T4.vNext]
       refine congrArg (T4.c1 c₀ i L es + ·) (sum_congr rfl fun q hq => ?_)
-      rw [y_eq_foldAtN4 hc h (by omega) (mem_range.mp hq)]
+      rw [y_eq_foldAtN4 hc ht h (by omega) (mem_range.mp hq)]
   · exact (chk2_succ _ _ _ _ _).2 (h.rnd i hi l hl)
 
 /-- **Pf's round checks** from `FinLog4` (round 0: `pf0`, `pf_round0_agree`). -/
@@ -91,21 +94,21 @@ theorem pf_of_finLog4 {L es : Log} {y : ℕ → ℕ → K} (h : FinLog4 W₀ c�
   · exact (T4.pf_round0_agree (c₀ := c₀) L es).2 h.pf0
   · exact (chk2_succ _ _ _ _ _).2 (h.rndPf l hl)
 
-/-- **Level 4's consistency** from `FinLog4` (`truthP3_four_of_cols`). -/
-theorem lvl4_of_finLog4 {L es : Log} {y : ℕ → ℕ → K} (hc : ¬ Collision L) (h : FinLog4 W₀ c₀ L es y) :
-    T4.truthP3 (kindOfC es) L es 4 := by
-  refine T4.truthP3_four_of_cols hc fun q hq => ?_
+/-- **Level 4's consistency** from `FinLog4` (`truthP3_four_of_dcols`, with `D` true). -/
+theorem lvl4_of_finLog4 {L es : Log} {y : ℕ → ℕ → K} (hc : ¬ Collision L) (ht : T4.truthCap es)
+    (h : FinLog4 W₀ c₀ L es y) : T4.truthP3 (kindOfC es) L es 4 := by
+  refine T4.truthP3_four_of_dcols hc ht fun q hq => ?_
   obtain ⟨col, ss, hss, hpath, hy⟩ := h.cols 4 (by norm_num) q hq
   exact ⟨col, ss, hss, hpath, hy ▸ h.enc q hq⟩
 
 /-- **`AcceptTail` from the finals on the log** (3.x's `acceptTail_of_finLog`). -/
 theorem acceptTail4_of_finLog {RejF : Log → Log → Prop} {L : Log} {j : ℕ} {y : ℕ → ℕ → K}
-    (hb : ¬ Bad L) (hci : G.IsChain L j) (hlen : (entriesOf L (pathOf L j)).length = 482)
+    (hb : ¬ Bad L) (hci : G.IsChain L j) (hlen : (entriesOf L (pathOf L j)).length = 486)
     (hR : ¬ RejF L (entriesOf L (pathOf L j))) (h : FinLog4 W₀ c₀ L (entriesOf L (pathOf L j)) y) :
     T4.AcceptTail RejF W₀ c₀ L j := by
   have hc : ¬ Collision L := fun hc => hb (.inl hc)
-  exact ⟨hci, by rw [hlen, T4.pfStart_eq], hR, p1_of_finLog4 hc h, pf_of_finLog4 h,
-    lvl4_of_finLog4 hc h, h.fin⟩
+  exact ⟨hci, by rw [hlen, T4.capPh_pos.2.2.2], hR, fun ht => p1_of_finLog4 hc ht h, pf_of_finLog4 h,
+    fun ht => lvl4_of_finLog4 hc ht h, h.fin, h.cap⟩
 
 /-! ## From the run -/
 
@@ -126,8 +129,7 @@ structure FinRest4 (W₀ : Log → Log → ℕ → K) (c₀ : Log → Log → K)
   start : rSum (T4.p1Start 0) es 0 = c₀ L es
   cols : ∀ i < 5, ∀ q < (CKind.lv (kindOfC es) i).t, ∃ col : ByteArray, ∃ ss : List Digest,
     ss.length = (CKind.lv (kindOfC es) i).sib ∧
-    (openPath (frEnc i) col (T4.qPos (kindOfC es) es i q) ss).runLog L =
-      some (T4.capDig es i (T4.qPos (kindOfC es) es i q / 2 ^ (CKind.lv (kindOfC es) i).sib)) ∧
+    (openPath (frEnc i) col (T4.qPos (kindOfC es) es i q) ss).runLog L = some (T4.dAt es i q) ∧
     y i q = ∑ r : Fin (CKind.lv (kindOfC es) i).rows,
       eqBits (T4.sAt es i) (CKind.lv (kindOfC es) i).ell r * algebraMap F K (readF col (16 * r))
   link : ∀ i < 4, rSum (T4.p1Start (i + 1)) es 0 = T4.c1 c₀ i L es +
@@ -137,6 +139,7 @@ structure FinRest4 (W₀ : Log → Log → ℕ → K) (c₀ : Log → Log → K)
     y 4 q = T4.encAt (kindOfC es) 4 (T4.finalAt es) (T4.qPos (kindOfC es) es 4 q)
   fin : clR2 T4.pfStart 32 readK chK (T4.lvC c₀ 5) L es 7 = T4.wHatL W₀ L es 4 *
     (∏ v ∈ Ico (T4.mLog (kindOfC es) 4) 7, (1 - T4.pfP es v)) * mleN 7 (T4.finalAt es) (T4.pfPt es)
+  cap : T4.capChk4 es
 
 /-- **`AcceptTail` from an accepted run** (`chain`, `len` by `runLog_chain4`; the K rounds by
 `rounds_of_run4`): for every run trace `tr` of `gen4 seq4 p fin` inside the log whose entries carry
@@ -153,7 +156,7 @@ theorem acceptTail4_of_run {RejF : Log → Log → Prop} (fin : FinOps) {L : Log
   obtain ⟨hrnd, hrndPf⟩ := rounds_of_run4 hS
   refine ⟨j, acceptTail4_of_finLog (y := yv) hb hci hlen (hes ▸ hR) ?_⟩
   rw [hes]
-  exact ⟨hrnd, hrndPf, hF.start, hF.cols, hF.link, hF.pf0, hF.enc, hF.fin⟩
+  exact ⟨hrnd, hrndPf, hF.start, hF.cols, hF.link, hF.pf0, hF.enc, hF.fin, hF.cap⟩
 
 /-! ## `rejF`: P4a's checks (phases 0 … 12) on an accepted run -/
 
@@ -195,17 +198,17 @@ theorem not_rejF4a_node4 {ν : NodeKind} {cells : List ℕ} {tr : Trace}
 
 /-! ## Controls -/
 
-/-- **Control (converse on the round fields)**: a `T4.AcceptTail` gives back `FinLog4`'s round
-fields, `start`, `pf0` and `fin`; they ask no more than the tail reads. -/
+/-- **Control (converse on the round fields)**: a `T4.AcceptTail` with `D` true gives back
+`FinLog4`'s round fields, `start`, `pf0` and `fin`; they ask no more than the tail reads. -/
 theorem finLog4_rounds_of_acceptTail {RejF : Log → Log → Prop} {L : Log} {j : ℕ}
-    (h : T4.AcceptTail RejF W₀ c₀ L j) :
+    (h : T4.AcceptTail RejF W₀ c₀ L j) (ht : T4.truthCap (entriesOf L (pathOf L j))) :
     let es := entriesOf L (pathOf L j)
     (∀ i < 5, ∀ l, l + 1 < hEll i → rSum (T4.p1Start i) es (l + 1) = rVal (T4.p1Start i) es l) ∧
     (∀ l, l + 1 < 7 → rSum T4.pfStart es (l + 1) = rVal T4.pfStart es l) ∧
     rSum (T4.p1Start 0) es 0 = c₀ L es ∧ rSum T4.pfStart es 0 = T4.c1 c₀ 4 L es ∧
     clR2 T4.pfStart 32 readK chK (T4.lvC c₀ 5) L es 7 = T4.wHatL W₀ L es 4 *
       (∏ v ∈ Ico (T4.mLog (kindOfC es) 4) 7, (1 - T4.pfP es v)) * mleN 7 (T4.finalAt es) (T4.pfPt es) :=
-  ⟨fun i hi l hl => h.p1 i hi (l + 1) hl, fun l hl => h.pf (l + 1) hl, h.p1 0 (by norm_num) 0
+  ⟨fun i hi l hl => h.p1 ht i hi (l + 1) hl, fun l hl => h.pf (l + 1) hl, h.p1 ht 0 (by norm_num) 0
     (by unfold hEll; decide), (T4.pf_round0_agree (c₀ := c₀) _ _).1 (h.pf 0 (by norm_num)), h.fin⟩
 
 /-- **Control (negative)**: a wrong first claim refutes `FinLog4` and `FinRest4`, whatever the rest. -/

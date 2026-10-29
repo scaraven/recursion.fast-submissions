@@ -1,7 +1,7 @@
 -- New for `flock-recursive` (BLUEPRINT revision 4.1, A.9 `finP i`, `i < 4`, A.10 P3.i → P1.(i+1);
 -- track R4g). The 3.x template is the `link` case of `FRSoundnessAccLog.finLog_of_run` (`kc_facts`,
 -- `flag_finPLow`, `accVal_kc`, `c1_eq`).
-import FRSoundness4R4Cols
+import FRSoundness4R4Cap
 
 /-!
 # `FinRest4.link`: P1.(i+1)'s first claim is P1.i's last plus the batched folds (`i < 4`)
@@ -129,8 +129,9 @@ theorem link4_of_fields {P : FinP} {zh : List Reg} {Rs : ℕ → Array Val} {Ex 
   rfl
 
 /-- **`FinRest4` from the fields** with the folds `yv4` and the front's `c₀L4`: `start`
-(`start4_of_fields`), `cols` (`cols4_of_run`), `link` (`link4_of_fields`) are proved; `pf0`,
-`enc` (`gFinP 4`) and `fin` (`gFinPf`) are the hypotheses left (INT-8's final field). -/
+(`start4_of_fields`), `cols` (`cols4_of_run`), `link` (`link4_of_fields`) and (revision 4.4.1) `cap`
+(`capChk4_of_fields`) are proved; `pf0`, `enc` (`gFinP 4`) and `fin` (`gFinPf`) are the hypotheses
+left (INT-8's final field). -/
 theorem finRest4_of_fields (hphi : ∀ r a, r.size = 7 → impl.phiRS r a = Impl.phiRSS r a)
     {P : FinP} {zh : List Reg} {Rs : ℕ → Array Val} {Ex : ℕ → Array (List Reg)}
     (hF : Fields4 impl p inp tr P y zh Rs Ex) (hPS : P.S = seq4)
@@ -147,6 +148,7 @@ theorem finRest4_of_fields (hphi : ∀ r a, r.size = 7 → impl.phiRS r a = Impl
           mleN 7 (T4.finalAt (fsOf tr (itemsOf seq4))) (T4.pfPt (fsOf tr (itemsOf seq4)))) :
     FinRest4 W₀ P4b.c₀L4 L (fsOf tr (itemsOf seq4)) (yv4 p (#[] ++ y.1.toArray)) :=
   ⟨start4_of_fields hphi hF hPS hnode L, cols4_of_run hF.sk hb hin hπ hm,
-    fun _ hi => link4_of_fields hF P4b.c₀L4 L hi, hpf0, henc, hfin⟩
+    fun _ hi => link4_of_fields hF P4b.c₀L4 L hi, hpf0, henc, hfin,
+    capChk4_of_fields hF hPS (by by_contra hr; exact hb (.inr (.inr (.inr hr)))) hin hm⟩
 
 end FR.Snd.R4

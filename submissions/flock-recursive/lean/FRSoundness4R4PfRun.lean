@@ -119,14 +119,21 @@ theorem padsOps_reloc (S : Seq) (one : Reg) (sf : List Reg) (pf : ℕ) :
       prodKOps_reloc, List.map_map]
     rfl
 
-/-- At `seq4` (3.x's ladder) the level steps are 3.x's. -/
+/-- `seq4`'s levels have 3.x's fold rounds `ell` (revision 4.4.1 changes level 4's cap only). -/
+theorem seq4_ell_star (k : ℕ) : (seq4.lv k).ell = (lvlStar k).ell := by
+  unfold Seq.lv Seq.lvK lvlStar lvl
+  rw [seq4_eq]
+  match k with
+  | 0 | 1 | 2 | 3 | 4 => rfl
+  | _ + 5 => rfl
+
+/-- At `seq4` the level steps are 3.x's (they read only the levels' `ell`, `seq4_ell_star`). -/
 theorem gLvsOps_4 (fi : FinIn) (one cu Ts : Reg) : ∀ (ks : List ℕ) (W b : ℕ),
     gLvsOps seq4 fi one cu Ts ks W b = lvsOps fi one cu Ts ks W b
   | [], _, _ => rfl
   | k :: ks, W, b => by
     rw [gLvsOps, lvsOps, gLvsOps_4 fi one cu Ts ks]
-    have h : seq4.lv = lvlStar := by rw [seq4_eq]; rfl
-    simp only [gLvOps, lvOps, gSRegs, sRegs, h]
+    simp only [gLvOps, lvOps, gSRegs, sRegs, seq4_ell_star]
 
 /-! ## The blocks' runs -/
 

@@ -111,6 +111,7 @@ import FRSoundness4R4Full
 import FRSoundness4XCtrl
 import FRSoundness4P4fCtrl
 import FRSoundness4XRunG
+import FRSoundness4CapCtrl
 import FRNodeSound4Ctrl
 import FRNodeMirror
 import FRVIRTplDag

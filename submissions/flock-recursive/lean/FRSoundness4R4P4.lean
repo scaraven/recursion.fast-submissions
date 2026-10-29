@@ -271,7 +271,7 @@ theorem finalAt_eq4 (h : SkRun4 impl p inp tr y) {e : ℕ} (he : e < 128) :
     T4.finalAt (fsOf tr (itemsOf seq4)) e = finV4 seq4 inp e := by
   have hp : phStart4 47 < 482 ∧ phStart4 47 ≠ 0 := by
     rw [phStart4, fsStarts4_eq]; decide
-  have e1 := h.hq _ hp.1
+  have e1 := h.hq (phStart4 47) (by omega)
   rw [finalMsg4] at e1
   simp only [qOf, hp.2, if_false] at e1
   rw [T4.finalAt, msgAt_of_q e1, readK, bytesAt_extract_of_le inp.π (by omega), finV4]

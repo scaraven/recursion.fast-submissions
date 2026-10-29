@@ -11,7 +11,9 @@ import FRSoundness4R4PosT
 * **`exec_queries4`**: the queries phase's ops are `packK`, `eqTableK`, then `posAllT4`.
 * **`pos_view4`**: a `.pos` squeeze leaves its answers in the skeleton's registers.
 * **`queries_view4`** (3.x's `queries_view`): per position `q`, the index register, the fold
-  register holding `dotKF (eqTab fr) col_q` and a path on the log from `col_q` to π's cap entry.
+  register holding `dotKF (eqTab fr) col_q`, the cap-index and committed-digest registers
+  (revision 4.4.1, (β′)), and a path on the log from `col_q` to its committed digest `D_r`, π's
+  32 bytes at `dOff4 seq4 i + 32·q`.
 -/
 
 namespace FR.Snd.R4
@@ -46,7 +48,7 @@ theorem genPhase4_queries_ops (i : ℕ) :
     (genPhase4 S p n (name, .queries i) c).1 = [.packK c.foldR, .eqTableK c.next] ++
       (List.range' 0 (S.lv i).t).flatMap fun q =>
         posOps4 S p i (fieldOffOf S fCols + phaseOffOf S n fCols) (fieldOffOf S fSibs + phaseOffOf S n fSibs)
-          (fieldOffOf S fCaps + capOff4 S i) c.posAns (c.next + 1) q (c.next + 2 + posW4 S i * q) := by
+          (dOff4 S i) c.posAns (c.next + 1) q (c.next + 2 + posW4 S i * q) := by
   simp only [genPhase4, List.range_eq_range']
 
 theorem genPhase4_queries_outs (i : ℕ) :
@@ -64,7 +66,7 @@ theorem exec_queries4 (impl : OpImpl) (κ : Kind) (inp : Input) (S : Seq) (p : K
     let fr := (c.foldR.map fun x => (rd r x).toK).toArray
     exec impl κ inp (genPhase4 S p n (name, .queries i) c).1 ⟨r, ok⟩ tr =
       (posAllT4 inp (S.lvK p.d.m i) (S.lv i).sib i (fieldOffOf S fCols + phaseOffOf S n fCols)
-          (fieldOffOf S fSibs + phaseOffOf S n fSibs) (fieldOffOf S fCaps + capOff4 S i)
+          (fieldOffOf S fSibs + phaseOffOf S n fSibs) (dOff4 S i)
           (fun k => (rd r (c.posAns.getD k 0)).toD) (eqTab fr) (S.lv i).t 0 tr).map fun x =>
         (⟨r ++ ([Val.ak fr, .ak (eqTab fr)] ++ x.1).toArray, ok && x.2.1⟩, x.2.2) := by
   intro fr
@@ -84,7 +86,7 @@ theorem exec_queries4 (impl : OpImpl) (κ : Kind) (inp : Input) (S : Seq) (p : K
     · simpa using hc.2.2.1 z (List.mem_of_getElem? hk)
   have hA : ∀ k, c.posAns.getD k 0 < r'.size := fun k => by rw [hsz]; exact Nat.lt_add_right 2 (hA0 k)
   have e := exec_posAll4 impl κ inp S p i (fieldOffOf S fCols + phaseOffOf S n fCols)
-      (fieldOffOf S fSibs + phaseOffOf S n fSibs) (fieldOffOf S fCaps + capOff4 S i) c.posAns (r.size + 1) r.size
+      (fieldOffOf S fSibs + phaseOffOf S n fSibs) (dOff4 S i) c.posAns (r.size + 1) r.size
       (fun k => (rd r (c.posAns.getD k 0)).toD) (eqTab fr) (S.lv i).t 0 r' ok [] tr (by rw [hsz]; ring)
       hA (fun k => by rw [hr', rd_app_left _ _ (hA0 k)]) (by rw [hsz]; omega) (by rw [hr', rd_app]; rfl)
   rw [List.append_nil] at e
@@ -123,8 +125,9 @@ theorem pos_view4 (h : SkRun4 impl p inp tr y) {n : ℕ} (hn : n < (phasesOf seq
 
 /-- **Q.i on the skeleton's registers and the log** (3.x's `queries_view`): with `fr` the context's
 `foldR` values and `ad` its `posAns` answers, per position `q` the index register
-`b + 2 + posW4·q`, the fold register `+ 3` holding `dotKF (eqTab fr) col_q`, and a path on `L` from
-`col_q` to π's cap entry. -/
+`b + 2 + posW4·q`, the fold register `+ 3` holding `dotKF (eqTab fr) col_q`, the cap index
+`j >>> sib` (`kOfY`) and the committed digest `D_r` (`dOfY`), and a path on `L` from `col_q` to `D_r`
+(revision 4.4.1, (β′)). -/
 theorem queries_view4 (h : SkRun4 impl p inp tr y) {L : Log} (hL : (L.map Prod.fst).Nodup)
     (hin : ∀ e ∈ tr, e ∈ L) {n : ℕ} (hn : n < (phasesOf seq4).length) {i : ℕ}
     (hsh : (phasesOf seq4)[n].2 = .queries i) (hsib : (seq4.lvK p.d.m i).sib ≤ (seq4.lv i).sib) :
@@ -140,8 +143,11 @@ theorem queries_view4 (h : SkRun4 impl p inp tr y) {L : Log} (hL : (L.map Prod.f
         let j := idxOf Lk.logN (ad (q / Lk.per)) (q % Lk.per)
         rd (#[] ++ y.1.toArray) (b + 2 + posW4 seq4 i * q) = .n j ∧
         rd (#[] ++ y.1.toArray) (b + 2 + posW4 seq4 i * q + 3) = .k (dotKF (eqTab fr) col) ∧
+        rd (#[] ++ y.1.toArray) (kOfY (seq4.lv i).sib (b + 2 + posW4 seq4 i * q + 3)) = .n (j >>> Lk.sib) ∧
+        rd (#[] ++ y.1.toArray) (dOfY (seq4.lv i).sib (b + 2 + posW4 seq4 i * q + 3)) =
+          .d (bytesAt inp.π (absOff 0 (dOff4 seq4 i + 32 * q)) 32) ∧
         ∃ ss : List Digest, ss.length = Lk.sib ∧ (openPath (frEnc i) col j ss).runLog L =
-          some (bytesAt inp.π (absOff 0 (fieldOffOf seq4 fCaps + capOff4 seq4 i) + 32 * (j >>> Lk.sib)) 32) := by
+          some (bytesAt inp.π (absOff 0 (dOff4 seq4 i + 32 * q)) 32) := by
   obtain ⟨trk, M, x, hx, hb, hwf, hext, hflag, -, A, hA⟩ := phase_at4 impl p.tix inp p h.ref hn
   have hc : CtxOk (cAt4 seq4 p n) (#[] ++ M.toArray) := by
     rcases hwf with ⟨h', -⟩ | h'
@@ -185,18 +191,30 @@ theorem queries_view4 (h : SkRun4 impl p inp tr y) {L : Log} (hL : (L.map Prod.f
   have hpath := posAllT4_path inp hL hsib _ 0 trk xq hxq hin' hok
   refine ⟨M.length, ?_, by simp only [posW4]; simp at hsz ⊢; omega, fun q hq => ?_⟩
   · rw [skeleton4_outs seq4 p hn, hph, genPhase4_queries_outs, hb]
-  · obtain ⟨p0, p3, pp⟩ := hpath q hq
-    simp only [Nat.zero_add] at p0 p3 pp
+  · obtain ⟨p0, p3, pk, pd, pp⟩ := hpath q hq
+    simp only [Nat.zero_add] at p0 p3 pk pd pp
     have hq' : (4 + 6 * (seq4.lv i).sib + 2) * q + 3 < (4 + 6 * (seq4.lv i).sib + 2) * (seq4.lv i).t := by
       have : q + 1 ≤ (seq4.lv i).t := hq
       nlinarith
-    refine ⟨?_, ?_, pp⟩
+    refine ⟨?_, ?_, ?_, ?_, pp⟩
     · rw [show M.length + 2 + posW4 seq4 i * q = M.length + (2 + posW4 seq4 i * q) by ring,
         rd_phase4 hext (by simp [hql, posW4]; nlinarith), List.getD_append_right _ _ _ _ (by simp),
         show 2 + posW4 seq4 i * q - [Val.ak _, Val.ak _].length = posW4 seq4 i * q by simp, posW4, p0]
     · rw [show M.length + 2 + posW4 seq4 i * q + 3 = M.length + (2 + (posW4 seq4 i * q + 3)) by ring,
         rd_phase4 hext (by simp [hql, posW4]; omega), List.getD_append_right _ _ _ _ (by simp),
         show 2 + (posW4 seq4 i * q + 3) - [Val.ak _, Val.ak _].length = posW4 seq4 i * q + 3 by simp, posW4, p3]
+    · have e : kOfY (seq4.lv i).sib (M.length + 2 + posW4 seq4 i * q + 3) =
+          M.length + (2 + ((4 + 6 * (seq4.lv i).sib + 2) * q + (4 + 6 * (seq4.lv i).sib))) := by
+        simp only [kOfY, posW4]; ring
+      rw [e, rd_phase4 hext (by simp [hql]; nlinarith), List.getD_append_right _ _ _ _ (by simp),
+        show 2 + ((4 + 6 * (seq4.lv i).sib + 2) * q + (4 + 6 * (seq4.lv i).sib)) - [Val.ak _, Val.ak _].length =
+          (4 + 6 * (seq4.lv i).sib + 2) * q + (4 + 6 * (seq4.lv i).sib) by simp, pk]
+    · have e : dOfY (seq4.lv i).sib (M.length + 2 + posW4 seq4 i * q + 3) =
+          M.length + (2 + ((4 + 6 * (seq4.lv i).sib + 2) * q + (4 + 6 * (seq4.lv i).sib + 1))) := by
+        simp only [dOfY, posW4]; ring
+      rw [e, rd_phase4 hext (by simp [hql]; nlinarith), List.getD_append_right _ _ _ _ (by simp),
+        show 2 + ((4 + 6 * (seq4.lv i).sib + 2) * q + (4 + 6 * (seq4.lv i).sib + 1)) - [Val.ak _, Val.ak _].length =
+          (4 + 6 * (seq4.lv i).sib + 2) * q + (4 + 6 * (seq4.lv i).sib + 1) by simp, pd]
 
 end V
 

@@ -122,10 +122,10 @@ theorem frontCls4a_check : ((fsItems4.take 170).zipIdx).all (fun x => frontCls4a
 theorem ph_check4a : ((absPts4a ++ sqPts4a).all fun x =>
       phOf4 (x.1 - 1) == x.2.1 && phOf4 x.1 == x.2.2) = true ∧
     (rndPh4a.all fun x => phStart4 x.2.2 == x.1 && phStart4 (x.2.2 + 1) == x.2.1) = true ∧
-    ((List.range 51).all fun a => decide (phStart4 a ≤ phStart4 (a + 1))) = true := by
+    ((List.range 55).all fun a => decide (phStart4 a ≤ phStart4 (a + 1))) = true := by
   unfold absPts4a sqPts4a rndPh4a phOf4 phStart4; rw [fsStarts4_eq]; decide +kernel
 
-theorem phStart4_mono {a b : ℕ} (hab : a ≤ b) (hb : b ≤ 51) : phStart4 a ≤ phStart4 b := by
+theorem phStart4_mono {a b : ℕ} (hab : a ≤ b) (hb : b ≤ 55) : phStart4 a ≤ phStart4 b := by
   induction b with
   | zero => rw [Nat.le_zero.mp hab]
   | succ b ih =>

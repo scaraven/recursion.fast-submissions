@@ -97,3 +97,71 @@ fake digest cancels mod 2. The coefficients must be bound in the chain before th
 I stopped before editing any source, following the brief's stop rule (a construction that cannot
 reach the same ε). No module of the worktree is changed. The build tree and the baseline log are
 kept for the restart.
+
+# Run 2 (2026-10-29): (β′) on A2″'s V, HEAD `394f6ce`
+
+Build tree `logs/fr-build-A3b` (a copy of `fr-build-A2pp`, re-snapshotted on HEAD), logs `logs/A3b/`.
+
+## R2.1 Baseline
+
+- `snap.sh` with empty `MINE`, then `b.sh FR Solution FRSubmission4Cert FRSoundness4XCtrl FRNodeSound4Ctrl
+  FRSoundness4TailShift` (`logs/A3b/build-0-baseline.log`): red in exactly `FRSoundness4TailD` (287, 288, 311)
+  and `FRSoundness4R4Run` (29, 71, 111, 170), as A2″ §5 says; everything below them is unbuilt.
+
+## R2.2 A gap in PB-M1's chain: `RejT` under `¬truthCap`
+
+- PB-M1's final split refutes the three disjuncts of `DT 55` under acceptance, but the composed doom is
+  `DC (RejC …) (Dp DkC)`, and `RejC ∋ RejT`. `RejT`'s round-0 check of P1.(i+1) (`Chk2` against
+  `lvC (i+1) = vNext … (c1 i)`, i.e. the batched folds `foldAtN` of the **committed** words) holds on an
+  accepted run only if the opened columns are the committed ones: `y_eq_foldAtN4` needs
+  `openPath … = some (capDig …)`, which is `truthCap` now.
+- So under `¬truthCap` an accepted chain can carry `RejT` from P1.1 on, `DC` holds at the end through
+  `RejT`, and `hend` (`¬DC` at the end) cannot be proved. The potential does not charge the `ζ`/`z`
+  events in that case either (`stepObl_compose` counts no escape once `Rej` holds).
+- Fix (no ε change): guard the composed `Rej` by the cap truth once `D` is in the chain:
+  `RejG RejF c₀ L es := RejC RejF c₀ L es ∧ capOK es`, `capOK es := es.length ≤ phStart4 52 ∨ truthCap es`.
+  `RejG` is not monotone at the `CapD` absorb (a `RejC` log can lose `capOK`), so `PhaseObl`'s `rej`
+  drops `mono` (a `RejSq`: `sq` and `stab`) and its `habs` covers `Rej ∨ Dk → Rej ∨ Dk`; at the `CapD`
+  absorb a lost `capOK` is `¬truthCap`, which is `DT 52`. The generic `StepObl` only needs the composed
+  `DC` to be monotone at absorbs, which holds.
+- At the end: `truthCap` gives `¬RejC` (the old `AcceptTail` argument); `¬truthCap` gives `¬capOK`.
+
+## R2.3 Tail side (T4)
+
+- New `FRSoundness4TailCap`: the log values (`dAt`, `zetaK`, `aAt`, `zK`, `kCap`, `capG`, `loD`/`hiD`),
+  `capChk4` (V's three asserts), `truthCap`, the escape sets `DZeta`/`DZ`, `cap_of_chk`, the counts
+  `card_dZeta ≤ 870`, `card_dZ ≤ 1535` (SZ over `K` via `card_chK_fiber`), congruences along the chain.
+- `TailD`: `DT` = levels (`DTl`) / Pf / cap (`DCap`: PB-M1's chain `DCapD`, `DCapZeta`, `DCapA`, `DCapZ`);
+  `phOf_check` to 486, `phOf_ge` split by `phStart4 52 … 55`, `phOf_bounds ≤ 55`, `rounds_check` 486.
+- `TailStep`: `RejSq`, `PhaseObl.rej : RejSq`, new `PhaseObl.hrej`; `stepObl_compose` takes `hrej`.
+- `TailM`: `DPf_append`, `DCap_stab`, `DT_stab` to 55. `TailC`: `cap_items`, `cdOK`, `RejG`, `rejG_sq`,
+  `hrej_G`, `habs_cap`, `single_cap`; `phaseObl_of`/`muT_laws_of_front`/`chainStab_of` at `RejG`;
+  `tailCls_check` up to `phStart4 52`; `front_check` to 30 phases.
+- `TailLig`: `AcceptTail` (`len` to `phStart4 55 + 1`, `p1`/`lvl4` under `truthCap`, new `cap`);
+  `not_DC_end` = PB-M1's final split + the `cdOK` guard; the bridges `colOf_of_dpath`, `foldAt_of_dcols`,
+  `truthP3_four_of_dcols` (take `truthCap`).
+
+## R2.4 R4 side
+
+- `R4Run`: 486; `capF`, `opsOfFields`, `runFields_snoc`, `opsOfFields_snoc`, `finOps4_eq` (fields ++ capF),
+  `accept_chain4` over `opsOfFields rs fs`. `R4Acc`/`R4Ex`/`R4Fld` over `rest ++ [capF]`; `Fields4.cap`.
+- `R4PosT`/`R4Qv`: `capO` → `dO`, the reference compares `cur` with `D_r` (π at `dO + 32·p`); the views
+  give the cap-index and `D_r` registers. `R4Cols`: `dMsg4`, `dAt_eq4`, `cols4_of_run` to `dAt`.
+- New `FRSoundness4R4Cap`: `reloc_capChk`, the families (`run_head`, `run_powChain`, `run_bitPows`,
+  `run_macDs`, `run_macAs`, `run_asserts`), `capChk_run` (the three asserts on register values),
+  `reads_view4`, `one_ans4`, `aAt_eq4`, `capG_eq4`, `capChk4_of_fields`. `R4LinkP` adds `cap`.
+- Traps met: `omega` ignores hypotheses whose type is `Reg`; the kernel recurses on `X.size + n` vs
+  `X.size + m` defeq with large literals (prove sizes with `omega`, not `rfl`/`simp`-closing);
+  `simp` with `Finset.sum_range_succ` unfolds 870 steps (use `sumLo_succ` once).
+- `R4PfRun.gLvsOps_4`: `seq4_ell_star` (`ell` agrees at every level; the cap does not).
+- Build 3 (`logs/A3b/build-3.log`): `FR Solution FRSubmission4Cert FRSoundness4XCtrl FRNodeSound4Ctrl
+  FRSoundness4TailShift` green, 2,588 jobs.
+- Other agents (RSV-V, B2′) edit V-side modules in this worktree; this tree links only this track's
+  modules (`mymods.txt`), so it builds HEAD's V.
+
+## R2.5 Controls and checks
+
+- `TailCap`: `capChk_pos`, `capChk_neg`, `dZeta_ctl`, `dZeta_neg`, `dz_ctl`. New `FRSoundness4CapCtrl`:
+  `dZeta_inst` (two reads committed to `d₁` under zero caps, `ζ = 1`), imported by `FR`.
+- Build 5 green (2,589 jobs). Axioms: 41 theorems, standard three only. Source rule: 377 files, 0.
+- Profiles: `logs/A3b/profile-summary.txt` (24 modules, ≈ 303 s wall sequential).

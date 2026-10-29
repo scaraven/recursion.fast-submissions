@@ -27,12 +27,11 @@ theorem fields_of_accept4 (P : FinP) {tr : Trace}
         pureRun impl p.tix inp ((((finalsOf P).rest[k]'(by rw [rest_finalsOf_length]; exact hk))
           ⟨(skeleton4 seq4 p).2.outs, zh, ex⟩ (Rs k).size).1.map (reloc P.S)) (Rs k) [] = some (L, true) := by
   rw [finOps4_eq] at h
-  have hna := noAsk_relocFin P.S (noAsk_finalsOf P)
-  obtain ⟨y, hy, hf, -, L₀, -, Rs, h0, hrest⟩ := accept_chain4 impl seq4 p inp _ hna h
+  obtain ⟨y, hy, hf, -, L₀, -, Rs, h0, hrest⟩ := accept_chain4 impl seq4 p inp _ _ (noAsk_finOps4 P) h
   obtain ⟨hl, hq⟩ := fsQ_gen4 impl inp seq4 p shOK_seq4 _ h
   rw [fsMsgs4_len] at hl hq
-  have hlen : (relocFin P.S (finalsOf P)).rest.length = 12 := by
-    rw [relocFin_rest, List.length_map, rest_finalsOf_length]
+  have hlen : ((relocFin P.S (finalsOf P)).rest ++ [capF P.S]).length = 13 := by
+    rw [List.length_append, relocFin_rest, List.length_map, rest_finalsOf_length]; rfl
   refine ⟨y, ⟨hy, hf, hl, hq⟩,
     ((finalsOf P).finRS ⟨(skeleton4 seq4 p).2.outs, [], #[]⟩ (skeleton4 seq4 p).2.next).2, Rs, ?_,
     fun k hk => ?_⟩
@@ -42,9 +41,10 @@ theorem fields_of_accept4 (P : FinP) {tr : Trace}
     | succ k ih =>
       obtain ⟨L, -, he⟩ := hrest k (by rw [hlen]; omega)
       rw [he]; exact (ih (by omega)).trans (ExtA.app _ _)
-  · obtain ⟨L, hL, -⟩ := hrest k (by rw [hlen]; exact hk)
-    have e : (relocFin P.S (finalsOf P)).rest[k]'(by rw [hlen]; exact hk) =
+  · obtain ⟨L, hL, -⟩ := hrest k (by rw [hlen]; omega)
+    have e : ((relocFin P.S (finalsOf P)).rest ++ [capF P.S])[k]'(by rw [hlen]; omega) =
         relocF P.S ((finalsOf P).rest[k]'(by rw [rest_finalsOf_length]; exact hk)) := by
+      rw [List.getElem_append_left (by rw [relocFin_rest, List.length_map, rest_finalsOf_length]; exact hk)]
       simp only [relocFin_rest, List.getElem_map]
     rw [e] at hL
     exact ⟨_, L, hL⟩

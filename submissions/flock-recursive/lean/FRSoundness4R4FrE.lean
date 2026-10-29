@@ -44,7 +44,7 @@ include h in
 theorem msg_abs4 {q o len : ℕ} (hq : q < 482) (hq0 : q ≠ 0)
     (hm : (fsMsgs4 seq4).getD q none = some (o, len)) {off : ℕ} (hoff : off + 16 ≤ len) :
     readF (Snd.msgAt (fsOf tr (itemsOf seq4)) q) off = F.ofBytes (bytesAt inp.π (o + off) 16) := by
-  have e := h.hq q hq
+  have e := h.hq q (by omega)
   rw [hm] at e
   simp only [qOf, hq0, if_false] at e
   rw [msgAt_of_q e, readF, bytesAt_extract_of_le16 _ hoff]

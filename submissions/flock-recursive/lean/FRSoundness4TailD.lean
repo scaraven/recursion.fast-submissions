@@ -1,7 +1,7 @@
 -- New for `flock-recursive` (BLUEPRINT §5.1, §5.4, A.10; stage T4, S-G13 route C): a copy-port of
 -- `FRSoundnessTailD` to revision 4.1's item sequence `seq4` (namespace `FR.Snd.T4`, see `FRSoundness4TailStep`):
 -- the declarations that read positions, chains or the kind are copied, the rest is imported.
-import FRSoundness4Tail
+import FRSoundness4TailCap
 
 /-!
 # The tail dooms at `seq4` (T4)
@@ -221,35 +221,74 @@ def DPf (L es : Log) : Prop :=
   ¬ truthP3 (kindOfC es) L es 4 ∨
     D2 pfStart 32 readK chK (lvC c₀ 5) (fun _ => 7) e2 (tPf W₀) L es
 
-/-- **The tail's phase dooms** (`k = 26 + 5i + t`: P1.i, C.i, P2.i, Q, P3.i; `k = 51`: Pf). -/
-def DT (k : ℕ) : Log → Log → Prop :=
-  if k = 51 then DPf W₀ c₀
-  else if (k - 26) % 5 = 0 then D1 W₀ c₀ ((k - 26) / 5)
+/-! ### The cap check's dooms (revision 4.4.1, (β′); PB-M1's chain)
+
+`D` is absorbed at phase 52, `ζ` squeezed at 53, `A` absorbed at 54, `z` squeezed at 55. The Pf doom is
+carried while `D` is true (`truthCap`); a false `D` is a doom from phase 52 on, which `ζ` keeps only off
+`DZeta` (charged `≤ 870` answers) and `z` keeps only off `DZ` (`≤ 1,535`). On an accepted chain (V's
+three asserts, `capChk4`) none of the last phase's disjuncts holds (`not_DCapZ_of_chk`). -/
+
+/-- **Phase 52 (`CapD`)**: Pf's doom, or a false `D`. -/
+def DCapD (L es : Log) : Prop := DPf W₀ c₀ L es ∨ ¬ truthCap es
+
+/-- **Phase 53 (`CapZeta`)**: Pf's doom on a true `D`, or a false `D` whose (I) at the honest weights
+does not vanish at `ζ`. -/
+def DCapZeta (L es : Log) : Prop :=
+  (DPf W₀ c₀ L es ∧ truthCap es) ∨ (¬ truthCap es ∧ ¬ capSig0 es)
+
+/-- **Phase 54 (`CapChk`)**: as 53 with `A` honest, or `A` dishonest. -/
+def DCapA (L es : Log) : Prop :=
+  (DPf W₀ c₀ L es ∧ truthCap es) ∨ (aHon es ∧ ¬ truthCap es ∧ ¬ capSig0 es) ∨ ¬ aHon es
+
+/-- **Phase 55 (`CapChkZ`)**: as 54, a dishonest `A` doomed only if (II) fails at `z`. -/
+def DCapZ (L es : Log) : Prop :=
+  (DPf W₀ c₀ L es ∧ truthCap es) ∨ (aHon es ∧ ¬ truthCap es ∧ ¬ capSig0 es) ∨
+    (¬ aHon es ∧ capIIL es (aAt es) ≠ capIIR es)
+
+/-- The cap check's phase dooms (`k = 52 … 55`). -/
+def DCap (k : ℕ) : Log → Log → Prop :=
+  if k = 52 then DCapD W₀ c₀ else if k = 53 then DCapZeta W₀ c₀ else if k = 54 then DCapA W₀ c₀
+  else DCapZ W₀ c₀
+
+/-- The level phases' dooms (`k = 26 + 5i + t`: P1.i, C.i, P2.i, Q, P3.i). -/
+def DTl (k : ℕ) : Log → Log → Prop :=
+  if (k - 26) % 5 = 0 then D1 W₀ c₀ ((k - 26) / 5)
   else if (k - 26) % 5 = 1 then DCi W₀ c₀ ((k - 26) / 5)
   else if (k - 26) % 5 = 2 then DP2 W₀ c₀ ((k - 26) / 5)
   else if (k - 26) % 5 = 3 then fun _ _ => False
   else DP3 W₀ c₀ ((k - 26) / 5)
 
+/-- **The tail's phase dooms**: the levels' (`26 … 50`), Pf's (`51`), the cap check's (`52 … 55`). -/
+def DT (k : ℕ) : Log → Log → Prop :=
+  if k = 51 then DPf W₀ c₀ else if 51 < k then DCap W₀ c₀ k else DTl W₀ c₀ k
+
+theorem DT_lvl {k : ℕ} (hk : k < 51) : DT W₀ c₀ k = DTl W₀ c₀ k := by
+  unfold DT; rw [ite_neg' (by omega), ite_neg' (by omega)]
+
+theorem DT_cap : DT W₀ c₀ 52 = DCapD W₀ c₀ ∧ DT W₀ c₀ 53 = DCapZeta W₀ c₀ ∧
+    DT W₀ c₀ 54 = DCapA W₀ c₀ ∧ DT W₀ c₀ 55 = DCapZ W₀ c₀ := by
+  unfold DT DCap; simp
+
 variable {i : ℕ} (hi : i < 5)
 include hi
 
 theorem DT_P1 : DT W₀ c₀ (26 + 5 * i) = D1 W₀ c₀ i := by
-  unfold DT
-  rw [ite_neg' (by omega), ite_pos' (by omega), show (26 + 5 * i - 26) / 5 = i by omega]
+  rw [DT_lvl W₀ c₀ (by omega)]; unfold DTl
+  rw [ite_pos' (by omega), show (26 + 5 * i - 26) / 5 = i by omega]
 
 theorem DT_C : DT W₀ c₀ (27 + 5 * i) = DCi W₀ c₀ i := by
-  unfold DT
-  rw [ite_neg' (by omega), ite_neg' (by omega), ite_pos' (by omega),
+  rw [DT_lvl W₀ c₀ (by omega)]; unfold DTl
+  rw [ite_neg' (by omega), ite_pos' (by omega),
     show (27 + 5 * i - 26) / 5 = i by omega]
 
 theorem DT_P2 : DT W₀ c₀ (28 + 5 * i) = DP2 W₀ c₀ i := by
-  unfold DT
-  rw [ite_neg' (by omega), ite_neg' (by omega), ite_neg' (by omega), ite_pos' (by omega),
+  rw [DT_lvl W₀ c₀ (by omega)]; unfold DTl
+  rw [ite_neg' (by omega), ite_neg' (by omega), ite_pos' (by omega),
     show (28 + 5 * i - 26) / 5 = i by omega]
 
 theorem DT_P3 : DT W₀ c₀ (30 + 5 * i) = DP3 W₀ c₀ i := by
-  unfold DT
-  rw [ite_neg' (by omega), ite_neg' (by omega), ite_neg' (by omega), ite_neg' (by omega),
+  rw [DT_lvl W₀ c₀ (by omega)]; unfold DTl
+  rw [ite_neg' (by omega), ite_neg' (by omega), ite_neg' (by omega),
     ite_neg' (by omega), show (30 + 5 * i - 26) / 5 = i by omega]
 
 omit hi in
@@ -276,38 +315,52 @@ theorem chk2_same {b : ℕ} {c0 : Log → Log → K} {L L' es es' : Log} {p : �
 /-! ## Part D: the position facts -/
 
 /-- Checked: phase `phOf4 p`'s first position is at most `p`, and `p` lies before the next phase's
-(`p < 482`). -/
-theorem phOf_check : (List.range 482).all (fun p => decide (phStart4 (phOf4 p) ≤ p) &&
-    decide (phOf4 p ≤ 51) && (decide (phOf4 p = 51) || decide (p < phStart4 (phOf4 p + 1)))) = true := by
+(`p < 486`, the chain's length). -/
+theorem phOf_check : (List.range 486).all (fun p => decide (phStart4 (phOf4 p) ≤ p) &&
+    decide (phOf4 p ≤ 55) && (decide (phOf4 p = 55) || decide (p < phStart4 (phOf4 p + 1)))) = true := by
   unfold phOf4 phStart4; rw [fsStarts4_eq]; decide +kernel
 
-theorem phOf_ge {p : ℕ} (hp : 468 ≤ p) : phOf4 p = 51 := by
-  unfold phOf4
-  rw [List.filter_eq_self.mpr fun x hx => by
-    rw [fsStarts4_eq] at hx; simp only [decide_eq_true_eq]; fin_cases hx <;> omega, fsStarts4_eq]
-  rfl
+/-- **The last phases' positions** (`fsStarts4`): Pf from `pfStart` (468) to the `CapD` absorb, then
+one position per cap-check phase. -/
+theorem phOf_ge {p : ℕ} (hp : pfStart ≤ p) :
+    (p < phStart4 52 → phOf4 p = 51) ∧ (p = phStart4 52 → phOf4 p = 52) ∧
+      (p = phStart4 53 → phOf4 p = 53) ∧ (p = phStart4 54 → phOf4 p = 54) ∧
+      (phStart4 55 ≤ p → phOf4 p = 55) := by
+  have hf : 485 ≤ p → (fsStarts4.filter (· ≤ p)).length = fsStarts4.length := fun h =>
+    congrArg List.length (List.filter_eq_self.mpr fun x hx => by
+      rw [fsStarts4_eq] at hx; simp only [decide_eq_true_eq]; fin_cases hx <;> omega)
+  have e : pfStart = 468 := by unfold pfStart phStart4; rw [fsStarts4_eq]; rfl
+  obtain ⟨p52, p53, p54, p55⟩ := capPh_pos
+  rw [e] at hp
+  rw [p52, p53, p54, p55]
+  refine ⟨fun h => ?_, fun h => ?_, fun h => ?_, fun h => ?_, fun h => ?_⟩
+  · unfold phOf4; interval_cases p <;> rw [fsStarts4_eq] <;> rfl
+  all_goals first
+    | (subst h; unfold phOf4; rw [fsStarts4_eq]; rfl)
+    | (unfold phOf4; rw [hf (by omega), fsStarts4_eq]; rfl)
 
 /-- **The phase bounds**: `phStart4 (phOf4 p) ≤ p`, and before the last phase `p` lies before the
 next phase's start. -/
-theorem phOf_bounds (p : ℕ) : phStart4 (phOf4 p) ≤ p ∧ phOf4 p ≤ 51 ∧
-    (phOf4 p < 51 → p < phStart4 (phOf4 p + 1)) := by
-  by_cases hp : p < 482
+theorem phOf_bounds (p : ℕ) : phStart4 (phOf4 p) ≤ p ∧ phOf4 p ≤ 55 ∧
+    (phOf4 p < 55 → p < phStart4 (phOf4 p + 1)) := by
+  by_cases hp : p < 486
   · have h := phOf_check
     simp only [List.all_eq_true, List.mem_range, Bool.and_eq_true, Bool.or_eq_true,
       decide_eq_true_eq] at h
     obtain ⟨⟨h1, h2⟩, h3⟩ := h p hp
     exact ⟨h1, h2, fun hl => h3.resolve_left (by omega)⟩
-  · rw [phOf_ge (by omega)]
+  · have e : pfStart = 468 := by unfold pfStart phStart4; rw [fsStarts4_eq]; rfl
+    rw [(phOf_ge (p := p) (by omega)).2.2.2.2 (by rw [capPh_pos.2.2.2]; omega)]
     refine ⟨?_, le_rfl, fun h => absurd h (lt_irrefl _)⟩
     unfold phStart4; rw [fsStarts4_eq]; simp; omega
 
 /-- Checked: the rounds of P1.0 … P1.4 and Pf alternate a 96-byte absorb and a squeeze; there
-are 482 Fiat–Shamir items. -/
+are 486 Fiat–Shamir items (revision 4.4.1: the cap check's four after Pf's). -/
 theorem rounds_check : ((List.range 5).all (fun i => (List.range (hEll i)).all fun l =>
       fsItems4[p1Start i + 2 * l]? == some (.absorb 96) &&
         fsItems4[p1Start i + 2 * l + 1]? == some .squeeze) &&
     (List.range 7).all (fun l => fsItems4[pfStart + 2 * l]? == some (.absorb 96) &&
-        fsItems4[pfStart + 2 * l + 1]? == some .squeeze) && fsItems4.length == 482) = true := by
+        fsItems4[pfStart + 2 * l + 1]? == some .squeeze) && fsItems4.length == 486) = true := by
   unfold p1Start pfStart hEll phStart4; rw [fsStarts4_eq]; decide +kernel
 
 end FR.Snd.T4

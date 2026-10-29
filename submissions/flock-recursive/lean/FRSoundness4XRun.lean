@@ -146,7 +146,7 @@ theorem acceptRun4_seg (fin : Finals) (lRows : List Circ.Row) (κs₀ : F) (σ :
   refine ⟨tr, y, j, hF.sk, hsem, hes, acceptTail4_of_finLog (y := yv4 (KindP.ofSeg σ) (#[] ++ y.1.toArray)) hb hci hlen
     (hes ▸ not_rejFX_seg fin lRows κs₀ hsem L) ?_⟩
   rw [hes]
-  exact ⟨hrnd, hrndPf, hFR.start, hFR.cols, hFR.link, hFR.pf0, hFR.enc, hFR.fin⟩
+  exact ⟨hrnd, hrndPf, hFR.start, hFR.cols, hFR.link, hFR.pf0, hFR.enc, hFR.fin, hFR.cap⟩
 
 /-- **… and an accepted node run's** (at `cells4`). -/
 theorem acceptRun4_node (fin : Finals) (lRows : List Circ.Row) (κs₀ : F) (ν : NodeKind) {inp : Input}
@@ -171,7 +171,7 @@ theorem acceptRun4_node (fin : Finals) (lRows : List Circ.Row) (κs₀ : F) (ν 
   refine ⟨tr, y, j, hF.sk, hsem, hes, acceptTail4_of_finLog (y := yv4 (KindP.ofNode ν) (#[] ++ y.1.toArray)) hb hci hlen
     (hes ▸ not_rejFX_node fin lRows κs₀ hsem L) ?_⟩
   rw [hes]
-  exact ⟨hrnd, hrndPf, hFR.start, hFR.cols, hFR.link, hFR.pf0, hFR.enc, hFR.fin⟩
+  exact ⟨hrnd, hrndPf, hFR.start, hFR.cols, hFR.link, hFR.pf0, hFR.enc, hFR.fin, hFR.cap⟩
 
 /-! ## The statement views -/
 

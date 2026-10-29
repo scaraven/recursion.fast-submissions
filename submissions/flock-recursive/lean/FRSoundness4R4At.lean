@@ -14,7 +14,7 @@ import FRSoundness4R4Run
   (`phStart4_eq_sum`, from `fsStarts4`'s fold).
 * **`skeleton4_outs`**: the skeleton's `outs[k]` is phase `k`'s out list.
 * **`SkRun4`**: the facts of an accepted run the views use (the reference run, every flag, the
-  482 Fiat–Shamir entries and their queries); **`skRun4_of_accept`**.
+  486 Fiat–Shamir entries and their queries); **`skRun4_of_accept`**.
 -/
 
 namespace FR.Snd.R4
@@ -184,8 +184,8 @@ structure SkRun4 (impl : OpImpl) (p : KindP) (inp : Input) (tr : Trace)
     (y : List Val × List Bool × Trace) : Prop where
   ref : refPhases4 impl p.tix inp seq4 p (phasesOf seq4) 0 ctx0 #[] tr = some y
   flags : ∀ b ∈ y.2.1, b = true
-  len : (fsOf tr (itemsOf seq4)).length = 482
-  hq : ∀ q < 482, ((fsOf tr (itemsOf seq4)).getD q default).1 =
+  len : (fsOf tr (itemsOf seq4)).length = 486
+  hq : ∀ q < 486, ((fsOf tr (itemsOf seq4)).getD q default).1 =
     qOf inp q ((fsMsgs4 seq4).getD q none) ((fsOf tr (itemsOf seq4)).getD (q - 1) default).2
 
 /-- **An accepted run of `gen4 seq4 p fin.ops`** (fields asking nothing) is a `SkRun4`. -/
@@ -193,7 +193,8 @@ theorem skRun4_of_accept (fin : Finals) {tr : Trace}
     (hna : ∀ f ∈ fin.finRS :: fin.rest, ∀ fi b, (f fi b).1.filterMap Op.item? = [])
     (h : semIR impl (gen4 seq4 p fin.ops) inp tr = some true) :
     ∃ y, SkRun4 impl p inp tr y := by
-  obtain ⟨y, hy, hf, -⟩ := accept_chain4 impl seq4 p inp fin hna h
+  rw [finals_ops_fields] at h
+  obtain ⟨y, hy, hf, -⟩ := accept_chain4 impl seq4 p inp fin.finRS fin.rest hna h
   obtain ⟨hl, hq⟩ := fsQ_gen4 impl inp seq4 p shOK_seq4 _ h
   rw [fsMsgs4_len] at hl hq
   exact ⟨y, ⟨hy, hf, hl, hq⟩⟩

@@ -80,21 +80,24 @@ theorem fields_ex4 (P : FinP) {tr : Trace}
         Ex (k + 1) = (Ex k).push (((finalsOf P).rest[k]'(by rw [rest_finalsOf_length]; exact hk))
           ⟨(skeleton4 seq4 p).2.outs, zh, Ex k⟩ (Rs k).size).2 := by
   rw [finOps4_eq] at h
-  have hna := noAsk_relocFin P.S (noAsk_finalsOf P)
-  obtain ⟨y, hy, hf, hnx, L₀, h0L, Rs, h0, hrest⟩ := accept_chain4 impl seq4 p inp _ hna h
+  obtain ⟨y, hy, hf, hnx, L₀, h0L, Rs, h0, hrest⟩ := accept_chain4 impl seq4 p inp _ _ (noAsk_finOps4 P) h
   obtain ⟨hl, hq⟩ := fsQ_gen4 impl inp seq4 p shOK_seq4 _ h
   rw [fsMsgs4_len] at hl hq
-  have hlen : (relocFin P.S (finalsOf P)).rest.length = 12 := by
-    rw [relocFin_rest, List.length_map, rest_finalsOf_length]
-  have hget : ∀ k (hk : k < 12), (relocFin P.S (finalsOf P)).rest[k]'(by rw [hlen]; exact hk) =
+  set fs := (relocFin P.S (finalsOf P)).rest ++ [capF P.S] with hfs
+  have hlen : fs.length = 13 := by
+    rw [hfs, List.length_append, relocFin_rest, List.length_map, rest_finalsOf_length]; rfl
+  have hget : ∀ k (hk : k < 12), fs[k]'(by rw [hlen]; omega) =
       relocF P.S ((finalsOf P).rest[k]'(by rw [rest_finalsOf_length]; exact hk)) := by
-    intro k hk; simp only [relocFin_rest, List.getElem_map]
+    intro k hk
+    simp only [hfs]
+    rw [List.getElem_append_left (by rw [relocFin_rest, List.length_map, rest_finalsOf_length]; exact hk)]
+    simp only [relocFin_rest, List.getElem_map]
   set fin := relocFin P.S (finalsOf P)
   set outs := (skeleton4 seq4 p).2.outs
   set zh := (fin.finRS ⟨outs, [], #[]⟩ (skeleton4 seq4 p).2.next).2
   set B0 := (skeleton4 seq4 p).2.next + opsOut (fin.finRS ⟨outs, [], #[]⟩ (skeleton4 seq4 p).2.next).1
   -- the files' sizes are the fold's bases
-  have hsz : ∀ k ≤ 12, (Rs k).size = baseAt outs zh fin.rest B0 #[zh] k := by
+  have hsz : ∀ k ≤ 12, (Rs k).size = baseAt outs zh fs B0 #[zh] k := by
     intro k hk
     induction k with
     | zero =>
@@ -106,19 +109,19 @@ theorem fields_ex4 (P : FinP) {tr : Trace}
       have hl' := pureRun_len impl p.tix inp _ _ [] L true hL
       have e1 : (Rs (k + 1)).size = (Rs k).size + L.length := by rw [he]; simp
       rw [e1, hl', List.length_nil, Nat.zero_add,
-        (exAt_succ outs zh fin.rest B0 #[zh] k (by rw [hlen]; omega)).2, ← ih (by omega)]
+        (exAt_succ outs zh fs B0 #[zh] k (by rw [hlen]; omega)).2, ← ih (by omega)]
   have hzh : ∀ x ∈ zh, x < (Rs 0).size := by
     rw [hsz 0 (by omega), (exAt_zero outs zh _ _ _).2]
     intro x hx
     have := gFinRS_ex_lt P ⟨outs, [], #[]⟩ (skeleton4 seq4 p).2.next x hx
     simpa only [B0, fin, relocFin, relocF, opsOut_reloc, finalsOf] using this
-  have hexs : ∀ k ≤ 12, (exAt outs zh fin.rest B0 #[zh] k).size = k + 1 := by
+  have hexs : ∀ k ≤ 12, (exAt outs zh fs B0 #[zh] k).size = k + 1 := by
     intro k hk
     induction k with
     | zero => rw [(exAt_zero outs zh _ _ _).1]; rfl
     | succ k ih =>
-      rw [(exAt_succ outs zh fin.rest B0 #[zh] k (by rw [hlen]; omega)).1, Array.size_push, ih (by omega)]
-  refine ⟨y, ⟨hy, hf, hl, hq⟩, zh, Rs, fun k => exAt outs zh fin.rest B0 #[zh] k, ?_, hzh,
+      rw [(exAt_succ outs zh fs B0 #[zh] k (by rw [hlen]; omega)).1, Array.size_push, ih (by omega)]
+  refine ⟨y, ⟨hy, hf, hl, hq⟩, zh, Rs, fun k => exAt outs zh fs B0 #[zh] k, ?_, hzh,
     fun k hk => ⟨hexs k (by omega), ?_⟩⟩
   · intro k hk
     induction k with
@@ -126,9 +129,9 @@ theorem fields_ex4 (P : FinP) {tr : Trace}
     | succ k ih =>
       obtain ⟨L, -, he⟩ := hrest k (by rw [hlen]; omega)
       rw [he]; exact (ih (by omega)).trans (ExtA.app _ _)
-  · obtain ⟨L, hL, he⟩ := hrest k (by rw [hlen]; exact hk)
+  · obtain ⟨L, hL, he⟩ := hrest k (by rw [hlen]; omega)
     have e := hget k hk
-    have hs := exAt_succ outs zh fin.rest B0 #[zh] k (by rw [hlen]; exact hk)
+    have hs := exAt_succ outs zh fs B0 #[zh] k (by rw [hlen]; omega)
     rw [e] at hL hs
     rw [← hsz k (by omega)] at hs
     exact ⟨L, hL, he, hs.1⟩

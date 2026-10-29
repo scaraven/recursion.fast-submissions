@@ -11,8 +11,11 @@ import FRSoundness4R4Qv
 * Table certificates (`decide +kernel` on `seq4`'s tables): the level phases (`phases4_lvl`),
   the cap messages (`capMsg4`), the columns inside π (`colsEnd4`).
 * **`capDig_eq4`**: level `i`'s cap entry on the log is π's 32 bytes where `posOps4` compares.
+* **`dAt_eq4`** (revision 4.4.1): read `(i, q)`'s committed digest on the log (`T4.dAt`, `CapD`'s
+  message) is π's 32 bytes where `posOps4` reads it (`dOff4 seq4 i + 32·q`).
 * **`ys_facts4`** (3.x's `ys_facts`): the fold registers `yReg4 p i q` hold
-  `Σ_r eq(sᵢ, r)·col_q[r]`, with a path on the log from `col_q` at `qPos` to its cap entry.
+  `Σ_r eq(sᵢ, r)·col_q[r]`, with a path on the log from `col_q` at `qPos` to its committed digest
+  `D_r` (revision 4.4.1, (β′); `D_r` is the cap entry under `T4.truthCap`).
 * **`cols4_of_run`**: `FinRest4.cols` for `yv4`, the fold registers' values.
 -/
 
@@ -69,11 +72,28 @@ theorem capDig_eq4 (h : SkRun4 impl p inp tr y) {i : ℕ} (hi : i < 5) {e : ℕ}
       bytesAt inp.π (fieldOffOf seq4 fCaps + capOff4 seq4 i + 32 * e) 32 := by
   have hp : T4.capPos i < 482 ∧ T4.capPos i ≠ 0 := by
     rw [T4.capPos, phStart4, phStart4, fsStarts4_eq]; interval_cases i <;> decide
-  have e1 := h.hq _ hp.1
+  have e1 := h.hq (T4.capPos i) (by omega)
   rw [capMsg4 hi] at e1
   simp only [qOf, hp.2, if_false] at e1
   have h32 := Nat.mul_le_mul_right 32 (Nat.succ_le_of_lt he)
   rw [T4.capDig, msgAt_of_q e1, bytesAt_extract_of_le inp.π (by rw [Nat.succ_mul] at h32; omega)]
+
+/-- **`D`'s message** (a table certificate): `CapD` absorbs field `fD`, all `dBytes` of it. -/
+theorem dMsg4 : (fsMsgs4 seq4).getD (phStart4 52) none = some (fieldOffOf seq4 fD, dBytes seq4) := by
+  rw [phStart4, fsStarts4_eq, fsMsgs4, fieldOffOf, dBytes, seq4_eq]; decide +kernel
+
+/-- **Read `(i, q)`'s committed digest on the log is π's** where `posOps4` reads it. -/
+theorem dAt_eq4 (h : SkRun4 impl p inp tr y) {i q : ℕ} (hi : i < 5) (hq : q < T4.tq i) :
+    T4.dAt (fsOf tr (itemsOf seq4)) i q = bytesAt inp.π (dOff4 seq4 i + 32 * q) 32 := by
+  obtain ⟨p52, -⟩ := T4.capPh_pos
+  have e1 := h.hq (phStart4 52) (by omega)
+  rw [dMsg4] at e1
+  simp only [qOf, show phStart4 52 ≠ 0 by omega, if_false] at e1
+  have hr := T4.rdIx_le hi hq
+  have hdb : dBytes seq4 = 27872 := by rw [dBytes, seq4_eq]; decide +kernel
+  have e2 : fieldOffOf seq4 fD + 32 * T4.rdIx i q = dOff4 seq4 i + 32 * q := by
+    rw [dOff4, T4.rdIx, Nat.mul_add, Nat.add_assoc]
+  rw [T4.dAt, msgAt_of_q e1, bytesAt_extract_of_le inp.π (by rw [hdb]; omega), e2]
 
 /-- The fold register of query `q` of level `i` (Q.i's outs). -/
 def yReg4 (p : KindP) (i q : ℕ) : Reg := ((skeleton4 seq4 p).2.outs.getD (29 + 5 * i) []).getD q 0
@@ -82,16 +102,15 @@ def yReg4 (p : KindP) (i q : ℕ) : Reg := ((skeleton4 seq4 p).2.outs.getD (29 +
 def yv4 (p : KindP) (R : Array Val) (i q : ℕ) : K := (rd R (yReg4 p i q)).toK
 
 /-- **Q.i's folds on the log** (3.x's `ys_facts`): the fold register of query `q` holds
-`Σ_r eq(sᵢ, r)·col_q[r]`, and `col_q` has a path on `L` from `qPos` to its cap entry. -/
+`Σ_r eq(sᵢ, r)·col_q[r]`, and `col_q` has a path on `L` from `qPos` to its committed digest `D_r`
+(revision 4.4.1). -/
 theorem ys_facts4 (h : SkRun4 impl p inp tr y) {L : Log} (hL : (L.map Prod.fst).Nodup)
     (hin : ∀ e ∈ tr, e ∈ L) (hπ : inp.π.size = piSizeOf seq4)
     (hm : p.d.m = (kindOfC (fsOf tr (itemsOf seq4))).m) {i : ℕ} (hi : i < 5) :
     ∀ q < (CKind.lv (kindOfC (fsOf tr (itemsOf seq4))) i).t, ∃ col : ByteArray, ∃ ss : List Digest,
       ss.length = (CKind.lv (kindOfC (fsOf tr (itemsOf seq4))) i).sib ∧
       (openPath (frEnc i) col (T4.qPos (kindOfC (fsOf tr (itemsOf seq4))) (fsOf tr (itemsOf seq4)) i q) ss).runLog L =
-        some (T4.capDig (fsOf tr (itemsOf seq4)) i
-          (T4.qPos (kindOfC (fsOf tr (itemsOf seq4))) (fsOf tr (itemsOf seq4)) i q /
-            2 ^ (CKind.lv (kindOfC (fsOf tr (itemsOf seq4))) i).sib)) ∧
+        some (T4.dAt (fsOf tr (itemsOf seq4)) i q) ∧
       rd (#[] ++ y.1.toArray) (yReg4 p i q) =
         .k (∑ r : Fin (CKind.lv (kindOfC (fsOf tr (itemsOf seq4))) i).rows,
           eqBits (T4.sAt (fsOf tr (itemsOf seq4)) i) (CKind.lv (kindOfC (fsOf tr (itemsOf seq4))) i).ell r *
@@ -137,7 +156,7 @@ theorem ys_facts4 (h : SkRun4 impl p inp tr y) {L : Log} (hL : (L.map Prod.fst).
   obtain ⟨bQ, houtQ, -, hQv⟩ := queries_view4 h hL hin hnQ (by rw [eQ]) (by rw [hK]; exact hsib)
   intro q hq
   have hq' : q < (seq4.lv i).t := hT ▸ hq
-  obtain ⟨hidx, hy, ss, hss, hpath⟩ := hQv q hq'
+  obtain ⟨hidx, hy, -, -, ss, hss, hpath⟩ := hQv q hq'
   have hgy : yReg4 p i q = bQ + 2 + posW4 seq4 i * q + 3 := by
     rw [yReg4, houtQ, List.getD_eq_getElem _ _ (by simpa using hq'), List.getElem_map, List.getElem_range]
   have hfr : ((cAt4 seq4 p (29 + 5 * i)).foldR.map fun x => (rd R x).toK) =
@@ -154,10 +173,6 @@ theorem ys_facts4 (h : SkRun4 impl p inp tr y) {L : Log} (hL : (L.map Prod.fst).
     rfl
   simp only [hK, ← hRd] at hidx hy hpath hss
   simp only [hj, hfr] at hy hpath
-  have hqlt : T4.qPos κ es i q < 2 ^ (CKind.lv κ i).logN := idx_lt _ _ _
-  have hcb : T4.qPos κ es i q / 2 ^ (CKind.lv κ i).sib < 2 ^ (seq4.lv i).cap := by
-    rw [Nat.div_lt_iff_lt_mul (by positivity), ← pow_add]
-    exact lt_of_lt_of_le hqlt (Nat.pow_le_pow_right (by norm_num) (by unfold Level.sib; omega))
   set col := inp.π.extract (absOff 0 (fieldOffOf seq4 fCols + phaseOffOf seq4 (29 + 5 * i) fCols +
       q * colBytes i)) (absOff 0 (fieldOffOf seq4 fCols + phaseOffOf seq4 (29 + 5 * i) fCols +
       q * colBytes i) + colBytes i) with hcold
@@ -168,7 +183,7 @@ theorem ys_facts4 (h : SkRun4 impl p inp tr y) {L : Log} (hL : (L.map Prod.fst).
       rwa [Nat.add_mul, one_mul] at this
     rw [hcold, ByteArray.size_extract, absOff_zero, hπ]; omega
   refine ⟨col, ss, hss, ?_, ?_⟩
-  · rw [hpath, absOff_zero, Nat.shiftRight_eq_div_pow, capDig_eq4 h hi hcb]
+  · rw [hpath, absOff_zero, dAt_eq4 h hi hq']
   · clear_value col
     have hs : ((List.range (hEll i)).map (T4.sAt es i)).toArray.size = hEll i := by simp
     have e1 := dotKF_eq_sum ((List.range (hEll i)).map (T4.sAt es i)).toArray col
@@ -185,15 +200,14 @@ theorem ys_facts4 (h : SkRun4 impl p inp tr y) {L : Log} (hL : (L.map Prod.fst).
         v 0) (fun v hv => by simp [Array.getD_eq_getD_getElem?, hv])]
     rw [hgy, hy, e1, ← e2]
 
-/-- **`FinRest4.cols`** for the fold registers' values `yv4` (the log repeats no query). -/
+/-- **`FinRest4.cols`** for the fold registers' values `yv4` (the log repeats no query; revision
+4.4.1: the paths end at the committed digests). -/
 theorem cols4_of_run (h : SkRun4 impl p inp tr y) {L : Log} (hb : ¬ Bad L) (hin : ∀ e ∈ tr, e ∈ L)
     (hπ : inp.π.size = piSizeOf seq4) (hm : p.d.m = (kindOfC (fsOf tr (itemsOf seq4))).m) :
     ∀ i < 5, ∀ q < (CKind.lv (kindOfC (fsOf tr (itemsOf seq4))) i).t, ∃ col : ByteArray, ∃ ss : List Digest,
       ss.length = (CKind.lv (kindOfC (fsOf tr (itemsOf seq4))) i).sib ∧
       (openPath (frEnc i) col (T4.qPos (kindOfC (fsOf tr (itemsOf seq4))) (fsOf tr (itemsOf seq4)) i q) ss).runLog L =
-        some (T4.capDig (fsOf tr (itemsOf seq4)) i
-          (T4.qPos (kindOfC (fsOf tr (itemsOf seq4))) (fsOf tr (itemsOf seq4)) i q /
-            2 ^ (CKind.lv (kindOfC (fsOf tr (itemsOf seq4))) i).sib)) ∧
+        some (T4.dAt (fsOf tr (itemsOf seq4)) i q) ∧
       yv4 p (#[] ++ y.1.toArray) i q = ∑ r : Fin (CKind.lv (kindOfC (fsOf tr (itemsOf seq4))) i).rows,
         eqBits (T4.sAt (fsOf tr (itemsOf seq4)) i) (CKind.lv (kindOfC (fsOf tr (itemsOf seq4))) i).ell r *
           algebraMap F K (readF col (16 * r)) := by

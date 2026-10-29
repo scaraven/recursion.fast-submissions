@@ -15,7 +15,9 @@ module is 3.x's reference of a position at those parameters:
 * **`exec_merkleOps4`**, **`exec_posOps4`**, **`exec_posAll4`**: `exec` of the ops is the
   reference (the 3.x proofs at the 4.1 ops);
 * **`posAllT4_path`**: on a log that contains the trace and repeats no query, every position's
-  column has a path to the cap entry at π's `capO + 32·(j >>> Lk.sib)` (`stepsT4_path`, `posT4_path`).
+  column has a path to its **committed digest** `D_r`, π's 32 bytes at `dO + 32·p` (revision 4.4.1,
+  (β′): V asserts the root equal to the static read of field `fD`; `stepsT4_path`, `posT4_path`), and
+  the position's cap index `j >>> Lk.sib` and `D_r` are its registers `4 + 6·sL`, `4 + 6·sL + 1`.
 -/
 
 namespace FR.Snd.R4
@@ -49,8 +51,9 @@ def stepsT4 (sib i j : ℕ) : ℕ → ℕ → ℕ → Digest → Trace → Optio
         (x.1 ++ y.1, x.2.1 && y.2.1, y.2.2)
 
 /-- **Position `p` of level `i`** (`Lk`: the kind's level; `sL` Merkle slots; `ad`, `w`: the answer
-and weight values). -/
-def posT4 (Lk : Level) (sL i co so capO : ℕ) (ad : ℕ → Digest) (w : Array K) (p : ℕ) :
+and weight values; `dO`: the level's first committed digest, absolute). Revision 4.4.1 (β′): after
+the cap index, the static read of `D_r` (π at `dO + 32·p`) and the check `cur = D_r`. -/
+def posT4 (Lk : Level) (sL i co so dO : ℕ) (ad : ℕ → Digest) (w : Array K) (p : ℕ) :
     Trace → Option (List Val × Bool × Trace)
   | (q, a) :: tr =>
     let j := idxOf Lk.logN (ad (p / Lk.per)) (p % Lk.per)
@@ -58,19 +61,19 @@ def posT4 (Lk : Level) (sL i co so capO : ℕ) (ad : ℕ → Digest) (w : Array 
     if q = colQ i col then
       (stepsT4 inp Lk.sib i j sL 0 (so + p * sL * 32) a tr).map fun x =>
         let capIx := j >>> Lk.sib
-        let capD := bytesAt inp.π (absOff 0 capO + 32 * capIx) 32
-        ([.n j, .b col, .d a, .k (dotKF w col)] ++ x.1 ++ [.n capIx, .d capD],
-          x.2.1 && decide (x.2.2.1 = capD), x.2.2.2)
+        let dr := bytesAt inp.π (absOff 0 (dO + 32 * p)) 32
+        ([.n j, .b col, .d a, .k (dotKF w col)] ++ x.1 ++ [.n capIx, .d dr],
+          x.2.1 && decide (x.2.2.1 = dr), x.2.2.2)
     else none
   | [] => none
 
 /-- All positions from `p`. -/
-def posAllT4 (Lk : Level) (sL i co so capO : ℕ) (ad : ℕ → Digest) (w : Array K) :
+def posAllT4 (Lk : Level) (sL i co so dO : ℕ) (ad : ℕ → Digest) (w : Array K) :
     ℕ → ℕ → Trace → Option (List Val × Bool × Trace)
   | 0, _, tr => some ([], true, tr)
   | t + 1, p, tr =>
-    (posT4 inp Lk sL i co so capO ad w p tr).bind fun x =>
-      (posAllT4 Lk sL i co so capO ad w t (p + 1) x.2.2).map fun y => (x.1 ++ y.1, x.2.1 && y.2.1, y.2.2)
+    (posT4 inp Lk sL i co so dO ad w p tr).bind fun x =>
+      (posAllT4 Lk sL i co so dO ad w t (p + 1) x.2.2).map fun y => (x.1 ++ y.1, x.2.1 && y.2.1, y.2.2)
 
 theorem stepT4_spec {sib i h j so : ℕ} {cur : Digest} {tr : Trace} {y : List Val × Bool × Digest × Trace}
     (hy : stepT4 inp sib i h j so cur tr = some y) : y.1.length = 6 ∧ y.1.getD 5 default = .d y.2.2.1 := by
@@ -112,8 +115,8 @@ theorem stepsT4_len {sib i j n h so : ℕ} {cur : Digest} {tr : Trace}
     obtain ⟨seg, h1, h2⟩ := ih hz
     exact ⟨e :: seg, by simp [← hy2, h1], by simp [h2]⟩
 
-theorem posT4_length {Lk : Level} {sL i co so capO p : ℕ} {ad : ℕ → Digest} {w : Array K} {tr : Trace}
-    {x : List Val × Bool × Trace} (hx : posT4 inp Lk sL i co so capO ad w p tr = some x) :
+theorem posT4_length {Lk : Level} {sL i co so dO p : ℕ} {ad : ℕ → Digest} {w : Array K} {tr : Trace}
+    {x : List Val × Bool × Trace} (hx : posT4 inp Lk sL i co so dO ad w p tr = some x) :
     x.1.length = 4 + 6 * sL + 2 := by
   rcases tr with _ | ⟨⟨q, a⟩, tr⟩
   · cases hx
@@ -122,8 +125,8 @@ theorem posT4_length {Lk : Level} {sL i co so capO p : ℕ} {ad : ℕ → Digest
   obtain ⟨y, hy, rfl⟩ := Option.map_eq_some_iff.1 hx
   simp [(stepsT4_spec inp hy).1]; omega
 
-theorem posAllT4_length {Lk : Level} {sL i co so capO t p : ℕ} {ad : ℕ → Digest} {w : Array K}
-    {tr : Trace} {x : List Val × Bool × Trace} (hx : posAllT4 inp Lk sL i co so capO ad w t p tr = some x) :
+theorem posAllT4_length {Lk : Level} {sL i co so dO t p : ℕ} {ad : ℕ → Digest} {w : Array K}
+    {tr : Trace} {x : List Val × Bool × Trace} (hx : posAllT4 inp Lk sL i co so dO ad w t p tr = some x) :
     x.1.length = (4 + 6 * sL + 2) * t := by
   induction t generalizing p tr x with
   | zero => simp [posAllT4] at hx; subst hx; simp
@@ -197,15 +200,14 @@ theorem exec_posHead4 (Lk : Level) (i co : ℕ) (ans : List Reg) (w p : ℕ) (r 
     rd_app_left _ _ hw, hwv, rd_app, List.getD_cons_succ, List.getD_cons_zero, Val.toB,
     Bool.and_true, posHeadVals, dotKFF_eq, idxOfF_eq]
 
-/-- A position's last three ops. -/
-theorem exec_posTail4 (Lk : Level) (capO jr curR e : ℕ) (R : Array Val) (ok : Bool) (ops : List Op) (j : ℕ)
+/-- A position's last three ops (revision 4.4.1: the static read of `D_r` at `o`). -/
+theorem exec_posTail4 (Lk : Level) (o jr curR e : ℕ) (R : Array Val) (ok : Bool) (ops : List Op) (j : ℕ)
     (cur : Digest) (he : e = R.size) (hjr : jr < R.size) (hj : rd R jr = .n j) (hcr : curR < R.size)
     (hc : rd R curR = .d cur) (tr : Trace) :
-    exec impl κ inp ([.shrN jr (fun _ => Lk.sib), .piDigestAt 0 capO e, .assertEq curR (e + 1) allK] ++ ops)
+    exec impl κ inp ([.shrN jr (fun _ => Lk.sib), .piDigest 0 o, .assertEq curR (e + 1) allK] ++ ops)
       ⟨R, ok⟩ tr =
-      exec impl κ inp ops ⟨R ++ [Val.n (j >>> Lk.sib),
-        .d (bytesAt inp.π (absOff 0 capO + 32 * (j >>> Lk.sib)) 32)].toArray,
-        ok && decide (cur = bytesAt inp.π (absOff 0 capO + 32 * (j >>> Lk.sib)) 32)⟩ tr := by
+      exec impl κ inp ops ⟨R ++ [Val.n (j >>> Lk.sib), .d (bytesAt inp.π (absOff 0 o) 32)].toArray,
+        ok && decide (cur = bytesAt inp.π (absOff 0 o) 32)⟩ tr := by
   subst he
   rw [show (⟨R, ok⟩ : St) = ⟨R ++ ([] : List Val).toArray, ok⟩ by simp]
   simp only [List.cons_append, List.nil_append, exec_app, evalOp, rd_app_left _ _ hjr, hj,
@@ -224,12 +226,12 @@ theorem exec_posMid4 (sib i j n so : ℕ) (r : Array Val) (col : ByteArray) (a :
     (by rw [posHead_size]; omega) (posHead_rd2 r j col a wv) tr
 
 /-- **One position** against `posT4`. -/
-theorem exec_posOps4 (S : Seq) (k : KindP) (i co so capO : ℕ) (ans : List Reg) (w p : ℕ) (r : Array Val)
+theorem exec_posOps4 (S : Seq) (k : KindP) (i co so dO : ℕ) (ans : List Reg) (w p : ℕ) (r : Array Val)
     (ok : Bool) (ops : List Op) (ad : ℕ → Digest) (wv : Array K) (hA : ∀ k, ans.getD k 0 < r.size)
     (had : ∀ k, (rd r (ans.getD k 0)).toD = ad k) (hw : w < r.size) (hwv : (rd r w).toAK = wv)
     (tr : Trace) :
-    exec impl κ inp (posOps4 S k i co so capO ans w p r.size ++ ops) ⟨r, ok⟩ tr =
-      (posT4 inp (S.lvK k.d.m i) (S.lv i).sib i co so capO ad wv p tr).bind fun x =>
+    exec impl κ inp (posOps4 S k i co so dO ans w p r.size ++ ops) ⟨r, ok⟩ tr =
+      (posT4 inp (S.lvK k.d.m i) (S.lv i).sib i co so dO ad wv p tr).bind fun x =>
         exec impl κ inp ops ⟨r ++ x.1.toArray, ok && x.2.1⟩ x.2.2 := by
   simp only [posOps4, List.append_assoc]
   rcases tr with _ | ⟨⟨q, a⟩, tr⟩
@@ -247,33 +249,36 @@ theorem exec_posOps4 (S : Seq) (k : KindP) (i co so capO : ℕ) (ans : List Reg)
   · refine Option.bind_congr fun x hx => ?_
     obtain ⟨hl, h0, hlast⟩ := stepsT4_spec inp hx
     generalize hsb : (S.lv i).sib = sb at *
-    rw [exec_posTail4 impl κ inp (S.lvK k.d.m i) capO (jr := r.size)
-      (curR := if sb = 0 then r.size + 2 else r.size + 4 + 6 * sb - 1) (e := r.size + 4 + 6 * sb)
+    rw [exec_posTail4 impl κ inp (S.lvK k.d.m i) (dO + 32 * p) (jr := r.size)
+      (curR := curOfY sb (r.size + 3)) (e := r.size + 4 + 6 * sb)
       (j := j) (cur := x.2.2.1) (he := by simp [hl]; omega)
       (hjr := by simp)
       (hj := by rw [rd_append_left (by rw [posHead_size]; omega), posHead_rd0])
-      (hcr := by split_ifs <;> simp [hl] <;> omega) (hc := ?_)]
+      (hcr := by unfold curOfY; split_ifs <;> simp [hl] <;> omega) (hc := ?_)]
     · simp [Array.append_assoc, Bool.and_assoc, posHeadVals]
-    · split_ifs with hs
-      · rw [rd_append_left (by rw [posHead_size]; omega), posHead_rd2, h0 hs]
-      · rw [show r.size + 4 + 6 * sb - 1 = (r ++ (posHeadVals j col a wv).toArray).size
-            + (6 * sb - 1) by rw [hs4]; omega, rd_app, hlast (by omega)]
+    · by_cases hs : sb = 0
+      · rw [curOfY, if_pos hs, show r.size + 3 - 1 = r.size + 2 by omega,
+          rd_append_left (by rw [posHead_size]; omega), posHead_rd2, h0 hs]
+      · have hsb0 : 0 < sb := Nat.pos_of_ne_zero hs
+        have e : curOfY sb (r.size + 3) = (r ++ (posHeadVals j col a wv).toArray).size + (6 * sb - 1) := by
+          rw [curOfY, if_neg hs, hs4]; exact (by omega : r.size + 3 + 6 * sb = r.size + 4 + (6 * sb - 1))
+        rw [e, rd_app, hlast hsb0]
 
 /-- **The positions of a level** from `p` on, against `posAllT4`. -/
-theorem exec_posAll4 (S : Seq) (k : KindP) (i co so capO : ℕ) (ans : List Reg) (w b : ℕ) (ad : ℕ → Digest)
+theorem exec_posAll4 (S : Seq) (k : KindP) (i co so dO : ℕ) (ans : List Reg) (w b : ℕ) (ad : ℕ → Digest)
     (wv : Array K) (t : ℕ) : ∀ (p : ℕ) (r : Array Val) (ok : Bool) (ops : List Op) (tr : Trace),
     r.size = b + 2 + posW4 S i * p → (∀ k, ans.getD k 0 < r.size) →
     (∀ k, (rd r (ans.getD k 0)).toD = ad k) → w < r.size → (rd r w).toAK = wv →
     exec impl κ inp (((List.range' p t).flatMap fun q =>
-        posOps4 S k i co so capO ans w q (b + 2 + posW4 S i * q)) ++ ops) ⟨r, ok⟩ tr =
-      (posAllT4 inp (S.lvK k.d.m i) (S.lv i).sib i co so capO ad wv t p tr).bind fun x =>
+        posOps4 S k i co so dO ans w q (b + 2 + posW4 S i * q)) ++ ops) ⟨r, ok⟩ tr =
+      (posAllT4 inp (S.lvK k.d.m i) (S.lv i).sib i co so dO ad wv t p tr).bind fun x =>
         exec impl κ inp ops ⟨r ++ x.1.toArray, ok && x.2.1⟩ x.2.2 := by
   induction t with
   | zero => intro p r ok ops tr _ _ _ _ _; simp [posAllT4]
   | succ t ih =>
     intro p r ok ops tr hs hA had hw hwv
-    have h := exec_posOps4 impl κ inp S k i co so capO ans w p r ok
-      (((List.range' (p + 1) t).flatMap fun q => posOps4 S k i co so capO ans w q (b + 2 + posW4 S i * q)) ++ ops)
+    have h := exec_posOps4 impl κ inp S k i co so dO ans w p r ok
+      (((List.range' (p + 1) t).flatMap fun q => posOps4 S k i co so dO ans w q (b + 2 + posW4 S i * q)) ++ ops)
       ad wv hA had hw hwv tr
     rw [hs] at h
     rw [List.range'_succ, List.flatMap_cons, List.append_assoc, h]
@@ -324,16 +329,19 @@ theorem stepsT4_path {L : Log} (hL : (L.map Prod.fst).Nodup) {sib i j : ℕ} :
       exact ⟨[], by simp; omega, by simpa [climb] using hr⟩
   | _ + 1, _, _, _, [], x, hx, _, _ => by simp [stepsT4, stepT4] at hx
 
-/-- **One position on the log** (3.x's `posT_path`). -/
-theorem posT4_path {L : Log} (hL : (L.map Prod.fst).Nodup) {Lk : Level} {sL i co so capO p : ℕ}
+/-- **One position on the log** (3.x's `posT_path`; revision 4.4.1: the path to the committed
+digest `D_r`, the cap index and `D_r` in registers `4 + 6·sL`, `4 + 6·sL + 1`). -/
+theorem posT4_path {L : Log} (hL : (L.map Prod.fst).Nodup) {Lk : Level} {sL i co so dO p : ℕ}
     {ad : ℕ → Digest} {w : Array K} {tr : Trace} {x : List Val × Bool × Trace}
-    (hx : posT4 inp Lk sL i co so capO ad w p tr = some x) (hin : ∀ e ∈ tr, e ∈ L)
+    (hx : posT4 inp Lk sL i co so dO ad w p tr = some x) (hin : ∀ e ∈ tr, e ∈ L)
     (hsib : Lk.sib ≤ sL) (hok : x.2.1 = true) :
     let j := idxOf Lk.logN (ad (p / Lk.per)) (p % Lk.per)
     let col := inp.π.extract (absOff 0 (co + p * colBytes i)) (absOff 0 (co + p * colBytes i) + colBytes i)
     x.1.getD 0 default = .n j ∧ x.1.getD 3 default = .k (dotKF w col) ∧
+      x.1.getD (4 + 6 * sL) default = .n (j >>> Lk.sib) ∧
+      x.1.getD (4 + 6 * sL + 1) default = .d (bytesAt inp.π (absOff 0 (dO + 32 * p)) 32) ∧
       (∃ ss : List Digest, ss.length = Lk.sib ∧ (openPath (frEnc i) col j ss).runLog L =
-        some (bytesAt inp.π (absOff 0 capO + 32 * (j >>> Lk.sib)) 32)) ∧
+        some (bytesAt inp.π (absOff 0 (dO + 32 * p)) 32)) ∧
       ∃ seg, tr = seg ++ x.2.2 := by
   intro j col
   rcases tr with _ | ⟨⟨q, a⟩, tr⟩
@@ -345,47 +353,66 @@ theorem posT4_path {L : Log} (hL : (L.map Prod.fst).Nodup) {Lk : Level} {sL i co
   obtain ⟨ss, hl, hr⟩ := stepsT4_path inp hL _ 0 _ a tr y hy
     (fun e he => hin e (List.mem_cons_of_mem _ he)) (by omega)
   obtain ⟨seg, hseg, -⟩ := stepsT4_len inp hy
-  refine ⟨rfl, rfl, ⟨ss, by simpa using hl, ?_⟩, ⟨(q, a) :: seg, by simp [hseg]⟩⟩
-  have hmem : (q, a) ∈ L := hin _ (List.mem_cons_self ..)
-  rw [openPath, runLog_query_mem hL (show ((frEnc i).colQ col, a) ∈ L by rw [hq] at hmem; exact hmem),
-    hr, hok.2]
+  have hl6 := (stepsT4_spec inp hy).1
+  have hpre : ([Val.n j, .b col, .d a, .k (dotKF w col)] ++ y.1).length = 4 + 6 * sL := by
+    simp only [List.length_append, List.length_cons, List.length_nil, hl6]
+  refine ⟨rfl, rfl, ?_, ?_, ⟨ss, by simpa using hl, ?_⟩, ⟨(q, a) :: seg, by simp [hseg]⟩⟩
+  · rw [List.getD_append_right _ _ _ _ (by rw [hpre]), hpre, Nat.sub_self]; rfl
+  · rw [List.getD_append_right _ _ _ _ (by rw [hpre]; omega), hpre,
+      show 4 + 6 * sL + 1 - (4 + 6 * sL) = 1 by omega]; rfl
+  · have hmem : (q, a) ∈ L := hin _ (List.mem_cons_self ..)
+    rw [openPath, runLog_query_mem hL (show ((frEnc i).colQ col, a) ∈ L by rw [hq] at hmem; exact hmem),
+      hr, hok.2]
 
-/-- **All positions on the log** (3.x's `posAllT_path`). -/
-theorem posAllT4_path {L : Log} (hL : (L.map Prod.fst).Nodup) {Lk : Level} {sL i co so capO : ℕ}
+/-- **All positions on the log** (3.x's `posAllT_path`; revision 4.4.1: as `posT4_path`). -/
+theorem posAllT4_path {L : Log} (hL : (L.map Prod.fst).Nodup) {Lk : Level} {sL i co so dO : ℕ}
     {ad : ℕ → Digest} {w : Array K} (hsib : Lk.sib ≤ sL) :
     ∀ (t p : ℕ) (tr : Trace) (x : List Val × Bool × Trace),
-      posAllT4 inp Lk sL i co so capO ad w t p tr = some x → (∀ e ∈ tr, e ∈ L) → x.2.1 = true →
+      posAllT4 inp Lk sL i co so dO ad w t p tr = some x → (∀ e ∈ tr, e ∈ L) → x.2.1 = true →
       ∀ q < t,
         x.1.getD ((4 + 6 * sL + 2) * q) default = .n (idxOf Lk.logN (ad ((p + q) / Lk.per)) ((p + q) % Lk.per)) ∧
         x.1.getD ((4 + 6 * sL + 2) * q + 3) default = .k (dotKF w (inp.π.extract
           (absOff 0 (co + (p + q) * colBytes i)) (absOff 0 (co + (p + q) * colBytes i) + colBytes i))) ∧
+        x.1.getD ((4 + 6 * sL + 2) * q + (4 + 6 * sL)) default =
+          .n (idxOf Lk.logN (ad ((p + q) / Lk.per)) ((p + q) % Lk.per) >>> Lk.sib) ∧
+        x.1.getD ((4 + 6 * sL + 2) * q + (4 + 6 * sL + 1)) default =
+          .d (bytesAt inp.π (absOff 0 (dO + 32 * (p + q))) 32) ∧
         ∃ ss : List Digest, ss.length = Lk.sib ∧
           (openPath (frEnc i) (inp.π.extract (absOff 0 (co + (p + q) * colBytes i))
             (absOff 0 (co + (p + q) * colBytes i) + colBytes i))
             (idxOf Lk.logN (ad ((p + q) / Lk.per)) ((p + q) % Lk.per)) ss).runLog L =
-          some (bytesAt inp.π (absOff 0 capO + 32 *
-            (idxOf Lk.logN (ad ((p + q) / Lk.per)) ((p + q) % Lk.per) >>> Lk.sib)) 32)
+          some (bytesAt inp.π (absOff 0 (dO + 32 * (p + q))) 32)
   | 0, _, _, _, _, _, _, q, hq => absurd hq (by omega)
   | t + 1, p, tr, x, hx, hin, hok, q, hq => by
     simp only [posAllT4, Option.bind_eq_some_iff, Option.map_eq_some_iff] at hx
     obtain ⟨z, hz, y, hy, rfl⟩ := hx
     simp only [Bool.and_eq_true] at hok
-    obtain ⟨h0, h3, hpath, seg, hseg⟩ := posT4_path inp hL hz hin hsib hok.1
+    obtain ⟨h0, h3, hk, hd, hpath, seg, hseg⟩ := posT4_path inp hL hz hin hsib hok.1
     have hzl := posT4_length inp hz
     rcases q with _ | q
-    · refine ⟨?_, ?_, ?_⟩
+    · refine ⟨?_, ?_, ?_, ?_, ?_⟩
       · rw [Nat.mul_zero, List.getD_append _ _ _ _ (by rw [hzl]; omega)]; simpa using h0
       · rw [Nat.mul_zero, Nat.zero_add, List.getD_append _ _ _ _ (by rw [hzl]; omega)]
         simpa using h3
+      · rw [Nat.mul_zero, Nat.zero_add, List.getD_append _ _ _ _ (by rw [hzl]; omega)]
+        simpa using hk
+      · rw [Nat.mul_zero, Nat.zero_add, List.getD_append _ _ _ _ (by rw [hzl]; omega)]
+        simpa using hd
       · simpa using hpath
-    · obtain ⟨i0, i3, ip⟩ := posAllT4_path hL hsib t (p + 1) _ y hy
+    · obtain ⟨i0, i3, ik, id, ip⟩ := posAllT4_path hL hsib t (p + 1) _ y hy
         (fun e he => hin e (by rw [hseg]; exact List.mem_append_right _ he)) hok.2 q (by omega)
       rw [show p + (q + 1) = p + 1 + q by omega]
-      refine ⟨?_, ?_, ip⟩
+      refine ⟨?_, ?_, ?_, ?_, ip⟩
       · rw [show (4 + 6 * sL + 2) * (q + 1) = z.1.length + (4 + 6 * sL + 2) * q by rw [hzl]; ring,
           List.getD_append_right _ _ _ _ (by omega), Nat.add_sub_cancel_left, i0]
       · rw [show (4 + 6 * sL + 2) * (q + 1) + 3 = z.1.length + ((4 + 6 * sL + 2) * q + 3) by rw [hzl]; ring,
           List.getD_append_right _ _ _ _ (by omega), Nat.add_sub_cancel_left, i3]
+      · rw [show (4 + 6 * sL + 2) * (q + 1) + (4 + 6 * sL) =
+            z.1.length + ((4 + 6 * sL + 2) * q + (4 + 6 * sL)) by rw [hzl]; ring,
+          List.getD_append_right _ _ _ _ (by omega), Nat.add_sub_cancel_left, ik]
+      · rw [show (4 + 6 * sL + 2) * (q + 1) + (4 + 6 * sL + 1) =
+            z.1.length + ((4 + 6 * sL + 2) * q + (4 + 6 * sL + 1)) by rw [hzl]; ring,
+          List.getD_append_right _ _ _ _ (by omega), Nat.add_sub_cancel_left, id]
 
 end Path
 

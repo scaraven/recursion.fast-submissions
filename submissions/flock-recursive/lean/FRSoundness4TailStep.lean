@@ -373,8 +373,19 @@ structure RejOK (Rej : Log → Log → Prop) : Prop where
   stab : ∀ L i, ¬ Bad L → G.IsChain L i → ∀ X, StabExt fsRnd4 (entriesOf L (pathOf L i)) X →
     (Rej (L.take i) X ↔ Rej L X)
 
+/-- **What a composed `Rej` must satisfy** (revision 4.4.1, A3′ run 2): unchanged by an entry at a
+squeeze position, stable under the charging log. `RejOK` without `mono`: the cap check's guarded `Rej`
+(`T4.RejG`) is not monotone at `CapD`'s absorb, where `PhaseObl.hrej` hands the lost check to the
+phase's doom. -/
+structure RejSq (Rej : Log → Log → Prop) : Prop where
+  sq : ∀ L es x, fsItems4[es.length]? = some .squeeze → (Rej L (es ++ [x]) ↔ Rej L es)
+  stab : ∀ L i, ¬ Bad L → G.IsChain L i → ∀ X, StabExt fsRnd4 (entriesOf L (pathOf L i)) X →
+    (Rej (L.take i) X ↔ Rej L X)
+
+theorem RejOK.toSq {Rej : Log → Log → Prop} (h : RejOK Rej) : RejSq Rej := ⟨h.sq, h.stab⟩
+
 /-- Inside a multi-squeeze phase, `Rej` does not change along a formal extension. -/
-theorem rej_ext {Rej : Log → Log → Prop} (hR : RejOK Rej) {L es₀ : Log} {s0 r : ℕ}
+theorem rej_ext {Rej : Log → Log → Prop} (hR : RejSq Rej) {L es₀ : Log} {s0 r : ℕ}
     (hl : es₀.length = s0 + 1) (hr : fsRnd4 (s0 + 1) = some (s0, r)) :
     ∀ as : List Digest, as.length ≤ r → (Rej L (ext es₀ as) ↔ Rej L es₀) := by
   obtain ⟨-, hpr, hspec⟩ := fsRnd4_ok _ _ _ hr
@@ -396,9 +407,12 @@ theorem sq_of_fsRnd {p s0 r : ℕ} (h : fsRnd4 p = some (s0, r)) :
 
 open Classical in
 /-- **`stepObl_compose`**: the obligations of the composed doom from those of the phases' doom
-under `¬ Rej`. -/
+under `¬ Rej` (revision 4.4.1: `Rej` need not be monotone; at an absorb a check that stops holding
+hands over to the phase's doom, `hrej`). -/
 theorem stepObl_compose {Rej : Log → Log → Prop} {Dp : ℕ → Log → Log → Prop} {δ : ℝ≥0} {N : ℕ}
-    (hR : RejOK Rej)
+    (hR : RejSq Rej)
+    (hrej : ∀ L es x len, G.Matches (es ++ [x]) → fsItems4[es.length]? = some (.absorb len) →
+      Rej L es → Rej L (es ++ [x]) ∨ DPos Dp L (es ++ [x]))
     (habs : ∀ L es x len, G.Matches (es ++ [x]) → fsItems4[es.length]? = some (.absorb len) →
       ¬ Rej L es → DPos Dp L es → Rej L (es ++ [x]) ∨ DPos Dp L (es ++ [x]))
     (hmid : ∀ L es x s0 r, G.Matches (es ++ [x]) → fsRnd4 es.length = some (s0, r) →
@@ -413,7 +427,7 @@ theorem stepObl_compose {Rej : Log → Log → Prop} {Dp : ℕ → Log → Log �
     StepObl (DC Rej Dp) fsRnd4 δ N where
   habs L es x len hm hit hd := by
     by_cases hr : Rej L es
-    · exact Or.inl (hR.mono _ _ _ hr)
+    · exact hrej L es x len hm hit hr
     · exact habs L es x len hm hit hr (hd.resolve_left hr)
   hmid L es x s0 r hm hrnd hlt := by
     have hrej := hR.sq L es x (sq_of_fsRnd hrnd)
@@ -640,6 +654,7 @@ open Classical in
 /-- **The per-phase obligations of the entry's doom** `DC Rej (Dp Dk)` (A.10). `Rej` is the
 failed asserted checks; `Dk k` is phase `k`'s doom; every multi-squeeze phase is in `msD` form
 (its `hmid` is then automatic, `hmid_of_msForm`). What is left per phase:
+* `hrej` (revision 4.4.1): at an absorb a check that held still holds, or the phase is doomed;
 * `habs`: an absorb never undooms, inside a phase or at a phase's first absorb (the handoff of
   A.10: the previous phase's doom gives a false initial claim);
 * `hsingle`: at a single squeeze (a round's challenge, or a single-squeeze phase's handoff), at
@@ -649,8 +664,10 @@ failed asserted checks; `Dk k` is phase `k`'s doom; every multi-squeeze phase is
 * `hstab`: the position's phase doom reads the same off the charging log on `hloc_of`'s
   extensions (`StabExt`: inside a multi-squeeze phase; §10 changes 10, the S-G1g ruling). -/
 structure PhaseObl (Rej : Log → Log → Prop) (Dk : ℕ → Log → Log → Prop) (N : ℕ) : Prop where
-  rej : RejOK Rej
+  rej : RejSq Rej
   ms : MsForm Dk
+  hrej : ∀ L es x len, G.Matches (es ++ [x]) → fsItems4[es.length]? = some (.absorb len) →
+    Rej L es → Rej L (es ++ [x]) ∨ Dk (phOf4 es.length) L (es ++ [x])
   habs : ∀ L es x len, G.Matches (es ++ [x]) → fsItems4[es.length]? = some (.absorb len) →
     ¬ Rej L es → Dk (phOf4 (es.length - 1)) L es →
       Rej L (es ++ [x]) ∨ Dk (phOf4 es.length) L (es ++ [x])
@@ -675,7 +692,10 @@ theorem kstate_step {Rej : Log → Log → Prop} {Dk : ℕ → Log → Log → P
     (hq : q ∉ L.map Prod.fst) :
     ∑ a : Digest, G.muG (DC Rej (Dp Dk)) (pRoundG (DC Rej (Dp Dk)) fsRnd4) (L ++ [(q, a)]) ≤
       (G.muG (DC Rej (Dp Dk)) (pRoundG (DC Rej (Dp Dk)) fsRnd4) L + epsD) * 2 ^ 256 := by
-  refine step_epsD hN (stepObl_compose ob.rej ?_ ?_ ?_ ?_ ?_) L q hl hμ hq
+  refine step_epsD hN (stepObl_compose ob.rej ?_ ?_ ?_ ?_ ?_ ?_) L q hl hμ hq
+  · intro L es x len hm hit hr
+    have := ob.hrej L es x len hm hit hr
+    simpa [DPos, Dp] using this
   · intro L es x len hm hit hr hd
     have := ob.habs L es x len hm hit hr hd
     simpa [DPos, Dp] using this
@@ -912,7 +932,8 @@ theorem phOf_examples : phOf4 12 = 3 ∧ phOf4 13 = 4 ∧ phOf4 370 = 30 ∧ phO
 /-- Control (positive, satisfiability): the empty doom meets every per-phase obligation with
 `N = 0` (the structure is not contradictory). -/
 theorem phaseObl_false : PhaseObl (fun _ _ => False) (fun _ _ _ => False) 0 where
-  rej := rejOK_false
+  rej := rejOK_false.toSq
+  hrej _ _ _ _ _ _ h := h.elim
   ms s0 r _ := ⟨fun _ _ => False, by
     funext L es; simp only [msD, eq_iff_iff]; split_ifs <;> exact Iff.rfl⟩
   habs _ _ _ _ _ _ _ h := h.elim
