@@ -56,46 +56,46 @@ theorem cntLoop (I : Array Word) (n : ℕ) (pos : ℕ → ℕ)
     refine cntLoop I n pos hpos m (j + 1) _ (by omega) hM' ?_
     rw [rd_decS (by decide), cntBody_sem I s hM hp (hpos j (by omega)).1, (hpos j (by omega)).2]
 
-/-- **The count**: from every state, on a domain tape of a SNARK proof, `cntIR` leaves the log's
+/-- **The count**: from every state, on a domain tape of a SNARK proof, `(cntIR pL)` leaves the log's
 word count in `rCn5`. -/
-theorem cnt_sem (c : Digest) (π : Proof) (L : Log) (hs : π.size = piSize)
+theorem cnt_sem {pL : ℕ} (c : Digest) (π : Proof) (L : Log) (hs : 5 + (π.size + 7) / 8 = pL)
     (hq : ∀ e ∈ L, e.1.size < 2 ^ 64) (ht : (extractorInput c π L).length ≤ 2 ^ 64)
     (s : St) (hM : Inv s.M) :
-    rd (semXIR (extractorInput c π L).toArray cntIR s).M rCn5 = toWord (wordsOf L) := by
+    rd (semXIR (extractorInput c π L).toArray (cntIR pL) s).M rCn5 = toWord (wordsOf L) := by
   set I := (extractorInput c π L).toArray with hI
-  have hend := tape_entries_end c π L hs
-  have hcnt : (I.getD posL 0).toNat = L.length := by
-    rw [hI, getD_toArray, tape_getD_posL c π L hs, toNat_toWord (by
+  have hend := tape_entries_end4 c π L hs
+  have hcnt : (I.getD pL 0).toNat = L.length := by
+    rw [hI, getD_toArray, tape_getD_posL4 c π L hs, toNat_toWord (by
       have := length_logEntries L
       have h5 : 5 * L.length ≤ entryOff L L.length := by
         rwa [entries_length, ← entryOff_length] at this
       omega)]
-  have hpos : ∀ j < L.length, posL + 1 + entryOff L j < 2 ^ 64 ∧
-      posL + 1 + entryOff L (j + 1) = posL + 1 + entryOff L j + 5 +
-        (ceil8 (I.getD (posL + 1 + entryOff L j) 0)).toNat := fun j hj => by
+  have hpos : ∀ j < L.length, pL + 1 + entryOff L j < 2 ^ 64 ∧
+      pL + 1 + entryOff L (j + 1) = pL + 1 + entryOff L j + 5 +
+        (ceil8 (I.getD (pL + 1 + entryOff L j) 0)).toNat := fun j hj => by
     have hq' := hq _ (List.getElem_mem hj)
     have hend' : entryOff L (j + 1) ≤ entryOff L L.length := by
       rw [entryOff_length]; exact entryOff_le_sum L (j + 1)
     rw [entryOff_succ L hj] at hend' ⊢
-    rw [hI, getD_toArray, tape_entry c π L hs hj, toNat_ceil8 hq']
+    rw [hI, getD_toArray, tape_entry4 c π L hs hj, toNat_ceil8 hq']
     simp only [qWords] at hend' ⊢
     omega
-  have w0 : WF (.seq (.blk [.const rP (toWord (posL + 1))]) (readAt rN posL)) := by
-    simp +decide only [readAt, WF, Prim.dst, rP, rN, rA, and_true]
+  have w0 : WF (.seq (.blk [.const rP (toWord (pL + 1))]) (readAt rN pL)) := by
+    simp +decide [readAt, WF, Prim.dst, rP, rN, rA, and_true]
   have hM1 := inv_sem I w0 hM
   have hs1 := hM1.1
   simp only [regs] at hs1
-  have hn1 : rd (semXIR I (.seq (.blk [.const rP (toWord (posL + 1))]) (readAt rN posL)) s).M rN =
-      I.getD posL 0 :=
-    rd_seq_readAt I _ s (by simp +decide only [WF, Prim.dst, rP]) hM (by decide)
-      (by simp only [posL]; omega)
-  have hp1 : rd (semXIR I (.seq (.blk [.const rP (toWord (posL + 1))]) (readAt rN posL)) s).M rP =
-      toWord (posL + 1) := by
+  have hn1 : rd (semXIR I (.seq (.blk [.const rP (toWord (pL + 1))]) (readAt rN pL)) s).M rN =
+      I.getD pL 0 :=
+    rd_seq_readAt I _ s (by simp +decide [WF, Prim.dst, rP]) hM (by decide)
+      (by omega)
+  have hp1 : rd (semXIR I (.seq (.blk [.const rP (toWord (pL + 1))]) (readAt rN pL)) s).M rP =
+      toWord (pL + 1) := by
     have := hM.1; simp only [regs] at this
     simp only [readAt, semXIR, runPrims, List.foldl, Prim.run, rP, rN, rA]
     simp (disch := first | decide | omega | (simp only [size_set]; omega)) [rd_set_self, rd_set_ne]
   rw [cntIR, semXIR_seq, semXIR_seq]
-  generalize semXIR I (.seq (.blk [.const rP (toWord (posL + 1))]) (readAt rN posL)) s = s1
+  generalize semXIR I (.seq (.blk [.const rP (toWord (pL + 1))]) (readAt rN pL)) s = s1
     at hM1 hs1 hn1 hp1
   have hc : rCW < s1.M.size := by simp only [rCW]; omega
   have e : semXIR I (.loopT rCW rN ⟨0, 1, 5⟩ cntBody) s1 = iterL (semXIR I cntBody) rCW L.length
@@ -104,9 +104,9 @@ theorem cnt_sem (c : Digest) (π : Proof) (L : Log) (hs : π.size = piSize)
   rw [e]
   have hE : Inv (entryT rCW rN s1.M) := inv_of_frame hM1 (size_entryT ..)
     fun i hi => entryT_frame _ (by simp only [rCW]; omega)
-  have hEp : rd (entryT rCW rN s1.M) rP = toWord (posL + 1 + entryOff L 0) := by
+  have hEp : rd (entryT rCW rN s1.M) rP = toWord (pL + 1 + entryOff L 0) := by
     rw [entryT_frame _ (by decide), hp1]; rfl
-  have hP := cntLoop I L.length (fun j => posL + 1 + entryOff L j) hpos L.length 0
+  have hP := cntLoop I L.length (fun j => pL + 1 + entryOff L j) hpos L.length 0
     ⟨entryT rCW rN s1.M, s1.o⟩ (by omega) hE hEp
   have hM2 := iterL_inv (f := semXIR I cntBody) (c := rCW) (by decide)
     (fun s h => inv_sem I wf_cntBody h) L.length ⟨entryT rCW rN s1.M, s1.o⟩ hE
@@ -116,22 +116,22 @@ theorem cnt_sem (c : Digest) (π : Proof) (L : Log) (hs : π.size = piSize)
   simp only [semXIR, runPrims, List.foldl, Prim.run]
   rw [rd_set_self (by simp only [size_set, rCn5]; omega), rd_set_self (by simp only [rKd]; omega),
     rd_set_ne (by decide), hP, sub_toWord' (by omega) (by omega),
-    show posL + 1 + entryOff L L.length - (posL + 1) = wordsOf L by
+    show pL + 1 + entryOff L L.length - (pL + 1) = wordsOf L by
       rw [entryOff_length]; simp only [wordsOf]; omega]
 
-/-- `cntIR` leaves the heap alone. -/
-theorem cnt_heap (I : Array Word) (s : St) (hM : Inv s.M) {y : ℕ} (hy : regs ≤ y) :
-    rd (semXIR I cntIR s).M y = rd s.M y := by
-  have lo1 : Lo (.seq (.blk [.const rP (toWord (posL + 1))]) (readAt rN posL)) := by
-    simp +decide only [Lo, readAt, Prim.dst, regs, rP, rN, rA, and_true]
-  have lob : Lo cntBody := by simp +decide only [Lo, cntBody, ceil8Ps, Prim.dst, regs, rP, rQL, rT1,
+/-- `(cntIR pL)` leaves the heap alone. -/
+theorem cnt_heap (pL : ℕ) (I : Array Word) (s : St) (hM : Inv s.M) {y : ℕ} (hy : regs ≤ y) :
+    rd (semXIR I (cntIR pL) s).M y = rd s.M y := by
+  have lo1 : Lo (.seq (.blk [.const rP (toWord (pL + 1))]) (readAt rN pL)) := by
+    simp +decide [Lo, readAt, Prim.dst, regs, rP, rN, rA, and_true]
+  have lob : Lo cntBody := by simp +decide [Lo, cntBody, ceil8Ps, Prim.dst, regs, rP, rQL, rT1,
     rT2, rKc, and_true, List.cons_append, List.nil_append]
-  have w1 : WF (.seq (.blk [.const rP (toWord (posL + 1))]) (readAt rN posL)) := by
-    simp +decide only [readAt, WF, Prim.dst, rP, rN, rA, and_true]
+  have w1 : WF (.seq (.blk [.const rP (toWord (pL + 1))]) (readAt rN pL)) := by
+    simp +decide [readAt, WF, Prim.dst, rP, rN, rA, and_true]
   rw [cntIR, semXIR_seq, semXIR_seq]
   have hM1 := inv_sem I w1 hM
   have h1 := hframe I _ s lo1 y hy
-  generalize semXIR I (.seq (.blk [.const rP (toWord (posL + 1))]) (readAt rN posL)) s = s1 at hM1 h1
+  generalize semXIR I (.seq (.blk [.const rP (toWord (pL + 1))]) (readAt rN pL)) s = s1 at hM1 h1
   simp only [regs] at hy
   have hE : Inv (entryT rCW rN s1.M) := inv_of_frame hM1 (size_entryT ..)
     fun i hi => entryT_frame _ (by simp only [rCW]; omega)
@@ -145,12 +145,12 @@ theorem cnt_heap (I : Array Word) (s : St) (hM : Inv s.M) {y : ℕ} (hy : regs �
       rintro q (rfl | rfl) <;> simp only [Prim.dst, rKd, rCn5] <;> omega) _, h2,
     entryT_frame _ (by simp only [rCW]; omega), h1]
 
-theorem cnt_regs (I : Array Word) (s : St) (hM : Inv s.M) {r : ℕ} (hr : r < regs)
+theorem cnt_regs (pL : ℕ) (I : Array Word) (s : St) (hM : Inv s.M) {r : ℕ} (hr : r < regs)
     (hw : r ≠ rP ∧ r ≠ rN ∧ r ≠ rA ∧ r ≠ rCW ∧ r ≠ rQL ∧ r ≠ rT1 ∧ r ≠ rT2 ∧ r ≠ rKc ∧ r ≠ rKd ∧
-      r ≠ rCn5) : rd (semXIR I cntIR s).M r = rd s.M r := by
+      r ≠ rCn5) : rd (semXIR I (cntIR pL) s).M r = rd s.M r := by
   obtain ⟨a, b, c, d, e, f, g, k, l, m⟩ := hw
-  refine frame I cntIR s wf_cntIR hM r hr ?_
-  simp +decide only [cntIR, cntBody, readAt, ceil8Ps, Writes, Prim.dst, List.mem_cons,
+  refine frame I (cntIR pL) s (wf_cntIR pL) hM r hr ?_
+  simp +decide [cntIR, cntBody, readAt, ceil8Ps, Writes, Prim.dst, List.mem_cons,
     List.mem_nil_iff, exists_eq_or_imp, exists_eq_left, or_false, List.cons_append, List.nil_append]
   simp only [rP, rN, rA, rCW, rQL, rT1, rT2, rKc, rKd, rCn5] at *
   omega
@@ -227,17 +227,17 @@ def SeedOK (sd : XIR) (I : Array Word) (Q : ByteArray) : Prop :=
     (∀ y, regs ≤ y → (y < hB ∨ hB + 16 ≤ y) → rd (semXIR I sd s).M y = rd s.M y)
 
 
-theorem startPs_vals (M : Mem) (hs : regs ≤ M.size) :
-    rd (runPrims startPs M) rWp = toWord (posL + 1) ∧ rd (runPrims startPs M) rEo = 0 ∧
-    rd (runPrims startPs M) rPi = toWord 0 ∧ rd (runPrims startPs M) rTl = toWord 119 ∧
-    rd (runPrims startPs M) rTh = toWord 15 ∧ rd (runPrims startPs M) rTo = toWord 0 := by
+theorem startPs_vals (pL : ℕ) (M : Mem) (hs : regs ≤ M.size) :
+    rd (runPrims (startPs pL) M) rWp = toWord (pL + 1) ∧ rd (runPrims (startPs pL) M) rEo = 0 ∧
+    rd (runPrims (startPs pL) M) rPi = toWord 0 ∧ rd (runPrims (startPs pL) M) rTl = toWord 119 ∧
+    rd (runPrims (startPs pL) M) rTh = toWord 15 ∧ rd (runPrims (startPs pL) M) rTo = toWord 0 := by
   simp only [regs] at hs
   simp only [startPs, runPrims, List.foldl, Prim.run]
   simp (disch := first | decide | omega | (simp only [size_set]; exact Nat.lt_of_lt_of_le (m := 256) (by decide) (by assumption)) | exact Nat.lt_of_lt_of_le (m := 256) (by decide) (by assumption)) only [rd_set_self, rd_set_ne]
   refine ⟨?_, ?_, ?_, ?_, ?_, ?_⟩ <;> first | trivial | rfl
 
-theorem startPs_frame (M : Mem) {i : ℕ} (h : i ≠ rWp ∧ i ≠ rEo ∧ i ≠ rPi ∧ i ≠ rTl ∧ i ≠ rTh ∧
-    i ≠ rTo ∧ i ≠ rMt) : rd (runPrims startPs M) i = rd M i := by
+theorem startPs_frame (pL : ℕ) (M : Mem) {i : ℕ} (h : i ≠ rWp ∧ i ≠ rEo ∧ i ≠ rPi ∧ i ≠ rTl ∧ i ≠ rTh ∧
+    i ≠ rTo ∧ i ≠ rMt) : rd (runPrims (startPs pL) M) i = rd M i := by
   obtain ⟨a, b, c, d, e, f, g⟩ := h
   apply rd_runPrims_of_not_writes
   simp only [startPs, List.mem_cons, List.mem_nil_iff, or_false]
@@ -248,7 +248,7 @@ theorem startPs_frame (M : Mem) {i : ℕ} (h : i ≠ rWp ∧ i ≠ rEo ∧ i ≠
 /-- **The chain scan, end to end**: on a domain tape of a SNARK proof, with a table that realises
 the targets and a seed block that writes the seed's words, the answers at `ansB + 4q` are the
 forward scan's; the heap outside `[chB, chEnd)` is kept. -/
-theorem chainIR_sem (c : Digest) (π : Proof) (L : Log) (hs : π.size = piSize)
+theorem chainIR_sem {pL : ℕ} (c : Digest) (π : Proof) (L : Log) (hs : 5 + (π.size + 7) / 8 = pL)
     (hq : ∀ e ∈ L, e.1.size < 2 ^ 64) (ht : (extractorInput c π L).length ≤ 2 ^ 64)
     {T : ℕ → Digest → ByteArray} {N : ℕ} (hN : N < 2 ^ 9) {tab : List Word} {sd : XIR}
     {st₀ : Digest} (hT : TabW (extractorInput c π L).toArray T N tab)
@@ -256,23 +256,23 @@ theorem chainIR_sem (c : Digest) (π : Proof) (L : Log) (hs : π.size = piSize)
     (s : St) (hM : Inv s.M) (hsz : chEnd ≤ s.M.size) :
     (scanC T N st₀ L).1 ≤ N ∧
     (∀ q < (scanC T N st₀ L).1, ∀ m < 4,
-      rd (semXIR (extractorInput c π L).toArray (chainIR N tab sd) s).M (ansB + 4 * q + m) =
+      rd (semXIR (extractorInput c π L).toArray (chainIR pL N tab sd) s).M (ansB + 4 * q + m) =
         (packBytes ((scanC T N st₀ L).2.2.getD q default).toList).getD m 0) ∧
     (∀ y, regs ≤ y → (y < chB ∨ chEnd ≤ y) →
-      rd (semXIR (extractorInput c π L).toArray (chainIR N tab sd) s).M y = rd s.M y) := by
+      rd (semXIR (extractorInput c π L).toArray (chainIR pL N tab sd) s).M y = rd s.M y) := by
   set I := (extractorInput c π L).toArray with hI
   have hW : wordsOf L < 2 ^ 64 := by
-    have := tape_entries_end c π L hs
+    have := tape_entries_end4 c π L hs
     rw [entryOff_length] at this
-    simp only [wordsOf]; simp only [posL] at this; omega
+    simp only [wordsOf]; omega
   have htl : tab.length = 4 * (N + 1) := hT.1
   -- the count
   have c1 := cnt_sem c π L hs hq ht s hM
-  have hh1 : ∀ y, regs ≤ y → rd (semXIR I cntIR s).M y = rd s.M y := fun y hy => cnt_heap I s hM hy
-  have hM1 := inv_sem I wf_cntIR hM
-  have z1 := size_sem I cntIR s
+  have hh1 : ∀ y, regs ≤ y → rd (semXIR I (cntIR pL) s).M y = rd s.M y := fun y hy => cnt_heap pL I s hM hy
+  have hM1 := inv_sem I (wf_cntIR pL) hM
+  have z1 := size_sem I (cntIR pL) s
   rw [chainIR, semXIR_seq, semXIR_seq, semXIR_seq]
-  generalize semXIR I cntIR s = s1 at c1 hh1 hM1 z1
+  generalize semXIR I (cntIR pL) s = s1 at c1 hh1 hM1 z1
   -- the table
   obtain ⟨t1, t2, hM2, z2⟩ := storesIR_sem I tab chB s1 hM1 (by simp only [chB_eq, regs]; omega)
     (by rw [z1, htl]; simp only [chB_eq, chEnd] at hsz ⊢; omega) (by rw [htl, chB_eq]; omega)
@@ -289,16 +289,16 @@ theorem chainIR_sem (c : Digest) (π : Proof) (L : Log) (hs : π.size = piSize)
   generalize semXIR I sd s2 = s3 at d1 d2 d3 hM3 z3
   -- the start
   have hs3 := hM3.1
-  obtain ⟨v1, v2, v3, v4, v5, v6⟩ := startPs_vals s3.M hs3
-  have e4 : semXIR I (.blk startPs) s3 = ⟨runPrims startPs s3.M, s3.o⟩ := rfl
+  obtain ⟨v1, v2, v3, v4, v5, v6⟩ := startPs_vals pL s3.M hs3
+  have e4 : semXIR I (.blk (startPs pL)) s3 = ⟨runPrims (startPs pL) s3.M, s3.o⟩ := rfl
   rw [e4]
-  have hM4 : Inv (runPrims startPs s3.M) := inv_runPrims (by
+  have hM4 : Inv (runPrims (startPs pL) s3.M) := inv_runPrims (by
     simp [startPs, Prim.dst, rWp, rEo, rPi, rTl, rTh, rTo, rMt]) hM3
-  have hh4 : ∀ y, regs ≤ y → rd (runPrims startPs s3.M) y = rd s3.M y := fun y hy =>
-    startPs_frame _ (by simp only [regs] at hy; simp only [rWp, rEo, rPi, rTl, rTh, rTo, rMt]; omega)
-  have c4 : rd (runPrims startPs s3.M) rCn5 = toWord (wordsOf L) := by
-    rw [startPs_frame _ (by decide), d2, c2]
-  generalize hM4' : runPrims startPs s3.M = M4 at v1 v2 v3 v4 v5 v6 hM4 hh4 c4
+  have hh4 : ∀ y, regs ≤ y → rd (runPrims (startPs pL) s3.M) y = rd s3.M y := fun y hy =>
+    startPs_frame pL _ (by simp only [regs] at hy; simp only [rWp, rEo, rPi, rTl, rTh, rTo, rMt]; omega)
+  have c4 : rd (runPrims (startPs pL) s3.M) rCn5 = toWord (wordsOf L) := by
+    rw [startPs_frame pL _ (by decide), d2, c2]
+  generalize hM4' : runPrims (startPs pL) s3.M = M4 at v1 v2 v3 v4 v5 v6 hM4 hh4 c4
   -- the loop
   have hc : rCC < M4.size := by have := hM4.1; simp only [regs] at this; simp only [rCC]; omega
   have e5 : semXIR I (.loopT rCC rCn5 ⟨0, 1, 1⟩ (wordIR N)) ⟨M4, s3.o⟩ =
@@ -344,7 +344,7 @@ theorem chainIR_sem (c : Digest) (π : Proof) (L : Log) (hs : π.size = piSize)
   have hent := entriesAt_tape c π L hs hq ht 0 (Nat.zero_le _)
   simp only [entryOff, List.take_zero, List.map_nil, List.sum_nil, Nat.add_zero,
     List.drop_zero] at hent
-  obtain ⟨g1, -, -⟩ := scan_sem hTab hN L (0, st₀, []) ⟨entryT rCC rCn5 M4, s3.o⟩ (posL + 1) hst
+  obtain ⟨g1, -, -⟩ := scan_sem hTab hN L (0, st₀, []) ⟨entryT rCC rCn5 M4, s3.o⟩ (pL + 1) hst
     (by rw [ef _ (by decide), v1]) (by rw [ef _ (by decide), v2]) hent
   refine ⟨g1.pN, fun q hq m hm => g1.ans q hq m hm, fun y hy hyc => ?_⟩
   have y1 : y < hB ∨ hB + 16 ≤ y := by
@@ -367,3 +367,4 @@ theorem chainIR_sem (c : Digest) (π : Proof) (L : Log) (hs : π.size = piSize)
     hh1 y hy]
 
 end FR.X
+

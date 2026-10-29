@@ -16,6 +16,10 @@ import FRXMerge
   the log entries' tape positions, sorted by (answer, position).
 
 (S-H2-RESULT, Parts 5 and 6.)
+
+**Parameters (S-H4 pass 5).** The sort and the index take the index base `bX` and the tape word `pL`
+of `|L|` (`sortIR4`, `idxIR4`, `idxIR4_sorted`); 3.x's `idxIR_sorted` is the instance at `memX`,
+`posL`.
 -/
 
 namespace FR.X
@@ -555,40 +559,176 @@ theorem stepLoop (I : Array Word) {S D n w : ℕ} {src : ℕ → Word} :
     exact stepLoop I m _ _ (by rw [size_decS, size_sem]; exact hL) (h1.decS hL.rS hL.rD)
       (by rw [h2]; omega)
 
+/-! ## The sort: 64 passes -/
+
+theorem iterL_succ' (f : St → St) (c : ℕ) :
+    ∀ (k : ℕ) (s : St), iterL f c (k + 1) s = decS c (f (iterL f c k s))
+  | 0, _ => rfl
+  | k + 1, s => iterL_succ' f c k (decS c (f s))
+
+theorem wseq_le (n : ℕ) : ∀ p, wseq n p ≤ n + 1
+  | 0 => by simp [wseq]
+  | p + 1 => by simp only [wseq]; omega
+
+theorem wseq_pos {n : ℕ} (hn : 0 < n) (p : ℕ) : 0 < wseq n p := by
+  rw [wseq_eq hn]; exact lt_min (Nat.two_pow_pos p) hn
+
+/-- The count of the sort's loop. -/
+theorem entryK64 {M : Mem} (hM : Inv M) (hN : rd M rNP = 64) :
+    rd (entryK rCP rNP 64 M) rCP = 64 := by
+  have hs := hM.1
+  simp only [regs] at hs
+  unfold entryK
+  dsimp only
+  have h1 : rd (M.setIfInBounds rCP 64) rNP = 64 := by rw [rd_set_ne (by decide), hN]
+  have h2 : rd (M.setIfInBounds rCP 64) rCP = 64 := rd_set_self (by simp only [rCP]; omega)
+  rw [h1, h2, rd_set_self (by simp only [size_set, cTmp]; omega)]
+  rw [if_pos (by decide), rd_set_ne (by decide), h2]
+
+/-! ## The log index after walk and sort -/
+
+theorem entryOff_lt (L : Log) {a b : ℕ} (h : a < b) (hb : b ≤ L.length) :
+    entryOff L a < entryOff L b := by
+  induction b with
+  | zero => omega
+  | succ b ih =>
+    rw [entryOff_succ L (by omega)]
+    have : 5 ≤ qWords L[b] := Nat.le_add_right _ _
+    rcases Nat.lt_succ_iff_lt_or_eq.1 h with h' | h'
+    · have := ih h' (by omega); omega
+    · subst h'; omega
+
+/-! ## The sort and the index at a parametric base and log position
+
+The index base `bX` and the tape word `pL` of `|L|` are parameters (S-H4 pass 5: one
+copy of each proof). 3.x's programs and statements are the instances at `bX = memX`,
+`pL = posL` (below); revision 4.1 instantiates them at its own base and log position. -/
+
+section Idx
+
+variable (bX pL : ℕ)
+
+/-- Before a pass: empty runs, output index `0`, the step count `|L|`. -/
+def passPre4 : XIR :=
+  .seq (.blk [.const rI 0, .const rIE 0, .const rJ 0, .const rJE 0, .const rKk 0])
+    (readAt rNS pL)
+
+
+/-- **One merge pass.** -/
+def passIR4 : XIR := .seq (.seq (passPre4 pL) (.loopT rCS rNS ⟨0, 1, 5⟩ stepIR)) (.blk swapPs)
+
+
+/-- Before the sort: `n`, `w = 1`, the bases, the pass count. -/
+def sortPre4 : XIR :=
+  .seq (readAt rN pL) (.blk [.const rW2 1, .const rSrc (BitVec.ofNat 64 bX),
+    .op .add rDst rSrc rN, .const rNP 64])
+
+
+/-- **The sort**: 64 passes. -/
+def sortIR4 : XIR := .seq (sortPre4 bX pL) (.loopK rCP rNP 64 (passIR4 pL))
+
+
+/-- Walk and sort. -/
+def idxIR4 : XIR := .seq (walkIR4 bX pL) (sortIR4 bX pL)
+
+
+/-- The source base of pass `p`: `X` on even passes, `Y = X + n` on odd ones. -/
+def baseX4 (n p : ℕ) : ℕ := if p % 2 = 0 then bX else bX + n
+
+
+theorem baseX4_ctl (n : ℕ) : baseX4 bX n 0 = bX ∧ baseX4 bX n 1 = bX + n := ⟨rfl, rfl⟩
+
+
+theorem baseX4_two (n p : ℕ) : baseX4 bX n (p + 1 + 1) = baseX4 bX n p := by
+  unfold baseX4
+  by_cases h : p % 2 = 0
+  · rw [if_pos (by omega), if_pos h]
+  · rw [if_neg (by omega), if_neg h]
+
+
+theorem wf_idxIR4 : WF (idxIR4 bX pL) := by
+  simp +decide [idxIR4, walkIR4, walkPre4, walkBody, sortIR4, sortPre4, passIR4, passPre4, swapPs,
+    stepIR, blockIR, cmpIR, cmpWord, aposIR, ceil8Ps, minPs, readAt, WF, Writes, Prim.dst, rA, rN, rP,
+    rXA, rQL, rT1, rT2, rKc, rCW, rW2, rSrc, rDst, rI, rIE, rJ, rJE, rKk, rAd, rX, rY, rPa, rPb, rKa,
+    rKb, rF, rG, rH, rCP, rNP, rCS, rNS, rV, regs, cTmp, cOne]
+
+
+/-- The index's cost (3.x's `cost_logIR`: the constants do not change it). -/
+theorem cost_idxIR4 (t : ℕ) : cost (idxIR4 bX pL) t = 2592 + t / 5 * 11871 := by
+  simp only [idxIR4, walkIR4, walkPre4, walkBody, sortIR4, sortPre4, passIR4, passPre4, swapPs,
+    stepIR, blockIR, cmpIR, cmpWord, aposIR, ceil8Ps, minPs, readAt, cost, blkSteps,
+    List.length_cons, List.length_nil, List.length_append, Aff.eval, Nat.one_mul]
+  norm_num
+  omega
+
+
+theorem sizeIR_idxIR4 : sizeIR (idxIR4 bX pL) = sizeIR logIR := by
+  simp only [idxIR4, logIR, idxIR, walkIR4, walkPre4, walkIR, walkPre, sortIR4, sortPre4, sortIR,
+    sortPre, passIR4, passPre4, passIR, passPre, readAt, sizeIR, List.length_cons, List.length_nil]
+
+
+theorem outs_idxIR4 (t : ℕ) : outs (idxIR4 bX pL) t = 0 := by
+  simp [idxIR4, walkIR4, walkPre4, walkBody, sortIR4, sortPre4, passIR4, passPre4, swapPs, stepIR,
+    blockIR, cmpIR, cmpWord, aposIR, readAt, outs]
+
+
+/-- **The index's loop bounds**, on a tape whose word `pL < 2^64` is a count of at most `t / 5`
+(3.x's `safe_logIR`). -/
+theorem safe_idxIR4 {I : Array Word} {t : ℕ} (hp : pL < 2 ^ 64) (h : (I.getD pL 0).toNat ≤ t / 5) :
+    Safe I t (idxIR4 bX pL) := by
+  unfold idxIR4 walkIR4 sortIR4 passIR4
+  have hcnt : ∀ (p : XIR) (d : ℕ), WF p → d < regs → ∀ s : St, Inv s.M →
+      (rd (semXIR I (.seq p (readAt d pL)) s).M d).toNat ≤ Aff.eval ⟨0, 1, 5⟩ t :=
+    fun p d hP hd s hM => by
+      rw [rd_seq_readAt I p s hP hM hd hp]
+      simpa [Aff.eval] using h
+  refine .seq (.loopT (safe_of_noLoopT (by simp [walkPre4, readAt, NoLoopT]))
+    (hcnt _ rN (by simp +decide [WF, Prim.dst, rP, rXA]) (by simp [rN, regs]))
+    (safe_of_noLoopT (by simp [walkBody, NoLoopT]))) (.seq (safe_of_noLoopT (by
+      simp [sortPre4, readAt, NoLoopT])) (.loopK (.seq (.loopT (safe_of_noLoopT (by
+      simp [passPre4, readAt, NoLoopT])) (hcnt _ rNS (by simp +decide only [WF, Prim.dst, rI, rIE,
+        rJ, rJE, rKk])
+      (by simp [rNS, regs])) (safe_of_noLoopT (by
+        simp [stepIR, blockIR, cmpIR, cmpWord, aposIR, NoLoopT]))) (.blk _))))
+
+
+variable {bX pL} (hbX : regs ≤ bX) (hbX2 : bX ≤ 2 ^ 60) (hpL : pL ≤ 2 ^ 60)
+include hbX hbX2 hpL
+
 /-- **One pass**: the destination holds `passF` of the source; the bases swap and
 `w := min(2w, n)`. -/
-theorem passIR_sem (I : Array Word) (s : St) (hM : Inv s.M) {S D n w : ℕ}
-    (hL : Lay S D n w s.M.size) (hn : I.getD posL 0 = toWord n)
+theorem passIR4_sem (I : Array Word) (s : St) (hM : Inv s.M) {S D n w : ℕ}
+    (hL : Lay S D n w s.M.size) (hn : I.getD pL 0 = toWord n)
     (hS : rd s.M rSrc = toWord S) (hD : rd s.M rDst = toWord D) (hW : rd s.M rW2 = toWord w)
     (hN : rd s.M rN = toWord n) :
-    Inv (semXIR I passIR s).M ∧ rd (semXIR I passIR s).M rSrc = toWord D ∧
-    rd (semXIR I passIR s).M rDst = toWord S ∧
-    rd (semXIR I passIR s).M rW2 = toWord (min (2 * w) n) ∧ rd (semXIR I passIR s).M rN = toWord n ∧
-    ∀ a < n, rd (semXIR I passIR s).M (D + a) =
+    Inv (semXIR I (passIR4 pL) s).M ∧ rd (semXIR I (passIR4 pL) s).M rSrc = toWord D ∧
+    rd (semXIR I (passIR4 pL) s).M rDst = toWord S ∧
+    rd (semXIR I (passIR4 pL) s).M rW2 = toWord (min (2 * w) n) ∧ rd (semXIR I (passIR4 pL) s).M rN = toWord n ∧
+    ∀ a < n, rd (semXIR I (passIR4 pL) s).M (D + a) =
       passF (keyLt I) (fun a => rd s.M (S + a)) n w (fun a => rd s.M (D + a)) a := by
   have hs := hM.1
   have Lbn := hL.bn
   have Lbw := hL.bw
   simp only [regs] at hs
-  have hP0 : WF passPre := by simp +decide only [passPre, readAt, WF, Prim.dst, rI, rIE, rJ, rJE,
+  have hP0 : WF (passPre4 pL) := by simp +decide [passPre4, readAt, WF, Prim.dst, rI, rIE, rJ, rJE,
     rKk, rNS, rA, and_true]
-  have hlo0 : Lo passPre := by
-    simp +decide only [Lo, passPre, readAt, Prim.dst, regs, rI, rIE, rJ, rJE, rKk, rNS, rA,
+  have hlo0 : Lo (passPre4 pL) := by
+    simp +decide [Lo, passPre4, readAt, Prim.dst, regs, rI, rIE, rJ, rJE, rKk, rNS, rA,
       and_true]
-  have hcnt : rd (semXIR I passPre s).M rNS = toWord n := by
-    rw [passPre, rd_seq_readAt I _ s (by simp +decide only [WF, Prim.dst, rI, rIE, rJ, rJE, rKk]) hM
-      (by decide) (by simp only [posL]; omega), hn]
-  have hR0 : Regs (semXIR I passPre s).M S D n w ⟨0, 0, 0, 0, 0, 0, fun a => rd s.M (D + a)⟩ := by
+  have hcnt : rd (semXIR I (passPre4 pL) s).M rNS = toWord n := by
+    rw [passPre4, rd_seq_readAt I _ s (by simp +decide only [WF, Prim.dst, rI, rIE, rJ, rJE, rKk]) hM
+      (by decide) (by omega), hn]
+  have hR0 : Regs (semXIR I (passPre4 pL) s).M S D n w ⟨0, 0, 0, 0, 0, 0, fun a => rd s.M (D + a)⟩ := by
     refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩ <;>
-    simp only [passPre, readAt, semXIR, runPrims, List.foldl, Prim.run] <;>
+    simp only [passPre4, readAt, semXIR, runPrims, List.foldl, Prim.run] <;>
     simp (disch := first | decide | (simp only [size_set, rI, rIE, rJ, rJE, rKk, rNS, rA]; omega))
       only [rd_set_self, rd_set_ne] <;>
     first | exact hW | exact hN | exact hS | exact hD | rfl
   have hM0 := inv_sem I hP0 hM
   have hH0 := hframe I _ s hlo0
-  have hz0 := size_sem I passPre s
-  rw [passIR, semXIR_seq, semXIR_seq]
-  generalize semXIR I passPre s = s0 at hcnt hR0 hM0 hH0 hz0
+  have hz0 := size_sem I (passPre4 pL) s
+  rw [passIR4, semXIR_seq, semXIR_seq]
+  generalize semXIR I (passPre4 pL) s = s0 at hcnt hR0 hM0 hH0 hz0
   have hs0 := hM0.1
   simp only [regs] at hs0
   have e : semXIR I (.loopT rCS rNS ⟨0, 1, 5⟩ stepIR) s0 =
@@ -623,69 +763,31 @@ theorem passIR_sem (I : Array Word) (s : St) (hM : Inv s.M) {S D n w : ℕ}
   rw [minP_toWord (by omega) (by omega), two_mul]
 
 
-/-! ## The sort: 64 passes -/
-
-theorem iterL_succ' (f : St → St) (c : ℕ) :
-    ∀ (k : ℕ) (s : St), iterL f c (k + 1) s = decS c (f (iterL f c k s))
-  | 0, _ => rfl
-  | k + 1, s => iterL_succ' f c k (decS c (f s))
-
-theorem wseq_le (n : ℕ) : ∀ p, wseq n p ≤ n + 1
-  | 0 => by simp [wseq]
-  | p + 1 => by simp only [wseq]; omega
-
-theorem wseq_pos {n : ℕ} (hn : 0 < n) (p : ℕ) : 0 < wseq n p := by
-  rw [wseq_eq hn]; exact lt_min (Nat.two_pow_pos p) hn
-
-/-- The source base of pass `p`: `X` on even passes, `Y = X + n` on odd ones. -/
-def baseX (n p : ℕ) : ℕ := if p % 2 = 0 then memX else memX + n
-
-theorem baseX_ctl (n : ℕ) : baseX n 0 = memX ∧ baseX n 1 = memX + n := ⟨rfl, rfl⟩
-
-theorem baseX_two (n p : ℕ) : baseX n (p + 1 + 1) = baseX n p := by
-  unfold baseX
-  by_cases h : p % 2 = 0
-  · rw [if_pos (by omega), if_pos h]
-  · rw [if_neg (by omega), if_neg h]
-
-/-- The count of the sort's loop. -/
-theorem entryK64 {M : Mem} (hM : Inv M) (hN : rd M rNP = 64) :
-    rd (entryK rCP rNP 64 M) rCP = 64 := by
-  have hs := hM.1
-  simp only [regs] at hs
-  unfold entryK
-  dsimp only
-  have h1 : rd (M.setIfInBounds rCP 64) rNP = 64 := by rw [rd_set_ne (by decide), hN]
-  have h2 : rd (M.setIfInBounds rCP 64) rCP = 64 := rd_set_self (by simp only [rCP]; omega)
-  rw [h1, h2, rd_set_self (by simp only [size_set, cTmp]; omega)]
-  rw [if_pos (by decide), rd_set_ne (by decide), h2]
-
-/-- **The sort's semantics**: on a heap whose `X[0..n)` holds distinct words, `sortIR` leaves in
+/-- **The sort's semantics**: on a heap whose `X[0..n)` holds distinct words, `sortIR4` leaves in
 `X[0..n)` exactly those words, strictly sorted by `keyLt`. -/
-theorem sortIR_sem (I : Array Word) (s : St) (hM : Inv s.M) {n : ℕ}
-    (hn : I.getD posL 0 = toWord n) (hn2 : n < 2 ^ 62) (hsz : memX + n + n ≤ s.M.size)
-    (hinj : ∀ a b, a < n → b < n → rd s.M (memX + a) = rd s.M (memX + b) → a = b) :
+theorem sortIR4_sem (I : Array Word) (s : St) (hM : Inv s.M) {n : ℕ}
+    (hn : I.getD pL 0 = toWord n) (hn2 : n < 2 ^ 62) (hsz : bX + n + n ≤ s.M.size)
+    (hinj : ∀ a b, a < n → b < n → rd s.M (bX + a) = rd s.M (bX + b) → a = b) :
     (∀ a b, a < b → b < n →
-      keyLt I (rd (semXIR I sortIR s).M (memX + a)) (rd (semXIR I sortIR s).M (memX + b)) = true) ∧
-    (∀ a < n, ∃ c < n, rd (semXIR I sortIR s).M (memX + a) = rd s.M (memX + c)) ∧
-    (∀ c < n, ∃ a < n, rd (semXIR I sortIR s).M (memX + a) = rd s.M (memX + c)) := by
+      keyLt I (rd (semXIR I (sortIR4 bX pL) s).M (bX + a)) (rd (semXIR I (sortIR4 bX pL) s).M (bX + b)) = true) ∧
+    (∀ a < n, ∃ c < n, rd (semXIR I (sortIR4 bX pL) s).M (bX + a) = rd s.M (bX + c)) ∧
+    (∀ c < n, ∃ a < n, rd (semXIR I (sortIR4 bX pL) s).M (bX + a) = rd s.M (bX + c)) := by
   have hs := hM.1
-  have hm : memX = 2 ^ 26 := rfl
   simp only [regs] at hs
-  have hP0 : WF sortPre := by simp +decide only [sortPre, readAt, WF, Prim.dst, rN, rA, rW2, rSrc,
+  have hP0 : WF (sortPre4 bX pL) := by simp +decide [sortPre4, readAt, WF, Prim.dst, rN, rA, rW2, rSrc,
     rDst, rNP, and_true]
-  have hlo0 : Lo sortPre := by
-    simp +decide only [Lo, sortPre, readAt, Prim.dst, regs, rN, rA, rW2, rSrc, rDst, rNP, and_true]
-  -- the registers after `sortPre`
-  have h0 : rd (semXIR I sortPre s).M rN = toWord n ∧ rd (semXIR I sortPre s).M rW2 = toWord 1 ∧
-      rd (semXIR I sortPre s).M rSrc = toWord memX ∧
-      rd (semXIR I sortPre s).M rDst = toWord (memX + n) ∧ rd (semXIR I sortPre s).M rNP = 64 := by
-    have hN := rd_readAt I s hM (d := rN) (pos := posL) (by decide) (by simp only [posL]; omega)
-    have hM' := inv_sem I (P := readAt rN posL) (by simp +decide only [readAt, WF, Prim.dst, rN, rA,
+  have hlo0 : Lo (sortPre4 bX pL) := by
+    simp +decide [Lo, sortPre4, readAt, Prim.dst, regs, rN, rA, rW2, rSrc, rDst, rNP, and_true]
+  -- the registers after `(sortPre4 bX pL)`
+  have h0 : rd (semXIR I (sortPre4 bX pL) s).M rN = toWord n ∧ rd (semXIR I (sortPre4 bX pL) s).M rW2 = toWord 1 ∧
+      rd (semXIR I (sortPre4 bX pL) s).M rSrc = toWord bX ∧
+      rd (semXIR I (sortPre4 bX pL) s).M rDst = toWord (bX + n) ∧ rd (semXIR I (sortPre4 bX pL) s).M rNP = 64 := by
+    have hN := rd_readAt I s hM (d := rN) (pos := pL) (by decide) (by omega)
+    have hM' := inv_sem I (P := readAt rN pL) (by simp +decide [readAt, WF, Prim.dst, rN, rA,
       and_true]) hM
     rw [hn] at hN
-    rw [sortPre, semXIR_seq]
-    generalize semXIR I (readAt rN posL) s = s' at hN hM'
+    rw [sortPre4, semXIR_seq]
+    generalize semXIR I (readAt rN pL) s = s' at hN hM'
     have hs' := hM'.1
     simp only [regs] at hs'
     simp only [semXIR, runPrims, List.foldl, Prim.run]
@@ -698,12 +800,12 @@ theorem sortIR_sem (I : Array Word) (s : St) (hM : Inv s.M) {n : ℕ}
     · rw [hN]; exact add_toWord _ _
   have hM0 := inv_sem I hP0 hM
   have hH0 := hframe I _ s hlo0
-  have hz0 := size_sem I sortPre s
-  rw [sortIR, semXIR_seq]
-  generalize semXIR I sortPre s = s0 at h0 hM0 hH0 hz0
+  have hz0 := size_sem I (sortPre4 bX pL) s
+  rw [sortIR4, semXIR_seq]
+  generalize semXIR I (sortPre4 bX pL) s = s0 at h0 hM0 hH0 hz0
   obtain ⟨n0, w0, S0, D0, P0⟩ := h0
-  have e : semXIR I (.loopK rCP rNP 64 passIR) s0 =
-      iterL (semXIR I passIR) rCP 64 ⟨entryK rCP rNP 64 s0.M, s0.o⟩ := by
+  have e : semXIR I (.loopK rCP rNP 64 (passIR4 pL)) s0 =
+      iterL (semXIR I (passIR4 pL)) rCP 64 ⟨entryK rCP rNP 64 s0.M, s0.o⟩ := by
     simp only [semXIR, entryK64 hM0 P0]
     rfl
   rw [e]
@@ -713,54 +815,54 @@ theorem sortIR_sem (I : Array Word) (s : St) (hM : Inv s.M) {n : ℕ}
     fun i hi => hE i (by simp only [rCP]; omega) (by simp only [cTmp]; omega)
   generalize hS0 : (⟨entryK rCP rNP 64 s0.M, s0.o⟩ : St) = T at hE hME
   -- the pass invariant
-  have hLay : ∀ p, Lay (baseX n p) (baseX n (p + 1)) n (wseq n p) s.M.size := fun p => by
+  have hLay : ∀ p, Lay (baseX4 bX n p) (baseX4 bX n (p + 1)) n (wseq n p) s.M.size := fun p => by
     have := wseq_le n p
     refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, by omega, this, wseq_pos (p := p)⟩ <;>
-      unfold baseX <;> simp only [hm, regs] <;> split_ifs <;> omega
-  have hPI : ∀ p, Inv (iterL (semXIR I passIR) rCP p T).M ∧
-      (iterL (semXIR I passIR) rCP p T).M.size = s.M.size ∧
-      rd (iterL (semXIR I passIR) rCP p T).M rSrc = toWord (baseX n p) ∧
-      rd (iterL (semXIR I passIR) rCP p T).M rDst = toWord (baseX n (p + 1)) ∧
-      rd (iterL (semXIR I passIR) rCP p T).M rW2 = toWord (wseq n p) ∧
-      rd (iterL (semXIR I passIR) rCP p T).M rN = toWord n := by
+      unfold baseX4 <;> simp only [regs] at hbX ⊢ <;> split_ifs <;> omega
+  have hPI : ∀ p, Inv (iterL (semXIR I (passIR4 pL)) rCP p T).M ∧
+      (iterL (semXIR I (passIR4 pL)) rCP p T).M.size = s.M.size ∧
+      rd (iterL (semXIR I (passIR4 pL)) rCP p T).M rSrc = toWord (baseX4 bX n p) ∧
+      rd (iterL (semXIR I (passIR4 pL)) rCP p T).M rDst = toWord (baseX4 bX n (p + 1)) ∧
+      rd (iterL (semXIR I (passIR4 pL)) rCP p T).M rW2 = toWord (wseq n p) ∧
+      rd (iterL (semXIR I (passIR4 pL)) rCP p T).M rN = toWord n := by
     intro p
     induction p with
     | zero =>
       simp only [iterL]
       rw [← hS0]
       refine ⟨hME, by rw [size_entryK, hz0], ?_, ?_, ?_, ?_⟩
-      · rw [hE _ (by decide) (by decide), S0]; simp only [baseX, Nat.zero_mod, if_true]
-      · rw [hE _ (by decide) (by decide), D0]; simp only [baseX]; rfl
+      · rw [hE _ (by decide) (by decide), S0]; simp only [baseX4, Nat.zero_mod, if_true]
+      · rw [hE _ (by decide) (by decide), D0]; simp only [baseX4]; rfl
       · rw [hE _ (by decide) (by decide), w0]; rfl
       · rw [hE _ (by decide) (by decide), n0]
     | succ p ih =>
       obtain ⟨i1, i2, i3, i4, i5, i6⟩ := ih
-      obtain ⟨j1, j2, j3, j4, j5, -⟩ := passIR_sem I _ i1 (by rw [i2]; exact hLay p) hn i3 i4 i5 i6
+      obtain ⟨j1, j2, j3, j4, j5, -⟩ := passIR4_sem hbX hbX2 hpL I _ i1 (by rw [i2]; exact hLay p) hn i3 i4 i5 i6
       rw [iterL_succ']
       refine ⟨inv_of_frame j1 (size_decS ..) fun i hi => rd_decS (by simp only [rCP]; omega) _,
         by rw [size_decS, size_sem, i2], ?_, ?_, ?_, ?_⟩
       · rw [rd_decS (by decide), j2]
-      · exact (rd_decS (by decide) _).trans (j3.trans (congrArg toWord (baseX_two n p).symm))
+      · exact (rd_decS (by decide) _).trans (j3.trans (congrArg toWord (baseX4_two bX n p).symm))
       · exact (rd_decS (by decide) _).trans (j4.trans (by simp only [wseq]))
       · rw [rd_decS (by decide), j5]
-  have hX : ∀ p, ∀ a < n, rd (iterL (semXIR I passIR) rCP (p + 1) T).M (baseX n (p + 1) + a) =
-      passF (keyLt I) (fun a => rd (iterL (semXIR I passIR) rCP p T).M (baseX n p + a)) n (wseq n p)
-        (fun a => rd (iterL (semXIR I passIR) rCP p T).M (baseX n (p + 1) + a)) a := fun p a ha => by
+  have hX : ∀ p, ∀ a < n, rd (iterL (semXIR I (passIR4 pL)) rCP (p + 1) T).M (baseX4 bX n (p + 1) + a) =
+      passF (keyLt I) (fun a => rd (iterL (semXIR I (passIR4 pL)) rCP p T).M (baseX4 bX n p + a)) n (wseq n p)
+        (fun a => rd (iterL (semXIR I (passIR4 pL)) rCP p T).M (baseX4 bX n (p + 1) + a)) a := fun p a ha => by
     obtain ⟨i1, i2, i3, i4, i5, i6⟩ := hPI p
     have hL := hLay p
     rw [← i2] at hL
     rw [iterL_succ', rd_decS (by have := hL.rD; simp only [regs, rCP] at *; omega)]
-    exact (passIR_sem I _ i1 hL hn i3 i4 i5 i6).2.2.2.2.2 a ha
-  have hX0 : ∀ a < n, rd (iterL (semXIR I passIR) rCP 0 T).M (baseX n 0 + a) = rd s.M (memX + a) :=
+    exact (passIR4_sem hbX hbX2 hpL I _ i1 hL hn i3 i4 i5 i6).2.2.2.2.2 a ha
+  have hX0 : ∀ a < n, rd (iterL (semXIR I (passIR4 pL)) rCP 0 T).M (baseX4 bX n 0 + a) = rd s.M (bX + a) :=
     fun a ha => by
-      simp only [iterL, baseX, Nat.zero_mod, if_true]
-      rw [← hS0, hE _ (by simp only [rCP, hm]; omega) (by simp only [cTmp, hm]; omega),
-        hH0 _ (by simp only [regs, hm]; omega)]
+      simp only [iterL, baseX4, Nat.zero_mod, if_true]
+      rw [← hS0, hE _ (by simp only [rCP, regs] at hbX ⊢; omega) (by simp only [cTmp, regs] at hbX ⊢; omega),
+        hH0 _ (by simp only [regs] at hbX ⊢; omega)]
   obtain ⟨r1, r2, r3⟩ := passes_ok (keyLt_order I) (by omega)
-    (fun p a => rd (iterL (semXIR I passIR) rCP p T).M (baseX n p + a))
-    (fun p a => rd (iterL (semXIR I passIR) rCP p T).M (baseX n (p + 1) + a)) hX
+    (fun p a => rd (iterL (semXIR I (passIR4 pL)) rCP p T).M (baseX4 bX n p + a))
+    (fun p a => rd (iterL (semXIR I (passIR4 pL)) rCP p T).M (baseX4 bX n (p + 1) + a)) hX
     (fun a b ha hb h => hinj a b ha hb (by rwa [hX0 a ha, hX0 b hb] at h))
-  have hB64 : baseX n 64 = memX := if_pos (by decide)
+  have hB64 : baseX4 bX n 64 = bX := if_pos (by decide)
   simp only [hB64] at r1 r2 r3
   refine ⟨r1, fun a ha => ?_, fun c hc => ?_⟩
   · obtain ⟨c, hc, e⟩ := r2 a ha
@@ -769,43 +871,30 @@ theorem sortIR_sem (I : Array Word) (s : St) (hM : Inv s.M) {n : ℕ}
     exact ⟨a, ha, by rw [e, hX0 c hc]⟩
 
 
-/-! ## The log index after walk and sort -/
-
-theorem entryOff_lt (L : Log) {a b : ℕ} (h : a < b) (hb : b ≤ L.length) :
-    entryOff L a < entryOff L b := by
-  induction b with
-  | zero => omega
-  | succ b ih =>
-    rw [entryOff_succ L (by omega)]
-    have : 5 ≤ qWords L[b] := Nat.le_add_right _ _
-    rcases Nat.lt_succ_iff_lt_or_eq.1 h with h' | h'
-    · have := ih h' (by omega); omega
-    · subst h'; omega
-
-/-- **The log index** (`index_spec`, sort half): after `idxIR` (walk and sort) on a domain tape of a SNARK proof,
+/-- **The log index** (`index_spec`, sort half): after `(idxIR4 bX pL)` (walk and sort) on a domain tape of a SNARK proof,
 `X[0..|L|)` holds exactly the tape positions of the log's entries, strictly sorted by the key
 (answer, position). -/
-theorem idxIR_sorted (c : Digest) (π : Proof) (L : Log) (hs : π.size = piSize)
+theorem idxIR4_sorted (c : Digest) (π : Proof) (L : Log) (hs : 5 + (π.size + 7) / 8 = pL)
     (hq : ∀ e ∈ L, e.1.size < 2 ^ 64) (ht : (extractorInput c π L).length ≤ 2 ^ 64)
-    (s : St) (hM : Inv s.M) (hsz : memX + L.length + L.length ≤ s.M.size) :
+    (s : St) (hM : Inv s.M) (hsz : bX + L.length + L.length ≤ s.M.size) :
     (∀ a b, a < b → b < L.length →
       keyLt (extractorInput c π L).toArray
-        (rd (semXIR (extractorInput c π L).toArray idxIR s).M (memX + a))
-        (rd (semXIR (extractorInput c π L).toArray idxIR s).M (memX + b)) = true) ∧
-    (∀ a < L.length, ∃ k < L.length, rd (semXIR (extractorInput c π L).toArray idxIR s).M
-      (memX + a) = toWord (posL + 1 + entryOff L k)) ∧
-    (∀ k < L.length, ∃ a < L.length, rd (semXIR (extractorInput c π L).toArray idxIR s).M
-      (memX + a) = toWord (posL + 1 + entryOff L k)) := by
+        (rd (semXIR (extractorInput c π L).toArray (idxIR4 bX pL) s).M (bX + a))
+        (rd (semXIR (extractorInput c π L).toArray (idxIR4 bX pL) s).M (bX + b)) = true) ∧
+    (∀ a < L.length, ∃ k < L.length, rd (semXIR (extractorInput c π L).toArray (idxIR4 bX pL) s).M
+      (bX + a) = toWord (pL + 1 + entryOff L k)) ∧
+    (∀ k < L.length, ∃ a < L.length, rd (semXIR (extractorInput c π L).toArray (idxIR4 bX pL) s).M
+      (bX + a) = toWord (pL + 1 + entryOff L k)) := by
   set I := (extractorInput c π L).toArray with hI
-  have hend := tape_entries_end c π L hs
+  have hend := tape_entries_end4 c π L hs
   have h5 : 5 * L.length ≤ entryOff L L.length := by
     have := length_logEntries L
     rwa [entries_length, ← entryOff_length] at this
-  have hW := fun {k : ℕ} (hk : k < L.length) => walk_spec c π L hs hq ht s hM (by omega) hk
-  have hwf : WF walkIR := wf_logIR.1
-  rw [idxIR, semXIR_seq]
-  obtain ⟨r1, r2, r3⟩ := sortIR_sem I (semXIR I walkIR s) (inv_sem I hwf hM) (n := L.length)
-    (by rw [hI, getD_toArray, tape_getD_posL c π L hs]) (by omega) (by rw [size_sem]; exact hsz)
+  have hW := fun {k : ℕ} (hk : k < L.length) => walk_spec4 hbX hbX2 hpL c π L hs hq ht s hM (by omega) hk
+  have hwf : WF (walkIR4 bX pL) := wf_walkIR4 bX pL
+  rw [idxIR4, semXIR_seq]
+  obtain ⟨r1, r2, r3⟩ := sortIR4_sem hbX hbX2 hpL I (semXIR I (walkIR4 bX pL) s) (inv_sem I hwf hM) (n := L.length)
+    (by rw [hI, getD_toArray, tape_getD_posL4 c π L hs]) (by omega) (by rw [size_sem]; exact hsz)
     (fun a b ha hb h => by
       rw [hW ha, hW hb] at h
       have hab := congrArg BitVec.toNat h
@@ -822,4 +911,27 @@ theorem idxIR_sorted (c : Digest) (π : Proof) (L : Log) (hs : π.size = piSize)
   · obtain ⟨a, ha, e⟩ := r3 k hk
     exact ⟨a, ha, e.trans (hW hk)⟩
 
+
+
+end Idx
+
+theorem idxIR_eq : idxIR = idxIR4 memX posL := rfl
+
+/-- **The log index** (`index_spec`, sort half): after `idxIR` (walk and sort) on a domain tape of
+a SNARK proof, `X[0..|L|)` holds exactly the tape positions of the log's entries, strictly sorted
+by the key (answer, position). -/
+theorem idxIR_sorted (c : Digest) (π : Proof) (L : Log) (hs : π.size = piSize)
+    (hq : ∀ e ∈ L, e.1.size < 2 ^ 64) (ht : (extractorInput c π L).length ≤ 2 ^ 64)
+    (s : St) (hM : Inv s.M) (hsz : memX + L.length + L.length ≤ s.M.size) :
+    (∀ a b, a < b → b < L.length →
+      keyLt (extractorInput c π L).toArray
+        (rd (semXIR (extractorInput c π L).toArray idxIR s).M (memX + a))
+        (rd (semXIR (extractorInput c π L).toArray idxIR s).M (memX + b)) = true) ∧
+    (∀ a < L.length, ∃ k < L.length, rd (semXIR (extractorInput c π L).toArray idxIR s).M
+      (memX + a) = toWord (posL + 1 + entryOff L k)) ∧
+    (∀ k < L.length, ∃ a < L.length, rd (semXIR (extractorInput c π L).toArray idxIR s).M
+      (memX + a) = toWord (posL + 1 + entryOff L k)) :=
+  idxIR4_sorted (bX := memX) (pL := posL) (by decide) (by decide) (by decide) c π L (hs_posL hs) hq ht s hM hsz
+
 end FR.X
+

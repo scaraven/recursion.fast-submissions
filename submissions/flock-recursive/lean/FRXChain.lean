@@ -19,6 +19,9 @@ to `H[1 … 4]`, `p += 1`, and the next target is loaded from the table.
 
 The loop count is the log's word count, `rP − posL − 1` after a store-free walk (`cntIR`); its cap
 is `t`. Everything inside the loop is straight-line or `ite`: the cost is `t` times a constant.
+
+**Parameters (S-H4 pass 5).** The count and the start read the log at tape word `pL` (`cntIR pL`,
+`startPs pL`, `chainIR pL`); 3.x instantiates `pL = posL`.
 -/
 
 namespace FR.X
@@ -145,11 +148,11 @@ def cntBody : XIR :=
   .seq (.input rQL rP) (.blk (ceil8Ps rT1 rQL ++ [.op .add rP rP rT1, .const rKc 5,
     .op .add rP rP rKc]))
 
-/-- **The count**: the log's words, `rCn5 := rP − posL − 1` after the walk. -/
-def cntIR : XIR :=
-  .seq (.seq (.seq (.blk [.const rP (toWord (posL + 1))]) (readAt rN posL))
+/-- **The count**: the log's words, `rCn5 := rP − pL − 1` after the walk. -/
+def cntIR (pL : ℕ) : XIR :=
+  .seq (.seq (.seq (.blk [.const rP (toWord (pL + 1))]) (readAt rN pL))
       (.loopT rCW rN ⟨0, 1, 5⟩ cntBody))
-    (.blk [.const rKd (toWord (posL + 1)), .op .sub rCn5 rP rKd])
+    (.blk [.const rKd (toWord (pL + 1)), .op .sub rCn5 rP rKd])
 
 /-- Straight-line stores of the words `ws` at `b, b + 1, …`. -/
 def storesIR (b : ℕ) : List Word → XIR
@@ -159,14 +162,14 @@ def storesIR (b : ℕ) : List Word → XIR
 
 /-- The registers at the start: the first word, `eo = 0`, `p = 0`, the seed's `tl = 119`,
 `h = 15`. -/
-def startPs : List Prim :=
-  [.const rWp (toWord (posL + 1)), .const rEo 0, .const rPi 0, .const rTl 119, .const rTh 15,
+def startPs (pL : ℕ) : List Prim :=
+  [.const rWp (toWord (pL + 1)), .const rEo 0, .const rPi 0, .const rTl 119, .const rTh 15,
    .const rTo 0, .const rMt 0]
 
 /-- **The chain scan** for `N` targets: the count, the table `tab` at `chB`, the seed's header
 (`sd`, which writes `H[0 … 14]`), the start, then the loop over the log's words. -/
-def chainIR (N : ℕ) (tab : List Word) (sd : XIR) : XIR :=
-  .seq (.seq cntIR (.seq (storesIR chB tab) (.seq sd (.blk startPs))))
+def chainIR (pL N : ℕ) (tab : List Word) (sd : XIR) : XIR :=
+  .seq (.seq (cntIR pL) (.seq (storesIR chB tab) (.seq sd (.blk (startPs pL)))))
     (.loopT rCC rCn5 ⟨0, 1, 1⟩ (wordIR N))
 
 /-! ## Well formed, cost, size -/
@@ -219,14 +222,14 @@ theorem not_writes_wordIR_rCC (N : ℕ) : ¬ Writes (wordIR N) rCC := by
     rCC, List.mem_cons, List.mem_nil_iff, exists_eq_or_imp, exists_eq_left, or_false,
     List.cons_append, List.nil_append]
 
-theorem wf_cntIR : WF cntIR := by
-  simp +decide only [cntIR, cntBody, readAt, ceil8Ps, WF, Writes, Prim.dst, rP, rN, rA, rCW, rQL,
+theorem wf_cntIR (pL : ℕ) : WF (cntIR pL) := by
+  simp +decide [cntIR, cntBody, readAt, ceil8Ps, WF, Writes, Prim.dst, rP, rN, rA, rCW, rQL,
     rT1, rT2, rKc, rKd, rCn5, cTmp, regs, or_false, and_true, List.cons_append, List.nil_append]
 
-theorem wf_chainIR (N : ℕ) (tab : List Word) {sd : XIR} (hsd : WF sd) (hc : ¬ Writes sd rCC) :
-    WF (chainIR N tab sd) := by
-  refine ⟨⟨wf_cntIR, wf_storesIR _ _, hsd,
-    by simp +decide only [startPs, WF, Prim.dst, rWp, rEo, rPi, rTl, rTh, rTo, rMt]⟩, ⟨by decide, by decide, by decide⟩, by decide, not_writes_wordIR_rCC N,
+theorem wf_chainIR (pL : ℕ) (N : ℕ) (tab : List Word) {sd : XIR} (hsd : WF sd) (hc : ¬ Writes sd rCC) :
+    WF (chainIR pL N tab sd) := by
+  refine ⟨⟨(wf_cntIR pL), wf_storesIR _ _, hsd,
+    by simp +decide [startPs, WF, Prim.dst, rWp, rEo, rPi, rTl, rTh, rTo, rMt]⟩, ⟨by decide, by decide, by decide⟩, by decide, not_writes_wordIR_rCC N,
     wf_wordIR N⟩
 
 theorem cost_wordIR (N t : ℕ) : cost (wordIR N) t = 176 := by
@@ -234,30 +237,31 @@ theorem cost_wordIR (N t : ℕ) : cost (wordIR N) t = 176 := by
     cost, blkSteps, List.length_cons, List.length_nil, List.length_append]
   norm_num
 
-theorem cost_cntIR (t : ℕ) : cost cntIR t = 13 + t / 5 * 24 := by
+theorem cost_cntIR (pL : ℕ) (t : ℕ) : cost (cntIR pL) t = 13 + t / 5 * 24 := by
   simp only [cntIR, cntBody, readAt, ceil8Ps, cost, blkSteps, List.length_cons, List.length_nil,
     List.length_append, Aff.eval, Nat.one_mul]
   norm_num
   omega
 
-theorem cost_chainIR (N t : ℕ) (tab : List Word) (sd : XIR) :
-    cost (chainIR N tab sd) t = 34 + 9 * tab.length + cost sd t + t / 5 * 24 + t * 179 := by
+theorem cost_chainIR (pL : ℕ) (N t : ℕ) (tab : List Word) (sd : XIR) :
+    cost (chainIR pL N tab sd) t = 34 + 9 * tab.length + cost sd t + t / 5 * 24 + t * 179 := by
   simp only [chainIR, cost, cost_cntIR, cost_storesIR, cost_wordIR, startPs, blkSteps,
     List.length_cons, List.length_nil, Aff.eval, Nat.one_mul, Nat.div_one]
   norm_num
   omega
 
-theorem sizeIR_chainIR (N : ℕ) (tab : List Word) (sd : XIR) :
-    sizeIR (chainIR N tab sd) = 284 + 10 * tab.length + sizeIR sd := by
+theorem sizeIR_chainIR (pL : ℕ) (N : ℕ) (tab : List Word) (sd : XIR) :
+    sizeIR (chainIR pL N tab sd) = 284 + 10 * tab.length + sizeIR sd := by
   simp only [chainIR, cntIR, cntBody, readAt, wordIR, lenIR, qryIR, ansIR, ansPs, setSPs, lastIR,
     recIR, recPre, recPs, st4IR, nextIR, nextPre, nextPs, stAt, stNext, ceil8Ps, startPs, sizeIR, size_storesIR, blkSteps, List.length_cons,
     List.length_nil, List.length_append]
   norm_num
   omega
 
-theorem outs_chainIR (N t : ℕ) (tab : List Word) {sd : XIR} (hsd : outs sd t = 0) :
-    outs (chainIR N tab sd) t = 0 := by
+theorem outs_chainIR (pL : ℕ) (N t : ℕ) (tab : List Word) {sd : XIR} (hsd : outs sd t = 0) :
+    outs (chainIR pL N tab sd) t = 0 := by
   simp [chainIR, cntIR, cntBody, readAt, wordIR, lenIR, qryIR, ansIR, lastIR, recIR, recPre, recPs, st4IR, nextIR, nextPre, nextPs, stAt, stNext,
     outs, outs_storesIR, hsd]
 
 end FR.X
+

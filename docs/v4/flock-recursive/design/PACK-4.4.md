@@ -225,7 +225,9 @@ over `{N2, N4, N8}`, B-13) — not a local change.
 | **(β) batched polynomial check with prover-supplied aggregated selectors** (§3.3) | **one final phase appended to `seq4`** (1 absorb of 61,472 B — `A` padded to a block-aligned phase — and 1 K squeeze); `piDigestAt` → static `piDigest`; `gen4`'s cap assert → the two identities; R4's `cols` and S-G's tail restated (§9.1) | **≈ 48 k** (templates: power chains, bit-products, shared-cell MACs, cap-bit kind-mux rows) | **+963 blocks (+4.2 %)** | **+61,472 B (+7.7 %; +0.03 s S)** | **+5–6 ms VM (+0.04 s S)** | computes `A` (trivial) | +2 rows `≤ 2^{-245}` | **adopt** |
 | (c) the mux at depth 9 | none | 1.34 M | — | — | — | — | — | does not fit |
 
-### 3.3 The construction (β) (4.4.1: block-aligned, `seq4`'s constants)
+### 3.3 The construction (β) (4.4.1: block-aligned, `seq4`'s constants) — **SUPERSEDED by §11 (β′)**
+
+> **Unsound as specified** (A3′, 2026-10-29): Q.i has no Fiat–Shamir item, so `cur_r` is chosen after `ζ` and `z`; §11 gives the sound form. Kept for the record of what A2′ built.
 
 Reads `r = 0 … 870` in item order over the five levels, index `k_r = j_r >> sib_κ` (the cap's 9/8/8/8/7
 bits), path output `cur_r` (a digest, 2 F halves), `cap` the 1,920 entries of the five caps
@@ -708,7 +710,9 @@ than −62 k (the point where 8 × segment slot exceeds `N_M/1.05`).
 
 ## 9. The restated statements (PK-M2), ε accounting, and open questions
 
-### 9.1 R4's `cols` and S-G's dooms — exact statements
+### 9.1 R4's `cols` and S-G's dooms — exact statements — **SUPERSEDED by §11.4–§11.5**
+
+> `D_ζ` as stated here is not prefix-determined (`pathDig es i q` is a function of π, not of the chain). §11.5 restates it over the committed field `D`.
 
 Today (`FRSoundness4R4Tail`): `FinLog4.cols` / `FinRest4.cols` say, for every level `i < 5` and
 query `q`:
@@ -794,3 +798,252 @@ A2′ (§8). (iii) The 12/79 foreign flags, to be listed from `fors` before B3 i
 
 **Build order:** the review's corrected order adopted as §7 without change, with C0 and RET placed
 as it says; the briefs for A2′, A1′, A3′, B0 are §7.1.
+
+---
+
+## 11. Addendum (β′): a sound batched cap check, and N8's overflow
+
+Written 2026-10-29 after A3′'s finding (`recursion.fast-submissions-rev44/docs/v4/flock-recursive/stages/A3p-RESULT.md`, A2′'s `A2p-RESULT.md`; rev44 HEAD `ccdde20`). A2′'s V (`FRVIRFinals4.capChkOps`, `FRVIR4.posOps4`) is read, not built.
+
+### 11.0 The flaw, restated in the certified model
+
+The Fiat–Shamir chain is `fsItems4 = (itemsOf seq4).filter Item.isFS`: the seed, the absorbs and
+the squeezes. Column and node queries are stream items but **not chain items**; `fsStarts4` puts
+Q.i and P3.i at the same entry (370, 397, 421, 443, 463). So every challenge, `ζ` and `z`
+included, is a function of the chain alone, and the prover chooses π's columns and siblings — hence
+every path digest `cur_r` — after both are known. §3.3's "fixed by items ≤ Q.4" confused the
+stream's item order with the chain. Over `GF(2)` the identity (I) is GF(2)-linear in the digest
+bits, so with two candidate openings per read (one top sibling changed: one compression) and the
+honest `A`, the prover solves `Σ_r b_r·φ_r(d_r¹ − d_r⁰) = T − Σ_r φ_r(d_r⁰)`: 512 equations in
+871 unknowns over GF(2), full rank except with probability `≤ 2^-358`. The openings are then free
+and the Merkle commitment binds nothing. **Every additive per-read batching whose summands are
+chosen after the challenge fails this way**, logUp forms included (a repeated fake cancels mod 2).
+
+### 11.1 The sound construction (β′): commit the path digests, then batch
+
+**Fiat–Shamir order (`seq4`, after `Pf`):**
+
+```
+phase 52  CapD     absorb  D   field fD = 18, 871 · 32 = 27,872 B     (FS entry 482)
+phase 53  CapZeta  squeeze ζ   (K: all 32 bytes)                      (FS entry 483)
+phase 54  CapChk   absorb  A   field fA = 19, 1,408 · 32 + 32 = 45,088 B  (FS entry 484)
+phase 55  CapChkZ  squeeze z   (K)                                    (FS entry 485)
+```
+
+`D_r` is the honest prover's path root of read `r` (reads in item order: level 0's 290, then 178,
+145, 132, 126); `A_{off_i + k} = Σ_{r at level i, k_r = k} ζ^r`, `k_r = j_r >>> sib_κ(i)`; the 32 zero
+bytes after `A` keep the phase block-aligned. Each phase's stream bytes are `≡ 0 (mod 64)`:
+`80 + 27,872 + 80 = 28,032 = 64·438`, `80 + 45,088 + 80 = 45,248 = 64·707`.
+
+**`V` per position** (`posOps4`): after `shrN` (the cap index `k_r`), a **static** read
+`piDigest fD (32·r)` and `assertEq cur_r D_r`. There is no dynamic index anywhere: that is what B2
+needed from the circuit (the import is an arena alias, 0 rows; the assert is 2 linear rows).
+
+**`V` after `Pf`** (`capChkOps`): `ζ := chK(CapZeta's answer)`, `z := chK(CapChkZ's answer)`,
+(I) `Σ_r ζ^r·D_r = Σ_k A_k·cap[k]` (two K identities, lo/hi halves), (II) `Σ_k A_k·z^k =
+Σ_r ζ^r·z^{k_r + off_i}`, three `assertEq`, exactly A2′'s construction with `D_r` (the committed
+field) in place of the position's `cur_r` register, and `ζ` from phase 53 instead of P3.4.
+
+**Why it is immune to A3′'s attack.** The attacker must write `D` before `ζ` exists. Afterwards
+each read's opening must hash to the committed `D_r` (the static assert), so the "two openings per
+read" freedom is gone: a second opening with the same root is an oracle collision, which the
+Merkle lemmas (`cap_binding`, `openPath`) already charge. With `D` and `cap` fixed and `A` the
+honest selector sums, (I) is `Σ_r ζ^r (D_r − cap[k_r]) = 0`, a nonzero polynomial in `ζ` unless every
+`D_r = cap[k_r]`; a dishonest `A` must pass (II) at a `z` chosen after `A`. Nothing on the right of
+either identity is chosen after its challenge.
+
+**Soundness in the model the certificate proves (S-G doom counting over `Log`).** The potential
+charges, at each chain squeeze, the measure of the answers that put the log into a *doom*
+(`FRSoundness4TailStep`: `hsingle` for a single-squeeze phase — the bad answers' count `≤ N`,
+`N = 239·2^128` (`N_le`) —, `hround` for a multi-squeeze phase). Two new dooms, both decided by
+the chain prefix at their squeeze:
+
+| Doom | At | Statement (over the log `es` at the squeeze) | Bad answers | Row |
+|---|---|---|---|---|
+| `D_ζ es` | phase 53 (`DT 53`), `hsingle` | `(∃ r, D_r es ≠ capDig es (lvl r) (k_r es)) ∧ Σ_r ζ(es)^r·(D_r es − capDig es (lvl r) (k_r es)) = 0` (both K halves) — `D_r es` read from the CapD absorb's payload in the chain, `capDig` from the C.i absorbs, `k_r es` from P2.i's answers: all in the prefix | the roots of a nonzero polynomial of degree `≤ 870` over `K`: **`≤ 870`** | `870/2^256` |
+| `D_z es` | phase 55 (`DT 55`), `hsingle` | `A es ≠ (fun k => Σ_{r: off + k_r es = k} ζ(es)^r) ∧ Σ_k A(es)_k·z(es)^k = Σ_r ζ(es)^r·z(es)^{k_r es + off}` — `A es` from the CapChk absorb's payload, `ζ es` from phase 53 | roots of a nonzero polynomial of degree `< 1,408`: **`≤ 1,407`** | `1,407/2^256` |
+
+Both counts are `≤ N` by many orders, so `hsingle`'s obligation is met with room; `deltaR`
+(`= epsD − 2^-142`, A3′ §3) is untouched because the per-fresh-query maximum stays P2's
+`2^-120.36`; **`εR = 15/2^124` and `claim.json` are unchanged**, as A3′ §3 computed for the
+counts 870 and 1,407. `truthCap es := ∀ r, D_r es = capDig es (lvl r) (k_r es)` and `cap_of_chk :
+accept → ¬D_ζ es → ¬D_z es → truthCap es`; with the per-position run fact `openPath … = some (D_r
+es)` (from the static assert, `cols4_of_run`), `truthCap` gives today's `openPath … = capDig …`,
+so `FinRest4.cols`'s *original* conjunct is recovered under `¬D_ζ ∧ ¬D_z` and the level-`i`
+bridges (`colOf_of_path`, `foldAt_of_cols`, `truthP3_four_of_cols`) are unchanged in statement.
+
+**Alternatives weighed.** (i) Absorbing each level's `D_i` before P3.i and reusing `κ_c` as `ζ_i`:
+5 absorbs and 5 `A_i` items cost 880 B of headers against 320, and `κ_c`'s bytes are used
+(2 coordinates of the first answer): no. (ii) Half-size `D` (absorb `lo(D_r) + θ·hi(D_r) ∈ F`,
+`θ` a pre-Q challenge; 13,936 B): needs a new collision row of `2^-128` per fresh node query on a
+128-bit linear image of the oracle's answers — within `εR` numerically, but a new lemma family in
+`FRMerkle`/`cap_binding`; kept as §11.2's reserve lever L5. (iii) A separate digest of `D`
+(hashing `D` through the oracle): 436 node queries = 48.8 KB of stream, worse than absorbing `D`.
+**(β′) as above is recommended.**
+
+### 11.2 N8's overflow: levers priced (A2′'s constants)
+
+Constants (A2′ §6, A3′ §4): `A` 1,408 entries = 45,088 B; A2′'s segment stream `1,528,000 =
+64·23,875`; stride 23,877; N8 `hUsed = 2·95,506 + 2,196 = 193,208`, `lBase 193,280`, bound
+`195,584`: **2,304 blocks spare**. (β′) adds the `CapD` phase, 438 blocks per segment: a segment is
+`1,556,032 = 64·24,313`, the stride 24,315, `aggL 4 = 97,258`, `hUsed = 2·97,258 + 2,196 =
+196,712`, `lBase = 196,864`: **over by 1,280 blocks** (A3′). `|π| = 871,152`, items 8,909,
+`qV = 4·8,909 + 3 = 35,639`.
+
+| # | Lever | N8 blocks | Stream / `|π|` / positions | What else it costs | Verdict |
+|---|---|---|---|---|---|
+| L1 | **Reclaim `WM`**: `hUsedN κ = wotsB κ 2 + wmSlot4·κ.vslots + 8` reserves 146 mirror blocks per *verifier* slot, but only the two *signed children* have WOTS runs and mirrors (`wmB κ σ`, `σ < 2`; A.6: 581 sources per signed child). N8 reserves 1,168, uses 292 | **−876** (N2 −146, N4 −438) | none | `FRNodeKinds4.hUsedN`, `FRNodeLayout4.hUsed_eq`/`regions_fit`, `aggChild`/`nodeLayout4`'s `freeIv (wmB κ 0) (hUsedN κ)` — literals and one definition; the mirror addresses do not move | **adopt** |
+| L2 | **Cap depth 8 at level 4** (`ladder32` level 4 `⟨4,12,126,7⟩ → ⟨4,12,126,8⟩`, `ladder30` `⟨4,10,126,7⟩ → ⟨4,10,126,8⟩`: `sib` 5→4 and 3→2) | −126 node items × 112 B = −14,112 B; `cap₄` 128→256 entries: +4,096 B in the C.3 absorb; `A` 1,408→1,536: +4,096 B; net **−5,920 B = −92.5 blocks per segment: −740 for N8**; with `A`'s 32-B pad dropped the segment is `1,550,080 = 64·24,220` (whole), stride 24,222, `aggL 4 = 96,886` | `|π|` 871,152 + 4,096 + 4,096 − 4,032 = **875,312**; items 8,909 − 126 = 8,783; level 4's Q items shrink (positions after Q.4 move: P3.4, Pf, CapD…; FS entries do not: Q items are not FS items) | `FRTranscriptDefs.ladder32/30`, `capBytes 3`, `merkleOps4` depth at level 4, `A.3`/`A.4` counts, `aggL` literals, R4/P4's level-4 position lemmas; `D_z` degree `< 1,536` (row 1,535) | **adopt** |
+| L3 | Cap depth 9 at level 1 (`sib` 10→9) | −178·112 + 2·8,192 = −3,552 B: **−444** | levels 1–4's positions move | more of L2's cost for less | reserve |
+| L4 | **N8 with 7 slots** (aggregates `maxK` 4 and 3) | −24,315 − 3·146: **−24,750** | — | step 1 is `prover first` with **two chains** (changes 25 (3)), each `n ∈ [2^17, 2^20]` i.i.d. `∝ 1/n²`; a chain needs 4 segments iff `n > 3·2^18`: `P = (1/786,432 − 1/2^20)/(1/2^17 − 1/2^20) = 4.8 %`. With a fixed chain order the second chain overflows its 3 slots in **4.8 % of streams**; if the node may order the chains by size, both must exceed `3·2^18`: **0.23 %**. A failed step 1 loses the stream | **rejected** |
+| L5 | Half-size `D` (§11.1 (ii)) | −13,936 B = −217.75 blocks per segment: **−1,742** | `|π|` −13,936 | a new collision lemma family (`2^-128` per fresh node query) in S-C/S-G | reserve |
+| L6 | Deeper caps at level 0 (`sib` 11→10) | −290·112 + 2·16,384 = +288 B | — | — | no |
+| L7 | N8 at `m = 33` | fits trivially | every node proof's shape (+1 round in Z/E/S, +1 sibling per position ≈ +97 KB of `|π|` for **every** node, which is what the harness verifies: `x_size` +0.046) | breaks "one item sequence for every kind" (B-13): the slot-0 mux | **rejected** |
+| L8 | Shrink L to `2^13` per verifier slot | −512 | — | `lRows4`/`evalL4I` frozen at stride `2^14`; S-E13b's cells at 8704–11648 | no |
+
+**Recommendation: L1 + L2.** N8 after both: chains `2 × 96,886 = 193,772`, fixed blocks `2,196 −
+876 = 1,320`, `hUsed = 195,092`, `hEnd = 195,100`, `lBase = 195,328 ≤ 195,584`: **fits with 256
+blocks to spare** (0.13 %). N4: `24,220 + 96,886 + (1,749 − 438) = 122,417` of 195,584; N2:
+`24,220 + 48,442 + fixed` ≪ bound. If a later change needs more than 256 blocks in N8, L5 is the
+next lever (−1,742) and L3 the one after. L4 (7 slots) is not available: it fails step 1.
+
+### 11.3 Cost against the revert (option 2: the per-position dynamic read)
+
+S-I's basis: `v_ref = 206.6 ms`, V 157.9 ms runner, `|π| = 798,192`, `V̄ = 0.400`;
+`dV̄/dx ≈ 1.57` at `x ≈ 1.4`, i.e. 0.0076 s per runner ms and 0.75 s per MiB.
+
+| | revert: `piDigestAt` + `assertEq` per position (HEAD `4d5700c`'s V) | (β′) with L1 + L2 |
+|---|---|---|
+| soundness of `V` | sound (A3′) | sound (§11.1) |
+| circuit rows per slot to bind the cap reads | the mux: `≈ 3·2^c` per read, **≈ 1.34 M** — does not fit a region: the node stays unprovable (`Gap4.imp` open) | static `D` aliases 0 + 2 assert rows per read 1,742 + the (I)/(II) **templates** ≈ 48 k + the cap-bit kind-mux rows 7.8 k: **≈ 58 k structured rows** (as skeleton ops, A2′'s way: 55–65 k *sparse* rows per prototype at ≈ 30 ms of `evalMT4` each — §11.7: not acceptable) |
+| parent `evalM` (V of the node that *contains* the slot) | — | ≈ 2.5 ms VM per prototype as templates (B2′); A2′'s untemplated interim is +280 ms VM and must not ship |
+| `V`'s own time | 0 | ≈ 9 ms VM (A2′'s profile of the cap-check ops) + 871 static reads ≈ 0: **+7.6 ms runner → +0.058 s** |
+| `|π|` | 798,192 | **875,312 (+77,120 B = +0.0368 of `x`): +0.058 s** |
+| stream per segment | 23,168 blocks | 24,220 (+4.5 %): node prover +11 ms per slot (+0.06 s per N4 node, ≈ +0.03 s of `P̄`) |
+| `qV` | 35,631 | `4·8,783 + 3 = 35,135` |
+| ε | — | unchanged (`870/2^256`, `1,535/2^256` rows) |
+| **ΔS** | **0, with no sound node** | **≈ +0.15 s** (`V̄ ≈ 0.52`), the price of binding the cap reads |
+
+Against 4.4.1's (β) the difference is the `D` field: +27,872 B of `|π|` (+0.02 s) and two more items.
+
+### 11.4 The changes to A2′'s V, exactly
+
+1. **Fields** (`FRTranscriptDefs`, `FRShape4`): `fD := 18` (the 871 path digests, 27,872 B),
+   `fA := 19` (unchanged content, 1,536 entries after L2: 49,152 B, **no pad**: the two phases are
+   `28,032 = 64·438` and `80 + 49,152 + 80 = 49,312 = 64·770.5` — so with L2 the pad is 32 B again
+   on `A` *or* the level-4 change absorbs it: `1,482,752 + 28,032 + 4,096 − 14,112 + 49,312 =
+   1,550,080 = 64·24,220` exactly, so **`A` has no pad under L2**; without L2 keep A2′'s 32-B pad);
+   `nFields4 := 20`; `piSizeOf seq4 := 875,312` (871,152 without L2); `streamBytesOf_seq4 :=
+   1,550,080` (1,556,032 without L2); `chainLenOf_seq4 := 24,220` (24,313).
+2. **Phases** (`FRShape4.capChkPh S`): `[("CapD", .absorb fD 27872), ("CapZeta", .squeezes 1 .one),
+   ("CapChk", .absorb fA (aBytes S)), ("CapChkZ", .squeezes 1 .one)]` — phases 52, 53, 54, 55;
+   `capChk_aligned` for both absorb+squeeze pairs; `items`: 8,905 + 4 − 126 = **8,783** (8,909
+   without L2); `traces_spacers_le_qV` at `4·8,783 + 3`.
+3. **`fsStarts4`** (`FRSoundness4Pos`): `fsItems4_length := 486` (482 + 4); `fsStarts4_eq` gains
+   `482, 483, 484, 485`; `phOf_ge : 482 ≤ p → phOf4 p ∈ {52 … 55}` by cases; `DT 53 := D_ζ`,
+   `DT 55 := D_z`, `DT 52`/`DT 54` (absorbs) carry no doom.
+4. **`posOps4`** (`FRVIR4`; `posOpsG` the same): `[.idx …, .piField 0 (co + p·colBytes i) …, .askCol,
+   .dotKF] ++ merkleOps4 K.sib i b L.sib 0 (b+2) (so + p·L.sib·32) (b+4) ++ [.shrN b (fun _ => K.sib),
+   .piDigest fD (dO + 32·p), .assertEq (curOfY L.sib (b+3)) (b + 4 + 6·L.sib + 1) allK]` with `dO :=
+   fieldOff fD + 32·(Σ_{i' < i} t_{i'})` passed like `co`/`so`; `posW4 S i := 4 + 6·sib + 3`
+   (A2′'s `+ 1`); `kOfY` unchanged; level 4's `L.sib` is 4 (`ladder30`'s 2) under L2.
+5. **`capChkOps`** (`FRVIRFinals4`): `zetaA := (outs of phase 53).head − 1` (A2′ read `lvOuts fi 4
+   4`: P3.4 — **this is the unsound line**); `za := (outs of phase 55).head − 1`; `capReads S fi w`
+   returns, per read, the **`D` register** `b + 4 + 6·sib + 1` of its position (not `curOfY`), with
+   the cap-index register as before; `capMax S` 9; `capEntries S` 1,536 (L2) with `off = 0, 512,
+   768, 1024, 1280`; the head, the chains, (I), (II) and the three `assertEq` as A2′;
+   `noAsk_capChkOps`, `capChkOps_off/_head`, `map_at_capChkOps` re-proved; `finOps4 := (finals ++
+   capChkOps).map reloc` as A2′ (deviation 4 stands).
+6. **The format and `reassemble`**: A.3 rows 18 (`D`: the CapD absorb's message, item 8,781 under
+   L2, bytes `40 … 40 + 27,872`) and 19 (`A`: item 8,783 − 2, all `49,152` bytes); S-H4's generic
+   `rsPhase` handles both with no special case (A2′ §6).
+7. **Layout** (L1 + L2): `FRNodeKinds4.hUsedN κ := wotsB κ 2 + wmSlot4·2 + 8`, `segB`, `cLen`,
+   `aggB/aggL` (stride 24,222), `FRNodeLayout4.hUsed_eq` (N8 195,092), `hEnd_eq`, `regions_fit`;
+   `FRTranscriptDefs.ladder32/ladder30` level 4, `capBytes 3 = 8,192`.
+8. **The prover** (P2): writes `D` (its own path roots, in read order) before squeezing `ζ`; `A`
+   after; the level-4 cap at 256 entries; the native `acc` follows the dump.
+9. **Untouched from A2′**: `Seq.capChk`, `aBytes`'s shape, `capReadOps`/`capEntryOps`'s arithmetic,
+   `ir.rs`'s op kinds (all existing), the 3.x modules (`seq3` has no cap check).
+
+### 11.5 A3′'s brief, rewritten
+
+**A3′ — the restated `cols` and the two dooms (one owner for R4 + S-G), on V as in §11.4.**
+Modules: `FRSoundness4R4Tail` — `FinLog4.cols`/`FinRest4.cols` keep their per-`(i, q)` conjunct in
+the form `∃ col ss, ss.length = sib i ∧ (openPath (frEnc i) col (qPos es i q) ss).runLog L = some
+(dAt es i q) ∧ y i q = Σ_r eq(s_i, r)·col_r` with **`dAt es i q := the 32 bytes at offset `32·r(i,q)` of
+the CapD absorb's payload in `es`** (prefix-determined), and gain one conjunct `capChk4 es` (the
+two identities over `dAt`, `capDig`, `A es`, `ζ es`, `z es` as §11.1); `FRSoundness4R4Cols` —
+`ys_facts4`/`cols4_of_run` from the per-position `assertEq cur D_r` and the finals' three asserts
+(`capDig_eq4` unchanged); `FRSoundness4TailTruths` — `truthCap`, `D_ζ`, `D_z` (§11.1's table);
+`FRSoundness4TailD` — `DT 53 := D_ζ`, `DT 55 := D_z`, the phase table 52–55, `phOf_ge`, the Pf
+doom's background hypothesis `truthCap`; `FRSoundness4TailLig` — `cap_of_chk : capChk4 es → ¬D_ζ
+es → ¬D_z es → truthCap es` (two SZ steps over `K`: `Polynomial.card_roots'`-style bounds 870 and
+1,535), then `truthP3_four_of_cols`/`colOf_of_path`/`foldAt_of_cols` take `truthCap` and are
+otherwise unchanged; `FRSoundness4TailStep` — the two `hsingle` rows (counts 870, 1,535 `≤ N`);
+`FRSoundness4R4Run`/`R4Ref`/`R4Acc` — re-run with `finOps4 = finals ++ capChkOps` and `posOps4`'s
+three trailing ops (`exec_posOps4` in `R4PosT`: the reference `posT4` compares `cur` with `D_r`,
+not with the cap entry); `FRSoundness4Pos` — `486`, `fsStarts4_eq`. Statements that change: those
+named, and nothing else in the tail (the level-`i` dooms keep the log-side `truthP3`). Definition
+of done: `ks_rev4GR` (or its successor) builds at `εR = 15/2^124` with the row table extended by
+`D_ζ 870/2^256` and `D_z 1,535/2^256`; controls `dZeta_ctl` (a `D_r ≠ cap[k_r]` log at a root
+`ζ` is in `D_ζ`), `dz_ctl`, `capChk_pos` (an honest `D`, `A` passes), `capChk_neg` (a wrong `A_k`
+fails (II) at a generic `z`), **`attack_neg`** (A3′'s two-opening log: the static assert rejects
+one of the two openings — the control that §3.3 lacked); `FRSoundness4TailD` within +1 phase of
+its 18 CPU-s; CPU-s recorded. Prerequisite: A2′ re-issued per §11.4 (the orchestrator's open
+question 3: until then `v4/rev44` carries an unsound V and should sit at `4d5700c`'s V).
+
+### 11.6 Fix log (addendum)
+
+- §3.3 and §9.1 marked superseded; §3.2's (β) row, §3.4, §6.1, §6.3 and §7's A2′/A3′ lines are to
+  be read with §11's constants: `|π| = 875,312` (`x_size` 0.4174), stream 24,220 blocks per segment,
+  items 8,783, `qV` 35,135, rows per slot ≈ 58 k for the cap check, N8 at 256 blocks of spare
+  after L1 + L2. The V-side ΔS of §6.3 grows by ≈ +0.02 s (the `D` field); §8's decision is
+  unaffected.
+- The review (PK Q1) and 4.4.1 both accepted "fixed by items ≤ Q.4"; the error was treating
+  stream items as chain items. The control `attack_neg` is added to A3′'s done so that the
+  certificate carries the counterexample.
+
+### 11.7 (β′) priced on B0's measured prototypes; templates, not skeleton ops; the order
+
+B0 (`stages/B0-RESULT.md`, "For A2′"): prototypes **630,016 (p0) / 618,496 (p1)** rows in their
+regions (from 730,493 / 725,885); N8's modelled rows 7,620,864 = 1.048× under `N_M/1.05`. A2′'s cap
+check compiled as skeleton ops adds **55–65 k sparse rows per prototype** (≈ 690 k / 680 k) and
+**≈ 30 ms of `evalMT4` per prototype** (0.5 µs per sparse row: the plan evaluates skeleton rows one
+product per entry). That is 60 ms VM per N2/N4 node (two prototypes), ≈ +0.38 s of S on S-I's
+basis — more than the whole cap check is worth. **(β′)'s check must enter the circuit as keyed
+templates** (`local`/`shared` classes), which is what B2′ owns:
+
+| Template key | Instances per slot | Rows | Inputs | Class | V per prototype |
+|---|---|---|---|---|---|
+| `tplPowChain` (K: `a_{i+1} = a_i·g`) | 2 (the `ζ^r` chain, 871 steps; the `z^k` chain, 1,536 steps) | 3 per step: 2,613 + 4,608 | `ζ`, `z` (arena aliases of the two squeeze answers) | local (stride 3) | ≈ 0.1 ms |
+| `tplSqChain` (K squarings `z^{2^t}`, 11 steps) | 1 | 33 | `z` | local | ≈ 0 |
+| `tplBitPow` (`Π_t (1 + c_t·(z^{2^t} − 1))`, 9 K products) | 871 | 27 each: 23,517 | the 9 kind-muxed cap bits (`c_t = Σ_κ s_κ·L(…)`: 7,839 linear rows, their own key), `z^{2^t}` (shared) | local, instance stride 32 | ≈ 0.3 ms |
+| `tplMacD` (`ζ^r·D_r` K×F ×2 halves, `ζ^r·z^{k_r}` K; running sums) | 871 | 5 each: 4,355 | `D_r` (arena₁ aliases: the CapD payload, 871 × 2 fixed cells), the chains | shared (fixed arena cells) + local | ≈ 0.4 ms (1,742 eq lookups) |
+| `tplMacA` (`A_k·cap[k]` K×F ×2, `A_k·z^k` K; sums) | 1,536 | 5 each: 7,680 | `A_k`, `cap[k]` (arena₁ aliases, 3,072 + 3,072 fixed cells), the `z^k` chain | shared + local | ≈ 1.2 ms (6,144 lookups) |
+| the three final asserts, the per-position `assertEq cur D_r` | — | 6 + 1,742 | — | inside the position template / linear | ≈ 0 |
+| **total** | | **≈ 52.4 k rows per slot** | | | **≈ 2 ms VM per prototype** (4 per node) |
+
+**Rows per slot region with B0 and the templates:** segment slot `618,496 + 212,344 (pack map, §6.1)
++ 52,400 + 49,000 (R) + 32,768 (link) = 965,008 (92.0 %)`; previous-node slot's region A
+`630,016 + 212,344 + 52,400 + 32,768 = 927,528 (88.5 %)`. **N8: `8 × 965,008 = 7,720,064` against
+`N_M/1.05 = 7,990,232`: 1.035×** (B0's 1.048× was before the pack map and the cap templates; with
+A2′'s skeleton-op check instead of the templates the segment slot is 974,608 and N8 1.025× — it
+fits, but at +60 ms VM per node). The spare region is unchanged (§6.1).
+
+**Who builds what, in what order.**
+1. **A2″** (S-0′/FRTranscriptDefs, the V change of §11.4): `posOps4`'s static read + assert,
+   `capChkOps` on `D`, the four phases, the fields, the layout levers L1 + L2. Its compiled
+   prototypes may carry the cap check as skeleton ops **as an interim**, but A2″'s RESULT must not
+   quote that V as the design's: it reports `evalMT4` with and without the cap-check rows, and
+   the prototypes' region rows (expected ≈ 690 k / 680 k).
+2. **B2′** (L-circ) builds the five keys above as `tplExt` extensions (the same mechanism as
+   S-E12f's `tensorWK`: a key per op pattern, `tpl_mle` for each class, `compileT_sound` through
+   `tplX_sound`), regenerates `FRNodeRows4Hint` (`laydump4`) and measures `evalMT4` and `plan4t
+   init` ≤ 2.0 s. B2′ depends on A2″'s ops being in the tree; **A2″ and B2′ land in that order,
+   and no V(N4) or `P̄` figure for 4.4 is quoted before B2′'s**. The arenas (§5.2) are B2′'s
+   other half and are needed for `D`/`A`/`cap` to be fixed arena cells; until the arenas, the
+   templates' `D`/`A`/`cap` inputs are H cells (irregular, ≈ 6 k lookups ≈ 4 ms per prototype:
+   acceptable as an interim).
+3. **A3′** (R4 + S-G, §11.5) depends only on A2″'s V (the ops and the phases), not on B2′: it runs
+   in parallel with B2′.
+4. **P2** fills `D` and `A` and the templates' chain cells after B2′'s dump.

@@ -45,62 +45,9 @@ theorem readIR_frame (hD : Dom c π L) {Xi : ℕ → Word} (hX : Sorted (tp c π
     (hsib : sib < 64) (hnp : np ≤ 2 ^ 20) (hst : sb + nw * np ≤ memX) (hsb : regs ≤ sb)
     (hcapn : np ≤ ncap * 2 ^ sib) (hsz : memX ≤ s.M.size) :
     ∀ y, regs ≤ y → (y < sb ∨ sb + nw * np ≤ y) →
-      rd (semXIR (tp c π L) (readIR i cw sb nw sib np) s).M y = rd s.M y := by
-  set I := tp c π L
-  have hs := hM.1
-  simp only [regs] at hs
-  have hm : memX = 2 ^ 26 := rfl
-  have wf0 : WF (.blk [.const rPp 0, .const rWA (toWord sb), .const rNp (toWord np)]) := by
-    simp +decide only [WF, Prim.dst, rPp, rWA, rNp, List.mem_cons, List.mem_nil_iff,
-      forall_eq_or_imp, forall_eq, or_false, and_true]
-  have r0 : rd (semXIR I (.blk [.const rPp 0, .const rWA (toWord sb),
-        .const rNp (toWord np)]) s).M rPp = toWord 0 ∧
-      rd (semXIR I (.blk [.const rPp 0, .const rWA (toWord sb),
-        .const rNp (toWord np)]) s).M rWA = toWord (sb + nw * 0) ∧
-      rd (semXIR I (.blk [.const rPp 0, .const rWA (toWord sb),
-        .const rNp (toWord np)]) s).M rNp = toWord np := by
-    simp only [semXIR, runPrims, List.foldl, Prim.run]
-    refine ⟨?_, ?_, ?_⟩ <;>
-    simp (disch := first | decide | (simp only [size_set, rPp, rWA, rNp]; omega)) only
-      [rd_set_self, rd_set_ne]
-    · rfl
-    · rw [Nat.mul_zero, Nat.add_zero]
-  have hH0 := hframe I (.blk [.const rPp 0, .const rWA (toWord sb), .const rNp (toWord np)]) s
-    (by simp +decide only [Lo, Prim.dst, regs, rPp, rWA, rNp, List.mem_cons, List.mem_nil_iff,
-      forall_eq_or_imp, forall_eq, or_false, and_true])
-  have hM0 := inv_sem I wf0 hM
-  have hsz0 := size_sem I (.blk [.const rPp 0, .const rWA (toWord sb),
-    .const rNp (toWord np)]) s
-  rw [readIR, semXIR_seq]
-  generalize semXIR I (.blk [.const rPp 0, .const rWA (toWord sb),
-    .const rNp (toWord np)]) s = s0 at r0 hH0 hM0 hsz0
-  obtain ⟨p0, a0, n0⟩ := r0
-  have hE : ∀ i, i ≠ rCp → i ≠ cTmp → rd (entryK rCp rNp (toWord np) s0.M) i = rd s0.M i :=
-    fun i h1 h2 => entryK_frame _ (Ne.symm h1) (Ne.symm h2)
-  have hcnt : rd (entryK rCp rNp (toWord np) s0.M) rCp = toWord np :=
-    entryK_count hM0 (by decide) (by decide) (by decide) n0
-  have hME := inv_entryK (c := rCp) (n := rNp) (K := toWord np) hM0 (by decide)
-  have e : semXIR I (.loopK rCp rNp (toWord np) (posBody i cw nw sib)) s0 =
-      iterL (semXIR I (posBody i cw nw sib)) rCp np ⟨entryK rCp rNp (toWord np) s0.M, s0.o⟩ := by
-    simp only [semXIR, hcnt, toNat_toWord (show np < 2 ^ 64 by omega)]
-  rw [e]
-  have hy : ∀ y, regs ≤ y → y ≠ rCp ∧ y ≠ cTmp := fun y hy => by
-    simp only [rCp, cTmp, regs] at *; omega
-  have hHE : ∀ y, regs ≤ y → rd (entryK rCp rNp (toWord np) s0.M) y = rd s.M y := fun y hy' => by
-    rw [hE y (hy y hy').1 (hy y hy').2, hH0 y hy']
-  have e0 : nw * (0 + np) = nw * np := by rw [Nat.zero_add]
-  obtain ⟨d1, d2, d3⟩ := posLoop hD hX hcw hcap hnw hsib hnp hst hsb hcapn np 0
-    ⟨entryK rCp rNp (toWord np) s0.M, s0.o⟩
-    (by omega) hME (by simp only [size_entryK]; omega)
-    (fun a ha => by
-      show rd (entryK rCp rNp (toWord np) s0.M) (memX + a) = _
-      rw [hHE _ (by simp only [regs]; omega), hXs a ha])
-    (by show rd (entryK rCp rNp (toWord np) s0.M) rPp = _; rw [hE _ (by decide) (by decide), p0])
-    (by show rd (entryK rCp rNp (toWord np) s0.M) rWA = _; rw [hE _ (by decide) (by decide), a0])
-  intro y hy hy2
-  rw [d2 y hy (by rw [Nat.mul_zero, Nat.add_zero, e0]; exact hy2)]
-  show rd (entryK rCp rNp (toWord np) s0.M) y = _
-  rw [hHE y hy]
+      rd (semXIR (tp c π L) (readIR i cw sb nw sib np) s).M y = rd s.M y :=
+  readIR4_frame (bX := memX) (pL := posL) (by decide) (by decide) (by decide) hD.d4 hX s hM hXs hcw
+    hcap hnw hsib hnp hst hsb hcapn hsz
 
 end Pos
 
@@ -552,7 +499,7 @@ theorem sizeIR_decLevels : sizeIR decLevels = 53515 := by decide +kernel
 /-- **The decode** (BLUEPRINT §6.2 steps 2–4): the log index and level 0's read (`decRead`), the
 Fiat–Shamir replay (`chainIR`, answers at `ansB`), then the five levels (`decLevels`). The chain
 runs after the read: its frame keeps the index and the column store. -/
-def decF0 : XIR := .seq decRead (.seq (chainIR nRep chTab seedIR) decLevels)
+def decF0 : XIR := .seq decRead (.seq (chainIR posL nRep chTab seedIR) decLevels)
 
 /-- **The node branch** (BLUEPRINT §6.2 steps 2–5): the decode `decF0` leaves `f⁽⁰⁾` at `ob0`,
 then `outIR` emits `witWords (readWit f⁽⁰⁾)` (`FRXOutRun`). -/
@@ -564,7 +511,7 @@ def decLN3 : XIR := .seq kindIR (.ite rKN decNode leafIR)
 theorem cost_decF0 (t : ℕ) : cost decF0 t = cost decN t + cost decLevels t + 1 := by
   rw [decF0, decN, cost, cost, cost]
   generalize cost decRead t = a
-  generalize cost (chainIR nRep chTab seedIR) t = b
+  generalize cost (chainIR posL nRep chTab seedIR) t = b
   generalize cost decLevels t = c
   omega
 
@@ -581,7 +528,7 @@ theorem cost_decNode (t : ℕ) : cost decNode t = cost decN t + cost decLevels t
 
 theorem outs_decF0 (t : ℕ) : outs decF0 t = 0 := by
   have h1 : outs decRead t = 0 := by simp [decRead, outs, outs_logIR, outs_readIR, read0]
-  rw [decF0, outs, outs, h1, outs_chainIR nRep t chTab (sd := seedIR) (outs_sdList t _),
+  rw [decF0, outs, outs, h1, outs_chainIR posL nRep t chTab (sd := seedIR) (outs_sdList t _),
     outs_decLevels]
 
 theorem outs_decNode (t : ℕ) : outs decNode t = 571019 := by
@@ -589,12 +536,12 @@ theorem outs_decNode (t : ℕ) : outs decNode t = 571019 := by
 
 theorem decOk_decLN3 : DecOk decLN3 where
   wf := ⟨by simp +decide only [kindIR, readAt, WF, Prim.dst, rB, rK2, rKN, rKL, rA, and_true],
-    ⟨⟨decOk_decRead.wf, wf_chainIR nRep chTab (wf_sdList _) (noWrite_seedIR (by decide) (by decide)
+    ⟨⟨decOk_decRead.wf, wf_chainIR posL nRep chTab (wf_sdList _) (noWrite_seedIR (by decide) (by decide)
       (by decide) (by decide) (by decide) (by decide)), wf_decLevels⟩, wf_outIR⟩,
     by simp +decide only [leafIR, outAt, readAt, WF, Prim.dst, rK2, rV2, rA, and_true]⟩
   safe := fun c π L hs hq ht => .seq (safe_of_noLoopT noLoopT_leaf.1)
     (.ite (.seq (.seq (decOk_decRead.safe c π L hs hq ht)
-      (.seq (safe_chainIR c π L hs hq ht nRep chTab (noLoopT_sdList _) (wf_sdList _)
+      (.seq (safe_chainIR c π L (hs_posL hs) hq ht nRep chTab (noLoopT_sdList _) (wf_sdList _)
         (noWrite_seedIR (by decide) (by decide) (by decide) (by decide) (by decide) (by decide)))
         (safe_of_noLoopT noLoopT_decLevels))) (safe_of_noLoopT noLoopT_outIR)) (safe_of_noLoopT noLoopT_leaf.2))
   cost := fun t => by
@@ -614,7 +561,7 @@ theorem decOk_decLN3 : DecOk decLN3 where
     have e3 : sizeIR decNode = sizeIR decN + 53515 + 1 + 22421 + 1 := by
       rw [decNode, decF0, sizeIR, sizeIR_outIR, decN, sizeIR, sizeIR, sizeIR, sizeIR_decLevels]
       generalize sizeIR decRead = a
-      generalize sizeIR (chainIR nRep chTab seedIR) = b
+      generalize sizeIR (chainIR posL nRep chTab seedIR) = b
       omega
     rw [decLN3, sizeIR, sizeIR, e, e2, e3]
     generalize sizeIR decN = a at this ⊢
@@ -644,7 +591,7 @@ theorem cost_le_decLN3_node (t : ℕ) : cost decLN3 t ≤ 140884480944337 + 2558
 theorem chain_frame (c : Digest) (π : Proof) (L : Log) (hD : Dom c π L) (st₀ : Digest) (s : St)
     (hM : Inv s.M) (hsz : chEnd ≤ s.M.size) :
     ∀ y, regs ≤ y → (y < chB ∨ chEnd ≤ y) →
-      rd (semXIR (tp c π L) (chainIR nRep chTab seedIR) s).M y = rd s.M y := by
+      rd (semXIR (tp c π L) (chainIR posL nRep chTab seedIR) s).M y = rd s.M y := by
   have h119 : (fsQ (vkOf π) c π 0 st₀).size = 119 := by
     have hp' : π.size = 797904 := hD.hs.trans piSize_eq
     unfold fsQ
@@ -653,7 +600,7 @@ theorem chain_frame (c : Digest) (π : Proof) (L : Log) (hD : Dom c π L) (st₀
     rw [seedQ, ByteArray.size_append, extract_size π (by omega),
       show (bytesOf (tagSeed ++ (vkOf π).toList ++ c.toList)).size = 71 by
         simp [bytesOf, ByteArray.size, tagSeed]]
-  exact (chainIR_sem c π L hD.hs hD.hq hD.ht (N := nRep) (by decide)
+  exact (chainIR_sem c π L (hs_posL hD.hs) hD.hq hD.ht (N := nRep) (by decide)
     (tabW_chTab (vkOf π) c π L hD.hs) (seedOK_seedIR c π L hD.hs st₀) h119 s hM hsz).2.2
 
 /-- Level 0's committed word is π's column store when π's cap is the log's (`capDig es 0 =
@@ -716,15 +663,15 @@ theorem decF0_sem (c : Digest) (π : Proof) (L : Log) (hD : Dom c π L) (hS : ¬
   generalize semXIR (tp c π L) read0 s1 = s2 at d2 hM2 z2 hWF
   have hsz2 : memX ≤ s2.M.size := z2 ▸ hsz1
   -- the chain
-  have hans : ∀ p < nRep, ∀ m < 4, rd (semXIR (tp c π L) (chainIR nRep chTab seedIR) s2).M
+  have hans : ∀ p < nRep, ∀ m < 4, rd (semXIR (tp c π L) (chainIR posL nRep chTab seedIR) s2).M
       (ansB + 4 * p + m) = (packBytes (ansAt es p).toList).getD m 0 := fun p hp m hm4 =>
     chain_dec c π L hD.hs hD.hq hD.ht hS st₀ s2 hM2 (le_trans (by decide) hsz2) hp (hfm p hp) hm4
   have cf := chain_frame c π L hD st₀ s2 hM2 (le_trans (by decide) hsz2)
-  have hM3 : Inv (semXIR (tp c π L) (chainIR nRep chTab seedIR) s2).M := inv_sem _
-    (wf_chainIR nRep chTab (wf_sdList _) (noWrite_seedIR (by decide) (by decide) (by decide)
+  have hM3 : Inv (semXIR (tp c π L) (chainIR posL nRep chTab seedIR) s2).M := inv_sem _
+    (wf_chainIR posL nRep chTab (wf_sdList _) (noWrite_seedIR (by decide) (by decide) (by decide)
       (by decide) (by decide) (by decide))) hM2
-  have z3 := size_sem (tp c π L) (chainIR nRep chTab seedIR) s2
-  generalize semXIR (tp c π L) (chainIR nRep chTab seedIR) s2 = s3 at hans cf hM3 z3
+  have z3 := size_sem (tp c π L) (chainIR posL nRep chTab seedIR) s2
+  generalize semXIR (tp c π L) (chainIR posL nRep chTab seedIR) s2 = s3 at hans cf hM3 z3
   have hXs3 : ∀ a < L.length, rd s3.M (memX + a) = rd s1.M (memX + a) := fun a ha =>
     (cf _ (le_trans (by decide) (Nat.le_add_right _ _))
       (.inr (le_trans (by decide) (Nat.le_add_right _ _)))).trans (d2 a ha)

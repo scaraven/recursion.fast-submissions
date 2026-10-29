@@ -238,7 +238,7 @@ theorem chain_spec (vk c : Digest) (π : Proof) (L : Log) (hs : π.size = piSize
     (hsd : SeedOK sd (extractorInput c π L).toArray (fsQ vk c π 0 zeroD))
     (s : St) (hM : Inv s.M) (hsz : chEnd ≤ s.M.size) {p : ℕ} (hp : p < nRep) {a : Digest}
     (ha : fmAns (fsQ vk c π) zeroD L p = some a) {m : ℕ} (hm : m < 4) :
-    rd (semXIR (extractorInput c π L).toArray (chainIR nRep chTab sd) s).M (ansB + 4 * p + m) =
+    rd (semXIR (extractorInput c π L).toArray (chainIR posL nRep chTab sd) s).M (ansB + 4 * p + m) =
       (packBytes a.toList).getD m 0 := by
   have h119 : (fsQ vk c π 0 zeroD).size = 119 := by
     have hp' : π.size = 797904 := hs.trans piSize_eq
@@ -248,7 +248,7 @@ theorem chain_spec (vk c : Digest) (π : Proof) (L : Log) (hs : π.size = piSize
     rw [seedQ, ByteArray.size_append, extract_size π (by omega),
       show (bytesOf (tagSeed ++ vk.toList ++ c.toList)).size = 71 by
         simp [bytesOf, ByteArray.size, tagSeed]]
-  obtain ⟨-, hans, -⟩ := chainIR_sem c π L hs hq ht (N := nRep) (by decide)
+  obtain ⟨-, hans, -⟩ := chainIR_sem c π L (hs_posL hs) hq ht (N := nRep) (by decide)
     (tabW_chTab vk c π L hs) hsd h119 s hM hsz
   have hsc := scanC_answers (N := nRep) (st₀ := zeroD) (fun p st hp => stateIn_fsQ vk c π hp st)
     hS hp
