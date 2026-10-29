@@ -28,6 +28,9 @@ mod leaf;
 mod ligerito;
 mod lincheck;
 mod merkle;
+mod mfill;
+mod node;
+mod nodeops;
 mod mle;
 mod nodeshape;
 mod ntt;
@@ -151,6 +154,104 @@ fn seg_n(args: &[String], m: usize) -> u64 {
     let n = arg(args, "--n").map(|x| x.parse().expect("--n")).unwrap_or_else(|| params::leaf_n(m));
     assert!((1..=params::leaf_n(m)).contains(&n), "--n: 1 … 2^(m−14)");
     n
+}
+
+/// The M slot fill on the node dump (`mfill.rs`): segment children of the given `m` (and `--n`)
+/// replayed by prototype 1 at their index, the inactive fill of both prototypes; every row checked.
+fn mfill_kat(args: &[String]) {
+    let (dd, pd) = mfill::find_dirs().unwrap_or_else(|| service::fatal("no node dump (FLOCK_NODE_DUMP)"));
+    let t = Instant::now();
+    let protos: Vec<mfill::Proto> = (0..2).map(|pi| mfill::Proto::load(&dd, pi)).collect();
+    println!("MFILL load {:.2}s rows {} / {} regs {} / {} aux {} / {}", t.elapsed().as_secs_f64(), protos[0].rows.len(), protos[1].rows.len(), protos[0].regs.len(), protos[1].regs.len(), protos[0].aux.len(), protos[1].aux.len());
+    for (pi, p) in protos.iter().enumerate() {
+        for rep in 0..2 {
+            let t = Instant::now();
+            let (_, st) = mfill::fill(p, None);
+            println!("MFILL proto={pi} inactive rep={rep} {:.2}s {st:?}", t.elapsed().as_secs_f64());
+        }
+    }
+    let circ = circuit::Circuit::build();
+    let o = oracle::Local::keyed(&[0x5Au8; 32]);
+    let vk = [7u8; 32];
+    let s: Digest = std::array::from_fn(|i| i as u8 ^ 0x33);
+    let text = std::fs::read_to_string(pd.join("proto-p1.txt")).unwrap_or_else(|_| service::fatal("proto-p1.txt (FLOCK_PROTO_DIR)"));
+    for m in args[2..].iter().take_while(|a| !a.starts_with("--")).filter_map(|a| a.parse::<usize>().ok()) {
+        let n = seg_n(args, m);
+        let (pi, _) = leaf::prove_seg(&o, &circ, &vk, &s, m, n);
+        let c = leaf::seg_c(&s, n);
+        let ix = match m { 32 => 0, 30 => 1, _ => 2 };
+        let t = Instant::now();
+        let (r, regs) = ir::run_regs(&ir::spec_kind(&text, ix), &circ, &o, &vk, &c, &pi);
+        let rt = t.elapsed().as_secs_f64();
+        let t = Instant::now();
+        let (_, st) = mfill::fill(&protos[1], Some((&regs, ix)));
+        println!("MFILL proto=1 m={m} n={n} ix={ix} run_ok={} failed={:?} asks={} run_s={rt:.2} fill_s={:.2} {st:?}", r.ok, r.failed, r.asks, t.elapsed().as_secs_f64());
+    }
+}
+
+/// An ordered recording oracle (the trace a verifier asks).
+struct Tape<'a>(&'a dyn oracle::Oracle, std::sync::Mutex<oracle::Trace>);
+impl oracle::Oracle for Tape<'_> {
+    fn ask(&self, q: &[u8]) -> Digest {
+        let a = self.0.ask(q);
+        self.1.lock().unwrap().push((q.to_vec(), a));
+        a
+    }
+}
+
+/// **The node witness KAT** (`node-kat N8 [--n N] [--m M]`): two aggregates of one segment each
+/// (kind `L{M}`, `N` steps), signed by the test signer; the N8 witness from them; every relation
+/// checked (`node::check`).
+fn node_kat(args: &[String]) {
+    let kind = match args.get(2).map(|s| s.as_str()) {
+        Some("N8") | None => node::NK::N8,
+        Some(k) => service::fatal(&format!("node-kat: {k} needs a previous node (not built yet)")),
+    };
+    let (dd, pd) = mfill::find_dirs().unwrap_or_else(|| service::fatal("no node dump (FLOCK_NODE_DUMP)"));
+    let t = Instant::now();
+    let protos = [mfill::Proto::load(&dd, 0), mfill::Proto::load(&dd, 1)];
+    let texts = [0, 1].map(|p| std::fs::read_to_string(pd.join(format!("proto-p{p}.txt"))).unwrap_or_else(|_| service::fatal("proto-p*.txt (FLOCK_PROTO_DIR)")));
+    let kt = mfill::KindTab::load(&dd.join(format!("node-{}.txt", kind.name())));
+    println!("NODE-KAT load {:.2}s", t.elapsed().as_secs_f64());
+    let m: usize = arg(args, "--m").map(|x| x.parse().unwrap()).unwrap_or(32);
+    let n = seg_n(args, m);
+    let circ = circuit::Circuit::build();
+    let gcirc = node::general_circuit();
+    let o = oracle::Local::keyed(&[0x5Au8; 32]);
+    let (vk, _) = format::toy_sign(9, &[0u8; 32]);
+    let mut signed = Vec::new();
+    for a in 0..kind.n_agg() {
+        let s: Digest = std::array::from_fn(|i| i as u8 ^ (0x33 + a as u8));
+        let t = Instant::now();
+        let (p, _) = leaf::prove_seg(&o, &circ, &vk, &s, m, n);
+        let mut pi = vec![0u8; 48];
+        pi[0] = 0x41;
+        pi[1] = 1;
+        pi[8..16].copy_from_slice(&n.to_le_bytes());
+        let e = blake2s::chain_end(&s, n);
+        pi[16..48].copy_from_slice(&e);
+        pi.extend_from_slice(&p);
+        let c = leaf_stmt(&e, n);
+        let tape = Tape(&o, std::sync::Mutex::new(Vec::new()));
+        let ok = agg::verify(&tape, &circ, &vk, &c, &pi);
+        let tr = tape.1.into_inner().unwrap();
+        let (_, sig) = format::toy_sign(9, &format::trace_digest(&tr));
+        println!("NODE-KAT aggregate {a}: L{m} n={n} prove {:.2}s V_A={ok} |tr|={}", t.elapsed().as_secs_f64(), tr.len());
+        signed.push(format::Signed { pi, tr, sig });
+    }
+    let aggs: Vec<node::AggIn> = signed.iter().map(node::agg_in).collect();
+    let t = Instant::now();
+    node::warm_plans(&protos);
+    println!("NODE-KAT inactive plans {:.2}s (before a request)", t.elapsed().as_secs_f64());
+    let t = Instant::now();
+    let w = node::witness(kind, &vk, None, &aggs, &protos, &texts, &gcirc, &circ);
+    println!("NODE-KAT witness {:.2}s {:?}", t.elapsed().as_secs_f64(), w.times);
+    for (v, st) in w.mstats.iter().enumerate() {
+        println!("NODE-KAT slot {v}: {st:?}");
+    }
+    let t = Instant::now();
+    let ch = node::check(&w, &protos, &kt);
+    println!("NODE-KAT check {:.2}s {ch:?} peak_rss_mb={:.0}", t.elapsed().as_secs_f64(), peak_rss_mb());
 }
 
 fn test_leaf(m: usize, n: u64, reps: usize) {
@@ -514,6 +615,8 @@ fn main() {
                 std::process::exit(1);
             }
         },
+        "mfill-kat" => mfill_kat(&args),
+        "node-kat" => node_kat(&args),
         "test-leaf" => {
             let m: usize = args[2].parse().expect("M");
             test_leaf(m, seg_n(&args, m), reps)

@@ -255,3 +255,56 @@
   40741790546, all EPYC 7763): every runner rebuilt `prover.s` 7c3b445b… byte for byte; SELFTEST
   ymm. 72 canaries rejected, lean_seg 66/66 and lean_acc 6/6 accepted. Fits: L32 2.57 + 2.68·x,
   L31 1.29 + 1.33·x, L30 0.67 + 0.60·x (`fit.txt`). Branches deleted.
+
+## Pass 8 (track P2⁗, revision 4.1: the node prover), 2026-10-28
+
+- Read TRACK-RULES, P2-RESULT §11–§15, S-F4 §5, S-E12a–d (RESULT and the node dump's README),
+  S-CN4 (pass 2), S-T2, BLUEPRINT §4.2–4.4 and A.6–A.9, PROVER.md. The INT-8 dumps landed at 23:14
+  (`logs/INT-8/dump/`, with `group-N.txt`/`group-S.txt`, the uniform group programs in mux format).
+- **Order forced by the stream**: an `N2`/`N4` node needs a previous node as its slot-0 child, so the
+  first node to exist is `N8` (step 1: two aggregates). The KATs of this pass are on `N8`.
+- **The prototype programs were not dumped.** `mregs-p{π}` numbers the registers of `protoProg π`
+  (S-E12d's `progNodeG cells4 N4` / `progSegG`), which no ops file holds (INT-8's `group-*.txt` are
+  the post-INT-8 programs: 97,657 registers against `mregs`' 97,414 / 97,257). Dumped them with a
+  probe (`logs/fr-build-P2q/p2probe/ProtoDump.lean`, IRDump8's `showOp` in mux mode, `lean --run`
+  against the S-E12d build tree's oleans copied to `logs/fr-build-P2q`, 7 s): `logs/P2/r41p8/proto/
+  proto-p0.txt` (106,242 ops, 97,414 registers), `proto-p1.txt` (106,085 ops, 97,257 registers):
+  the counts match `mregs`.
+- `ir.rs`: `spec_kind` (a mux program's kind tables at an index), `run_regs` (every register's
+  value), `hashStmt` at `N` (node statement).
+- `mfill.rs` (new): loaders for `mrows`/`mregs`/`maux`/`node-N*.txt`; the slot fill (one′, selector
+  copies, the registers' single-cell forms, the auxiliary imports `felems`/`bits`, then a forward
+  row solve to a fixed point: a row with one unknown cell is linear in it unless the cell is in both
+  `A` and `B`; leftovers zero); every row and every multi-cell register form checked.
+  - Inactive slot (selectors zero, imports zero), both prototypes: **all rows hold** (485,230 /
+    484,526), 3.2 s each (VM, one thread).
+  - Prototype 1 at index `L32` on an `L32` segment (n = 5): the group program accepts, **every row
+    holds, 0 conflicts, 0 form mismatches** (`mfill-kat-2.txt`).
+  - At index `P30` on an `L30` segment: the program rejects at its last `assertEq` (line 106,084,
+    `finPf`), 2 rows fail, 68 forms differ — S-E12c §1's obstruction 1 (the group runs `L32`'s
+    finals at every index), which INT-8 removes (`mfill-kat-1.txt`).
+- `node.rs` (new): `NK`, `BK` (A.6's kinds with targets), `bk_at` (`nodeLayout4`), the eight link
+  families, a general block tape (`Circuit::build_general`: no chain constants) and the bit-sliced
+  `trace_blocks` for any kinds; `witness`: both main chains (sequential compressions, the chains in
+  parallel), the candidate final blocks and `c_A`, `hashStmt` per slot, WOTS per signed child (digit
+  mux, key leaf, path; asserts the root is `vk`), the `WM` mirrors, the L bits, the M fill per slot
+  in parallel (prototype program at the child's index through `Seq` over the child's trace); `check`:
+  every relation directly.
+- `node-kat N8 --m 32 --n 3` (two aggregates of one `L32` segment, toy signer): **every H block's
+  R1CS with its target, the masked chain links, the 8 link families × 2 signed children, the 9 public
+  cells, L's Booleanity, all 3,876,208 M rows and the 62 link/activity rows hold**
+  (`node-kat-2.txt`). Witness 4.2 s on the VM (M fill 3.7 s, H trace 0.23 s for 187,548 blocks),
+  peak 5.7 GB. With `L30` children (`--m 30`): the same, but 4 M rows (2 per active `L30` slot):
+  obstruction 1 again (`node-kat-1.txt`).
+- `nodeops.rs` (new): the node ops in specification form (`shiftMask4S`, `targetSNode4S`,
+  `linkWAll4S`, `rsWeightS4` with `kf4`, `evalM`/`evalL` over the rows), and the prover's masked `In`
+  table. KAT probe `logs/P2/r41p8/opsprobe/NodeOpsKat.lean` against `fr-build-SCN4b`'s oleans
+  (`lean --run`, read-only): S-CN4b's `targetSNode4I`, `shiftMask4I`, `linkWAll4I` and S-T2's
+  `rsWeightF4` at fixed points, all three kinds.
+- KAT: all 24 Lean lines (`targetS`, `shiftMask`, `linkWAll`, `rsWeight` × N2/N4/N8 × 2 points)
+  equal the native forms byte for byte (`node_ops_match_lean`). The probe took 15 min interpreted.
+- M fill speed: one slot's solve was 2.5 s (worklist) / 2.0 s (replay); the inversions dominated.
+  Skipping the inversion when the unknown's coefficient is 1: 1.3 / 0.8 s (VM, portable F).
+- `cargo test --release`: 37 passed, 1 ignored. `prover.s` sha256 `a2890a65…ab42e` (8,108,075 B).
+- Stopped here (context): RESULT §16.6 is the handover (the node PIOP for N8 first; then N4/N2 on
+  INT-8's re-dump with `proto-p*.txt`; modes; where the rows come from on the runner; timings).

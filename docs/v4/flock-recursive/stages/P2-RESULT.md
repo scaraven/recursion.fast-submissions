@@ -1436,3 +1436,148 @@ pre-fault.
    `lean/FRSoundness4Agg.lean:194` (`#queries`). That file is another track's in-progress module,
    not this track's.
 4. Next for P2: the N2/N4/N8 node prover from S-E12′'s node rows and dumps (§13.11 items 3–6).
+
+## 16. Pass 8 (revision 4.1, track P2⁗): the node witness, the node ops, the M fill
+
+Status: 2026-10-28, **partial: item 1 (the node witness) done for `N8` and checked relation by
+relation; the native node ops done and KAT-equal to the Lean's; items 2–4 (the node PIOP, the
+`first`/`step` modes, the 7763 timings) not started** (16.6 is the handover). Logs:
+`logs/P2/r41p8/`. No probe branch was pushed (no runner measurement this pass).
+
+### 16.1 The order is forced: `N8` first
+
+An `N2`/`N4` node replays a previous node in slot 0 (prototype 0), and the first node of a stream
+is step 1's `N8` (two aggregates, every slot prototype 1). So no `N4` can be built, and prototype
+0 cannot be filled honestly, until an `N8` proof exists (item 2). This pass's KATs are on `N8`;
+prototype 0 is checked on its inactive fill only.
+
+### 16.2 What was built (crate 11,881 `.rs` lines, was 9,834)
+
+| file | lines | content |
+|---|---:|---|
+| `mfill.rs` | new, 525 | loaders of the node dump (`mrows-p{π}`, `mregs-p{π}`, `maux-p{π}`, `node-N*.txt`); **the slot fill**: `one′`, the selector copies, every register's single-cell forms from the program run, the auxiliary imports (`felems n`: the bytes as `n` sixteen-byte elements; `bits n`: the number's bits), then a **forward row solve** (a row with one unknown cell is linear in it unless the cell is in both `A` and `B`) to a fixed point, leftovers zero; every row and every multi-cell register form checked. The first fill of a prototype records its solve order (`Proto::plan`), later fills replay it (falling back to the worklist if a step fails) |
+| `node.rs` | new, 974 | `NK` (`FRShape4`/`FRNodeLayout4`'s numbers), `BK` (A.6's kinds with their targets, `FRBlockKinds`), **`bk_at` = `nodeLayout4`** (chains, `hashStmt`, WOTS, `WM`/spare, the tails: candidate final blocks and `c_A`'s `hashA`), `cells4`, `chainLk4`, the eight link families (`NodeT.fam`); `trace_blocks`: up to 64 blocks of any kinds bit-sliced on the general tape (pinned inputs `(0,0)`, free inputs `(var k, one)`, `free` blocks `A₀ = B₀ = I`); **`witness`**: both main chains (sequential compressions, the two chains in parallel; an aggregate of `k < maxK` segments: main chain zero-padded, `F_{a,k}` with the main chain's `h_in` and message prefix), `c_A`, `hashStmt` per verifier slot from the slot child's `stmt`, WOTS per signed child (digit mux, key leaf, path; asserts the root is `vk`), the `WM` mirrors (A.6's map), L (signature, digits, step selectors, the slot child's 7,552 position bits, the one-hot kind selector), the M fill per slot in parallel (the prototype program at the child's index, `ir::run_regs` through `Seq` over the child's trace); **`check`**: every relation directly |
+| `nodeops.rs` | new, 343 | the node ops in specification form: `shiftMask4S`, `targetSNode4S`, `linkWAll4S`, `rsWeightS4` (claim 2 by `kf4` at `β^(2^k)`), `kf4`, `evalM` over the moved prototype rows and the link rows, `evalL` over `lRows4`; the prover's masked `In` table `shift_in_table` (`chainLk4`, the start term at both chains' first blocks) |
+| `ir.rs` | +99 | `spec_kind` (a mux program's `{L:…, P:…, N:…}` tables at an index), `run_regs` (all registers), `hashStmt` at `N`; `NodeCtx`/`run_node`: a node program's `targetS`, `shiftMask`, `linkWAll`, `rsWeight … true`, `evalM`, `evalL` from `nodeops.rs` |
+| `circuit.rs` | +15 | `Circuit::build_general` (the tape without the chain kind's constant gates or input rows) |
+| `main.rs` | +103 | modes `mfill-kat [M…] [--n N]` and `node-kat N8 [--m M] [--n N]` |
+| `kat.rs` | +14 | `find_up` |
+
+### 16.3 The prototype programs (an input the dump lacked)
+
+`mregs-p{π}` numbers the registers of `protoProg π` (S-E12d: `progNodeG (cells4 .N4)`, `progSegG`),
+but no ops file holds those programs: INT-8's `group-N/S.txt` are the post-INT-8 group programs
+(97,657 registers against `mregs`' 97,414 / 97,257). I dumped them with a probe
+(`logs/fr-build-P2q/p2probe/ProtoDump.lean` = `IRDump8`'s `showOp` in mux mode; `lean --run`
+against the S-E12d build tree's oleans, copied to `logs/fr-build-P2q`; 7 s):
+`logs/P2/r41p8/proto/proto-p0.txt` (106,242 ops, 97,414 registers), `proto-p1.txt` (106,085 ops,
+97,257 registers). The register counts match `mregs`. **Request (S-E12e / INT-8's re-dump): write
+`proto-p0.txt`/`proto-p1.txt` into every node dump** (the prover reads `FLOCK_PROTO_DIR`, default
+the dump directory); a re-dump is then a reload.
+
+### 16.4 KATs
+
+**The M fill on the dumped rows** (`mfill-kat`, VM; `mfill-kat-1.txt`, `mfill-kat-2.txt`):
+
+| slot | result |
+|---|---|
+| inactive (selectors 0, imports 0), prototype 0 and 1 | all 485,230 / 484,526 rows hold |
+| prototype 1 at `L32` on an `L32` segment (n = 5) | the group program accepts (8,905 asks); **all rows hold; 0 conflicts between the run's values and the solve; 0 register-form mismatches** |
+| prototype 1 at `P30` on an `L30` segment | the program rejects at line 106,084 (`finPf`'s last `assertEq`); 2 rows fail, 68 forms differ: **S-E12c §1's obstruction 1** (the pre-INT-8 group runs `L32`'s finals at every index). INT-8 removes it |
+
+So `ir.rs` and the dump agree on every templated op (`walkAB`'s XOR DAG, `maskRows`, `rowW`,
+`phiRS`, `tensorW`, `dotKF`, `eqTableK`, `lagrangeS`, `eqZ`, `slotW`, `eqPt`, `shiftEq`).
+
+**The `N8` witness** (`node-kat N8 --m 32 --n 3`: two aggregates of one `L32` segment each, signed
+by the test signer; `node-kat-2.txt`, `node-kat-3.txt`):
+
+| relation | blocks / rows | bad |
+|---|---|---:|
+| every block's R1CS with its kind's target (`(A₀z)(B₀z) = z + E`) | 262,144 blocks (H 187,548) | 0 |
+| the masked chain links (`chainLk4`) | 185,342 | 0 |
+| the eight link families against the `WM` mirrors, both signed children | 2 × 1,046 sources | 0 bits |
+| the nine public cells (`cells4`: `one`, `vk`, `c_A` from its `hashA` block) | 9 | 0 |
+| L's declared bits | 8 × 8,220 | 0 |
+| M: every slot's prototype rows, moved | 3,876,208 | 0 |
+| M: link and activity rows (aggregate 0 and 1 with `k = 1`: slots 0 and 4 active) | 63 | 0 |
+
+With `L30` children (`--m 30`, `node-kat-1.txt`): the same, except 4 M rows (2 per active slot):
+obstruction 1 again.
+
+**The node ops against the Lean** (`nodeops::tests::node_ops_match_lean`): probe
+`logs/P2/r41p8/opsprobe/NodeOpsKat.lean`, `lean --run` against `fr-build-SCN4b`'s oleans (read
+only; 15 min interpreted), prints S-CN4b's `targetSNode4I`, `shiftMask4I`, `linkWAll4I` and S-T2's
+`rsWeightF4` (four claims, claim 2 kind-weighted) for `N2`, `N4`, `N8` at two points each
+(`nodeops-kat.txt`, 24 lines). **The native specification forms equal all 24 byte for byte.** So
+the native ops meet the Lean's computed ops on these points, and with them (`*_meets`) the specs.
+`evalM`/`evalL` have no Lean computed form at 4.1 yet (`implN4` takes them from its base); they are
+the rows' MLEs by definition.
+
+**Layout figures** (`nodeops::tests::layout_figures`): `hEnd` 70,957 / 117,593 / 187,548
+(S-E12a's `hEnd_eq`), `N4`'s `hUsed`, `lBase`, `oneCell` and `cells4` as `node-N4.txt`; (−)
+`chainLk4` does not link the previous node's last block to the aggregate's first.
+
+### 16.5 Times (VM, portable tier, 32 threads; not the runner)
+
+`N8` witness 4.2–6.2 s: H inputs 0.07 s, the bit-sliced trace of 187,548 H blocks 0.21–0.23 s, L
+and mirrors 0.001 s, **M fill 3.7–5.8 s**, writes 0.12 s; peak 5.7 GB (with the two `L32` proofs'
+memory). One slot's fill: worklist 1.3 s, replayed plan 0.8 s (after skipping the inversion when
+the unknown's coefficient is 1; it was 2.5 / 2.0 s), of which 0.35 s is the row check. The inactive
+plans need no child and are recorded before a request (2.9 s). On the VM there is no `pclmulqdq`,
+so every F product is the portable one: the runner's figure will be far lower; not measured.
+
+**Deviations, provisional choices** (where the circuit is still open, S-E12a D6, the dump's
+README):
+1. A signed child's signature, digits and step selectors are written in L slot `σ` for signed
+   child `σ` (A.7 names "per slot"; 4.1 has 1 + k slots and two signed children). Only L's
+   Booleanity reads them today.
+2. `hashStmt` blocks of a slot whose child is of the other kind (A for a node, B1/B2 for a segment)
+   and of an inactive slot hold the pins and zeros (B2's `h_in` = B1's `h_out` always).
+3. An aggregate of `k < maxK` segments: the main chain past its stream hashes zero bytes; the
+   unused candidate final blocks hash zeros from a zero `h_in`.
+4. The M fill does not use the prototype rows' unbound imports' meaning (the replay `R`,
+   `rsWeight`, the kind factor, `targetS`/`linkWAll`/`shiftMask`, `evalL`, the pack map): it writes
+   the run's values, which is what the bound rows will require.
+
+### 16.6 Handover: the remaining items, in order
+
+1. **The node PIOP prover, `N8` first** (`node.rs` gives `z`, `A₀z`, `B₀z`, the public values):
+   - Z: the zerocheck as the leaf's (round 1 on `a`, `b`, `z` per block), Z2 with `P^e =
+     target_s_node4(r)`;
+   - Lc: L3's seven kind values `v_κ` (the kind-folded `A₀z`, `B₀z` per kind), the walk with the
+     masked row weights (`maskRows`), `free`'s closed-form term;
+   - Sh: `Out` with `eq(τ,·)` masked by `chainLk4`, `In` = `nodeops::shift_in_table`, the eight
+     link families in the same sumcheck (`κ_s^{f+2}`), the collapse over positions `< 1024`;
+   - Lr over `lRows4` (`2^logL` rows), E2/E4 over the M rows (the `nodeshape.rs` surrogate's shape,
+     now on `mfill`'s rows: `A_M f`, `B_M f`, `C_M f`, the transpose table at `r_{E2}`), E4 end
+     `α₄ ‖ 0^16`;
+   - RS with four claims (claim 2's weight by `kf4` at `β^(2^k)`; `ringswitch::weight_table` needs
+     the per-block factor), B′ with the nine `cells4` point claims, Ligerito unchanged.
+   - Check: `ir::run_node` on `ops-N8.txt` (INT-8's or S-F4's) with `NodeCtx`, accept and canary;
+     a native `V_N` follows the same ops.
+2. **Then `N4` (k = 2, 3) and `N2`** with that `N8` as slot 0's child (prototype 0's first honest
+   fill). With S-E12d's prototypes an `N4` child is obstruction 3 (`hashStmt` at index `L32`
+   computes a leaf statement) and `N2` obstruction 1: wait for INT-8's re-dump (`proto-p*.txt`
+   beside it).
+3. **`first`/`step`** per PROVER.md (step 1: two aggregates → `N8`; step `i`: `prev.bin` + one
+   chain → `N2` (`k ≤ 2`) or `N4`), with SIGN; a short stream through `rf-oracle`.
+4. **Where the rows come from on the runner (open, for the orchestrator).** The prover reads the
+   rows from the 352 MB dump. On the runner it has only its binary and `/setup` (written by
+   `prover setup` from the binary). The options: embed a compact form (≈ 3.3 M terms per
+   prototype, coefficients mostly 1) in `prover.s` as data, or port `compileTF` + the layout hint
+   to Rust with the dump as its KAT. This decides item 3's feasibility.
+5. **Timings on the 7763** (node prove per kind, step at `n = 2^17, 2^18`, the mean, `2^20`, peak
+   against 11G), against blueprint 4.2's N2 2.4 s, N4 4.1 s, N8 4.8 s. The M fill's replay is the
+   first lever (one slot's solve is ≈ 330 k linear solves; on the runner's `pclmul` tier, and with
+   the plans recorded in `prover setup`).
+
+### 16.7 Checks and `prover.s`
+
+- `cargo test --release`: **37 passed, 1 ignored** (`logs/P2/r41p8/cargo-test.txt`; new:
+  `node_ops_match_lean`, 176 s for the brute-force `rsWeight` over `2^18` blocks × 128 stages, and
+  `layout_figures`). Source rule (`logs/org20`): 300 files, 0 findings.
+- `prover.s` regenerated (`build-asm.sh logs/P2/r41p8/asm`, `build-asm.log`): **8,108,075 bytes,
+  sha256 `a2890a6591903c091a057cd87e4dc8e78b125ca25234495722d84cf4755ab42e`**; linked binary
+  2,421,496 bytes, sha256 `57ecd041…52b4`; no machine path in the `.s`.
+- Build trees: `logs/fr-build-P2q` (a copy of `fr-build-SE12d`, 5.4 GB, used only through its oleans
+  for the prototype dump; can be deleted). `fr-build-SCN4b` was read, not written.

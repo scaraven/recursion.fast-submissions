@@ -207,3 +207,17 @@ mod tests {
         eprintln!("chain_kind_rows_kat: digest equal; full dump {}", if lean.is_some() { "compared line by line" } else { "absent (digest only)" });
     }
 }
+
+/// `rel` in the working directory or one of its parents (KAT files under `logs/`).
+pub fn find_up(rel: &str) -> Option<PathBuf> {
+    let mut d = std::env::current_dir().ok()?;
+    loop {
+        let p = d.join(rel);
+        if p.exists() {
+            return Some(p);
+        }
+        if !d.pop() {
+            return None;
+        }
+    }
+}

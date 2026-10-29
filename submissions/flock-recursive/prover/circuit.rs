@@ -270,11 +270,21 @@ pub fn transpose64(a: &mut [u64; 64]) {
 impl Circuit {
     /// The leaf chain block.
     pub fn build() -> Circuit {
+        Self::build_with(true)
+    }
+
+    /// The general block (the node's kinds, `trace_blocks`): every input position a variable read
+    /// from the block's inputs, no constant gates, and no input rows (the kind decides them).
+    pub fn build_general() -> Circuit {
+        Self::build_with(false)
+    }
+
+    fn build_with(chain: bool) -> Circuit {
         let mut b = Builder { nodes: vec![Node::Zero], var_of: vec![0; BLOCK], next: GATE_BASE, gates: vec![] };
         let v512 = b.var(CPOS);
         // the constant rows, prepended to the gates, ascending position: `(one, one)` for a 1
         // bit, `(0, 0)` for a 0 bit
-        for k in 0..GATE_BASE {
+        for k in (0..GATE_BASE).filter(|_| chain) {
             match const_bit(k) {
                 Some(true) => {
                     b.gate_at(k, v512, v512);
@@ -345,6 +355,9 @@ impl Circuit {
             }
         }
         assert!(!is_gate[CPOS]);
+        if !chain {
+            return Circuit { nodes: b.nodes, rows, gates: b.gates, v512 };
+        }
         for k in MSG_IN..MSG_IN + 256 {
             assert!(!is_gate[k]);
             let vk = b.var(k);

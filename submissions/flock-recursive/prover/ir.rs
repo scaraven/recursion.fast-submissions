@@ -30,46 +30,46 @@ pub enum V {
 }
 
 impl V {
-    fn f(&self) -> F {
+    pub fn f(&self) -> F {
         match self {
             V::F(x) => *x,
             _ => F::ZERO,
         }
     }
-    fn k(&self) -> K {
+    pub fn k(&self) -> K {
         match self {
             V::K(x) => *x,
             _ => K::ZERO,
         }
     }
-    fn d(&self) -> Digest {
+    pub fn d(&self) -> Digest {
         match self {
             V::D(x) => *x,
             _ => [0u8; 32],
         }
     }
-    fn b(&self) -> &[u8] {
+    pub fn b(&self) -> &[u8] {
         match self {
             V::B(x) => x,
             _ => &[],
         }
     }
-    fn n(&self) -> u64 {
+    pub fn n(&self) -> u64 {
         match self {
             V::N(x) => *x,
             _ => 0,
         }
     }
-    fn bit(&self) -> bool {
+    pub fn bit(&self) -> bool {
         matches!(self, V::Bit(true))
     }
-    fn af(&self) -> &[F] {
+    pub fn af(&self) -> &[F] {
         match self {
             V::AF(x) => x,
             _ => &[],
         }
     }
-    fn ak(&self) -> &[K] {
+    pub fn ak(&self) -> &[K] {
         match self {
             V::AK(x) => x,
             _ => &[],
@@ -195,10 +195,59 @@ pub fn mask_rows(kind_w: &[F], row_w: &[F]) -> Vec<F> {
 
 /// Run the dumped program `text` (a fixed leaf kind) on `π` with the oracle `o`.
 pub fn run(text: &str, circ: &crate::circuit::Circuit, o: &dyn Oracle, vk: &Digest, c: &Digest, pi: &[u8]) -> Run {
+    run_regs(text, circ, o, vk, c, pi).0
+}
+
+/// A group (mux) program's kind tables `{L:a, P:b, N:c}` (`IRDump8`'s `showKC` in mux mode) read at
+/// index `ix` (0 `L32`, 1 `P30`, 2 `N30`): the fixed program of that index (`FRVIR4At`'s `Op.at`).
+pub fn spec_kind(text: &str, ix: usize) -> String {
+    let tag = ["L:", "P:", "N:"][ix];
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(i) = rest.find('{') {
+        out.push_str(&rest[..i]);
+        let j = i + rest[i..].find('}').expect("kind table");
+        let body = &rest[i + 1..j];
+        // top-level entries are separated by ", " (entries hold no ", " inside brackets)
+        let e = body.split(", ").find(|e| e.starts_with(tag)).expect("kind entry");
+        out.push_str(&e[2..]);
+        rest = &rest[j + 1..];
+    }
+    out.push_str(rest);
+    out
+}
+
+/// A node kind's context for its program's node ops (`targetS`, `shiftMask`, `linkWAll`, the kind
+/// factor of `rsWeight`, `evalM`/`evalL` over the dumped rows): `nodeops.rs`'s specification forms.
+pub struct NodeCtx {
+    pub k: crate::node::NK,
+    pub protos: std::sync::Arc<[crate::mfill::Proto; 2]>,
+    pub kt: std::sync::Arc<crate::mfill::KindTab>,
+}
+
+thread_local! {
+    static NODE: std::cell::RefCell<Option<std::sync::Arc<NodeCtx>>> = const { std::cell::RefCell::new(None) };
+}
+
+/// `run` of a node kind's program (its node ops from `ctx`).
+pub fn run_node(text: &str, ctx: std::sync::Arc<NodeCtx>, circ: &crate::circuit::Circuit, o: &dyn Oracle, vk: &Digest, c: &Digest, pi: &[u8]) -> Run {
+    NODE.with(|n| *n.borrow_mut() = Some(ctx));
+    let r = run_regs(text, circ, o, vk, c, pi).0;
+    NODE.with(|n| *n.borrow_mut() = None);
+    r
+}
+
+fn node_ctx() -> Option<std::sync::Arc<NodeCtx>> {
+    NODE.with(|n| n.borrow().clone())
+}
+
+/// `run`, and every register's value (the M fill reads them through `mregs`/`maux`).
+pub fn run_regs(text: &str, circ: &crate::circuit::Circuit, o: &dyn Oracle, vk: &Digest, c: &Digest, pi: &[u8]) -> (Run, Vec<V>) {
     let mut regs: Vec<V> = Vec::with_capacity(110_000);
     // the source registers of each packF/packFK result (for shiftTarget's κ_s)
     let mut src: std::collections::HashMap<usize, Vec<usize>> = std::collections::HashMap::new();
     let mut out = Run { ok: true, ..Default::default() };
+    let nctx = node_ctx();
     let at = |f: usize, o: usize, n: usize| -> &[u8] { &pi[field_off(f) + o..field_off(f) + o + n] };
     let (sk, wtab) = (crate::skipdom::skip(), ());
     let _ = wtab;
@@ -311,6 +360,7 @@ pub fn run(text: &str, circ: &crate::circuit::Circuit, o: &dyn Oracle, vk: &Dige
             }
             // a segment's (revision 4.1, S-F4 `targetSSegI`): the operand is `r₀ ‖ blk(18) ‖ L(18)`,
             // the leaf target times `Σ_{t ≤ L} eq(blk, t)`; 3.x's leaf: the operand is Z1's point
+            "targetS" if nctx.is_some() => vec![V::AF(crate::nodeops::target_s_node4(nctx.as_ref().unwrap().k, g(1).af()))],
             "targetS" => {
                 let x = g(1).af();
                 let mut v = target_s_leaf(x);
@@ -367,7 +417,13 @@ pub fn run(text: &str, circ: &crate::circuit::Circuit, o: &dyn Oracle, vk: &Dige
                     out.node_matrices_used = true; // the node's kind-weighted claim 2: not here
                 }
                 let (kap, rho) = (gr(rest[0]).f(), gr(rest[rest.len() - 1]).ak().to_vec());
-                vec![V::K(rs_weight_k(g(1).af(), &pts, kap, &rho))]
+                match &nctx {
+                    Some(nc) if rest.len() == 4 && rest[2] == "true" => {
+                        out.node_matrices_used = false;
+                        vec![V::K(crate::nodeops::rs_weight4(nc.k, g(1).af(), &pts, kap, gr(rest[1]).f(), &rho))]
+                    }
+                    _ => vec![V::K(rs_weight_k(g(1).af(), &pts, kap, &rho))],
+                }
             }
             "tensorW" => vec![V::K(crate::ntt::xhat(g(1).n(), g(2).ak()))],
             "slotW" => {
@@ -418,6 +474,7 @@ pub fn run(text: &str, circ: &crate::circuit::Circuit, o: &dyn Oracle, vk: &Dige
             "shiftEq" => vec![V::F(crate::mle::shift_mle(g(1).af(), &pad(g(2).af(), g(1).af().len()), F::ONE))],
             "linkW" => vec![V::F(F::ZERO)],
             // node-only (revision 3.16): a leaf kind's program keeps them `false`; zeros here
+            "linkWAll" if nctx.is_some() => vec![V::AF(crate::nodeops::link_w_all4(nctx.as_ref().unwrap().k, g(1).af(), g(2).af()))],
             "linkWAll" => {
                 out.node_matrices_used = true;
                 vec![V::AF(vec![F::ZERO; 8])]
@@ -425,6 +482,10 @@ pub fn run(text: &str, circ: &crate::circuit::Circuit, o: &dyn Oracle, vk: &Dige
             // a segment's (revision 4.1, S-F4 `shiftSegI`): operand `τ(18) ‖ L(18)`, `r` the block
             // point; `(eq(τ, r), shift(τ, r) + [L + 1 < 2^18] eq(τ, L)·eq(r, L + 1), eq(r, 0))`.
             // A node's (another operand length) is not implemented here: zeros, recorded.
+            "shiftMask" if nctx.is_some() => {
+                let r = crate::nodeops::shift_mask4(nctx.as_ref().unwrap().k, g(1).af(), g(2).af());
+                vec![V::F(r[0]), V::F(r[1]), V::F(r[2])]
+            }
             "shiftMask" => {
                 let tl = g(1).af();
                 if tl.len() == 36 {
@@ -437,6 +498,15 @@ pub fn run(text: &str, circ: &crate::circuit::Circuit, o: &dyn Oracle, vk: &Dige
                     out.node_matrices_used = true;
                     vec![V::F(F::ZERO), V::F(F::ZERO), V::F(F::ZERO)]
                 }
+            }
+            "evalM" if nctx.is_some() => {
+                let nc = nctx.as_ref().unwrap();
+                let r = crate::nodeops::eval_m(&nc.kt, &nc.protos, g(1).af(), g(2).af());
+                vec![V::F(r[0]), V::F(r[1]), V::F(r[2])]
+            }
+            "evalL" if nctx.is_some() => {
+                let r = crate::nodeops::eval_l(nctx.as_ref().unwrap().k, g(1).af(), g(2).af());
+                vec![V::F(r[0]), V::F(r[1]), V::F(r[2])]
             }
             "evalL" | "evalM" => {
                 out.node_matrices_used = true;
@@ -453,10 +523,15 @@ pub fn run(text: &str, circ: &crate::circuit::Circuit, o: &dyn Oracle, vk: &Dige
             "selectHalf" => vec![if g(1).bit() { g(3).clone() } else { g(2).clone() }],
             "keep" => vec![if flag(1) { g(2).clone() } else { g(3).clone() }],
             "hashStmt" => {
+                // `stmtDigest`: a leaf statement at `L`/`P`, a node statement at `N` (a group program at
+                // an index computes its index's form, S-E12c §1 obstruction 3)
                 let s = g(2).b();
-                assert!(t[1] == "L" || t[1] == "P", "a leaf program");
                 let h: Digest = s[1..33].try_into().unwrap();
-                vec![V::D(crate::blake2s::leaf_stmt(&h, u64::from_le_bytes(s[33..41].try_into().unwrap())))]
+                if t[1] == "N" {
+                    vec![V::D(crate::blake2s::node_stmt(&h, &s[33..65].try_into().unwrap()))]
+                } else {
+                    vec![V::D(crate::blake2s::leaf_stmt(&h, u64::from_le_bytes(s[33..41].try_into().unwrap())))]
+                }
             }
             "kindSel" => {
                 let b = pi[0];
@@ -485,7 +560,7 @@ pub fn run(text: &str, circ: &crate::circuit::Circuit, o: &dyn Oracle, vk: &Dige
         regs.extend(new);
     }
     out.regs_out = regs.len();
-    out
+    (out, regs)
 }
 
 /// A segment kind's capacity `2^(m − 14)` from its byte (`FRShape4.SegKind.ofByte?`, `cap`).
