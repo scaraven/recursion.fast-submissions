@@ -57,7 +57,14 @@ Main (`v4/flock-recursive`, core `422f2f9`; the certificate assumes only `Open4F
   - **Problem:** V costs 52–60 ms per call for these two alone, against PACK §6.2's 7–14 ms budget for all of R. `evalL` would be about 82k products per kind, and `repRowsP` takes 131 s if computed at plan init.
   - **Not done:** the fold into `nodeIRows4`, which is an import cycle with FRNodeRows4.
   - `FR.lean` imports `FRNodeRows4RepNCtrl`.
-- **Design (Fable): R-OPS.md.** It decides replay vs extending the reserve (as for evalM) vs closed form, op by op, for `evalL`, `targetS`, `linkWAll`, `rsWeight`/kind factor and `shiftTarget`. IMP keeps `SlotImpR` as an explicit hypothesis and does not switch B3 to `RTOkW` until this decision lands.
+- **R-OPS (Fable) landed, rev44 `6d1a933`.**
+  - **`evalL`, `targetS`, `linkWAll`:** public-op route. The child's operands and outputs become public cells (the reserve's B′ mechanism), and V(P) recomputes and asserts. There is no new challenge or FS position, and the cost is about +15 ms VM.
+  - **`tdot`:** folds `targetS` into `lagrangeS`, giving N′ = 108 new cells. εR holds while N′ ≤ 169, and N8 keeps 140 blocks.
+  - **`shiftTarget`:** C1's one row.
+  - **`rsWeight`:** closed-form chain templates (1–3 ms VM), falling back to a second claim family.
+  - **Rejected:** the reserve (sumcheck) route for all five ops.
+  - **Plan:** R0 audit → R1 V side ∥ R3 chain library → R2 soundness (incl. `gap4Imp_of_rsv`) → R4 `rsWeight` → R5 segment slots → R6 `evalL` lever.
+- R0: the cell audit and a re-measure of per-op V on rev44, with no source edits; it applies the kill criterion. A cheap Opus review of R-OPS (FS order, operand binding, the `tdot` fold) runs alongside.
 - E1: prover port to 4.4.1's format: D/A fields, L1/L2, the reserve's 1,008/112-B fields and E2/E4 terms, spacers, arenas, the packed plan form and phantom pins. It runs end to end against rev44's Lean V, covering kind-changing chains, k = 1/2/4 and the worst-case first step against step_s 60. It prints B5's `eok`. It leaves a hook for B4's `aggChk` rows and owns `prover/`.
 - Review of A1′ (cheap Opus): no blockers.
   - **Soundness:** the free spacer bytes enter only the ignored spacer answer, `wf` is proved for every segment and spacer, and `ctrlA_no_spacer` is a real control. S2b is asked to confirm that no ROM-consistency argument ranges over spacer entries.
