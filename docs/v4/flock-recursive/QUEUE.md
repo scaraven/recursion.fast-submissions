@@ -63,7 +63,12 @@ Running on rev44:
   - **Reserve link:** `gap4Imp_of_rsv` via the `AT.rsv` summand, in FRNodeRsvLink, which `FR` imports. The prefix form of `compileX_run` was not needed.
   - **Foreign flags:** p0 15, p1 79 (the kind byte and proof-byte zero pins, which wait on ASK-P).
   - **Finding:** in prototype 0, five `keep` ops over unequal-length `packK` arrays compile to `skip`. So the (β′) batched MAC cap check (reg 100345) is enforced by no row.
-- CK: fixes that in the compiler (zero-pad `keep`) or the generator (equal-length arrays). It then regenerates the hint, dumps and plan checks and lists the new foreign flags.
+- **CK landed `44a4975`.** `getK` on kind-split registers now compiles to rows (FRVIRCompileK, `extGetK_okK`, no statement changed, V untouched).
+  - **What it closes:** prototype 0's `finPf` final equation, including the (β′) MAC terms, is row-enforced.
+  - **Foreign flags left:** only the kind byte and the proof-byte zero pins (p0 14, p1 79).
+  - **Cost:** p0 +6,720 rows. V(N4) +21 ms, now 297/344 ms VM; plan init 7.0–9.3 s wall.
+  - **Checks:** `plan4t check` passes on N2/N4/N8 (N8 in 848 s).
+  - **Prover:** needs only a re-dump and a rebuilt blob.
 - **R1 (stopped, `4838ac0`): the public-op route is unsound at recursion depth ≥ 2.** V(P)'s recompute ops become free imports when the grandparent replays V(P). R-OPS is marked superseded.
   - **New route:** replay templates at slot 0 for `evalL`, `targetS` and `linkWAll` (C1's `tplLW`), with no format change, at ≈ +90 ms V.
   - RSV2's stacked `evalM` is unaffected, because it is a fixed point.
