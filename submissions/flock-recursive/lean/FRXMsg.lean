@@ -27,6 +27,8 @@ namespace FR.X
 
 open RecursionFast FR Finset
 
+attribute [local irreducible] entryK storeM runPrims
+
 /-! ## Registers -/
 
 /-- A store pointer. -/ def mP : ℕ := 190
@@ -57,7 +59,8 @@ def zBody : XIR := .seq (.store mP mZ) (.blk [.op .add mP mP cOne])
 def zeroIR (n b : ℕ) : XIR := .seq (.blk (zPre n b)) (.loopK mC mN (toWord n) zBody)
 
 theorem wf_zeroIR (n b : ℕ) : WF (zeroIR n b) := by
-  simp [zeroIR, zPre, zBody, WF, Writes, Prim.dst, mP, mZ, mC, mN, cTmp, regs]
+  simp +decide only [zeroIR, zPre, zBody, WF, Writes, Prim.dst, mP, mZ, mC, mN, cTmp, regs,
+    List.mem_cons, List.mem_nil_iff, forall_eq_or_imp, forall_eq, or_false, and_true]
 
 theorem noLoopT_zeroIR (n b : ℕ) : NoLoopT (zeroIR n b) := by simp [zeroIR, zBody, NoLoopT]
 
@@ -168,8 +171,9 @@ def finBody : XIR :=
 def finIR (k tw xb yb : ℕ) : XIR := .seq (.blk (finPre k tw xb yb)) (.loopK mC mN (toWord k) finBody)
 
 theorem wf_finIR (k tw xb yb : ℕ) : WF (finIR k tw xb yb) := by
-  simp [finIR, finPre, finBody, finIn, inW, stF, WF, Writes, Prim.dst, mA, mX, mY, mX1, mK, mV, mC, mN,
-    cTmp, regs]
+  simp +decide only [finIR, finPre, finBody, finIn, inW, stF, WF, Writes, Prim.dst, mA, mX, mY, mX1,
+    mK, mV, mC, mN, cTmp, regs, List.mem_cons, List.mem_nil_iff, forall_eq_or_imp, forall_eq,
+    or_false, and_true]
 
 theorem noLoopT_finIR (k tw xb yb : ℕ) : NoLoopT (finIR k tw xb yb) := by
   simp [finIR, finBody, finIn, inW, stF, NoLoopT]
@@ -276,7 +280,8 @@ theorem finIR_sem (I : Array Word) (s : St) (hM : Inv s.M) {k tw xb yb : ℕ} (h
     Inv (semXIR I (finIR k tw xb yb) s).M := by
   have hs := hM.1
   simp only [regs] at hs hxb hyb
-  have hw0 : WF (.blk (finPre k tw xb yb)) := by simp [finPre, WF, Prim.dst, mA, mX, mY, mN]
+  have hw0 : WF (.blk (finPre k tw xb yb)) := by simp +decide only [finPre, WF, Prim.dst, mA, mX,
+    mY, mN, List.mem_cons, List.mem_nil_iff, forall_eq_or_imp, forall_eq, or_false, and_true]
   have e0 : semXIR I (.blk (finPre k tw xb yb)) s = ⟨runPrims (finPre k tw xb yb) s.M, s.o⟩ := rfl
   have r0 : rd (runPrims (finPre k tw xb yb) s.M) mA = toWord tw ∧
       rd (runPrims (finPre k tw xb yb) s.M) mX = toWord xb ∧
@@ -291,7 +296,8 @@ theorem finIR_sem (I : Array Word) (s : St) (hM : Inv s.M) {k tw xb yb : ℕ} (h
       simp only [finPre, List.mem_cons, List.mem_nil_iff, or_false]
       simp only [regs] at hi
       rintro p (rfl | rfl | rfl | rfl) <;> simp only [Prim.dst, mA, mX, mY, mN] <;> omega) _
-  have hM0 : Inv (runPrims (finPre k tw xb yb) s.M) := inv_sem I hw0 hM
+  have hM0 : Inv (runPrims (finPre k tw xb yb) s.M) := by
+    have h := inv_sem I hw0 hM; rwa [e0] at h
   have z0 : (runPrims (finPre k tw xb yb) s.M).size = s.M.size := size_runPrims _ _
   rw [finIR, semXIR_seq, e0]
   generalize runPrims (finPre k tw xb yb) s.M = M0 at r0 r4 hM0 z0
@@ -538,8 +544,9 @@ def gathIR (k ob xb yb : ℕ) : XIR :=
   .seq (.blk (gPre k xb yb)) (.loopK mC mN (toWord (8 * k)) (gBody k ob))
 
 theorem wf_gathIR (k ob xb yb : ℕ) : WF (gathIR k ob xb yb) := by
-  simp [gathIR, gPre, gBody, gAd, gNx, stepXY, ldF, stF, WF, Writes, Prim.dst, mJ, mX, mY, mN, mK,
-    mT, mU, mS, mS1, mV, mX1, mC, cTmp, regs]
+  simp +decide only [gathIR, gPre, gBody, gAd, gNx, stepXY, ldF, stF, WF, Writes, Prim.dst, mJ, mX,
+    mY, mN, mK, mT, mU, mS, mS1, mV, mX1, mC, cTmp, regs, List.mem_cons, List.mem_nil_iff,
+    forall_eq_or_imp, exists_eq_or_imp, forall_eq, exists_eq_left, or_false, and_true]
 
 theorem noLoopT_gathIR (k ob xb yb : ℕ) : NoLoopT (gathIR k ob xb yb) := by
   simp [gathIR, gBody, ldF, stF, NoLoopT]
@@ -620,7 +627,8 @@ theorem gathIR_sem (I : Array Word) (s : St) (hM : Inv s.M) {k ob xb yb : ℕ}
     Inv (semXIR I (gathIR k ob xb yb) s).M := by
   have hs := hM.1
   simp only [regs] at hs hxb hyb hob
-  have hw0 : WF (.blk (gPre k xb yb)) := by simp [gPre, WF, Prim.dst, mJ, mX, mY, mN]
+  have hw0 : WF (.blk (gPre k xb yb)) := by simp +decide only [gPre, WF, Prim.dst, mJ, mX, mY, mN,
+    List.mem_cons, List.mem_nil_iff, forall_eq_or_imp, forall_eq, or_false, and_true]
   have e0 : semXIR I (.blk (gPre k xb yb)) s = ⟨runPrims (gPre k xb yb) s.M, s.o⟩ := rfl
   have r0 : rd (runPrims (gPre k xb yb) s.M) mJ = toWord 0 ∧
       rd (runPrims (gPre k xb yb) s.M) mX = toWord xb ∧
@@ -635,7 +643,8 @@ theorem gathIR_sem (I : Array Word) (s : St) (hM : Inv s.M) {k ob xb yb : ℕ}
       simp only [gPre, List.mem_cons, List.mem_nil_iff, or_false]
       simp only [regs] at hi
       rintro p (rfl | rfl | rfl | rfl) <;> simp only [Prim.dst, mJ, mX, mY, mN] <;> omega) _
-  have hM0 : Inv (runPrims (gPre k xb yb) s.M) := inv_sem I hw0 hM
+  have hM0 : Inv (runPrims (gPre k xb yb) s.M) := by
+    have h := inv_sem I hw0 hM; rwa [e0] at h
   have z0 : (runPrims (gPre k xb yb) s.M).size = s.M.size := size_runPrims _ _
   rw [gathIR, semXIR_seq, e0]
   generalize runPrims (gPre k xb yb) s.M = M0 at r0 r4 hM0 z0
@@ -676,7 +685,8 @@ theorem gathIR_sem (I : Array Word) (s : St) (hM : Inv s.M) {k ob xb yb : ℕ}
     obtain ⟨b1, b2, b3⟩ := ldF_sem I s1 hM1 (d := mV) (p := mS) (p1 := mS1) (x := a) (by decide)
       (by decide) (by decide) (by decide) (by decide) (by decide) a1 (by simp only [regs]; omega)
       (by omega)
-    have hM2 := inv_sem I (P := ldF mV mS mS1) (s := s1) (by simp [ldF, WF, Prim.dst, mV, mS1]) hM1
+    have hM2 := inv_sem I (P := ldF mV mS mS1) (s := s1) (by simp +decide only [ldF, WF, Prim.dst,
+      mV, mS1, and_true]) hM1
     have z2 := size_sem I (ldF mV mS mS1) s1
     generalize semXIR I (ldF mV mS mS1) s1 = s2 at b1 b2 b3 hM2 z2
     rw [semXIR_seq]
@@ -701,7 +711,8 @@ theorem gathIR_sem (I : Array Word) (s : St) (hM : Inv s.M) {k ob xb yb : ℕ}
     obtain ⟨f1, f2, f3⟩ := ldF_sem I s4 hM4 (d := mV) (p := mS) (p1 := mS1) (x := a + 2 * k)
       (by decide) (by decide) (by decide) (by decide) (by decide) (by decide) d1
       (by simp only [regs]; omega) (by omega)
-    have hM5 := inv_sem I (P := ldF mV mS mS1) (s := s4) (by simp [ldF, WF, Prim.dst, mV, mS1]) hM4
+    have hM5 := inv_sem I (P := ldF mV mS mS1) (s := s4) (by simp +decide only [ldF, WF, Prim.dst,
+      mV, mS1, and_true]) hM4
     have z5 := size_sem I (ldF mV mS mS1) s4
     generalize semXIR I (ldF mV mS mS1) s4 = s5 at f1 f2 f3 hM5 z5
     rw [semXIR_seq]

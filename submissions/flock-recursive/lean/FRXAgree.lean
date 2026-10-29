@@ -18,6 +18,8 @@ namespace FR.X
 
 open RecursionFast
 
+attribute [local irreducible] entryK storeM
+
 /-! ## Registers and the program -/
 
 /-- The position `j`. -/ def rJs : ℕ := 178
@@ -50,8 +52,9 @@ def scanIR (n k fb lb : ℕ) : XIR :=
     (.loopK rC4 rN4 (toWord n) (scanBody fb lb))
 
 theorem wf_scanIR (n k fb lb : ℕ) : WF (scanIR n k fb lb) := by
-  simp [scanIR, scanBody, appendIR, testPs, WF, Writes, Prim.dst, rJs, rCn, rFl, rAd3, rK3, rC4,
-    rN4, uT1, uT2, cTmp, regs]
+  simp +decide only [scanIR, scanBody, appendIR, testPs, WF, Writes, Prim.dst, rJs, rCn, rFl, rAd3,
+    rK3, rC4, rN4, uT1, uT2, cTmp, regs, List.mem_cons, List.mem_nil_iff, forall_eq_or_imp,
+    exists_eq_or_imp, forall_eq, exists_eq_left, or_false, and_true]
 
 theorem noLoopT_scanIR (n k fb lb : ℕ) : NoLoopT (scanIR n k fb lb) := by
   simp [scanIR, scanBody, appendIR, NoLoopT]
@@ -103,7 +106,8 @@ theorem scan_decode {ℓ n : ℕ} (hℓ : ℓ ≤ logNMax) (hn : n ≤ nMax) {A 
 theorem bW_eq_zero (b : Bool) : XOp.eq.eval (bW b) 0 = bW (!b) := by cases b <;> decide
 
 theorem wf_appendIR (lb : ℕ) : WF (appendIR lb) := by
-  simp [appendIR, WF, Prim.dst, uT1, rAd3, rCn, cTmp]
+  simp +decide only [appendIR, WF, Prim.dst, uT1, rAd3, rCn, cTmp, List.mem_cons, List.mem_nil_iff,
+    forall_eq_or_imp, forall_eq, or_false, and_true]
 
 theorem wf_scanBody (fb lb : ℕ) : WF (scanBody fb lb) := (wf_scanIR 0 0 fb lb).2.2.2.2
 
@@ -127,18 +131,21 @@ theorem scanBody_sem (I : Array Word) (s : St) (hM : Inv s.M) {fb lb j c k : ℕ
   have hT4 : cTmp = 4 := rfl
   -- the address and the flag
   have w1 : WF (.seq (.blk [.const uT1 (toWord fb), .op .add rAd3 rJs uT1]) (.seq (.load rFl rAd3)
-      (.blk testPs))) := by simp [testPs, WF, Prim.dst, uT1, uT2, rAd3, rFl]
+      (.blk testPs))) := by simp +decide only [testPs, WF, Prim.dst, uT1, uT2, rAd3, rFl,
+        List.mem_cons, List.mem_nil_iff, forall_eq_or_imp, forall_eq, or_false, and_true]
   have hM1 := inv_sem I w1 hM
   have hH1 := hframe I (.seq (.blk [.const uT1 (toWord fb), .op .add rAd3 rJs uT1])
-    (.seq (.load rFl rAd3) (.blk testPs))) s (by simp [testPs, Lo, Prim.dst, regs, uT1, uT2, rAd3,
-      rFl])
+    (.seq (.load rFl rAd3) (.blk testPs))) s (by simp +decide only [testPs, Lo, Prim.dst, regs, uT1,
+      uT2, rAd3, rFl, List.mem_cons, List.mem_nil_iff, forall_eq_or_imp, forall_eq, or_false,
+      and_true])
   have z1 := size_sem I (.seq (.blk [.const uT1 (toWord fb), .op .add rAd3 rJs uT1])
     (.seq (.load rFl rAd3) (.blk testPs))) s
   have fr1 : ∀ r, (r = rJs ∨ r = rCn ∨ r = rK3) → rd (semXIR I (.seq (.blk [.const uT1 (toWord fb),
       .op .add rAd3 rJs uT1]) (.seq (.load rFl rAd3) (.blk testPs))) s).M r = rd s.M r :=
     fun r hr => frame I _ s w1 hM r (by rcases hr with rfl | rfl | rfl <;> decide) (by
       rcases hr with rfl | rfl | rfl <;>
-      simp [testPs, Writes, Prim.dst, uT1, uT2, rAd3, rFl, rJs, rCn, rK3])
+      simp +decide only [testPs, Writes, Prim.dst, uT1, uT2, rAd3, rFl, rJs, rCn, rK3,
+        List.mem_cons, List.mem_nil_iff, exists_eq_or_imp, exists_eq_left, or_false])
   have fl1 : rd (semXIR I (.seq (.blk [.const uT1 (toWord fb), .op .add rAd3 rJs uT1])
       (.seq (.load rFl rAd3) (.blk testPs))) s).M rFl = bW (decide (f j ≠ 0) && decide (c < k)) := by
     simp (disch := first | decide | (simp only [size_set, uT1, uT2, rAd3, rFl]; omega)) only
@@ -184,7 +191,8 @@ theorem scanBody_sem (I : Array Word) (s : St) (hM : Inv s.M) {fb lb j c k : ℕ
         .op .add rAd3 rCn uT1]) s1).M x = rd s1.M x := fun x h1 h2 =>
       rd_runPrims_of_not_writes (by simp [Prim.dst]; exact ⟨Ne.symm h1, Ne.symm h2⟩) _
     have hM2 := inv_sem I (P := .blk [.const uT1 (toWord lb), .op .add rAd3 rCn uT1])
-      (by simp [WF, Prim.dst, uT1, rAd3]) hM1
+      (by simp +decide only [WF, Prim.dst, uT1, rAd3, List.mem_cons, List.mem_nil_iff,
+        forall_eq_or_imp, forall_eq, or_false, and_true]) hM1
     have z2 := size_sem I (.blk [.const uT1 (toWord lb), .op .add rAd3 rCn uT1]) s1
     rw [appendIR, semXIR_seq]
     generalize semXIR I (.blk [.const uT1 (toWord lb), .op .add rAd3 rCn uT1]) s1 = s2
@@ -193,7 +201,7 @@ theorem scanBody_sem (I : Array Word) (s : St) (hM : Inv s.M) {fb lb j c k : ℕ
         if i = lb + c then rd s2.M rJs else rd s2.M i := fun i hi =>
       rd_storeM hM2 a1 (by simp only [regs]; omega) (by omega) (by omega) (by decide) (by decide) hi
     have hM3 : Inv (storeM s2.M rAd3 rJs) := inv_sem I (P := .store rAd3 rJs)
-      (by simp [WF, rAd3, cTmp]) hM2
+      (by simp +decide only [WF, rAd3, cTmp]) hM2
     rw [semXIR_seq]
     have e3 : semXIR I (.store rAd3 rJs) s2 = ⟨storeM s2.M rAd3 rJs, s2.o⟩ := rfl
     rw [e3]
@@ -212,7 +220,7 @@ theorem scanBody_sem (I : Array Word) (s : St) (hM : Inv s.M) {fb lb j c k : ℕ
         ⟨storeM s2.M rAd3 rJs, s2.o⟩).M x = rd (storeM s2.M rAd3 rJs) x := fun x hx =>
       rd_runPrims_of_not_writes (by simp [Prim.dst]; exact Ne.symm hx) _
     have hM4 := inv_sem I (P := .blk [.op .add rCn rCn cOne]) (s := ⟨storeM s2.M rAd3 rJs, s2.o⟩)
-      (by simp [WF, Prim.dst, rCn]) hM3
+      (by simp +decide only [WF, Prim.dst, rCn]) hM3
     generalize semXIR I (.blk [.op .add rCn rCn cOne]) ⟨storeM s2.M rAd3 rJs, s2.o⟩ = s4
       at c4 b4 hM4
     obtain ⟨f1, f2⟩ := fin s4 hM4 (by
@@ -253,10 +261,12 @@ theorem scanIR_sem (I : Array Word) (s : St) (hM : Inv s.M) {n k fb lb : ℕ} {f
   have hs := hM.1
   simp only [regs] at hs hlb hfb0
   have w0 : WF (.blk [.const rJs 0, .const rCn 0, .const rK3 (toWord k), .const rN4 (toWord n)]) := by
-    simp [WF, Prim.dst, rJs, rCn, rK3, rN4]
+    simp +decide only [WF, Prim.dst, rJs, rCn, rK3, rN4, List.mem_cons, List.mem_nil_iff,
+      forall_eq_or_imp, forall_eq, or_false, and_true]
   have hM0 := inv_sem I w0 hM
   have hH0 := hframe I (.blk [.const rJs 0, .const rCn 0, .const rK3 (toWord k),
-    .const rN4 (toWord n)]) s (by simp [Lo, Prim.dst, regs, rJs, rCn, rK3, rN4])
+    .const rN4 (toWord n)]) s (by simp +decide only [Lo, Prim.dst, regs, rJs, rCn, rK3, rN4,
+      List.mem_cons, List.mem_nil_iff, forall_eq_or_imp, forall_eq, or_false, and_true])
   have z0 := size_sem I (.blk [.const rJs 0, .const rCn 0, .const rK3 (toWord k),
     .const rN4 (toWord n)]) s
   have r0 : rd (semXIR I (.blk [.const rJs 0, .const rCn 0, .const rK3 (toWord k),

@@ -149,14 +149,8 @@ def wtabIR (tb : ℕ) : XIR :=
 /-! ## Well formed, no tape loop, no output, cost -/
 
 theorem wf_alphaIR : WF alphaIR := by
-  simp [alphaIR, alphaBody, ldF, WF, Writes, Prim.dst, rBit, uT1, rTa, rTa1, fG, fAl, uI, rN2, rC2,
-    cTmp, regs]
-
-theorem wf_bflyIR (ℓ tb : ℕ) : WF (bflyIR ℓ tb) := by
-  simp [bflyIR, lvlStep, levelIR, pairBody, pairPs, arithIR, alphaIR, alphaBody, ldF, stF, addF, mulF,
-    addFC, mulFC, redC, WF, Writes, Prim.dst, rQ, rLv, rP2, rBs, uX, uT1, uT2, rAL, rAL1,
-    rAH, rAH1, rTa, rTa1, rBit, uI, rTr, rC1, rN1, rC2, rN2, rC3, rN3, fAl, fU, fW, fH, fT, fN, fG,
-    cTmp, regs]
+  simp +decide only [alphaIR, alphaBody, ldF, WF, Writes, Prim.dst, rBit, uT1, rTa, rTa1, fG, fAl,
+    uI, rN2, rC2, cTmp, regs, or_false, and_true]
 
 theorem nw_mulF {d a b c : ℕ} (hc : 15 ≤ c) (h0 : c ≠ d) (h1 : c ≠ d + 1) :
     ¬ Writes (mulF d a b) c := fun ⟨p, hp, he⟩ => by
@@ -165,6 +159,21 @@ theorem nw_mulF {d a b c : ℕ} (hc : 15 ≤ c) (h0 : c ≠ d) (h1 : c ≠ d + 1
 theorem nw_invF {d a c : ℕ} (hc : 19 ≤ c) (h0 : c ≠ d) (h1 : c ≠ d + 1) :
     ¬ Writes (invF d a) c := fun ⟨p, hp, he⟩ => by
   rcases invFC_dst' d a p hp with h | h | h <;> omega
+
+/-- `simp` forms of `wf_mulF` and `nw_mulF`: the `WF`/`Writes` side conditions never unfold
+`mulF`'s primitives (G2: elaboration time). -/
+theorem mulF_wf_iff {d a b : ℕ} (hd : 4 ≤ d) : WF (mulF d a b) ↔ True :=
+  iff_true_intro (wf_mulF d a b hd)
+
+theorem mulF_writes_iff {d a b c : ℕ} (hc : 15 ≤ c) (h0 : c ≠ d) (h1 : c ≠ d + 1) :
+    Writes (mulF d a b) c ↔ False := ⟨nw_mulF hc h0 h1, False.elim⟩
+
+theorem wf_bflyIR (ℓ tb : ℕ) : WF (bflyIR ℓ tb) := by
+  simp +decide only [bflyIR, lvlStep, levelIR, pairBody, pairPs, arithIR, alphaIR, alphaBody, ldF,
+    stF, addF, addFC, WF, Writes, Prim.dst, rQ, rLv, rP2, rBs, uX, uT1, uT2, rAL, rAL1, rAH, rAH1,
+    rTa, rTa1, rBit, uI, rTr, rC1, rN1, rC2, rN2, rC3, rN3, fAl, fU, fW, fH, fT, fN, fG, cTmp, regs,
+    mulF_wf_iff, mulF_writes_iff, List.mem_cons, List.mem_nil_iff, forall_eq_or_imp,
+    exists_eq_or_imp, forall_eq, exists_eq_left, or_false, and_true]
 
 theorem wf_wtabIR (tb : ℕ) : WF (wtabIR tb) := by
   have m1 := wf_mulF fH fU fW (by decide)

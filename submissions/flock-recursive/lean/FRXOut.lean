@@ -27,6 +27,8 @@ namespace FR.X
 
 open RecursionFast FR.Read
 
+attribute [local irreducible] entryK storeM runPrims
+
 /-! ## Registers -/
 
 /-- The source index. -/ def oU : ℕ := 200
@@ -259,42 +261,56 @@ theorem noW_segIR (ap : AP) (seg : Seg) (d r : ℕ) (hp : Prot d r) : ¬ Writes 
 /-! ## Proof helpers: well formed, no store, the context -/
 
 theorem wf_ldw (ap : AP) : WF (ldw ap) := by
-  simp [ldw, ldPs, WF, Prim.dst, oK, oT1, oT2, oT3, oAd, oX]
+  simp +decide only [ldw, ldPs, WF, Prim.dst, oK, oT1, oT2, oT3, oAd, oX, List.mem_cons,
+    List.mem_nil_iff, forall_eq_or_imp, forall_eq, or_false, and_true]
 
 theorem wf_cpIR (ap : AP) (rb o n : ℕ) : WF (cpIR ap rb o n) := by
-  refine ⟨by simp [WF, Prim.dst, oK, oU, oNp], ⟨by simp [oCp, oNp, cTmp], by simp [oCp, regs], fun h => ?_,
-    wf_ldw ap, trivial, by simp [WF, Prim.dst, oU]⟩⟩
+  refine ⟨by simp +decide only [WF, Prim.dst, oK, oU, oNp, List.mem_cons, List.mem_nil_iff,
+    forall_eq_or_imp, forall_eq, or_false, and_true], ⟨by simp [oCp, oNp, cTmp], by simp [oCp, regs], fun h => ?_,
+    wf_ldw ap, trivial, by simp +decide only [WF, Prim.dst, oU]⟩⟩
   have := writes_wrL _ _ h
   simp [wrL, ldw, ldPs, Prim.dst, oCp, oK, oT1, oT2, oT3, oAd, oX, oU] at this
 
 theorem wf_sibIR (ap : AP) (rb o S t sS ansW logN per sK : ℕ) : WF (sibIR ap rb o S t sS ansW logN per sK) := by
   have hw : ∀ c P, (∀ r, Writes P r → r ∈ wrL P) → c ∉ wrL P → ¬ Writes P c := fun c P h hc hw => hc (h c hw)
-  refine ⟨by simp [WF, Prim.dst, oK, oN, oA, oRm, oRc, oSn], ⟨by simp [oSp, oSn, cTmp], by simp [oSp, regs],
+  refine ⟨by simp +decide only [WF, Prim.dst, oK, oN, oA, oRm, oRc, oSn, List.mem_cons,
+    List.mem_nil_iff, forall_eq_or_imp, forall_eq, or_false, and_true], ⟨by simp [oSp, oSn, cTmp], by simp [oSp, regs],
     hw _ _ (writes_wrL _) (by simp [wrL, sibP, sibH, sibHit, zeros4, cpIR, ldw, ldPs, Prim.dst, oSp, oK, oT1,
       oT2, oT3, oAd, oX, oU, oNp, oCp, oN, oA, oRm, oRc, oNh, oH, oShn, oSh, oFl, oM, oB2, cTmp]), ?_⟩⟩
-  refine ⟨by simp [WF, Prim.dst, oNh, oH, oShn], ⟨⟨by simp [oSh, oShn, cTmp], by simp [oSh, regs],
+  refine ⟨by simp +decide only [WF, Prim.dst, oNh, oH, oShn, List.mem_cons, List.mem_nil_iff,
+    forall_eq_or_imp, forall_eq, or_false, and_true], ⟨⟨by simp [oSh, oShn, cTmp], by simp [oSh, regs],
     hw _ _ (writes_wrL _) (by simp [wrL, sibH, sibHit, zeros4, cpIR, ldw, ldPs, Prim.dst, oSh, oK, oT1,
       oT2, oT3, oAd, oX, oU, oNp, oCp, oNh, oH, oFl, oM, oB2, oRm, cTmp]), ?_⟩, ?_⟩⟩
-  · exact ⟨by simp [WF, Prim.dst, oK, oFl], ⟨⟨by simp [WF, Prim.dst, oM, oK, oU], wf_ldw ap,
-      by simp [WF, Prim.dst, oB2], wf_cpIR .., wf_cpIR ..⟩, by simp [zeros4, WF, Prim.dst, oX]⟩,
-      by simp [WF, Prim.dst, oH, oK, oNh]⟩
-  · exact ⟨by simp [WF, Prim.dst, oK, oN, oRm, oRc, oFl], by simp [WF, Prim.dst, oK, oA, oRc, oRm]⟩
+  · exact ⟨by simp +decide only [WF, Prim.dst, oK, oFl, List.mem_cons, List.mem_nil_iff,
+    forall_eq_or_imp, forall_eq, or_false, and_true], ⟨⟨by simp +decide only [
+    WF, Prim.dst, oM, oK, oU], wf_ldw ap,
+      by simp +decide only [WF, Prim.dst, oB2], wf_cpIR .., wf_cpIR ..⟩, by simp +decide only [
+        zeros4, WF, Prim.dst, oX, and_true]⟩,
+      by simp +decide only [WF, Prim.dst, oH, oK, oNh]⟩
+  · exact ⟨by simp +decide only [WF, Prim.dst, oK, oN, oRm, oRc, oFl, List.mem_cons,
+    List.mem_nil_iff, forall_eq_or_imp, forall_eq, or_false, and_true], by simp +decide only [WF, Prim.dst, oK, oA, oRc, oRm, and_true]⟩
 
 theorem wf_segIR (ap : AP) : ∀ (seg : Seg) (d : ℕ), depthSeg seg + d ≤ 9 → WF (segIR ap d seg)
-  | .nil, _, _ => by simp [segIR, WF]
+  | .nil, _, _ => by simp +decide only [segIR, WF]
   | .cat x y, d, h => ⟨wf_segIR ap x d (by simp [depthSeg] at h; omega),
       wf_segIR ap y d (by simp [depthSeg] at h; omega)⟩
   | .kite x y, d, h => ⟨wf_segIR ap x d (by simp [depthSeg] at h; omega),
       wf_segIR ap y d (by simp [depthSeg] at h; omega)⟩
-  | .wd _, _, _ => by simp [segIR, WF, Prim.dst, oX]
+  | .wd _, _, _ => by simp +decide only [segIR, WF, Prim.dst, oX, List.mem_cons, List.mem_nil_iff,
+    forall_eq, or_false, and_true]
   | .cp .., _, _ => wf_cpIR ..
   | .sib .., _, _ => wf_sibIR ..
-  | .shw _, _, _ => ⟨by simp [WF, Prim.dst, oK, oU], wf_ldw ap, by simp [WF, Prim.dst, oY, oU], wf_ldw ap,
-      by simp [WF, Prim.dst, oK, oX, oY], trivial⟩
-  | .sh8 _, _, _ => ⟨by simp [WF, Prim.dst, oK, oU], wf_ldw ap, by simp [WF, Prim.dst, oK, oX], trivial⟩
+  | .shw _, _, _ => ⟨by simp +decide only [WF, Prim.dst, oK, oU, List.mem_cons, List.mem_nil_iff,
+    forall_eq_or_imp, forall_eq, or_false, and_true], wf_ldw ap, by simp +decide only [
+    WF, Prim.dst, oY, oU], wf_ldw ap,
+      by simp +decide only [WF, Prim.dst, oK, oX, oY], trivial⟩
+  | .sh8 _, _, _ => ⟨by simp +decide only [WF, Prim.dst, oK, oU, List.mem_cons, List.mem_nil_iff,
+    forall_eq_or_imp, forall_eq, or_false, and_true], wf_ldw ap, by simp +decide only [
+    WF, Prim.dst, oK, oX], trivial⟩
   | .rep c s x, d, h => by
     simp only [depthSeg] at h
-    refine ⟨by simp [WF, Prim.dst, oBd, oNd]; omega, ⟨by simp [oCd, oNd, cTmp]; omega,
+    refine ⟨by simp +decide only [WF, Prim.dst, oBd, oNd, List.mem_cons, List.mem_nil_iff,
+      forall_eq_or_imp, forall_eq, or_false]; omega, ⟨by simp [oCd, oNd, cTmp]; omega,
       by simp [oCd, regs]; omega, fun hw => ?_, wf_segIR ap x (d + 1) (by omega),
       by simp [WF, Prim.dst, oK, oBd]; omega⟩⟩
     rcases hw with hw | ⟨p, hp, he⟩
@@ -304,32 +320,39 @@ theorem wf_segIR (ap : AP) : ∀ (seg : Seg) (d : ℕ), depthSeg seg + d ≤ 9 �
       all_goals omega
 
 theorem loK_ldw (ap : AP) : LoK (ldw ap) := by
-  simp [ldw, ldPs, LoK, Prim.dst, oK, oT1, oT2, oT3, oAd, oX, regs]
+  simp +decide only [ldw, ldPs, LoK, Prim.dst, oK, oT1, oT2, oT3, oAd, oX, regs, List.mem_cons,
+    List.mem_nil_iff, forall_eq_or_imp, forall_eq, or_false, and_true]
 
 theorem loK_cpIR (ap : AP) (rb o n : ℕ) : LoK (cpIR ap rb o n) :=
-  ⟨by simp [LoK, Prim.dst, oK, oU, oNp, regs], by simp [oCp, regs], loK_ldw ap, trivial,
-    by simp [LoK, Prim.dst, oU, regs]⟩
+  ⟨by simp +decide only [LoK, Prim.dst, oK, oU, oNp, regs, List.mem_cons, List.mem_nil_iff,
+    forall_eq_or_imp, forall_eq, or_false, and_true], by simp [oCp, regs], loK_ldw ap, trivial,
+    by simp +decide only [LoK, Prim.dst, oU, regs]⟩
 
 theorem loK_sibIR (ap : AP) (rb o S t sS ansW logN per sK : ℕ) : LoK (sibIR ap rb o S t sS ansW logN per sK) := by
-  simp [sibIR, sibP, sibH, sibHit, zeros4, LoK, Prim.dst, oK, oN, oA, oRm, oRc, oSn, oSp, oNh, oH, oShn,
-    oSh, oFl, oM, oU, oB2, oX, regs, loK_ldw, loK_cpIR]
+  simp +decide only [sibIR, sibP, sibH, sibHit, zeros4, LoK, Prim.dst, oK, oN, oA, oRm, oRc, oSn,
+    oSp, oNh, oH, oShn, oSh, oFl, oM, oU, oB2, oX, regs, loK_ldw, loK_cpIR, List.mem_cons,
+    List.mem_nil_iff, forall_eq_or_imp, forall_eq, or_false, and_true]
 
 theorem loK_segIR (ap : AP) : ∀ (seg : Seg) (d : ℕ), depthSeg seg + d ≤ 9 → LoK (segIR ap d seg)
-  | .nil, _, _ => by simp [segIR, LoK]
+  | .nil, _, _ => by simp +decide only [segIR, LoK]
   | .cat x y, d, h => ⟨loK_segIR ap x d (by simp [depthSeg] at h; omega),
       loK_segIR ap y d (by simp [depthSeg] at h; omega)⟩
   | .kite x y, d, h => ⟨loK_segIR ap x d (by simp [depthSeg] at h; omega),
       loK_segIR ap y d (by simp [depthSeg] at h; omega)⟩
-  | .wd _, _, _ => by simp [segIR, LoK, Prim.dst, oX, regs]
+  | .wd _, _, _ => by simp +decide only [segIR, LoK, Prim.dst, oX, regs, List.mem_cons,
+    List.mem_nil_iff, forall_eq, or_false, and_true]
   | .cp .., _, _ => loK_cpIR ..
   | .sib .., _, _ => loK_sibIR ..
-  | .shw _, _, _ => ⟨by simp [LoK, Prim.dst, oK, oU, regs], loK_ldw ap, by simp [LoK, Prim.dst, oY, oU, regs],
-      loK_ldw ap, by simp [LoK, Prim.dst, oK, oX, oY, regs], trivial⟩
-  | .sh8 _, _, _ => ⟨by simp [LoK, Prim.dst, oK, oU, regs], loK_ldw ap, by simp [LoK, Prim.dst, oK, oX, regs],
+  | .shw _, _, _ => ⟨by simp +decide only [LoK, Prim.dst, oK, oU, regs, List.mem_cons,
+    List.mem_nil_iff, forall_eq_or_imp, forall_eq, or_false, and_true], loK_ldw ap, by simp +decide only [LoK, Prim.dst, oY, oU, regs],
+      loK_ldw ap, by simp +decide only [LoK, Prim.dst, oK, oX, oY, regs], trivial⟩
+  | .sh8 _, _, _ => ⟨by simp +decide only [LoK, Prim.dst, oK, oU, regs, List.mem_cons,
+    List.mem_nil_iff, forall_eq_or_imp, forall_eq, or_false, and_true], loK_ldw ap, by simp +decide only [LoK, Prim.dst, oK, oX, regs],
       trivial⟩
   | .rep c s x, d, h => by
     simp only [depthSeg] at h
-    exact ⟨by simp [LoK, Prim.dst, oBd, oNd, regs]; omega, by simp [oCd, regs]; omega,
+    exact ⟨by simp +decide only [LoK, Prim.dst, oBd, oNd, regs, List.mem_cons, List.mem_nil_iff,
+      forall_eq_or_imp, forall_eq, or_false]; omega, by simp [oCd, regs]; omega,
       loK_segIR ap x (d + 1) (by omega), by simp [LoK, Prim.dst, oK, oBd, regs]; omega⟩
 
 theorem noLoopT_cpIR (ap : AP) (rb o n : ℕ) : NoLoopT (cpIR ap rb o n) := by
@@ -616,14 +639,16 @@ theorem sibHit_sem (I : Array Word) (ap : AP) {M₀ : Mem} {R : ℕ} {κ : Bool}
       cpIR_sem I ap hA (by simp [oNh, oK]) (by norm_num) _ c3 nb, ho]
 
 theorem wf_sibHit (ap : AP) : WF (sibHit ap) :=
-  ⟨by simp [WF, Prim.dst, oM, oK, oU], wf_ldw ap, by simp [WF, Prim.dst, oB2], wf_cpIR .., wf_cpIR ..⟩
+  ⟨by simp +decide only [WF, Prim.dst, oM, oK, oU], wf_ldw ap, by simp +decide only [
+    WF, Prim.dst, oB2], wf_cpIR .., wf_cpIR ..⟩
 
-theorem wf_zeros4 : WF zeros4 := by simp [zeros4, WF, Prim.dst, oX]
+theorem wf_zeros4 : WF zeros4 := by simp +decide only [zeros4, WF, Prim.dst, oX, and_true]
 
 theorem loK_sibHit (ap : AP) : LoK (sibHit ap) :=
-  ⟨by simp [LoK, Prim.dst, oM, oK, oU, regs], loK_ldw ap, by simp [LoK, Prim.dst, oB2, regs], loK_cpIR .., loK_cpIR ..⟩
+  ⟨by simp +decide only [LoK, Prim.dst, oM, oK, oU, regs], loK_ldw ap, by simp +decide only [
+    LoK, Prim.dst, oB2, regs], loK_cpIR .., loK_cpIR ..⟩
 
-theorem loK_zeros4 : LoK zeros4 := by simp [zeros4, LoK, Prim.dst, oX, regs]
+theorem loK_zeros4 : LoK zeros4 := by simp +decide only [zeros4, LoK, Prim.dst, oX, regs, and_true]
 
 /-- The registers a depth step leaves alone. -/
 theorem sibHit_wr : ∀ r ∈ [oA, oRm, oN, oRc, oH, oNh, oSh, oShn, oSp, oSn], r ∉ wrL (.ite oFl (sibHit ap) zeros4) := by

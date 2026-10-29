@@ -372,6 +372,10 @@ theorem runPrims_cons (p : Prim) (ps : List Prim) (M : Mem) :
 theorem runPrims_append (ps qs : List Prim) (M : Mem) :
     runPrims (ps ++ qs) M = runPrims qs (runPrims ps M) := List.foldl_append ..
 
+-- G2: the lemmas below use `entryK` through `unfold`/its lemmas; irreducible, it is never unfolded
+-- while unifying `{ M := entryK …, o := … }.M` with `entryK …` (elaboration time).
+attribute [local irreducible] entryK
+
 @[simp] theorem size_storeM (M : Mem) (a v : ℕ) : (storeM M a v).size = M.size := by
   unfold storeM; dsimp only; split <;> simp
 

@@ -25,6 +25,8 @@ namespace FR.X
 
 open RecursionFast FR Finset
 
+attribute [local irreducible] entryK storeM runPrims
+
 /-! ## Registers and the program -/
 
 /-- The accumulator (K). -/ def kA : ℕ := 190
@@ -192,8 +194,10 @@ theorem eqBody_sem (I : Array Word) (s : St) (hM : Inv s.M) {x v a : ℕ} {S : K
   rw [eqBody, semXIR_seq]
   obtain ⟨u1, -, u3⟩ := ldF_sem I s hM (d := kS) (p := eAd) (p1 := eA1) (by decide) (by decide)
     (by decide) (by decide) (by decide) (by decide) hA (by simp only [regs]; omega) (by omega)
-  have hM1 := inv_sem I (P := ldF kS eAd eA1) (by simp [ldF, WF, Prim.dst, kS, eA1]) hM
-  have hH1 := hframe I (ldF kS eAd eA1) s (by simp [ldF, Lo, Prim.dst, regs, kS, eA1])
+  have hM1 := inv_sem I (P := ldF kS eAd eA1) (by simp +decide only [ldF, WF, Prim.dst, kS, eA1,
+    and_true]) hM
+  have hH1 := hframe I (ldF kS eAd eA1) s (by simp +decide only [ldF, Lo, Prim.dst, regs, kS, eA1,
+    and_true])
   generalize semXIR I (ldF kS eAd eA1) s = s1 at u1 u3 hM1 hH1
   -- the second address
   rw [semXIR_seq]
@@ -208,15 +212,16 @@ theorem eqBody_sem (I : Array Word) (s : St) (hM : Inv s.M) {x v a : ℕ} {S : K
   have f2 : ∀ i, i ≠ eK → i ≠ eA2 →
       rd (semXIR I (.blk [.const eK 2, .op .add eA2 eAd eK]) s1).M i = rd s1.M i :=
     fun i h1 h2 => rd_runPrims_of_not_writes (by simp [Prim.dst]; exact ⟨Ne.symm h1, Ne.symm h2⟩) _
-  have hM2 := inv_sem I (P := .blk [.const eK 2, .op .add eA2 eAd eK]) (by simp [WF, Prim.dst, eK,
-    eA2]) hM1
+  have hM2 := inv_sem I (P := .blk [.const eK 2, .op .add eA2 eAd eK]) (by simp +decide only [WF,
+    Prim.dst, eK, eA2]) hM1
   generalize semXIR I (.blk [.const eK 2, .op .add eA2 eAd eK]) s1 = s2 at q2 f2 hM2
   -- the second coordinate
   rw [semXIR_seq]
   obtain ⟨v1, -, v3⟩ := ldF_sem I s2 hM2 (d := kS + 2) (p := eA2) (p1 := eA1) (by decide)
     (by decide) (by decide) (by decide) (by decide) (by decide) q2 (by simp only [regs]; omega)
     (by omega)
-  have hM3 := inv_sem I (P := ldF (kS + 2) eA2 eA1) (by simp [ldF, WF, Prim.dst, kS, eA1]) hM2
+  have hM3 := inv_sem I (P := ldF (kS + 2) eA2 eA1) (by simp +decide only [ldF, WF, Prim.dst, kS,
+    eA1, and_true]) hM2
   generalize semXIR I (ldF (kS + 2) eA2 eA1) s2 = s3 at v1 v3 hM3
   have hK3 : rdK s3.M kS = S := by
     have hf : rdF s3.M kS = rdF s.M a := by
@@ -244,7 +249,7 @@ theorem eqBody_sem (I : Array Word) (s : St) (hM : Inv s.M) {x v a : ℕ} {S : K
     rw [show rd s3.M cOne = 1 from hM3.2 0 (by decide)]
     exact rdK_one_sub _ _ _ _
   have f4 := omPs_frame I s3
-  have hM4 := inv_sem I (P := .blk omPs) (by simp [omPs, WF, Prim.dst, kO]) hM3
+  have hM4 := inv_sem I (P := .blk omPs) (by simp +decide only [omPs, WF, Prim.dst, kO]) hM3
   generalize semXIR I (.blk omPs) s3 = s4 at o4 f4 hM4
   -- the bit, the address, `v`
   rw [semXIR_seq]
@@ -258,7 +263,8 @@ theorem eqBody_sem (I : Array Word) (s : St) (hM : Inv s.M) {x v a : ℕ} {S : K
     (by rw [f4 _ (by decide) (by decide) (by decide) (by decide),
       e3 _ (by decide) (by decide) (by decide) (by decide) (by decide) (by decide) (by decide), hA])
   have f5 := bitPs_frame I s4
-  have hM5 := inv_sem I (P := .blk bitPs) (by simp [bitPs, WF, Prim.dst, eBit, eK, eAd, eV]) hM4
+  have hM5 := inv_sem I (P := .blk bitPs) (by simp +decide only [bitPs, WF, Prim.dst, eBit, eK, eAd,
+    eV]) hM4
   generalize semXIR I (.blk bitPs) s4 = s5 at g5 f5 hM5
   obtain ⟨b5, a5, v5⟩ := g5
   -- the product
@@ -319,12 +325,14 @@ theorem eqBody_sem (I : Array Word) (s : St) (hM : Inv s.M) {x v a : ℕ} {S : K
   · rw [if_neg (by rw [hb0]; exact not_not_intro hbit), if_pos hbit]
     refine ⟨?_, (nwk _ (.inr (.inr (.inr (.inr (.inr (.inr (.inl rfl))))))) _ (.inl rfl)).trans v5,
       (nwk _ (.inr (.inr (.inr (.inr (.inr (.inr (.inr rfl))))))) _ (.inl rfl)).trans a5,
-      fun i hi => (nwk i (by tauto) _ (.inl rfl)).trans (hP i hi), inv_sem I wk1 hM5⟩
+      fun i hi => (nwk i (hi.imp_right (Or.imp_right (Or.imp_right (Or.imp_right
+        (Or.imp_right Or.inl))))) _ (.inl rfl)).trans (hP i hi), inv_sem I wk1 hM5⟩
     rw [mulK_sem hM5 (by decide) (by decide) (by decide) (by decide), ha5, hk5]
   · rw [if_pos (by rw [hb0]; exact hbit), if_neg hbit]
     refine ⟨?_, (nwk _ (.inr (.inr (.inr (.inr (.inr (.inr (.inl rfl))))))) _ (.inr rfl)).trans v5,
       (nwk _ (.inr (.inr (.inr (.inr (.inr (.inr (.inr rfl))))))) _ (.inr rfl)).trans a5,
-      fun i hi => (nwk i (by tauto) _ (.inr rfl)).trans (hP i hi), inv_sem I wk2 hM5⟩
+      fun i hi => (nwk i (hi.imp_right (Or.imp_right (Or.imp_right (Or.imp_right
+        (Or.imp_right Or.inl))))) _ (.inr rfl)).trans (hP i hi), inv_sem I wk2 hM5⟩
     rw [mulK_sem hM5 (by decide) (by decide) (by decide) (by decide), ha5, ho5]
 
 /-! ## One entry, the table -/

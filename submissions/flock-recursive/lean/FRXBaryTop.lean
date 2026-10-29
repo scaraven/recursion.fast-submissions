@@ -16,6 +16,8 @@ namespace FR.X
 
 open RecursionFast FR Finset
 
+attribute [local irreducible] entryK storeM runPrims
+
 /-! ## The flag `[ℓ = 0]` -/
 
 theorem or_eq_zero_w (a b : Word) : XOp.or.eval a b = 0 ↔ a = 0 ∧ b = 0 := by
@@ -45,22 +47,26 @@ theorem eqz_or (a b : Word) :
 /-! ## One target -/
 
 theorem wf_sBody (k C jb djb wb eb cb cs ob tb : ℕ) : WF (sBody k C jb djb wb eb cb cs ob tb) := by
-  simp [sBody, eBody, cBody, aBody, yIR, addrPs, alphaIR, alphaBody, ldF, stF, WF, Writes,
-    Prim.dst, bnw_mulF, bnw_addF, bnw_invF, wfF_mul, wfF_add, wfF_inv, fDs, fLp, fDd, fIv, fEt,
-    fPr, fY, fAc, fX, bT, bS, bCi, bA, bA1, bJ, bK, bZ, bC2, bN2, bC3, bN3, bCo, rBs, rTr, rTa,
-    rTa1, rBit, uI, uT1, fG, fAl, rC2, rN2, cTmp, regs]
+  simp +decide only [sBody, eBody, cBody, aBody, yIR, addrPs, alphaIR, alphaBody, ldF, stF, WF,
+    Writes, Prim.dst, bnw_mulF, bnw_addF, bnw_invF, wfF_mul, wfF_add, wfF_inv, fDs, fLp, fDd, fIv,
+    fEt, fPr, fY, fAc, fX, bT, bS, bCi, bA, bA1, bJ, bK, bZ, bC2, bN2, bC3, bN3, bCo, rBs, rTr, rTa,
+    rTa1, rBit, uI, uT1, fG, fAl, rC2, rN2, cTmp, regs, List.mem_cons, List.mem_nil_iff,
+    forall_eq_or_imp, exists_eq_or_imp, forall_eq, exists_eq_left, or_false, and_true,
+    List.cons_append, List.nil_append]
 
 theorem nw_eBody_bS (djb wb eb : ℕ) : ¬ Writes (eBody djb wb eb) bS := by
-  simp [eBody, addrPs, ldF, stF, Writes, Prim.dst, bnw_mulF, bnw_addF, bnw_invF, bA, bK, bA1, fX,
-    fDd, fLp, fIv, fEt, bT, bS, cTmp]
+  simp +decide only [eBody, addrPs, ldF, stF, Writes, Prim.dst, bnw_mulF, bnw_addF, bnw_invF, bA,
+    bK, bA1, fX, fDd, fLp, fIv, fEt, bT, bS, cTmp, List.mem_cons, List.mem_nil_iff,
+    exists_eq_or_imp, exists_eq_left, or_false]
 
 theorem nw_cBody_bS (k jb eb cb cs ob : ℕ) : ¬ Writes (cBody k jb eb cb cs ob) bS := by
-  simp [cBody, aBody, yIR, addrPs, ldF, stF, Writes, Prim.dst, bnw_mulF, bnw_addF, bA, bK, bA1,
-    bJ, fY, fX, fPr, fAc, bT, bN3, bC3, bCi, bCo, cTmp, bS]
+  simp +decide only [cBody, aBody, yIR, addrPs, ldF, stF, Writes, Prim.dst, bnw_mulF, bnw_addF, bA,
+    bK, bA1, bJ, fY, fX, fPr, fAc, bT, bN3, bC3, bCi, bCo, cTmp, bS, List.mem_cons,
+    List.mem_nil_iff, exists_eq_or_imp, exists_eq_left, or_false, List.cons_append, List.nil_append]
 
 theorem nw_alphaIR_bS : ¬ Writes alphaIR bS := by
-  simp [alphaIR, alphaBody, ldF, Writes, Prim.dst, rBit, uT1, rTa, rTa1, fG, fAl, uI, rN2, rC2,
-    cTmp, bS]
+  simp +decide only [alphaIR, alphaBody, ldF, Writes, Prim.dst, rBit, uT1, rTa, rTa1, fG, fAl, uI,
+    rN2, rC2, cTmp, bS, or_false]
 
 /-- **One target `s₀`**: the `C` output cells of `s₀`, `bS := s₀ + 1`; the heap outside the `E`
 row and those cells is kept. -/
@@ -99,9 +105,11 @@ theorem sBody_sem (I : Array Word) (s : St) (hM : Inv s.M)
   simp only [semXIR_seq]
   -- `rBs := s₀`, `rTr := tb`
   have hM0 := inv_sem I (P := .blk [.op .or rBs bS bS, .const rTr (toWord tb)]) (s := s)
-    (by simp [WF, Prim.dst, rBs, rTr]) hM
+    (by simp +decide only [WF, Prim.dst, rBs, rTr, List.mem_cons, List.mem_nil_iff,
+      forall_eq_or_imp, forall_eq, or_false, and_true]) hM
   have H0 := hframe I (.blk [.op .or rBs bS bS, .const rTr (toWord tb)]) s
-    (by simp [Lo, Prim.dst, regs, rBs, rTr])
+    (by simp +decide only [Lo, Prim.dst, regs, rBs, rTr, List.mem_cons, List.mem_nil_iff,
+      forall_eq_or_imp, forall_eq, or_false, and_true])
   have r0 : rd (semXIR I (.blk [.op .or rBs bS bS, .const rTr (toWord tb)]) s).M rBs = toWord s0 ∧
       rd (semXIR I (.blk [.op .or rBs bS bS, .const rTr (toWord tb)]) s).M rTr = toWord tb ∧
       rd (semXIR I (.blk [.op .or rBs bS bS, .const rTr (toWord tb)]) s).M bS = toWord s0 := by
@@ -126,10 +134,12 @@ theorem sBody_sem (I : Array Word) (s : St) (hM : Inv s.M)
   -- `fDs := D(s₀)`, `ℓ := 1`, `t := 0`, `bN2 := k`
   have hM2 := inv_sem I (P := .blk [.op .or fDs fAl fAl, .op .or (fDs + 1) (fAl + 1) (fAl + 1),
     .const fLp 1, .const (fLp + 1) 0, .const bT 0, .const bN2 (toWord k)]) (s := q1)
-    (by simp [WF, Prim.dst, fDs, fLp, bT, bN2]) hM1
+    (by simp +decide only [WF, Prim.dst, fDs, fLp, bT, bN2, List.mem_cons, List.mem_nil_iff,
+      forall_eq_or_imp, forall_eq, or_false, and_true]) hM1
   have H2 := hframe I (.blk [.op .or fDs fAl fAl, .op .or (fDs + 1) (fAl + 1) (fAl + 1),
     .const fLp 1, .const (fLp + 1) 0, .const bT 0, .const bN2 (toWord k)]) q1
-    (by simp [Lo, Prim.dst, regs, fDs, fLp, bT, bN2])
+    (by simp +decide only [Lo, Prim.dst, regs, fDs, fLp, bT, bN2, List.mem_cons, List.mem_nil_iff,
+      forall_eq_or_imp, forall_eq, or_false, and_true])
   have hs1 : regs ≤ q1.M.size := hM1.1
   have r2 : rdF (semXIR I (.blk [.op .or fDs fAl fAl, .op .or (fDs + 1) (fAl + 1) (fAl + 1),
         .const fLp 1, .const (fLp + 1) 0, .const bT 0, .const bN2 (toWord k)]) q1).M fDs = D s0 ∧
@@ -174,10 +184,12 @@ theorem sBody_sem (I : Array Word) (s : St) (hM : Inv s.M)
   -- the flag, `c := 0`, `2c := 0`, `bN2 := C`
   have hM4 := inv_sem I (P := .blk [.op .or bZ fLp (fLp + 1), .const bK 0, .op .eq bZ bZ bK,
     .const bCi 0, .const bCo 0, .const bN2 (toWord C)]) (s := q3)
-    (by simp [WF, Prim.dst, bZ, bK, bCi, bCo, bN2]) hM3
+    (by simp +decide only [WF, Prim.dst, bZ, bK, bCi, bCo, bN2, List.mem_cons, List.mem_nil_iff,
+      forall_eq_or_imp, forall_eq, or_false, and_true]) hM3
   have H4 := hframe I (.blk [.op .or bZ fLp (fLp + 1), .const bK 0, .op .eq bZ bZ bK,
     .const bCi 0, .const bCo 0, .const bN2 (toWord C)]) q3
-    (by simp [Lo, Prim.dst, regs, bZ, bK, bCi, bCo, bN2])
+    (by simp +decide only [Lo, Prim.dst, regs, bZ, bK, bCi, bCo, bN2, List.mem_cons,
+      List.mem_nil_iff, forall_eq_or_imp, forall_eq, or_false, and_true])
   have hs3 : regs ≤ q3.M.size := hM3.1
   have r4 : rd (semXIR I (.blk [.op .or bZ fLp (fLp + 1), .const bK 0, .op .eq bZ bZ bK,
         .const bCi 0, .const bCo 0, .const bN2 (toWord C)]) q3).M bN2 = toWord C ∧
@@ -278,7 +290,8 @@ theorem cell_ne {k c c' s s' a b : ℕ} (hs : s < k) (hs' : s' < k) (hne : s ≠
   subst h3; omega
 
 theorem out_lt {k c C s : ℕ} (hc : c < C) (hs : s < k) : 2 * k * c + 2 * s + 1 < 2 * k * C := by
-  have := Nat.mul_le_mul_left (2 * k) (show c + 1 ≤ C by omega); nlinarith
+  have := Nat.mul_le_mul_left (2 * k) (show c + 1 ≤ C by omega)
+  rw [Nat.mul_add, Nat.mul_one] at this; omega
 
 /-- The value of target `s₀`, coordinate `c`, on the heap `M` (the `DJ` and `W` tables and the
 column store). -/

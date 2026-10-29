@@ -22,6 +22,8 @@ namespace FR.X
 
 open RecursionFast
 
+attribute [local irreducible] entryK storeM
+
 /-- The branch-free `min` of `minPs`: `b ^^^ ((a ^^^ b) &&& (0 - [a < b]))`. -/
 theorem minW (a b : Word) :
     b ^^^ ((a ^^^ b) &&& (0 - XOp.ltu.eval a b)) = if a < b then a else b := by
@@ -109,7 +111,7 @@ theorem hframe (I : Array Word) : ∀ (P : XIR) (s : St), Lo P → ∀ x, regs �
 /-- Controls for `Lo`: a store, or a block writing a heap cell, is not `Lo`. -/
 theorem not_lo_store : ¬ Lo (.store rAd rV) := id
 
-theorem not_lo_heap : ¬ Lo (.blk [.const regs 0]) := by simp [Lo, Prim.dst]
+theorem not_lo_heap : ¬ Lo (.blk [.const regs 0]) := by simp +decide only [Lo, Prim.dst]
 
 /-! ## The relation between the machine and `MS` -/
 
@@ -182,10 +184,12 @@ theorem bstart_props {n w : ℕ} {σ : MS} (hB : Bnd n σ) (hk : σ.k < n) (hw :
 /-! ## `blockIR` -/
 
 theorem lo_blockIR : Lo blockIR := by
-  simp [Lo, blockIR, minPs, Prim.dst, regs, rG, rH, rI, rIE, rJ, rJE, rKk, rV, rT1, rT2, rKc]
+  simp +decide only [Lo, blockIR, minPs, Prim.dst, regs, rG, rH, rI, rIE, rJ, rJE, rKk, rV, rT1,
+    rT2, rKc, and_true, List.cons_append, List.nil_append]
 
 theorem wf_blockIR : WF blockIR := by
-  simp [WF, blockIR, minPs, Prim.dst, rG, rH, rI, rIE, rJ, rJE, rKk, rV, rT1, rT2, rKc]
+  simp +decide only [WF, blockIR, minPs, Prim.dst, rG, rH, rI, rIE, rJ, rJE, rKk, rV, rT1, rT2, rKc,
+    and_true, List.cons_append, List.nil_append]
 
 /-- **`blockIR` computes `bstart`.** -/
 theorem blockIR_sem (I : Array Word) (s : St) (hM : Inv s.M) {S D n w : ℕ} {σ : MS}
@@ -195,7 +199,7 @@ theorem blockIR_sem (I : Array Word) (s : St) (hM : Inv s.M) {S D n w : ℕ} {σ
   simp only [regs] at hs
   obtain ⟨b1, b2, b3, b4⟩ := hB
   have hwf1 : WF (.blk [.op .eq rG rI rIE, .op .eq rH rJ rJE, .op .and rG rG rH]) := by
-    simp [WF, Prim.dst, rG, rH]
+    simp +decide only [WF, Prim.dst, rG, rH]
   have h1 : rd (semXIR I (.blk [.op .eq rG rI rIE, .op .eq rH rJ rJE, .op .and rG rG rH]) s).M
       rG = bW (decide (σ.i = σ.iE) && decide (σ.j = σ.jE)) := by
     have hi := hR.i; have hiE := hR.iE; have hj := hR.j; have hjE := hR.jE
@@ -204,8 +208,9 @@ theorem blockIR_sem (I : Array Word) (s : St) (hM : Inv s.M) {S D n w : ℕ} {σ
       rd_set_ne]
     rw [hi, hiE, hj, hjE, eqW_toWord (by omega) (by omega), eqW_toWord (by omega) (by omega),
       bW_and]
-  have hR1 := hR.sem (I := I) hM hwf1 (by simp [regL, Writes, Prim.dst, rG, rH, rI, rIE, rJ,
-    rJE, rKk, rW2, rN, rSrc, rDst])
+  have hR1 := hR.sem (I := I) hM hwf1 (by simp +decide only [regL, Writes, Prim.dst, rG, rH, rI,
+    rIE, rJ, rJE, rKk, rW2, rN, rSrc, rDst, List.mem_cons, List.mem_nil_iff, forall_eq_or_imp,
+    exists_eq_or_imp, forall_eq, exists_eq_left, or_false, and_true])
   have hM1 := inv_sem I hwf1 hM
   rw [blockIR, semXIR_seq, semXIR_ite]
   generalize semXIR I (.blk [.op .eq rG rI rIE, .op .eq rH rJ rJE, .op .and rG rG rH]) s = s1
@@ -282,12 +287,12 @@ theorem choose_sem (I : Array Word) (s : St) (hM : Inv s.M) {S D n w : ℕ} {src
     simp [takeL, g, bW]
 
 theorem lo_cmpIR : Lo cmpIR := by
-  simp [Lo, cmpIR, cmpWord, aposIR, ceil8Ps, Prim.dst, regs, rAd, rX, rY, rPa, rPb, rKa, rKb, rF,
-    rG, rH, rQL, rKc, rT2]
+  simp +decide only [Lo, cmpIR, cmpWord, aposIR, ceil8Ps, Prim.dst, regs, rAd, rX, rY, rPa, rPb,
+    rKa, rKb, rF, rG, rH, rQL, rKc, rT2, and_true, List.cons_append, List.nil_append]
 
 theorem wf_cmpIR : WF cmpIR := by
-  simp [WF, cmpIR, cmpWord, aposIR, ceil8Ps, Prim.dst, rAd, rX, rY, rPa, rPb, rKa, rKb, rF,
-    rG, rH, rQL, rKc, rT2]
+  simp +decide only [WF, cmpIR, cmpWord, aposIR, ceil8Ps, Prim.dst, rAd, rX, rY, rPa, rPb, rKa, rKb,
+    rF, rG, rH, rQL, rKc, rT2, and_true, List.cons_append, List.nil_append]
 
 /-- **The write**: `dst[k] := src[h]`, `k += 1`; the source and the other registers stay. -/
 theorem tail_sem (I : Array Word) (s : St) (hM : Inv s.M) {S D n w h : ℕ} {src : ℕ → Word}
@@ -305,10 +310,10 @@ theorem tail_sem (I : Array Word) (s : St) (hM : Inv s.M) {S D n w h : ℕ} {src
   have e : semXIR I tailIR s = semXIR I (.store rAd rV) (semXIR I (.seq (.load rV rAd)
       (.blk [.op .add rAd rDst rKk, .op .add rKk rKk cOne])) s) := rfl
   have hwf2 : WF (.seq (.load rV rAd) (.blk [.op .add rAd rDst rKk, .op .add rKk rKk cOne])) := by
-    simp [WF, Prim.dst, rV, rAd, rKk]
+    simp +decide only [WF, Prim.dst, rV, rAd, rKk, and_true]
   have hM2 := inv_sem I hwf2 hM
   have hH2 := hframe I (.seq (.load rV rAd) (.blk [.op .add rAd rDst rKk, .op .add rKk rKk cOne]))
-    s (by simp [Lo, Prim.dst, regs, rV, rAd, rKk])
+    s (by simp +decide only [Lo, Prim.dst, regs, rV, rAd, rKk, and_true])
   have hz2 := size_sem I (.seq (.load rV rAd) (.blk [.op .add rAd rDst rKk,
     .op .add rKk rKk cOne])) s
   have hF2 : ∀ r ∈ [rI, rIE, rJ, rJE, rW2, rN, rSrc, rDst], rd (semXIR I (.seq (.load rV rAd)
@@ -318,7 +323,8 @@ theorem tail_sem (I : Array Word) (s : St) (hM : Inv s.M) {S D n w h : ℕ} {src
       rcases hr with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl <;> decide) (by
       simp only [List.mem_cons, List.mem_nil_iff, or_false] at hr;
       rcases hr with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl <;>
-        simp [Writes, Prim.dst, rV, rAd, rKk, rI, rIE, rJ, rJE, rW2, rN, rSrc, rDst])
+        simp +decide only [Writes, Prim.dst, rV, rAd, rKk, rI, rIE, rJ, rJE, rW2, rN, rSrc, rDst,
+          or_false])
   have hA2 : rd (semXIR I (.seq (.load rV rAd)
       (.blk [.op .add rAd rDst rKk, .op .add rKk rKk cOne])) s).M rAd = toWord (D + τ.k) := by
     simp only [semXIR, runPrims, List.foldl, Prim.run]
@@ -351,7 +357,7 @@ theorem tail_sem (I : Array Word) (s : St) (hM : Inv s.M) {S D n w h : ℕ} {src
       simp only [List.mem_cons, List.mem_nil_iff, or_false] at hr
       rcases hr with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl <;> decide
     rw [hst r h1.2, if_neg (by simp only [regs] at h1; omega), hF2 r hr]
-  refine ⟨inv_sem I (P := .store rAd rV) (by simp [WF, rAd, cTmp]) hM2,
+  refine ⟨inv_sem I (P := .store rAd rV) (by simp +decide only [WF, rAd, cTmp]) hM2,
     ⟨(hreg rI (by simp)).trans hR.i, (hreg rIE (by simp)).trans hR.iE,
       (hreg rJ (by simp)).trans hR.j, (hreg rJE (by simp)).trans hR.jE, ?_,
       (hreg rW2 (by simp)).trans hR.w, (hreg rN (by simp)).trans hR.n,
@@ -388,22 +394,27 @@ theorem adv_blk (I : Array Word) (s : St) (hM : Inv s.M) {S h : ℕ} {r : ℕ} (
       rcases hq with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl <;> decide
     rw [rd_set_ne (Ne.symm hqr), rd_set_ne (Ne.symm hq')]
 
-theorem lo_flagsIR : Lo flagsIR := by simp [Lo, flagsIR, Prim.dst, regs, rG, rH]
-theorem wf_flagsIR : WF flagsIR := by simp [WF, flagsIR, Prim.dst, rG, rH]
+theorem lo_flagsIR : Lo flagsIR := by simp +decide only [Lo, flagsIR, Prim.dst, regs, rG, rH]
+theorem wf_flagsIR : WF flagsIR := by simp +decide only [WF, flagsIR, Prim.dst, rG, rH]
 theorem lo_chooseIR : Lo chooseIR := by
   simp only [Lo, chooseIR]; exact ⟨⟨lo_cmpIR, by simp [Prim.dst, regs, rF]⟩,
     by simp [Prim.dst, regs, rF]⟩
 theorem wf_chooseIR : WF chooseIR := by
   simp only [WF, chooseIR]; exact ⟨⟨wf_cmpIR, by simp [Prim.dst, rF]⟩, by simp [Prim.dst, rF]⟩
-theorem lo_advIR : Lo advIR := by simp [Lo, advIR, Prim.dst, regs, rAd, rI, rJ]
-theorem wf_advIR : WF advIR := by simp [WF, advIR, Prim.dst, rAd, rI, rJ]
+theorem lo_advIR : Lo advIR := by simp +decide only [Lo, advIR, Prim.dst, regs, rAd, rI, rJ,
+  and_true]
+theorem wf_advIR : WF advIR := by simp +decide only [WF, advIR, Prim.dst, rAd, rI, rJ, and_true]
 
 theorem nw_flagsIR : ∀ r ∈ regL, ¬ Writes flagsIR r := by
-  simp [regL, Writes, flagsIR, Prim.dst, rG, rH, rI, rIE, rJ, rJE, rKk, rW2, rN, rSrc, rDst]
+  simp +decide only [regL, Writes, flagsIR, Prim.dst, rG, rH, rI, rIE, rJ, rJE, rKk, rW2, rN, rSrc,
+    rDst, List.mem_cons, List.mem_nil_iff, forall_eq_or_imp, exists_eq_or_imp, forall_eq,
+    exists_eq_left, or_false, and_true]
 
 theorem nw_chooseIR : ∀ r ∈ regL, ¬ Writes chooseIR r := by
-  simp [regL, Writes, chooseIR, cmpIR, cmpWord, aposIR, ceil8Ps, Prim.dst, rAd, rX, rY, rPa, rPb,
-    rKa, rKb, rF, rG, rH, rQL, rKc, rT2, rI, rIE, rJ, rJE, rKk, rW2, rN, rSrc, rDst]
+  simp +decide only [regL, Writes, chooseIR, cmpIR, cmpWord, aposIR, ceil8Ps, Prim.dst, rAd, rX, rY,
+    rPa, rPb, rKa, rKb, rF, rG, rH, rQL, rKc, rT2, rI, rIE, rJ, rJE, rKk, rW2, rN, rSrc, rDst,
+    List.mem_cons, List.mem_nil_iff, forall_eq_or_imp, exists_eq_or_imp, forall_eq, exists_eq_left,
+    or_false, and_true, List.cons_append, List.nil_append]
 
 /-- **One step**: `stepIR` maps a state holding `σ` to one holding `mstep σ`. -/
 theorem stepIR_sem (I : Array Word) (s : St) {S D n w : ℕ} {src : ℕ → Word} {σ : MS}
@@ -475,9 +486,9 @@ theorem stepIR_sem (I : Array Word) (s : St) {S D n w : ℕ} {src : ℕ → Word
       (a3 rSrc (by simp [regL]) (by decide)).trans hR3.S,
       (a3 rDst (by simp [regL]) (by decide)).trans hR3.D⟩
     have hP : Lo (.blk [.op .add rAd rSrc rI, .op .add rI rI cOne]) := by
-      simp [Lo, Prim.dst, regs, rAd, rI]
+      simp +decide only [Lo, Prim.dst, regs, rAd, rI]
     have hM4 := inv_sem I (P := .blk [.op .add rAd rSrc rI, .op .add rI rI cOne])
-      (by simp [WF, Prim.dst, rAd, rI]) hM3
+      (by simp +decide only [WF, Prim.dst, rAd, rI]) hM3
     obtain ⟨t1, t2, t3, t4⟩ := tail_sem I _ hM4 (by rw [size_sem]; exact hL3) hR4
       (by show τ.k < n; omega)
       (h := τ.i) (by omega) a1 (fun a ha => by rw [hframe I _ s3 hP _ (by simp only [regs]; omega),
@@ -503,9 +514,9 @@ theorem stepIR_sem (I : Array Word) (s : St) {S D n w : ℕ} {src : ℕ → Word
       (a3 rSrc (by simp [regL]) (by decide)).trans hR3.S,
       (a3 rDst (by simp [regL]) (by decide)).trans hR3.D⟩
     have hP : Lo (.blk [.op .add rAd rSrc rJ, .op .add rJ rJ cOne]) := by
-      simp [Lo, Prim.dst, regs, rAd, rJ]
+      simp +decide only [Lo, Prim.dst, regs, rAd, rJ]
     have hM4 := inv_sem I (P := .blk [.op .add rAd rSrc rJ, .op .add rJ rJ cOne])
-      (by simp [WF, Prim.dst, rAd, rJ]) hM3
+      (by simp +decide only [WF, Prim.dst, rAd, rJ]) hM3
     obtain ⟨t1, t2, t3, t4⟩ := tail_sem I _ hM4 (by rw [size_sem]; exact hL3) hR4
       (by show τ.k < n; omega)
       (h := τ.j) (by omega) a1 (fun a ha => by rw [hframe I _ s3 hP _ (by simp only [regs]; omega),
@@ -559,11 +570,13 @@ theorem passIR_sem (I : Array Word) (s : St) (hM : Inv s.M) {S D n w : ℕ}
   have Lbn := hL.bn
   have Lbw := hL.bw
   simp only [regs] at hs
-  have hP0 : WF passPre := by simp [passPre, readAt, WF, Prim.dst, rI, rIE, rJ, rJE, rKk, rNS, rA]
+  have hP0 : WF passPre := by simp +decide only [passPre, readAt, WF, Prim.dst, rI, rIE, rJ, rJE,
+    rKk, rNS, rA, and_true]
   have hlo0 : Lo passPre := by
-    simp [Lo, passPre, readAt, Prim.dst, regs, rI, rIE, rJ, rJE, rKk, rNS, rA]
+    simp +decide only [Lo, passPre, readAt, Prim.dst, regs, rI, rIE, rJ, rJE, rKk, rNS, rA,
+      and_true]
   have hcnt : rd (semXIR I passPre s).M rNS = toWord n := by
-    rw [passPre, rd_seq_readAt I _ s (by simp [WF, Prim.dst, rI, rIE, rJ, rJE, rKk]) hM
+    rw [passPre, rd_seq_readAt I _ s (by simp +decide only [WF, Prim.dst, rI, rIE, rJ, rJE, rKk]) hM
       (by decide) (by simp only [posL]; omega), hn]
   have hR0 : Regs (semXIR I passPre s).M S D n w ⟨0, 0, 0, 0, 0, 0, fun a => rd s.M (D + a)⟩ := by
     refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩ <;>
@@ -595,8 +608,9 @@ theorem passIR_sem (I : Array Word) (s : St) (hM : Inv s.M) {S D n w : ℕ}
   have hs1 := hM1.1
   simp only [regs] at hs1
   have hlo : Lo (.blk swapPs) := by
-    simp [Lo, swapPs, minPs, Prim.dst, regs, rV, rSrc, rDst, rW2, rT1, rT2, rKc]
-  refine ⟨inv_sem I (by simp [WF, swapPs, minPs, Prim.dst, rV, rSrc, rDst, rW2, rT1, rT2, rKc])
+    simp +decide only [Lo, swapPs, minPs, Prim.dst, regs, rV, rSrc, rDst, rW2, rT1, rT2, rKc]
+  refine ⟨inv_sem I (by simp +decide only [WF, swapPs, minPs, Prim.dst, rV, rSrc, rDst, rW2, rT1,
+    rT2, rKc])
     hM1, ?_, ?_, ?_, ?_, fun a ha => ?_⟩
   rotate_left 4
   · rw [hframe I _ s1 hlo _ (le_trans hL.rD (by omega)), hd1 a ha]; rfl
@@ -658,15 +672,17 @@ theorem sortIR_sem (I : Array Word) (s : St) (hM : Inv s.M) {n : ℕ}
   have hs := hM.1
   have hm : memX = 2 ^ 26 := rfl
   simp only [regs] at hs
-  have hP0 : WF sortPre := by simp [sortPre, readAt, WF, Prim.dst, rN, rA, rW2, rSrc, rDst, rNP]
+  have hP0 : WF sortPre := by simp +decide only [sortPre, readAt, WF, Prim.dst, rN, rA, rW2, rSrc,
+    rDst, rNP, and_true]
   have hlo0 : Lo sortPre := by
-    simp [Lo, sortPre, readAt, Prim.dst, regs, rN, rA, rW2, rSrc, rDst, rNP]
+    simp +decide only [Lo, sortPre, readAt, Prim.dst, regs, rN, rA, rW2, rSrc, rDst, rNP, and_true]
   -- the registers after `sortPre`
   have h0 : rd (semXIR I sortPre s).M rN = toWord n ∧ rd (semXIR I sortPre s).M rW2 = toWord 1 ∧
       rd (semXIR I sortPre s).M rSrc = toWord memX ∧
       rd (semXIR I sortPre s).M rDst = toWord (memX + n) ∧ rd (semXIR I sortPre s).M rNP = 64 := by
     have hN := rd_readAt I s hM (d := rN) (pos := posL) (by decide) (by simp only [posL]; omega)
-    have hM' := inv_sem I (P := readAt rN posL) (by simp [readAt, WF, Prim.dst, rN, rA]) hM
+    have hM' := inv_sem I (P := readAt rN posL) (by simp +decide only [readAt, WF, Prim.dst, rN, rA,
+      and_true]) hM
     rw [hn] at hN
     rw [sortPre, semXIR_seq]
     generalize semXIR I (readAt rN posL) s = s' at hN hM'

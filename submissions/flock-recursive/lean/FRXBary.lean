@@ -14,6 +14,8 @@ namespace FR.X
 
 open RecursionFast FR Finset
 
+attribute [local irreducible] entryK storeM
+
 /-! ## Helpers -/
 
 /-- **A generic `loopK` run**: an invariant `P` preserved by the body for `j < K` holds after the
@@ -114,7 +116,7 @@ theorem djBody_sem (I : Array Word) (s : St) (hM : Inv s.M) {jb djb tb t x : ℕ
   -- `rBs := J_t`
   obtain ⟨l2, l2f⟩ := bload_sem I ⟨M1, s.o⟩ hM1 (d := rBs) (a := bA) (x := jb + 1 * t) (by decide)
     a1 (by omega)
-  have hM2 := inv_sem I (P := .load rBs bA) (s := ⟨M1, s.o⟩) (by simp [WF, rBs]) hM1
+  have hM2 := inv_sem I (P := .load rBs bA) (s := ⟨M1, s.o⟩) (by simp +decide only [WF, rBs]) hM1
   have z2 := size_sem I (.load rBs bA) ⟨M1, s.o⟩
   have h2 : ∀ y, regs ≤ y → rd (semXIR I (.load rBs bA) ⟨M1, s.o⟩).M y = rd s.M y := fun y hy =>
     (l2f y (by simp only [regs] at hy; simp only [rBs]; omega)).trans (h1 y hy)
@@ -122,7 +124,8 @@ theorem djBody_sem (I : Array Word) (s : St) (hM : Inv s.M) {jb djb tb t x : ℕ
   rw [h1 _ (by simp only [regs]; omega), Nat.one_mul, hJ] at l2
   generalize semXIR I (.load rBs bA) ⟨M1, s.o⟩ = s2 at l2 l2f hM2 z2 h2 t2
   -- `rTr := tb`
-  have hM3 := inv_sem I (P := .blk [.const rTr (toWord tb)]) (s := s2) (by simp [WF, Prim.dst, rTr])
+  have hM3 := inv_sem I (P := .blk [.const rTr (toWord tb)]) (s := s2) (by simp +decide only [WF,
+    Prim.dst, rTr, List.mem_cons, List.mem_nil_iff, forall_eq, or_false])
     hM2
   have z3 := size_sem I (.blk [.const rTr (toWord tb)]) s2
   have hs2 := hM2.1
@@ -145,8 +148,8 @@ theorem djBody_sem (I : Array Word) (s : St) (hM : Inv s.M) {jb djb tb t x : ℕ
       h2 y hy]
   have t4 : rd (semXIR I alphaIR s3).M bT = toWord t := by
     rw [frame I alphaIR s3 wf_alphaIR hM3 bT (by decide) (by
-      simp [alphaIR, alphaBody, ldF, Writes, Prim.dst, bT, rBit, uT1, fG, fAl, rTa, rTa1, uI, rC2,
-        rN2, cTmp]), f3 _ (by decide), t2]
+      simp +decide only [alphaIR, alphaBody, ldF, Writes, Prim.dst, bT, rBit, uT1, fG, fAl, rTa,
+        rTa1, uI, rC2, rN2, cTmp, or_false]), f3 _ (by decide), t2]
   generalize semXIR I alphaIR s3 = s4 at d4 hM4 z4 h4 t4
   -- `bA := djb + 2t`
   obtain ⟨a5, a5f⟩ := addrPs_sem s4.M hM4.1 (d := bA) (i := bT) (b := djb) (m := 2) (by decide)
@@ -268,12 +271,15 @@ theorem lo_invF {d a : ℕ} (h : d + 1 < regs) : Lo (invF d a) := fun p hp => by
   have := invFC_dst d a p hp; simp only [regs] at h ⊢; omega
 
 theorem lo_wInner (djb : ℕ) : Lo (wInner djb) :=
-  ⟨by simp [Lo, addrPs, Prim.dst, bA, bK, regs], ⟨by simp [Lo, ldF, Prim.dst, fX, bA1, regs],
-    lo_addF (by decide), by simp [Lo, Prim.dst, bZ, regs], ⟨by simp [Lo], lo_mulF (by decide)⟩,
-    by simp [Lo, Prim.dst, bM, regs]⟩⟩
+  ⟨by simp +decide only [Lo, addrPs, Prim.dst, bA, bK, regs, List.mem_cons, List.mem_nil_iff,
+    forall_eq_or_imp, forall_eq, or_false, and_true], ⟨by simp +decide only [
+    Lo, ldF, Prim.dst, fX, bA1, regs, and_true],
+    lo_addF (by decide), by simp +decide only [Lo, Prim.dst, bZ, regs], ⟨by simp +decide only [Lo], lo_mulF (by decide)⟩,
+    by simp +decide only [Lo, Prim.dst, bM, regs]⟩⟩
 
 theorem wf_wInner (djb : ℕ) : WF (wInner djb) := by
-  simp [wInner, addrPs, ldF, WF, Prim.dst, wfF_mul, wfF_add, bA, bK, bA1, fX, fDd, bZ, bM, fPr]
+  simp +decide only [wInner, addrPs, ldF, WF, Prim.dst, wfF_mul, wfF_add, bA, bK, bA1, fX, fDd, bZ,
+    bM, fPr, List.mem_cons, List.mem_nil_iff, forall_eq_or_imp, forall_eq, or_false, and_true]
 
 /-- **One factor** of `W[t]`: `fPr *= (m = t ? 1 : DJ[t] + DJ[m])`. -/
 theorem wInner_sem (I : Array Word) (s : St) (hM : Inv s.M) {djb m t : ℕ} {dt : F}
@@ -302,7 +308,7 @@ theorem wInner_sem (I : Array Word) (s : St) (hM : Inv s.M) {djb m t : ℕ} {dt 
     (x := djb + 2 * m) (by decide) (by decide) (by decide) (by decide) (by decide) (by decide) a1
     (by simp only [regs]; omega) hdj2
   have hM2 := inv_sem I (P := ldF fX bA bA1) (s := ⟨M1, s.o⟩)
-    (by simp [ldF, WF, Prim.dst, fX, bA1]) hM1
+    (by simp +decide only [ldF, WF, Prim.dst, fX, bA1, and_true]) hM1
   have kk : ∀ r, r ≠ fX → r ≠ fX + 1 → r ≠ bA1 → r ≠ bA → r ≠ bK →
       rd (semXIR I (ldF fX bA bA1) ⟨M1, s.o⟩).M r = rd s.M r := fun r a b c d e =>
     (l3 r a b c).trans (k1 r d e)
@@ -327,7 +333,8 @@ theorem wInner_sem (I : Array Word) (s : St) (hM : Inv s.M) {djb m t : ℕ} {dt 
         (by decide), hBt, eqW_toWord hm ht]
   have k4 : ∀ r, r ≠ bZ → rd (semXIR I (.blk [.op .eq bZ bM bT]) s3).M r = rd s3.M r :=
     fun r hr => rd_runPrims_of_not_writes (by simp [Prim.dst]; exact Ne.symm hr) _
-  have hM4 := inv_sem I (P := .blk [.op .eq bZ bM bT]) (s := s3) (by simp [WF, Prim.dst, bZ]) hM3
+  have hM4 := inv_sem I (P := .blk [.op .eq bZ bM bT]) (s := s3) (by simp +decide only [WF,
+    Prim.dst, bZ]) hM3
   generalize semXIR I (.blk [.op .eq bZ bM bT]) s3 = s4 at z4 k4 hM4
   -- the conditional product
   have p5 : rdF (semXIR I (.ite bZ (.blk []) (mulF fPr fPr fDd)) s4).M fPr =
@@ -350,7 +357,7 @@ theorem wInner_sem (I : Array Word) (s : St) (hM : Inv s.M) {djb m t : ℕ} {dt 
     · rw [mulF, sem_blk]; exact mulFC_frame _ _ _ (.inr h0) h1 h2 _
     · rfl
   have hM5 := inv_sem I (P := .ite bZ (.blk []) (mulF fPr fPr fDd)) (s := s4)
-    ⟨by simp [WF], wf_mulF _ _ _ (by decide)⟩ hM4
+    ⟨by simp +decide only [WF], wf_mulF _ _ _ (by decide)⟩ hM4
   generalize semXIR I (.ite bZ (.blk []) (mulF fPr fPr fDd)) s4 = s5 at p5 k5 hM5
   have m5 : rd s5.M bM = toWord m := by
     rw [k5 _ (by decide) (by decide) (by decide), k4 _ (by decide), k3 _ (by decide) (by decide),
@@ -427,7 +434,7 @@ theorem wtBody_sem (I : Array Word) (s : St) (hM : Inv s.M) {k djb wb t : ℕ} {
     (x := djb + 2 * t) (by decide) (by decide) (by decide) (by decide) (by decide) (by decide) a1
     (by simp only [regs]; omega) (by omega)
   have hM2 := inv_sem I (P := ldF fDs bA bA1) (s := ⟨M1, s.o⟩)
-    (by simp [ldF, WF, Prim.dst, fDs, bA1]) hM1
+    (by simp +decide only [ldF, WF, Prim.dst, fDs, bA1, and_true]) hM1
   have z2 := size_sem I (ldF fDs bA bA1) ⟨M1, s.o⟩
   have k2 : ∀ r, r ≠ fDs → r ≠ fDs + 1 → r ≠ bA1 → r ≠ bA → r ≠ bK →
       rd (semXIR I (ldF fDs bA bA1) ⟨M1, s.o⟩).M r = rd s.M r := fun r a b c d e =>
@@ -626,7 +633,7 @@ theorem eBody_sem (I : Array Word) (s : St) (hM : Inv s.M) {djb wb eb t : ℕ} {
     (by simp only [regs]; omega) hdj2
   rw [rdF_eq (hH1 _ (by simp only [regs]; omega)) (hH1 _ (by simp only [regs]; omega)), hG] at l1
   have hM2 := inv_sem I (P := ldF fX bA bA1) (s := ⟨M1, s.o⟩)
-    (by simp [ldF, WF, Prim.dst, fX, bA1]) hM1
+    (by simp +decide only [ldF, WF, Prim.dst, fX, bA1, and_true]) hM1
   have z2 := size_sem I (ldF fX bA bA1) ⟨M1, s.o⟩
   have k2 : ∀ r, r ≠ fX → r ≠ fX + 1 → r ≠ bA1 → r ≠ bA → r ≠ bK →
       rd (semXIR I (ldF fX bA bA1) ⟨M1, s.o⟩).M r = rd s.M r := fun r a b c d e =>
@@ -697,7 +704,7 @@ theorem eBody_sem (I : Array Word) (s : St) (hM : Inv s.M) {djb wb eb t : ℕ} {
     (a6f _ (by simp only [bA]; omega) (by simp only [bK]; omega)),
     rdF_eq (hH5 _ (by simp only [regs]; omega)) (hH5 _ (by simp only [regs]; omega)), hW] at l7
   have hM7 := inv_sem I (P := ldF fX bA bA1) (s := ⟨M6, s5.o⟩)
-    (by simp [ldF, WF, Prim.dst, fX, bA1]) hM6
+    (by simp +decide only [ldF, WF, Prim.dst, fX, bA1, and_true]) hM6
   have z7 := size_sem I (ldF fX bA bA1) ⟨M6, s5.o⟩
   have k7 : ∀ r, r ≠ fX → r ≠ fX + 1 → r ≠ bA1 → r ≠ bA → r ≠ bK →
       rd (semXIR I (ldF fX bA bA1) ⟨M6, s5.o⟩).M r = rd s5.M r := fun r a b c d e =>
@@ -789,7 +796,9 @@ theorem lo_aBody (jb eb cb cs : ℕ) : Lo (aBody jb eb cb cs) := by
   simp [fY, fX]
 
 theorem wf_aBody (jb eb cb cs : ℕ) : WF (aBody jb eb cb cs) := by
-  simp [aBody, addrPs, ldF, WF, Prim.dst, wfF_mul, wfF_add, bA, bK, bA1, bJ, fY, fX, fPr, fAc, bT]
+  simp +decide only [aBody, addrPs, ldF, WF, Prim.dst, wfF_mul, wfF_add, bA, bK, bA1, bJ, fY, fX,
+    fPr, fAc, bT, List.mem_cons, List.mem_nil_iff, forall_eq_or_imp, forall_eq, or_false, and_true,
+    List.cons_append, List.nil_append]
 
 /-- **One term of `acc`**: `acc += y(J_t) · E[t]`, `y(j)` at `cb + cs·j + 2c`. -/
 theorem aBody_sem (I : Array Word) (s : St) (hM : Inv s.M) {jb eb cb cs t c x : ℕ} {acc : F}
@@ -820,7 +829,7 @@ theorem aBody_sem (I : Array Word) (s : St) (hM : Inv s.M) {jb eb cb cs t c x : 
   obtain ⟨l2, l2f⟩ := bload_sem I ⟨M1, s.o⟩ hM1 (d := bJ) (a := bA) (x := jb + 1 * t) (by decide)
     a1 (by omega)
   rw [hH1 _ (by simp only [regs]; omega), Nat.one_mul, hJ] at l2
-  have hM2 := inv_sem I (P := .load bJ bA) (s := ⟨M1, s.o⟩) (by simp [WF, bJ]) hM1
+  have hM2 := inv_sem I (P := .load bJ bA) (s := ⟨M1, s.o⟩) (by simp +decide only [WF, bJ]) hM1
   have k2 : ∀ r, r ≠ bJ → r ≠ bA → r ≠ bK → rd (semXIR I (.load bJ bA) ⟨M1, s.o⟩).M r = rd s.M r :=
     fun r a b c => (l2f r a).trans (a1f r b c)
   generalize semXIR I (.load bJ bA) ⟨M1, s.o⟩ = s2 at l2 l2f hM2 k2
@@ -851,7 +860,7 @@ theorem aBody_sem (I : Array Word) (s : St) (hM : Inv s.M) {jb eb cb cs t c x : 
       rdF_eq (k2 _ (by simp only [bJ]; omega) (by simp only [bA]; omega) (by simp only [bK]; omega))
       (k2 _ (by simp only [bJ]; omega) (by simp only [bA]; omega) (by simp only [bK]; omega))]
   have hM5 := inv_sem I (P := ldF fY bJ bA1) (s := ⟨M3, s2.o⟩)
-    (by simp [ldF, WF, Prim.dst, fY, bA1]) hM3
+    (by simp +decide only [ldF, WF, Prim.dst, fY, bA1, and_true]) hM3
   have k5 : ∀ r, r ≠ fY → r ≠ fY + 1 → r ≠ bA1 → r ≠ bJ → r ≠ bA → r ≠ bK →
       rd (semXIR I (ldF fY bJ bA1) ⟨M3, s2.o⟩).M r = rd s.M r := fun r a b c d e f =>
     (l5f r a b c).trans ((k3 r d f).trans (k2 r d e f))
@@ -878,7 +887,7 @@ theorem aBody_sem (I : Array Word) (s : St) (hM : Inv s.M) {jb eb cb cs t c x : 
       (a6f _ (by simp only [bA]; omega) (by simp only [bK]; omega)),
       rdF_eq (hx5 _ (by simp only [regs]; omega)) (hx5 _ (by simp only [regs]; omega))]
   have hM7 := inv_sem I (P := ldF fX bA bA1) (s := ⟨M6, s5.o⟩)
-    (by simp [ldF, WF, Prim.dst, fX, bA1]) hM6
+    (by simp +decide only [ldF, WF, Prim.dst, fX, bA1, and_true]) hM6
   have k7 : ∀ r, r ≠ fX → r ≠ fX + 1 → r ≠ bA1 → r ≠ bA → r ≠ bK →
       rd (semXIR I (ldF fX bA bA1) ⟨M6, s5.o⟩).M r = rd s5.M r := fun r a b c d e =>
     (l7f r a b c).trans (a6f r d e)
@@ -981,8 +990,9 @@ theorem aLoop_sem (I : Array Word) (s : St) (hM : Inv s.M) {k jb eb cb cs c : �
       rw [hH _ (by simp only [regs] at hjb ⊢; omega), hJ j hj]
     have hCo' : rd st.M bCo = toWord (2 * c) := by
       rw [hR _ (by decide) (by decide) (by decide) (by
-        simp [aBody, addrPs, ldF, Writes, Prim.dst, bnw_mulF, bnw_addF, bCo, fPr, fAc, bA, bK, bJ,
-          bA1, fY, fX, bT]), hCo]
+        simp +decide only [aBody, addrPs, ldF, Writes, Prim.dst, bnw_mulF, bnw_addF, bCo, fPr, fAc,
+          bA, bK, bJ, bA1, fY, fX, bT, List.mem_cons, List.mem_nil_iff, exists_eq_or_imp,
+          exists_eq_left, or_false, List.cons_append, List.nil_append]), hCo]
     obtain ⟨b1, b2, hM2⟩ := aBody_sem I st hM' (t := j) (c := c) (x := x j) hjb heb hcb (by omega)
       (by omega) (hcb2 j hj) hT' hCo' hA hJ'
     have hH2 : ∀ y, regs ≤ y → rd (semXIR I (aBody jb eb cb cs) st).M y = rd st.M y :=
@@ -1039,8 +1049,10 @@ theorem cBody_sem (I : Array Word) (s : St) (hM : Inv s.M)
     (by simp only [regs]; omega) hjb2 heb2 hcb2 q3 q2 hCo1 q1
     (fun t ht => by rw [hH1 _ (by simp only [regs]; omega), hJ t ht])
   have nw : ∀ r, r ∈ [bZ, bS, bCi, bCo, fLp, fLp + 1] → ¬ Writes (aBody jb eb cb cs) r := by
-    simp [aBody, addrPs, ldF, Writes, Prim.dst, bnw_mulF, bnw_addF, bZ, bS, bCi, bCo, fLp, fPr, fAc,
-      bA, bK, bJ, bA1, fY, fX, bT]
+    simp +decide only [aBody, addrPs, ldF, Writes, Prim.dst, bnw_mulF, bnw_addF, bZ, bS, bCi, bCo,
+      fLp, fPr, fAc, bA, bK, bJ, bA1, fY, fX, bT, List.mem_cons, List.mem_nil_iff, forall_eq_or_imp,
+      exists_eq_or_imp, forall_eq, exists_eq_left, or_false, and_true, List.cons_append,
+      List.nil_append]
   have R2 : ∀ r, r ∈ [bZ, bS, bCi, bCo, fLp, fLp + 1] →
       rd (semXIR I (.loopK bC3 bN3 (toWord k) (aBody jb eb cb cs)) ⟨M1, s.o⟩).M r = rd s.M r :=
     fun r hr => by
@@ -1069,10 +1081,16 @@ theorem cBody_sem (I : Array Word) (s : St) (hM : Inv s.M)
         rd (semXIR I (.ite bZ (yIR cb cs) (mulF fAc fLp fAc)) s2).M r = rd s.M r) ∧
       (∀ y, regs ≤ y → rd (semXIR I (.ite bZ (yIR cb cs) (mulF fAc fLp fAc)) s2).M y = rd s.M y) ∧
       Inv (semXIR I (.ite bZ (yIR cb cs) (mulF fAc fLp fAc)) s2).M := by
-    have wy : WF (yIR cb cs) := by simp [yIR, addrPs, ldF, WF, Prim.dst, bA, bK, fAc, bA1]
-    have ly : Lo (yIR cb cs) := by simp [yIR, addrPs, ldF, Lo, Prim.dst, bA, bK, fAc, bA1, regs]
+    have wy : WF (yIR cb cs) := by simp +decide only [yIR, addrPs, ldF, WF, Prim.dst, bA, bK, fAc,
+      bA1, List.mem_cons, List.mem_nil_iff, forall_eq_or_imp, forall_eq, or_false, and_true,
+      List.cons_append, List.nil_append]
+    have ly : Lo (yIR cb cs) := by simp +decide only [yIR, addrPs, ldF, Lo, Prim.dst, bA, bK, fAc,
+      bA1, regs, List.mem_cons, List.mem_nil_iff, forall_eq_or_imp, forall_eq, or_false, and_true,
+      List.cons_append, List.nil_append]
     have nwy : ∀ r, r ∈ [bS, bCi, bCo] → ¬ Writes (yIR cb cs) r := by
-      simp [yIR, addrPs, ldF, Writes, Prim.dst, bA, bK, fAc, bA1, bS, bCi, bCo]
+      simp +decide only [yIR, addrPs, ldF, Writes, Prim.dst, bA, bK, fAc, bA1, bS, bCi, bCo,
+        List.mem_cons, List.mem_nil_iff, forall_eq_or_imp, exists_eq_or_imp, forall_eq,
+        exists_eq_left, or_false, and_true, List.cons_append, List.nil_append]
     have nwm : ∀ r, r ∈ [bS, bCi, bCo] → ¬ Writes (mulF fAc fLp fAc) r := by
       simp [bnw_mulF, fAc, bS, bCi, bCo]
     have mem3 : ∀ r, r ∈ [bS, bCi, bCo] → r < regs ∧ r ∈ [bZ, bS, bCi, bCo, fLp, fLp + 1] := by
@@ -1196,8 +1214,9 @@ theorem cBody_sem (I : Array Word) (s : St) (hM : Inv s.M)
 /-! ## The loops of one target -/
 
 theorem wf_eBody (djb wb eb : ℕ) : WF (eBody djb wb eb) := by
-  simp [eBody, addrPs, ldF, stF, WF, Prim.dst, wfF_mul, wfF_add, wfF_inv, bA, bK, bA1, fX, fDd,
-    fLp, fIv, fEt, bT, cTmp]
+  simp +decide only [eBody, addrPs, ldF, stF, WF, Prim.dst, wfF_mul, wfF_add, wfF_inv, bA, bK, bA1,
+    fX, fDd, fLp, fIv, fEt, bT, cTmp, List.mem_cons, List.mem_nil_iff, forall_eq_or_imp, forall_eq,
+    or_false, and_true]
 
 /-- **The `E` row**: `E[t] = W[t] (ds + DJ[t])⁻¹` for `t < k`, `ℓ = Π_t (ds + DJ[t])`. -/
 theorem eLoop_sem (I : Array Word) (s : St) (hM : Inv s.M) {k djb wb eb : ℕ} {ds : F}
@@ -1261,8 +1280,10 @@ theorem eLoop_sem (I : Array Word) (s : St) (hM : Inv s.M) {k djb wb eb : ℕ} {
     · rw [rd_decS (Ne.symm h1), frame I _ st (wf_eBody djb wb eb) hM' r hr h3, hR r hr h1 h2 h3]
 
 theorem wf_cBody (k jb eb cb cs ob : ℕ) : WF (cBody k jb eb cb cs ob) := by
-  simp [cBody, aBody, yIR, addrPs, ldF, stF, WF, Writes, Prim.dst, wfF_mul, wfF_add, bnw_mulF,
-    bnw_addF, bA, bK, bA1, bJ, fY, fX, fPr, fAc, bT, bN3, bC3, bCi, bCo, cTmp, regs]
+  simp +decide only [cBody, aBody, yIR, addrPs, ldF, stF, WF, Writes, Prim.dst, wfF_mul, wfF_add,
+    bnw_mulF, bnw_addF, bA, bK, bA1, bJ, fY, fX, fPr, fAc, bT, bN3, bC3, bCi, bCo, cTmp, regs,
+    List.mem_cons, List.mem_nil_iff, forall_eq_or_imp, exists_eq_or_imp, forall_eq, exists_eq_left,
+    or_false, and_true, List.cons_append, List.nil_append]
 
 /-- **The coordinates of one target**: `out[c][s] = (ℓ = 0 ? y_c(s) : ℓ Σ_t y_c(J_t) E[t])` for
 `c < C`. -/
@@ -1311,8 +1332,10 @@ theorem cLoop_sem (I : Array Word) (s : St) (hM : Inv s.M)
   · exact ⟨h.2.2.2.2.1, h.2.2.2.2.2.1, h.2.2.2.2.2.2, h.1⟩
   · rintro j st hj ⟨hM', hz, hCi', hCo', hV, hH, hR⟩
     have nwc : ∀ r, r ∈ [bS, fLp, fLp + 1, bZ] → ¬ Writes (cBody k jb eb cb cs ob) r := by
-      simp [cBody, aBody, yIR, addrPs, ldF, stF, Writes, Prim.dst, bnw_mulF, bnw_addF, bA, bK, bA1,
-        bJ, fY, fX, fPr, fAc, bT, bN3, bC3, bCi, bCo, cTmp, bS, fLp, bZ]
+      simp +decide only [cBody, aBody, yIR, addrPs, ldF, stF, Writes, Prim.dst, bnw_mulF, bnw_addF,
+        bA, bK, bA1, bJ, fY, fX, fPr, fAc, bT, bN3, bC3, bCi, bCo, cTmp, bS, fLp, bZ, List.mem_cons,
+        List.mem_nil_iff, forall_eq_or_imp, exists_eq_or_imp, forall_eq, exists_eq_left, or_false,
+        and_true, List.cons_append, List.nil_append]
     have R : ∀ r, r ∈ [bS, fLp, fLp + 1, bZ] → rd st.M r = rd s.M r := fun r hr => by
       have : r < regs ∧ r ≠ bC2 ∧ r ≠ cTmp := by
         simp only [List.mem_cons, List.mem_nil_iff, or_false] at hr
@@ -1321,10 +1344,12 @@ theorem cLoop_sem (I : Array Word) (s : St) (hM : Inv s.M)
     have hHy : ∀ y, regs ≤ y → (y < ob ∨ ob + 2 * k * C ≤ y) → rd st.M y = rd s.M y :=
       fun y hy hy2 => hH y hy fun c hc => by
         have : 2 * k * c + 2 * s0 + 1 < 2 * k * C := by
-          have := Nat.mul_le_mul_left (2 * k) (show c + 1 ≤ C by omega); nlinarith
+          have := Nat.mul_le_mul_left (2 * k) (show c + 1 ≤ C by omega)
+          rw [Nat.mul_add, Nat.mul_one] at this; omega
         constructor <;> omega
     have hk2 : 2 * k * j + 2 * s0 + 1 < 2 * k * C := by
-      have := Nat.mul_le_mul_left (2 * k) (show j + 1 ≤ C by omega); nlinarith
+      have := Nat.mul_le_mul_left (2 * k) (show j + 1 ≤ C by omega)
+      rw [Nat.mul_add, Nat.mul_one] at this; omega
     obtain ⟨b1, b2, b3, b4, hM2⟩ := cBody_sem I st hM' (c := j) (s0 := s0) (x := x) (lp := lp) hk
       (by simp only [regs]; omega) (by simp only [regs]; omega) (by simp only [regs]; omega)
       (by simp only [regs]; omega) hjb2 heb2 (fun t ht => hcb2 t ht j hj) (hcs2 j hj) (by omega)
@@ -1338,7 +1363,8 @@ theorem cLoop_sem (I : Array Word) (s : St) (hM : Inv s.M)
     · rw [rdF_decS _ (by simp only [bC2]; omega) (by simp only [bC2]; omega)]
       rcases Nat.lt_succ_iff_lt_or_eq.1 hc with hc | rfl
       · have hlt : 2 * k * c + 2 * s0 + 1 < 2 * k * j := by
-          have := Nat.mul_le_mul_left (2 * k) (show c + 1 ≤ j by omega); nlinarith
+          have := Nat.mul_le_mul_left (2 * k) (show c + 1 ≤ j by omega)
+          rw [Nat.mul_add, Nat.mul_one] at this; omega
         rw [rdF_eq (b4 _ (by simp only [regs]; omega) (by omega) (by omega))
           (b4 _ (by simp only [regs]; omega) (by omega) (by omega)), hV c hc]
       · rw [b1]

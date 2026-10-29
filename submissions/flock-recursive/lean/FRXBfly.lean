@@ -13,6 +13,8 @@ namespace FR.X
 
 open RecursionFast Finset
 
+attribute [local irreducible] entryK storeM
+
 /-! ## Loops by invariant -/
 
 theorem iterL_ind {f : St → St} {c m : ℕ} (P : ℕ → St → Prop)
@@ -180,7 +182,8 @@ theorem rdF_acc (a₀ a₁ g₀ g₁ : Word) (p : Prop) [Decidable p] :
 /-! ## `α` -/
 
 theorem loK_alphaIR : LoK alphaIR := by
-  simp [alphaIR, alphaBody, ldF, LoK, Prim.dst, regs, rBit, uT1, rTa, rTa1, fG, fAl, uI, rN2, rC2]
+  simp +decide only [alphaIR, alphaBody, ldF, LoK, Prim.dst, regs, rBit, uT1, rTa, rTa1, fG, fAl,
+    uI, rN2, rC2, and_true]
 
 theorem rdF_decS {c a : ℕ} (s : St) (h0 : c ≠ a) (h1 : c ≠ a + 1) :
     rdF (decS c s).M a = rdF s.M a := rdF_eq (rd_decS h0 s) (rd_decS h1 s)
@@ -197,10 +200,10 @@ theorem alphaBody_sem (I : Array Word) (s : St) (hM : Inv s.M) {base ta j : ℕ}
   have h1 : rd s.M cOne = 1 := hM.2 0 (by decide)
   simp only [regs] at hs hta
   have w1 : WF (.blk [.op .shr rBit rBs uI, .op .and rBit rBit cOne, .const uT1 0,
-      .op .sub rBit uT1 rBit]) := by simp [WF, Prim.dst, rBit, uT1]
+      .op .sub rBit uT1 rBit]) := by simp +decide only [WF, Prim.dst, rBit, uT1]
   have hM1 := inv_sem I w1 hM
   have hH1 := hframe I (.blk [.op .shr rBit rBs uI, .op .and rBit rBit cOne, .const uT1 0,
-      .op .sub rBit uT1 rBit]) s (by simp [Lo, Prim.dst, regs, rBit, uT1])
+      .op .sub rBit uT1 rBit]) s (by simp +decide only [Lo, Prim.dst, regs, rBit, uT1])
   have r1 : rd (semXIR I (.blk [.op .shr rBit rBs uI, .op .and rBit rBit cOne, .const uT1 0,
         .op .sub rBit uT1 rBit]) s).M rBit =
         XOp.sub.eval 0 (XOp.and.eval (XOp.shr.eval (toWord base) (toWord j)) 1) ∧
@@ -232,7 +235,8 @@ theorem alphaBody_sem (I : Array Word) (s : St) (hM : Inv s.M) {base ta j : ℕ}
     (by decide) (by decide) (by decide) (by decide) (by decide) (by decide) a1
     (by simp only [regs]; omega) (by omega)
   rw [semXIR_seq]
-  have hM2 := inv_sem I (P := ldF fG rTa rTa1) (by simp [ldF, WF, Prim.dst, fG, rTa1]) hM1
+  have hM2 := inv_sem I (P := ldF fG rTa rTa1) (by simp +decide only [ldF, WF, Prim.dst, fG, rTa1,
+    and_true]) hM1
   generalize semXIR I (ldF fG rTa rTa1) s1 = s2 at l1 l2 l3 hM2
   have hs2 := hM2.1
   simp only [regs] at hs2
@@ -275,10 +279,10 @@ theorem alphaIR_sem (I : Array Word) (s : St) (hM : Inv s.M) {base ta : ℕ} {T 
   have hs := hM.1
   simp only [regs] at hs hta
   have w0 : WF (.blk [.const fAl 0, .const (fAl + 1) 0, .const uI 0, .op .or rTa rTr rTr,
-      .const rN2 20]) := by simp [WF, Prim.dst, fAl, uI, rTa, rN2]
+      .const rN2 20]) := by simp +decide only [WF, Prim.dst, fAl, uI, rTa, rN2]
   have hM0 := inv_sem I w0 hM
   have hH0 := hframe I (.blk [.const fAl 0, .const (fAl + 1) 0, .const uI 0, .op .or rTa rTr rTr,
-      .const rN2 20]) s (by simp [Lo, Prim.dst, regs, fAl, uI, rTa, rN2])
+      .const rN2 20]) s (by simp +decide only [Lo, Prim.dst, regs, fAl, uI, rTa, rN2])
   have r0 : rdF (semXIR I (.blk [.const fAl 0, .const (fAl + 1) 0, .const uI 0,
         .op .or rTa rTr rTr, .const rN2 20]) s).M fAl = 0 ∧
       rd (semXIR I (.blk [.const fAl 0, .const (fAl + 1) 0, .const uI 0,
@@ -323,7 +327,8 @@ theorem alphaIR_sem (I : Array Word) (s : St) (hM : Inv s.M) {base ta : ℕ} {T 
     · rw [rd_decS (by decide), e2]
     · rw [rd_decS (by decide), e3]
     · rw [rd_decS (by decide), frame I _ s' wb q1 _ (by decide) (by
-        simp [alphaBody, ldF, Writes, Prim.dst, rBit, uT1, rTa, rTa1, fG, fAl, uI, rBs]), q4]
+        simp +decide only [alphaBody, ldF, Writes, Prim.dst, rBit, uT1, rTa, rTa1, fG, fAl, uI, rBs,
+          or_false]), q4]
     · rw [rd_decS (by simp only [rC2, regs] at *; omega), hframeK I _ s' lb x hx, q5 x hx]
     · rw [rdF_decS _ (by decide) (by decide), e1, q6, sum_range_succ]
   have hP0 : P 0 ⟨entryK rC2 rN2 20 s0.M, s0.o⟩ := by
@@ -464,17 +469,23 @@ theorem bflyLevel_hi (pt : ℕ → F) (N l q : ℕ) (Y : ℕ → F) :
 
 /-! ## One butterfly on the machine -/
 
+/-- `simp` form of `mulF`'s heap frame (with `mulF_wf_iff`, `mulF_writes_iff`): the `Lo` side
+conditions below never unfold `mulF`'s primitives (G2: elaboration time). -/
+theorem mulF_lo_iff {d a b : ℕ} (hd : d < 255) : Lo (mulF d a b) ↔ True :=
+  iff_true_intro fun p hp => by have := mulFC_dst d a b p hp; simp only [regs]; omega
+
 theorem wf_arithIR : WF arithIR := by
-  simp [arithIR, ldF, addF, mulF, addFC, mulFC, redC, WF, Prim.dst, fU, fW, fH, fT, fN, rAL1, rAH1]
+  simp +decide only [arithIR, ldF, addF, addFC, WF, Prim.dst, fU, fW, fH, fT, fN, rAL1, rAH1,
+    mulF_wf_iff, mulF_writes_iff, and_true]
 
 theorem lo_arithIR : Lo arithIR := by
-  simp [arithIR, ldF, addF, mulF, addFC, mulFC, redC, Lo, Prim.dst, regs, fU, fW, fH, fT, fN, rAL1,
-    rAH1]
+  simp +decide only [arithIR, ldF, addF, addFC, Lo, Prim.dst, regs, fU, fW, fH, fT, fN, rAL1, rAH1,
+    mulF_lo_iff, and_true]
 
 theorem wf_pairBody : WF pairBody := by
-  simp [pairBody, pairPs, arithIR, alphaIR, alphaBody, ldF, stF, addF, mulF, addFC, mulFC, redC, WF,
+  simp +decide only [pairBody, pairPs, arithIR, alphaIR, alphaBody, ldF, stF, addF, addFC, WF,
     Writes, Prim.dst, rQ, uX, uT1, uT2, rBs, rAL, rAL1, rAH, rAH1, rTa, rTa1, rBit, uI, rC2, rN2,
-    fAl, fU, fW, fH, fT, fN, fG, cTmp, regs]
+    fAl, fU, fW, fH, fT, fN, fG, cTmp, regs, mulF_wf_iff, mulF_writes_iff, or_false, and_true]
 
 /-- **The arithmetic**: `fN := U + α (W + U)`, `fH := W + U` for the heap elements `U` at `a`
 and `W` at `b`, `α` in `fAl`. -/
@@ -488,7 +499,8 @@ theorem arith_sem (I : Array Word) (s : St) (hM : Inv s.M) {a b : ℕ} (ha : reg
   rw [arithIR, semXIR_seq]
   obtain ⟨u1, -, u3⟩ := ldF_sem I s hM (d := fU) (p := rAL) (p1 := rAL1) (by decide) (by decide)
     (by decide) (by decide) (by decide) (by decide) hAL (by simp only [regs]; omega) ha2
-  have hM1 := inv_sem I (P := ldF fU rAL rAL1) (by simp [ldF, WF, Prim.dst, fU, rAL1]) hM
+  have hM1 := inv_sem I (P := ldF fU rAL rAL1) (by simp +decide only [ldF, WF, Prim.dst, fU, rAL1,
+    and_true]) hM
   generalize semXIR I (ldF fU rAL rAL1) s = s1 at u1 u3 hM1
   have hAH1 : rd s1.M rAH = toWord b := (u3 _ (by decide) (by decide) (by decide)).trans hAH
   have hal1 : rdF s1.M fAl = rdF s.M fAl :=
@@ -499,7 +511,8 @@ theorem arith_sem (I : Array Word) (s : St) (hM : Inv s.M) {a b : ℕ} (ha : reg
   rw [semXIR_seq]
   obtain ⟨w1, -, w3⟩ := ldF_sem I s1 hM1 (d := fW) (p := rAH) (p1 := rAH1) (by decide) (by decide)
     (by decide) (by decide) (by decide) (by decide) hAH1 (by simp only [regs]; omega) hb2
-  have hM2 := inv_sem I (P := ldF fW rAH rAH1) (by simp [ldF, WF, Prim.dst, fW, rAH1]) hM1
+  have hM2 := inv_sem I (P := ldF fW rAH rAH1) (by simp +decide only [ldF, WF, Prim.dst, fW, rAH1,
+    and_true]) hM1
   generalize semXIR I (ldF fW rAH rAH1) s1 = s2 at w1 w3 hM2
   have hu2 : rdF s2.M fU = rdF s.M a :=
     (rdF_eq (w3 _ (by decide) (by decide) (by decide)) (w3 _ (by decide) (by decide) (by decide))).trans u1
@@ -558,9 +571,9 @@ theorem pairPs_sem (I : Array Word) (s : St) (hM : Inv s.M) {A l q : ℕ} (hq : 
 theorem pairBody_nw {r : ℕ} (hr : r = rA0 ∨ r = rP2 ∨ r = rTr ∨ r = rLv ∨ r = rC1 ∨ r = rN1 ∨
     r = rC3 ∨ r = rN3) : ¬ Writes pairBody r := by
   rcases hr with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl <;>
-  simp [pairBody, pairPs, arithIR, alphaIR, alphaBody, ldF, stF, addF, mulF, addFC, mulFC, redC,
-    Writes, Prim.dst, rQ, uX, uT1, uT2, rBs, rAL, rAL1, rAH, rAH1, rTa, rTa1, rBit, uI, rC2, rN2,
-    fAl, fU, fW, fH, fT, fN, fG, cTmp, rA0, rP2, rTr, rLv, rC1, rN1, rC3, rN3]
+  simp +decide only [pairBody, pairPs, arithIR, alphaIR, alphaBody, ldF, stF, addF, addFC, Writes,
+    Prim.dst, rQ, uX, uT1, uT2, rBs, rAL, rAL1, rAH, rAH1, rTa, rTa1, rBit, uI, rC2, rN2, fAl, fU,
+    fW, fH, fT, fN, fG, cTmp, rA0, rP2, rTr, rLv, rC1, rN1, rC3, rN3, mulF_writes_iff, or_false]
 
 /-- **One butterfly**: the pair's low and high elements become `u + α (w + u)` and `w + u`,
 `α = Σ_{i<20} [bit_i(base)] T(i)`; nothing else on the heap changes; `q += 1`. -/
@@ -585,18 +598,18 @@ theorem pairBody_sem (I : Array Word) (s : St) (hM : Inv s.M) {A ta l q : ℕ} {
                                         omega
   -- the addresses
   have w1 : WF (.blk pairPs) := by
-    simp [pairPs, WF, Prim.dst, uT1, uX, uT2, rBs, rAL, rAH]
+    simp +decide only [pairPs, WF, Prim.dst, uT1, uX, uT2, rBs, rAL, rAH]
   obtain ⟨p1, p2, p3⟩ := pairPs_sem I s hM (A := A) hq hP hQ hP2 hA0
   have hM1 := inv_sem I w1 hM
   have z1 := size_sem I (.blk pairPs) s
-  have hH1 := hframe I (.blk pairPs) s (by simp [pairPs, Lo, Prim.dst, regs, uT1, uX, uT2, rBs, rAL,
-    rAH])
+  have hH1 := hframe I (.blk pairPs) s (by simp +decide only [pairPs, Lo, Prim.dst, regs, uT1, uX,
+    uT2, rBs, rAL, rAH])
   have q1 : rd (semXIR I (.blk pairPs) s).M rQ = toWord q := by
-    rw [frame I _ s w1 hM _ (by decide) (by simp [pairPs, Writes, Prim.dst, uT1, uX, uT2, rBs, rAL,
-      rAH, rQ]), hQ]
+    rw [frame I _ s w1 hM _ (by decide) (by simp +decide only [pairPs, Writes, Prim.dst, uT1, uX,
+      uT2, rBs, rAL, rAH, rQ]), hQ]
   have t1 : rd (semXIR I (.blk pairPs) s).M rTr = toWord ta := by
-    rw [frame I _ s w1 hM _ (by decide) (by simp [pairPs, Writes, Prim.dst, uT1, uX, uT2, rBs, rAL,
-      rAH, rTr]), hTr]
+    rw [frame I _ s w1 hM _ (by decide) (by simp +decide only [pairPs, Writes, Prim.dst, uT1, uX,
+      uT2, rBs, rAL, rAH, rTr]), hTr]
   rw [pairBody, semXIR_seq]
   generalize semXIR I (.blk pairPs) s = s1 at p1 p2 p3 hM1 hH1 q1 t1 z1
   have hT1 : ∀ i < 20, rdF s1.M (ta + 2 * i) = T i := fun i hi => by
@@ -609,8 +622,8 @@ theorem pairBody_sem (I : Array Word) (s : St) (hM : Inv s.M) {A ta l q : ℕ} {
   have nwA : ∀ r, (r = rAL ∨ r = rAH ∨ r = rQ) → rd (semXIR I alphaIR s1).M r = rd s1.M r :=
     fun r hr => frame I _ s1 wf_alphaIR hM1 _ (by rcases hr with rfl | rfl | rfl <;> decide) (by
       rcases hr with rfl | rfl | rfl <;>
-      simp [alphaIR, alphaBody, ldF, Writes, Prim.dst, rBit, uT1, rTa, rTa1, fG, fAl, uI, rN2, rC2,
-        cTmp, rAL, rAH, rQ])
+      simp +decide only [alphaIR, alphaBody, ldF, Writes, Prim.dst, rBit, uT1, rTa, rTa1, fG, fAl,
+        uI, rN2, rC2, cTmp, rAL, rAH, rQ, or_false])
   rw [semXIR_seq]
   generalize semXIR I alphaIR s1 = s2 at a2 hM2 hH2 nwA z2
   have l2 : rd s2.M rAL = toWord (A + 2 * loP l q) := (nwA _ (.inl rfl)).trans p2
@@ -626,8 +639,8 @@ theorem pairBody_sem (I : Array Word) (s : St) (hM : Inv s.M) {A ta l q : ℕ} {
   have nwB : ∀ r, (r = rAL ∨ r = rAH ∨ r = rQ) → rd (semXIR I arithIR s2).M r = rd s2.M r :=
     fun r hr => frame I _ s2 wf_arithIR hM2 _ (by rcases hr with rfl | rfl | rfl <;> decide) (by
       rcases hr with rfl | rfl | rfl <;>
-      simp [arithIR, ldF, addF, mulF, addFC, mulFC, redC, Writes, Prim.dst, fU, fW, fH, fT, fN,
-        rAL1, rAH1, rAL, rAH, rQ])
+      simp +decide only [arithIR, ldF, addF, addFC, Writes, Prim.dst, fU, fW, fH, fT, fN, rAL1,
+        rAH1, rAL, rAH, rQ, mulF_writes_iff, or_false])
   have eU : rdF s2.M (A + 2 * loP l q) = rdF s.M (A + 2 * loP l q) :=
     rdF_eq (hY _ (by simp only [regs]; omega)) (hY _ (by simp only [regs]; omega))
   have eW : rdF s2.M (A + 2 * hiP l q) = rdF s.M (A + 2 * hiP l q) :=
@@ -699,12 +712,14 @@ theorem levelIR_sem (I : Array Word) (s : St) (hM : Inv s.M) {A ta ℓ l : ℕ} 
   have hP1 : 2 ^ (ℓ - 1) < 2 ^ 64 := Nat.pow_lt_pow_right (by norm_num) (by omega)
   have hPl : l * 1 < 64 := by omega
   have w0 : WF (.blk [.const rQ 0, .op .shl rP2 cOne rLv, .const rN1 (toWord (2 ^ (ℓ - 1)))]) := by
-    simp [WF, Prim.dst, rQ, rP2, rN1]
+    simp +decide only [WF, Prim.dst, rQ, rP2, rN1, List.mem_cons, List.mem_nil_iff,
+      forall_eq_or_imp, forall_eq, or_false, and_true]
   have hM0 := inv_sem I w0 hM
   have z0 := size_sem I (.blk [.const rQ 0, .op .shl rP2 cOne rLv,
     .const rN1 (toWord (2 ^ (ℓ - 1)))]) s
   have hH0 := hframe I (.blk [.const rQ 0, .op .shl rP2 cOne rLv,
-    .const rN1 (toWord (2 ^ (ℓ - 1)))]) s (by simp [Lo, Prim.dst, regs, rQ, rP2, rN1])
+    .const rN1 (toWord (2 ^ (ℓ - 1)))]) s (by simp +decide only [Lo, Prim.dst, regs, rQ, rP2, rN1,
+      List.mem_cons, List.mem_nil_iff, forall_eq_or_imp, forall_eq, or_false, and_true])
   have r0 : rd (semXIR I (.blk [.const rQ 0, .op .shl rP2 cOne rLv,
         .const rN1 (toWord (2 ^ (ℓ - 1)))]) s).M rQ = toWord 0 ∧
       rd (semXIR I (.blk [.const rQ 0, .op .shl rP2 cOne rLv,
@@ -836,11 +851,13 @@ theorem bflyIR_sem (I : Array Word) (s : St) (hM : Inv s.M) {A tb ℓ : ℕ} {Y 
   simp only [regs] at hs hA htb
   have hℓ64 : ℓ < 2 ^ 64 := by omega
   have w0 : WF (.blk [.const rLv 0, .const rTr (toWord tb), .const rN3 (toWord ℓ)]) := by
-    simp [WF, Prim.dst, rLv, rTr, rN3]
+    simp +decide only [WF, Prim.dst, rLv, rTr, rN3, List.mem_cons, List.mem_nil_iff,
+      forall_eq_or_imp, forall_eq, or_false, and_true]
   have hM0 := inv_sem I w0 hM
   have z0 := size_sem I (.blk [.const rLv 0, .const rTr (toWord tb), .const rN3 (toWord ℓ)]) s
   have hH0 := hframe I (.blk [.const rLv 0, .const rTr (toWord tb), .const rN3 (toWord ℓ)]) s
-    (by simp [Lo, Prim.dst, regs, rLv, rTr, rN3])
+    (by simp +decide only [Lo, Prim.dst, regs, rLv, rTr, rN3, List.mem_cons, List.mem_nil_iff,
+      forall_eq_or_imp, forall_eq, or_false, and_true])
   have r0 : rd (semXIR I (.blk [.const rLv 0, .const rTr (toWord tb), .const rN3 (toWord ℓ)])
         s).M rLv = toWord 0 ∧
       rd (semXIR I (.blk [.const rLv 0, .const rTr (toWord tb), .const rN3 (toWord ℓ)])
@@ -866,7 +883,7 @@ theorem bflyIR_sem (I : Array Word) (s : St) (hM : Inv s.M) {A tb ℓ : ℕ} {Y 
   have hME := inv_entryK (c := rC3) (n := rN3) (K := toWord ℓ) hM0 (by decide)
   have wl : WF (levelIR ℓ) := (wf_bflyIR ℓ tb).2.2.2.2.1
   have wlb : WF (.blk [.op .add rLv rLv cOne, .const uT1 40, .op .add rTr rTr uT1]) := by
-    simp [WF, Prim.dst, rLv, uT1, rTr]
+    simp +decide only [WF, Prim.dst, rLv, uT1, rTr]
   let P : ℕ → St → Prop := fun j s' => Inv s'.M ∧ s'.M.size = s.M.size ∧
     rd s'.M rLv = toWord j ∧ rd s'.M rTr = toWord (tb + 40 * j) ∧ rd s'.M rA0 = toWord A ∧
     (∀ x, regs ≤ x → (x < A ∨ A + 2 * 2 ^ ℓ ≤ x) → rd s'.M x = rd s.M x) ∧
@@ -967,10 +984,11 @@ theorem row0Body_sem (I : Array Word) (s : St) (hM : Inv s.M) {tb i : ℕ} (hi :
     rd (semXIR I row0Body s).M rTr = rd s.M rTr := by
   have hs := hM.1
   simp only [regs] at hs htb
-  have w1 : WF (.blk [.op .shl fG cOne uI, .const (fG + 1) 0]) := by simp [WF, Prim.dst, fG]
+  have w1 : WF (.blk [.op .shl fG cOne uI, .const (fG + 1) 0]) := by simp +decide only [WF,
+    Prim.dst, fG]
   have hM1 := inv_sem I w1 hM
   have hH1 := hframe I (.blk [.op .shl fG cOne uI, .const (fG + 1) 0]) s
-    (by simp [Lo, Prim.dst, regs, fG])
+    (by simp +decide only [Lo, Prim.dst, regs, fG])
   have r1 : rd (semXIR I (.blk [.op .shl fG cOne uI, .const (fG + 1) 0]) s).M fG = toWord (2 ^ i) ∧
       rd (semXIR I (.blk [.op .shl fG cOne uI, .const (fG + 1) 0]) s).M (fG + 1) = 0 ∧
       rd (semXIR I (.blk [.op .shl fG cOne uI, .const (fG + 1) 0]) s).M rTa = toWord (tb + 2 * i) ∧
@@ -1023,7 +1041,7 @@ theorem row0Body_sem (I : Array Word) (s : St) (hM : Inv s.M) {tb i : ℕ} (hi :
   · rw [hb _ (by decide) (by decide) (by decide), hr2 _ (by decide) (by decide) (by decide), t1]
 
 theorem wf_row0Body : WF row0Body := by
-  simp [row0Body, stF, WF, Prim.dst, fG, rTa1, uT1, rTa, uI, cTmp]
+  simp +decide only [row0Body, stF, WF, Prim.dst, fG, rTa1, uT1, rTa, uI, cTmp, and_true]
 
 /-- **Row `0`** at `rTr = tb`: `D(2^i)` at `tb + 2i`, `i < 20`. -/
 theorem row0IR_sem (I : Array Word) (s : St) (hM : Inv s.M) {tb : ℕ} (htb : regs ≤ tb)
@@ -1035,11 +1053,11 @@ theorem row0IR_sem (I : Array Word) (s : St) (hM : Inv s.M) {tb : ℕ} (htb : re
   have hs := hM.1
   simp only [regs] at hs htb
   have w0 : WF (.blk [.const uI 0, .op .or rTa rTr rTr, .const rN2 20]) := by
-    simp [WF, Prim.dst, uI, rTa, rN2]
+    simp +decide only [WF, Prim.dst, uI, rTa, rN2]
   have hM0 := inv_sem I w0 hM
   have z0 := size_sem I (.blk [.const uI 0, .op .or rTa rTr rTr, .const rN2 20]) s
   have hH0 := hframe I (.blk [.const uI 0, .op .or rTa rTr rTr, .const rN2 20]) s
-    (by simp [Lo, Prim.dst, regs, uI, rTa, rN2])
+    (by simp +decide only [Lo, Prim.dst, regs, uI, rTa, rN2])
   have r0 : rd (semXIR I (.blk [.const uI 0, .op .or rTa rTr rTr, .const rN2 20]) s).M uI =
         toWord 0 ∧
       rd (semXIR I (.blk [.const uI 0, .op .or rTa rTr rTr, .const rN2 20]) s).M rTa =
@@ -1113,7 +1131,7 @@ theorem plusOne_sem (I : Array Word) (s : St) (hM : Inv s.M) :
   exact rdF_add_one _ _
 
 theorem wf_plusOne : WF (.blk [.op .xor fW fU cOne, .op .or (fW + 1) (fU + 1) (fU + 1)]) := by
-  simp [WF, Prim.dst, fW]
+  simp +decide only [WF, Prim.dst, fW]
 
 theorem wf_rowBody : WF rowBody := by
   have m1 := wf_mulF fH fU fW (by decide)
@@ -1139,7 +1157,8 @@ theorem rowBody_sem (I : Array Word) (s : St) (hM : Inv s.M) {ta k : ℕ} (hk : 
   -- load `a`
   obtain ⟨u1, -, u3⟩ := ldF_sem I s hM (d := fU) (p := rTa) (p1 := rTa1) (by decide) (by decide)
     (by decide) (by decide) (by decide) (by decide) hTa (by simp only [regs]; omega) (by omega)
-  have hM1 := inv_sem I (P := ldF fU rTa rTa1) (by simp [ldF, WF, Prim.dst, fU, rTa1]) hM
+  have hM1 := inv_sem I (P := ldF fU rTa rTa1) (by simp +decide only [ldF, WF, Prim.dst, fU, rTa1,
+    and_true]) hM
   have y1 := size_sem I (ldF fU rTa rTa1) s
   rw [rowBody, semXIR_seq]
   generalize semXIR I (ldF fU rTa rTa1) s = s1 at u1 u3 hM1 y1
@@ -1201,7 +1220,7 @@ theorem rowBody_sem (I : Array Word) (s : St) (hM : Inv s.M) {ta k : ℕ} (hk : 
       s4).M x = rd s4.M x := fun x h1 h2 =>
     rd_runPrims_of_not_writes (by simp [Prim.dst]; exact ⟨Ne.symm h1, Ne.symm h2⟩) _
   have hM5 := inv_sem I (P := .blk [.const uT1 40, .op .add rAH rTa uT1])
-    (by simp [WF, Prim.dst, uT1, rAH]) hM4
+    (by simp +decide only [WF, Prim.dst, uT1, rAH]) hM4
   have z5 := size_sem I (.blk [.const uT1 40, .op .add rAH rTa uT1]) s4
   rw [semXIR_seq]
   generalize semXIR I (.blk [.const uT1 40, .op .add rAH rTa uT1]) s4 = s5 at a5 b5 hM5 z5
@@ -1269,7 +1288,7 @@ theorem rowIR_sem (I : Array Word) (s : St) (hM : Inv s.M) {ta j : ℕ} {R : ℕ
       .op .add uT1 uT1 uT1, .op .add rTa rTr uT1]) s).M x = rd s.M x := fun x h1 h2 =>
     rd_runPrims_of_not_writes (by simp [Prim.dst]; exact ⟨Ne.symm h1, Ne.symm h2⟩) _
   have hM1 := inv_sem I (P := .blk [.op .add uT1 rLv cOne, .op .add uT1 uT1 uT1,
-    .op .add rTa rTr uT1]) (by simp [WF, Prim.dst, uT1, rTa]) hM
+    .op .add rTa rTr uT1]) (by simp +decide only [WF, Prim.dst, uT1, rTa]) hM
   have y1 := size_sem I (.blk [.op .add uT1 rLv cOne, .op .add uT1 uT1 uT1,
     .op .add rTa rTr uT1]) s
   rw [rowIR, semXIR_seq]
@@ -1278,7 +1297,8 @@ theorem rowIR_sem (I : Array Word) (s : St) (hM : Inv s.M) {ta j : ℕ} {R : ℕ
   -- `b`
   obtain ⟨u1, -, u3⟩ := ldF_sem I s1 hM1 (d := fU) (p := rTa) (p1 := rTa1) (by decide) (by decide)
     (by decide) (by decide) (by decide) (by decide) r1 (by simp only [regs]; omega) (by omega)
-  have hM2 := inv_sem I (P := ldF fU rTa rTa1) (by simp [ldF, WF, Prim.dst, fU, rTa1]) hM1
+  have hM2 := inv_sem I (P := ldF fU rTa rTa1) (by simp +decide only [ldF, WF, Prim.dst, fU, rTa1,
+    and_true]) hM1
   have y2 := size_sem I (ldF fU rTa rTa1) s1
   rw [semXIR_seq]
   generalize semXIR I (ldF fU rTa rTa1) s1 = s2 at u1 u3 hM2 y2
@@ -1335,7 +1355,7 @@ theorem rowIR_sem (I : Array Word) (s : St) (hM : Inv s.M) {ta j : ℕ} {R : ℕ
       s5).M x = rd s5.M x := fun x h1 h2 =>
     rd_runPrims_of_not_writes (by simp [Prim.dst]; exact ⟨Ne.symm h1, Ne.symm h2⟩) _
   have hM6 := inv_sem I (P := .blk [.op .or rTa rTr rTr, .const rN2 20])
-    (by simp [WF, Prim.dst, rTa, rN2]) hM5
+    (by simp +decide only [WF, Prim.dst, rTa, rN2]) hM5
   have y6 := size_sem I (.blk [.op .or rTa rTr rTr, .const rN2 20]) s5
   rw [semXIR_seq]
   generalize semXIR I (.blk [.op .or rTa rTr rTr, .const rN2 20]) s5 = s6 at r6 b6 hM6 y6
@@ -1398,7 +1418,7 @@ theorem rowIR_sem (I : Array Word) (s : St) (hM : Inv s.M) {ta j : ℕ} {R : ℕ
       .const uT1 40, .op .add rTr rTr uT1]) s7).M x = rd s7.M x := fun x h1 h2 h3 =>
     rd_runPrims_of_not_writes (by simp [Prim.dst]; exact ⟨Ne.symm h1, Ne.symm h2, Ne.symm h3⟩) _
   have wfin : WF (.blk [.op .add rLv rLv cOne, .const uT1 40, .op .add rTr rTr uT1]) := by
-    simp [WF, Prim.dst, rLv, uT1, rTr]
+    simp +decide only [WF, Prim.dst, rLv, uT1, rTr]
   refine ⟨fun i hi => ?_, fun x hx hx2 => ?_, ?_, ?_, inv_sem I wfin g1, ?_⟩
   rotate_left 4
   · rw [size_sem, g2]
@@ -1430,10 +1450,12 @@ theorem wtabIR_sem (I : Array Word) (s : St) (hM : Inv s.M) {tb : ℕ} (htb : re
   have hs := hM.1
   simp only [regs] at hs htb
   have hT4 : cTmp = 4 := rfl
-  have w0 : WF (.blk [.const rTr (toWord tb)]) := by simp [WF, Prim.dst, rTr]
+  have w0 : WF (.blk [.const rTr (toWord tb)]) := by simp +decide only [WF, Prim.dst, rTr,
+    List.mem_cons, List.mem_nil_iff, forall_eq, or_false]
   have hM0 := inv_sem I w0 hM
   have z0 := size_sem I (.blk [.const rTr (toWord tb)]) s
-  have hH0 := hframe I (.blk [.const rTr (toWord tb)]) s (by simp [Lo, Prim.dst, regs, rTr])
+  have hH0 := hframe I (.blk [.const rTr (toWord tb)]) s (by simp +decide only [Lo, Prim.dst, regs,
+    rTr, List.mem_cons, List.mem_nil_iff, forall_eq, or_false])
   have t0 : rd (semXIR I (.blk [.const rTr (toWord tb)]) s).M rTr = toWord tb := by
     simp only [semXIR, runPrims, List.foldl, Prim.run]
     exact rd_set_self (by simp only [rTr]; omega)
@@ -1453,7 +1475,8 @@ theorem wtabIR_sem (I : Array Word) (s : St) (hM : Inv s.M) {tb : ℕ} (htb : re
   have b2 : ∀ x, x ≠ rLv → x ≠ rN3 → rd (semXIR I (.blk [.const rLv 0, .const rN3 19]) s1).M x =
       rd s1.M x := fun x h1 h2 =>
     rd_runPrims_of_not_writes (by simp [Prim.dst]; exact ⟨Ne.symm h1, Ne.symm h2⟩) _
-  have hM2 := inv_sem I (P := .blk [.const rLv 0, .const rN3 19]) (by simp [WF, Prim.dst, rLv, rN3])
+  have hM2 := inv_sem I (P := .blk [.const rLv 0, .const rN3 19]) (by simp +decide only [WF,
+    Prim.dst, rLv, rN3])
     hM1
   have z2 := size_sem I (.blk [.const rLv 0, .const rN3 19]) s1
   rw [semXIR_seq]

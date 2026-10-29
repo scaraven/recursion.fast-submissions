@@ -17,6 +17,8 @@ namespace FR.X
 
 open RecursionFast
 
+attribute [local irreducible] entryK storeM
+
 /-! ## The answers on the tape -/
 
 /-- The answer words of an entry within the log's words. -/
@@ -379,10 +381,12 @@ theorem cmpTWord_sem (I : Array Word) (s : St) (hM : Inv s.M) {w r : ℕ} (hw : 
     rfl
 
 theorem wf_cmpTWord (w r : ℕ) : WF (cmpTWord w r) := by
-  simp [cmpTWord, WF, Prim.dst, rKc, rAd, rKa, rG, rH, rF]
+  simp +decide only [cmpTWord, WF, Prim.dst, rKc, rAd, rKa, rG, rH, rF, List.mem_cons,
+    List.mem_nil_iff, forall_eq_or_imp, forall_eq, or_false, and_true]
 
 theorem lo_cmpTWord (w r : ℕ) : Lo (cmpTWord w r) := by
-  simp [cmpTWord, Lo, Prim.dst, regs, rKc, rAd, rKa, rG, rH, rF]
+  simp +decide only [cmpTWord, Lo, Prim.dst, regs, rKc, rAd, rKa, rG, rH, rF, List.mem_cons,
+    List.mem_nil_iff, forall_eq_or_imp, forall_eq, or_false, and_true]
 
 /-- Registers `cmpTWord` keeps. -/
 theorem cmpTWord_frame (I : Array Word) (s : St) (hM : Inv s.M) (w r : ℕ) {q : ℕ}
@@ -392,8 +396,9 @@ theorem cmpTWord_frame (I : Array Word) (s : St) (hM : Inv s.M) (w r : ℕ) {q :
     simp only [srL, List.cons_append, List.nil_append, List.mem_cons, List.mem_nil_iff,
       or_false] at hq
     rcases hq with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl <;>
-      simp [cmpTWord, Writes, Prim.dst, rKc, rAd, rKa, rG, rH, rF, rPa, rX, rHf, rMd, rLo, rLn, rN,
-        rQ0, rQ1, rQ2, rQ3])
+      simp +decide only [cmpTWord, Writes, Prim.dst, rKc, rAd, rKa, rG, rH, rF, rPa, rX, rHf, rMd,
+        rLo, rLn, rN, rQ0, rQ1, rQ2, rQ3, List.mem_cons, List.mem_nil_iff, exists_eq_or_imp,
+        exists_eq_left, or_false])
 
 theorem wf_aposIR' : WF (aposIR rPa rX) := wf_aposIR (.inl rfl)
 
@@ -404,8 +409,8 @@ theorem aposIR_frame' (I : Array Word) (s : St) (hM : Inv s.M) {q : ℕ}
     simp only [srL, List.cons_append, List.nil_append, List.mem_cons, List.mem_nil_iff,
       or_false] at hq
     rcases hq with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl <;>
-      simp [aposIR, ceil8Ps, Writes, Prim.dst, rQL, rKc, rT2, rPa, rX, rHf, rMd, rLo, rLn, rN, rQ0,
-        rQ1, rQ2, rQ3])
+      simp +decide only [aposIR, ceil8Ps, Writes, Prim.dst, rQL, rKc, rT2, rPa, rX, rHf, rMd, rLo,
+        rLn, rN, rQ0, rQ1, rQ2, rQ3, or_false, List.cons_append, List.nil_append])
 
 /-- **The answer comparison**: `rF := ansW(rX) <_lex (rQ0, …, rQ3)`. -/
 theorem ansLtIR_sem (I : Array Word) (s : St) (hM : Inv s.M) :
@@ -422,7 +427,7 @@ theorem ansLtIR_sem (I : Array Word) (s : St) (hM : Inv s.M) :
   have hs1 := hM1.1
   simp only [regs] at hs1
   rw [semXIR_seq]
-  have hwf2 : WF (.blk [.const rF 0]) := by simp [WF, Prim.dst, rF]
+  have hwf2 : WF (.blk [.const rF 0]) := by simp +decide only [WF, Prim.dst, rF]
   have hM2 := inv_sem I hwf2 hM1
   have hf2 : rd (semXIR I (.blk [.const rF 0]) s1).M rF = bW false := by
     simp only [semXIR, runPrims, List.foldl, Prim.run]
@@ -464,24 +469,22 @@ theorem ansLtIR_sem (I : Array Word) (s : St) (hM : Inv s.M) :
 
 
 theorem wf_ansLtIR : WF ansLtIR := by
-  simp [ansLtIR, aposIR, ceil8Ps, cmpTWord, WF, Prim.dst, rQL, rKc, rT2, rPa, rAd, rKa, rG, rH, rF]
+  simp +decide only [ansLtIR, aposIR, ceil8Ps, cmpTWord, WF, Prim.dst, rQL, rKc, rT2, rPa, rAd, rKa,
+    rG, rH, rF, and_true, List.cons_append, List.nil_append]
 
 theorem lo_ansLtIR : Lo ansLtIR := by
-  simp [ansLtIR, aposIR, ceil8Ps, cmpTWord, Lo, Prim.dst, regs, rQL, rKc, rT2, rPa, rAd, rKa, rG,
-    rH, rF]
+  simp +decide only [ansLtIR, aposIR, ceil8Ps, cmpTWord, Lo, Prim.dst, regs, rQL, rKc, rT2, rPa,
+    rAd, rKa, rG, rH, rF, and_true, List.cons_append, List.nil_append]
 
 theorem ansLtIR_frame (I : Array Word) (s : St) (hM : Inv s.M) {q : ℕ}
     (hq : q ∈ [rHf, rMd] ++ srL) : rd (semXIR I ansLtIR s).M q = rd s.M q :=
-  frame I _ s wf_ansLtIR hM q ((by decide : ∀ r ∈ [rHf, rMd] ++ srL, r < regs) q hq) (by
-    simp only [srL, List.cons_append, List.nil_append, List.mem_cons, List.mem_nil_iff,
-      or_false] at hq
-    rcases hq with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl <;>
-      simp [ansLtIR, aposIR, ceil8Ps, cmpTWord, Writes, Prim.dst, rQL, rKc, rT2, rPa, rAd, rKa, rG,
-        rH, rF, rHf, rMd, rLo, rLn, rN, rQ0, rQ1, rQ2, rQ3])
+  frame I _ s wf_ansLtIR hM q ((by decide : ∀ r ∈ [rHf, rMd] ++ srL, r < regs) q hq)
+    ((by simp only [srL, ansLtIR, aposIR, ceil8Ps, cmpTWord, Writes, List.cons_append,
+      List.nil_append]; decide : ∀ r ∈ [rHf, rMd] ++ srL, ¬ Writes ansLtIR r) q hq)
 
 theorem nw_ansLtIR : ∀ r ∈ srL, ¬ Writes ansLtIR r := by
-  simp [srL, ansLtIR, aposIR, ceil8Ps, cmpTWord, Writes, Prim.dst, rQL, rKc, rT2, rPa, rAd, rKa,
-    rG, rH, rF, rLo, rLn, rN, rQ0, rQ1, rQ2, rQ3]
+  simp only [srL, ansLtIR, aposIR, ceil8Ps, cmpTWord, Writes, List.cons_append, List.nil_append]
+  decide
 
 theorem bsStep_le {p : ℕ → Bool} {n lo len : ℕ} (h : lo + len ≤ n) :
     (bsStep p (lo, len)).1 + (bsStep p (lo, len)).2 ≤ n := by
@@ -512,7 +515,7 @@ theorem bsBody_sem (I : Array Word) (s : St) (hM : Inv s.M) {n lo len : ℕ} {T 
   -- the probe
   have hwf1 : WF (.blk [.const rKc 1, .op .shr rHf rLn rKc, .op .add rMd rLo rHf,
       .const rKc (BitVec.ofNat 64 memX), .op .add rAd rMd rKc]) := by
-    simp [WF, Prim.dst, rKc, rHf, rMd, rAd]
+    simp +decide only [WF, Prim.dst, rKc, rHf, rMd, rAd]
   have h1 : rd (semXIR I (.blk [.const rKc 1, .op .shr rHf rLn rKc, .op .add rMd rLo rHf,
         .const rKc (BitVec.ofNat 64 memX), .op .add rAd rMd rKc]) s).M rHf = toWord (len / 2) ∧
       rd (semXIR I (.blk [.const rKc 1, .op .shr rHf rLn rKc, .op .add rMd rLo rHf,
@@ -529,11 +532,13 @@ theorem bsBody_sem (I : Array Word) (s : St) (hM : Inv s.M) {n lo len : ℕ} {T 
     · rw [hR.lo, add_toWord]
     · rw [hR.lo, add_toWord]; exact add_toWord _ _
   have hR1 := hR.sem (I := I) hM hwf1 (by
-    simp [srL, Writes, Prim.dst, rKc, rHf, rMd, rAd, rLo, rLn, rN, rQ0, rQ1, rQ2, rQ3])
+    simp +decide only [srL, Writes, Prim.dst, rKc, rHf, rMd, rAd, rLo, rLn, rN, rQ0, rQ1, rQ2, rQ3,
+      List.mem_cons, List.mem_nil_iff, forall_eq_or_imp, exists_eq_or_imp, forall_eq,
+      exists_eq_left, or_false, and_true])
   have hM1 := inv_sem I hwf1 hM
   have hH1 := hframe I (.blk [.const rKc 1, .op .shr rHf rLn rKc, .op .add rMd rLo rHf,
     .const rKc (BitVec.ofNat 64 memX), .op .add rAd rMd rKc]) s
-    (by simp [Lo, Prim.dst, regs, rKc, rHf, rMd, rAd])
+    (by simp +decide only [Lo, Prim.dst, regs, rKc, rHf, rMd, rAd])
   rw [semXIR_seq]
   generalize semXIR I (.blk [.const rKc 1, .op .shr rHf rLn rKc, .op .add rMd rLo rHf,
     .const rKc (BitVec.ofNat 64 memX), .op .add rAd rMd rKc]) s = s1 at h1 hR1 hM1 hH1
@@ -550,9 +555,10 @@ theorem bsBody_sem (I : Array Word) (s : St) (hM : Inv s.M) {n lo len : ℕ} {T 
     fun q hq => by
       simp only [semXIR]
       exact rd_set_ne ((by decide : ∀ r ∈ [rHf, rMd] ++ srL, rX ≠ r) q hq)
-  have hR2 := hR1.sem (I := I) (P := .load rX rAd) hM1 (by simp [WF, rX]) (by
-    simp [srL, Writes, rX, rLo, rLn, rN, rQ0, rQ1, rQ2, rQ3])
-  have hM2 := inv_sem I (P := .load rX rAd) (by simp [WF, rX]) hM1
+  have hR2 := hR1.sem (I := I) (P := .load rX rAd) hM1 (by simp +decide only [WF, rX]) (by
+    simp +decide only [srL, Writes, rX, rLo, rLn, rN, rQ0, rQ1, rQ2, rQ3, List.mem_cons,
+      List.mem_nil_iff, forall_eq_or_imp, forall_eq, or_false, and_true])
+  have hM2 := inv_sem I (P := .load rX rAd) (by simp +decide only [WF, rX]) hM1
   rw [semXIR_seq]
   generalize semXIR I (.load rX rAd) s1 = s2 at hx2 hfr2 hR2 hM2
   -- the comparison
@@ -596,12 +602,12 @@ theorem bsBody_sem (I : Array Word) (s : St) (hM : Inv s.M) {n lo len : ℕ} {T 
 /-! ## The search loop and the found flag -/
 
 theorem wf_bsBody : WF bsBody := by
-  simp [bsBody, ansLtIR, aposIR, ceil8Ps, cmpTWord, WF, Prim.dst, rQL, rKc, rT2, rPa, rAd, rKa, rG,
-    rH, rF, rHf, rMd, rX, rLo, rLn]
+  simp +decide only [bsBody, ansLtIR, aposIR, ceil8Ps, cmpTWord, WF, Prim.dst, rQL, rKc, rT2, rPa,
+    rAd, rKa, rG, rH, rF, rHf, rMd, rX, rLo, rLn, and_true, List.cons_append, List.nil_append]
 
 theorem lo_bsBody : Lo bsBody := by
-  simp [bsBody, ansLtIR, aposIR, ceil8Ps, cmpTWord, Lo, Prim.dst, regs, rQL, rKc, rT2, rPa, rAd,
-    rKa, rG, rH, rF, rHf, rMd, rX, rLo, rLn]
+  simp +decide only [bsBody, ansLtIR, aposIR, ceil8Ps, cmpTWord, Lo, Prim.dst, regs, rQL, rKc, rT2,
+    rPa, rAd, rKa, rG, rH, rF, rHf, rMd, rX, rLo, rLn, and_true, List.cons_append, List.nil_append]
 
 theorem SRegs.decS {s : St} {n lo len : ℕ} {T : List Word} (h : SRegs s.M n lo len T) :
     SRegs (decS rCB s).M n lo len T :=
@@ -651,7 +657,8 @@ theorem eqTWord_sem (I : Array Word) (s : St) (hM : Inv s.M) {w r : ℕ}
     rfl
 
 theorem wf_eqTWord (w r : ℕ) : WF (eqTWord w r) := by
-  simp [eqTWord, WF, Prim.dst, rKc, rAd, rKa, rH, rFd]
+  simp +decide only [eqTWord, WF, Prim.dst, rKc, rAd, rKa, rH, rFd, List.mem_cons, List.mem_nil_iff,
+    forall_eq_or_imp, forall_eq, or_false, and_true]
 
 theorem eqTWord_frame (I : Array Word) (s : St) (hM : Inv s.M) (w r : ℕ) {q : ℕ}
     (hq : q ∈ [rPa] ++ srL) : rd (semXIR I (eqTWord w r) s).M q = rd s.M q :=
@@ -659,8 +666,8 @@ theorem eqTWord_frame (I : Array Word) (s : St) (hM : Inv s.M) (w r : ℕ) {q : 
     simp only [srL, List.cons_append, List.nil_append, List.mem_cons, List.mem_nil_iff,
       or_false] at hq
     rcases hq with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl <;>
-      simp [eqTWord, Writes, Prim.dst, rKc, rAd, rKa, rH, rFd, rPa, rLo, rLn, rN, rQ0, rQ1, rQ2,
-        rQ3])
+      simp +decide only [eqTWord, Writes, Prim.dst, rKc, rAd, rKa, rH, rFd, rPa, rLo, rLn, rN, rQ0,
+        rQ1, rQ2, rQ3, List.mem_cons, List.mem_nil_iff, exists_eq_or_imp, exists_eq_left, or_false])
 
 theorem decide_ansW (A : List Word) (hA : A.length = 4) (t0 t1 t2 t3 : Word) (p : Bool) :
     (p && decide (A.getD 0 0 = t0) && decide (A.getD 1 0 = t1) && decide (A.getD 2 0 = t2) &&
@@ -680,7 +687,7 @@ theorem foundIR_sem (I : Array Word) (s : St) (hM : Inv s.M) {n lo len : ℕ} {T
   set x := rd s.M (memX + lo)
   -- the address and the load
   have hwf1 : WF (.seq (.blk [.const rKc (BitVec.ofNat 64 memX), .op .add rAd rLo rKc])
-      (.load rX rAd)) := by simp [WF, Prim.dst, rKc, rAd, rX]
+      (.load rX rAd)) := by simp +decide only [WF, Prim.dst, rKc, rAd, rX, and_true]
   have hx1 : rd (semXIR I (.seq (.blk [.const rKc (BitVec.ofNat 64 memX), .op .add rAd rLo rKc])
       (.load rX rAd)) s).M rX = x := by
     simp only [semXIR, runPrims, List.foldl, Prim.run]
@@ -691,7 +698,9 @@ theorem foundIR_sem (I : Array Word) (s : St) (hM : Inv s.M) {n lo len : ℕ} {T
       add_toWord _ _, toNat_toWord (by omega), rd_set_ne (by simp only [rAd, hm]; omega),
       rd_set_ne (by simp only [rKc, hm]; omega), show lo + memX = memX + lo by omega]
   have hR1 := hR.sem (I := I) hM hwf1 (by
-    simp [srL, Writes, Prim.dst, rKc, rAd, rX, rLo, rLn, rN, rQ0, rQ1, rQ2, rQ3])
+    simp +decide only [srL, Writes, Prim.dst, rKc, rAd, rX, rLo, rLn, rN, rQ0, rQ1, rQ2, rQ3,
+      List.mem_cons, List.mem_nil_iff, forall_eq_or_imp, exists_eq_or_imp, forall_eq,
+      exists_eq_left, or_false, and_true])
   have hM1 := inv_sem I hwf1 hM
   have e : semXIR I foundIR s = semXIR I (.seq (aposIR rPa rX) (.seq (.blk [.op .ltu rFd rLo rN])
       (.seq (eqTWord 0 rQ0) (.seq (eqTWord 1 rQ1) (.seq (eqTWord 2 rQ2) (eqTWord 3 rQ3))))))
@@ -705,15 +714,14 @@ theorem foundIR_sem (I : Array Word) (s : St) (hM : Inv s.M) {n lo len : ℕ} {T
   have ha2 := aposIR_sem I s1 hM1 (.inl ⟨rfl, rfl⟩)
   rw [hx1] at ha2
   have hR2 := hR1.sem (I := I) (P := aposIR rPa rX) hM1 wf_aposIR' (by
-    simp [srL, aposIR, ceil8Ps, Writes, Prim.dst, rQL, rKc, rT2, rPa, rLo, rLn, rN, rQ0, rQ1, rQ2,
-      rQ3])
+    simp only [srL, aposIR, ceil8Ps, Writes, List.cons_append, List.nil_append]; decide)
   have hM2 := inv_sem I wf_aposIR' hM1
   generalize semXIR I (aposIR rPa rX) s1 = s2 at ha2 hR2 hM2
   -- `lo < n`
   rw [semXIR_seq]
   have hs2 := hM2.1
   simp only [regs] at hs2
-  have hwf3 : WF (.blk [.op .ltu rFd rLo rN]) := by simp [WF, Prim.dst, rFd]
+  have hwf3 : WF (.blk [.op .ltu rFd rLo rN]) := by simp +decide only [WF, Prim.dst, rFd]
   have hf3 : rd (semXIR I (.blk [.op .ltu rFd rLo rN]) s2).M rFd = bW (decide (lo < n)) := by
     simp only [semXIR, runPrims, List.foldl, Prim.run]
     rw [rd_set_self (by simp only [rFd]; omega), hR2.lo, hR2.n, ltW_toWord (by omega) (by omega)]
@@ -780,19 +788,21 @@ theorem lookIR_sem (I : Array Word) (s : St) (hM : Inv s.M) {n : ℕ} {T : List 
     ∀ x, regs ≤ x → rd (semXIR I lookIR s).M x = rd s.M x := by
   have hs := hM.1
   simp only [regs] at hs
-  have hwf0 : WF lookPre := by simp [lookPre, readAt, WF, Prim.dst, rN, rA, rLo, rLn, rNB]
-  have hlo0 : Lo lookPre := by simp [lookPre, readAt, Lo, Prim.dst, regs, rN, rA, rLo, rLn, rNB]
+  have hwf0 : WF lookPre := by simp +decide only [lookPre, readAt, WF, Prim.dst, rN, rA, rLo, rLn,
+    rNB, and_true]
+  have hlo0 : Lo lookPre := by simp +decide only [lookPre, readAt, Lo, Prim.dst, regs, rN, rA, rLo,
+    rLn, rNB, and_true]
   have hR0 : SRegs (semXIR I lookPre s).M n 0 n T ∧ rd (semXIR I lookPre s).M rNB = 64 := by
     have hN := rd_readAt I s hM (d := rN) (pos := posL) (by decide) (by simp only [posL]; omega)
-    have hwfr : WF (readAt rN posL) := by simp [readAt, WF, Prim.dst, rN, rA]
+    have hwfr : WF (readAt rN posL) := by simp +decide only [readAt, WF, Prim.dst, rN, rA, and_true]
     have hM' := inv_sem I hwfr hM
     have hq' : [rd (semXIR I (readAt rN posL) s).M rQ0, rd (semXIR I (readAt rN posL) s).M rQ1,
         rd (semXIR I (readAt rN posL) s).M rQ2, rd (semXIR I (readAt rN posL) s).M rQ3] = T := by
       have hf := fun r (hr : r ∈ [rQ0, rQ1, rQ2, rQ3]) => FR.X.frame I _ s hwfr hM r
         ((by decide : ∀ r ∈ [rQ0, rQ1, rQ2, rQ3], r < regs) r hr) (by
           simp only [List.mem_cons, List.mem_nil_iff, or_false] at hr
-          rcases hr with rfl | rfl | rfl | rfl <;> simp [readAt, Writes, Prim.dst, rN, rA, rQ0, rQ1,
-            rQ2, rQ3])
+          rcases hr with rfl | rfl | rfl | rfl <;> simp +decide only [readAt, Writes, Prim.dst, rN,
+            rA, rQ0, rQ1, rQ2, rQ3, or_false])
       rw [hf rQ0 (by simp), hf rQ1 (by simp), hf rQ2 (by simp), hf rQ3 (by simp)]
       exact hT
     rw [hn] at hN
@@ -837,8 +847,8 @@ theorem lookIR_sem (I : Array Word) (s : St) (hM : Inv s.M) {n : ℕ} {T : List 
   obtain ⟨f1, f2⟩ := foundIR_sem I s1 l1 l2 (le_trans (Nat.le_add_right _ _) hle) hn2
   have hH1 : ∀ x, regs ≤ x → rd s1.M x = rd s.M x := fun x hx => (l3 x hx).trans (hHE x hx)
   refine ⟨f2, ?_, fun x hx => (hframe I foundIR s1 (by
-    simp [foundIR, aposIR, ceil8Ps, eqTWord, Lo, Prim.dst, regs, rKc, rAd, rX, rQL, rT2, rPa, rFd,
-      rKa, rH]) x hx).trans (hH1 x hx)⟩
+    simp +decide only [foundIR, aposIR, ceil8Ps, eqTWord, Lo, Prim.dst, regs, rKc, rAd, rX, rQL,
+      rT2, rPa, rFd, rKa, rH, and_true, List.cons_append, List.nil_append]) x hx).trans (hH1 x hx)⟩
   rw [f1, hH1 _ (by simp only [regs, memX]; omega)]
 
 /-! ## A lookup after the log index -/

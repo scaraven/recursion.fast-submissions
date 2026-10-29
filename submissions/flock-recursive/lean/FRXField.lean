@@ -204,10 +204,12 @@ def redC (d lo hi u v : ℕ) : List Prim :=
     .op .xor d u v]
 
 /-- **The `B64` product** `M[d] := M[a] · M[b]` (7 statements, scratch `5 … 8`). -/
-def mulBC (d a b : ℕ) : List Prim := [.op .clmul 5 a b, .op .clmulh 6 a b] ++ redC d 5 6 7 8
+def mulBC (d a b : ℕ) : List Prim :=
+  ([.op .clmul 5 a b, .op .clmulh 6 a b] : List Prim) ++ redC d 5 6 7 8
 
 /-- `M[d] := β · M[r]` (7 statements, scratch `5, 6, 13, 14`). -/
-def betaC (d r : ℕ) : List Prim := [.op .shl 13 r c63, .op .shr 14 r cOne] ++ redC d 13 14 5 6
+def betaC (d r : ℕ) : List Prim :=
+  ([.op .shl 13 r c63, .op .shr 14 r cOne] : List Prim) ++ redC d 13 14 5 6
 
 theorem mulBC_dst (d a b : ℕ) : ∀ p ∈ mulBC d a b, p.dst = d ∨ (5 ≤ p.dst ∧ p.dst < 9) := by
   simp [mulBC, redC, Prim.dst]
@@ -255,10 +257,11 @@ def stepC (r k y : ℕ) : List Prim := sqnC r k ++ mulBC r r y
 /-- **The `B64` inverse** `M[d] := M[a]⁻¹` (`0⁻¹ = 0`): `B64.inv`'s chain, 63 squarings and 10
 products in cells `9` (`x`), `10` (the accumulator) and `11` (a copy); 517 statements. -/
 def invBC (d a : ℕ) : List Prim :=
-  [.op .or 9 a a, .op .or 10 9 9] ++ stepC 10 1 9 ++ stepC 10 1 9 ++ [.op .or 11 10 10] ++
-  stepC 10 3 11 ++ stepC 10 1 9 ++ [.op .or 11 10 10] ++ stepC 10 7 11 ++ stepC 10 1 9 ++
-  [.op .or 11 10 10] ++ stepC 10 15 11 ++ stepC 10 1 9 ++ [.op .or 11 10 10] ++
-  stepC 10 31 11 ++ stepC 10 1 9 ++ mulBC d 10 10
+  ([.op .or 9 a a, .op .or 10 9 9] : List Prim) ++ stepC 10 1 9 ++ stepC 10 1 9 ++
+  ([.op .or 11 10 10] : List Prim) ++ stepC 10 3 11 ++ stepC 10 1 9 ++
+  ([.op .or 11 10 10] : List Prim) ++ stepC 10 7 11 ++ stepC 10 1 9 ++
+  ([.op .or 11 10 10] : List Prim) ++ stepC 10 15 11 ++ stepC 10 1 9 ++
+  ([.op .or 11 10 10] : List Prim) ++ stepC 10 31 11 ++ stepC 10 1 9 ++ mulBC d 10 10
 
 /-- `B64.inv`'s chain on every element. -/
 def chainB (u1 : B64) : B64 :=
@@ -378,11 +381,11 @@ theorem invBC_run {M : Mem} (hM : Inv M) {d a : ℕ} (hd : 12 ≤ d) (hd' : d < 
 
 /-- **The `F` product** `M[d, d+1] := M[a, a+1] · M[b, b+1]` (29 statements, scratch `5 … 14`). -/
 def mulFC (d a b : ℕ) : List Prim :=
-  [.op .clmul 5 a b, .op .clmulh 6 a b, .op .clmul 7 (a + 1) (b + 1),
+  ([.op .clmul 5 a b, .op .clmulh 6 a b, .op .clmul 7 (a + 1) (b + 1),
     .op .clmulh 8 (a + 1) (b + 1), .op .xor 9 a (a + 1), .op .xor 10 b (b + 1),
-    .op .clmul 11 9 10, .op .clmulh 12 9 10, .op .xor 11 11 5, .op .xor 12 12 6] ++
+    .op .clmul 11 9 10, .op .clmulh 12 9 10, .op .xor 11 11 5, .op .xor 12 12 6] : List Prim) ++
   redC 7 7 8 13 14 ++
-  [.op .shl 13 7 c63, .op .shr 14 7 cOne, .op .xor 5 5 13, .op .xor 6 6 14] ++
+  ([.op .shl 13 7 c63, .op .shr 14 7 cOne, .op .xor 5 5 13, .op .xor 6 6 14] : List Prim) ++
   redC d 5 6 13 14 ++ redC (d + 1) 11 12 13 14
 
 theorem mulFC_run {M : Mem} (hM : Inv M) {d a b : ℕ} (hd : 15 ≤ d) (hd' : d + 2 ≤ regs)
@@ -458,7 +461,8 @@ theorem addFC_inv (d a b : ℕ) (hd : 4 ≤ d) {M : Mem} (hM : Inv M) : Inv (run
 /-- **The `F` square** `M[d, d+1] := M[a, a+1]^2` (23 statements, scratch `5 … 14`):
 `(c₀^2 + β c₁^2) + c₁^2 y`. -/
 def sqFC (d a : ℕ) : List Prim :=
-  mulBC 9 (a + 1) (a + 1) ++ mulBC 10 a a ++ betaC 11 9 ++ [.op .xor d 10 11, .op .or (d + 1) 9 9]
+  mulBC 9 (a + 1) (a + 1) ++ mulBC 10 a a ++ betaC 11 9 ++
+    ([.op .xor d 10 11, .op .or (d + 1) 9 9] : List Prim)
 
 theorem sqFC_dst (d a : ℕ) :
     ∀ p ∈ sqFC d a, p.dst = d ∨ p.dst = d + 1 ∨ (5 ≤ p.dst ∧ p.dst < 15) := by
@@ -516,8 +520,9 @@ theorem invBC_inv (d a : ℕ) (hd : 4 ≤ d) {M : Mem} (hM : Inv M) : Inv (runPr
 /-- **The `F` inverse** `M[d, d+1] := M[a, a+1]⁻¹` (`0⁻¹ = 0`; 554 statements, scratch `5 … 18`):
 the norm `n = c₀(c₀ + c₁) + β c₁^2` to `B64`, one `B64` inverse, `n⁻¹ ((c₀ + c₁) + c₁ y)`. -/
 def invFC (d a : ℕ) : List Prim :=
-  [.op .xor 15 a (a + 1)] ++ mulBC 16 a 15 ++ mulBC 17 (a + 1) (a + 1) ++ betaC 17 17 ++
-  [.op .xor 16 16 17] ++ invBC 16 16 ++ mulBC (d + 1) 16 (a + 1) ++ mulBC d 16 15
+  ([.op .xor 15 a (a + 1)] : List Prim) ++ mulBC 16 a 15 ++ mulBC 17 (a + 1) (a + 1) ++
+  betaC 17 17 ++ ([.op .xor 16 16 17] : List Prim) ++ invBC 16 16 ++ mulBC (d + 1) 16 (a + 1) ++
+  mulBC d 16 15
 
 theorem invFC_dst (d a : ℕ) :
     ∀ p ∈ invFC d a, p.dst = d ∨ p.dst = d + 1 ∨ (5 ≤ p.dst ∧ p.dst < 19) := by
@@ -632,7 +637,7 @@ theorem invFC_dst' (d a : ℕ) : ∀ p ∈ invFC d a, p.dst = d ∨ p.dst = d + 
 /-- `M[d, d+1] := α · M[z, z+1]`, `α = β y` (22 statements, scratch `5, 6, 9, 10, 13, 14`):
 `β(β z₁) + β(z₀ + z₁) y`. -/
 def alphaC (d z : ℕ) : List Prim :=
-  [.op .xor 9 z (z + 1)] ++ betaC 10 (z + 1) ++ betaC d 10 ++ betaC (d + 1) 9
+  ([.op .xor 9 z (z + 1)] : List Prim) ++ betaC 10 (z + 1) ++ betaC d 10 ++ betaC (d + 1) 9
 
 theorem alphaC_dst (d z : ℕ) : ∀ p ∈ alphaC d z, p.dst = d ∨ p.dst = d + 1 ∨ p.dst < 15 := by
   intro p hp

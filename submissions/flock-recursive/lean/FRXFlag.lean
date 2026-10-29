@@ -32,6 +32,8 @@ namespace FR.X
 
 open RecursionFast FR Finset
 
+attribute [local irreducible] entryK storeM runPrims
+
 /-! ## Registers and the program -/
 
 /-- The accumulator of `f₀`. -/ def fa0 : ℕ := 190
@@ -127,14 +129,16 @@ theorem fBody_sem (I : Array Word) (s : St) (hM : Inv s.M) {w e : ℕ}
   rw [fBody, semXIR_seq]
   obtain ⟨u1, -, u3⟩ := ldF_sem I s hM (d := fw) (p := gW) (p1 := gA1) (by decide) (by decide)
     (by decide) (by decide) (by decide) (by decide) hW (by simp only [regs]; omega) (by omega)
-  have hM1 := inv_sem I (P := ldF fw gW gA1) (by simp [ldF, WF, Prim.dst, fw, gA1]) hM
+  have hM1 := inv_sem I (P := ldF fw gW gA1) (by simp +decide only [ldF, WF, Prim.dst, fw, gA1,
+    and_true]) hM
   generalize semXIR I (ldF fw gW gA1) s = s1 at u1 u3 hM1
   -- `E.f₀`
   rw [semXIR_seq]
   obtain ⟨v1, -, v3⟩ := ldF_sem I s1 hM1 (d := fe) (p := gE) (p1 := gA1) (by decide) (by decide)
     (by decide) (by decide) (by decide) (by decide)
     ((u3 _ (by decide) (by decide) (by decide)).trans hE) (by simp only [regs]; omega) (by omega)
-  have hM2 := inv_sem I (P := ldF fe gE gA1) (by simp [ldF, WF, Prim.dst, fe, gA1]) hM1
+  have hM2 := inv_sem I (P := ldF fe gE gA1) (by simp +decide only [ldF, WF, Prim.dst, fe, gA1,
+    and_true]) hM1
   generalize semXIR I (ldF fe gE gA1) s1 = s2 at v1 v3 hM2
   -- the frame so far: cells other than `fw, fe, gA1` and their successors
   have e2 : ∀ i, i ≠ fw → i ≠ fw + 1 → i ≠ fe → i ≠ fe + 1 → i ≠ gA1 → rd s2.M i = rd s.M i :=
@@ -177,7 +181,8 @@ theorem fBody_sem (I : Array Word) (s : St) (hM : Inv s.M) {w e : ℕ}
   rw [semXIR_seq]
   obtain ⟨y1, -, y3⟩ := ldF_sem I s5 hM5 (d := fe) (p := gT) (p1 := gA1) (by decide) (by decide)
     (by decide) (by decide) (by decide) (by decide) t1 (by simp only [regs]; omega) (by omega)
-  have hM6 := inv_sem I (P := ldF fe gT gA1) (by simp [ldF, WF, Prim.dst, fe, gA1]) hM5
+  have hM6 := inv_sem I (P := ldF fe gT gA1) (by simp +decide only [ldF, WF, Prim.dst, fe, gA1,
+    and_true]) hM5
   generalize semXIR I (ldF fe gT gA1) s5 = s6 at y1 y3 hM6
   have e6 : ∀ i, 15 ≤ i → i ≠ fw → i ≠ fw + 1 → i ≠ fe → i ≠ fe + 1 → i ≠ gA1 → i ≠ fp →
       i ≠ fp + 1 → i ≠ fa0 → i ≠ fa0 + 1 → i ≠ gK → i ≠ gT → rd s6.M i = rd s.M i :=
@@ -557,7 +562,7 @@ theorem fEnt_sem (I : Array Word) (s : St) (hM : Inv s.M) {R cs cb eb xb yb fb j
     (by decide) (by decide) (by decide) (by decide) (by decide) (by decide) x1
     (by simp only [regs]; omega) (by omega)
   have hM5 := inv_sem I (P := ldF fe gT gA1) (s := ⟨M4, s3.o⟩)
-    (by simp [ldF, WF, Prim.dst, fe, gA1]) hM4
+    (by simp +decide only [ldF, WF, Prim.dst, fe, gA1, and_true]) hM4
   have sz5 : (semXIR I (ldF fe gT gA1) ⟨M4, s3.o⟩).M.size = s.M.size := by rw [size_sem]; exact sz4
   generalize semXIR I (ldF fe gT gA1) ⟨M4, s3.o⟩ = s5 at l1 l3 hM5 sz5
   have hX5 : rdF s5.M fe = rdF s.M (xb + 2 * j) := by
@@ -594,7 +599,7 @@ theorem fEnt_sem (I : Array Word) (s : St) (hM : Inv s.M) {R cs cb eb xb yb fb j
     (by decide) (by decide) (by decide) (by decide) (by decide) (by decide) y1
     (by simp only [regs]; omega) (by omega)
   have hM8 := inv_sem I (P := ldF fe gT gA1) (s := ⟨M7, s5.o⟩)
-    (by simp [ldF, WF, Prim.dst, fe, gA1]) hM7
+    (by simp +decide only [ldF, WF, Prim.dst, fe, gA1, and_true]) hM7
   have sz8 : (semXIR I (ldF fe gT gA1) ⟨M7, s5.o⟩).M.size = s.M.size := by rw [size_sem]; exact sz7
   generalize semXIR I (ldF fe gT gA1) ⟨M7, s5.o⟩ = s8 at m1 m3 hM8 sz8
   have hY8 : rdF s8.M fe = rdF s.M (yb + 2 * j) := by
