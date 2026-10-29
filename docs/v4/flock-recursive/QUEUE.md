@@ -77,7 +77,13 @@ Running on rev44:
   - **Rows:** `bitOf` takes rows plus a run proof; siblings become an `ATImp` class; `bits 20` and the mid-element flags and unaligned stmt reads go over the statement bit cells.
   - **Cost:** about 64.5k/81k template rows. V ≈ +0.25 s; init +1.5–4.4 s, which is too much under the stream constraint.
   - **Layout:** REPF was asked to move `repSegB` to 31·2^15 − 2^10.
-- IMPC2: the generators, lemmas and a projection probe, with an init target of ≤ +0.5 s VM (keyed/structured rows). The `askTG`/arena diffs come after ASK-T and REPF.
+- **IMPC2 landed `91e0d61`** (modules only, not folded).
+  - **Generators:** `bitTGB` (decomposition, `bitOf`, `bits 20`) and `bitTGR` (siblings, unaligned reads), with `TG.addD`. Proved: `atImp_bitB` and `gap4Imp_of_bitsB`.
+  - **Probe:** 0 failing rows and full coverage.
+  - **Cost:** init about +1.0 s (target 0.5). The lever is the compile placing the `bitOf`/`tensorW` cells directly on the bit cells, about +0.3 s; it is with INIT.
+  - **Fold:** waits on REPF's `repSegB`. The patch is `logs/IMPC2-orch-copy/patch.py`.
+- **HEAD fix `b52ee6e`:** ASK-T's `ctlP` clashed with RepCtrl's, so `FR` did not build at `ae8b8d8`. Renamed to `ctlPT`. Lesson: build `FR` from a clean snapshot before every commit that adds modules to FR.
+- IMPC2b: `atImp_bitR`, the run proofs (`execA_idx`, `bitOf`/`bits`/`flag_stmt`, `SlotRunB`, `gap4Imp_of_bitsR`). The goal is `Gaps4` from the rows alone.
 - **Collision guard:** ASK-T (the `askTG` line and imports) and REPF (the split and fold) both edit FRNodeRows4.lean. Each was told to touch only its own hunks; the orchestrator merges at freeze.
 - **SRA landed `27459d9`.**
   - **`Gaps4`:** now over `StmtN4R`; the top hypothesis only shrank.
