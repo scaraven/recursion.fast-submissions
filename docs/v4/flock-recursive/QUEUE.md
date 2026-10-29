@@ -16,6 +16,7 @@ Main (`v4/flock-recursive`, core `422f2f9`; the certificate assumes only `Open4F
   - The four controls for `ChildBad4` are required.
 - PORT: brings the decoder, S-L4 and B3 back to green at 4.4.1's format, using A1′'s list. It deletes `realign`/`realign_sem` (44.8 s of kernel), `cso_realign`, `FRXOut4C` and `FRXOut4Ctrl`, adds the spacer entries in `aggTr`, and fixes `fsMsgs4_*` (1,008/112) and `gap4Imp_of_run`. It owns FRX*, FRNodeLinks4*, FRNodeRun4* and FRSubmission4*.
 - B4: `aggChk`, with PK-m7's `hashA`/`hashB` rows on the arenas, and its rows folded into `nodeIRows4`/B5's plan. It owns FRNodeRows4Agg/AggChk*/Arena*. After B4, `Gap4R` = `imp` only.
+- E1: prover port to 4.4.1's format: D/A fields, L1/L2, the reserve's 1,008/112-B fields and E2/E4 terms, spacers, arenas, the packed plan form and phantom pins. It runs end to end against rev44's Lean V, covering kind-changing chains, k = 1/2/4 and the worst-case first step against step_s 60. It prints B5's `eok`. It leaves a hook for B4's `aggChk` rows and owns `prover/`.
 - Review of A1′ (cheap Opus): no blockers.
   - **Soundness:** the free spacer bytes enter only the ignored spacer answer, `wf` is proved for every segment and spacer, and `ctrlA_no_spacer` is a real control. S2b is asked to confirm that no ROM-consistency argument ranges over spacer entries.
   - **For E1:** prove or test that the main chain after `aggL k − 1` is message-free, so phantom pins never conflict. Exercise it with k = 1 and k = 2.
