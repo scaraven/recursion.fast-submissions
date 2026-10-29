@@ -30,10 +30,10 @@ attribute [local irreducible] entryK storeM runPrims
 /-! ## Specification -/
 
 /-- The stream words' address shape. -/
-def apS : AP := ⟨3, 3, 2⟩
+def apS : AP := ⟨3, 3, 2, 18⟩
 
 /-- The L words' address shape. -/
-def apL : AP := ⟨63, 7, 1⟩
+def apL : AP := ⟨63, 7, 1, 18⟩
 
 /-- Slot `σ`'s stream base: `ob0 + 4·2^18 + 4·(σ − 1)·chainLen`. -/
 def baseS (σ : ℕ) : ℕ := 16777216 + 1048576 + 4 * ((σ - 1) * 23146)

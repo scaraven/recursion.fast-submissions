@@ -4550,3 +4550,134 @@ streamL − 1`, contiguous). So **one loader** serves the signature, the traces,
 - **Q2 (orchestrator).** Editing `FRXOut`'s `AP` in place (§8.1) touches a 3.x module still in the
   certificate's closure (via `FRXNode`); RET may prefer a copy of `FRXOut`'s generic half (Seg compile,
   `Ctx`, loops, `ldw`) into a 4.x core module first. Which?
+
+## Part 33 (track S-H4, pass 9): `outIR4`'s pure half (the output words as segments over each segment's realigned words); `AP.st`; handover for the machine half, `FRXNd4` and the plug
+
+**Status.** HEAD `cb849a3`, build tree `logs/fr-build-SH4h` (copy of `fr-build-SH4g`, `snap.sh` on HEAD;
+`MINE` = pass 8's + `FRXOut FRXOutRun FRXTr4 FRXPf4 FRXOut4W`), logs `logs/S-H4h/`. Nothing committed.
+**Done: every pure fact `outIR4_sem` needs** — `witWords (readW4 sigH κ L es)` as the tag, the statements'
+cell words, and per signed child explicit segments (`FRXOut4R`'s `segIR` input) over each segment's
+realigned stream words, plus `readW4_fits`. **Not done: the machine half of `outIR4`, `FRXNd4`, the plug**
+(nor the coordinator's `FRSubmission4Fin`, which needs `nd`). `Open4` is unchanged; the entry stays
+PROVISIONAL. §7 is the handover.
+
+### 1. Files (`loc.py`: total / blank / comment / code / theorems)
+
+| File | loc | Content |
+|---|---|---|
+| `FRXTr4` (new) | 226 / 28 / 38 / 160 / 10 | `tPh4`, `tSegs4`, `restSh4`, **`trSeg4 S`**, **`TrOk4 S`**; `entryW_alignedL`, `readItems_wordsL`, `entryW_seedL`, `trW_eqL`, `segOut_tPh4`, `segOut_tSegs4`, `itemsOf_cons`, **`logWords_trSeg4`**, **`trOk4_seq4`**, `trOk4_ctl`. 11.1 s sequential. |
+| `FRXPf4` (new) | 568 / 71 / 63 / 434 / 28 | `sOff4`, `wo4`, `nextA4`, `sibS4`, `pPh4`, `pRest4`, `fSeg4`, **`pSeg4 S m`**, `qPrev4`, `qHead4`, `qOk4`, **`PfOk4`**, **`LadOk4`**, **`mOfB`**; item/offset lemmas (`sOff4_drop`, `drop_cons_item4`, `drop_rep4`, `sOff4_slen_le`, `sOff4_mod8`, `mem_rest4`, …), `trOf`, `trOf_getD`, `qBytes4`, `fitL_self`, `cpSlice4`, `ans_bit4`, `testBit_posOf4`, `sib_one4`, `PrevInv4`, `lv_t_out`, `posItemsL_slen`, `pPh4_spec`, `pRest4_spec`, **`trM4_eq`**, **`proof_words4`**, **`pfOk4_seq4`**, **`ladOk4_seq4`**, `mOfB_mem`; controls `qOk4_ctl`, `mOfB_ctl`. 14.9 s. |
+| `FRXOut4W` (new) | 339 / 50 / 41 / 248 / 32 | **`vS`**, `trBody4`, `hdrWords`; `readItems_drop`, `readItems_take`, `wordsBytes_packBytes8`, `chainBytes4_length`, `streamBytesOf_rest`, **`segTr_eq`**, `vS_length`, `pf4_words`, `logWords_segTr`, `entries_segTr`, `aggHdr_words`, `hAn_lt`, `sgnX_π`, `sgnX_tr`, `aggPf_eq`, **`signedWords_prev`**, **`signedWords_agg`**, `logWords_flatten`, **`witWords_readW4`**, `sgnX_fits`, **`readW4_fits`**. 9.3 s. |
+| `FRXOut` (edited) | 1,042 / – / – / 893 / 49 (+2 lines) | `AP` gains the row shift `st`; `addrW`, `ldPs` use `toWord ap.st` where they had `18`. |
+| `FRXOutRun` (edited) | 385 (±0) | `apS := ⟨3, 3, 2, 18⟩`, `apL := ⟨63, 7, 1, 18⟩`. |
+
+New code: 842 lines (3 modules, not yet in the certificate's closure).
+
+### 2. What is proved
+
+- **`logWords_trSeg4`** (any `S` with `TrOk4 S`, any word list `Ws`, any `W` agreeing with it, the stream
+  long enough): `logWords (readItems (wordsBytes Ws) 1 (itemsOf S)) = segOut W κ 0 (trSeg4 S)` — the count,
+  the seed's entry (`seedSeg`, stream byte 1), then per later item its length word and `qlen/8 + 4` words.
+- **`proof_words4`** (`PfOk4 S`, `LadOk4 S m`, `trM4 tr = m`): `bl (reassemble4 S 0 tr) = wordsBytes (segOut W κ
+  0 (pSeg4 S m))` for `tr = readItems (wordsBytes Ws) 1 (itemsOf S)`; **`trM4_eq`**: `trM4 tr = mOfB` of word
+  10's low byte. Only field 17 (`fSibs`, the last) depends on `m`.
+- **`segTr_eq`**: segment `i`'s trace is `trOf seq4 (vS κ σ k i w)` whenever `i(segB − 1) + segB ≤ streamB κ σ k`
+  (the bytes before and after it are not read: `readItems_drop`, `readItems_take`).
+- **`signedWords_prev`** (`κ.hasPrev`, child 0) and **`signedWords_agg`** (aggregate `a < nAgg κ`, `k = kSel κ a w`,
+  any `V i` agreeing with `vS … i`):
+  `signedWords (sgnX sigH κ σ w)` = `|π|`, the proofs' segments, the count, the traces' bodies, then
+  `sigWords (sigH κ σ w)` (pass 8's `sigWords_sigH` gives those as H words). The aggregate's `|π_A| = 48 +
+  k·piSizeOf seq4`, its header words `hdrWords k (hAn) (hAe)` (`aggHdr_words`, `k ≤ 4`, `hAn < 2^64`), its count
+  `k · |itemsOf seq4|`.
+- **`witWords_readW4`**: `witWords (readW4 sigH κ L es) = 1 :: (stmt cells' words) ++ signedWords σ₀ ++ signedWords σ₁`.
+- **`readW4_fits`**: `(readW4 sigH κ L es).Fits` (the `Fits` half of `NodeDec4.out`).
+
+### 3. Statement changes (every one)
+
+- `FRXOut.AP`: new field `st`. `addrW ap R x` shifts the row part by `ap.st` (was the literal `18`); `ldPs ap`
+  likewise. Every theorem of `FRXOut`/`FRXOutRun`/`FRXNode`/`FRXNodeRun` keeps its statement (at `apS`, `apL`
+  the shift is `18`); the exact costs, outs and sizes are re-decided unchanged.
+- Nothing else. `Open4`, `certificate_sub4`, `certified` unchanged.
+
+### 4. Controls
+
+| Control | Kind | What it shows |
+|---|---|---|
+| `trOk4_ctl` | − | `seq4` with a 33-byte `E4end` (a 73-byte query) is not aligned |
+| `trOk4_seq4`, `pfOk4_seq4`, `ladOk4_seq4` | + | `seq4`'s format meets the segment conditions at all three ladders |
+| `qOk4_ctl` | − / + | a `queries` phase not after its `P2` phase is rejected; `seq4`'s table passes |
+| `mOfB_ctl` | value | `L30`'s byte reads ladder 30, `N2`'s 31, `N4`'s 32, `'A'` (no kind) 32 |
+| `proof_words4`, `logWords_trSeg4`, `signedWords_*`, `witWords_readW4`, `readW4_fits` | + (universal) | the output words are the segments' over each segment's words |
+
+Measured (scratch `#eval`, `logs/S-H4h/SegSz.lean`, not in the entry): `pSeg4 seq4 32` compiles to 4,940
+statements (field 17: 1,245), `trSeg4 seq4` to 4,904; 99,774 and 185,345 words; `depthSeg 1`; `okSeg` at all
+three ladders; 4,186,985 and 6,603,369 steps.
+
+### 5. Checks (logs in `logs/S-H4h/`)
+
+- **Build:** `lake build FR Solution FRSubmission4Cert FRXOut4W` green, **2,609 jobs** (`build-final.log`;
+  baseline `build0.log`, 2,602).
+- **Axioms** (`axioms.log`, `logs/fr-build-SH4h/ax/AxSH4h.lean`, 20 declarations incl. **`certificate_sub4`**,
+  **`RecursionFast.Challenge.certified`**, `proof_words4`, `signedWords_agg`, `readW4_fits`, `cost_outIR`):
+  within `propext`, `Classical.choice`, `Quot.sound`; no `sorryAx`.
+- **Source rule** (`source-rule.log`): 384 files, 0 findings.
+
+### 6. Deviations
+
+1. **The byte shifts and the `finBlk` redirect are not in `AP`** (the pass-8 ruling's letter): the output
+   will copy `finBlk`'s 8 message words onto the main chain's last block and realign each segment into an
+   aligned buffer, then run `segIR` unchanged over the buffer (linear shape `⟨0, 1, 1, _⟩`). Reason: a shift
+   in `ldw` needs scratch and parameter registers that `LW`/`OW`/`Prot`/`Ctx` would have to admit, i.e. every
+   3.x segment proof re-threaded; the buffer keeps `segIR_sem` literally as is. `AP` gains only the row
+   stride (`st`), which the H loader needs. 3.x's statements unchanged (§3).
+2. The handover's "redo `proof_words`/`logWords_tSegs` for `reassemble4 seq4 0` and `itemsOf seq4`" is done
+   parametric in `S` (decided side conditions `TrOk4`, `PfOk4`, `LadOk4`), so the rev44 port re-decides them at
+   that branch's `seq4` (whose `aBytes4 ≠ 0` adds field 18: `proof_words4` is stated at `aB = 0`; rev44 needs
+   the field-18 slice, one more `cpSlice4` case).
+
+### 7. Handover: what remains, in order
+
+1. **Chain words ↔ heap (pure).** `chW κ σ k w n := hMW w (8·blkOf κ σ k (n/8) + n % 8)`; chain byte `p <
+   streamB` is byte `p mod 8` of `chW (p/8)` (`hMB_eq`, the block's `msgBytes`/`readByte`, `hMW_byte`);
+   `(vS κ σ k i w)[u] = shWd chW s (q + u)` (`s > 0`) or `chW (q + u)` (`s = 0`), `q = D/8`, `s = D mod 8`,
+   `D = i(segB − 1)` (`wOf_eq`, `shWd_byte` — generic in `W`). Header: `hAe` = `shWd (hMW w) 1 (8·cAB + j)`,
+   `j < 4`; `hAn` = `shWd (hMW w) 1 (8·cAB + 4)` (`hA` is the `cAB` block's message bytes 0–40).
+2. **`FRXOut4R`, the programs** (all new code; `FRXOut` is done):
+   - the H loader `apH κ := ⟨3, 3, 2, mLog 0 + 1⟩` at `R = map4.l0.ob + 3·2^(mLog 0 + 1)` (`addrW apH R n =
+     hAddr κ n`, `hAddr_eq`);
+   - `finCopy`: 8 load/store pairs from `8·finBlk κ σ k + j` to `8·(chBase κ σ + aggL k − 1) + j` (`k` in a register);
+   - the realign loop (`loopK` over `segB/8` words; `D = i·(segB − 1)` by `mul`, `q = D >>> 3`, `a = (D & 7) <<< 3`,
+     `b = 63 − a`; word `(H(n) >>> a) + ((H(n+1) <<< 1) <<< b)` stored at `buf + u`): proof with `ldw_sem` and a
+     custom invariant (heap outside the buffer kept), not `Ctx`;
+   - emission: `Ctx M₁ buf κ` and `segIR ⟨0,1,1,0⟩ 0` of `catL (fSeg4 seq4 m f, f < 17)` once and `fSeg4 seq4 m 17`
+     three times (`ite` on `b = 0x50`, `b ∈ {0x4B, 0x4D}`, `b` = buffer word 10's low byte; `mOfB`), `trSeg4`/`trBody4`;
+   - aggregates: `k = kSel` (per `i < maxK`: XOR of the three selector cells' words, compare with `(1, 0)`;
+     `kSel_eq`), length word `48 + k·piSize` (`mul`), `hdrWords`, loop `i < k` (`loopK` with the count register `k`,
+     cap `maxK`) over realign + proof, count word `k·8905`, loop over realign + trace body;
+   - the signature: two loops over `sigWords_sigH`'s shifted pairs; the statements: 4 loads each at `wAddr κ (stC κ σ h) + j`.
+   Size estimate from §4's measurement: ≈ 13·10³ statements a child, ≈ 8·10⁴ for the three kinds, with the
+   decoders ≈ 2.5·10⁵ ≤ `2^19`; cost ≈ 3·10⁷ a segment (far inside `decBudget4`); output ≤ 2.3·10⁶ ≤ `outCap`.
+3. **`outIR4_sem`**: from `decF04_wF`'s conclusion, `outIR4 κ` appends `witWords (readW4 sigH κ L es)`
+   (`witWords_readW4`, `signedWords_prev`/`_agg` with `V i u` the buffer's words, `sigWords_sigH`, `hMW_heap`);
+   `wf`, `outs`, cost bound, `sizeIR` (component lemmas, not one `decide`).
+4. **`FRXNd4`**: `nd := ndK4 (.seq (decF04 .N2) (outIR4 .N2)) …`; `decOk4_nd`; `nodeDec4_nd := ⟨LinksD4, readW4 sigH,
+   out⟩` (`out` from `ndK4_sem`, `decF04_sem`, `outIR4_sem`, `readW4_fits`).
+5. **The plug (coordinator's ruling, 2026-10-29):** `FRSubmission4`: `ext := ext4With nd`, `E := E4X nd sub0.acc`;
+   `FRSubmission4Cert`: `Open4 := gap ∧ dec` with `dec : Links4 nd nodeDec4_nd` (the `∃ D` goes),
+   `certificate_sub4` with `decOk4_nd`; new **`FRSubmission4Fin`** (imports `FRXNd4`, `FRNodeLinks4SigH`):
+   `Open4F := Gaps4`, `certificate_sub4F : Open4F → Certificate sub4` via `⟨h, links4_sigH nodeDec4_nd (fun _ _ _ _ _
+   h => h) rfl h⟩`; `Solution.lean` imports it and `certified` takes `Open4F`.
+6. Part 30 §6 item 4 (`tgBody_sem` split, reflow), unchanged.
+
+### 8. What `Open4` still assumes (exact; unchanged by this pass)
+
+1. `gap : Gaps4` — `∀ vk κ w c₁ c₂, StmtN4 κ (lRows4 κ) (nodeIRows4 κ) vk c₁ c₂ w → Gap4R implB (fun _ => implB) pf4
+   κ vk c₁ c₂ w`.
+2. `dec : ∃ D : NodeDec4 ndNone, Links4 ndNone D` — unsatisfiable while `nd` is missing. After items 4–5 it goes:
+   S-L4's `links4_sigH` discharges `Links4 nd nodeDec4_nd` from `Gaps4`, so `Open4F = Gaps4` alone.
+
+### 9. Open questions
+
+- **Q1 (orchestrator).** Accept §6.1 (realign buffer + copy instead of shift/redirect registers in `AP`)?
+  The pass-8 ruling's goal — `segIR_sem` carried over, 3.x's statements true at their instances — holds
+  with fewer edits to 3.x.

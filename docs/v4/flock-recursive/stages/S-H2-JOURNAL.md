@@ -848,3 +848,50 @@ Base: branch `v4/flock-recursive`, HEAD `53c2e13`. Build tree `logs/fr-build-SH2
 103. Not done: `outIR4` (beyond the signature's pure half), `FRXNd4`, the plug, item 5. RESULT Part 32 §6 is
     the handover with the design worked out (the chain stream is the same H message word stream, so one
     shifted, redirected loader serves the signature, the traces and the proofs).
+104. **S-H4 pass 9** (2026-10-29). HEAD `cb849a3`, build tree `logs/fr-build-SH4h` (copy of `fr-build-SH4g`,
+    `snap.sh` on HEAD; `MINE` adds `FRXOut FRXOutRun FRXTr4 FRXPf4 FRXOut4W` and the names reserved for
+    `FRXOut4R FRXNd4 FRSubmission4Fin Solution`), logs `logs/S-H4h/`. Baseline `build0.log`: 2,602 jobs, green.
+105. **Design choice for the shifts and the redirect: a realign buffer, not a shifted loader.** Segment `i`'s
+    trace starts at stream byte `1 + i(segB − 1)`, i.e. byte shift `i(segB − 1) mod 8 ∈ {0, 7, 6, 5}`. Instead
+    of a byte shift and redirect registers inside `FRXOut`'s `ldw` (which would change `LW`/`Prot`/`Ctx` and
+    every 3.x proof that threads them), the output will (a) copy `finBlk`'s 8 message words onto the main
+    chain's last block (a no-op when `k = maxK` and for a previous node), (b) realign segment `i`'s `segB`
+    bytes into an aligned scratch buffer (`vS`, one runtime loop, shift amounts in registers:
+    `lo = H(n) >>> 8s`, `hi = (H(n+1) <<< 1) <<< (63 − 8s)`, which is `0` at `s = 0`), (c) run 3.x's `segIR`
+    over the buffer with the linear shape `⟨0, 1, 1, _⟩` (`addrW = R + n`). The only `FRXOut` edit is the row
+    stride (`AP.st`), needed for the H loader at `2^(mLog 0 + 1)`. Deviation from the pass-8 ruling's letter
+    ("byte shift and redirect registers in `AP`"), not its intent (`segIR_sem` carries over unchanged).
+106. **`FRXOut` in place:** `AP` gains `st` (row shift); `addrW`/`ldPs` use `toWord ap.st` for the literal `18`;
+    `apS := ⟨3, 3, 2, 18⟩`, `apL := ⟨63, 7, 1, 18⟩`. Every 3.x statement unchanged (the exact costs
+    `cost_outIR = 21,609,039`, `outs_outIR`, `sizeIR_outIR` re-decided as before). `FRXOutRun FRXNode
+    FRXNodeRun` rebuilt green.
+107. **`FRXTr4` (new, 160 code lines):** 3.x's trace-word lemmas over any word list `Ws` and any `S`:
+    `entryW_alignedL`, `readItems_wordsL`, `entryW_seedL`, `trW_eqL`; `tPh4`/`tSegs4` over `Sh` with `S.lv`,
+    `segOut_tPh4`, `segOut_tSegs4`, `itemsOf_cons`; `trSeg4 S`, `TrOk4 S` (decided: `trOk4_seq4`, via a Bool
+    `all` — a plain `decide +kernel` on the `∀ ∈` hits deep recursion over 8,905 items); **`logWords_trSeg4`**.
+    Control `trOk4_ctl`: `seq4` with a 33-byte `E4end` fails.
+108. **`FRXPf4` (new, 434 code lines):** 3.x's `proof_words` over `reassemble4 S` (`ctb4`/`ctbs4`, fitted
+    slices `qB4`, `sib4`/`posOf4` at the kind's ladder `m`), `sOff4`, `wo4`, `pPh4`, `pRest4`, `fSeg4`, `pSeg4 S m`,
+    `qHead4`/`qOk4`, `PfOk4` (decided, `pfOk4_seq4`), `LadOk4 S m` (`ladOk4_seq4` for `m ∈ {30, 31, 32}`),
+    `mOfB` (`mOfB_mem`); `qBytes4`, `fitL_self`, `cpSlice4`, `ans_bit4`, `sib_one4`, `pPh4_spec`, `pRest4_spec`,
+    **`trM4_eq`** (the ladder is `mOfB` of word 10's low byte), **`proof_words4`**. Pitfall: an inline
+    `match` in a hypothesis elaborates with extra discriminants (`hd`, `hns`) and cannot be passed on; name it
+    (`qHead4`).
+109. **`FRXOut4W` (new, 248 code lines):** `vS κ σ k i w` (segment `i`'s `segB` stream bytes from
+    `i(segB − 1)`, packed), `readItems_drop`, `readItems_take`, `wordsBytes_packBytes8`, **`segTr_eq`**
+    (`segTr = trOf seq4 (vS …)`), `pf4_words`, `logWords_segTr`, `entries_segTr`, `trBody4`, `hdrWords`,
+    `aggHdr_words`, `hAn_lt`; **`signedWords_prev`**, **`signedWords_agg`** (`k = kSel`), **`witWords_readW4`**,
+    **`readW4_fits`**. Pitfalls: `show`/`congr 1` on `sgnX`/`aggPf` goals time out in `whnf` (they unfold
+    `pf4`): state `sgnX_π`, `sgnX_tr`, `aggPf_eq` as `rfl` lemmas over variables and `rw`; use
+    `List.map_congr_left` as a rewrite instead of `congr`.
+110. Measurements (scratch `#eval`, `logs/S-H4h/SegSz.lean`, outside the entry): compiled `pSeg4 seq4 32` is
+    4,940 statements (its field 17, the siblings, 1,245), `trSeg4 seq4` 4,904; `segLen` 99,774 and 185,345
+    words; `depthSeg = 1`; `okSeg` holds at all three ladders; cost 4,186,985 and 6,603,369 steps. Output
+    bound: ≤ 2.3·10^6 words against `outCap = 2^24`.
+111. Checks: `lake build FR Solution FRSubmission4Cert FRXOut4W` green, 2,609 jobs (`build-final.log`); 20
+    axiom lines within the three (`axioms.log`, incl. `certificate_sub4`, `certified`, `proof_words4`,
+    `signedWords_agg`); source rule 384 files, 0 findings. Sequential (`-DElab.async=false`, wall incl.
+    imports): `FRXTr4` 11.1 s, `FRXPf4` 14.9 s, `FRXOut4W` 9.3 s (`profile-*.log`).
+112. Not done: the machine half of `outIR4` (chain words ↔ heap, the copy, the realign loop, kSel, header,
+    signature and statement emitters, `outIR4_sem`, cost), `FRXNd4`, the plug (coordinator's ruling:
+    `FRSubmission4Fin`), item 4. RESULT Part 33 §7 is the handover.
