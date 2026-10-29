@@ -4053,3 +4053,193 @@ applies on rev44, where `pL4 = 5 + 843,280 / 8 = 105,415`. Two updates: `FRXDec4
 - **Q1.** `FRXLog`'s four 3.x programs: fold them now (`def walkIR := walkIR4 memX posL` needs the
   parametric definitions moved into `FRXLog`, a G3-golfed module), or leave them until the 3.x decoder
   retires (retirement step 2)? They cost nothing measurable.
+
+## Part 30 (track S-H4, pass 6): the five levels at a node kind, the 4.1 chain table, the node branch's decode; `memX4` in the program; handover
+
+**Status.** HEAD `cb12cc4` (`a84753a` + a QUEUE commit). Build tree `logs/fr-build-SH4e` (copy of
+`fr-build-SH4d`, `snap.sh` on HEAD; `MINE` = `FRXDec4Levels FRXDec4Map FRXSeed FRXChain4 FRXDec4F0 FRXProg
+FRX4Prog FRX4Ext`), logs `logs/S-H4e/`. Nothing committed. Handover items 1 and 2 (Part 29 §5) are done;
+item 4's decode half is done (`decF04`, its semantics, loop bounds and cost) and item 5's memory half
+(`memX4`, `decBudget4`, `ext4With` at `memX4`) is applied on main. **Not done: item 3 (`FRXOut4`: the 4.1
+proof decoder and the output program), hence `nd`, `NodeDec4 nd` and the plug of `nd` into
+`FRSubmission4*`.** `Open4` still holds `∃ D : NodeDec4 ndNone`; the entry stays PROVISIONAL. §6 is the
+handover.
+
+### 1. Files (`loc.py`: total / code / thm; CPU sequential, `-DElab.async=false`, one module at a time; `logs/S-H4e/cpu-*.txt`, `prof-*.log`)
+
+| File | loc | CPU (wall) | Content |
+|---|---|---|---|
+| `FRXDec4Levels` (new) | 677 / 507 / 35 | 22.1 s (22.0 s); kernel 5.3 s | Item 1. `readK4`, **`readK4_sem`**, `rdF_colWord`, `lv4_read`; the programs `msgT4`, `msgU4`, `msg04`, `decU4`, `dec04`, `stepU4`, **`decLevels4 κ pL cw cbS tw`**, `decLevels4_m`; `KeepR4`, `lvU4_nums`, `lv04_nums`, `map4_nums`, `eqt4_keep`, **`lvStep4_sem`**, `msgT4_ok`, `msgU4_ok`, `msg04_ok`, **`lv0Step4_sem`**, **`decLevels4_sem`**; `wf_setA4`, `wf/noLoopT/outs_decLv4IR`, **`cost_decLv4IR`**, `wf/noLoopT/outs/cost_readK4`, `wf/noLoopT/outs_decLevels4`, `cost_stepU4`, `cost_dec04`, `cost_decLevels4_eq`, `cost_msgT4`, `cost_msgU4`, **`cost_decLevels4`**; controls (§4). |
+| `FRXChain4` (new) | 289 / 187 / 22 | 28.9 s (28.7 s); kernel ≈ 15 s | Item 2, parametric in the item sequence `S`: `phaseMsgs4`, `fsMsgs4`, `msgOkB`, `fsMsgs4_zero`, `fsQ4`, `fsQ4_zero`, `stateIn_fsQ4`, `tabEnt4`, `chTab4`, `chTab4_length`, `chTab4_getD`, `msgOkB_of`, **`tabW_chTab4`**, `seedQ_size`, **`chain_spec4`**, **`chain_dec4`**; at `seq4`: `fsMsgs4_length`, `msgItem4`, **`fsMsgs4_items`**, **`fsMsgs4_aligned`**, `nRep4 = 456`, `nRep4_ctl`, `cbS4`, **`sAt4_words`**, `cbS4_bounds`; controls. |
+| `FRXDec4F0` (new) | 393 / 273 / 19 | 20.2 s (20.0 s) | Items 1 + 2 composed (item 4's decode half): main's format `pL4`, `capFO4`, `capPi4`, `cw4`, `finFO4`, `finPi4`, `tw4`, `fmt4_vals`, **`fmt4_ctl`**, `lv_cap4`, `tape_cap4`, `tapeF_fin4`; the node-byte dispatch `rF2`, `rF4`, `kindNd4`, `wf/lo_kindNd4`, **`kindNd4_sem`**, `pickNd`, `ndK4`, **`ndK4_sem`**; **`decF04 κ`**, **`decF04_sem`**, `wf_seedIR4`, `wf/outs_decF04`, **`safe_decF04`**, `cost_decF04_eq`, **`cost_le_decF04`**; controls. |
+| `FRXSeed` (edited) | 425 / 316 / 37 → 440 / 323 / 40 | 16.8 s | In place over `48 ≤ |π|` (§3): `seedPay_length`, `tape_seed`; new `seedVal_eq4`, `fsQ_zero`, **`seedOK_seedIR4`**; 3.x's `seedVal_eq`, `seedOK_seedIR` are now instances. |
+| `FRXProg` (edited) | 208 / 112 / 8 → 219 / 115 / 9 | 11.5 s | Item 5: `memX4 := 268435456` (`memX4_eq : memX4 = 2^28`), `decBudget4 t := fuelBase − 2^29 + (fuelPerWord − 16) t`. |
+| `FRX4Prog` (edited) | 278 / 169 / 26 → 279 / 169 / 26 | 12.4 s | Item 5 (§3): `DecOk4.cost` at `decBudget4`, `ext4With` at `memX4`, `fuel_covers4` at `memX4`/`decBudget4`. |
+| `FRX4Ext` (edited) | 742 / 543 / 61 (unchanged) | 14.1 s | Item 5 (§3): every `memX` of the program's memory is `memX4` (21 occurrences). |
+| `FRXDec4Map` (edited) | 201 / 109 / 16 → 201 / 108 / 16 | 9.1 s | `memX4` moved to `FRXProg`; `map4` is an `abbrev` (§5.1). |
+
+New code: 967 lines (3 modules); edited modules +11 code lines. The three new modules cost 71.2 CPU-s
+sequentially; they are not yet in the certificate's closure (`FR`/`FRSubmission4` import none of them).
+
+### 2. What is proved
+
+- **`readK4_sem`**: on a domain tape (`Dom4 pL`) with the sorted index at `memX4`, if the tape holds the
+  cap `T4.capDig es i` at tape word `cw` (`hcap`), `readK4 pL κ i cw sb nw` leaves at `sb + nw·j + 2r`
+  the committed word `T4.wordOf κ L es i r j` (`2·rows ≤ nw`), keeps the index, keeps the heap outside
+  `[sb, sb + nw·2^logN)`. The height is the kind's ladder (`(CKind.lv κ i).sib`).
+- **`decLevels4_sem`** (3.x's `decLevels_sem` on `map4`, any node kind `κ`): given level 0's word at
+  `map4.l0.cb` (128 words a position), the cap links at `cw i` (`i = 1 … 4`), the P1 challenges'
+  words `rdK (cbS i + 8v) = T4.sAt es i v` with `cbS i` above the basis table and below the levels'
+  regions, the final message's link `T4.finalAt es x = (tapeF (tw + 4x), tapeF (tw + 4x + 2))`, and at
+  every level `¬ farL` and `A_c = jointAgree`: **level 0's rows `4 … 7` sit at
+  `map4.l0.ob + 2^(mLog 0 + 1) q + 2x` as the `F` values of `T4.msgOf κ L es 0 (4 + q)`**. Levels 4 … 1
+  decode all 16 rows into `map4.lU.ob` (`lvStep4_sem`), level `i + 1`'s rows being level `i`'s message
+  (`msgU4_ok`, `msg04_ok`); level 4's message is the tape's (`msgT4_ok`).
+- **`cost_decLevels4`** (exact): `18,780,858,425,058` (`2^44.1`) at `N2`, `75,054,361,432,716` (`2^46.1`)
+  at `N4`/`N8` — `logs/S-H4/fuel-check4.py`'s model to the step (level 0: `1.80·10^13`, `7.18·10^13`).
+- **`chain_spec4`** (any item sequence `S`, any `N < 2^9`): on a domain tape of a proof inside which
+  `S`'s messages lie 8-byte aligned (`hA`, a decided check), with no state hit in the log, the answer at
+  `ansB + 4p` (`p < N`) is the first-match chain's `fmAns (fsQ4 S vk c π) st₀ L p`, and the chain keeps
+  the heap outside `[chB, chEnd)`. **`chain_dec4`**: the same for `seedIR` with `vk = vkOf π`.
+  At `seq4`: **`fsMsgs4_items`** (the targets' kinds and lengths are `T4.fsItems4`, 482 positions),
+  **`fsMsgs4_aligned`**, `nRep4 = 456` (`nRep4_ctl`: P1.0 … P1.4 start at 332, 375, 402, 426, 448; the final
+  absorb is at 456), **`sAt4_words`** (`cbS4 i = ansB + 4(phStart4 (26 + 5i) + 1)` holds `T4.sAt es i`),
+  `cbS4_bounds` (`2^20 + 800 ≤ cbS4 i`, `cbS4 i + 8ℓ + 4 ≤ chEnd ≤ map4.lU.fb`).
+- **`decF04_sem`** (3.x's `decF0_sem` at a 4.1 node kind, main's format): on a domain tape of a proof of
+  `piSizeOf seq4` bytes whose log has no state hit, if `fmAns (fsQ4 seq4 (vkOf π) c π) st₀ L p =
+  some (ansAt es p)` for `p < nRep4`, `T4.capDig es i e = capPi4 i π e` (`i < 5`), `T4.finalAt es x =
+  finPi4 π x`, and every level is close with `A_c = jointAgree`, then after `decF04 κ` the rows `4 … 7`
+  of `f⁽⁰⁾` sit at `map4.l0.ob` (as above). These are 3.x's `E_node` hypotheses at revision 4.1: they are
+  the `Links` the eventual `NodeDec4 nd` will carry.
+- **`ndK4_sem`**: on a node proof of kind `κ`, `ndK4 P2 P4 P8` runs `pickNd κ P2 P4 P8` after
+  `kindNd4` (`kindNd4_sem`: `rF2`/`rF4` are the tests `byte = N2.byte`/`N4.byte` of tape word 5's low
+  byte, the heap and output kept).
+- **`safe_decF04`**, **`cost_le_decF04`**: `≤ 18,866,590,018,289 + 2,558 t` (`N2`),
+  `≤ 75,140,093,025,947 + 2,558 t` (`N4`, `N8`); `decBudget4 t = 211,105,695,662,080 + 8,176 t`.
+  `sizeIR (decF04 κ) = 56,236` (compiled `#eval`, `logs/fr-build-SH4e/scratch/T3.lean`; a `decide +kernel`
+  proof costs 10.1 s of kernel time, so no theorem yet: §6).
+
+### 3. Statement changes (every one)
+
+- `FRX4Prog`: **`DecOk4.cost : ∀ t, cost nd t ≤ decBudget4 t`** (was `decBudget`);
+  **`ext4With nd := toProg memX4 mpwX (ext4IRWith nd)`** (was `memX`);
+  **`fuel_covers4 (h : ∀ t, cost nd t ≤ decBudget4 t) : memX4 + mpwX t + cost (ext4IRWith nd) t + 8 ≤
+  fuel t`** (was `decBudget`, `memX`). `decOk4_ndNone : DecOk4 ndNone` keeps its statement (its proof
+  now uses `decBudget4`). As Part 28 §7's patch list, with `memX4`/`decBudget4` defined in `FRXProg`
+  (§5.2).
+- `FRX4Ext`: `st1` (the state after the parse) starts from `initSt (memX4 + mpwX t)`; `den4_split`,
+  `den4_W`, `den4_bad`, `den4_node`, `den4_agg` state `den memX4 mpwX …`; `Ed4 nd := Eden memX4 mpwX …`.
+  Nothing else (`E4X`, `computes4`, `NodeDec4`, `nodeExt_E4X`, `ks4_E4X` unchanged in form).
+- `FRXSeed`: `seedPay_length`, `tape_seed` take `48 ≤ π.size` instead of `π.size = piSize` (weaker
+  hypothesis; their only users are in `FRXSeed`). `seedVal_eq`, `seedOK_seedIR` keep their statements.
+- `FRSubmission4`, `FRSubmission4Cert`: unchanged. `sub4.ext = ext4With ndNone` now runs on
+  `2^28 + 3t` words.
+
+### 4. Controls
+
+| Control | Kind | What it shows |
+|---|---|---|
+| `keepR4_ctl` | + / − | `KeepR4` holds on the basis table, the chain's answers, level 0's word, the index; not on either map's decoded rows nor on levels 1–4's word |
+| `readK4_ctl` | value | the read's height is the kind's (`sib₀ = 10` at `N2`, 11 at `N4`); the cap depths agree |
+| `decLevels4_ctl` | − / + | `N2`'s five levels are not `N4`'s (different exact costs); `N8`'s are `N4`'s |
+| `cost_decLevels4` | value | the exact costs, equal to the fuel model's |
+| `msgOkB_ctl` | − / + | a misaligned message and one past the proof's end are rejected; the seed's `hdr` is accepted |
+| `fsMsgs4_items`, `fsMsgs4_aligned`, `fsMsgs4_length` | + | the 482 targets have `seq4`'s Fiat–Shamir kinds and lengths; all aligned inside 798,192 bytes |
+| `fsMsgs4_ctl`, `fsQ4_ctl` | value / − | position 2 absorbs `cap₀` (π bytes 19,872 … + 16,384), position 3 is a squeeze, not an absorb |
+| `tabEnt4_ctl`, `cbS4_ctl`, `nRep4_ctl` | value / − | the table entry of `cap₀`; the P1 challenges' words per level (distinct); the replayed positions cover P1.4 |
+| `fmt4_vals`, `fmt4_ctl` | value | `pL4 = 99,779`; the caps at 19,872, 36,256, 44,448, 52,640, 60,832; the final message at 64,928; each is the absorb's range in `fsMsgs4 seq4` |
+| `capFO4_ctl` | − | level 1's cap starts `32·2^9` bytes after level 0's, not `32·2^8` |
+| `kindNd4_ctl` | + / − | on `N2`'s byte `rF2 = 1`, `rF4 = 0`; on `N4`'s the reverse; `pickNd` takes the kind's branch |
+| `decF04_ctl` | − | `N2`'s decode is not `N4`'s |
+
+### 5. Deviations and findings
+
+1. **`omega` and `C + n` with a non-reducible constant `C` (finding, journal 86).** `map4.tb + 800 ≤ x ⊢
+   map4.tb ≤ x` hits "maximum recursion depth": `omega` reduces `C + 800` at reducible transparency,
+   cannot unfold `C`, and unfolds `Nat.add` on the literal digit by digit. `map4` is now an `abbrev`, and
+   proofs carry `map4_nums`. Any later module that puts a `def` constant plus a literal ≥ 512 into an
+   `omega` goal will meet this.
+2. **`memX4` lives in `FRXProg`, not `FRX4Prog`** (Part 28 §7 put it in `FRX4Prog`). `FRXProg` is
+   imported by both `FRX4Prog` and the decoder modules, so the one definition needs no new import edge;
+   it is a `def` with the literal value `268,435,456` (`memX4_eq`), so `omega` treats it as an atom with
+   a value and nothing evaluates `2^28` (`initSt (memX4 + …)` stays folded, journal 62's pitfall).
+3. **The plug's memory half applied now, with `ndNone`.** `FRX4Ext`'s proofs went through unchanged at
+   `memX4` (only the `simp only [regs, memX]` side conditions). The remaining plug is `nd` itself.
+4. **The chain is parametric in `S` and `N`**; the `seq4` facts (`fsMsgs4_aligned`, `nRep4`, `cbS4`) are
+   instances. On `v4/rev44` the same module serves with that branch's `seq4` (the decided controls and
+   `fmt4_vals`' numerals change).
+5. **The node-byte dispatch is in the decode module**, not in `decLevels4`: the output also depends on the
+   kind (`N2`, `N4`, `N8` have different children), so `nd` will be one `ndK4` over three full branches.
+6. **Not done (item 6):** the `tgBody_sem` split. Diagnosis (`logs/S-H4e/trace-FRXLagT.log`): of
+   `tgBody_sem`'s 21.6 s, 14.8 s is the final `refine ⟨fun c hc => ?_, i7, …⟩`, whose expected type still
+   holds the ungeneralised nested states from the `M3` step on: `generalize runPrims ([.const lgQ 1, …] ++
+   zeroPs C) s2.M = M3 at … ⊢` does not abstract the goal's occurrence (a probe with `runPrims _ s2.M`
+   matched nothing either), so every later `generalize` misses the goal too and the refine pays a
+   defeq over the whole state. The line reflow of the new modules (65 + 5 + 14 lines over 100 columns,
+   from the long `Snd.CKind.lv (.node κ) i` terms) is not done either.
+7. **`FRXChain4`'s kernel time**: ≈ 12 s in one `decide +kernel` (`fsMsgs4_items` or `fsMsgs4_aligned`:
+   each evaluates `fsMsgs4 seq4`, recomputing `fieldOffOf`/`phaseOffOf` per message). One shared literal
+   (`fsMsgs4 seq4 = [...]`, decided once) would halve it; a structural proof of alignment would remove it.
+
+### 6. Handover: what remains, in order
+
+1. **`FRXOut4`, the output (item 3).** Two halves.
+   - **The 4.1 proof decoder** `reassemble4 S (aB : ℕ) : Trace → Proof`, field by field (3.x's
+     `FRNodeReadW.ctbs` over `phasesOf S`/`Sh`), with **row 18's size `aB` a parameter** (0 on main:
+     `nFields = 18`; 45,088 on `v4/rev44`). The queries' fields need the kind's heights: π has `L.sib`
+     (`seq4`'s, `m* = 32`) sibling slots per position, the kind fills `K.sib` and the rest are zero
+     (`posOps4`); the position answers use the kind's `per = 256 / K.logN`. `reassemble4` is `rd4`'s
+     `pf` (`FRNodeRead4`: "S-H4's reassembly, a parameter here"); **S-N2 must use the same `pf`** in its
+     `NodeResid4` instance, so agree the definition with S-N2 first.
+   - **`readW4 κ L es := .node c₁ c₂ (sgn4 reassemble4 κ 0 w) (sgn4 reassemble4 κ 1 w)`** with `w` the
+     `Asg` of `f⁽⁰⁾`'s rows 4–7 (`w e` from `T4.msgOf (.node κ) L es 0 (4 + e mod 4) (e / 4)`, stream
+     cell `e` = row `4 + e mod 4`, column `e / 4`, `FRBlockStream.elem_slot`). **Open: where `c₁`, `c₂`
+     come from.** S-N2's `StmtN4` binds them through `PubCells4 κ w vk c₁ c₂` (`cells4 κ`); if those
+     cells are outside rows 4–7 the decoder (which decodes only rows 4–7 at level 0) cannot read them,
+     and they must come from π's `stmt` field (bytes 1–64; the node's `stmtOps4` asserts 65–127 zero
+     and `c = nodeStmt c₁ c₂` through `hashStmt`). Decide with S-N2.
+   - **`outIR4 κ`**: 3.x's `segIR` machinery (`FRXOut`, `FRXOutRun`) emits `witWords` from a `Seg`
+     description over an address shape `addrW ap R n = R + (((n >>> 1) &&& m₁) <<< 18) + …`. The row
+     stride `18` is 3.x's (`2^(mLog 0 + 1)` at `m = 30`); at 4.1 it is `2^20` (`m = 32`) or `2^19`
+     (`m = 31`): generalise `addrW`/`AP` over the stride in place (pass 5's rule). The source is level
+     0's rows 4–7 at `map4.l0.ob` (`decF04_sem`'s conclusion; `outIR4` stores nothing, as 3.x's).
+2. **`FRXNd4` (item 4):** `nd := ndK4 (.seq (decF04 .N2) (outIR4 .N2)) (.seq (decF04 .N4) (outIR4 .N4))
+   (.seq (decF04 .N8) (outIR4 .N8))`.
+   - `decOk4_nd : DecOk4 nd`: `wf` (`wf_kindNd4`, `wf_decF04`), `safe` (`safe_decF04`, `kindNd4` and the
+     outputs have no tape loop), `cost` (`cost_le_decF04` + the output's + 17 ≤ `decBudget4`: ample,
+     `7.5·10^13` against `2.1·10^14`), `outs` (`outs_decF04 = 0` + the output's ≤ `outCap`), `size`
+     (`3 · 56,236` + the outputs ≤ `2^19`; prove `sizeIR (decF04 κ)` from component lemmas, not by a
+     10 s `decide +kernel`).
+   - `nodeDec4_nd : NodeDec4 nd` with `Links κ L es π c := ¬ StateHit L ∧ (∀ p < nRep4, fmAns (fsQ4 seq4
+     (vkOf π) c π) zeroD L p = some (ansAt es p)) ∧ (∀ i < 5, ∀ e < 2^cap, T4.capDig es i e = capPi4 i π e)
+     ∧ (∀ x < 2^mLog 4, T4.finalAt es x = finPi4 π x) ∧ (∀ i < 5, ¬ T4.farL …) ∧ (∀ i < 5, A_c =
+     jointAgree)` (exactly `decF04_sem`'s hypotheses), `readW := readW4`, and `out` from `ndK4_sem`,
+     `decF04_sem` (at `st1`: `Inv`, size `memX4 + 3t ≥ memX4 + 2|L|`, empty output) and `outIR4_sem`.
+3. **The plug (item 5's rest):** `FRSubmission4`: `ext := ext4With nd`, `sub4.E := E4X nd sub0.acc`
+   (and `sub4_E`, `sub4_ext`); `FRSubmission4Cert`: `Open4.resid : ∀ vk, Resid4H … sub4 nd nodeDec4_nd vk`
+   (the `∃ D` goes), `certificate_sub4` with `decOk4_nd`. Then `FR.lean` imports `FRXNd4`.
+4. **Item 6:** the `tgBody_sem` fix (§5.6: name the `M3` list from the goal, e.g. state each phase as
+   its own lemma on a bare memory, as Part 27 §1 planned); `FRXChain4`'s kernel time (§5.7); the line
+   reflow; a `sizeIR` lemma set for the decoder's programs.
+
+### 7. Checks (logs in `logs/S-H4e/`)
+
+- **Build.** `lake build FR Solution FRSubmission4Cert FRXDec4F0 FRXDec4Lv FRXLagT` green on HEAD +
+  this pass: **2,592 jobs** (`build-final.log`). `FRX4Ext` and the decoder modules after the `FRXProg`
+  edit: 2,372 jobs (`build1.log`).
+- **Axioms** (`axioms.log`, `logs/fr-build-SH4e/ax/AxSH4e.lean`, 45 declarations: every main theorem and
+  control of the pass, `decOk4_ndNone`, `fuel_covers4`, `computes4`, **`certificate_sub4`**,
+  **`RecursionFast.Challenge.certified`**): all within `propext`, `Classical.choice`, `Quot.sound`
+  (some controls use fewer or none); no `sorryAx`.
+- **Source rule** (`python3 -I logs/org20/scripts/source-rule.py submissions/flock-recursive`,
+  `source-rule.log`): 372 files, 0 findings.
+- **Profiles**: §1's table (sequential, one module at a time, load from other agents' jobs).
+
+### 8. Open questions
+
+- **Q1.** `c₁`, `c₂` of the node witness (§6.1): from `f⁽⁰⁾`'s public cells (then they must lie in rows
+  4–7, or level 0 must decode more rows) or from π's `stmt` field? The answer fixes `readW4` and S-N2's
+  side of the links.
+- **Q2.** `sub4.ext` now runs on `2^28 + 3t` words (2 GiB of 8-byte words before the tape). The contract
+  only bounds the fuel; if a runner or the badge ever evaluates `ext`/`E` on a domain input, it allocates
+  that array. Accept (Part 25 F2's ruling), or keep `ndNone`'s branch at `memX` until `nd` lands?

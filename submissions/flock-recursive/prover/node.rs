@@ -980,10 +980,27 @@ pub fn witness(k: NK, vk: &Digest, prev: Option<&PrevIn>, aggs: &[AggIn], protos
 
 /// Record both prototypes' inactive solve plans (no child needed: done before a request).
 pub fn warm_plans(protos: &[mfill::Proto; 2]) {
-    par::collect_vec(2, 1, |p| {
-        mfill::warm_adjacency(&protos[p]);
-        if protos[p].plan[0].get().is_none() {
-            mfill::fill(&protos[p], None);
+    // pass 13: the per-prototype tables (`ByCell`, `fcinv`) and every recorded order's level
+    // schedule as separate tasks over all threads (the schedules are independent)
+    let mut jobs: Vec<(usize, usize)> = (0..2).flat_map(|p| [(p, 100), (p, 101)]).collect();
+    jobs.extend((0..2).flat_map(|p| (1..mfill::PLAN_KEYS).filter(move |&k| protos[p].plan[k].get().is_some()).map(move |k| (p, k))));
+    par::run(jobs.len(), &|j| {
+        let (p, k) = jobs[j];
+        let pr = &protos[p];
+        match k {
+            100 => {
+                mfill::warm_adjacency(pr);
+                if pr.plan[0].get().is_none() {
+                    mfill::fill(pr, None);
+                }
+            }
+            101 => {
+                let _ = pr.by_cell();
+                let _ = pr.fcinv();
+            }
+            k => {
+                let _ = pr.sched_for(k);
+            }
         }
     });
 }

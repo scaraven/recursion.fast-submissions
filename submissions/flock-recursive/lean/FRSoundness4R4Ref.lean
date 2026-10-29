@@ -1,7 +1,7 @@
 -- New for `flock-recursive` (BLUEPRINT revision 4.1, A.8, A.10; stage R4).
 -- RET-2: import re-pointed at Core: `FRSoundnessAccSem` → `FRSoundnessCoreAcc`.
 import FRSoundness4Qry
-import FRVIRChain
+import FRVIRSpecCore
 import FRSoundnessCoreAcc
 
 /-!

@@ -147,9 +147,32 @@ impl B64 {
         }
         r
     }
-    /// `a^(2^64 − 2)`.
-    pub fn inv(self) -> B64 {
+    /// `a^(2^64 − 2)` by square-and-multiply (127 products; the reference of `inv`).
+    pub fn inv_ref(self) -> B64 {
         self.pow(u64::MAX as u128 - 1)
+    }
+    /// `self^(2^k)`.
+    #[inline(always)]
+    fn sqn(self, k: usize) -> B64 {
+        let mut x = self;
+        for _ in 0..k {
+            x = x.sq();
+        }
+        x
+    }
+    /// `a^(2^64 − 2)` by an addition chain (pass 13, Itoh–Tsujii: `t_k = a^(2^k − 1)`,
+    /// `t_{i+j} = t_i^(2^j)·t_j`; 63 squarings and 8 products, was 127 products).
+    pub fn inv(self) -> B64 {
+        let t1 = self;
+        let t2 = t1.sq().mul(t1);
+        let t3 = t2.sq().mul(t1);
+        let t6 = t3.sqn(3).mul(t3);
+        let t12 = t6.sqn(6).mul(t6);
+        let t15 = t12.sqn(3).mul(t3);
+        let t30 = t15.sqn(15).mul(t15);
+        let t60 = t30.sqn(30).mul(t30);
+        let t63 = t60.sqn(3).mul(t3);
+        t63.sq()
     }
     /// Absolute trace to GF(2).
     pub fn trace(self) -> u64 {
@@ -598,5 +621,32 @@ mod tests {
             }
         }
         assert_eq!(gf8_mul(0x53, gf8_inv(0x53)), 1);
+    }
+}
+
+#[cfg(test)]
+mod pass13_tests {
+    use super::*;
+
+    /// The addition-chain inverse equals square-and-multiply's (`inv_ref`) on 0, 1 and random
+    /// elements, and `F::inv` built on it inverts.
+    #[test]
+    fn inv_chain_matches_ref() {
+        let mut s = 0x9e37_79b9_7f4a_7c15u64;
+        let mut nx = || {
+            s ^= s << 13;
+            s ^= s >> 7;
+            s ^= s << 17;
+            s
+        };
+        for x in [0u64, 1, 2, u64::MAX] {
+            assert_eq!(B64(x).inv(), B64(x).inv_ref());
+        }
+        for _ in 0..20_000 {
+            let x = B64(nx());
+            assert_eq!(x.inv(), x.inv_ref());
+            let f = F::new(nx(), nx());
+            assert_eq!(f * f.inv(), F::ONE);
+        }
     }
 }

@@ -316,7 +316,7 @@ pub fn eval_m(kt: &KindTab, protos: &[Proto; 2], tau: &[F], sigma: &[F]) -> [F; 
                 for m in 0..3 {
                     let mut s = F::ZERO;
                     for t in rg[m] as usize..rg[m + 1] as usize {
-                        s += crate::mfill::mul1(p.rows.coefs[t], ls[p.rows.cells[t] as usize - base]);
+                        s += p.rows.cmul(t, ls[p.rows.cells[t] as usize - base]);
                     }
                     o[m].mac(rw, s);
                 }
@@ -338,7 +338,7 @@ pub fn eval_m(kt: &KindTab, protos: &[Proto; 2], tau: &[F], sigma: &[F]) -> [F; 
         for m in 0..3 {
             let mut s = F::ZERO;
             for t in rg[m] as usize..rg[m + 1] as usize {
-                s += l.coefs[t] * es.at(l.cells[t] as usize);
+                s += l.coef(t) * es.at(l.cells[t] as usize);
             }
             out[m] += rw * s;
         }
@@ -361,7 +361,7 @@ pub fn eval_m_ref(kt: &KindTab, protos: &[Proto; 2], tau: &[F], sigma: &[F]) -> 
                 for m in 0..3 {
                     let mut s = F::ZERO;
                     for t in rg[m] as usize..rg[m + 1] as usize {
-                        s += p.rows.coefs[t] * es.at(kt.one_cell + p.rows.cells[t] as usize - base + v * SLOT);
+                        s += p.rows.coef(t) * es.at(kt.one_cell + p.rows.cells[t] as usize - base + v * SLOT);
                     }
                     o[m] += rw * s;
                 }
@@ -381,7 +381,7 @@ pub fn eval_m_ref(kt: &KindTab, protos: &[Proto; 2], tau: &[F], sigma: &[F]) -> 
         for m in 0..3 {
             let mut s = F::ZERO;
             for t in rg[m] as usize..rg[m + 1] as usize {
-                s += l.coefs[t] * es.at(l.cells[t] as usize);
+                s += l.coef(t) * es.at(l.cells[t] as usize);
             }
             out[m] += rw * s;
         }

@@ -23,15 +23,84 @@ pub struct Rows {
     /// `[a0, a1, b1, c1]` per row: A is `a0..a1`, B `a1..b1`, C `b1..c1`.
     pub rng: Vec<[u32; 4]>,
     pub cells: Vec<u32>,
-    pub coefs: Vec<F>,
+    /// Each term's coefficient as an index into `cv` (pass 13: 2 bytes a term instead of 16; the
+    /// node data's 5.3 M terms a prototype carry 513 distinct values). `coef(t)` is the value.
+    pub coefs: Vec<u16>,
+    /// The distinct coefficients, `cv[0] = 1` (`ONE_IX`).
+    pub cv: Vec<F>,
+    /// Their inverses (`done`; a solve whose linear factor is one coefficient needs no inversion).
+    pub cvinv: Vec<F>,
+    /// The interning map of `cv` while the rows are built (`term`; empty after `done`).
+    ix: std::collections::HashMap<[u8; 16], u16>,
 }
 
+/// The index of the coefficient 1 in every `Rows::cv`.
+pub const ONE_IX: u16 = 0;
+
 impl Rows {
-    fn new() -> Rows {
-        Rows { idx: Vec::new(), rng: Vec::new(), cells: Vec::new(), coefs: Vec::new() }
+    pub fn new() -> Rows {
+        let mut r = Rows { idx: Vec::new(), rng: Vec::new(), cells: Vec::new(), coefs: Vec::new(), cv: Vec::new(), cvinv: Vec::new(), ix: Default::default() };
+        assert_eq!(r.intern(F::ONE), ONE_IX);
+        r
+    }
+    /// Rows from their arrays (the image; `cv[0]` must be 1 and every index in range).
+    pub fn from_parts(idx: Vec<u32>, rng: Vec<[u32; 4]>, cells: Vec<u32>, coefs: Vec<u16>, cv: Vec<F>) -> Option<Rows> {
+        let ok = cv.first() == Some(&F::ONE) && cells.len() == coefs.len() && coefs.iter().all(|&c| (c as usize) < cv.len());
+        ok.then(|| {
+            let mut r = Rows { idx, rng, cells, coefs, cv, cvinv: Vec::new(), ix: Default::default() };
+            r.done();
+            r
+        })
     }
     pub fn len(&self) -> usize {
         self.idx.len()
+    }
+    /// The index of the coefficient `c` in `cv` (added if new).
+    pub fn intern(&mut self, c: F) -> u16 {
+        let k = c.to_bytes();
+        if let Some(&i) = self.ix.get(&k) {
+            return i;
+        }
+        let i = u16::try_from(self.cv.len()).expect("node rows: more than 2^16 distinct coefficients");
+        self.cv.push(c);
+        self.ix.insert(k, i);
+        i
+    }
+    /// Append the term `c·cell`.
+    #[inline]
+    pub fn term(&mut self, cell: u32, c: F) {
+        let i = self.intern(c);
+        self.cells.push(cell);
+        self.coefs.push(i);
+    }
+    /// Drop the interning map and compute the inverses (the rows are complete).
+    pub fn done(&mut self) {
+        self.ix = Default::default();
+        self.cvinv = self.cv.iter().map(|c| c.inv()).collect();
+    }
+    /// The inverse of coefficient `i` (`cvinv`, else computed).
+    #[inline(always)]
+    fn inv_ix(&self, i: u16) -> F {
+        self.cvinv.get(i as usize).copied().unwrap_or_else(|| self.cv[i as usize].inv())
+    }
+    /// Term `t`'s coefficient.
+    #[inline(always)]
+    pub fn coef(&self, t: usize) -> F {
+        self.cv[self.coefs[t] as usize]
+    }
+    /// Term `t`'s coefficient times `x` (no product for a coefficient 1).
+    #[inline(always)]
+    pub fn cmul(&self, t: usize, x: F) -> F {
+        let i = self.coefs[t];
+        if i == ONE_IX {
+            x
+        } else {
+            self.cv[i as usize] * x
+        }
+    }
+    /// Every term's coefficient as a value (the 16-byte form before pass 13; tests, `bench`).
+    pub fn coef_values(&self) -> Vec<F> {
+        self.coefs.iter().map(|&i| self.cv[i as usize]).collect()
     }
     fn push_terms(&mut self, s: &str) {
         for t in s.split(' ') {
@@ -39,8 +108,7 @@ impl Rows {
                 continue;
             }
             let (c, h) = t.split_once(':').expect("cell:coef");
-            self.cells.push(c.parse().expect("cell"));
-            self.coefs.push(parse_coef(h));
+            self.term(c.parse().expect("cell"), parse_coef(h));
         }
     }
     /// Push one `row | A | B | C` line.
@@ -62,22 +130,13 @@ impl Rows {
         let mut o = [F::ZERO; 3];
         for k in 0..3 {
             for t in rg[k] as usize..rg[k + 1] as usize {
-                o[k] += mul1(self.coefs[t], w(self.cells[t]));
+                o[k] += self.cmul(t, w(self.cells[t]));
             }
         }
         o
     }
 }
 
-/// `c·x`, without the product when `c = 1` (most coefficients of the M rows).
-#[inline(always)]
-pub(crate) fn mul1(c: F, x: F) -> F {
-    if c == F::ONE {
-        x
-    } else {
-        c * x
-    }
-}
 
 fn unhex(s: &str) -> Vec<u8> {
     (0..s.len() / 2).map(|i| u8::from_str_radix(&s[2 * i..2 * i + 2], 16).unwrap()).collect()
@@ -135,6 +194,168 @@ pub struct Proto {
     pub adj: std::sync::OnceLock<(Vec<u32>, Vec<u32>)>,
     /// An inactive fill's cells (they do not depend on any child), from `prover setup`.
     pub inactive: std::sync::OnceLock<Vec<F>>,
+    /// `fcoefs`' inverses (pass 13: a register's cell is its value over its coefficient; built
+    /// once, before a request, by `warm_adjacency`).
+    pub fcinv: std::sync::OnceLock<Vec<F>>,
+    /// The rows' terms by cell (`by_cell`; `Mats::m_scatter`'s gather), built before a request.
+    pub bycell: std::sync::OnceLock<ByCell>,
+    /// Each recorded order's level schedule (`schedule`; the parallel replay), built before a
+    /// request for the orders `prover setup` recorded.
+    pub sched: [std::sync::OnceLock<Sched>; PLAN_KEYS],
+}
+
+/// A recorded solve order's level schedule (pass 13): the order's entries grouped into levels such
+/// that an entry of a level reads (its row's cells) and writes (its cell) no cell another entry of
+/// the same level writes, and every entry comes after the earlier entries it depends on (the
+/// writers of its row's cells) and after the earlier readers of its cell (they saw it unknown).
+/// So a level's entries run in parallel and each sees exactly the cells it saw in the sequential
+/// replay. Level `j` is `ent[lv[j]..lv[j + 1]]` (positions in the order, ascending).
+pub struct Sched {
+    pub ent: Vec<u32>,
+    pub lv: Vec<u32>,
+}
+
+/// `Sched` of the order `pl` over `rw`.
+pub fn schedule(rw: &Rows, base: u32, pl: &[(u32, u32)]) -> Sched {
+    // the level of a cell's (latest) writer + 1 (0: none so far); 1 + the highest level of an
+    // entry that read the cell
+    let mut lw = vec![0u32; SLOT];
+    let mut lr = vec![0u32; SLOT];
+    let mut lev: Vec<u32> = Vec::with_capacity(pl.len());
+    for &(r, c) in pl {
+        let rg = rw.rng[r as usize];
+        let cs = &rw.cells[rg[0] as usize..rg[3] as usize];
+        let c = c as usize;
+        let mut l = lr[c].max(lw[c]);
+        for &x in cs {
+            l = l.max(lw[(x - base) as usize]);
+        }
+        lev.push(l);
+        lw[c] = lw[c].max(l + 1);
+        for &x in cs {
+            let x = (x - base) as usize;
+            lr[x] = lr[x].max(l + 1);
+        }
+    }
+    let nl = lev.iter().map(|&l| l as usize + 1).max().unwrap_or(0);
+    let mut lv = vec![0u32; nl + 1];
+    for &l in &lev {
+        lv[l as usize + 1] += 1;
+    }
+    for j in 0..nl {
+        lv[j + 1] += lv[j];
+    }
+    let mut pos = lv[..nl].to_vec();
+    let mut ent = vec![0u32; pl.len()];
+    for (q, &l) in lev.iter().enumerate() {
+        ent[pos[l as usize] as usize] = q as u32;
+        pos[l as usize] += 1;
+    }
+    Sched { ent, lv }
+}
+
+/// Whether a replay runs by levels (`FLOCK_SEQ_REPLAY=1`: the sequential replay, the reference).
+fn par_replay() -> bool {
+    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ON.get_or_init(|| std::env::var_os("FLOCK_SEQ_REPLAY").is_none())
+}
+
+/// A level of fewer entries runs on the calling thread.
+const LEVEL_PAR_MIN: usize = 4096;
+
+/// The replay of order `pl` by its levels `sc`: each entry solves its own cell only (`try_row_p`
+/// with `want`; an entry that would solve another cell is a miss, retried by the caller in order).
+/// Returns the solved count and the misses (in the order's order).
+fn replay_levels(rw: &Rows, base: u32, pl: &[(u32, u32)], sc: &Sched, val: &mut [F], known: &mut [bool]) -> (usize, Vec<(u32, u32)>) {
+    assert!(val.len() >= SLOT && known.len() >= SLOT);
+    let (vp, kp) = (crate::par::SyncPtr(val.as_mut_ptr()), crate::par::SyncPtr(known.as_mut_ptr()));
+    let run = |es: &[u32]| -> (usize, Vec<u32>) {
+        let (vp, kp) = (&vp, &kp);
+        let (mut n, mut miss) = (0usize, Vec::new());
+        for &q in es {
+            let (r, c) = pl[q as usize];
+            // SAFETY: `Sched`: no other entry of this level touches this row's cells or `c`, and
+            // `try_row_p` with `want = c` writes `c` only; the levels run one after another
+            match unsafe { try_row_p(rw, base, r as usize, Some(c as usize), vp.0, kp.0) } {
+                Some(_) => n += 1,
+                None if unsafe { *kp.0.add(c as usize) } => {}
+                None => miss.push(q),
+            }
+        }
+        (n, miss)
+    };
+    let (mut solved, mut miss) = (0usize, Vec::new());
+    for j in 0..sc.lv.len() - 1 {
+        let es = &sc.ent[sc.lv[j] as usize..sc.lv[j + 1] as usize];
+        let parts = if es.len() < LEVEL_PAR_MIN { vec![run(es)] } else { crate::par::map_chunks(es.len(), 1024, |lo, hi| run(&es[lo..hi])) };
+        for (n, m) in parts {
+            solved += n;
+            miss.extend(m);
+        }
+    }
+    miss.sort_unstable();
+    if std::env::var_os("FLOCK_VERBOSE").is_some() {
+        let big: Vec<usize> = (0..sc.lv.len() - 1).map(|j| (sc.lv[j + 1] - sc.lv[j]) as usize).filter(|&n| n >= LEVEL_PAR_MIN).collect();
+        eprintln!("  replay by levels: {} entries, {} levels ({} parallel, {} entries), {} misses", pl.len(), sc.lv.len() - 1, big.len(), big.iter().sum::<usize>(), miss.len());
+    }
+    (solved, miss.into_iter().map(|q| pl[q as usize]).collect())
+}
+
+/// A prototype's terms grouped by cell (pass 13): region-local cell `l`'s terms are
+/// `ent[ptr[l]..ptr[l + 1]]` in row order, each `row | m << 30` (`row` region-local, `m` the
+/// matrix: A, B, C) with its coefficient index `coef` (into `Rows::cv`).
+pub struct ByCell {
+    pub ptr: Vec<u32>,
+    pub ent: Vec<u32>,
+    pub coef: Vec<u16>,
+}
+
+/// `ByCell` of `rw` (cells and rows of the region at `base`).
+pub fn by_cell(rw: &Rows, base: u32) -> ByCell {
+    let mut ptr = vec![0u32; SLOT + 1];
+    for &c in &rw.cells {
+        ptr[(c - base) as usize + 1] += 1;
+    }
+    for l in 0..SLOT {
+        ptr[l + 1] += ptr[l];
+    }
+    let mut pos: Vec<u32> = ptr[..SLOT].to_vec();
+    let n = rw.cells.len();
+    let (mut ent, mut coef) = (vec![0u32; n], vec![0u16; n]);
+    for i in 0..rw.len() {
+        let row = rw.idx[i] - base;
+        assert!(row < 1 << 30);
+        let rg = rw.rng[i];
+        for m in 0..3 {
+            for t in rg[m] as usize..rg[m + 1] as usize {
+                let l = (rw.cells[t] - base) as usize;
+                let q = pos[l] as usize;
+                ent[q] = row | (m as u32) << 30;
+                coef[q] = rw.coefs[t];
+                pos[l] += 1;
+            }
+        }
+    }
+    ByCell { ptr, ent, coef }
+}
+
+impl Proto {
+    /// The level schedule of order `key` (built once; `None` without that order).
+    pub fn sched_for(&self, key: usize) -> Option<&Sched> {
+        let pl = self.plan[key].get()?;
+        Some(self.sched[key].get_or_init(|| schedule(&self.rows, (self.pi * SLOT) as u32, pl)))
+    }
+    /// The terms by cell (built once).
+    pub fn by_cell(&self) -> &ByCell {
+        self.bycell.get_or_init(|| by_cell(&self.rows, (self.pi * SLOT) as u32))
+    }
+    /// `fcoefs`' inverses (each distinct value inverted once).
+    pub fn fcinv(&self) -> &[F] {
+        self.fcinv.get_or_init(|| {
+            let mut m: std::collections::HashMap<[u8; 16], F> = Default::default();
+            self.fcoefs.iter().map(|k| *m.entry(k.to_bytes()).or_insert_with(|| k.inv())).collect()
+        })
+    }
 }
 
 /// Per node kind (`node-N*.txt`): the slot table, the link rows, the public cells.
@@ -217,6 +438,7 @@ impl KindTab {
                 kt.links.push_line(l);
             }
         }
+        kt.links.done();
         kt
     }
     /// The slot's region's first absolute cell.
@@ -234,6 +456,7 @@ impl Proto {
                 rows.push_line(l);
             }
         }
+        rows.done();
         let (mut fcells, mut fcoefs) = (Vec::new(), Vec::new());
         let push = |s: &str, fc: &mut Vec<u32>, fk: &mut Vec<F>| -> (u32, u32) {
             let a = fc.len() as u32;
@@ -278,7 +501,7 @@ impl Proto {
             let terms = push(p.get(2).copied().unwrap_or(""), &mut fcells, &mut fcoefs);
             aux.push(Aux { reg: p[0].trim().parse().unwrap(), bits: k == "bits", n: n.parse().unwrap(), terms });
         }
-        Proto { pi, rows, regs, aux, fcells, fcoefs, plan: Default::default(), adj: Default::default(), inactive: Default::default() }
+        Proto { pi, rows, regs, aux, fcells, fcoefs, plan: Default::default(), adj: Default::default(), inactive: Default::default(), fcinv: Default::default(), bycell: Default::default(), sched: Default::default() }
     }
 }
 
@@ -404,6 +627,7 @@ fn fill_with(p: &Proto, run: SlotRun, partial: bool, replay: bool) -> (Vec<F>, F
         set(base + 1 + i as u32, if on { F::ONE } else { F::ZERO }, &mut val, &mut known, &mut st, &|| "sel".into());
     }
     // registers (single-cell forms) and auxiliary imports
+    let fcinv = p.fcinv();
     for (ri, r) in p.regs.iter().enumerate() {
         let cs: Vec<F> = match run {
             Some((regs, _)) => match regs.get(ri) {
@@ -417,7 +641,7 @@ fn fill_with(p: &Proto, run: SlotRun, partial: bool, replay: bool) -> (Vec<F>, F
             if b == a + 1 && j < cs.len() {
                 let k = p.fcoefs[a as usize];
                 if !k.is_zero() {
-                    set(p.fcells[a as usize], cs[j] * k.inv(), &mut val, &mut known, &mut st, &|| format!("reg r{ri}[{j}]"));
+                    set(p.fcells[a as usize], cs[j] * fcinv[a as usize], &mut val, &mut known, &mut st, &|| format!("reg r{ri}[{j}]"));
                 }
             }
         }
@@ -428,8 +652,7 @@ fn fill_with(p: &Proto, run: SlotRun, partial: bool, replay: bool) -> (Vec<F>, F
             None => vec![F::ZERO; ax.n],
         };
         for (j, t) in (ax.terms.0..ax.terms.1).enumerate() {
-            let k = p.fcoefs[t as usize];
-            set(p.fcells[t as usize], cs.get(j).copied().unwrap_or(F::ZERO) * k.inv(), &mut val, &mut known, &mut st, &|| format!("aux r{}[{j}]", ax.reg));
+            set(p.fcells[t as usize], cs.get(j).copied().unwrap_or(F::ZERO) * fcinv[t as usize], &mut val, &mut known, &mut st, &|| format!("aux r{}[{j}]", ax.reg));
         }
     }
     // the forward solve: the prototype's recorded order when it replays (the same rows solve the
@@ -441,30 +664,38 @@ fn fill_with(p: &Proto, run: SlotRun, partial: bool, replay: bool) -> (Vec<F>, F
         None => 0,
     };
     // this key's order, else (an active fill) another index's: the orders mostly agree
-    let cand = if !replay {
+    let ckey = if !replay {
         None
     } else if key == 0 || EXACT.load(std::sync::atomic::Ordering::Relaxed) {
-        p.plan[key].get()
+        Some(key).filter(|&k| p.plan[k].get().is_some())
     } else {
         // the other variant of this index first
         let twin = if key >= 4 { key - 3 } else { key + 3 };
-        p.plan[key].get().or_else(|| p.plan[twin].get()).or_else(|| p.plan[1..].iter().find_map(|o| o.get()))
+        [key, twin].into_iter().chain(1..PLAN_KEYS).find(|&k| p.plan[k].get().is_some())
     };
     let mut done = false;
-    if let Some(pl) = cand {
+    if let Some(ck) = ckey {
+        let pl = p.plan[ck].get().unwrap();
         // tolerant replay: an entry that does not solve its cell here is retried after the rest
         // (another child's data can change which row solves a cell first); the row check below
         // decides (an assignment that satisfies every row agrees with the worklist's on every cell
-        // the worklist solves, and leaves the others zero as it does)
-        let mut miss: Vec<(u32, u32)> = Vec::new();
-        let mut solved = 0usize;
-        for &(r, c) in pl {
-            match try_row(rw, base, r as usize, &mut val, &mut known) {
-                Some(_) => solved += 1,
-                None if known[c as usize] => {}
-                None => miss.push((r, c)),
+        // the worklist solves, and leaves the others zero as it does). Pass 13: by the order's
+        // levels, in parallel (`replay_levels`), for an active slot (an inactive fill is cached)
+        let (mut solved, mut miss) = match (ck > 0 && par_replay()).then(|| p.sched_for(ck)).flatten() {
+            Some(sc) => replay_levels(rw, base, pl, sc, &mut val, &mut known),
+            None => {
+                let mut miss: Vec<(u32, u32)> = Vec::new();
+                let mut solved = 0usize;
+                for &(r, c) in pl {
+                    match try_row(rw, base, r as usize, &mut val, &mut known) {
+                        Some(_) => solved += 1,
+                        None if known[c as usize] => {}
+                        None => miss.push((r, c)),
+                    }
+                }
+                (solved, miss)
             }
-        }
+        };
         while !miss.is_empty() {
             let before = miss.len();
             miss.retain(|&(r, c)| {
@@ -506,14 +737,27 @@ fn fill_with(p: &Proto, run: SlotRun, partial: bool, replay: bool) -> (Vec<F>, F
     for pass in 0..2 {
         st.failed_rows = 0;
         st.first_failed.clear();
-        let mut failed: Vec<u32> = Vec::new();
         let n_check = recheck.as_ref().map_or(nr, |v| v.len());
-        for q in 0..n_check {
-            let i = recheck.as_ref().map_or(q, |v| v[q] as usize);
-            let [a, b, c] = rw.eval(i, &|x| val[(x - base) as usize]);
-            if a * b != c {
+        // the rows checked in parallel (pass 13; each chunk's failures in row order, the chunks in
+        // order: the same list as the sequential check)
+        let bad = crate::par::map_chunks(n_check, 1 << 13, |lo, hi| {
+            let mut f: Vec<u32> = Vec::new();
+            for q in lo..hi {
+                let i = recheck.as_ref().map_or(q, |v| v[q] as usize);
+                let [a, b, c] = rw.eval(i, &|x| val[(x - base) as usize]);
+                if a * b != c {
+                    f.push(i as u32);
+                }
+            }
+            f
+        });
+        let mut failed: Vec<u32> = Vec::new();
+        for i in bad.into_iter().flatten() {
+            let i = i as usize;
+            {
                 st.failed_rows += 1;
                 if st.failed_rows <= 2 && std::env::var_os("FLOCK_FILL_DEBUG").is_some() {
+                    let [a, b, c] = rw.eval(i, &|x| val[(x - base) as usize]);
                     let rg = rw.rng[i];
                     let mut d = format!("row {} a={a:?} b={b:?} c={c:?}:", rw.idx[i]);
                     for m in 0..3 {
@@ -577,37 +821,63 @@ fn fill_with(p: &Proto, run: SlotRun, partial: bool, replay: bool) -> (Vec<F>, F
     (val, st)
 }
 
+/// Whether `try_row` takes a coefficient's inverse from `Rows::cvinv` (`FLOCK_FILL_INV=1`: always
+/// `lin.inv()`, the reference).
+fn inv_tab() -> bool {
+    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ON.get_or_init(|| std::env::var_os("FLOCK_FILL_INV").is_none())
+}
+
 /// One row with one unknown cell, solved in place: `(a0 + αx)(b0 + βx) = c0 + γx` with one of
 /// `α`, `β` zero gives `x·(a0β + αb0 + γ) = a0b0 + c0`. A row whose `A` (or `B`) is known and zero
 /// is `C = 0`, solved for `C`'s one unknown whatever the other factor's (an inverse gate at `0`:
 /// `0·i = s` gives `s = 0`, S-E12e's `tplShiftSeg`). Returns the solved cell (region-local).
 fn try_row(rw: &Rows, base: u32, i: usize, val: &mut [F], known: &mut [bool]) -> Option<usize> {
+    assert!(val.len() >= SLOT && known.len() >= SLOT);
+    // SAFETY: the cells are region-local (< SLOT) and the slices exclusively borrowed
+    unsafe { try_row_p(rw, base, i, None, val.as_mut_ptr(), known.as_mut_ptr()) }
+}
+
+/// `try_row` on pointers; with `want`, only a solve of cell `want` is written (else `None`).
+/// SAFETY: `val`, `known` point at `SLOT` cells, and no other thread writes row `i`'s cells or
+/// accesses the solved cell meanwhile.
+unsafe fn try_row_p(rw: &Rows, base: u32, i: usize, want: Option<usize>, val: *mut F, known: *mut bool) -> Option<usize> {
     let rg = rw.rng[i];
     let mut unk: [Option<usize>; 3] = [None; 3];
     let mut multi = [false; 3];
     let mut kn = [F::ZERO; 3];
     let mut co = [F::ZERO; 3];
+    // C's unknown terms: how many, and the last one's coefficient index (one term: `co[2]` is that
+    // coefficient, whose inverse `cvinv` holds; pass 13)
+    let (mut nc, mut ic) = (0usize, ONE_IX);
     for k in 0..3 {
         for t in rg[k] as usize..rg[k + 1] as usize {
             let l = (rw.cells[t] - base) as usize;
-            if known[l] {
-                kn[k] += mul1(rw.coefs[t], val[l]);
+            debug_assert!(l < SLOT);
+            if *known.add(l) {
+                kn[k] += rw.cmul(t, *val.add(l));
             } else {
                 match unk[k] {
                     None => unk[k] = Some(l),
                     Some(u) if u == l => {}
                     _ => multi[k] = true,
                 }
-                co[k] += rw.coefs[t];
+                co[k] += rw.coef(t);
+                if k == 2 {
+                    nc += 1;
+                    ic = rw.coefs[t];
+                }
             }
         }
     }
-    let solve = |u: usize, lin: F, rhs: F, val: &mut [F], known: &mut [bool]| -> Option<usize> {
-        if lin.is_zero() {
+    // `lin = co[2]` with one term: its inverse from the table (`lin.inv()` is the reference)
+    let cinv = (nc == 1 && inv_tab()).then(|| rw.inv_ix(ic));
+    let solve = |u: usize, lin: F, inv: Option<F>, rhs: F, val: *mut F, known: *mut bool| -> Option<usize> {
+        if lin.is_zero() || want.is_some_and(|w| w != u) {
             return None;
         }
-        val[u] = if lin == F::ONE { rhs } else { rhs * lin.inv() };
-        known[u] = true;
+        *val.add(u) = if lin == F::ONE { rhs } else { rhs * inv.unwrap_or_else(|| lin.inv()) };
+        *known.add(u) = true;
         Some(u)
     };
     // the distinct unknown cells of the three forms, sorted (no allocation: at most three)
@@ -624,12 +894,13 @@ fn try_row(rw: &Rows, base: u32, i: usize, val: &mut [F], known: &mut [bool]) ->
         if !co[0].is_zero() && !co[1].is_zero() {
             return None;
         }
-        return solve(single.unwrap(), kn[0] * co[1] + co[0] * kn[1] + co[2], kn[0] * kn[1] + kn[2], val, known);
+        let only_c = co[0].is_zero() && co[1].is_zero();
+        return solve(single.unwrap(), kn[0] * co[1] + co[0] * kn[1] + co[2], cinv.filter(|_| only_c), kn[0] * kn[1] + kn[2], val, known);
     }
     // a known zero factor: the row is `C = 0`
     let zero_factor = (unk[0].is_none() && kn[0].is_zero()) || (unk[1].is_none() && kn[1].is_zero());
     match (zero_factor, unk[2], multi[2]) {
-        (true, Some(u), false) => solve(u, co[2], kn[2], val, known),
+        (true, Some(u), false) => solve(u, co[2], cinv, kn[2], val, known),
         _ => None,
     }
 }
@@ -637,6 +908,7 @@ fn try_row(rw: &Rows, base: u32, i: usize, val: &mut [F], known: &mut [bool]) ->
 /// Build the prototype's adjacency now (before a request).
 pub fn warm_adjacency(p: &Proto) {
     let _ = p.adj.get_or_init(|| adjacency(&p.rows, (p.pi * SLOT) as u32));
+    let _ = p.fcinv();
 }
 
 /// `worklist` with the prototype's cached adjacency.
@@ -719,12 +991,13 @@ fn worklist_q(rw: &Rows, base: u32, deg: &[u32], adj: &[u32], val: &mut [F], kno
     rec
 }
 
-/// The dump directory (`FLOCK_NODE_DUMP`, else `logs/S-E13a/nodedump` above the working directory)
+/// The dump directory (`FLOCK_NODE_DUMP`, else `logs/B0/nodedump` above the working directory; pass 13:
+/// B0's row layout, was `logs/S-E13a/nodedump`)
 /// and the prototype programs' directory (`FLOCK_PROTO_DIR`, else the dump directory).
 pub fn find_dirs() -> Option<(std::path::PathBuf, std::path::PathBuf)> {
     let d = match std::env::var_os("FLOCK_NODE_DUMP") {
         Some(p) => std::path::PathBuf::from(p),
-        None => crate::kat::find_up("logs/S-E13a/nodedump/mrows-p0.txt")?.parent()?.to_path_buf(),
+        None => crate::kat::find_up("logs/B0/nodedump/mrows-p0.txt")?.parent()?.to_path_buf(),
     };
     let p = std::env::var_os("FLOCK_PROTO_DIR").map(std::path::PathBuf::from).unwrap_or_else(|| d.clone());
     Some((d, p))
@@ -795,6 +1068,69 @@ pub fn load_plans(protos: &[Proto; 2], tag: &[u8; 32], b: &[u8]) -> bool {
     true
 }
 
+/// Every recorded order's level schedule (built here if not yet), as `prover setup` stores them
+/// (pass 13): `FLSCHD01`, the node data's tag, then per prototype and key the order's length
+/// (`u32::MAX`: no order), the level count and the arrays `lv`, `ent` (little-endian `u32`).
+pub fn save_scheds(protos: &[Proto; 2], tag: &[u8; 32]) -> Vec<u8> {
+    let mut out = b"FLSCHD01".to_vec();
+    out.extend_from_slice(tag);
+    let mut put = |x: u32| out.extend_from_slice(&x.to_le_bytes());
+    for p in protos.iter() {
+        for k in 0..PLAN_KEYS {
+            match (k > 0).then(|| p.sched_for(k)).flatten() {
+                None => put(u32::MAX),
+                Some(sc) => {
+                    put(sc.ent.len() as u32);
+                    put(sc.lv.len() as u32);
+                    sc.lv.iter().chain(sc.ent.iter()).for_each(|&x| put(x));
+                }
+            }
+        }
+    }
+    out
+}
+
+/// Load `save_scheds`' bytes for the orders loaded (`load_plans`, same tag): a schedule is taken
+/// only when its order is set and of its length, its levels ascend from 0 to that length and its
+/// entries are a permutation of the order's positions. `false` when the bytes are not this data's.
+pub fn load_scheds(protos: &[Proto; 2], tag: &[u8; 32], b: &[u8]) -> bool {
+    if b.len() < 40 || &b[..8] != b"FLSCHD01" || &b[8..40] != tag {
+        return false;
+    }
+    let mut i: usize = 40;
+    let mut rd = |n: usize| -> Option<Vec<u32>> {
+        let x = b.get(i..i.checked_add(n.checked_mul(4)?)?)?;
+        i += 4 * n;
+        Some(x.chunks_exact(4).map(|c| u32::from_le_bytes(c.try_into().unwrap())).collect())
+    };
+    let mut got: Vec<(usize, usize, Sched)> = Vec::new();
+    for p in 0..2 {
+        for k in 0..PLAN_KEYS {
+            let Some(h) = rd(1) else { return false };
+            if h[0] == u32::MAX {
+                continue;
+            }
+            let n = h[0] as usize;
+            let Some(nl) = rd(1) else { return false };
+            let (Some(lv), Some(ent)) = (rd(nl[0] as usize), rd(n)) else { return false };
+            let len_ok = protos[p].plan[k].get().is_some_and(|pl| pl.len() == n);
+            let lv_ok = lv.first() == Some(&0) && lv.last() == Some(&(n as u32)) && lv.windows(2).all(|w| w[0] <= w[1]);
+            let mut seen = vec![false; n];
+            let perm_ok = ent.iter().all(|&q| (q as usize) < n && !std::mem::replace(&mut seen[q as usize], true));
+            if len_ok && lv_ok && perm_ok {
+                got.push((p, k, Sched { ent, lv }));
+            }
+        }
+    }
+    if i != b.len() {
+        return false;
+    }
+    for (p, k, sc) in got {
+        let _ = protos[p].sched[k].set(sc);
+    }
+    true
+}
+
 #[cfg(test)]
 mod pass11_tests {
     use super::*;
@@ -802,7 +1138,7 @@ mod pass11_tests {
     /// `save_plans` / `load_plans` round trip; a wrong tag or a cut file loads nothing.
     #[test]
     fn plans_round_trip() {
-        let mk = || Proto { pi: 0, rows: Rows::new(), regs: vec![], aux: vec![], fcells: vec![], fcoefs: vec![], plan: Default::default(), adj: Default::default(), inactive: Default::default() };
+        let mk = || Proto { pi: 0, rows: Rows::new(), regs: vec![], aux: vec![], fcells: vec![], fcoefs: vec![], plan: Default::default(), adj: Default::default(), inactive: Default::default(), fcinv: Default::default(), bycell: Default::default(), sched: Default::default() };
         let a = [mk(), mk()];
         let _ = a[0].plan[0].set(vec![(1, 2), (3, 4)]);
         let _ = a[1].plan[2].set(vec![(5, 6)]);
@@ -816,6 +1152,34 @@ mod pass11_tests {
         assert_eq!(c[0].plan[0].get(), Some(&vec![(1, 2), (3, 4)]));
         assert_eq!(c[1].plan[2].get(), Some(&vec![(5, 6)]));
         assert!(c[0].plan[1].get().is_none() && c[1].plan[0].get().is_none());
+    }
+    /// (+) A chain of rows gets one level per link and independent rows share a level; the
+    /// schedules round-trip through `save_scheds`/`load_scheds`; (−) a wrong tag, a cut file and a
+    /// schedule that is not a permutation load nothing.
+    #[test]
+    fn schedules_levels_and_round_trip() {
+        let mk = || Proto { pi: 0, rows: Rows::new(), regs: vec![], aux: vec![], fcells: vec![], fcoefs: vec![], plan: Default::default(), adj: Default::default(), inactive: Default::default(), fcinv: Default::default(), bycell: Default::default(), sched: Default::default() };
+        let mut a = [mk(), mk()];
+        // rows `x_{i+1} = x_i · 1` for cells 1 → 2 → 3, and `x_5 = x_4 · 1` beside them
+        for (i, (x, y)) in [(1u32, 2u32), (2, 3), (4, 5)].into_iter().enumerate() {
+            a[0].rows.push_line(&format!("{i} | {x}:01000000000000000000000000000000 | 0:01000000000000000000000000000000 | {y}:01000000000000000000000000000000"));
+        }
+        a[0].rows.done();
+        let _ = a[0].plan[1].set(vec![(0, 2), (2, 5), (1, 3)]);
+        let sc = a[0].sched_for(1).unwrap();
+        assert_eq!((sc.lv.clone(), sc.ent.clone()), (vec![0, 2, 3], vec![0, 1, 2]));
+        let tag = [3u8; 32];
+        let b = save_scheds(&a, &tag);
+        let c = [mk(), mk()];
+        let _ = c[0].plan[1].set(vec![(0, 2), (2, 5), (1, 3)]);
+        assert!(!load_scheds(&c, &[4u8; 32], &b) && !load_scheds(&c, &tag, &b[..b.len() - 4]));
+        let mut bad = b.clone();
+        // prototype 0, key 1's last `ent` entry (after key 0's marker, n, the level count, lv, ent)
+        bad[40 + 4 * 8..40 + 4 * 9].copy_from_slice(&0u32.to_le_bytes()); // ent = [0, 1, 0]
+        assert!(load_scheds(&c, &tag, &bad) && c[0].sched[1].get().is_none());
+        assert!(load_scheds(&c, &tag, &b));
+        let l = c[0].sched[1].get().unwrap();
+        assert_eq!((l.lv.clone(), l.ent.clone()), (vec![0, 2, 3], vec![0, 1, 2]));
     }
 }
 

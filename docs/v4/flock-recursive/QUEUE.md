@@ -2,18 +2,21 @@
 
 Last updated 2026-10-28. **Rebased onto core PR #20 (pin `6d05d00`, commit `987e679`); blueprint revision 4.0** (§0.1 B-11…B-17, §10 changes 25). Build trees use `logs/org20`.
 
-## Running — as of 2026-10-29 (6 agents, FR-D8)
+## Running — as of 2026-10-29 (6 agents)
 
-Main (`v4/flock-recursive`):
-- S-H4 pass 6: `FRXDec4Levels`, the 4.1 chain table (parametric in the item sequence), `FRXOut4`, `FRXNd4` (`nd`), the plug into `FRX4Prog`/`FRX4Ext`/`FRSubmission4*` on main.
-- RET-3: retirement step 4 (3.x verifier shapes out of `Solution`'s closure).
-- B0 (done, held uncommitted in the worktree, frozen at `logs/B0-orch-copy`): prototypes 630,016 / 618,496 rows (−100 k / −107 k), `evalMT4` parity; commits together with P2⁹'s re-embedded plan form so main's prover and V stay consistent.
-- P2⁹: stream-proof nondeterminism, then prover levers.
+Main (`v4/flock-recursive`, core `64378d2`):
+- S-H4 pass 7: `FRXOut4`, `FRXNd4` (`nd`), the plug; `Open4` restated over S-E13a's route with `Links4 nd` named.
+- S-L4: `hL_of_res` (residual `hL`, the node links; unowned until PATH-review finding 1).
+- RET-4: `FRNodeRead4`'s 3.x `FRNodeSoundA` import (≈ 75 modules, ≈ 597 CPU-s on the PackSound route).
+- D1-probe: the `replay_mle` fixed point — D1 vs §8's reserve, decided before A2″'s `seq4` is final.
+- G4: golf (winding down).
 
-Design:
-- D-PK: addendum §11 (β′) to `PACK-4.4.md` after A3′'s attack on (β); the N8 H overflow.
+`v4/rev44`:
+- A2″: (β′) V change + L1 + L2.
 
-`v4/rev44` (worktree `../recursion.fast-submissions-rev44`): **paused** at `ccdde20`; its V (A2′) is **unsound** (A3′'s attack) until (β′) is ruled and built.
+Held for commit: RET-3 (isolation build running).
+
+**Next (PATH-review):** after A2″ — merge main (B0, P2⁹, RET-3) into rev44; A3′ ∥ B2′ (templates) ∥ B3's generic `compileFromX_run` ∥ C1's `R` keys; A1′ (stride 24,222 under (β′)+L2); B4 (aggChk) before C0's aggChk part; S-H4's port of `nd` to rev44's format; a real-closure cert probe (Solution importing the PackSound route; build **and kernel**, `kernel_s` 600); E1 with a worst-case `prover first` check (`step_s` 60); a clean submission branch touching only `submissions/flock-recursive/`.
 
 ## Waiting
 
@@ -64,6 +67,14 @@ Design:
 S-A `8ff873c`; S-C `ebac8c2`; S-D `8e6dad7`; S-E1 `2d5a811`; S-H1 `40b2f81`; S-0 `47158b1`; S-E2/S-E3 `8447c50`; S-F `c8e1869`; S-F2 `8f22b86`; S-G through `ac43569`; S-H2 through `11fb3a5`; INT-1 `5fc7d3b`; S-E5 `9dbab71`; … S-N2 `75eff21`; INT-10 `1c5a738`; RET-2 `1a342e7`; S-H4 p5 `a84753a`; G3 `302b523` (12 modules −30 % CPU; the finals' flag modules need a block-wise read lemma, ≈ 66 CPU-s); S-H4 p4 `6d79280`; S-H4 p2–3 `170c2ee` (lagIR, level decode at CKind); P2⁸ `2d9dd8c` (7763: step + overhead 11.41 s, M ≤ 83, truncated 30.4 %, P̄ 8.43 s; prover.s f0841393…); G2 `4ac68fc` (15 FRX modules −42 % CPU); PACK-4.4.1 + review; S-E13b `ce2a4ad`; D-PK memo `PACK-4.4.md` (committed, under review); P2⁷ `5e99fba` (7763: step + overhead 12.78 s, M ≤ 74, truncated ≈ 52 %; S-E13a/b's matrices and cells, 0 failing rows on honest witnesses; prover.s 5e1bab39…); S-E14 `f5ad181` (replay mechanism; segment `linkWAll` only); S-E13a `8cc8ccd` (kindN, kindS@0, wf@0, wots, aggPad closed through `gap4_of_rows : StmtN4 → PfHdr pf → Gap4R → Gap4`; `Gap4R` = imp, kindS/wf at i ≥ 1, aggChk; V(N4) +≈30 ms; new node dump for P2); S-I `2f437ed` (residuals 8–9 closed; `Solution` PROVISIONAL under `Open4`; **cert build 882 s on the 7763 > `build_s` 600 → REJECT**: 307 modules, 2,975 CPU-s, need ≤ 2,020 (≤ 1,550 for 1.3×); bench probe season S = 6.421, truncated at M = 63) (`SegOut4` gone: `ks_rev4H`/`certificate_rev4H`; open: drop `hO`/`out` from S-N2's `ks_rev4GH`, then delete the G forms, `SegOut4`, `runFacts4_C`). FR builds as a whole.
 
 ## Rulings
+
+- **Re-pin to core `64378d2` (PR #20 head, 2026-10-29 09:32):** M = 96 constant, `stream_s` 1,920 s, **`build_s` 1,200 s** (certificate job 40 min, benchmark 50 min); harness/docs only, no Lean change (`logs/org20`'s harness files refreshed in place). The certificate build (696 s on the 7763) fits with 1.7×; the stream (96 × ≈ 11.1 s ≈ 1,066 s) fits with 1.8×. Build-budget tracks (RET-3, G4) wind down; the critical path is `nd` (S-H4) and rev44 (A2″ → A3′ ∥ B2′ → A1′ → … → E1).
+
+- **User, 2026-10-29 (announced, not yet in the core):** the stream length becomes **M = 96, constant**, and `stream_s` grows **1.5× or 2×** (1,440 or 1,920 s). Plan against it now: with P2⁹'s 11.10 s per step + overhead on the 7763, 96 steps ≈ 1,066 s — fits 1,440 s with ≈ 1.35× margin. The orchestrator watches the core's PR #20 head (`6d05d00`) and the open-PR list for the change, then re-pins (`logs/org20` successor) and re-measures.
+
+- **User, 2026-10-29 (revised):** reviews of each task by a **cheaper Opus subagent** (effort lower) to spot issues/friction early and speed the submission; no Fable/full adversarial reviews; the bar is `HARNESS: ACCEPT`; golf stays.
+
+- **(β′), 2026-10-29:** adopted (PACK §11 + review PB: soundness confirmed value by value, ε unchanged; L1 + L2 both needed; L4 rejected — a lost stream ends the evaluation). The doom chain is PB-M1's carried form (`DT 52 := DPf ∨ ¬truthCap`, 53 gates on Σ ≠ 0, 54/55 split on `A = Â(ζ)`), not §11's literal `DT 53/55`.
 
 - **B0, 2026-10-29:** `splitMin = 32` kept (V parity; 16 would save 24.6 k rows at +3 % `evalMT4`); the cap check must be templates (B0 measured A2′'s skeleton form at ≈ 55–65 k sparse rows, ≈ 30 ms per prototype); B0 lands on main with P2⁹'s re-embed, then merges into rev44.
 

@@ -17,8 +17,9 @@ the keys are well formed (`Key.ok`) and the pieces' rows **are** the slot's rows
 once per node); otherwise the slot is one sparse piece. This module holds the search (untrusted):
 
 * **skeleton blocks**: the compiler aligns a Merkle position and a Horner block
-  (`FRVIRCompile.alignOf`); a block runs from its aligned start to its closing `assertEq`. The
-  tensor `eqTable` gives one block per `hi` index. A block's rows are abstracted (`absRows`): cells
+  (`FRVIRCompile.alignOf`); a block runs from its aligned start to its closing `assertEq` or to the
+  next aligned start, and is cut into aligned pieces (`cutSeg`, B0). The tensor `eqTable` gives one
+  block per `hi` index. A block's rows are abstracted (`absRows`): cells
   in its window `[c0, c0 + 2^B)` become locals, every other cell an input;
 * **template instances** (S-E3's `tins`): the template's rows and input forms as they are;
 * **grouping** by `(rows, A, B)`; per key, an input whose form is one cell at a fixed offset in every
@@ -92,6 +93,32 @@ structure Seg where
   c0 : ℕ
   B : ℕ
 
+/-- The alignment bits of `p`, up to `k`: the largest `j ≤ k` with `2^j ∣ p`. -/
+def alignBits (p : ℕ) : ℕ → ℕ
+  | 0 => 0
+  | k + 1 => if p % 2 ^ (k + 1) = 0 then k + 1 else alignBits p k
+
+/-- **A skeleton block `[p, r1)` cut into aligned pieces** (B0, untrusted): from `p`, the piece of
+`2^k` rows, `k` the smaller of `p`'s alignment and the bits of the rows left, cut at `r1`; every piece
+over the block's cell window `(c0, b)`. A block of `3u` rows at a `u`-aligned start is two pieces
+(`FRVIRCompile.strideBits`). Pushed last first, as `segsGo`'s blocks. -/
+def cutSeg (c0 b r1 : ℕ) : ℕ → ℕ → List Seg → List Seg
+  | 0, _, acc => acc
+  | fuel + 1, p, acc =>
+    if r1 ≤ p then acc else
+    let q := min (p + 2 ^ alignBits p (Nat.size (r1 - p - 1))) r1
+    cutSeg c0 b r1 fuel q (⟨p, q, c0, b⟩ :: acc)
+
+/-- A block `[r0, r1)`'s pieces pushed on `acc`. -/
+def cutBlock (r0 r1 c0 b : ℕ) (acc : List Seg) : List Seg := cutSeg c0 b r1 (r1 - r0) r0 acc
+
+/-- (+) A Horner block of 383 rows at a start `≡ 128 (mod 256)` is 128 + 255 rows, at a start
+`≡ 0 (mod 256)` 256 + 127; (−) at a start `≡ 0 (mod 512)` it is one piece. -/
+theorem cutBlock_ctl : (cutBlock 128 511 0 9 []).map (fun s => (s.r0, s.r1)) = [(256, 511), (128, 256)] ∧
+    (cutBlock 256 639 0 9 []).map (fun s => (s.r0, s.r1)) = [(512, 639), (256, 512)] ∧
+    (cutBlock 512 895 0 9 []).map (fun s => (s.r0, s.r1)) = [(512, 895)] := by
+  decide
+
 /-- The product blocks of a tensor `eqTable` (as `FRVIRCompile.eqTensor` lays them out), the op's
 state `cs` (after alignment). -/
 def tensorSegs (P : Params) (cs : CS) (xs : List Lin) : List Seg :=
@@ -105,12 +132,17 @@ def tensorSegs (P : Params) (cs : CS) (xs : List Lin) : List Seg :=
     ⟨s0 + 2 ^ p * j, s0 + 2 ^ p * (j + 1), cs.next + u0 + 2 ^ p * j, p⟩
 
 /-- The skeleton's blocks, by replaying the compile (`compileFromX`'s recursion): a block opens at
-an aligned op and closes after the next `assertEq`; tensor `eqTable`s add their product blocks.
+an aligned op and closes after the next `assertEq` or at the next aligned op, cut into aligned
+pieces (`cutBlock`); tensor `eqTable`s add their product blocks.
 Returned last first. -/
 def segsGo (X : Ext) (P : Params) : CS → List Op → Option (ℕ × ℕ × ℕ) → List Seg → List Seg
   | _, [], _, acc => acc
   | cs, op :: ops, cur, acc =>
     let a := alignOf op ops
+    -- a block still open when the next one opens ends here (B0: a block need not end in `assertEq`)
+    let acc := match a, cur with
+      | some _, some (r0, c0, b) => cutBlock r0 cs.nrows c0 b acc
+      | _, _ => acc
     let cs' := cs.align a
     let cur := match a with
       | some (_, b) => some (cs'.nrows, cs'.next, b)
@@ -124,7 +156,7 @@ def segsGo (X : Ext) (P : Params) : CS → List Op → Option (ℕ × ℕ × ℕ
       | _ => acc
     let cs2 := cs'.add op (stepOut X P cs' op)
     match op, cur with
-    | .assertEq .., some (r0, c0, b) => segsGo X P cs2 ops none (⟨r0, cs2.nrows, c0, b⟩ :: acc)
+    | .assertEq .., some (r0, c0, b) => segsGo X P cs2 ops none (cutBlock r0 cs2.nrows c0 b acc)
     | _, _ => segsGo X P cs2 ops cur acc
 
 /-- The abstraction's state: the input cells, numbered by first appearance. -/

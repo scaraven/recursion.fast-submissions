@@ -7,7 +7,8 @@
 -- `FRSoundnessFrW0V` (10), `FRSoundnessFrRS0` (5). Content: the rows and front readers revision 4.1
 -- reuses (`fF`, `rowMat`, `Reads`, the `Rows` matrices, `stL`/`vkL`, `PubOK`, the Z/L/E/RS0 pieces,
 -- `D2`/`D3`). The 3.x modules import this one.
-import FRNodeCircuit
+import FRVIRFinalsCoreSG
+import FRVIRTplFast
 import FRSoundnessCoreTail
 import FRSoundnessCoreTruths
 import RecursionFast.Contract.Certificate

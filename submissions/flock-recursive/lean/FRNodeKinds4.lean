@@ -1,6 +1,6 @@
 -- New for `flock-recursive` (BLUEPRINT revision 4.1, B-13; A.6, A.7 generalised; stage S-E12a).
 import FRNodeLayout4
-import FRNodeTarget
+import FRNodeTargetCore
 
 /-!
 # The revision 4.1 node's block-kind map, targets and indicators (`N2`/`N4`/`N8`)

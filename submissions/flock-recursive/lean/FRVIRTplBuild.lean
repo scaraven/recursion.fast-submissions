@@ -69,6 +69,10 @@ def compMSX (X : TCtx → Ext) (L : TLay) (P : Params) : List (TKey × Tpl) → 
   | M, cs, [], _, acc => (cs, acc, M)
   | M, cs, op :: ops, cur, acc =>
     let a := alignOf op ops
+    -- a block still open when the next one opens ends here (B0: a block need not end in `assertEq`)
+    let acc := match a, cur with
+      | some _, some (r0, c0, b) => cutBlock r0 cs.nrows c0 b acc
+      | _, _ => acc
     let cs' := cs.align a
     let cur := match a with
       | some (_, b) => some (cs'.nrows, cs'.next, b)
@@ -86,7 +90,7 @@ def compMSX (X : TCtx → Ext) (L : TLay) (P : Params) : List (TKey × Tpl) → 
     let M := memoAdd M o.tin
     let cs2 := cs'.add op o
     match op, cur with
-    | .assertEq .., some (r0, c0, b) => compMSX X L P M cs2 ops none (⟨r0, cs2.nrows, c0, b⟩ :: acc)
+    | .assertEq .., some (r0, c0, b) => compMSX X L P M cs2 ops none (cutBlock r0 cs2.nrows c0 b acc)
     | _, _ => compMSX X L P M cs2 ops cur acc
 
 theorem compMSX_eq (X : TCtx → Ext) (L : TLay) (P : Params) : ∀ (ops : List Op)
@@ -128,12 +132,12 @@ def mkLayI (info : TKey → ℕ × ℕ × ℕ) (r0 c0 : ℕ) : List (TKey × ℕ
   | [] => []
   | (k, n) :: ks =>
     let nr := (info k).1; let rbk := Nat.size (nr - 1); let cr := (info k).2.1
-    let rb := alignUp r0 (match splitOf k with
+    let rb := alignUp r0 (match splitOfN k nr with
       | some (a, _) => a
       | none => if isWalk k then gBits else if 12 < rbk then 6 else rbk)
     let cb := alignUp c0 (if isWalk k then gBits else cr)
-    let re := match splitOf k with
-      | some (a, b) => rb + (n + 2 ^ (a - b) - 1) / 2 ^ (a - b) * ((2 ^ (a - b) + 1) * 2 ^ a)
+    let re := match splitOfN k nr with
+      | some (a, b) => rb + splitEnd a b n
       | none => rb + (n - 1) * 2 ^ rbk + nr
     (k, rb, cb, cr) :: mkLayI info re
       (if isWalk k then cb + (n - 1) * 2 ^ cr + (info k).2.2 else cb + n * 2 ^ cr) ks
@@ -268,12 +272,11 @@ def mkBlks (S : ℕ) : ℕ → ℕ → BReps → List RowT → List Blk
     let b := mkBlk S c reps (l.take S)
     b.1 :: mkBlks S n (c + 1) b.2 (l.drop S)
 
-/-- The block size of a key cut into blocks (`tinPP`'s): the walk's `2^gBits`, a template of more
-than `2^12` rows `64`, otherwise none. -/
+/-- The block size of an unsplit key cut into blocks (`tinPP`'s): the walk's `2^gBits`, a template
+of more than `2^12` rows `64`, otherwise none (B0: it no longer reads `splitOf`, which every caller
+consults first, so that an instance does not rebuild its template's rows). -/
 def blkSize (k : TKey) (rb : ℕ) : Option ℕ :=
-  match splitOf k with
-  | some _ => none
-  | none => if isWalk k then some (2 ^ gBits) else if 12 < rb then some 64 else none
+  if isWalk k then some (2 ^ gBits) else if 12 < rb then some 64 else none
 
 /-- **A key's data**: its template's rows, row bits, cell region, locals, and (for a split key) its
 head and tail, (for a blocked key) its re-templated blocks; the hashes only group. -/
@@ -289,6 +292,70 @@ structure KM where
   hh : UInt64
   ht : UInt64
   blks : List Blk
+  /-- Its split (`splitOf k`, computed once with the key: B0). -/
+  sp : Option (ℕ × ℕ)
+  /-- A split key's head and tail inputs (`rowsInps`; `hd`/`tl` are renumbered by them: B0). -/
+  hdI : List ℕ
+  tlI : List ℕ
+
+/-- The inputs template rows read, without repeats (B0: a split key's head and tail each carry
+only theirs, so that a half's own inputs are not the whole instance's). -/
+def rowsInps (T : List RowT) : List ℕ :=
+  (T.flatMap fun r => r.a ++ r.b ++ r.c).filterMap (fun t => match t.1 with
+    | .inp i => some i
+    | _ => none) |>.dedup
+
+/-- A wire with its input renumbered by its place in `ix`. -/
+def renW (ix : List ℕ) : Wire → Wire
+  | .inp i => .inp (ix.idxOf i)
+  | w => w
+
+/-- Template rows with their inputs renumbered by `ix`. -/
+def renRows (ix : List ℕ) (T : List RowT) : List RowT :=
+  T.map fun r => ⟨r.a.map (fun t => (renW ix t.1, t.2)), r.b.map (fun t => (renW ix t.1, t.2)),
+    r.c.map (fun t => (renW ix t.1, t.2))⟩
+
+/-- The inputs `ix` of an instance (input forms `ins`). -/
+def insOf (ix : List ℕ) (ins : List Lin) : List Lin := ix.map fun i => ins.getD i []
+
+theorem instLin_ren (one : Lin) (ins : List Lin) (cb : ℕ) (ix : List ℕ) (l : LinT)
+    (h : ∀ t ∈ l, ∀ i, t.1 = .inp i → i ∈ ix) :
+    instLin one (insOf ix ins) cb (l.map fun t => (renW ix t.1, t.2)) = instLin one ins cb l := by
+  unfold instLin
+  rw [List.flatMap_map]
+  refine List.flatMap_congr fun t ht => ?_
+  obtain ⟨w, c⟩ := t
+  cases w with
+  | inp i =>
+    have hi := h _ ht i rfl
+    simp only [renW, insOf, List.getD_eq_getElem?_getD, List.getElem?_map,
+      List.getElem?_eq_getElem (List.idxOf_lt_length_of_mem hi), List.getElem_idxOf, Option.map_some,
+      Option.getD_some]
+  | one => rfl
+  | loc k => rfl
+
+/-- **Renumbered rows instantiate to the same rows** with the inputs they read. -/
+theorem ren_rows (one : Lin) (ins : List Lin) (cb : ℕ) (T : List RowT) :
+    (renRows (rowsInps T) T).map (instRow one (insOf (rowsInps T) ins) cb) = T.map (instRow one ins cb) := by
+  unfold renRows
+  rw [List.map_map]
+  refine List.map_congr_left fun r hr => ?_
+  have hm : ∀ l, (l = r.a ∨ l = r.b ∨ l = r.c) → ∀ t ∈ l, ∀ i, t.1 = .inp i → i ∈ rowsInps T := by
+    rintro l hl t ht i hi
+    unfold rowsInps
+    rw [List.mem_dedup, List.mem_filterMap]
+    refine ⟨t, List.mem_flatMap.2 ⟨r, hr, ?_⟩, by rw [hi]⟩
+    rcases hl with rfl | rfl | rfl <;> simp [ht]
+  simp only [Function.comp_apply, instRow,
+    instLin_ren one ins cb _ r.a (hm _ (Or.inl rfl)), instLin_ren one ins cb _ r.b (hm _ (Or.inr (Or.inl rfl))),
+    instLin_ren one ins cb _ r.c (hm _ (Or.inr (Or.inr rfl)))]
+
+/-- (+) A row reading inputs 5 and 2 is renumbered to 0 and 1; (−) a local stays a local. -/
+theorem renRows_ctl :
+    rowsInps [⟨[(.inp 5, 1)], [(.loc 3, 1), (.inp 2, 1)], [(.inp 5, 1)]⟩] = [2, 5] ∧
+      renRows [5, 2] [⟨[(.inp 5, 1)], [(.loc 3, 1), (.inp 2, 1)], []⟩] =
+        [⟨[(.inp 0, 1)], [(.loc 3, 1), (.inp 1, 1)], []⟩] := by
+  constructor <;> decide
 
 /-- **A key's rows, row bits, cell region and locals**, its template built once
 (`keyInfo_eq`). -/
@@ -315,14 +382,17 @@ def mkKM (k : TKey) : KM :=
   let ki := keyInfo k
   let rows := ki.1
   let rb := ki.2.1
-  match splitOf k with
-  | some (a, _) =>
-    let hd := rows.take (2 ^ a); let tl := rows.drop (2 ^ a)
-    ⟨k, rows, rb, ki.2.2.1, ki.2.2.2, 0, hd, tl, hash hd, hash tl, []⟩
+  match splitOfN k rows.length with
+  | some (a, b) =>
+    let hd0 := rows.take (2 ^ a); let tl0 := rows.drop (2 ^ a)
+    let hi := rowsInps hd0; let ti := rowsInps tl0
+    let hd := renRows hi hd0; let tl := renRows ti tl0
+    ⟨k, rows, rb, ki.2.2.1, ki.2.2.2, 0, hd, tl, hash hd, hash tl, [], some (a, b), hi, ti⟩
   | none =>
     match blkSize k rb with
-    | some S => ⟨k, rows, rb, ki.2.2.1, ki.2.2.2, 0, [], [], 0, 0, mkBlks S (rows.length / S) 0 [] rows⟩
-    | none => ⟨k, rows, rb, ki.2.2.1, ki.2.2.2, hash rows, [], [], 0, 0, []⟩
+    | some S => ⟨k, rows, rb, ki.2.2.1, ki.2.2.2, 0, [], [], 0, 0, mkBlks S (rows.length / S) 0 [] rows, none,
+        [], []⟩
+    | none => ⟨k, rows, rb, ki.2.2.1, ki.2.2.2, hash rows, [], [], 0, 0, [], none, [], []⟩
 
 /-- A key's data from a memo (computed for a key it lacks). -/
 def kmOf (Ms : List KM) (k : TKey) : KM :=
@@ -331,9 +401,9 @@ def kmOf (Ms : List KM) (k : TKey) : KM :=
   | none => mkKM k
 
 theorem mkKM_k (k : TKey) : (mkKM k).k = k := by
-  unfold mkKM; split
+  unfold mkKM; dsimp only; split
   · rfl
-  · dsimp only; split <;> rfl
+  · split <;> rfl
 
 theorem kmOf_map (ks : List TKey) (k : TKey) : kmOf (ks.map mkKM) k = mkKM k := by
   unfold kmOf; split
@@ -477,11 +547,11 @@ def tinRP (one : Lin) (Ms : List KM) (L : TLay) (off : ℕ) (t : TKey × ℕ × 
   let ia := t.2.2.toArray
   let cb := L.cb t.1 t.2.1
   let bb := L.bits t.1
-  match splitOf t.1 with
+  match e.sp with
   | some (a, b) =>
     let X0 := off + L.rb t.1
-    [mkRaw one e.hd ia (X0 + splitRow a b t.2.1 0) cb a bb e.hh,
-     mkRaw one e.tl ia (X0 + splitRow a b t.2.1 (2 ^ a)) cb b bb e.ht]
+    [mkRaw one e.hd (insOf e.hdI t.2.2).toArray (X0 + splitRow a b t.2.1 0) cb a bb e.hh,
+     mkRaw one e.tl (insOf e.tlI t.2.2).toArray (X0 + splitRow a b t.2.1 (2 ^ a)) cb b bb e.ht]
   | none =>
     let X := off + L.rb t.1 + t.2.1 * 2 ^ e.rb
     match blkSize t.1 e.rb with
@@ -1034,19 +1104,32 @@ theorem idxR_map {α β : Type*} (Y : ℕ) (l : List α) (f : α → β) :
 
 theorem mkKM_rows (k : TKey) : (mkKM k).rows = tRows k ∧ (mkKM k).rb = tRbits k := by
   have h := keyInfo_eq k
-  unfold mkKM; split
+  unfold mkKM; dsimp only; split
   · simp [h]
-  · dsimp only; split <;> simp [h]
+  · split <;> simp [h]
+
+/-- `mkKM`'s split is `splitOf`, from the rows it built once. -/
+theorem keyInfo_split (k : TKey) : splitOfN k (keyInfo k).1.length = splitOf k := by
+  rw [keyInfo_eq]; rfl
+
+theorem mkKM_sp (k : TKey) : (mkKM k).sp = splitOf k := by
+  rw [← keyInfo_split k]; unfold mkKM; dsimp only; split
+  · rename_i h; exact h.symm
+  · rename_i h; split <;> exact h.symm
 
 theorem mkKM_split {k : TKey} {a b : ℕ} (hs : splitOf k = some (a, b)) :
-    (mkKM k).hd = (tRows k).take (2 ^ a) ∧ (mkKM k).tl = (tRows k).drop (2 ^ a) := by
+    (mkKM k).hd = renRows (rowsInps ((tRows k).take (2 ^ a))) ((tRows k).take (2 ^ a)) ∧
+      (mkKM k).tl = renRows (rowsInps ((tRows k).drop (2 ^ a))) ((tRows k).drop (2 ^ a)) ∧
+      (mkKM k).hdI = rowsInps ((tRows k).take (2 ^ a)) ∧ (mkKM k).tlI = rowsInps ((tRows k).drop (2 ^ a)) := by
   have h := keyInfo_eq k
-  unfold mkKM; rw [hs]; simp [h]
+  rw [← keyInfo_split k] at hs
+  unfold mkKM; dsimp only; rw [hs]; simp [h]
 
 theorem mkKM_blks {k : TKey} {S : ℕ} (hs : splitOf k = none) (hb : blkSize k (tRbits k) = some S) :
     (mkKM k).blks = mkBlks S ((tRows k).length / S) 0 [] (tRows k) := by
   have h := keyInfo_eq k
-  unfold mkKM; rw [hs]; dsimp only; rw [h]; dsimp only; rw [hb]
+  rw [← keyInfo_split k] at hs
+  unfold mkKM; dsimp only; rw [hs]; dsimp only; rw [h]; dsimp only; rw [hb]
 
 theorem mkBlks_length (S : ℕ) : ∀ (n c : ℕ) (reps : BReps) (l : List RowT),
     (mkBlks S n c reps l).length = n
@@ -1230,13 +1313,13 @@ theorem tinRP_rows (one : Lin) (ks : List TKey) (L : TLay) (off : ℕ) (t : TKey
   have hA : ∀ r, instRowA one t.2.2.toArray (L.cb t.1 t.2.1) r = instRow one t.2.2 (L.cb t.1 t.2.1) r :=
     instRowA_eq one t.2.2 _
   unfold tinRP tinIRows
-  simp only [kmOf_map, hA]
+  simp only [kmOf_map, hA, mkKM_sp]
   cases hs : splitOf t.1 with
   | some ab =>
     obtain ⟨a, b⟩ := ab
-    obtain ⟨hh, ht⟩ := mkKM_split hs
+    obtain ⟨hh, ht, hhI, htI⟩ := mkKM_split hs
     simp only [List.flatMap_cons, List.flatMap_nil, List.append_nil, mkRaw_rows, instIR_eq, hh, ht,
-      List.toList_toArray]
+      hhI, htI, List.toList_toArray, ren_rows]
     rw [split_rows (tRows t.1) (instRow one t.2.2 (L.cb t.1 t.2.1))
       (fun j => off + L.rb t.1 + splitRow a b t.2.1 j) (2 ^ a)
       (off + L.rb t.1 + splitRow a b t.2.1 0) (off + L.rb t.1 + splitRow a b t.2.1 (2 ^ a))

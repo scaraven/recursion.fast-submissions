@@ -1,8 +1,10 @@
 -- New for `flock-recursive` (BLUEPRINT §4.3, §5.4, §7, stage S-E2).
+-- RET-3: the declarations revision 4 reads moved to `FRVIRFinalsCoreSG`.
 import FRNodeLayout
 import FRVIRTplFast
 import FRWots
 import FRVerifier
+import FRVIRFinalsCoreSG
 
 /-!
 # The node circuit: `PubCells`, the M side of `node_sound`
@@ -29,27 +31,6 @@ is left to the RESULT's open items.
 namespace FR
 namespace Node
 open RecursionFast Circ Layout
-
-/-- H cell of slot `σ`'s seed payload element `e` (A.7: the payload starts at stream element 1;
-stream element `e'` is slot `4 + e' mod 4` of block `chainBase_σ + ⌊e'/4⌋`). -/
-def seedCell (σ e : ℕ) : ℕ := (σ * chainN + (1 + e) / 4) * 128 + 4 + (1 + e) % 4
-
-/-- **The public cells in A.7's order** (stage-review changes 15): `pub_0 = f[Mbase]`; slot 1's
-`vk` and `c₁` halves; slot 2's `vk` and `c₂` halves. There are no padding cells: the stream is
-`64 · 22,465` bytes, so every last block is full. -/
-def pubCells : List ℕ :=
-  oneCell :: (List.range 2).flatMap (fun σ => (List.range 4).map (seedCell σ))
-
-/-- A digest's two F halves. -/
-def halves (d : Digest) : List F := [dlo d, dhi d]
-
-/-- Their values: `1`, then the digests' halves. -/
-def pubVals (vk c₁ c₂ : Digest) : List F :=
-  1 :: (halves vk ++ halves c₁ ++ halves vk ++ halves c₂)
-
-/-- **`PubCells`** (§4.3, A.7): the point claims on `f` hold. -/
-def PubCells (w : Asg) (vk c₁ c₂ : Digest) : Prop :=
-  pubCells.map w = pubVals vk c₁ c₂
 
 theorem PubCells.one {w : Asg} {vk c₁ c₂ : Digest} (h : PubCells w vk c₁ c₂) :
     w oneCell = 1 := by
@@ -114,11 +95,6 @@ theorem node_m_sound {impl : OpImpl} {fin : Finals} {w : Asg} {inp₁ inp₂ : I
 theorem byte_of_ofByte {b : UInt8} {k : FR.Kind} (h : Kind.ofByte? b = some k) : b = k.byte := by
   unfold Kind.ofByte? at h
   split_ifs at h <;> cases h <;> simp_all [Kind.byte]
-
-/-- Nine public cells, as many as values. -/
-theorem pubCells_length (vk c₁ c₂ : Digest) :
-    pubCells.length = 9 ∧ (pubVals vk c₁ c₂).length = 9 := by
-  simp [pubCells, pubVals, halves]
 
 /-- Non-vacuity of `PubCells`: the nine cells are distinct (so values can be assigned freely). -/
 theorem pubCells_nodup : pubCells.Nodup := by decide

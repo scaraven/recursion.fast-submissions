@@ -8,7 +8,7 @@
 -- `FRSoundnessExtLeaf` (6). Content: the 3.x accept-run semantics the R4 port reads (`AccSem`,
 -- `AccRun`, `FrRun`, …) and `ExtLeaf`'s leaf pieces. The 3.x modules import this one.
 import FRSoundnessCoreTail
-import FRVIRChain
+import FRVIRSpecCore
 import FRVerifierImplOps
 
 /-! ## From `FRSoundnessAccEq` (10 declarations) -/

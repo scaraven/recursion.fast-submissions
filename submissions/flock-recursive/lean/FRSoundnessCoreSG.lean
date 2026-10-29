@@ -5,7 +5,7 @@
 -- into `FRSoundnessCoreWeights` once `uHat`/`eqCellK` move to a verifier core module (step 4). The
 -- 3.x modules import this one.
 import FRSoundnessCoreWeights
-import FRVIRFinalsSG
+import FRVIRFinalsCoreSG
 
 /-! ## From `FRSoundnessWeights` (2 declarations) -/
 

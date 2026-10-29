@@ -37,7 +37,7 @@ timeout 600 "$ORG/harness/ci/build-kernels.sh" "$K" > "$OUT/kernels.env" 2> "$OU
 set -a; source "$OUT/kernels.env"; set +a
 
 SEASON=$TMP/season-probe.toml
-sed -e "s/^build_s = 600 /build_s = ${CAP_BUILD:-3000} /" -e "s/^kernel_s = 600 /kernel_s = ${CAP_KERNEL:-1800} /" \
+sed -e "s/^build_s = [0-9]* /build_s = ${CAP_BUILD:-3000} /" -e "s/^kernel_s = 600 /kernel_s = ${CAP_KERNEL:-1800} /" \
     -e "s/^gate_s = 120 /gate_s = ${CAP_GATE:-600} /" -e "s/^badge_s = 180 /badge_s = ${CAP_BADGE:-1800} /" \
     "$ORG/harness/season.toml" > "$SEASON"
 grep -A5 '^\[certificate\]' "$SEASON" | tee "$OUT/caps.txt"

@@ -30,8 +30,9 @@ barycentric interpolation is quadratic in `k = 2^(m − 13)` (`logs/S-H3/fuel-ch
 RESULT Part 24). The revision 4.1 node decoder needs a different level-0 algorithm. Until it
 exists the certificate's branch is `nd := .blk []` (`ext4`), which outputs nothing.
 
-The memory (`memX = 2^26`, `mpwX = 3`) and the fuel (`fuel t = 3·2^46 + 2^13 t`, claim.json) are
-3.x's; a node decoder at `m = 32` holds `f⁽⁰⁾`'s `2^25` cells and may need a larger `mem`.
+The memory is `memX4 = 2^28` words (S-H4, Part 25 F2: the level-0 decoder holds `f⁽⁰⁾`'s codeword,
+`2^27` words at `m = 32`), `mpwX = 3`; the fuel (`fuel t = 3·2^46 + 2^13 t`, claim.json) is 3.x's. The
+node branch's budget is `decBudget4 = fuelBase − 2^29 + (fuelPerWord − 16) t`.
 -/
 
 namespace FR.X.X4
@@ -98,15 +99,15 @@ structure DecOk4 (nd : XIR) : Prop where
   safe : ∀ c (π : Proof) (L : Log), π.size = Rev4.piSizeOf Rev4.seq4 → (∀ e ∈ L, e.1.size < 2 ^ 64) →
     (extractorInput c π L).length ≤ 2 ^ 64 →
     Safe (extractorInput c π L).toArray (extractorInput c π L).length nd
-  /-- Its cost is within `decBudget`. -/
-  cost : ∀ t, cost nd t ≤ decBudget t
+  /-- Its cost is within `decBudget4` (the fuel less the `memX4` prologue). -/
+  cost : ∀ t, cost nd t ≤ decBudget4 t
   /-- It outputs at most `outCap` words. -/
   outs : ∀ t, outs nd t ≤ outCap
   /-- It compiles to at most `2^19` statements. -/
   size : sizeIR nd ≤ 2 ^ 19
 
 /-- The program with the node branch `nd`. -/
-def ext4With (nd : XIR) : XProg := toProg memX mpwX (ext4IRWith nd)
+def ext4With (nd : XIR) : XProg := toProg memX4 mpwX (ext4IRWith nd)
 
 /-- **The node branch delivered so far**: none (no output). -/
 def ndNone : XIR := .blk []
@@ -114,11 +115,11 @@ def ndNone : XIR := .blk []
 theorem decOk4_ndNone : DecOk4 ndNone where
   wf := by simp [ndNone, WF]
   safe := fun _ _ _ _ _ _ => .blk _
-  cost := fun t => by simp [ndNone, cost, blkSteps, decBudget, fuelBase, fuelPerWord]; omega
+  cost := fun t => by simp [ndNone, cost, blkSteps, decBudget4, fuelBase, fuelPerWord]; omega
   outs := fun t => by simp [ndNone, outs]
   size := by simp [ndNone, sizeIR, blkSteps]
 
-/-- **The revision 4.1 extractor program** `ext4 := toProg 2^26 3 (ext4IRWith ndNone)`. -/
+/-- **The revision 4.1 extractor program** `ext4 := toProg 2^28 3 (ext4IRWith ndNone)`. -/
 def ext4 : XProg := ext4With ndNone
 
 /-! ## Well formed, cost, size, fuel -/
@@ -155,12 +156,12 @@ theorem sizeIR_ext4IRWith (nd : XIR) : sizeIR (ext4IRWith nd) ≤ 200 + sizeIR n
     blkSteps, List.length_cons, List.length_nil]
   norm_num; omega
 
-/-- **The fuel covers the program** whenever the node branch is within `decBudget`. -/
-theorem fuel_covers4 {nd : XIR} (h : ∀ t, cost nd t ≤ decBudget t) (t : ℕ) :
-    memX + mpwX * t + cost (ext4IRWith nd) t + 8 ≤ fuel t := by
+/-- **The fuel covers the program** whenever the node branch is within `decBudget4`. -/
+theorem fuel_covers4 {nd : XIR} (h : ∀ t, cost nd t ≤ decBudget4 t) (t : ℕ) :
+    memX4 + mpwX * t + cost (ext4IRWith nd) t + 8 ≤ fuel t := by
   have := h t
   have := cost_ext4IRWith nd t
-  simp only [memX, mpwX, fuel, fuelBase, fuelPerWord, decBudget] at *
+  simp only [memX4, mpwX, fuel, fuelBase, fuelPerWord, decBudget4] at *
   omega
 
 /-- The program is within `progCap`. -/

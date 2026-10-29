@@ -123,13 +123,52 @@ impl Ntt {
         }
     }
 
+    /// The rows of a block that `forward` keeps in cache (about 256 KiB), as a log.
+    fn log_c(lanes: usize) -> usize {
+        ((256usize << 10) / (lanes * 16)).max(2).trailing_zeros() as usize
+    }
+
+    /// `encode`'s replication fused into the first radix-4 pass (pass 13): layers `r` and `r + 1`
+    /// of `forward`, every block's rows read from `msg` (at layer `r` a block's input is the whole
+    /// message) into `data`, then the same butterflies. Saves the copy's pass over `data`.
+    fn first_pass_from(&self, msg: &[F], data: &mut [F], lanes: usize, r: usize) {
+        let ld = self.log_d;
+        let half = 1usize << (ld - r - 1);
+        let q = half / 2;
+        let blocks = 1usize << r;
+        let rows_per = 16usize.min(q);
+        let per = q / rows_per;
+        let (tw0, tw1) = (&self.tw[r], &self.tw[r + 1]);
+        assert_eq!(msg.len(), 2 * half * lanes);
+        let p = par::SyncPtr(data.as_mut_ptr());
+        par::run(blocks * per, &|it| {
+            let p = p;
+            let (b, rc) = (it / per, it % per);
+            let bs = b * 2 * half * lanes;
+            let r0 = rc * rows_per;
+            let len = rows_per * lanes;
+            unsafe {
+                // SAFETY: item `(b, rc)` owns rows r0, r0 + q, r0 + half, r0 + half + q (+ rows_per) of block b
+                let sl = |r: usize| {
+                    let d = std::slice::from_raw_parts_mut(p.0.add(bs + r * lanes), len);
+                    d.copy_from_slice(&msg[r * lanes..r * lanes + len]);
+                    d
+                };
+                let (x0, x1, x2, x3) = (sl(r0), sl(r0 + q), sl(r0 + half), sl(r0 + half + q));
+                simd::butterfly(x0, x2, tw0[b]);
+                simd::butterfly(x1, x3, tw0[b]);
+                simd::butterfly(x0, x1, tw1[2 * b]);
+                simd::butterfly(x2, x3, tw1[2 * b + 1]);
+            }
+        });
+    }
+
     /// Layers `start … log_d − 1`, parallel: whole-buffer passes while a block is larger than
     /// about 256 KiB, then each block to completion.
     pub fn forward(&self, data: &mut [F], lanes: usize, start: usize) {
         let ld = self.log_d;
         assert_eq!(data.len(), lanes << ld);
-        let row_bytes = lanes * 16;
-        let log_c = ((256usize << 10) / row_bytes).max(2).trailing_zeros() as usize;
+        let log_c = Self::log_c(lanes);
         let p = par::SyncPtr(data.as_mut_ptr());
         let mut l = start;
         // radix-4: two layers per pass over the buffer (rows r, r + h/2, r + h, r + 3h/2)
@@ -214,6 +253,16 @@ impl Ntt {
         out.reserve(n);
         unsafe { out.set_len(n) };
         let h = msg.len();
+        let ld = self.log_d;
+        // the first two layers a radix-4 pass of `forward`: the copy fused into it (pass 13;
+        // `FLOCK_NTT_COPY=1`: the copy, then `forward`, the reference)
+        if r + 1 < ld && ld - r > Self::log_c(lanes) + 1 && std::env::var_os("FLOCK_NTT_COPY").is_none() {
+            let sp = crate::prof::span("ntt.first");
+            self.first_pass_from(msg, out, lanes, r);
+            drop(sp);
+            self.forward(out, lanes, r + 2);
+            return;
+        }
         let po = par::SyncPtr(out.as_mut_ptr());
         let chunk = 1usize << 16;
         let sp = crate::prof::span("ntt.copy");

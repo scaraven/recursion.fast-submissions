@@ -1,6 +1,6 @@
 -- New for `flock-recursive` (BLUEPRINT revision 4.1, A.9, B-12, B-13; stage S-F4).
 import FRVIR4
-import FRVIRFinalsSG
+import FRVIRFinalsCoreSG
 
 /-!
 # The phase-final checks over an item sequence (`finalsOf`), and the relocation to `S`'s format

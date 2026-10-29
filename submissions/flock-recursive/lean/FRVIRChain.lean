@@ -1,6 +1,8 @@
 -- New for `flock-recursive` (BLUEPRINT §6.2, §10 stage-review changes 16; stage S-0).
+-- RET-3: the declarations revision 4 reads moved to `FRVIRSpecCore`.
 import FRVIRFinals
 import FRXChainFlock
+import FRVIRSpecCore
 
 /-!
 # The query link: `gen`'s Fiat–Shamir queries are the extractor's `fsQ`
@@ -29,79 +31,6 @@ variable (inp : Input)
 
 /-! ## The chain relation -/
 
-/-- The query of message `m` at Fiat–Shamir position `p` from state `st` (`fsQ`'s body). -/
-def qOf (p : ℕ) (m : Option (ℕ × ℕ)) (st : Digest) : ByteArray :=
-  match m with
-  | some (o, len) => if p = 0 then seedQ inp.vk inp.c (inp.π.extract o (o + len))
-      else absorbQ st (inp.π.extract o (o + len))
-  | none => squeezeQ st
-
-/-- **`ChainOK es ms p st`**: the entries ask the chain of the messages `ms` from position `p`. -/
-def ChainOK : Trace → List (Option (ℕ × ℕ)) → ℕ → Digest → Prop
-  | [], [], _, _ => True
-  | (q, a) :: es, m :: ms, p, st => q = qOf inp p m st ∧ ChainOK es ms (p + 1) a
-  | _, _, _, _ => False
-
-/-- The last answer of `es` (`d` if empty). -/
-def lastAns (es : Trace) (d : Digest) : Digest := (es.getLast?.map (·.2)).getD d
-
-/-- The entries of `seg` at the Fiat–Shamir items of `its`. -/
-def fsOf (seg : Trace) (its : List Item) : Trace := ((seg.zip its).filter (·.2.isFS)).map (·.1)
-
-theorem ChainOK_length {es : Trace} {ms : List (Option (ℕ × ℕ))} {p : ℕ} {st : Digest}
-    (h : ChainOK inp es ms p st) : es.length = ms.length := by
-  induction es generalizing ms p st with
-  | nil => cases ms <;> simp_all [ChainOK]
-  | cons e es ih =>
-    obtain ⟨q, a⟩ := e
-    cases ms with
-    | nil => simp [ChainOK] at h
-    | cons m ms => simp only [ChainOK] at h; simp [ih h.2]
-
-theorem lastAns_append (a b : Trace) (d : Digest) :
-    lastAns (a ++ b) d = lastAns b (lastAns a d) := by
-  cases b using List.reverseRecOn <;> simp [lastAns, List.getLast?_append]
-
-theorem lastAns_cons (q : ByteArray) (a : Digest) (es : Trace) (d : Digest) :
-    lastAns ((q, a) :: es) d = lastAns es a := by
-  rw [show (q, a) :: es = [(q, a)] ++ es from rfl, lastAns_append]; rfl
-
-theorem ChainOK_append {a b : Trace} {ma mb : List (Option (ℕ × ℕ))} {p : ℕ} {st : Digest}
-    (hl : a.length = ma.length) :
-    ChainOK inp (a ++ b) (ma ++ mb) p st ↔
-      ChainOK inp a ma p st ∧ ChainOK inp b mb (p + a.length) (lastAns a st) := by
-  induction a generalizing ma p st with
-  | nil => cases ma <;> simp_all [ChainOK, lastAns]
-  | cons e a ih =>
-    obtain ⟨q, x⟩ := e
-    cases ma with
-    | nil => simp at hl
-    | cons m ma =>
-      simp only [List.cons_append, ChainOK, List.length_cons, lastAns_cons]
-      rw [ih (by simpa using hl), show p + (a.length + 1) = p + 1 + a.length by omega, and_assoc]
-
-theorem fsOf_append {s₁ s₂ : Trace} {i₁ i₂ : List Item} (h : s₁.length = i₁.length) :
-    fsOf (s₁ ++ s₂) (i₁ ++ i₂) = fsOf s₁ i₁ ++ fsOf s₂ i₂ := by
-  simp [fsOf, List.zip_append h]
-
-theorem fsOf_all {seg : Trace} {its : List Item} (h : ∀ it ∈ its, it.isFS = true)
-    (hl : seg.length = its.length) : fsOf seg its = seg := by
-  induction seg generalizing its with
-  | nil => simp [fsOf]
-  | cons e seg ih =>
-    cases its with
-    | nil => simp at hl
-    | cons it its =>
-      have h1 := h it (List.mem_cons_self ..)
-      have := ih (fun x hx => h x (List.mem_cons_of_mem _ hx)) (by simpa using hl)
-      simp only [fsOf, List.zip_cons_cons, List.filter_cons, h1, ite_true, List.map_cons] at this ⊢
-      rw [this]
-
-theorem fsOf_none {seg : Trace} {its : List Item} (h : ∀ it ∈ its, it.isFS = false) :
-    fsOf seg its = [] := by
-  simp only [fsOf, List.map_eq_nil_iff, List.filter_eq_nil_iff]
-  intro x hx; simp [h _ (List.of_mem_zip hx).2]
-
 /-! ## The table facts -/
 
 /-- A shape the chain lemma covers: a field in range, a nonempty run of squeezes. -/
@@ -118,9 +47,6 @@ theorem phases_shapeOK : phases.all (fun p => shapeOK p.shape) = true := by deci
 
 theorem phases_seed : (phases.take 1).map (fun p => isSeed p.shape) = [true] ∧
     (phases.drop 1).all (fun p => !isSeed p.shape) = true := by decide +kernel
-
-theorem fieldOffA_getD {f : ℕ} (hf : f ≤ nFields) : fieldOffA.getD f 0 = fieldOff f := by
-  simp [fieldOffA, Array.getD_eq_getD_getElem?, List.getElem?_range (by omega : f < nFields + 1)]
 
 /-- The messages of the phases from number `n` (`fsMsgs` for `phases` from `0`). -/
 def msgsFrom : List Phase → ℕ → List (Option (ℕ × ℕ))
@@ -140,79 +66,6 @@ theorem fsMsgs_eq : fsMsgs = msgsFrom phases 0 := by
 /-! ## The trace functions, one by one -/
 
 variable (κ : Kind)
-
-theorem sqzT_chain {k : ℕ} {d : Digest} {tr : Trace} {y : List Digest × Trace}
-    (hy : sqzT k d tr = some y) (p : ℕ) :
-    ∃ seg, tr = seg ++ y.2 ∧ seg.length = k ∧ ChainOK inp seg (List.replicate k none) p d ∧
-      seg.map (·.2) = y.1 := by
-  induction k generalizing d tr y p with
-  | zero => simp [sqzT] at hy; subst hy; exact ⟨[], by simp, rfl, by simp [ChainOK], rfl⟩
-  | succ k ih =>
-    rcases tr with _ | ⟨⟨q, a⟩, tr⟩
-    · simp [sqzT, ans1] at hy
-    simp only [sqzT, ans1, Option.bind_eq_some_iff, Option.map_eq_some_iff] at hy
-    obtain ⟨z, hz, w, hw, rfl⟩ := hy
-    split_ifs at hz with hq
-    cases hz
-    obtain ⟨seg, h1, h2, h3, h4⟩ := ih hw (p + 1)
-    refine ⟨(q, a) :: seg, by simpa using h1, by simp [h2], ?_, by simp [h4]⟩
-    exact ⟨by simp [qOf, hq], h3⟩
-
-theorem lastAns_map {seg : Trace} {as : List Digest} (h : seg.map (·.2) = as) (d : Digest) :
-    lastAns seg d = as.getLastD d := by
-  subst h; simp [lastAns, List.getLastD_eq_getLast?, List.getLast?_map]
-
-/-- One round's two messages from round `j` (the absorbed range at `A + o + j·rb`). -/
-def roundMsgs (A o rb j k : ℕ) : List (Option (ℕ × ℕ)) :=
-  (List.range' j k).flatMap fun j => [some (A + o + j * rb, rb), none]
-
-theorem roundsT_chain {f o deg real k j : ℕ} {inK : Bool} {d : Digest} {cl : Val} {tr : Trace}
-    {x : List Val × Bool × Trace} (hx : roundsT inp f o deg inK real k j d cl tr = some x)
-    {p : ℕ} (hp : p ≠ 0) :
-    ∃ seg, tr = seg ++ x.2.2 ∧ seg.length = 2 * k ∧
-      ChainOK inp seg (roundMsgs (fieldOffA.getD f 0) o (roundBytes inK) j k) p d ∧
-      lastAns seg d = if k = 0 then d else
-        (x.1.getD ((if inK then 13 else roundW deg) * k - (if inK then 13 else roundW deg) + 2)
-          default).toD := by
-  induction k generalizing j d cl tr x p with
-  | zero =>
-    simp [roundsT] at hx; subst hx
-    exact ⟨[], by simp, rfl, by simp [ChainOK, roundMsgs], by simp [lastAns]⟩
-  | succ k ih =>
-    rcases tr with _ | ⟨⟨q₁, a₁⟩, _ | ⟨⟨q₂, a₂⟩, tr⟩⟩
-    · cases hx
-    · cases hx
-    simp only [roundsT] at hx
-    by_cases hq : q₁ = absorbQ d (msgAt inp f (o + j * roundBytes inK) (roundBytes inK)) ∧
-      q₂ = squeezeQ a₁
-    swap; · rw [if_neg hq] at hx; cases hx
-    rw [if_pos hq] at hx
-    obtain ⟨y, hy, rfl⟩ := Option.map_eq_some_iff.1 hx
-    obtain ⟨seg, h1, h2, h3, h4⟩ := ih hy (p := p + 2) (by omega)
-    have hv := roundV_spec inp f (o + j * roundBytes inK) deg inK (decide (j < real)) a₁ a₂ cl
-    simp only [roundV] at hv
-    have hW3 : 3 ≤ (if inK = true then 13 else roundW deg) := by unfold roundW; split_ifs <;> omega
-    generalize hW : (if inK = true then 13 else roundW deg) = W at hv h4 hW3 ⊢
-    generalize hV : (if inK = true then roundKVals inp f (o + j * roundBytes inK) (decide (j < real)) a₁ a₂ cl
-      else if deg = 3 then round3V inp f (o + j * roundBytes inK) (decide (j < real)) a₁ a₂ cl
-      else round2Vals inp f (o + j * roundBytes inK) (decide (j < real)) a₁ a₂ cl) = V at hv ⊢
-    obtain ⟨hvl, hv2, -⟩ := hv
-    refine ⟨(q₁, a₁) :: (q₂, a₂) :: seg, by simp [h1], by simp [h2]; omega, ?_, ?_⟩
-    · simp only [roundMsgs, List.range'_succ, List.flatMap_cons, List.cons_append, List.nil_append,
-        ChainOK, qOf, if_neg hp]
-      refine ⟨?_, hq.2, ?_⟩
-      · rw [hq.1, msgAt]; simp [absOff, Nat.add_assoc]
-      · simpa [roundMsgs, show p + 1 + 1 = p + 2 by omega] using h3
-    · rw [lastAns_cons, lastAns_cons, h4, if_neg (Nat.succ_ne_zero k)]
-      rcases Nat.eq_zero_or_pos k with rfl | hk
-      · rw [if_pos rfl, show W * (0 + 1) - W + 2 = 2 by omega, List.getD_eq_getElem?_getD,
-          List.getElem?_append_left (by omega), ← List.getD_eq_getElem?_getD, hv2]; rfl
-      · have hW1 : W ≤ W * k := Nat.le_mul_of_pos_right _ hk
-        have key : ∀ (A B : List Val) (m : ℕ), (A ++ B).getD (A.length + m) default = B.getD m default :=
-          fun A B m => by simp [List.getD_eq_getElem?_getD, List.getElem?_append_right]
-        dsimp only
-        rw [if_neg (by omega),
-          show W * (k + 1) - W + 2 = V.length + (W * k - W + 2) by rw [hvl, Nat.mul_succ]; omega, key]
 
 /-- A position consumes `1 + sib` entries. -/
 theorem stepsT_len {i j n h so : ℕ} {cur : Digest} {tr : Trace}
@@ -249,24 +102,7 @@ theorem posAllT_len {i co so t p : ℕ} {ad : ℕ → Digest} {w : Array K} {tr 
     refine ⟨e :: s₁ ++ s₂, by simp [h1, h3], ?_⟩
     simp [h2, h4, posItems, Nat.succ_mul]; omega
 
-
 /-! ## One phase -/
-
-theorem getD_app (A B : List Val) (m : ℕ) : (A ++ B).getD (A.length + m) default = B.getD m default := by
-  simp [List.getD_eq_getElem?_getD, List.getElem?_append_right]
-
-theorem getD_last_coords {as : List Digest} (h : as ≠ []) (L : List Val) :
-    (as.flatMap coordVals ++ L).getD (3 * as.length - 3) default = .d (as.getLastD zeroD) := by
-  obtain ⟨ini, a, rfl⟩ := List.eq_nil_or_concat as |>.resolve_left h
-  have := getD_app (ini.flatMap coordVals) (coordVals a ++ L) 0
-  rw [coordVals_length] at this
-  simpa [List.flatMap_append, List.append_assoc, Nat.mul_succ, coordVals] using this
-
-theorem getD_last_map {as : List Digest} (h : as ≠ []) (L : List Val) :
-    (as.map Val.d ++ L).getD (as.length - 1) default = .d (as.getLastD zeroD) := by
-  obtain ⟨ini, a, rfl⟩ := List.eq_nil_or_concat as |>.resolve_left h
-  have := getD_app (ini.map Val.d) (Val.d a :: L) 0
-  simpa [List.append_assoc] using this
 
 theorem items_allFS {s : Shape} (h : ∀ i, s ≠ .queries i) : ∀ it ∈ s.items, it.isFS = true := by
   intro it hit
@@ -284,10 +120,6 @@ theorem items_allFS {s : Shape} (h : ∀ i, s ≠ .queries i) : ∀ it ∈ s.ite
   | seed | absorb =>
     simp only [Shape.items, List.mem_cons, List.not_mem_nil, or_false] at hit
     subst hit; rfl
-
-theorem getLastD_ne {as : List Digest} (h : as ≠ []) (d d' : Digest) : as.getLastD d = as.getLastD d' := by
-  obtain ⟨ini, a, rfl⟩ := List.eq_nil_or_concat as |>.resolve_left h
-  simp
 
 variable (impl : OpImpl)
 
@@ -414,7 +246,6 @@ theorem refPhase_chain {n : ℕ} {p : Phase} {c : GCtx} {r : Array Val} {tr : Tr
     · rw [hfs]; simp [phaseMsgs, ChainOK]
     · rw [hfs]; simp only [genPhase]; rw [rd_append_left hst]; rfl
 
-
 /-! ## The phases, the skeleton, `gen` -/
 
 /-- **A run of non-seed phases**: its Fiat–Shamir entries are the chain of `msgsFrom`. -/
@@ -473,26 +304,6 @@ theorem skeleton_chain {tr : Trace} {y : List Val × List Bool × Trace}
   rw [List.flatMap_cons, fsOf_append h2, msgsFrom, ChainOK_append inp hl]
   refine ⟨h3, ?_⟩
   rw [hs1, Nat.zero_add, show rd #[] 0 = rd #[] ctx₀.st from rfl, ← h4]; exact h7
-
-theorem fsOf_prefix {seg rest : Trace} {its : List Item} (h : seg.length = its.length) :
-    fsOf (seg ++ rest) its = fsOf seg its := by
-  have := fsOf_append (s₂ := rest) (i₂ := []) h
-  simpa [fsOf] using this
-
-theorem ChainOK_getD : ∀ {es : Trace} {ms : List (Option (ℕ × ℕ))} {p : ℕ} {st : Digest},
-    ChainOK inp es ms p st → ∀ i < es.length,
-      (es.getD i default).1 = qOf inp (p + i) (ms.getD i none)
-        (if i = 0 then st else (es.getD (i - 1) default).2)
-  | [], _, _, _, _, i, hi => by simp at hi
-  | (q, a) :: es, [], _, _, h, _, _ => by simp [ChainOK] at h
-  | (q, a) :: es, m :: ms, p, st, h, i, hi => by
-    simp only [ChainOK] at h
-    rcases i with _ | i
-    · simpa using h.1
-    · have := ChainOK_getD h.2 i (by simpa using hi)
-      rw [show p + (i + 1) = p + 1 + i by omega]
-      simp only [List.getD_cons_succ, this, Nat.add_sub_cancel]
-      rcases i with _ | i <;> simp
 
 /-- **The query link** (stage-review changes 16; S-H2-RESULT Part 13 Q2): on a trace that a run of
 `gen fin mode` consumes completely, the Fiat–Shamir entries (the entries at `items`' FS items) are

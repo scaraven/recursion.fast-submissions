@@ -96,12 +96,17 @@ impl Mats<'_> {
                     let row = p.rows.idx[i] as usize - base + v * SLOT;
                     let rg = p.rows.rng[i];
                     for m in 0..3 {
-                        let mut acc = FAcc::default();
+                        // a coefficient 1 (most terms) is a plain sum, the rest unreduced products
+                        let (mut acc, mut s1) = (FAcc::default(), F::ZERO);
                         for t in rg[m] as usize..rg[m + 1] as usize {
-                            acc.mac(p.rows.coefs[t], f[one + p.rows.cells[t] as usize - base + v * SLOT]);
+                            let x = f[one + p.rows.cells[t] as usize - base + v * SLOT];
+                            match p.rows.coefs[t] {
+                                crate::mfill::ONE_IX => s1 += x,
+                                i => acc.mac(p.rows.cv[i as usize], x),
+                            }
                         }
                         // SAFETY: the rows of one slot are distinct (`ProtoFit`), slots disjoint
-                        unsafe { *ptrs[m].0.add(row) = acc.reduce() };
+                        unsafe { *ptrs[m].0.add(row) = acc.reduce() + s1 };
                     }
                 }
             });
@@ -116,9 +121,73 @@ impl Mats<'_> {
         out
     }
 
-    /// `W[cell] += Σ_rows e[row]·(A + s₁ B + s₂ C)(row, cell)` over the M rows (slots in parallel:
-    /// their cells are disjoint; the link rows after).
+    /// `W[cell] += Σ_rows e[row]·(s₀ A + s₁ B + s₂ C)(row, cell)` over the M rows, as a gather by
+    /// cell (pass 13: `ByCell`; every cell written once, `2^14`-cell chunks of every slot in
+    /// parallel; per cell and matrix the terms with coefficient 1 summed, the others accumulated
+    /// unreduced, then one product by `s_m`), the link rows after. `FLOCK_SCATTER_REF=1`:
+    /// `m_scatter_ref`.
     pub fn m_scatter(&self, e: &[F], s: [F; 3], w: &mut [F]) {
+        if std::env::var_os("FLOCK_SCATTER_REF").is_some() {
+            return self.m_scatter_ref(e, s, w);
+        }
+        const CH: usize = 1 << 14;
+        let one = self.kt.one_cell;
+        let nslots = self.kt.slots.len();
+        let nch = SLOT / CH;
+        let wp = par::SyncPtr(w.as_mut_ptr());
+        par::run(nslots * nch, &|j| {
+            let wp = &wp;
+            let (v, c0) = (j / nch, (j % nch) * CH);
+            let p = &self.protos[self.kt.slots[v].0];
+            let (bc, cv) = (p.by_cell(), &p.rows.cv);
+            let eo = v * SLOT;
+            for l in c0..c0 + CH {
+                let (a, b) = (bc.ptr[l] as usize, bc.ptr[l + 1] as usize);
+                if a == b {
+                    continue;
+                }
+                let mut acc = [FAcc::default(); 3];
+                let mut pl = [F::ZERO; 3];
+                for q in a..b {
+                    let en = bc.ent[q];
+                    let (r, m) = ((en & 0x3FFF_FFFF) as usize, (en >> 30) as usize);
+                    let x = e[eo + r];
+                    match bc.coef[q] {
+                        crate::mfill::ONE_IX => pl[m] += x,
+                        i => acc[m].mac(cv[i as usize], x),
+                    }
+                }
+                let mut sum = F::ZERO;
+                for m in 0..3 {
+                    let t = acc[m].reduce() + pl[m];
+                    if !t.is_zero() {
+                        sum += s[m] * t;
+                    }
+                }
+                // SAFETY: cell `one + v·2^20 + l` is written by this chunk only
+                unsafe { *wp.0.add(one + l + eo) += sum };
+            }
+        });
+        self.links_scatter(e, s, w);
+    }
+
+    /// The link rows' part of `m_scatter`.
+    fn links_scatter(&self, e: &[F], s: [F; 3], w: &mut [F]) {
+        let l = &self.kt.links;
+        for i in 0..l.len() {
+            let er = e[l.idx[i] as usize];
+            let rg = l.rng[i];
+            for m in 0..3 {
+                for t in rg[m] as usize..rg[m + 1] as usize {
+                    w[l.cells[t] as usize] += er * s[m] * l.coef(t);
+                }
+            }
+        }
+    }
+
+    /// `m_scatter` row by row (pass 12's; slots in parallel: their cells are disjoint; the link rows
+    /// after). The reference.
+    pub fn m_scatter_ref(&self, e: &[F], s: [F; 3], w: &mut [F]) {
         let one = self.kt.one_cell;
         let nslots = self.kt.slots.len();
         let wp = par::SyncPtr(w.as_mut_ptr());
@@ -139,7 +208,7 @@ impl Mats<'_> {
                     for t in rg[m] as usize..rg[m + 1] as usize {
                         let cell = one + p.rows.cells[t] as usize - base + v * SLOT;
                         // SAFETY: slot `v`'s cells lie in its own region
-                        unsafe { *wp.0.add(cell) += crate::mfill::mul1(p.rows.coefs[t], c) };
+                        unsafe { *wp.0.add(cell) += p.rows.cmul(t, c) };
                     }
                 }
             }
@@ -150,7 +219,7 @@ impl Mats<'_> {
             let rg = l.rng[i];
             for m in 0..3 {
                 for t in rg[m] as usize..rg[m + 1] as usize {
-                    w[l.cells[t] as usize] += er * s[m] * l.coefs[t];
+                    w[l.cells[t] as usize] += er * s[m] * l.coef(t);
                 }
             }
         }
@@ -713,6 +782,55 @@ mod pass12_tests {
         let cols = collapse_keys(&z, &tt, &keys);
         for (k, &(b, n)) in keys.iter().enumerate() {
             assert_eq!(cols[k], collapse_n(&z, &tt, b, n), "key {k}");
+        }
+    }
+}
+
+#[cfg(test)]
+mod pass13_tests {
+    use super::*;
+    use crate::{node, plan};
+
+    /// On the node data (N2 and N4): `m_scatter`'s gather equals `m_scatter_ref` (pass 12's
+    /// scatter) and `m_matvec` (the coefficient-1 terms summed apart) equals each row's forms by
+    /// `Rows::eval`, on pseudo-random `e`, `s` and `f` with zero stretches.
+    #[test]
+    fn scatter_gather_and_matvec_match() {
+        if plan::BLOB.len() < 16 && crate::mfill::find_dirs().is_none() {
+            return;
+        }
+        let nd = plan::node_data();
+        let mut st = 0x2545_f491_4f6c_dd1du64;
+        let mut nx = move || {
+            st ^= st << 13;
+            st ^= st >> 7;
+            st ^= st << 17;
+            st
+        };
+        for k in [node::NK::N2, node::NK::N4] {
+            let kt = nd.kind_tab(k);
+            let mats = Mats { k, kt: &kt, protos: &nd.protos };
+            let nm = 1usize << k.log_m();
+            let e: Vec<F> = (0..nm).map(|i| if (i >> 12) % 5 == 3 { F::ZERO } else { F::new(nx(), nx()) }).collect();
+            let s = [F::ONE, F::new(nx(), nx()), F::new(nx(), nx())];
+            let ncell = (kt.one_cell + kt.slots.len() * SLOT).max(kt.links.cells.iter().map(|&c| c as usize + 1).max().unwrap_or(0));
+            let w0: Vec<F> = (0..ncell).map(|i| if i % 3 == 0 { F::new(nx(), 0) } else { F::ZERO }).collect();
+            let (mut w1, mut w2) = (w0.clone(), w0.clone());
+            mats.m_scatter(&e, s, &mut w1);
+            mats.m_scatter_ref(&e, s, &mut w2);
+            assert!(w1 == w2, "{k:?}: m_scatter");
+            let f: Vec<F> = (0..ncell).map(|i| if (i >> 10) % 7 == 1 { F::ZERO } else { F::new(nx(), nx()) }).collect();
+            let mv = mats.m_matvec(&f);
+            let one = kt.one_cell;
+            for (v, &(pi, ..)) in kt.slots.iter().enumerate() {
+                let p = &nd.protos[pi];
+                let base = (pi * SLOT) as u32;
+                for i in (0..p.rows.len()).step_by(7) {
+                    let o = p.rows.eval(i, &|c| f[one + (c - base) as usize + v * SLOT]);
+                    let row = (p.rows.idx[i] - base) as usize + v * SLOT;
+                    assert!((0..3).all(|m| mv[m][row] == o[m]), "{k:?}: m_matvec row {row}");
+                }
+            }
         }
     }
 }

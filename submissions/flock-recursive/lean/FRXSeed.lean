@@ -18,7 +18,8 @@ at `5 … 10`. The 7-byte tag shifts the payload by 7 bytes, so seed word `j` is
 
 * `packBytes_shift7`: the packed words of `t ‖ s` with `|t| = 7` in terms of `s`'s (pure).
 * `seedIR`: 15 straight-line blocks `sdW j` (`hB + j := word j`).
-* **`seedOK_seedIR`**: `SeedOK seedIR I (fsQ (vkOf π) c π 0 zeroD)` on every SNARK tape.
+* **`seedOK_seedIR4`**: `SeedOK seedIR I (seedQ (vkOf π) c hdr)` on every tape of a proof of at
+  least 48 bytes; 3.x's `seedOK_seedIR` (`fsQ … 0`, `piSize`) is its instance.
 -/
 
 namespace FR.X
@@ -130,21 +131,19 @@ theorem tape_getD_c (c : Digest) (π : Proof) (L : Log) {i : ℕ} (hi : i < 4) :
   rw [tape_eq, List.append_assoc, List.append_assoc,
     List.getD_append _ _ _ _ (by rw [packBytes_digest_length]; exact hi)]
 
-theorem seedPay_length (c : Digest) (π : Proof) (hs : π.size = piSize) :
+theorem seedPay_length (c : Digest) (π : Proof) (hp : 48 ≤ π.size) :
     (seedPay c π).length = 112 := by
-  have hp : π.size = 797904 := hs.trans piSize_eq
   have h48 : (π.extract 0 48).data.toList.length = 48 := by
     rw [Array.length_toList]; exact extract_size π (o := 0) (len := 48) (by omega)
   simp only [seedPay, List.length_append, Vector.length_toList, h48]
 
-/-- **The payload's words are tape words** (on a tape of a proof of `piSize` bytes). -/
-theorem tape_seed (c : Digest) (π : Proof) (L : Log) (hs : π.size = piSize) {k : ℕ}
+/-- **The payload's words are tape words** (on a tape of a proof of at least 48 bytes). -/
+theorem tape_seed (c : Digest) (π : Proof) (L : Log) (hp : 48 ≤ π.size) {k : ℕ}
     (hk : k < 14) :
     (extractorInput c π L).toArray.getD (sPos k) 0 = (packBytes (seedPay c π)).getD k 0 := by
-  have hp : π.size = 797904 := hs.trans piSize_eq
-  have hpl : ∀ j, j < 99738 → (extractorInput c π L).getD (5 + j) 0 =
+  have hpl : ∀ j, j < 6 → (extractorInput c π L).getD (5 + j) 0 =
       (packBytes π.data.toList).getD j 0 := fun j hj => by
-    rw [tape_getD_proof c π L (by rw [hp]; omega), List.getD_eq_getElem]
+    rw [tape_getD_proof c π L (by omega), List.getD_eq_getElem]
   rw [getD_toArray, seedPay, packBytes_append8 _ _ (k := 4) (by simp)]
   unfold sPos
   split_ifs with h4 h8
@@ -157,15 +156,14 @@ theorem tape_seed (c : Digest) (π : Proof) (L : Log) (hs : π.size = piSize) {k
       show (π.extract 0 48) = π.extract (8 * 0) (8 * 0 + 8 * 6) from rfl,
       extract_words π (by omega) (by omega), Nat.zero_add]
 
-/-- **The machine's seed words are the seed query's** `"FRSEED0" ‖ vkOf π ‖ c ‖ hdr`. -/
-theorem seedVal_eq (c : Digest) (π : Proof) (L : Log) (hs : π.size = piSize) (st : Digest)
+/-- **The machine's seed words are the seed query's** `"FRSEED0" ‖ vkOf π ‖ c ‖ hdr`, on a tape of
+a proof of at least 48 bytes (any revision's `hdr`). -/
+theorem seedVal_eq4 (c : Digest) (π : Proof) (L : Log) (hs : 48 ≤ π.size)
     {j : ℕ} (hj : j < 15) :
     seedVal (extractorInput c π L).toArray j =
-      (packBytes (fsQ (vkOf π) c π 0 st).data.toList).getD j 0 := by
+      (packBytes (seedQ (vkOf π) c (π.extract 0 48)).data.toList).getD j 0 := by
   have hl := seedPay_length c π hs
-  rw [show fsQ (vkOf π) c π 0 st = seedQ (vkOf π) c (π.extract 0 48) by
-      unfold fsQ; rw [fsMsgs_ctl.1]; rfl,
-    seedQ_data', ← seedPay, packBytes_shift7 _ _ rfl, seedVal]
+  rw [seedQ_data', ← seedPay, packBytes_shift7 _ _ rfl, seedVal]
   have hlo : (if j = 0 then tagSeedW else (extractorInput c π L).toArray.getD (sPos (j - 1)) 0 >>> 8)
       = (if j = 0 then toWord (ofLE tagSeed) else (packBytes (seedPay c π)).getD (j - 1) 0 >>> 8) := by
     by_cases h0 : j = 0
@@ -178,6 +176,18 @@ theorem seedVal_eq (c : Digest) (π : Proof) (L : Log) (hs : π.size = piSize) (
     · simp only [if_neg h14]
       rw [packBytes_getD, if_neg (by omega)]; exact (BitVec.zero_shiftLeft 56).symm
   rw [hlo, hhi]
+
+/-- 3.x's position-0 query is the seed query. -/
+theorem fsQ_zero (vk c : Digest) (π : Proof) (st : Digest) :
+    fsQ vk c π 0 st = seedQ vk c (π.extract 0 48) := by
+  unfold fsQ; rw [fsMsgs_ctl.1]; rfl
+
+/-- 3.x's form (a proof of `piSize` bytes, the query `fsQ … 0`). -/
+theorem seedVal_eq (c : Digest) (π : Proof) (L : Log) (hs : π.size = piSize) (st : Digest)
+    {j : ℕ} (hj : j < 15) :
+    seedVal (extractorInput c π L).toArray j =
+      (packBytes (fsQ (vkOf π) c π 0 st).data.toList).getD j 0 := by
+  rw [fsQ_zero]; exact seedVal_eq4 c π L (by rw [hs, piSize_eq]; norm_num) hj
 
 /-! ## The program -/
 
@@ -389,22 +399,27 @@ theorem sdList_sem (I : Array Word) : ∀ (js : List ℕ), js.Nodup → (∀ j �
     · rw [b2 y hy (fun k hk => hne k (List.mem_cons_of_mem _ hk)),
         a2 y hy (hne j (List.mem_cons_self ..))]
 
-/-- **`SeedOK`** for the seed block, on every SNARK tape: its 15 words are the seed query's,
-`"FRSEED0" ‖ vkOf π ‖ c ‖ hdr`. -/
-theorem seedOK_seedIR (c : Digest) (π : Proof) (L : Log) (hs : π.size = piSize) (st : Digest) :
-    SeedOK seedIR (extractorInput c π L).toArray (fsQ (vkOf π) c π 0 st) := by
+/-- **`SeedOK`** for the seed block, on every tape of a proof of at least 48 bytes: its 15 words
+are the seed query's, `"FRSEED0" ‖ vkOf π ‖ c ‖ hdr`. -/
+theorem seedOK_seedIR4 (c : Digest) (π : Proof) (L : Log) (hs : 48 ≤ π.size) :
+    SeedOK seedIR (extractorInput c π L).toArray (seedQ (vkOf π) c (π.extract 0 48)) := by
   refine ⟨wf_sdList _, fun h => ?_, fun s hM hsz => ?_⟩
   · rcases writes_sdList _ h with h | h | h | h | h | h <;> simp [rCC, rSa, rSb, rSk, rSad, rA, cTmp] at h
   · obtain ⟨a1, a2, -⟩ := sdList_sem (extractorInput c π L).toArray
       [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14] (by decide) (by decide) s hM hsz
     simp only [seedIR]
     refine ⟨fun j hj => ?_, ?_, fun y hy hy2 => a2 y hy fun k hk => ?_⟩
-    · rw [a1 j (by simp; omega), seedVal_eq c π L hs st hj]
+    · rw [a1 j (by simp; omega), seedVal_eq4 c π L hs hj]
     · refine frame _ seedIR s (wf_sdList _) hM rCn5 (by decide) fun h => ?_
       rcases writes_sdList _ h with h | h | h | h | h | h <;>
         simp [rCn5, rSa, rSb, rSk, rSad, rA, cTmp] at h
     · have : k < 15 := by simp at hk; omega
       omega
+
+/-- 3.x's form: `SeedOK` on every SNARK tape for the query `fsQ … 0`. -/
+theorem seedOK_seedIR (c : Digest) (π : Proof) (L : Log) (hs : π.size = piSize) (st : Digest) :
+    SeedOK seedIR (extractorInput c π L).toArray (fsQ (vkOf π) c π 0 st) := by
+  rw [fsQ_zero]; exact seedOK_seedIR4 c π L (by rw [hs, piSize_eq]; norm_num)
 
 /-! ## Controls -/
 

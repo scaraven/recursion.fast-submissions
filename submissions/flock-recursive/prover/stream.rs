@@ -86,6 +86,8 @@ impl Pre {
 
 /// The solve orders file in the setup directory.
 const PLANS: &str = "plans.bin";
+/// Their level schedules (pass 13).
+const SCHED: &str = "sched.bin";
 
 /// Load the solve orders `prover setup` stored in `$RF_SETUP` (if any, and of this node data).
 pub fn load_setup_plans(nd: &plan::NodeData) -> bool {
@@ -93,6 +95,9 @@ pub fn load_setup_plans(nd: &plan::NodeData) -> bool {
     let loaded = dir.as_ref().and_then(|d| std::fs::read(Path::new(d).join(PLANS)).ok()).is_some_and(|b| crate::mfill::load_plans(&nd.protos, &plan::data_tag(), &b));
     // the inactive fills, recorded with the plans (same node data)
     if loaded {
+        if let Some(b) = dir.as_ref().and_then(|d| std::fs::read(Path::new(d).join(SCHED)).ok()) {
+            crate::mfill::load_scheds(&nd.protos, &plan::data_tag(), &b);
+        }
         for (i, p) in nd.protos.iter().enumerate() {
             if let Some(b) = dir.as_ref().and_then(|d| std::fs::read(Path::new(d).join(format!("inactive-p{i}.bin"))).ok()) {
                 crate::mfill::load_inactive(p, &b);
@@ -183,6 +188,8 @@ pub fn setup(dir: &Path) {
     let b = crate::mfill::save_plans(&pre.nd.protos, &plan::data_tag());
     std::fs::create_dir_all(dir).unwrap_or_else(|e| service::fatal(&format!("{}: {e}", dir.display())));
     std::fs::write(dir.join(PLANS), &b).unwrap_or_else(|e| service::fatal(&format!("{}: {e}", dir.display())));
+    // the orders' level schedules (pass 13; a request loads them instead of building them)
+    std::fs::write(dir.join(SCHED), crate::mfill::save_scheds(&pre.nd.protos, &plan::data_tag())).unwrap_or_else(|e| service::fatal(&format!("{}: {e}", dir.display())));
     // the decoded node data's image (pass 12; not with `FLOCK_NODE_DUMP`, whose tag is fixed)
     if std::env::var_os("FLOCK_NODE_DUMP").is_none() {
         std::fs::write(dir.join(plan::IMAGE), plan::save_image(pre.nd, &plan::data_tag())).unwrap_or_else(|e| service::fatal(&format!("{}: {e}", dir.display())));

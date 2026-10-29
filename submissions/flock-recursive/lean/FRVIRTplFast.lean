@@ -274,6 +274,9 @@ structure ECtx3 where
   nsh : Array ℕ
   ps : Array (Array Pat)
   inr : Array (Array F3)
+  /-- Each key's `one` coefficients times `E(one)`, once per slot (B0: not once per piece). -/
+  ce : Array F3
+  dce : F3
 
 /-- The patterns' inner sums of a slot: they depend on the slot's shared forms only through their
 numbers `nl` (S-T1: so slots with equal numbers share them, `nodeV3`). -/
@@ -282,6 +285,9 @@ def inr3 (tb : Tb) (u : ℕ → F) (kp : Array KP3) (dkp : KP3) (nl : Array ℕ)
   (Array.range pats.size).map fun k => let P := kp.getD k dkp
     inrOf3 P.1.u P.2.1.u P.2.2.u (tabOr tb.pu tb.lu u) (nl.getD k 0) (pats.getD k #[])
 
+/-- A key's `one` coefficients times `E(one)`. -/
+def ceOf (tb : Tb) (P : KP3) : F3 := (P.1.one * tb.e1, P.2.1.one * tb.e1, P.2.2.one * tb.e1)
+
 /-- A slot's context with its patterns' inner sums given. -/
 def ectx3W (n : ℕ) (tb : Tb) (t u : ℕ → F) (keys : Array Key) (kp : Array KP3)
     (gsh : Array (List GForm)) (pats : Array (Array Pat)) (inr : Array (Array F3)) : ECtx3 :=
@@ -289,7 +295,7 @@ def ectx3W (n : ℕ) (tb : Tb) (t u : ℕ → F) (keys : Array Key) (kp : Array 
   ⟨n, tb, t, u, keys, kp, dkp,
     (Array.range gsh.size).map (fun k => let P := kp.getD k dkp
       ownSum3 P.1.u P.2.1.u P.2.2.u tb.slo tb.shi 0 (gsh.getD k [])),
-    gsh.map List.length, pats, inr⟩
+    gsh.map List.length, pats, inr, kp.map (ceOf tb), ceOf tb dkp⟩
 
 def ectx3 (n : ℕ) (tb : Tb) (t u : ℕ → F) (keys : Array Key) (kp : Array KP3)
     (gsh : Array (List GForm)) (pats : Array (Array Pat)) : ECtx3 :=
@@ -303,11 +309,12 @@ def ppv3 (c : ECtx3) : PPc → F3
     let h1 := hfac c.tb.ttab c.tb.nt c.tb.thi 11 c.n c.t K.A xh
     let h2 := hfac c.tb.stab c.tb.ns c.tb.shi 12 23 c.u K.B ch
     let sv := c.sv.getD k (0, 0, 0)
+    let e := c.ce.getD k c.dce
     let o := ownSumP3 P.1.u P.2.1.u P.2.2.u c.tb.slo c.tb.shi (c.inr.getD k #[]) (hfS c.tb c.u)
       (c.ps.getD k #[]) (c.nsh.getD k 0) own
-    (h1 * (h2 * P.1.loc + P.1.one * c.tb.e1 + sv.1 + o.1),
-     h1 * (h2 * P.2.1.loc + P.2.1.one * c.tb.e1 + sv.2.1 + o.2.1),
-     h1 * (h2 * P.2.2.loc + P.2.2.one * c.tb.e1 + sv.2.2 + o.2.2))
+    (h1 * (h2 * P.1.loc + e.1 + sv.1 + o.1),
+     h1 * (h2 * P.2.1.loc + e.2.1 + sv.2.1 + o.2.1),
+     h1 * (h2 * P.2.2.loc + e.2.2 + sv.2.2 + o.2.2))
 
 def slotV3 (c : ECtx3) (pps : List PPc) : F3 := sum3 (ppv3 c) pps
 
@@ -337,7 +344,9 @@ theorem slotV3_eq (n n' : ℕ) (t u : ℕ → F) (one : Lin) (nt ns lt lu : Arra
   simp only [slotV3, slotV, sum3_eq]
   refine Prod.ext ?_ (Prod.ext ?_ ?_) <;> simp only <;>
     refine congrArg (sumL · pps) (funext fun p => ?_) <;>
-    cases p <;> simp only [ppv3, ppv, ectx3, ectx3W, inr3, ectx, growsVal3_eq, kp3_getD, ownSum3_eq, getD_range3,
+    cases p <;> simp only [ppv3, ectx3, ectx3W, inr3, getD_map'] <;>
+    simp only [ppv3, ppv, ectx3, ectx3W, inr3, ectx, growsVal3_eq, ceOf, kp3_getD, kprep3_eq, getD_map',
+      ownSum3_eq, getD_range3,
       ownSumP3_eq, range_getD_inr, range_getD_inr3, inrOf3_map1, inrOf3_map2, inrOf3_map3]
 
 /-! ## The node -/
@@ -540,9 +549,9 @@ def planData (fin : Finals) :
 theorem mkKM_info (k : TKey) :
     ((mkKM k).rows.length, (mkKM k).cr, (mkKM k).nl) = ((tRows k).length, cregion k, tNlocs k) := by
   have h := keyInfo_eq k
-  unfold mkKM; split
+  unfold mkKM; dsimp only; split
   · simp [h]
-  · dsimp only; split <;> simp [h]
+  · split <;> simp [h]
 
 theorem compMS_T (L : TLay) (P : Params) (base : ℕ) (ops : List Op) {M : List (TKey × Tpl)} (h : MOk M) :
     (compMS L P M (CS.init base) ops none []).1 = compileT L P base ops ∧

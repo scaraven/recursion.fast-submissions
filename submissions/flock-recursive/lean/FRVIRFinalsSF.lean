@@ -1,7 +1,9 @@
 -- New for `flock-recursive` (BLUEPRINT §7, A.9; stage S-F).
+-- RET-3: the declarations revision 4 reads moved to `FRVIRFinalsCore`.
 import FRVIRFinals
 import FRSkip
 import FRRingSwitch
+import FRVIRFinalsCore
 
 /-!
 # The phase-final checks owned by S-F: `finRS`, `finE`, `finB′` (A.9)
@@ -44,51 +46,9 @@ open RecursionFast
 section Kit
 variable (impl : OpImpl) (κ : Kind) (inp : Input) (r : Array Val)
 
-/-- One op appending one value with no assertion. -/
-theorem pr_op {op : Op} {ops : List Op} {L : List Val} {v : Val}
-    (h : evalOp impl κ inp (r ++ L.toArray) op = .vals [v] true) :
-    pureRun impl κ inp (op :: ops) r L = pureRun impl κ inp ops r (L ++ [v]) := by
-  simp only [pureRun, h, Bool.true_and]; cases pureRun impl κ inp ops r (L ++ [v]) <;> rfl
-
-theorem rd_pre {L M : List Val} {x : ℕ} (h : x < r.size + L.length) :
-    rd (r ++ (L ++ M).toArray) x = rd (r ++ L.toArray) x := by
-  rw [← app_app]; exact rd_append_left (by simpa using h)
-
-theorem rd_new (L : List Val) (v : Val) (M : List Val) :
-    rd (r ++ (L ++ v :: M).toArray) (r.size + L.length) = v := by
-  rw [rd_app]; simp
-
-theorem rd_new1 (L : List Val) (v : Val) : rd (r ++ (L ++ [v]).toArray) (r.size + L.length) = v :=
-  rd_new r L v []
-
 end Kit
 
 /-! ## Blocks -/
-
-/-- The packing basis element of index `i` (`bitBasis`, A.7). -/
-def bb (i : ℕ) : F := bitBasis ⟨i % 128, Nat.mod_lt _ (by decide)⟩
-
-/-- Slice value `i` of RS claim `j` (RS0's message: claim-major, 16 bytes each). -/
-def rsOff (j i : ℕ) : ℕ := 16 * (128 * j + i)
-
-/-- One slice value of claim `j` (8 registers): `s`, its inner weight `c` (`wop i`), `c·s` into the
-claim value, `Φ_{r″}(s)` (`phiRS`, `r″` in register `R`), `bitBasis i · Φ(s)` into the switched
-claim. -/
-def elemOps (j i : ℕ) (wop : ℕ → Op) (R aA aT b : ℕ) : List Op :=
-  [.piElem fRS0 (rsOff j i), wop i, .mulF (b + 1) b, .addF aA (b + 2), .phiRS R b,
-   .const (fun _ => .f (bb i)), .mulF (b + 5) (b + 4), .addF aT (b + 6)]
-
-/-- The width of `elemOps`. -/
-def elemW : ℕ := 8
-
-/-- Slice values `i … i + n − 1` of claim `j`. -/
-def elemsOps (j : ℕ) (wop : ℕ → Op) (R : Reg) : ℕ → ℕ → Reg → Reg → ℕ → List Op
-  | 0, _, _, _, _ => []
-  | n + 1, i, aA, aT, b =>
-    elemOps j i wop R aA aT b ++ elemsOps j wop R n (i + 1) (b + 3) (b + elemW - 1) (b + elemW)
-
-/-- The skip node `x_j` (`S` is the first 64 nodes). -/
-def xS (j : ℕ) : F := skipNode ⟨j % 128, Nat.mod_lt _ (by decide)⟩
 
 /-- The nodes other than `lo` (63 of them, in order). -/
 def others (lo : ℕ) : List ℕ := (List.range 63).map fun j => if j < lo then j else j + 1
@@ -105,26 +65,6 @@ theorem others_length (lo : ℕ) : (others lo).length = 63 := by simp [others]
 
 section Run
 variable (impl : OpImpl) (κ : Kind) (inp : Input) (r : Array Val)
-
-theorem pr_app {o₁ o₂ : List Op} {L M : List Val}
-    (h : pureRun impl κ inp o₁ r L = some (L ++ M, true)) :
-    pureRun impl κ inp (o₁ ++ o₂) r L = pureRun impl κ inp o₂ r (L ++ M) := by
-  rw [pureRun_append, h, Option.bind_some]; cases pureRun impl κ inp o₂ r (L ++ M) <;> simp
-
-theorem pr_app' {o₁ o₂ : List Op} {L L' : List Val}
-    (h : pureRun impl κ inp o₁ r L = some (L', true)) :
-    pureRun impl κ inp (o₁ ++ o₂) r L = pureRun impl κ inp o₂ r L' := by
-  rw [pureRun_append, h, Option.bind_some]; cases pureRun impl κ inp o₂ r L' <;> simp
-
-theorem rdX (L X : List Val) (t : ℕ) :
-    rd (r ++ (L ++ X).toArray) (r.size + L.length + t) = X.getD t default := by
-  rw [Nat.add_assoc, rd_app]; simp [List.getElem?_append_right]
-
-theorem rdL {L X : List Val} {y : ℕ} (h : y < r.size + L.length) :
-    rd (r ++ (L ++ X).toArray) y = rd (r ++ L.toArray) y := rd_pre r h
-
-theorem rdX0 (L X : List Val) : rd (r ++ (L ++ X).toArray) (r.size + L.length) = X.getD 0 default := by
-  simpa using rdX r L X 0
 
 /-- Slice value `i` of claim `j`. -/
 def sv (inp : Input) (j i : ℕ) : F := F.ofBytes (bytesAt inp.π (absOff fRS0 (rsOff j i)) 16)
@@ -208,10 +148,6 @@ theorem run_elemsOps (j : ℕ) (wop : ℕ → Op) (R : ℕ) (rpp : Array F) (c :
               simp only [elemW]; omega, h4, Finset.sum_range_succ']
           simp only [hk, Nat.add_zero]; ring
 
-/-- One claim: a zero, then its 128 slice values (width `1 + 128 · elemW`). -/
-def claimOps (j : ℕ) (wop : ℕ → Op) (R : Reg) (b : ℕ) : List Op :=
-  .const (fun _ => .f 0) :: elemsOps j wop R 128 0 b b (b + 1)
-
 theorem run_claimOps (j : ℕ) (wop : ℕ → Op) (R : ℕ) (rpp : Array F) (c : ℕ → F) (L₀ X : List Val)
     (hR : R < r.size + L₀.length) (hRv : (rd (r ++ L₀.toArray) R).toAF = rpp)
     (hw : ∀ i (X : List Val), evalOp impl κ inp (r ++ (L₀ ++ X).toArray) (wop i) = .vals [.f (c i)] true) :
@@ -241,42 +177,6 @@ theorem run_claimOps (j : ℕ) (wop : ℕ → Op) (R : ℕ) (rpp : Array F) (c :
 end Run
 
 /-! ## `finRS` (A.9, row RS1; revisions 3.9, 3.12) -/
-
-/-- `v_RS` by Horner in `κ` from the switched claims `T₀ … T₃` (registers `t₀ … t₃`; a leaf's
-`T₃` replaced by `0`), from register `d`; then a leaf's zero check of claim 3's slice values
-(revision 3.13: claim 3 is E4's `f̂(r′)`, node only). -/
-def rsTail (kap t₀ t₁ t₂ t₃ d : ℕ) : List Op :=
-  [.const (fun _ => .f 0), .addF t₃ d, .keep Kind.isNode (d + 1) d,
-   .mulF kap (d + 2), .addF t₂ (d + 3), .mulF kap (d + 4), .addF t₁ (d + 5), .mulF kap (d + 6),
-   .addF t₀ (d + 7), .piField fRS0 (rsOff 3 0) 2048, .assertZero (d + 9) (fun κ => !κ.isNode)]
-
-/-- RS1's `r″ = f₀ … f₆` (coordinates 0–6). -/
-def rsFsRegs (fi : FinIn) : List Reg := (List.range 7).map fun p => (coordsR fi "RS1").getD p 0
-
-/-- **`finRS`** (A.9 revisions 3.9, 3.13, `J_z = 4`): the claim values `α_Z, α_Lc, α_Sh, α_E` and
-`v_RS` (exports, in this order). Registers from `b`: `ρ₁` (A.1's first pinned coordinate),
-`eqZ λ ρ₁`, the two `eq` tables (Lc, Sh) after their points, `r″`; the claims from `b + 7`,
-`1 + 128 · 8` each (claim 3, E4's `f̂(r′)`, weighted by the packing basis `bb i`: `f̂(r′) =
-Σ_i b_i s_{3,i}`); then `rsTail`. -/
-def finRS : FinField := fun fi b =>
-  let kap := (coordsR fi "RS1").getD 7 0
-  let lam := (outsOf fi "Z2").headD 0
-  let c₀ := b + 7
-  let cw := 1 + 128 * elemW
-  let d := c₀ + 4 * cw
-  (([.const (fun _ => .f (pinnedRho 0)), .eqZ lam b,
-    .packF ((chals fi "L2" 14).take 7), .eqTable (b + 2),
-    .packFK (fun κ => ((chals fi "S2" 28).drop (κ.m - 14)).take 7), .eqTable (b + 4),
-    .packF (rsFsRegs fi)] : List Op) ++
-   claimOps 0 (fun i => .getF (b + 1) i) (b + 6) c₀ ++
-   claimOps 1 (fun i => .getF (b + 3) i) (b + 6) (c₀ + cw) ++
-   claimOps 2 (fun i => .getF (b + 5) i) (b + 6) (c₀ + 2 * cw) ++
-   claimOps 3 (fun i => .const (fun _ => .f (bb i))) (b + 6) (c₀ + 3 * cw) ++
-   rsTail kap (c₀ + cw - 1) (c₀ + 2 * cw - 1) (c₀ + 3 * cw - 1) (c₀ + 4 * cw - 1) d,
-   (List.range 4).map (fun j => c₀ + j * cw + 127 * elemW + 4) ++ [d + 8])
-
-/-- `finRS`'s export index of `v_RS` (after the `J_z = 4` claim values). -/
-def nRS : ℕ := 4
 
 /-- The bytes of claim 3's slice values (a leaf's are zero). -/
 def rsLeafZero (inp : Input) : Bool :=
@@ -313,9 +213,6 @@ theorem run_rsTail (impl : OpImpl) (κ : Kind) (inp : Input) (r : Array Val) (ka
 
 section RS
 variable (impl : OpImpl) (κ : Kind) (inp : Input) (fi : FinIn) (r : Array Val)
-
-/-- The F values of registers, as an array. -/
-def ptF (xs : List Reg) : Array F := (xs.map (fv r)).toArray
 
 /-- **The inner weights** `c_{j,i}` of the four claims (`rs_column`): `eqZ λ ρ₁` for Z; `eq` at the
 low 7 coordinates of Lc's (L2) and Sh's (S2's position part) points; the packing basis `bb i` for
@@ -468,41 +365,6 @@ end RS
 
 /-! ## `finE` and `finB′` (A.9) -/
 
-/-- E4 end's message (`f̂(r′) ‖ 0^16`, 32 bytes) inside the E field (A.3 row 9: after E2's and
-E4's rounds). -/
-def oE4end : ℕ := phaseOff (phaseIx "E4end") fE
-
-/-- **`finE`** (A.9 revision 3.13; checks (ii)–(iv) node only): `â_M, b̂_M, ĉ_M` from the E-end
-absorb (A.3 row 9′); (ii) `c_{E2} = eq(r_E, r_{E2})·(â_M b̂_M + ĉ_M)` (`r_E` E1's 21 coordinates,
-`r_{E2}` E2's challenges); (iii) `c₀^{E4} = â_M + κ_E b̂_M + κ_E² ĉ_M + κ_E³ v_L`, binding the
-lincheck's free initial claim (`v_L`, `r_Lr`: `finLr`'s exports, `lrEx`); (iv) `c_{E4} = (W_M +
-κ_E³ W_L)·f̂(r′)` with `W_M = (Ã_M + κ_E B̃_M + κ_E² C̃_M)(r_{E2}, r′)` (`evalM`) and `W_L = (Ã_L +
-κ_L B̃_L + κ_L² C̃_L)(r_Lr, r′)` (`evalL`), both at the F point `r′` (E4's 23 challenges: every
-cell coordinate, S-G1j defect 2), `f̂(r′)` RS claim 4 (`zhat` 3); (v) E4 end's absorbed value is
-`f̂(r′)` and its last 16 bytes are zero (every kind: a leaf's claim-4 slices are zero, so its
-message must be). `c₀^{E2} = 0`
-holds by `initClaim`. Exports the point `r′`. -/
-def finE : FinField := fun fi b =>
-  let kE := (outsOf fi "E3").headD 0
-  let kL := (outsOf fi "Lr3").headD 0
-  let fz := fi.zhat.getD 3 0
-  ([.piElem fEEnd 0, .piElem fEEnd 16, .piElem fEEnd 32,
-    .packF ((coordsR fi "E1").take 21), .packF (chals fi "E2" 21), .eqPt (b + 3) (b + 4),
-    .mulF b (b + 1), .addF (b + 6) (b + 2), .mulF (b + 5) (b + 7),
-    .assertEq (b + 8) (claimN fi "E2") Kind.isNode,
-    .mulF kE (b + 1), .mulF kE kE, .mulF (b + 10) (b + 2), .addF b (b + 9), .addF (b + 12) (b + 11),
-    .mulF (b + 10) kE, .mulF (b + 14) (lrEx fi 0), .addF (b + 13) (b + 15),
-    .assertEq (b + 16) (claim0 fi "E4") Kind.isNode,
-    .packF (chals fi "E4" 23), .evalM (b + 4) (b + 17), .mulF kE (b + 19), .mulF (b + 10) (b + 20),
-    .addF (b + 18) (b + 21), .addF (b + 23) (b + 22),
-    .evalL (lrEx fi 1) (b + 17), .mulF kL (b + 26), .mulF kL kL, .mulF (b + 29) (b + 27),
-    .addF (b + 25) (b + 28), .addF (b + 31) (b + 30),
-    .mulF (b + 14) (b + 32), .addF (b + 24) (b + 33), .mulF (b + 34) fz,
-    .assertEq (b + 35) (claimN fi "E4") Kind.isNode,
-    .piElem fE oE4end, .assertEq (b + 36) fz allK, .piField fE (oE4end + 16) 16,
-    .assertZero (b + 37) allK],
-   [b + 17])
-
 /-- **Control: `finE`'s `evalL` point is all of E4's 23 challenges** (revision 3.13; S-G1j defect
 2): op 19 packs `chals fi "E4" 23` into register `b + 17`, and op 25's cell operand is that register
 (the row operand is `finLr`'s Lr2 point). Revision 3.12's `finLr` passed 15 coordinates, where
@@ -513,29 +375,6 @@ theorem finE_evalL_point (fi : FinIn) (b : ℕ) :
     opsOut ((finE fi b).1.take 19) = 17 := by
   refine ⟨rfl, rfl, ?_⟩
   simp [finE, opsOut, Op.outs]
-
-/-- The F halves of a digest (`splitDigest`). -/
-def dLo (x : Digest) : F := F.ofBytes (Vector.ofFn fun i : Fin 16 => x[i.1])
-def dHi (x : Digest) : F := F.ofBytes (Vector.ofFn fun i : Fin 16 => x[16 + i.1])
-
-/-- **`finB′`** (A.9, revisions 3.6, 3.12): `v* = v_RS + Σ_k κ′^(k+2) pub_k` equals P1.0's initial
-claim (in `K`); E is batched into `v_RS` as RS claim 4 (3.13), so `v*` has no `v_E` term
-(stage-review changes 18). A node's public point claims, in order: M's `one` cell `1`; slot 0's
-`vk`, `c₁`; slot 1's `vk`, `c₂` (each digest as its two halves): nine cells, `J_f = 9`, no padding
-cells (revision 3.14). A leaf kind has none (`keep`). `v_RS` is `finRS`'s export `nRS`. Exports `v*`. -/
-def finB' : FinField := fun fi b =>
-  let kp := (outsOf fi "B'").headD 0
-  let vRS := fi.zhat.getD nRS 0
-  ([.input 0, .splitDigest b, .piDigest fStmt 1, .splitDigest (b + 3), .piDigest fStmt 33,
-    .splitDigest (b + 6), .const (fun _ => .f 1),
-    .mulF kp (b + 8), .addF (b + 7) (b + 10), .mulF kp (b + 11), .addF (b + 2) (b + 12),
-    .mulF kp (b + 13), .addF (b + 1) (b + 14), .mulF kp (b + 15), .addF (b + 5) (b + 16),
-    .mulF kp (b + 17), .addF (b + 4) (b + 18), .mulF kp (b + 19), .addF (b + 2) (b + 20),
-    .mulF kp (b + 21), .addF (b + 1) (b + 22), .mulF kp (b + 23), .addF (b + 9) (b + 24),
-    .mulF kp kp, .mulF (b + 26) (b + 25), .const (fun _ => .f 0), .keep Kind.isNode (b + 27) (b + 28),
-    .addF vRS (b + 29),
-    .const (fun _ => .k 1), .mulKF (b + 31) (b + 30), .assertEq (b + 32) (claim0 fi "P1") allK],
-   [b + 30])
 
 section EB
 variable (impl : OpImpl) (κ : Kind) (inp : Input) (fi : FinIn) (r : Array Val)
@@ -617,21 +456,6 @@ theorem flag_finE (hin : ∀ x ∈ (coordsR fi "E1").take 21 ++ chals fi "E2" 21
     Bool.and_true, ↓reduceIte, Bool.false_eq_true, Val.isZero] <;>
   exact ⟨_, rfl, rfl⟩
 
-/-- The public point claims' Horner sum `Σ_k κ′^k pub_k` (A.9 `finB′`, the order of `finB'`). -/
-def pubH (kp : F) : F :=
-  let vl := dLo inp.vk; let vh := dHi inp.vk
-  let c₁ := bytesAt inp.π (absOff fStmt 1) 32; let c₂ := bytesAt inp.π (absOff fStmt 33) 32
-  1 + kp * (vl + kp * (vh + kp * (dLo c₁ + kp * (dHi c₁ + kp * (vl + kp * (vh + kp * (dLo c₂ +
-    kp * dHi c₂)))))))
-
-/-- **`v*`** (A.9 `finB′`) from the register values of `κ′` and `v_RS`. -/
-def vStar : F :=
-  let kp := fv r ((outsOf fi "B'").headD 0)
-  fv r (fi.zhat.getD nRS 0) + (if κ.isNode then kp * kp * pubH inp kp else 0)
-
-/-- **A.9's `finB′` relation**: `v*` (in `K`) is P1.0's initial claim. -/
-def relB : Bool := (Val.k (K.smulF (vStar κ inp fi r) 1)).eqv (rd r (claim0 fi "P1"))
-
 /-- **`flag_finB'`**: `finB'` asks nothing; its flag is `relB`; its export is `v*`. -/
 theorem flag_finB' (hin : ∀ x ∈ [(outsOf fi "B'").headD 0, fi.zhat.getD nRS 0, claim0 fi "P1"],
       x < r.size) :
@@ -660,18 +484,6 @@ end EB
 
 /-! ## They ask nothing; the finals with S-F's fields -/
 
-theorem noAsk_elemsOps (j : ℕ) (wop : ℕ → Op) (hw : ∀ i, (wop i).item? = none) (R : ℕ) :
-    ∀ n i aA aT b, (elemsOps j wop R n i aA aT b).filterMap Op.item? = []
-  | 0, _, _, _, _ => rfl
-  | n + 1, i, aA, aT, b => by
-    simp only [elemsOps, elemOps, List.filterMap_append, List.filterMap_cons, hw i,
-      noAsk_elemsOps j wop hw R n, List.filterMap_nil, List.append_nil]
-    rfl
-
-theorem noAsk_claimOps (j : ℕ) (wop : ℕ → Op) (hw : ∀ i, (wop i).item? = none) (R b : ℕ) :
-    (claimOps j wop R b).filterMap Op.item? = [] := by
-  simp only [claimOps, List.filterMap_cons, noAsk_elemsOps j wop hw]; rfl
-
 theorem noAsk_rsTail (kap t₀ t₁ t₂ t₃ d : ℕ) :
     (rsTail kap t₀ t₁ t₂ t₃ d).filterMap Op.item? = [] := rfl
 
@@ -686,9 +498,6 @@ theorem noAsk_finRS (fi : FinIn) (b : ℕ) : (finRS fi b).1.filterMap Op.item? =
 theorem noAsk_finE (fi : FinIn) (b : ℕ) : (finE fi b).1.filterMap Op.item? = [] := rfl
 
 theorem noAsk_finB' (fi : FinIn) (b : ℕ) : (finB' fi b).1.filterMap Op.item? = [] := rfl
-
-/-- **The finals with S-0's and S-F's fields**; S-G's `finP`, `finPf` as arguments. -/
-def sfFinals (p : ℕ → FinField) (pf : FinField) : Finals := s0Finals finRS finE finB' p pf
 
 end FR
 

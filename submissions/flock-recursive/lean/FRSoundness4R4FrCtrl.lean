@@ -1,6 +1,7 @@
 -- New for `flock-recursive` (BLUEPRINT revision 4.1, A.9; stage R4d): controls.
 import FRSoundness4R4FrE
 import FRSoundness4R4FinCtrl
+import FRVIRFinalsSF
 
 /-!
 # Controls for `relE4`, `relSh4`, `relRS4` and R4d's definitions

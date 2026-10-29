@@ -138,6 +138,13 @@ def memX : ℕ := 2 ^ 26
 /-- The memory per tape word (§6.2). -/
 def mpwX : ℕ := 3
 
+/-- **Revision 4.1's fixed memory**: `2^28` words (S-H4, Part 25 F2: the level-0 decoder holds
+`f⁽⁰⁾`'s codeword, `2^27` words at `m = 32`); the node decoder's regions lie below it, the log
+index from it on (`FRXDec4Map`). A literal, so that `omega` never unfolds `2^28`. -/
+def memX4 : ℕ := 268435456
+
+theorem memX4_eq : memX4 = 2 ^ 28 := rfl
+
 /-- `claim.json`'s `fuel_base` (`3 · 2^46 ≈ 2^47.58`, blueprint B-10). -/
 def fuelBase : ℕ := 3 * 2 ^ 46
 /-- `claim.json`'s `fuel_per_word` (`2^12`). -/
@@ -149,6 +156,10 @@ def fuel (t : ℕ) : ℕ := fuelBase + fuelPerWord * t
 /-- What the SNARK branch may cost: the fuel less the memory, the parse and the `W` branch, with
 room to spare. -/
 def decBudget (t : ℕ) : ℕ := fuelBase - 2 ^ 27 + (fuelPerWord - 16) * t
+
+/-- What the revision 4.1 node branch may cost at `memX4`: `decBudget` less the extra words the
+prologue clears (`2^28` words, two steps each). -/
+def decBudget4 (t : ℕ) : ℕ := fuelBase - 2 ^ 29 + (fuelPerWord - 16) * t
 
 /-- **The obligations on the SNARK branch** for `Computes`. -/
 structure DecOk (dec : XIR) : Prop where

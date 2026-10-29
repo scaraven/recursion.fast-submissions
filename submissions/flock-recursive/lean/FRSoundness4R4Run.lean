@@ -3,6 +3,7 @@
 import FRSoundness4R4Chain
 import FRSoundness4Pos
 import FRSoundnessCoreAcc
+import FRXChainFlock
 
 /-!
 # An accepted `gen4` run: its chain (`runLog_chain4`) and its register files (`accept_chain4`)

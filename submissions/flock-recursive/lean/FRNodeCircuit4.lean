@@ -2,7 +2,7 @@
 -- R-4-m2; stage S-E12a). 3.x templates: `FRNodeCircuit` (`node_sound`, `SlotHolds`, `PubCells`),
 -- `FRNodeSoundA` (`NodeResid`, `rel_readWit`), `FRSoundnessExtAll` (`hRes`).
 import FRNodeKinds4
-import FRNodeCircuit
+import FRVIRFinalsCoreSG
 import FRSoundness4Frame
 import FRSoundness4P4bRows
 import FRVerifierC4

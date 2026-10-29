@@ -1,6 +1,8 @@
 -- New for `flock-recursive` (BLUEPRINT §4.3, §4.5, A.6, A.7, stage S-E2; B-2's kill test).
+-- RET-3: the declarations revision 4 reads moved to `FRVIRFinalsCoreSG`.
 import FRVIRMux
 import FRVIRFinals
+import FRVIRFinalsCoreSG
 
 /-!
 # The node's block layout: `nodeLayout`, the kind intervals, the size checks
@@ -32,63 +34,14 @@ namespace Layout
 
 /-! ## Constants (§4.3, A.7) -/
 
-/-- Compressions of one digest chain (§4.2, revision 3.13: `chainLen_eq`; 23,225 under 3.12). -/
-def chainN : ℕ := 23146
-/-- `hashStmt`'s blocks: 3 per slot. -/
-def stmtBase : ℕ := 2 * chainN
-/-- WOTS: 133 chains × 3 steps, the key leaf's 67 blocks, the path's 16 × 2 per slot. -/
-def wotsBase : ℕ := stmtBase + 6
-def wotsSlot : ℕ := 133 * 3 + 67 + 2 * 16
-/-- The mirror sub-region `WM` (revision 3.14, A.6: 146 blocks per slot, after both WOTS runs). -/
-def wmBase : ℕ := wotsBase + 2 * wotsSlot
 def wmSlot : ℕ := 146
 /-- The end of region H (after 8 spare blocks). -/
 def hEnd : ℕ := wmBase + 2 * wmSlot + 8
-/-- Region L: base and used blocks (revision 3.12: moved from 46,336 past H's end, 47,480 then;
-47,322 under revision 3.13, the base kept: stage-review changes 19). -/
-def lBase : ℕ := 47616
 def lUsed : ℕ := 124
-/-- Region M: base, elements, blocks, per-slot elements. -/
-def mBase : ℕ := 3 * 2 ^ 14
 def nM : ℕ := 2 ^ 21
 def mBlocks : ℕ := nM / 128
-def slotM : ℕ := 2 ^ 20
-/-- **M's `one` cell** (revision 3.6, S-E2 F-4): element `Mbase · 128` of `f`, pinned to `1` by a
-point claim (`PubCells`); the compiler's `Params.one` is this cell. -/
-def oneCell : ℕ := mBase * 128
-/-- The node's blocks (`2^(30 − 14)`). -/
-def nodeBlocks : ℕ := 2 ^ 16
 
 /-! ## The kind intervals -/
-
-/-- Blocks `[lo, hi)` of one kind. -/
-structure Iv where
-  kind : BlockKind
-  lo : ℕ
-  hi : ℕ
-
-/-- Slot `σ`'s digest chain. -/
-def chainIvs (σ : ℕ) : List Iv :=
-  [⟨.streamStart, σ * chainN, σ * chainN + 1⟩, ⟨.stream, σ * chainN + 1, (σ + 1) * chainN⟩]
-
-/-- `hashStmt`'s blocks A, B1, B2 of both slots. -/
-def stmtIvs : List Iv :=
-  (List.range 2).flatMap fun σ =>
-    let b := stmtBase + 3 * σ
-    [⟨.hashA, b, b + 1⟩, ⟨.hashB1, b + 1, b + 2⟩, ⟨.hashB2, b + 2, b + 3⟩]
-
-/-- Slot `σ`'s WOTS blocks, consecutive (§4.2): chain steps, key leaf, path steps. -/
-def wotsIvs (σ : ℕ) : List Iv :=
-  let b := wotsBase + wotsSlot * σ
-  [⟨.w43, b, b + 399⟩, ⟨.hashB1, b + 399, b + 400⟩, ⟨.stream, b + 400, b + 465⟩,
-    ⟨.streamEnd41, b + 465, b + 466⟩] ++
-  (List.range 16).flatMap fun t =>
-    [⟨.hashB1, b + 466 + 2 * t, b + 467 + 2 * t⟩, ⟨.hashB2, b + 467 + 2 * t, b + 468 + 2 * t⟩]
-
-/-- **`nodeLayout`**: the node's kind intervals in address order; `WM`, the spares, L and M have
-the kind `free` (`A₀ = B₀ = I`, revision 3.8.1), so `Sel ≡ 1`. -/
-def nodeLayout : List Iv :=
-  chainIvs 0 ++ chainIvs 1 ++ stmtIvs ++ wotsIvs 0 ++ wotsIvs 1 ++ [⟨.free, wmBase, nodeBlocks⟩]
 
 /-- **`Ind_kind`** (A.6): block `blk` is of kind `κ`. -/
 def Ind (κ : BlockKind) (blk : ℕ) : Bool :=
@@ -97,28 +50,7 @@ def Ind (κ : BlockKind) (blk : ℕ) : Bool :=
 /-- **`Sel`** (§4): block `blk` is in some kind's interval. -/
 def Sel (blk : ℕ) : Bool := nodeLayout.any fun iv => iv.lo ≤ blk && blk < iv.hi
 
-/-- The intervals of a kind (`kindInd`'s prefix sums run over them). -/
-def kindIvs (κ : BlockKind) : List (ℕ × ℕ) :=
-  (nodeLayout.filter fun iv => iv.kind == κ).map fun iv => (iv.lo, iv.hi)
-
-/-- Nonempty and in increasing order, without overlap. -/
-def chained : List Iv → Bool
-  | a :: b :: t => decide (a.lo < a.hi) && decide (a.hi ≤ b.lo) && chained (b :: t)
-  | [a] => decide (a.lo < a.hi)
-  | [] => true
-
 /-! ## The WOTS block order (exported for S-G's `nodeKind`, S-G1h) -/
-
-/-- **The kind of WOTS block `off` of a slot** (`off < wotsSlot = 498`), as `wotsIvs` lays them out:
-chain `i`'s step `s` at `3 i + s` (`off < 399`, kind `w43`); the key leaf at `399 … 465`
-(`hashB1` at 399, 65 `stream` blocks at 400–464, `streamEnd41` at 465); path step `t` at
-`466 + 2 t` (`hashB1`) and `467 + 2 t` (`hashB2`). -/
-def wotsKindAt (off : ℕ) : BlockKind :=
-  if off < 399 then .w43
-  else if off = 399 then .hashB1
-  else if off < 465 then .stream
-  else if off = 465 then .streamEnd41
-  else if (off - 466) % 2 = 0 then .hashB1 else .hashB2
 
 /-- The block of chain `i`'s step `s` (`i < 133`, `s < 3`) of slot `σ`. -/
 def wotsStepBlock (σ i s : ℕ) : ℕ := wotsBase + wotsSlot * σ + 3 * i + s
@@ -188,9 +120,6 @@ def mirOff : ℕ → ℕ
 def mirN : ℕ → ℕ
   | 0 => 399 | 1 => 1 | 2 => 67 | 3 => 66 | 4 => 66 | 5 => 16 | 6 => 16 | 7 => 16 | _ => 0
 
-/-- Mirror sources per slot: `0 … 580` (581 of the 584 positions of 146 blocks). -/
-def mirSources : ℕ := 581
-
 /-- **Mirror source `g`'s block** in slot `σ`: four sources per block. -/
 def mirBlock (σ g : ℕ) : ℕ := wmB σ + g / 4
 
@@ -244,9 +173,6 @@ theorem mir_control_neg : mirElem 0 400 0 ≠ wmB 0 * 128 + 2 * 400 ∧ mirElem 
 
 theorem nodeLayout_length : nodeLayout.length = 83 := by decide
 
-/-- **The intervals are disjoint and in order** (so `Ind` partitions `Sel`). -/
-theorem nodeLayout_chained : chained nodeLayout = true := by decide
-
 /-- They start at block 0 and end at `2^16`. -/
 theorem nodeLayout_end : (nodeLayout.head?.map Iv.lo, nodeLayout.getLast?.map Iv.hi) =
     (some 0, some nodeBlocks) := by decide
@@ -295,37 +221,7 @@ theorem usedBlocks_le : hEnd + lUsed + (2 * mRowModel.sum + 127) / 128 ≤ nodeB
 
 /-! ## The slots' compiled programs (the node's M rows) -/
 
-/-- Slot `σ`'s selector cells in L (A.7, revision 3.11 F-5: after `sig` 299, the digits' 266
-bit-elements, selectors 399, position bits 7,552). -/
-def selCells (σ : ℕ) : FR.Kind → ℕ
-  | .L32 => lBase * 128 + σ * 2 ^ 14 + 8516
-  | .P30 => lBase * 128 + σ * 2 ^ 14 + 8517
-  | .N30 => lBase * 128 + σ * 2 ^ 14 + 8518
-
-/-- Slot `σ`'s first fresh M cell (after the `one` cell). -/
-def slotBase (σ : ℕ) : ℕ := oneCell + 1 + σ * slotM
-
-/-- Slot `σ`'s compiled program (`compileMux (gen fin .mux)`). -/
-def slotCS (fin : Finals) (σ : ℕ) : Circ.CS :=
-  Circ.compileMux oneCell (selCells σ) (slotBase σ) (gen fin .mux).ops
-
-/-- **The node's M rows**: both slots'. -/
-def nodeRows (fin : Finals) : List Circ.Row := (slotCS fin 0).rowList ++ (slotCS fin 1).rowList
-
-
 /-! ## L's rows (Lr, A.7) -/
-
-/-- Slot `σ`'s declared bit cells in L (A.7, revision 3.11 F-5: after `sig`'s 299 elements, the
-digits' 266 bit-elements (two per base-4 digit, the checksum's included), the step selectors 399,
-the position bits 7,552 and the kind selector 3, each a bit-element). -/
-def lBitCells (σ : ℕ) : List ℕ :=
-  (List.range (266 + 399 + 7552 + 3)).map fun j => lBase * 128 + σ * 2 ^ 14 + 299 + j
-
-/-- **L's rows** (`N_L = 2^15`): `b · (1 − b) = 0` for every declared bit of both slots, with M's
-`one` cell. -/
-def lRows : List Circ.Row :=
-  ((List.range 2).flatMap lBitCells).map fun b =>
-    ⟨Circ.Lin.cell b, (Circ.Lin.cell oneCell).sub (Circ.Lin.cell b), []⟩
 
 theorem lRows_length : lRows.length = 16440 := by simp [lRows, lBitCells]
 

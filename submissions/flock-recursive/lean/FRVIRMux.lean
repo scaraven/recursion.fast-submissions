@@ -1,5 +1,7 @@
 -- New for `flock-recursive` (BLUEPRINT §4.3 "The mux", §7, stage S-E2; B-2, B-7).
+-- RET-3: the declarations revision 4 reads moved to `FRVIRFinalsCoreSG`.
 import FRVIRCompileSound
+import FRVIRFinalsCoreSG
 
 /-!
 # The muxed node program: `compileMux`, `compile_mux_sound`
@@ -24,40 +26,6 @@ are the rows of `gen κ`, the others vacuous — `compile_sound` at `SelOk … �
 namespace FR
 namespace Circ
 open RecursionFast
-
-/-- The mux's selector forms: M's `one` cell and the three selector cells. -/
-def muxP (one : ℕ) (cells : Kind → ℕ) : Params := ⟨Lin.cell one, fun κ => Lin.cell (cells κ)⟩
-
-/-- **`compileMux`**: `compile` in gated mode. -/
-def compileMux (one : ℕ) (cells : Kind → ℕ) (base : ℕ) (ops : List Op) : CS :=
-  compile (muxP one cells) base ops
-
-/-- The one-hot rows of the selector cells (A.8 `assertOneHot`: 3 products, 1 linear). -/
-def OneHotRows (w : Asg) (one : ℕ) (cells : Kind → ℕ) : Prop :=
-  w (cells .L32) * w (cells .P30) = 0 ∧ w (cells .L32) * w (cells .N30) = 0 ∧
-  w (cells .P30) * w (cells .N30) = 0 ∧
-  w one * (w (cells .L32) + w (cells .P30) + w (cells .N30)) = w one
-
-/-- A cell is a bit (Lr's Booleanity). -/
-def IsBitCell (w : Asg) (i : ℕ) : Prop := w i = 0 ∨ w i = 1
-
-/-- **The one-hot rows fix the kind**: Boolean selector cells satisfying them are one-hot. -/
-theorem oneHot_of_rows {w : Asg} {one : ℕ} {cells : Kind → ℕ} (hone : w one = 1)
-    (hb : ∀ κ, IsBitCell w (cells κ)) (h : OneHotRows w one cells) :
-    ∃ κ, SelOk w (muxP one cells) κ := by
-  obtain ⟨h1, h2, h3, h4⟩ := h
-  rw [hone, one_mul] at h4
-  have bL := hb .L32; have bP := hb .P30; have bN := hb .N30
-  simp only [muxP, SelOk, Lin.ev_cell, hone, true_and]
-  rcases bL with eL | eL <;> rcases bP with eP | eP <;> rcases bN with eN | eN <;>
-    simp only [eL, eP, eN, add_zero, zero_add, mul_one, one_mul, mul_zero, zero_mul] at h1 h2 h3 h4
-  all_goals first
-    | exact absurd h4 zero_ne_one
-    | exact absurd h1 one_ne_zero | exact absurd h2 one_ne_zero | exact absurd h3 one_ne_zero
-    | skip
-  · exact ⟨.N30, fun κ => by cases κ <;> simp [eL, eP, eN]⟩
-  · exact ⟨.P30, fun κ => by cases κ <;> simp [eL, eP, eN]⟩
-  · exact ⟨.L32, fun κ => by cases κ <;> simp [eL, eP, eN]⟩
 
 /-- **`compile_mux_sound`** (BLUEPRINT §4.3): with the selector cells one-hot at `κ`, `hdr`'s kind
 byte `κ`'s, and the run of the op list at `κ` using the trace up, the mux program's rows, imports
