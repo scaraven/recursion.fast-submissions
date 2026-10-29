@@ -71,17 +71,17 @@ section Ctl
 open Tpl
 
 /-- A toy selector form and a compile state whose register 0 is a digest on cells 5, 6 (or an `F` on 5). -/
-def ctlP : Params := ⟨Lin.cell 0, fun κ => Lin.cell (1 + selIx κ)⟩
+def ctlPT : Params := ⟨Lin.cell 0, fun κ => Lin.cell (1 + selIx κ)⟩
 def ctlCS (s : Slot) : CS := { CS.init 10 with slots := #[s] }
 
 /-- (+) **A uniform digest operand costs one row per half** (its cells against arena₁'s); (−) a slot that
 is not a digest's gives the failing row; (+) an activity that depends on the kind gives one gated row per
 kind and half. -/
 theorem dopRows_ctl :
-    dopRows ctlP (ctlCS (some (.d, [Lin.cell 5, Lin.cell 6]))) 0 0 7 (fun _ => true) =
-      [eqCR ctlP (Lin.cell 5) (arC 0 7), eqCR ctlP (Lin.cell 6) (arC 0 8)] ∧
-    dopRows ctlP (ctlCS (some (.f, [Lin.cell 5]))) 0 0 7 (fun _ => true) = [failRT ctlP] ∧
-    (dopRows ctlP (ctlCS (some (.d, [Lin.cell 5, Lin.cell 6]))) 0 0 7 (fun κ => κ == .L32)).length = 6 := by
+    dopRows ctlPT (ctlCS (some (.d, [Lin.cell 5, Lin.cell 6]))) 0 0 7 (fun _ => true) =
+      [eqCR ctlPT (Lin.cell 5) (arC 0 7), eqCR ctlPT (Lin.cell 6) (arC 0 8)] ∧
+    dopRows ctlPT (ctlCS (some (.f, [Lin.cell 5]))) 0 0 7 (fun _ => true) = [failRT ctlPT] ∧
+    (dopRows ctlPT (ctlCS (some (.d, [Lin.cell 5, Lin.cell 6]))) 0 0 7 (fun κ => κ == .L32)).length = 6 := by
   refine ⟨?_, ?_, ?_⟩ <;> decide
 
 /-- (−) **The byte operand's check**: without a previous `piField` it fails. -/
@@ -90,10 +90,10 @@ theorem preOk_ctl (cs : CS) (m k : ℕ) : preOk cs none m k = false ∧ preOk cs
 
 /-- (−) **`dop_ok` is load-bearing**: an inactive operand's rows pin arena₁'s elements to zero; at an
 assignment where they are not, a row fails. -/
-theorem dop_ctl : ¬ ∀ x ∈ dopRows ctlP (ctlCS (some (.d, [Lin.cell 5, Lin.cell 6]))) 0 0 7 (fun _ => false),
+theorem dop_ctl : ¬ ∀ x ∈ dopRows ctlPT (ctlCS (some (.d, [Lin.cell 5, Lin.cell 6]))) 0 0 7 (fun _ => false),
     x.Holds (fun c => if c = 0 ∨ c = 1 then 1 else if c = arC 0 7 then 1 else 0) := by
   intro h
-  have := (dop_ok (ι := .L32) ⟨by simp [ctlP], fun κ => by cases κ <;> simp [ctlP, selIx, arC, arA1]⟩ h).2 rfl
+  have := (dop_ok (ι := .L32) ⟨by simp [ctlPT], fun κ => by cases κ <;> simp [ctlPT, selIx, arC, arA1]⟩ h).2 rfl
   simp [arC] at this
 
 end Ctl
