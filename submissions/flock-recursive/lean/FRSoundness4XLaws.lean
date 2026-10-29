@@ -41,9 +41,11 @@ def NodeLog (κ : NodeKind) (vk c : Digest) (π : Proof) (es : Log) : Prop :=
 
 /-- **The program layer's residual**: every accepted run on a log without collisions or state hits
 has a chain that is an `AcceptTail` of the composed front and whose statement reads are the
-run's. -/
+run's. A segment run is asked for only on the proofs `V_A` runs (INT-10, R4i's F1): `π` of
+`piSizeOf seq4` bytes (`VAwith`'s size check, `piSize_aggSegs`) and `n ≤ cap` (`aggChecks`). -/
 structure RunFacts4 (Vseg : SegProgs) (Vnode : NodeProgs) (vk : Digest) : Prop where
-  seg : ∀ L π v, ¬ Bad L → segView π = some v → (Vseg v.kind vk (segC v) π).runLog L = some true →
+  seg : ∀ L π v, ¬ Bad L → segView π = some v → π.size = piSizeOf seq4 → v.n ≤ v.kind.cap →
+    (Vseg v.kind vk (segC v) π).runLog L = some true →
     ∃ j, T4.AcceptTail RejFX W0X c0X L j ∧ SegLog v (entriesOf L (pathOf L j))
   node : ∀ κ L c π, ¬ Bad L → kindOf4 π = .node κ → (Vnode κ vk c π).runLog L = some true →
     ∃ j, T4.AcceptTail RejFX W0X c0X L j ∧ NodeLog κ vk c π (entriesOf L (pathOf L j))
@@ -78,9 +80,9 @@ chain step, given the program layer's `RunFacts4.seg` and the front's `FrontHi`.
 theorem segSound_X {DFhi : ℕ → Log → Log → Prop} (hH : FrontHi DFhi) {Vseg : SegProgs}
     {Vnode : NodeProgs} {vk : Digest} (hR : RunFacts4 Vseg Vnode vk) :
     SegSoundLog Vseg vk (GoodX DFhi) := by
-  intro L π v hG hv hn hcap hrun
+  intro L π v hG hv hπ hn hcap hrun
   obtain ⟨hb, -, -⟩ := T4.muT_lt_one hG.2
-  obtain ⟨j, hT, hk, hst, hh, hnS⟩ := hR.seg L π v hb hv hrun
+  obtain ⟨j, hT, hk, hst, hh, hnS⟩ := hR.seg L π v hb hv hπ hcap hrun
   obtain ⟨hlen, hSt⟩ := stmt4_of_tail hH hG hT
   set es := entriesOf L (pathOf L j)
   have hA := agree_take3 hlen

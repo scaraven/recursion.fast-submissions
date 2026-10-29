@@ -74,6 +74,6 @@ theorem not_nodeLog_seg {κ : NodeKind} {vk c : Digest} {π : Proof} {es : Log} 
 /-- (+) Programs that never accept meet the run facts. -/
 theorem runFacts4_false (vk : Digest) :
     RunFacts4 (fun _ _ _ _ => .ret false) (fun _ _ _ _ => .ret false) vk :=
-  ⟨fun _ _ _ _ _ h => by simp [OProg.runLog] at h, fun _ _ _ _ _ _ h => by simp [OProg.runLog] at h⟩
+  ⟨fun _ _ _ _ _ _ _ h => by simp [OProg.runLog] at h, fun _ _ _ _ _ _ h => by simp [OProg.runLog] at h⟩
 
 end FR.Snd.X4

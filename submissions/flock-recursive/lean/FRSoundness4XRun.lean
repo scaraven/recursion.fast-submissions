@@ -231,14 +231,17 @@ end Views
 /-! ## `RunFacts4` -/
 
 /-- **`RunFacts4.seg` on the segment proofs `V_A` runs**: `π` of `piSizeOf seq4` bytes
-(`piSize_aggSegs`) and `n ≤ cap` (`aggChecks`). -/
+(`piSize_aggSegs`) and `n ≤ cap` (`aggChecks`). Since INT-10 this is literally `RunFacts4.seg`
+(`runFacts4S_seg`). -/
 def RunFacts4S (Vseg : SegProgs) (vk : Digest) : Prop :=
   ∀ L π v, ¬ Bad L → segView π = some v → π.size = piSizeOf seq4 → v.n ≤ v.kind.cap →
     (Vseg v.kind vk (segC v) π).runLog L = some true →
     ∃ j, T4.AcceptTail RejFX W0X c0X L j ∧ SegLog v (entriesOf L (pathOf L j))
 
-/-- **The rest of `RunFacts4.seg`**: the segment proofs `V_A` never runs (another size, or
-`n > cap`). The segment program asserts neither value (finding F1). -/
+/-- **The segment proofs `V_A` never runs** (another size, or `n > cap`). The segment program
+asserts neither value (finding F1). Before INT-10 this was the rest of `RunFacts4.seg`; since INT-10's
+amendment `RunFacts4.seg` no longer asks for it, and no theorem of the certificate needs it (it stays a
+hypothesis of the kept `ks_rev4G`/`certificate_rev4G`, unused). -/
 def SegOut4 (Vseg : SegProgs) (vk : Digest) : Prop :=
   ∀ L π v, ¬ Bad L → segView π = some v → (π.size ≠ piSizeOf seq4 ∨ v.kind.cap < v.n) →
     (Vseg v.kind vk (segC v) π).runLog L = some true →
@@ -274,20 +277,24 @@ theorem runFacts4_node_C (vk : Digest) :
     acceptRun4_node fin lRows κs₀ κ (inp := ⟨vk, c, π⟩) hb (piSize_node4 hk) hrun'
   exact ⟨j, hT, hes ▸ nodeLog4 hS hsem hst⟩
 
-/-- **X4's `RunFacts4` at the concrete ops**, given only `SegOut4` (the segment proofs `V_A`
-never runs). -/
-theorem runFacts4_C (vk : Digest)
-    (hO : SegOut4 (VsegC (Impl.implC fin lRows κs₀)) vk) :
+/-- **X4's `RunFacts4` at the concrete ops** (INT-10: unconditional; `RunFacts4.seg` is
+`RunFacts4S`). -/
+theorem runFacts4H_C (vk : Digest) :
     RunFacts4 (VsegC (Impl.implC fin lRows κs₀)) (VnodeC (NI4F.implN4F fun _ => Impl.implC fin lRows κs₀)
-      N4c.cells4) vk where
-  seg L π v hb hv hrun := by
-    by_cases hin : π.size = piSizeOf seq4 ∧ v.n ≤ v.kind.cap
-    · exact runFacts4S_C fin lRows κs₀ vk L π v hb hv hin.1 hin.2 hrun
-    · refine hO L π v hb hv ?_ hrun
-      rw [not_and_or, not_le] at hin
-      exact hin
-  node := runFacts4_node_C fin lRows κs₀ vk
+      N4c.cells4) vk :=
+  ⟨runFacts4S_C fin lRows κs₀ vk, runFacts4_node_C fin lRows κs₀ vk⟩
+
+/-- R4i's form, kept for its users: `SegOut4` is no longer needed (`runFacts4H_C`). -/
+theorem runFacts4_C (vk : Digest)
+    (_hO : SegOut4 (VsegC (Impl.implC fin lRows κs₀)) vk) :
+    RunFacts4 (VsegC (Impl.implC fin lRows κs₀)) (VnodeC (NI4F.implN4F fun _ => Impl.implC fin lRows κs₀)
+      N4c.cells4) vk :=
+  runFacts4H_C fin lRows κs₀ vk
 
 end C
+
+/-- **The amended `RunFacts4.seg` is `RunFacts4S`** (INT-10), for any programs. -/
+theorem runFacts4S_seg (Vseg : SegProgs) (Vnode : NodeProgs) (vk : Digest) (h : RunFacts4 Vseg Vnode vk) :
+    RunFacts4S Vseg vk := h.seg
 
 end FR.Snd.R4
