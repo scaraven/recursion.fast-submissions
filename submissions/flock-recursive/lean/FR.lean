@@ -147,6 +147,7 @@ import FRSegTarget4
 import FRVerifierC4
 import FRNodeRows4WotsCtrl
 import FRNodeRows4PackSound
+import FRNodeRows4RepCtrl
 
 /-!
 # `flock-recursive`
