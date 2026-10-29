@@ -13,6 +13,8 @@ Last updated 2026-10-28. **Rebased onto core PR #20 (pin `6d05d00`, commit `987e
 
 ## Waiting
 
+- **Node-circuit gaps (S-N2's `Gap4`, 2026-10-29): rows still to build — the soundness gap of the node.** (1) `imp`: the pack map (proof fields ≈ 9.8k, oracle answers ≈ 8.9k, `bitOf` ≈ 7.5k per prototype → H's stream cells), the `input` alias, the auxiliary imports, the foreign flags, `stmtOk4`; (2) `kindN`/`kindS` (follow from the pack map); (3) `wf` (stream tag and length words pinned); (4) `aggChk` (`V_A`'s checks against `c_A` in-circuit); (5) `aggPad` (k-gated candidate final block links, R-4-m2); (6) `wots` (2 × 2,788 WOTS mux rows); (7) the replay `R` of the child's six ops (`evalM`, `evalL`, `targetS`, `shiftTarget`, `linkWAll`, `rsWeight`). Owners: S-E13a (1–3), S-E13b (4–6), then R.
+
 - **The residuals of `ks_rev4` / `certificate_rev4` (X4, 2026-10-29)** — the whole remaining soundness work:
   1. `FrontHi` (front phases 13–25 over the composed dooms): P4f.
   2. `RunFacts4` (AcceptTail per run + statement/`vk` views, incl. a 4.1 `vkOf_of_run`): R4h, then R4.
