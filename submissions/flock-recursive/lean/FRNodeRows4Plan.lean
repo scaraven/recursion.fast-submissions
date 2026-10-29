@@ -43,8 +43,8 @@ def planData4 : Array GK × Array (List Lin) × Array (List Lin) × List Piece �
   let l1 := protoLay 1
   let ks0 := l0.map Prod.fst
   let kms := (ks0 ++ (l1.map Prod.fst).filter (fun k => !ks0.contains k)).map mkKM
-  let r0 := compMSX (tplExtF (protoF 0)) l0 (protoP 0) [] (CS.init (baseR 0)) ops0 none []
-  let r1 := compMSX (tplExtF (protoF 1)) l1 (protoP 1) r0.2.2 (CS.init (baseR 1)) ops1 none []
+  let r0 := compMSX (tplExt4 (protoF 0) (protoR 0)) l0 (protoP 0) [] (CS.init (baseR 0)) ops0 none []
+  let r1 := compMSX (tplExt4 (protoF 1) (protoR 1)) l1 (protoP 1) r0.2.2 (CS.init (baseR 1)) ops1 none []
   let p0 := slotRP (oneP 0) kms l0 0 r0.1 r0.2.1.reverse []
   let rps1 := (slotRP (oneP 1) kms l1 (1 * slotM4) r1.1 r1.2.1.reverse p0.2).1
   let g := groupRP p0.1 rps1
@@ -55,11 +55,11 @@ theorem planData4_rows :
     planData4.2.2.2.1.flatMap (Piece.rows (planData4.1.map mkKey) planData4.2.1 (oneP 0)) = protoRows 0 ∧
       planData4.2.2.2.2.flatMap (Piece.rows (planData4.1.map mkKey) planData4.2.2.1 (oneP 1)) = protoRows 1 := by
   simp only [planData4, piecesOf_rows]
-  obtain ⟨hr0, mr0⟩ := compMSX_T (tplExtF (protoF 0)) (protoLay 0) (protoP 0) (baseR 0)
+  obtain ⟨hr0, mr0⟩ := compMSX_T (tplExt4 (protoF 0) (protoR 0)) (protoLay 0) (protoP 0) (baseR 0)
     (protoProg 0).ops (M := []) (by simp [MOk])
-  obtain ⟨hr1, -⟩ := compMSX_T (tplExtF (protoF 1)) (protoLay 1) (protoP 1) (baseR 1) (protoProg 1).ops mr0
+  obtain ⟨hr1, -⟩ := compMSX_T (tplExt4 (protoF 1) (protoR 1)) (protoLay 1) (protoP 1) (baseR 1) (protoProg 1).ops mr0
   rw [slotRP_rows, slotRP_rows, hr0, hr1, protoRows, protoRows,
-    protoCS, protoCS, compileTF, compileTF]
+    protoCS, protoCS, compileTF4, compileTF4]
   exact ⟨rfl, by rw [one_mul]⟩
 
 /-! ## The region check -/

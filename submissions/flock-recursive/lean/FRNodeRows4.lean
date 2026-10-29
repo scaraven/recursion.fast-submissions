@@ -77,9 +77,10 @@ def isPrevSlot (κ : NodeKind) (σ : ℕ) : Bool := κ.hasPrev && σ == 0
 /-- **Slot `σ`'s prototype**: `0` (the previous-node program) or `1` (the segment program). -/
 def protoOf (κ : NodeKind) (σ : ℕ) : ℕ := if isPrevSlot κ σ then 0 else 1
 
-/-- **Prototype `π`'s program** (the previous node's public cells: S-E12a's `cells4` of the
-representative `N4`, deviation 1 of the RESULT; the coordinator's ruling: `c_A` from `hashA`). -/
-def protoProg (π : ℕ) : VProg := if π = 0 then progNodeG (N4c.cells4 .N4) else progSegG
+/-- **Prototype `π`'s program**: INT-8's group-uniform programs (blueprint 4.3 route (A)), the
+previous-node group with each kind's own public cells `N4c.cells4` (S-E12a: `c_A` from `hashA`;
+INT-9: was `progNodeG (cells4 .N4)`, `N4`'s cells at every index), and the segment group. -/
+def protoProg (π : ℕ) : VProg := if π = 0 then progNodeGK N4c.cells4 else progSegG
 
 /-- **Prototype `π`'s layout**: `layOf`'s two-pass layout at S-E12b's programs, as constants
 (`FRNodeRows4Hint`; S-E12c: the process start then compiles each prototype once). Any layout is
@@ -87,11 +88,28 @@ sound (`compileT_sound`); that the rows fit is `ProtoFit`, checked. -/
 def protoLay (π : ℕ) : TLay := if π = 0 then hintLay0 else hintLay1
 
 /-- **Prototype `π`'s template set** (S-E12d, revision 4.3 (a)): revision 4.1's (`keys41`: 3.x's
-`shiftMask` template left out, the op an import) for both prototypes. -/
+`shiftMask` template left out) for both prototypes; the 4.1 `shiftMask` templates (`.shiftSeg`,
+`.maskN`) are in it, and the route `protoR` picks one (S-E12e). -/
 def protoF (_π : ℕ) : TFilt := keys41
 
-/-- **Prototype `π`'s templated compile** (at its template set). -/
-def protoCS (π : ℕ) : CS := compileTF (protoF π) (protoLay π) (protoP π) (baseR π) (protoProg π).ops
+/-- The node kind selector index `ι` stands for in the previous-node group (`nodeGrp`). -/
+def nodeOf : Kind → NodeKind
+  | .L32 => .N4
+  | .P30 => .N2
+  | .N30 => .N8
+
+theorem nodeGrp_nodeOf (ι : Kind) : nodeGrp ι = .ofNode (nodeOf ι) := by cases ι <;> rfl
+
+/-- A node kind's `shiftMask` constants `(nb, chLen₀, chLen₁)` (`NI4.shiftMask4I`'s). -/
+def maskQ (ν : NodeKind) : ℕ × ℕ × ℕ := (ν.m - 14, N4c.chLen ν 0, N4c.chLen ν 1)
+
+/-- **Prototype `π`'s `shiftMask` route** (S-E12e): the node's kind-muxed `chainLk4` template over
+the group's kinds in selector order (prototype 0), the segment's `shiftSegI` template (prototype 1). -/
+def protoR (π : ℕ) : ShR := if π = 0 then .node (Circ.kinds.map fun ι => maskQ (nodeOf ι)) else .seg
+
+/-- **Prototype `π`'s templated compile** (at its template set and route). -/
+def protoCS (π : ℕ) : CS :=
+  compileTF4 (protoF π) (protoR π) (protoLay π) (protoP π) (baseR π) (protoProg π).ops
 
 /-- **Prototype `π`'s indexed rows** (rows from `π·2^20`, M-relative cells). -/
 def protoRows (π : ℕ) : List (ℕ × Row) := slotIRows (protoLay π) (Lin.cell (oneR π)) (π * slotM4) (protoCS π)

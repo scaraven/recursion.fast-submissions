@@ -83,6 +83,31 @@ def ExtOk (impl : OpImpl) (tc : Tpl.TCtx) (X : Ext) : Prop :=
        ∀ vs ok, evalOp impl κ inp regs op = .vals vs ok →
          (o.imp = false → List.Forall₂ (RepS w) o.slots vs) ∧ (o.foreign = false → ok = true))
 
+/-- **A sound extension at one kind** (S-E12e): `ExtOk` with the run's kind `κ` fixed. A revision
+4.1 group program runs `impl` of the selected kind (`implN4 … (nodeGrp ι)`), and its kind-muxed
+templates are sound only at the kind `impl` is for. -/
+def ExtOkAt (impl : OpImpl) (tc : Tpl.TCtx) (X : Ext) (κ : Kind) : Prop :=
+  ∀ (P : Params) (cs : CS) (op : Op) (o : Out), X P cs op = some o →
+    o.slots.length = op.nOut ∧
+    ∀ (inp : Input) (w : Asg) (regs : Array Val), SelOk w P κ →
+      (∀ i, RepS w (cs.slot i) (rd regs i)) →
+      (∀ q, evalOp impl κ inp regs op ≠ .ask q) ∧
+      ((∀ r ∈ o.rows, r.Holds w) →
+       (∀ t ∈ o.tin, ∀ r ∈ Tpl.instRows tc P.one (t.1, cs.tcount t.1, t.2), r.Holds w) →
+       (∀ a ∈ o.aux, a.1.map (Lin.ev w) = a.2.2.val (rd regs a.2.1)) →
+       ∀ vs ok, evalOp impl κ inp regs op = .vals vs ok →
+         (o.imp = false → List.Forall₂ (RepS w) o.slots vs) ∧ (o.foreign = false → ok = true))
+
+/-- A sound extension is sound at every kind. -/
+theorem ExtOk.at {impl : OpImpl} {tc : Tpl.TCtx} {X : Ext} (h : ExtOk impl tc X) (κ : Kind) :
+    ExtOkAt impl tc X κ := fun P cs op o hX =>
+  ⟨(h P cs op o hX).1, fun inp w regs => (h P cs op o hX).2 κ inp w regs⟩
+
+/-- (+) `ExtOk` is `ExtOkAt` at every kind. -/
+theorem extOk_iff {impl : OpImpl} {tc : Tpl.TCtx} {X : Ext} : ExtOk impl tc X ↔ ∀ κ, ExtOkAt impl tc X κ :=
+  ⟨fun h κ => h.at κ, fun h P cs op o hX =>
+    ⟨(h .L32 P cs op o hX).1, fun κ inp w regs => (h κ P cs op o hX).2 inp w regs⟩⟩
+
 /-! ## Alignment changes only the rows (by empty rows) and the next cell -/
 
 @[simp] theorem CS.align_slots (cs : CS) (a : Option (ℕ × ℕ)) : (cs.align a).slots = cs.slots := by
@@ -135,9 +160,9 @@ theorem compileFromX_mono (X : Ext) (P : Params) : ∀ (ops : List Op) (cs : CS)
       fun x hx => h3 ?_, fun x hx => h4 ?_, fun x hx => h5 ?_, fun x hx => h6 ?_⟩ <;>
       simp only [CS.add, hi, hf, ht, ha] <;> (try split) <;> simp [hx]
 
-/-- The induction behind `compile_sound` (with an extension). -/
-theorem compileFromX_sound {impl : OpImpl} {κ : Kind} {inp : Input} {w : Asg} {P : Params}
-    {tc : Tpl.TCtx} {X : Ext} (hX : ExtOk impl tc X) (hP : SelOk w P κ) :
+/-- The induction behind `compile_sound` (with an extension sound at the run's kind). -/
+theorem compileFromX_soundAt {impl : OpImpl} {κ : Kind} {inp : Input} {w : Asg} {P : Params}
+    {tc : Tpl.TCtx} {X : Ext} (hX : ExtOkAt impl tc X κ) (hP : SelOk w P κ) :
     ∀ (ops : List Op) (cs : CS) (s s' : St) (tr tr' : Trace),
     Inv w cs s.regs → exec impl κ inp ops s tr = some (s', tr') →
     (∀ r ∈ (compileFromX X P cs ops).rows, r.Holds w) →
@@ -194,7 +219,7 @@ theorem compileFromX_sound {impl : OpImpl} {κ : Kind} {inp : Input} {w : Asg} {
     have hstep : (∀ q, evalOp impl κ inp s.regs op ≠ .ask q) ∨ X P cs op = none := by
       rcases hXo : X P cs op with _ | o'
       · exact .inr rfl
-      · exact .inl ((hX P cs op o' hXo).2 κ inp w s.regs hP hI.2).1
+      · exact .inl ((hX P cs op o' hXo).2 inp w s.regs hP hI.2).1
     have hlen : o.slots.length = op.nOut := by
       rcases hXo : X P cs op with _ | o'
       · simp only [ho, stepOut, hXo, Option.getD_none]; exact opOut_len P cs op
@@ -210,7 +235,7 @@ theorem compileFromX_sound {impl : OpImpl} {κ : Kind} {inp : Input} {w : Asg} {
           exact opOut_sound hP hI.2 op hro hev
         · have eo : o = o' := by simp [ho, stepOut, hXo]
           rw [eo] at hro hto ⊢
-          exact ((hX P cs op o' hXo).2 κ inp w s.regs hP hI.2).2 hro hto
+          exact ((hX P cs op o' hXo).2 inp w s.regs hP hI.2).2 hro hto
             (eo ▸ hauxo vs _ rfl hm) vs ok hev
       have hnew : ∀ j (hj : j < o.slots.length), RepS w o.slots[j] (vs[j]'(hl ▸ hj)) := by
         cases hio : o.imp
@@ -220,7 +245,7 @@ theorem compileFromX_sound {impl : OpImpl} {κ : Kind} {inp : Input} {w : Asg} {
         cases hfo : o.foreign
         · exact hsnd.2 hfo
         · have := flag vs _ rfl hm hfo; simpa [flagOf, hev] using this
-      have ih := compileFromX_sound hX hP ops _ _ s' tr tr'
+      have ih := compileFromX_soundAt hX hP ops _ _ s' tr tr'
         (inv_append hI hl hnew _ op rfl) he hr ht hx hi hf
       exact ⟨by rw [ih.1, hok, Bool.and_true], ih.2⟩
     · rename_i q hev
@@ -235,9 +260,24 @@ theorem compileFromX_sound {impl : OpImpl} {κ : Kind} {inp : Input} {w : Asg} {
             rw [hlen, ask_nOut hev]; rfl
           have hm := exec_prefix ops _ _ he
           have hnew := fin [.d a] ⟨s.regs.push (.d a), s.ok⟩ rfl hm hio hl
-          exact compileFromX_sound hX hP ops _ ⟨s.regs.push (.d a), s.ok⟩ s' tr0 tr'
+          exact compileFromX_soundAt hX hP ops _ ⟨s.regs.push (.d a), s.ok⟩ s' tr0 tr'
             (inv_append hI hl hnew _ op rfl) he hr ht hx hi hf
         · simp at he
+
+/-- The induction behind `compile_sound` (with an extension). -/
+theorem compileFromX_sound {impl : OpImpl} {κ : Kind} {inp : Input} {w : Asg} {P : Params}
+    {tc : Tpl.TCtx} {X : Ext} (hX : ExtOk impl tc X) (hP : SelOk w P κ) :
+    ∀ (ops : List Op) (cs : CS) (s s' : St) (tr tr' : Trace),
+    Inv w cs s.regs → exec impl κ inp ops s tr = some (s', tr') →
+    (∀ r ∈ (compileFromX X P cs ops).rows, r.Holds w) →
+    (∀ t ∈ (compileFromX X P cs ops).tins, ∀ r ∈ Tpl.instRows tc P.one t, r.Holds w) →
+    (∀ a ∈ (compileFromX X P cs ops).aux,
+      a.1.1.map (Lin.ev w) = a.1.2.2.val (rd (s'.regs.extract 0 a.2) a.1.2.1)) →
+    (∀ i ∈ (compileFromX X P cs ops).imp, RepS w ((compileFromX X P cs ops).slot i) (rd s'.regs i)) →
+    (∀ p ∈ (compileFromX X P cs ops).fors,
+      flagOf impl κ inp (s'.regs.extract 0 p.2) p.1 = true) →
+    s'.ok = s.ok ∧ Inv w (compileFromX X P cs ops) s'.regs :=
+  compileFromX_soundAt (hX.at κ) hP
 
 /-! ## `compile_sound` -/
 
@@ -266,6 +306,22 @@ theorem compile_sound {impl : OpImpl} {κ : Kind} {inp : Input} {ops : List Op} 
     (by simp [compile] at h0 ⊢; simp [h0.1]) (by simp [compile] at h0 ⊢; simp [h0.2]) hi hf
   exact ⟨h.1, h.2.2⟩
 
+/-- **`compileX_sound` at one kind** (S-E12e): the extension sound at the run's kind `κ`. -/
+theorem compileX_soundAt {impl : OpImpl} {κ : Kind} {inp : Input} {ops : List Op} {tr tr' : Trace}
+    {s : St} {w : Asg} {P : Params} {tc : Tpl.TCtx} {X : Ext} (hX : ExtOkAt impl tc X κ) (base : ℕ)
+    (hP : SelOk w P κ) (he : exec impl κ inp ops St.init tr = some (s, tr'))
+    (hr : ∀ r ∈ (compileX X P base ops).rows, r.Holds w)
+    (ht : ∀ r ∈ (compileX X P base ops).tplRows tc P.one, r.Holds w)
+    (hx : ∀ a ∈ (compileX X P base ops).aux,
+      a.1.1.map (Lin.ev w) = a.1.2.2.val (rd (s.regs.extract 0 a.2) a.1.2.1))
+    (hi : ∀ i ∈ (compileX X P base ops).imp, RepS w ((compileX X P base ops).slot i) (rd s.regs i))
+    (hf : ∀ p ∈ (compileX X P base ops).fors, flagOf impl κ inp (s.regs.extract 0 p.2) p.1 = true) :
+    s.ok = true ∧ ∀ i, RepS w ((compileX X P base ops).slot i) (rd s.regs i) := by
+  have h := compileFromX_soundAt hX hP ops (CS.init base) St.init s tr tr'
+    ⟨rfl, fun i => by simp [CS.slot, CS.init, RepS]⟩ he hr
+    (fun t htm r hr' => ht r (List.mem_flatMap.2 ⟨t, htm, hr'⟩)) hx hi hf
+  exact ⟨h.1, h.2.2⟩
+
 /-- **`compileX_sound`** (S-E3's `compileT_sound` shape): `compile_sound` with a sound extension;
 the template instances' rows and the auxiliary imports join the hypotheses. -/
 theorem compileX_sound {impl : OpImpl} {κ : Kind} {inp : Input} {ops : List Op} {tr tr' : Trace}
@@ -277,11 +333,8 @@ theorem compileX_sound {impl : OpImpl} {κ : Kind} {inp : Input} {ops : List Op}
       a.1.1.map (Lin.ev w) = a.1.2.2.val (rd (s.regs.extract 0 a.2) a.1.2.1))
     (hi : ∀ i ∈ (compileX X P base ops).imp, RepS w ((compileX X P base ops).slot i) (rd s.regs i))
     (hf : ∀ p ∈ (compileX X P base ops).fors, flagOf impl κ inp (s.regs.extract 0 p.2) p.1 = true) :
-    s.ok = true ∧ ∀ i, RepS w ((compileX X P base ops).slot i) (rd s.regs i) := by
-  have h := compileFromX_sound hX hP ops (CS.init base) St.init s tr tr'
-    ⟨rfl, fun i => by simp [CS.slot, CS.init, RepS]⟩ he hr
-    (fun t htm r hr' => ht r (List.mem_flatMap.2 ⟨t, htm, hr'⟩)) hx hi hf
-  exact ⟨h.1, h.2.2⟩
+    s.ok = true ∧ ∀ i, RepS w ((compileX X P base ops).slot i) (rd s.regs i) :=
+  compileX_soundAt (hX.at κ) base hP he hr ht hx hi hf
 
 end Circ
 end FR

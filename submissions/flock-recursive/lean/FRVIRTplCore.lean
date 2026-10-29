@@ -318,6 +318,11 @@ inductive TKey where
   | kindInd (n : ℕ)
   | shiftMask (n m : ℕ)
   | walkAB (n m : ℕ)
+  /-- Revision 4.1's segment `shiftMask` (`τ ‖ L`, `r`; S-E12e). -/
+  | shiftSeg (n m : ℕ)
+  /-- Revision 4.1's node `shiftMask` over `chainLk4`, kind-muxed: per selector index the kind's
+  `(nb, chLen₀, chLen₁)` (S-E12e). -/
+  | maskN (n m : ℕ) (ks : List (ℕ × ℕ × ℕ))
   deriving DecidableEq, Inhabited
 
 /-- **The template context**: each key's template and each instance's cell base. -/

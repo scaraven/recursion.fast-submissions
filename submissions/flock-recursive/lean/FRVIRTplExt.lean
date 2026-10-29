@@ -6,6 +6,7 @@ import FRVIRTplRep
 import FRVIRCompileSound
 import FRVIRTplMask
 import FRVIRTplWalk
+import FRVIRTplMaskN
 
 /-!
 # `compileT`: the compiler with the replay templates, and `compileT_sound`
@@ -58,6 +59,8 @@ def tplOf : TKey → Tpl
   | .rowW _ => tplRowW
   | .shiftMask n m => tplShiftMaskF n m
   | .walkAB n m => tplWalkOf n m
+  | .shiftSeg n m => tplShiftSeg n m
+  | .maskN n m ks => tplMaskN n m ks
   | _ => ⟨[], []⟩
 
 /-! ## The walk template's rows and sizes, computed once (S-E11: plan time) -/

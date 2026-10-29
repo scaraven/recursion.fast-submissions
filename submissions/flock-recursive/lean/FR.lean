@@ -128,6 +128,7 @@ import FRNodeCircuit4Dig
 import FRVerifierImplNode4
 import FRVerifierImplOps4
 import FRVerifierImplNode4T
+import FRVerifierImplNode4F
 import FRNodeTarget4W
 import FRNodeRows4Plan
 import FRNodeRows4Fit
