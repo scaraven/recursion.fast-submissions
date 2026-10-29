@@ -115,6 +115,42 @@ theorem nodeRunL4 (vk : Digest) {κ : NodeKind} {L : Log} {c : Digest} {π : Pro
   rw [hp, fF_take3 hlen hk3] at hSt
   exact ⟨j, hR, hT, hvk, hc, hSt⟩
 
+/-- **`nodeRunL4` with the reserve** (revision 4.4.2; RSV-S3 §5.5): on the same chain, the node's
+statement holds with the reserve, `StmtN4R`, at the log's own child claim `rsvL` (`PubCellsR4` from
+RS0's `Pub` and `truthChildV` from E1's entry doom, both refuted on the accepted prefix,
+`X4.rsv_of_tail`; the two zero outputs from the run, `R4.rsvZero4`). As `X4.nodeRunR_X`, keeping
+the chain. -/
+theorem nodeRunRL4 (vk : Digest) {κ : NodeKind} {L : Log} {c : Digest} {π : Proof}
+    (hG : GoodX P4f.DFhi L) (hk : kindOf4 π = .node κ)
+    (hrun : (VnodeC (NI4F.implN4F fun _ => Impl.implC fin lRows κs₀) N4c.cells4 κ vk c π).runLog L =
+      some true) :
+    ∃ j, RunLink4 fin lRows κs₀ κ vk c π L j ∧ T4.AcceptTail RejFX W0X c0X L j ∧
+      X.vkOf π = vk ∧
+      c = nodeStmt (stL (entriesOf L (pathOf L j)) 0) (stL (entriesOf L (pathOf L j)) 1) ∧
+      N4c.StmtN4R κ (lRows4 κ) (nodeIRows4 κ) vk (stL (entriesOf L (pathOf L j)) 0)
+        (stL (entriesOf L (pathOf L j)) 1) (T4.fF (.node κ) L (entriesOf L (pathOf L j)))
+        (Snd.P4b.rsvL (.node κ) (entriesOf L (pathOf L j))) := by
+  obtain ⟨j, hR, hT, hvk, hc, hS⟩ := nodeRunL4 fin lRows κs₀ vk hG hk hrun
+  refine ⟨j, hR, hT, hvk, hc, hS, ?_⟩
+  obtain ⟨tr, y, -, hsem, -, -, hes, -⟩ := hR
+  have hkC : kindOfC (entriesOf L (pathOf L j)) = .node κ := hes ▸ kindOfC_acc_node hsem
+  obtain ⟨htc, hpub⟩ := X4.rsv_of_tail hG hT hkC
+  obtain ⟨h58, h59⟩ := R4.rsvZero4 hsem
+  rw [← hes] at h58 h59
+  have hlen : 327 ≤ (entriesOf L (pathOf L j)).length := by
+    have := hT.len; rw [T4.capPh_pos.2.2.2] at this; omega
+  generalize entriesOf L (pathOf L j) = es at hlen htc hpub hkC h58 h59 ⊢
+  have hA' := X4.agree_takeN (es := es) hlen
+  have hlen3 : 3 ≤ es.length := by omega
+  have hA := agree_take3 hlen3
+  have hk3 : kindOfC (es.take 3) = .node κ := (kindOfC_congr (hA.mono (by norm_num))).trans hkC
+  have hk327 : kindOfC (es.take 327) = .node κ := (kindOfC_congr (hA'.mono (by norm_num))).trans hkC
+  have h33 : Agree (es.take 3) (es.take 327) 3 := fun p hp => (hA p hp).trans (hA' p (by omega)).symm
+  have hfz : src4.fz L (es.take 3) = src4.fz L (es.take 327) := src4.fz_same (src4.ofAgree L h33) le_rfl
+  refine ⟨?_, N4c.truthChildV_rsvL _ κ htc h58 h59⟩
+  unfold N4c.PubCellsR4
+  rw [← fF_take3 hlen3 hk3, hfz, hpub κ hk327, Snd.P4b.rsvL_congr hA' (by norm_num)]
+
 end Run
 
 /-! ## The decoder's interface and `hL` -/
@@ -164,6 +200,29 @@ theorem hL_of_res (S : Submission) (vk : Digest)
     rw [hI.1, hI.2]; exact hS
   rw [hD.readW κ L _ _ _ hS, acc_eqC4 _ _ _ S hV hq, hc]
   exact (N4c.node_sound4' hS' (hRes κ _ _ _ hS)).1
+
+/-- **`hL_of_res` over `StmtN4R`** (revision 4.4.2): the residual `hRes` may use the reserve's cells
+and the true child claim, which the accepted run gives on its chain (`nodeRunRL4`). -/
+theorem hL_of_resR (S : Submission) (vk : Digest)
+    (hV : S.V = VC4 (Impl.implC fin lRows κs₀) (NI4F.implN4F fun _ => Impl.implC fin lRows κs₀) N4c.cells4)
+    (hq : S.qV = qV4) {nd : X.XIR} (D : NodeDec4 nd)
+    (I : N4c.SlotIface4 (VsegC (Impl.implC fin lRows κs₀))
+      (VnodeC (NI4F.implN4F fun _ => Impl.implC fin lRows κs₀) N4c.cells4)) (rd : N4c.Read4)
+    (hI : I.lrows = lRows4 ∧ I.irows = nodeIRows4)
+    (hRes : ∀ κ w c₁ c₂ ch, N4c.StmtN4R κ (lRows4 κ) (nodeIRows4 κ) vk c₁ c₂ w ch →
+      N4c.NodeResid4 I rd κ vk c₁ c₂ w)
+    (hD : ReadIface4 fin lRows κs₀ D rd vk) :
+    ∀ κ L c π, GoodX P4f.DFhi L → kindOf4 π = .node κ → X.InDomE c π L →
+      (VnodeC (NI4F.implN4F fun _ => Impl.implC fin lRows κs₀) N4c.cells4 κ vk c π).runLog L = some true →
+      ∃ es, D.Links κ L es π c ∧ Rel (S.acc vk) c (D.readW κ L es) := by
+  intro κ L c π hG hk hdom hrun
+  obtain ⟨j, hR, hT, -, hc, hS⟩ := nodeRunRL4 fin lRows κs₀ vk hG hk hrun
+  refine ⟨_, hD.links κ L c π j hG hk hdom hR hT, ?_⟩
+  have hS' : N4c.StmtN4 κ (I.lrows κ) (I.irows κ) vk (stL (entriesOf L (pathOf L j)) 0)
+      (stL (entriesOf L (pathOf L j)) 1) (T4.fF (.node κ) L (entriesOf L (pathOf L j))) := by
+    rw [hI.1, hI.2]; exact hS.1
+  rw [hD.readW κ L _ _ _ hS.1, acc_eqC4 _ _ _ S hV hq, hc]
+  exact (N4c.node_sound4' hS' (hRes κ _ _ _ _ hS)).1
 
 /-- **`Resid4H` from the slot interface, the residual and the decoder's interface.** -/
 theorem resid4H_of_res (S : Submission) (vk : Digest)

@@ -155,6 +155,23 @@ theorem hL_of_sig (S : Submission) (vk : Digest)
   hL_of_res fin lRows κs₀ S vk hV hq D I _ hI hRes
     (readIface4_of fin lRows κs₀ D hLk _ vk (hW ▸ readW4_law hsig))
 
+/-- **`hL_of_sig` over `StmtN4R`** (revision 4.4.2; `hL_of_resR`). -/
+theorem hL_of_sigR (S : Submission) (vk : Digest)
+    (hV : S.V = VC4 (Impl.implC fin lRows κs₀) (NI4F.implN4F fun _ => Impl.implC fin lRows κs₀) N4c.cells4)
+    (hq : S.qV = qV4) {nd : X.XIR} (D : NodeDec4 nd)
+    (hLk : ∀ κ L es π c, X.LinksD4 κ L es π c → D.Links κ L es π c)
+    {sg : NodeKind → ℕ → Circ.Asg → Sig} (hW : D.readW = X.readW4 sg) (hsig : SigH4 sg vk)
+    (I : N4c.SlotIface4 (VsegC (Impl.implC fin lRows κs₀))
+      (VnodeC (NI4F.implN4F fun _ => Impl.implC fin lRows κs₀) N4c.cells4))
+    (hI : I.lrows = lRows4 ∧ I.irows = nodeIRows4)
+    (hRes : ∀ κ w c₁ c₂ ch, N4c.StmtN4R κ (lRows4 κ) (nodeIRows4 κ) vk c₁ c₂ w ch →
+      N4c.NodeResid4 I (N4s.rd4 X.pf4) κ vk c₁ c₂ w) :
+    ∀ κ L c π, GoodX P4f.DFhi L → kindOf4 π = .node κ → X.InDomE c π L →
+      (VnodeC (NI4F.implN4F fun _ => Impl.implC fin lRows κs₀) N4c.cells4 κ vk c π).runLog L = some true →
+      ∃ es, D.Links κ L es π c ∧ Rel (S.acc vk) c (D.readW κ L es) :=
+  hL_of_resR fin lRows κs₀ S vk hV hq D I _ hI hRes
+    (readIface4_of fin lRows κs₀ D hLk _ vk (hW ▸ readW4_law hsig))
+
 end C
 
 /-! ## Controls -/

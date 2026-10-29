@@ -33,10 +33,10 @@ theorem links4_sigH {nd : X.XIR} (D : NodeDec4 nd)
     (hG : Gaps4) : Links4 nd D :=
   links4_of_gaps D hLk hW sigH4_sigH hG
 
-/-- **`Resid4H` of `sub4`** for that decoder, from `Gaps4` alone. -/
+/-- **`Resid4HR` of `sub4`** for that decoder, from `Gaps4` alone. -/
 theorem resid4H_sigH {nd : X.XIR} (D : NodeDec4 nd)
     (hLk : ∀ κ L es π c, X.LinksD4 κ L es π c → D.Links κ L es π c) (hW : D.readW = X.readW4 X.sigH)
-    (hG : Gaps4) (vk : Digest) : Snd.R4.Resid4H (Impl.finC finPf) Layout.lRows 0 sub4 nd D vk :=
+    (hG : Gaps4) (vk : Digest) : Snd.R4.Resid4HR (Impl.finC finPf) Layout.lRows 0 sub4 nd D vk :=
   resid4H_of hG (links4_sigH D hLk hW hG) vk
 
 end FR.Sub4
