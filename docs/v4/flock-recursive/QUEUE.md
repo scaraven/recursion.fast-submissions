@@ -13,8 +13,12 @@ The baseline only has to be accepted. Choose routes by the least sound implement
 | gate_s | 120 | |
 | badge_s | 180 | |
 | step_s | 60 | |
-| ready_s | 10 | plan init ≈ 5.5 s |
-| verify_s | 10 | V ≈ 0.3 s |
+| ready_s | 10 | prover service start (≈ 0.66 s), **not V** |
+| verify_s | 10 | per honest check; V ≈ 0.3 s VM |
+| **DoS per-item** (`[dos]` item_factor · v_ref) | ≈ 2.07 s on the 7763 (10 × 206.6 ms); 100 items ≤ 180 s | **V's binding cap.** About 1.1 s VM is expected after the replay templates |
+| badge start | 30 s | V's plan init (≈ 5.5 s VM + R3's 3.9 s); must be eager |
+| setup_s | 240 | prover setup, 167 s on VM cores, unmeasured on the runner |
+| prover build_s | 120 (`[caps]`) | gcc of the 23 MB `prover.s`, unmeasured |
 | stream_s at M = 96 | 1,920 | |
 
 - **Dropped:** V/P speed levers, ms kill lines and golf for score. Golf only when a cap is at risk.
