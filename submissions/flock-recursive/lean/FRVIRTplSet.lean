@@ -1,6 +1,7 @@
 -- New for `flock-recursive` (BLUEPRINT revision 4.3, stage-review changes 28 (a): the per-revision
 -- template set; stage S-E12d, track L-circ).
 import FRVIRTplExt
+import FRVIRCompileK
 
 /-!
 # A template set per revision: `tplExtF`, `ImplTF`, `compileTF_sound`
@@ -518,9 +519,10 @@ def ShR.kmux : ShR → Bool
   | _ => true
 
 /-- **Revision 4.1's extension**: `tplExt4S` (S-E12e), then, under a route, the kind mux
-(`tplExtKM`, S-E12f). -/
+(`tplExtKM`, S-E12f) and a `getK` of a kind-muxed register (`extGetK`, track CK). -/
 def tplExt4 (F : TFilt) (R : ShR) (tc : TCtx) : Ext :=
-  (tplExt4S F R tc).orElse fun P cs op => if R.kmux then tplExtKM F tc P cs op else none
+  (tplExt4S F R tc).orElse fun P cs op =>
+    if R.kmux then ((tplExtKM F tc).orElse extGetK) P cs op else none
 
 /-- Without a route it is `tplExtF`. -/
 theorem tplExt4_imp (F : TFilt) (tc : TCtx) : tplExt4 F .imp tc = tplExtF F tc := by
@@ -534,7 +536,7 @@ theorem tplExt4_okK {impl : OpImpl} {F : TFilt} {R : ShR} {κ : Kind} (hT : Impl
     (hR : RouteOk R impl κ) (L : TLay) : ExtOkK impl L.ctx (tplExt4 F R L.ctx) κ :=
   ((tplExt4S_okAt hT hR L).toK fun _ _ _ _ h => tplExt4S_kin h).orElse fun P cs op o h => by
     by_cases hk : R.kmux = true
-    · simp only [hk, if_true] at h; exact tplExtKM_okK hT L P cs op o h
+    · simp only [hk, if_true] at h; exact (tplExtKM_okK hT L).orElse extGetK_okK P cs op o h
     · simp only [hk, if_false, Bool.false_eq_true, reduceCtorEq] at h
 
 /-- **`compileTF` with the 4.1 route.** -/

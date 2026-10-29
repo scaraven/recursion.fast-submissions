@@ -1,5 +1,5 @@
 -- New for `flock-recursive` (BLUEPRINT revision 4.1, §4.4, A.11's row model per kind; stage S-E12c,
--- track L-circ; re-based by B0 on PACK-4.4.1 §6.1, by B2′ and B2″ on their measured prototypes). 3.x's analogue: `FRNodeLayout.mRowModel`.
+-- track L-circ; re-based by B0 on PACK-4.4.1 §6.1, by B2′ and B2″ on their measured prototypes; CK: prototype 0's rows). 3.x's analogue: `FRNodeLayout.mRowModel`.
 import FRNodeRows4
 import FRNodeRows4ArenaPlace
 
@@ -8,8 +8,9 @@ import FRNodeRows4ArenaPlace
 
 PACK-4.4.1 §6.1's budget per `2^20`-row slot region, re-based by B2″ on the prototypes **as measured**
 at RSV-V's programs with B2″'s packed cells (`logs/B2pp/nodedump4-run.log`: the last row of prototype
-0's region `700,159`, of prototype 1's `686,079`; the packing moves cells, not rows; the prototypes
-contain the cap check) and the rest at the memo's sizes (arena₁ at RSV-V's stream):
+1's region `686,079`; the packing moves cells, not rows; the prototypes contain the cap check), prototype
+0 re-measured by CK (`logs/CK/arenafit.log`: last row `706,303`, `finPf`'s `getK` of the kind-muxed `P₀`
+and the 4,392 registers after it now in the rows) and the rest at the memo's sizes (arena₁ at RSV-V's stream):
 
 * a slot's own region: its prototype, the pack map's rows in the region (PACK-4.4.1 §5.2 at today's
   stream: the two arenas, the FS links, pins, bit rows, the cap bits' kind mux, the sibling rows,
@@ -30,8 +31,8 @@ placement is `FRNodeRows4ArenaPlace` (B2″), checked on the dump (`logs/B2pp/ar
 namespace FR
 namespace Rev4
 
-/-- The rows prototype 0's region holds (measured by B2″: last row `700,159`). -/
-def protoRowsN : ℕ := 700160
+/-- The rows prototype 0's region holds (measured by CK: last row `706,303`; B2″: `700,159`). -/
+def protoRowsN : ℕ := 706304
 
 /-- The rows prototype 1's region holds (measured by B2″: last row `686,079`). -/
 def protoRowsS : ℕ := 686080
@@ -62,7 +63,7 @@ def spareRegion : List ℕ := [221000, 400000]
 def mRowModel4 (κ : NodeKind) : ℕ :=
   (if κ.hasPrev then nodeRegion.sum + spareRegion.sum else 0) + κ.segSlots * segRegion.sum
 
-theorem regions_sum : nodeRegion.sum = 945568 ∧ segRegion.sum = 980488 ∧ spareRegion.sum = 621000 := by
+theorem regions_sum : nodeRegion.sum = 951712 ∧ segRegion.sum = 980488 ∧ spareRegion.sum = 621000 := by
   norm_num [nodeRegion, segRegion, spareRegion, protoRowsN, protoRowsS, packMapN, linkN]
 
 /-- **The M rows fit**: each region in `2^20` rows; every kind's rows in `N_M / 1.05`. -/
@@ -74,10 +75,10 @@ theorem mRows4_le :
   cases κ <;> simp only [mRowModel4, h1, h2, h3, NodeKind.hasPrev, NodeKind.segSlots, NodeKind.nM,
     NodeKind.dims] <;> decide
 
-/-- The per-kind totals: `N2` 3,527,544 of `2^22` (1.19×; 1.13× under `N_M / 1.05`), `N4` 5,488,520
-of `2^23` (1.53×; 1.46×), `N8` 7,843,904 of `2^23` (1.07×; **1.0185× under `N_M / 1.05` = 7,989,150**:
+/-- The per-kind totals: `N2` 3,533,688 of `2^22` (1.19×; 1.13× under `N_M / 1.05`), `N4` 5,494,664
+of `2^23` (1.53×; 1.45×), `N8` 7,843,904 of `2^23` (1.07×; **1.0185× under `N_M / 1.05` = 7,989,150**:
 18,156 more rows in each segment region and `N8` no longer fits). -/
-theorem mRowModel4_eq : mRowModel4 .N2 = 3527544 ∧ mRowModel4 .N4 = 5488520 ∧ mRowModel4 .N8 = 7843904 := by
+theorem mRowModel4_eq : mRowModel4 .N2 = 3533688 ∧ mRowModel4 .N4 = 5494664 ∧ mRowModel4 .N8 = 7843904 := by
   obtain ⟨h1, h2, h3⟩ := regions_sum
   simp only [mRowModel4, h1, h2, h3, NodeKind.hasPrev, NodeKind.segSlots]
   decide
