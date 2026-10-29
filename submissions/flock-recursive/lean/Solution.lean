@@ -3,15 +3,15 @@
   entry's `claim.json` by `harness/render-challenge.py`) for revision 4.1 of `flock-recursive`.
   Everything except `submission` and `certified` is the rendered stub, copied verbatim.
 
-  **The certificate is open.** `certified` is proved from `FR.Sub4.Open4`, the residuals other
-  tracks still own (the slot interface's residual, the node decoder and its links:
-  `FRSubmission4Cert`). It therefore states more hypotheses than the challenge's `certified`; the
+  **The certificate is open.** `certified` is proved from `FR.Sub4.Open4F` (`= Gaps4`), the
+  residual other tracks still own (the slots' circuit gaps at the proof decoder:
+  `FRSubmission4Fin`). It therefore states more hypotheses than the challenge's `certified`; the
   comparator rejects it and the harness rates the entry PROVISIONAL (the benchmark runs, the result
-  is not comparable). It contains no `sorry`. When `Open4` is proved, `certified` drops its
+  is not comparable). It contains no `sorry`. When `Open4F` is proved, `certified` drops its
   hypothesis and nothing else changes.
 -/
 import RecursionFast.Contract
-import FRSubmission4Cert
+import FRSubmission4Fin
 
 namespace RecursionFast.Challenge
 open RecursionFast
@@ -28,8 +28,8 @@ noncomputable def declared : Declared where
 /-- The submission: revision 4.1 of `flock-recursive` (`FRSubmission4`). -/
 def submission : Submission := FR.Sub4.sub4
 
-/-- **The certificate against the rendered claim**, given the open residuals `FR.Sub4.Open4`. -/
-theorem certified (h : FR.Sub4.Open4) : CertificateR declared submission :=
-  FR.Sub4.certificateR_sub4 declared FR.Sub4.boundsOK_claim h
+/-- **The certificate against the rendered claim**, given the open residual `FR.Sub4.Open4F`. -/
+theorem certified (h : FR.Sub4.Open4F) : CertificateR declared submission :=
+  FR.Sub4.certificateR_sub4F declared FR.Sub4.boundsOK_claim h
 
 end RecursionFast.Challenge

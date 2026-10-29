@@ -16,21 +16,20 @@ import FRXSig4W
 S-E13a's route (S-H4 pass 7, `reviews/PATH-review.md` F1): `Resid4H.slots` is `I4`, `rd4 pf4` and
 `resid4_of ∘ gap4_of_rows`, so what remains of it is `Gap4R` at `pf4 = reassemble4 seq4 aBytes4`
 (`PfHdr pf4` is `pfHdr_reassemble4`). X4's rows 1 (`FrontHi`) and 2 (`RunFacts4`) are closed;
-rows 8–9 are `complete_rev4`, `delta_rev4`; row 7 (`DecOk4`) is `decOk4_ndNone`, proved.
+rows 8–9 are `complete_rev4`, `delta_rev4`; row 7 (`DecOk4`) is `decOk4_nd`, proved (S-H4 pass 11).
 
 | field | what | owner |
 |---|---|---|
 | `gap` | `StmtN4 → Gap4R` at `pf4` (`imp`, `kindS`/`wf` at `i ≥ 1`, `aggChk`) | B1′ … B4, A1′ |
-| `dec` | `D : NodeDec4 ndNone` and **`Links4 ndNone D`** (`hL`) | S-H4 (`nd`), S-L4 (`hL_of_res`) |
+| `dec` | **`Links4 nd nodeDec4_nd`** (`hL`) | S-L4 (`links4_sigH`: from `gap`, `FRSubmission4Fin`) |
 
 **The signature reader is fixed** (S-H4 pass 8): `sg := sigH` (H's message slots, rows 4–7), and
 `readW4_sigH` (`readW4_eq` with **`sig_of_H`**, no hypothesis beyond `StmtN4`) is the bridge
 `hL_of_res` uses; `sigWords_sigH` gives its output words as shifted H message words.
 
-**`Open4` is not satisfiable as it stands** whenever an accepted node proof lies in the extractor's
-domain: `ndNone` extracts nothing from a node (`not_nodeDec4_ndNone`). It is the statement of what
-is missing, not a claim that it holds: the node branch `nd` (S-H4) replaces `ndNone` in
-`sub4.E`/`sub4.ext` and in `Open4`, whose `dec` field then becomes `Links4 nd nodeDec4_nd`.
+**The node branch is S-H4's `nd`** (`FRXNd4`, pass 11) in `sub4.E`/`sub4.ext` and in `Open4`: its
+decode law `nodeDec4_nd` has links `LinksD4` and witness `readW4 sigH`, so `Open4.dec` is S-L4's
+`links4_sigH` from `Open4.gap` (`FRSubmission4Fin`: `Open4F := Gaps4`).
 
 **`certificateR_sub4`**: `Open4 → CertificateR D sub4` for every declared claim `D` whose numbers
 are at least the submission's and whose fuel is within the budget (`boundsOK`); **`boundsOK_claim`**
@@ -60,7 +59,7 @@ def Gaps4 : Prop :=
 /-- **The residuals of revision 4.1's certificate still open** (owners in the module doc). -/
 structure Open4 : Prop where
   gap : Gaps4
-  dec : ∃ D : NodeDec4 ndNone, Links4 ndNone D
+  dec : Links4 nd nodeDec4_nd
 
 /-- `PfHdr pf4` (`pfHdr_reassemble4`). -/
 theorem pfHdr_pf4 : N4s.PfHdr X.pf4 := fun e tr => X.pfHdr_reassemble4 X.aBytes4 e tr
@@ -75,11 +74,10 @@ theorem resid4H_of {nd : X.XIR} {D : NodeDec4 nd} (hG : Gaps4) (hL : Links4 nd D
     fun κ L c π hG' hk hd hr => hL vk κ L c π hG' hk hd hr⟩
 
 /-- **The contract's `Certificate` of `sub4`, given `Open4`** (INT-10's `certificate_rev4H`, with
-`DecOk4 ndNone` proved). -/
-theorem certificate_sub4 (h : Open4) : Certificate sub4 := by
-  obtain ⟨D, hL⟩ := h.dec
-  exact Snd.R4.certificate_rev4H (Impl.finC finPf) Layout.lRows 0 sub4 sub4_V sub4_qV sub4_E sub4_ε
-    sub4_ext sub4_fuel decOk4_ndNone D (resid4H_of h.gap hL) complete_rev4 delta_rev4
+`DecOk4 nd` proved, `decOk4_nd`). -/
+theorem certificate_sub4 (h : Open4) : Certificate sub4 :=
+  Snd.R4.certificate_rev4H (Impl.finC finPf) Layout.lRows 0 sub4 sub4_V sub4_qV sub4_E sub4_ε
+    sub4_ext sub4_fuel decOk4_nd nodeDec4_nd (resid4H_of h.gap h.dec) complete_rev4 delta_rev4
 
 /-- **The bounds of `CertificateR`** against a declared claim `D`. -/
 def boundsOK (D : Declared) : Prop :=

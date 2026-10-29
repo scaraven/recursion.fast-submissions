@@ -150,6 +150,8 @@ import FRNodeRows4WotsCtrl
 import FRNodeRows4PackSound
 import FRNodeRows4RepCtrl
 import FRNodeLinks4SigH
+import FRSubmission4Fin
+import FRXOut4Ctrl
 import FRNodeRun4Ctrl
 
 /-!

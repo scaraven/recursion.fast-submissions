@@ -915,3 +915,47 @@ Base: branch `v4/flock-recursive`, HEAD `53c2e13`. Build tree `logs/fr-build-SH2
      0 findings.
 118. Not done (context): the emitters (`shwIR`, `sigIR`, `pfIR` ladder, `kSelIR`, statements), the child programs,
      `outIR4_sem`, cost/size, `FRXNd4`, the plug, item 6. RESULT Part 34 §6 is the handover.
+119. **S-H4 pass 11** (2026-10-29). Started on HEAD `1f400d9` with pass 10 uncommitted (worktree symlinks); pass 10
+     landed as `7a0afa8` during the pass, HEAD `b4d7457` at the end (no other `lean/` change). Build tree
+     `logs/fr-build-SH4j` (copy of `SH4i`, `snap.sh` on HEAD), logs `logs/S-H4j/`; baseline `build0.log` 2,614 jobs.
+     Ruling on pass 10's Q1 (loader redirect `ldIx` instead of `finCopy`) accepted.
+120. **Emitters (`FRXOut4E`):** `shwC κ` is the realign body without the store (`oX := shWd (ldG …) s n`, `ldG` the
+     loader's word); `shwO` emits and steps `qN`, `shw4` four of them; `ldA`/`outAs` emit heap words at constant
+     addresses; `loopK_emitR` (count `k ≤ K` in a register: `entryK_countR`, the `ltu` branch). The signature
+     `sigIR κ σ = sigHd; otsIR; pathIR` (index word kept in `qIx`; 133 chains × 4 shift-3 pairs, `qN += 20`; 16 levels,
+     `qN := qP + 4 − ((idx >>> t) &&& 1) <<< 2`, `offB_eval`): `sigIR_sem` = `sigL` over the heap's H words.
+     Pitfalls: `rw` after which the goal is `toWord (8·(b+399)) = toWord (8b+3192)` makes `rw`'s closing `rfl`
+     recurse through `Nat.mul` on a let-bound `b` (max recursion): state the index equalities in the exact target
+     form first; `trivial` tries `decide` on such goals (same); a single 120-line proof hit a kernel deterministic
+     timeout, split into `sigHd_sem`/`otsIR_sem`/`pathIR_sem` it checks.
+121. **Buffer, ladder, count (`FRXOut4F`, `FRXOut4K`):** `bufSeg sg = setB; segIR apB 0 sg` (`seg_step` over the
+     buffer); `pfIR = setB; ladF; ite qF0 (pfS 30) (ite qF1 (pfS 31) (pfS 32))`, three copies of `pSeg4` (14,878
+     statements) instead of a field-17 split; `mOfB_eq` (case split over the six kind bytes), `low_iff`. `kSelIR κ a n`
+     (unrolled, `alive &&= [Σlo = 1 ∧ Σhi = 0]`, `qK += alive`; `F_one_iff`, `sum3_one`: F addition is XOR, rfl);
+     `kc_find`: the running count is `find?`'s index, so `qK = kSel`.
+122. **Children (`FRXOut4P`, `FRXOut4A`):** `HeapW` (decF04_wF's conclusion), `hMW_heapW` (blocks below `hEnd`),
+     `ChR` (loader = chain words, blocks below `hEnd` up to a bound), `rl_vS` (after `realign`, `vS … = src M apB bufB`
+     on the segment), `prevIR_sem` (= `signedWords_prev`), `chR_prev`, `sigL_eq`, `idx_word`; `aggHd_sem` (header via
+     `hAn_word`, `hAe_words`), `aggRegs_sem` (`qJ = ⌊k(segB−1)/64⌋`, `qDl = dV`), `chR_agg` (redirect correct for
+     `1 ≤ k ≤ maxK`), `segLoop_sem` (generic: realign + emitter per segment, outputs as pure functions of `i`), `aggIR4_sem`
+     (= `signedWords_agg`). Finding: `c_A` is H's last block for the last aggregate (`cAB + 1 = hEnd`); the header
+     reads stay inside it.
+123. **`FRXOut4O`:** `outIR4 κ` (tag, `outAs (stA κ)`, child 0, child 1), **`outIR4_sem`** (= `witWords (readW4 sigH κ L es)`),
+     WF, NoLoopT; costs from components (`decide +kernel` on `pfIR`, both trace segments; the rest `decide +kernel` per
+     kind): `cso_outIR4` cost ≤ 6·10^8 (exact 163,163,886 / 289,278,962 / 504,585,753), outputs ≤ 2.3·10^6, size ≤ 45,000.
+124. **`FRXNd4`:** `nd := ndK4 (decF04 κ; outIR4 κ)…`, `decOk4_nd`, `nd_out`, `nodeDec4_nd := ⟨LinksD4, readW4 sigH, …⟩`.
+     Pitfall: closing `[] ++ witWords X = witWords X` by `rfl` made the kernel unfold `witWords (readW4 …)` (deterministic
+     timeout); `rw [Array.toList_empty, List.nil_append]` instead.
+125. **The plug:** `FRSubmission4` (`ext4With nd`, `E4X nd`), `FRSubmission4Cert` (`Open4.dec : Links4 nd nodeDec4_nd`,
+     `certificate_sub4` with `decOk4_nd`), new `FRSubmission4Fin` (`Open4F := Gaps4`, `open4_of_F` via `links4_sigH`,
+     `certificate_sub4F`, `certificateR_sub4F`), `Solution.certified (h : Open4F)`, `FR` imports `FRSubmission4Fin`.
+126. **Controls (`FRXOut4Ctrl`, `FR` only):** `redirect_ctl`, `ladder_ctl`, `offB_ctl`, `kc_ctl`, `nd_ctl`; in the certificate's
+     closure `FRSubmission4Fin.nodeDec4_nd_parts`, `sub4_ext_ne_none`, `FRXNd4.nd_ne_ndNone`.
+127. **Kernel traps** (first sequential profile: `kStep_sem` 70.6 s, `aggIR4_sem` 97.8 s of type checking): (a) a hypothesis
+     about `rd t.M (selA … + j)` used at `j = 0` against `rd t.M (selA …)` — the kernel unfolded `selA`/`wAddr` on both
+     sides; (b) `set V := fun i u => (vS …).getD u 0` — checking `hV` re-evaluated `vS` (chain bytes). Fixed (exact forms;
+     opaque `V` by `obtain ⟨V, hVd⟩ : ∃ V, V = …`): 0.3 s and 3.0 s. Dropping `at *` from the dischargers did not matter.
+128. Checks: `lake build FR Solution FRSubmission4Fin` green, 2,623 jobs (`build3.log`); 18 axiom lines within the three, no
+     `sorryAx` (`axioms.log`, incl. `certificate_sub4F`, `certificate_sub4`, `certified`); source rule 398 files, 0 findings.
+     New kernel time ≈ 51 s (35.6 s of it `sizeIR_decF04`).
+129. **`Open4F = Gaps4`** exactly; `certified (h : FR.Sub4.Open4F)`. Not done: the `tgBody_sem` split. RESULT Part 35.
