@@ -83,7 +83,10 @@ def gFinPfR (P : FinP) (fi : FinIn) (b : ℕ) : List Op :=
   let rs1 := coordsR fi "RS1"
   let kp := (outsOf fi "B'").headD 0
   let cb := wb + (2 + 2 * nc)
-  let ce := cb + 1 + (2 * nc + 3) * P.ncell
+  let c9 := cb + 1 + (2 * nc + 3) * P.ncell
+  let acc9 := gCellsAccK nc P.ncell z0 (cb + 1)
+  let cr := c9 + (2 * nc + 3) * P.nrcell
+  let ce := cond P.rsvOps (cr + 1) c9
   let lb := ce + 2
   let fb := lb + lvsW fi [1, 2, 3, 4]
   let pd := fb + 2 + 4 * 2 ^ S.pf
@@ -103,8 +106,10 @@ def gFinPfR (P : FinP) (fi : FinIn) (b : ℕ) : List Op :=
    ((List.range nc).map (fun v => .getK (sb + 4) v) : List Op) ++
    ((List.range nc).map (fun v => .addK one (wb + 2 + v)) : List Op) ++
    ([.mulF kp kp] : List Op) ++
-   gCellsOpsK nc one (wb + 2) (wb + (nc + 2)) kp (fun j _ => P.cells.getD j 0) P.ncell 0 z0 cb (cb + 1) ++
-   ([.keep node (gCellsAccK nc P.ncell z0 (cb + 1)) z0, .addK (wb + 1) ce] : List Op) ++
+   (gCellsOpsK nc one (wb + 2) (wb + (nc + 2)) kp (fun j _ => P.cells.getD j 0) P.ncell 0 z0 cb (cb + 1) ++
+     cond P.rsvOps (gCellsOpsK nc one (wb + 2) (wb + (nc + 2)) kp (fun j _ => P.rcells.getD j 0)
+       P.nrcell 0 acc9 (c9 - 1) c9 ++ [.keep (fun _ => P.rsv) (gCellsAccK nc P.nrcell acc9 c9) acc9]) []) ++
+   ([.keep node (cond P.rsvOps cr acc9) z0, .addK (wb + 1) ce] : List Op) ++
    gLvsOps S fi one cu sb [1, 2, 3, 4] (ce + 1) lb ++
    ([.packK sf, .eqTableK fb] : List Op) ++ (fhOps (fb + 1) (List.range (2 ^ S.pf)) z0 (fb + 2)).map (reloc S) ++
    padsOps one sf S.pf P.fams pd ++
@@ -119,10 +124,13 @@ theorem map_reloc_of (S : Seq) {l : List Op} (h : ∀ op ∈ l, reloc S op = op)
   conv_rhs => rw [← List.map_id l]
   exact List.map_congr_left h
 
+theorem map_cond {α β : Type} (f : α → β) (c : Bool) (l l' : List α) :
+    (cond c l l').map f = cond c (l.map f) (l'.map f) := by cases c <;> rfl
+
 theorem gFinPf_reloc (P : FinP) (hck : P.ck = true) (fi : FinIn) (b : ℕ) :
     (gFinPf P fi b).1.map (reloc P.S) = gFinPfR P fi b := by
   delta gFinPfR
-  simp only [gFinPf, hck, cond_true, List.map_append, ptsOps_reloc, selOps_reloc,
+  simp only [gFinPf, hck, cond_true, List.map_append, map_cond, ptsOps_reloc, selOps_reloc,
     gCellsOpsK_reloc, gLvsOps_reloc, padsOps_reloc, List.map_flatMap]
   rw [map_reloc_of P.S (l := [.const (fun _ => .k 1), .const (fun _ => .k (1 + K.u)), .const (fun _ => .k 0)])
     (List.forall_mem_cons.2 ⟨rfl, List.forall_mem_cons.2 ⟨rfl, List.forall_mem_cons.2 ⟨rfl, fun _ h => absurd h (List.not_mem_nil)⟩⟩⟩)]
@@ -146,13 +154,21 @@ def rho4 : Array K := ptPf fi r P (slotIx P κ 4)
 /-- The `κ′` register's value. -/
 def kp4 : F := fv r ((outsOf fi "B'").headD 0)
 
-/-- **`Ŵ₀(P₀)`** (INT-8's): `rsWeight` at the kind's claim points, and on a node the cells' sum. -/
+/-- The public cells' sum `Σ_{k < ncell} κ′^{k+2}·eq(cell_k, P₀)` (`finPf`'s first chain). -/
+def cv4 : K := cellsVal4 P.nc (rho4 κ fi r P) (kp4 fi r) (fun j => P.cells.getD j 0) P.ncell 0
+  (kp4 fi r * kp4 fi r) 0
+
+/-- **`Ŵ₀(P₀)`** (INT-8's): `rsWeight` at the kind's claim points, and on a node the cells' sum; with
+the reserve on (`rsvOps ∧ rsv`, revision 4.4.2) the second chain continues it over the reserve's
+cells, `Σ_{i < nrcell} κ′^{2+ncell+i}·eq(rcell_i, P₀)`. -/
 def w0V4 : K :=
   impl.rsWeight (ptF r ((List.range 7).map fun p => (coordsR fi "RS1").getD p 0))
       ((P.kv.ptIx κ).map (ptPf fi r P)) (fv r ((coordsR fi "RS1").getD 7 0))
       (if P.kv.node κ then fv r ((outsOf fi "L3β").headD 0) else 1) (rho4 κ fi r P) +
-    (if P.kv.node κ then cellsVal4 P.nc (rho4 κ fi r P) (kp4 fi r) (fun j => P.cells.getD j 0) P.ncell 0
-      (kp4 fi r * kp4 fi r) 0 else 0)
+    (if P.kv.node κ then
+      (if (P.rsvOps && P.rsv) = true then cellsVal4 P.nc (rho4 κ fi r P) (kp4 fi r)
+        (fun j => P.rcells.getD j 0) P.nrcell 0 (kp4 fi r * kp4 fi r * kp4 fi r ^ P.ncell) (cv4 κ fi r P)
+       else cv4 κ fi r P) else 0)
 
 /-- **`Ŵ₄(P₄)`**: 3.x's four level steps at the kind's tails. -/
 def wV4 : K := lvsV impl fi (rd r) (tl4 κ fi r P) [1, 2, 3, 4] (w0V4 impl κ fi r P)
@@ -188,6 +204,57 @@ theorem pr_seq2 {A B : List Op} {R : Array Val} {M M' : List Val} {f g : Bool}
   have := pureRun_rebase impl κ inp B R M []
   simp only [List.append_nil] at this
   rw [this, hB]; rfl
+
+/-- A run from `M` on, seen from the file `R ++ M`. -/
+theorem pr_rebase {os : List Op} {R : Array Val} {M M' : List Val} {f : Bool}
+    (h : pureRun impl κ inp os R M = some (M ++ M', f)) :
+    pureRun impl κ inp os (R ++ M.toArray) [] = some (M', f) := by
+  have e := pureRun_rebase impl κ inp os R M []
+  rw [List.append_nil] at e
+  rw [e] at h
+  cases h' : pureRun impl κ inp os (R ++ M.toArray) [] with
+  | none => rw [h'] at h; cases h
+  | some p =>
+    rw [h'] at h
+    obtain ⟨p1, p2⟩ := p
+    simp only [Option.map_some, Option.some.injEq, Prod.mk.injEq, List.append_cancel_left_eq] at h
+    rw [h.1, h.2]
+
+/-- **The reserve's cell chain** (`finPf`'s second chain, revision 4.4.2): gated by `o` (`rsvOps`),
+`n` more cells from the first chain's accumulator `acc` (value `A`) and last power (the register just
+below, value `Pw`), then a `keep` by `sv` (`rsv`) between the continued sum and `A`. -/
+theorem run_rsvChain (nc one g h kp : ℕ) (cells : ℕ → KC ℕ) (ρ : Array K) (kpv : F)
+    (r : Array Val) (h1 : one < r.size) (hv1 : rd r one = .k 1) (hk : kp < r.size) (hkv : (rd r kp).toF = kpv)
+    (hg0 : ∀ v < nc, g + v < r.size ∧ rd r (g + v) = .k (ρ.getD v 0))
+    (hh0 : ∀ v < nc, h + v < r.size ∧ rd r (h + v) = .k (1 + ρ.getD v 0)) (hnc : 0 < nc)
+    (o : Bool) (sv : KC Bool) (n acc : ℕ) (A : K) (Pw : F) (L : List Val)
+    (hacc : acc < r.size + L.length) (hA : rd (r ++ L.toArray) acc = .k A)
+    (hpw : 0 < r.size + L.length) (hP : (rd (r ++ L.toArray) (r.size + L.length - 1)).toF = Pw) :
+    ∃ M, pureRun impl κ inp (cond o (gCellsOpsK nc one g h kp cells n 0 acc (r.size + L.length - 1)
+        (r.size + L.length) ++ [.keep sv (gCellsAccK nc n acc (r.size + L.length)) acc]) [])
+        (r ++ L.toArray) [] = some (M, true) ∧
+      M.length = cond o ((2 * nc + 3) * n + 1) 0 ∧
+      rd (r ++ L.toArray ++ M.toArray) (cond o (r.size + L.length + (2 * nc + 3) * n) acc) =
+        .k (if (o && sv κ) = true then cellsVal4 nc ρ kpv (fun j => cells j κ) n 0 Pw A else A) := by
+  cases o with
+  | false => exact ⟨[], rfl, rfl, by simpa using hA⟩
+  | true =>
+    obtain ⟨M, hM, hl, hv, -⟩ := run_gCellsOpsK impl κ inp nc one g h kp cells ρ kpv r h1 hv1 hk hkv hg0 hh0
+      hnc n 0 acc (r.size + L.length - 1) A Pw L hacc hA (by omega) hP
+    set w : Val := if sv κ then .k (cellsVal4 nc ρ kpv (fun j => cells j κ) n 0 Pw A) else .k A
+    have hkeep : evalOp impl κ inp (r ++ (L ++ M).toArray)
+        (.keep sv (gCellsAccK nc n acc (r.size + L.length)) acc) = .vals [w] true := by
+      simp only [evalOp, hv, FR.rd_pre r (M := M) hacc, hA, w]
+    have hrun : pureRun impl κ inp (gCellsOpsK nc one g h kp cells n 0 acc (r.size + L.length - 1)
+        (r.size + L.length) ++ [.keep sv (gCellsAccK nc n acc (r.size + L.length)) acc]) r L =
+        some (L ++ (M ++ [w]), true) := by
+      rw [pr_app impl κ inp r hM, pr_op impl κ inp r hkeep]; simp [pureRun]
+    refine ⟨M ++ [w], pr_rebase impl κ inp hrun, by simp [hl], ?_⟩
+    rw [show r ++ L.toArray ++ (M ++ [w]).toArray = r ++ (L ++ M ++ [w]).toArray by
+        simp [Array.append_assoc],
+      show cond true (r.size + L.length + (2 * nc + 3) * n) acc = r.size + (L ++ M).length by
+        simp [hl]; omega, rd_new1 r (L ++ M) w]
+    simp only [Bool.true_and, w]; split <;> rfl
 
 /-- **The slots' selections** (`selOps` for slots `0 … T − 1`, each from the previous' registers). -/
 theorem run_selSlots (sel : ℕ → KC Bool) (cand : ℕ → ℕ → Reg) (n : ℕ) (R : Array Val)
@@ -539,65 +606,90 @@ theorem flag_gFinPf4 (r : Array Val) (P : FinP) (hS : P.S = seq4) (hnc : 0 < P.n
   -- B9: the cells
   have e18 : ExtA R1 R8 := e16.trans (e67.trans e78)
   have e58 : ExtA R5 R8 := e56.trans (e67.trans e78)
-  obtain ⟨M9, hB9, hl9, hv9⟩ := run_gCellsOpsK impl κ inp P.nc b (sb + 5 + 2) (sb + 5 + (P.nc + 2)) kp
-    (fun j _ => P.cells.getD j 0) (rho4 κ fi r P) kpv R8 (by rw [sR8, hsb]; clear * -; omega)
-    (by rw [e18.rd (by rw [sR1]; omega), r1one])
-    (Nat.lt_of_lt_of_le hkpr (e07.trans e78).1) (by rw [(e07.trans e78).rd hkpr]; rfl)
-    (fun v hv => ⟨by rw [sR8]; clear * - hv; omega,
-      by rw [(e67.trans e78).rd (by rw [sR6]; clear * - hv; omega), r6 v hv]⟩)
-    (fun v hv => ⟨by rw [sR8]; clear * - hv; omega, by
+  have h8one : b < R8.size := by rw [sR8]; omega
+  have r8one : rd R8 b = .k 1 := by rw [e18.rd (by rw [sR1]; omega), r1one]
+  have h8kp : kp < R8.size := Nat.lt_of_lt_of_le hkpr (e07.trans e78).1
+  have r8kp : (rd R8 kp).toF = kpv := by rw [(e07.trans e78).rd hkpr]; rfl
+  have r8g : ∀ v < P.nc, sb + 5 + 2 + v < R8.size ∧ rd R8 (sb + 5 + 2 + v) = .k ((rho4 κ fi r P).getD v 0) :=
+    fun v hv => ⟨by rw [sR8]; clear * - hv; omega,
+      by rw [(e67.trans e78).rd (by rw [sR6]; clear * - hv; omega), r6 v hv]⟩
+  have r8h : ∀ v < P.nc, sb + 5 + (P.nc + 2) + v < R8.size ∧
+      rd R8 (sb + 5 + (P.nc + 2) + v) = .k (1 + (rho4 κ fi r P).getD v 0) :=
+    fun v hv => ⟨by rw [sR8]; clear * - hv; omega, by
       rw [show sb + 5 + (P.nc + 2) + v = R6.size + v by rw [sR6]; clear * -; omega,
-        e78.rd (by rw [sR7, sR6]; clear * - hv; omega), hR7, rd_app]; simp [V7, hv]⟩) hnc
+        e78.rd (by rw [sR7, sR6]; clear * - hv; omega), hR7, rd_app]; simp [V7, hv]⟩
+  obtain ⟨M9, hB9, hl9, hv9, hp9⟩ := run_gCellsOpsK impl κ inp P.nc b (sb + 5 + 2) (sb + 5 + (P.nc + 2)) kp
+    (fun j _ => P.cells.getD j 0) (rho4 κ fi r P) kpv R8 h8one r8one h8kp r8kp r8g r8h hnc
     P.ncell 0 (b + 2) (sb + 5 + (2 + 2 * P.nc)) 0 (kpv * kpv) []
     (by rw [List.length_nil, Nat.add_zero, sR8, hsb]; clear * -; omega)
     (by rw [app0, e18.rd (by rw [sR1]; omega), r1z])
     (by rw [List.length_nil, Nat.add_zero, sR8, hsb]; clear * -; omega)
     (by rw [app0, hR8, ← sR7, rd_app0]; rfl)
-  simp only [List.length_nil, Nat.add_zero, List.nil_append, sR8] at hB9 hv9
+  simp only [List.length_nil, Nat.add_zero, List.nil_append, sR8] at hB9 hv9 hp9
+  rw [gCellsPwK_eq] at hp9
   set R9 := R8 ++ M9.toArray with hR9
-  set ce := sb + 5 + (2 + 2 * P.nc) + 1 + (2 * P.nc + 3) * P.ncell with hce
-  have sR9 : R9.size = ce := by simp [R9, sR8, hl9, hce]
+  set c9 := sb + 5 + (2 + 2 * P.nc) + 1 + (2 * P.nc + 3) * P.ncell with hc9
+  have sR9 : R9.size = c9 := by simp [R9, sR8, hl9, hc9]
+  have hsz9 : R8.size + M9.length = c9 := by rw [sR8, hl9]
   have e89 : ExtA R8 R9 := ExtA.app R8 M9
-  -- B10: `Ŵ₀(P₀)`
-  have e59 : ExtA R5 R9 := e58.trans e89
-  have r9w : rd R9 (sb + 5 + 1) = .k rsW := by
-    rw [e59.rd (by rw [sR5]; omega), hR5, ← sR4, rd_app]; rfl
-  have r9z : rd R9 (b + 2) = .k 0 := by rw [(e18.trans e89).rd (by rw [sR1]; omega), r1z]
   set cv := cellsVal4 P.nc (rho4 κ fi r P) kpv (fun j => P.cells.getD j 0) P.ncell 0 (kpv * kpv) 0
-  have hca : gCellsAccK P.nc P.ncell (b + 2) (sb + 5 + (2 + 2 * P.nc) + 1) < R9.size := by
+  set acc9 := gCellsAccK P.nc P.ncell (b + 2) (sb + 5 + (2 + 2 * P.nc) + 1) with hacc9
+  have hca : acc9 < R9.size := by
     by_contra hc'
     have h0 := hv9; rw [rd, Array.getElem?_eq_none (by simpa using hc')] at h0; cases h0
-  set V10 : List Val := [if P.kv.node κ then .k cv else .k 0, .k (w0V4 impl κ fi r P)]
+  -- B9′: the reserve's chain (revision 4.4.2), gated by `rsvOps`, kept by `rsv`
+  obtain ⟨Mr, hBr, hlr, hvr⟩ := run_rsvChain impl κ inp P.nc b (sb + 5 + 2) (sb + 5 + (P.nc + 2)) kp
+    (fun j _ => P.rcells.getD j 0) (rho4 κ fi r P) kpv R8 h8one r8one h8kp r8kp r8g r8h hnc
+    P.rsvOps (fun _ => P.rsv) P.nrcell acc9 cv (kpv * kpv * kpv ^ P.ncell) M9
+    (by rw [hsz9, ← sR9]; exact hca) hv9 (by rw [hsz9]; omega) (by rw [hsz9]; exact hp9)
+  rw [hsz9] at hBr hvr
+  set ce := cond P.rsvOps (c9 + (2 * P.nc + 3) * P.nrcell + 1) c9 with hce
+  set R9r := R9 ++ Mr.toArray with hR9r
+  have sR9r : R9r.size = ce := by
+    simp only [R9r, Array.size_append, List.size_toArray, hlr, sR9, hce]
+    cases P.rsvOps <;> simp only [cond_true, cond_false] <;> omega
+  have hc9ce : c9 ≤ ce := by rw [hce]; cases P.rsvOps <;> simp only [cond_true, cond_false] <;> omega
+  have e99 : ExtA R9 R9r := ExtA.app R9 Mr
+  -- B10: `Ŵ₀(P₀)`
+  have e59 : ExtA R5 R9r := (e58.trans e89).trans e99
+  have r9w : rd R9r (sb + 5 + 1) = .k rsW := by
+    rw [e59.rd (by rw [sR5]; omega), hR5, ← sR4, rd_app]; rfl
+  have r9z : rd R9r (b + 2) = .k 0 := by rw [((e18.trans e89).trans e99).rd (by rw [sR1]; omega), r1z]
+  set cvT : K := if (P.rsvOps && P.rsv) = true then cellsVal4 P.nc (rho4 κ fi r P) kpv
+    (fun j => P.rcells.getD j 0) P.nrcell 0 (kpv * kpv * kpv ^ P.ncell) cv else cv with hcvT
+  have hcr : cond P.rsvOps (c9 + (2 * P.nc + 3) * P.nrcell) acc9 < R9r.size := by
+    by_contra hc'
+    have h0 := hvr; rw [rd, Array.getElem?_eq_none (by simpa using hc')] at h0; cases h0
+  set V10 : List Val := [if P.kv.node κ then .k cvT else .k 0, .k (w0V4 impl κ fi r P)]
   have hB10 : pureRun impl κ inp
-      [.keep (fun κ => P.kv.node κ) (gCellsAccK P.nc P.ncell (b + 2) (sb + 5 + (2 + 2 * P.nc) + 1)) (b + 2),
-       .addK (sb + 5 + 1) (sb + 5 + (2 + 2 * P.nc) + 1 + (2 * P.nc + 3) * P.ncell)] R9 [] =
-      some (V10, true) := by
-    rw [← hce, ← sR9]
+      [.keep (fun κ => P.kv.node κ) (cond P.rsvOps (c9 + (2 * P.nc + 3) * P.nrcell) acc9) (b + 2),
+       .addK (sb + 5 + 1) ce] R9r [] = some (V10, true) := by
+    rw [← sR9r]
     simp only [pureRun, evalOp, List.nil_append, List.cons_append, rd_app, rd_app0, app0,
-      rd_app_left _ _ (show sb + 5 + 1 < R9.size by rw [sR9, hce]; clear * -; omega),
-      rd_app_left _ _ (show b + 2 < R9.size by rw [sR9, hce]; clear * - hsb; omega),
-      rd_app_left _ _ hca, r9w, r9z, hv9,
+      rd_app_left _ _ (show sb + 5 + 1 < R9r.size by rw [sR9r]; have := hc9ce; clear * - this hc9; omega),
+      rd_app_left _ _ (show b + 2 < R9r.size by rw [sR9r]; have := hc9ce; clear * - this hc9 hsb; omega),
+      rd_app_left _ _ hcr, r9w, r9z, hvr,
       List.getD_cons_succ, List.getD_cons_zero, Option.map_some, Bool.and_true]
-    simp only [V10, w0V4, cv, toK_k, rsW, kpv, kp4]
+    simp only [V10, w0V4, cv4, cv, cvT, toK_k, rsW, kpv, kp4]
     cases P.kv.node κ <;> simp <;> rfl
-  set R10 := R9 ++ V10.toArray with hR10
-  have sR10 : R10.size = ce + 2 := by simp [R10, sR9, V10]
-  have e910 : ExtA R9 R10 := ExtA.app R9 V10
-  have r10w : rd R10 (ce + 1) = .k (w0V4 impl κ fi r P) := by rw [hR10, ← sR9, rd_app]; rfl
-  have e010 : ExtA r R10 := e07.trans (e78.trans (e89.trans e910))
+  set R10 := R9r ++ V10.toArray with hR10
+  have sR10 : R10.size = ce + 2 := by simp [R10, sR9r, V10]
+  have e910 : ExtA R9r R10 := ExtA.app R9r V10
+  have r10w : rd R10 (ce + 1) = .k (w0V4 impl κ fi r P) := by rw [hR10, ← sR9r, rd_app]; rfl
+  have e010 : ExtA r R10 := e07.trans (e78.trans (e89.trans (e99.trans e910)))
   have e410 : ExtA R4 R10 := e45.trans (e59.trans e910)
-  have e110 : ExtA R1 R10 := e18.trans (e89.trans e910)
+  have e110 : ExtA R1 R10 := e18.trans (e89.trans (e99.trans e910))
   obtain ⟨LT, hT⟩ := flag_pfTail4 impl κ inp r R10 P hS hnf fi b sb ce (w0V4 impl κ fi r P) hpos hO hlv
     e010 sR10 (by have := e110.1; rw [sR1] at this; exact this)
     (by rw [e110.rd (by rw [sR1]; omega), r1one])
     (by rw [e110.rd (by rw [sR1]; omega), r1cu]) (by rw [e110.rd (by rw [sR1]; omega), r1z])
     (fun k hk => by
       have hk' : k - 1 < 5 := by simp at hk; omega
-      refine ⟨by rw [sR10, hce]; clear * - hk'; omega, ?_⟩
+      refine ⟨by rw [sR10]; have := hc9ce; clear * - hk' this hc9; omega, ?_⟩
       rw [e410.rd (by rw [sR4]; omega), r4T (k - 1) hk']; rfl) r10w
   exact ⟨_, pr_seq impl κ inp hB1 (pr_seq impl κ inp hB2 (pr_seq impl κ inp hB3
     (pr_seq impl κ inp hB4 (pr_seq impl κ inp hB5 (pr_seq impl κ inp hB6 (pr_seq impl κ inp hB7
-    (pr_seq impl κ inp hB8 (pr_seq impl κ inp hB9 (pr_seq impl κ inp hB10 hT)))))))))⟩
+    (pr_seq impl κ inp hB8 (pr_seq impl κ inp hB9 (pr_seq impl κ inp hBr (pr_seq impl κ inp hB10 hT))))))))))⟩
 
 end Run
 

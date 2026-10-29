@@ -200,7 +200,20 @@ theorem foldl_selK (r : Array Val) (nc : ℕ) (ρ : Array K) (b : ℕ) (c : ℕ)
   congr 2
   exact List.map_congr_left fun v hv' => hv v (List.mem_range.1 hv')
 
-/-- **`gCellsOpsK`** (3.x's `run_cellsOps` with the cells' bits by `keep`). -/
+/-- The register of `gCellsOpsK`'s last power `pw·κ′ⁿ` (`pw` itself after no cell). -/
+def gCellsPwK (nc : ℕ) : ℕ → ℕ → ℕ → ℕ
+  | 0, pw, _ => pw
+  | n + 1, _, b => gCellsPwK nc n (b + (2 * nc + 2)) (b + (2 * nc + 3))
+
+/-- With `pw` just below the chain, its last power sits at the chain's last register. -/
+theorem gCellsPwK_eq (nc : ℕ) : ∀ (n pw : ℕ), gCellsPwK nc n pw (pw + 1) = pw + 1 + (2 * nc + 3) * n - 1
+  | 0, pw => by simp [gCellsPwK]
+  | n + 1, pw => by
+    rw [gCellsPwK, show pw + 1 + (2 * nc + 3) = pw + 1 + (2 * nc + 2) + 1 by omega, gCellsPwK_eq nc n]
+    rw [Nat.mul_succ]; omega
+
+/-- **`gCellsOpsK`** (3.x's `run_cellsOps` with the cells' bits by `keep`); also the last power
+register (`gCellsPwK`), from which a second chain continues. -/
 theorem run_gCellsOpsK (nc : ℕ) (one g h kp : ℕ) (cells : ℕ → KC ℕ) (ρ : Array K) (kpv : F)
     (r : Array Val) (h1 : one < r.size) (hv1 : rd r one = .k 1) (hk : kp < r.size) (hkv : (rd r kp).toF = kpv)
     (hg0 : ∀ v < nc, g + v < r.size ∧ rd r (g + v) = .k (ρ.getD v 0))
@@ -211,9 +224,11 @@ theorem run_gCellsOpsK (nc : ℕ) (one g h kp : ℕ) (cells : ℕ → KC ℕ) (�
     ∃ M, pureRun impl κ inp (gCellsOpsK nc one g h kp cells n j acc pw (r.size + L.length)) r L =
         some (L ++ M, true) ∧ M.length = (2 * nc + 3) * n ∧
       rd (r ++ (L ++ M).toArray) (gCellsAccK nc n acc (r.size + L.length)) =
-        .k (cellsVal4 nc ρ kpv (fun j => cells j κ) n j Pw A)
-  | 0, _, acc, pw, A, Pw, L, _, hA, _, _ =>
-    ⟨[], by simp [gCellsOpsK, pureRun], by simp, by simpa [gCellsAccK, cellsVal4] using hA⟩
+        .k (cellsVal4 nc ρ kpv (fun j => cells j κ) n j Pw A) ∧
+      (rd (r ++ (L ++ M).toArray) (gCellsPwK nc n pw (r.size + L.length))).toF = Pw * kpv ^ n
+  | 0, _, acc, pw, A, Pw, L, _, hA, _, hP =>
+    ⟨[], by simp [gCellsOpsK, pureRun], by simp, by simpa [gCellsAccK, cellsVal4] using hA,
+      by simpa [gCellsPwK] using hP⟩
   | n + 1, j, acc, pw, A, Pw, L, hacc, hA, hpw, hP => by
     set b := r.size + L.length with hb
     set c := cells j κ
@@ -276,7 +291,7 @@ theorem run_gCellsOpsK (nc : ℕ) (one g h kp : ℕ) (cells : ℕ → KC ℕ) (�
     set L' := L ++ M₀ ++ M₁ ++ [u₁] ++ [u₂] ++ [u₃]
     have hL' : r.size + L'.length = b + (2 * nc + 3) := by
       simp only [L', List.length_append, List.length_singleton]; omega
-    obtain ⟨M, hM, hl, hv⟩ := run_gCellsOpsK nc one g h kp cells ρ kpv r h1 hv1 hk hkv hg0 hh0 hnc n (j + 1)
+    obtain ⟨M, hM, hl, hv, hpv⟩ := run_gCellsOpsK nc one g h kp cells ρ kpv r h1 hv1 hk hkv hg0 hh0 hnc n (j + 1)
       (b + (2 * nc + 1)) (b + (2 * nc + 2)) (A + K.smulF Pw e) (Pw * kpv) L' (by rw [hL']; omega)
       (by
         have : b + (2 * nc + 1) = r.size + (L ++ M₀ ++ M₁ ++ [u₁]).length := by
@@ -287,8 +302,8 @@ theorem run_gCellsOpsK (nc : ℕ) (one g h kp : ℕ) (cells : ℕ → KC ℕ) (�
         have : b + (2 * nc + 2) = r.size + (L ++ M₀ ++ M₁ ++ [u₁] ++ [u₂]).length := by
           simp only [List.length_append, List.length_singleton]; omega
         rw [this, rd_new1]; rfl)
-    rw [hL'] at hM hv
-    refine ⟨M₀ ++ M₁ ++ [u₁, u₂, u₃] ++ M, ?_, by simp [hl, hl₁', hl₀]; ring, ?_⟩
+    rw [hL'] at hM hv hpv
+    refine ⟨M₀ ++ M₁ ++ [u₁, u₂, u₃] ++ M, ?_, by simp [hl, hl₁', hl₀]; ring, ?_, ?_⟩
     · rw [gCellsOpsK, gCellOpsK, List.append_assoc, List.append_assoc, pr_app impl κ inp r (M := M₀) h₀,
         pr_app impl κ inp r (M := M₁) h₁']
       simp only [List.cons_append, List.nil_append]
@@ -298,6 +313,8 @@ theorem run_gCellsOpsK (nc : ℕ) (one g h kp : ℕ) (cells : ℕ → KC ℕ) (�
     · simp only [gCellsAccK, cellsVal4]
       rw [show L ++ (M₀ ++ M₁ ++ [u₁, u₂, u₃] ++ M) = L' ++ M by simp [L']]
       exact hv
+    · simp only [gCellsPwK]
+      rw [show L ++ (M₀ ++ M₁ ++ [u₁, u₂, u₃] ++ M) = L' ++ M by simp [L'], hpv, pow_succ']; ring
 
 /-- **`fhOps`, relocated** (3.x's `run_fhOps` at `S`'s final elements). -/
 theorem run_fhOps4 (S : Seq) (r : Array Val) (E : ℕ) (Ev : Array K) (hE : E < r.size) (hEv : (rd r E).toAK = Ev) :

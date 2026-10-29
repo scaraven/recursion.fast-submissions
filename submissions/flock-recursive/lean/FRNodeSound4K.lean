@@ -7,7 +7,7 @@ import FRSoundness4XRunG
 /-!
 # `ks_rev4H`, `certificate_rev4H`: residuals 3–4 reduced to the circuit's gaps
 
-**`ks_rev4H`** is P4f's `ks_rev4F` with
+**`ks_rev4H`** is P4f's `ks_rev4F` (revision 4.4.2: X4's `ks_rev4R`, the gaps over `StmtN4R`) with
 * residual 3 discharged: the slot interface is `I4 impl₀ base hT₀ hT` (`FRNodeSound4`; its
   `soundN`/`soundS` proved from the compiler's soundness and INT-8's group-program bridge), at
   `lRows4`/`nodeIRows4` (`I4_rows`), and the reader is `rd4 pf` (`FRNodeRead4`);
@@ -36,31 +36,32 @@ theorem ks_rev4H (impl₀ : OpImpl) (base : NodeKind → OpImpl) (S : Submission
     {nd : X.XIR} (hE : S.E = E4X nd S.acc) (hε : S.ε = epsR)
     (hRun : X4.RunFacts4 (VsegC impl₀) (VnodeC (NI4F.implN4F base) N4c.cells4) vk)
     (hT₀ : ImplT impl₀) (hT : ∀ ν, ImplT (base ν)) (pf : Trace → Proof)
-    (hGap : ∀ κ w c₁ c₂, N4c.StmtN4 κ (lRows4 κ) (nodeIRows4 κ) vk c₁ c₂ w →
+    (hGap : ∀ κ w c₁ c₂ ch, N4c.StmtN4R κ (lRows4 κ) (nodeIRows4 κ) vk c₁ c₂ w ch →
       Gap4 impl₀ base pf κ vk c₁ c₂ w)
     (D : NodeDec4 nd)
     (hL : ∀ κ L c π, X4.GoodX DFhi L → kindOf4 π = .node κ → X.InDomE c π L →
       (VnodeC (NI4F.implN4F base) N4c.cells4 κ vk c π).runLog L = some true →
       ∃ es, D.Links κ L es π c ∧ Rel (S.acc vk) c (D.readW κ L es)) :
     KS (Rel (S.acc vk)) (S.V vk) S.E S.ε S.qV :=
-  ks_rev4F impl₀ base S vk hV hq hE hε hRun (I4 impl₀ base hT₀ hT) (rd4 pf) (I4_rows impl₀ base hT₀ hT)
-    (fun κ w c₁ c₂ hS => resid4_of hT₀ hT pf hS (hGap κ w c₁ c₂ hS)) D hL
+  X4.ks_rev4R impl₀ base S vk hV hq hE hε hRun (I4 impl₀ base hT₀ hT) (rd4 pf) (I4_rows impl₀ base hT₀ hT)
+    (fun κ w c₁ c₂ ch hS => resid4_of hT₀ hT pf hS.1 (hGap κ w c₁ c₂ ch hS)) D hL
 
 /-- **The residuals of `ks_rev4H` at one key**: the run facts (2), the circuit's gaps, the links (6). -/
 structure Resid4H (impl₀ : OpImpl) (base : NodeKind → OpImpl) (pf : Trace → Proof) (S : Submission)
     (nd : X.XIR) (D : NodeDec4 nd) (vk : Digest) : Prop where
   run : X4.RunFacts4 (VsegC impl₀) (VnodeC (NI4F.implN4F base) N4c.cells4) vk
-  gap : ∀ κ w c₁ c₂, N4c.StmtN4 κ (lRows4 κ) (nodeIRows4 κ) vk c₁ c₂ w → Gap4 impl₀ base pf κ vk c₁ c₂ w
+  gap : ∀ κ w c₁ c₂ ch, N4c.StmtN4R κ (lRows4 κ) (nodeIRows4 κ) vk c₁ c₂ w ch →
+    Gap4 impl₀ base pf κ vk c₁ c₂ w
   links : ∀ κ L c π, X4.GoodX DFhi L → kindOf4 π = .node κ → X.InDomE c π L →
     (VnodeC (NI4F.implN4F base) N4c.cells4 κ vk c π).runLog L = some true →
       ∃ es, D.Links κ L es π c ∧ Rel (S.acc vk) c (D.readW κ L es)
 
-/-- `Resid4H` gives X4's `Resid4` (its `slots` field at `I4`, `rd4 pf`, `resid4_of`). -/
+/-- `Resid4H` gives X4's `Resid4R` (its `slots` field at `I4`, `rd4 pf`, `resid4_of`). -/
 theorem resid4_of_H {impl₀ : OpImpl} {base : NodeKind → OpImpl} (hT₀ : ImplT impl₀)
     (hT : ∀ ν, ImplT (base ν)) {pf : Trace → Proof} {S : Submission} {nd : X.XIR} {D : NodeDec4 nd}
-    {vk : Digest} (h : Resid4H impl₀ base pf S nd D vk) : X4.Resid4 impl₀ base S nd D DFhi vk :=
+    {vk : Digest} (h : Resid4H impl₀ base pf S nd D vk) : X4.Resid4R impl₀ base S nd D vk :=
   ⟨h.run, ⟨I4 impl₀ base hT₀ hT, rd4 pf, I4_rows impl₀ base hT₀ hT,
-    fun κ w c₁ c₂ hS => resid4_of hT₀ hT pf hS (h.gap κ w c₁ c₂ hS)⟩, h.links⟩
+    fun κ w c₁ c₂ ch hS => resid4_of hT₀ hT pf hS.1 (h.gap κ w c₁ c₂ ch hS)⟩, h.links⟩
 
 /-- **`certificate_rev4F` with residuals 3–4 instantiated.** -/
 theorem certificate_rev4H (impl₀ : OpImpl) (base : NodeKind → OpImpl) (S : Submission) {nd : X.XIR}
@@ -70,7 +71,7 @@ theorem certificate_rev4H (impl₀ : OpImpl) (base : NodeKind → OpImpl) (S : S
     (pf : Trace → Proof) (hR : ∀ vk, Resid4H impl₀ base pf S nd D vk)
     (hC : ∀ vk, CompleteWithError (Rel (S.acc vk)) (S.P vk) (S.V vk) S.δ)
     (hδ : S.δ ≤ completenessCap) : Certificate S :=
-  certificate_rev4F impl₀ base S hV hq hE hε hext hfuel hnd D (fun vk => resid4_of_H hT₀ hT (hR vk)) hC hδ
+  X4.certificate_rev4R impl₀ base S hV hq hE hε hext hfuel hnd D (fun vk => resid4_of_H hT₀ hT (hR vk)) hC hδ
 
 /-! ## On top of R4i (`ks_rev4G`) -/
 

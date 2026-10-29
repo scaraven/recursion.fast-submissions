@@ -3,6 +3,7 @@
 -- `ks_rev4H`/`certificate_rev4H`, with residual 2 discharged in full (no `SegOut4`).
 import FRSoundness4XRun
 import FRSoundness4P4fObl
+import FRNodeStmtR4
 
 /-!
 # Revision 4.1's knowledge soundness without `RunFacts4`
@@ -41,7 +42,25 @@ theorem ks_rev4H (S : Submission) (vk : Digest)
       (VnodeC (NI4F.implN4F fun _ => Impl.implC fin lRows κs₀) N4c.cells4 κ vk c π).runLog L = some true →
       ∃ es, D.Links κ L es π c ∧ Rel (S.acc vk) c (D.readW κ L es)) :
     KS (Rel (S.acc vk)) (S.V vk) S.E S.ε S.qV :=
-  P4f.ks_rev4F _ _ S vk hV hq hE hε (runFacts4H_C fin lRows κs₀ vk) I rd hI hRes D hL
+  ks_rev4R _ _ S vk hV hq hE hε (runFacts4H_C fin lRows κs₀ vk) I rd hI (fun κ w c₁ c₂ _ hS => hRes κ w c₁ c₂ hS.1)
+    D hL
+
+/-- **`ks_rev4H` with the reserve** (revision 4.4.2): the residual `hRes` is over `StmtN4R`
+(`ks_rev4R` with `hRun` from `runFacts4H_C`). -/
+theorem ks_rev4HR (S : Submission) (vk : Digest)
+    (hV : S.V = VC4 (Impl.implC fin lRows κs₀) (NI4F.implN4F fun _ => Impl.implC fin lRows κs₀) N4c.cells4)
+    (hq : S.qV = qV4) {nd : X.XIR} (hE : S.E = E4X nd S.acc) (hε : S.ε = epsR)
+    (I : N4c.SlotIface4 (VsegC (Impl.implC fin lRows κs₀))
+      (VnodeC (NI4F.implN4F fun _ => Impl.implC fin lRows κs₀) N4c.cells4)) (rd : N4c.Read4)
+    (hI : I.lrows = lRows4 ∧ I.irows = nodeIRows4)
+    (hRes : ∀ κ w c₁ c₂ ch, N4c.StmtN4R κ (lRows4 κ) (nodeIRows4 κ) vk c₁ c₂ w ch →
+      N4c.NodeResid4 I rd κ vk c₁ c₂ w)
+    (D : NodeDec4 nd)
+    (hL : ∀ κ L c π, X4.GoodX P4f.DFhi L → kindOf4 π = .node κ → X.InDomE c π L →
+      (VnodeC (NI4F.implN4F fun _ => Impl.implC fin lRows κs₀) N4c.cells4 κ vk c π).runLog L = some true →
+      ∃ es, D.Links κ L es π c ∧ Rel (S.acc vk) c (D.readW κ L es)) :
+    KS (Rel (S.acc vk)) (S.V vk) S.E S.ε S.qV :=
+  ks_rev4R _ _ S vk hV hq hE hε (runFacts4H_C fin lRows κs₀ vk) I rd hI hRes D hL
 
 /-- R4i's form (`SegOut4` unused since INT-10), kept for its users. -/
 theorem ks_rev4G (S : Submission) (vk : Digest)
@@ -83,6 +102,28 @@ structure Resid4H (S : Submission) (nd : X.XIR) (D : NodeDec4 nd) (vk : Digest) 
     (VnodeC (NI4F.implN4F fun _ => Impl.implC fin lRows κs₀) N4c.cells4 κ vk c π).runLog L = some true →
       ∃ es, D.Links κ L es π c ∧ Rel (S.acc vk) c (D.readW κ L es)
 
+/-- **`Resid4H` with the reserve** (revision 4.4.2): the slot interface with `hRes` over `StmtN4R`,
+and the links. -/
+structure Resid4HR (S : Submission) (nd : X.XIR) (D : NodeDec4 nd) (vk : Digest) : Prop where
+  slots : ∃ (I : N4c.SlotIface4 (VsegC (Impl.implC fin lRows κs₀))
+      (VnodeC (NI4F.implN4F fun _ => Impl.implC fin lRows κs₀) N4c.cells4))
+    (rd : N4c.Read4), (I.lrows = lRows4 ∧ I.irows = nodeIRows4) ∧
+      ∀ κ w c₁ c₂ ch, N4c.StmtN4R κ (lRows4 κ) (nodeIRows4 κ) vk c₁ c₂ w ch →
+        N4c.NodeResid4 I rd κ vk c₁ c₂ w
+  links : ∀ κ L c π, X4.GoodX P4f.DFhi L → kindOf4 π = .node κ → X.InDomE c π L →
+    (VnodeC (NI4F.implN4F fun _ => Impl.implC fin lRows κs₀) N4c.cells4 κ vk c π).runLog L = some true →
+      ∃ es, D.Links κ L es π c ∧ Rel (S.acc vk) c (D.readW κ L es)
+
+theorem resid4HR_of_H {S : Submission} {nd : X.XIR} {D : NodeDec4 nd} {vk : Digest}
+    (h : Resid4H fin lRows κs₀ S nd D vk) : Resid4HR fin lRows κs₀ S nd D vk :=
+  let ⟨I, rd, hI, hRes⟩ := h.slots
+  ⟨⟨I, rd, hI, fun κ w c₁ c₂ _ hS => hRes κ w c₁ c₂ hS.1⟩, h.links⟩
+
+theorem resid4R_of_HR {S : Submission} {nd : X.XIR} {D : NodeDec4 nd} {vk : Digest}
+    (h : Resid4HR fin lRows κs₀ S nd D vk) :
+    X4.Resid4R (Impl.implC fin lRows κs₀) (fun _ => Impl.implC fin lRows κs₀) S nd D vk :=
+  ⟨runFacts4H_C fin lRows κs₀ vk, h.slots, h.links⟩
+
 theorem resid4_of_H {S : Submission} {nd : X.XIR} {D : NodeDec4 nd} {vk : Digest}
     (h : Resid4H fin lRows κs₀ S nd D vk) :
     X4.Resid4 (Impl.implC fin lRows κs₀) (fun _ => Impl.implC fin lRows κs₀) S nd D P4f.DFhi vk :=
@@ -106,7 +147,19 @@ theorem certificate_rev4H (S : Submission) {nd : X.XIR}
     (hR : ∀ vk, Resid4H fin lRows κs₀ S nd D vk)
     (hC : ∀ vk, CompleteWithError (Rel (S.acc vk)) (S.P vk) (S.V vk) S.δ)
     (hδ : S.δ ≤ completenessCap) : Certificate S :=
-  P4f.certificate_rev4F _ _ S hV hq hE hε hext hfuel hnd D (fun vk => resid4_of_H fin lRows κs₀ (hR vk)) hC hδ
+  certificate_rev4R _ _ S hV hq hE hε hext hfuel hnd D
+    (fun vk => resid4R_of_HR fin lRows κs₀ (resid4HR_of_H fin lRows κs₀ (hR vk))) hC hδ
+
+/-- **The contract's `Certificate` with the reserve** (revision 4.4.2; `certificate_rev4H` with the
+residual over `StmtN4R`, `certificate_rev4R`). -/
+theorem certificate_rev4HR (S : Submission) {nd : X.XIR}
+    (hV : S.V = VC4 (Impl.implC fin lRows κs₀) (NI4F.implN4F fun _ => Impl.implC fin lRows κs₀) N4c.cells4)
+    (hq : S.qV = qV4) (hE : S.E = E4X nd S.acc) (hε : S.ε = epsR) (hext : S.ext = ext4With nd)
+    (hfuel : S.fuel = X.fuel) (hnd : DecOk4 nd) (D : NodeDec4 nd)
+    (hR : ∀ vk, Resid4HR fin lRows κs₀ S nd D vk)
+    (hC : ∀ vk, CompleteWithError (Rel (S.acc vk)) (S.P vk) (S.V vk) S.δ)
+    (hδ : S.δ ≤ completenessCap) : Certificate S :=
+  certificate_rev4R _ _ S hV hq hE hε hext hfuel hnd D (fun vk => resid4R_of_HR fin lRows κs₀ (hR vk)) hC hδ
 
 /-- R4i's form (`Resid4G.out` unused since INT-10), kept for its users. -/
 theorem certificate_rev4G (S : Submission) {nd : X.XIR}

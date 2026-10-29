@@ -145,7 +145,7 @@ theorem acceptRun4_seg (fin : Finals) (lRows : List Circ.Row) (κs₀ : F) (σ :
   have hT : FinTabs4 (segFinP σ) (KindP.ofSeg σ).tix (kindOfC (fsOf tr (itemsOf seq4))) := by
     rw [hk]; exact finTabs4_seg σ _
   have hW := wV4_of_fields hF hk (finTabs4_seg σ _) (ptIx_seg4 σ _ _) (cells := X4.cellsX)
-    hcellsX rfl rfl (show seq4.mStar - 7 = 25 by rw [seq4_mStar]) (rsWeight_segC fin lRows κs₀ σ)
+    hcellsX rfl rfl rfl (show seq4.mStar - 7 = 25 by rw [seq4_mStar]) (rsWeight_segC fin lRows κs₀ σ)
     (tensorW_segC fin lRows κs₀) hb hin (dm_seg4 hF.sk)
   have hFR := finRest4_full (phiRS_segC fin lRows κs₀) (tensorW_segC fin lRows κs₀) hF hT (dm_seg4 hF.sk)
     hb hin hπ hW
@@ -170,7 +170,8 @@ theorem acceptRun4_node (fin : Finals) (lRows : List Circ.Row) (κs₀ : F) (ν 
   have hT : FinTabs4 (nodeFinP ν (N4c.cells4 ν)) (KindP.ofNode ν).tix (kindOfC (fsOf tr (itemsOf seq4))) := by
     rw [hk]; exact finTabs4_node ν _ _
   have hW := wV4_of_fields hF hk (finTabs4_node ν _ _) (ptIx_node4 ν _ _ _) (cells := X4.cellsX)
-    hcellsX rfl rfl (show seq4.mStar - 7 = 25 by rw [seq4_mStar]) (rsWeight_nodeC fin lRows κs₀ ν)
+    hcellsX rfl rfl (by cases ν <;> rfl) (show seq4.mStar - 7 = 25 by rw [seq4_mStar])
+    (rsWeight_nodeC fin lRows κs₀ ν)
     (tensorW_nodeC fin lRows κs₀ ν) hb hin (dm_node4 hF.sk)
   have hFR := finRest4_full (phiRS_nodeF fin lRows κs₀ ν) (tensorW_nodeC fin lRows κs₀ ν) hF hT
     (dm_node4 hF.sk) hb hin hπ hW

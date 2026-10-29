@@ -65,8 +65,8 @@ theorem acceptRunL4_node (ν : NodeKind) {vk c : Digest} {π : Proof} {L : Log} 
   have hkC := kindOfC_acc_node hsem
   have hT : FinTabs4 (nodeFinP ν (N4c.cells4 ν)) (KindP.ofNode ν).tix (kindOfC (fsOf tr (itemsOf seq4))) := by
     rw [hkC]; exact finTabs4_node ν _ _
-  have hW := wV4_of_fields hF hkC (finTabs4_node ν _ _) (ptIx_node4 ν _ _ _) (cells := N4c.cells4)
-    (fun ν => (N4c.hcells4P4b ν).2) rfl rfl (show seq4.mStar - 7 = 25 by rw [seq4_mStar])
+  have hW := wV4_of_fields hF hkC (finTabs4_node ν _ _) (ptIx_node4 ν _ _ _) (cells := X4.cellsX)
+    hcellsX rfl rfl (by cases ν <;> rfl) (show seq4.mStar - 7 = 25 by rw [seq4_mStar])
     (rsWeight_nodeC fin lRows κs₀ ν) (tensorW_nodeC fin lRows κs₀ ν) hb hin (dm_node4 hF.sk)
   have hFR := finRest4_full (phiRS_nodeF fin lRows κs₀ ν) (tensorW_nodeC fin lRows κs₀ ν) hF hT
     (dm_node4 hF.sk) hb hin hπ hW

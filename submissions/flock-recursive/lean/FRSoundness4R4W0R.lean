@@ -179,6 +179,28 @@ theorem cellsVal4_sum (nc : ℕ) (ρ : Array K) (kp : F) (cell : ℕ → ℕ) :
     rw [sum_congr rfl e]
     ring
 
+/-- **`finPf`'s two cell chains** (the public cells from `κ′²`, then, gated, the reserve's from
+`κ′^{2+n₁}`) sum `Σ_k κ′^{k+2}·eq(cell_k, ρ)` over the cells `cs ++ rs` (revision 4.4.2; with the gate
+off the reserve's list is empty). -/
+theorem cells2_sum (nc : ℕ) (ρ : Array K) (kp : F) (cs rs : List ℕ) (g : Bool) (n1 n2 : ℕ)
+    (h1 : n1 = cs.length) (h2 : rs.length = if g = true then n2 else 0) :
+    (if g = true then cellsVal4 nc ρ kp (fun j => rs.getD j 0) n2 0 (kp * kp * kp ^ n1)
+        (cellsVal4 nc ρ kp (fun j => cs.getD j 0) n1 0 (kp * kp) 0)
+      else cellsVal4 nc ρ kp (fun j => cs.getD j 0) n1 0 (kp * kp) 0) =
+      ∑ k ∈ range (cs ++ rs).length, algebraMap F K (kp ^ (k + 2)) * eqCellK4 nc ρ ((cs ++ rs).getD k 0) := by
+  have hA : cellsVal4 nc ρ kp (fun j => cs.getD j 0) n1 0 (kp * kp) 0 =
+      ∑ k ∈ range cs.length, algebraMap F K (kp ^ (k + 2)) * eqCellK4 nc ρ ((cs ++ rs).getD k 0) := by
+    rw [cellsVal4_sum, zero_add, h1]
+    refine sum_congr rfl fun k hk => ?_
+    rw [zero_add, List.getD_append _ _ _ _ (mem_range.1 hk), show kp * kp * kp ^ k = kp ^ (k + 2) by ring]
+  rw [List.length_append, sum_range_add, ← hA]
+  split_ifs at h2 ⊢ with hg
+  · rw [cellsVal4_sum, h2]
+    refine congrArg₂ (· + ·) rfl (sum_congr rfl fun k _ => ?_)
+    rw [zero_add, List.getD_append_right _ _ _ _ (by omega), Nat.add_sub_cancel_left, h1]
+    congr 2; ring
+  · rw [h2, range_zero, sum_empty, add_zero]
+
 /-- **`eqCellK4` over `nc` coordinates is `eq(cell, ρ)` over `ρ`'s `n ≤ nc`** for a cell below `2^n`
 (characteristic 2; the zero-padded coordinates give `1`). -/
 theorem eqCellK4_eq {nc n : ℕ} (ρ : List K) (hρ : ρ.length = n) (hn : n ≤ nc) {c : ℕ} (hc : c < 2 ^ n) :
@@ -216,7 +238,8 @@ theorem w0V4_eq4 {impl : OpImpl} {p : KindP} {inp : Input} {tr : Trace} {y : Lis
     {P : FinP} (hT : FinTabs4 P p.tix κc)
     (hpts : (P.kv.ptIx p.tix).map (fun j => (gPfPts P fi).getD j []) = rsSrc4 κc fi)
     {cells : NodeKind → List ℕ} (hc : ∀ ν, ∀ c ∈ cells ν, c < 2 ^ P4b.ncR ν)
-    (hcl : P.cells = P4b.cellsC cells κc) (hncell : P.ncell = P.cells.length) (hnc : P.nc = 25)
+    (hcl : P.cells ++ P.rcells = P4b.cellsC cells κc) (hncell : P.ncell = P.cells.length)
+    (hrc : P.rcells.length = if (P.rsvOps && P.rsv) = true then P.nrcell else 0) (hnc : P.nc = 25)
     (hrs : ∀ r ps k β ρ, r.size = 7 → 23 ≤ ρ.size → impl.rsWeight r ps k β ρ = rsSpec4 κc r ps k β ρ)
     (L : Log) :
     w0V4 impl p.tix fi R P = T4.wHatL (P4b.W₀L4 N4c.kf4 cells) L (fsOf tr (itemsOf seq4)) 0 := by
@@ -237,7 +260,7 @@ theorem w0V4_eq4 {impl : OpImpl} {p : KindP} {inp : Input} {tr : Trace} {y : Lis
     rs1_val4 h hfi hR (by norm_num)
   have h23 : 23 ≤ (((gP0Regs seq4 fi κc.m).map fun x => (rd R x).toK).toArray).size := by
     rw [List.size_toArray, hρl]; have := CKind.m_mem κc; omega
-  unfold w0V4
+  unfold w0V4 cv4
   rw [hrho, hpts', hr7, hκ7, hrs _ _ _ _ _ (by simp [P4b.rsRL4]) h23, hT.node]
   cases κc with
   | seg σ =>
@@ -253,15 +276,13 @@ theorem w0V4_eq4 {impl : OpImpl} {p : KindP} {inp : Input} {tr : Trace} {y : Lis
     obtain ⟨-, hkp⟩ := one_name_view4 h hfi hR hn25 (by rw [e25]) phaseIx_vals.2.2.2.2.2.2.2.2.2.2.2.2.2.2.2.2
     rw [show phStart4 25 = 331 by rw [phStart4, fsStarts4_eq]; rfl] at hkp
     have hkp' : kp4 fi R = P4b.kpL4 (fsOf tr (itemsOf seq4)) := hkp
-    rw [hβ, hkp', hnc, hncell, hcl, cellsVal4_sum, zero_add]
+    rw [hβ, hkp', hnc, cells2_sum _ _ _ _ _ _ _ _ hncell hrc, hcl]
     refine congrArg₂ (· + ·) (by simp only [rsSpec4, rsWS4]) (sum_congr rfl fun k hk' => ?_)
     have hkl := mem_range.1 hk'
     simp only [P4b.cellsC] at hkl ⊢
     have hmem : (cells ν).getD k 0 ∈ cells ν := by
       rw [List.getD_eq_getElem _ _ hkl]; exact List.getElem_mem _
-    rw [zero_add, eqCellK4_eq _ hρl (by simp only [CKind.m]; cases ν <;> decide) (hc ν _ hmem),
-      show P4b.kpL4 (fsOf tr (itemsOf seq4)) * P4b.kpL4 (fsOf tr (itemsOf seq4)) *
-        P4b.kpL4 (fsOf tr (itemsOf seq4)) ^ k = P4b.kpL4 (fsOf tr (itemsOf seq4)) ^ (k + 2) by ring]
+    rw [eqCellK4_eq _ hρl (by simp only [CKind.m]; cases ν <;> decide) (hc ν _ hmem)]
 
 /-! ## `hW` on an accepted run's fields -/
 
@@ -275,7 +296,8 @@ theorem wV4_of_fields {impl : OpImpl} {p : KindP} {inp : Input} {tr : Trace}
     (hpts : (P.kv.ptIx p.tix).map (fun j => (gPfPts P ⟨(skeleton4 seq4 p).2.outs, zh, Ex 11⟩).getD j []) =
       rsSrc4 κc ⟨(skeleton4 seq4 p).2.outs, zh, Ex 11⟩)
     {cells : NodeKind → List ℕ} (hc : ∀ ν, ∀ c ∈ cells ν, c < 2 ^ P4b.ncR ν)
-    (hcl : P.cells = P4b.cellsC cells κc) (hncell : P.ncell = P.cells.length) (hnc : P.nc = 25)
+    (hcl : P.cells ++ P.rcells = P4b.cellsC cells κc) (hncell : P.ncell = P.cells.length)
+    (hrc : P.rcells.length = if (P.rsvOps && P.rsv) = true then P.nrcell else 0) (hnc : P.nc = 25)
     (hrs : ∀ r ps k β ρ, r.size = 7 → 23 ≤ ρ.size → impl.rsWeight r ps k β ρ = rsSpec4 κc r ps k β ρ)
     (ht : ∀ j r, impl.tensorW j r = Impl.tensorWS j r) {L : Log} (hb : ¬ Bad L) (hin : ∀ e ∈ tr, e ∈ L)
     (hm : p.d.m = (kindOfC (fsOf tr (itemsOf seq4))).m) :
@@ -284,7 +306,7 @@ theorem wV4_of_fields {impl : OpImpl} {p : KindP} {inp : Input} {tr : Trace}
   have hL : (L.map Prod.fst).Nodup := by by_contra hr; exact hb (.inr (.inr (.inr hr)))
   have hE := hF.ext 11 (by omega)
   have hw0 := w0V4_eq4 hF.sk (fi := ⟨(skeleton4 seq4 p).2.outs, zh, Ex 11⟩) rfl hE hk hT hpts hc hcl hncell
-    hnc hrs L
+    hrc hnc hrs L
   have htl : ∀ k < 4, tl4 p.tix ⟨(skeleton4 seq4 p).2.outs, zh, Ex 11⟩ (Rs 11) P (k + 1) =
       ((gTailRegs seq4 ⟨(skeleton4 seq4 p).2.outs, zh, Ex 11⟩ (kindOfC (fsOf tr (itemsOf seq4))).m (k + 1)).map
         fun x => (rd (Rs 11) x).toK).toArray := fun k hk4 => by

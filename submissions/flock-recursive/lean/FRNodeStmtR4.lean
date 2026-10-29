@@ -227,6 +227,43 @@ theorem ks_rev4R (impl₀ : OpImpl) (base : NodeKind → OpImpl) (S : Submission
   exact ks4_E4X impl₀ (NI4F.implN4F base) N4c.cells4 S vk hV hq D hE _ hF.1 hF.2
     (segSound_X P4f.frontHi_X hRun) (nodeSoundR_X impl₀ _ S vk hV hq hRun I rd hI hRes) hL
 
+/-- **The residuals of `ks_rev4R` at one key** (`Resid4` at `P4f.DFhi` with `slots` over `StmtN4R`). -/
+structure Resid4R (impl₀ : OpImpl) (base : NodeKind → OpImpl) (S : Submission) (nd : X.XIR)
+    (D : NodeDec4 nd) (vk : Digest) : Prop where
+  run : RunFacts4 (VsegC impl₀) (VnodeC (NI4F.implN4F base) N4c.cells4) vk
+  slots : ∃ (I : N4c.SlotIface4 (VsegC impl₀) (VnodeC (NI4F.implN4F base) N4c.cells4))
+    (rd : N4c.Read4), (I.lrows = lRows4 ∧ I.irows = nodeIRows4) ∧
+      ∀ κ w c₁ c₂ ch, N4c.StmtN4R κ (lRows4 κ) (nodeIRows4 κ) vk c₁ c₂ w ch →
+        N4c.NodeResid4 I rd κ vk c₁ c₂ w
+  links : ∀ κ L c π, GoodX P4f.DFhi L → kindOf4 π = .node κ → X.InDomE c π L →
+    (VnodeC (NI4F.implN4F base) N4c.cells4 κ vk c π).runLog L = some true →
+      ∃ es, D.Links κ L es π c ∧ Rel (S.acc vk) c (D.readW κ L es)
+
+/-- `Resid4` at `P4f.DFhi` gives `Resid4R` (`StmtN4R` implies `StmtN4`). -/
+theorem resid4R_of {impl₀ : OpImpl} {base : NodeKind → OpImpl} {S : Submission} {nd : X.XIR}
+    {D : NodeDec4 nd} {vk : Digest} (h : Resid4 impl₀ base S nd D P4f.DFhi vk) :
+    Resid4R impl₀ base S nd D vk :=
+  let ⟨I, rd, hI, hRes⟩ := h.slots
+  ⟨h.run, ⟨I, rd, hI, fun κ w c₁ c₂ _ hS => hRes κ w c₁ c₂ hS.1⟩, h.links⟩
+
+/-- **The contract's `Certificate` with the reserve** (`certificate_rev4` at `P4f.DFhi`, with
+`secure` from `ks_rev4R`: the residual `hRes` is over `StmtN4R`). -/
+theorem certificate_rev4R (impl₀ : OpImpl) (base : NodeKind → OpImpl) (S : Submission) {nd : X.XIR}
+    (hV : S.V = VC4 impl₀ (NI4F.implN4F base) N4c.cells4) (hq : S.qV = qV4)
+    (hE : S.E = E4X nd S.acc) (hε : S.ε = epsR) (hext : S.ext = ext4With nd) (hfuel : S.fuel = X.fuel)
+    (hnd : DecOk4 nd) (D : NodeDec4 nd) (hR : ∀ vk, Resid4R impl₀ base S nd D vk)
+    (hC : ∀ vk, CompleteWithError (Rel (S.acc vk)) (S.P vk) (S.V vk) S.δ)
+    (hδ : S.δ ≤ completenessCap) : Certificate S where
+  secure vk := by
+    obtain ⟨hrun, ⟨I, rd, hI, hRes⟩, hL⟩ := hR vk
+    exact ks_rev4R impl₀ base S vk hV hq hE hε hrun I rd hI hRes D hL
+  complete := hC
+  computes := by rw [hext, hE, hfuel]; exact computes4 hnd S.acc
+  cap := by
+    obtain ⟨hf, hs⟩ := ext4_caps hnd
+    refine ⟨hε ▸ epsR_le_errorCap, hδ, by rw [hq, qV4]; norm_num, fun t => ?_, by rw [hext]; exact hs⟩
+    rw [hfuel]; exact hf t
+
 end KSR
 
 end FR.Snd.X4
