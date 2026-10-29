@@ -50,7 +50,14 @@ Landed since the last update:
   - **`rsWeight`:** 5.8–12.5 ms as closed-form chains, which is marginal against its 10 ms line.
 
 Running on rev44:
-- **ASK-P:** the positional machinery (reader spec, element alignment, `reassemble4` per field, the arena₁ bridge) and the arena folds into `nodeIRows4`/the plan. It feeds ASK-T and IMPC.
+- **ASK-P landed `74a2528`.**
+  - **Fold:** arena₁, the ask-template rows and the bit rows are folded into `nodeIRows4`, gated by `ArFit`.
+  - **Positional machinery:** the reader, element alignment, `reassemble4` per field and the arena₁ bridge (API in ASK-P-RESULT §5).
+  - **Templates:** `askTG` in the low module FRNodeRows4AskPosT. ASK-T replaces `TG.none`; IMPC adds `.add impcTG`, and the orchestrator merges it.
+  - **Cost:** V(N4) +11/+15 ms, plan init 7.07 s.
+  - **Open:** the arena₁ last-4 tie to `aggPad`; the N8 sparse plan check is too slow (> 1,800 s).
+- ASK-T: the `ATAsk` generator for all 8,783 asks (FS links, Merkle mux, pins, seed, columns).
+- IMPC: the `ATImp` classes (proof fields, siblings, `chF`/`chK`, `bitOf`, cap reads), the aux facts, foreign flags (zero pins, kind byte) and the `execA` byte invariant.
 - **SRA landed `27459d9`.**
   - **`Gaps4`:** now over `StmtN4R`; the top hypothesis only shrank.
   - **Reserve link:** `gap4Imp_of_rsv` via the `AT.rsv` summand, in FRNodeRsvLink, which `FR` imports. The prefix form of `compileX_run` was not needed.
