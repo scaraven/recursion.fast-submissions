@@ -23,6 +23,7 @@ Main (`v4/flock-recursive`, core `422f2f9`; the certificate assumes only `Open4F
   - The four controls for `ChildBad4` are required.
 - PORT: brings the decoder, S-L4 and B3 back to green at 4.4.1's format, using A1′'s list. It deletes `realign`/`realign_sem` (44.8 s of kernel), `cso_realign`, `FRXOut4C` and `FRXOut4Ctrl`, adds the spacer entries in `aggTr`, and fixes `fsMsgs4_*` (1,008/112) and `gap4Imp_of_run`. It owns FRX*, FRNodeLinks4*, FRNodeRun4* and FRSubmission4*.
 - B4: `aggChk`, with PK-m7's `hashA`/`hashB` rows on the arenas, and its rows folded into `nodeIRows4`/B5's plan. It owns FRNodeRows4Agg/AggChk*/Arena*. After B4, `Gap4R` = `imp` only.
+- C1: keyed replay `R` keys (`targetS`, `shiftTarget`, `linkWAll`, `rsWeight`, `evalL`, the kind factor if in `R`) in slot 0's spare region. It aims at `SlotImpR = ∅` with the reserve covering `evalM`, and runs C2's dead-op drop if cheap. It owns FRNodeRows4Rep*/FRVIRTplRep and keeps its plan/fit edits isolated for merging with B4.
 - E1: prover port to 4.4.1's format: D/A fields, L1/L2, the reserve's 1,008/112-B fields and E2/E4 terms, spacers, arenas, the packed plan form and phantom pins. It runs end to end against rev44's Lean V, covering kind-changing chains, k = 1/2/4 and the worst-case first step against step_s 60. It prints B5's `eok`. It leaves a hook for B4's `aggChk` rows and owns `prover/`.
 - Review of A1′ (cheap Opus): no blockers.
   - **Soundness:** the free spacer bytes enter only the ignored spacer answer, `wf` is proved for every segment and spacer, and `ctrlA_no_spacer` is a real control. S2b is asked to confirm that no ROM-consistency argument ranges over spacer entries.
@@ -44,7 +45,7 @@ Landed on rev44: **A1′ `e464756`**.
 
 Landed on rev44: **B5 `9a41aac`**. V(N4) with own kind only 276.6 → 263.8 ms; with all three kinds 347.6 → 288.4 ms. Each extra kind now costs +16–18 ms, against +37–38 ms before. `protoV4` (≈ 125 ms) is now the bulk of the own-kind call. Its open lever is sharing prototype 1's low tables with prototype 0, worth about 5 ms.
 
-**Then:** C1 (remaining replay keys: `targetS`, `shiftTarget`, `linkWAll`, `rsWeight`, `evalL`) → `Gaps4` discharged → E1 (prover: D/A fields, L1/L2, reserve's E2/E4 terms and 1,008/112-B fields, spacers, arenas, packed plan form) → cert probe → evaluation.
+**Then:** `Gaps4` discharged (S2b item 4 `gap4Imp_of_rsv` after PORT; the `hRes` switch to `StmtN4R`) → E1 (prover: D/A fields, L1/L2, reserve's E2/E4 terms and 1,008/112-B fields, spacers, arenas, packed plan form) → cert probe → evaluation.
 
 ## Waiting
 
