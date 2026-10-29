@@ -961,3 +961,152 @@ theorem not_rejF4a_seg4 (hLS hTS hW hR hZ hST) (indN etN) (h : semIR impl (gen4 
    `withRS4_meets`; `ρ` = the `P₀` registers = `T4.ptL es 0`; `gCellsOps`' value the `eqCell` sum),
    the level steps (3.x's `lvStepV_eq`, `wV_eq`), `padOps` and `fhOps` (3.x's `fhVal_mle`).
 6. `RejFinE4`'s node matrix parameters `hM`/`hL`: INT-9's (unchanged).
+
+## Pass 7 (track R4g; HEAD `ad3fbeb`, re-snapshotted to INT-8 `3b13ba5`, then INT-9 `faa2f4b`)
+
+- **Build tree** `logs/fr-build-R4g` (a copy of `fr-build-R4f`; `b.sh` logs to `logs/R4g/`; `chk.sh`
+  now prints `rc=`; `MINE.txt` adds the six modules below). Every lean/lake command ran in the 16G
+  scope (12G for single files) under `timeout`. No sub-agents. Nothing committed. Only new
+  `FRSoundness4R4*` modules written (short names grepped first); no existing module edited, no
+  statement changed.
+- **INT-8 committed during the pass** (`3b13ba5`) with R4's three repairs inside the commit
+  (`flag_gFinLr/E`, `noAsk_*`, `queries_*`, `opsOut_gFinLr`); nothing further to apply. `b.sh`
+  snapshots HEAD on every run, so all of this pass's modules are built against INT-8 (one adaptation:
+  `rest_gFinP` reads INT-8's `finalsOf`, whose rest list is `[] ++ map … ++ […]`). **INT-9**
+  (`faa2f4b`, coordinator's message): node ops `NI4F.implN4F`; `phiRS_nodeF` shows they meet this
+  pass's new op parameter.
+- **Imports for `FR.lean`:** `import FRSoundness4R4ColsCtrl` (it pulls `FRSoundness4R4LinkP` →
+  `Cols` → `Qv` → `PosT` → `Start` → `Tail`).
+
+### Status
+
+| Item | State |
+|---|---|
+| 1. `FinRest4.start` | **Done**: `start4_of_fields` (any `P` with `P.S = seq4` and the finals' node flag the chain's), `start4_seg`, `start4_node`; new op parameter `hphi` (`phiRS` at `phiRSS` on 7-element `r″`, the form `Meets` has), met by `phiRS_segC`, `phiRS_nodeC`, `phiRS_nodeF` |
+| 2. `FinRest4.cols` | **Done**: `cols4_of_run` with the folds `yv4 p R i q` (Q.i's out registers); `posOps4`'s reference and paths (`FRSoundness4R4PosT`), the views (`FRSoundness4R4Qv`), `ys_facts4` |
+| 3. `FinRest4.link` | **Done**: `link4_of_fields` (`finPLow` relocated is itself; `kc_view4`; P1's claims by `p1_view4`) |
+| also | `finRest4_of_fields`: `FinRest4 W₀ c₀L4 L es (yv4 p R)` from the fields with only `pf0`, `enc`, `fin` as hypotheses |
+
+**Final checks** (HEAD `faa2f4b`, R4's 35 modules overlaid):
+- `lake build FR FRSoundness4R4FrCtrl FRSoundness4R4FrCtrlB FRSoundness4R4Tail FRSoundness4R4ColsCtrl`:
+  **green, 2,529 jobs** (`logs/R4g/build-final.log`).
+- **Axioms** (`logs/R4g/axioms.log`, `logs/fr-build-R4g/ax/AxR4g.lean`; all 418 theorems of the 35
+  R4 modules): within `propext`, `Classical.choice`, `Quot.sound`; no `sorryAx`.
+- **Source rule** (`python3 -I logs/org20/scripts/source-rule.py submissions/flock-recursive`): 306
+  files, 0 findings (`logs/R4g/source-rule.log`).
+- **Times** (sequential, one core: `taskset -c 0 lake env lean -DElab.async=false --profile`;
+  `logs/R4g/prof-*.log`):
+
+  | Module | wall | import | type checking | tactic execution |
+  |---|---|---|---|---|
+  | `FRSoundness4R4Start` | 7.3 s | 3.9 s | 0.25 s | 0.44 s |
+  | `FRSoundness4R4PosT` | 12.0 s | 3.8 s | 0.62 s | 0.82 s |
+  | `FRSoundness4R4Qv` | 10.4 s | 3.8 s | 0.19 s | 0.49 s |
+  | `FRSoundness4R4Cols` | 11.2 s | 3.8 s | 3.26 s | 0.95 s |
+  | `FRSoundness4R4LinkP` | 7.4 s | 3.8 s | 0.33 s | 0.44 s |
+  | `FRSoundness4R4ColsCtrl` | 7.1 s | 4.7 s | 0.06 s | 0.01 s |
+
+  Net kernel cost of the pass ≈ 4.7 s, of which ≈ 3 s are `Cols`' table certificates (`capMsg4`,
+  `colsEnd4`: `decide +kernel` on `seq4`'s message table and π layout, five levels each; `lv_facts4`:
+  `decide` over 3 kinds × 5 levels). Max RSS not measured (the scope hides the child from `time`).
+
+### What was built (`loc.py`, `logs/R4g/loc.txt`: total / code / thm)
+
+| Module | total / code / thm | Content |
+|---|---|---|
+| `FRSoundness4R4Start` | 195 / 133 / 12 | `vkL_eq4`, `stL_eq4`, `pubH4_eq`, `rs1_val4`, `rsV4_zh`, **`rsV4_eq`**, `rest_gFinB'`, **`start4_of_fields`**, `start4_seg`, `start4_node`, `phiRS_segC`, `phiRS_nodeC` |
+| `FRSoundness4R4PosT` | 392 / 327 / 15 | `stepT4`, `stepsT4`, `posT4`, `posAllT4` (defs); `*_spec`, `*_len(gth)`; `exec_merkleOps4(')`, `exec_posHead4`, `exec_posTail4`, `exec_posMid4`, **`exec_posOps4`**, **`exec_posAll4`**; `stepsT4_path`, `posT4_path`, **`posAllT4_path`** |
+| `FRSoundness4R4Qv` | 203 / 163 / 8 | `genPhase4_roundsK_foldR`, `genPhase4_absorb_ctx`, `genPhase4_pos_ctx`, `genPhase4_queries_ops/outs`, `exec_queries4`, **`pos_view4`**, **`queries_view4`** |
+| `FRSoundness4R4Cols` | 217 / 166 / 11 | `lvK_eq4`, `lv_facts4`, `phases4_lvl`, `phStart4_P2`, `capMsg4`, `colsEnd4`, **`capDig_eq4`**, `yReg4`, `yv4` (defs), **`ys_facts4`**, **`cols4_of_run`**, `dm_seg4`, `dm_node4` |
+| `FRSoundness4R4LinkP` | 152 / 117 / 9 | `accOps_reloc`, `finPLow_reloc`, `rest_gFinP`, `c1_eq4`, `phases4_P3`, `t_lt4`, `kc_view4`, **`link4_of_fields`**, **`finRest4_of_fields`** |
+| `FRSoundness4R4ColsCtrl` | 70 / 37 / 9 | controls (below), `phiRS_nodeF` |
+| **new total** | 1,229 / 943 / 64 | R4 total now 7,944 / 6,166 / 418 |
+
+### Main statements
+
+```lean
+theorem start4_of_fields (hphi : ∀ r a, r.size = 7 → impl.phiRS r a = phiRSS r a)
+    (hF : Fields4 impl p inp tr P y zh Rs Ex) (hPS : P.S = seq4)
+    (hnode : P.kv.node p.tix = (kindOfC (fsOf tr (itemsOf seq4))).isNode) (L : Log) :
+    rSum (T4.p1Start 0) (fsOf tr (itemsOf seq4)) 0 = P4b.c₀L4 L (fsOf tr (itemsOf seq4))
+theorem start4_seg (hphi) (h : semIR impl (gen4 seq4 (.ofSeg σ) (finOps4 (segFinP σ))) inp tr = some true) (L) : … -- and start4_node
+theorem exec_posOps4 (S k i co so capO ans w p r ok ops ad wv) (hA had hw hwv) (tr) :
+    exec impl κ inp (posOps4 S k i co so capO ans w p r.size ++ ops) ⟨r, ok⟩ tr =
+      (posT4 inp (S.lvK k.d.m i) (S.lv i).sib i co so capO ad wv p tr).bind fun x =>
+        exec impl κ inp ops ⟨r ++ x.1.toArray, ok && x.2.1⟩ x.2.2
+theorem queries_view4 (h : SkRun4 impl p inp tr y) (hL : (L.map Prod.fst).Nodup) (hin : ∀ e ∈ tr, e ∈ L)
+    (hn) (hsh : (phasesOf seq4)[n].2 = .queries i) (hsib : (seq4.lvK p.d.m i).sib ≤ (seq4.lv i).sib) :
+    ∃ b, outs[n] = (List.range (seq4.lv i).t).map (b + 2 + posW4 seq4 i * · + 3) ∧ … ∧
+      ∀ q < (seq4.lv i).t, rd R (b + 2 + posW4·q) = .n j ∧ rd R (… + 3) = .k (dotKF (eqTab fr) col) ∧
+        ∃ ss, ss.length = Lk.sib ∧ (openPath (frEnc i) col j ss).runLog L =
+          some (bytesAt inp.π (absOff 0 (fieldOffOf seq4 fCaps + capOff4 seq4 i) + 32 * (j >>> Lk.sib)) 32)
+theorem cols4_of_run (h : SkRun4 impl p inp tr y) (hb : ¬ Bad L) (hin : ∀ e ∈ tr, e ∈ L)
+    (hπ : inp.π.size = piSizeOf seq4) (hm : p.d.m = (kindOfC es).m) :
+    ∀ i < 5, ∀ q < (CKind.lv (kindOfC es) i).t, ∃ col ss, ss.length = … ∧
+      (openPath (frEnc i) col (T4.qPos …) ss).runLog L = some (T4.capDig es i (T4.qPos … / 2 ^ sib)) ∧
+      yv4 p (#[] ++ y.1.toArray) i q = ∑ r : Fin rows, eqBits (T4.sAt es i) ell r * algebraMap F K (readF col (16 * r))
+theorem link4_of_fields (hF : Fields4 impl p inp tr P y zh Rs Ex) (c₀) (L) (hi : i < 4) :
+    rSum (T4.p1Start (i + 1)) es 0 = T4.c1 c₀ i L es +
+      ∑ q ∈ range (CKind.lv (kindOfC es) i).t, K.smulF (eqBits (T4.kcAt es i) 9 q) (yv4 p (#[] ++ y.1.toArray) i q)
+theorem finRest4_of_fields (hphi) (hF) (hPS) (hnode) (hm) (hb) (hin) (hπ) (hpf0) (henc) (hfin) :
+    FinRest4 W₀ P4b.c₀L4 L es (yv4 p (#[] ++ y.1.toArray))
+```
+
+### Design and deviations
+
+- **D21. `phiRS` is a new op parameter `hphi`** (`∀ r a, r.size = 7 → impl.phiRS r a = phiRSS r a`),
+  exactly `Meets`' sixth conjunct; no existing statement of R4 carried it. `phiRS_segC`
+  (`implSeg (implC …)`), `phiRS_nodeC` (`implN4T`) and `phiRS_nodeF` (INT-9's `implN4F`) discharge it.
+- **D22. `start` is proved at `c₀ := P4b.c₀L4`** (the front's `ι v*`), as the handover asked. Its
+  hypotheses: `P.S = seq4` and `P.kv.node p.tix = (kindOfC es).isNode` (both `rfl` at
+  `segFinP`/`nodeFinP` once `kindOfC_acc_*` fixes the chain's kind). `pubH4`'s statement digests are
+  π's bytes `fieldOffOf seq4 fStmt + 1/33`; the log's `stL` reads the `stmt` absorb at entry 1
+  (`stmt_msg4`), so INT-8's `hashStmt → .input 1` does not touch it (the absorb is still entry 1).
+- **D23. The folds are `yv4 p R i q`**, the value of Q.i's `q`-th out register on the skeleton's
+  file (3.x's `yv`, by register position instead of `ysOf ⟨outs, [], #[]⟩`); `cols`, `link` and, for
+  the next pass, `enc` read the same function.
+- **D24. `posOps4` has its own reference** (`posT4`; 3.x's refPhase computed `posAllT`, 4.1's
+  `refPhase4` runs `exec` on the queries phase). Its parameters are the kind's level `Lk` (index,
+  depth, cap shift) and the star's slot count `sL`; `lvK_ne_star4` shows they differ.
+- **D25. `cols` needs `inp.π.size = piSizeOf seq4`** (the opened column has `colBytes i` bytes:
+  `colsEnd4`), as 3.x's `ys_facts` needed `hπ`; `acceptTail4_of_run` already has it.
+- No value asserted by no final was met in this scope.
+
+### Controls (`FRSoundness4R4ColsCtrl`)
+
+| Definition | Positive | Negative |
+|---|---|---|
+| `stepT4` | `stepT4_ok` (the expected node query at an active depth: six registers, flag true) | `stepT4_wrong`, `stepT4_nil` (`none`) |
+| `posT4`, `posAllT4` | `posAllT4_zero`; `exec_posOps4`, `posAllT4_path` | `posT4_nil`, `posT4_wrong` (a query other than the column's: `none`) |
+| `yReg4`, `yv4` | `cols4_of_run`, `link4_of_fields`; `yv4_ctl` (reads `.k 1` as `1`) | `yv4_ctl` (reads `.k 0` as `0`) |
+| `seq4.lvK` | `lvK_eq4` (T4's `lvOf`) | `lvK_ne_star4` (`m = 30`, level 0: 18 position bits vs the star's 20) |
+| `hphi` | `phiRS_segC`, `phiRS_nodeC`, `phiRS_nodeF` | — (an equation) |
+| `FinRest4` | `finRest4_of_fields` (now with `start`, `cols`, `link` proved) | R4f's `not_finLog4_of_start` |
+
+### Traps (new)
+
+1. `exec_posOps4` with the Merkle steps rewritten inline (`rw [exec_merkleOps4' … _ _ …]` against
+   `r ++ posHeadVals …`) exhausted the 12G scope when elaborated alone and hit kernel deep recursion
+   under `lake build`; the separate lemma `exec_posMid4` (3.x's `exec_posMid`) makes the module 12 s.
+   An empty `chk.sh` output can be an OOM kill: `chk.sh` now prints `rc=`.
+2. `rcases hx with rfl | rfl | rfl` on a three-register membership timed out; build it with
+   `List.forall_mem_cons.2 ⟨…⟩`.
+3. `lvOuts_eq4 rfl` with the `FinIn` left to unification timed out (whnf of `skeleton4`): name it.
+4. `refine congrArg (_ + ·) (sum_congr rfl …)` on a `K` sum timed out (R4e's `congr` trap again):
+   prove the summand equality as a `have`, rewrite under `sum_congr`.
+5. A `Level` variable named `K` shadows the field `K` (`Array K` breaks).
+6. `rd_append_left (by …)` picks the `#[] ++ …` split; give `(a := …)`.
+7. `implN4T_meets`' projection needs its type ascribed (`Meets (NI4.specN4 …)`).
+
+### Handover (remaining items, in order)
+
+1. **`pf0`, `enc` (`gFinP 4`) and `fin` (`gFinPf`)**, now unblocked (INT-8 committed): the three
+   hypotheses of `finRest4_of_fields`. `pf0` from `gFinPTop`'s assert (`claim0 "Pf"` against
+   `p1ClaimN 4`; `pf_view4`, `p1_view4`, `c1_eq4`). `enc`: `y 4 q` is `yv4 p R 4 q`; its column from
+   `ys_facts4` (level 4), `encVal_eq_encAt` on INT-8's zero-padded final field. `fin`: R4f's handover
+   item 5 (`wHat0_spec4`, `withRS4_meets`, the level steps, `padOps`/`fhOps`), with INT-8's
+   `finPf` (case on `P.ck`, per INT-8's "For R4d").
+2. **X4's assembly**: `acceptTail4_of_run`'s `hacc` per kind = `fields4_of_accept` +
+   `finRest4_of_fields` (`hm` by `dm_seg4`/`dm_node4`, `hnode` by `kindOfC_acc_*`, `hphi` by
+   `phiRS_*`), `¬ RejF` from R4d–R4f's `not_rej*` (node `hM`/`hL` now INT-9's `implN4F_hM/_hL`).
+3. Add `import FRSoundness4R4ColsCtrl` to `FR.lean`.

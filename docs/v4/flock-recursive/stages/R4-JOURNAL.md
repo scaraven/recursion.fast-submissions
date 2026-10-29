@@ -210,3 +210,42 @@ relocated fields).
   clean; source rule 299 files 0 findings (after rewording two "init" comments); profiles in `logs/R4f/`.
   INT-8 still uncommitted at the stop. Stopped (context long) with the RESULT's Pass 6 handover:
   INT-8 repairs, `start`, `cols` (`posOps4`), `link`, then `pf0`/`enc`/`fin` after INT-8.
+
+### Pass 7 (R4g)
+
+- Build tree `logs/fr-build-R4g` (copy of R4f's; `b.sh` logs to `logs/R4g/`; `MINE.txt` adds
+  `FRSoundness4R4Start`). Baseline at HEAD `ad3fbeb`: `lake build FRSoundness4R4Tail` green. INT-8 not
+  committed at the start (its RESULT is in the working tree; the build tree snapshots HEAD).
+- **Item 1, `FinRest4.start`** (`FRSoundness4R4Start`): `vkL_eq4` (`seedQ4`), `stL_eq4` (`stmt_msg4`),
+  `pubH4_eq`, `rs1_val4` (RS1 at 24, `coordsR_view4`), `rsV4_zh` (`exec_gFinRS`'s third conjunct),
+  `rsV4_eq` (`phiRS` at `phiRSS`: new parameter `hphi`, the form `Meets` has: `phiRS_segC`,
+  `phiRS_nodeC`), `rest_gFinB'` (field 5), **`start4_of_fields`**, `start4_seg`, `start4_node`.
+  Traps: `rcases hx with rfl | rfl | rfl` on the three-register membership of `flag_gFinB'` timed out
+  (whnf); build the membership with `List.forall_mem_cons.2 ⟨…⟩`. `implN4T_meets`'s projection
+  without a type ascription timed out (give `Meets (NI4.specN4 …)` as FrCtrlB does).
+- **INT-8 committed mid-pass** (`3b13ba5`, with R4's three repairs in the commit); the build tree
+  re-snapshots HEAD on every `b.sh`, so every module of this pass is built against INT-8. Then INT-9
+  (`faa2f4b`): node ops `NI4F.implN4F`; `phiRS_nodeF` added (its `phiRS` is `implN4T`'s).
+- **Item 2, `FinRest4.cols`**:
+  - `FRSoundness4R4PosT`: 3.x's reference at `posOps4`'s parameters (`stepT4`, `stepsT4`, `posT4`,
+    `posAllT4`: the kind's level `Lk = S.lvK m i`, `sL` Merkle slots, absolute offsets),
+    `exec_merkleOps4(')`, `exec_posHead4`, `exec_posMid4`, `exec_posTail4`, `exec_posOps4`,
+    `exec_posAll4`; `stepsT4_path`, `posT4_path`, `posAllT4_path`.
+    Trap: `exec_posOps4` with the Merkle step rewritten inline (`rw [exec_merkleOps4' … _ _ …]`)
+    ran out of the 12G scope in elaboration and hit kernel deep recursion in `lake build`; the
+    separate lemma `exec_posMid4` (3.x's `exec_posMid`) makes it 9 s. Also: a `Level` parameter
+    named `K` clashes with the field `K`.
+  - `FRSoundness4R4Qv`: generator context lemmas for abstract `S` (`genPhase4_roundsK_foldR`,
+    `genPhase4_absorb_ctx`, `genPhase4_pos_ctx`, `genPhase4_queries_ops/outs`), `exec_queries4`,
+    `pos_view4`, `queries_view4`.
+  - `FRSoundness4R4Cols`: `lvK_eq4`, `lv_facts4` (decide over 3 × 5), table certificates
+    `phases4_lvl`, `phStart4_P2`, `capMsg4`, `colsEnd4`; `capDig_eq4`, `yReg4`/`yv4`, `ys_facts4`,
+    `cols4_of_run`, `dm_seg4`, `dm_node4`. Trap: `lvOuts_eq4 rfl` with the `FinIn` left to
+    unification timed out (whnf of `skeleton4`): name `fi0` first.
+- **Item 3, `FinRest4.link`** (`FRSoundness4R4LinkP`): `accOps_reloc`, `finPLow_reloc`,
+  `rest_gFinP`, `c1_eq4`, `phases4_P3`, `t_lt4`, `kc_view4`, `link4_of_fields`,
+  `finRest4_of_fields` (all of `FinRest4` but `pf0`, `enc`, `fin`). Trap: `refine congrArg (_ + ·)
+  (sum_congr rfl …)` timed out; state the summand equality as a `have` and rewrite under
+  `sum_congr`.
+- Controls `FRSoundness4R4ColsCtrl`.
+- Final: build `FR` + R4's controls + `FRSoundness4R4Tail` + `FRSoundness4R4ColsCtrl` green (2,529 jobs, HEAD `faa2f4b`); axioms 418 theorems clean; source rule 306 files 0 findings; profiles in `logs/R4g/`. Stopped with all three items done; RESULT's Pass 7 handover: `pf0`/`enc`/`fin`, X4's assembly, `FR.lean` import.
