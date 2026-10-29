@@ -102,3 +102,43 @@ pub fn run() {
     });
     println!("BENCH phi_add threads={t} per_s={:.3e} ns_per_elem_per_thread={:.2}", ph * 1024.0, 1e9 * t as f64 / (ph * 1024.0));
 }
+
+/// `bench-rs [m]` (pass 10): the node's ring-switch passes at `m` (default 32) on random data:
+/// E4's slices (`partials` vs the block fold) and the four-claim weight table (the reference vs row
+/// tables of `2^lo` elements, `lo = 3 … 6`); each result checked equal to the reference.
+pub fn run_rs(m: usize) {
+    let mu = m - 7;
+    let mut s = 0x5eedu64;
+    let mut rf = || F::new(rnd(&mut s), rnd(&mut s));
+    let z: Vec<u64> = {
+        let mut z = crate::witness::alloc_u64(2usize << mu);
+        par::for_each_chunk_mut(&mut z, 1 << 16, |off, ch| {
+            let mut s = 0x9e37_79b9u64 ^ off as u64;
+            ch.iter_mut().for_each(|x| *x = rnd(&mut s));
+        });
+        z
+    };
+    let r4: Vec<F> = (0..mu).map(|_| rf()).collect();
+    for rep in 0..2 {
+        let (a, ta) = timed(|| crate::ringswitch::partials(&z, &r4));
+        let (b, tb) = timed(|| crate::leaf::partials_from_fold(&crate::lincheck::partial_fold(&z, &r4[7..], z.len() / 256), &r4[..7]));
+        println!("BENCH rs.slices m={m} rep={rep} partials_s={ta:.3} fold_s={tb:.3} equal={}", a == b);
+    }
+    let rpp: Vec<F> = (0..7).map(|_| rf()).collect();
+    let his: Vec<Vec<F>> = (0..4).map(|j| (0..mu).map(|i| if j == 2 && (3..7).contains(&i) { F::ZERO } else { rf() }).collect()).collect();
+    let kf: Vec<F> = (0..1usize << (mu - 7)).map(|i| if i % 3 == 0 { F::ONE } else { F::new(7 + (i % 5) as u64, 0) }).collect();
+    let cs: Vec<F> = (0..4).map(|_| rf()).collect();
+    let cl: Vec<(&[F], F, Option<&[F]>)> = vec![(&his[0][..], cs[0], None), (&his[1][..], cs[1], Some(&kf[..])), (&his[2][..], cs[2], None), (&his[3][..], cs[3], None)];
+    let mut want = Vec::new();
+    for rep in 0..2 {
+        let (w, t) = timed(|| crate::ringswitch::weight_table_kf_ref(&cl, &rpp));
+        println!("BENCH rs.weight m={m} rep={rep} ref_s={t:.3}");
+        want = w;
+    }
+    for lo in 3..=6 {
+        for rep in 0..2 {
+            let (w, t) = timed(|| crate::ringswitch::weight_table_rows(&cl, &rpp, lo));
+            println!("BENCH rs.weight m={m} rep={rep} rows lo={lo} s={t:.3} equal={}", w == want);
+        }
+    }
+}

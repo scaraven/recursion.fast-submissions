@@ -298,6 +298,8 @@ pub fn run_regs(text: &str, circ: &crate::circuit::Circuit, o: &dyn Oracle, vk: 
     let mut out = Run { ok: true, ..Default::default() };
     let nctx = node_ctx();
     let prof_on = std::env::var_os("FLOCK_IRPROF").is_some();
+    let t_run = std::time::Instant::now();
+    let mut by_op: Vec<(String, f64, usize)> = Vec::new();
     let at = |f: usize, o: usize, n: usize| -> &[u8] { &pi[field_off(f) + o..field_off(f) + o + n] };
     let (sk, wtab) = (crate::skipdom::skip(), ());
     let _ = wtab;
@@ -612,9 +614,21 @@ pub fn run_regs(text: &str, circ: &crate::circuit::Circuit, o: &dyn Oracle, vk: 
             if dt > 0.02 {
                 eprintln!("  ir line {} {} {:.3}s", ln + 1, t[0], dt);
             }
+            match by_op.iter_mut().find(|x| x.0 == t[0]) {
+                Some(x) => {
+                    x.1 += dt;
+                    x.2 += 1;
+                }
+                None => by_op.push((t[0].to_string(), dt, 1)),
+            }
         }
         assert_eq!(new.len(), dst.len(), "line {}: outputs", ln + 1);
         regs.extend(new);
+    }
+    if prof_on {
+        by_op.sort_by(|a, b| b.1.total_cmp(&a.1));
+        let tot: f64 = by_op.iter().map(|x| x.1).sum();
+        eprintln!("  ir ops {:.3}s (whole run {:.3}s): {}", tot, t_run.elapsed().as_secs_f64(), by_op.iter().take(14).map(|(n, s, c)| format!("{n}×{c}={s:.3}")).collect::<Vec<_>>().join(" "));
     }
     out.regs_out = regs.len();
     (out, regs)

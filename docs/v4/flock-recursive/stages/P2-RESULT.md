@@ -1723,3 +1723,186 @@ witness (1.5–2.3 s: the M fill, the previous node's program run) not in the mo
    Then the witness's M fill (1.5–2.3 s; plans recorded in `prover setup`).
 3. The aggregate inside a step dominates long chains (2^20: 19.7 s of 29.9 s); its segments are the
    leaf prover's (§15.3 fits).
+
+## 18. Pass 10 (track P2⁶): node prover speed, the stream handshake, S-E12f's re-dump
+
+Status: 2026-10-29. **Items 1–5 of the brief done.** Logs: `logs/P2/r41p10/` (VM) and the runner
+runs `logs/P2/run-40804570637`, `-40804583754` (profile + `bench-rs`, 7763),
+`-40807403527` (S-E12f data, `FLOCK_IRPROF`, 7763), and the final run **`-40808376661`** (7763, two
+streams), plus `-40807399590/-40807406302/-40808367114/-40808371822/-40808373912` (EPYC 9V74 / 9V45
+/ Xeon 8370C, off tier, acceptance only). Probe `probe/p2t10/` (branches `probe/p2t-10a … 10i`,
+temporary-index commits on HEAD, all deleted). π is byte-identical to pass 9's prover at every
+step (local oracle, `node-kat`: N4 `5062cfc4…`, N2 `20d1eb92…` on INT-9's data; N2 `9368bcae…` on
+S-E12f's data before and after the last changes).
+
+### 18.1 What was built (crate 14,093 `.rs` lines, was 13,530; +648 −85)
+
+| file | change |
+|---|---|
+| `stream.rs` (+60 −30) | **the `ready`/`go`/`done` handshake** (PROVER.md §3; it was missing, finding below); `Pre`: the node data, the three kind tables, the circuits, the inactive solve plans, the skip tables and a 6000 MiB prefault (`FLOCK_PREFAULT_MIB`) before `ready`; `STREAM` line with `startup_s` and `\| prof …` |
+| `ringswitch.rs` (+101) | **`weight_table_rows`**: the RS weight table by row tables (below); `weight_table_kf_ref` kept as the reference; test `weight_rows_and_fold_slices` |
+| `sumcheck.rs` (+117) | **`prove_pair_support`**: E4's sumcheck on `W`'s support; test `pair_support_same_messages` |
+| `nodeprove.rs` (+22 −5) | E4 by `prove_pair_support` (no `f.to_vec()`, `W` zeroed in parallel), **E4's slices from the block fold** right after E4; spans |
+| `nodeops.rs` (+150 −17) | **`target_words` by regions** (was 1,216 `target()` calls per block kind), **`target_s_node4` by byte tables** (no `HashMap`, parallel), **`eval_m` factorized** (`eq(τ,row) = eq(τ_{<20}, local)·eq(τ_{≥20}, v)`, the same for cells; `eval_m_ref` kept); test `fast_target_and_eval_m` |
+| `node.rs` (+65 −17) | **the witness schedule**: the H part (`h_part`: inputs, the block trace as its own parallel job, mirrors, L) as one task beside the first fill of each prototype, then the other slots; `trace_blocks`' pinned masks per kind of the batch; spans |
+| `mfill.rs` (+29 −12) | `try_row` without a heap allocation; `mul1` (no product by a coefficient 1) in `try_row`, `Rows::eval`, `m_scatter`; default dump `logs/S-E12f/nodedump`; spans |
+| `simd.rs` (+46) | `xor_rows` (AVX2 kernel, portable fallback) |
+| `ir.rs` (+14), `bench.rs` (+40), `main.rs` (+4 −3) | `FLOCK_IRPROF` per-op-name totals; mode `bench-rs [m]`; `heap_setup`/`say`/`wait_go` crate-visible |
+| `nodeblob.b64` | regenerated from `logs/S-E12f/nodedump`: 5,524,560 B |
+| `probe/p2t10/run.sh`, `stream.sh` | new: the handshake (inputs staged, moved in at `go`; `req_s` = `go` → `done`), `FLOCK_PROF`, optional `bench-rs` / `FLOCK_IRPROF`, two streams |
+
+### 18.2 Item 1: the profile (7763, pass 9's algorithms with spans; runs 40804570637/583754)
+
+| phase (s) | N2 | N4 | N8 |
+|---|---|---|---|
+| witness | 1.29–1.65 | 1.78–2.18 | 1.94 |
+| of which: H trace / slot 0's program run / a fill (each) | 0.39 / 0.39–0.75 / 0.13–0.32 | 0.65 / 0.39–0.61 / 0.13–0.35 | 1.02 / – / 0.2–0.3 |
+| commit · Z round 1 · Z tail | 0.54 · 0.83 · 0.40 | 1.12 · 1.66 · 0.79 | 1.13 · 1.62 · 0.80 |
+| Lc · Sh · Lr · E2 | 0.11 · 0.26 · 0.002 · 0.11 | 0.21 · 0.52 · 0.002 · 0.20 | 0.21 · 0.55 · 0.002 · 0.26 |
+| E4 (scatter + sumcheck) | 0.41 (0.12 +) | 0.79 (0.21 +) | 0.83 (0.25 +) |
+| RS (pass 9: 0.75–0.80 / 1.56–1.73 / 1.44–1.48) | 0.36 | 0.72 | 0.71 |
+| Ligerito | 0.36 | 0.71 | 0.72 |
+
+The slot-0 program run (the previous node's program, for its registers) was **`evalM` 0.58–0.83 s
+and `targetS` 0.26–0.54 s** (`FLOCK_IRPROF`, run 40807403527); every other op of the 106 k is
+< 7 ms. `targetS` called `target()` 1,216 times per distinct block kind (the stream blocks' counters
+make almost every block distinct).
+
+### 18.3 Item 2: ring switching (`bench-rs 32`, 7763, 4 threads, every result equal to the reference)
+
+| pass | before | after |
+|---|---:|---:|
+| E4's slices: `ringswitch::partials` (a 16-table pass over all `2^25` elements) → the block fold (`lincheck::partial_fold` at `r4[7..]`, the leaf Lc's stripes) then `partials_from_fold` at `r4[..7]` | 0.235 | 0.195 |
+| the four-claim weight table (3 dense, `kf` on Lc's): per element `e_lo·e_hi` and 16 lookups in a 64 KiB table per claim → **row tables** | 0.83 | 0.52 (lo 4, used) · 0.49 (5) · 0.47 (6) |
+
+**Row tables.** Split `y = l + 2^lo·h`. For each claim the map `a ↦ c·Φ(e_lo(l)·a)` is `F₂`-linear.
+So with the 16 bytes `β_p` of `e_hi(h)`, the row is `W(·, h) = Σ_p Q[p][β_p][·]`, where
+`Q[p][β][l] = Σ_{i∈β} c·Φ(e_lo(l)·b_{8p+i})`. The tables are built from `128·2^lo` values of `Φ`.
+Each output element is 16 sequential row reads per claim. There is no product per element. The kind
+factor multiplies `e_hi` once per block, and rows with `e_hi = 0` are skipped (the shift claim's
+zero coordinates).
+
+**"Fuse the dense passes"**: the reference already ran all claims per 1,024-element chunk. The
+row form removes the per-element products and the scattered loads instead. `lo = 4` is the
+default; 5–6 save another 0.03–0.05 s for 1–4 MB of tables per claim.
+
+**E4 on `W`'s support** (not in the brief; found in the profile). `W = W_M(r_E2) + κ³W_L` is non-zero
+only on the M slots, the L bits and the one cell, which is 16–25 % of `f`.
+- The first 12 rounds sum and fold only the 4,096-element chunks where `W ≠ 0`.
+- A dead chunk's `f` still enters the later rounds, paired with live entries through
+  `(P₀+P₁)(Q₀+Q₁)` and through the folds. So after round 12 it is computed directly as
+  `Σ_l eq(r_{<12}, l)·f[4096c + l]`, one dot product per chunk.
+- My first version zeroed the dead chunks instead: π changed and the dumped program rejected it at
+  op 66,610 (`b-N2.txt`). The test now compares every message and the final pair with
+  `prove_pairs`'s.
+
+Result on the 7763: E4 0.79–0.83 → 0.59–0.61 s (N4/N8), 0.41 → 0.32–0.33 s (N2).
+
+### 18.4 Item 3: the witness
+
+- **Before `ready`** (untimed): the inactive solve plans (`warm_plans`, inside the timed witness
+  in pass 9), the node data, the kind tables, the circuits, the 6000 MiB prefault.
+- **Schedule**: the H part runs as one task. Its 64-block trace is a separate parallel job, and idle
+  workers pick it up. It runs beside the first active fill of each prototype (slot 0's run and solve
+  are serial). The remaining slots replay the recorded plans afterwards. VM at 4 threads, N2:
+  7.49 → 5.81 s.
+- **Slot 0's program run**: `targetS` by regions and byte tables, `evalM` factorized
+  (§18.1). Both equal the reference (test, and the Lean KAT `node_ops_match_lean`).
+- `try_row` no longer allocates. Products by a coefficient 1 are skipped (most M coefficients are 1).
+- Result (7763, final run): witness **N2 1.18–1.52 s, N4 1.63–1.76, N8 1.93**. The critical path is now
+  the H part: inputs 0.06–0.21 s and a trace of 0.73–1.07 s, sharing the cores with the slot runs.
+
+### 18.5 Item 4: S-E12f's re-dump (`ef18e75`, `logs/S-E12f/nodedump/`, SHA256SUMS OK)
+
+- `plan-build` → `nodeblob.b64` 5,524,560 B (raw 14.74 MB, LZ 4.14 MB; `plan-build.txt`).
+- `plan-kat` (`plan-kat.txt`): p0/p1 rows 603,404 / 593,997, terms 5,244,098 / 5,325,108, 2,498 aux
+  each, register forms, programs and slot tables equal; decode 0.51 s (VM).
+- **The fill needs no solver extension.** In every slot: 0 failed rows, 0 conflicts, 0 form
+  mismatches. N8 checks 4,751,976 M rows, `m_bad` 0. Every kind-mux sub-template's locals are solved
+  from the three kinds' operands, whichever kind is selected, as S-E12f's README asks. The 14
+  untracked kind-muxed registers (`mkslots`) need nothing from the prover.
+- `node-kat` (`e-*.txt`): N8 (2 × L32, n = 3), N4 on that N8 (k = 3), N2 on N8 (k = 2), N4 on N4, N2
+  on N2. All accepted by the dumped programs (`ops-N*`, real cells = proto-p0 at the kind's index),
+  with `stmtOk4` and 8,905 asks. Canaries rejected: another statement, a flipped E byte, the
+  placeholder-cell program.
+- Runners: 4 streams × 8 outputs on S-E12f's data (+ 4 off-tier): **every output accepted by the
+  native `acc`, every canary rejected** (64/64 on the final probe set).
+
+### 18.6 Item 5: 7763 times (run 40808376661, two streams; `req_s` = `go` → `done`)
+
+| step | kind | chain(s) | aggregate | witness | **node prove** | trace+SIGN | **request** | start-up | peak RSS |
+|---|---|---|---|---|---|---|---|---|---|
+| 1 | N8 | 2^18 + 2^18 | 10.50–10.63 | 1.93 | **6.36–6.38** | 0.14 | **18.95–19.07** | 0.78–0.81 | 6.94 GB |
+| 2, 8 | N2 | 2^17 | 2.62–2.65 | 1.36–1.52 | **3.16–3.19** | 0.09–0.10 | **7.25–7.43** | 0.76–0.79 | 6.84 GB |
+| 3 | N2 | 2^18 | 5.26–5.30 | 1.18–1.20 | **3.15–3.16** | 0.10 | **9.71–9.74** | 0.77 | 6.83 GB |
+| 4 | N2 | 1.19·2^18 = 311,951 (L32 + L30) | 6.38–6.45 | 1.42–1.47 | **3.14–3.15** | 0.10 | **11.03–11.16** | 0.77–0.79 | 6.84 GB |
+| 5 | N2 | 3·2^17 (L32 + L31) | 7.85–7.95 | 1.41–1.47 | **3.17** | 0.10 | **12.52–12.69** | 0.78–0.80 | 6.84 GB |
+| 6 | N4 | 3·2^18 (k = 3) | 15.73–15.95 | 1.63–1.66 | **6.24–6.39** | 0.14 | **23.77–24.11** | 0.76–0.83 | 6.96 GB |
+| 7 | N4 | 2^20 (k = 4) | 20.90–21.06 | 1.73–1.76 | **6.21–6.32** | 0.13–0.14 | **28.97–29.28** | 0.77–0.78 | 6.97 GB |
+
+**Node prove against pass 9:**
+
+| kind | pass 9 | this pass | blueprint 4.2 model |
+|---|---|---|---|
+| N2 | 3.7–3.9 s | **3.14–3.19 s** (−17 %) | 2.4 s |
+| N4 | 7.5–7.9 s | **6.21–6.39 s** (−18 %) | 4.1 s |
+| N8 | 7.4–7.5 s | **6.36–6.38 s** (−15 %) | 4.8 s |
+
+**Node part of a step** (request − aggregate): N2 4.45–4.8 s, N4 8.0–8.2 s (pass 9: N2 5.6–5.9,
+N4 9.2–10.1 with the plans inside the witness).
+
+**N4 prove phases** (s): commit 1.16–1.20, Z round 1 1.33–1.39, Z tail 0.84–0.86, Lc 0.20, Sh 0.53–0.56,
+E2 0.27–0.28, E4 0.59–0.61, RS 0.53–0.55, Ligerito 0.72–0.74. The leaf-shaped phases (commit, Z,
+Ligerito) are 4.1 s of the 6.3 s.
+
+**The stream projection** (`project.py`, `project.txt`). The model is `step(n) = agg(n) + node`, using
+the split rule (`L32`, remainder `L30`/`L31`/`L32`) and the segment fits calibrated on the measured
+aggregates. It uses node parts N2 4.65 s, N4 8.15 s, N8 8.45 s. It reproduces the table to within
+0.2 s.
+- The overhead per step is blueprint 4.2's 1.6 s with the 0.22 s `ready` replaced by the measured
+  start-up of 0.78 s, which gives 2.16 s.
+- Steps: **2^17 7.28 s, 2^18 9.93 s, 1.19·2^18 11.09 s, 2^20 29.27 s**; step 1 (2 × 2^18) 19.0 s.
+- **The mean step over the `1/n²` density is 12.10 s + 2.16 = 14.26 s.**
+- **The stream fits `M ≤ 66`.** `P(M > 66) = 89 %`; simulated over `M = 64 + Geom(16) ≤ 112` and the
+  chain draws, **82 % of evaluations are truncated**. `P̄ ≈ 10.8 s`.
+
+Blueprint 4.2 assumed 8.91 + 1.64 s, `M ≤ 85` and 28 % truncated. The gap is the node part of every
+step: 4.45–4.8 s against 2.4 s for N2, and 8.1 s against 4.1 s for N4. Long chains weigh heavily
+in the mean (2^20 costs 29 s).
+
+### 18.7 Checks and `prover.s`
+
+- `cargo test --release`: **43 passed, 1 ignored** (`cargo-test-2.txt`; new: `weight_rows_and_fold_slices`,
+  `pair_support_same_messages`, `fast_target_and_eval_m`).
+- Source rule (`logs/org20`): 333 files, 0 findings.
+- **`prover.s` 15,084,266 B, sha256 `a3db3bb589d2cb83736b24ef1dfa47411d2fa067acee97ff973573f82092abdd`**
+  (`build-asm-c.log`). The runners rebuilt it byte for byte (5/5).
+- Peak RSS ≤ 6.97 GB (≤ 11 G).
+
+### 18.8 Deviations, findings, open questions
+
+1. **Finding: pass 9's `first`/`step` had no handshake.** The harness (`rfh/prover.py`) waits for
+   `ready` and then sends `go`. Pass 9's binary would have failed every request with "no ready line".
+   Fixed here, and the probe now drives the handshake. Start-up is 0.6–0.8 s on the 7763
+   (`ready_s` = 10 s). It counts against `stream_s` (not `P`), so the 6000 MiB prefault (≈ 0.5 s
+   of it) trades stream time for request time. `FLOCK_PREFAULT_MIB` sets it.
+2. **E4's sumcheck on `W`'s support** is beyond the brief's wording ("E4's own folds"). The
+   messages are `prove_pairs`'s (test), and π is unchanged.
+3. **No solver extension** was needed for S-E12f.
+4. **For the orchestrator**: at the measured step times the stream truncates in about 80 % of
+   evaluations (§18.6). The blueprint's change-26/28 tables need the node figures replaced: N2 node part
+   4.6 s, N4 8.1 s.
+
+### 18.9 Handover: what remains, in order
+
+1. **The witness's H part** (critical path, 0.8–1.3 s): the 64-block `trace_blocks` (general
+   circuit, bit-sliced). Profile it with one thread, for example the per-batch circuit eval, the
+   input-position loop and the three 64×64 transposes. Also consider making the two main chains'
+   inputs parallel earlier.
+2. **Slot 0's fill** records the p0 plan by worklist every step (0.35 s): p0 has a single active
+   slot. A plan recorded at `prover setup` (untimed: a toy N8 → N4/N2 per previous kind, stored in
+   `/setup`) would replay it. The replay check falls back safely.
+3. RS: `lo = 5–6` (−0.03–0.05 s). E2 on the M rows' support, the same idea as E4 (E2 0.27 s; the
+   rows are about 30 % of `2^logM`).
+4. The leaf-shaped phases (commit, Z, Ligerito: 4.1 s of N4's 6.3 s) and the aggregate's segments
+   are the bulk of every step. They are the levers for `M`.

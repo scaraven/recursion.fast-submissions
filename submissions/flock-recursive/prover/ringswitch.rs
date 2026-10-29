@@ -149,8 +149,83 @@ pub fn weight_table(claims: &[(&[F], F)], rpp: &[F]) -> Vec<F> {
 
 /// `weight_table` with an optional per-block factor per claim (a node's Lc claim, revision 3.16:
 /// the outer weight `eq(hi, y)·kf(y >> 7)`, `kf` per block of 128 packed elements; `Φ` is only
-/// `F₂`-linear, so the factor multiplies `eq` before `Φ`).
+/// `F₂`-linear, so the factor multiplies `eq` before `Φ`). By row tables (`weight_table_rows`).
 pub fn weight_table_kf(claims: &[(&[F], F, Option<&[F]>)], rpp: &[F]) -> Vec<F> {
+    let lo = std::env::var("FLOCK_RS_LO").ok().and_then(|x| x.parse().ok()).unwrap_or(ROW_LO);
+    weight_table_rows(claims, rpp, lo)
+}
+
+/// The low variables of a row in `weight_table_rows` (16 elements, 256 B).
+pub const ROW_LO: usize = 4;
+
+/// **The weight table by row tables** (pass 10). Split `y = l + 2^lo·h` (`l < 2^lo`): a claim's
+/// entry is `c Φ(e_lo(l)·e_hi(h))` with `e_lo = eq(hi[..lo], ·)`, `e_hi = eq(hi[lo..], ·)` (times
+/// `kf` per block). `a ↦ c Φ(e_lo(l)·a)` is `F₂`-linear, so with the 16 bytes `β_p` of `e_hi(h)`
+/// the row `W(·, h)` is `Σ_p Q[p][β_p][·]`, where `Q[p][β][l] = Σ_{i ∈ β} c Φ(e_lo(l)·b_{8p+i})`
+/// (16 · 256 rows of `2^lo` elements per claim, built from `128 · 2^lo` values of `Φ`). Every
+/// output element is 16 row entries per claim read in order, where `weight_table_kf_ref` reads 16
+/// scattered entries of a 64 KiB table (one cache line each) and needs a product per element.
+/// Rows with `e_hi(h) = 0` (the shift claim's zero coordinates) are skipped.
+pub fn weight_table_rows(claims: &[(&[F], F, Option<&[F]>)], rpp: &[F], lo: usize) -> Vec<F> {
+    let mu = claims[0].0.len();
+    let lo = lo.min(mu).min(7);
+    let nl = 1usize << lo;
+    let tabs: Vec<(Vec<F>, Vec<F>)> = claims
+        .iter()
+        .map(|(hi, c, kf)| {
+            assert_eq!(hi.len(), mu);
+            let elo = eq_table(&hi[..lo]);
+            let mut ehi = eq_table(&hi[lo..]);
+            if let Some(kf) = kf {
+                // a block (128 elements) is 2^(7 − lo) rows
+                let sh = 7 - lo;
+                par::for_each_chunk_mut(&mut ehi, 1 << 12, |off, ch| {
+                    for (i, x) in ch.iter_mut().enumerate() {
+                        *x *= kf[(off + i) >> sh];
+                    }
+                });
+            }
+            let t = phi_tables(rpp, *c);
+            let mut q = vec![F::ZERO; 16 * 256 * nl];
+            for (l, el) in elo.iter().enumerate() {
+                if el.is_zero() {
+                    continue;
+                }
+                let img: Vec<F> = (0..128).map(|v| phi_apply(&t, *el * basis(v))).collect();
+                for p in 0..16 {
+                    for val in 1..256usize {
+                        let low = val & val.wrapping_neg();
+                        q[(p * 256 + val) * nl + l] = q[(p * 256 + (val ^ low)) * nl + l] + img[8 * p + low.trailing_zeros() as usize];
+                    }
+                }
+            }
+            (q, ehi)
+        })
+        .collect();
+    let mut out: Vec<F> = par::uninit_vec(1 << mu);
+    par::for_each_chunk_mut(&mut out, nl.max(1 << 10), |off, ch| {
+        let mut offs = [0usize; 16];
+        for (bi, row) in ch.chunks_mut(nl).enumerate() {
+            let h = (off >> lo) + bi;
+            row.iter_mut().for_each(|x| *x = F::ZERO);
+            for (q, ehi) in &tabs {
+                let e = ehi[h];
+                if e.is_zero() {
+                    continue;
+                }
+                let b = e.to_bytes();
+                for p in 0..16 {
+                    offs[p] = (p * 256 + b[p] as usize) * nl;
+                }
+                crate::simd::xor_rows(q, &offs, row);
+            }
+        }
+    });
+    out
+}
+
+/// The reference weight table (pass 6–9): per element `e = e_lo·e_hi`, then `Φ` by 16 byte tables.
+pub fn weight_table_kf_ref(claims: &[(&[F], F, Option<&[F]>)], rpp: &[F]) -> Vec<F> {
     let his: Vec<&[F]> = claims.iter().map(|c| c.0).collect();
     let mu = his[0].len();
     let tabs: Vec<Vec<F>> = claims.iter().map(|c| phi_tables(rpp, c.1)).collect();
@@ -265,5 +340,30 @@ mod tests {
             lhs += w[y] * F::new(z[2 * y], z[2 * y + 1]);
         }
         assert_eq!(lhs, kap * switched(&sv, &rpp));
+    }
+
+    /// The row-table weight table equals the reference (dense, sparse, and a per-block factor) at
+    /// every row width; E4's slices by the block fold equal `partials`.
+    #[test]
+    fn weight_rows_and_fold_slices() {
+        let mut s = 91u64;
+        let mut rf = || F::new(rnd(&mut s), rnd(&mut s));
+        let mu = 11;
+        let rpp: Vec<F> = (0..7).map(|_| rf()).collect();
+        let h0: Vec<F> = (0..mu).map(|_| rf()).collect();
+        let h1: Vec<F> = (0..mu).map(|_| rf()).collect();
+        let h2: Vec<F> = (0..mu).map(|i| if (3..7).contains(&i) { F::ZERO } else { rf() }).collect();
+        let kf: Vec<F> = (0..1usize << (mu - 7)).map(|_| rf()).collect();
+        let cs = [rf(), rf(), rf()];
+        let cl: Vec<(&[F], F, Option<&[F]>)> = vec![(&h0[..], cs[0], None), (&h1[..], cs[1], Some(&kf[..])), (&h2[..], cs[2], None)];
+        let want = weight_table_kf_ref(&cl, &rpp);
+        for lo in 0..=7 {
+            assert!(weight_table_rows(&cl, &rpp, lo) == want, "lo = {lo}");
+        }
+        // 2^4 blocks of 128 elements, 256 words each
+        let z: Vec<u64> = (0..(256usize << 4)).map(|_| rnd(&mut s)).collect();
+        let r: Vec<F> = (0..11).map(|_| F::new(rnd(&mut s), rnd(&mut s))).collect();
+        let fold = crate::leaf::partials_from_fold(&crate::lincheck::partial_fold(&z, &r[7..], 16), &r[..7]);
+        assert!(fold == partials(&z, &r));
     }
 }

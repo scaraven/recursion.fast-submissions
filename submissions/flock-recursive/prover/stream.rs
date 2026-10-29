@@ -52,28 +52,52 @@ pub fn agg_signed(svc: &service::Service, circ: &circuit::Circuit, vk: &Digest, 
     (format::Signed { pi, tr, sig }, c)
 }
 
+/// What a request needs that does not depend on its inputs, built before `ready` (untimed: the
+/// node data decoded, the kind tables, the circuits, the inactive solve plans, the heap).
+pub struct Pre {
+    pub nd: &'static plan::NodeData,
+    pub kts: [std::sync::Arc<crate::mfill::KindTab>; 3],
+    pub circ: circuit::Circuit,
+    pub gcirc: circuit::Circuit,
+    pub base: circuit::Circuit,
+}
+
+impl Pre {
+    pub fn new() -> Pre {
+        let nd = plan::node_data();
+        let kts = [node::NK::N2, node::NK::N4, node::NK::N8].map(|k| std::sync::Arc::new(nd.kind_tab(k)));
+        node::warm_plans(&nd.protos);
+        Pre { nd, kts, circ: circuit::Circuit::build(), gcirc: node::general_circuit(), base: circuit::Circuit::build_base() }
+    }
+    fn kt(&self, k: node::NK) -> &std::sync::Arc<crate::mfill::KindTab> {
+        &self.kts[k as usize]
+    }
+}
+
 /// The signed node of kind `k` over the previous node (if any) and the aggregates.
-fn node_signed(svc: &service::Service, k: node::NK, vk: &Digest, prev: Option<(&format::Signed, Digest)>, aggs: &[(format::Signed, Digest)], tm: &mut Vec<(&'static str, f64)>) -> (format::Signed, Digest) {
+fn node_signed(svc: &service::Service, pre: &Pre, k: node::NK, vk: &Digest, prev: Option<(&format::Signed, Digest)>, aggs: &[(format::Signed, Digest)], tm: &mut Vec<(&'static str, f64)>) -> (format::Signed, Digest) {
     let mut t = Instant::now();
     let mut mark = |n: &'static str, t: &mut Instant| {
         tm.push((n, t.elapsed().as_secs_f64()));
         *t = Instant::now();
     };
-    let nd = plan::node_data();
-    let kt = nd.kind_tab(k);
-    let (circ, gcirc, base) = (circuit::Circuit::build(), node::general_circuit(), circuit::Circuit::build_base());
-    mark("load", &mut t);
+    let nd = pre.nd;
+    let kt = pre.kt(k);
+    let (circ, gcirc, base) = (&pre.circ, &pre.gcirc, &pre.base);
     let ains: Vec<node::AggIn> = aggs.iter().map(|(s, _)| node::agg_in(s)).collect();
     let prev_in = prev.map(|(ps, c)| {
         let pk = node::NK::of_byte(ps.pi[0]).unwrap_or_else(|| service::fatal("prev.bin: not a node proof"));
-        let ctx = std::sync::Arc::new(ir::NodeCtx { k: pk, protos: nd.protos.clone(), kt: std::sync::Arc::new(nd.kind_tab(pk)) });
-        node::PrevIn { signed: ps, c, ix: [1, 0, 2][pk as usize], ctx, base: &base }
+        let ctx = std::sync::Arc::new(ir::NodeCtx { k: pk, protos: nd.protos.clone(), kt: pre.kt(pk).clone() });
+        node::PrevIn { signed: ps, c, ix: [1, 0, 2][pk as usize], ctx, base }
     });
-    let w = node::witness(k, vk, prev_in.as_ref(), &ains, &nd.protos, &nd.texts, &gcirc, &circ);
+    let w = node::witness(k, vk, prev_in.as_ref(), &ains, &nd.protos, &nd.texts, gcirc, circ);
     for (v, st) in w.mstats.iter().enumerate() {
         if st.failed_rows != 0 || st.conflicts != 0 || !st.first_conflicts.is_empty() {
             service::fatal(&format!("node witness slot {v}: {st:?}"));
         }
+    }
+    if std::env::var_os("FLOCK_VERBOSE").is_some() {
+        eprintln!("node {} witness {}", k.name(), w.times.iter().map(|(n, s)| format!("{n}={s:.3}")).collect::<Vec<_>>().join(" "));
     }
     mark("witness", &mut t);
     let cs: [Digest; 2] = match &prev_in {
@@ -82,7 +106,7 @@ fn node_signed(svc: &service::Service, k: node::NK, vk: &Digest, prev: Option<(&
     };
     let mut rec = Recorder::new(svc);
     rec.batch_max = 128;
-    let ni = nodeprove::NodeIn { k, vk: *vk, cs, w: &w, mats: nodeprove::Mats { k, kt: &kt, protos: &nd.protos }, base: &base };
+    let ni = nodeprove::NodeIn { k, vk: *vk, cs, w: &w, mats: nodeprove::Mats { k, kt, protos: &nd.protos }, base };
     let (pi, ptm) = nodeprove::prove(&rec, &ni);
     if std::env::var_os("FLOCK_VERBOSE").is_some() {
         eprintln!("node {} phases {}", k.name(), ptm.report());
@@ -92,7 +116,7 @@ fn node_signed(svc: &service::Service, k: node::NK, vk: &Digest, prev: Option<(&
     let table = rec.into_table();
     let mut rp = Replay::new(&table);
     rp.fallback = Some(svc);
-    let _ = ir::run(&nd.node_program(k), &base, &rp, vk, &c, &pi);
+    let _ = ir::run(&nd.node_program(k), base, &rp, vk, &c, &pi);
     let (tr, missing) = rp.finish();
     if missing != 0 || tr.len() != params::N_ITEMS {
         service::fatal(&format!("node trace: {} queries, {missing} not asked while proving", tr.len()));
@@ -103,54 +127,60 @@ fn node_signed(svc: &service::Service, k: node::NK, vk: &Digest, prev: Option<(&
     (format::Signed { pi, tr, sig }, c)
 }
 
-/// `prover first /work` and `prover step /work`.
+/// `prover first /work` and `prover step /work`: everything that does not depend on the inputs
+/// before `ready` (untimed, PROVER.md §3), the inputs after `go`, `done` after `proof.bin`.
 pub fn run(first: bool, work: &Path) {
-    let t0 = Instant::now();
+    let ts = Instant::now();
     let path = std::env::var("RF_ORACLE").unwrap_or_else(|_| service::fatal("RF_ORACLE is not set"));
     let svc = service::Service::connect(&path).unwrap_or_else(|e| service::fatal(&e));
     svc.warm(crate::par::threads().min(service::MAX_CONNS));
     crate::par::warm();
     let vk = svc.vk();
-    let circ = circuit::Circuit::build();
-    // decode the node data while the aggregates are proved
-    let nd = std::thread::spawn(|| {
-        plan::node_data();
-    });
+    let pre = Pre::new();
+    let _ = crate::skipdom::skip();
+    crate::heap_setup(prefault_mib());
+    let startup = ts.elapsed().as_secs_f64();
+    crate::say("ready");
+    crate::wait_go();
+    let t0 = Instant::now();
+    let circ = &pre.circ;
     let mut tm: Vec<(&'static str, f64)> = Vec::new();
-    let mut t = Instant::now();
+    let t = Instant::now();
     let (file, c, k) = if first {
         let a = read_chain(&work.join("chainA.json"));
         let b = read_chain(&work.join("chainB.json"));
-        let aggs = vec![agg_signed(&svc, &circ, &vk, &a.1, a.0), agg_signed(&svc, &circ, &vk, &b.1, b.0)];
+        let aggs = vec![agg_signed(&svc, circ, &vk, &a.1, a.0), agg_signed(&svc, circ, &vk, &b.1, b.0)];
         tm.push(("aggregates", t.elapsed().as_secs_f64()));
-        t = Instant::now();
-        nd.join().unwrap();
-        tm.push(("data_wait", t.elapsed().as_secs_f64()));
-        let (s, c) = node_signed(&svc, node::NK::N8, &vk, None, &aggs, &mut tm);
+        let (s, c) = node_signed(&svc, &pre, node::NK::N8, &vk, None, &aggs, &mut tm);
         (format::to_file(&s), c, node::NK::N8)
     } else {
         let prev_c: Digest = unhex(&std::fs::read_to_string(work.join("prev.stmt")).expect("prev.stmt")).try_into().expect("prev.stmt");
         let prev = format::from_file(&std::fs::read(work.join("prev.bin")).expect("prev.bin")).unwrap_or_else(|| service::fatal("prev.bin"));
         let (n, s) = read_chain(&work.join("chain.json"));
         let k = if agg::split(n, agg::M_SEG).len() <= 2 { node::NK::N2 } else { node::NK::N4 };
-        let aggs = vec![agg_signed(&svc, &circ, &vk, &s, n)];
+        let aggs = vec![agg_signed(&svc, circ, &vk, &s, n)];
         tm.push(("aggregate", t.elapsed().as_secs_f64()));
-        t = Instant::now();
-        nd.join().unwrap();
-        tm.push(("data_wait", t.elapsed().as_secs_f64()));
-        let (sg, c) = node_signed(&svc, k, &vk, Some((&prev, prev_c)), &aggs, &mut tm);
+        let (sg, c) = node_signed(&svc, &pre, k, &vk, Some((&prev, prev_c)), &aggs, &mut tm);
         (format::to_file(&sg), c, k)
     };
     std::fs::write(work.join("proof.bin"), &file).expect("proof.bin");
     let total = t0.elapsed().as_secs_f64();
     eprintln!(
-        "STREAM {} kind={} total_s={total:.3} {} stmt={} file={} peak_rss_mb={:.0}",
+        "STREAM {} kind={} total_s={total:.3} {} stmt={} file={} peak_rss_mb={:.0} startup_s={startup:.3}{}",
         if first { "first" } else { "step" },
         k.name(),
         tm.iter().map(|(n, s)| format!("{n}={s:.3}")).collect::<Vec<_>>().join(" "),
         hex(&c),
         file.len(),
-        crate::peak_rss_mb()
+        crate::peak_rss_mb(),
+        if crate::prof::on() { format!(" | prof {}", crate::prof::report()) } else { String::new() }
     );
+    crate::say("done");
     let _ = leaf_stmt;
+}
+
+/// The heap pre-faulted before `ready` (MiB): the largest step's peak (N4 over a `2^20` chain,
+/// 6.5 GB in pass 9) less what is mapped by then; `FLOCK_PREFAULT_MIB` overrides.
+fn prefault_mib() -> usize {
+    std::env::var("FLOCK_PREFAULT_MIB").ok().and_then(|x| x.parse().ok()).unwrap_or(6000)
 }

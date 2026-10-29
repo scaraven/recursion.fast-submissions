@@ -587,7 +587,7 @@ extern "C" {
 
 /// Keep small freed memory in one arena (glibc) and pre-fault `mib` MiB for the large-block cache
 /// (`alloc.rs`), before the request's clock.
-fn heap_setup(mib: usize) {
+pub(crate) fn heap_setup(mib: usize) {
     // SAFETY: plain glibc calls (M_ARENA_MAX = -8, M_TRIM_THRESHOLD = -1); a refused setting is
     // only slower.
     unsafe {
@@ -597,14 +597,14 @@ fn heap_setup(mib: usize) {
     alloc::prefault(mib << 20);
 }
 
-fn say(word: &str) {
+pub(crate) fn say(word: &str) {
     use std::io::Write;
     let mut out = std::io::stdout().lock();
     let _ = writeln!(out, "{word}");
     let _ = out.flush();
 }
 
-fn wait_go() {
+pub(crate) fn wait_go() {
     let mut line = String::new();
     loop {
         line.clear();
@@ -698,6 +698,7 @@ fn main() {
             std::process::exit(2);
         }
         "bench" => bench::run(),
+        "bench-rs" => bench::run_rs(args.get(2).and_then(|x| x.parse().ok()).unwrap_or(32)),
         "selftest" => match simd::selftest() {
             Ok(s) => println!("SELFTEST pass {s}"),
             Err(e) => {

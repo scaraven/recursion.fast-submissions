@@ -62,10 +62,20 @@ impl Rows {
         let mut o = [F::ZERO; 3];
         for k in 0..3 {
             for t in rg[k] as usize..rg[k + 1] as usize {
-                o[k] += self.coefs[t] * w(self.cells[t]);
+                o[k] += mul1(self.coefs[t], w(self.cells[t]));
             }
         }
         o
+    }
+}
+
+/// `c·x`, without the product when `c = 1` (most coefficients of the M rows).
+#[inline(always)]
+pub(crate) fn mul1(c: F, x: F) -> F {
+    if c == F::ONE {
+        x
+    } else {
+        c * x
     }
 }
 
@@ -333,6 +343,7 @@ pub struct FillStats {
 /// `2^20` cells (`one′` at 0, the selector copies at 1–3).
 pub fn fill(p: &Proto, run: SlotRun) -> (Vec<F>, FillStats) {
     let t0 = std::time::Instant::now();
+    let sp = crate::prof::span(if run.is_some() { "fill.solve" } else { "fill.solve_inactive" });
     let base = (p.pi * SLOT) as u32;
     let mut val = vec![F::ZERO; SLOT];
     let mut known = vec![false; SLOT];
@@ -408,6 +419,8 @@ pub fn fill(p: &Proto, run: SlotRun) -> (Vec<F>, FillStats) {
         let _ = p.plan[key].set(rec);
     }
     let t_solve = t0.elapsed().as_secs_f64();
+    drop(sp);
+    let _sp = crate::prof::span(if run.is_some() { "fill.check" } else { "fill.check_inactive" });
     st.zeroed = known.iter().filter(|k| !**k).count();
     // check every row, and the multi-cell register forms against the run's values
     for i in 0..nr {
@@ -468,7 +481,7 @@ fn try_row(rw: &Rows, base: u32, i: usize, val: &mut [F], known: &mut [bool]) ->
         for t in rg[k] as usize..rg[k + 1] as usize {
             let l = (rw.cells[t] - base) as usize;
             if known[l] {
-                kn[k] += rw.coefs[t] * val[l];
+                kn[k] += mul1(rw.coefs[t], val[l]);
             } else {
                 match unk[k] {
                     None => unk[k] = Some(l),
@@ -487,17 +500,21 @@ fn try_row(rw: &Rows, base: u32, i: usize, val: &mut [F], known: &mut [bool]) ->
         known[u] = true;
         Some(u)
     };
-    let cells: Vec<usize> = {
-        let mut v: Vec<usize> = unk.iter().flatten().copied().collect();
-        v.sort_unstable();
-        v.dedup();
-        v
-    };
-    if cells.len() == 1 && !multi.iter().any(|&m| m) {
+    // the distinct unknown cells of the three forms, sorted (no allocation: at most three)
+    let mut us = unk;
+    us.sort_unstable();
+    let (mut single, mut distinct) = (None, 0);
+    for &x in us.iter().flatten() {
+        if single != Some(x) {
+            distinct += 1;
+            single = Some(x);
+        }
+    }
+    if distinct == 1 && !multi.iter().any(|&m| m) {
         if !co[0].is_zero() && !co[1].is_zero() {
             return None;
         }
-        return solve(cells[0], kn[0] * co[1] + co[0] * kn[1] + co[2], kn[0] * kn[1] + kn[2], val, known);
+        return solve(single.unwrap(), kn[0] * co[1] + co[0] * kn[1] + co[2], kn[0] * kn[1] + kn[2], val, known);
     }
     // a known zero factor: the row is `C = 0`
     let zero_factor = (unk[0].is_none() && kn[0].is_zero()) || (unk[1].is_none() && kn[1].is_zero());
@@ -545,12 +562,12 @@ fn worklist(rw: &Rows, base: u32, val: &mut [F], known: &mut [bool]) -> Vec<(u32
     rec
 }
 
-/// The dump directory (`FLOCK_NODE_DUMP`, else `logs/INT-9/nodedump` above the working directory)
+/// The dump directory (`FLOCK_NODE_DUMP`, else `logs/S-E12f/nodedump` above the working directory)
 /// and the prototype programs' directory (`FLOCK_PROTO_DIR`, else the dump directory).
 pub fn find_dirs() -> Option<(std::path::PathBuf, std::path::PathBuf)> {
     let d = match std::env::var_os("FLOCK_NODE_DUMP") {
         Some(p) => std::path::PathBuf::from(p),
-        None => crate::kat::find_up("logs/INT-9/nodedump/mrows-p0.txt")?.parent()?.to_path_buf(),
+        None => crate::kat::find_up("logs/S-E12f/nodedump/mrows-p0.txt")?.parent()?.to_path_buf(),
     };
     let p = std::env::var_os("FLOCK_PROTO_DIR").map(std::path::PathBuf::from).unwrap_or_else(|| d.clone());
     Some((d, p))

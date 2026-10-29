@@ -139,7 +139,7 @@ impl Mats<'_> {
                     for t in rg[m] as usize..rg[m + 1] as usize {
                         let cell = one + p.rows.cells[t] as usize - base + v * SLOT;
                         // SAFETY: slot `v`'s cells lie in its own region
-                        unsafe { *wp.0.add(cell) += c * p.rows.coefs[t] };
+                        unsafe { *wp.0.add(cell) += crate::mfill::mul1(p.rows.coefs[t], c) };
                     }
                 }
             }
@@ -472,7 +472,9 @@ pub fn prove(o: &dyn Oracle, ni: &NodeIn) -> (Vec<u8>, Times) {
     wr.fs.phase = "E1";
     let co = wr.fs.coords(pp::E1_SQ);
     let r_e = co[..lm].to_vec();
+    let sp = crate::prof::span("ne2.matvec");
     let [am, bm, cm] = ni.mats.m_matvec(f);
+    drop(sp);
     wr.fs.phase = "E2";
     let (r_e2, vm) = zc_abc(&r_e, am, bm, Some(cm), F::ZERO, &mut |g| {
         wr.send_f(pp::F_E, &g);
@@ -485,7 +487,9 @@ pub fn prove(o: &dyn Oracle, ni: &NodeIn) -> (Vec<u8>, Times) {
     let kap_e = wr.fs.chal_f();
     tm.mark("e2", &mut t);
     wr.fs.phase = "E4";
-    let mut wt4 = vec![F::ZERO; f.len()];
+    let sp = crate::prof::span("ne4.scatter");
+    let mut wt4: Vec<F> = par::uninit_vec(f.len());
+    par::for_each_chunk_mut(&mut wt4, 1 << 16, |_, c| c.fill(F::ZERO));
     ni.mats.m_scatter(&eq_table(&r_e2), [F::ONE, kap_e, kap_e * kap_e], &mut wt4);
     let k3 = kap_e * kap_e * kap_e;
     let el = eq_table(&r_lr2);
@@ -497,15 +501,25 @@ pub fn prove(o: &dyn Oracle, ni: &NodeIn) -> (Vec<u8>, Times) {
         wone += x * kap_l;
     }
     wt4[oc] += wone;
+    drop(sp);
     let c4 = vm[0] + kap_e * vm[1] + kap_e * kap_e * vm[2] + k3 * (vl[0] + kap_l * vl[1] + kap_l * kap_l * vl[2]);
     assert_eq!(crate::simd::dot(&wt4, f), c4, "E4's sum");
     let _ = c4;
-    let (r4, fin) = prove_pairs(vec![(wt4, f.to_vec())], &mut |g| {
+    // `W` lives on the M slots, the L bits and the one cell: the early rounds skip its zero chunks
+    let sp = crate::prof::span("ne4.sumcheck");
+    let (r4, (_, fhat)) = crate::sumcheck::prove_pair_support(wt4, f, 12, &mut |g| {
         wr.send_f(pp::F_E, &coeffs_f(g));
         wr.fs.chal_f()
     });
+    drop(sp);
     leaf::dummy_rounds(&mut wr, pp::F_E, pp::E4_ROUNDS - (m - 7), 48);
-    let fhat = fin[0].1;
+    // E4's slices (sent in RS0) from the block fold at E4's block coordinates `r4[7..]` (the leaf
+    // Lc's 8-block stripes), then the 7 element coordinates: `s_v = Σ_y eq(r4, y) bit_v(f[y])`, as
+    // `ringswitch::partials` (whose dense pass over the 2^25 elements was RS's largest part)
+    let sp = crate::prof::span("ne4.slices");
+    let s3v = leaf::partials_from_fold(&crate::lincheck::partial_fold(&w.z, &r4[7..], blocks), &r4[..7]);
+    drop(sp);
+    debug_assert_eq!(s3v.iter().enumerate().fold(F::ZERO, |a, (v, x)| a + ringswitch::basis(v) * *x), fhat);
     wr.fs.phase = "E4end";
     wr.send_f(pp::F_E, &[fhat, F::ZERO]);
     tm.mark("e4", &mut t);
@@ -520,7 +534,6 @@ pub fn prove(o: &dyn Oracle, ni: &NodeIn) -> (Vec<u8>, Times) {
     }
     let s1v = leaf::partials_from_fold(&zbeta, &tl[7..14]);
     let s2v = leaf::partials_from_fold(&zs_keep, &tpp[7..10]);
-    let s3v = ringswitch::partials(&w.z, &r4);
     assert_eq!(leaf::dot(&eq_table(&tl[..7]), &s1v), vk8.iter().rev().fold(F::ZERO, |a, v| a * beta + *v));
     let mut msg = s0v.clone();
     msg.extend_from_slice(&s1v);
@@ -532,8 +545,12 @@ pub fn prove(o: &dyn Oracle, ni: &NodeIn) -> (Vec<u8>, Times) {
     let ch = wr.fs.coords(pp::RS1_SQ);
     let (rpp, kap) = (&ch[..7], ch[7]);
     let (coef, v_rs) = leaf::rs_batch(&[&s0v, &s1v, &s2v, &s3v], rpp, kap);
+    let sp = crate::prof::span("nrs.kf");
     let kf: Vec<F> = (0..blocks).map(|tb| crate::nodeops::kf4(k, beta, tb)).collect();
+    drop(sp);
+    let sp = crate::prof::span("nrs.weight_table");
     let mut wt = ringswitch::weight_table_kf(&[(&his[0][..], coef[0], None), (&his[1][..], coef[1], Some(&kf[..])), (&his[2][..], coef[2], None), (&r4[..], coef[3], None)], rpp);
+    drop(sp);
     tm.mark("ringswitch", &mut t);
     // ---- B′: the public cells
     wr.fs.phase = "B'";

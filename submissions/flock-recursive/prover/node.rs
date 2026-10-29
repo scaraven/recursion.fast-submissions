@@ -202,10 +202,10 @@ impl BK {
             BK::Free => 8,
         }
     }
-    fn h0_pin(self) -> bool {
+    pub(crate) fn h0_pin(self) -> bool {
         matches!(self, BK::StreamStart | BK::HashA | BK::HashB1(_) | BK::W43(..))
     }
-    fn msg_pin(self, p: usize) -> Option<u8> {
+    pub(crate) fn msg_pin(self, p: usize) -> Option<u8> {
         match self {
             BK::StreamEnd41 if p >= 41 => Some(0),
             BK::HashA if p == 0 => Some(blake2s::TAG_LEAF),
@@ -406,6 +406,15 @@ pub fn trace_blocks(c: &Circuit, ins: &[BlockIn], bks: &[BK], zw: &mut [u64], aw
         };
     }
     let hw = lanes & !free;
+    // the lanes of each kind in the batch (most batches hold one or two): the pinned-input masks
+    // per kind, not per lane
+    let mut groups: Vec<(BK, u64)> = Vec::new();
+    for (t, bk) in bks.iter().enumerate() {
+        match groups.iter_mut().find(|g| g.0 == *bk) {
+            Some(g) => g.1 |= 1 << t,
+            None => groups.push((*bk, 1 << t)),
+        }
+    }
     let (mut mz, mut ma, mut mb) = ([0u64; 64], [0u64; 64], [0u64; 64]);
     for wi in 0..BLOCK / 64 {
         for j in 0..64 {
@@ -416,9 +425,9 @@ pub fn trace_blocks(c: &Circuit, ins: &[BlockIn], bks: &[BK], zw: &mut [u64], aw
             } else if p < pp::ONE_POS && !(256..512).contains(&p) {
                 // an input: per lane, pinned (0, 0) or free (var k, one)
                 let mut pin = 0u64;
-                for (t, bk) in bks.iter().enumerate() {
+                for &(bk, mask) in &groups {
                     if bk.pinned(p) {
-                        pin |= 1 << t;
+                        pin |= mask;
                     }
                 }
                 (zz & !pin, hw & !pin)
@@ -592,20 +601,17 @@ fn stream_bytes(tr: &[(Vec<u8>, Digest)]) -> Vec<u8> {
 /// aggregate children; `protos` the dumped prototypes, `texts` their programs; `circ` the
 /// general tape (`general_circuit`), `lcirc` the leaf tape (the IR's `walkAB`).
 #[allow(clippy::too_many_arguments)]
-pub fn witness(k: NK, vk: &Digest, prev: Option<&PrevIn>, aggs: &[AggIn], protos: &[mfill::Proto; 2], texts: &[String; 2], circ: &Circuit, lcirc: &Circuit) -> NodeWit {
+/// The H region (the chains, tails, statements, WOTS: inputs, then the bits by the tape, 64 blocks
+/// a batch, as a parallel job) and the L region's signature and digit cells: `z`, `a`, `b` (`a`, `b`
+/// final on H; `z` zero past H but for the L cells) and the block kinds.
+#[allow(clippy::type_complexity)]
+fn h_part(k: NK, vk: &Digest, prev: Option<&PrevIn>, aggs: &[AggIn], signed: &[&format::Signed], circ: &Circuit) -> (Vec<u64>, Vec<u64>, Vec<u64>, Vec<BK>, Vec<(&'static str, f64)>) {
     let mut times = Vec::new();
     let mut t0 = std::time::Instant::now();
     let mut mark = |n: &'static str, times: &mut Vec<(&'static str, f64)>| {
         times.push((n, t0.elapsed().as_secs_f64()));
         t0 = std::time::Instant::now();
     };
-    assert_eq!(prev.is_some(), k.has_prev());
-    assert_eq!(aggs.len(), k.n_agg());
-    for a in aggs {
-        assert!((1..=k.max_k()).contains(&a.segs.len()), "an aggregate of 1 … maxK segments");
-    }
-    let signed: Vec<&format::Signed> = (0..2).map(|sg| if k.is_agg(sg) { aggs[k.agg_of(sg)].signed } else { prev.unwrap().signed }).collect();
-    let stmts: Vec<Digest> = (0..2).map(|sg| if k.is_agg(sg) { aggs[k.agg_of(sg)].c } else { prev.unwrap().c }).collect();
     let h_end = k.h_end();
     let mut ins = vec![BlockIn::zero(); h_end];
     let bks: Vec<BK> = (0..k.blocks()).map(|b| bk_at(k, b)).collect();
@@ -744,6 +750,24 @@ pub fn witness(k: NK, vk: &Digest, prev: Option<&PrevIn>, aggs: &[AggIn], protos
             }
         }
     }
+    mark("l_mirrors", &mut times);
+    (z, a, b, bks, times)
+}
+
+pub fn witness(k: NK, vk: &Digest, prev: Option<&PrevIn>, aggs: &[AggIn], protos: &[mfill::Proto; 2], texts: &[String; 2], circ: &Circuit, lcirc: &Circuit) -> NodeWit {
+    let mut times = Vec::new();
+    let mut t0 = std::time::Instant::now();
+    let mut mark = |n: &'static str, times: &mut Vec<(&'static str, f64)>| {
+        times.push((n, t0.elapsed().as_secs_f64()));
+        t0 = std::time::Instant::now();
+    };
+    assert_eq!(prev.is_some(), k.has_prev());
+    assert_eq!(aggs.len(), k.n_agg());
+    for a in aggs {
+        assert!((1..=k.max_k()).contains(&a.segs.len()), "an aggregate of 1 … maxK segments");
+    }
+    let signed: Vec<&format::Signed> = (0..2).map(|sg| if k.is_agg(sg) { aggs[k.agg_of(sg)].signed } else { prev.unwrap().signed }).collect();
+    let stmts: Vec<Digest> = (0..2).map(|sg| if k.is_agg(sg) { aggs[k.agg_of(sg)].c } else { prev.unwrap().c }).collect();
     // the slot runs (prototype program at the child's index) and fills, in parallel
     struct SlotJob<'a> {
         proto: usize,
@@ -759,10 +783,11 @@ pub fn witness(k: NK, vk: &Digest, prev: Option<&PrevIn>, aggs: &[AggIn], protos
             SlotJob { proto: 1, run: aggs[a].segs.get(i).copied() }
         })
         .collect();
-    mark("l_mirrors", &mut times);
     // the solve plans: the inactive ones need no child (`warm_plans`, before the request); the
     // first active slot of each prototype records its plan, the other slots replay it
+    let sp = crate::prof::span("wit.warm_plans");
     warm_plans(protos);
+    drop(sp);
     let firsts: Vec<usize> = (0..2).filter_map(|p| jobs.iter().position(|j| j.proto == p && j.run.is_some())).collect();
     let fill_job = |v: usize| {
         let j = &jobs[v];
@@ -770,11 +795,13 @@ pub fn witness(k: NK, vk: &Digest, prev: Option<&PrevIn>, aggs: &[AggIn], protos
         match j.run {
             Some((pi, tr, c, ix)) => {
                 let o = crate::oracle::Seq::new(tr);
+                let sp = crate::prof::span(if j.proto == 0 { "wit.run_p0" } else { "wit.run_p1" });
                 let text = crate::ir::spec_kind(&texts[j.proto], ix);
                 let (r, regs) = match prev {
                     Some(p) if j.proto == 0 => crate::ir::run_node_regs(&text, p.ctx.clone(), p.base, &o, vk, &c, pi),
                     _ => crate::ir::run_regs(&text, lcirc, &o, vk, &c, pi),
                 };
+                drop(sp);
                 let mut st = mfill::FillStats::default();
                 if !r.ok || !o.consumed() {
                     st.first_conflicts.push(format!("slot {v}: program run ok={} failed={:?} consumed={}", r.ok, r.failed, o.consumed()));
@@ -798,16 +825,37 @@ pub fn witness(k: NK, vk: &Digest, prev: Option<&PrevIn>, aggs: &[AggIn], protos
             }
         }
     };
-    let mut first_fills: Vec<Option<(Vec<F>, mfill::FillStats, Vec<bool>)>> = par::collect_vec(firsts.len(), 1, |i| Some(fill_job(firsts[i])));
+    // the H part (one task; its block trace is a parallel job of its own, taken by idle workers)
+    // beside the first fill of each prototype (a slot's program run and solve are serial)
+    type Fill = (Vec<F>, mfill::FillStats, Vec<bool>);
+    let h_out: std::sync::Mutex<Option<(Vec<u64>, Vec<u64>, Vec<u64>, Vec<BK>, Vec<(&'static str, f64)>)>> = std::sync::Mutex::new(None);
+    let first_out: Vec<std::sync::Mutex<Option<Fill>>> = firsts.iter().map(|_| std::sync::Mutex::new(None)).collect();
+    par::run(1 + firsts.len(), &|i| {
+        if i == 0 {
+            *h_out.lock().unwrap() = Some(h_part(k, vk, prev, aggs, &signed, circ));
+        } else {
+            *first_out[i - 1].lock().unwrap() = Some(fill_job(firsts[i - 1]));
+        }
+    });
+    let (mut z, mut a, mut b, bks, htimes) = h_out.into_inner().unwrap().unwrap();
+    times.extend(htimes);
+    mark("h_first_fills", &mut times);
+    let mut first_fills: Vec<Option<Fill>> = first_out.into_iter().map(|m| m.into_inner().unwrap()).collect();
     let rest: Vec<usize> = (0..jobs.len()).filter(|v| !firsts.contains(v)).collect();
-    let mut rest_fills: Vec<Option<(Vec<F>, mfill::FillStats, Vec<bool>)>> = par::collect_vec(rest.len(), 1, |i| Some(fill_job(rest[i])));
-    let fills: Vec<(Vec<F>, mfill::FillStats, Vec<bool>)> = (0..jobs.len())
+    let mut rest_fills: Vec<Option<Fill>> = par::collect_vec(rest.len(), 1, |i| Some(fill_job(rest[i])));
+    let fills: Vec<Fill> = (0..jobs.len())
         .map(|v| match firsts.iter().position(|&f| f == v) {
             Some(i) => first_fills[i].take().unwrap(),
             None => rest_fills[rest.iter().position(|&r| r == v).unwrap()].take().unwrap(),
         })
         .collect();
-    mark("m_fill", &mut times);
+    mark("rest_fills", &mut times);
+    let h_end = k.h_end();
+    let lb = k.l_base() * 128;
+    let fz = |z: &mut [u64], e: usize, x: F| {
+        z[2 * e] = x.lo;
+        z[2 * e + 1] = x.hi;
+    };
     let mut mstats = Vec::new();
     for (v, (val, st, bits)) in fills.into_iter().enumerate() {
         let base = k.one_cell() + v * mfill::SLOT;

@@ -380,3 +380,76 @@
   (N8, N2 ×4, N4 ×2): 21 accepted by the native `acc`, 21 canaries rejected. Node prove N8 7.4–7.5 s,
   N4 7.5–7.9 s, N2 3.7–3.9 s (model 4.8 / 4.1 / 2.4); RS is the largest excess (1.45–1.7 s).
   Branches deleted. RESULT §17 written (17.9: the handover).
+
+## Pass 10 (track P2⁶, 2026-10-29): node prover speed, the handshake, S-E12f's re-dump
+
+Base HEAD `cd195c5` (P2⁵), later `ef18e75` (S-E12f). Logs `logs/P2/r41p10/` (VM) and
+`logs/P2/run-<id>/` (runners). Every cargo / prover command in a 16 GB scope with a timeout.
+
+- Baseline: HEAD's binary (`flock-prover-base`), `node-kat N4 --agg 524291` and
+  `N2 --agg 262147` on P2⁵'s `n8.signed`: pi_b2s `5062cfc4…` / `20d1eb92…` (= pass 9's), accepted.
+  These two runs are the π-identity reference for every change below (local oracle, deterministic).
+- **Instrumentation** (no effect on π): spans `ne2.matvec`, `ne4.scatter`, `ne4.sumcheck`,
+  `ne4.slices`, `nrs.kf`, `nrs.weight_table`, `wit.warm_plans`, `wit.run_p0/p1`,
+  `fill.solve(_inactive)`, `fill.check(_inactive)`; the stream prints the node witness's parts and
+  `| prof …`; `FLOCK_IRPROF` adds a per-op-name total of the IR run (`ir ops …`). Mode `bench-rs [m]`
+  (`bench.rs`): E4's slices and the four-claim weight table, old vs new, checked equal.
+- **Finding: `first`/`step` had no `ready`/`go` handshake** (PROVER.md §3; `rfh/prover.py` waits for
+  `ready` within `ready_s` = 10 s, else "no ready line"). Pass 9's probe started the binary without
+  it, so the gap was not visible. Now `stream::run`: connect, warm, decode the node data, the three
+  kind tables, the circuits, the inactive solve plans (`warm_plans`, was inside the timed witness),
+  the skip tables and a 6000 MiB prefault, then `ready`; inputs after `go`; `done` after
+  `proof.bin`. `probe/p2t10/stream.sh` drives the handshake (inputs staged, moved in at `go`; the
+  request time is `go` → `done`). Start-up on the 7763 0.62–0.67 s.
+- **RS** (`bench-rs 32` on the 7763, runs 40804570637 / 40804583754, 4 threads):
+  - E4's slices from the block fold (`lincheck::partial_fold` at `r4[7..]`, then
+    `partials_from_fold` at `r4[..7]`) instead of `ringswitch::partials`: 0.235 → 0.195 s; equal.
+  - the weight table by **row tables** (`weight_table_rows`): `y = l + 2^lo h`; for each claim,
+    `Q[p][β][l] = Σ_{i∈β} c Φ(e_lo(l) b_{8p+i})`, and the row `W(·, h) = Σ_p Q[p][β_p(e_hi(h))][·]`
+    (16 sequential row reads per element instead of 16 scattered 64 KiB-table entries plus a
+    product; `kf` multiplies `e_hi`; rows with `e_hi = 0` skipped): 0.83 → 0.52 (lo = 4),
+    0.49 (5), 0.47 (6) s; equal at every lo (test `weight_rows_and_fold_slices`). Default lo = 4.
+- **E4's sumcheck on `W`'s support** (`sumcheck::prove_pair_support`): `W` is non-zero on the M
+  slots, the L bits and the one cell (16–25 % of the 2^25 elements). The first 12 rounds sum and fold
+  only the 4096-element chunks where `W ≠ 0`; a dead chunk's `f` still enters later rounds (paired
+  with a live entry in `(P₀+P₁)(Q₀+Q₁)` and in the folds; my first version zeroed it and π changed,
+  `b-N2.txt`: rejected at op 66610), so after round 12 it is `Σ_l eq(r_{<12}, l) f[4096 c + l]`
+  (one dot per chunk). Messages and the final pair equal `prove_pairs`'s (test
+  `pair_support_same_messages`); no `f.to_vec()` copy. π identical (`c-N2.txt`).
+- **Witness**: `trace_blocks`' pinned-input masks per kind of the batch (was a `pinned()` call per
+  lane per input position); `try_row` without a heap allocation, products by a coefficient 1
+  skipped (`mfill::mul1`, also in `m_scatter` and `Rows::eval`); the **H part** (inputs, the block
+  trace as its own parallel job, mirrors, L) runs as one task beside the first fill of each
+  prototype (slot 0's previous-node program run and solve are serial), then the other slots. VM at 4
+  threads, N2: witness 7.49 → 5.81 s, π identical (`t4-{c,d}-N2.txt`).
+- Runner profile (p2t-10a/b, HEAD + handshake + RS rows + E4 fold; S-E12e/INT-9 data): node prove N8
+  6.82–6.87, N4 6.73–6.80, N2 3.36–3.42 s (pass 9: 7.4–7.5 / 7.5–7.9 / 3.7–3.9); witness N2
+  1.29–1.65, N4 1.78–2.18, N8 1.94 s, of which h_trace 0.39 / 0.65 / 1.02 s, slot 0's program run
+  0.39 (prev N2) / 0.61 (prev N4) / 0.75 (prev N8) s, fills 0.13–0.32 s each.
+- **S-E12f's re-dump** (`logs/S-E12f/nodedump/`, SHA256SUMS OK, commit `ef18e75`): `plan-build`
+  → `nodeblob.b64` 5,524,560 B (raw 14.74 MB); `plan-kat`: rows 603,404 / 593,997, terms 5.24 /
+  5.33 M, 2,498 aux each, programs and slot tables equal, decode 0.51 s. Default dump
+  `mfill::find_dirs` → `logs/S-E12f/nodedump`. **The fill needs no solver extension**: every slot
+  0 failed rows, 0 conflicts, 0 form mismatches (N8: 4,751,976 M rows checked, `m_bad` 0); the
+  kind-mux sub-templates' locals are all solved from the three kinds' operands. Node proofs N8
+  (2 × L32 n=3), N4 on N8 (k=3), N2 on N8 (k=2), N4 on N4, N2 on N2: all accepted by the dumped
+  programs (`ops-N*`, real cells = proto-p0 at the kind's index), `stmtOk4`, 8,905 asks; canaries
+  rejected (`e-*.txt`).
+- `cargo test --release`: 42 passed, 1 ignored (`cargo-test.txt`). `prover.s` 15,017,410 B, sha256
+  `9da073e4…bfae` (`build-asm-b.log`).
+- Runner probes on S-E12f's data (p2t-10c/d/e; 10c landed on the 7763): `FLOCK_IRPROF` showed slot
+  0's program run = `evalM` 0.58–0.83 s + `targetS` 0.26–0.54 s (contended with the H trace); the
+  rest < 7 ms per op. `targetS`: `target_words` by regions (h₀, the pinned message bytes, `t`, `fin`,
+  the constant; was 1,216 `target()` calls per distinct block kind) and per-(word, byte) tables of
+  `Σ eq(r_blk, blk)` in parallel (no HashMap); `evalM`: rows `v·2^20 + local`, cells `one +
+  v·2^20 + local` (`one` a multiple of 2^20) → two 2^20 eq tables, one product per row matrix, no
+  product for a coefficient 1. Test `fast_target_and_eval_m` (every block of every kind; `eval_m`
+  = `eval_m_ref` on the node data), `node_ops_match_lean` still equal. π unchanged (`f-N2.txt`).
+- Final probes p2t-10f/g/h/i (`prover.s` `a3db3bb5…`; two streams each; 10i on the 7763, run
+  40808376661): node prove N2 3.14–3.19, N4 6.21–6.39, N8 6.36–6.38 s; witness N2 1.18–1.52, N4
+  1.63–1.76, N8 1.93; requests 2^17 7.25–7.43, 2^18 9.71–9.74, 311,951 11.03–11.16, 2^20
+  28.97–29.28 s; start-up 0.76–0.83 s; peak 6.97 GB; 16/16 accepted, canaries rejected (and 16/16 on
+  each off-tier runner). Projection (`project.py`): mean step 12.10 + 2.16 s, fits `M ≤ 66`, 82 %
+  of evaluations truncated, `P̄ ≈ 10.8 s`. All `probe/p2t-10*` branches deleted.
+- `cargo test --release` 43 passed, 1 ignored (`cargo-test-2.txt`); source rule 333 files, 0.
+  `prover.s` 15,084,266 B, sha256 `a3db3bb5…abdd`. RESULT §18 written (18.9: the handover).

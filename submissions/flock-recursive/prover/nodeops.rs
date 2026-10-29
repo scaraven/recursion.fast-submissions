@@ -56,8 +56,36 @@ fn z_lo(r: &[F]) -> Vec<F> {
     v
 }
 
-/// A kind's target bits on the positions `< 1216` (19 words).
+/// A kind's target bits on the positions `< 1216` (19 words), by `BK::target`'s regions: `h₀`
+/// (`0 … 255`), the pinned message bytes (`512 … 1023`), the counter `t` (`1024 … 1087`), `fin`
+/// (`1088 … 1119`), zeros, and the constant (`1152`). Equal to `target_words_ref` (test).
 pub fn target_words(bk: BK) -> [u64; 19] {
+    let mut w = [0u64; 19];
+    if bk == BK::Free {
+        return w;
+    }
+    if bk.h0_pin() {
+        let h0 = crate::blake2s::h0();
+        for i in 0..4 {
+            w[i] = h0[2 * i] as u64 | (h0[2 * i + 1] as u64) << 32;
+        }
+    }
+    for p in 0..64 {
+        if let Some(b) = bk.msg_pin(p) {
+            w[8 + p / 8] |= (b as u64) << (8 * (p % 8));
+        }
+    }
+    let (t, fin) = bk.ctr();
+    w[16] = t;
+    if fin {
+        w[17] = 0xFFFF_FFFF;
+    }
+    w[18] = 1;
+    w
+}
+
+/// `target_words` position by position (the reference).
+pub fn target_words_ref(bk: BK) -> [u64; 19] {
     let mut w = [0u64; 19];
     if bk != BK::Free {
         for p in 0..19 * 64 {
@@ -69,29 +97,53 @@ pub fn target_words(bk: BK) -> [u64; 19] {
     w
 }
 
-/// **`targetSNode4S`**: `P^e(σ) = Σ_{blk, hi} eq(zLo, hi) eq(r_blk, blk) E(blk, σ + 64 hi)`.
+/// **`targetSNode4S`**: `P^e(σ) = Σ_{blk, hi} eq(zLo, hi) eq(r_blk, blk) E(blk, σ + 64 hi)`. Per word
+/// `hi` and byte `p` of the targets, `T[hi][p][β] = Σ_{blk: byte p of word hi is β} eq(r_blk, blk)`
+/// (one pass over the blocks, in parallel), then `P^e(8p + i) = Σ_{hi, β ∋ i} eq(zLo, hi) T[hi][p][β]`.
 pub fn target_s_node4(k: NK, r: &[F]) -> Vec<F> {
     let n = nb(k);
     let rb: Vec<F> = (0..n).map(|l| r.get(1 + l).copied().unwrap_or(F::ZERO)).collect();
     let (eb, eh) = (eq_table(&rb), eq_table(&z_lo(r)));
-    // blocks by their kind and target (the counters differ per stream block)
-    let mut w: std::collections::HashMap<BK, F> = std::collections::HashMap::new();
-    for blk in 0..k.h_end() {
-        let bk = bk_at(k, blk);
-        if bk != BK::Free {
-            *w.entry(bk).or_insert(F::ZERO) += eb[blk];
+    let parts = crate::par::map_chunks(k.h_end(), 1 << 12, |lo, hi| {
+        let mut t = vec![F::ZERO; 19 * 8 * 256];
+        for blk in lo..hi {
+            let tw = target_words(bk_at(k, blk));
+            let x = eb[blk];
+            for (h, &word) in tw.iter().enumerate() {
+                let mut wd = word;
+                let mut p = 0;
+                while wd != 0 {
+                    let b = (wd & 0xFF) as usize;
+                    if b != 0 {
+                        t[(h * 8 + p) * 256 + b] += x;
+                    }
+                    wd >>= 8;
+                    p += 1;
+                }
+            }
+        }
+        t
+    });
+    let mut t = vec![F::ZERO; 19 * 8 * 256];
+    for q in parts {
+        for (a, b) in t.iter_mut().zip(q.iter()) {
+            *a += *b;
         }
     }
     let mut pe = vec![F::ZERO; 64];
-    for (bk, x) in w {
-        let tw = target_words(bk);
-        for (hi, &word) in tw.iter().enumerate() {
-            let mut m = word;
-            let c = x * eh[hi];
-            while m != 0 {
-                let j = m.trailing_zeros() as usize;
-                pe[j] += c;
-                m &= m - 1;
+    for h in 0..19 {
+        for p in 0..8 {
+            for b in 1..256usize {
+                let x = t[(h * 8 + p) * 256 + b];
+                if x.is_zero() {
+                    continue;
+                }
+                let c = x * eh[h];
+                for i in 0..8 {
+                    if (b >> i) & 1 == 1 {
+                        pe[(8 * p + i) % 64] += c;
+                    }
+                }
             }
         }
     }
@@ -242,6 +294,60 @@ impl EqSplit {
 /// **`evalM τ σ`**: `(Ã, B̃, C̃)(τ, σ)` over the node's M rows (`nodeIRows4`: every slot's prototype
 /// rows moved, then its link rows); rows on `τ`'s coordinates, absolute cells on `σ`'s.
 pub fn eval_m(kt: &KindTab, protos: &[Proto; 2], tau: &[F], sigma: &[F]) -> [F; 3] {
+    const W: usize = 20; // SLOT = 2^20
+    if tau.len() < W || sigma.len() < W || kt.one_cell % SLOT != 0 {
+        return eval_m_ref(kt, protos, tau, sigma);
+    }
+    // a slot's rows are `v·2^20 + local` and its cells `one + v·2^20 + local` (`one` a multiple of
+    // 2^20): `eq(τ, row) = eq(τ_{<20}, local)·eq(τ_{≥20}, v)`, the same for the cells, so a row
+    // costs one table entry per term (no product for a coefficient 1) and one product per matrix
+    let (lt, ls) = (eq_table(&tau[..W]), eq_table(&sigma[..W]));
+    let (ht, hs) = (eq_table(&tau[W..]), eq_table(&sigma[W..]));
+    let ob = kt.one_cell >> W;
+    let mut out = [F::ZERO; 3];
+    for (v, &(pi, ..)) in kt.slots.iter().enumerate() {
+        let p = &protos[pi];
+        let base = pi * SLOT;
+        let parts = crate::par::map_chunks(p.rows.len(), 4096, |lo, hi| {
+            let mut o = [crate::field::FAcc::default(), crate::field::FAcc::default(), crate::field::FAcc::default()];
+            for i in lo..hi {
+                let rw = lt[p.rows.idx[i] as usize - base];
+                let rg = p.rows.rng[i];
+                for m in 0..3 {
+                    let mut s = F::ZERO;
+                    for t in rg[m] as usize..rg[m + 1] as usize {
+                        s += crate::mfill::mul1(p.rows.coefs[t], ls[p.rows.cells[t] as usize - base]);
+                    }
+                    o[m].mac(rw, s);
+                }
+            }
+            o.map(|x| x.reduce())
+        });
+        let fac = ht[v] * hs[ob + v];
+        for o in parts {
+            for m in 0..3 {
+                out[m] += fac * o[m];
+            }
+        }
+    }
+    let (et, es) = (EqSplit::new(tau), EqSplit::new(sigma));
+    let l = &kt.links;
+    for i in 0..l.len() {
+        let rw = et.at(l.idx[i] as usize);
+        let rg = l.rng[i];
+        for m in 0..3 {
+            let mut s = F::ZERO;
+            for t in rg[m] as usize..rg[m + 1] as usize {
+                s += l.coefs[t] * es.at(l.cells[t] as usize);
+            }
+            out[m] += rw * s;
+        }
+    }
+    out
+}
+
+/// `eval_m` term by term with the split eq tables (the reference).
+pub fn eval_m_ref(kt: &KindTab, protos: &[Proto; 2], tau: &[F], sigma: &[F]) -> [F; 3] {
     let (et, es) = (EqSplit::new(tau), EqSplit::new(sigma));
     let mut out = [F::ZERO; 3];
     for (v, &(pi, ..)) in kt.slots.iter().enumerate() {
@@ -305,6 +411,33 @@ pub fn eval_l(k: NK, tau: &[F], sigma: &[F]) -> [F; 3] {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// `target_words` equals the position-by-position reference on every block of every kind;
+    /// the factorized `eval_m` equals `eval_m_ref` on the node data at a random point.
+    #[test]
+    fn fast_target_and_eval_m() {
+        for k in [NK::N2, NK::N4, NK::N8] {
+            for blk in 0..k.blocks() {
+                let bk = bk_at(k, blk);
+                assert_eq!(target_words(bk), target_words_ref(bk), "{k:?} block {blk}");
+            }
+        }
+        if crate::plan::BLOB.len() < 16 && crate::mfill::find_dirs().is_none() {
+            return;
+        }
+        let nd = crate::plan::node_data();
+        let mut s = 7u64;
+        let mut rf = || {
+            s = s.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            F::new(s, s.rotate_left(17) ^ 0x55)
+        };
+        for k in [NK::N2, NK::N4] {
+            let kt = nd.kind_tab(k);
+            let tau: Vec<F> = (0..k.log_m()).map(|_| rf()).collect();
+            let sigma: Vec<F> = (0..k.m() - 7).map(|_| rf()).collect();
+            assert_eq!(eval_m(&kt, &nd.protos, &tau, &sigma), eval_m_ref(&kt, &nd.protos, &tau, &sigma), "{k:?}");
+        }
+    }
 
     fn kat_f(s: usize, i: usize) -> F {
         let b: Vec<u8> = (0..16).map(|j| ((37 * s + 11 * j + 5 * i + 1) % 256) as u8).collect();

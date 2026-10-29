@@ -297,6 +297,23 @@ pub fn phi_add_idx(t: &[F], e: &[F], idx: &[u32], out: &mut [F]) {
     }
 }
 
+/// `row[i] ^= Σ_p q[offs[p] + i]` for `i < row.len()` (`ringswitch::weight_table_rows`).
+pub fn xor_rows(q: &[F], offs: &[usize; 16], row: &mut [F]) {
+    let n = row.len();
+    assert!(offs.iter().all(|&o| o + n <= q.len()));
+    if tier() >= 3 {
+        unsafe { r1::xor_rows(q, offs, row) }
+    } else {
+        for (i, r) in row.iter_mut().enumerate() {
+            let mut a = q[offs[0] + i];
+            for o in &offs[1..] {
+                a += q[o + i];
+            }
+            *r += a;
+        }
+    }
+}
+
 /// One 8-block stripe of `lincheck::partial_fold`: `acc[64 wi + j] += t[Σ_r 2^r · bit j of
 /// z[r·256 + wi]]`.
 pub fn pf_stripe(z: &[u64], t: &[F; 256], acc: &mut [F]) {
@@ -901,6 +918,35 @@ pub mod r1 {
         }
         if i < n {
             out[i] += crate::ringswitch::phi_apply(t, e[i]);
+        }
+    }
+
+    /// `row[i] ^= Σ_p q[offs[p] + i]`, two elements per ymm.
+    #[target_feature(enable = "avx2")]
+    pub unsafe fn xor_rows(q: &[F], offs: &[usize; 16], row: &mut [F]) {
+        let n = row.len();
+        let qp = q.as_ptr();
+        let rp = row.as_mut_ptr();
+        let mut i = 0;
+        while i + 2 <= n {
+            let ld = |p: usize| _mm256_loadu_si256(qp.add(offs[p] + i) as *const __m256i);
+            let mut a = _mm256_xor_si256(ld(0), ld(1));
+            let mut b = _mm256_xor_si256(ld(2), ld(3));
+            for p in (4..16).step_by(2) {
+                a = _mm256_xor_si256(a, ld(p));
+                b = _mm256_xor_si256(b, ld(p + 1));
+            }
+            let o = rp.add(i) as *mut __m256i;
+            _mm256_storeu_si256(o, _mm256_xor_si256(_mm256_loadu_si256(o), _mm256_xor_si256(a, b)));
+            i += 2;
+        }
+        while i < n {
+            let mut a = *qp.add(offs[0] + i);
+            for o in &offs[1..] {
+                a += *qp.add(o + i);
+            }
+            *rp.add(i) += a;
+            i += 1;
         }
     }
 
