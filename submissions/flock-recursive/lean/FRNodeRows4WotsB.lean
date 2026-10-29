@@ -1,6 +1,6 @@
 -- New for `flock-recursive` (BLUEPRINT revision 4.1, §4.2, A.6, A.7; stage S-E13b, track L-circ).
 import FRNodeRows4Wots
-import FRNodeSoundA
+import FRNodeReadCore
 
 /-!
 # Bytes of `f`: blocks, elements, digests, and the rows' readings
