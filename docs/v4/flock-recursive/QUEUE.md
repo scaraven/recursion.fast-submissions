@@ -2,6 +2,28 @@
 
 Last updated 2026-10-30. Core pin `422f2f9` (PR #20 merged: M = 96, stream_s 1,920, build_s 1,200). Deliverable branch `v4/flock-recursive`; revision 4.4.1 on `v4/rev44`. Build trees use `logs/org20`.
 
+## Ruling (user, 2026-10-30): acceptance over performance
+
+The baseline only has to be accepted. Choose routes by the least sound implementation and proof effort that fits the hard caps:
+
+| Cap | Limit | Today |
+|---|---|---|
+| build_s | 1,200 | |
+| kernel_s | 600 | ≈ 380 s at main; the tight one |
+| gate_s | 120 | |
+| badge_s | 180 | |
+| step_s | 60 | |
+| ready_s | 10 | plan init ≈ 5.5 s |
+| verify_s | 10 | V ≈ 0.3 s |
+| stream_s at M = 96 | 1,920 | |
+
+- **Dropped:** V/P speed levers, ms kill lines and golf for score. Golf only when a cap is at risk.
+- **Consequences for running tracks:**
+  - R3 picks the least-effort sound `rsWeight` binding; sparse replay is acceptable.
+  - R1 may choose plain or `tdot`.
+  - ASK-P's folds may be sparse.
+  - E1 targets acceptance and cap fit, not P̄.
+
 ## Running — as of 2026-10-30
 
 **Milestone, rev44 `616b57c`:** the whole certificate (`FR`, `Solution`, `FRSubmission4Fin`) builds green with no sorry, and the axioms of `certified` are clean. Its only hypothesis is `Gaps4` = `Gap4R.imp`: per active slot, `SlotImp`.
