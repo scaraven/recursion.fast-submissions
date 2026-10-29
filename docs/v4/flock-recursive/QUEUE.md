@@ -146,7 +146,12 @@ Running on rev44:
 
   - **New binding constraint, V start-up:** about 11.7 s on the runner. V starts about 29 times per stream, so 1 s of V init ≈ 30 s of stream.
   - **Runner tiers vary:** 7763, 9V74, 9V45 and Xeon 8573C all appeared.
-- INIT: profiles the badge start-up and cuts it (target ≤ 5 s on the runner), and writes an init budget per structure for the incoming rows. REPF and ASK-T have been told to minimise init.
+- **INIT landed `32e4e9c`.** V start-up is cut by 12–13 s outside the replay blocks, with outputs bit-identical.
+  - **Biggest fixes:** `chTab4` (−7 s), the phase offsets plus the `finOps4` table (−3.7 s), and `eqTblG` (−1.6 s).
+  - **Start-up now:** 17.3–18.3 s user at 407260d + INIT, and the rest is the replay blocks (CF). Before REPF it was 6.1–6.4 s.
+  - **Proposals passed to CF:** `repB` noinline (−1.9 s), plan fusion (−1.0 s), `noncomputable` plan data.
+  - **Budget per structure:** sparse ≈ 47 ms / 100k rows, keyed 85–95 ms, closed form 0.
+  - **Levers not taken:** `impcTG` (≈ −0.15 s) and IMPC2's compile placement (≈ −0.7 s), each a stage of its own.
 - **Kernel watch:** the upper set is at 1.21×, and Gaps4's discharge modules will add to it. G6 golf is needed before the cert probe.
 
 **Then:**
