@@ -50,7 +50,11 @@ Running on rev44:
 - **SRA:** the prefix form of `compileX_run`, then `gap4Imp_of_rsv` and the switch of `Gaps4` to `StmtN4R` (with no growth of the top hypothesis), then the foreign flags. The replay stays an explicit hypothesis.
 - **R1:** the V side of R-OPS. It adds 108 public cells, `tdot`, V(P) recompute/assert, the repack and tags, the fit literals and a KAT. Soundness is left to R2.
 - **R3:** the closed-form chain template library. It first prices `rsWeight` against the 10 ms line, and if over, stops and reports the §5.3 fallback.
-- **E1:** the prover port at 4.4.1, now also with B4's and IMP's rows. It will also need R1's field changes.
+- **E1 landed `200b531`.**
+  - **Acceptance:** the native prover at 4.4.1 is accepted end to end by rev44's Lean V. That covers a 10-node chain with kind changes and k = 1..4, the rf-oracle streams including the full-length first step, and canaries rejected. The decoder's output-stage KAT matches.
+  - **Projected to the 7763:** worst first step 41.9 s (cap 60) and stream mean 1,150 / max 1,311 s (cap 1,920). `prover setup` is unmeasured on the runner (167 s on VM cores; budget 240 s).
+  - **Still to do:** IMP's rows (re-dump, `AUX_L`) and R1's 108 cells (`RSV_REL`/`LREND_LEN` are hard-coded).
+- RUN1: runner probes on probe branches for the prover (setup, first and later step, ready, stream) and the certificate (build, kernel, gate, badge) at 200b531.
 
 **Then:**
 - ASK-T (the `ATAsk` templates: FS links, Merkle mux, pins, seed, columns) ∥ IMPC (the `ATImp` classes: proof fields, siblings, `chF`/`chK`, `bitOf`, cap reads), both after ASK-P;
