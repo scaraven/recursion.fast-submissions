@@ -25,9 +25,9 @@ are used, with their exact values, by modules this stage may not edit (S-0′ JO
   E4 25 rounds: 14 more items than 3.x, all dummies for the segments) and, revision 4.4.1 (PACK-4.4
   §11, (β′)), the cap check (`CapD`: absorb the 871 path digests `D`; `CapZeta`: squeeze `ζ`;
   `CapChk`: absorb `A`, 1,536 K elements; `CapChkZ`: squeeze `z`) and level 4's cap at depth 8
-  (`Seq.cap4`, lever L2; 3.x's `seq3` keeps 7); revision 4.4.2 (the reserve, D1p §3): `Lrend` 880 and
-  `Eend` 112 bytes (`Seq.lrEnd`, `Seq.eEnd`, the previous node's `evalM` claim; no item added): 8,783
-  items, `piSize` 876,176, a stream of `64 · 24,234` bytes; `4 × 8,783 + 3 ≤ qV = 36,000`.
+  (`Seq.cap4`, lever L2; 3.x's `seq3` keeps 7); revision 4.4.2 (the reserve, D1p §3; RSV2: one stacked claim): `Lrend`
+  1,008 and `Eend` 112 bytes (`Seq.lrEnd`, `Seq.eEnd`, the previous node's `evalM` claim; no item
+  added): 8,783 items, `piSize` 876,304, a stream of `64 · 24,236` bytes; `4 × 8,783 + 3 ≤ qV = 36,000`.
 -/
 
 namespace FR
@@ -69,6 +69,11 @@ def m : NodeKind → ℕ | N2 => 31 | N4 => 32 | N8 => 32
 def segSlots : NodeKind → ℕ | N2 => 2 | N4 => 4 | N8 => 8
 /-- Whether slot 1 is the previous step's node. -/
 def hasPrev : NodeKind → Bool | N2 => true | N4 => true | N8 => false
+/-- The kind's index in the reserve's stacked matrix (RSV2 §2.1: `N2`, `N4`, `N8` ↦ 0, 1, 2). -/
+def ix : NodeKind → ℕ | N2 => 0 | N4 => 1 | N8 => 2
+/-- The kinds in index order. -/
+def all : List NodeKind := [N2, N4, N8]
+theorem all_ix (κ : NodeKind) : all.getD κ.ix N2 = κ := by cases κ <;> rfl
 /-- The kind of a kind byte. -/
 def ofByte? (b : UInt8) : Option NodeKind :=
   if b = 0x4D then some N2 else if b = 0x4E then some N4 else if b = 0x4F then some N8 else none
@@ -129,8 +134,8 @@ structure Seq where
   less at level 4). Threaded into `ladderOfR`, so `seq3`'s ladder (and 3.x's `lvlStar`) is untouched. -/
   cap4 : ℕ := 7
   /-- Revision 4.4.2 (the reserve, D1p §3): `Lrend`'s absorb (`fLrEnd`; 3.x: 48 = `â_L ‖ b̂_L ‖ ĉ_L`;
-  `seq4`: 880, the previous node's `evalM` claim `r̄*_x (23) ‖ r̄*_y (25) ‖ a* ‖ b* ‖ c* ‖ kindElem*`
-  after the three values) and `Eend`'s (`fEEnd`; 3.x: 48; `seq4`: 112, `â_M ‖ b̂_M ‖ ĉ_M ‖ m̂* ‖ 0^48`).
+  `seq4`: 1,008, the previous node's stacked `evalM` claim `p_x (23) ‖ p_y (25) ‖ s (9) ‖ X₃ (3)` after
+  the three values, RSV2 §2.1) and `Eend`'s (`fEEnd`; 3.x: 48; `seq4`: 112, `â_M ‖ b̂_M ‖ ĉ_M ‖ m̂* ‖ 0^48`).
   No item or phase is added, so no Fiat–Shamir position moves. -/
   lrEnd : ℕ := 48
   eEnd : ℕ := 48
@@ -173,10 +178,10 @@ kinds' maximum; its hashed stream is a multiple of 64 bytes with 3.x's 32-byte E
 (`cap4 := 8`, PACK-4.4 §11.2 L2). -/
 def seq4 : Seq := { seqOf (SegKind.dims .L30 :: SegKind.dims .L31 :: SegKind.dims .L32 ::
     [NodeKind.dims .N2, NodeKind.dims .N4, NodeKind.dims .N8]) with
-    e4end := 32, capChk := true, cap4 := 8, lrEnd := 880, eEnd := 112 }
+    e4end := 32, capChk := true, cap4 := 8, lrEnd := 1008, eEnd := 112 }
 
 theorem seq3_eq : seq3 = ⟨32, 19, 26, 28, 15, 21, 23, 7, 32, 6, false, 7, 48, 48⟩ := by decide
-theorem seq4_eq : seq4 = ⟨32, 19, 26, 28, 17, 23, 25, 7, 32, 6, true, 8, 880, 112⟩ := by decide
+theorem seq4_eq : seq4 = ⟨32, 19, 26, 28, 17, 23, 25, 7, 32, 6, true, 8, 1008, 112⟩ := by decide
 
 /-- Every kind fits the sequence (its unused items are dummies). -/
 theorem seg_fits (κ : SegKind) : κ.dims.seq.Le seq4 := by cases κ <;> decide
@@ -427,15 +432,15 @@ theorem capChk_aligned : ((Item.absorb (dBytes seq4)).slen + Item.squeeze.slen) 
   rw [capEntries_seq4.2.1, capEntries_seq4.2.2.2]; decide
 
 theorem fieldSizesOf_seq4 : (List.range nFields4).map (fieldSizeOf seq4) = [48, 128, 2048, 1248, 32,
-    800, 1344, 816, 880, 2336, 112, 8192, 2112, 672, 49152, 4096, 487504, 237632, 27872, 49152] := by
+    800, 1344, 816, 1008, 2336, 112, 8192, 2112, 672, 49152, 4096, 487504, 237632, 27872, 49152] := by
   rw [seq4_eq]; decide +kernel
 
-theorem piSizeOf_seq4 : piSizeOf seq4 = 876176 := by rw [piSizeOf, fieldSizesOf_seq4]; rfl
+theorem piSizeOf_seq4 : piSizeOf seq4 = 876304 := by rw [piSizeOf, fieldSizesOf_seq4]; rfl
 
-theorem streamBytesOf_seq4 : streamBytesOf seq4 = 1550976 := by rw [seq4_eq]; decide +kernel
+theorem streamBytesOf_seq4 : streamBytesOf seq4 = 1551104 := by rw [seq4_eq]; decide +kernel
 
 /-- The stream is `64 · chainLen` bytes: no padding cell (as INT-2's 3.x stream). -/
-theorem chainLenOf_seq4 : chainLenOf seq4 = 24234 ∧ streamBytesOf seq4 = 64 * 24234 := by
+theorem chainLenOf_seq4 : chainLenOf seq4 = 24236 ∧ streamBytesOf seq4 = 64 * 24236 := by
   rw [chainLenOf, streamBytesOf_seq4]; decide
 
 /-! ## `qV` (B-17) -/

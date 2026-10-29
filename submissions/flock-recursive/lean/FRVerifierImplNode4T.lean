@@ -487,7 +487,7 @@ theorem tgtE_bit (t : Block.Target) (p : ℕ) :
 /-- (+/−) **The bits on `N4`**: chain 0's block 1 (counter `128`) reads `t_lo` bit 7 as `1` and
 bit 6 as `0`; chain 1's last block (final, `t = aggB 4`, odd) reads bit 0 and the final flag as
 `1`, its second-to-last block reads the flag as `0`; the tail's candidate `F_{0,1}` (final,
-`t = aggB 1 = 0x17AA80`, revision 4.4.2) reads the flag and bit 13 as `1`, bit 12 as `0`. -/
+`t = aggB 1 = 0x17AB00`, revision 4.4.2, RSV2) reads the flag and bit 13 as `1`, bit 12 as `0`. -/
 theorem nodeE4_ctrl :
     nodeE4 .N4 1 1031 = 1 ∧ nodeE4 .N4 1 1030 = 0 ∧
     nodeE4 .N4 (lastB .N4 1) 1024 = 1 ∧ nodeE4 .N4 (lastB .N4 1) 1088 = 1 ∧

@@ -36,12 +36,12 @@ def protoRowsN : ℕ := 700160
 /-- The rows prototype 1's region holds (measured by B2″: last row `686,079`). -/
 def protoRowsS : ℕ := 686080
 
-/-- The pack map's rows in a slot's own region (PACK-4.4.1 §6.1 at today's stream): arena₁ 96,936
-(`64·24,234 / 16` elements, `arN`) + the binding 85,946 (B2″: arena₂'s rows, now into the consumers'
+/-- The pack map's rows in a slot's own region (PACK-4.4.1 §6.1 at today's stream): arena₁ 96,944
+(`64·24,236 / 16` elements, `arN`) + the binding 85,946 (B2″: arena₂'s rows, now into the consumers'
 import cells) + FS links 934 + pins 8,783 + bit rows 8,320 + 372 + cap-bit kind mux 7,839 + sibling
 rows 3,484 + `input`/`stmt` 18 (`packMapN_arN`: arena₁ is `FRNodeRows4ArenaPlace.arN`, from the
 format; a literal here, so that the model's theorems do not make the kernel evaluate the format). -/
-def packMapN : ℕ := 212632
+def packMapN : ℕ := 212640
 
 /-- The pack map's arena₁ is the placed arena₁ (`arN = 4·chainLenOf seq4`): a format change fails here
 first. -/
@@ -62,7 +62,7 @@ def spareRegion : List ℕ := [221000, 400000]
 def mRowModel4 (κ : NodeKind) : ℕ :=
   (if κ.hasPrev then nodeRegion.sum + spareRegion.sum else 0) + κ.segSlots * segRegion.sum
 
-theorem regions_sum : nodeRegion.sum = 945560 ∧ segRegion.sum = 980480 ∧ spareRegion.sum = 621000 := by
+theorem regions_sum : nodeRegion.sum = 945568 ∧ segRegion.sum = 980488 ∧ spareRegion.sum = 621000 := by
   norm_num [nodeRegion, segRegion, spareRegion, protoRowsN, protoRowsS, packMapN, linkN]
 
 /-- **The M rows fit**: each region in `2^20` rows; every kind's rows in `N_M / 1.05`. -/
@@ -74,16 +74,16 @@ theorem mRows4_le :
   cases κ <;> simp only [mRowModel4, h1, h2, h3, NodeKind.hasPrev, NodeKind.segSlots, NodeKind.nM,
     NodeKind.dims] <;> decide
 
-/-- The per-kind totals: `N2` 3,527,520 of `2^22` (1.19×; 1.13× under `N_M / 1.05`), `N4` 5,488,480
-of `2^23` (1.53×; 1.46×), `N8` 7,843,840 of `2^23` (1.07×; **1.0185× under `N_M / 1.05` = 7,989,150**:
-18,164 more rows in each segment region and `N8` no longer fits). -/
-theorem mRowModel4_eq : mRowModel4 .N2 = 3527520 ∧ mRowModel4 .N4 = 5488480 ∧ mRowModel4 .N8 = 7843840 := by
+/-- The per-kind totals: `N2` 3,527,544 of `2^22` (1.19×; 1.13× under `N_M / 1.05`), `N4` 5,488,520
+of `2^23` (1.53×; 1.46×), `N8` 7,843,904 of `2^23` (1.07×; **1.0185× under `N_M / 1.05` = 7,989,150**:
+18,156 more rows in each segment region and `N8` no longer fits). -/
+theorem mRowModel4_eq : mRowModel4 .N2 = 3527544 ∧ mRowModel4 .N4 = 5488520 ∧ mRowModel4 .N8 = 7843904 := by
   obtain ⟨h1, h2, h3⟩ := regions_sum
   simp only [mRowModel4, h1, h2, h3, NodeKind.hasPrev, NodeKind.segSlots]
   decide
 
 /-- (−) Not vacuous: with the segment prototype as A2″ compiled it (791,421 rows), a segment region
-holds 1,085,821 rows (> `2^20`) and `N8`'s eight hold 8,686,568 (> `N_M / 1.05`). -/
+holds 1,085,829 rows (> `2^20`) and `N8`'s eight hold 8,686,632 (> `N_M / 1.05`). -/
 theorem mRows4_neg :
     ¬ (segRegion.sum - protoRowsS + 791421 ≤ slotM4) ∧
       ¬ (105 * (8 * (segRegion.sum - protoRowsS + 791421)) ≤ 100 * NodeKind.N8.nM) := by

@@ -16,9 +16,9 @@ a power-of-two H.
   cells; per signed child (revision 4.4.1, PACK-4.4 §11.2 lever L1), the mirror `WM` (146): only the
   two signed children have WOTS runs and mirrors.
 * **H** from block 0, used `hUsed` blocks at full occupancy. One trace of `seq4` hashes to
-  `chainLenOf seq4 = 24,234` blocks (revision 4.4.1, the (β′) cap check and level 4's cap at depth 8; revision 4.4.2, the reserve); the aggregate leaf's chain hashes `0x54 ‖ tr₁ ‖ … ‖ tr_k`:
-  `aggChainLen k = ⌈(1 + k · (streamBytesOf seq4 − 1)) / 64⌉` (`k = 2`: 48,468 with 63 bytes in
-  its last block; `k = 3`: 72,702 with 62; `k = 4`: 96,936 with 61: **not** multiples of 64 for any
+  `chainLenOf seq4 = 24,236` blocks (revision 4.4.1, the (β′) cap check and level 4's cap at depth 8; revision 4.4.2, the reserve, RSV2's stacked claim); the aggregate leaf's chain hashes `0x54 ‖ tr₁ ‖ … ‖ tr_k`:
+  `aggChainLen k = ⌈(1 + k · (streamBytesOf seq4 − 1)) / 64⌉` (`k = 2`: 48,472 with 63 bytes in
+  its last block; `k = 3`: 72,708 with 62; `k = 4`: 96,944 with 61: **not** multiples of 64 for any
   `k ∈ {2, 3, 4}`, so the last block needs the `k`-gated padding, counter and final flag; S-0′ RESULT
   I-5, R-4-m2). H holds the chain of an aggregate child of at most `maxK` segments (`N2`: 2,
   `N4`/`N8`: 4); `FRVerifier4.childOk4` is the check that refuses a larger one (R-4-m2).
@@ -73,12 +73,12 @@ def NodeKind.mSlot (κ : NodeKind) (σ : ℕ) : ℕ := κ.oneCell + (σ - 1) * s
 def NodeKind.tauCoords (κ : NodeKind) : ℕ := κ.dims.logM
 def NodeKind.sigmaCoords (κ : NodeKind) : ℕ := κ.m - 7
 
-theorem aggChainLen_eq : aggChainLen 2 = 48468 ∧ aggChainLen 4 = 96936 ∧
+theorem aggChainLen_eq : aggChainLen 2 = 48472 ∧ aggChainLen 4 = 96944 ∧
     (1 + 2 * (streamBytesOf seq4 - 1)) % 64 = 63 ∧ (1 + 4 * (streamBytesOf seq4 - 1)) % 64 = 61 := by
   simp only [aggChainLen, streamBytesOf_seq4]; decide
 
 /-- `k = 3` is unaligned too (R-4-m2). -/
-theorem aggChainLen_k3 : aggChainLen 3 = 72702 ∧ (1 + 3 * (streamBytesOf seq4 - 1)) % 64 = 62 := by
+theorem aggChainLen_k3 : aggChainLen 3 = 72708 ∧ (1 + 3 * (streamBytesOf seq4 - 1)) % 64 = 62 := by
   simp only [aggChainLen, streamBytesOf_seq4]; decide
 
 /-- `aggChainLen` is monotone: a child of `k ≤ maxK` segments has a chain no longer than H's
@@ -89,8 +89,8 @@ theorem aggChainLen_le {k k' : ℕ} (h : k ≤ k') : aggChainLen k ≤ aggChainL
 /-- H's aggregate chains are `aggChainLen maxK` blocks. -/
 theorem maxK_eq : NodeKind.N2.maxK = 2 ∧ NodeKind.N4.maxK = 4 ∧ NodeKind.N8.maxK = 4 := ⟨rfl, rfl, rfl⟩
 
-theorem hUsed_eq : NodeKind.N2.hUsed = 74007 ∧ NodeKind.N4.hUsed = 122481 ∧
-    NodeKind.N8.hUsed = 195192 := by
+theorem hUsed_eq : NodeKind.N2.hUsed = 74013 ∧ NodeKind.N4.hUsed = 122491 ∧
+    NodeKind.N8.hUsed = 195208 := by
   simp only [NodeKind.hUsed, NodeKind.vslots, NodeKind.hasPrev, NodeKind.segSlots, chainLenOf_seq4.1,
     aggChainLen_eq.1, aggChainLen_eq.2.1, wotsSlot4, wmSlot4]; decide
 
@@ -127,12 +127,12 @@ def hUsedN8At (sb wm : ℕ) : ℕ := 2 * ((1 + 4 * (sb - 1) + 63) / 64) + 3 * 8 
 
 /-- **Both levers are needed** (PACK-4.4 §11.2, PB-m5): (+) with L1 (2 mirror sub-regions) and L2
 (`seq4`'s stream) `N8`'s L fits before M; (−) without L1 (8 sub-regions, one per verifier slot) it
-does not, nor (−) without L2 (the (β′) stream at level 4's cap depth 7: 1,556,928 bytes with the reserve). -/
+does not, nor (−) without L2 (the (β′) stream at level 4's cap depth 7: 1,557,056 bytes with RSV2's reserve). -/
 theorem regions_need_levers :
     hUsedN8At (streamBytesOf seq4) 2 = NodeKind.N8.hUsed ∧
     (hUsedN8At (streamBytesOf seq4) 2 + 255) / 256 * 256 + 1024 ≤ NodeKind.N8.mBase ∧
     ¬ (hUsedN8At (streamBytesOf seq4) 8 + 255) / 256 * 256 + 1024 ≤ NodeKind.N8.mBase ∧
-    ¬ (hUsedN8At 1556928 2 + 255) / 256 * 256 + 1024 ≤ NodeKind.N8.mBase := by
+    ¬ (hUsedN8At 1557056 2 + 255) / 256 * 256 + 1024 ≤ NodeKind.N8.mBase := by
   rw [hUsed_eq.2.2, streamBytesOf_seq4]; decide
 
 /-- Negative (why `N2` is `m = 31` and `N8` cannot be `m = 31`): `N8`'s H alone exceeds `2^17`

@@ -46,29 +46,32 @@ def kvOf (m : ℕ) (node : Bool) (fams e4s : List ℕ) (e4 : ℕ) : KV :=
 no reserve). -/
 def segFinP (κ : SegKind) : FinP :=
   ⟨seq4, kvOf κ.m false segFams [seq4.e4] seq4.e4, seq4.lr, seq4.e2, seq4.e4, segFams, [seq4.e4], [],
-    seq4.mStar - 7, true, true, 0, segFams, false, false, [], 0⟩
+    seq4.mStar - 7, true, true, 0, segFams, false, false, [], 0, 0⟩
 
-/-- **The reserve's public cells of slot 0, M-relative** (revision 4.4.2, D1p §3; prototype 0's
-compile, read off `nodedump4`'s `mregs-p0.txt`, `logs/RSV/nodedump/`): the single import cells of the
-slot program's registers E2's 23 challenges, E4's 25, its own `evalM`'s three outputs, its kind
-element (`hdr[0…16)`, the seed's `piElem 0 0`). Regenerated with the prototypes (as
-`FRNodeRows4Hint`; B2′'s templates move them). -/
+/-- **The reserve's public cells of slot 0, M-relative** (revision 4.4.2; RSV2 §4.3; prototype 0's
+compile, read off `nodedump4`'s `mregs-p0.txt`, `logs/RSV2/nodedump/`): the single cells of the slot
+program's stacked `evalM` call (`rsvEOps`): its row point's entries 0 … 22 (the E2 challenges `0 … 21`,
+entry 22 the kind-muxed entry kept in one cell), its column point's 0 … 24 (the E4 challenges, entry
+24 likewise), the nine coefficients `s^P` (one cell each), and its three outputs. Regenerated with the
+prototypes (as `FRNodeRows4Hint`); `logs/RSV2/rsvcells.py` checks that each register is exactly one
+cell. -/
 def rsvRel : List ℕ :=
   [1318, 1329, 1340, 1351, 1362, 1373, 1384, 1395, 1406, 1417, 1428, 1439, 1450, 1461, 1472, 1483,
-   1494, 1505, 1516, 1527, 1538, 1549, 1560,
+   1494, 1505, 1516, 1527, 1538, 1549, 116596,
    1579, 1589, 1599, 1609, 1619, 1629, 1639, 1649, 1659, 1669, 1679, 1689, 1699, 1709, 1719, 1729,
-   1739, 1749, 1759, 1769, 1779, 1789, 1799, 1809, 1819,
-   116490, 116491, 116492, 6]
+   1739, 1749, 1759, 1769, 1779, 1789, 1799, 1809, 116600,
+   116584, 116585, 116586, 116587, 116588, 116589, 116590, 116591, 116592,
+   116601, 116602, 116603]
 
 /-- **A node's reserve cells** (absolute: M's `one` cell `3·2^logM` plus the relative cell; slot 0
 is the previous node's): none without a previous node (`N8`). -/
 def rsvCells (κ : NodeKind) : List ℕ := if κ.hasPrev then rsvRel.map (3 * 2 ^ κ.dims.logM + ·) else []
 
 /-- **A node's** (`cells`: its public cells, S-E12′'s layout; the node group's counts; revision 4.4.2:
-the reserve's ops for every node kind, on for a kind with a previous node, its 52 cells). -/
+the reserve's ops for every node kind, on for a kind with a previous node, its 60 cells, RSV2). -/
 def nodeFinP (κ : NodeKind) (cells : List ℕ) : FinP :=
   ⟨seq4, kvOf κ.m true nodeFams nodeE4s (κ.m - 7), κ.dims.logL, κ.dims.logM, κ.m - 7, nodeFams, nodeE4s,
-    cells, seq4.mStar - 7, false, true, cells.length, nodeFams, true, κ.hasPrev, rsvCells κ, 52⟩
+    cells, seq4.mStar - 7, false, true, cells.length, nodeFams, true, κ.hasPrev, rsvCells κ, rsvN, κ.ix⟩
 
 /-- **The segment program.** -/
 def progSeg (κ : SegKind) : VProg := genSeg κ (finOps4 (segFinP κ))

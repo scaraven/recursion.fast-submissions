@@ -34,12 +34,12 @@ open RecursionFast Circ TEval
 
 /-! ## The addresses (M-relative, in a slot's own region) -/
 
-/-- Arena₁'s elements: the segment's H chain, four a block (`4·chainLenOf seq4`: 96,936 at RSV-V's
+/-- Arena₁'s elements: the segment's H chain, four a block (`4·chainLenOf seq4`: 96,944 at RSV2's
 `|π|`; taken from the format, so that a format change moves it without a proof change). -/
 def arN : ℕ := 4 * chainLenOf seq4
 /-- `arN` at today's format (one rewrite: a proof that compares `arN` inside arithmetic makes the kernel
 evaluate `chainLenOf seq4`, ≈ 2.4 s each). -/
-theorem arN_eq : arN = 96936 := by rw [arN, chainLenOf_seq4.1]
+theorem arN_eq : arN = 96944 := by rw [arN, chainLenOf_seq4.1]
 
 /-- Arena₁'s first cell: above the skeleton's 277,102 cells (both prototypes), with a margin of 13.7 k
 cells below and 16.6 k above the bits (`logs/B2pp/arenafit.log`). -/

@@ -297,7 +297,7 @@ theorem map_at_gFinRS : (gFinRS P fi b Q).1.map (Op.at h false ι) = (gFinRS P f
 theorem map_at_gFinE (hck : P.ck = true) :
     (gFinE P fi b Q).1.map (Op.at h false ι) = (gFinE P fi b (finAt Q ι)).1 := by
   cases hr : P.rsvOps <;>
-    simp only [gFinE, gFinE0, rsvEOps, hr, hck, Bool.cond_true, Bool.cond_false, List.map_append,
+    simp only [gFinE, gFinE0, rsvEOps, rsvSOps, hr, hck, Bool.cond_true, Bool.cond_false, List.map_append,
       List.map_cons, List.map_nil, List.map_map] <;> rfl
 
 theorem gFinE_ex (Q' : Kind → FinP) : (gFinE P fi b Q).2 = (gFinE P fi b Q').2 := by
@@ -432,7 +432,7 @@ theorem finOps4_counts {P P' : FinP} (hc : SameCounts P P') (Q : Kind → FinP) 
   have hT : gFinPTop P = gFinPTop P' := by funext fi b; simp only [gFinPTop, hS]
   have hP : gFinP P = gFinP P' := by funext i; simp only [gFinP, hT]
   simp only [finOps4, finalsOf, gFinRS, gRsTail, gFinZ, gFinLc, gLcHead, gFinSh, gShCore, gBndOps, gPadB,
-    gFinLr, gFinE, gFinE0, rsvEOps, gFinB', hP, gFinPf, gPfPts, pfCand, pfCandA, hS, hf, he, hn, hv, hk, hl, ht,
+    gFinLr, gFinE, gFinE0, rsvEOps, rsvSOps, gFinB', hP, gFinPf, gPfPts, pfCand, pfCandA, hS, hf, he, hn, hv, hk, hl, ht,
     hr, hrc]
 
 /-- **A kind's own tables, read at any index, are its tables** (constant tables). -/
