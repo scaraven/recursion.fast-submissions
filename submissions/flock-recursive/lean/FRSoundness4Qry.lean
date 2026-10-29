@@ -210,7 +210,7 @@ theorem noAsk_ops (fin : Finals) (h : ∀ f ∈ fin.finRS :: fin.rest, ∀ fi b,
 /-- **The relocated finals ask nothing.** -/
 theorem noAsk_finOps4 (P : FinP) (outs : Array (List Reg)) (b : ℕ) :
     (finOps4 P outs b).filterMap Op.item? = [] := by
-  rw [finOps4, List.filterMap_map]
+  rw [finOps4_def, List.filterMap_map]
   have : (Op.item? ∘ reloc P.S) = Op.item? := funext fun op => item_reloc P.S op
   rw [this, List.filterMap_append, noAsk_ops _ (noAsk_finalsOf P) outs b, noAsk_capChkOps]; rfl
 

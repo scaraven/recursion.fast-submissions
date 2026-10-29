@@ -396,7 +396,7 @@ theorem forall₂_self {R : FinField → FinField → Prop} : ∀ {l : List FinF
 theorem map_at_finOps4 {h : Reg → Op} (hh : ∀ s, (h s).outs = 1) (ι : Kind) (P : FinP) (Q : Kind → FinP)
     (hck : P.ck = true) (hr : ∀ s, reloc P.S (h s) = h s) (outs : Array (List Reg)) (b : ℕ) :
     (finOps4 P outs b Q).map (Op.at h false ι) = finOps4 P outs b (finAt Q ι) := by
-  simp only [finOps4, List.map_map]
+  simp only [finOps4_def, List.map_map]
   have e : (Op.at h false ι ∘ reloc P.S) = (reloc P.S ∘ Op.at h false ι) :=
     funext (reloc_at false ι P.S hr)
   rw [e, ← List.map_map]

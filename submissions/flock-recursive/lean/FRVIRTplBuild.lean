@@ -457,6 +457,15 @@ def RP.rows (one : Lin) : RP → List (ℕ × Row)
   | .sp rs => rs
   | .raw T ins X cb _ _ _ => instIR T one ins.toList X cb
 
+/-- `instIR` with the inputs in an array (constant-time lookups; `instIRA_eq`; INIT: the
+unaligned tails' rows at plan init). -/
+def instIRA (T : List RowT) (one : Lin) (ins : Array Lin) (X cb : ℕ) : List (ℕ × Row) :=
+  T.zipIdx.map fun p => (X + p.2, instRowA one ins cb p.1)
+
+theorem instIRA_eq (T : List RowT) (one : Lin) (ins : List Lin) (X cb : ℕ) :
+    instIRA T one ins.toArray X cb = instIR T one ins X cb := by
+  simp only [instIRA, instIR, instRowA_eq]
+
 /-- A raw instance if aligned (`RawI.aligned`), else its rows. -/
 def mkRaw (one : Lin) (T : List RowT) (ins : Array Lin) (X cb A B : ℕ) (h : UInt64) : RP :=
   if X % 2 ^ A == 0 && cb % 2 ^ B == 0 && decide (A ≤ 21) && decide (B ≤ 23) then
@@ -611,7 +620,7 @@ def tinRPu (one : Lin) (Ms : List KM) (L : TLay) (off : ℕ) (t : TKey × ℕ ×
     match blkSize t.1 e.rb with
     | some S =>
       blkRPs one ia cb X S 0 e.blks ++
-      [RP.sp (instIR (e.rows.drop (S * e.blks.length)) one t.2.2 (X + S * e.blks.length) cb)]
+      [RP.sp (instIRA (e.rows.drop (S * e.blks.length)) one ia (X + S * e.blks.length) cb)]
     | none => [mkRaw one e.rows ia X cb e.rb bb e.h]
 
 /-- **A template instance's proto-pieces**: a packed key's as its member's (`tinRPp`), any other's
@@ -723,7 +732,9 @@ def inputKindsF (mem : Array (ℕ × RawI)) (part : Bool := true) :
   let n := mem.foldl (fun m p => max m p.2.ins.size) 0
   let n0 := mem.foldl (fun c p => if p.1 == 0 then c + 1 else c) 0
   let n1 := mem.foldl (fun c p => if p.1 == 1 then c + 1 else c) 0
-  let r := (List.range n).foldl (fun (q : Array IK × List (ℕ × List Lin × List Lin) × ℕ) i =>
+  -- the shared inputs accumulate reversed, with their count (INIT: `q ++ [_]` and `length` per input
+  -- were quadratic in a group's inputs); the result is the same
+  let r := (List.range n).foldl (fun (q : Array IK × List (ℕ × List Lin × List Lin) × ℕ × ℕ) i =>
     let lc := match mem[0]? with
       | some p0 => match offIn p0.2.cb (2 ^ p0.2.B) (p0.2.ins.getD i []) with
         | some c => if mem.all (fun p => offIn p.2.cb (2 ^ p.2.B) (p.2.ins.getD i []) == some c) then some c
@@ -731,17 +742,17 @@ def inputKindsF (mem : Array (ℕ × RawI)) (part : Bool := true) :
         | none => none
       | none => none
     match lc with
-    | some c => (q.1.push (IK.loc c), q.2.1, q.2.2)
+    | some c => (q.1.push (IK.loc c), q.2.1, q.2.2.1, q.2.2.2)
     | none =>
       match (if part then distinctIn mem 0 i else none), distinctIn mem 1 i with
       | some d0, some d1 =>
         if (d0.length ≤ 1 && d1.length ≤ 1) || (4 * d0.length ≤ n0 && 4 * d1.length ≤ n1) then
-          (q.1.push (IK.sh q.2.1.length), q.2.1 ++ [(i, d0, d1)], q.2.2)
-        else (q.1.push (IK.own q.2.2), q.2.1, q.2.2 + 1)
-      | _, _ => (q.1.push (IK.own q.2.2), q.2.1, q.2.2 + 1)) ((#[] : Array IK), [], 0)
+          (q.1.push (IK.sh q.2.2.2), (i, d0, d1) :: q.2.1, q.2.2.1, q.2.2.2 + 1)
+        else (q.1.push (IK.own q.2.2.1), q.2.1, q.2.2.1 + 1, q.2.2.2)
+      | _, _ => (q.1.push (IK.own q.2.2.1), q.2.1, q.2.2.1 + 1, q.2.2.2)) ((#[] : Array IK), [], 0, 0)
   (r.1.map fun k => match k with
-    | .own i => IK.own (r.2.1.length + i)
-    | k => k, r.2.1)
+    | .own i => IK.own (r.2.2.2 + i)
+    | k => k, r.2.1.reverse)
 
 /-- The input numbers in own order (`ownOf`'s, once per group). -/
 def ownIdx (ks : Array IK) : List ℕ :=
@@ -1376,7 +1387,7 @@ theorem tinRPu_rows (one : Lin) (ks : List TKey) (L : TLay) (off : ℕ) (t : TKe
   have hA : ∀ r, instRowA one t.2.2.toArray (L.cb t.1 t.2.1) r = instRow one t.2.2 (L.cb t.1 t.2.1) r :=
     instRowA_eq one t.2.2 _
   unfold tinRPu tinIRows
-  simp only [kmOf_map, hA, mkKM_sp]
+  simp only [kmOf_map, hA, mkKM_sp, instIRA_eq]
   cases hs : splitOf t.1 with
   | some ab =>
     obtain ⟨a, b⟩ := ab

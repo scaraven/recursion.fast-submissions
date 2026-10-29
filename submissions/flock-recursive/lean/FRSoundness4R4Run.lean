@@ -207,7 +207,7 @@ theorem opsOfFields_snoc (R : Seq) (fin : Finals) (g : FinField)
 theorem finOps4_eq (P : FinP) : finOps4 P =
     opsOfFields (relocFin P.S (finalsOf P)).finRS ((relocFin P.S (finalsOf P)).rest ++ [capF P.S]) := by
   funext outs b
-  rw [opsOfFields_snoc P.S (finalsOf P) (capF P.S) (fun _ _ _ _ _ _ => rfl)]
+  rw [opsOfFields_snoc P.S (finalsOf P) (capF P.S) (fun _ _ _ _ _ _ => rfl), finOps4_def]
   show List.map _ (_ ++ _) = _
   rw [List.map_append]
   rfl

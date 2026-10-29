@@ -763,6 +763,24 @@ theorem item_reloc (S : Seq) (op : Op) : (reloc S op).item? = op.item? := by
 theorem opsOut_reloc (S : Seq) (ops : List Op) : opsOut (ops.map (reloc S)) = opsOut ops := by
   simp only [opsOut, List.map_map, Function.comp_def, outs_reloc]
 
+/-- The field offsets of `S`, once. -/
+def fieldOffT (S : Seq) : Array ℕ := ((List.range 19).map (fieldOffOf S)).toArray
+
+theorem fieldOffT_get (S : Seq) {f : ℕ} (hf : f < 19) : (fieldOffT S).getD f 0 = fieldOffOf S f := by
+  simp [fieldOffT, Array.getD_eq_getD_getElem?, hf]
+
+/-- **`reloc` by the offset table** (`relocT_eq`). -/
+def relocT (_S : Seq) (tab : Array ℕ) : Op → Op
+  | .piField f o len => if f < 19 then .piField 0 (tab.getD f 0 + o) len else .piField f o len
+  | .piElem f o => if f < 19 then .piElem 0 (tab.getD f 0 + o) else .piElem f o
+  | .piElemK f o => if f < 19 then .piElemK 0 (tab.getD f 0 + o) else .piElemK f o
+  | .piDigest f o => if f < 19 then .piDigest 0 (tab.getD f 0 + o) else .piDigest f o
+  | .piDigestAt f o k => if f < 19 then .piDigestAt 0 (tab.getD f 0 + o) k else .piDigestAt f o k
+  | op => op
+
+theorem relocT_eq (S : Seq) : relocT S (fieldOffT S) = reloc S := funext fun op => by
+  cases op <;> simp only [relocT, reloc] <;> split_ifs with h <;> first | rfl | simp [fieldOffT_get S h]
+
 theorem exec_reloc_seq3 (impl : OpImpl) (κ : Kind) (inp : Input) :
     ∀ (ops : List Op) (s : St) (tr : Trace),
       exec impl κ inp (ops.map (reloc seq3)) s tr = exec impl κ inp ops s tr
@@ -917,14 +935,24 @@ theorem capChkOps_head (outs : Array (List Reg)) (b : ℕ) : capMax seq4 = 9 ∧
 /-- **The relocated finals** (`FRVIR4.gen4`'s `fin`; a group program's with `Q`); revision 4.4.1:
 then the cap check. -/
 def finOps4 (P : FinP) (outs : Array (List Reg)) (b : ℕ) (Q : Kind → FinP := fun _ => P) : List Op :=
+  -- `reloc P.S` by its offset table (`relocT_eq`), so that the compiled programs compute each field's
+  -- offset once, not once per op (INIT: ≈ 0.6 s of the badge's start-up); `finOps4_def`
   ((finalsOf P Q).ops outs b ++ capChkOps P.S outs (b + opsOut ((finalsOf P Q).ops outs b))).map
-    (reloc P.S)
+    (relocT P.S (fieldOffT P.S))
+
+/-- **`finOps4` is the finals, then the cap check, relocated** (`reloc`). -/
+theorem finOps4_def (P : FinP) (outs : Array (List Reg)) (b : ℕ) (Q : Kind → FinP) :
+    finOps4 P outs b Q =
+      ((finalsOf P Q).ops outs b ++ capChkOps P.S outs (b + opsOut ((finalsOf P Q).ops outs b))).map
+        (reloc P.S) := by
+  rw [finOps4, relocT_eq]
 
 /-- **At 3.x's parameters the relocated finals run exactly as today's.** -/
 theorem finOps4_seq3 (impl : OpImpl) (κ : Kind) (inp : Input) (outs : Array (List Reg)) (b : ℕ)
     (s : St) (tr : Trace) :
     exec impl κ inp (finOps4 fin3P outs b) s tr = exec impl κ inp ((sfFinals finP finPf).ops outs b) s tr := by
   have h : capChkOps fin3P.S outs (b + opsOut ((finalsOf fin3P).ops outs b)) = [] := capChkOps_off _ _
+  rw [finOps4_def]
   show exec impl κ inp (((finalsOf fin3P).ops outs b ++ _).map (reloc seq3)) s tr = _
   rw [h, List.append_nil, exec_reloc_seq3, finalsOf_seq3]
 

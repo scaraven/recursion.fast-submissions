@@ -53,7 +53,9 @@ def segGrp : Grp := fun ι => .ofSeg (segAt ι)
 
 /-- **A kind table, evaluated once** (its three values computed before the closure is built, so that
 an op's table costs a `match`, not a recomputation; `kt_eq`). -/
-def kt {α : Type} (f : Kind → α) : Kind → α :=
+-- `noinline` (INIT): inlined, the compiler floats each `let` into its `match` branch, so every
+-- application recomputed `f ι` (`S.lvK` per position op at the plan's compile)
+@[noinline] def kt {α : Type} (f : Kind → α) : Kind → α :=
   let a := f .L32; let b := f .P30; let c := f .N30
   fun ι => match ι with | .L32 => a | .P30 => b | .N30 => c
 
@@ -148,10 +150,10 @@ def genPhaseG (S : Seq) (G : Grp) (n : ℕ) (ph : String × Sh) (c : GCtx) : Lis
   | .queries i =>
     let L := S.lv i
     let K := kt fun ι => S.lvK (G ι).d.m i
-    let co := o fCols; let so := o fSibs
+    let co := o fCols; let so := o fSibs; let dO := dOff4 S i
     let pw := posW4 S i
     let ops := [.packK c.foldR, .eqTableK b] ++ (List.range L.t).flatMap fun q =>
-      posOpsG L K i co so (dOff4 S i) c.posAns (b + 1) q (b + 2 + pw * q)
+      posOpsG L K i co so dO c.posAns (b + 1) q (b + 2 + pw * q)
     rec_ ops c.st ((List.range L.t).map fun q => b + 2 + pw * q + 3)
 
 /-- The phases from number `n`. -/
@@ -171,24 +173,6 @@ mode (the selector picks the kind). -/
 def gen4G (S : Seq) (G : Grp) (fin : FinOps) : VProg :=
   ⟨.mux, (skeletonG S G).1 ++ fin (skeletonG S G).2.outs (skeletonG S G).2.next ++ [.accept]⟩
 
-/-- The field offsets of `S`, once. -/
-def fieldOffT (S : Seq) : Array ℕ := ((List.range 19).map (fieldOffOf S)).toArray
-
-theorem fieldOffT_get (S : Seq) {f : ℕ} (hf : f < 19) : (fieldOffT S).getD f 0 = fieldOffOf S f := by
-  simp [fieldOffT, Array.getD_eq_getD_getElem?, hf]
-
-/-- **`reloc` by the offset table** (`relocT_eq`). -/
-def relocT (_S : Seq) (tab : Array ℕ) : Op → Op
-  | .piField f o len => if f < 19 then .piField 0 (tab.getD f 0 + o) len else .piField f o len
-  | .piElem f o => if f < 19 then .piElem 0 (tab.getD f 0 + o) else .piElem f o
-  | .piElemK f o => if f < 19 then .piElemK 0 (tab.getD f 0 + o) else .piElemK f o
-  | .piDigest f o => if f < 19 then .piDigest 0 (tab.getD f 0 + o) else .piDigest f o
-  | .piDigestAt f o k => if f < 19 then .piDigestAt 0 (tab.getD f 0 + o) k else .piDigestAt f o k
-  | op => op
-
-theorem relocT_eq (S : Seq) : relocT S (fieldOffT S) = reloc S := funext fun op => by
-  cases op <;> simp only [relocT, reloc] <;> split_ifs with h <;> first | rfl | simp [fieldOffT_get S h]
-
 /-- **`finOps4` with the table relocation** (`finOps4F_eq`). -/
 def finOps4F (P : FinP) (Q : Kind → FinP) : FinOps := fun outs b =>
   let tab := fieldOffT P.S
@@ -197,7 +181,7 @@ def finOps4F (P : FinP) (Q : Kind → FinP) : FinOps := fun outs b =>
 
 theorem finOps4F_eq (P : FinP) (Q : Kind → FinP) (outs : Array (List Reg)) (b : ℕ) :
     finOps4F P Q outs b = finOps4 P outs b Q := by
-  simp only [finOps4F, finOps4, relocT_eq]
+  simp only [finOps4F, finOps4]
 
 /-- **The node group's finals' parameters** (revision 4.3): index `ι`'s are its kind's, with its
 cells (`cells`: each node kind's public cells). -/

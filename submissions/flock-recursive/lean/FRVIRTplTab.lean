@@ -59,14 +59,19 @@ theorem getD_map_ev (l : List LinT) (i : ℕ) :
   rw [List.getD_eq_getElem?_getD, List.getD_eq_getElem?_getD, List.getElem?_map]
   cases l[i]? <;> rfl
 
-/-- **`eqTable` over forms**: per coordinate (the last first), one product per entry. -/
+/-- **`eqTable` over forms**: per coordinate (the last first), one product per entry (the previous
+table's entries read from an array: `List.getD` per entry was quadratic in the table, INIT). -/
 def eqTblG : List LinT → ℕ → List Gate × List LinT
   | [], _ => ([], [C 1])
   | c :: cs, k =>
     let r := eqTblG cs k
     let k' := k + nlocs r.1
-    (r.1 ++ mulsG r.2.length (fun i => r.2.getD i []) (fun _ => c),
-     (List.range r.2.length).flatMap fun i => [r.2.getD i [] ++ sc (-1) (L (k' + i)), L (k' + i)])
+    let a := r.2.toArray
+    (r.1 ++ mulsG r.2.length (fun i => a.getD i []) (fun _ => c),
+     (List.range r.2.length).flatMap fun i => [a.getD i [] ++ sc (-1) (L (k' + i)), L (k' + i)])
+
+theorem toArray_getD {α : Type*} (l : List α) (i : ℕ) (d : α) : l.toArray.getD i d = l.getD i d := by
+  simp [Array.getD_eq_getD_getElem?, List.getD_eq_getElem?_getD]
 
 theorem eqTblG_nlocs : ∀ (cs : List LinT) (k : ℕ), nlocs (eqTblG cs k).1 + 1 = 2 ^ cs.length ∧
     (eqTblG cs k).2.length = 2 ^ cs.length
@@ -75,20 +80,20 @@ theorem eqTblG_nlocs : ∀ (cs : List LinT) (k : ℕ), nlocs (eqTblG cs k).1 + 1
     obtain ⟨h1, h2⟩ := eqTblG_nlocs cs k
     have hm := mulsG_nlocs (eqTblG cs k).2.length (fun i => (eqTblG cs k).2.getD i []) (fun _ => c)
     refine ⟨?_, ?_⟩
-    · simp only [eqTblG, nlocs, List.map_append, List.sum_append] at h1 hm ⊢
+    · simp only [eqTblG, toArray_getD, nlocs, List.map_append, List.sum_append] at h1 hm ⊢
       rw [hm, h2, List.length_cons, pow_succ]; omega
-    · simp only [eqTblG]
+    · simp only [eqTblG, toArray_getD]
       rw [length_flatMap_two, List.length_range, h2, List.length_cons, pow_succ]; ring
 
 theorem eqTblG_ev (h1 : e.one = 1) : ∀ (cs : List LinT) (k : ℕ), Eqns e (eqTblG cs k).1 k →
     (eqTblG cs k).2.map (LinT.ev e) = (eqTable (cs.map (LinT.ev e))).toList
   | [], _, _ => by simp [eqTblG, eqTable, h1]
   | c :: cs, k, h => by
-    simp only [eqTblG, Eqns.append] at h
+    simp only [eqTblG, toArray_getD, Eqns.append] at h
     have ih := eqTblG_ev h1 cs k h.1
     have hm := mulsG_eqns h.2
     rw [List.map_cons, eqTable_toList_cons, ← ih, flatMap_range_getD, List.length_map]
-    simp only [eqTblG, List.map_flatMap]
+    simp only [eqTblG, toArray_getD, List.map_flatMap]
     refine List.flatMap_congr fun i hi => ?_
     have hi := List.mem_range.1 hi
     rw [← getD_map_ev]

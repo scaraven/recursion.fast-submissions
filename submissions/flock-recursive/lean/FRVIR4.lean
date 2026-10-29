@@ -210,10 +210,13 @@ def genPhase4 (S : Seq) (p : KindP) (n : ℕ) (ph : String × Sh) (c : GCtx) : L
       (cl :: rs ++ [if k = 0 then cl else b' + w * k - 1])
     (ops, if inK then { c' with foldR := rs } else c')
   | .queries i =>
+    -- the offsets once per phase, not per position (INIT: the programs' compile at start-up)
     let L := S.lv i
+    let co := o fCols; let so := o fSibs; let dO := dOff4 S i
+    let pw := posW4 S i
     let ops := [.packK c.foldR, .eqTableK b] ++ (List.range L.t).flatMap fun q =>
-      posOps4 S p i (o fCols) (o fSibs) (dOff4 S i) c.posAns (b + 1) q (b + 2 + posW4 S i * q)
-    rec_ ops c.st ((List.range L.t).map fun q => b + 2 + posW4 S i * q + 3)
+      posOps4 S p i co so dO c.posAns (b + 1) q (b + 2 + pw * q)
+    rec_ ops c.st ((List.range L.t).map fun q => b + 2 + pw * q + 3)
 
 /-- The phases from number `n`. -/
 def genPhases4 (S : Seq) (p : KindP) : List (String × Sh) → ℕ → GCtx → List Op × GCtx

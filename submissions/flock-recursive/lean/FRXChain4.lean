@@ -74,20 +74,27 @@ theorem stateIn_fsQ4 (S : Seq) (vk c : Digest) (π : Proof) {p : ℕ} (hp : 0 < 
 
 /-! ## The table -/
 
-/-- One table entry: `tl`, the tape offset of the message, the tag word, `0`. -/
-def tabEnt4 (S : Seq) (p : ℕ) : List Word :=
-  match (fsMsgs4 S).getD p none with
+/-- One table entry of the message list `ms`: `tl`, the tape offset of the message, the tag word, `0`. -/
+def tabEntM (ms : List (Option (ℕ × ℕ))) (p : ℕ) : List Word :=
+  match ms.getD p none with
   | some (o, len) => [toWord (40 + len), toWord (5 + o / 8), tagAbsW, 0]
   | none => [toWord 40, 0, tagSqzW, 0]
 
-/-- **The table** of `S`: entries `0 … N`. -/
-def chTab4 (S : Seq) (N : ℕ) : List Word := (List.range (N + 1)).flatMap (tabEnt4 S)
+/-- One table entry of `S` (`tabEntM` at `fsMsgs4 S`). -/
+def tabEnt4 (S : Seq) (p : ℕ) : List Word := tabEntM (fsMsgs4 S) p
+
+/-- **The table** of `S`: entries `0 … N` (`= (List.range (N + 1)).flatMap (tabEnt4 S)`, `chTab4_eq`;
+written with `fsMsgs4 S` outside the entries so the compiled table computes it once: INIT, 7 s of
+the badge's start-up). -/
+def chTab4 (S : Seq) (N : ℕ) : List Word := (List.range (N + 1)).flatMap (tabEntM (fsMsgs4 S))
+
+theorem chTab4_eq (S : Seq) (N : ℕ) : chTab4 S N = (List.range (N + 1)).flatMap (tabEnt4 S) := rfl
 
 theorem tabEnt4_length (S : Seq) (p : ℕ) : (tabEnt4 S p).length = 4 := by
-  unfold tabEnt4; split <;> rfl
+  unfold tabEnt4 tabEntM; split <;> rfl
 
 theorem chTab4_length (S : Seq) (N : ℕ) : (chTab4 S N).length = 4 * (N + 1) := by
-  rw [chTab4, List.length_flatMap]
+  rw [chTab4_eq, List.length_flatMap]
   simp only [tabEnt4_length, List.map_const', List.length_range, List.sum_replicate, smul_eq_mul]
   ring
 
@@ -112,7 +119,7 @@ theorem tabW_chTab4 (S : Seq) (N : ℕ) (vk c : Digest) (π : Proof) (L : Log) (
     (hA : (fsMsgs4 S).all (msgOkB π.size) = true) :
     TabW (extractorInput c π L).toArray (fsQ4 S vk c π) N (chTab4 S N) := by
   refine ⟨chTab4_length S N, fun p hp0 hpN => ⟨?_, fun hpN' st => ?_⟩⟩
-  · rw [chTab4_getD S hpN (by norm_num), tabEnt4]
+  · rw [chTab4_getD S hpN (by norm_num), tabEnt4, tabEntM]
     split
     · next o len h =>
       have := msgOkB_of hA h
@@ -124,7 +131,7 @@ theorem tabW_chTab4 (S : Seq) (N : ℕ) (vk c : Digest) (π : Proof) (L : Log) (
     have e2 := chTab4_getD S hpN (k := 2) (by norm_num)
     rw [Nat.add_zero] at e0
     rw [e0, e1, e2]
-    unfold fsQ4 tabEnt4
+    unfold fsQ4 tabEnt4 tabEntM
     split
     · next o len h =>
       obtain ⟨ho, hl, hol⟩ := msgOkB_of hA h
@@ -281,7 +288,7 @@ theorem fsQ4_ctl (vk c : Digest) (π : Proof) (st : Digest) :
 /-- (value) **The table's entry for `cap₀`**: the query length `40 + 16,384`, the tape word
 `5 + 20,896/8`, the absorb tag. -/
 theorem tabEnt4_ctl : tabEnt4 seq4 2 = [toWord (40 + 16384), toWord (5 + 20896 / 8), tagAbsW, 0] := by
-  unfold tabEnt4; simp only [fsMsgs4_ctl]
+  unfold tabEnt4 tabEntM; simp only [fsMsgs4_ctl]
 
 /-- (value/−) **The P1 challenges' words** per level; they differ between levels. -/
 theorem cbS4_ctl : (List.range 5).map cbS4 = [ansB + 1332, ansB + 1504, ansB + 1612, ansB + 1708,
