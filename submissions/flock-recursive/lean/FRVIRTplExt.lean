@@ -7,6 +7,7 @@ import FRVIRCompileSound
 import FRVIRTplMask
 import FRVIRTplWalk
 import FRVIRTplMaskN
+import FRVIRTplKMux
 
 /-!
 # `compileT`: the compiler with the replay templates, and `compileT_sound`
@@ -61,6 +62,8 @@ def tplOf : TKey → Tpl
   | .walkAB n m => tplWalkOf n m
   | .shiftSeg n m => tplShiftSeg n m
   | .maskN n m ks => tplMaskN n m ks
+  | .tensorWK ns => tplTensorWK ns
+  | .eqPtK ps => tplEqPtK ps
   | _ => ⟨[], []⟩
 
 /-! ## The walk template's rows and sizes, computed once (S-E11: plan time) -/
@@ -510,11 +513,16 @@ def keyCounts (tins : List (TKey × ℕ × List Lin)) : List (TKey × ℕ) :=
   tins.reverse.foldl (fun acc t => if acc.any (·.1 == t.1) then
     acc.map fun p => if p.1 == t.1 then (p.1, p.2 + 1) else p else acc ++ [(t.1, 1)]) []
 
+/-- `tplTensorWK ns`'s locals (`5·Σ ns` for the kinds' sub-templates, `2·|ns|` mux products;
+`tplTensorWK_nlocs`): `j`'s 20 bits are read into the cells after them. -/
+def twkLocs (ns : List ℕ) : ℕ := 5 * ns.sum + 2 * ns.length
+
 /-- A key's cell region bits: its template's locals and, for `dotKF`, the column cells after them. -/
 def cregion (k : TKey) : ℕ :=
   match k with
   | .dotKF n => max (tplOf k).cbits (Nat.size (3 * n + 1))
   | .tensorW n => max (tplOf k).cbits (Nat.size (5 * n + logNMax))
+  | .tensorWK ns => max (tplOf k).cbits (Nat.size (twkLocs ns + logNMax))
   | _ => tCbits k
 
 /-- The walk's blocks (`G` gadgets at a `2^gBits` stride): its rows and cells are aligned to the

@@ -140,6 +140,10 @@ structure Out where
   tin : Option (Tpl.TKey × List Lin) := none
   /-- Auxiliary imports (S-E3): cells, the register they are read off, the reading. -/
   aux : List (List Lin × ℕ × Tpl.AuxK) := []
+  /-- **Per-kind slots** of the op's first result (S-E12f): at kind `κ` the result is represented
+  by `kin κ` (a value whose type depends on the kind: the slot is then `none`). Only an extension
+  sets it. -/
+  kin : Option (Kind → Slot) := none
 
 /-- The compiler's state. -/
 structure CS where
@@ -162,12 +166,20 @@ structure CS where
   /-- Each key's instance count so far (`tcount`'s table, so that it costs the keys, not the
   instances; S-E13). `tcount_eq`: it is the count of `tins`. -/
   tcnt : List (Tpl.TKey × ℕ) := []
+  /-- The per-kind slots so far, last first: register, its slot at each kind (S-E12f, `Out.kin`). -/
+  kslots : List (ℕ × (Kind → Slot)) := []
 
 /-- The rows in program order (row `i` is the `i`-th row emitted). -/
 def CS.rowList (cs : CS) : List Row := cs.rows.reverse
 
 /-- The slot of register `i`. -/
 def CS.slot (cs : CS) (i : ℕ) : Slot := cs.slots.getD i none
+
+/-- **Register `i`'s slot at kind `κ`** (S-E12f): its per-kind slot if it has one, else its slot. -/
+def CS.slotK (cs : CS) (i : ℕ) (κ : Kind) : Slot :=
+  match cs.kslots.lookup i with
+  | some f => f κ
+  | none => cs.slot i
 
 /-- Fresh cell `j` of the current op. -/
 def CS.cell (cs : CS) (j : ℕ) : Lin := Lin.cell (cs.next + j)
@@ -196,7 +208,10 @@ def CS.add (cs : CS) (op : Op) (o : Out) : CS :=
   let tcnt := match o.tin with
     | some t => bumpCnt t.1 cs.tcnt
     | none => cs.tcnt
-  ⟨next, cs.slots ++ o.slots.toArray, rows, imp, fors, tins, aux, nrows, tcnt⟩
+  let kslots := match o.kin with
+    | some f => (n, f) :: cs.kslots
+    | none => cs.kslots
+  ⟨next, cs.slots ++ o.slots.toArray, rows, imp, fors, tins, aux, nrows, tcnt, kslots⟩
 
 /-- Round `x` up to a multiple of `2^b`. -/
 def alignUp (x b : ℕ) : ℕ := (x + 2 ^ b - 1) / 2 ^ b * 2 ^ b
@@ -493,7 +508,7 @@ def compileFromX (X : Ext) (P : Params) : CS → List Op → CS
 abbrev compileFrom (P : Params) (cs : CS) (ops : List Op) : CS := compileFromX noExt P cs ops
 
 /-- The initial state: fresh cells from `base`. -/
-def CS.init (base : ℕ) : CS := ⟨base, #[], [], [], [], [], [], 0, []⟩
+def CS.init (base : ℕ) : CS := ⟨base, #[], [], [], [], [], [], 0, [], []⟩
 
 /-- (+) Lists that differ at an element emit its three selector products. -/
 theorem muxEl_rows_diff :
@@ -1141,6 +1156,11 @@ theorem opOut_tin (P : Params) (cs : CS) (op : Op) : (opOut P cs op).tin = none 
     (try split) <;> (try split) <;> rfl
 
 theorem opOut_aux (P : Params) (cs : CS) (op : Op) : (opOut P cs op).aux = [] := by
+  cases op <;> simp only [opOut, imports, skip, muxOut, eqTensor] <;> (try split) <;> (try split) <;>
+    (try split) <;> (try split) <;> rfl
+
+/-- `opOut` sets no per-kind slot (S-E12f). -/
+theorem opOut_kin (P : Params) (cs : CS) (op : Op) : (opOut P cs op).kin = none := by
   cases op <;> simp only [opOut, imports, skip, muxOut, eqTensor] <;> (try split) <;> (try split) <;>
     (try split) <;> (try split) <;> rfl
 

@@ -65,6 +65,7 @@ def KeyImpl (impl : OpImpl) : TKey → Prop
   | .lagrangeS .. => impl.lagrangeS = Impl.lagrangeSI
   | .slotW .. => ∀ κ, impl.slotW κ = Impl.slotWI
   | .tensorW _ => impl.tensorW = Impl.tensorWI
+  | .tensorWK _ => impl.tensorW = Impl.tensorWI
   | .rowW _ => impl.rowW = Impl.rowWI
   | .shiftMask .. => impl.shiftMask = NodeI.shiftMaskI
   | .walkAB .. => impl.walkAB = Eval.walkImpl
@@ -206,10 +207,10 @@ def kIx : Kind → ℕ
   | .P30 => 1
   | .N30 => 2
 
-/-- **`tplExtF` with the 4.1 `shiftMask` templates**: a `shiftMask` on `af n, af m` goes to the
-route's key when `F` keeps it (the node's instance reads the selector forms after `τ`, `r`); every
-other op as `tplExtF F`. -/
-def tplExt4 (F : TFilt) (R : ShR) (tc : TCtx) : Ext := fun P cs op =>
+/-- **`tplExtF` with the 4.1 `shiftMask` templates** (S-E12e's `tplExt4`): a `shiftMask` on
+`af n, af m` goes to the route's key when `F` keeps it (the node's instance reads the selector
+forms after `τ`, `r`); every other op as `tplExtF F`. -/
+def tplExt4S (F : TFilt) (R : ShR) (tc : TCtx) : Ext := fun P cs op =>
   match op, R with
   | .shiftMask t r, .seg =>
     match cs.slot t, cs.slot r with
@@ -226,7 +227,7 @@ def tplExt4 (F : TFilt) (R : ShR) (tc : TCtx) : Ext := fun P cs op =>
   | _, _ => tplExtF F tc P cs op
 
 /-- Without a route it is `tplExtF`. -/
-theorem tplExt4_imp (F : TFilt) (tc : TCtx) : tplExt4 F .imp tc = tplExtF F tc := by
+theorem tplExt4S_imp (F : TFilt) (tc : TCtx) : tplExt4S F .imp tc = tplExtF F tc := by
   funext P cs op; cases op <;> rfl
 
 /-- **What the route needs of `impl` at kind `κ`**: the segment's `shiftMask`, or the node kind's
@@ -245,13 +246,13 @@ theorem kinds_getD (κ : Kind) (j : ℕ) :
     (kinds.map fun ι => if ι = κ then (1 : F) else 0).getD j 0 = if j = kIx κ then 1 else 0 := by
   cases κ <;> rcases j with _ | _ | _ | j <;> simp [kinds, kIx]
 
-/-- **`tplExt4` is sound at kind `κ`** under `ImplTF F` and the route's requirement at `κ`. -/
-theorem tplExt4_okAt {impl : OpImpl} {F : TFilt} {R : ShR} {κ : Kind} (hT : ImplTF F impl)
-    (hR : RouteOk R impl κ) (L : TLay) : ExtOkAt impl L.ctx (tplExt4 F R L.ctx) κ := by
+/-- **`tplExt4S` is sound at kind `κ`** under `ImplTF F` and the route's requirement at `κ`. -/
+theorem tplExt4S_okAt {impl : OpImpl} {F : TFilt} {R : ShR} {κ : Kind} (hT : ImplTF F impl)
+    (hR : RouteOk R impl κ) (L : TLay) : ExtOkAt impl L.ctx (tplExt4S F R L.ctx) κ := by
   intro P cs op o hX
   rcases R with _ | _ | ks
-  · rw [tplExt4_imp] at hX; exact (tplExtF_ok hT L).at κ P cs op o hX
-  · unfold tplExt4 at hX
+  · rw [tplExt4S_imp] at hX; exact (tplExtF_ok hT L).at κ P cs op o hX
+  · unfold tplExt4S at hX
     split at hX
     · split at hX
       · rename_i n lt m lr ht' hr'
@@ -269,7 +270,7 @@ theorem tplExt4_okAt {impl : OpImpl} {F : TFilt} {R : ShR} {κ : Kind} (hT : Imp
       · simp at hX
     · rename_i heq; cases heq
     · exact (tplExtF_ok hT L).at κ P cs _ o hX
-  · unfold tplExt4 at hX
+  · unfold tplExt4S at hX
     split at hX
     · rename_i heq; cases heq
     · rename_i ks' heq; cases heq
@@ -294,6 +295,248 @@ theorem tplExt4_okAt {impl : OpImpl} {F : TFilt} {R : ShR} {κ : Kind} (hT : Imp
       · simp at hX
     · exact (tplExtF_ok hT L).at κ P cs _ o hX
 
+/-! ## Kind-muxed operands (S-E12f, INT-9 F1) -/
+
+/-- `tplExt`'s results set no per-kind slot. -/
+theorem tplExt_kin {tc : TCtx} {P : Params} {cs : CS} {op : Op} {o : Out} (h : tplExt tc P cs op = some o) :
+    o.kin = none := by
+  cases op <;> simp only [tplExt] at h
+  all_goals first
+    | (simp at h; done)
+    | (repeat' split at h
+       all_goals first
+         | (simp at h; done)
+         | (simp only [Option.some.injEq] at h; subst h; rfl))
+
+theorem tplExt4S_kin {F : TFilt} {R : ShR} {tc : TCtx} {P : Params} {cs : CS} {op : Op} {o : Out}
+    (h : tplExt4S F R tc P cs op = some o) : o.kin = none := by
+  have hF : ∀ {o}, tplExtF F tc P cs op = some o → o.kin = none := fun h' =>
+    tplExt_kin (Option.filter_eq_some_iff.1 h').1
+  unfold tplExt4S at h
+  repeat' split at h
+  all_goals first
+    | (simp at h; done)
+    | (simp only [Option.some.injEq] at h; subst h; rfl)
+    | exact hF h
+
+/-- An `ak` slot's length and forms. -/
+def akS : Slot → Option (ℕ × List Lin)
+  | some (.ak n, ls) => some (n, ls)
+  | _ => none
+
+/-- An `af` slot's length and forms. -/
+def afS : Slot → Option (ℕ × List Lin)
+  | some (.af n, ls) => some (n, ls)
+  | _ => none
+
+theorem akS_eq {s : Slot} {b : ℕ × List Lin} (h : akS s = some b) : s = some (.ak b.1, b.2) := by
+  unfold akS at h; split at h
+  · cases h; rfl
+  · cases h
+
+theorem afS_eq {s : Slot} {b : ℕ × List Lin} (h : afS s = some b) : s = some (.af b.1, b.2) := by
+  unfold afS at h; split at h
+  · cases h; rfl
+  · cases h
+
+/-- Whether `opOut` tracks a `keep`'s result (its operands' types agree). -/
+def keepTracked (cs : CS) (n o : ℕ) : Bool :=
+  match (cs.slot n).ty?, (cs.slot o).ty? with
+  | some t, some t' => decide (t = t')
+  | _, _ => false
+
+/-- **A `keep`'s result at kind `κ`**: the kind's operand at `κ`. -/
+def keepK (cs : CS) (act : KC Bool) (n o : ℕ) (κ : Kind) : Slot :=
+  if act κ then cs.slotK n κ else cs.slotK o κ
+
+/-- **A `packFK`'s result at kind `κ`**: the kind's list as an `af` (when its elements are tracked). -/
+def packFKK (cs : CS) (xs : Kind → List ℕ) (κ : Kind) : Slot :=
+  if (xs κ).all fun x => (cs.slot x).isSome then
+    some (.af (xs κ).length, (xs κ).map fun x => asF (cs.slot x))
+  else none
+
+/-- **The kind-mux extension**: a `keep` that `opOut` leaves untracked and a `packFK` of lists of
+unequal lengths get per-kind slots (`keepK`, `packFKK`); a `tensorW` on a point and an `eqPt` on
+points that are typed at every kind (`slotK`) go to `.tensorWK`/`.eqPtK` with the kinds' lengths,
+reading each kind's forms (checked to be of their type's length) and the selector forms. -/
+def tplExtKM (F : TFilt) (tc : TCtx) : Ext := fun P cs op =>
+  match op with
+  | .keep act n o =>
+    if keepTracked cs n o then none
+    else if kinds.any fun κ => (keepK cs act n o κ).isSome then
+      some { slots := [none], kin := some (keepK cs act n o) }
+    else none
+  | .packFK xs =>
+    if (xs .L32).length = (xs .P30).length ∧ (xs .P30).length = (xs .N30).length then none
+    else some { slots := [none], kin := some (packFKK cs xs) }
+  | .tensorW j r =>
+    match akS (cs.slotK r .L32), akS (cs.slotK r .P30), akS (cs.slotK r .N30) with
+    | some a, some b, some c =>
+      let ns := [a.1, b.1, c.1]
+      if ([a, b, c].all fun x => x.2.length == 2 * x.1) && ns.all (· ≤ logNMax) && F (.tensorWK ns) then
+        -- `j`'s 20 bits: auxiliary import cells after the template's locals (as `tensorW`'s)
+        let cb := tc.cb (.tensorWK ns) (cs.tcount (.tensorWK ns))
+        let cells := (List.range logNMax).map fun i => Lin.cell (cb + twkLocs ns + i)
+        some { tplOut tc P cs (.tensorWK ns) (a.2 ++ b.2 ++ c.2 ++ cells ++ kinds.map P.sel) [.k] with
+          aux := [(cells, j, .bits logNMax)] }
+      else none
+    | _, _, _ => none
+  | .eqPt x y =>
+    match afS (cs.slotK x .L32), afS (cs.slotK y .L32), afS (cs.slotK x .P30), afS (cs.slotK y .P30),
+        afS (cs.slotK x .N30), afS (cs.slotK y .N30) with
+    | some a0, some b0, some a1, some b1, some a2, some b2 =>
+      let ps := [(a0.1, b0.1), (a1.1, b1.1), (a2.1, b2.1)]
+      if ([(a0, b0), (a1, b1), (a2, b2)].all fun p => p.1.2.length == p.1.1 && p.2.2.length == p.2.1) &&
+          F (.eqPtK ps) then
+        some (tplOut tc P cs (.eqPtK ps) (a0.2 ++ b0.2 ++ (a1.2 ++ b1.2) ++ (a2.2 ++ b2.2) ++ kinds.map P.sel) [.f])
+      else none
+    | _, _, _, _, _, _ => none
+  | _ => none
+
+theorem kinds_oneHot (κ : Kind) :
+    (kinds.map fun ι => if ι = κ then (1 : F) else 0) = oneHot 3 (kIx κ) := by
+  cases κ <;> simp [kinds, oneHot, kIx, List.range_succ]
+
+theorem kIx_lt (κ : Kind) : kIx κ < 3 := by cases κ <;> decide
+
+/-- The three kinds' entries, read at `κ`. -/
+theorem get3 {α : Type} {f : Kind → Option α} {a b c : α} (ha : f .L32 = some a) (hb : f .P30 = some b)
+    (hc : f .N30 = some c) (κ : Kind) : f κ = some ([a, b, c][kIx κ]'(by simpa using kIx_lt κ)) := by
+  cases κ <;> simpa [kIx]
+
+theorem get3_pair {α β : Type} (a0 a1 a2 : α) (b0 b1 b2 : β) (κ : Kind) :
+    [(a0, b0), (a1, b1), (a2, b2)][kIx κ]'(by simpa using kIx_lt κ) =
+      ([a0, a1, a2][kIx κ]'(by simpa using kIx_lt κ), [b0, b1, b2][kIx κ]'(by simpa using kIx_lt κ)) := by
+  cases κ <;> rfl
+
+theorem get3_fst {α β : Type} (a0 a1 a2 : ℕ × α) (b0 b1 b2 : ℕ × β) (κ : Kind) :
+    [(a0.1, b0.1), (a1.1, b1.1), (a2.1, b2.1)][kIx κ]'(by simpa using kIx_lt κ) =
+      (([a0, a1, a2][kIx κ]'(by simpa using kIx_lt κ)).1, ([b0, b1, b2][kIx κ]'(by simpa using kIx_lt κ)).1) := by
+  cases κ <;> rfl
+
+/-- **The kind-mux extension is sound at kind `κ`** (with per-kind slots). -/
+theorem tplExtKM_okK {impl : OpImpl} {F : TFilt} {κ : Kind} (hT : ImplTF F impl) (L : TLay) :
+    ExtOkK impl L.ctx (tplExtKM F L.ctx) κ := by
+  intro P cs op o hX
+  cases op <;> simp only [tplExtKM] at hX
+  all_goals first | (simp at hX; done) | skip
+  case keep act n m =>
+    split_ifs at hX with h1 h2
+    simp only [Option.some.injEq] at hX; subst hX
+    refine ⟨rfl, fun _ => by simp, fun inp w regs hP hI hK => ⟨fun q => by simp [evalOp], fun _ _ _ vs ok he => ?_⟩⟩
+    simp only [evalOp, Res.vals.injEq] at he; obtain ⟨rfl, rfl⟩ := he
+    refine ⟨fun _ => List.Forall₂.cons trivial List.Forall₂.nil, fun _ => rfl, fun f v hf hv => ?_⟩
+    simp only [Option.some.injEq] at hf; subst hf
+    simp only [List.head?_cons, Option.some.injEq] at hv; subst hv
+    simp only [keepK]; split_ifs <;> exact hK _
+  case packFK xs =>
+    split_ifs at hX with h1
+    simp only [Option.some.injEq] at hX; subst hX
+    refine ⟨rfl, fun _ => by simp, fun inp w regs hP hI hK => ⟨fun q => by simp [evalOp], fun _ _ _ vs ok he => ?_⟩⟩
+    simp only [evalOp, Res.vals.injEq] at he; obtain ⟨rfl, rfl⟩ := he
+    refine ⟨fun _ => List.Forall₂.cons trivial List.Forall₂.nil, fun _ => rfl, fun f v hf hv => ?_⟩
+    simp only [Option.some.injEq] at hf; subst hf
+    simp only [List.head?_cons, Option.some.injEq] at hv; subst hv
+    simp only [packFKK]
+    split_ifs with ht
+    · refine ⟨by simp [tyOf], ?_⟩
+      simp only [encV, List.map_map]
+      exact List.map_congr_left fun x hx => asF_slot hI (List.all_eq_true.1 ht x hx)
+    · trivial
+  case tensorW j r =>
+    split at hX
+    · rename_i a b c ha hb hc
+      split_ifs at hX with hcond
+      simp only [Option.some.injEq] at hX; subst hX
+      simp only [Bool.and_eq_true, List.all_cons, List.all_nil, Bool.and_true, beq_iff_eq,
+        decide_eq_true_eq] at hcond
+      obtain ⟨⟨⟨la, lb, lc⟩, na, nb, nc⟩, hF⟩ := hcond
+      refine ⟨rfl, fun h => by simp [tplOut] at h, fun inp w regs hP hI hK =>
+        ⟨fun q => by simp [evalOp], fun _ ht hx vs ok he => ?_⟩⟩
+      simp only [evalOp, Res.vals.injEq] at he; obtain ⟨rfl, rfl⟩ := he
+      refine ⟨fun _ => ?_, fun _ => rfl, fun f v hf => by simp [tplOut] at hf⟩
+      -- the run's kind's point
+      have hg := get3 (f := fun ι => akS (cs.slotK r ι)) ha hb hc κ
+      have hj0 : kIx κ < 3 := kIx_lt κ
+      have hs := akS_eq hg
+      obtain ⟨x, hx', hxs, hxl⟩ := rep_ak (hs ▸ hK r)
+      have hcells := hx _ (List.mem_singleton_self _)
+      simp only [Tpl.AuxK.val] at hcells
+      have hTw : impl.tensorW = Impl.tensorWI := hT _ hF
+      rw [hx', hTw]
+      refine outSlots_one rfl (tplTensorWK_ok (vb := [a, b, c].map fun y => y.2.map (Lin.ev w)) (j0 := kIx κ)
+        hP.1 (by simp [la, lb, lc]) (by simpa using hj0) ?_ ?_ ?_
+        (tin_eqns (tc := L.ctx) (k := .tensorWK [a.1, b.1, c.1]) (tys := [.k]) hP.1 ht))
+      · rw [List.getElem?_map, List.getElem?_eq_getElem (l := [a, b, c]) (by simpa using hj0)]
+        exact congrArg some hxl
+      · have : ∀ ι, ([a, b, c][kIx ι]'(by simpa using kIx_lt ι)).1 ≤ logNMax := fun ι => by
+          cases ι <;> assumption
+        show x.size ≤ logNMax
+        rw [hxs]; exact this κ
+      · refine inpIs_of ?_
+        simp only [List.map_append, List.map_cons, List.map_nil, List.flatten_cons, List.flatten_nil,
+          List.append_nil, List.append_assoc, hcells, sel_onehot hP, kinds_oneHot]
+        rfl
+    · simp at hX
+  case eqPt x y =>
+    split at hX
+    · rename_i a0 b0 a1 b1 a2 b2 ha0 hb0 ha1 hb1 ha2 hb2
+      split_ifs at hX with hcond
+      simp only [Option.some.injEq] at hX; subst hX
+      simp only [Bool.and_eq_true, List.all_cons, List.all_nil, Bool.and_true, beq_iff_eq] at hcond
+      obtain ⟨⟨⟨la0, lb0⟩, ⟨la1, lb1⟩, ⟨la2, lb2⟩⟩, hF⟩ := hcond
+      refine ⟨rfl, fun h => by simp [tplOut] at h, fun inp w regs hP hI hK =>
+        ⟨fun q => by simp [evalOp], fun _ ht _ vs ok he => ?_⟩⟩
+      simp only [evalOp, Res.vals.injEq] at he; obtain ⟨rfl, rfl⟩ := he
+      refine ⟨fun _ => ?_, fun _ => rfl, fun f v hf => by simp [tplOut] at hf⟩
+      have hga := get3 (f := fun ι => afS (cs.slotK x ι)) ha0 ha1 ha2 κ
+      have hgb := get3 (f := fun ι => afS (cs.slotK y ι)) hb0 hb1 hb2 κ
+      have hj0 : kIx κ < 3 := kIx_lt κ
+      obtain ⟨u, hu', hus, hul⟩ := rep_af (afS_eq hga ▸ hK x)
+      obtain ⟨v, hv', hvs, hvl⟩ := rep_af (afS_eq hgb ▸ hK y)
+      rw [hu', hv']
+      refine outSlots_one rfl (tplEqPtK_ok (j0 := kIx κ)
+        (vb := [(a0, b0), (a1, b1), (a2, b2)].map fun p => (p.1.2 ++ p.2.2).map (Lin.ev w))
+        hP.1 (by simp [epW, la0, lb0, la1, lb1, la2, lb2]) (by simpa using hj0) ?_ ?_ ?_
+        (tin_eqns (tc := L.ctx) (k := .eqPtK _) (tys := [.f]) hP.1 ht))
+      · rw [List.getElem?_eq_getElem (by simpa using hj0), get3_fst]
+        show some (_, _) = some (u.size, v.size)
+        rw [hus, hvs]
+      · rw [List.getElem?_map, List.getElem?_eq_getElem (l := [(a0, b0), (a1, b1), (a2, b2)])
+          (by simpa using hj0), get3_pair]
+        show some (List.map (Lin.ev w) ((_ : List Lin) ++ _)) = _
+        rw [List.map_append, hul, hvl]; rfl
+      · refine inpIs_of ?_
+        simp only [List.map_append, List.map_cons, List.map_nil, List.flatten_cons, List.flatten_nil,
+          List.append_nil, List.append_assoc, sel_onehot hP, kinds_oneHot]
+        rfl
+    · simp at hX
+
+/-- Whether a route templates the kind-muxed operands (every 4.1 prototype's does). -/
+def ShR.kmux : ShR → Bool
+  | .imp => false
+  | _ => true
+
+/-- **Revision 4.1's extension**: `tplExt4S` (S-E12e), then, under a route, the kind mux
+(`tplExtKM`, S-E12f). -/
+def tplExt4 (F : TFilt) (R : ShR) (tc : TCtx) : Ext :=
+  (tplExt4S F R tc).orElse fun P cs op => if R.kmux then tplExtKM F tc P cs op else none
+
+/-- Without a route it is `tplExtF`. -/
+theorem tplExt4_imp (F : TFilt) (tc : TCtx) : tplExt4 F .imp tc = tplExtF F tc := by
+  funext P cs op
+  simp only [tplExt4, Ext.orElse, ShR.kmux, tplExt4S_imp]
+  cases tplExtF F tc P cs op <;> rfl
+
+/-- **`tplExt4` is sound at kind `κ`** (with per-kind slots) under `ImplTF F` and the route's
+requirement at `κ`. -/
+theorem tplExt4_okK {impl : OpImpl} {F : TFilt} {R : ShR} {κ : Kind} (hT : ImplTF F impl)
+    (hR : RouteOk R impl κ) (L : TLay) : ExtOkK impl L.ctx (tplExt4 F R L.ctx) κ :=
+  ((tplExt4S_okAt hT hR L).toK fun _ _ _ _ h => tplExt4S_kin h).orElse fun P cs op o h => by
+    by_cases hk : R.kmux = true
+    · simp only [hk, if_true] at h; exact tplExtKM_okK hT L P cs op o h
+    · simp only [hk, if_false, Bool.false_eq_true, reduceCtorEq] at h
+
 /-- **`compileTF` with the 4.1 route.** -/
 def compileTF4 (F : TFilt) (R : ShR) (L : TLay) (P : Params) (base : ℕ) (ops : List Op) : CS :=
   compileX (tplExt4 F R L.ctx) P base ops
@@ -316,7 +559,7 @@ theorem compileTF4_soundAt {impl : OpImpl} {F : TFilt} {R : ShR} {κ : Kind} {in
       RepS w ((compileTF4 F R L P base ops).slot i) (rd s.regs i))
     (hf : ∀ p ∈ (compileTF4 F R L P base ops).fors, flagOf impl κ inp (s.regs.extract 0 p.2) p.1 = true) :
     s.ok = true ∧ ∀ i, RepS w ((compileTF4 F R L P base ops).slot i) (rd s.regs i) :=
-  compileX_soundAt (tplExt4_okAt hT hR L) base hP he hr ht hx hi hf
+  compileX_soundK (tplExt4_okK hT hR L) base hP he hr ht hx hi hf
 
 /-- **The two-pass layout with the 4.1 route.** -/
 def layOfF4 (F : TFilt) (R : ShR) (P : Params) (base : ℕ) (ops : List Op) : TLay :=
@@ -371,6 +614,46 @@ theorem routeOk_ctl (impl : OpImpl) (sm : Array F → Array F → F × F × F) :
     RouteOk (.node [(1, 1, 1), (2, 2, 2), (3, 3, 3)]) { impl with shiftMask := sm } .P30 ↔
       sm = maskNV (2, 2, 2) := by
   simp [RouteOk, kIx]
+
+/-- Two `ak` registers of lengths 2 and 1, two `f` registers (the kind-mux controls' state). -/
+def ctlCSK : CS :=
+  (((CS.init 0).add (.const fun _ => .af #[0]) { slots := [some (.ak 2, [[], [], [], []])] }).add
+    (.const fun _ => .af #[0]) { slots := [some (.ak 1, [[], []])] }).add
+    (.const fun _ => .af #[0]) { slots := [some (.f, [[]]), some (.f, [[]])] }
+
+/-- The controls' program: `r4 = keep {L32} r0 r1` (2 `K`s at `L32`, 1 otherwise), `tensorW r0 r4`,
+`r6 = packFK {L32: [r2, r3], P30: [r2], N30: [r2]}`, `eqPt r6 r6`. -/
+def ctlOpsK : List Op :=
+  [.keep (fun κ => κ == .L32) 0 1, .tensorW 0 4, .packFK fun κ => if κ = .L32 then [2, 3] else [2], .eqPt 6 6]
+
+/-- (+) The kind mux: the `keep` and the `packFK` get per-kind slots, `tensorW` and `eqPt` the
+kind-muxed keys with the kinds' lengths; (−) without a route both stay untracked (no per-kind
+slot) and the two ops are imports; a `keep` on one type is left to `opOut`. -/
+theorem tplExtKM_ctl :
+    ((compileFromX (tplExt4 keys41 .seg ⟨fun _ => ⟨[], []⟩, fun _ _ => 0⟩) ⟨[], fun _ => []⟩ ctlCSK
+        ctlOpsK).slotK 4 .L32).map (·.1) = some (.ak 2) ∧
+      ((compileFromX (tplExt4 keys41 .seg ⟨fun _ => ⟨[], []⟩, fun _ _ => 0⟩) ⟨[], fun _ => []⟩ ctlCSK
+        ctlOpsK).slotK 4 .N30).map (·.1) = some (.ak 1) ∧
+      ((compileFromX (tplExt4 keys41 .seg ⟨fun _ => ⟨[], []⟩, fun _ _ => 0⟩) ⟨[], fun _ => []⟩ ctlCSK
+        ctlOpsK).slotK 6 .P30).map (·.1) = some (.af 1) ∧
+      (compileFromX (tplExt4 keys41 .seg ⟨fun _ => ⟨[], []⟩, fun _ _ => 0⟩) ⟨[], fun _ => []⟩ ctlCSK
+        ctlOpsK).tins.map (·.1) = [.eqPtK [(2, 2), (1, 1), (1, 1)], .tensorWK [2, 1, 1]] ∧
+      (compileFromX (tplExt4 keys41 .imp ⟨fun _ => ⟨[], []⟩, fun _ _ => 0⟩) ⟨[], fun _ => []⟩ ctlCSK
+        ctlOpsK).tins.isEmpty = true ∧
+      (compileFromX (tplExt4 keys41 .imp ⟨fun _ => ⟨[], []⟩, fun _ _ => 0⟩) ⟨[], fun _ => []⟩ ctlCSK
+        ctlOpsK).kslots.isEmpty = true ∧
+      (compileFromX (tplExt4 keys41 .imp ⟨fun _ => ⟨[], []⟩, fun _ _ => 0⟩) ⟨[], fun _ => []⟩ ctlCSK
+        ctlOpsK).imp.length = 2 ∧
+      (tplExtKM keys41 ⟨fun _ => ⟨[], []⟩, fun _ _ => 0⟩ ⟨[], fun _ => []⟩ ctlCSK
+        (.keep (fun κ => κ == .L32) 0 0)).isNone = true := by
+  decide +kernel
+
+/-- (−) A kind-muxed register has no kind-free slot: `keepK` differs between kinds (so `RepS` of
+one slot cannot hold at every kind; hence `slotK` and `ExtOkK`). -/
+theorem keepK_ctl :
+    (keepK ctlCSK (fun κ => κ == .L32) 0 1 .L32).map (·.1) = some (.ak 2) ∧
+      (keepK ctlCSK (fun κ => κ == .L32) 0 1 .P30).map (·.1) = some (.ak 1) := by
+  decide +kernel
 
 end Circ
 end FR

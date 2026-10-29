@@ -300,6 +300,7 @@ def keyInfo (k : TKey) : List RowT × ℕ × ℕ × ℕ :=
     let cr := match k with
       | .dotKF n => max cb (Nat.size (3 * n + 1))
       | .tensorW n => max cb (Nat.size (5 * n + logNMax))
+      | .tensorWK ns => max cb (Nat.size (twkLocs ns + logNMax))
       | _ => cb
     (rows, Nat.size (rows.length - 1), cr, nlocs T.gates)
 

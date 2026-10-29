@@ -108,6 +108,111 @@ theorem extOk_iff {impl : OpImpl} {tc : Tpl.TCtx} {X : Ext} : ExtOk impl tc X �
   ⟨fun h κ => h.at κ, fun h P cs op o hX =>
     ⟨(h .L32 P cs op o hX).1, fun κ inp w regs => (h κ P cs op o hX).2 inp w regs⟩⟩
 
+/-! ## Per-kind slots (S-E12f) -/
+
+/-- **A sound extension at one kind, with per-kind slots** (S-E12f): `ExtOkAt`, where the operands
+are also represented by their slots at `κ` (`CS.slotK`) and a per-kind result (`Out.kin`, on the
+op's first result) is represented at `κ`. -/
+def ExtOkK (impl : OpImpl) (tc : Tpl.TCtx) (X : Ext) (κ : Kind) : Prop :=
+  ∀ (P : Params) (cs : CS) (op : Op) (o : Out), X P cs op = some o →
+    o.slots.length = op.nOut ∧ (o.kin.isSome → 0 < o.slots.length) ∧
+    ∀ (inp : Input) (w : Asg) (regs : Array Val), SelOk w P κ →
+      (∀ i, RepS w (cs.slot i) (rd regs i)) → (∀ i, RepS w (cs.slotK i κ) (rd regs i)) →
+      (∀ q, evalOp impl κ inp regs op ≠ .ask q) ∧
+      ((∀ r ∈ o.rows, r.Holds w) →
+       (∀ t ∈ o.tin, ∀ r ∈ Tpl.instRows tc P.one (t.1, cs.tcount t.1, t.2), r.Holds w) →
+       (∀ a ∈ o.aux, a.1.map (Lin.ev w) = a.2.2.val (rd regs a.2.1)) →
+       ∀ vs ok, evalOp impl κ inp regs op = .vals vs ok →
+         (o.imp = false → List.Forall₂ (RepS w) o.slots vs) ∧ (o.foreign = false → ok = true) ∧
+         ∀ f v, o.kin = some f → vs.head? = some v → RepS w (f κ) v)
+
+/-- An extension sound at `κ` that sets no per-kind slot is sound with per-kind slots. -/
+theorem ExtOkAt.toK {impl : OpImpl} {tc : Tpl.TCtx} {X : Ext} {κ : Kind} (h : ExtOkAt impl tc X κ)
+    (hk : ∀ P cs op o, X P cs op = some o → o.kin = none) : ExtOkK impl tc X κ :=
+  fun P cs op o hX => by
+    have hn := hk P cs op o hX
+    refine ⟨(h P cs op o hX).1, by simp [hn], fun inp w regs hP hI _ => ?_⟩
+    obtain ⟨h1, h2⟩ := (h P cs op o hX).2 inp w regs hP hI
+    exact ⟨h1, fun hr ht hx vs ok he => by
+      obtain ⟨a, b⟩ := h2 hr ht hx vs ok he
+      exact ⟨a, b, fun f v hf => by simp [hn] at hf⟩⟩
+
+/-- **Two extensions, the first one first.** -/
+def Ext.orElse (X Y : Ext) : Ext := fun P cs op => (X P cs op).orElse fun _ => Y P cs op
+
+theorem ExtOkK.orElse {impl : OpImpl} {tc : Tpl.TCtx} {X Y : Ext} {κ : Kind} (hX : ExtOkK impl tc X κ)
+    (hY : ExtOkK impl tc Y κ) : ExtOkK impl tc (X.orElse Y) κ := fun P cs op o h => by
+  simp only [Ext.orElse] at h
+  cases hx : X P cs op with
+  | none => rw [hx] at h; exact hY P cs op o h
+  | some o' =>
+    rw [hx] at h
+    obtain rfl : o' = o := Option.some.inj h
+    exact hX P cs op o' hx
+
+/-- The per-kind slots are of registers that exist. -/
+def KsOk (cs : CS) : Prop := ∀ p ∈ cs.kslots, p.1 < cs.slots.size
+
+/-- **The compiler's invariant at kind `κ`**: `Inv`, and every register's slot at `κ` represents it. -/
+def InvK (w : Asg) (cs : CS) (regs : Array Val) (κ : Kind) : Prop :=
+  Inv w cs regs ∧ KsOk cs ∧ ∀ i, RepS w (cs.slotK i κ) (rd regs i)
+
+theorem lookup_ge {β : Type} : ∀ {l : List (ℕ × β)} {n i : ℕ}, (∀ p ∈ l, p.1 < n) → n ≤ i →
+    l.lookup i = none
+  | [], _, _, _, _ => rfl
+  | p :: l, n, i, h, hi => by
+    have hp := h p (List.mem_cons_self ..)
+    have hne : (i == p.1) = false := by simp; omega
+    simp only [List.lookup, hne]
+    exact lookup_ge (fun q hq => h q (List.mem_cons_of_mem _ hq)) hi
+
+theorem slot_add_old {cs : CS} {op : Op} {o : Out} {i : ℕ} (hi : i < cs.slots.size) :
+    (cs.add op o).slot i = cs.slot i := by
+  simp only [CS.slot, CS.add, Array.getD_eq_getD_getElem?, Array.getElem?_append_left hi]
+
+/-- **One op keeps the invariant at `κ`.** -/
+theorem invK_add {w : Asg} {cs : CS} {regs : Array Val} {κ : Kind} (h : InvK w cs regs κ)
+    {vs : List Val} (o : Out) (op : Op) (hl : o.slots.length = vs.length)
+    (hr : ∀ j (hj : j < o.slots.length), RepS w o.slots[j] (vs[j]'(hl ▸ hj)))
+    (hk : ∀ f v, o.kin = some f → vs.head? = some v → RepS w (f κ) v)
+    (hpos : o.kin.isSome → 0 < o.slots.length) :
+    InvK w (cs.add op o) (regs ++ vs.toArray) κ := by
+  have hI := inv_append h.1 hl hr o op rfl
+  have hsz := h.1.1
+  have hlt : ∀ p ∈ cs.kslots, p.1 < (cs.add op o).slots.size := fun p hp => by
+    have := h.2.1 p hp; simp only [CS.add, Array.size_append, List.size_toArray]; omega
+  refine ⟨hI, fun p hp => ?_, fun i => ?_⟩
+  · rcases hko : o.kin with _ | f
+    · simp only [CS.add, hko] at hp; exact hlt p hp
+    · simp only [CS.add, hko, List.mem_cons] at hp
+      rcases hp with rfl | hp
+      · have := hpos (by simp [hko]); simp only [CS.add, Array.size_append, List.size_toArray]; omega
+      · exact hlt p hp
+  · by_cases hi : i < cs.slots.size
+    · have e1 : (cs.add op o).slotK i κ = cs.slotK i κ := by
+        have hne : (i == cs.slots.size) = false := by simp; omega
+        have hk1 : (cs.add op o).kslots.lookup i = cs.kslots.lookup i := by
+          rcases hko : o.kin with _ | f <;> simp only [CS.add, hko, List.lookup, hne]
+        unfold CS.slotK; rw [hk1, slot_add_old hi]
+      rw [e1, rd_append_left (hsz ▸ hi)]; exact h.2.2 i
+    · have hn : cs.kslots.lookup i = none := lookup_ge h.2.1 (by omega)
+      rcases hko : o.kin with _ | f
+      · have e1 : (cs.add op o).slotK i κ = (cs.add op o).slot i := by
+          simp only [CS.slotK, CS.add, hko, hn]
+        rw [e1]; exact hI.2 i
+      · by_cases he : i = cs.slots.size
+        · subst he
+          have e1 : (cs.add op o).slotK cs.slots.size κ = f κ := by simp [CS.slotK, CS.add, hko, List.lookup]
+          have h0 : 0 < vs.length := hl ▸ hpos (by simp [hko])
+          rw [e1]
+          refine hk f _ hko ?_
+          rw [rd, hsz, Array.getElem?_append_right (by omega)]
+          simp [List.head?_eq_getElem?, List.getElem?_eq_getElem h0]
+        · have hne : (i == cs.slots.size) = false := by simp; omega
+          have e1 : (cs.add op o).slotK i κ = (cs.add op o).slot i := by
+            simp only [CS.slotK, CS.add, hko, List.lookup, hne, hn]
+          rw [e1]; exact hI.2 i
+
 /-! ## Alignment changes only the rows (by empty rows) and the next cell -/
 
 @[simp] theorem CS.align_slots (cs : CS) (a : Option (ℕ × ℕ)) : (cs.align a).slots = cs.slots := by
@@ -117,6 +222,11 @@ theorem extOk_iff {impl : OpImpl} {tc : Tpl.TCtx} {X : Ext} : ExtOk impl tc X �
 @[simp] theorem CS.align_fors (cs : CS) (a : Option (ℕ × ℕ)) : (cs.align a).fors = cs.fors := by
   rcases a with _ | ⟨_, _⟩ <;> rfl
 @[simp] theorem CS.align_tins (cs : CS) (a : Option (ℕ × ℕ)) : (cs.align a).tins = cs.tins := by
+  rcases a with _ | ⟨_, _⟩ <;> rfl
+@[simp] theorem CS.align_kslots (cs : CS) (a : Option (ℕ × ℕ)) : (cs.align a).kslots = cs.kslots := by
+  rcases a with _ | ⟨_, _⟩ <;> rfl
+theorem CS.align_slotK (cs : CS) (a : Option (ℕ × ℕ)) (i : ℕ) (κ : Kind) :
+    (cs.align a).slotK i κ = cs.slotK i κ := by
   rcases a with _ | ⟨_, _⟩ <;> rfl
 @[simp] theorem CS.align_aux (cs : CS) (a : Option (ℕ × ℕ)) : (cs.align a).aux = cs.aux := by
   rcases a with _ | ⟨_, _⟩ <;> rfl
@@ -335,6 +445,138 @@ theorem compileX_sound {impl : OpImpl} {κ : Kind} {inp : Input} {ops : List Op}
     (hf : ∀ p ∈ (compileX X P base ops).fors, flagOf impl κ inp (s.regs.extract 0 p.2) p.1 = true) :
     s.ok = true ∧ ∀ i, RepS w ((compileX X P base ops).slot i) (rd s.regs i) :=
   compileX_soundAt (hX.at κ) base hP he hr ht hx hi hf
+
+/-- **The induction with per-kind slots** (S-E12f): `compileFromX_soundAt` over `InvK`. -/
+theorem compileFromX_soundK {impl : OpImpl} {κ : Kind} {inp : Input} {w : Asg} {P : Params}
+    {tc : Tpl.TCtx} {X : Ext} (hX : ExtOkK impl tc X κ) (hP : SelOk w P κ) :
+    ∀ (ops : List Op) (cs : CS) (s s' : St) (tr tr' : Trace),
+    InvK w cs s.regs κ → exec impl κ inp ops s tr = some (s', tr') →
+    (∀ r ∈ (compileFromX X P cs ops).rows, r.Holds w) →
+    (∀ t ∈ (compileFromX X P cs ops).tins, ∀ r ∈ Tpl.instRows tc P.one t, r.Holds w) →
+    (∀ a ∈ (compileFromX X P cs ops).aux,
+      a.1.1.map (Lin.ev w) = a.1.2.2.val (rd (s'.regs.extract 0 a.2) a.1.2.1)) →
+    (∀ i ∈ (compileFromX X P cs ops).imp, RepS w ((compileFromX X P cs ops).slot i) (rd s'.regs i)) →
+    (∀ p ∈ (compileFromX X P cs ops).fors,
+      flagOf impl κ inp (s'.regs.extract 0 p.2) p.1 = true) →
+    s'.ok = s.ok ∧ InvK w (compileFromX X P cs ops) s'.regs κ
+  | [], cs, s, s', tr, tr', hI, he, _, _, _, _, _ => by
+    simp [exec] at he; obtain ⟨rfl, rfl⟩ := he; exact ⟨rfl, hI⟩
+  | op :: ops, cs, s, s', tr, tr', hI, he, hr, ht, hx, hi, hf => by
+    rw [compileFromX_cons] at hr ht hx hi hf ⊢
+    have hI' : InvK w (cs.align (alignOf op ops)) s.regs κ :=
+      ⟨⟨by simp [hI.1.1], fun i => by rw [CS.align_slot]; exact hI.1.2 i⟩,
+        fun p hp => by rw [CS.align_kslots] at hp; rw [CS.align_slots]; exact hI.2.1 p hp,
+        fun i => by rw [CS.align_slotK]; exact hI.2.2 i⟩
+    generalize cs.align (alignOf op ops) = cs at hI' hr ht hx hi hf ⊢
+    clear hI
+    rename' hI' => hI
+    set o := stepOut X P cs op with ho
+    obtain ⟨ss, rs, hsl, hrw, himp, hfor, htin, haux⟩ := compileFromX_mono X P ops (cs.add op o)
+    have hro : ∀ r ∈ o.rows, r.Holds w := fun r h =>
+      hr r (by
+        rw [hrw]; simp only [CS.add, List.reverseAux_eq]
+        exact List.mem_append_right _ (List.mem_append_left _ (List.mem_reverse.2 h)))
+    have hto : ∀ t ∈ o.tin, ∀ r ∈ Tpl.instRows tc P.one (t.1, cs.tcount t.1, t.2), r.Holds w :=
+      fun t htm r hr' => ht _ (htin (by simp only [CS.add, Option.mem_def.1 htm]; simp)) r hr'
+    have hpre : ∀ (m : Array Val), (s.regs ++ m).extract 0 cs.slots.size = s.regs := fun m => by
+      rw [hI.1.1, Array.extract_append_left, Array.extract_size]
+    -- the new registers' values, read off the final state
+    have fin : ∀ (vs : List Val) (s1 : St), s1.regs = s.regs ++ vs.toArray →
+        (∃ m, s'.regs = s1.regs ++ m) → o.imp = true →
+        (hl : o.slots.length = vs.length) →
+        ∀ j (hj : j < o.slots.length), RepS w o.slots[j] (vs[j]'(hl ▸ hj)) := by
+      intro vs s1 hs1 ⟨m, hm⟩ hio hl j hj
+      have := hi (cs.slots.size + j) (himp (by simp [CS.add, hio, List.mem_range'_1, hj]))
+      have hs := slot_append_right cs.slots o.slots ss hj
+      have hv := rd_append_right s.regs vs m (by omega : j < vs.length)
+      rw [CS.slot, hsl] at this; simp only [CS.add] at this
+      rw [hs, hm, hs1, hI.1.1, hv] at this; exact this
+    have flag : ∀ (vs : List Val) (s1 : St), s1.regs = s.regs ++ vs.toArray →
+        (∃ m, s'.regs = s1.regs ++ m) → o.foreign = true →
+        flagOf impl κ inp s.regs op = true := by
+      intro vs s1 hs1 ⟨m, hm⟩ hfo
+      have := hf (op, cs.slots.size) (hfor (by simp [CS.add, hfo]))
+      rwa [hm, hs1, Array.append_assoc, hpre] at this
+    have hauxo : ∀ (vs : List Val) (s1 : St), s1.regs = s.regs ++ vs.toArray →
+        (∃ m, s'.regs = s1.regs ++ m) →
+        ∀ a ∈ o.aux, a.1.map (Lin.ev w) = a.2.2.val (rd s.regs a.2.1) := by
+      intro vs s1 hs1 ⟨m, hm⟩ a ha
+      have := hx (a, cs.slots.size) (haux (by simp [CS.add, ha]))
+      rwa [hm, hs1, Array.append_assoc, hpre] at this
+    -- the step's soundness: the extension's or `opOut`'s
+    have hstep : (∀ q, evalOp impl κ inp s.regs op ≠ .ask q) ∨ X P cs op = none := by
+      rcases hXo : X P cs op with _ | o'
+      · exact .inr rfl
+      · exact .inl ((hX P cs op o' hXo).2.2 inp w s.regs hP hI.1.2 hI.2.2).1
+    have hpos : o.kin.isSome → 0 < o.slots.length := by
+      rcases hXo : X P cs op with _ | o'
+      · simp [ho, stepOut, hXo, opOut_kin]
+      · simp only [ho, stepOut, hXo, Option.getD_some]; exact (hX P cs op o' hXo).2.1
+    have hlen : o.slots.length = op.nOut := by
+      rcases hXo : X P cs op with _ | o'
+      · simp only [ho, stepOut, hXo, Option.getD_none]; exact opOut_len P cs op
+      · simp only [ho, stepOut, hXo, Option.getD_some]; exact (hX P cs op o' hXo).1
+    simp only [exec] at he
+    split at he
+    · rename_i vs ok hev
+      have hl := hlen.trans (evalOp_len hev).symm
+      have hm := exec_prefix ops _ _ he
+      have hsnd : (o.imp = false → List.Forall₂ (RepS w) o.slots vs) ∧ (o.foreign = false → ok = true) ∧
+          (∀ f v, o.kin = some f → vs.head? = some v → RepS w (f κ) v) := by
+        rcases hXo : X P cs op with _ | o'
+        · simp only [ho, stepOut, hXo, Option.getD_none] at hro ⊢
+          exact ⟨(opOut_sound hP hI.1.2 op hro hev).1, (opOut_sound hP hI.1.2 op hro hev).2,
+            fun f v hf => by rw [opOut_kin] at hf; cases hf⟩
+        · have eo : o = o' := by simp [ho, stepOut, hXo]
+          rw [eo] at hro hto ⊢
+          exact ((hX P cs op o' hXo).2.2 inp w s.regs hP hI.1.2 hI.2.2).2 hro hto
+            (eo ▸ hauxo vs _ rfl hm) vs ok hev
+      have hnew : ∀ j (hj : j < o.slots.length), RepS w o.slots[j] (vs[j]'(hl ▸ hj)) := by
+        cases hio : o.imp
+        · exact fun j hj => (List.forall₂_iff_get.1 (hsnd.1 hio)).2 j hj _
+        · exact fin vs _ rfl hm hio hl
+      have hok : ok = true := by
+        cases hfo : o.foreign
+        · exact hsnd.2.1 hfo
+        · have := flag vs _ rfl hm hfo; simpa [flagOf, hev] using this
+      have ih := compileFromX_soundK hX hP ops _ _ s' tr tr'
+        (invK_add hI o op hl hnew hsnd.2.2 hpos) he hr ht hx hi hf
+      exact ⟨by rw [ih.1, hok, Bool.and_true], ih.2⟩
+    · rename_i q hev
+      have hXn : X P cs op = none := hstep.resolve_left fun h => h q hev
+      have ho' : o = opOut P cs op := by simp [ho, stepOut, hXn]
+      split at he
+      · simp at he
+      · rename_i q' a tr0
+        split at he
+        · have hio : o.imp = true := ho' ▸ ask_imp P cs hev
+          have hl : o.slots.length = [Val.d a].length := by
+            rw [hlen, ask_nOut hev]; rfl
+          have hm := exec_prefix ops _ _ he
+          have hnew := fin [.d a] ⟨s.regs.push (.d a), s.ok⟩ rfl hm hio hl
+          exact compileFromX_soundK hX hP ops _ ⟨s.regs.push (.d a), s.ok⟩ s' tr0 tr'
+            (invK_add hI o op hl hnew (fun f v hf => by rw [ho', opOut_kin] at hf; cases hf) hpos)
+            he hr ht hx hi hf
+        · simp at he
+
+
+/-- **`compileX_sound` with per-kind slots** (S-E12f): the extension sound at the run's kind `κ`
+with per-kind slots (`ExtOkK`). -/
+theorem compileX_soundK {impl : OpImpl} {κ : Kind} {inp : Input} {ops : List Op} {tr tr' : Trace}
+    {s : St} {w : Asg} {P : Params} {tc : Tpl.TCtx} {X : Ext} (hX : ExtOkK impl tc X κ) (base : ℕ)
+    (hP : SelOk w P κ) (he : exec impl κ inp ops St.init tr = some (s, tr'))
+    (hr : ∀ r ∈ (compileX X P base ops).rows, r.Holds w)
+    (ht : ∀ r ∈ (compileX X P base ops).tplRows tc P.one, r.Holds w)
+    (hx : ∀ a ∈ (compileX X P base ops).aux,
+      a.1.1.map (Lin.ev w) = a.1.2.2.val (rd (s.regs.extract 0 a.2) a.1.2.1))
+    (hi : ∀ i ∈ (compileX X P base ops).imp, RepS w ((compileX X P base ops).slot i) (rd s.regs i))
+    (hf : ∀ p ∈ (compileX X P base ops).fors, flagOf impl κ inp (s.regs.extract 0 p.2) p.1 = true) :
+    s.ok = true ∧ ∀ i, RepS w ((compileX X P base ops).slot i) (rd s.regs i) := by
+  have h := compileFromX_soundK hX hP ops (CS.init base) St.init s tr tr'
+    ⟨⟨rfl, fun i => by simp [CS.slot, CS.init, RepS]⟩, fun p hp => by simp [CS.init] at hp,
+      fun i => by simp [CS.slotK, CS.slot, CS.init, RepS]⟩ he hr
+    (fun t htm r hr' => ht r (List.mem_flatMap.2 ⟨t, htm, hr'⟩)) hx hi hf
+  exact ⟨h.1, h.2.1.2⟩
 
 end Circ
 end FR

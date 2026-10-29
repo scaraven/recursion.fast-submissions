@@ -323,6 +323,10 @@ inductive TKey where
   /-- Revision 4.1's node `shiftMask` over `chainLk4`, kind-muxed: per selector index the kind's
   `(nb, chLen₀, chLen₁)` (S-E12e). -/
   | maskN (n m : ℕ) (ks : List (ℕ × ℕ × ℕ))
+  /-- `tensorW` on a kind-muxed point: per selector index the kind's point length (S-E12f). -/
+  | tensorWK (ns : List ℕ)
+  /-- `eqPt` on kind-muxed points: per selector index the kind's two lengths (S-E12f). -/
+  | eqPtK (ps : List (ℕ × ℕ))
   deriving DecidableEq, Inhabited
 
 /-- **The template context**: each key's template and each instance's cell base. -/
