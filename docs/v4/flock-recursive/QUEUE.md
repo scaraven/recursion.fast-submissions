@@ -7,9 +7,16 @@ Last updated 2026-10-28. **Rebased onto core PR #20 (pin `6d05d00`, commit `987e
 Main (`v4/flock-recursive`, core `422f2f9`; the certificate assumes only `Open4F := Gaps4`):
 - G5: kernel-time golf (`realign_sem` 44.8 s first; target ≥ 150 s off the comparator's 461.7 s).
 
-`v4/rev44` (HEAD `e464756` = RSV-V2 + main merged + B5 + RSV-S WIP + A1′; red at RSV-V's 7 declarations and possibly decoder literals):
+`v4/rev44` (HEAD `7bbbf49` = RSV-V2 + main merged + B5 + RSV-S WIP + A1′ + RSV-S2b; red at RSV-V's 7 declarations and possibly decoder literals):
 - RSV-S2a: continues RSV-S (WIP `b156c27`, partial; handover RSV-S-RESULT §5 items 1–4). It owns `R4Fin`, `R4FrE`, `R4PfFlag`/`PfFin`, `FrRS`, `Start` and `Qry`. Its first task is the reserve branches of `flag_gFinE`/`flag_gFinB'`, proved in blocks with `pr_seq2`; one `simp` over 168 ops hit 4M heartbeats and then 16G OOM.
-- RSV-S2b: §5 items 5–7, in parallel with S2a. It owns `P4bB`, `P4fDF`/`Obl`/`Ctrl`, `XFront`, `RsvMLE` and the RunFacts modules.
+- **RSV-S2b landed `7bbbf49`.**
+  - **B′ at 69 cells via the DRS `Pub` route:** `single_B4` is `Fin 71`, 70·2^128, and εR is unchanged.
+  - **The four reserve controls:** in `FRSoundness4RsvCtrl`.
+  - **`FRNodeStmtR4`:** `StmtN4R`, `nodeRunR_X`, `evalM_childV` and `ks_rev4R`. The `FRNodeCircuit4` laws are generalised over `St → StmtN4`.
+  - **Still open:**
+    - `gap4Imp_of_rsv`. This is S2b item 4, wiring `evalM_childV` into `SlotRunA`'s slot-0 imports, and it waits on PORT's `gap4Imp_of_run`.
+    - The switch of `hRes` to `StmtN4R` downstream. It is mechanical.
+  - Three requests routed to S2a: `rsvZero4`, `R4W0R`'s `hcl`, and the new form for `start4_of_fields`. XRun stays red until S2a delivers them.
 - **The review of RSV-S found no soundness issue.** Every challenge comes after every value it batches, `ChildBad4` is charged at 24/2^128 through E1's exit, and εR stays 15/2^124. It settled the two open questions:
   - **Q2, B′'s 60 extra cells:** `PubOKR4` goes only into `DRS0X`/`DRS1X`'s `Pub` argument (phase 23 is a post-doom). `bg16X`/`bg20X` are unchanged.
   - **Q1, the node statement:** `StmtN4` keeps its signature. `nodeLaws4C'` and its two siblings are generalised over `St → StmtN4`, and a downstream `StmtN4R := StmtN4 ∧ PubCellsR4 ∧ truthChildV` is used on the gap4Imp path. That edit to `FRNodeCircuit4` waits until A1′ has landed.
