@@ -2,18 +2,21 @@
 
 Last updated 2026-10-28. **Rebased onto core PR #20 (pin `6d05d00`, commit `987e679`); blueprint revision 4.0** (§0.1 B-11…B-17, §10 changes 25). Build trees use `logs/org20`.
 
-## Running — as of 2026-10-29 (6 agents, FR-D8)
+## Running — as of 2026-10-29 (6 agents)
 
-Main (`v4/flock-recursive`):
-- S-H4 pass 6: `FRXDec4Levels`, the 4.1 chain table (parametric in the item sequence), `FRXOut4`, `FRXNd4` (`nd`), the plug into `FRX4Prog`/`FRX4Ext`/`FRSubmission4*` on main.
-- RET-3: retirement step 4 (3.x verifier shapes out of `Solution`'s closure).
-- B0 (done, held uncommitted in the worktree, frozen at `logs/B0-orch-copy`): prototypes 630,016 / 618,496 rows (−100 k / −107 k), `evalMT4` parity; commits together with P2⁹'s re-embedded plan form so main's prover and V stay consistent.
-- P2⁹: stream-proof nondeterminism, then prover levers.
+Main (`v4/flock-recursive`, core `64378d2`):
+- S-H4 pass 7: `FRXOut4`, `FRXNd4` (`nd`), the plug; `Open4` restated over S-E13a's route with `Links4 nd` named.
+- S-L4: `hL_of_res` (residual `hL`, the node links; unowned until PATH-review finding 1).
+- RET-4: `FRNodeRead4`'s 3.x `FRNodeSoundA` import (≈ 75 modules, ≈ 597 CPU-s on the PackSound route).
+- D1-probe: the `replay_mle` fixed point — D1 vs §8's reserve, decided before A2″'s `seq4` is final.
+- G4: golf (winding down).
 
-Design:
-- A2″ (rev44): the (β′) V change per PACK §11.4 + review `PACK-4.4-b2-review.md` (PB-M2 L2 scope via `Seq.cap4`, minors), L1 + L2, interim skeleton-op cap check; then A3′ (PB-M1's doom chain) ∥ B2′ (templates), A1′ (spacers), P2.
+`v4/rev44`:
+- A2″: (β′) V change + L1 + L2.
 
-`v4/rev44` (worktree `../recursion.fast-submissions-rev44`): at `e4b7d5f` (main merged); its V (A2′) is **unsound** until A2″ lands (β′).
+Held for commit: RET-3 (isolation build running).
+
+**Next (PATH-review):** after A2″ — merge main (B0, P2⁹, RET-3) into rev44; A3′ ∥ B2′ (templates) ∥ B3's generic `compileFromX_run` ∥ C1's `R` keys; A1′ (stride 24,222 under (β′)+L2); B4 (aggChk) before C0's aggChk part; S-H4's port of `nd` to rev44's format; a real-closure cert probe (Solution importing the PackSound route; build **and kernel**, `kernel_s` 600); E1 with a worst-case `prover first` check (`step_s` 60); a clean submission branch touching only `submissions/flock-recursive/`.
 
 ## Waiting
 
