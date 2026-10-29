@@ -65,6 +65,8 @@ S-A `8ff873c`; S-C `ebac8c2`; S-D `8e6dad7`; S-E1 `2d5a811`; S-H1 `40b2f81`; S-0
 
 ## Rulings
 
+- **User, 2026-10-29:** no adversarial reviews of code — a submission the harness accepts under the rules is good enough; golf stays (it serves the build budget). No more review tracks; the bar is `HARNESS: ACCEPT`.
+
 - **(β′), 2026-10-29:** adopted (PACK §11 + review PB: soundness confirmed value by value, ε unchanged; L1 + L2 both needed; L4 rejected — a lost stream ends the evaluation). The doom chain is PB-M1's carried form (`DT 52 := DPf ∨ ¬truthCap`, 53 gates on Σ ≠ 0, 54/55 split on `A = Â(ζ)`), not §11's literal `DT 53/55`.
 
 - **B0, 2026-10-29:** `splitMin = 32` kept (V parity; 16 would save 24.6 k rows at +3 % `evalMT4`); the cap check must be templates (B0 measured A2′'s skeleton form at ≈ 55–65 k sparse rows, ≈ 30 ms per prototype); B0 lands on main with P2⁹'s re-embed, then merges into rev44.
