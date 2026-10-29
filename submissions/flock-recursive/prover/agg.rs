@@ -47,7 +47,11 @@ pub fn prove(o: &dyn Oracle, circ: &Circuit, vk: &Digest, s: &Digest, n: u64, mm
     pi[8..16].copy_from_slice(&n.to_le_bytes());
     let mut tms = Vec::new();
     let mut start = *s;
-    for &(m, ni) in &segs {
+    for (i, &(m, ni)) in segs.iter().enumerate() {
+        if i > 0 {
+            // revision 4.4.1 (R-A′, `FRAgg.aggProgs`): `V_A` asks the spacer between segments
+            o.ask(&spacer_q());
+        }
         let (p, tm) = leaf::prove_seg(o, circ, vk, &start, m, ni);
         start = seg_end(&p);
         pi.extend_from_slice(&p);
@@ -55,6 +59,13 @@ pub fn prove(o: &dyn Oracle, circ: &Circuit, vk: &Digest, s: &Digest, n: u64, mm
     }
     pi[16..48].copy_from_slice(&start);
     (pi, tms)
+}
+
+/// The spacer query `absorbQ 0³² 0⁴⁹` (`FRAgg.spacerQ`: `"FRABS000" ‖ 0^81`, 89 bytes).
+pub fn spacer_q() -> Vec<u8> {
+    let mut q = pp::TAG_ABS.to_vec();
+    q.resize(89, 0);
+    q
 }
 
 /// A segment proof's end `h` and length `n` (its statement field).
@@ -102,8 +113,12 @@ pub fn verify(o: &dyn Oracle, circ: &Circuit, vk: &Digest, c: &Digest, pi: &[u8]
     if !(ok && total == n && prev == Some(e)) {
         return false;
     }
-    // `seqAll`: in order, stopping at the first rejection
-    segs.iter().all(|p| {
+    // `seqAll (segProgs.intersperse spacer)`: in order, the spacer between segments, stopping at
+    // the first rejection
+    segs.iter().enumerate().all(|(i, p)| {
+        if i > 0 {
+            o.ask(&spacer_q());
+        }
         let (h, ni) = seg_stmt(p);
         leaf::verify(o, circ, vk, &leaf_stmt(&h, ni), p)
     })

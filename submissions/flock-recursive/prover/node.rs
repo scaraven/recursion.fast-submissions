@@ -20,10 +20,15 @@ use crate::mfill;
 use crate::par;
 use crate::params as pp;
 
-/// One trace's stream `0x54 ‖ traceBytes tr` at `seq4` (`N4c.segB`).
-pub const SEG_B: usize = 1_482_752;
+/// One trace's stream `0x54 ‖ traceBytes tr` at `seq4` (`N4c.segB`; revision 4.4.1 at rev44).
+pub const SEG_B: usize = 1_551_104;
 /// Its digest chain's blocks (`N4c.cLen`).
-pub const C_LEN: usize = 23_168;
+pub const C_LEN: usize = 24_236;
+/// The spacer entry between an aggregate's segments (`N4c.spacerB`, R-A′): `enc64 89 ‖ spacerQ ‖ a`.
+pub const SPACER_B: usize = 129;
+/// Segment `i` of an aggregate starts at stream byte `1 + i·strideB`, block `i·sBlk` (`N4c.sBlk`).
+pub const S_BLK: usize = 24_238;
+pub const STRIDE_B: usize = SEG_B - 1 + SPACER_B;
 pub const WOTS_SLOT: usize = 498;
 pub const WM_SLOT: usize = 146;
 pub const TAG_WOTS: u8 = 0x57;
@@ -31,7 +36,7 @@ pub const TAG_WOTS_LEAF: u8 = 0x4B;
 pub const TAG_SIG_NODE: u8 = 0x4D;
 
 pub fn agg_b(k: usize) -> usize {
-    1 + k * (SEG_B - 1)
+    1 + k * (SEG_B - 1) + (k - 1) * SPACER_B
 }
 pub fn agg_l(k: usize) -> usize {
     agg_b(k).div_ceil(64)
@@ -111,8 +116,9 @@ impl NK {
     pub fn wm_b(self, sg: usize) -> usize {
         self.wots_b(2) + WM_SLOT * sg
     }
+    /// `hUsedN` (revision 4.4.1, PACK §11.2 L1): one `WM` per signed child.
     pub fn h_used(self) -> usize {
-        self.wots_b(2) + WM_SLOT * self.vslots() + 8
+        self.wots_b(2) + WM_SLOT * 2 + 8
     }
     pub fn fin_b(self, a: usize) -> usize {
         self.h_used() + a * self.max_k()
@@ -475,7 +481,9 @@ pub fn agg_in<'a>(s: &'a format::Signed) -> AggIn<'a> {
     let k = pi[1] as usize;
     let n = u64::from_le_bytes(pi[8..16].try_into().unwrap());
     let e: Digest = pi[16..48].try_into().unwrap();
-    let per = s.tr.len() / k;
+    // `tr_A = tr_1 ‖ sp ‖ tr_2 ‖ … ‖ sp ‖ tr_k` (R-A′: one spacer entry between segments)
+    let per = pp::N_ITEMS;
+    assert_eq!(s.tr.len(), k * per + k - 1, "an aggregate's trace: k·8,783 + k − 1 entries");
     let segs = (0..k)
         .map(|i| {
             let p = &pi[48 + i * pp::PI_SIZE..48 + (i + 1) * pp::PI_SIZE];
@@ -487,7 +495,7 @@ pub fn agg_in<'a>(s: &'a format::Signed) -> AggIn<'a> {
                 pp::KIND_P30 => 1,
                 _ => 2,
             };
-            (p, &s.tr[i * per..(i + 1) * per], blake2s::leaf_stmt(&h, ni), ix)
+            (p, &s.tr[i * (per + 1)..i * (per + 1) + per], blake2s::leaf_stmt(&h, ni), ix)
         })
         .collect();
     AggIn { signed: s, c: blake2s::leaf_stmt(&e, n), e, n, segs }
@@ -596,6 +604,55 @@ fn stream_bytes(tr: &[(Vec<u8>, Digest)]) -> Vec<u8> {
     v
 }
 
+/// **An aggregate child's main-chain bytes** (`aggB maxK`, R-A′): its stream `0x54 ‖ tr₁ ‖ sp ‖ … ‖
+/// tr_k`, then for every inactive sub-slot `i ≥ k` the constants its ungated pins read (A1′ "For
+/// P2"): the spacer before it (`enc64 89 ‖ "FRABS000" ‖ 0^81`, its answer zero) and the sub-slot's
+/// `wfSeg` elements (each item's `enc64 |q| ‖ tag`) with its seed element's bytes 1–15; everything
+/// else (the kind element 5 included: an inactive sub-slot's selectors are 0) zero.
+pub fn agg_stream(tr: &[(Vec<u8>, Digest)], kk: usize, max_k: usize) -> Vec<u8> {
+    let mut v = stream_bytes(tr);
+    assert_eq!(v.len(), agg_b(kk), "an aggregate's stream");
+    v.resize(agg_b(max_k), 0);
+    if kk == max_k {
+        return v;
+    }
+    let mut ents: Vec<(u64, [u8; 8])> = Vec::with_capacity(pp::N_ITEMS);
+    for (_, it) in crate::items::items_seq() {
+        let tag = |t: &[u8; 6], l: usize| -> [u8; 8] {
+            let mut x = [0u8; 8];
+            x[..6].copy_from_slice(t);
+            x[6] = l as u8;
+            x
+        };
+        ents.push(match it {
+            crate::items::It::Seed => (119, {
+                let mut x = [0u8; 8];
+                x[..7].copy_from_slice(pp::TAG_SEED);
+                x
+            }),
+            crate::items::It::Absorb { len, .. } => (40 + len as u64, *pp::TAG_ABS),
+            crate::items::It::Squeeze => (40, *pp::TAG_SQZ),
+            crate::items::It::Col { level } => ((8 + 16 * pp::STAR_ROWS[level] + pp::COL_PAD) as u64, tag(pp::TAG_MCOL, level)),
+            crate::items::It::Node { level, .. } => (72, tag(pp::TAG_MNOD, level)),
+        });
+    }
+    for i in kk..max_k {
+        let so = i * STRIDE_B - 128;
+        v[so..so + 8].copy_from_slice(&89u64.to_le_bytes());
+        v[so + 8..so + 16].copy_from_slice(pp::TAG_ABS);
+        let base = i * STRIDE_B;
+        let mut o = 1;
+        for (j, (ql, tg)) in ents.iter().enumerate() {
+            v[base + o..base + o + 8].copy_from_slice(&ql.to_le_bytes());
+            let tl = if j == 0 { 7 } else { 8 };
+            v[base + o + 8..base + o + 8 + tl].copy_from_slice(&tg[..tl]);
+            o += 8 + *ql as usize + 32;
+        }
+        assert_eq!(o, SEG_B, "a sub-slot's items fill its segment");
+    }
+    v
+}
+
 /// **The node witness** of kind `k` for `vk`, the previous node (if `k.has_prev()`) and the
 /// aggregate children; `protos` the dumped prototypes, `texts` their programs; `circ` the
 /// general tape (`general_circuit`), `lcirc` the leaf tape (the IR's `walkAB`).
@@ -615,7 +672,9 @@ fn h_part(k: NK, vk: &Digest, prev: Option<&PrevIn>, aggs: &[AggIn], signed: &[&
     let mut ins = vec![BlockIn::zero(); h_end];
     let bks: Vec<BK> = (0..k.blocks()).map(|b| bk_at(k, b)).collect();
     // the two main chains (sequential compressions; the chains in parallel)
-    let streams: Vec<Vec<u8>> = signed.iter().map(|s| stream_bytes(&s.tr)).collect();
+    let streams: Vec<Vec<u8>> = (0..2)
+        .map(|sg| if k.is_agg(sg) { agg_stream(&signed[sg].tr, aggs[k.agg_of(sg)].segs.len(), k.max_k()) } else { stream_bytes(&signed[sg].tr) })
+        .collect();
     let chains: Vec<Vec<BlockIn>> = par::collect_vec(2, 1, |sg| {
         let (b0, l) = (k.ch_base(sg), k.ch_len(sg));
         let st = &streams[sg];
@@ -790,17 +849,34 @@ fn h_part(k: NK, vk: &Digest, prev: Option<&PrevIn>, aggs: &[AggIn], signed: &[&
             let x = el(&z, fj * 128 + 2 + h);
             fz(&mut z, base + 11008 + 2 * (kk - 1) + h, x);
         }
-        // 11264 + 128(j − 2) + q, 2 ≤ j ≤ maxK: the bits of main block aggL j − 1's element 7
-        for j in 2..=k.max_k() {
-            let x = el(&z, (k.ch_base(sg) + agg_l(j) - 1) * 128 + 7);
+        // `spC κ σ s q` = 11264 + 128(s − 1) + q, 1 ≤ s < maxK (R-A′, A1′ "For P2"): q < 120 bits
+        // 8–127 of spacer s's element 6 (its answer's bytes 0–14), q ≥ 120 bits 0–7 of sub-slot s's
+        // element 0 (the answer's byte 31); active or not (an inactive spacer's answer is zero)
+        let st = &streams[sg];
+        for sp in 1..k.max_k() {
+            let e6 = sp * STRIDE_B - 32;
             for q in 0..128 {
-                fz(&mut z, base + 11264 + 128 * (j - 2) + q, bit(x, q));
+                let (by, bi) = if q < 120 { (st[e6 + 1 + q / 8], q % 8) } else { (st[sp * STRIDE_B], q - 120) };
+                fz(&mut z, base + 11264 + 128 * (sp - 1) + q, F::new(((by >> bi) & 1) as u64, 0));
             }
         }
+    }
+    // track B4's `aggChk` rows (V_A's checks against `c_A` as link rows, `FRNodeRows4Agg*`): the hook
+    // for the auxiliary cells they will read (nothing yet: HEAD's dump has none)
+    for (ai, ag) in aggs.iter().enumerate() {
+        agg_chk_fill(k, ai, ag, &streams[k.agg_child(ai)], lb, &mut z);
     }
     mark("l_mirrors", &mut times);
     (z, a, b, bks, times)
 }
+
+/// **The hook for B4's `aggChk` rows** (QUEUE: "≈ 1.3–2.7 k link rows per aggregate", in progress at
+/// rev44 `e464756`): the cells those rows read beyond what the witness already holds (the main
+/// chain's stream cells, `c_A`'s block, the candidate final blocks, the spacer bits `spC`) are to be
+/// written here for aggregate `a` (signed child `k.agg_child(a)`, its `kk = ag.segs.len()` segments,
+/// `st` its main-chain bytes with the phantom constants, `lb` L's first cell). `node::check` reports
+/// any link row of the kind tables that fails, so a dump with B4's rows shows what is missing.
+fn agg_chk_fill(_k: NK, _a: usize, _ag: &AggIn, _st: &[u8], _lb: usize, _z: &mut [u64]) {}
 
 /// A slot's fill: the M cells, the fill's report, the program run's bits.
 pub type Fill = (Vec<F>, mfill::FillStats, Vec<bool>);
@@ -958,6 +1034,16 @@ pub fn witness(k: NK, vk: &Digest, prev: Option<&PrevIn>, aggs: &[AggIn], protos
         }
         mstats.push(st);
     }
+    // the auxiliary cells the link rows read beyond the slots' fills (`AUX_L`: B4's `aggChk` cells),
+    // solved from the kind table's rows
+    let sp = crate::prof::span("wit.aux");
+    let kt = &crate::plan::kind_tabs_static()[k as usize];
+    let ranges: Vec<(usize, usize)> = (0..2).filter(|&sg| k.is_agg(sg)).flat_map(|sg| AUX_L.iter().map(move |&(a, b)| (lb + sg * (1 << 14) + a, lb + sg * (1 << 14) + b))).collect();
+    let (aux_solved, aux_left) = solve_aux(kt, &mut z, &ranges);
+    drop(sp);
+    if std::env::var_os("FLOCK_VERBOSE").is_some() {
+        eprintln!("  wit.aux solved {aux_solved} cells, {aux_left} left at zero");
+    }
     // a = b = z on every block from H's end (L, M, free)
     let (az, bz) = (&mut a[256 * h_end..], &mut b[256 * h_end..]);
     az.copy_from_slice(&z[256 * h_end..]);
@@ -976,6 +1062,120 @@ pub fn witness(k: NK, vk: &Digest, prev: Option<&PrevIn>, aggs: &[AggIn], protos
         pubv.extend(digest_f(&stmts[sg]));
     }
     NodeWit { k, z, a, b, bks, pubv, times, mstats }
+}
+
+/// **The auxiliary L cells of the link rows** (table-driven: each entry an offset range of an
+/// aggregate signed child's `2^14` L stride whose cells only the kind table's link rows define):
+/// B4's `aggChk` cells (`FRNodeRows4AggChk`: `bC` … `xC`, offsets `12,288 … 14,487`). A later row
+/// family adds its range here; `solve_aux` needs no other change.
+pub const AUX_L: [(usize, usize); 1] = [(12_288, 14_488)];
+
+/// Solve the cells of `ranges` (absolute, initially zero in `z`) from the kind table's link rows
+/// that read them, to a fixed point, by two rules: a row with one unknown cell appearing linearly
+/// (`mfill::try_row`'s solve, a known zero factor included), and a **packing** row `A·B = C` whose
+/// unknowns all lie in `B` with distinct one-bit coefficients `E_j` (`pk`/`pkO`: `x = Σ E_j b_j`):
+/// each `b_j` is bit `j` of `(C/A − B_known)`. Cells no row determines stay zero (an inactive
+/// sub-slot's inverse). Returns (solved, left).
+pub fn solve_aux(kt: &mfill::KindTab, z: &mut [u64], ranges: &[(usize, usize)]) -> (usize, usize) {
+    use std::collections::HashMap;
+    let inr = |c: usize| ranges.iter().any(|&(a, b)| (a..b).contains(&c));
+    let l = &kt.links;
+    let mut unk: HashMap<usize, bool> = HashMap::new(); // cell → solved
+    let mut rows_of: HashMap<usize, Vec<usize>> = HashMap::new();
+    let mut rows: Vec<usize> = Vec::new();
+    for i in 0..l.len() {
+        let rg = l.rng[i];
+        let mut hit = false;
+        for t in rg[0] as usize..rg[3] as usize {
+            let c = l.cells[t] as usize;
+            if inr(c) {
+                unk.entry(c).or_insert(false);
+                rows_of.entry(c).or_default().push(i);
+                hit = true;
+            }
+        }
+        if hit {
+            rows.push(i);
+        }
+    }
+    let get = |z: &[u64], c: usize| F { lo: z[2 * c], hi: z[2 * c + 1] };
+    let mut queue: std::collections::VecDeque<usize> = rows.iter().copied().collect();
+    let mut inq: std::collections::HashSet<usize> = rows.iter().copied().collect();
+    let mut solved = 0usize;
+    while let Some(i) = queue.pop_front() {
+        inq.remove(&i);
+        let rg = l.rng[i];
+        // per form: the known value, the unknown terms (cell, coefficient)
+        let mut kn = [F::ZERO; 3];
+        let mut us: [Vec<(usize, F)>; 3] = [Vec::new(), Vec::new(), Vec::new()];
+        for m in 0..3 {
+            for t in rg[m] as usize..rg[m + 1] as usize {
+                let c = l.cells[t] as usize;
+                if unk.get(&c) == Some(&false) {
+                    us[m].push((c, l.coef(t)));
+                } else {
+                    kn[m] += l.coef(t) * get(z, c);
+                }
+            }
+        }
+        let mut cells: Vec<usize> = us.iter().flatten().map(|x| x.0).collect();
+        cells.sort_unstable();
+        cells.dedup();
+        let mut set: Vec<(usize, F)> = Vec::new();
+        if cells.len() == 1 && us.iter().all(|u| u.len() <= 1) {
+            // one unknown x, linear: (a0 + αx)(b0 + βx) = c0 + γx with α or β zero
+            let co = |m: usize| us[m].first().map(|x| x.1).unwrap_or(F::ZERO);
+            let (al, be, ga) = (co(0), co(1), co(2));
+            if al.is_zero() || be.is_zero() {
+                let lin = kn[0] * be + al * kn[1] + ga;
+                if !lin.is_zero() {
+                    set.push((cells[0], (kn[0] * kn[1] + kn[2]) * lin.inv()));
+                }
+            }
+        } else if cells.len() > 1 && us[0].is_empty() && us[2].is_empty() && !kn[0].is_zero() {
+            // a packing: Σ coef·x = C/A − B_known, the coefficients distinct single bits
+            let t = kn[2] * kn[0].inv() + kn[1];
+            let bit = |f: F| -> Option<usize> {
+                let (lo, hi) = (f.lo, f.hi);
+                match (lo.count_ones(), hi.count_ones()) {
+                    (1, 0) => Some(lo.trailing_zeros() as usize),
+                    (0, 1) => Some(64 + hi.trailing_zeros() as usize),
+                    _ => None,
+                }
+            };
+            let pos: Option<Vec<usize>> = us[1].iter().map(|x| bit(x.1)).collect();
+            if let Some(pos) = pos {
+                let mut seen = 0u128;
+                let distinct = us[1].len() == cells.len() && pos.iter().all(|&j| {
+                    let f = seen >> j & 1 == 0;
+                    seen |= 1u128 << j;
+                    f
+                });
+                if distinct {
+                    let tv = (t.hi as u128) << 64 | t.lo as u128;
+                    // every bit of `t` must be covered by an unknown, else the row has no solution
+                    if tv & !seen == 0 {
+                        for (x, j) in us[1].iter().zip(pos) {
+                            set.push((x.0, F::new((tv >> j & 1) as u64, 0)));
+                        }
+                    }
+                }
+            }
+        }
+        for (c, v) in set {
+            z[2 * c] = v.lo;
+            z[2 * c + 1] = v.hi;
+            unk.insert(c, true);
+            solved += 1;
+            for &r in rows_of.get(&c).map(|v| &v[..]).unwrap_or(&[]) {
+                if inq.insert(r) {
+                    queue.push_back(r);
+                }
+            }
+        }
+    }
+    let left = unk.values().filter(|s| !**s).count();
+    (solved, left)
 }
 
 /// Record both prototypes' inactive solve plans (no child needed: done before a request).

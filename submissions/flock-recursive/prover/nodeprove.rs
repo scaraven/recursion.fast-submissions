@@ -330,7 +330,16 @@ fn collapse_keys(z: &[u64], t: &[F], keys: &[(usize, usize)]) -> Vec<Vec<F>> {
 /// One degree-3 zerocheck of `Σ_x eq(r, x)·(a(x) b(x) + c(x)) = claim₀` in Gruen's form (the leaf's Z3
 /// rounds, with a linear `c`; `c = None` for `c ≡ 0`): the messages through `send`, the challenges
 /// from `chal`. Returns the challenges and `(â, b̂, ĉ)`.
-fn zc_abc(r: &[F], mut a: Vec<F>, mut b: Vec<F>, mut c: Option<Vec<F>>, claim0: F, step: &mut dyn FnMut([F; 3]) -> F) -> (Vec<F>, [F; 3]) {
+fn zc_abc(r: &[F], a: Vec<F>, b: Vec<F>, c: Option<Vec<F>>, claim0: F, step: &mut dyn FnMut([F; 3]) -> F) -> (Vec<F>, [F; 3]) {
+    let (xs, v, _) = zc_abc_x(r, a, b, c, claim0, None, step);
+    (xs, v)
+}
+
+/// `zc_abc` plus an extra degree-2 product `Σ_x P(x) Q(x)` (RSV2's E2: `P = η·eq(p_x, ·)`, `Q` the
+/// child claim's table minus `X`) in the same rounds: each message is the sum of both parts' (the
+/// verifier completes `c₃` from the total claim). Also returns the extra pair's final `(P, Q)`.
+#[allow(clippy::type_complexity)]
+fn zc_abc_x(r: &[F], mut a: Vec<F>, mut b: Vec<F>, mut c: Option<Vec<F>>, claim0: F, mut extra: Option<(Vec<F>, Vec<F>)>, step: &mut dyn FnMut([F; 3]) -> F) -> (Vec<F>, [F; 3], (F, F)) {
     let n = r.len();
     assert_eq!(a.len(), 1 << n);
     let mut claim = claim0;
@@ -362,7 +371,14 @@ fn zc_abc(r: &[F], mut a: Vec<F>, mut b: Vec<F>, mut c: Option<Vec<F>>, claim0: 
             }
         }
         let h0 = zerocheck::h0_from_claim(claim, r[kk], h1);
-        let x = step(zerocheck::zc_coeffs(pref, r[kk], h0, h1, hi));
+        let mut msg = zerocheck::zc_coeffs(pref, r[kk], h0, h1, hi);
+        if let Some((p, q)) = &extra {
+            let g = coeffs_f(crate::sumcheck::msg_pairs(&[(&p[..], &q[..])]));
+            for j in 0..3 {
+                msg[j] += g[j];
+            }
+        }
+        let x = step(msg);
         claim = eval2_f([h0, h1, hi], x);
         pref *= F::ONE + r[kk] + x;
         xs.push(x);
@@ -371,10 +387,221 @@ fn zc_abc(r: &[F], mut a: Vec<F>, mut b: Vec<F>, mut c: Option<Vec<F>>, claim0: 
         if let Some(cc) = c.as_mut() {
             *cc = crate::sumcheck::fold_f_sparse(cc, x);
         }
+        if let Some((p, q)) = extra.as_mut() {
+            *p = crate::sumcheck::fold_f(p, x);
+            *q = crate::sumcheck::fold_f(q, x);
+        }
     }
     let cv = c.map(|c| c[0]).unwrap_or(F::ZERO);
     assert_eq!(claim, a[0] * b[0] + cv);
-    (xs, [a[0], b[0], cv])
+    (xs, [a[0], b[0], cv], extra.map(|(p, q)| (p[0], q[0])).unwrap_or((F::ZERO, F::ZERO)))
+}
+
+/// **`FRVerifierC4.rsvRel`**: the 60 M-relative cells (prototype 0, the previous node's slot) of the
+/// child claim's values: the packed mixed row point `x̂` (23; entry 22 the kind-muxed cell), `ŷ`
+/// (25), the nine coefficients `s^P`, the three outputs of the child's one `evalM` call.
+pub const RSV_REL: [usize; 60] = [
+    1318, 1329, 1340, 1351, 1362, 1373, 1384, 1395, 1406, 1417, 1428, 1439, 1450, 1461, 1472, 1483, 1494, 1505, 1516, 1527,
+    1538, 1549, 116596, 1579, 1589, 1599, 1609, 1619, 1629, 1639, 1649, 1659, 1669, 1679, 1689, 1699, 1709, 1719, 1729,
+    1739, 1749, 1759, 1769, 1779, 1789, 1799, 1809, 116600, 116584, 116585, 116586, 116587, 116588, 116589, 116590,
+    116591, 116592, 116601, 116602, 116603,
+];
+
+/// RSV2's child claim `(p_x, p_y, s, X₃)` (`fLrEnd[48, 1008)`): a node with a previous node copies
+/// the previous node's one `evalM` call (its slot-0 cells `rsvCells`); `N8`'s is zero.
+pub fn child_claim(k: NK, f: &[F]) -> Vec<F> {
+    if !k.has_prev() {
+        return vec![F::ZERO; 60];
+    }
+    RSV_REL.iter().map(|&r| f[k.one_cell() + r]).collect()
+}
+
+fn kind_of(ix: usize) -> NK {
+    [NK::N2, NK::N4, NK::N8][ix]
+}
+
+/// Per prototype `π` and matrix `m`: `U_{π,m}(l) = Σ_c M_{π,m}(l, c)·e(c)` over the region's `2^20`
+/// local rows, `e` over its local cells (a slot's rows and cells are its prototype's moved by
+/// `v·2^20`, so with `e = eq(p_lo, ·)` every slot of every kind shares `U`).
+fn proto_matvec(p: &Proto, elo: &[F]) -> [Vec<F>; 3] {
+    let base = p.pi * SLOT;
+    let mut out: [Vec<F>; 3] = [vec![F::ZERO; SLOT], vec![F::ZERO; SLOT], vec![F::ZERO; SLOT]];
+    let ptrs = [par::SyncPtr(out[0].as_mut_ptr()), par::SyncPtr(out[1].as_mut_ptr()), par::SyncPtr(out[2].as_mut_ptr())];
+    par::map_chunks(p.rows.len(), 4096, |lo, hi| {
+        let ptrs = &ptrs;
+        for i in lo..hi {
+            let row = p.rows.idx[i] as usize - base;
+            let rg = p.rows.rng[i];
+            for m in 0..3 {
+                let (mut acc, mut s1) = (FAcc::default(), F::ZERO);
+                for t in rg[m] as usize..rg[m + 1] as usize {
+                    let x = elo[p.rows.cells[t] as usize - base];
+                    match p.rows.coefs[t] {
+                        crate::mfill::ONE_IX => s1 += x,
+                        c => acc.mac(p.rows.cv[c as usize], x),
+                    }
+                }
+                // SAFETY: a prototype's rows are distinct
+                unsafe { *ptrs[m].0.add(row) = acc.reduce() + s1 };
+            }
+        }
+    });
+    out
+}
+
+/// Per prototype `π` and matrix `m`: `T_{π,m}(c) = Σ_l e(l)·M_{π,m}(l, c)` over the region's `2^20`
+/// local cells (`ByCell`'s gather), `e` over its local rows.
+fn proto_scatter(p: &Proto, elo: &[F]) -> [Vec<F>; 3] {
+    let bc = p.by_cell();
+    let cv = &p.rows.cv;
+    let mut out: [Vec<F>; 3] = [par::uninit_vec(SLOT), par::uninit_vec(SLOT), par::uninit_vec(SLOT)];
+    let ptrs = [par::SyncPtr(out[0].as_mut_ptr()), par::SyncPtr(out[1].as_mut_ptr()), par::SyncPtr(out[2].as_mut_ptr())];
+    par::map_chunks(SLOT, 1 << 14, |lo, hi| {
+        let ptrs = &ptrs;
+        for l in lo..hi {
+            let (a, b) = (bc.ptr[l] as usize, bc.ptr[l + 1] as usize);
+            let mut acc = [FAcc::default(); 3];
+            let mut pl = [F::ZERO; 3];
+            for q in a..b {
+                let en = bc.ent[q];
+                let (r, m) = ((en & 0x3FFF_FFFF) as usize, (en >> 30) as usize);
+                let x = elo[r];
+                match bc.coef[q] {
+                    crate::mfill::ONE_IX => pl[m] += x,
+                    i => acc[m].mac(cv[i as usize], x),
+                }
+            }
+            for m in 0..3 {
+                // SAFETY: cell `l` is written by this chunk only
+                unsafe { *ptrs[m].0.add(l) = acc[m].reduce() + pl[m] };
+            }
+        }
+    });
+    out
+}
+
+/// `Σ_m s_m·V_m` elementwise.
+fn comb3(v: &[Vec<F>; 3], s: &[F]) -> Vec<F> {
+    par::collect_vec(v[0].len(), 1 << 14, |i| s[0] * v[0][i] + s[1] * v[1][i] + s[2] * v[2][i])
+}
+
+/// Where entry `pos` of a kind's table of `kl` entries lands in the parent's `n` (RSV2's constant
+/// extension): equal sizes the same entry; one more coordinate folded at `p` (the parent's entry
+/// `pos mod n` with weight `p` or `1 + p` by the top bit); one fewer duplicated over the top bit.
+fn land(n: usize, kl: usize, pos: usize, p: F) -> [(usize, F); 2] {
+    if kl == n {
+        [(pos, F::ONE), (usize::MAX, F::ZERO)]
+    } else if kl == 2 * n {
+        if pos >= n { [(pos - n, p), (usize::MAX, F::ZERO)] } else { [(pos, F::ONE + p), (usize::MAX, F::ZERO)] }
+    } else {
+        assert_eq!(2 * kl, n);
+        [(pos, F::ONE), (pos + kl, F::ONE)]
+    }
+}
+
+/// `d[land(off + i)] += c·v[i]` for a contiguous run (a slot: `2^20` entries never straddle the top bit).
+fn add_run(d: &mut [F], kl: usize, off: usize, c: F, v: &[F], p: F) {
+    for (pos, w) in land(d.len(), kl, off, p) {
+        if pos == usize::MAX {
+            continue;
+        }
+        let cw = c * w;
+        par::for_each_chunk_mut(&mut d[pos..pos + v.len()], 1 << 14, |o, ch| ch.iter_mut().enumerate().for_each(|(i, x)| *x += cw * v[o + i]));
+    }
+}
+
+/// `Σ_{κ,m} s_{κ,m}·M̃_{κ,m}(x ‖ p_x[n, 23), p_y)` over the parent's `2^n` rows `x` (RSV2 §2.3). Each
+/// kind is read at its own `logM κ` row and `logM κ + 2` column coordinates (a kind with more rows is
+/// folded at `p_x[n]`, one with fewer is constant in the top coordinate). Factorized: slot `v`'s rows
+/// are `eq(p_y[20..], one/2^20 + v)·U_π` (`proto_matvec` at `eq(p_y[<20])`, once per prototype for every
+/// kind), plus the kind's link rows.
+fn child_rows(kts: &[&KindTab; 3], protos: &[Proto; 2], px: &[F], py: &[F], s: &[F], n: usize) -> Vec<F> {
+    let mut d = vec![F::ZERO; 1 << n];
+    let elo = eq_table(&py[..20]);
+    let us: [std::sync::OnceLock<[Vec<F>; 3]>; 2] = [std::sync::OnceLock::new(), std::sync::OnceLock::new()];
+    let p = px.get(n).copied().unwrap_or(F::ZERO);
+    for (kk, kt) in kts.iter().enumerate() {
+        let sk = &s[3 * kk..3 * kk + 3];
+        if sk.iter().all(|x| x.is_zero()) {
+            continue;
+        }
+        let kl = 1usize << kt.log_m;
+        let hs = eq_table(&py[20..kt.log_m + 2]);
+        let ob = kt.one_cell / SLOT;
+        let cb: [Option<Vec<F>>; 2] = [0, 1].map(|pi| kt.slots.iter().any(|sl| sl.0 == pi).then(|| comb3(us[pi].get_or_init(|| proto_matvec(&protos[pi], &elo)), sk)));
+        for (v, sl) in kt.slots.iter().enumerate() {
+            add_run(&mut d, kl, v * SLOT, hs[ob + v], cb[sl.0].as_ref().unwrap(), p);
+        }
+        let es = crate::nodeops::EqSplit::new(&py[..kt.log_m + 2]);
+        let l = &kt.links;
+        for i in 0..l.len() {
+            let rg = l.rng[i];
+            let mut acc = F::ZERO;
+            for m in 0..3 {
+                let mut t = F::ZERO;
+                for q in rg[m] as usize..rg[m + 1] as usize {
+                    t += l.coef(q) * es.at(l.cells[q] as usize);
+                }
+                acc += sk[m] * t;
+            }
+            for (pos, w) in land(1 << n, kl, l.idx[i] as usize, p) {
+                if pos != usize::MAX {
+                    d[pos] += w * acc;
+                }
+            }
+        }
+    }
+    d
+}
+
+/// The own kind's `W_M(r_E2) = Σ_{rows} eq(r_E2, row)·(s₀A + s₁B + s₂C)(row, ·)` into `w` (`m_scatter`'s
+/// value): slot `v`'s cells are `eq(r_E2[20..], v)·Σ_m s_m T_{π,m}`, then the link rows.
+fn own_w_m(kt: &KindTab, ts: &[Option<[Vec<F>; 3]>; 2], r_e2: &[F], s: [F; 3], w: &mut [F]) {
+    add_cols(kt, ts, r_e2, &s, w, F::ZERO);
+}
+
+/// `w[land(cell)] += Σ_rows eq(xh[<logM], row)·(Σ_m s_m M_m)(row, cell)` over a kind's rows (slot by
+/// slot from `T_π = proto_scatter(eq(xh[<20]))`, then its link rows), landed in `w`'s cell space.
+fn add_cols(kt: &KindTab, ts: &[Option<[Vec<F>; 3]>; 2], xh: &[F], s: &[F], w: &mut [F], p: F) {
+    let kl = 1usize << (kt.log_m + 2);
+    let ht = eq_table(&xh[20..kt.log_m]);
+    let cb: [Option<Vec<F>>; 2] = [0, 1].map(|pi| kt.slots.iter().any(|sl| sl.0 == pi).then(|| comb3(ts[pi].as_ref().unwrap(), s)));
+    for (v, sl) in kt.slots.iter().enumerate() {
+        add_run(w, kl, kt.one_cell + v * SLOT, ht[v], cb[sl.0].as_ref().unwrap(), p);
+    }
+    let et = crate::nodeops::EqSplit::new(&xh[..kt.log_m]);
+    let l = &kt.links;
+    let n = w.len();
+    for i in 0..l.len() {
+        let er = et.at(l.idx[i] as usize);
+        let rg = l.rng[i];
+        for m in 0..3 {
+            let c = er * s[m];
+            for q in rg[m] as usize..rg[m + 1] as usize {
+                for (pos, wt) in land(n, kl, l.cells[q] as usize, p) {
+                    if pos != usize::MAX {
+                        w[pos] += c * wt * l.coef(q);
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// `Σ_{κ,m} s_{κ,m}·M̃_{κ,m}(x̂, y ‖ p_y[n, 25))` over the parent's `2^n` cells `y` (E4's child term,
+/// `ts` shared with the own scatter).
+fn child_cols(kts: &[&KindTab; 3], ts: &[Option<[Vec<F>; 3]>; 2], xh: &[F], py: &[F], s: &[F], n: usize) -> Vec<F> {
+    let mut g: Vec<F> = par::uninit_vec(1 << n);
+    par::for_each_chunk_mut(&mut g, 1 << 16, |_, c| c.fill(F::ZERO));
+    let p = py.get(n).copied().unwrap_or(F::ZERO);
+    for (kk, kt) in kts.iter().enumerate() {
+        let sk = &s[3 * kk..3 * kk + 3];
+        if !sk.iter().all(|x| x.is_zero()) {
+            let _sp = crate::prof::span(["cc.N2", "cc.N4", "cc.N8"][kk]);
+            add_cols(kt, ts, xh, sk, &mut g, p);
+        }
+    }
+    g
 }
 
 /// The node prover's inputs besides the oracle.
@@ -385,6 +612,8 @@ pub struct NodeIn<'a> {
     pub cs: [Digest; 2],
     pub w: &'a NodeWit,
     pub mats: Mats<'a>,
+    /// The three kinds' tables (`N2`, `N4`, `N8`), for RSV2's child claim.
+    pub kts: [&'a KindTab; 3],
     /// The base block matrix (`Circuit::build_base`).
     pub base: &'a Circuit,
 }
@@ -573,7 +802,13 @@ pub fn prove(o: &dyn Oracle, ni: &NodeIn) -> (Vec<u8>, Times) {
     });
     leaf::dummy_rounds(&mut wr, pp::F_LR, pp::LR_ROUNDS - lr, 48);
     wr.fs.phase = "Lrend";
-    wr.send_f(pp::F_LREND, &vl);
+    // `fLrEnd = â_L ‖ b̂_L ‖ ĉ_L ‖ p_x ‖ p_y ‖ s ‖ X₃` (RSV2 §2.1; `N8`: zeros)
+    let rsv = child_claim(k, f);
+    let mut lre = vl.to_vec();
+    lre.extend_from_slice(&rsv);
+    wr.send_f(pp::F_LREND, &lre);
+    let (px, py, sc, xc) = (&rsv[..23], &rsv[23..48], &rsv[48..57], rsv[57]);
+    let child = k.has_prev() && sc.iter().any(|x| !x.is_zero());
     wr.fs.phase = "Lr3";
     let kap_l = wr.fs.chal_f();
     tm.mark("lr", &mut t);
@@ -583,17 +818,29 @@ pub fn prove(o: &dyn Oracle, ni: &NodeIn) -> (Vec<u8>, Times) {
     wr.fs.phase = "E1";
     let co = wr.fs.coords(pp::E1_SQ);
     let r_e = co[..lm].to_vec();
+    let eta = co[23];
     let sp = crate::prof::span("ne2.matvec");
     let [am, bm, cm] = ni.mats.m_matvec(f);
     drop(sp);
+    // RSV2 (ii″): E2's summand gains `η·eq(p_x, x)·(Σ_i s_i M̃_i(x ‖ hi, p_y) − X)`
+    let sp = crate::prof::span("ne2.child");
+    let extra = child.then(|| {
+        let mut d = child_rows(&ni.kts, ni.mats.protos, px, py, sc, lm);
+        par::for_each_chunk_mut(&mut d, 1 << 14, |_, ch| ch.iter_mut().for_each(|x| *x += xc));
+        let e = crate::mle::eq_table_scaled(&px[..lm], eta);
+        (e, d)
+    });
+    drop(sp);
     wr.fs.phase = "E2";
-    let (r_e2, vm) = zc_abc(&r_e, am, bm, Some(cm), F::ZERO, &mut |g| {
+    let (r_e2, vm, (_, dfin)) = zc_abc_x(&r_e, am, bm, Some(cm), F::ZERO, extra, &mut |g| {
         wr.send_f(pp::F_E, &g);
         wr.fs.chal_f()
     });
     leaf::dummy_rounds(&mut wr, pp::F_E, pp::E2_ROUNDS - lm, 48);
+    // `m̂* = Σ_i s_i M̃_i(r_E2 ‖ p_x[n, 23), p_y)` (zero without a child claim)
+    let mstar = if child { dfin + xc } else { F::ZERO };
     wr.fs.phase = "Eend";
-    wr.send_f(pp::F_EEND, &vm);
+    wr.send_f(pp::F_EEND, &[vm[0], vm[1], vm[2], mstar, F::ZERO, F::ZERO, F::ZERO]);
     wr.fs.phase = "E3";
     let kap_e = wr.fs.chal_f();
     tm.mark("e2", &mut t);
@@ -601,7 +848,17 @@ pub fn prove(o: &dyn Oracle, ni: &NodeIn) -> (Vec<u8>, Times) {
     let sp = crate::prof::span("ne4.scatter");
     let mut wt4: Vec<F> = par::uninit_vec(f.len());
     par::for_each_chunk_mut(&mut wt4, 1 << 16, |_, c| c.fill(F::ZERO));
-    ni.mats.m_scatter(&eq_table(&r_e2), [F::ONE, kap_e, kap_e * kap_e], &mut wt4);
+    // `T_π = Σ_l eq(r_E2[<20], l)·M_π(l, ·)` once per prototype the own kind or the child claim reads:
+    // the own `W_M(r_E2)` slot by slot from it (`m_scatter`'s value), and E4's child term
+    let elo = eq_table(&r_e2[..20]);
+    let used = |pi: usize| ni.mats.kt.slots.iter().any(|sl| sl.0 == pi) || (child && (0..3).any(|kk| !sc[3 * kk..3 * kk + 3].iter().all(|x| x.is_zero()) && ni.kts[kk].slots.iter().any(|sl| sl.0 == pi)));
+    let ts: [Option<[Vec<F>; 3]>; 2] = [0, 1].map(|pi| used(pi).then(|| proto_scatter(&ni.mats.protos[pi], &elo)));
+    own_w_m(ni.mats.kt, &ts, &r_e2, [F::ONE, kap_e, kap_e * kap_e], &mut wt4);
+    debug_assert!({
+        let mut w2 = vec![F::ZERO; f.len()];
+        ni.mats.m_scatter(&eq_table(&r_e2), [F::ONE, kap_e, kap_e * kap_e], &mut w2);
+        w2 == wt4
+    });
     let k3 = kap_e * kap_e * kap_e;
     let el = eq_table(&r_lr2);
     let oc = k.one_cell();
@@ -613,15 +870,42 @@ pub fn prove(o: &dyn Oracle, ni: &NodeIn) -> (Vec<u8>, Times) {
     }
     wt4[oc] += wone;
     drop(sp);
-    let c4 = vm[0] + kap_e * vm[1] + kap_e * kap_e * vm[2] + k3 * (vl[0] + kap_l * vl[1] + kap_l * kap_l * vl[2]);
-    assert_eq!(crate::simd::dot(&wt4, f), c4, "E4's sum");
+    let k4 = k3 * kap_e;
+    let c4 = vm[0] + kap_e * vm[1] + kap_e * kap_e * vm[2] + k3 * (vl[0] + kap_l * vl[1] + kap_l * kap_l * vl[2]) + k4 * mstar;
+    // RSV2 (iii″/iv″): E4's summand gains `κ_E⁴·eq(p_y, y)·Σ_i s_i M̃_i(x̂, y ‖ hi)`, `x̂ = r_E2 ‖ p_x[n, 23)`
+    let sp = crate::prof::span("ne4.child");
+    let mut extra4 = child.then(|| {
+        let ny = m - 7;
+        let mut xh = r_e2.clone();
+        xh.extend_from_slice(&px[lm..]);
+        let sp = crate::prof::span("ne4.cc");
+        let g = child_cols(&ni.kts, &ts, &xh, py, sc, ny);
+        drop(sp);
+        g
+    });
+    drop(sp);
+    debug_assert_eq!(crate::simd::dot(&wt4, f) + extra4.as_ref().map(|g| k4 * leaf::dot(&eq_table(&py[..m - 7]), g)).unwrap_or(F::ZERO), c4, "E4's sum");
     let _ = c4;
     // `W` lives on the M slots, the L bits and the one cell: the early rounds skip its zero chunks
     let sp = crate::prof::span("ne4.sumcheck");
-    let (r4, (_, fhat)) = crate::sumcheck::prove_pair_support(wt4, f, 12, &mut |g| {
+    let mut step4 = |g: [F; 3]| {
         wr.send_f(pp::F_E, &coeffs_f(g));
         wr.fs.chal_f()
-    });
+    };
+    // `G` (the child term) is zero off the child kinds' M cells and link cells, like `W`: both
+    // pairs' supports are skipped in the early rounds
+    let (r4, fhat) = match extra4.take() {
+        None => {
+            let (r4, (_, fhat)) = crate::sumcheck::prove_pair_support(wt4, f, 12, &mut step4);
+            (r4, fhat)
+        }
+        Some(g) => {
+            // the child term `G·κ_E⁴·eq(p_y[<n], ·)`, its eq side in closed form
+            let qs = [crate::sumcheck::Q::Tab(f), crate::sumcheck::Q::Eq(&py[..m - 7], k4)];
+            let (r4, fin) = crate::sumcheck::prove_pairs_support(vec![wt4, g], &qs, 12, &mut step4);
+            (r4, fin[0].1)
+        }
+    };
     drop(sp);
     leaf::dummy_rounds(&mut wr, pp::F_E, pp::E4_ROUNDS - (m - 7), 48);
     // E4's slices (sent in RS0) from the block fold at E4's block coordinates `r4[7..]` (the leaf
@@ -672,6 +956,14 @@ pub fn prove(o: &dyn Oracle, ni: &NodeIn) -> (Vec<u8>, Times) {
         wt[*cell] += p;
         claim1 += p * *v;
         p *= kp;
+    }
+    // RSV2: the 60 child-claim cells at `κ′^{11} … κ′^{70}` (`rsvCells`; none for `N8`)
+    if k.has_prev() {
+        for (r, v) in RSV_REL.iter().zip(rsv.iter()) {
+            wt[k.one_cell() + r] += p;
+            claim1 += p * *v;
+            p *= kp;
+        }
     }
 
     // ---- P
@@ -732,10 +1024,11 @@ mod tests {
         let ch = node::check(&w, &nd.protos, &kt);
         assert!(ch.h_bad_blocks + ch.chain_bad + ch.links_bad + ch.cells_bad + ch.l_bad + ch.m_bad + ch.link_rows_bad == 0, "{ch:?}");
         let cs = [aggs[0].c, aggs[1].c];
-        let ni = super::NodeIn { k, vk, cs, w: &w, mats: super::Mats { k, kt: &kt, protos: &nd.protos }, base: &base };
+        let kts = nd.kind_tabs();
+        let ni = super::NodeIn { k, vk, cs, w: &w, mats: super::Mats { k, kt: &kt, protos: &nd.protos }, kts: [&*kts[0], &*kts[1], &*kts[2]], base: &base };
         let (pi, _) = super::prove(&o, &ni);
         let c = super::node_c(&cs);
-        let ctx = std::sync::Arc::new(ir::NodeCtx { k, protos: nd.protos.clone(), kt: kt.clone() });
+        let ctx = std::sync::Arc::new(ir::NodeCtx::new(k, nd.protos.clone(), kts.clone()));
         let text = nd.node_program(k);
         let r = ir::run_node(&text, ctx.clone(), &base, &o, &vk, &c, &pi);
         assert!(r.ok && r.asks == params::N_ITEMS && super::stmt_ok4(&pi, &c), "{:?}", r.failed);

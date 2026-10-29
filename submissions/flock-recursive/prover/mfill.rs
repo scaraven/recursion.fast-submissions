@@ -150,6 +150,9 @@ fn parse_coef(h: &str) -> F {
     }
 }
 
+/// The longest register form `Proto::load` keeps (E1: the cap check's running sums are dropped).
+pub const LONG_FORM: usize = 256;
+
 /// A register's type in `mregs` (the F components it occupies).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Ty {
@@ -485,8 +488,15 @@ impl Proto {
                 t if t.starts_with("AK") => Ty::AK(t[2..].parse().unwrap()),
                 t => panic!("mregs type {t}"),
             };
+            // a form of more than `LONG_FORM` terms is not kept (an empty range): the fill writes
+            // single-cell forms only and checks the others (`form_mismatch`), and the long ones
+            // (A2″'s cap-check running sums: up to ≈ 17 k terms, 90 % of `mregs`' size) are linear
+            // sums of cells the rows already bind
             let forms = match p.get(3) {
-                Some(f) => f.split(" ; ").map(|s| push(s, &mut fcells, &mut fcoefs)).collect(),
+                Some(f) => f
+                    .split(" ; ")
+                    .map(|s| if s.split(' ').filter(|t| !t.is_empty()).count() > LONG_FORM { (fcells.len() as u32, fcells.len() as u32) } else { push(s, &mut fcells, &mut fcoefs) })
+                    .collect(),
                 None => Vec::new(),
             };
             regs.push(Reg { imp: p[1].trim() == "imp", ty, forms });
@@ -991,13 +1001,13 @@ fn worklist_q(rw: &Rows, base: u32, deg: &[u32], adj: &[u32], val: &mut [F], kno
     rec
 }
 
-/// The dump directory (`FLOCK_NODE_DUMP`, else `logs/B0/nodedump` above the working directory; pass 13:
+/// The dump directory (`FLOCK_NODE_DUMP`, else `logs/E1/nodedump` above the working directory; E1: rev44 HEAD `e464756`; pass 13:
 /// B0's row layout, was `logs/S-E13a/nodedump`)
 /// and the prototype programs' directory (`FLOCK_PROTO_DIR`, else the dump directory).
 pub fn find_dirs() -> Option<(std::path::PathBuf, std::path::PathBuf)> {
     let d = match std::env::var_os("FLOCK_NODE_DUMP") {
         Some(p) => std::path::PathBuf::from(p),
-        None => crate::kat::find_up("logs/B0/nodedump/mrows-p0.txt")?.parent()?.to_path_buf(),
+        None => crate::kat::find_up("logs/E1/nodedump/mrows-p0.txt")?.parent()?.to_path_buf(),
     };
     let p = std::env::var_os("FLOCK_PROTO_DIR").map(std::path::PathBuf::from).unwrap_or_else(|| d.clone());
     Some((d, p))

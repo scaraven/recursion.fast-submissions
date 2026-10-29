@@ -53,7 +53,8 @@ pub const LOG_INV_RATE: [usize; LEVELS] = [1, 2, 3, 4, 5];
 /// Row variables folded per level: 6, then 4 (= 1 coordinate-split bit + 3 message variables).
 pub const ROW_LOG: [usize; LEVELS] = [6, 4, 4, 4, 4];
 /// Merkle cap depth per level (clamped to the tree depth for test shapes).
-pub const CAP_LOG: [usize; LEVELS] = [9, 8, 8, 8, 7];
+/// Revision 4.4.1 (PACK §11.2 L2, `Seq.cap4 = 8`): level 4's cap is depth 8 (3.x: 7).
+pub const CAP_LOG: [usize; LEVELS] = [9, 8, 8, 8, 8];
 /// Queries per level (rev. 2 §2.2: `t = ⌈120.25 / −log₂(1 − e/n)⌉`, `e = ⌊(n − k)/2⌋`).
 pub fn queries(_m: usize) -> [usize; LEVELS] {
     [290, 178, 145, 132, 126]
@@ -122,14 +123,23 @@ pub const F_CAPS: usize = 14;
 pub const F_FINAL: usize = 15;
 pub const F_COLS: usize = 16;
 pub const F_SIBS: usize = 17;
-pub const N_FIELDS: usize = 18;
+/// Revision 4.4.1 (β′, PACK §11.1): the committed path digests `D` (871 × 32 B, read order) and the
+/// aggregated selectors `A` (1,536 K elements, no pad) (`FRTranscriptDefs.fD`/`fA`).
+pub const F_D: usize = 18;
+pub const F_A: usize = 19;
+pub const N_FIELDS: usize = 20;
 /// A.3's sizes (`FRFormat.fieldSizes_eq`; `logs/S-0/dump/summary.txt`).
-pub const FIELD_SIZES: [usize; N_FIELDS] =
-    [48, 128, 2048, 1248, 32, 800, 1344, 816, 48, 2336, 48, 8192, 2112, 672, 45056, 4096, 487504, 241664];
-/// `piSize = 798,192` (revision 4.1, `FRShape4.piSizeOf_seq4`; `logs/S-F4/dump/summary.txt`): 3.x's
-/// 797,904 plus Lr's 2 and E's 4 extra rounds (96 + 192 B, the `m = 32` node's phases), the same for
+/// Revision 4.4.1 at rev44 HEAD (`logs/E1/dump/summary.txt`): `fLrEnd` 1,008 (RSV2: `â_L b̂_L ĉ_L ‖ p_x
+/// ‖ p_y ‖ s ‖ X₃`), `fEEnd` 112 (`â_M b̂_M ĉ_M ‖ m̂* ‖ 0^48`), caps 49,152 (level 4 at 256 entries),
+/// siblings 237,632 (level 4: 4 per position), `D` 27,872, `A` 49,152.
+pub const FIELD_SIZES: [usize; N_FIELDS] = [
+    48, 128, 2048, 1248, 32, 800, 1344, 816, 1008, 2336, 112, 8192, 2112, 672, 49152, 4096, 487504, 237632, 27872,
+    49152,
+];
+/// `piSize = 876,304` (revision 4.4.1 at rev44, `FRShape4.piSizeOf_seq4`; 4.1's 798,192 plus the
+/// reserve's 960 + 64 B, level 4's cap +4,096 and siblings −4,032, `D` and `A`), the same for
 /// every SNARK kind.
-pub const PI_SIZE: usize = 798192;
+pub const PI_SIZE: usize = 876304;
 
 /// The offset of field `f` in `π`.
 pub const fn field_off(f: usize) -> usize {
@@ -177,7 +187,7 @@ pub const KAPPA_C: usize = 9;
 pub const FINAL_ELEMS: usize = 1 << PF_ROUNDS;
 /// The `m* = 32` ladder's position squeezes and Merkle-node queries per position (`lvlStar`).
 pub const STAR_SQ: [usize; LEVELS] = [25, 13, 10, 8, 6];
-pub const STAR_SIB: [usize; LEVELS] = [11, 10, 8, 6, 5];
+pub const STAR_SIB: [usize; LEVELS] = [11, 10, 8, 6, 4];
 /// Rows per column (`2^ℓ`), the same for every kind.
 pub const STAR_ROWS: [usize; LEVELS] = [64, 16, 16, 16, 16];
 
@@ -207,12 +217,24 @@ pub const KIND_L31: u8 = 0x4B;
 /// `L30` (`FRShape4.SegKind.byte`; 3.x's `P30` byte).
 pub const KIND_P30: u8 = 0x50;
 /// The item count of `seq4` (`itemsOf_seq4_length`) and its Fiat–Shamir items.
-pub const N_ITEMS: usize = 8905;
-pub const N_FS_ITEMS: usize = 482;
+pub const N_ITEMS: usize = 8783;
+pub const N_FS_ITEMS: usize = 486;
+/// The cap check's reads (`capReadsN seq4`: 290 + 178 + 145 + 132 + 126) and cap entries
+/// (`capEntries seq4`: 512 + 3·256 + 256), with each level's entry offset `offᵢ`.
+pub const CAP_READS: usize = 871;
+pub const CAP_ENTRIES: usize = 1536;
+pub const CAP_OFF: [usize; LEVELS] = [0, 512, 768, 1024, 1280];
+/// `fLrEnd`'s reserve offsets (RSV2 §2.1: `p_x` 23, `p_y` 25, `s` 9, `X₃` 3 elements) and `fEEnd`'s `m̂*`.
+pub const LREND_LEN: usize = 1008;
+pub const EEND_LEN: usize = 112;
+pub const RSV_RX: usize = 48;
+pub const RSV_RY: usize = 416;
+pub const RSV_S: usize = 816;
+pub const RSV_X: usize = 960;
 pub const KIND_NODE: u8 = 0x4E;
 pub const HDR_LEN: usize = 48;
 
-/// `qV4 = 36,000` (`FRShape4.qV4`; the aggregate verifier asks `≤ 4 × 8,905`).
+/// `qV4 = 36,000` (`FRShape4.qV4`; the aggregate verifier asks `≤ 4 × 8,783 + 3`).
 pub const QV: usize = 36000;
 
 /// The leaf shapes: `m ∈ {30, 32}` (B-1); test shapes `m ≥ 25` use the same code.
@@ -238,10 +260,12 @@ mod tests {
             (F_L2, L2_ROUNDS * 48 + L3_KINDS * 16),
             (F_S2, S2_ROUNDS * 48),
             (F_LR, LR_ROUNDS * 48),
-            (F_LREND, 48),
+            (F_LREND, LREND_LEN),
             (F_RS0, RS_CLAIMS * 128 * 16),
             (F_E, (E2_ROUNDS + E4_ROUNDS) * 48 + E4END_LEN),
-            (F_EEND, 48),
+            (F_EEND, EEND_LEN),
+            (F_D, CAP_READS * 32),
+            (F_A, CAP_ENTRIES * 32),
             (F_P1, ROW_LOG.iter().sum::<usize>() * 96),
             (F_PF, PF_ROUNDS * 96),
             (F_CAPS, CAP_LOG.iter().map(|c| 32 << c).sum()),

@@ -263,7 +263,18 @@ pub fn with_cells(text: &str, ph: &[usize], real: &[usize], nc: usize) -> Option
 pub struct NodeCtx {
     pub k: crate::node::NK,
     pub protos: std::sync::Arc<[crate::mfill::Proto; 2]>,
-    pub kt: std::sync::Arc<crate::mfill::KindTab>,
+    /// The three kinds' tables (`N2`, `N4`, `N8`: RSV2's stacked `evalM` reads every kind's rows).
+    pub kts: [std::sync::Arc<crate::mfill::KindTab>; 3],
+}
+
+impl NodeCtx {
+    pub fn new(k: crate::node::NK, protos: std::sync::Arc<[crate::mfill::Proto; 2]>, kts: [std::sync::Arc<crate::mfill::KindTab>; 3]) -> NodeCtx {
+        NodeCtx { k, protos, kts }
+    }
+    /// The node's own kind table.
+    pub fn kt(&self) -> &crate::mfill::KindTab {
+        &self.kts[self.k as usize]
+    }
 }
 
 thread_local! {
@@ -554,7 +565,13 @@ pub fn run_regs(text: &str, circ: &crate::circuit::Circuit, o: &dyn Oracle, vk: 
             }
             "evalM" if nctx.is_some() => {
                 let nc = nctx.as_ref().unwrap();
-                let r = crate::nodeops::eval_m(&nc.kt, &nc.protos, g(1).af(), g(2).af());
+                // `evalMN4`: a 32-entry row point is RSV2's stacked call (`evalMX4`), else the own kind's
+                let r = if g(1).af().len() == 32 {
+                    let kts = [&*nc.kts[0], &*nc.kts[1], &*nc.kts[2]];
+                    [crate::nodeops::eval_mx(&kts, &nc.protos, g(1).af(), g(2).af()), F::ZERO, F::ZERO]
+                } else {
+                    crate::nodeops::eval_m(nc.kt(), &nc.protos, g(1).af(), g(2).af())
+                };
                 vec![V::F(r[0]), V::F(r[1]), V::F(r[2])]
             }
             "evalL" if nctx.is_some() => {
@@ -679,6 +696,11 @@ pub fn run_agg(prog: &dyn Fn(u8) -> Option<String>, circ: &crate::circuit::Circu
     let mut out = Run { ok: true, ..Default::default() };
     for (i, v) in vs.iter().enumerate() {
         let Some(text) = prog(v.0) else { return Run { ok: false, ..out } };
+        if i > 0 {
+            // the spacer between segments (revision 4.4.1, `FRAgg.aggProgs`)
+            o.ask(&crate::agg::spacer_q());
+            out.asks += 1;
+        }
         let ci = crate::blake2s::leaf_stmt(&v.3, v.4);
         let r = run(&text, circ, o, vk, &ci, &pi[48 + i * seg..48 + (i + 1) * seg]);
         out.asks += r.asks;
@@ -773,7 +795,7 @@ mod tests {
     use crate::params::{field_off, FIELD_SIZES, N_FIELDS};
 
     fn dump(name: &str) -> Option<String> {
-        let d = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../logs/INT-8/dump").join(name);
+        let d = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../logs/E1/dump").join(name);
         std::fs::read_to_string(&d).ok()
     }
 
@@ -784,7 +806,7 @@ mod tests {
     #[test]
     fn ir_kat_l30() {
         let Some(text) = dump("ops-L30.txt") else {
-            eprintln!("ir_kat_l30: SKIP (logs/INT-8/dump/ops-L30.txt absent)");
+            eprintln!("ir_kat_l30: SKIP (logs/E1/dump/ops-L30.txt absent)");
             return;
         };
         let circ = crate::circuit::Circuit::build();
@@ -845,13 +867,13 @@ mod tests {
     }
 
     /// `V_A` reconstructed (`run_agg`) on the dumped `L30` program: an aggregate of two `L30`
-    /// segments (`2^16`, then 3 steps) is accepted with `2 × 8,905` asks; the statement of `n + 1` and
+    /// segments (`2^16`, then 3 steps) is accepted with `2 × 8,783 + 1` asks; the statement of `n + 1` and
     /// a flipped segment byte are rejected; a broken chaining and a nonzero `hdr_A` byte 2 are rejected
     /// with no query.
     #[test]
     fn ir_agg_l30() {
         let Some(text) = dump("ops-L30.txt") else {
-            eprintln!("ir_agg_l30: SKIP (logs/INT-8/dump/ops-L30.txt absent)");
+            eprintln!("ir_agg_l30: SKIP (logs/E1/dump/ops-L30.txt absent)");
             return;
         };
         let prog = |b: u8| if b == 0x50 { Some(text.clone()) } else { None };
@@ -865,7 +887,7 @@ mod tests {
         let c = crate::blake2s::leaf_stmt(&e, n);
         assert_eq!(pi[1], 2);
         let r = run_agg(&prog, &circ, &o, &vk, &c, &pi);
-        assert!(r.ok && r.asks == 2 * crate::params::N_ITEMS, "{r:?}");
+        assert!(r.ok && r.asks == 2 * crate::params::N_ITEMS + 1, "{r:?}");
         assert!(crate::agg::verify(&o, &circ, &vk, &c, &pi));
         // rejections: the statement, n + 1, a segment byte, the chaining
         let c2 = crate::blake2s::leaf_stmt(&e, n + 1);

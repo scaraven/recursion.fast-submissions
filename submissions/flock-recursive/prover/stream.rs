@@ -119,7 +119,7 @@ fn toy_node(o: &dyn crate::oracle::Oracle, pre: &Pre, k: node::NK, vk: &Digest, 
         Some(p) => [p.c, aggs[0].1],
         None => [aggs[0].1, aggs[1].1],
     };
-    let ni = nodeprove::NodeIn { k, vk: *vk, cs, w: &w, mats: nodeprove::Mats { k, kt: pre.kt(k), protos: &pre.nd.protos }, base: &pre.base };
+    let ni = nodeprove::NodeIn { k, vk: *vk, cs, w: &w, mats: nodeprove::Mats { k, kt: pre.kt(k), protos: &pre.nd.protos }, kts: [&*pre.kts[0], &*pre.kts[1], &*pre.kts[2]], base: &pre.base };
     let (pi, _) = nodeprove::prove(o, &ni);
     let c = nodeprove::node_c(&cs);
     let tape = crate::oracle::Tape::new(o);
@@ -208,7 +208,7 @@ pub fn setup(dir: &Path) {
 /// The previous node's slot context (its kind's tables for its program's node ops).
 fn prev_in<'a>(pre: &'a Pre, ps: &'a format::Signed, c: Digest) -> node::PrevIn<'a> {
     let pk = node::NK::of_byte(ps.pi[0]).unwrap_or_else(|| service::fatal("prev.bin: not a node proof"));
-    let ctx = std::sync::Arc::new(ir::NodeCtx { k: pk, protos: pre.nd.protos.clone(), kt: pre.kt(pk).clone() });
+    let ctx = std::sync::Arc::new(ir::NodeCtx::new(pk, pre.nd.protos.clone(), pre.kts.clone()));
     node::PrevIn { signed: ps, c, ix: [1, 0, 2][pk as usize], ctx, base: &pre.base }
 }
 
@@ -241,7 +241,7 @@ fn node_signed(svc: &service::Service, pre: &Pre, k: node::NK, vk: &Digest, prev
     };
     let mut rec = Recorder::new(svc);
     rec.batch_max = 128;
-    let ni = nodeprove::NodeIn { k, vk: *vk, cs, w: &w, mats: nodeprove::Mats { k, kt, protos: &nd.protos }, base };
+    let ni = nodeprove::NodeIn { k, vk: *vk, cs, w: &w, mats: nodeprove::Mats { k, kt, protos: &nd.protos }, kts: [&*pre.kts[0], &*pre.kts[1], &*pre.kts[2]], base };
     let (pi, ptm) = nodeprove::prove(&rec, &ni);
     if std::env::var_os("FLOCK_VERBOSE").is_some() {
         eprintln!("node {} phases {}", k.name(), ptm.report());

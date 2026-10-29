@@ -275,16 +275,16 @@ pub fn rs_weight4(k: NK, rpp: &[F], pts: &[Vec<K>], kap: F, beta: F, rho: &[K]) 
 }
 
 /// Split eq tables for points over many cells: `eq(x, c) = lo[c mod 2^12]·hi[c >> 12]`.
-struct EqSplit {
+pub struct EqSplit {
     lo: Vec<F>,
     hi: Vec<F>,
 }
 impl EqSplit {
-    fn new(x: &[F]) -> EqSplit {
+    pub fn new(x: &[F]) -> EqSplit {
         let s = x.len().min(12);
         EqSplit { lo: eq_table(&x[..s]), hi: eq_table(&x[s..]) }
     }
-    fn at(&self, c: usize) -> F {
+    pub fn at(&self, c: usize) -> F {
         let s = self.lo.len().trailing_zeros();
         let (l, h) = (c & (self.lo.len() - 1), c >> s);
         if h >= self.hi.len() { F::ZERO } else { self.lo[l] * self.hi[h] }
@@ -344,6 +344,97 @@ pub fn eval_m(kt: &KindTab, protos: &[Proto; 2], tau: &[F], sigma: &[F]) -> [F; 
         }
     }
     out
+}
+
+/// **`evalMX4`** (RSV2's stacked call): the row point `τ = p_x[0..23) ‖ s[0..9)`, the column point
+/// `σ` (25 entries); `Σ_{k<3} ⟨s_k, (Ã, B̃, C̃)_{κ_k}(p_x, σ)⟩` over `κ = N2, N4, N8` (`κ.ix`), each kind
+/// read at its own coordinates (`ptOf`: the first `logM κ` row and `logM κ + 2` column entries); a
+/// kind with zero coefficients is skipped. Every slot of every kind is its prototype's rows moved by
+/// `v·2^20` (rows and cells), and the low 20 coordinates of both points are the same for every kind,
+/// so each prototype's sum at `(eq(τ_{<20}), eq(σ_{<20}))` is computed once (`eval_m`'s per-slot sum)
+/// and every slot takes it times `eq(τ_{≥20}, v)·eq(σ_{≥20}, one/2^20 + v)`; then each kind's link
+/// rows. `eval_mx_ref`: `eval_m` per kind.
+pub fn eval_mx(kts: &[&KindTab; 3], protos: &[Proto; 2], tau: &[F], sigma: &[F]) -> F {
+    const W: usize = 20;
+    assert_eq!(tau.len(), 32);
+    let (lt, ls) = (eq_table(&tau[..W]), eq_table(&sigma[..W]));
+    let po: [std::sync::OnceLock<[F; 3]>; 2] = [std::sync::OnceLock::new(), std::sync::OnceLock::new()];
+    let proto_sum = |pi: usize| -> [F; 3] {
+        let p = &protos[pi];
+        let base = pi * SLOT;
+        let parts = crate::par::map_chunks(p.rows.len(), 4096, |lo, hi| {
+            let mut o = [crate::field::FAcc::default(), crate::field::FAcc::default(), crate::field::FAcc::default()];
+            for i in lo..hi {
+                let rw = lt[p.rows.idx[i] as usize - base];
+                let rg = p.rows.rng[i];
+                for m in 0..3 {
+                    let mut s = F::ZERO;
+                    for t in rg[m] as usize..rg[m + 1] as usize {
+                        s += p.rows.cmul(t, ls[p.rows.cells[t] as usize - base]);
+                    }
+                    o[m].mac(rw, s);
+                }
+            }
+            o.map(|x| x.reduce())
+        });
+        let mut out = [F::ZERO; 3];
+        for o in parts {
+            for m in 0..3 {
+                out[m] += o[m];
+            }
+        }
+        out
+    };
+    let mut x = F::ZERO;
+    for (k, kt) in kts.iter().enumerate() {
+        let s = &tau[23 + 3 * k..26 + 3 * k];
+        if s.iter().all(|v| v.is_zero()) {
+            continue;
+        }
+        let lm = kt.log_m;
+        if kt.one_cell % SLOT != 0 {
+            let r = eval_m_ref(kt, protos, &tau[..lm], &sigma[..lm + 2]);
+            x += s[0] * r[0] + s[1] * r[1] + s[2] * r[2];
+            continue;
+        }
+        let (ht, hs) = (eq_table(&tau[W..lm]), eq_table(&sigma[W..lm + 2]));
+        let ob = kt.one_cell >> W;
+        let mut out = [F::ZERO; 3];
+        for (v, &(pi, ..)) in kt.slots.iter().enumerate() {
+            let o = po[pi].get_or_init(|| proto_sum(pi));
+            let fac = ht[v] * hs[ob + v];
+            for m in 0..3 {
+                out[m] += fac * o[m];
+            }
+        }
+        let (et, es) = (EqSplit::new(&tau[..lm]), EqSplit::new(&sigma[..lm + 2]));
+        let l = &kt.links;
+        for i in 0..l.len() {
+            let rw = et.at(l.idx[i] as usize);
+            let rg = l.rng[i];
+            for m in 0..3 {
+                let mut t = F::ZERO;
+                for q in rg[m] as usize..rg[m + 1] as usize {
+                    t += l.coef(q) * es.at(l.cells[q] as usize);
+                }
+                out[m] += rw * t;
+            }
+        }
+        x += s[0] * out[0] + s[1] * out[1] + s[2] * out[2];
+    }
+    x
+}
+
+/// `eval_mx` with `eval_m` per kind (the reference).
+pub fn eval_mx_ref(kts: &[&KindTab; 3], protos: &[Proto; 2], tau: &[F], sigma: &[F]) -> F {
+    let mut x = F::ZERO;
+    for (k, kt) in kts.iter().enumerate() {
+        let s = &tau[23 + 3 * k..26 + 3 * k];
+        let lm = kt.log_m;
+        let r = eval_m(kt, protos, &tau[..lm], &sigma[..lm + 2]);
+        x += s[0] * r[0] + s[1] * r[1] + s[2] * r[2];
+    }
+    x
 }
 
 /// `eval_m` term by term with the split eq tables (the reference).
@@ -486,14 +577,41 @@ mod tests {
         assert!(n >= 24, "{n} lines");
     }
 
+    /// `eval_mx` (prototype sums shared by every slot and kind) equals `eval_m` per kind, on random
+    /// 32/25-entry points with every support (E1).
+    #[test]
+    fn eval_mx_matches_ref() {
+        let nd = crate::plan::node_data();
+        let kts = nd.kind_tabs();
+        let kr = [&*kts[0], &*kts[1], &*kts[2]];
+        let mut s = 0x1234_5678_9abc_def0u64;
+        let mut rf = || {
+            s = s.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            F::new(s, s.rotate_left(29) ^ 0xa5)
+        };
+        for sup in [1usize, 2, 4, 7] {
+            let mut tau: Vec<F> = (0..32).map(|_| rf()).collect();
+            for k in 0..3 {
+                if sup >> k & 1 == 0 {
+                    tau[23 + 3 * k..26 + 3 * k].iter_mut().for_each(|x| *x = F::ZERO);
+                }
+            }
+            let sigma: Vec<F> = (0..25).map(|_| rf()).collect();
+            assert_eq!(eval_mx(&kr, &nd.protos, &tau, &sigma), eval_mx_ref(&kr, &nd.protos, &tau, &sigma), "support {sup}");
+        }
+    }
+
     /// The layout's figures against S-E12a's (`hEnd_eq`) and the dump's `node-N*.txt` headers.
     #[test]
     fn layout_figures() {
-        assert_eq!([NK::N2, NK::N4, NK::N8].map(|k| k.h_end()), [70957, 117593, 187548]);
-        assert_eq!(NK::N4.h_used(), 117589);
-        assert_eq!(NK::N4.l_base(), 117760);
+        // revision 4.4.1 at rev44 (`FRNodeKinds4.hEnd_eq`, A1′'s `hUsed_eq`: spacers, L1)
+        assert_eq!([NK::N2, NK::N4, NK::N8].map(|k| k.h_end()), [74017, 122501, 195228]);
+        assert_eq!([NK::N2, NK::N4, NK::N8].map(|k| k.h_used()), [74015, 122497, 195220]);
+        assert_eq!(NK::N8.l_base(), 195328);
+        assert_eq!(NK::N4.l_base(), 122624);
         assert_eq!(NK::N4.one_cell(), 25165824);
-        assert_eq!(NK::N4.cells4(), vec![25165824, 5, 6, 7, 132, 2965509, 2965510, 15051778, 15051779]);
+        assert_eq!(NK::N4.cells4(), vec![25165824, 5, 6, 7, 132, 3102213, 3102214, 15680002, 15680003]);
+        assert_eq!([1, 2, 3, 4].map(crate::node::agg_l), [24236, 48474, 72712, 96950]);
         // (−) the previous node's last block does not link to the aggregate's first
         assert!(!NK::N4.chain_lk(crate::node::C_LEN - 1) && NK::N4.chain_lk(crate::node::C_LEN));
     }

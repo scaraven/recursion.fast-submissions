@@ -144,7 +144,7 @@ pub fn acc_with(top: Top, circ: &circuit::Circuit, vk: &Digest, c: &Digest, file
         (_, 0x4D..=0x4F) => {
             let k = node::NK::of_byte(b).unwrap();
             let nd = plan::node_data();
-            let ctx = std::sync::Arc::new(ir::NodeCtx { k, protos: nd.protos.clone(), kt: std::sync::Arc::new(nd.kind_tab(k)) });
+            let ctx = std::sync::Arc::new(ir::NodeCtx::new(k, nd.protos.clone(), nd.kind_tabs()));
             let base = circuit::Circuit::build_base();
             ir::run_node(&nd.node_program(k), ctx, &base, &seq, vk, c, &p.pi).ok && nodeprove::stmt_ok4(&p.pi, c)
         }
@@ -234,7 +234,8 @@ fn node_kat(args: &[String]) {
     let nd = plan::node_data();
     let protos = nd.protos.clone();
     let texts = nd.texts.clone();
-    let kt = std::sync::Arc::new(nd.kind_tab(kind));
+    let kts = nd.kind_tabs();
+    let kt = kts[kind as usize].clone();
     println!("NODE-KAT load {:.2}s", t.elapsed().as_secs_f64());
     let m: usize = arg(args, "--m").map(|x| x.parse().unwrap()).unwrap_or(32);
     let n = seg_n(args, m);
@@ -283,7 +284,7 @@ fn node_kat(args: &[String]) {
         let pk = node::NK::of_byte(ps.pi[0]).unwrap_or_else(|| service::fatal("--prev: not a node proof"));
         let st = &ps.pi[params::field_off(params::F_STMT)..];
         let c = nodeprove::node_c(&[st[1..33].try_into().unwrap(), st[33..65].try_into().unwrap()]);
-        let ctx = std::sync::Arc::new(ir::NodeCtx { k: pk, protos: protos.clone(), kt: std::sync::Arc::new(nd.kind_tab(pk)) });
+        let ctx = std::sync::Arc::new(ir::NodeCtx::new(pk, protos.clone(), kts.clone()));
         println!("NODE-KAT previous node {} |tr|={}", pk.name(), ps.tr.len());
         node::PrevIn { signed: ps, c, ix: [1, 0, 2][pk as usize], ctx, base: &base }
     });
@@ -291,6 +292,27 @@ fn node_kat(args: &[String]) {
     println!("NODE-KAT witness {:.2}s {:?}", t.elapsed().as_secs_f64(), w.times);
     for (v, st) in w.mstats.iter().enumerate() {
         println!("NODE-KAT slot {v}: {st:?}");
+    }
+    // `--dkat DIR` (E1, the decoder KAT): the node witness's cells (`z`, two u64 words a cell, little
+    // endian), both signed children and their statements, for the Lean probe `E1Dec`
+    if let Some(d) = arg(args, "--dkat") {
+        let dd = std::path::Path::new(&d);
+        std::fs::create_dir_all(dd).expect("--dkat dir");
+        let mut zb = Vec::with_capacity(8 * w.z.len());
+        for x in &w.z {
+            zb.extend_from_slice(&x.to_le_bytes());
+        }
+        std::fs::write(dd.join("f.bin"), &zb).expect("write f.bin");
+        let kids: Vec<(&format::Signed, Digest)> = match (&prev_signed, &prev_in) {
+            (Some(ps), Some(p)) => vec![(ps, p.c), (&signed[0], aggs[0].c)],
+            _ => vec![(&signed[0], aggs[0].c), (&signed[1], aggs[1].c)],
+        };
+        for (i, (s, c)) in kids.iter().enumerate() {
+            std::fs::write(dd.join(format!("c{i}.signed")), format::to_file(s)).expect("write child");
+            std::fs::write(dd.join(format!("c{i}.stmt")), hexs(c)).expect("write stmt");
+        }
+        std::fs::write(dd.join("kind"), kind.name()).expect("write kind");
+        println!("NODE-KAT dkat: {} f words, children written to {d}", w.z.len());
     }
     let t = Instant::now();
     let ch = node::check(&w, &protos, &kt);
@@ -303,10 +325,13 @@ fn node_kat(args: &[String]) {
         Some(p) => [p.c, aggs[0].c],
         None => [aggs[0].c, aggs[1].c],
     };
-    let ni = nodeprove::NodeIn { k: kind, vk, cs, w: &w, mats: nodeprove::Mats { k: kind, kt: &kt, protos: &protos }, base: &base };
+    let ni = nodeprove::NodeIn { k: kind, vk, cs, w: &w, mats: nodeprove::Mats { k: kind, kt: &kt, protos: &protos }, kts: [&*kts[0], &*kts[1], &*kts[2]], base: &base };
     let t = Instant::now();
     let (pi, tm) = nodeprove::prove(&o, &ni);
     println!("NODE-PROVE {} {:.2}s |pi|={} pi_b2s={} {} peak_rss_mb={:.0}", kind.name(), t.elapsed().as_secs_f64(), pi.len(), hexs(&blake2s::blake2s256(&pi)), tm.report(), peak_rss_mb());
+    if prof::on() {
+        println!("NODE-PROVE prof {}", prof::report());
+    }
     if let Some(p) = arg(args, "--out") {
         std::fs::write(&p, &pi).expect("write");
     }
@@ -318,7 +343,7 @@ fn node_kat(args: &[String]) {
     // the embedded group program at the kind's index is the dumped fixed program (INT-8 `Op.at`)
     let gtext = nd.node_program(kind);
     println!("NODE-IR proto-p0 at {} = ops-{} (real cells): {}", kind.name(), kind.name(), gtext == text);
-    let ctx = std::sync::Arc::new(ir::NodeCtx { k: kind, protos: protos.clone(), kt: kt.clone() });
+    let ctx = std::sync::Arc::new(ir::NodeCtx::new(kind, protos.clone(), kts.clone()));
     let t = Instant::now();
     let tape = Tape(&o, std::sync::Mutex::new(Vec::new()));
     let r = ir::run_node(&text, ctx.clone(), &base, &tape, &vk, &c, &pi);
@@ -329,7 +354,7 @@ fn node_kat(args: &[String]) {
         std::fs::write(&p, format::to_file(&format::Signed { pi: pi.clone(), tr, sig })).expect("write");
     }
     let st = nodeprove::stmt_ok4(&pi, &c);
-    println!("NODE-IR {} ok={} stmtOk4={st} failed={:?} asks={} {:.2}s", kind.name(), r.ok, r.failed, r.asks, t.elapsed().as_secs_f64());
+    println!("NODE-IR {} ok={} stmtOk4={st} failed={:?} asks={} {:.2}s vk={} c={}", kind.name(), r.ok, r.failed, r.asks, t.elapsed().as_secs_f64(), hexs(&vk), hexs(&c));
     // canaries: another statement; a flipped byte in the E field; the placeholder-cell program
     let mut c2 = c;
     c2[3] ^= 0x40;
@@ -488,8 +513,9 @@ fn prove_leaf_service(m: usize, n: u64, start: &Digest, out: &str, reps: usize) 
         };
         let reasm = items::reassemble(&tr).as_deref() == Some(&pi[..]);
         println!(
-            "PROVE-LEAF m={m} rep={rep} n={n} trace_kat={tr_kat} reassemble_eq_pi={reasm} total_s={total:.3} prove_s={t_prove:.3} trace_s={t_trace:.3} sign_s={t_sign:.3} oracle_s={oracle_s:.3} \
+            "PROVE-LEAF m={m} rep={rep} n={n} stmt={} trace_kat={tr_kat} reassemble_eq_pi={reasm} total_s={total:.3} prove_s={t_prove:.3} trace_s={t_trace:.3} sign_s={t_sign:.3} oracle_s={oracle_s:.3} \
              compressions_per_s={:.0} |pi|={} |tr|={} trace_query_bytes={qbytes} file={} acc={} acc_s={t_acc:.3} lean_seg={lean} canary_accept={canary} peak_rss_mb={:.0} threads={} tier={} | {} | {stats} | {}{}",
+            c.iter().map(|b| format!("{b:02x}")).collect::<String>(),
             n as f64 / total,
             pi.len(),
             tr.len(),
@@ -564,7 +590,8 @@ fn prove_agg_service(n: u64, start: &Digest, out: &str, reps: usize) {
         let t_lean = t.elapsed().as_secs_f64();
         let segs: Vec<String> = agg::split(n, agg::M_SEG).iter().zip(tms.iter()).map(|((m, ni), tm)| format!("L{m}:{ni}:{:.3}", tm.total())).collect();
         println!(
-            "PROVE-AGG n={n} rep={rep} k={} segs=[{}] total_s={total:.3} prove_s={t_prove:.3} trace_sign_s={t_trace_sign:.3} |pi|={} |tr|={} file={} acc={} lean_acc={lean} lean_s={t_lean:.2} canary_accept={canary} peak_rss_mb={:.0} threads={} tier={}",
+            "PROVE-AGG n={n} rep={rep} stmt={} k={} segs=[{}] total_s={total:.3} prove_s={t_prove:.3} trace_sign_s={t_trace_sign:.3} |pi|={} |tr|={} file={} acc={} lean_acc={lean} lean_s={t_lean:.2} canary_accept={canary} peak_rss_mb={:.0} threads={} tier={}",
+            c.iter().map(|b| format!("{b:02x}")).collect::<String>(),
             tms.len(),
             segs.join(","),
             pi.len(),

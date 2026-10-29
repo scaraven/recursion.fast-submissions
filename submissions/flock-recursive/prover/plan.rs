@@ -455,6 +455,10 @@ impl NodeData {
     pub fn kind_tab(&self, k: crate::node::NK) -> KindTab {
         KindTab::parse(&self.kinds[k as usize])
     }
+    /// The three kinds' tables (`N2`, `N4`, `N8`).
+    pub fn kind_tabs(&self) -> [std::sync::Arc<KindTab>; 3] {
+        [crate::node::NK::N2, crate::node::NK::N4, crate::node::NK::N8].map(|k| std::sync::Arc::new(self.kind_tab(k)))
+    }
     /// The fixed program of node kind `k`: prototype 0's program (`progNodeGK N4c.cells4`, every
     /// kind's real cells) at the kind's index (`L32 P30 N30` = `N4 N2 N8`; INT-8 `Op.at`).
     pub fn node_program(&self, k: crate::node::NK) -> String {
@@ -662,6 +666,12 @@ pub fn data_tag() -> [u8; 32] {
 
 /// The node data: from the dumps when `FLOCK_NODE_DUMP` is set (development), else the embedded
 /// blob (the runner), decoded once.
+/// `node_data()`'s three kind tables, parsed once.
+pub fn kind_tabs_static() -> &'static [std::sync::Arc<KindTab>; 3] {
+    static T: std::sync::OnceLock<[std::sync::Arc<KindTab>; 3]> = std::sync::OnceLock::new();
+    T.get_or_init(|| node_data().kind_tabs())
+}
+
 pub fn node_data() -> &'static NodeData {
     static D: std::sync::OnceLock<NodeData> = std::sync::OnceLock::new();
     D.get_or_init(|| {
