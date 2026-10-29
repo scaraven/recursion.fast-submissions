@@ -2,14 +2,15 @@
 
 Last updated 2026-10-28. **Rebased onto core PR #20 (pin `6d05d00`, commit `987e679`); blueprint revision 4.0** (§0.1 B-11…B-17, §10 changes 25). Build trees use `logs/org20`.
 
-## Running (revision 4.3; 6 agents, FR-D8) — as of 2026-10-29
+## Running (revision 4.4.1; 6 agents, FR-D8) — as of 2026-10-29 06:00
 
-- S-H4: the node decoder (`lagIR` semantics, `level_decode4`, `nd`, `DecOk4`, `NodeDec4`; residuals 5–7: `D`, `hL`, `hnd`).
-- G2: speed golf of the heavy `FRX*` decoder-infrastructure modules (Bary, Msg, Agree, Out, Read, Fwd, Bfly, Flag, Field, BaryTop, EqT, Lookup, Dsl).
-- P2⁸ (pass 12): segment proving (≈ 64 % of a step; round 1 ≈ 1.25 s per 2^18), then pass 11's handover list; π byte-identical.
-- PK-review (Fable): adversarial review of `design/PACK-4.4.md` → `reviews/PACK-4.4-review.md`. The build tracks (A1 R-A′, A2 CapChk, B arenas/`compileFromX_run`, C `R` keys, D `evalM` replay, E P2) wait for its verdict.
-- S-E14: `Gap4` 7, the replay `R` (10 registers per prototype: `evalM`×3, `evalL`×3, `targetS`, `shiftTarget`, `linkWAll`, `rsWeight`), new `FRNodeRows4Rep*` modules, fold handed over.
-- RET-2: retirement step 3 (the 3.x soundness front out of the Rev4 closure; `tail_shift` move).
+- S-H4 pass 2: the node decoder (handover items 1–6 of S-H2-RESULT Part 25: `lagIR_sem`, `level_decode4`, `decLevels4`, `outIR4`, `nd`/`DecOk4`/`NodeDec4`); `FRX4*` untouched until A2′ lands.
+- A2′: CapChk (PACK-4.4.1 §7.1): `FRTranscriptDefs`, `FRFormat`, `FRShape4`, `FRVIR4Mux`/`FRVIR4`, `FRVIRFinals4`, the `FRX4*` 798192 literal; hands the broken soundness statements to A3′.
+- B0: prototype row levers (≤ 640 k rows per prototype): `FRVIRCompile`, `FRVIRTplFast`, `FRNodeRows4Plan`/`Hint`/`Model`.
+- G2: speed golf of the heavy `FRX*` modules.
+- P2⁸: segment proving.
+
+**Next, in PACK-4.4.1 §7's order:** A1′ (after A2′) → A3′ (after A2′) → B1′ → B2′ → C0 → B3, B4 → C1, C2 → D1 (kill line 25 ms VM) → E1 (P2) → RET-3 (step 4, verifier shapes; after A2′, which edits `FRVIRFinals4`) and step 2 (3.x extractor; after S-H4) → F (S-I: `evaluate.py cert` ≤ 600 s).
 
 ## Waiting
 
@@ -57,9 +58,13 @@ Last updated 2026-10-28. **Rebased onto core PR #20 (pin `6d05d00`, commit `987e
 
 ## Closed
 
-S-A `8ff873c`; S-C `ebac8c2`; S-D `8e6dad7`; S-E1 `2d5a811`; S-H1 `40b2f81`; S-0 `47158b1`; S-E2/S-E3 `8447c50`; S-F `c8e1869`; S-F2 `8f22b86`; S-G through `ac43569`; S-H2 through `11fb3a5`; INT-1 `5fc7d3b`; S-E5 `9dbab71`; … S-N2 `75eff21`; INT-10 `1c5a738`; S-E13b `ce2a4ad`; D-PK memo `PACK-4.4.md` (committed, under review); P2⁷ `5e99fba` (7763: step + overhead 12.78 s, M ≤ 74, truncated ≈ 52 %; S-E13a/b's matrices and cells, 0 failing rows on honest witnesses; prover.s 5e1bab39…); S-E14 `f5ad181` (replay mechanism; segment `linkWAll` only); S-E13a `8cc8ccd` (kindN, kindS@0, wf@0, wots, aggPad closed through `gap4_of_rows : StmtN4 → PfHdr pf → Gap4R → Gap4`; `Gap4R` = imp, kindS/wf at i ≥ 1, aggChk; V(N4) +≈30 ms; new node dump for P2); S-I `2f437ed` (residuals 8–9 closed; `Solution` PROVISIONAL under `Open4`; **cert build 882 s on the 7763 > `build_s` 600 → REJECT**: 307 modules, 2,975 CPU-s, need ≤ 2,020 (≤ 1,550 for 1.3×); bench probe season S = 6.421, truncated at M = 63) (`SegOut4` gone: `ks_rev4H`/`certificate_rev4H`; open: drop `hO`/`out` from S-N2's `ks_rev4GH`, then delete the G forms, `SegOut4`, `runFacts4_C`). FR builds as a whole.
+S-A `8ff873c`; S-C `ebac8c2`; S-D `8e6dad7`; S-E1 `2d5a811`; S-H1 `40b2f81`; S-0 `47158b1`; S-E2/S-E3 `8447c50`; S-F `c8e1869`; S-F2 `8f22b86`; S-G through `ac43569`; S-H2 through `11fb3a5`; INT-1 `5fc7d3b`; S-E5 `9dbab71`; … S-N2 `75eff21`; INT-10 `1c5a738`; RET-2 `1a342e7`; PACK-4.4.1 + review; S-E13b `ce2a4ad`; D-PK memo `PACK-4.4.md` (committed, under review); P2⁷ `5e99fba` (7763: step + overhead 12.78 s, M ≤ 74, truncated ≈ 52 %; S-E13a/b's matrices and cells, 0 failing rows on honest witnesses; prover.s 5e1bab39…); S-E14 `f5ad181` (replay mechanism; segment `linkWAll` only); S-E13a `8cc8ccd` (kindN, kindS@0, wf@0, wots, aggPad closed through `gap4_of_rows : StmtN4 → PfHdr pf → Gap4R → Gap4`; `Gap4R` = imp, kindS/wf at i ≥ 1, aggChk; V(N4) +≈30 ms; new node dump for P2); S-I `2f437ed` (residuals 8–9 closed; `Solution` PROVISIONAL under `Open4`; **cert build 882 s on the 7763 > `build_s` 600 → REJECT**: 307 modules, 2,975 CPU-s, need ≤ 2,020 (≤ 1,550 for 1.3×); bench probe season S = 6.421, truncated at M = 63) (`SegOut4` gone: `ks_rev4H`/`certificate_rev4H`; open: drop `hO`/`out` from S-N2's `ks_rev4GH`, then delete the G forms, `SegOut4`, `runFacts4_C`). FR builds as a whole.
 
 ## Rulings
+
+- **PACK-4.4.1, 2026-10-29 (orchestrator):** adopted (review `reviews/PACK-4.4-review.md`: adopt with fixes, all applied). ζ reuses P3.4's κ_c (sound per the review); the §8 reserve's E phase is **not** appended now (D1 first, kill line 25 ms VM); S-E13a's H-cell pins retire with B2′; the 12/79 foreign flags are listed before B3 is sized; S-H4 writes `reassemble` field by field. ΔS of the full binding: +0.36 s best, +0.86 s worst (S-I's basis). The certificate build after the plan ≈ 2,400–2,500 CPU-s against 2,020: the `build_s` question stays with the user.
+- **RET-2, 2026-10-29:** committed `1a342e7`; ≈ −400 CPU-s. The dropped 3.x modules stay in `lean/` until `Solution`'s closure is final; `FRNodeSoundA`'s re-point (53 modules out of `FRNodeSound4Ctrl`'s closure, not `Solution`'s) is not needed for the certificate.
+- **S-H4, 2026-10-29:** pass 1 (`0fd05ce`, 2026-10-28 21:37) was not resumed for ≈ 8 h (orchestrator's slip: the queue listed it as running); pass 2 started 06:00.
 
 - **S-E13b, 2026-10-29 (orchestrator):** committed `ce2a4ad`. Its proposal to give the `r31` link family source 549 + t with `mbo = 248` (saving 4,160 rows per node, ≈ 0.2 % of `N_M`) is **deferred**: it changes `linkWAll`'s spec, V and the prover for a small gain. Revisit after `R` and the build budget.
 
