@@ -7,8 +7,12 @@ Last updated 2026-10-28. **Rebased onto core PR #20 (pin `6d05d00`, commit `987e
 Main (`v4/flock-recursive`, core `422f2f9`; the certificate assumes only `Open4F := Gaps4`):
 - G5: kernel-time golf (`realign_sem` 44.8 s first; target ≥ 150 s off the comparator's 461.7 s).
 
-`v4/rev44` (HEAD `7bbbf49` = RSV-V2 + main merged + B5 + RSV-S WIP + A1′ + RSV-S2b; red at RSV-V's 7 declarations and possibly decoder literals):
-- RSV-S2a: continues RSV-S (WIP `b156c27`, partial; handover RSV-S-RESULT §5 items 1–4). It owns `R4Fin`, `R4FrE`, `R4PfFlag`/`PfFin`, `FrRS`, `Start` and `Qry`. Its first task is the reserve branches of `flag_gFinE`/`flag_gFinB'`, proved in blocks with `pr_seq2`; one `simp` over 168 ops hit 4M heartbeats and then 16G OOM.
+`v4/rev44` (HEAD `50a7f52` = RSV-V2 + main merged + B5 + RSV-S WIP + A1′ + RSV-S2b + RSV-S2a; red at RSV-V's 7 declarations and possibly decoder literals):
+- **RSV-S2a landed `50a7f52`** (WIP).
+  - **Proved:** the reserve branches of `flag_gFinE`/`flag_gFinB'` (in blocks; `R4Fin` builds in 11 s), `R4FrE`'s `e_end4`/`e_in4`/`e_fin4` (`mStack_sP`, `implN4F_hMS`), `rsvZero4`, `FrRS`/`Start` at the stacked form, and `Qry` with spacers.
+  - **Orchestrator edit:** XRun now uses `implN4F_hMS` plus its import.
+  - **Red:** `R4PfFlag.gFinPf_reloc`; `gFinPfR` lacks the second chain.
+- RSV-S3: finishes S2a §5. It adds `gFinPfR`'s second chain, `w0V4`'s rcell weights, `flag_gFinPf4` and `R4W0R`'s `hcl`, then rechecks PfFin/R4Full/XRun/XFinal and switches `hRes` to `StmtN4R`. It finishes with a full FR build in its tree, the axiom check and kernel profiles. It owns FRSoundness4*, FRNodeStmtR4 and FRNodeSound4K.
 - **RSV-S2b landed `7bbbf49`.**
   - **B′ at 69 cells via the DRS `Pub` route:** `single_B4` is `Fin 71`, 70·2^128, and εR is unchanged.
   - **The four reserve controls:** in `FRSoundness4RsvCtrl`.
