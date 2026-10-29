@@ -1,5 +1,5 @@
 -- New for `flock-recursive` (BLUEPRINT revision 4.1, B-12, A.8 `targetS`/`shiftMask`; stage S-F4).
-import FRVerifierImpl
+import FRVerifierImplCore
 
 /-!
 # A segment's variable last block: its target and its shift weights (S-C's half of B-12)

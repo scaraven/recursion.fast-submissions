@@ -4,6 +4,7 @@ import FRSoundnessLigFinal
 import FRVIRChain
 import FRVerifier
 import FRSoundnessCoreAcc
+import FRWots
 
 /-!
 # An accepted run's chain (`runLog_chain`) and the `W` branch of `hAcc`

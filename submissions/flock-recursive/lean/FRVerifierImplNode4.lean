@@ -1,7 +1,7 @@
 -- New for `flock-recursive` (BLUEPRINT revision 4.1, A.8/A.9 on a node; stage S-CN4). 3.x templates:
 -- `FRVerifierImplNode` (`shiftMaskI`, `linkWOne`/`linkWAllI`).
 import FRNodeTarget4
-import FRVerifierImplNode
+import FRNodeTargetCore
 import FRVerifierImplOps4
 
 /-!

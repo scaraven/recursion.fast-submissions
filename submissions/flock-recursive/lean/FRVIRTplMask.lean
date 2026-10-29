@@ -1,6 +1,6 @@
 -- New for `flock-recursive` (BLUEPRINT A.9 `finSh`, A.11; stage S-E9, track L-circ).
 import FRVIRTplTab
-import FRVerifierImplNode
+import FRNodeTargetCore
 
 /-!
 # The replay template of `shiftMask` (revision 3.14, the chain-masked Sh weights)

@@ -1,7 +1,7 @@
 -- New for `flock-recursive` (BLUEPRINT §4.4, §7, A.8, stage S-E2).
 import FRSpartan
 import FRBlake2sWalk
-import FRNodeLayout
+import FRVIRFinalsCoreSG
 
 /-!
 # The op implementations owned by L-circ: `walkA`, `walkB`, `kindInd`

@@ -1,7 +1,7 @@
 -- New for `flock-recursive` (BLUEPRINT revision 4.1, B-12; S-F4 §7 Q3; stage P4a).
 import FRSoundness4P4aNames
 import FRVIR4
-import FRVIRFinals
+import FRVIRFinalsCore
 
 /-!
 # `lastOps` runs to `L = (n − 1) mod 2^18` (the segment's last block, kernel-checked)

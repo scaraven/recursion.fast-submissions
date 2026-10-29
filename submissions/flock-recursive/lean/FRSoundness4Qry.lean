@@ -1,7 +1,7 @@
 -- New for `flock-recursive` (BLUEPRINT B-12, B-13, §5.1; stage S-G13, item (e): the per-program
 -- query bounds that INT-7's `ks_queries4` takes).
 import FRVerifierC4
-import FRVIRSpec
+import FRVIRSpecCore
 
 /-!
 # The revision 4.1 programs ask the item sequence `itemsOf seq4` (8,905 queries)

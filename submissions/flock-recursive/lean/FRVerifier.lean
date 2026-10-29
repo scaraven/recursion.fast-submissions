@@ -1,6 +1,8 @@
 -- New for `flock-recursive` (BLUEPRINT §3, §3.3, §5.5, §7; stage S-F).
+-- RET-3: the declarations revision 4 reads moved to `FRVIRSpecCore`.
 import FRVIRFinalsSF
 import RecursionFast.Library.WitnessSending
+import FRVIRSpecCore
 
 /-!
 # The verifier `V`, `accWith`, `acc_eq`
@@ -119,10 +121,6 @@ theorem V_W_sound (h : kindOf π = .W) (hacc : Vwith impl fin vk c π = .ret tru
 end Branches
 
 /-! ## Completeness (§5.5) -/
-
-/-- A witness-sending proof's first byte is its tag word's: `0` or `1`. -/
-theorem encode_byte0 (w : Wit) : (encode w).data[0]? = some 0 ∨ (encode w).data[0]? = some 1 := by
-  cases w <;> simp [encode, witWords, wordsBytes, wordBytes, enc64, toWord]
 
 theorem kindOf_encode (w : Wit) : kindOf (encode w) = .W := by
   rcases encode_byte0 w with h | h

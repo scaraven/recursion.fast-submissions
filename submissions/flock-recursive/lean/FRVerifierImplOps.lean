@@ -1,10 +1,9 @@
 -- New for `flock-recursive` (BLUEPRINT §3, A.8, A.9; stage S-F2, track L-cert).
 -- Split from `FRVerifierImpl` by S-E3 (mechanical: the op implementations, specifications and
 -- `Meets` lemmas that do not depend on the node's M rows, so that `FRVIRTemplates` can use them).
-import FRVIRFinalsSG
+import FRVIRFinalsCoreSG
 import FRVIREval
 import FRRSEval
-import FRVerifier
 import FRBlockChain
 import FRPubTarget
 import FRKindWeight

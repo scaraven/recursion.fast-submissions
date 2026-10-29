@@ -8,6 +8,7 @@ import FRBlockKinds
 import FRVIREval
 import FRSoundnessCoreWeights
 import FRSoundnessCoreRows
+import FRNodeLayout
 
 /-!
 # The PIOP truths over the decoded witness (A.10), part 1: `f⁽⁰⁾` in F, `z = unpack f⁽⁰⁾`

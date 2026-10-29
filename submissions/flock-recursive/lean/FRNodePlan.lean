@@ -1,6 +1,8 @@
 -- New for `flock-recursive` (BLUEPRINT §10 changes 22 (e) and the plan-time ruling of 2026-10-28;
 -- stage S-E11, track L-circ).
+-- RET-3: the declarations revision 4 reads moved to `FRVerifierImplCore`.
 import FRVerifierImpl
+import FRVerifierImplCore
 
 /-!
 # The node's plans as closed constants
@@ -18,15 +20,6 @@ should be stated with `implCN`, so that no check builds a plan.
 
 namespace FR
 namespace Impl
-
-/-- **The node's M plan** (`TEval.planOf` of the node's finals), built once at process start. -/
-def nodePlan : TEval.Plan := TEval.planOf (finC finPf)
-
-/-- **L's plan**, built once at process start. -/
-def lPlan : TEval.LPlan := TEval.planL Layout.lRows
-
-/-- **`implC` at the closed plans.** -/
-def implCN : OpImpl := implCWith nodePlan lPlan
 
 /-- `implCN` is `implC` of the node's finals and L's rows (any `κs₀`). -/
 theorem implCN_eq (κs₀ : F) : implCN = implC (finC finPf) Layout.lRows κs₀ := rfl

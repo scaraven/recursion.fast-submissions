@@ -1,7 +1,7 @@
 -- New for `flock-recursive` (BLUEPRINT revision 4.0, B-11, B-13, B-17; §3; stage S-0′).
 import FRAgg
 import FRNodeLayout4
-import FRVerifier
+import FRVIRSpecCore
 
 /-!
 # Revision 4.1's verifier `V4`: the top-level dispatch over `W`, `A`, `N2`, `N4`, `N8`
