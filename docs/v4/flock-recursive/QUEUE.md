@@ -10,7 +10,7 @@ Main (`v4/flock-recursive`, core `422f2f9`; the certificate assumes only `Open4F
   - **Why 150 s is out of reach:** what remains is about 52.8 s of 17.5k declarations under 50 ms each, 44 s in FRSoundness4*/FRNodeRows4*, and 30 s outside FR (14.5 s of it core-owned `basePoly_irreducible`).
   - **Merge into rev44:** after PORT lands, since G5 touched FRX*. PORT carries G5's FRXNd4/FRXChain*/`cso_outIR4` changes by hand.
 
-`v4/rev44` (HEAD `50a7f52` = RSV-V2 + main merged + B5 + RSV-S WIP + A1′ + RSV-S2b + RSV-S2a; red at RSV-V's 7 declarations and possibly decoder literals):
+`v4/rev44` (HEAD `253516c` = RSV-V2 + main merged + B5 + RSV-S WIP + A1′ + RSV-S2b + RSV-S2a + PORT + main merge; red at RSV-V's 7 declarations and possibly decoder literals):
 - **RSV-S2a landed `50a7f52`** (WIP).
   - **Proved:** the reserve branches of `flag_gFinE`/`flag_gFinB'` (in blocks; `R4Fin` builds in 11 s), `R4FrE`'s `e_end4`/`e_in4`/`e_fin4` (`mStack_sP`, `implN4F_hMS`), `rsvZero4`, `FrRS`/`Start` at the stacked form, and `Qry` with spacers.
   - **Orchestrator edit:** XRun now uses `implN4F_hMS` plus its import.
@@ -28,7 +28,14 @@ Main (`v4/flock-recursive`, core `422f2f9`; the certificate assumes only `Open4F
   - **Q2, B′'s 60 extra cells:** `PubOKR4` goes only into `DRS0X`/`DRS1X`'s `Pub` argument (phase 23 is a post-doom). `bg16X`/`bg20X` are unchanged.
   - **Q1, the node statement:** `StmtN4` keeps its signature. `nodeLaws4C'` and its two siblings are generalised over `St → StmtN4`, and a downstream `StmtN4R := StmtN4 ∧ PubCellsR4 ∧ truthChildV` is used on the gap4Imp path. That edit to `FRNodeCircuit4` waits until A1′ has landed.
   - The four controls for `ChildBad4` are required.
-- PORT: brings the decoder, S-L4 and B3 back to green at 4.4.1's format, using A1′'s list. It deletes `realign`/`realign_sem` (44.8 s of kernel), `cso_realign`, `FRXOut4C` and `FRXOut4Ctrl`, adds the spacer entries in `aggTr`, and fixes `fsMsgs4_*` (1,008/112) and `gap4Imp_of_run`. It owns FRX*, FRNodeLinks4*, FRNodeRun4* and FRSubmission4*.
+- **PORT landed `c4eca2b`.**
+  - **Builds:** 84 modules plus `Solution` and `FRSubmission4Fin`, with `Open4F := Gaps4` unchanged.
+  - **Realign:** deleted and replaced by a copy loop. The 2^27 buffer and `ldIx` stay, for `finBlk` when k < maxK.
+  - **Spacers in `aggTr`:** `nW` is 193,888, and `reassemble4` covers all 20 fields (`pf4` had been 77,872 B short). There are 486 FS positions.
+  - **Kernel:** about 178 → 39 s over the comparable modules.
+  - **Untested:** the decoder KAT against a prover stream waits on E1.
+  - **Merge:** main was merged into rev44 (`253516c`, docs only). G5's `FRNodeLayout4`/`FRNodeRows4Ext` golf, about 5.7 s of kernel, is deferred until after B4 and C1, then redone by hand.
+  - A cheap Opus review of PORT is running.
 - B4: `aggChk`, with PK-m7's `hashA`/`hashB` rows on the arenas, and its rows folded into `nodeIRows4`/B5's plan. It owns FRNodeRows4Agg/AggChk*/Arena*. After B4, `Gap4R` = `imp` only.
 - C1: keyed replay `R` keys (`targetS`, `shiftTarget`, `linkWAll`, `rsWeight`, `evalL`, the kind factor if in `R`) in slot 0's spare region. It aims at `SlotImpR = ∅` with the reserve covering `evalM`, and runs C2's dead-op drop if cheap. It owns FRNodeRows4Rep*/FRVIRTplRep and keeps its plan/fit edits isolated for merging with B4.
 - E1: prover port to 4.4.1's format: D/A fields, L1/L2, the reserve's 1,008/112-B fields and E2/E4 terms, spacers, arenas, the packed plan form and phantom pins. It runs end to end against rev44's Lean V, covering kind-changing chains, k = 1/2/4 and the worst-case first step against step_s 60. It prints B5's `eok`. It leaves a hook for B4's `aggChk` rows and owns `prover/`.
