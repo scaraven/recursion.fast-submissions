@@ -64,7 +64,20 @@ Main (`v4/flock-recursive`, core `422f2f9`; the certificate assumes only `Open4F
   - **`rsWeight`:** closed-form chain templates (1–3 ms VM), falling back to a second claim family.
   - **Rejected:** the reserve (sumcheck) route for all five ops.
   - **Plan:** R0 audit → R1 V side ∥ R3 chain library → R2 soundness (incl. `gap4Imp_of_rsv`) → R4 `rsWeight` → R5 segment slots → R6 `evalL` lever.
-- R0: the cell audit and a re-measure of per-op V on rev44, with no source edits; it applies the kill criterion. A cheap Opus review of R-OPS (FS order, operand binding, the `tdot` fold) runs alongside.
+- R0: the cell audit and a re-measure of per-op V on rev44, with no source edits. It now also covers the review's items 1–6 (operand binding per kind, the kind-element tie, pads and tags, `tdot`'s readers, the corrected kill exits, `rsWeight`'s per-term rate).
+- **Review of R-OPS** (`reviews/R-OPS-review.md`): no blockers.
+  - **Sound:** FS order is fine, `tdot` is an exact identity, and the budget arithmetic holds (N′ 108, row 178 ≤ 239; N8 within `lBase`).
+  - **Preconditions for R1:**
+    - operands proved to be computed by rows;
+    - the kind element tied to the mux selector, with junk rejected;
+    - zero asserts on the pads;
+    - a size-tag lemma.
+  - **`rsWeight`:** likely 6–7.5 ms, not 1–3.
+  - **Plan fixes:**
+    - an explicit prover stage, with or before R1;
+    - R2's dependencies listed;
+    - R2 shrinks `rtR`'s import set inside IMP's `SlotImpR` hypothesis;
+    - a named owner for `targetSSegI`'s rewrite.
 - E1: prover port to 4.4.1's format: D/A fields, L1/L2, the reserve's 1,008/112-B fields and E2/E4 terms, spacers, arenas, the packed plan form and phantom pins. It runs end to end against rev44's Lean V, covering kind-changing chains, k = 1/2/4 and the worst-case first step against step_s 60. It prints B5's `eok`. It leaves a hook for B4's `aggChk` rows and owns `prover/`.
 - Review of A1′ (cheap Opus): no blockers.
   - **Soundness:** the free spacer bytes enter only the ignored spacer answer, `wf` is proved for every segment and spacer, and `ctrlA_no_spacer` is a real control. S2b is asked to confirm that no ROM-consistency argument ranges over spacer entries.
