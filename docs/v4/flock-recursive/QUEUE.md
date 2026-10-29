@@ -11,9 +11,9 @@ Main (`v4/flock-recursive`):
 - P2⁹: stream-proof nondeterminism, then prover levers.
 
 Design:
-- D-PK: addendum §11 (β′) to `PACK-4.4.md` after A3′'s attack on (β); the N8 H overflow.
+- A2″ (rev44): the (β′) V change per PACK §11.4 + review `PACK-4.4-b2-review.md` (PB-M2 L2 scope via `Seq.cap4`, minors), L1 + L2, interim skeleton-op cap check; then A3′ (PB-M1's doom chain) ∥ B2′ (templates), A1′ (spacers), P2.
 
-`v4/rev44` (worktree `../recursion.fast-submissions-rev44`): **paused** at `ccdde20`; its V (A2′) is **unsound** (A3′'s attack) until (β′) is ruled and built.
+`v4/rev44` (worktree `../recursion.fast-submissions-rev44`): at `e4b7d5f` (main merged); its V (A2′) is **unsound** until A2″ lands (β′).
 
 ## Waiting
 
@@ -64,6 +64,8 @@ Design:
 S-A `8ff873c`; S-C `ebac8c2`; S-D `8e6dad7`; S-E1 `2d5a811`; S-H1 `40b2f81`; S-0 `47158b1`; S-E2/S-E3 `8447c50`; S-F `c8e1869`; S-F2 `8f22b86`; S-G through `ac43569`; S-H2 through `11fb3a5`; INT-1 `5fc7d3b`; S-E5 `9dbab71`; … S-N2 `75eff21`; INT-10 `1c5a738`; RET-2 `1a342e7`; S-H4 p5 `a84753a`; G3 `302b523` (12 modules −30 % CPU; the finals' flag modules need a block-wise read lemma, ≈ 66 CPU-s); S-H4 p4 `6d79280`; S-H4 p2–3 `170c2ee` (lagIR, level decode at CKind); P2⁸ `2d9dd8c` (7763: step + overhead 11.41 s, M ≤ 83, truncated 30.4 %, P̄ 8.43 s; prover.s f0841393…); G2 `4ac68fc` (15 FRX modules −42 % CPU); PACK-4.4.1 + review; S-E13b `ce2a4ad`; D-PK memo `PACK-4.4.md` (committed, under review); P2⁷ `5e99fba` (7763: step + overhead 12.78 s, M ≤ 74, truncated ≈ 52 %; S-E13a/b's matrices and cells, 0 failing rows on honest witnesses; prover.s 5e1bab39…); S-E14 `f5ad181` (replay mechanism; segment `linkWAll` only); S-E13a `8cc8ccd` (kindN, kindS@0, wf@0, wots, aggPad closed through `gap4_of_rows : StmtN4 → PfHdr pf → Gap4R → Gap4`; `Gap4R` = imp, kindS/wf at i ≥ 1, aggChk; V(N4) +≈30 ms; new node dump for P2); S-I `2f437ed` (residuals 8–9 closed; `Solution` PROVISIONAL under `Open4`; **cert build 882 s on the 7763 > `build_s` 600 → REJECT**: 307 modules, 2,975 CPU-s, need ≤ 2,020 (≤ 1,550 for 1.3×); bench probe season S = 6.421, truncated at M = 63) (`SegOut4` gone: `ks_rev4H`/`certificate_rev4H`; open: drop `hO`/`out` from S-N2's `ks_rev4GH`, then delete the G forms, `SegOut4`, `runFacts4_C`). FR builds as a whole.
 
 ## Rulings
+
+- **(β′), 2026-10-29:** adopted (PACK §11 + review PB: soundness confirmed value by value, ε unchanged; L1 + L2 both needed; L4 rejected — a lost stream ends the evaluation). The doom chain is PB-M1's carried form (`DT 52 := DPf ∨ ¬truthCap`, 53 gates on Σ ≠ 0, 54/55 split on `A = Â(ζ)`), not §11's literal `DT 53/55`.
 
 - **B0, 2026-10-29:** `splitMin = 32` kept (V parity; 16 would save 24.6 k rows at +3 % `evalMT4`); the cap check must be templates (B0 measured A2′'s skeleton form at ≈ 55–65 k sparse rows, ≈ 30 ms per prototype); B0 lands on main with P2⁹'s re-embed, then merges into rev44.
 
