@@ -16,7 +16,7 @@ The baseline only has to be accepted. Choose routes by the least sound implement
 | ready_s | 10 | prover service start (≈ 0.66 s), **not V** |
 | verify_s | 10 | per honest check; V ≈ 0.3 s VM |
 | **DoS per-item** (`[dos]` item_factor · v_ref) | ≈ 2.07 s on the 7763 (10 × 206.6 ms); 100 items ≤ 180 s | **V's binding cap.** About 1.1 s VM is expected after the replay templates |
-| badge start | 30 s | V's plan init (≈ 5.5 s VM + R3's 3.9 s); must be eager |
+| badge start | 30 s, **and it counts against stream_s ≈ 29 times per stream** | 11.7 s on the runner at 200b531: **binding via stream_s** |
 | setup_s | 240 | prover setup, 167 s on VM cores, unmeasured on the runner |
 | prover build_s | 120 (`[caps]`) | gcc of the 23 MB `prover.s`, unmeasured |
 | stream_s at M = 96 | 1,920 | |
@@ -99,7 +99,31 @@ Running on rev44:
   - **Acceptance:** the native prover at 4.4.1 is accepted end to end by rev44's Lean V. That covers a 10-node chain with kind changes and k = 1..4, the rf-oracle streams including the full-length first step, and canaries rejected. The decoder's output-stage KAT matches.
   - **Projected to the 7763:** worst first step 41.9 s (cap 60) and stream mean 1,150 / max 1,311 s (cap 1,920). `prover setup` is unmeasured on the runner (167 s on VM cores; budget 240 s).
   - **Still to do:** IMP's rows (re-dump, `AUX_L`) and R1's 108 cells (`RSV_REL`/`LREND_LEN` are hard-coded).
-- RUN1: runner probes on probe branches for the prover (setup, first and later step, ready, stream) and the certificate (build, kernel, gate, badge) at 200b531.
+- **RUN1 landed `9249a56`** (11 runner runs, probe branches deleted).
+  - **The real evaluate.yml REJECTs at stream step 1.** The prover's node blob predates IMP's stmt rows (`616b57c`), so it needs a re-dump. This is expected drift: the prover resyncs once the V rows settle.
+  - **Measured on a 7763:**
+
+    | Quantity | Measured | Cap | Margin |
+    |---|---|---|---|
+    | build | 752–812 s | 1,200 | 1.48× |
+    | kernel, `certified` | 396.8 s | 600 | 1.51× |
+    | **kernel, upper set** | **497.8 s** | 600 | **1.21×** |
+    | gate | 13–14 s | 120 | |
+    | badge | 60–64 s | 180 | |
+    | `setup` | 60–70 s | 240 | |
+    | prover build | ≈ 2 s | 120 | |
+    | first step | 43.8 s | 60 | 1.37× |
+    | later step | ≈ 25 s | 60 | |
+    | ready | 0.8 s | 10 | |
+    | V per check | 0.20–0.26 s | | |
+    | v_ref | 206 ms | | |
+    | DoS worst item | 29 ms | 2.06 s | |
+    | **stream** | ≈ 1,530 s; **heavy draw 1,680** | 1,920 | **1.26×; 1.14×** |
+
+  - **New binding constraint, V start-up:** about 11.7 s on the runner. V starts about 29 times per stream, so 1 s of V init ≈ 30 s of stream.
+  - **Runner tiers vary:** 7763, 9V74, 9V45 and Xeon 8573C all appeared.
+- INIT: profiles the badge start-up and cuts it (target ≤ 5 s on the runner), and writes an init budget per structure for the incoming rows. REPF and ASK-T have been told to minimise init.
+- **Kernel watch:** the upper set is at 1.21×, and Gaps4's discharge modules will add to it. G6 golf is needed before the cert probe.
 
 **Then:**
 - ASK-T (the `ATAsk` templates: FS links, Merkle mux, pins, seed, columns) ∥ IMPC (the `ATImp` classes: proof fields, siblings, `chF`/`chK`, `bitOf`, cap reads), both after ASK-P;
