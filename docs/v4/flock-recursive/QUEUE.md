@@ -63,6 +63,8 @@ S-A `8ff873c`; S-C `ebac8c2`; S-D `8e6dad7`; S-E1 `2d5a811`; S-H1 `40b2f81`; S-0
 
 ## Rulings
 
+- **H-cert3, 2026-10-30 (at `1782ab4`):** build 804 s direct on the 7763 (1.49×), badge 61 s (2.9×), gate 13.5 s — but the **kernel is tight**: `certified` 413.8 / 461.7 s on two 7763s (**1.30×**), upper set 566.5 s (1.06×); comparator peak 8.7 GiB. Dominant: `FR.X.realign_sem` 44.8 s kernel (S-H4 pass 10), `FRXNd4` 12.1 s, `FRSkip` 9.1 s, ≈ 20 new `FRX*` modules at 2–5 s. rev44's `Gaps4` proofs will add more → G5 (kernel golf) now.
+
 - **H-cert2, 2026-10-29 (at `ea3e130`):** every certificate cap fits — build ≈ 736 s scaled to the 7763 (679.7 s direct) vs 1,200 (1.63×); kernel (comparator on `certified` + `submission`) 265.2 s vs 600 (2.26×), upper bound over the whole FR closure 441.4 s (1.36×) — watch the kernel as rev44's `Gaps4` proofs join the closure; `probe/cert2` measures it.
 
 - **D1 vs reserve, 2026-10-29 (D1-probe):** the `replay_mle` fixed point closes (Lean scratch `attic/FRD1pScratch.lean.txt`: `placed_eq`, `ublock_chat`, `fixed_point`), but D1 costs 26–79 ms VM (≥ the 25 ms kill line) for its gather blocks. **The reserve is adopted, as corrected by D1-probe**: the child's `evalM` claim batched into E2 (η = E1's spare coordinate) and E4 (`κ_E⁴·W*`), both points carried in π and bound by point claims, gated off for N8's missing previous node and for leaves; **no new item or phase**: `fLrEnd` 48 → 880 B, `fEEnd` 48 → 112 B; |π| 876,176, stream 64·24,234, N8 `hUsed` 195,192 (lBase 195,328 ≤ 195,584); εR unchanged; `Gap4.imp`'s three `evalM` registers are discharged by the point claims and `truthChild`, not by R. Folded into rev44 by RSV-V (V side) then RSV-S (S-C/S-G: E2 zerocheck + linear claim, `truthChild`).
