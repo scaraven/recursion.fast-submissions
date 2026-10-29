@@ -72,7 +72,18 @@ Running on rev44:
 - **R1 (stopped, `4838ac0`): the public-op route is unsound at recursion depth ≥ 2.** V(P)'s recompute ops become free imports when the grandparent replays V(P). R-OPS is marked superseded.
   - **New route:** replay templates at slot 0 for `evalL`, `targetS` and `linkWAll` (C1's `tplLW`), with no format change, at ≈ +90 ms V.
   - RSV2's stacked `evalM` is unaffected, because it is a fixed point.
-- C1b: replay templates for `evalL` and `targetS` with C1's `KOp`/`RTOkW`. Plan init for all templates must stay < 3 s extra (ready_s). The fold is specified but not done (the import cycle split comes after ASK-P).
+- **C1b landed `77bfc19`.**
+  - **Proved:** the replay templates for `targetS` (11.4k rows, ~64 ms V) and `evalL` (319.5k rows, ~345 ms V direct). `rtC1c` covers all five prototype-0 ops.
+  - **Projected V(N4) after the fold:** ≈ 1.45 s VM ≈ 1.22 s runner. That is under the DoS cap of 2.07 s, a margin of about 1.7×.
+  - **Levers if RUN1's runner numbers make it tight:**
+    - `rsWeight` in closed form (R3 §4.2, −0.7 s);
+    - `evalL` by carry-split (C1b §6, −0.32 s).
+- REPF: the replay fold.
+  - The import-cycle split (a FRNodeRows4 defs module).
+  - Replay rows into `nodeIRows4`, with the plan built in one pass from the final compile.
+  - The fix for `tplLW`'s 216 s init.
+  - `repRowsP = repRowsFin`.
+  - The discharge `gap4Imp_of_repW` with `rtC1c`. The FRNodeRun4* switch to `RTOkW` is merged after ASK-T.
 - **R3:** the closed-form chain template library. It first prices `rsWeight` against the 10 ms line, and if over, stops and reports the §5.3 fallback.
 - **E1 landed `200b531`.**
   - **Acceptance:** the native prover at 4.4.1 is accepted end to end by rev44's Lean V. That covers a 10-node chain with kind changes and k = 1..4, the rf-oracle streams including the full-length first step, and canaries rejected. The decoder's output-stage KAT matches.
