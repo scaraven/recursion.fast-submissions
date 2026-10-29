@@ -731,3 +731,55 @@ Base: branch `v4/flock-recursive`, HEAD `53c2e13`. Build tree `logs/fr-build-SH2
     `reassemble4` must take row 18's size as a parameter (or from `aBytes`); the `FRX4Prog`/`FRX4Ext`/
     `FRSubmission4*` patch list applies on rev44. Final build on `1a37e37` (QUEUE-only after `4d5700c`):
     2,589 jobs green (`build-final.log`); source rule 364 files, 0 findings.
+85. **S-H4 pass 6** (2026-10-29). HEAD `cb12cc4` (`a84753a` + a QUEUE commit), build tree `logs/fr-build-SH4e`
+    (copy of `fr-build-SH4d`, `snap.sh` on HEAD, `MINE` = the pass's modules), logs `logs/S-H4e/`. Baseline
+    `lake build FR Solution FRSubmission4Cert FRXDec4Lv FRXDec4Map FRXDec4Msg FRXLagT` green, 2,589 jobs
+    (`build0.log`). Ruling on pass 5's Q1: `FRXLog`'s four 3.x programs stay until the 3.x decoder retires.
+86. Item 1, `FRXDec4Levels` (new): `readK4` (= `readIR4 memX4 pL i cw sb nw (lv κ i).sib 2^logN`),
+    `readK4_sem` (the read is `T4.wordOf κ L es i` given the tape link to `T4.capDig es i`), `msgT4`/`msgU4`/
+    `msg04`, `decU4`, `dec04`, `stepU4`, `decLevels4 κ pL cw cbS tw`, `KeepR4`, `lvStep4_sem`, `msgT4_ok`,
+    `msgU4_ok`, `msg04_ok`, `lv0Step4_sem`, **`decLevels4_sem`**, `wf/noLoopT/outs/cost_decLv4IR`,
+    `cost_readK4`, `cost_stepU4`, `cost_dec04`, **`cost_decLevels4`** (`18,780,858,425,058` at `N2`,
+    `75,054,361,432,716` at `N4`/`N8`, by `rfl` after the formula; equal to `logs/S-H4/fuel-check4.py`'s
+    model), `decLevels4_m` (the program reads the kind only through `m`).
+    **Pitfall (new): `omega` and `C + n` with `C` a non-reducible constant.** `map4.tb + 800 ≤ x ⊢ map4.tb ≤ x`
+    fails with "maximum recursion depth": `omega`'s preprocessing reduces `C + 800` at reducible
+    transparency, cannot unfold `C`, and unfolds `Nat.add` on the literal 800 digit by digit (`+ 256`
+    passes, `+ 800` does not; `memX4 = 2^28` next to `map4.lU.eb + 256` fails too). Fix: `map4` and
+    `memX4` are `abbrev`s, `memX4` with the literal value `268435456` (`memX4_eq : memX4 = 2^28`), and the
+    proofs carry `map4_nums` (the literal's projections as equations) for `omega`.
+    Pitfall: a section `variable {c : Digest}` captures `∀ c < 4` in a statement (`OfNat Digest 4`): name
+    the bound row `q`. `blkSteps` leaves `if 1 = 0 then 1 else 1`: `ite_self` in the `simp only` set.
+87. Item 2, `FRXChain4` (new), parametric in the item sequence `S`: `phaseMsgs4 S`, `fsMsgs4 S`,
+    `msgOkB`, `fsQ4 S`, `fsQ4_zero`, `stateIn_fsQ4`, `tabEnt4`, `chTab4 S N`, **`tabW_chTab4`** (hypotheses
+    `|π| < 2^60` and the decided alignment check `hA`), `seedQ_size`, **`chain_spec4`**, **`chain_dec4`**;
+    at `seq4`: `fsMsgs4_length` (482), **`fsMsgs4_items`** (`= T4.fsItems4`), **`fsMsgs4_aligned`**,
+    `nRep4 = 456`, `nRep4_ctl` (P1.0 … P1.4 start at 332, 375, 402, 426, 448; the final absorb at 456),
+    `cbS4`, `sAt4_words`, `cbS4_bounds`. `FRXSeed` generalised in place (pass 5's rule): `seedPay_length`,
+    `tape_seed` take `48 ≤ |π|`; new `seedVal_eq4`, `seedOK_seedIR4` (any proof of ≥ 48 bytes, the query
+    `seedQ (vkOf π) c hdr`), `fsQ_zero`; 3.x's `seedVal_eq`, `seedOK_seedIR` are now one-line instances.
+    Pitfall: `decide +kernel` on a `seq4` computation gets stuck unless `seq4_eq` (and `piSizeOf_seq4`) are
+    rewritten first (`fsItems4_length`'s pattern).
+88. Item 4's decode half, `FRXDec4F0` (new): main's format at `seq4` (`pL4 = 99,779`, `capFO4`, `capPi4`,
+    `cw4`, `finFO4 = 64,928`, `finPi4`, `tw4`; `fmt4_vals`, **`fmt4_ctl`**: the offsets are `fsMsgs4 seq4`'s at
+    `T4.capPos i` and `phStart4 47`), `tape_cap4`, `tapeF_fin4`, `lv_cap4`; the node-byte dispatch `kindNd4`
+    (registers 246, 247; `X4.normPs`/`eqPs`), `kindNd4_sem`, `pickNd`, `ndK4`, `ndK4_sem`; **`decF04 κ`** =
+    `idxIR4 memX4 pL4 ; readK4 0 ; chainIR pL4 nRep4 (chTab4 seq4 nRep4) seedIR ; decLevels4 κ`,
+    **`decF04_sem`** (3.x's `decF0_sem` at a node kind: rows 4–7 of `f⁽⁰⁾` at `map4.l0.ob`), `wf/outs/safe_decF04`,
+    `cost_decF04_eq`, **`cost_le_decF04`**. `decF04_sem` built on the first try.
+89. Item 5's memory half on main (`FRXProg`, `FRX4Prog`, `FRX4Ext`): `memX4 := 268435456` (`memX4_eq`) and
+    `decBudget4` in `FRXProg` (one definition; `FRXDec4Map`'s removed); `DecOk4.cost` at `decBudget4`,
+    `ext4With` at `memX4`, `fuel_covers4` at both; `FRX4Ext`'s 21 `memX` → `memX4`. It built unchanged
+    (`build1.log`, 2,372 jobs; `FRXProg` sits under most of the extractor, so the edit rebuilds it all).
+    `sizeIR (decF04 κ) = 56,236` by `#eval`; a `decide +kernel` proof costs 10.1 s kernel: left for a
+    component lemma set.
+90. Item 6, not done: `tgBody_sem`'s 21.6 s is 14.8 s in its final `refine` (`trace-FRXLagT.log`), whose
+    expected type holds the ungeneralised nested states: `generalize runPrims ([…] ++ zeroPs C) s2.M = M3 at
+    … ⊢` misses the goal (a probe with `runPrims _ s2.M` matched nothing either), so all later
+    `generalize`s miss it too. `FRXLagT` restored unchanged. `FRXChain4`: ≈ 12 s kernel in one
+    `decide +kernel` over `fsMsgs4 seq4`.
+91. Checks: `lake build FR Solution FRSubmission4Cert FRXDec4F0 FRXDec4Lv FRXLagT` green, 2,592 jobs
+    (`build-final.log`); 45 axiom lines within the three, incl. `certificate_sub4` and `certified`
+    (`axioms.log`); source rule 372 files, 0 findings. Sequential CPU: `FRXDec4Levels` 22.1 s,
+    `FRXChain4` 28.9 s, `FRXDec4F0` 20.2 s (`cpu-summary.txt`). Not done: item 3 (`FRXOut4`), hence `nd`,
+    `NodeDec4 nd`, the plug of `nd`. RESULT Part 30, handover §6.

@@ -34,8 +34,7 @@ namespace FR.X
 
 open RecursionFast FR
 
-/-- The decoder's memory: its regions lie below `memX4`, the log index from `memX4` on. -/
-def memX4 : ℕ := 2 ^ 28
+-- The decoder's memory `memX4 = 2^28` is `FRXProg`'s (the program's memory, the index's base).
 
 /-- **One level's regions**: flags `fb`, `J` at `jb`, the prefix table `pb`, `lagIR`'s `Y` at
 `yl`, the decoded rows `ob`, the `eq` table `eb`, `X` at `xb`, `Y` at `yb`, the word's column store
@@ -91,8 +90,9 @@ def Map4.Ok (M : Map4) (m : ℕ) : Prop :=
 instance (M : Map4) (m : ℕ) : Decidable (M.Ok m) := by
   unfold Map4.Ok; infer_instance
 
-/-- **The node decoder's map** (one literal for `m = 31` and `m = 32`). -/
-def map4 : Map4 where
+/-- **The node decoder's map** (one literal for `m = 31` and `m = 32`). Reducible: a projection
+`map4.tb + c` in an `omega` goal is then a literal sum, not a unary unfolding of `c`. -/
+abbrev map4 : Map4 where
   tb := 1048576
   l0 := { fb := 16777216, jb := 17825792, pb := 18350080, yl := 18874368, ob := 23068672,
           eb := 33554432, xb := 33554688, yb := 35651840, cb := 134217728, cs := 128 }

@@ -256,10 +256,10 @@ variable (c : Digest) (π : Proof) (L : Log)
 
 /-- The state after the parse, on the extractor's tape. -/
 def st1 : St := semXIR (extractorInput c π L).toArray parse4
-  (initSt (memX + mpwX * (extractorInput c π L).length))
+  (initSt (memX4 + mpwX * (extractorInput c π L).length))
 
 theorem inv_st1 : Inv (st1 c π L).M :=
-  inv_sem _ wf_parse4 (inv_initSt (Nat.le_add_right_of_le (by simp only [regs, memX]; norm_num)))
+  inv_sem _ wf_parse4 (inv_initSt (Nat.le_add_right_of_le (by simp only [regs, memX4]; norm_num)))
 
 theorem st1_o : (st1 c π L).o = #[] := by rw [st1, parse4_o, initSt_o]
 
@@ -268,7 +268,7 @@ theorem bOf_byte (hπ : 0 < π.size) (v : Word) (n : ℕ) (hv : v.toNat = n) (hn
   rw [bOf_tape c π L hπ v (by omega), hv]
 
 theorem flagK_W (hW : Rev4.kindOf4 π = .W) (hs : π.size < 2 ^ 64) : rd (st1 c π L).M rIsK = 0 := by
-  rw [st1, parse4_K _ _ (inv_initSt (Nat.le_add_right_of_le (by simp only [regs, memX]; norm_num))),
+  rw [st1, parse4_K _ _ (inv_initSt (Nat.le_add_right_of_le (by simp only [regs, memX4]; norm_num))),
     tape4]
   rcases Nat.eq_zero_or_pos π.size with h0 | hp
   · rw [if_neg (by rw [pos_toWord hs]; omega)]; exact BitVec.and_zero
@@ -296,8 +296,8 @@ theorem flags (hs : π.size < 2 ^ 64) (hp : 0 < π.size) :
       (if (byteAt π 0).toNat = 78 then 1 else 0)) ||| (if (byteAt π 0).toNat = 79 then 1 else 0) ∧
     rd (st1 c π L).M rIsSz = isW (toWord π.size) (BitVec.ofNat 64 798192) ∧
     rd (st1 c π L).M rLen = toWord π.size := by
-  have h0 : Inv (initSt (memX + mpwX * (extractorInput c π L).length)).M :=
-    inv_initSt (Nat.le_add_right_of_le (by simp only [regs, memX]; norm_num))
+  have h0 : Inv (initSt (memX4 + mpwX * (extractorInput c π L).length)).M :=
+    inv_initSt (Nat.le_add_right_of_le (by simp only [regs, memX4]; norm_num))
   have hb := fun v n hv hn => bOf_byte c π L hp v n hv hn
   refine ⟨?_, ?_, ?_, ?_, ?_⟩
   · rw [st1, parse4_K _ _ h0, tape4, if_pos ((pos_toWord hs).2 hp), hb _ 80 rfl (by norm_num),
@@ -326,13 +326,13 @@ variable (nd : XIR) (c : Digest) (π : Proof) (L : Log)
 /-- The branch after the parse. -/
 def br4 (nd : XIR) : XIR := .ite rIsK (.ite rIsA aggIR (.ite rIsN (.ite rIsSz nd (.blk [])) (.blk []))) wIR
 
-theorem den4_split : den memX mpwX (ext4IRWith nd) (extractorInput c π L) =
+theorem den4_split : den memX4 mpwX (ext4IRWith nd) (extractorInput c π L) =
     (semXIR (extractorInput c π L).toArray (br4 nd) (st1 c π L)).o.toList := by
   simp only [den, ext4IRWith, semXIR_seq, st1, br4]
 
 /-- **A `W` proof**: the denotation is its packed words, on every log. -/
 theorem den4_W (hW : Rev4.kindOf4 π = .W) (hs : π.size < 2 ^ 64) :
-    den memX mpwX (ext4IRWith nd) (extractorInput c π L) = packBytes π.data.toList := by
+    den memX4 mpwX (ext4IRWith nd) (extractorInput c π L) = packBytes π.data.toList := by
   rw [den4_split, br4, semXIR_ite, if_pos (flagK_W c π L hW hs),
     wIR_sem _ _ (inv_st1 c π L) (by rw [tape4, toNat_ceil8 hs]; omega), st1_o, tape4,
     toNat_ceil8 hs, Array.toList_empty, List.nil_append]
@@ -344,7 +344,7 @@ theorem den4_W (hW : Rev4.kindOf4 π = .W) (hs : π.size < 2 ^ 64) :
 
 /-- **A `bad` proof**: no output. -/
 theorem den4_bad (hB : Rev4.kindOf4 π = .bad) (hs : π.size < 2 ^ 64) :
-    den memX mpwX (ext4IRWith nd) (extractorInput c π L) = [] := by
+    den memX4 mpwX (ext4IRWith nd) (extractorInput c π L) = [] := by
   rw [den4_split]
   rcases kindOf4_bad hB with ⟨κ, hb, hz⟩ | ⟨κ, hb⟩
   · have hp := pos_of_byte hb (by cases κ <;> decide)
@@ -365,7 +365,7 @@ theorem den4_bad (hB : Rev4.kindOf4 π = .bad) (hs : π.size < 2 ^ 64) :
 
 /-- **A node proof**: the denotation is the node branch's output from the parse's state. -/
 theorem den4_node {κ : Rev4.NodeKind} (hN : Rev4.kindOf4 π = .node κ) :
-    den memX mpwX (ext4IRWith nd) (extractorInput c π L) =
+    den memX4 mpwX (ext4IRWith nd) (extractorInput c π L) =
       (semXIR (extractorInput c π L).toArray nd (st1 c π L)).o.toList := by
   obtain ⟨hb, hz⟩ := kindOf4_node hN
   have hs : π.size < 2 ^ 64 := by omega
@@ -412,7 +412,7 @@ theorem mask_word (c : Digest) (π : Proof) (L : Log) (hs : π.size < 2 ^ 64) (j
 /-- **An aggregate proof**: the denotation is the leaf witness `aggLeaf π`, on every log. -/
 theorem den4_agg (nd : XIR) (c : Digest) (π : Proof) (L : Log) (hA : Rev4.kindOf4 π = .agg)
     (hs : π.size < 2 ^ 64) :
-    den memX mpwX (ext4IRWith nd) (extractorInput c π L) = witWords (aggLeaf π) := by
+    den memX4 mpwX (ext4IRWith nd) (extractorInput c π L) = witWords (aggLeaf π) := by
   have hb := kindOf4_agg hA
   have hp := pos_of_byte hb (by decide)
   have hn : (byteAt π 0).toNat = 65 := by rw [hb]; rfl
@@ -456,7 +456,7 @@ theorem den4_agg (nd : XIR) (c : Digest) (π : Proof) (L : Log) (hA : Rev4.kindO
 /-! ## The extractor `E4X` -/
 
 /-- **The in-domain extractor**: the decoded denotation of `ext4IRWith nd`. -/
-def Ed4 (nd : XIR) : Digest → Proof → Log → Option Wit := Eden memX mpwX (ext4IRWith nd)
+def Ed4 (nd : XIR) : Digest → Proof → Log → Option Wit := Eden memX4 mpwX (ext4IRWith nd)
 
 /-- **The extractor outside the domain** (B-15 on revision 4.1's kinds): `W` decoded, an aggregate's
 leaf, a node searched under the key it carries, `bad` none. -/
@@ -566,14 +566,14 @@ theorem halts4 {nd : XIR} (hnd : DecOk4 nd) (c : Digest) (π : Proof) (L : Log)
       o.length ≤ outCap := by
   have h : InDomE c π L := ⟨h1, h2, h3⟩
   have hs := size_lt_of_dom h
-  have hreg : regs ≤ memX := by simp only [regs, memX]; norm_num
+  have hreg : regs ≤ memX4 := by simp only [regs, memX4]; norm_num
   have hwf := wf_ext4IRWith hnd.wf
-  have h0 : Inv (initSt (memX + mpwX * (extractorInput c π L).length)).M :=
+  have h0 : Inv (initSt (memX4 + mpwX * (extractorInput c π L).length)).M :=
     inv_initSt (Nat.le_add_right_of_le hreg)
-  have hden : den memX mpwX (ext4IRWith nd) (extractorInput c π L) =
+  have hden : den memX4 mpwX (ext4IRWith nd) (extractorInput c π L) =
       (semXIR (extractorInput c π L).toArray (ext4IRWith nd)
-        (initSt (memX + mpwX * (extractorInput c π L).length))).o.toList := rfl
-  generalize hs0 : initSt (memX + mpwX * (extractorInput c π L).length) = s0 at h0 hden
+        (initSt (memX4 + mpwX * (extractorInput c π L).length))).o.toList := rfl
+  generalize hs0 : initSt (memX4 + mpwX * (extractorInput c π L).length) = s0 at h0 hden
   have hz := parse4_sz (extractorInput c π L).toArray s0 h0
   rw [tape4, isW_sz π hs] at hz
   have hB0 := boundsOk_br4 hnd c π L h (semXIR (extractorInput c π L).toArray parse4 s0)
@@ -606,7 +606,7 @@ theorem halts4 {nd : XIR} (hnd : DecOk4 nd) (c : Digest) (π : Proof) (L : Log)
 `A` (on the domain `E4X nd A = Ed4 nd`). -/
 theorem computes4 {nd : XIR} (hnd : DecOk4 nd) (A : Digest → Digest → Signed → Bool) :
     Computes (ext4With nd) (E4X nd A) fuel := fun c π L h1 h2 h3 => by
-  obtain ⟨o, ho, hl, hd⟩ := computes_Eof fuel (by simp only [regs, memX]; norm_num)
+  obtain ⟨o, ho, hl, hd⟩ := computes_Eof fuel (by simp only [regs, memX4]; norm_num)
     (wf_ext4IRWith hnd.wf) (fun c π L h1 h2 h3 => halts4 hnd c π L h1 h2 h3) c π L h1 h2 h3
   exact ⟨o, ho, hl, hd.trans (if_pos ⟨h1, h2, h3⟩).symm⟩
 
