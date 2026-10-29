@@ -16,7 +16,11 @@ Main (`v4/flock-recursive`, core `422f2f9`; the certificate assumes only `Open4F
   - The four controls for `ChildBad4` are required.
 - PORT: brings the decoder, S-L4 and B3 back to green at 4.4.1's format, using A1′'s list. It deletes `realign`/`realign_sem` (44.8 s of kernel), `cso_realign`, `FRXOut4C` and `FRXOut4Ctrl`, adds the spacer entries in `aggTr`, and fixes `fsMsgs4_*` (1,008/112) and `gap4Imp_of_run`. It owns FRX*, FRNodeLinks4*, FRNodeRun4* and FRSubmission4*.
 - B4: `aggChk`, with PK-m7's `hashA`/`hashB` rows on the arenas, and its rows folded into `nodeIRows4`/B5's plan. It owns FRNodeRows4Agg/AggChk*/Arena*. After B4, `Gap4R` = `imp` only.
-- Cheap Opus review of A1′.
+- Review of A1′ (cheap Opus): no blockers.
+  - **Soundness:** the free spacer bytes enter only the ignored spacer answer, `wf` is proved for every segment and spacer, and `ctrlA_no_spacer` is a real control. S2b is asked to confirm that no ROM-consistency argument ranges over spacer entries.
+  - **For E1:** prove or test that the main chain after `aggL k − 1` is message-free, so phantom pins never conflict. Exercise it with k = 1 and k = 2.
+  - **Minor cleanup (later golf):** `lastR_no_spacer` and `aggChainLen_eq`'s 5th conjunct are bare arithmetic. Restate them through the definitions or rename them. `pbC` (FRNodeRows4Wots:109) may be dead.
+  - **For B4:** `main_not_final2` now distinguishes k = 2 by the final flag only; B4 has been told. B4's fit is in the link region (≈ 19.5k of 32,768), not H.
 
 Landed on rev44: **A1′ `e464756`**.
 - `Gap4R` is now `imp`, `aggChk`.
