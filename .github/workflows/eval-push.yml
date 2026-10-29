@@ -41,12 +41,12 @@ jobs:
 
   evaluate:
     needs: select
-    uses: scaraven/recursion.fast/.github/workflows/evaluate.yml@64378d257625c2c6f6d2748abdd2f900869a825e
+    uses: scaraven/recursion.fast/.github/workflows/evaluate.yml@422f2f9e944da5b94be73e8ef5f1523406f53e9f
     permissions: { contents: read, id-token: write, attestations: write }
     with:
       entry_repo: ${{ github.repository }}
       entry_sha: ${{ github.sha }}
       entry_path: ${{ needs.select.outputs.root }}
-      core_ref: 64378d257625c2c6f6d2748abdd2f900869a825e
+      core_ref: 422f2f9e944da5b94be73e8ef5f1523406f53e9f
       season: ${{ needs.select.outputs.season }}
       split: ${{ needs.select.outputs.split == 'true' }}
