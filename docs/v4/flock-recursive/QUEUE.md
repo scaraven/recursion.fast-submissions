@@ -7,10 +7,12 @@ Last updated 2026-10-28. **Rebased onto core PR #20 (pin `6d05d00`, commit `987e
 Main (`v4/flock-recursive`, core `422f2f9`; the certificate assumes only `Open4F := Gaps4`):
 - G5: kernel-time golf (`realign_sem` 44.8 s first; target ≥ 150 s off the comparator's 461.7 s).
 
-`v4/rev44` (HEAD `face798` = RSV-V2 + main merged; red at RSV-V's 7 declarations and possibly decoder literals):
+`v4/rev44` (HEAD `9a41aac` = RSV-V2 + main merged + B5; red at RSV-V's 7 declarations and possibly decoder literals):
 - RSV-S: E-phase soundness for RSV2 (P4b, B′ 69 cells, `gap4Imp_of_rsv`).
-- B5: V levers for the stacked `evalM` (link rows at plan init, shared pinned sums; ≈ 30 ms per kind today).
-- A1′: R-A′ spacers (aligned sub-slots; `kindS`/`wf` at i ≥ 1).
+- A1′: R-A′ spacers (aligned sub-slots; `kindS`/`wf` at i ≥ 1). Told to build against B5's `FRNodeRows4Plan`/`FRVerifierImplNode4F`.
+- Cheap Opus review of B5 (findings feed A1′/B4).
+
+Landed on rev44: **B5 `9a41aac`**. V(N4) with own kind only 276.6 → 263.8 ms; with all three kinds 347.6 → 288.4 ms. Each extra kind now costs +16–18 ms, against +37–38 ms before. `protoV4` (≈ 125 ms) is now the bulk of the own-kind call. Its open lever is sharing prototype 1's low tables with prototype 0, worth about 5 ms.
 
 **Then:** B4 (ask templates on the arenas meeting B3's `ATOk`, `aggChk`, the fold into `nodeIRows4`/`evalMT4`) → PORT (decoder/S-L4/B3 recompiled at rev44's format; A1′'s list) → C1 (remaining replay keys: `targetS`, `shiftTarget`, `linkWAll`, `rsWeight`, `evalL`) → `Gaps4` discharged → E1 (prover: D/A fields, L1/L2, reserve's E2/E4 terms and 1,008/112-B fields, spacers, arenas, packed plan form) → cert probe → evaluation.
 
