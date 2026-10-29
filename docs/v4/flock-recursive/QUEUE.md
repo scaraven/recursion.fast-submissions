@@ -2,14 +2,14 @@
 
 Last updated 2026-10-28. **Rebased onto core PR #20 (pin `6d05d00`, commit `987e679`); blueprint revision 4.0** (§0.1 B-11…B-17, §10 changes 25). Build trees use `logs/org20`.
 
-## Running (revision 4.1; 6 agents, FR-D8)
+## Running (revision 4.3; 6 agents, FR-D8) — as of 2026-10-29
 
-- S-E13: the plan build ≤ 2 s per process (B-16), generic piece lemma replacing `Plan.ok`'s run-time comparison.
-- H-cert: the certificate's build/kernel time on a 4-vCPU runner against 600 s / 600 s.
-- T4: the Ligerito tail at `seq4` (+14 positions).
-- P4a: front Z, L, S, Sh at `seq4` with the segment deltas (`SegHolds`, range factor, masked successor, `lastOps`).
-- P4b: front Lr, E, RS, B′, W0 at shifted positions, per-kind node dims, O1 over `nodeIRows`.
-- S-H3: the Rev4 computable extractor (`V4with` dispatch, A and N2/N4/N8, `computes4`, the node law for `FRSoundness4Frame`).
+- S-H4: the node decoder (`lagIR` semantics, `level_decode4`, `nd`, `DecOk4`, `NodeDec4`; residuals 5–7: `D`, `hL`, `hnd`).
+- S-I: `Submission`, completeness (W path, δ = 0), `claim.json`, harness dry run on GitHub; on `certificate_rev4H` (INT-10).
+- P2⁷: step-time levers (stream fits M ≤ 66 at `stream_s` 960).
+- S-E13a: `Gap4` 1–3 (pack map, `input` alias, `wf`, kind tie).
+- S-E13b: `Gap4` 4–6 (WOTS rows, `aggChk`, `aggPad`).
+- RET-2: retirement step 3 (the 3.x soundness front out of the Rev4 closure; `tail_shift` move).
 
 ## Waiting
 
@@ -57,7 +57,7 @@ Last updated 2026-10-28. **Rebased onto core PR #20 (pin `6d05d00`, commit `987e
 
 ## Closed
 
-S-A `8ff873c`; S-C `ebac8c2`; S-D `8e6dad7`; S-E1 `2d5a811`; S-H1 `40b2f81`; S-0 `47158b1`; S-E2/S-E3 `8447c50`; S-F `c8e1869`; S-F2 `8f22b86`; S-G through `ac43569`; S-H2 through `11fb3a5`; INT-1 `5fc7d3b`; S-E5 `9dbab71`. FR builds as a whole.
+S-A `8ff873c`; S-C `ebac8c2`; S-D `8e6dad7`; S-E1 `2d5a811`; S-H1 `40b2f81`; S-0 `47158b1`; S-E2/S-E3 `8447c50`; S-F `c8e1869`; S-F2 `8f22b86`; S-G through `ac43569`; S-H2 through `11fb3a5`; INT-1 `5fc7d3b`; S-E5 `9dbab71`; … S-N2 `75eff21`; INT-10 `1c5a738` (`SegOut4` gone: `ks_rev4H`/`certificate_rev4H`; open: drop `hO`/`out` from S-N2's `ks_rev4GH`, then delete the G forms, `SegOut4`, `runFacts4_C`). FR builds as a whole.
 
 ## Rulings
 
