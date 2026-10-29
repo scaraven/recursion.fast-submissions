@@ -67,6 +67,12 @@ Running on rev44:
     - siblings and `bits 20` (bit decomposition, about 15.9k bit cells vs the 8,320-cell bit area);
     - 2 mid-element flags per prototype (the stmt tag byte and the zero tail);
     - 4 unaligned statement reads.
+- **IMPC2 design landed `3577618`.**
+  - **Bit area:** grows to 16,384 cells in M.
+  - **Rows:** `bitOf` takes rows plus a run proof; siblings become an `ATImp` class; `bits 20` and the mid-element flags and unaligned stmt reads go over the statement bit cells.
+  - **Cost:** about 64.5k/81k template rows. V ≈ +0.25 s; init +1.5–4.4 s, which is too much under the stream constraint.
+  - **Layout:** REPF was asked to move `repSegB` to 31·2^15 − 2^10.
+- IMPC2: the generators, lemmas and a projection probe, with an init target of ≤ +0.5 s VM (keyed/structured rows). The `askTG`/arena diffs come after ASK-T and REPF.
 - **Collision guard:** ASK-T (the `askTG` line and imports) and REPF (the split and fold) both edit FRNodeRows4.lean. Each was told to touch only its own hunks; the orchestrator merges at freeze.
 - **SRA landed `27459d9`.**
   - **`Gaps4`:** now over `StmtN4R`; the top hypothesis only shrank.
