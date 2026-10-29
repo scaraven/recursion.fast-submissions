@@ -1,6 +1,7 @@
 -- New for `flock-recursive` (BLUEPRINT revision 4.1, §4.4; stage S-E13b, track L-circ).
 import FRNodeRows4Wots
 import FRNodeRows4AggChk
+import FRNodeRows4AskStmt
 
 /-!
 # The node rows of S-E13b, as one list per slot (`extRows4`)
@@ -11,7 +12,8 @@ kind has one): both signed children's WOTS rows (`W4.wotsRows`) and every aggreg
 (`W4.padRows`), with the aggregates' activities read off the sub-slots' selector copies (`actW`,
 equal to `Rev4.selSum` of the sub-slot).
 
-* **`extRows4 κ σ`**: the list (`xRowsA`: with B4's aggregate check rows `chkRows`); empty at every
+* **`extRows4 κ σ`**: the list (`xRowsA`: with B4's aggregate check rows `chkRows` and IMP's statement
+  rows `stmtRows`, PK-m7); empty at every
   slot but 1;
 * **`xRows_length`**, **`extRows4_length_le`**: `N2` 7,862, `N4` 7,878, `N8` 7,904 rows (R-A′: `aggPad`
   without the element-7 decompositions), inside the link region after the pack rows.
@@ -35,8 +37,9 @@ def xRows (κ : NodeKind) : List Row :=
 activities. -/
 def chkRows (κ : NodeKind) : List Row := (List.range (nAgg κ)).flatMap fun a => aggRowsC κ a (actW κ a)
 
-/-- **The node rows with the aggregates' checks** (B4): S-E13b's, then `chkRows`. -/
-def xRowsA (κ : NodeKind) : List Row := xRows κ ++ chkRows κ
+/-- **The node rows with the aggregates' checks and the statement rows** (B4, IMP): S-E13b's, then
+`chkRows`, then `stmtRows` (PK-m7, `FRNodeRows4AskStmt`). -/
+def xRowsA (κ : NodeKind) : List Row := xRows κ ++ (chkRows κ ++ stmtRows κ (actW κ))
 
 /-- **Slot `σ`'s node rows** (S-E13b, B4): the node rows at slot 1, none elsewhere. -/
 def extRows4 (κ : NodeKind) (σ : ℕ) : List Row := if σ = 1 then xRowsA κ else []
@@ -56,13 +59,14 @@ theorem chkRows_length_le (κ : NodeKind) : (chkRows κ).length ≤ 4152 := by
   exact aggRowsC_length_le κ a _
 
 /-- **They fit S-E13a's link region** after its rows (`2^15 − 8 − 8,919 = 23,841`): S-E13b's
-at most 7,904, B4's at most 4,152. -/
-theorem extRows4_length_le (κ : NodeKind) (σ : ℕ) : (extRows4 κ σ).length ≤ 12056 := by
+at most 7,904, B4's at most 4,152, IMP's statement and `input` rows at most 80. -/
+theorem extRows4_length_le (κ : NodeKind) (σ : ℕ) : (extRows4 κ σ).length ≤ 12136 := by
   unfold extRows4
   split_ifs
   · obtain ⟨h2, h4, h8⟩ := xRows_length
     have := chkRows_length_le κ
-    rw [xRowsA, List.length_append]
+    have := stmtRows_length_le κ (actW κ)
+    rw [xRowsA, List.length_append, List.length_append]
     cases κ <;> omega
   · simp
 

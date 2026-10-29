@@ -310,7 +310,7 @@ theorem chk_hold (hS : N4c.StmtN4 κ (lRows4 κ) (nodeIRows4 κ) vk c₁ c₂ w)
   · intro a ha r hr
     refine linkRows_hold hF h1 hE r (List.mem_append_right _ ?_)
     rw [extRowsC, if_pos rfl, if_pos h, xRowsK_eq]
-    exact List.mem_append_right _ (List.mem_flatMap.2 ⟨a, List.mem_range.2 ha, hr⟩)
+    exact List.mem_append_right _ (List.mem_append_left _ (List.mem_flatMap.2 ⟨a, List.mem_range.2 ha, hr⟩))
   · exfalso
     have := linkRows_hold hF h1 hE (rejR κ)
       (List.mem_append_right _ (by rw [extRowsC, if_pos rfl, if_neg h]; simp))

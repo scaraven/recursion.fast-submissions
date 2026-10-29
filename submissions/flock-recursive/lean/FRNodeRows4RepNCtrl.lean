@@ -25,20 +25,20 @@ open RecursionFast Rev4 Circ Tpl
 theorem linLt_ctl : linLt 10 [(3, 1), (9, 2)] = true ∧ linLt 10 [(3, 1), (10, 2)] = false := by decide
 
 /-- The controls' parameters: `one` is cell 0, the selectors cells 1–3. -/
-def ctlP : Params := ⟨Lin.cell 0, fun ι => Lin.cell (1 + kIx ι)⟩
+def ctlPN : Params := ⟨Lin.cell 0, fun ι => Lin.cell (1 + kIx ι)⟩
 
 /-- A compile state whose register 0 is `bnd` (`af 5`; its first four forms `zs`). -/
 def bndCS (zs : List Lin) : CS := { CS.init 100 with slots := #[some (.af 5, zs ++ [Lin.cell 7])] }
 
 /-- (+) Zero digest forms (coefficient 0 on cells 1–3) and an output below `B`: the row
 `one · out = 0`. -/
-theorem stOut_pos : stOut 50 ctlP (bndCS [[(1, 0)], [(2, 0)], [(3, 0)], []]) 0 [some (.f, [Lin.cell 20])] =
+theorem stOut_pos : stOut 50 ctlPN (bndCS [[(1, 0)], [(2, 0)], [(3, 0)], []]) 0 [some (.f, [Lin.cell 20])] =
     [⟨Lin.cell 0, Lin.cell 20, []⟩] := by decide
 
 /-- (−) A nonzero coefficient in a digest form, or an output cell at `B`: the rejecting row. -/
 theorem stOut_neg :
-    stOut 50 ctlP (bndCS [[(1, 0)], [(2, 1)], [(3, 0)], []]) 0 [some (.f, [Lin.cell 20])] = [rejRow ctlP] ∧
-    stOut 50 ctlP (bndCS [[(1, 0)], [(2, 0)], [(3, 0)], []]) 0 [some (.f, [Lin.cell 50])] = [rejRow ctlP] := by
+    stOut 50 ctlPN (bndCS [[(1, 0)], [(2, 1)], [(3, 0)], []]) 0 [some (.f, [Lin.cell 20])] = [rejRow ctlPN] ∧
+    stOut 50 ctlPN (bndCS [[(1, 0)], [(2, 0)], [(3, 0)], []]) 0 [some (.f, [Lin.cell 50])] = [rejRow ctlPN] := by
   decide
 
 /-- A toy kind-muxed op: `mulF a b` at every index, its sub-template one product. -/
@@ -53,14 +53,14 @@ def toyCS : CS := { CS.init 100 with slots := #[some (.f, [Lin.cell 10]), some (
 
 /-- (+) Typed operands at all three indices: the kind mux's rows and one copy row on the output
 cell 30. -/
-theorem kRows_pos : (kRows toyK 50 60 ctlP toyCS (.mulF 0 1) [some (.f, [Lin.cell 30])]).length =
+theorem kRows_pos : (kRows toyK 50 60 ctlPN toyCS (.mulF 0 1) [some (.f, [Lin.cell 30])]).length =
     (kTpl toyK (.mulF 0 1) [([.f, .f], [Lin.cell 10, Lin.cell 11]), ([.f, .f], [Lin.cell 10, Lin.cell 11]),
       ([.f, .f], [Lin.cell 10, Lin.cell 11])]).rows.length + 1 := by decide
 
 /-- (−) An untracked operand (register 2), or an operand form at the bound (`B = 11`): the rejecting
 row. -/
-theorem kRows_neg : kRows toyK 50 60 ctlP toyCS (.mulF 0 2) [some (.f, [Lin.cell 30])] = [rejRow ctlP] ∧
-    kRows toyK 11 60 ctlP toyCS (.mulF 0 1) [some (.f, [Lin.cell 30])] = [rejRow ctlP] := by decide
+theorem kRows_neg : kRows toyK 50 60 ctlPN toyCS (.mulF 0 2) [some (.f, [Lin.cell 30])] = [rejRow ctlPN] ∧
+    kRows toyK 11 60 ctlPN toyCS (.mulF 0 1) [some (.f, [Lin.cell 30])] = [rejRow ctlPN] := by decide
 
 /-- (+) `rtC1` covers `shiftTarget` and `linkWAll` at prototype 0, `linkWAll` at prototype 1; (−) not
 `targetS`, `evalL`, `rsWeight` or `evalM`. -/
@@ -73,9 +73,9 @@ theorem rtC1_cov : (rtC1 0).cov (.shiftTarget 0 0 0 0) = true ∧ (rtC1 0).cov (
 def ctlSlot8 (b : ℕ) : Slot := some (.af 8, (List.range 8).map fun j => Lin.cell (b + j))
 
 /-- (+) Outputs below `B`: S-E14's eight rows; (−) an output cell at `B`: the rejecting row. -/
-theorem rtLinkSegW_pos : ((rtLinkSegW 50).rows ctlP toyCS (.linkWAll 0 0) [ctlSlot8 20]).length = 8 := by decide
+theorem rtLinkSegW_pos : ((rtLinkSegW 50).rows ctlPN toyCS (.linkWAll 0 0) [ctlSlot8 20]).length = 8 := by decide
 
-theorem rtLinkSegW_neg : (rtLinkSegW 50).rows ctlP toyCS (.linkWAll 0 0) [ctlSlot8 45] = [rejRow ctlP] := by
+theorem rtLinkSegW_neg : (rtLinkSegW 50).rows ctlPN toyCS (.linkWAll 0 0) [ctlSlot8 45] = [rejRow ctlPN] := by
   decide
 
 /-- (+) A frame cell where `slotAsg` reads it, a local in `N4`'s spare region; (−) the local is not

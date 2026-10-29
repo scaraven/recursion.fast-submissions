@@ -152,6 +152,7 @@ import FRVerifierC4
 import FRNodeRows4WotsCtrl
 import FRNodeRows4PackSound
 import FRNodeRows4AggChkCtrl
+import FRNodeRows4AskInp
 import FRNodeRows4RepCtrl
 import FRNodeRows4RepNCtrl
 import FRNodeLinks4SigH

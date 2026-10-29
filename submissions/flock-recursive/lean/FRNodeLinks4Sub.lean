@@ -22,7 +22,7 @@ theorem links4_of_gaps {nd : X.XIR} (D : NodeDec4 nd)
     (hsig : ∀ vk, Snd.L4.SigH4 sg vk) (hG : Gaps4) : Links4 nd D := fun vk =>
   Snd.L4.hL_of_sig (Impl.finC finPf) Layout.lRows 0 sub4 vk sub4_V sub4_qV D hLk hW (hsig vk)
     (N4s.I4 _ _ (Impl.implCWith_implT _ _) fun _ => Impl.implCWith_implT _ _) (N4s.I4_rows _ _ _ _)
-    fun κ w c₁ c₂ hS => N4s.resid4_of _ _ X.pf4 hS (N4s.gap4_of_rows X.pf4 pfHdr_pf4 hS (hG vk κ w c₁ c₂ hS))
+    fun κ w c₁ c₂ hS => N4s.resid4_of _ _ X.pf4 hS (gap4_of_gaps hG hS)
 
 /-- **`Resid4H` of `sub4`** from the same: `resid4H_of` with `links4_of_gaps`. -/
 theorem resid4H_of_gaps {nd : X.XIR} (D : NodeDec4 nd)

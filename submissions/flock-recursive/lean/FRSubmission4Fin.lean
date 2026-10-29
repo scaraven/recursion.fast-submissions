@@ -11,8 +11,9 @@ With S-H4's node branch `nd` (`FRXNd4`: decode law `nodeDec4_nd`, links `LinksD4
 contain `LinksD4` and whose witness is `readW4 sigH`), `Open4`'s `dec` follows from its `gap`. What
 the certificate still assumes is
 
-**`Open4F := Gaps4`**: on every witness of the node statement `StmtN4`, the slots' circuit gaps
-`Gap4R` at the proof decoder `pf4` (S-E13a's residual; owners B1′ … B4, A1′).
+**`Open4F := Gaps4`**: on every witness of the node statement `StmtN4`, the slots' circuit gap
+`Gap4R.imp` at the proof decoder `pf4` (S-E13a's residual; B4 closed `aggChk`; owners B3, IMP, C1,
+RSV-S3).
 -/
 
 namespace FR.Sub4

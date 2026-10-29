@@ -4,6 +4,7 @@
 import FRSubmission4
 import FRSoundness4XRunG
 import FRNodeRows4PackSound
+import FRNodeRows4AggChkG
 import FRXOut4
 import FRXSig4H
 import FRXSig4W
@@ -14,13 +15,13 @@ import FRXSig4W
 **`Open4`** is what INT-10's `certificate_rev4H` (at `fin := finC finPf`, `lRows := Layout.lRows`,
 `κs₀ := 0`, where `implC` is `implB` by `Impl.implCN_eq`) still asks for `sub4`, stated over
 S-E13a's route (S-H4 pass 7, `reviews/PATH-review.md` F1): `Resid4H.slots` is `I4`, `rd4 pf4` and
-`resid4_of ∘ gap4_of_rows`, so what remains of it is `Gap4R` at `pf4 = reassemble4 seq4`
-(`PfHdr pf4` is `pfHdr_reassemble4`). X4's rows 1 (`FrontHi`) and 2 (`RunFacts4`) are closed;
+`resid4_of ∘ gap4_of_rowsI` (B4: `aggChk` from the rows), so what remains of it is `Gap4R.imp` at
+`pf4 = reassemble4 seq4` (`PfHdr pf4` is `pfHdr_reassemble4`, `PfView pf4` is `pfView_reassemble4`). X4's rows 1 (`FrontHi`) and 2 (`RunFacts4`) are closed;
 rows 8–9 are `complete_rev4`, `delta_rev4`; row 7 (`DecOk4`) is `decOk4_nd`, proved (S-H4 pass 11).
 
 | field | what | owner |
 |---|---|---|
-| `gap` | `StmtN4 → Gap4R` at `pf4` (`imp`, `aggChk`; A1′ closed `kindS`/`wf`) | B3 (`gap4Imp_of_run`), B4 |
+| `gap` | `StmtN4 → Gap4R.imp` at `pf4` (B4 closed `aggChk`, A1′ `kindS`/`wf`) | B3 (`gap4Imp_of_run`), IMP, C1, RSV-S3 |
 | `dec` | **`Links4 nd nodeDec4_nd`** (`hL`) | S-L4 (`links4_sigH`: from `gap`, `FRSubmission4Fin`) |
 
 **The signature reader is fixed** (S-H4 pass 8): `sg := sigH` (H's message slots, rows 4–7), and
@@ -51,10 +52,13 @@ def Links4 (nd : X.XIR) (D : NodeDec4 nd) : Prop :=
     (Vnode4 κ vk c π).runLog L = some true →
       ∃ es, D.Links κ L es π c ∧ Rel (sub4.acc vk) c (D.readW κ L es)
 
-/-- **The circuit's open gaps** at the slots' proof decoder `pf4` (S-E13a's `Gap4R`). -/
+/-- **The circuit's open gaps** at the slots' proof decoder `pf4`: S-E13a's `Gap4R` without
+`aggChk` (B4's `aggChk_of_rows`), i.e. `Gap4R.imp`: every active slot's run and imports. -/
 def Gaps4 : Prop :=
   ∀ vk κ w c₁ c₂, N4c.StmtN4 κ (lRows4 κ) (nodeIRows4 κ) vk c₁ c₂ w →
-    N4s.Gap4R implB (fun _ => implB) X.pf4 κ vk c₁ c₂ w
+    ∀ v, N4c.Active4 (N4s.rd4 X.pf4) κ w v →
+      N4s.SlotImp implB (fun _ => implB) κ v w (N4c.slotIn (N4s.rd4 X.pf4) κ vk c₁ w v)
+        ((N4s.rd4 X.pf4).slotTr κ v w)
 
 /-- **The residuals of revision 4.1's certificate still open** (owners in the module doc). -/
 structure Open4 : Prop where
@@ -64,13 +68,26 @@ structure Open4 : Prop where
 /-- `PfHdr pf4` (`pfHdr_reassemble4`). -/
 theorem pfHdr_pf4 : N4s.PfHdr X.pf4 := fun e tr => X.pfHdr_reassemble4 e tr
 
+/-- `PfView pf4` (`pfView_reassemble4`). -/
+theorem pfView_pf4 : N4s.PfView X.pf4 := fun e₀ e₁ tr => X.pfView_reassemble4 e₀ e₁ tr
+
+/-- **S-N2's `Gap4` from `Gaps4`** (B4's `gap4_of_rowsI`: the rows give everything but `imp`). -/
+theorem gap4_of_gaps (hG : Gaps4) {vk : Digest} {κ : NodeKind} {w : Circ.Asg} {c₁ c₂ : Digest}
+    (hS : N4c.StmtN4 κ (lRows4 κ) (nodeIRows4 κ) vk c₁ c₂ w) :
+    N4s.Gap4 implB (fun _ => implB) X.pf4 κ vk c₁ c₂ w :=
+  N4s.gap4_of_rowsI (pf := X.pf4) pfHdr_pf4 pfView_pf4 hS (hG vk κ w c₁ c₂ hS)
+
+/-- (Converse) `Gaps4` asks nothing beyond `Gap4R` (its `imp` field). -/
+theorem gaps4_of_gap4R (h : ∀ vk κ w c₁ c₂, N4c.StmtN4 κ (lRows4 κ) (nodeIRows4 κ) vk c₁ c₂ w →
+    N4s.Gap4R implB (fun _ => implB) X.pf4 κ vk c₁ c₂ w) : Gaps4 :=
+  fun vk κ w c₁ c₂ hS => (h vk κ w c₁ c₂ hS).imp
+
 /-- **`Resid4H` from `Open4`'s parts**: the slots are `I4`, `rd4 pf4` with
 `resid4_of ∘ gap4_of_rows`; the links are `Links4`. -/
 theorem resid4H_of {nd : X.XIR} {D : NodeDec4 nd} (hG : Gaps4) (hL : Links4 nd D) (vk : Digest) :
     Snd.R4.Resid4H (Impl.finC finPf) Layout.lRows 0 sub4 nd D vk := by
   exact ⟨⟨N4s.I4 _ _ (Impl.implCWith_implT _ _) fun _ => Impl.implCWith_implT _ _, N4s.rd4 X.pf4,
-    N4s.I4_rows _ _ _ _, fun κ w c₁ c₂ hS => N4s.resid4_of _ _ X.pf4 hS
-      (N4s.gap4_of_rows X.pf4 pfHdr_pf4 hS (hG vk κ w c₁ c₂ hS))⟩,
+    N4s.I4_rows _ _ _ _, fun κ w c₁ c₂ hS => N4s.resid4_of _ _ X.pf4 hS (gap4_of_gaps hG hS)⟩,
     fun κ L c π hG' hk hd hr => hL vk κ L c π hG' hk hd hr⟩
 
 /-- **The contract's `Certificate` of `sub4`, given `Open4`** (INT-10's `certificate_rev4H`, with

@@ -332,7 +332,7 @@ theorem packRows4_length_le (κ : NodeKind) (σ : ℕ) : (packRows4 κ σ).lengt
     split_ifs <;> omega
 
 /-- S-E13b's node rows at a slot: at most 7,904. -/
-theorem extRowsC_length_le (κ : NodeKind) (σ : ℕ) : (extRowsC κ σ).length ≤ 12056 := by
+theorem extRowsC_length_le (κ : NodeKind) (σ : ℕ) : (extRowsC κ σ).length ≤ 12136 := by
   unfold extRowsC
   split_ifs with h1 h2
   · subst h1; rw [xRowsK_eq]

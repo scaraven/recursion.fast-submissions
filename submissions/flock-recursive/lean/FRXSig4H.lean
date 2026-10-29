@@ -38,7 +38,7 @@ theorem xRows_of_stmt {κ : NodeKind} {vk c₁ c₂ : Digest} {w : Asg}
   by_cases h : xOkK κ = true
   · intro r hr
     refine hl r (List.mem_append_right _ ?_)
-    rw [extRowsC, if_pos rfl, if_pos h, xRowsK_eq]; exact hr
+    rw [extRowsC, if_pos rfl, if_pos h, xRowsK_eq]; exact List.mem_append_left _ hr
   · exfalso
     have := hl (rejR κ) (List.mem_append_right _ (by rw [extRowsC, if_pos rfl, if_neg h]; simp))
     simp [rejR, Row.Holds, hone] at this

@@ -311,6 +311,60 @@ theorem reassemble4_size (S : Seq) (tr : Trace) : (reassemble4 S tr).size = piSi
     fieldSizeOf, List.map_map]
   rfl
 
+/-- Byte `j < n` of an `n`-byte fitted extract from `o` is byte `o + j` (`0` past the end). -/
+theorem fitL_extract_getDj (b : ByteArray) (o n : ℕ) {j : ℕ} (hj : j < n) :
+    (N4s.fitL n (Read.bl (b.extract o (o + n)))).getD j 0 = byteAt b (o + j) := by
+  unfold N4s.fitL Read.bl byteAt
+  rw [ByteArray.data_extract, Array.toList_extract, List.extract, Nat.add_sub_cancel_left]
+  rw [List.getD_eq_getElem?_getD, List.getElem?_take, if_pos hj]
+  have hs : b.size = b.data.size := rfl
+  split_ifs with h
+  · have hl : j < (List.take n (List.drop o b.data.toList)).length := by
+      simp only [List.length_take, List.length_drop, Array.length_toList]
+      omega
+    rw [List.getElem?_append_left hl, List.getElem?_take, if_pos hj, List.getElem?_drop]
+    simp only [Array.getElem?_toList]
+    rw [Array.getElem?_eq_getElem (by exact h)]
+    rfl
+  · have hl : (List.take n (List.drop o b.data.toList)).length ≤ j := by
+      simp only [List.length_take, List.length_drop, Array.length_toList]
+      omega
+    rw [List.getElem?_append_right hl, List.getElem?_replicate, if_pos (by omega)]
+    rfl
+
+/-- `seq4`'s first two phases: the seed (`hdr`) and the statement's absorb (`stmt`, 128 bytes). -/
+theorem phasesOf_seq4_two : ∃ rest, (phasesOf seq4).map Prod.snd = .seed :: .absorb fStmt 128 :: rest :=
+  ⟨_, rfl⟩
+
+/-- **`reassemble4` meets B4's `PfView`** (`N4s.PfView (reassemble4 seq4)` is this statement): the
+proof's bytes `0 … 47` are the seed query's bytes `71 … 118` (`hdr`, field 0) and its bytes
+`48 … 175` the second query's message bytes `40 … 167` (`stmt`, field 1; field 0 has 48 bytes,
+`fieldSizesOf_seq4`). -/
+theorem pfView_reassemble4 (e₀ e₁ : ByteArray × Digest) (tr : Trace) :
+    (∀ j < 48, byteAt (reassemble4 seq4 (e₀ :: e₁ :: tr)) j = byteAt e₀.1 (71 + j)) ∧
+      ∀ j < 128, byteAt (reassemble4 seq4 (e₀ :: e₁ :: tr)) (48 + j) = byteAt e₁.1 (40 + j) := by
+  obtain ⟨rest, h0⟩ := phasesOf_seq4_two
+  have hr : List.range nFields4 = 0 :: 1 :: List.range' 2 18 := rfl
+  have hF0 : fieldSizeOf seq4 0 = 48 := by
+    have h := congrArg (·[0]?) fieldSizesOf_seq4
+    simpa only [List.getElem?_map, List.getElem?_range (show 0 < nFields4 by decide), Option.map_some,
+      List.getElem?_cons_zero, Option.some.injEq] using h
+  have hlq : ∀ a i o n, (qB4 a i o n).length = n := fun _ _ _ _ => N4s.fitL_length _ _
+  have hq : ∀ (a : Array (ByteArray × Digest)) (i o n : ℕ) {e : ByteArray × Digest},
+      a.getD i (ByteArray.empty, 0) = e → ∀ j < n, (qB4 a i o n).getD j 0 = byteAt e.1 (o + j) :=
+    fun a i o n e he j hj => by rw [qB4, qBytes, he]; exact fitL_extract_getDj _ _ _ hj
+  have hl0 : ∀ a, (ctbs4 seq4 (trM4 a) a 0 [] ((phasesOf seq4).map Prod.snd) 0).length = 48 := fun a => by
+    rw [ctbs4_length, List.map_map, ← hF0, fieldSizeOf]; rfl
+  refine ⟨fun j hj => ?_, fun j hj => ?_⟩ <;> rw [reassemble4, N4s.byteAt_mk] <;>
+    simp only [hr, List.flatMap_cons]
+  · rw [List.getD_append _ _ _ _ (by rw [hl0]; exact hj), h0, ctbs4, ctb4, fHdr, if_pos rfl,
+      List.getD_append _ _ _ _ (by rw [hlq]; exact hj)]
+    exact hq _ 0 71 48 rfl j hj
+  · rw [List.getD_append_right _ _ _ _ (by rw [hl0]; omega), hl0, Nat.add_sub_cancel_left, h0, ctbs4,
+      ctbs4, ctb4, if_neg (by decide : (1 : ℕ) ≠ fHdr), List.nil_append, ctb4, fStmt, if_pos rfl,
+      List.append_assoc, List.getD_append _ _ _ _ (by rw [hlq]; exact hj)]
+    exact hq _ _ 40 128 rfl j hj
+
 /-! ## The decoder's links and the witness it outputs (the target of `NodeDec4 nd`) -/
 
 /-- **The decode law's links** (`NodeDec4.Links` of `nd`): exactly `decF04_sem`'s hypotheses on
