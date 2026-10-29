@@ -7,7 +7,7 @@ import FRSoundness4TailTruths
 /-!
 # The chain scan at revision 4.1: the targets of an item sequence, the table, `chain_spec4`
 
-3.x's `FRXChainFlock` with the item sequence a parameter `S : Seq` (main's `seq4` has 482
+3.x's `FRXChainFlock` with the item sequence a parameter `S : Seq` (rev44's `seq4` has 486
 Fiat–Shamir items; another revision's sequence is another `S`):
 
 * `fsMsgs4 S`: per Fiat–Shamir position, the π byte range `(o, len)` of the absorbed message, read
@@ -50,7 +50,9 @@ def msgOkB (P : ℕ) : Option (ℕ × ℕ) → Bool
   | none => true
 
 /-- Position 0 is the seed's `hdr` (bytes `0 … 47`), in every sequence. -/
-theorem fsMsgs4_zero (S : Seq) : (fsMsgs4 S).getD 0 none = some (0, 48) := rfl
+theorem fsMsgs4_zero (S : Seq) : (fsMsgs4 S).getD 0 none = some (0, 48) := by
+  have h : (phasesOf S).length = (phasesOf S).length - 1 + 1 := by simp [phasesOf]
+  unfold fsMsgs4; rw [h, List.range_succ_eq_map]; rfl
 
 /-- **The query at Fiat–Shamir position `p`** of `S`, the previous answer being `st` (A.2). -/
 def fsQ4 (S : Seq) (vk c : Digest) (π : Proof) (p : ℕ) (st : Digest) : ByteArray :=
@@ -202,8 +204,8 @@ theorem chain_dec4 (S : Seq) {pL N : ℕ} (hN : N < 2 ^ 9) (c : Digest) (π : Pr
 
 /-! ## At `seq4`: the controls, the positions replayed, the P1 challenges -/
 
-/-- Control: `seq4` has 482 Fiat–Shamir positions. -/
-theorem fsMsgs4_length : (fsMsgs4 seq4).length = 482 := by decide +kernel
+/-- Control: `seq4` has 486 Fiat–Shamir positions (revision 4.4.1: the cap check's four after `Pf`). -/
+theorem fsMsgs4_length : (fsMsgs4 seq4).length = 486 := by decide +kernel
 
 /-- The item kind of a message entry (position `0` is the seed). -/
 def msgItem4 : ℕ → Option (ℕ × ℕ) → Item
@@ -213,8 +215,8 @@ def msgItem4 : ℕ → Option (ℕ × ℕ) → Item
 
 /-- **Control: the kinds and lengths are `seq4`'s Fiat–Shamir items** (`T4.fsItems4`). -/
 theorem fsMsgs4_items :
-    (List.range 482).map (fun p => msgItem4 p ((fsMsgs4 seq4).getD p none)) = fsItems4 := by
-  decide +kernel
+    (List.range 486).map (fun p => msgItem4 p ((fsMsgs4 seq4).getD p none)) = fsItems4 := by
+  rw [← fsMsgs4_length, map_range_getD]; decide +kernel
 
 /-- **Control: every message of `seq4` is aligned and inside a proof of `piSizeOf seq4` bytes.** -/
 theorem fsMsgs4_aligned : (fsMsgs4 seq4).all (msgOkB (piSizeOf seq4)) = true := by
@@ -260,25 +262,25 @@ theorem cbS4_bounds {i : ℕ} (hi : i < 5) {ℓ : ℕ} (hℓ : ℓ ≤ (if i = 0
 
 /-- (−) **`msgOkB` rejects** a misaligned message and one past the proof's end; (+) it accepts the
 seed's `hdr`. -/
-theorem msgOkB_ctl : msgOkB 798192 (some (4, 8)) = false ∧ msgOkB 100 (some (96, 8)) = false ∧
-    msgOkB 798192 (some (0, 48)) = true := by decide
+theorem msgOkB_ctl : msgOkB 876304 (some (4, 8)) = false ∧ msgOkB 100 (some (96, 8)) = false ∧
+    msgOkB 876304 (some (0, 48)) = true := by decide
 
 /-- (value) **`seq4`'s targets at positions 2 and 3**: `cap₀`'s absorb of π's bytes
-`19,872 … + 16,384`, then a squeeze (`Z1`'s first). -/
-theorem fsMsgs4_ctl : (fsMsgs4 seq4).getD 2 none = some (19872, 16384) ∧
+`20,896 … + 16,384`, then a squeeze (`Z1`'s first). -/
+theorem fsMsgs4_ctl : (fsMsgs4 seq4).getD 2 none = some (20896, 16384) ∧
     (fsMsgs4 seq4).getD 3 none = none := by
   rw [seq4_eq]; decide +kernel
 
 /-- (+/−) **The queries**: position 2 absorbs `cap₀` into the state, position 3 squeezes it (and
 is not an absorb). -/
 theorem fsQ4_ctl (vk c : Digest) (π : Proof) (st : Digest) :
-    fsQ4 seq4 vk c π 2 st = absorbQ st (π.extract 19872 (19872 + 16384)) ∧
+    fsQ4 seq4 vk c π 2 st = absorbQ st (π.extract 20896 (20896 + 16384)) ∧
     fsQ4 seq4 vk c π 3 st = squeezeQ st := by
   constructor <;> unfold fsQ4 <;> simp only [fsMsgs4_ctl] <;> rfl
 
 /-- (value) **The table's entry for `cap₀`**: the query length `40 + 16,384`, the tape word
-`5 + 19,872/8`, the absorb tag. -/
-theorem tabEnt4_ctl : tabEnt4 seq4 2 = [toWord (40 + 16384), toWord (5 + 19872 / 8), tagAbsW, 0] := by
+`5 + 20,896/8`, the absorb tag. -/
+theorem tabEnt4_ctl : tabEnt4 seq4 2 = [toWord (40 + 16384), toWord (5 + 20896 / 8), tagAbsW, 0] := by
   unfold tabEnt4; simp only [fsMsgs4_ctl]
 
 /-- (value/−) **The P1 challenges' words** per level; they differ between levels. -/

@@ -41,13 +41,23 @@ theorem cost_kindNd4 (t : ℕ) : cost kindNd4 t = 15 := by
 theorem outs_kindNd4 (t : ℕ) : outs kindNd4 t = 0 := by
   rw [outs_noLoopT _ noLoopT_kindNd4 t]; decide
 
+/-- `sizeIR` of a sequence, structurally (`rw` with it keeps the kernel from evaluating closed sizes). -/
+theorem sizeIR_seq (P Q : XIR) : sizeIR (.seq P Q) = sizeIR P + sizeIR Q + 1 := rfl
+
+/-- `sizeIR` of the dispatch, structurally. -/
+theorem sizeIR_ndK4 (P2 P4 P8 : XIR) :
+    sizeIR (ndK4 P2 P4 P8) = sizeIR kindNd4 + (sizeIR P2 + (sizeIR P4 + sizeIR P8 + 1) + 1) + 1 := rfl
+
 theorem sizeIR_decF04 : sizeIR (decF04 .N2) = 57067 ∧ sizeIR (decF04 .N4) = 57067 ∧ sizeIR (decF04 .N8) = 57067 := by
-  decide +kernel
+  -- the chain's size from its table's length (`chTab4`'s words are not evaluated)
+  have hc : sizeIR (chainIR pL4 nRep4 (chTab4 seq4 nRep4) seedIR) = 18943 := by
+    rw [sizeIR_chainIR, chTab4_length]; decide +kernel
+  refine ⟨?_, ?_, ?_⟩ <;> rw [decF04, sizeIR_seq, sizeIR_seq, sizeIR_seq, hc] <;> decide +kernel
 
 theorem cost_outIR4 (κ : NodeKind) (t : ℕ) : cost (outIR4 κ) t ≤ 600000000 := by
   rw [cost_noLoopT _ (noLoopT_outIR4 κ) t]; exact (cso_outIR4 κ).1
 
-theorem outs_outIR4 (κ : NodeKind) (t : ℕ) : outs (outIR4 κ) t ≤ 2300000 := by
+theorem outs_outIR4 (κ : NodeKind) (t : ℕ) : outs (outIR4 κ) t ≤ 2500000 := by
   rw [outs_noLoopT _ (noLoopT_outIR4 κ) t]; exact (cso_outIR4 κ).2.1
 
 /-- **The node branch meets `DecOk4`.** -/
@@ -76,7 +86,10 @@ theorem decOk4_nd : DecOk4 nd where
     have o4 := (cso_outIR4 .N4).2.2
     have o8 := (cso_outIR4 .N8).2.2
     have k : sizeIR kindNd4 = 15 := by decide
-    simp only [nd, ndK4, sizeIR, z2, z4, z8, k]
+    rw [nd, sizeIR_ndK4, sizeIR_seq, sizeIR_seq, sizeIR_seq, z2, z4, z8, k]
+    generalize sizeIR (outIR4 .N2) = a2 at o2 ⊢
+    generalize sizeIR (outIR4 .N4) = a4 at o4 ⊢
+    generalize sizeIR (outIR4 .N8) = a8 at o8 ⊢
     omega
 
 /-! ## The decode law -/
@@ -93,7 +106,7 @@ theorem nd_out {κ : NodeKind} {c : Digest} {π : Proof} {L es : Log} (hN : kind
   obtain ⟨hb, hz⟩ := kindOf4_node hN
   obtain ⟨hS, ⟨st₀, hfm⟩, hcap, hfin, hfar, hA⟩ := hl
   have hps : π.size = piSizeOf seq4 := hz.trans piSizeOf_seq4.symm
-  have hpL : pL4 = 99779 := fmt4_vals.1
+  have hpL : pL4 = 109543 := fmt4_vals.1
   have hD4 : Dom4 pL4 c π L := ⟨by rw [hz, hpL], hD.2.1, hD.2.2⟩
   have hM := inv_st1 c π L
   have hsz0 : (st1 c π L).M.size = memX4 + mpwX * (extractorInput c π L).length := by
@@ -129,8 +142,7 @@ noncomputable def nodeDec4_nd : NodeDec4 nd :=
 `ndNone`'s. -/
 theorem nd_ne_ndNone : nd ≠ ndNone := fun h => by
   have := congrArg sizeIR h
-  obtain ⟨z2, -, -⟩ := sizeIR_decF04
-  simp only [ndNone, nd, ndK4, sizeIR, z2, blkSteps, List.length_nil, ↓reduceIte] at this
-  omega
+  rw [nd, sizeIR_ndK4] at this
+  exact Nat.add_one_ne_zero _ (Nat.add_eq_zero_iff.mp (Nat.add_right_cancel (m := 1) (k := 0) this)).2
 
 end FR.X.X4

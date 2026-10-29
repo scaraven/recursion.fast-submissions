@@ -75,7 +75,7 @@ theorem acceptRunL4_node (ν : NodeKind) {vk c : Digest} {π : Proof} {L : Log} 
     acceptTail4_of_finLog (y := yv4 (KindP.ofNode ν) (#[] ++ y.1.toArray)) hb hci hlen
       (hes ▸ not_rejFX_node fin lRows κs₀ hsem L) ?_⟩
   rw [hes]
-  exact ⟨hrnd, hrndPf, hFR.start, hFR.cols, hFR.link, hFR.pf0, hFR.enc, hFR.fin⟩
+  exact ⟨hrnd, hrndPf, hFR.start, hFR.cols, hFR.link, hFR.pf0, hFR.enc, hFR.fin, hFR.cap⟩
 
 /-- `f⁽⁰⁾` of a chain is that of its three-entry prefix (`src4.fz_same`). -/
 theorem fF_take3 {κ : NodeKind} {L es : Log} (hlen : 3 ≤ es.length) (hk : kindOfC (es.take 3) = .node κ) :

@@ -11,8 +11,10 @@ Signed child `σ`'s chain stream (`chainBytes4 κ σ k w`) is H's message byte s
 `chW κ σ k w n` are H message words (`hMW`, `FRXSig4W`) of those blocks:
 
 * **`chainBytes4_getD`**: chain byte `p` is byte `p mod 8` of chain word `⌊p/8⌋`;
-* **`vS_get`**: segment `i`'s virtual word `u` is the shifted pair `shWd chW s (q + u)` with
-  `q = ⌊D/8⌋`, `s = D mod 8`, `D = i·(segB − 1)` (`s = 0` included: `shWd_zero`);
+* **`vS_get`**: segment `i`'s virtual word `u` is chain word `i·(strideB/8) + u` (revision 4.4.1's
+  stride is whole words);
+* **`spAns_words`**: spacer `i`'s answer is four shift-1 pairs of chain words from `i·(strideB/8) − 4`
+  (it sits at stream bytes `i·strideB − 31 … i·strideB`);
 * **`hAe_words`**, **`hAn_word`**: the aggregate header's `e` and `n` are shift-1 pairs of the
   `c_A` block's message words.
 -/
@@ -74,23 +76,55 @@ theorem getD_packBytes {b : List UInt8} {j : ℕ} (hj : 8 * j + 8 ≤ b.length) 
     List.getD_eq_getElem?_getD, List.getElem?_eq_getElem (show 8 * j + k < b.length by omega),
     Option.getD_some]
 
-/-- **Segment `i`'s virtual word `u`** is the shifted pair of chain words at `D = i·(segB − 1)`:
-`shWd chW (D mod 8) (⌊D/8⌋ + u)`. -/
+theorem strideB_8 : N4c.strideB = 8 * (N4c.strideB / 8) := by decide
+
+/-- **Segment `i`'s virtual word `u`** is chain word `i·(strideB/8) + u`. -/
 theorem vS_get (κ : NodeKind) (σ k i : ℕ) (w : Circ.Asg)
-    (hD : i * (N4c.segB - 1) + N4c.segB ≤ N4c.streamB κ σ k) {u : ℕ} (hu : u < (vS κ σ k i w).length) :
-    (vS κ σ k i w)[u] = shWd (chW κ σ k w) (i * (N4c.segB - 1) % 8) (i * (N4c.segB - 1) / 8 + u) := by
+    (hD : i * N4c.strideB + N4c.segB ≤ N4c.streamB κ σ k) {u : ℕ} (hu : u < (vS κ σ k i w).length) :
+    (vS κ σ k i w)[u] = chW κ σ k w (i * (N4c.strideB / 8) + u) := by
   have hl := vS_length κ σ k i w hD
   have h8 := segB_mod
   have hcl := chainBytes4_length κ σ k w
   have hu2 : u < N4c.segB / 8 := hl ▸ hu
-  have hb : (List.take N4c.segB (List.drop (i * (N4c.segB - 1)) (N4c.chainBytes4 κ σ k w))).length =
+  obtain ⟨Q, hQ⟩ : ∃ Q, Q = i * (N4c.strideB / 8) := ⟨_, rfl⟩
+  have hD8 : i * N4c.strideB = 8 * Q := by
+    rw [hQ]; have h := strideB_8; generalize N4c.strideB / 8 = d at h ⊢; rw [h]; ring
+  rw [hD8] at hD
+  have hb : (List.take N4c.segB (List.drop (i * N4c.strideB) (N4c.chainBytes4 κ σ k w))).length =
       N4c.segB := by simp only [List.length_take, List.length_drop]; omega
   simp only [vS] at hu ⊢
-  rw [getD_packBytes (by omega) hu, ← wOf_shift _ (Nat.mod_lt _ (by norm_num))]
+  rw [getD_packBytes (by omega) hu, ← shWd_zero (chW κ σ k w), ← wOf_shift _ (by norm_num : 0 < 8)]
   refine wOf_congr fun x hx => ?_
   rw [List.getD_eq_getElem?_getD, List.getElem?_take, if_pos (by omega), List.getElem?_drop,
-    ← List.getD_eq_getElem?_getD, chainBytes4_getD κ σ k w (by omega),
-    show i * (N4c.segB - 1) + (8 * u + x) = 8 * (i * (N4c.segB - 1) / 8 + u) + i * (N4c.segB - 1) % 8 + x by omega]
+    ← List.getD_eq_getElem?_getD, chainBytes4_getD κ σ k w (by omega), hD8, ← hQ,
+    show 8 * Q + (8 * u + x) = 8 * (Q + u) + 0 + x by omega]
+
+/-- **Spacer `i`'s answer** (`1 ≤ i`, the spacer inside the stream): four shift-1 pairs of chain words
+from `i·(strideB/8) − 4`. -/
+theorem spAns_words (κ : NodeKind) (σ k : ℕ) (w : Circ.Asg) {i : ℕ} (hi1 : 1 ≤ i)
+    (hD : i * N4c.strideB < N4c.streamB κ σ k) :
+    packBytes (N4s.spAns κ σ k w i).toList =
+      (List.range 4).map fun j => shWd (chW κ σ k w) 1 (i * (N4c.strideB / 8) - 4 + j) := by
+  obtain ⟨Q, hQ⟩ : ∃ Q, Q = i * (N4c.strideB / 8) := ⟨_, rfl⟩
+  have hD8 : i * N4c.strideB = 8 * Q := by
+    rw [hQ]; have h := strideB_8; generalize N4c.strideB / 8 = d at h ⊢; rw [h]; ring
+  have hQ4 : 16 ≤ Q := by
+    rw [hQ]; have : N4c.strideB / 8 ≤ i * (N4c.strideB / 8) := Nat.le_mul_of_pos_left _ hi1
+    have : 16 ≤ N4c.strideB / 8 := by decide
+    omega
+  rw [hD8] at hD
+  rw [← hQ]
+  have hl : (packBytes (N4s.spAns κ σ k w i).toList).length = 4 := packBytes_digest_length _
+  refine List.ext_getElem (by rw [hl]; simp) fun j h1 h2 => ?_
+  have hj : j < 4 := by rw [hl] at h1; exact h1
+  rw [getD_packBytes (by simp; omega) h1, List.getElem_map, List.getElem_range, ← wOf_shift _ (by norm_num : 1 < 8)]
+  refine wOf_congr fun x hx => ?_
+  have hp : 8 * Q - 128 + 8 + N4s.spItem.qlen + (8 * j + x) = 8 * (Q - 4 + j) + 1 + x := by
+    simp only [N4s.spItem, Item.qlen]; omega
+  simp only [N4s.spAns, N4s.spAnsB, Read.entryAt]
+  rw [List.getD_eq_getElem?_getD, Vector.toList_ofFn, List.getElem?_ofFn, dif_pos (by omega), Option.getD_some]
+  show (N4c.chainBytes4 κ σ k w).getD (i * N4c.strideB - 128 + 8 + N4s.spItem.qlen + (8 * j + x)) 0 = _
+  rw [hD8, hp, chainBytes4_getD κ σ k w (by omega)]
 
 /-! ## The aggregate header's words -/
 

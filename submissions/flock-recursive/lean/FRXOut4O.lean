@@ -119,23 +119,38 @@ theorem wf_kSelIR (κ : NodeKind) (a : ℕ) : ∀ n, WF (kSelIR κ a n)
   | n + 1 => ⟨wf_kSelIR κ a n, wf_ldA (by decide), wf_ldA (by decide), wf_ldA (by decide), wf_ldA (by decide),
       wf_ldA (by decide), wf_ldA (by decide), by simp [kPs, WF, Prim.dst, qS0, qS1, oK, qAl, qK]⟩
 
-theorem wf_segLoop (κ : NodeKind) {E : XIR} (hE : WF E) (hn : ¬ Writes E qSc) : WF (segLoop κ E) := by
-  refine ⟨⟨by decide, by decide, by decide⟩, by decide, ?_, wf_realign κ, hE, by simp [WF, Prim.dst, qI]⟩
-  rintro (h | h | ⟨p, hp, he⟩)
+theorem wf_segLoop (κ : NodeKind) {P E : XIR} (hP : WF P) (hE : WF E) (hnP : ¬ Writes P qSc) (hn : ¬ Writes E qSc) :
+    WF (segLoop κ P E) := by
+  refine ⟨⟨by decide, by decide, by decide⟩, by decide, ?_, hP, wf_cpSeg κ, hE, by simp [WF, Prim.dst, qI]⟩
+  rintro (h | h | h | ⟨p, hp, he⟩)
+  · exact hnP h
   · exact absurd (writes_wrL _ _ h) (by cases κ <;> decide)
   · exact hn h
   · simp only [List.mem_cons, List.mem_nil_iff, or_false] at hp; subst hp; simp [Prim.dst, qI, qSc] at he
+
+theorem wf_spPre (κ : NodeKind) : WF (spPre κ) :=
+  ⟨⟨wf_bufSeg okSeg_sp.2, by simp [WF, Prim.dst, oK, qN, qA, qB], wf_shw4 κ⟩, by simp [WF]⟩
+
+theorem noW_spPre (κ : NodeKind) : ¬ Writes (spPre κ) qSc := by
+  rintro ((h | ⟨p, hp, he⟩ | h) | ⟨p, hp, -⟩)
+  · exact noW_bufSeg (by decide) (by decide) h
+  · simp only [List.mem_cons, List.mem_nil_iff, or_false] at hp
+    rcases hp with rfl | rfl | rfl | rfl | rfl | rfl <;> simp [Prim.dst, oK, qN, qA, qB, qSc] at he
+  · exact absurd (writes_wrL _ _ h) (by cases κ <;> decide)
+  · simp at hp
 
 theorem wf_aggIR4 (κ : NodeKind) (a : ℕ) : WF (aggIR4 κ a) := by
   have hT := okSeg_tr.2.2.2
   refine ⟨wf_kSelIR κ a _, ⟨by simp [lenW, WF, Prim.dst, oK, oX], trivial, by simp [lenW, WF, Prim.dst, oK, oX],
     trivial, by simp [WF, Prim.dst, qCB, qJ, qDl, qA, qB, qN], wf_shwO κ, by simp [WF, Prim.dst, qN], wf_shw4 κ⟩,
-    by simp [aggRegs, WF, Prim.dst, qCB, oK, qJ, qT1, qDl, qI], wf_segLoop κ wf_pfIR (noW_pfIR (by decide) (by decide)
-      (by decide)), ⟨by simp [lenW, WF, Prim.dst, oK, oX], trivial, by simp [WF, Prim.dst, qI],
-    wf_segLoop κ (wf_bufSeg (le_trans hT (by norm_num))) (noW_bufSeg (by decide) (by decide))⟩, wf_sigIR κ _⟩
+    ⟨by simp [WF, Prim.dst, qCB, oK, qJ, qT1, qI], by simp [WF, Prim.dst, oK, qT1, qDl]⟩,
+    wf_segLoop κ (by simp [WF]) wf_pfIR (by simp [Writes]) (noW_pfIR (by decide) (by decide) (by decide)),
+    ⟨by simp [cntW, lenW, WF, Prim.dst, oK, oX, qT1], trivial, by simp [WF, Prim.dst, qI],
+    wf_segLoop κ (wf_spPre κ) (wf_bufSeg (le_trans hT (by norm_num))) (noW_spPre κ)
+      (noW_bufSeg (by decide) (by decide))⟩, wf_sigIR κ _⟩
 
 theorem wf_prevIR (κ : NodeKind) : WF (prevIR κ) :=
-  ⟨by simp [WF, Prim.dst, oX], trivial, by simp [prevRegs, WF, Prim.dst, qCB, qJ, qDl, qI], wf_realign κ, wf_pfIR,
+  ⟨by simp [WF, Prim.dst, oX], trivial, by simp [prevRegs, WF, Prim.dst, qCB, qJ, qDl, qI], wf_cpSeg κ, wf_pfIR,
     wf_bufSeg (le_trans okSeg_tr.2.1 (by norm_num)), wf_sigIR κ 0⟩
 
 theorem wf_outIR4 (κ : NodeKind) : WF (outIR4 κ) := by
@@ -153,7 +168,10 @@ theorem noLoopT_shwC (κ : NodeKind) : NoLoopT (shwC κ) := by simp [NoLoopT, sh
 
 theorem noLoopT_shw4 (κ : NodeKind) : NoLoopT (shw4 κ) := by simp [NoLoopT, shw4, shwO, shwC, ldC, ldw]
 
-theorem noLoopT_realign (κ : NodeKind) : NoLoopT (realign κ) := by simp [NoLoopT, realign, rlBody, ldC, ldw]
+theorem noLoopT_cpSeg (κ : NodeKind) : NoLoopT (cpSeg κ) := by simp [NoLoopT, cpSeg, cpBody, ldC, ldw]
+
+theorem noLoopT_spPre (κ : NodeKind) : NoLoopT (spPre κ) :=
+  ⟨⟨⟨trivial, noLoopT_segIR' _⟩, trivial, noLoopT_shw4 κ⟩, trivial⟩
 
 theorem noLoopT_sigIR (κ : NodeKind) (σ : ℕ) : NoLoopT (sigIR κ σ) := by
   simp [NoLoopT, sigIR, sigHd, otsIR, pathIR, otsB, pathB, shw4, shwO, shwC, ldC, ldw]
@@ -168,11 +186,11 @@ theorem noLoopT_kSelIR (κ : NodeKind) (a : ℕ) : ∀ n, NoLoopT (kSelIR κ a n
 
 theorem noLoopT_aggIR4 (κ : NodeKind) (a : ℕ) : NoLoopT (aggIR4 κ a) :=
   ⟨noLoopT_kSelIR κ a _, ⟨trivial, trivial, trivial, trivial, trivial, by simp [NoLoopT, shwO, shwC, ldC, ldw], trivial,
-    noLoopT_shw4 κ⟩, trivial, ⟨noLoopT_realign κ, noLoopT_pfIR, trivial⟩,
-    ⟨trivial, trivial, trivial, noLoopT_realign κ, ⟨trivial, noLoopT_segIR' _⟩, trivial⟩, noLoopT_sigIR κ _⟩
+    noLoopT_shw4 κ⟩, ⟨trivial, trivial⟩, ⟨trivial, noLoopT_cpSeg κ, noLoopT_pfIR, trivial⟩,
+    ⟨trivial, trivial, trivial, noLoopT_spPre κ, noLoopT_cpSeg κ, ⟨trivial, noLoopT_segIR' _⟩, trivial⟩, noLoopT_sigIR κ _⟩
 
 theorem noLoopT_prevIR (κ : NodeKind) : NoLoopT (prevIR κ) :=
-  ⟨trivial, trivial, trivial, noLoopT_realign κ, noLoopT_pfIR, ⟨trivial, noLoopT_segIR' _⟩, noLoopT_sigIR κ 0⟩
+  ⟨trivial, trivial, trivial, noLoopT_cpSeg κ, noLoopT_pfIR, ⟨trivial, noLoopT_segIR' _⟩, noLoopT_sigIR κ 0⟩
 
 theorem noLoopT_outIR4 (κ : NodeKind) : NoLoopT (outIR4 κ) := by
   refine ⟨trivial, trivial, noLoopT_outAs _, ?_, noLoopT_aggIR4 κ _⟩
@@ -182,16 +200,19 @@ theorem noLoopT_outIR4 (κ : NodeKind) : NoLoopT (outIR4 κ) := by
 
 /-! ## Cost, output count, size (from the components') -/
 
-theorem cso_pfIR : cost pfIR 0 = 4187043 ∧ outs pfIR 0 = 99774 ∧ sizeIR pfIR = 14878 := by decide +kernel
+theorem cso_pfIR : cost pfIR 0 = 4529999 ∧ outs pfIR 0 = 109538 ∧ sizeIR pfIR = 16288 := by decide +kernel
 
-theorem cso_trS : cost (bufSeg (trSeg4 seq4)) 0 = 6603375 ∧ outs (bufSeg (trSeg4 seq4)) 0 = 185345 ∧
-    sizeIR (bufSeg (trSeg4 seq4)) = 4910 := by decide +kernel
+theorem cso_trS : cost (bufSeg (trSeg4 seq4)) 0 = 6912071 ∧ outs (bufSeg (trSeg4 seq4)) 0 = 193889 ∧
+    sizeIR (bufSeg (trSeg4 seq4)) = 5176 := by decide +kernel
 
-theorem cso_trB : cost (bufSeg (trBody4 seq4)) 0 = 6603371 ∧ outs (bufSeg (trBody4 seq4)) 0 = 185344 ∧
-    sizeIR (bufSeg (trBody4 seq4)) = 4906 := by decide +kernel
+theorem cso_trB : cost (bufSeg (trBody4 seq4)) 0 = 6912067 ∧ outs (bufSeg (trBody4 seq4)) 0 = 193888 ∧
+    sizeIR (bufSeg (trBody4 seq4)) = 5172 := by decide +kernel
 
-theorem cso_realign (κ : NodeKind) : cost (realign κ) 0 = 26133534 ∧ outs (realign κ) 0 = 0 ∧
-    sizeIR (realign κ) = 172 := by cases κ <;> exact ⟨rfl, rfl, rfl⟩
+theorem cso_cpSeg (κ : NodeKind) : cost (cpSeg κ) 0 = 17256048 ∧ outs (cpSeg κ) 0 = 0 ∧
+    sizeIR (cpSeg κ) = 106 := by cases κ <;> exact ⟨rfl, rfl, rfl⟩
+
+theorem cso_spPre (κ : NodeKind) : cost (spPre κ) 0 = 480 ∧ outs (spPre κ) 0 = 17 ∧ sizeIR (spPre κ) = 481 := by
+  cases κ <;> decide +kernel
 
 theorem cso_sigIR (κ : NodeKind) {σ : ℕ} (hσ : σ < 2) : cost (sigIR κ σ) 0 = 62091 ∧ outs (sigIR κ σ) 0 = 597 ∧
     sizeIR (sigIR κ σ) = 993 := by interval_cases σ <;> cases κ <;> decide +kernel
@@ -206,28 +227,34 @@ theorem cso_kSel (κ : NodeKind) {a : ℕ} (ha : a < 2) : cost (kSelIR κ a κ.m
 theorem cso_outAs (κ : NodeKind) : cost (outAs (stA κ)) 0 = 49 ∧ outs (outAs (stA κ)) 0 = 8 ∧
     sizeIR (outAs (stA κ)) = 49 := by cases κ <;> decide +kernel
 
-/-- **The node output's cost, output count and size** (upper bounds; exact values: cost `163,163,886`,
-`289,278,962`, `504,585,753`; outputs `856,567`, `1,426,803`, `2,282,163`; size `42,850`, `42,938`,
-`43,885` at `N2`, `N4`, `N8`). -/
-theorem cso_outIR4 (κ : NodeKind) : cost (outIR4 κ) 0 ≤ 600000000 ∧ outs (outIR4 κ) 0 ≤ 2300000 ∧
-    sizeIR (outIR4 κ) ≤ 45000 := by
-  obtain ⟨p1, p2, p3⟩ := cso_pfIR
-  obtain ⟨r1, r2, r3⟩ := cso_realign κ
-  obtain ⟨a1, a2, a3⟩ := cso_trS
-  obtain ⟨b1, b2, b3⟩ := cso_trB
+/-- **The node output's cost, output count and size** (upper bounds; exact values: cost `120,732,390`,
+`212,641,792`, `367,763,081`; outputs `911,525`, `1,518,411`, `2,428,763`; size `46,500`, `46,588`,
+`47,965` at `N2`, `N4`, `N8`). -/
+theorem cso_outIR4 (κ : NodeKind) : cost (outIR4 κ) 0 ≤ 600000000 ∧ outs (outIR4 κ) 0 ≤ 2500000 ∧
+    sizeIR (outIR4 κ) ≤ 48000 := by
+  -- κ stays a variable and the closed programs are opaque (`PF`, `PS`, `PB`): the kernel never
+  -- evaluates a closed cost or size while checking the `simp` steps (G5)
+  obtain ⟨r1, r2, r3⟩ := cso_cpSeg κ
+  obtain ⟨q1, q2, q3⟩ := cso_spPre κ
   obtain ⟨s1, s2, s3⟩ := cso_sigIR κ (σ := 0) (by norm_num)
-  obtain ⟨u1, u2, u3⟩ := cso_sigIR κ (σ := 1) (by norm_num)
+  obtain ⟨u1, u2, u3⟩ := cso_sigIR κ (σ := N4c.aggChild κ 0) (by cases κ <;> decide)
+  obtain ⟨v1, v2, v3⟩ := cso_sigIR κ (σ := N4c.aggChild κ 1) (by cases κ <;> decide)
   obtain ⟨h1, h2, h3⟩ := cso_aggHd κ (a := 0) (by norm_num)
   obtain ⟨g1, g2, g3⟩ := cso_aggHd κ (a := 1) (by norm_num)
   obtain ⟨k1, k2, k3⟩ := cso_kSel κ (a := 0) (by norm_num)
   obtain ⟨l1, l2, l3⟩ := cso_kSel κ (a := 1) (by norm_num)
   obtain ⟨o1, o2, o3⟩ := cso_outAs κ
-  have t2 : (toWord 2).toNat = 2 := rfl
-  have t4 : (toWord 4).toNat = 4 := rfl
-  cases κ <;> simp only [NodeKind.maxK, NodeKind.segSlots, NodeKind.hasPrev, ↓reduceIte, Bool.false_eq_true] at k1 k2 k3 l1 l2 l3 ⊢ <;>
-  simp [outIR4, NodeKind.hasPrev, prevIR, aggIR4, aggTr, segLoop, prevRegs, aggRegs, cost, outs, sizeIR, blkSteps,
-    lenW, NodeKind.maxK, NodeKind.segSlots, N4c.aggChild, t2, t4, p1, p2, p3, r1, r2, r3, a1, a2, a3, b1, b2, b3, s1,
-    s2, s3, u1, u2, u3, h1, h2, h3, g1, g2, g3, k2, l2, o1, o2, o3] <;>
+  have hm : BitVec.toNat (toWord κ.maxK) ≤ 4 := by cases κ <;> decide
+  obtain ⟨PF, hF⟩ : ∃ P, pfIR = P := ⟨_, rfl⟩
+  obtain ⟨PS, hS⟩ : ∃ P, bufSeg (trSeg4 seq4) = P := ⟨_, rfl⟩
+  obtain ⟨PB, hB⟩ : ∃ P, bufSeg (trBody4 seq4) = P := ⟨_, rfl⟩
+  obtain ⟨p1, p2, p3⟩ := hF ▸ cso_pfIR
+  obtain ⟨a1, a2, a3⟩ := hS ▸ cso_trS
+  obtain ⟨b1, b2, b3⟩ := hB ▸ cso_trB
+  simp only [outIR4, prevIR, aggIR4, aggTr, segLoop, prevRegs, aggRegs, hF, hS, hB]
+  cases κ.hasPrev <;>
+  simp [cost, outs, sizeIR, blkSteps, lenW, cntW, p1, p2, p3, r1, r2, r3, q1, q2, q3, a1, a2, a3, b1, b2, b3, s1, s2,
+    s3, u1, u2, u3, v1, v2, v3, h1, h2, h3, g1, g2, g3, k2, l2, o1, o2, o3] <;>
   omega
 
 end FR.X

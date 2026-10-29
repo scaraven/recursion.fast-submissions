@@ -14,13 +14,13 @@ import FRXSig4W
 **`Open4`** is what INT-10's `certificate_rev4H` (at `fin := finC finPf`, `lRows := Layout.lRows`,
 `κs₀ := 0`, where `implC` is `implB` by `Impl.implCN_eq`) still asks for `sub4`, stated over
 S-E13a's route (S-H4 pass 7, `reviews/PATH-review.md` F1): `Resid4H.slots` is `I4`, `rd4 pf4` and
-`resid4_of ∘ gap4_of_rows`, so what remains of it is `Gap4R` at `pf4 = reassemble4 seq4 aBytes4`
+`resid4_of ∘ gap4_of_rows`, so what remains of it is `Gap4R` at `pf4 = reassemble4 seq4`
 (`PfHdr pf4` is `pfHdr_reassemble4`). X4's rows 1 (`FrontHi`) and 2 (`RunFacts4`) are closed;
 rows 8–9 are `complete_rev4`, `delta_rev4`; row 7 (`DecOk4`) is `decOk4_nd`, proved (S-H4 pass 11).
 
 | field | what | owner |
 |---|---|---|
-| `gap` | `StmtN4 → Gap4R` at `pf4` (`imp`, `kindS`/`wf` at `i ≥ 1`, `aggChk`) | B1′ … B4, A1′ |
+| `gap` | `StmtN4 → Gap4R` at `pf4` (`imp`, `aggChk`; A1′ closed `kindS`/`wf`) | B3 (`gap4Imp_of_run`), B4 |
 | `dec` | **`Links4 nd nodeDec4_nd`** (`hL`) | S-L4 (`links4_sigH`: from `gap`, `FRSubmission4Fin`) |
 
 **The signature reader is fixed** (S-H4 pass 8): `sg := sigH` (H's message slots, rows 4–7), and
@@ -62,7 +62,7 @@ structure Open4 : Prop where
   dec : Links4 nd nodeDec4_nd
 
 /-- `PfHdr pf4` (`pfHdr_reassemble4`). -/
-theorem pfHdr_pf4 : N4s.PfHdr X.pf4 := fun e tr => X.pfHdr_reassemble4 X.aBytes4 e tr
+theorem pfHdr_pf4 : N4s.PfHdr X.pf4 := fun e tr => X.pfHdr_reassemble4 e tr
 
 /-- **`Resid4H` from `Open4`'s parts**: the slots are `I4`, `rd4 pf4` with
 `resid4_of ∘ gap4_of_rows`; the links are `Links4`. -/

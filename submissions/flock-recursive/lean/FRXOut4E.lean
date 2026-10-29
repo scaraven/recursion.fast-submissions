@@ -9,7 +9,7 @@ After the decode the output reads H's message words through the chain loader `ld
 the loader's word `n` is the heap word at `hAddr κ (ldIx cb jL Δ n)` (**`ldG`**). Here:
 
 * **`shwC κ`**: `oX :=` the shifted pair `shWd (ldG …) s n` of the loader's words `n = qN`, `n + 1`
-  (`8s` in `qA`, `63 − 8s` in `qB`): the realign loop's word, without the store (**`shwC_sem`**);
+  (`8s` in `qA`, `63 − 8s` in `qB`): a shifted pair of the loader's words, without the store (**`shwC_sem`**);
 * **`shwO κ`** emits it and steps `qN`; **`shw4 κ`** emits four (**`shw4_sem`**);
 * **`ldA d a`** loads the heap word at the constant address `a`; **`outAs as`** emits the heap words
   at the addresses `as` (**`outAs_sem`**: the children's statement cells);

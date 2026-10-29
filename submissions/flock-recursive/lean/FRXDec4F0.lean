@@ -8,7 +8,7 @@ import FRX4Ext
 /-!
 # The node branch's decode at a revision 4.1 node kind (`decF04`)
 
-3.x's `FRXNode.decF0` at a node kind `κ`, on main's format (`seq4`, `piSizeOf seq4 = 798,192`):
+3.x's `FRXNode.decF0` at a node kind `κ`, on revision 4.4.1's format (`seq4`, `piSizeOf seq4 = 876,304`):
 
 `idxIR4 memX4 pL4 ; readK4 0 ; chainIR pL4 nRep4 (chTab4 seq4 nRep4) seedIR ; decLevels4 κ`
 
@@ -56,8 +56,8 @@ def finPi4 (π : Proof) (x : ℕ) : K := chK (bytesAt π (finFO4 + 32 * x) 32)
 def tw4 : ℕ := 5 + finFO4 / 8
 
 /-- (value) The format's numbers at `seq4`. -/
-theorem fmt4_vals : pL4 = 99779 ∧ (List.range 5).map capFO4 = [19872, 36256, 44448, 52640, 60832] ∧
-    finFO4 = 64928 ∧ piSizeOf seq4 = 798192 := by
+theorem fmt4_vals : pL4 = 109543 ∧ (List.range 5).map capFO4 = [20896, 37280, 45472, 53664, 61856] ∧
+    finFO4 = 70048 ∧ piSizeOf seq4 = 876304 := by
   simp only [pL4, finFO4, piSizeOf_seq4]
   rw [seq4_eq]
   decide +kernel
@@ -74,7 +74,7 @@ theorem fmt4_ctl : (List.range 5).map (fun i => (fsMsgs4 seq4).getD (T4.capPos i
 
 /-- The caps' depths do not depend on the kind. -/
 theorem lv_cap4 (κ : Snd.CKind) {i : ℕ} (hi : i < 5) :
-    (Snd.CKind.lv κ i).cap = if i = 0 then 9 else if i = 4 then 7 else 8 := by
+    (Snd.CKind.lv κ i).cap = if i = 0 then 9 else 8 := by
   rcases κ with (_|_|_) | (_|_|_) <;> interval_cases i <;> rfl
 
 /-! ## The tape at the format's fields -/
@@ -85,16 +85,16 @@ variable (c : Digest) (π : Proof) (L : Log)
 
 /-- **The tape at a cap entry** of level `i ≤ 4` at `seq4`'s offsets. -/
 theorem tape_cap4 (hps : π.size = piSizeOf seq4) {i e m : ℕ} (hi : i < 5)
-    (he : e < 2 ^ (if i = 0 then 9 else if i = 4 then 7 else 8)) (hm : m < 4) :
+    (he : e < 2 ^ (if i = 0 then 9 else 8)) (hm : m < 4) :
     (tp c π L).getD (cw4 i + 4 * e + m) 0 = (packBytes (capPi4 i π e).toList).getD m 0 := by
   obtain ⟨-, hv, -, hs⟩ := fmt4_vals
   rw [tp, getD_toArray, cw4, capPi4]
-  have e0 : capFO4 i % 8 = 0 ∧ capFO4 i + 32 * 2 ^ (if i = 0 then 9 else if i = 4 then 7 else 8) ≤ 64928 := by
+  have e0 : capFO4 i % 8 = 0 ∧ capFO4 i + 32 * 2 ^ (if i = 0 then 9 else 8) ≤ 70048 := by
     simp only [List.map, List.range_succ, List.range_zero, List.nil_append, List.cons_append,
       List.cons.injEq] at hv
     interval_cases i <;> simp_all
-  have hp : (if i = 0 then 9 else if i = 4 then 7 else 8) ≤ 9 := by split_ifs <;> omega
-  have hp2 : 2 ^ (if i = 0 then 9 else if i = 4 then 7 else 8) ≤ 2 ^ 9 := Nat.pow_le_pow_right (by norm_num) hp
+  have hp : (if i = 0 then 9 else 8) ≤ 9 := by split_ifs <;> omega
+  have hp2 : 2 ^ (if i = 0 then 9 else 8) ≤ 2 ^ 9 := Nat.pow_le_pow_right (by norm_num) hp
   exact tape_capL c π L e0.1 (by rw [hps, hs]; omega) hm
 
 /-- **The tape at the final message**: the two tape pairs of element `x < 128` are `finPi4`. -/
@@ -228,7 +228,7 @@ theorem decF04_sem (κ : NodeKind) (c : Digest) (π : Proof) (L : Log) (hD : Dom
   set I := tp c π L
   obtain ⟨hpL, hcv, hfv, hsv⟩ := fmt4_vals
   obtain ⟨e1, e2, e3, e4, e5, e6, e7, e8, e9, e10, e11, e12, e13, e14, e15, e16⟩ := map4_nums
-  have hps' : π.size = 798192 := hps.trans hsv
+  have hps' : π.size = 876304 := hps.trans hsv
   have hpL60 : pL4 ≤ 2 ^ 60 := by rw [hpL]; norm_num
   have hb : regs ≤ memX4 := by simp only [regs]; omega
   have hb2 : memX4 ≤ 2 ^ 60 := by omega
@@ -318,7 +318,7 @@ theorem safe_decF04 (κ : NodeKind) (c : Digest) (π : Proof) (L : Log) (hps : �
     (hq : ∀ e ∈ L, e.1.size < 2 ^ 64) (ht : (extractorInput c π L).length ≤ 2 ^ 64) :
     Safe (extractorInput c π L).toArray (extractorInput c π L).length (decF04 κ) := by
   have hs : 5 + (π.size + 7) / 8 = pL4 := by rw [hps]; rfl
-  have hpL : pL4 = 99779 := fmt4_vals.1
+  have hpL : pL4 = 109543 := fmt4_vals.1
   exact .seq (safe_idxIR4 memX4 pL4 (by omega) (tape_count_le4 c π L hs ht))
     (.seq (safe_of_noLoopT (noLoopT_readK4 ..))
       (.seq (safe_chainIR c π L hs hq ht nRep4 _ (noLoopT_sdList _) wf_seedIR4.1 wf_seedIR4.2.2)
@@ -332,14 +332,14 @@ theorem cost_decF04_eq (κ : NodeKind) (t : ℕ) : cost (decF04 κ) t = (2592 + 
   rw [decF04, cost, cost, cost, cost_idxIR4, cost_chainIR, chTab4_length]
   ring
 
-/-- **The decode's cost** at each node kind: `≤ 27,118,228,566,014 + 2,558 t` at `N2`
-(`m = 31`) and `≤ 108,136,627,282,925 + 2,558 t` at `N4`, `N8` (`m = 32`): the five levels
+/-- **The decode's cost** at each node kind: `≤ 27,118,215,163,902 + 2,558 t` at `N2`
+(`m = 31`) and `≤ 108,136,600,478,701 + 2,558 t` at `N4`, `N8` (`m = 32`): the five levels
 (`cost_decLevels4`), level 0's read (`≤ 85,731,573,774`, `m = 32`'s), and `19,457` for the
 index's and the chain's constants, the seed block and the sequencing. -/
 theorem cost_le_decF04 (t : ℕ) :
-    cost (decF04 .N2) t ≤ 27032496972783 + 85731573774 + 19457 + 2558 * t ∧
-    cost (decF04 .N4) t ≤ 108050895689694 + 85731573774 + 19457 + 2558 * t ∧
-    cost (decF04 .N8) t ≤ 108050895689694 + 85731573774 + 19457 + 2558 * t := by
+    cost (decF04 .N2) t ≤ 27032483570671 + 85731573774 + 19457 + 2558 * t ∧
+    cost (decF04 .N4) t ≤ 108050868885470 + 85731573774 + 19457 + 2558 * t ∧
+    cost (decF04 .N8) t ≤ 108050868885470 + 85731573774 + 19457 + 2558 * t := by
   have hs := cost_seedIR t
   obtain ⟨d2, d4, d8⟩ := cost_decLevels4 pL4 cw4 cbS4 tw4 t
   have r : ∀ κ : NodeKind, cost (readK4 pL4 (.node κ) 0 (cw4 0) map4.l0.cb 128) t ≤ 85731573774 := by

@@ -636,13 +636,13 @@ theorem cost_msgU4 (κ : Rev4.NodeKind) {i : ℕ} (hi1 : 1 ≤ i) (hi : i < 4) (
   obtain ⟨-, m2, -⟩ := lvU4_nums κ (i := i + 1) (by omega) (by omega)
   rw [msgU4, cost_msgHIR _ _ _ _ _ t (by omega) (by omega)]
 
-/-- **The five levels' exact cost**: `27,032,496,972,783 ≈ 2^44.6` at `N2` (`m = 31`) and
-`108,050,895,689,694 ≈ 2^46.6` at `N4`, `N8` (`m = 32`), of which level 0 (rows `1 … 7`) is
+/-- **The five levels' exact cost**: `27,032,483,570,671 ≈ 2^44.6` at `N2` (`m = 31`) and
+`108,050,868,885,470 ≈ 2^46.6` at `N4`, `N8` (`m = 32`), of which level 0 (rows `1 … 7`) is
 `2.62·10^13` and `1.05·10^14` (Part 25's model at `C = 7`). -/
 theorem cost_decLevels4 (pL : ℕ) (cw cbS : ℕ → ℕ) (tw t : ℕ) :
-    cost (decLevels4 (.node .N2) pL cw cbS tw) t = 27032496972783 ∧
-    cost (decLevels4 (.node .N4) pL cw cbS tw) t = 108050895689694 ∧
-    cost (decLevels4 (.node .N8) pL cw cbS tw) t = 108050895689694 := by
+    cost (decLevels4 (.node .N2) pL cw cbS tw) t = 27032483570671 ∧
+    cost (decLevels4 (.node .N4) pL cw cbS tw) t = 108050868885470 ∧
+    cost (decLevels4 (.node .N8) pL cw cbS tw) t = 108050868885470 := by
   refine ⟨?_, ?_, ?_⟩ <;>
   · rw [cost_decLevels4_eq, cost_stepU4 _ _ (by norm_num) le_rfl, cost_stepU4 _ _ (by norm_num) (by norm_num),
       cost_stepU4 _ _ (by norm_num) (by norm_num), cost_stepU4 _ _ le_rfl (by norm_num), cost_dec04,

@@ -8,8 +8,9 @@ import FRNodeSound4R
 # The node witness's output words, as segments over each segment's words
 
 Signed child `σ`'s chain stream (`chainBytes4 κ σ k w`, `k` segments) holds segment `i`'s trace from
-byte `1 + i·(segB − 1)`. Its **virtual words** `vS κ σ k i w` are the stream's `segB` bytes from
-`i·(segB − 1)` in words, so segment `i`'s trace is `trOf seq4 (vS …)` (**`segTr_eq`**: the bytes
+byte `1 + i·strideB` (revision 4.4.1, R-A′: `strideB = 64·sBlk`, a trace and a spacer entry). Its
+**virtual words** `vS κ σ k i w` are the stream's `segB` bytes from `i·strideB` in words (whole chain
+words: `strideB ≡ 0 mod 8`), so segment `i`'s trace is `trOf seq4 (vS …)` (**`segTr_eq`**: the bytes
 before the trace and after it are not read). The output words of the node witness `readW4 sigH κ L es`
 are then, per signed child, segments over those words (`FRXPf4`, `FRXTr4`), the aggregate header's
 words and the signature's (`FRXSig4W`):
@@ -17,7 +18,8 @@ words and the signature's (`FRXSig4W`):
 * **`signedWords_prev`** (a previous node, `κ.hasPrev`, child `0`): `|π|`, `pSeg4` at the ladder of
   word 10, `trSeg4`, then the signature's words;
 * **`signedWords_agg`** (aggregate `a`, `k = kSel`): `|π_A| = 48 + k·piSize`, the header's six words,
-  the `k` proofs' segments, the count `k·|items|`, the `k` traces' bodies (`trBody4`), the signature;
+  the `k` proofs' segments, the count `k·|items| + (k − 1)`, the `k` traces' bodies (`trBody4`), each
+  after its spacer entry (`i ≥ 1`: `entryW (spEntry (spAns … i))`, `V_A`'s trace), the signature;
 * **`witWords_readW4`**: the tag, both statements' cells' words, both children.
 -/
 
@@ -28,9 +30,9 @@ open RecursionFast FR.Read FR.Rev4 FR.Snd
 /-! ## Specification -/
 
 /-- **Segment `i`'s virtual words**: `segB` bytes of signed child `σ`'s chain stream from
-`i·(segB − 1)`, in words. -/
+`i·strideB`, in words. -/
 noncomputable def vS (κ : NodeKind) (σ k i : ℕ) (w : Circ.Asg) : List Word :=
-  packBytes (((N4c.chainBytes4 κ σ k w).drop (i * (N4c.segB - 1))).take N4c.segB)
+  packBytes (((N4c.chainBytes4 κ σ k w).drop (i * N4c.strideB)).take N4c.segB)
 
 /-- A trace's segment without its count word (an aggregate's traces share one count). -/
 def trBody4 (S : Seq) : Seg := .cat seedSeg (tSegs4 S.lv 20 (restSh4 S))
@@ -91,15 +93,15 @@ theorem streamBytesOf_rest {S : Seq} (hS : TrOk4 S) :
 
 /-- **Segment `i`'s trace is read off its virtual words**, when the stream holds it. -/
 theorem segTr_eq (κ : NodeKind) (σ k i : ℕ) (w : Circ.Asg)
-    (hD : i * (N4c.segB - 1) + N4c.segB ≤ N4c.streamB κ σ k) :
+    (hD : i * N4c.strideB + N4c.segB ≤ N4c.streamB κ σ k) :
     N4s.segTr κ σ k i w = trOf seq4 (vS κ σ k i w) := by
-  have hl : (((N4c.chainBytes4 κ σ k w).drop (i * (N4c.segB - 1))).take N4c.segB).length = N4c.segB := by
+  have hl : (((N4c.chainBytes4 κ σ k w).drop (i * N4c.strideB)).take N4c.segB).length = N4c.segB := by
     simp only [List.length_take, List.length_drop, chainBytes4_length]; omega
   rw [N4s.segTr, trOf, vS, wordsBytes_packBytes8 (by rw [hl]; exact segB_mod),
     readItems_take _ _ _ _ (by rw [slen_sum_seq4]), Nat.add_comm, readItems_drop]
 
 theorem vS_length (κ : NodeKind) (σ k i : ℕ) (w : Circ.Asg)
-    (hD : i * (N4c.segB - 1) + N4c.segB ≤ N4c.streamB κ σ k) : (vS κ σ k i w).length = N4c.segB / 8 := by
+    (hD : i * N4c.strideB + N4c.segB ≤ N4c.streamB κ σ k) : (vS κ σ k i w).length = N4c.segB / 8 := by
   rw [vS, packBytes_length]
   simp only [List.length_take, List.length_drop, chainBytes4_length]
   have := segB_mod; omega
@@ -108,7 +110,7 @@ theorem vS_length (κ : NodeKind) (σ k i : ℕ) (w : Circ.Asg)
 
 section Seg
 
-variable (κ : NodeKind) (σ k i : ℕ) (w : Circ.Asg) (hD : i * (N4c.segB - 1) + N4c.segB ≤ N4c.streamB κ σ k)
+variable (κ : NodeKind) (σ k i : ℕ) (w : Circ.Asg) (hD : i * N4c.strideB + N4c.segB ≤ N4c.streamB κ σ k)
   (V : ℕ → Word) (hV : ∀ u (hu : u < (vS κ σ k i w).length), (vS κ σ k i w)[u] = V u)
 
 include hD in
@@ -119,7 +121,7 @@ include hD hV in
 /-- **Segment `i`'s proof in words** (`pf4`, at the ladder of virtual word 10). -/
 theorem pf4_words (b : Bool) :
     bl (pf4 (N4s.segTr κ σ k i w)) = wordsBytes (segOut V b 0 (pSeg4 seq4 (mOfB (V 10).toNat.toUInt8))) := by
-  rw [segTr_eq κ σ k i w hD, pf4, aBytes4]
+  rw [segTr_eq κ σ k i w hD, pf4]
   exact proof_words4 pfOk4_seq4 (ladOk4_seq4 (mOfB_mem _)) _ V hV (hB_vS κ σ k i w hD) b
     (trM4_eq seq4 trOk4_seq4 _ V hV (hB_vS κ σ k i w hD))
 
@@ -144,7 +146,7 @@ end Seg
 /-! ## Proof helpers: the proofs' and the header's bytes -/
 
 theorem pf4_length (tr : Trace) : (pf4 tr).data.toList.length = piSizeOf seq4 := by
-  rw [Array.length_toList]; exact (reassemble4_size seq4 aBytes4 tr).trans (by rw [aBytes4]; rfl)
+  rw [Array.length_toList]; exact reassemble4_size seq4 tr
 
 theorem slotPf_eq (κ : NodeKind) (v : ℕ) (w : Circ.Asg) :
     N4s.slotPf pf4 κ v w = bl (pf4 (N4s.slotTr4 κ v w)) := fitL_self (pf4_length _)
@@ -193,7 +195,7 @@ theorem signedWords_prev (κ : NodeKind) (hκ : κ.hasPrev = true) (w : Circ.Asg
     signedWords (sgnX sigH κ 0 w) = toWord (piSizeOf seq4) ::
       (segOut V false 0 (pSeg4 seq4 (mOfB (V 10).toNat.toUInt8)) ++ segOut V false 0 (trSeg4 seq4)) ++
       sigWords (sigH κ 0 w) := by
-  have hD : 0 * (N4c.segB - 1) + N4c.segB ≤ N4c.streamB κ 0 0 := by
+  have hD : 0 * N4c.strideB + N4c.segB ≤ N4c.streamB κ 0 0 := by
     simp [N4c.streamB, N4c.isAgg, hκ]
   have hp : isPrevSlot κ 0 = true := by simp [isPrevSlot, hκ]
   have hs : N4s.slotTr4 κ 0 w = N4s.segTr κ 0 0 0 w := by rw [N4s.slotTr4, if_pos hp]
@@ -217,32 +219,60 @@ theorem logWords_flatten (l : List Trace) :
   | nil => rfl
   | cons t l ih => rw [List.flatten_cons, List.flatMap_append, ih, List.flatMap_cons]
 
+/-- **The spacer entry's query words** (`bytesWords spacerQ`: the length `89`, then 12 words). -/
+def spW : List Word := bytesWords spacerQ.data.toList
+
+/-- **Segment `i`'s trace pieces in `V_A`'s trace**: the spacer entry before segment `i ≥ 1`, then the
+segment's entries. -/
+theorem entries_spSeg (ans : ℕ → Digest) (i : ℕ) (t : Trace) :
+    ((if i = 0 then [] else [spEntry (ans i)]) ++ t).flatMap entryW =
+      (if i = 0 then [] else spW ++ packBytes (ans i).toList) ++ t.flatMap entryW := by
+  rw [List.flatMap_append]
+  split_ifs
+  · rfl
+  · simp only [List.flatMap_cons, List.flatMap_nil, List.append_nil]; rfl
+
+theorem flatMap_flatten' {α β : Type} (l : List (List α)) (f : α → List β) :
+    l.flatten.flatMap f = l.flatMap fun t => t.flatMap f := by
+  induction l with
+  | nil => rfl
+  | cons t l ih => rw [List.flatten_cons, List.flatMap_append, ih, List.flatMap_cons]
+
+theorem aggTr_count (κ : NodeKind) (σ k : ℕ) (w : Circ.Asg) (ans : ℕ → Digest) :
+    (aggTrace ans ((List.range k).map fun i => N4s.segTr κ σ k i w)).length = k * (itemsOf seq4).length + (k - 1) :=
+  aggTrace_length ans _ _ (fun i => by simp only [N4s.segTr, readItems_length]) k
+
 /-- **An aggregate's words** (aggregate `a`, signed child `aggChild κ a`, `k = kSel κ a w`
-segments): `|π_A|`, the header's words, the `k` proofs', the count `k·|items|`, the `k` traces' bodies,
-the signature's. -/
+segments): `|π_A|`, the header's words, the `k` proofs', the count `k·|items| + (k − 1)`, the `k` traces'
+bodies each after its spacer entry (`i ≥ 1`), the signature's. -/
 theorem signedWords_agg (κ : NodeKind) {a : ℕ} (ha : a < N4c.nAgg κ) (w : Circ.Asg) (V : ℕ → ℕ → Word)
     (hV : ∀ i < kSel κ a w, ∀ u (hu : u < (vS κ (N4c.aggChild κ a) (kSel κ a w) i w).length),
       (vS κ (N4c.aggChild κ a) (kSel κ a w) i w)[u] = V i u) :
     signedWords (sgnX sigH κ (N4c.aggChild κ a) w) =
       toWord (48 + kSel κ a w * piSizeOf seq4) :: (hdrWords (kSel κ a w) (N4s.hAn κ a w) (N4s.hAe κ a w) ++
         (List.range (kSel κ a w)).flatMap fun i => segOut (V i) false 0 (pSeg4 seq4 (mOfB (V i 10).toNat.toUInt8))) ++
-      (toWord (kSel κ a w * (itemsOf seq4).length) ::
-        (List.range (kSel κ a w)).flatMap fun i => segOut (V i) false 0 (trBody4 seq4)) ++
+      (toWord (kSel κ a w * (itemsOf seq4).length + (kSel κ a w - 1)) ::
+        (List.range (kSel κ a w)).flatMap fun i =>
+          (if i = 0 then [] else spW ++ packBytes (N4s.spAns κ (N4c.aggChild κ a) (kSel κ a w) w i).toList) ++
+            segOut (V i) false 0 (trBody4 seq4)) ++
       sigWords (sigH κ (N4c.aggChild κ a) w) := by
   have hk : N4s.kAct κ a w ≤ κ.maxK := N4s.kAct_le κ a w
   rw [kSel_eq] at hV ⊢
   generalize hkk : N4s.kAct κ a w = k at hV hk
   generalize hσ : N4c.aggChild κ a = σ at hV ⊢
   have hm4 : κ.maxK ≤ 4 := by cases κ <;> decide
-  have hD : ∀ i < k, i * (N4c.segB - 1) + N4c.segB ≤ N4c.streamB κ σ k := fun i hi => by
+  have hD : ∀ i < k, i * N4c.strideB + N4c.segB ≤ N4c.streamB κ σ k := fun i hi => by
     rw [← hσ]
-    simp only [N4c.streamB, N4c.isAgg_aggChild, if_true, N4c.aggB]
-    have : (i + 1) * (N4c.segB - 1) ≤ k * (N4c.segB - 1) := Nat.mul_le_mul_right _ (by omega)
-    simp only [N4c.segB] at this ⊢; omega
+    simp only [N4c.streamB, N4c.isAgg_aggChild, if_true]
+    rw [(N4c.aggB_blocks (by omega : 1 ≤ k)).2.2]
+    have h1 : (i + 1) * N4c.strideB ≤ k * N4c.strideB := Nat.mul_le_mul_right _ (by omega)
+    have h2 : N4c.strideB = N4c.segB + 128 := by decide
+    rw [Nat.add_one_mul] at h1; omega
   have hs : ∀ i ∈ List.range k, N4s.slotTr4 κ (N4c.sub κ a i) w = N4s.segTr κ σ k i w :=
     fun i hi => by rw [N4s.slotTr4_sub κ ha (by have := List.mem_range.1 hi; omega), hkk, hσ]
   have hsg : (N4s.rd4 pf4).sgn κ σ w = ⟨N4s.aggPf pf4 κ a w,
-      ((List.range k).map fun i => N4s.slotTr4 κ (N4c.sub κ a i) w).flatten, N4s.readSig4 κ σ w⟩ := by
+      aggTrace (N4s.spAns κ σ k w) ((List.range k).map fun i => N4s.slotTr4 κ (N4c.sub κ a i) w),
+      N4s.readSig4 κ σ w⟩ := by
     rw [← hσ, show (N4s.rd4 pf4).sgn = N4s.sgn4 pf4 from rfl, N4s.sgn4_agg pf4 κ ha, hkk]
   have hmP : ((List.range k).map fun i => N4s.slotPf pf4 κ (N4c.sub κ a i) w) =
       (List.range k).map fun i => bl (pf4 (N4s.segTr κ σ k i w)) :=
@@ -252,7 +282,7 @@ theorem signedWords_agg (κ : NodeKind) {a : ℕ} (ha : a < N4c.nAgg κ) (w : Ci
   have e1 : (sgnX sigH κ σ w).π = ⟨(aggHdr k (N4s.hAn κ a w) (N4s.hAe κ a w) ++
       ((List.range k).map fun i => bl (pf4 (N4s.segTr κ σ k i w))).flatten).toArray⟩ := by
     rw [sgnX_π, hsg, aggPf_eq, hkk, hmP]
-  have e2 : (sgnX sigH κ σ w).tr = ((List.range k).map fun i => N4s.segTr κ σ k i w).flatten := by
+  have e2 : (sgnX sigH κ σ w).tr = aggTrace (N4s.spAns κ σ k w) ((List.range k).map fun i => N4s.segTr κ σ k i w) := by
     rw [sgnX_tr, hsg, hmT]
   have hpf : ((List.range k).map fun i => bl (pf4 (N4s.segTr κ σ k i w))).flatten =
       wordsBytes ((List.range k).flatMap fun i => segOut (V i) false 0 (pSeg4 seq4 (mOfB (V i 10).toNat.toUInt8))) := by
@@ -262,14 +292,12 @@ theorem signedWords_agg (κ : NodeKind) {a : ℕ} (ha : a < N4c.nAgg κ) (w : Ci
       ((List.range k).map fun i => bl (pf4 (N4s.segTr κ σ k i w))).flatten).length = 48 + k * piSizeOf seq4 := by
     rw [List.length_append, N4s.aggHdr_length, List.length_flatten, List.map_map]
     simp only [Function.comp_def, pf4_length, List.map_const', List.length_range, List.sum_replicate, smul_eq_mul]
-  have hc : (((List.range k).map fun i => N4s.segTr κ σ k i w).map List.length).sum = k * (itemsOf seq4).length := by
-    simp only [List.map_map, Function.comp_def, N4s.segTr, readItems_length, List.map_const', List.length_range,
-      List.sum_replicate, smul_eq_mul]
-  have ht : ((List.range k).map fun i => N4s.segTr κ σ k i w).flatMap (fun t => t.flatMap entryW) =
-      (List.range k).flatMap fun i => segOut (V i) false 0 (trBody4 seq4) := by
-    rw [List.flatMap_map]
-    exact List.flatMap_congr fun i hi => entries_segTr κ σ k i w (hD i (List.mem_range.1 hi)) (V i)
-      (hV i (List.mem_range.1 hi)) false
+  have ht : (aggTrace (N4s.spAns κ σ k w) ((List.range k).map fun i => N4s.segTr κ σ k i w)).flatMap entryW =
+      (List.range k).flatMap fun i => (if i = 0 then [] else spW ++ packBytes (N4s.spAns κ σ k w i).toList) ++
+        segOut (V i) false 0 (trBody4 seq4) := by
+    rw [aggTrace_range, flatMap_flatten', List.flatMap_map]
+    refine List.flatMap_congr fun i hi => ?_
+    rw [entries_spSeg, entries_segTr κ σ k i w (hD i (List.mem_range.1 hi)) (V i) (hV i (List.mem_range.1 hi)) false]
   have hh : packBytes (aggHdr k (N4s.hAn κ a w) (N4s.hAe κ a w) ++
       ((List.range k).map fun i => bl (pf4 (N4s.segTr κ σ k i w))).flatten) =
       hdrWords k (N4s.hAn κ a w) (N4s.hAe κ a w) ++
@@ -279,9 +307,11 @@ theorem signedWords_agg (κ : NodeKind) {a : ℕ} (ha : a < N4c.nAgg κ) (w : Ci
       (hdrWords k (N4s.hAn κ a w) (N4s.hAe κ a w) ++
         (List.range k).flatMap fun i => segOut (V i) false 0 (pSeg4 seq4 (mOfB (V i 10).toNat.toUInt8))) := by
     rw [e1, bytesWords, ← hh, ← hlen]
-  have hl : logWords (sgnX sigH κ σ w).tr = toWord (k * (itemsOf seq4).length) ::
-      (List.range k).flatMap fun i => segOut (V i) false 0 (trBody4 seq4) := by
-    rw [e2, logWords_flatten, hc, ht]
+  have hl : logWords (sgnX sigH κ σ w).tr = toWord (k * (itemsOf seq4).length + (k - 1)) ::
+      (List.range k).flatMap fun i => (if i = 0 then [] else spW ++ packBytes (N4s.spAns κ σ k w i).toList) ++
+        segOut (V i) false 0 (trBody4 seq4) := by
+    show toWord (sgnX sigH κ σ w).tr.length :: (sgnX sigH κ σ w).tr.flatMap entryW = _
+    rw [e2, aggTr_count, ht]
   show bytesWords (sgnX sigH κ σ w).π.data.toList ++ logWords (sgnX sigH κ σ w).tr ++ sigWords (sigH κ σ w) = _
   rw [hb, hl]
 
@@ -305,7 +335,7 @@ theorem sgnX_fits (κ : NodeKind) (σ : ℕ) (w : Circ.Asg) : (sgnX sigH κ σ w
     lt_of_le_of_lt (N4s.slotTr4_qcap κ v w e he) (by decide)
   have hk := N4s.kAct_le κ (N4c.aggOf κ σ) w
   have hm4 : κ.maxK ≤ 4 := by cases κ <;> decide
-  have hp : piSizeOf seq4 = 798192 := piSizeOf_seq4
+  have hp : piSizeOf seq4 = 876304 := piSizeOf_seq4
   refine ⟨?_, ?_, ?_, show idxH κ σ w < 2 ^ 64 from ofLE_lt64 (by simp),
     show (sigH κ σ w).ots.length = _ by simp [sigH], show (sigH κ σ w).path.length = _ by simp [sigH]⟩
   · rw [sgnX_π, show (N4s.rd4 pf4).sgn = N4s.sgn4 pf4 from rfl, N4s.sgn4]
@@ -314,22 +344,21 @@ theorem sgnX_fits (κ : NodeKind) (σ : ℕ) (w : Circ.Asg) : (sgnX sigH κ σ w
       simp only [ByteArray.size, List.size_toArray, List.length_append, N4s.aggHdr_length, List.length_flatten,
         List.map_map, Function.comp_def, slotPf_length, List.map_const', List.length_range, List.sum_replicate,
         smul_eq_mul]
-      have : N4s.kAct κ (N4c.aggOf κ σ) w * piSizeOf seq4 ≤ 4 * 798192 := by rw [hp]; exact Nat.mul_le_mul_right _ (by omega)
+      have : N4s.kAct κ (N4c.aggOf κ σ) w * piSizeOf seq4 ≤ 4 * 876304 := by rw [hp]; exact Nat.mul_le_mul_right _ (by omega)
       omega
     · simp only [ByteArray.size, List.size_toArray, slotPf_length, hp]; norm_num
   · rw [sgnX_tr, show (N4s.rd4 pf4).sgn = N4s.sgn4 pf4 from rfl, N4s.sgn4]
     split_ifs
-    · simp only [List.length_flatten, List.map_map, Function.comp_def, N4s.slotTr4_length, List.map_const',
-        List.length_range, List.sum_replicate, smul_eq_mul]
-      have : N4s.kAct κ (N4c.aggOf κ σ) w * 8905 ≤ 4 * 8905 := Nat.mul_le_mul_right _ (by omega)
+    · rw [aggTrace_length _ _ 8783 (fun i => N4s.slotTr4_length κ _ w)]
+      have : N4s.kAct κ (N4c.aggOf κ σ) w * 8783 ≤ 4 * 8783 := Nat.mul_le_mul_right _ (by omega)
       omega
     · rw [N4s.slotTr4_length]; norm_num
   · rw [sgnX_tr, show (N4s.rd4 pf4).sgn = N4s.sgn4 pf4 from rfl, N4s.sgn4]
     split_ifs
     · intro e he
-      obtain ⟨t, ht, het⟩ := List.mem_flatten.1 he
-      obtain ⟨i, -, rfl⟩ := List.mem_map.1 ht
-      exact hq _ e het
+      rcases mem_aggTrace he with ⟨i, -, het⟩ | ⟨i, rfl⟩
+      · exact hq _ e het
+      · show spacerQ.size < 2 ^ 64; rw [spacerQ_size]; norm_num
     · exact hq 0
 
 /-- **The node witness the decoder outputs fits the output format** (`decodeWit_witWords`). -/

@@ -6,7 +6,7 @@ import FRXOut4E
 /-!
 # The segments over the buffer, the ladder, the segment count
 
-After the realign (`FRXOut4R.realign_sem`) segment `i`'s words are the buffer's (`bufB`, shape
+After the copy (`FRXOut4R.cpSeg_sem`) segment `i`'s words are the buffer's (`bufB`, shape
 `apB`), so 3.x's `segIR` emits them unchanged (`FRXOut.segIR_sem` over `src M apB bufB`):
 
 * **`bufSeg sg`** sets the buffer's context (`setB`) and emits `segOut (src M apB bufB) false 0 sg`;

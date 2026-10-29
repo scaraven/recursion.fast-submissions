@@ -12,10 +12,10 @@ redirected to `finBlk`), so
 
 * **the chain loader** `ldC κ` reads chain word `n` at H word `n + cb + [⌊n/8⌋ = jL]·Δ` (registers
   `qCB`, `qJ`, `qDl`: the chain's base, its last block, the redirect);
-* **the realign loop** `realign κ` writes segment `i`'s `segB/8` virtual words into the buffer at
-  `bufB` (shape `apB`): word `u` is the shifted pair `(C(q+u) >>> 8s) + ((C(q+u+1) <<< 1) <<< (63 − 8s))`,
-  `D = i·(segB − 1)`, `q = ⌊D/8⌋`, `s = D mod 8`, which is `shWd C s (q + u)` at every `s < 8`
-  (**`realign_sem`**). The heap below `bufB` is kept, so the decode's cells stay readable.
+* **the copy loop** `cpSeg κ` writes segment `i`'s `segB/8` virtual words into the buffer at `bufB`
+  (shape `apB`): word `u` is the loader's word `C(q + u)`, `q = i·strideB/8` (**`cpSeg_sem`**; revision
+  4.4.1's stride is whole chain words, so no shift: 4.1's realign loop is gone). The heap below `bufB`
+  is kept, so the decode's cells stay readable.
 
 The emitters over the buffer are 3.x's `segIR` unchanged (`FRXOut.segIR_sem`, linear in the
 buffer's shape).
@@ -38,8 +38,8 @@ attribute [local irreducible] entryK storeM runPrims
 /-- `8 ·` the chain's first block. -/ def qCB : ℕ := 106
 /-- The segment count `k`. -/ def qK : ℕ := 107
 /-- The segment index `i`. -/ def qI : ℕ := 108
-/-- The realign loop's counter. -/ def qLc : ℕ := 109
-/-- The realign loop's count. -/ def qLn : ℕ := 110
+/-- The copy loop's counter. -/ def qLc : ℕ := 109
+/-- The copy loop's count. -/ def qLn : ℕ := 110
 /-- The segment loop's counter. -/ def qSc : ℕ := 111
 /-- Scratch. -/ def qT1 : ℕ := 112
 /-- Scratch. -/ def qT2 : ℕ := 113
@@ -59,33 +59,30 @@ def apB : AP := ⟨3, 3, 2, 20⟩
 /-- **The buffer's base**: level 0's word region (free after the decode). -/
 def bufB : ℕ := 134217728
 
-/-- The buffer's words per segment. -/
-def nW : ℕ := 185344
+/-- The buffer's words per segment (`segB / 8`). -/
+def nW : ℕ := 193888
 
 /-- Buffer word `u`'s address. -/
 def bufA (u : ℕ) : ℕ := bufB + u / 2 % 4 * 2 ^ 20 + u / 8 * 4 + u % 2
 
-/-! ## The chain loader and the realign loop -/
+/-! ## The chain loader and the copy loop -/
 
 /-- **The chain loader**: `oX :=` H word `qM + qCB + [qM >>> 3 = qJ]·qDl`. -/
 def ldC (κ : NodeKind) : XIR :=
   .seq (.blk [.const oK (toWord 3), .op .shr qT1 qM oK, .op .eq qT1 qT1 qJ, .op .mul qT1 qT1 qDl,
     .op .add oU qM qCB, .op .add oU oU qT1]) (ldw (apH κ))
 
-/-- **One realigned word**: two chain words, shifted and added, stored at buffer word `qU`. -/
-def rlBody (κ : NodeKind) : XIR :=
+/-- **One copied word**: chain word `qN` (the loader) stored at buffer word `qU`. -/
+def cpBody (κ : NodeKind) : XIR :=
   .seq (.blk [.const oR (toWord (hBase κ)), .op .or qM qN qN]) (.seq (ldC κ)
-  (.seq (.blk [.op .shr oY oX qA, .op .add qM qN cOne]) (.seq (ldC κ)
-  (.seq (.blk [.op .shl oX oX cOne, .op .shl oX oX qB, .op .add oX oY oX, .const oR (toWord bufB),
-      .op .or oU qU qU])
-  (.seq (.blk (ldPs apB)) (.seq (.store oAd oX) (.blk [.op .add qN qN cOne, .op .add qU qU cOne])))))))
+  (.seq (.blk [.const oR (toWord bufB), .op .or oU qU qU])
+  (.seq (.blk (ldPs apB)) (.seq (.store oAd oX) (.blk [.op .add qN qN cOne, .op .add qU qU cOne])))))
 
-/-- **Segment `qI`'s realign**: `D := qI·(segB − 1)`, `q`, `8s`, `63 − 8s`, then `nW` words. -/
-def realign (κ : NodeKind) : XIR :=
-  .seq (.blk [.const qT1 (toWord (N4c.segB - 1)), .op .mul qT1 qI qT1, .const oK (toWord 3),
-      .op .shr qN qT1 oK, .const oK (toWord 7), .op .and qA qT1 oK, .const oK (toWord 3),
-      .op .shl qA qA oK, .op .sub qB c63 qA, .const qU 0, .const qLn (toWord nW)])
-    (.loopK qLc qLn (toWord nW) (rlBody κ))
+/-- **Segment `qI`'s copy**: `q := qI·(strideB/8)` (whole chain words: `strideB ≡ 0 mod 8`), then
+`nW` words. -/
+def cpSeg (κ : NodeKind) : XIR :=
+  .seq (.blk [.const qT1 (toWord (N4c.strideB / 8)), .op .mul qN qI qT1, .const qU 0, .const qLn (toWord nW)])
+    (.loopK qLc qLn (toWord nW) (cpBody κ))
 
 /-! ## Proof helpers: addresses -/
 
@@ -226,20 +223,7 @@ theorem ldPs_keep (ap : AP) (M : Mem) {r : ℕ} (h : r ∉ [oK, oT1, oT2, oT3, o
     rcases hp with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl <;>
       simp only [Prim.dst] at he <;> subst he <;> simp_all) _
 
-/-! ## The realign loop's semantics -/
-
-/-- **The realign loop's invariant** after `j` words. -/
-structure RlInv (κ : NodeKind) (M₀ : Mem) (o : Array Word) (cb jL Δ sh q j : ℕ) (t : St) : Prop where
-  of : OF M₀ t
-  o : t.o = o
-  n : rd t.M qN = toWord (q + j)
-  u : rd t.M qU = toWord j
-  a : rd t.M qA = toWord (8 * sh)
-  b : rd t.M qB = toWord (63 - 8 * sh)
-  cbR : rd t.M qCB = toWord cb
-  jlR : rd t.M qJ = toWord jL
-  dR : rd t.M qDl = toWord Δ
-  buf : ∀ u < j, rd t.M (bufA u) = shWd (fun n => rd M₀ (hAddr κ (ldIx cb jL Δ n))) sh (q + u)
+/-! ## Shifts (the shifted pair's, `FRXOut4E.shwC`) -/
 
 theorem shl_shl_one (x : Word) {sh : ℕ} (hs : sh < 8) :
     XOp.shl.eval (XOp.shl.eval x 1) (toWord (63 - 8 * sh)) = x <<< (64 - 8 * sh) := by
@@ -251,19 +235,31 @@ theorem shl_shl_one (x : Word) {sh : ℕ} (hs : sh < 8) :
 theorem shr_8s (x : Word) {sh : ℕ} (hs : sh < 8) : XOp.shr.eval x (toWord (8 * sh)) = x >>> (8 * sh) :=
   shr_c _ _ (by omega)
 
-/-- **One realigned word.** -/
-theorem rlBody_step (I : Array Word) (κ : NodeKind) {M₀ : Mem} {o : Array Word} {cb jL Δ sh q j : ℕ}
-    (hs8 : sh < 8) (hb : q + nW + 1 + cb + Δ < 2 ^ 64) (hjl : jL < 2 ^ 64) (hj : j < nW)
-    (hsz : bufB + 2 ^ 22 ≤ M₀.size)
-    (hlow : ∀ n ≤ q + nW, hAddr κ (ldIx cb jL Δ n) < bufB)
-    {t : St} (h : RlInv κ M₀ o cb jL Δ sh q j t) :
-    RlInv κ M₀ o cb jL Δ sh q (j + 1) (decS qLc (semXIR I (rlBody κ) t)) := by
-  obtain ⟨hO, ho, hn, hu, ha, hbb, hcb, hjj, hd, hbuf⟩ := h
+/-! ## The copy loop's semantics -/
+
+/-- **The copy loop's invariant** after `j` words. -/
+structure CpInv (κ : NodeKind) (M₀ : Mem) (o : Array Word) (cb jL Δ q j : ℕ) (t : St) : Prop where
+  of : OF M₀ t
+  o : t.o = o
+  n : rd t.M qN = toWord (q + j)
+  u : rd t.M qU = toWord j
+  cbR : rd t.M qCB = toWord cb
+  jlR : rd t.M qJ = toWord jL
+  dR : rd t.M qDl = toWord Δ
+  buf : ∀ u < j, rd t.M (bufA u) = rd M₀ (hAddr κ (ldIx cb jL Δ (q + u)))
+
+/-- **One copied word.** -/
+theorem cpBody_step (I : Array Word) (κ : NodeKind) {M₀ : Mem} {o : Array Word} {cb jL Δ q j : ℕ}
+    (hb : q + nW + cb + Δ < 2 ^ 64) (hjl : jL < 2 ^ 64) (hj : j < nW) (hsz : bufB + 2 ^ 22 ≤ M₀.size)
+    (hlow : ∀ n < q + nW, hAddr κ (ldIx cb jL Δ n) < bufB)
+    {t : St} (h : CpInv κ M₀ o cb jL Δ q j t) :
+    CpInv κ M₀ o cb jL Δ q (j + 1) (decS qLc (semXIR I (cpBody κ) t)) := by
+  obtain ⟨hO, ho, hn, hu, hcb, hjj, hd, hbuf⟩ := h
   have hs := hO.inv.1
   simp only [regs] at hs
   set G : ℕ → Word := fun n => rd M₀ (hAddr κ (ldIx cb jL Δ n)) with hG
   -- block 1
-  rw [rlBody, semXIR_seq, semXIR_blk]
+  rw [cpBody, semXIR_seq, semXIR_blk]
   set M1 := runPrims [.const oR (toWord (hBase κ)), .op .or qM qN qN] t.M with hM1d
   have k1 : ∀ r, r ≠ oR → r ≠ qM → rd M1 r = rd t.M r := fun r h1 h2 => by
     simp only [hM1d, runPrims, List.foldl, Prim.run]; rw [rd_set_ne (Ne.symm h2), rd_set_ne (Ne.symm h1)]
@@ -278,7 +274,7 @@ theorem rlBody_step (I : Array Word) (κ : NodeKind) {M₀ : Mem} {o : Array Wor
     (by simp +decide [WF, Prim.dst, oR, qM]) hO.inv
   have hh1 : ∀ y, regs ≤ y → rd M1 y = rd t.M y := fun y hy => k1 y (by simp only [oR, regs] at *; omega)
     (by simp only [qM, regs] at *; omega)
-  -- the first load
+  -- the load
   obtain ⟨x1, o1⟩ := ldC_sem I κ ⟨M1, t.o⟩ i1 r1 m1 (by rw [k1 _ (by decide) (by decide)]; exact hcb)
     (by rw [k1 _ (by decide) (by decide)]; exact hjj) (by rw [k1 _ (by decide) (by decide)]; exact hd)
     (by omega) hjl
@@ -287,101 +283,59 @@ theorem rlBody_step (I : Array Word) (κ : NodeKind) {M₀ : Mem} {o : Array Wor
   have i2 : Inv s2.M := hs2 ▸ inv_sem I (wf_ldC κ) i1
   have k2 : ∀ r < regs, r ∉ [oK, qT1, oU, oT1, oT2, oT3, oAd, oX] → rd s2.M r = rd M1 r := fun r hr hn =>
     hs2 ▸ keep_ldC I κ i1 hr hn
-  have hh2 : ∀ y, regs ≤ y → rd s2.M y = rd M1 y := fun y hy => hs2 ▸ hframeK I _ _ (loK_ldC κ) y hy
+  have hh2 : ∀ y, regs ≤ y → rd s2.M y = rd t.M y := fun y hy => by
+    rw [← hs2, hframeK I _ _ (loK_ldC κ) y hy]; exact hh1 y hy
   have sz2 : s2.M.size = t.M.size := by rw [← hs2, size_sem]; exact size_runPrims _ _
   have v1 : rd s2.M oX = G (q + j) := by
     rw [x1, hh1 _ (regs_hAddr κ _), hO.low _ (regs_hAddr κ _) (hlow _ (by omega))]
-  -- block 2
+  have k12 : ∀ r < regs, r ∉ [oK, qT1, oU, oT1, oT2, oT3, oAd, oX, qM, oR] → rd s2.M r = rd t.M r :=
+    fun r hr hn => by
+      rw [k2 r hr (fun h => hn (by simp only [List.mem_cons, List.mem_nil_iff, or_false] at h ⊢; tauto)),
+        k1 r (fun h => hn (by simp [h])) (fun h => hn (by simp [h]))]
+  -- block 2: the buffer address's registers
   rw [semXIR_seq, semXIR_blk]
   have hs2' := i2.1
   simp only [regs] at hs2'
-  set M3 := runPrims [.op .shr oY oX qA, .op .add qM qN cOne] s2.M with hM3d
-  have k3 : ∀ r, r ≠ oY → r ≠ qM → rd M3 r = rd s2.M r := fun r h1 h2 => by
-    simp only [hM3d, runPrims, List.foldl, Prim.run]; rw [rd_set_ne (Ne.symm h2), rd_set_ne (Ne.symm h1)]
-  have y3 : rd M3 oY = G (q + j) >>> (8 * sh) := by
-    simp only [hM3d, runPrims, List.foldl, Prim.run]
-    simp (disch := (simp only [size_set, oY, qM, oX, qA] at *; omega)) only [rd_set_self, rd_set_ne]
-    rw [v1, k2 _ (by decide) (by decide), k1 _ (by decide) (by decide), ha, shr_8s _ hs8]
-  have m3 : rd M3 qM = toWord (q + j + 1) := by
-    simp only [hM3d, runPrims, List.foldl, Prim.run]
-    simp (disch := (simp only [size_set, oY, qM, qN, cOne] at *; omega)) only [rd_set_self, rd_set_ne]
-    rw [k2 _ (by decide) (by decide), k1 _ (by decide) (by decide), hn, one_cOne i2, add_one_toWord]
-  have i3 : Inv M3 := inv_sem I (P := .blk [.op .shr oY oX qA, .op .add qM qN cOne])
-    (by simp +decide [WF, Prim.dst, oY, qM]) i2
-  have k23 : ∀ r < regs, r ∉ [oK, qT1, oU, oT1, oT2, oT3, oAd, oX, oY, qM, oR] →
-      rd M3 r = rd t.M r := fun r hr hn => by
-    simp only [List.mem_cons, List.mem_nil_iff, or_false, not_or] at hn
-    rw [k3 r hn.2.2.2.2.2.2.2.2.1 hn.2.2.2.2.2.2.2.2.2.1, k2 r hr (by simp [hn.1, hn.2.1, hn.2.2.1, hn.2.2.2.1,
-      hn.2.2.2.2.1, hn.2.2.2.2.2.1, hn.2.2.2.2.2.2.1, hn.2.2.2.2.2.2.2.1]), k1 r hn.2.2.2.2.2.2.2.2.2.2 hn.2.2.2.2.2.2.2.2.2.1]
-  -- the second load
-  obtain ⟨x2, o2⟩ := ldC_sem I κ ⟨M3, s2.o⟩ i3
-    (by rw [k3 _ (by decide) (by decide), k2 _ (by decide) (by decide)]; exact r1) m3
-    (by rw [k23 _ (by decide) (by decide)]; exact hcb) (by rw [k23 _ (by decide) (by decide)]; exact hjj)
-    (by rw [k23 _ (by decide) (by decide)]; exact hd) (by omega) hjl
-  rw [semXIR_seq]
-  generalize hs4 : semXIR I (ldC κ) ⟨M3, s2.o⟩ = s4 at x2 o2
-  have i4 : Inv s4.M := hs4 ▸ inv_sem I (wf_ldC κ) i3
-  have k4 : ∀ r < regs, r ∉ [oK, qT1, oU, oT1, oT2, oT3, oAd, oX] → rd s4.M r = rd M3 r := fun r hr hn =>
-    hs4 ▸ keep_ldC I κ i3 hr hn
-  have hh4 : ∀ y, regs ≤ y → rd s4.M y = rd t.M y := fun y hy => by
-    rw [← hs4, hframeK I _ _ (loK_ldC κ) y hy]
-    show rd M3 y = _
-    rw [k3 _ (by simp only [oY, regs] at *; omega) (by simp only [qM, regs] at *; omega), hh2 y hy, hh1 y hy]
-  have sz4 : s4.M.size = t.M.size := by rw [← hs4, size_sem]; show (runPrims _ _).size = _; rw [size_runPrims, sz2]
-  have v2 : rd s4.M oX = G (q + j + 1) := by
-    rw [x2, k3 _ (by have := regs_hAddr κ (ldIx cb jL Δ (q + j + 1)); simp only [oY, regs] at *; omega)
-      (by have := regs_hAddr κ (ldIx cb jL Δ (q + j + 1)); simp only [qM, regs] at *; omega), hh2 _ (regs_hAddr κ _),
-      hh1 _ (regs_hAddr κ _), hO.low _ (regs_hAddr κ _) (hlow _ (by omega))]
-  -- block 3: the word, the buffer address's registers
-  rw [semXIR_seq, semXIR_blk]
-  have hs4' := i4.1
-  simp only [regs] at hs4'
-  set M5 := runPrims [.op .shl oX oX cOne, .op .shl oX oX qB, .op .add oX oY oX, .const oR (toWord bufB),
-      .op .or oU qU qU] s4.M with hM5d
-  have x5 : rd M5 oX = shWd G sh (q + j) := by
-    simp only [hM5d, runPrims, List.foldl, Prim.run]
-    simp (disch := (simp only [size_set, oX, oR, oU, qU, oY, qB, cOne] at *; omega)) only [rd_set_self, rd_set_ne]
-    rw [v2, one_cOne i4, k4 qB (by decide) (by decide), k23 qB (by decide) (by decide), hbb, shl_shl_one _ hs8,
-      k4 oY (by decide) (by decide), y3, shWd]
-    rfl
+  set M5 := runPrims [.const oR (toWord bufB), .op .or oU qU qU] s2.M with hM5d
   have r5 : rd M5 oR = toWord bufB := by
     simp only [hM5d, runPrims, List.foldl, Prim.run]
-    simp (disch := (simp only [size_set, oX, oR, oU] at *; omega)) only [rd_set_self, rd_set_ne]
+    simp (disch := (simp only [size_set, oR, oU] at *; omega)) only [rd_set_self, rd_set_ne]
   have u5 : rd M5 oU = toWord j := by
     simp only [hM5d, runPrims, List.foldl, Prim.run]
-    simp (disch := (simp only [size_set, oX, oR, oU, qU] at *; omega)) only [rd_set_self, rd_set_ne]
-    rw [or_self_eval, k4 qU (by decide) (by decide), k23 qU (by decide) (by decide), hu]
-  have i5 : Inv M5 := inv_sem I (P := .blk [.op .shl oX oX cOne, .op .shl oX oX qB, .op .add oX oY oX,
-    .const oR (toWord bufB), .op .or oU qU qU]) (by simp +decide [WF, Prim.dst, oX, oR, oU]) i4
-  have k5 : ∀ r, r ∉ [oX, oR, oU] → rd M5 r = rd s4.M r := fun r hr =>
+    simp (disch := (simp only [size_set, oR, oU, qU] at *; omega)) only [rd_set_self, rd_set_ne]
+    rw [or_self_eval, k12 qU (by decide) (by decide), hu]
+  have i5 : Inv M5 := inv_sem I (P := .blk [.const oR (toWord bufB), .op .or oU qU qU])
+    (by simp +decide [WF, Prim.dst, oR, oU]) i2
+  have k5 : ∀ r, r ∉ [oR, oU] → rd M5 r = rd s2.M r := fun r hr =>
     rd_runPrims_of_not_writes (fun p hp he => by
       simp only [List.mem_cons, List.mem_nil_iff, or_false] at hp
       simp only [List.mem_cons, List.mem_nil_iff, or_false, not_or] at hr
-      rcases hp with rfl | rfl | rfl | rfl | rfl <;> simp only [Prim.dst] at he <;> subst he <;> simp_all) _
+      rcases hp with rfl | rfl <;> simp only [Prim.dst] at he <;> subst he <;> simp_all) _
+  have x5 : rd M5 oX = G (q + j) := by rw [k5 _ (by decide), v1]
   -- the address block, the store
   rw [semXIR_seq, semXIR_blk, semXIR_seq]
-  have i6 : Inv (runPrims (ldPs apB) M5) := inv_sem I (P := .blk (ldPs apB)) (s := ⟨M5, s4.o⟩) (by
+  have i6 : Inv (runPrims (ldPs apB) M5) := inv_sem I (P := .blk (ldPs apB)) (s := ⟨M5, s2.o⟩) (by
     simp +decide only [ldPs, WF, Prim.dst, oK, oT1, oT2, oT3, oAd, List.mem_cons, List.mem_nil_iff,
       forall_eq_or_imp, forall_eq, or_false, and_true]) i5
   have ad6 : rd (runPrims (ldPs apB) M5) oAd = toWord (bufA j) := by
     rw [ldPs_oAd apB M5 i5, r5, u5]
     have := bufA_apB (u := j) (by simp only [nW] at hj; omega)
     rw [← this, toWord_toNat]
-  have x6 : rd (runPrims (ldPs apB) M5) oX = shWd G sh (q + j) := by
+  have x6 : rd (runPrims (ldPs apB) M5) oX = G (q + j) := by
     rw [ldPs_keep apB M5 (by decide), x5]
   have hBA := bufA_lt hj
   have hBA' := bufA_ge j
   simp only [semXIR]
   set M7 := storeM (runPrims (ldPs apB) M5) oAd oX with hM7d
-  have st7 : ∀ i, i ≠ cTmp → rd M7 i = if i = bufA j then shWd G sh (q + j) else rd (runPrims (ldPs apB) M5) i :=
+  have st7 : ∀ i, i ≠ cTmp → rd M7 i = if i = bufA j then G (q + j) else rd (runPrims (ldPs apB) M5) i :=
     fun i hi => by
       rw [hM7d, rd_storeM i6 ad6 (by simp only [regs, bufB] at *; omega) (by simp only [bufB] at *; omega)
-        (by rw [size_runPrims, size_runPrims, sz4, hO.size]; omega) (by decide) (by decide) hi, x6]
-  have i7 : Inv M7 := inv_sem I (P := .store oAd oX) (s := ⟨runPrims (ldPs apB) M5, s4.o⟩) (show oAd ≠ cTmp by decide) i6
-  -- block 4 and the decrement
-  refine ⟨⟨inv_decS (inv_sem I (P := .blk [.op .add qN qN cOne, .op .add qU qU cOne]) (s := ⟨M7, s4.o⟩)
-      (by simp +decide [WF, Prim.dst, qN, qU]) i7) (by decide), ?_, ?_⟩, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
-  · simp only [decS, size_set, size_runPrims, hM7d, hM5d, size_storeM, sz4, hO.size]
+        (by rw [size_runPrims, size_runPrims, sz2, hO.size]; omega) (by decide) (by decide) hi, x6]
+  have i7 : Inv M7 := inv_sem I (P := .store oAd oX) (s := ⟨runPrims (ldPs apB) M5, s2.o⟩) (show oAd ≠ cTmp by decide) i6
+  -- block 3 and the decrement
+  refine ⟨⟨inv_decS (inv_sem I (P := .blk [.op .add qN qN cOne, .op .add qU qU cOne]) (s := ⟨M7, s2.o⟩)
+      (by simp +decide [WF, Prim.dst, qN, qU]) i7) (by decide), ?_, ?_⟩, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
+  · simp only [decS, size_set, size_runPrims, hM7d, hM5d, size_storeM, sz2, hO.size]
   · intro y hy1 hy2
     rw [rd_decS (by simp only [qLc, regs] at *; omega)]
     rw [rd_runPrims_of_not_writes (fun p hp he => by
@@ -389,22 +343,22 @@ theorem rlBody_step (I : Array Word) (κ : NodeKind) {M₀ : Mem} {o : Array Wor
       rcases hp with rfl | rfl <;> simp only [Prim.dst, qN, qU, regs] at he hy1 <;> omega)]
     rw [st7 y (by simp only [cTmp, regs] at *; omega), if_neg (by omega), ldPs_keep apB M5 (by
       simp only [List.mem_cons, List.mem_nil_iff, or_false, oK, oT1, oT2, oT3, oAd, regs] at *; omega),
-      k5 y (by simp only [List.mem_cons, List.mem_nil_iff, or_false, oX, oR, oU, regs] at *; omega), hh4 y hy1,
+      k5 y (by simp only [List.mem_cons, List.mem_nil_iff, or_false, oR, oU, regs] at *; omega), hh2 y hy1,
       hO.low y hy1 hy2]
-  · simp only [decS, ho, o2, o1]
+  · simp only [decS, ho, o1]
   all_goals
-    have kf : ∀ r, r < regs → r ∉ [oK, qT1, oU, oT1, oT2, oT3, oAd, oX, oY, qM, oR, cTmp] →
+    have kf : ∀ r, r < regs → r ∉ [oK, qT1, oU, oT1, oT2, oT3, oAd, oX, qM, oR, cTmp] →
         rd M7 r = rd t.M r := fun r hr hn => by
-      simp only [List.mem_cons, List.mem_nil_iff, or_false, not_or] at hn
-      rw [st7 r hn.2.2.2.2.2.2.2.2.2.2.2, if_neg (by simp only [regs, bufB] at *; omega),
-        ldPs_keep apB M5 (by simp [hn.1, hn.2.2.2.1, hn.2.2.2.2.1, hn.2.2.2.2.2.1, hn.2.2.2.2.2.2.1]),
-        k5 r (by simp [hn.2.2.1, hn.2.2.2.2.2.2.2.1, hn.2.2.2.2.2.2.2.2.2.2.1]),
-        k4 r hr (by simp [hn.1, hn.2.1, hn.2.2.1, hn.2.2.2.1, hn.2.2.2.2.1, hn.2.2.2.2.2.1, hn.2.2.2.2.2.2.1,
-          hn.2.2.2.2.2.2.2.1]), k23 r hr (by simp [hn.1, hn.2.1, hn.2.2.1, hn.2.2.2.1, hn.2.2.2.2.1, hn.2.2.2.2.2.1,
-          hn.2.2.2.2.2.2.1, hn.2.2.2.2.2.2.2.1, hn.2.2.2.2.2.2.2.2.1, hn.2.2.2.2.2.2.2.2.2.1,
-          hn.2.2.2.2.2.2.2.2.2.2.1])]
+      have hm : ∀ x ∈ [oK, qT1, oU, oT1, oT2, oT3, oAd, oX, qM, oR, cTmp], r ≠ x := fun x hx h => hn (h ▸ hx)
+      have n1 := hm oK (by simp); have n2 := hm qT1 (by simp); have n3 := hm oU (by simp)
+      have n4 := hm oT1 (by simp); have n5 := hm oT2 (by simp); have n6 := hm oT3 (by simp)
+      have n7 := hm oAd (by simp); have n8 := hm oX (by simp); have n9 := hm qM (by simp)
+      have n10 := hm oR (by simp); have n11 := hm cTmp (by simp)
+      rw [st7 r n11, if_neg (by simp only [regs, bufB] at *; omega),
+        ldPs_keep apB M5 (by simp [n1, n4, n5, n6, n7]), k5 r (by simp [n3, n10]),
+        k12 r hr (by simp [n1, n2, n3, n4, n5, n6, n7, n8, n9, n10])]
     have hs7 : 256 ≤ M7.size := by
-      simp only [hM7d, size_storeM, size_runPrims, hM5d, sz4]; omega
+      simp only [hM7d, size_storeM, size_runPrims, hM5d, sz2]; omega
   · rw [rd_decS (by decide)]
     simp only [runPrims, List.foldl, Prim.run]
     simp (disch := (simp only [size_set, qN, qU, cOne] at *; omega)) only [rd_set_self, rd_set_ne]
@@ -414,14 +368,6 @@ theorem rlBody_step (I : Array Word) (κ : NodeKind) {M₀ : Mem} {o : Array Wor
     simp only [runPrims, List.foldl, Prim.run]
     simp (disch := (simp only [size_set, qN, qU, cOne] at *; omega)) only [rd_set_self, rd_set_ne]
     rw [kf qU (by decide) (by decide), hu, kf cOne (by decide) (by decide), one_cOne hO.inv, add_one_toWord]
-  · rw [rd_decS (by decide)]
-    simp only [runPrims, List.foldl, Prim.run]
-    simp (disch := (simp only [size_set, qN, qU, qA] at *; omega)) only [rd_set_ne]
-    rw [kf qA (by decide) (by decide), ha]
-  · rw [rd_decS (by decide)]
-    simp only [runPrims, List.foldl, Prim.run]
-    simp (disch := (simp only [size_set, qN, qU, qB] at *; omega)) only [rd_set_ne]
-    rw [kf qB (by decide) (by decide), hbb]
   · rw [rd_decS (by decide)]
     simp only [runPrims, List.foldl, Prim.run]
     simp (disch := (simp only [size_set, qN, qU, qCB] at *; omega)) only [rd_set_ne]
@@ -445,87 +391,76 @@ theorem rlBody_step (I : Array Word) (κ : NodeKind) {M₀ : Mem} {o : Array Wor
     · rw [if_pos (by rw [huj])]; rw [huj]
     · rw [if_neg (fun he => huj (bufA_inj (by omega) hj he)), ldPs_keep apB M5 (by
         simp only [List.mem_cons, List.mem_nil_iff, or_false, oK, oT1, oT2, oT3, oAd, bufB] at *; omega),
-        k5 _ (by simp only [List.mem_cons, List.mem_nil_iff, or_false, oX, oR, oU, bufB] at *; omega),
-        hh4 _ (by simp only [regs, bufB] at *; omega), hbuf u (by omega)]
+        k5 _ (by simp only [List.mem_cons, List.mem_nil_iff, or_false, oR, oU, bufB] at *; omega),
+        hh2 _ (by simp only [regs, bufB] at *; omega), hbuf u (by omega)]
 
 theorem of_entryK {M₀ : Mem} {c n : ℕ} {K : Word} (hc : 4 < c) (hcr : c < regs) {s : St} (h : OF M₀ s) :
     OF M₀ ⟨entryK c n K s.M, s.o⟩ :=
   ⟨inv_entryK h.inv hc, (size_entryK ..).trans h.size, fun y h1 h2 =>
     (entryK_frame _ (by omega) (by simp only [cTmp, regs] at *; omega)).trans (h.low y h1 h2)⟩
 
-theorem rlInv_entryK {κ : NodeKind} {M₀ : Mem} {o : Array Word} {cb jL Δ sh q : ℕ} {M : Mem} {K : Word}
-    (h : RlInv κ M₀ o cb jL Δ sh q 0 ⟨M, o⟩) : RlInv κ M₀ o cb jL Δ sh q 0 ⟨entryK qLc qLn K M, o⟩ := by
-  obtain ⟨hO, -, hn, hu, ha, hb, hc, hj, hd, -⟩ := h
+theorem cpInv_entryK {κ : NodeKind} {M₀ : Mem} {o : Array Word} {cb jL Δ q : ℕ} {M : Mem} {K : Word}
+    (h : CpInv κ M₀ o cb jL Δ q 0 ⟨M, o⟩) : CpInv κ M₀ o cb jL Δ q 0 ⟨entryK qLc qLn K M, o⟩ := by
+  obtain ⟨hO, -, hn, hu, hc, hj, hd, -⟩ := h
   have e : ∀ r, r ≠ qLc → r ≠ cTmp → rd (entryK qLc qLn K M) r = rd M r := fun r h1 h2 =>
     entryK_frame _ (Ne.symm h1) (Ne.symm h2)
   exact ⟨of_entryK (by decide) (by decide) hO, rfl, by rw [e _ (by decide) (by decide)]; exact hn,
-    by rw [e _ (by decide) (by decide)]; exact hu, by rw [e _ (by decide) (by decide)]; exact ha,
-    by rw [e _ (by decide) (by decide)]; exact hb, by rw [e _ (by decide) (by decide)]; exact hc,
+    by rw [e _ (by decide) (by decide)]; exact hu, by rw [e _ (by decide) (by decide)]; exact hc,
     by rw [e _ (by decide) (by decide)]; exact hj, by rw [e _ (by decide) (by decide)]; exact hd,
     fun u hu => absurd hu (Nat.not_lt_zero u)⟩
 
-theorem wf_rlBody (κ : NodeKind) : WF (rlBody κ) := by
-  refine ⟨by simp [WF, Prim.dst, oR, qM], wf_ldC κ, by simp [WF, Prim.dst, oY, qM], wf_ldC κ,
-    by simp [WF, Prim.dst, oX, oR, oU], ?_, show oAd ≠ cTmp by decide, by simp [WF, Prim.dst, qN, qU]⟩
+theorem wf_cpBody (κ : NodeKind) : WF (cpBody κ) := by
+  refine ⟨by simp [WF, Prim.dst, oR, qM], wf_ldC κ, by simp [WF, Prim.dst, oR, oU], ?_,
+    show oAd ≠ cTmp by decide, by simp [WF, Prim.dst, qN, qU]⟩
   simp +decide only [ldPs, WF, Prim.dst, oK, oT1, oT2, oT3, oAd, List.mem_cons, List.mem_nil_iff,
     forall_eq_or_imp, forall_eq, or_false, and_true]
 
-theorem wf_realign (κ : NodeKind) : WF (realign κ) := by
-  refine ⟨by simp +decide [WF], ⟨by decide, by decide, fun h => ?_, wf_rlBody κ⟩⟩
+theorem wf_cpSeg (κ : NodeKind) : WF (cpSeg κ) := by
+  refine ⟨by simp +decide [WF], ⟨by decide, by decide, fun h => ?_, wf_cpBody κ⟩⟩
   have := writes_wrL _ _ h
-  simp +decide [wrL, rlBody, ldC, ldw, ldPs, Prim.dst] at this
+  simp +decide [wrL, cpBody, ldC, ldw, ldPs, Prim.dst] at this
 
-/-- **The realign loop** (`D = i·(segB − 1)`, `q = ⌊D/8⌋`, `s = D mod 8`): buffer word `u < nW` is the
-shifted pair `shWd C s (q + u)` of the loader's words `C n` (H word `ldIx cb jL Δ n`); the heap below
-the buffer and the output are kept. -/
-theorem realign_sem (I : Array Word) (κ : NodeKind) {M₀ : Mem} {s : St} (hO : OF M₀ s)
+/-- **The copy loop** (`q = i·(strideB/8)`): buffer word `u < nW` is the loader's word `C (q + u)` (H
+word `ldIx cb jL Δ (q + u)`); the heap below the buffer and the output are kept. -/
+theorem cpSeg_sem (I : Array Word) (κ : NodeKind) {M₀ : Mem} {s : St} (hO : OF M₀ s)
     (hsz : bufB + 2 ^ 22 ≤ M₀.size) {i cb jL Δ : ℕ} (hi4 : i ≤ 4)
     (hi : rd s.M qI = toWord i) (hcb : rd s.M qCB = toWord cb) (hjr : rd s.M qJ = toWord jL)
     (hd : rd s.M qDl = toWord Δ) (hb : 2 ^ 23 + nW + 1 + cb + Δ < 2 ^ 64) (hjl : jL < 2 ^ 64)
-    (hlow : ∀ n ≤ i * (N4c.segB - 1) / 8 + nW, hAddr κ (ldIx cb jL Δ n) < bufB) :
-    OF M₀ (semXIR I (realign κ) s) ∧ (semXIR I (realign κ) s).o = s.o ∧
-      ∀ u < nW, rd (semXIR I (realign κ) s).M (bufA u) =
-        shWd (fun n => rd M₀ (hAddr κ (ldIx cb jL Δ n))) (i * (N4c.segB - 1) % 8) (i * (N4c.segB - 1) / 8 + u) := by
+    (hlow : ∀ n ≤ i * (N4c.strideB / 8) + nW, hAddr κ (ldIx cb jL Δ n) < bufB) :
+    OF M₀ (semXIR I (cpSeg κ) s) ∧ (semXIR I (cpSeg κ) s).o = s.o ∧
+      ∀ u < nW, rd (semXIR I (cpSeg κ) s).M (bufA u) = rd M₀ (hAddr κ (ldIx cb jL Δ (i * (N4c.strideB / 8) + u))) := by
   have hs := hO.inv.1
   simp only [regs] at hs
-  have hD : i * (N4c.segB - 1) < 2 ^ 23 := by simp only [N4c.segB]; omega
-  set D := i * (N4c.segB - 1) with hDd
-  rw [realign, semXIR_seq, semXIR_blk]
-  set ps : List Prim := [.const qT1 (toWord (N4c.segB - 1)), .op .mul qT1 qI qT1, .const oK (toWord 3),
-      .op .shr qN qT1 oK, .const oK (toWord 7), .op .and qA qT1 oK, .const oK (toWord 3),
-      .op .shl qA qA oK, .op .sub qB c63 qA, .const qU 0, .const qLn (toWord nW)] with hps
-  have c63v : rd s.M c63 = toWord 63 := hO.inv.2 3 (by decide)
-  have kp : ∀ r, r ∉ [qT1, oK, qN, qA, qB, qU, qLn] → rd (runPrims ps s.M) r = rd s.M r := fun r hr =>
+  have hD : i * (N4c.strideB / 8) < 2 ^ 23 := by simp only [N4c.strideB, N4c.segB, N4c.spacerB]; omega
+  rw [cpSeg, semXIR_seq, semXIR_blk]
+  set ps : List Prim := [.const qT1 (toWord (N4c.strideB / 8)), .op .mul qN qI qT1, .const qU 0,
+    .const qLn (toWord nW)] with hps
+  have kp : ∀ r, r ∉ [qT1, qN, qU, qLn] → rd (runPrims ps s.M) r = rd s.M r := fun r hr =>
     rd_runPrims_of_not_writes (fun p hp he => by
       simp only [hps, List.mem_cons, List.mem_nil_iff, or_false] at hp
       simp only [List.mem_cons, List.mem_nil_iff, or_false, not_or] at hr
-      rcases hp with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl <;>
-        simp only [Prim.dst] at he <;> subst he <;> simp_all) _
-  have v : rd (runPrims ps s.M) qN = toWord (D / 8) ∧ rd (runPrims ps s.M) qA = toWord (8 * (D % 8)) ∧
-      rd (runPrims ps s.M) qB = toWord (63 - 8 * (D % 8)) ∧ rd (runPrims ps s.M) qU = toWord 0 ∧
+      rcases hp with rfl | rfl | rfl | rfl <;> simp only [Prim.dst] at he <;> subst he <;> simp_all) _
+  have v : rd (runPrims ps s.M) qN = toWord (i * (N4c.strideB / 8)) ∧ rd (runPrims ps s.M) qU = toWord 0 ∧
       rd (runPrims ps s.M) qLn = toWord nW := by
     simp only [hps, runPrims, List.foldl, Prim.run]
-    simp (disch := (simp only [size_set, qT1, oK, qN, qA, qB, qU, qLn, qI, c63] at *; omega))
-      only [rd_set_self, rd_set_ne]
-    rw [hi, c63v, mul_toWord, ← hDd, shr_toWord (by omega) (by norm_num), show (7 : ℕ) = 2 ^ 3 - 1 from rfl,
-      and_mask_toWord (by omega) (by norm_num), shl_toWord (by norm_num) (by omega),
-      sub_toWord (by norm_num) (by omega)]
-    refine ⟨?_, ?_, ?_, ?_, ?_⟩ <;> first | trivial | (congr 1; omega) | norm_num
-  obtain ⟨vn, va, vb, vu, vl⟩ := v
+    simp (disch := (simp only [size_set, qT1, qN, qU, qLn, qI] at *; omega)) only [rd_set_self, rd_set_ne]
+    rw [hi, mul_toWord]
+    refine ⟨?_, ?_, ?_⟩ <;> first | trivial | rfl
+  obtain ⟨vn, vu, vl⟩ := v
   have i1 : Inv (runPrims ps s.M) := inv_sem I (P := .blk ps) (s := s) (by simp +decide [hps, WF]) hO.inv
   have O1 : OF M₀ ⟨runPrims ps s.M, s.o⟩ := of_loK I (P := .blk ps) (by simp +decide [hps, LoK, regs])
     (by simp +decide [hps, WF]) hO
-  have h0 : RlInv κ M₀ s.o cb jL Δ (D % 8) (D / 8) 0 ⟨runPrims ps s.M, s.o⟩ :=
-    ⟨O1, rfl, by rw [vn]; rfl, vu, va, vb, by rw [kp _ (by decide)]; exact hcb,
+  have h0 : CpInv κ M₀ s.o cb jL Δ (i * (N4c.strideB / 8)) 0 ⟨runPrims ps s.M, s.o⟩ :=
+    ⟨O1, rfl, by rw [vn, Nat.add_zero], vu, by rw [kp _ (by decide)]; exact hcb,
       by rw [kp _ (by decide)]; exact hjr, by rw [kp _ (by decide)]; exact hd,
       fun u hu => absurd hu (Nat.not_lt_zero u)⟩
-  have L := loopK_emit I (c := qLc) (n := qLn) (K := nW) (b := rlBody κ)
-    (fun j t => RlInv κ M₀ s.o cb jL Δ (D % 8) (D / 8) j t) (fun _ => []) ⟨runPrims ps s.M, s.o⟩ i1
-    (by decide) (by decide) (by decide) (by simp only [nW]; norm_num) vl (rlInv_entryK h0)
+  have L := loopK_emit I (c := qLc) (n := qLn) (K := nW) (b := cpBody κ)
+    (fun j t => CpInv κ M₀ s.o cb jL Δ (i * (N4c.strideB / 8)) j t) (fun _ => []) ⟨runPrims ps s.M, s.o⟩ i1
+    (by decide) (by decide) (by decide) (by simp only [nW]; norm_num) vl (cpInv_entryK h0)
     (fun j t hj ht => ⟨by
-        have e := (rlBody_step I κ (Nat.mod_lt _ (by norm_num)) (by omega) hjl hj hsz (fun n hn => hlow n hn) ht).o
-        simp only [decS] at e; rw [e, ht.o]; simp, rlBody_step I κ (Nat.mod_lt _ (by norm_num)) (by omega) hjl hj hsz
-        (fun n hn => hlow n hn) ht⟩)
+        have e := (cpBody_step I κ (by omega) hjl hj hsz (fun n hn => hlow n (by omega)) ht).o
+        simp only [decS] at e; rw [e, ht.o]; simp, cpBody_step I κ (by omega) hjl hj hsz
+        (fun n hn => hlow n (by omega)) ht⟩)
   obtain ⟨-, Q⟩ := L
   exact ⟨Q.of, Q.o, fun u hu => Q.buf u hu⟩
 

@@ -7,13 +7,16 @@ import FRXOut4P
 
 Aggregate `a` (signed child `σ = aggChild κ a`, `k = kSel κ a w` segments) emits (`signedWords_agg`)
 `|π_A| = 48 + k·piSize`, the header (`hdrWords`: `'A' ‖ k`, then `n` and `e` as shift-1 pairs of the
-`c_A` block's message words), the `k` proofs, the count `k·|items|`, the `k` traces' bodies, the
-signature. The two segment loops run `k ≤ maxK` times (the count in `qK`, `loopK_emitR`); each
-iteration realigns segment `i` into the buffer (`rl_vS`) and emits over it (**`segLoop_sem`**).
+`c_A` block's message words), the `k` proofs, the count `k·|items| + (k − 1)`, the `k` traces' bodies
+each after its spacer entry (`i ≥ 1`: the constant query words `spW`, then the answer as four shift-1
+pairs of chain words, **`spPre`**), the signature. The two segment loops run `k ≤ maxK` times (the count
+in `qK`, `loopK_emitR`); each iteration runs its prefix, copies segment `i` into the buffer (`cp_vS`) and
+emits over it (**`segLoop_sem`**).
 
 The chain loader's registers (**`aggRegs`**, `ChR` by **`chR_agg`**): base `8·chBase σ`, last block
-`jL = ⌊k(segB − 1)/64⌋ = aggL k − 1`, and the redirect `Δ = [k < maxK]·8·(finB κ a − 1 − chBase σ + k − jL)`,
-so the stream's last block is read from the candidate final block `finB κ a + k − 1`.
+`jL = k·sBlk − 3 = aggL k − 1` (revision 4.4.1), and the redirect
+`Δ = [k < maxK]·8·(finB κ a − 1 − chBase σ + k − jL)`, so the stream's last block is read from the
+candidate final block `finB κ a + k − 1`.
 -/
 
 namespace FR.X
@@ -39,25 +42,44 @@ def aggHd (κ : NodeKind) (a : ℕ) : XIR :=
 /-- The redirect's constant `finB κ a − 1 − chBase σ`. -/
 def dC (κ : NodeKind) (a : ℕ) : ℕ := N4c.finB κ a - 1 - N4c.chBase κ (N4c.aggChild κ a)
 
-/-- **The chain loader's registers** for aggregate `a` with `k = qK` segments, and `qI := 0`. -/
+/-- **The chain loader's registers** for aggregate `a` with `k = qK` segments, and `qI := 0`:
+`qJ := k·sBlk − 3·[0 < k]` (the stream's last block), the redirect `qDl`. -/
 def aggRegs (κ : NodeKind) (a : ℕ) : XIR :=
-  .blk [.const qCB (toWord (8 * N4c.chBase κ (N4c.aggChild κ a))), .const oK (toWord (N4c.segB - 1)),
-    .op .mul qJ qK oK, .const oK (toWord 6), .op .shr qJ qJ oK, .const oK (toWord κ.maxK), .op .ltu qT1 qK oK,
-    .const oK (toWord (dC κ a)), .op .add qDl qK oK, .op .sub qDl qDl qJ, .const oK (toWord 3), .op .shl qDl qDl oK,
-    .op .mul qDl qT1 qDl, .const qI 0]
+  .seq (.blk [.const qCB (toWord (8 * N4c.chBase κ (N4c.aggChild κ a))), .const oK (toWord N4c.sBlk),
+    .op .mul qJ qK oK, .const oK 0, .op .ltu qT1 oK qK, .const oK (toWord 3), .op .mul qT1 qT1 oK,
+    .op .sub qJ qJ qT1, .const qI 0])
+  (.blk [.const oK (toWord κ.maxK), .op .ltu qT1 qK oK, .const oK (toWord (dC κ a)), .op .add qDl qK oK,
+    .op .sub qDl qDl qJ, .const oK (toWord 3), .op .shl qDl qDl oK, .op .mul qDl qT1 qDl])
 
-/-- **A segment loop**: per segment `i < qK`, realign it, run `E` over the buffer, `i += 1`. -/
-def segLoop (κ : NodeKind) (E : XIR) : XIR :=
-  .loopK qSc qK (toWord κ.maxK) (.seq (realign κ) (.seq E (.blk [.op .add qI qI cOne])))
+/-- **A segment loop**: per segment `i < qK`, the prefix `P`, copy segment `i`, run `E` over the buffer,
+`i += 1`. -/
+def segLoop (κ : NodeKind) (P E : XIR) : XIR :=
+  .loopK qSc qK (toWord κ.maxK) (.seq P (.seq (cpSeg κ) (.seq E (.blk [.op .add qI qI cOne]))))
 
-/-- The traces: the count word `k·|items|`, `qI := 0`, the bodies. -/
+/-- The spacer entry's query words as a segment of constants. -/
+def spSeg : Seg := catL (spW.map .wd)
+
+/-- **Spacer `qI`'s entry**: its query's words (constants), then its answer, four shift-1 pairs of chain
+words from `qI·(strideB/8) − 4`. -/
+def spIR (κ : NodeKind) : XIR :=
+  .seq (bufSeg spSeg) (.seq (.blk [.const oK (toWord (N4c.strideB / 8)), .op .mul qN qI oK, .const oK (toWord 4),
+    .op .sub qN qN oK, .const qA (toWord 8), .const qB (toWord 55)]) (shw4 κ))
+
+/-- **The traces' prefix**: the spacer entry before segment `qI ≥ 1`. -/
+def spPre (κ : NodeKind) : XIR := .ite qI (spIR κ) (.blk [])
+
+/-- `oX := qK·(|items| + 1) − [0 < qK]`: the aggregate trace's length `k·|items| + (k − 1)`. -/
+def cntW : List Prim :=
+  lenW 0 ((itemsOf seq4).length + 1) ++ [.const oK 0, .op .ltu qT1 oK qK, .op .sub oX oX qT1]
+
+/-- The traces: the count word, `qI := 0`, per segment its spacer entry (`i ≥ 1`) and its body. -/
 def aggTr (κ : NodeKind) : XIR :=
-  .seq (.blk (lenW 0 (itemsOf seq4).length)) (.seq (.out oX) (.seq (.blk [.const qI 0])
-    (segLoop κ (bufSeg (trBody4 seq4)))))
+  .seq (.blk cntW) (.seq (.out oX) (.seq (.blk [.const qI 0])
+    (segLoop κ (spPre κ) (bufSeg (trBody4 seq4)))))
 
 /-- **Aggregate `a`'s signed child.** -/
 def aggIR4 (κ : NodeKind) (a : ℕ) : XIR :=
-  .seq (kSelIR κ a κ.maxK) (.seq (aggHd κ a) (.seq (aggRegs κ a) (.seq (segLoop κ pfIR)
+  .seq (kSelIR κ a κ.maxK) (.seq (aggHd κ a) (.seq (aggRegs κ a) (.seq (segLoop κ (.blk []) pfIR)
     (.seq (aggTr κ) (sigIR κ (N4c.aggChild κ a))))))
 
 /-! ## Proof helpers: what the emitters write -/
@@ -115,11 +137,11 @@ theorem bufSeg_keep (I : Array Word) {sg : Seg} (hd : depthSeg sg ≤ 9) {t : St
     (hr : r < 200) (hc : r ≠ cTmp) : rd (semXIR I (bufSeg sg) t).M r = rd t.M r :=
   frame I (bufSeg sg) t (wf_bufSeg hd) hM r (by simp only [regs]; omega) (noW_bufSeg hr hc)
 
-theorem realign_keep (I : Array Word) (κ : NodeKind) {t : St} (hM : Inv t.M) {r : ℕ}
-    (h : r ∈ [qI, qCB, qJ, qDl, qK, qSc]) : rd (semXIR I (realign κ) t).M r = rd t.M r := by
+theorem cpSeg_keep (I : Array Word) (κ : NodeKind) {t : St} (hM : Inv t.M) {r : ℕ}
+    (h : r ∈ [qI, qCB, qJ, qDl, qK, qSc]) : rd (semXIR I (cpSeg κ) t).M r = rd t.M r := by
   simp only [List.mem_cons, List.mem_nil_iff, or_false] at h
   rcases h with rfl | rfl | rfl | rfl | rfl | rfl <;>
-    exact keep_of I (wf_realign κ) hM (by decide) (by cases κ <;> decide)
+    exact keep_of I (wf_cpSeg κ) hM (by decide) (by cases κ <;> decide)
 
 /-! ## The segment loops -/
 
@@ -136,32 +158,39 @@ theorem agR_keep {cb jL Δ k i : ℕ} {M M' : Mem} (h : AgR cb jL Δ k i M)
   ⟨(hk _ (by simp)).trans h.i, (hk _ (by simp)).trans h.cb, (hk _ (by simp)).trans h.jl,
     (hk _ (by simp)).trans h.dl, (hk _ (by simp)).trans h.k⟩
 
-/-- **A segment loop emits `out i` per segment `i < k`**, when `E` emits `F` of the buffer's words
-and `F` of segment `i`'s virtual words is `out i`. -/
-theorem segLoop_sem (I : Array Word) (κ : NodeKind) {E : XIR} {F : (ℕ → Word) → List Word} {out : ℕ → List Word}
-    (hEw : WF E) {M₀ : Mem}
+/-- **A segment loop emits `pre i ++ out i` per segment `i < k`**, when the prefix `P` emits `pre i` at
+segment `i`, `E` emits `F` of the buffer's words and `F` of segment `i`'s virtual words is `out i`. -/
+theorem segLoop_sem (I : Array Word) (κ : NodeKind) {P E : XIR} {F : (ℕ → Word) → List Word}
+    {pre out : ℕ → List Word} {M₀ : Mem} {σ k cb jL Δ nB : ℕ} {w : Circ.Asg}
+    (hP : ∀ j < k, ∀ t, OF M₀ t → AgR cb jL Δ k j t.M → (semXIR I P t).o.toList = t.o.toList ++ pre j ∧
+      OF M₀ (semXIR I P t) ∧ ∀ r ∈ [qI, qCB, qJ, qDl, qK, qSc], rd (semXIR I P t).M r = rd t.M r)
     (hE : ∀ t, OF M₀ t → (semXIR I E t).o.toList = t.o.toList ++ F (src t.M apB bufB) ∧ OF M₀ (semXIR I E t) ∧
       ∀ r ∈ [qI, qCB, qJ, qDl, qK, qSc], rd (semXIR I E t).M r = rd t.M r)
-    {σ k cb jL Δ nB : ℕ} {w : Circ.Asg}
     (hF : ∀ i < k, ∀ V : ℕ → Word, (∀ u (hu : u < (vS κ σ k i w).length), (vS κ σ k i w)[u] = V u) → F V = out i)
     {t : St} (hO : OF M₀ t) (hsz : bufB + 2 ^ 22 ≤ M₀.size) (hH : HeapW κ M₀ w) (hC : 0 < k → ChR κ σ k cb jL Δ nB)
-    (hk : k ≤ κ.maxK) (hk4 : κ.maxK ≤ 4) (hnB : ∀ i < k, i * (N4c.segB - 1) / 8 + nW ≤ nB)
-    (hD : ∀ i < k, i * (N4c.segB - 1) + N4c.segB ≤ N4c.streamB κ σ k) (hR : AgR cb jL Δ k 0 t.M) :
-    (semXIR I (segLoop κ E) t).o.toList = t.o.toList ++ (List.range k).flatMap out ∧
-      OF M₀ (semXIR I (segLoop κ E) t) ∧ AgR cb jL Δ k k (semXIR I (segLoop κ E) t).M := by
+    (hk : k ≤ κ.maxK) (hk4 : κ.maxK ≤ 4) (hnB : ∀ i < k, i * (N4c.strideB / 8) + nW ≤ nB)
+    (hD : ∀ i < k, i * N4c.strideB + N4c.segB ≤ N4c.streamB κ σ k) (hR : AgR cb jL Δ k 0 t.M) :
+    (semXIR I (segLoop κ P E) t).o.toList = t.o.toList ++ (List.range k).flatMap (fun i => pre i ++ out i) ∧
+      OF M₀ (semXIR I (segLoop κ P E) t) ∧ AgR cb jL Δ k k (semXIR I (segLoop κ P E) t).M := by
   have L := loopK_emitR I (c := qSc) (n := qK) (K := κ.maxK)
-    (b := .seq (realign κ) (.seq E (.blk [.op .add qI qI cOne])))
-    (fun j st => OF M₀ st ∧ AgR cb jL Δ k j st.M) out t hO.inv (by decide) (by decide) (by decide) (by decide)
-    (by omega) hk hR.k
+    (b := .seq P (.seq (cpSeg κ) (.seq E (.blk [.op .add qI qI cOne]))))
+    (fun j st => OF M₀ st ∧ AgR cb jL Δ k j st.M) (fun i => pre i ++ out i) t hO.inv (by decide) (by decide)
+    (by decide) (by decide) (by omega) hk hR.k
     ⟨of_entryK (by decide) (by decide) hO, agR_keep hR fun r hr => by
       simp only [List.mem_cons, List.mem_nil_iff, or_false] at hr
       rcases hr with rfl | rfl | rfl | rfl | rfl <;> exact entryK_frame _ (by decide) (by decide)⟩
     (fun j st hj ⟨hO', hR'⟩ => by
-      obtain ⟨O1, o1, hV⟩ := rl_vS I κ hO' hsz hH (hC (by omega)) (by omega) (hnB j hj) (hD j hj) hR'.i hR'.cb hR'.jl hR'.dl
-      have k1 : ∀ r ∈ [qI, qCB, qJ, qDl, qK, qSc], rd (semXIR I (realign κ) st).M r = rd st.M r :=
-        fun r hr => realign_keep I κ hO'.inv hr
+      obtain ⟨p0, P0, kP⟩ := hP j hj st hO' hR'
       rw [semXIR_seq]
-      generalize semXIR I (realign κ) st = s1 at O1 o1 hV k1
+      generalize semXIR I P st = s0 at p0 P0 kP
+      have hR0 : AgR cb jL Δ k j s0.M := agR_keep hR' fun r hr => kP r (by
+        simp only [List.mem_cons, List.mem_nil_iff, or_false] at hr ⊢; tauto)
+      obtain ⟨O1, o1, hV⟩ := cp_vS I κ P0 hsz hH (hC (by omega)) (by omega) (hnB j hj) (hD j hj) hR0.i hR0.cb
+        hR0.jl hR0.dl
+      have k1 : ∀ r ∈ [qI, qCB, qJ, qDl, qK, qSc], rd (semXIR I (cpSeg κ) s0).M r = rd st.M r :=
+        fun r hr => (cpSeg_keep I κ P0.inv hr).trans (kP r hr)
+      rw [semXIR_seq]
+      generalize semXIR I (cpSeg κ) s0 = s1 at O1 o1 hV k1
       obtain ⟨o2, O2, k2⟩ := hE s1 O1
       rw [semXIR_seq]
       generalize semXIR I E s1 = s2 at o2 O2 k2
@@ -173,7 +202,8 @@ theorem segLoop_sem (I : Array Word) (κ : NodeKind) {E : XIR} {F : (ℕ → Wor
         rw [rd_decS (by rcases hr with rfl | rfl | rfl | rfl <;> decide), semXIR_blk,
           rd_runPrims_of_not_writes (by rcases hr with rfl | rfl | rfl | rfl <;> simp [Prim.dst, qI, qCB, qJ, qDl, qK]),
           k2 _ (by simp at hr ⊢; tauto), k1 _ (by simp at hr ⊢; tauto)]
-      refine ⟨by rw [semXIR_blk]; simp only [o2, o1, hF j hj _ hV], ⟨inv_decS (inv_runPrims (by simp [Prim.dst, qI])
+      refine ⟨by rw [semXIR_blk]; simp only [o2, o1, p0, hF j hj _ hV, List.append_assoc],
+        ⟨inv_decS (inv_runPrims (by simp [Prim.dst, qI])
         O2.inv) (by decide), by simp [semXIR_blk, O2.size], fun y h1 h2 => by
           rw [rd_decS (by simp only [qSc, regs] at *; omega), semXIR_blk,
             rd_runPrims_of_not_writes (by simp only [regs] at h1; simp [Prim.dst, qI]; omega), O2.low y h1 h2]⟩,
@@ -190,8 +220,11 @@ theorem rd_const_self {M : Mem} {d : ℕ} {v : Word} (h : d < M.size) : rd (runP
 
 /-! ## An aggregate's numbers -/
 
-theorem aggL_eq' (k : ℕ) : N4c.aggL k = k * (N4c.segB - 1) / 64 + 1 := by
-  simp only [N4c.aggL, N4c.aggB, N4c.segB]; omega
+/-- The stream's last block at `k` segments (`aggL k − 1 = k·sBlk − 3`, `k ≥ 1`). -/
+def jLv (k : ℕ) : ℕ := k * N4c.sBlk - 3
+
+theorem aggL_eq' {k : ℕ} (hk : 1 ≤ k) : N4c.aggL k = jLv k + 1 := by
+  rw [(N4c.aggB_blocks hk).2.1, jLv, N4c.sBlk]; omega
 
 /-- **The layout facts an aggregate's output uses** (decided per kind). -/
 structure AggN (κ : NodeKind) (a : ℕ) : Prop where
@@ -200,7 +233,7 @@ structure AggN (κ : NodeKind) (a : ℕ) : Prop where
   len : N4c.chLen κ (N4c.aggChild κ a) = N4c.aggL κ.maxK
   fb : N4c.chBase κ (N4c.aggChild κ a) + N4c.aggL κ.maxK < N4c.finB κ a
   fe : N4c.finB κ a + κ.maxK ≤ N4c.hEnd κ
-  nb : N4c.chBase κ (N4c.aggChild κ a) + ((κ.maxK - 1) * (N4c.segB - 1) / 8 + nW) / 8 < N4c.hEnd κ
+  nb : N4c.chBase κ (N4c.aggChild κ a) + ((κ.maxK - 1) * (N4c.strideB / 8) + nW) / 8 < N4c.hEnd κ
   mk1 : 1 ≤ κ.maxK
   mk4 : κ.maxK ≤ 4
   cab : N4c.cAB κ a < N4c.hEnd κ
@@ -220,37 +253,37 @@ theorem aggN (κ : NodeKind) {a : ℕ} (ha : a < N4c.nAgg κ) : AggN κ a := by
         by decide, by decide, by decide⟩
 
 /-- The redirect's value at `k` segments (`aggRegs`' `qDl`). -/
-def dV (κ : NodeKind) (a k : ℕ) : ℕ := if k < κ.maxK then (k + dC κ a - k * (N4c.segB - 1) / 2 ^ 6) * 2 ^ 3 else 0
+def dV (κ : NodeKind) (a k : ℕ) : ℕ := if k < κ.maxK then (k + dC κ a - jLv k) * 2 ^ 3 else 0
 
 /-- **The aggregate's chain loader** (`k ≥ 1` segments): the loader's words are the chain words. -/
 theorem chR_agg (κ : NodeKind) {a k : ℕ} (ha : a < N4c.nAgg κ) (hk1 : 0 < k) (hk : k ≤ κ.maxK) :
-    ChR κ (N4c.aggChild κ a) k (8 * N4c.chBase κ (N4c.aggChild κ a)) (k * (N4c.segB - 1) / 2 ^ 6) (dV κ a k)
-      ((κ.maxK - 1) * (N4c.segB - 1) / 8 + nW) := by
+    ChR κ (N4c.aggChild κ a) k (8 * N4c.chBase κ (N4c.aggChild κ a)) (jLv k) (dV κ a k)
+      ((κ.maxK - 1) * (N4c.strideB / 8) + nW) := by
   have N := aggN κ ha
-  have hL : N4c.streamL κ (N4c.aggChild κ a) k = k * (N4c.segB - 1) / 64 + 1 := by
-    simp only [N4c.streamL, N.agg, if_true, aggL_eq']
-  have hLm := aggL_eq' κ.maxK
-  have hmono : k * (N4c.segB - 1) / 64 ≤ κ.maxK * (N4c.segB - 1) / 64 :=
-    Nat.div_le_div_right (Nat.mul_le_mul_right _ hk)
+  have hL : N4c.streamL κ (N4c.aggChild κ a) k = jLv k + 1 := by
+    simp only [N4c.streamL, N.agg, if_true, aggL_eq' hk1]
+  have hLm := aggL_eq' N.mk1
   have hF : N4c.finBlk κ (N4c.aggChild κ a) k = if k < κ.maxK then N4c.finB κ a + (k - 1) else
       N4c.chBase κ (N4c.aggChild κ a) + N4c.aggL κ.maxK - 1 := by
     simp only [N4c.finBlk, N.agg, true_and, N.of, N.len]
-  have hb : ∀ i, N4c.blkOf κ (N4c.aggChild κ a) k i = if i = k * (N4c.segB - 1) / 64 then
+  have hb : ∀ i, N4c.blkOf κ (N4c.aggChild κ a) k i = if i = jLv k then
       N4c.finBlk κ (N4c.aggChild κ a) k else N4c.chBase κ (N4c.aggChild κ a) + i := by
     intro i; unfold N4c.blkOf; rw [hL]; split_ifs <;> omega
   have fb := N.fb; have fe := N.fe; have nb := N.nb; have he := N.he; have m4 := N.mk4
   have hc : N4c.chBase κ (N4c.aggChild κ a) < N4c.hEnd κ := by omega
-  have e1 : N4c.segB - 1 = 1482751 := rfl
-  have e6 : (2 : ℕ) ^ 6 = 64 := rfl
+  have hmono : jLv k ≤ jLv κ.maxK := by unfold jLv; have := Nat.mul_le_mul_right N4c.sBlk hk; omega
   have e3 : (2 : ℕ) ^ 3 = 8 := rfl
-  simp only [e1] at hLm hmono hb nb ⊢
+  have es : N4c.strideB / 8 = 193904 := rfl
+  have hj : jLv k = k * 24238 - 3 := rfl
+  have hjm : jLv κ.maxK = κ.maxK * 24238 - 3 := rfl
+  rw [es] at nb ⊢
   refine ⟨fun n => ?_, fun n hn => ?_, ?_, ?_⟩
-  · rw [hb, hF]; unfold ldIx dV dC; simp only [e1, e6, e3]
-    by_cases h1 : n / 8 = k * 1482751 / 64 <;> by_cases h2 : k < κ.maxK <;> simp only [h1, h2, ↓reduceIte] <;> omega
+  · rw [hb, hF]; unfold ldIx dV dC; simp only [e3]
+    by_cases h1 : n / 8 = jLv k <;> by_cases h2 : k < κ.maxK <;> simp only [h1, h2, ↓reduceIte] <;> omega
   · rw [hb, hF]
-    by_cases h1 : n / 8 = k * 1482751 / 64 <;> by_cases h2 : k < κ.maxK <;> simp only [h1, h2, ↓reduceIte] <;> omega
-  · unfold dV dC; simp only [e1, e6, e3]; split_ifs <;> omega
-  · simp only [e6]; omega
+    by_cases h1 : n / 8 = jLv k <;> by_cases h2 : k < κ.maxK <;> simp only [h1, h2, ↓reduceIte] <;> omega
+  · unfold dV dC; simp only [e3]; split_ifs <;> omega
+  · unfold jLv; simp only [N4c.sBlk]; omega
 
 /-! ## The header and the registers -/
 
@@ -351,31 +384,144 @@ theorem aggHd_sem (I : Array Word) (κ : NodeKind) (a : ℕ) {M₀ : Mem} {w : C
 theorem aggRegs_sem (I : Array Word) (κ : NodeKind) {a : ℕ} (ha : a < N4c.nAgg κ) {M₀ : Mem} {t : St} (hO : OF M₀ t)
     {k : ℕ} (hk : k ≤ κ.maxK) (hK : rd t.M qK = toWord k) :
     (semXIR I (aggRegs κ a) t).o = t.o ∧ OF M₀ (semXIR I (aggRegs κ a) t) ∧
-      AgR (8 * N4c.chBase κ (N4c.aggChild κ a)) (k * (N4c.segB - 1) / 2 ^ 6) (dV κ a k) k 0
-        (semXIR I (aggRegs κ a) t).M := by
+      AgR (8 * N4c.chBase κ (N4c.aggChild κ a)) (jLv k) (dV κ a k) k 0 (semXIR I (aggRegs κ a) t).M := by
   have N := aggN κ ha
   have hs := hO.inv.1
   simp only [regs] at hs
-  have hLm := aggL_eq' κ.maxK
+  have hLm := aggL_eq' N.mk1
   have fb := N.fb; have m4 := N.mk4; have he := N.he; have fe := N.fe
-  have hmono : k * (N4c.segB - 1) / 64 ≤ κ.maxK * (N4c.segB - 1) / 64 :=
-    Nat.div_le_div_right (Nat.mul_le_mul_right _ hk)
-  have e1 : N4c.segB - 1 = 1482751 := rfl
-  have hjd : k * (N4c.segB - 1) / 2 ^ 6 ≤ k + dC κ a := by
-    unfold dC; simp only [e1, show (2 : ℕ) ^ 6 = 64 from rfl] at *; omega
-  refine ⟨rfl, of_loK I (P := aggRegs κ a) (by simp [aggRegs, LoK, Prim.dst, regs, qCB, oK, qJ, qT1, qDl, qI])
-    (by simp [aggRegs, WF, Prim.dst, qCB, oK, qJ, qT1, qDl, qI]) hO, ?_, ?_, ?_, ?_, ?_⟩
-  all_goals simp only [aggRegs, semXIR_blk, runPrims, List.foldl, Prim.run]
-  all_goals simp (disch := (simp only [size_set, qCB, oK, qJ, qT1, qDl, qI, qK]; omega)) only
+  have hmono : jLv k ≤ jLv κ.maxK := by unfold jLv; have := Nat.mul_le_mul_right N4c.sBlk hk; omega
+  have hjd : jLv k ≤ k + dC κ a := by unfold dC; omega
+  have hk4 : k ≤ 4 := le_trans hk m4
+  rw [aggRegs, semXIR_seq, semXIR_blk]
+  set ps : List Prim := [.const qCB (toWord (8 * N4c.chBase κ (N4c.aggChild κ a))), .const oK (toWord N4c.sBlk),
+    .op .mul qJ qK oK, .const oK 0, .op .ltu qT1 oK qK, .const oK (toWord 3), .op .mul qT1 qT1 oK,
+    .op .sub qJ qJ qT1, .const qI 0] with hps
+  have O1 : OF M₀ ⟨runPrims ps t.M, t.o⟩ := of_loK I (P := .blk ps)
+    (by simp [hps, LoK, Prim.dst, regs, qCB, oK, qJ, qT1, qI]) (by simp [hps, WF, Prim.dst, qCB, oK, qJ, qT1, qI]) hO
+  have v1 : rd (runPrims ps t.M) qCB = toWord (8 * N4c.chBase κ (N4c.aggChild κ a)) ∧
+      rd (runPrims ps t.M) qJ = toWord (jLv k) ∧ rd (runPrims ps t.M) qI = toWord 0 ∧
+      rd (runPrims ps t.M) qK = toWord k := by
+    simp only [hps, runPrims, List.foldl, Prim.run]
+    simp (disch := (simp only [size_set, qCB, oK, qJ, qT1, qDl, qI, qK]; omega)) only [rd_set_self, rd_set_ne]
+    refine ⟨by first | exact True.intro | rfl, ?_, by first | exact True.intro | rfl, by first | exact True.intro | exact hK⟩
+    rw [hK, mul_toWord, show (0 : Word) = toWord 0 from rfl, ltu_toWord (by norm_num) (by omega), ite_mul_toWord,
+      sub_toWord (by simp only [N4c.sBlk]; omega) (by split_ifs <;> simp only [N4c.sBlk] <;> omega)]
+    congr 1; unfold jLv; simp only [N4c.sBlk]; split_ifs <;> omega
+  obtain ⟨c1, j1, i1, k1⟩ := v1
+  have hs1 := O1.inv.1
+  simp only [regs] at hs1
+  obtain ⟨M1, hM1⟩ : ∃ M1, runPrims ps t.M = M1 := ⟨_, rfl⟩
+  rw [hM1] at O1 c1 j1 i1 k1 hs1
+  rw [semXIR_blk, hM1]
+  refine ⟨rfl, of_loK I (P := .blk _) (by simp [LoK, Prim.dst, regs, oK, qT1, qDl])
+    (by simp [WF, Prim.dst, oK, qT1, qDl]) O1, ?_, ?_, ?_, ?_, ?_⟩
+  all_goals simp only [runPrims, List.foldl, Prim.run]
+  all_goals simp (disch := (simp only [size_set, qCB, oK, qJ, qT1, qDl, qI, qK] at *; omega)) only
     [rd_set_self, rd_set_ne]
-  all_goals first
-    | rfl
-    | exact hK
-    | (rw [hK, mul_toWord, shr_toWord (by simp only [e1]; omega) (by norm_num)]; done)
-    | (rw [hK, mul_toWord, shr_toWord (by simp only [e1]; omega) (by norm_num), add_toWord,
-        sub_toWord (by unfold dC; simp only [e1] at *; omega) hjd,
-        shl_toWord (by norm_num) (by unfold dC; simp only [e1] at *; omega),
-        ltu_toWord (by omega) (by omega), ite_mul_toWord]; rfl)
+  · exact i1
+  · exact c1
+  · exact j1
+  · rw [k1, j1, add_toWord, sub_toWord (by unfold dC; omega) hjd,
+      shl_toWord (by norm_num) (by unfold dC; omega), ltu_toWord (by omega) (by omega), ite_mul_toWord]; rfl
+  · exact k1
+
+theorem segOut_wds (W : ℕ → Word) (κ : Bool) (b : ℕ) : ∀ l : List Word, segOut W κ b (catL (l.map .wd)) = l
+  | [] => rfl
+  | x :: l => by simp only [List.map_cons, catL, segOut, segOut_wds W κ b l]; rfl
+
+theorem okSeg_sp : okSeg spSeg = true ∧ depthSeg spSeg ≤ 9 := by decide
+
+/-- **The traces' prefix at segment `j`**: nothing at `j = 0`; spacer `j`'s entry words (`spW` and its
+answer) at `j ≥ 1`. -/
+theorem spPre_sem (I : Array Word) (κ : NodeKind) {a k j : ℕ} (ha : a < N4c.nAgg κ) (hk : k ≤ κ.maxK) (hj : j < k)
+    {M₀ : Mem} {w : Circ.Asg} (hH : HeapW κ M₀ w) {t : St} (hO : OF M₀ t)
+    (hR : AgR (8 * N4c.chBase κ (N4c.aggChild κ a)) (jLv k) (dV κ a k) k j t.M) :
+    (semXIR I (spPre κ) t).o.toList = t.o.toList ++
+      (if j = 0 then [] else spW ++ packBytes (N4s.spAns κ (N4c.aggChild κ a) k w j).toList) ∧
+      OF M₀ (semXIR I (spPre κ) t) ∧ ∀ r ∈ [qI, qCB, qJ, qDl, qK, qSc], rd (semXIR I (spPre κ) t).M r = rd t.M r := by
+  have N := aggN κ ha
+  have hk4 : k ≤ 4 := le_trans hk N.mk4
+  have hC := chR_agg κ ha (by omega) hk
+  rw [spPre, semXIR_ite, hR.i]
+  by_cases hj0 : j = 0
+  · subst hj0
+    have e0 : (toWord 0 : Word) = 0 := rfl
+    simp only [e0, if_true, semXIR_blk, List.append_nil]
+    exact ⟨by first | exact True.intro | simp, by simpa [runPrims] using hO, fun _ _ => by simp only [runPrims, List.foldl]⟩
+  rw [if_neg (show toWord j ≠ (0 : Word) from fun h =>
+      hj0 ((toWord_eq_iff (a := j) (b := 0) (by omega) (by norm_num)).1 h)), if_neg hj0, spIR, semXIR_seq]
+  -- the query's words
+  obtain ⟨o1, O1, k1⟩ := bufSeg_sem I spSeg okSeg_sp.1 okSeg_sp.2 hO
+  have kb : ∀ r < 200, r ≠ cTmp → rd (semXIR I (bufSeg spSeg) t).M r = rd t.M r := fun r hr hc =>
+    bufSeg_keep I okSeg_sp.2 hO.inv hr hc
+  rw [show segOut (src t.M apB bufB) false 0 spSeg = spW by rw [spSeg]; exact segOut_wds _ _ _ _] at o1
+  generalize semXIR I (bufSeg spSeg) t = t1 at o1 O1 k1 kb
+  have hs1 := O1.inv.1
+  simp only [regs] at hs1
+  -- the answer's registers
+  have hQ : 4 ≤ j * (N4c.strideB / 8) := by
+    have : N4c.strideB / 8 ≤ j * (N4c.strideB / 8) := Nat.le_mul_of_pos_left _ (by omega)
+    have : 4 ≤ N4c.strideB / 8 := by decide
+    omega
+  have hQ' : j * (N4c.strideB / 8) < 2 ^ 23 := by
+    have : j * (N4c.strideB / 8) ≤ 4 * (N4c.strideB / 8) := Nat.mul_le_mul_right _ (by omega)
+    have : 4 * (N4c.strideB / 8) < 2 ^ 23 := by decide
+    omega
+  rw [semXIR_seq, semXIR_blk]
+  set ps : List Prim := [.const oK (toWord (N4c.strideB / 8)), .op .mul qN qI oK, .const oK (toWord 4),
+    .op .sub qN qN oK, .const qA (toWord 8), .const qB (toWord 55)] with hps
+  have kp : ∀ r, r ∉ [oK, qN, qA, qB] → rd (runPrims ps t1.M) r = rd t1.M r := fun r hr =>
+    rd_runPrims_of_not_writes (fun p hp he => by
+      simp only [hps, List.mem_cons, List.mem_nil_iff, or_false] at hp
+      simp only [List.mem_cons, List.mem_nil_iff, or_false, not_or] at hr
+      rcases hp with rfl | rfl | rfl | rfl | rfl | rfl <;> simp only [Prim.dst] at he <;> subst he <;> simp_all) _
+  have R2 : SwR (8 * N4c.chBase κ (N4c.aggChild κ a)) (jLv k) (dV κ a k) 1 (j * (N4c.strideB / 8) - 4)
+      (runPrims ps t1.M) := by
+    refine ⟨⟨?_, ?_, ?_⟩, ?_, ?_, ?_⟩
+    · rw [kp _ (by decide), kb _ (by decide) (by decide)]; exact hR.cb
+    · rw [kp _ (by decide), kb _ (by decide) (by decide)]; exact hR.jl
+    · rw [kp _ (by decide), kb _ (by decide) (by decide)]; exact hR.dl
+    all_goals simp only [hps, runPrims, List.foldl, Prim.run]
+    all_goals simp (disch := (simp only [size_set, oK, qN, qA, qB, qI] at *; omega)) only [rd_set_self, rd_set_ne]
+    all_goals first
+      | (rw [kb _ (by decide) (by decide), hR.i, mul_toWord, sub_toWord (by omega) hQ]; done)
+      | rfl
+  have O2 : OF M₀ ⟨runPrims ps t1.M, t1.o⟩ := of_loK I (P := .blk ps)
+    (by simp [hps, LoK, Prim.dst, regs, oK, qN, qA, qB]) (by simp [hps, WF, Prim.dst, oK, qN, qA, qB]) O1
+  -- the answer's words
+  have hG : ∀ n ≤ (κ.maxK - 1) * (N4c.strideB / 8) + nW,
+      rd M₀ (hAddr κ (ldIx (8 * N4c.chBase κ (N4c.aggChild κ a)) (jLv k) (dV κ a k) n)) =
+        chW κ (N4c.aggChild κ a) k w n ∧
+      hAddr κ (ldIx (8 * N4c.chBase κ (N4c.aggChild κ a)) (jLv k) (dV κ a k) n) < bufB := fun n hn => by
+    have hb := hC.blk n hn
+    have e : ldIx (8 * N4c.chBase κ (N4c.aggChild κ a)) (jLv k) (dV κ a k) n / 8 =
+        N4c.blkOf κ (N4c.aggChild κ a) k (n / 8) := by rw [hC.ld]; omega
+    refine ⟨?_, hAddr_lt' (by rw [e]; exact hb)⟩
+    rw [hMW_heapW hH (by rw [e]; exact hb), hC.ld, chW]
+  have hnB : j * (N4c.strideB / 8) ≤ (κ.maxK - 1) * (N4c.strideB / 8) :=
+    Nat.mul_le_mul_right _ (by omega)
+  obtain ⟨a3, b3, -, d3⟩ := shw4_sem I κ (sh := 1) (by norm_num) (by have := hC.big; omega) hC.jl
+    (fun i hi => (hG _ (by omega)).2) O2 R2
+  refine ⟨?_, b3, fun r hr => ?_⟩
+  · rw [a3, show ({ M := runPrims ps t1.M, o := t1.o } : St).o = t1.o from rfl, o1, List.append_assoc]
+    have hD : j * N4c.strideB < N4c.streamB κ (N4c.aggChild κ a) k := by
+      simp only [N4c.streamB, N.agg, if_true]
+      have hb := (N4c.aggB_blocks (Nat.lt_of_le_of_lt (Nat.zero_le _) hj)).2.2
+      have h1 : (j + 1) * N4c.strideB ≤ k * N4c.strideB := Nat.mul_le_mul_right _ (by omega)
+      have h2 : 128 < N4c.strideB := by decide
+      rw [Nat.add_one_mul] at h1; omega
+    rw [spAns_words κ _ k w (by omega) hD]
+    refine congrArg (fun l => t.o.toList ++ (spW ++ l)) (List.map_congr_left fun i hi => ?_)
+    have hi4 := List.mem_range.1 hi
+    simp only [ldG, shWd]
+    rw [(hG _ (by omega)).1, (hG _ (by omega)).1]
+  · simp only [List.mem_cons, List.mem_nil_iff, or_false] at hr
+    rw [d3 r (by rcases hr with rfl | rfl | rfl | rfl | rfl | rfl <;> decide)
+      (by rcases hr with rfl | rfl | rfl | rfl | rfl | rfl <;> decide), kp r (by
+        rcases hr with rfl | rfl | rfl | rfl | rfl | rfl <;> decide),
+      kb r (by rcases hr with rfl | rfl | rfl | rfl | rfl | rfl <;> decide)
+      (by rcases hr with rfl | rfl | rfl | rfl | rfl | rfl <;> decide)]
 
 /-- Every selector the count reads is a decoded cell inside `f`, on the heap below the buffer. -/
 theorem sel_ok (κ : NodeKind) {a i : ℕ} (ha : a < N4c.nAgg κ) (hi : i < κ.maxK) (ι : Kind) :
@@ -386,6 +532,23 @@ theorem sel_ok (κ : NodeKind) {a i : ℕ} (ha : a < N4c.nAgg κ) (hi : i < κ.m
   have hi' : i = 0 ∨ i = 1 ∨ i = 2 ∨ i = 3 := by omega
   rcases h with rfl | rfl <;> rcases hi' with rfl | rfl | rfl | rfl <;> cases κ <;> cases ι <;>
     first | exact absurd hi (by decide) | exact absurd ha (by decide) | decide
+
+theorem cntW_val {M : Mem} (hM : Inv M) {k : ℕ} (hk : k ≤ 4) (hK : rd M qK = toWord k) :
+    rd (runPrims cntW M) oX = toWord (k * (itemsOf seq4).length + (k - 1)) ∧
+      ∀ r, r ≠ oK → r ≠ oX → r ≠ qT1 → rd (runPrims cntW M) r = rd M r := by
+  have hs := hM.1
+  simp only [regs] at hs
+  refine ⟨?_, fun r h1 h2 h3 => rd_runPrims_of_not_writes (by
+    simp [cntW, lenW, Prim.dst, Ne.symm h1, Ne.symm h2, Ne.symm h3]) _⟩
+  have hl : (itemsOf seq4).length = 8783 := itemsOf_seq4_len
+  simp only [cntW, lenW, List.cons_append, List.nil_append, runPrims, List.foldl, Prim.run]
+  simp (disch := (simp only [size_set, oK, oX, qK, qT1]; omega)) only [rd_set_self, rd_set_ne]
+  rw [hK, mul_toWord, add_toWord, show (0 : Word) = toWord 0 from rfl, ltu_toWord (by norm_num) (by omega),
+    hl]
+  rcases Nat.eq_zero_or_pos k with rfl | hk0
+  · rfl
+  · rw [if_pos hk0, show (1 : Word) = toWord 1 from rfl, sub_toWord (by omega) (by omega)]
+    congr 1; omega
 
 /-- **Aggregate `a`'s signed child is emitted** (`signedWords_agg`). -/
 theorem aggIR4_sem (I : Array Word) (κ : NodeKind) {a : ℕ} (ha : a < N4c.nAgg κ) {M₀ : Mem} {w : Circ.Asg}
@@ -409,18 +572,22 @@ theorem aggIR4_sem (I : Array Word) (κ : NodeKind) {a : ℕ} (ha : a < N4c.nAgg
   obtain ⟨o3, O3, R3⟩ := aggRegs_sem I κ ha O2 hk K2
   rw [semXIR_seq]
   generalize semXIR I (aggRegs κ a) s2 = s3 at o3 O3 R3
-  have hD : ∀ i < k, i * (N4c.segB - 1) + N4c.segB ≤ N4c.streamB κ (N4c.aggChild κ a) k := fun i hi => by
-    simp only [N4c.streamB, N.agg, if_true, N4c.aggB]
-    have : (i + 1) * (N4c.segB - 1) ≤ k * (N4c.segB - 1) := Nat.mul_le_mul_right _ (by omega)
-    simp only [N4c.segB] at this ⊢; omega
-  have hnB : ∀ i < k, i * (N4c.segB - 1) / 8 + nW ≤ (κ.maxK - 1) * (N4c.segB - 1) / 8 + nW := fun i hi => by
-    have : i * (N4c.segB - 1) ≤ (κ.maxK - 1) * (N4c.segB - 1) := Nat.mul_le_mul_right _ (by omega)
-    exact Nat.add_le_add_right (Nat.div_le_div_right this) _
-  have hC : 0 < k → ChR κ (N4c.aggChild κ a) k (8 * N4c.chBase κ (N4c.aggChild κ a)) (k * (N4c.segB - 1) / 2 ^ 6) (dV κ a k)
-      ((κ.maxK - 1) * (N4c.segB - 1) / 8 + nW) := fun h => chR_agg κ ha h hk
+  have hD : ∀ i < k, i * N4c.strideB + N4c.segB ≤ N4c.streamB κ (N4c.aggChild κ a) k := fun i hi => by
+    simp only [N4c.streamB, N.agg, if_true]
+    have hb := (N4c.aggB_blocks (Nat.lt_of_le_of_lt (Nat.zero_le _) hi)).2.2
+    have h1 : (i + 1) * N4c.strideB ≤ k * N4c.strideB := Nat.mul_le_mul_right _ (by omega)
+    have h2 : N4c.strideB = N4c.segB + 128 := by decide
+    rw [Nat.add_one_mul] at h1; omega
+  have hnB : ∀ i < k, i * (N4c.strideB / 8) + nW ≤ (κ.maxK - 1) * (N4c.strideB / 8) + nW := fun i hi =>
+    Nat.add_le_add_right (Nat.mul_le_mul_right _ (by omega)) _
+  have hC : 0 < k → ChR κ (N4c.aggChild κ a) k (8 * N4c.chBase κ (N4c.aggChild κ a)) (jLv k) (dV κ a k)
+      ((κ.maxK - 1) * (N4c.strideB / 8) + nW) := fun h => chR_agg κ ha h hk
   -- the proofs
-  have L4 := segLoop_sem I κ (E := pfIR) (F := fun V => segOut V false 0 (pSeg4 seq4 (mOfB (V 10).toNat.toUInt8)))
-    (out := fun i => packBytes (bl (pf4 (N4s.segTr κ (N4c.aggChild κ a) k i w)))) wf_pfIR
+  have L4 := segLoop_sem I κ (P := .blk []) (E := pfIR)
+    (F := fun V => segOut V false 0 (pSeg4 seq4 (mOfB (V 10).toNat.toUInt8))) (pre := fun _ => [])
+    (out := fun i => packBytes (bl (pf4 (N4s.segTr κ (N4c.aggChild κ a) k i w))))
+    (fun j _ t ht _ => ⟨by simp [semXIR_blk, runPrims], by simpa [semXIR_blk, runPrims] using ht,
+      fun r _ => by simp [semXIR_blk, runPrims]⟩)
     (fun t ht => by
       obtain ⟨g1, g2, -⟩ := pfIR_sem I ht
       exact ⟨g1, g2, fun r hr => by
@@ -429,36 +596,41 @@ theorem aggIR4_sem (I : Array Word) (κ : NodeKind) {a : ℕ} (ha : a < N4c.nAgg
     (fun i hi V hV => by rw [pf4_words κ (N4c.aggChild κ a) k i w (hD i hi) V hV false, packBytes_wordsBytes])
     O3 hsz hH hC hk N.mk4 hnB hD R3
   rw [semXIR_seq]
-  generalize semXIR I (segLoop κ pfIR) s3 = s4 at L4
+  generalize semXIR I (segLoop κ (.blk []) pfIR) s3 = s4 at L4
   obtain ⟨o4, O4, R4⟩ := L4
+  -- (a `rw` with the theorem, not `simp`'s definitional `nil_append`: the kernel would otherwise unfold
+  -- `packBytes` of a whole proof to see `[] ++ x ≡ x`)
+  rw [List.flatMap_congr (l := List.range k) (fun i _ => List.nil_append
+    (packBytes (bl (pf4 (N4s.segTr κ (N4c.aggChild κ a) k i w)))))] at o4
   -- the traces
   have hs4 := O4.inv.1
   simp only [regs] at hs4
-  obtain ⟨x5, k5⟩ := lenW_val O4.inv R4.k 0 (itemsOf seq4).length
+  obtain ⟨x5, k5⟩ := cntW_val O4.inv hk4 R4.k
   rw [semXIR_seq, aggTr, semXIR_seq, semXIR_blk, semXIR_seq]
-  rw [show semXIR I (.out oX) ⟨runPrims (lenW 0 (itemsOf seq4).length) s4.M, s4.o⟩ =
-    ⟨runPrims (lenW 0 (itemsOf seq4).length) s4.M, s4.o.push (rd (runPrims (lenW 0 (itemsOf seq4).length) s4.M) oX)⟩
-    from rfl, x5]
-  have O5 : OF M₀ ⟨runPrims (lenW 0 (itemsOf seq4).length) s4.M, s4.o.push (toWord (0 + k * (itemsOf seq4).length))⟩ :=
-    of_mk (of_loK I (P := .blk (lenW 0 (itemsOf seq4).length)) (by simp [lenW, LoK, Prim.dst, oK, oX, regs])
-      (by simp [lenW, WF, Prim.dst, oK, oX]) O4) _
+  rw [show semXIR I (.out oX) ⟨runPrims cntW s4.M, s4.o⟩ =
+    ⟨runPrims cntW s4.M, s4.o.push (rd (runPrims cntW s4.M) oX)⟩ from rfl, x5]
+  have O5 : OF M₀ ⟨runPrims cntW s4.M, s4.o.push (toWord (k * (itemsOf seq4).length + (k - 1)))⟩ :=
+    of_mk (of_loK I (P := .blk cntW) (by simp [cntW, lenW, LoK, Prim.dst, oK, oX, qT1, regs])
+      (by simp [cntW, lenW, WF, Prim.dst, oK, oX, qT1]) O4) _
   rw [semXIR_seq, semXIR_blk]
-  have k6 : ∀ r, r ≠ qI → r ≠ oK → r ≠ oX → rd (runPrims [.const qI 0] (runPrims (lenW 0 (itemsOf seq4).length) s4.M)) r =
-      rd s4.M r := fun r h1 h2 h3 => by
-    rw [rd_runPrims_of_not_writes (by simp [Prim.dst, Ne.symm h1]), k5 r h2 h3]
-  have R6 : AgR (8 * N4c.chBase κ (N4c.aggChild κ a)) (k * (N4c.segB - 1) / 2 ^ 6) (dV κ a k) k 0
-      (runPrims [.const qI 0] (runPrims (lenW 0 (itemsOf seq4).length) s4.M)) :=
+  have k6 : ∀ r, r ≠ qI → r ≠ oK → r ≠ oX → r ≠ qT1 → rd (runPrims [.const qI 0] (runPrims cntW s4.M)) r =
+      rd s4.M r := fun r h1 h2 h3 h4 => by
+    rw [rd_runPrims_of_not_writes (by simp [Prim.dst, Ne.symm h1]), k5 r h2 h3 h4]
+  have R6 : AgR (8 * N4c.chBase κ (N4c.aggChild κ a)) (jLv k) (dV κ a k) k 0
+      (runPrims [.const qI 0] (runPrims cntW s4.M)) :=
     ⟨by rw [rd_const_self (by rw [size_runPrims]; simp only [qI]; omega)]; rfl,
-      by rw [k6 _ (by decide) (by decide) (by decide)]; exact R4.cb,
-      by rw [k6 _ (by decide) (by decide) (by decide)]; exact R4.jl,
-      by rw [k6 _ (by decide) (by decide) (by decide)]; exact R4.dl,
-      by rw [k6 _ (by decide) (by decide) (by decide)]; exact R4.k⟩
-  have O6 : OF M₀ ⟨runPrims [.const qI 0] (runPrims (lenW 0 (itemsOf seq4).length) s4.M),
-      s4.o.push (toWord (0 + k * (itemsOf seq4).length))⟩ :=
+      by rw [k6 _ (by decide) (by decide) (by decide) (by decide)]; exact R4.cb,
+      by rw [k6 _ (by decide) (by decide) (by decide) (by decide)]; exact R4.jl,
+      by rw [k6 _ (by decide) (by decide) (by decide) (by decide)]; exact R4.dl,
+      by rw [k6 _ (by decide) (by decide) (by decide) (by decide)]; exact R4.k⟩
+  have O6 : OF M₀ ⟨runPrims [.const qI 0] (runPrims cntW s4.M),
+      s4.o.push (toWord (k * (itemsOf seq4).length + (k - 1)))⟩ :=
     of_loK I (P := .blk [.const qI 0]) (by simp [LoK, Prim.dst, regs, qI]) (by simp [WF, Prim.dst, qI]) O5
   have hdT := okSeg_tr.2.2.2
-  have L7 := segLoop_sem I κ (E := bufSeg (trBody4 seq4)) (F := fun V => segOut V false 0 (trBody4 seq4))
-    (out := fun i => (N4s.segTr κ (N4c.aggChild κ a) k i w).flatMap entryW) (wf_bufSeg (le_trans hdT (by norm_num)))
+  have L7 := segLoop_sem I κ (P := spPre κ) (E := bufSeg (trBody4 seq4)) (F := fun V => segOut V false 0 (trBody4 seq4))
+    (pre := fun i => if i = 0 then [] else spW ++ packBytes (N4s.spAns κ (N4c.aggChild κ a) k w i).toList)
+    (out := fun i => (N4s.segTr κ (N4c.aggChild κ a) k i w).flatMap entryW)
+    (fun j hj t ht hR => spPre_sem I κ ha hk hj hH ht hR)
     (fun t ht => by
       obtain ⟨g1, g2, -⟩ := bufSeg_sem I (trBody4 seq4) okSeg_tr.2.2.1 (le_trans hdT (by norm_num)) ht
       exact ⟨g1, g2, fun r hr => by
@@ -468,8 +640,8 @@ theorem aggIR4_sem (I : Array Word) (κ : NodeKind) {a : ℕ} (ha : a < N4c.nAgg
     (fun i hi V hV => (entries_segTr κ (N4c.aggChild κ a) k i w (hD i hi) V hV false).symm)
     O6 hsz hH hC hk N.mk4 hnB hD R6
   dsimp only
-  generalize semXIR I (segLoop κ (bufSeg (trBody4 seq4))) ⟨runPrims [.const qI 0]
-    (runPrims (lenW 0 (itemsOf seq4).length) s4.M), s4.o.push (toWord (0 + k * (itemsOf seq4).length))⟩ = s7 at L7
+  generalize semXIR I (segLoop κ (spPre κ) (bufSeg (trBody4 seq4))) ⟨runPrims [.const qI 0]
+    (runPrims cntW s4.M), s4.o.push (toWord (k * (itemsOf seq4).length + (k - 1)))⟩ = s7 at L7
   obtain ⟨o7, O7, -⟩ := L7
   have hf := wb_fit κ N.σ2
   obtain ⟨o8, O8⟩ := sigIR_sem I κ (N4c.aggChild κ a) O7 hf.2 (fun m hm => hAddr_lt' (by omega))
@@ -483,15 +655,17 @@ theorem aggIR4_sem (I : Array Word) (κ : NodeKind) {a : ℕ} (ha : a < N4c.nAgg
     List.flatMap_congr fun i hi => by
       rw [pf4_words κ (N4c.aggChild κ a) k i w (hD i (List.mem_range.1 hi)) (V i) (hV i (List.mem_range.1 hi)) false,
         packBytes_wordsBytes]
-  have hT : ((List.range k).flatMap fun i => segOut (V i) false 0 (trBody4 seq4)) =
-      (List.range k).flatMap fun i => (N4s.segTr κ (N4c.aggChild κ a) k i w).flatMap entryW :=
-    List.flatMap_congr fun i hi =>
-      (entries_segTr κ (N4c.aggChild κ a) k i w (hD i (List.mem_range.1 hi)) (V i) (hV i (List.mem_range.1 hi)) false).symm
+  have hT : ((List.range k).flatMap fun i =>
+        (if i = 0 then [] else spW ++ packBytes (N4s.spAns κ (N4c.aggChild κ a) k w i).toList) ++
+          segOut (V i) false 0 (trBody4 seq4)) =
+      (List.range k).flatMap fun i =>
+        (if i = 0 then [] else spW ++ packBytes (N4s.spAns κ (N4c.aggChild κ a) k w i).toList) ++
+          (N4s.segTr κ (N4c.aggChild κ a) k i w).flatMap entryW :=
+    List.flatMap_congr fun i hi => by
+      rw [entries_segTr κ (N4c.aggChild κ a) k i w (hD i (List.mem_range.1 hi)) (V i) (hV i (List.mem_range.1 hi)) false]
   rw [o8, o7, sigL_eq κ N.σ2 hH, signedWords_agg κ ha w V hV, ← hkd, hP, hT]
   dsimp only
   rw [Array.toList_push, o4, o3, o2, o1]
-  simp only [Array.toList_push, List.append_assoc, List.cons_append, List.singleton_append, List.nil_append,
-    Nat.zero_add]
-
+  simp only [Array.toList_push, List.append_assoc, List.cons_append, List.singleton_append, List.nil_append]
 
 end FR.X

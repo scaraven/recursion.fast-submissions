@@ -12,8 +12,8 @@ The heap after the decode holds `f⁽⁰⁾`'s decoded cells (**`HeapW κ M₀ w
 (**`ChR`**) make the loader's word `n` the chain word `chW κ σ k w n`: H word
 `ldIx cb jL Δ n = 8·blkOf κ σ k ⌊n/8⌋ + n mod 8` of a block below `hEnd κ`. Then
 
-* **`rl_vS`**: after `realign κ` with `qI = i`, the buffer's words are segment `i`'s virtual words
-  `vS κ σ k i w` (`realign_sem`, `vS_get`);
+* **`cp_vS`**: after `cpSeg κ` with `qI = i`, the buffer's words are segment `i`'s virtual words
+  `vS κ σ k i w` (`cpSeg_sem`, `vS_get`);
 * **`prevIR κ`** emits a previous node's signed child (`κ.hasPrev`, child `0`): `|π|`, the proof at
   the ladder of word 10, the trace, the signature (**`prevIR_sem`**: `signedWords (sgnX sigH κ 0 w)`).
 -/
@@ -54,28 +54,26 @@ structure ChR (κ : NodeKind) (σ k cb jL Δ nB : ℕ) : Prop where
   big : 2 ^ 23 + nW + 1 + cb + Δ < 2 ^ 64
   jl : jL < 2 ^ 64
 
-/-- **After `realign κ` with `qI = i`, the buffer holds segment `i`'s virtual words.** -/
-theorem rl_vS (I : Array Word) (κ : NodeKind) {σ k i cb jL Δ nB : ℕ} {w : Circ.Asg} {M₀ : Mem} {t : St}
+/-- **After `cpSeg κ` with `qI = i`, the buffer holds segment `i`'s virtual words.** -/
+theorem cp_vS (I : Array Word) (κ : NodeKind) {σ k i cb jL Δ nB : ℕ} {w : Circ.Asg} {M₀ : Mem} {t : St}
     (hO : OF M₀ t) (hsz : bufB + 2 ^ 22 ≤ M₀.size) (hH : HeapW κ M₀ w) (hC : ChR κ σ k cb jL Δ nB) (hi4 : i ≤ 4)
-    (hnB : i * (N4c.segB - 1) / 8 + nW ≤ nB) (hD : i * (N4c.segB - 1) + N4c.segB ≤ N4c.streamB κ σ k)
+    (hnB : i * (N4c.strideB / 8) + nW ≤ nB) (hD : i * N4c.strideB + N4c.segB ≤ N4c.streamB κ σ k)
     (hi : rd t.M qI = toWord i) (hcb : rd t.M qCB = toWord cb) (hjr : rd t.M qJ = toWord jL)
     (hd : rd t.M qDl = toWord Δ) :
-    OF M₀ (semXIR I (realign κ) t) ∧ (semXIR I (realign κ) t).o = t.o ∧
-      ∀ u (hu : u < (vS κ σ k i w).length), (vS κ σ k i w)[u] = src (semXIR I (realign κ) t).M apB bufB u := by
+    OF M₀ (semXIR I (cpSeg κ) t) ∧ (semXIR I (cpSeg κ) t).o = t.o ∧
+      ∀ u (hu : u < (vS κ σ k i w).length), (vS κ σ k i w)[u] = src (semXIR I (cpSeg κ) t).M apB bufB u := by
   have hG : ∀ n ≤ nB, rd M₀ (hAddr κ (ldIx cb jL Δ n)) = chW κ σ k w n ∧ hAddr κ (ldIx cb jL Δ n) < bufB :=
     fun n hn => by
       have hb := hC.blk n hn
       have e : ldIx cb jL Δ n / 8 = N4c.blkOf κ σ k (n / 8) := by rw [hC.ld]; omega
       refine ⟨?_, hAddr_lt' (by rw [e]; exact hb)⟩
       rw [hMW_heapW hH (n := ldIx cb jL Δ n) (by rw [e]; exact hb), hC.ld, chW]
-  obtain ⟨O1, o1, b1⟩ := realign_sem I κ hO hsz hi4 hi hcb hjr hd hC.big hC.jl
+  obtain ⟨O1, o1, b1⟩ := cpSeg_sem I κ hO hsz hi4 hi hcb hjr hd hC.big hC.jl
     (fun n hn => (hG n (by omega)).2)
   refine ⟨O1, o1, fun u hu => ?_⟩
   have hl := vS_length κ σ k i w hD
   have huW : u < nW := by rw [hl] at hu; simp only [nW, N4c.segB] at hu ⊢; omega
-  rw [vS_get κ σ k i w hD hu, src_bufA _ (by simp only [nW] at huW; omega), b1 u huW]
-  simp only [shWd]
-  rw [(hG _ (by omega)).1, (hG _ (by omega)).1]
+  rw [vS_get κ σ k i w hD hu, src_bufA _ (by simp only [nW] at huW; omega), b1 u huW, (hG _ (by omega)).1]
 
 /-! ## The previous node's signed child -/
 
@@ -86,7 +84,7 @@ def prevRegs (κ : NodeKind) : XIR :=
 /-- **A previous node's signed child** (child `0`): `|π|`, the proof, the trace, the signature. -/
 def prevIR (κ : NodeKind) : XIR :=
   .seq (.blk [.const oX (toWord (piSizeOf seq4))]) (.seq (.out oX)
-  (.seq (prevRegs κ) (.seq (realign κ) (.seq pfIR (.seq (bufSeg (trSeg4 seq4)) (sigIR κ 0))))))
+  (.seq (prevRegs κ) (.seq (cpSeg κ) (.seq pfIR (.seq (bufSeg (trSeg4 seq4)) (sigIR κ 0))))))
 
 theorem chR_prev (κ : NodeKind) (hκ : κ.hasPrev = true) :
     ChR κ 0 0 (8 * N4c.chBase κ 0) (N4c.cLen - 1) 0 nW := by
@@ -98,7 +96,7 @@ theorem chR_prev (κ : NodeKind) (hκ : κ.hasPrev = true) :
   refine ⟨fun n => ?_, fun n hn => ?_, by simp [N4c.chBase, nW], by simp [N4c.cLen]⟩
   · rw [hb]; unfold ldIx; simp only [N4c.chBase, Nat.zero_mul, Nat.mul_zero]; split_ifs <;> omega
   · rw [hb]
-    have : 23168 < N4c.hEnd κ := by cases κ <;> decide
+    have : 24236 < N4c.hEnd κ := by cases κ <;> decide
     simp only [nW] at hn; omega
 
 /-- The signature's WOTS blocks lie below `hEnd κ`. -/
@@ -178,9 +176,9 @@ theorem prevIR_sem (I : Array Word) (κ : NodeKind) (hκ : κ.hasPrev = true) {M
   have O2 : OF M₀ ⟨runPrims ps s1.M, s1.o⟩ := of_loK I (P := .blk ps)
     (by simp [hps, LoK, Prim.dst, regs, qCB, qJ, qDl, qI]) (by simp [hps, WF, Prim.dst, qCB, qJ, qDl, qI]) O1
   rw [semXIR_seq]
-  obtain ⟨O3, o3, hV⟩ := rl_vS I κ (σ := 0) (k := 0) (i := 0) (w := w) O2 hsz hH (chR_prev κ hκ) (by norm_num)
+  obtain ⟨O3, o3, hV⟩ := cp_vS I κ (σ := 0) (k := 0) (i := 0) (w := w) O2 hsz hH (chR_prev κ hκ) (by norm_num)
     (by simp) (by simp [N4c.streamB, N4c.isAgg, hκ]) v.1 v.2.1 v.2.2.1 v.2.2.2
-  generalize semXIR I (realign κ) ⟨runPrims ps s1.M, s1.o⟩ = s3 at O3 o3 hV
+  generalize semXIR I (cpSeg κ) ⟨runPrims ps s1.M, s1.o⟩ = s3 at O3 o3 hV
   rw [semXIR_seq]
   obtain ⟨o4, O4, h4⟩ := pfIR_sem I O3
   generalize semXIR I pfIR s3 = s4 at o4 O4 h4

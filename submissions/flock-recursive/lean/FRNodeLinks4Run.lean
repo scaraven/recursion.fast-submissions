@@ -57,14 +57,18 @@ theorem findSnd_of_mem4 {L : Log} (hL : (L.map Prod.fst).Nodup) {e : ByteArray �
     (he : e ∈ L) : (L.find? fun x => decide (x.1 = e.1)).map Prod.snd = some e.2 := by
   rw [find_of_mem hL he]; rfl
 
+/-- `FRXChain4`'s message table is R4's at `seq4` (the same positions, decided). -/
+theorem fsMsgs4_X : X.fsMsgs4 seq4 = R4.fsMsgs4 seq4 := by
+  rw [X.fsMsgs4, R4.fsMsgs4, seq4_eq]; decide +kernel
+
 /-- **The forward chain of first matches is the run's chain** (3.x's `fmAns_of_run` at `seq4`). -/
 theorem fmAns_of_run4 (h : SkRun4 impl p ⟨vk, c, π⟩ tr y) {L : Log} (hb : ¬ Bad L)
     (hin : ∀ e ∈ tr, e ∈ L) (st₀ : Digest) :
-    ∀ q < 482, X.fmAns (X.fsQ4 seq4 vk c π) st₀ L q = some (ansAt (fsOf tr (itemsOf seq4)) q) := by
+    ∀ q < 486, X.fmAns (X.fsQ4 seq4 vk c π) st₀ L q = some (ansAt (fsOf tr (itemsOf seq4)) q) := by
   have hnd : (L.map Prod.fst).Nodup := by
     by_contra hr; exact hb (Or.inr (Or.inr (Or.inr hr)))
   have hlen := h.len
-  have hmem : ∀ q < 482, (fsOf tr (itemsOf seq4)).getD q default ∈ L := fun q hq => by
+  have hmem : ∀ q < 486, (fsOf tr (itemsOf seq4)).getD q default ∈ L := fun q hq => by
     rw [List.getD_eq_getElem _ _ (by omega)]
     exact hin _ (mem_fsOf (List.getElem_mem _))
   intro q
@@ -82,7 +86,9 @@ theorem fmAns_of_run4 (h : SkRun4 impl p ⟨vk, c, π⟩ tr y) {L : Log} (hb : �
     intro hq'
     rw [X.fmAns, ih (by omega), Option.bind_some]
     have hq : ((fsOf tr (itemsOf seq4)).getD (q + 1) default).1 =
-        X.fsQ4 seq4 vk c π (q + 1) ((fsOf tr (itemsOf seq4)).getD (q + 1 - 1) default).2 := h.hq (q + 1) hq'
+        X.fsQ4 seq4 vk c π (q + 1) ((fsOf tr (itemsOf seq4)).getD (q + 1 - 1) default).2 := by
+      have h1 := h.hq (q + 1) hq'
+      rw [← fsMsgs4_X] at h1; exact h1
     rw [Nat.add_sub_cancel] at hq
     rw [show ansAt (fsOf tr (itemsOf seq4)) q = ((fsOf tr (itemsOf seq4)).getD q default).2 from rfl, ← hq]
     exact findSnd_of_mem4 hnd (hmem (q + 1) hq')

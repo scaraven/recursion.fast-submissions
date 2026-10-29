@@ -6,7 +6,7 @@ import FRXTr4
 /-!
 # A slot proof's output words over a word stream, at any item sequence
 
-`reassemble4 S 0 tr` (the slots' `pf4` on main) is, field by field, the phases' contributions
+`reassemble4 S tr` (the slots' `pf4`) is, field by field, the phases' contributions
 `ctb4`. On a trace read off a word stream (`tr = readItems (wordsBytes Ws) 1 (itemsOf S)`), every
 contribution is a slice of stream words (A.5, A.7):
 
@@ -19,7 +19,7 @@ contribution is a slice of stream words (A.5, A.7):
 
 Only the siblings (field `fSibs`, the last) depend on the child's kind, through its ladder `m`
 (`trM4`: byte `71` of the seed query, the low byte of stream word `10`). **`proof_words4`**:
-`bl (reassemble4 S 0 tr) = wordsBytes (segOut W κ 0 (pSeg4 S m))` when `trM4 tr = m`, under the
+`bl (reassemble4 S tr) = wordsBytes (segOut W κ 0 (pSeg4 S m))` when `trM4 tr = m`, under the
 decided `PfOk4 S` (aligned items, every `queries` phase after its `P2`) and `LadOk4 S m`.
 -/
 
@@ -67,8 +67,8 @@ def pRest4 (S : Seq) (m f : ℕ) : ℕ → ℕ → List Sh → Seg
 /-- **Field `f`'s segment**: the seed's `hdr` (stream words `10 … 15`) for `fHdr`, the later phases. -/
 def fSeg4 (S : Seq) (m f : ℕ) : Seg := .cat (if f = fHdr then .cp 10 6 else .nil) (pRest4 S m f 1 0 (restSh4 S))
 
-/-- **The proof's segment** at ladder `m` (fields `0 … 17`). -/
-def pSeg4 (S : Seq) (m : ℕ) : Seg := catL ((List.range nFields).map (fSeg4 S m))
+/-- **The proof's segment** at ladder `m` (fields `0 … 19`). -/
+def pSeg4 (S : Seq) (m : ℕ) : Seg := catL ((List.range nFields4).map (fSeg4 S m))
 
 /-- A `queries i` phase follows level `i`'s `P2` phase. -/
 def qPrev4 (S : Seq) (i : ℕ) : Option Sh → Bool
@@ -504,11 +504,11 @@ theorem trM4_eq (S : Seq) (hS : TrOk4 S) (Ws : List Word) (W : ℕ → Word)
 
 variable {S : Seq} {m : ℕ}
 
-/-- **A slot proof's bytes are stream-word segments** (`reassemble4` on main, row 18 empty). -/
+/-- **A slot proof's bytes are stream-word segments** (`reassemble4`, all 20 fields). -/
 theorem proof_words4 (hP : PfOk4 S) (hL : LadOk4 S m) (Ws : List Word) (W : ℕ → Word)
     (hget : ∀ u (hu : u < Ws.length), Ws[u] = W u) (hB : streamBytesOf S ≤ 8 * Ws.length) (κ : Bool)
     (hm : trM4 (trOf S Ws).toArray = m) :
-    bl (reassemble4 S 0 (trOf S Ws)) = wordsBytes (segOut W κ 0 (pSeg4 S m)) := by
+    bl (reassemble4 S (trOf S Ws)) = wordsBytes (segOut W κ 0 (pSeg4 S m)) := by
   obtain ⟨hS, hq⟩ := hP
   have hsh : (phasesOf S).map Prod.snd = .seed :: restSh4 S := by
     have h0 := hS.1
@@ -519,11 +519,9 @@ theorem proof_words4 (hP : PfOk4 S) (hL : LadOk4 S m) (Ws : List Word) (W : ℕ 
       rw [hp] at h0
       simp only [List.head?_cons, Option.map_some, Option.some.injEq] at h0
       simp [h0]
-  have hfit : N4s.fitL 0 (ctbs4 S (trM4 (trOf S Ws).toArray) (trOf S Ws).toArray 0 []
-      ((phasesOf S).map Prod.snd) 18) = [] := rfl
-  show (((List.range nFields).flatMap fun f => ctbs4 S (trM4 (trOf S Ws).toArray) (trOf S Ws).toArray 0 []
-    ((phasesOf S).map Prod.snd) f) ++ _).toArray.toList = _
-  rw [hfit, List.append_nil, List.toList_toArray, hm, pSeg4, segOut_catL, List.flatMap_map, wordsBytes_flatMap]
+  show (((List.range nFields4).flatMap fun f => ctbs4 S (trM4 (trOf S Ws).toArray) (trOf S Ws).toArray 0 []
+    ((phasesOf S).map Prod.snd) f)).toArray.toList = _
+  rw [List.toList_toArray, hm, pSeg4, segOut_catL, List.flatMap_map, wordsBytes_flatMap]
   refine List.flatMap_congr fun f _ => ?_
   rw [hsh, ctbs4, fSeg4, segOut, wordsBytes_append]
   have h1 : (itemsOf S).drop (0 + (Sh.seed.itemsL S.lv).length) = (restSh4 S).flatMap (Sh.itemsL S.lv) := by

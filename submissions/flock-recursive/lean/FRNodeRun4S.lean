@@ -8,9 +8,9 @@ import FRSoundness4Qry
 
 `compileX_run` at prototype `π` (`protoCS π = compileX (Xof π) …`):
 
-* **`protoProg_items`**: both prototypes ask `itemsOf seq4` (8,905 items), read off the group
+* **`protoProg_items`**: both prototypes ask `itemsOf seq4` (8,783 items), read off the group
   programs' relation to the kind programs (`progNodeGK_rel`, `progSegG_rel`) and `items_gen4`. So the
-  answer-driven run on a trace of 8,905 entries exists and uses it up.
+  answer-driven run on a trace of 8,783 entries exists and uses it up.
 * **`askRowsP`**, **`impAP`**: prototype `π`'s ask rows (its frame) and its residual imports.
 * **`SlotRunA`**: the run facts left to the row side, stated on the answer-driven run (auxiliary
   cells, the residual imports, the foreign flags). **`SlotImpA`**: per selectable index, the ask
@@ -44,8 +44,8 @@ theorem protoProg_items (π : ℕ) : (protoProg π).ops.filterMap Op.item? = ite
       items_gen4 _ _ _ (noAsk_finOps4 _)]
   · rw [items_uni (progSegG_rel .L32), progSeg, genSeg, items_gen4 _ _ _ (noAsk_finOps4 _)]
 
-/-- **The answer-driven run of prototype `π` on a trace of 8,905 entries exists and uses it up.** -/
-theorem execA_proto (impl : OpImpl) (π : ℕ) (ι : Kind) (inp : Input) {tr : Trace} (hl : tr.length = 8905) :
+/-- **The answer-driven run of prototype `π` on a trace of 8,783 entries exists and uses it up.** -/
+theorem execA_proto (impl : OpImpl) (π : ℕ) (ι : Kind) (inp : Input) {tr : Trace} (hl : tr.length = 8783) :
     ∃ s, execA impl ι inp (protoProg π).ops St.init tr = some (s, []) := by
   obtain ⟨s, he⟩ := execA_some (impl := impl) (κ := ι) (inp := inp) (protoProg π).ops St.init tr
     (by rw [protoProg_items, itemsOf_seq4_len, hl])
@@ -84,10 +84,10 @@ def SlotImpA (rt : ℕ → RT) (A : ℕ → AT) (impl₀ : OpImpl) (base : NodeK
     stmtOk4 seq4 (kindP (protoOf κ v) ι) inp = true
 
 /-- **The run at a slot**: its rows, replay rows and ask rows with `SlotImpA` give `SlotImp`, the
-run on `tr` (8,905 entries) included. -/
+run on `tr` (8,783 entries) included. -/
 theorem slotImp_of_runA {rt : ℕ → RT} {A : ℕ → AT} {impl₀ : OpImpl} {base : NodeKind → OpImpl}
     (hT₀ : ImplT impl₀) (hT : ∀ ν, ImplT (base ν)) (hok : RepOk rt impl₀ base) {κ : NodeKind} {v : ℕ}
-    {w : Asg} {inp : Input} {tr : Trace} (hl : tr.length = 8905) (hrows : SlotRows κ v w)
+    {w : Asg} {inp : Input} {tr : Trace} (hl : tr.length = 8783) (hrows : SlotRows κ v w)
     (hrep : RepHolds rt κ v w) (hask : AskHolds A κ v w) (h : SlotImpA rt A impl₀ base κ v w inp tr) :
     SlotImp impl₀ base κ v w inp tr := by
   intro ι hS

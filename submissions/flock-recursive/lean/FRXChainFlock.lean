@@ -47,9 +47,18 @@ def msgItem : ℕ → Option (ℕ × ℕ) → Item
 /-- Control: 468 positions. -/
 theorem fsMsgs_length : fsMsgs.length = 468 := by decide +kernel
 
+/-- Indexing a list by `List.range` is its `zipIdx` (linear in the kernel, where `getD` per index is
+quadratic). -/
+theorem map_range_getD {α β : Type*} (f : ℕ → α → β) (l : List α) (d : α) :
+    (List.range l.length).map (fun p => f p (l.getD p d)) = l.zipIdx.map (fun x => f x.2 x.1) := by
+  apply List.ext_getElem (by simp)
+  intro n h1 _
+  simp only [List.length_map, List.length_range] at h1
+  simp [List.getElem_zipIdx, List.getElem?_eq_getElem h1]
+
 /-- **Control: the kinds and lengths are A.4's Fiat–Shamir items.** -/
 theorem fsMsgs_items : (List.range 468).map (fun p => msgItem p (fsMsgs.getD p none)) = fsItems := by
-  decide +kernel
+  rw [← fsMsgs_length, map_range_getD]; decide +kernel
 
 /-- Every message's check: 8-byte aligned, inside `piSize`. -/
 def msgOk : Option (ℕ × ℕ) → Bool

@@ -219,21 +219,16 @@ def ctbs4 (S : Seq) (m : ℕ) (a : Array (ByteArray × Digest)) : ℕ → List D
   | ix, ans, sh :: shs, f =>
     ctb4 S m a ix ans sh f ++ ctbs4 S m a (ix + (sh.itemsL S.lv).length) (ansOf4 a ix ans sh) shs f
 
-/-- **`reassemble4 S aB tr`** (A.5 at revision 4.1; S-N2's `pf`): the proof the trace `tr` of `S`'s
-items carries, field by field: fields `0 … 17` (A.3's rows; `ctbs4` over `phasesOf S`), then
-row 18 fitted to `aB` bytes (`0` on main, where no phase writes field 18). -/
-def reassemble4 (S : Seq) (aB : ℕ) (tr : Trace) : Proof :=
+/-- **`reassemble4 S tr`** (A.5 at revision 4.4.1; S-N2's `pf`): the proof the trace `tr` of `S`'s
+items carries, field by field: fields `0 … 19` (A.3's rows, `D` and `A` the last two; `ctbs4` over
+`phasesOf S`). -/
+def reassemble4 (S : Seq) (tr : Trace) : Proof :=
   let a := tr.toArray
   let shs := (phasesOf S).map Prod.snd
-  ⟨((List.range nFields).flatMap (fun f => ctbs4 S (trM4 a) a 0 [] shs f) ++
-    N4s.fitL aB (ctbs4 S (trM4 a) a 0 [] shs 18)).toArray⟩
-
-/-- **Row 18's size at `seq4`** (A.3; `0` on main, where no phase writes field 18; the CapChk
-field `A` on `v4/rev44`). -/
-def aBytes4 : ℕ := 0
+  ⟨((List.range nFields4).flatMap (fun f => ctbs4 S (trM4 a) a 0 [] shs f)).toArray⟩
 
 /-- **The slots' proof decoder** (S-N2's `pf`, the reader `rd4 pf4`): `reassemble4` at `seq4`. -/
-def pf4 : Trace → Proof := reassemble4 seq4 aBytes4
+def pf4 : Trace → Proof := reassemble4 seq4
 
 /-- Byte 0 of an `n`-byte fitted extract from `o` is byte `o` (`0` past the end). -/
 theorem fitL_extract_getD (b : ByteArray) (o n : ℕ) (hn : 0 < n) :
@@ -255,15 +250,15 @@ theorem fitL_extract_getD (b : ByteArray) (o n : ℕ) (hn : 0 < n) :
       right; have : b.size = b.data.size := rfl; omega
     rw [hl, List.nil_append, List.getElem?_replicate, if_pos hn]
     rfl
-/-- **`reassemble4` meets S-E13a's `PfHdr`** (`N4s.PfHdr (reassemble4 seq4 aB)` is this statement):
+/-- **`reassemble4` meets S-E13a's `PfHdr`** (`N4s.PfHdr (reassemble4 seq4)` is this statement):
 byte 0 of the proof is byte 71 of the seed query (`hdr`'s first byte, the kind byte). -/
-theorem pfHdr_reassemble4 (aB : ℕ) (e : ByteArray × Digest) (tr : Trace) :
-    byteAt (reassemble4 seq4 aB (e :: tr)) 0 = byteAt e.1 71 := by
+theorem pfHdr_reassemble4 (e : ByteArray × Digest) (tr : Trace) :
+    byteAt (reassemble4 seq4 (e :: tr)) 0 = byteAt e.1 71 := by
   have h0 : (phasesOf seq4).map Prod.snd = .seed :: ((phasesOf seq4).tail.map Prod.snd) := by
     rw [phasesOf]; rfl
   have hl : (qB4 (e :: tr).toArray 0 71 48).length = 48 := N4s.fitL_length _ _
   rw [reassemble4, N4s.byteAt_mk]
-  simp only [h0, nFields, List.range_succ_eq_map, List.flatMap_cons, ctbs4, ctb4, fHdr, if_true,
+  simp only [h0, nFields4, List.range_succ_eq_map, List.flatMap_cons, ctbs4, ctb4, fHdr, if_true,
     List.append_assoc]
   rw [List.getD_eq_getElem?_getD, List.getElem?_append_left (by rw [hl]; norm_num),
     ← List.getD_eq_getElem?_getD, qB4, qBytes]
@@ -310,11 +305,10 @@ theorem ctbs4_length (S : Seq) (m : ℕ) (a : Array (ByteArray × Digest)) (f : 
   | sh :: shs, ix, ans => by
     rw [ctbs4, List.length_append, ctb4_length, ctbs4_length S m a f shs, List.map_cons, List.sum_cons]
 
-/-- **`reassemble4`'s size is the format's** (`piSizeOf S` and row 18's `aB`), on every trace. -/
-theorem reassemble4_size (S : Seq) (aB : ℕ) (tr : Trace) :
-    (reassemble4 S aB tr).size = piSizeOf S + aB := by
-  simp only [reassemble4, ByteArray.size, List.size_toArray, List.length_append, N4s.fitL_length,
-    List.length_flatMap, ctbs4_length, List.map_map, piSizeOf]
+/-- **`reassemble4`'s size is the format's** (`piSizeOf S`), on every trace. -/
+theorem reassemble4_size (S : Seq) (tr : Trace) : (reassemble4 S tr).size = piSizeOf S := by
+  simp only [reassemble4, ByteArray.size, List.size_toArray, List.length_flatMap, ctbs4_length, piSizeOf,
+    fieldSizeOf, List.map_map]
   rfl
 
 /-! ## The decoder's links and the witness it outputs (the target of `NodeDec4 nd`) -/
@@ -361,10 +355,10 @@ theorem readW4_eq {sg : NodeKind → ℕ → Circ.Asg → Sig} {κ : NodeKind} {
 
 /-! ## Controls -/
 
-/-- (value) **`reassemble4` has the format's size** at `seq4` on main: `798,192` bytes, on every
+/-- (value) **`reassemble4` has the format's size** at `seq4` on rev44: `876,304` bytes, on every
 trace (the empty one included). -/
-theorem pf4_size (tr : Trace) : (pf4 tr).size = 798192 := by
-  rw [pf4, reassemble4_size, piSizeOf_seq4]; rfl
+theorem pf4_size (tr : Trace) : (pf4 tr).size = 876304 := by
+  rw [pf4, reassemble4_size, piSizeOf_seq4]
 
 /-- (+/−) **`pf4` reads the kind byte from the seed query**: a seed query whose byte 71 is `N4`'s
 byte gives a proof starting with it; one whose byte 71 is `0` does not. -/
