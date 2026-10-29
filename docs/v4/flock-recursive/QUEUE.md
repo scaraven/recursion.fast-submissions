@@ -1,6 +1,6 @@
-# Orchestrator queue (FR-D8: at most 3 concurrent agents)
+# Orchestrator queue (at most 6 concurrent agents)
 
-Last updated 2026-10-28. **Rebased onto core PR #20 (pin `6d05d00`, commit `987e679`); blueprint revision 4.0** (§0.1 B-11…B-17, §10 changes 25). Build trees use `logs/org20`.
+Last updated 2026-10-30. Core pin `422f2f9` (PR #20 merged: M = 96, stream_s 1,920, build_s 1,200). Deliverable branch `v4/flock-recursive`; revision 4.4.1 on `v4/rev44`. Build trees use `logs/org20`.
 
 ## Running — as of 2026-10-30
 
