@@ -317,3 +317,23 @@ the fold edits to `FRNodeRows4` are the integrator's.
 4. **Retiring C1's `tplLW`/`FRVIRTplRepLW`** (381 lines, a KAT'd template with no consumer under
    this route): keep `KOp`/`rtK`/`rtST0`/`compileFromX_soundRW` (R4 uses them); drop the rest at the
    next golf, or keep `tplLW_ok` as a (−) control that the carried `linkWAll` equals the gate form.
+
+---
+
+## Superseded (orchestrator, 2026-10-30): the public-op route is unsound at recursion depth ≥ 2
+
+R1 found this before implementing anything (`stages/R1-RESULT.md` §1–§2). V(P)'s recompute calls
+`op_{ν_C}(in_C)` for `evalL`/`targetS`/`linkWAll` have no replay template. So when the grandparent G
+replays V(P) in its slot 0, `impRP` (`FRNodeRows4Rep.lean:486`, `FRVIRCompile.lean:416–422`) turns
+them into free imports, and C's values become forgeable one level up. Carrying them again grows with
+depth. RSV2's stacked `evalM` is a fixed point, because G's own reserve sumcheck checks it, so RSV2 is
+unaffected. This memo, its review and R0 checked only the child's own op instances.
+
+**Route now (user ruling: accepted, not fast):** replay templates at slot 0 for `evalL`, `targetS` and
+`linkWAll`:
+- `linkWAll`: C1's `tplLW`.
+- `targetS`: ≈ 7 ms.
+- `evalL`: direct or carry automaton.
+
+`rsWeight` was already planned as a replay (R3). `shiftTarget` keeps its one row. This needs no
+format change. The estimated cost is ≈ +90 ms of V per node, well inside verify_s.
