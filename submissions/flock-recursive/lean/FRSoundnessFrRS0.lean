@@ -1,7 +1,7 @@
 -- New for `flock-recursive` (BLUEPRINT A.10 RS0, §5.2 row RS0; stage S-G6).
 -- RET-2: the declarations revision 4.1 reads moved to `FRSoundnessCoreRows`.
 import FRSoundnessFrRS
-import FRSoundnessCoreRows
+import FRSoundnessCoreFront
 
 /-!
 # RS0: the column checks (`habs` at RS0's absorb, position 312) and `RejF`'s slice part

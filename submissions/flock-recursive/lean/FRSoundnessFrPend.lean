@@ -1,7 +1,7 @@
 -- New for `flock-recursive` (BLUEPRINT A.10 E4 end → RS0, A.9 finals' bindings; stage S-G6).
 -- RET-2: the declarations revision 4.1 reads moved to `FRSoundnessCoreRows`.
 import FRSoundnessFrE
-import FRSoundnessCoreRows
+import FRSoundnessCoreFront
 
 /-!
 # The RS claims' bindings, and E4 end's claim as RS claim 4

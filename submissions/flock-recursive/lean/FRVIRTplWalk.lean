@@ -1,6 +1,6 @@
 -- New for `flock-recursive` (BLUEPRINT A.11 `walkAB`, §4.4 "The walk", revision 3.15; stage S-E9
 -- wrote a first version, parked; stage S-E10 rewrote it over the row-emitting DAG; track L-circ).
-import FRVIRTplDag
+import FRVIRTplTab
 
 /-!
 # `tplWalkAB_ok`: the DAG template computes the walk

@@ -20,10 +20,15 @@ use crate::mfill;
 use crate::par;
 use crate::params as pp;
 
-/// One trace's stream `0x54 ‖ traceBytes tr` at `seq4` (`N4c.segB`).
-pub const SEG_B: usize = 1_482_752;
+/// One trace's stream `0x54 ‖ traceBytes tr` at `seq4` (`N4c.segB`; revision 4.4.1 at rev44).
+pub const SEG_B: usize = 1_551_104;
 /// Its digest chain's blocks (`N4c.cLen`).
-pub const C_LEN: usize = 23_168;
+pub const C_LEN: usize = 24_236;
+/// The spacer entry between an aggregate's segments (`N4c.spacerB`, R-A′): `enc64 89 ‖ spacerQ ‖ a`.
+pub const SPACER_B: usize = 129;
+/// Segment `i` of an aggregate starts at stream byte `1 + i·strideB`, block `i·sBlk` (`N4c.sBlk`).
+pub const S_BLK: usize = 24_238;
+pub const STRIDE_B: usize = SEG_B - 1 + SPACER_B;
 pub const WOTS_SLOT: usize = 498;
 pub const WM_SLOT: usize = 146;
 pub const TAG_WOTS: u8 = 0x57;
@@ -31,7 +36,7 @@ pub const TAG_WOTS_LEAF: u8 = 0x4B;
 pub const TAG_SIG_NODE: u8 = 0x4D;
 
 pub fn agg_b(k: usize) -> usize {
-    1 + k * (SEG_B - 1)
+    1 + k * (SEG_B - 1) + (k - 1) * SPACER_B
 }
 pub fn agg_l(k: usize) -> usize {
     agg_b(k).div_ceil(64)
@@ -111,8 +116,9 @@ impl NK {
     pub fn wm_b(self, sg: usize) -> usize {
         self.wots_b(2) + WM_SLOT * sg
     }
+    /// `hUsedN` (revision 4.4.1, PACK §11.2 L1): one `WM` per signed child.
     pub fn h_used(self) -> usize {
-        self.wots_b(2) + WM_SLOT * self.vslots() + 8
+        self.wots_b(2) + WM_SLOT * 2 + 8
     }
     pub fn fin_b(self, a: usize) -> usize {
         self.h_used() + a * self.max_k()
@@ -475,7 +481,9 @@ pub fn agg_in<'a>(s: &'a format::Signed) -> AggIn<'a> {
     let k = pi[1] as usize;
     let n = u64::from_le_bytes(pi[8..16].try_into().unwrap());
     let e: Digest = pi[16..48].try_into().unwrap();
-    let per = s.tr.len() / k;
+    // `tr_A = tr_1 ‖ sp ‖ tr_2 ‖ … ‖ sp ‖ tr_k` (R-A′: one spacer entry between segments)
+    let per = pp::N_ITEMS;
+    assert_eq!(s.tr.len(), k * per + k - 1, "an aggregate's trace: k·8,783 + k − 1 entries");
     let segs = (0..k)
         .map(|i| {
             let p = &pi[48 + i * pp::PI_SIZE..48 + (i + 1) * pp::PI_SIZE];
@@ -487,7 +495,7 @@ pub fn agg_in<'a>(s: &'a format::Signed) -> AggIn<'a> {
                 pp::KIND_P30 => 1,
                 _ => 2,
             };
-            (p, &s.tr[i * per..(i + 1) * per], blake2s::leaf_stmt(&h, ni), ix)
+            (p, &s.tr[i * (per + 1)..i * (per + 1) + per], blake2s::leaf_stmt(&h, ni), ix)
         })
         .collect();
     AggIn { signed: s, c: blake2s::leaf_stmt(&e, n), e, n, segs }
@@ -585,7 +593,7 @@ fn wots_run(vk: &Digest, m: &Digest, s: &Sig) -> Wots {
 }
 
 /// `0x54 ‖ traceBytes tr`.
-fn stream_bytes(tr: &[(Vec<u8>, Digest)]) -> Vec<u8> {
+pub fn stream_bytes(tr: &[(Vec<u8>, Digest)]) -> Vec<u8> {
     let mut v = Vec::with_capacity(SEG_B * 4 + 64);
     v.push(format::TAG_TRACE);
     for (q, a) in tr {
@@ -596,6 +604,153 @@ fn stream_bytes(tr: &[(Vec<u8>, Digest)]) -> Vec<u8> {
     v
 }
 
+/// **An aggregate child's main-chain bytes** (`aggB maxK`, R-A′): its stream `0x54 ‖ tr₁ ‖ sp ‖ … ‖
+/// tr_k`, then for every inactive sub-slot `i ≥ k` the constants its ungated pins read (A1′ "For
+/// P2"): the spacer before it (`enc64 89 ‖ "FRABS000" ‖ 0^81`, its answer zero) and the sub-slot's
+/// `wfSeg` elements (each item's `enc64 |q| ‖ tag`) with its seed element's bytes 1–15; everything
+/// else (the kind element 5 included: an inactive sub-slot's selectors are 0) zero.
+pub fn agg_stream(tr: &[(Vec<u8>, Digest)], kk: usize, max_k: usize, vk: &Digest, c_in: &Digest) -> Vec<u8> {
+    let mut v = stream_bytes(tr);
+    assert_eq!(v.len(), agg_b(kk), "an aggregate's stream");
+    v.resize(agg_b(max_k), 0);
+    if kk == max_k {
+        return v;
+    }
+    for i in kk..max_k {
+        let so = i * STRIDE_B - 128;
+        v[so..so + 8].copy_from_slice(&89u64.to_le_bytes());
+        v[so + 8..so + 16].copy_from_slice(pp::TAG_ABS);
+        phantom_seg(&mut v[i * STRIDE_B..i * STRIDE_B + SEG_B], vk, c_in);
+    }
+    v
+}
+
+/// An inactive sub-slot's segment bytes (`SEG_B`): each item's `enc64 |q| ‖ tag` (the seed element's
+/// bytes 1–15), everything else zero (A1′ "For P2"; `agg_stream`). E1b: the ask templates' ungated
+/// reads of an inactive sub-slot need its seed query's `vk ‖ c` (elements 1–4: IMP's `input` cells, which
+/// the kind table's statement rows tie to `vk` and the slot's `hashA` output `c_in`) and the statement's
+/// leaf tag (element 13's byte 0, IMPC2's statement read).
+fn phantom_seg(v: &mut [u8], vk: &Digest, c_in: &Digest) {
+    let mut ents: Vec<(u64, [u8; 8])> = Vec::with_capacity(pp::N_ITEMS);
+    for (_, it) in crate::items::items_seq() {
+        let tag = |t: &[u8; 6], l: usize| -> [u8; 8] {
+            let mut x = [0u8; 8];
+            x[..6].copy_from_slice(t);
+            x[6] = l as u8;
+            x
+        };
+        ents.push(match it {
+            crate::items::It::Seed => (119, {
+                let mut x = [0u8; 8];
+                x[..7].copy_from_slice(pp::TAG_SEED);
+                x
+            }),
+            crate::items::It::Absorb { len, .. } => (40 + len as u64, *pp::TAG_ABS),
+            crate::items::It::Squeeze => (40, *pp::TAG_SQZ),
+            crate::items::It::Col { level } => ((8 + 16 * pp::STAR_ROWS[level] + pp::COL_PAD) as u64, tag(pp::TAG_MCOL, level)),
+            crate::items::It::Node { level, .. } => (72, tag(pp::TAG_MNOD, level)),
+        });
+    }
+    let mut o = 1;
+    for (j, (ql, tg)) in ents.iter().enumerate() {
+        v[o..o + 8].copy_from_slice(&ql.to_le_bytes());
+        let tl = if j == 0 { 7 } else { 8 };
+        v[o + 8..o + 8 + tl].copy_from_slice(&tg[..tl]);
+        o += 8 + *ql as usize + 32;
+    }
+    assert_eq!(o, SEG_B, "a sub-slot's items fill its segment");
+    v[16..48].copy_from_slice(vk);
+    v[48..80].copy_from_slice(c_in);
+    v[16 * 13] = blake2s::TAG_LEAF;
+}
+
+/// An inactive verifier slot's `c`: its statement block's `hashA` of the zero message (`h_part`).
+pub fn c_inactive() -> Digest {
+    words_bytes(&BlockIn::of(BK::HashA, [0; 8], &[]).out())
+}
+
+/// An inactive sub-slot's arena₁ for `vk` (`phantom_seg`).
+pub fn inactive_arena(vk: &Digest) -> Vec<F> {
+    let mut v = vec![0u8; SEG_B];
+    phantom_seg(&mut v, vk, &c_inactive());
+    arena_of(&v)
+}
+
+/// **Arena₁ of a segment** (E1b, ASK-P §7): its stream's `AR_N` sixteen-byte elements (element `e` =
+/// H cell `sCell b0 e`, bytes `[16e, 16e + 16)` of the segment's main-chain bytes, zero padded).
+pub fn arena_of(b: &[u8]) -> Vec<F> {
+    (0..mfill::AR_N)
+        .map(|e| {
+            let mut x = [0u8; 16];
+            let lo = (16 * e).min(b.len());
+            let hi = (16 * e + 16).min(b.len());
+            x[..hi - lo].copy_from_slice(&b[lo..hi]);
+            F::from_bytes(&x)
+        })
+        .collect()
+}
+
+/// An inactive sub-slot's arena₁ for a zero `vk` (`prover setup`'s inactive solve order; a request
+/// fills its inactive slots with `inactive_arena(vk)`).
+pub fn phantom_arena() -> &'static [F] {
+    static A: std::sync::OnceLock<Vec<F>> = std::sync::OnceLock::new();
+    A.get_or_init(|| inactive_arena(&[0u8; 32]))
+}
+
+/// Slot `v`'s stream block `slotB0 κ v` (`FRNodeRows4.slotB0`): the previous node's chain start, or its
+/// aggregate's chain at the sub-slot's stride.
+pub fn slot_b0(k: NK, v: usize) -> usize {
+    if k.has_prev() && v == 0 {
+        k.ch_base(0)
+    } else {
+        let (a, i) = if k.has_prev() { (0, v - 1) } else { (v / 4, v % 4) };
+        k.ch_base(k.agg_child(a)) + i * S_BLK
+    }
+}
+
+/// **P2: the kind's rows beyond `node-N*.txt`, factored** (`mfill::Ext`): the same rows as
+/// `extend_links`, which the E2/E4 operations and `evalM` take by their structure (arena₁ rows slot by
+/// slot, slot 0's replay rows from prototype 0's `spare` once for every kind) instead of as link rows.
+pub fn set_ext(kt: &mut mfill::KindTab, k: NK) {
+    kt.ext = Some(mfill::Ext { vs: k.vslots(), a1_b0: (0..k.vslots()).map(|v| slot_b0(k, v)).collect(), spare: k.has_prev() });
+}
+
+/// **E1b: the kind's link rows beyond `node-N*.txt`** (absolute, appended to `kt.links`): every slot's
+/// arena₁ rows (`a1Rows4 κ v (slotB0 κ v)`: row `v·2^20 + arR1 + e` is `one·(A₁(e) + H(sCell b0 e)) = 0`),
+/// then, for a kind with a previous node, slot 0's replay rows (`repIRowsW rtC1d κ 0`: `p0.spare` with
+/// rows from `κ.vslots·2^20`, frame cells `+ one`, locals into the spare region).
+pub fn extend_links(kt: &mut mfill::KindTab, k: NK, p0: &mfill::Proto) {
+    let one = kt.one_cell;
+    let l = &mut kt.links;
+    l.reopen();
+    let a = [(one as u32, F::ONE)];
+    for v in 0..k.vslots() {
+        let b0 = slot_b0(k, v);
+        for e in 0..mfill::AR_N {
+            let b = [((one + v * mfill::SLOT + mfill::AR_A1 + e) as u32, F::ONE), (mfill::a1_h(b0, e) as u32, F::ONE)];
+            l.push_row((v * mfill::SLOT + mfill::AR_R1 + e) as u32, [&a, &b, &[]]);
+        }
+    }
+    if k.has_prev() {
+        let vs = k.vslots();
+        let sp = &p0.spare;
+        let mut fs: [Vec<(u32, F)>; 3] = Default::default();
+        for i in 0..sp.len() {
+            let rg = sp.rng[i];
+            for m in 0..3 {
+                fs[m].clear();
+                for t in rg[m] as usize..rg[m + 1] as usize {
+                    let c = sp.cells[t] as usize;
+                    let ac = spare_cell(one, vs, c);
+                    fs[m].push((ac as u32, sp.coef(t)));
+                }
+            }
+            l.push_row((vs * mfill::SLOT + sp.idx[i] as usize) as u32, [&fs[0], &fs[1], &fs[2]]);
+        }
+    }
+    l.done();
+}
+
 /// **The node witness** of kind `k` for `vk`, the previous node (if `k.has_prev()`) and the
 /// aggregate children; `protos` the dumped prototypes, `texts` their programs; `circ` the
 /// general tape (`general_circuit`), `lcirc` the leaf tape (the IR's `walkAB`).
@@ -604,7 +759,7 @@ fn stream_bytes(tr: &[(Vec<u8>, Digest)]) -> Vec<u8> {
 /// a batch, as a parallel job) and the L region's signature and digit cells: `z`, `a`, `b` (`a`, `b`
 /// final on H; `z` zero past H but for the L cells) and the block kinds.
 #[allow(clippy::type_complexity)]
-fn h_part(k: NK, vk: &Digest, prev: Option<&PrevIn>, aggs: &[AggIn], signed: &[&format::Signed], circ: &Circuit) -> (Vec<u64>, Vec<u64>, Vec<u64>, Vec<BK>, Vec<(&'static str, f64)>) {
+fn h_part(k: NK, vk: &Digest, prev: Option<&PrevIn>, aggs: &[AggIn], signed: &[&format::Signed], streams: &[Vec<u8>], circ: &Circuit) -> (Vec<u64>, Vec<u64>, Vec<u64>, Vec<BK>, Vec<(&'static str, f64)>) {
     let mut times = Vec::new();
     let mut t0 = std::time::Instant::now();
     let mut mark = |n: &'static str, times: &mut Vec<(&'static str, f64)>| {
@@ -615,7 +770,6 @@ fn h_part(k: NK, vk: &Digest, prev: Option<&PrevIn>, aggs: &[AggIn], signed: &[&
     let mut ins = vec![BlockIn::zero(); h_end];
     let bks: Vec<BK> = (0..k.blocks()).map(|b| bk_at(k, b)).collect();
     // the two main chains (sequential compressions; the chains in parallel)
-    let streams: Vec<Vec<u8>> = signed.iter().map(|s| stream_bytes(&s.tr)).collect();
     let chains: Vec<Vec<BlockIn>> = par::collect_vec(2, 1, |sg| {
         let (b0, l) = (k.ch_base(sg), k.ch_len(sg));
         let st = &streams[sg];
@@ -790,25 +944,43 @@ fn h_part(k: NK, vk: &Digest, prev: Option<&PrevIn>, aggs: &[AggIn], signed: &[&
             let x = el(&z, fj * 128 + 2 + h);
             fz(&mut z, base + 11008 + 2 * (kk - 1) + h, x);
         }
-        // 11264 + 128(j − 2) + q, 2 ≤ j ≤ maxK: the bits of main block aggL j − 1's element 7
-        for j in 2..=k.max_k() {
-            let x = el(&z, (k.ch_base(sg) + agg_l(j) - 1) * 128 + 7);
+        // `spC κ σ s q` = 11264 + 128(s − 1) + q, 1 ≤ s < maxK (R-A′, A1′ "For P2"): q < 120 bits
+        // 8–127 of spacer s's element 6 (its answer's bytes 0–14), q ≥ 120 bits 0–7 of sub-slot s's
+        // element 0 (the answer's byte 31); active or not (an inactive spacer's answer is zero)
+        let st = &streams[sg];
+        for sp in 1..k.max_k() {
+            let e6 = sp * STRIDE_B - 32;
             for q in 0..128 {
-                fz(&mut z, base + 11264 + 128 * (j - 2) + q, bit(x, q));
+                let (by, bi) = if q < 120 { (st[e6 + 1 + q / 8], q % 8) } else { (st[sp * STRIDE_B], q - 120) };
+                fz(&mut z, base + 11264 + 128 * (sp - 1) + q, F::new(((by >> bi) & 1) as u64, 0));
             }
         }
+    }
+    // track B4's `aggChk` rows (V_A's checks against `c_A` as link rows, `FRNodeRows4Agg*`): the hook
+    // for the auxiliary cells they will read (nothing yet: HEAD's dump has none)
+    for (ai, ag) in aggs.iter().enumerate() {
+        agg_chk_fill(k, ai, ag, &streams[k.agg_child(ai)], lb, &mut z);
     }
     mark("l_mirrors", &mut times);
     (z, a, b, bks, times)
 }
 
+/// **The hook for B4's `aggChk` rows** (QUEUE: "≈ 1.3–2.7 k link rows per aggregate", in progress at
+/// rev44 `e464756`): the cells those rows read beyond what the witness already holds (the main
+/// chain's stream cells, `c_A`'s block, the candidate final blocks, the spacer bits `spC`) are to be
+/// written here for aggregate `a` (signed child `k.agg_child(a)`, its `kk = ag.segs.len()` segments,
+/// `st` its main-chain bytes with the phantom constants, `lb` L's first cell). `node::check` reports
+/// any link row of the kind tables that fails, so a dump with B4's rows shows what is missing.
+fn agg_chk_fill(_k: NK, _a: usize, _ag: &AggIn, _st: &[u8], _lb: usize, _z: &mut [u64]) {}
+
 /// A slot's fill: the M cells, the fill's report, the program run's bits.
-pub type Fill = (Vec<F>, mfill::FillStats, Vec<bool>);
+/// E1b: plus slot 0's replay locals and their report (`mfill::spare_fill`; empty for a segment slot).
+pub type Fill = (Vec<F>, mfill::FillStats, Vec<bool>, Option<(Vec<F>, mfill::FillStats)>);
 
 /// One verifier slot's fill: the prototype program's run at the child's index (`run`: the child's
 /// proof, trace, statement, index; `None`: inactive), then `mfill::fill`. Slot `v` names it in the report.
 #[allow(clippy::too_many_arguments)]
-fn slot_fill(p: &mfill::Proto, text: &str, p0: bool, run: Option<(&[u8], &[(Vec<u8>, Digest)], Digest, usize)>, prev: Option<&PrevIn>, vk: &Digest, lcirc: &Circuit, v: usize) -> Fill {
+fn slot_fill(p: &mfill::Proto, text: &str, p0: bool, run: Option<(&[u8], &[(Vec<u8>, Digest)], Digest, usize)>, prev: Option<&PrevIn>, vk: &Digest, lcirc: &Circuit, v: usize, arena: &[F]) -> Fill {
     match run {
         Some((pi, tr, c, ix)) => {
             let o = crate::oracle::Seq::new(tr);
@@ -830,7 +1002,7 @@ fn slot_fill(p: &mfill::Proto, text: &str, p0: bool, run: Option<(&[u8], &[(Vec<
                 let n = u64::from_le_bytes(pi[so + 33..so + 41].try_into().unwrap());
                 n < [1u64 << 18, 1 << 16, 1 << 17][ix]
             };
-            let (val, st2) = mfill::fill_part(p, Some((&regs, ix)), partial);
+            let (val, st2) = mfill::fill_part(p, Some((&regs, ix)), partial, arena);
             st.written = st2.written;
             st.solved = st2.solved;
             st.zeroed = st2.zeroed;
@@ -841,11 +1013,12 @@ fn slot_fill(p: &mfill::Proto, text: &str, p0: bool, run: Option<(&[u8], &[(Vec<
             st.form_mismatch = st2.form_mismatch;
             st.first_form_mismatch = st2.first_form_mismatch;
             st.replayed = st2.replayed;
-            (val, st, bits)
+            let spare = p0.then(|| mfill::spare_fill(p, &val));
+            (val, st, bits, spare)
         }
         None => {
-            let (val, st) = mfill::fill(p, None);
-            (val, st, Vec::new())
+            let (val, st) = mfill::fill(p, None, arena);
+            (val, st, Vec::new(), None)
         }
     }
 }
@@ -853,7 +1026,8 @@ fn slot_fill(p: &mfill::Proto, text: &str, p0: bool, run: Option<(&[u8], &[(Vec<
 /// Slot 0's fill of a node with a previous node (its program run on `prev` and the solve): it needs
 /// only `prev`, so a step computes it beside its aggregate and hands it to `witness`.
 pub fn slot0_fill(prev: &PrevIn, vk: &Digest, protos: &[mfill::Proto; 2], texts: &[String; 2], lcirc: &Circuit) -> Fill {
-    slot_fill(&protos[0], &texts[0], true, Some((&prev.signed.pi[..], &prev.signed.tr[..], prev.c, prev.ix)), Some(prev), vk, lcirc, 0)
+    let arena = arena_of(&stream_bytes(&prev.signed.tr));
+    slot_fill(&protos[0], &texts[0], true, Some((&prev.signed.pi[..], &prev.signed.tr[..], prev.c, prev.ix)), Some(prev), vk, lcirc, 0, &arena)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -871,19 +1045,27 @@ pub fn witness(k: NK, vk: &Digest, prev: Option<&PrevIn>, aggs: &[AggIn], protos
     }
     let signed: Vec<&format::Signed> = (0..2).map(|sg| if k.is_agg(sg) { aggs[k.agg_of(sg)].signed } else { prev.unwrap().signed }).collect();
     let stmts: Vec<Digest> = (0..2).map(|sg| if k.is_agg(sg) { aggs[k.agg_of(sg)].c } else { prev.unwrap().c }).collect();
+    // the main chains' bytes (H's chains; arena₁ of every slot)
+    let streams: Vec<Vec<u8>> = (0..2)
+        .map(|sg| if k.is_agg(sg) { agg_stream(&signed[sg].tr, aggs[k.agg_of(sg)].segs.len(), k.max_k(), vk, &c_inactive()) } else { stream_bytes(&signed[sg].tr) })
+        .collect();
     // the slot runs (prototype program at the child's index) and fills, in parallel
     struct SlotJob<'a> {
         proto: usize,
         run: Option<(&'a [u8], &'a [(Vec<u8>, Digest)], Digest, usize)>,
+        arena: Vec<F>,
     }
     let jobs: Vec<SlotJob> = (0..k.vslots())
         .map(|v| {
             if k.has_prev() && v == 0 {
                 let p = prev.unwrap();
-                return SlotJob { proto: 0, run: Some((&p.signed.pi[..], &p.signed.tr[..], p.c, p.ix)) };
+                return SlotJob { proto: 0, run: Some((&p.signed.pi[..], &p.signed.tr[..], p.c, p.ix)), arena: arena_of(&streams[0]) };
             }
             let (a, i) = if k.has_prev() { (0, v - 1) } else { (v / 4, v % 4) };
-            SlotJob { proto: 1, run: aggs[a].segs.get(i).copied() }
+            let run = aggs[a].segs.get(i).copied();
+            let st = &streams[k.agg_child(a)];
+            let arena = arena_of(&st[i * STRIDE_B..(i * STRIDE_B + SEG_B).min(st.len())]);
+            SlotJob { proto: 1, run, arena }
         })
         .collect();
     // the solve plans: the inactive ones need no child (`warm_plans`, before the request); the
@@ -893,7 +1075,7 @@ pub fn witness(k: NK, vk: &Digest, prev: Option<&PrevIn>, aggs: &[AggIn], protos
     drop(sp);
     let fill_job = |v: usize| {
         let j = &jobs[v];
-        slot_fill(&protos[j.proto], &texts[j.proto], j.proto == 0, j.run, prev, vk, lcirc, v)
+        slot_fill(&protos[j.proto], &texts[j.proto], j.proto == 0, j.run, prev, vk, lcirc, v, &j.arena)
     };
     // slot 0's fill when the caller computed it already (`slot0_fill`, during the aggregate)
     let mut pre0 = pre0;
@@ -918,7 +1100,7 @@ pub fn witness(k: NK, vk: &Digest, prev: Option<&PrevIn>, aggs: &[AggIn], protos
     let first_out: Vec<std::sync::Mutex<Option<Fill>>> = firsts.iter().map(|_| std::sync::Mutex::new(None)).collect();
     par::run(1 + firsts.len(), &|i| {
         if i == 0 {
-            *h_out.lock().unwrap() = Some(h_part(k, vk, prev, aggs, &signed, circ));
+            *h_out.lock().unwrap() = Some(h_part(k, vk, prev, aggs, &signed, &streams, circ));
         } else {
             *first_out[i - 1].lock().unwrap() = Some(fill_job(firsts[i - 1]));
         }
@@ -944,10 +1126,19 @@ pub fn witness(k: NK, vk: &Digest, prev: Option<&PrevIn>, aggs: &[AggIn], protos
         z[2 * e + 1] = x.hi;
     };
     let mut mstats = Vec::new();
-    for (v, (val, st, bits)) in fills.into_iter().enumerate() {
+    let mut spare_st = None;
+    for (v, (val, st, bits, spare)) in fills.into_iter().enumerate() {
         let base = k.one_cell() + v * mfill::SLOT;
         for (l, x) in val.iter().enumerate() {
             fz(&mut z, base + l, *x);
+        }
+        // slot 0's replay locals in the spare region (REPF)
+        if let Some((sv, sst)) = spare {
+            let sb = k.one_cell() + k.vslots() * mfill::SLOT;
+            for (j, x) in sv.iter().enumerate() {
+                fz(&mut z, sb + j, *x);
+            }
+            spare_st = Some(sst);
         }
         let lsl = lb + v * (1 << 14);
         for (i, &bt) in bits.iter().enumerate().take(7552) {
@@ -957,6 +1148,16 @@ pub fn witness(k: NK, vk: &Digest, prev: Option<&PrevIn>, aggs: &[AggIn], protos
             fz(&mut z, lsl + 8516 + ix, F::ONE);
         }
         mstats.push(st);
+    }
+    // the auxiliary cells the link rows read beyond the slots' fills (`AUX_L`: B4's `aggChk` cells),
+    // solved from the kind table's rows
+    let sp = crate::prof::span("wit.aux");
+    let kt = &crate::plan::kind_tabs_static()[k as usize];
+    let ranges: Vec<(usize, usize)> = (0..2).filter(|&sg| k.is_agg(sg)).flat_map(|sg| AUX_L.iter().map(move |&(a, b)| (lb + sg * (1 << 14) + a, lb + sg * (1 << 14) + b))).collect();
+    let (aux_solved, aux_left) = solve_aux(kt, &mut z, &ranges);
+    drop(sp);
+    if std::env::var_os("FLOCK_VERBOSE").is_some() {
+        eprintln!("  wit.aux solved {aux_solved} cells, {aux_left} left at zero");
     }
     // a = b = z on every block from H's end (L, M, free)
     let (az, bz) = (&mut a[256 * h_end..], &mut b[256 * h_end..]);
@@ -975,7 +1176,124 @@ pub fn witness(k: NK, vk: &Digest, prev: Option<&PrevIn>, aggs: &[AggIn], protos
         pubv.extend(digest_f(vk));
         pubv.extend(digest_f(&stmts[sg]));
     }
+    // the spare fill's report after the slots' (an extra entry)
+    mstats.extend(spare_st);
     NodeWit { k, z, a, b, bks, pubv, times, mstats }
+}
+
+/// **The auxiliary L cells of the link rows** (table-driven: each entry an offset range of an
+/// aggregate signed child's `2^14` L stride whose cells only the kind table's link rows define):
+/// B4's `aggChk` cells (`FRNodeRows4AggChk`: `bC` … `xC`, offsets `12,288 … 14,487`). A later row
+/// family adds its range here; `solve_aux` needs no other change.
+pub const AUX_L: [(usize, usize); 1] = [(12_288, 14_488)];
+
+/// Solve the cells of `ranges` (absolute, initially zero in `z`) from the kind table's link rows
+/// that read them, to a fixed point, by two rules: a row with one unknown cell appearing linearly
+/// (`mfill::try_row`'s solve, a known zero factor included), and a **packing** row `A·B = C` whose
+/// unknowns all lie in `B` with distinct one-bit coefficients `E_j` (`pk`/`pkO`: `x = Σ E_j b_j`):
+/// each `b_j` is bit `j` of `(C/A − B_known)`. Cells no row determines stay zero (an inactive
+/// sub-slot's inverse). Returns (solved, left).
+pub fn solve_aux(kt: &mfill::KindTab, z: &mut [u64], ranges: &[(usize, usize)]) -> (usize, usize) {
+    use std::collections::HashMap;
+    let inr = |c: usize| ranges.iter().any(|&(a, b)| (a..b).contains(&c));
+    let l = &kt.links;
+    let mut unk: HashMap<usize, bool> = HashMap::new(); // cell → solved
+    let mut rows_of: HashMap<usize, Vec<usize>> = HashMap::new();
+    let mut rows: Vec<usize> = Vec::new();
+    // `node-N*.txt`'s rows only (the arena₁ and replay rows read no L cell)
+    for i in 0..kt.base_links {
+        let rg = l.rng[i];
+        let mut hit = false;
+        for t in rg[0] as usize..rg[3] as usize {
+            let c = l.cells[t] as usize;
+            if inr(c) {
+                unk.entry(c).or_insert(false);
+                rows_of.entry(c).or_default().push(i);
+                hit = true;
+            }
+        }
+        if hit {
+            rows.push(i);
+        }
+    }
+    let get = |z: &[u64], c: usize| F { lo: z[2 * c], hi: z[2 * c + 1] };
+    let mut queue: std::collections::VecDeque<usize> = rows.iter().copied().collect();
+    let mut inq: std::collections::HashSet<usize> = rows.iter().copied().collect();
+    let mut solved = 0usize;
+    while let Some(i) = queue.pop_front() {
+        inq.remove(&i);
+        let rg = l.rng[i];
+        // per form: the known value, the unknown terms (cell, coefficient)
+        let mut kn = [F::ZERO; 3];
+        let mut us: [Vec<(usize, F)>; 3] = [Vec::new(), Vec::new(), Vec::new()];
+        for m in 0..3 {
+            for t in rg[m] as usize..rg[m + 1] as usize {
+                let c = l.cells[t] as usize;
+                if unk.get(&c) == Some(&false) {
+                    us[m].push((c, l.coef(t)));
+                } else {
+                    kn[m] += l.coef(t) * get(z, c);
+                }
+            }
+        }
+        let mut cells: Vec<usize> = us.iter().flatten().map(|x| x.0).collect();
+        cells.sort_unstable();
+        cells.dedup();
+        let mut set: Vec<(usize, F)> = Vec::new();
+        if cells.len() == 1 && us.iter().all(|u| u.len() <= 1) {
+            // one unknown x, linear: (a0 + αx)(b0 + βx) = c0 + γx with α or β zero
+            let co = |m: usize| us[m].first().map(|x| x.1).unwrap_or(F::ZERO);
+            let (al, be, ga) = (co(0), co(1), co(2));
+            if al.is_zero() || be.is_zero() {
+                let lin = kn[0] * be + al * kn[1] + ga;
+                if !lin.is_zero() {
+                    set.push((cells[0], (kn[0] * kn[1] + kn[2]) * lin.inv()));
+                }
+            }
+        } else if cells.len() > 1 && us[0].is_empty() && us[2].is_empty() && !kn[0].is_zero() {
+            // a packing: Σ coef·x = C/A − B_known, the coefficients distinct single bits
+            let t = kn[2] * kn[0].inv() + kn[1];
+            let bit = |f: F| -> Option<usize> {
+                let (lo, hi) = (f.lo, f.hi);
+                match (lo.count_ones(), hi.count_ones()) {
+                    (1, 0) => Some(lo.trailing_zeros() as usize),
+                    (0, 1) => Some(64 + hi.trailing_zeros() as usize),
+                    _ => None,
+                }
+            };
+            let pos: Option<Vec<usize>> = us[1].iter().map(|x| bit(x.1)).collect();
+            if let Some(pos) = pos {
+                let mut seen = 0u128;
+                let distinct = us[1].len() == cells.len() && pos.iter().all(|&j| {
+                    let f = seen >> j & 1 == 0;
+                    seen |= 1u128 << j;
+                    f
+                });
+                if distinct {
+                    let tv = (t.hi as u128) << 64 | t.lo as u128;
+                    // every bit of `t` must be covered by an unknown, else the row has no solution
+                    if tv & !seen == 0 {
+                        for (x, j) in us[1].iter().zip(pos) {
+                            set.push((x.0, F::new((tv >> j & 1) as u64, 0)));
+                        }
+                    }
+                }
+            }
+        }
+        for (c, v) in set {
+            z[2 * c] = v.lo;
+            z[2 * c + 1] = v.hi;
+            unk.insert(c, true);
+            solved += 1;
+            for &r in rows_of.get(&c).map(|v| &v[..]).unwrap_or(&[]) {
+                if inq.insert(r) {
+                    queue.push_back(r);
+                }
+            }
+        }
+    }
+    let left = unk.values().filter(|s| !**s).count();
+    (solved, left)
 }
 
 /// Record both prototypes' inactive solve plans (no child needed: done before a request).
@@ -990,8 +1308,9 @@ pub fn warm_plans(protos: &[mfill::Proto; 2]) {
         match k {
             100 => {
                 mfill::warm_adjacency(pr);
-                if pr.plan[0].get().is_none() {
-                    mfill::fill(pr, None);
+                // prototype 0 is never inactive (the previous node's slot)
+                if p == 1 && pr.plan[0].get().is_none() {
+                    mfill::fill(pr, None, phantom_arena());
                 }
             }
             101 => {
@@ -1126,8 +1445,8 @@ pub fn check(w: &NodeWit, protos: &[mfill::Proto; 2], kt: &mfill::KindTab) -> Ch
         ch.m_rows += p.rows.len();
         ch.m_bad += bad.iter().sum::<usize>();
     }
-    for i in 0..kt.links.len() {
-        let [a, b, c] = kt.links.eval(i, &|x| fv(x as usize));
+    let lv = kt.links_eval(&|x| fv(x));
+    for (i, [a, b, c]) in lv.into_iter().enumerate() {
         if a * b != c {
             ch.link_rows_bad += 1;
             if ch.first_bad_links.len() < 400 {
@@ -1135,7 +1454,38 @@ pub fn check(w: &NodeWit, protos: &[mfill::Proto; 2], kt: &mfill::KindTab) -> Ch
             }
         }
     }
+    // P2: the factored rows (`mfill::Ext`), laid out as `extend_links` lays them out
+    if let Some(x) = &kt.ext {
+        let mut bad = |row: usize, ok: bool| {
+            if !ok {
+                ch.link_rows_bad += 1;
+                if ch.first_bad_links.len() < 400 {
+                    ch.first_bad_links.push(row as u32);
+                }
+            }
+        };
+        for v in 0..x.vs {
+            for e in 0..mfill::AR_N {
+                let b = fv(one + v * mfill::SLOT + mfill::AR_A1 + e) + fv(mfill::a1_h(x.a1_b0[v], e));
+                bad(v * mfill::SLOT + mfill::AR_R1 + e, (fv(one) * b).is_zero());
+            }
+        }
+        if x.spare {
+            let sp = &protos[0].spare;
+            for i in 0..sp.len() {
+                let [a, b, c] = sp.eval(i, &|c| fv(spare_cell(one, x.vs, c as usize)));
+                bad(x.vs * mfill::SLOT + sp.idx[i] as usize, a * b == c);
+            }
+        }
+    }
     ch
+}
+
+/// P2: a spare-local cell `c` (frame `c < 2^20`, local `j` at `2^20 + j`) of slot 0's replay rows as an
+/// absolute cell (`extend_links`'s placement).
+#[inline(always)]
+pub fn spare_cell(one: usize, vs: usize, c: usize) -> usize {
+    if c < mfill::SLOT { one + c } else { one + vs * mfill::SLOT + (c - mfill::SLOT) }
 }
 
 /// The general tape compiled for `trace_blocks`: one slot per block position (an input's bit, a

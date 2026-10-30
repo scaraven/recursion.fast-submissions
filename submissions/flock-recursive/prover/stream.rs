@@ -67,14 +67,21 @@ impl Pre {
         let sp = crate::prof::span("pre.node_data");
         let nd = plan::node_data();
         drop(sp);
-        let kts = [node::NK::N2, node::NK::N4, node::NK::N8].map(|k| std::sync::Arc::new(nd.kind_tab(k)));
-        // the solve orders `prover setup` recorded, else the inactive ones now
-        let sp = crate::prof::span("pre.load_plans");
-        load_setup_plans(nd);
-        drop(sp);
-        let sp = crate::prof::span("pre.warm_plans");
-        node::warm_plans(&nd.protos);
-        drop(sp);
+        // P2: the kind tables beside the plans (independent; both on the pool)
+        let kts = std::thread::scope(|sc| {
+            let h = sc.spawn(|| {
+                let _sp = crate::prof::span("pre.kind_tabs");
+                plan::kind_tabs_static().clone()
+            });
+            // the solve orders `prover setup` recorded, else the inactive ones now
+            let sp = crate::prof::span("pre.load_plans");
+            load_setup_plans(nd);
+            drop(sp);
+            let sp = crate::prof::span("pre.warm_plans");
+            node::warm_plans(&nd.protos);
+            drop(sp);
+            h.join().unwrap_or_else(|_| service::fatal("the kind tables panicked"))
+        });
         let gcirc = node::general_circuit();
         node::warm_trace(&gcirc);
         Pre { nd, kts, circ: circuit::Circuit::build(), gcirc, base: circuit::Circuit::build_base() }
@@ -92,14 +99,14 @@ const SCHED: &str = "sched.bin";
 /// Load the solve orders `prover setup` stored in `$RF_SETUP` (if any, and of this node data).
 pub fn load_setup_plans(nd: &plan::NodeData) -> bool {
     let dir = std::env::var_os("RF_SETUP");
-    let loaded = dir.as_ref().and_then(|d| std::fs::read(Path::new(d).join(PLANS)).ok()).is_some_and(|b| crate::mfill::load_plans(&nd.protos, &plan::data_tag(), &b));
+    let loaded = dir.as_ref().and_then(|d| plan::read_par(&Path::new(d).join(PLANS))).is_some_and(|b| crate::mfill::load_plans(&nd.protos, &plan::data_tag(), &b));
     // the inactive fills, recorded with the plans (same node data)
     if loaded {
-        if let Some(b) = dir.as_ref().and_then(|d| std::fs::read(Path::new(d).join(SCHED)).ok()) {
+        if let Some(b) = dir.as_ref().and_then(|d| plan::read_par(&Path::new(d).join(SCHED))) {
             crate::mfill::load_scheds(&nd.protos, &plan::data_tag(), &b);
         }
         for (i, p) in nd.protos.iter().enumerate() {
-            if let Some(b) = dir.as_ref().and_then(|d| std::fs::read(Path::new(d).join(format!("inactive-p{i}.bin"))).ok()) {
+            if let Some(b) = dir.as_ref().and_then(|d| plan::read_par(&Path::new(d).join(format!("inactive-p{i}.bin")))) {
                 crate::mfill::load_inactive(p, &b);
             }
         }
@@ -119,7 +126,7 @@ fn toy_node(o: &dyn crate::oracle::Oracle, pre: &Pre, k: node::NK, vk: &Digest, 
         Some(p) => [p.c, aggs[0].1],
         None => [aggs[0].1, aggs[1].1],
     };
-    let ni = nodeprove::NodeIn { k, vk: *vk, cs, w: &w, mats: nodeprove::Mats { k, kt: pre.kt(k), protos: &pre.nd.protos }, base: &pre.base };
+    let ni = nodeprove::NodeIn { k, vk: *vk, cs, w: &w, mats: nodeprove::Mats { k, kt: pre.kt(k), protos: &pre.nd.protos }, kts: [&*pre.kts[0], &*pre.kts[1], &*pre.kts[2]], base: &pre.base };
     let (pi, _) = nodeprove::prove(o, &ni);
     let c = nodeprove::node_c(&cs);
     let tape = crate::oracle::Tape::new(o);
@@ -194,8 +201,10 @@ pub fn setup(dir: &Path) {
     if std::env::var_os("FLOCK_NODE_DUMP").is_none() {
         std::fs::write(dir.join(plan::IMAGE), plan::save_image(pre.nd, &plan::data_tag())).unwrap_or_else(|e| service::fatal(&format!("{}: {e}", dir.display())));
     }
-    for (i, p) in pre.nd.protos.iter().enumerate() {
-        let (v, st) = crate::mfill::fill(p, None);
+    // prototype 1 only: prototype 0 (the previous node's slot) is never inactive (E1b: its phantom
+    // stream is a segment's, so its inactive fill would not hold)
+    for (i, p) in pre.nd.protos.iter().enumerate().skip(1) {
+        let (v, st) = crate::mfill::fill(p, None, crate::node::phantom_arena());
         if st.failed_rows != 0 || st.conflicts != 0 {
             service::fatal(&format!("setup: prototype {i}'s inactive fill: {st:?}"));
         }
@@ -208,7 +217,7 @@ pub fn setup(dir: &Path) {
 /// The previous node's slot context (its kind's tables for its program's node ops).
 fn prev_in<'a>(pre: &'a Pre, ps: &'a format::Signed, c: Digest) -> node::PrevIn<'a> {
     let pk = node::NK::of_byte(ps.pi[0]).unwrap_or_else(|| service::fatal("prev.bin: not a node proof"));
-    let ctx = std::sync::Arc::new(ir::NodeCtx { k: pk, protos: pre.nd.protos.clone(), kt: pre.kt(pk).clone() });
+    let ctx = std::sync::Arc::new(ir::NodeCtx::new(pk, pre.nd.protos.clone(), pre.kts.clone()));
     node::PrevIn { signed: ps, c, ix: [1, 0, 2][pk as usize], ctx, base: &pre.base }
 }
 
@@ -241,7 +250,7 @@ fn node_signed(svc: &service::Service, pre: &Pre, k: node::NK, vk: &Digest, prev
     };
     let mut rec = Recorder::new(svc);
     rec.batch_max = 128;
-    let ni = nodeprove::NodeIn { k, vk: *vk, cs, w: &w, mats: nodeprove::Mats { k, kt, protos: &nd.protos }, base };
+    let ni = nodeprove::NodeIn { k, vk: *vk, cs, w: &w, mats: nodeprove::Mats { k, kt, protos: &nd.protos }, kts: [&*pre.kts[0], &*pre.kts[1], &*pre.kts[2]], base };
     let (pi, ptm) = nodeprove::prove(&rec, &ni);
     if std::env::var_os("FLOCK_VERBOSE").is_some() {
         eprintln!("node {} phases {}", k.name(), ptm.report());

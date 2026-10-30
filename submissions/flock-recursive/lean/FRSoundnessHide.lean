@@ -3,8 +3,8 @@
 -- RET-2: the declarations revision 4.1 reads moved to `FRSoundnessCoreRows`.
 import FRSoundnessStepE
 import FRSoundnessLigerito
-import FRSoundnessCoreHide
-import FRSoundnessCoreRows
+import FRSoundness4TailStep
+import FRSoundnessCoreFront
 
 /-!
 # The Hide potential `μ_Hide`, and the entry's potential `μ_doom + μ_Hide` (§10 changes 15)

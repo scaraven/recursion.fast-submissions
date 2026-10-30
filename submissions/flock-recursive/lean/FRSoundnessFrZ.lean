@@ -2,7 +2,7 @@
 -- RET-2: the declarations revision 4.1 reads moved to `FRSoundnessCoreRows`.
 import FRSoundnessFrExt
 import FRSoundnessFrPend
-import FRSoundnessCoreRows
+import FRSoundnessCoreFront
 
 /-!
 # Z: the block zerocheck with the univariate skip (positions 3 … 67)

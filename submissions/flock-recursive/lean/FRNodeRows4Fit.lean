@@ -63,45 +63,6 @@ theorem aggChild_lt (κ : NodeKind) (σ : ℕ) (hσ : σ < κ.vslots) : N4c.aggC
   cases κ <;> simp only [N4c.aggChild, aggSlot, NodeKind.hasPrev, NodeKind.vslots, NodeKind.segSlots,
     if_true, Bool.false_eq_true, if_false] at hσ ⊢ <;> omega
 
-/-- **The pack rows' cells**: M's `one`, the slot's selector copies, and H stream cells below M. -/
-theorem packRows4_cells (κ : NodeKind) {σ : ℕ} (hσ : σ < κ.vslots) :
-    ∀ r ∈ packRows4 κ σ, ∀ t ∈ r.a ++ r.b ++ r.c,
-      t.1 = κ.oneCell ∨ (∃ ι, t.1 = κ.oneCell + selR σ ι) ∨ t.1 < κ.oneCell := by
-  have hw : ∀ b0, b0 < 2 → ∀ r ∈ wfRows κ.oneCell (N4c.chBase κ b0), ∀ t ∈ r.a ++ r.b ++ r.c,
-      t.1 = κ.oneCell ∨ (∃ ι, t.1 = κ.oneCell + selR σ ι) ∨ t.1 < κ.oneCell := by
-    intro b0 hb r hr t ht
-    obtain ⟨p, hp, rfl⟩ := List.mem_map.1 hr
-    simp only [pinRow, Lin.sub, Lin.cell, Lin.smul, List.map_cons, List.map_nil, List.cons_append,
-      List.nil_append, List.append_nil, List.mem_cons, List.not_mem_nil, or_false] at ht
-    rcases ht with rfl | rfl | rfl
-    · exact Or.inl rfl
-    · exact Or.inr (Or.inr (sCell_lt κ hb (wfSeg_lt p hp)))
-    · exact Or.inl rfl
-  have hk : ∀ b0, b0 < 2 → ∀ G, ∀ t ∈ (kindRow κ.oneCell (sCell (N4c.chBase κ b0) 5)
-      (fun ι => κ.oneCell + selR σ ι) G).a ++ (kindRow κ.oneCell (sCell (N4c.chBase κ b0) 5)
-      (fun ι => κ.oneCell + selR σ ι) G).b ++ (kindRow κ.oneCell (sCell (N4c.chBase κ b0) 5)
-      (fun ι => κ.oneCell + selR σ ι) G).c,
-      t.1 = κ.oneCell ∨ (∃ ι, t.1 = κ.oneCell + selR σ ι) ∨ t.1 < κ.oneCell := by
-    intro b0 hb G t ht
-    simp only [kindRow, Lin.sub, Lin.cell, Lin.smul, Circ.kinds, List.map_cons, List.map_nil,
-      List.cons_append, List.nil_append, List.append_nil, List.mem_cons, List.not_mem_nil, or_false] at ht
-    rcases ht with rfl | rfl | rfl | rfl | rfl
-    · exact Or.inl rfl
-    · exact Or.inr (Or.inr (sCell_lt κ hb (by decide)))
-    · exact Or.inr (Or.inl ⟨.L32, rfl⟩)
-    · exact Or.inr (Or.inl ⟨.P30, rfl⟩)
-    · exact Or.inr (Or.inl ⟨.N30, rfl⟩)
-  intro r hr
-  unfold packRows4 packHead4 packWf4 packB at hr
-  split_ifs at hr with h1 h2 <;> simp only [List.mem_append, List.mem_singleton, List.not_mem_nil,
-    or_false] at hr
-  · rcases hr with rfl | hr
-    · exact hk 0 (by norm_num) _
-    · exact hw 0 (by norm_num) r hr
-  · rcases hr with rfl | hr
-    · exact hk _ (aggChild_lt κ σ hσ) _
-    · exact hw _ (aggChild_lt κ σ hσ) r hr
-
 /-- The kinds' constants the bounds use. -/
 theorem fitConsts (κ : NodeKind) :
     κ.oneCell = 3 * 2 ^ κ.dims.logM ∧ Snd.P4b.ncR κ = κ.dims.logM + 2 ∧ Snd.P4b.e2R κ = κ.dims.logM ∧
@@ -113,8 +74,132 @@ theorem fitConsts (κ : NodeKind) :
   simp only [NodeKind.oneCell]
   nlinarith
 
-/-- **A slot's rows and link rows**: indices in its region, cells below `2^(logM + 2)`. -/
-theorem slot_mem (κ : NodeKind) (hF : ProtoFit) {σ : ℕ} (hσ : σ < κ.vslots) {p : ℕ × Row}
+/-- **Every slot's stream segment lies in H** (R-A′: sub-slot `i` at block `chBase + i·sBlk`): its
+`cLen` blocks end before M, a later sub-slot has the spacer's two blocks before it, and the spacer's
+bit cells are in its aggregate's L stride. -/
+theorem packB_fit (κ : NodeKind) : ∀ σ < κ.vslots,
+    (if isPrevSlot κ σ then N4c.chBase κ 0 else N4c.chBase κ (N4c.aggChild κ (aggSlot κ σ)) + subIx κ σ * N4c.sBlk) +
+      N4c.cLen ≤ κ.mBase ∧
+    (segIx κ σ ≠ 0 → 2 ≤ (if isPrevSlot κ σ then N4c.chBase κ 0 else
+      N4c.chBase κ (N4c.aggChild κ (aggSlot κ σ)) + subIx κ σ * N4c.sBlk)) ∧
+    segIx κ σ < 4 ∧ N4c.aggChild κ (aggSlot κ σ) < 2 := by
+  cases κ <;> decide
+
+theorem pinRow_cells {one x : ℕ} {c : F} {t : ℕ × F}
+    (ht : t ∈ (pinRow one x c).a ++ (pinRow one x c).b ++ (pinRow one x c).c) : t.1 = one ∨ t.1 = x := by
+  simp only [pinRow, Lin.sub, Lin.cell, Lin.smul, List.map_cons, List.map_nil, List.cons_append,
+    List.nil_append, List.append_nil, List.mem_cons, List.not_mem_nil, or_false] at ht
+  rcases ht with rfl | rfl | rfl <;> simp
+
+theorem boolRow_cells {one c : ℕ} {t : ℕ × F}
+    (ht : t ∈ (boolRow one c).a ++ (boolRow one c).b ++ (boolRow one c).c) : t.1 = one ∨ t.1 = c := by
+  simp only [boolRow, Lin.sub, Lin.cell, Lin.smul, List.map_cons, List.map_nil, List.cons_append,
+    List.nil_append, List.append_nil, List.mem_cons, List.not_mem_nil, or_false] at ht
+  rcases ht with rfl | rfl | rfl <;> simp
+
+theorem decRow_cells {one x : ℕ} {c : F} {cell : ℕ → ℕ} {d n : ℕ} {t : ℕ × F}
+    (ht : t ∈ (decRow one x c (packAt cell d n)).a ++ (decRow one x c (packAt cell d n)).b ++
+      (decRow one x c (packAt cell d n)).c) : t.1 = one ∨ t.1 = x ∨ ∃ q < n, t.1 = cell q := by
+  simp only [decRow, Lin.sub, Lin.cell, Lin.smul, packAt, List.map_cons, List.map_nil, List.cons_append,
+    List.nil_append, List.append_nil, List.mem_cons, List.map_map, List.mem_map,
+    List.mem_range, Function.comp_def] at ht
+  rcases ht with rfl | rfl | rfl | ⟨q, hq, rfl⟩
+  · simp
+  · simp
+  · simp
+  · exact Or.inr (Or.inr ⟨q, hq, rfl⟩)
+
+/-- **The pack rows' cells**: M's `one`, the slot's selector copies, H stream cells and the spacer's L
+bit cells, all below M. -/
+theorem packRows4_cells (κ : NodeKind) {σ : ℕ} (hσ : σ < κ.vslots) :
+    ∀ r ∈ packRows4 κ σ, ∀ t ∈ r.a ++ r.b ++ r.c,
+      t.1 = κ.oneCell ∨ (∃ ι, t.1 = κ.oneCell + selR σ ι) ∨ t.1 < κ.oneCell := by
+  obtain ⟨hb, h2, hs4, hσa⟩ := packB_fit κ σ hσ
+  set b0 := (if isPrevSlot κ σ then N4c.chBase κ 0 else
+    N4c.chBase κ (N4c.aggChild κ (aggSlot κ σ)) + subIx κ σ * N4c.sBlk) with hb0
+  have hpk : packB κ σ = some (b0, if isPrevSlot κ σ then nodeGrp else segGrp) := by
+    rw [hb0]; unfold packB; split_ifs <;> rfl
+  obtain ⟨-, -, -, -, hL⟩ := fitConsts κ
+  have hv3 : 3 ≤ κ.vslots := by cases κ <;> decide
+  have hone : κ.oneCell = κ.mBase * 128 := rfl
+  have hH : ∀ e, e / 4 < N4c.cLen → sCell b0 e < κ.oneCell := fun e he => by
+    have : e % 4 < 4 := Nat.mod_lt _ (by norm_num)
+    simp only [sCell]; nlinarith
+  have hH2 : ∀ j < 8, segIx κ σ ≠ 0 → sCell (b0 - 2) j < κ.oneCell := fun j hj hs => by
+    have := h2 hs
+    have h0 := hH 0 (by decide)
+    simp only [sCell] at h0 ⊢
+    have : j / 4 ≤ 1 := by omega
+    have : j % 4 < 4 := Nat.mod_lt _ (by norm_num)
+    have : (b0 - 2 + j / 4) * 128 + 4 + j % 4 < b0 * 128 := by
+      have : b0 - 2 + j / 4 + 1 ≤ b0 := by omega
+      nlinarith
+    omega
+  have hC : ∀ q < 128, spC κ (N4c.aggChild κ (aggSlot κ σ)) (segIx κ σ) q < κ.oneCell := fun q hq => by
+    simp only [spC]
+    have : N4c.aggChild κ (aggSlot κ σ) * 2 ^ 14 ≤ 2 ^ 14 := by
+      have := hσa; interval_cases (N4c.aggChild κ (aggSlot κ σ)) <;> simp
+    have : 128 * (segIx κ σ - 1) ≤ 384 := by omega
+    have : 3 * 2 ^ 14 ≤ κ.vslots * 2 ^ 14 := Nat.mul_le_mul_right _ hv3
+    omega
+  have hok : ∀ x, x = κ.oneCell ∨ x < κ.oneCell →
+      x = κ.oneCell ∨ (∃ ι, x = κ.oneCell + selR σ ι) ∨ x < κ.oneCell := fun x h => by
+    rcases h with h | h
+    · exact Or.inl h
+    · exact Or.inr (Or.inr h)
+  intro r hr t ht
+  rw [packRows4, packHead4, packWf4, hpk] at hr
+  simp only [List.mem_append, List.mem_cons] at hr
+  rcases hr with (rfl | hr) | hr
+  · -- the kind tie
+    simp only [kindRow, Lin.sub, Lin.cell, Lin.smul, Circ.kinds, List.map_cons, List.map_nil,
+      List.cons_append, List.nil_append, List.append_nil, List.mem_cons, List.not_mem_nil, or_false] at ht
+    rcases ht with rfl | rfl | rfl | rfl | rfl
+    · exact Or.inl rfl
+    · exact Or.inr (Or.inr (hH 5 (by decide)))
+    · exact Or.inr (Or.inl ⟨.L32, rfl⟩)
+    · exact Or.inr (Or.inl ⟨.P30, rfl⟩)
+    · exact Or.inr (Or.inl ⟨.N30, rfl⟩)
+  · -- the head rows
+    unfold headRows at hr
+    split_ifs at hr with hs0
+    · simp only [List.mem_singleton] at hr; subst hr
+      rcases pinRow_cells ht with h | h <;> rw [h]
+      · exact Or.inl rfl
+      · exact Or.inr (Or.inr (hH 0 (by decide)))
+    · rcases List.mem_append.1 hr with hr | hr
+      rcases List.mem_append.1 hr with hr | hr
+      · obtain ⟨j, hj, rfl⟩ := List.mem_map.1 hr
+        have hj := List.mem_range.1 hj
+        rcases pinRow_cells ht with h | h <;> rw [h]
+        · exact Or.inl rfl
+        · exact Or.inr (Or.inr (hH2 j (by omega) hs0))
+      · obtain ⟨q, hq, rfl⟩ := List.mem_map.1 hr
+        have hq := List.mem_range.1 hq
+        rcases boolRow_cells ht with h | h <;> rw [h]
+        · exact Or.inl rfl
+        · exact Or.inr (Or.inr (hC q hq))
+      rcases List.mem_cons.1 hr with rfl | hr
+      · rcases decRow_cells ht with h | h | ⟨q, hq, h⟩ <;> rw [h]
+        · exact Or.inl rfl
+        · exact Or.inr (Or.inr (hH2 6 (by norm_num) hs0))
+        · exact Or.inr (Or.inr (hC q (by omega)))
+      rw [List.mem_singleton] at hr; subst hr
+      · rcases decRow_cells ht with h | h | ⟨q, hq, h⟩ <;> rw [h]
+        · exact Or.inl rfl
+        · exact Or.inr (Or.inr (hH 0 (by decide)))
+        · exact Or.inr (Or.inr (hC _ (by omega)))
+  · -- the pinned elements
+    obtain ⟨p, hp, rfl⟩ := List.mem_map.1 hr
+    rcases pinRow_cells ht with h | h <;> rw [h]
+    · exact Or.inl rfl
+    · have := wfSeg_lt p hp
+      have hs : N4c.segB = 64 * N4c.cLen := by decide
+      exact Or.inr (Or.inr (hH _ (by omega)))
+
+/-- **A slot's rows and link rows** (before ASK-P's arena rows): indices in its region, cells below
+`2^(logM + 2)`. -/
+theorem slot_mem0 (κ : NodeKind) (hF : ProtoFit) {σ : ℕ} (hσ : σ < κ.vslots) {p : ℕ × Row}
     (hp : p ∈ slotRows4 κ σ ++ linkIRows4 κ σ) :
     (σ * slotM4 ≤ p.1 ∧ p.1 < σ * slotM4 + slotM4) ∧
       ∀ t ∈ p.2.a ++ p.2.b ++ p.2.c, t.1 < 2 ^ (κ.dims.logM + 2) := by
@@ -190,8 +275,160 @@ theorem slot_mem (κ : NodeKind) (hF : ProtoFit) {σ : ℕ} (hσ : σ < κ.vslot
       | (have := e2 .L32; omega) | (have := e2 .P30; omega) | (have := e2 .N30; omega)
       | (have := e3 .L32; omega) | (have := e3 .P30; omega) | (have := e3 .N30; omega) | omega
 
-/-- **A slot's indices are distinct.** -/
-theorem slot_nodup (κ : NodeKind) (hF : ProtoFit) (σ : ℕ) :
+/-! ### The arena rows (ASK-P) -/
+
+/-- The placed arenas' row and cell constants (`arena_rows`, `arena_cells`). -/
+theorem arConsts : arR2 + arR2N = arR1 ∧ arR1 + arN ≤ arRb ∧ arRb + arNb + linkN ≤ slotM4 ∧
+    arA1 + arN ≤ arBt ∧ arBt + arNb ≤ slotM4 ∧ arN = 4 * N4c.cLen :=
+  ⟨arena_rows.1, arena_rows.2.1, arena_rows.2.2, arena_cells.1, arena_cells.2.1, by rw [arN_eq]; rfl⟩
+
+theorem cpRow_cells {one x y : ℕ} {t : ℕ × F}
+    (ht : t ∈ (cpRow one x y).a ++ (cpRow one x y).b ++ (cpRow one x y).c) : t.1 = one ∨ t.1 = x ∨ t.1 = y := by
+  simp only [cpRow, Lin.sub, Lin.cell, Lin.smul, List.map_cons, List.map_nil, List.cons_append,
+    List.nil_append, List.append_nil, List.mem_cons, List.not_mem_nil, or_false] at ht
+  rcases ht with rfl | rfl | rfl <;> simp
+
+/-- Slot `σ`'s stream cells (arena₁'s H side) lie below M. -/
+theorem slotB0_cell (κ : NodeKind) {σ e : ℕ} (hσ : σ < κ.vslots) (he : e < arN) :
+    sCell (slotB0 κ σ) e < κ.oneCell := by
+  have hb : slotB0 κ σ + N4c.cLen ≤ κ.mBase := (packB_fit κ σ hσ).1
+  have hN := arConsts.2.2.2.2.2
+  have hone : κ.oneCell = κ.mBase * 128 := rfl
+  have : e % 4 < 4 := Nat.mod_lt _ (by norm_num)
+  have : e / 4 + 1 ≤ N4c.cLen := by omega
+  simp only [sCell, hone]; nlinarith
+
+/-- **A slot's arena rows' indices**: if they fit, in `[arR2, arRb + arNb)` of its region (below
+the link region); else the rejecting row's. -/
+theorem ar_idx (κ : NodeKind) {σ : ℕ} {p : ℕ × Row} (hp : p ∈ arIRows4 κ σ) :
+    (ArFit ∧ σ * slotM4 + arR2 ≤ p.1 ∧ p.1 + linkN < σ * slotM4 + slotM4) ∨ p.1 = arRej σ := by
+  obtain ⟨c1, c2, c3, -, -, -⟩ := arConsts
+  unfold arIRows4 at hp
+  split_ifs at hp with hA
+  · refine Or.inl ⟨hA, ?_⟩
+    simp only [List.mem_append] at hp
+    rcases hp with (hp | hp) | hp
+    · obtain ⟨e, he, rfl⟩ := List.mem_map.1 hp
+      have he := List.mem_range.1 he
+      rw [arN_eq] at he c2
+      simp only [arR1] at c1 c2 ⊢; omega
+    · obtain ⟨π, hπ⟩ : ∃ π, protoOf κ σ = π := ⟨_, rfl⟩
+      obtain ⟨-, hlen, -⟩ := hA π (hπ ▸ protoOf_le' κ σ)
+      rw [hπ] at hp
+      simp only [absRows4, mvRows, askPI, List.map_map, List.mem_map, Function.comp_def] at hp
+      obtain ⟨⟨r, j⟩, hj, rfl⟩ := hp
+      obtain ⟨hjn, -⟩ := List.getElem?_eq_some_iff.1 (List.mk_mem_zipIdx_iff_getElem?.1 hj)
+      rw [arN_eq] at c2
+      simp only [arR1] at c1 c2; simp only [mvC]; omega
+    · obtain ⟨j, hj, rfl⟩ := List.mem_map.1 hp
+      have hj := List.mem_range.1 hj
+      simp only [arRb, arR2] at c2 c3 hj ⊢; omega
+  · simp only [List.mem_singleton] at hp; subst hp; exact Or.inr rfl
+
+/-- **A slot's arena rows**: if they fit, indices in `[arR2, arRb + arNb)` of its region (below the
+link region); else the one rejecting row at the region's last index. Cells: M's (the slot's region
+or `one`) or the slot's H stream. -/
+theorem ar_mem (κ : NodeKind) {σ : ℕ} (hσ : σ < κ.vslots) {p : ℕ × Row} (hp : p ∈ arIRows4 κ σ) :
+    ((ArFit ∧ σ * slotM4 + arR2 ≤ p.1 ∧ p.1 + linkN < σ * slotM4 + slotM4) ∨ p.1 = arRej σ) ∧
+      ∀ t ∈ p.2.a ++ p.2.b ++ p.2.c, t.1 < κ.oneCell + κ.vslots * slotM4 := by
+  refine ⟨ar_idx κ hp, fun t ht => ?_⟩
+  obtain ⟨-, -, -, c4, c5, -⟩ := arConsts
+  have hR : σ * slotM4 + slotM4 ≤ κ.vslots * slotM4 := by
+    have := Nat.mul_le_mul_right slotM4 (Nat.succ_le_of_lt hσ); rw [Nat.succ_mul] at this; omega
+  unfold arIRows4 at hp
+  split_ifs at hp with hA
+  · simp only [List.mem_append] at hp
+    rcases hp with (hp | hp) | hp
+    · obtain ⟨e, he, rfl⟩ := List.mem_map.1 hp
+      have he := List.mem_range.1 he
+      have hc := slotB0_cell κ hσ he
+      rw [arN_eq] at he c4
+      rcases cpRow_cells ht with h | h | h <;> rw [h]
+      · omega
+      · omega
+      · omega
+    · obtain ⟨π, hπ⟩ : ∃ π, protoOf κ σ = π := ⟨_, rfl⟩
+      have hπ1 : π ≤ 1 := hπ ▸ protoOf_le' κ σ
+      obtain ⟨-, -, hin⟩ := hA π hπ1
+      rw [hπ] at hp
+      simp only [absRows4, mvRows, List.map_map, List.mem_map, Function.comp_def] at hp
+      obtain ⟨q, hq, rfl⟩ := hp
+      obtain ⟨-, hc⟩ := hin q hq
+      have hs : ∀ s : Mat, ∀ t ∈ s.r (rowMapC (· + κ.oneCell) (rowMapC (mvC π σ) q.2)),
+          t.1 < κ.oneCell + κ.vslots * slotM4 := fun s t ht => by
+        rw [r_rowMapC', r_rowMapC'] at ht
+        simp only [mapC, List.map_map, List.mem_map, Function.comp_def] at ht
+        obtain ⟨u, hu, rfl⟩ := ht
+        have := hc s u hu
+        simp only [mvC]; omega
+      simp only [List.mem_append] at ht
+      rcases ht with (ht | ht) | ht
+      exacts [hs .a t ht, hs .b t ht, hs .c t ht]
+    · obtain ⟨j, hj, rfl⟩ := List.mem_map.1 hp
+      have hj := List.mem_range.1 hj
+      simp only [bitRow, Lin.cell, List.append_nil, List.mem_append, List.mem_singleton] at ht
+      rcases ht with (rfl | rfl) | rfl <;> dsimp only <;> omega
+  · simp only [List.mem_singleton] at hp; subst hp
+    simp only [rejR, Lin.cell, List.append_nil, List.mem_append, List.mem_singleton] at ht
+    have : 0 < κ.vslots * slotM4 := by
+      have := Nat.mul_le_mul_right slotM4 (Nat.succ_le_of_lt hσ); simp only [slotM4] at this ⊢; omega
+    rcases ht with rfl | rfl <;> omega
+
+/-- **A slot's arena rows have distinct indices.** -/
+theorem ar_nodup (κ : NodeKind) (σ : ℕ) : ((arIRows4 κ σ).map Prod.fst).Nodup := by
+  obtain ⟨c1, c2, -, -, -, -⟩ := arConsts
+  unfold arIRows4
+  split_ifs with hA
+  · have hπ1 := protoOf_le' κ σ
+    obtain ⟨-, hlen, -⟩ := hA _ hπ1
+    have i1 : ((a1Rows4 κ σ (slotB0 κ σ)).map Prod.fst) = (List.range arN).map (σ * slotM4 + arR1 + ·) := by
+      simp [a1Rows4, a1Rows, List.map_map, Function.comp_def]
+    have i3 : ((bitRows4 κ σ).map Prod.fst) = (List.range arNb).map (σ * slotM4 + arRb + ·) := by
+      simp [bitRows4, bitRows, List.map_map, Function.comp_def]
+    have i2 : ((absRows4 κ (mvRows (protoOf κ σ) σ (askPI (protoOf κ σ)))).map Prod.fst) =
+        (List.range (askRowsT (protoOf κ σ)).length).map (σ * slotM4 + arR2 + ·) := by
+      simp only [absRows4, mvRows, askPI, List.map_map, Function.comp_def, mvC]
+      rw [show (fun x : Row × ℕ => protoOf κ σ * slotM4 + arR2 + x.2 - protoOf κ σ * slotM4 + σ * slotM4) =
+        (σ * slotM4 + arR2 + ·) ∘ Prod.snd from funext fun x => by simp only [Function.comp_apply]; omega,
+        ← List.map_map, List.zipIdx_map_snd, List.range_eq_range']
+    have nd : ∀ a n, ((List.range n).map (a + ·)).Nodup := fun a n =>
+      (List.nodup_range).map fun x y h => by simpa using h
+    rw [List.map_append, List.map_append, i1, i2, i3, List.nodup_append, List.nodup_append]
+    simp only [List.mem_append, List.mem_map, List.mem_range]
+    refine ⟨⟨nd _ _, nd _ _, ?_⟩, nd _ _, ?_⟩
+    · intro a ha b hb hab
+      obtain ⟨e, he, hae⟩ := ha
+      obtain ⟨k, hk, hbk⟩ := hb
+      omega
+    · intro a ha b hb hab
+      obtain ⟨j, hj, hbj⟩ := hb
+      rcases ha with ⟨e, he, hae⟩ | ⟨k, hk, hak⟩
+      · omega
+      · omega
+  · rw [List.map_singleton]; exact List.nodup_singleton _
+
+/-- **A slot's rows, arena rows and link rows**: indices in its region, cells below `2^(logM + 2)`. -/
+theorem slot_mem (κ : NodeKind) (hF : ProtoFit) {σ : ℕ} (hσ : σ < κ.vslots) {p : ℕ × Row}
+    (hp : p ∈ slotRows4 κ σ ++ arIRows4 κ σ ++ linkIRows4 κ σ) :
+    (σ * slotM4 ≤ p.1 ∧ p.1 < σ * slotM4 + slotM4) ∧
+      ∀ t ∈ p.2.a ++ p.2.b ++ p.2.c, t.1 < 2 ^ (κ.dims.logM + 2) := by
+  obtain ⟨h1, -, -, hv, hL⟩ := fitConsts κ
+  have hM : 2 ^ (κ.dims.logM + 2) = 4 * 2 ^ κ.dims.logM := by rw [pow_succ, pow_succ]; ring
+  have hσ' : σ * slotM4 + slotM4 ≤ 2 ^ κ.dims.logM := by
+    have := Nat.mul_le_mul_right slotM4 (Nat.succ_le_of_lt hσ); rw [Nat.succ_mul] at this; omega
+  rw [hM]
+  simp only [List.mem_append] at hp
+  rcases hp with (hp | hp) | hp
+  · have := slot_mem0 κ hF hσ (List.mem_append_left _ hp); rwa [hM] at this
+  · obtain ⟨hi, hc⟩ := ar_mem κ hσ hp
+    refine ⟨?_, fun t ht => by have := hc t ht; omega⟩
+    rcases hi with ⟨-, h, h'⟩ | h
+    · omega
+    · rw [h, arRej]; simp only [slotM4]; omega
+  · have := slot_mem0 κ hF hσ (List.mem_append_right _ hp); rwa [hM] at this
+
+/-- **A slot's indices are distinct** (before ASK-P's arena rows). -/
+theorem slot_nodup0 (κ : NodeKind) (hF : ProtoFit) (σ : ℕ) :
     ((slotRows4 κ σ ++ linkIRows4 κ σ).map Prod.fst).Nodup := by
   obtain ⟨hin, hnd⟩ := hF _ (protoOf_le' κ σ)
   rw [List.map_append, List.nodup_append]
@@ -218,14 +455,350 @@ theorem slot_nodup (κ : NodeKind) (hF : ProtoFit) (σ : ℕ) :
     have := (hin q hq).1
     simp only [mvC] at hj; omega
 
+/-- A prototype row's index in slot `σ`: below the link region, and below the binding's range if the
+arenas fit. -/
+theorem slot_idx (κ : NodeKind) (hF : ProtoFit) {σ : ℕ} {p : ℕ × Row} (hp : p ∈ slotRows4 κ σ) :
+    σ * slotM4 ≤ p.1 ∧ p.1 + linkN < σ * slotM4 + slotM4 ∧ (ArFit → p.1 < σ * slotM4 + arR2) := by
+  have hπ := protoOf_le' κ σ
+  obtain ⟨hin, -⟩ := hF _ hπ
+  simp only [slotRows4, absRows4, mvRows, List.map_map, List.mem_map, Function.comp_def] at hp
+  obtain ⟨q, hq, rfl⟩ := hp
+  obtain ⟨⟨hq1, hq2⟩, -⟩ := hin q hq
+  refine ⟨by simp only [mvC]; omega, by simp only [mvC]; omega, fun hA => ?_⟩
+  have := (hA _ hπ).1 q hq
+  simp only [mvC]; omega
+
+/-- A link row's index in slot `σ`: in the link region, at least two below its end. -/
+theorem link_idx (κ : NodeKind) {σ : ℕ} {p : ℕ × Row} (hp : p ∈ linkIRows4 κ σ) :
+    σ * slotM4 + slotM4 - linkN ≤ p.1 ∧ p.1 + 2 ≤ σ * slotM4 + slotM4 := by
+  simp only [linkIRows4, List.mem_map] at hp
+  obtain ⟨⟨r, j⟩, hj, rfl⟩ := hp
+  obtain ⟨hjn, -⟩ := List.getElem?_eq_some_iff.1 (List.mk_mem_zipIdx_iff_getElem?.1 hj)
+  have hl := linkRows4_length_le κ σ
+  have : linkN ≤ slotM4 := by decide
+  dsimp only; omega
+
+/-- **A slot's indices are distinct** (its rows, arena rows and link rows). -/
+theorem slot_nodup (κ : NodeKind) (hF : ProtoFit) (σ : ℕ) :
+    ((slotRows4 κ σ ++ arIRows4 κ σ ++ linkIRows4 κ σ).map Prod.fst).Nodup := by
+  have h0 := slot_nodup0 κ hF σ
+  rw [List.map_append, List.nodup_append] at h0
+  obtain ⟨hS, hL, hSL⟩ := h0
+  have hA := ar_nodup κ σ
+  have hR : linkN + 2 ≤ slotM4 := by decide
+  have hR1 : 0 < linkN := by decide
+  rw [List.map_append, List.map_append, List.nodup_append, List.nodup_append]
+  refine ⟨⟨hS, hA, ?_⟩, hL, ?_⟩
+  · intro a ha b hb hab
+    subst hab
+    obtain ⟨p, hp, rfl⟩ := List.mem_map.1 ha
+    obtain ⟨q, hq, hpq⟩ := List.mem_map.1 hb
+    obtain ⟨i1, i2, i3⟩ := slot_idx κ hF hp
+    rcases ar_idx κ hq with ⟨hAr, j1, -⟩ | h
+    · have := i3 hAr; omega
+    · rw [h, arRej] at hpq; omega
+  · intro a ha b hb hab
+    subst hab
+    obtain ⟨q, hq, hpq⟩ := List.mem_map.1 hb
+    have ⟨l1, l2⟩ := link_idx κ hq
+    rcases List.mem_append.1 ha with ha | ha
+    · obtain ⟨p, hp, rfl⟩ := List.mem_map.1 ha
+      exact hSL _ (List.mem_map.2 ⟨p, hp, rfl⟩) _ (List.mem_map.2 ⟨q, hq, rfl⟩) hpq.symm
+    · obtain ⟨p, hp, rfl⟩ := List.mem_map.1 ha
+      rcases ar_idx κ hp with ⟨-, -, j2⟩ | h
+      · omega
+      · rw [h, arRej] at hpq; omega
+
+/-! ### The replay rows (REPF) -/
+
+theorem repConsts : arRb + arNb = N4s.repSegB ∧ N4s.repSegB + N4s.segBN + linkN = slotM4 ∧ arR2 ≤ N4s.repSegB ∧
+    slotM4 = 1048576 ∧ N4s.repB = 1099511627776 ∧ N4s.repSegB = 988672 ∧ N4s.repA + 32768 = arR2 ∧
+    N4s.segRN = N4s.segBN + 32768 ∧ N4s.segCap = 52462 := by
+  simp only [arRb, arNb, N4s.repSegB, N4s.segBN, linkN, slotM4, arR2, N4s.repB, N4s.repA, N4s.segRN, N4s.segCap]
+  norm_num
+
+/-- **A segment slot's local lies in its region** (`segCell`, SEG-R2's three cell bands). -/
+theorem segCell_lt {j : ℕ} (hj : j < N4s.segCap) : N4s.segCell j < slotM4 := by
+  simp only [N4s.segCell, N4s.segCap, slotM4] at hj ⊢; split_ifs <;> omega
+
+/-- **A segment slot's replay row lies in band B or band A** (`segRow`, SEG-R2). -/
+theorem segRow_band {k : ℕ} (hk : k < N4s.segRN) :
+    (N4s.repSegB ≤ N4s.segRow k ∧ N4s.segRow k + linkN < slotM4) ∨ (N4s.repA ≤ N4s.segRow k ∧ N4s.segRow k < arR2) := by
+  have e1 : N4s.segRN = 59904 := rfl
+  have e2 : N4s.segBN = 27136 := rfl
+  have e3 : N4s.repSegB = 988672 := rfl
+  have e4 : N4s.repA = 688128 := rfl
+  have e5 : linkN = 32768 := rfl
+  have e6 : slotM4 = 1048576 := rfl
+  have e7 : arR2 = 720896 := rfl
+  unfold N4s.segRow
+  by_cases h : k < N4s.segBN
+  · rw [if_pos h]; omega
+  · rw [if_neg h]; omega
+
+theorem segRow_inj {k k' : ℕ} (hk : k < N4s.segRN) (hk' : k' < N4s.segRN) (h : N4s.segRow k = N4s.segRow k') :
+    k = k' := by
+  have e1 : N4s.segRN = 59904 := rfl
+  have e2 : N4s.segBN = 27136 := rfl
+  have e3 : N4s.repSegB = 988672 := rfl
+  have e4 : N4s.repA = 688128 := rfl
+  unfold N4s.segRow at h
+  by_cases h1 : k < N4s.segBN <;> by_cases h2 : k' < N4s.segBN <;> simp only [h1, h2, ite_true, ite_false] at h <;> omega
+
+/-- **A slot's arena rows end below the replay rows' range** (the arenas fit). -/
+theorem ar_idx_hi (κ : NodeKind) {σ : ℕ} {p : ℕ × Row} (hA : ArFit) (hp : p ∈ arIRows4 κ σ) :
+    p.1 < σ * slotM4 + arRb + arNb := by
+  obtain ⟨c1, c2, c3, -, -, -⟩ := arConsts
+  unfold arIRows4 at hp
+  rw [if_pos hA] at hp
+  simp only [List.mem_append] at hp
+  rcases hp with (hp | hp) | hp
+  · obtain ⟨e, he, rfl⟩ := List.mem_map.1 hp
+    have he := List.mem_range.1 he
+    rw [arN_eq] at he c2
+    simp only [arR1] at c1 c2 ⊢; omega
+  · obtain ⟨π, hπ⟩ : ∃ π, protoOf κ σ = π := ⟨_, rfl⟩
+    obtain ⟨-, hlen, -⟩ := hA π (hπ ▸ protoOf_le' κ σ)
+    rw [hπ] at hp
+    simp only [absRows4, mvRows, askPI, List.map_map, List.mem_map, Function.comp_def] at hp
+    obtain ⟨⟨r, j⟩, hj, rfl⟩ := hp
+    obtain ⟨hjn, -⟩ := List.getElem?_eq_some_iff.1 (List.mk_mem_zipIdx_iff_getElem?.1 hj)
+    rw [arN_eq] at c2
+    simp only [arR1] at c1 c2; simp only [mvC]; omega
+  · obtain ⟨j, hj, rfl⟩ := List.mem_map.1 hp
+    have hj := List.mem_range.1 hj
+    simp only [arRb, arR2] at c2 c3 hj ⊢; omega
+
+/-- **A slot's rows lie outside band B** (`[repSegB, 2^20 − linkN)` of its region). -/
+theorem slotA_idx (κ : NodeKind) (hF : ProtoFit) (hA : ArFit) {σ : ℕ} {p : ℕ × Row}
+    (hp : p ∈ slotRows4 κ σ ++ arIRows4 κ σ ++ linkIRows4 κ σ) :
+    p.1 < σ * slotM4 + N4s.repSegB ∨ σ * slotM4 + slotM4 - linkN ≤ p.1 := by
+  obtain ⟨c1, -, c3, -, -, -⟩ := repConsts
+  simp only [List.mem_append] at hp
+  rcases hp with (hp | hp) | hp
+  · exact Or.inl (lt_of_lt_of_le ((slot_idx κ hF hp).2.2 hA) (by omega))
+  · exact Or.inl (by have := ar_idx_hi κ hA hp; omega)
+  · exact Or.inr (link_idx κ hp).1
+
+/-- **A segment slot's rows lie outside band A** (`[repA, arR2)` of its region; SEG-R2): its prototype's
+rows end below `repA` (`RepFit`), its arena rows start at `arR2`. -/
+theorem slotA_idx1 (κ : NodeKind) (hF : ProtoFit) (hR : RepFit) {σ : ℕ} (h1 : protoOf κ σ = 1) {p : ℕ × Row}
+    (hp : p ∈ slotRows4 κ σ ++ arIRows4 κ σ ++ linkIRows4 κ σ) :
+    p.1 < σ * slotM4 + N4s.repA ∨ σ * slotM4 + arR2 ≤ p.1 := by
+  obtain ⟨-, -, -, -, -, -, c7, -, -⟩ := repConsts
+  simp only [List.mem_append] at hp
+  rcases hp with (hp | hp) | hp
+  · left
+    simp only [slotRows4, absRows4, mvRows, h1, List.map_map, List.mem_map, Function.comp_def] at hp
+    obtain ⟨q, hq, rfl⟩ := hp
+    obtain ⟨⟨hq1, -⟩, -⟩ := (hF 1 le_rfl).1 q hq
+    have := hR.2 q hq
+    simp only [mvC, one_mul] at hq1 ⊢; omega
+  · right
+    rcases ar_idx κ hp with ⟨-, h, -⟩ | h
+    · exact h
+    · rw [h, arRej]; simp only [arR2, slotM4]; omega
+  · right; have := (link_idx κ hp).1; simp only [arR2, slotM4, linkN] at this ⊢; omega
+
+/-- A replay row of slot `v`: a row of its prototype's replay rows at `repRowI κ v k`. -/
+theorem repIRowsW_mem {κ : NodeKind} {v : ℕ} {p : ℕ × Row} (hp : p ∈ N4s.repIRowsW N4s.rtC1d κ v) :
+    ∃ r k, r ∈ N4s.repRowsP (N4s.rtC1d (protoOf κ v)) (protoOf κ v) ∧
+      k < (N4s.repRowsP (N4s.rtC1d (protoOf κ v)) (protoOf κ v)).length ∧
+      p = (N4s.repRowI κ v k, rowMapC (N4s.repMapC κ v) r) := by
+  unfold N4s.repIRowsW at hp
+  obtain ⟨⟨r, k⟩, hk, rfl⟩ := List.mem_map.1 hp
+  obtain ⟨hkl, hr⟩ := List.getElem?_eq_some_iff.1 (List.mk_mem_zipIdx_iff_getElem?.1 hk)
+  exact ⟨r, k, hr ▸ List.getElem_mem hkl, hkl, rfl⟩
+
+theorem repFitB_spec {π : ℕ} {rows : List Row} (h : repFitB π rows = true) :
+    rows.length ≤ (if π = 0 then slotM4 else N4s.segRN) ∧
+      ∀ r ∈ rows, ∀ t ∈ r.a ++ r.b ++ r.c, repCellOk π t.1 = true := by
+  simp only [repFitB, Bool.and_eq_true, decide_eq_true_eq, List.all_eq_true] at h
+  exact ⟨h.1, h.2⟩
+
+theorem prevSlot_of {κ : NodeKind} {v : ℕ} (h : protoOf κ v = 0) : κ.hasPrev = true ∧ v = 0 := by
+  unfold protoOf isPrevSlot at h
+  split_ifs at h with h'
+  simp only [Bool.and_eq_true, beq_iff_eq] at h'
+  exact h'
+
+/-- The spare region: a node with a previous node has a region past its slots. -/
+theorem prev_room {κ : NodeKind} (h : κ.hasPrev = true) : (κ.vslots + 1) * slotM4 ≤ 2 ^ κ.dims.logM := by
+  cases κ <;> first | exact absurd h (by decide) | decide
+
+/-- The region of slot `v`'s replay rows: the spare region for the previous node's slot, else its own. -/
+def repReg (κ : NodeKind) (v : ℕ) : ℕ := if protoOf κ v = 0 then κ.vslots else v
+
+/-- **A replay row's index** lies in its region (`repReg`), a segment slot's in band B or band A (SEG-R2);
+its cells below `oneCell + 2^logM`. -/
+theorem rep_fit1 (κ : NodeKind) (hR : RepFit) {v : ℕ} (hv : v < κ.vslots) {p : ℕ × Row}
+    (hp : p ∈ N4s.repIRowsW N4s.rtC1d κ v) :
+    (repReg κ v * slotM4 ≤ p.1 ∧ p.1 < repReg κ v * slotM4 + slotM4) ∧
+      (protoOf κ v ≠ 0 → (v * slotM4 + N4s.repSegB ≤ p.1 ∧ p.1 + linkN < v * slotM4 + slotM4) ∨
+        (v * slotM4 + N4s.repA ≤ p.1 ∧ p.1 < v * slotM4 + arR2)) ∧
+      ∀ t ∈ p.2.a ++ p.2.b ++ p.2.c, t.1 < κ.oneCell + 2 ^ κ.dims.logM := by
+  obtain ⟨c1, c2, c3, c4, c5, c6, c7, c8, c9⟩ := repConsts
+  obtain ⟨r, k, hr, hk, rfl⟩ := repIRowsW_mem hp
+  obtain ⟨hlen, hcell⟩ := repFitB_spec (hR.1 _ (protoOf_le' κ v))
+  have hM := mSlots_fit κ
+  have hnM : κ.nM = 2 ^ κ.dims.logM := rfl
+  rw [hnM] at hM
+  have hvs : (v + 1) * slotM4 ≤ κ.vslots * slotM4 := Nat.mul_le_mul_right _ hv
+  by_cases h0 : protoOf κ v = 0
+  · obtain ⟨hp', rfl⟩ := prevSlot_of h0
+    have hroom := prev_room hp'
+    rw [if_pos h0] at hlen
+    simp only [repReg, N4s.repRowI, N4s.repRow0, h0, if_true]
+    refine ⟨by omega, fun h => absurd rfl h, fun t ht => ?_⟩
+    simp only [rowMapC, mapC, List.mem_append, List.mem_map] at ht
+    obtain ⟨q, hq, rfl⟩ : ∃ q ∈ r.a ++ r.b ++ r.c, t = (N4s.repMapC κ 0 q.1, q.2) := by
+      rcases ht with (⟨q, hq, rfl⟩ | ⟨q, hq, rfl⟩) | ⟨q, hq, rfl⟩ <;> exact ⟨q, by simp [hq], rfl⟩
+    have hq := hcell r hr q hq
+    rw [h0] at hq
+    simp only [repCellOk, if_true, Bool.or_eq_true, Bool.and_eq_true, decide_eq_true_eq] at hq
+    simp only [N4s.repMapC, h0, mvC, if_true]
+    have hm := Nat.add_mul κ.vslots 1 slotM4
+    split_ifs <;> omega
+  · have h1 : protoOf κ v = 1 := by have := protoOf_le' κ v; omega
+    rw [if_neg h0] at hlen
+    have hb := segRow_band (lt_of_lt_of_le hk hlen)
+    simp only [repReg, N4s.repRowI, h0, if_false]
+    refine ⟨by omega, fun _ => by omega, fun t ht => ?_⟩
+    simp only [rowMapC, mapC, List.map_append, List.mem_append, List.mem_map] at ht
+    obtain ⟨q, hq, rfl⟩ : ∃ q ∈ r.a ++ r.b ++ r.c, t = (N4s.repMapC κ v q.1, q.2) := by
+      rcases ht with (⟨q, hq, rfl⟩ | ⟨q, hq, rfl⟩) | ⟨q, hq, rfl⟩ <;> exact ⟨q, by simp [hq], rfl⟩
+    have hq := hcell r hr q hq
+    rw [h1] at hq
+    simp only [repCellOk, one_ne_zero, if_false, inSB, Bool.or_eq_true, Bool.and_eq_true, decide_eq_true_eq,
+      one_mul] at hq
+    have hm := Nat.add_mul v 1 slotM4
+    simp only [N4s.repMapC, h1, mvC, one_mul, one_ne_zero, ite_false]
+    by_cases hc : q.1 < N4s.repB
+    · rw [if_pos hc]; omega
+    · rw [if_neg hc]
+      have := segCell_lt (j := q.1 - N4s.repB) (by omega)
+      omega
+
+/-- The replay rows' regions are distinct across slots. -/
+theorem repReg_inj (κ : NodeKind) {v v' : ℕ} (hv : v < κ.vslots) (hv' : v' < κ.vslots) (h : repReg κ v = repReg κ v') :
+    v = v' := by
+  unfold repReg at h
+  split_ifs at h with h1 h2 h2
+  · exact (prevSlot_of h1).2.trans (prevSlot_of h2).2.symm
+  · omega
+  · omega
+  · exact h
+
+/-- **The replay rows' index facts** (REPF): distinct, `< 2^logM`, cells `< 2^(logM+2)`, and apart from
+the slots' rows. -/
+theorem rep_fit (κ : NodeKind) (hF : ProtoFit) :
+    ((repAllRows κ).map Prod.fst).Nodup ∧ (∀ p ∈ repAllRows κ, p.1 < 2 ^ κ.dims.logM) ∧
+      (∀ p ∈ repAllRows κ, ∀ t ∈ p.2.a ++ p.2.b ++ p.2.c, t.1 < 2 ^ (κ.dims.logM + 2)) ∧
+      ∀ a ∈ ((List.range κ.vslots).flatMap fun σ => slotRows4 κ σ ++ arIRows4 κ σ ++ linkIRows4 κ σ).map Prod.fst,
+        ∀ b ∈ (repAllRows κ).map Prod.fst, a ≠ b := by
+  obtain ⟨c1, c2, c3, c4, c5, c6, c7, c8, c9⟩ := repConsts
+  obtain ⟨h1, -, -, -, -⟩ := fitConsts κ
+  have hM : 2 ^ (κ.dims.logM + 2) = 4 * 2 ^ κ.dims.logM := by rw [pow_succ, pow_succ]; ring
+  have hMs := mSlots_fit κ
+  have hnM : κ.nM = 2 ^ κ.dims.logM := rfl
+  rw [hnM] at hMs
+  have hpos : 1 ≤ κ.vslots := by cases κ <;> decide
+  unfold repAllRows
+  by_cases hA : ArFit
+  · rw [if_pos hA]
+    by_cases hR : RepFit
+    · rw [if_pos hR]
+      have hreg : ∀ v < κ.vslots, repReg κ v * slotM4 + slotM4 ≤ 2 ^ κ.dims.logM := fun v hv => by
+        unfold repReg; split_ifs with h0
+        · have := prev_room (prevSlot_of h0).1; rw [Nat.add_mul, one_mul] at this; exact this
+        · have := Nat.mul_le_mul_right slotM4 (Nat.succ_le_of_lt hv); rw [Nat.succ_mul] at this; omega
+      refine ⟨?_, fun p hp => ?_, fun p hp t ht => ?_, fun a ha b hb hab => ?_⟩
+      · rw [List.map_flatMap]
+        refine List.nodup_flatMap.2 ⟨fun v _ => ?_, ?_⟩
+        · have hl := (repFitB_spec (hR.1 _ (protoOf_le' κ v))).1
+          unfold N4s.repIRowsW
+          simp only [List.map_map, Function.comp_def]
+          rw [show (fun p : Row × ℕ => N4s.repRowI κ v p.2) = (N4s.repRowI κ v ·) ∘ Prod.snd from rfl,
+            ← List.map_map, List.zipIdx_map_snd]
+          refine (List.nodup_range' 1).map_on fun a ha b hb h => ?_
+          rw [List.mem_range'_1] at ha hb
+          unfold N4s.repRowI at h
+          split_ifs at h with h0
+          · omega
+          · rw [if_neg h0] at hl
+            exact segRow_inj (by omega) (by omega) (by omega)
+        · refine (List.nodup_range).pairwise_of_forall_ne fun v hv v' hv' hne => ?_
+          show List.Disjoint _ _
+          rw [List.disjoint_left]
+          intro x hx hx'
+          obtain ⟨p, hp, rfl⟩ := List.mem_map.1 hx
+          obtain ⟨p', hp', hpp⟩ := List.mem_map.1 hx'
+          have hv := List.mem_range.1 hv; have hv' := List.mem_range.1 hv'
+          have a := (rep_fit1 κ hR hv hp).1
+          have b := (rep_fit1 κ hR hv' hp').1
+          refine hne (repReg_inj κ hv hv' ?_)
+          have e1 : p.1 / slotM4 = repReg κ v := Nat.div_eq_of_lt_le a.1
+            (by rw [Nat.add_mul, one_mul]; exact a.2)
+          have e2 : p'.1 / slotM4 = repReg κ v' := Nat.div_eq_of_lt_le b.1
+            (by rw [Nat.add_mul, one_mul]; exact b.2)
+          rw [← e1, ← e2, hpp]
+      · obtain ⟨v, hv, hp⟩ := List.mem_flatMap.1 hp
+        have hv := List.mem_range.1 hv
+        have := (rep_fit1 κ hR hv hp).1; have := hreg v hv; omega
+      · obtain ⟨v, hv, hp⟩ := List.mem_flatMap.1 hp
+        have := (rep_fit1 κ hR (List.mem_range.1 hv) hp).2.2 t ht
+        rw [hM]; omega
+      · subst hab
+        obtain ⟨p, hp, rfl⟩ := List.mem_map.1 ha
+        obtain ⟨q, hq, hpq⟩ := List.mem_map.1 hb
+        obtain ⟨σ, hσ, hp⟩ := List.mem_flatMap.1 hp
+        obtain ⟨v, hv, hq⟩ := List.mem_flatMap.1 hq
+        have hσ := List.mem_range.1 hσ; have hv := List.mem_range.1 hv
+        have hs := (slot_mem κ hF hσ hp).1
+        have hS := slotA_idx κ hF hA hp
+        obtain ⟨⟨r1, r2⟩, r3, -⟩ := rep_fit1 κ hR hv hq
+        by_cases h0 : protoOf κ v = 0
+        · simp only [repReg, h0, if_true] at r1
+          have := Nat.mul_le_mul_right slotM4 (Nat.succ_le_of_lt hσ); rw [Nat.succ_mul] at this; omega
+        · simp only [repReg, h0, if_false] at r1 r2
+          rcases Nat.lt_trichotomy σ v with h | rfl | h
+          · have := Nat.mul_le_mul_right slotM4 (Nat.succ_le_of_lt h); rw [Nat.succ_mul] at this; omega
+          · have h1 : protoOf κ σ = 1 := by have := protoOf_le' κ σ; omega
+            have hS1 := slotA_idx1 κ hF hR h1 hp
+            rcases r3 h0 with ⟨r4, r5⟩ | ⟨r4, r5⟩ <;> omega
+          · have := Nat.mul_le_mul_right slotM4 (Nat.succ_le_of_lt h); rw [Nat.succ_mul] at this; omega
+    · rw [if_neg hR]
+      refine ⟨by simp, fun p hp => ?_, fun p hp t ht => ?_, fun a ha b hb hab => ?_⟩
+      · simp only [List.mem_singleton] at hp; subst hp
+        have := Nat.mul_le_mul_right slotM4 hpos; omega
+      · simp only [List.mem_singleton] at hp; subst hp
+        simp only [rejR, Lin.cell, List.append_nil, List.mem_append, List.mem_singleton] at ht
+        have := Nat.two_pow_pos κ.dims.logM
+        rcases ht with rfl | rfl <;> simp only [h1, hM] <;> omega
+      · subst hab
+        obtain ⟨p, hp, rfl⟩ := List.mem_map.1 ha
+        simp only [List.map_cons, List.map_nil, List.mem_singleton] at hb
+        obtain ⟨σ, hσ, hp⟩ := List.mem_flatMap.1 hp
+        have hσ := List.mem_range.1 hσ
+        have hs := (slot_mem κ hF hσ hp).1
+        have hS := slotA_idx κ hF hA hp
+        have hBN : N4s.segBN = 27136 := rfl
+        rcases Nat.eq_zero_or_pos σ with rfl | h
+        · omega
+        · have := Nat.mul_le_mul_right slotM4 h; omega
+  · rw [if_neg hA]; simp
+
 /-- **`hfit4`** (P4b O1 per kind, S-E12a's `HFit4`) at the 4.1 nodes' rows. -/
 theorem hfit4 : N4c.HFit4 nodeIRows4 := fun κ => by
   obtain ⟨h1, hn, he, hv, -⟩ := fitConsts κ
   rw [hn, he]
   unfold nodeIRows4
   split_ifs with hF
-  · refine ⟨?_, fun p hp => ?_, fun p hp t ht => ?_⟩
-    · rw [List.map_flatMap]
+  · obtain ⟨bn, bi, bc, hab⟩ := rep_fit κ hF
+    refine ⟨?_, fun p hp => ?_, fun p hp t ht => ?_⟩
+    · rw [List.map_append]
+      refine List.nodup_append.2 ⟨?_, bn, hab⟩
+      rw [List.map_flatMap]
       refine List.nodup_flatMap.2 ⟨fun σ _ => slot_nodup κ hF σ, ?_⟩
       refine (List.nodup_range).pairwise_of_forall_ne fun σ hσ σ' hσ' hne => ?_
       show List.Disjoint _ _
@@ -238,12 +811,16 @@ theorem hfit4 : N4c.HFit4 nodeIRows4 := fun κ => by
       rcases Nat.lt_or_gt_of_ne hne with h | h
       · have := Nat.mul_le_mul_right slotM4 (Nat.succ_le_of_lt h); rw [Nat.succ_mul] at this; omega
       · have := Nat.mul_le_mul_right slotM4 (Nat.succ_le_of_lt h); rw [Nat.succ_mul] at this; omega
-    · obtain ⟨σ, hσ, hp⟩ := List.mem_flatMap.1 hp
-      have hσ := List.mem_range.1 hσ
-      have := (slot_mem κ hF hσ hp).1
-      have := Nat.mul_le_mul_right slotM4 (Nat.succ_le_of_lt hσ); rw [Nat.succ_mul] at this; omega
-    · obtain ⟨σ, hσ, hp⟩ := List.mem_flatMap.1 hp
-      exact (slot_mem κ hF (List.mem_range.1 hσ) hp).2 t ht
+    · rcases List.mem_append.1 hp with hp | hp
+      · obtain ⟨σ, hσ, hp⟩ := List.mem_flatMap.1 hp
+        have hσ := List.mem_range.1 hσ
+        have := (slot_mem κ hF hσ hp).1
+        have := Nat.mul_le_mul_right slotM4 (Nat.succ_le_of_lt hσ); rw [Nat.succ_mul] at this; omega
+      · exact bi p hp
+    · rcases List.mem_append.1 hp with hp | hp
+      · obtain ⟨σ, hσ, hp⟩ := List.mem_flatMap.1 hp
+        exact (slot_mem κ hF (List.mem_range.1 hσ) hp).2 t ht
+      · exact bc p hp t ht
   · refine ⟨by simp [rejectRows], fun p hp => ?_, fun p hp t ht => ?_⟩
     · simp only [rejectRows, List.mem_singleton] at hp; subst hp; exact Nat.two_pow_pos _
     · simp only [rejectRows, List.mem_singleton] at hp; subst hp

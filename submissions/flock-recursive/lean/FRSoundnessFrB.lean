@@ -2,7 +2,7 @@
 -- RET-2: the declarations revision 4.1 reads moved to `FRSoundnessCoreRows`.
 import FRSoundnessFrW0
 import FRSoundnessRows
-import FRSoundnessCoreRows
+import FRSoundnessCoreFront
 
 /-!
 # The front's last phase: B′ (`κ′`) and the handoff into P1.0

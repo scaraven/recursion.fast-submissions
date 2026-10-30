@@ -1,7 +1,7 @@
 -- New for `flock-recursive` (BLUEPRINT A.10 rows E1–E4 end, §5.2; stage S-G6).
 -- RET-2: the declarations revision 4.1 reads moved to `FRSoundnessCoreRows`.
 import FRSoundnessFrRS0
-import FRSoundnessCoreRows
+import FRSoundnessCoreFront
 
 /-!
 # E: the Rows unit at the M rows, with E4's batched inner rounds (positions 209 … 311)

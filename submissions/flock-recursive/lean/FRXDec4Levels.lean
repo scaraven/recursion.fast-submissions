@@ -1,6 +1,505 @@
--- New for `flock-recursive` (BLUEPRINT revision 4.2, §6.2 steps 3–4; stage S-H4, pass 6, item 1).
-import FRXDec4Map
+-- G6: this module also holds the former modules `FRXDec4Lv`, `FRXDec4Msg`, `FRXDec4Map` (one section each, in import order).
+import FRXDec4Front
+import FRXChainTop
 import FRXRead
+
+section G6_FRXDec4Lv
+
+-- New for `flock-recursive` (BLUEPRINT revision 4.2, §6.2 step 4; stage S-H4, pass 2, item 2).
+
+/-!
+# One level's decode at revision 4.1's kinds (`decLv4_sem`)
+
+`decLv4IR` is the front half (`eq` table, the next message by `msg`, `Enc`, the flags) followed by
+the back half (scan, `lagIR` on rows `c₀ … c₀ + C − 1`, the butterflies). **The memory map is a
+parameter**: `tb < fb < [jb, pb, yl, ob] < eb < xb < yb ≤ cb` (`BackLay4`, `FrontLay4`, and the back
+half's regions ending below the `eq` table).
+
+**`decLv4_sem`**: on a close word with `A_c = jointAgree`, row `c` at `ob + 2kc` holds the `F`
+values of `T4.msgOf κ L es i (c₀ + c)`; the heap below `fb`, between the regions, and from
+`yb + 2n` on is kept.
+-/
+
+namespace FR.X
+
+open RecursionFast FR Finset
+
+-- G2: `entryK`/`storeM`/`runPrims` are never unfolded while unifying states (elaboration time).
+attribute [local irreducible] entryK storeM runPrims
+
+/-- **One level's decode** at a 4.1 kind. -/
+def decLv4IR (msg : XIR) (ℓ logN m R C c0 cs cb cbS tb fb jb pb yl ob eb xb yb : ℕ) : XIR :=
+  .seq (decFront4IR msg ℓ logN R cs cb cbS tb fb eb xb yb)
+    (decBack4IR (2 ^ logN) m C c0 cs cb tb fb jb pb yl ob)
+
+/-- **One level decodes on the machine** at a 4.1 kind (`level_decode4`). -/
+theorem decLv4_sem (I : Array Word) (s : St) (hM : Inv s.M) {κ : Snd.CKind} {L es : Log}
+    {i C c0 cs cb cbS tb fb jb pb yl ob eb xb yb : ℕ} {msg : XIR} (hi : i < 5)
+    (hfar : ¬ Snd.T4.farL κ L es i)
+    (hA : Snd.T4.consSet κ L es i = jointAgree (Snd.T4.wordK κ L es i) (Snd.T4.decodeL κ L es i))
+    (hC1 : 1 ≤ C) (hC : C ≤ 16) (hcr : c0 + C ≤ (Snd.CKind.lv κ i).rows)
+    (hB : BackLay4 (2 ^ (Snd.CKind.lv κ i).logN) (2 ^ Snd.T4.mLog κ i) C tb fb jb pb yl ob)
+    (hF : FrontLay4 (2 ^ (Snd.CKind.lv κ i).logN) (Snd.CKind.lv κ i).ell tb fb eb xb yb cbS)
+    (hoe : ob + 2 * 2 ^ Snd.T4.mLog κ i * (C + 1) ≤ eb)
+    (hsz : yb + 2 * 2 ^ (Snd.CKind.lv κ i).logN ≤ s.M.size)
+    (hcs : 2 * (Snd.CKind.lv κ i).rows ≤ cs) (hcb : yb + 2 * 2 ^ (Snd.CKind.lv κ i).logN ≤ cb)
+    (hcb2 : cb + cs * 2 ^ (Snd.CKind.lv κ i).logN + 2 * (c0 + C) + 2 < 2 ^ 64)
+    (hT : ∀ v < 20, ∀ i < 20, rdF s.M (tb + 40 * v + 2 * i) = (wRow D logNMax v).getD i 0)
+    (hW : ∀ j (hj : j < 2 ^ (Snd.CKind.lv κ i).logN) (r : Fin (Snd.CKind.lv κ i).rows),
+      rdF s.M (cb + cs * j + 2 * r) = Snd.T4.wordOf κ L es i r ⟨j, hj⟩)
+    (hS : ∀ v < (Snd.CKind.lv κ i).ell, rdK s.M (cbS + 8 * v) = Snd.T4.sAt es i v)
+    (hmsg : MsgOk4 I msg (semXIR I (eqtIR (Snd.CKind.lv κ i).ell cbS eb) s) eb xb yb
+      (Snd.CKind.lv κ i).logN (Snd.T4.mLog κ i) (Snd.T4.nextMsg κ L es i)) :
+    (∀ c < C, ∀ x < 2 ^ Snd.T4.mLog κ i,
+      algebraMap F K (rdF (semXIR I (decLv4IR msg (Snd.CKind.lv κ i).ell (Snd.CKind.lv κ i).logN
+        (Snd.T4.mLog κ i) (Snd.CKind.lv κ i).rows C c0 cs cb cbS tb fb jb pb yl ob eb xb yb) s).M
+        (ob + 2 * 2 ^ Snd.T4.mLog κ i * c + 2 * x)) = Snd.T4.msgOf κ L es i (c0 + c) x) ∧
+    (∀ y, regs ≤ y → (y < fb ∨ (fb + 2 ^ (Snd.CKind.lv κ i).logN ≤ y ∧ y < jb) ∨
+        (jb + 2 ^ Snd.T4.mLog κ i ≤ y ∧ y < pb) ∨ (ob + 2 * 2 ^ Snd.T4.mLog κ i * C ≤ y ∧ y < eb) ∨
+        yb + 2 * 2 ^ (Snd.CKind.lv κ i).logN ≤ y) →
+      rd (semXIR I (decLv4IR msg (Snd.CKind.lv κ i).ell (Snd.CKind.lv κ i).logN
+        (Snd.T4.mLog κ i) (Snd.CKind.lv κ i).rows C c0 cs cb cbS tb fb jb pb yl ob eb xb yb) s).M y =
+        rd s.M y) ∧
+    Inv (semXIR I (decLv4IR msg (Snd.CKind.lv κ i).ell (Snd.CKind.lv κ i).logN
+        (Snd.T4.mLog κ i) (Snd.CKind.lv κ i).rows C c0 cs cb cbS tb fb jb pb yl ob eb xb yb) s).M := by
+  obtain ⟨htb, htf, hfj, hjp, hpy, hyo, ho2⟩ := hB
+  have hF' := hF
+  obtain ⟨-, -, hfe, hex, hxy, hy2, -, -, -⟩ := hF'
+  have hkn : 2 ^ Snd.T4.mLog κ i ≤ 2 ^ (Snd.CKind.lv κ i).logN :=
+    Nat.pow_le_pow_right (by norm_num) (lv4_front κ hi).2.2.2
+  have hcs' : cs * 2 ^ (Snd.CKind.lv κ i).logN ≤ cs * 2 ^ (Snd.CKind.lv κ i).logN := le_rfl
+  obtain ⟨a1, a2, hM1⟩ := decFront4_sem I s hM (msg := msg) hi hF hsz hcs hcb (by omega) hT hW hS hmsg
+  rw [decLv4IR, semXIR_seq]
+  have z1 := size_sem I (decFront4IR msg (Snd.CKind.lv κ i).ell (Snd.CKind.lv κ i).logN
+    (Snd.CKind.lv κ i).rows cs cb cbS tb fb eb xb yb) s
+  generalize semXIR I (decFront4IR msg (Snd.CKind.lv κ i).ell (Snd.CKind.lv κ i).logN
+    (Snd.CKind.lv κ i).rows cs cb cbS tb fb eb xb yb) s = s1 at a1 a2 hM1 z1
+  have hb1 : ∀ y, cb ≤ y → rd s1.M y = rd s.M y := fun y hy =>
+    a2 y (by simp only [regs] at htb ⊢; omega) (.inr (.inr (by omega)))
+  have hT1 : ∀ v < 20, ∀ i' < 20, rdF s1.M (tb + 40 * v + 2 * i') = (wRow D logNMax v).getD i' 0 :=
+    fun v hv i' hi' => by
+      rw [← hT v hv i' hi']
+      exact rdF_eq (a2 _ (by simp only [regs] at htb ⊢; omega) (.inl (by omega)))
+        (a2 _ (by simp only [regs] at htb ⊢; omega) (.inl (by omega)))
+  have hW1 : ∀ j (hj : j < 2 ^ (Snd.CKind.lv κ i).logN) (r : Fin (Snd.CKind.lv κ i).rows),
+      rdF s1.M (cb + cs * j + 2 * r) = Snd.T4.wordOf κ L es i r ⟨j, hj⟩ := fun j hj r => by
+    rw [← hW j hj r]
+    have l1 : cb ≤ cb + cs * j + 2 * r := (Nat.le_add_right cb _).trans (Nat.le_add_right _ _)
+    exact rdF_eq (hb1 _ l1) (hb1 _ (l1.trans (Nat.le_add_right _ _)))
+  obtain ⟨b1, b2, hM2⟩ := decBack4_sem I s1 hM1 (cs := cs) (cb := cb) hi hfar hA hC1 hC hcr
+    ⟨htb, htf, hfj, hjp, hpy, hyo, ho2⟩ (by omega) hcb2 (by rw [z1]; omega) hT1 hW1 a1
+  have hCk : 2 * 2 ^ Snd.T4.mLog κ i * (C + 1) = 2 * 2 ^ Snd.T4.mLog κ i * C + 2 * 2 ^ Snd.T4.mLog κ i :=
+    Nat.mul_succ _ _
+  refine ⟨b1, fun y hy hy2 => ?_, hM2⟩
+  rw [b2 y hy (by omega), a2 y hy (by omega)]
+
+/-! ## Controls: a level-0 map at `m = 32` -/
+
+/-- (+) **The front half's map at `m = 32`, level 0**: flags `2^21`, the `eq` table `2^25`, `X`
+`2^25 + 256`, `Y` `2^25 + 256 + 2^21`, the challenges at `2^24` (above the flags). With
+`backLay4_m32` the back half's regions end at `2^23 + 2^22 + 5 · 2^20 ≤ 2^25`. -/
+theorem frontLay4_m32 : FrontLay4 (2 ^ 20) 6 (2 ^ 20) (2 ^ 21) (2 ^ 25) (2 ^ 25 + 256)
+    (2 ^ 25 + 256 + 2 ^ 21) (2 ^ 24) ∧ (2 ^ 23 + 2 ^ 22) + 2 * 2 ^ 19 * (4 + 1) ≤ 2 ^ 25 := by
+  unfold FrontLay4; norm_num [regs]
+
+/-- (−) **`FrontLay4` rejects `X` on top of the `eq` table.** -/
+theorem not_frontLay4_overlap : ¬ FrontLay4 (2 ^ 20) 6 (2 ^ 20) (2 ^ 21) (2 ^ 25) (2 ^ 25)
+    (2 ^ 25 + 256 + 2 ^ 21) (2 ^ 24) := by
+  unfold FrontLay4; norm_num [regs]
+
+end FR.X
+
+end G6_FRXDec4Lv
+
+section G6_FRXDec4Msg
+
+-- New for `flock-recursive` (BLUEPRINT revision 4.2, §6.2 step 4; stage S-H4, pass 4, item 1).
+
+/-!
+# The message steps at revision 4.1's kinds (`MsgOk4`)
+
+Each level's front half runs a message step `msg` that lays out the next level's message as the
+coordinate rows `X`, `Y` (`MsgOk4`). There are two (3.x's `msgOk_lower`/`msgOk_four` on a
+parametric memory map, over T4's `CKind` truths):
+
+* **`msgOk4_lower`** (levels 0–3): `msgHIR` gathers level `i + 1`'s decoded rows, all 16 of them,
+  from `ob` (row `r` at `ob + 2kr`, `k = 2^mLog (i + 1)`; `decLv4_sem`'s output at `c₀ = 0`,
+  `C = 16`);
+* **`msgOk4_four`** (level 4): `msgTIR` copies the final message (`T4.finalAt`, the absorb at
+  `phStart4 47`) from the tape at `tw`, given the tape link `hfin`. The link to π's final field at
+  revision 4.1's offset is stated where the format is fixed (A2′), not here.
+
+The constants per kind and level (`msg4_params`) are checked by `decide` on the ladder.
+-/
+
+namespace FR.X
+
+open RecursionFast FR Finset
+
+-- G2: `entryK`/`storeM`/`runPrims` are never unfolded while unifying states (elaboration time).
+attribute [local irreducible] entryK storeM runPrims
+
+/-- The ladder's message sizes (every 4.1 kind, levels 0–3): `kᵢ = 8 kᵢ₊₁`, `8 kᵢ₊₁ ≤ nᵢ`,
+`log nᵢ ≤ 20`. -/
+theorem msg4_params (κ : Snd.CKind) {i : ℕ} (hi : i < 4) :
+    2 ^ Snd.T4.mLog κ i = 8 * 2 ^ Snd.T4.mLog κ (i + 1) ∧
+      8 * 2 ^ Snd.T4.mLog κ (i + 1) ≤ 2 ^ (Snd.CKind.lv κ i).logN ∧ (Snd.CKind.lv κ i).logN ≤ 20 := by
+  rcases κ with (_|_|_) | (_|_|_) <;> interval_cases i <;> decide
+
+/-- Level 4's sizes (every 4.1 kind): `k₄ = 2^mLog 4 ≤ 2^logN`, `log n₄ ≤ 20`, `k₄ ≤ 2^7`. -/
+theorem msg4_four_params (κ : Snd.CKind) :
+    2 ^ Snd.T4.mLog κ 4 ≤ 2 ^ (Snd.CKind.lv κ 4).logN ∧ (Snd.CKind.lv κ 4).logN ≤ 20 ∧
+      2 ^ Snd.T4.mLog κ 4 ≤ 2 ^ 7 := by
+  rcases κ with (_|_|_) | (_|_|_) <;> decide
+
+/-- **The rows of levels 0–3** at a 4.1 kind (3.x's `msgH_next`): if level `i + 1`'s decoded
+row `r` sits at `ob + 2kr` as the `F` values of `msgOf (i + 1) r`, entry `j < 2^n` of `X` (`Y`)
+is `(nextMsg i j).f₀` (`.f₁`) for `j < 2^mLog i`, and `0` above. -/
+theorem msgH4_next {κ : Snd.CKind} {L es : Log} {i : ℕ} (hi : i < 4) (I : Array Word) (s : St)
+    (hM : Inv s.M) {ob xb yb : ℕ}
+    (hdec : ∀ r < 16, ∀ x < 2 ^ Snd.T4.mLog κ (i + 1),
+      algebraMap F K (rdF s.M (ob + 2 * 2 ^ Snd.T4.mLog κ (i + 1) * r + 2 * x)) =
+        Snd.T4.msgOf κ L es (i + 1) r x)
+    (hF : ∀ r x, Snd.T4.msgOf κ L es (i + 1) r x =
+      algebraMap F K (Snd.T4.msgOf κ L es (i + 1) r x).f₀)
+    (hob : regs ≤ ob) (hob2 : ob + 32 * 2 ^ Snd.T4.mLog κ (i + 1) < 2 ^ 64)
+    (hxb : regs ≤ xb) (hyb : regs ≤ yb)
+    (hxb2 : xb + 2 * 2 ^ (Snd.CKind.lv κ i).logN < 2 ^ 64)
+    (hyb2 : yb + 2 * 2 ^ (Snd.CKind.lv κ i).logN < 2 ^ 64)
+    (hxs : xb + 2 * 2 ^ (Snd.CKind.lv κ i).logN ≤ s.M.size)
+    (hys : yb + 2 * 2 ^ (Snd.CKind.lv κ i).logN ≤ s.M.size)
+    (hd : xb + 2 * 2 ^ (Snd.CKind.lv κ i).logN ≤ yb ∨ yb + 2 * 2 ^ (Snd.CKind.lv κ i).logN ≤ xb)
+    (hdx : ob + 32 * 2 ^ Snd.T4.mLog κ (i + 1) ≤ xb ∨ xb + 2 * 2 ^ (Snd.CKind.lv κ i).logN ≤ ob)
+    (hdy : ob + 32 * 2 ^ Snd.T4.mLog κ (i + 1) ≤ yb ∨ yb + 2 * 2 ^ (Snd.CKind.lv κ i).logN ≤ ob) :
+    ∀ j < 2 ^ (Snd.CKind.lv κ i).logN,
+      rdF (semXIR I (msgHIR (Snd.CKind.lv κ i).logN (2 ^ Snd.T4.mLog κ (i + 1)) ob xb yb) s).M
+          (xb + 2 * j) = (if j < 2 ^ Snd.T4.mLog κ i then (Snd.T4.nextMsg κ L es i j).f₀ else 0) ∧
+      rdF (semXIR I (msgHIR (Snd.CKind.lv κ i).logN (2 ^ Snd.T4.mLog κ (i + 1)) ob xb yb) s).M
+          (yb + 2 * j) = (if j < 2 ^ Snd.T4.mLog κ i then (Snd.T4.nextMsg κ L es i j).f₁ else 0) := by
+  intro j hj
+  obtain ⟨hm, hk, hn⟩ := msg4_params κ hi
+  obtain ⟨h1, h2⟩ := (msgHIR_sem I s hM (k := 2 ^ Snd.T4.mLog κ (i + 1)) hn hk hob hob2 hxb hyb hxb2
+    hyb2 hxs hys hd hdx hdy).1 j hj
+  rw [h1, h2, hm]
+  by_cases hjk : j < 8 * 2 ^ Snd.T4.mLog κ (i + 1)
+  · rw [if_pos hjk, if_pos hjk, if_pos hjk, if_pos hjk,
+      nextMsg4_coords (by simp only [nLevels]; omega) hF]
+    have hd8 : j / 8 < 2 ^ Snd.T4.mLog κ (i + 1) := (Nat.div_lt_iff_lt_mul (by norm_num)).2 (by omega)
+    have r0 := hdec (2 * (j % 8)) (by omega) (j / 8) hd8
+    have r1 := hdec (2 * (j % 8) + 1) (by omega) (j / 8) hd8
+    constructor
+    · show _ = (Snd.T4.msgOf κ L es (i + 1) (2 * (j % 8)) (j / 8)).f₀
+      rw [← r0]
+      show _ = rdF s.M (ob + 2 * 2 ^ Snd.T4.mLog κ (i + 1) * (2 * (j % 8)) + 2 * (j / 8))
+      congr 1; ring
+    · show _ = (Snd.T4.msgOf κ L es (i + 1) (2 * (j % 8) + 1) (j / 8)).f₀
+      rw [← r1]
+      show _ = rdF s.M (ob + 2 * 2 ^ Snd.T4.mLog κ (i + 1) * (2 * (j % 8) + 1) + 2 * (j / 8))
+      congr 1; ring
+  · rw [if_neg hjk, if_neg hjk, if_neg hjk, if_neg hjk]
+    exact ⟨rfl, rfl⟩
+
+/-- **The message step of levels 0–3** at a 4.1 kind, on a parametric map (3.x's
+`msgOk_lower`): level `i + 1`'s 16 decoded rows at `ob` (below the `eq` table at `eb`), `X` at
+`xb ≥ eb + 256`, `Y` at `yb ≥ xb + 2n`. -/
+theorem msgOk4_lower {κ : Snd.CKind} {L es : Log} {i : ℕ} (hi : i < 4) (I : Array Word) (s : St)
+    {ob eb xb yb : ℕ}
+    (hdec : ∀ r < 16, ∀ x < 2 ^ Snd.T4.mLog κ (i + 1),
+      algebraMap F K (rdF s.M (ob + 2 * 2 ^ Snd.T4.mLog κ (i + 1) * r + 2 * x)) =
+        Snd.T4.msgOf κ L es (i + 1) r x)
+    (hF : ∀ r x, Snd.T4.msgOf κ L es (i + 1) r x =
+      algebraMap F K (Snd.T4.msgOf κ L es (i + 1) r x).f₀)
+    (hob : regs ≤ ob) (hoe : ob + 32 * 2 ^ Snd.T4.mLog κ (i + 1) ≤ eb) (hex : eb + 256 ≤ xb)
+    (hxy : xb + 2 * 2 ^ (Snd.CKind.lv κ i).logN ≤ yb)
+    (hy2 : yb + 2 * 2 ^ (Snd.CKind.lv κ i).logN < 2 ^ 64)
+    (hsz : yb + 2 * 2 ^ (Snd.CKind.lv κ i).logN ≤ s.M.size) :
+    MsgOk4 I (msgHIR (Snd.CKind.lv κ i).logN (2 ^ Snd.T4.mLog κ (i + 1)) ob xb yb) s eb xb yb
+      (Snd.CKind.lv κ i).logN (Snd.T4.mLog κ i) (Snd.T4.nextMsg κ L es i) := by
+  intro s' hM' hsz' hag
+  simp only [regs] at hob
+  have hdec' : ∀ r < 16, ∀ x < 2 ^ Snd.T4.mLog κ (i + 1),
+      algebraMap F K (rdF s'.M (ob + 2 * 2 ^ Snd.T4.mLog κ (i + 1) * r + 2 * x)) =
+        Snd.T4.msgOf κ L es (i + 1) r x := fun r hr x hx => by
+    rw [← hdec r hr x hx]
+    have : 2 * 2 ^ Snd.T4.mLog κ (i + 1) * r ≤ 2 * 2 ^ Snd.T4.mLog κ (i + 1) * 15 :=
+      Nat.mul_le_mul_left _ (by omega)
+    congr 1
+    exact rdF_eq (hag _ (by simp only [regs]; omega) (.inl (by omega)))
+      (hag _ (by simp only [regs]; omega) (.inl (by omega)))
+  obtain ⟨-, h2, h3⟩ := msgHIR_sem I s' hM' (n := (Snd.CKind.lv κ i).logN)
+    (k := 2 ^ Snd.T4.mLog κ (i + 1)) (ob := ob) (xb := xb) (yb := yb) (msg4_params κ hi).2.2
+    (msg4_params κ hi).2.1 (by simp only [regs]; omega) (by omega) (by simp only [regs]; omega)
+    (by simp only [regs]; omega) (by omega) hy2 (by omega) (by omega) (.inl hxy) (.inl (by omega))
+    (.inl (by omega))
+  refine ⟨fun j hj => ?_, fun y hy hy2 => ?_, h3⟩
+  · have e := msgH4_next hi I s' hM' hdec' hF (by simp only [regs]; omega) (by omega)
+      (by simp only [regs]; omega) (by simp only [regs]; omega) (by omega) hy2 (by omega) (by omega)
+      (.inl hxy) (.inl (by omega)) (.inl (by omega)) j hj
+    exact e
+  · exact h2 y hy (by omega) (by omega)
+
+/-- The final message (level 4's next message) is `T4.finalAt`. -/
+theorem nextMsg4_four (κ : Snd.CKind) (L es : Log) (x : ℕ) :
+    Snd.T4.nextMsg κ L es 4 x = Snd.T4.finalAt es x := by
+  rw [Snd.T4.nextMsg, if_neg (by simp only [nLevels]; omega)]
+
+/-- **Level 4's message step** at a 4.1 kind, on a parametric map (3.x's `msgOk_four`):
+`msgTIR` copies `k₄ = 2^mLog 4` K elements from the tape at `tw`, given the link
+`finalAt es x = (tapeF (tw + 4x), tapeF (tw + 4x + 2))`. -/
+theorem msgOk4_four {κ : Snd.CKind} {L es : Log} (I : Array Word) (s : St) {tw eb xb yb : ℕ}
+    (hfin : ∀ x < 2 ^ Snd.T4.mLog κ 4,
+      Snd.T4.finalAt es x = ⟨tapeF I (tw + 4 * x), tapeF I (tw + 4 * x + 2)⟩)
+    (htw : tw + 4 * 2 ^ 7 < 2 ^ 64) (hrx : regs ≤ eb) (hex : eb + 256 ≤ xb)
+    (hxy : xb + 2 * 2 ^ (Snd.CKind.lv κ 4).logN ≤ yb)
+    (hy2 : yb + 2 * 2 ^ (Snd.CKind.lv κ 4).logN < 2 ^ 64)
+    (hsz : yb + 2 * 2 ^ (Snd.CKind.lv κ 4).logN ≤ s.M.size) :
+    MsgOk4 I (msgTIR (Snd.CKind.lv κ 4).logN (2 ^ Snd.T4.mLog κ 4) tw xb yb) s eb xb yb
+      (Snd.CKind.lv κ 4).logN (Snd.T4.mLog κ 4) (Snd.T4.nextMsg κ L es 4) := by
+  intro s' hM' hsz' _
+  obtain ⟨hk, hn, hk7⟩ := msg4_four_params κ
+  simp only [regs] at hrx
+  obtain ⟨h1, h2, h3⟩ := msgTIR_sem I s' hM' (n := (Snd.CKind.lv κ 4).logN)
+    (k := 2 ^ Snd.T4.mLog κ 4) (tw := tw) (xb := xb) (yb := yb) hn hk (by omega)
+    (by simp only [regs]; omega) (by simp only [regs]; omega) (by omega) hy2 (by omega) (by omega)
+    (.inl hxy)
+  refine ⟨fun j hj => ?_, fun y hy hy2 => h2 y hy (by omega) (by omega), h3⟩
+  rw [(h1 j hj).1, (h1 j hj).2]
+  by_cases h : j < 2 ^ Snd.T4.mLog κ 4
+  · rw [if_pos h, if_pos h, if_pos h, if_pos h, nextMsg4_four, hfin j h]
+    exact ⟨rfl, rfl⟩
+  · rw [if_neg h, if_neg h, if_neg h, if_neg h]
+    exact ⟨rfl, rfl⟩
+
+/-! ## Controls -/
+
+/-- (value) The ladder's final message sizes: `k₄ = 32, 64, 128` at `m = 30, 31, 32` (`L30`,
+`N2`, `N4`). -/
+theorem msg4_four_ctl : 2 ^ Snd.T4.mLog (.seg .L30) 4 = 32 ∧ 2 ^ Snd.T4.mLog (.node .N2) 4 = 64 ∧
+    2 ^ Snd.T4.mLog (.node .N4) 4 = 128 := by decide
+
+/-- (−) **`MsgOk4` is not trivial**: the empty step does not lay out a nonzero message over a
+zero `X` row (3.x's `msgOk_empty_neg` on a parametric map). -/
+theorem msgOk4_empty_neg (I : Array Word) (s : St) (hM : Inv s.M) {eb xb yb : ℕ}
+    (h0 : rdF s.M xb = 0) : ¬ MsgOk4 I (.blk []) s eb xb yb 0 0 (fun _ => 1) := by
+  intro h
+  have := ((h s hM rfl fun _ _ _ => rfl).1 0 (by norm_num)).1
+  rw [if_pos (by norm_num), Nat.mul_zero, Nat.add_zero] at this
+  have e : semXIR I (.blk []) s = s := by rw [semB, runPrims_nil]
+  rw [e, h0] at this
+  exact absurd this (by decide)
+
+end FR.X
+
+end G6_FRXDec4Msg
+
+section G6_FRXDec4Map
+
+-- New for `flock-recursive` (BLUEPRINT revision 4.2, §6.2 step 4; stage S-H4, pass 4, item 2).
+
+/-!
+# The node decoder's memory map at revision 4.1 (`Map4`)
+
+The node decoder runs on `memX4 + mpw·t` words: the decoder's regions below `memX4 = 2^28`, the
+log index from `memX4` on (Part 25 F2; the coordinator's Q2 ruling). `Map4` places every region:
+
+| region | base (`map4`) | size at `m = 32` |
+|---|---|---|
+| registers | `0` | `256` |
+| basis table (`wtabIR`) | `tb = 2^20` | `800` |
+| the chain (`chainIR`: targets, `H`, answers) | `chB = 2^23` … `chEnd` | `6,144` |
+| levels 1–4 (`lU`): flags, `J`, `P`, `Y`, rows, `eq`, `X`, `Y` | `2^24` … `2^24 + 2^23 + 2^20` | |
+| level 0 (`l0`): flags, `J`, `P`, `Y`, rows 1–7, `eq`, `X`, `Y` | `2^24` … `36,700,416 + 2^21` | |
+| levels 1–4's word | `lU.cb = 2^26` | `32 · 2^18` |
+| level 0's word | `l0.cb = 2^27` | `128 · 2^20 = 2^27` |
+| the log index | `ix = memX4 = 2^28` | `3t` |
+
+Levels 1–4 run before level 0 and share one map (3.x's `obL`); level 0's regions overlap theirs
+except level 1's decoded rows, which level 0's message step reads (`Map4.Ok`'s cross conditions).
+The same literal serves `m = 31` (`N2`) and `m = 32` (`N4`, `N8`).
+
+**`Map4.Ok M m`** is a conjunction of numeral inequalities (the sizes are `2^(m − 12 − 2i)`
+positions, `2^(m − 13 − 3i)` targets): non-overlap of every region, `MsgOk4`'s `X`/`Y` regions, the
+`2k` slack after each output (`ob + 2k(C + 1) ≤ eb`), and the fit under `2^28`. `map4_ok31`,
+`map4_ok32` are `decide` on the literal record. `LvMap.back`/`LvMap.front` turn a level's `Ok` into
+`BackLay4`/`FrontLay4` and `decLv4_sem`'s remaining layout hypotheses.
+-/
+
+namespace FR.X
+
+open RecursionFast FR
+
+-- The decoder's memory `memX4 = 2^28` is `FRXProg`'s (the program's memory, the index's base).
+
+/-- **One level's regions**: flags `fb`, `J` at `jb`, the prefix table `pb`, `lagIR`'s `Y` at
+`yl`, the decoded rows `ob`, the `eq` table `eb`, `X` at `xb`, `Y` at `yb`, the word's column store
+at `cb` with `cs` words a position. -/
+structure LvMap where
+  fb : ℕ
+  jb : ℕ
+  pb : ℕ
+  yl : ℕ
+  ob : ℕ
+  eb : ℕ
+  xb : ℕ
+  yb : ℕ
+  cb : ℕ
+  cs : ℕ
+  deriving DecidableEq, Repr
+
+/-- **A level's map fits** `n` positions, `k` targets, `C` decoded rows and `R` word rows, after
+the basis table at `tb`: the regions in order, each output with `2k` words of slack. -/
+def LvMap.Ok (M : LvMap) (tb n k C R : ℕ) : Prop :=
+  tb + 800 ≤ M.fb ∧ M.fb + n ≤ M.jb ∧ M.jb + k ≤ M.pb ∧ M.pb + k ≤ M.yl ∧ M.yl + 2 * C * k ≤ M.ob ∧
+    M.ob + 2 * k * (C + 1) ≤ M.eb ∧ M.eb + 256 ≤ M.xb ∧ M.xb + 2 * n ≤ M.yb ∧
+    M.yb + 2 * n ≤ M.cb ∧ 2 * R ≤ M.cs ∧ M.cb + M.cs * n + 256 < 2 ^ 64
+
+instance (M : LvMap) (tb n k C R : ℕ) : Decidable (M.Ok tb n k C R) := by
+  unfold LvMap.Ok; infer_instance
+
+/-- **The node decoder's map**: the basis table, level 0's and levels 1–4's regions, the index. -/
+structure Map4 where
+  tb : ℕ
+  l0 : LvMap
+  lU : LvMap
+  ix : ℕ
+  deriving DecidableEq, Repr
+
+/-- **The map is sound at `m`** (numerals only): the chain's region `[chB, chEnd)` between the
+basis table and both levels' regions; level 0 at `2^(m − 12)` positions, `2^(m − 13)` targets,
+rows 1–7 decoded (`C = 7`: the selector and `h_out` cells the output reads, S-H4 pass 7) of
+64; levels `i = 1 … 4` at `2^(m − 12 − 2i)` positions, `2^(m − 13 − 3i)` targets, all 16 rows;
+levels 1–4 keep level 0's word; level 1's rows lie below level 0's `eq` table; level 0's word
+ends at the index, at `2^28`. -/
+def Map4.Ok (M : Map4) (m : ℕ) : Prop :=
+  regs ≤ M.tb ∧ M.tb + 800 ≤ chB ∧ chEnd ≤ M.l0.fb ∧ chEnd ≤ M.lU.fb ∧
+    M.l0.Ok M.tb (2 ^ (m - 12)) (2 ^ (m - 13)) 7 64 ∧
+    M.lU.Ok M.tb (2 ^ (m - 12 - 2 * 1)) (2 ^ (m - 13 - 3 * 1)) 16 16 ∧
+    M.lU.Ok M.tb (2 ^ (m - 12 - 2 * 2)) (2 ^ (m - 13 - 3 * 2)) 16 16 ∧
+    M.lU.Ok M.tb (2 ^ (m - 12 - 2 * 3)) (2 ^ (m - 13 - 3 * 3)) 16 16 ∧
+    M.lU.Ok M.tb (2 ^ (m - 12 - 2 * 4)) (2 ^ (m - 13 - 3 * 4)) 16 16 ∧
+    M.lU.yb + 2 * 2 ^ (m - 12 - 2 * 1) ≤ M.l0.cb ∧
+    M.lU.cb + M.lU.cs * 2 ^ (m - 12 - 2 * 1) ≤ M.l0.cb ∧
+    M.lU.ob + 32 * 2 ^ (m - 13 - 3 * 1) ≤ M.l0.eb ∧
+    M.l0.cb + M.l0.cs * 2 ^ (m - 12) ≤ M.ix ∧ M.ix = memX4
+
+instance (M : Map4) (m : ℕ) : Decidable (M.Ok m) := by
+  unfold Map4.Ok; infer_instance
+
+/-- **The node decoder's map** (one literal for `m = 31` and `m = 32`). Reducible: a projection
+`map4.tb + c` in an `omega` goal is then a literal sum, not a unary unfolding of `c`. -/
+abbrev map4 : Map4 where
+  tb := 1048576
+  l0 := { fb := 16777216, jb := 17825792, pb := 18350080, yl := 18874368, ob := 26214400,
+          eb := 34603008, xb := 34603264, yb := 36700416, cb := 134217728, cs := 128 }
+  lU := { fb := 16777216, jb := 17039360, pb := 17104896, yl := 17170432, ob := 19267584,
+          eb := 25165824, xb := 25166080, yb := 25690368, cb := 67108864, cs := 32 }
+  ix := 268435456
+
+/-- (+) **`map4` is sound at `m = 32`** (`N4`, `N8`). -/
+theorem map4_ok32 : map4.Ok 32 := by decide
+
+/-- (+) **`map4` is sound at `m = 31`** (`N2`). -/
+theorem map4_ok31 : map4.Ok 31 := by decide
+
+/-- (value) `map4`'s bases are the table's powers of two. -/
+theorem map4_ctl : map4.tb = 2 ^ 20 ∧ map4.l0.fb = 2 ^ 24 ∧ map4.l0.eb = 2 ^ 25 + 2 ^ 20 ∧
+    map4.l0.cb = 2 ^ 27 ∧ map4.lU.cb = 2 ^ 26 ∧ map4.lU.eb = 2 ^ 24 + 2 ^ 23 ∧ map4.ix = memX4 := by
+  decide
+
+/-- (−) **Overlap is rejected**: `X` of level 0 moved onto its `eq` table. -/
+theorem not_map4_overlap : ¬ ({ map4 with l0 := { map4.l0 with xb := map4.l0.eb } } : Map4).Ok 32 := by
+  decide
+
+/-- (−) **The slack is required**: level 0's `eq` table moved to the end of its rows
+(`ob + 2kC`, no `2k` slack). -/
+theorem not_map4_slack :
+    ¬ ({ map4 with l0 := { map4.l0 with eb := 26214400 + 2 * 2 ^ 19 * 7 } } : Map4).Ok 32 := by
+  decide
+
+/-- (−) **The fit is required**: level 0's word one position higher runs into the index. -/
+theorem not_map4_fit :
+    ¬ ({ map4 with l0 := { map4.l0 with cb := 134217728 + 128 } } : Map4).Ok 32 := by
+  decide
+
+/-- (−) **Level 1's rows must lie below level 0's `eq` table**: rows moved above it. -/
+theorem not_map4_rows :
+    ¬ ({ map4 with lU := { map4.lU with ob := 33554432 } } : Map4).Ok 32 := by
+  decide
+
+/-! ## From `Ok` to the level theorems' layouts -/
+
+/-- A level's `Ok` gives the back half's map and `decLv4_sem`'s output slack. -/
+theorem LvMap.back {M : LvMap} {tb n k C R : ℕ} (h : M.Ok tb n k C R) (htb : regs ≤ tb) :
+    BackLay4 n k C tb M.fb M.jb M.pb M.yl M.ob ∧ M.ob + 2 * k * (C + 1) ≤ M.eb := by
+  obtain ⟨h1, h2, h3, h4, h5, h6, h7, h8, h9, -, h11⟩ := h
+  exact ⟨⟨htb, h1, h2, h3, h4, h5, by omega⟩, h6⟩
+
+/-- A level's `Ok` gives the front half's map, for challenges `cbS` in the chain's region below
+the level's flags. -/
+theorem LvMap.front {M : LvMap} {tb n k C R ℓ cbS : ℕ} (h : M.Ok tb n k C R) (htb : regs ≤ tb)
+    (hS : regs ≤ cbS) (hS2 : cbS + 8 * ℓ + 4 ≤ M.fb) :
+    FrontLay4 n ℓ tb M.fb M.eb M.xb M.yb cbS := by
+  obtain ⟨h1, h2, h3, h4, h5, h6, h7, h8, h9, -, h11⟩ := h
+  exact ⟨htb, h1, by omega, h7, h8, by omega, hS, by omega, .inl hS2⟩
+
+/-- A level's `Ok`: the store above `Y`, its column width, its end below `2^64`. -/
+theorem LvMap.store {M : LvMap} {tb n k C R : ℕ} (h : M.Ok tb n k C R) :
+    M.yb + 2 * n ≤ M.cb ∧ 2 * R ≤ M.cs ∧ M.cb + M.cs * n + 256 < 2 ^ 64 :=
+  ⟨h.2.2.2.2.2.2.2.2.1, h.2.2.2.2.2.2.2.2.2.1, h.2.2.2.2.2.2.2.2.2.2⟩
+
+/-! ## The ladder's sizes per kind -/
+
+/-- Level 0's sizes at a node kind: `2^(m − 12)` positions, `2^(m − 13)` targets, 64 rows. -/
+theorem lv0_sizes (κ : Rev4.NodeKind) :
+    2 ^ (Snd.CKind.lv (.node κ) 0).logN = 2 ^ ((Snd.CKind.node κ).m - 12) ∧
+      2 ^ Snd.T4.mLog (.node κ) 0 = 2 ^ ((Snd.CKind.node κ).m - 13) ∧
+      (Snd.CKind.lv (.node κ) 0).rows = 64 ∧ (Snd.CKind.lv (.node κ) 0).ell = 6 := by
+  cases κ <;> decide
+
+/-- Level `i ∈ [1, 4]`'s sizes at a node kind: `2^(m − 12 − 2i)` positions, `2^(m − 13 − 3i)`
+targets, 16 rows. -/
+theorem lvU_sizes (κ : Rev4.NodeKind) {i : ℕ} (hi1 : 1 ≤ i) (hi : i ≤ 4) :
+    2 ^ (Snd.CKind.lv (.node κ) i).logN = 2 ^ ((Snd.CKind.node κ).m - 12 - 2 * i) ∧
+      2 ^ Snd.T4.mLog (.node κ) i = 2 ^ ((Snd.CKind.node κ).m - 13 - 3 * i) ∧
+      (Snd.CKind.lv (.node κ) i).rows = 16 ∧ (Snd.CKind.lv (.node κ) i).ell = 4 := by
+  cases κ <;> interval_cases i <;> decide
+
+/-- The node kinds' sizes: `m = 31` (`N2`) or `32` (`N4`, `N8`). -/
+theorem node_m (κ : Rev4.NodeKind) : (Snd.CKind.node κ).m = 31 ∨ (Snd.CKind.node κ).m = 32 := by
+  cases κ <;> decide
+
+/-- **`map4` is sound at every node kind's `m`.** -/
+theorem map4_ok (κ : Rev4.NodeKind) : map4.Ok (Snd.CKind.node κ).m := by
+  rcases node_m κ with h | h <;> rw [h]
+  · exact map4_ok31
+  · exact map4_ok32
+
+/-- `map4`'s level-`i` regions are sound at a node kind's level `i` (`i ∈ [1, 4]`). -/
+theorem map4_lvU (κ : Rev4.NodeKind) {i : ℕ} (hi1 : 1 ≤ i) (hi : i ≤ 4) :
+    map4.lU.Ok map4.tb (2 ^ (Snd.CKind.lv (.node κ) i).logN) (2 ^ Snd.T4.mLog (.node κ) i) 16 16 := by
+  obtain ⟨e1, e2, -, -⟩ := lvU_sizes κ hi1 hi
+  rw [e1, e2]
+  obtain ⟨-, -, -, -, -, o1, o2, o3, o4, -⟩ := map4_ok κ
+  interval_cases i
+  · exact o1
+  · exact o2
+  · exact o3
+  · exact o4
+
+/-- `map4`'s level-0 regions are sound at a node kind's level 0. -/
+theorem map4_l0 (κ : Rev4.NodeKind) :
+    map4.l0.Ok map4.tb (2 ^ (Snd.CKind.lv (.node κ) 0).logN) (2 ^ Snd.T4.mLog (.node κ) 0) 7 64 := by
+  obtain ⟨e1, e2, -, -⟩ := lv0_sizes κ
+  rw [e1, e2]
+  exact (map4_ok κ).2.2.2.2.1
+
+end FR.X
+
+end G6_FRXDec4Map
+
+section G6_FRXDec4Levels
+
+-- New for `flock-recursive` (BLUEPRINT revision 4.2, §6.2 steps 3–4; stage S-H4, pass 6, item 1).
 
 /-!
 # The five levels at a revision 4.1 node kind (`decLevels4`)
@@ -636,13 +1135,13 @@ theorem cost_msgU4 (κ : Rev4.NodeKind) {i : ℕ} (hi1 : 1 ≤ i) (hi : i < 4) (
   obtain ⟨-, m2, -⟩ := lvU4_nums κ (i := i + 1) (by omega) (by omega)
   rw [msgU4, cost_msgHIR _ _ _ _ _ t (by omega) (by omega)]
 
-/-- **The five levels' exact cost**: `27,032,496,972,783 ≈ 2^44.6` at `N2` (`m = 31`) and
-`108,050,895,689,694 ≈ 2^46.6` at `N4`, `N8` (`m = 32`), of which level 0 (rows `1 … 7`) is
+/-- **The five levels' exact cost**: `27,032,483,570,671 ≈ 2^44.6` at `N2` (`m = 31`) and
+`108,050,868,885,470 ≈ 2^46.6` at `N4`, `N8` (`m = 32`), of which level 0 (rows `1 … 7`) is
 `2.62·10^13` and `1.05·10^14` (Part 25's model at `C = 7`). -/
 theorem cost_decLevels4 (pL : ℕ) (cw cbS : ℕ → ℕ) (tw t : ℕ) :
-    cost (decLevels4 (.node .N2) pL cw cbS tw) t = 27032496972783 ∧
-    cost (decLevels4 (.node .N4) pL cw cbS tw) t = 108050895689694 ∧
-    cost (decLevels4 (.node .N8) pL cw cbS tw) t = 108050895689694 := by
+    cost (decLevels4 (.node .N2) pL cw cbS tw) t = 27032483570671 ∧
+    cost (decLevels4 (.node .N4) pL cw cbS tw) t = 108050868885470 ∧
+    cost (decLevels4 (.node .N8) pL cw cbS tw) t = 108050868885470 := by
   refine ⟨?_, ?_, ?_⟩ <;>
   · rw [cost_decLevels4_eq, cost_stepU4 _ _ (by norm_num) le_rfl, cost_stepU4 _ _ (by norm_num) (by norm_num),
       cost_stepU4 _ _ (by norm_num) (by norm_num), cost_stepU4 _ _ le_rfl (by norm_num), cost_dec04,
@@ -675,3 +1174,5 @@ theorem decLevels4_ctl (pL : ℕ) (cw cbS : ℕ → ℕ) (tw : ℕ) :
   exact absurd this (by decide)
 
 end FR.X
+
+end G6_FRXDec4Levels

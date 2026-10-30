@@ -1,7 +1,5 @@
 -- New for `flock-recursive` (BLUEPRINT revision 4.1, A.9; stage R4c): controls.
 import FRSoundness4R4FinSh
-import FRSoundness4R4FinLc
-import FRSoundness4R4FinRS
 import FRSoundness4R4Kind
 
 /-!

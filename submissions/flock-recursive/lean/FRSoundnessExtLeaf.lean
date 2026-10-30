@@ -2,7 +2,7 @@
 -- RET-2: the declarations revision 4.1 reads moved to `FRSoundnessCoreAcc`.
 import FRSoundnessExtStmt
 import FRSoundnessFrDF
-import FRSoundnessCoreAcc
+import FRSoundness4P4aSeg
 
 /-!
 # The leaf case: `SLeaf` on the run's chain gives the leaf witness

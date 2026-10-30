@@ -2,8 +2,7 @@
 -- RET-1: position-free declarations moved to `FRSoundnessCoreWeights`, `FRSoundnessCoreSG`.
 import FRSoundnessPIOP
 import FRVIRFinalsSG
-import FRSoundnessCoreWeights
-import FRSoundnessCoreSG
+import FRSoundness4TailStep
 
 /-!
 # The Ligerito weight tables and their extensions (A.9, A.10)

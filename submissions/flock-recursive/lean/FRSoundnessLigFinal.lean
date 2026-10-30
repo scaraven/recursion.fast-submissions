@@ -1,7 +1,7 @@
 -- New for `flock-recursive` (BLUEPRINT §5.4 step 2, A.10 "What `final` then gets"; stage S-G2).
 -- RET-1: position-free declarations moved to `FRSoundnessCoreTail`.
 import FRSoundnessCompose
-import FRSoundnessCoreTail
+import FRSoundness4TailStep
 
 /-!
 # `ligerito_final`: unique decoding of the five Ligerito levels (BLUEPRINT §5.4 (2))

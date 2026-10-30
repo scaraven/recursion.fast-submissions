@@ -48,11 +48,11 @@ pub fn items_seq() -> Vec<(&'static str, It)> {
     rounds(&mut v, "S2", pp::S2_ROUNDS, 48, pp::F_S2);
     sq(&mut v, "Lr1", pp::LR1_SQ);
     rounds(&mut v, "Lr2", pp::LR_ROUNDS, 48, pp::F_LR);
-    ab(&mut v, "Lrend", 48, pp::F_LREND);
+    ab(&mut v, "Lrend", pp::LREND_LEN, pp::F_LREND);
     sq(&mut v, "Lr3", 1);
     sq(&mut v, "E1", pp::E1_SQ);
     rounds(&mut v, "E2", pp::E2_ROUNDS, 48, pp::F_E);
-    ab(&mut v, "Eend", 48, pp::F_EEND);
+    ab(&mut v, "Eend", pp::EEND_LEN, pp::F_EEND);
     sq(&mut v, "E3", 1);
     rounds(&mut v, "E4", pp::E4_ROUNDS, 48, pp::F_E);
     ab(&mut v, "E4end", pp::E4END_LEN, pp::F_E);
@@ -77,6 +77,11 @@ pub fn items_seq() -> Vec<(&'static str, It)> {
         sq(&mut v, "P3", pp::P3_SQ);
     }
     rounds(&mut v, "Pf", pp::PF_ROUNDS, 96, pp::F_PF);
+    // revision 4.4.1 (β′): the committed path digests, ζ, the selectors, z (phases 52–55)
+    ab(&mut v, "CapD", 32 * pp::CAP_READS, pp::F_D);
+    sq(&mut v, "CapZeta", 1);
+    ab(&mut v, "CapChk", 32 * pp::CAP_ENTRIES, pp::F_A);
+    sq(&mut v, "CapChkZ", 1);
     v
 }
 
@@ -192,7 +197,7 @@ mod tests {
         let recs = item_recs();
         assert_eq!(recs.len(), pp::N_ITEMS);
         assert_eq!(recs.iter().filter(|r| r.q != "col" && r.q != "node").count(), pp::N_FS_ITEMS);
-        let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../logs/INT-8/dump/items.json");
+        let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../logs/E1b/dump/items.json");
         match crate::kat::load_items(&p) {
             Some(want) => crate::kat::compare(&recs, &want).unwrap(),
             None => eprintln!("items_seq_kat: items.json absent, counts only"),

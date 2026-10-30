@@ -4,7 +4,7 @@ import FRVerifierC4
 import FRVIRSpecCore
 
 /-!
-# The revision 4.1 programs ask the item sequence `itemsOf seq4` (8,905 queries)
+# The revision 4.1 programs ask the item sequence `itemsOf seq4` (8,783 queries)
 
 * **`items_genPhase4`**: one phase of `gen4 S p` asks exactly its shape's items under `S.lv`
   (`Sh.itemsL`), for every kind `p` (a segment's `lastOps` and Z2 operand ask nothing; a level's
@@ -12,8 +12,8 @@ import FRVIRSpecCore
 * **`items_gen4`**: `gen4 S p fin` asks `itemsOf S` when `fin` asks nothing; **`noAsk_finOps4`**:
   the relocated finals `finOps4 P` ask nothing (each of `finalsOf P`'s nine fields).
 * **`queries_VsegC`**, **`queries_VnodeC`**: every segment and node program asks
-  `(itemsOf seq4).length = 8,905` queries under every oracle. **`ks_queriesC4`**: `KS`'s first
-  conjunct for `VC4` at `qV4` (INT-7's `ks_queries4` with `qS = 8,905`).
+  `(itemsOf seq4).length = 8,783` queries under every oracle. **`ks_queriesC4`**: `KS`'s first
+  conjunct for `VC4` at `qV4` (INT-7's `ks_queries4` with `qS = 8,783`).
 -/
 
 namespace FR.Rev4
@@ -30,8 +30,8 @@ theorem items_merkleOps4 (sib i : ℕ) (j : Reg) (n h cur so b : ℕ) :
       List.map_map]
     simp [List.filterMap_cons, Op.item?, Function.comp_def, Nat.add_assoc, Nat.add_comm 1]
 
-theorem items_posOps4 (S : Seq) (k : KindP) (i co so capO : ℕ) (ans : List Reg) (w : Reg) (p b : ℕ) :
-    (posOps4 S k i co so capO ans w p b).filterMap Op.item? = posItemsL S.lv i := by
+theorem items_posOps4 (S : Seq) (k : KindP) (i co so dO : ℕ) (ans : List Reg) (w : Reg) (p b : ℕ) :
+    (posOps4 S k i co so dO ans w p b).filterMap Op.item? = posItemsL S.lv i := by
   simp [posOps4, posItemsL, List.filterMap_cons, Op.item?, items_merkleOps4]
 
 theorem noAsk_lastOps (so b : ℕ) : (lastOps so b).filterMap Op.item? = [] := by
@@ -140,11 +140,20 @@ theorem noAsk_gFinRS (P : FinP) (fi : FinIn) (b : ℕ) : (gFinRS P fi b).1.filte
     noAsk_claimOps _ (fun i => Op.const (fun _ => .f (bb i))) (fun _ => rfl), List.append_nil]
   rfl
 
+theorem noAsk_gFinE0 (P : FinP) (fi : FinIn) (b : ℕ) (act : KC Bool) (own : Bool) :
+    (gFinE0 P fi b act own).filterMap Op.item? = [] := by
+  cases hc : P.ck <;> cases own <;> simp only [gFinE0, hc, cond_true, cond_false, List.filterMap_cons, List.filterMap_append,
+    List.filterMap_nil, Op.item?, List.append_nil]
+
 theorem noAsk_gFinE (P : FinP) (fi : FinIn) (b : ℕ) : (gFinE P fi b).1.filterMap Op.item? = [] := by
-  cases hc : P.ck <;> simp [gFinE, Op.item?, hc]
+  cases hr : P.rsvOps <;>
+  simp only [gFinE, hr, cond_true, cond_false, List.filterMap_append, noAsk_gFinE0, noAsk_rsvEOps,
+    List.append_nil]
 
 theorem noAsk_gFinB' (P : FinP) (fi : FinIn) (b : ℕ) : (gFinB' P fi b).1.filterMap Op.item? = [] := by
-  simp [gFinB', Op.item?]
+  cases hr : P.rsvOps <;>
+  simp only [gFinB', hr, cond_true, cond_false, List.filterMap_append, noAsk_rsvBOps, List.append_nil] <;>
+  rfl
 
 theorem noAsk_gFinP (P : FinP) (i : ℕ) (fi : FinIn) (b : ℕ) :
     (gFinP P i fi b).1.filterMap Op.item? = [] := by
@@ -163,8 +172,8 @@ theorem noAsk_gFinPf (P : FinP) (fi : FinIn) (b : ℕ) : (gFinPf P fi b).1.filte
   have h3 : ∀ (sel : KC Bool) (c : ℕ → Reg) (n pb : ℕ),
       ((List.range n).map fun s => Op.keep sel (c s) (pb + s)).filterMap Op.item? = [] :=
     fun _ _ _ _ => noAsk_map _ _ fun _ => rfl
-  cases hc : P.ck <;>
-  simp only [gFinPf, hc, Bool.cond_true, Bool.cond_false, List.filterMap_append, noAsk_ptsOps,
+  cases hc : P.ck <;> cases hr : P.rsvOps <;>
+  simp only [gFinPf, hc, hr, Bool.cond_true, Bool.cond_false, List.filterMap_append, noAsk_ptsOps,
     noAsk_gCellsOps, noAsk_gCellsOpsK, noAsk_gLvsOps, noAsk_fhOps, noAsk_padsOps, noAsk_selOps,
     noAsk_gTailOps, List.filterMap_flatMap, List.filterMap_cons, Op.item?, h1, h2] <;>
   simp [noAsk_map _ _ (fun _ => rfl : ∀ s : ℕ, (Op.keep _ _ _ : Op).item? = none)]
@@ -202,33 +211,33 @@ theorem noAsk_ops (fin : Finals) (h : ∀ f ∈ fin.finRS :: fin.rest, ∀ fi b,
 /-- **The relocated finals ask nothing.** -/
 theorem noAsk_finOps4 (P : FinP) (outs : Array (List Reg)) (b : ℕ) :
     (finOps4 P outs b).filterMap Op.item? = [] := by
-  rw [finOps4, List.filterMap_map]
+  rw [finOps4_def, List.filterMap_map]
   have : (Op.item? ∘ reloc P.S) = Op.item? := funext fun op => item_reloc P.S op
-  rw [this]; exact noAsk_ops _ (noAsk_finalsOf P) outs b
+  rw [this, List.filterMap_append, noAsk_ops _ (noAsk_finalsOf P) outs b, noAsk_capChkOps]; rfl
 
 /-! ## The bounds -/
 
-theorem itemsOf_seq4_len : (itemsOf seq4).length = 8905 := itemsOf_seq4_length
+theorem itemsOf_seq4_len : (itemsOf seq4).length = 8783 := itemsOf_seq4_length
 
-/-- **Every segment program asks 8,905 queries** under every oracle. -/
+/-- **Every segment program asks 8,783 queries** under every oracle. -/
 theorem queries_VsegC (impl₀ : OpImpl) (H : ByteArray → Digest) (κ : SegKind) (vk c : Digest) (π : Proof) :
-    ((VsegC impl₀ κ vk c π).queries H).length = 8905 := by
+    ((VsegC impl₀ κ vk c π).queries H).length = 8783 := by
   rw [VsegC, runStmt_queries, queries_runIR, progSeg, genSeg, items_gen4 _ _ _ (noAsk_finOps4 _),
     itemsOf_seq4_len]
 
-/-- **Every node program asks 8,905 queries** under every oracle. -/
+/-- **Every node program asks 8,783 queries** under every oracle. -/
 theorem queries_VnodeC (implN : NodeKind → OpImpl) (cells : NodeKind → List ℕ) (H : ByteArray → Digest)
     (κ : NodeKind) (vk c : Digest) (π : Proof) :
-    ((VnodeC implN cells κ vk c π).queries H).length = 8905 := by
+    ((VnodeC implN cells κ vk c π).queries H).length = 8783 := by
   rw [VnodeC, runStmt_queries, queries_runIR, progNode, genNode, items_gen4 _ _ _ (noAsk_finOps4 _),
     itemsOf_seq4_len]
 
-/-- **`KS`'s first conjunct for `VC4`** at `qV4` (`ks_queries4` with `qS = 8,905`). -/
+/-- **`KS`'s first conjunct for `VC4`** at `qV4` (`ks_queries4` with `qS = 8,783`). -/
 theorem ks_queriesC4 (impl₀ : OpImpl) (implN : NodeKind → OpImpl) (cells : NodeKind → List ℕ)
     (S : Submission) (hV : S.V = VC4 impl₀ implN cells) (hq : S.qV = qV4) (vk : Digest) :
     ∀ H c π, ((S.V vk c π).queries H).length ≤ S.qV :=
   ks_queries4 (VsegC impl₀) (VnodeC implN cells) S hV hq
     (fun H κ vk c π => (queries_VsegC impl₀ H κ vk c π).le)
-    (fun H κ vk c π => (queries_VnodeC implN cells H κ vk c π).le.trans (by decide)) (by rw [← itemsOf_seq4_len]; exact traces_le_qV) vk
+    (fun H κ vk c π => (queries_VnodeC implN cells H κ vk c π).le.trans (by decide)) (by rw [← itemsOf_seq4_len]; exact traces_spacers_le_qV) vk
 
 end FR.Rev4

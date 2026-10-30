@@ -1,6 +1,6 @@
 -- New for `flock-recursive` (BLUEPRINT §3, A.3, A.9, §5.1; stage S-G4, `hFin` step 2b).
 import FRSoundnessAccPf
-import FRXReadLv
+import FRXMsg
 
 /-!
 # `hFin`, step 2b: P2.i's opened columns on the log (`FinLog.cols`)

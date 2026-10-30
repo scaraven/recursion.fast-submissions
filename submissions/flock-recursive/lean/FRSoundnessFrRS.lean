@@ -1,7 +1,7 @@
 -- New for `flock-recursive` (BLUEPRINT A.10 RS0/RS1, §5.2 row RS1; stage S-G5).
 -- RET-2: the declarations revision 4.1 reads moved to `FRSoundnessCoreRows`.
 import FRSoundnessFrB
-import FRSoundnessCoreRows
+import FRSoundnessCoreFront
 
 /-!
 # RS1: the ring-switching batch (`hfin` at RS1's range `(312, 4)`)

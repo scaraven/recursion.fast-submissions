@@ -1,7 +1,7 @@
 -- New for `flock-recursive` (BLUEPRINT A.10 P2.i, P3.i, §5.2; stage S-G1i).
 -- RET-2: the declarations revision 4.1 reads moved to `FRSoundnessCoreRows`.
 import FRSoundnessTailO
-import FRSoundnessCoreRows
+import FRSoundnessCoreFront
 
 /-!
 # The Ligerito tail's multi-squeeze phases and the stability of its dooms

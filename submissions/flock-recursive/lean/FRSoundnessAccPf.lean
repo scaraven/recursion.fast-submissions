@@ -1,7 +1,7 @@
 -- New for `flock-recursive` (BLUEPRINT §3, A.9, A.10; stage S-G4, `hFin` steps 2b and 6).
 -- RET-2: the declarations revision 4.1 reads moved to `FRSoundnessCoreAcc`.
 import FRSoundnessAccLvl
-import FRSoundnessCoreAcc
+import FRSoundness4P4aSeg
 
 /-!
 # `hFin`: the finals' registers, by level, on the log

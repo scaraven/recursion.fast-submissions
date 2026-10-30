@@ -301,12 +301,14 @@ residual (`hRes`) alone. -/
 theorem nodeLaws4C' (impl₀ : OpImpl) (implN : NodeKind → OpImpl) (cells : NodeKind → List ℕ)
     (S : Submission) (vk : Digest) (hV : S.V = VC4 impl₀ implN cells) (hq : S.qV = qV4)
     {Good : Log → Prop} (I : SlotIface4 (VsegC impl₀) (VnodeC implN cells)) (rd : Read4)
+    {St : NodeKind → Asg → Digest → Digest → Prop}
+    (hSt : ∀ κ w c₁ c₂, St κ w c₁ c₂ → StmtN4 κ (I.lrows κ) (I.irows κ) vk c₁ c₂ w)
     (hRun : ∀ κ L c π, Good L → kindOf4 π = .node κ → (VnodeC implN cells κ vk c π).runLog L = some true →
-      X.vkOf π = vk ∧ ∃ w c₁ c₂, c = nodeStmt c₁ c₂ ∧ StmtN4 κ (I.lrows κ) (I.irows κ) vk c₁ c₂ w)
-    (hRes : ∀ κ w c₁ c₂, StmtN4 κ (I.lrows κ) (I.irows κ) vk c₁ c₂ w → NodeResid4 I rd κ vk c₁ c₂ w) :
+      X.vkOf π = vk ∧ ∃ w c₁ c₂, c = nodeStmt c₁ c₂ ∧ St κ w c₁ c₂)
+    (hRes : ∀ κ w c₁ c₂, St κ w c₁ c₂ → NodeResid4 I rd κ vk c₁ c₂ w) :
     NodeSoundLog (VnodeC implN cells) vk Good (Rel (S.acc vk)) ∧
       NodeExtLog (VnodeC implN cells) vk Good (E4 S.acc) (Rel (S.acc vk)) :=
-  nodeLaws4C impl₀ implN cells S vk hV hq I rd digLemma4 hRun hRes
+  nodeLaws4C impl₀ implN cells S vk hV hq I rd hSt digLemma4 hRun hRes
 
 end N4c
 end FR

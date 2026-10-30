@@ -3,7 +3,7 @@
 import FRSoundnessLigFinal
 import FRVIRChain
 import FRVerifier
-import FRSoundnessCoreAcc
+import FRSoundness4P4aSeg
 import FRWots
 
 /-!

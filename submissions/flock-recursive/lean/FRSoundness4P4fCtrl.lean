@@ -1,6 +1,6 @@
 -- New for `flock-recursive` (BLUEPRINT revision 4.1, A.10; stage P4f): controls for the front's
 -- phases 13 … 25 (`FRSoundness4P4fDF`, `FRSoundness4P4fObl`).
-import FRSoundness4P4fObl
+import FRNodeStmtR4
 
 /-!
 # Controls for P4f
@@ -36,7 +36,7 @@ theorem DFhi_out : DFhi 12 = (fun _ _ => False) ∧ DFhi 26 = fun _ _ => False :
 /-- (−) B′'s doom is cleared on a close word whose claim is `⟨W₀, f⁽⁰⁾⟩`. -/
 theorem not_DFhi25_true {L es : Log} (hnf : ¬ far0X L es)
     (hc : P4b.vStarL4 (kindOfC es) es = P4b.ipW (P4b.wrsL4 N4c.kf4 (kindOfC es) es)
-      (P4b.cellsC N4c.cells4 (kindOfC es)) (P4b.kpL4 es) ((kindOfC es).m - 7) (X4.src4.fz L es)) :
+      (P4b.cellsC X4.cellsX (kindOfC es)) (P4b.kpL4 es) ((kindOfC es).m - 7) (X4.src4.fz L es)) :
     ¬ DFhi 25 L es :=
   P4b.dB4_ctrl.2 hnf hc
 

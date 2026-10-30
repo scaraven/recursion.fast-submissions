@@ -1,9 +1,134 @@
+-- G6: this module also holds the former modules `FRVIRTpl4Bridge` (one section each, in import order).
+import FRNodeRows4
+import FRSegTarget4
+import FRVerifierImplNode4
+import FRVIRTplRepT
+import FRNodeRows4Plan
+import FRNodeCircuit4
+
+section G6_FRVIRTpl4Bridge
+
+-- New for `flock-recursive` (BLUEPRINT revision 4.1, B-12, B-13, A.11; stage S-E12e, track L-circ).
+
+/-!
+# The 4.1 `shiftMask` templates against the 4.1 ops, and the prototypes' soundness at one kind
+
+The templates (`FRVIRTplSeg`, `FRVIRTplMaskN`) sit upstream of the ops they mirror, so they are
+stated against copies. Here the copies are the ops:
+
+* **`segMaskV_eq`**: `segMaskV = shiftSegI` (`FRSegTarget4`; by `rfl`);
+* **`maskNV_eq`**: `maskNV (maskQ ν) = shiftMask4I ν` (`FRVerifierImplNode4`);
+* **`routeOk_implSeg`**, **`routeOk_implN4`**: the segment's `implSeg` meets prototype 1's route at
+  every kind; the node's `implN4 … (nodeOf ι)` meets prototype 0's at index `ι` (and, the kinds'
+  masks differing, not at another index: `routeOk_implN4_ctl`);
+* **`protoCS_soundAt`**: `compileX_soundK` with `tplExt4A_okK` at prototype `π` (its set, route, layout,
+  column alias, selector forms, base and program).
+-/
+
+namespace FR
+namespace Rev4
+open Circ Tpl RecursionFast
+
+/-! ## The copies are the ops -/
+
+theorem lastAtV_eq : lastAtV = lastAt := rfl
+
+/-- **The segment template's value is `shiftSegI`.** -/
+theorem segMaskV_eq : segMaskV = shiftSegI := rfl
+
+theorem mFV_eq {n : ℕ} : @mFV n = @NI4.mF n := rfl
+
+theorem shPV_eq : ∀ (n : ℕ) (m : Fin n → Bool → Bool → F) (c : ℕ), shPV n m c = NI4.shP n m c
+  | 0, _, _ => rfl
+  | n + 1, m, c => by rw [shPV, NI4.shP, shPV_eq n]
+
+/-- **The node template's value at a kind's constants is `shiftMask4I`** (both meet `shiftMask4S`:
+`maskNV` mirrors S-CN4's first computed form, `prefixP`/`shP`; S-CN4b's `shiftMask4I` reads the
+factors from a table). -/
+theorem maskNV_eq (ν : NodeKind) : maskNV (maskQ ν) = NI4.shiftMask4I ν := by
+  funext τ r
+  rw [NI4.shiftMask4_meets, show maskQ ν = (NT4.nbN ν, N4c.chLen ν 0, N4c.chLen ν 1) from rfl]
+  obtain ⟨h1, h2, h3, h4⟩ := NT4.chLen_facts ν
+  have hw : N4c.wotsB ν 0 < N4c.hUsedN ν := by
+    have := NT4.wotsB_hUsed ν (σ := 0) (by norm_num); omega
+  simp only [maskNV, NT4.shiftMask4S, NT4.lkE, NT4.lkSh, NT4.lkE0, shPV_eq, mFV_eq]
+  refine Prod.ext ?_ (Prod.ext ?_ rfl) <;> dsimp only
+  · rw [NI4.sum_lk ν, prefixP_eq]
+    simp only [NI4.prod_mF]
+  · rw [NI4.sum_lk ν, NI4.shP_eq, show N4c.chLen ν 0 - 1 + 1 = N4c.chLen ν 0 by omega]
+    congr 1
+    refine Finset.sum_congr rfl fun x _ => ?_
+    rw [NI4.prod_mF]
+    by_cases hx : x.val < N4c.chLen ν 0 + N4c.chLen ν 1 - 1
+    · rw [if_pos ⟨hx, by omega⟩, if_pos hx]
+    · rw [if_neg (fun h => hx h.1), if_neg hx]
+
+/-! ## The routes -/
+
+theorem routeOk_seg {impl : OpImpl} (h : impl.shiftMask = shiftSegI) (κ : Kind) :
+    RouteOk (protoR 1) impl κ := by
+  show impl.shiftMask = segMaskV
+  rw [h, segMaskV_eq]
+
+theorem protoR0 : protoR 0 = .node (Circ.kinds.map fun ι => maskQ (nodeOf ι)) := rfl
+
+theorem routeOk_node {impl : OpImpl} (ι : Kind) (h : impl.shiftMask = NI4.shiftMask4I (nodeOf ι)) :
+    RouteOk (protoR 0) impl ι := by
+  rw [protoR0]
+  refine ⟨by cases ι <;> simp [Circ.kinds, kIx], ?_⟩
+  rw [h, ← maskNV_eq]
+  cases ι <;> simp [Circ.kinds, kIx]
+
+/-- **The segment's ops meet prototype 1's route** (at every kind). -/
+theorem routeOk_implSeg (impl₀ : OpImpl) (κ : Kind) : RouteOk (protoR 1) (implSeg impl₀) κ :=
+  routeOk_seg (impl := implSeg impl₀) rfl κ
+
+/-- **The node kind `nodeOf ι`'s ops meet prototype 0's route at index `ι`.** -/
+theorem routeOk_implN4 (base : NodeKind → OpImpl) (tS : NodeKind → Array F → Array F) (ι : Kind) :
+    RouteOk (protoR 0) (NI4.implN4 base tS (nodeOf ι)) ι :=
+  routeOk_node (impl := NI4.implN4 base tS (nodeOf ι)) ι rfl
+
+/-- (+/−) At index `P30` (`N2`) prototype 0's route asks `N2`'s mask, so it holds for `N2`'s ops
+iff their mask is `N2`'s: the route is kind-indexed, which is why the node prototype is sound at
+one kind (`ExtOkAt`), not at every kind. -/
+theorem routeOk_implN4_ctl (impl : OpImpl) (sm : Array F → Array F → F × F × F) :
+    RouteOk (protoR 0) { impl with shiftMask := sm } .P30 ↔ sm = NI4.shiftMask4I .N2 := by
+  rw [protoR0, ← maskNV_eq]
+  simp [RouteOk, Circ.kinds, kIx, nodeOf]
+
+/-! ## The prototypes' soundness at one kind -/
+
+/-- **Prototype `π`'s compile is sound at the run's kind `κ`** (`compileX_soundK` with
+`tplExt4A_okK`, FEL: the `dotKF` arm aliased; was `compileTF4_soundAt`, at its set, route, layout, selector forms, base and program): with `ImplTF` (the kind-free template fields)
+and the route's `shiftMask` at `κ` (`routeOk_implN4`, `routeOk_implSeg`), the instance rows, the
+auxiliary and skeleton imports and the foreign flags give acceptance and every register's value. -/
+theorem protoCS_soundAt (π : ℕ) {impl : OpImpl} {κ : Kind} {inp : Input} {tr tr' : Trace} {s : St}
+    {w : Asg} (hT : ImplTF (protoF π) impl) (hR : RouteOk (protoR π) impl κ)
+    (hP : SelOk w (protoP π) κ) (he : exec impl κ inp (protoProg π).ops St.init tr = some (s, tr'))
+    (hr : ∀ r ∈ (protoCS π).rows, r.Holds w)
+    (ht : ∀ r ∈ (protoCS π).tplRows (protoLay π).ctx (protoP π).one, r.Holds w)
+    (hx : ∀ a ∈ (protoCS π).aux,
+      a.1.1.map (Lin.ev w) = a.1.2.2.val (rd (s.regs.extract 0 a.2) a.1.2.1))
+    (hi : ∀ i ∈ (protoCS π).imp, RepS w ((protoCS π).slot i) (rd s.regs i))
+    (hf : ∀ p ∈ (protoCS π).fors, flagOf impl κ inp (s.regs.extract 0 p.2) p.1 = true) :
+    s.ok = true ∧ ∀ i, RepS w ((protoCS π).slot i) (rd s.regs i) :=
+  compileX_soundK (tplExt4A_okK hT hR (protoLay π) (N4s.colA π)) (baseR π) hP he hr ht hx hi hf
+
+/-- (+) The node route's constants are the group's in selector order: `N4` (18 coordinates, a
+segment's chain then a 4-segment aggregate's), `N2` (17), `N8` (two aggregates). -/
+theorem protoR_ctl : protoR 0 = .node [(18, 24236, 96950), (17, 24236, 48474), (18, 96950, 96950)] ∧
+    protoR 1 = .seg := by
+  exact ⟨rfl, rfl⟩
+
+end Rev4
+end FR
+
+end G6_FRVIRTpl4Bridge
+
+section G6_FRVerifierImplNode4F
+
 -- New for `flock-recursive` (BLUEPRINT revision 4.1, A.7 L's rows, A.8 `evalM`/`evalL` on a node;
 -- stage INT-9, track L-circ).
-import FRVerifierImplNode4T
-import FRNodeRows4Plan
-import FRVIRTpl4Bridge
-import FRSoundness4P4bNames
 
 /-!
 # The revision 4.1 node's final ops: `evalM` and `evalL` on the 4.1 rows
@@ -23,7 +148,9 @@ rows at 15/23 coordinates). This module replaces them with the 4.1 node's:
 **`implN4F base ν`** is `implN4T base ν` with these two fields; **`implN4F_meets`**. For R4
 (`FRSoundness4R4FrE.e_fin4`, `not_rejFinE4_node`, R4d D11) the sources are **`srcE4`**
 (`nodeIRows4`'s indexed entries) and **`srcL4`** (`ESrc.ofRows (lRows4 ν)`), and **`implN4F_hM`**,
-**`implN4F_hL`** are the parameters `hM`/`hL` in the form `e_fin4` takes. **`implTF_implN4F`**
+**`implN4F_hL`** are the parameters `hM`/`hL` in the form `e_fin4` takes; revision 4.4.2 (RSV2): at a
+32-entry row point `x̂ ‖ s` the node's `evalM` is the reserve's stacked call **`evalMX4`**
+(`Σ_κ ⟨s_κ, M̃_κ⟩`, one `protoV4`; `evalMX4_eq`), in `RejFinE4`'s form **`implN4F_hMX`**. **`implTF_implN4F`**
 (and `implTF_implN4` for S-E12e's open question): the kind-free template fields stay the base's.
 -/
 
@@ -241,23 +368,120 @@ theorem evalL4I_eq (κ : NodeKind) (rL r4 : Array F) : evalL4I κ rL r4 = evalLS
     Finset.sum_congr rfl fun σ hσ => Finset.sum_congr rfl fun j hj => hrow σ hσ j hj
   rw [hA, hS]
 
+/-! ## The reserve's stacked `evalM` (revision 4.4.2; RSV2 §2.1) -/
+
+/-- Kind `k`'s three coefficients in a 32-entry row point (`τ = x̂ (23) ‖ s (9)`, `s_{k,m}` at
+`23 + 3k + m`). -/
+def sOf (τ : Array F) (k : ℕ) : F3 := (τ.getD (23 + 3 * k) 0, τ.getD (24 + 3 * k) 0, τ.getD (25 + 3 * k) 0)
+
+/-- `⟨s, x⟩ = s_A x_A + s_B x_B + s_C x_C`. -/
+def dot3 (s x : F3) : F := s.1 * x.1 + s.2.1 * x.2.1 + s.2.2 * x.2.2
+
+theorem dot3_zero (x : F3) : dot3 (0, 0, 0) x = 0 := by simp [dot3]
+
+/-- The high tables `(eq(t_[11,lm), ·), eq(u_[12,lm+2), ·))` of `ltbOf` at `lm` row coordinates. -/
+def hiTabs (lm : ℕ) (t u : ℕ → F) : Array F × Array F :=
+  (loTab (lm - 11) (fun l => t (11 + l)), loTab (lm + 2 - 12) (fun l => u (12 + l)))
+
+theorem ltb_hi (lm : ℕ) (t u : ℕ → F) :
+    (⟨loTab 11 t, (hiTabs lm t u).1, loTab 12 u, (hiTabs lm t u).2⟩ : LTb) = ltbOf lm t u := rfl
+
+/-- **The stacked `evalM`** (RSV2 §2.1): at a 32-entry row point `τ = x̂ ‖ s` and a 25-entry column
+point `σ`, `X = Σ_κ ⟨s_κ, M̃_κ(x̂, σ)⟩` over the three node kinds' matrices, each read at its own
+coordinates. One prototype evaluation (`protoV4` reads only coordinates below 20, so the kinds share
+it; prototype 0, the previous node's, only if `N2` or `N4` is in the support) and each kind's slot
+sums; a kind whose coefficients are zero is skipped. B5: the link tables' low halves and the pinned
+elements' inner sums (`thsOf`, one thunk per key) are shared by the kinds, each computed on first use;
+the high halves once per `logM` (`N4` and `N8` share theirs), on first use. REPF: the previous node's
+replay rows' local values (`rvOf`, one thunk) are shared by `N2` and `N4`; SEG-R2: prototype 1's (`rv1Of`,
+one thunk) by every segment slot of every kind. The sparse sums if the
+plan's check failed. -/
+def evalMX4 (pl : Plan4) (τ σ : Array F) : F :=
+  let t := fun l => τ.getD l 0; let u := fun l => σ.getD l 0
+  if pl.inR then
+    let v := protoV4 pl t u
+      (!(decide (sOf τ NodeKind.N2.ix = (0, 0, 0)) && decide (sOf τ NodeKind.N4.ix = (0, 0, 0))))
+    let tlo := loTab 11 t
+    let slo := loTab 12 u
+    let ths := thsOf pl tlo slo
+    let rv := rvOf pl tlo slo t u
+    let rv1 := rv1Of pl tlo slo t u
+    let H2 := Thunk.mk fun _ => hiTabs NodeKind.N2.dims.logM t u
+    let H4 := Thunk.mk fun _ => hiTabs NodeKind.N4.dims.logM t u
+    (NodeKind.all.map fun κ => if sOf τ κ.ix = (0, 0, 0) then 0 else
+      let h := (if κ = .N2 then H2 else H4).get
+      dot3 (sOf τ κ.ix) (sum3 (slotV4 pl κ t u ⟨⟨tlo, h.1, slo, h.2⟩, ths, rv, rv1⟩ v.1 v.2) (List.range κ.vslots))).sum
+  else (NodeKind.all.map fun κ => dot3 (sOf τ κ.ix) (evalMT4 pl κ τ σ)).sum
+
+/-- **Its specification**: `Σ_κ ⟨s_κ, M̃_κ(x̂, σ)⟩`, `M̃_κ` the MLEs of `nodeIRows4 κ` (`evalMS4`). -/
+noncomputable def evalMXS4 (τ σ : Array F) : F :=
+  (NodeKind.all.map fun κ => dot3 (sOf τ κ.ix) (evalMS4 κ τ σ)).sum
+
+/-- **`evalMX4_eq`**: the stacked `evalM` is its specification (`slots_val` per kind: the shared
+context is each kind's context at the point). -/
+theorem evalMX4_eq (pl : Plan4) (τ σ : Array F) : evalMX4 pl τ σ = evalMXS4 τ σ := by
+  unfold evalMX4 evalMXS4
+  split_ifs with hR
+  · refine congrArg List.sum (List.map_congr_left fun κ _ => ?_)
+    by_cases h0 : sOf τ κ.ix = (0, 0, 0)
+    · rw [if_pos h0, h0, dot3_zero]
+    · rw [if_neg h0]
+      have hh : (if κ = .N2 then Thunk.mk fun _ => hiTabs NodeKind.N2.dims.logM (fun l => τ.getD l 0)
+            (fun l => σ.getD l 0)
+          else Thunk.mk fun _ => hiTabs NodeKind.N4.dims.logM (fun l => τ.getD l 0) (fun l => σ.getD l 0)).get =
+          hiTabs κ.dims.logM (fun l => τ.getD l 0) (fun l => σ.getD l 0) := by cases κ <;> rfl
+      dsimp only
+      rw [hh]
+      have hc : CxAt ⟨⟨loTab 11 (fun l => τ.getD l 0),
+          (hiTabs κ.dims.logM (fun l => τ.getD l 0) (fun l => σ.getD l 0)).1, loTab 12 (fun l => σ.getD l 0),
+          (hiTabs κ.dims.logM (fun l => τ.getD l 0) (fun l => σ.getD l 0)).2⟩,
+          thsOf pl (loTab 11 (fun l => τ.getD l 0)) (loTab 12 (fun l => σ.getD l 0)),
+          rvOf pl (loTab 11 (fun l => τ.getD l 0)) (loTab 12 (fun l => σ.getD l 0)) (fun l => τ.getD l 0)
+            (fun l => σ.getD l 0),
+          rv1Of pl (loTab 11 (fun l => τ.getD l 0)) (loTab 12 (fun l => σ.getD l 0)) (fun l => τ.getD l 0)
+            (fun l => σ.getD l 0)⟩ κ.dims.logM
+          (fun l => τ.getD l 0) (fun l => σ.getD l 0) :=
+        cxAt_lo pl _ _ _ _ _ _ (ltb_hi _ _ _)
+      refine congrArg _ (slots_val pl hR κ τ σ hc _ fun hp => ?_)
+      cases κ
+      · simp [h0]
+      · simp [h0]
+      · exact absurd hp (by decide)
+  · exact congrArg List.sum (List.map_congr_left fun κ _ => by rw [evalMT4_eq])
+
+/-- **The node's `evalM`**: at a 32-entry row point (the reserve's stacked call) `(evalMX4, 0, 0)`,
+else the node's own matrices (`evalMT4`). -/
+def evalMN4 (pl : Plan4) (ν : NodeKind) (τ σ : Array F) : F3 :=
+  if τ.size = 32 then (evalMX4 pl τ σ, 0, 0) else evalMT4 pl ν τ σ
+
+/-- Its specification. -/
+noncomputable def evalMNS4 (ν : NodeKind) (τ σ : Array F) : F3 :=
+  if τ.size = 32 then (evalMXS4 τ σ, 0, 0) else evalMS4 ν τ σ
+
+theorem evalMN4_eq (pl : Plan4) (ν : NodeKind) (τ σ : Array F) : evalMN4 pl ν τ σ = evalMNS4 ν τ σ := by
+  unfold evalMN4 evalMNS4
+  split_ifs
+  · rw [evalMX4_eq]
+  · exact evalMT4_eq pl ν τ σ
+
 /-! ## The node's final ops -/
 
 /-- **`implN4F base ν`**: `implN4T base ν` (S-CN4's node ops with the computed `targetS`, S-T2's
-`rsWeight`) with the 4.1 node's `evalM` (`evalMT4 planOf4 ν`) and `evalL` (`evalL4I ν`). -/
+`rsWeight`) with the 4.1 node's `evalM` (`evalMT4 planOf4 ν`; revision 4.4.2: `evalMN4`, the
+reserve's stacked call at a 32-entry row point, RSV2) and `evalL` (`evalL4I ν`). -/
 def implN4F (base : NodeKind → OpImpl) (ν : NodeKind) : OpImpl :=
-  { implN4T base ν with evalM := evalMT4 planOf4 ν, evalL := evalL4I ν }
+  { implN4T base ν with evalM := evalMN4 planOf4 ν, evalL := evalL4I ν }
 
 /-- Its specification: `specN4` with the MLEs of `nodeIRows4 ν` and `lRows4 ν`. -/
 noncomputable def specN4F (spec : NodeKind → OpSpec) (ν : NodeKind) : OpSpec :=
-  { specN4 spec ν with evalM := evalMS4 ν, evalL := evalLS4 ν }
+  { specN4 spec ν with evalM := evalMNS4 ν, evalL := evalLS4 ν }
 
 /-- **`implN4F ⊨ specN4F`**, given the base's ops only. -/
 theorem implN4F_meets {base : NodeKind → OpImpl} {spec : NodeKind → OpSpec} (ν : NodeKind)
     (h : (base ν).Meets (spec ν)) : (implN4F base ν).Meets (specN4F spec ν) := by
   obtain ⟨h1, h2, h3, h4, h5, h6, h7, -, -, h10, h11, h12, h13, h14, h15, h16, h17⟩ :=
     implN4T_meets ν h
-  exact ⟨h1, h2, h3, h4, h5, h6, h7, fun a b => evalMT4_eq planOf4 ν a b, fun a b => evalL4I_eq ν a b,
+  exact ⟨h1, h2, h3, h4, h5, h6, h7, fun a b => evalMN4_eq planOf4 ν a b, fun a b => evalL4I_eq ν a b,
     h10, h11, h12, h13, h14, h15, h16, h17⟩
 
 /-! ## For R4: `RejFinE4`'s parameters `hM`, `hL` (R4d D11) -/
@@ -274,7 +498,33 @@ theorem implN4F_hM (base : NodeKind → OpImpl) (ν : NodeKind) :
       (Eval.matMLE (srcE4 ν).ea (FR.Impl.ptA (Snd.P4b.e2R ν) r2) (FR.Impl.ptA (Snd.P4b.ncR ν) r4),
        Eval.matMLE (srcE4 ν).eb (FR.Impl.ptA (Snd.P4b.e2R ν) r2) (FR.Impl.ptA (Snd.P4b.ncR ν) r4),
        Eval.matMLE (srcE4 ν).ec (FR.Impl.ptA (Snd.P4b.e2R ν) r2) (FR.Impl.ptA (Snd.P4b.ncR ν) r4)) :=
-  fun r2 r4 _ _ => by cases ν <;> exact evalMT4_eq planOf4 _ r2 r4
+  fun r2 r4 h2 _ => by
+    have h32 : r2.size ≠ 32 := by rw [h2]; cases ν <;> decide
+    show evalMN4 planOf4 ν r2 r4 = _
+    rw [evalMN4, if_neg h32]
+    cases ν <;> exact evalMT4_eq planOf4 _ r2 r4
+
+/-- A kind's `evalMS4` is the MLE triple of its source `srcE4` at its own coordinates. -/
+theorem evalMS4_src (κ : NodeKind) (τ σ : Array F) : evalMS4 κ τ σ =
+    (Eval.matMLE (srcE4 κ).ea (FR.Impl.ptA (Snd.P4b.e2R κ) τ) (FR.Impl.ptA (Snd.P4b.ncR κ) σ),
+     Eval.matMLE (srcE4 κ).eb (FR.Impl.ptA (Snd.P4b.e2R κ) τ) (FR.Impl.ptA (Snd.P4b.ncR κ) σ),
+     Eval.matMLE (srcE4 κ).ec (FR.Impl.ptA (Snd.P4b.e2R κ) τ) (FR.Impl.ptA (Snd.P4b.ncR κ) σ)) := by
+  cases κ <;> rfl
+
+/-- **`hMX`** (RSV2 §4.4, the form `RejFinE4`'s (iv″) needs): at a 32-entry row point `τ = x̂ ‖ s`,
+the node's `evalM` is `(Σ_κ ⟨s_κ, M̃_κ(x̂, σ)⟩, 0, 0)` over the three kinds' sources, each read at its
+own coordinates (`e2R κ`, `ncR κ`), whatever the node's own kind. -/
+theorem implN4F_hMX (base : NodeKind → OpImpl) (ν : NodeKind) :
+    ∀ τ σ : Array F, τ.size = 32 → (implN4F base ν).evalM τ σ =
+      ((NodeKind.all.map fun κ => dot3 (sOf τ κ.ix)
+        (Eval.matMLE (srcE4 κ).ea (FR.Impl.ptA (Snd.P4b.e2R κ) τ) (FR.Impl.ptA (Snd.P4b.ncR κ) σ),
+         Eval.matMLE (srcE4 κ).eb (FR.Impl.ptA (Snd.P4b.e2R κ) τ) (FR.Impl.ptA (Snd.P4b.ncR κ) σ),
+         Eval.matMLE (srcE4 κ).ec (FR.Impl.ptA (Snd.P4b.e2R κ) τ) (FR.Impl.ptA (Snd.P4b.ncR κ) σ))).sum,
+       0, 0) :=
+  fun τ σ h => by
+    show evalMN4 planOf4 ν τ σ = _
+    rw [evalMN4, if_pos h, evalMX4_eq, evalMXS4]
+    simp only [evalMS4_src]
 
 /-- **`hL`** in `FRSoundness4R4FrE.e_fin4`'s form, for `implN4F`. -/
 theorem implN4F_hL (base : NodeKind → OpImpl) (ν : NodeKind) :
@@ -330,18 +580,51 @@ theorem lRows4_ctl : (lRows4 .N4).length = 5 * 8220 ∧ (lRows4 .N2).length ≠ 
   obtain ⟨i, -, rfl⟩ := List.mem_map.1 hr
   rfl
 
-/-- (+) `implN4F`'s `evalM`/`evalL` are the 4.1 node's, its `shiftMask` S-CN4's; (−) its L source
-differs between kinds (`N4`: 5 slots of 8,220 entries in A, `N2`: 3). -/
+/-- (+) `implN4F`'s `evalM`/`evalL` are the 4.1 node's (`evalM` the reserve's dispatch, `evalMT4` at
+an untagged point), its `shiftMask` S-CN4's; (−) its L source differs between kinds (`N4`: 5 slots of
+8,220 entries in A, `N2`: 3). -/
 theorem implN4F_ctl (base : NodeKind → OpImpl) (ν : NodeKind) :
-    (implN4F base ν).evalM = evalMT4 planOf4 ν ∧ (implN4F base ν).evalL = evalL4I ν ∧
+    (implN4F base ν).evalM = evalMN4 planOf4 ν ∧
+      (∀ τ σ : Array F, τ.size ≠ 32 → (implN4F base ν).evalM τ σ = evalMT4 planOf4 ν τ σ) ∧
+      (implN4F base ν).evalL = evalL4I ν ∧
       (implN4F base ν).shiftMask = shiftMask4I ν ∧
       (srcL4 .N4).ea.length = 5 * 8220 ∧ (srcL4 .N2).ea.length = 3 * 8220 := by
-  refine ⟨by dsimp only [implN4F], by dsimp only [implN4F], by dsimp only [implN4F, implN4T, implN4],
-    ?_, ?_⟩ <;>
+  refine ⟨by dsimp only [implN4F], fun τ σ h => if_neg h, by dsimp only [implN4F],
+    by dsimp only [implN4F, implN4T, implN4], ?_, ?_⟩ <;>
   · simp only [srcL4, Snd.P4b.ESrc.ofRows, Eval.entriesOf, lRows4_eq, zipIdx_range_map,
       List.flatMap_map, rowL, Lin.cell, List.map_cons, List.map_nil, List.length_flatMap,
       List.length_cons, List.length_nil, List.map_const', List.length_range, List.sum_replicate]
     rfl
 
+/-- (+/−) **The stacked `evalM`** (RSV2 §4.4): (+) coefficients on one kind `ν` only give that kind's
+combination `⟨s_ν, M̃_ν⟩` (`ν` need not be the node's own kind); (+) zero coefficients give `0`; (−) the
+other kinds are read: two row points with the same coordinates whose coefficients differ by `e` on
+kind `κ` only differ in value by `⟨e, M̃_κ⟩`, so a coefficient on any kind with `M̃_κ ≠ 0` there
+changes the value. -/
+theorem evalMX4_ctl (pl : Plan4) (τ σ : Array F) :
+    (∀ ν : NodeKind, (∀ κ, κ ≠ ν → sOf τ κ.ix = (0, 0, 0)) →
+      evalMX4 pl τ σ = dot3 (sOf τ ν.ix) (evalMT4 pl ν τ σ)) ∧
+    ((∀ κ : NodeKind, sOf τ κ.ix = (0, 0, 0)) → evalMX4 pl τ σ = 0) ∧
+    (∀ (τ' : Array F) (κ : NodeKind) (e : F3), (∀ ν : NodeKind, evalMS4 ν τ' σ = evalMS4 ν τ σ) →
+      sOf τ' κ.ix = add3 (sOf τ κ.ix) e → (∀ ν, ν ≠ κ → sOf τ' ν.ix = sOf τ ν.ix) →
+      evalMX4 pl τ' σ = evalMX4 pl τ σ + dot3 e (evalMT4 pl κ τ σ)) := by
+  refine ⟨fun ν h => ?_, fun h => ?_, fun τ' κ e hM hs ho => ?_⟩
+  · rw [evalMX4_eq, evalMXS4, evalMT4_eq]
+    simp only [NodeKind.all, List.map_cons, List.map_nil, List.sum_cons, List.sum_nil]
+    cases ν
+    · rw [h .N4 (by decide), h .N8 (by decide)]; simp [dot3_zero]
+    · rw [h .N2 (by decide), h .N8 (by decide)]; simp [dot3_zero]
+    · rw [h .N2 (by decide), h .N4 (by decide)]; simp [dot3_zero]
+  · rw [evalMX4_eq, evalMXS4]
+    simp [NodeKind.all, h, dot3_zero]
+  · rw [evalMX4_eq, evalMX4_eq, evalMXS4, evalMXS4, evalMT4_eq]
+    simp only [NodeKind.all, List.map_cons, List.map_nil, List.sum_cons, List.sum_nil, hM]
+    cases κ
+    · rw [hs, ho .N4 (by decide), ho .N8 (by decide)]; simp only [add3, dot3]; ring
+    · rw [hs, ho .N2 (by decide), ho .N8 (by decide)]; simp only [add3, dot3]; ring
+    · rw [hs, ho .N2 (by decide), ho .N4 (by decide)]; simp only [add3, dot3]; ring
+
 end NI4F
 end FR
+
+end G6_FRVerifierImplNode4F

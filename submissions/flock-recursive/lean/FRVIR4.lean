@@ -1,5 +1,5 @@
 -- New for `flock-recursive` (BLUEPRINT revision 4.0, B-7, B-11 … B-13, A.4, A.8; stage S-0′).
-import FRShape4
+import FRSoundness4Pos
 import FRVIR
 
 /-!
@@ -123,19 +123,39 @@ def segPtOp (S : Seq) (p : KindP) (outs : Array (List Reg)) : Op :=
   .packF (((outs.getD 3 []).drop 1).take (p.d.m - 13) ++ List.replicate (S.mStar - p.d.m) (st.getD 1 0) ++
     st.drop 2)
 
-/-- One position `p` of level `i` (3.x's `posOps`; absolute offsets `co`, `so`, `cap`). -/
-def posOps4 (S : Seq) (k : KindP) (i co so capO : ℕ) (ans : List Reg) (w : Reg) (p b : ℕ) : List Op :=
+/-- **A position's path digest**, from its column fold `y` (`= b + 3`): the last Merkle step's
+`keep` (`b + 4 + 6·sL − 1`), or the column's answer (`b + 2`) at `sL = 0`. -/
+def curOfY (sL y : Reg) : Reg := if sL = 0 then y - 1 else y + 6 * sL
+
+/-- One position `p` of level `i` (3.x's `posOps`; absolute offsets `co`, `so`, `dO`). **Revision
+4.4.1** (PACK-4.4 §11.1, (β′)): the position ends with its cap index `k = j >>> sib` (`shrN`,
+register `b + 4 + 6·sL`), then a **static** read of its committed path digest `D_r` (field `fD`,
+absolute offset `dO + 32·p`, register `b + 4 + 6·sL + 1`; `D` is absorbed before the cap check's
+challenge `ζ`) and `assertEq cur D_r`, `cur` the path's root (register `b + 4 + 6·sL − 1`, or the
+column's `b + 2` at `sL = 0`). The cap entry is not read here (3.x's dynamic `piDigestAt`): the
+finals' batched cap check `capChkOps` (`FRVIRFinals4`) checks `D` against the caps. -/
+def posOps4 (S : Seq) (k : KindP) (i co so dO : ℕ) (ans : List Reg) (w : Reg) (p b : ℕ) : List Op :=
   let L := S.lv i
   let K := S.lvK k.d.m i
-  let cur := b + 4 + 6 * L.sib - 1
   [.idx (fun _ => ans.getD (p / K.per) 0) (fun _ => K.logN) (fun _ => p % K.per),
    .piField 0 (co + p * colBytes i) (colBytes i), .askCol i (b + 1), .dotKF w (b + 1)] ++
   merkleOps4 K.sib i b L.sib 0 (b + 2) (so + p * L.sib * 32) (b + 4) ++
-  [.shrN b (fun _ => K.sib), .piDigestAt 0 capO (b + 4 + 6 * L.sib),
-   .assertEq (if L.sib = 0 then b + 2 else cur) (b + 4 + 6 * L.sib + 1) allK]
+  [.shrN b (fun _ => K.sib), .piDigest 0 (dO + 32 * p),
+   .assertEq (curOfY L.sib (b + 3)) (b + 4 + 6 * L.sib + 1) allK]
 
-/-- The width of one position of level `i` in `S`. -/
+/-- The width of one position of level `i` in `S` (revision 4.4.1: the cap index, then `D_r`). -/
 def posW4 (S : Seq) (i : ℕ) : ℕ := 4 + 6 * (S.lv i).sib + 2
+
+/-- **A position's cap index** `k = j >>> sib` (`shrN`, `b + 4 + 6·sL`), from its column fold `y`. -/
+def kOfY (sL y : Reg) : Reg := y + 6 * sL + 1
+
+/-- **A position's committed path digest** `D_r` (`piDigest`, `b + 4 + 6·sL + 1`), from its column
+fold `y`: the register `posOps4` asserts equal to `curOfY`, and `capChkOps` reads. -/
+def dOfY (sL y : Reg) : Reg := y + 6 * sL + 2
+
+/-- **Level `i`'s first committed path digest** (absolute): `D`'s field offset plus 32 bytes per
+read of the levels below (PACK-4.4 §11.4 item 4, PB-m4: one offset, no field-relative read). -/
+def dOff4 (S : Seq) (i : ℕ) : ℕ := fieldOffOf S fD + 32 * capReadsBelow S i
 
 /-- Level `i`'s cap in the caps field. -/
 def capOff4 (S : Seq) (i : ℕ) : ℕ := ((List.range i).map fun i' => 2 ^ (S.lv i').cap * 32).sum
@@ -190,11 +210,13 @@ def genPhase4 (S : Seq) (p : KindP) (n : ℕ) (ph : String × Sh) (c : GCtx) : L
       (cl :: rs ++ [if k = 0 then cl else b' + w * k - 1])
     (ops, if inK then { c' with foldR := rs } else c')
   | .queries i =>
+    -- the offsets once per phase, not per position (INIT: the programs' compile at start-up)
     let L := S.lv i
+    let co := o fCols; let so := o fSibs; let dO := dOff4 S i
+    let pw := posW4 S i
     let ops := [.packK c.foldR, .eqTableK b] ++ (List.range L.t).flatMap fun q =>
-      posOps4 S p i (o fCols) (o fSibs) (fieldOffOf S fCaps + capOff4 S i) c.posAns (b + 1) q
-        (b + 2 + posW4 S i * q)
-    rec_ ops c.st ((List.range L.t).map fun q => b + 2 + posW4 S i * q + 3)
+      posOps4 S p i co so dO c.posAns (b + 1) q (b + 2 + pw * q)
+    rec_ ops c.st ((List.range L.t).map fun q => b + 2 + pw * q + 3)
 
 /-- The phases from number `n`. -/
 def genPhases4 (S : Seq) (p : KindP) : List (String × Sh) → ℕ → GCtx → List Op × GCtx
@@ -221,6 +243,11 @@ def stmtBytes4 (S : Seq) (π : ByteArray) : ByteArray :=
 (`.L32`: `leafStmt`; `.N30`: `nodeStmt`), is `c`. -/
 def stmtOk4 (S : Seq) (p : KindP) (inp : Input) : Bool :=
   decide (stmtDigest p.tix (stmtBytes4 S inp.π) = inp.c)
+
+/-- (+) **The committed digests tile `D`**: level 0's first read is `D`'s first byte, and the 871
+reads end exactly where `A` begins. -/
+theorem dOff4_ctl : dOff4 seq4 0 = fieldOffOf seq4 fD ∧ dOff4 seq4 nLevels = fieldOffOf seq4 fA := by
+  rw [dOff4, dOff4, seq4_eq]; decide +kernel
 
 /-- The programs of the segment and node kinds (one sequence, `seq4`). -/
 def genSeg (κ : SegKind) (fin : FinOps) : VProg := gen4 seq4 (.ofSeg κ) fin
