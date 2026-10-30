@@ -9,7 +9,7 @@ import FRVIRTplKMux
 import FRVIRTplRepLW
 import FRVIRTplRepLD
 import FRVIRTplRepT
-import FRNodeRows4RepRs
+import FRNodeRows4RepCFRs
 
 /-!
 # The prototypes and the replay templates, definitions only
@@ -323,7 +323,7 @@ def rtLinkSegW (B : ℕ) : RT :=
 /-- **The replay frame's bound**: every cell of a prototype's compile is below it (its frame is two
 regions, `< 2^21`); the replay templates' locals are above it (`FRNodeRows4RepW.repMapC` puts them
 in the spare region). -/
-def repB : ℕ := 2 ^ 40
+@[noinline] def repB : ℕ := 2 ^ 40
 
 /-- `linkWAll`'s locals (the first block above the frame). -/
 def cbLW : ℕ := repB
@@ -382,12 +382,13 @@ def cIn : ℕ → List ℕ → List (List KF)
   | _, [] => []
   | o, n :: ns => kIn o n :: cIn (o + 2 * n) ns
 
-/-- **The node kind `ν`'s `rsWeight` sub-template.** -/
+/-- **The node kind `ν`'s `rsWeight` sub-template** (CF: as segments, `rsGS`; the rows' MLE in closed
+form for the repeated patterns). -/
 def rsT (ν : NodeKind) (ts : List Ty) : Tpl :=
   match rsShape ts with
   | some (m, ns) =>
-    let g := rsG ν ((List.range 7).map I) (cIn (9 + 2 * m) ns) (I 7) (I 8) (kIn 9 m) 0
-    ⟨g.1, [g.2.1, g.2.2]⟩
+    let g := rsGS ν ((List.range 7).map I) (cIn (9 + 2 * m) ns) (I 7) (I 8) (kIn 9 m) 0
+    ⟨sgGates g.1 0, [g.2.1, g.2.2]⟩
   | none => ⟨[], [[], []]⟩
 
 /-- An `rsWeight` op active at every index. -/
@@ -459,12 +460,13 @@ def evTpl : Op → Rev4.NodeKind → List Ty → Tpl
 /-- **`evalL`'s kind-muxed replay.** -/
 def kEvL : KOp := ⟨isEvL, evArgs, evIn, evTpl, [.f, .f, .f]⟩
 
-/-- `targetS`'s locals (`kTS`'s instance): above `linkWAll`'s (from `repB`, 42,592) and R3's
-`rsWeight` (from `cbRS = repB + 2^16`, 472,310: up to `repB + 537,846`). -/
-def cbTS : ℕ := repB + (2 ^ 19 + 2 ^ 14)
+/-- `targetS`'s locals (`kTS`'s instance): above `linkWAll`'s (from `repB`, 42,592) and `rsWeight`'s (from
+`cbRS = repB + 2^16`; CF's segment template: 504,784 locals, up to `repB + 570,320`). -/
+
+def cbTS : ℕ := repB + (2 ^ 19 + 2 ^ 16)
 
 /-- `evalL`'s locals, above `targetS`'s (11.8 k). -/
-def cbEvL : ℕ := repB + (2 ^ 19 + 2 ^ 15)
+def cbEvL : ℕ := repB + (2 ^ 19 + 2 ^ 16 + 2 ^ 14)
 
 /-- **Prototype 0's replay templates with R3's `rsWeight`** (`rtN0R`): `shiftTarget`, `linkWAll`,
 `rsWeight`, `targetS`, `evalL`. -/

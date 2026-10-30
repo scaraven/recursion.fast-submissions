@@ -62,7 +62,7 @@ theorem kEvL_neg :
 /-- The locals blocks in the spare region: `linkWAll` from `repB` (42,592), R3's `rsWeight` from
 `repB + 2^16` (472,310), `targetS` after it (11.8 k), `evalL` after that (319.5 k), all below
 `repB + 2^20` (the sizes: the KAT, `logs/C1b/repv2-*.log`, and R3's RESULT). -/
-theorem cb_ctl : cbLW < cbRS ∧ cbRS + 472310 ≤ cbTS ∧ cbTS + 11891 ≤ cbEvL ∧ cbEvL + 319507 ≤ repB + 2 ^ 20 := by
+theorem cb_ctl : cbLW < cbRS ∧ cbRS + 504784 ≤ cbTS ∧ cbTS + 11891 ≤ cbEvL ∧ cbEvL + 319507 ≤ repB + 2 ^ 20 := by
   unfold cbLW cbRS cbTS cbEvL repB; omega
 
 end N4s

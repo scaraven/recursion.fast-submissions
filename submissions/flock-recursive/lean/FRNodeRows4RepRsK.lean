@@ -11,7 +11,7 @@ import FRNodeRows4RepN
 * **`kRS`**: the `KOp` (C1's mechanism, `FRNodeRows4RepK`): covers an `rsWeight` op whose `act` holds
   at every index; operands `[r, κ, β, ρ] ++ pts ι`.
 * **`kRS_ok`**: `KOk (implP impl₀ base 0 ι) ι kRS` at every index: the sub-template of `nodeAt ι`
-  computes `rsWeightF4 (nodeAt ι)` (`Tpl.ok_rsG`, `RsR.rsWeightF4_ref`).
+  computes `rsWeightF4 (nodeAt ι)` (`Tpl.ok_rsGS`, `RsR.rsWeightF4_ref`).
 * **`rtRs`** (`rtRs_okW`): the replay template, its locals from `cbRS = repB + 2^16` (after
   `linkWAll`'s 42,601).
 -/
@@ -147,7 +147,7 @@ theorem kRS_ok {impl₀ : OpImpl} {base : Rev4.NodeKind → OpImpl} (ι : Kind) 
   rw [hx] at hi
   simp only [kRS, rsT, hsh] at hE ⊢
   set cl := (((ps ι).map fun a => (rd regs a).toAK.toList).map (·.flatMap encK)).flatten with hcl
-  have hO := ok_rsG (e := e) h1 (nodeAt ι)
+  have hO := ok_rsGS (e := e) h1 (nodeAt ι)
     (r := ra.toList) (ps := (ps ι).map fun a => (rd regs a).toAK.toList) (κ := κv) (β := βv)
     (ρ := ρa.toList)
     (by
