@@ -40,8 +40,9 @@ The baseline only has to be accepted. Choose routes by the least sound implement
   - **Clean orchestrator rebuild:** 518 s wall on 16 cores. The whole library (263/263 modules, 2,491 jobs) builds.
   - **Review `G6-review.md`:** accept. Its deep hash check of `Solution`'s closure: 22,533 constants, 0 differ.
   - **Editing hazard:** a former module's code now lives in `section G6_<name>` inside a merged file. Re-run the deep hash check after any Lean edit.
-- **Running:** **P2** (prover-only: factor slot 0's replay rows and the arena₁ rows like the prototypes; target ≈ 1.2× on `stream_s` on the slow host, plus more first-step margin; worktree `rf-p2`, branch `p2-work`).
-- **Next:** clean submission branch = one commit on `v4/flock-recursive` touching only `submissions/flock-recursive/` (the rest of the tree is already identical, pin `422f2f9`), after P2. Then a final runner evaluation (RUN3) that also measures G6's build time.
+- **P2r landed rev44 `ab55e44`** (prover-only; proofs byte-identical; chain 10/10 and streams ACCEPT; `prover.s` `37754901…`). Projected −86 s of `stream_s` on the slow 9V74 (1.14× → 1.20× at the measured draw; heavy draw 1.08×); the worst first step is unchanged (≈ 46 s). The aggregates are 60 % of a step, so the node levers cannot reach 20 %. Its VM logs were lost when the orchestrator force-removed `rf-p2` (noted in P2r-RESULT); RUN3 supersedes the projection.
+- **Clean submission branch `v4/flock-submit` `96eb0f6`:** one commit on `v4/flock-recursive` touching only `submissions/flock-recursive/` (= rev44 `c390276`, with the new entry README). Source rule: 263 files, 0 findings.
+- **Running:** **RUN3**, the final full `evaluate.yml` ×2 at `96eb0f6` (probe branches `probe/run3-eval*`, deleted afterwards). It also measures G6's `build_s` and P2r's `stream_s`.
 - **If stream_s binds:** prover — factorize arena₁ / prototype-0 replay rows; V — closed forms for replay rows.
 - **Then:** RUN2 full evaluation (`evaluate.yml` via a probe branch) after E1b; G6 golf only if a cap binds; clean submission branch (only `submissions/flock-recursive/`, no non-building modules; drop unused defs such as `colTG`, `auxRows`, `SlotRunI`).
 
