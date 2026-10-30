@@ -57,27 +57,5 @@ theorem implT_implB : ImplT Sub4.implB := by
   unfold Sub4.implB Impl.implCN
   exact Impl.implCWith_implT _ _
 
-/-- **`Gap4.imp` with the replay discharged** (ASK-T's `gap4Imp_of_askT` at `rt := rtC1c`, `implB`):
-from `StmtN4R` and, at every active slot and selectable index, `SlotRunA` at `rtC1c`. -/
-theorem gap4Imp_rtC1c {κ : NodeKind} {vk c₁ c₂ : Digest} {w : Asg} {ch : List F}
-    (hS : N4c.StmtN4R κ (lRows4 κ) (nodeIRows4 κ) vk c₁ c₂ w ch)
-    (h : ∀ v, N4c.Active4 (rd4 X.pf4) κ w v → ∀ ι, SelOk (slotAsg κ v w) (protoP (protoOf κ v)) ι →
-      SlotRunA (rtC1c (protoOf κ v)) (withImpc askAq (protoOf κ v)) (implP Sub4.implB (fun _ => Sub4.implB) (protoOf κ v) ι)
-        (protoOf κ v) ι (N4c.slotIn (rd4 X.pf4) κ vk c₁ w v) ((rd4 X.pf4).slotTr κ v w) (slotAsg κ v w)) :
-    ∀ v, N4c.Active4 (rd4 X.pf4) κ w v →
-      SlotImp Sub4.implB (fun _ => Sub4.implB) κ v w (N4c.slotIn (rd4 X.pf4) κ vk c₁ w v) ((rd4 X.pf4).slotTr κ v w) :=
-  gap4Imp_of_askT implT_implB (fun _ => implT_implB) repOk_rtC1cB
-    (repFold (one_of_pubCells hS.1.2.2.2.2) hS.1.2.2.2.1) hS h
-
-/-- **`Gaps4` from the residual run facts at `rtC1c`** (the replay part gone: `RepOk` and the fold are
-theorems). -/
-theorem gaps4_of_runA
-    (h : ∀ vk κ w c₁ c₂ ch, N4c.StmtN4R κ (lRows4 κ) (nodeIRows4 κ) vk c₁ c₂ w ch →
-      ∀ v, N4c.Active4 (rd4 X.pf4) κ w v → ∀ ι, SelOk (slotAsg κ v w) (protoP (protoOf κ v)) ι →
-        SlotRunA (rtC1c (protoOf κ v)) (withImpc askAq (protoOf κ v)) (implP Sub4.implB (fun _ => Sub4.implB) (protoOf κ v) ι)
-          (protoOf κ v) ι (N4c.slotIn (rd4 X.pf4) κ vk c₁ w v) ((rd4 X.pf4).slotTr κ v w) (slotAsg κ v w)) :
-    Sub4.Gaps4 :=
-  fun vk κ w c₁ c₂ ch hS => gap4Imp_rtC1c hS (h vk κ w c₁ c₂ ch hS)
-
 end N4s
 end FR

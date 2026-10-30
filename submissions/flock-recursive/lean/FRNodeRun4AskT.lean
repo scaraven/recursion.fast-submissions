@@ -40,31 +40,6 @@ theorem atOk_askT (impl : OpImpl) {κ : NodeKind} {vk c₁ c₂ : Digest} {w : A
         hS v hv ι hι),
     atImp_askT impl _ _ ι _ _⟩
 
-/-- **Today's fold** (ASK-T's asks, `input`, the reserve, IMPC's import classes):
-`askIRows4 (withImpc askAq) κ v arR2 ⊆ nodeIRows4 κ`. -/
-theorem askFold_askT {κ : NodeKind} {w : Asg} (hone : w κ.oneCell = 1) (hE : Snd.P4b.truthEI (nodeIRows4 κ) w) :
-    ∀ v < κ.vslots, ∀ p ∈ askIRows4 (withImpc askAq) κ v arR2, p ∈ nodeIRows4 κ :=
-  askFold (fun π _ => ⟨rfl, rfl⟩) hone hE
-
-/-- **`Gap4.imp` with the asks discharged** (and IMPC's import classes, `input`, the reserve): from the
-replay (`RepOk`, its fold), `StmtN4R` and, at every active slot and selectable index, `SlotRunA` (the
-auxiliary cells, the residual imports, the foreign flags on the answer-driven run), every active slot's
-`SlotImp`. -/
-theorem gap4Imp_of_askT {rt : ℕ → RT} {impl₀ : OpImpl} {base : NodeKind → OpImpl}
-    (hT₀ : ImplT impl₀) (hT : ∀ ν, ImplT (base ν)) (hok : RepOk rt impl₀ base) {κ : NodeKind}
-    {vk c₁ c₂ : Digest} {w : Asg} {ch : List F}
-    (hfoldR : ∀ v < κ.vslots, ∀ p ∈ repIRows4 rt κ v, p ∈ nodeIRows4 κ)
-    (hS : N4c.StmtN4R κ (lRows4 κ) (nodeIRows4 κ) vk c₁ c₂ w ch)
-    (h : ∀ v, N4c.Active4 (rd4 X.pf4) κ w v → ∀ ι, SelOk (slotAsg κ v w) (protoP (protoOf κ v)) ι →
-      SlotRunA (rt (protoOf κ v)) (withImpc askAq (protoOf κ v)) (implP impl₀ base (protoOf κ v) ι)
-        (protoOf κ v) ι (N4c.slotIn (rd4 X.pf4) κ vk c₁ w v) ((rd4 X.pf4).slotTr κ v w) (slotAsg κ v w)) :
-    ∀ v, N4c.Active4 (rd4 X.pf4) κ w v →
-      SlotImp impl₀ base κ v w (N4c.slotIn (rd4 X.pf4) κ vk c₁ w v) ((rd4 X.pf4).slotTr κ v w) := by
-  have hone := one_of_pubCells hS.1.2.2.2.2
-  exact gap4Imp_of_impc hT₀ hT hok (fun e tr => X.pfHdr_reassemble4 e tr)
-    (fun e₀ e₁ tr => X.pfView_reassemble4 e₀ e₁ tr) hfoldR (askFold_askT hone hS.1.2.2.2.1) hS
-    fun v hv ι hι => ⟨atOk_askT _ hS.1 hv hι, h v hv ι hι⟩
-
 /-! ## Controls -/
 
 section Ctl

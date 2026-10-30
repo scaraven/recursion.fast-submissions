@@ -10,6 +10,7 @@ import FRNodeRows4Ext
 import FRNodeRows4AskPosT
 import FRNodeRows4AskT
 import FRNodeRows4AskI
+import FRNodeRows4AskB
 import FRNodeRows4Defs
 
 /-!
@@ -232,7 +233,11 @@ and answer, `FRNodeRows4AskT`), IMPC's import classes (`impcTG`, `FRNodeRows4Ask
 folded). -/
 def askTG (π : ℕ) : TG :=
   (((askTGT (XofT π) π).add (inpTG (XofT π) π)).add (rsvTG (XofT π) π)).add
-    (impcTG (XofT π) π (provLT 0 (protoProg π).ops))
+    (impcTG (XofT π) π (provLT 0 (protoProg π).ops)) |>.addD
+    (bitTGB (tplExt4 (protoF π) (protoR π) ⟨fun _ => ⟨[], []⟩, (protoLay π).cb⟩) π
+      (bitTab (protoProg π).ops (if π = 0 then nodeGrp else segGrp))) |>.addD
+    (bitTGS (tplExt4 (protoF π) (protoR π) ⟨fun _ => ⟨[], []⟩, (protoLay π).cb⟩) π
+      (bitTab (protoProg π).ops (if π = 0 then nodeGrp else segGrp)))
 
 /-- **Prototype `π`'s template rows** (its frame), along its compile's trail (`askRowsP`'s fold). -/
 def askRowsT (π : ℕ) : List Row :=

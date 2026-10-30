@@ -91,21 +91,24 @@ inductive RI where
   | cb (bs : ByteArray)
   deriving Inhabited
 
-/-- The entries op `op` appends (the ask counter `k`). -/
-def riOf (k : ℕ) (op : Op) : List RI :=
+/-- The entries op `op` appends (the ask counter `k`, the register count `n`): an `idx`/`shrN` only on
+earlier registers, a byte constant only if it is the same at every kind (the run proofs read them). -/
+def riOf (k n : ℕ) (op : Op) : List RI :=
   if op.item?.isSome then [.ans k] else
   match op with
-  | .idx a b i => [.idx a b i]
-  | .shrN n s => [.shr n s]
+  | .idx a b i => if a .L32 < n ∧ a .P30 < n ∧ a .N30 < n then [.idx a b i] else [.none]
+  | .shrN m s => if m < n then [.shr m s] else [.none]
   | .piDigest f o => [.dig (absOff f o)]
   | .piField f o len => [.pf (absOff f o) len]
-  | .const c => match c .L32 with | .b bs => [.cb bs] | _ => [.none]
+  | .const c => match c .L32, c .P30, c .N30 with
+    | .b x, .b y, .b z => if x = y ∧ x = z then [.cb x] else [.none]
+    | _, _, _ => [.none]
   | op => List.replicate op.outs .none
 
 /-- **The provenance array**: entry `r` says what made register `r` (tail-recursive). -/
 def riAcc : ℕ → List Op → Array RI → Array RI
   | _, [], acc => acc
-  | k, op :: ops, acc => riAcc (if op.item?.isSome then k + 1 else k) ops (acc ++ (riOf k op).toArray)
+  | k, op :: ops, acc => riAcc (if op.item?.isSome then k + 1 else k) ops (acc ++ (riOf k acc.size op).toArray)
 
 /-- The kind's index in `kinds`. -/
 def kix : Kind → ℕ
@@ -225,7 +228,7 @@ def BTab.idxSrc (T : BTab) (a b i : KC ℕ) (h : ℕ) (ι : Kind) : Option (Opti
       | .ans k => (T.ansCell ι k (i ι * b ι + h)).map some
       | .dig o =>
         match T.st with
-        | some s => if s.so ≤ o then T.stCell (8 * (o - s.so) + i ι * b ι + h) else none
+        | some s => if s.so ≤ o ∧ i ι * b ι + h < 256 then T.stCell (8 * (o - s.so) + i ι * b ι + h) else none
         | none => none
       | _ => none
     else some none
@@ -279,20 +282,24 @@ def ansRows (T : BTab) (P : Params) (π k : ℕ) (e c : ℕ) : List Row :=
     (bitsLin ((m ι).zipIdx.filterMap fun p => p.1.map fun x => (p.2, bitC π x)))
   let cls : List Kind := kinds.filter fun ι => ok ι && !(kinds.any fun κ => decide (kix κ < kix ι) && ok κ &&
     decide (m κ = m ι))
+  (if kinds.all fun ι => (m ι).all fun x => x.all (· < arNb) then [] else [failRT P]) ++
   cls.map fun ι =>
     let g := kinds.filter fun κ => ok κ && decide (m κ = m ι)
     if g.length = 3 then ⟨P.one, lin ι, []⟩ else ⟨gateS P fun κ => g.contains κ, lin ι, []⟩
+
+/-- Statement element `k`'s bit cells: `(j, cell)` for each bit `128k + j` a cell takes. -/
+def stCells (T : BTab) (π k : ℕ) : List (ℕ × ℕ) :=
+  (List.range 128).filterMap fun j =>
+    match T.stCell (128 * k + j) with
+    | some (some x) => some (j, bitC π x)
+    | _ => none
 
 /-- **Statement element `k`'s row**: `A₁(e) = c·one + Σ e_j·cell` (its constant part `c`: the tag at
 byte `0`; the tail is zero). -/
 def stElRow (T : BTab) (P : Params) (π : ℕ) (s : StSpec) (k : ℕ) : Row :=
   match winE (s.so + 16 * k) with
   | some e =>
-    let cells := (List.range 128).filterMap fun j =>
-      match T.stCell (128 * k + j) with
-      | some (some x) => some (j, bitC π x)
-      | _ => none
-    ⟨P.one, subN (Lin.cell (arC π e)) (bitsLin cells), if k = 0 then P.one.smul (tagF s.t) else []⟩
+    ⟨P.one, subN (Lin.cell (arC π e)) (bitsLin (stCells T π k)), if k = 0 then P.one.smul (tagF s.t) else []⟩
   | none => failRT P
 
 /-- **The decomposition rows** (once per prototype): every P2 answer's halves, every statement
@@ -304,7 +311,7 @@ def globRows (T : BTab) (P : Params) (π : ℕ) : List Row :=
     | none => [failRT P]) ++
   match T.st with
   | some s =>
-    (if s.z ≤ s.L ∧ s.L % 16 = 0 ∧ T.stmtB + 8 * s.z ≤ arNb + 8 then [] else [failRT P]) ++
+    (if 1 ≤ s.z ∧ s.z ≤ s.L ∧ s.L % 16 = 0 ∧ T.stmtB + 8 * s.z ≤ arNb + 8 then [] else [failRT P]) ++
       (List.range (s.L / 16)).map (stElRow T P π s)
   | none => [failRT P]
 
@@ -363,12 +370,36 @@ def stRdRows (T : BTab) (P : Params) (π : ℕ) (sl : List Slot) (t : Ty) (o n :
     else [failRT P]
   | _, _ => [failRT P]
 
-/-- **The `bits n` auxiliary cells' rows**: cell `i` is bit `i` of the register. -/
-def auxBRows (T : BTab) (P : Params) (π : ℕ) : List (List Lin × ℕ × AuxK) → List Row
+/-- An unaligned statement window's bit cells, from statement bit `b0`. -/
+def rdCells (T : BTab) (π b0 : ℕ) : List (ℕ × ℕ) :=
+  (List.range 128).filterMap fun j =>
+    match T.stCell (b0 + j) with
+    | some (some c) => some (j, bitC π c)
+    | _ => none
+
+/-- Every bit of the window from statement bit `b0` has a source. -/
+def rdOk (T : BTab) (b0 : ℕ) : Bool := (List.range 128).all fun j => (T.stCell (b0 + j)).isSome
+
+/-- **An unaligned statement read's rows** (`stRdRows` with the cells named, `bitTGS`'s). -/
+def stRdRowsS (T : BTab) (P : Params) (π : ℕ) (sl : List Slot) (t : Ty) (o n : ℕ) : List Row :=
+  match T.st, sl with
+  | some s, [some (t', ls)] =>
+    if t' = t ∧ ls.length = n then
+      (ls.zipIdx).map fun p =>
+        if rdOk T (8 * (o + 16 * p.2 - s.so)) then
+          ⟨P.one, subN p.1 (bitsLin (rdCells T π (8 * (o + 16 * p.2 - s.so)))), []⟩
+        else failRT P
+    else [failRT P]
+  | _, _ => [failRT P]
+
+/-- **The `bits n` auxiliary cells' rows**: cell `i` is bit `i` of the register (an earlier one: below
+the register count `m`; `n` cells). -/
+def auxBRows (T : BTab) (P : Params) (π m : ℕ) : List (List Lin × ℕ × AuxK) → List Row
   | [] => []
-  | (cells, r, .bits _) :: as =>
-    (cells.zipIdx.flatMap fun p => selRows P π p.1 (T.bitSrc r p.2)) ++ auxBRows T P π as
-  | (_, _, .felems _) :: as => auxBRows T P π as
+  | (cells, r, .bits n) :: as =>
+    (if r < m ∧ cells.length = n then cells.zipIdx.flatMap fun p => selRows P π p.1 (T.bitSrc r p.2)
+      else [failRT P]) ++ auxBRows T P π m as
+  | (_, _, .felems _) :: as => auxBRows T P π m as
 
 /-- Whether an op is a `tensorW`. -/
 def isTensorW : Op → Bool
@@ -415,11 +446,27 @@ def bitRowsB (T : BTab) (X : Ext) (π : ℕ) (P : Params) (cs : CS) (pre : Optio
     | some (.bitOf r h) =>
       match cs.slot b with
       | some (.bit, [l]) =>
-        if b + 1 = cs.slots.size then selRows P π l (T.bitSrc r h) else [failRT P]
+        if b + 1 = cs.slots.size ∧ r < b then selRows P π l (T.bitSrc r h) else [failRT P]
       | _ => [failRT P]
     | _ => []
   | .tensorW .. =>
-    if (stepOut X P cs op).imp then [failRT P] else auxBRows T P π (stepOut X P cs op).aux
+    if (stepOut X P cs op).imp then [failRT P] else auxBRows T P π cs.slots.size (stepOut X P cs op).aux
+  | _ => []
+
+/-- **The statement reads `bitTGS` covers** (`ATImp` class): the unaligned statement reads. -/
+def bitCovS (T : BTab) : Op → Bool
+  | .piDigest f o => T.stWin (absOff f o) 2
+  | .piElem f o => T.stWin (absOff f o) 1
+  | .piElemK f o => T.stWin (absOff f o) 2
+  | _ => false
+
+/-- **The statement reads' rows** (`bitTGS`). -/
+def bitRowsS (T : BTab) (X : Ext) (π : ℕ) (P : Params) (cs : CS) (_ : Option Op) (op : Op) (_ : ℕ) :
+    List Row :=
+  match op with
+  | .piDigest f o => if T.stWin (absOff f o) 2 then stRdRowsS T P π (stepOut X P cs op).slots .d (absOff f o) 2 else []
+  | .piElem f o => if T.stWin (absOff f o) 1 then stRdRowsS T P π (stepOut X P cs op).slots .f (absOff f o) 1 else []
+  | .piElemK f o => if T.stWin (absOff f o) 2 then stRdRowsS T P π (stepOut X P cs op).slots .k (absOff f o) 2 else []
   | _ => []
 
 /-- **The bit tables of a prototype** (its op list, its kind group): `mkTab`, built once. -/
@@ -433,6 +480,10 @@ def bitTGB (X : Ext) (π : ℕ) (T : BTab) : TG := ⟨bitCovB, bitRowsB T X π�
 
 /-- **The reads' generator** (siblings, unaligned statement reads) of prototype `π`. -/
 def bitTGR (X : Ext) (π : ℕ) (T : BTab) : TG := ⟨bitCovR T, bitRowsR T X π⟩
+
+/-- **The statement reads' generator** (the unaligned statement reads of `bitTGR`, without the
+siblings: IMPC2b's phase 2a) of prototype `π`. -/
+def bitTGS (X : Ext) (π : ℕ) (T : BTab) : TG := ⟨bitCovS T, bitRowsS T X π⟩
 
 /-- **Two generators side by side, each consulted only at its own ops** (its covered ops and the
 asks): `B`'s covered reads (a sibling, an unaligned statement read) are reads `A`'s rows refuse when

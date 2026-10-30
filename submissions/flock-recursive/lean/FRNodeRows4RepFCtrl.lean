@@ -31,7 +31,7 @@ theorem repFitB_len {rows : List Row} (h : 2 ^ 10 < rows.length) : repFitB 1 row
   exact Or.inl (decide_eq_false (by omega))
 
 theorem repRow0_ctl : N4s.repRow0 .N4 0 = 5 * 2 ^ 20 ∧ N4s.repRow0 .N4 1 = 2 ^ 20 + N4s.repSegB ∧
-    N4s.repRow0 .N8 0 = N4s.repSegB ∧ arRb + arNb < N4s.repSegB ∧ N4s.repSegB + 2 ^ 10 = slotM4 - linkN := by
+    N4s.repRow0 .N8 0 = N4s.repSegB ∧ arRb + arNb ≤ N4s.repSegB ∧ N4s.repSegB + 2 ^ 10 = slotM4 - linkN := by
   simp only [N4s.repRow0, protoOf, isPrevSlot, N4s.repSegB, slotM4, arRb, arNb, linkN]; decide
 
 end Rev4

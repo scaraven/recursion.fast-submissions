@@ -16,8 +16,8 @@ uses (`bitOf`'s import, `bits n`'s auxiliary cells); they are not `ATImp`'s busi
 * **`tplExt4_imp_tc`**: at a `selectHalf` or a `tensorW`, whether the compile's extension imports does
   not depend on the template bodies (only the layout), so `bitTGB` may read it off the template-free
   context `XofA π` (`FRNodeRows4AskB.bitTGB`'s process-start fix).
-* **`gap4Imp_of_bitsB`**: ASK-T's `gap4Imp_of_askT` with `bitTGB` folded (`withBitsB`); what remains per
-  slot is `SlotRunA` over the larger template, whose rows only add facts.
+* **`gap4Imp_of_bitsB`**: ASK-T's `gap4Imp_of_askT` with `bitTGB` beside the template (`withBitsB`), the
+  fold a hypothesis; what remains per slot is `SlotRunA` over the larger template.
 -/
 
 namespace FR
@@ -97,8 +97,8 @@ theorem tplExt4_tw_imp (F : TFilt) (R : ShR) (tp tp' : Tpl.TKey → Tpl.Tpl) (cb
   have h2 : (tplExtKM F ⟨tp, cb⟩ P cs (.tensorW j r)).map Out.imp =
       (tplExtKM F ⟨tp', cb⟩ P cs (.tensorW j r)).map Out.imp := by
     simp only [tplExtKM]
-    rcases akS (cs.slotK r .L32) with _ | a <;> rcases akS (cs.slotK r .P30) with _ | b <;>
-      rcases akS (cs.slotK r .N30) with _ | c <;> try rfl
+    rcases Circ.akS (cs.slotK r .L32) with _ | a <;> rcases Circ.akS (cs.slotK r .P30) with _ | b <;>
+      rcases Circ.akS (cs.slotK r .N30) with _ | c <;> try rfl
     simp only
     split <;> rfl
   simp only [tplExt4, Ext.orElse]
@@ -164,14 +164,9 @@ theorem xofA_imp (π : ℕ) (P : Params) (cs : CS) (op : Op) (hop : bitCovB op =
 /-- **The node's template with the bits' generator** (the `askTG` edit's first step). -/
 def withBitsB (Aq : ℕ → AT) (π : ℕ) : AT := (withImpc Aq π).addD (bitTGB (XofA π) π (bitTabP π)).toAT
 
-/-- **The fold with the bits' generator** (`askTG` folds `bitTGB` after IMPC's classes: the RESULT's
-diff; ASK-T's `askFold_askT` at `withImpc askAq` no longer holds once it does). -/
-theorem askFold_bitsB {κ : NodeKind} {w : Asg} (hone : w κ.oneCell = 1) (hE : Snd.P4b.truthEI (nodeIRows4 κ) w) :
-    ∀ v < κ.vslots, ∀ p ∈ askIRows4 (withBitsB askAq) κ v arR2, p ∈ nodeIRows4 κ :=
-  askFold (fun π _ => ⟨rfl, rfl⟩) hone hE
-
 /-- **`Gap4.imp` with the bits' generator folded**: ASK-T's `gap4Imp_of_askT` over `withBitsB askAq`.
-`hfoldA` is `askFold (fun π _ => ⟨rfl, rfl⟩)` once `askTG` folds `bitTGB` (the RESULT's diff). -/
+`hfoldA` is the fold of the template it is stated over (IMPC2b's `FRNodeRun4BT` folds the statement
+reads too, `askFold_bitsS`). -/
 theorem gap4Imp_of_bitsB {rt : ℕ → RT} {impl₀ : OpImpl} {base : NodeKind → OpImpl}
     (hT₀ : ImplT impl₀) (hT : ∀ ν, ImplT (base ν)) (hok : RepOk rt impl₀ base) {κ : NodeKind}
     {vk c₁ c₂ : Digest} {w : Asg} {ch : List F}

@@ -373,7 +373,9 @@ theorem gap4Imp_of_impc {rt : ℕ → RT} {Aq : ℕ → AT} {impl₀ : OpImpl} {
 /-! ## Controls -/
 
 /-- The node's generator with the import classes (`askTG`, which now folds `impcTG`: ASK-T). -/
-def askTGI (π : ℕ) : TG := askTG π
+def askTGI (π : ℕ) : TG :=
+  (((askTGT (XofT π) π).add (inpTG (XofT π) π)).add (rsvTG (XofT π) π)).add
+    (impcTG (XofT π) π (provLT 0 (protoProg π).ops))
 
 /-- (+) **The edit composes**: today's template (ASK-T's ask template `askAq` with the import classes)
 has `askTGI`'s fields, so `askFold`'s hypothesis holds by `rfl`. -/
