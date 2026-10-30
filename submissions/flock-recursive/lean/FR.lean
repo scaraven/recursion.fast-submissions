@@ -169,6 +169,7 @@ import FRNodeRows4RepF
 import FRNodeRows4RepFCtrl
 import FRNodeRun4CT
 import FRNodeRows4RepSeg
+import FRNodeRows4RepCFCtrl
 
 /-!
 # `flock-recursive`

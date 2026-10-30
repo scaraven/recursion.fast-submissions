@@ -1,5 +1,7 @@
 -- New for `flock-recursive` (BLUEPRINT revision 4.1, B-16, §4.4; stage S-E12b, track L-circ).
 import FRNodeRows4RepFD
+import FRNodeRows4RepCFW
+import FRInitFuse
 
 /-!
 # The 4.1 nodes' plan and `evalM`: one evaluation per prototype
@@ -45,7 +47,7 @@ theorem infoOf_map (ks : List TKey) (k : TKey) :
 /-- **The plan's data**: both prototypes compiled once at their layouts (`protoLay`, constants)
 with one template memo, their proto-pieces, **one grouping** (so that the keys, and their
 preparation in `evalM`, are shared), each prototype's checked pieces. -/
-def planData4 : Array GK × Array (List Lin) × Array (List Lin) × List Piece × List Piece :=
+noncomputable def planData4 : Array GK × Array (List Lin) × Array (List Lin) × List Piece × List Piece :=
   let ops0 := (protoProg 0).ops
   let ops1 := (protoProg 1).ops
   let l0 := protoLay 0
@@ -532,20 +534,26 @@ structure Plan4 where
   rp0 : Thunk (Array Row)
   rp1 : Thunk (Array Row)
   hrp : rp0.get.toList = N4s.repRowsP (N4s.rtC1c 0) 0 ∧ rp1.get.toList = N4s.repRowsP (N4s.rtC1c 1) 1
-  /-- Prototype 0's replay rows in local coordinates, grouped: frame part, local part. -/
+  /-- Prototype 0's replay rows (CF2): its row blocks' rows in local coordinates, grouped (frame part,
+  local part), and its `rsWeight` ops prepared at their first rows (`kpOf`; their rows not built). -/
   rgF : GRows
   rgL : GRows
-  hrg : rgF = grows (2 ^ 11) (2 ^ 12) (repLocF (N4s.repRowsP (N4s.rtC1c 0) 0)) ∧
-    rgL = grows (2 ^ 11) (2 ^ 12) (repLocL (N4s.repRowsP (N4s.rtC1c 0) 0))
+  kps : List (ℕ × KP)
+  hrg : ∃ bs : List RBlk, bs.flatMap RBlk.rows = N4s.repRowsP (N4s.rtC1c 0) 0 ∧
+    rgF = grows (2 ^ 11) (2 ^ 12) ((blkGo 0 bs [] []).1.map fun p => (p.2, rowFr p.1)) ∧
+    rgL = grows (2 ^ 11) (2 ^ 12) ((blkGo 0 bs [] []).1.map fun p => (p.2, rowLoc p.1)) ∧
+    kps = (blkGo 0 bs [] []).2
 
 /-- A plan from its pieces (the region and key checks computed here, once). -/
 def mkPlan4 (keys : Array Key) (sh0 sh1 : Array (List Lin)) (pc0 pc1 : List Piece)
     (pats : Array (Array Pat))
     (ok : keys.all (Key.ok 21) = true ∧ pc0.flatMap (Piece.rows keys sh0 (oneP 0)) = protoRows 0 ∧
       pc1.flatMap (Piece.rows keys sh1 (oneP 1)) = protoRows 1) (ar0 ar1 : List Row)
-    (har : ar0 = askRowsT 0 ∧ ar1 = askRowsT 1) (rl0 rl1 : List Row)
-    (hrl : rl0 = N4s.repRowsP (N4s.rtC1c 0) 0 ∧ rl1 = N4s.repRowsP (N4s.rtC1c 1) 1) (rp0 rp1 : Thunk (Array Row))
-    (hrp : rp0.get.toList = N4s.repRowsP (N4s.rtC1c 0) 0 ∧ rp1.get.toList = N4s.repRowsP (N4s.rtC1c 1) 1) : Plan4 where
+    (har : ar0 = askRowsT 0 ∧ ar1 = askRowsT 1) (rl1 : List Row)
+    (hrl : rl1 = N4s.repRowsP (N4s.rtC1c 1) 1) (rp0 rp1 : Thunk (Array Row))
+    (hrp : rp0.get.toList = N4s.repRowsP (N4s.rtC1c 0) 0 ∧ rp1.get.toList = N4s.repRowsP (N4s.rtC1c 1) 1)
+    (q : List (Row × ℕ) × List (ℕ × KP))
+    (hq : ∃ bs : List RBlk, bs.flatMap RBlk.rows = N4s.repRowsP (N4s.rtC1c 0) 0 ∧ q = blkGo 0 bs [] []) : Plan4 where
   keys := keys
   sh0 := sh0
   sh1 := sh1
@@ -566,7 +574,7 @@ def mkPlan4 (keys : Array Key) (sh0 sh1 : Array (List Lin)) (pc0 pc1 : List Piec
     idsOkB keys pc0 && idsOkB keys pc1 && lowKeys keys &&
     (ivBelow keys pc0 (0 * slotM4 + arR2) && ivBelow keys pc1 (1 * slotM4 + arR2) &&
       decide (ar0.length ≤ arR2N) && decide (ar1.length ≤ arR2N) && inSlotB 0 (idxAr 0 ar0) &&
-      inSlotB 1 (idxAr 1 ar1)) && (repFitB 0 rl0 && repFitB 1 rl1)
+      inSlotB 1 (idxAr 1 ar1)) && (repFitS q && repFitB 1 rl1)
   hR := fun h => by
     simp only [Bool.and_eq_true, decide_eq_true_eq] at h
     obtain ⟨⟨⟨⟨⟨⟨h0, h1⟩, i0⟩, i1⟩, hk⟩, ⟨⟨⟨⟨⟨b0, b1⟩, l0⟩, l1⟩, s0⟩, s1⟩⟩, r0, r1⟩ := h
@@ -580,8 +588,8 @@ def mkPlan4 (keys : Array Key) (sh0 sh1 : Array (List Lin)) (pc0 pc1 : List Piec
       · rw [askPI_eq, ← har.2, ← ok.2.2, ← inSlotB_iff]
         exact ⟨ivBelow_spec b1, l1, s1⟩
     · rcases Nat.le_one_iff_eq_zero_or_eq_one.1 hπ with rfl | rfl
-      · rw [← hrl.1]; exact r0
-      · rw [← hrl.2]; exact r1
+      · obtain ⟨bs, hb, rfl⟩ := hq; rw [← hb]; exact repFitS_spec bs r0
+      · rw [← hrl]; exact r1
   lk2 := lkArr .N2
   lk4 := lkArr .N4
   lk8 := lkArr .N8
@@ -601,9 +609,10 @@ def mkPlan4 (keys : Array Key) (sh0 sh1 : Array (List Lin)) (pc0 pc1 : List Piec
   rp0 := rp0
   rp1 := rp1
   hrp := hrp
-  rgF := grows (2 ^ 11) (2 ^ 12) (repLocF rl0)
-  rgL := grows (2 ^ 11) (2 ^ 12) (repLocL rl0)
-  hrg := by rw [hrl.1]; exact ⟨rfl, rfl⟩
+  rgF := grows (2 ^ 11) (2 ^ 12) (q.1.map fun p => (p.2, rowFr p.1))
+  rgL := grows (2 ^ 11) (2 ^ 12) (q.1.map fun p => (p.2, rowLoc p.1))
+  kps := q.2
+  hrg := by obtain ⟨bs, hb, rfl⟩ := hq; exact ⟨bs, hb, rfl, rfl, rfl⟩
 
 /-- **Prototype `π`'s template rows**, by the memoized trail (`trailMS`: each template built once). -/
 def arOf (π : ℕ) : List Row :=
@@ -614,19 +623,61 @@ theorem arOf_eq (π : ℕ) : arOf π = askRowsT π := trailMS_T _ _ _ _ _ _ (by 
 
 theorem thunk_get' {α : Type} (f : Unit → α) : (Thunk.mk f).get = f () := rfl
 
-def planOf4D (d : Array GK × Array (List Lin) × Array (List Lin) × List Piece × List Piece)
-    (hd : d = planData4) : Plan4 :=
-  -- REPF: each prototype's template rows and replay rows from one memoized pass; the argument depends
-  -- on `d` so that the compiler does not hoist the pass into a closed constant. The replay rows are not
-  -- kept in the plan (only their grouped local parts; the fallback recomputes them, `t0`, `t1`).
+/-- Prototype 1's replay rows as row blocks. -/
+def spBlk (rt : RT) (P : Params) (c : CS) (op : Op) (o : List Slot) : RBlk := .sp (rt.rows P c op o)
+
+/-- **The plan's data, the ask rows and the replay blocks, one walk per prototype** (CF2: INIT's
+proposal 2 with the replay blocks, `compMSXB`; `planData4` is `noncomputable`, not built). -/
+def planDataB : (Array GK × Array (List Lin) × Array (List Lin) × List Piece × List Piece) ×
+    (List Row × List RBlk) × (List Row × List RBlk) :=
+  let ops0 := (protoProg 0).ops
+  let ops1 := (protoProg 1).ops
+  let l0 := protoLay 0
+  let l1 := protoLay 1
+  let ks0 := l0.map Prod.fst
+  let kms := (ks0 ++ (l1.map Prod.fst).filter (fun k => !ks0.contains k)).map mkKM
+  let q0 := compMSXB (tplExt4 (protoF 0) (protoR 0)) l0 (protoP 0) (askTG 0) (N4s.rtC1c 0) blk0 []
+    (CS.init (baseR 0)) ops0 none [] none 0 [] []
+  let r0 := q0.1
+  let q1 := compMSXB (tplExt4 (protoF 1) (protoR 1)) l1 (protoP 1) (askTG 1) (N4s.rtC1c 1) (spBlk (N4s.rtC1c 1))
+    r0.2.2 (CS.init (baseR 1)) ops1 none [] none 0 [] []
+  let r1 := q1.1
+  let p0 := slotRP (oneP 0) kms l0 0 r0.1 r0.2.1.reverse []
+  let rps1 := (slotRP (oneP 1) kms l1 (1 * slotM4) r1.1 r1.2.1.reverse p0.2).1
+  let g := groupRP p0.1 rps1
+  ((g.1, g.2.1, g.2.2.1, piecesOf g.1 g.2.1 (oneP 0) p0.1 g.2.2.2.1, piecesOf g.1 g.2.2.1 (oneP 1) rps1 g.2.2.2.2),
+    (q0.2.1.reverse, q0.2.2.reverse), (q1.2.1.reverse, q1.2.2.reverse))
+
+/-- The plan's facts about its data. -/
+def DataOk (x : (Array GK × Array (List Lin) × Array (List Lin) × List Piece × List Piece) ×
+    (List Row × List RBlk) × (List Row × List RBlk)) : Prop :=
+  x.1 = planData4 ∧ x.2.1.1 = askRowsT 0 ∧ x.2.1.2.flatMap RBlk.rows = N4s.repRowsP (N4s.rtC1c 0) 0 ∧
+    x.2.2.1 = askRowsT 1 ∧ x.2.2.2.flatMap RBlk.rows = N4s.repRowsP (N4s.rtC1c 1) 1
+
+/-- **The one walk is the plan's data, the ask rows and the replay rows.** -/
+theorem planDataB_eq : DataOk planDataB := by
+  obtain ⟨-, mr0⟩ := compMSX_T (tplExt4 (protoF 0) (protoR 0)) (protoLay 0) (protoP 0) (baseR 0)
+    (protoProg 0).ops (M := []) (by simp [MOk])
+  unfold DataOk planDataB
+  simp only [compMSXB_eq]
+  rw [trailMB_eq _ _ _ _ _ _ _ _ _ _ _ _ _ (by simp [MOk]), trailMB_eq _ _ _ _ _ _ _ _ _ _ _ _ _ mr0]
+  simp only [List.append_nil, List.reverse_reverse]
+  refine ⟨rfl, rfl, repBlkX_rows _ _ _ _ blk0_rows _ _, rfl, repBlkX_rows _ _ _ _ (fun _ _ _ _ => rfl) _ _⟩
+
+def planOf4D (x : (Array GK × Array (List Lin) × Array (List Lin) × List Piece × List Piece) ×
+    (List Row × List RBlk) × (List Row × List RBlk)) (hx : DataOk x) : Plan4 :=
+  -- REPF/CF2: each prototype's ask rows and replay blocks from the compile's walk (`planDataB`). The
+  -- fallback's thunks recompute the rows from `d` (so that the compiler does not hoist them into a
+  -- closed constant). Prototype 0's `rsWeight` ops are prepared (`blkGo`), not built.
+  let d := x.1
+  have hd : d = planData4 := hx.1
   let k0 := d.1.size - d.1.size
-  let a0 := arRepOf k0
-  let a1 := arRepOf (k0 + 1)
+  let b0 := x.2.1
+  let b1 := x.2.2
   have hk : k0 = 0 := Nat.sub_self _
-  have e0 : a0 = (askRowsT 0, N4s.repRowsP (N4s.rtC1c 0) 0) := by
-    show arRepOf k0 = _; rw [hk]; exact arRepOf_eq 0
-  have e1 : a1 = (askRowsT 1, N4s.repRowsP (N4s.rtC1c 1) 1) := by
-    show arRepOf (k0 + 1) = _; rw [hk]; exact arRepOf_eq 1
+  let q := blkGo 0 b0.2 [] []
+  have hq : ∃ bs : List RBlk, bs.flatMap RBlk.rows = N4s.repRowsP (N4s.rtC1c 0) 0 ∧ q = blkGo 0 bs [] [] :=
+    ⟨b0.2, hx.2.2.1, rfl⟩
   let t0 : Thunk (Array Row) := Thunk.mk fun _ => (arRepOf k0).2.toArray
   let t1 : Thunk (Array Row) := Thunk.mk fun _ => (arRepOf (k0 + 1)).2.toArray
   have h0 : t0.get.toList = N4s.repRowsP (N4s.rtC1c 0) 0 := by
@@ -636,18 +687,18 @@ def planOf4D (d : Array GK × Array (List Lin) × Array (List Lin) × List Piece
   if h : (d.1.map mkKey).all (Key.ok 21) = true then
     mkPlan4 (d.1.map mkKey) d.2.1 d.2.2.1 d.2.2.2.1 d.2.2.2.2
       (mkPats (d.1.map mkKey).size d.2.2.2.1)
-      ⟨h, by subst hd; exact planData4_rows.1, by subst hd; exact planData4_rows.2⟩ a0.1 a1.1
-      ⟨by rw [e0], by rw [e1]⟩ a0.2 a1.2 ⟨by rw [e0], by rw [e1]⟩ t0 t1 ⟨h0, h1⟩
+      ⟨h, by rw [hd]; exact planData4_rows.1, by rw [hd]; exact planData4_rows.2⟩ b0.1 b1.1
+      ⟨hx.2.1, hx.2.2.2.1⟩ (b1.2.flatMap RBlk.rows) hx.2.2.2.2 t0 t1 ⟨h0, h1⟩ q hq
   else
     -- the fallback's rows depend on `d` (`protoRows (k − k)`), so that the compiler does not hoist
     -- `protoRows 0` into a closed constant built at every process start (S-E13's kernel and init traps)
     mkPlan4 #[] #[] #[] [.sp (protoRows (d.1.size - d.1.size))] [.sp (protoRows (d.1.size - d.1.size + 1))] #[]
       ⟨by simp, by rw [Nat.sub_self]; exact List.flatMap_singleton .., by rw [Nat.sub_self]; exact List.flatMap_singleton ..⟩
-      a0.1 a1.1 ⟨by rw [e0], by rw [e1]⟩ a0.2 a1.2 ⟨by rw [e0], by rw [e1]⟩ t0 t1 ⟨h0, h1⟩
+      b0.1 b1.1 ⟨hx.2.1, hx.2.2.2.1⟩ (b1.2.flatMap RBlk.rows) hx.2.2.2.2 t0 t1 ⟨h0, h1⟩ q hq
 
 /-- **The 4.1 nodes' plan, built once per process** (B-16): from proved pieces, no run-time row
 comparison. -/
-def planOf4 : Plan4 := planOf4D planData4 rfl
+def planOf4 : Plan4 := planOf4D planDataB planDataB_eq
 
 /-! ## A prototype's value -/
 
@@ -1164,12 +1215,17 @@ theorem innAt_thsOf (pl : Plan4) (L : LTb) (rv : Thunk (F3 × F3)) (k : ℕ × �
   · dsimp only
 
 /-- **The replay rows' local values** (REPF): the frame and local parts of prototype 0's replay rows
-at `(t, u)`'s low 20 coordinates (split tables `2^11 × 2^9`, `2^12 × 2^8`; the low halves shared). -/
+at `(t, u)`'s low 20 coordinates (split tables `2^11 × 2^9`, `2^12 × 2^8`; the low halves shared).
+CF2: the row blocks' grouped rows sparse, the `rsWeight` ops in closed form (`kopV`: frame part at
+`wF`, locals `0`; local part at `wL`, locals `eq(u, 2^16 + ·)`). -/
 def rvOf (pl : Plan4) (tlo slo : Array F) (t u : ℕ → F) : Thunk (F3 × F3) :=
   Thunk.mk fun _ =>
     let thi := loTab 9 fun l => t (11 + l)
     let shi := loTab 8 fun l => u (12 + l)
-    (growsVal3 tlo thi slo shi pl.rgF, growsVal3 tlo thi slo shi pl.rgL)
+    let gt := splitAt tlo thi (2 ^ 11)
+    let gu := splitAt slo shi (2 ^ 12)
+    (add3 (growsVal3 tlo thi slo shi pl.rgF) (kpsV3F gt gu t u (wFA gu) 0 pl.kps),
+      add3 (growsVal3 tlo thi slo shi pl.rgL) (kpsV3F gt gu t u (wLA gu) 1 pl.kps))
 
 theorem repV_eq (t u : ℕ → F) (rows : List (ℕ × Row)) :
     growsVal3 (loTab 11 t) (loTab 9 fun l => t (11 + l)) (loTab 12 u) (loTab 8 fun l => u (12 + l))
@@ -1184,9 +1240,16 @@ theorem repV_eq (t u : ℕ → F) (rows : List (ℕ × Row)) :
 
 theorem rvOf_get (pl : Plan4) (t u : ℕ → F) : (rvOf pl (loTab 11 t) (loTab 12 u) t u).get =
     (rows3 20 20 t u (repLocF (N4s.repRowsP (N4s.rtC1c 0) 0)), rows3 20 20 t u (repLocL (N4s.repRowsP (N4s.rtC1c 0) 0))) := by
+  obtain ⟨bs, hbs, hF, hL, hk⟩ := pl.hrg
+  have ht : splitAt (loTab 11 t) (loTab 9 fun l => t (11 + l)) (2 ^ 11) = gN 20 t :=
+    splitE_eq (m := 20) (s := 11) (by norm_num) t
+  have hu : splitAt (loTab 12 u) (loTab 8 fun l => u (12 + l)) (2 ^ 12) = gN 20 u :=
+    splitE_eq (m := 20) (s := 12) (by norm_num) u
   rw [rvOf, thunk_get]
   dsimp only
-  rw [pl.hrg.1, pl.hrg.2, repV_eq, repV_eq]
+  rw [kpsV3F_eq _ _ _ _ _ _ _ (congrFun ht), kpsV3F_eq _ _ _ _ _ _ _ (congrFun ht), hF, hL, hk, repV_eq, repV_eq, ht, hu, wFA_eq _ u (fun _ => rfl), wLA_eq _ u (fun _ => rfl), ← hbs]
+  simp only [rows3, add3, kpsV3, rowsVal_spF, rowsVal_spL, repLocF, repLocL, spV_zipIdx,
+    blk_val _ t u _ _ (wF_cb u), blk_val _ t u _ _ (wL_cb u)]
 
 /-- **`cx` is the context at `(t, u)`** over `lm` row coordinates. -/
 def CxAt (cx : LCx) (lm : ℕ) (t u : ℕ → F) : Prop :=

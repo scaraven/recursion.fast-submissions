@@ -1,6 +1,5 @@
 -- New for `flock-recursive` (track CF): the replay rows' value with `rsWeight`'s block in closed form.
 import FRNodeRows4RepFD
-import FRNodeRows4RepK
 import FRVIRTplCFE
 
 /-!
@@ -19,6 +18,21 @@ coordinates (`repLocF`: the frame part, `repLocL`: the local part). Here:
 -/
 
 namespace FR
+namespace N4s
+open RecursionFast Rev4 Circ Tpl
+
+-- moved here from `FRNodeRows4RepK` (CF2: the plan imports this module, not `FRNodeRows4RepK`)
+theorem gatesAtGo_eq : ∀ (gs : List Gate) (k : ℕ) (acc : List (ℕ × Gate)),
+    gatesAtGo gs k acc = (gatesAt gs k).reverse ++ acc
+  | [], _, _ => rfl
+  | g :: gs, k, acc => by
+    rw [gatesAtGo, gatesAtGo_eq gs, gatesAt, List.reverse_cons, List.append_assoc]; rfl
+
+theorem rowsTR_eq (T : Tpl) : rowsTR T = T.rows := by
+  rw [rowsTR, gatesAtGo_eq, List.append_nil, List.reverse_reverse]; rfl
+
+end N4s
+
 namespace Rev4
 open RecursionFast Circ TEval Tpl
 
@@ -44,7 +58,7 @@ def wL (u : ℕ → F) : Asg := fun c => if c < N4s.repB then 0 else gN 20 u (c 
 
 theorem linE_filt (u : ℕ → F) (B : ℕ) : ∀ l : Lin,
     linE (RingHom.id F) 20 u (l.filter fun t => decide (t.1 < B)) = l.ev (fun c => if c < B then gN 20 u c else 0)
-  | [] => rfl
+  | [] => by simp [linE, Lin.ev]
   | q :: l => by
     have ih := linE_filt u B l
     simp only [linE, Lin.ev, RingHom.id_apply] at ih ⊢
@@ -57,7 +71,7 @@ theorem linE_filt (u : ℕ → F) (B : ℕ) : ∀ l : Lin,
 theorem linE_filtL (u : ℕ → F) (B : ℕ) : ∀ l : Lin,
     linE (RingHom.id F) 20 u ((l.filter fun t => !decide (t.1 < B)).map fun t => (t.1 - B, t.2)) =
       l.ev (fun c => if c < B then 0 else gN 20 u (c - B))
-  | [] => rfl
+  | [] => by simp [linE, Lin.ev]
   | q :: l => by
     have ih := linE_filtL u B l
     simp only [linE, Lin.ev, RingHom.id_apply, List.map_map] at ih ⊢

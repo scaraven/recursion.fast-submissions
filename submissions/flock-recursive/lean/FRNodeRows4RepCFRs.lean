@@ -375,7 +375,9 @@ theorem ok_patB (h1 : e.one = 1) {sk : List (List (List (ℕ × Bool) × List �
 /-! ## The template -/
 
 /-- Chain `i`'s stage values (a slot source). -/
-def srcCh (res : ℕ → List LinT) (i : ℕ) : Src := .var ((List.range 128).map fun k => kfAt (res i) k).toArray
+def srcCh (res : ℕ → List LinT) (i : ℕ) : Src :=
+  let r := res i
+  .var ((List.range 128).map fun k => kfAt r k).toArray
 
 /-- A stage group's `j`-th result per stage (a slot source). -/
 def srcSt (res : ℕ → List LinT) (j : ℕ) : Src := .var ((List.range 128).map fun k => kfAt (res k) j).toArray

@@ -1,6 +1,7 @@
 -- New for `flock-recursive` (PACK-4.4 §6.2, the stage table's C1; track C1).
 import FRNodeRows4RepS
 import FRVIRTplKMux
+import FRNodeRows4RepCFP
 
 /-!
 # Kind-muxed replay templates for the previous node's ops
@@ -212,14 +213,7 @@ theorem kTpl_ok {e : Env} (h1 : e.one = 1) {K : KOp} {op : Op} {bs : List (List 
       List.getD_eq_getElem _ [] (hvl ▸ hjl)]
   · rw [ev_nil, List.getD_eq_getElem?_getD, List.getElem?_eq_none (by omega)]; rfl
 
-theorem gatesAtGo_eq : ∀ (gs : List Gate) (k : ℕ) (acc : List (ℕ × Gate)),
-    gatesAtGo gs k acc = (gatesAt gs k).reverse ++ acc
-  | [], _, _ => rfl
-  | g :: gs, k, acc => by
-    rw [gatesAtGo, gatesAtGo_eq gs, gatesAt, List.reverse_cons, List.append_assoc]; rfl
-
-theorem rowsTR_eq (T : Tpl) : rowsTR T = T.rows := by
-  rw [rowsTR, gatesAtGo_eq, List.append_nil, List.reverse_reverse]; rfl
+-- `gatesAtGo_eq`, `rowsTR_eq`: moved to `FRNodeRows4RepCFP` (CF2; the plan imports it).
 
 theorem rtK_rows {K : KOp} {B cb : ℕ} {P : Params} {cs : CS} {op : Op} {outs : List Slot}
     (hc : K.cov op = true) : (rtK K B cb).rows P cs op outs = kRows K B cb P cs op outs := by

@@ -521,7 +521,9 @@ def ret (a : α) : SM α := fun _ => ([], a)
 
 /-- `g`, then `f` of its result, whose locals follow `g`'s. -/
 def bind (g : SM α) (f : α → SM β) : SM β := fun k =>
-  ((g k).1 ++ (f (g k).2 (k + sgNl (g k).1)).1, (f (g k).2 (k + sgNl (g k).1)).2)
+  let r := g k
+  let r' := f r.2 (k + sgNl r.1)
+  (r.1 ++ r'.1, r'.2)
 
 def map (g : SM α) (h : α → β) : SM β := fun k => ((g k).1, h (g k).2)
 
@@ -531,7 +533,9 @@ def lift (g : GM α) : SM α := fun k => ([.irr (g k).1], (g k).2)
 /-- **`n` instances of the pattern `pat`** (built at local `0`, stride `2^p`), instance `s` reading its
 inputs as `ph`'s forms at `s`; the result: each instance's result forms, substituted. -/
 def rep (n p : ℕ) (pat : GM (List LinT)) (ph : Array Ph) : SM (ℕ → List LinT) := fun k =>
-  ([.rep ⟨n, p, (pat 0).1, ph⟩], fun s => (pat 0).2.map (subW (Rep.σ ⟨n, p, (pat 0).1, ph⟩ s) (k + s * 2 ^ p)))
+  -- CF2: the pattern built once per call (the result closure no longer re-runs `pat 0`)
+  let q := pat 0
+  ([.rep ⟨n, p, q.1, ph⟩], fun s => q.2.map (subW (Rep.σ ⟨n, p, q.1, ph⟩ s) (k + s * 2 ^ p)))
 
 /-- **`g` computes `P`**: wherever its gates' equations hold at `e`, its result satisfies `P`. -/
 def Ok (e : Env) (g : SM α) (P : α → Prop) : Prop := ∀ k, Eqns e (sgGates (g k).1 k) k → P (g k).2
