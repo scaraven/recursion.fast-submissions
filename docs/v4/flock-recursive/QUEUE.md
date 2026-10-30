@@ -105,6 +105,11 @@ Running on rev44:
   - **Start-up:** the ~1.5 s init win needs `nodePlan`/`lPlan`/`implCN` made noncomputable.
 - **SEG-R1 landed `9a3019d`.** `rtKD`/`KOkD`/`rtKD_okW`, `rtEvZ`, the `rsWeight` F-point template `rsSegT` (36,923 gates), `rtSeg1`, `rtC1d`, `repOkW_rtC1dB`, `cov`/`inOk`; `evalM`/`evalL` pinned in `implSeg`. On `protoProg 1`: 37,362 rows, none rejecting. `implB`/`nodePlan`/`lPlan`/`implCN` noncomputable; compiled op sets on `Impl.implC0` (`implS_eq`, `implNN_eq`); certificate statements unchanged. Init −2.05 s user, segment check −70 ms. `FR` imports `FRNodeRows4RepSeg`.
   - **SEG-R1b running:** the `targetS` (`kTSS`) and `shiftTarget` (`kSTS`) templates, SEG-R1-RESULT §6.
+  - **Review `b63754e` (SIB + SEG-R1): no blocker.** Closure total; compiled V = proved V (`implS_eq`/`implNN_eq` by `rfl`, no plan unfolded). Should-fix:
+    1. honest ACCEPT logged after the `evalM`/`evalL` pin (L30/L32/P30/N30, N2/N4/N8) → SEG-R1b;
+    2. empty `impQP` by **failing rows on `rt.cov`** (closure-style; op-aware `inOk` rejects `rsWeight` with `act` true), never by kernel evaluation of the compile (≈ 26k ops) → SEG-R2;
+    3. R2 rewires `gap4Imp_of_close`/`gap4Imp_rtC1cC`/`gaps4_of_runC` (`FRNodeRun4CT`) at `rtC1d`; `gaps4_of_runS` is gone → SEG-R1b fixes the RESULT §7 text.
+    - Notes: `atImp_sib` 4.35 s kernel (`cases op <;> simp` at `FRNodeRun4CS.lean:45`; G6). SIB's +2.7 s init waiver recorded above (net +0.65 s with SEG-R1).
   - **SEG-R2 next** (after CF2 and SEG-R1b): SEG-R1-RESULT §7 (fold `rtC1c` → `rtC1d`, `arR2N` 154,368, `repSegB := arRb + arNb`, two-band `repRow0`/`repIRowsW`, `repMapC` bands 1 + 3, shared `rv₁`, `segRegion`). Prover cells: §8.
 - **Running:**
   - **Review of SEG-R:** no blocker. The route is a fixed point (rows only; no op or import added), and the dead ops are pinned soundly.
