@@ -225,3 +225,15 @@ These are projections from VM A/B, not runner measurements.
   - `su-ab.py`, `su-ab.txt`, `su-old/`, `su-new*/`, `pf0/`;
   - `bench-ext-*.txt`, `asm/` (`det.sh`, `det.txt`, `prover{1,2}.s`);
   - `cargo-test-2.txt`, `setup-new/`, `project-9v74.py`, `project-9v74.txt`, `project-e1b.py`, `project-7763.txt`.
+
+## Orchestrator note: the VM logs were lost
+
+P2r's logs were written to `/home/devops/Verified-zkEVM/rf-p2/logs/P2/`. That directory was gitignored and sat inside the
+temporary worktree `rf-p2`. On 2026-10-30 the orchestrator removed the worktree with `git worktree remove --force`, which
+deleted those logs. The committed sources are unaffected (`ab55e44`; the prover files match the worktree byte for byte).
+
+What this means for the claims above:
+- The acceptance claims (10-node chain, streams, byte-identical `.signed` outputs, `cargo test`) can be re-run from
+  `ab55e44` with E1b's tooling.
+- The VM A/B timings and the 9V74 projection now have no log behind them. They are superseded by the final runner
+  evaluation (RUN3), which measures `ab55e44`'s prover on the runners.
