@@ -1,6 +1,7 @@
 -- New for `flock-recursive` (SEG-R §4, stage SEG-R1): prototype 1's replay templates.
 import FRNodeRows4RepSegK
 import FRVIRTplSegR
+import FRNodeRows4RepSegT
 import FRNodeRows4RepLT
 import FRSubmission4V
 
@@ -15,6 +16,8 @@ import FRSubmission4V
   **`kRSS_ok`**: `KOkD` at every index, given that the base's `rsWeight` is `rsWeightF` (`SegBase`).
 * Operands of any other shape get the rejecting row (`kdRows`); an `rsWeight` with some `act` true or
   another claim count is not covered (it stays an import: no segment program has one, SEG-R0 §6).
+* `targetS` and `shiftTarget` (`kTSS`, `kSTS`, SEG-R1b) are in `FRNodeRows4RepSegT`; `rtSeg1` chains all
+  five of the segment program's replay ops.
 -/
 
 namespace FR
@@ -302,8 +305,16 @@ theorem kRSS_ok {impl₀ : OpImpl} {base : NodeKind → OpImpl} (hR : impl₀.rs
 /-- `rsWeight`'s locals (the mux's 207, then the template's 36,923; below `repB + 2^16`). -/
 def cbRSS : ℕ := repB + 2 ^ 12
 
-/-- **Prototype 1's replay templates** (SEG-R1): `linkWAll` (S-E14), `evalM`/`evalL` (zero), `rsWeight`. -/
-def rtSeg1 : RT := (rtLinkSegW repB).orElse ((rtEvZ repB).orElse (rtKD kRSS repB cbRSS))
+/-- `targetS`'s locals (mux, then `tsSegT`'s 55; < `2^9`) and `shiftTarget`'s (mux, then `stSegT`'s 1,301;
+< `2^12 − 2^9`): both in `[repB, cbRSS)`, the block below `rsWeight`'s (R2: cell band 2). -/
+def cbTSS : ℕ := repB
+def cbSTS : ℕ := repB + 2 ^ 9
+
+/-- **Prototype 1's replay templates** (SEG-R1, SEG-R1b): `linkWAll` (S-E14), `evalM`/`evalL` (zero),
+`rsWeight`, `targetS`, `shiftTarget`. -/
+def rtSeg1 : RT :=
+  (rtLinkSegW repB).orElse ((rtEvZ repB).orElse ((rtKD kRSS repB cbRSS).orElse
+    ((rtKD kTSS repB cbTSS).orElse (rtKD kSTS repB cbSTS))))
 
 /-- **The replay templates per prototype** (`rtC1c` with prototype 1's `rtSeg1`). -/
 def rtC1d (π : ℕ) : RT := if π = 0 then rtN0c else if π = 1 then rtSeg1 else RT.none
@@ -318,7 +329,8 @@ theorem rtC1d_ok {impl₀ : OpImpl} {base : NodeKind → OpImpl} (hZ : LinkZero 
   · obtain rfl : π = 1 := by omega
     simp only [rtC1d, one_ne_zero, ite_false, ite_true, rtSeg1]
     exact RT.orElse_okW (rtLinkSegW_ok base hZ repB ι)
-      (RT.orElse_okW (rtEvZ_okW impl₀ base repB ι) (rtKD_okW repB cbRSS (kRSS_ok hS.1 ι)))
+      (RT.orElse_okW (rtEvZ_okW impl₀ base repB ι) (RT.orElse_okW (rtKD_okW repB cbRSS (kRSS_ok hS.1 ι))
+        (RT.orElse_okW (rtKD_okW repB cbTSS (kTSS_ok ι)) (rtKD_okW repB cbSTS (kSTS_ok hS.2 ι)))))
 
 /-- **`RepOkW` for `rtC1d`.** -/
 theorem repOkW_rtC1d {impl₀ : OpImpl} {base : NodeKind → OpImpl} (hZ : LinkZero impl₀) (hB : STBase base)
