@@ -30,6 +30,10 @@ The baseline only has to be accepted. Choose routes by the least sound implement
 
 ## Running — as of 2026-10-30
 
+**Milestone, rev44 `3d9ae68` (FEL): the certificate is closed.** `Solution.certified : CertificateR declared submission` has no hypothesis (`open4F_holds` from `gaps4_fel`); axioms propext, Classical.choice, Quot.sound; source rule 0 findings; the rest of `Solution.lean` is the rendered stub. Reviews: SEG-R2 `b777e1a`, FEL-impl (in `3d9ae68`) — sound, no blocker. Local clean overlay build 274 s wall. 40 more modules on `certified`'s path (≈ +29 s kernel by profile, ≈ 420 s of 600) → **RUN2a** measures the real certificate caps on the runners now.
+- **Running:** E1b (prover resync; final dump at `3d9ae68`; node ACCEPT N2/N4/N8 is the acceptance gate, SEG-R2 review S2); RUN2a (runner certificate probes: full-pipeline certificate verdict, cert2 kernel, si-cert build; probe branches deleted afterwards).
+- **Then:** RUN2 full evaluation (`evaluate.yml` via a probe branch) after E1b; G6 golf only if a cap binds; clean submission branch (only `submissions/flock-recursive/`, no non-building modules; drop unused defs such as `colTG`, `auxRows`, `SlotRunI`).
+
 **Milestone, rev44 `616b57c`:** the whole certificate (`FR`, `Solution`, `FRSubmission4Fin`) builds green with no sorry, and the axioms of `certified` are clean. Its only hypothesis is `Gaps4` = `Gap4R.imp`: per active slot, `SlotImp`.
 
 Landed since the last update:
