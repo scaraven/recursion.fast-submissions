@@ -1,7 +1,7 @@
 -- New for `flock-recursive` (BLUEPRINT A.10 rows L1–L3β, §5.2 rows L1–L3; stage S-G7).
 -- RET-2: the declarations revision 4.1 reads moved to `FRSoundnessCoreRows`.
 import FRSoundnessFrZ
-import FRSoundnessCoreRows
+import FRSoundnessCoreFront
 
 /-!
 # L: the per-kind lincheck (positions 68 … 98)

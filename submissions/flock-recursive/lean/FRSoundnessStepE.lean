@@ -3,7 +3,7 @@
 -- RET-2: the declarations revision 4.1 reads moved to `FRSoundnessCoreRows`.
 import FRSoundnessStepD
 import FRSoundnessCoreSteps
-import FRSoundnessCoreRows
+import FRSoundnessCoreFront
 
 /-!
 # The per-phase dooms, the multi-squeeze bad sets, and `KState.step` for the whole transcript

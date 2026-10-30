@@ -440,7 +440,7 @@ pub fn prove_logged(o: &dyn Oracle, circ: &Circuit, vk: &Digest, s: &Digest, m: 
     wr.fs.phase = "Lr2";
     dummy_rounds(&mut wr, pp::F_LR, pp::LR_ROUNDS, 48);
     wr.fs.phase = "Lrend";
-    wr.send(pp::F_LREND, &[0u8; 48]);
+    wr.send(pp::F_LREND, &[0u8; pp::LREND_LEN]);
     wr.fs.phase = "Lr3";
     wr.fs.squeeze();
 
@@ -450,7 +450,7 @@ pub fn prove_logged(o: &dyn Oracle, circ: &Circuit, vk: &Digest, s: &Digest, m: 
     wr.fs.phase = "E2";
     dummy_rounds(&mut wr, pp::F_E, pp::E2_ROUNDS, 48);
     wr.fs.phase = "Eend";
-    wr.send(pp::F_EEND, &[0u8; 48]);
+    wr.send(pp::F_EEND, &[0u8; pp::EEND_LEN]);
     wr.fs.phase = "E3";
     wr.fs.squeeze();
     wr.fs.phase = "E4";
@@ -650,7 +650,7 @@ pub fn verify_logged(o: &dyn Oracle, circ: &Circuit, vk: &Digest, c: &Digest, pi
     rd.fs.phase = "Lr2";
     v_rounds(&mut rd, pp::F_LR, 3, pp::LR_ROUNDS, 0, &mut zero);
     rd.fs.phase = "Lrend";
-    let e = rd.recv(pp::F_LREND, 48);
+    let e = rd.recv(pp::F_LREND, pp::LREND_LEN);
     rd.check(e.iter().all(|&x| x == 0));
     rd.fs.phase = "Lr3";
     rd.fs.squeeze();
@@ -661,7 +661,7 @@ pub fn verify_logged(o: &dyn Oracle, circ: &Circuit, vk: &Digest, c: &Digest, pi
     rd.fs.phase = "E2";
     v_rounds(&mut rd, pp::F_E, 3, pp::E2_ROUNDS, 0, &mut zero);
     rd.fs.phase = "Eend";
-    let e = rd.recv(pp::F_EEND, 48);
+    let e = rd.recv(pp::F_EEND, pp::EEND_LEN);
     rd.check(e.iter().all(|&x| x == 0));
     rd.fs.phase = "E3";
     rd.fs.squeeze();

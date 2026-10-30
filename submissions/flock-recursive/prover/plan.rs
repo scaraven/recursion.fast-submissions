@@ -396,9 +396,60 @@ pub fn encode_regs(p: &Proto, cf: &mut Coefs) -> Vec<u8> {
     w.0
 }
 
-/// A prototype from its plan form (the rows) and `encode_regs`' bytes.
-pub fn decode_proto(pf: &[u8], regs: &[u8], cf: &[F]) -> Proto {
-    let (pi, rows) = read_planform(pf);
+/// E1b: rows `from..` of `rw`, varint-coded (row and cell deltas, coefficients by index into `cf`).
+pub fn encode_rows(rw: &Rows, from: usize, cf: &mut Coefs) -> Vec<u8> {
+    let mut w = Wb::default();
+    w.u((rw.len() - from) as u64);
+    let (mut pr, mut pc) = (0i64, 0i64);
+    for i in from..rw.len() {
+        w.s(rw.idx[i] as i64 - pr);
+        pr = rw.idx[i] as i64;
+        let rg = rw.rng[i];
+        for m in 0..3 {
+            w.u((rg[m + 1] - rg[m]) as u64);
+            for t in rg[m] as usize..rg[m + 1] as usize {
+                w.s(rw.cells[t] as i64 - pc);
+                pc = rw.cells[t] as i64;
+                w.u(cf.id(rw.coef(t)));
+            }
+        }
+    }
+    w.0
+}
+
+/// `encode_rows`' bytes appended to `rw` (open: `Rows::new` or `reopen`).
+pub fn decode_rows_into(rw: &mut Rows, b: &[u8], cf: &[F]) {
+    let r = &mut Rb { b, p: 0 };
+    let n = r.u() as usize;
+    let (mut pr, mut pc) = (0i64, 0i64);
+    for _ in 0..n {
+        pr += r.s();
+        let a0 = rw.cells.len() as u32;
+        let mut rg = [a0; 4];
+        for m in 0..3 {
+            let k = r.u() as usize;
+            for _ in 0..k {
+                pc += r.s();
+                let x = cf[r.u() as usize];
+                rw.term(pc as u32, x);
+            }
+            rg[m + 1] = rw.cells.len() as u32;
+        }
+        rw.idx.push(pr as u32);
+        rw.rng.push(rg);
+    }
+}
+
+/// A prototype from its plan form (the rows), `encode_regs`' bytes and (E1b) its extra rows and spare
+/// rows (`encode_rows`).
+pub fn decode_proto(pf: &[u8], regs: &[u8], extra: &[u8], spare_b: &[u8], cf: &[F]) -> Proto {
+    let (pi, mut rows) = read_planform(pf);
+    rows.reopen();
+    decode_rows_into(&mut rows, extra, cf);
+    rows.done();
+    let mut spare = Rows::new();
+    decode_rows_into(&mut spare, spare_b, cf);
+    spare.done();
     let r = &mut Rb { b: regs, p: 0 };
     let (mut fcells, mut fcoefs) = (Vec::new(), Vec::new());
     let mut pc = 0i64;
@@ -439,7 +490,7 @@ pub fn decode_proto(pf: &[u8], regs: &[u8], cf: &[F]) -> Proto {
         let terms = get_terms(r, &mut fcells, &mut fcoefs, &mut pc);
         aux.push(Aux { reg, bits, n, terms });
     }
-    Proto { pi, rows, regs, aux, fcells, fcoefs, plan: Default::default(), adj: Default::default(), inactive: Default::default(), fcinv: Default::default(), bycell: Default::default(), sched: Default::default() }
+    Proto { pi, rows, regs, aux, fcells, fcoefs, spare, plan: Default::default(), adj: Default::default(), inactive: Default::default(), fcinv: Default::default(), bycell: Default::default(), sched: Default::default(), spix: Default::default() }
 }
 
 // ---------------------------------------------------------------- the blob
@@ -452,8 +503,34 @@ pub struct NodeData {
 }
 
 impl NodeData {
+    /// Kind `k`'s table: `node-N*.txt`'s link rows, and (P2) E1b's arena₁ rows and slot 0's replay rows
+    /// factored (`node::set_ext`).
     pub fn kind_tab(&self, k: crate::node::NK) -> KindTab {
-        KindTab::parse(&self.kinds[k as usize])
+        let mut kt = KindTab::parse(&self.kinds[k as usize]);
+        crate::node::set_ext(&mut kt, k);
+        kt
+    }
+    /// The full table of kind `k` (E1b's: the arena₁ and replay rows as link rows; the reference of
+    /// the factored operations, and `node::check`'s rows).
+    pub fn kind_tab_full(&self, k: crate::node::NK) -> KindTab {
+        let mut kt = KindTab::parse(&self.kinds[k as usize]);
+        crate::node::extend_links(&mut kt, k, &self.protos[0]);
+        kt
+    }
+    /// The three kinds' tables (`N2`, `N4`, `N8`), and prototype 0's spare index (P2: built once,
+    /// for every kind).
+    pub fn kind_tabs(&self) -> [std::sync::Arc<KindTab>; 3] {
+        let v = crate::par::collect_vec(4, 1, |i| {
+            if i == 3 {
+                let _ = self.protos[0].spare_ix();
+                return None;
+            }
+            let kt = self.kind_tab([crate::node::NK::N2, crate::node::NK::N4, crate::node::NK::N8][i]);
+            // the base link terms by cell (every request's E2/E4 reads them)
+            let _ = kt.links_by_cell();
+            Some(std::sync::Arc::new(kt))
+        });
+        [v[0].clone().unwrap(), v[1].clone().unwrap(), v[2].clone().unwrap()]
     }
     /// The fixed program of node kind `k`: prototype 0's program (`progNodeGK N4c.cells4`, every
     /// kind's real cells) at the kind's index (`L32 P30 N30` = `N4 N2 N8`; INT-8 `Op.at`).
@@ -472,9 +549,14 @@ pub fn build_blob(dd: &Path) -> (String, String) {
         let pf = std::fs::read(dd.join(format!("plan-form-p{pi}.bin"))).expect("plan-form-p*.bin");
         let p = Proto::load(dd, pi);
         let rg = encode_regs(&p, &mut cf);
-        rep.push_str(&format!("p{pi}: plan form {} B, register forms and imports {} B\n", pf.len(), rg.len()));
+        let nbase = read_planform(&pf).1.len();
+        let ex = encode_rows(&p.rows, nbase, &mut cf);
+        let sp = encode_rows(&p.spare, 0, &mut cf);
+        rep.push_str(&format!("p{pi}: plan form {} B ({nbase} rows), register forms and imports {} B, extra rows {} ({} B), spare rows {} ({} B)\n", pf.len(), rg.len(), p.rows.len() - nbase, ex.len(), p.spare.len(), sp.len()));
         body.bytes(&pf);
         body.bytes(&rg);
+        body.bytes(&ex);
+        body.bytes(&sp);
     }
     for pi in 0..2 {
         body.bytes(&std::fs::read(dd.join(format!("proto-p{pi}.txt"))).expect("proto-p*.txt"));
@@ -483,7 +565,7 @@ pub fn build_blob(dd: &Path) -> (String, String) {
         body.bytes(&std::fs::read(dd.join(format!("node-{k}.txt"))).expect("node-N*.txt"));
     }
     let mut all = Wb::default();
-    all.0.extend_from_slice(b"FRNB2");
+    all.0.extend_from_slice(b"FRNB3");
     all.u(cf.v.len() as u64);
     for x in &cf.v {
         all.0.extend_from_slice(&x.to_bytes());
@@ -503,12 +585,12 @@ pub fn decode_blob(b64: &str) -> NodeData {
     let raw = lz_decompress(&packed);
     drop(sp);
     let _sp = crate::prof::span("nd.parse");
-    assert_eq!(&raw[..5], b"FRNB2", "node blob magic");
+    assert_eq!(&raw[..5], b"FRNB3", "node blob magic");
     let mut r = Rb { b: &raw, p: 5 };
     let nc = r.u() as usize;
     let cf: Vec<F> = (0..nc).map(|_| rd_f(&mut r)).collect();
-    let segs: Vec<(&[u8], &[u8])> = (0..2).map(|_| (r.bytes(), r.bytes())).collect();
-    let mut ps: Vec<Proto> = crate::par::collect_vec(2, 1, |i| decode_proto(segs[i].0, segs[i].1, &cf));
+    let segs: Vec<[&[u8]; 4]> = (0..2).map(|_| [r.bytes(), r.bytes(), r.bytes(), r.bytes()]).collect();
+    let mut ps: Vec<Proto> = crate::par::collect_vec(2, 1, |i| decode_proto(segs[i][0], segs[i][1], segs[i][2], segs[i][3], &cf));
     let s = |r: &mut Rb| String::from_utf8(r.bytes().to_vec()).expect("utf-8");
     let texts = [s(&mut r), s(&mut r)];
     let kinds = [s(&mut r), s(&mut r), s(&mut r)];
@@ -555,13 +637,58 @@ impl Ri<'_> {
         let src = self.b.get(self.p..self.p.checked_add(bytes)?)?;
         let mut v: Vec<T> = Vec::with_capacity(n);
         // SAFETY: `bytes` bytes are copied into the capacity of `n` elements of a plain-data type
+        // (P2: a large array in 1 MiB pieces in parallel, which also faults its pages in in parallel)
         unsafe {
-            std::ptr::copy_nonoverlapping(src.as_ptr(), v.as_mut_ptr() as *mut u8, bytes);
+            par_copy(src, v.as_mut_ptr() as *mut u8);
             v.set_len(n);
         }
         self.p += bytes;
         Some(v)
     }
+}
+
+/// `copy_nonoverlapping(src, dst, src.len())` in 1 MiB pieces in parallel (P2: the start-up's image).
+/// SAFETY (caller): `dst` is valid for `src.len()` bytes and does not overlap `src`.
+unsafe fn par_copy(src: &[u8], dst: *mut u8) {
+    const P: usize = 1 << 20;
+    let n = src.len();
+    if n < 4 * P {
+        std::ptr::copy_nonoverlapping(src.as_ptr(), dst, n);
+        return;
+    }
+    let d = crate::par::SyncPtr(dst);
+    crate::par::run(n.div_ceil(P), &|i| {
+        let d = &d;
+        let (o, e) = (i * P, ((i + 1) * P).min(n));
+        std::ptr::copy_nonoverlapping(src.as_ptr().add(o), d.0.add(o), e - o);
+    });
+}
+
+/// The file at `p` read whole (P2: in 4 MiB pieces in parallel by `read_at`, which copies from the page
+/// cache and faults the buffer in in parallel; the start-up's image).
+pub fn read_par(p: &std::path::Path) -> Option<Vec<u8>> {
+    use std::os::unix::fs::FileExt;
+    const P: usize = 4 << 20;
+    let f = std::fs::File::open(p).ok()?;
+    let n = usize::try_from(f.metadata().ok()?.len()).ok()?;
+    let mut v: Vec<u8> = Vec::with_capacity(n);
+    let d = crate::par::SyncPtr(v.as_mut_ptr());
+    let ok = std::sync::atomic::AtomicBool::new(true);
+    crate::par::run(n.div_ceil(P), &|i| {
+        let d = &d;
+        let (o, e) = (i * P, ((i + 1) * P).min(n));
+        // SAFETY: the pieces are disjoint and within the capacity
+        let buf = unsafe { std::slice::from_raw_parts_mut(d.0.add(o), e - o) };
+        if f.read_exact_at(buf, o as u64).is_err() {
+            ok.store(false, std::sync::atomic::Ordering::Relaxed);
+        }
+    });
+    if !ok.load(std::sync::atomic::Ordering::Relaxed) {
+        return None;
+    }
+    // SAFETY: every byte below `n` was written by `read_exact_at`
+    unsafe { v.set_len(n) };
+    Some(v)
 }
 
 fn ty_code(t: Ty) -> (u64, u64) {
@@ -578,7 +705,7 @@ fn ty_code(t: Ty) -> (u64, u64) {
 
 /// The image of `nd` (tagged with `tag`, the blob's `data_tag`).
 pub fn save_image(nd: &NodeData, tag: &[u8; 32]) -> Vec<u8> {
-    let mut w = Wi(b"FLNDIMG2".to_vec());
+    let mut w = Wi(b"FLNDIMG3".to_vec());
     w.0.extend_from_slice(tag);
     for p in nd.protos.iter() {
         w.u(p.pi as u64);
@@ -596,6 +723,11 @@ pub fn save_image(nd: &NodeData, tag: &[u8; 32]) -> Vec<u8> {
         w.raw(&aux);
         w.raw(&p.fcells);
         w.raw(&p.fcoefs);
+        w.raw(&p.spare.idx);
+        w.raw(&p.spare.rng);
+        w.raw(&p.spare.cells);
+        w.raw(&p.spare.coefs);
+        w.raw(&p.spare.cv);
     }
     for t in nd.texts.iter().chain(nd.kinds.iter()) {
         w.raw(t.as_bytes());
@@ -605,7 +737,7 @@ pub fn save_image(nd: &NodeData, tag: &[u8; 32]) -> Vec<u8> {
 
 /// The node data from an image, if it is one and carries `tag`.
 pub fn load_image(b: &[u8], tag: &[u8; 32]) -> Option<NodeData> {
-    if b.len() < 40 || &b[..8] != b"FLNDIMG2" || &b[8..40] != tag {
+    if b.len() < 40 || &b[..8] != b"FLNDIMG3" || &b[8..40] != tag {
         return None;
     }
     let mut r = Ri { b, p: 40 };
@@ -634,7 +766,8 @@ pub fn load_image(b: &[u8], tag: &[u8; 32]) -> Option<NodeData> {
         }
         let aux = r.raw::<[u64; 5]>()?.into_iter().map(|a| Aux { reg: a[0] as u32, bits: a[1] == 1, n: a[2] as usize, terms: (a[3] as u32, a[4] as u32) }).collect();
         let (fcells, fcoefs) = (r.raw()?, r.raw()?);
-        ps.push(Proto { pi, rows, regs, aux, fcells, fcoefs, plan: Default::default(), adj: Default::default(), inactive: Default::default(), fcinv: Default::default(), bycell: Default::default(), sched: Default::default() });
+        let spare = Rows::from_parts(r.raw()?, r.raw()?, r.raw()?, r.raw()?, r.raw()?)?;
+        ps.push(Proto { pi, rows, regs, aux, fcells, fcoefs, spare, plan: Default::default(), adj: Default::default(), inactive: Default::default(), fcinv: Default::default(), bycell: Default::default(), sched: Default::default(), spix: Default::default() });
     }
     let mut s = || String::from_utf8(r.raw::<u8>()?).ok();
     let texts = [s()?, s()?];
@@ -648,20 +781,32 @@ pub fn load_image(b: &[u8], tag: &[u8; 32]) -> Option<NodeData> {
 pub static BLOB: &str = include_str!("nodeblob.b64");
 
 /// A tag of the node data in use (`mfill::save_plans`): the embedded blob's hash, or a fixed tag for
-/// the dump directories (`FLOCK_NODE_DUMP`).
+/// the dump directories (`FLOCK_NODE_DUMP`). P2: a two-level hash (the blob's 64 equal parts hashed in
+/// parallel, then their digests), as every request's start-up computes it.
 pub fn data_tag() -> [u8; 32] {
     static T: std::sync::OnceLock<[u8; 32]> = std::sync::OnceLock::new();
     *T.get_or_init(|| {
         if std::env::var_os("FLOCK_NODE_DUMP").is_some() || BLOB.len() < 16 {
             crate::blake2s::blake2s256(b"flock-recursive node dump")
         } else {
-            crate::blake2s::blake2s256(BLOB.as_bytes())
+            let b = BLOB.as_bytes();
+            let parts = crate::par::collect_vec(64, 1, |i| crate::blake2s::blake2s256(&b[i * b.len() / 64..(i + 1) * b.len() / 64]));
+            let mut m = b"flock-recursive node blob, 64 parts".to_vec();
+            m.extend_from_slice(&(b.len() as u64).to_le_bytes());
+            parts.iter().for_each(|d| m.extend_from_slice(d));
+            crate::blake2s::blake2s256(&m)
         }
     })
 }
 
 /// The node data: from the dumps when `FLOCK_NODE_DUMP` is set (development), else the embedded
 /// blob (the runner), decoded once.
+/// `node_data()`'s three kind tables, parsed once.
+pub fn kind_tabs_static() -> &'static [std::sync::Arc<KindTab>; 3] {
+    static T: std::sync::OnceLock<[std::sync::Arc<KindTab>; 3]> = std::sync::OnceLock::new();
+    T.get_or_init(|| node_data().kind_tabs())
+}
+
 pub fn node_data() -> &'static NodeData {
     static D: std::sync::OnceLock<NodeData> = std::sync::OnceLock::new();
     D.get_or_init(|| {
@@ -675,9 +820,14 @@ pub fn node_data() -> &'static NodeData {
             }
         } else {
             // `prover setup`'s image of this blob, if there is one (pass 12), else the blob
-            let img = std::env::var_os("RF_SETUP").and_then(|d| std::fs::read(std::path::Path::new(&d).join(IMAGE)).ok());
+            let sp = crate::prof::span("nd.read");
+            let img = std::env::var_os("RF_SETUP").and_then(|d| read_par(&std::path::Path::new(&d).join(IMAGE)));
+            drop(sp);
+            let sp = crate::prof::span("nd.tag");
+            let tag = data_tag();
+            drop(sp);
             let sp = crate::prof::span("nd.image");
-            let nd = img.and_then(|b| load_image(&b, &data_tag()));
+            let nd = img.and_then(|b| load_image(&b, &tag));
             drop(sp);
             nd.unwrap_or_else(|| decode_blob(BLOB))
         }
@@ -702,6 +852,10 @@ pub fn proto_eq(a: &Proto, b: &Proto) -> Result<(), String> {
     }
     if a.fcells != b.fcells || a.fcoefs != b.fcoefs {
         return Err("form cells differ".into());
+    }
+    let (x, y) = (&a.spare, &b.spare);
+    if x.idx != y.idx || x.rng != y.rng || x.cells != y.cells || x.coef_values() != y.coef_values() {
+        return Err(format!("spare rows differ (lengths {} / {})", x.idx.len(), y.idx.len()));
     }
     Ok(())
 }

@@ -329,6 +329,9 @@ pub fn prove(m: usize, f: &[F], w0: Vec<F>, claim0: F, c0: Commit0, wr: &mut Wri
         }
         tt = std::time::Instant::now();
     };
+    // (β′): each read's path root `D_r` (the cap entry it opens to) and its global entry `offᵢ + k_r`
+    let mut dig: Vec<u8> = Vec::with_capacity(32 * pp::CAP_READS);
+    let mut ent: Vec<usize> = Vec::with_capacity(pp::CAP_READS);
     for i in 0..LEVELS {
         let lv = lad[i];
         let rows = 1usize << lv.rows_log;
@@ -375,6 +378,9 @@ pub fn prove(m: usize, f: &[F], w0: Vec<F>, claim0: F, c0: Commit0, wr: &mut Wri
                 wr.put(pp::F_SIBS, &d);
             }
             wr.put(pp::F_SIBS, &vec![0u8; 32 * (pp::STAR_SIB[i] - sib)]);
+            let k = (p >> sib) as usize;
+            dig.extend_from_slice(&tree.cap()[k]);
+            ent.push(pp::CAP_OFF[i] + k);
             ys.push(column_fold(col, &es));
         }
         lap("open", i);
@@ -416,10 +422,38 @@ pub fn prove(m: usize, f: &[F], w0: Vec<F>, claim0: F, c0: Commit0, wr: &mut Wri
                     fk = fold_k(&fk, s);
                 }
                 debug_assert_eq!(claim, wk[0] * fk[0]);
+                cap_check(wr, &dig, &ent);
                 return;
             }
         }
     }
+}
+
+/// (β′) phases 52–55 (`FRShape4.capChkPh`): absorb `D` (the reads' path roots, read order), squeeze
+/// `ζ` (`chK`: all 32 bytes), absorb `A` (`A_{offᵢ+k} = Σ_{r: offᵢ + k_r = offᵢ + k} ζ^r`, 1,536 K
+/// elements), squeeze `z` (unused by the prover).
+fn cap_check(wr: &mut Writer, dig: &[u8], ent: &[usize]) {
+    assert_eq!(ent.len(), pp::CAP_READS);
+    wr.fs.phase = "CapD";
+    wr.send(pp::F_D, dig);
+    wr.fs.phase = "CapZeta";
+    let zeta = wr.fs.chal_k();
+    let a = selectors(zeta, ent);
+    wr.fs.phase = "CapChk";
+    wr.send_k(pp::F_A, &a);
+    wr.fs.phase = "CapChkZ";
+    wr.fs.squeeze();
+}
+
+/// `A_g = Σ_{r : ent_r = g} ζ^r` (`IRDumpA2pp.honestA`).
+pub fn selectors(zeta: K, ent: &[usize]) -> Vec<K> {
+    let mut a = vec![K::ZERO; pp::CAP_ENTRIES];
+    let mut pw = K::ONE;
+    for &g in ent {
+        a[g] += pw;
+        pw = pw * zeta;
+    }
+    a
 }
 
 // ---------------------------------------------------------------- verifier
@@ -464,6 +498,10 @@ pub fn verify(m: usize, cap0: &[Digest], claim0: F, rd: &mut Reader, w0: &dyn Fn
     let mut cap: Vec<Digest> = cap0.to_vec();
     let mut recs: Vec<LevelRec> = Vec::new();
     let zero = [0u8; 32];
+    // (β′): every level's cap (zero-padded slots, `capEntries` 1,536), each read's entry, `D`'s offset
+    let mut caps: Vec<Digest> = Vec::with_capacity(pp::CAP_ENTRIES);
+    let mut ent: Vec<usize> = Vec::with_capacity(pp::CAP_READS);
+    let d_off = pp::field_off(pp::F_D);
     for i in 0..LEVELS {
         let lv: Level = lad[i];
         let rows = 1usize << lv.rows_log;
@@ -503,10 +541,16 @@ pub fn verify(m: usize, cap0: &[Digest], claim0: F, rd: &mut Reader, w0: &dyn Fn
                     rd.fs.ask_node(i, d, &zero, &zero);
                 }
             }
-            let ok = cur == cap[(p >> sib) as usize];
-            rd.check(ok);
+            // the static read `piDigest fD (32 r)` and `assertEq cur D_r`
+            let r = ent.len();
+            let dr: Digest = rd.pi[d_off + 32 * r..d_off + 32 * r + 32].try_into().unwrap();
+            rd.check(cur == dr);
+            ent.push(pp::CAP_OFF[i] + (p >> sib) as usize);
             ys.push(column_fold(&col, &es));
         }
+        let mut slot = cap.clone();
+        slot.resize(1 << pp::CAP_LOG[i], zero);
+        caps.extend_from_slice(&slot);
         rd.fs.phase = "P3";
         let kc = rd.fs.coords(pp::P3_SQ)[..pp::KAPPA_C].to_vec();
         if !last {
@@ -544,4 +588,36 @@ pub fn verify(m: usize, cap0: &[Digest], claim0: F, rd: &mut Reader, w0: &dyn Fn
             rd.check(claim == wv * fv);
         }
     }
+    // (β′) `capChkOps`: (I) `Σ_r ζ^r·D_r = Σ_k A_k·cap[k]` (lo and hi halves), (II) `Σ_k A_k z^k = Σ_r ζ^r z^{ent_r}`
+    rd.fs.phase = "CapD";
+    let db = rd.recv(pp::F_D, 32 * pp::CAP_READS);
+    rd.fs.phase = "CapZeta";
+    let zeta = rd.fs.chal_k();
+    rd.fs.phase = "CapChk";
+    let a = rd.recv_k(pp::F_A, pp::CAP_ENTRIES);
+    rd.fs.phase = "CapChkZ";
+    let z = rd.fs.chal_k();
+    let half = |d: &[u8], h: usize| F::from_bytes(&d[16 * h..16 * h + 16]);
+    let mut zp = Vec::with_capacity(pp::CAP_ENTRIES);
+    let mut x = K::ONE;
+    for _ in 0..pp::CAP_ENTRIES {
+        zp.push(x);
+        x = x * z;
+    }
+    let (mut il, mut ih, mut ii) = (K::ZERO, K::ZERO, K::ZERO);
+    let mut pw = K::ONE;
+    for (r, &g) in ent.iter().enumerate() {
+        let d = &db[32 * r..32 * r + 32];
+        il += pw.mulf(half(d, 0));
+        ih += pw.mulf(half(d, 1));
+        ii += pw * zp[g];
+        pw = pw * zeta;
+    }
+    let (mut al, mut ah, mut ai) = (K::ZERO, K::ZERO, K::ZERO);
+    for (k, ak) in a.iter().enumerate() {
+        al += ak.mulf(half(&caps[k], 0));
+        ah += ak.mulf(half(&caps[k], 1));
+        ai += *ak * zp[k];
+    }
+    rd.check(il == al && ih == ah && ii == ai);
 }

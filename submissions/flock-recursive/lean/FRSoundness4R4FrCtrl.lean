@@ -49,8 +49,9 @@ theorem relE4_rejects (P : FinP) {v : F} (hv : rd r (fi.zhat.getD 3 0) = .f v)
     (hne : v ≠ pe4 P.S inp fE (gOE4end P.S)) : relE4 impl κ inp fi r P = false := by
   have he : (Val.f (pe4 P.S inp fE (gOE4end P.S))).eqv (rd r (fi.zhat.getD 3 0)) = false := by
     rw [hv]; simp [Val.eqv, Ne.symm hne]
-  by_cases hn : P.kv.node κ <;>
-    simp only [relE4, hn, he, ite_true, ite_false, Bool.false_eq_true, Bool.false_and, Bool.and_false]
+  by_cases hn : P.kv.node κ <;> by_cases ho : P.rsvOps <;>
+    simp only [relE4, relE4o, hn, ho, he, if_true, if_false, Bool.false_eq_true, Bool.false_and,
+      Bool.and_false]
 
 /-- (−) **`relSh4` rejects an S2 first-claim register without an F value** (`shiftTarget`'s value
 is asserted against it). -/

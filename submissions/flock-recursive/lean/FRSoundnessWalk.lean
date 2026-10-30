@@ -1,7 +1,7 @@
 -- New for `flock-recursive` (BLUEPRINT §5.4, A.10 "What `final` then gets"; stage S-G1h).
 -- RET-1: position-free declarations moved to `FRSoundnessCoreHide`.
 import FRSoundnessHide
-import FRSoundnessCoreHide
+import FRSoundness4TailStep
 
 /-!
 # The chain walk: no escape on any prefix carries the doom along a chain (§5.4)

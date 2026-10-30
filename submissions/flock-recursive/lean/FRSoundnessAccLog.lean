@@ -3,7 +3,7 @@
 import FRSoundnessAccW
 import FRSoundnessAcc
 import FRNodeCircuit
-import FRSoundnessCoreAcc
+import FRSoundness4P4aSeg
 
 /-!
 # `hFin` discharged: an accepted run's finals are `FinLog`

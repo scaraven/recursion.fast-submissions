@@ -3,7 +3,7 @@
 import FRSoundnessTailM
 import FRKState
 import FRSoundnessPhases
-import FRSoundnessCoreTail
+import FRSoundness4TailStep
 
 /-!
 # `PhaseObl` from the PIOP front's obligations and the Ligerito tail

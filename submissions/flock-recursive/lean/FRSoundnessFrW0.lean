@@ -2,8 +2,8 @@
 -- RET-2: the declarations revision 4.1 reads moved to `FRSoundnessCoreRows`.
 import FRSoundnessFront
 import FRSoundnessWeights
-import FRKindWeight
-import FRSoundnessCoreRows
+import FRVerifierImplOps
+import FRSoundnessCoreFront
 
 /-!
 # The front's level-0 weight `W₀` and claim `c₀`, read off the chain

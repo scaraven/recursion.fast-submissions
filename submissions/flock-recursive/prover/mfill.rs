@@ -10,12 +10,39 @@
 //! templates) is a reload. The dump must carry, or sit next to, the prototype programs whose
 //! registers `mregs` numbers (`proto-p{π}.txt`, `IRDump8`'s mux format; `FLOCK_PROTO_DIR`).
 
-use crate::field::F;
+use crate::field::{FAcc, F};
 use crate::ir::V;
 use std::path::Path;
 
 /// A prototype's region: `2^20` cells and rows (`slotM4`).
 pub const SLOT: usize = 1 << 20;
+
+/// E1b: the arena and replay placement of `FRNodeRows4ArenaPlace` / `FRNodeRows4Defs` (e447823; region-
+/// relative cells and rows). Arena₁ `[AR_A1, AR_A1 + AR_N)` holds the slot's segment stream (rows
+/// `AR_R1 + e`, link rows to H), the bits `[AR_BT, AR_BT + AR_NB)` (rows `AR_RB + j`: `b·b = b`), the ask
+/// templates' rows from `AR_R2`.
+pub const AR_A1: usize = 290_816;
+pub const AR_N: usize = 96_944;
+pub const AR_BT: usize = 389_120;
+pub const AR_NB: usize = 16_384;
+pub const AR_R2: usize = 720_896;
+pub const AR_R2N: usize = 154_368;
+pub const AR_R1: usize = AR_R2 + AR_R2N;
+pub const AR_RB: usize = 972_288;
+/// `N4s.repB`: a replay template's local `j` is the dump's cell `REP_B + j`.
+pub const REP_B: u64 = 1 << 40;
+/// SEG-R2: a segment slot's replay row `k` (band B from `repSegB`, then band A from `repA`).
+pub fn seg_row(k: usize) -> usize {
+    if k < 27_136 { 988_672 + k } else { 688_128 + (k - 27_136) }
+}
+/// A region-local cell in one of SEG-R2's three local bands.
+pub fn is_seg_local(l: usize) -> bool {
+    (277_402..290_816).contains(&l) || (405_504..441_152).contains(&l) || (1_003_010..1_015_728).contains(&l)
+}
+/// SEG-R2's `segCell`: a segment slot's replay local `j` in its region's free cell bands.
+pub fn seg_cell(j: usize) -> usize {
+    if j < 1 << 12 { 277_402 + j } else if j < 39_744 { 405_504 + (j - (1 << 12)) } else { 1_003_010 + (j - 39_744) }
+}
 
 /// Sparse rows: per row its index and three term ranges into `cells`/`coefs`.
 pub struct Rows {
@@ -102,6 +129,43 @@ impl Rows {
     pub fn coef_values(&self) -> Vec<F> {
         self.coefs.iter().map(|&i| self.cv[i as usize]).collect()
     }
+    /// Rebuild the interning map (to append rows after `done`).
+    pub fn reopen(&mut self) {
+        self.ix = self.cv.iter().enumerate().map(|(i, c)| (c.to_bytes(), i as u16)).collect();
+    }
+    /// Append one row (`(cell, coefficient)` per form).
+    pub fn push_row(&mut self, idx: u32, forms: [&[(u32, F)]; 3]) {
+        let a0 = self.cells.len() as u32;
+        let mut rg = [a0; 4];
+        for k in 0..3 {
+            for &(c, x) in forms[k] {
+                self.term(c, x);
+            }
+            rg[k + 1] = self.cells.len() as u32;
+        }
+        self.idx.push(idx);
+        self.rng.push(rg);
+    }
+    /// Push one `k | A | B | C` line with its row index and cells mapped (`cell` gets the dump's
+    /// cell, which may exceed `u32`: a replay local).
+    fn push_line_map(&mut self, line: &str, row: &dyn Fn(usize) -> u32, cell: &dyn Fn(u64) -> u32) {
+        let mut it = line.split(" | ");
+        let k: usize = it.next().unwrap().trim().parse().expect("row");
+        let a0 = self.cells.len() as u32;
+        let mut rg = [a0; 4];
+        for m in 0..3 {
+            for t in it.next().unwrap_or("").trim().split(' ') {
+                if t.is_empty() {
+                    continue;
+                }
+                let (c, h) = t.split_once(':').expect("cell:coef");
+                self.term(cell(c.parse().expect("cell")), parse_coef(h));
+            }
+            rg[m + 1] = self.cells.len() as u32;
+        }
+        self.idx.push(row(k));
+        self.rng.push(rg);
+    }
     fn push_terms(&mut self, s: &str) {
         for t in s.split(' ') {
             if t.is_empty() {
@@ -150,6 +214,9 @@ fn parse_coef(h: &str) -> F {
     }
 }
 
+/// The longest register form `Proto::load` keeps (E1: the cap check's running sums are dropped).
+pub const LONG_FORM: usize = 256;
+
 /// A register's type in `mregs` (the F components it occupies).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Ty {
@@ -186,6 +253,10 @@ pub struct Proto {
     pub aux: Vec<Aux>,
     pub fcells: Vec<u32>,
     pub fcoefs: Vec<F>,
+    /// E1b: prototype 0's replay rows (`repRowsP (rtC1d 0) 0`, REPF: slot 0 of `N2`/`N4`, rows and
+    /// locals in the spare region `κ.vslots`): row `k`, frame cell `c < 2^20` as is, local `j` at
+    /// `2^20 + j`. Empty for prototype 1 (its replay rows are in `rows`, moved like the rest).
+    pub spare: Rows,
     /// The solve order of an inactive fill (`0`) and of an active fill at child index `ix` of a
     /// full (`1 + ix`) or partial (`4 + ix`: a segment below its kind's cap) child, recorded by the
     /// first such fill or loaded from `prover setup` (`load_plans`).
@@ -202,6 +273,17 @@ pub struct Proto {
     /// Each recorded order's level schedule (`schedule`; the parallel replay), built before a
     /// request for the orders `prover setup` recorded.
     pub sched: [std::sync::OnceLock<Sched>; PLAN_KEYS],
+    /// P2: `spare`'s terms by cell (`spare_ix`), built once before a request.
+    pub spix: std::sync::OnceLock<SpareIx>,
+}
+
+/// P2: prototype 0's replay rows (`Proto::spare`) indexed once for the factored E2/E4 operations
+/// (`Ext`): their local row span `r0..r0 + nr` and their terms by cell over the `2^21` spare-local
+/// cells (frame `c < 2^20`, local `j` at `2^20 + j`), positions into `spare`.
+pub struct SpareIx {
+    pub r0: usize,
+    pub nr: usize,
+    pub bc: LinkByCell,
 }
 
 /// A recorded solve order's level schedule (pass 13): the order's entries grouped into levels such
@@ -276,7 +358,7 @@ fn replay_levels(rw: &Rows, base: u32, pl: &[(u32, u32)], sc: &Sched, val: &mut 
             let (r, c) = pl[q as usize];
             // SAFETY: `Sched`: no other entry of this level touches this row's cells or `c`, and
             // `try_row_p` with `want = c` writes `c` only; the levels run one after another
-            match unsafe { try_row_p(rw, base, r as usize, Some(c as usize), vp.0, kp.0) } {
+            match unsafe { try_row_p(rw, base, r as usize, Some(c as usize), vp.0, kp.0, None) } {
                 Some(_) => n += 1,
                 None if unsafe { *kp.0.add(c as usize) } => {}
                 None => miss.push(q),
@@ -349,6 +431,18 @@ impl Proto {
     pub fn by_cell(&self) -> &ByCell {
         self.bycell.get_or_init(|| by_cell(&self.rows, (self.pi * SLOT) as u32))
     }
+    /// P2: `spare`'s row span and terms by cell (built once).
+    pub fn spare_ix(&self) -> &SpareIx {
+        self.spix.get_or_init(|| {
+            let sp = &self.spare;
+            let r0 = sp.idx.iter().copied().min().unwrap_or(0) as usize;
+            let r1 = sp.idx.iter().map(|&i| i as usize + 1).max().unwrap_or(r0);
+            assert!(r1 <= SLOT && sp.cells.iter().all(|&c| (c as usize) < 2 * SLOT), "the spare rows' span");
+            let mut seen = vec![false; r1 - r0];
+            assert!(sp.idx.iter().all(|&i| !std::mem::replace(&mut seen[i as usize - r0], true)), "the spare rows are distinct");
+            SpareIx { r0, nr: r1 - r0, bc: cell_index(sp) }
+        })
+    }
     /// `fcoefs`' inverses (each distinct value inverted once).
     pub fn fcinv(&self) -> &[F] {
         self.fcinv.get_or_init(|| {
@@ -374,6 +468,168 @@ pub struct KindTab {
     /// Link rows (global row indices, absolute cells).
     pub links: Rows,
     pub cells: Vec<usize>,
+    /// The link rows from `node-N*.txt` (the first `base_links`; E1b's arena₁ and replay rows follow
+    /// in a full table, `node::extend_links`).
+    pub base_links: usize,
+    /// The link rows' terms by cell (built once; `links_by_cell`).
+    pub lbc: std::sync::OnceLock<LinkByCell>,
+    /// P2: E1b's rows beyond `node-N*.txt`, factored (`node::set_ext`; then `links` holds the base
+    /// rows only). `None`: a full table, every row in `links` (the reference).
+    pub ext: Option<Ext>,
+}
+
+/// P2: a kind's rows beyond `node-N*.txt`, by their structure instead of as link rows.
+/// * Arena₁ (`a1Rows4`): slot `v`'s row `v·2^20 + AR_R1 + e` (`e < AR_N`) is
+///   `one·(cell(one + v·2^20 + AR_A1 + e) + cell(a1_h(b0_v, e))) = 0`: A the one cell, B two cells, C none.
+/// * Slot 0's replay rows (`spare`, kinds with a previous node): `Proto::spare` of prototype 0 with
+///   rows at `vs·2^20 + idx`, frame cells `one + c`, locals `one + vs·2^20 + j`.
+pub struct Ext {
+    pub vs: usize,
+    pub a1_b0: Vec<usize>,
+    pub spare: bool,
+}
+
+/// Arena₁ element `e`'s H cell of the slot whose stream starts at block `b0` (`sCell b0 e`).
+#[inline(always)]
+pub fn a1_h(b0: usize, e: usize) -> usize {
+    (b0 + e / 4) * 128 + 4 + e % 4
+}
+
+/// The terms of `l` grouped by cell: see `LinkByCell`. A counting sort over the cells' range when the
+/// range is small for the terms (prototype 0's spare rows), else (P2: the base link rows, a few
+/// hundred thousand terms over `2^25` cells, whose range cost the start-up) a sort of the terms by
+/// `(cell, row, m, term)`; both give the same entries in the same order (`cell_index_matches_counting_sort`).
+pub fn cell_index(l: &Rows) -> LinkByCell {
+    let n = l.cells.iter().map(|&c| c as usize + 1).max().unwrap_or(0);
+    if n > 8 * l.cells.len() {
+        return cell_index_sorted(l);
+    }
+    let mut cnt = vec![0u32; n + 1];
+    for &c in &l.cells {
+        cnt[c as usize + 1] += 1;
+    }
+    for i in 0..n {
+        cnt[i + 1] += cnt[i];
+    }
+    let mut ent = vec![0u32; l.cells.len()];
+    let mut coef = vec![0u16; l.cells.len()];
+    let mut pos = cnt.clone();
+    for i in 0..l.len() {
+        let rg = l.rng[i];
+        for m in 0..3 {
+            for q in rg[m] as usize..rg[m + 1] as usize {
+                let c = l.cells[q] as usize;
+                let p = pos[c] as usize;
+                ent[p] = i as u32 | (m as u32) << 30;
+                coef[p] = l.coefs[q];
+                pos[c] += 1;
+            }
+        }
+    }
+    drop(pos);
+    let mut cells = Vec::new();
+    let mut ptr = vec![0u32];
+    for c in 0..n {
+        if cnt[c + 1] > cnt[c] {
+            cells.push(c as u32);
+            ptr.push(cnt[c + 1]);
+        }
+    }
+    LinkByCell { cells, ptr, ent, coef }
+}
+
+fn cell_index_sorted(l: &Rows) -> LinkByCell {
+    assert!(l.len() < 1 << 30 && l.cells.iter().all(|&c| c < 1 << 30));
+    let mut keys: Vec<(u64, u32)> = Vec::with_capacity(l.cells.len());
+    for i in 0..l.len() {
+        let rg = l.rng[i];
+        for m in 0..3 {
+            for q in rg[m] as usize..rg[m + 1] as usize {
+                keys.push(((l.cells[q] as u64) << 34 | (i as u64) << 2 | m as u64, q as u32));
+            }
+        }
+    }
+    keys.sort_unstable();
+    let (mut cells, mut ptr) = (Vec::new(), vec![0u32]);
+    let (mut ent, mut coef) = (Vec::with_capacity(keys.len()), Vec::with_capacity(keys.len()));
+    for (p, &(k, q)) in keys.iter().enumerate() {
+        let c = (k >> 34) as u32;
+        if cells.last() != Some(&c) {
+            if !cells.is_empty() {
+                ptr.push(p as u32);
+            }
+            cells.push(c);
+        }
+        ent.push(((k >> 2) & 0xFFFF_FFFF) as u32 | ((k & 3) as u32) << 30);
+        coef.push(l.coefs[q as usize]);
+    }
+    if !cells.is_empty() {
+        ptr.push(keys.len() as u32);
+    }
+    LinkByCell { cells, ptr, ent, coef }
+}
+
+/// Per distinct cell `u` of `b` (over `rw`) and matrix `m`: `Σ_terms coef·r(pos)` (in parallel).
+pub fn cols3(rw: &Rows, b: &LinkByCell, r: &(dyn Fn(usize) -> F + Sync)) -> Vec<[F; 3]> {
+    let cv = &rw.cv;
+    crate::par::collect_vec(b.cells.len(), 1 << 12, |u| {
+        let (mut acc, mut pl) = ([FAcc::default(); 3], [F::ZERO; 3]);
+        for q in b.ptr[u] as usize..b.ptr[u + 1] as usize {
+            let en = b.ent[q];
+            let (i, m) = ((en & 0x3FFF_FFFF) as usize, (en >> 30) as usize);
+            match b.coef[q] {
+                ONE_IX => pl[m] += r(i),
+                c => acc[m].mac(cv[c as usize], r(i)),
+            }
+        }
+        [0, 1, 2].map(|m| acc[m].reduce() + pl[m])
+    })
+}
+
+/// A kind table's link terms grouped by cell (E1b): the distinct cells `cells` (ascending), cell
+/// `cells[u]`'s terms `ent[ptr[u]..ptr[u + 1]]`, each `row | m << 30` (`row` the link row's position in
+/// `links`, `m` the matrix) with its coefficient index `coef`.
+pub struct LinkByCell {
+    pub cells: Vec<u32>,
+    pub ptr: Vec<u32>,
+    pub ent: Vec<u32>,
+    pub coef: Vec<u16>,
+}
+
+impl KindTab {
+    /// The link terms by cell (built once).
+    pub fn links_by_cell(&self) -> &LinkByCell {
+        // a counting sort by cell over the cells' range (the kinds' M spans < 2^26 cells)
+        self.lbc.get_or_init(|| cell_index(&self.links))
+    }
+    /// Per link row and matrix, `Σ coef·x(cell)` (in parallel).
+    pub fn links_eval(&self, x: &(dyn Fn(usize) -> F + Sync)) -> Vec<[F; 3]> {
+        let l = &self.links;
+        crate::par::collect_vec(l.len(), 1 << 12, |i| {
+            let rg = l.rng[i];
+            let mut o = [F::ZERO; 3];
+            for m in 0..3 {
+                for q in rg[m] as usize..rg[m + 1] as usize {
+                    o[m] += l.cmul(q, x(l.cells[q] as usize));
+                }
+            }
+            o
+        })
+    }
+    /// Per distinct link cell, `Σ_{rows, m} r(row)·s_m·coef` (in parallel; `r` per link row).
+    pub fn links_cols(&self, r: &[F], s: &[F]) -> Vec<F> {
+        let b = self.links_by_cell();
+        let cv = &self.links.cv;
+        crate::par::collect_vec(b.cells.len(), 1 << 12, |u| {
+            let mut acc = [F::ZERO; 3];
+            for q in b.ptr[u] as usize..b.ptr[u + 1] as usize {
+                let en = b.ent[q];
+                let (i, m) = ((en & 0x3FFF_FFFF) as usize, (en >> 30) as usize);
+                acc[m] += cv[b.coef[q] as usize] * r[i];
+            }
+            s[0] * acc[0] + s[1] * acc[1] + s[2] * acc[2]
+        })
+    }
 }
 
 fn field<'a>(h: &'a str, key: &str) -> &'a str {
@@ -414,6 +670,9 @@ impl KindTab {
             slots: Vec::new(),
             links: Rows::new(),
             cells: Vec::new(),
+            base_links: 0,
+            lbc: Default::default(),
+            ext: None,
         };
         let mut sec = 0;
         for l in lines {
@@ -439,11 +698,45 @@ impl KindTab {
             }
         }
         kt.links.done();
+        kt.base_links = kt.links.len();
         kt
     }
     /// The slot's region's first absolute cell.
     pub fn slot_cell(&self, sg: usize) -> usize {
         self.one_cell + sg * SLOT
+    }
+}
+
+/// E1b: the rows of prototype `π` beyond `protoRows π` (NodeDumpX's files), appended to `rows` in
+/// this order: the ask templates' rows (`mask-p{π}.txt`, `askRowsT π`: row `k` at `π·2^20 + arR2 + k`),
+/// the bits' rows (`bitRows`, generated), and for prototype 1 its replay rows (`mrep-p1.txt`, moved to
+/// SEG-R2's bands and cells); prototype 0's replay rows go to `spare` (`Proto::spare`).
+pub fn load_extra(dir: &Path, pi: usize, rows: &mut Rows, spare: &mut Rows) {
+    let rd = |n: &str| std::fs::read_to_string(dir.join(n)).unwrap_or_else(|e| panic!("{}/{n}: {e}", dir.display()));
+    let base = pi * SLOT;
+    for l in rd(&format!("mask-p{pi}.txt")).lines() {
+        if !l.starts_with('#') && !l.is_empty() {
+            rows.push_line_map(l, &|k| (base + AR_R2 + k) as u32, &|c| u32::try_from(c).expect("an ask row's cell"));
+        }
+    }
+    add_bit_rows(rows, pi);
+    for l in rd(&format!("mrep-p{pi}.txt")).lines() {
+        if l.starts_with('#') || l.is_empty() {
+            continue;
+        }
+        if pi == 0 {
+            spare.push_line_map(l, &|k| k as u32, &|c| if c < REP_B { u32::try_from(c).unwrap() } else { (SLOT as u64 + (c - REP_B)) as u32 });
+        } else {
+            rows.push_line_map(l, &|k| (base + seg_row(k)) as u32, &|c| if c < REP_B { c as u32 } else { (base + seg_cell((c - REP_B) as usize)) as u32 });
+        }
+    }
+}
+
+/// The bits' rows of region `π` (`bitRows`: row `π·2^20 + arRb + j` is `b·b = b`, `b = π·2^20 + arBt + j`).
+pub fn add_bit_rows(rows: &mut Rows, pi: usize) {
+    for j in 0..AR_NB {
+        let b = [((pi * SLOT + AR_BT + j) as u32, F::ONE)];
+        rows.push_row((pi * SLOT + AR_RB + j) as u32, [&b, &b, &b]);
     }
 }
 
@@ -456,7 +749,10 @@ impl Proto {
                 rows.push_line(l);
             }
         }
+        let mut spare = Rows::new();
+        load_extra(dir, pi, &mut rows, &mut spare);
         rows.done();
+        spare.done();
         let (mut fcells, mut fcoefs) = (Vec::new(), Vec::new());
         let push = |s: &str, fc: &mut Vec<u32>, fk: &mut Vec<F>| -> (u32, u32) {
             let a = fc.len() as u32;
@@ -485,8 +781,15 @@ impl Proto {
                 t if t.starts_with("AK") => Ty::AK(t[2..].parse().unwrap()),
                 t => panic!("mregs type {t}"),
             };
+            // a form of more than `LONG_FORM` terms is not kept (an empty range): the fill writes
+            // single-cell forms only and checks the others (`form_mismatch`), and the long ones
+            // (A2″'s cap-check running sums: up to ≈ 17 k terms, 90 % of `mregs`' size) are linear
+            // sums of cells the rows already bind
             let forms = match p.get(3) {
-                Some(f) => f.split(" ; ").map(|s| push(s, &mut fcells, &mut fcoefs)).collect(),
+                Some(f) => f
+                    .split(" ; ")
+                    .map(|s| if s.split(' ').filter(|t| !t.is_empty()).count() > LONG_FORM { (fcells.len() as u32, fcells.len() as u32) } else { push(s, &mut fcells, &mut fcoefs) })
+                    .collect(),
                 None => Vec::new(),
             };
             regs.push(Reg { imp: p[1].trim() == "imp", ty, forms });
@@ -501,7 +804,7 @@ impl Proto {
             let terms = push(p.get(2).copied().unwrap_or(""), &mut fcells, &mut fcoefs);
             aux.push(Aux { reg: p[0].trim().parse().unwrap(), bits: k == "bits", n: n.parse().unwrap(), terms });
         }
-        Proto { pi, rows, regs, aux, fcells, fcoefs, plan: Default::default(), adj: Default::default(), inactive: Default::default(), fcinv: Default::default(), bycell: Default::default(), sched: Default::default() }
+        Proto { pi, rows, regs, aux, fcells, fcoefs, spare, plan: Default::default(), adj: Default::default(), inactive: Default::default(), fcinv: Default::default(), bycell: Default::default(), sched: Default::default(), spix: Default::default() }
     }
 }
 
@@ -550,6 +853,51 @@ fn aux_comps(v: &V, bits: bool, n: usize) -> Vec<F> {
     }
 }
 
+/// A recorded order's entry that sets its cell to zero (an inactive fill's unpinned import; E1b).
+pub const ZERO_ENTRY: u32 = u32::MAX;
+
+/// Retry the replay's misses until none solves (the tolerant replay's loop).
+fn retry_misses(rw: &Rows, base: u32, miss: &mut Vec<(u32, u32)>, val: &mut [F], known: &mut [bool], solved: &mut usize) {
+    while !miss.is_empty() {
+        let before = miss.len();
+        miss.retain(|&(r, c)| {
+            if known[c as usize] {
+                return false;
+            }
+            match try_row(rw, base, r as usize, val, known) {
+                Some(_) => {
+                    *solved += 1;
+                    false
+                }
+                None => true,
+            }
+        });
+        if miss.len() == before {
+            break;
+        }
+    }
+}
+
+/// The import cells of a prototype (E1b): every import register's single-cell forms and every
+/// auxiliary import's cells (an inactive slot's are zero unless a template row pins them).
+fn inactive_imports(p: &Proto) -> &'static [u32] {
+    static T: [std::sync::OnceLock<Vec<u32>>; 2] = [std::sync::OnceLock::new(), std::sync::OnceLock::new()];
+    T[p.pi].get_or_init(|| {
+        let mut v: Vec<u32> = Vec::new();
+        for r in p.regs.iter().filter(|r| r.imp) {
+            for &(a, b) in &r.forms {
+                if b == a + 1 && !p.fcoefs[a as usize].is_zero() {
+                    v.push(p.fcells[a as usize]);
+                }
+            }
+        }
+        for ax in &p.aux {
+            v.extend_from_slice(&p.fcells[ax.terms.0 as usize..ax.terms.1 as usize]);
+        }
+        v
+    })
+}
+
 /// What a slot replays: `Some((registers, index))` for an active slot (the index's selector copy is
 /// set), `None` for an inactive sub-slot (every selector copy zero, every import zero).
 pub type SlotRun<'a> = Option<(&'a [V], usize)>;
@@ -582,24 +930,29 @@ pub fn set_exact_plans(on: bool) {
     EXACT.store(on, std::sync::atomic::Ordering::Relaxed);
 }
 
-pub fn fill(p: &Proto, run: SlotRun) -> (Vec<F>, FillStats) {
-    fill_part(p, run, false)
+pub fn fill(p: &Proto, run: SlotRun, arena: &[F]) -> (Vec<F>, FillStats) {
+    fill_part(p, run, false, arena)
 }
 
 /// `fill`, for a child that is `partial` (a segment below its kind's cap: its own plan key).
-pub fn fill_part(p: &Proto, run: SlotRun, partial: bool) -> (Vec<F>, FillStats) {
+/// E1b: `arena` is the slot's arena₁ (`AR_N` elements: its segment's stream, 16 bytes each; an inactive
+/// sub-slot's is the phantom stream, `node::phantom_arena`), written at `AR_A1` before the solve.
+pub fn fill_part(p: &Proto, run: SlotRun, partial: bool, arena: &[F]) -> (Vec<F>, FillStats) {
+    // the cached inactive fill holds for the arena it was made with (`prover setup`: a zero `vk`)
     if let (None, Some(v)) = (run, p.inactive.get()) {
-        return (v.clone(), FillStats { replayed: true, ..Default::default() });
+        if (0..AR_N).all(|e| v[AR_A1 + e] == arena[e]) {
+            return (v.clone(), FillStats { replayed: true, ..Default::default() });
+        }
     }
-    let r = fill_with(p, run, partial, true);
+    let r = fill_with(p, run, partial, true, arena);
     if r.1.failed_rows == 0 || !r.1.replayed {
         return r;
     }
     // a replayed order that left a solvable cell unknown (another child's data): solve afresh
-    fill_with(p, run, partial, false)
+    fill_with(p, run, partial, false, arena)
 }
 
-fn fill_with(p: &Proto, run: SlotRun, partial: bool, replay: bool) -> (Vec<F>, FillStats) {
+fn fill_with(p: &Proto, run: SlotRun, partial: bool, replay: bool, arena: &[F]) -> (Vec<F>, FillStats) {
     let t0 = std::time::Instant::now();
     let sp = crate::prof::span(if run.is_some() { "fill.solve" } else { "fill.solve_inactive" });
     let base = (p.pi * SLOT) as u32;
@@ -626,6 +979,11 @@ fn fill_with(p: &Proto, run: SlotRun, partial: bool, replay: bool) -> (Vec<F>, F
         let on = matches!(run, Some((_, ix)) if ix == i);
         set(base + 1 + i as u32, if on { F::ONE } else { F::ZERO }, &mut val, &mut known, &mut st, &|| "sel".into());
     }
+    // arena₁ (E1b): the slot's stream; FEL's aliased `dotKF` imports write the same cells again
+    assert_eq!(arena.len(), AR_N, "arena₁'s elements");
+    for (e, &x) in arena.iter().enumerate() {
+        set(base + (AR_A1 + e) as u32, x, &mut val, &mut known, &mut st, &|| format!("arena {e}"));
+    }
     // registers (single-cell forms) and auxiliary imports
     let fcinv = p.fcinv();
     for (ri, r) in p.regs.iter().enumerate() {
@@ -634,7 +992,9 @@ fn fill_with(p: &Proto, run: SlotRun, partial: bool, replay: bool) -> (Vec<F>, F
                 Some(v) => comps(v),
                 None => continue,
             },
-            None if r.imp => vec![F::ZERO; r.forms.len()],
+            // E1b: an inactive slot's imports are not pre-set: the ungated template rows pin some
+            // (the `input` op's cells to `vk ‖ c`, a replay op's output to its template's); the rest
+            // are set to zero after the first solve (`inactive_zero`)
             None => continue,
         };
         for (j, &(a, b)) in r.forms.iter().enumerate() {
@@ -649,7 +1009,7 @@ fn fill_with(p: &Proto, run: SlotRun, partial: bool, replay: bool) -> (Vec<F>, F
     for ax in &p.aux {
         let cs = match run {
             Some((regs, _)) => aux_comps(&regs[ax.reg as usize], ax.bits, ax.n),
-            None => vec![F::ZERO; ax.n],
+            None => continue,
         };
         for (j, t) in (ax.terms.0..ax.terms.1).enumerate() {
             set(p.fcells[t as usize], cs.get(j).copied().unwrap_or(F::ZERO) * fcinv[t as usize], &mut val, &mut known, &mut st, &|| format!("aux r{}[{j}]", ax.reg));
@@ -687,6 +1047,14 @@ fn fill_with(p: &Proto, run: SlotRun, partial: bool, replay: bool) -> (Vec<F>, F
                 let mut miss: Vec<(u32, u32)> = Vec::new();
                 let mut solved = 0usize;
                 for &(r, c) in pl {
+                    if r == ZERO_ENTRY {
+                        // an inactive fill's zeroed import (E1b), after the misses so far
+                        retry_misses(rw, base, &mut miss, &mut val, &mut known, &mut solved);
+                        if !known[c as usize] {
+                            known[c as usize] = true;
+                        }
+                        continue;
+                    }
                     match try_row(rw, base, r as usize, &mut val, &mut known) {
                         Some(_) => solved += 1,
                         None if known[c as usize] => {}
@@ -722,7 +1090,24 @@ fn fill_with(p: &Proto, run: SlotRun, partial: bool, replay: bool) -> (Vec<F>, F
         }
     }
     if !done {
-        let rec = worklist_with(p, base, &mut val, &mut known);
+        let mut rec = worklist_with(p, base, &mut val, &mut known);
+        if run.is_none() {
+            // the imports no row pinned are zero, then the solve goes on from them (recorded as
+            // `ZERO_ENTRY` entries, so that a replay zeroes the same imports at the same point)
+            let mut z = 0usize;
+            for c in inactive_imports(p) {
+                let l = (c - base) as usize;
+                if !known[l] {
+                    known[l] = true;
+                    rec.push((ZERO_ENTRY, l as u32));
+                    z += 1;
+                }
+            }
+            rec.extend(worklist_unknown(p, base, &mut val, &mut known));
+            if std::env::var_os("FLOCK_VERBOSE").is_some() {
+                eprintln!("  fill p{} inactive: {z} imports zero", p.pi);
+            }
+        }
         st.solved = rec.len();
         let _ = p.plan[key].set(rec);
     }
@@ -833,15 +1218,95 @@ fn inv_tab() -> bool {
 /// is `C = 0`, solved for `C`'s one unknown whatever the other factor's (an inverse gate at `0`:
 /// `0·i = s` gives `s = 0`, S-E12e's `tplShiftSeg`). Returns the solved cell (region-local).
 fn try_row(rw: &Rows, base: u32, i: usize, val: &mut [F], known: &mut [bool]) -> Option<usize> {
+    try_row_x(rw, base, i, val, known, None)
+}
+
+/// `try_row`; a packing row's other solved cells (beyond the returned one) are pushed to `extra`.
+fn try_row_x(rw: &Rows, base: u32, i: usize, val: &mut [F], known: &mut [bool], extra: Option<&mut Vec<u32>>) -> Option<usize> {
     assert!(val.len() >= SLOT && known.len() >= SLOT);
-    // SAFETY: the cells are region-local (< SLOT) and the slices exclusively borrowed
-    unsafe { try_row_p(rw, base, i, None, val.as_mut_ptr(), known.as_mut_ptr()) }
+    // SAFETY: the cells are region-local (< val.len()) and the slices exclusively borrowed
+    unsafe { try_row_p(rw, base, i, None, val.as_mut_ptr(), known.as_mut_ptr(), extra) }
+}
+
+/// A coefficient that is one bit `x^j` of the polynomial basis: `j`.
+#[inline]
+fn one_bit(f: F) -> Option<u32> {
+    match (f.lo.count_ones(), f.hi.count_ones()) {
+        (1, 0) => Some(f.lo.trailing_zeros()),
+        (0, 1) => Some(64 + f.hi.trailing_zeros()),
+        _ => None,
+    }
+}
+
+/// **A packing row** (E1b; IMPC2's bit decompositions `sel·(x + Σ_h x^h b_h) = 0`, unaligned reads):
+/// every unknown cell lies in one form `m`, once, with distinct one-bit coefficients `x^{j}`, and the
+/// rest of the row is known: `Σ x^{j} b = t` (`t = C/A − B₀` for `m` = B, symmetric for A; `t = A·B − C₀`
+/// for C), so `b` is bit `j` of `t` (every bit of `t` must be covered). With `want`, only that cell is
+/// written; otherwise all, the first returned and the rest pushed to `extra`.
+#[allow(clippy::too_many_arguments)]
+unsafe fn try_pack(rw: &Rows, base: u32, i: usize, want: Option<usize>, val: *mut F, known: *mut bool, kn: [F; 3], extra: Option<&mut Vec<u32>>) -> Option<usize> {
+    let rg = rw.rng[i];
+    let mut m_unk = usize::MAX;
+    for k in 0..3 {
+        for t in rg[k] as usize..rg[k + 1] as usize {
+            if !*known.add((rw.cells[t] - base) as usize) {
+                if m_unk != usize::MAX && m_unk != k {
+                    return None;
+                }
+                m_unk = k;
+            }
+        }
+    }
+    let t = match m_unk {
+        1 if !kn[0].is_zero() => kn[2] * kn[0].inv() + kn[1],
+        0 if !kn[1].is_zero() => kn[2] * kn[1].inv() + kn[0],
+        2 => kn[0] * kn[1] + kn[2],
+        _ => return None,
+    };
+    let tv = (t.hi as u128) << 64 | t.lo as u128;
+    let mut seen = 0u128;
+    let k = m_unk;
+    for q in rg[k] as usize..rg[k + 1] as usize {
+        let l = (rw.cells[q] - base) as usize;
+        if *known.add(l) {
+            continue;
+        }
+        let j = one_bit(rw.coef(q))?;
+        if seen >> j & 1 == 1 {
+            return None;
+        }
+        seen |= 1u128 << j;
+    }
+    if tv & !seen != 0 {
+        return None;
+    }
+    // the cells are distinct (a repeated cell would repeat a bit or have two coefficients)
+    let mut first = None;
+    let mut extra = extra;
+    for q in rg[k] as usize..rg[k + 1] as usize {
+        let l = (rw.cells[q] - base) as usize;
+        if *known.add(l) {
+            continue;
+        }
+        if want.is_some_and(|w| w != l) {
+            continue;
+        }
+        let j = one_bit(rw.coef(q)).unwrap();
+        *val.add(l) = F::new((tv >> j & 1) as u64, 0);
+        *known.add(l) = true;
+        if first.is_none() {
+            first = Some(l);
+        } else if let Some(e) = extra.as_deref_mut() {
+            e.push(l as u32);
+        }
+    }
+    first
 }
 
 /// `try_row` on pointers; with `want`, only a solve of cell `want` is written (else `None`).
 /// SAFETY: `val`, `known` point at `SLOT` cells, and no other thread writes row `i`'s cells or
 /// accesses the solved cell meanwhile.
-unsafe fn try_row_p(rw: &Rows, base: u32, i: usize, want: Option<usize>, val: *mut F, known: *mut bool) -> Option<usize> {
+unsafe fn try_row_p(rw: &Rows, base: u32, i: usize, want: Option<usize>, val: *mut F, known: *mut bool, extra: Option<&mut Vec<u32>>) -> Option<usize> {
     let rg = rw.rng[i];
     let mut unk: [Option<usize>; 3] = [None; 3];
     let mut multi = [false; 3];
@@ -853,7 +1318,6 @@ unsafe fn try_row_p(rw: &Rows, base: u32, i: usize, want: Option<usize>, val: *m
     for k in 0..3 {
         for t in rg[k] as usize..rg[k + 1] as usize {
             let l = (rw.cells[t] - base) as usize;
-            debug_assert!(l < SLOT);
             if *known.add(l) {
                 kn[k] += rw.cmul(t, *val.add(l));
             } else {
@@ -901,8 +1365,46 @@ unsafe fn try_row_p(rw: &Rows, base: u32, i: usize, want: Option<usize>, val: *m
     let zero_factor = (unk[0].is_none() && kn[0].is_zero()) || (unk[1].is_none() && kn[1].is_zero());
     match (zero_factor, unk[2], multi[2]) {
         (true, Some(u), false) => solve(u, co[2], cinv, kn[2], val, known),
+        _ if distinct > 1 || multi.iter().any(|&m| m) => try_pack(rw, base, i, want, val, known, kn, extra),
         _ => None,
     }
+}
+
+/// **Slot 0's replay locals** (E1b; prototype 0's `spare` rows, REPF/C1b §5.5: the templates' gates in
+/// order): the frame is slot 0's fill (every cell known), the locals (`2^20` cells) are solved by the
+/// worklist from the rows in order; every row is checked. Returns the locals and a report (`solved`,
+/// `failed_rows`, `zeroed`: locals no row determines).
+pub fn spare_fill(p: &Proto, frame: &[F]) -> (Vec<F>, FillStats) {
+    static ADJ: std::sync::OnceLock<(Vec<u32>, Vec<u32>)> = std::sync::OnceLock::new();
+    let _sp = crate::prof::span("fill.spare");
+    let rw = &p.spare;
+    let n = 2 * SLOT;
+    let mut st = FillStats::default();
+    if rw.len() == 0 {
+        return (Vec::new(), st);
+    }
+    let mut val = vec![F::ZERO; n];
+    val[..SLOT].copy_from_slice(&frame[..SLOT]);
+    let mut known = vec![false; n];
+    known[..SLOT].fill(true);
+    let (deg, adj) = ADJ.get_or_init(|| adjacency_n(rw, 0, n));
+    st.solved = worklist(rw, 0, deg, adj, &mut val, &mut known).len();
+    let bad = crate::par::map_chunks(rw.len(), 1 << 13, |lo, hi| {
+        (lo..hi).filter(|&i| {
+            let [a, b, c] = rw.eval(i, &|x| val[x as usize]);
+            a * b != c
+        })
+        .map(|i| rw.idx[i])
+        .collect::<Vec<u32>>()
+    });
+    for b in bad.into_iter().flatten() {
+        st.failed_rows += 1;
+        if st.first_failed.len() < 12 {
+            st.first_failed.push(b);
+        }
+    }
+    st.zeroed = known[SLOT..].iter().filter(|k| !**k).count();
+    (val.split_off(SLOT), st)
 }
 
 /// Build the prototype's adjacency now (before a request).
@@ -945,12 +1447,17 @@ fn worklist_unknown(p: &Proto, base: u32, val: &mut [F], known: &mut [bool]) -> 
 
 /// The cell → rows adjacency (CSR: `deg` offsets per region-local cell, `adj` the rows).
 fn adjacency(rw: &Rows, base: u32) -> (Vec<u32>, Vec<u32>) {
+    adjacency_n(rw, base, SLOT)
+}
+
+/// `adjacency` over `n` cells.
+fn adjacency_n(rw: &Rows, base: u32, n: usize) -> (Vec<u32>, Vec<u32>) {
     let nr = rw.len();
-    let mut deg = vec![0u32; SLOT + 1];
+    let mut deg = vec![0u32; n + 1];
     for &c in &rw.cells {
         deg[(c - base) as usize + 1] += 1;
     }
-    for i in 0..SLOT {
+    for i in 0..n {
         deg[i + 1] += deg[i];
     }
     let mut adj = vec![0u32; rw.cells.len()];
@@ -977,27 +1484,31 @@ fn worklist(rw: &Rows, base: u32, deg: &[u32], adj: &[u32], val: &mut [F], known
 #[allow(clippy::too_many_arguments)]
 fn worklist_q(rw: &Rows, base: u32, deg: &[u32], adj: &[u32], val: &mut [F], known: &mut [bool], mut queued: Vec<bool>, mut work: Vec<u32>) -> Vec<(u32, u32)> {
     let mut rec = Vec::new();
+    let mut ex: Vec<u32> = Vec::new();
     while let Some(i) = work.pop() {
         queued[i as usize] = false;
-        let Some(u) = try_row(rw, base, i as usize, val, known) else { continue };
-        rec.push((i, u as u32));
-        for &r in &adj[deg[u] as usize..deg[u + 1] as usize] {
-            if !queued[r as usize] {
-                queued[r as usize] = true;
-                work.push(r);
+        let Some(u) = try_row_x(rw, base, i as usize, val, known, Some(&mut ex)) else { continue };
+        ex.push(u as u32);
+        for u in ex.drain(..).map(|u| u as usize) {
+            rec.push((i, u as u32));
+            for &r in &adj[deg[u] as usize..deg[u + 1] as usize] {
+                if !queued[r as usize] {
+                    queued[r as usize] = true;
+                    work.push(r);
+                }
             }
         }
     }
     rec
 }
 
-/// The dump directory (`FLOCK_NODE_DUMP`, else `logs/B0/nodedump` above the working directory; pass 13:
+/// The dump directory (`FLOCK_NODE_DUMP`, else `logs/E1b/nodedump` above the working directory; E1: rev44 HEAD `e464756`; pass 13:
 /// B0's row layout, was `logs/S-E13a/nodedump`)
 /// and the prototype programs' directory (`FLOCK_PROTO_DIR`, else the dump directory).
 pub fn find_dirs() -> Option<(std::path::PathBuf, std::path::PathBuf)> {
     let d = match std::env::var_os("FLOCK_NODE_DUMP") {
         Some(p) => std::path::PathBuf::from(p),
-        None => crate::kat::find_up("logs/B0/nodedump/mrows-p0.txt")?.parent()?.to_path_buf(),
+        None => crate::kat::find_up("logs/E1b/nodedump/mrows-p0.txt")?.parent()?.to_path_buf(),
     };
     let p = std::env::var_os("FLOCK_PROTO_DIR").map(std::path::PathBuf::from).unwrap_or_else(|| d.clone());
     Some((d, p))
@@ -1138,7 +1649,7 @@ mod pass11_tests {
     /// `save_plans` / `load_plans` round trip; a wrong tag or a cut file loads nothing.
     #[test]
     fn plans_round_trip() {
-        let mk = || Proto { pi: 0, rows: Rows::new(), regs: vec![], aux: vec![], fcells: vec![], fcoefs: vec![], plan: Default::default(), adj: Default::default(), inactive: Default::default(), fcinv: Default::default(), bycell: Default::default(), sched: Default::default() };
+        let mk = || Proto { pi: 0, rows: Rows::new(), regs: vec![], aux: vec![], fcells: vec![], fcoefs: vec![], spare: Rows::new(), plan: Default::default(), adj: Default::default(), inactive: Default::default(), fcinv: Default::default(), bycell: Default::default(), sched: Default::default(), spix: Default::default() };
         let a = [mk(), mk()];
         let _ = a[0].plan[0].set(vec![(1, 2), (3, 4)]);
         let _ = a[1].plan[2].set(vec![(5, 6)]);
@@ -1158,7 +1669,7 @@ mod pass11_tests {
     /// schedule that is not a permutation load nothing.
     #[test]
     fn schedules_levels_and_round_trip() {
-        let mk = || Proto { pi: 0, rows: Rows::new(), regs: vec![], aux: vec![], fcells: vec![], fcoefs: vec![], plan: Default::default(), adj: Default::default(), inactive: Default::default(), fcinv: Default::default(), bycell: Default::default(), sched: Default::default() };
+        let mk = || Proto { pi: 0, rows: Rows::new(), regs: vec![], aux: vec![], fcells: vec![], fcoefs: vec![], spare: Rows::new(), plan: Default::default(), adj: Default::default(), inactive: Default::default(), fcinv: Default::default(), bycell: Default::default(), sched: Default::default(), spix: Default::default() };
         let mut a = [mk(), mk()];
         // rows `x_{i+1} = x_i · 1` for cells 1 → 2 → 3, and `x_5 = x_4 · 1` beside them
         for (i, (x, y)) in [(1u32, 2u32), (2, 3), (4, 5)].into_iter().enumerate() {
@@ -1195,4 +1706,107 @@ pub fn load_inactive(p: &Proto, b: &[u8]) -> bool {
     }
     let _ = p.inactive.set(b.chunks_exact(16).map(F::from_bytes).collect());
     true
+}
+
+#[cfg(test)]
+mod e1b_tests {
+    use super::*;
+
+    /// (+) A packing row `one·(x + Σ_h x^h b_h) = 0` solves the bits of a known `x` (worklist and a
+    /// replay with `want`); (−) an `x` with a bit no unknown covers solves nothing.
+    #[test]
+    fn packing_rows() {
+        let mut rw = Rows::new();
+        let one = [(0u32, F::ONE)];
+        let b: Vec<(u32, F)> = std::iter::once((1u32, F::ONE)).chain((0..4).map(|h| (2 + h, F::new(1 << h, 0)))).collect();
+        rw.push_row(0, [&one, &b, &[]]);
+        rw.done();
+        for (x, want) in [(0b1011u64, Some(vec![1, 1, 0, 1])), (0b1_0000, None)] {
+            let mut val = vec![F::ZERO; SLOT];
+            let mut known = vec![false; SLOT];
+            val[0] = F::ONE;
+            val[1] = F::new(x, 0);
+            known[0] = true;
+            known[1] = true;
+            let mut ex = Vec::new();
+            let r = try_row_x(&rw, 0, 0, &mut val, &mut known, Some(&mut ex));
+            match want {
+                Some(bits) => {
+                    assert_eq!(r, Some(2));
+                    assert_eq!(ex, vec![3, 4, 5]);
+                    assert_eq!((2..6).map(|c| val[c].lo).collect::<Vec<_>>(), bits);
+                    let [a, bb, c] = rw.eval(0, &|q| val[q as usize]);
+                    assert_eq!(a * bb, c);
+                }
+                None => assert_eq!(r, None),
+            }
+        }
+        // a replay entry writes its own cell only
+        let mut val = vec![F::ZERO; SLOT];
+        let mut known = vec![false; SLOT];
+        val[0] = F::ONE;
+        val[1] = F::new(0b0110, 0);
+        known[0] = true;
+        known[1] = true;
+        let r = unsafe { try_row_p(&rw, 0, 0, Some(3), val.as_mut_ptr(), known.as_mut_ptr(), None) };
+        assert_eq!(r, Some(3));
+        assert!(known[3] && !known[2] && !known[4] && val[3] == F::ONE);
+    }
+}
+
+#[cfg(test)]
+mod p2_tests {
+    use super::*;
+
+    /// E1b's counting sort over the cells' range (the reference of `cell_index`).
+    fn cell_index_ref(l: &Rows) -> LinkByCell {
+        let n = l.cells.iter().map(|&c| c as usize + 1).max().unwrap_or(0);
+        let mut cnt = vec![0u32; n + 1];
+        for &c in &l.cells {
+            cnt[c as usize + 1] += 1;
+        }
+        for i in 0..n {
+            cnt[i + 1] += cnt[i];
+        }
+        let (mut ent, mut coef) = (vec![0u32; l.cells.len()], vec![0u16; l.cells.len()]);
+        let mut pos = cnt.clone();
+        for i in 0..l.len() {
+            let rg = l.rng[i];
+            for m in 0..3 {
+                for q in rg[m] as usize..rg[m + 1] as usize {
+                    let c = l.cells[q] as usize;
+                    let p = pos[c] as usize;
+                    ent[p] = i as u32 | (m as u32) << 30;
+                    coef[p] = l.coefs[q];
+                    pos[c] += 1;
+                }
+            }
+        }
+        let (mut cells, mut ptr) = (Vec::new(), vec![0u32]);
+        for c in 0..n {
+            if cnt[c + 1] > cnt[c] {
+                cells.push(c as u32);
+                ptr.push(cnt[c + 1]);
+            }
+        }
+        LinkByCell { cells, ptr, ent, coef }
+    }
+
+    /// (P2) `cell_index` (a sort) equals E1b's counting sort on every kind's full link rows and on
+    /// prototype 0's spare rows, entry for entry.
+    #[test]
+    fn cell_index_matches_counting_sort() {
+        if crate::plan::BLOB.len() < 16 && find_dirs().is_none() {
+            return;
+        }
+        let nd = crate::plan::node_data();
+        let mut tabs: Vec<Rows> = [crate::node::NK::N2, crate::node::NK::N4, crate::node::NK::N8].iter().map(|&k| nd.kind_tab_full(k).links).collect();
+        tabs.push(Rows::from_parts(nd.protos[0].spare.idx.clone(), nd.protos[0].spare.rng.clone(), nd.protos[0].spare.cells.clone(), nd.protos[0].spare.coefs.clone(), nd.protos[0].spare.cv.clone()).unwrap());
+        for (t, l) in tabs.iter().enumerate() {
+            let b = cell_index_ref(l);
+            for a in [cell_index(l), cell_index_sorted(l)] {
+                assert!(a.cells == b.cells && a.ptr == b.ptr && a.ent == b.ent && a.coef == b.coef, "table {t}");
+            }
+        }
+    }
 }

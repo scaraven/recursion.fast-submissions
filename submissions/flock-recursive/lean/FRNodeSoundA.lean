@@ -1,7 +1,7 @@
 -- New for `flock-recursive` (BLUEPRINT §4.3 `node_sound`, A.7; stage S-N1).
 import FRSoundnessExtLinks
 import FRNodeReadLayout
-import FRNodeReadP
+import FRXOut
 import FRNodeReadCore
 
 /-!

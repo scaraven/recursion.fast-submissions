@@ -1,7 +1,7 @@
 -- New for `flock-recursive` (BLUEPRINT §5.4, A.4, A.9; stage S-G3 pass 2, `hFin` steps 3–4).
 -- RET-2: the declarations revision 4.1 reads moved to `FRSoundnessCoreAcc`.
 import FRSoundnessAccFin
-import FRSoundnessCoreAcc
+import FRSoundness4P4aSeg
 
 /-!
 # `hFin`, steps 3–4: the Fiat–Shamir positions and the K rounds' arithmetic

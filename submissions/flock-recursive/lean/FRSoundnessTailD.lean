@@ -1,7 +1,7 @@
 -- New for `flock-recursive` (BLUEPRINT A.10 P1.i … Pf; stage S-G1i).
 -- RET-1: position-free declarations moved to `FRSoundnessCoreTail`.
 import FRSoundnessTail
-import FRSoundnessCoreTail
+import FRSoundness4TailStep
 
 /-!
 # The Ligerito tail's dooms (A.10 P1.i, C.i, P2.i, P3.i, Pf)

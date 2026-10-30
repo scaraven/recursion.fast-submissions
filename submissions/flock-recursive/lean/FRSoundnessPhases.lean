@@ -1,7 +1,7 @@
 -- New for `flock-recursive` (BLUEPRINT A.10 L1, L3, Lr3, E3, B′; stage S-G1h, item 3 begun).
 -- RET-1: position-free declarations moved to `FRSoundnessCoreHide`.
 import FRSoundnessWalk
-import FRSoundnessCoreHide
+import FRSoundness4TailStep
 
 /-!
 # Per-phase obligations, part 1: the single-squeeze batching rows (A.10)

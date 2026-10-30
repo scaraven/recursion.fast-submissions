@@ -2,7 +2,7 @@
 -- RET-2: the declarations revision 4.1 reads moved to `FRSoundnessCoreRows`.
 import FRSoundnessFrRnd
 import FRSoundnessFrLN
-import FRSoundnessCoreRows
+import FRSoundnessCoreFront
 
 /-!
 # `hW0`: the verifier's `Ŵ₀(P₀)` is the front's `wHatL W₀L … 0`

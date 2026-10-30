@@ -2,7 +2,7 @@
 -- RET-1: position-free declarations moved to `FRSoundnessCoreWeights`.
 import FRSoundnessWeights
 import FRSoundnessWalk
-import FRSoundnessCoreWeights
+import FRSoundness4TailStep
 
 /-!
 # The Ligerito tail's doom ingredients: intermediate folds (the far doom) and P3's batched table

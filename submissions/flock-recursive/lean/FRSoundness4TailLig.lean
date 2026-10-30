@@ -173,8 +173,8 @@ theorem LigeritoOut.level0_committed {L es : Log} (h : LigeritoOut W₀ c₀ L e
 /-! ## Part C: from the walk -/
 
 /-- A prefix of the chain from P1.0 on is doomed by the tail only if the composed doom holds. -/
-theorem not_DT_of_not_DC {RejF : Log → Log → Prop} {DF : ℕ → Log → Log → Prop} {L X : Log}
-    (hp : p1Start 0 ≤ X.length - 1) (h : ¬ DC (RejC RejF c₀) (Dp (DkC DF W₀ c₀)) L X) :
+theorem not_DT_of_not_DC {Rej : Log → Log → Prop} {DF : ℕ → Log → Log → Prop} {L X : Log}
+    (hp : p1Start 0 ≤ X.length - 1) (h : ¬ DC Rej (Dp (DkC DF W₀ c₀)) L X) :
     ¬ DT W₀ c₀ (phOf4 (X.length - 1)) L X := by
   intro hT
   refine h (Or.inr ?_)
@@ -198,11 +198,11 @@ theorem not_D_prefix {D : Log → Log → Prop} (hS : ChainStab D) {L : Log} (hb
 doom or of the Hide doom, the composed doom's `ChainStab`, and the composed doom false at the end
 of a chain that has passed P2.4. -/
 theorem ligerito_final_of_walk {RejF : Log → Log → Prop} {DF : ℕ → Log → Log → Prop}
-    (hF : FrontLocal W₀ c₀) (hS : ChainStab (DC (RejC RejF c₀) (Dp (DkC DF W₀ c₀))))
-    {L : Log} (hb : ¬ Bad L) (hE : ¬ G.EscG (DC (RejC RejF c₀) (Dp (DkC DF W₀ c₀))) L)
+    (hF : FrontLocal W₀ c₀) (hS : ChainStab (DC (RejG RejF c₀) (Dp (DkC DF W₀ c₀))))
+    {L : Log} (hb : ¬ Bad L) (hE : ¬ G.EscG (DC (RejG RejF c₀) (Dp (DkC DF W₀ c₀))) L)
     (hEH : ¬ G.EscG DH L) {j : ℕ} (hci : G.IsChain L j)
     (hlen : p3S0 4 < (entriesOf L (pathOf L j)).length)
-    (hend : ¬ DC (RejC RejF c₀) (Dp (DkC DF W₀ c₀)) L (entriesOf L (pathOf L j))) :
+    (hend : ¬ DC (RejG RejF c₀) (Dp (DkC DF W₀ c₀)) L (entriesOf L (pathOf L j))) :
     LigeritoOut W₀ c₀ L (entriesOf L (pathOf L j)) := by
   refine ligerito_final hF hlen (fun p hp hpl => ?_) (DH_of_noEsc hb hEH hci)
   have h := not_D_prefix hS hb hE hci hend hpl
@@ -327,6 +327,50 @@ theorem truthP3_four_of_cols {L es : Log} (hc : ¬ Collision L)
   rw [consErr, foldAtN, dite_eq_left_of_eq_true (eq_true hlt),
     foldAt_of_cols (j := ⟨_, hlt⟩) hc hss hpath, hfold, hn, sub_self]
 
+/-! ### The bridges at revision 4.4.1 (β′): a column opened against its committed digest `D_r`
+
+V asserts each position's path root equal to its committed digest `dAt es i q` (`FinRest4.cols`);
+with `truthCap` (every `D_r` the cap entry, `cap_of_chk`) these are 3.x's bridges. -/
+
+/-- **An opened column against `D_r` is the committed one** (`truthCap`). -/
+theorem colOf_of_dpath {L es : Log} (hc : ¬ Collision L) (ht : truthCap es) {i q : ℕ} (hi : i < 5)
+    (hq : q < (CKind.lv (kindOfC es) i).t) {col : ByteArray} {ss : List Digest}
+    (hss : ss.length = (CKind.lv (kindOfC es) i).sib)
+    (h : (openPath (frEnc i) col (qPos (kindOfC es) es i q) ss).runLog L = some (dAt es i q)) :
+    colOf (kindOfC es) L es i (qPos (kindOfC es) es i q) = some col := by
+  refine colOf_of_path hc hss ?_
+  rw [h, ht i hi q (by rw [← (lv_cap (kindOfC es) hi).1]; exact hq)]
+  rfl
+
+/-- **The verifier's fold of a column opened against `D_r` is `foldAt`** (`truthCap`). -/
+theorem foldAt_of_dcols {L es : Log} (hc : ¬ Collision L) (ht : truthCap es) {i q : ℕ} (hi : i < 5)
+    (hq : q < (CKind.lv (kindOfC es) i).t) {col : ByteArray} {ss : List Digest}
+    (hss : ss.length = (CKind.lv (kindOfC es) i).sib)
+    (h : (openPath (frEnc i) col (qPos (kindOfC es) es i q) ss).runLog L = some (dAt es i q)) :
+    foldAtN (kindOfC es) L es i (qPos (kindOfC es) es i q) =
+      ∑ r : Fin (CKind.lv (kindOfC es) i).rows, eqBits (sAt es i) (CKind.lv (kindOfC es) i).ell r *
+        algebraMap F K (readF col (16 * r)) := by
+  have hlt : qPos (kindOfC es) es i q < 2 ^ (CKind.lv (kindOfC es) i).logN := idx_lt _ _ _
+  rw [foldAtN, dite_eq_left_of_eq_true (eq_true hlt)]
+  refine foldAt_of_cols (j := ⟨_, hlt⟩) hc hss ?_
+  rw [h, ht i hi q (by rw [← (lv_cap (kindOfC es) hi).1]; exact hq)]
+  rfl
+
+/-- **`finP 4`'s direct checks give `truthP3 4`** with the columns opened against `D` (`truthCap`). -/
+theorem truthP3_four_of_dcols {L es : Log} (hc : ¬ Collision L) (ht : truthCap es)
+    (hq : ∀ q < (CKind.lv (kindOfC es) 4).t, ∃ col : ByteArray, ∃ ss : List Digest,
+      ss.length = (CKind.lv (kindOfC es) 4).sib ∧
+      (openPath (frEnc 4) col (qPos (kindOfC es) es 4 q) ss).runLog L = some (dAt es 4 q) ∧
+      ∑ r : Fin (CKind.lv (kindOfC es) 4).rows, eqBits (sAt es 4) (CKind.lv (kindOfC es) 4).ell r *
+          algebraMap F K (readF col (16 * r)) =
+        encAt (kindOfC es) 4 (finalAt es) (qPos (kindOfC es) es 4 q)) :
+    truthP3 (kindOfC es) L es 4 := by
+  refine truthP3_four_of_cols hc fun q hq' => ?_
+  obtain ⟨col, ss, hss, hpath, hfold⟩ := hq q hq'
+  refine ⟨col, ss, hss, ?_, hfold⟩
+  rw [hpath, ht 4 (by norm_num) q (by rw [← (lv_cap (kindOfC es) (by norm_num : 4 < 5)).1]; exact hq')]
+  rfl
+
 /-- Pf's challenges as an ℕ-indexed point. -/
 def pfP (es : Log) (v : ℕ) : K := (rchs2 pfStart chK es 7).getD v 0
 
@@ -395,43 +439,62 @@ theorem DPf_end_chain {L es : Log} (hl : pfStart + 14 ≤ es.length) :
 /-! ## Part H: `FinalLaw` from the tail's end, the front and the extractor (pass 2) -/
 
 /-- **What an accepted SNARK run gives on the log for the tail** (`runLog_chain` and the finals'
-semantics: P1.i's and Pf's round checks, `finP 4`'s direct checks, `finPf`'s `relPf`), on the
-chain of entry `j`, with the front's asserts passed. -/
+semantics: P1.i's and Pf's round checks, `finP 4`'s direct checks, `finPf`'s `relPf`, the batched
+cap check), on the chain of entry `j`, with the front's asserts passed. **Revision 4.4.1 (β′)**: the
+positions open their columns against the committed `D` (`FinRest4.cols`), so the checks that read the
+committed words (P1.(i+1)'s round 0 through the batched folds, `finP 4`'s direct checks) hold on the
+log given `truthCap`; the cap check's three asserts are `cap`. -/
 structure AcceptTail (RejF : Log → Log → Prop) (W₀ : Log → Log → ℕ → K) (c₀ : Log → Log → K)
     (L : Log) (j : ℕ) : Prop where
   /-- The accepted run's Fiat–Shamir entries are a chain of the log. -/
   chain : G.IsChain L j
-  /-- The chain has passed Pf's last round. -/
-  len : pfStart + 14 ≤ (entriesOf L (pathOf L j)).length
+  /-- The chain has passed the cap check (`CapChkZ`, the last phase). -/
+  len : phStart4 55 + 1 ≤ (entriesOf L (pathOf L j)).length
   /-- The front's asserted checks pass. -/
   rejF : ¬ RejF L (entriesOf L (pathOf L j))
-  /-- Every P1.i round check holds against the tail's claims. -/
-  p1 : ∀ i < 5, ∀ l < hEll i,
+  /-- With `D` true, every P1.i round check holds against the tail's claims. -/
+  p1 : truthCap (entriesOf L (pathOf L j)) → ∀ i < 5, ∀ l < hEll i,
     Chk2 (p1Start i) 32 readK chK (lvC c₀ i) L (entriesOf L (pathOf L j)) l
   /-- Every Pf round check holds (round 0 from `c1 4`, `pf_round0_agree`). -/
   pf : ∀ l < 7, Chk2 pfStart 32 readK chK (lvC c₀ 5) L (entriesOf L (pathOf L j)) l
-  /-- `finP 4`'s direct checks (`truthP3_four_of_cols`). -/
-  lvl4 : truthP3 (kindOfC (entriesOf L (pathOf L j))) L (entriesOf L (pathOf L j)) 4
+  /-- With `D` true, `finP 4`'s direct checks (`truthP3_four_of_dcols`). -/
+  lvl4 : truthCap (entriesOf L (pathOf L j)) →
+    truthP3 (kindOfC (entriesOf L (pathOf L j))) L (entriesOf L (pathOf L j)) 4
   /-- `finPf`'s `relPf` at the spec (`DPf_end_chain`). -/
   fin : clR2 pfStart 32 readK chK (lvC c₀ 5) L (entriesOf L (pathOf L j)) 7 =
     wHatL W₀ L (entriesOf L (pathOf L j)) 4 *
       (∏ v ∈ Ico (mLog (kindOfC (entriesOf L (pathOf L j))) 4) 7,
         (1 - pfP (entriesOf L (pathOf L j)) v)) *
       mleN 7 (finalAt (entriesOf L (pathOf L j))) (pfPt (entriesOf L (pathOf L j)))
+  /-- The batched cap check's three asserts (`capChk4`). -/
+  cap : capChk4 (entriesOf L (pathOf L j))
 
-/-- **`hend`**: on an accepted chain the composed doom is false at its end (phase 51, Pf). -/
+/-- **`hend`**: on an accepted chain the composed doom is false at its end (phase 55, `CapChkZ`;
+PB-M1's final split): with `D` true the checks and Pf's doom fail as before; with `D` false the
+guard `cdOK` fails, and the cap check's asserts refute the last phase's other disjuncts. -/
 theorem not_DC_end {RejF : Log → Log → Prop} {DF : ℕ → Log → Log → Prop} {L : Log} {j : ℕ}
     (h : AcceptTail RejF W₀ c₀ L j) :
-    ¬ DC (RejC RejF c₀) (Dp (DkC DF W₀ c₀)) L (entriesOf L (pathOf L j)) := by
+    ¬ DC (RejG RejF c₀) (Dp (DkC DF W₀ c₀)) L (entriesOf L (pathOf L j)) := by
   have hp := pfStart_eq
   have hlen := h.len
-  rintro ((hR | ⟨i, hi, l, hl, -, hc⟩ | ⟨l, hl, -, hc⟩) | hD)
-  · exact h.rejF hR
-  · exact hc (h.p1 i hi l hl)
-  · exact hc (h.pf l hl)
+  obtain ⟨p52, p53, p54, p55⟩ := capPh_pos
+  have hc4 := h.cap
+  rintro (⟨hR, hok⟩ | hD)
+  · have ht : truthCap (entriesOf L (pathOf L j)) := hok.resolve_left (by omega)
+    rcases hR with hR | ⟨i, hi, l, hl, -, hc⟩ | ⟨l, hl, -, hc⟩
+    · exact h.rejF hR
+    · exact hc (h.p1 ht i hi l hl)
+    · exact hc (h.pf l hl)
   · unfold DPos Dp at hD
-    rw [phOf_ge (by omega), DkC_ge (by norm_num), DT_Pf, DPf_end_chain (by omega)] at hD
-    exact hD.elim (fun h4 => h4 h.lvl4) fun hf => hf h.fin
+    rw [(phOf_ge (by omega)).2.2.2.2 (by omega), DkC_ge (by norm_num), (DT_cap W₀ c₀).2.2.2] at hD
+    rcases hD with ⟨hP, ht⟩ | ⟨ha, -, hs⟩ | ⟨-, hII⟩
+    · rw [DPf_end_chain (by omega)] at hP
+      exact hP.elim (fun h4 => h4 (h.lvl4 ht)) fun hf => hf h.fin
+    · have e : ∀ hf : Digest → F, capIR hf (entriesOf L (pathOf L j)) (aAt (entriesOf L (pathOf L j))) =
+          capIR hf (entriesOf L (pathOf L j)) (aHat (entriesOf L (pathOf L j))) := fun hf =>
+        sum_congr rfl fun k hk => by rw [ha k (mem_range.1 hk)]
+      exact hs ⟨by rw [← e]; exact hc4.1, by rw [← e]; exact hc4.2.1⟩
+    · exact hII hc4.2.2
 
 /-! ## Part F′ (T4): the interface to the final composition (X4)
 
@@ -439,7 +502,7 @@ theorem not_DC_end {RejF : Log → Log → Prop} {DF : ℕ → Log → Log → P
 final law is per kind (`FR.Rev4.finalLaw4`: `SegSoundLog`, `NodeExtLog`); what the tail gives a
 per-kind proof is **`tail_of_accept`**: on a log below potential `1`, a chain with `AcceptTail` has
 no composed doom on any prefix and meets `LigeritoOut` (the body of `finalLaw_of`).
-**`ks4_of_front`** is `FR.Rev4.ks4_of` at `μ := muT (RejC RejF c₀) (DkC DF W₀ c₀)` and `ε := εR`,
+**`ks4_of_front`** is `FR.Rev4.ks4_of` at `μ := muT (RejG RejF c₀) (DkC DF W₀ c₀)` and `ε := εR`,
 with `empty` and `step` discharged from `FrontObl` (`muT_laws_of_front`). -/
 
 /-- **What the tail gives an accepted chain** (T4; the body of 3.x's `finalLaw_of`): below
@@ -447,9 +510,9 @@ potential `1`, a chain with `AcceptTail` has no composed doom on any prefix, and
 decode uniquely and consistently (`LigeritoOut`). -/
 theorem tail_of_accept {RejF : Log → Log → Prop} {DF : ℕ → Log → Log → Prop}
     (hF : FrontLocal W₀ c₀) (hFS : FrontChainStab RejF DF) {L : Log}
-    (hμ : muT (RejC RejF c₀) (DkC DF W₀ c₀) L < 1) {j : ℕ} (hT : AcceptTail RejF W₀ c₀ L j) :
+    (hμ : muT (RejG RejF c₀) (DkC DF W₀ c₀) L < 1) {j : ℕ} (hT : AcceptTail RejF W₀ c₀ L j) :
     (∀ p < (entriesOf L (pathOf L j)).length,
-      ¬ DC (RejC RejF c₀) (Dp (DkC DF W₀ c₀)) L ((entriesOf L (pathOf L j)).take (p + 1))) ∧
+      ¬ DC (RejG RejF c₀) (Dp (DkC DF W₀ c₀)) L ((entriesOf L (pathOf L j)).take (p + 1))) ∧
     LigeritoOut W₀ c₀ L (entriesOf L (pathOf L j)) := by
   obtain ⟨hb, hE, hEH⟩ := muT_lt_one hμ
   have hS := chainStab_of hF hFS
@@ -458,20 +521,21 @@ theorem tail_of_accept {RejF : Log → Log → Prop} {DF : ℕ → Log → Log �
   have hlen := hT.len
   have h4 := (tail_pos (show 4 < 5 by norm_num)).2.2.2.2
   have hnx : nxStart 4 = pfStart := rfl
+  have p55 := capPh_pos.2.2.2
   exact ⟨fun p hp' => not_D_prefix hS hb hE hT.chain hend hp',
     ligerito_final_of_walk hF hS hb hE hEH hT.chain (by omega) hend⟩
 
 /-- **`KS` for revision 4.1's verifier at `εR` from the front's obligations** (T4): `ks4_of` with
-the potential `muT (RejC RejF c₀) (DkC DF W₀ c₀)`, whose `empty` and `step` laws `FrontObl` gives
+the potential `muT (RejG RejF c₀) (DkC DF W₀ c₀)`, whose `empty` and `step` laws `FrontObl` gives
 (`muT_laws_of_front`). What is left are the two per-kind laws on the logs below that potential. -/
 theorem ks4_of_front {RejF : Log → Log → Prop} {DF : ℕ → Log → Log → Prop}
     (impl₀ : OpImpl) (implN : Rev4.NodeKind → OpImpl) (cells : Rev4.NodeKind → List ℕ)
     (S : Submission) (vk : Digest) (hV : S.V = Rev4.VC4 impl₀ implN cells) (hq : S.qV = Rev4.qV4)
     (hE : Rev4.ExtOff S.E) (hFr : FrontObl RejF DF W₀ c₀)
     (hS : Rev4.SegSoundLog (Rev4.VsegC impl₀) vk
-      fun L => L.length ≤ logCap ∧ muT (RejC RejF c₀) (DkC DF W₀ c₀) L < 1)
+      fun L => L.length ≤ logCap ∧ muT (RejG RejF c₀) (DkC DF W₀ c₀) L < 1)
     (hN : Rev4.NodeExtLog (Rev4.VnodeC implN cells) vk
-      (fun L => L.length ≤ logCap ∧ muT (RejC RejF c₀) (DkC DF W₀ c₀) L < 1) S.E
+      (fun L => L.length ≤ logCap ∧ muT (RejG RejF c₀) (DkC DF W₀ c₀) L < 1) S.E
       (Rel (S.acc vk))) :
     KS (Rel (S.acc vk)) (S.V vk) S.E epsR S.qV :=
   Rev4.ks4_of impl₀ implN cells S vk hV hq hE _ (muT_laws_of_front hFr).1
@@ -550,12 +614,13 @@ theorem pfP_eq (es : Log) {v : ℕ} (hv : v < 7) : pfP es v = kAt es (pfStart + 
 theorem ptL_four_lt (es : Log) {v : ℕ} (hv : v < hEll 4) : ptL es 4 v = sAt es 4 v := by
   simp [ptL, ptD, hv]
 
-/-- Control (negative): an inconsistent level-4 query refutes `AcceptTail` (its `lvl4` field is not
-vacuous). -/
+/-- Control (negative): with `D` true, an inconsistent level-4 query refutes `AcceptTail` (its
+`lvl4` field is not vacuous). -/
 theorem not_acceptTail_of_cons {RejF : Log → Log → Prop} {L : Log} {j : ℕ}
+    (ht : truthCap (entriesOf L (pathOf L j)))
     (h : consErr (kindOfC (entriesOf L (pathOf L j))) L (entriesOf L (pathOf L j)) 4 0 ≠ 0) :
     ¬ AcceptTail RejF W₀ c₀ L j := fun hT =>
-  not_truthP3_of _ (lvl_t_pos _ (by norm_num)) h hT.lvl4
+  not_truthP3_of _ (lvl_t_pos _ (by norm_num)) h (hT.lvl4 ht)
 
 /-- **Control (negative)**: with `c₀ = 1` the same empty chain fails `LigeritoOut` (level 0's
 claim `1 ≠ ⟨0, f⁽⁰⁾⟩ = 0`): the claim field is not vacuous. -/
@@ -575,7 +640,7 @@ theorem nrP_kind : nrP 0 (.seg .L31) = 24 ∧ nrP 0 (.node .N2) = 24 ∧ nrP 0 (
 /-- **Control (positive)**: `muT_laws_of_front` applies to the satisfiable front `frontObl_false`
 (the potential's laws are not stated over an empty interface). -/
 theorem muT_laws_false :
-    muT (RejC (fun _ _ => False) fun _ _ => 0) (DkC (fun _ _ _ => False) (fun _ _ _ => 0)
+    muT (RejG (fun _ _ => False) fun _ _ => 0) (DkC (fun _ _ _ => False) (fun _ _ _ => 0)
       fun _ _ => 0) [] = 0 :=
   (muT_laws_of_front frontObl_false).1
 

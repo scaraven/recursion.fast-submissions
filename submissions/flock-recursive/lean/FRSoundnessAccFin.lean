@@ -1,7 +1,7 @@
 -- New for `flock-recursive` (BLUEPRINT §5.4, A.9 finals, A.10 rows; stage S-G3).
 -- RET-2: the declarations revision 4.1 reads moved to `FRSoundnessCoreAcc`.
 import FRSoundnessAccRun
-import FRSoundnessCoreAcc
+import FRSoundness4P4aSeg
 
 /-!
 # The finals on the log: `FinLog` and `AcceptTail` (`hAcc`'s SNARK branch, the bridges)
