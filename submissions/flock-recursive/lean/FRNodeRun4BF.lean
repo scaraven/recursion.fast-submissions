@@ -13,7 +13,7 @@ import FRNodeRows4RepF
   their holding at the slot, `PfCells`, `StmtBits` and `PosBits`.
 * **`gap4Imp_of_bitsR`**: IMPC2's `gap4Imp_of_bitsB` with `SlotRunB` in place of `SlotRunA`; `StmtBits` and
   `PosBits` come from the decomposition rows (`stmtBits_of_glob`, `posBits_of_glob`).
-* the certificate-level form with the statement reads folded too is `FRNodeRun4BT.gaps4_of_runS`.
+* the certificate-level form (statement reads, siblings and the closure folded) is `FRNodeRun4CT.gaps4_of_runC`.
 -/
 
 namespace FR

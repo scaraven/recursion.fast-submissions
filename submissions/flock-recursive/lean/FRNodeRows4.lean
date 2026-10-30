@@ -11,6 +11,7 @@ import FRNodeRows4AskPosT
 import FRNodeRows4AskT
 import FRNodeRows4AskI
 import FRNodeRows4AskB
+import FRNodeRows4AskC
 import FRNodeRows4Defs
 
 /-!
@@ -230,14 +231,16 @@ def XofT (π : ℕ) : Ext := tplExt4 (protoF π) (protoR π) (protoLay π).ctx
 fields is SRA's `FRNodeRsvLink.withRsv`'s): IMP's `input` template
 (`inpTG`), SRA's reserve template (`rsvTG`), and ASK-T's ask generator (`askTGT`: every ask's query
 and answer, `FRNodeRows4AskT`), IMPC's import classes (`impcTG`, `FRNodeRows4AskI`; `colTG` not yet
-folded). -/
+folded), IMPC2's bits and statement reads (`bitTGB`, `bitTGS`), the siblings (`sibTG`) and the closure
+(`TG.close`: a failing row at any import or foreign flag no class handles; `FRNodeRows4AskC`). -/
 def askTG (π : ℕ) : TG :=
-  (((askTGT (XofT π) π).add (inpTG (XofT π) π)).add (rsvTG (XofT π) π)).add
-    (impcTG (XofT π) π (provLT 0 (protoProg π).ops)) |>.addD
-    (bitTGB (tplExt4 (protoF π) (protoR π) ⟨fun _ => ⟨[], []⟩, (protoLay π).cb⟩) π
-      (bitTab (protoProg π).ops (if π = 0 then nodeGrp else segGrp))) |>.addD
-    (bitTGS (tplExt4 (protoF π) (protoR π) ⟨fun _ => ⟨[], []⟩, (protoLay π).cb⟩) π
-      (bitTab (protoProg π).ops (if π = 0 then nodeGrp else segGrp)))
+  let ops := (protoProg π).ops
+  let Xa := tplExt4 (protoF π) (protoR π) ⟨fun _ => ⟨[], []⟩, (protoLay π).cb⟩
+  let pv := provLT 0 ops
+  let T := bitTab ops (if π = 0 then nodeGrp else segGrp)
+  ((((askTGT (XofT π) π).add (inpTG (XofT π) π)).add (rsvTG (XofT π) π)).add
+    (impcTG (XofT π) π pv) |>.addD (bitTGB Xa π T) |>.addD (bitTGS Xa π T) |>.addE (sibTG Xa π T)).close
+    Xa pv T (bitNxAll 0 ops)
 
 /-- **Prototype `π`'s template rows** (its frame), along its compile's trail (`askRowsP`'s fold). -/
 def askRowsT (π : ℕ) : List Row :=

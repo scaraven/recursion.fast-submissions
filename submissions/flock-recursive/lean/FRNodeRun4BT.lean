@@ -11,8 +11,8 @@ boundaries) is an import whose value is a function of the input alone, so it is 
 * **`rdWin_ev`**: with `StmtBits`, a window's row (`Σ e_j·s(b0 + j)` over the statement's bit cells, the
   tail bits zero) evaluates to the window's 16 bytes;
 * **`atImp_bitS`**: `bitTGS`'s rows bind each covered read's import slots to its value;
-* **`gap4Imp_of_bitsS`**, **`gap4Imp_rtC1cS`**, **`gaps4_of_runS`**: `Gap4.imp` / `Gaps4` with `bitTGB` and
-  `bitTGS` folded (`withBitsS`, `askFold_bitsS`); what remains per slot is `SlotRunB`.
+* **`gap4Imp_of_bitsS`**: `Gap4.imp` with `bitTGB` and `bitTGS` folded (`withBitsS`, the fold a hypothesis);
+  what remains per slot is `SlotRunB`. The certificate-level form is `FRNodeRun4CT.gaps4_of_runC`.
 -/
 
 namespace FR
@@ -189,12 +189,6 @@ theorem bitsS_rowsB (π : ℕ) : ∀ c pre op k, ∀ r ∈ bitRowsB (bitTabP π)
     simp only [hc, Bool.false_eq_true, ↓reduceIte]
     exact List.mem_append_left _ hB
 
-/-- **The fold with the bits and the statement reads** (`askTG` folds `bitTGB` and `bitTGS` after IMPC's
-classes: the RESULT's diff). -/
-theorem askFold_bitsS {κ : NodeKind} {w : Asg} (hone : w κ.oneCell = 1) (hE : Snd.P4b.truthEI (nodeIRows4 κ) w) :
-    ∀ v < κ.vslots, ∀ p ∈ askIRows4 (withBitsS askAq) κ v arR2, p ∈ nodeIRows4 κ :=
-  askFold (fun π _ => ⟨rfl, rfl⟩) hone hE
-
 /-- **`Gap4.imp` with the bits' run facts and the statement reads discharged**: from the replay
 (`RepOk`, its fold), the fold of `withBitsS`, `StmtN4R` and, at every active slot and selectable index,
 the residual `SlotRunB` over `withBitsS`. -/
@@ -248,28 +242,9 @@ theorem gap4Imp_of_bitsS {rt : ℕ → RT} {impl₀ : OpImpl} {base : NodeKind �
     a1_slot hone hE hvs (elem_arN (by unfold ansE; omega)), h1, h2]
   exact ⟨rfl, rfl⟩
 
-/-- **`Gap4.imp` at the certificate's replay templates** (`rtC1c`, `implB`; REPF's `gap4Imp_rtC1c` with
-the bits and the statement reads folded). -/
-theorem gap4Imp_rtC1cS {κ : NodeKind} {vk c₁ c₂ : Digest} {w : Asg} {ch : List F}
-    (hS : N4c.StmtN4R κ (lRows4 κ) (nodeIRows4 κ) vk c₁ c₂ w ch)
-    (h : ∀ v, N4c.Active4 (rd4 X.pf4) κ w v → ∀ ι, SelOk (slotAsg κ v w) (protoP (protoOf κ v)) ι →
-      SlotRunB (rtC1c (protoOf κ v)) (withBitsS askAq (protoOf κ v)) (implP Sub4.implB (fun _ => Sub4.implB) (protoOf κ v) ι)
-        (protoOf κ v) ι (N4c.slotIn (rd4 X.pf4) κ vk c₁ w v) ((rd4 X.pf4).slotTr κ v w) (slotAsg κ v w)) :
-    ∀ v, N4c.Active4 (rd4 X.pf4) κ w v →
-      SlotImp Sub4.implB (fun _ => Sub4.implB) κ v w (N4c.slotIn (rd4 X.pf4) κ vk c₁ w v) ((rd4 X.pf4).slotTr κ v w) :=
-  gap4Imp_of_bitsS implT_implB (fun _ => implT_implB) repOk_rtC1cB
-    (repFold (one_of_pubCells hS.1.2.2.2.2) hS.1.2.2.2.1)
-    (askFold_bitsS (one_of_pubCells hS.1.2.2.2.2) hS.1.2.2.2.1) hS h
-
-/-- **`Gaps4` from the residual `SlotRunB` at `rtC1c`** (REPF's `gaps4_of_runA`, with the bits' run facts,
-the statement's flags and the unaligned statement reads discharged). -/
-theorem gaps4_of_runS
-    (h : ∀ vk κ w c₁ c₂ ch, N4c.StmtN4R κ (lRows4 κ) (nodeIRows4 κ) vk c₁ c₂ w ch →
-      ∀ v, N4c.Active4 (rd4 X.pf4) κ w v → ∀ ι, SelOk (slotAsg κ v w) (protoP (protoOf κ v)) ι →
-        SlotRunB (rtC1c (protoOf κ v)) (withBitsS askAq (protoOf κ v)) (implP Sub4.implB (fun _ => Sub4.implB) (protoOf κ v) ι)
-          (protoOf κ v) ι (N4c.slotIn (rd4 X.pf4) κ vk c₁ w v) ((rd4 X.pf4).slotTr κ v w) (slotAsg κ v w)) :
-    Sub4.Gaps4 :=
-  fun vk κ w c₁ c₂ ch hS => gap4Imp_rtC1cS hS (h vk κ w c₁ c₂ ch hS)
+-- `askFold_bitsS`, `gap4Imp_rtC1cS`, `gaps4_of_runS` (FOLD2's fold, by `rfl`) are removed: `askTG` now also folds
+-- the siblings and the closure (track SIB); their replacements are `FRNodeRun4CT.askFold_close`,
+-- `gap4Imp_rtC1cC`, `gaps4_of_runC`.
 
 /-! ## Controls -/
 
