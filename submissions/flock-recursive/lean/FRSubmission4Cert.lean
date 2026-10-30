@@ -43,7 +43,7 @@ open RecursionFast FR.Rev4 FR.X.X4
 open scoped NNReal
 
 /-- The node verifier `sub4` runs (`sub4_V`). -/
-abbrev Vnode4 : NodeProgs := VnodeC (NI4F.implN4F fun _ => implB) N4c.cells4
+noncomputable abbrev Vnode4 : NodeProgs := VnodeC (NI4F.implN4F fun _ => implB) N4c.cells4
 
 /-- **The node links `hL`** (S-L4's `hL_of_res`): on a good log, an accepted in-domain node run
 has a transcript `es` meeting the decode law's links, and the witness read off it is a witness of

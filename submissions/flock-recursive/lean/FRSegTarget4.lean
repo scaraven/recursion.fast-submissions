@@ -30,7 +30,8 @@ passes it to two ops as trailing entries of their operands; every other weight i
 With the zero witness the prover's messages are those of an unmasked prover (the masked entry
 multiplies `In(L + 1) = 0`), except Z2's target, which P2′ already scales (`range_eq`).
 
-`implSeg impl₀`: `impl₀` with the segment's `targetS` and `shiftMask`; **`implSeg_meets`**.
+`implSeg impl₀`: `impl₀` with the segment's `targetS` and `shiftMask`, and `evalM`/`evalL` pinned to
+zero (SEG-R1); **`implSeg_meets`**.
 -/
 
 namespace FR
@@ -211,24 +212,31 @@ theorem shift_unmasked_link (τL r : Array F) (y y' : Fin (2 ^ 18)) (hτ : ptA 1
 /-! ## The segment's op implementation -/
 
 /-- **`implSeg impl₀`**: `impl₀` with a segment's `targetS` (the leaf kinds; a node's is
-`impl₀`'s) and `shiftMask` (read by the segment's `finSh` only). -/
+`impl₀`'s) and `shiftMask` (read by the segment's `finSh` only). SEG-R1: `evalM` and `evalL` are
+**pinned to zero**: in the segment program both feed only an `assertEq` inactive at every kind
+(SEG-R §2, SEG-R0 §6), no segment-side theorem reads them (SEG-R0 §5), and the zero is what the
+replay's zero rows bind (`FRNodeRows4RepSegK.rtEvZ`). The segment check then evaluates no plan. -/
 def implSeg (impl₀ : OpImpl) : OpImpl :=
   { impl₀ with
     targetS := fun κ r => if κ.isNode then impl₀.targetS κ r else targetSSegI r
-    shiftMask := shiftSegI }
+    shiftMask := shiftSegI
+    evalM := fun _ _ => (0, 0, 0)
+    evalL := fun _ _ => (0, 0, 0) }
 
 /-- Its specification. -/
 def specSeg (spec₀ : OpSpec) : OpSpec :=
   { spec₀ with
     targetS := fun κ r => if κ.isNode then spec₀.targetS κ r else targetSSegS r
-    shiftMask := shiftSegS }
+    shiftMask := shiftSegS
+    evalM := fun _ _ => (0, 0, 0)
+    evalL := fun _ _ => (0, 0, 0) }
 
 /-- **`implSeg ⊨ specSeg`** (the `implC_meets` analogue). -/
 theorem implSeg_meets {impl₀ : OpImpl} {spec₀ : OpSpec} (h : impl₀.Meets spec₀) :
     (implSeg impl₀).Meets (specSeg spec₀) := by
-  obtain ⟨h1, h2, h3, h4, h5, h6, h7, h8, h9, h10, h11, h12, h13, h14, -, h16, h17⟩ := h
-  refine ⟨h1, fun κ r => ?_, h3, h4, h5, h6, h7, h8, h9, h10, h11, h12, h13, h14, shiftSeg_meets,
-    h16, h17⟩
+  obtain ⟨h1, h2, h3, h4, h5, h6, h7, -, -, h10, h11, h12, h13, h14, -, h16, h17⟩ := h
+  refine ⟨h1, fun κ r => ?_, h3, h4, h5, h6, h7, fun _ _ => rfl, fun _ _ => rfl, h10, h11, h12, h13, h14,
+    shiftSeg_meets, h16, h17⟩
   simp only [implSeg, specSeg]
   split_ifs
   · exact h2 κ r

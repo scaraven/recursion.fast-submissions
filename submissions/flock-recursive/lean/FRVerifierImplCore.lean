@@ -44,6 +44,32 @@ def implCWith (pl : TEval.Plan) (lp : TEval.LPlan) : OpImpl where
   rowW := rowWI
   shiftEq := shiftEqI
 
+/-- **`implC` without plans** (SEG-R1, SEG-R0 §4): `implCWith`'s fields with `evalM` and `evalL`
+zero. Every compiled verifier is built on it: the segment's ops (`Rev4.implSeg`) pin both fields to
+zero and the node's (`NI4F.implN4F`) set their own, so neither reads the base's. With no plan in it,
+no plan is computed at process start (`nodePlan`, `lPlan`, `implCN` below are `noncomputable`:
+a compiled nullary constant is initialised at every start, INIT §1). -/
+def implC0 : OpImpl where
+  lagrangeS := lagrangeSI
+  targetS κ := if κ.isNode then NodeI.targetSNodeI else targetSLeafI
+  eqZ := eqZI
+  tensorW := tensorWG
+  rsWeight := rsWeightF
+  phiRS := phiRSF
+  walkAB := Eval.walkImpl
+  kindInd := Eval.kindIndImpl
+  evalM _ _ := (0, 0, 0)
+  evalL _ _ := (0, 0, 0)
+  shiftTarget := shiftTargetI
+  slotW _ := slotWI
+  kindFoldWeight _ _ _ := 0
+  linkWAll κ tt rr := if κ.isNode then
+    NodeI.linkWAllI (tt.extract 0 16) (tt.extract 16 26) (rr.extract 0 16) (rr.extract 16 26)
+    else Array.replicate nLinkFam 0
+  shiftMask := NodeI.shiftMaskI
+  rowW := rowWI
+  shiftEq := shiftEqI
+
 /-- `implC` at the node's plan (`TEval.planOf fin`: both slots' templated compile, once) and L's
 plan (`TEval.planL lRows`, once). -/
 def implC (fin : Finals) (lRows : List Circ.Row) (_κs₀ : F) : OpImpl :=
@@ -131,14 +157,15 @@ namespace FR
 
 namespace Impl
 
-/-- **The node's M plan** (`TEval.planOf` of the node's finals), built once at process start. -/
-def nodePlan : TEval.Plan := TEval.planOf (finC finPf)
+/-- **The node's M plan** (`TEval.planOf` of the node's finals). SEG-R1: `noncomputable` (no
+initialiser; the compiled verifiers use `implC0`). -/
+noncomputable def nodePlan : TEval.Plan := TEval.planOf (finC finPf)
 
-/-- **L's plan**, built once at process start. -/
-def lPlan : TEval.LPlan := TEval.planL Layout.lRows
+/-- **L's plan** (SEG-R1: `noncomputable`, as `nodePlan`). -/
+noncomputable def lPlan : TEval.LPlan := TEval.planL Layout.lRows
 
-/-- **`implC` at the closed plans.** -/
-def implCN : OpImpl := implCWith nodePlan lPlan
+/-- **`implC` at the closed plans** (the certificate's base ops; SEG-R1: `noncomputable`). -/
+noncomputable def implCN : OpImpl := implCWith nodePlan lPlan
 
 end Impl
 

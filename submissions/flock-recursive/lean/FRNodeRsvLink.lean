@@ -293,7 +293,7 @@ def csR : CS :=
 def regsR : Array Val := #[.af (Array.replicate 32 0), .af (Array.replicate 25 0)]
 
 /-- An `evalM` returning a false claim's outputs (`X₃[1] = 1`). -/
-def implR : OpImpl := { Impl.implCN with evalM := fun _ _ => (0, 1, 0) }
+def implR : OpImpl := { Impl.implC0 with evalM := fun _ _ => (0, 1, 0) }
 
 theorem tauC_ne : ∀ j < 32, tauC j ≠ 0 := by decide
 theorem sigC_ne : ∀ j < 25, sigC j ≠ 0 := by decide
