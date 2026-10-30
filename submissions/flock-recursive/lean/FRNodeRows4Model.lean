@@ -52,8 +52,8 @@ theorem packMapN_arN : packMapN = arN + 115696 := by rw [arN_eq]; rfl
 def nodeRegion : List ℕ := [protoRowsN, packMapN, linkN]
 
 /-- **A segment slot's region**: prototype, pack map, link region, and its `R` without `evalM`
-(S-E14: 49,000). -/
-def segRegion : List ℕ := [protoRowsS, packMapN, linkN, 49000]
+(S-E14: 49,000; SEG-R2: measured, `repRowsP (rtC1d 1) 1` = 38,805 rows, `logs/SEGR2/segstat-stat.log`). -/
+def segRegion : List ℕ := [protoRowsS, packMapN, linkN, 38805]
 
 /-- **The previous-node slot's spare region**: `R` without `evalM` (221,000) and the `evalM` replay
 at its upper estimate (400,000; PACK-4.4.1 §6.2). -/
@@ -63,7 +63,7 @@ def spareRegion : List ℕ := [221000, 400000]
 def mRowModel4 (κ : NodeKind) : ℕ :=
   (if κ.hasPrev then nodeRegion.sum + spareRegion.sum else 0) + κ.segSlots * segRegion.sum
 
-theorem regions_sum : nodeRegion.sum = 951712 ∧ segRegion.sum = 980488 ∧ spareRegion.sum = 621000 := by
+theorem regions_sum : nodeRegion.sum = 951712 ∧ segRegion.sum = 970293 ∧ spareRegion.sum = 621000 := by
   norm_num [nodeRegion, segRegion, spareRegion, protoRowsN, protoRowsS, packMapN, linkN]
 
 /-- **The M rows fit**: each region in `2^20` rows; every kind's rows in `N_M / 1.05`. -/
@@ -75,10 +75,10 @@ theorem mRows4_le :
   cases κ <;> simp only [mRowModel4, h1, h2, h3, NodeKind.hasPrev, NodeKind.segSlots, NodeKind.nM,
     NodeKind.dims] <;> decide
 
-/-- The per-kind totals: `N2` 3,533,688 of `2^22` (1.19×; 1.13× under `N_M / 1.05`), `N4` 5,494,664
-of `2^23` (1.53×; 1.45×), `N8` 7,843,904 of `2^23` (1.07×; **1.0185× under `N_M / 1.05` = 7,989,150**:
-18,156 more rows in each segment region and `N8` no longer fits). -/
-theorem mRowModel4_eq : mRowModel4 .N2 = 3533688 ∧ mRowModel4 .N4 = 5494664 ∧ mRowModel4 .N8 = 7843904 := by
+/-- The per-kind totals (SEG-R2: the segment's measured `R`): `N2` 3,513,298 of `2^22`, `N4` 5,453,884 of
+`2^23`, `N8` 7,762,344 of `2^23` (**1.029× under `N_M / 1.05` = 7,989,150**: 28,350 more rows in each segment
+region and `N8` no longer fits). -/
+theorem mRowModel4_eq : mRowModel4 .N2 = 3513298 ∧ mRowModel4 .N4 = 5453884 ∧ mRowModel4 .N8 = 7762344 := by
   obtain ⟨h1, h2, h3⟩ := regions_sum
   simp only [mRowModel4, h1, h2, h3, NodeKind.hasPrev, NodeKind.segSlots]
   decide

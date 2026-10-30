@@ -28,6 +28,9 @@ instantiates three sub-templates instead):
   `RTOkW`.
 * **`rtEvZ`** (`rtEvZ_okW`): prototype 1's `evalM`/`evalL`, pinned to zero in `implSeg` (SEG-R1),
   replayed by `one · out = 0` on their three `F` cells; no hypothesis.
+
+SEG-R2: the definitions (`KOpD` … `rtKD`, `rtEvZ`) moved verbatim to `FRNodeRows4SegD` (below `FRNodeRows4`, so that the
+fold names them); the theorems stay here.
 -/
 
 namespace FR
@@ -35,86 +38,6 @@ namespace N4s
 open RecursionFast Rev4 Circ Tpl
 
 /-! ## The wrapper -/
-
-/-- **A kind-muxed op replay on canonical inputs** (one template for the three indices). -/
-structure KOpD where
-  cov : Op → Bool
-  args : Op → Kind → List ℕ
-  /-- The operand types the template serves (checked at every index). -/
-  inOk : List Ty → Bool
-  /-- The canonical inputs. -/
-  W : ℕ
-  /-- Canonical input `p`'s position in the operand encoding at types `ts` (`none`: `0`). -/
-  lay : List Ty → ℕ → Option ℕ
-  /-- The encoding positions forced to `0`. -/
-  zf : List Ty → List ℕ
-  /-- The template (inputs `I p`, `p < W`), given constants it may fold; its outputs and forcing rows. -/
-  T : List (Option F) → GM (List LinT × List RowT)
-  tys : List Ty
-
-/-- Its blocks as `kBlocks` reads them. -/
-def KOpD.toK (K : KOpD) : KOp := ⟨K.cov, K.args, K.inOk, fun _ _ _ => ⟨[], []⟩, K.tys⟩
-
-/-- Canonical input `p`'s form in an operand block. -/
-def kdG (K : KOpD) (b : List Ty × List Lin) (p : ℕ) : Lin :=
-  match K.lay b.1 p with
-  | some q => b.2.getD q []
-  | none => []
-
-/-- A form `c · Σ_κ sel_κ` (a kind-free constant, `Params.kc`): its `c`. -/
-def cstOf (P : Params) (l : Lin) : Option F :=
-  match l.head? with
-  | some t => if l = P.kc (fun _ => t.2) then some t.2 else none
-  | none => none
-
-/-- **The mux** over the kinds `ks`, its locals from cell `c`: the sum of the locals, and the rows
-`sel_ι · g_ι = m`. -/
-def kdMux (P : Params) (g : Kind → Lin) : List Kind → ℕ → Lin × List Row
-  | [], _ => ([], [])
-  | ι :: ks, c => (((c, 1) :: (kdMux P g ks (c + 1)).1), ⟨P.sel ι, g ι, Lin.cell c⟩ :: (kdMux P g ks (c + 1)).2)
-
-/-- **One canonical input** (the three kinds' forms `g`; mux locals from `c`): its form, its constant
-hint, its rows, its mux locals. -/
-def kdPos (P : Params) (g : Kind → Lin) (c : ℕ) : Lin × Option F × List Row × ℕ :=
-  if g .L32 = g .P30 ∧ g .P30 = g .N30 then
-    (g .L32, if zeroLin (g .L32) then some 0 else cstOf P (g .L32), [], 0)
-  else ((kdMux P g kinds c).1, none, (kdMux P g kinds c).2, 3)
-
-/-- **The canonical inputs** `p₀ … p₀ + n − 1`, mux locals from `c`: forms, hints, rows, the next
-free local. -/
-def kdAll (P : Params) (g : ℕ → Kind → Lin) : ℕ → ℕ → ℕ → List Lin × List (Option F) × List Row × ℕ
-  | 0, _, c => ([], [], [], c)
-  | n + 1, p, c =>
-    ((kdPos P (g p) c).1 :: (kdAll P g n (p + 1) (c + (kdPos P (g p) c).2.2.2)).1,
-     (kdPos P (g p) c).2.1 :: (kdAll P g n (p + 1) (c + (kdPos P (g p) c).2.2.2)).2.1,
-     (kdPos P (g p) c).2.2.1 ++ (kdAll P g n (p + 1) (c + (kdPos P (g p) c).2.2.2)).2.2.1,
-     (kdAll P g n (p + 1) (c + (kdPos P (g p) c).2.2.2)).2.2.2)
-
-/-- The zero-forcing rows `one · f = 0` on every block's forced positions. -/
-def kdZero (K : KOpD) (P : Params) (bs : List (List Ty × List Lin)) : List Row :=
-  bs.flatMap fun b => (K.zf b.1).map fun q => ⟨P.one, b.2.getD q [], []⟩
-
-/-- The canonical inputs of a block list (selector index `kIx ι` reads block `kIx ι`). -/
-def kdIn (K : KOpD) (P : Params) (cb : ℕ) (bs : List (List Ty × List Lin)) :
-    List Lin × List (Option F) × List Row × ℕ :=
-  kdAll P (fun p ι => kdG K (bs.getD (kIx ι) ([], [])) p) K.W 0 cb
-
-/-- **The replay rows of a `KOpD` op**: the mux's locals from `cb`, the template's after them. -/
-def kdRows (K : KOpD) (B cb : ℕ) (P : Params) (cs : CS) (op : Op) (outs : List Slot) : List Row :=
-  match kBlocks K.toK cs op with
-  | some bs =>
-    if outsOk K.tys outs && bs.all (fun b => K.inOk b.1) && ((bs.flatMap (·.2)) ++ outF outs).all (linLt B) &&
-        (K.T (kdIn K P cb bs).2.1 0).2.1.length == (K.tys.map Ty.len).sum then
-      (kdIn K P cb bs).2.2.1 ++ kdZero K P bs ++
-        (rowsTR ⟨(K.T (kdIn K P cb bs).2.1 0).1, []⟩).map (instRow P.one (kdIn K P cb bs).1 (kdIn K P cb bs).2.2.2) ++
-        (K.T (kdIn K P cb bs).2.1 0).2.2.map (instRow P.one (kdIn K P cb bs).1 (kdIn K P cb bs).2.2.2) ++
-        copyRows P outs ((K.T (kdIn K P cb bs).2.1 0).2.1.map (instLin P.one (kdIn K P cb bs).1 (kdIn K P cb bs).2.2.2))
-    else [rejRow P]
-  | none => [rejRow P]
-
-/-- **The replay template of a `KOpD` op.** -/
-def rtKD (K : KOpD) (B cb : ℕ) : RT :=
-  ⟨K.cov, fun P cs op outs => if K.cov op then kdRows K B cb P cs op outs else []⟩
 
 /-- **The per-op obligation** (pure functions): at index `ι` the op never asks, and at operand
 types `ts` it serves, its values have `tys`, and wherever the forced positions are zero, the
@@ -267,19 +190,6 @@ theorem rtKD_okW {impl : OpImpl} {X : Ext} {ι : Kind} {K : KOpD} (B cb : ℕ) (
 
 /-! ## `evalM`, `evalL` at prototype 1: zero -/
 
-/-- Whether an op is `evalM` or `evalL`. -/
-def isEvML : Op → Bool
-  | .evalM .. => true
-  | .evalL .. => true
-  | _ => false
-
-/-- `one · out = 0` on three `F` output cells (checked below `B`); the rejecting row otherwise. -/
-def zeroF3 (B : ℕ) (P : Params) (outs : List Slot) : List Row :=
-  if outsOk [.f, .f, .f] outs && (outF outs).all (linLt B) then (outF outs).map fun l => ⟨P.one, l, []⟩
-  else [rejRow P]
-
-/-- **Prototype 1's `evalM`/`evalL` replay**: zero (`implSeg` pins them). -/
-def rtEvZ (B : ℕ) : RT := ⟨isEvML, fun P _ op outs => if isEvML op then zeroF3 B P outs else []⟩
 
 theorem zeroF3_ok {B : ℕ} {P : Params} {outs : List Slot} {w w' : Asg} (hA : Agree B w w')
     (hone : P.one.ev w' = 1) (h : ∀ r ∈ zeroF3 B P outs, r.Holds w') :

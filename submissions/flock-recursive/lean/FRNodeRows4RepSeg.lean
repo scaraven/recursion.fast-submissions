@@ -18,6 +18,9 @@ import FRSubmission4V
   another claim count is not covered (it stays an import: no segment program has one, SEG-R0 §6).
 * `targetS` and `shiftTarget` (`kTSS`, `kSTS`, SEG-R1b) are in `FRNodeRows4RepSegT`; `rtSeg1` chains all
   five of the segment program's replay ops.
+
+SEG-R2: the definitions (`kRSS`, `rtSeg1`, `rtC1d`) moved verbatim to `FRNodeRows4SegD` (below `FRNodeRows4`, so that the
+fold names them); the theorems stay here.
 -/
 
 namespace FR
@@ -109,37 +112,6 @@ theorem rsSegV_congr (rv rv' : List F) (κ κ' : F) (ρ ρ' : List K) (a a' : �
 
 /-! ## `rsWeight`'s `KOpD` -/
 
-/-- An `rsWeight` with `act` false and three claims at every index. -/
-def isRSS : Op → Bool
-  | .rsWeight _ ps _ _ act _ => kinds.all (fun ι => !act ι) && kinds.all fun ι => (ps ι).length == 3
-  | _ => false
-
-/-- The operand types the template serves: `[af 7, f, f, ak m ×4]`, `23 ≤ m ≤ 25`. -/
-def rssIn : List Ty → Bool
-  | [.af 7, .f, .f, .ak m, .ak m₁, .ak m₂, .ak m₃] =>
-    decide (23 ≤ m) && decide (m ≤ 25) && m₁ == m && m₂ == m && m₃ == m
-  | _ => false
-
-/-- `ρ`'s width. -/
-def rssM : List Ty → ℕ
-  | _ :: _ :: _ :: .ak m :: _ => m
-  | _ => 0
-
-/-- Canonical input `p`'s encoding position (`r″`, `κ`; `ρ`; the claims' `f₀`). -/
-def rssLay (ts : List Ty) (p : ℕ) : Option ℕ :=
-  if p < 8 then some p
-  else if p < 58 then (if (p - 8) / 2 < rssM ts then some (p + 1) else none)
-  else if p < 133 then
-    (if (p - 58) % 25 < rssM ts then
-      some (9 + 2 * rssM ts + 2 * rssM ts * ((p - 58) / 25) + 2 * ((p - 58) % 25)) else none)
-  else none
-
-/-- The claims' `f₁` positions (forced to `0`: `F`-points). -/
-def rssZf (ts : List Ty) : List ℕ :=
-  (List.range 3).flatMap fun j => (List.range (rssM ts)).map fun l => 10 + 2 * rssM ts + 2 * rssM ts * j + 2 * l
-
-/-- **The segment's `rsWeight` replay.** -/
-def kRSS : KOpD := ⟨isRSS, rsArgs, rssIn, 133, rssLay, rssZf, rsSegT, [.k]⟩
 
 theorem rssIn_eq {ts : List Ty} (h : rssIn ts = true) :
     ∃ m, ts = [.af 7, .f, .f, .ak m, .ak m, .ak m, .ak m] ∧ 23 ≤ m ∧ m ≤ 25 := by
@@ -302,22 +274,6 @@ theorem kRSS_ok {impl₀ : OpImpl} {base : NodeKind → OpImpl} (hR : impl₀.rs
 
 /-! ## Prototype 1's templates -/
 
-/-- `rsWeight`'s locals (the mux's 207, then the template's 36,923; below `repB + 2^16`). -/
-def cbRSS : ℕ := repB + 2 ^ 12
-
-/-- `targetS`'s locals (mux, then `tsSegT`'s 55; < `2^9`) and `shiftTarget`'s (mux, then `stSegT`'s 1,301;
-< `2^12 − 2^9`): both in `[repB, cbRSS)`, the block below `rsWeight`'s (R2: cell band 2). -/
-def cbTSS : ℕ := repB
-def cbSTS : ℕ := repB + 2 ^ 9
-
-/-- **Prototype 1's replay templates** (SEG-R1, SEG-R1b): `linkWAll` (S-E14), `evalM`/`evalL` (zero),
-`rsWeight`, `targetS`, `shiftTarget`. -/
-def rtSeg1 : RT :=
-  (rtLinkSegW repB).orElse ((rtEvZ repB).orElse ((rtKD kRSS repB cbRSS).orElse
-    ((rtKD kTSS repB cbTSS).orElse (rtKD kSTS repB cbSTS))))
-
-/-- **The replay templates per prototype** (`rtC1c` with prototype 1's `rtSeg1`). -/
-def rtC1d (π : ℕ) : RT := if π = 0 then rtN0c else if π = 1 then rtSeg1 else RT.none
 
 theorem rtC1d_ok {impl₀ : OpImpl} {base : NodeKind → OpImpl} (hZ : LinkZero impl₀) (hB : STBase base)
     (hS : SegBase impl₀) {π : ℕ} (hπ : π ≤ 1) (ι : Kind) :

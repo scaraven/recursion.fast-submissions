@@ -488,6 +488,14 @@ def pinKeys : List (ℕ × ℕ) :=
 which both prototypes' points share: `kprep_star`). -/
 def lowKeys (keys : Array Key) : Bool := keys.all fun K => decide (K.A ≤ 20) && decide (K.B ≤ 20)
 
+/-- A segment slot's replay cell in its region's local coordinates (SEG-R2): a frame cell (region 1)
+moved to region 0, a local at its band (`segCell`). -/
+def segLocC (c : ℕ) : ℕ := if c < N4s.repB then c - slotM4 else N4s.segCell (c - N4s.repB)
+
+/-- **Prototype 1's replay rows in a segment region's local coordinates** (SEG-R2): row `k` at `segRow k`,
+cells by `segLocC`; every segment slot's rows are these, moved to its region (`repV1_eq`). -/
+def seg1Loc (rows : List Row) : List (ℕ × Row) := rows.zipIdx.map fun p => (N4s.segRow p.2, rowMapC segLocC p.1)
+
 /-- **The 4.1 nodes' plan** (all of `N2`, `N4`, `N8`): the shared keys, each prototype's shared
 forms and pieces (its rows, `ok`), the prepared forms, and the checks. -/
 structure Plan4 where
@@ -533,7 +541,10 @@ structure Plan4 where
   overflowed the stack at process start. -/
   rp0 : Thunk (Array Row)
   rp1 : Thunk (Array Row)
-  hrp : rp0.get.toList = N4s.repRowsP (N4s.rtC1c 0) 0 ∧ rp1.get.toList = N4s.repRowsP (N4s.rtC1c 1) 1
+  hrp : rp0.get.toList = N4s.repRowsP (N4s.rtC1d 0) 0 ∧ rp1.get.toList = N4s.repRowsP (N4s.rtC1d 1) 1
+  /-- Prototype 1's replay rows in a segment region's local coordinates, grouped (SEG-R2, `seg1Loc`). -/
+  rg1 : GRows
+  hrg1 : rg1 = grows (2 ^ 11) (2 ^ 12) (seg1Loc (N4s.repRowsP (N4s.rtC1d 1) 1))
   /-- Prototype 0's replay rows (CF2): its row blocks' rows in local coordinates, grouped (frame part,
   local part), and its `rsWeight` ops prepared at their first rows (`kpOf`; their rows not built). -/
   rgF : GRows
@@ -550,8 +561,8 @@ def mkPlan4 (keys : Array Key) (sh0 sh1 : Array (List Lin)) (pc0 pc1 : List Piec
     (ok : keys.all (Key.ok 21) = true ∧ pc0.flatMap (Piece.rows keys sh0 (oneP 0)) = protoRows 0 ∧
       pc1.flatMap (Piece.rows keys sh1 (oneP 1)) = protoRows 1) (ar0 ar1 : List Row)
     (har : ar0 = askRowsT 0 ∧ ar1 = askRowsT 1) (rl1 : List Row)
-    (hrl : rl1 = N4s.repRowsP (N4s.rtC1c 1) 1) (rp0 rp1 : Thunk (Array Row))
-    (hrp : rp0.get.toList = N4s.repRowsP (N4s.rtC1c 0) 0 ∧ rp1.get.toList = N4s.repRowsP (N4s.rtC1c 1) 1)
+    (hrl : rl1 = N4s.repRowsP (N4s.rtC1d 1) 1) (rp0 rp1 : Thunk (Array Row))
+    (hrp : rp0.get.toList = N4s.repRowsP (N4s.rtC1d 0) 0 ∧ rp1.get.toList = N4s.repRowsP (N4s.rtC1d 1) 1)
     (q : List (Row × ℕ) × List (ℕ × KP))
     (hq : ∃ bs : List RBlk, bs.flatMap RBlk.rows = N4s.repRowsP (N4s.rtC1c 0) 0 ∧ q = blkGo 0 bs [] []) : Plan4 where
   keys := keys
@@ -574,11 +585,11 @@ def mkPlan4 (keys : Array Key) (sh0 sh1 : Array (List Lin)) (pc0 pc1 : List Piec
     idsOkB keys pc0 && idsOkB keys pc1 && lowKeys keys &&
     (ivBelow keys pc0 (0 * slotM4 + arR2) && ivBelow keys pc1 (1 * slotM4 + arR2) &&
       decide (ar0.length ≤ arR2N) && decide (ar1.length ≤ arR2N) && inSlotB 0 (idxAr 0 ar0) &&
-      inSlotB 1 (idxAr 1 ar1)) && (repFitS q && repFitB 1 rl1)
+      inSlotB 1 (idxAr 1 ar1)) && (repFitS q && repFitB 1 rl1 && ivBelow keys pc1 (slotM4 + N4s.repA))
   hR := fun h => by
     simp only [Bool.and_eq_true, decide_eq_true_eq] at h
-    obtain ⟨⟨⟨⟨⟨⟨h0, h1⟩, i0⟩, i1⟩, hk⟩, ⟨⟨⟨⟨⟨b0, b1⟩, l0⟩, l1⟩, s0⟩, s1⟩⟩, r0, r1⟩ := h
-    refine ⟨fun π hπ => ?_, hk, fun π hπ => ?_, fun π hπ => ?_⟩
+    obtain ⟨⟨⟨⟨⟨⟨h0, h1⟩, i0⟩, i1⟩, hk⟩, ⟨⟨⟨⟨⟨b0, b1⟩, l0⟩, l1⟩, s0⟩, s1⟩⟩, ⟨r0, r1⟩, rA⟩ := h
+    refine ⟨fun π hπ => ?_, hk, fun π hπ => ?_, ⟨fun π hπ => ?_, ok.2.2 ▸ ivBelow_spec rA⟩⟩
     · rcases Nat.le_one_iff_eq_zero_or_eq_one.1 hπ with rfl | rfl
       · exact ⟨ok.2.1 ▸ pcIn_spec ok.1 h0, ok.2.1 ▸ idsOkB_spec i0⟩
       · exact ⟨ok.2.2 ▸ pcIn_spec ok.1 h1, ok.2.2 ▸ idsOkB_spec i1⟩
@@ -588,7 +599,7 @@ def mkPlan4 (keys : Array Key) (sh0 sh1 : Array (List Lin)) (pc0 pc1 : List Piec
       · rw [askPI_eq, ← har.2, ← ok.2.2, ← inSlotB_iff]
         exact ⟨ivBelow_spec b1, l1, s1⟩
     · rcases Nat.le_one_iff_eq_zero_or_eq_one.1 hπ with rfl | rfl
-      · obtain ⟨bs, hb, rfl⟩ := hq; rw [← hb]; exact repFitS_spec bs r0
+      · obtain ⟨bs, hb, rfl⟩ := hq; rw [N4s.rtC1d_zero, ← hb]; exact repFitS_spec bs r0
       · rw [← hrl]; exact r1
   lk2 := lkArr .N2
   lk4 := lkArr .N4
@@ -609,6 +620,8 @@ def mkPlan4 (keys : Array Key) (sh0 sh1 : Array (List Lin)) (pc0 pc1 : List Piec
   rp0 := rp0
   rp1 := rp1
   hrp := hrp
+  rg1 := grows (2 ^ 11) (2 ^ 12) (seg1Loc rl1)
+  hrg1 := by rw [hrl]
   rgF := grows (2 ^ 11) (2 ^ 12) (q.1.map fun p => (p.2, rowFr p.1))
   rgL := grows (2 ^ 11) (2 ^ 12) (q.1.map fun p => (p.2, rowLoc p.1))
   kps := q.2
@@ -639,7 +652,7 @@ def planDataB : (Array GK × Array (List Lin) × Array (List Lin) × List Piece 
   let q0 := compMSXB (tplExt4 (protoF 0) (protoR 0)) l0 (protoP 0) (askTG 0) (N4s.rtC1c 0) blk0 []
     (CS.init (baseR 0)) ops0 none [] none 0 [] []
   let r0 := q0.1
-  let q1 := compMSXB (tplExt4 (protoF 1) (protoR 1)) l1 (protoP 1) (askTG 1) (N4s.rtC1c 1) (spBlk (N4s.rtC1c 1))
+  let q1 := compMSXB (tplExt4 (protoF 1) (protoR 1)) l1 (protoP 1) (askTG 1) (N4s.rtC1d 1) (spBlk (N4s.rtC1d 1))
     r0.2.2 (CS.init (baseR 1)) ops1 none [] none 0 [] []
   let r1 := q1.1
   let p0 := slotRP (oneP 0) kms l0 0 r0.1 r0.2.1.reverse []
@@ -652,7 +665,7 @@ def planDataB : (Array GK × Array (List Lin) × Array (List Lin) × List Piece 
 def DataOk (x : (Array GK × Array (List Lin) × Array (List Lin) × List Piece × List Piece) ×
     (List Row × List RBlk) × (List Row × List RBlk)) : Prop :=
   x.1 = planData4 ∧ x.2.1.1 = askRowsT 0 ∧ x.2.1.2.flatMap RBlk.rows = N4s.repRowsP (N4s.rtC1c 0) 0 ∧
-    x.2.2.1 = askRowsT 1 ∧ x.2.2.2.flatMap RBlk.rows = N4s.repRowsP (N4s.rtC1c 1) 1
+    x.2.2.1 = askRowsT 1 ∧ x.2.2.2.flatMap RBlk.rows = N4s.repRowsP (N4s.rtC1d 1) 1
 
 /-- **The one walk is the plan's data, the ask rows and the replay rows.** -/
 theorem planDataB_eq : DataOk planDataB := by
@@ -680,9 +693,9 @@ def planOf4D (x : (Array GK × Array (List Lin) × Array (List Lin) × List Piec
     ⟨b0.2, hx.2.2.1, rfl⟩
   let t0 : Thunk (Array Row) := Thunk.mk fun _ => (arRepOf k0).2.toArray
   let t1 : Thunk (Array Row) := Thunk.mk fun _ => (arRepOf (k0 + 1)).2.toArray
-  have h0 : t0.get.toList = N4s.repRowsP (N4s.rtC1c 0) 0 := by
+  have h0 : t0.get.toList = N4s.repRowsP (N4s.rtC1d 0) 0 := by
     show (arRepOf k0).2.toArray.toList = _; rw [hk, arRepOf_eq 0, List.toList_toArray]
-  have h1 : t1.get.toList = N4s.repRowsP (N4s.rtC1c 1) 1 := by
+  have h1 : t1.get.toList = N4s.repRowsP (N4s.rtC1d 1) 1 := by
     show (arRepOf (k0 + 1)).2.toArray.toList = _; rw [hk, arRepOf_eq 1, List.toList_toArray]
   if h : (d.1.map mkKey).all (Key.ok 21) = true then
     mkPlan4 (d.1.map mkKey) d.2.1 d.2.2.1 d.2.2.2.1 d.2.2.2.2
@@ -905,7 +918,7 @@ theorem repMapC_term {κ : NodeKind} (hp : κ.hasPrev = true) (u : ℕ → F) {q
   have h0 : (0 : ℕ) < 2 ^ (κ.dims.logM - 20) := Nat.two_pow_pos _
   simp only [repCellOk, if_true, Bool.or_eq_true, Bool.and_eq_true, decide_eq_true_eq] at hq
   have hp0 : protoOf κ 0 = 0 := by simp [protoOf, isPrevSlot, hp]
-  simp only [N4s.repMapC, hp0, mvC, oneCell_eq]
+  simp only [N4s.repMapC, hp0, mvC, oneCell_eq, eq_self_iff_true, if_true]
   split_ifs with h
   · have hx : q.1 < 2 ^ 20 := by rcases hq with hq | hq <;> omega
     have := gN_cell hl h0 u hx
@@ -970,6 +983,83 @@ theorem repV0_eq {κ : NodeKind} (hp : κ.hasPrev = true) (t u : ℕ → F) {row
     hcell r hrm q (by cases s <;> simp only [Mat.r] at hq <;> simp [hq])
   dsimp only
   rw [r_rowMapC, linE_rep hp u _ hc, gN_row hl (vslots_lt hp) t hk, gN_lo hk, r_rowFr, r_rowLoc]
+  ring
+
+theorem segCell_lt' {j : ℕ} (hj : j < N4s.segCap) : N4s.segCell j < 2 ^ 20 := by
+  have e : N4s.segCap = 52462 := rfl
+  unfold N4s.segCell
+  by_cases h1 : j < 2 ^ 12
+  · rw [if_pos h1]; omega
+  · rw [if_neg h1]; by_cases h2 : j < 39744
+    · rw [if_pos h2]; omega
+    · rw [if_neg h2]; omega
+
+theorem segRow_lt' {k : ℕ} (hk : k < N4s.segRN) : N4s.segRow k < 2 ^ 20 := by
+  have e1 : N4s.segRN = 59904 := rfl
+  have e2 : N4s.segBN = 27136 := rfl
+  have e3 : N4s.repSegB = 988672 := rfl
+  have e4 : N4s.repA = 688128 := rfl
+  unfold N4s.segRow
+  by_cases h : k < N4s.segBN
+  · rw [if_pos h]; omega
+  · rw [if_neg h]; omega
+
+/-- One term of a segment slot's replay form, moved by `repMapC κ v`, against the local coordinates
+(SEG-R2). -/
+theorem repMapC_term1 {κ : NodeKind} {v : ℕ} (h1 : protoOf κ v = 1) (hv : v < 2 ^ (κ.dims.logM - 20))
+    (u : ℕ → F) {q : ℕ × F} (hq : repCellOk 1 q.1 = true) :
+    q.2 * gN (κ.dims.logM + 2) u (N4s.repMapC κ v q.1) =
+      (hiF κ.dims.logM u v * (u κ.dims.logM * u (κ.dims.logM + 1))) * (q.2 * gN 20 u (segLocC q.1)) := by
+  have hl : 20 ≤ κ.dims.logM := by cases κ <;> decide
+  have hM : slotM4 = 2 ^ 20 := rfl
+  have hB : N4s.repB = 2 ^ 40 := rfl
+  simp only [repCellOk, one_ne_zero, if_false, inSB, Bool.or_eq_true, Bool.and_eq_true, decide_eq_true_eq,
+    one_mul] at hq
+  have hx : segLocC q.1 < 2 ^ 20 := by
+    unfold segLocC; split_ifs with h
+    · omega
+    · have hj : q.1 - N4s.repB < N4s.segCap := by rcases hq with hq | hq <;> omega
+      exact segCell_lt' hj
+  have e : N4s.repMapC κ v q.1 = v * slotM4 + segLocC q.1 + 3 * 2 ^ κ.dims.logM := by
+    simp only [N4s.repMapC, segLocC, h1, mvC, one_mul, oneCell_eq, one_ne_zero, if_false]
+    split_ifs with h
+    · rcases hq with hq | hq <;> omega
+    · omega
+  rw [e, gN_cell hl hv u hx, gN_lo hx]; ring
+
+/-- A segment slot's replay form's value at the node, from its local value (SEG-R2). -/
+theorem linE_rep1 {κ : NodeKind} {v : ℕ} (h1 : protoOf κ v = 1) (hv : v < 2 ^ (κ.dims.logM - 20)) (u : ℕ → F) :
+    ∀ (l : Lin), (∀ q ∈ l, repCellOk 1 q.1 = true) →
+      linE (RingHom.id F) (κ.dims.logM + 2) u (mapC (N4s.repMapC κ v) l) =
+        (hiF κ.dims.logM u v * (u κ.dims.logM * u (κ.dims.logM + 1))) * linE (RingHom.id F) 20 u (mapC segLocC l) := by
+  intro l hl
+  simp only [linE, mapC, List.map_map, Function.comp_def, RingHom.id_apply]
+  rw [← List.sum_map_mul_left]
+  exact congrArg List.sum (List.map_congr_left fun q hq => repMapC_term1 h1 hv u (hl q hq))
+
+/-- **A segment slot's replay rows' value, one matrix** (SEG-R2): prototype 1's local value (`seg1Loc`),
+scaled by the slot's region's high factors. -/
+theorem repV1_eq {κ : NodeKind} {v : ℕ} (h1 : protoOf κ v = 1) (hv : v < 2 ^ (κ.dims.logM - 20)) (t u : ℕ → F)
+    {rows : List Row} (hfit : repFitB 1 rows = true) (s : Mat) :
+    rowsVal (RingHom.id F) s κ.dims.logM (κ.dims.logM + 2) t u
+        (rows.zipIdx.map fun p => (v * slotM4 + N4s.segRow p.2, rowMapC (N4s.repMapC κ v) p.1)) =
+      (hiF κ.dims.logM t v * (hiF κ.dims.logM u v * (u κ.dims.logM * u (κ.dims.logM + 1)))) *
+        rowsVal (RingHom.id F) s 20 20 t u (seg1Loc rows) := by
+  have hl : 20 ≤ κ.dims.logM := by cases κ <;> decide
+  simp only [repFitB, one_ne_zero, if_false, Bool.and_eq_true, decide_eq_true_eq, List.all_eq_true] at hfit
+  obtain ⟨hlen, hcell⟩ := hfit
+  simp only [rowsVal, seg1Loc, List.map_map, Function.comp_def]
+  rw [← List.sum_map_mul_left]
+  refine congrArg List.sum (List.map_congr_left fun p hp' => ?_)
+  obtain ⟨r, k⟩ := p
+  obtain ⟨hkl, hr⟩ := List.getElem?_eq_some_iff.1 (List.mk_mem_zipIdx_iff_getElem?.1 hp')
+  have hrm : r ∈ rows := hr ▸ List.getElem_mem hkl
+  have hk : N4s.segRow k < 2 ^ 20 := by
+    exact segRow_lt' (lt_of_lt_of_le hkl hlen)
+  have hc : ∀ q ∈ s.r r, repCellOk 1 q.1 = true := fun q hq =>
+    hcell r hrm q (by cases s <;> simp only [Mat.r] at hq <;> simp [hq])
+  dsimp only
+  rw [r_rowMapC, linE_rep1 h1 hv u _ hc, gN_row hl hv t hk, gN_lo hk, r_rowMapC]
   ring
 
 /-! ## `evalM` -/
@@ -1189,6 +1279,9 @@ structure LCx where
   /-- The previous node's replay rows' frame and local values in local coordinates (REPF; once per
   call, shared by `N2` and `N4`). -/
   rv : Thunk (F3 × F3)
+  /-- Prototype 1's replay rows' value in a segment region's local coordinates (SEG-R2; once per call,
+  shared by every segment slot of every kind). -/
+  rv1 : Thunk F3
 
 /-- The thunks of the plan's runs at the low tables. -/
 def thsOf (pl : Plan4) (tlo slo : Array F) : List ((ℕ × ℕ) × Thunk PIn) :=
@@ -1202,8 +1295,8 @@ def innAt (cx : LCx) (k : ℕ × ℕ) : PIn :=
 
 theorem thunk_get {α : Type} (f : Unit → α) : (Thunk.mk f).get = f () := rfl
 
-theorem innAt_thsOf (pl : Plan4) (L : LTb) (rv : Thunk (F3 × F3)) (k : ℕ × ℕ) :
-    innAt ⟨L, thsOf pl L.tlo L.slo, rv⟩ k = prIn L.tlo L.slo (runsOf k.2 k.1 wfSeg) := by
+theorem innAt_thsOf (pl : Plan4) (L : LTb) (rv : Thunk (F3 × F3)) (rv1 : Thunk F3) (k : ℕ × ℕ) :
+    innAt ⟨L, thsOf pl L.tlo L.slo, rv, rv1⟩ k = prIn L.tlo L.slo (runsOf k.2 k.1 wfSeg) := by
   unfold innAt
   split
   · rename_i p hp
@@ -1251,30 +1344,39 @@ theorem rvOf_get (pl : Plan4) (t u : ℕ → F) : (rvOf pl (loTab 11 t) (loTab 1
   simp only [rows3, add3, kpsV3, rowsVal_spF, rowsVal_spL, repLocF, repLocL, spV_zipIdx,
     blk_val _ t u _ _ (wF_cb u), blk_val _ t u _ _ (wL_cb u)]
 
+/-- **Prototype 1's replay rows' local value** (SEG-R2): the grouped rows `rg1` at the split tables. -/
+def rv1Of (pl : Plan4) (tlo slo : Array F) (t u : ℕ → F) : Thunk F3 :=
+  Thunk.mk fun _ => growsVal3 tlo (loTab 9 fun l => t (11 + l)) slo (loTab 8 fun l => u (12 + l)) pl.rg1
+
+theorem rv1Of_get (pl : Plan4) (t u : ℕ → F) : (rv1Of pl (loTab 11 t) (loTab 12 u) t u).get =
+    rows3 20 20 t u (seg1Loc (N4s.repRowsP (N4s.rtC1d 1) 1)) := by
+  rw [rv1Of, thunk_get, pl.hrg1, repV_eq]
+
 /-- **`cx` is the context at `(t, u)`** over `lm` row coordinates. -/
 def CxAt (cx : LCx) (lm : ℕ) (t u : ℕ → F) : Prop :=
   cx.L = ltbOf lm t u ∧ (∀ k, innAt cx k = prIn cx.L.tlo cx.L.slo (runsOf k.2 k.1 wfSeg)) ∧
     cx.rv.get = (rows3 20 20 t u (repLocF (N4s.repRowsP (N4s.rtC1c 0) 0)),
-      rows3 20 20 t u (repLocL (N4s.repRowsP (N4s.rtC1c 0) 0)))
+      rows3 20 20 t u (repLocL (N4s.repRowsP (N4s.rtC1c 0) 0))) ∧
+    cx.rv1.get = rows3 20 20 t u (seg1Loc (N4s.repRowsP (N4s.rtC1d 1) 1))
 
 theorem ltbOf_lo (lm : ℕ) (t u : ℕ → F) : (ltbOf lm t u).tlo = loTab 11 t ∧ (ltbOf lm t u).slo = loTab 12 u := by
   simp only [ltbOf, and_self]
 
 theorem cxAt_mk (pl : Plan4) (lm : ℕ) (t u : ℕ → F) (L : LTb) (hL : L = ltbOf lm t u) :
-    CxAt ⟨L, thsOf pl L.tlo L.slo, rvOf pl L.tlo L.slo t u⟩ lm t u := by
-  refine ⟨hL, innAt_thsOf pl L (rvOf pl L.tlo L.slo t u), ?_⟩
+    CxAt ⟨L, thsOf pl L.tlo L.slo, rvOf pl L.tlo L.slo t u, rv1Of pl L.tlo L.slo t u⟩ lm t u := by
+  refine ⟨hL, innAt_thsOf pl L (rvOf pl L.tlo L.slo t u) (rv1Of pl L.tlo L.slo t u), ?_⟩
   rw [(congrArg LTb.tlo hL).trans (ltbOf_lo lm t u).1, (congrArg LTb.slo hL).trans (ltbOf_lo lm t u).2]
-  exact rvOf_get pl t u
+  exact ⟨rvOf_get pl t u, rv1Of_get pl t u⟩
 
 /-- `cxAt_mk` at a table literal (its low tables named, so that no `loTab` is unfolded). -/
 theorem cxAt_lo (pl : Plan4) (lm : ℕ) (t u : ℕ → F) (lo so : Array F) (hi : Array F × Array F)
     (hL : (⟨lo, hi.1, so, hi.2⟩ : LTb) = ltbOf lm t u) :
-    CxAt ⟨⟨lo, hi.1, so, hi.2⟩, thsOf pl lo so, rvOf pl lo so t u⟩ lm t u :=
+    CxAt ⟨⟨lo, hi.1, so, hi.2⟩, thsOf pl lo so, rvOf pl lo so t u, rv1Of pl lo so t u⟩ lm t u :=
   cxAt_mk pl lm t u _ hL
 
 theorem cxAt_of (pl : Plan4) (lm : ℕ) (t u : ℕ → F) :
     CxAt ⟨ltbOf lm t u, thsOf pl (ltbOf lm t u).tlo (ltbOf lm t u).slo,
-      rvOf pl (ltbOf lm t u).tlo (ltbOf lm t u).slo t u⟩ lm t u :=
+      rvOf pl (ltbOf lm t u).tlo (ltbOf lm t u).slo t u, rv1Of pl (ltbOf lm t u).tlo (ltbOf lm t u).slo t u⟩ lm t u :=
   cxAt_mk pl lm t u _ rfl
 
 /-- A kind's grouped link rows. -/
@@ -1373,12 +1475,12 @@ def slotV4o (pl : Plan4) (κ : NodeKind) (t u : ℕ → F) (cx : LCx) (vN vS : F
   add3 (add3 (smul3 (hiF lm t σ * (hiF lm u σ * (u lm * u (lm + 1)))) (if protoOf κ σ = 0 then vN else vS))
     (arV4 κ t u σ)) (linkV4 pl cx κ σ)
 
-/-- Slot `v`'s replay rows from the plan's rows (`repIRowsW rtC1c`, `repIRowsWP_eq`). -/
+/-- Slot `v`'s replay rows from the plan's rows (`repIRowsW rtC1d`, `repIRowsWP_eq`). -/
 def repIRowsWP (pl : Plan4) (κ : NodeKind) (v : ℕ) : List (ℕ × Row) :=
   (if protoOf κ v = 0 then pl.rp0 else pl.rp1).get.toList.zipIdx.map fun p =>
-    (N4s.repRow0 κ v + p.2, rowMapC (N4s.repMapC κ v) p.1)
+    (N4s.repRowI κ v p.2, rowMapC (N4s.repMapC κ v) p.1)
 
-theorem repIRowsWP_eq (pl : Plan4) (κ : NodeKind) (v : ℕ) : repIRowsWP pl κ v = N4s.repIRowsW N4s.rtC1c κ v := by
+theorem repIRowsWP_eq (pl : Plan4) (κ : NodeKind) (v : ℕ) : repIRowsWP pl κ v = N4s.repIRowsW N4s.rtC1d κ v := by
   unfold repIRowsWP N4s.repIRowsW
   split_ifs with h
   · rw [h, pl.hrp.1]
@@ -1388,20 +1490,20 @@ theorem repIRowsWP_eq (pl : Plan4) (κ : NodeKind) (v : ℕ) : repIRowsWP pl κ 
     rw [h1, pl.hrp.2]
 
 /-- **Slot `σ`'s replay rows' value** (REPF): the previous node's slot from the context's shared local
-values (`cx.rv`: frame and local parts, scaled by their regions' high factors), a segment slot's rows
-(8, `rtLinkSegW`) sparse. -/
+values (`cx.rv`: frame and local parts, scaled by their regions' high factors); a segment slot's from the
+context's shared local value of prototype 1's (`cx.rv1`, SEG-R2), scaled by its region's high factors. -/
 def repV4 (pl : Plan4) (κ : NodeKind) (t u : ℕ → F) (cx : LCx) (σ : ℕ) : F3 :=
   let lm := κ.dims.logM
   if protoOf κ σ = 0 then
     let r := cx.rv.get
     smul3 (hiF lm t κ.vslots * (u lm * u (lm + 1)))
       (add3 (smul3 (hiF lm u 0) r.1) (smul3 (hiF lm u κ.vslots) r.2))
-  else rows3 lm (lm + 2) t u (repIRowsWP pl κ σ)
+  else smul3 (hiF lm t σ * (hiF lm u σ * (u lm * u (lm + 1)))) cx.rv1.get
 
 /-- **`repV4` is the slot's replay rows' sparse value** (the context at the point, the rows fit). -/
 theorem repV4_eq (pl : Plan4) (κ : NodeKind) (t u : ℕ → F) {cx : LCx} (hc : CxAt cx κ.dims.logM t u)
-    (hR : RepFit) (σ : ℕ) :
-    repV4 pl κ t u cx σ = rows3 κ.dims.logM (κ.dims.logM + 2) t u (N4s.repIRowsW N4s.rtC1c κ σ) := by
+    (hR : RepFit) {σ : ℕ} (hσ : σ < κ.vslots) :
+    repV4 pl κ t u cx σ = rows3 κ.dims.logM (κ.dims.logM + 2) t u (N4s.repIRowsW N4s.rtC1d κ σ) := by
   unfold repV4
   split_ifs with h0
   · have hp : κ.hasPrev = true ∧ σ = 0 := by
@@ -1409,14 +1511,23 @@ theorem repV4_eq (pl : Plan4) (κ : NodeKind) (t u : ℕ → F) {cx : LCx} (hc :
       split_ifs at h0 with h'
       simpa using h'
     obtain ⟨hp, rfl⟩ := hp
-    have hf := hR 0 (by norm_num)
-    have e : N4s.repIRowsW N4s.rtC1c κ 0 = (N4s.repRowsP (N4s.rtC1c 0) 0).zipIdx.map fun p =>
+    have hf := hR.1 0 (by norm_num)
+    rw [N4s.rtC1d_zero] at hf
+    have e : N4s.repIRowsW N4s.rtC1d κ 0 = (N4s.repRowsP (N4s.rtC1c 0) 0).zipIdx.map fun p =>
         (κ.vslots * slotM4 + p.2, rowMapC (N4s.repMapC κ 0) p.1) := by
-      simp only [N4s.repIRowsW, N4s.repRow0, h0, if_true]
+      simp only [N4s.repIRowsW, N4s.repRowI, N4s.repRow0, h0, if_true, N4s.rtC1d_zero]
     dsimp only
-    rw [hc.2.2, e]
+    rw [hc.2.2.1, e]
     simp only [rows3, smul3, add3, repV0_eq hp t u hf]
-  · rw [repIRowsWP_eq]
+  · have h1 : protoOf κ σ = 1 := by simp only [protoOf] at h0 ⊢; split_ifs at h0 ⊢ <;> omega
+    have hf := hR.1 1 le_rfl
+    have hv : σ < 2 ^ (κ.dims.logM - 20) := lt_of_lt_of_le hσ (by cases κ <;> decide)
+    have e : N4s.repIRowsW N4s.rtC1d κ σ = (N4s.repRowsP (N4s.rtC1d 1) 1).zipIdx.map fun p =>
+        (σ * slotM4 + N4s.segRow p.2, rowMapC (N4s.repMapC κ σ) p.1) := by
+      simp only [N4s.repIRowsW, N4s.repRowI, h1, one_ne_zero, ite_false]
+    dsimp only
+    rw [hc.2.2.2, e]
+    simp only [rows3, smul3, repV1_eq h1 hv t u hf]
 
 theorem sum3_add {α : Type*} (f g : α → F3) (l : List α) :
     sum3 (fun x => add3 (f x) (g x)) l = add3 (sum3 f l) (sum3 g l) := by
@@ -1470,17 +1581,22 @@ theorem arIRowsP_eq (pl : Plan4) (κ : NodeKind) (σ : ℕ) : arIRowsP pl κ σ 
 /-- `repAllRows` from the plan's rows (the fallback's). -/
 def repAllRowsP (pl : Plan4) (κ : NodeKind) : List (ℕ × Row) :=
   if arFitP pl = true then
-    (if (repFitB 0 pl.rp0.get.toList && repFitB 1 pl.rp1.get.toList) = true then (List.range κ.vslots).flatMap (repIRowsWP pl κ)
+    (if (repFitB 0 pl.rp0.get.toList && repFitB 1 pl.rp1.get.toList &&
+        (protoRowsP pl 1).all fun p => decide (p.1 < slotM4 + N4s.repA)) = true then
+      (List.range κ.vslots).flatMap (repIRowsWP pl κ)
       else [(N4s.repSegB, rejR κ)])
   else []
 
-theorem repFit_iff (pl : Plan4) : (repFitB 0 pl.rp0.get.toList && repFitB 1 pl.rp1.get.toList) = true ↔ RepFit := by
-  rw [pl.hrp.1, pl.hrp.2, Bool.and_eq_true]
+theorem repFit_iff (pl : Plan4) : (repFitB 0 pl.rp0.get.toList && repFitB 1 pl.rp1.get.toList &&
+    (protoRowsP pl 1).all fun p => decide (p.1 < slotM4 + N4s.repA)) = true ↔ RepFit := by
+  rw [pl.hrp.1, pl.hrp.2, protoRowsP_eq pl 1 le_rfl, Bool.and_eq_true, Bool.and_eq_true, List.all_eq_true]
+  simp only [decide_eq_true_eq]
   constructor
-  · rintro ⟨h0, h1⟩ π hπ
+  · rintro ⟨⟨h0, h1⟩, hA⟩
+    refine ⟨fun π hπ => ?_, hA⟩
     rcases Nat.le_one_iff_eq_zero_or_eq_one.1 hπ with rfl | rfl
     exacts [h0, h1]
-  · intro h; exact ⟨h 0 (by norm_num), h 1 le_rfl⟩
+  · intro h; exact ⟨⟨h.1 0 (by norm_num), h.1 1 le_rfl⟩, h.2⟩
 
 theorem repAllRowsP_eq (pl : Plan4) (κ : NodeKind) : repAllRowsP pl κ = repAllRows κ := by
   have hf : arFitP pl = true ↔ ArFit := by
@@ -1490,7 +1606,7 @@ theorem repAllRowsP_eq (pl : Plan4) (κ : NodeKind) : repAllRowsP pl κ = repAll
   · rw [if_pos (hf.2 hA), if_pos hA]
     by_cases hR : RepFit
     · rw [if_pos ((repFit_iff pl).2 hR), if_pos hR]
-      rw [show repIRowsWP pl κ = N4s.repIRowsW N4s.rtC1c κ from funext (repIRowsWP_eq pl κ)]
+      rw [show repIRowsWP pl κ = N4s.repIRowsW N4s.rtC1d κ from funext (repIRowsWP_eq pl κ)]
     · rw [if_neg (mt (repFit_iff pl).1 hR), if_neg hR]
   · rw [if_neg (mt hf.1 hA), if_neg hA]
 
@@ -1520,7 +1636,8 @@ def evalMT4 (pl : Plan4) (κ : NodeKind) (τ σ : Array F) : F3 :=
   if pl.inR then
     let v := protoV4 pl t u κ.hasPrev
     let L := ltbOf κ.dims.logM t u
-    sum3 (slotV4 pl κ t u ⟨L, thsOf pl L.tlo L.slo, rvOf pl L.tlo L.slo t u⟩ v.1 v.2) (List.range κ.vslots)
+    sum3 (slotV4 pl κ t u ⟨L, thsOf pl L.tlo L.slo, rvOf pl L.tlo L.slo t u, rv1Of pl L.tlo L.slo t u⟩ v.1 v.2)
+      (List.range κ.vslots)
   else rows3 κ.dims.logM (κ.dims.logM + 2) t u (nodeIRowsP pl κ)
 
 /-- **`evalM`'s specification**: the MLEs of `nodeIRows4 κ`'s matrices (`τ`: `logM` coordinates,
@@ -1562,7 +1679,7 @@ theorem slots_val (pl : Plan4) (hR : pl.inR = true) (κ : NodeKind) (τ σ : Arr
     rows3_flatMap]
   unfold slotV4
   rw [sum3_add]
-  refine congrArg₂ add3 ?_ (sum3_congr fun s _ => repV4_eq pl κ _ _ hc hRF s)
+  refine congrArg₂ add3 ?_ (sum3_congr fun s hs => repV4_eq pl κ _ _ hc hRF (List.mem_range.1 hs))
   obtain ⟨hR0, -⟩ := hF 0 (by norm_num)
   obtain ⟨hR1, -⟩ := hF 1 le_rfl
   obtain ⟨hl, hv⟩ := logM_ge κ

@@ -337,25 +337,55 @@ end
 section
 open RecursionFast Rev4 Circ
 
-/-- **Where a replay cell lives** (slot `v` of a node of kind `κ`): a frame cell where the slot's
-assignment reads it; a local (`c ≥ repB`) in the spare region, from cell `κ.vslots·2^20`. -/
-def repMapC (κ : Rev4.NodeKind) (v c : ℕ) : ℕ :=
-  if c < repB then mvC (protoOf κ v) v c + κ.oneCell else κ.vslots * slotM4 + (c - repB) + κ.oneCell
+/-- **A segment slot's local `j` (`c = repB + j`) in its region** (SEG-R2, SEG-R0 §3's free cell bands):
+the first `2^12` (`targetS`'s and `shiftTarget`'s blocks, `cbTSS`, `cbSTS`) in band 2 `[277,402, 290,816)`
+(the skeleton's end to arena₁), the next 35,648 (`rsWeight`'s, from `cbRSS`) in band 1 `[405,504, 441,152)`
+(the bits' end to the lowest instance), the rest in band 3 `[1,003,010, 1,015,728)` (between instance
+groups). `segCap` locals fit. -/
+def segCell (j : ℕ) : ℕ :=
+  if j < 2 ^ 12 then 277402 + j else if j < 39744 then 405504 + (j - 2 ^ 12) else 1003010 + (j - 39744)
 
-/-- **A segment slot's replay rows' first row in its region** (REPF): `31·2^15 − 2^10`, the last
-`2^10` rows before the link region (`31·2^15`; IMPC2's layout: the template rows and bits below it);
-S-E14's `repBase` lies in ASK-T's template-row range `[arR2, arR2 + arR2N)`. Room: `2^10` rows
-(prototype 1 has 8). -/
-def repSegB : ℕ := 31 * 2 ^ 15 - 2 ^ 10
+/-- The segment slot's locals that fit its three cell bands (`2^12 + 35,648 + 12,718`). -/
+def segCap : ℕ := 52462
+
+/-- **Where a replay cell lives** (slot `v` of a node of kind `κ`): a frame cell where the slot's
+assignment reads it; a local (`c ≥ repB`) of prototype 0 in the spare region, from cell `κ.vslots·2^20`,
+of prototype 1 in the slot's own region's free cell bands (`segCell`, SEG-R2). -/
+def repMapC (κ : Rev4.NodeKind) (v c : ℕ) : ℕ :=
+  if c < repB then mvC (protoOf κ v) v c + κ.oneCell
+  else if protoOf κ v = 0 then κ.vslots * slotM4 + (c - repB) + κ.oneCell
+  else v * slotM4 + segCell (c - repB) + κ.oneCell
+
+/-- **A segment slot's replay rows' first row in its region** (band B, SEG-R2): the bits' end
+`arRb + arNb` (`988,672` after SEG-R2's cut of `arR2N` to 154,368; `FRNodeRows4Fit.repConsts`), up to the
+link region `2^20 − 2^15`: `segBN = 27,136` rows. -/
+def repSegB : ℕ := 988672
+
+/-- Band B's rows (`2^20 − 2^15 − repSegB`). -/
+def segBN : ℕ := 27136
+
+/-- **Band A's first row** (SEG-R2): `688,128 = 21·2^15`, `2,048` rows above prototype 1's end (686,079;
+checked at process start, `RepFit`), up to the binding's first row `arR2 = 720,896`: 32,768 rows. -/
+def repA : ℕ := 688128
+
+/-- The segment's replay rows that fit bands B and A. -/
+def segRN : ℕ := 59904
+
+/-- **A segment slot's replay row `k` in its region** (SEG-R2): band B, then band A. -/
+def segRow (k : ℕ) : ℕ := if k < segBN then repSegB + k else repA + (k - segBN)
 
 /-- **Slot `v`'s replay rows' first row**: slot 0 of a node with a previous node (prototype 0) in
 the spare region (`κ.vslots·2^20`); a segment slot at `v·2^20 + repSegB`. -/
 def repRow0 (κ : Rev4.NodeKind) (v : ℕ) : ℕ := if protoOf κ v = 0 then κ.vslots * slotM4 else v * slotM4 + repSegB
 
+/-- **Slot `v`'s replay row `k`**: prototype 0's at `repRow0 κ v + k`, a segment slot's at
+`v·2^20 + segRow k` (SEG-R2: two bands). -/
+def repRowI (κ : Rev4.NodeKind) (v k : ℕ) : ℕ := if protoOf κ v = 0 then repRow0 κ v + k else v * slotM4 + segRow k
+
 /-- **Slot `v`'s replay rows** (absolute cells: `repMapC`). -/
 def repIRowsW (rt : ℕ → RT) (κ : Rev4.NodeKind) (v : ℕ) : List (ℕ × Row) :=
   (repRowsP (rt (protoOf κ v)) (protoOf κ v)).zipIdx.map fun p =>
-    (repRow0 κ v + p.2, rowMapC (repMapC κ v) p.1)
+    (repRowI κ v p.2, rowMapC (repMapC κ v) p.1)
 
 end
 

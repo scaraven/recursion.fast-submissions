@@ -13,6 +13,7 @@ import FRNodeRows4AskI
 import FRNodeRows4AskB
 import FRNodeRows4AskC
 import FRNodeRows4Defs
+import FRNodeRows4SegD
 
 /-!
 # The N2/N4/N8 nodes' M rows: slots, prototypes, copies, link rows
@@ -231,16 +232,17 @@ def XofT (π : ℕ) : Ext := tplExt4 (protoF π) (protoR π) (protoLay π).ctx
 fields is SRA's `FRNodeRsvLink.withRsv`'s): IMP's `input` template
 (`inpTG`), SRA's reserve template (`rsvTG`), and ASK-T's ask generator (`askTGT`: every ask's query
 and answer, `FRNodeRows4AskT`), IMPC's import classes (`impcTG`, `FRNodeRows4AskI`; `colTG` not yet
-folded), IMPC2's bits and statement reads (`bitTGB`, `bitTGS`), the siblings (`sibTG`) and the closure
-(`TG.close`: a failing row at any import or foreign flag no class handles; `FRNodeRows4AskC`). -/
+folded), IMPC2's bits and statement reads (`bitTGB`, `bitTGS`), the siblings (`sibTG`), a failing row at
+every replay op the replay templates `rtC1d π` do not cover (`TG.repF`, SEG-R2) and the closure (`TG.close`: a
+failing row at any import or foreign flag no class handles; `FRNodeRows4AskC`). -/
 def askTG (π : ℕ) : TG :=
   let ops := (protoProg π).ops
   let Xa := tplExt4 (protoF π) (protoR π) ⟨fun _ => ⟨[], []⟩, (protoLay π).cb⟩
   let pv := provLT 0 ops
   let T := bitTab ops (if π = 0 then nodeGrp else segGrp)
   ((((askTGT (XofT π) π).add (inpTG (XofT π) π)).add (rsvTG (XofT π) π)).add
-    (impcTG (XofT π) π pv) |>.addD (bitTGB Xa π T) |>.addD (bitTGS Xa π T) |>.addE (sibTG Xa π T)).close
-    Xa pv T (bitNxAll 0 ops)
+    (impcTG (XofT π) π pv) |>.addD (bitTGB Xa π T) |>.addD (bitTGS Xa π T) |>.addE (sibTG Xa π T)
+    |>.repF (N4s.rtC1d π).cov).close Xa pv T (bitNxAll 0 ops)
 
 /-- **Prototype `π`'s template rows** (its frame), along its compile's trail (`askRowsP`'s fold). -/
 def askRowsT (π : ℕ) : List Row :=
@@ -274,34 +276,38 @@ noncomputable def arIRows4 (κ : NodeKind) (σ : ℕ) : List (ℕ × Row) :=
 
 /-! ## The replay rows (track REPF)
 
-The previous node's ops `shiftTarget`, `linkWAll`, `rsWeight`, `targetS`, `evalL` (prototype 0) and the
-segment's `linkWAll` (prototype 1) are replayed by C1/R3/C1b's templates `rtC1c`
-(`FRNodeRows4Defs`): slot `v`'s rows `repIRowsW rtC1c κ v`, slot 0's (`N2`, `N4`) in the spare region
-`κ.vslots` (rows and locals), a segment slot's at `v·2^20 + repSegB` over its frame cells. They are
-folded if they fit (**`RepFit`**, checked by the plan at process start); otherwise one rejecting row at
-the spare region's first row. -/
+The previous node's ops `shiftTarget`, `linkWAll`, `rsWeight`, `targetS`, `evalL` (prototype 0) are replayed
+by C1/R3/C1b's templates `rtN0c`, the segment's `linkWAll`, `evalM`, `evalL`, `rsWeight`, `targetS`,
+`shiftTarget` (prototype 1) by SEG-R1's `rtSeg1` (`rtC1d`, `FRNodeRows4SegD`): slot `v`'s rows
+`repIRowsW rtC1d κ v`, slot 0's (`N2`, `N4`) in the spare region `κ.vslots` (rows and locals), a segment
+slot's in its own region (SEG-R2: rows in band B `[repSegB, 2^20 − 2^15)` then band A `[repA, arR2)`,
+locals in the free cell bands, `segCell`). They are folded if they fit (**`RepFit`**, checked by the plan
+at process start); otherwise one rejecting row at the spare region's first row. -/
 
 /-- A replay row's cell fits its prototype: prototype 0's frame (region 0) or its locals' block
-(`[repB, repB + 2^20)`, moved to the spare region); prototype 1's frame (region 1). -/
+(`[repB, repB + 2^20)`, moved to the spare region); prototype 1's frame (region 1) or its locals' block
+(`[repB, repB + segCap)`, into its region's free cell bands, SEG-R2). -/
 def repCellOk (π c : ℕ) : Bool :=
-  if π = 0 then decide (c < slotM4) || (decide (N4s.repB ≤ c) && decide (c < N4s.repB + slotM4)) else inSB 1 c
+  if π = 0 then decide (c < slotM4) || (decide (N4s.repB ≤ c) && decide (c < N4s.repB + slotM4))
+  else inSB 1 c || (decide (N4s.repB ≤ c) && decide (c < N4s.repB + N4s.segCap))
 
-/-- Prototype `π`'s replay rows fit: at most `2^20` (prototype 0) or `2^10` (prototype 1) rows, every
-cell fits. -/
+/-- Prototype `π`'s replay rows fit: at most `2^20` (prototype 0) or `segRN` (prototype 1: bands B and
+A, SEG-R2) rows, every cell fits. -/
 def repFitB (π : ℕ) (rows : List Row) : Bool :=
-  decide (rows.length ≤ if π = 0 then slotM4 else 2 ^ 10) &&
+  decide (rows.length ≤ if π = 0 then slotM4 else N4s.segRN) &&
     rows.all fun r => (r.a ++ r.b ++ r.c).all fun t => repCellOk π t.1
 
-/-- **The replay rows fit** (both prototypes). -/
-def RepFit : Prop := ∀ π ≤ 1, repFitB π (N4s.repRowsP (N4s.rtC1c π) π) = true
+/-- **The replay rows fit** (both prototypes), and prototype 1's rows end below band A (SEG-R2). -/
+def RepFit : Prop :=
+  (∀ π ≤ 1, repFitB π (N4s.repRowsP (N4s.rtC1d π) π) = true) ∧ ∀ p ∈ protoRows 1, p.1 < slotM4 + N4s.repA
 
-/-- **The node's replay rows** (with the arenas, `ArFit`): every slot's (`repIRowsW rtC1c`) if they
+/-- **The node's replay rows** (with the arenas, `ArFit`): every slot's (`repIRowsW rtC1d`) if they
 fit; else one rejecting row at slot 0's `repSegB` (free when the arenas fit). Without `ArFit` the
 arena's rejecting row stands for both. -/
 noncomputable def repAllRows (κ : NodeKind) : List (ℕ × Row) :=
   open Classical in
   if ArFit then
-    (if RepFit then (List.range κ.vslots).flatMap (N4s.repIRowsW N4s.rtC1c κ) else [(N4s.repSegB, rejR κ)])
+    (if RepFit then (List.range κ.vslots).flatMap (N4s.repIRowsW N4s.rtC1d κ) else [(N4s.repSegB, rejR κ)])
   else []
 
 /-- **The rejecting rows** (`one · one = 0`): the node's M rows when `ProtoFit` fails. -/

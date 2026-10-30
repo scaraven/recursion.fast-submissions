@@ -493,10 +493,10 @@ theorem slotImpR_of_imp (rt : ℕ → RT) {impl₀ : OpImpl} {base : NodeKind �
 /-! ## The node's indexed replay rows (JOURNAL §0) -/
 
 /-- **Slot `v`'s replay rows** (absolute cells; REPF: `repIRowsW`'s placement, slot 0's in the spare
-region, a segment slot's at `v·2^20 + repSegB`, cells by `repMapC`). -/
+region, a segment slot's at `v·2^20 + segRow k` (SEG-R2), cells by `repMapC`). -/
 def repIRows4 (rt : ℕ → RT) (κ : NodeKind) (v : ℕ) : List (ℕ × Row) :=
   (repRowsP (rt (protoOf κ v)) (protoOf κ v)).zipIdx.map fun p =>
-    (repRow0 κ v + p.2, rowMapC (repMapC κ v) p.1)
+    (repRowI κ v p.2, rowMapC (repMapC κ v) p.1)
 
 /-- Every element of `l` has its image in `l.zipIdx.map g` (generic, so that no list is evaluated). -/
 theorem mem_zipIdx_map {α β : Type*} {l : List α} {r : α} (hr : r ∈ l) (g : α × ℕ → β) :

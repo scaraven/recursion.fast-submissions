@@ -52,12 +52,14 @@ def arNb : ℕ := 16384
 rows). -/
 def arR2 : ℕ := 720896
 /-- The binding's rows (index space: the levels' positions at their `2^a` strides, PACK-4.4.1
-§5.2's 132,096 allocated, 85,946 used). -/
-def arR2N : ℕ := 180560
+§5.2's 132,096 allocated, 85,946 used; SEG-R2: cut to the template rows' used extent, 154,333 with SIB's
+siblings at prototype 1, `2^8`-aligned, so that band B of the segment's replay rows starts at the bits'
+end). -/
+def arR2N : ℕ := 154368
 /-- Arena₁'s first row, after the binding's. -/
 def arR1 : ℕ := arR2 + arR2N
 /-- The bits' first row, after arena₁'s (aligned to `2^8`). -/
-def arRb : ℕ := 998400
+def arRb : ℕ := 972288
 
 /-- **The rows are ordered and below the link region**: the binding, arena₁, the bits, then
 `linkN = 2^15` rows (`FRNodeRows4`). -/
@@ -109,12 +111,12 @@ theorem bit_cells4 {w : Asg} {κ : NodeKind} {σ : ℕ} (h : ∀ p ∈ bitRows4 
     (hj : j < arNb) : w (κ.oneCell + σ * slotM4 + arBt + j) = 0 ∨ w (κ.oneCell + σ * slotM4 + arBt + j) = 1 :=
   bit_cells h hj
 
-/-- (+) Element 5 of slot 1's arena₁ is the cell `oneCell + 2^20 + 290,821`, its row `2^20 + 901,461`;
+/-- (+) Element 5 of slot 1's arena₁ is the cell `oneCell + 2^20 + 290,821`, its row `2^20 + 875,269`;
 (−) not slot 0's. -/
 theorem a1Rows4_ctl (κ : NodeKind) :
     (a1Rows4 κ 1 0)[5]?.map (fun p => (p.1, p.2.b)) =
-      some (2 ^ 20 + 901461, (Lin.cell (κ.oneCell + 2 ^ 20 + 290821)).sub (Lin.cell (sCell 0 5))) ∧
-    (a1Rows4 κ 1 0)[5]?.map Prod.fst ≠ some 901461 := by
+      some (2 ^ 20 + 875269, (Lin.cell (κ.oneCell + 2 ^ 20 + 290821)).sub (Lin.cell (sCell 0 5))) ∧
+    (a1Rows4 κ 1 0)[5]?.map Prod.fst ≠ some 875269 := by
   have h : 5 < arN := by rw [arN_eq]; norm_num
   simp only [a1Rows4, a1Rows, List.getElem?_map, List.getElem?_range h, Option.map_some, cpRow, slotM4,
     arA1, arR1, arR2, arR2N]

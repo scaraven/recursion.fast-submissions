@@ -40,6 +40,13 @@ def _root_.FR.Circ.AT.addE (A B : AT) : AT :=
     if B.cov op then B.rows P cs pre op k ++ (if op.item?.isSome then A.rows P cs pre op k else [])
     else A.rows P cs pre op k ++ (if op.item?.isSome then B.rows P cs pre op k else [])⟩
 
+/-- **`TG.repF` as an ask template** (SEG-R2). -/
+def _root_.FR.Circ.AT.repF (A : AT) (rc : Op → Bool) : AT :=
+  ⟨fun op => A.cov op || (isRep op && !rc op), fun P cs pre op k =>
+    if !A.cov op && isRep op && !rc op then [failRT P] else A.rows P cs pre op k⟩
+
+theorem toAT_repF (A : TG) (rc : Op → Bool) : (A.repF rc).toAT = A.toAT.repF rc := rfl
+
 theorem toAT_close (A : TG) (X : Ext) (pv : List (ℕ × ℕ × ℕ × ℕ)) (T : BTab) (nx : Bool) :
     (A.close X pv T nx).toAT = A.toAT.close X pv T nx := rfl
 
@@ -126,6 +133,53 @@ theorem atOk_addE (hA : ATOk impl X A κ inp w tr) (hB : ATImp impl X B κ inp w
 
 end Close
 
+/-! ## Failing at the uncovered replay ops (SEG-R2) -/
+
+section RepF
+variable {impl : OpImpl} {X : Ext} {A : AT} {rc : Op → Bool} {κ : Kind} {inp : Input} {w : Asg} {tr : Trace}
+  {P : Params} {cs : CS} {pre : Option Op} {op : Op} {k : ℕ}
+
+theorem repF_rows (h : (!A.cov op && isRep op && !rc op) = false) :
+    (A.repF rc).rows P cs pre op k = A.rows P cs pre op k := by
+  simp only [AT.repF, h, Bool.false_eq_true, ite_false]
+
+theorem isRep_item {op : Op} (h : isRep op = true) : op.item?.isSome = false := by
+  cases op <;> first | rfl | (simp [isRep] at h)
+
+theorem askCtx_repF {regs : Array Val} (h : AskCtx impl (A.repF rc) κ inp w P cs pre op k regs)
+    (hc : (!A.cov op && isRep op && !rc op) = false) : AskCtx impl A κ inp w P cs pre op k regs :=
+  ⟨h.1, h.2.1, h.2.2.1, fun r hr => h.2.2.2 r (by rw [repF_rows hc]; exact hr)⟩
+
+theorem atAsk_repF (h : ATAsk impl X A κ inp w tr) : ATAsk impl X (A.repF rc) κ inp w tr :=
+  fun P cs pre op k regs q e hc hev => h P cs pre op k regs q e (askCtx_repF hc (by
+    cases hr : isRep op
+    · simp
+    · exact absurd (ask_item hev) (by rw [isRep_item hr]; decide))) hev
+
+/-- **Failing at the uncovered replay ops costs no `ATImp`**: there the rows do not hold. -/
+theorem atImp_repF (h : ATImp impl X A κ inp w) : ATImp impl X (A.repF rc) κ inp w := by
+  intro P cs pre op k regs vs ok hcov hc hev himp
+  by_cases hf : (!A.cov op && isRep op && !rc op) = true
+  · have hr := hc.2.2.2
+    simp only [AT.repF, hf, ite_true] at hr
+    exact absurd (hr _ List.mem_cons_self) (failRT_not hc.1.1)
+  · have hf' : (!A.cov op && isRep op && !rc op) = false := by simpa using hf
+    have ha : A.cov op = true := by
+      simp only [AT.repF, Bool.or_eq_true, Bool.and_eq_true, Bool.not_eq_true'] at hcov
+      simp only [Bool.and_eq_false_iff, Bool.not_eq_false'] at hf'
+      rcases hcov with h1 | ⟨h1, h2⟩
+      · exact h1
+      · rcases hf' with (h3 | h3) | h3
+        · exact h3
+        · rw [h1] at h3; cases h3
+        · rw [h2] at h3; cases h3
+    exact h P cs pre op k regs vs ok ha (askCtx_repF hc hf') hev himp
+
+theorem atOk_repF (h : ATOk impl X A κ inp w tr) : ATOk impl X (A.repF rc) κ inp w tr :=
+  ⟨atAsk_repF h.1, atImp_repF h.2⟩
+
+end RepF
+
 /-! ## The residual imports -/
 
 /-- **The replay ops' residual imports** (along the compile's trail): imports of an `isRep` op neither the
@@ -140,6 +194,20 @@ def impQX (X : Ext) (P : Params) (rt : RT) (A : AT) : CS → List Op → List �
 
 /-- Prototype `π`'s replay-op residual imports. -/
 def impQP (rt : RT) (A : AT) (π : ℕ) : List ℕ := impQX (Xof π) (protoP π) rt A (CS.init (baseR π)) (protoProg π).ops
+
+/-- **No replay op's import is left** once the template fails at the replay ops `rt` does not cover
+(SEG-R2: structural, the compile is not evaluated). -/
+theorem impQX_repF (X : Ext) (P : Params) (rt : RT) (A : AT) :
+    ∀ (cs : CS) (ops : List Op), impQX X P rt (A.repF rt.cov) cs ops = []
+  | _, [] => rfl
+  | cs, op :: ops => by
+    simp only [impQX, impQX_repF X P rt A _ ops, List.append_nil]
+    rw [if_neg]
+    simp only [AT.repF]
+    cases isRep op <;> cases rt.cov op <;> simp
+
+theorem impQP_repF (rt : RT) (A : AT) (π : ℕ) : impQP rt (A.repF rt.cov) π = [] :=
+  impQX_repF _ _ _ _ _ _
 
 theorem bitNx_eq (op : Op) (ops : List Op) (n : ℕ) : bitNx op ops n = bitNxT op ops n := by
   cases op <;> rfl
@@ -225,6 +293,18 @@ def SlotRunC (rt : RT) (A : AT) (impl : OpImpl) (π : ℕ) (ι : Kind) (inp : In
     (∀ a ∈ (protoCS π).aux, isBitsA a = false →
       a.1.1.map (Lin.ev w) = a.1.2.2.val (rd (s.regs.extract 0 a.2) a.1.2.1)) ∧
     ∀ i ∈ impQP rt A π, RepS w ((protoCS π).slot i) (rd s.regs i)
+
+/-- **The run facts left** (SEG-R2): `SlotRunC` without the replay imports (`impQP_repF`): the `felems`
+auxiliary cells (`isBitsA` false) only. -/
+def SlotRunF (impl : OpImpl) (π : ℕ) (ι : Kind) (inp : Input) (tr : Trace) (w : Asg) : Prop :=
+  ∀ s : St, execA impl ι inp (protoProg π).ops St.init tr = some (s, []) →
+    ∀ a ∈ (protoCS π).aux, isBitsA a = false →
+      a.1.1.map (Lin.ev w) = a.1.2.2.val (rd (s.regs.extract 0 a.2) a.1.2.1)
+
+/-- **`SlotRunC` from `SlotRunF`** at a template failing at the replay ops `rt` does not cover. -/
+theorem slotRunC_of_F {rt : RT} {A : AT} {impl : OpImpl} {π : ℕ} {ι : Kind} {inp : Input} {tr : Trace} {w : Asg}
+    (h : SlotRunF impl π ι inp tr w) : SlotRunC rt (A.repF rt.cov) impl π ι inp tr w := fun s he =>
+  ⟨h s he, fun i hi => by rw [impQP_repF] at hi; cases hi⟩
 
 /-- The closed template of prototype `π` over `A` (its context the template-free one, its tables the
 prototype's). -/

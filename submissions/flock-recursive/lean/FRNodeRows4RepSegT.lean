@@ -13,6 +13,9 @@ import FRNodeRows4RepRsK
   encoding entries (`stsLay`); template `Tpl.stSegT` (789 gates, 512 bit locals, 516 forcing rows).
   **`kSTS_ok`**: `KOkD` at every index, given that the base's `shiftTarget` is `shiftTargetI` (`SegBase`).
 * Operand types other than these get the rejecting row (`kdRows`' `inOk` check).
+
+SEG-R2: the definitions (`kTSS`, `kSTS`) moved verbatim to `FRNodeRows4SegD` (below `FRNodeRows4`, so that the
+fold names them); the theorems stay here.
 -/
 
 namespace FR
@@ -21,16 +24,6 @@ open RecursionFast Rev4 Circ Tpl
 
 /-! ## `targetS` -/
 
-/-- The operand types the template serves: one `AF 37`. -/
-def tssIn : List Ty → Bool
-  | [.af 37] => true
-  | _ => false
-
-/-- Canonical input `p < 37` is encoding entry `p`. -/
-def tssLay (_ : List Ty) (p : ℕ) : Option ℕ := if p < 37 then some p else none
-
-/-- **The segment's `targetS` replay.** -/
-def kTSS : KOpD := ⟨isTS, tsArgs, tssIn, 37, tssLay, fun _ => [], tsSegT, [.af 64]⟩
 
 theorem tssIn_eq {ts : List Ty} (h : tssIn ts = true) : ts = [.af 37] := by
   unfold tssIn at h; split at h
@@ -63,21 +56,6 @@ theorem kTSS_ok {impl₀ : OpImpl} {base : NodeKind → OpImpl} (ι : Kind) : KO
 
 /-! ## `shiftTarget` -/
 
-/-- `shiftTarget`'s operands: `τ`, `θ`, `bnd`, `κs`. -/
-def stArgs : Op → Kind → List ℕ
-  | .shiftTarget t h bd ks, _ => [t, h, bd, ks]
-  | _, _ => []
-
-/-- The operand types the template serves: `[af 18, af 10, af 22, f]` (a segment's). -/
-def stsIn : List Ty → Bool
-  | [.af 18, .af 10, .af 22, .f] => true
-  | _ => false
-
-/-- Canonical input `p < 51` is encoding entry `p`. -/
-def stsLay (_ : List Ty) (p : ℕ) : Option ℕ := if p < 51 then some p else none
-
-/-- **The segment's `shiftTarget` replay.** -/
-def kSTS : KOpD := ⟨isST, stArgs, stsIn, 51, stsLay, fun _ => [], stSegT, [.f]⟩
 
 theorem stsIn_eq {ts : List Ty} (h : stsIn ts = true) : ts = [.af 18, .af 10, .af 22, .f] := by
   unfold stsIn at h; split at h

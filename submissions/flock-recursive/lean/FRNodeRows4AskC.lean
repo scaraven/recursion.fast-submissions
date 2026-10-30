@@ -200,6 +200,14 @@ def TG.close (A : TG) (X : Ext) (pv : List (ℕ × ℕ × ℕ × ℕ)) (T : BTab
     else A.rows P cs pre op k ++
       (if k = 0 && op.item?.isSome && !nx then [failRT P] else [])⟩
 
+/-- **`A` failing at the replay ops `rc` does not cover** (SEG-R2; `rc` the replay templates' cover): at a
+replay op (`isRep`) neither `A` nor `rc` covers, the failing row; elsewhere `A`'s rows. So the replay ops'
+imports left to the run facts (`impQX`) are none (`FRNodeRun4CB.impQX_repF`), and the circuit rejects a
+replay op no template replays instead of trusting it. -/
+def TG.repF (A : TG) (rc : Op → Bool) : TG :=
+  ⟨fun op => A.cov op || (isRep op && !rc op), fun P cs pre op k =>
+    if !A.cov op && isRep op && !rc op then [failRT P] else A.rows P cs pre op k⟩
+
 /-- **`B` beside `A`, `A` not asked at `B`'s ops** (`TG.addD` without asking `A` there): for a `B` whose
 ops `A` does not cover (the siblings), so that `A`'s cover is not evaluated again at them. -/
 def TG.addE (A B : TG) : TG :=

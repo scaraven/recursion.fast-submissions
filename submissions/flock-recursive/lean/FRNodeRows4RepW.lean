@@ -82,7 +82,7 @@ theorem repHoldsW_of {rt : ℕ → RT} {κ : Rev4.NodeKind} {v : ℕ} {w : Asg}
   unfold repIRowsW at hfold
   generalize repRowsP (rt (protoOf κ v)) (protoOf κ v) = l at hfold ⊢
   intro r hr
-  obtain ⟨k, hm⟩ := mem_zipIdx_map hr fun p : Row × ℕ => (repRow0 κ v + p.2, rowMapC (repMapC κ v) p.1)
+  obtain ⟨k, hm⟩ := mem_zipIdx_map hr fun p : Row × ℕ => (repRowI κ v p.2, rowMapC (repMapC κ v) p.1)
   have h3 := hE _ (hfold _ hm)
   dsimp only at h3
   rw [holds_rowMapC] at h3
