@@ -104,7 +104,7 @@ Running on rev44:
   - **Facts verified** on `protoProg 1`: 186 forcing rows are needed, not 75.
   - **Start-up:** the ~1.5 s init win needs `nodePlan`/`lPlan`/`implCN` made noncomputable.
 - **SEG-R1 landed `9a3019d`.** `rtKD`/`KOkD`/`rtKD_okW`, `rtEvZ`, the `rsWeight` F-point template `rsSegT` (36,923 gates), `rtSeg1`, `rtC1d`, `repOkW_rtC1dB`, `cov`/`inOk`; `evalM`/`evalL` pinned in `implSeg`. On `protoProg 1`: 37,362 rows, none rejecting. `implB`/`nodePlan`/`lPlan`/`implCN` noncomputable; compiled op sets on `Impl.implC0` (`implS_eq`, `implNN_eq`); certificate statements unchanged. Init −2.05 s user, segment check −70 ms. `FR` imports `FRNodeRows4RepSeg`.
-  - **SEG-R1b running:** the `targetS` (`kTSS`) and `shiftTarget` (`kSTS`) templates, SEG-R1-RESULT §6.
+  - **SEG-R1b landed `bb0880c`:** `tsSegT`/`stSegT`, `kTSS`/`kSTS` arms of `rtSeg1`. On `protoProg 1`: 38,805 rows, 0 rejecting, no uncovered replay op; 38,486 locals per segment slot. Honest segment ACCEPT after the pin (L30/L31/L32; canaries reject). Node files predate the node circuit → E1 re-dump after SEG-R2. Kernel ≈ +3.4 s once folded.
   - **Review `b63754e` (SIB + SEG-R1): no blocker.** Closure total; compiled V = proved V (`implS_eq`/`implNN_eq` by `rfl`, no plan unfolded). Should-fix:
     1. honest ACCEPT logged after the `evalM`/`evalL` pin (L30/L32/P30/N30, N2/N4/N8) → SEG-R1b;
     2. empty `impQP` by **failing rows on `rt.cov`** (closure-style; op-aware `inOk` rejects `rsWeight` with `act` true), never by kernel evaluation of the compile (≈ 26k ops) → SEG-R2;
