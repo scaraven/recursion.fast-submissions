@@ -42,7 +42,14 @@ The baseline only has to be accepted. Choose routes by the least sound implement
   - **Editing hazard:** a former module's code now lives in `section G6_<name>` inside a merged file. Re-run the deep hash check after any Lean edit.
 - **P2r landed rev44 `ab55e44`** (prover-only; proofs byte-identical; chain 10/10 and streams ACCEPT; `prover.s` `37754901…`). Projected −86 s of `stream_s` on the slow 9V74 (1.14× → 1.20× at the measured draw; heavy draw 1.08×); the worst first step is unchanged (≈ 46 s). The aggregates are 60 % of a step, so the node levers cannot reach 20 %. Its VM logs were lost when the orchestrator force-removed `rf-p2` (noted in P2r-RESULT); RUN3 supersedes the projection.
 - **Clean submission branch `v4/flock-submit` `96eb0f6`:** one commit on `v4/flock-recursive` touching only `submissions/flock-recursive/` (= rev44 `c390276`, with the new entry README). Source rule: 263 files, 0 findings.
-- **Running:** **RUN3**, the final full `evaluate.yml` ×2 at `96eb0f6` (probe branches `probe/run3-eval*`, deleted afterwards). It also measures G6's `build_s` and P2r's `stream_s`.
+- **MILESTONE: final runner evaluation ACCEPT (RUN3, rev44 `e93d6ae`).** The submission is `v4/flock-submit` `96eb0f6`, core `422f2f9`.
+  - **Runs:** 41042457623 (certificate on a 9V45, benchmark on a Xeon 8370C: S 16.10) and 41042457436 (9V45 / 9V45: S 28.53). In both, `certificate: ok`, `VERDICT: ACCEPT`, M = 96, not truncated, attested.
+  - **Certificate:** build 462/493 s on a 9V45 (≈ 705–752 s at 7763 speed, ≈ 1.6×; G6 confirmed); kernel 288/308 s.
+  - **P2r:** start-up −46 %, requests −14 % (9V45 against 9V45).
+  - **`stream_s`:** 1,713.7 s, including 208 s of re-time reruns. P2r made step time less linear in n, so the large steps now exceed 1.3× the fit and get rerun.
+  - **Reruns cannot truncate.** In `bench.py`, a rerun stopped at the cap is recorded as `stopped_by_cap` and the first times stand. Up to the canaries the stream is about 1,400 s (1.37×); the heavy-draw maximum is about 1,620 s on the 8370C and about 1,760 s on a RUN2-like 9V74.
+  - **The REJECT cap:** the worst first step, ≈ 44 s projected (1.36×).
+  - **No further work is needed for acceptance.**
 - **If stream_s binds:** prover — factorize arena₁ / prototype-0 replay rows; V — closed forms for replay rows.
 - **Then:** RUN2 full evaluation (`evaluate.yml` via a probe branch) after E1b; G6 golf only if a cap binds; clean submission branch (only `submissions/flock-recursive/`, no non-building modules; drop unused defs such as `colTG`, `auxRows`, `SlotRunI`).
 
