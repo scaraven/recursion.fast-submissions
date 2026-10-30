@@ -3,7 +3,7 @@
 import FRSoundnessHide
 import RecursionFast.Contract.Certificate
 import RecursionFast.Library.PaperTheorem
-import FRSoundnessCoreRows
+import FRSoundnessCoreFront
 
 /-!
 # The knowledge state `kstate vk` (frame; `final` is S-G2's)

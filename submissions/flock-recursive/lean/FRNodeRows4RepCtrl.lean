@@ -1,6 +1,6 @@
 -- New for `flock-recursive` (stage S-E14, track L-circ): the controls of `FRNodeRows4Rep` and
 -- `FRNodeRows4RepS`.
-import FRNodeRows4RepS
+import FRNodeRun4
 
 /-!
 # Controls for the replay templates

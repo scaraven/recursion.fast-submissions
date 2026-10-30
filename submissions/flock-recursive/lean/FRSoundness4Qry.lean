@@ -142,7 +142,8 @@ theorem noAsk_gFinRS (P : FinP) (fi : FinIn) (b : ℕ) : (gFinRS P fi b).1.filte
 
 theorem noAsk_gFinE0 (P : FinP) (fi : FinIn) (b : ℕ) (act : KC Bool) (own : Bool) :
     (gFinE0 P fi b act own).filterMap Op.item? = [] := by
-  cases hc : P.ck <;> cases own <;> simp [gFinE0, Op.item?, hc]
+  cases hc : P.ck <;> cases own <;> simp only [gFinE0, hc, cond_true, cond_false, List.filterMap_cons, List.filterMap_append,
+    List.filterMap_nil, Op.item?, List.append_nil]
 
 theorem noAsk_gFinE (P : FinP) (fi : FinIn) (b : ℕ) : (gFinE P fi b).1.filterMap Op.item? = [] := by
   cases hr : P.rsvOps <;>

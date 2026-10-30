@@ -1,7 +1,7 @@
 -- New for `flock-recursive` (PACK-4.4.1 §1.3, §4.3; IMP-RESULT §5.3; track IMPC): `ATImp` for the
 -- import-class generator `impcTG` (static proof reads, challenge conversions), and `imp` with it.
-import FRNodeRows4AskPosR
-import FRNodeRows4AskI
+import FRNodeRows4AskTH
+import FRNodeRows4AskB
 
 /-!
 # The import classes are sound (`atImp_impc`), and `imp` with them (`gap4Imp_of_impc`)

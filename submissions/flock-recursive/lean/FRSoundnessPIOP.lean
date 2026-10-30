@@ -2,12 +2,12 @@
 -- RET-1: position-free declarations moved to `FRSoundnessCoreWeights`.
 -- RET-2: the declarations revision 4.1 reads moved to `FRSoundnessCoreRows`.
 import FRSoundnessHide
-import FRLeafCircuit
+import FRAgg
 import FRRingSwitch
 import FRBlockKinds
-import FRVIREval
-import FRSoundnessCoreWeights
-import FRSoundnessCoreRows
+import FRVerifierImplOps
+import FRSoundness4TailStep
+import FRSoundnessCoreFront
 import FRNodeLayout
 
 /-!

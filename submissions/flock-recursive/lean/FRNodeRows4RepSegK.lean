@@ -1,6 +1,6 @@
 -- New for `flock-recursive` (SEG-R §4.5, stage SEG-R1): the segment program's replay wrapper.
-import FRNodeRows4RepK
-import FRVIRTplChain
+import FRNodeRun4Ctrl
+import FRNodeRows4RepCFRs
 
 /-!
 # Replay templates on muxed inputs (`rtKD`), and the dead ops' zero rows (`rtEvZ`)
@@ -173,7 +173,9 @@ theorem rtKD_okW {impl : OpImpl} {X : Ext} {ι : Kind} {K : KOpD} (B cb : ℕ) (
         simp only [Row.Holds, hP'.1, one_mul, Lin.ev_nil] at hrow
         rw [← hbw, List.getD_eq_getElem?_getD, List.getElem?_map]
         rw [List.getD_eq_getElem?_getD] at hrow
-        cases h' : b.2[q]? <;> simp_all
+        cases h' : b.2[q]? with
+        | none => rfl
+        | some l => rw [h'] at hrow; exact hrow
       have hE : Eqns e t.1 0 := inst_eqns hP'.1 m.1 m.2.2.2 ⟨t.1, []⟩ fun r hr =>
         hrows _ (by rw [← rowsTR_eq] at hr; simp [List.mem_map_of_mem hr])
       have hfr : ∀ r ∈ t.2.2, r.Holds e := fun r hr =>

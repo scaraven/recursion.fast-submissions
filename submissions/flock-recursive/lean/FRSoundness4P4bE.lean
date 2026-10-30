@@ -1,7 +1,7 @@
 -- New for `flock-recursive` (BLUEPRINT revision 4.1, A.10 rows Lr1–Lr3, E1–E4 end, §5.2; stage
 -- P4b): Lr and E at `seq4`'s positions, per node kind, with E4's batched inner rounds. The 3.x
 -- template is `FRSoundnessFrE` (and `FRSoundnessRows`' Lr instances).
-import FRSoundness4P4bRows
+import FRNodeCircuit4
 
 /-!
 # Lr and E at revision 4.1 (P4b)

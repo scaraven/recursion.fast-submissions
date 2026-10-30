@@ -1,6 +1,6 @@
 -- New for `flock-recursive` (PACK-4.4 §6.2, the stage table's C1; track C1): the controls of
 -- `FRNodeRows4RepK`, `FRNodeRows4RepN`, `FRNodeRows4RepW` and `FRVIRTplRepLW`.
-import FRNodeRows4RepW
+import FRNodeRun4Ctrl
 
 /-!
 # Controls for the previous node's replay templates

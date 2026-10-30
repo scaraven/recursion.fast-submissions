@@ -1,7 +1,7 @@
 -- New for `flock-recursive` (BLUEPRINT §4.2 `stmtOk`, §5.4, A.9; stage S-N1).
 -- RET-2: the declarations revision 4.1 reads moved to `FRSoundnessCoreAcc`.
 import FRSoundnessExtR
-import FRSoundnessCoreAcc
+import FRSoundness4P4aSeg
 
 /-!
 # The accepted run's statement check, and the chain's public values

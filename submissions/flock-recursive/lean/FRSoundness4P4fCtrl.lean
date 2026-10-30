@@ -1,7 +1,6 @@
 -- New for `flock-recursive` (BLUEPRINT revision 4.1, A.10; stage P4f): controls for the front's
 -- phases 13 … 25 (`FRSoundness4P4fDF`, `FRSoundness4P4fObl`).
-import FRSoundness4P4fObl
-import FRSoundness4RsvCtrl
+import FRNodeStmtR4
 
 /-!
 # Controls for P4f

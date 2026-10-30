@@ -1,5 +1,5 @@
 -- New for `flock-recursive` (R-OPS §5.2, stage R3: controls of `rsWeight`'s replay).
-import FRNodeRows4RepRsK
+import FRNodeRun4Ctrl
 
 /-!
 # Controls: `rsWeight`'s replay template and the chain library

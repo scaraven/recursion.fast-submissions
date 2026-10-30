@@ -1,11 +1,1215 @@
--- New for `flock-recursive` (BLUEPRINT revision 4.1, A.9–A.10; stage R4d).
-import FRSoundness4R4Ex
-import FRSoundness4R4Rnd
-import FRSoundness4R4View
+-- G6: this module also holds the former modules `FRSoundness4R4Acc`, `FRSoundness4R4Ex`, `FRSoundness4R4Fld`, `FRSoundness4R4View`, `FRSoundness4R4Rnd`, `FRSoundness4RsvStack` (one section each, in import order).
+import FRSoundness4R4FinSh
+import FRSoundness4R4Kind
+import FRSoundness4P4aSeg
 import FRSoundness4P4bE
 import FRSoundness4P4aNames
-import FRSoundness4R4Link
-import FRSoundness4RsvStack
+import FRSoundness4Agg
+
+section G6_FRSoundness4R4Acc
+
+-- New for `flock-recursive` (BLUEPRINT revision 4.1, A.9; stage R4c).
+/-!
+# The finals' fields on an accepted run of `gen4 seq4 p (finOps4 P)`
+
+**`fields_of_accept4`**: an accepted run is a `SkRun4`, and every field of `finalsOf P` after
+`finRS` runs (relocated) from a register file extending the skeleton's, with flag `true`.
+**`relLr4_of_accept`** (template for the others): then `finLr`'s relation holds there
+(`flag_gFinLr`, `pureRun_det`), its registers being skeleton registers (`skeleton4_out_lt`).
+-/
+
+namespace FR.Snd.R4
+open RecursionFast Rev4
+
+variable {impl : OpImpl} {p : KindP} {inp : Input}
+
+theorem rest_finalsOf_length (P : FinP) : (finalsOf P).rest.length = 12 := by
+  simp [Finals.rest, nLevels]
+
+/-- **The fields of an accepted run.** -/
+theorem fields_of_accept4 (P : FinP) {tr : Trace}
+    (h : semIR impl (gen4 seq4 p (finOps4 P)) inp tr = some true) :
+    ∃ y, SkRun4 impl p inp tr y ∧ ∃ (zh : List Reg) (Rs : ℕ → Array Val),
+      (∀ k ≤ 12, ExtA (#[] ++ y.1.toArray) (Rs k)) ∧
+      ∀ k (hk : k < 12), ∃ (ex : Array (List Reg)) (L : List Val),
+        pureRun impl p.tix inp ((((finalsOf P).rest[k]'(by rw [rest_finalsOf_length]; exact hk))
+          ⟨(skeleton4 seq4 p).2.outs, zh, ex⟩ (Rs k).size).1.map (reloc P.S)) (Rs k) [] = some (L, true) := by
+  rw [finOps4_eq] at h
+  obtain ⟨y, hy, hf, -, L₀, -, Rs, h0, hrest⟩ := accept_chain4 impl seq4 p inp _ _ (noAsk_finOps4 P) h
+  obtain ⟨hl, hq⟩ := fsQ_gen4 impl inp seq4 p shOK_seq4 _ h
+  rw [fsMsgs4_len] at hl hq
+  have hlen : ((relocFin P.S (finalsOf P)).rest ++ [capF P.S]).length = 13 := by
+    rw [List.length_append, relocFin_rest, List.length_map, rest_finalsOf_length]; rfl
+  refine ⟨y, ⟨hy, hf, hl, hq⟩,
+    ((finalsOf P).finRS ⟨(skeleton4 seq4 p).2.outs, [], #[]⟩ (skeleton4 seq4 p).2.next).2, Rs, ?_,
+    fun k hk => ?_⟩
+  · intro k hk
+    induction k with
+    | zero => rw [h0]; exact ExtA.app _ _
+    | succ k ih =>
+      obtain ⟨L, -, he⟩ := hrest k (by rw [hlen]; omega)
+      rw [he]; exact (ih (by omega)).trans (ExtA.app _ _)
+  · obtain ⟨L, hL, -⟩ := hrest k (by rw [hlen]; omega)
+    have e : ((relocFin P.S (finalsOf P)).rest ++ [capF P.S])[k]'(by rw [hlen]; omega) =
+        relocF P.S ((finalsOf P).rest[k]'(by rw [rest_finalsOf_length]; exact hk)) := by
+      rw [List.getElem_append_left (by rw [relocFin_rest, List.length_map, rest_finalsOf_length]; exact hk)]
+      simp only [relocFin_rest, List.getElem_map]
+    rw [e] at hL
+    exact ⟨_, L, hL⟩
+
+/-- The skeleton's registers are positive in number. -/
+theorem skel_pos4 {tr : Trace} {y : List Val × List Bool × Trace} (h : SkRun4 impl p inp tr y) :
+    0 < (#[] ++ y.1.toArray).size := by
+  rw [← skeleton4_next impl p.tix inp seq4 p h.ref]
+  rw [skeleton4_eq_cAt4]
+  exact lt_of_lt_of_le (by rw [(cAt4_ctl seq4 p).2.1]; omega)
+    (cAt4_next_mono seq4 p (m := 1) (by decide) le_rfl)
+
+/-- Every register named by a phase is a skeleton register. -/
+theorem outsOf_lt4 {tr : Trace} {y : List Val × List Bool × Trace} (h : SkRun4 impl p inp tr y)
+    (zh : List Reg) (ex : Array (List Reg)) (name : String) :
+    ∀ x ∈ outsOf ⟨(skeleton4 seq4 p).2.outs, zh, ex⟩ name, x < (#[] ++ y.1.toArray).size := by
+  intro x hx; simp only [outsOf] at hx; exact skeleton4_out_lt p h.ref _ x hx
+
+/-- `finLr`'s registers are named registers (stated for an abstract `fi`: instantiating it at the
+skeleton must not make the unifier evaluate `skeleton4`). -/
+theorem hin_Lr {fi : FinIn} {n : ℕ} (hsk : ∀ name, ∀ x ∈ outsOf fi name, x < n) (hn : 0 < n) (P : FinP) :
+    ∀ x ∈ (coordsR fi "Lr1").take P.lrR ++ chals fi "Lr2" P.lrR ++
+      [(outsOf fi "Lr3").headD 0, claimN fi "Lr2"], x < n := by
+  intro x hx
+  simp only [List.mem_append, List.mem_cons, List.not_mem_nil, or_false] at hx
+  rcases hx with (hx | hx) | rfl | rfl
+  · exact hsk "Lr1" x (List.mem_of_mem_drop (List.mem_of_mem_take hx))
+  · exact hsk "Lr2" x (List.mem_of_mem_drop (List.mem_of_mem_take hx))
+  · exact headD_lt (hsk "Lr3") hn
+  · exact getLastD_lt (hsk "Lr2") hn
+
+/-- **`finLr`'s relation on an accepted run.** -/
+theorem relLr4_of_accept (P : FinP) {tr : Trace}
+    (h : semIR impl (gen4 seq4 p (finOps4 P)) inp tr = some true) :
+    ∃ y, SkRun4 impl p inp tr y ∧ ∃ (fi : FinIn) (R : Array Val),
+      fi.outs = (skeleton4 seq4 p).2.outs ∧ ExtA (#[] ++ y.1.toArray) R ∧
+      relLr4 p.tix inp fi R P = true := by
+  obtain ⟨y, hS, zh, Rs, hext, hf⟩ := fields_of_accept4 P h
+  obtain ⟨ex, L, hL⟩ := hf 3 (by decide)
+  have e : (finalsOf P).rest[3]'(by rw [rest_finalsOf_length]; decide) = gFinLr P := by
+    simp only [Finals.rest, finalsOf, List.cons_append, List.getElem_cons_succ, List.getElem_cons_zero]
+  rw [e] at hL
+  have hE := hext 3 (by decide)
+  have hpos := skel_pos4 hS
+  have hsk : ∀ name, ∀ x ∈ outsOf ⟨(skeleton4 seq4 p).2.outs, zh, ex⟩ name, x < (Rs 3).size :=
+    fun name x hx => Nat.lt_of_lt_of_le (outsOf_lt4 (p := p) hS zh ex name x hx) hE.1
+  obtain ⟨L', hL', -⟩ := flag_gFinLr impl p.tix inp ⟨(skeleton4 seq4 p).2.outs, zh, ex⟩ (Rs 3) P
+    (hin_Lr hsk (lt_of_lt_of_le hpos hE.1) P)
+  exact ⟨y, hS, ⟨(skeleton4 seq4 p).2.outs, zh, ex⟩, Rs 3, rfl, hE, pureRun_det hL hL'⟩
+
+end FR.Snd.R4
+
+end G6_FRSoundness4R4Acc
+
+section G6_FRSoundness4R4Ex
+
+-- New for `flock-recursive` (BLUEPRINT revision 4.1, A.9; stage R4d).
+
+/-!
+# The finals' exports on an accepted run (`exAt`'s bookkeeping)
+
+`Finals.ops` passes field `k` the exports `exAt … k` of the fields before it, computed at the
+fold's own bases `baseAt … k`. **`exAt_succ`**: field `k`'s exports are pushed at base
+`baseAt … k`. **`fields_ex4`**: on an accepted run of `gen4 seq4 p (finOps4 P)` the register file
+`Rs k` that field `k` runs from has size `baseAt … k`, so `Ex (k + 1)` is `Ex k` with field `k`'s
+exports at `(Rs k).size` pushed: `lrEx` of `finE` names `finLr`'s exports (`lrEx_eq4`).
+-/
+
+namespace FR.Snd.R4
+open RecursionFast Rev4
+
+section ExAt
+variable (outs : Array (List Reg)) (zh : List Reg)
+
+/-- **The base the fold gives field `k`** (as `exAt`, the exports). -/
+def baseAt : List FinField → ℕ → Array (List Reg) → ℕ → ℕ
+  | [], b, _, _ => b
+  | _ :: _, b, _, 0 => b
+  | f :: fs, b, ex, k + 1 =>
+    baseAt fs (b + opsOut (f ⟨outs, zh, ex⟩ b).1) (ex.push (f ⟨outs, zh, ex⟩ b).2) k
+
+theorem exAt_zero (fs : List FinField) (b : ℕ) (ex : Array (List Reg)) :
+    exAt outs zh fs b ex 0 = ex ∧ baseAt outs zh fs b ex 0 = b := by
+  cases fs <;> exact ⟨rfl, rfl⟩
+
+/-- **One step of the fold**: field `k`'s exports, at base `baseAt … k`, are pushed. -/
+theorem exAt_succ : ∀ (fs : List FinField) (b : ℕ) (ex : Array (List Reg)) (k : ℕ) (hk : k < fs.length),
+    exAt outs zh fs b ex (k + 1) = (exAt outs zh fs b ex k).push
+        ((fs[k]'hk) ⟨outs, zh, exAt outs zh fs b ex k⟩ (baseAt outs zh fs b ex k)).2 ∧
+      baseAt outs zh fs b ex (k + 1) = baseAt outs zh fs b ex k +
+        opsOut ((fs[k]'hk) ⟨outs, zh, exAt outs zh fs b ex k⟩ (baseAt outs zh fs b ex k)).1
+  | [], _, _, _, hk => absurd hk (by simp)
+  | f :: fs, b, ex, 0, _ => by cases fs <;> exact ⟨rfl, rfl⟩
+  | f :: fs, b, ex, k + 1, hk => by
+    simp only [exAt, baseAt, List.getElem_cons_succ]
+    exact exAt_succ fs _ _ k (by simpa using hk)
+
+end ExAt
+
+/-! ## `finRS`'s exports are its registers (revision 4.1's `gFinRS`) -/
+
+/-- `gFinRS` appends `7 + 4·(1 + 128·8) + 10` registers. -/
+theorem opsOut_gFinRS (P : FinP) (fi : FinIn) (b : ℕ) : opsOut (gFinRS P fi b).1 = 4117 := by
+  simp only [gFinRS, opsOut_append]
+  rw [opsOut_claimOps, opsOut_claimOps, opsOut_claimOps, opsOut_claimOps]
+  · simp [opsOut, gRsTail, Op.outs, elemW]
+  all_goals intro; rfl
+
+/-- **`gFinRS`'s exports are among its registers.** -/
+theorem gFinRS_ex_lt (P : FinP) (fi : FinIn) (b : ℕ) :
+    ∀ x ∈ (gFinRS P fi b).2, x < b + opsOut (gFinRS P fi b).1 := by
+  rw [opsOut_gFinRS]
+  simp only [Reg]
+  intro x hx
+  simp only [gFinRS, elemW, List.mem_append, List.mem_map, List.mem_range, List.mem_cons,
+    List.not_mem_nil, or_false, Nat.reduceMul, Nat.reduceAdd] at hx
+  rcases hx with ⟨j, hj, rfl⟩ | rfl
+  · have : j * 1025 ≤ 3 * 1025 := Nat.mul_le_mul_right _ (by omega)
+    omega
+  · omega
+
+variable {impl : OpImpl} {p : KindP} {inp : Input}
+
+/-- **The fields of an accepted run, with their exports**: field `k` of `finalsOf P` runs
+(relocated) from `Rs k` with exports `Ex k` (`k + 1` of them) at base `(Rs k).size`, flag `true`;
+`Rs (k + 1)` appends its output and `Ex (k + 1)` pushes its exports. -/
+theorem fields_ex4 (P : FinP) {tr : Trace}
+    (h : semIR impl (gen4 seq4 p (finOps4 P)) inp tr = some true) :
+    ∃ y, SkRun4 impl p inp tr y ∧ ∃ (zh : List Reg) (Rs : ℕ → Array Val) (Ex : ℕ → Array (List Reg)),
+      (∀ k ≤ 12, ExtA (#[] ++ y.1.toArray) (Rs k)) ∧ (∀ x ∈ zh, x < (Rs 0).size) ∧
+      ∀ k (hk : k < 12), (Ex k).size = k + 1 ∧ ∃ L : List Val,
+        pureRun impl p.tix inp ((((finalsOf P).rest[k]'(by rw [rest_finalsOf_length]; exact hk))
+          ⟨(skeleton4 seq4 p).2.outs, zh, Ex k⟩ (Rs k).size).1.map (reloc P.S)) (Rs k) [] = some (L, true) ∧
+        Rs (k + 1) = Rs k ++ L.toArray ∧
+        Ex (k + 1) = (Ex k).push (((finalsOf P).rest[k]'(by rw [rest_finalsOf_length]; exact hk))
+          ⟨(skeleton4 seq4 p).2.outs, zh, Ex k⟩ (Rs k).size).2 := by
+  rw [finOps4_eq] at h
+  obtain ⟨y, hy, hf, hnx, L₀, h0L, Rs, h0, hrest⟩ := accept_chain4 impl seq4 p inp _ _ (noAsk_finOps4 P) h
+  obtain ⟨hl, hq⟩ := fsQ_gen4 impl inp seq4 p shOK_seq4 _ h
+  rw [fsMsgs4_len] at hl hq
+  set fs := (relocFin P.S (finalsOf P)).rest ++ [capF P.S] with hfs
+  have hlen : fs.length = 13 := by
+    rw [hfs, List.length_append, relocFin_rest, List.length_map, rest_finalsOf_length]; rfl
+  have hget : ∀ k (hk : k < 12), fs[k]'(by rw [hlen]; omega) =
+      relocF P.S ((finalsOf P).rest[k]'(by rw [rest_finalsOf_length]; exact hk)) := by
+    intro k hk
+    simp only [hfs]
+    rw [List.getElem_append_left (by rw [relocFin_rest, List.length_map, rest_finalsOf_length]; exact hk)]
+    simp only [relocFin_rest, List.getElem_map]
+  set fin := relocFin P.S (finalsOf P)
+  set outs := (skeleton4 seq4 p).2.outs
+  set zh := (fin.finRS ⟨outs, [], #[]⟩ (skeleton4 seq4 p).2.next).2
+  set B0 := (skeleton4 seq4 p).2.next + opsOut (fin.finRS ⟨outs, [], #[]⟩ (skeleton4 seq4 p).2.next).1
+  -- the files' sizes are the fold's bases
+  have hsz : ∀ k ≤ 12, (Rs k).size = baseAt outs zh fs B0 #[zh] k := by
+    intro k hk
+    induction k with
+    | zero =>
+      rw [(exAt_zero outs zh _ _ _).2, h0]
+      have := pureRun_len impl p.tix inp _ _ [] L₀ true h0L
+      simp only [Array.size_append, List.size_toArray, this, List.length_nil, Nat.zero_add, B0, hnx]
+    | succ k ih =>
+      obtain ⟨L, hL, he⟩ := hrest k (by rw [hlen]; omega)
+      have hl' := pureRun_len impl p.tix inp _ _ [] L true hL
+      have e1 : (Rs (k + 1)).size = (Rs k).size + L.length := by rw [he]; simp
+      rw [e1, hl', List.length_nil, Nat.zero_add,
+        (exAt_succ outs zh fs B0 #[zh] k (by rw [hlen]; omega)).2, ← ih (by omega)]
+  have hzh : ∀ x ∈ zh, x < (Rs 0).size := by
+    rw [hsz 0 (by omega), (exAt_zero outs zh _ _ _).2]
+    intro x hx
+    have := gFinRS_ex_lt P ⟨outs, [], #[]⟩ (skeleton4 seq4 p).2.next x hx
+    simpa only [B0, fin, relocFin, relocF, opsOut_reloc, finalsOf] using this
+  have hexs : ∀ k ≤ 12, (exAt outs zh fs B0 #[zh] k).size = k + 1 := by
+    intro k hk
+    induction k with
+    | zero => rw [(exAt_zero outs zh _ _ _).1]; rfl
+    | succ k ih =>
+      rw [(exAt_succ outs zh fs B0 #[zh] k (by rw [hlen]; omega)).1, Array.size_push, ih (by omega)]
+  refine ⟨y, ⟨hy, hf, hl, hq⟩, zh, Rs, fun k => exAt outs zh fs B0 #[zh] k, ?_, hzh,
+    fun k hk => ⟨hexs k (by omega), ?_⟩⟩
+  · intro k hk
+    induction k with
+    | zero => rw [h0]; exact ExtA.app _ _
+    | succ k ih =>
+      obtain ⟨L, -, he⟩ := hrest k (by rw [hlen]; omega)
+      rw [he]; exact (ih (by omega)).trans (ExtA.app _ _)
+  · obtain ⟨L, hL, he⟩ := hrest k (by rw [hlen]; omega)
+    have e := hget k hk
+    have hs := exAt_succ outs zh fs B0 #[zh] k (by rw [hlen]; omega)
+    rw [e] at hL hs
+    rw [← hsz k (by omega)] at hs
+    exact ⟨L, hL, he, hs.1⟩
+
+/-- **`finE`'s `lrEx` are `finLr`'s exports**: with the fold's exports `Ex 3` before `finLr`
+(four of them), `Ex 4`'s entry `exLr` is `finLr`'s output list. -/
+theorem lrEx_eq4 {Ex3 : Array (List Reg)} (hs : Ex3.size = 4) (e : List Reg) (fi : FinIn)
+    (hfi : fi.ex = Ex3.push e) (j : ℕ) : lrEx fi j = e.getD j 0 := by
+  rw [lrEx, hfi, exLr, Array.getD_eq_getD_getElem?, Array.getElem?_push, hs, if_pos rfl, Option.getD_some]
+
+end FR.Snd.R4
+
+end G6_FRSoundness4R4Ex
+
+section G6_FRSoundness4R4Fld
+
+-- New for `flock-recursive` (BLUEPRINT revision 4.1, A.9 the finals; stage R4e).
+
+/-!
+# One accepted run, every field: `Fields4`
+
+`fields_ex4` gives each field's run, but its `zhat` registers and register files are existential:
+two calls cannot be joined. **`Fields4`** packages one choice of them, together with `finRS`'s run
+(its exports are the `zhat` registers, its file `Rs 0`'s prefix), so the checks of several fields
+(`finRS`'s `α_j` with `finZ`'s, `finLc`'s, `finSh`'s, `finE`'s bindings) can be read on the same
+registers. **`fields4_of_accept`**: an accepted run has one. **`field_run4`**: field `k`'s
+relocated run from `Rs k`, flag `true`. Revision 4.4.1: `cap`, the batched cap check's run from
+`Rs 12` (after every field), flag `true`.
+-/
+
+namespace FR.Snd.R4
+open RecursionFast Rev4
+
+/-- **An accepted run's fields**: the skeleton's run `y`, `finRS`'s run from the skeleton's file
+(exports `zh`, file `Rs 0`), and field `k` of the rest from `Rs k` with exports `Ex k`. -/
+structure Fields4 (impl : OpImpl) (p : KindP) (inp : Input) (tr : Trace) (P : FinP)
+    (y : List Val × List Bool × Trace) (zh : List Reg) (Rs : ℕ → Array Val)
+    (Ex : ℕ → Array (List Reg)) : Prop where
+  sk : SkRun4 impl p inp tr y
+  ext : ∀ k ≤ 12, ExtA (#[] ++ y.1.toArray) (Rs k)
+  zlt : ∀ x ∈ zh, x < (Rs 0).size
+  zh_eq : zh = ((finalsOf P).finRS ⟨(skeleton4 seq4 p).2.outs, [], #[]⟩ (#[] ++ y.1.toArray).size).2
+  rs : ∃ L₀ : List Val, pureRun impl p.tix inp
+      (((finalsOf P).finRS ⟨(skeleton4 seq4 p).2.outs, [], #[]⟩ (#[] ++ y.1.toArray).size).1.map
+        (reloc P.S)) (#[] ++ y.1.toArray) [] = some (L₀, true) ∧
+    Rs 0 = (#[] ++ y.1.toArray) ++ L₀.toArray
+  fld : ∀ k (hk : k < 12), (Ex k).size = k + 1 ∧ ∃ L : List Val,
+    pureRun impl p.tix inp ((((finalsOf P).rest[k]'(by rw [rest_finalsOf_length]; exact hk))
+      ⟨(skeleton4 seq4 p).2.outs, zh, Ex k⟩ (Rs k).size).1.map (reloc P.S)) (Rs k) [] = some (L, true) ∧
+    Rs (k + 1) = Rs k ++ L.toArray ∧
+    Ex (k + 1) = (Ex k).push (((finalsOf P).rest[k]'(by rw [rest_finalsOf_length]; exact hk))
+      ⟨(skeleton4 seq4 p).2.outs, zh, Ex k⟩ (Rs k).size).2
+  /-- The batched cap check (revision 4.4.1) runs from `Rs 12`, flag `true`. -/
+  cap : ∃ L : List Val, pureRun impl p.tix inp
+    ((capChkOps P.S (skeleton4 seq4 p).2.outs (Rs 12).size).map (reloc P.S)) (Rs 12) [] = some (L, true)
+
+variable {impl : OpImpl} {p : KindP} {inp : Input}
+
+/-- **An accepted run has its fields** (`fields_ex4` with `finRS`'s run kept). -/
+theorem fields4_of_accept (P : FinP) {tr : Trace}
+    (h : semIR impl (gen4 seq4 p (finOps4 P)) inp tr = some true) :
+    ∃ y zh Rs Ex, Fields4 impl p inp tr P y zh Rs Ex := by
+  rw [finOps4_eq] at h
+  obtain ⟨y, hy, hf, hnx, L₀, h0L, Rs, h0, hrest⟩ := accept_chain4 impl seq4 p inp _ _ (noAsk_finOps4 P) h
+  obtain ⟨hl, hq⟩ := fsQ_gen4 impl inp seq4 p shOK_seq4 _ h
+  rw [fsMsgs4_len] at hl hq
+  set fs := (relocFin P.S (finalsOf P)).rest ++ [capF P.S] with hfs
+  have hlen : fs.length = 13 := by
+    rw [hfs, List.length_append, relocFin_rest, List.length_map, rest_finalsOf_length]; rfl
+  have hget : ∀ k (hk : k < 12), fs[k]'(by rw [hlen]; omega) =
+      relocF P.S ((finalsOf P).rest[k]'(by rw [rest_finalsOf_length]; exact hk)) := by
+    intro k hk
+    simp only [hfs]
+    rw [List.getElem_append_left (by rw [relocFin_rest, List.length_map, rest_finalsOf_length]; exact hk)]
+    simp only [relocFin_rest, List.getElem_map]
+  have hcap : fs[12]'(by rw [hlen]; omega) = capF P.S := by
+    simp only [hfs]
+    rw [List.getElem_append_right (by rw [relocFin_rest, List.length_map, rest_finalsOf_length])]
+    simp [relocFin_rest, rest_finalsOf_length]
+  set fin := relocFin P.S (finalsOf P)
+  set outs := (skeleton4 seq4 p).2.outs
+  set zh := (fin.finRS ⟨outs, [], #[]⟩ (skeleton4 seq4 p).2.next).2
+  set B0 := (skeleton4 seq4 p).2.next + opsOut (fin.finRS ⟨outs, [], #[]⟩ (skeleton4 seq4 p).2.next).1
+  have hsz : ∀ k ≤ 12, (Rs k).size = baseAt outs zh fs B0 #[zh] k := by
+    intro k hk
+    induction k with
+    | zero =>
+      rw [(exAt_zero outs zh _ _ _).2, h0]
+      have := pureRun_len impl p.tix inp _ _ [] L₀ true h0L
+      simp only [Array.size_append, List.size_toArray, this, List.length_nil, Nat.zero_add, B0, hnx]
+    | succ k ih =>
+      obtain ⟨L, hL, he⟩ := hrest k (by rw [hlen]; omega)
+      have hl' := pureRun_len impl p.tix inp _ _ [] L true hL
+      have e1 : (Rs (k + 1)).size = (Rs k).size + L.length := by rw [he]; simp
+      rw [e1, hl', List.length_nil, Nat.zero_add,
+        (exAt_succ outs zh fs B0 #[zh] k (by rw [hlen]; omega)).2, ← ih (by omega)]
+  have hzh : ∀ x ∈ zh, x < (Rs 0).size := by
+    rw [hsz 0 (by omega), (exAt_zero outs zh _ _ _).2]
+    intro x hx
+    have := gFinRS_ex_lt P ⟨outs, [], #[]⟩ (skeleton4 seq4 p).2.next x hx
+    simpa only [B0, fin, relocFin, relocF, opsOut_reloc, finalsOf] using this
+  have hexs : ∀ k ≤ 12, (exAt outs zh fs B0 #[zh] k).size = k + 1 := by
+    intro k hk
+    induction k with
+    | zero => rw [(exAt_zero outs zh _ _ _).1]; rfl
+    | succ k ih =>
+      rw [(exAt_succ outs zh fs B0 #[zh] k (by rw [hlen]; omega)).1, Array.size_push, ih (by omega)]
+  refine ⟨y, zh, Rs, fun k => exAt outs zh fs B0 #[zh] k, ⟨⟨hy, hf, hl, hq⟩, ?_, hzh,
+    by rw [← hnx]; rfl, ⟨L₀, by rw [← hnx]; exact h0L, h0⟩, fun k hk => ⟨hexs k (by omega), ?_⟩, ?_⟩⟩
+  · intro k hk
+    induction k with
+    | zero => rw [h0]; exact ExtA.app _ _
+    | succ k ih =>
+      obtain ⟨L, -, he⟩ := hrest k (by rw [hlen]; omega)
+      rw [he]; exact (ih (by omega)).trans (ExtA.app _ _)
+  · obtain ⟨L, hL, he⟩ := hrest k (by rw [hlen]; omega)
+    have e := hget k hk
+    have hs := exAt_succ outs zh fs B0 #[zh] k (by rw [hlen]; omega)
+    rw [e] at hL hs
+    rw [← hsz k (by omega)] at hs
+    exact ⟨L, hL, he, hs.1⟩
+  · obtain ⟨L, hL, -⟩ := hrest 12 (by rw [hlen]; omega)
+    rw [hcap] at hL
+    exact ⟨L, hL⟩
+
+section F
+variable {tr : Trace} {P : FinP} {y : List Val × List Bool × Trace} {zh : List Reg}
+  {Rs : ℕ → Array Val} {Ex : ℕ → Array (List Reg)} (hF : Fields4 impl p inp tr P y zh Rs Ex)
+include hF
+
+/-- The files extend each other. -/
+theorem Fields4.chain {j k : ℕ} (hjk : j ≤ k) (hk : k ≤ 12) : ExtA (Rs j) (Rs k) := by
+  have hch : ∀ k < 12, ExtA (Rs k) (Rs (k + 1)) := fun k hk => by
+    obtain ⟨-, L, -, he, -⟩ := hF.fld k hk; rw [he]; exact ExtA.app _ _
+  obtain ⟨d, rfl⟩ := Nat.exists_eq_add_of_le hjk
+  induction d with
+  | zero => exact ⟨le_rfl, fun _ _ => rfl⟩
+  | succ d ih => exact (ih (by omega) (by omega)).trans (hch _ (by omega))
+
+/-- The `zhat` registers lie in every file. -/
+theorem Fields4.zlt' {k : ℕ} (hk : k ≤ 12) : ∀ x ∈ zh, x < (Rs k).size :=
+  fun x hx => Nat.lt_of_lt_of_le (hF.zlt x hx) (hF.chain (Nat.zero_le k) hk).1
+
+/-- A named register of field `k`'s input lies in its file. -/
+theorem Fields4.sk_lt {k : ℕ} (hk : k ≤ 12) (ex : Array (List Reg)) :
+    ∀ name, ∀ x ∈ outsOf ⟨(skeleton4 seq4 p).2.outs, zh, ex⟩ name, x < (Rs k).size :=
+  fun name x hx => Nat.lt_of_lt_of_le (outsOf_lt4 (p := p) hF.sk zh ex name x hx) (hF.ext k hk).1
+
+theorem Fields4.pos {k : ℕ} (hk : k ≤ 12) : 0 < (Rs k).size :=
+  lt_of_lt_of_le (skel_pos4 hF.sk) (hF.ext k hk).1
+
+end F
+
+end FR.Snd.R4
+
+end G6_FRSoundness4R4Fld
+
+section G6_FRSoundness4R4View
+
+-- New for `flock-recursive` (BLUEPRINT revision 4.1, A.9, A.10; stage R4).
+
+/-!
+# Register views of an accepted `gen4` run: squeezes (coordinates, one challenge)
+
+On an accepted run (`SkRun4`), a squeeze phase `n` of `phasesOf seq4` leaves its challenges in the
+skeleton's registers, read off the run's Fiat–Shamir entries from `phStart4 n`:
+
+* **`sqz_entries4`**: the phase's answers are the entries' answers (`ansAt`) from `phStart4 n`;
+* **`coords_view4`** (`.squeezes k .coords`): `outs[n] = (b + 3k) :: (b + 3⌊x/2⌋ + 1 + x mod 2)_x`,
+  register `b + 3⌊x/2⌋ + 1 + x mod 2` holding `chF (ansAt es (phStart4 n + ⌊x/2⌋)) (x mod 2)`;
+* **`one_view4`** (`.squeezes 1 .one`): the one out register holds `fAt es (phStart4 n) 0`.
+-/
+
+namespace FR.Snd.R4
+open RecursionFast Rev4
+
+variable {impl : OpImpl} {p : KindP} {inp : Input}
+
+theorem rd_phase4 {M X : List Val} {R : Array Val} (hext : ExtA (#[] ++ (M ++ X).toArray) R)
+    {m : ℕ} (hm : m < X.length) : rd R (M.length + m) = X.getD m default := by
+  have hlt : M.length + m < (#[] ++ (M ++ X).toArray).size := by simp; omega
+  rw [hext.2 _ hlt, show (#[] : Array Val) ++ (M ++ X).toArray = (#[] ++ M.toArray) ++ X.toArray
+    by simp, show M.length = (#[] ++ M.toArray).size by simp, rd_app]
+
+/-- A squeeze phase's answers are the chain's entries from `phStart4 n`. -/
+theorem sqz_entries4 {tr trk : Trace} {n k : ℕ} (hn : n < (phasesOf seq4).length) {ch : ChalK}
+    (hsh : (phasesOf seq4)[n].2 = .squeezes k ch) (hk : 0 < k) {d : Digest}
+    {xs : List Digest × Trace} (hsq : sqzT k d trk = some xs)
+    (hdrop : (fsOf tr (itemsOf seq4)).drop (phStart4 n) = fsOf trk (psItems4 seq4 ((phasesOf seq4).drop n))) :
+    xs.1.length = k ∧ ∀ l < k, xs.1.getD l zeroD = ansAt (fsOf tr (itemsOf seq4)) (phStart4 n + l) := by
+  obtain ⟨seg, hseg, hsl, -, hmap⟩ := sqzT_chain ⟨zeroD, zeroD, ByteArray.empty⟩ hsq 0
+  have hit : (phasesOf seq4)[n].2.itemsL seq4.lv = List.replicate k .squeeze := by rw [hsh]; rfl
+  rw [List.drop_eq_getElem_cons hn, psItems4, List.flatMap_cons, hit] at hdrop
+  obtain ⟨-, hent⟩ := seg_entries hdrop hseg (by simpa using hsl) (replicate_sq_fs k) (by simpa using hk)
+  rw [List.length_replicate] at hent
+  refine ⟨by rw [← hmap, List.length_map, hsl], fun l hl => ?_⟩
+  rw [← hmap, List.getD_eq_getElem _ _ (by simp [hsl, hl]), List.getElem_map, ansAt, entAt,
+    ← hent l hl, hseg, List.getD_eq_getElem _ _ (by simp [hsl]; omega),
+    List.getElem_append_left (by omega)]
+
+/-- **A coordinates phase on the skeleton's registers.** -/
+theorem coords_view4 {tr : Trace} {y : List Val × List Bool × Trace} (h : SkRun4 impl p inp tr y)
+    {n : ℕ} (hn : n < (phasesOf seq4).length) {k : ℕ}
+    (hsh : (phasesOf seq4)[n].2 = .squeezes k .coords) (hk : 0 < k) :
+    ∃ b, (skeleton4 seq4 p).2.outs.getD n [] = (b + 3 * k) ::
+        (List.range (2 * k)).map (fun x => b + 3 * (x / 2) + 1 + x % 2) ∧
+      b + 3 * k + 1 ≤ (#[] ++ y.1.toArray).size ∧
+      ∀ x < 2 * k, rd (#[] ++ y.1.toArray) (b + 3 * (x / 2) + 1 + x % 2) =
+        .f (chF (ansAt (fsOf tr (itemsOf seq4)) (phStart4 n + x / 2)) (x % 2)) := by
+  obtain ⟨trk, M, x, hx, hb, -, hext, -, hdrop, -⟩ := phase_at4 impl p.tix inp p h.ref hn
+  generalize hph : (phasesOf seq4)[n] = ph at hx hsh
+  obtain ⟨name, sh⟩ := ph
+  simp only at hsh; subst hsh
+  simp only [refPhase4] at hx
+  obtain ⟨xs, hxs, rfl⟩ := Option.map_eq_some_iff.1 hx
+  obtain ⟨hl, hans⟩ := sqz_entries4 hn (by rw [hph]) hk hxs hdrop
+  dsimp only at hext
+  have hsz := hext.1
+  simp only [Array.size_append, List.size_toArray, List.length_append, coordVals_length, hl,
+    List.length_singleton, List.size_toArray] at hsz
+  refine ⟨M.length, ?_, by simp only [Array.size_append, List.size_toArray] at hsz ⊢; omega,
+    fun v hv => ?_⟩
+  · rw [skeleton4_outs seq4 p hn, hph]; simp [genPhase4, hb]
+  · have h3 : 3 * (v / 2) + (1 + v % 2) < (xs.1.flatMap coordVals).length := by
+      rw [coordVals_length, hl]; omega
+    rw [show M.length + 3 * (v / 2) + 1 + v % 2 = M.length + (3 * (v / 2) + (1 + v % 2)) by ring,
+      rd_phase4 hext (by simp only [List.length_append]; omega),
+      List.getD_append _ _ _ _ h3, flatMap_coord_getD _ _ _ (by omega) (by omega), hans _ (by omega)]
+    rcases Nat.mod_two_eq_zero_or_one v with h0 | h1
+    · rw [h0]; rfl
+    · rw [h1]; rfl
+
+/-- **A one-challenge squeeze on the skeleton's registers** (`L1`, `L3β`, `Lr3`, `E3`, `B′`): its
+one out register holds `fAt es (phStart4 n) 0`. -/
+theorem one_view4 {tr : Trace} {y : List Val × List Bool × Trace} (h : SkRun4 impl p inp tr y)
+    {n : ℕ} (hn : n < (phasesOf seq4).length) (hsh : (phasesOf seq4)[n].2 = .squeezes 1 .one) :
+    ∃ b, (skeleton4 seq4 p).2.outs.getD n [] = [b] ∧ b < (#[] ++ y.1.toArray).size ∧
+      rd (#[] ++ y.1.toArray) b = .f (fAt (fsOf tr (itemsOf seq4)) (phStart4 n) 0) := by
+  obtain ⟨trk, M, x, hx, hb, -, hext, -, hdrop, -⟩ := phase_at4 impl p.tix inp p h.ref hn
+  generalize hph : (phasesOf seq4)[n] = ph at hx hsh
+  obtain ⟨name, sh⟩ := ph
+  simp only at hsh; subst hsh
+  simp only [refPhase4] at hx
+  obtain ⟨xs, hxs, rfl⟩ := Option.map_eq_some_iff.1 hx
+  obtain ⟨hl, hans⟩ := sqz_entries4 hn (by rw [hph]) (by norm_num) hxs hdrop
+  dsimp only at hext
+  have hsz := hext.1
+  simp only [Array.size_append, List.size_toArray, List.length_append, List.length_map, hl,
+    List.length_singleton] at hsz
+  refine ⟨M.length + 1, ?_, by dsimp only [Reg]; simp at hsz ⊢; omega, ?_⟩
+  · rw [skeleton4_outs seq4 p hn, hph]; simp [genPhase4, hb]
+  · rw [rd_phase4 hext (by simp [hl]), List.getD_append_right _ _ _ _ (by simp [hl]),
+      List.length_map, hl, Nat.sub_self, List.getD_cons_zero, fAt]
+    obtain ⟨a, ha⟩ : ∃ a, xs.1 = [a] := List.length_eq_one_iff.1 hl
+    have h0 := hans 0 (by norm_num)
+    rw [ha, Nat.add_zero, List.getD_cons_zero] at h0
+    rw [ha, List.headD_cons, h0]
+
+end FR.Snd.R4
+
+end G6_FRSoundness4R4View
+
+section G6_FRSoundness4R4Rnd
+
+-- New for `flock-recursive` (BLUEPRINT revision 4.1, A.4, A.9; stage R4b).
+-- RET-2: import re-pointed at Core: `FRSoundnessFrRndV` → `FRSoundnessCoreAcc`.
+
+/-!
+# The F rounds of an accepted `gen4` run, on the log (real round counts, every init)
+
+A rounds phase `n` of `phasesOf seq4` (`.rounds f k deg false`, `deg ∈ {2, 3}`) runs `k` slots of
+which the first `realRounds p name k` are real; a dummy round keeps the claim. On the log the
+phase's entries sit at `P = phStart4 n` (`rounds_at4`), and the program's registers are the log's
+running claims (no message table is needed: a round's query is `absorbQ d msg`, so the log's
+`msgAt` *is* the program's message, `msgAt_of_q`):
+
+* **`rounds3_log`** (degree 3): the claim after the run is `clR P c₀ … (min real (j + n))`;
+* **`rounds2_log`** (degree 2): the claim after the run is `clR2 P … (min real (j + n))`, and every
+  real round's check `Chk2 P …` holds (the program's `c₁ + c₂ = claim` assert);
+* **`roundsF3_view4`**, **`roundsF2_view4`**: on the skeleton's registers. `outs[n]` is
+  `cl :: rs ++ [last]` (`genPhase4_roundsF`), `cl` holds the initial claim (`.free`: round 0's
+  `c₁ + c₂`; `.zero`: `0`; `.uni`: Z2's register, a hypothesis), `rs[j]` round `j`'s challenge
+  `rch P es j`, `last` the claim after the real rounds.
+-/
+
+namespace FR.Snd.R4
+open RecursionFast Rev4 FR.Impl
+
+/-! ## The log's messages are the program's -/
+
+theorem getLastD_append' (l l' : List α) (a : α) : (l ++ l').getLastD a = l'.getLastD (l.getLastD a) := by
+  simp only [List.getLastD_eq_getLast?, List.getLast?_append]
+  cases l'.getLast? <;> rfl
+
+/-- A logged absorb's message is the absorbed bytes. -/
+theorem msgAt_of_q {es : Log} {p : ℕ} {d : Digest} {m : ByteArray}
+    (h : (es.getD p default).1 = absorbQ d m) : Snd.msgAt es p = m := by
+  unfold Snd.msgAt entAt; rw [h]; exact extract40_absorbQ _ _
+
+theorem readF_piMsg (inp : Input) (o off : ℕ) {len : ℕ} (h : off + 16 ≤ len) :
+    readF (FR.msgAt inp 0 o len) off = elemAt inp 0 (o + off) := by
+  simp only [readF, FR.msgAt, elemAt, absOff_zero]
+  rw [bytesAt_extract_of_le16 _ h]
+
+/-! ## Dummy rounds keep the claim -/
+
+theorem getLastD_of_ne {l : List α} (h : l ≠ []) (a b : α) : l.getLastD a = l.getLastD b := by
+  rw [List.getLastD_eq_getLast?, List.getLastD_eq_getLast?, List.getLast?_eq_getLast h]; rfl
+
+theorem roundsT_dummy (inp : Input) (o deg real : ℕ) :
+    ∀ (n j : ℕ) (d : Digest) (cv : Val) (tr : Trace) (x : List Val × Bool × Trace),
+      roundsT inp 0 o deg false real n j d cv tr = some x → real ≤ j → x.1.getLastD cv = cv
+  | 0, _, _, _, _, x, h, _ => by
+    simp only [roundsT, Option.some.injEq] at h; subst h; rfl
+  | n + 1, j, d, cv, (q₁, a₁) :: (q₂, a₂) :: tr, x, h, hj => by
+    simp only [roundsT, Bool.false_eq_true, ite_false] at h
+    have hre : decide (j < real) = false := decide_eq_false (by omega)
+    split_ifs at h with hq hd <;>
+    · obtain ⟨x', hx', rfl⟩ := Option.map_eq_some_iff.mp h
+      have ih := roundsT_dummy inp o deg real n (j + 1) a₂ _ tr x' hx' (by omega)
+      rw [getLastD_append']
+      simp only [hre, round3V, round2Vals, Bool.false_eq_true, ite_false, List.getLastD_eq_getLast?,
+        List.getLast?_cons_cons, List.getLast?_singleton, Option.getD_some] at ih ⊢
+      exact ih
+  | _ + 1, _, _, _, [], _, h, _ => by simp [roundsT] at h
+  | _ + 1, _, _, _, [_], _, h, _ => by simp [roundsT] at h
+
+/-! ## Real rounds on the log -/
+
+/-- A round's two entries on the log: its message is π's, its challenge the answer's. -/
+theorem round_entries {inp : Input} {o P j : ℕ} {es : Log} {q₁ q₂ : ByteArray} {a₁ a₂ d : Digest}
+    {tr : Trace} (hq : q₁ = absorbQ d (FR.msgAt inp 0 (o + j * roundBytes false) (roundBytes false)))
+    (he : ∀ m < 2, ((q₁, a₁) :: (q₂, a₂) :: tr).getD m default = es.getD (P + 2 * j + m) default) :
+    (∀ off, off + 16 ≤ 48 → readF (Snd.msgAt es (P + 2 * j)) off = elemAt inp 0 (o + j * 48 + off)) ∧
+      ansAt es (P + 2 * j + 1) = a₂ := by
+  have e0 := he 0 (by norm_num); have e1 := he 1 (by norm_num)
+  simp only [List.getD_cons_zero, List.getD_cons_succ, Nat.add_zero] at e0 e1
+  refine ⟨fun off hoff => ?_, by rw [ansAt, entAt, ← e1]⟩
+  rw [msgAt_of_q (p := P + 2 * j) (by rw [← e0]; exact hq)]
+  exact readF_piMsg inp _ off hoff
+
+theorem shift_entries {es : Log} {P j n : ℕ} {e₁ e₂ : ByteArray × Digest} {tr : Trace}
+    (he : ∀ m < 2 * (n + 1), (e₁ :: e₂ :: tr).getD m default = es.getD (P + 2 * j + m) default) :
+    ∀ m < 2 * n, tr.getD m default = es.getD (P + 2 * (j + 1) + m) default := fun m hm => by
+  have := he (m + 2) (by omega)
+  rw [List.getD_cons_succ, List.getD_cons_succ] at this
+  rw [this]; congr 1; ring
+
+/-- **Degree-3 F rounds on the log**: from claim `clR P c₀ … j` at round `j ≤ real`, the claim
+after `n` rounds is `clR P c₀ … (min real (j + n))` (dummies keep it). -/
+theorem rounds3_log (inp : Input) (o real P : ℕ) (es : Log) (c0 : Log → Log → F) (L : Log) :
+    ∀ (n j : ℕ) (d : Digest) (cv : Val) (tr : Trace) (x : List Val × Bool × Trace),
+      roundsT inp 0 o 3 false real n j d cv tr = some x →
+      (∀ m < 2 * n, tr.getD m default = es.getD (P + 2 * j + m) default) →
+      j ≤ real → cv = .f (clR P c0 L es j) →
+      x.1.getLastD cv = .f (clR P c0 L es (min real (j + n)))
+  | 0, j, _, cv, _, x, h, _, hj, hc => by
+    simp only [roundsT, Option.some.injEq] at h; subst h
+    rw [Nat.add_zero, Nat.min_eq_right hj]; exact hc
+  | n + 1, j, d, cv, (q₁, a₁) :: (q₂, a₂) :: tr, x, h, he, hj, hc => by
+    simp only [roundsT, Bool.false_eq_true, ite_false, ite_true] at h
+    split_ifs at h with hq
+    obtain ⟨x', hx', rfl⟩ := Option.map_eq_some_iff.mp h
+    obtain ⟨hm, ha⟩ := round_entries hq.1 (fun m hm => he m (by omega))
+    have hne : round3V inp 0 (o + j * roundBytes false) (decide (j < real)) a₁ a₂ cv ≠ [] := by
+      simp [round3V]
+    rw [getLastD_append', getLastD_of_ne hne cv default]
+    rcases Nat.lt_or_ge j real with hjr | hjr
+    · have hg : (round3V inp 0 (o + j * roundBytes false) (decide (j < real)) a₁ a₂ cv).getLastD
+          default = .f (clR P c0 L es (j + 1)) := by
+        simp only [round3V, decide_eq_true hjr, ite_true, List.getLastD_eq_getLast?,
+          List.getLast?_cons_cons, List.getLast?_singleton, Option.getD_some, clR, g3At, rch, fAt, ha,
+          peval_four, hc, Val.toF, roundBytes, Bool.false_eq_true, ite_false]
+        rw [hm 0 (by norm_num), hm 16 (by norm_num), hm 32 (by norm_num), Nat.add_zero]; rfl
+      rw [hg, rounds3_log inp o real P es c0 L n (j + 1) a₂ _ tr x' (hg ▸ hx') (shift_entries he)
+        (by omega) rfl, show j + 1 + n = j + (n + 1) by omega]
+    · have hjr' : j = real := by omega
+      have hk : (round3V inp 0 (o + j * roundBytes false) (decide (j < real)) a₁ a₂ cv).getLastD
+          default = cv := by
+        simp [round3V, show ¬ j < real by omega]
+      rw [hk, roundsT_dummy inp o 3 real n (j + 1) a₂ cv tr x' (hk ▸ hx') (by omega), hc, hjr',
+        Nat.min_eq_left (by omega)]
+  | _ + 1, _, _, _, [], _, h, _, _, _ => by simp [roundsT] at h
+  | _ + 1, _, _, _, [_], _, h, _, _, _ => by simp [roundsT] at h
+
+/-- **Degree-2 F rounds on the log**: from claim `clR2 P … j` at round `j ≤ real`, the claim
+after `n` rounds is `clR2 P … (min real (j + n))`; on a passing run every real round's check holds. -/
+theorem rounds2_log (inp : Input) (o real P : ℕ) (es : Log) (c0 : Log → Log → F) (L : Log) :
+    ∀ (n j : ℕ) (d : Digest) (cv : Val) (tr : Trace) (x : List Val × Bool × Trace),
+      roundsT inp 0 o 2 false real n j d cv tr = some x →
+      (∀ m < 2 * n, tr.getD m default = es.getD (P + 2 * j + m) default) →
+      j ≤ real → cv = .f (clR2 P 16 readF (fun d => chF d 0) c0 L es j) →
+      x.1.getLastD cv = .f (clR2 P 16 readF (fun d => chF d 0) c0 L es (min real (j + n))) ∧
+        (x.2.1 = true → ∀ l < n, j + l < real → Chk2 P 16 readF (fun d => chF d 0) c0 L es (j + l))
+  | 0, j, _, cv, _, x, h, _, hj, hc => by
+    simp only [roundsT, Option.some.injEq] at h; subst h
+    exact ⟨by rw [Nat.add_zero, Nat.min_eq_right hj]; exact hc, fun _ l hl => absurd hl (by omega)⟩
+  | n + 1, j, d, cv, (q₁, a₁) :: (q₂, a₂) :: tr, x, h, he, hj, hc => by
+    simp only [roundsT, Bool.false_eq_true, ite_false, show (2 = 3) = False by decide] at h
+    split_ifs at h with hq
+    obtain ⟨x', hx', rfl⟩ := Option.map_eq_some_iff.mp h
+    obtain ⟨hm, ha⟩ := round_entries hq.1 (fun m hm => he m (by omega))
+    have hne : round2Vals inp 0 (o + j * roundBytes false) (decide (j < real)) a₁ a₂ cv ≠ [] := by
+      simp [round2Vals]
+    rcases Nat.lt_or_ge j real with hjr | hjr
+    · have hg : (round2Vals inp 0 (o + j * roundBytes false) (decide (j < real)) a₁ a₂ cv).getLastD
+          default = .f (clR2 P 16 readF (fun d => chF d 0) c0 L es (j + 1)) := by
+        simp only [round2Vals, decide_eq_true hjr, ite_true, List.getLastD_eq_getLast?,
+          List.getLast?_cons_cons, List.getLast?_singleton, Option.getD_some, clR2, g2At, rch2, ha,
+          peval_three, g2, roundBytes, Bool.false_eq_true, ite_false]
+        rw [hm 0 (by norm_num), hm 16 (by norm_num), show 2 * 16 = 32 by norm_num,
+          hm 32 (by norm_num), Nat.add_zero]
+        exact congrArg Val.f (by ring)
+      obtain ⟨ih1, ih2⟩ := rounds2_log inp o real P es c0 L n (j + 1) a₂ _ tr x' (hg ▸ hx')
+        (shift_entries he) (by omega) rfl
+      refine ⟨?_, fun hx l hl hjl => ?_⟩
+      · rw [getLastD_append', getLastD_of_ne hne cv default, hg, ih1,
+          show j + 1 + n = j + (n + 1) by omega]
+      · simp only [decide_eq_true hjr, Bool.not_true, Bool.false_or, Bool.true_or, Bool.and_true,
+          Bool.and_eq_true] at hx
+        rcases l with _ | l
+        · have h0 := hx.1
+          simp only [roundBytes, Bool.false_eq_true, ite_false, hc, eqv_f] at h0
+          rw [Nat.add_zero, Chk2, g2At, charTwo_peval01F, hm 16 (by norm_num),
+            show 2 * 16 = 32 by norm_num, hm 32 (by norm_num)]
+          exact h0
+        · rw [show j + (l + 1) = j + 1 + l by omega]
+          exact ih2 hx.2 l (by omega) (by omega)
+    · have hjr' : j = real := by omega
+      have hk : (round2Vals inp 0 (o + j * roundBytes false) (decide (j < real)) a₁ a₂ cv).getLastD
+          default = cv := by
+        simp [round2Vals, show ¬ j < real by omega]
+      refine ⟨?_, fun _ l _ hjl => absurd hjl (by omega)⟩
+      rw [getLastD_append', getLastD_of_ne hne cv default, hk,
+        roundsT_dummy inp o 2 real n (j + 1) a₂ cv tr x' (hk ▸ hx') (by omega), hc, hjr',
+        Nat.min_eq_left (by omega)]
+  | _ + 1, _, _, _, [], _, h, _, _, _ => by simp [roundsT] at h
+  | _ + 1, _, _, _, [_], _, h, _, _, _ => by simp [roundsT] at h
+
+/-! ## A rounds phase of the accepted skeleton -/
+
+theorem rounds_itemsL_length (lv : ℕ → Level) (f k deg : ℕ) (inK : Bool) :
+    ((Sh.rounds f k deg inK).itemsL lv).length = 2 * k := by
+  simp [Sh.itemsL, Nat.mul_comm]
+
+/-- The claim register's value a rounds phase starts from (`refPhase4`'s `cl`). -/
+def clVal (inp : Input) (init : Init) (o : ℕ) (r : Array Val) (u : Reg) : Val :=
+  match init with
+  | .uni => rd r u
+  | _ => (initVals inp init 0 o false).getLastD default
+
+variable {impl : OpImpl} {p : KindP} {inp : Input}
+
+/-- **A rounds phase of an accepted run** (`.rounds f k deg false`): before it the registers are
+`#[] ++ M`; its `k` slots run `roundsT` with `realRounds p name k` real rounds from the claim
+`clVal …`; its values `initVals ++ xr.1` extend into the run's registers; its `2k` entries are the
+log's from `phStart4 n`. -/
+theorem rounds_at4 {tr : Trace} {y : List Val × List Bool × Trace} (h : SkRun4 impl p inp tr y)
+    {n : ℕ} (hn : n < (phasesOf seq4).length) {f k deg : ℕ}
+    (hsh : (phasesOf seq4)[n].2 = .rounds f k deg false) :
+    ∃ (M : List Val) (xr : List Val × Bool × Trace) (trk : Trace),
+      (cAt4 seq4 p n).next = M.length ∧ CtxOk (cAt4 seq4 p n) (#[] ++ M.toArray) ∧
+      roundsT inp 0 (fieldOffOf seq4 f + phaseOffOf seq4 n f) deg false
+        (realRounds p (phasesOf seq4)[n].1 k) k 0 (rd (#[] ++ M.toArray) (cAt4 seq4 p n).st).toD
+        (clVal inp (initClaim (phasesOf seq4)[n].1) (fieldOffOf seq4 f + phaseOffOf seq4 n f)
+          (#[] ++ M.toArray) (cAt4 seq4 p n).uni) trk = some xr ∧
+      ExtA (#[] ++ (M ++ (initVals inp (initClaim (phasesOf seq4)[n].1) 0
+        (fieldOffOf seq4 f + phaseOffOf seq4 n f) false ++ xr.1)).toArray) (#[] ++ y.1.toArray) ∧
+      xr.2.1 = true ∧
+      ∀ m < 2 * k, trk.getD m default = (fsOf tr (itemsOf seq4)).getD (phStart4 n + m) default := by
+  obtain ⟨trk, M, x, hx, hb, hwf, hext, hflag, hdrop, -⟩ := phase_at4 impl p.tix inp p h.ref hn
+  have hok : CtxOk (cAt4 seq4 p n) (#[] ++ M.toArray) := by
+    rcases hwf with ⟨h', -⟩ | h'
+    · rw [hsh] at h'; cases h'
+    · exact h'
+  obtain ⟨seg, hseg, hsl, -⟩ := refPhase4_chain impl p.tix inp seq4 p hx (by simpa using hb)
+    (by rw [hsh]; rfl) (q0 := 1) (by simp [hsh, isSeed4]) (.inr hok.1)
+  generalize hph : (phasesOf seq4)[n] = ph at hx hsh hsl
+  obtain ⟨name, sh⟩ := ph
+  simp only at hsh; subst hsh
+  simp only [refPhase4] at hx
+  obtain ⟨xr, hxr, rfl⟩ := Option.map_eq_some_iff.1 hx
+  refine ⟨M, xr, trk, hb, hok, ?_, hext, h.flags _ hflag, fun m hm => ?_⟩
+  · convert hxr using 2; simp only [clVal]; generalize initClaim name = ic; cases ic <;> rfl
+  · have hit : (phasesOf seq4)[n].2.itemsL seq4.lv = (Sh.rounds f k deg false).itemsL seq4.lv := by
+      rw [hph]
+    rw [List.drop_eq_getElem_cons hn, psItems4, List.flatMap_cons, hit] at hdrop
+    rw [rounds_itemsL_length] at hsl
+    obtain ⟨-, hent⟩ := seg_entries hdrop hseg (by rw [hsl, rounds_itemsL_length])
+      (itemsL_allFS _ (by simp)) (by rw [rounds_itemsL_length]; omega)
+    exact hent m (by rw [rounds_itemsL_length]; exact hm)
+
+theorem lt_reg {a b : ℕ} (h : a < b) : (a : Reg) < b := h
+
+/-- The register of a rounds phase's first claim (`initOps`' second component). -/
+def clReg (init : Init) (u b : Reg) : Reg :=
+  match init with
+  | .uni => u
+  | .zero => b
+  | .free => b + 2
+
+/-- **A rounds phase's out list** (`genPhase4`): the first claim, the `k` challenges, the last claim. -/
+theorem genPhase4_rounds (S : Seq) (p : KindP) (n : ℕ) (name : String) (f k deg : ℕ) (c : GCtx) :
+    (genPhase4 S p n (name, .rounds f k deg false) c).2.outs.back?.getD [] =
+      clReg (initClaim name) c.uni c.next ::
+        (List.range k).map (fun j => c.next + (initClaim name).width + roundW deg * j + 3) ++
+        [if k = 0 then clReg (initClaim name) c.uni c.next
+          else c.next + (initClaim name).width + roundW deg * k - 1] := by
+  simp only [genPhase4]
+  generalize initClaim name = ic
+  cases ic <;> simp [initOps, Init.width, clReg]
+
+/-- **A rounds phase on the skeleton's registers** (any degree, any init): `outs[n]` is
+`cl :: rs ++ [last]`; `cl` holds `clVal` (the claim the rounds start from), `rs[j]` round `j`'s
+challenge `rch P es j`; the rounds' run `xr` passes, reads the log from `P`, and `last` holds its
+last claim. -/
+theorem rounds_core4 {tr : Trace} {y : List Val × List Bool × Trace} (h : SkRun4 impl p inp tr y)
+    {n : ℕ} (hn : n < (phasesOf seq4).length) {f k deg : ℕ}
+    (hsh : (phasesOf seq4)[n].2 = .rounds f k deg false) :
+    ∃ b : ℕ, (skeleton4 seq4 p).2.outs.getD n [] =
+        clReg (initClaim (phasesOf seq4)[n].1) (cAt4 seq4 p n).uni b ::
+          (List.range k).map (fun j => b + (initClaim (phasesOf seq4)[n].1).width + roundW deg * j + 3) ++
+          [if k = 0 then clReg (initClaim (phasesOf seq4)[n].1) (cAt4 seq4 p n).uni b
+            else b + (initClaim (phasesOf seq4)[n].1).width + roundW deg * k - 1] ∧
+      b + (initClaim (phasesOf seq4)[n].1).width + roundW deg * k ≤ (#[] ++ y.1.toArray).size ∧
+      clReg (initClaim (phasesOf seq4)[n].1) (cAt4 seq4 p n).uni b < (#[] ++ y.1.toArray).size ∧
+      rd (#[] ++ y.1.toArray) (clReg (initClaim (phasesOf seq4)[n].1) (cAt4 seq4 p n).uni b) =
+        clVal inp (initClaim (phasesOf seq4)[n].1) (fieldOffOf seq4 f + phaseOffOf seq4 n f)
+          (#[] ++ y.1.toArray) (cAt4 seq4 p n).uni ∧
+      (∀ j < k, rd (#[] ++ y.1.toArray) (b + (initClaim (phasesOf seq4)[n].1).width + roundW deg * j + 3) =
+        .f (rch (phStart4 n) (fsOf tr (itemsOf seq4)) j)) ∧
+      ∃ (xr : List Val × Bool × Trace) (d : Digest) (trk : Trace),
+        roundsT inp 0 (fieldOffOf seq4 f + phaseOffOf seq4 n f) deg false
+          (realRounds p (phasesOf seq4)[n].1 k) k 0 d
+          (clVal inp (initClaim (phasesOf seq4)[n].1) (fieldOffOf seq4 f + phaseOffOf seq4 n f)
+            (#[] ++ y.1.toArray) (cAt4 seq4 p n).uni) trk = some xr ∧ xr.2.1 = true ∧
+        (∀ m < 2 * k, trk.getD m default = (fsOf tr (itemsOf seq4)).getD (phStart4 n + 2 * 0 + m) default) ∧
+        (0 < k → rd (#[] ++ y.1.toArray) (b + (initClaim (phasesOf seq4)[n].1).width + roundW deg * k - 1) =
+          xr.1.getLastD (clVal inp (initClaim (phasesOf seq4)[n].1)
+            (fieldOffOf seq4 f + phaseOffOf seq4 n f) (#[] ++ y.1.toArray) (cAt4 seq4 p n).uni)) := by
+  obtain ⟨M, xr, trk, hb, hok, hxr, hext, hfl, hent⟩ := rounds_at4 h hn hsh
+  have hout := skeleton4_outs seq4 p hn
+  generalize hph : (phasesOf seq4)[n] = ph at hsh hxr hext hout ⊢
+  obtain ⟨name, sh⟩ := ph
+  simp only at hsh; subst hsh
+  simp only at hxr hext ⊢
+  rw [genPhase4_rounds, hb] at hout
+  have huM : (cAt4 seq4 p n).uni < M.length := by simpa using hok.2.1
+  generalize fieldOffOf seq4 f + phaseOffOf seq4 n f = o at hxr hext ⊢
+  generalize hR0 : #[] ++ y.1.toArray = R0 at hext ⊢
+  obtain ⟨u, hu'⟩ : ∃ u : ℕ, (cAt4 seq4 p n).uni = u := ⟨_, rfl⟩
+  rw [hu'] at hxr hout huM ⊢
+  replace huM : u < M.length := huM
+  obtain ⟨hv1, hv2⟩ := roundsT_chalF inp 0 o deg _ k 0 _ _ trk xr hxr
+  have hiv := initValsF_length (inp := inp) (initClaim name) 0 o
+  have hsz := size_le_of_ext hext
+  simp only [List.length_append, hiv, hv1] at hsz
+  have hrd : ∀ m < (initClaim name).width + roundW deg * k,
+      rd R0 (M.length + m) = (initVals inp (initClaim name) 0 o false ++ xr.1).getD m default :=
+    fun m hm => rd_phase4 hext (by simp [hiv, hv1]; omega)
+  have hu : rd (#[] ++ M.toArray) u = rd R0 u := by
+    have hlt : u < (#[] ++ (M ++ (initVals inp (initClaim name) 0 o false ++ xr.1)).toArray).size := by
+      simp only [Array.size_append, List.size_toArray, List.length_append, Array.size_empty, List.length_nil]; omega
+    rw [hext.2 _ hlt, show (#[] : Array Val) ++ (M ++ (initVals inp (initClaim name) 0 o false ++
+      xr.1)).toArray = (#[] ++ M.toArray) ++ (initVals inp (initClaim name) 0 o false ++ xr.1).toArray
+      by simp, rd_app_left (#[] ++ M.toArray) _ (by simpa using huM)]
+  have hcv : clVal inp (initClaim name) o (#[] ++ M.toArray) u = clVal inp (initClaim name) o R0 u := by
+    simp only [clVal]; generalize initClaim name = ic; cases ic
+    exacts [hu, rfl, rfl]
+  rw [hcv] at hxr
+  have hw : 4 ≤ roundW deg := by unfold roundW; split <;> omega
+  refine ⟨M.length, hout, by omega, ?_, ?_, fun j hj => ?_, xr, _, trk, hxr, hfl,
+    fun m hm => by simpa using hent m hm, fun hk => ?_⟩
+  · simp only [clReg]; generalize hic : initClaim name = ic at hsz ⊢
+    cases ic <;> simp only [Init.width] at hsz ⊢ <;> dsimp only [Reg] <;> omega
+  · simp only [clReg, clVal]
+    generalize hic : initClaim name = ic at hrd hiv
+    cases ic
+    · rfl
+    · rw [show M.length = M.length + 0 from rfl, hrd 0 (by simp [Init.width] <;> omega)]; rfl
+    · rw [hrd 2 (by simp [Init.width] <;> omega)]; rfl
+  · have hlt : roundW deg * j + 3 < xr.1.length := by
+      rw [hv1]
+      have : roundW deg * j + roundW deg ≤ roundW deg * k := by
+        rw [← Nat.mul_succ]; exact Nat.mul_le_mul_left _ hj
+      omega
+    rw [show M.length + (initClaim name).width + roundW deg * j + 3 =
+        M.length + ((initClaim name).width + (roundW deg * j + 3)) by ring,
+      hrd _ (by omega), List.getD_append_right _ _ _ _ (by omega), hiv, Nat.add_sub_cancel_left,
+      hv2 j hj, sqAns, hent _ (by omega)]
+    rfl
+  · have hne : xr.1 ≠ [] := by
+      intro he; rw [he] at hv1; simp at hv1; have := Nat.mul_pos (by omega : 0 < roundW deg) hk; omega
+    rw [show M.length + (initClaim name).width + roundW deg * k - 1 =
+        M.length + ((initClaim name).width + (roundW deg * k - 1)) by
+          have := Nat.mul_pos (by omega : 0 < roundW deg) hk; omega,
+      hrd _ (by have := Nat.mul_pos (by omega : 0 < roundW deg) hk; omega),
+      List.getD_append_right _ _ _ _ (by omega), hiv, Nat.add_sub_cancel_left,
+      getLastD_of_ne hne _ default, List.getLastD_eq_getLast?, List.getLast?_eq_getElem?,
+      List.getD_eq_getElem?_getD, hv1]
+
+/-- The first round's message on the log (any degree). -/
+theorem roundsT_first (inp : Input) (o deg real P : ℕ) (es : Log) {n j : ℕ} {d : Digest} {cv : Val}
+    {tr : Trace} {x : List Val × Bool × Trace} (h : roundsT inp 0 o deg false real (n + 1) j d cv tr = some x)
+    (he : ∀ m < 2 * (n + 1), tr.getD m default = es.getD (P + 2 * j + m) default) :
+    ∀ off, off + 16 ≤ 48 → readF (Snd.msgAt es (P + 2 * j)) off = elemAt inp 0 (o + j * 48 + off) := by
+  rcases tr with _ | ⟨⟨q₁, a₁⟩, _ | ⟨⟨q₂, a₂⟩, tr⟩⟩
+  · simp [roundsT] at h
+  · simp [roundsT] at h
+  simp only [roundsT] at h
+  split_ifs at h with hq <;> exact (round_entries hq.1 (fun m hm => he m (by omega))).1
+
+/-- **A degree-3 F rounds phase on the skeleton's registers** (Z3, Lr2, E2): with `cl = outs[n]`'s
+head holding `c`, its `j`-th challenge register holds `rch P es j`, and its last register the claim
+after the real rounds, `clR P c … (min real k)`. -/
+theorem roundsF3_view4 {tr : Trace} {y : List Val × List Bool × Trace} (h : SkRun4 impl p inp tr y)
+    {n : ℕ} (hn : n < (phasesOf seq4).length) {f k : ℕ}
+    (hsh : (phasesOf seq4)[n].2 = .rounds f k 3 false) (L : Log) :
+    ((skeleton4 seq4 p).2.outs.getD n []).headD 0 < (#[] ++ y.1.toArray).size ∧
+      rd (#[] ++ y.1.toArray) (((skeleton4 seq4 p).2.outs.getD n []).headD 0) =
+        clVal inp (initClaim (phasesOf seq4)[n].1) (fieldOffOf seq4 f + phaseOffOf seq4 n f)
+          (#[] ++ y.1.toArray) (cAt4 seq4 p n).uni ∧
+      (∀ j < k, ((skeleton4 seq4 p).2.outs.getD n []).getD (j + 1) 0 < (#[] ++ y.1.toArray).size ∧
+        rd (#[] ++ y.1.toArray) (((skeleton4 seq4 p).2.outs.getD n []).getD (j + 1) 0) =
+          .f (rch (phStart4 n) (fsOf tr (itemsOf seq4)) j)) ∧
+      ((skeleton4 seq4 p).2.outs.getD n []).getLastD 0 < (#[] ++ y.1.toArray).size ∧
+      ∀ c : F, rd (#[] ++ y.1.toArray) (((skeleton4 seq4 p).2.outs.getD n []).headD 0) = .f c →
+        rd (#[] ++ y.1.toArray) (((skeleton4 seq4 p).2.outs.getD n []).getLastD 0) =
+          .f (clR (phStart4 n) (fun _ _ => c) L (fsOf tr (itemsOf seq4))
+            (min (realRounds p (phasesOf seq4)[n].1 k) k)) := by
+  obtain ⟨b, hout, hsz, hcl, hcv, hch, xr, d, trk, hxr, -, hent, hlast⟩ := rounds_core4 h hn hsh
+  rw [hout]
+  have hw : roundW 3 = 16 := rfl
+  rw [hw] at hsz hch
+  refine ⟨hcl, hcv, fun j hj => ?_, ?_, fun c hc => ?_⟩
+  · rw [List.cons_append, List.getD_cons_succ, List.getD_append _ _ _ _ (by simpa using hj),
+      List.getD_eq_getElem _ _ (by simpa using hj), List.getElem_map, List.getElem_range]
+    exact ⟨lt_reg (by rw [hw]; omega), hch j hj⟩
+  · rw [List.cons_append, List.getLastD_cons, List.getLastD_eq_getLast?, List.getLast?_append,
+      List.getLast?_singleton]
+    split_ifs with hk
+    · simpa using hcl
+    · simp only [Option.some_or, Option.getD_some, hw]; exact lt_reg (by omega)
+  · simp only [List.cons_append, List.headD_cons] at hc
+    rw [hcv] at hc
+    rw [List.cons_append, List.getLastD_cons, List.getLastD_eq_getLast?, List.getLast?_append,
+      List.getLast?_singleton]
+    split_ifs with hk
+    · subst hk; simp only [Option.some_or, Option.getD_some, Nat.min_zero]
+      rw [hcv, hc]; rfl
+    · simp only [Option.some_or, Option.getD_some]
+      rw [hlast (by omega), rounds3_log inp _ _ (phStart4 n) _ (fun _ _ => c) L k 0 d _ trk xr hxr hent
+        (Nat.zero_le _) hc, Nat.zero_add]
+
+/-- **A degree-2 F rounds phase on the skeleton's registers** (L2, S2, E4): as `roundsF3_view4`,
+with the claims `clR2`; and every real round's check `Chk2 P …` holds from the head's claim `c`. -/
+theorem roundsF2_view4 {tr : Trace} {y : List Val × List Bool × Trace} (h : SkRun4 impl p inp tr y)
+    {n : ℕ} (hn : n < (phasesOf seq4).length) {f k : ℕ}
+    (hsh : (phasesOf seq4)[n].2 = .rounds f k 2 false) (L : Log) :
+    ((skeleton4 seq4 p).2.outs.getD n []).headD 0 < (#[] ++ y.1.toArray).size ∧
+      rd (#[] ++ y.1.toArray) (((skeleton4 seq4 p).2.outs.getD n []).headD 0) =
+        clVal inp (initClaim (phasesOf seq4)[n].1) (fieldOffOf seq4 f + phaseOffOf seq4 n f)
+          (#[] ++ y.1.toArray) (cAt4 seq4 p n).uni ∧
+      (∀ j < k, ((skeleton4 seq4 p).2.outs.getD n []).getD (j + 1) 0 < (#[] ++ y.1.toArray).size ∧
+        rd (#[] ++ y.1.toArray) (((skeleton4 seq4 p).2.outs.getD n []).getD (j + 1) 0) =
+          .f (rch (phStart4 n) (fsOf tr (itemsOf seq4)) j)) ∧
+      ((skeleton4 seq4 p).2.outs.getD n []).getLastD 0 < (#[] ++ y.1.toArray).size ∧
+      ∀ c : F, rd (#[] ++ y.1.toArray) (((skeleton4 seq4 p).2.outs.getD n []).headD 0) = .f c →
+        rd (#[] ++ y.1.toArray) (((skeleton4 seq4 p).2.outs.getD n []).getLastD 0) =
+          .f (clR2 (phStart4 n) 16 readF (fun d => chF d 0) (fun _ _ => c) L (fsOf tr (itemsOf seq4))
+            (min (realRounds p (phasesOf seq4)[n].1 k) k)) ∧
+        ∀ l < min (realRounds p (phasesOf seq4)[n].1 k) k,
+          Chk2 (phStart4 n) 16 readF (fun d => chF d 0) (fun _ _ => c) L (fsOf tr (itemsOf seq4)) l := by
+  obtain ⟨b, hout, hsz, hcl, hcv, hch, xr, d, trk, hxr, hfl, hent, hlast⟩ := rounds_core4 h hn hsh
+  rw [hout]
+  have hw : roundW 2 = 13 := rfl
+  rw [hw] at hsz hch
+  refine ⟨hcl, hcv, fun j hj => ?_, ?_, fun c hc => ?_⟩
+  · rw [List.cons_append, List.getD_cons_succ, List.getD_append _ _ _ _ (by simpa using hj),
+      List.getD_eq_getElem _ _ (by simpa using hj), List.getElem_map, List.getElem_range]
+    exact ⟨lt_reg (by rw [hw]; omega), hch j hj⟩
+  · rw [List.cons_append, List.getLastD_cons, List.getLastD_eq_getLast?, List.getLast?_append,
+      List.getLast?_singleton]
+    split_ifs with hk
+    · simpa using hcl
+    · simp only [Option.some_or, Option.getD_some, hw]; exact lt_reg (by omega)
+  · simp only [List.cons_append, List.headD_cons] at hc
+    rw [hcv] at hc
+    obtain ⟨h1, h2⟩ := rounds2_log inp _ _ (phStart4 n) _ (fun _ _ => c) L k 0 d _ trk xr hxr hent
+      (Nat.zero_le _) hc
+    refine ⟨?_, fun l hl => by
+      simpa using h2 hfl l (by omega) (by simp only [Nat.zero_add]; omega)⟩
+    rw [List.cons_append, List.getLastD_cons, List.getLastD_eq_getLast?, List.getLast?_append,
+      List.getLast?_singleton]
+    split_ifs with hk
+    · subst hk; simp only [Option.some_or, Option.getD_some, Nat.min_zero]
+      rw [hcv, hc]; rfl
+    · simp only [Option.some_or, Option.getD_some]
+      rw [hlast (by omega), h1, Nat.zero_add]
+
+/-! ## Z2's univariate round -/
+
+/-- **The univariate phase (Z2) on the skeleton's registers.** With `s = 0` for a node and `1` for a
+segment, `outs[n] = [b + s + 3, b + s + 133, b + s + 134]`: register `b + s + 3` holds `λ`
+(`fAt es (P + 1) 0`), `b + s + 133`/`b + s + 134` the two values of `lagrangeS` on the 127
+coefficients (the log's message at `P`, `uniEs_log`) at `λ` with the target `targetS κ pe`. A node's
+`pe` is the `pt` register's array; a segment's is the packed operand in register `b`, the
+`segPtRegs` registers (`hpt`: when they precede the phase). -/
+theorem uni_view4 {tr : Trace} {y : List Val × List Bool × Trace} (h : SkRun4 impl p inp tr y)
+    {n : ℕ} (hn : n < (phasesOf seq4).length) {f : ℕ} (hsh : (phasesOf seq4)[n].2 = .uni f) :
+    ∃ (b : ℕ) (pe : Array F),
+      let s := if p.d.node then 0 else 1
+      let es := fsOf tr (itemsOf seq4)
+      let o := fieldOffOf seq4 f + phaseOffOf seq4 n f
+      (skeleton4 seq4 p).2.outs.getD n [] = [b + s + 3, b + s + 133, b + s + 134] ∧
+      b + s + 136 ≤ (#[] ++ y.1.toArray).size ∧
+      rd (#[] ++ y.1.toArray) (b + s + 3) = .f (fAt es (phStart4 n + 1) 0) ∧
+      rd (#[] ++ y.1.toArray) (b + s + 133) =
+        .f (impl.lagrangeS (uniEs inp 0 o).toArray (fAt es (phStart4 n + 1) 0) (impl.targetS p.tix pe)).1 ∧
+      rd (#[] ++ y.1.toArray) (b + s + 134) =
+        .f (impl.lagrangeS (uniEs inp 0 o).toArray (fAt es (phStart4 n + 1) 0) (impl.targetS p.tix pe)).2 ∧
+      (∀ i < 127, readF (Snd.msgAt es (phStart4 n)) (16 * i) = elemAt inp 0 (o + 16 * i)) ∧
+      (p.d.node = true → pe = (rd (#[] ++ y.1.toArray) (cAt4 seq4 p n).pt).toAF) ∧
+      (p.d.node = false → rd (#[] ++ y.1.toArray) b = .af pe ∧
+        ((∀ x ∈ segPtRegs seq4 p (cAt4 seq4 p n).outs, x < (cAt4 seq4 p n).next) →
+          pe = ((segPtRegs seq4 p (cAt4 seq4 p n).outs).map fun x => (rd (#[] ++ y.1.toArray) x).toF).toArray)) := by
+  obtain ⟨trk, M, x, hx, hb, hwf, hext, -, hdrop, -⟩ := phase_at4 impl p.tix inp p h.ref hn
+  have hok : CtxOk (cAt4 seq4 p n) (#[] ++ M.toArray) := by
+    rcases hwf with ⟨h', -⟩ | h'
+    · rw [hsh] at h'; cases h'
+    · exact h'
+  obtain ⟨seg, hseg, hsl, -⟩ := refPhase4_chain impl p.tix inp seq4 p hx (by simpa using hb)
+    (by rw [hsh]; rfl) (q0 := 1) (by simp [hsh, isSeed4]) (.inr hok.1)
+  have hout := skeleton4_outs seq4 p hn
+  have hit : (phasesOf seq4)[n].2.itemsL seq4.lv = [.absorb uniBytes, .squeeze] := by rw [hsh]; rfl
+  rw [List.drop_eq_getElem_cons hn, psItems4, List.flatMap_cons, hit] at hdrop
+  rw [hit] at hsl
+  obtain ⟨-, hent⟩ := seg_entries hdrop hseg hsl (by simp [Item.isFS]) (by simp)
+  simp only [List.length_cons, List.length_nil] at hent
+  generalize hph : (phasesOf seq4)[n] = ph at hx hsh hout
+  obtain ⟨name, sh⟩ := ph
+  simp only at hsh; subst hsh
+  have hrM : ∀ z < M.length, rd (#[] ++ y.1.toArray) z = rd (#[] ++ M.toArray) z := fun z hz => by
+    have hlt : z < (#[] ++ (M ++ x.1).toArray).size := by simp; omega
+    rw [hext.2 _ hlt, show (#[] : Array Val) ++ (M ++ x.1).toArray = (#[] ++ M.toArray) ++ x.1.toArray
+      by simp, rd_app_left (#[] ++ M.toArray) _ (by simpa using hz)]
+  simp only [refPhase4] at hx
+  rcases trk with _ | ⟨⟨q₁, a₁⟩, _ | ⟨⟨q₂, a₂⟩, trk⟩⟩
+  · cases hx
+  · cases hx
+  simp only at hx
+  split_ifs at hx with hq hnd <;> cases hx
+  all_goals
+    have e0 := hent 0 (by norm_num); have e1 := hent 1 (by norm_num)
+    simp only [List.getD_cons_zero, List.getD_cons_succ, Nat.add_zero] at e0 e1
+    have hlam : fAt (fsOf tr (itemsOf seq4)) (phStart4 n + 1) 0 = chF a₂ 0 := by
+      rw [fAt, ansAt, entAt, ← e1]
+    have hmsg : ∀ i < 127, readF (Snd.msgAt (fsOf tr (itemsOf seq4)) (phStart4 n)) (16 * i) =
+        elemAt inp 0 (fieldOffOf seq4 f + phaseOffOf seq4 n f + 16 * i) := fun i hi => by
+      rw [msgAt_of_q (p := phStart4 n) (by rw [← e0]; exact hq.1)]
+      exact readF_piMsg inp _ _ (by simp only [uniBytes]; omega)
+    have hsz := size_le_of_ext hext
+    simp only [uniVals, List.length_append, List.length_cons, List.length_map, List.length_range,
+      List.length_nil, uniEs] at hsz
+  · -- a node
+    refine ⟨M.length, (rd (#[] ++ M.toArray) (cAt4 seq4 p n).pt).toAF, ?_⟩
+    dsimp only; rw [if_pos hnd]; simp only [Nat.add_zero]
+    refine ⟨by rw [hout]; simp [genPhase4, hnd, hb], by omega, ?_, ?_, ?_, hmsg,
+      fun _ => by rw [hrM _ (by simpa using hok.2.2.2.2)], fun h => by rw [hnd] at h; cases h⟩
+    · rw [rd_phase4 hext (by simp [uniVals, uniEs]), hlam]; rfl
+    · rw [rd_phase4 hext (by simp [uniVals, uniEs]), hlam]; rfl
+    · rw [rd_phase4 hext (by simp [uniVals, uniEs]), hlam]; rfl
+  · -- a segment
+    refine ⟨M.length, ((segPtRegs seq4 p (cAt4 seq4 p n).outs).map fun z =>
+      (rd (#[] ++ M.toArray) z).toF).toArray, ?_⟩
+    dsimp only; rw [if_neg hnd]
+    refine ⟨by rw [hout]; simp [genPhase4, hnd, hb], by omega, ?_, ?_, ?_, hmsg,
+      fun h => absurd h hnd, fun _ => ⟨?_, fun hpt => ?_⟩⟩
+    · rw [show M.length + 1 + 3 = M.length + 4 by ring, rd_phase4 hext (by simp [uniVals, uniEs]), hlam]; rfl
+    · rw [show M.length + 1 + 133 = M.length + 134 by ring, rd_phase4 hext (by simp [uniVals, uniEs]),
+        hlam]; rfl
+    · rw [show M.length + 1 + 134 = M.length + 135 by ring, rd_phase4 hext (by simp [uniVals, uniEs]),
+        hlam]; rfl
+    · rw [show M.length = M.length + 0 from rfl, rd_phase4 hext (by simp)]; rfl
+    · exact congrArg List.toArray (List.map_congr_left fun z hz => by
+        rw [hrM z (by rw [← hb]; exact hpt z hz)])
+
+/-! ## The front's rounds phases by name -/
+
+/-- **The front's univariate and rounds phases of `seq4`** (index, name, shape), and the phase
+numbers 3.x's `phaseIx` gives their names, which the finals read through `outsOf`. -/
+theorem phases4_rounds (S : Seq) :
+    (phasesOf S)[4]? = some ("Z2", Sh.uni fZ2) ∧ (phasesOf S)[5]? = some ("Z3", Sh.rounds fZ3 S.z3 3 false) ∧
+    (phasesOf S)[8]? = some ("L2", Sh.rounds fL2 14 2 false) ∧
+    (phasesOf S)[12]? = some ("S2", Sh.rounds fS2 S.s2 2 false) ∧
+    (phasesOf S)[14]? = some ("Lr2", Sh.rounds fLr S.lr 3 false) ∧
+    (phasesOf S)[18]? = some ("E2", Sh.rounds fE S.e2 3 false) ∧
+    (phasesOf S)[21]? = some ("E4", Sh.rounds fE S.e4 2 false) :=
+  ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
+
+theorem phaseIx4_rounds : phaseIx "Z2" = 4 ∧ phaseIx "Z3" = 5 ∧ phaseIx "L2" = 8 ∧ phaseIx "S2" = 12 ∧
+    phaseIx "Lr2" = 14 ∧ phaseIx "E2" = 18 ∧ phaseIx "E4" = 21 := by
+  obtain ⟨-, h4, h5, -, h8, -, -, h12, -, h14, -, -, h18, -, h21, -, -⟩ := phaseIx_vals
+  exact ⟨h4, h5, h8, h12, h14, h18, h21⟩
+
+/-- The real round counts by name: the kind's (`Z3`, `S2`, `Lr2`, `E2`, `E4`); L2's are its 14. -/
+theorem realRounds_vals (p : KindP) (k : ℕ) : realRounds p "Z3" k = p.d.seq.z3 ∧
+    realRounds p "S2" k = p.d.seq.s2 ∧ realRounds p "Lr2" k = p.d.seq.lr ∧ realRounds p "E2" k = p.d.seq.e2 ∧
+    realRounds p "E4" k = p.d.seq.e4 ∧ realRounds p "L2" k = k := ⟨rfl, rfl, rfl, rfl, rfl, rfl⟩
+
+/-- The rounds phases' first claims: Z3's is Z2's register, Lr2's and E2's are `0`, the rest free. -/
+theorem initClaim_vals : initClaim "Z3" = .uni ∧ initClaim "Lr2" = .zero ∧ initClaim "E2" = .zero ∧
+    initClaim "L2" = .free ∧ initClaim "S2" = .free ∧ initClaim "E4" = .free := ⟨rfl, rfl, rfl, rfl, rfl, rfl⟩
+
+/-- **The finals' names read the skeleton's phases** (`outsOf`, `claim0`, `claimN`, `chals`). -/
+theorem outsOf_skel {fi : FinIn} (hfi : fi.outs = (skeleton4 seq4 p).2.outs) (name : String) :
+    outsOf fi name = (skeleton4 seq4 p).2.outs.getD (phaseIx name) [] ∧
+      claim0 fi name = ((skeleton4 seq4 p).2.outs.getD (phaseIx name) []).headD 0 ∧
+      claimN fi name = ((skeleton4 seq4 p).2.outs.getD (phaseIx name) []).getLastD 0 :=
+  ⟨by rw [outsOf, hfi], by rw [claim0, outsOf, hfi], by rw [claimN, outsOf, hfi]⟩
+
+theorem chals_getD {fi : FinIn} (name : String) {k j : ℕ} (hj : j < k) :
+    (chals fi name k).getD j 0 = (outsOf fi name).getD (j + 1) 0 := by
+  rw [chals, List.getD_eq_getElem?_getD, List.getD_eq_getElem?_getD, List.getElem?_take_of_lt hj,
+    List.getElem?_drop, Nat.add_comm]
+
+/-! ## Controls -/
+
+/-- Control (+/−): a free claim sits at `b + 2`, a zero claim at `b`, Z3's at Z2's register. -/
+theorem clReg_ctl : clReg .free 7 10 = 12 ∧ clReg .zero 7 10 = 10 ∧ clReg .uni 7 10 = 7 ∧
+    clReg .uni 7 10 ≠ 12 := by decide
+
+/-- Control (+/−): a zero claim is `0` whatever the registers; Z3's reads its register. -/
+theorem clVal_ctl (inp : Input) (o u : ℕ) (r : Array Val) :
+    clVal inp .zero o r u = .f 0 ∧ clVal inp .uni o r u = rd r u ∧
+      clVal inp .free o r u = .f (elemAt inp 0 (o + 16) + elemAt inp 0 (o + 32)) := ⟨rfl, rfl, rfl⟩
+
+/-- Control (−): no rounds, no claim change, and a run of `0` rounds needs no entries. -/
+theorem roundsT_zero_ctl (inp : Input) (o deg real : ℕ) (d : Digest) (cv : Val) :
+    roundsT inp 0 o deg false real 0 0 d cv [] = some ([], true, []) := rfl
+
+end FR.Snd.R4
+
+end G6_FRSoundness4R4Rnd
+
+section G6_FRSoundness4RsvStack
+
+-- New for `flock-recursive` (revision 4.4.2, the reserve in RSV2's stacked form; track RSV-S2a): the
+-- algebra of `finE` (iv″)'s one stacked `evalM`: the coefficients `s^P` split into the own kind's
+-- `f̂·κ_E^m` and the child's `w·s`, the mixed point is `x̂ = r_E2 ‖ p_x[e2R, 23)`.
+
+/-!
+# The stacked call of `finE` (iv″) in the log's terms
+
+`V(P)`'s row point is `r_E2[<22] ‖ x̂₂₂ ‖ s^P` (32 entries) and its column point `r′[<24] ‖ ŷ₂₄`;
+`s^P_i = [i/3 = κ_P.ix]·f̂·κ_E^{i%3} + w·s_i`. **`mStack_sP`**: the stacked extension at those
+entries is `f̂·(M̃_A + κ_E M̃_B + κ_E² M̃_C)_{κ_P}(r_E2, r′) + w·Σ_i s_i M̃_i(x̂, ŷ)`, the form of
+`P4b.RejFinE4`.
+-/
+
+namespace FR.Snd.P4b
+open RecursionFast Rev4
+
+theorem arr_getD {α : Type} (l : List α) (j : ℕ) (d : α) : l.toArray.getD j d = l.getD j d := by
+  simp [Array.getD_eq_getD_getElem?, List.getD_eq_getElem?_getD]
+
+theorem e2R_ge (ν : NodeKind) : 22 ≤ e2R ν ∧ e2R ν ≤ 23 ∧ 24 ≤ ncR ν ∧ ncR ν ≤ 25 := by
+  cases ν <;> decide
+
+/-- `mStack` reads `s` below 9, `p` below 23 and `q` below 25. -/
+theorem mStack_congr' (srcE : NodeKind → ESrc) {s s' p p' q q' : ℕ → F}
+    (hs : ∀ i < 9, s i = s' i) (hp : ∀ j < 23, p j = p' j) (hq : ∀ j < 25, q j = q' j) :
+    mStack srcE s p q = mStack srcE s' p' q' := by
+  have hlp : ∀ κ : NodeKind, Rsv.lowA (e2R κ) p = Rsv.lowA (e2R κ) p' :=
+    fun κ => funext fun j => hp j (lt_of_lt_of_le j.isLt (dims_le' κ).2.1)
+  have hlq : ∀ κ : NodeKind, Rsv.lowA (ncR κ) q = Rsv.lowA (ncR κ) q' :=
+    fun κ => funext fun j => hq j (lt_of_lt_of_le j.isLt (dims_le' κ).2.2.1)
+  simp only [mStack, NodeKind.all, List.map_cons, List.map_nil, List.sum_cons, List.sum_nil,
+    hlp, hlq, NodeKind.ix]
+  rw [hs 0 (by norm_num), hs 1 (by norm_num), hs 2 (by norm_num), hs 3 (by norm_num), hs 4 (by norm_num),
+    hs 5 (by norm_num), hs 6 (by norm_num), hs 7 (by norm_num), hs 8 (by norm_num)]
+
+/-- `mStack` is linear in its coefficients. -/
+theorem mStack_lin (srcE : NodeKind → ESrc) (a b : ℕ → F) (w : F) (p q : ℕ → F) :
+    mStack srcE (fun i => a i + w * b i) p q = mStack srcE a p q + w * mStack srcE b p q := by
+  simp only [mStack, NodeKind.all, List.map_cons, List.map_nil, List.sum_cons, List.sum_nil]
+  ring
+
+/-- The own kind's coefficients `[i/3 = ν.ix]·f̂·κ_E^{i%3}` select `ν`'s three matrices. -/
+theorem mStack_own (srcE : NodeKind → ESrc) (ν : NodeKind) (fz kE : F) (p q : ℕ → F) :
+    mStack srcE (fun i => (if ν.ix = i / 3 then 1 else 0) * [fz, fz * kE, fz * (kE * kE)].getD (i % 3) 0) p q =
+      fz * (Eval.matMLE (srcE ν).ea (Rsv.lowA (e2R ν) p) (Rsv.lowA (ncR ν) q) +
+        kE * Eval.matMLE (srcE ν).eb (Rsv.lowA (e2R ν) p) (Rsv.lowA (ncR ν) q) +
+        kE ^ 2 * Eval.matMLE (srcE ν).ec (Rsv.lowA (e2R ν) p) (Rsv.lowA (ncR ν) q)) := by
+  cases ν <;>
+  simp only [mStack, NodeKind.all, List.map_cons, List.map_nil, List.sum_cons, List.sum_nil, NodeKind.ix,
+    Nat.reduceMul, Nat.reduceAdd, Nat.reduceDiv, Nat.reduceMod, List.getD_cons_zero, List.getD_cons_succ,
+    ↓reduceIte, Nat.zero_ne_one, Nat.one_ne_zero, OfNat.ofNat_ne_zero, OfNat.ofNat_ne_one,
+    OfNat.zero_ne_ofNat, OfNat.one_ne_ofNat, zero_mul, one_mul, add_zero, zero_add] <;> ring
+
+/-- A mixed entry: below `e` the list `r` (of length `e`), at and above it `hi`. -/
+theorem mixed_entry {r : List F} {e : ℕ} (hr : r.length = e) (hi : ℕ → F) {n j : ℕ} (hj : j < n)
+    (hen : e ≤ n) (d : F) :
+    (r ++ ((List.range n).map hi).drop e).getD j d = Rsv.hiPt (ptOf e r) hi j := by
+  by_cases h : j < e
+  · rw [Rsv.hiPt_lt _ _ h, List.getD_append _ _ _ _ (by omega)]
+    simp only [ptOf]
+    rw [List.getD_eq_getElem _ _ (by omega), List.getD_eq_getElem _ _ (by omega)]
+  · rw [Rsv.hiPt_ge _ _ h, List.getD_append_right _ _ _ _ (by omega), hr, List.getD_eq_getElem?_getD,
+      List.getElem?_drop, List.getElem?_map, List.getElem?_range (by omega)]
+    simp only [Option.map_some, Option.getD_some]; congr 1; omega
+
+/-- **The stacked call of `finE` (iv″)** at `V`'s entries (RSV2 §2.2). -/
+theorem mStack_sP (srcE : NodeKind → ESrc) (ν : NodeKind) (r2 r4 : List F) (h2 : r2.length = e2R ν)
+    (h4 : r4.length = ncR ν) (px py s : ℕ → F) (fz kE w d1 d2 : F) :
+    mStack srcE
+      (fun i => ((r2.take 22 ++ [(r2 ++ ((List.range 23).map px).drop (e2R ν)).getD 22 d1] ++
+        (List.range 9).map fun i => (if ν.ix = i / 3 then 1 else 0) *
+          [fz, fz * kE, fz * (kE * kE)].getD (i % 3) 0 + w * s i).toArray).getD (23 + i) 0)
+      (fun j => ((r2.take 22 ++ [(r2 ++ ((List.range 23).map px).drop (e2R ν)).getD 22 d1] ++
+        (List.range 9).map fun i => (if ν.ix = i / 3 then 1 else 0) *
+          [fz, fz * kE, fz * (kE * kE)].getD (i % 3) 0 + w * s i).toArray).getD j 0)
+      (fun j => ((r4.take 24 ++ [(r4 ++ ((List.range 25).map py).drop (ncR ν)).getD 24 d2]).toArray).getD j 0) =
+    fz * (Eval.matMLE (srcE ν).ea (ptOf (e2R ν) r2) (ptOf (ncR ν) r4) +
+        kE * Eval.matMLE (srcE ν).eb (ptOf (e2R ν) r2) (ptOf (ncR ν) r4) +
+        kE ^ 2 * Eval.matMLE (srcE ν).ec (ptOf (e2R ν) r2) (ptOf (ncR ν) r4)) +
+      w * mStack srcE s (Rsv.hiPt (ptOf (e2R ν) r2) px) (Rsv.hiPt (ptOf (ncR ν) r4) py) := by
+  obtain ⟨g2, l2, g4, l4⟩ := e2R_ge ν
+  have hl22 : (r2.take 22 ++ [(r2 ++ ((List.range 23).map px).drop (e2R ν)).getD 22 d1]).length = 23 := by
+    simp [h2]; omega
+  rw [mStack_congr' srcE (s' := fun i => (if ν.ix = i / 3 then 1 else 0) *
+      [fz, fz * kE, fz * (kE * kE)].getD (i % 3) 0 + w * s i)
+    (p' := Rsv.hiPt (ptOf (e2R ν) r2) px) (q' := Rsv.hiPt (ptOf (ncR ν) r4) py)]
+  · rw [mStack_lin, mStack_own]
+    have e1 : Rsv.lowA (e2R ν) (Rsv.hiPt (ptOf (e2R ν) r2) px) = ptOf (e2R ν) r2 :=
+      funext fun j => Rsv.hiPt_lt _ _ j.isLt
+    have e2 : Rsv.lowA (ncR ν) (Rsv.hiPt (ptOf (ncR ν) r4) py) = ptOf (ncR ν) r4 :=
+      funext fun j => Rsv.hiPt_lt _ _ j.isLt
+    rw [e1, e2]
+  · intro i hi
+    rw [arr_getD, List.getD_append_right _ _ _ _ (by omega), hl22, Nat.add_sub_cancel_left,
+      R4.getD_mapRange _ _ hi]
+  · intro j hj
+    rw [arr_getD, List.getD_append _ _ _ _ (by omega)]
+    by_cases hj22 : j < 22
+    · rw [List.getD_append _ _ _ _ (by simp; omega), R4.getD_take' _ _ hj22]
+      rw [← mixed_entry h2 px hj l2 0, List.getD_append _ _ _ _ (by omega)]
+    · obtain rfl : j = 22 := by omega
+      rw [List.getD_append_right _ _ _ _ (by simp <;> omega)]
+      simp only [List.length_take, h2, Nat.min_eq_left g2, Nat.sub_self, List.getD_cons_zero]
+      exact mixed_entry h2 px (by norm_num) l2 d1
+  · intro j hj
+    rw [arr_getD]
+    by_cases hj24 : j < 24
+    · rw [List.getD_append _ _ _ _ (by simp; omega), R4.getD_take' _ _ hj24]
+      rw [← mixed_entry h4 py hj l4 0, List.getD_append _ _ _ _ (by omega)]
+    · obtain rfl : j = 24 := by omega
+      rw [List.getD_append_right _ _ _ _ (by simp <;> omega)]
+      simp only [List.length_take, h4, Nat.min_eq_left g4, Nat.sub_self, List.getD_cons_zero]
+      exact mixed_entry h4 py (by norm_num) l4 d2
+
+end FR.Snd.P4b
+
+end G6_FRSoundness4RsvStack
+
+section G6_FRSoundness4R4FrE
+
+-- New for `flock-recursive` (BLUEPRINT revision 4.1, A.9–A.10; stage R4d).
 
 /-!
 # The front's Lr and E checks on an accepted run (P4b's `RejEndLr4`, `RejEndE4`, …)
@@ -707,3 +1911,5 @@ theorem linkSum_seg4 {fin : Finals} {lRows : List Circ.Row} {κs₀ : F}
   rw [linkWAll_seg_of_meets hm σ, linkSum_zero]
 
 end FR.Snd.R4
+
+end G6_FRSoundness4R4FrE

@@ -2,10 +2,9 @@
 -- RET-1: position-free declarations moved to `FRSoundnessCoreSteps`.
 -- RET-2: the declarations revision 4.1 reads moved to `FRSoundnessCoreTruths`.
 import FRSoundnessStepC
-import FRRSEval
-import FRBlockStream
-import FRSoundnessCoreSteps
 import FRSoundnessCoreTruths
+import FRBlockKinds
+import FRSoundnessCoreSteps
 
 /-!
 # The per-phase truths (BLUEPRINT A.10): Ligerito's words, and the stability of word reads

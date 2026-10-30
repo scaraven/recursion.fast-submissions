@@ -1,5 +1,5 @@
 -- New for `flock-recursive` (BLUEPRINT revision 4.0, B-7, B-11 … B-13, A.4, A.8; stage S-0′).
-import FRShape4
+import FRSoundness4Pos
 import FRVIR
 
 /-!

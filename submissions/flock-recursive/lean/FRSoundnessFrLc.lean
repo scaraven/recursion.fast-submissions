@@ -3,7 +3,7 @@
 import FRSoundnessFrWalk
 import FRSoundnessFrRndV
 import FRSoundnessFrW0V
-import FRSoundnessCoreAcc
+import FRSoundness4P4aSeg
 
 /-!
 # `finLc` (ii) on an accepted run: the lincheck's last claim is the per-kind sum

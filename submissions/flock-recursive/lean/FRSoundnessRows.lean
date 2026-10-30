@@ -1,7 +1,7 @@
 -- New for `flock-recursive` (BLUEPRINT A.10 rows Lr1–Lr3 and E1–E4, §5.2; stage S-G1j).
 -- RET-2: the declarations revision 4.1 reads moved to `FRSoundnessCoreRows`.
 import FRSoundnessFront
-import FRSoundnessCoreRows
+import FRSoundnessCoreFront
 
 /-!
 # The front's row Spartan unit (Lr, and E once it precedes RS)

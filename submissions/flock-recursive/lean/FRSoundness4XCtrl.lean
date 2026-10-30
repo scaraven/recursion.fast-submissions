@@ -1,6 +1,6 @@
 -- New for `flock-recursive` (stage X4): positive and negative controls for the composed front, the
 -- run facts and the per-kind laws.
-import FRSoundness4XFinal
+import FRNodeStmtR4
 
 /-!
 # Controls for X4

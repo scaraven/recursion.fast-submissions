@@ -1,9 +1,657 @@
+-- G6: this module also holds the former modules `FRNodeRows4AskBL`, `FRNodeRows4AskPosT`, `FRNodeRows4AskI`, `FRNodeRows4AskT` (one section each, in import order).
+import FRVIRTplCore
+import FRVIRTplFast
+import FRNodeRows4Ext
+import FRNodeRows4ArenaPlace
+import FRVerifierC4
+import FRNodeKinds4
+import FRVIR4Mux
+
+section G6_FRNodeRows4AskBL
+
+-- New for `flock-recursive` (IMPC2 §0, the design's `FRBits128`; track IMPC2): the bits of an `F`
+-- element and Boolean decompositions `Σ e_j·b_j`, below the bit generator.
+
+/-!
+# Bits of `F` and Boolean decompositions
+
+`F` is `GF(2^64)[y]` on two little-endian words and its addition is `xor`, so `Σ_j e_j·b_j` with
+Boolean `b_j` and distinct `j < 128` is the element whose bit `j` is `b_j`, and the bits are unique.
+
+* **`eBit j`**: the element with bit `j` alone (`c₀`'s bit `j`, or `c₁`'s bit `j − 64`); **`F.bit`**.
+* **`bit_eBit`**, **`bit_bitsLin`**: the bits of `Σ e_j·w(c_j)`; **`decomp_cell`**: a decomposition
+  row's Boolean cells are the element's bits.
+-/
+
+namespace FR
+open Circ
+
+
+namespace F
+/-- Bit `j` of an `F` element (`j < 64`: `c₀`'s, else `c₁`'s bit `j − 64`). -/
+def bit (x : F) (j : ℕ) : Bool := if j < 64 then x.c₀.val.toNat.testBit j else x.c₁.val.toNat.testBit (j - 64)
+
+theorem bit_add (a b : F) (j : ℕ) : (a + b).bit j = (a.bit j ^^ b.bit j) := by
+  change (F.add a b).bit j = _
+  simp only [bit, F.add]
+  split <;> simp [HAdd.hAdd, Add.add, B64.add, UInt64.toNat_xor, Nat.testBit_xor]
+
+theorem bit_zero (j : ℕ) : (0 : F).bit j = false := by
+  simp only [bit]; split <;> exact Nat.zero_testBit _
+end F
+
+/-- **The `F` element with bit `j` alone** (`j < 64`: `c₀`'s bit `j`; else `c₁`'s bit `j − 64`), the
+order of `F.toBytes`' little-endian bytes. -/
+def eBit (j : ℕ) : F :=
+  if j < 64 then ⟨⟨(1 : UInt64) <<< j.toUInt64⟩, ⟨0⟩⟩ else ⟨⟨0⟩, ⟨(1 : UInt64) <<< (j - 64).toUInt64⟩⟩
+
+theorem eBit_shl_toNat {j : ℕ} (hj : j < 64) : ((1 : UInt64) <<< j.toUInt64).toNat = 2 ^ j := by
+  rw [UInt64.toNat_shiftLeft]
+  have h1 : (j.toUInt64).toNat % 64 = j := by
+    rw [Nat.toUInt64_eq, UInt64.toNat_ofNat', Nat.mod_eq_of_lt (by omega : j < 2 ^ 64), Nat.mod_eq_of_lt hj]
+  rw [h1, UInt64.toNat_one, Nat.one_shiftLeft, Nat.mod_eq_of_lt (Nat.pow_lt_pow_right (by norm_num) hj)]
+
+theorem bit_eBit {i j : ℕ} (hi : i < 128) (hj : j < 128) : (eBit i).bit j = decide (i = j) := by
+  unfold eBit F.bit
+  by_cases h1 : i < 64 <;> by_cases h2 : j < 64 <;> simp only [h1, h2, ite_true, ite_false]
+  · rw [eBit_shl_toNat h1, Nat.testBit_two_pow]
+  · rw [show ((0 : UInt64)).toNat = 0 from rfl, Nat.zero_testBit]; simp; omega
+  · rw [show ((0 : UInt64)).toNat = 0 from rfl, Nat.zero_testBit]; simp; omega
+  · rw [eBit_shl_toNat (by omega), Nat.testBit_two_pow]; simp; omega
+
+theorem bit_eBit_mul (w : Asg) (i c j : ℕ) (hi : i < 128) (hj : j < 128) (hb : w c = 0 ∨ w c = 1) :
+    (eBit i * w c).bit j = (decide (i = j) && decide (w c = 1)) := by
+  rcases hb with h | h <;> rw [h]
+  · rw [mul_zero, F.bit_zero]; simp [show (0 : F) ≠ 1 by decide]
+  · rw [mul_one, bit_eBit hi hj]; simp
+
+/-- **The bits of `Σ e_i·w(c_i)`** over Boolean cells, distinct bit indices below 128. -/
+theorem bit_bitsLin (w : Asg) : ∀ (L : List (ℕ × ℕ)), (∀ p ∈ L, w p.2 = 0 ∨ w p.2 = 1) →
+    (∀ p ∈ L, p.1 < 128) → (L.map Prod.fst).Nodup → ∀ j < 128,
+    (Lin.ev w (L.map fun p => (p.2, eBit p.1))).bit j = decide (∃ p ∈ L, p.1 = j ∧ w p.2 = 1)
+  | [], _, _, _, j, _ => by simp [Lin.ev, F.bit_zero]
+  | p :: L, hb, hL, hd, j, hj => by
+    rw [List.map_cons, Lin.ev_cons, F.bit_add, bit_eBit_mul w p.1 p.2 j (hL p (by simp)) hj (hb p (by simp)),
+      bit_bitsLin w L (fun q hq => hb q (by simp [hq])) (fun q hq => hL q (by simp [hq]))
+        (List.nodup_cons.1 (by simpa only [List.map_cons] using hd)).2 j hj]
+    have hn : p.1 ∉ L.map Prod.fst := (List.nodup_cons.1 (by simpa only [List.map_cons] using hd)).1
+    by_cases hpj : p.1 = j
+    · have : ¬ ∃ q ∈ L, q.1 = j ∧ w q.2 = 1 := fun ⟨q, hq, hqj, _⟩ =>
+        hn (List.mem_map.2 ⟨q, hq, hqj.trans hpj.symm⟩)
+      by_cases hw : w p.2 = 1 <;> simp [hpj, hw, this]
+    · simp [hpj]
+
+/-- **A Boolean decomposition determines its cells**: if `x = Σ e_i·w(c_i)` then each cell is `x`'s bit. -/
+theorem decomp_cell (w : Asg) (L : List (ℕ × ℕ)) (hb : ∀ p ∈ L, w p.2 = 0 ∨ w p.2 = 1)
+    (hL : ∀ p ∈ L, p.1 < 128) (hd : (L.map Prod.fst).Nodup) {x : F}
+    (hx : x = Lin.ev w (L.map fun p => (p.2, eBit p.1))) {p : ℕ × ℕ} (hp : p ∈ L) :
+    w p.2 = if x.bit p.1 then 1 else 0 := by
+  rw [hx, bit_bitsLin w L hb hL hd p.1 (hL p hp)]
+  have : (∃ q ∈ L, q.1 = p.1 ∧ w q.2 = 1) ↔ w p.2 = 1 := by
+    refine ⟨fun ⟨q, hq, hqp, hw⟩ => ?_, fun h => ⟨p, hp, rfl, h⟩⟩
+    rwa [List.inj_on_of_nodup_map hd hq hp hqp] at hw
+  rcases hb p hp with h | h <;> simp [this, h, show (0 : F) ≠ 1 by decide]
+
+/-- (+) `eBit 3` has bit 3, `eBit 100` bit 100; (−) neither has a neighbouring bit. -/
+theorem eBit_ctl : (eBit 3).bit 3 = true ∧ (eBit 3).bit 4 = false ∧ (eBit 100).bit 100 = true ∧
+    (eBit 100).bit 99 = false := by
+  simp only [bit_eBit (by norm_num : 3 < 128), bit_eBit (by norm_num : 100 < 128), (by norm_num : (4 : ℕ) < 128),
+    (by norm_num : (99 : ℕ) < 128)]
+  decide
+
+end FR
+
+end G6_FRNodeRows4AskBL
+
+section G6_FRNodeRows4AskPosT
+
+-- New for `flock-recursive` (PACK-4.4.1 §4.2, §5.2; IMP-RESULT §5.5; track ASK-P): the ask templates'
+-- rows as a fold along the compile's trail, below `FRNodeRows4`, so that the node's M rows can hold them.
+
+/-!
+# Row generators along the compile's trail (the ask templates' rows, foldable into `nodeIRows4`)
+
+B3's ask template `FRNodeRun4.AT` is a pair (`cov`, `rows`) and its rows are the fold `askRowsX`
+along the compile's trail. Both live above `FRNodeRows4` (they import the soundness chain), so the
+node's M rows cannot name them. This module restates the pair (**`TG`**) and the fold
+(**`trailRows`**, `askRowsX` verbatim; `FRNodeRows4AskPosF.askRowsX_eq` proves them equal), so that
+`FRNodeRows4` folds the node's template rows (`askTG`, `askRowsT`) into each slot's arena rows.
+
+* **`trailMS`**: the same fold with the plan's template memo (`FRVIRTplBuild.compMSX`'s), accumulated
+  in reverse (tail-recursive): the process start computes the rows once per prototype without
+  rebuilding a template per op. **`trailMS_eq`**: it is `trailRows` (reversed onto the accumulator).
+* **`inpTG X π`**: IMP's `input` template (`FRNodeRows4AskInp.AT.inp`, its rows `inpRowsT`), as a
+  generator. Today's node template is it alone (`FRNodeRows4.askTG`); the other classes (ASK-T,
+  IMPC) are added to `askTG` there (`TG.add`).
+-/
+
+namespace FR
+namespace Rev4
+open RecursionFast Circ TEval Tpl
+
+/-- **A row generator along the trail** (B3's `AT`: the ops it covers besides the asks, and its rows
+at a compile state, the previous op and the ask counter). -/
+structure TG where
+  cov : Op → Bool
+  rows : Params → CS → Option Op → Op → ℕ → List Row
+
+/-- The generator with no rows, covering nothing (`AT.none`). -/
+def TG.none : TG := ⟨fun _ => false, fun _ _ _ _ _ => []⟩
+
+/-- Two generators side by side (`AT.add`). -/
+def TG.add (A B : TG) : TG :=
+  ⟨fun op => A.cov op || B.cov op, fun P cs pre op k => A.rows P cs pre op k ++ B.rows P cs pre op k⟩
+
+/-- **The generator's rows along the trail** (`FRNodeRun4.askRowsX`): at an ask or a covered op, its
+rows at the aligned state; the ask counter `k` counts the asks before. -/
+def trailRows (X : Ext) (P : Params) (G : TG) : CS → Option Op → ℕ → List Op → List Row
+  | _, _, _, [] => []
+  | cs, pre, k, op :: ops =>
+    let c := cs.align (alignOf op ops)
+    (if op.item?.isSome || G.cov op then G.rows P c pre op k else []) ++
+      trailRows X P G (c.add op (stepOut X P c op)) (some op) (if op.item?.isSome then k + 1 else k) ops
+
+/-- **The same fold with the template memo** (`compMSX`'s), the rows accumulated in reverse. -/
+def trailMS (X : TCtx → Ext) (L : TLay) (P : Params) (G : TG) :
+    List (TKey × Tpl) → CS → Option Op → ℕ → List Op → List Row → List Row
+  | _, _, _, _, [], acc => acc
+  | M, cs, pre, k, op :: ops, acc =>
+    let c := cs.align (alignOf op ops)
+    let acc := (if op.item?.isSome || G.cov op then G.rows P c pre op k else []).reverseAux acc
+    let M := memoAdd M ((X ⟨fun _ => ⟨[], []⟩, L.cb⟩ P c op).bind (·.tin))
+    let o := stepOut (X ⟨tlook M, L.cb⟩) P c op
+    trailMS X L P G (memoAdd M o.tin) (c.add op o) (some op) (if op.item?.isSome then k + 1 else k) ops acc
+
+/-- **`trailMS` is `trailRows`** (reversed onto the accumulator), for a memo of `tplOf`'s templates. -/
+theorem trailMS_eq (X : TCtx → Ext) (L : TLay) (P : Params) (G : TG) :
+    ∀ (ops : List Op) (M : List (TKey × Tpl)) (cs : CS) (pre : Option Op) (k : ℕ) (acc : List Row),
+      MOk M → trailMS X L P G M cs pre k ops acc = (trailRows (X L.ctx) P G cs pre k ops).reverse ++ acc
+  | [], _, _, _, _, _, _ => rfl
+  | op :: ops, M, cs, pre, k, acc, h => by
+    have hc : ∀ x, (⟨tlook (memoAdd M x), L.cb⟩ : TCtx) = L.ctx := fun x => by
+      rw [tlook_eq (memoAdd_ok h x)]; rfl
+    simp only [trailMS, trailRows, hc]
+    rw [trailMS_eq X L P G ops _ _ _ _ _ (memoAdd_ok (memoAdd_ok h _) _), List.reverseAux_eq,
+      List.reverse_append, List.append_assoc]
+
+/-- **From a fresh state**: the rows in order. -/
+theorem trailMS_T (X : TCtx → Ext) (L : TLay) (P : Params) (G : TG) (base : ℕ) (ops : List Op)
+    {M : List (TKey × Tpl)} (h : MOk M) :
+    (trailMS X L P G M (CS.init base) none 0 ops []).reverse = trailRows (X L.ctx) P G (CS.init base) none 0 ops := by
+  rw [trailMS_eq X L P G ops M _ _ _ _ h, List.append_nil, List.reverse_reverse]
+
+/-! ## The `input` generator (IMP's `AT.inp`) -/
+
+/-- Prototype `π`'s `input` cell `h` of digest `j` (`FRNodeRows4AskInp.inC`). -/
+def inCT (π j h : ℕ) : ℕ := π * slotM4 + W4.inOff + 2 * j + h
+
+/-- A row no assignment with `one = 1` meets (`FRNodeRows4AskInp.failR`). -/
+def failRT (P : Params) : Row := ⟨P.one, P.one, []⟩
+
+/-- **The `input j` op's rows** (`FRNodeRows4AskInp.inpRowsT`): its digest slot's two cells are the
+`input` cells, else `failRT`. -/
+def inpRowsG (X : Ext) (π : ℕ) (P : Params) (cs : CS) (j : ℕ) : List Row :=
+  match (stepOut X P cs (.input j)).slots with
+  | [some (.d, [l₀, l₁])] =>
+    [⟨P.one, l₀.sub (Lin.cell (inCT π (if j = 0 then 0 else 1) 0)), []⟩,
+     ⟨P.one, l₁.sub (Lin.cell (inCT π (if j = 0 then 0 else 1) 1)), []⟩]
+  | _ => [failRT P]
+
+/-- **The `input` generator** of prototype `π` (extension `X`): covers the `input` ops. -/
+def inpTG (X : Ext) (π : ℕ) : TG where
+  cov op := match op with | .input _ => true | _ => false
+  rows P cs _ op _ := match op with | .input j => inpRowsG X π P cs j | _ => []
+
+/-! ## The reserve generator (SRA's `AT.rsv`, `FRNodeRsvLink`) -/
+
+/-- Reserve cell `j` (`FRNodeRsvLink.rsvC`). -/
+def rsvCT (j : ℕ) : ℕ := rsvRel.getD j 0
+
+/-- The row point's entry `j` (`FRNodeRsvLink.tauC`). -/
+def tauCT (j : ℕ) : ℕ := if j < 23 then rsvCT j else rsvCT (25 + j)
+
+/-- The column point's entry `j` (`FRNodeRsvLink.sigC`). -/
+def sigCT (j : ℕ) : ℕ := rsvCT (23 + j)
+
+/-- `l` is the cell `c` (`FRNodeRsvLink.eqRowIf`). -/
+def eqRowIfT (P : Params) (l : Lin) (c : ℕ) : List Row :=
+  if l = Lin.cell c then [] else [⟨P.one, l.sub (Lin.cell c), []⟩]
+
+/-- An `F`-array operand on the cells `f 0 … f (n−1)` (`FRNodeRsvLink.argRows`). -/
+def argRowsT (P : Params) (s : Slot) (n : ℕ) (f : ℕ → ℕ) : List Row :=
+  match s with
+  | some (.af m, ls) =>
+    if m = n ∧ ls.length = n then (ls.zipIdx).flatMap (fun p => eqRowIfT P p.1 (f p.2)) else [failRT P]
+  | _ => [failRT P]
+
+/-- Three `F` outputs on `rsvCT 57 … 59` (`FRNodeRsvLink.outRows`). -/
+def outRowsT (P : Params) : List Slot → List Row
+  | [some (.f, [l₀]), some (.f, [l₁]), some (.f, [l₂])] =>
+    eqRowIfT P l₀ (rsvCT 57) ++ eqRowIfT P l₁ (rsvCT 58) ++ eqRowIfT P l₂ (rsvCT 59)
+  | _ => [failRT P]
+
+/-- The rows at an `evalM` op (`FRNodeRsvLink.rsvRowsT`). -/
+def rsvRowsG (X : Ext) (P : Params) (cs : CS) : Op → List Row
+  | .evalM t s => kinds.flatMap (fun κ => argRowsT P (cs.slotK t κ) 32 tauCT ++ argRowsT P (cs.slotK s κ) 25 sigCT) ++
+      outRowsT P (stepOut X P cs (.evalM t s)).slots
+  | _ => []
+
+/-- Whether an op is an `evalM`. -/
+def isEvalMT : Op → Bool
+  | .evalM .. => true
+  | _ => false
+
+/-- **The reserve generator** of prototype `π` (SRA's `AT.rsv X π`): at prototype 0, the `evalM` ops. -/
+def rsvTG (X : Ext) (π : ℕ) : TG where
+  cov op := π == 0 && isEvalMT op
+  rows P cs _ op _ := if π = 0 then rsvRowsG X P cs op else []
+
+/-! ## Controls -/
+
+/-- (+) Along `[input 0, accept]` the `input` generator emits its two rows (the `input` op compiles to
+a digest slot), (−) the empty generator none; the ask counter does not move at a non-ask. -/
+theorem trailRows_ctl :
+    (trailRows noExt ⟨Lin.cell 0, fun _ => []⟩ (inpTG noExt 0) (CS.init 4) none 0 [.input 0, .accept]).length = 2 ∧
+    trailRows noExt ⟨Lin.cell 0, fun _ => []⟩ TG.none (CS.init 4) none 0 [.input 0, .accept] = [] :=
+  ⟨rfl, rfl⟩
+
+end Rev4
+end FR
+
+end G6_FRNodeRows4AskPosT
+
+section G6_FRNodeRows4AskI
+
+-- New for `flock-recursive` (PACK-4.4.1 §1.3, §5.2; IMP-RESULT §5.3; SRA-RESULT §6; track IMPC): the
+-- import-class generators `impcTG` (proof fields, challenge conversions, zero pins) and `colTG`, below `FRNodeRows4`.
+
+/-!
+# The import classes' row generator (`impcTG`)
+
+B3's `ATImp` binds a covered op's import cells to its value at the slot's input. This module gives
+the rows, as a generator along the compile's trail (`FRNodeRows4AskPosT.TG`), so that `FRNodeRows4`
+can fold them with the other ask templates' (`askTG π := … .add (impcTG (XofT π) π)`):
+
+* **Proof fields at a static offset** (`piElem`, `piElemK`, `piDigest`; PACK §1.3 "proof fields
+  except siblings", and (β′)'s cap-check reads of `A`, the caps and `D`): a 16-byte window of the
+  proof that is one whole stream element of the slot's segment is arena₁'s cell of that element.
+  **`pfLoc o`** finds which item's query byte proof byte `o` is (the field's phase part, `pSegs`, then
+  the phase's shape, `phItem`), **`winE o`** the element of a window `[o, o + 16)` if its 16 bytes are
+  16 consecutive query bytes of one item starting on an element boundary (outside the segment's last
+  block). A covered read gets one row per `F` component, `1·(l − A₁(e)) = 0`.
+* **Challenge conversions** (`chF a c`, `c < 2`, and `chK a`): the import cells are the answer
+  register's own cells (`dlo`/`dhi`), read off its slot.
+
+* **Zero pins** (SRA §6.3): at a foreign `assertZero a act` whose operand is a `piField`'s bytes
+  (`provL`: the program's `piField` registers, passed in as `pv`) and whose windows are elements, each
+  window's arena₁ cell is pinned, `gate act · A₁(e) = 0`.
+* **`colTG`** (separate, ≈ 27.9 k rows per prototype): a `dotKF`'s `felems` auxiliary cells on the
+  arena₁ cells of its column's windows.
+
+Reads whose window is not an element (the statement's `h`/`n` at stmt bytes 1 and 33) and the
+siblings (`fSibs`, the half of a node query chosen by a position bit) are not covered: they stay
+residual imports.
+-/
+
+namespace FR
+namespace Rev4
+open RecursionFast Circ TEval Tpl
+
+/-! ## Tables (computed once at process start) -/
+
+/-- **Item `k`'s stream offset** `Σ_{j<k} slen_j` (in a segment, after its first byte), as a table. -/
+def itOffA : Array ℕ := (((itemsOf seq4).map Item.slen).scanl (· + ·) 0).toArray
+
+/-- `seq4`'s items, as a table. -/
+def itemsA : Array Item := (itemsOf seq4).toArray
+
+/-- `seq4`'s phases, as a table. -/
+def phasesA : Array (String × Sh) := (phasesOf seq4).toArray
+
+/-- **Phase `n`'s first item**: `Σ_{q<n} |items of phase q|`, as a table. -/
+def phIxA : Array ℕ := (((phasesOf seq4).map fun p => (p.2.itemsL seq4.lv).length).scanl (· + ·) 0).toArray
+
+/-- A field's phase part: its absolute start, length, the field and the phase. -/
+structure PSeg where
+  st : ℕ
+  len : ℕ
+  f : ℕ
+  n : ℕ
+
+/-- **The proof's phase parts** (every field `f`, every phase `n` contributing bytes to it): field `f`'s
+bytes of phase `n` start at `fieldOffOf seq4 f + phaseOffOf seq4 n f` (the generators' `o f`). -/
+def pSegs : List PSeg :=
+  (List.range nFields4).flatMap fun f => (List.range (phasesOf seq4).length).filterMap fun n =>
+    let len := ((phasesOf seq4).getD n ("", .seed)).2.bytesToL seq4.lv f
+    if len = 0 then none else some ⟨fieldOffOf seq4 f + phaseOffOf seq4 n f, len, f, n⟩
+
+/-- **Which query byte of the phase's items byte `j` of its part of field `f` is**: the item (relative
+to the phase's first) and the query byte (`ctb4`'s shapes; `none` for the siblings). -/
+def phItem (sh : Sh) (f j : ℕ) : Option (ℕ × ℕ) :=
+  match sh with
+  | .seed => if f = fHdr then some (0, 71 + j) else none
+  | .absorb g _ => if f = g then some (0, 40 + j) else none
+  | .uni g => if f = g then some (0, 40 + j) else none
+  | .rounds g _ _ inK => if f = g then some (2 * (j / roundBytes inK), 40 + j % roundBytes inK) else none
+  | .queries i =>
+    if f = fCols then some ((1 + (seq4.lv i).sib) * (j / colBytes i), 8 + j % colBytes i) else none
+  | .squeezes _ _ => none
+
+/-- **Proof byte `o`'s item and query byte** (`(k, q)`: byte `q` of item `k`'s query). -/
+def pfLoc (o : ℕ) : Option (ℕ × ℕ) :=
+  match pSegs.find? (fun s => decide (s.st ≤ o ∧ o < s.st + s.len)) with
+  | some s =>
+    (phItem (phasesA.getD s.n ("", .seed)).2 s.f (o - s.st)).map fun r => (phIxA.getD s.n 0 + r.1, r.2)
+  | none => none
+
+/-- **A 16-byte proof window that is one stream element** of the slot's segment: `[o, o + 16)` are
+query bytes `[q, q + 16)` of one item `k`, the window starts on an element boundary, and item `k` is
+not the last block's. The element. -/
+def winE (o : ℕ) : Option ℕ :=
+  match pfLoc o with
+  | some (k, q) =>
+    let x := 1 + itOffA.getD k 0 + 8 + q
+    if x % 16 = 0 ∧ k < itemsA.size ∧ q + 16 ≤ (itemsA.getD k .seed).qlen ∧
+        1 + itOffA.getD k 0 + (itemsA.getD k .seed).slen + 64 ≤ N4c.segB ∧
+        (List.range 16).all (fun t => pfLoc (o + t) == some (k, q + t)) = true
+    then some (x / 16) else none
+  | none => none
+
+/-! ## The generator -/
+
+/-- **A component on arena₁'s element `e`** (prototype `π`'s frame): `1·(l − A₁(e)) = 0`. -/
+def a1Row (P : Params) (π : ℕ) (l : Lin) (e : ℕ) : Row := ⟨P.one, l.sub (Lin.cell (π * slotM4 + arA1 + e)), []⟩
+
+/-- `l` equals `m`: `1·(l − m) = 0`. -/
+def eqLRow (P : Params) (l m : Lin) : Row := ⟨P.one, l.sub m, []⟩
+
+/-- **A static proof read's rows**: its `F` components on the elements of its windows. -/
+def pfRows (P : Params) (π : ℕ) (sl : List Slot) (t : Ty) (os : List ℕ) : List Row :=
+  match sl with
+  | [some (t', ls)] =>
+    if t' = t ∧ ls.length = os.length then
+      (ls.zip os).flatMap fun p => match winE p.2 with
+        | some e => [a1Row P π p.1 e]
+        | none => [failRT P]
+    else [failRT P]
+  | _ => [failRT P]
+
+/-- **A challenge conversion's rows**: its components are the answer's (a digest slot `[a₀, a₁]`, the
+same at every kind): `chF a c` is `a_c`, `chK a` is `[a₀, a₁]`. -/
+def chRows (P : Params) (cs : CS) (a : ℕ) (sl : List Slot) (t : Ty) (cs' : List ℕ) : List Row :=
+  match cs.kslots.lookup a, cs.slot a, sl with
+  | none, some (.d, [a₀, a₁]), [some (t', ls)] =>
+    if t' = t ∧ ls.length = cs'.length then
+      (ls.zip cs').map fun p => eqLRow P p.1 (if p.2 = 0 then a₀ else a₁)
+    else [failRT P]
+  | _, _, _ => [failRT P]
+
+/-! ## Register provenance, zero pins, column words -/
+
+/-- **The `piField` registers of an op list** from register `n`: `(r, f, o, len)` for the register `r` a
+`piField f o len` appends (each op appends `Op.outs` registers). -/
+def provL : ℕ → List Op → List (ℕ × ℕ × ℕ × ℕ)
+  | _, [] => []
+  | n, op :: ops =>
+    (match op with | .piField f o len => [(n, f, o, len)] | _ => []) ++ provL (n + op.outs) ops
+
+/-- `provL`'s fold, accumulated in reverse (tail-recursive: the process start runs it over a prototype's
+≈ 155 k ops, which `provL`'s non-tail recursion overflows; ASK-T). -/
+def provAcc : ℕ → List Op → List (ℕ × ℕ × ℕ × ℕ) → List (ℕ × ℕ × ℕ × ℕ)
+  | _, [], acc => acc
+  | n, op :: ops, acc =>
+    provAcc (n + op.outs) ops (match op with | .piField f o len => (n, f, o, len) :: acc | _ => acc)
+
+/-- **`provL`, tail-recursive** (`provLT_eq`). -/
+def provLT (n : ℕ) (ops : List Op) : List (ℕ × ℕ × ℕ × ℕ) := (provAcc n ops []).reverse
+
+theorem provAcc_eq : ∀ (n : ℕ) (ops : List Op) (acc : List (ℕ × ℕ × ℕ × ℕ)),
+    provAcc n ops acc = (provL n ops).reverse ++ acc
+  | _, [], _ => by simp [provAcc, provL]
+  | n, op :: ops, acc => by
+    have ih := provAcc_eq (n + op.outs) ops
+    cases op <;> simp [provAcc, provL, ih]
+
+theorem provLT_eq (n : ℕ) (ops : List Op) : provLT n ops = provL n ops := by
+  rw [provLT, provAcc_eq, List.append_nil, List.reverse_reverse]
+
+/-- Register `r`'s `piField` (its field, offset, length), if a `piField` appended it. -/
+def provOf (pv : List (ℕ × ℕ × ℕ × ℕ)) (r : ℕ) : Option (ℕ × ℕ × ℕ) :=
+  (pv.find? (·.1 == r)).map (·.2)
+
+/-- **A byte register's windows are elements**: its bytes `[o, o + len)` of the proof are `len / 16`
+whole windows `winE` accepts (`len ≡ 0 mod 16`), inside the proof. -/
+def winsOk (f o len : ℕ) : Bool :=
+  decide (len % 16 = 0) && decide (absOff f o + len ≤ piSizeOf seq4) &&
+    (List.range (len / 16)).all fun t => (winE (absOff f o + 16 * t)).isSome
+
+/-- **The zero pins of a foreign `assertZero a act`** whose operand is a `piField`'s bytes: each of its
+windows' arena₁ cell is `0` at the active kinds (`gate act · A₁(e) = 0`). -/
+def zRows (P : Params) (π : ℕ) (pv : List (ℕ × ℕ × ℕ × ℕ)) (cs : CS) (a : ℕ) (act : KC Bool) : List Row :=
+  match provOf pv a with
+  | some (f, o, len) =>
+    if a < cs.slots.size ∧ winsOk f o len = true then
+      (List.range (len / 16)).filterMap fun t =>
+        (winE (absOff f o + 16 * t)).map fun e => ⟨P.gate act, Lin.cell (π * slotM4 + arA1 + e), []⟩
+    else []
+  | none => []
+
+/-- **A column's word cells** (`dotKF`'s auxiliary import `felems n` on register `r`, a `piField`'s
+bytes): cell `b` is arena₁'s cell of window `b` (`b < len / 16`), else `0`. -/
+def colRows (P : Params) (π : ℕ) (pv : List (ℕ × ℕ × ℕ × ℕ)) (sz : ℕ) (cells : List Lin) (r n : ℕ) : List Row :=
+  match provOf pv r with
+  | some (f, o, len) =>
+    if cells.length = n ∧ r < sz ∧ winsOk f o len = true then
+      (cells.zipIdx).filterMap fun p =>
+        if p.2 < len / 16 then (winE (absOff f o + 16 * p.2)).map fun e => a1Row P π p.1 e
+        else some ⟨P.one, p.1, []⟩
+    else []
+  | none => []
+
+/-- The `felems` auxiliary imports' rows (`bits` ones are not bound here). -/
+def auxRows (P : Params) (π : ℕ) (pv : List (ℕ × ℕ × ℕ × ℕ)) (sz : ℕ) : List (List Lin × ℕ × AuxK) → List Row
+  | [] => []
+  | (cells, r, .felems n) :: as => colRows P π pv sz cells r n ++ auxRows P π pv sz as
+  | (_, _, .bits _) :: as => auxRows P π pv sz as
+
+/-- **The rows at an op** (prototype `π`, extension `X`, the program's `piField` registers `pv`). At an
+`assertZero` or a `dotKF` (no import of their own as compiled) a failing row if the compile made them
+imports. -/
+def impcRows (X : Ext) (π : ℕ) (pv : List (ℕ × ℕ × ℕ × ℕ)) (P : Params) (cs : CS) (op : Op) : List Row :=
+  match op with
+  | .piElem f o => pfRows P π (stepOut X P cs op).slots .f [absOff f o]
+  | .piElemK f o => pfRows P π (stepOut X P cs op).slots .k [absOff f o, absOff f o + 16]
+  | .piDigest f o => pfRows P π (stepOut X P cs op).slots .d [absOff f o, absOff f o + 16]
+  | .chF a c => chRows P cs a (stepOut X P cs op).slots .f [c]
+  | .chK a => chRows P cs a (stepOut X P cs op).slots .k [0, 1]
+  | .assertZero a act => if (stepOut X P cs op).imp then [failRT P] else zRows P π pv cs a act
+  | _ => []
+
+/-- **The ops it covers**: static proof reads whose windows are elements, challenge conversions, and
+(for their zero pins only) `assertZero`. -/
+def impcCov : Op → Bool
+  | .piElem f o => (winE (absOff f o)).isSome
+  | .piElemK f o | .piDigest f o => (winE (absOff f o)).isSome && (winE (absOff f o + 16)).isSome
+  | .chF _ c => decide (c < 2)
+  | .chK _ => true
+  | .assertZero .. => true
+  | _ => false
+
+/-- **The import-class generator** of prototype `π` (extension `X`; `pv` the program's `piField`
+registers, `provL 0 (protoProg π).ops`). -/
+def impcTG (X : Ext) (π : ℕ) (pv : List (ℕ × ℕ × ℕ × ℕ)) : TG where
+  cov := impcCov
+  rows P cs _ op _ := impcRows X π pv P cs op
+
+/-- Whether an op is a `dotKF`. -/
+def isDotKF : Op → Bool
+  | .dotKF .. => true
+  | _ => false
+
+/-- **The column-word generator** of prototype `π` (`dotKF`'s `felems` auxiliary imports on arena₁; a
+failing row if the compile made the `dotKF` an import). Separate from `impcTG`: ≈ 27.9 k rows per
+prototype. -/
+def colTG (X : Ext) (π : ℕ) (pv : List (ℕ × ℕ × ℕ × ℕ)) : TG where
+  cov := isDotKF
+  rows P cs _ op _ :=
+    if isDotKF op then
+      if (stepOut X P cs op).imp then [failRT P] else auxRows P π pv cs.slots.size (stepOut X P cs op).aux
+    else []
+
+end Rev4
+end FR
+
+end G6_FRNodeRows4AskI
+
+section G6_FRNodeRows4AskT
+
+-- New for `flock-recursive` (PACK-4.4.1 §1.3, §4.2; IMP-RESULT §5 item 2; track ASK-T): the ask
+-- templates' generator, below `FRNodeRows4` so that the node's M rows hold its rows.
+
+/-!
+# The ask generator: every ask's query and answer bound to arena₁
+
+At ask `k` of a prototype's compile trail (`trailRows`), **`askRowsG`** emits rows in the prototype's
+frame over arena₁ (the slot's stream elements, `FRNodeRows4AskPosF.a1_slot`):
+
+* **the item check**: the op asks item `k` of `seq4` (`itemsT`), else one failing row;
+* **the digest operands** (an absorb's or a squeeze's state, a Merkle node's halves: `dopRows`): the
+  operand's two cells are the query's elements in arena₁ (element `qElT k`, from the item's stream
+  offset, its length word and its tag). Where the operand's slot or the node's activity depends on
+  the kind, one row per kind gated by its selector; at a kind whose depth is inactive the elements
+  are zero (`nodeQF i 0 0`);
+* **the seed's `vk` and `c`**: arena₁'s elements `qElT 0 … + 3` are IMP's `input` cells (`inCT`);
+* **the byte operand** (the seed's `hdr`, an absorb's message, a column): no row. The previous op is
+  `piField` at the item's **source** (`srcT`: the absolute offset and length of the proof bytes the
+  reassembled proof takes from this item's query), and the operand is its result; else one failing
+  row (`preOk`);
+* **the answer**: the answer slot's two cells are arena₁'s elements `aElT k`, `aElT k + 1`.
+
+The tags and length words need no row here: the pack rows pin every item's first element
+(`FRNodeRows4Pack.wfRows`, `headRows`). The tables are closed constants built once per process.
+-/
+
+namespace FR
+namespace Rev4
+open RecursionFast Circ TEval Tpl
+
+/-! ## The byte sources -/
+
+/-- **Phase `n`'s byte sources**, one per item (`Sh.itemsL`'s order): the absolute offset and length
+of the proof bytes `reassemble4` takes from the item's query (`FRNodeRows4AskPosR`: the seed's `hdr`,
+an absorb's message, a round's message, a column), `none` for an item that gives none. -/
+def Sh.srcL (S : Seq) (n : ℕ) : Sh → List (Option (ℕ × ℕ))
+  | .seed => [some (fieldOffOf S fHdr + phaseOffOf S n fHdr, 48)]
+  | .absorb g len => [if g < nFields4 then some (fieldOffOf S g + phaseOffOf S n g, len) else none]
+  | .squeezes k _ => List.replicate k none
+  | .uni g => [if g < nFields4 then some (fieldOffOf S g + phaseOffOf S n g, uniBytes) else none, none]
+  | .rounds g k _ inK =>
+    let o := fieldOffOf S g + phaseOffOf S n g
+    (List.range k).flatMap fun p =>
+      [if g < nFields4 then some (o + p * roundBytes inK, roundBytes inK) else none, none]
+  | .queries i =>
+    let o := fieldOffOf S fCols + phaseOffOf S n fCols
+    (List.range (S.lv i).t).flatMap fun p =>
+      some (o + p * colBytes i, colBytes i) :: List.replicate (S.lv i).sib none
+
+/-- **The byte sources of `S`'s items** (aligned with `itemsOf S`). -/
+def srcOf (S : Seq) : List (Option (ℕ × ℕ)) := (phasesOf S).zipIdx.flatMap fun p => p.1.2.srcL S p.2
+
+/-! ## The tables (closed constants)
+
+They are irreducible to the elaborator: a defeq check that reaches them (through `askTG`) would
+otherwise evaluate `itemsOf seq4`. Proofs read them through `FRNodeRows4AskTB.itemsT_get` etc. -/
+
+/-- `seq4`'s items. -/
+@[irreducible] def itemsT : Array Item := (itemsOf seq4).toArray
+
+/-- Their byte sources. -/
+@[irreducible] def srcT : Array (Option (ℕ × ℕ)) := (srcOf seq4).toArray
+
+/-- Their stream offsets after the trace's first byte (`itOff`: prefix sums of the stream lengths). -/
+@[irreducible] def offT : Array ℕ := ((itemsOf seq4).scanl (fun o it => o + it.slen) 0).toArray
+
+/-- **Item `k`'s first query element** (segment-relative): past its stream offset, its length word
+and its tag (the seed's `vk`, every other query's first digest). -/
+def qElT (k : ℕ) (it : Item) : ℕ := (1 + offT.getD k 0 + 8 + (itemTag it).length) / 16
+
+/-- **Item `k`'s answer's first element** (segment-relative). -/
+def aElT (k : ℕ) (it : Item) : ℕ := (1 + offT.getD k 0 + 8 + it.qlen) / 16
+
+/-! ## The rows -/
+
+/-- Arena₁'s cell of stream element `e` in prototype `π`'s frame. -/
+def arC (π e : ℕ) : ℕ := π * slotM4 + arA1 + e
+
+/-- `one · (l − c) = 0`: the form `l` is the cell `c`. -/
+def eqCR (P : Params) (l : Lin) (c : ℕ) : Row := ⟨P.one, l.sub (Lin.cell c), []⟩
+
+/-- Nothing if `b`, else one failing row. -/
+def chkR (P : Params) (b : Bool) : List Row := if b then [] else [failRT P]
+
+/-- Active at every kind. -/
+def actAll (act : KC Bool) : Bool := act .L32 && act .P30 && act .N30
+
+/-- **A digest operand on arena₁'s elements `E`, `E + 1`** (`act`: the kinds whose query carries it;
+elsewhere the elements are zero). One row per half if the operand's slot and the activity do not
+depend on the kind; otherwise one row per kind and half, gated by the kind's selector (a wrong slot
+shape at an active kind: the gated failing row `sel · one = 0`). -/
+def dopRows (P : Params) (cs : CS) (r π E : ℕ) (act : KC Bool) : List Row :=
+  if actAll act && decide (cs.slotK r .P30 = cs.slotK r .L32) && decide (cs.slotK r .N30 = cs.slotK r .L32) then
+    match cs.slotK r .L32 with
+    | some (.d, [l₀, l₁]) => [eqCR P l₀ (arC π E), eqCR P l₁ (arC π (E + 1))]
+    | _ => [failRT P]
+  else kinds.flatMap fun κ =>
+    if act κ then
+      match cs.slotK r κ with
+      | some (.d, [l₀, l₁]) =>
+        [⟨P.sel κ, l₀.sub (Lin.cell (arC π E)), []⟩, ⟨P.sel κ, l₁.sub (Lin.cell (arC π (E + 1))), []⟩]
+      | _ => [⟨P.sel κ, P.one, []⟩]
+    else [⟨P.sel κ, Lin.cell (arC π E), []⟩, ⟨P.sel κ, Lin.cell (arC π (E + 1)), []⟩]
+
+/-- **The answer** on arena₁'s elements `E`, `E + 1` (the ask's digest slot). -/
+def ansRowsT (X : Ext) (P : Params) (cs : CS) (op : Op) (π E : ℕ) : List Row :=
+  match (stepOut X P cs op).slots with
+  | [some (.d, [l₀, l₁])] => [eqCR P l₀ (arC π E), eqCR P l₁ (arC π (E + 1))]
+  | _ => [failRT P]
+
+/-- **The byte operand `m` is the previous `piField`'s result, read at item `k`'s source.** -/
+def preOk (cs : CS) (pre : Option Op) (m k : ℕ) : Bool :=
+  match pre with
+  | some (.piField f o len) => decide (m + 1 = cs.slots.size) && decide (srcT[k]? = some (some (absOff f o, len)))
+  | _ => false
+
+/-- **The rows at ask `k`** (prototype `π`, extension `X`). -/
+def askRowsG (X : Ext) (π : ℕ) (P : Params) (cs : CS) (pre : Option Op) (op : Op) (k : ℕ) : List Row :=
+  match op.item? with
+  | none => []
+  | some it =>
+    if itemsT[k]? = some it then
+      let q := qElT k it
+      (match op with
+        | .askSeed h =>
+          chkR P (preOk cs pre h k) ++
+            (List.range 4).map fun j => eqCR P (Lin.cell (arC π (q + j))) (inCT π (j / 2) (j % 2))
+        | .askAbsorb st m _ => chkR P (preOk cs pre m k) ++ dopRows P cs st π q fun _ => true
+        | .askSqueeze st => dopRows P cs st π q fun _ => true
+        | .askNode _ _ l r act => dopRows P cs l π q act ++ dopRows P cs r π (q + 2) act
+        | .askCol _ c => chkR P (preOk cs pre c k)
+        | _ => []) ++
+        ansRowsT X P cs op π (aElT k it)
+    else [failRT P]
+
+/-- **The ask generator** of prototype `π` (extension `X`): rows at every ask, covering no other op. -/
+def askTGT (X : Ext) (π : ℕ) : TG := ⟨fun _ => false, askRowsG X π⟩
+
+end Rev4
+end FR
+
+end G6_FRNodeRows4AskT
+
+section G6_FRNodeRows4AskB
+
 -- New for `flock-recursive` (IMPC2 §0–§4, PACK-4.4.1 §5.2; track IMPC2): the shared bit area's rows
 -- (position bits, statement bits) and the generator `bitTG`, below `FRNodeRows4`.
-import FRNodeRows4AskBL
-import FRNodeRows4AskI
-import FRNodeRows4AskT
-import FRVIR4Mux
 
 /-!
 # The bit area and its generator (`bitTG`)
@@ -507,3 +1155,5 @@ def bitTG (X : Ext) (π : ℕ) (ops : List Op) (G : Grp) : TG :=
 
 end Rev4
 end FR
+
+end G6_FRNodeRows4AskB

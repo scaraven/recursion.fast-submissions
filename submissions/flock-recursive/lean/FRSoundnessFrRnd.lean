@@ -1,7 +1,7 @@
 -- New for `flock-recursive` (BLUEPRINT §3, A.4, A.9; stage S-G10).
 -- RET-2: the declarations revision 4.1 reads moved to `FRSoundnessCoreAcc`.
 import FRSoundnessFrRun
-import FRSoundnessCoreAcc
+import FRSoundness4P4aSeg
 
 /-!
 # The front's F rounds on the skeleton's registers

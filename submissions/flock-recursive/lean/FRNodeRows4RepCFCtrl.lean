@@ -1,6 +1,6 @@
 -- New for `flock-recursive` (track CF2): controls for the plan's structural fit and the automaton.
-import FRNodeRows4RepCFW
-import FRVIRTplRepLG
+import FRNodeRows4Plan
+import FRNodeRows4
 
 /-!
 # Controls (CF2)

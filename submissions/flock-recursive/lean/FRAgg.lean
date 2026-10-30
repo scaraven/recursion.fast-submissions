@@ -1,6 +1,344 @@
--- New for `flock-recursive` (BLUEPRINT revision 4.0, B-11; §10 changes 25 (b); stage S-0′).
-import FRSegment
+-- G6: this module also holds the former modules `FRLeafCircuit`, `FRSegment` (one section each, in import order).
+import FRBlockKinds
+import FRSoundness4Pos
+import RecursionFast.Library.Fast
 import RecursionFast.Library.Oracle
+
+section G6_FRLeafCircuit
+
+-- New for `flock-recursive` (BLUEPRINT §4.1, revision 3.1). The chain induction follows
+-- `submissions/spartan-srom/lean/SpartanSromChainSound.lean` (`chain_sound`), restated over the
+-- block layout of Appendix A.6 with the constants pinned by the public target.
+
+/-!
+# The leaf circuit (BLUEPRINT §4.1)
+
+A tree leaf proves `chainEnd s n = h` for `n = 2^(m − 14)` chain steps. Its committed table holds
+`n` chain blocks (`FRBlockChain`), block `i` the step from the `i`-th digest of the chain. The leaf
+circuit is the conjunction of:
+
+* **the block R1CS with its public target** on every used block: `(A₀ z) ∘ (B₀ z) = z + E` with
+  `E` the chain block's constants (`chainTarget`: `h0`, the tag, the zero bytes, `t = 33`, the
+  flags, `one = 1`) at `(0, 0)`-row positions (the zerocheck's summand of BLUEPRINT §4);
+* **`ChainLinks`**, the content of the shift argument (P1-D5): `h_out` of block `i` (`256 … 511`)
+  is the digest hashed by block `i + 1` (`520 … 775`) for `i + 1 < n`, block `0` hashes `s`, block
+  `n − 1` outputs `h`.
+
+`leaf_sound` states both as hypotheses about the committed table **restricted to the leaf's used
+blocks** `i < n`; their derivation from the zerocheck and the shift sumcheck is L-cert's. The table
+is over any nontrivial ring of characteristic two with `0`/`1` entries (`GF(2)` itself, or `F`
+holding a Boolean table).
+
+**BP-C-M5.** The target delivers `one = 1` (`Block.holdsE_sound`). `zero_table_control`: the
+all-zero table of one block meets the circuit's R1CS (without target) and `ChainLinks` for
+`s = h = 0`, yet `chainEnd 0 1 ≠ 0`; it fails the block R1CS with the target.
+
+Results: `leaf_sound`, `chain_of_blocks` (the Boolean core), `leafWitness` and `leaf_complete` (the
+honest table meets every hypothesis), `zero_table_control`.
+-/
+
+namespace FR
+
+open RecursionFast ProductCircuit Blake2sCircuit Block Chain
+
+namespace Leaf
+
+/-! ## The Boolean core -/
+
+/-- **The chain of blocks.** `n` Boolean blocks satisfying the chain block's R1CS with its
+target, linked so that block `i + 1` hashes block `i`'s output, with block `0` hashing `s`, carry
+`chainEnd s (i + 1)` at the output of block `i`. -/
+theorem chain_of_blocks {R : Type*} [CommRing R] [CharP R 2] [Nontrivial R] {n : ℕ}
+    (w : ℕ → Pos → Bool) (s : Digest)
+    (hE : ∀ i < n, HoldsE (blockR1CS chainTarget) (targetVal R chainTarget) (liftBlock R (w i)))
+    (hl : ∀ i, i + 1 < n → readDigest (w (i + 1)) dBase = readDigest (w i) 256)
+    (hs : readDigest (w 0) dBase = s) :
+    ∀ i < n, readDigest (w i) 256 = chainEnd s (i + 1) := by
+  intro i
+  induction i with
+  | zero =>
+    intro h0'
+    rw [block_sound (hE 0 h0'), hs, chainEnd, Function.iterate_one]
+  | succ i ih =>
+    intro hi
+    rw [block_sound (hE _ hi), hl i hi, ih (by omega), chainEnd, chainEnd,
+      Function.iterate_succ_apply' chainStep (i + 1)]
+
+/-! ## Soundness -/
+
+/-- **The links of a chain** (the shift argument's content): block `i + 1` hashes (`520 … 775`)
+the output (`256 … 511`) of block `i`, block `0` hashes `s`, block `n − 1` outputs `h`. -/
+def ChainLinks {R : Type*} [CommRing R] (n : ℕ) (z : ℕ → Pos → R) (s h : Digest) : Prop :=
+  (∀ i, i + 1 < n → ∀ j < 256, z (i + 1) (pos (dBase + j)) = z i (pos (256 + j))) ∧
+    (∀ j < 256, z 0 (pos (dBase + j)) = ofBool R (digestBit s j)) ∧
+    ∀ j < 256, z (n - 1) (pos (256 + j)) = ofBool R (digestBit h j)
+
+section Sound
+
+variable {R : Type*} [CommRing R] [CharP R 2] [Nontrivial R] [DecidableEq R]
+
+omit [CharP R 2] in
+private theorem digest_of_bits {z : Pos → R} {b : ℕ} {d : Digest}
+    (h : ∀ j < 256, z (pos (b + j)) = ofBool R (digestBit d j)) : readDigest (toBools z) b = d :=
+  (readDigest_eq_iff _ _ _).mpr fun j hj ↦ toBools_of_eq (h j hj)
+
+/-- **Leaf soundness.** A table of `n ≥ 1` blocks over a nontrivial ring of characteristic two,
+with `0`/`1` entries on its used blocks, satisfying on every used block the chain block's R1CS with
+its public target, and whose blocks are linked from `s` to `h`, proves `chainEnd s n = h`. -/
+theorem leaf_sound {n : ℕ} (hn : 1 ≤ n) (z : ℕ → Pos → R) (s h : Digest)
+    (hbool : ∀ i < n, ∀ k, BlockR1CS.IsBool (z i k))
+    (hE : ∀ i < n, HoldsE (blockR1CS chainTarget) (targetVal R chainTarget) (z i))
+    (hlinks : ChainLinks n z s h) :
+    chainEnd s n = h := by
+  obtain ⟨hlink, hin, hout⟩ := hlinks
+  set w : ℕ → Pos → Bool := fun i ↦ toBools (z i)
+  have hE' : ∀ i < n, HoldsE (blockR1CS chainTarget) (targetVal R chainTarget)
+      (liftBlock R (w i)) := fun i hi ↦ eq_liftBlock_toBools (hbool i hi) ▸ hE i hi
+  have hl : ∀ i, i + 1 < n → readDigest (w (i + 1)) dBase = readDigest (w i) 256 := fun i hi ↦
+    readDigest_congr fun e _ b _ ↦ by
+      have := hlink i hi (8 * e + b) (by omega)
+      rw [show dBase + (8 * e + b) = dBase + 8 * e + b by omega,
+        show 256 + (8 * e + b) = 256 + 8 * e + b by omega] at this
+      exact toBools_congr this
+  have hc := chain_of_blocks w s hE' hl (digest_of_bits hin) (n - 1) (by omega)
+  rw [digest_of_bits hout, Nat.sub_add_cancel hn] at hc
+  exact hc.symm
+
+end Sound
+
+/-! ## Completeness -/
+
+/-- The honest leaf table: block `i` is the honest chain block of the `i`-th digest of the chain
+from `s`. -/
+noncomputable def leafWitness (s : Digest) (i : ℕ) : Pos → Bool := chainTrace (chainEnd s i)
+
+/-- The honest chain block of `d`, computed (`O(|circuit|)` Boolean operations). -/
+def leafBlockBits (d : Digest) : Array Bool := fastTrace (chainInp d)
+
+theorem leafBlockBits_eq (d : Digest) (k : Pos) :
+    (leafBlockBits d)[k.val]? = some (chainTrace d k) :=
+  fastTrace_eq _ k
+
+/-- **Leaf completeness.** Over a nontrivial ring of characteristic two, the honest leaf table of
+`n ≥ 1` steps from `s` meets every hypothesis of `leaf_sound` with `h = chainEnd s n`. -/
+theorem leaf_complete {R : Type*} [CommRing R] [CharP R 2] [Nontrivial R] (s : Digest) {n : ℕ}
+    (hn : 1 ≤ n) :
+    let z : ℕ → Pos → R := fun i ↦ liftBlock R (leafWitness s i)
+    (∀ i < n, ∀ k, BlockR1CS.IsBool (z i k)) ∧
+      (∀ i < n, HoldsE (blockR1CS chainTarget) (targetVal R chainTarget) (z i)) ∧
+      ChainLinks n z s (chainEnd s n) := by
+  intro z
+  have hc := fun i ↦ block_complete (R := R) (chainEnd s i)
+  refine ⟨fun i _ k ↦ ?_, fun i _ ↦ (hc i).1, fun i _ j hj ↦ ?_, fun j hj ↦ ?_, fun j hj ↦ ?_⟩
+  · simp only [z, liftBlock, ofBool, BlockR1CS.IsBool]
+    split <;> simp
+  · have h1 := (readDigest_eq_iff _ _ _).mp (hc (i + 1)).2.1 j hj
+    have h2 := (readDigest_eq_iff _ _ _).mp (hc i).2.2 j hj
+    simp only [z, liftBlock, leafWitness]
+    rw [h1, h2, chainEnd, chainEnd, Function.iterate_succ_apply']
+  · have h1 := (readDigest_eq_iff _ _ _).mp (hc 0).2.1 j hj
+    simp only [z, liftBlock, leafWitness]
+    rw [h1, chainEnd, Function.iterate_zero, id]
+  · have h2 := (readDigest_eq_iff _ _ _).mp (hc (n - 1)).2.2 j hj
+    simp only [z, liftBlock, leafWitness]
+    rw [h2, chainEnd, chainEnd, ← Function.iterate_succ_apply' chainStep, Nat.succ_eq_add_one,
+      Nat.sub_add_cancel hn]
+
+/-! ## Controls -/
+
+/-- **Negative control (BP-C-M5).** The all-zero table of one block, with `s = h = 0`, has `0`/`1`
+entries, satisfies the circuit's R1CS (without target, `one = 0`) and `ChainLinks`, yet
+`chainEnd 0 1 ≠ 0`: it is excluded by the public target, which it fails. -/
+theorem zero_table_control {R : Type*} [CommRing R] [CharP R 2] [Nontrivial R] :
+    let z : ℕ → Pos → R := fun _ _ ↦ 0
+    let d0 : Digest := Vector.replicate 32 0
+    (∀ i < 1, ∀ k, BlockR1CS.IsBool (z i k)) ∧ (∀ i < 1, circuitR1CS.Holds (z i)) ∧
+      ChainLinks 1 z d0 d0 ∧ chainEnd d0 1 ≠ d0 ∧
+      ¬ (∀ i < 1, HoldsE (blockR1CS chainTarget) (targetVal R chainTarget) (z i)) := by
+  intro z d0
+  have hbit : ∀ j, digestBit d0 j = false := fun j ↦ by
+    unfold digestBit
+    split <;> simp [d0]
+  refine ⟨fun _ _ _ ↦ Or.inl rfl, fun _ _ ↦ zero_holds,
+    ⟨fun i hi ↦ absurd hi (by omega), fun j _ ↦ by simp [z, hbit, ofBool],
+      fun j _ ↦ by simp [z, hbit, ofBool]⟩, ?_, fun h ↦ (zero_control (R := R)).2 (h 0 (by omega))⟩
+  rw [chainEnd, Function.iterate_one, chainStep_zero_kat]
+  intro h
+  have := congrArg (fun v : Digest ↦ v[0]) h
+  simp [d0] at this
+
+end Leaf
+
+end FR
+
+end G6_FRLeafCircuit
+
+section G6_FRSegment
+
+-- New for `flock-recursive` (BLUEPRINT revision 4.0, B-11, B-12; stage S-0′).
+
+/-!
+# Segments: variable-length leaves (B-12)
+
+A step's chain of `n ∈ [2^17, 2^20]` compressions is proved as `k = ⌈n/2^18⌉ ≤ 4` **segments**
+(B-11). A segment of kind `κ ∈ {L30, L31, L32}` (revision 4.1's ladder) is the leaf circuit with a **variable length**
+`1 ≤ n ≤ cap κ = 2^(m − 14)`: its blocks `i < n` are chain blocks with the public target, linked;
+the blocks `≥ n` are `free` (no constraint); the last block is `n − 1`, read from the statement
+(INT-4's `bnd`). Every segment's start is `hdr.pub` (S-0′ issue I-2: no gated pin, no secret
+start); segment 1's start is the leaf witness `V_A` extracts, a segment `i ≥ 2` starts at
+`s_i = e_{i−1}`, checked by `V_A` on raw bytes.
+
+* `SegStmt`: start, end, length. `SegHolds κ st z`: the circuit's content on the table
+  `z` (the range of `n`, Booleanity, the block R1CS with its target and the links on the used
+  blocks). **`seg_sound`**: it proves `chainEnd st.start st.n = st.h` (from `Leaf.leaf_sound` at
+  `n`; the free blocks are never read). **`seg_complete`**: the honest table meets it.
+* **`segs_compose`**: chained segments (`ChainedTail`: `s_{i+1} = e_i`) prove the whole chain: `chainEnd s₁ (Σ nᵢ) = e_k` (`chainEnd_add`).
+* The proof format of a segment is 3.x's (`FRShape4.segHdr`, `stmtLeafBytes n h`): `segView`
+  reads its kind, start (`hdr.pub`), end and length; its statement digest is the contract's
+  `leafStmt e n` (`segC`). A segment's position in the aggregate leaf is not a byte of the proof:
+  `V_A` (`FRAgg`) checks the chaining (S-0′ issue I-2).
+* Controls: `seg_bad_n` (`n = 0` and `n = cap + 1` are rejected by the circuit), `seg_wrong_end`
+  (no table proves the one-step chain from `0` back to `0`: a wrong start or end is rejected),
+  `segs_compose_ctrl` (a break in the chaining is not composed).
+-/
+
+namespace FR
+namespace Rev4
+open RecursionFast ProductCircuit Blake2sCircuit Block Chain Leaf
+
+/-! ## Specification -/
+
+/-- A segment's statement: its start, its end, its length. -/
+structure SegStmt where
+  start : Digest
+  h : Digest
+  n : ℕ
+
+/-- The length is in the kind's range. -/
+def SegStmt.InRange (κ : SegKind) (st : SegStmt) : Prop := 1 ≤ st.n ∧ st.n ≤ κ.cap
+
+instance (κ : SegKind) (st : SegStmt) : Decidable (st.InRange κ) := by
+  unfold SegStmt.InRange; infer_instance
+
+/-- **The segment circuit's content** on a table `z` (block `i`, position `k`): the length in
+range; on the used blocks `i < n` Booleanity and the chain block's R1CS with its public target; the
+links from `start` (block 0's `h_in`) to `h` (block `n − 1`'s
+output). Blocks `i ≥ n` are free. -/
+def SegHolds {R : Type*} [CommRing R] [DecidableEq R] (κ : SegKind) (st : SegStmt)
+    (z : ℕ → Pos → R) : Prop :=
+  st.InRange κ ∧ (∀ i < st.n, ∀ k, BlockR1CS.IsBool (z i k)) ∧
+    (∀ i < st.n, HoldsE (blockR1CS chainTarget) (targetVal R chainTarget) (z i)) ∧
+    ChainLinks st.n z st.start st.h
+
+/-- **Segment soundness**: a table meeting the segment circuit proves the segment's chain. -/
+theorem seg_sound {R : Type*} [CommRing R] [CharP R 2] [Nontrivial R] [DecidableEq R]
+    {κ : SegKind} {st : SegStmt} {z : ℕ → Pos → R} (h : SegHolds κ st z) :
+    chainEnd st.start st.n = st.h :=
+  leaf_sound h.1.1 z st.start st.h h.2.1 h.2.2.1 h.2.2.2
+
+/-- **Segment completeness**: the honest table of a length in range meets the circuit. -/
+theorem seg_complete {R : Type*} [CommRing R] [CharP R 2] [Nontrivial R] [DecidableEq R]
+    (κ : SegKind) (s : Digest) {n : ℕ} (hn : 1 ≤ n ∧ n ≤ κ.cap) :
+    SegHolds κ ⟨s, chainEnd s n, n⟩ (fun i ↦ liftBlock R (leafWitness s i)) :=
+  ⟨hn, leaf_complete s hn.1⟩
+
+/-- **3.x's leaf is the `L32` segment at `n = 2^18`**: `SegHolds .L32` is
+`leaf_sound`'s hypothesis set at `leafN .L32`. -/
+theorem segHolds_L32 {R : Type*} [CommRing R] [DecidableEq R] (s h : Digest) (z : ℕ → Pos → R) :
+    SegHolds .L32 ⟨s, h, leafN .L32⟩ z ↔
+      (∀ i < leafN .L32, ∀ k, BlockR1CS.IsBool (z i k)) ∧
+        (∀ i < leafN .L32, HoldsE (blockR1CS chainTarget) (targetVal R chainTarget) (z i)) ∧
+        ChainLinks (leafN .L32) z s h := by
+  simp [SegHolds, SegStmt.InRange, SegKind.cap, SegKind.m, leafN, Kind.m]
+
+/-! ## Composition of chained segments -/
+
+/-- The tail of a chain after `a`: every segment starts at its predecessor's end. -/
+def ChainedTail : SegStmt → List SegStmt → Prop
+  | _, [] => True
+  | a, b :: l => b.start = a.h ∧ ChainedTail b l
+
+/-- `chainEnd` composes (`chainEnd s n = chainEnd (chainEnd s n₁) n₂` for `n = n₁ + n₂`). -/
+theorem chainEnd_add (s : Digest) (a b : ℕ) : chainEnd s (a + b) = chainEnd (chainEnd s a) b := by
+  rw [chainEnd, chainEnd, chainEnd, Nat.add_comm, Function.iterate_add_apply]
+
+/-- The total length. -/
+def totalN (l : List SegStmt) : ℕ := (l.map SegStmt.n).sum
+
+private theorem compose_tail (a : SegStmt) : ∀ (l : List SegStmt), ChainedTail a l →
+    (∀ st ∈ l, chainEnd st.start st.n = st.h) →
+    chainEnd a.h (totalN l) = ((a :: l).getLast (List.cons_ne_nil _ _)).h
+  | [], _, _ => by simp [totalN, chainEnd]
+  | b :: l, ⟨hb, ht⟩, hs => by
+    simp only [totalN, List.map_cons, List.sum_cons] at *
+    rw [chainEnd_add, ← hb, hs b (by simp), List.getLast_cons (List.cons_ne_nil _ _)]
+    exact compose_tail b l ht fun st h => hs st (List.mem_cons_of_mem _ h)
+
+/-- **Chained segments prove the whole chain**: if every segment proves its piece, the first
+segment's start reaches the last segment's end in `Σ nᵢ` steps. -/
+theorem segs_compose (a : SegStmt) (l : List SegStmt) (hc : ChainedTail a l)
+    (hs : ∀ st ∈ a :: l, chainEnd st.start st.n = st.h) :
+    chainEnd a.start (totalN (a :: l)) = ((a :: l).getLast (List.cons_ne_nil _ _)).h := by
+  simp only [totalN, List.map_cons, List.sum_cons]
+  rw [chainEnd_add, hs a (by simp)]
+  exact compose_tail a l hc fun st h => hs st (List.mem_cons_of_mem _ h)
+
+/-! ## The proof format's view (3.x's leaf format) -/
+
+/-- The little-endian number of the 8 bytes at `o`. -/
+def rdLE64 (π : Proof) (o : ℕ) : ℕ := ((List.range 8).map fun i => (byteAt π (o + i)).toNat * 256 ^ i).sum
+
+/-- What `V_A` reads of a segment proof: its kind, start (`hdr.pub`), end (`stmt` bytes 1–32) and
+length (`stmt` bytes 33–40). -/
+structure SegView where
+  kind : SegKind
+  start : Digest
+  h : Digest
+  n : ℕ
+  deriving DecidableEq
+
+/-- **The view of a segment proof** (`none` unless byte 0 is a segment kind byte). -/
+def segView (π : Proof) : Option SegView :=
+  (SegKind.ofByte? (byteAt π 0)).map fun κ => ⟨κ, bytesAt π 16 32, bytesAt π 49 32, rdLE64 π 81⟩
+
+/-- The statement of a view. -/
+def SegView.stmt (v : SegView) : SegStmt := ⟨v.start, v.h, v.n⟩
+
+/-- **A segment's statement digest** `cᵢ = leafStmt eᵢ nᵢ` (the 3.x leaf statement, what the
+segment program's `hashStmt` checks). -/
+def segC (v : SegView) : Digest := leafStmtF v.h v.n
+
+/-! ## Controls -/
+
+/-- Negative: lengths `0` and `cap + 1` are rejected by the circuit. -/
+theorem seg_bad_n {R : Type*} [CommRing R] [DecidableEq R] (κ : SegKind) (s h : Digest)
+    (z : ℕ → Pos → R) : ¬ SegHolds κ ⟨s, h, 0⟩ z ∧ ¬ SegHolds κ ⟨s, h, κ.cap + 1⟩ z :=
+  ⟨fun hs => absurd hs.1.1 (by simp), fun hs => absurd hs.1.2 (by simp)⟩
+
+/-- Negative (wrong start or end): no table over `GF(2)` proves the one-step chain from `0` to `0`,
+for every kind (`chainEnd 0 1 ≠ 0`, the BLAKE2s KAT). -/
+theorem seg_wrong_end (κ : SegKind) (z : ℕ → Pos → ZMod 2) :
+    ¬ SegHolds κ ⟨Vector.replicate 32 0, Vector.replicate 32 0, 1⟩ z := fun hs =>
+  (zero_table_control (R := ZMod 2)).2.2.2.1 (seg_sound hs)
+
+/-- Positive: the honest one-step segment from `0` meets the circuit (every kind). -/
+theorem seg_ctrl_pos (κ : SegKind) :
+    SegHolds κ ⟨Vector.replicate 32 0, chainEnd (Vector.replicate 32 0) 1, 1⟩
+      (fun i ↦ liftBlock (ZMod 2) (leafWitness (Vector.replicate 32 0) i)) :=
+  seg_complete κ _ ⟨le_rfl, by cases κ <;> decide⟩
+
+/-- Negative (composition): a chain whose second segment starts elsewhere is not `ChainedTail`. -/
+theorem segs_compose_ctrl (a b : SegStmt) (h : b.start ≠ a.h) : ¬ ChainedTail a [b] :=
+  fun hc => h hc.1
+
+end Rev4
+end FR
+
+end G6_FRSegment
+
+section G6_FRAgg
+
+-- New for `flock-recursive` (BLUEPRINT revision 4.0, B-11; §10 changes 25 (b); stage S-0′).
 
 /-!
 # The aggregate leaf `A` and its verifier `V_A` (B-11)
@@ -766,3 +1104,5 @@ theorem ctrlA_cap_kind :
 
 end Rev4
 end FR
+
+end G6_FRAgg

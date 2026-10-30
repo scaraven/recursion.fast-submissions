@@ -1,7 +1,7 @@
 -- New for `flock-recursive` (BLUEPRINT §5.1, A.9 `finRS`/`finB′`, A.10 B′ → P1.0; stage S-G10).
 -- RET-2: the declarations revision 4.1 reads moved to `FRSoundnessCoreAcc`.
 import FRSoundnessFrK
-import FRSoundnessCoreAcc
+import FRSoundness4P4aSeg
 
 /-!
 # The front's run facts, step 1: the fields' register chain and the readers on the log

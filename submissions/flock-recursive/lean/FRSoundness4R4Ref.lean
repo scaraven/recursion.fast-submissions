@@ -2,7 +2,7 @@
 -- RET-2: import re-pointed at Core: `FRSoundnessAccSem` → `FRSoundnessCoreAcc`.
 import FRSoundness4Qry
 import FRVIRSpecCore
-import FRSoundnessCoreAcc
+import FRSoundness4P4aSeg
 
 /-!
 # The reference semantics of `gen4`'s skeleton (`refPhase4`, `exec_skeleton4`)

@@ -1,5 +1,5 @@
 -- New for `flock-recursive` (stage B4, track L-circ): the controls of the aggregate check rows.
-import FRNodeRows4AggChkG
+import FRNodeRows4AskStmtS
 
 /-!
 # Controls for `aggChk`'s rows and readings

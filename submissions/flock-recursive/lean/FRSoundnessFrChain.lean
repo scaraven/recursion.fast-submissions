@@ -3,7 +3,7 @@
 -- potential and its `step` law serve revision 4.1's sequence `seq4`. Proof text unchanged.
 -- RET-2: the declarations revision 4.1 reads moved to `FRSoundnessCoreChain`.
 import FRSoundnessDefs
-import FRSoundnessCoreChain
+import FRSoundness4Pos
 
 /-!
 # Chains and the potential over an arbitrary Fiat–Shamir item list (`FsSeq`)

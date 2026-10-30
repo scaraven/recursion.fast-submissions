@@ -1,6 +1,6 @@
 -- New for `flock-recursive` (track REPF): controls of the replay fold's definitions.
 import FRNodeRows4RepF
-import FRNodeRows4RepFD
+import FRInitFuse
 
 /-!
 # Controls of the replay fold

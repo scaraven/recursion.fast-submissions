@@ -2,7 +2,7 @@
 -- RET-2: the declarations revision 4.1 reads moved to `FRSoundnessCoreRows`.
 import FRSoundnessCompose
 import FRNodeCircuit
-import FRSoundnessCoreRows
+import FRSoundnessCoreFront
 
 /-!
 # The PIOP front: reads, the frame, the node's block order, the B′ cells, the 3.13 order

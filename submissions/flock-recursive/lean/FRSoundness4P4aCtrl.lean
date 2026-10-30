@@ -1,6 +1,6 @@
 -- New for `flock-recursive` (stage P4a): the controls of the P4a definitions.
 import FRSoundness4P4aSeg
-import FRSoundness4P4aLast
+import FRSoundness4P4aZ
 
 /-!
 # Controls of P4a's definitions (positive and negative)

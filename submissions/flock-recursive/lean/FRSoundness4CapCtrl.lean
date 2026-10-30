@@ -1,7 +1,7 @@
 -- New for `flock-recursive` (PACK-4.4 §11.5, `reviews/PACK-4.4-b2-review.md` PB-m12; track A3′ run 2):
 -- a concrete chain in the `ζ` escape set.
-import FRSoundness4TailCap
-import FRSoundnessCoreAcc
+import FRSoundness4TailC
+import FRSoundness4P4aSeg
 
 /-!
 # The `ζ` escape set is not empty (a concrete chain)

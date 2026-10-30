@@ -4,7 +4,6 @@
 import FRSoundnessFrLN
 import FRSoundnessAccEq
 import FRSoundnessLigerito
-import FRVIREval
 import FRVerifierImplOps
 import FRVIRFinals
 import FRVIRFinalsSG

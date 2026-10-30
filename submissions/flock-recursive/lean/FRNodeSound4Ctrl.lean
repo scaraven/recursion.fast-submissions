@@ -1,6 +1,6 @@
 -- New for `flock-recursive` (stage S-N2): the controls of `FRNodeSound4`, `FRNodeRead4`, `FRNodeRead4W`,
 -- `FRNodeSound4R` and `FRNodeSound4K`.
-import FRNodeSound4K
+import FRNodeRows4AskStmtS
 
 /-!
 # Controls for the 4.1 slot interface, its reader and the gaps

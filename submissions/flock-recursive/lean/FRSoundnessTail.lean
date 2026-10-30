@@ -2,8 +2,8 @@
 -- RET-1: position-free declarations moved to `FRSoundnessCoreTail`.
 -- RET-2: the declarations revision 4.1 reads moved to `FRSoundnessCoreRows`.
 import FRSoundnessFold
-import FRSoundnessCoreTail
-import FRSoundnessCoreRows
+import FRSoundness4TailStep
+import FRSoundnessCoreFront
 
 /-!
 # The Ligerito tail P1.0 → Pf: the concrete dooms and their per-phase obligations

@@ -2,7 +2,7 @@
 -- `V4F` on closed constants, and the knowledge error as a compiled number.
 import FRVerifierC4
 import FRVerifierImplNode4F
-import FRVerifierImplCore
+import FRSegTarget4
 import FRSoundnessCoreSteps
 
 /-!

@@ -1,5 +1,5 @@
 -- New for `flock-recursive` (BLUEPRINT revision 4.1, B-12, B-13; A.6, A.7; stage S-0′).
-import FRShape4
+import FRSoundness4Pos
 
 /-!
 # The `N2`/`N4`/`N8` node layouts: regions H, L, M, tightly packed (B-13, revision 4.1)

@@ -1,6 +1,6 @@
 -- New for `flock-recursive` (PACK-4.4 §6.2, R1's route (a); track C1b): the controls of
 -- `FRNodeRows4RepLT`, `FRVIRTplRepL(D)` and `FRVIRTplRepT`.
-import FRNodeRows4RepLT
+import FRNodeRun4Ctrl
 import FRNodeRows4RepNCtrl
 
 /-!

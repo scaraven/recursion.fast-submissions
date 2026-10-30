@@ -1,7 +1,7 @@
 -- New for `flock-recursive` (track SIB): the closure generator's soundness. `ATAsk`/`ATImp` of `AT.close` and
 -- `AT.addE`; `SlotRunB` from the closed residual `SlotRunC` (the replay ops' imports and the `felems` cells).
 import FRNodeRun4BF
-import FRNodeRun4CA
+import FRNodeRows4
 
 /-!
 # The closed residual

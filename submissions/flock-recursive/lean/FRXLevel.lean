@@ -1,6 +1,6 @@
 -- New for `flock-recursive` (BLUEPRINT §6.2 step 4, §6.5 `fold_spec`/`enc_spec`/`agree_spec`;
 -- §10 changes 14; stage S-H2, track L-ext).
-import FRXEncB
+import FRXFwd
 import FRSoundnessCoreTruths
 import FRXRead
 
