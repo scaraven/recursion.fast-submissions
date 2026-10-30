@@ -98,8 +98,12 @@ Running on rev44:
   - **rsWeight:** an F-point claim part, about 37k gates (the kind factor collapses).
   - **Small templates:** `targetSSegI` about 140 rows, `shiftTargetI` about 3.1k.
   - **Placement:** replay templates in each segment slot's own region via `rtKD`, needing about 40k rows and 40k cells per slot. It fits only if `arR2N` shrinks.
+- **SEG-R0 landed.**
+  - **Fit:** the F-point templates fit (≈ 39k locals per slot). There is a third free cell band (12.7k), and cutting `arR2N` to 154,368 gives band B 27k rows.
+  - **Facts verified** on `protoProg 1`: 186 forcing rows are needed, not 75.
+  - **Start-up:** the ~1.5 s init win needs `nodePlan`/`lPlan`/`implCN` made noncomputable.
+- SEG-R1: `rtKD` and the three templates, `cov` checks, `evalM`/`evalL` pinned in `implSeg`, and the `nodePlan` init cut. R2 (fold, fit, plan) comes after SIB and CF2.
 - **Running:**
-  - SEG-R0 (probes: exact counts, band fit, the facts verified in the compiled program);
   - **Review of SEG-R:** no blocker. The route is a fixed point (rows only; no op or import added), and the dead ops are pinned soundly.
     - **Should-fix:**
       - `kRSS.cov` must check `act` all false, the claim count and the widths;
