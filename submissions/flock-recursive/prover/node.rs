@@ -593,7 +593,7 @@ fn wots_run(vk: &Digest, m: &Digest, s: &Sig) -> Wots {
 }
 
 /// `0x54 ‖ traceBytes tr`.
-fn stream_bytes(tr: &[(Vec<u8>, Digest)]) -> Vec<u8> {
+pub fn stream_bytes(tr: &[(Vec<u8>, Digest)]) -> Vec<u8> {
     let mut v = Vec::with_capacity(SEG_B * 4 + 64);
     v.push(format::TAG_TRACE);
     for (q, a) in tr {
@@ -609,13 +609,28 @@ fn stream_bytes(tr: &[(Vec<u8>, Digest)]) -> Vec<u8> {
 /// P2"): the spacer before it (`enc64 89 ‖ "FRABS000" ‖ 0^81`, its answer zero) and the sub-slot's
 /// `wfSeg` elements (each item's `enc64 |q| ‖ tag`) with its seed element's bytes 1–15; everything
 /// else (the kind element 5 included: an inactive sub-slot's selectors are 0) zero.
-pub fn agg_stream(tr: &[(Vec<u8>, Digest)], kk: usize, max_k: usize) -> Vec<u8> {
+pub fn agg_stream(tr: &[(Vec<u8>, Digest)], kk: usize, max_k: usize, vk: &Digest, c_in: &Digest) -> Vec<u8> {
     let mut v = stream_bytes(tr);
     assert_eq!(v.len(), agg_b(kk), "an aggregate's stream");
     v.resize(agg_b(max_k), 0);
     if kk == max_k {
         return v;
     }
+    for i in kk..max_k {
+        let so = i * STRIDE_B - 128;
+        v[so..so + 8].copy_from_slice(&89u64.to_le_bytes());
+        v[so + 8..so + 16].copy_from_slice(pp::TAG_ABS);
+        phantom_seg(&mut v[i * STRIDE_B..i * STRIDE_B + SEG_B], vk, c_in);
+    }
+    v
+}
+
+/// An inactive sub-slot's segment bytes (`SEG_B`): each item's `enc64 |q| ‖ tag` (the seed element's
+/// bytes 1–15), everything else zero (A1′ "For P2"; `agg_stream`). E1b: the ask templates' ungated
+/// reads of an inactive sub-slot need its seed query's `vk ‖ c` (elements 1–4: IMP's `input` cells, which
+/// the kind table's statement rows tie to `vk` and the slot's `hashA` output `c_in`) and the statement's
+/// leaf tag (element 13's byte 0, IMPC2's statement read).
+fn phantom_seg(v: &mut [u8], vk: &Digest, c_in: &Digest) {
     let mut ents: Vec<(u64, [u8; 8])> = Vec::with_capacity(pp::N_ITEMS);
     for (_, it) in crate::items::items_seq() {
         let tag = |t: &[u8; 6], l: usize| -> [u8; 8] {
@@ -636,21 +651,97 @@ pub fn agg_stream(tr: &[(Vec<u8>, Digest)], kk: usize, max_k: usize) -> Vec<u8> 
             crate::items::It::Node { level, .. } => (72, tag(pp::TAG_MNOD, level)),
         });
     }
-    for i in kk..max_k {
-        let so = i * STRIDE_B - 128;
-        v[so..so + 8].copy_from_slice(&89u64.to_le_bytes());
-        v[so + 8..so + 16].copy_from_slice(pp::TAG_ABS);
-        let base = i * STRIDE_B;
-        let mut o = 1;
-        for (j, (ql, tg)) in ents.iter().enumerate() {
-            v[base + o..base + o + 8].copy_from_slice(&ql.to_le_bytes());
-            let tl = if j == 0 { 7 } else { 8 };
-            v[base + o + 8..base + o + 8 + tl].copy_from_slice(&tg[..tl]);
-            o += 8 + *ql as usize + 32;
-        }
-        assert_eq!(o, SEG_B, "a sub-slot's items fill its segment");
+    let mut o = 1;
+    for (j, (ql, tg)) in ents.iter().enumerate() {
+        v[o..o + 8].copy_from_slice(&ql.to_le_bytes());
+        let tl = if j == 0 { 7 } else { 8 };
+        v[o + 8..o + 8 + tl].copy_from_slice(&tg[..tl]);
+        o += 8 + *ql as usize + 32;
     }
-    v
+    assert_eq!(o, SEG_B, "a sub-slot's items fill its segment");
+    v[16..48].copy_from_slice(vk);
+    v[48..80].copy_from_slice(c_in);
+    v[16 * 13] = blake2s::TAG_LEAF;
+}
+
+/// An inactive verifier slot's `c`: its statement block's `hashA` of the zero message (`h_part`).
+pub fn c_inactive() -> Digest {
+    words_bytes(&BlockIn::of(BK::HashA, [0; 8], &[]).out())
+}
+
+/// An inactive sub-slot's arena₁ for `vk` (`phantom_seg`).
+pub fn inactive_arena(vk: &Digest) -> Vec<F> {
+    let mut v = vec![0u8; SEG_B];
+    phantom_seg(&mut v, vk, &c_inactive());
+    arena_of(&v)
+}
+
+/// **Arena₁ of a segment** (E1b, ASK-P §7): its stream's `AR_N` sixteen-byte elements (element `e` =
+/// H cell `sCell b0 e`, bytes `[16e, 16e + 16)` of the segment's main-chain bytes, zero padded).
+pub fn arena_of(b: &[u8]) -> Vec<F> {
+    (0..mfill::AR_N)
+        .map(|e| {
+            let mut x = [0u8; 16];
+            let lo = (16 * e).min(b.len());
+            let hi = (16 * e + 16).min(b.len());
+            x[..hi - lo].copy_from_slice(&b[lo..hi]);
+            F::from_bytes(&x)
+        })
+        .collect()
+}
+
+/// An inactive sub-slot's arena₁ for a zero `vk` (`prover setup`'s inactive solve order; a request
+/// fills its inactive slots with `inactive_arena(vk)`).
+pub fn phantom_arena() -> &'static [F] {
+    static A: std::sync::OnceLock<Vec<F>> = std::sync::OnceLock::new();
+    A.get_or_init(|| inactive_arena(&[0u8; 32]))
+}
+
+/// Slot `v`'s stream block `slotB0 κ v` (`FRNodeRows4.slotB0`): the previous node's chain start, or its
+/// aggregate's chain at the sub-slot's stride.
+pub fn slot_b0(k: NK, v: usize) -> usize {
+    if k.has_prev() && v == 0 {
+        k.ch_base(0)
+    } else {
+        let (a, i) = if k.has_prev() { (0, v - 1) } else { (v / 4, v % 4) };
+        k.ch_base(k.agg_child(a)) + i * S_BLK
+    }
+}
+
+/// **E1b: the kind's link rows beyond `node-N*.txt`** (absolute, appended to `kt.links`): every slot's
+/// arena₁ rows (`a1Rows4 κ v (slotB0 κ v)`: row `v·2^20 + arR1 + e` is `one·(A₁(e) + H(sCell b0 e)) = 0`),
+/// then, for a kind with a previous node, slot 0's replay rows (`repIRowsW rtC1d κ 0`: `p0.spare` with
+/// rows from `κ.vslots·2^20`, frame cells `+ one`, locals into the spare region).
+pub fn extend_links(kt: &mut mfill::KindTab, k: NK, p0: &mfill::Proto) {
+    let one = kt.one_cell;
+    let l = &mut kt.links;
+    l.reopen();
+    let a = [(one as u32, F::ONE)];
+    for v in 0..k.vslots() {
+        let b0 = slot_b0(k, v);
+        for e in 0..mfill::AR_N {
+            let b = [((one + v * mfill::SLOT + mfill::AR_A1 + e) as u32, F::ONE), (((b0 + e / 4) * 128 + 4 + e % 4) as u32, F::ONE)];
+            l.push_row((v * mfill::SLOT + mfill::AR_R1 + e) as u32, [&a, &b, &[]]);
+        }
+    }
+    if k.has_prev() {
+        let vs = k.vslots();
+        let sp = &p0.spare;
+        let mut fs: [Vec<(u32, F)>; 3] = Default::default();
+        for i in 0..sp.len() {
+            let rg = sp.rng[i];
+            for m in 0..3 {
+                fs[m].clear();
+                for t in rg[m] as usize..rg[m + 1] as usize {
+                    let c = sp.cells[t] as usize;
+                    let ac = if c < mfill::SLOT { one + c } else { one + vs * mfill::SLOT + (c - mfill::SLOT) };
+                    fs[m].push((ac as u32, sp.coef(t)));
+                }
+            }
+            l.push_row((vs * mfill::SLOT + sp.idx[i] as usize) as u32, [&fs[0], &fs[1], &fs[2]]);
+        }
+    }
+    l.done();
 }
 
 /// **The node witness** of kind `k` for `vk`, the previous node (if `k.has_prev()`) and the
@@ -661,7 +752,7 @@ pub fn agg_stream(tr: &[(Vec<u8>, Digest)], kk: usize, max_k: usize) -> Vec<u8> 
 /// a batch, as a parallel job) and the L region's signature and digit cells: `z`, `a`, `b` (`a`, `b`
 /// final on H; `z` zero past H but for the L cells) and the block kinds.
 #[allow(clippy::type_complexity)]
-fn h_part(k: NK, vk: &Digest, prev: Option<&PrevIn>, aggs: &[AggIn], signed: &[&format::Signed], circ: &Circuit) -> (Vec<u64>, Vec<u64>, Vec<u64>, Vec<BK>, Vec<(&'static str, f64)>) {
+fn h_part(k: NK, vk: &Digest, prev: Option<&PrevIn>, aggs: &[AggIn], signed: &[&format::Signed], streams: &[Vec<u8>], circ: &Circuit) -> (Vec<u64>, Vec<u64>, Vec<u64>, Vec<BK>, Vec<(&'static str, f64)>) {
     let mut times = Vec::new();
     let mut t0 = std::time::Instant::now();
     let mut mark = |n: &'static str, times: &mut Vec<(&'static str, f64)>| {
@@ -672,9 +763,6 @@ fn h_part(k: NK, vk: &Digest, prev: Option<&PrevIn>, aggs: &[AggIn], signed: &[&
     let mut ins = vec![BlockIn::zero(); h_end];
     let bks: Vec<BK> = (0..k.blocks()).map(|b| bk_at(k, b)).collect();
     // the two main chains (sequential compressions; the chains in parallel)
-    let streams: Vec<Vec<u8>> = (0..2)
-        .map(|sg| if k.is_agg(sg) { agg_stream(&signed[sg].tr, aggs[k.agg_of(sg)].segs.len(), k.max_k()) } else { stream_bytes(&signed[sg].tr) })
-        .collect();
     let chains: Vec<Vec<BlockIn>> = par::collect_vec(2, 1, |sg| {
         let (b0, l) = (k.ch_base(sg), k.ch_len(sg));
         let st = &streams[sg];
@@ -879,12 +967,13 @@ fn h_part(k: NK, vk: &Digest, prev: Option<&PrevIn>, aggs: &[AggIn], signed: &[&
 fn agg_chk_fill(_k: NK, _a: usize, _ag: &AggIn, _st: &[u8], _lb: usize, _z: &mut [u64]) {}
 
 /// A slot's fill: the M cells, the fill's report, the program run's bits.
-pub type Fill = (Vec<F>, mfill::FillStats, Vec<bool>);
+/// E1b: plus slot 0's replay locals and their report (`mfill::spare_fill`; empty for a segment slot).
+pub type Fill = (Vec<F>, mfill::FillStats, Vec<bool>, Option<(Vec<F>, mfill::FillStats)>);
 
 /// One verifier slot's fill: the prototype program's run at the child's index (`run`: the child's
 /// proof, trace, statement, index; `None`: inactive), then `mfill::fill`. Slot `v` names it in the report.
 #[allow(clippy::too_many_arguments)]
-fn slot_fill(p: &mfill::Proto, text: &str, p0: bool, run: Option<(&[u8], &[(Vec<u8>, Digest)], Digest, usize)>, prev: Option<&PrevIn>, vk: &Digest, lcirc: &Circuit, v: usize) -> Fill {
+fn slot_fill(p: &mfill::Proto, text: &str, p0: bool, run: Option<(&[u8], &[(Vec<u8>, Digest)], Digest, usize)>, prev: Option<&PrevIn>, vk: &Digest, lcirc: &Circuit, v: usize, arena: &[F]) -> Fill {
     match run {
         Some((pi, tr, c, ix)) => {
             let o = crate::oracle::Seq::new(tr);
@@ -906,7 +995,7 @@ fn slot_fill(p: &mfill::Proto, text: &str, p0: bool, run: Option<(&[u8], &[(Vec<
                 let n = u64::from_le_bytes(pi[so + 33..so + 41].try_into().unwrap());
                 n < [1u64 << 18, 1 << 16, 1 << 17][ix]
             };
-            let (val, st2) = mfill::fill_part(p, Some((&regs, ix)), partial);
+            let (val, st2) = mfill::fill_part(p, Some((&regs, ix)), partial, arena);
             st.written = st2.written;
             st.solved = st2.solved;
             st.zeroed = st2.zeroed;
@@ -917,11 +1006,12 @@ fn slot_fill(p: &mfill::Proto, text: &str, p0: bool, run: Option<(&[u8], &[(Vec<
             st.form_mismatch = st2.form_mismatch;
             st.first_form_mismatch = st2.first_form_mismatch;
             st.replayed = st2.replayed;
-            (val, st, bits)
+            let spare = p0.then(|| mfill::spare_fill(p, &val));
+            (val, st, bits, spare)
         }
         None => {
-            let (val, st) = mfill::fill(p, None);
-            (val, st, Vec::new())
+            let (val, st) = mfill::fill(p, None, arena);
+            (val, st, Vec::new(), None)
         }
     }
 }
@@ -929,7 +1019,8 @@ fn slot_fill(p: &mfill::Proto, text: &str, p0: bool, run: Option<(&[u8], &[(Vec<
 /// Slot 0's fill of a node with a previous node (its program run on `prev` and the solve): it needs
 /// only `prev`, so a step computes it beside its aggregate and hands it to `witness`.
 pub fn slot0_fill(prev: &PrevIn, vk: &Digest, protos: &[mfill::Proto; 2], texts: &[String; 2], lcirc: &Circuit) -> Fill {
-    slot_fill(&protos[0], &texts[0], true, Some((&prev.signed.pi[..], &prev.signed.tr[..], prev.c, prev.ix)), Some(prev), vk, lcirc, 0)
+    let arena = arena_of(&stream_bytes(&prev.signed.tr));
+    slot_fill(&protos[0], &texts[0], true, Some((&prev.signed.pi[..], &prev.signed.tr[..], prev.c, prev.ix)), Some(prev), vk, lcirc, 0, &arena)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -947,19 +1038,27 @@ pub fn witness(k: NK, vk: &Digest, prev: Option<&PrevIn>, aggs: &[AggIn], protos
     }
     let signed: Vec<&format::Signed> = (0..2).map(|sg| if k.is_agg(sg) { aggs[k.agg_of(sg)].signed } else { prev.unwrap().signed }).collect();
     let stmts: Vec<Digest> = (0..2).map(|sg| if k.is_agg(sg) { aggs[k.agg_of(sg)].c } else { prev.unwrap().c }).collect();
+    // the main chains' bytes (H's chains; arena₁ of every slot)
+    let streams: Vec<Vec<u8>> = (0..2)
+        .map(|sg| if k.is_agg(sg) { agg_stream(&signed[sg].tr, aggs[k.agg_of(sg)].segs.len(), k.max_k(), vk, &c_inactive()) } else { stream_bytes(&signed[sg].tr) })
+        .collect();
     // the slot runs (prototype program at the child's index) and fills, in parallel
     struct SlotJob<'a> {
         proto: usize,
         run: Option<(&'a [u8], &'a [(Vec<u8>, Digest)], Digest, usize)>,
+        arena: Vec<F>,
     }
     let jobs: Vec<SlotJob> = (0..k.vslots())
         .map(|v| {
             if k.has_prev() && v == 0 {
                 let p = prev.unwrap();
-                return SlotJob { proto: 0, run: Some((&p.signed.pi[..], &p.signed.tr[..], p.c, p.ix)) };
+                return SlotJob { proto: 0, run: Some((&p.signed.pi[..], &p.signed.tr[..], p.c, p.ix)), arena: arena_of(&streams[0]) };
             }
             let (a, i) = if k.has_prev() { (0, v - 1) } else { (v / 4, v % 4) };
-            SlotJob { proto: 1, run: aggs[a].segs.get(i).copied() }
+            let run = aggs[a].segs.get(i).copied();
+            let st = &streams[k.agg_child(a)];
+            let arena = arena_of(&st[i * STRIDE_B..(i * STRIDE_B + SEG_B).min(st.len())]);
+            SlotJob { proto: 1, run, arena }
         })
         .collect();
     // the solve plans: the inactive ones need no child (`warm_plans`, before the request); the
@@ -969,7 +1068,7 @@ pub fn witness(k: NK, vk: &Digest, prev: Option<&PrevIn>, aggs: &[AggIn], protos
     drop(sp);
     let fill_job = |v: usize| {
         let j = &jobs[v];
-        slot_fill(&protos[j.proto], &texts[j.proto], j.proto == 0, j.run, prev, vk, lcirc, v)
+        slot_fill(&protos[j.proto], &texts[j.proto], j.proto == 0, j.run, prev, vk, lcirc, v, &j.arena)
     };
     // slot 0's fill when the caller computed it already (`slot0_fill`, during the aggregate)
     let mut pre0 = pre0;
@@ -994,7 +1093,7 @@ pub fn witness(k: NK, vk: &Digest, prev: Option<&PrevIn>, aggs: &[AggIn], protos
     let first_out: Vec<std::sync::Mutex<Option<Fill>>> = firsts.iter().map(|_| std::sync::Mutex::new(None)).collect();
     par::run(1 + firsts.len(), &|i| {
         if i == 0 {
-            *h_out.lock().unwrap() = Some(h_part(k, vk, prev, aggs, &signed, circ));
+            *h_out.lock().unwrap() = Some(h_part(k, vk, prev, aggs, &signed, &streams, circ));
         } else {
             *first_out[i - 1].lock().unwrap() = Some(fill_job(firsts[i - 1]));
         }
@@ -1020,10 +1119,19 @@ pub fn witness(k: NK, vk: &Digest, prev: Option<&PrevIn>, aggs: &[AggIn], protos
         z[2 * e + 1] = x.hi;
     };
     let mut mstats = Vec::new();
-    for (v, (val, st, bits)) in fills.into_iter().enumerate() {
+    let mut spare_st = None;
+    for (v, (val, st, bits, spare)) in fills.into_iter().enumerate() {
         let base = k.one_cell() + v * mfill::SLOT;
         for (l, x) in val.iter().enumerate() {
             fz(&mut z, base + l, *x);
+        }
+        // slot 0's replay locals in the spare region (REPF)
+        if let Some((sv, sst)) = spare {
+            let sb = k.one_cell() + k.vslots() * mfill::SLOT;
+            for (j, x) in sv.iter().enumerate() {
+                fz(&mut z, sb + j, *x);
+            }
+            spare_st = Some(sst);
         }
         let lsl = lb + v * (1 << 14);
         for (i, &bt) in bits.iter().enumerate().take(7552) {
@@ -1061,6 +1169,8 @@ pub fn witness(k: NK, vk: &Digest, prev: Option<&PrevIn>, aggs: &[AggIn], protos
         pubv.extend(digest_f(vk));
         pubv.extend(digest_f(&stmts[sg]));
     }
+    // the spare fill's report after the slots' (an extra entry)
+    mstats.extend(spare_st);
     NodeWit { k, z, a, b, bks, pubv, times, mstats }
 }
 
@@ -1083,7 +1193,8 @@ pub fn solve_aux(kt: &mfill::KindTab, z: &mut [u64], ranges: &[(usize, usize)]) 
     let mut unk: HashMap<usize, bool> = HashMap::new(); // cell → solved
     let mut rows_of: HashMap<usize, Vec<usize>> = HashMap::new();
     let mut rows: Vec<usize> = Vec::new();
-    for i in 0..l.len() {
+    // `node-N*.txt`'s rows only (the arena₁ and replay rows read no L cell)
+    for i in 0..kt.base_links {
         let rg = l.rng[i];
         let mut hit = false;
         for t in rg[0] as usize..rg[3] as usize {
@@ -1190,8 +1301,9 @@ pub fn warm_plans(protos: &[mfill::Proto; 2]) {
         match k {
             100 => {
                 mfill::warm_adjacency(pr);
-                if pr.plan[0].get().is_none() {
-                    mfill::fill(pr, None);
+                // prototype 0 is never inactive (the previous node's slot)
+                if p == 1 && pr.plan[0].get().is_none() {
+                    mfill::fill(pr, None, phantom_arena());
                 }
             }
             101 => {
@@ -1326,8 +1438,8 @@ pub fn check(w: &NodeWit, protos: &[mfill::Proto; 2], kt: &mfill::KindTab) -> Ch
         ch.m_rows += p.rows.len();
         ch.m_bad += bad.iter().sum::<usize>();
     }
-    for i in 0..kt.links.len() {
-        let [a, b, c] = kt.links.eval(i, &|x| fv(x as usize));
+    let lv = kt.links_eval(&|x| fv(x));
+    for (i, [a, b, c]) in lv.into_iter().enumerate() {
         if a * b != c {
             ch.link_rows_bad += 1;
             if ch.first_bad_links.len() < 400 {

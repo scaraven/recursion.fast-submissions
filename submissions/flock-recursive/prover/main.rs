@@ -144,7 +144,7 @@ pub fn acc_with(top: Top, circ: &circuit::Circuit, vk: &Digest, c: &Digest, file
         (_, 0x4D..=0x4F) => {
             let k = node::NK::of_byte(b).unwrap();
             let nd = plan::node_data();
-            let ctx = std::sync::Arc::new(ir::NodeCtx::new(k, nd.protos.clone(), nd.kind_tabs()));
+            let ctx = std::sync::Arc::new(ir::NodeCtx::new(k, nd.protos.clone(), plan::kind_tabs_static().clone()));
             let base = circuit::Circuit::build_base();
             ir::run_node(&nd.node_program(k), ctx, &base, &seq, vk, c, &p.pi).ok && nodeprove::stmt_ok4(&p.pi, c)
         }
@@ -181,7 +181,7 @@ fn mfill_kat(args: &[String]) {
     for (pi, p) in protos.iter().enumerate() {
         for rep in 0..2 {
             let t = Instant::now();
-            let (_, st) = mfill::fill(p, None);
+            let (_, st) = mfill::fill(p, None, node::phantom_arena());
             println!("MFILL proto={pi} inactive rep={rep} {:.2}s {st:?}", t.elapsed().as_secs_f64());
         }
     }
@@ -196,10 +196,12 @@ fn mfill_kat(args: &[String]) {
         let c = leaf::seg_c(&s, n);
         let ix = match m { 32 => 0, 30 => 1, _ => 2 };
         let t = Instant::now();
-        let (r, regs) = ir::run_regs(&ir::spec_kind(&text, ix), &circ, &o, &vk, &c, &pi);
+        let tape = Tape(&o, std::sync::Mutex::new(Vec::new()));
+        let (r, regs) = ir::run_regs(&ir::spec_kind(&text, ix), &circ, &tape, &vk, &c, &pi);
+        let tr = tape.1.into_inner().unwrap();
         let rt = t.elapsed().as_secs_f64();
         let t = Instant::now();
-        let (_, st) = mfill::fill(&protos[1], Some((&regs, ix)));
+        let (_, st) = mfill::fill(&protos[1], Some((&regs, ix)), &node::arena_of(&node::stream_bytes(&tr)));
         println!("MFILL proto=1 m={m} n={n} ix={ix} run_ok={} failed={:?} asks={} run_s={rt:.2} fill_s={:.2} {st:?}", r.ok, r.failed, r.asks, t.elapsed().as_secs_f64());
     }
 }
@@ -234,7 +236,7 @@ fn node_kat(args: &[String]) {
     let nd = plan::node_data();
     let protos = nd.protos.clone();
     let texts = nd.texts.clone();
-    let kts = nd.kind_tabs();
+    let kts = plan::kind_tabs_static().clone();
     let kt = kts[kind as usize].clone();
     println!("NODE-KAT load {:.2}s", t.elapsed().as_secs_f64());
     let m: usize = arg(args, "--m").map(|x| x.parse().unwrap()).unwrap_or(32);
@@ -750,6 +752,38 @@ fn main() {
             std::fs::write(&out, &b64).expect("write");
             print!("{rep}");
             println!("PLAN-BUILD {} B to {out} in {:.1}s (from {})", b64.len(), t.elapsed().as_secs_f64(), dd.display());
+        }
+        "mx-kat" => {
+            // E1b: the node's M̃ (every slot's prototype rows, the arena/bit/template/replay rows, the kind
+            // tables' link and arena₁ rows, slot 0's replay rows) against the Lean `evalMT4 planOf4 κ τ σ`
+            // (NodeDumpX's `mxkat.txt`: MxKat's LCG points)
+            let (dd, _) = mfill::find_dirs().unwrap_or_else(|| service::fatal("no node dump"));
+            let text = std::fs::read_to_string(dd.join("mxkat.txt")).unwrap_or_else(|_| service::fatal("mxkat.txt"));
+            let nd = plan::node_data();
+            let lcg = |s: u64| s.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            let rand_f = |seed: u64| { let a = lcg(seed); field::F::new(a, lcg(a)) };
+            let hx = |x: field::F| x.to_bytes().iter().map(|b| format!("{b:02x}")).collect::<String>();
+            let mut bad = 0;
+            for line in text.lines().filter(|l| !l.starts_with('#')) {
+                let t: Vec<&str> = line.split(" | ").collect();
+                let seed: u64 = t[0].parse().unwrap();
+                let k = match t[1].rsplit('.').next().unwrap() { "N2" => node::NK::N2, "N4" => node::NK::N4, _ => node::NK::N8 };
+                let tau: Vec<field::F> = (0..32).map(|i| rand_f(1000 * seed + i)).collect();
+                let sigma: Vec<field::F> = (0..25).map(|i| rand_f(7000 * seed + i)).collect();
+                let kt = nd.kind_tab(k);
+                let lm = kt.log_m;
+                let v = nodeops::eval_m(&kt, &nd.protos, &tau[..lm], &sigma[..lm + 2]);
+                let ok = (0..3).all(|m| hx(v[m]) == t[2 + m].trim());
+                println!("MX-KAT seed {seed} {k:?}: {}", if ok { "equal" } else { "DIFFERENT" });
+                if !ok {
+                    bad += 1;
+                    println!("  rust {} {} {}", hx(v[0]), hx(v[1]), hx(v[2]));
+                }
+            }
+            println!("MX-KAT {}", if bad == 0 { "PASS" } else { "FAIL" });
+            if bad > 0 {
+                std::process::exit(1);
+            }
         }
         "plan-kat" => {
             // the embedded blob's rebuild against the full dump

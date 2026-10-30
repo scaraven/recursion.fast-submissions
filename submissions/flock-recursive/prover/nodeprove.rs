@@ -112,8 +112,9 @@ impl Mats<'_> {
             });
         }
         let l = &self.kt.links;
-        for i in 0..l.len() {
-            let v = l.eval(i, &|c| f[c as usize]);
+        // the link rows in parallel (E1b: the arena₁ and slot 0's replay rows made them ≈ 1.3 M)
+        let lv = self.kt.links_eval(&|c| f[c]);
+        for (i, v) in lv.iter().enumerate() {
             for m in 0..3 {
                 out[m][l.idx[i] as usize] = v[m];
             }
@@ -173,15 +174,12 @@ impl Mats<'_> {
 
     /// The link rows' part of `m_scatter`.
     fn links_scatter(&self, e: &[F], s: [F; 3], w: &mut [F]) {
+        // by cell, in parallel (E1b; `m_scatter_ref` is the reference)
         let l = &self.kt.links;
-        for i in 0..l.len() {
-            let er = e[l.idx[i] as usize];
-            let rg = l.rng[i];
-            for m in 0..3 {
-                for t in rg[m] as usize..rg[m + 1] as usize {
-                    w[l.cells[t] as usize] += er * s[m] * l.coef(t);
-                }
-            }
+        let r: Vec<F> = par::collect_vec(l.len(), 1 << 14, |i| e[l.idx[i] as usize]);
+        let v = self.kt.links_cols(&r, &s);
+        for (u, &c) in self.kt.links_by_cell().cells.iter().enumerate() {
+            w[c as usize] += v[u];
         }
     }
 
@@ -499,6 +497,30 @@ fn land(n: usize, kl: usize, pos: usize, p: F) -> [(usize, F); 2] {
     }
 }
 
+/// `d[land(pos(i))] += val(i)` for `n` items at distinct positions `pos(i) < kl` (E1b: in parallel, in
+/// two passes when a kind with twice the rows folds its upper half onto the lower one).
+fn land_items(d: &mut [F], kl: usize, p: F, n: usize, item: &(dyn Fn(usize) -> (usize, F) + Sync)) {
+    let nd = d.len();
+    let dp = par::SyncPtr(d.as_mut_ptr());
+    for pass in 0..1 + (kl == 2 * nd) as usize {
+        par::map_chunks(n, 1 << 14, |lo, hi| {
+            let dp = &dp;
+            for i in lo..hi {
+                let (pos0, v) = item(i);
+                if kl == 2 * nd && (pos0 >= nd) != (pass == 1) {
+                    continue;
+                }
+                for (pos, w) in land(nd, kl, pos0, p) {
+                    if pos != usize::MAX {
+                        // SAFETY: distinct items land on distinct positions within a pass
+                        unsafe { *dp.0.add(pos) += w * v };
+                    }
+                }
+            }
+        });
+    }
+}
+
 /// `d[land(off + i)] += c·v[i]` for a contiguous run (a slot: `2^20` entries never straddle the top bit).
 fn add_run(d: &mut [F], kl: usize, off: usize, c: F, v: &[F], p: F) {
     for (pos, w) in land(d.len(), kl, off, p) {
@@ -534,22 +556,11 @@ fn child_rows(kts: &[&KindTab; 3], protos: &[Proto; 2], px: &[F], py: &[F], s: &
         }
         let es = crate::nodeops::EqSplit::new(&py[..kt.log_m + 2]);
         let l = &kt.links;
-        for i in 0..l.len() {
-            let rg = l.rng[i];
-            let mut acc = F::ZERO;
-            for m in 0..3 {
-                let mut t = F::ZERO;
-                for q in rg[m] as usize..rg[m + 1] as usize {
-                    t += l.coef(q) * es.at(l.cells[q] as usize);
-                }
-                acc += sk[m] * t;
-            }
-            for (pos, w) in land(1 << n, kl, l.idx[i] as usize, p) {
-                if pos != usize::MAX {
-                    d[pos] += w * acc;
-                }
-            }
-        }
+        let sp = crate::prof::span("lk.eval");
+        let lv = kt.links_eval(&|c| es.at(c));
+        drop(sp);
+        let _sp = crate::prof::span("lk.landr");
+        land_items(&mut d, kl, p, l.len(), &|i| (l.idx[i] as usize, sk[0] * lv[i][0] + sk[1] * lv[i][1] + sk[2] * lv[i][2]));
     }
     d
 }
@@ -566,26 +577,28 @@ fn add_cols(kt: &KindTab, ts: &[Option<[Vec<F>; 3]>; 2], xh: &[F], s: &[F], w: &
     let kl = 1usize << (kt.log_m + 2);
     let ht = eq_table(&xh[20..kt.log_m]);
     let cb: [Option<Vec<F>>; 2] = [0, 1].map(|pi| kt.slots.iter().any(|sl| sl.0 == pi).then(|| comb3(ts[pi].as_ref().unwrap(), s)));
+    let sp = crate::prof::span("lk.protorun");
     for (v, sl) in kt.slots.iter().enumerate() {
         add_run(w, kl, kt.one_cell + v * SLOT, ht[v], cb[sl.0].as_ref().unwrap(), p);
     }
+    drop(sp);
     let et = crate::nodeops::EqSplit::new(&xh[..kt.log_m]);
     let l = &kt.links;
     let n = w.len();
-    for i in 0..l.len() {
-        let er = et.at(l.idx[i] as usize);
-        let rg = l.rng[i];
-        for m in 0..3 {
-            let c = er * s[m];
-            for q in rg[m] as usize..rg[m + 1] as usize {
-                for (pos, wt) in land(n, kl, l.cells[q] as usize, p) {
-                    if pos != usize::MAX {
-                        w[pos] += c * wt * l.coef(q);
-                    }
-                }
-            }
-        }
-    }
+    // by cell, in parallel (E1b), then landed
+    let sp = crate::prof::span("lk.bycell");
+    let _ = kt.links_by_cell();
+    drop(sp);
+    let sp = crate::prof::span("lk.r");
+    let r: Vec<F> = par::collect_vec(l.len(), 1 << 14, |i| et.at(l.idx[i] as usize));
+    drop(sp);
+    let sp = crate::prof::span("lk.cols");
+    let v = kt.links_cols(&r, s);
+    drop(sp);
+    let _sp = crate::prof::span("lk.land");
+    let cells = &kt.links_by_cell().cells;
+    let _ = n;
+    land_items(w, kl, p, cells.len(), &|u| (cells[u] as usize, v[u]));
 }
 
 /// `Σ_{κ,m} s_{κ,m}·M̃_{κ,m}(x̂, y ‖ p_y[n, 25))` over the parent's `2^n` cells `y` (E4's child term,

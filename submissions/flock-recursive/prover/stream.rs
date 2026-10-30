@@ -67,7 +67,9 @@ impl Pre {
         let sp = crate::prof::span("pre.node_data");
         let nd = plan::node_data();
         drop(sp);
-        let kts = [node::NK::N2, node::NK::N4, node::NK::N8].map(|k| std::sync::Arc::new(nd.kind_tab(k)));
+        let sp = crate::prof::span("pre.kind_tabs");
+        let kts = plan::kind_tabs_static().clone();
+        drop(sp);
         // the solve orders `prover setup` recorded, else the inactive ones now
         let sp = crate::prof::span("pre.load_plans");
         load_setup_plans(nd);
@@ -194,8 +196,10 @@ pub fn setup(dir: &Path) {
     if std::env::var_os("FLOCK_NODE_DUMP").is_none() {
         std::fs::write(dir.join(plan::IMAGE), plan::save_image(pre.nd, &plan::data_tag())).unwrap_or_else(|e| service::fatal(&format!("{}: {e}", dir.display())));
     }
-    for (i, p) in pre.nd.protos.iter().enumerate() {
-        let (v, st) = crate::mfill::fill(p, None);
+    // prototype 1 only: prototype 0 (the previous node's slot) is never inactive (E1b: its phantom
+    // stream is a segment's, so its inactive fill would not hold)
+    for (i, p) in pre.nd.protos.iter().enumerate().skip(1) {
+        let (v, st) = crate::mfill::fill(p, None, crate::node::phantom_arena());
         if st.failed_rows != 0 || st.conflicts != 0 {
             service::fatal(&format!("setup: prototype {i}'s inactive fill: {st:?}"));
         }

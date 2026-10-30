@@ -331,16 +331,31 @@ pub fn eval_m(kt: &KindTab, protos: &[Proto; 2], tau: &[F], sigma: &[F]) -> [F; 
         }
     }
     let (et, es) = (EqSplit::new(tau), EqSplit::new(sigma));
+    let o = links_val(kt, &et, &es);
+    for m in 0..3 {
+        out[m] += o[m];
+    }
+    out
+}
+
+/// The kind table's link rows' `(Ã, B̃, C̃)` at `(et, es)` (E1b: in parallel).
+fn links_val(kt: &KindTab, et: &EqSplit, es: &EqSplit) -> [F; 3] {
     let l = &kt.links;
-    for i in 0..l.len() {
-        let rw = et.at(l.idx[i] as usize);
-        let rg = l.rng[i];
-        for m in 0..3 {
-            let mut s = F::ZERO;
-            for t in rg[m] as usize..rg[m + 1] as usize {
-                s += l.coef(t) * es.at(l.cells[t] as usize);
+    let lv = kt.links_eval(&|c| es.at(c));
+    let parts = crate::par::map_chunks(l.len(), 1 << 14, |lo, hi| {
+        let mut o = [crate::field::FAcc::default(), crate::field::FAcc::default(), crate::field::FAcc::default()];
+        for i in lo..hi {
+            let rw = et.at(l.idx[i] as usize);
+            for m in 0..3 {
+                o[m].mac(rw, lv[i][m]);
             }
-            out[m] += rw * s;
+        }
+        o.map(|x| x.reduce())
+    });
+    let mut out = [F::ZERO; 3];
+    for o in parts {
+        for m in 0..3 {
+            out[m] += o[m];
         }
     }
     out
@@ -408,17 +423,9 @@ pub fn eval_mx(kts: &[&KindTab; 3], protos: &[Proto; 2], tau: &[F], sigma: &[F])
             }
         }
         let (et, es) = (EqSplit::new(&tau[..lm]), EqSplit::new(&sigma[..lm + 2]));
-        let l = &kt.links;
-        for i in 0..l.len() {
-            let rw = et.at(l.idx[i] as usize);
-            let rg = l.rng[i];
-            for m in 0..3 {
-                let mut t = F::ZERO;
-                for q in rg[m] as usize..rg[m + 1] as usize {
-                    t += l.coef(q) * es.at(l.cells[q] as usize);
-                }
-                out[m] += rw * t;
-            }
+        let o = links_val(kt, &et, &es);
+        for m in 0..3 {
+            out[m] += o[m];
         }
         x += s[0] * out[0] + s[1] * out[1] + s[2] * out[2];
     }

@@ -795,7 +795,7 @@ mod tests {
     use crate::params::{field_off, FIELD_SIZES, N_FIELDS};
 
     fn dump(name: &str) -> Option<String> {
-        let d = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../logs/E1/dump").join(name);
+        let d = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../logs/E1b/dump").join(name);
         std::fs::read_to_string(&d).ok()
     }
 
@@ -806,7 +806,7 @@ mod tests {
     #[test]
     fn ir_kat_l30() {
         let Some(text) = dump("ops-L30.txt") else {
-            eprintln!("ir_kat_l30: SKIP (logs/E1/dump/ops-L30.txt absent)");
+            eprintln!("ir_kat_l30: SKIP (logs/E1b/dump/ops-L30.txt absent)");
             return;
         };
         let circ = crate::circuit::Circuit::build();
@@ -873,7 +873,7 @@ mod tests {
     #[test]
     fn ir_agg_l30() {
         let Some(text) = dump("ops-L30.txt") else {
-            eprintln!("ir_agg_l30: SKIP (logs/E1/dump/ops-L30.txt absent)");
+            eprintln!("ir_agg_l30: SKIP (logs/E1b/dump/ops-L30.txt absent)");
             return;
         };
         let prog = |b: u8| if b == 0x50 { Some(text.clone()) } else { None };
