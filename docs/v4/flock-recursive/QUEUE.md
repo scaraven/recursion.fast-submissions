@@ -92,7 +92,8 @@ Running on rev44:
     - **p1: 5 replay ops of the segment program** (`rsWeight`, `evalL`, `evalM`, `shiftTarget`, `targetS`), which `rtC1c 1` does not cover;
     - a closure generator, to make `SlotRunB` vacuous in the kernel.
   - **FOLD2 landed `97d578b`:** IMPC2 + IMPC2b folded (`bitTGB`, `bitTGS`, bit area 16,384, run proofs). `Gaps4` ← `SlotRunB` (`gaps4_of_runS`). Built from a clean snapshot + overlay (`logs/fr-build-SRA/orch.sh`): 2,684 jobs, no sorry.
-- SIB: the sibling reads (kind tie, `bitTGR` fold) and the closure generator (a kernel-proved residual). Init ≤ +0.2 s.
+- **SIB landed `648720f`.** Sibling reads (`sibTG`, `atImp_sib`, `sibOk_of`) and the closure (`TG.close`: a failing row at any unhandled import or foreign flag) are folded into `askTG`. `Gaps4` ← `SlotRunC` (`gaps4_of_runC`, `FRNodeRun4CT`): the `felems` cells (871 per prototype) plus uncovered replay imports (p0: none; p1: `targetS`, `shiftTarget`, `evalM`, `evalL`, `rsWeight`).
+  - **Init +2.7 s user** (budget was +0.2 s). Accepted: the reads are needed for soundness; that budget was the orchestrator's, not a hard cap. Re-measure after CF2. Kernel: ≈ 7.5 s over SIB's modules (`atImp_sib` 4.35 s; G6 target).
 - **SEG-R design landed `2aa619d`.**
   - **Dead ops:** `evalM`/`evalL` at prototype 1 are dead, so they are pinned to zero and `nodePlan` leaves the segment checks (init −1.3 s).
   - **rsWeight:** an F-point claim part, about 37k gates (the kind factor collapses).
@@ -102,7 +103,9 @@ Running on rev44:
   - **Fit:** the F-point templates fit (≈ 39k locals per slot). There is a third free cell band (12.7k), and cutting `arR2N` to 154,368 gives band B 27k rows.
   - **Facts verified** on `protoProg 1`: 186 forcing rows are needed, not 75.
   - **Start-up:** the ~1.5 s init win needs `nodePlan`/`lPlan`/`implCN` made noncomputable.
-- SEG-R1: `rtKD` and the three templates, `cov` checks, `evalM`/`evalL` pinned in `implSeg`, and the `nodePlan` init cut. R2 (fold, fit, plan) comes after SIB and CF2.
+- **SEG-R1 landed `9a3019d`.** `rtKD`/`KOkD`/`rtKD_okW`, `rtEvZ`, the `rsWeight` F-point template `rsSegT` (36,923 gates), `rtSeg1`, `rtC1d`, `repOkW_rtC1dB`, `cov`/`inOk`; `evalM`/`evalL` pinned in `implSeg`. On `protoProg 1`: 37,362 rows, none rejecting. `implB`/`nodePlan`/`lPlan`/`implCN` noncomputable; compiled op sets on `Impl.implC0` (`implS_eq`, `implNN_eq`); certificate statements unchanged. Init −2.05 s user, segment check −70 ms. `FR` imports `FRNodeRows4RepSeg`.
+  - **SEG-R1b running:** the `targetS` (`kTSS`) and `shiftTarget` (`kSTS`) templates, SEG-R1-RESULT §6.
+  - **SEG-R2 next** (after CF2 and SEG-R1b): SEG-R1-RESULT §7 (fold `rtC1c` → `rtC1d`, `arR2N` 154,368, `repSegB := arRb + arNb`, two-band `repRow0`/`repIRowsW`, `repMapC` bands 1 + 3, shared `rv₁`, `segRegion`). Prover cells: §8.
 - **Running:**
   - **Review of SEG-R:** no blocker. The route is a fixed point (rows only; no op or import added), and the dead ops are pinned soundly.
     - **Should-fix:**
