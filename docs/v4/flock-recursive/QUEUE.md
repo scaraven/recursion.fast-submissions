@@ -136,7 +136,16 @@ Running on rev44:
     - V(N4) 1.78 s VM (≈ 1.5 s runner vs the 2.06 s DoS cap);
     - plan init 20 s wall VM (+12.5 s ≈ +375 s of stream: **breaks stream_s**);
     - memory 1.95 GB.
-- CF: closed-form evaluation for the rsWeight and evalL blocks (R3 §4.2, C1b §6.1). Targets: V ≤ 0.7 s VM, init ≤ 9 s wall VM.
+- **CF landed `f041d03`** (WIP, at the context limit).
+  - **Built:** the generic closed form for repeated template segments (`Rep.tm_rep`), and rsWeight rebuilt as repeated groups (`ok_rsGS`), proved and equal to sparse.
+  - **Not yet wired:** V and init have not improved yet (init +2.7 s from the larger template build).
+- CF2: CF-RESULT §6 steps 1–6.
+  - Wire `arBlk0`/`kopV`, and add a structural `RepFit`.
+  - Per-call contexts; let-bind `SM.rep`.
+  - The evalL carry automaton.
+  - Fusion.
+  - The final A/B.
+  - Targets: V ≤ 0.7 s VM, init ≤ 9 s.
   - The import-cycle split (a FRNodeRows4 defs module).
   - Replay rows into `nodeIRows4`, with the plan built in one pass from the final compile.
   - The fix for `tplLW`'s 216 s init.
