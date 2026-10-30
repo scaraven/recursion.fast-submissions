@@ -2,9 +2,10 @@
 -- coordinator's ruling of 2026-10-29). The certificate of `sub4` from `Gaps4` alone.
 import FRSubmission4Cert
 import FRNodeLinks4SigH
+import FRNodeRun4FE
 
 /-!
-# `certificate_sub4F`: the certificate of `sub4` from `Gaps4`
+# `certificate_sub4F`: the certificate of `sub4` from `Gaps4`; `Gaps4` holds (FEL)
 
 With S-H4's node branch `nd` (`FRXNd4`: decode law `nodeDec4_nd`, links `LinksD4`, witness
 `readW4 sigH`) and S-L4's `links4_sigH` (`Links4 nd D` from `Gaps4` for every decoder whose links
@@ -15,6 +16,9 @@ the certificate still assumes is
 was `StmtN4`; the accepted run gives the reserve's cells and the true child claim), the slots'
 circuit gap `Gap4R.imp` at the proof decoder `pf4` (S-E13a's residual; B4 closed `aggChk`; owners B3,
 IMP, C1, SRA, ASK-P). `gap4Imp_of_rsv` (`FRNodeRsvLink`) reduces it further.
+
+**Closed** (stage FEL): `open4F_holds : Open4F` (`N4s.gaps4_fel`), so `certificate_sub4'` and the challenge's
+`certified` take no hypothesis.
 -/
 
 namespace FR.Sub4
@@ -32,6 +36,13 @@ theorem certificate_sub4F (h : Open4F) : Certificate sub4 := certificate_sub4 (o
 /-- **The certificate against a declared claim**, given `Open4F`. -/
 theorem certificateR_sub4F (D : Declared) (hb : boundsOK D) (h : Open4F) : CertificateR D sub4 :=
   ⟨certificate_sub4F h, hb⟩
+
+/-- **`Open4F` holds** (stage FEL): `Gaps4` is `N4s.gaps4_fel` (the `felems` cells aliased to arena₁, after
+SEG-R2's `gaps4_of_runF`). -/
+theorem open4F_holds : Open4F := N4s.gaps4_fel
+
+/-- **The contract's `Certificate` of `sub4`** (FEL: unconditional). -/
+theorem certificate_sub4' : Certificate sub4 := certificate_sub4F open4F_holds
 
 /-! ## Controls -/
 

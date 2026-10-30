@@ -88,7 +88,7 @@ theorem atImp_sib {impl : OpImpl} {X Xa : Ext} {π : ℕ} {T : BTab} {κ : Kind}
 theorem xofA_sib (π : ℕ) (P : Params) (cs : CS) (op : Op) (hop : sibCov op = true) :
     stepOut (XofA π) P cs op = stepOut (Xof π) P cs op := by
   cases op <;> simp only [sibCov, reduceCtorEq, Bool.false_eq_true] at hop <;>
-    simp only [stepOut, XofA, Xof, tplExt4, tplExt4S, Ext.orElse, tplExtKM, tplExtF, tplExt, extGetK,
+    simp only [stepOut, XofA, Xof, XofC, tplExt4A, tplExt4, tplExt4S, Ext.orElse, tplExtKM, tplExtF, tplExt, extGetK,
       Option.orElse, Option.filter]
 
 end N4s

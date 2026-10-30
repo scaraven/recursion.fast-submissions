@@ -149,7 +149,7 @@ theorem blk_val (s : Mat) (t u : ℕ → F) (w : Asg) (lam : F) (hw : ∀ x, w (
 /-! ## Prototype `π`'s ask rows and replay blocks (the plan's; `arBlk0` at `0`) -/
 
 def arBlkN (π : ℕ) : List Row × List RBlk :=
-  let r := trailMB (tplExt4 (protoF π) (protoR π)) (protoLay π) (protoP π) (askTG π) (N4s.rtC1c π) blk0 []
+  let r := trailMB (N4s.XofC π) (protoLay π) (protoP π) (askTG π) (N4s.rtC1c π) blk0 []
     (CS.init (baseR π)) none 0 (protoProg π).ops [] []
   (r.1.reverse, r.2.reverse)
 

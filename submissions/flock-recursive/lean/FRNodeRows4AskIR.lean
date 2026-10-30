@@ -245,12 +245,14 @@ theorem extGetK_aux {P : Params} {cs : CS} {op : Op} {o : Out} (h : extGetK P cs
 /-- **Only a `dotKF` carries a `felems` auxiliary import** (prototype `π`'s compile). -/
 theorem xof_felems {π : ℕ} {P : Params} {cs : CS} {op : Op} {a : List Lin × ℕ × AuxK}
     (ha : a ∈ (stepOut (Xof π) P cs op).aux) {n : ℕ} (hn : a.2.2 = .felems n) : isDotKF op = true := by
-  simp only [stepOut] at ha
-  cases hx : Xof π P cs op with
+  by_cases hd : ∃ w col, op = .dotKF w col
+  · obtain ⟨w, col, rfl⟩ := hd; rfl
+  simp only [stepOut, xof_ne fun w col he => hd ⟨w, col, he⟩] at ha
+  cases hx : tplExt4 (protoF π) (protoR π) (protoLay π).ctx P cs op with
   | none => rw [hx, Option.getD_none, opOut_aux] at ha; cases ha
   | some o =>
     rw [hx, Option.getD_some] at ha
-    simp only [Xof, tplExt4, Ext.orElse] at hx
+    simp only [tplExt4, Ext.orElse] at hx
     cases h4 : tplExt4S (protoF π) (protoR π) (protoLay π).ctx P cs op with
     | some o' =>
       rw [h4, Option.orElse_some, Option.some.injEq] at hx
@@ -293,8 +295,7 @@ def colOk (pv : List (ℕ × ℕ × ℕ × ℕ)) (a : (List Lin × ℕ × AuxK) 
     | none => false
   | .bits _ => false
 
-/-- Prototype `π`'s `piField` registers. -/
-def pvP (π : ℕ) : List (ℕ × ℕ × ℕ × ℕ) := provLT 0 (protoProg π).ops
+-- `pvP` (prototype `π`'s `piField` registers) moved to `FRNodeRows4Defs` (FEL).
 
 theorem slotπ_size (κ : NodeKind) (v : ℕ) (w : Asg) : ((rd4 X.pf4).slotπ κ v w).size = piSizeOf seq4 := by
   show (⟨(slotPf X.pf4 κ v w).toArray⟩ : ByteArray).size = _

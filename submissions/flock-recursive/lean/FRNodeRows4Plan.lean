@@ -54,8 +54,8 @@ noncomputable def planData4 : Array GK × Array (List Lin) × Array (List Lin) �
   let l1 := protoLay 1
   let ks0 := l0.map Prod.fst
   let kms := (ks0 ++ (l1.map Prod.fst).filter (fun k => !ks0.contains k)).map mkKM
-  let r0 := compMSX (tplExt4 (protoF 0) (protoR 0)) l0 (protoP 0) [] (CS.init (baseR 0)) ops0 none []
-  let r1 := compMSX (tplExt4 (protoF 1) (protoR 1)) l1 (protoP 1) r0.2.2 (CS.init (baseR 1)) ops1 none []
+  let r0 := compMSX (N4s.XofC 0) l0 (protoP 0) [] (CS.init (baseR 0)) ops0 none []
+  let r1 := compMSX (N4s.XofC 1) l1 (protoP 1) r0.2.2 (CS.init (baseR 1)) ops1 none []
   let p0 := slotRP (oneP 0) kms l0 0 r0.1 r0.2.1.reverse []
   let rps1 := (slotRP (oneP 1) kms l1 (1 * slotM4) r1.1 r1.2.1.reverse p0.2).1
   let g := groupRP p0.1 rps1
@@ -66,12 +66,11 @@ theorem planData4_rows :
     planData4.2.2.2.1.flatMap (Piece.rows (planData4.1.map mkKey) planData4.2.1 (oneP 0)) = protoRows 0 ∧
       planData4.2.2.2.2.flatMap (Piece.rows (planData4.1.map mkKey) planData4.2.2.1 (oneP 1)) = protoRows 1 := by
   simp only [planData4, piecesOf_rows]
-  obtain ⟨hr0, mr0⟩ := compMSX_T (tplExt4 (protoF 0) (protoR 0)) (protoLay 0) (protoP 0) (baseR 0)
+  obtain ⟨hr0, mr0⟩ := compMSX_T (N4s.XofC 0) (protoLay 0) (protoP 0) (baseR 0)
     (protoProg 0).ops (M := []) (by simp [MOk])
-  obtain ⟨hr1, -⟩ := compMSX_T (tplExt4 (protoF 1) (protoR 1)) (protoLay 1) (protoP 1) (baseR 1) (protoProg 1).ops mr0
-  rw [slotRP_rows, slotRP_rows, hr0, hr1, protoRows, protoRows,
-    protoCS, protoCS, compileTF4, compileTF4]
-  exact ⟨rfl, by rw [one_mul]⟩
+  obtain ⟨hr1, -⟩ := compMSX_T (N4s.XofC 1) (protoLay 1) (protoP 1) (baseR 1) (protoProg 1).ops mr0
+  rw [slotRP_rows, slotRP_rows, hr0, hr1, protoRows, protoRows, protoCS, protoCS]
+  exact ⟨rfl, by rw [one_mul]; rfl⟩
 
 /-! ## The region check -/
 
@@ -629,7 +628,7 @@ def mkPlan4 (keys : Array Key) (sh0 sh1 : Array (List Lin)) (pc0 pc1 : List Piec
 
 /-- **Prototype `π`'s template rows**, by the memoized trail (`trailMS`: each template built once). -/
 def arOf (π : ℕ) : List Row :=
-  (trailMS (tplExt4 (protoF π) (protoR π)) (protoLay π) (protoP π) (askTG π) [] (CS.init (baseR π)) none 0
+  (trailMS (N4s.XofC π) (protoLay π) (protoP π) (askTG π) [] (CS.init (baseR π)) none 0
     (protoProg π).ops []).reverse
 
 theorem arOf_eq (π : ℕ) : arOf π = askRowsT π := trailMS_T _ _ _ _ _ _ (by simp [MOk])
@@ -649,10 +648,10 @@ def planDataB : (Array GK × Array (List Lin) × Array (List Lin) × List Piece 
   let l1 := protoLay 1
   let ks0 := l0.map Prod.fst
   let kms := (ks0 ++ (l1.map Prod.fst).filter (fun k => !ks0.contains k)).map mkKM
-  let q0 := compMSXB (tplExt4 (protoF 0) (protoR 0)) l0 (protoP 0) (askTG 0) (N4s.rtC1c 0) blk0 []
+  let q0 := compMSXB (N4s.XofC 0) l0 (protoP 0) (askTG 0) (N4s.rtC1c 0) blk0 []
     (CS.init (baseR 0)) ops0 none [] none 0 [] []
   let r0 := q0.1
-  let q1 := compMSXB (tplExt4 (protoF 1) (protoR 1)) l1 (protoP 1) (askTG 1) (N4s.rtC1d 1) (spBlk (N4s.rtC1d 1))
+  let q1 := compMSXB (N4s.XofC 1) l1 (protoP 1) (askTG 1) (N4s.rtC1d 1) (spBlk (N4s.rtC1d 1))
     r0.2.2 (CS.init (baseR 1)) ops1 none [] none 0 [] []
   let r1 := q1.1
   let p0 := slotRP (oneP 0) kms l0 0 r0.1 r0.2.1.reverse []
@@ -669,7 +668,7 @@ def DataOk (x : (Array GK × Array (List Lin) × Array (List Lin) × List Piece 
 
 /-- **The one walk is the plan's data, the ask rows and the replay rows.** -/
 theorem planDataB_eq : DataOk planDataB := by
-  obtain ⟨-, mr0⟩ := compMSX_T (tplExt4 (protoF 0) (protoR 0)) (protoLay 0) (protoP 0) (baseR 0)
+  obtain ⟨-, mr0⟩ := compMSX_T (N4s.XofC 0) (protoLay 0) (protoP 0) (baseR 0)
     (protoProg 0).ops (M := []) (by simp [MOk])
   unfold DataOk planDataB
   simp only [compMSXB_eq]

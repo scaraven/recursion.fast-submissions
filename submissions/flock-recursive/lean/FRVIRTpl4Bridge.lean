@@ -14,8 +14,8 @@ stated against copies. Here the copies are the ops:
 * **`routeOk_implSeg`**, **`routeOk_implN4`**: the segment's `implSeg` meets prototype 1's route at
   every kind; the node's `implN4 … (nodeOf ι)` meets prototype 0's at index `ι` (and, the kinds'
   masks differing, not at another index: `routeOk_implN4_ctl`);
-* **`protoCS_soundAt`**: `compileTF4_soundAt` at prototype `π` (its set, route, layout, selector
-  forms, base and program).
+* **`protoCS_soundAt`**: `compileX_soundK` with `tplExt4A_okK` at prototype `π` (its set, route, layout,
+  column alias, selector forms, base and program).
 -/
 
 namespace FR
@@ -91,8 +91,8 @@ theorem routeOk_implN4_ctl (impl : OpImpl) (sm : Array F → Array F → F × F 
 
 /-! ## The prototypes' soundness at one kind -/
 
-/-- **Prototype `π`'s compile is sound at the run's kind `κ`** (`compileTF4_soundAt` at its set,
-route, layout, selector forms, base and program): with `ImplTF` (the kind-free template fields)
+/-- **Prototype `π`'s compile is sound at the run's kind `κ`** (`compileX_soundK` with
+`tplExt4A_okK`, FEL: the `dotKF` arm aliased; was `compileTF4_soundAt`, at its set, route, layout, selector forms, base and program): with `ImplTF` (the kind-free template fields)
 and the route's `shiftMask` at `κ` (`routeOk_implN4`, `routeOk_implSeg`), the instance rows, the
 auxiliary and skeleton imports and the foreign flags give acceptance and every register's value. -/
 theorem protoCS_soundAt (π : ℕ) {impl : OpImpl} {κ : Kind} {inp : Input} {tr tr' : Trace} {s : St}
@@ -105,7 +105,7 @@ theorem protoCS_soundAt (π : ℕ) {impl : OpImpl} {κ : Kind} {inp : Input} {tr
     (hi : ∀ i ∈ (protoCS π).imp, RepS w ((protoCS π).slot i) (rd s.regs i))
     (hf : ∀ p ∈ (protoCS π).fors, flagOf impl κ inp (s.regs.extract 0 p.2) p.1 = true) :
     s.ok = true ∧ ∀ i, RepS w ((protoCS π).slot i) (rd s.regs i) :=
-  compileTF4_soundAt hT hR (protoLay π) (baseR π) hP he hr ht hx hi hf
+  compileX_soundK (tplExt4A_okK hT hR (protoLay π) (N4s.colA π)) (baseR π) hP he hr ht hx hi hf
 
 /-- (+) The node route's constants are the group's in selector order: `N4` (18 coordinates, a
 segment's chain then a 4-segment aggregate's), `N2` (17), `N8` (two aggregates). -/

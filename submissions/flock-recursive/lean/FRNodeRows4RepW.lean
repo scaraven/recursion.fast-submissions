@@ -62,8 +62,8 @@ theorem slotImp_of_repW {rt : ℕ → RT} {impl₀ : OpImpl} {base : Rev4.NodeKi
   intro ι hS
   obtain ⟨⟨s, he, hx, hi, hf⟩, hst⟩ := h ι hS
   have hπ := protoOf_le' κ v
-  have hX := tplExt4_okK (implTF_implP hT₀ hT (protoOf κ v) ι) (routeOk_implP impl₀ base hπ ι)
-    (protoLay (protoOf κ v))
+  have hX := tplExt4A_okK (implTF_implP hT₀ hT (protoOf κ v) ι) (routeOk_implP impl₀ base hπ ι)
+    (protoLay (protoOf κ v)) (colA (protoOf κ v))
   have key := compileX_soundRW hX (hok _ hπ ι) (baseR (protoOf κ v)) hS (selOk_repAsg hS)
     (agree_repAsg κ v w) he hrows.1 hrows.2 hx hi hrep hf
   exact ⟨⟨s, he, hx, fun i _ => key.2 i, hf⟩, hst⟩

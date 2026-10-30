@@ -10,6 +10,8 @@ import FRVIRTplRepLW
 import FRVIRTplRepLD
 import FRVIRTplRepT
 import FRNodeRows4RepCFRs
+import FRVIRTplAlias
+import FRNodeRows4AskI
 
 /-!
 # The prototypes and the replay templates, definitions only
@@ -27,6 +29,9 @@ those definitions, moved verbatim with their names and namespaces, so `FRNodeRow
   (`repB`, `repMapC`, `repRow0`, `repIRowsW`).
 
 The theorems about them stay where they were (those modules import this one through `FRNodeRows4`).
+
+FEL adds the `dotKF` column alias (`colEs` … `colA`, generic in the window map and the proof size so that
+controls run on toy inputs), the extension `XofC`/`Xof` over it (`tplExt4A`), and `xof_dk`/`xof_ne`.
 -/
 
 namespace FR
@@ -136,8 +141,100 @@ namespace N4s
 section
 open RecursionFast Rev4 Circ
 
+/-! ### The `dotKF` column alias (FEL)
+
+A `dotKF w col`'s `n` column cells are arena₁'s cells of the elements of the column's 16-byte windows
+(`winE`; `PfCells` binds them to the proof's bytes), so no row is needed for them. The elements of every
+`dotKF` column of a prototype are computed once (`colT0`, `colT1`, at process start); `colA` looks them up.
+A column that is not a `piField`'s bytes whose windows are all elements is refused (`none`): the extension
+then takes no template and the closure fails the import (`FRNodeRows4AskC.impRows`). -/
+
+/-- Prototype `π`'s `piField` registers (FEL: moved from `FRNodeRows4AskIR`). -/
+def pvP (π : ℕ) : List (ℕ × ℕ × ℕ × ℕ) := provLT 0 (protoProg π).ops
+
+/-- **A byte field's window elements**: the element `win` gives each 16-byte window of bytes `[x, x + len)`
+of a proof of `sz` bytes, if `len ≡ 0 mod 16`, the bytes are inside the proof and every window has one. -/
+def colEs (win : ℕ → Option ℕ) (sz x len : ℕ) : Option (List (Option ℕ)) :=
+  let es := (List.range (len / 16)).map fun t => win (x + 16 * t)
+  if len % 16 = 0 ∧ x + len ≤ sz ∧ es.all Option.isSome = true then some es else none
+
+/-- **Register `col`'s window elements**, if a `piField` (`pv`) appended it. -/
+def colEW (pv : List (ℕ × ℕ × ℕ × ℕ)) (win : ℕ → Option ℕ) (col : ℕ) : Option (List (Option ℕ)) :=
+  match provOf pv col with
+  | some (f, o, len) => colEs win (piSizeOf seq4) (absOff f o) len
+  | none => none
+
+/-- **A column's `n` cells**: window `b`'s element `e` gives cell `base + e`; past the last window the
+zero form `[]`. -/
+def colCells (base n : ℕ) (es : List (Option ℕ)) : List Lin :=
+  (List.range n).map fun b =>
+    match es.getD b none with
+    | some e => Lin.cell (base + e)
+    | none => []
+
+/-- `dotCols`'s fold (tail-recursive: a prototype has ≈ 155 k ops). -/
+def dotColsAcc : List Op → List ℕ → List ℕ
+  | [], acc => acc
+  | .dotKF _ c :: ops, acc => dotColsAcc ops (c :: acc)
+  | _ :: ops, acc => dotColsAcc ops acc
+
+/-- The column registers of a program's `dotKF`s (reversed). -/
+def dotCols (ops : List Op) : List ℕ := dotColsAcc ops []
+
+/-- **A window-element cache**: each column's `(x, len)` (its proof bytes `[x, x + len)`, from `pv`) with
+`colEs`'s elements. -/
+def esCache (pv : List (ℕ × ℕ × ℕ × ℕ)) (win : ℕ → Option ℕ) (sz : ℕ) (cols : List ℕ) :
+    List ((ℕ × ℕ) × Option (List (Option ℕ))) :=
+  cols.filterMap fun c => (provOf pv c).map fun p => ((absOff p.1 p.2.1, p.2.2), colEs win sz (absOff p.1 p.2.1) p.2.2)
+
+/-- **`colEW` through a cache** (`ca`: a field's elements already computed; else computed). -/
+def colEWC (ca : List ((ℕ × ℕ) × Option (List (Option ℕ)))) (pv : List (ℕ × ℕ × ℕ × ℕ)) (win : ℕ → Option ℕ)
+    (col : ℕ) : Option (List (Option ℕ)) :=
+  match provOf pv col with
+  | some (f, o, len) =>
+    match ca.lookup (absOff f o, len) with
+    | some r => r
+    | none => colEs win (piSizeOf seq4) (absOff f o) len
+  | none => none
+
+/-- **A column table**: each column register with its window elements (through the cache `ca`). -/
+def colTab (ca : List ((ℕ × ℕ) × Option (List (Option ℕ)))) (pv : List (ℕ × ℕ × ℕ × ℕ)) (win : ℕ → Option ℕ)
+    (cols : List ℕ) : List (ℕ × Option (List (Option ℕ))) :=
+  cols.map fun c => (c, colEWC ca pv win c)
+
+/-- Prototype 0's columns' window elements (computed once; prototype 1's columns are the same fields). -/
+def esC0 : List ((ℕ × ℕ) × Option (List (Option ℕ))) :=
+  esCache (pvP 0) winE (piSizeOf seq4) (dotCols (protoProg 0).ops)
+
+/-- Prototype 0's column table (computed once). -/
+def colT0 : List (ℕ × Option (List (Option ℕ))) := colTab esC0 (pvP 0) winE (dotCols (protoProg 0).ops)
+
+/-- Prototype 1's column table (computed once, through prototype 0's elements). -/
+def colT1 : List (ℕ × Option (List (Option ℕ))) := colTab esC0 (pvP 1) winE (dotCols (protoProg 1).ops)
+
+/-- Prototype `π`'s column table. -/
+def colTP (π : ℕ) : List (ℕ × Option (List (Option ℕ))) := if π = 0 then colT0 else colT1
+
+/-- **Prototype `π`'s column alias**: the cells of `dotKF`'s column `col`, `n` of them, on arena₁ of region
+`π` (`π·2^20 + arA1 + e`); `none` where the table has no elements for `col`. -/
+def colA (π col n : ℕ) : Option (List Lin) :=
+  ((colTP π).lookup col).bind fun es => es.map (colCells (π * slotM4 + arA1) n)
+
+/-- **Prototype `π`'s compiler extension at a context** (FEL: `tplExt4` with the `dotKF` arm aliased by
+`colA π`). -/
+def XofC (π : ℕ) (tc : Tpl.TCtx) : Ext := tplExt4A (protoF π) (protoR π) tc (colA π)
+
 /-- Prototype `π`'s compiler extension (`protoCS π = compileX (Xof π) …`). -/
-def Xof (π : ℕ) : Ext := tplExt4 (protoF π) (protoR π) (protoLay π).ctx
+def Xof (π : ℕ) : Ext := XofC π (protoLay π).ctx
+
+/-- At a `dotKF`, `Xof` is the aliased arm (FEL). -/
+theorem xof_dk (π : ℕ) (P : Params) (cs : CS) (w col : ℕ) :
+    Xof π P cs (.dotKF w col) = dkA (protoF π) (protoLay π).ctx (colA π) P cs w col := rfl
+
+/-- At an op other than `dotKF`, `Xof` is `tplExt4`'s (FEL). -/
+theorem xof_ne {π : ℕ} {P : Params} {cs : CS} {op : Op} (h : ∀ w col, op ≠ .dotKF w col) :
+    Xof π P cs op = tplExt4 (protoF π) (protoR π) (protoLay π).ctx P cs op :=
+  tplExt4A_ne h
 
 /-- **Prototype `π`'s replay rows** (its frame: M-relative cells of region `π`). -/
 def repRowsP (rt : RT) (π : ℕ) : List Row := repRowsX (Xof π) (protoP π) rt (CS.init (baseR π)) (protoProg π).ops
@@ -375,7 +472,8 @@ def segRN : ℕ := 59904
 def segRow (k : ℕ) : ℕ := if k < segBN then repSegB + k else repA + (k - segBN)
 
 /-- **Slot `v`'s replay rows' first row**: slot 0 of a node with a previous node (prototype 0) in
-the spare region (`κ.vslots·2^20`); a segment slot at `v·2^20 + repSegB`. -/
+the spare region (`κ.vslots·2^20`, its rows consecutive from there); a segment slot at band B's start
+`v·2^20 + repSegB` (SEG-R2: its rows fill band B, then continue in band A, `segRow`; `repRowI` places them). -/
 def repRow0 (κ : Rev4.NodeKind) (v : ℕ) : ℕ := if protoOf κ v = 0 then κ.vslots * slotM4 else v * slotM4 + repSegB
 
 /-- **Slot `v`'s replay row `k`**: prototype 0's at `repRow0 κ v + k`, a segment slot's at

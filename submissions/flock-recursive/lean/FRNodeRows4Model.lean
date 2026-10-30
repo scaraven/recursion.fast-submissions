@@ -76,8 +76,8 @@ theorem mRows4_le :
     NodeKind.dims] <;> decide
 
 /-- The per-kind totals (SEG-R2: the segment's measured `R`): `N2` 3,513,298 of `2^22`, `N4` 5,453,884 of
-`2^23`, `N8` 7,762,344 of `2^23` (**1.029× under `N_M / 1.05` = 7,989,150**: 28,350 more rows in each segment
-region and `N8` no longer fits). -/
+`2^23`, `N8` 7,762,344 of `2^23` (**fits, 1.029× under `N_M / 1.05` = 7,989,150**; the margin is 226,806 rows,
+so `N8` would stop fitting only if each of its 8 segment regions grew by more than 28,350 rows). -/
 theorem mRowModel4_eq : mRowModel4 .N2 = 3513298 ∧ mRowModel4 .N4 = 5453884 ∧ mRowModel4 .N8 = 7762344 := by
   obtain ⟨h1, h2, h3⟩ := regions_sum
   simp only [mRowModel4, h1, h2, h3, NodeKind.hasPrev, NodeKind.segSlots]

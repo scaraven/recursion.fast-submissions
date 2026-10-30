@@ -168,6 +168,8 @@ import FRNodeRun4Ctrl
 import FRNodeRows4RepF
 import FRNodeRows4RepFCtrl
 import FRNodeRun4CT
+import FRNodeRun4FE
+import FRVIRTplAlias
 import FRNodeRows4RepSeg
 import FRNodeRows4RepCFCtrl
 

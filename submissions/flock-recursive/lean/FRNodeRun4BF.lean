@@ -55,6 +55,9 @@ theorem tplExt4_tw_aux (F : TFilt) (R : ShR) (tp tp' : Tpl.TKey → Tpl.Tpl) (cb
 theorem xofA_aux (π : ℕ) (P : Params) (cs : CS) (j r : ℕ) :
     (stepOut (XofA π) P cs (.tensorW j r)).aux = (stepOut (Xof π) P cs (.tensorW j r)).aux := by
   have h := tplExt4_tw_aux (protoF π) (protoR π) (fun _ => ⟨[], []⟩) (protoLay π).ctx.tpl (protoLay π).cb P cs j r
+  show ((tplExt4A (protoF π) (protoR π) ⟨fun _ => ⟨[], []⟩, (protoLay π).cb⟩ (colA π) P cs (.tensorW j r)).getD _).aux =
+    ((tplExt4A (protoF π) (protoR π) ⟨(protoLay π).ctx.tpl, (protoLay π).cb⟩ (colA π) P cs (.tensorW j r)).getD _).aux
+  rw [tplExt4A_ne (by simp), tplExt4A_ne (by simp)]
   show ((tplExt4 (protoF π) (protoR π) ⟨fun _ => ⟨[], []⟩, (protoLay π).cb⟩ P cs (.tensorW j r)).getD _).aux =
     ((tplExt4 (protoF π) (protoR π) ⟨(protoLay π).ctx.tpl, (protoLay π).cb⟩ P cs (.tensorW j r)).getD _).aux
   generalize tplExt4 (protoF π) (protoR π) ⟨fun _ => ⟨[], []⟩, (protoLay π).cb⟩ P cs (.tensorW j r) = A at h ⊢
@@ -211,8 +214,8 @@ theorem gap4Imp_of_bitsR {rt : ℕ → RT} {impl₀ : OpImpl} {base : NodeKind �
   have hvs := active_lt X.pf4 hv
   have hask := askHolds_of (hfoldA v hvs) hE
   have hpc := pfCells_of_rows hS.1 hv
-  have hX := tplExt4_okK (implTF_implP hT₀ hT (protoOf κ v) ι) (routeOk_implP impl₀ base (protoOf_le' κ v) ι)
-    (protoLay (protoOf κ v))
+  have hX := tplExt4A_okK (implTF_implP hT₀ hT (protoOf κ v) ι) (routeOk_implP impl₀ base (protoOf_le' κ v) ι)
+    (protoLay (protoOf κ v)) (colA (protoOf κ v))
   have hrB := bitsB_rows (protoOf κ v)
   have hg := seed_rows hrB hask
   have hB : ∀ c < arNb, slotAsg κ v w (bitC (protoOf κ v) c) = 0 ∨ slotAsg κ v w (bitC (protoOf κ v) c) = 1 :=

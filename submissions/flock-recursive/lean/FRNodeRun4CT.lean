@@ -95,8 +95,8 @@ theorem gap4Imp_of_close {rt : ℕ → RT} {impl₀ : OpImpl} {base : NodeKind �
   have hvs := active_lt X.pf4 hv
   have hask := askHolds_of (hfoldA v hvs) hE
   have hpc := pfCells_of_rows hS.1 hv
-  have hX := tplExt4_okK (implTF_implP hT₀ hT (protoOf κ v) ι) (routeOk_implP impl₀ base (protoOf_le' κ v) ι)
-    (protoLay (protoOf κ v))
+  have hX := tplExt4A_okK (implTF_implP hT₀ hT (protoOf κ v) ι) (routeOk_implP impl₀ base (protoOf_le' κ v) ι)
+    (protoLay (protoOf κ v)) (colA (protoOf κ v))
   have hrB := close_rowsB (protoOf κ v)
   have hg := seed_rows hrB hask
   have hB : ∀ c < arNb, slotAsg κ v w (bitC (protoOf κ v) c) = 0 ∨ slotAsg κ v w (bitC (protoOf κ v) c) = 1 :=
@@ -119,8 +119,7 @@ theorem gap4Imp_of_close {rt : ℕ → RT} {impl₀ : OpImpl} {base : NodeKind �
       have : (N4c.slotIn (rd4 X.pf4) κ vk c₁ w v).π = (rd4 X.pf4).slotπ κ v w := by
         unfold N4c.slotIn; split <;> rfl
       rw [this, X.slotπ_byte]; rfl
-  refine ⟨atOk_close (F := protoF (protoOf κ v)) (R := protoR (protoOf κ v)) (tc := (protoLay (protoOf κ v)).ctx)
-      rfl (fun P cs op => xofA_isNone _ P cs op)
+  refine ⟨atOk_close (extFl_xof _) (fun P cs op => xofA_isNone _ P cs op)
       (atOk_repF (atOk_addE (atOk_addD (atOk_addD (atOk_add (atOk_add (atOk_add (atOk_askT _ hS.1 hv hι)
         (atImp_inp (inpCells_of_rows (fun e₀ e₁ tr => X.pfView_reassemble4 e₀ e₁ tr)
           (fun e tr => X.pfHdr_reassemble4 e tr) hS.1 v hv ι hι)))

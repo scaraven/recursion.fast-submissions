@@ -359,7 +359,7 @@ theorem trailMB_eq (X : TCtx → Ext) (L : TLay) (P : Params) (G : TG) (rt : RT)
 
 /-- **Prototype 0's ask rows and replay blocks in one memoized pass.** -/
 def arBlk0 : List Row × List RBlk :=
-  let r := trailMB (tplExt4 (protoF 0) (protoR 0)) (protoLay 0) (protoP 0) (askTG 0) (N4s.rtC1c 0) blk0 []
+  let r := trailMB (N4s.XofC 0) (protoLay 0) (protoP 0) (askTG 0) (N4s.rtC1c 0) blk0 []
     (CS.init (baseR 0)) none 0 (protoProg 0).ops [] []
   (r.1.reverse, r.2.reverse)
 

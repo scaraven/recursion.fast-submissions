@@ -168,7 +168,7 @@ theorem atImp_bitS {impl : OpImpl} {X Xa : Ext} {π : ℕ} {T : BTab} {κ : Kind
 theorem xofA_read (π : ℕ) {T : BTab} (P : Params) (cs : CS) (op : Op) (hop : bitCovS T op = true) :
     stepOut (XofA π) P cs op = stepOut (Xof π) P cs op := by
   cases op <;> simp only [bitCovS, reduceCtorEq, Bool.false_eq_true] at hop <;>
-    simp only [stepOut, XofA, Xof, tplExt4, tplExt4S, Ext.orElse, tplExtKM, tplExtF, tplExt, extGetK,
+    simp only [stepOut, XofA, Xof, XofC, tplExt4A, tplExt4, tplExt4S, Ext.orElse, tplExtKM, tplExtF, tplExt, extGetK,
       Option.orElse, Option.filter]
 
 /-! ## The node's template with the statement reads -/
@@ -210,8 +210,8 @@ theorem gap4Imp_of_bitsS {rt : ℕ → RT} {impl₀ : OpImpl} {base : NodeKind �
   have hvs := active_lt X.pf4 hv
   have hask := askHolds_of (hfoldA v hvs) hE
   have hpc := pfCells_of_rows hS.1 hv
-  have hX := tplExt4_okK (implTF_implP hT₀ hT (protoOf κ v) ι) (routeOk_implP impl₀ base (protoOf_le' κ v) ι)
-    (protoLay (protoOf κ v))
+  have hX := tplExt4A_okK (implTF_implP hT₀ hT (protoOf κ v) ι) (routeOk_implP impl₀ base (protoOf_le' κ v) ι)
+    (protoLay (protoOf κ v)) (colA (protoOf κ v))
   have hrB := bitsS_rowsB (protoOf κ v)
   have hg := seed_rows hrB hask
   have hB : ∀ c < arNb, slotAsg κ v w (bitC (protoOf κ v) c) = 0 ∨ slotAsg κ v w (bitC (protoOf κ v) c) = 1 :=

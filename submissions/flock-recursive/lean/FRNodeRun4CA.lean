@@ -2,6 +2,7 @@
 -- and whether a template took it (the closure generator's checks, `FRNodeRows4AskC.closeRows`).
 import FRNodeRows4AskC
 import FRVIRTplSet
+import FRVIRTplAlias
 
 /-!
 # Imports and foreign flags by the op
@@ -14,7 +15,9 @@ extension's answer, which does not depend on the template bodies:
   at a `forCap` op;
 * **`tplExt4_flags`**: a template's output is neither an import nor foreign;
 * **`tplExt4_isNone`**: whether a template takes an op does not depend on the template bodies;
-* hence **`stepOut_imp_of`**, **`stepOut_foreign_of`**.
+* FEL: the same for `tplExt4A` (the `dotKF` arm aliased): **`extFl_tplExt4A`**, **`tplExt4A_isNone`**;
+* hence **`stepOut_imp_of`**, **`stepOut_foreign_of`**, for any extension whose outputs are neither
+  (`ExtFl`; FEL: was stated at `tplExt4`).
 -/
 
 namespace FR
@@ -101,23 +104,48 @@ theorem tplExt4_isNone (F : TFilt) (R : ShR) (tp tp' : TKey → Tpl) (cb : TKey 
     · rfl
   · rfl
 
+/-- **An extension whose outputs are neither imports nor foreign** (FEL). -/
+def ExtFl (X : Ext) : Prop := ∀ P cs op o, X P cs op = some o → o.imp = false ∧ o.foreign = false
+
+theorem extFl_tplExt4 {F : TFilt} {R : ShR} {tc : TCtx} : ExtFl (tplExt4 F R tc) :=
+  fun _ _ _ _ h => tplExt4_flags h
+
+/-- `tplExt4A`'s outputs are neither imports nor foreign. -/
+theorem extFl_tplExt4A {F : TFilt} {R : ShR} {tc : TCtx} {al : ℕ → ℕ → Option (List Lin)} :
+    ExtFl (tplExt4A F R tc al) := by
+  intro P cs op o h
+  by_cases hd : ∃ w col, op = .dotKF w col
+  · obtain ⟨w, col, rfl⟩ := hd
+    obtain ⟨_, _, _, _, _, h1, h2⟩ := dkA_some h
+    exact ⟨h1, h2⟩
+  · rw [tplExt4A_ne fun w col he => hd ⟨w, col, he⟩] at h
+    exact tplExt4_flags h
+
+/-- **Whether `tplExt4A` takes an op does not depend on the template bodies.** -/
+theorem tplExt4A_isNone (F : TFilt) (R : ShR) (tp tp' : TKey → Tpl) (cb : TKey → ℕ → ℕ)
+    (al : ℕ → ℕ → Option (List Lin)) (P : Params) (cs : CS) (op : Op) :
+    (tplExt4A F R ⟨tp, cb⟩ al P cs op).isNone = (tplExt4A F R ⟨tp', cb⟩ al P cs op).isNone := by
+  by_cases hd : ∃ w col, op = .dotKF w col
+  · obtain ⟨w, col, rfl⟩ := hd
+    exact dkA_isNone F tp tp' cb al P cs w col
+  · rw [tplExt4A_ne fun w col he => hd ⟨w, col, he⟩, tplExt4A_ne fun w col he => hd ⟨w, col, he⟩]
+    exact tplExt4_isNone F R tp tp' cb P cs op
+
 /-- **The compile's import flag**: an `opImp` op no template took. -/
-theorem stepOut_imp_of {F : TFilt} {R : ShR} {tc : TCtx} {P : Params} {cs : CS} {op : Op}
-    (h : (stepOut (tplExt4 F R tc) P cs op).imp = true) :
-    opImp op = true ∧ tplExt4 F R tc P cs op = none := by
+theorem stepOut_imp_of {X : Ext} (hX : ExtFl X) {P : Params} {cs : CS} {op : Op}
+    (h : (stepOut X P cs op).imp = true) : opImp op = true ∧ X P cs op = none := by
   simp only [stepOut] at h
-  cases hx : tplExt4 F R tc P cs op with
+  cases hx : X P cs op with
   | none => rw [hx, Option.getD_none, opOut_imp] at h; exact ⟨h, rfl⟩
-  | some o => rw [hx, Option.getD_some, (tplExt4_flags hx).1] at h; cases h
+  | some o => rw [hx, Option.getD_some, (hX _ _ _ _ hx).1] at h; cases h
 
 /-- **The compile's foreign flag**: a `forCap` op no template took, foreign in `opOut`. -/
-theorem stepOut_foreign_of {F : TFilt} {R : ShR} {tc : TCtx} {P : Params} {cs : CS} {op : Op}
-    (h : (stepOut (tplExt4 F R tc) P cs op).foreign = true) :
-    (opOut P cs op).foreign = true ∧ tplExt4 F R tc P cs op = none := by
+theorem stepOut_foreign_of {X : Ext} (hX : ExtFl X) {P : Params} {cs : CS} {op : Op}
+    (h : (stepOut X P cs op).foreign = true) : (opOut P cs op).foreign = true ∧ X P cs op = none := by
   simp only [stepOut] at h
-  cases hx : tplExt4 F R tc P cs op with
+  cases hx : X P cs op with
   | none => rw [hx, Option.getD_none] at h; exact ⟨h, rfl⟩
-  | some o => rw [hx, Option.getD_some, (tplExt4_flags hx).2] at h; cases h
+  | some o => rw [hx, Option.getD_some, (hX _ _ _ _ hx).2] at h; cases h
 
 end Rev4
 end FR

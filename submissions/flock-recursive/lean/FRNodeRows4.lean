@@ -66,9 +66,10 @@ def selCells4 (κ : NodeKind) (σ : ℕ) (ι : Kind) : ℕ := κ.lBase * 128 + �
 
 theorem nodeGrp_nodeOf (ι : Kind) : nodeGrp ι = .ofNode (nodeOf ι) := by cases ι <;> rfl
 
-/-- **Prototype `π`'s templated compile** (at its template set and route). -/
+/-- **Prototype `π`'s templated compile** (at its template set and route; FEL: `dotKF`'s column cells
+aliased to arena₁, `Xof`). -/
 def protoCS (π : ℕ) : CS :=
-  compileTF4 (protoF π) (protoR π) (protoLay π) (protoP π) (baseR π) (protoProg π).ops
+  compileX (N4s.Xof π) (protoP π) (baseR π) (protoProg π).ops
 
 /-- **Prototype `π`'s indexed rows** (rows from `π·2^20`, M-relative cells). -/
 def protoRows (π : ℕ) : List (ℕ × Row) := slotIRows (protoLay π) (Lin.cell (oneR π)) (π * slotM4) (protoCS π)
@@ -226,7 +227,7 @@ the prototype), and the **bits** (`bitRows4`, rows `[arRb, arRb + arNb)`). They 
 rejecting row instead (so `ArFit` follows from the statement's rows, `FRNodeRows4AskPosF`). -/
 
 /-- **Prototype `π`'s template extension** (`FRNodeRows4Rep.Xof`, by definition). -/
-def XofT (π : ℕ) : Ext := tplExt4 (protoF π) (protoR π) (protoLay π).ctx
+def XofT (π : ℕ) : Ext := N4s.XofC π (protoLay π).ctx
 
 /-- **The node's row generator of prototype `π`**: the ask templates' rows (B3's `AT` with these
 fields is SRA's `FRNodeRsvLink.withRsv`'s): IMP's `input` template
@@ -237,7 +238,7 @@ every replay op the replay templates `rtC1d π` do not cover (`TG.repF`, SEG-R2)
 failing row at any import or foreign flag no class handles; `FRNodeRows4AskC`). -/
 def askTG (π : ℕ) : TG :=
   let ops := (protoProg π).ops
-  let Xa := tplExt4 (protoF π) (protoR π) ⟨fun _ => ⟨[], []⟩, (protoLay π).cb⟩
+  let Xa := N4s.XofC π ⟨fun _ => ⟨[], []⟩, (protoLay π).cb⟩
   let pv := provLT 0 ops
   let T := bitTab ops (if π = 0 then nodeGrp else segGrp)
   ((((askTGT (XofT π) π).add (inpTG (XofT π) π)).add (rsvTG (XofT π) π)).add

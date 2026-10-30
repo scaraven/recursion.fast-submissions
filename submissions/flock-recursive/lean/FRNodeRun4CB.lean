@@ -78,22 +78,21 @@ theorem atAsk_close (h : ATAsk impl X A κ inp w tr) : ATAsk impl X (A.close Xc 
 
 /-- **Covering the possible imports costs nothing**: at an import `A` does not cover, the closure's rows
 fail, provided whether a template takes an op is the same for `X` (the compile's) and `Xc`. -/
-theorem atImp_close {F : TFilt} {R : ShR} {tc : TCtx} (hX : X = tplExt4 F R tc)
+theorem atImp_close (hX : ExtFl X)
     (hXc : ∀ P cs op, (Xc P cs op).isNone = (X P cs op).isNone) (h : ATImp impl X A κ inp w) :
     ATImp impl X (A.close Xc pv T nx) κ inp w := by
   intro P cs pre op k regs vs ok hcov hc hev himp
   by_cases hA : A.cov op = true
   · exact h P cs pre op k regs vs ok hA (askCtx_close hc (.inr hA)) hev himp
   · have hcc : closeCov op = true := by simpa [AT.close, hA] using hcov
-    subst hX
-    obtain ⟨hi, hn⟩ := stepOut_imp_of himp
+    obtain ⟨hi, hn⟩ := stepOut_imp_of hX himp
     have hr := hc.2.2.2
     simp only [AT.close, hcc, if_true, hi, Bool.not_eq_true] at hr
     simp only [Bool.not_eq_true] at hA
     rw [if_neg (by simp [hA]), impRows, if_pos (by simp [hXc, hn])] at hr
     exact absurd (hr _ List.mem_cons_self) (failRT_not hc.1.1)
 
-theorem atOk_close {F : TFilt} {R : ShR} {tc : TCtx} (hX : X = tplExt4 F R tc)
+theorem atOk_close (hX : ExtFl X)
     (hXc : ∀ P cs op, (Xc P cs op).isNone = (X P cs op).isNone) (h : ATOk impl X A κ inp w tr) :
     ATOk impl X (A.close Xc pv T nx) κ inp w tr :=
   ⟨atAsk_close h.1, atImp_close hX hXc h.2⟩
@@ -215,11 +214,11 @@ theorem bitNx_eq (op : Op) (ops : List Op) (n : ℕ) : bitNx op ops n = bitNxT o
 /-- **The closed residual imports are the replay ops'**: a residual import of the closed template is an
 `isRep` op's (`opImp` and the template-free context make every other one covered; a `bitOf` is followed by
 its `selectHalf`). -/
-theorem impB_sub {F : TFilt} {R : ShR} {tc : TCtx} {P : Params} {rt : RT} {A : AT} {Xc : Ext}
+theorem impB_sub {X : Ext} (hfl : ExtFl X) {P : Params} {rt : RT} {A : AT} {Xc : Ext}
     {pv : List (ℕ × ℕ × ℕ × ℕ)} {T : BTab} {nx : Bool}
-    (hlen : ∀ c op, (stepOut (tplExt4 F R tc) P c op).slots.length = op.nOut) :
+    (hlen : ∀ c op, (stepOut X P c op).slots.length = op.nOut) :
     ∀ (ops : List Op) (cs : CS), bitNxAll cs.slots.size ops = true →
-      ∀ i ∈ impBX (tplExt4 F R tc) P rt (A.close Xc pv T nx) cs ops, i ∈ impQX (tplExt4 F R tc) P rt A cs ops
+      ∀ i ∈ impBX X P rt (A.close Xc pv T nx) cs ops, i ∈ impQX X P rt A cs ops
   | [], _, _, i, hi => by simp [impBX] at hi
   | op :: ops, cs, hb, i, hi => by
     simp only [impBX, List.mem_append] at hi
@@ -235,7 +234,7 @@ theorem impB_sub {F : TFilt} {R : ShR} {tc : TCtx} {P : Params} {rt : RT} {A : A
         simp only [AT.close, Bool.or_eq_false_iff] at hcov; exact hcov.1
       have hAc : A.cov op = false := by
         simp only [AT.close, Bool.or_eq_false_iff] at hcov; exact hcov.2
-      have hi' := (stepOut_imp_of himp).1
+      have hi' := (stepOut_imp_of hfl himp).1
       have hrep : isRep op = true := by
         simp only [closeCov, hit, hi', Bool.not_false, Bool.true_and, Bool.true_or, Bool.and_true,
           Bool.and_eq_false_iff, Bool.not_eq_false'] at hcc
@@ -248,7 +247,7 @@ theorem impB_sub {F : TFilt} {R : ShR} {tc : TCtx} {P : Params} {rt : RT} {A : A
       rw [if_pos (by simp [himp, hrt, hrep, hAc])]
       exact hi
     · right
-      refine impB_sub hlen ops _ ?_ i hi
+      refine impB_sub hfl hlen ops _ ?_ i hi
       rw [add_slots_size, hlen, CS.align_slots]; exact hb.2
 
 /-! ## The foreign flags -/
@@ -312,7 +311,10 @@ def closeP (A : AT) (π : ℕ) : AT := A.close (XofA π) (pvP π) (bitTabP π) (
 
 theorem xofA_isNone (π : ℕ) (P : Params) (cs : CS) (op : Op) :
     (XofA π P cs op).isNone = (Xof π P cs op).isNone :=
-  tplExt4_isNone _ _ _ _ _ P cs op
+  tplExt4A_isNone _ _ _ _ _ _ P cs op
+
+/-- `Xof`'s outputs are neither imports nor foreign (FEL). -/
+theorem extFl_xof (π : ℕ) : ExtFl (Xof π) := extFl_tplExt4A
 
 /-- **`SlotRunB` from the closed residual**: with the closed template's rows holding along the trail. -/
 theorem slotRunB_of_close {rt : RT} {A : AT} {impl : OpImpl} {π : ℕ} {ι : Kind} {inp : Input} {tr : Trace}
@@ -334,12 +336,12 @@ theorem slotRunB_of_close {rt : RT} {A : AT} {impl : OpImpl} {π : ℕ} {ι : Ki
       exact List.mem_append_right _ (by simp [hb, hio])))
     exact failRT_not hone hrow
   refine ⟨hx, fun i hi0 => hi i ?_, fun p hp hz hst => ?_⟩
-  · exact impB_sub (F := protoF π) (R := protoR π) (tc := (protoLay π).ctx) hlen _ _ (by rw [show (CS.init (baseR π)).slots.size = 0 from rfl]; exact hnx) i hi0
+  · exact impB_sub (extFl_xof π) hlen _ _ (by rw [show (CS.init (baseR π)).slots.size = 0 from rfl]; exact hnx) i hi0
   · exfalso
     rcases trail_forsF (Xof π) (protoP π) (closeP A π) _ _ none 0 hp with h0 | ⟨c, pre', k', hcs, hf, hr⟩
     · cases h0
     obtain ⟨op, m⟩ := p
-    obtain ⟨hfo, hn⟩ := stepOut_foreign_of (F := protoF π) (R := protoR π) (tc := (protoLay π).ctx) hf
+    obtain ⟨hfo, hn⟩ := stepOut_foreign_of (extFl_xof π) hf
     have hfc := opOut_foreign hfo
     have hcc := closeCov_of_forCap hfc
     have hrows := fun x hx0 => hask x (hr (by simp [closeP, AT.close, hcc]) x hx0)
@@ -348,7 +350,7 @@ theorem slotRunB_of_close {rt : RT} {A : AT} {impl : OpImpl} {π : ℕ} {ι : Ki
     have hf : forRows (XofA π) (pvP π) (bitTabP π) (protoP π) c op = [failRT (protoP π)] := by
       rw [forRows, if_pos]
       simp only [hfo, Bool.true_and, Bool.and_eq_true, Bool.not_eq_true', Bool.or_eq_true]
-      refine ⟨⟨Or.inr (by rw [xofA_isNone]; simp [Xof, hn]), ?_⟩, ?_⟩
+      refine ⟨⟨Or.inr (by rw [xofA_isNone, hn]; rfl), ?_⟩, ?_⟩
       · rw [zPinT_eq, hcs]; exact hz
       · rw [stFlagT_eq, hcs]; exact hst
     exact failRT_not hone (hrows _ (List.mem_append_right _ (by rw [hf]; exact List.mem_cons_self)))

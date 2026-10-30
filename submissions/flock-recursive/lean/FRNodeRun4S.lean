@@ -94,8 +94,8 @@ theorem slotImp_of_runA {rt : ℕ → RT} {A : ℕ → AT} {impl₀ : OpImpl} {b
   intro ι hS
   obtain ⟨hA, hR, hst⟩ := h ι hS
   have hπ := protoOf_le' κ v
-  have hX := tplExt4_okK (implTF_implP hT₀ hT (protoOf κ v) ι) (routeOk_implP impl₀ base hπ ι)
-    (protoLay (protoOf κ v))
+  have hX := tplExt4A_okK (implTF_implP hT₀ hT (protoOf κ v) ι) (routeOk_implP impl₀ base hπ ι)
+    (protoLay (protoOf κ v)) (colA (protoOf κ v))
   obtain ⟨s, he⟩ := execA_proto (implP impl₀ base (protoOf κ v) ι) (protoOf κ v) ι inp hl
   obtain ⟨hx, hi, hf⟩ := hR s he
   have key := compileX_run hX (hok _ hπ ι) hA (baseR (protoOf κ v)) hS (selOk_repAsg hS) (agree_repAsg κ v w) he

@@ -152,13 +152,16 @@ theorem atImp_bitB {impl : OpImpl} {X Xa : Ext} {π : ℕ} {T : BTab} {κ : Kind
 /-! ## The node's template with the bits folded -/
 
 /-- Prototype `π`'s compile extension with a template-free context (`bitTGB`'s). -/
-def XofA (π : ℕ) : Ext := tplExt4 (protoF π) (protoR π) ⟨fun _ => ⟨[], []⟩, (protoLay π).cb⟩
+def XofA (π : ℕ) : Ext := XofC π ⟨fun _ => ⟨[], []⟩, (protoLay π).cb⟩
 
 /-- Prototype `π`'s bit tables. -/
 def bitTabP (π : ℕ) : BTab := bitTab (protoProg π).ops (if π = 0 then nodeGrp else segGrp)
 
 theorem xofA_imp (π : ℕ) (P : Params) (cs : CS) (op : Op) (hop : bitCovB op = true) :
     (XofA π P cs op).map Out.imp = (Xof π P cs op).map Out.imp := by
+  have hd : ∀ w col, op ≠ .dotKF w col := by rintro w col rfl; cases hop
+  simp only [XofA, Xof, XofC]
+  rw [tplExt4A_ne hd, tplExt4A_ne hd]
   exact tplExt4_imp_tc _ _ ⟨fun _ => ⟨[], []⟩, (protoLay π).cb⟩ (protoLay π).ctx rfl P cs op hop
 
 /-- **The node's template with the bits' generator** (the `askTG` edit's first step). -/

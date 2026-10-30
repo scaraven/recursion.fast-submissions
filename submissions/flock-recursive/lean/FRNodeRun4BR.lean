@@ -178,12 +178,23 @@ theorem tplExtKM_bits {F : TFilt} {tc : TCtx} {P : Params} {cs : CS} {op : Op} {
 /-- **Only a `tensorW` carries a `bits` auxiliary import** (prototype `π`'s compile). -/
 theorem xof_bits {π : ℕ} {P : Params} {cs : CS} {op : Op} {a : List Lin × ℕ × AuxK}
     (ha : a ∈ (stepOut (Xof π) P cs op).aux) {n : ℕ} (hn : a.2.2 = .bits n) : isTensorW op = true := by
-  simp only [stepOut] at ha
-  cases hx : Xof π P cs op with
+  by_cases hd : ∃ w col, op = .dotKF w col
+  · obtain ⟨w, col, rfl⟩ := hd
+    exfalso
+    simp only [stepOut] at ha
+    cases hx : Xof π P cs (.dotKF w col) with
+    | none => rw [hx, Option.getD_none, opOut_aux] at ha; cases ha
+    | some o =>
+      rw [hx, Option.getD_some] at ha
+      rw [xof_dk] at hx
+      obtain ⟨_, _, -, -, hau, -⟩ := dkA_some hx
+      rw [hau, List.mem_singleton] at ha; subst ha; cases hn
+  simp only [stepOut, xof_ne fun w col he => hd ⟨w, col, he⟩] at ha
+  cases hx : tplExt4 (protoF π) (protoR π) (protoLay π).ctx P cs op with
   | none => rw [hx, Option.getD_none, opOut_aux] at ha; cases ha
   | some o =>
     rw [hx, Option.getD_some] at ha
-    simp only [Xof, tplExt4, Ext.orElse] at hx
+    simp only [tplExt4, Ext.orElse] at hx
     cases h4 : tplExt4S (protoF π) (protoR π) (protoLay π).ctx P cs op with
     | some o' =>
       rw [h4, Option.orElse_some, Option.some.injEq] at hx

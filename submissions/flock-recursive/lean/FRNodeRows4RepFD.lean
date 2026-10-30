@@ -48,7 +48,7 @@ theorem trailMR_eq (X : TCtx → Ext) (L : TLay) (P : Params) (G : TG) (rt : RT)
 
 /-- **A prototype's ask rows and replay rows in one memoized pass** (the plan's). -/
 def arRepOf (π : ℕ) : List Row × List Row :=
-  let r := trailMR (tplExt4 (protoF π) (protoR π)) (protoLay π) (protoP π) (askTG π) (N4s.rtC1d π) []
+  let r := trailMR (N4s.XofC π) (protoLay π) (protoP π) (askTG π) (N4s.rtC1d π) []
     (CS.init (baseR π)) none 0 (protoProg π).ops [] []
   (r.1.reverse, r.2.reverse)
 
@@ -61,7 +61,7 @@ theorem arRepOf_eq (π : ℕ) : arRepOf π = (askRowsT π, N4s.repRowsP (N4s.rtC
 
 /-- **`repRowsP` from the memoized trail** (for every replay template). -/
 theorem repRowsP_trail (rt : RT) (π : ℕ) :
-    N4s.repRowsP rt π = ((trailMR (tplExt4 (protoF π) (protoR π)) (protoLay π) (protoP π) TG.none rt []
+    N4s.repRowsP rt π = ((trailMR (N4s.XofC π) (protoLay π) (protoP π) TG.none rt []
       (CS.init (baseR π)) none 0 (protoProg π).ops [] []).2).reverse := by
   rw [trailMR_eq _ _ _ _ _ _ _ _ _ _ _ _ (by simp [MOk])]
   simp only [List.append_nil, List.reverse_reverse]
