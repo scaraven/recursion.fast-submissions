@@ -100,7 +100,14 @@ Running on rev44:
   - **Placement:** replay templates in each segment slot's own region via `rtKD`, needing about 40k rows and 40k cells per slot. It fits only if `arR2N` shrinks.
 - **Running:**
   - SEG-R0 (probes: exact counts, band fit, the facts verified in the compiled program);
-  - a cheap Opus review of SEG-R.
+  - **Review of SEG-R:** no blocker. The route is a fixed point (rows only; no op or import added), and the dead ops are pinned soundly.
+    - **Should-fix:**
+      - `kRSS.cov` must check `act` all false, the claim count and the widths;
+      - band B needs the `arR2N` cut, measured after SIB;
+      - the cell margin is ≈ 5 k after CF's padding; kill line: merge the cell bands;
+      - `repSegB`/`repConsts` must move;
+      - SEG-R2 waits on SIB.
+    - **Init kill line:** if the `nodePlan` cut fails, it is +0.4 s × 29 per stream. Routed to SEG-R0.
 - **Process lesson:** after committing from a build tree's copies, sync the worktree files (`git checkout HEAD -- …`). Stale FRNodeRun4*/FR.lean sat in the worktree after REPF's commit.
 - **Collision guard:** ASK-T (the `askTG` line and imports) and REPF (the split and fold) both edit FRNodeRows4.lean. Each was told to touch only its own hunks; the orchestrator merges at freeze.
 - **SRA landed `27459d9`.**
