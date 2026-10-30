@@ -708,6 +708,13 @@ pub fn slot_b0(k: NK, v: usize) -> usize {
     }
 }
 
+/// **P2: the kind's rows beyond `node-N*.txt`, factored** (`mfill::Ext`): the same rows as
+/// `extend_links`, which the E2/E4 operations and `evalM` take by their structure (arena₁ rows slot by
+/// slot, slot 0's replay rows from prototype 0's `spare` once for every kind) instead of as link rows.
+pub fn set_ext(kt: &mut mfill::KindTab, k: NK) {
+    kt.ext = Some(mfill::Ext { vs: k.vslots(), a1_b0: (0..k.vslots()).map(|v| slot_b0(k, v)).collect(), spare: k.has_prev() });
+}
+
 /// **E1b: the kind's link rows beyond `node-N*.txt`** (absolute, appended to `kt.links`): every slot's
 /// arena₁ rows (`a1Rows4 κ v (slotB0 κ v)`: row `v·2^20 + arR1 + e` is `one·(A₁(e) + H(sCell b0 e)) = 0`),
 /// then, for a kind with a previous node, slot 0's replay rows (`repIRowsW rtC1d κ 0`: `p0.spare` with
@@ -720,7 +727,7 @@ pub fn extend_links(kt: &mut mfill::KindTab, k: NK, p0: &mfill::Proto) {
     for v in 0..k.vslots() {
         let b0 = slot_b0(k, v);
         for e in 0..mfill::AR_N {
-            let b = [((one + v * mfill::SLOT + mfill::AR_A1 + e) as u32, F::ONE), (((b0 + e / 4) * 128 + 4 + e % 4) as u32, F::ONE)];
+            let b = [((one + v * mfill::SLOT + mfill::AR_A1 + e) as u32, F::ONE), (mfill::a1_h(b0, e) as u32, F::ONE)];
             l.push_row((v * mfill::SLOT + mfill::AR_R1 + e) as u32, [&a, &b, &[]]);
         }
     }
@@ -734,7 +741,7 @@ pub fn extend_links(kt: &mut mfill::KindTab, k: NK, p0: &mfill::Proto) {
                 fs[m].clear();
                 for t in rg[m] as usize..rg[m + 1] as usize {
                     let c = sp.cells[t] as usize;
-                    let ac = if c < mfill::SLOT { one + c } else { one + vs * mfill::SLOT + (c - mfill::SLOT) };
+                    let ac = spare_cell(one, vs, c);
                     fs[m].push((ac as u32, sp.coef(t)));
                 }
             }
@@ -1447,7 +1454,38 @@ pub fn check(w: &NodeWit, protos: &[mfill::Proto; 2], kt: &mfill::KindTab) -> Ch
             }
         }
     }
+    // P2: the factored rows (`mfill::Ext`), laid out as `extend_links` lays them out
+    if let Some(x) = &kt.ext {
+        let mut bad = |row: usize, ok: bool| {
+            if !ok {
+                ch.link_rows_bad += 1;
+                if ch.first_bad_links.len() < 400 {
+                    ch.first_bad_links.push(row as u32);
+                }
+            }
+        };
+        for v in 0..x.vs {
+            for e in 0..mfill::AR_N {
+                let b = fv(one + v * mfill::SLOT + mfill::AR_A1 + e) + fv(mfill::a1_h(x.a1_b0[v], e));
+                bad(v * mfill::SLOT + mfill::AR_R1 + e, (fv(one) * b).is_zero());
+            }
+        }
+        if x.spare {
+            let sp = &protos[0].spare;
+            for i in 0..sp.len() {
+                let [a, b, c] = sp.eval(i, &|c| fv(spare_cell(one, x.vs, c as usize)));
+                bad(x.vs * mfill::SLOT + sp.idx[i] as usize, a * b == c);
+            }
+        }
+    }
     ch
+}
+
+/// P2: a spare-local cell `c` (frame `c < 2^20`, local `j` at `2^20 + j`) of slot 0's replay rows as an
+/// absolute cell (`extend_links`'s placement).
+#[inline(always)]
+pub fn spare_cell(one: usize, vs: usize, c: usize) -> usize {
+    if c < mfill::SLOT { one + c } else { one + vs * mfill::SLOT + (c - mfill::SLOT) }
 }
 
 /// The general tape compiled for `trace_blocks`: one slot per block position (an input's bit, a

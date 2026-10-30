@@ -296,6 +296,7 @@ impl EqSplit {
 pub fn eval_m(kt: &KindTab, protos: &[Proto; 2], tau: &[F], sigma: &[F]) -> [F; 3] {
     const W: usize = 20; // SLOT = 2^20
     if tau.len() < W || sigma.len() < W || kt.one_cell % SLOT != 0 {
+        assert!(kt.ext.is_none(), "eval_m_ref: a full table");
         return eval_m_ref(kt, protos, tau, sigma);
     }
     // a slot's rows are `v·2^20 + local` and its cells `one + v·2^20 + local` (`one` a multiple of
@@ -334,6 +335,83 @@ pub fn eval_m(kt: &KindTab, protos: &[Proto; 2], tau: &[F], sigma: &[F]) -> [F; 
     let o = links_val(kt, &et, &es);
     for m in 0..3 {
         out[m] += o[m];
+    }
+    if kt.ext.is_some() {
+        let sp = std::sync::OnceLock::new();
+        let o = ext_val(kt, &protos[0], &lt, &ls, &ht, &hs, &es, &sp);
+        for m in 0..3 {
+            out[m] += o[m];
+        }
+    }
+    out
+}
+
+/// P2: the factored rows' (`mfill::Ext`) `(Ã, B̃, C̃)` at `τ = (lt, ht)` (rows), `σ = (ls, hs)` (cells,
+/// `es` their split table): arena₁ slot by slot, slot 0's replay rows from prototype 0's spare sums
+/// (`spare_sums`, shared by every kind through `sp`).
+#[allow(clippy::too_many_arguments)]
+fn ext_val(kt: &KindTab, p0: &Proto, lt: &[F], ls: &[F], ht: &[F], hs: &[F], es: &EqSplit, sp: &std::sync::OnceLock<[[F; 3]; 2]>) -> [F; 3] {
+    use crate::mfill::{a1_h, AR_A1, AR_N, AR_R1};
+    let x = kt.ext.as_ref().unwrap();
+    let ob = kt.one_cell / SLOT;
+    let mut out = [F::ZERO; 3];
+    // arena₁: A = eq(σ, one)·Σ_v ht[v]·Σ_e lt[AR_R1 + e]; B = Σ_v ht[v]·Σ_e lt[AR_R1 + e]·(eq(σ, A₁ cell) + eq(σ, H cell))
+    let lr = &lt[AR_R1..AR_R1 + AR_N];
+    let se = lr.iter().fold(F::ZERO, |a, &y| a + y);
+    let mut hsum = F::ZERO;
+    for v in 0..x.vs {
+        hsum += ht[v];
+        let (b0, c1) = (x.a1_b0[v], hs[ob + v]);
+        let parts = crate::par::map_chunks(AR_N, 1 << 12, |lo, hi| {
+            let (mut a, mut b) = (crate::field::FAcc::default(), crate::field::FAcc::default());
+            for e in lo..hi {
+                a.mac(lr[e], ls[AR_A1 + e]);
+                b.mac(lr[e], es.at(a1_h(b0, e)));
+            }
+            c1 * a.reduce() + b.reduce()
+        });
+        out[1] += ht[v] * parts.into_iter().fold(F::ZERO, |a, y| a + y);
+    }
+    out[0] += es.at(kt.one_cell) * hsum * se;
+    if x.spare {
+        let [fr, lo] = sp.get_or_init(|| spare_sums(p0, lt, ls));
+        let (h, a, b) = (ht[x.vs], hs[ob], hs[ob + x.vs]);
+        for m in 0..3 {
+            out[m] += h * (a * fr[m] + b * lo[m]);
+        }
+    }
+    out
+}
+
+/// P2: prototype 0's spare rows at `(lt, ls)`: `Σ_rows lt[idx]·Σ_terms coef·ls[c]` per matrix, the
+/// frame terms (`c < 2^20`) and the local ones (`ls[c − 2^20]`) apart.
+pub fn spare_sums(p0: &Proto, lt: &[F], ls: &[F]) -> [[F; 3]; 2] {
+    let sp = &p0.spare;
+    let parts = crate::par::map_chunks(sp.len(), 4096, |lo, hi| {
+        let mut o = [[crate::field::FAcc::default(); 3]; 2];
+        for i in lo..hi {
+            let rw = lt[sp.idx[i] as usize];
+            let rg = sp.rng[i];
+            for m in 0..3 {
+                let mut s = [F::ZERO; 2];
+                for t in rg[m] as usize..rg[m + 1] as usize {
+                    let c = sp.cells[t] as usize;
+                    let g = (c >= SLOT) as usize;
+                    s[g] += sp.cmul(t, ls[c - g * SLOT]);
+                }
+                o[0][m].mac(rw, s[0]);
+                o[1][m].mac(rw, s[1]);
+            }
+        }
+        o.map(|q| q.map(|a| a.reduce()))
+    });
+    let mut out = [[F::ZERO; 3]; 2];
+    for o in parts {
+        for g in 0..2 {
+            for m in 0..3 {
+                out[g][m] += o[g][m];
+            }
+        }
     }
     out
 }
@@ -374,6 +452,7 @@ pub fn eval_mx(kts: &[&KindTab; 3], protos: &[Proto; 2], tau: &[F], sigma: &[F])
     assert_eq!(tau.len(), 32);
     let (lt, ls) = (eq_table(&tau[..W]), eq_table(&sigma[..W]));
     let po: [std::sync::OnceLock<[F; 3]>; 2] = [std::sync::OnceLock::new(), std::sync::OnceLock::new()];
+    let spo = std::sync::OnceLock::new();
     let proto_sum = |pi: usize| -> [F; 3] {
         let p = &protos[pi];
         let base = pi * SLOT;
@@ -408,6 +487,7 @@ pub fn eval_mx(kts: &[&KindTab; 3], protos: &[Proto; 2], tau: &[F], sigma: &[F])
         }
         let lm = kt.log_m;
         if kt.one_cell % SLOT != 0 {
+            assert!(kt.ext.is_none(), "eval_m_ref: a full table");
             let r = eval_m_ref(kt, protos, &tau[..lm], &sigma[..lm + 2]);
             x += s[0] * r[0] + s[1] * r[1] + s[2] * r[2];
             continue;
@@ -427,6 +507,12 @@ pub fn eval_mx(kts: &[&KindTab; 3], protos: &[Proto; 2], tau: &[F], sigma: &[F])
         for m in 0..3 {
             out[m] += o[m];
         }
+        if kt.ext.is_some() {
+            let o = ext_val(kt, &protos[0], &lt, &ls, &ht, &hs, &es, &spo);
+            for m in 0..3 {
+                out[m] += o[m];
+            }
+        }
         x += s[0] * out[0] + s[1] * out[1] + s[2] * out[2];
     }
     x
@@ -444,7 +530,7 @@ pub fn eval_mx_ref(kts: &[&KindTab; 3], protos: &[Proto; 2], tau: &[F], sigma: &
     x
 }
 
-/// `eval_m` term by term with the split eq tables (the reference).
+/// `eval_m` term by term with the split eq tables (the reference; `kt` a full table).
 pub fn eval_m_ref(kt: &KindTab, protos: &[Proto; 2], tau: &[F], sigma: &[F]) -> [F; 3] {
     let (et, es) = (EqSplit::new(tau), EqSplit::new(sigma));
     let mut out = [F::ZERO; 3];
@@ -529,11 +615,14 @@ mod tests {
             s = s.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
             F::new(s, s.rotate_left(17) ^ 0x55)
         };
-        for k in [NK::N2, NK::N4] {
-            let kt = nd.kind_tab(k);
+        for k in [NK::N2, NK::N4, NK::N8] {
+            // P2: the factored table against the full one (E1b's rows as link rows), term by term
+            let (kt, ktf) = (nd.kind_tab(k), nd.kind_tab_full(k));
             let tau: Vec<F> = (0..k.log_m()).map(|_| rf()).collect();
             let sigma: Vec<F> = (0..k.m() - 7).map(|_| rf()).collect();
-            assert_eq!(eval_m(&kt, &nd.protos, &tau, &sigma), eval_m_ref(&kt, &nd.protos, &tau, &sigma), "{k:?}");
+            let r = eval_m_ref(&ktf, &nd.protos, &tau, &sigma);
+            assert_eq!(eval_m(&kt, &nd.protos, &tau, &sigma), r, "{k:?}");
+            assert_eq!(eval_m(&ktf, &nd.protos, &tau, &sigma), r, "{k:?} (full)");
         }
     }
 
@@ -588,9 +677,15 @@ mod tests {
     /// 32/25-entry points with every support (E1).
     #[test]
     fn eval_mx_matches_ref() {
+        if crate::plan::BLOB.len() < 16 && crate::mfill::find_dirs().is_none() {
+            return;
+        }
         let nd = crate::plan::node_data();
         let kts = nd.kind_tabs();
         let kr = [&*kts[0], &*kts[1], &*kts[2]];
+        // P2: the reference reads the full tables
+        let ktf = [NK::N2, NK::N4, NK::N8].map(|k| nd.kind_tab_full(k));
+        let krf = [&ktf[0], &ktf[1], &ktf[2]];
         let mut s = 0x1234_5678_9abc_def0u64;
         let mut rf = || {
             s = s.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
@@ -604,7 +699,7 @@ mod tests {
                 }
             }
             let sigma: Vec<F> = (0..25).map(|_| rf()).collect();
-            assert_eq!(eval_mx(&kr, &nd.protos, &tau, &sigma), eval_mx_ref(&kr, &nd.protos, &tau, &sigma), "support {sup}");
+            assert_eq!(eval_mx(&kr, &nd.protos, &tau, &sigma), eval_mx_ref(&krf, &nd.protos, &tau, &sigma), "support {sup}");
         }
     }
 

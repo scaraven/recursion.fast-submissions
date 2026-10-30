@@ -21,7 +21,8 @@ use crate::blake2s::{node_stmt, Digest, TAG_NODE};
 use crate::circuit::{Circuit, BLOCK};
 use crate::field::{FAcc, F};
 use crate::leaf::{self, Times};
-use crate::mfill::{KindTab, Proto, SLOT};
+use crate::mfill::{a1_h, KindTab, Proto, AR_A1, AR_N, AR_R1, SLOT};
+use crate::node::spare_cell;
 use crate::mle::eq_table;
 use crate::node::{NodeWit, FAMS, NK};
 use crate::oracle::Oracle;
@@ -111,8 +112,39 @@ impl Mats<'_> {
                 }
             });
         }
+        // P2: the arena₁ rows and slot 0's replay rows by their structure
+        if let Some(x) = &self.kt.ext {
+            let fo = f[one];
+            for v in 0..x.vs {
+                let (r, b0, lc) = (v * SLOT + AR_R1, x.a1_b0[v], one + v * SLOT + AR_A1);
+                out[0][r..r + AR_N].fill(fo);
+                par::for_each_chunk_mut(&mut out[1][r..r + AR_N], 1 << 12, |o, ch| ch.iter_mut().enumerate().for_each(|(i, y)| *y = f[lc + o + i] + f[a1_h(b0, o + i)]));
+            }
+            if x.spare {
+                let (sp, vs) = (&self.protos[0].spare, x.vs);
+                par::map_chunks(sp.len(), 4096, |lo, hi| {
+                    let ptrs = &ptrs;
+                    for i in lo..hi {
+                        let row = vs * SLOT + sp.idx[i] as usize;
+                        let rg = sp.rng[i];
+                        for m in 0..3 {
+                            let (mut acc, mut s1) = (FAcc::default(), F::ZERO);
+                            for t in rg[m] as usize..rg[m + 1] as usize {
+                                let y = f[spare_cell(one, vs, sp.cells[t] as usize)];
+                                match sp.coefs[t] {
+                                    crate::mfill::ONE_IX => s1 += y,
+                                    c => acc.mac(sp.cv[c as usize], y),
+                                }
+                            }
+                            // SAFETY: the spare rows are distinct (`spare_ix`) and in the spare slot
+                            unsafe { *ptrs[m].0.add(row) = acc.reduce() + s1 };
+                        }
+                    }
+                });
+            }
+        }
         let l = &self.kt.links;
-        // the link rows in parallel (E1b: the arena₁ and slot 0's replay rows made them ≈ 1.3 M)
+        // the link rows in parallel (`node-N*.txt`'s; a full table's also E1b's rows)
         let lv = self.kt.links_eval(&|c| f[c]);
         for (i, v) in lv.iter().enumerate() {
             for m in 0..3 {
@@ -170,6 +202,33 @@ impl Mats<'_> {
             }
         });
         self.links_scatter(e, s, w);
+        self.ext_scatter(e, s, w);
+    }
+
+    /// P2: the factored rows' part of `m_scatter` (row by row; the debug check and the test).
+    fn ext_scatter(&self, e: &[F], s: [F; 3], w: &mut [F]) {
+        let Some(x) = &self.kt.ext else { return };
+        let one = self.kt.one_cell;
+        for v in 0..x.vs {
+            for i in 0..AR_N {
+                let r = e[v * SLOT + AR_R1 + i];
+                w[one] += s[0] * r;
+                w[one + v * SLOT + AR_A1 + i] += s[1] * r;
+                w[a1_h(x.a1_b0[v], i)] += s[1] * r;
+            }
+        }
+        if x.spare {
+            let sp = &self.protos[0].spare;
+            for i in 0..sp.len() {
+                let r = e[x.vs * SLOT + sp.idx[i] as usize];
+                let rg = sp.rng[i];
+                for m in 0..3 {
+                    for t in rg[m] as usize..rg[m + 1] as usize {
+                        w[spare_cell(one, x.vs, sp.cells[t] as usize)] += r * s[m] * sp.coef(t);
+                    }
+                }
+            }
+        }
     }
 
     /// The link rows' part of `m_scatter`.
@@ -184,8 +243,9 @@ impl Mats<'_> {
     }
 
     /// `m_scatter` row by row (pass 12's; slots in parallel: their cells are disjoint; the link rows
-    /// after). The reference.
+    /// after). The reference (P2: of a full table).
     pub fn m_scatter_ref(&self, e: &[F], s: [F; 3], w: &mut [F]) {
+        assert!(self.kt.ext.is_none(), "m_scatter_ref: a full table");
         let one = self.kt.one_cell;
         let nslots = self.kt.slots.len();
         let wp = par::SyncPtr(w.as_mut_ptr());
@@ -333,11 +393,49 @@ fn zc_abc(r: &[F], a: Vec<F>, b: Vec<F>, c: Option<Vec<F>>, claim0: F, step: &mu
     (xs, v)
 }
 
+/// The extra product of `zc_abc_x`: `P = η·eq(p, ·)` in closed form (P2: never a table) and `Q`.
+struct EqProd {
+    p: Vec<F>,
+    pre: F,
+    q: Vec<F>,
+}
+
+impl EqProd {
+    /// Round `k`'s message `(g(0), g(1), g(∞))` of `Σ_x P(x) Q(x)` with `P = pre·eq(p[k..], ·)`:
+    /// `pre·((1 + p_k) D₀, p_k D₁, D₀ + D₁)`, `D_b = Σ_i eq(p[k+1..], i) Q(2i + b)` (the split eq table's
+    /// low half doubled, `lo2[2l] = lo2[2l + 1] = lo[l]`, so that `round_ff(Q, lo2)` gives `(D₀, D₁, 0)`
+    /// per high block). The same message as `msg_pairs` on `P`'s table.
+    fn msg(&self, k: usize) -> [F; 3] {
+        let es = zerocheck::EqSplit::new(&self.p[k + 1..]);
+        let lo2: Vec<F> = es.lo.iter().flat_map(|&x| [x, x]).collect();
+        let bl = lo2.len();
+        let q = &self.q;
+        let parts = par::map_chunks(es.hi.len(), 1, |lo, hi| {
+            let (mut d0, mut d1) = (FAcc::default(), FAcc::default());
+            for h in lo..hi {
+                let r = crate::simd::round_ff(&q[h * bl..(h + 1) * bl], &lo2);
+                d0.mac(es.hi[h], r[0]);
+                d1.mac(es.hi[h], r[1]);
+            }
+            (d0.reduce(), d1.reduce())
+        });
+        let (d0, d1) = parts.into_iter().fold((F::ZERO, F::ZERO), |a, x| (a.0 + x.0, a.1 + x.1));
+        let pk = self.p[k];
+        [self.pre * (F::ONE + pk) * d0, self.pre * pk * d1, self.pre * (d0 + d1)]
+    }
+    /// Bind variable `k` at `x`.
+    fn fold(&mut self, k: usize, x: F) {
+        let pk = self.p[k];
+        self.pre *= (F::ONE + pk) * (F::ONE + x) + pk * x;
+        self.q = crate::sumcheck::fold_f(&self.q, x);
+    }
+}
+
 /// `zc_abc` plus an extra degree-2 product `Σ_x P(x) Q(x)` (RSV2's E2: `P = η·eq(p_x, ·)`, `Q` the
 /// child claim's table minus `X`) in the same rounds: each message is the sum of both parts' (the
 /// verifier completes `c₃` from the total claim). Also returns the extra pair's final `(P, Q)`.
 #[allow(clippy::type_complexity)]
-fn zc_abc_x(r: &[F], mut a: Vec<F>, mut b: Vec<F>, mut c: Option<Vec<F>>, claim0: F, mut extra: Option<(Vec<F>, Vec<F>)>, step: &mut dyn FnMut([F; 3]) -> F) -> (Vec<F>, [F; 3], (F, F)) {
+fn zc_abc_x(r: &[F], mut a: Vec<F>, mut b: Vec<F>, mut c: Option<Vec<F>>, claim0: F, mut extra: Option<EqProd>, step: &mut dyn FnMut([F; 3]) -> F) -> (Vec<F>, [F; 3], (F, F)) {
     let n = r.len();
     assert_eq!(a.len(), 1 << n);
     let mut claim = claim0;
@@ -370,8 +468,8 @@ fn zc_abc_x(r: &[F], mut a: Vec<F>, mut b: Vec<F>, mut c: Option<Vec<F>>, claim0
         }
         let h0 = zerocheck::h0_from_claim(claim, r[kk], h1);
         let mut msg = zerocheck::zc_coeffs(pref, r[kk], h0, h1, hi);
-        if let Some((p, q)) = &extra {
-            let g = coeffs_f(crate::sumcheck::msg_pairs(&[(&p[..], &q[..])]));
+        if let Some(e) = &extra {
+            let g = coeffs_f(e.msg(kk));
             for j in 0..3 {
                 msg[j] += g[j];
             }
@@ -385,14 +483,13 @@ fn zc_abc_x(r: &[F], mut a: Vec<F>, mut b: Vec<F>, mut c: Option<Vec<F>>, claim0
         if let Some(cc) = c.as_mut() {
             *cc = crate::sumcheck::fold_f_sparse(cc, x);
         }
-        if let Some((p, q)) = extra.as_mut() {
-            *p = crate::sumcheck::fold_f(p, x);
-            *q = crate::sumcheck::fold_f(q, x);
+        if let Some(e) = extra.as_mut() {
+            e.fold(kk, x);
         }
     }
     let cv = c.map(|c| c[0]).unwrap_or(F::ZERO);
     assert_eq!(claim, a[0] * b[0] + cv);
-    (xs, [a[0], b[0], cv], extra.map(|(p, q)| (p[0], q[0])).unwrap_or((F::ZERO, F::ZERO)))
+    (xs, [a[0], b[0], cv], extra.map(|e| (e.pre, e.q[0])).unwrap_or((F::ZERO, F::ZERO)))
 }
 
 /// **`FRVerifierC4.rsvRel`**: the 60 M-relative cells (prototype 0, the previous node's slot) of the
@@ -478,9 +575,16 @@ fn proto_scatter(p: &Proto, elo: &[F]) -> [Vec<F>; 3] {
     out
 }
 
-/// `Σ_m s_m·V_m` elementwise.
+/// `Σ_m s_m·V_m` elementwise (P2: by the vector kernel `axpy`).
 fn comb3(v: &[Vec<F>; 3], s: &[F]) -> Vec<F> {
-    par::collect_vec(v[0].len(), 1 << 14, |i| s[0] * v[0][i] + s[1] * v[1][i] + s[2] * v[2][i])
+    let mut out: Vec<F> = par::uninit_vec(v[0].len());
+    par::for_each_chunk_mut(&mut out, 1 << 14, |o, ch| {
+        ch.fill(F::ZERO);
+        for m in 0..3 {
+            crate::simd::axpy(ch, &v[m][o..o + ch.len()], s[m]);
+        }
+    });
+    out
 }
 
 /// Where entry `pos` of a kind's table of `kl` entries lands in the parent's `n` (RSV2's constant
@@ -528,7 +632,7 @@ fn add_run(d: &mut [F], kl: usize, off: usize, c: F, v: &[F], p: F) {
             continue;
         }
         let cw = c * w;
-        par::for_each_chunk_mut(&mut d[pos..pos + v.len()], 1 << 14, |o, ch| ch.iter_mut().enumerate().for_each(|(i, x)| *x += cw * v[o + i]));
+        par::for_each_chunk_mut(&mut d[pos..pos + v.len()], 1 << 14, |o, ch| crate::simd::axpy(ch, &v[o..o + ch.len()], cw));
     }
 }
 
@@ -536,11 +640,13 @@ fn add_run(d: &mut [F], kl: usize, off: usize, c: F, v: &[F], p: F) {
 /// kind is read at its own `logM κ` row and `logM κ + 2` column coordinates (a kind with more rows is
 /// folded at `p_x[n]`, one with fewer is constant in the top coordinate). Factorized: slot `v`'s rows
 /// are `eq(p_y[20..], one/2^20 + v)·U_π` (`proto_matvec` at `eq(p_y[<20])`, once per prototype for every
-/// kind), plus the kind's link rows.
+/// kind), then (P2) the kind's arena₁ rows slot by slot and slot 0's replay rows from prototype 0's
+/// spare sums (`spare_matvec`, once for every kind), then its link rows.
 fn child_rows(kts: &[&KindTab; 3], protos: &[Proto; 2], px: &[F], py: &[F], s: &[F], n: usize) -> Vec<F> {
     let mut d = vec![F::ZERO; 1 << n];
     let elo = eq_table(&py[..20]);
     let us: [std::sync::OnceLock<[Vec<F>; 3]>; 2] = [std::sync::OnceLock::new(), std::sync::OnceLock::new()];
+    let usp: std::sync::OnceLock<[[Vec<F>; 3]; 2]> = std::sync::OnceLock::new();
     let p = px.get(n).copied().unwrap_or(F::ZERO);
     for (kk, kt) in kts.iter().enumerate() {
         let sk = &s[3 * kk..3 * kk + 3];
@@ -550,11 +656,36 @@ fn child_rows(kts: &[&KindTab; 3], protos: &[Proto; 2], px: &[F], py: &[F], s: &
         let kl = 1usize << kt.log_m;
         let hs = eq_table(&py[20..kt.log_m + 2]);
         let ob = kt.one_cell / SLOT;
-        let cb: [Option<Vec<F>>; 2] = [0, 1].map(|pi| kt.slots.iter().any(|sl| sl.0 == pi).then(|| comb3(us[pi].get_or_init(|| proto_matvec(&protos[pi], &elo)), sk)));
+        for pi in 0..2 {
+            if kt.slots.iter().any(|sl| sl.0 == pi) {
+                let _sp = crate::prof::span("cr.proto");
+                us[pi].get_or_init(|| proto_matvec(&protos[pi], &elo));
+            }
+        }
+        let sp = crate::prof::span("cr.runs");
+        let cb: [Option<Vec<F>>; 2] = [0, 1].map(|pi| kt.slots.iter().any(|sl| sl.0 == pi).then(|| comb3(us[pi].get().unwrap(), sk)));
         for (v, sl) in kt.slots.iter().enumerate() {
             add_run(&mut d, kl, v * SLOT, hs[ob + v], cb[sl.0].as_ref().unwrap(), p);
         }
+        drop(sp);
         let es = crate::nodeops::EqSplit::new(&py[..kt.log_m + 2]);
+        if let Some(x) = &kt.ext {
+            let _sp = crate::prof::span("lk.ext_rows");
+            // arena₁ row `v·2^20 + AR_R1 + e`: `s₀·eq(p_y, one) + s₁·(eq(p_y, A₁ cell) + eq(p_y, H cell))`
+            let c0 = sk[0] * es.at(kt.one_cell);
+            for v in 0..x.vs {
+                let (c1, b0) = (sk[1] * hs[ob + v], x.a1_b0[v]);
+                let val: Vec<F> = par::collect_vec(AR_N, 1 << 12, |e| c0 + c1 * elo[AR_A1 + e] + sk[1] * es.at(a1_h(b0, e)));
+                add_run(&mut d, kl, v * SLOT + AR_R1, F::ONE, &val, p);
+            }
+            if x.spare {
+                let ix = protos[0].spare_ix();
+                let [fr, lo] = usp.get_or_init(|| spare_matvec(&protos[0], &elo));
+                let (a, b) = (sk.iter().map(|&y| y * hs[ob]).collect::<Vec<F>>(), sk.iter().map(|&y| y * hs[ob + x.vs]).collect::<Vec<F>>());
+                let val: Vec<F> = par::collect_vec(ix.nr, 1 << 12, |l| a[0] * fr[0][l] + a[1] * fr[1][l] + a[2] * fr[2][l] + b[0] * lo[0][l] + b[1] * lo[1][l] + b[2] * lo[2][l]);
+                add_run(&mut d, kl, x.vs * SLOT + ix.r0, F::ONE, &val, p);
+            }
+        }
         let l = &kt.links;
         let sp = crate::prof::span("lk.eval");
         let lv = kt.links_eval(&|c| es.at(c));
@@ -565,26 +696,108 @@ fn child_rows(kts: &[&KindTab; 3], protos: &[Proto; 2], px: &[F], py: &[F], s: &
     d
 }
 
+/// P2: prototype 0's spare rows at the column table `elo` (`eq(·_{<20})`), per matrix, over their local
+/// row span (`SpareIx`): the frame terms (`elo[c]`) and the local ones (`elo[c − 2^20]`) apart.
+fn spare_matvec(p0: &Proto, elo: &[F]) -> [[Vec<F>; 3]; 2] {
+    let (sp, ix) = (&p0.spare, p0.spare_ix());
+    let mut out: [[Vec<F>; 3]; 2] = std::array::from_fn(|_| std::array::from_fn(|_| vec![F::ZERO; ix.nr]));
+    let ptrs: [[par::SyncPtr<F>; 3]; 2] = std::array::from_fn(|g| std::array::from_fn(|m| par::SyncPtr(out[g][m].as_mut_ptr())));
+    par::map_chunks(sp.len(), 4096, |lo, hi| {
+        let ptrs = &ptrs;
+        for i in lo..hi {
+            let row = sp.idx[i] as usize - ix.r0;
+            let rg = sp.rng[i];
+            for m in 0..3 {
+                let (mut acc, mut s1) = ([FAcc::default(); 2], [F::ZERO; 2]);
+                for t in rg[m] as usize..rg[m + 1] as usize {
+                    let c = sp.cells[t] as usize;
+                    let g = (c >= SLOT) as usize;
+                    let y = elo[c - g * SLOT];
+                    match sp.coefs[t] {
+                        crate::mfill::ONE_IX => s1[g] += y,
+                        q => acc[g].mac(sp.cv[q as usize], y),
+                    }
+                }
+                for g in 0..2 {
+                    // SAFETY: the spare rows are distinct (`spare_ix`)
+                    unsafe { *ptrs[g][m].0.add(row) = acc[g].reduce() + s1[g] };
+                }
+            }
+        }
+    });
+    out
+}
+
+/// E4's prototype tables at `eq(r_E2[<20])`: `T_π` (`proto_scatter`) per prototype read, and (P2)
+/// prototype 0's spare columns (`cols3` per distinct spare cell) when a kind read has them.
+struct E4Tabs<'a> {
+    elo: &'a [F],
+    ts: [Option<[Vec<F>; 3]>; 2],
+    tsp: Option<Vec<[F; 3]>>,
+    p0: &'a Proto,
+}
+
 /// The own kind's `W_M(r_E2) = Σ_{rows} eq(r_E2, row)·(s₀A + s₁B + s₂C)(row, ·)` into `w` (`m_scatter`'s
-/// value): slot `v`'s cells are `eq(r_E2[20..], v)·Σ_m s_m T_{π,m}`, then the link rows.
-fn own_w_m(kt: &KindTab, ts: &[Option<[Vec<F>; 3]>; 2], r_e2: &[F], s: [F; 3], w: &mut [F]) {
-    add_cols(kt, ts, r_e2, &s, w, F::ZERO);
+/// value): slot `v`'s cells are `eq(r_E2[20..], v)·Σ_m s_m T_{π,m}`, then the factored and the link rows.
+fn own_w_m(kt: &KindTab, tb: &E4Tabs, r_e2: &[F], s: [F; 3], w: &mut [F]) {
+    add_cols(kt, tb, r_e2, &s, w, F::ZERO);
 }
 
 /// `w[land(cell)] += Σ_rows eq(xh[<logM], row)·(Σ_m s_m M_m)(row, cell)` over a kind's rows (slot by
-/// slot from `T_π = proto_scatter(eq(xh[<20]))`, then its link rows), landed in `w`'s cell space.
-fn add_cols(kt: &KindTab, ts: &[Option<[Vec<F>; 3]>; 2], xh: &[F], s: &[F], w: &mut [F], p: F) {
+/// slot from `T_π = proto_scatter(eq(xh[<20]))`; P2: the arena₁ rows slot by slot, slot 0's replay
+/// rows from the spare columns; then its link rows), landed in `w`'s cell space.
+fn add_cols(kt: &KindTab, tb: &E4Tabs, xh: &[F], s: &[F], w: &mut [F], p: F) {
     let kl = 1usize << (kt.log_m + 2);
     let ht = eq_table(&xh[20..kt.log_m]);
-    let cb: [Option<Vec<F>>; 2] = [0, 1].map(|pi| kt.slots.iter().any(|sl| sl.0 == pi).then(|| comb3(ts[pi].as_ref().unwrap(), s)));
+    let sp = crate::prof::span("lk.comb3");
+    let cb: [Option<Vec<F>>; 2] = [0, 1].map(|pi| kt.slots.iter().any(|sl| sl.0 == pi).then(|| comb3(tb.ts[pi].as_ref().unwrap(), s)));
+    drop(sp);
     let sp = crate::prof::span("lk.protorun");
     for (v, sl) in kt.slots.iter().enumerate() {
         add_run(w, kl, kt.one_cell + v * SLOT, ht[v], cb[sl.0].as_ref().unwrap(), p);
     }
     drop(sp);
+    if let Some(x) = &kt.ext {
+        let _sp = crate::prof::span("lk.ext_cols");
+        let one = kt.one_cell;
+        // arena₁: row weight `ht[v]·elo[AR_R1 + e]`; A the one cell, B the A₁ and the H cell
+        let er = &tb.elo[AR_R1..AR_R1 + AR_N];
+        let se = er.iter().fold(F::ZERO, |a, &y| a + y);
+        let hsum = (0..x.vs).fold(F::ZERO, |a, v| a + ht[v]);
+        let nw = w.len();
+        for (pos, wt) in land(nw, kl, one, p) {
+            if pos != usize::MAX {
+                w[pos] += wt * s[0] * hsum * se;
+            }
+        }
+        for v in 0..x.vs {
+            let c = s[1] * ht[v];
+            add_run(w, kl, one + v * SLOT + AR_A1, c, er, p);
+            let b0 = x.a1_b0[v];
+            // a slot's H cells are distinct and span < 2^22 cells, so their landings are distinct
+            let wp = par::SyncPtr(w.as_mut_ptr());
+            par::map_chunks(AR_N, 1 << 12, |lo, hi| {
+                let wp = &wp;
+                for e in lo..hi {
+                    let y = c * er[e];
+                    for (pos, wt) in land(nw, kl, a1_h(b0, e), p) {
+                        if pos != usize::MAX {
+                            // SAFETY: distinct positions (above)
+                            unsafe { *wp.0.add(pos) += wt * y };
+                        }
+                    }
+                }
+            });
+        }
+        if x.spare {
+            let (ix, t) = (tb.p0.spare_ix(), tb.tsp.as_ref().unwrap());
+            let cs: Vec<F> = s.iter().map(|&y| y * ht[x.vs]).collect();
+            let cells = &ix.bc.cells;
+            land_items(w, kl, p, cells.len(), &|u| (spare_cell(one, x.vs, cells[u] as usize), cs[0] * t[u][0] + cs[1] * t[u][1] + cs[2] * t[u][2]));
+        }
+    }
     let et = crate::nodeops::EqSplit::new(&xh[..kt.log_m]);
     let l = &kt.links;
-    let n = w.len();
     // by cell, in parallel (E1b), then landed
     let sp = crate::prof::span("lk.bycell");
     let _ = kt.links_by_cell();
@@ -597,13 +810,12 @@ fn add_cols(kt: &KindTab, ts: &[Option<[Vec<F>; 3]>; 2], xh: &[F], s: &[F], w: &
     drop(sp);
     let _sp = crate::prof::span("lk.land");
     let cells = &kt.links_by_cell().cells;
-    let _ = n;
     land_items(w, kl, p, cells.len(), &|u| (cells[u] as usize, v[u]));
 }
 
 /// `Σ_{κ,m} s_{κ,m}·M̃_{κ,m}(x̂, y ‖ p_y[n, 25))` over the parent's `2^n` cells `y` (E4's child term,
-/// `ts` shared with the own scatter).
-fn child_cols(kts: &[&KindTab; 3], ts: &[Option<[Vec<F>; 3]>; 2], xh: &[F], py: &[F], s: &[F], n: usize) -> Vec<F> {
+/// `tb` shared with the own scatter).
+fn child_cols(kts: &[&KindTab; 3], tb: &E4Tabs, xh: &[F], py: &[F], s: &[F], n: usize) -> Vec<F> {
     let mut g: Vec<F> = par::uninit_vec(1 << n);
     par::for_each_chunk_mut(&mut g, 1 << 16, |_, c| c.fill(F::ZERO));
     let p = py.get(n).copied().unwrap_or(F::ZERO);
@@ -611,7 +823,7 @@ fn child_cols(kts: &[&KindTab; 3], ts: &[Option<[Vec<F>; 3]>; 2], xh: &[F], py: 
         let sk = &s[3 * kk..3 * kk + 3];
         if !sk.iter().all(|x| x.is_zero()) {
             let _sp = crate::prof::span(["cc.N2", "cc.N4", "cc.N8"][kk]);
-            add_cols(kt, ts, xh, sk, &mut g, p);
+            add_cols(kt, tb, xh, sk, &mut g, p);
         }
     }
     g
@@ -840,8 +1052,7 @@ pub fn prove(o: &dyn Oracle, ni: &NodeIn) -> (Vec<u8>, Times) {
     let extra = child.then(|| {
         let mut d = child_rows(&ni.kts, ni.mats.protos, px, py, sc, lm);
         par::for_each_chunk_mut(&mut d, 1 << 14, |_, ch| ch.iter_mut().for_each(|x| *x += xc));
-        let e = crate::mle::eq_table_scaled(&px[..lm], eta);
-        (e, d)
+        EqProd { p: px[..lm].to_vec(), pre: eta, q: d }
     });
     drop(sp);
     wr.fs.phase = "E2";
@@ -864,9 +1075,16 @@ pub fn prove(o: &dyn Oracle, ni: &NodeIn) -> (Vec<u8>, Times) {
     // `T_π = Σ_l eq(r_E2[<20], l)·M_π(l, ·)` once per prototype the own kind or the child claim reads:
     // the own `W_M(r_E2)` slot by slot from it (`m_scatter`'s value), and E4's child term
     let elo = eq_table(&r_e2[..20]);
-    let used = |pi: usize| ni.mats.kt.slots.iter().any(|sl| sl.0 == pi) || (child && (0..3).any(|kk| !sc[3 * kk..3 * kk + 3].iter().all(|x| x.is_zero()) && ni.kts[kk].slots.iter().any(|sl| sl.0 == pi)));
-    let ts: [Option<[Vec<F>; 3]>; 2] = [0, 1].map(|pi| used(pi).then(|| proto_scatter(&ni.mats.protos[pi], &elo)));
-    own_w_m(ni.mats.kt, &ts, &r_e2, [F::ONE, kap_e, kap_e * kap_e], &mut wt4);
+    let reads = |kk: usize| child && !sc[3 * kk..3 * kk + 3].iter().all(|x| x.is_zero());
+    let used = |pi: usize| ni.mats.kt.slots.iter().any(|sl| sl.0 == pi) || (0..3).any(|kk| reads(kk) && ni.kts[kk].slots.iter().any(|sl| sl.0 == pi));
+    let has_sp = |kt: &KindTab| kt.ext.as_ref().is_some_and(|x| x.spare);
+    let p0 = &ni.mats.protos[0];
+    let tsp = (has_sp(ni.mats.kt) || (0..3).any(|kk| reads(kk) && has_sp(ni.kts[kk]))).then(|| {
+        let (sp, ix) = (&p0.spare, p0.spare_ix());
+        crate::mfill::cols3(sp, &ix.bc, &|i| elo[sp.idx[i] as usize])
+    });
+    let tb = E4Tabs { ts: [0, 1].map(|pi| used(pi).then(|| proto_scatter(&ni.mats.protos[pi], &elo))), tsp, elo: &elo, p0 };
+    own_w_m(ni.mats.kt, &tb, &r_e2, [F::ONE, kap_e, kap_e * kap_e], &mut wt4);
     debug_assert!({
         let mut w2 = vec![F::ZERO; f.len()];
         ni.mats.m_scatter(&eq_table(&r_e2), [F::ONE, kap_e, kap_e * kap_e], &mut w2);
@@ -892,7 +1110,7 @@ pub fn prove(o: &dyn Oracle, ni: &NodeIn) -> (Vec<u8>, Times) {
         let mut xh = r_e2.clone();
         xh.extend_from_slice(&px[lm..]);
         let sp = crate::prof::span("ne4.cc");
-        let g = child_cols(&ni.kts, &ts, &xh, py, sc, ny);
+        let g = child_cols(&ni.kts, &tb, &xh, py, sc, ny);
         drop(sp);
         g
     });
@@ -901,21 +1119,48 @@ pub fn prove(o: &dyn Oracle, ni: &NodeIn) -> (Vec<u8>, Times) {
     let _ = c4;
     // `W` lives on the M slots, the L bits and the one cell: the early rounds skip its zero chunks
     let sp = crate::prof::span("ne4.sumcheck");
+    // the support's chunk size `2^a` (P2: 2^4; `FLOCK_E4_A` for measurements)
+    let a4: usize = std::env::var("FLOCK_E4_A").ok().and_then(|x| x.parse().ok()).unwrap_or(4);
     let mut step4 = |g: [F; 3]| {
         wr.send_f(pp::F_E, &coeffs_f(g));
         wr.fs.chal_f()
     };
     // `G` (the child term) is zero off the child kinds' M cells and link cells, like `W`: both
     // pairs' supports are skipped in the early rounds
+    // `FLOCK_E4_BENCH=a,b,…` (measurements only): the E4 sumcheck on copies of its tables at each
+    // chunk size, with a local challenge chain, timed (best of two) and its outputs compared
+    if let Ok(list) = std::env::var("FLOCK_E4_BENCH") {
+        let mut first: Option<(Vec<F>, Vec<(F, F)>)> = None;
+        for a in list.split(',').filter_map(|x| x.parse::<usize>().ok()) {
+            let mut best = f64::MAX;
+            for _ in 0..2 {
+                let mut x = F::new(0x5a5a, 0xa5a5);
+                let mut ch = |g: [F; 3]| {
+                    x = x * x + g[0] + g[1] + g[2];
+                    x
+                };
+                let ps = match &extra4 { None => vec![wt4.clone()], Some(g) => vec![wt4.clone(), g.clone()] };
+                let qs: Vec<crate::sumcheck::Q> = if extra4.is_some() { vec![crate::sumcheck::Q::Tab(f), crate::sumcheck::Q::Eq(&py[..m - 7], k4)] } else { vec![crate::sumcheck::Q::Tab(f)] };
+                let t = Instant::now();
+                let r = crate::sumcheck::prove_pairs_support(ps, &qs, a, &mut ch);
+                best = best.min(t.elapsed().as_secs_f64());
+                match &first {
+                    None => first = Some(r),
+                    Some(f0) => assert!(*f0 == r, "E4 bench: a = {a} differs"),
+                }
+            }
+            eprintln!("E4-BENCH {} a={a} {best:.3}s {}", k.name(), if crate::prof::on() { crate::prof::report() } else { String::new() });
+        }
+    }
     let (r4, fhat) = match extra4.take() {
         None => {
-            let (r4, (_, fhat)) = crate::sumcheck::prove_pair_support(wt4, f, 12, &mut step4);
+            let (r4, (_, fhat)) = crate::sumcheck::prove_pair_support(wt4, f, a4, &mut step4);
             (r4, fhat)
         }
         Some(g) => {
             // the child term `G·κ_E⁴·eq(p_y[<n], ·)`, its eq side in closed form
             let qs = [crate::sumcheck::Q::Tab(f), crate::sumcheck::Q::Eq(&py[..m - 7], k4)];
-            let (r4, fin) = crate::sumcheck::prove_pairs_support(vec![wt4, g], &qs, 12, &mut step4);
+            let (r4, fin) = crate::sumcheck::prove_pairs_support(vec![wt4, g], &qs, a4, &mut step4);
             (r4, fin[0].1)
         }
     };
@@ -1114,16 +1359,17 @@ mod pass13_tests {
             st
         };
         for k in [node::NK::N2, node::NK::N4] {
-            let kt = nd.kind_tab(k);
+            // P2: the factored table's gather against the full table's reference
+            let (kt, ktf) = (nd.kind_tab(k), nd.kind_tab_full(k));
             let mats = Mats { k, kt: &kt, protos: &nd.protos };
             let nm = 1usize << k.log_m();
             let e: Vec<F> = (0..nm).map(|i| if (i >> 12) % 5 == 3 { F::ZERO } else { F::new(nx(), nx()) }).collect();
             let s = [F::ONE, F::new(nx(), nx()), F::new(nx(), nx())];
-            let ncell = (kt.one_cell + kt.slots.len() * SLOT).max(kt.links.cells.iter().map(|&c| c as usize + 1).max().unwrap_or(0));
+            let ncell = (ktf.one_cell + (ktf.slots.len() + 1) * SLOT).max(ktf.links.cells.iter().map(|&c| c as usize + 1).max().unwrap_or(0));
             let w0: Vec<F> = (0..ncell).map(|i| if i % 3 == 0 { F::new(nx(), 0) } else { F::ZERO }).collect();
             let (mut w1, mut w2) = (w0.clone(), w0.clone());
             mats.m_scatter(&e, s, &mut w1);
-            mats.m_scatter_ref(&e, s, &mut w2);
+            Mats { k, kt: &ktf, protos: &nd.protos }.m_scatter_ref(&e, s, &mut w2);
             assert!(w1 == w2, "{k:?}: m_scatter");
             let f: Vec<F> = (0..ncell).map(|i| if (i >> 10) % 7 == 1 { F::ZERO } else { F::new(nx(), nx()) }).collect();
             let mv = mats.m_matvec(&f);
@@ -1137,6 +1383,109 @@ mod pass13_tests {
                     assert!((0..3).all(|m| mv[m][row] == o[m]), "{k:?}: m_matvec row {row}");
                 }
             }
+        }
+    }
+}
+
+/// P2: the factored rows (`mfill::Ext`) against the full tables (E1b's rows as link rows), on the
+/// node data at pseudo-random points: E2's `m_matvec` and child table, E4's own `W_M` and child
+/// columns, for an `N4` and an `N2` parent with every child kind read. Returns the times (best of
+/// `reps`, full then factored) and whether every output is equal.
+pub fn ext_ab(reps: usize) -> (Vec<(&'static str, f64, f64)>, bool) {
+    use crate::node::NK;
+    let nd = crate::plan::node_data();
+    let t = Instant::now();
+    let kf: Vec<KindTab> = par::collect_vec(3, 1, |i| {
+        let kt = nd.kind_tab_full([NK::N2, NK::N4, NK::N8][i]);
+        let _ = kt.links_by_cell();
+        kt
+    });
+    let t_full = t.elapsed().as_secs_f64();
+    let t = Instant::now();
+    let kn = nd.kind_tabs();
+    let t_new = t.elapsed().as_secs_f64();
+    let mut st = 0x9e37_79b9_7f4a_7c15u64;
+    let mut rf = move || {
+        st ^= st << 13;
+        st ^= st >> 7;
+        st ^= st << 17;
+        F::new(st, st.rotate_left(23) ^ 0x3c)
+    };
+    let mut res: Vec<(&'static str, f64, f64)> = vec![("kind_tabs", t_full, t_new)];
+    let mut eq_all = true;
+    for k in [NK::N4, NK::N2] {
+        let lm = k.log_m();
+        let ncell = 1usize << (k.m() - 7);
+        let f: Vec<F> = par::collect_vec(ncell, 1 << 14, |i| F::new((i as u64).wrapping_mul(0x9e37_79b9_7f4a_7c15) ^ 0x1234, (i as u64).rotate_left(31) ^ 0xab));
+        let px: Vec<F> = (0..23).map(|_| rf()).collect();
+        let py: Vec<F> = (0..25).map(|_| rf()).collect();
+        let sc: Vec<F> = (0..9).map(|_| rf()).collect();
+        let r_e2: Vec<F> = (0..lm).map(|_| rf()).collect();
+        let s3 = [F::ONE, rf(), rf()];
+        let mut xh = r_e2.clone();
+        xh.extend_from_slice(&px[lm..]);
+        let elo = eq_table(&r_e2[..20]);
+        let mut outs: [Vec<Vec<F>>; 2] = [Vec::new(), Vec::new()];
+        let mut best = [[f64::MAX; 2]; 4];
+        for _ in 0..reps {
+            for (j, kts) in [[&kf[0], &kf[1], &kf[2]], [&*kn[0], &*kn[1], &*kn[2]]].iter().enumerate() {
+                let kt = kts[k as usize];
+                let mats = Mats { k, kt, protos: &nd.protos };
+                let t = Instant::now();
+                let mv = mats.m_matvec(&f);
+                best[0][j] = best[0][j].min(t.elapsed().as_secs_f64());
+                let t = Instant::now();
+                let d = child_rows(kts, &nd.protos, &px, &py, &sc, lm);
+                best[1][j] = best[1][j].min(t.elapsed().as_secs_f64());
+                let t = Instant::now();
+                let p0 = &nd.protos[0];
+                let has_sp = |kt: &KindTab| kt.ext.as_ref().is_some_and(|x| x.spare);
+                let tsp = (has_sp(kt) || kts.iter().any(|kt| has_sp(kt))).then(|| crate::mfill::cols3(&p0.spare, &p0.spare_ix().bc, &|i| elo[p0.spare.idx[i] as usize]));
+                let sp = crate::prof::span("b.proto_scatter");
+                let ts = [0, 1].map(|pi| Some(proto_scatter(&nd.protos[pi], &elo)));
+                drop(sp);
+                let tb = E4Tabs { ts, tsp, elo: &elo, p0 };
+                let mut w = vec![F::ZERO; ncell];
+                own_w_m(kt, &tb, &r_e2, s3, &mut w);
+                best[2][j] = best[2][j].min(t.elapsed().as_secs_f64());
+                let t = Instant::now();
+                let g = child_cols(kts, &tb, &xh, &py, &sc, k.m() - 7);
+                best[3][j] = best[3][j].min(t.elapsed().as_secs_f64());
+                outs[j] = vec![mv[0].clone(), mv[1].clone(), mv[2].clone(), d, w, g];
+            }
+        }
+        eq_all &= outs[0] == outs[1];
+        let nm = if k == NK::N4 { ["N4 m_matvec", "N4 child_rows", "N4 own_w_m+T", "N4 child_cols"] } else { ["N2 m_matvec", "N2 child_rows", "N2 own_w_m+T", "N2 child_cols"] };
+        for i in 0..4 {
+            res.push((nm[i], best[i][0], best[i][1]));
+        }
+    }
+    (res, eq_all)
+}
+
+#[cfg(test)]
+mod p2_tests {
+    /// (P2) The factored rows give E2's and E4's tables exactly as the full tables do (N4 and N2
+    /// parents, every child kind read), and `m_scatter` (the gather, with the factored rows) equals
+    /// `m_scatter_ref` on the full table.
+    #[test]
+    fn ext_matches_full() {
+        if crate::plan::BLOB.len() < 16 && crate::mfill::find_dirs().is_none() {
+            return;
+        }
+        let (_, ok) = super::ext_ab(1);
+        assert!(ok);
+        let nd = crate::plan::node_data();
+        for k in [crate::node::NK::N2, crate::node::NK::N4, crate::node::NK::N8] {
+            let (kt, ktf) = (nd.kind_tab(k), nd.kind_tab_full(k));
+            let nm = 1usize << k.log_m();
+            let e: Vec<super::F> = (0..nm).map(|i| if (i >> 12) % 5 == 3 { super::F::ZERO } else { super::F::new(i as u64 * 31 + 7, i as u64 ^ 0x77) }).collect();
+            let s = [super::F::ONE, super::F::new(5, 9), super::F::new(11, 3)];
+            let ncell = 1usize << (k.m() - 7);
+            let (mut w1, mut w2) = (vec![super::F::ZERO; ncell], vec![super::F::ZERO; ncell]);
+            super::Mats { k, kt: &kt, protos: &nd.protos }.m_scatter(&e, s, &mut w1);
+            super::Mats { k, kt: &ktf, protos: &nd.protos }.m_scatter_ref(&e, s, &mut w2);
+            assert!(w1 == w2, "{k:?}: m_scatter");
         }
     }
 }

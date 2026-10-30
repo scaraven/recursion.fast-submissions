@@ -733,6 +733,17 @@ fn main() {
         "bench-k" => bench::run_k(),
         "bench-nd" => bench::run_nd(args.get(2).map(|s| s.as_str()).unwrap_or(".")),
         "bench-rs" => bench::run_rs(args.get(2).and_then(|x| x.parse().ok()).unwrap_or(32)),
+        "bench-ext" => {
+            // P2: the factored rows against the full tables (E2/E4 parts and the kind tables)
+            let (r, ok) = nodeprove::ext_ab(reps.max(1));
+            for (n, a, b) in r {
+                println!("BENCH ext {n}: full {a:.3}s factored {b:.3}s");
+            }
+            println!("BENCH ext equal={ok}");
+            if crate::prof::on() {
+                println!("BENCH ext prof {}", crate::prof::report());
+            }
+        }
         "selftest" => match simd::selftest() {
             Ok(s) => println!("SELFTEST pass {s}"),
             Err(e) => {

@@ -67,16 +67,21 @@ impl Pre {
         let sp = crate::prof::span("pre.node_data");
         let nd = plan::node_data();
         drop(sp);
-        let sp = crate::prof::span("pre.kind_tabs");
-        let kts = plan::kind_tabs_static().clone();
-        drop(sp);
-        // the solve orders `prover setup` recorded, else the inactive ones now
-        let sp = crate::prof::span("pre.load_plans");
-        load_setup_plans(nd);
-        drop(sp);
-        let sp = crate::prof::span("pre.warm_plans");
-        node::warm_plans(&nd.protos);
-        drop(sp);
+        // P2: the kind tables beside the plans (independent; both on the pool)
+        let kts = std::thread::scope(|sc| {
+            let h = sc.spawn(|| {
+                let _sp = crate::prof::span("pre.kind_tabs");
+                plan::kind_tabs_static().clone()
+            });
+            // the solve orders `prover setup` recorded, else the inactive ones now
+            let sp = crate::prof::span("pre.load_plans");
+            load_setup_plans(nd);
+            drop(sp);
+            let sp = crate::prof::span("pre.warm_plans");
+            node::warm_plans(&nd.protos);
+            drop(sp);
+            h.join().unwrap_or_else(|_| service::fatal("the kind tables panicked"))
+        });
         let gcirc = node::general_circuit();
         node::warm_trace(&gcirc);
         Pre { nd, kts, circ: circuit::Circuit::build(), gcirc, base: circuit::Circuit::build_base() }
@@ -94,14 +99,14 @@ const SCHED: &str = "sched.bin";
 /// Load the solve orders `prover setup` stored in `$RF_SETUP` (if any, and of this node data).
 pub fn load_setup_plans(nd: &plan::NodeData) -> bool {
     let dir = std::env::var_os("RF_SETUP");
-    let loaded = dir.as_ref().and_then(|d| std::fs::read(Path::new(d).join(PLANS)).ok()).is_some_and(|b| crate::mfill::load_plans(&nd.protos, &plan::data_tag(), &b));
+    let loaded = dir.as_ref().and_then(|d| plan::read_par(&Path::new(d).join(PLANS))).is_some_and(|b| crate::mfill::load_plans(&nd.protos, &plan::data_tag(), &b));
     // the inactive fills, recorded with the plans (same node data)
     if loaded {
-        if let Some(b) = dir.as_ref().and_then(|d| std::fs::read(Path::new(d).join(SCHED)).ok()) {
+        if let Some(b) = dir.as_ref().and_then(|d| plan::read_par(&Path::new(d).join(SCHED))) {
             crate::mfill::load_scheds(&nd.protos, &plan::data_tag(), &b);
         }
         for (i, p) in nd.protos.iter().enumerate() {
-            if let Some(b) = dir.as_ref().and_then(|d| std::fs::read(Path::new(d).join(format!("inactive-p{i}.bin"))).ok()) {
+            if let Some(b) = dir.as_ref().and_then(|d| plan::read_par(&Path::new(d).join(format!("inactive-p{i}.bin")))) {
                 crate::mfill::load_inactive(p, &b);
             }
         }

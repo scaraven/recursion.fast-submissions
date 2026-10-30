@@ -10,7 +10,7 @@
 //! templates) is a reload. The dump must carry, or sit next to, the prototype programs whose
 //! registers `mregs` numbers (`proto-p{π}.txt`, `IRDump8`'s mux format; `FLOCK_PROTO_DIR`).
 
-use crate::field::F;
+use crate::field::{FAcc, F};
 use crate::ir::V;
 use std::path::Path;
 
@@ -273,6 +273,17 @@ pub struct Proto {
     /// Each recorded order's level schedule (`schedule`; the parallel replay), built before a
     /// request for the orders `prover setup` recorded.
     pub sched: [std::sync::OnceLock<Sched>; PLAN_KEYS],
+    /// P2: `spare`'s terms by cell (`spare_ix`), built once before a request.
+    pub spix: std::sync::OnceLock<SpareIx>,
+}
+
+/// P2: prototype 0's replay rows (`Proto::spare`) indexed once for the factored E2/E4 operations
+/// (`Ext`): their local row span `r0..r0 + nr` and their terms by cell over the `2^21` spare-local
+/// cells (frame `c < 2^20`, local `j` at `2^20 + j`), positions into `spare`.
+pub struct SpareIx {
+    pub r0: usize,
+    pub nr: usize,
+    pub bc: LinkByCell,
 }
 
 /// A recorded solve order's level schedule (pass 13): the order's entries grouped into levels such
@@ -420,6 +431,18 @@ impl Proto {
     pub fn by_cell(&self) -> &ByCell {
         self.bycell.get_or_init(|| by_cell(&self.rows, (self.pi * SLOT) as u32))
     }
+    /// P2: `spare`'s row span and terms by cell (built once).
+    pub fn spare_ix(&self) -> &SpareIx {
+        self.spix.get_or_init(|| {
+            let sp = &self.spare;
+            let r0 = sp.idx.iter().copied().min().unwrap_or(0) as usize;
+            let r1 = sp.idx.iter().map(|&i| i as usize + 1).max().unwrap_or(r0);
+            assert!(r1 <= SLOT && sp.cells.iter().all(|&c| (c as usize) < 2 * SLOT), "the spare rows' span");
+            let mut seen = vec![false; r1 - r0];
+            assert!(sp.idx.iter().all(|&i| !std::mem::replace(&mut seen[i as usize - r0], true)), "the spare rows are distinct");
+            SpareIx { r0, nr: r1 - r0, bc: cell_index(sp) }
+        })
+    }
     /// `fcoefs`' inverses (each distinct value inverted once).
     pub fn fcinv(&self) -> &[F] {
         self.fcinv.get_or_init(|| {
@@ -445,10 +468,122 @@ pub struct KindTab {
     /// Link rows (global row indices, absolute cells).
     pub links: Rows,
     pub cells: Vec<usize>,
-    /// The link rows from `node-N*.txt` (the first `base_links`; E1b's arena₁ and replay rows follow).
+    /// The link rows from `node-N*.txt` (the first `base_links`; E1b's arena₁ and replay rows follow
+    /// in a full table, `node::extend_links`).
     pub base_links: usize,
     /// The link rows' terms by cell (built once; `links_by_cell`).
     pub lbc: std::sync::OnceLock<LinkByCell>,
+    /// P2: E1b's rows beyond `node-N*.txt`, factored (`node::set_ext`; then `links` holds the base
+    /// rows only). `None`: a full table, every row in `links` (the reference).
+    pub ext: Option<Ext>,
+}
+
+/// P2: a kind's rows beyond `node-N*.txt`, by their structure instead of as link rows.
+/// * Arena₁ (`a1Rows4`): slot `v`'s row `v·2^20 + AR_R1 + e` (`e < AR_N`) is
+///   `one·(cell(one + v·2^20 + AR_A1 + e) + cell(a1_h(b0_v, e))) = 0`: A the one cell, B two cells, C none.
+/// * Slot 0's replay rows (`spare`, kinds with a previous node): `Proto::spare` of prototype 0 with
+///   rows at `vs·2^20 + idx`, frame cells `one + c`, locals `one + vs·2^20 + j`.
+pub struct Ext {
+    pub vs: usize,
+    pub a1_b0: Vec<usize>,
+    pub spare: bool,
+}
+
+/// Arena₁ element `e`'s H cell of the slot whose stream starts at block `b0` (`sCell b0 e`).
+#[inline(always)]
+pub fn a1_h(b0: usize, e: usize) -> usize {
+    (b0 + e / 4) * 128 + 4 + e % 4
+}
+
+/// The terms of `l` grouped by cell: see `LinkByCell`. A counting sort over the cells' range when the
+/// range is small for the terms (prototype 0's spare rows), else (P2: the base link rows, a few
+/// hundred thousand terms over `2^25` cells, whose range cost the start-up) a sort of the terms by
+/// `(cell, row, m, term)`; both give the same entries in the same order (`cell_index_matches_counting_sort`).
+pub fn cell_index(l: &Rows) -> LinkByCell {
+    let n = l.cells.iter().map(|&c| c as usize + 1).max().unwrap_or(0);
+    if n > 8 * l.cells.len() {
+        return cell_index_sorted(l);
+    }
+    let mut cnt = vec![0u32; n + 1];
+    for &c in &l.cells {
+        cnt[c as usize + 1] += 1;
+    }
+    for i in 0..n {
+        cnt[i + 1] += cnt[i];
+    }
+    let mut ent = vec![0u32; l.cells.len()];
+    let mut coef = vec![0u16; l.cells.len()];
+    let mut pos = cnt.clone();
+    for i in 0..l.len() {
+        let rg = l.rng[i];
+        for m in 0..3 {
+            for q in rg[m] as usize..rg[m + 1] as usize {
+                let c = l.cells[q] as usize;
+                let p = pos[c] as usize;
+                ent[p] = i as u32 | (m as u32) << 30;
+                coef[p] = l.coefs[q];
+                pos[c] += 1;
+            }
+        }
+    }
+    drop(pos);
+    let mut cells = Vec::new();
+    let mut ptr = vec![0u32];
+    for c in 0..n {
+        if cnt[c + 1] > cnt[c] {
+            cells.push(c as u32);
+            ptr.push(cnt[c + 1]);
+        }
+    }
+    LinkByCell { cells, ptr, ent, coef }
+}
+
+fn cell_index_sorted(l: &Rows) -> LinkByCell {
+    assert!(l.len() < 1 << 30 && l.cells.iter().all(|&c| c < 1 << 30));
+    let mut keys: Vec<(u64, u32)> = Vec::with_capacity(l.cells.len());
+    for i in 0..l.len() {
+        let rg = l.rng[i];
+        for m in 0..3 {
+            for q in rg[m] as usize..rg[m + 1] as usize {
+                keys.push(((l.cells[q] as u64) << 34 | (i as u64) << 2 | m as u64, q as u32));
+            }
+        }
+    }
+    keys.sort_unstable();
+    let (mut cells, mut ptr) = (Vec::new(), vec![0u32]);
+    let (mut ent, mut coef) = (Vec::with_capacity(keys.len()), Vec::with_capacity(keys.len()));
+    for (p, &(k, q)) in keys.iter().enumerate() {
+        let c = (k >> 34) as u32;
+        if cells.last() != Some(&c) {
+            if !cells.is_empty() {
+                ptr.push(p as u32);
+            }
+            cells.push(c);
+        }
+        ent.push(((k >> 2) & 0xFFFF_FFFF) as u32 | ((k & 3) as u32) << 30);
+        coef.push(l.coefs[q as usize]);
+    }
+    if !cells.is_empty() {
+        ptr.push(keys.len() as u32);
+    }
+    LinkByCell { cells, ptr, ent, coef }
+}
+
+/// Per distinct cell `u` of `b` (over `rw`) and matrix `m`: `Σ_terms coef·r(pos)` (in parallel).
+pub fn cols3(rw: &Rows, b: &LinkByCell, r: &(dyn Fn(usize) -> F + Sync)) -> Vec<[F; 3]> {
+    let cv = &rw.cv;
+    crate::par::collect_vec(b.cells.len(), 1 << 12, |u| {
+        let (mut acc, mut pl) = ([FAcc::default(); 3], [F::ZERO; 3]);
+        for q in b.ptr[u] as usize..b.ptr[u + 1] as usize {
+            let en = b.ent[q];
+            let (i, m) = ((en & 0x3FFF_FFFF) as usize, (en >> 30) as usize);
+            match b.coef[q] {
+                ONE_IX => pl[m] += r(i),
+                c => acc[m].mac(cv[c as usize], r(i)),
+            }
+        }
+        [0, 1, 2].map(|m| acc[m].reduce() + pl[m])
+    })
 }
 
 /// A kind table's link terms grouped by cell (E1b): the distinct cells `cells` (ascending), cell
@@ -464,43 +599,8 @@ pub struct LinkByCell {
 impl KindTab {
     /// The link terms by cell (built once).
     pub fn links_by_cell(&self) -> &LinkByCell {
-        self.lbc.get_or_init(|| {
-            // a counting sort by cell over the cells' range (the kinds' M spans < 2^26 cells)
-            let l = &self.links;
-            let n = l.cells.iter().map(|&c| c as usize + 1).max().unwrap_or(0);
-            let mut cnt = vec![0u32; n + 1];
-            for &c in &l.cells {
-                cnt[c as usize + 1] += 1;
-            }
-            for i in 0..n {
-                cnt[i + 1] += cnt[i];
-            }
-            let mut ent = vec![0u32; l.cells.len()];
-            let mut coef = vec![0u16; l.cells.len()];
-            let mut pos = cnt.clone();
-            for i in 0..l.len() {
-                let rg = l.rng[i];
-                for m in 0..3 {
-                    for q in rg[m] as usize..rg[m + 1] as usize {
-                        let c = l.cells[q] as usize;
-                        let p = pos[c] as usize;
-                        ent[p] = i as u32 | (m as u32) << 30;
-                        coef[p] = l.coefs[q];
-                        pos[c] += 1;
-                    }
-                }
-            }
-            drop(pos);
-            let mut cells = Vec::new();
-            let mut ptr = vec![0u32];
-            for c in 0..n {
-                if cnt[c + 1] > cnt[c] {
-                    cells.push(c as u32);
-                    ptr.push(cnt[c + 1]);
-                }
-            }
-            LinkByCell { cells, ptr, ent, coef }
-        })
+        // a counting sort by cell over the cells' range (the kinds' M spans < 2^26 cells)
+        self.lbc.get_or_init(|| cell_index(&self.links))
     }
     /// Per link row and matrix, `Σ coef·x(cell)` (in parallel).
     pub fn links_eval(&self, x: &(dyn Fn(usize) -> F + Sync)) -> Vec<[F; 3]> {
@@ -572,6 +672,7 @@ impl KindTab {
             cells: Vec::new(),
             base_links: 0,
             lbc: Default::default(),
+            ext: None,
         };
         let mut sec = 0;
         for l in lines {
@@ -703,7 +804,7 @@ impl Proto {
             let terms = push(p.get(2).copied().unwrap_or(""), &mut fcells, &mut fcoefs);
             aux.push(Aux { reg: p[0].trim().parse().unwrap(), bits: k == "bits", n: n.parse().unwrap(), terms });
         }
-        Proto { pi, rows, regs, aux, fcells, fcoefs, spare, plan: Default::default(), adj: Default::default(), inactive: Default::default(), fcinv: Default::default(), bycell: Default::default(), sched: Default::default() }
+        Proto { pi, rows, regs, aux, fcells, fcoefs, spare, plan: Default::default(), adj: Default::default(), inactive: Default::default(), fcinv: Default::default(), bycell: Default::default(), sched: Default::default(), spix: Default::default() }
     }
 }
 
@@ -1548,7 +1649,7 @@ mod pass11_tests {
     /// `save_plans` / `load_plans` round trip; a wrong tag or a cut file loads nothing.
     #[test]
     fn plans_round_trip() {
-        let mk = || Proto { pi: 0, rows: Rows::new(), regs: vec![], aux: vec![], fcells: vec![], fcoefs: vec![], spare: Rows::new(), plan: Default::default(), adj: Default::default(), inactive: Default::default(), fcinv: Default::default(), bycell: Default::default(), sched: Default::default() };
+        let mk = || Proto { pi: 0, rows: Rows::new(), regs: vec![], aux: vec![], fcells: vec![], fcoefs: vec![], spare: Rows::new(), plan: Default::default(), adj: Default::default(), inactive: Default::default(), fcinv: Default::default(), bycell: Default::default(), sched: Default::default(), spix: Default::default() };
         let a = [mk(), mk()];
         let _ = a[0].plan[0].set(vec![(1, 2), (3, 4)]);
         let _ = a[1].plan[2].set(vec![(5, 6)]);
@@ -1568,7 +1669,7 @@ mod pass11_tests {
     /// schedule that is not a permutation load nothing.
     #[test]
     fn schedules_levels_and_round_trip() {
-        let mk = || Proto { pi: 0, rows: Rows::new(), regs: vec![], aux: vec![], fcells: vec![], fcoefs: vec![], spare: Rows::new(), plan: Default::default(), adj: Default::default(), inactive: Default::default(), fcinv: Default::default(), bycell: Default::default(), sched: Default::default() };
+        let mk = || Proto { pi: 0, rows: Rows::new(), regs: vec![], aux: vec![], fcells: vec![], fcoefs: vec![], spare: Rows::new(), plan: Default::default(), adj: Default::default(), inactive: Default::default(), fcinv: Default::default(), bycell: Default::default(), sched: Default::default(), spix: Default::default() };
         let mut a = [mk(), mk()];
         // rows `x_{i+1} = x_i · 1` for cells 1 → 2 → 3, and `x_5 = x_4 · 1` beside them
         for (i, (x, y)) in [(1u32, 2u32), (2, 3), (4, 5)].into_iter().enumerate() {
@@ -1650,5 +1751,62 @@ mod e1b_tests {
         let r = unsafe { try_row_p(&rw, 0, 0, Some(3), val.as_mut_ptr(), known.as_mut_ptr(), None) };
         assert_eq!(r, Some(3));
         assert!(known[3] && !known[2] && !known[4] && val[3] == F::ONE);
+    }
+}
+
+#[cfg(test)]
+mod p2_tests {
+    use super::*;
+
+    /// E1b's counting sort over the cells' range (the reference of `cell_index`).
+    fn cell_index_ref(l: &Rows) -> LinkByCell {
+        let n = l.cells.iter().map(|&c| c as usize + 1).max().unwrap_or(0);
+        let mut cnt = vec![0u32; n + 1];
+        for &c in &l.cells {
+            cnt[c as usize + 1] += 1;
+        }
+        for i in 0..n {
+            cnt[i + 1] += cnt[i];
+        }
+        let (mut ent, mut coef) = (vec![0u32; l.cells.len()], vec![0u16; l.cells.len()]);
+        let mut pos = cnt.clone();
+        for i in 0..l.len() {
+            let rg = l.rng[i];
+            for m in 0..3 {
+                for q in rg[m] as usize..rg[m + 1] as usize {
+                    let c = l.cells[q] as usize;
+                    let p = pos[c] as usize;
+                    ent[p] = i as u32 | (m as u32) << 30;
+                    coef[p] = l.coefs[q];
+                    pos[c] += 1;
+                }
+            }
+        }
+        let (mut cells, mut ptr) = (Vec::new(), vec![0u32]);
+        for c in 0..n {
+            if cnt[c + 1] > cnt[c] {
+                cells.push(c as u32);
+                ptr.push(cnt[c + 1]);
+            }
+        }
+        LinkByCell { cells, ptr, ent, coef }
+    }
+
+    /// (P2) `cell_index` (a sort) equals E1b's counting sort on every kind's full link rows and on
+    /// prototype 0's spare rows, entry for entry.
+    #[test]
+    fn cell_index_matches_counting_sort() {
+        if crate::plan::BLOB.len() < 16 && find_dirs().is_none() {
+            return;
+        }
+        let nd = crate::plan::node_data();
+        let mut tabs: Vec<Rows> = [crate::node::NK::N2, crate::node::NK::N4, crate::node::NK::N8].iter().map(|&k| nd.kind_tab_full(k).links).collect();
+        tabs.push(Rows::from_parts(nd.protos[0].spare.idx.clone(), nd.protos[0].spare.rng.clone(), nd.protos[0].spare.cells.clone(), nd.protos[0].spare.coefs.clone(), nd.protos[0].spare.cv.clone()).unwrap());
+        for (t, l) in tabs.iter().enumerate() {
+            let b = cell_index_ref(l);
+            for a in [cell_index(l), cell_index_sorted(l)] {
+                assert!(a.cells == b.cells && a.ptr == b.ptr && a.ent == b.ent && a.coef == b.coef, "table {t}");
+            }
+        }
     }
 }

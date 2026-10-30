@@ -490,7 +490,7 @@ pub fn decode_proto(pf: &[u8], regs: &[u8], extra: &[u8], spare_b: &[u8], cf: &[
         let terms = get_terms(r, &mut fcells, &mut fcoefs, &mut pc);
         aux.push(Aux { reg, bits, n, terms });
     }
-    Proto { pi, rows, regs, aux, fcells, fcoefs, spare, plan: Default::default(), adj: Default::default(), inactive: Default::default(), fcinv: Default::default(), bycell: Default::default(), sched: Default::default() }
+    Proto { pi, rows, regs, aux, fcells, fcoefs, spare, plan: Default::default(), adj: Default::default(), inactive: Default::default(), fcinv: Default::default(), bycell: Default::default(), sched: Default::default(), spix: Default::default() }
 }
 
 // ---------------------------------------------------------------- the blob
@@ -503,22 +503,34 @@ pub struct NodeData {
 }
 
 impl NodeData {
-    /// Kind `k`'s table: `node-N*.txt`'s link rows, then (E1b) the arena₁ rows and slot 0's replay rows
-    /// (`node::extend_links`).
+    /// Kind `k`'s table: `node-N*.txt`'s link rows, and (P2) E1b's arena₁ rows and slot 0's replay rows
+    /// factored (`node::set_ext`).
     pub fn kind_tab(&self, k: crate::node::NK) -> KindTab {
+        let mut kt = KindTab::parse(&self.kinds[k as usize]);
+        crate::node::set_ext(&mut kt, k);
+        kt
+    }
+    /// The full table of kind `k` (E1b's: the arena₁ and replay rows as link rows; the reference of
+    /// the factored operations, and `node::check`'s rows).
+    pub fn kind_tab_full(&self, k: crate::node::NK) -> KindTab {
         let mut kt = KindTab::parse(&self.kinds[k as usize]);
         crate::node::extend_links(&mut kt, k, &self.protos[0]);
         kt
     }
-    /// The three kinds' tables (`N2`, `N4`, `N8`).
+    /// The three kinds' tables (`N2`, `N4`, `N8`), and prototype 0's spare index (P2: built once,
+    /// for every kind).
     pub fn kind_tabs(&self) -> [std::sync::Arc<KindTab>; 3] {
-        let v = crate::par::collect_vec(3, 1, |i| {
+        let v = crate::par::collect_vec(4, 1, |i| {
+            if i == 3 {
+                let _ = self.protos[0].spare_ix();
+                return None;
+            }
             let kt = self.kind_tab([crate::node::NK::N2, crate::node::NK::N4, crate::node::NK::N8][i]);
-            // the link terms by cell (E1b: every request's E2/E4 reads them)
+            // the base link terms by cell (every request's E2/E4 reads them)
             let _ = kt.links_by_cell();
-            std::sync::Arc::new(kt)
+            Some(std::sync::Arc::new(kt))
         });
-        [v[0].clone(), v[1].clone(), v[2].clone()]
+        [v[0].clone().unwrap(), v[1].clone().unwrap(), v[2].clone().unwrap()]
     }
     /// The fixed program of node kind `k`: prototype 0's program (`progNodeGK N4c.cells4`, every
     /// kind's real cells) at the kind's index (`L32 P30 N30` = `N4 N2 N8`; INT-8 `Op.at`).
@@ -625,13 +637,58 @@ impl Ri<'_> {
         let src = self.b.get(self.p..self.p.checked_add(bytes)?)?;
         let mut v: Vec<T> = Vec::with_capacity(n);
         // SAFETY: `bytes` bytes are copied into the capacity of `n` elements of a plain-data type
+        // (P2: a large array in 1 MiB pieces in parallel, which also faults its pages in in parallel)
         unsafe {
-            std::ptr::copy_nonoverlapping(src.as_ptr(), v.as_mut_ptr() as *mut u8, bytes);
+            par_copy(src, v.as_mut_ptr() as *mut u8);
             v.set_len(n);
         }
         self.p += bytes;
         Some(v)
     }
+}
+
+/// `copy_nonoverlapping(src, dst, src.len())` in 1 MiB pieces in parallel (P2: the start-up's image).
+/// SAFETY (caller): `dst` is valid for `src.len()` bytes and does not overlap `src`.
+unsafe fn par_copy(src: &[u8], dst: *mut u8) {
+    const P: usize = 1 << 20;
+    let n = src.len();
+    if n < 4 * P {
+        std::ptr::copy_nonoverlapping(src.as_ptr(), dst, n);
+        return;
+    }
+    let d = crate::par::SyncPtr(dst);
+    crate::par::run(n.div_ceil(P), &|i| {
+        let d = &d;
+        let (o, e) = (i * P, ((i + 1) * P).min(n));
+        std::ptr::copy_nonoverlapping(src.as_ptr().add(o), d.0.add(o), e - o);
+    });
+}
+
+/// The file at `p` read whole (P2: in 4 MiB pieces in parallel by `read_at`, which copies from the page
+/// cache and faults the buffer in in parallel; the start-up's image).
+pub fn read_par(p: &std::path::Path) -> Option<Vec<u8>> {
+    use std::os::unix::fs::FileExt;
+    const P: usize = 4 << 20;
+    let f = std::fs::File::open(p).ok()?;
+    let n = usize::try_from(f.metadata().ok()?.len()).ok()?;
+    let mut v: Vec<u8> = Vec::with_capacity(n);
+    let d = crate::par::SyncPtr(v.as_mut_ptr());
+    let ok = std::sync::atomic::AtomicBool::new(true);
+    crate::par::run(n.div_ceil(P), &|i| {
+        let d = &d;
+        let (o, e) = (i * P, ((i + 1) * P).min(n));
+        // SAFETY: the pieces are disjoint and within the capacity
+        let buf = unsafe { std::slice::from_raw_parts_mut(d.0.add(o), e - o) };
+        if f.read_exact_at(buf, o as u64).is_err() {
+            ok.store(false, std::sync::atomic::Ordering::Relaxed);
+        }
+    });
+    if !ok.load(std::sync::atomic::Ordering::Relaxed) {
+        return None;
+    }
+    // SAFETY: every byte below `n` was written by `read_exact_at`
+    unsafe { v.set_len(n) };
+    Some(v)
 }
 
 fn ty_code(t: Ty) -> (u64, u64) {
@@ -710,7 +767,7 @@ pub fn load_image(b: &[u8], tag: &[u8; 32]) -> Option<NodeData> {
         let aux = r.raw::<[u64; 5]>()?.into_iter().map(|a| Aux { reg: a[0] as u32, bits: a[1] == 1, n: a[2] as usize, terms: (a[3] as u32, a[4] as u32) }).collect();
         let (fcells, fcoefs) = (r.raw()?, r.raw()?);
         let spare = Rows::from_parts(r.raw()?, r.raw()?, r.raw()?, r.raw()?, r.raw()?)?;
-        ps.push(Proto { pi, rows, regs, aux, fcells, fcoefs, spare, plan: Default::default(), adj: Default::default(), inactive: Default::default(), fcinv: Default::default(), bycell: Default::default(), sched: Default::default() });
+        ps.push(Proto { pi, rows, regs, aux, fcells, fcoefs, spare, plan: Default::default(), adj: Default::default(), inactive: Default::default(), fcinv: Default::default(), bycell: Default::default(), sched: Default::default(), spix: Default::default() });
     }
     let mut s = || String::from_utf8(r.raw::<u8>()?).ok();
     let texts = [s()?, s()?];
@@ -724,14 +781,20 @@ pub fn load_image(b: &[u8], tag: &[u8; 32]) -> Option<NodeData> {
 pub static BLOB: &str = include_str!("nodeblob.b64");
 
 /// A tag of the node data in use (`mfill::save_plans`): the embedded blob's hash, or a fixed tag for
-/// the dump directories (`FLOCK_NODE_DUMP`).
+/// the dump directories (`FLOCK_NODE_DUMP`). P2: a two-level hash (the blob's 64 equal parts hashed in
+/// parallel, then their digests), as every request's start-up computes it.
 pub fn data_tag() -> [u8; 32] {
     static T: std::sync::OnceLock<[u8; 32]> = std::sync::OnceLock::new();
     *T.get_or_init(|| {
         if std::env::var_os("FLOCK_NODE_DUMP").is_some() || BLOB.len() < 16 {
             crate::blake2s::blake2s256(b"flock-recursive node dump")
         } else {
-            crate::blake2s::blake2s256(BLOB.as_bytes())
+            let b = BLOB.as_bytes();
+            let parts = crate::par::collect_vec(64, 1, |i| crate::blake2s::blake2s256(&b[i * b.len() / 64..(i + 1) * b.len() / 64]));
+            let mut m = b"flock-recursive node blob, 64 parts".to_vec();
+            m.extend_from_slice(&(b.len() as u64).to_le_bytes());
+            parts.iter().for_each(|d| m.extend_from_slice(d));
+            crate::blake2s::blake2s256(&m)
         }
     })
 }
@@ -757,9 +820,14 @@ pub fn node_data() -> &'static NodeData {
             }
         } else {
             // `prover setup`'s image of this blob, if there is one (pass 12), else the blob
-            let img = std::env::var_os("RF_SETUP").and_then(|d| std::fs::read(std::path::Path::new(&d).join(IMAGE)).ok());
+            let sp = crate::prof::span("nd.read");
+            let img = std::env::var_os("RF_SETUP").and_then(|d| read_par(&std::path::Path::new(&d).join(IMAGE)));
+            drop(sp);
+            let sp = crate::prof::span("nd.tag");
+            let tag = data_tag();
+            drop(sp);
             let sp = crate::prof::span("nd.image");
-            let nd = img.and_then(|b| load_image(&b, &data_tag()));
+            let nd = img.and_then(|b| load_image(&b, &tag));
             drop(sp);
             nd.unwrap_or_else(|| decode_blob(BLOB))
         }
