@@ -110,7 +110,10 @@ Running on rev44:
     2. empty `impQP` by **failing rows on `rt.cov`** (closure-style; op-aware `inOk` rejects `rsWeight` with `act` true), never by kernel evaluation of the compile (≈ 26k ops) → SEG-R2;
     3. R2 rewires `gap4Imp_of_close`/`gap4Imp_rtC1cC`/`gaps4_of_runC` (`FRNodeRun4CT`) at `rtC1d`; `gaps4_of_runS` is gone → SEG-R1b fixes the RESULT §7 text.
     - Notes: `atImp_sib` 4.35 s kernel (`cases op <;> simp` at `FRNodeRun4CS.lean:45`; G6). SIB's +2.7 s init waiver recorded above (net +0.65 s with SEG-R1).
-  - **SEG-R2 next** (after CF2 and SEG-R1b): SEG-R1-RESULT §7 (fold `rtC1c` → `rtC1d`, `arR2N` 154,368, `repSegB := arRb + arNb`, two-band `repRow0`/`repIRowsW`, `repMapC` bands 1 + 3, shared `rv₁`, `segRegion`). Prover cells: §8.
+- **CF2 landed `9db5ee0`.** Closed forms wired into `Plan4`; `evalL` by carry automata (replay 319.5k → 3.9k rows); plan fusion. Plan init 20.3 → 9.4–10.9 s user, RSS 2.0 → 0.9 GB; V(N4) 1.92 → 0.85 s VM. MxKat 33/33, `plan4t check` N2/N4/N8 equal. `FR` imports `FRNodeRows4RepCFCtrl`. **Speed work stops here** (acceptance over performance: 0.85 s ≪ 2.06 s DoS cap; init ≈ 10 s ≪ 30 s badge start; ≈ 300 s of stream_s).
+- **SEG-R2 running** (on `9db5ee0`): fold `rtC1d`, constants and bands, failing rows for uncovered replay ops (no kernel evaluation of `impQP`), residual → `felems` only, honest ACCEPT. SEG-R1b's two arms land separately.
+- **FEL design running (Fable):** the last residual, the 871 `felems` per prototype — compile aliasing vs. `colTG` in a freed band vs. a structural lemma.
+  - SEG-R2 brief: SEG-R1-RESULT §7 (fold `rtC1c` → `rtC1d`, `arR2N` 154,368, `repSegB := arRb + arNb`, two-band `repRow0`/`repIRowsW`, `repMapC` bands 1 + 3, shared `rv₁`, `segRegion`). Prover cells: §8.
 - **Running:**
   - **Review of SEG-R:** no blocker. The route is a fixed point (rows only; no op or import added), and the dead ops are pinned soundly.
     - **Should-fix:**
