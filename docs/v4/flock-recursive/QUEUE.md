@@ -93,7 +93,14 @@ Running on rev44:
     - a closure generator, to make `SlotRunB` vacuous in the kernel.
   - **FOLD2 landed `97d578b`:** IMPC2 + IMPC2b folded (`bitTGB`, `bitTGS`, bit area 16,384, run proofs). `Gaps4` ← `SlotRunB` (`gaps4_of_runS`). Built from a clean snapshot + overlay (`logs/fr-build-SRA/orch.sh`): 2,684 jobs, no sorry.
 - SIB: the sibling reads (kind tie, `bitTGR` fold) and the closure generator (a kernel-proved residual). Init ≤ +0.2 s.
-- SEG-R (Fable, design): routes for prototype 1's five replay ops within the segment slots' free rows.
+- **SEG-R design landed `2aa619d`.**
+  - **Dead ops:** `evalM`/`evalL` at prototype 1 are dead, so they are pinned to zero and `nodePlan` leaves the segment checks (init −1.3 s).
+  - **rsWeight:** an F-point claim part, about 37k gates (the kind factor collapses).
+  - **Small templates:** `targetSSegI` about 140 rows, `shiftTargetI` about 3.1k.
+  - **Placement:** replay templates in each segment slot's own region via `rtKD`, needing about 40k rows and 40k cells per slot. It fits only if `arR2N` shrinks.
+- **Running:**
+  - SEG-R0 (probes: exact counts, band fit, the facts verified in the compiled program);
+  - a cheap Opus review of SEG-R.
 - **Process lesson:** after committing from a build tree's copies, sync the worktree files (`git checkout HEAD -- …`). Stale FRNodeRun4*/FR.lean sat in the worktree after REPF's commit.
 - **Collision guard:** ASK-T (the `askTG` line and imports) and REPF (the split and fold) both edit FRNodeRows4.lean. Each was told to touch only its own hunks; the orchestrator merges at freeze.
 - **SRA landed `27459d9`.**
