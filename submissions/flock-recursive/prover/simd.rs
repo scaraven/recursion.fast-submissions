@@ -267,6 +267,140 @@ pub fn x6_fold(t: &[F], a: &[u8], p0: usize, s: F, out: &mut [F]) {
     }
 }
 
+// ---------------------------------------------------------------- Z3 lookahead (pass PA)
+//
+// Two zerocheck rounds per pass over the tables (Flock `docs/yukon-optimizations.tex` §cascade,
+// §tailfuse, §foldentry; `multilinear.rs` `lookahead_accum`): a group is four positions `v = X + 2Y`
+// of the next two variables; its eight products, weighted by the group's `eq`, are the lookahead
+// sums `[s10, sinf0, c0, t11, c2, d0, dt, d2]` (`zerocheck::La`). The `a` values are scaled by the
+// weight once (four products), so each of the eight products carries it ("one scaling per row").
+// The kernels return the sums unreduced (`FAcc`): the caller reduces once per `eq` high index.
+
+/// The eight weighted lookahead products of one group, accumulated unreduced.
+#[inline(always)]
+pub fn la_acc_ref(acc: &mut [FAcc; 8], a: [F; 4], b: [F; 4], e: F) {
+    let ea = [e * a[0], e * a[1], e * a[2], e * a[3]];
+    let (sxa0, sxb0) = (ea[0] + ea[1], b[0] + b[1]);
+    let (sxa1, sxb1) = (ea[2] + ea[3], b[2] + b[3]);
+    let (dca, dcb) = (ea[0] + ea[2], b[0] + b[2]);
+    let (dsa, dsb) = (sxa0 + sxa1, sxb0 + sxb1);
+    acc[0].mac(ea[1], b[1]);
+    acc[1].mac(sxa0, sxb0);
+    acc[2].mac(ea[2], b[2]);
+    acc[3].mac(ea[3], b[3]);
+    acc[4].mac(sxa1, sxb1);
+    acc[5].mac(dca, dcb);
+    acc[6].mac(dca + dsa, dcb + dsb);
+    acc[7].mac(dsa, dsb);
+}
+
+/// Two pending variables bound: `x₀ + s₁(x₀ + x₁)`, `x_h = q_{2h} + s₀(q_{2h} + q_{2h+1})`.
+#[inline(always)]
+pub fn fold2_ref(q: [F; 4], s: (F, F)) -> F {
+    let x0 = q[0] + s.0 * (q[0] + q[1]);
+    let x1 = q[2] + s.0 * (q[2] + q[3]);
+    x0 + s.1 * (x0 + x1)
+}
+
+fn row_ref(t: &[F], src: &[u8], x: usize) -> F {
+    crate::zerocheck::fold_row(t, &src[8 * x..8 * x + 8])
+}
+
+/// The lookahead sums of groups `g0 + i` (rows `4(g0+i) + v`, folded at λ by `t`), weights `w[i]`.
+pub fn la_bits(t: &[F], a: &[u8], b: &[u8], g0: usize, w: &[F]) -> [FAcc; 8] {
+    assert!(a.len().min(b.len()) >= 32 * (g0 + w.len()) && t.len() >= 8 * 256);
+    match tier() {
+        3 => unsafe { ymm::la_bits(t, a, b, g0, w) },
+        4 => unsafe { ymm_sim::la_bits(t, a, b, g0, w) },
+        _ => la_bits_ref(t, a, b, g0, w),
+    }
+}
+pub fn la_bits_ref(t: &[F], a: &[u8], b: &[u8], g0: usize, w: &[F]) -> [FAcc; 8] {
+    let mut acc = [FAcc::default(); 8];
+    for (i, e) in w.iter().enumerate() {
+        let g = g0 + i;
+        la_acc_ref(&mut acc, std::array::from_fn(|v| row_ref(t, a, 4 * g + v)), std::array::from_fn(|v| row_ref(t, b, 4 * g + v)), *e);
+    }
+    acc
+}
+
+/// Outputs `j = 4(g0+i) + v` (`oa[4i + v]`, `ob[4i + v]`) of the rows `4j … 4j+3` folded at λ by `t` and
+/// then at `s`, and the lookahead sums of their groups `g0 + i` (weights `w[i]`).
+#[allow(clippy::too_many_arguments)]
+pub fn la_fold_bits(t: &[F], a: &[u8], b: &[u8], g0: usize, w: &[F], s: (F, F), oa: &mut [F], ob: &mut [F]) -> [FAcc; 8] {
+    assert!(oa.len() == 4 * w.len() && ob.len() == 4 * w.len() && a.len().min(b.len()) >= 128 * (g0 + w.len()) && t.len() >= 8 * 256);
+    match tier() {
+        3 => unsafe { ymm::la_fold_bits(t, a, b, g0, w, s, oa, ob) },
+        4 => unsafe { ymm_sim::la_fold_bits(t, a, b, g0, w, s, oa, ob) },
+        _ => la_fold_bits_ref(t, a, b, g0, w, s, oa, ob),
+    }
+}
+#[allow(clippy::too_many_arguments)]
+pub fn la_fold_bits_ref(t: &[F], a: &[u8], b: &[u8], g0: usize, w: &[F], s: (F, F), oa: &mut [F], ob: &mut [F]) -> [FAcc; 8] {
+    let mut acc = [FAcc::default(); 8];
+    for (i, e) in w.iter().enumerate() {
+        let g = g0 + i;
+        let av: [F; 4] = std::array::from_fn(|v| fold2_ref(std::array::from_fn(|q| row_ref(t, a, 16 * g + 4 * v + q)), s));
+        let bv: [F; 4] = std::array::from_fn(|v| fold2_ref(std::array::from_fn(|q| row_ref(t, b, 16 * g + 4 * v + q)), s));
+        oa[4 * i..4 * i + 4].copy_from_slice(&av);
+        ob[4 * i..4 * i + 4].copy_from_slice(&bv);
+        la_acc_ref(&mut acc, av, bv, *e);
+    }
+    acc
+}
+
+/// `out[i]` = the rows `4(j0+i) … 4(j0+i)+3` folded at λ by `t` and then at `s`.
+pub fn fold2_bits(t: &[F], a: &[u8], j0: usize, s: (F, F), out: &mut [F]) {
+    assert!(a.len() >= 32 * (j0 + out.len()) && t.len() >= 8 * 256);
+    match tier() {
+        3 => unsafe { ymm::fold2_bits(t, a, j0, s, out) },
+        4 => unsafe { ymm_sim::fold2_bits(t, a, j0, s, out) },
+        _ => fold2_bits_ref(t, a, j0, s, out),
+    }
+}
+pub fn fold2_bits_ref(t: &[F], a: &[u8], j0: usize, s: (F, F), out: &mut [F]) {
+    for (i, o) in out.iter_mut().enumerate() {
+        *o = fold2_ref(std::array::from_fn(|q| row_ref(t, a, 4 * (j0 + i) + q)), s);
+    }
+}
+
+/// Tables: `oa[4i + v] = fold2(a[16i + 4v …])` (likewise `b`), and the lookahead sums of the groups
+/// `i` of the outputs (weights `w[i]`); `a.len() = 16·w.len()`.
+pub fn la_fold_tab(a: &[F], b: &[F], w: &[F], s: (F, F), oa: &mut [F], ob: &mut [F]) -> [FAcc; 8] {
+    assert!(a.len() == 16 * w.len() && b.len() == a.len() && oa.len() == 4 * w.len() && ob.len() == oa.len());
+    match tier() {
+        3 => unsafe { ymm::la_fold_tab(a, b, w, s, oa, ob) },
+        4 => unsafe { ymm_sim::la_fold_tab(a, b, w, s, oa, ob) },
+        _ => la_fold_tab_ref(a, b, w, s, oa, ob),
+    }
+}
+pub fn la_fold_tab_ref(a: &[F], b: &[F], w: &[F], s: (F, F), oa: &mut [F], ob: &mut [F]) -> [FAcc; 8] {
+    let mut acc = [FAcc::default(); 8];
+    for (i, e) in w.iter().enumerate() {
+        let av: [F; 4] = std::array::from_fn(|v| fold2_ref(a[16 * i + 4 * v..16 * i + 4 * v + 4].try_into().unwrap(), s));
+        let bv: [F; 4] = std::array::from_fn(|v| fold2_ref(b[16 * i + 4 * v..16 * i + 4 * v + 4].try_into().unwrap(), s));
+        oa[4 * i..4 * i + 4].copy_from_slice(&av);
+        ob[4 * i..4 * i + 4].copy_from_slice(&bv);
+        la_acc_ref(&mut acc, av, bv, *e);
+    }
+    acc
+}
+
+/// `out[i] = fold2(a[4i … 4i+3])`; `a.len() = 4·out.len()`.
+pub fn fold2_tab(a: &[F], s: (F, F), out: &mut [F]) {
+    assert_eq!(a.len(), 4 * out.len());
+    match tier() {
+        3 => unsafe { ymm::fold2_tab(a, s, out) },
+        4 => unsafe { ymm_sim::fold2_tab(a, s, out) },
+        _ => fold2_tab_ref(a, s, out),
+    }
+}
+pub fn fold2_tab_ref(a: &[F], s: (F, F), out: &mut [F]) {
+    for (i, o) in out.iter_mut().enumerate() {
+        *o = fold2_ref(a[4 * i..4 * i + 4].try_into().unwrap(), s);
+    }
+}
+
 /// `acc[i] += x[i]·c` (also `out = x·c` on a zeroed `acc`).
 pub fn axpy(acc: &mut [F], x: &[F], c: F) {
     match tier() {
@@ -364,16 +498,48 @@ pub fn xor_rows(q: &[F], offs: &[usize; 16], row: &mut [F]) {
     }
 }
 
-/// One 8-block stripe of `lincheck::partial_fold`: `acc[64 wi + j] += t[Σ_r 2^r · bit j of
-/// z[r·256 + wi]]`.
-pub fn pf_stripe(z: &[u64], t: &[F; 256], acc: &mut [F]) {
-    if tier() >= 3 {
-        unsafe { r1::pf_stripe(z, t, acc) }
+/// Up to four 8-block stripes of `lincheck::partial_fold` in one pass (pass PC, lever G10;
+/// Y§lcfold): `acc[64 wi + j] += Σ_s t_s[Σ_r 2^r · bit j of z_s[r·256 + wi]]`. `acc` is read and
+/// written once for all the stripes, and a word's eight table indices come as one u64. Equal to
+/// `pf_stripe_ref` stripe by stripe (F addition is XOR: the order of the terms does not matter).
+/// The AVX2 kernel needs no carry-less product, so it runs wherever the round-1 window does.
+pub fn pf_stripes(z: &[&[u64]], t: &[[F; 256]], acc: &mut [F]) {
+    assert!(z.len() == t.len() && (1..=4).contains(&z.len()) && acc.len() >= 256 * 64);
+    assert!(z.iter().all(|x| x.len() >= 8 * 256));
+    if tier() >= 3 || r1_avx2() {
+        // SAFETY: AVX2 is present (`tier() >= 3` or `r1_avx2()`); the lengths are checked above.
+        unsafe {
+            match z.len() {
+                1 => r1::pf_stripes::<1>(z, t, acc),
+                2 => r1::pf_stripes::<2>(z, t, acc),
+                3 => r1::pf_stripes::<3>(z, t, acc),
+                _ => r1::pf_stripes::<4>(z, t, acc),
+            }
+        }
     } else {
-        pf_stripe_ref(z, t, acc)
+        pf_stripes_ref(z, t, acc)
     }
 }
 
+/// The reference of `pf_stripes`: one stripe at a time.
+pub fn pf_stripes_ref(z: &[&[u64]], t: &[[F; 256]], acc: &mut [F]) {
+    for (zs, ts) in z.iter().zip(t) {
+        pf_stripe_ref(zs, ts, acc);
+    }
+}
+
+/// The table of one stripe: `t[v] = Σ_{i: bit i of v} e[i]` for the stripe's eight block weights.
+pub fn stripe_table(e: &[F], t: &mut [F; 256]) {
+    t[0] = F::ZERO;
+    for i in 0..8 {
+        let h = 1 << i;
+        for j in 0..h {
+            t[h + j] = t[j] + e[i];
+        }
+    }
+}
+
+/// One stripe, scalar: `acc[64 wi + j] += t[Σ_r 2^r · bit j of z[r·256 + wi]]`.
 pub fn pf_stripe_ref(z: &[u64], t: &[F; 256], acc: &mut [F]) {
     for wi in 0..256 {
         for byte in 0..8 {
@@ -432,11 +598,54 @@ unsafe fn clmul_hw<const I: i32>(a: std::arch::x86_64::__m256i, b: std::arch::x8
     std::arch::x86_64::_mm256_clmulepi64_epi128::<I>(a, b)
 }
 
+// The hot steps of the ymm lookahead kernels (pass PA), expanded in place: as `#[inline]`
+// functions LLVM kept them out of line, and `#[inline(always)]` is refused with `#[target_feature]`.
+// `mul`, `mul_cl`, `row2` and `Acc` are the expanding module's.
+
+/// `fold2` of four lane vectors `q₀ … q₃` at `(s₀, s₁)` with the product `$mul` (`mul_cl` beside
+/// table loads, as `x6_fold`; `mul` on tables).
+macro_rules! pa_fold2v {
+    ($mul:ident, $q:expr, $s0:expr, $s1:expr) => {{
+        let q: [__m256i; 4] = $q;
+        let (d0, d1) = (_mm256_xor_si256(q[0], q[1]), _mm256_xor_si256(q[2], q[3]));
+        let (x0, x1) = (_mm256_xor_si256(q[0], $mul(d0, $s0)), _mm256_xor_si256(q[2], $mul(d1, $s0)));
+        _mm256_xor_si256(x0, $mul(_mm256_xor_si256(x0, x1), $s1))
+    }};
+}
+
+/// Rows `x … x+3` (low lane) and `x+d … x+d+3` (high lane), folded at λ.
+macro_rules! pa_rows4 {
+    ($tp:expr, $src:expr, $x:expr, $d:expr) => {
+        [row2($tp, $src, $x, $d), row2($tp, $src, $x + 1, $d), row2($tp, $src, $x + 2, $d), row2($tp, $src, $x + 3, $d)]
+    };
+}
+
+/// The eight lookahead products of a group pair (lanes `(i, i+1)`), weights `e`, into `acc`
+/// (`la_acc_ref`).
+macro_rules! pa_la8 {
+    ($acc:ident, $a:expr, $b:expr, $e:expr) => {{
+        let (a, b, e): ([__m256i; 4], [__m256i; 4], __m256i) = ($a, $b, $e);
+        let ea = [mul(e, a[0]), mul(e, a[1]), mul(e, a[2]), mul(e, a[3])];
+        let (sxa0, sxb0) = (_mm256_xor_si256(ea[0], ea[1]), _mm256_xor_si256(b[0], b[1]));
+        let (sxa1, sxb1) = (_mm256_xor_si256(ea[2], ea[3]), _mm256_xor_si256(b[2], b[3]));
+        let (dca, dcb) = (_mm256_xor_si256(ea[0], ea[2]), _mm256_xor_si256(b[0], b[2]));
+        let (dsa, dsb) = (_mm256_xor_si256(sxa0, sxa1), _mm256_xor_si256(sxb0, sxb1));
+        $acc[0].mac(ea[1], b[1]);
+        $acc[1].mac(sxa0, sxb0);
+        $acc[2].mac(ea[2], b[2]);
+        $acc[3].mac(ea[3], b[3]);
+        $acc[4].mac(sxa1, sxb1);
+        $acc[5].mac(dca, dcb);
+        $acc[6].mac(_mm256_xor_si256(dca, dsa), _mm256_xor_si256(dcb, dsb));
+        $acc[7].mac(dsa, dsb);
+    }};
+}
+
 macro_rules! ymm_kernels {
     ($m:ident, $feat:literal, $cl:ident) => {
         pub mod $m {
             use super::$cl as cl;
-            use crate::field::{B64, F};
+            use crate::field::{FAcc, B64, F};
             use std::arch::x86_64::*;
 
             #[inline(always)]
@@ -515,6 +724,16 @@ macro_rules! ymm_kernels {
                     };
                     let (c0, c1) = crate::field::combine_f(q(self.p0), q(self.p1), q(self.pm));
                     F { lo: c0, hi: c1 }
+                }
+                /// The sum of both lanes, unreduced (pass PA).
+                #[target_feature(enable = $feat)]
+                pub unsafe fn facc(&self) -> FAcc {
+                    let q = |v: __m256i| -> u128 {
+                        let mut w = [0u64; 4];
+                        _mm256_storeu_si256(w.as_mut_ptr() as *mut __m256i, v);
+                        ((w[1] ^ w[3]) as u128) << 64 | (w[0] ^ w[2]) as u128
+                    };
+                    FAcc { p0: q(self.p0), p1: q(self.p1), pm: q(self.pm) }
                 }
             }
 
@@ -894,6 +1113,176 @@ macro_rules! ymm_kernels {
                 }
             }
 
+            // ---- Z3 lookahead (pass PA; `super::la_acc_ref` … `fold2_tab_ref` are the references).
+            // Lanes hold two groups `(i, i+1)`; `[__m256i; 4]` is a group pair's four values `v`.
+
+            /// One row folded at λ by the 8 × 256 table at `tp` (`x6_inner`'s `row`).
+            #[inline(always)]
+            unsafe fn row(tp: *const __m128i, src: *const u8, x: usize) -> __m128i {
+                let r = src.add(8 * x);
+                let mut v = _mm_load_si128(tp.add(*r as usize));
+                for j in 1..8 {
+                    v = _mm_xor_si128(v, _mm_load_si128(tp.add(j * 256 + *r.add(j) as usize)));
+                }
+                v
+            }
+            /// Rows `x` (low lane) and `x + d` (high lane).
+            #[inline]
+            #[target_feature(enable = $feat)]
+            unsafe fn row2(tp: *const __m128i, src: *const u8, x: usize, d: usize) -> __m256i {
+                _mm256_set_m128i(row(tp, src, x + d), row(tp, src, x))
+            }
+
+            /// The lanes of `acc` summed (unreduced), plus the scalar tail's sums.
+            #[target_feature(enable = $feat)]
+            unsafe fn la_out(acc: &[Acc; 8], tail: Option<[FAcc; 8]>) -> [FAcc; 8] {
+                let mut o = [FAcc::default(); 8];
+                for k in 0..8 {
+                    o[k] = acc[k].facc();
+                    if let Some(t) = &tail {
+                        o[k].add(&t[k]);
+                    }
+                }
+                o
+            }
+
+            /// Store a group pair's four lane vectors to `o[0 … 8]` (`o[4h + v]` = lane `h` of `v`).
+            #[inline]
+            #[target_feature(enable = $feat)]
+            unsafe fn st_groups(o: *mut F, v: [__m256i; 4]) {
+                st(o, _mm256_permute2x128_si256::<0x20>(v[0], v[1]));
+                st(o.add(2), _mm256_permute2x128_si256::<0x20>(v[2], v[3]));
+                st(o.add(4), _mm256_permute2x128_si256::<0x31>(v[0], v[1]));
+                st(o.add(6), _mm256_permute2x128_si256::<0x31>(v[2], v[3]));
+            }
+
+            /// `super::la_bits`.
+            #[target_feature(enable = $feat)]
+            pub unsafe fn la_bits(t: &[F], a: &[u8], b: &[u8], g0: usize, w: &[F]) -> [FAcc; 8] {
+                let tp = t.as_ptr() as *const __m128i;
+                let (ap, bp) = (a.as_ptr(), b.as_ptr());
+                let mut acc = [Acc::zero(); 8];
+                let n = w.len();
+                let mut i = 0;
+                while i + 2 <= n {
+                    let r0 = 4 * (g0 + i);
+                    let av = [row2(tp, ap, r0, 4), row2(tp, ap, r0 + 1, 4), row2(tp, ap, r0 + 2, 4), row2(tp, ap, r0 + 3, 4)];
+                    let bv = [row2(tp, bp, r0, 4), row2(tp, bp, r0 + 1, 4), row2(tp, bp, r0 + 2, 4), row2(tp, bp, r0 + 3, 4)];
+                    pa_la8!(acc, av, bv, ld(w.as_ptr().add(i)));
+                    i += 2;
+                }
+                la_out(&acc, (i < n).then(|| super::la_bits_ref(t, a, b, g0 + i, &w[i..])))
+            }
+
+            /// `super::la_fold_bits`.
+            #[allow(clippy::too_many_arguments)]
+            #[target_feature(enable = $feat)]
+            pub unsafe fn la_fold_bits(t: &[F], a: &[u8], b: &[u8], g0: usize, w: &[F], s: (F, F), oa: &mut [F], ob: &mut [F]) -> [FAcc; 8] {
+                let tp = t.as_ptr() as *const __m128i;
+                let (ap, bp) = (a.as_ptr(), b.as_ptr());
+                let (s0, s1) = (bcast(s.0), bcast(s.1));
+                let mut acc = [Acc::zero(); 8];
+                let n = w.len();
+                let mut i = 0;
+                while i + 2 <= n {
+                    let r0 = 16 * (g0 + i);
+                    let av = [
+                        pa_fold2v!(mul_cl, pa_rows4!(tp, ap, r0, 16), s0, s1),
+                        pa_fold2v!(mul_cl, pa_rows4!(tp, ap, r0 + 4, 16), s0, s1),
+                        pa_fold2v!(mul_cl, pa_rows4!(tp, ap, r0 + 8, 16), s0, s1),
+                        pa_fold2v!(mul_cl, pa_rows4!(tp, ap, r0 + 12, 16), s0, s1),
+                    ];
+                    let bv = [
+                        pa_fold2v!(mul_cl, pa_rows4!(tp, bp, r0, 16), s0, s1),
+                        pa_fold2v!(mul_cl, pa_rows4!(tp, bp, r0 + 4, 16), s0, s1),
+                        pa_fold2v!(mul_cl, pa_rows4!(tp, bp, r0 + 8, 16), s0, s1),
+                        pa_fold2v!(mul_cl, pa_rows4!(tp, bp, r0 + 12, 16), s0, s1),
+                    ];
+                    st_groups(oa.as_mut_ptr().add(4 * i), av);
+                    st_groups(ob.as_mut_ptr().add(4 * i), bv);
+                    pa_la8!(acc, av, bv, ld(w.as_ptr().add(i)));
+                    i += 2;
+                }
+                let tail = (i < n).then(|| super::la_fold_bits_ref(t, a, b, g0 + i, &w[i..], s, &mut oa[4 * i..], &mut ob[4 * i..]));
+                la_out(&acc, tail)
+            }
+
+            /// `super::fold2_bits`.
+            #[target_feature(enable = $feat)]
+            pub unsafe fn fold2_bits(t: &[F], a: &[u8], j0: usize, s: (F, F), out: &mut [F]) {
+                let tp = t.as_ptr() as *const __m128i;
+                let ap = a.as_ptr();
+                let (s0, s1) = (bcast(s.0), bcast(s.1));
+                let n = out.len();
+                let mut i = 0;
+                while i + 2 <= n {
+                    let r0 = 4 * (j0 + i);
+                    st(out.as_mut_ptr().add(i), pa_fold2v!(mul_cl, pa_rows4!(tp, ap, r0, 4), s0, s1));
+                    i += 2;
+                }
+                if i < n {
+                    super::fold2_bits_ref(t, a, j0 + i, s, &mut out[i..]);
+                }
+            }
+
+            /// Value `v` of the group pair at `p` (inputs `p[4v + q]` and `p[16 + 4v + q]`) folded at `(s₀, s₁)`.
+            #[inline]
+            #[target_feature(enable = $feat)]
+            unsafe fn tab4(p: *const F, v: usize, s0: __m256i, s1: __m256i) -> __m256i {
+                let (x, y) = (ld(p.add(4 * v)), ld(p.add(4 * v + 2)));
+                let (x2, y2) = (ld(p.add(16 + 4 * v)), ld(p.add(16 + 4 * v + 2)));
+                let q = [
+                    _mm256_permute2x128_si256::<0x20>(x, x2),
+                    _mm256_permute2x128_si256::<0x31>(x, x2),
+                    _mm256_permute2x128_si256::<0x20>(y, y2),
+                    _mm256_permute2x128_si256::<0x31>(y, y2),
+                ];
+                pa_fold2v!(mul, q, s0, s1)
+            }
+
+            /// `super::la_fold_tab`.
+            #[target_feature(enable = $feat)]
+            pub unsafe fn la_fold_tab(a: &[F], b: &[F], w: &[F], s: (F, F), oa: &mut [F], ob: &mut [F]) -> [FAcc; 8] {
+                let (s0, s1) = (bcast(s.0), bcast(s.1));
+                let mut acc = [Acc::zero(); 8];
+                let n = w.len();
+                let mut i = 0;
+                while i + 2 <= n {
+                    let (pa, pb) = (a.as_ptr().add(16 * i), b.as_ptr().add(16 * i));
+                    let av = [tab4(pa, 0, s0, s1), tab4(pa, 1, s0, s1), tab4(pa, 2, s0, s1), tab4(pa, 3, s0, s1)];
+                    let bv = [tab4(pb, 0, s0, s1), tab4(pb, 1, s0, s1), tab4(pb, 2, s0, s1), tab4(pb, 3, s0, s1)];
+                    st_groups(oa.as_mut_ptr().add(4 * i), av);
+                    st_groups(ob.as_mut_ptr().add(4 * i), bv);
+                    pa_la8!(acc, av, bv, ld(w.as_ptr().add(i)));
+                    i += 2;
+                }
+                let tail = (i < n).then(|| super::la_fold_tab_ref(&a[16 * i..], &b[16 * i..], &w[i..], s, &mut oa[4 * i..], &mut ob[4 * i..]));
+                la_out(&acc, tail)
+            }
+
+            /// `super::fold2_tab`.
+            #[target_feature(enable = $feat)]
+            pub unsafe fn fold2_tab(a: &[F], s: (F, F), out: &mut [F]) {
+                let (s0, s1) = (bcast(s.0), bcast(s.1));
+                let n = out.len();
+                let mut i = 0;
+                while i + 2 <= n {
+                    let p = a.as_ptr().add(4 * i);
+                    let (x0, x1, x2, x3) = (ld(p), ld(p.add(2)), ld(p.add(4)), ld(p.add(6)));
+                    let q = [
+                        _mm256_permute2x128_si256::<0x20>(x0, x2),
+                        _mm256_permute2x128_si256::<0x31>(x0, x2),
+                        _mm256_permute2x128_si256::<0x20>(x1, x3),
+                        _mm256_permute2x128_si256::<0x31>(x1, x3),
+                    ];
+                    st(out.as_mut_ptr().add(i), pa_fold2v!(mul, q, s0, s1));
+                    i += 2;
+                }
+                if i < n {
+                    super::fold2_tab_ref(&a[4 * i..], s, &mut out[i..]);
+                }
+            }
+
             /// `acc[i] += x[i]·c`.
             #[target_feature(enable = $feat)]
             pub unsafe fn axpy(acc: &mut [F], x: &[F], c: F) {
@@ -1142,27 +1531,37 @@ pub mod r1 {
         }
     }
 
-    /// One stripe of 8 blocks of `lincheck::partial_fold` (pass 6): for every word `wi < 256` and
-    /// bit `j < 64`, `acc[64 wi + j] ^= t[Σ_r 2^r · bit j of z[r·256 + wi]]`; the 8-bit indices of a
-    /// word come from one 64-byte bit transpose.
+    /// `K ≤ 4` stripes of `lincheck::partial_fold` in one pass (pass PC, lever G10; pass 6's
+    /// `pf_stripe` was one): for every word `wi < 256` and bit `j < 64`, `acc[64 wi + j] ^=
+    /// Σ_s t_s[Σ_r 2^r · bit j of z_s[r·256 + wi]]`. Each stripe's 8-bit indices of a word come from
+    /// one 64-byte bit transpose and are read eight at a time as a u64; `acc[64 wi + j]` is loaded
+    /// and stored once for the `K` table entries.
     #[target_feature(enable = "avx2")]
-    pub unsafe fn pf_stripe(z: &[u64], t: &[F; 256], acc: &mut [F]) {
-        debug_assert!(z.len() >= 7 * 256 + 256 && acc.len() >= 256 * 64);
+    pub unsafe fn pf_stripes<const K: usize>(z: &[&[u64]], t: &[[F; 256]], acc: &mut [F]) {
+        debug_assert!(z.len() == K && t.len() == K && acc.len() >= 256 * 64);
         let mut buf = A64([[0u8; 64]; 16]);
-        let tp = t.as_ptr() as *const __m128i;
         let ap = acc.as_mut_ptr() as *mut __m128i;
-        let zp = z.as_ptr();
+        let tp: [*const __m128i; K] = std::array::from_fn(|s| t[s].as_ptr() as *const __m128i);
+        let zp: [*const u64; K] = std::array::from_fn(|s| z[s].as_ptr());
         for wi in 0..256 {
-            let w = buf.0[0].as_mut_ptr() as *mut u64;
-            for r in 0..8 {
-                *w.add(r) = *zp.add(r * 256 + wi);
+            for s in 0..K {
+                let w = buf.0[2 * s].as_mut_ptr() as *mut u64;
+                for r in 0..8 {
+                    *w.add(r) = *zp[s].add(r * 256 + wi);
+                }
+                bit_transpose(buf.0[2 * s].as_ptr(), buf.0[2 * s + 1].as_mut_ptr());
             }
-            bit_transpose(buf.0[0].as_ptr(), buf.0[1].as_mut_ptr());
-            let idx = &buf.0[1];
             let a = ap.add(64 * wi);
-            for j in 0..64 {
-                let p = a.add(j);
-                _mm_store_si128(p, _mm_xor_si128(_mm_load_si128(p), _mm_load_si128(tp.add(idx[j] as usize))));
+            for j8 in 0..8 {
+                let ix: [u64; K] = std::array::from_fn(|s| std::ptr::read_unaligned(buf.0[2 * s + 1].as_ptr().add(8 * j8) as *const u64));
+                for jj in 0..8 {
+                    let p = a.add(8 * j8 + jj);
+                    let mut v = _mm_load_si128(p);
+                    for s in 0..K {
+                        v = _mm_xor_si128(v, _mm_load_si128(tp[s].add(((ix[s] >> (8 * jj)) & 0xFF) as usize)));
+                    }
+                    _mm_store_si128(p, v);
+                }
             }
         }
     }
@@ -1230,6 +1629,9 @@ pub mod r1 {
         /// `phi`, and the tower's `λ` (tests).
         pub phi: [u8; 256],
         pub lam: u8,
+        /// The LDE of an all-ones row is the constant 1 (tower byte 1) in every lane (pass PC: the
+        /// short-cut for such `b` rows is taken only if this holds).
+        pub ones: bool,
     }
 
     pub fn tower(sk: &Skip) -> &'static Tw {
@@ -1255,12 +1657,14 @@ pub mod r1 {
             let g16inv = |x: u8| (0..16u8).find(|&n| g16(n) == x).expect("in GF(16)");
             let m16 = |a: u8, b: u8| g16inv(mul(g16(a), g16(b)));
             let exp16: Vec<u8> = (0..15).map(|i| g16inv(pw(u, i))).collect();
-            let mut tw = Box::new(Tw { t0: [[0; 64]; 256], log: [0; 32], w: [[[0; 32]; 3]; 8], phi, lam });
+            let mut tw = Box::new(Tw { t0: [[0; 64]; 256], log: [0; 32], w: [[[0; 32]; 3]; 8], phi, lam, ones: false });
             for v in 0..256 {
                 for i in 0..64 {
                     tw.t0[v][i] = iso(unsafe { *sk.t0p().add(v * 64 + i) });
                 }
             }
+            // the apply of eight 0xFF bytes: output byte i is Σ_b t0[0xFF][i ⊕ 8b]
+            tw.ones = (0..64).all(|i| (0..8).fold(0u8, |x, b| x ^ tw.t0[255][i ^ (8 * b)]) == 1);
             for h in 0..2 {
                 tw.log[16 * h] = 0xF0;
                 for (i, &e) in exp16.iter().enumerate() {
@@ -1358,26 +1762,43 @@ pub mod r1 {
     }
 
     /// The window's rows (tower form): the GF(2^8) sums and the `z` transposes (`eo`: rows in
-    /// `bit_transpose_eo`'s order, for `convert_t`).
+    /// `bit_transpose_eo`'s order, for `convert_t`). Pass PC (lever G6, Y§zeroskip, §structuredb):
+    /// a row whose `a` or `b` word is zero adds nothing (its LDE is zero, and so is every product)
+    /// and is skipped; a row whose `b` word is all ones has the LDE 1 in every lane (`Tw::ones`), so
+    /// its product is `ζ^k·a`: two lookups by `a`'s logs, no LDE or logs of `b`.
     #[target_feature(enable = "avx2")]
     pub unsafe fn rows_t(sk: &Skip, a: &[u8], b: &[u8], z: &[u8], ch: &mut Chunks, eo: bool) {
+        debug_assert!(a.len() >= 1024 && b.len() >= 1024 && z.len() >= 1024);
         let tw = tower(sk);
         let t0 = tw.t0.as_ptr() as *const u8;
         let m4 = _mm256_set1_epi8(0x0F);
         let c15 = _mm256_set1_epi8(15);
         let lg = _mm256_load_si256(tw.log.as_ptr() as *const __m256i);
+        let ones = if tw.ones { u64::MAX } else { 0 };
         for bm in 0..16 {
             let bb = bm * 64;
             let (mut s0, mut s1) = (_mm256_setzero_si256(), _mm256_setzero_si256());
             for k in 0..8 {
+                let (pa, pb) = (a.as_ptr().add(bb + k * 8), b.as_ptr().add(bb + k * 8));
+                let (ra, rb) = (std::ptr::read_unaligned(pa as *const u64), std::ptr::read_unaligned(pb as *const u64));
+                if ra == 0 || rb == 0 {
+                    continue;
+                }
                 let wk = &tw.w[k];
                 let w = [
                     _mm256_load_si256(wk[0].as_ptr() as *const __m256i),
                     _mm256_load_si256(wk[1].as_ptr() as *const __m256i),
                     _mm256_load_si256(wk[2].as_ptr() as *const __m256i),
                 ];
-                let (a0, a1) = apply_t(t0, a.as_ptr().add(bb + k * 8));
-                let (b0, b1) = apply_t(t0, b.as_ptr().add(bb + k * 8));
+                let (a0, a1) = apply_t(t0, pa);
+                if rb == ones {
+                    // b = 1: the terms a₀·1 and (a₀ + a₁)·1; a₁·0 is zero (log 0 has bit 7 set)
+                    let (l0, l1) = (logs3(a0, m4, lg), logs3(a1, m4, lg));
+                    s0 = _mm256_xor_si256(s0, _mm256_xor_si256(_mm256_shuffle_epi8(w[0], l0[0]), _mm256_shuffle_epi8(w[2], l0[2])));
+                    s1 = _mm256_xor_si256(s1, _mm256_xor_si256(_mm256_shuffle_epi8(w[0], l1[0]), _mm256_shuffle_epi8(w[2], l1[2])));
+                    continue;
+                }
+                let (b0, b1) = apply_t(t0, pb);
                 s0 = _mm256_xor_si256(s0, prod3(logs3(a0, m4, lg), logs3(b0, m4, lg), w, c15));
                 s1 = _mm256_xor_si256(s1, prod3(logs3(a1, m4, lg), logs3(b1, m4, lg), w, c15));
             }
@@ -1607,16 +2028,66 @@ pub fn selftest() -> Result<String, String> {
     let x6r = x6_inner(&x6t, &wbytes[..1024], &wbytes[1024..2048], 3, &lo[..33]);
     let mut x6f = vec![F::ZERO; 33];
     x6_fold(&x6t, &wbytes[..1024], 5, sc, &mut x6f);
+    // pass PA's kernels (odd group counts: the scalar tails) and its Z3 driver
+    let s2 = (lo[2], lo[3]);
+    let ta = fv(96);
+    let tb = fv(96);
+    let red8 = |x: [FAcc; 8]| -> [F; 8] { x.map(|v| v.reduce()) };
+    let lab_r = red8(la_bits(&x6t, wa, wb, 3, &lo[..9]));
+    let (mut lfa_r, mut lfb_r) = (vec![F::ZERO; 20], vec![F::ZERO; 20]);
+    let lfs_r = red8(la_fold_bits(&x6t, wa, wb, 1, &lo[..5], s2, &mut lfa_r, &mut lfb_r));
+    let mut f2b_r = vec![F::ZERO; 21];
+    fold2_bits(&x6t, wa, 3, s2, &mut f2b_r);
+    let (mut lta_r, mut ltb_r) = (vec![F::ZERO; 20], vec![F::ZERO; 20]);
+    let lts_r = red8(la_fold_tab(&ta[..80], &tb[..80], &lo[..5], s2, &mut lta_r, &mut ltb_r));
+    let mut f2t_r = vec![F::ZERO; 23];
+    fold2_tab(&ta[..92], s2, &mut f2t_r);
     let pt = crate::ringswitch::phi_tables(&lo[..7], sc);
     let mut ph_r = b[..33].to_vec();
     phi_add(&pt, &a[..33], &mut ph_r);
-    let zw: Vec<u64> = (0..2048).map(|i| a[i % a.len()].lo ^ b[(7 * i) % b.len()].hi.rotate_left(i as u32)).collect();
-    let pft: [F; 256] = std::array::from_fn(|i| xs[i % 200] + lo[i % lo.len()]);
-    let mut pf_r = vec![F::ZERO; 16384];
-    pf_stripe(&zw, &pft, &mut pf_r);
+    // pass PC: four stripes for `pf_stripes` (K = 1 … 4, into a nonzero `acc`), and a window whose
+    // `a`, `b` words are zero, all ones or random (the row skips and the all-ones short-cut)
+    let zw: Vec<u64> = (0..4 * 2048).map(|i| a[i % a.len()].lo ^ b[(7 * i) % b.len()].hi.rotate_left(i as u32) ^ (i as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15)).collect();
+    let zs: Vec<&[u64]> = zw.chunks(2048).collect();
+    let pft: Vec<[F; 256]> = (0..4).map(|q| std::array::from_fn(|i| xs[(i + 37 * q) % 200] + lo[(i + q) % lo.len()])).collect();
+    let acc0 = fv(16384);
+    let pf_r: Vec<Vec<F>> = (1..=4).map(|k| { let mut o = acc0.clone(); pf_stripes_ref(&zs[..k], &pft[..k], &mut o); o }).collect();
+    let wrow: Vec<u8> = (0..256).flat_map(|_| { let (c, v) = (rnd() % 4, rnd()); (match c { 0 => 0, 1 => u64::MAX, _ => v }).to_le_bytes() }).collect();
+    let (sa, sb) = (&wrow[..1024], &wrow[1024..]);
+    let mut ws_r = [F::ZERO; 192];
+    crate::zerocheck::window_portable(sk, sa, sb, wz, &mut ws_r);
+    // the AVX2 table kernels (no carry-less product; they run on every AVX2 CPU, any tier)
+    let table_checks = || -> Option<&'static str> {
+        let mut w = [F::ZERO; 192];
+        round1_window(sk, wa, wb, wz, &mut w);
+        if w != w_r {
+            return Some("round-1 window");
+        }
+        round1_window(sk, sa, sb, wz, &mut w);
+        if w != ws_r {
+            return Some("round-1 window (row skips)");
+        }
+        for k in 1..=4 {
+            let mut o = acc0.clone();
+            pf_stripes(&zs[..k], &pft[..k], &mut o);
+            if o != pf_r[k - 1] {
+                return Some("pf_stripes");
+            }
+        }
+        None
+    };
     let mut tested = vec![];
     let mut fail = None;
+    if r1_avx2() {
+        match table_checks() {
+            Some(k) => fail = Some(format!("avx2: {k}")),
+            None => tested.push("avx2"),
+        }
+    }
     for &t in &tiers {
+        if fail.is_some() {
+            break;
+        }
         set_tier(t);
         let name = tier_name();
         let mut top = a[..n].to_vec();
@@ -1655,7 +2126,19 @@ pub fn selftest() -> Result<String, String> {
             ("x6_fold", { let mut o = vec![F::ZERO; 33]; x6_fold(&x6t, &wbytes[..1024], 5, sc, &mut o); o == x6f }),
             ("phi_add", { let mut o = b[..33].to_vec(); phi_add(&pt, &a[..33], &mut o); o == ph_r }),
             ("phi_add_idx", { let mut o = b[..33].to_vec(); let idx: Vec<u32> = (0..33).collect(); phi_add_idx(&pt, &a[..33], &idx, &mut o); o == ph_r }),
-            ("pf_stripe", { let mut o = vec![F::ZERO; 16384]; pf_stripe(&zw, &pft, &mut o); o == pf_r }),
+            ("table kernels", table_checks().is_none()),
+            ("la_bits", red8(la_bits(&x6t, wa, wb, 3, &lo[..9])) == lab_r),
+            ("la_fold_bits", {
+                let (mut oa, mut ob) = (vec![F::ZERO; 20], vec![F::ZERO; 20]);
+                red8(la_fold_bits(&x6t, wa, wb, 1, &lo[..5], s2, &mut oa, &mut ob)) == lfs_r && oa == lfa_r && ob == lfb_r
+            }),
+            ("fold2_bits", { let mut o = vec![F::ZERO; 21]; fold2_bits(&x6t, wa, 3, s2, &mut o); o == f2b_r }),
+            ("la_fold_tab", {
+                let (mut oa, mut ob) = (vec![F::ZERO; 20], vec![F::ZERO; 20]);
+                red8(la_fold_tab(&ta[..80], &tb[..80], &lo[..5], s2, &mut oa, &mut ob)) == lts_r && oa == lta_r && ob == ltb_r
+            }),
+            ("fold2_tab", { let mut o = vec![F::ZERO; 23]; fold2_tab(&ta[..92], s2, &mut o); o == f2t_r }),
+            ("z3 lookahead", crate::zerocheck::z3_check(5, 11) && crate::zerocheck::z3_check(8, 12)),
             ("butterfly (both reductions)", {
                 let (mut t2, mut b2, mut t3, mut b3) = (a[..n].to_vec(), b[..n].to_vec(), a[..n].to_vec(), b[..n].to_vec());
                 match t {
@@ -1699,7 +2182,7 @@ pub fn selftest() -> Result<String, String> {
 #[cfg(test)]
 mod pass6_tests {
     use super::*;
-    /// The AVX2 table kernels (round-1 window with `conv2`, `phi_add`, `pf_stripe`) against their
+    /// The AVX2 table kernels (round-1 window with `conv2`, `phi_add`, `pf_stripes`) against their
     /// portable references, whenever the machine has AVX2 (they need no carry-less multiply).
     #[test]
     fn avx2_table_kernels_match() {
@@ -1737,8 +2220,8 @@ mod pass6_tests {
             let a0 = fv(16384, &mut rnd);
             let (mut a1, mut a2) = (a0.clone(), a0.clone());
             pf_stripe_ref(&z, &pt, &mut a1);
-            unsafe { r1::pf_stripe(&z, &pt, &mut a2) };
-            assert!(a1 == a2, "pf_stripe");
+            unsafe { r1::pf_stripes::<1>(&[&z], &[pt], &mut a2) };
+            assert!(a1 == a2, "pf_stripes, one stripe");
         }
     }
 }
@@ -1800,5 +2283,64 @@ mod pass12_tests {
         }
         let want: Vec<F> = xs.iter().map(|x| *x * cs[0] + *x * cs[1] + *x * cs[2]).collect();
         assert_eq!(red_u(&u), want);
+    }
+}
+
+#[cfg(test)]
+mod pc_tests {
+    use super::*;
+    /// Pass PC: the tower window with the row skips and the all-ones short-cut against the portable
+    /// reference (rows of `a`, `b` zero, all ones or random, in every combination); `pf_stripes`
+    /// with one to four stripes against the scalar reference, on every tier the machine has.
+    #[test]
+    fn row_skips_and_stripes_match() {
+        let sk = crate::skipdom::skip();
+        let mut s = 0x6A09_E667_F3BC_C908u64;
+        let mut rnd = move || { s ^= s << 13; s ^= s >> 7; s ^= s << 17; s };
+        if hw_avx2() {
+            assert!(r1::tower(sk).ones, "the LDE of an all-ones row is 1");
+            for case in 0..16 {
+                let mut wb = vec![0u8; 3072];
+                for r in 0..256 {
+                    let c = if case < 9 { (case / 3, case % 3) } else { ((rnd() % 3) as usize, (rnd() % 3) as usize) };
+                    let kind = if r < 128 { c.0 } else { c.1 };
+                    let v = match kind { 0 => 0, 1 => u64::MAX, _ => rnd() };
+                    let v = if case >= 9 && rnd() % 4 == 0 { rnd() } else { v };
+                    wb[8 * r..8 * r + 8].copy_from_slice(&v.to_le_bytes());
+                }
+                for i in 2048..3072 {
+                    wb[i] = rnd() as u8;
+                }
+                let (mut w0, mut w1) = ([F::ZERO; 192], [F::ZERO; 192]);
+                crate::zerocheck::window_portable(sk, &wb[..1024], &wb[1024..2048], &wb[2048..], &mut w0);
+                unsafe { r1::window_t(sk, &wb[..1024], &wb[1024..2048], &wb[2048..], &mut w1) };
+                assert_eq!(w0, w1, "tower window with row skips, case {case}");
+            }
+        }
+        let z: Vec<u64> = (0..4 * 2048).map(|_| rnd()).collect();
+        let zs: Vec<&[u64]> = z.chunks(2048).collect();
+        let ts: Vec<[F; 256]> = (0..4).map(|_| std::array::from_fn(|_| F::new(rnd(), rnd()))).collect();
+        let acc0: Vec<F> = (0..16384).map(|_| F::new(rnd(), rnd())).collect();
+        for k in 1..=4 {
+            let mut want = acc0.clone();
+            for q in 0..k {
+                pf_stripe_ref(zs[q], &ts[q], &mut want);
+            }
+            if hw_avx2() {
+                let mut got = acc0.clone();
+                unsafe {
+                    match k {
+                        1 => r1::pf_stripes::<1>(&zs[..1], &ts[..1], &mut got),
+                        2 => r1::pf_stripes::<2>(&zs[..2], &ts[..2], &mut got),
+                        3 => r1::pf_stripes::<3>(&zs[..3], &ts[..3], &mut got),
+                        _ => r1::pf_stripes::<4>(&zs[..4], &ts[..4], &mut got),
+                    }
+                }
+                assert!(got == want, "r1::pf_stripes, {k} stripes");
+            }
+            let mut got = acc0.clone();
+            pf_stripes(&zs[..k], &ts[..k], &mut got);
+            assert!(got == want, "pf_stripes, {k} stripes");
+        }
     }
 }

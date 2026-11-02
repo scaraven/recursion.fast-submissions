@@ -4,6 +4,7 @@ import FRSoundnessCoreFront
 import FRSoundness4Pos
 import FRSegTarget4
 import FRSoundness4TailStep
+import FRSoundness4Rd2
 
 /-!
 # The front's Z, L, S names at revision 4.1 (positions < 170): the asserted checks and the dooms
@@ -236,9 +237,9 @@ def TL (L es : Log) : Array (Array F) :=
   kindTables (K := 8) (fun j => linM (M.Ak j) (M.Bk j) (rwL es) (alL es))
     (zfoldK (IndF M (kindOfC es) _) (rbLc es) (zN zw (kindOfC es) L es (qL (kindOfC es))))
 
-/-- **L2's rounds' doom** (from 69, 14 rounds, degree 2). -/
+/-- **L2's rounds' doom** (from 69, 14 rounds, degree 2; `flock-128`: `c₂` derived, `T4.D2d`). -/
 abbrev D2L : Log → Log → Prop :=
-  T4.D2 69 16 readF (fun d => chF d 0) (fun _ es => c0L es) (fun _ => 14) (kindExpr 8) (TL M zw)
+  T4.D2d 69 (fun _ es => c0L es) (fun _ => 14) (kindExpr 8) (TL M zw)
 
 /-- **L2's round checks fail**: 3.x's `RejL2` (kind-free). -/
 abbrev RejL2 : Log → Log → Prop := FR.Snd.RejL2
@@ -255,7 +256,7 @@ def zfL (L es : Log) (j : Fin 9) : F :=
 /-- `finLc` (ii) fails on the log for the kind flag `b`: L2's last claim is not
 `Σ_j v′_j M̃_j(r_k)`. -/
 def PLc (b : Bool) (L es : Log) : Prop :=
-  (kindOfC es).isNode = b ∧ clR2 69 16 readF (fun d => chF d 0) (fun _ es => c0L es) L es 14 ≠
+  (kindOfC es).isNode = b ∧ clR2d 69 (fun _ es => c0L es) L es 14 ≠
     ∑ j, vM (kindOfC es) es j * mle (linM (M.Ak j) (M.Bk j) (rwL es) (alL es)) (ptOf 14 (rkL es))
 
 /-- **A segment's `finLc` (ii) fails** (from 98). -/
@@ -276,14 +277,14 @@ def PendLc (L es : Log) : Prop :=
   99 ≤ es.length ∧ (kindOfC es).isNode = false ∧
     vBetaL es ≠ ∑ i : Fin 8, fAt es 98 0 ^ i.val * tL M zw L es i
 
-/-! ## S (positions 98 … 169) -/
+/-! ## S (positions 98 … 170; `flock-128`: the nonce absorb at 99, S1 squeezes 100 … 114, S2 from 115) -/
 
 /-- S1's `τ` (the kind's `nb` read coordinates). -/
 def tauL (κ : CKind) (es : Log) : List F := (List.range (nbC κ)).map (coS es)
 
 /-- S2's challenges: the block part (`nb`), the position part (10). -/
-def rbL (κ : CKind) (es : Log) : List F := (List.range (nbC κ)).map (rch 114 es)
-def rpL (κ : CKind) (es : Log) : List F := (List.range 10).map fun l => rch 114 es (nbC κ + l)
+def rbL (κ : CKind) (es : Log) : List F := (List.range (nbC κ)).map (rch 115 es)
+def rpL (κ : CKind) (es : Log) : List F := (List.range 10).map fun l => rch 115 es (nbC κ + l)
 
 /-- **The shift's boundary values**: a segment's `s` (`hdr` bytes 16–47) and `h` (`stmt` bytes
 1–32); a node's are `0`. -/
@@ -313,13 +314,13 @@ def c0S (es : Log) : F :=
 /-- S2's round count `nb + 10`. -/
 def nrS (κ : CKind) : ℕ := nbC κ + 10
 
-/-- S2's initial claim as a `T4.D2` claim. -/
+/-- S2's initial claim as a `T4.D2d` claim. -/
 def c0SL (_L es : Log) : F := c0S es
 
 /-- **S2's round checks fail** (the verifier's `c₁ + c₂ = claim` asserts). -/
 def RejS2 (L es : Log) : Prop :=
-  ∃ l < nrS (kindOfC es), 114 + 2 * l < es.length ∧
-    ¬ Chk2 114 16 readF (fun d => chF d 0) c0SL L es l
+  ∃ l < nrS (kindOfC es), 115 + 2 * l < es.length ∧
+    ¬ Chk2 115 16 readF (fun d => chF d 0) c0SL L es l
 
 end
 

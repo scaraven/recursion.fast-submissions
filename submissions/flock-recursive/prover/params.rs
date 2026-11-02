@@ -53,7 +53,8 @@ pub const LOG_INV_RATE: [usize; LEVELS] = [1, 2, 3, 4, 5];
 /// Row variables folded per level: 6, then 4 (= 1 coordinate-split bit + 3 message variables).
 pub const ROW_LOG: [usize; LEVELS] = [6, 4, 4, 4, 4];
 /// Merkle cap depth per level (clamped to the tree depth for test shapes).
-pub const CAP_LOG: [usize; LEVELS] = [9, 8, 8, 8, 7];
+/// Revision 4.4.1 (PACK §11.2 L2, `Seq.cap4 = 8`): level 4's cap is depth 8 (3.x: 7).
+pub const CAP_LOG: [usize; LEVELS] = [9, 8, 8, 8, 8];
 /// Queries per level (rev. 2 §2.2: `t = ⌈120.25 / −log₂(1 − e/n)⌉`, `e = ⌊(n − k)/2⌋`).
 pub fn queries(_m: usize) -> [usize; LEVELS] {
     [290, 178, 145, 132, 126]
@@ -122,14 +123,28 @@ pub const F_CAPS: usize = 14;
 pub const F_FINAL: usize = 15;
 pub const F_COLS: usize = 16;
 pub const F_SIBS: usize = 17;
-pub const N_FIELDS: usize = 18;
+/// Revision 4.4.1 (β′, PACK §11.1): the committed path digests `D` (871 × 32 B, read order) and the
+/// aggregated selectors `A` (1,536 K elements, no pad) (`FRTranscriptDefs.fD`/`fA`).
+pub const F_D: usize = 18;
+pub const F_A: usize = 19;
+/// `flock-128` (D128 §4.3, `FRShape4.fNonce`): the 16-byte nonces of the nine standalone `N` absorbs
+/// (`S1n`, `Lr1n`, `E1n`, `B'n`, `P3n` × 5), in item order.
+pub const F_NONCE: usize = 20;
+pub const N_FIELDS: usize = 21;
 /// A.3's sizes (`FRFormat.fieldSizes_eq`; `logs/S-0/dump/summary.txt`).
-pub const FIELD_SIZES: [usize; N_FIELDS] =
-    [48, 128, 2048, 1248, 32, 800, 1344, 816, 48, 2336, 48, 8192, 2112, 672, 45056, 4096, 487504, 241664];
-/// `piSize = 798,192` (revision 4.1, `FRShape4.piSizeOf_seq4`; `logs/S-F4/dump/summary.txt`): 3.x's
-/// 797,904 plus Lr's 2 and E's 4 extra rounds (96 + 192 B, the `m = 32` node's phases), the same for
-/// every SNARK kind.
-pub const PI_SIZE: usize = 798192;
+/// Revision 4.4.1 at rev44 HEAD (`logs/E1/dump/summary.txt`): `fLrEnd` 1,008 (RSV2: `â_L b̂_L ĉ_L ‖ p_x
+/// ‖ p_y ‖ s ‖ X₃`), `fEEnd` 112 (`â_M b̂_M ĉ_M ‖ m̂* ‖ 0^48`), caps 49,152 (level 4 at 256 entries),
+/// siblings 237,632 (level 4: 4 per position), `D` 27,872, `A` 49,152.
+/// `flock-128` (`FRShape4.fieldSizesOf_seq4`, `logs/I12/dump/summary.txt`): the degree-3 rounds 64 B
+/// (`fZ3`, `fLr`, E2's part of `fE`), a 16-byte nonce after `Zend`, `L3`, `Lrend`, `Eend`, `RS0` and
+/// every cap absorb, E4 end 128 B, `fNonce` 144.
+pub const FIELD_SIZES: [usize; N_FIELDS] = [
+    48, 128, 2048, 1664, 48, 816, 1344, 1088, 1024, 2800, 128, 8208, 2112, 672, 49232, 4112, 487504, 237632, 27872,
+    49152, 144,
+];
+/// `piSize = 877,776` (`flock-128`, `FRShape4.piSizeOf_seq4`; revision 4.4.2's 876,304 plus the
+/// proof of work's 1,472 B), the same for every SNARK kind.
+pub const PI_SIZE: usize = 877776;
 
 /// The offset of field `f` in `π`.
 pub const fn field_off(f: usize) -> usize {
@@ -160,12 +175,23 @@ pub const LR1_SQ: usize = 9;
 pub const LR_ROUNDS: usize = 17;
 /// `J_z = 4` (rev. 3.8: Z's quirky claim, Lc's, Sh's one claim, Lr's; a leaf's fourth is zero).
 pub const RS_CLAIMS: usize = 4;
-pub const RS1_SQ: usize = 4;
-pub const E1_SQ: usize = 12;
+/// `flock-128`: 5 (4 + the proof of work's answer: slot 1 of the last answer free, `Seq.sqC`).
+pub const RS1_SQ: usize = 5;
+/// `flock-128`: 13 (E1's 24 coordinates `τ ‖ η`, RSV2 §2.6, and slot 1 of the last answer free).
+pub const E1_SQ: usize = 13;
 pub const E2_ROUNDS: usize = 23;
-/// E4: the E lincheck (rev. 3.12/3.13), 25 degree-2 rounds at `seq4`; E4 end absorbs `f̂(r′) ‖ 0^16`.
+/// E4: the E lincheck (rev. 3.12/3.13), 25 degree-2 rounds at `seq4`; E4 end absorbs `f̂(r′) ‖ 0^112`
+/// (`flock-128`: 128 B, so the stream stays whole blocks; 4.4.2: `0^16`, 32 B).
 pub const E4_ROUNDS: usize = 25;
-pub const E4END_LEN: usize = 32;
+pub const E4END_LEN: usize = 128;
+/// `flock-128` (D128 §2.1): the nonce (16 B) of the absorb before each grinded phase, and the round
+/// messages: degree 3 `c₀ ‖ c₁ ‖ c₂ ‖ nonce` (64 B), degree 2 `c₀ ‖ c₁ ‖ nonce` (48 B, `c₂` derived).
+pub const NONCE_LEN: usize = 16;
+pub const RND3_LEN: usize = 64;
+pub const RND2_LEN: usize = 48;
+/// The proof of work: byte 31 of the last answer of every grinded phase is zero (154 phases).
+pub const POW_BYTE: usize = 31;
+pub const N_POW: usize = 154;
 /// Column items are padded to a multiple of 64 B in the stream (rev. 3.12): 48 zero bytes after the
 /// column's F elements (query 8 + 16·rows + 48).
 pub const COL_PAD: usize = 48;
@@ -175,9 +201,11 @@ pub const P3_SQ: usize = 5;
 pub const KAPPA_C: usize = 9;
 /// The final message: `2^7` K elements (`P30`: `2^5` then zeros).
 pub const FINAL_ELEMS: usize = 1 << PF_ROUNDS;
-/// The `m* = 32` ladder's position squeezes and Merkle-node queries per position (`lvlStar`).
-pub const STAR_SQ: [usize; LEVELS] = [25, 13, 10, 8, 6];
-pub const STAR_SIB: [usize; LEVELS] = [11, 10, 8, 6, 5];
+/// The `m* = 32` ladder's position squeezes and Merkle-node queries per position (`lvlStar`);
+/// `flock-128` (`Seq.sqP`): level 4 has 7 (its 126 indices of 12 bits fill 6 answers to bit 252, so
+/// the proof of work's byte 31 needs a seventh).
+pub const STAR_SQ: [usize; LEVELS] = [25, 13, 10, 8, 7];
+pub const STAR_SIB: [usize; LEVELS] = [11, 10, 8, 6, 4];
 /// Rows per column (`2^ℓ`), the same for every kind.
 pub const STAR_ROWS: [usize; LEVELS] = [64, 16, 16, 16, 16];
 
@@ -206,13 +234,26 @@ pub const KIND_LEAF: u8 = 0x4C;
 pub const KIND_L31: u8 = 0x4B;
 /// `L30` (`FRShape4.SegKind.byte`; 3.x's `P30` byte).
 pub const KIND_P30: u8 = 0x50;
-/// The item count of `seq4` (`itemsOf_seq4_length`) and its Fiat–Shamir items.
-pub const N_ITEMS: usize = 8905;
-pub const N_FS_ITEMS: usize = 482;
+/// The item count of `seq4` (`itemsOf_seq4_length`) and its Fiat–Shamir items (`flock-128`: 8,795 and
+/// 498; 4.4.2: 8,783 and 486).
+pub const N_ITEMS: usize = 8795;
+pub const N_FS_ITEMS: usize = 498;
+/// The cap check's reads (`capReadsN seq4`: 290 + 178 + 145 + 132 + 126) and cap entries
+/// (`capEntries seq4`: 512 + 3·256 + 256), with each level's entry offset `offᵢ`.
+pub const CAP_READS: usize = 871;
+pub const CAP_ENTRIES: usize = 1536;
+pub const CAP_OFF: [usize; LEVELS] = [0, 512, 768, 1024, 1280];
+/// `fLrEnd`'s reserve offsets (RSV2 §2.1: `p_x` 23, `p_y` 25, `s` 9, `X₃` 3 elements) and `fEEnd`'s `m̂*`.
+pub const LREND_LEN: usize = 1008;
+pub const EEND_LEN: usize = 112;
+pub const RSV_RX: usize = 48;
+pub const RSV_RY: usize = 416;
+pub const RSV_S: usize = 816;
+pub const RSV_X: usize = 960;
 pub const KIND_NODE: u8 = 0x4E;
 pub const HDR_LEN: usize = 48;
 
-/// `qV4 = 36,000` (`FRShape4.qV4`; the aggregate verifier asks `≤ 4 × 8,905`).
+/// `qV4 = 36,000` (`FRShape4.qV4`; the aggregate verifier asks `≤ 4 × 8,795 + 3`).
 pub const QV: usize = 36000;
 
 /// The leaf shapes: `m ∈ {30, 32}` (B-1); test shapes `m ≥ 25` use the same code.
@@ -233,19 +274,22 @@ mod tests {
         let l = ladder(M_STAR);
         let want = [
             (F_Z2, 2048),
-            (F_Z3, Z3_ROUNDS * 48),
-            (F_ZEND, 32),
-            (F_L2, L2_ROUNDS * 48 + L3_KINDS * 16),
-            (F_S2, S2_ROUNDS * 48),
-            (F_LR, LR_ROUNDS * 48),
-            (F_LREND, 48),
-            (F_RS0, RS_CLAIMS * 128 * 16),
-            (F_E, (E2_ROUNDS + E4_ROUNDS) * 48 + E4END_LEN),
-            (F_EEND, 48),
+            (F_Z3, Z3_ROUNDS * RND3_LEN),
+            (F_ZEND, 32 + NONCE_LEN),
+            (F_L2, L2_ROUNDS * RND2_LEN + L3_KINDS * 16 + NONCE_LEN),
+            (F_S2, S2_ROUNDS * RND2_LEN),
+            (F_LR, LR_ROUNDS * RND3_LEN),
+            (F_LREND, LREND_LEN + NONCE_LEN),
+            (F_RS0, RS_CLAIMS * 128 * 16 + NONCE_LEN),
+            (F_E, E2_ROUNDS * RND3_LEN + E4_ROUNDS * RND2_LEN + E4END_LEN),
+            (F_EEND, EEND_LEN + NONCE_LEN),
+            (F_D, CAP_READS * 32),
+            (F_A, CAP_ENTRIES * 32),
             (F_P1, ROW_LOG.iter().sum::<usize>() * 96),
             (F_PF, PF_ROUNDS * 96),
-            (F_CAPS, CAP_LOG.iter().map(|c| 32 << c).sum()),
-            (F_FINAL, FINAL_ELEMS * 32),
+            (F_CAPS, CAP_LOG.iter().map(|c| (32 << c) + NONCE_LEN).sum()),
+            (F_FINAL, FINAL_ELEMS * 32 + NONCE_LEN),
+            (F_NONCE, 9 * NONCE_LEN),
             (F_COLS, (0..LEVELS).map(|i| l[i].queries * (STAR_ROWS[i] * 16 + COL_PAD)).sum()),
             (F_SIBS, (0..LEVELS).map(|i| l[i].queries * STAR_SIB[i] * 32).sum()),
         ];
@@ -254,7 +298,10 @@ mod tests {
         }
         for i in 0..LEVELS {
             assert_eq!(STAR_SIB[i], l[i].code_log - l[i].cap_log);
-            assert_eq!(STAR_SQ[i], l[i].queries.div_ceil(256 / l[i].code_log));
+            // `Seq.sqP`: ⌈t/per⌉, one more if the last answer's indices reach byte 31 (bit 248)
+            let (per, sq) = (256 / l[i].code_log, l[i].queries.div_ceil(256 / l[i].code_log));
+            let last = (l[i].queries - (sq - 1) * per) * l[i].code_log;
+            assert_eq!(STAR_SQ[i], if last > 248 { sq + 1 } else { sq });
             assert_eq!(STAR_ROWS[i], 1 << l[i].rows_log);
         }
         assert_eq!(final_log(M_STAR), PF_ROUNDS);

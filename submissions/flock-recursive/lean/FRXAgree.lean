@@ -1,5 +1,5 @@
 -- New for `flock-recursive` (BLUEPRINT §6.2 step 4: `P = A[0…k)`; stage S-H2, track L-ext).
-import FRXBfly
+import FRXFwd
 
 /-!
 # The agreement set's first `k` positions on the machine
@@ -367,35 +367,5 @@ theorem scanIR_sem (I : Array Word) (s : St) (hM : Inv s.M) {n k fb lb : ℕ} {f
   have := iterL_ind (f := semXIR I (scanBody fb lb)) (c := rC4) (m := n) P step n 0 _ (by omega) hP0
   rw [Nat.zero_add] at this
   exact ⟨this.2.2.2.2.1, this.2.2.2.2.2.1, this.2.2.2.2.2.2, this.1⟩
-
-/-! ## Controls (kernel runs on a toy memory) -/
-
-namespace AgreeControls
-
-/-- Store the flags `fs` at `256 …` (scratch registers `200`, `201`). -/
-def putFlags : List Word → ℕ → XIR
-  | [], _ => .blk []
-  | f :: fs, j => .seq (.blk [.const 200 (toWord (256 + j)), .const 201 f])
-      (.seq (.store 200 201) (putFlags fs (j + 1)))
-
-/-- Output the count, then `m` list cells from `270`. -/
-def outList : ℕ → XIR
-  | 0 => .out rCn
-  | m + 1 => .seq (outList m) (.seq (.blk [.const 200 (toWord (270 + m))])
-      (.seq (.load 201 200) (.out 201)))
-
-/-- The flags `0, 5, 0, 7, 7, 0, 1, 0` (`A = {1, 3, 4, 6}`), the scan for `k`, the output. -/
-def toyScan (k m : ℕ) : XIR :=
-  .seq (putFlags [0, 5, 0, 7, 7, 0, 1, 0] 0) (.seq (scanIR 8 k 256 270) (outList m))
-
-/-- **Positive**: the first two flagged positions are `1, 3` (`firstK 8 A 2`). -/
-theorem toyScan_two : (toProg 280 0 (toyScan 2 2)).run [] 1500 = some [2, 1, 3] := by
-  decide +kernel
-
-/-- **Limit**: asking for six lists all four (`min(|A|, k)`); the cells past the count stay `0`. -/
-theorem toyScan_six : (toProg 280 0 (toyScan 6 6)).run [] 1500 = some [4, 1, 3, 4, 6, 0, 0] := by
-  decide +kernel
-
-end AgreeControls
 
 end FR.X

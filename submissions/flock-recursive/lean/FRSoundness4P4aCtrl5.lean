@@ -1,8 +1,7 @@
 -- New for `flock-recursive` (stage P4a pass 5 (P4e)): positive and negative controls for the
 -- definitions of `FRSoundness4P4aRS`, `FRSoundness4P4aNZ`, `FRSoundness4P4aNS`,
 -- `FRSoundness4P4aSplit`.
-import FRSoundness4P4aSplit
-import FRSoundness4P4aCtrl4
+import FRSoundness4XLaws
 
 /-!
 # Controls (P4a pass 5)

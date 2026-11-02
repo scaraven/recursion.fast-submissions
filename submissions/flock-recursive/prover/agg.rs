@@ -47,7 +47,11 @@ pub fn prove(o: &dyn Oracle, circ: &Circuit, vk: &Digest, s: &Digest, n: u64, mm
     pi[8..16].copy_from_slice(&n.to_le_bytes());
     let mut tms = Vec::new();
     let mut start = *s;
-    for &(m, ni) in &segs {
+    for (i, &(m, ni)) in segs.iter().enumerate() {
+        if i > 0 {
+            // revision 4.4.1 (R-A′, `FRAgg.aggProgs`): `V_A` asks the spacer between segments
+            o.ask(&spacer_q());
+        }
         let (p, tm) = leaf::prove_seg(o, circ, vk, &start, m, ni);
         start = seg_end(&p);
         pi.extend_from_slice(&p);
@@ -55,6 +59,13 @@ pub fn prove(o: &dyn Oracle, circ: &Circuit, vk: &Digest, s: &Digest, n: u64, mm
     }
     pi[16..48].copy_from_slice(&start);
     (pi, tms)
+}
+
+/// The spacer query `absorbQ 0³² 0⁴⁹` (`FRAgg.spacerQ`: `"FRABS000" ‖ 0^81`, 89 bytes).
+pub fn spacer_q() -> Vec<u8> {
+    let mut q = pp::TAG_ABS.to_vec();
+    q.resize(89, 0);
+    q
 }
 
 /// A segment proof's end `h` and length `n` (its statement field).
@@ -102,8 +113,12 @@ pub fn verify(o: &dyn Oracle, circ: &Circuit, vk: &Digest, c: &Digest, pi: &[u8]
     if !(ok && total == n && prev == Some(e)) {
         return false;
     }
-    // `seqAll`: in order, stopping at the first rejection
-    segs.iter().all(|p| {
+    // `seqAll (segProgs.intersperse spacer)`: in order, the spacer between segments, stopping at
+    // the first rejection
+    segs.iter().enumerate().all(|(i, p)| {
+        if i > 0 {
+            o.ask(&spacer_q());
+        }
         let (h, ni) = seg_stmt(p);
         leaf::verify(o, circ, vk, &leaf_stmt(&h, ni), p)
     })
@@ -126,6 +141,47 @@ mod tests {
         assert_eq!(split((1 << 16) + 3, 30), vec![(30, 1 << 16), (30, 3)]);
         assert_eq!(split(1 << 20, 32), vec![(32, 1 << 18); 4]);
         assert_eq!(split(3 << 18 | 1 << 17 | 1, 32), vec![(32, 1 << 18), (32, 1 << 18), (32, 1 << 18), (32, (1 << 17) + 1)]);
+    }
+
+    /// G4 (PD): the trace taped while proving (`Recorder::taped`, the grinder's winning attempts and
+    /// the openings noted) is the native verifier's replay item for item (`finish_trace` with the
+    /// table kept), accepted by `V_A` as `acc` runs it, and has A.4's shape (`items::shape_ok`), for
+    /// one and two segments; (−) `shape_ok` rejects the tape with an item dropped, a query
+    /// lengthened, the spacer altered, or the wrong segment count, and `finish_trace` rejects a
+    /// proof the verifier rejects.
+    #[test]
+    fn tape_is_replay() {
+        let circ = Circuit::build();
+        let base = Local::keyed(&[0x45u8; 32]);
+        let (vk, s) = ([5u8; 32], [0x18u8; 32]);
+        for n in [3000u64, 4096 + 7] {
+            let rec = Recorder::new(&base).taped();
+            let (pi, _) = prove(&rec, &circ, &vk, &s, n, 26);
+            let c = leaf::seg_c(&s, n);
+            let tr = crate::oracle::finish_trace(rec, &base, &|o| verify(o, &circ, &vk, &c, &pi)).unwrap();
+            let k = pi[1] as usize;
+            assert!(crate::items::shape_ok(&tr, k), "n = {n}");
+            let seq = Seq::new(&tr);
+            assert!(verify(&seq, &circ, &vk, &c, &pi) && seq.consumed());
+            assert!(!crate::items::shape_ok(&tr, k + 1));
+            let mut t1 = tr.clone();
+            t1.remove(500);
+            assert!(!crate::items::shape_ok(&t1, k));
+            let mut t2 = tr.clone();
+            t2[900].0.push(0);
+            assert!(!crate::items::shape_ok(&t2, k));
+            if k > 1 {
+                let mut t3 = tr.clone();
+                t3[pp::N_ITEMS].0[50] ^= 1;
+                assert!(!crate::items::shape_ok(&t3, k));
+            }
+            // the replay check fails on a proof the verifier rejects
+            let rec = Recorder::new(&base).taped();
+            let (pi, _) = prove(&rec, &circ, &vk, &s, n, 26);
+            let mut c2 = c;
+            c2[3] ^= 1;
+            assert!(crate::oracle::finish_trace(rec, &base, &|o| verify(o, &circ, &vk, &c2, &pi)).is_err());
+        }
     }
 
     /// Small shapes (`mmax = 26`: segments of `2^12` steps, the remainder in `m = 25` when `≤ 2^11`):

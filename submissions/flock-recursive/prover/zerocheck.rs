@@ -277,6 +277,323 @@ pub fn round_tab(a: &[F], b: &[F], rest: &[F], live: usize) -> (F, F) {
     (s1.reduce(), si.reduce())
 }
 
+// ---------------------------------------------------------------- Z3 by lookahead (pass PA)
+
+/// The lookahead sums of two variables `(k, k+1)` (pass PA; Flock `yukon-optimizations.tex`
+/// §cascade, `multilinear.rs` `LookaheadSums`). Over the groups `u` of four positions `v = X + 2Y`
+/// (`a_{XY}` the value at `X + 2Y + 4u`), weighted by `e(u) = eq(r_{>k+1}, u)`:
+/// `[s10, sinf0, c0, t11, c2, d0, dt, d2] = Σ_u e(u)·[a₁₀b₁₀, Δ₀ᵃΔ₀ᵇ, a₀₁b₀₁, a₁₁b₁₁, Δ₁ᵃΔ₁ᵇ,
+/// (a₀₀+a₀₁)(b₀₀+b₀₁), (a₁₀+a₁₁)(b₁₀+b₁₁), (Δ₀ᵃ+Δ₁ᵃ)(Δ₀ᵇ+Δ₁ᵇ)]` with `Δ_Y = a_{0Y} + a_{1Y}`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct La(pub [F; 8]);
+
+impl La {
+    /// Round `k`'s `(H(1), H(∞))`: the `Y = 0, 1` columns combined by `eq(r_{k+1}, Y)`.
+    pub fn first(&self, ry: F) -> (F, F) {
+        let s = &self.0;
+        let om = F::ONE + ry;
+        (om * s[0] + ry * s[3], om * s[1] + ry * s[4])
+    }
+    /// Round `k+1`'s `(H(1), H(∞))` once `x_k = x`: `Σ e·a′(1)b′(1)` and `Σ e·(a′(0)+a′(1))(…)`
+    /// with `a′(Y) = a_{0Y} + x Δ_Y`, quadratics in `x` whose coefficients are the sums (`c₁ =
+    /// t11 + c0 + c2`, the value at 1 less the others; likewise `d₁`).
+    pub fn second(&self, x: F) -> (F, F) {
+        let s = &self.0;
+        let (c0, c2) = (s[2], s[4]);
+        let (d0, d2) = (s[5], s[7]);
+        let (c1, d1) = (s[3] + c0 + c2, s[6] + d0 + d2);
+        (c0 + x * (c1 + x * c2), d0 + x * (d1 + x * d2))
+    }
+}
+
+/// Sub-range of a pass, in groups: zero stretches are skipped at this grain (one block of a
+/// pass-0 group range, four of a pass-1 range).
+const SUB: usize = 64;
+
+fn la_total(parts: Vec<[FAcc; 8]>) -> La {
+    let mut s = [F::ZERO; 8];
+    for p in parts {
+        for k in 0..8 {
+            s[k] += p[k].reduce();
+        }
+    }
+    La(s)
+}
+
+/// Per `eq` high index `h`, the inner sums of its sub-ranges (unreduced) reduced once and weighted.
+fn la_weigh(acc: &mut [FAcc; 8], hi: F, inner: &[FAcc; 8]) {
+    for k in 0..8 {
+        acc[k].mac(hi, inner[k].reduce());
+    }
+}
+
+fn add8(x: &mut [FAcc; 8], y: &[FAcc; 8]) {
+    for k in 0..8 {
+        x[k].add(&y[k]);
+    }
+}
+
+/// Pass 0: the lookahead sums of `x₆, x₇` from the bits (groups of four rows), `rest = r[2..]`;
+/// groups `≥ live_g` are zero.
+fn la_pass_bits0(t: &[F], a: &[u8], b: &[u8], rest: &[F], live_g: usize) -> La {
+    let es = EqSplit::new(rest);
+    let nlo = es.nlo;
+    let parts = par::map_chunks(live_g.div_ceil(1 << nlo), 1, |h0, h1| {
+        let mut acc = [FAcc::default(); 8];
+        for h in h0..h1 {
+            let (gl, gh) = (h << nlo, ((h + 1) << nlo).min(live_g));
+            let mut inner = [FAcc::default(); 8];
+            let mut any = false;
+            for s0 in (gl..gh).step_by(SUB) {
+                let s1 = (s0 + SUB).min(gh);
+                // a group range whose a or b rows are all zero adds nothing
+                if zero_bytes(&a[32 * s0..32 * s1]) || zero_bytes(&b[32 * s0..32 * s1]) {
+                    continue;
+                }
+                add8(&mut inner, &simd::la_bits(t, a, b, s0, &es.lo[s0 - gl..s1 - gl]));
+                any = true;
+            }
+            if any {
+                la_weigh(&mut acc, es.hi[h], &inner);
+            }
+        }
+        acc
+    });
+    la_total(parts)
+}
+
+/// The two output tables of a pass, written by disjoint group ranges in parallel.
+struct Out2(par::SyncPtr<F>, par::SyncPtr<F>);
+impl Out2 {
+    /// The outputs of groups `s0 … s1` (four a group).
+    #[allow(clippy::mut_from_ref)]
+    unsafe fn at(&self, s0: usize, s1: usize) -> (&mut [F], &mut [F]) {
+        (std::slice::from_raw_parts_mut(self.0 .0.add(4 * s0), 4 * (s1 - s0)), std::slice::from_raw_parts_mut(self.1 .0.add(4 * s0), 4 * (s1 - s0)))
+    }
+}
+
+/// Pass 1: `x₆, x₇` bound at `s` from the bits (four rows an output; `live` = the live outputs, that
+/// is pass 0's live groups; outputs `≥ live` are zero and not stored: the tables are the live
+/// prefix, `4⌈live/4⌉` long), and the lookahead sums of `x₈, x₉` over the outputs, `rest = r[4..]`.
+fn la_pass_bits1(t: &[F], a: &[u8], b: &[u8], s: (F, F), rest: &[F], live: usize) -> (Vec<F>, Vec<F>, La) {
+    let es = EqSplit::new(rest);
+    let nlo = es.nlo;
+    let ng = live.div_ceil(4);
+    let (mut oa, mut ob): (Vec<F>, Vec<F>) = (par::uninit_vec(4 * ng), par::uninit_vec(4 * ng));
+    let out = Out2(par::SyncPtr(oa.as_mut_ptr()), par::SyncPtr(ob.as_mut_ptr()));
+    let parts = par::map_chunks(ng.div_ceil(1 << nlo), 1, |h0, h1| {
+        let mut acc = [FAcc::default(); 8];
+        for h in h0..h1 {
+            let (gl, gh) = (h << nlo, ((h + 1) << nlo).min(ng));
+            let mut inner = [FAcc::default(); 8];
+            let mut any = false;
+            for s0 in (gl..gh).step_by(SUB) {
+                let s1 = (s0 + SUB).min(gh);
+                // SAFETY: the group ranges of the chunks are disjoint and inside `0 … ng`
+                let (xa, xb) = unsafe { out.at(s0, s1) };
+                let (za, zb) = (zero_bytes(&a[128 * s0..128 * s1]), zero_bytes(&b[128 * s0..128 * s1]));
+                if !za && !zb {
+                    add8(&mut inner, &simd::la_fold_bits(t, a, b, s0, &es.lo[s0 - gl..s1 - gl], s, xa, xb));
+                    any = true;
+                    continue;
+                }
+                // zero rows fold to zero (`t[·][0] = 0`), and the products of the range are zero
+                for (z, src, x) in [(za, a, xa), (zb, b, xb)] {
+                    if z {
+                        x.fill(F::ZERO);
+                    } else {
+                        simd::fold2_bits(t, src, 4 * s0, s, x);
+                    }
+                }
+            }
+            if any {
+                la_weigh(&mut acc, es.hi[h], &inner);
+            }
+        }
+        acc
+    });
+    (oa, ob, la_total(parts))
+}
+
+/// A later pass on the tables (a live prefix, a multiple of 16 long): two pending variables bound
+/// at `s` (4 → 1) and the lookahead sums of the next two over the outputs, `rest` their `eq` tail.
+fn la_pass_tab(ta: &[F], tb: &[F], s: (F, F), rest: &[F]) -> (Vec<F>, Vec<F>, La) {
+    assert!(ta.len() == tb.len() && ta.len() % 16 == 0 && ta.len() <= 16 << rest.len());
+    let es = EqSplit::new(rest);
+    let nlo = es.nlo;
+    let ng = ta.len() / 16;
+    let (mut oa, mut ob): (Vec<F>, Vec<F>) = (par::uninit_vec(4 * ng), par::uninit_vec(4 * ng));
+    let out = Out2(par::SyncPtr(oa.as_mut_ptr()), par::SyncPtr(ob.as_mut_ptr()));
+    let parts = par::map_chunks(ng.div_ceil(1 << nlo), 1, |h0, h1| {
+        let mut acc = [FAcc::default(); 8];
+        for h in h0..h1 {
+            let (gl, gh) = (h << nlo, ((h + 1) << nlo).min(ng));
+            let mut inner = [FAcc::default(); 8];
+            let mut any = false;
+            for s0 in (gl..gh).step_by(SUB) {
+                let s1 = (s0 + SUB).min(gh);
+                // SAFETY: as in `la_pass_bits1`
+                let (xa, xb) = unsafe { out.at(s0, s1) };
+                let (ia, ib) = (&ta[16 * s0..16 * s1], &tb[16 * s0..16 * s1]);
+                let (za, zb) = (zero_f(ia), zero_f(ib));
+                if !za && !zb {
+                    add8(&mut inner, &simd::la_fold_tab(ia, ib, &es.lo[s0 - gl..s1 - gl], s, xa, xb));
+                    any = true;
+                    continue;
+                }
+                for (z, src, x) in [(za, ia, xa), (zb, ib, xb)] {
+                    if z {
+                        x.fill(F::ZERO);
+                    } else {
+                        simd::fold2_tab(src, s, x);
+                    }
+                }
+            }
+            if any {
+                la_weigh(&mut acc, es.hi[h], &inner);
+            }
+        }
+        acc
+    });
+    (oa, ob, la_total(parts))
+}
+
+/// **Z3 by lookahead** (pass PA; Flock §cascade, §tailfuse, §foldentry): the `n = r.len()` rounds of
+/// `eq(r, x)·a_λ(x)·b_λ(x)` over `x = (x₆ …)` from the bit tables `a`, `b` (rows of 64 bits folded at
+/// λ by `t`; blocks `≥ used` zero), two rounds per pass:
+/// * pass 0 reads the bits once for the lookahead sums of `x₆, x₇` (rounds 0, 1; no table written);
+/// * pass 1 reads them again, binds `x₆, x₇` (four rows to one output) and forms the sums of
+///   `x₈, x₉` over the outputs while they are in registers;
+/// * each later pass binds two variables (4 → 1) and forms the next two rounds' sums;
+/// * a last odd round, if any, is `round_tab` on the (at most 8-entry) table.
+///
+/// `step(k, H_k(1), H_k(∞))` sends round `k`'s message and returns its challenge. Returns `(â, b̂)`
+/// at the challenges. The messages are those of `round_x6`/`fold_x6`/`round_tab`/`fold` round by
+/// round (`z3_rounds_ref`): every value is the same field element computed in another order.
+pub fn z3_rounds(t: &[F], a: &[u8], b: &[u8], r: &[F], used: usize, step: &mut dyn FnMut(usize, F, F) -> F) -> (F, F) {
+    let n = r.len();
+    assert!(a.len() == 8 << n && b.len() == a.len() && t.len() >= 8 * 256);
+    if n < 4 {
+        // no shape has `m < 10` (leaves 25 … 32, nodes 31, 32); kept total for the tests
+        return z3_rounds_ref(t, a, b, r, used, step);
+    }
+    let live_g = used.saturating_mul(256).min(1 << n) / 4; // groups of four rows; a block is 256 rows
+    let la = {
+        let _sp = crate::prof::span("x6.round");
+        la_pass_bits0(t, a, b, &r[2..], live_g)
+    };
+    let (h1, hi) = la.first(r[1]);
+    let x0 = step(0, h1, hi);
+    let (h1, hi) = la.second(x0);
+    let mut pend = (x0, step(1, h1, hi));
+    let mut k = 2;
+    let mut tabs: Option<(Vec<F>, Vec<F>)> = None; // `None`: still the bits
+    while n - k >= 2 {
+        let (oa, ob, la) = match tabs.take() {
+            None => {
+                let _sp = crate::prof::span("x6.fold");
+                la_pass_bits1(t, a, b, pend, &r[k + 2..], live_g) // pass 1's outputs: one a pass-0 group
+            }
+            Some((mut ta, mut tb)) => {
+                let _sp = crate::prof::span("tail.fold");
+                // the live prefix padded to a whole number of groups (within the table's size)
+                let l = ta.len().next_multiple_of(16).min(4 << (n - k));
+                ta.resize(l, F::ZERO);
+                tb.resize(l, F::ZERO);
+                la_pass_tab(&ta, &tb, pend, &r[k + 2..])
+            }
+        };
+        tabs = Some((oa, ob));
+        let (h1, hi) = la.first(r[k + 1]);
+        let x = step(k, h1, hi);
+        let (h1, hi) = la.second(x);
+        pend = (x, step(k + 1, h1, hi));
+        k += 2;
+    }
+    let _sp = crate::prof::span("tail.round");
+    // the last pending pair bound on the whole (≤ 8-entry) tables, then the odd round, if any
+    let (mut ta, mut tb) = tabs.expect("n ≥ 4: pass 1 ran");
+    let full = 4 << (n - k);
+    ta.resize(full, F::ZERO);
+    tb.resize(full, F::ZERO);
+    let (mut fa, mut fb) = (vec![F::ZERO; full / 4], vec![F::ZERO; full / 4]);
+    simd::fold2_tab(&ta, pend, &mut fa);
+    simd::fold2_tab(&tb, pend, &mut fb);
+    if n - k == 1 {
+        // `live = 2`: the whole table (entries past the live prefix are zero here)
+        let (h1, hi) = round_tab(&fa, &fb, &[], 2);
+        let x = step(k, h1, hi);
+        return (fa[0] + x * (fa[0] + fa[1]), fb[0] + x * (fb[0] + fb[1]));
+    }
+    (fa[0], fb[0])
+}
+
+/// The reference of `z3_rounds`: the leaf's rounds as passes 1–13 made them (`round_x6`, `fold_x6`,
+/// then `round_tab` and `fold_f_live` per round on the tables' nonzero prefix).
+pub fn z3_rounds_ref(t: &[F], a: &[u8], b: &[u8], r: &[F], used: usize, step: &mut dyn FnMut(usize, F, F) -> F) -> (F, F) {
+    let n = r.len();
+    let (mut ta, mut tb) = (Vec::new(), Vec::new());
+    let mut live = used.saturating_mul(128); // 128 row pairs a block
+    for k in 0..n {
+        let (h1, hi) = if k == 0 { round_x6(t, a, b, &r[1..], used) } else { round_tab(&ta, &tb, &r[k + 1..], live) };
+        let x = step(k, h1, hi);
+        if k == 0 {
+            ta = fold_x6(t, a, x, used);
+            tb = fold_x6(t, b, x, used);
+        } else {
+            ta = crate::sumcheck::fold_f_live(&ta, x, live);
+            tb = crate::sumcheck::fold_f_live(&tb, x, live);
+            live = live.div_ceil(2);
+        }
+    }
+    (ta[0], tb[0])
+}
+
+type Z3Fn = fn(&[F], &[u8], &[u8], &[F], usize, &mut dyn FnMut(usize, F, F) -> F) -> (F, F);
+
+/// `z3_rounds` against `z3_rounds_ref` on random bits of `2^n` rows with zero stretches, for several
+/// `used` (the bits past `used` blocks zeroed, as a segment's are), the challenges derived from the
+/// messages: every message and both final values equal (selftest, tests).
+pub fn z3_check(n: usize, seed: u64) -> bool {
+    let mut s = seed | 1;
+    let mut rnd = move || {
+        s ^= s << 13;
+        s ^= s >> 7;
+        s ^= s << 17;
+        s
+    };
+    let rows = 1usize << n;
+    let mut a: Vec<u8> = (0..8 * rows).map(|_| rnd() as u8).collect();
+    let mut b: Vec<u8> = (0..8 * rows).map(|_| rnd() as u8).collect();
+    // zero stretches: a's rows `rows/4 … 3rows/8`, b's last sixteenth, and one row of each
+    a[2 * rows..3 * rows].fill(0);
+    b[8 * rows - (rows / 2).max(8)..].fill(0);
+    a[8..16].fill(0);
+    b[24..32].fill(0);
+    let t = fold_tables(F::new(rnd(), rnd()));
+    let r: Vec<F> = (0..n).map(|_| F::new(rnd(), rnd())).collect();
+    let blocks = rows.div_ceil(256);
+    for used in [blocks, blocks.div_ceil(2), 1, blocks + 3] {
+        let cut = (256 * 8 * used).min(8 * rows);
+        let (mut ua, mut ub) = (a.clone(), b.clone());
+        ua[cut..].fill(0);
+        ub[cut..].fill(0);
+        let go = |f: Z3Fn| {
+            let mut log = Vec::new();
+            let v = f(&t, &ua, &ub, &r, used, &mut |k, h1, hi| {
+                log.push((k, h1, hi));
+                (h1 + F::new(k as u64, 3)) * (hi + F::ONE) + F::new(seed, k as u64)
+            });
+            (log, v)
+        };
+        let (x, y) = (go(z3_rounds), go(z3_rounds_ref));
+        if x != y || x.0.len() != n {
+            return false;
+        }
+    }
+    true
+}
+
 /// `h(0)` from the claim: `(1 + r) h(0) + r h(1) = claim`.
 pub fn h0_from_claim(claim: F, r: F, h1: F) -> F {
     (claim + r * h1) * (F::ONE + r).inv()
@@ -375,5 +692,19 @@ mod pass12_tests {
             }
             assert_eq!(simd::red_u(&u), acc);
         }
+    }
+}
+
+#[cfg(test)]
+mod pa_tests {
+    /// Pass PA's lookahead rounds equal the round-by-round ones (every message, both final values),
+    /// even and odd `n` (2 and 3: the fallback), several `used`, zero stretches; `n = 17` splits the
+    /// passes over several `eq` high indices. In the current tier (`FLOCK_TIER`; the selftest covers every tier).
+    #[test]
+    fn z3_lookahead_matches_ref() {
+        for n in 2..=13 {
+            assert!(super::z3_check(n, 0x5eed + n as u64), "n = {n}");
+        }
+        assert!(super::z3_check(17, 77), "n = 17");
     }
 }

@@ -54,6 +54,32 @@ impl Tree {
     pub fn cap(&self) -> &[Digest] {
         self.layers.last().unwrap()
     }
+    /// G4: note (`Oracle::note`) the verifier's items of opening position `p` (A.4 `Q`), with the
+    /// answers this tree holds: the column query (`rows` elements of `cw` at `p`), then `sib_star`
+    /// node queries, the path's at depths below the tree's and the dummy `0^64` (answer `dummy`) at
+    /// the others. Exactly the queries `ligerito::verify` asks of an honest opening.
+    pub fn note_opening(&self, o: &dyn Oracle, cw: &[F], rows: usize, p: usize, sib_star: usize, dummy: &Digest) {
+        let mut q = Vec::with_capacity(8 + 16 * rows + crate::params::COL_PAD);
+        col_query(self.level, &cw[p * rows..(p + 1) * rows], &mut q);
+        o.note(&q, &self.layers[0][p]);
+        let sib = self.layers.len() - 1;
+        for d in 0..sib_star {
+            q.clear();
+            if d < sib {
+                let (j, cur) = (p >> d, &self.layers[d][p >> d]);
+                let sd = &self.layers[d][j ^ 1];
+                if j & 1 == 0 {
+                    node_query(self.level, cur, sd, &mut q);
+                } else {
+                    node_query(self.level, sd, cur, &mut q);
+                }
+                o.note(&q, &self.layers[d + 1][j >> 1]);
+            } else {
+                node_query(self.level, &[0u8; 32], &[0u8; 32], &mut q);
+                o.note(&q, dummy);
+            }
+        }
+    }
     /// The siblings of position `p`, leaf level first.
     pub fn path(&self, p: usize) -> Vec<Digest> {
         let mut v = Vec::with_capacity(self.layers.len() - 1);

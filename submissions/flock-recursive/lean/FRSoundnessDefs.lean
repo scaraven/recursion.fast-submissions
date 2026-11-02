@@ -7,7 +7,7 @@
 -- RET-2: the declarations revision 4.1 reads moved to `FRSoundnessCoreChain`.
 import FRLog
 import FRSoundnessCoreDefs
-import FRSoundnessCoreChain
+import FRSoundness4Pos
 
 /-!
 # The potential over chains and its `step` law (BLUEPRINT §5.1)

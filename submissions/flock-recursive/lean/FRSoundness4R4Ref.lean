@@ -2,7 +2,8 @@
 -- RET-2: import re-pointed at Core: `FRSoundnessAccSem` → `FRSoundnessCoreAcc`.
 import FRSoundness4Qry
 import FRVIRSpecCore
-import FRSoundnessCoreAcc
+import FRSoundness4P4aSeg
+import FRVIR4Pow
 
 /-!
 # The reference semantics of `gen4`'s skeleton (`refPhase4`, `exec_skeleton4`)
@@ -14,9 +15,13 @@ programs are `gen4 S p fin` (`FRVIR4`), with their own generator `genPhase4`. Th
 * **Generic run facts** (any op list): the flag factors out (`exec_ok_and`), and a run appends
   exactly `opsOut` registers and consumes one trace entry per ask (`exec_ext`).
 * **`refPhase4`**: a phase's registers, flag and the rest of the trace.
-  - Squeezes, the univariate round and sumcheck rounds: 3.x's references (`sqzT`, `uniVals`,
-    `roundsT`) at field `0` and absolute offsets (`gen4` addresses π absolutely, `absOff 0 o = o`).
-    A segment's univariate round first packs its `targetS` operand (`segPtOp`).
+  - Squeezes, the univariate round and sumcheck rounds: 3.x's references (`sqzT`) and `flock-128`'s
+    (`uniVals4`, `roundsT4`: D128's proof of work on every grinded answer, the derived degree-2
+    `c₂`, the dummy rounds' nonce left out of their zero check) at field `0` and absolute offsets
+    (`gen4` addresses π absolutely, `absOff 0 o = o`). A grinded squeeze phase appends `powVals` of its
+    last answer and its flag is `powOk` (`kSqueeze`: the cap check's `ζ`, `z` are not grinded). A
+    segment's univariate round first packs its `targetS` operand (`segPtOp`). A rounds phase's first
+    claim is its ops' `pureRun` (`initOps4`: L2, S2, E4's targets are computed, not read).
   - The seed and absorbs: the query (`ans1`), then the phase's ask-free tail (`seedTail4`, `absTail4`:
     `stmtOps4`, a segment's `lastOps`, `finalOps4`, the end-zero check) as a `pureRun`.
   - **A query phase is its own `exec`**: the front never reads a query phase's values; its chain
@@ -100,14 +105,29 @@ def seedTail4 (b : ℕ) : List Op := (seedOps4 p b).drop 2
 
 /-- **An absorb phase's ops after its query**: the statement's checks (a segment's with
 `lastOps`), the final message's zero padding, the ends' zero check, or nothing. -/
-def absTail4 (n f b : ℕ) : List Op :=
+def absTail4 (n f len b : ℕ) : List Op :=
   let o := fieldOffOf S f + phaseOffOf S n f
   if f = fStmt then
     if p.d.node then stmtOps4 p o b (b + 2)
     else stmtOps4 p o b (b + 2) ++ lastOps o (b + 2 + opsOut (stmtOps4 p o b (b + 2)))
   else if f = fFinal then finalOps4 S p o (b + 2)
-  else if f = fLrEnd ∨ f = fEEnd then [.assertZero b (fun _ => !p.d.node)]
+  else if nonceAbs f then [.piField 0 o (len - S.nb), .assertZero (b + 2) (fun _ => !p.d.node)]
   else []
+
+/-- The register of a squeeze phase's last answer (from the phase's first register `b`). -/
+def lastAnsReg (ch : ChalK) (k b : ℕ) : ℕ :=
+  match ch with
+  | .coords => b + 3 * k - 3
+  | _ => b + k - 1
+
+/-- A squeeze phase's proof of work (D128): the registers and the flag on the last answer `a`, none
+for the K challenges (`kSqueeze`). -/
+def powRef (name : String) (base : List Val) (a : Digest) : List Val × Bool :=
+  if kSqueeze name then (base, true) else (base ++ powVals a, powOk a)
+
+theorem powRef_fst (name : String) (base : List Val) (a : Digest) :
+    (powRef name base a).1 = base ++ (if kSqueeze name then [] else powVals a) := by
+  unfold powRef; split <;> simp
 
 /-- The registers of a segment's `targetS` operand (`segPtOp`). -/
 def segPtRegs (outs : Array (List Reg)) : List Reg :=
@@ -132,33 +152,32 @@ def refPhase4 (n : ℕ) (ph : String × Sh) (c : GCtx) (r : Array Val) (tr : Tra
     | [] => none
   | .absorb f len =>
     (ans1 (absorbQ d (FR.msgAt inp 0 (o f) len)) tr).bind fun x =>
-      (pureRun impl κ inp (absTail4 S p n f r.size) r [.b (FR.msgAt inp 0 (o f) len), .d x.1]).map
+      (pureRun impl κ inp (absTail4 S p n f len r.size) r [.b (FR.msgAt inp 0 (o f) len), .d x.1]).map
         fun y => (y.1, y.2, x.2)
   | .squeezes k ch =>
     (sqzT k d tr).map fun x =>
-      match ch with
-      | .coords => (x.1.flatMap coordVals ++ [.af (FR.coordsOf x.1).toArray], true, x.2)
-      | .one => (x.1.map .d ++ [.f (chF (x.1.headD zeroD) 0)], true, x.2)
-      | .pos _ => (x.1.map .d, true, x.2)
+      let base : List Val := match ch with
+        | .coords => x.1.flatMap coordVals ++ [.af (FR.coordsOf x.1).toArray]
+        | .one => x.1.map .d ++ [.f (chF (x.1.headD zeroD) 0)]
+        | .pos _ => x.1.map .d
+      let y := powRef ph.1 base (rd (r ++ base.toArray) (lastAnsReg ch k r.size)).toD
+      (y.1, y.2, x.2)
   | .uni f =>
     match tr with
     | (q₁, a₁) :: (q₂, a₂) :: tr =>
       if q₁ = absorbQ d (FR.msgAt inp 0 (o f) uniBytes) ∧ q₂ = squeezeQ a₁ then
         if p.d.node then
-          some (uniVals impl inp 0 (o f) (impl.targetS κ (rd r c.pt).toAF) a₁ a₂,
-            (Val.b (FR.msgAt inp 0 (o f + 2032) 16)).isZero, tr)
+          some (uniVals4 impl inp 0 (o f) (impl.targetS κ (rd r c.pt).toAF) a₁ a₂, powOk a₂, tr)
         else
           let P := ((segPtRegs S p c.outs).map fun x => (rd r x).toF).toArray
-          some (.af P :: uniVals impl inp 0 (o f) (impl.targetS κ P) a₁ a₂,
-            (Val.b (FR.msgAt inp 0 (o f + 2032) 16)).isZero, tr)
+          some (.af P :: uniVals4 impl inp 0 (o f) (impl.targetS κ P) a₁ a₂, powOk a₂, tr)
       else none
     | _ => none
-  | .rounds f k deg inK =>
-    let init := initClaim ph.1
-    let iv := initVals inp init 0 (o f) inK
-    let cl := match init with | .uni => rd r c.uni | _ => iv.getLastD default
-    (roundsT inp 0 (o f) deg inK (realRounds p ph.1 k) k 0 d cl tr).map fun x =>
-      (iv ++ x.1, x.2.1, x.2.2)
+  | .rounds f k deg inK _ =>
+    let io := initOps4 S c.outs (fun l => .packF (l p.d)) ph.1 0 (o f) inK c.uni r.size
+    (pureRun impl κ inp io.1 r []).bind fun iv =>
+      (roundsT4 inp 0 (o f) deg inK (realRounds p ph.1 k) k 0 d (rd (r ++ iv.1.toArray) io.2) tr).map
+        fun x => (iv.1 ++ x.1, iv.2 && x.2.1, x.2.2)
   | .queries _ =>
     (exec impl κ inp (genPhase4 S p n ph c).1 ⟨r, true⟩ tr).map fun x =>
       (x.1.regs.toList.drop r.size, x.1.ok, x.2)
@@ -179,7 +198,7 @@ theorem opsOut_seedTail4 (b : ℕ) : opsOut (seedTail4 p b) = 2 := rfl
 
 theorem noAsk_seedTail4 (b : ℕ) : (seedTail4 p b).filterMap Op.item? = [] := rfl
 
-theorem noAsk_absTail4 (n f b : ℕ) : (absTail4 S p n f b).filterMap Op.item? = [] := by
+theorem noAsk_absTail4 (n f len b : ℕ) : (absTail4 S p n f len b).filterMap Op.item? = [] := by
   unfold absTail4
   split_ifs <;> simp [List.filterMap_append, noAsk_stmtOps4, noAsk_lastOps, finalOps4, Op.item?]
 
@@ -194,9 +213,35 @@ theorem exec_tail (o₁ ops : List Op) (r : Array Val) (base : List Val) (ok : B
 /-- The registers a context points to are below a file's size (3.x's `CtxOk`). -/
 theorem genPhase4_absorb (n : ℕ) (name : String) (f len : ℕ) (c : GCtx) :
     (genPhase4 S p n (name, .absorb f len) c).1 =
-      absorbOps 0 (fieldOffOf S f + phaseOffOf S n f) len c.st c.next ++ absTail4 S p n f c.next := by
+      absorbOps 0 (fieldOffOf S f + phaseOffOf S n f) len c.st c.next ++ absTail4 S p n f len c.next := by
   simp only [genPhase4, absTail4]
   split_ifs <;> simp [List.append_assoc]
+
+/-- **The first claim's register is below the registers the first claim's ops leave.** -/
+theorem initOps_reg_lt (i : Init) (f o : ℕ) (inK : Bool) (uni b : ℕ) (hu : uni < b) :
+    (initOps i f o inK uni b).2 < b + opsOut (initOps i f o inK uni b).1 := by
+  cases i <;> cases inK <;> simp [initOps, opsOut, Op.outs, hu]
+
+theorem initOps4_reg_lt (outs : Array (List Reg)) (pk : (Dims → List Reg) → Op)
+    (hpk : ∀ l, (pk l).outs = 1) (name : String) (f o : ℕ) (inK : Bool) (uni b : ℕ) (hu : uni < b) :
+    (initOps4 S outs pk name f o inK uni b).2 < b + opsOut (initOps4 S outs pk name f o inK uni b).1 := by
+  unfold initOps4
+  split
+  · split_ifs <;> simp only [initL2, initS2, initE4, opsOut, List.map_cons, List.map_nil, hpk] <;>
+      simp [Op.outs]
+  · exact initOps_reg_lt _ _ _ _ _ _ hu
+
+/-- **A squeeze phase's proof of work** (`powRef`), from the registers `r ++ L`. -/
+theorem exec_pw (name : String) (a b : ℕ) (r : Array Val) (L : List Val) (ops : List Op) (ok : Bool)
+    (tr : Trace) (hb : b = (r ++ L.toArray).size) :
+    exec impl κ inp ((if kSqueeze name = true then ([] : List Op) else powOps a b) ++ ops) ⟨r ++ L.toArray, ok⟩ tr =
+      exec impl κ inp ops ⟨r ++ (powRef name L (rd (r ++ L.toArray) a).toD).1.toArray,
+        ok && (powRef name L (rd (r ++ L.toArray) a).toD).2⟩ tr := by
+  subst hb
+  by_cases hk : kSqueeze name = true
+  · simp [hk, powRef]
+  · simp only [hk, Bool.false_eq_true, ite_false, powRef]
+    exact exec_powOps impl κ inp a r L _ rfl ops ok tr
 
 /-- **Every phase's semantics** (`genPhase4`'s 3.x `exec_genPhase`): a phase's ops on a trace are
 its reference `refPhase4`. -/
@@ -236,7 +281,7 @@ theorem exec_genPhase4 (n : ℕ) (ph : String × Sh) (c : GCtx) (r : Array Val) 
       simp only [ans1]
       split_ifs with h
       · simp only [Option.bind_some]
-        rw [exec_tail impl κ inp _ _ _ _ _ _ (noAsk_absTail4 S p _ _ _), Option.bind_map]
+        rw [exec_tail impl κ inp _ _ _ _ _ _ (noAsk_absTail4 S p _ _ _ _), Option.bind_map]
         rfl
       · rfl
   | squeezes k ch =>
@@ -246,21 +291,32 @@ theorem exec_genPhase4 (n : ℕ) (ph : String × Sh) (c : GCtx) (r : Array Val) 
       simp only [genPhase4, refPhase4, List.append_assoc]
       rw [exec_sqzC impl κ inp k st r ok _ hst, Option.bind_map]
       refine Option.bind_congr fun x hx => ?_
-      rw [show 2 * k = 2 * x.1.length by rw [sqzT_spec hx]]
-      simp only [Function.comp_apply, List.singleton_append, exec_app, evalOp, pack_coords,
-        Bool.and_true, List.nil_append]
+      have hk := sqzT_spec hx
+      rw [show 2 * k = 2 * x.1.length by rw [hk]]
+      simp only [Function.comp_apply, List.singleton_append, exec_app, evalOp, pack_coords, Bool.and_true]
+      rw [exec_pw impl κ inp _ _ _ r _ ops ok _ (by
+        simp only [Array.size_append, List.size_toArray, List.length_append, coordVals_length, hk,
+          List.length_singleton]; omega)]
+      simp [lastAnsReg, hk]
     | one =>
       simp only [genPhase4, refPhase4, List.append_assoc]
       rw [exec_sqzOps impl κ inp k st r ok _ hst, Option.bind_map]
-      refine Option.bind_congr fun x _ => ?_
+      refine Option.bind_congr fun x hx => ?_
+      have hk := sqzT_spec hx
       have h0 : ((x.1.map Val.d).getD 0 default).toD = x.1.headD zeroD := by
         cases x.1 <;> rfl
       simp only [Function.comp_apply, List.singleton_append, exec_app, evalOp, rd_app0, h0,
         Bool.and_true]
+      rw [exec_pw impl κ inp _ _ _ r _ ops ok _ (by simp [hk]; omega)]
+      simp [lastAnsReg, hk]
     | pos _ =>
       simp only [genPhase4, refPhase4]
-      rw [exec_sqzOps impl κ inp k st r ok _ hst, Option.bind_map]
-      simp
+      rw [List.append_assoc, exec_sqzOps impl κ inp k st r ok _ hst, Option.bind_map]
+      refine Option.bind_congr fun x hx => ?_
+      have hk := sqzT_spec hx
+      simp only [Function.comp_apply]
+      rw [exec_pw impl κ inp _ _ _ r _ ops ok _ (by simp [hk])]
+      simp [lastAnsReg, hk]
   | uni f =>
     obtain ⟨hst, -, -, -, hpt⟩ := hwf.resolve_left (by simp)
     replace hst : st < r.size := hst
@@ -268,11 +324,11 @@ theorem exec_genPhase4 (n : ℕ) (ph : String × Sh) (c : GCtx) (r : Array Val) 
     by_cases hnd : p.d.node = true
     · simp only [genPhase4, refPhase4, hnd, ite_true]
       rcases tr with _ | ⟨⟨q₁, a₁⟩, _ | ⟨⟨q₂, a₂⟩, tr⟩⟩
-      · rw [e0]; simp only [uniOps, uniHead, List.append_assoc, List.cons_append, exec_app, evalOp,
+      · rw [e0]; simp only [uniOps4, uniHead, List.append_assoc, List.cons_append, exec_app, evalOp,
           List.nil_append, Option.bind_none]
-      · rw [e0]; simp only [uniOps, uniHead, List.append_assoc, List.cons_append, exec_app, evalOp,
+      · rw [e0]; simp only [uniOps4, uniHead, List.append_assoc, List.cons_append, exec_app, evalOp,
           List.nil_append, Option.bind_none]; split <;> simp
-      · rw [exec_uni impl κ inp 0 _ st pt r ok ops _ hst hpt rfl]
+      · rw [exec_uni4 impl κ inp 0 _ st pt r ok ops _ hst hpt rfl]
         by_cases h : q₁ = absorbQ (rd r st).toD (FR.msgAt inp 0 (fieldOffOf S f + phaseOffOf S n f) uniBytes) ∧
           q₂ = squeezeQ a₁ <;> simp [h]
     · simp only [genPhase4, refPhase4, hnd, Bool.false_eq_true, ite_false, segPtOp_eq,
@@ -284,45 +340,35 @@ theorem exec_genPhase4 (n : ℕ) (ph : String × Sh) (c : GCtx) (r : Array Val) 
         rw [← hP]; simp
       have hs1 : (r ++ [Val.af P].toArray).size = r.size + 1 := by simp
       rcases tr with _ | ⟨⟨q₁, a₁⟩, _ | ⟨⟨q₂, a₂⟩, tr⟩⟩
-      · simp only [uniOps, uniHead, List.append_assoc, List.cons_append, exec_app, evalOp,
+      · simp only [uniOps4, uniHead, List.append_assoc, List.cons_append, exec_app, evalOp,
           List.nil_append]; rfl
-      · simp only [uniOps, uniHead, List.append_assoc, List.cons_append, exec_app, evalOp,
+      · simp only [uniOps4, uniHead, List.append_assoc, List.cons_append, exec_app, evalOp,
           List.nil_append]; split <;> simp
-      · rw [← hs1, exec_uni impl κ inp 0 _ st r.size (r ++ [Val.af P].toArray) ok ops _
+      · rw [← hs1, exec_uni4 impl κ inp 0 _ st r.size (r ++ [Val.af P].toArray) ok ops _
           (by rw [hs1]; exact Nat.lt_succ_of_lt hst) (by rw [hs1]; exact Nat.lt_succ_self _)
           rfl, rd_app_left _ _ hst, rd_app0, hP']
         by_cases h : q₁ = absorbQ (rd r st).toD (FR.msgAt inp 0 (fieldOffOf S f + phaseOffOf S n f) uniBytes) ∧
           q₂ = squeezeQ a₁
         · simp [h]; rfl
         · simp [h]
-  | rounds f k deg inK =>
+  | rounds f k deg inK pw =>
     obtain ⟨hst, hu, -, -, -⟩ := hwf.resolve_left (by simp)
     replace hst : st < r.size := hst
     replace hu : u < r.size := hu
     simp only [genPhase4, refPhase4]
-    rcases hi : initClaim name with _ | _ | _ <;>
-      simp only [initOps, initVals, Init.width, List.nil_append, Nat.add_zero]
-    · rw [exec_roundsT impl κ inp 0 _ deg inK _ k 0 st u r ok ops _ _ hst hu rfl rfl, Option.bind_map]
-      simp
-    · rw [e0]
-      simp only [List.singleton_append, List.cons_append, exec_app, evalOp, List.nil_append]
-      rw [exec_roundsT' impl κ inp 0 _ deg inK _ k 0 st r.size _ (r ++ [Val.f 0].toArray) _ ops _
-        (.f 0) (by simp) (by simp; exact Nat.le_of_lt hst) (by simp) (by rw [rd_app_left _ _ hst])
-        (by simpa using rd_app0 r [Val.f 0]), Option.bind_map]
-      simp [Array.append_assoc]
-    · rw [e0]
-      cases inK <;>
-      simp only [Bool.false_eq_true, ite_true, ite_false, List.cons_append, List.nil_append, exec_app,
-        evalOp, rd_app, rd_app0, List.getD_cons_succ, List.getD_cons_zero, toF_f, toK_k] <;>
-      rw [exec_roundsT' impl κ inp 0 _ deg _ _ k 0 st (r.size + 2) _ _ _ ops (rd r st).toD _ ?_ ?_ ?_ ?_
-          rfl,
-        Option.bind_map] <;>
-      first
-        | (simp [Array.append_assoc, rd_app, List.getD_cons_succ, List.getD_cons_zero, elemAt,
-            elemKAt]; done)
-        | exact Nat.lt_of_lt_of_le hst (by simp)
-        | (simp; done)
-        | rw [rd_app_left _ _ hst]
+    rw [List.append_assoc, e0, exec_tail impl κ inp _ _ r [] ok tr
+      (noAsk_initOps4 _ _ _ (fun _ => rfl) _ _ _ _ _ _), Option.bind_assoc]
+    refine Option.bind_congr fun y hy => ?_
+    have hl := pureRun_len impl κ inp r _ _ _ _ hy
+    simp only [List.length_nil, Nat.zero_add] at hl
+    have hcl := initOps4_reg_lt S outs (fun l => .packF (l p.d)) (fun _ => rfl) name 0
+      (fieldOffOf S f + phaseOffOf S n f) inK u r.size hu
+    rw [show r.size + opsOut (initOps4 S outs (fun l => .packF (l p.d)) name 0 (fieldOffOf S f + phaseOffOf S n f)
+        inK u r.size).1 = (r ++ y.1.toArray).size by simp [hl],
+      exec_roundsT4 impl κ inp 0 _ deg inK _ k 0 st _ (r ++ y.1.toArray) (ok && y.2) ops _ _
+        (Nat.lt_of_lt_of_le hst (by simp)) (by simpa [hl] using hcl) (by rw [rd_append_left hst]) rfl,
+      Option.bind_map]
+    simp [Array.append_assoc, Bool.and_assoc]
   | queries i =>
     simp only [refPhase4]
     rw [exec_append, exec_ok_and impl κ inp _ r ok tr]
@@ -341,7 +387,7 @@ theorem genPhase4_next (n : ℕ) (ph : String × Sh) (c : GCtx) :
   | squeezes k ch => cases ch <;> simp [genPhase4]
   | absorb f len => simp only [genPhase4]; split_ifs <;> simp
   | uni f => simp only [genPhase4]; split_ifs <;> simp
-  | rounds f k deg inK => cases inK <;> simp [genPhase4]
+  | rounds f k deg inK pw => cases inK <;> simp [genPhase4]
   | _ => simp [genPhase4]
 
 /-- **The context a phase hands on** (3.x's `genPhase_ctx`): the next free register is past the
@@ -408,7 +454,8 @@ theorem genPhase4_ctx (n : ℕ) (ph : String × Sh) (c : GCtx) (r : Array Val) (
     have hc := coordVals_length y.1
     simp only [List.length_flatMap] at hc
     have hp := hpos (by simp)
-    cases ch <;> simp [genPhase4, CtxOk, hc, hk]
+    by_cases hks : kSqueeze name = true <;>
+    cases ch <;> simp [genPhase4, CtxOk, hc, hk, powRef, hks, powVals]
     all_goals repeat' apply And.intro
     all_goals try dsimp only [Reg] at *
     all_goals first
@@ -424,7 +471,7 @@ theorem genPhase4_ctx (n : ℕ) (ph : String × Sh) (c : GCtx) (r : Array Val) (
     · cases hx
     · cases hx
     simp only at hx
-    split_ifs at hx with h1 h2 <;> cases hx <;> simp [genPhase4, CtxOk, uniVals_length, h2]
+    split_ifs at hx with h1 h2 <;> cases hx <;> simp [genPhase4, CtxOk, uniVals4_length, powW, h2]
     all_goals repeat' apply And.intro
     all_goals try dsimp only [Reg] at *
     all_goals first
@@ -433,17 +480,22 @@ theorem genPhase4_ctx (n : ℕ) (ph : String × Sh) (c : GCtx) (r : Array Val) (
       | exact (hm4 _ (by omega) (by omega)).1 | exact (hm4 _ (by omega) (by omega)).2.1
       | exact (hm4 _ (by omega) (by omega)).2.2.1 | exact (hm4 _ (by omega) (by omega)).2.2.2
       | (intro a ha; simp at ha; omega)
-  | rounds f k deg inK =>
+  | rounds f k deg inK pw =>
     simp only [refPhase4] at hx
+    obtain ⟨iv, hiv, hx⟩ := Option.bind_eq_some_iff.1 hx
     obtain ⟨y, hy, rfl⟩ := Option.map_eq_some_iff.1 hx
-    have hk := roundsT_length inp hy
+    have hk := roundsT4_length inp hy
+    have hl := pureRun_len impl κ inp r _ _ _ _ hiv
     have hp := hpos (by simp)
-    have hw : 13 ≤ roundW deg := by unfold roundW; split <;> omega
-    have hwk : 0 < k → roundW deg ≤ roundW deg * k := Nat.le_mul_of_pos_right _
+    have hw : 13 ≤ roundW4 deg inK := by unfold roundW4; split_ifs <;> omega
+    have hwk : 0 < k → roundW4 deg inK ≤ roundW4 deg inK * k := Nat.le_mul_of_pos_right _
     have hst : st < r.size := (hm r.size le_rfl hp).1
+    simp only [List.length_nil, Nat.zero_add] at hl
     simp only [genPhase4]
-    rcases initClaim name with _ | _ | _ <;> cases inK <;>
-      simp [initOps, initVals_length, hk, CtxOk, Init.width]
+    generalize hO : opsOut (initOps4 S outs (fun l => .packF (l p.d)) name 0 (fieldOffOf S f + phaseOffOf S n f)
+      inK u r.size).1 = ow at hl ⊢
+    generalize roundW4 deg inK = w at hk hw hwk ⊢
+    cases inK <;> simp [hk, hl, CtxOk]
     all_goals repeat' apply And.intro
     all_goals try dsimp only [Reg] at *
     all_goals first
@@ -452,6 +504,7 @@ theorem genPhase4_ctx (n : ℕ) (ph : String × Sh) (c : GCtx) (r : Array Val) (
       | exact (hm _ (by omega) (by omega)).1
       | exact (hm4 _ (by omega) (by omega)).1 | exact (hm4 _ (by omega) (by omega)).2.1
       | exact (hm4 _ (by omega) (by omega)).2.2.1 | exact (hm4 _ (by omega) (by omega)).2.2.2
+      | (intro a ha; have := Nat.mul_le_mul_left w (show a + 1 ≤ k by omega); rw [Nat.mul_succ] at this; omega)
       | (intro a ha; simp at ha; omega)
   | queries i =>
     have hp := hpos (by simp)

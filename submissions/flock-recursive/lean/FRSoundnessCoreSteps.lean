@@ -72,8 +72,9 @@ open RecursionFast FR.Merkle Finset
 
 open scoped NNReal
 
-/-- The entry's per-query knowledge error: `εR = 15/2^124 ≈ 2^-120.093`. -/
-noncomputable def epsR : ℝ≥0 := 15 / 2 ^ 124
+/-- The entry's per-query knowledge error: `εR = 15/2^132 ≈ 2^-128.093` (`flock-128`, D128 §3:
+the 8-bit proof of work on every F and position phase; was `15/2^124`). -/
+noncomputable def epsR : ℝ≥0 := 15 / 2 ^ 132
 
 /-- **The Hide potential's per-query error** (§10 changes 15): its H row `2^-142` and its rounds'
 `2^18/2^256 = 2^-238` (at most `eᵢ ≤ 2^18` hiding challenges per P1.i round). -/
@@ -94,7 +95,7 @@ theorem epsH_le_epsR : epsH ≤ epsR := by
   push_cast
   norm_num
 
-theorem epsD_coe : (epsD : ℝ) = 15 / 2 ^ 124 - 1 / 2 ^ 142 - 1 / 2 ^ 238 := by
+theorem epsD_coe : (epsD : ℝ) = 15 / 2 ^ 132 - 1 / 2 ^ 142 - 1 / 2 ^ 238 := by
   rw [epsD, NNReal.coe_sub epsH_le_epsR, epsH, epsR]
   push_cast
   norm_num
@@ -107,7 +108,7 @@ theorem h_le_epsD : (2 : ℝ≥0)⁻¹ ^ 142 ≤ epsD := by
 /-- **The two potentials' errors add up to `εR`** (kernel-checked: `ε_H ≤ εR`). -/
 theorem epsD_add_epsH : epsD + epsH = epsR := tsub_add_cancel_of_le epsH_le_epsR
 
-theorem deltaR_coe : (deltaR : ℝ) = 15 / 2 ^ 124 - 2 / 2 ^ 142 - 1 / 2 ^ 238 := by
+theorem deltaR_coe : (deltaR : ℝ) = 15 / 2 ^ 132 - 2 / 2 ^ 142 - 1 / 2 ^ 238 := by
   rw [deltaR, NNReal.coe_sub h_le_epsD, epsD_coe]
   push_cast
   ring
@@ -119,7 +120,7 @@ theorem err_le_epsD : (badCount : ℝ≥0) / 2 ^ 256 + deltaR ≤ epsD :=
     _ = epsD := add_tsub_cancel_of_le h_le_epsD
 
 /-- A single-squeeze row of `N` answers fits the budget when `N/2^256 ≤ deltaR` (in ℝ). -/
-theorem N_le_deltaR {N : ℕ} (h : (N : ℝ) / 2 ^ 256 ≤ 15 / 2 ^ 124 - 2 / 2 ^ 142 - 1 / 2 ^ 238) :
+theorem N_le_deltaR {N : ℕ} (h : (N : ℝ) / 2 ^ 256 ≤ 15 / 2 ^ 132 - 2 / 2 ^ 142 - 1 / 2 ^ 238) :
     (N : ℝ≥0) ≤ 2 ^ 256 * deltaR := by
   rw [← NNReal.coe_le_coe, NNReal.coe_mul, deltaR_coe]
   push_cast
@@ -232,7 +233,8 @@ theorem length_ext : ∀ (as : List Digest) (es : Log), (ext es as).length = es.
     rw [show ext es (a :: as) = ext (ext1 es a) as from rfl, length_ext as]
     simp [ext1]; omega
 
-theorem three_le_deltaR : ((3 * 2 ^ 128 : ℕ) : ℝ≥0) ≤ 2 ^ 256 * deltaR :=
+/-- A degree-3 round with the proof of work (`round_row_F_pow`: `3 · 2^120`) fits the budget. -/
+theorem three_le_deltaR : ((3 * 2 ^ 120 : ℕ) : ℝ≥0) ≤ 2 ^ 256 * deltaR :=
   N_le_deltaR (by push_cast; norm_num)
 
 end Rounds3
@@ -879,9 +881,9 @@ theorem rs1_round_le {D : Log → Log → Prop} {L es₀ : Log} {s0 : ℕ} (hl :
     _ = c * 2 ^ (256 * 4) := by
       rw [mul_assoc, ← pow_succ, ← pow_mul, show 128 * (7 + 1) = 256 * 4 by norm_num]
 
-/-- A coordinate row of at most `239` bad values per `2^128` fits the rows' budget `deltaR`
-(`εR − 2·2^-142 − 2^-238 ≈ 239.9998 / 2^128`). -/
-theorem coord_le_deltaR {c : ℕ} (hc : c ≤ 239) : (c : ℝ≥0) / 2 ^ 128 ≤ deltaR := by
+/-- A coordinate row of at most `239` bad values per `2^136` (`2^128` and the proof of work's
+`2^8`) fits the rows' budget `deltaR` (`εR − 2·2^-142 − 2^-238 ≈ 239.9998 / 2^136`). -/
+theorem coord_le_deltaR {c : ℕ} (hc : c ≤ 239) : (c : ℝ≥0) / 2 ^ 136 ≤ deltaR := by
   rw [← NNReal.coe_le_coe, NNReal.coe_div, deltaR_coe]
   push_cast
   have : (c : ℝ) ≤ 239 := by exact_mod_cast hc
@@ -889,9 +891,9 @@ theorem coord_le_deltaR {c : ℕ} (hc : c ≤ 239) : (c : ℝ≥0) / 2 ^ 128 ≤
   norm_num
   linarith
 
-/-- **The Ligerito and PIOP coordinate rows fit `deltaR`** (A.10's counts: Z1 `≤ 20`, S1 `33`,
-Lr1 `15`, RS1 `10`, E1 `21`, P3 `9`). -/
-theorem coord_rows_le : ∀ c ∈ [20, 33, 15, 10, 21, 9], (c : ℝ≥0) / 2 ^ 128 ≤ deltaR :=
+/-- **The Ligerito and PIOP coordinate rows fit `deltaR`** (A.10's counts with the proof of work:
+Z1 `≤ 20`, S1 `33`, Lr1 `15`, RS1 `10`, E1 `21`, P3 `9`, each per `2^136`). -/
+theorem coord_rows_le : ∀ c ∈ [20, 33, 15, 10, 21, 9], (c : ℝ≥0) / 2 ^ 136 ≤ deltaR :=
   fun c hc => by
     simp only [List.mem_cons, List.not_mem_nil, or_false] at hc
     rcases hc with rfl | rfl | rfl | rfl | rfl | rfl <;> exact coord_le_deltaR (by norm_num)
@@ -1020,5 +1022,374 @@ theorem not_mlDoom_zero (n : ℕ) (l : List F) :
   rw [hz _ n (by simp)]
   simp only [tbl, Array.getD_eq_getD_getElem?, Array.getElem?_replicate, Pi.zero_apply]
   split <;> rfl
+
+end FR.Snd
+
+/-! ## D128 (`flock-128`): the per-phase counts with the 8-bit proof of work
+
+Every grinded phase's escape also needs `pow` of its last answer (`FRLog.pow`, byte 31 zero), so
+each row's count shrinks by `2^8`: a single F squeeze `s · 2^120` (`single_F_pow_le`), a round
+`deg · 2^120` (`round_row_F_pow`), a coordinate phase whose bad set does not read the last
+coordinate (`CylLast`: slot 1 of the last answer, the proof of work's) `|W| / 2^8`
+(`card_coords_pow_in`, `flat_round_pow_le`, `seq_round_pow_le`, `ml_round_pow_le` for `n < 2r`,
+`rs1_round_pow_le` at RS1's 5 squeezes), a P2 phase whose last answer's indices lie below byte 31
+`(|S|/2^b)^t / 2^8` (`card_idx_pow_in`, `p2_round_pow_le`). With `εR = 15/2^132` each such row
+needs `c ≤ 239` per `2^136` (`coord_le_deltaR`); without the proof of work it does not fit
+(`nopow_ctrl`). -/
+
+namespace FR.Snd
+
+open RecursionFast FR.Merkle Finset
+
+open scoped NNReal
+
+set_option linter.constructorNameAsVariable false
+
+/-! ### Coordinate rows with the proof of work -/
+
+/-- An answer tuple as its `2r` F coordinates (coordinate `j` is F coordinate `j % 2` of answer
+`j / 2`, `coordAt`'s order). -/
+noncomputable def flatEquiv (r : ℕ) : (Fin r → Digest) ≃ (Fin (r * 2) → F) :=
+  (Equiv.piCongrRight fun _ => chFEquiv).trans (pairsEquiv r)
+
+theorem flatEquiv_apply {r : ℕ} (v : Fin r → Digest) (j : Fin (r * 2)) :
+    flatEquiv r v j = chF (v ⟨j / 2, by omega⟩) (j % 2) := by
+  simp only [flatEquiv, Equiv.trans_apply, pairsEquiv_apply, Equiv.piCongrRight_apply]
+  rcases Nat.mod_two_eq_zero_or_one j.val with h | h <;> simp [h] <;> rfl
+
+/-- The last coordinate of `r` answers (slot 1 of answer `r − 1`; its byte 15 is the answer's
+byte 31). -/
+def lastC (r : ℕ) (hr : 0 < r) : Fin (r * 2) := ⟨r * 2 - 1, by omega⟩
+
+/-- A set of coordinate tuples that does not constrain the last coordinate. -/
+def CylLast {r : ℕ} (hr : 0 < r) (W : Finset (Fin (r * 2) → F)) : Prop :=
+  ∀ w x, Function.update w (lastC r hr) x ∈ W ↔ w ∈ W
+
+/-- **`card_coords_pow_in`** (D128 §2.2): the answer tuples whose coordinates lie in a set `W`
+that does not constrain the last coordinate, and whose last answer passes the proof of work,
+are `|W| / 2^8` (`card_coords_in`: `|W|`). -/
+theorem card_coords_pow_in {r : ℕ} (hr : 0 < r) (W : Finset (Fin (r * 2) → F))
+    (hW : CylLast hr W) :
+    (univ.filter fun v : Fin r → Digest => flatEquiv r v ∈ W ∧ pow (v ⟨r - 1, by omega⟩)).card *
+      2 ^ 8 = W.card := by
+  have h1 : (univ.filter fun v : Fin r → Digest => flatEquiv r v ∈ W ∧ pow (v ⟨r - 1, by omega⟩)).card =
+      (univ.filter fun w : Fin (r * 2) → F =>
+        w ∈ W ∧ (fun x : F => (F.toBytes x)[15] = 0) (w (lastC r hr))).card := by
+    refine Finset.card_equiv (flatEquiv r) fun v => ?_
+    simp only [mem_filter, mem_univ, true_and]
+    have hl : flatEquiv r v (lastC r hr) = chF (v ⟨r - 1, by omega⟩) 1 := by
+      rw [flatEquiv_apply]; simp only [lastC]
+      congr 2
+      · ext; simp only; omega
+      · omega
+    rw [hl, top_byte_eq]; rfl
+  have h2 := card_cyl (lastC r hr) (· ∈ W) hW (fun x : F => (F.toBytes x)[15] = 0)
+  rw [card_top_byte_zero, F.card_F, Finset.filter_mem_eq_inter, Finset.univ_inter] at h2
+  rw [h1]
+  have : (univ.filter fun w : Fin (r * 2) → F =>
+      w ∈ W ∧ (fun x : F => (F.toBytes x)[15] = 0) (w (lastC r hr))).card * 2 ^ 8 * 2 ^ 120 =
+      W.card * 2 ^ 120 := by
+    rw [mul_assoc, ← pow_add]; exact h2
+  exact Nat.eq_of_mul_eq_mul_right (by positivity) this
+
+open Classical in
+/-- **The flattened coordinate row with the proof of work**: if the escape puts the phase's `2r`
+coordinates in a set `W` that does not constrain the last one, and the last answer passes the
+proof of work, the charge is at most `|W| / 2^(256 r) / 2^8`. -/
+theorem flat_round_pow_le {D : Log → Log → Prop} {L es₀ : Log} {s0 r : ℕ}
+    (hl : es₀.length = s0 + 1) (hr : 0 < r) (W : Finset (Fin (r * 2) → F)) (hW : CylLast hr W)
+    (hesc : ∀ as : List Digest, as.length = r → EscAtG D L (ext es₀ as) →
+      (fun j : Fin (r * 2) => coordAt (ext es₀ as) s0 j) ∈ W ∧ pow (ansAt (ext es₀ as) (s0 + r))) :
+    condCount D L es₀ r [] ≤ (W.card : ℝ≥0) / 2 ^ (256 * r) / 2 ^ 8 := by
+  unfold condCount extCount
+  simp only [List.length_nil, Nat.sub_zero, List.nil_append]
+  have hle := Finset.card_le_card (s := univ.filter fun v : Fin r → Digest =>
+      EscAtG D L (ext es₀ (List.ofFn v)))
+    (t := univ.filter fun v : Fin r → Digest => flatEquiv r v ∈ W ∧ pow (v ⟨r - 1, by omega⟩))
+    fun v hv => by
+    simp only [Finset.mem_filter, Finset.mem_univ, true_and] at hv ⊢
+    obtain ⟨hw, hp⟩ := hesc _ (by simp) hv
+    have hv' : ∀ j : Fin (r * 2), coordAt (ext es₀ (List.ofFn v)) s0 j = flatEquiv r v j := by
+      intro j
+      rw [flatEquiv_apply, coordAt, fAt, show s0 + 1 + (j : ℕ) / 2 = es₀.length + j / 2 by omega,
+        ansAt_ext _ (by simp; omega), List.getElem_ofFn]
+    refine ⟨by simpa only [hv'] using hw, ?_⟩
+    rwa [show s0 + r = es₀.length + (r - 1) by omega, ansAt_ext _ (by simp; omega),
+      List.getElem_ofFn] at hp
+  have hc := card_coords_pow_in hr W hW
+  have hle' : ((univ.filter fun v : Fin r → Digest =>
+      EscAtG D L (ext es₀ (List.ofFn v))).card : ℝ≥0) * 2 ^ 8 ≤ W.card := by
+    exact_mod_cast hc ▸ Nat.mul_le_mul_right (2 ^ 8) hle
+  rw [div_div, div_le_div_iff₀ (by positivity) (by positivity)]
+  calc ((univ.filter fun v : Fin r → Digest =>
+        EscAtG D L (ext es₀ (List.ofFn v))).card : ℝ≥0) * (2 ^ (256 * r) * 2 ^ 8)
+      = ((univ.filter fun v : Fin r → Digest =>
+        EscAtG D L (ext es₀ (List.ofFn v))).card : ℝ≥0) * 2 ^ 8 * 2 ^ (256 * r) := by ring
+    _ ≤ (W.card : ℝ≥0) * 2 ^ (256 * r) := by gcongr
+
+open Classical in
+/-- **The Schwartz–Zippel row with the proof of work** (`seq_round_le`): a doom on the coordinate
+list that does not read the last coordinate, held at the entry, losing at most `b i` values at
+coordinate `i` and failing at every escape whose last answer passes the proof of work, charges
+at most `Σ_{i < 2r} b i / 2^136`. -/
+theorem seq_round_pow_le {D : Log → Log → Prop} {L es₀ : Log} {s0 r : ℕ}
+    (hl : es₀.length = s0 + 1) (hr : 0 < r) (Doom : List F → Prop) (b : ℕ → ℕ)
+    (hcyl : ∀ (w : Fin (r * 2) → F) x,
+      Doom (List.ofFn (Function.update w (lastC r hr) x)) ↔ Doom (List.ofFn w))
+    (hb : ∀ l, Doom l → (univ.filter fun c => ¬ Doom (l ++ [c])).card ≤ b l.length)
+    (h0 : Doom [])
+    (hesc : ∀ as : List Digest, as.length = r → EscAtG D L (ext es₀ as) →
+      ¬ Doom (List.ofFn fun j : Fin (r * 2) => coordAt (ext es₀ as) s0 j) ∧
+        pow (ansAt (ext es₀ as) (s0 + r))) :
+    condCount D L es₀ r [] ≤ ((∑ i ∈ range (r * 2), b i : ℕ) : ℝ≥0) / 2 ^ 136 := by
+  set W := univ.filter fun w : Fin (r * 2) → F => ¬ Doom (List.ofFn w)
+  have hW : CylLast hr W := fun w x => by simp only [W, mem_filter, mem_univ, true_and, hcyl]
+  have h1 := flat_round_pow_le (D := D) (L := L) hl hr W hW fun as has hE => by
+    obtain ⟨h, hp⟩ := hesc as has hE
+    exact ⟨by simp only [W, mem_filter, mem_univ, true_and]; exact h, hp⟩
+  have h2 := seq_bad_le Doom b hb (r * 2) [] h0
+  simp only [List.nil_append, List.length_nil, zero_add, F.card_F] at h2
+  refine h1.trans ?_
+  rw [div_div, div_le_div_iff₀ (by positivity) (by positivity)]
+  have h3 : (W.card : ℝ≥0) * 2 ^ 128 ≤ (∑ i ∈ range (r * 2), b i : ℕ) * (2 ^ 128) ^ (r * 2) := by
+    exact_mod_cast h2
+  calc (W.card : ℝ≥0) * 2 ^ 136 = (W.card : ℝ≥0) * 2 ^ 128 * 2 ^ 8 := by ring
+    _ ≤ ((∑ i ∈ range (r * 2), b i : ℕ) : ℝ≥0) * (2 ^ 128) ^ (r * 2) * 2 ^ 8 := by gcongr
+    _ = _ := by rw [← pow_mul]; ring_nf
+
+/-- `mlDoom n` reads only the first `n` coordinates: below `2r` it does not read the last. -/
+theorem mlDoom_update_last {r n : ℕ} (hr : 0 < r) (hn : n < r * 2) (t : Array F)
+    (w : Fin (r * 2) → F) (x : F) :
+    mlDoom n t (List.ofFn (Function.update w (lastC r hr) x)) ↔ mlDoom n t (List.ofFn w) := by
+  have : (List.ofFn (Function.update w (lastC r hr) x)).take n = (List.ofFn w).take n := by
+    refine List.ext_getElem (by simp) fun i h₁ h₂ => ?_
+    simp only [List.getElem_take, List.getElem_ofFn]
+    rw [Function.update_of_ne]
+    intro he
+    have := congrArg Fin.val he
+    simp only [lastC] at this
+    simp at h₁; omega
+  unfold mlDoom; rw [this]
+
+open Classical in
+/-- **The multilinear row with the proof of work** (Z1, S1′s points, Lr1, E1, P3; D128 §5.2):
+`n < 2r` coordinates (slot 1 of the last answer free), charge at most `n / 2^136`. -/
+theorem ml_round_pow_le {D : Log → Log → Prop} {L es₀ : Log} {s0 r n : ℕ}
+    (hl : es₀.length = s0 + 1) (hr : 0 < r) (hn : n < r * 2) {t : Array F} (ht : t.size = 2 ^ n)
+    (h0 : tbl n t ≠ 0)
+    (hesc : ∀ as : List Digest, as.length = r → EscAtG D L (ext es₀ as) →
+      ¬ mlDoom n t (List.ofFn fun j : Fin (r * 2) => coordAt (ext es₀ as) s0 j) ∧
+        pow (ansAt (ext es₀ as) (s0 + r))) :
+    condCount D L es₀ r [] ≤ (n : ℝ≥0) / 2 ^ 136 := by
+  have h := seq_round_pow_le hl hr (mlDoom n t) (fun i => if i < n then 1 else 0)
+    (mlDoom_update_last hr hn t) (fun l hd => mlDoom_step ht l hd) (by cases n <;> exact h0) hesc
+  refine h.trans (le_of_eq ?_)
+  have : (∑ i ∈ range (r * 2), if i < n then 1 else 0) = n := by
+    rw [Finset.sum_boole, show (range (r * 2)).filter (· < n) = range n by
+      ext i; simp only [mem_filter, mem_range]; omega, card_range, Nat.cast_id]
+  rw [this]
+
+open Classical in
+/-- **The ring-switching row with the proof of work** (RS1, 5 squeezes: `r″` = coordinates
+`0 … 6`, `κ` = coordinate `7`, slot 1 of answer 5 the proof of work): charge at most
+`c / 2^136`. -/
+theorem rs1_round_pow_le {D : Log → Log → Prop} {L es₀ : Log} {s0 : ℕ} (hl : es₀.length = s0 + 1)
+    (P : Finset ((Fin 7 → F) × F)) {c : ℕ} (hP : P.card ≤ c * Fintype.card F ^ 7)
+    (hesc : ∀ as : List Digest, as.length = 5 → EscAtG D L (ext es₀ as) →
+      ((fun i : Fin 7 => coordAt (ext es₀ as) s0 i), coordAt (ext es₀ as) s0 7) ∈ P ∧
+        pow (ansAt (ext es₀ as) (s0 + 5))) :
+    condCount D L es₀ 5 [] ≤ (c : ℝ≥0) / 2 ^ 136 := by
+  let pr : (Fin (5 * 2) → F) → (Fin 7 → F) × F := fun w => (fun i => w (Fin.castLE (by omega) i), w 7)
+  set W := univ.filter fun w : Fin (5 * 2) → F => pr w ∈ P
+  have hW : CylLast (by norm_num : 0 < 5) W := fun w x => by
+    simp only [W, mem_filter, mem_univ, true_and, pr]
+    have h7 : Function.update w (lastC 5 (by norm_num)) x 7 = w 7 :=
+      Function.update_of_ne (by decide) _ _
+    have hi : ∀ i : Fin 7, Function.update w (lastC 5 (by norm_num)) x (Fin.castLE (by omega) i) =
+        w (Fin.castLE (by omega) i) := fun i => Function.update_of_ne (by
+          intro he; have := congrArg Fin.val he; simp [lastC] at this; omega) _ _
+    simp only [h7, hi]
+  have h1 := flat_round_pow_le (D := D) (L := L) hl (by norm_num) W hW fun as has hE => by
+    obtain ⟨h, hp⟩ := hesc as has hE
+    exact ⟨by simp only [W, mem_filter, mem_univ, true_and, pr]; exact h, hp⟩
+  let pr' : (Fin (5 * 2) → F) → ((Fin 7 → F) × F) × (F × F) := fun w => (pr w, (w 8, w 9))
+  have hinj : Set.InjOn pr' W := fun w _ w' _ he => by
+    funext j
+    have e1 := congrArg (fun p => p.1.1) he; have e2 := congrArg (fun p => p.1.2) he
+    have e3 := congrArg (fun p => p.2.1) he; have e4 := congrArg (fun p => p.2.2) he
+    simp only [pr', pr] at e1 e2 e3 e4
+    fin_cases j
+    all_goals first
+      | exact e2 | exact e3 | exact e4
+      | exact congrFun e1 ⟨_, by norm_num⟩
+  have h2 : W.card ≤ (P ×ˢ (univ : Finset (F × F))).card :=
+    card_le_card_of_injOn pr' (fun w hw => by
+      simp only [W, coe_filter, mem_univ, true_and, Set.mem_ofPred_eq] at hw
+      simp only [coe_product, coe_univ, Set.mem_prod, Set.mem_univ, and_true, pr']
+      exact hw) hinj
+  rw [card_product, card_univ, Fintype.card_prod, F.card_F] at h2
+  rw [F.card_F] at hP
+  refine h1.trans ?_
+  rw [div_div, div_le_div_iff₀ (by positivity) (by positivity)]
+  have h3 : (W.card : ℝ≥0) ≤ c * (2 ^ 128) ^ 7 * (2 ^ 128 * 2 ^ 128) := by
+    exact_mod_cast h2.trans (Nat.mul_le_mul_right _ hP)
+  calc (W.card : ℝ≥0) * 2 ^ 136
+      ≤ (c : ℝ≥0) * (2 ^ 128) ^ 7 * (2 ^ 128 * 2 ^ 128) * 2 ^ 136 := by gcongr
+    _ = (c : ℝ≥0) * (2 ^ (256 * 5) * 2 ^ 8) := by
+      simp only [mul_assoc]; congr 1
+      rw [← pow_mul, ← pow_add, ← pow_add, ← pow_add, ← pow_add]
+
+
+/-! ### Single squeezes, rounds and positions with the proof of work -/
+
+open Classical in
+/-- **A single F squeeze with the proof of work**: escapes only at a bad first F coordinate whose
+answer passes the proof of work, at most `s · 2^120` of them (`single_F_le`: `s · 2^128`). -/
+theorem single_F_pow_le (P : Digest → Prop) (S : Finset F) {s : ℕ} (hS : S.card ≤ s)
+    (h : ∀ a, P a → chF a 0 ∈ S ∧ pow a) : (Finset.univ.filter P).card ≤ s * 2 ^ 120 :=
+  le_trans (Finset.card_le_card (t := Finset.univ.filter fun a : Digest => chF a 0 ∈ S ∧ pow a)
+      fun a ha => by
+        simp only [Finset.mem_filter, Finset.mem_univ, true_and] at ha ⊢; exact h a ha)
+    (by rw [card_chF_pow_fiber]; exact Nat.mul_le_mul_right _ hS)
+
+open Classical in
+/-- **A round row over F with the proof of work** (`round_row_F`): at most `deg e · 2^120`. -/
+theorem round_row_F_pow (e : Expr) (ts : Array (Array F)) {m : ℕ}
+    (hts : ∀ t ∈ ts, t.size = 2 ^ (m + 1)) {claim : F} (hw : claim ≠ trueSum e ts (m + 1))
+    (g : Array F) (P : Digest → Prop)
+    (hP : ∀ a, P a → ((g.size = e.deg + 1 ∧ peval g 0 + peval g 1 = claim) ∧
+      peval g (chF a 0) = trueSum e (ts.map (bind0 · (chF a 0))) m) ∧ pow a) :
+    (Finset.univ.filter P).card ≤ e.deg * 2 ^ 120 :=
+  single_F_pow_le P _ (round_escape_le e ts hts hw g) fun a ha =>
+    ⟨by simp only [Finset.mem_filter, Finset.mem_univ, true_and]; exact (hP a ha).1, (hP a ha).2⟩
+
+open Classical in
+/-- **`card_idx_pow_in`** (D128 §2.2): the answers whose first `c` indices of `b` bits
+(`c b ≤ 248`) lie in `S` and which pass the proof of work number `|S|^c · 2^(248 − c b)`. -/
+theorem card_idx_pow_in (b c : ℕ) (hcb : c * b ≤ 248) (S : Finset (Fin (2 ^ b))) :
+    (Finset.univ.filter fun a : Digest =>
+      (∀ j : Fin c, (⟨idxOf b a j, idx_lt b a j⟩ : Fin (2 ^ b)) ∈ S) ∧ pow a).card =
+      S.card ^ c * 2 ^ (248 - c * b) := by
+  have hU : (Finset.univ.filter fun a : Digest =>
+      (∀ j : Fin c, (⟨idxOf b a j, idx_lt b a j⟩ : Fin (2 ^ b)) ∈ S) ∧ pow a) =
+      (Fintype.piFinset fun _ : Fin c => S).biUnion fun f =>
+        Finset.univ.filter fun a : Digest => (∀ j : Fin c, idxOf b a j = f j) ∧ pow a := by
+    ext a
+    simp only [Finset.mem_filter, Finset.mem_univ, true_and, Finset.mem_biUnion,
+      Fintype.mem_piFinset]
+    constructor
+    · rintro ⟨h, hp⟩
+      exact ⟨fun j => ⟨idxOf b a j, idx_lt b a j⟩, h, fun j => rfl, hp⟩
+    · rintro ⟨f, hf, he, hp⟩
+      refine ⟨fun j => ?_, hp⟩
+      have : (⟨idxOf b a j, idx_lt b a j⟩ : Fin (2 ^ b)) = f j := Fin.ext (he j)
+      rw [this]; exact hf j
+  rw [hU, Finset.card_biUnion]
+  · rw [Finset.sum_congr rfl fun f _ => card_idx_pow_fiber b c hcb f, Finset.sum_const,
+      Fintype.card_piFinset, smul_eq_mul]
+    simp
+  · intro f _ g _ hfg
+    refine Finset.disjoint_left.mpr fun a ha hb => hfg ?_
+    simp only [Finset.mem_filter, Finset.mem_univ, true_and] at ha hb
+    funext j; exact Fin.ext ((ha.1 j).symm.trans (hb.1 j))
+
+open Classical in
+/-- **The P2 row's count with the proof of work** (`p2_round_le`): if the escape puts the first
+`t` positions in `S` and the last of the `r` answers passes the proof of work (its indices below
+byte 31: `pc per t (r − 1) · b ≤ 248`), the charge is at most `(|S|/2^b)^t / 2^8`. -/
+theorem p2_round_pow_le {D : Log → Log → Prop} {L es₀ : Log} {s0 r b per t : ℕ}
+    (hl : es₀.length = s0 + 1) (hr : 0 < r) (hper : 0 < per) (hpb : per * b ≤ 256)
+    (ht : t ≤ r * per) (hlast : pc per t (r - 1) * b ≤ 248) (S : Finset (Fin (2 ^ b)))
+    (hesc : ∀ as : List Digest, as.length = r → EscAtG D L (ext es₀ as) →
+      (∀ k < t, posAt (ext es₀ as) s0 b per k ∈ S.map Fin.valEmbedding) ∧
+        pow (ansAt (ext es₀ as) (s0 + r))) :
+    condCount D L es₀ r [] ≤ ((S.card : ℝ≥0) / 2 ^ b) ^ t / 2 ^ 8 := by
+  unfold condCount extCount
+  simp only [List.length_nil, Nat.sub_zero, List.nil_append]
+  -- the answer sets: the first `pc` indices in `S`, and the last answer passes the proof of work
+  let A : Fin r → Finset Digest := fun s => univ.filter fun a : Digest =>
+    (∀ j : Fin (pc per t s), (⟨idxOf b a j, idx_lt b a j⟩ : Fin (2 ^ b)) ∈ S) ∧
+      ((s : ℕ) = r - 1 → pow a)
+  have hle := Finset.card_le_card (s := univ.filter fun v : Fin r → Digest =>
+      EscAtG D L (ext es₀ (List.ofFn v))) (t := Fintype.piFinset A) fun v hv => by
+    simp only [Finset.mem_filter, Finset.mem_univ, true_and, Fintype.mem_piFinset] at hv ⊢
+    obtain ⟨hk, hp⟩ := hesc _ (by simp) hv
+    intro s
+    simp only [A, Finset.mem_filter, Finset.mem_univ, true_and]
+    refine ⟨fun j => ?_, fun hs => ?_⟩
+    · have hj := j.2
+      simp only [pc, lt_min_iff] at hj
+      have := hk (per * s + j) (by rw [mul_comm]; omega)
+      rw [posAt, show s0 + 1 + (per * s + j) / per = es₀.length + s by
+          rw [Nat.mul_add_div hper, Nat.div_eq_of_lt hj.1]; omega,
+        ansAt_ext _ (by simp), List.getElem_ofFn, Nat.mul_add_mod, Nat.mod_eq_of_lt hj.1,
+        mem_map_val] at this
+      exact this
+    · rwa [show s0 + r = es₀.length + s by omega, ansAt_ext _ (by simp), List.getElem_ofFn] at hp
+  rw [Fintype.card_piFinset] at hle
+  have hcard : ∀ s : Fin r, (A s).card = S.card ^ pc per t s *
+      (if (s : ℕ) = r - 1 then 2 ^ (248 - pc per t s * b) else 2 ^ (256 - pc per t s * b)) := by
+    intro s
+    have hcb : pc per t s * b ≤ 256 := le_trans (Nat.mul_le_mul_right _ (min_le_left _ _)) hpb
+    split_ifs with hs
+    · rw [← card_idx_pow_in b _ (hs ▸ hlast) S]
+      exact congrArg card (Finset.filter_congr fun a _ => by simp [hs])
+    · rw [← card_idx_in b _ hcb S]
+      exact congrArg card (Finset.filter_congr fun a _ => by simp [hs])
+  have hpow : ∀ s : Fin r, ((A s).card : ℝ≥0) / 2 ^ 256 = ((S.card : ℝ≥0) / 2 ^ b) ^ pc per t s *
+      (if (s : ℕ) = r - 1 then (2 ^ 8)⁻¹ else 1) := fun s => by
+    have hcb : pc per t s * b ≤ 256 := le_trans (Nat.mul_le_mul_right _ (min_le_left _ _)) hpb
+    rw [hcard s]
+    split_ifs with hs
+    · have h248 : pc per t s * b ≤ 248 := hs ▸ hlast
+      push_cast
+      rw [div_pow, ← pow_mul, ← div_eq_mul_inv, div_div,
+        div_eq_div_iff (by positivity) (by positivity), mul_assoc, ← pow_add, ← pow_add,
+        show 248 - pc per t s * b + (b * pc per t s + 8) = 256 by rw [mul_comm b]; omega]
+    · push_cast
+      rw [mul_one, div_pow, ← pow_mul, div_eq_div_iff (by positivity) (by positivity), mul_assoc,
+        ← pow_add, show 256 - pc per t s * b + b * pc per t s = 256 by rw [mul_comm b]; omega]
+  have hite : ∏ s : Fin r, (if (s : ℕ) = r - 1 then ((2 : ℝ≥0) ^ 8)⁻¹ else 1) = (2 ^ 8)⁻¹ := by
+    rw [Finset.prod_eq_single (⟨r - 1, by omega⟩ : Fin r) (fun s _ hs => by
+      rw [ite_eq_right]; exact fun h => hs (Fin.ext h)) (by simp)]
+    simp
+  calc ((univ.filter fun v : Fin r → Digest => EscAtG D L (ext es₀ (List.ofFn v))).card : ℝ≥0) /
+        2 ^ (256 * r)
+      ≤ ((∏ s : Fin r, (A s).card : ℕ) : ℝ≥0) / 2 ^ (256 * r) := by gcongr
+    _ = ∏ s : Fin r, (((S.card : ℝ≥0) / 2 ^ b) ^ pc per t s *
+          (if (s : ℕ) = r - 1 then (2 ^ 8)⁻¹ else 1)) := by
+        rw [show (2 : ℝ≥0) ^ (256 * r) = ∏ _s : Fin r, (2 : ℝ≥0) ^ 256 by
+            rw [Finset.prod_const, Finset.card_univ, Fintype.card_fin, ← pow_mul],
+          Nat.cast_prod, ← Finset.prod_div_distrib]
+        exact Finset.prod_congr rfl fun s _ => hpow s
+    _ = ((S.card : ℝ≥0) / 2 ^ b) ^ t / 2 ^ 8 := by
+        rw [Finset.prod_mul_distrib, hite, Finset.prod_pow_eq_pow_sum,
+          Fin.sum_univ_eq_sum_range (pc per t), sum_pc per r t ht, ← div_eq_mul_inv]
+
+/-- Controls: (+) `flatEquiv`'s coordinate `2s + c` is F coordinate `c` of answer `s`, and the
+last coordinate of `r` answers is `2r − 1`; (+) the full set does not constrain the last
+coordinate, (−) the set "last coordinate zero" does. -/
+theorem cylLast_ctrl : lastC 3 (by norm_num) = 5 ∧
+    CylLast (r := 1) one_pos (univ : Finset (Fin (1 * 2) → F)) ∧
+    ¬ CylLast (r := 1) one_pos (univ.filter fun w : Fin (1 * 2) → F => w (lastC 1 one_pos) = 0) := by
+  refine ⟨rfl, fun w x => by simp, fun h => ?_⟩
+  have := (h 0 1).mpr (by simp)
+  simp at this
+
+/-- Control (−): without the proof of work, Z2's row (`126` bad values per `2^128`) does not fit
+`deltaR`, nor does a degree-3 round (`3 · 2^128`): the `2^8` is needed. -/
+theorem nopow_ctrl : ¬ ((126 : ℝ≥0) / 2 ^ 128 ≤ deltaR) ∧
+    ¬ (((3 * 2 ^ 128 : ℕ) : ℝ≥0) ≤ 2 ^ 256 * deltaR) := by
+  refine ⟨fun h => ?_, fun h => ?_⟩
+  · rw [← NNReal.coe_le_coe, NNReal.coe_div, deltaR_coe] at h
+    push_cast at h; norm_num at h
+  · rw [← NNReal.coe_le_coe, NNReal.coe_mul, deltaR_coe] at h
+    push_cast at h; norm_num at h
+
+
+/-- Control (D128 §3): seven bits would also fit Z2 (`126/2^135 ≈ 0.984 · 2^-128`) next to the H
+rows, with 1.3 % of room; the entry grinds eight (one byte, the `16/15` margin of `εR`). -/
+theorem seven_bits_fit : (126 : ℝ) / 2 ^ 135 + 2 / 2 ^ 142 + 1 / 2 ^ 238 ≤ 1 / 2 ^ 128 := by
+  norm_num
 
 end FR.Snd

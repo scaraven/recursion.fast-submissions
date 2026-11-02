@@ -1,6 +1,6 @@
 -- New for `flock-recursive` (stage S-E14, track L-circ): the controls of `FRNodeRows4Rep` and
 -- `FRNodeRows4RepS`.
-import FRNodeRows4RepS
+import FRNodeRun4
 
 /-!
 # Controls for the replay templates
@@ -20,35 +20,35 @@ namespace N4s
 open RecursionFast Rev4 Circ
 
 /-- The controls' parameters: `one` is cell 0, no selector. -/
-def ctlP : Params := ⟨Lin.cell 0, fun _ => []⟩
+def repCtlP : Params := ⟨Lin.cell 0, fun _ => []⟩
 
 /-- (+) Uncovered, a `linkWAll` import's 8 registers are assumed; (−) covered by `rtLinkSeg`, none. -/
 theorem impRX_ctl :
-    impRX noExt ctlP RT.none (CS.init 1) [.linkWAll 0 0] = List.range' 0 1 ∧
-      impRX noExt ctlP rtLinkSeg (CS.init 1) [.linkWAll 0 0] = [] := by
+    impRX noExt repCtlP RT.none (CS.init 1) [.linkWAll 0 0] = List.range' 0 1 ∧
+      impRX noExt repCtlP rtLinkSeg (CS.init 1) [.linkWAll 0 0] = [] := by
   decide
 
 /-- (+) Covered, the op's rows are `zeroRows` on its fresh cells (8 rows); (−) uncovered, none. -/
 theorem repRows_ctl :
-    (repRowsX noExt ctlP rtLinkSeg (CS.init 1) [.linkWAll 0 0]).length = 8 ∧
-      repRowsX noExt ctlP RT.none (CS.init 1) [.linkWAll 0 0] = [] := by
+    (repRowsX noExt repCtlP rtLinkSeg (CS.init 1) [.linkWAll 0 0]).length = 8 ∧
+      repRowsX noExt repCtlP RT.none (CS.init 1) [.linkWAll 0 0] = [] := by
   decide
 
 /-- An `af 8` slot on cells `1 … 8`. -/
 def ctlSlot : Slot := some (.af 8, (List.range 8).map fun j => Lin.cell (1 + j))
 
 /-- (+) `one = 1` and zero output cells meet `zeroRows`. -/
-theorem zeroRows_pos : ∀ r ∈ zeroRows ctlP [ctlSlot], r.Holds fun c => if c = 0 then 1 else 0 := by
+theorem zeroRows_pos : ∀ r ∈ zeroRows repCtlP [ctlSlot], r.Holds fun c => if c = 0 then 1 else 0 := by
   intro r hr
-  simp only [zeroRows, ctlSlot, ctlP, List.length_map, List.length_range, and_self, if_true,
+  simp only [zeroRows, ctlSlot, repCtlP, List.length_map, List.length_range, and_self, if_true,
     List.map_map, List.mem_map, List.mem_range] at hr
   obtain ⟨j, -, rfl⟩ := hr
   simp [Row.Holds, Lin.cell, Lin.ev]
 
 /-- (−) A nonzero output cell does not. -/
-theorem zeroRows_neg : ¬ ∀ r ∈ zeroRows ctlP [ctlSlot], r.Holds fun c => if c = 0 ∨ c = 1 then 1 else 0 := by
+theorem zeroRows_neg : ¬ ∀ r ∈ zeroRows repCtlP [ctlSlot], r.Holds fun c => if c = 0 ∨ c = 1 then 1 else 0 := by
   intro h
-  have := h ⟨Lin.cell 0, Lin.cell 1, []⟩ (by simp [zeroRows, ctlSlot, ctlP]; exact ⟨0, by norm_num⟩)
+  have := h ⟨Lin.cell 0, Lin.cell 1, []⟩ (by simp [zeroRows, ctlSlot, repCtlP]; exact ⟨0, by norm_num⟩)
   simp [Row.Holds, Lin.cell, Lin.ev] at this
 
 /-- (−) A base whose `linkWAll` at `L32` is `1^8` does not meet `LinkZero`. -/

@@ -55,7 +55,7 @@ mod witness;
 mod zerocheck;
 
 use blake2s::{leaf_stmt, Digest};
-use oracle::{Recorder, Replay, Seq};
+use oracle::{Recorder, Seq};
 use std::time::Instant;
 
 #[global_allocator]
@@ -144,7 +144,7 @@ pub fn acc_with(top: Top, circ: &circuit::Circuit, vk: &Digest, c: &Digest, file
         (_, 0x4D..=0x4F) => {
             let k = node::NK::of_byte(b).unwrap();
             let nd = plan::node_data();
-            let ctx = std::sync::Arc::new(ir::NodeCtx { k, protos: nd.protos.clone(), kt: std::sync::Arc::new(nd.kind_tab(k)) });
+            let ctx = std::sync::Arc::new(ir::NodeCtx::new(k, nd.protos.clone(), plan::kind_tabs_static().clone()));
             let base = circuit::Circuit::build_base();
             ir::run_node(&nd.node_program(k), ctx, &base, &seq, vk, c, &p.pi).ok && nodeprove::stmt_ok4(&p.pi, c)
         }
@@ -181,7 +181,7 @@ fn mfill_kat(args: &[String]) {
     for (pi, p) in protos.iter().enumerate() {
         for rep in 0..2 {
             let t = Instant::now();
-            let (_, st) = mfill::fill(p, None);
+            let (_, st) = mfill::fill(p, None, node::phantom_arena());
             println!("MFILL proto={pi} inactive rep={rep} {:.2}s {st:?}", t.elapsed().as_secs_f64());
         }
     }
@@ -196,10 +196,12 @@ fn mfill_kat(args: &[String]) {
         let c = leaf::seg_c(&s, n);
         let ix = match m { 32 => 0, 30 => 1, _ => 2 };
         let t = Instant::now();
-        let (r, regs) = ir::run_regs(&ir::spec_kind(&text, ix), &circ, &o, &vk, &c, &pi);
+        let tape = Tape(&o, std::sync::Mutex::new(Vec::new()));
+        let (r, regs) = ir::run_regs(&ir::spec_kind(&text, ix), &circ, &tape, &vk, &c, &pi);
+        let tr = tape.1.into_inner().unwrap();
         let rt = t.elapsed().as_secs_f64();
         let t = Instant::now();
-        let (_, st) = mfill::fill(&protos[1], Some((&regs, ix)));
+        let (_, st) = mfill::fill(&protos[1], Some((&regs, ix)), &node::arena_of(&node::stream_bytes(&tr)));
         println!("MFILL proto=1 m={m} n={n} ix={ix} run_ok={} failed={:?} asks={} run_s={rt:.2} fill_s={:.2} {st:?}", r.ok, r.failed, r.asks, t.elapsed().as_secs_f64());
     }
 }
@@ -234,7 +236,8 @@ fn node_kat(args: &[String]) {
     let nd = plan::node_data();
     let protos = nd.protos.clone();
     let texts = nd.texts.clone();
-    let kt = std::sync::Arc::new(nd.kind_tab(kind));
+    let kts = plan::kind_tabs_static().clone();
+    let kt = kts[kind as usize].clone();
     println!("NODE-KAT load {:.2}s", t.elapsed().as_secs_f64());
     let m: usize = arg(args, "--m").map(|x| x.parse().unwrap()).unwrap_or(32);
     let n = seg_n(args, m);
@@ -269,7 +272,7 @@ fn node_kat(args: &[String]) {
         let ok = agg::verify(&tape, &circ, &vk, &c, &pi);
         let tr = tape.1.into_inner().unwrap();
         let (_, sig) = format::toy_sign(9, &format::trace_digest(&tr));
-        println!("NODE-KAT aggregate {a}: k={} n={n} prove {:.2}s V_A={ok} |tr|={}", pi[1], t.elapsed().as_secs_f64(), tr.len());
+        println!("NODE-KAT aggregate {a}: k={} n={n} prove {:.2}s V_A={ok} |tr|={} pi_b2s={}", pi[1], t.elapsed().as_secs_f64(), tr.len(), hexs(&blake2s::blake2s256(&pi)));
         signed.push(format::Signed { pi, tr, sig });
     }
     let aggs: Vec<node::AggIn> = signed.iter().map(node::agg_in).collect();
@@ -283,7 +286,7 @@ fn node_kat(args: &[String]) {
         let pk = node::NK::of_byte(ps.pi[0]).unwrap_or_else(|| service::fatal("--prev: not a node proof"));
         let st = &ps.pi[params::field_off(params::F_STMT)..];
         let c = nodeprove::node_c(&[st[1..33].try_into().unwrap(), st[33..65].try_into().unwrap()]);
-        let ctx = std::sync::Arc::new(ir::NodeCtx { k: pk, protos: protos.clone(), kt: std::sync::Arc::new(nd.kind_tab(pk)) });
+        let ctx = std::sync::Arc::new(ir::NodeCtx::new(pk, protos.clone(), kts.clone()));
         println!("NODE-KAT previous node {} |tr|={}", pk.name(), ps.tr.len());
         node::PrevIn { signed: ps, c, ix: [1, 0, 2][pk as usize], ctx, base: &base }
     });
@@ -291,6 +294,27 @@ fn node_kat(args: &[String]) {
     println!("NODE-KAT witness {:.2}s {:?}", t.elapsed().as_secs_f64(), w.times);
     for (v, st) in w.mstats.iter().enumerate() {
         println!("NODE-KAT slot {v}: {st:?}");
+    }
+    // `--dkat DIR` (E1, the decoder KAT): the node witness's cells (`z`, two u64 words a cell, little
+    // endian), both signed children and their statements, for the Lean probe `E1Dec`
+    if let Some(d) = arg(args, "--dkat") {
+        let dd = std::path::Path::new(&d);
+        std::fs::create_dir_all(dd).expect("--dkat dir");
+        let mut zb = Vec::with_capacity(8 * w.z.len());
+        for x in &w.z {
+            zb.extend_from_slice(&x.to_le_bytes());
+        }
+        std::fs::write(dd.join("f.bin"), &zb).expect("write f.bin");
+        let kids: Vec<(&format::Signed, Digest)> = match (&prev_signed, &prev_in) {
+            (Some(ps), Some(p)) => vec![(ps, p.c), (&signed[0], aggs[0].c)],
+            _ => vec![(&signed[0], aggs[0].c), (&signed[1], aggs[1].c)],
+        };
+        for (i, (s, c)) in kids.iter().enumerate() {
+            std::fs::write(dd.join(format!("c{i}.signed")), format::to_file(s)).expect("write child");
+            std::fs::write(dd.join(format!("c{i}.stmt")), hexs(c)).expect("write stmt");
+        }
+        std::fs::write(dd.join("kind"), kind.name()).expect("write kind");
+        println!("NODE-KAT dkat: {} f words, children written to {d}", w.z.len());
     }
     let t = Instant::now();
     let ch = node::check(&w, &protos, &kt);
@@ -303,10 +327,14 @@ fn node_kat(args: &[String]) {
         Some(p) => [p.c, aggs[0].c],
         None => [aggs[0].c, aggs[1].c],
     };
-    let ni = nodeprove::NodeIn { k: kind, vk, cs, w: &w, mats: nodeprove::Mats { k: kind, kt: &kt, protos: &protos }, base: &base };
+    let ni = nodeprove::NodeIn { k: kind, vk, cs, w: &w, mats: nodeprove::Mats { k: kind, kt: &kt, protos: &protos }, kts: [&*kts[0], &*kts[1], &*kts[2]], base: &base };
     let t = Instant::now();
+    let g0 = transcript::GRIND.snapshot();
     let (pi, tm) = nodeprove::prove(&o, &ni);
-    println!("NODE-PROVE {} {:.2}s |pi|={} pi_b2s={} {} peak_rss_mb={:.0}", kind.name(), t.elapsed().as_secs_f64(), pi.len(), hexs(&blake2s::blake2s256(&pi)), tm.report(), peak_rss_mb());
+    println!("NODE-PROVE {} {:.2}s |pi|={} pi_b2s={} {} peak_rss_mb={:.0} | {}", kind.name(), t.elapsed().as_secs_f64(), pi.len(), hexs(&blake2s::blake2s256(&pi)), tm.report(), peak_rss_mb(), transcript::GRIND.report_since(&g0));
+    if prof::on() {
+        println!("NODE-PROVE prof {}", prof::report());
+    }
     if let Some(p) = arg(args, "--out") {
         std::fs::write(&p, &pi).expect("write");
     }
@@ -318,7 +346,7 @@ fn node_kat(args: &[String]) {
     // the embedded group program at the kind's index is the dumped fixed program (INT-8 `Op.at`)
     let gtext = nd.node_program(kind);
     println!("NODE-IR proto-p0 at {} = ops-{} (real cells): {}", kind.name(), kind.name(), gtext == text);
-    let ctx = std::sync::Arc::new(ir::NodeCtx { k: kind, protos: protos.clone(), kt: kt.clone() });
+    let ctx = std::sync::Arc::new(ir::NodeCtx::new(kind, protos.clone(), kts.clone()));
     let t = Instant::now();
     let tape = Tape(&o, std::sync::Mutex::new(Vec::new()));
     let r = ir::run_node(&text, ctx.clone(), &base, &tape, &vk, &c, &pi);
@@ -329,7 +357,7 @@ fn node_kat(args: &[String]) {
         std::fs::write(&p, format::to_file(&format::Signed { pi: pi.clone(), tr, sig })).expect("write");
     }
     let st = nodeprove::stmt_ok4(&pi, &c);
-    println!("NODE-IR {} ok={} stmtOk4={st} failed={:?} asks={} {:.2}s", kind.name(), r.ok, r.failed, r.asks, t.elapsed().as_secs_f64());
+    println!("NODE-IR {} ok={} stmtOk4={st} failed={:?} asks={} {:.2}s vk={} c={}", kind.name(), r.ok, r.failed, r.asks, t.elapsed().as_secs_f64(), hexs(&vk), hexs(&c));
     // canaries: another statement; a flipped byte in the E field; the placeholder-cell program
     let mut c2 = c;
     c2[3] ^= 0x40;
@@ -353,8 +381,10 @@ fn test_leaf(m: usize, n: u64, reps: usize) {
     let want = kat::find_items_json().and_then(|p| kat::load_items(&p));
     for rep in 0..reps {
         let t = Instant::now();
+        let g0 = transcript::GRIND.snapshot();
         let ((pi, tm), plog) = leaf::prove_logged(&o, &circ, &vk, &s, m, n, true);
         let pt = t.elapsed().as_secs_f64();
+        println!("GRIND test-leaf m={m} rep={rep} {}", transcript::GRIND.report_since(&g0));
         let c = leaf::seg_c(&s, n);
         let t = Instant::now();
         let ok = leaf::verify(&o, &circ, &vk, &c, &pi);
@@ -400,10 +430,167 @@ fn test_leaf(m: usize, n: u64, reps: usize) {
             simd::tier_name(),
             tm.report()
         );
+        if prof::on() {
+            println!("TEST-LEAF prof {}", prof::report());
+        }
         if !ok || bad1 || bad2 || pi.len() != params::PI_SIZE || kat.starts_with("FAIL") || ir.starts_with("REJECT") || ir.contains("canary_accept=true") {
             eprintln!("test-leaf: FAIL");
             std::process::exit(1);
         }
+    }
+}
+
+/// `grind-bench`: the service's latency for the grinder's step shapes (`RF_ORACLE`): one `ask`, then
+/// `ask_batches` and parallel `ask_many` of `par × sub` squeeze-sized queries, µs per call.
+/// `grind-mix [--reps R] [--shapes B,D/B,D/…]` (PD): the 154 grinded phases of a segment proof
+/// (each one's absorb length and squeeze count, from A.4's item sequence) from `R` sets of random
+/// states and messages, ground through the service (`RF_ORACLE`) with I7's lock-step batches
+/// (`grind_shape`) and with the pipelined search at each shape. Per shape and class of phase: the
+/// mean time per proof, the service queries and requests; every shape's nonce must equal I7's.
+fn grind_mix(args: &[String]) {
+    use items::It;
+    let path = std::env::var("RF_ORACLE").unwrap_or_else(|_| service::fatal("RF_ORACLE is not set"));
+    let svc = service::Service::connect(&path).unwrap_or_else(|e| service::fatal(&e));
+    svc.warm(par::threads().min(service::MAX_CONNS));
+    par::warm();
+    let reps: usize = arg(args, "--reps").and_then(|x| x.parse().ok()).unwrap_or(5);
+    let mut shapes: Vec<Option<(usize, usize)>> = vec![None];
+    if let Some(v) = arg(args, "--shapes") {
+        for x in v.split('/') {
+            let (a, b) = x.split_once(',').expect("--shapes B,D/…");
+            shapes.push(Some((a.parse().unwrap(), b.parse().unwrap())));
+        }
+    } else {
+        shapes.push(Some((0, 0)));
+    }
+    // the grinded phases: (name, absorb length incl. the nonce, squeezes)
+    let fs: Vec<(&str, It)> = items::items_seq().into_iter().filter(|(_, it)| !matches!(it, It::Col { .. } | It::Node { .. })).collect();
+    let mut ph: Vec<(&str, usize, usize)> = Vec::new();
+    for p in items::pow_positions() {
+        let mut a = p;
+        while fs[a].1 == It::Squeeze {
+            a -= 1;
+        }
+        let It::Absorb { len, .. } = fs[a].1 else { panic!("no absorb before a grinded phase") };
+        ph.push((fs[p].0, len, p - a));
+    }
+    let class = |len: usize, nsq: usize| -> &'static str {
+        if len > 128 {
+            "big"
+        } else if nsq > 1 {
+            "multi"
+        } else {
+            "small"
+        }
+    };
+    let mut fsx = transcript::Fs::seed(&svc, &[0u8; 32], &[0u8; 32], &[0u8; params::HDR_LEN], false);
+    let mut seed = [0x5Du8; 32];
+    for (si, sh) in shapes.iter().enumerate() {
+        // shape (0, 0): the default (`pipe_shape`)
+        let mode = match sh {
+            None => Some(None),
+            Some((0, 0)) => None,
+            Some(s) => Some(Some(*s)),
+        };
+        let mut per: std::collections::BTreeMap<&str, (f64, u64, u64, u64)> = Default::default();
+        let mut nonces = Vec::new();
+        let r0 = svc.requests.load(std::sync::atomic::Ordering::Relaxed);
+        let q0 = svc.queries.load(std::sync::atomic::Ordering::Relaxed);
+        for rep in 0..reps {
+            for (k, &(name, len, nsq)) in ph.iter().enumerate() {
+                seed[0] = rep as u8;
+                seed[1] = k as u8;
+                fsx.st = blake2s::blake2s256(&seed);
+                let mut msg: Vec<u8> = (0..len).map(|i| (i as u8).wrapping_mul(31) ^ seed[1]).collect();
+                fsx.phase = name;
+                let t = Instant::now();
+                let w = fsx.grind_shaped(&mut msg, nsq, mode).unwrap();
+                let e = per.entry(class(len, nsq)).or_default();
+                e.0 += t.elapsed().as_secs_f64();
+                e.1 += w.attempts;
+                e.2 += w.queries;
+                e.3 += w.rounds;
+                nonces.push(w.nonce);
+            }
+        }
+        let rq = svc.requests.load(std::sync::atomic::Ordering::Relaxed) - r0;
+        let qq = svc.queries.load(std::sync::atomic::Ordering::Relaxed) - q0;
+        let base = if si == 0 { None } else { Some(()) };
+        static BASE: std::sync::OnceLock<Vec<u64>> = std::sync::OnceLock::new();
+        let same = match base {
+            None => {
+                let _ = BASE.set(nonces.clone());
+                "base".to_string()
+            }
+            Some(()) => (BASE.get().unwrap() == &nonces).to_string(),
+        };
+        let tot: f64 = per.values().map(|e| e.0).sum();
+        let r = reps as f64;
+        println!(
+            "GRIND-MIX shape={} ms_per_proof={:.2} service_queries_per_proof={:.0} service_requests_per_proof={:.0} nonces_equal_I7={same} | {}",
+            match sh {
+                None => "I7".to_string(),
+                Some((0, 0)) => "default".to_string(),
+                Some((b, d)) => format!("{b}x{d}"),
+            },
+            tot * 1e3 / r,
+            qq as f64 / r,
+            rq as f64 / r,
+            per.iter().map(|(c, e)| format!("{c}: {:.2} ms {:.0} att {:.0} req", e.0 * 1e3 / r, e.1 as f64 / r, e.3 as f64 / r)).collect::<Vec<_>>().join(", ")
+        );
+    }
+}
+
+fn grind_bench() {
+    let path = std::env::var("RF_ORACLE").unwrap_or_else(|_| service::fatal("RF_ORACLE is not set"));
+    let svc = service::Service::connect(&path).unwrap_or_else(|e| service::fatal(&e));
+    svc.warm(par::threads().min(service::MAX_CONNS));
+    par::warm();
+    let reps = 300;
+    let q = [7u8; 40];
+    let t = Instant::now();
+    for _ in 0..reps {
+        oracle::Oracle::ask(&svc, &q);
+    }
+    println!("GRIND-BENCH ask {:.1} us", t.elapsed().as_secs_f64() * 1e6 / reps as f64);
+    for (np, sub) in [(1usize, 64usize), (1, 256), (1, 512), (4, 32), (8, 32), (8, 64), (16, 32)] {
+        let mut outs = vec![vec![[0u8; 32]; sub]; np];
+        let t = Instant::now();
+        for r in 0..reps {
+            oracle::Oracle::ask_batches(&svc, &mut outs, &|b, i, buf: &mut Vec<u8>| {
+                buf.extend_from_slice(&q);
+                buf.extend_from_slice(&((r * 100000 + b * sub + i) as u64).to_le_bytes());
+            });
+        }
+        let a = t.elapsed().as_secs_f64() * 1e6 / reps as f64;
+        let t = Instant::now();
+        for r in 0..reps {
+            par::for_each_chunk_mut(&mut outs, 1, |off, ch| {
+                for (j, o) in ch.iter_mut().enumerate() {
+                    oracle::Oracle::ask_many(&svc, o, &|i, buf: &mut Vec<u8>| {
+                        buf.extend_from_slice(&q);
+                        buf.extend_from_slice(&((r * 100000 + (off + j) * sub + i) as u64).to_le_bytes());
+                    });
+                }
+            });
+        }
+        let m = t.elapsed().as_secs_f64() * 1e6 / reps as f64;
+        println!("GRIND-BENCH par={np} sub={sub} ask_batches {a:.1} us  par ask_many {m:.1} us");
+    }
+    // a cap-sized absorb (8,248 B: 130 compressions with the key block)
+    let big = vec![9u8; 8240];
+    for (np, sub) in [(1usize, 64usize), (2, 32), (4, 16), (8, 8), (4, 32), (8, 16), (16, 8)] {
+        let mut outs = vec![vec![[0u8; 32]; sub]; np];
+        let reps = 40;
+        let t = Instant::now();
+        for r in 0..reps {
+            oracle::Oracle::ask_batches(&svc, &mut outs, &|b, i, buf: &mut Vec<u8>| {
+                buf.extend_from_slice(&big);
+                buf.extend_from_slice(&((r * 100000 + b * sub + i) as u64).to_le_bytes());
+            });
+        }
+        let a = t.elapsed().as_secs_f64() * 1e6 / reps as f64;
+        println!("GRIND-BENCH big par={np} sub={sub} ask_batches {a:.1} us ({:.1} ns per compression)", a * 1e3 / (np * sub * 130) as f64);
     }
 }
 
@@ -425,25 +612,21 @@ fn prove_leaf_service(m: usize, n: u64, start: &Digest, out: &str, reps: usize) 
     }
     for rep in 0..reps {
         let t0 = Instant::now();
-        let mut rec = Recorder::new(&svc);
-        rec.batch_max = 128;
+        let rec = Recorder::for_trace(&svc);
+        let g0 = transcript::GRIND.snapshot();
         let (pi, tm) = leaf::prove_seg(&rec, &circ, &vk, start, m, n);
         let t_prove = t0.elapsed().as_secs_f64();
+        let grind = transcript::GRIND.report_since(&g0);
         let prof_s = prof::report();
         let stats = rec.stats.report();
         let oracle_s = rec.stats.oracle_s();
         let t = Instant::now();
-        let table = rec.into_table();
         let h = blake2s::chain_end(start, n);
         let c = leaf_stmt(&h, n);
-        let mut rp = Replay::new(&table);
-        rp.fallback = Some(&svc);
-        if !leaf::verify(&rp, &circ, &vk, &c, &pi) {
-            service::fatal("the native verifier rejects the proof (replay)");
-        }
-        let (tr, missing) = rp.finish();
-        if missing != 0 {
-            service::fatal(&format!("{missing} verifier queries were not asked while proving"));
+        // G4: the trace taped while proving (with `FLOCK_TRACE_CHECK`, also the native verifier's replay)
+        let tr = oracle::finish_trace(rec, &svc, &|o| leaf::verify(o, &circ, &vk, &c, &pi)).unwrap_or_else(|e| service::fatal(&e));
+        if !items::shape_ok(&tr, 1) {
+            service::fatal("the taped trace does not have A.4's shape");
         }
         let t_trace = t.elapsed().as_secs_f64();
         let t = Instant::now();
@@ -488,8 +671,9 @@ fn prove_leaf_service(m: usize, n: u64, start: &Digest, out: &str, reps: usize) 
         };
         let reasm = items::reassemble(&tr).as_deref() == Some(&pi[..]);
         println!(
-            "PROVE-LEAF m={m} rep={rep} n={n} trace_kat={tr_kat} reassemble_eq_pi={reasm} total_s={total:.3} prove_s={t_prove:.3} trace_s={t_trace:.3} sign_s={t_sign:.3} oracle_s={oracle_s:.3} \
-             compressions_per_s={:.0} |pi|={} |tr|={} trace_query_bytes={qbytes} file={} acc={} acc_s={t_acc:.3} lean_seg={lean} canary_accept={canary} peak_rss_mb={:.0} threads={} tier={} | {} | {stats} | {}{}",
+            "PROVE-LEAF m={m} rep={rep} n={n} stmt={} trace_kat={tr_kat} reassemble_eq_pi={reasm} total_s={total:.3} prove_s={t_prove:.3} trace_s={t_trace:.3} sign_s={t_sign:.3} oracle_s={oracle_s:.3} \
+             compressions_per_s={:.0} |pi|={} |tr|={} trace_query_bytes={qbytes} file={} acc={} acc_s={t_acc:.3} lean_seg={lean} canary_accept={canary} peak_rss_mb={:.0} threads={} tier={} | {} | {stats} | {grind} | {}{}",
+            c.iter().map(|b| format!("{b:02x}")).collect::<String>(),
             n as f64 / total,
             pi.len(),
             tr.len(),
@@ -526,23 +710,19 @@ fn prove_agg_service(n: u64, start: &Digest, out: &str, reps: usize) {
     let c = leaf::seg_c(start, n);
     for rep in 0..reps {
         let t0 = Instant::now();
-        let mut rec = Recorder::new(&svc);
-        rec.batch_max = 128;
+        let rec = Recorder::for_trace(&svc);
+        let g0 = transcript::GRIND.snapshot();
         let (pi, tms) = agg::prove(&rec, &circ, &vk, start, n, agg::M_SEG);
         let t_prove = t0.elapsed().as_secs_f64();
+        let grind = transcript::GRIND.report_since(&g0);
+        let stats = rec.stats.report();
         let t = Instant::now();
-        let table = rec.into_table();
-        let mut rp = Replay::new(&table);
-        rp.fallback = Some(&svc);
-        if !agg::verify(&rp, &circ, &vk, &c, &pi) {
-            service::fatal("the native verifier rejects the aggregate (replay)");
+        let tr = oracle::finish_trace(rec, &svc, &|o| agg::verify(o, &circ, &vk, &c, &pi)).unwrap_or_else(|e| service::fatal(&e));
+        if !items::shape_ok(&tr, tms.len()) {
+            service::fatal("the taped trace does not have A.4's shape");
         }
-        let (tr, missing) = rp.finish();
-        if missing != 0 {
-            service::fatal(&format!("{missing} verifier queries were not asked while proving"));
-        }
-        let qs: Vec<&[u8]> = tr.iter().map(|(q, _)| q.as_slice()).collect();
-        let (_, sig) = svc.sign(&qs);
+        let t_trace = t.elapsed().as_secs_f64();
+        let sig = sign_checked(&svc, &tr);
         let t_trace_sign = t.elapsed().as_secs_f64();
         let total = t0.elapsed().as_secs_f64();
         let file = format::to_file(&format::Signed { pi: pi.clone(), tr: tr.clone(), sig });
@@ -564,7 +744,8 @@ fn prove_agg_service(n: u64, start: &Digest, out: &str, reps: usize) {
         let t_lean = t.elapsed().as_secs_f64();
         let segs: Vec<String> = agg::split(n, agg::M_SEG).iter().zip(tms.iter()).map(|((m, ni), tm)| format!("L{m}:{ni}:{:.3}", tm.total())).collect();
         println!(
-            "PROVE-AGG n={n} rep={rep} k={} segs=[{}] total_s={total:.3} prove_s={t_prove:.3} trace_sign_s={t_trace_sign:.3} |pi|={} |tr|={} file={} acc={} lean_acc={lean} lean_s={t_lean:.2} canary_accept={canary} peak_rss_mb={:.0} threads={} tier={}",
+            "PROVE-AGG n={n} rep={rep} stmt={} k={} segs=[{}] total_s={total:.3} prove_s={t_prove:.3} trace_s={t_trace:.4} trace_sign_s={t_trace_sign:.3} |pi|={} |tr|={} file={} acc={} lean_acc={lean} lean_s={t_lean:.2} canary_accept={canary} peak_rss_mb={:.0} threads={} tier={} | {stats} | {grind} | {}",
+            c.iter().map(|b| format!("{b:02x}")).collect::<String>(),
             tms.len(),
             segs.join(","),
             pi.len(),
@@ -574,6 +755,7 @@ fn prove_agg_service(n: u64, start: &Digest, out: &str, reps: usize) {
             peak_rss_mb(),
             par::threads(),
             simd::tier_name(),
+            svc.report(),
         );
         if r.is_err() || canary || lean.contains("REJECT") || lean.contains("CANARY") {
             std::process::exit(1);
@@ -629,24 +811,27 @@ fn prefault_mib(m: usize) -> usize {
 
 /// A signed leaf through the service: prove, the verifier's trace by replay, SIGN; the file bytes.
 fn leaf_file(svc: &service::Service, circ: &circuit::Circuit, vk: &Digest, s: &Digest, m: usize) -> Vec<u8> {
-    let mut rec = Recorder::new(svc);
-    rec.batch_max = 128; // column queries are asked again by the replay (≈ 750 of them)
+    let rec = Recorder::for_trace(svc);
     let (pi, _) = leaf::prove(&rec, circ, vk, s, m);
-    let table = rec.into_table();
     let n = params::leaf_n(m);
     let c = leaf_stmt(&blake2s::chain_end(s, n), n);
-    let mut rp = Replay::new(&table);
-    rp.fallback = Some(svc);
-    if !leaf::verify(&rp, circ, vk, &c, &pi) {
-        service::fatal("the native verifier rejects the proof (replay)");
+    let tr = oracle::finish_trace(rec, svc, &|o| leaf::verify(o, circ, vk, &c, &pi)).unwrap_or_else(|e| service::fatal(&e));
+    if !items::shape_ok(&tr, 1) {
+        service::fatal("the taped trace does not have A.4's shape");
     }
-    let (tr, missing) = rp.finish();
-    if missing != 0 {
-        service::fatal(&format!("{missing} verifier queries were not asked while proving"));
-    }
-    let qs: Vec<&[u8]> = tr.iter().map(|(q, _)| q.as_slice()).collect();
-    let (_, sig) = svc.sign(&qs);
+    let sig = sign_checked(svc, &tr);
     format::to_file(&format::Signed { pi, tr, sig })
+}
+
+/// `SIGN` a taped trace; the service's answers must be the tape's (G4: the noted answers, the
+/// Merkle nodes and the grinder's, come from batches, not from the trace's own `QUERY`s).
+pub(crate) fn sign_checked(svc: &service::Service, tr: &oracle::Trace) -> format::Sig {
+    let qs: Vec<&[u8]> = tr.iter().map(|(q, _)| q.as_slice()).collect();
+    let (answers, sig) = svc.sign(&qs);
+    if answers.len() != tr.len() || answers.iter().zip(tr.iter()).any(|(a, (_, b))| a != b) {
+        service::fatal("SIGN answers differ from the QUERY answers");
+    }
+    sig
 }
 
 /// `prover leaf /work` (PROVER.md §3): `leaf.json` = `{"n": N, "start": "HEX"}`, `n ∈ {2^16, 2^18}`.
@@ -699,11 +884,25 @@ fn main() {
             std::process::exit(2);
         }
         "bench" => bench::run(),
+        "grind-bench" => grind_bench(),
+        "grind-mix" => grind_mix(&args),
         "bench-trace" => bench::run_trace(args.get(2).map(|s| s.as_str()).unwrap_or("N2")),
         "bench-r1" => bench::run_r1(args.get(2).and_then(|x| x.parse().ok()).unwrap_or(30)),
         "bench-k" => bench::run_k(),
+        "bench-lc" => bench::run_lc(args.get(2).and_then(|x| x.parse().ok()).unwrap_or(30)),
         "bench-nd" => bench::run_nd(args.get(2).map(|s| s.as_str()).unwrap_or(".")),
         "bench-rs" => bench::run_rs(args.get(2).and_then(|x| x.parse().ok()).unwrap_or(32)),
+        "bench-ext" => {
+            // P2: the factored rows against the full tables (E2/E4 parts and the kind tables)
+            let (r, ok) = nodeprove::ext_ab(reps.max(1));
+            for (n, a, b) in r {
+                println!("BENCH ext {n}: full {a:.3}s factored {b:.3}s");
+            }
+            println!("BENCH ext equal={ok}");
+            if crate::prof::on() {
+                println!("BENCH ext prof {}", crate::prof::report());
+            }
+        }
         "selftest" => match simd::selftest() {
             Ok(s) => println!("SELFTEST pass {s}"),
             Err(e) => {
@@ -723,6 +922,38 @@ fn main() {
             std::fs::write(&out, &b64).expect("write");
             print!("{rep}");
             println!("PLAN-BUILD {} B to {out} in {:.1}s (from {})", b64.len(), t.elapsed().as_secs_f64(), dd.display());
+        }
+        "mx-kat" => {
+            // E1b: the node's M̃ (every slot's prototype rows, the arena/bit/template/replay rows, the kind
+            // tables' link and arena₁ rows, slot 0's replay rows) against the Lean `evalMT4 planOf4 κ τ σ`
+            // (NodeDumpX's `mxkat.txt`: MxKat's LCG points)
+            let (dd, _) = mfill::find_dirs().unwrap_or_else(|| service::fatal("no node dump"));
+            let text = std::fs::read_to_string(dd.join("mxkat.txt")).unwrap_or_else(|_| service::fatal("mxkat.txt"));
+            let nd = plan::node_data();
+            let lcg = |s: u64| s.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            let rand_f = |seed: u64| { let a = lcg(seed); field::F::new(a, lcg(a)) };
+            let hx = |x: field::F| x.to_bytes().iter().map(|b| format!("{b:02x}")).collect::<String>();
+            let mut bad = 0;
+            for line in text.lines().filter(|l| !l.starts_with('#')) {
+                let t: Vec<&str> = line.split(" | ").collect();
+                let seed: u64 = t[0].parse().unwrap();
+                let k = match t[1].rsplit('.').next().unwrap() { "N2" => node::NK::N2, "N4" => node::NK::N4, _ => node::NK::N8 };
+                let tau: Vec<field::F> = (0..32).map(|i| rand_f(1000 * seed + i)).collect();
+                let sigma: Vec<field::F> = (0..25).map(|i| rand_f(7000 * seed + i)).collect();
+                let kt = nd.kind_tab(k);
+                let lm = kt.log_m;
+                let v = nodeops::eval_m(&kt, &nd.protos, &tau[..lm], &sigma[..lm + 2]);
+                let ok = (0..3).all(|m| hx(v[m]) == t[2 + m].trim());
+                println!("MX-KAT seed {seed} {k:?}: {}", if ok { "equal" } else { "DIFFERENT" });
+                if !ok {
+                    bad += 1;
+                    println!("  rust {} {} {}", hx(v[0]), hx(v[1]), hx(v[2]));
+                }
+            }
+            println!("MX-KAT {}", if bad == 0 { "PASS" } else { "FAIL" });
+            if bad > 0 {
+                std::process::exit(1);
+            }
         }
         "plan-kat" => {
             // the embedded blob's rebuild against the full dump

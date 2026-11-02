@@ -1,5 +1,5 @@
 -- New for `flock-recursive` (BLUEPRINT A.11, stage S-E3; track L-circ).
-import FRVIRTemplates
+import FRVIRTplTab
 
 /-!
 # Replay templates: Lagrange weights, `eqZ`, `lagrangeS`, `eqTableK`, `dotKF`

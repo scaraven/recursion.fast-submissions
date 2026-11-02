@@ -1,11 +1,915 @@
+-- G6: this module also holds the former modules `FRSoundnessCoreHide`, `FRSoundnessCoreWeights`, `FRSoundnessCoreTail`, `FRSoundnessCoreSG` (one section each, in import order).
+import FRSoundnessCoreSteps
+import FRVIRFinalsCoreSG
+import FRSoundness4Pos
+
+section G6_FRSoundnessCoreHide
+
+-- New for `flock-recursive` (BLUEPRINT §10 changes 27 (B) step 3; stage RET-1): the position-free
+-- declarations of the 3.x soundness modules that revision 4.1 reuses, moved here verbatim (same
+-- names, statements and proofs) from `FRSoundnessLigerito` (1), `FRSoundnessHide` (11),
+-- `FRSoundnessWalk` (10), `FRSoundnessPhases` (3). Content: `eqBits_eq_eq`, Hide's `bindL_mle`,
+-- `hEll`, `err_total`, the `fsCheck` facts, the forest-walk lemmas on prefixes (`pathOf_take`,
+-- `entriesOf_take`, `not_bad_take`) and the batch counts (`batch_single`, `batch_N_le`). The 3.x
+-- modules import this one.
+
+/-! ## From `FRSoundnessLigerito` (1 declaration) -/
+
+namespace FR
+
+variable {R : Type*} [CommRing R]
+
+/-- **`eqBits_eq_eq`**: `eqBits` is `eq` at the cube point, coordinate `v` against bit `v`. -/
+theorem eqBits_eq_eq (r : ℕ → R) (ℓ : ℕ) (u : Fin (2 ^ ℓ)) :
+    eqBits r ℓ u = eq (fun v : Fin ℓ => r v) (cube u) := by
+  rw [eq_cube, eqBits, bitSel,
+    Finset.prod_range (fun i => if (u : ℕ).testBit i then r i else 1 - r i)]
+
+end FR
+
+/-! ## From `FRSoundnessHide` (11 declarations) -/
+
+namespace FR.Snd
+
+open RecursionFast FR.Merkle Finset
+
+open scoped NNReal
+
+set_option linter.constructorNameAsVariable false
+
+/-- P1.i's rounds `ℓᵢ` (the same for every kind, `lvl_ell`). -/
+def hEll (i : ℕ) : ℕ := (lvlStar i).ell
+
+theorem fsCheck_absorb_squeezeQ (len : ℕ) (st : Digest) :
+    fsCheck (.absorb len) (squeezeQ st) = false := by
+  have h8 : (squeezeQ st).data.toList.take 8 = tagSqz := by
+    rw [squeezeQ_data, List.take_append_of_le_length (by decide)]; rfl
+  simp only [fsCheck, h8, Bool.and_eq_false_iff]
+  left; decide
+
+theorem fsCheck_absorb_default (len : ℕ) :
+    fsCheck (.absorb len) (default : ByteArray × Digest).1 = false := by
+  simp only [fsCheck, Bool.and_eq_false_iff]
+  left; decide
+
+/-- **A formal extension's entries past its prefix pass no absorb check** (they are squeezes, or
+past the end). -/
+theorem fsCheck_ext_ge (es₀ : Log) (as : List Digest) {p : ℕ} (hp : es₀.length ≤ p) (len : ℕ) :
+    fsCheck (.absorb len) (entAt (ext es₀ as) p).1 = false := by
+  induction as using List.reverseRecOn with
+  | nil =>
+    rw [ext_nil, entAt, List.getD_eq_default _ _ hp]; exact fsCheck_absorb_default len
+  | append_singleton as a ih =>
+    rw [ext_append, ext1]
+    rcases Nat.lt_or_ge p (ext es₀ as).length with h | h
+    · rw [entAt_append _ _ h]; exact ih
+    · rcases Nat.lt_or_ge (ext es₀ as).length p with h' | h'
+      · rw [entAt, List.getD_eq_default _ _ (by simp; omega)]; exact fsCheck_absorb_default len
+      · have : p = (ext es₀ as).length := by omega
+        subst this
+        simp only [entAt, List.getD_eq_getElem?_getD, List.getElem?_concat_length,
+          Option.getD_some]
+        exact fsCheck_absorb_squeezeQ len _
+
+theorem entAt_ext_lt (es₀ : Log) (as : List Digest) {p : ℕ} (hp : p < es₀.length) :
+    entAt (ext es₀ as) p = entAt es₀ p := by
+  conv_rhs => rw [← take_ext es₀ as]
+  simp only [entAt, List.getD_eq_getElem?_getD, List.getElem?_take, hp, ite_true]
+
+theorem entAt_take {es : Log} {k p : ℕ} (hp : p < k) : entAt (es.take k) p = entAt es p := by
+  simp only [entAt, List.getD_eq_getElem?_getD, List.getElem?_take, hp, ite_true]
+
+theorem hide_N_le : ((2 ^ 18 : ℕ) : ℝ≥0) ≤ 2 ^ 256 * (2 : ℝ≥0)⁻¹ ^ 238 := by
+  rw [← NNReal.coe_le_coe]; push_cast; norm_num
+
+/-- The Hide potential's error: its H row and its rounds fit `ε_H`. -/
+theorem err_le_epsH : (badCount : ℝ≥0) / 2 ^ 256 + (2 : ℝ≥0)⁻¹ ^ 238 ≤ epsH := by
+  rw [epsH]; gcongr; exact badCount_frac_le
+
+/-- **Binding every variable evaluates the MLE** (`mle_fix0`, `tbl_bind0`). -/
+theorem bindL_mle {R : Type*} [CommRing R] :
+    ∀ (cs : List R) (t : Array R), t.size = 2 ^ cs.length →
+      tbl 0 (bindL t cs) 0 = mle (tbl cs.length t) (pt cs)
+  | [], t, _ => (mle_zero _ _).symm
+  | c :: cs, t, ht => by
+    have ht' : t.size = 2 ^ (cs.length + 1) := by simpa using ht
+    have hs : (bind0 t c).size = 2 ^ cs.length := by
+      rw [bind0_size, ht', pow_succ, Nat.mul_div_cancel _ two_pos]
+    show tbl 0 (bindL (bind0 t c) cs) 0 = mle (tbl (cs.length + 1) t) (pt (c :: cs))
+    rw [bindL_mle cs _ hs, pt_cons, mle_fix0, Fin.cons_zero, Fin.tail_cons, tbl_bind0 t c ht']
+
+/-- **The errors add up** (kernel-checked): the doom potential's `badCount/2^256 + deltaR` and the
+Hide potential's `badCount/2^256 + 2^-238` sum to at most `εR = 15/2^132`. -/
+theorem err_total : ((badCount : ℝ≥0) / 2 ^ 256 + deltaR) +
+    ((badCount : ℝ≥0) / 2 ^ 256 + (2 : ℝ≥0)⁻¹ ^ 238) ≤ epsR := by
+  rw [← epsD_add_epsH]; exact add_le_add err_le_epsD err_le_epsH
+
+/-- Control (toy, `mlDoom` over ℚ): the nonzero table `(1, 0)` is doomed before its challenge,
+and the challenge `1` hides it (`1 + 1·(0 − 1) = 0`). -/
+theorem mlDoom_toy : mlDoom 1 (#[1, 0] : Array ℚ) [] ∧ ¬ mlDoom 1 (#[1, 0] : Array ℚ) [1] := by
+  refine ⟨fun h => ?_, fun h => h (funext fun u => ?_)⟩
+  · have := congrFun h 0
+    simp [tbl, bindL] at this
+  · obtain ⟨u, hu⟩ := u
+    obtain rfl : u = 0 := by simp at hu; omega
+    simp [tbl, bindL, bind0]
+
+end FR.Snd
+
+/-! ## From `FRSoundnessWalk` (10 declarations) -/
+
+namespace FR.Snd
+
+open RecursionFast FR.Merkle
+
+theorem predIdx_take (L : Log) {t j : ℕ} (hj : j < t) :
+    predIdx (L.take t) j = (predIdx L j).bind (Option.guard fun i => i < t) := by
+  simp only [predIdx, List.getElem?_take, hj, ite_true]
+  cases L[j]? with
+  | none => rfl
+  | some e =>
+    simp only [Option.bind_some]
+    cases stateIn e.1 with
+    | none => rfl
+    | some st => simp only [Option.bind_some, ansIdx, List.findIdx?_take]
+
+theorem back_take (L : Log) {t : ℕ} : ∀ f j, j < t → back (L.take t) f j = back L f j := by
+  intro f
+  induction f with
+  | zero => intro _ _; rfl
+  | succ f ih =>
+    intro j hj
+    simp only [back, predIdx_take L hj]
+    cases hp : predIdx L j with
+    | none => rfl
+    | some i =>
+      by_cases hit : i < t
+      · have hg : (some i).bind (Option.guard fun i => decide (i < t)) = some i := by
+          simp [Option.guard, hit]
+        rw [hg]
+        dsimp only
+        split_ifs with h
+        · rw [ih i (by omega)]
+        · rfl
+      · have hg : (some i).bind (Option.guard fun i => decide (i < t)) = none := by
+          simp [Option.guard, hit]
+        rw [hg]
+        dsimp only
+        rw [ite_eq_right (show ¬ i < j by omega)]
+
+/-- **A path that ends before `t` is the same in `L.take t`.** -/
+theorem pathOf_take (L : Log) {t j : ℕ} (hj : j < t) : pathOf (L.take t) j = pathOf L j :=
+  back_take L _ _ hj
+
+theorem entriesOf_take (L : Log) {t : ℕ} {is : List ℕ} (h : ∀ i ∈ is, i < t) :
+    entriesOf (L.take t) is = entriesOf L is := by
+  unfold entriesOf
+  refine List.map_congr_left fun i hi => ?_
+  simp only [getElem!_def, List.getElem?_take, h i hi, ite_true]
+
+theorem entriesOf_pathOf_take (L : Log) {t j : ℕ} (hj : j < t) :
+    entriesOf (L.take t) (pathOf (L.take t) j) = entriesOf L (pathOf L j) := by
+  rw [pathOf_take L hj, entriesOf_take L fun i hi => lt_of_le_of_lt (mem_pathOf_le hi) hj]
+
+/-- **A prefix of a non-bad log is non-bad.** -/
+theorem not_bad_take {L : Log} (hb : ¬ Bad L) (t : ℕ) : ¬ Bad (L.take t) := by
+  rintro (⟨e₁, h₁, e₂, h₂, h⟩ | ⟨i, j, hij, hj, h⟩ | ⟨i, j, hij, hj, h⟩ | h)
+  · exact hb (Or.inl ⟨e₁, List.mem_of_mem_take h₁, e₂, List.mem_of_mem_take h₂, h⟩)
+  · have hj' : j < L.length := lt_of_lt_of_le hj (by simp)
+    refine hb (Or.inr (Or.inl ⟨i, j, hij, hj', ?_⟩))
+    simpa only [List.getElem_take] using h
+  · have hj' : j < L.length := lt_of_lt_of_le hj (by simp)
+    refine hb (Or.inr (Or.inr (Or.inl ⟨i, j, hij, hj', ?_⟩)))
+    simpa only [List.getElem_take] using h
+  · refine hb (Or.inr (Or.inr (Or.inr fun hn => h ?_)))
+    rw [List.map_take]
+    exact hn.sublist (List.take_sublist _ _)
+
+/-- The path to `j` is the path to its predecessor, then `j`. -/
+theorem pathOf_eq (L : Log) (j : ℕ) :
+    pathOf L j = match predIdx L j with
+      | some i => if i < j then pathOf L i ++ [j] else [j]
+      | none => [j] := by
+  rw [pathOf, back.eq_2]
+  cases predIdx L j with
+  | none => rfl
+  | some i =>
+    simp only
+    split_ifs with h
+    · rw [back_fuel L j i h]; rfl
+    · rfl
+
+/-- **The path to an entry of a path is the path's prefix.** -/
+theorem pathOf_prefix (L : Log) :
+    ∀ j k (hk : k < (pathOf L j).length), pathOf L (pathOf L j)[k] = (pathOf L j).take (k + 1) := by
+  intro j
+  induction j using Nat.strong_induction_on with
+  | _ j ih =>
+    intro k hk
+    have hp := pathOf_eq L j
+    cases hq : predIdx L j with
+    | none =>
+      rw [hq] at hp
+      simp only [hp, List.length_singleton] at hk
+      obtain rfl : k = 0 := by omega
+      rw [show (pathOf L j)[0] = j by simp [hp], hp]; rfl
+    | some i =>
+      rw [hq] at hp
+      by_cases hij : i < j
+      · simp only [hij, ite_true] at hp
+        simp only [hp, List.length_append, List.length_singleton] at hk ⊢
+        by_cases hkl : k < (pathOf L i).length
+        · rw [List.getElem_append_left hkl, ih i hij k hkl,
+            List.take_append_of_le_length (by omega)]
+        · have : k = (pathOf L i).length := by omega
+          subst this
+          rw [List.getElem_append_right (le_refl _)]
+          simp only [Nat.sub_self, List.getElem_singleton]
+          rw [List.take_of_length_le (by simp), ← hp]
+      · simp only [hij, ite_false] at hp
+        simp only [hp, List.length_singleton] at hk
+        obtain rfl : k = 0 := by omega
+        rw [show (pathOf L j)[0] = j by simp [hp], hp]; rfl
+
+theorem pathOf_lt {L : Log} {j k : ℕ} (hk : k + 1 < (pathOf L j).length) :
+    (pathOf L j)[k] < (pathOf L j)[k + 1] := by
+  have h1 := pathOf_prefix L j (k + 1) hk
+  have hle : (pathOf L j)[k] ≤ (pathOf L j)[k + 1] := by
+    apply mem_pathOf_le (j := (pathOf L j)[k + 1])
+    rw [h1]
+    exact List.mem_iff_getElem.mpr ⟨k, by simp; omega, by simp⟩
+  rcases Nat.lt_or_eq_of_le hle with h | h
+  · exact h
+  · have h0 := pathOf_prefix L j k (by omega)
+    rw [h, h1] at h0
+    have := congrArg List.length h0
+    simp at this
+    omega
+
+/-- The prefix of chain `i` ending at its `m`-th entry is the chain of that entry. -/
+theorem entriesOf_prefix (L : Log) (i : ℕ) {m : ℕ} (hm : m < (pathOf L i).length) :
+    entriesOf L (pathOf L (pathOf L i)[m]) = (entriesOf L (pathOf L i)).take (m + 1) := by
+  rw [pathOf_prefix L i m hm, entriesOf, entriesOf, List.map_take]
+
+end FR.Snd
+
+/-! ## From `FRSoundnessPhases` (3 declarations) -/
+
+namespace FR.Snd
+
+open RecursionFast FR.Merkle Finset
+
+open scoped NNReal
+
+open Classical in
+/-- **A single-squeeze batching row** (A.10 L1, L3, Lr3, E3, B′): if the doom before the squeeze
+means some of the `k + 1` claims `v` differs from its truth `t`, and the doom after it fails only
+when the batch `Σ_i κ^i v_i` at the answer's first F coordinate `κ` equals the true batch, then at
+most `k·2^128` answers escape. -/
+theorem batch_single {k : ℕ} (D : Log → Log → Prop) (v t : Fin (k + 1) → F) (L es : Log)
+    (hpre : D L es → v ≠ t)
+    (hpost : ∀ a, D L es → ¬ D L (ext1 es a) →
+      ∑ i, chF a 0 ^ i.val * v i = ∑ i, chF a 0 ^ i.val * t i) :
+    (univ.filter fun a => D L es ∧ ¬ D L (ext1 es a)).card ≤ k * 2 ^ 128 := by
+  by_cases hD : D L es
+  · have hS := batch_pow_bad_le (R := F) (hpre hD)
+    convert single_F_le (fun a => D L es ∧ ¬ D L (ext1 es a)) _ hS fun a ha =>
+      mem_filter.mpr ⟨mem_univ _, hpost a ha.1 ha.2⟩ using 2
+    ext a; simp
+  · rw [filter_false_of_mem fun a _ ha => hD ha.1]; simp
+
+/-- Every batching count with the proof of work fits the single-squeeze budget (`k · 2^120`,
+`k ≤ 239`; A.10's largest is B′'s `J_f − 1 ≤ 20`). -/
+theorem batch_N_le {k : ℕ} (hk : k ≤ 239) : ((k * 2 ^ 120 : ℕ) : ℝ≥0) ≤ 2 ^ 256 * deltaR := by
+  have h := coord_le_deltaR hk
+  rw [div_le_iff₀ (by positivity)] at h
+  calc ((k * 2 ^ 120 : ℕ) : ℝ≥0) = (k : ℝ≥0) * 2 ^ 120 := by push_cast; ring
+    _ ≤ deltaR * 2 ^ 136 * 2 ^ 120 := by gcongr
+    _ = 2 ^ 256 * deltaR := by ring
+
+/-- Control (positive): with all claims true nothing is doomed, so nothing escapes. -/
+theorem batch_single_true {k : ℕ} (v : Fin (k + 1) → F) (L es : Log) :
+    (univ.filter fun a => (fun (_ _ : Log) => v ≠ v) L es ∧
+      ¬ (fun (_ _ : Log) => v ≠ v) L (ext1 es a)).card = 0 := by
+  simp
+
+end FR.Snd
+
+end G6_FRSoundnessCoreHide
+
+section G6_FRSoundnessCoreWeights
+
+-- New for `flock-recursive` (BLUEPRINT §10 changes 27 (B) step 3; stage RET-1): the position-free
+-- declarations of the 3.x soundness modules that revision 4.1 reuses, moved here verbatim (same
+-- names, statements and proofs) from `FRSoundnessPIOP` (1), `FRSoundnessWeights` (12),
+-- `FRSoundnessFold` (11). Content: `algebraMap_f₀`, the weights' multilinear algebra (`mleN`,
+-- `bitProd`, `eqCell`, `w0F`, `foldW`, `mleN_foldW`) and the fold's generic part (`CloseN`,
+-- `closeN_unfold`, `foldN`, `mlDoomF_step`). The 3.x modules import this one.
+
+/-! ## From `FRSoundnessPIOP` (1 declaration) -/
+
+namespace FR.Snd
+
+open RecursionFast FR.Merkle Finset
+
+theorem algebraMap_f₀ (c : F) : (algebraMap F K c).f₀ = c := rfl
+
+end FR.Snd
+
+/-! ## From `FRSoundnessWeights` (12 declarations) -/
+
+namespace FR.Snd
+
+open RecursionFast FR.Merkle Finset
+
+/-- The multilinear extension of the table `W` on its first `2^n` entries. -/
+noncomputable def mleN (n : ℕ) (W : ℕ → K) (ρ : Fin n → K) : K := mle (fun u : Fin (2 ^ n) => W u) ρ
+
+theorem uK_sub_one : K.u - 1 = 1 + K.u := by
+  rw [sub_eq_add_neg, CharTwo.neg_eq, add_comm]
+
+/-- Binding level `i`'s `ℓ` row variables at `s` (row bits low: `y = r + 2^ℓ·x`). -/
+noncomputable def foldW (ℓ : ℕ) (s : ℕ → K) (W : ℕ → K) (x : ℕ) : K :=
+  ∑ r : Fin (2 ^ ℓ), eqBits s ℓ r * W (r + 2 ^ ℓ * x)
+
+/-- **Binding is evaluating**: the extension of the bound table at `ρ` is `W̃(s, ρ)`. -/
+theorem mleN_foldW (ℓ n : ℕ) (s : ℕ → K) (W : ℕ → K) (ρ : Fin n → K) :
+    mleN n (foldW ℓ s W) ρ = mleN (ℓ + n) W (Fin.append (fun v : Fin ℓ => s v) ρ) := by
+  rw [mleN, mleN, mle_split]
+  simp only [foldW]
+  rw [mle_sum]
+  refine sum_congr rfl fun r _ => ?_
+  rw [eqBits_eq_eq]
+  congr 2
+  funext u
+  simp only [join]
+  congr 1; ring
+
+/-- `bitProd` splits off its lowest bit. -/
+theorem bitProd_dbl (a : ℕ → K) (n : ℕ) (u : Fin (2 ^ n)) (b : Bool) :
+    bitProd a (n + 1) (dbl u b).val =
+      (if b then a 0 else 1) * bitProd (fun v => a (v + 1)) n u := by
+  simp only [bitProd, bitSel, dbl]
+  rw [prod_range_succ']
+  have h0 : (2 * u.val + b.toNat).testBit 0 = b := by
+    cases b <;> simp [Nat.testBit_zero, Nat.mul_mod_right]
+  have hs : ∀ i, (2 * u.val + b.toNat).testBit (i + 1) = u.val.testBit i := fun i => by
+    cases b <;> simp [Nat.testBit_succ, Nat.mul_add_div]
+  simp only [h0, hs]
+  rw [mul_comm]
+  cases b <;> simp
+
+/-- **A product-of-bits table's extension** is the tensor product
+`Π_v (1 − ρ_v + ρ_v a_v)`. -/
+theorem mle_bitProd : ∀ (n : ℕ) (a : ℕ → K) (ρ : Fin n → K),
+    mle (fun u : Fin (2 ^ n) => bitProd a n u) ρ = ∏ v : Fin n, (1 - ρ v + ρ v * a v)
+  | 0, a, ρ => by rw [mle_zero]; simp [bitProd, bitSel]
+  | n + 1, a, ρ => by
+    rw [mle_fix0]
+    have : fix0 (fun u : Fin (2 ^ (n + 1)) => bitProd a (n + 1) u) (ρ 0) =
+        fun u : Fin (2 ^ n) => (1 - ρ 0 + ρ 0 * a 0) * bitProd (fun v => a (v + 1)) n u := by
+      funext u
+      simp only [fix0, bitProd_dbl, Bool.false_eq_true, ite_false, ite_true]
+      ring
+    rw [this, mle_smul, mle_bitProd n, Fin.prod_univ_succ]
+    rfl
+
+section Level0
+
+/-- **Level 0's table** (A.9 `Ŵ₀`, F-valued on the cube; revision 3.13): the RS weight `Wrs` (all
+four claims, E4's included) and the public cells' indicators weighted `κ′^(k+2)` (A.7's order). -/
+def w0F (Wrs : ℕ → F) (cells : List ℕ) (kp : F) (y : ℕ) : F :=
+  Wrs y + ∑ k ∈ range cells.length, kp ^ (k + 2) * if y = cells.getD k 0 then 1 else 0
+
+theorem foldl_mulK (g : ℕ → K) :
+    ∀ (xs : List ℕ) (c : K), (xs.map g).foldl (· * ·) c = c * (xs.map g).prod
+  | [], c => by simp
+  | x :: xs, c => by
+    rw [List.map_cons, List.foldl_cons, foldl_mulK g xs, List.prod_cons]; ring
+
+/-- `eq(ρ, cube(c))` at a natural `c` (bit `v` of `c` against coordinate `v`). -/
+def eqCell {n : ℕ} (ρ : Fin n → K) (c : ℕ) : K := ∏ v : Fin n, if c.testBit v then ρ v else 1 - ρ v
+
+/-- A cell's indicator table extends to `eqCell`. -/
+theorem mle_ind {n c : ℕ} (hc : c < 2 ^ n) (ρ : Fin n → K) :
+    mle (fun u : Fin (2 ^ n) => if (u : ℕ) = c then (1 : K) else 0) ρ = eqCell ρ c := by
+  rw [mle, sum_eq_single (⟨c, hc⟩ : Fin (2 ^ n)) (fun u _ hu => by
+    rw [ite_eq_right fun h => absurd (Fin.ext h) hu, mul_zero]) (by simp), ite_eq_left rfl,
+    mul_one, eq_cube]
+  rfl
+
+/-- **Level 0's extension** (`w0V`'s shape): the RS weight's and `Σ_k κ′^(k+2) eq(cell_k, ρ)`. -/
+theorem mleN_w0F (Wrs : ℕ → F) (cells : List ℕ) (kp : F) {n : ℕ}
+    (hc : ∀ c ∈ cells, c < 2 ^ n) (ρ : Fin n → K) :
+    mleN n (fun y => algebraMap F K (w0F Wrs cells kp y)) ρ =
+      mleN n (fun y => algebraMap F K (Wrs y)) ρ +
+        ∑ k ∈ range cells.length, algebraMap F K (kp ^ (k + 2)) * eqCell ρ (cells.getD k 0) := by
+  have h : (fun u : Fin (2 ^ n) => algebraMap F K (w0F Wrs cells kp u)) =
+      (fun u : Fin (2 ^ n) => algebraMap F K (Wrs u)) +
+        fun u : Fin (2 ^ n) => ∑ k ∈ range cells.length, algebraMap F K (kp ^ (k + 2)) *
+          (if (u : ℕ) = cells.getD k 0 then (1 : K) else 0) := by
+    funext u
+    simp only [w0F, map_add, map_mul, map_sum, Pi.add_apply]
+    congr 1
+    refine sum_congr rfl fun k _ => ?_
+    split_ifs <;> simp
+  rw [mleN, h, mle_add, mle_sum]
+  congr 1
+  refine sum_congr rfl fun k hk => ?_
+  rw [mle_ind (hc _ (by rw [List.getD_eq_getElem _ _ (mem_range.mp hk)]; exact List.getElem_mem _))]
+
+/-- Control (positive): with no RS weight and one cell `c`, level 0's table reads `f[c]` weighted
+`κ′²`. -/
+theorem w0F_cell (kp : F) (c y : ℕ) :
+    w0F (fun _ => 0) [c] kp y = if y = c then kp ^ 2 else 0 := by
+  simp [w0F]
+
+end Level0
+
+end FR.Snd
+
+/-! ## From `FRSoundnessFold` (11 declarations) -/
+
+namespace FR.Snd
+
+open RecursionFast FR.Merkle Finset
+
+set_option linter.constructorNameAsVariable false
+
+section Generic
+
+variable {K' : Type*} [Field K'] [DecidableEq K'] {n : ℕ}
+
+/-- `ι`-indexed rows are close iff their reindexing is. -/
+theorem jointClose_equiv {ι ι' : Type*} [Fintype ι] [Fintype ι'] (σ : ι' ≃ ι)
+    {C : Submodule K' (Fin n → K')} {e : ℕ} {U : ι → Fin n → K'} {A : Finset (Fin n)} :
+    JointClose C e (U ∘ σ) A ↔ JointClose C e U A := by
+  constructor
+  · rintro ⟨hA, V, hV, rfl⟩
+    refine ⟨hA, V ∘ σ.symm, fun i => hV _, ?_⟩
+    ext j
+    simp only [mem_jointAgree, Function.comp_apply]
+    exact ⟨fun h i' => by simpa using h (σ i'), fun h i => by simpa using h (σ.symm i)⟩
+  · rintro ⟨hA, V, hV, rfl⟩
+    refine ⟨hA, V ∘ σ, fun i => hV _, ?_⟩
+    ext j
+    simp only [mem_jointAgree, Function.comp_apply]
+    exact ⟨fun h i => by simpa using h (σ.symm i), fun h i' => h (σ i')⟩
+
+/-- Rows `0 … 2m−1` as (parity, half). -/
+def evOdd (m : ℕ) : Fin (2 * m) ≃ Bool × Fin m where
+  toFun r := (r.val % 2 = 1, ⟨r.val / 2, by omega⟩)
+  invFun p := ⟨2 * p.2.val + (if p.1 then 1 else 0), by have := p.2.2; split <;> omega⟩
+  left_inv r := by
+    ext
+    simp only [decide_eq_true_eq]
+    split <;> omega
+  right_inv p := by
+    obtain ⟨b, c⟩ := p
+    cases b <;> refine Prod.ext ?_ (Fin.ext ?_)
+    all_goals simp
+    all_goals omega
+
+/-- The first `m` ℕ-indexed rows are jointly close. -/
+def CloseN (C : Submodule K' (Fin n → K')) (e m : ℕ) (U : ℕ → Fin n → K') : Prop :=
+  ∃ A, JointClose C e (fun r : Fin m => U r) A
+
+/-- One fold of rows `2c`, `2c + 1` at `z`. -/
+def foldN (z : K') (U : ℕ → Fin n → K') (c : ℕ) : Fin n → K' :=
+  U (2 * c) + z • (U (2 * c + 1) - U (2 * c))
+
+/-- **Closeness survives a fold** (no bad-set condition: fold the codewords too). -/
+theorem closeN_fold {C : Submodule K' (Fin n → K')} {e m : ℕ} {U : ℕ → Fin n → K'} (z : K')
+    (h : CloseN C e (2 * m) U) : CloseN C e m (foldN z U) := by
+  classical
+  obtain ⟨A, hA, V, hV, hVA⟩ := h
+  let V' : Fin m → Fin n → K' := fun c =>
+    V ⟨2 * c, by omega⟩ + z • (V ⟨2 * c + 1, by omega⟩ - V ⟨2 * c, by omega⟩)
+  refine ⟨_, ?_, V', fun c => add_mem (hV _) (Submodule.smul_mem _ _ (sub_mem (hV _) (hV _))),
+    rfl⟩
+  refine hA.trans (card_le_card fun j hj => ?_)
+  rw [← hVA, mem_jointAgree] at hj
+  rw [mem_jointAgree]
+  intro c
+  have h0 := hj ⟨2 * c, by omega⟩
+  have h1 := hj ⟨2 * c + 1, by omega⟩
+  simp only [foldN, Pi.add_apply, Pi.smul_apply, Pi.sub_apply, V'] at h0 h1 ⊢
+  rw [h0, h1]
+
+/-- **A fold that becomes close from far rows hit a bad line** (`fold_lift`): if the fold at `z`
+is close and `z` is in no line's bad set, the rows were close. -/
+theorem closeN_unfold {x : Fin n → K'} (hx : Function.Injective x) {k e m : ℕ}
+    (hk : 2 * e + k ≤ n) {U : ℕ → Fin n → K'} {z : K'}
+    (hz : ∀ c : Fin m, z ∉ lineBad (rsCode x k) e (U (2 * c)) (U (2 * c + 1)))
+    (h : CloseN (rsCode x k) e m (foldN z U)) : CloseN (rsCode x k) e (2 * m) U := by
+  obtain ⟨A, hA, W, hW, hWA⟩ := h
+  obtain ⟨V₀, V₁, hV₀, hV₁, -, hV⟩ := fold_lift (U₀ := fun c : Fin m => U (2 * c))
+    (U₁ := fun c : Fin m => U (2 * c + 1)) hx hk hz hA hW hWA
+  have hc : JointClose (rsCode x k) e (pairRows (fun c : Fin m => U (2 * c))
+      (fun c : Fin m => U (2 * c + 1))) A :=
+    ⟨hA, pairRows V₀ V₁, fun ⟨b, c⟩ => by cases b <;> simp [hV₀, hV₁], hV⟩
+  refine ⟨A, ?_⟩
+  rw [← jointClose_equiv (evOdd m)] at hc
+  convert hc using 2
+  funext r
+  simp only [Function.comp_apply, evOdd, Equiv.coe_fn_mk, pairRows, decide_eq_true_eq]
+  split <;> congr 1 <;> omega
+
+end Generic
+
+theorem two_pow_sub {ℓ l : ℕ} (h : l < ℓ) : 2 ^ (ℓ - l) = 2 * 2 ^ (ℓ - (l + 1)) := by
+  rw [← pow_succ']; congr 1; omega
+
+theorem sum_eqBits_one {R : Type*} [CommRing R] (r : ℕ → R) (ℓ : ℕ) :
+    ∑ q ∈ range (2 ^ ℓ), eqBits r ℓ q = 1 := by
+  have := tensor_identity r (fun _ => 1) ℓ
+  simp only [bitProd, mul_one, sub_add_cancel, prod_const_one] at this
+  rw [← this]
+  refine sum_congr rfl fun q _ => ?_
+  simp [bitSel]
+
+theorem algebraMap_eqBits (r : ℕ → F) (ℓ q : ℕ) :
+    algebraMap F K (eqBits r ℓ q) = eqBits (fun v => algebraMap F K (r v)) ℓ q := by
+  simp only [eqBits, bitSel, map_prod, apply_ite, map_sub, map_one]
+
+open Classical in
+/-- **Binding F coordinates (embedded in K) of a K table**: each loses at most one value. -/
+theorem mlDoomF_step {n : ℕ} {t : Array K} (ht : t.size = 2 ^ n) (l : List F)
+    (hd : mlDoom n t (l.map (algebraMap F K))) :
+    (univ.filter fun c : F => ¬ mlDoom n t ((l ++ [c]).map (algebraMap F K))).card ≤
+      if l.length < n then 1 else 0 := by
+  classical
+  have h := mlDoom_step ht _ hd
+  rw [List.length_map] at h
+  refine le_trans ?_ h
+  rw [← card_map ⟨algebraMap F K, (algebraMap F K).injective⟩]
+  refine card_le_card fun c hc => ?_
+  simp only [mem_map, mem_filter, mem_univ, true_and, Function.Embedding.coeFn_mk] at hc ⊢
+  obtain ⟨c', hc', rfl⟩ := hc
+  simpa using hc'
+
+/-- `¬ mlDoom` at nine F coordinates: the table's extension at them vanishes. -/
+theorem not_mlDoom_nine {t : Array K} (ht : t.size = 2 ^ 9) (l : List K) (hl : 9 ≤ l.length) :
+    ¬ mlDoom 9 t l ↔ ∑ q : Fin (2 ^ 9), eqBits (fun v => l.getD v 0) 9 q * tbl 9 t q = 0 := by
+  have hk : (l.take 9).length = 9 := by simp; omega
+  have key : tbl 0 (bindL t (l.take 9)) 0 =
+      ∑ q : Fin (2 ^ 9), eqBits (fun v => l.getD v 0) 9 q * tbl 9 t q := by
+    rw [bindL_mle _ _ (by rw [ht, hk]), ← mleEval_eq, mleEval_eq' t _ hk, mle]
+    refine sum_congr rfl fun u _ => ?_
+    rw [eqBits_eq_eq]
+    congr 2
+    funext v
+    simp only [ptOf, List.getD_eq_getElem?_getD, List.getElem?_take, v.2, ite_true]
+  rw [mlDoom, hk, Nat.sub_self, not_not, ← key]
+  constructor
+  · intro h; rw [h]; rfl
+  · intro h
+    funext u
+    obtain ⟨u, hu⟩ := u
+    obtain rfl : u = 0 := by simp at hu; omega
+    exact h
+
+end FR.Snd
+
+end G6_FRSoundnessCoreWeights
+
+section G6_FRSoundnessCoreTail
+
+-- New for `flock-recursive` (BLUEPRINT §10 changes 27 (B) step 3; stage RET-1): the position-free
+-- declarations of the 3.x soundness modules that revision 4.1 reuses, moved here verbatim (same
+-- names, statements and proofs) from `FRSoundnessTail` (14), `FRSoundnessTailD` (1),
+-- `FRSoundnessTailO` (2), `FRSoundnessCompose` (1), `FRSoundnessLigFinal` (11). Content: the tail's
+-- position-free lemmas (`tabs`, `e2`, `trueSum_tabs_fold`, `bindL_range_getD`, `getD_bindAll`,
+-- `clR2_same`, `agree_ext`, `hEll_le`, `N_le`) and LigFinal's `mleP` padding lemmas. The 3.x
+-- modules import this one.
+
+/-! ## From `FRSoundnessTail` (14 declarations) -/
+
+namespace FR.Snd
+
+open RecursionFast FR.Merkle Finset
+
+set_option linter.constructorNameAsVariable false
+
+variable {L es L' es' : Log} {p : ℕ}
+
+theorem eqBits_congr {R : Type*} [CommRing R] {r r' : ℕ → R} {ℓ : ℕ}
+    (h : ∀ v < ℓ, r v = r' v) (x : ℕ) : eqBits r ℓ x = eqBits r' ℓ x := by
+  unfold eqBits bitSel; exact prod_congr rfl fun v hv => by simp only [h v (mem_range.1 hv)]
+
+/-- The product summand of the K sumchecks (P1.i, Pf). -/
+def e2 : Expr := .mul (.var 0) (.var 1)
+
+theorem e2_deg : e2.deg = 2 := rfl
+
+/-- Two tables of size `2^m`. -/
+noncomputable def tabs (W f : ℕ → K) (m : ℕ) : Array (Array K) :=
+  #[Array.ofFn (n := 2 ^ m) fun y => W y, Array.ofFn (n := 2 ^ m) fun y => f y]
+
+theorem tabs_size (W f : ℕ → K) (m : ℕ) : ∀ t ∈ tabs W f m, t.size = 2 ^ m := by
+  intro t ht
+  simp only [tabs, List.mem_toArray, List.mem_cons, List.not_mem_nil, or_false] at ht
+  rcases ht with rfl | rfl <;> exact Array.size_ofFn
+
+theorem getD_bindAll {R : Type*} [CommRing R] :
+    ∀ (rs : List R) (ts : Array (Array R)) (k : ℕ),
+      (bindAll ts rs).getD k #[] = bindL (ts.getD k #[]) rs
+  | [], _, _ => rfl
+  | r :: rs, ts, k => by
+    rw [bindAll, getD_bindAll rs, getD_map_bind0]; rfl
+
+/-- The top-bit split of an `eq`-weighted sum (as in `pf_succ`). -/
+theorem sum_eqBits_succ {R : Type*} [CommRing R] (s : ℕ → R) (ℓ x : ℕ) (G : ℕ → R) :
+    ∑ u ∈ range (2 ^ (ℓ + 1)), eqBits s (ℓ + 1) u * G (u + 2 ^ (ℓ + 1) * x) =
+      ∑ u ∈ range (2 ^ ℓ), eqBits s ℓ u * G (u + 2 ^ ℓ * (2 * x)) +
+        s ℓ * (∑ u ∈ range (2 ^ ℓ), eqBits s ℓ u * G (u + 2 ^ ℓ * (2 * x + 1)) -
+          ∑ u ∈ range (2 ^ ℓ), eqBits s ℓ u * G (u + 2 ^ ℓ * (2 * x))) := by
+  have hr : range (2 ^ (ℓ + 1)) = range (2 ^ ℓ + 2 ^ ℓ) := by congr 1; ring
+  have s1 : ∑ u ∈ range (2 ^ ℓ), eqBits s (ℓ + 1) u * G (u + 2 ^ (ℓ + 1) * x) =
+      ∑ u ∈ range (2 ^ ℓ), eqBits s ℓ u * (1 - s ℓ) * G (u + 2 ^ ℓ * (2 * x)) :=
+    sum_congr rfl fun u hu => by
+      rw [show eqBits s (ℓ + 1) u = _ from bitSel_succ_lo _ _ (mem_range.1 hu),
+        show u + 2 ^ (ℓ + 1) * x = u + 2 ^ ℓ * (2 * x) by ring]; rfl
+  have s2 : ∑ u ∈ range (2 ^ ℓ), eqBits s (ℓ + 1) (2 ^ ℓ + u) *
+      G (2 ^ ℓ + u + 2 ^ (ℓ + 1) * x) =
+      ∑ u ∈ range (2 ^ ℓ), eqBits s ℓ u * s ℓ * G (u + 2 ^ ℓ * (2 * x + 1)) :=
+    sum_congr rfl fun u hu => by
+      rw [show eqBits s (ℓ + 1) (2 ^ ℓ + u) = _ from bitSel_succ_hi _ _ (mem_range.1 hu),
+        show 2 ^ ℓ + u + 2 ^ (ℓ + 1) * x = u + 2 ^ ℓ * (2 * x + 1) by ring]; rfl
+  rw [hr, sum_range_add, s1, s2, mul_sub, mul_sum, mul_sum, ← sum_sub_distrib,
+    ← sum_add_distrib, ← sum_add_distrib]
+  exact sum_congr rfl fun u _ => by ring
+
+/-- **Binding the first `ℓ` variables** at `s 0, …, s (ℓ−1)`: entry `x` of the bound table is
+`Σ_{u<2^ℓ} eq(s, u)·t[u + 2^ℓ x]`. -/
+theorem bindL_range_getD {R : Type*} [CommRing R] (s : ℕ → R) :
+    ∀ (ℓ m : ℕ) (t : Array R), t.size = 2 ^ (ℓ + m) → ∀ x < 2 ^ m,
+      (bindL t ((List.range ℓ).map s)).getD x 0 =
+        ∑ u ∈ range (2 ^ ℓ), eqBits s ℓ u * t.getD (u + 2 ^ ℓ * x) 0
+  | 0, m, t, _, x, _ => by simp [bindL, eqBits, bitSel]
+  | ℓ + 1, m, t, ht, x, hx => by
+    rw [List.range_succ, List.map_append, List.map_singleton, bindL_append,
+      sum_eqBits_succ s ℓ x (fun y => t.getD y 0)]
+    have hs : (bindL t ((List.range ℓ).map s)).size = 2 ^ (m + 1) :=
+      bindL_size _ t (by rw [ht, List.length_map, List.length_range]; congr 1; ring)
+    have ih := bindL_range_getD s ℓ (m + 1) t (by rw [ht]; congr 1; ring)
+    rw [← ih (2 * x) (by rw [pow_succ]; omega), ← ih (2 * x + 1) (by rw [pow_succ]; omega)]
+    have h2 : 2 * x + 1 < (bindL t ((List.range ℓ).map s)).size := by rw [hs, pow_succ]; omega
+    simp only [bind0, Array.getD_eq_getD_getElem?, Array.getElem?_ofFn, hs,
+      show x < 2 ^ (m + 1) / 2 by rw [pow_succ, Nat.mul_div_cancel _ two_pos]; exact hx,
+      dite_true, Option.getD_some, Array.getElem?_eq_getElem h2,
+      Array.getElem?_eq_getElem (show 2 * x < (bindL t ((List.range ℓ).map s)).size by omega)]
+
+/-- The two-table summand's true sum. -/
+theorem trueSum_e2 (ts : Array (Array K)) (m : ℕ) :
+    trueSum e2 ts m = ∑ u ∈ range (2 ^ m), (ts.getD 0 #[]).getD u 0 * (ts.getD 1 #[]).getD u 0 := by
+  rw [trueSum, ← Fin.sum_univ_eq_sum_range (fun u => (ts.getD 0 #[]).getD u 0 *
+    (ts.getD 1 #[]).getD u 0)]
+  exact sum_congr rfl fun u _ => by simp only [e2, Expr.eval, tbl]
+
+theorem tabs_getD0 (W f : ℕ → K) (m : ℕ) :
+    (tabs W f m).getD 0 #[] = Array.ofFn (n := 2 ^ m) fun y => W y := rfl
+
+theorem tabs_getD1 (W f : ℕ → K) (m : ℕ) :
+    (tabs W f m).getD 1 #[] = Array.ofFn (n := 2 ^ m) fun y => f y := rfl
+
+theorem ofFn_getD {n y : ℕ} (g : ℕ → K) (h : y < n) :
+    (Array.ofFn (n := n) fun x => g x).getD y 0 = g y := by
+  simp [Array.getD_eq_getD_getElem?, h]
+
+theorem trueSum_tabs (W f : ℕ → K) (m : ℕ) :
+    trueSum e2 (tabs W f m) m = ∑ y ∈ range (2 ^ m), W y * f y := by
+  rw [trueSum_e2]
+  refine sum_congr rfl fun y hy => ?_
+  rw [tabs_getD0, tabs_getD1, ofFn_getD _ (mem_range.1 hy), ofFn_getD _ (mem_range.1 hy)]
+
+/-- **After `ℓ` rounds the true sum is the folded inner product** `⟨foldW W, fold(f)⟩`. -/
+theorem trueSum_tabs_fold (s : ℕ → K) (ℓ m : ℕ) (W f : ℕ → K) :
+    trueSum e2 (bindAll (tabs W f (ℓ + m)) ((List.range ℓ).map s)) m =
+      ∑ x ∈ range (2 ^ m), foldW ℓ s W x *
+        ∑ u ∈ range (2 ^ ℓ), eqBits s ℓ u * f (u + 2 ^ ℓ * x) := by
+  rw [trueSum_e2, getD_bindAll, getD_bindAll]
+  refine sum_congr rfl fun x hx => ?_
+  have hx' := mem_range.1 hx
+  have hsz := tabs_size W f (ℓ + m)
+  rw [tabs_getD0, tabs_getD1, bindL_range_getD s ℓ m _ Array.size_ofFn x hx',
+    bindL_range_getD s ℓ m _ Array.size_ofFn x hx', foldW,
+    Fin.sum_univ_eq_sum_range (fun u => eqBits s ℓ u * W (u + 2 ^ ℓ * x)) (2 ^ ℓ)]
+  refine congrArg₂ (· * ·) (sum_congr rfl fun u hu => ?_) (sum_congr rfl fun u hu => ?_)
+  · have : u + 2 ^ ℓ * x < 2 ^ (ℓ + m) := by
+      have := mem_range.1 hu; rw [pow_add]; nlinarith
+    rw [ofFn_getD _ this]
+  · have : u + 2 ^ ℓ * x < 2 ^ (ℓ + m) := by
+      have := mem_range.1 hu; rw [pow_add]; nlinarith
+    rw [ofFn_getD _ this]
+
+end FR.Snd
+
+/-! ## From `FRSoundnessTailD` (1 declaration) -/
+
+namespace FR.Snd
+
+open RecursionFast FR.Merkle Finset
+
+set_option linter.constructorNameAsVariable false
+
+theorem clR2_same {R : Type*} [Field R] {b wd : ℕ} {rd : ByteArray → ℕ → R} {ch : Digest → R}
+    {c0 : Log → Log → R} {L L' es es' : Log} (hc : c0 L es = c0 L' es') :
+    ∀ {l : ℕ}, Agree es es' (b + 2 * l) →
+      clR2 b wd rd ch c0 L es l = clR2 b wd rd ch c0 L' es' l
+  | 0, _ => hc
+  | l + 1, h => by
+    simp only [clR2]
+    simp only [g2At, rch2, ansAt, msgAt, h (b + 2 * l) (by omega), h (b + 2 * l + 1) (by omega)]
+
+end FR.Snd
+
+/-! ## From `FRSoundnessTailO` (2 declarations) -/
+
+namespace FR.Snd
+
+open RecursionFast FR.Merkle Finset
+
+set_option linter.constructorNameAsVariable false
+
+theorem agree_ext (es₀ : Log) (as : List Digest) : Agree (ext es₀ as) es₀ es₀.length :=
+  fun q hq => by rw [← entAt_take (es := ext es₀ as) hq, take_ext]
+
+variable {W₀ : Log → Log → ℕ → K} {c₀ : Log → Log → K}
+
+theorem hEll_le {i : ℕ} (hi : i < 5) : hEll i ≤ 6 := by
+  unfold hEll lvlStar; interval_cases i <;> decide
+
+end FR.Snd
+
+/-! ## From `FRSoundnessCompose` (1 declaration) -/
+
+namespace FR.Snd
+
+open RecursionFast FR.Merkle Finset
+
+open scoped NNReal
+
+set_option linter.constructorNameAsVariable false
+
+variable {RejF : Log → Log → Prop} {DF : ℕ → Log → Log → Prop} {W₀ : Log → Log → ℕ → K}
+  {c₀ : Log → Log → K}
+
+/-- The frame's uniform single-squeeze count with the proof of work: `N = 239 · 2^120`. -/
+theorem N_le : ((239 * 2 ^ 120 : ℕ) : ℝ≥0) ≤ 2 ^ 256 * deltaR := batch_N_le le_rfl
+
+end FR.Snd
+
+/-! ## From `FRSoundnessLigFinal` (11 declarations) -/
+
+namespace FR.Snd
+
+open RecursionFast FR.Merkle Finset
+
+set_option linter.constructorNameAsVariable false
+
+theorem length_take_succ {es : Log} {p : ℕ} (hp : p < es.length) :
+    (es.take (p + 1)).length = p + 1 := by
+  rw [List.length_take]; omega
+
+variable {W₀ : Log → Log → ℕ → K} {c₀ : Log → Log → K}
+
+/-- Binding every variable of a table of `2^n` entries at a list of `n` challenges evaluates its
+extension there. -/
+theorem bindL_ofFn_mle {n : ℕ} (g : ℕ → K) (cs : List K) (hl : cs.length = n) :
+    tbl 0 (bindL (Array.ofFn (n := 2 ^ n) fun y => g y) cs) 0 = mleN n g (ptOf n cs) := by
+  subst hl
+  rw [bindL_mle _ _ (Array.size_ofFn ..), mleN, pt_eq_ptOf]
+  congr 1
+  funext u; exact ofFn_getD g u.2
+
+/-- The extension of `W`'s first `2^n` entries at the ℕ-indexed point `ρ`. -/
+noncomputable def mleP (n : ℕ) (W ρ : ℕ → K) : K := mleN n W (fun v => ρ v)
+
+theorem fin_append_nat {a b : ℕ} (s ρ : ℕ → K) (v : Fin (a + b)) :
+    Fin.append (fun u : Fin a => s u) (fun u : Fin b => ρ u) v =
+      if (v : ℕ) < a then s v else ρ (v - a) := by
+  refine Fin.addCases (fun u => ?_) (fun u => ?_) v
+  · simp [Fin.append_left, u.2]
+  · simp [Fin.append_right]
+
+theorem mleP_zero (W ρ : ℕ → K) : mleP 0 W ρ = W 0 := by
+  rw [mleP, mleN, mle_zero]; rfl
+
+/-- The point of a table indexed by `ℕ` (`Fin.append` of a prefix and the rest, as in
+`mle_split`). -/
+theorem mleP_pt_split (m k : ℕ) (W ρ : ℕ → K) :
+    mleP (m + k) W ρ = mle (fun u : Fin (2 ^ (m + k)) => W u)
+      (Fin.append (fun v : Fin m => ρ v) (fun v : Fin k => ρ (m + v))) := by
+  unfold mleP mleN
+  congr 1
+  funext v
+  rw [fin_append_nat ρ (fun u => ρ (m + u))]
+  split_ifs with h
+  · rfl
+  · congr 1; omega
+
+/-- **Zero padding** (A.9 `finPf`'s `P30` factor): a table zero from `2^m` on has, over `n ≥ m`
+variables, the extension over `m` times `Π_{m ≤ v < n} (1 − ρ_v)`. -/
+theorem mleP_pad {m n : ℕ} (hmn : m ≤ n) {W : ℕ → K} (hW : ∀ x, 2 ^ m ≤ x → W x = 0)
+    (ρ : ℕ → K) : mleP n W ρ = mleP m W ρ * ∏ v ∈ Ico m n, (1 - ρ v) := by
+  obtain ⟨k, rfl⟩ := Nat.exists_eq_add_of_le hmn
+  rw [mleP_pt_split, mle_split]
+  have hin : ∀ u₁ : Fin (2 ^ m), mle (fun u₂ : Fin (2 ^ k) =>
+      (fun u : Fin (2 ^ (m + k)) => W u) (join u₁ u₂)) (fun v : Fin k => ρ (m + v)) =
+      (∏ v ∈ Ico m (m + k), (1 - ρ v)) * W u₁ := fun u₁ => by
+    have hf : (fun u₂ : Fin (2 ^ k) => (fun u : Fin (2 ^ (m + k)) => W u) (join u₁ u₂)) =
+        fun u₂ => if u₂ = 0 then W u₁ else 0 := by
+      funext u₂
+      simp only [join]
+      split_ifs with h
+      · subst h; simp
+      · refine hW _ ?_
+        have : 1 ≤ u₂.val := Nat.one_le_iff_ne_zero.mpr fun h' => h (Fin.ext h')
+        nlinarith [u₁.2, Nat.one_le_two_pow (n := m)]
+    rw [hf, mle]
+    simp only [mul_ite, mul_zero, sum_ite_eq', mem_univ, ite_true, eq_cube]
+    congr 1
+    rw [prod_Ico_eq_prod_range, Nat.add_sub_cancel_left, ← Fin.prod_univ_eq_prod_range]
+    exact prod_congr rfl fun v _ => by simp
+  refine (sum_congr rfl fun u₁ _ => congrArg _ (hin u₁)).trans ?_
+  unfold mleP mleN mle
+  rw [sum_mul]
+  exact sum_congr rfl fun u _ => by ring
+
+theorem bytesAt_empty (o n : ℕ) : bytesAt ByteArray.empty o n = Vector.replicate n 0 := by
+  ext k hk; simp [bytesAt, byteAt, Vector.getElem_ofFn]
+
+theorem msgAt_nil (p : ℕ) : msgAt [] p = ByteArray.empty := by
+  simp [msgAt, entAt]; decide
+
+theorem K_ofBytes_zero : K.ofBytes (Vector.replicate 32 0) = 0 := by decide
+
+theorem readK_nil (p o : ℕ) : readK (msgAt [] p) o = 0 := by
+  rw [readK, msgAt_nil, bytesAt_empty, K_ofBytes_zero]
+
+end FR.Snd
+
+end G6_FRSoundnessCoreTail
+
+section G6_FRSoundnessCoreSG
+
+-- New for `flock-recursive` (BLUEPRINT §10 changes 27 (B) step 3; stage RET-1): the position-free
+-- declarations of the 3.x soundness modules that revision 4.1 reuses, moved here verbatim (same
+-- names, statements and proofs) from `FRSoundnessWeights` (2). Content: the two weight lemmas that
+-- read `FRVIRFinalsSG` (`uHat`, `eqCellK`): `mleN_wSplit`, `eqCellK_eq`. Not theory-only: it goes
+-- into `FRSoundnessCoreWeights` once `uHat`/`eqCellK` move to a verifier core module (step 4). The
+-- 3.x modules import this one.
+
+/-! ## From `FRSoundnessWeights` (2 declarations) -/
+
+namespace FR.Snd
+
+open RecursionFast FR.Merkle Finset
+
+/-- **The coordinate split's extension** (A.9): variable `0` is the split bit, weighted `1` or
+`u`, so its extension is `û(ρ₀) = 1 + ρ₀(1 + u)` times the rest. -/
+theorem mleN_wSplit (n : ℕ) (W : ℕ → K) (ρ : Fin (n + 1) → K) :
+    mleN (n + 1) (wSplit W) ρ = uHat (ρ 0) * mleN n W (Fin.tail ρ) := by
+  rw [mleN, mle_fix0, mleN, ← mle_smul]
+  congr 1
+  funext u
+  have h1 : (2 * u.val + 1) / 2 = u.val := by omega
+  have h2 : (2 * u.val + 1) % 2 = 1 := by omega
+  have h3 : 2 * u.val / 2 = u.val := by omega
+  have h4 : 2 * u.val % 2 = 0 := by omega
+  simp only [fix0, dbl, wSplit, uHat, Bool.toNat_false, Bool.toNat_true, add_zero, h1, h2, h3,
+    h4, ite_true, one_ne_zero, ite_false, mul_one]
+  rw [show W u * K.u - W u = W u * (K.u - 1) by ring, uK_sub_one]
+  ring
+
+section Level0
+
+/-- `finPf`'s `eqCellK` is `eqCell` at the point's 23 coordinates (characteristic two:
+`1 + ρ = 1 − ρ`). -/
+theorem eqCellK_eq (ρ : Array K) (c : ℕ) :
+    eqCellK ρ c = eqCell (fun v : Fin 23 => ρ.getD v 0) c := by
+  rw [eqCellK, foldl_mulK, one_mul]
+  have : ((List.range 23).map fun v => if c.testBit v then ρ.getD v 0 else 1 + ρ.getD v 0).prod =
+      ∏ v ∈ range 23, (if c.testBit v then ρ.getD v 0 else 1 + ρ.getD v 0) := by
+    simp only [Finset.prod, Finset.range_val, Multiset.range, Multiset.map_coe, Multiset.prod_coe]
+  rw [this, ← Fin.prod_univ_eq_prod_range, eqCell]
+  refine prod_congr rfl fun v _ => ?_
+  simp only [CharTwo.sub_eq_add, add_comm (1 : K)]
+
+end Level0
+
+end FR.Snd
+
+end G6_FRSoundnessCoreSG
+
+section G6_FRSoundness4TailStep
+
 -- New for `flock-recursive` (BLUEPRINT §5.1, A.10; stage T4, S-G13 route C): the Ligerito tail's
 -- step infrastructure at revision 4.1's item sequence `seq4`. A copy-port of `FRSoundnessStepA`
 -- (the committed words), `FRSoundnessStepB`, `FRSoundnessStepC` and `FRSoundnessStepE` into
 -- `FR.Snd.T4`: only the declarations that read the positions, the chains or the kind are copied;
 -- the position-free algebra is imported. Proof text unchanged except where noted (`T4:`).
-import FRSoundnessCoreTail
-import FRSoundnessCoreSG
-import FRSoundness4Pos
 
 /-!
 # The tail's step infrastructure at `seq4` (T4)
@@ -30,10 +934,11 @@ open RecursionFast FR.Merkle
 
 /-! ## (2) The committed words -/
 
-/-- The position of level `i`'s cap absorb: `cap₀` (phase 2), else `C.(i − 1)` (phase `22 + 5i`). -/
-def capPos (i : ℕ) : ℕ := if i = 0 then phStart4 2 else phStart4 (22 + 5 * i)
+/-- The position of level `i`'s cap absorb: `cap₀` (phase 2), else `C.(i − 1)` (phase `25 + 6i`;
+`flock-128`: six phases a level with `P3n`). -/
+def capPos (i : ℕ) : ℕ := if i = 0 then phStart4 2 else phStart4 (25 + 6 * i)
 
-theorem capPos_eq : (List.range 5).map capPos = [2, 344, 383, 410, 434] := by
+theorem capPos_eq : (List.range 5).map capPos = [2, 350, 390, 418, 443] := by
   unfold capPos phStart4; rw [fsStarts4_eq]; rfl
 
 /-- Cap entry `c` of level `i`: the 32 bytes at offset `32c` of the cap's message (A.2). -/
@@ -232,6 +1137,54 @@ theorem D3_single (hb1 : 1 ≤ b) (hTc : TruthLocal b c0 T) (he : e.deg = 3)
   refine ⟨⟨by rw [he]; rfl, g3_check es j _⟩, ?_⟩
   rw [hnw, show nr (kindOfC es) - (j + 1) = nr (kindOfC es) - j - 1 by omega]
 
+set_option linter.constructorNameAsVariable false in
+open Classical in
+/-- **The round row with the proof of work** (`flock-128`, D128 §5.4): counting only the answers
+with `Q`, where `Q` forces the proof of work at a real round's squeeze (`hQ`), at most `3·2^120`
+answers make the next claim true (`card_chF_pow_fiber`). -/
+theorem D3_single_pow (hb1 : 1 ≤ b) (hTc : TruthLocal b c0 T) (he : e.deg = 3)
+    (hsz : ∀ L es, ∀ t ∈ T L es, t.size = 2 ^ nr (kindOfC es)) (L es : Log) (Q : Digest → Prop)
+    (hQ : ∀ j, es.length = b + 2 * j + 1 → j < nr (kindOfC es) → ∀ a, Q a → pow a) :
+    (Finset.univ.filter fun a => D3 b c0 nr e T L es ∧ ¬ D3 b c0 nr e T L (ext1 es a) ∧ Q a).card ≤
+      3 * 2 ^ 120 := by
+  by_cases hlen : b < es.length
+  swap
+  · rw [Finset.filter_false_of_mem fun a _ h => not_D3_short (by omega) h.1]; simp
+  by_cases hc : (es.length - b) % 2 = 0 ∨ nr (kindOfC es) ≤ (es.length - b) / 2
+  · rw [Finset.filter_false_of_mem fun a _ h =>
+      h.2.1 ((D3_append_iff hb1 hTc _ hlen hc).mpr h.1)]
+    simp
+  simp only [not_or, not_le] at hc
+  obtain ⟨j, hjdef⟩ : ∃ j, j = (es.length - b) / 2 := ⟨_, rfl⟩
+  have hj : j < nr (kindOfC es) := hjdef ▸ hc.2
+  have hlj : es.length = b + 2 * j + 1 := by omega
+  have hans : ans3 b nr es = j := by rw [ans3, hjdef]; exact min_eq_right hc.2.le
+  by_cases hw : Wrong3 b c0 nr e T L es j
+  swap
+  · rw [Finset.filter_false_of_mem fun a _ h => hw (hans ▸ h.1.2)]; simp
+  have hts : ∀ t ∈ bindAll (T L es) (rchs b es j), t.size = 2 ^ (nr (kindOfC es) - j - 1 + 1) := by
+    refine bindAll_size (rchs b es j) _ fun t ht => ?_
+    rw [hsz L es t ht]; congr 1; simp only [rchs, List.length_map, List.length_range]; omega
+  have hesc := round_escape_le e (bindAll (T L es) (rchs b es j)) hts
+    (claim := clR b c0 L es j) (by
+      rw [show nr (kindOfC es) - j - 1 + 1 = nr (kindOfC es) - j by omega]; exact hw)
+    (g3At b es j (clR b c0 L es j))
+  refine le_trans (Finset.card_le_card (t := Finset.univ.filter fun a : Digest => chF a 0 ∈ _ ∧ pow a)
+    fun a ha => ?_) (by rw [card_chF_pow_fiber]; exact Nat.mul_le_mul_right _ (hesc.trans he.le))
+  rw [Finset.mem_filter] at ha
+  have hnd : ¬ D3 b c0 nr e T L (ext1 es a) := ha.2.2.1
+  have hans' : ans3 b nr (ext1 es a) = j + 1 := by
+    have hk : kindOfC (ext1 es a) = kindOfC es := kindOf_append _ (by omega)
+    rw [ans3, hk, show (ext1 es a).length = es.length + 1 by simp [ext1],
+      min_eq_right (by omega)]
+    omega
+  have hnw : ¬ Wrong3 b c0 nr e T L (ext1 es a) (j + 1) := fun h =>
+    hnd ⟨by simp [ext1]; omega, by rw [hans']; exact h⟩
+  rw [wrong3_ext1 hb1 hTc L es a hlj, not_not] at hnw
+  simp only [Finset.mem_filter, Finset.mem_univ, true_and]
+  refine ⟨⟨⟨by rw [he]; rfl, g3_check es j _⟩, ?_⟩, hQ j hlj hj a ha.2.2.2⟩
+  rw [hnw, show nr (kindOfC es) - (j + 1) = nr (kindOfC es) - j - 1 by omega]
+
 theorem D3_log_congr {L L' X : Log} (hT : T L' X = T L X) (hc : c0 L' X = c0 L X) :
     D3 b c0 nr e T L' X ↔ D3 b c0 nr e T L X := by
   simp only [D3, Wrong3, clR_log_congr hc, hT]
@@ -296,17 +1249,6 @@ theorem rounds3_obl {nMax : ℕ} (P : RoundsPhase b nMax nr) (hTc : TruthLocal b
   hstab L i hb hci X hX := by
     obtain ⟨hT, hc⟩ := hst L i hb hci X hX
     exact D3_log_congr hT hc
-
-open Classical in
-/-- **The contract's step law for the round doom**, with error `εD = εR − ε_H`. -/
-theorem rounds3_step {nMax : ℕ} (P : RoundsPhase b nMax nr) (hTc : TruthLocal b c0 T)
-    (he : e.deg = 3) (hsz : ∀ L es, ∀ t ∈ T L es, t.size = 2 ^ nr (kindOfC es))
-    (hst : TruthStable c0 T) (L : Log) (q : ByteArray) (hl : L.length < logCap)
-    (hμ : G.muG (D3 b c0 nr e T) (pRoundG (D3 b c0 nr e T) fsRnd4) L < 1)
-    (hq : q ∉ L.map Prod.fst) :
-    ∑ a : Digest, G.muG (D3 b c0 nr e T) (pRoundG (D3 b c0 nr e T) fsRnd4) (L ++ [(q, a)]) ≤
-      (G.muG (D3 b c0 nr e T) (pRoundG (D3 b c0 nr e T) fsRnd4) L + epsD) * 2 ^ 256 :=
-  step_epsD three_le_deltaR (rounds3_obl P hTc he hsz hst) L q hl hμ hq
 
 end Rounds3
 
@@ -373,8 +1315,19 @@ structure RejOK (Rej : Log → Log → Prop) : Prop where
   stab : ∀ L i, ¬ Bad L → G.IsChain L i → ∀ X, StabExt fsRnd4 (entriesOf L (pathOf L i)) X →
     (Rej (L.take i) X ↔ Rej L X)
 
+/-- **What a composed `Rej` must satisfy** (revision 4.4.1, A3′ run 2): unchanged by an entry at a
+squeeze position, stable under the charging log. `RejOK` without `mono`: the cap check's guarded `Rej`
+(`T4.RejG`) is not monotone at `CapD`'s absorb, where `PhaseObl.hrej` hands the lost check to the
+phase's doom. -/
+structure RejSq (Rej : Log → Log → Prop) : Prop where
+  sq : ∀ L es x, fsItems4[es.length]? = some .squeeze → (Rej L (es ++ [x]) ↔ Rej L es)
+  stab : ∀ L i, ¬ Bad L → G.IsChain L i → ∀ X, StabExt fsRnd4 (entriesOf L (pathOf L i)) X →
+    (Rej (L.take i) X ↔ Rej L X)
+
+theorem RejOK.toSq {Rej : Log → Log → Prop} (h : RejOK Rej) : RejSq Rej := ⟨h.sq, h.stab⟩
+
 /-- Inside a multi-squeeze phase, `Rej` does not change along a formal extension. -/
-theorem rej_ext {Rej : Log → Log → Prop} (hR : RejOK Rej) {L es₀ : Log} {s0 r : ℕ}
+theorem rej_ext {Rej : Log → Log → Prop} (hR : RejSq Rej) {L es₀ : Log} {s0 r : ℕ}
     (hl : es₀.length = s0 + 1) (hr : fsRnd4 (s0 + 1) = some (s0, r)) :
     ∀ as : List Digest, as.length ≤ r → (Rej L (ext es₀ as) ↔ Rej L es₀) := by
   obtain ⟨-, hpr, hspec⟩ := fsRnd4_ok _ _ _ hr
@@ -396,9 +1349,12 @@ theorem sq_of_fsRnd {p s0 r : ℕ} (h : fsRnd4 p = some (s0, r)) :
 
 open Classical in
 /-- **`stepObl_compose`**: the obligations of the composed doom from those of the phases' doom
-under `¬ Rej`. -/
+under `¬ Rej` (revision 4.4.1: `Rej` need not be monotone; at an absorb a check that stops holding
+hands over to the phase's doom, `hrej`). -/
 theorem stepObl_compose {Rej : Log → Log → Prop} {Dp : ℕ → Log → Log → Prop} {δ : ℝ≥0} {N : ℕ}
-    (hR : RejOK Rej)
+    (hR : RejSq Rej)
+    (hrej : ∀ L es x len, G.Matches (es ++ [x]) → fsItems4[es.length]? = some (.absorb len) →
+      Rej L es → Rej L (es ++ [x]) ∨ DPos Dp L (es ++ [x]))
     (habs : ∀ L es x len, G.Matches (es ++ [x]) → fsItems4[es.length]? = some (.absorb len) →
       ¬ Rej L es → DPos Dp L es → Rej L (es ++ [x]) ∨ DPos Dp L (es ++ [x]))
     (hmid : ∀ L es x s0 r, G.Matches (es ++ [x]) → fsRnd4 es.length = some (s0, r) →
@@ -413,7 +1369,7 @@ theorem stepObl_compose {Rej : Log → Log → Prop} {Dp : ℕ → Log → Log �
     StepObl (DC Rej Dp) fsRnd4 δ N where
   habs L es x len hm hit hd := by
     by_cases hr : Rej L es
-    · exact Or.inl (hR.mono _ _ _ hr)
+    · exact hrej L es x len hm hit hr
     · exact habs L es x len hm hit hr (hd.resolve_left hr)
   hmid L es x s0 r hm hrnd hlt := by
     have hrej := hR.sq L es x (sq_of_fsRnd hrnd)
@@ -472,49 +1428,63 @@ theorem lv31_ok : ∀ i < 5, 2 * lvE (.seg .L31) i + lvK (.seg .L31) i ≤ lvN (
     2 ^ 6 * cMca (lvN (.seg .L31) i) (lvK (.seg .L31) i) (lvE (.seg .L31) i) + 2 ≤ 2 ^ 66 := by
   intro i hi; interval_cases i <;> decide
 
-/-- **The P2 row** (§5.2), in ℚ as `positions_bad_le` states it: at every level of every kind,
-`(1 − eᵢ/nᵢ)^{tᵢ} ≤ 15/2^124 − 2·2^-142 − 2^-238` (kernel arithmetic: the exponents exceed
-`norm_num`'s). -/
+/-- **The P2 row** (§5.2), in ℚ as `positions_bad_le` states it, with the proof of work: at every
+level of every kind, `(1 − eᵢ/nᵢ)^{tᵢ} / 2^8 ≤ 15/2^132 − 2·2^-142 − 2^-238` (kernel arithmetic: the
+exponents exceed `norm_num`'s). -/
 theorem p2_row_le_q (κ : CKind) (i : ℕ) (hi : i < 5) :
-    (1 - (lvE κ i : ℚ) / lvN κ i) ^ (CKind.lv κ i).t ≤ 15 / 2 ^ 124 - 2 / 2 ^ 142 - 1 / 2 ^ 238 := by
+    (1 - (lvE κ i : ℚ) / lvN κ i) ^ (CKind.lv κ i).t / 2 ^ 8 ≤
+      15 / 2 ^ 132 - 2 / 2 ^ 142 - 1 / 2 ^ 238 := by
   interval_cases i <;> rcases κ with (_|_|_) | (_|_|_) <;> decide +kernel
+
+/-- Control (−): without the proof of work level 0's row is above the cap itself
+(`(3/4)^290 ≈ 2^-120.36 > 2^-128`). -/
+theorem p2_row_nopow : (1 / 2 ^ 128 : ℚ) < (1 - (lvE (.seg .L32) 0 : ℚ) / lvN (.seg .L32) 0) ^
+    (CKind.lv (.seg .L32) 0).t := by
+  decide +kernel
 
 /-- **The P2 row against `deltaR`.** -/
 theorem p2_row_le (κ : CKind) (i : ℕ) (hi : i < 5) :
-    ((1 - (lvE κ i : ℚ) / lvN κ i) ^ (CKind.lv κ i).t : ℝ) ≤ deltaR := by
+    ((1 - (lvE κ i : ℚ) / lvN κ i) ^ (CKind.lv κ i).t / 2 ^ 8 : ℝ) ≤ deltaR := by
   rw [deltaR_coe]
   have := p2_row_le_q κ i hi
-  have h : ((15 / 2 ^ 124 - 2 / 2 ^ 142 - 1 / 2 ^ 238 : ℚ) : ℝ) =
-      15 / 2 ^ 124 - 2 / 2 ^ 142 - 1 / 2 ^ 238 := by push_cast; ring
+  have h : ((15 / 2 ^ 132 - 2 / 2 ^ 142 - 1 / 2 ^ 238 : ℚ) : ℝ) =
+      15 / 2 ^ 132 - 2 / 2 ^ 142 - 1 / 2 ^ 238 := by push_cast; ring
   rw [← h]
   exact_mod_cast this
 
-/-- The P2 phase parameters (checked): `per ≥ 1` indices of `log₂ n` bits fit an answer, and the
-phase's `sq` answers (sized for `m* = 32`) carry the `t` indices of every kind. -/
+/-- The P2 phase parameters (checked): `per ≥ 1` indices of `log₂ n` bits fit an answer, the
+phase's `sqP` answers (sized for `m* = 32`, `flock-128`: P2.4 has 7) carry the `t` indices of every
+kind, and the last answer's indices lie below its byte 31 (`FRShape4.Rev4.p2_pow_room`). -/
 theorem p2_params (κ : CKind) (i : ℕ) (hi : i < 5) :
     0 < (CKind.lv κ i).per ∧ (CKind.lv κ i).per * (CKind.lv κ i).logN ≤ 256 ∧
-      (CKind.lv κ i).t ≤ (lvlStar i).sq * (CKind.lv κ i).per := by
-  interval_cases i <;> rcases κ with (_|_|_) | (_|_|_) <;> decide
+      (CKind.lv κ i).t ≤ Rev4.seq4.sqP (Rev4.seq4.lv i) * (CKind.lv κ i).per ∧
+      pc (CKind.lv κ i).per (CKind.lv κ i).t (Rev4.seq4.sqP (Rev4.seq4.lv i) - 1) * (CKind.lv κ i).logN ≤ 248 := by
+  have h := Rev4.p2_pow_room.1 κ.m (by rcases κ.m_mem with h | h | h <;> simp [h]) i hi
+  refine ⟨?_, ?_, h.2, h.1⟩ <;>
+    interval_cases i <;> rcases κ with (_|_|_) | (_|_|_) <;> decide
 
-/-- **The P2 row** (`hround`, §5.2): if level `i`'s escape puts all its `tᵢ` positions in a set
-`S` with `|S| + eᵢ < nᵢ` (the consistency set of a far or wrong fold, A.10), the phase is charged
-at most `deltaR` (`p2_round_le`, `p2_row_le`). -/
+/-- **The P2 row with the proof of work** (`hround`, §5.2): if level `i`'s escape puts all its
+`tᵢ` positions in a set `S` with `|S| + eᵢ < nᵢ` (the consistency set of a far or wrong fold, A.10)
+and its last answer passes the proof of work, the phase is charged at most `deltaR`
+(`p2_round_pow_le`, `p2_row_le`). -/
 theorem p2_hround (κ : CKind) (i : ℕ) (hi : i < 5) {D : Log → Log → Prop} {L es₀ : Log} {s0 : ℕ}
     (hl : es₀.length = s0 + 1) (S : Finset (Fin (2 ^ (CKind.lv κ i).logN)))
     (hS : S.card + lvE κ i < lvN κ i)
-    (hesc : ∀ as : List Digest, as.length = (lvlStar i).sq → EscAtG D L (ext es₀ as) →
-      ∀ k < (CKind.lv κ i).t, posAt (ext es₀ as) s0 (CKind.lv κ i).logN (CKind.lv κ i).per k ∈
-        S.map Fin.valEmbedding) :
-    condCount D L es₀ (lvlStar i).sq [] ≤ deltaR := by
-  obtain ⟨hper, hpb, ht⟩ := p2_params κ i hi
-  have h1 := p2_round_le hl hper hpb ht S hesc
+    (hesc : ∀ as : List Digest, as.length = Rev4.seq4.sqP (Rev4.seq4.lv i) → EscAtG D L (ext es₀ as) →
+      (∀ k < (CKind.lv κ i).t, posAt (ext es₀ as) s0 (CKind.lv κ i).logN (CKind.lv κ i).per k ∈
+        S.map Fin.valEmbedding) ∧ pow (ansAt (ext es₀ as) (s0 + Rev4.seq4.sqP (Rev4.seq4.lv i)))) :
+    condCount D L es₀ (Rev4.seq4.sqP (Rev4.seq4.lv i)) [] ≤ deltaR := by
+  obtain ⟨hper, hpb, ht, hlast⟩ := p2_params κ i hi
+  have hr : 0 < Rev4.seq4.sqP (Rev4.seq4.lv i) := by
+    rw [Rev4.seq4_eq]; interval_cases i <;> decide
+  have h1 := p2_round_pow_le hl hr hper hpb ht hlast S hesc
   have h2 := p2_row_le κ i hi
   rw [← NNReal.coe_le_coe] at h1 ⊢
   refine h1.trans (le_trans ?_ h2)
   push_cast
   have hn : (lvN κ i : ℝ) = 2 ^ (CKind.lv κ i).logN := by simp [lvN]
   have hpos : (0 : ℝ) < 2 ^ (CKind.lv κ i).logN := by positivity
-  refine pow_le_pow_left₀ (by positivity) ?_ _
+  gcongr
   rw [hn, div_le_iff₀ hpos, sub_mul, one_mul, div_mul_cancel₀ _ hpos.ne']
   have : (S.card : ℝ) + lvE κ i ≤ 2 ^ (CKind.lv κ i).logN := by
     rw [← hn]; exact_mod_cast hS.le
@@ -552,8 +1522,12 @@ set_option linter.constructorNameAsVariable false
 /-- **The position doom** (A.10): position `p`'s doom is the doom of its phase. -/
 def Dp (Dk : ℕ → Log → Log → Prop) (p : ℕ) : Log → Log → Prop := Dk (phOf4 p)
 
-/-- Checked: every phase with Fiat–Shamir items is the phase of its first position. -/
-theorem phOf_start : (List.range 52).all (fun k => isQ k || phOf4 (phStart4 k) == k) = true := by
+/-- The phases of `phasesOf seq4` with no Fiat–Shamir item (each level's `Q`, `33 + 6i`). -/
+def isQ4 (k : ℕ) : Bool := 33 ≤ k && k ≤ 57 && (k - 33) % 6 == 0
+
+/-- Checked: every phase with Fiat–Shamir items is the phase of its first position (`flock-128`: the
+65 phases of `phasesOf seq4`). -/
+theorem phOf_start : (List.range 65).all (fun k => isQ4 k || phOf4 (phStart4 k) == k) = true := by
   unfold phOf4 phStart4; rw [fsStarts4_eq]; decide +kernel
 
 /-- The phase changes only at a phase start. -/
@@ -636,140 +1610,277 @@ theorem esc_msD {Dk : ℕ → Log → Log → Prop} {s0 r : ℕ} (hmem : (s0, r)
 
 /-! ## Part D: the whole transcript: the per-phase obligations and `KState.step` at `εR` -/
 
+/-! ### The proof of work in the doom (`flock-128`, D128 §2.3, §5.3)
+
+The verifier rejects a chain whose answer at a grinded position (`powPos`) has a nonzero byte 31.
+The doom therefore gains the disjunct `¬ powOK`: **`powD Dk`** is phase `k`'s doom `Dk k` or a failed
+proof of work (D128's `DPow`). The failed proof of work changes only at a grinded squeeze, never at
+an absorb or inside a multi-squeeze phase (`powOK_append`, `not_powPos_mid`), and reads no log, so
+it rides on every obligation of the phase doom; an escape of `powD Dk` is an escape of `Dk` whose
+answers pass every proof of work so far (`esc_powD`). That is what lets the single squeezes and the
+multi-squeeze phases count only the answers that pass (`PhaseObl.hsingle`, `.hfin`). -/
+
+/-- **The proof of work passes on `es`** (D128 §2.1): at every grinded position `p < |es|`, byte 31
+of the answer is zero. -/
+def powOK (es : Log) : Prop := ∀ p ∈ powPos, p < es.length → pow (ansAt es p)
+
+/-- **The pow-restricted phase dooms** (D128 §5.3's `DPow`): phase `k`'s doom, or a failed proof of
+work. -/
+def powD (Dk : ℕ → Log → Log → Prop) (k : ℕ) (L es : Log) : Prop := Dk k L es ∨ ¬ powOK es
+
+/-- A grinded position is a squeeze, and the last of its run. -/
+theorem powPos_sq {p : ℕ} (hp : p ∈ powPos) :
+    fsItems4[p]? = some .squeeze ∧ fsItems4[p + 1]? ≠ some .squeeze := by
+  have h := powOK4_eq
+  simp only [powOK4, Bool.and_eq_true, List.all_eq_true] at h
+  have := (h.1 p hp).1
+  simp only [Bool.and_eq_true, beq_iff_eq, bne_iff_ne, ne_eq] at this
+  exact this
+
+/-- Every multi-squeeze phase ends at a grinded position. -/
+theorem powPos_last {s0 r : ℕ} (hmem : (s0, r) ∈ fsRanges4) : s0 + r ∈ powPos := by
+  have h := powOK4_eq
+  simp only [powOK4, Bool.and_eq_true, List.all_eq_true, List.contains_iff_mem] at h
+  exact h.2 _ hmem
+
+/-- No grinded position lies strictly inside a multi-squeeze phase. -/
+theorem not_powPos_mid {s0 r p : ℕ} (hmem : (s0, r) ∈ fsRanges4) (h1 : s0 < p) (h2 : p < s0 + r) :
+    p ∉ powPos := by
+  intro hp
+  have hall := rangesOK4_eq
+  simp only [rangesOK4, List.all_eq_true, List.mem_range, Bool.and_eq_true, beq_iff_eq] at hall
+  have := (hall _ hmem (p - s0) (by show p - s0 < r; omega)).1
+  rw [show s0 + 1 + (p - s0) = p + 1 by omega] at this
+  exact (powPos_sq hp).2 this
+
+/-- Appending an entry adds the proof of work of its answer when its position is grinded. -/
+theorem powOK_append (es : Log) (x : ByteArray × Digest) :
+    powOK (es ++ [x]) ↔ powOK es ∧ (es.length ∈ powPos → pow x.2) := by
+  have hl : ∀ p < es.length, ansAt (es ++ [x]) p = ansAt es p := fun p hp => by
+    simp only [ansAt, entAt_append es [x] hp]
+  have he : ansAt (es ++ [x]) es.length = x.2 := by simp [ansAt, entAt]
+  constructor
+  · intro h
+    refine ⟨fun p hp hlt => ?_, fun hp => ?_⟩
+    · rw [← hl p hlt]; exact h p hp (by simp; omega)
+    · rw [← he]; exact h _ hp (by simp)
+  · rintro ⟨h, hx⟩ p hp hlt
+    simp only [List.length_append, List.length_singleton] at hlt
+    rcases Nat.lt_or_ge p es.length with h' | h'
+    · rw [hl p h']; exact h p hp h'
+    · obtain rfl : p = es.length := by omega
+      rw [he]; exact hx hp
+
+/-- The proof of work of a prefix. -/
+theorem powOK_take {es : Log} (h : powOK es) (k : ℕ) : powOK (es.take k) := fun p hp hlt => by
+  simp only [List.length_take] at hlt
+  rw [ansAt, entAt_take (by omega : p < k)]
+  exact h p hp (by omega)
+
+/-- Inside a multi-squeeze phase the proof of work is the entry's. -/
+theorem powOK_take_mid {s0 r : ℕ} (hmem : (s0, r) ∈ fsRanges4) {es : Log}
+    (h2 : es.length ≤ s0 + r) : powOK (es.take (s0 + 1)) ↔ powOK es := by
+  refine ⟨fun h p hp hlt => ?_, fun h => powOK_take h _⟩
+  have hps : p < s0 + 1 := by
+    by_contra hc
+    exact not_powPos_mid hmem (by omega) (by omega) hp
+  have := h p hp (by simp; omega)
+  rwa [ansAt, entAt_take hps] at this
+
+/-- `powD` keeps every multi-squeeze phase in `msD` form (its final doom gains `¬ powOK`). -/
+theorem ms_powD {Dk : ℕ → Log → Log → Prop} (hD : MsForm Dk) : MsForm (powD Dk) := by
+  intro s0 r hmem
+  obtain ⟨fin, hfin⟩ := hD s0 r hmem
+  refine ⟨fun L es => fin L es ∨ ¬ powOK es, ?_⟩
+  funext L es
+  simp only [powD, hfin, msD]
+  split_ifs with h
+  · rw [powOK_take_mid hmem h]
+  · rfl
+
+/-- **An escape of the pow-restricted doom** is an escape of the phase doom on a chain that passes
+every proof of work. -/
+theorem esc_powD {Dk : ℕ → Log → Log → Prop} {L es : Log}
+    (h : EscAtG (DPos (Dp (powD Dk))) L es) : EscAtG (DPos (Dp Dk)) L es ∧ powOK es := by
+  obtain ⟨h2, hd, hnd⟩ := h
+  simp only [DPos, Dp, powD, not_or, not_not] at hd hnd
+  have hp : powOK es.dropLast := by rw [List.dropLast_eq_take]; exact powOK_take hnd.2 _
+  exact ⟨⟨h2, hd.resolve_right (not_not.2 hp), hnd.1⟩, hnd.2⟩
+
+/-- **The escape of a multi-squeeze phase in `msD` form, with the proof of work**: the entry is
+doomed, the phase's final doom fails, and the last answer passes the proof of work. -/
+theorem esc_msD_pow {Dk : ℕ → Log → Log → Prop} {s0 r : ℕ} (hmem : (s0, r) ∈ fsRanges4)
+    {fin : Log → Log → Prop} (hfin : Dk (phOf4 (s0 + 1)) = msD (Dk (phOf4 s0)) fin s0 r)
+    {L es₀ : Log} (hl : es₀.length = s0 + 1) (as : List Digest) (has : as.length = r)
+    (he : EscAtG (DPos (Dp (powD Dk))) L (ext es₀ as)) :
+    Dk (phOf4 s0) L es₀ ∧ ¬ fin L (ext es₀ as) ∧ pow (ansAt (ext es₀ as) (s0 + r)) := by
+  obtain ⟨he', hp⟩ := esc_powD he
+  obtain ⟨h1, h2⟩ := esc_msD hmem hfin hl as has he'
+  exact ⟨h1, h2, hp _ (powPos_last hmem) (by rw [length_ext]; omega)⟩
+
 open Classical in
-/-- **The per-phase obligations of the entry's doom** `DC Rej (Dp Dk)` (A.10). `Rej` is the
-failed asserted checks; `Dk k` is phase `k`'s doom; every multi-squeeze phase is in `msD` form
-(its `hmid` is then automatic, `hmid_of_msForm`). What is left per phase:
+/-- **The per-phase obligations of the entry's doom** `DC Rej (Dp (powD Dk))` (A.10; `flock-128`:
+the proof of work joins the doom, `powD`). `Rej` is the failed asserted checks; `Dk k` is phase
+`k`'s doom; every multi-squeeze phase is in `msD` form (its `hmid` is then automatic,
+`hmid_of_msForm`). What is left per phase:
+* `hrej` (revision 4.4.1): at an absorb a check that held still holds, or the phase is doomed;
 * `habs`: an absorb never undooms, inside a phase or at a phase's first absorb (the handoff of
   A.10: the previous phase's doom gives a false initial claim);
 * `hsingle`: at a single squeeze (a round's challenge, or a single-squeeze phase's handoff), at
-  most `N` answers escape;
-* `hfin`: a multi-squeeze phase's charge is at most `deltaR` (`ml_round_le`, `seq_round_le`,
-  `rs1_round_le`, `p2_hround`, through `esc_msD`);
+  most `N` answers escape **among those that pass the proof of work at a grinded position**;
+* `hfin`: a multi-squeeze phase's charge **for the pow-restricted doom** is at most `deltaR`
+  (`hfin_ml`, `hfin_seq`, `hfin_rs1`, `hfin_p2`, through `esc_msD_pow`);
 * `hstab`: the position's phase doom reads the same off the charging log on `hloc_of`'s
   extensions (`StabExt`: inside a multi-squeeze phase; §10 changes 10, the S-G1g ruling). -/
 structure PhaseObl (Rej : Log → Log → Prop) (Dk : ℕ → Log → Log → Prop) (N : ℕ) : Prop where
-  rej : RejOK Rej
+  rej : RejSq Rej
   ms : MsForm Dk
+  hrej : ∀ L es x len, G.Matches (es ++ [x]) → fsItems4[es.length]? = some (.absorb len) →
+    Rej L es → Rej L (es ++ [x]) ∨ Dk (phOf4 es.length) L (es ++ [x])
   habs : ∀ L es x len, G.Matches (es ++ [x]) → fsItems4[es.length]? = some (.absorb len) →
     ¬ Rej L es → Dk (phOf4 (es.length - 1)) L es →
       Rej L (es ++ [x]) ∨ Dk (phOf4 es.length) L (es ++ [x])
   hsingle : ∀ L es, G.Matches es → fsItems4[es.length]? = some .squeeze → fsRnd4 es.length = none →
     ¬ Rej L es →
       (univ.filter fun a => Dk (phOf4 (es.length - 1)) L es ∧
-        ¬ Dk (phOf4 es.length) L (ext1 es a)).card ≤ N
+        ¬ Dk (phOf4 es.length) L (ext1 es a) ∧ (es.length ∈ powPos → pow a)).card ≤ N
   hfin : ∀ s0 r, (s0, r) ∈ fsRanges4 → ∀ L es₀, G.Matches es₀ → es₀.length = s0 + 1 →
-    ¬ Rej L es₀ → condCount (DPos (Dp Dk)) L es₀ r [] ≤ deltaR
+    ¬ Rej L es₀ → condCount (DPos (Dp (powD Dk))) L es₀ r [] ≤ deltaR
   hstab : ∀ k L i, ¬ Bad L → G.IsChain L i → ∀ X, StabExt fsRnd4 (entriesOf L (pathOf L i)) X →
     phOf4 (X.length - 1) = k → (Dk k (L.take i) X ↔ Dk k L X)
 
 open Classical in
-/-- **`KState.step` at `εD` for the whole transcript** (BLUEPRINT §5.1, A.10): the potential
-`muG` of the entry's doom `DC Rej (Dp Dk)`, charged by `pRoundG … fsRnd4`, satisfies the contract's
-step law with error `εD = εR − ε_H` (the doom potential's share, §10 changes 15), given the
-per-phase obligations and `N ≤ 2^256·deltaR`. -/
+/-- **`KState.step` at `εD` for the whole transcript** (BLUEPRINT §5.1, A.10; `flock-128`, D128
+§5.3): the potential `muG` of the entry's doom `DC Rej (Dp (powD Dk))`, charged by
+`pRoundG … fsRnd4`, satisfies the contract's step law with error `εD = εR − ε_H`, given the
+per-phase obligations and `N ≤ 2^256·deltaR` (`N_le`: `239·2^120`). -/
 theorem kstate_step {Rej : Log → Log → Prop} {Dk : ℕ → Log → Log → Prop} {N : ℕ}
     (hN : (N : ℝ≥0) ≤ 2 ^ 256 * deltaR) (ob : PhaseObl Rej Dk N) (L : Log) (q : ByteArray)
     (hl : L.length < logCap)
-    (hμ : G.muG (DC Rej (Dp Dk)) (pRoundG (DC Rej (Dp Dk)) fsRnd4) L < 1)
+    (hμ : G.muG (DC Rej (Dp (powD Dk))) (pRoundG (DC Rej (Dp (powD Dk))) fsRnd4) L < 1)
     (hq : q ∉ L.map Prod.fst) :
-    ∑ a : Digest, G.muG (DC Rej (Dp Dk)) (pRoundG (DC Rej (Dp Dk)) fsRnd4) (L ++ [(q, a)]) ≤
-      (G.muG (DC Rej (Dp Dk)) (pRoundG (DC Rej (Dp Dk)) fsRnd4) L + epsD) * 2 ^ 256 := by
-  refine step_epsD hN (stepObl_compose ob.rej ?_ ?_ ?_ ?_ ?_) L q hl hμ hq
+    ∑ a : Digest,
+        G.muG (DC Rej (Dp (powD Dk))) (pRoundG (DC Rej (Dp (powD Dk))) fsRnd4) (L ++ [(q, a)]) ≤
+      (G.muG (DC Rej (Dp (powD Dk))) (pRoundG (DC Rej (Dp (powD Dk))) fsRnd4) L + epsD) *
+        2 ^ 256 := by
+  refine step_epsD hN (stepObl_compose ob.rej ?_ ?_ ?_ ?_ ?_ ?_) L q hl hμ hq
+  · intro L es x len hm hit hr
+    refine (ob.hrej L es x len hm hit hr).imp_right fun h => ?_
+    simp only [DPos, Dp, powD, List.length_append, List.length_singleton, Nat.add_sub_cancel]
+    exact Or.inl h
   · intro L es x len hm hit hr hd
-    have := ob.habs L es x len hm hit hr hd
-    simpa [DPos, Dp] using this
+    simp only [DPos, Dp, powD, List.length_append, List.length_singleton,
+      Nat.add_sub_cancel] at hd ⊢
+    rcases hd with hd | hp
+    · exact (ob.habs L es x len hm hit hr hd).imp_right Or.inl
+    · exact Or.inr (Or.inr fun h => hp ((powOK_append es x).1 h).1)
   · intro L es x s0 r _ hrnd hlt _
-    exact hmid_of_msForm ob.ms L es x hrnd hlt
+    exact hmid_of_msForm (ms_powD ob.ms) L es x hrnd hlt
   · intro L es hm hit hrnd hr
-    have := ob.hsingle L es hm hit hrnd hr
-    simpa [DPos, Dp, length_ext1] using this
+    refine le_trans (Finset.card_le_card fun a ha => ?_) (ob.hsingle L es hm hit hrnd hr)
+    simp only [Finset.mem_filter, Finset.mem_univ, true_and, DPos, Dp, powD, length_ext1,
+      Nat.add_sub_cancel, not_or, not_not] at ha ⊢
+    obtain ⟨hd, hnd, hp⟩ := ha
+    have hp' := (powOK_append es _).1 hp
+    exact ⟨hd.resolve_right (not_not.2 hp'.1), hnd, hp'.2⟩
   · intro L es₀ s0 r hm hl hrnd hr
     exact ob.hfin s0 r (fsRnd_mem hrnd).1 L es₀ hm hl hr
   · intro L i hb hci X hX
-    exact ob.hstab _ L i hb hci X hX rfl
+    simp only [DPos, Dp, powD]
+    exact or_congr (ob.hstab _ L i hb hci X hX rfl) Iff.rfl
 
-/-! ### The multi-squeeze rows in the composition (`hfin` from `esc_msD`) -/
+/-! ### The multi-squeeze rows in the composition (`hfin` from `esc_msD_pow`) -/
 
 open Classical in
-/-- **`hfin` for a multilinear zero-test phase** (Z1, Lr1, E1, P3): the phase's final doom fails
-only where the entry's table `t` (nonzero when the entry is doomed) has a vanishing MLE at the
-phase's first `n ≤ 239` coordinates. -/
+/-- **`hfin` for a multilinear zero-test phase** (Z1, Lr1, E1, P3; `flock-128`): the phase's final
+doom fails only where the entry's table `t` (nonzero when the entry is doomed) has a vanishing MLE at
+the phase's first `n ≤ 239` coordinates, `n < 2r` (slot 1 of the last answer is the proof of work's),
+and the last answer passes the proof of work: at most `n / 2^136` (`ml_round_pow_le`). -/
 theorem hfin_ml {Dk : ℕ → Log → Log → Prop} {s0 r n : ℕ} (hmem : (s0, r) ∈ fsRanges4)
     {fin : Log → Log → Prop} (hfin : Dk (phOf4 (s0 + 1)) = msD (Dk (phOf4 s0)) fin s0 r)
-    (hn : n ≤ r * 2) (hn' : n ≤ 239) (t : Log → Log → Array F)
+    (hn : n < r * 2) (hn' : n ≤ 239) (t : Log → Log → Array F)
     (ht : ∀ L es₀, (t L es₀).size = 2 ^ n)
     (h0 : ∀ L es₀, Dk (phOf4 s0) L es₀ → tbl n (t L es₀) ≠ 0)
     (hesc : ∀ L es₀ as, es₀.length = s0 + 1 → as.length = r → Dk (phOf4 s0) L es₀ →
       ¬ fin L (ext es₀ as) →
         ¬ mlDoom n (t L es₀) (List.ofFn fun j : Fin (r * 2) => coordAt (ext es₀ as) s0 j))
-    (L es₀ : Log) (hl : es₀.length = s0 + 1) : condCount (DPos (Dp Dk)) L es₀ r [] ≤ deltaR := by
+    (L es₀ : Log) (hl : es₀.length = s0 + 1) :
+    condCount (DPos (Dp (powD Dk))) L es₀ r [] ≤ deltaR := by
+  have hr : 0 < r := by have := (ms_phOf hmem).1; omega
   by_cases hd : Dk (phOf4 s0) L es₀
-  · refine (ml_round_le hl hn (ht L es₀) (h0 L es₀ hd) fun as has he => ?_).trans
+  · refine (ml_round_pow_le hl hr hn (ht L es₀) (h0 L es₀ hd) fun as has he => ?_).trans
       (coord_le_deltaR hn')
-    obtain ⟨hd', hnf⟩ := esc_msD hmem hfin hl as has he
-    exact hesc L es₀ as hl has hd' hnf
-  · rw [condCount_eq_zero fun as has he => hd (esc_msD hmem hfin hl as has he).1]
+    obtain ⟨hd', hnf, hp⟩ := esc_msD_pow hmem hfin hl as has he
+    exact ⟨hesc L es₀ as hl has hd' hnf, hp⟩
+  · rw [condCount_eq_zero fun as has he => hd (esc_msD_pow hmem hfin hl as has he).1]
     exact zero_le
 
 open Classical in
-/-- **`hfin` for RS1** (`rs1_round_le`): the escape puts `(r″, κ)` in a set of at most
-`c·|F|^7`, `c ≤ 239`. -/
-theorem hfin_rs1 {Dk : ℕ → Log → Log → Prop} {s0 : ℕ} (hmem : (s0, 4) ∈ fsRanges4)
-    {fin : Log → Log → Prop} (hfin : Dk (phOf4 (s0 + 1)) = msD (Dk (phOf4 s0)) fin s0 4)
+/-- **`hfin` for RS1** (`rs1_round_pow_le`; `flock-128`: 5 squeezes, slot 1 of the fifth the proof of
+work): the escape puts `(r″, κ)` in a set of at most `c·|F|^7`, `c ≤ 239`. -/
+theorem hfin_rs1 {Dk : ℕ → Log → Log → Prop} {s0 : ℕ} (hmem : (s0, 5) ∈ fsRanges4)
+    {fin : Log → Log → Prop} (hfin : Dk (phOf4 (s0 + 1)) = msD (Dk (phOf4 s0)) fin s0 5)
     {c : ℕ} (hc : c ≤ 239) (P : Log → Log → Finset ((Fin 7 → F) × F))
     (hP : ∀ L es₀, Dk (phOf4 s0) L es₀ → (P L es₀).card ≤ c * Fintype.card F ^ 7)
-    (hesc : ∀ L es₀ as, es₀.length = s0 + 1 → as.length = 4 → Dk (phOf4 s0) L es₀ →
+    (hesc : ∀ L es₀ as, es₀.length = s0 + 1 → as.length = 5 → Dk (phOf4 s0) L es₀ →
       ¬ fin L (ext es₀ as) →
         ((fun i : Fin 7 => coordAt (ext es₀ as) s0 i), coordAt (ext es₀ as) s0 7) ∈ P L es₀)
-    (L es₀ : Log) (hl : es₀.length = s0 + 1) : condCount (DPos (Dp Dk)) L es₀ 4 [] ≤ deltaR := by
+    (L es₀ : Log) (hl : es₀.length = s0 + 1) :
+    condCount (DPos (Dp (powD Dk))) L es₀ 5 [] ≤ deltaR := by
   by_cases hd : Dk (phOf4 s0) L es₀
-  · refine (rs1_round_le hl (P L es₀) (hP L es₀ hd) fun as has he => ?_).trans
+  · refine (rs1_round_pow_le hl (P L es₀) (hP L es₀ hd) fun as has he => ?_).trans
       (coord_le_deltaR hc)
-    obtain ⟨hd', hnf⟩ := esc_msD hmem hfin hl as has he
-    exact hesc L es₀ as hl has hd' hnf
-  · rw [condCount_eq_zero fun as has he => hd (esc_msD hmem hfin hl as has he).1]
+    obtain ⟨hd', hnf, hp⟩ := esc_msD_pow hmem hfin hl as has he
+    exact ⟨hesc L es₀ as hl has hd' hnf, hp⟩
+  · rw [condCount_eq_zero fun as has he => hd (esc_msD_pow hmem hfin hl as has he).1]
     exact zero_le
 
 open Classical in
-/-- **`hfin` for a Schwartz–Zippel phase with per-coordinate losses** (S1: 26 multilinear
-coordinates and the power batch `κ_s`), `Σ b ≤ 239`. -/
+/-- **`hfin` for a Schwartz–Zippel phase with per-coordinate losses** (S1: the multilinear
+coordinates and the power batch `κ_s`; P3), `Σ b ≤ 239`, with a doom that does not read the last
+coordinate (`hcyl`: slot 1 of the last answer is the proof of work's): at most `Σ b / 2^136`
+(`seq_round_pow_le`). -/
 theorem hfin_seq {Dk : ℕ → Log → Log → Prop} {s0 r : ℕ} (hmem : (s0, r) ∈ fsRanges4)
     {fin : Log → Log → Prop} (hfin : Dk (phOf4 (s0 + 1)) = msD (Dk (phOf4 s0)) fin s0 r)
-    (b : ℕ → ℕ) (hb : ∑ i ∈ range (r * 2), b i ≤ 239) (Doom : Log → Log → List F → Prop)
+    (hr : 0 < r) (b : ℕ → ℕ) (hb : ∑ i ∈ range (r * 2), b i ≤ 239)
+    (Doom : Log → Log → List F → Prop)
+    (hcyl : ∀ L es₀ (w : Fin (r * 2) → F) x,
+      Doom L es₀ (List.ofFn (Function.update w (lastC r hr) x)) ↔ Doom L es₀ (List.ofFn w))
     (hstep : ∀ L es₀ l, Doom L es₀ l →
       (univ.filter fun c => ¬ Doom L es₀ (l ++ [c])).card ≤ b l.length)
     (h0 : ∀ L es₀, Dk (phOf4 s0) L es₀ → Doom L es₀ [])
     (hesc : ∀ L es₀ as, es₀.length = s0 + 1 → as.length = r → Dk (phOf4 s0) L es₀ →
       ¬ fin L (ext es₀ as) →
         ¬ Doom L es₀ (List.ofFn fun j : Fin (r * 2) => coordAt (ext es₀ as) s0 j))
-    (L es₀ : Log) (hl : es₀.length = s0 + 1) : condCount (DPos (Dp Dk)) L es₀ r [] ≤ deltaR := by
+    (L es₀ : Log) (hl : es₀.length = s0 + 1) :
+    condCount (DPos (Dp (powD Dk))) L es₀ r [] ≤ deltaR := by
   by_cases hd : Dk (phOf4 s0) L es₀
-  · refine (seq_round_le hl (Doom L es₀) b (hstep L es₀) (h0 L es₀ hd) fun as has he => ?_).trans
-      (coord_le_deltaR hb)
-    obtain ⟨hd', hnf⟩ := esc_msD hmem hfin hl as has he
-    exact hesc L es₀ as hl has hd' hnf
-  · rw [condCount_eq_zero fun as has he => hd (esc_msD hmem hfin hl as has he).1]
+  · refine (seq_round_pow_le hl hr (Doom L es₀) b (hcyl L es₀) (hstep L es₀) (h0 L es₀ hd)
+      fun as has he => ?_).trans (coord_le_deltaR hb)
+    obtain ⟨hd', hnf, hp⟩ := esc_msD_pow hmem hfin hl as has he
+    exact ⟨hesc L es₀ as hl has hd' hnf, hp⟩
+  · rw [condCount_eq_zero fun as has he => hd (esc_msD_pow hmem hfin hl as has he).1]
     exact zero_le
 
 open Classical in
-/-- **`hfin` for P2.i** (`p2_hround`): the escape puts every queried position in a set `S` with
-`|S| + eᵢ < nᵢ` (the consistency set of a doomed level, `consSet_card_of_not`). -/
+/-- **`hfin` for P2.i** (`p2_hround`; `flock-128`: the table's `sqP` squeezes, the proof of work on
+the last): the escape puts every queried position in a set `S` with `|S| + eᵢ < nᵢ` (the
+consistency set of a doomed level, `consSet_card_of_not`). -/
 theorem hfin_p2 (κ : CKind) (i : ℕ) (hi : i < 5) {Dk : ℕ → Log → Log → Prop} {s0 : ℕ}
-    (hmem : (s0, (lvlStar i).sq) ∈ fsRanges4) {fin : Log → Log → Prop}
-    (hfin : Dk (phOf4 (s0 + 1)) = msD (Dk (phOf4 s0)) fin s0 (lvlStar i).sq)
+    (hmem : (s0, Rev4.seq4.sqP (Rev4.seq4.lv i)) ∈ fsRanges4) {fin : Log → Log → Prop}
+    (hfin : Dk (phOf4 (s0 + 1)) = msD (Dk (phOf4 s0)) fin s0 (Rev4.seq4.sqP (Rev4.seq4.lv i)))
     (S : Log → Log → Finset (Fin (2 ^ (CKind.lv κ i).logN)))
     (hS : ∀ L es₀, Dk (phOf4 s0) L es₀ → (S L es₀).card + lvE κ i < lvN κ i)
-    (hesc : ∀ L es₀ as, es₀.length = s0 + 1 → as.length = (lvlStar i).sq → Dk (phOf4 s0) L es₀ →
-      ¬ fin L (ext es₀ as) → ∀ k < (CKind.lv κ i).t,
+    (hesc : ∀ L es₀ as, es₀.length = s0 + 1 → as.length = Rev4.seq4.sqP (Rev4.seq4.lv i) →
+      Dk (phOf4 s0) L es₀ → ¬ fin L (ext es₀ as) → ∀ k < (CKind.lv κ i).t,
         posAt (ext es₀ as) s0 (CKind.lv κ i).logN (CKind.lv κ i).per k ∈ (S L es₀).map Fin.valEmbedding)
     (L es₀ : Log) (hl : es₀.length = s0 + 1) :
-    condCount (DPos (Dp Dk)) L es₀ (lvlStar i).sq [] ≤ deltaR := by
+    condCount (DPos (Dp (powD Dk))) L es₀ (Rev4.seq4.sqP (Rev4.seq4.lv i)) [] ≤ deltaR := by
   by_cases hd : Dk (phOf4 s0) L es₀
   · refine p2_hround κ i hi hl (S L es₀) (hS L es₀ hd) fun as has he => ?_
-    obtain ⟨hd', hnf⟩ := esc_msD hmem hfin hl as has he
-    exact hesc L es₀ as hl has hd' hnf
-  · rw [condCount_eq_zero fun as has he => hd (esc_msD hmem hfin hl as has he).1]
+    obtain ⟨hd', hnf, hp⟩ := esc_msD_pow hmem hfin hl as has he
+    exact ⟨hesc L es₀ as hl has hd' hnf, hp⟩
+  · rw [condCount_eq_zero fun as has he => hd (esc_msD_pow hmem hfin hl as has he).1]
     exact zero_le
 
 /-! ## Part E: the asserted rounds (degree 2 over F: L2, S2, E4; over K: P1.i, Pf)
@@ -900,26 +2011,94 @@ theorem D2_single [Fintype R] [DecidableEq R] (hb1 : 1 ≤ b) (hTc : TruthLocal2
   refine ⟨⟨by rw [he]; rfl, hchk j hlj hj⟩, ?_⟩
   rw [hnw, show nr (kindOfC es) - (j + 1) = nr (kindOfC es) - j - 1 by omega]
 
+open Classical in
+/-- **The asserted round row with the proof of work** (`flock-128`, D128 §5.4: L2, S2, E4 over F,
+`M = 2^120`): counting only the answers with `Q`, where `Q` forces the proof of work at a real
+round's squeeze (`hQ`), at most `2·M` answers make the next claim true. `hfib` is the challenge
+map's fiber count with the proof of work (`card_chF_pow_fiber`). -/
+theorem D2_single_pow [Fintype R] [DecidableEq R] (hb1 : 1 ≤ b) (hTc : TruthLocal2 b c0 T)
+    (he : e.deg = 2) {M : ℕ}
+    (hfib : ∀ S : Finset R, (univ.filter fun a : Digest => ch a ∈ S ∧ pow a).card = S.card * M)
+    (hsz : ∀ L es, ∀ t ∈ T L es, t.size = 2 ^ nr (kindOfC es)) (L es : Log)
+    (hchk : ∀ j, es.length = b + 2 * j + 1 → j < nr (kindOfC es) → Chk2 b wd rd ch c0 L es j)
+    (Q : Digest → Prop)
+    (hQ : ∀ j, es.length = b + 2 * j + 1 → j < nr (kindOfC es) → ∀ a, Q a → pow a) :
+    (univ.filter fun a => D2 b wd rd ch c0 nr e T L es ∧
+      ¬ D2 b wd rd ch c0 nr e T L (ext1 es a) ∧ Q a).card ≤ 2 * M := by
+  by_cases hlen : b < es.length
+  swap
+  · rw [Finset.filter_false_of_mem fun a _ h => not_D2_short (by omega) h.1]; simp
+  by_cases hc : (es.length - b) % 2 = 0 ∨ nr (kindOfC es) ≤ (es.length - b) / 2
+  · rw [Finset.filter_false_of_mem fun a _ h =>
+      h.2.1 ((D2_append_iff hb1 hTc _ hlen hc).mpr h.1)]
+    simp
+  simp only [not_or, not_le] at hc
+  obtain ⟨j, hjdef⟩ : ∃ j, j = (es.length - b) / 2 := ⟨_, rfl⟩
+  have hj : j < nr (kindOfC es) := hjdef ▸ hc.2
+  have hlj : es.length = b + 2 * j + 1 := by omega
+  have hans : ans3 b nr es = j := by rw [ans3, hjdef]; exact min_eq_right hc.2.le
+  by_cases hw : Wrong2 b wd rd ch c0 nr e T L es j
+  swap
+  · rw [Finset.filter_false_of_mem fun a _ h => hw (hans ▸ h.1.2)]; simp
+  have hts : ∀ t ∈ bindAll (T L es) (rchs2 b ch es j),
+      t.size = 2 ^ (nr (kindOfC es) - j - 1 + 1) := by
+    refine bindAll_size (rchs2 b ch es j) _ fun t ht => ?_
+    rw [hsz L es t ht]; congr 1; simp only [rchs2, List.length_map, List.length_range]; omega
+  have hesc := round_escape_le e (bindAll (T L es) (rchs2 b ch es j)) hts
+    (claim := clR2 b wd rd ch c0 L es j) (by
+      rw [show nr (kindOfC es) - j - 1 + 1 = nr (kindOfC es) - j by omega]; exact hw)
+    (g2At b wd rd es j)
+  refine le_trans (Finset.card_le_card (t := univ.filter fun a : Digest => ch a ∈ _ ∧ pow a)
+    fun a ha => ?_) (by rw [hfib]; exact Nat.mul_le_mul_right _ (hesc.trans he.le))
+  rw [Finset.mem_filter] at ha
+  have hnd : ¬ D2 b wd rd ch c0 nr e T L (ext1 es a) := ha.2.2.1
+  have hans' : ans3 b nr (ext1 es a) = j + 1 := by
+    have hk : kindOfC (ext1 es a) = kindOfC es := kindOf_append _ (by omega)
+    rw [ans3, hk, show (ext1 es a).length = es.length + 1 by simp [ext1],
+      min_eq_right (by omega)]
+    omega
+  have hnw : ¬ Wrong2 b wd rd ch c0 nr e T L (ext1 es a) (j + 1) := fun h =>
+    hnd ⟨by simp [ext1]; omega, by rw [hans']; exact h⟩
+  rw [wrong2_ext1 hb1 hTc L es a hlj, not_not] at hnw
+  simp only [Finset.mem_filter, Finset.mem_univ, true_and]
+  refine ⟨⟨⟨by rw [he]; rfl, hchk j hlj hj⟩, ?_⟩, hQ j hlj hj a ha.2.2.2⟩
+  rw [hnw, show nr (kindOfC es) - (j + 1) = nr (kindOfC es) - j - 1 by omega]
+
 end Rounds2
 
 /-! ## Controls -/
 
-/-- Control: the phase map at a few positions (Z1's last squeeze, Z2's absorb, P3.0's first
-squeeze after the column queries, Pf's last round; T4: `+14` past `E4`). -/
-theorem phOf_examples : phOf4 12 = 3 ∧ phOf4 13 = 4 ∧ phOf4 370 = 30 ∧ phOf4 481 = 51 := by
+/-- Control: the phase map at a few positions (Z1's last squeeze, Z2's absorb, P3.0's nonce
+absorb after the column queries and its first squeeze, Pf's last round; `flock-128`'s table). -/
+theorem phOf_examples : phOf4 12 = 3 ∧ phOf4 13 = 4 ∧ phOf4 376 = 34 ∧ phOf4 377 = 35 ∧
+    phOf4 493 = 60 := by
   unfold phOf4; rw [fsStarts4_eq]; decide
 
 /-- Control (positive, satisfiability): the empty doom meets every per-phase obligation with
 `N = 0` (the structure is not contradictory). -/
 theorem phaseObl_false : PhaseObl (fun _ _ => False) (fun _ _ _ => False) 0 where
-  rej := rejOK_false
+  rej := rejOK_false.toSq
+  hrej _ _ _ _ _ _ h := h.elim
   ms s0 r _ := ⟨fun _ _ => False, by
     funext L es; simp only [msD, eq_iff_iff]; split_ifs <;> exact Iff.rfl⟩
   habs _ _ _ _ _ _ _ h := h.elim
   hsingle _ _ _ _ _ _ := by simp
   hfin _ _ _ L es₀ _ _ _ := by
-    rw [condCount_eq_zero fun _ _ h => h.2.1]; exact zero_le
+    rw [condCount_eq_zero fun _ _ h => (esc_powD (Dk := fun _ _ _ => False) h).1.2.1]; exact zero_le
   hstab _ _ _ _ _ _ _ _ := Iff.rfl
+
+/-- Control (`flock-128`): (+) the empty chain passes the proof of work; (−) a chain whose answer
+at B′'s grinded squeeze (position 337) has byte 31 nonzero fails it, so the pow-restricted doom
+holds there whatever the phase doom. -/
+theorem powOK_ctrl : powOK [] ∧
+    ¬ powOK (List.replicate 338 (ByteArray.empty, Vector.replicate 32 1)) ∧
+    powD (fun _ _ _ => False) 0 [] (List.replicate 338 (ByteArray.empty, Vector.replicate 32 1)) := by
+  have hn : ¬ powOK (List.replicate 338 (ByteArray.empty, Vector.replicate 32 1)) := fun h => by
+    have := h 337 powPos_ctrl.2.2.2.1 (by rw [List.length_replicate]; omega)
+    rw [ansAt, entAt, List.getD_eq_getElem _ _ (by rw [List.length_replicate]; omega),
+      List.getElem_replicate] at this
+    exact pow_ctrl.2.1 this
+  exact ⟨fun p _ h => absurd h (by simp), hn, Or.inr hn⟩
 
 /-- Control (positive): a false initial claim dooms the asserted rounds at their first absorb. -/
 theorem D2_first_absorb (nr : CKind → ℕ) (L : Log) :
@@ -936,3 +2115,4 @@ theorem not_D2_before (nr : CKind → ℕ) (L : Log) (c0 : Log → Log → F)
 
 end FR.Snd.T4
 
+end G6_FRSoundness4TailStep

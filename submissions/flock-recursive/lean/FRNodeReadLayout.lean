@@ -1,5 +1,5 @@
 -- New for `flock-recursive` (BLUEPRINT A.7; stage S-H2, track L-ext, S-H2k).
-import FRNodeRead
+import FRNodeReadCore
 import FRNodeCircuit
 
 /-!

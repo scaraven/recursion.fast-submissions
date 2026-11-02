@@ -19,7 +19,7 @@ pub fn eq_table_scaled(r: &[F], scale: F) -> Vec<F> {
         let rk = r[k];
         // new layout: index bit k is the lowest so far; we build from the top variable down by
         // spreading: entries j < len become (2j, 2j+1)
-        let src: Vec<F> = t[..len].to_vec();
+        let src: Vec<F> = if len >= 1 << 16 { crate::par::collect_vec(len, 1 << 14, |j| t[j]) } else { t[..len].to_vec() };
         let p = par::SyncPtr(t.as_mut_ptr());
         let body = |j: usize| {
             let p = p;

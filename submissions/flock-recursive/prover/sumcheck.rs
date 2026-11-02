@@ -4,7 +4,7 @@
 //! `c₀ + r(c₁ + r c₂)`. A degree-3 round sends `c₀ ‖ c₁ ‖ c₂` and the verifier completes
 //! `c₃ = claim + c₁ + c₂`. Variables are bound low bit first.
 
-use crate::field::{FAcc, F, K};
+use crate::field::{F, K};
 use crate::par;
 
 pub fn eval2_f(g: [F; 3], x: F) -> F {
@@ -25,25 +25,24 @@ pub fn coeffs_k(g: [K; 3]) -> [K; 3] {
 /// The message of one round of `Σ_x Σ_t P_t(x) Q_t(x)` over the low variable.
 pub fn msg_pairs(pairs: &[(&[F], &[F])]) -> [F; 3] {
     let n = pairs[0].0.len() / 2;
+    // P2: the vector kernel per chunk (`round_ff`; the same sums)
     let parts = par::map_chunks(n, 1 << 12, |lo, hi| {
-        let (mut a0, mut a1, mut ai) = (FAcc::default(), FAcc::default(), FAcc::default());
+        let mut g = [F::ZERO; 3];
         for (p, q) in pairs {
-            for i in lo..hi {
-                let (p0, p1, q0, q1) = (p[2 * i], p[2 * i + 1], q[2 * i], q[2 * i + 1]);
-                a0.mac(p0, q0);
-                a1.mac(p1, q1);
-                ai.mac(p0 + p1, q0 + q1);
+            let r = crate::simd::round_ff(&p[2 * lo..2 * hi], &q[2 * lo..2 * hi]);
+            for j in 0..3 {
+                g[j] += r[j];
             }
         }
-        (a0, a1, ai)
+        g
     });
-    let (mut a0, mut a1, mut ai) = (FAcc::default(), FAcc::default(), FAcc::default());
-    for (x, y, z) in parts {
-        a0.add(&x);
-        a1.add(&y);
-        ai.add(&z);
+    let mut g = [F::ZERO; 3];
+    for x in parts {
+        for j in 0..3 {
+            g[j] += x[j];
+        }
     }
-    [a0.reduce(), a1.reduce(), ai.reduce()]
+    g
 }
 
 /// `t'[i] = t[2i] + s (t[2i] + t[2i+1])`.
@@ -109,92 +108,241 @@ pub fn prove_pairs(mut tabs: Vec<(Vec<F>, Vec<F>)>, chal: &mut dyn FnMut([F; 3])
 }
 
 /// `prove_pairs` for one pair `(P, Q)` where `P` is zero outside a few regions (the node's E4: `W`
-/// lives on the M slots, the L bits and the one cell; pass 10). The tables are cut into aligned
-/// chunks of `2^a` entries. In the first `a` rounds a chunk where `P` is zero adds nothing to a
-/// message and its `P` stays zero, so only the live chunks are summed and folded. A dead chunk's
-/// `Q` still enters the later rounds (paired with a live entry, through `(P₀ + P₁)(Q₀ + Q₁)` and the
-/// folds), so after round `a` it is computed directly as `Σ_l eq(r_{<a}, l) Q[2^a c + l]`; the
-/// remaining rounds are `prove_pairs`'s. The messages and challenges are `prove_pairs`'s (test
+/// lives on the M slots, the L bits, the one cell and the link cells; pass 10): `prove_pairs_support`
+/// with one table pair. The messages and challenges are `prove_pairs`'s (test
 /// `pair_support_same_messages`), and so is the final pair. `Q` is borrowed (no copy).
 pub fn prove_pair_support(p: Vec<F>, q: &[F], a: usize, chal: &mut dyn FnMut([F; 3]) -> F) -> (Vec<F>, (F, F)) {
-    let n = p.len();
-    assert!(q.len() == n && n.is_power_of_two());
-    let a = a.min(n.trailing_zeros() as usize);
-    let live: Vec<u32> = par::map_chunks(n >> a, 64, |lo, hi| (lo..hi).filter(|&c| p[c << a..(c + 1) << a].iter().any(|x| !x.is_zero())).map(|c| c as u32).collect::<Vec<u32>>()).concat();
-    let mut pt = Vec::with_capacity(n.trailing_zeros() as usize);
-    let (mut pk, mut qk): (Vec<F>, Vec<F>) = (p, Vec::new());
+    let (pt, fin) = prove_pairs_support(vec![p], &[Q::Tab(q)], a, chal);
+    (pt, fin[0])
+}
+
+/// The dense side of a pair in `prove_pairs_support`: a table, or `scale·eq(pt, ·)` in closed form
+/// (never materialized: within a chunk it is a small eq table times the chunk's high factor).
+pub enum Q<'a> {
+    Tab(&'a [F]),
+    Eq(&'a [F], F),
+}
+
+/// The maximal runs `(first, count)` of consecutive chunks in the ascending list `live`.
+fn runs_of(live: &[u32]) -> Vec<(usize, usize)> {
+    let mut r: Vec<(usize, usize)> = Vec::new();
+    for &c in live {
+        match r.last_mut() {
+            Some((f, n)) if *f + *n == c as usize => *n += 1,
+            _ => r.push((c as usize, 1)),
+        }
+    }
+    r
+}
+
+/// Runs cut into work items of about `2^16` table entries at chunk size `cs` (for `par::map_chunks`).
+fn split_runs(runs: &[(usize, usize)], cs: usize) -> Vec<(usize, usize)> {
+    let per = ((1usize << 16) / cs).max(1);
+    let mut v = Vec::with_capacity(runs.len());
+    for &(f, n) in runs {
+        let mut o = 0;
+        while o < n {
+            let k = per.min(n - o);
+            v.push((f + o, k));
+            o += k;
+        }
+    }
+    v
+}
+
+/// `prove_pairs` for several pairs `(P_t, Q_t)`, `P_t` zero outside a few regions (the node's E4 with
+/// RSV2's child term: `(W, f)` and `(G, κ_E⁴·eq(p_y, ·))`). The tables are cut into aligned chunks of
+/// `2^a` entries; a chunk where `P_t` is zero adds nothing to the first `a` rounds' messages and its
+/// `P_t` stays zero, so in those rounds only each pair's live chunks are summed and folded, run by
+/// run of consecutive live chunks with the vector kernels (P2: `round_ff`, `fold`; for a closed-form
+/// `Q = h_c·le` on chunk `c` the chunk's message is `h_c·round_ff(P, le)`, as the message is linear in
+/// `Q`). A dead chunk's `Q` enters after round `a` as `Σ_l eq(r_{<a}, l) Q[2^a c + l]`; the remaining
+/// rounds are `prove_pairs`'s. The messages and challenges are `prove_pairs`'s (test
+/// `pairs_support_same_messages`), and so are the final pairs. P2: E4 passes a small `a` (the link
+/// and arena₁ cells make most `2^12` chunks live, few `2^4` ones).
+pub fn prove_pairs_support(ps: Vec<Vec<F>>, qs: &[Q], a: usize, chal: &mut dyn FnMut([F; 3]) -> F) -> (Vec<F>, Vec<(F, F)>) {
+    let n = ps[0].len();
+    let nv = n.trailing_zeros() as usize;
+    let np = ps.len();
+    assert!(qs.len() == np && ps.iter().all(|p| p.len() == n) && n.is_power_of_two());
+    for q in qs {
+        match q {
+            Q::Tab(t) => assert_eq!(t.len(), n),
+            Q::Eq(pt, _) => assert_eq!(pt.len(), nv),
+        }
+    }
+    let a = a.min(nv);
+    let sp = crate::prof::span("sc.live");
+    let lives: Vec<Vec<u32>> = ps.iter().map(|p| par::map_chunks(n >> a, 64, |lo, hi| (lo..hi).filter(|&c| p[c << a..(c + 1) << a].iter().any(|x| !x.is_zero())).map(|c| c as u32).collect::<Vec<u32>>()).concat()).collect();
+    let runs: Vec<Vec<(usize, usize)>> = lives.iter().map(|l| runs_of(l)).collect();
+    drop(sp);
+    let sp = crate::prof::span("sc.rounds");
+    let mut pt: Vec<F> = Vec::with_capacity(nv);
+    let mut pk: Vec<Vec<F>> = ps;
+    let mut qk: Vec<Vec<F>> = vec![Vec::new(); np];
+    // a closed-form Q's chunk factors `eq(pt[a..], c)` and its running prefix `Π_{t<k} eq(pt_t, s_t)`
+    let hi_eq: Vec<Option<Vec<F>>> = qs.iter().map(|q| if let Q::Eq(p, sc) = q { Some(crate::mle::eq_table_scaled(&p[a..], *sc)) } else { None }).collect();
+    let mut pre: Vec<F> = vec![F::ONE; np];
     for k in 0..a {
         let cs = 1usize << (a - k);
-        let (pr, qr): (&[F], &[F]) = (&pk, if k == 0 { q } else { &qk });
-        let parts = par::map_chunks(live.len(), 1, |lo, hi| {
-            let (mut a0, mut a1, mut ai) = (FAcc::default(), FAcc::default(), FAcc::default());
-            for &c in &live[lo..hi] {
-                let b = c as usize * cs;
-                for i in (b..b + cs).step_by(2) {
-                    let (p0, p1, q0, q1) = (pr[i], pr[i + 1], qr[i], qr[i + 1]);
-                    a0.mac(p0, q0);
-                    a1.mac(p1, q1);
-                    ai.mac(p0 + p1, q0 + q1);
+        let mut msg = [F::ZERO; 3];
+        for t in 0..np {
+            let pr: &[F] = &pk[t];
+            let le: Option<Vec<F>> = if let Q::Eq(p, _) = &qs[t] { Some(crate::mle::eq_table_scaled(&p[k..a], pre[t])) } else { None };
+            let qr: &[F] = match &qs[t] {
+                Q::Tab(q) if k == 0 => q,
+                _ => &qk[t],
+            };
+            let items = split_runs(&runs[t], cs);
+            let _sp = crate::prof::span(if le.is_some() { "sc.msg_eq" } else { "sc.msg_tab" });
+            let parts = par::map_chunks(items.len(), 1, |lo, hi| {
+                let mut g = [F::ZERO; 3];
+                for &(f, nc) in &items[lo..hi] {
+                    match (&le, &hi_eq[t]) {
+                        (Some(le), Some(he)) => {
+                            for c in f..f + nc {
+                                let r = crate::simd::round_ff(&pr[c * cs..(c + 1) * cs], le);
+                                let h = he[c];
+                                for j in 0..3 {
+                                    g[j] += h * r[j];
+                                }
+                            }
+                        }
+                        _ => {
+                            let r = crate::simd::round_ff(&pr[f * cs..(f + nc) * cs], &qr[f * cs..(f + nc) * cs]);
+                            for j in 0..3 {
+                                g[j] += r[j];
+                            }
+                        }
+                    }
+                }
+                g
+            });
+            for g in parts {
+                for j in 0..3 {
+                    msg[j] += g[j];
                 }
             }
-            (a0, a1, ai)
-        });
-        let (mut a0, mut a1, mut ai) = (FAcc::default(), FAcc::default(), FAcc::default());
-        for (x, y, z) in parts {
-            a0.add(&x);
-            a1.add(&y);
-            ai.add(&z);
         }
-        let s = chal([a0.reduce(), a1.reduce(), ai.reduce()]);
+        let s = chal(msg);
         pt.push(s);
         let half = cs / 2;
-        let mut pn: Vec<F> = par::uninit_vec(pr.len() / 2);
-        let mut qn: Vec<F> = par::uninit_vec(pr.len() / 2);
-        let (pp, qp) = (par::SyncPtr(pn.as_mut_ptr()), par::SyncPtr(qn.as_mut_ptr()));
-        par::map_chunks(live.len(), 1, |lo, hi| {
-            let (pp, qp) = (pp, qp);
-            for &c in &live[lo..hi] {
-                let c = c as usize;
-                // SAFETY: the live chunks are distinct, so their output ranges are disjoint
-                let (po, qo) = unsafe { (std::slice::from_raw_parts_mut(pp.0.add(c * half), half), std::slice::from_raw_parts_mut(qp.0.add(c * half), half)) };
-                crate::simd::fold(&pr[c * cs..(c + 1) * cs], s, po);
-                crate::simd::fold(&qr[c * cs..(c + 1) * cs], s, qo);
+        for t in 0..np {
+            let mut pn: Vec<F> = par::uninit_vec(pk[t].len() / 2);
+            let pp = par::SyncPtr(pn.as_mut_ptr());
+            let tab = matches!(qs[t], Q::Tab(_));
+            let mut qn: Vec<F> = if tab { par::uninit_vec(pk[t].len() / 2) } else { Vec::new() };
+            let qp = par::SyncPtr(qn.as_mut_ptr());
+            let (pr, qr): (&[F], &[F]) = (&pk[t], match &qs[t] {
+                Q::Tab(q) if k == 0 => q,
+                _ => &qk[t],
+            });
+            let items = split_runs(&runs[t], cs);
+            let _sp = crate::prof::span(if tab { "sc.fold_tab" } else { "sc.fold_eq" });
+            par::map_chunks(items.len(), 1, |lo, hi| {
+                let (pp, qp) = (pp, qp);
+                for &(f, nc) in &items[lo..hi] {
+                    // SAFETY: the runs are disjoint, so their output ranges are
+                    let po = unsafe { std::slice::from_raw_parts_mut(pp.0.add(f * half), nc * half) };
+                    crate::simd::fold(&pr[f * cs..(f + nc) * cs], s, po);
+                    if tab {
+                        let qo = unsafe { std::slice::from_raw_parts_mut(qp.0.add(f * half), nc * half) };
+                        crate::simd::fold(&qr[f * cs..(f + nc) * cs], s, qo);
+                    }
+                }
+            });
+            pk[t] = pn;
+            qk[t] = qn;
+            if let Q::Eq(p, _) = &qs[t] {
+                pre[t] *= (F::ONE + p[k]) * (F::ONE + s) + p[k] * s;
             }
-        });
-        pk = pn;
-        qk = qn;
+        }
     }
-    // one entry per chunk now: a dead one is `P = 0` and `Q`'s fold over its chunk
+    drop(sp);
+    let sp = crate::prof::span("sc.dead");
     let nc = n >> a;
-    if a == 0 {
-        qk = q.to_vec();
-    }
-    let mut alive = vec![false; nc];
-    for &c in &live {
-        alive[c as usize] = true;
-    }
     let ea = crate::mle::eq_table(&pt[..a]);
-    let (pp, qp) = (par::SyncPtr(pk.as_mut_ptr()), par::SyncPtr(qk.as_mut_ptr()));
-    par::run(par::threads().min(nc), &|w| {
-        let (pp, qp) = (pp, qp);
-        for c in (w * nc / par::threads().min(nc))..((w + 1) * nc / par::threads().min(nc)) {
-            if !alive[c] {
-                // SAFETY: each worker writes its own entries `c`
-                unsafe {
-                    *pp.0.add(c) = F::ZERO;
-                    *qp.0.add(c) = crate::simd::dot(&ea, &q[c << a..(c + 1) << a]);
+    for t in 0..np {
+        let mut alive = vec![false; nc];
+        for &c in &lives[t] {
+            alive[c as usize] = true;
+        }
+        match &qs[t] {
+            Q::Tab(q) => {
+                if a == 0 {
+                    qk[t] = q.to_vec();
+                }
+                let (pp, qp) = (par::SyncPtr(pk[t].as_mut_ptr()), par::SyncPtr(qk[t].as_mut_ptr()));
+                let alive = &alive;
+                par::map_chunks(nc, 1 << 10, |lo, hi| {
+                    let (pp, qp) = (pp, qp);
+                    for c in lo..hi {
+                        if !alive[c] {
+                            // SAFETY: each worker writes its own entries `c`
+                            unsafe {
+                                *pp.0.add(c) = F::ZERO;
+                                *qp.0.add(c) = crate::simd::dot(&ea, &q[c << a..(c + 1) << a]);
+                            }
+                        }
+                    }
+                });
+            }
+            Q::Eq(..) => {
+                // the folded eq: `pre·eq(pt[a..], c)` for every chunk
+                let he = hi_eq[t].as_ref().unwrap();
+                qk[t] = par::collect_vec(nc, 1 << 12, |c| pre[t] * he[c]);
+                for c in 0..nc {
+                    if !alive[c] {
+                        pk[t][c] = F::ZERO;
+                    }
                 }
             }
         }
-    });
-    let (rest, fin) = prove_pairs(vec![(pk, qk)], chal);
+    }
+    drop(sp);
+    let _sp = crate::prof::span("sc.tail");
+    let (rest, fin) = prove_pairs(pk.into_iter().zip(qk).collect(), chal);
     pt.extend(rest);
-    (pt, fin[0])
+    (pt, fin)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// `prove_pairs_support` (two pairs, each with its own dead chunks; one closed-form eq side)
+    /// sends `prove_pairs`'s messages and ends at its final pairs (E1).
+    #[test]
+    fn pairs_support_same_messages() {
+        let nv = 16usize;
+        let n = 1usize << nv;
+        let mut s = 0x9e37_79b9_7f4a_7c15u64;
+        let mut rf = || {
+            s ^= s << 13;
+            s ^= s >> 7;
+            s ^= s << 17;
+            F::new(s, s.rotate_left(21))
+        };
+        let p1: Vec<F> = (0..n).map(|i| if (i >> 10) % 3 == 0 { rf() } else { F::ZERO }).collect();
+        let p2: Vec<F> = (0..n).map(|i| if (i >> 10) % 5 == 1 { rf() } else { F::ZERO }).collect();
+        let q1: Vec<F> = (0..n).map(|_| rf()).collect();
+        let pt: Vec<F> = (0..nv).map(|_| rf()).collect();
+        let sc = rf();
+        let q2 = crate::mle::eq_table_scaled(&pt, sc);
+        let mut ch = |seed: u64| {
+            let mut x = seed;
+            move |g: [F; 3]| {
+                x = x.wrapping_mul(6364136223846793005).wrapping_add(1);
+                F::new(x ^ g[0].lo, g[2].hi ^ x.rotate_left(7))
+            }
+        };
+        let (r1, f1) = prove_pairs(vec![(p1.clone(), q1.clone()), (p2.clone(), q2.clone())], &mut ch(5));
+        for a in [0usize, 1, 2, 4, 6, 10, 12] {
+            let (r2, f2) = prove_pairs_support(vec![p1.clone(), p2.clone()], &[Q::Tab(&q1), Q::Eq(&pt, sc)], a, &mut ch(5));
+            assert_eq!(r1, r2, "a = {a}");
+            assert_eq!(f1, f2, "a = {a}");
+        }
+    }
     /// `prove_pair_support` sends `prove_pairs`'s messages on a `P` with dead chunks.
     #[test]
     fn pair_support_same_messages() {

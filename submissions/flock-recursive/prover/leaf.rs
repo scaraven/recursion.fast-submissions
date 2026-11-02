@@ -20,7 +20,7 @@ use crate::oracle::Oracle;
 use crate::params::{self as pp, leaf_kind_byte, M_STAR};
 use crate::ringswitch;
 use crate::skipdom::{lagrange_weights, skip};
-use crate::sumcheck::{coeffs_f, eval2_f, fold_f, fold_f_live, prove_pairs};
+use crate::sumcheck::{coeffs_f, eval2_f, fold_f, prove_pairs};
 use crate::transcript::{Fs, ItemRec, Reader, Writer};
 use crate::witness::Witness;
 use crate::zerocheck;
@@ -250,12 +250,12 @@ pub(crate) fn partials_from_fold(z: &[F], hi_in: &[F]) -> Vec<F> {
     sv
 }
 
-/// `n` dummy rounds of `bytes`-byte messages: zero message, squeeze ignored.
-pub(crate) fn dummy_rounds(wr: &mut Writer, f: usize, n: usize, bytes: usize) {
-    let z = vec![0u8; bytes];
+/// `n` dummy rounds of degree `deg`: a zero body (`c₀ ‖ c₁ ‖ c₂`, or `c₀ ‖ c₁` for degree 2) and a
+/// ground nonce (the proof of work is ungated, D128 §2.1), squeeze ignored.
+pub(crate) fn dummy_rounds(wr: &mut Writer, f: usize, n: usize, deg: usize) {
+    let z = [F::ZERO; 3];
     for _ in 0..n {
-        wr.send(f, &z);
-        wr.fs.squeeze();
+        wr.round_f(f, &z[..deg]);
     }
 }
 
@@ -300,7 +300,7 @@ pub fn prove_logged(o: &dyn Oracle, circ: &Circuit, vk: &Digest, s: &Digest, m: 
     wr.send(pp::F_STMT, &stmt_bytes(n, &w.h));
     wr.fs.phase = "cap0";
     let capb = ligerito::cap_slot(0, c0.tree.cap());
-    wr.send(pp::F_CAPS, &capb);
+    wr.send_pow(pp::F_CAPS, &capb, pp::Z1_SQ);
 
     // ---- Z
     let sk = skip();
@@ -314,9 +314,9 @@ pub fn prove_logged(o: &dyn Oracle, circ: &Circuit, vk: &Digest, s: &Digest, m: 
     let pz = zerocheck::pz_on_lambda(&r1);
     let mut msg = pz.to_vec();
     msg.extend_from_slice(&r1.pab[..63]);
-    msg.push(F::ZERO);
     wr.fs.phase = "Z2";
-    wr.send_f(pp::F_Z2, &msg);
+    // flock-128: the 16-byte pad after the 127 values is the nonce
+    wr.send_f_pow(pp::F_Z2, &msg, 1);
     let lambda = wr.fs.chal_f();
     let (mut claim, pz_l) = z2_value(&pz, &r1.pab[..63], &r, lambda, n);
     // the c-claim ẑ(r, λ): its slices from round 1's banks (bank_b = eq(ρ₁, b)·Σ_y eq(r₁…, y) z(y, ·))
@@ -333,35 +333,22 @@ pub fn prove_logged(o: &dyn Oracle, circ: &Circuit, vk: &Digest, s: &Digest, m: 
     let tabs = zerocheck::fold_tables(lambda);
     let mut pref = F::ONE;
     let mut sz = Vec::with_capacity(m - 6);
-    let (mut ta, mut tb) = (Vec::new(), Vec::new());
-    let mut live = used * 128; // the tables' nonzero prefix after the x₆ fold (128 row pairs a block)
-    for k in 0..m - 6 {
-        let sp = crate::prof::span(if k == 0 { "x6.round" } else { "tail.round" });
-        let (h1, hi) = if k == 0 { zerocheck::round_x6(&tabs, ab, bb, &r[1..], used) } else { zerocheck::round_tab(&ta, &tb, &r[k + 1..], live) };
-        drop(sp);
+    // pass PA: two rounds per pass over the tables (`zerocheck::z3_rounds`; the same messages)
+    let (va, vb) = zerocheck::z3_rounds(&tabs, ab, bb, &r, used, &mut |k, h1, hi| {
+        if k == 2 {
+            tm.mark("zc_round2", &mut t); // rounds 0 and 1 and the binding of x₆, x₇ (passes 0, 1)
+        }
         let h0 = zerocheck::h0_from_claim(claim, r[k], h1);
-        wr.send_f(pp::F_Z3, &zerocheck::zc_coeffs(pref, r[k], h0, h1, hi));
-        let x = wr.fs.chal_f();
+        let x = wr.round_f(pp::F_Z3, &zerocheck::zc_coeffs(pref, r[k], h0, h1, hi));
         claim = eval2_f([h0, h1, hi], x);
         pref *= F::ONE + r[k] + x;
         sz.push(x);
-        let _sp = crate::prof::span(if k == 0 { "x6.fold" } else { "tail.fold" });
-        if k == 0 {
-            ta = zerocheck::fold_x6(&tabs, ab, x, used);
-            tb = zerocheck::fold_x6(&tabs, bb, x, used);
-            tm.mark("zc_round2", &mut t);
-        } else {
-            ta = fold_f_live(&ta, x, live);
-            tb = fold_f_live(&tb, x, live);
-            live = live.div_ceil(2);
-        }
-    }
-    dummy_rounds(&mut wr, pp::F_Z3, pp::Z3_ROUNDS - (m - 6), 48);
-    let (va, vb) = (ta[0], tb[0]);
+        x
+    });
+    dummy_rounds(&mut wr, pp::F_Z3, pp::Z3_ROUNDS - (m - 6), 3);
     debug_assert_eq!(claim, va * vb);
-    drop((ta, tb));
     wr.fs.phase = "Zend";
-    wr.send_f(pp::F_ZEND, &[va, vb]);
+    wr.send_f_pow(pp::F_ZEND, &[va, vb], 1);
     tm.mark("zc_tail", &mut t);
 
     // ---- Lc
@@ -373,20 +360,19 @@ pub fn prove_logged(o: &dyn Oracle, circ: &Circuit, vk: &Digest, s: &Digest, m: 
     let zf = lincheck::partial_fold(&w.z, &sz[8..], used);
     drop(sp);
     let zf_keep = zf.clone();
-    let (tl, fin) = prove_pairs(vec![(eta, zf)], &mut |g| {
-        wr.send_f(pp::F_L2, &coeffs_f(g));
-        wr.fs.chal_f()
-    });
+    let (tl, fin) = prove_pairs(vec![(eta, zf)], &mut |g| wr.round_f(pp::F_L2, &coeffs_f(g)[..2]));
     let v_chain = fin[0].1;
     wr.fs.phase = "L3";
     let mut vk7 = vec![F::ZERO; pp::L3_KINDS];
     vk7[0] = v_chain;
-    wr.send_f(pp::F_L2, &vk7);
+    wr.send_f_pow(pp::F_L2, &vk7, 1);
     wr.fs.phase = "L3β";
     let _beta = wr.fs.chal_f();
     tm.mark("lincheck", &mut t);
 
     // ---- Sh: block rounds, then the collapse, one sumcheck
+    wr.fs.phase = "S1n";
+    wr.send_pow(pp::F_NONCE, &[], pp::S1_SQ);
     wr.fs.phase = "S1";
     let co = wr.fs.coords(pp::S1_SQ);
     let (tau, theta, kap_s) = (&co[..m - 14], &co[pp::S1_THETA..pp::S1_THETA + pp::THETA_LEN], co[pp::S1_KAPPA]);
@@ -404,20 +390,14 @@ pub fn prove_logged(o: &dyn Oracle, circ: &Circuit, vk: &Digest, s: &Digest, m: 
         e2[n as usize] = F::ZERO;
     }
     wr.fs.phase = "S2";
-    let (taup, fin) = prove_pairs(vec![(e1, out), (e2, inn)], &mut |g| {
-        wr.send_f(pp::F_S2, &coeffs_f(g));
-        wr.fs.chal_f()
-    });
+    let (taup, fin) = prove_pairs(vec![(e1, out), (e2, inn)], &mut |g| wr.round_f(pp::F_S2, &coeffs_f(g)[..2]));
     let (wout_b, win_b) = (fin[0].0, fin[1].0);
     let (wo, wi) = slot_weights(&eqt);
     let wsl: Vec<F> = wo.iter().zip(wi.iter()).map(|(a, b)| wout_b * *a + win_b * *b).collect();
     let zs = partial_fold_prefix(&w.z, &taup, 16);
     let zs_keep = zs.clone();
-    let (tpp, _) = prove_pairs(vec![(wsl, zs)], &mut |g| {
-        wr.send_f(pp::F_S2, &coeffs_f(g));
-        wr.fs.chal_f()
-    });
-    dummy_rounds(&mut wr, pp::F_S2, pp::S2_ROUNDS - (m - 4), 48);
+    let (tpp, _) = prove_pairs(vec![(wsl, zs)], &mut |g| wr.round_f(pp::F_S2, &coeffs_f(g)[..2]));
+    dummy_rounds(&mut wr, pp::F_S2, pp::S2_ROUNDS - (m - 4), 2);
     tm.mark("shift", &mut t);
 
     if std::env::var_os("FLOCK_NODE_SHAPE").is_some() {
@@ -435,26 +415,30 @@ pub fn prove_logged(o: &dyn Oracle, circ: &Circuit, vk: &Digest, s: &Digest, m: 
     }
 
     // ---- Lr (node only): zero for a leaf
+    wr.fs.phase = "Lr1n";
+    wr.send_pow(pp::F_NONCE, &[], pp::LR1_SQ);
     wr.fs.phase = "Lr1";
     wr.fs.squeezes(pp::LR1_SQ);
     wr.fs.phase = "Lr2";
-    dummy_rounds(&mut wr, pp::F_LR, pp::LR_ROUNDS, 48);
+    dummy_rounds(&mut wr, pp::F_LR, pp::LR_ROUNDS, 3);
     wr.fs.phase = "Lrend";
-    wr.send(pp::F_LREND, &[0u8; 48]);
+    wr.send_pow(pp::F_LREND, &[0u8; pp::LREND_LEN], 1);
     wr.fs.phase = "Lr3";
     wr.fs.squeeze();
 
     // ---- E (node only): zero for a leaf (rev. 3.13: E before RS; E4 the 23-round lincheck)
+    wr.fs.phase = "E1n";
+    wr.send_pow(pp::F_NONCE, &[], pp::E1_SQ);
     wr.fs.phase = "E1";
     wr.fs.squeezes(pp::E1_SQ);
     wr.fs.phase = "E2";
-    dummy_rounds(&mut wr, pp::F_E, pp::E2_ROUNDS, 48);
+    dummy_rounds(&mut wr, pp::F_E, pp::E2_ROUNDS, 3);
     wr.fs.phase = "Eend";
-    wr.send(pp::F_EEND, &[0u8; 48]);
+    wr.send_pow(pp::F_EEND, &[0u8; pp::EEND_LEN], 1);
     wr.fs.phase = "E3";
     wr.fs.squeeze();
     wr.fs.phase = "E4";
-    dummy_rounds(&mut wr, pp::F_E, pp::E4_ROUNDS, 48);
+    dummy_rounds(&mut wr, pp::F_E, pp::E4_ROUNDS, 2);
     wr.fs.phase = "E4end";
     wr.send(pp::F_E, &[0u8; pp::E4END_LEN]);
 
@@ -470,16 +454,31 @@ pub fn prove_logged(o: &dyn Oracle, circ: &Circuit, vk: &Digest, s: &Digest, m: 
     msg.extend_from_slice(&s2v);
     msg.extend_from_slice(&[F::ZERO; 128]);
     wr.fs.phase = "RS0";
-    wr.send_f(pp::F_RS0, &msg);
+    wr.send_f_pow(pp::F_RS0, &msg, pp::RS1_SQ);
     wr.fs.phase = "RS1";
     let ch = wr.fs.coords(pp::RS1_SQ);
     let (rpp, kap) = (&ch[..7], ch[7]);
     let parts = [&s0v, &s1v, &s2v];
     let (coef, v_rs) = rs_batch(&parts, rpp, kap);
-    let sp = crate::prof::span("rs.weight_table");
-    let wt = ringswitch::weight_table(&[(&his[0][..], coef[0]), (&his[1][..], coef[1]), (&his[2][..], coef[2])], rpp);
-    drop(sp);
+    let wt = if ringswitch::direct_on() {
+        // the direct open (lever G1): each claim's block fold — Lc's is `zf_keep`, Sh's the shift's
+        // prefix `zs_keep` (its `W` lives on `y_in < 8`: `k₀ = 3`); Z's is folded here
+        let sp = crate::prof::span("rs.direct");
+        let z0 = crate::lincheck::partial_fold(&w.z, &his[0][7..], used);
+        debug_assert_eq!(partials_from_fold(&z0, &his[0][..7]), s0v);
+        let zs = [&z0, &zf_keep, &zs_keep];
+        let claims = (0..3).map(|j| ringswitch::dclaim(&his[j], coef[j], None, zs[j], rpp)).collect();
+        drop(sp);
+        ligerito::W0::Direct(ringswitch::Direct { claims, cells: Vec::new() })
+    } else {
+        let sp = crate::prof::span("rs.weight_table");
+        let wt = ringswitch::weight_table(&[(&his[0][..], coef[0]), (&his[1][..], coef[1]), (&his[2][..], coef[2])], rpp);
+        drop(sp);
+        ligerito::W0::Table(wt)
+    };
     tm.mark("ringswitch", &mut t);
+    wr.fs.phase = "B'n";
+    wr.send_pow(pp::F_NONCE, &[], 1);
     wr.fs.phase = "B'";
     wr.fs.squeeze();
 
@@ -541,11 +540,13 @@ fn node_surrogate(f: &[F], fs: &mut Fs) {
     }
 }
 
-/// One F sumcheck round as `gen`'s `roundOpsF` checks it; returns the challenge. A real round of
-/// degree 2 checks `c₁ + c₂ = claim`; degree 3 completes `c₃ = claim + c₁ + c₂`; the next claim is
-/// `g(r)`. A dummy round's message must be zero and keeps the claim.
+/// One F sumcheck round as `gen`'s `roundOpsF4` checks it (`flock-128`); returns the challenge. The
+/// message is `c₀ ‖ c₁ ‖ c₂ ‖ nonce` (degree 3, `c₃ = claim + c₁ + c₂` derived) or `c₀ ‖ c₁ ‖ nonce`
+/// (degree 2, `c₂ = claim + c₁` derived, so `g(0) + g(1) = claim` holds by construction); the next
+/// claim is `g(r)`. A dummy round's body must be zero (its nonce is free) and keeps the claim. The
+/// squeeze's byte 31 is the proof of work (`Fs::squeeze`).
 pub(crate) fn v_round(rd: &mut Reader, f: usize, deg: usize, real: bool, claim: &mut F) -> F {
-    let c = rd.recv_f(f, 3);
+    let c = rd.recv_f_pow(f, deg);
     let r = rd.fs.chal_f();
     if !real {
         rd.check(c.iter().all(|x| x.is_zero()));
@@ -555,8 +556,8 @@ pub(crate) fn v_round(rd: &mut Reader, f: usize, deg: usize, real: bool, claim: 
         let c3 = *claim + c[1] + c[2];
         *claim = c[0] + r * (c[1] + r * (c[2] + r * c3));
     } else {
-        rd.check(c[1] + c[2] == *claim);
-        *claim = c[0] + r * (c[1] + r * c[2]);
+        let c2 = *claim + c[1];
+        *claim = c[0] + r * (c[1] + r * c2);
     }
     r
 }
@@ -612,14 +613,14 @@ pub fn verify_logged(o: &dyn Oracle, circ: &Circuit, vk: &Digest, c: &Digest, pi
     let mut r: Vec<F> = sk.rho.to_vec();
     r.extend_from_slice(&co[..m - 13]);
     rd.fs.phase = "Z2";
-    let msg = rd.recv_f(pp::F_Z2, 128);
-    rd.check(msg[127].is_zero());
+    // flock-128: the 16-byte pad is the nonce (not checked)
+    let msg = rd.recv_f_pow(pp::F_Z2, 127);
     let lambda = rd.fs.chal_f();
     let (mut c_z, pz_l) = z2_value(&msg[..64], &msg[64..127], &r, lambda, n);
     rd.fs.phase = "Z3";
     let rp = v_rounds(&mut rd, pp::F_Z3, 3, pp::Z3_ROUNDS, m - 6, &mut c_z);
     rd.fs.phase = "Zend";
-    let v = rd.recv_f(pp::F_ZEND, 2);
+    let v = rd.recv_f_pow(pp::F_ZEND, 2);
     let (va, vb) = (v[0], v[1]);
 
     // ---- Lc (free first claim, bound by finLc (i))
@@ -629,11 +630,13 @@ pub fn verify_logged(o: &dyn Oracle, circ: &Circuit, vk: &Digest, c: &Digest, pi
     let mut c_l = va + alpha * vb;
     let tl = v_rounds(&mut rd, pp::F_L2, 2, pp::L2_ROUNDS, pp::L2_ROUNDS, &mut c_l);
     rd.fs.phase = "L3";
-    let vkind = rd.recv_f(pp::F_L2, pp::L3_KINDS);
+    let vkind = rd.recv_f_pow(pp::F_L2, pp::L3_KINDS);
     rd.fs.phase = "L3β";
     let beta = rd.fs.chal_f();
 
     // ---- Sh (free first claim, bound by finSh (i))
+    rd.fs.phase = "S1n";
+    rd.recv(pp::F_NONCE, pp::NONCE_LEN);
     rd.fs.phase = "S1";
     let co = rd.fs.coords(pp::S1_SQ);
     let (tau, theta, kap_s) = (&co[..m - 14], &co[pp::S1_THETA..pp::S1_THETA + pp::THETA_LEN], co[pp::S1_KAPPA]);
@@ -645,23 +648,27 @@ pub fn verify_logged(o: &dyn Oracle, circ: &Circuit, vk: &Digest, c: &Digest, pi
 
     // ---- Lr (node only): zero
     let mut zero = F::ZERO;
+    rd.fs.phase = "Lr1n";
+    rd.recv(pp::F_NONCE, pp::NONCE_LEN);
     rd.fs.phase = "Lr1";
     rd.fs.squeezes(pp::LR1_SQ);
     rd.fs.phase = "Lr2";
     v_rounds(&mut rd, pp::F_LR, 3, pp::LR_ROUNDS, 0, &mut zero);
     rd.fs.phase = "Lrend";
-    let e = rd.recv(pp::F_LREND, 48);
+    let e = rd.recv_pow(pp::F_LREND, pp::LREND_LEN);
     rd.check(e.iter().all(|&x| x == 0));
     rd.fs.phase = "Lr3";
     rd.fs.squeeze();
 
     // ---- E (node only): zero (E before RS, rev. 3.13)
+    rd.fs.phase = "E1n";
+    rd.recv(pp::F_NONCE, pp::NONCE_LEN);
     rd.fs.phase = "E1";
     rd.fs.squeezes(pp::E1_SQ);
     rd.fs.phase = "E2";
     v_rounds(&mut rd, pp::F_E, 3, pp::E2_ROUNDS, 0, &mut zero);
     rd.fs.phase = "Eend";
-    let e = rd.recv(pp::F_EEND, 48);
+    let e = rd.recv_pow(pp::F_EEND, pp::EEND_LEN);
     rd.check(e.iter().all(|&x| x == 0));
     rd.fs.phase = "E3";
     rd.fs.squeeze();
@@ -674,10 +681,12 @@ pub fn verify_logged(o: &dyn Oracle, circ: &Circuit, vk: &Digest, c: &Digest, pi
 
     // ---- RS
     rd.fs.phase = "RS0";
-    let sv = rd.recv_f(pp::F_RS0, pp::RS_CLAIMS * 128);
+    let sv = rd.recv_f_pow(pp::F_RS0, pp::RS_CLAIMS * 128);
     rd.fs.phase = "RS1";
     let ch = rd.fs.coords(pp::RS1_SQ);
     let (rpp, kap) = (ch[..7].to_vec(), ch[7]);
+    rd.fs.phase = "B'n";
+    rd.recv(pp::F_NONCE, pp::NONCE_LEN);
     rd.fs.phase = "B'";
     rd.fs.squeeze();
 
@@ -718,12 +727,79 @@ pub fn verify_logged(o: &dyn Oracle, circ: &Circuit, vk: &Digest, c: &Digest, pi
     ligerito::verify(m, &cap0, v_rs, &mut rd, &w0);
     assert!(rd.all_read());
     let log = rd.fs.log.take();
-    (rd.ok, log)
+    (rd.accepted(), log)
 }
 
 #[cfg(test)]
 mod tests {
     use crate::oracle::Local;
+
+    /// `flock-128` canaries (D128 §2.1) on an `L30` segment (`n = 5`), natively and on the dumped Lean
+    /// program of I3 (`logs/I6b/dump/ops-L30.txt`, when present):
+    /// (+) the honest, grinded proof is accepted;
+    /// (−) the same proof made **without grinding** (every nonce 0, so about 255/256 of the 154 checked
+    ///     bytes are nonzero, every other value consistent with its transcript) is rejected, and the
+    ///     native verifier with its proof-of-work check switched off accepts it: the check is what
+    ///     rejects it;
+    /// (−) the honest proof with **a wrong nonce** (S1n's, byte 0 flipped) is rejected.
+    /// With `FLOCK_CANARY_OUT=DIR` the three proofs are also written as signed aggregates of one
+    /// segment (trace of `V_A`'s queries through the keyed oracle, the test signer `toy_sign`) with
+    /// `vk.hex` and `stmt.hex`, for the Lean V (`e1verify`).
+    #[test]
+    fn pow_canaries() {
+        use crate::params as pp;
+        use crate::transcript::{NO_GRIND, NO_POW_CHECK};
+        let text = std::fs::read_to_string(std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../logs/I6b/dump/ops-L30.txt")).ok();
+        let circ = crate::circuit::Circuit::build();
+        let o = Local::keyed(&[0x31u8; 32]);
+        let (vk, _) = crate::format::toy_sign(0x17, &[0u8; 32]);
+        let (s, m, n) = ([0x44u8; 32], 30usize, 5u64);
+        let c = super::seg_c(&s, n);
+        let ir_ok = |pi: &[u8]| text.as_ref().map(|t| crate::ir::run(t, &circ, &o, &vk, &c, pi).ok);
+        let honest = super::prove_seg(&o, &circ, &vk, &s, m, n).0;
+        assert!(super::verify(&o, &circ, &vk, &c, &honest));
+        assert_ne!(ir_ok(&honest), Some(false), "the Lean program rejects the honest proof");
+        NO_GRIND.with(|x| x.set(true));
+        let raw = super::prove_seg(&o, &circ, &vk, &s, m, n).0;
+        NO_GRIND.with(|x| x.set(false));
+        assert_ne!(raw, honest);
+        assert!(!super::verify(&o, &circ, &vk, &c, &raw), "an ungrinded proof is accepted");
+        assert_ne!(ir_ok(&raw), Some(true), "the Lean program accepts an ungrinded proof");
+        NO_POW_CHECK.with(|x| x.set(true));
+        let raw_nocheck = super::verify(&o, &circ, &vk, &c, &raw);
+        NO_POW_CHECK.with(|x| x.set(false));
+        assert!(raw_nocheck, "without the proof-of-work check the ungrinded proof is consistent");
+        let mut wn = honest.clone();
+        wn[pp::field_off(pp::F_NONCE)] ^= 1;
+        assert!(!super::verify(&o, &circ, &vk, &c, &wn), "a wrong nonce is accepted");
+        assert_ne!(ir_ok(&wn), Some(true), "the Lean program accepts a wrong nonce");
+        eprintln!("pow_canaries: native and {} agree", if text.is_some() { "the Lean L30 program" } else { "(no Lean dump)" });
+        if let Some(dir) = std::env::var_os("FLOCK_CANARY_OUT") {
+            let dir = std::path::PathBuf::from(dir);
+            std::fs::create_dir_all(&dir).unwrap();
+            let hex = |d: &[u8]| d.iter().map(|x| format!("{x:02x}")).collect::<String>();
+            std::fs::write(dir.join("vk.hex"), hex(&vk)).unwrap();
+            std::fs::write(dir.join("stmt.hex"), hex(&c)).unwrap();
+            // the Lean V's top-level kinds are `A`, the nodes and `W`: each segment goes in an aggregate
+            // of one segment (`hdr_A = 0x41 ‖ 1 ‖ 0^6 ‖ enc64 n ‖ e`, then `π`)
+            for (name, seg) in [("honest", &honest), ("nogrind", &raw), ("wrongnonce", &wn)] {
+                let mut a = vec![0u8; crate::agg::HDR_A];
+                a[0] = crate::agg::KIND_AGG;
+                a[1] = 1;
+                a[8..16].copy_from_slice(&n.to_le_bytes());
+                a[16..48].copy_from_slice(&crate::blake2s::chain_end(&s, n));
+                a.extend_from_slice(seg);
+                let pi = &a;
+                let tape = crate::oracle::Tape::new(&o);
+                assert_eq!(crate::agg::verify(&tape, &circ, &vk, &c, pi), name == "honest");
+                let tr = tape.into_trace();
+                let (vk2, sig) = crate::format::toy_sign(0x17, &crate::format::trace_digest(&tr));
+                assert_eq!(vk2, vk);
+                let file = crate::format::to_file(&crate::format::Signed { pi: pi.clone(), tr, sig });
+                std::fs::write(dir.join(format!("{name}.bin")), file).unwrap();
+            }
+        }
+    }
 
     /// Segments of variable length (revision 4.0, B-12) at m = 25 (`2^11` blocks): the native
     /// verifier accepts `n = 1, 3, 1000, 2047, 2048` and rejects the proof against the statement of
@@ -751,6 +827,23 @@ mod tests {
             if n == 2048 {
                 assert_eq!(pi, super::prove(&o, &circ, &vk, &s, m).0);
             }
+        }
+    }
+
+    /// The direct open (lever G1) gives the weight table's `π`, byte for byte (full and partial
+    /// segments, m = 25 and 26).
+    #[test]
+    fn direct_open_same_pi() {
+        let circ = crate::circuit::Circuit::build();
+        let o = Local::keyed(&[7u8; 32]);
+        let (vk, s) = ([9u8; 32], [0x44u8; 32]);
+        for (m, n) in [(25usize, 2048u64), (25, 1), (25, 1000), (26, 4095)] {
+            crate::ringswitch::set_direct(Some(false));
+            let (a, _) = super::prove_seg(&o, &circ, &vk, &s, m, n);
+            crate::ringswitch::set_direct(Some(true));
+            let (b, _) = super::prove_seg(&o, &circ, &vk, &s, m, n);
+            crate::ringswitch::set_direct(None);
+            assert!(a == b, "m = {m}, n = {n}: the direct open's π differs");
         }
     }
 }

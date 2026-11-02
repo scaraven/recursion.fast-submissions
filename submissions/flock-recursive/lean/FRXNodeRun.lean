@@ -1,7 +1,7 @@
 -- New for `flock-recursive` (BLUEPRINT §6.5, the node case of `ext_good_tape`; stage S-H2,
 -- track L-ext, S-H2j).
 import FRXLeaf
-import FRXNode
+import FRXSpec
 
 /-!
 # The node case of `ext_good_tape`

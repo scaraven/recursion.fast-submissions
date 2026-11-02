@@ -4,7 +4,7 @@ import FRVerifierC4
 import FRVIRSpecCore
 
 /-!
-# The revision 4.1 programs ask the item sequence `itemsOf seq4` (8,905 queries)
+# The revision 4.1 programs ask the item sequence `itemsOf seq4` (8,783 queries)
 
 * **`items_genPhase4`**: one phase of `gen4 S p` asks exactly its shape's items under `S.lv`
   (`Sh.itemsL`), for every kind `p` (a segment's `lastOps` and Z2 operand ask nothing; a level's
@@ -12,8 +12,8 @@ import FRVIRSpecCore
 * **`items_gen4`**: `gen4 S p fin` asks `itemsOf S` when `fin` asks nothing; **`noAsk_finOps4`**:
   the relocated finals `finOps4 P` ask nothing (each of `finalsOf P`'s nine fields).
 * **`queries_VsegC`**, **`queries_VnodeC`**: every segment and node program asks
-  `(itemsOf seq4).length = 8,905` queries under every oracle. **`ks_queriesC4`**: `KS`'s first
-  conjunct for `VC4` at `qV4` (INT-7's `ks_queries4` with `qS = 8,905`).
+  `(itemsOf seq4).length = 8,783` queries under every oracle. **`ks_queriesC4`**: `KS`'s first
+  conjunct for `VC4` at `qV4` (INT-7's `ks_queries4` with `qS = 8,783`).
 -/
 
 namespace FR.Rev4
@@ -30,8 +30,8 @@ theorem items_merkleOps4 (sib i : ℕ) (j : Reg) (n h cur so b : ℕ) :
       List.map_map]
     simp [List.filterMap_cons, Op.item?, Function.comp_def, Nat.add_assoc, Nat.add_comm 1]
 
-theorem items_posOps4 (S : Seq) (k : KindP) (i co so capO : ℕ) (ans : List Reg) (w : Reg) (p b : ℕ) :
-    (posOps4 S k i co so capO ans w p b).filterMap Op.item? = posItemsL S.lv i := by
+theorem items_posOps4 (S : Seq) (k : KindP) (i co so dO : ℕ) (ans : List Reg) (w : Reg) (p b : ℕ) :
+    (posOps4 S k i co so dO ans w p b).filterMap Op.item? = posItemsL S.lv i := by
   simp [posOps4, posItemsL, List.filterMap_cons, Op.item?, items_merkleOps4]
 
 theorem noAsk_lastOps (so b : ℕ) : (lastOps so b).filterMap Op.item? = [] := by
@@ -41,8 +41,44 @@ theorem noAsk_lastOps (so b : ℕ) : (lastOps so b).filterMap Op.item? = [] := b
 theorem noAsk_stmtOps4 (p : KindP) (so msg b : ℕ) : (stmtOps4 p so msg b).filterMap Op.item? = [] := by
   unfold stmtOps4; split <;> simp [List.filterMap_cons, Op.item?]
 
+theorem noAsk_powOps (a b : ℕ) : (powOps a b).filterMap Op.item? = [] := by
+  simp [powOps, List.filterMap_cons, Op.item?, List.filterMap_eq_nil_iff]
+
+/-- `Sh.itemsL` of a rounds phase: `n` times its round message (`roundBytesD`, read from the table)
+and its squeeze. -/
+theorem itemsL_rounds (lv : ℕ → Level) (f n deg : ℕ) (inK pw : Bool) (h : pw = !inK) :
+    (Sh.rounds f n deg inK pw).itemsL lv =
+      (List.replicate n [Item.absorb (roundBytesD deg inK), .squeeze]).flatten := by
+  subst h; simp [Sh.itemsL, roundBytesD]
+
+theorem items_roundsOps4 (f o deg : ℕ) (inK : Bool) (real : KC ℕ) (n j st cl b : ℕ) :
+    (roundsOps4 f o deg inK real n j st cl b).filterMap Op.item? =
+      (List.replicate n [Item.absorb (roundBytesD deg inK), .squeeze]).flatten := by
+  induction n generalizing j st cl b with
+  | zero => rfl
+  | succ n ih =>
+    rw [roundsOps4, List.filterMap_append, ih, List.replicate_succ, List.flatten_cons]
+    congr 1
+    cases inK
+    · by_cases h3 : deg = 3 <;> simp [roundOpsF4, h3, List.filterMap_cons, List.filterMap_append, Op.item?,
+        noAsk_powOps]
+    · simp [roundOpsK, List.filterMap_cons, Op.item?, roundBytesD, Sh.rbytes, roundBytes]
+
+theorem noAsk_initOps (i : Init) (f o : ℕ) (inK : Bool) (uni b : ℕ) :
+    (initOps i f o inK uni b).1.filterMap Op.item? = [] := by
+  cases i <;> cases inK <;> simp [initOps, List.filterMap_cons, Op.item?]
+
+theorem noAsk_initOps4 (S : Seq) (outs : Array (List Reg)) (pk : (Dims → List Reg) → Op)
+    (hpk : ∀ l, (pk l).item? = none) (name : String) (f o : ℕ) (inK : Bool) (uni b : ℕ) :
+    (initOps4 S outs pk name f o inK uni b).1.filterMap Op.item? = [] := by
+  unfold initOps4
+  split
+  · split_ifs <;> simp only [initL2, initS2, initE4, List.filterMap_cons, hpk] <;> simp [Op.item?]
+  · exact noAsk_initOps _ _ _ _ _ _
+
 /-- **One phase of `gen4 S p` asks its shape's items** (`Sh.itemsL S.lv`). -/
-theorem items_genPhase4 (S : Seq) (p : KindP) (n : ℕ) (ph : String × Sh) (c : GCtx) :
+theorem items_genPhase4 (S : Seq) (p : KindP) (n : ℕ) (ph : String × Sh) (c : GCtx)
+    (hpw : ph.2.pwOK = true) :
     (genPhase4 S p n ph c).1.filterMap Op.item? = ph.2.itemsL S.lv := by
   obtain ⟨name, sh⟩ := ph
   cases sh with
@@ -53,34 +89,41 @@ theorem items_genPhase4 (S : Seq) (p : KindP) (n : ℕ) (ph : String × Sh) (c :
       simp [absorbOps, finalOps4, List.filterMap_cons, List.filterMap_append, Op.item?,
         noAsk_stmtOps4, noAsk_lastOps]
   | squeezes k ch =>
+    have hp : ∀ a e, (if kSqueeze name = true then ([] : List Op) else powOps a e).filterMap Op.item? = [] :=
+      fun a e => by split <;> simp only [List.filterMap_nil, noAsk_powOps]
     cases ch <;> simp [genPhase4, Sh.itemsL, items_sqzCoordOps, items_sqzOps, List.filterMap_cons,
-      List.filterMap_append, Op.item?]
+      List.filterMap_append, Op.item?, hp]
   | uni f =>
     simp only [genPhase4, Sh.itemsL]
-    split_ifs <;> simp [segPtOp, uniOps, uniHead, uniElems, uniTail, List.filterMap_cons,
-      List.filterMap_append, Op.item?, Function.comp_def]
-  | rounds f k deg inK =>
-    simp only [genPhase4, Sh.itemsL]
-    rw [List.filterMap_append, items_roundsOps]
-    rcases initClaim name with _ | _ | _ <;> cases inK <;>
-      simp [initOps, List.filterMap_cons, Op.item?]
+    split_ifs <;> simp [segPtOp, uniOps4, uniHead, uniElems, List.filterMap_cons,
+      List.filterMap_append, Op.item?, Function.comp_def, noAsk_powOps]
+  | rounds f k deg inK pw =>
+    simp only [genPhase4]
+    rw [List.filterMap_append, items_roundsOps4, noAsk_initOps4 _ _ _ (fun _ => rfl),
+      itemsL_rounds _ _ _ _ _ _ (by simpa [Sh.pwOK] using hpw)]
+    rfl
   | queries i =>
     simp only [genPhase4, Sh.itemsL]
     rw [List.filterMap_append, List.filterMap_flatMap]
     simp only [items_posOps4]
     rw [flatMap_range_const _ _ _ fun _ => rfl]; rfl
 
-theorem items_genPhases4 (S : Seq) (p : KindP) (ps : List (String × Sh)) (n : ℕ) (c : GCtx) :
+theorem items_genPhases4 (S : Seq) (p : KindP) (ps : List (String × Sh)) (n : ℕ) (c : GCtx)
+    (hpw : ps.all (fun ph => ph.2.pwOK) = true) :
     (genPhases4 S p ps n c).1.filterMap Op.item? = ps.flatMap fun ph => ph.2.itemsL S.lv := by
   induction ps generalizing n c with
   | nil => rfl
-  | cons ph ps ih => simp [genPhases4, ih, items_genPhase4]
+  | cons ph ps ih =>
+    simp only [List.all_cons, Bool.and_eq_true] at hpw
+    simp [genPhases4, ih _ _ hpw.2, items_genPhase4 _ _ _ _ _ hpw.1]
 
-/-- **`gen4 S p fin` asks `itemsOf S`**, for every phase-final fragment that asks nothing. -/
+/-- **`gen4 S p fin` asks `itemsOf S`**, for every phase-final fragment that asks nothing and a table
+in the generator's round format (`pw_seq4`). -/
 theorem items_gen4 (S : Seq) (p : KindP) (fin : FinOps)
-    (hfin : ∀ outs b, (fin outs b).filterMap Op.item? = []) :
+    (hfin : ∀ outs b, (fin outs b).filterMap Op.item? = [])
+    (hpw : (phasesOf S).all (fun ph => ph.2.pwOK) = true := by first | exact pw_seq4 | decide) :
     (gen4 S p fin).ops.filterMap Op.item? = itemsOf S := by
-  simp [gen4, skeleton4, items_genPhases4, hfin, List.filterMap_cons, Op.item?, itemsOf]
+  simp [gen4, skeleton4, items_genPhases4 _ _ _ _ _ hpw, hfin, List.filterMap_cons, Op.item?, itemsOf]
 
 /-! ## The finals over `FinP` ask nothing -/
 
@@ -140,11 +183,20 @@ theorem noAsk_gFinRS (P : FinP) (fi : FinIn) (b : ℕ) : (gFinRS P fi b).1.filte
     noAsk_claimOps _ (fun i => Op.const (fun _ => .f (bb i))) (fun _ => rfl), List.append_nil]
   rfl
 
+theorem noAsk_gFinE0 (P : FinP) (fi : FinIn) (b : ℕ) (act : KC Bool) (own : Bool) :
+    (gFinE0 P fi b act own).filterMap Op.item? = [] := by
+  cases hc : P.ck <;> cases own <;> simp only [gFinE0, hc, cond_true, cond_false, List.filterMap_cons, List.filterMap_append,
+    List.filterMap_nil, Op.item?, List.append_nil]
+
 theorem noAsk_gFinE (P : FinP) (fi : FinIn) (b : ℕ) : (gFinE P fi b).1.filterMap Op.item? = [] := by
-  cases hc : P.ck <;> simp [gFinE, Op.item?, hc]
+  cases hr : P.rsvOps <;>
+  simp only [gFinE, hr, cond_true, cond_false, List.filterMap_append, noAsk_gFinE0, noAsk_rsvEOps,
+    List.append_nil]
 
 theorem noAsk_gFinB' (P : FinP) (fi : FinIn) (b : ℕ) : (gFinB' P fi b).1.filterMap Op.item? = [] := by
-  simp [gFinB', Op.item?]
+  cases hr : P.rsvOps <;>
+  simp only [gFinB', hr, cond_true, cond_false, List.filterMap_append, noAsk_rsvBOps, List.append_nil] <;>
+  rfl
 
 theorem noAsk_gFinP (P : FinP) (i : ℕ) (fi : FinIn) (b : ℕ) :
     (gFinP P i fi b).1.filterMap Op.item? = [] := by
@@ -163,8 +215,8 @@ theorem noAsk_gFinPf (P : FinP) (fi : FinIn) (b : ℕ) : (gFinPf P fi b).1.filte
   have h3 : ∀ (sel : KC Bool) (c : ℕ → Reg) (n pb : ℕ),
       ((List.range n).map fun s => Op.keep sel (c s) (pb + s)).filterMap Op.item? = [] :=
     fun _ _ _ _ => noAsk_map _ _ fun _ => rfl
-  cases hc : P.ck <;>
-  simp only [gFinPf, hc, Bool.cond_true, Bool.cond_false, List.filterMap_append, noAsk_ptsOps,
+  cases hc : P.ck <;> cases hr : P.rsvOps <;>
+  simp only [gFinPf, hc, hr, Bool.cond_true, Bool.cond_false, List.filterMap_append, noAsk_ptsOps,
     noAsk_gCellsOps, noAsk_gCellsOpsK, noAsk_gLvsOps, noAsk_fhOps, noAsk_padsOps, noAsk_selOps,
     noAsk_gTailOps, List.filterMap_flatMap, List.filterMap_cons, Op.item?, h1, h2] <;>
   simp [noAsk_map _ _ (fun _ => rfl : ∀ s : ℕ, (Op.keep _ _ _ : Op).item? = none)]
@@ -202,33 +254,33 @@ theorem noAsk_ops (fin : Finals) (h : ∀ f ∈ fin.finRS :: fin.rest, ∀ fi b,
 /-- **The relocated finals ask nothing.** -/
 theorem noAsk_finOps4 (P : FinP) (outs : Array (List Reg)) (b : ℕ) :
     (finOps4 P outs b).filterMap Op.item? = [] := by
-  rw [finOps4, List.filterMap_map]
+  rw [finOps4_def, List.filterMap_map]
   have : (Op.item? ∘ reloc P.S) = Op.item? := funext fun op => item_reloc P.S op
-  rw [this]; exact noAsk_ops _ (noAsk_finalsOf P) outs b
+  rw [this, List.filterMap_append, noAsk_ops _ (noAsk_finalsOf P) (outs3 P.S outs) b, noAsk_capChkOps]; rfl
 
 /-! ## The bounds -/
 
-theorem itemsOf_seq4_len : (itemsOf seq4).length = 8905 := itemsOf_seq4_length
+theorem itemsOf_seq4_len : (itemsOf seq4).length = 8795 := itemsOf_seq4_length
 
-/-- **Every segment program asks 8,905 queries** under every oracle. -/
+/-- **Every segment program asks 8,783 queries** under every oracle. -/
 theorem queries_VsegC (impl₀ : OpImpl) (H : ByteArray → Digest) (κ : SegKind) (vk c : Digest) (π : Proof) :
-    ((VsegC impl₀ κ vk c π).queries H).length = 8905 := by
+    ((VsegC impl₀ κ vk c π).queries H).length = 8795 := by
   rw [VsegC, runStmt_queries, queries_runIR, progSeg, genSeg, items_gen4 _ _ _ (noAsk_finOps4 _),
     itemsOf_seq4_len]
 
-/-- **Every node program asks 8,905 queries** under every oracle. -/
+/-- **Every node program asks 8,783 queries** under every oracle. -/
 theorem queries_VnodeC (implN : NodeKind → OpImpl) (cells : NodeKind → List ℕ) (H : ByteArray → Digest)
     (κ : NodeKind) (vk c : Digest) (π : Proof) :
-    ((VnodeC implN cells κ vk c π).queries H).length = 8905 := by
+    ((VnodeC implN cells κ vk c π).queries H).length = 8795 := by
   rw [VnodeC, runStmt_queries, queries_runIR, progNode, genNode, items_gen4 _ _ _ (noAsk_finOps4 _),
     itemsOf_seq4_len]
 
-/-- **`KS`'s first conjunct for `VC4`** at `qV4` (`ks_queries4` with `qS = 8,905`). -/
+/-- **`KS`'s first conjunct for `VC4`** at `qV4` (`ks_queries4` with `qS = 8,783`). -/
 theorem ks_queriesC4 (impl₀ : OpImpl) (implN : NodeKind → OpImpl) (cells : NodeKind → List ℕ)
     (S : Submission) (hV : S.V = VC4 impl₀ implN cells) (hq : S.qV = qV4) (vk : Digest) :
     ∀ H c π, ((S.V vk c π).queries H).length ≤ S.qV :=
   ks_queries4 (VsegC impl₀) (VnodeC implN cells) S hV hq
     (fun H κ vk c π => (queries_VsegC impl₀ H κ vk c π).le)
-    (fun H κ vk c π => (queries_VnodeC implN cells H κ vk c π).le.trans (by decide)) (by rw [← itemsOf_seq4_len]; exact traces_le_qV) vk
+    (fun H κ vk c π => (queries_VnodeC implN cells H κ vk c π).le.trans (by decide)) (by rw [← itemsOf_seq4_len]; exact traces_spacers_le_qV) vk
 
 end FR.Rev4

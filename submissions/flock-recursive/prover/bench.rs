@@ -342,6 +342,41 @@ pub fn run_r1(m: usize) {
     }
 }
 
+/// `bench-lc [m]` (pass PC): the lincheck's partial fold over a random witness of `2^m` bits
+/// (default 30), one and four stripes a pass, all threads, checked equal.
+pub fn run_lc(m: usize) {
+    let words = 1usize << (m - 6);
+    let mut z = vec![0u64; words];
+    par::for_each_chunk_mut(&mut z, 1 << 16, |off, ch| {
+        let mut s = (off as u64).wrapping_mul(0x9e37_79b9_7f4a_7c15) | 1;
+        ch.iter_mut().for_each(|x| *x = rnd(&mut s));
+    });
+    let mut s = 0x55u64;
+    let s_out: Vec<F> = (0..m - 14).map(|_| F::new(rnd(&mut s), rnd(&mut s))).collect();
+    let used = words / 256;
+    // the kernel in cache: four stripes (64 KiB of z) into one `acc`, ns per table lookup
+    let zs: Vec<&[u64]> = z[..4 * 2048].chunks(2048).collect();
+    let ts: Vec<[F; 256]> = (0..4).map(|q| std::array::from_fn(|i| F::new(i as u64 + q, 3))).collect();
+    let mut acc = vec![F::ZERO; 1 << 14];
+    for k in [1usize, 2, 4] {
+        let it = 400 / k;
+        let (_, t) = timed(|| {
+            for _ in 0..it {
+                for g in (0..4).step_by(k) {
+                    crate::simd::pf_stripes(&zs[g..g + k], &ts[g..g + k], &mut acc);
+                }
+            }
+        });
+        println!("BENCH lc kernel stripes_per_pass={k} ns_per_lookup={:.3}", t * 1e9 / (it * 4 * (1 << 14)) as f64);
+    }
+    std::hint::black_box(&acc);
+    for rep in 0..3 {
+        let (x, t1) = timed(|| crate::lincheck::partial_fold_with(&z, &s_out, used, 1));
+        let (y, t4) = timed(|| crate::lincheck::partial_fold_with(&z, &s_out, used, 4));
+        println!("BENCH lc m={m} rep={rep} tier={} threads={} one_s={t1:.3} four_s={t4:.3} equal={}", crate::simd::tier_name(), par::threads(), x == y);
+    }
+}
+
 /// `bench-k` (pass 12): the butterfly and the F product with the reductions by carry-less products
 /// (pass 11's `butterfly_cl`, `axpy_cl`) and by shifts (`butterfly`, `axpy`), one thread and all threads, in
 /// cache; checked equal. Needs the ymm tier.

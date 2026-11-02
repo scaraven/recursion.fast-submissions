@@ -1,5 +1,5 @@
 -- New for `flock-recursive` (BLUEPRINT revision 4.0, B-7, B-11 … B-13, A.4, A.8; stage S-0′).
-import FRShape4
+import FRSoundness4Pos
 import FRVIR
 
 /-!
@@ -123,22 +123,205 @@ def segPtOp (S : Seq) (p : KindP) (outs : Array (List Reg)) : Op :=
   .packF (((outs.getD 3 []).drop 1).take (p.d.m - 13) ++ List.replicate (S.mStar - p.d.m) (st.getD 1 0) ++
     st.drop 2)
 
-/-- One position `p` of level `i` (3.x's `posOps`; absolute offsets `co`, `so`, `cap`). -/
-def posOps4 (S : Seq) (k : KindP) (i co so capO : ℕ) (ans : List Reg) (w : Reg) (p b : ℕ) : List Op :=
+/-- **A position's path digest**, from its column fold `y` (`= b + 3`): the last Merkle step's
+`keep` (`b + 4 + 6·sL − 1`), or the column's answer (`b + 2`) at `sL = 0`. -/
+def curOfY (sL y : Reg) : Reg := if sL = 0 then y - 1 else y + 6 * sL
+
+/-- One position `p` of level `i` (3.x's `posOps`; absolute offsets `co`, `so`, `dO`). **Revision
+4.4.1** (PACK-4.4 §11.1, (β′)): the position ends with its cap index `k = j >>> sib` (`shrN`,
+register `b + 4 + 6·sL`), then a **static** read of its committed path digest `D_r` (field `fD`,
+absolute offset `dO + 32·p`, register `b + 4 + 6·sL + 1`; `D` is absorbed before the cap check's
+challenge `ζ`) and `assertEq cur D_r`, `cur` the path's root (register `b + 4 + 6·sL − 1`, or the
+column's `b + 2` at `sL = 0`). The cap entry is not read here (3.x's dynamic `piDigestAt`): the
+finals' batched cap check `capChkOps` (`FRVIRFinals4`) checks `D` against the caps. -/
+def posOps4 (S : Seq) (k : KindP) (i co so dO : ℕ) (ans : List Reg) (w : Reg) (p b : ℕ) : List Op :=
   let L := S.lv i
   let K := S.lvK k.d.m i
-  let cur := b + 4 + 6 * L.sib - 1
   [.idx (fun _ => ans.getD (p / K.per) 0) (fun _ => K.logN) (fun _ => p % K.per),
    .piField 0 (co + p * colBytes i) (colBytes i), .askCol i (b + 1), .dotKF w (b + 1)] ++
   merkleOps4 K.sib i b L.sib 0 (b + 2) (so + p * L.sib * 32) (b + 4) ++
-  [.shrN b (fun _ => K.sib), .piDigestAt 0 capO (b + 4 + 6 * L.sib),
-   .assertEq (if L.sib = 0 then b + 2 else cur) (b + 4 + 6 * L.sib + 1) allK]
+  [.shrN b (fun _ => K.sib), .piDigest 0 (dO + 32 * p),
+   .assertEq (curOfY L.sib (b + 3)) (b + 4 + 6 * L.sib + 1) allK]
 
-/-- The width of one position of level `i` in `S`. -/
+/-- The width of one position of level `i` in `S` (revision 4.4.1: the cap index, then `D_r`). -/
 def posW4 (S : Seq) (i : ℕ) : ℕ := 4 + 6 * (S.lv i).sib + 2
+
+/-- **A position's cap index** `k = j >>> sib` (`shrN`, `b + 4 + 6·sL`), from its column fold `y`. -/
+def kOfY (sL y : Reg) : Reg := y + 6 * sL + 1
+
+/-- **A position's committed path digest** `D_r` (`piDigest`, `b + 4 + 6·sL + 1`), from its column
+fold `y`: the register `posOps4` asserts equal to `curOfY`, and `capChkOps` reads. -/
+def dOfY (sL y : Reg) : Reg := y + 6 * sL + 2
+
+/-- **Level `i`'s first committed path digest** (absolute): `D`'s field offset plus 32 bytes per
+read of the levels below (PACK-4.4 §11.4 item 4, PB-m4: one offset, no field-relative read). -/
+def dOff4 (S : Seq) (i : ℕ) : ℕ := fieldOffOf S fD + 32 * capReadsBelow S i
 
 /-- Level `i`'s cap in the caps field. -/
 def capOff4 (S : Seq) (i : ℕ) : ℕ := ((List.range i).map fun i' => 2 ^ (S.lv i').cap * 32).sum
+
+/-! ## Revision `flock-128` (D128 §2.1, §4.1, §5.5): the proof of work, the nonces, derived `c₂`
+
+**Every number is read from I1's table** (`FRSoundness4Pos`, stage I12): a round message's bytes
+(`Sh.rbytes`: K 96, F degree 3 `c₀ ‖ c₁ ‖ c₂ ‖ nonce` 64, F degree 2 `c₀ ‖ c₁ ‖ nonce` 48), the absorb
+lengths with their nonces (`Seq.nb`), the `N` items (`Seq.nonce`), the squeeze counts (`Seq.sqC`,
+`Seq.sqP`), the field offsets (`fNonce` included), the caps' offsets (`FRVIRFinals4.capShift`), E4
+end's pad (`Seq.e4end`). The generator emits the `flock-128` format for every F round (its table
+flag `pw` holds for every F round of `seq4`, `pw_seq4`), and grinds exactly the phases of the
+table's `grinds` (`irGrinds_seq4`). `nonceAbs` names the two absorbs whose segment-only zero check
+covers the whole message (`Lrend`, `Eend`): it leaves their nonce (`Seq.nb` bytes) out. -/
+
+/-- **A round message's bytes in the `flock-128` format** (`Sh.rbytes … pw` with the nonce on every F
+round): K 96, F degree 3 64, F degree 2 48. -/
+def roundBytesD (deg : ℕ) (inK : Bool) : ℕ := Sh.rbytes deg inK !inK
+
+/-- The absorbs whose segment-only zero-assert must leave the appended nonce out (D128 §2.1). -/
+def nonceAbs (f : ℕ) : Bool := f = fLrEnd ∨ f = fEEnd
+
+/-- **The round format the generator reads**: every F round with the nonce (`pw`), no K round. -/
+def Sh.pwOK : Sh → Bool
+  | .rounds _ _ _ inK pw => pw == !inK
+  | _ => true
+
+/-- (+) `seq4`'s table has the generator's round format (`pw` on every F round, on no K round). -/
+theorem pw_seq4 : (phasesOf seq4).all (fun ph => ph.2.pwOK) = true := by
+  rw [seq4_eq]; decide +kernel
+
+/-- The K challenges' phases (the cap check's `ζ`, `z`): not grinded (D128 §0, §3). -/
+def kSqueeze (name : String) : Bool := name = "CapZeta" ∨ name = "CapChkZ"
+
+/-- **The proof of work on answer `a`** (D128 §2.1, §5.5; A.8's ops only): `idx a 8 31` is byte 31 of
+`a` (`n`, register `b`), `shrN n 0` its copy (`b + 1`), the copy's eight bits (`bitOf`, `b + 2 … b + 9`),
+each asserted zero, ungated (`allK`). Ten registers. In the circuit: `idx` and `shrN` untracked, eight
+L-bit imports, eight gated rows. The `shrN` bounds the compiler's Merkle look-ahead from this `idx`
+(`FRVIRCompile.alignOf`/`stepsAhead`: an `idx` is laid out as a position block up to the next
+`shrN`), so that the proof of work is not padded as an 11-step position (64 rows each). -/
+def powOps (a b : ℕ) : List Op :=
+  .idx (fun _ => a) (fun _ => 8) (fun _ => 31) :: .shrN b (fun _ => 0) ::
+    ((List.range 8).map (fun h => Op.bitOf (b + 1) h) ++
+      (List.range 8).map (fun h => Op.assertZero (b + 2 + h) allK))
+
+/-- The registers `powOps` appends. -/
+def powW : ℕ := 10
+
+/-- **A univariate round** (Z2, D128): 3.x's `uniOps` without the pad's zero-assert (the pad is the
+nonce), then the proof of work on its squeeze's answer (`b + 2`). Outputs as 3.x's (`λ` at `b + 3`,
+`lagrangeS`'s two values at `b + 133`, `b + 134`); the proof of work's registers from `b + 135`. -/
+def uniOps4 (f o st pt b : ℕ) : List Op :=
+  uniHead f o st b ++ uniElems f o ++
+    [.packF ((List.range 127).map (b + 4 + ·)), .targetS pt, .lagrangeS (b + 131) (b + 3) (b + 132)] ++
+    powOps (b + 2) (b + 135)
+
+/-- The width of one F round (D128): degree 3 `27`, degree 2 `23`; a K round `13` (unchanged). -/
+def roundW4 (deg : ℕ) (inK : Bool) : ℕ := if inK then 13 else if deg = 3 then 27 else 23
+
+/-- **One sumcheck round over F** (D128 §2.1, §4.1): absorb (`roundBytesD`), squeeze `r` (`b + 3`),
+the proof of work on the squeeze's answer (`b + 4 … b + 13`); degree 3: `c₃ := claim + c₁ + c₂`;
+**degree 2: `c₂ := claim + c₁`** (the third slot is the nonce; the round's `c₁ + c₂ = claim` holds
+by construction, so 3.x's `assertEq` is gone); the next claim `g(r)` (Horner). A dummy round (`real`
+fails) keeps the claim and asserts zero **all but the nonce** (`[o, o + 48)` resp. `[o, o + 32)`:
+the orchestrator's ruling on the D128 review, finding 1: every kind grinds every round). -/
+def roundOpsF4 (f o deg : ℕ) (real : KC Bool) (st claim b : ℕ) : List Op :=
+  [.piField f o (roundBytesD deg false), .askAbsorb st b (roundBytesD deg false), .askSqueeze (b + 1),
+   .chF (b + 2) 0] ++ powOps (b + 2) (b + 4) ++
+  (if deg = 3 then
+    [.piElem f o, .piElem f (o + 16), .piElem f (o + 32), .addF (b + 15) (b + 16), .addF claim (b + 17),
+     .mulF (b + 3) (b + 18), .addF (b + 16) (b + 19), .mulF (b + 3) (b + 20), .addF (b + 15) (b + 21),
+     .mulF (b + 3) (b + 22), .addF (b + 14) (b + 23),
+     .piField f o 48, .assertZero (b + 25) (fun κ => !real κ), .keep real (b + 24) claim]
+   else
+    [.piElem f o, .piElem f (o + 16), .addF claim (b + 15),
+     .mulF (b + 3) (b + 16), .addF (b + 15) (b + 17), .mulF (b + 3) (b + 18), .addF (b + 14) (b + 19),
+     .piField f o 32, .assertZero (b + 21) (fun κ => !real κ), .keep real (b + 20) claim])
+
+/-- `n` rounds from round `j` (3.x's `roundsOps` with `roundOpsF4`, `roundBytesD`, `roundW4`): the
+next state is the squeeze answer `b + 2`, the next claim the round's last register. -/
+def roundsOps4 (f o deg : ℕ) (inK : Bool) (real : KC ℕ) : ℕ → ℕ → Reg → Reg → ℕ → List Op
+  | 0, _, _, _, _ => []
+  | n + 1, j, st, claim, b =>
+    let o' := o + j * roundBytesD deg inK
+    (if inK then roundOpsK f o' (fun κ => decide (j < real κ)) st claim b
+     else roundOpsF4 f o' deg (fun κ => decide (j < real κ)) st claim b) ++
+    roundsOps4 f o deg inK real n (j + 1) (b + 2) (b + roundW4 deg inK - 1) (b + roundW4 deg inK)
+
+/-- The number of the (first) phase called `name` in `S`'s table. -/
+def ixOf (S : Seq) (name : String) : ℕ := (phasesOf S).findIdx (·.1 = name)
+
+/-- The absolute offset of phase `name`'s bytes in field `f`. -/
+def msgOff (S : Seq) (name : String) (f : ℕ) : ℕ := fieldOffOf S f + phaseOffOf S (ixOf S name) f
+
+/-- Phase `name`'s outputs. -/
+def outsAt (S : Seq) (outs : Array (List Reg)) (name : String) : List Reg := outs.getD (ixOf S name) []
+
+/-- **L2's initial claim** `â + α b̂` (A.9 `finLc` (i); `Zend`'s message, `L1`'s `α`), registers from
+`b`; the claim at `b + 3`. -/
+def initL2 (S : Seq) (outs : Array (List Reg)) (b : ℕ) : List Op :=
+  let zO := msgOff S "Zend" fZend
+  [.piElem 0 zO, .piElem 0 (zO + 16), .mulF ((outsAt S outs "L1").headD 0) (b + 1), .addF b (b + 2)]
+
+/-- **E4's initial claim** `â_M + κ_E b̂_M + κ_E² ĉ_M + κ_E³ v_L + κ_E⁴ m̂*` (A.9 `finE` (iii″),
+`FRVIRFinals4.gFinE0`/`rsvEOps`; `v_L = â_L + κ_L b̂_L + κ_L² ĉ_L`, `finLr` (iii)): `Eend`'s four
+values, `Lrend`'s three, `E3`'s `κ_E`, `Lr3`'s `κ_L`; registers from `b`, the claim at `b + 22`. -/
+def initE4 (S : Seq) (outs : Array (List Reg)) (b : ℕ) : List Op :=
+  let eO := msgOff S "Eend" fEEnd; let lO := msgOff S "Lrend" fLrEnd
+  let kE := (outsAt S outs "E3").headD 0; let kL := (outsAt S outs "Lr3").headD 0
+  [.piElem 0 eO, .piElem 0 (eO + 16), .piElem 0 (eO + 32), .piElem 0 (eO + 48),
+   .piElem 0 lO, .piElem 0 (lO + 16), .piElem 0 (lO + 32),
+   .mulF kL (b + 5), .mulF kL kL, .mulF (b + 8) (b + 6), .addF (b + 4) (b + 7), .addF (b + 10) (b + 9),
+   .mulF kE (b + 1), .mulF kE kE, .mulF (b + 13) (b + 2), .addF b (b + 12), .addF (b + 15) (b + 14),
+   .mulF (b + 13) kE, .mulF (b + 17) (b + 11), .addF (b + 16) (b + 18),
+   .mulF (b + 13) (b + 13), .mulF (b + 20) (b + 3), .addF (b + 19) (b + 21)]
+
+/-- **S2's boundary operand** (`FRVIRFinals4.gBndOps`' list at registers `b … b + 6`): a node's zeros
+and its last block `1^(m−14) ‖ 0^(m*−m)`, a segment's `s`, `h` halves and `L`'s 18 bits (`stmt`'s
+outputs from 2). -/
+def bndList (S : Seq) (d : Dims) (stOuts : List Reg) (b : ℕ) : List Reg :=
+  if d.node then [b + 4, b + 5, b + 4, b + 5] ++ List.replicate (d.m - 14) (b + 6) ++
+    List.replicate (S.mStar - d.m) (b + 4)
+  else [b, b + 1, b + 2, b + 3] ++ stOuts.drop 2
+
+/-- S1's block coordinates for `shiftTarget`, padded to `m* − 14` by the zero register `z`
+(`FRVIRFinals4.gPadB`). -/
+def tauList (S : Seq) (d : Dims) (co : List Reg) (z : Reg) : List Reg :=
+  co.take (d.m - 14) ++ List.replicate (S.mStar - d.m) z
+
+/-- **S2's initial claim** `shiftTarget τ θ bnd` (A.9 `finSh` (i), `FRVIRFinals4.gShCore`'s first
+eleven ops, same operands), registers from `b`; the claim at `b + 10`. `pk` packs a kind-dependent
+list (`packF` in a fixed program, `packFK` in a group program: `FRVIR4Mux`). -/
+def initS2 (S : Seq) (outs : Array (List Reg)) (pk : (Dims → List Reg) → Op) (b : ℕ) : List Op :=
+  let hO := fieldOffOf S fHdr; let sO := msgOff S "stmt" fStmt
+  let co := (outsAt S outs "S1").drop 1; let nb := S.mStar - 14
+  [.piElem 0 (hO + 16), .piElem 0 (hO + 32), .piElem 0 (sO + 1), .piElem 0 (sO + 17),
+   .const (fun _ => .f 0), .const (fun _ => .f 0), .const (fun _ => .f 1),
+   pk fun d => bndList S d (outsAt S outs "stmt") b, pk fun d => tauList S d co (b + 4),
+   .packF ((co.drop nb).take 10), .shiftTarget (b + 8) (b + 9) (b + 7) (co.getD (nb + 10) 0)]
+
+/-- **The first claim's ops and its register** (D128; ruling (A) on the free degree-2 claims): K
+phases and the `uni`/`zero` claims as 3.x's `initOps`; the free F claims (L2, S2, E4) are **the
+verifier's target**, computed here from the earlier phases (3.x read them as `c₁ + c₂` of the first
+message, whose third slot is now the nonce; the finals' (i)/(iii) asserts become identities). -/
+def initOps4 (S : Seq) (outs : Array (List Reg)) (pk : (Dims → List Reg) → Op) (name : String)
+    (f o : ℕ) (inK : Bool) (uni b : ℕ) : List Op × Reg :=
+  match initClaim name, inK with
+  | .free, false =>
+    if name = "L2" then (initL2 S outs b, b + 3)
+    else if name = "S2" then (initS2 S outs pk b, b + 10)
+    else if name = "E4" then (initE4 S outs b, b + 22)
+    else ([.const fun _ => .f 0], b)
+  | i, _ => initOps i f o inK uni b
+
+/-- **The phases the generator grinds** (`powOps` after their last squeeze): the univariate round,
+every F round, every squeeze phase but the cap check's two K challenges. -/
+def irGrinds : String × Sh → Bool
+  | (_, .uni _) => true
+  | (_, .rounds _ _ _ inK _) => !inK
+  | (nm, .squeezes _ _) => !kSqueeze nm
+  | _ => false
+
+/-- **The generator grinds exactly the table's grinded phases** at `seq4` (I1's `grinds`, whose last
+squeezes are `powPos`: 154 positions). -/
+theorem irGrinds_seq4 : (phasesOf seq4).all (fun ph => irGrinds ph == grinds ph) = true := by
+  rw [seq4_eq]; decide +kernel
 
 /-- **One phase** (number `n` of `phasesOf S`) of kind `p`: its ops and the next context. -/
 def genPhase4 (S : Seq) (p : KindP) (n : ℕ) (ph : String × Sh) (c : GCtx) : List Op × GCtx :=
@@ -156,45 +339,50 @@ def genPhase4 (S : Seq) (p : KindP) (n : ℕ) (ph : String × Sh) (c : GCtx) : L
         rec_ (absorbOps 0 (o f) len c.st b ++ stmtOps4 p (o f) b (b + 2) ++ lastOps (o f) b₂) (b + 1)
           (b :: lastOuts b₂)
     else if f = fFinal then rec_ (absorbOps 0 (o f) len c.st b ++ finalOps4 S p (o f) (b + 2)) (b + 1) [b]
-    else if f = fLrEnd ∨ f = fEEnd then
-      rec_ (absorbOps 0 (o f) len c.st b ++ [.assertZero b (fun _ => !p.d.node)]) (b + 1) [b]
+    else if nonceAbs f then
+      rec_ (absorbOps 0 (o f) len c.st b ++
+        [.piField 0 (o f) (len - S.nb), .assertZero (b + 2) (fun _ => !p.d.node)]) (b + 1) [b]
     else rec_ (absorbOps 0 (o f) len c.st b) (b + 1) [b]
   | .squeezes k ch =>
+    -- D128: the proof of work on the phase's last answer, after the phase's own ops (not for `ζ`, `z`)
+    let pw := fun (a e : ℕ) => if kSqueeze ph.1 then [] else powOps a e
     match ch with
     | .coords =>
       let rs := (List.range (2 * k)).map fun x => b + 3 * (x / 2) + 1 + x % 2
-      let (ops, c') := rec_ (sqzCoordOps k c.st b ++ [.packF rs]) (b + 3 * k - 3) ((b + 3 * k) :: rs)
+      let (ops, c') := rec_ (sqzCoordOps k c.st b ++ [.packF rs] ++ pw (b + 3 * k - 3) (b + 3 * k + 1))
+        (b + 3 * k - 3) ((b + 3 * k) :: rs)
       (ops, { c' with pt := b + 3 * k })
-    | .one => rec_ (sqzOps k c.st b ++ [.chF b 0]) (b + k - 1) [b + k]
+    | .one => rec_ (sqzOps k c.st b ++ [.chF b 0] ++ pw (b + k - 1) (b + k + 1)) (b + k - 1) [b + k]
     | .pos _ =>
       let ans := (List.range k).map (b + ·)
-      let (ops, c') := rec_ (sqzOps k c.st b) (b + k - 1) ans
+      let (ops, c') := rec_ (sqzOps k c.st b ++ pw (b + k - 1) (b + k)) (b + k - 1) ans
       (ops, { c' with posAns := ans })
   | .uni f =>
     if p.d.node then
-      let (ops, c') := rec_ (uniOps 0 (o f) c.st c.pt b) (b + 2) [b + 3, b + 133, b + 134]
+      let (ops, c') := rec_ (uniOps4 0 (o f) c.st c.pt b) (b + 2) [b + 3, b + 133, b + 134]
       (ops, { c' with uni := b + 133 })
     else
-      let (ops, c') := rec_ (segPtOp S p c.outs :: uniOps 0 (o f) c.st b (b + 1)) (b + 3)
+      let (ops, c') := rec_ (segPtOp S p c.outs :: uniOps4 0 (o f) c.st b (b + 1)) (b + 3)
         [b + 4, b + 134, b + 135]
       (ops, { c' with uni := b + 134 })
-  | .rounds f k deg inK =>
-    let init := initClaim ph.1
-    let (iops, cl) := initOps init 0 (o f) inK c.uni b
-    let b' := b + init.width
-    let w := if inK then 13 else roundW deg
+  | .rounds f k deg inK _ =>
+    let (iops, cl) := initOps4 S c.outs (fun l => .packF (l p.d)) ph.1 0 (o f) inK c.uni b
+    let b' := b + opsOut iops
+    let w := roundW4 deg inK
     let rs := (List.range k).map fun j => b' + w * j + 3
     let real : KC ℕ := fun _ => realRounds p ph.1 k
-    let (ops, c') := rec_ (iops ++ roundsOps 0 (o f) deg inK real k 0 c.st cl b')
+    let (ops, c') := rec_ (iops ++ roundsOps4 0 (o f) deg inK real k 0 c.st cl b')
       (if k = 0 then c.st else b' + w * k - w + 2)
       (cl :: rs ++ [if k = 0 then cl else b' + w * k - 1])
     (ops, if inK then { c' with foldR := rs } else c')
   | .queries i =>
+    -- the offsets once per phase, not per position (INIT: the programs' compile at start-up)
     let L := S.lv i
+    let co := o fCols; let so := o fSibs; let dO := dOff4 S i
+    let pw := posW4 S i
     let ops := [.packK c.foldR, .eqTableK b] ++ (List.range L.t).flatMap fun q =>
-      posOps4 S p i (o fCols) (o fSibs) (fieldOffOf S fCaps + capOff4 S i) c.posAns (b + 1) q
-        (b + 2 + posW4 S i * q)
-    rec_ ops c.st ((List.range L.t).map fun q => b + 2 + posW4 S i * q + 3)
+      posOps4 S p i co so dO c.posAns (b + 1) q (b + 2 + pw * q)
+    rec_ ops c.st ((List.range L.t).map fun q => b + 2 + pw * q + 3)
 
 /-- The phases from number `n`. -/
 def genPhases4 (S : Seq) (p : KindP) : List (String × Sh) → ℕ → GCtx → List Op × GCtx
@@ -221,6 +409,11 @@ def stmtBytes4 (S : Seq) (π : ByteArray) : ByteArray :=
 (`.L32`: `leafStmt`; `.N30`: `nodeStmt`), is `c`. -/
 def stmtOk4 (S : Seq) (p : KindP) (inp : Input) : Bool :=
   decide (stmtDigest p.tix (stmtBytes4 S inp.π) = inp.c)
+
+/-- (+) **The committed digests tile `D`**: level 0's first read is `D`'s first byte, and the 871
+reads end exactly where `A` begins. -/
+theorem dOff4_ctl : dOff4 seq4 0 = fieldOffOf seq4 fD ∧ dOff4 seq4 nLevels = fieldOffOf seq4 fA := by
+  rw [dOff4, dOff4, seq4_eq]; decide +kernel
 
 /-- The programs of the segment and node kinds (one sequence, `seq4`). -/
 def genSeg (κ : SegKind) (fin : FinOps) : VProg := gen4 seq4 (.ofSeg κ) fin

@@ -1,6 +1,6 @@
 -- New for `flock-recursive` (BLUEPRINT revision 4.1, B-12; stage R4, P4a's F1).
 import FRSoundness4Qry
-import FRSegment
+import FRAgg
 
 /-!
 # P4a's F1: the segment program and `V_A` read the same `n`

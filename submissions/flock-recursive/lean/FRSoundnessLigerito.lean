@@ -1,8 +1,8 @@
 -- New for `flock-recursive` (BLUEPRINT §5.4 step 2, A.2; stage S-G).
 -- RET-1: position-free declarations moved to `FRSoundnessCoreHide`.
 import FRRS
-import FRMLE
-import FRSoundnessCoreHide
+import FRSumcheck
+import FRSoundness4TailStep
 
 /-!
 # Ligerito's walk (BLUEPRINT §5.4 step 2): the bit-order bridge

@@ -2,7 +2,7 @@
 -- stage S-E11, track L-circ).
 -- RET-3: the declarations revision 4 reads moved to `FRVerifierImplCore`.
 import FRVerifierImpl
-import FRVerifierImplCore
+import FRSegTarget4
 
 /-!
 # The node's plans as closed constants

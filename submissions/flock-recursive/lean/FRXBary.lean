@@ -1,6 +1,6 @@
 -- New for `flock-recursive` (BLUEPRINT §6.2 step 4; stage S-H2, track L-ext).
 import FRXBaryDefs
-import FRXBfly
+import FRXFwd
 
 /-!
 # The barycentric interpolation on the machine: the semantics

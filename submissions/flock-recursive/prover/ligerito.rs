@@ -217,6 +217,186 @@ fn rounds(w: Tab, g: &[F], nrounds: usize, wr: &mut Writer, claim: &mut K) -> (V
     (wk, gk, ch)
 }
 
+/// Level 0's weight: the table `W` (2^(m−7) F entries; `FLOCK_NO_OPEN_DIRECT=1`), or the direct
+/// open's claims (`ringswitch::Direct`; lever G1), which never materialises `W`.
+pub enum W0 {
+    Table(Vec<F>),
+    Direct(crate::ringswitch::Direct),
+}
+
+/// Level 0's `nrounds = DLO` rounds by the direct open (`ringswitch` §direct open): the messages
+/// from the banks (128 per claim and one per cell block: `(Wst[β, ·], A[β, ·])`, or `(Σ p δ_l,
+/// f(·, h))`), then the folded tables `wk` (byte tables per claim) and `gk[h] = Σ_l eq(s, l) f(l, h)`
+/// (one pass over `f`). The same messages, challenges and folded tables as `rounds(Tab::F(W), f, …)`.
+///
+/// A claim with `k₀ < DLO` (`W` on `l < 2^k₀`: Sh's) takes the banks for rounds `r < k₀`; for
+/// `r ≥ k₀` its folded `W` is `ψ(h) = Ψ_r(ehi(h))` at position 0 only, so its message is
+/// `[Σ_h ψ G₀, 0, Σ_h ψ (G₀ + G₁)]` with `G_b[h] = g̃(s_{<r}, b, 0, h)`. `G₁` is a fresh fold of `f`'s
+/// elements `[2^r, 2^{r+1})` per block, `G₀` the previous round's fold, and the last fold is `gk` on
+/// those blocks: the same elements of `f` are read once.
+fn rounds_direct(d: &crate::ringswitch::Direct, f: &[F], nrounds: usize, wr: &mut Writer, claim: &mut K) -> (Vec<K>, Vec<K>, Vec<K>) {
+    use crate::ringswitch::{psi_apply, psi_tables, Ehi, DLO};
+    assert_eq!(nrounds, DLO);
+    let nl = 1usize << DLO;
+    let nh = f.len() >> DLO;
+    let sp = crate::prof::span("lig0.banks");
+    // the cells grouped by block `h`
+    let mut cb: Vec<(usize, Vec<(usize, F)>)> = Vec::new();
+    for &(y, p) in &d.cells {
+        let (h, l) = (y >> DLO, y & (nl - 1));
+        match cb.iter_mut().find(|x| x.0 == h) {
+            Some(x) => x.1.push((l, p)),
+            None => cb.push((h, vec![(l, p)])),
+        }
+    }
+    let nc = d.claims.len();
+    // bank group 0: the dense claims and the cells; group j + 1: claim j if sparse (k₀ < DLO)
+    let sparse: Vec<usize> = (0..nc).filter(|&j| d.claims[j].k0 < DLO).collect();
+    let mut wb: Vec<Vec<K>> = vec![Vec::new(); 1 + nc];
+    let mut ab: Vec<Vec<K>> = vec![Vec::new(); 1 + nc];
+    // where claim j's 128 banks sit: (group, offset in banks)
+    let mut at = vec![(0usize, 0usize); nc];
+    for (j, c) in d.claims.iter().enumerate() {
+        let g = if c.k0 < DLO { j + 1 } else { 0 };
+        at[j] = (g, wb[g].len() / nl);
+        wb[g].extend(c.wst.iter().map(|x| K::f(*x)));
+        ab[g].extend(c.a.iter().map(|x| K::f(*x)));
+    }
+    let cell0 = wb[0].len() / nl;
+    for (h, list) in &cb {
+        let mut w = vec![K::ZERO; nl];
+        for &(l, p) in list {
+            w[l] += K::f(p);
+        }
+        wb[0].extend_from_slice(&w);
+        ab[0].extend(f[nl * h..nl * (h + 1)].iter().map(|x| K::f(*x)));
+    }
+    drop(sp);
+    // the blocks the sparse claims read directly: all, or the even ones (every `hi[6] = 0`)
+    let k_min = sparse.iter().map(|&j| d.claims[j].k0).min().unwrap_or(DLO);
+    let hstep = if sparse.iter().all(|&j| d.claims[j].hh[0].is_zero()) { 2 } else { 1 };
+    let nd = if sparse.is_empty() { 0 } else { nh / hstep };
+    let ehs: Vec<Ehi> = sparse.iter().map(|&j| Ehi::new(&d.claims[j])).collect();
+    // `g0[i] = G₀[hstep·i]`, `gs[i] = G₀ + G₁` (the sparse claims' blocks)
+    let (mut g0, mut gs): (Vec<K>, Vec<K>) = (Vec::new(), Vec::new());
+    let mut ch: Vec<K> = Vec::with_capacity(nrounds);
+    for r in 0..nrounds {
+        let sp = crate::prof::span("lig0.banks");
+        let mut msg = crate::simd::round_kk(&wb[0], &ab[0]);
+        for &j in &sparse {
+            if r < d.claims[j].k0 {
+                let m = crate::simd::round_kk(&wb[j + 1], &ab[j + 1]);
+                (0..3).for_each(|q| msg[q] += m[q]);
+            }
+        }
+        drop(sp);
+        if r >= k_min && nd > 0 {
+            // the sparse claims' round from `f`: `G₀` (the first time) and `G₁`, then `ψ·G`
+            let _sp = crate::prof::span("lig0.sparse");
+            let es = eq_table_k(&ch);
+            let (ea, eb): (Vec<F>, Vec<F>) = es.iter().map(|x| (x.a, x.b)).unzip();
+            let tabs: Vec<Option<Vec<K>>> = sparse
+                .iter()
+                .map(|&j| (r >= d.claims[j].k0).then(|| psi_tables(&wb[j + 1][at[j].1 * (nl >> r)..], nl >> r)))
+                .collect();
+            if g0.is_empty() {
+                g0 = par::collect_vec(nd, 1 << 10, |i| fold_at(f, nl * hstep * i, &ea, &eb));
+                gs = par::uninit_vec(nd);
+            }
+            let w = 1usize << r;
+            let pgs = par::SyncPtr(gs.as_mut_ptr());
+            let g0r = &g0;
+            let parts = par::map_chunks(nd, 1 << 10, |lo, hi| {
+                let pgs = pgs;
+                let mut acc = [K::ZERO; 2];
+                for i in lo..hi {
+                    let h = hstep * i;
+                    let a = g0r[i];
+                    let sum = a + fold_at(f, nl * h + w, &ea, &eb);
+                    for (q, t) in tabs.iter().enumerate() {
+                        if let Some(t) = t {
+                            let e = ehs[q].at(h);
+                            if !e.is_zero() {
+                                let psi = psi_apply(t, e);
+                                acc[0] += psi * a;
+                                acc[1] += psi * sum;
+                            }
+                        }
+                    }
+                    unsafe { *pgs.0.add(i) = sum };
+                }
+                acc
+            });
+            for p in parts {
+                msg[0] += p[0];
+                msg[2] += p[1];
+            }
+        }
+        debug_assert_eq!(msg[0] + msg[1], *claim);
+        wr.send_k(pp::F_P1, &coeffs_k(msg));
+        let s = wr.fs.chal_k();
+        *claim = eval2_k(msg, s);
+        ch.push(s);
+        let sp = crate::prof::span("lig0.banks");
+        for g in 0..=nc {
+            if wb[g].is_empty() {
+                continue;
+            }
+            let mut w2 = vec![K::ZERO; wb[g].len() / 2];
+            let mut a2 = vec![K::ZERO; ab[g].len() / 2];
+            crate::simd::kfold(&wb[g], s, &mut w2);
+            crate::simd::kfold(&ab[g], s, &mut a2);
+            wb[g] = w2;
+            ab[g] = a2;
+        }
+        drop(sp);
+        if r >= k_min && nd > 0 {
+            // `G₀ ← G₀ + s (G₀ + G₁)` (the fold of the pair at `s`)
+            let _sp = crate::prof::span("lig0.sparse");
+            let gsr = &gs;
+            par::for_each_chunk_mut(&mut g0, 1 << 12, |off, c| {
+                for (i, x) in c.iter_mut().enumerate() {
+                    *x += s * gsr[off + i];
+                }
+            });
+        }
+    }
+    drop(gs);
+    // `f` folded once: `gk[h] = Σ_l eq(s, l) f(l, h)` (a zero block of `f` folds to zero); the
+    // sparse claims' blocks are `g0` already
+    let sp = crate::prof::span("lig0.gfold");
+    let es = eq_table_k(&ch);
+    let (ea, eb): (Vec<F>, Vec<F>) = es.iter().map(|x| (x.a, x.b)).unzip();
+    let mut gk: Vec<K> = par::uninit_vec(nh);
+    par::for_each_chunk_mut(&mut gk, 1 << 10, |off, out| {
+        for (i, o) in out.iter_mut().enumerate() {
+            let h = off + i;
+            *o = if nd > 0 && h % hstep == 0 { g0[h / hstep] } else { fold_at(f, nl * h, &ea, &eb) };
+        }
+    });
+    drop(g0);
+    drop(sp);
+    let sp = crate::prof::span("lig0.wfold");
+    let ws: Vec<&[K]> = (0..nc).map(|j| &wb[at[j].0][at[j].1..at[j].1 + 128]).collect();
+    let cw: Vec<(usize, K)> = cb.iter().enumerate().map(|(i, (h, _))| (*h, wb[0][cell0 + i])).collect();
+    let wk = crate::ringswitch::folded_weight(&d.claims, &ws, &cw, nh);
+    drop(sp);
+    debug_assert_eq!(wk.iter().zip(gk.iter()).fold(K::ZERO, |a, (w, g)| a + *w * *g), *claim);
+    (wk, gk, ch)
+}
+
+/// `Σ_{l < |ea|} eq_l f[base + l]` with `eq_l = (ea[l], eb[l])` (K × F, two F dot products); zero for
+/// a zero stretch of `f`.
+#[inline]
+fn fold_at(f: &[F], base: usize, ea: &[F], eb: &[F]) -> K {
+    let x = &f[base..base + ea.len()];
+    if zero_f(x) {
+        K::ZERO
+    } else {
+        K { a: crate::simd::dot(ea, x), b: crate::simd::dot(eb, x) }
+    }
+}
+
 /// All entries zero (pass 12's skips; the products with a zero `g` are zero).
 fn zero_f(g: &[F]) -> bool {
     crate::zerocheck::zero_bytes(unsafe { std::slice::from_raw_parts(g.as_ptr() as *const u8, 16 * g.len()) })
@@ -299,9 +479,10 @@ pub fn cap_log(m: usize, i: usize) -> usize {
 }
 
 /// Read (and absorb) level `i`'s cap slot from the caps field: its first `2^cl` digests; the rest
-/// must be zero.
+/// must be zero. `flock-128`: the slot is followed by the nonce of the grinded phase after it (Z1 for
+/// `cap₀`, P2 for the others), absorbed with it and not read.
 pub fn read_cap_slot(rd: &mut Reader, i: usize, cl: usize) -> Vec<Digest> {
-    let b = rd.recv(pp::F_CAPS, 32 << CAP_LOG[i]);
+    let b = rd.recv_pow(pp::F_CAPS, 32 << CAP_LOG[i]);
     rd.check(b[32 << cl..].iter().all(|&x| x == 0));
     b[..32 << cl].chunks_exact(32).map(|d| d.try_into().unwrap()).collect()
 }
@@ -314,11 +495,15 @@ fn kappa_coeffs(kc: &[F], t: usize) -> Vec<F> {
 }
 
 /// The prover: `Σ_y W(y) f(y) = claim` with `f` committed in `c0` (cap₀ already absorbed).
-pub fn prove(m: usize, f: &[F], w0: Vec<F>, claim0: F, c0: Commit0, wr: &mut Writer) {
+pub fn prove(m: usize, f: &[F], w0: W0, claim0: F, c0: Commit0, wr: &mut Writer) {
     let lad = ladder(m);
     let mut claim = K::f(claim0);
-    let mut wtab = Tab::F(w0);
-    let mut g: Vec<F> = f.to_vec();
+    // level 0 reads `f` in place (no copy); `g` is level ≥ 1's polynomial
+    let (mut wtab, mut direct) = match w0 {
+        W0::Table(t) => (Some(Tab::F(t)), None),
+        W0::Direct(d) => (None, Some(d)),
+    };
+    let mut g: Vec<F> = Vec::new();
     let mut cw = c0.cw;
     let mut tree = c0.tree;
     let verbose = std::env::var_os("FLOCK_VERBOSE").is_some();
@@ -329,11 +514,17 @@ pub fn prove(m: usize, f: &[F], w0: Vec<F>, claim0: F, c0: Commit0, wr: &mut Wri
         }
         tt = std::time::Instant::now();
     };
+    // (β′): each read's path root `D_r` (the cap entry it opens to) and its global entry `offᵢ + k_r`
+    let mut dig: Vec<u8> = Vec::with_capacity(32 * pp::CAP_READS);
+    let mut ent: Vec<usize> = Vec::with_capacity(pp::CAP_READS);
     for i in 0..LEVELS {
         let lv = lad[i];
         let rows = 1usize << lv.rows_log;
         wr.fs.phase = "P1";
-        let (wk, fk, s) = rounds(wtab, &g, lv.rows_log, wr, &mut claim);
+        let (wk, fk, s) = match (i, direct.take()) {
+            (0, Some(d)) => rounds_direct(&d, f, lv.rows_log, wr, &mut claim),
+            _ => rounds(wtab.take().expect("level weight"), if i == 0 { f } else { &g }, lv.rows_log, wr, &mut claim),
+        };
         lap("rounds", i);
         let last = i + 1 == LEVELS;
         wr.fs.phase = "C";
@@ -344,28 +535,32 @@ pub fn prove(m: usize, f: &[F], w0: Vec<F>, claim0: F, c0: Commit0, wr: &mut Wri
             let mut ncw = Vec::new();
             ntt.encode(&gn, 1 << nl.rows_log, LOG_INV_RATE[i + 1], &mut ncw);
             let t = Tree::commit(wr.fs.o, (i + 1) as u8, &ncw, 1 << nl.rows_log, nl.cap_log);
-            wr.send(pp::F_CAPS, &cap_slot(i + 1, t.cap()));
+            wr.send_pow(pp::F_CAPS, &cap_slot(i + 1, t.cap()), pp::STAR_SQ[i]);
             lap("encode+merkle", i);
             (ncw, Some((t, gn)))
         } else {
             let mut fin = fk.clone();
             fin.resize(pp::FINAL_ELEMS, K::ZERO);
-            wr.send(pp::F_FINAL, &k_bytes(&fin));
+            wr.send_pow(pp::F_FINAL, &k_bytes(&fin), pp::STAR_SQ[i]);
             (Vec::new(), None)
         };
         wr.fs.phase = "P2";
         let ps = wr.fs.positions(pp::STAR_SQ[i], lv.queries, lv.code_log);
         let es = eq_table_k(&s);
         let sib = lv.code_log - lv.cap_log;
+        let mut dummy = [[0u8; 32]];
         if sib < pp::STAR_SIB[i] {
             // the level's dummy node query `0^64` (asked by the verifier at the missing depths),
-            // asked once here so that the trace replay finds it in the prover's table
-            let mut q = Vec::with_capacity(72);
-            crate::merkle::node_query(i as u8, &[0u8; 32], &[0u8; 32], &mut q);
-            wr.fs.o.ask(&q);
+            // asked once here (a batch of one: not a trace item) for the trace and the replay
+            wr.fs.o.ask_many(&mut dummy, &|_, q: &mut Vec<u8>| crate::merkle::node_query(i as u8, &[0u8; 32], &[0u8; 32], q));
         }
         let mut ys = Vec::with_capacity(ps.len());
+        let note = wr.fs.o.taping();
         for &p in &ps {
+            if note {
+                // G4: the verifier's `Q` items of this position, in its order, into the trace
+                tree.note_opening(wr.fs.o, &cw, rows, p as usize, pp::STAR_SIB[i], &dummy[0]);
+            }
             let col = &cw[p as usize * rows..(p as usize + 1) * rows];
             for x in col {
                 wr.put(pp::F_COLS, &x.to_bytes());
@@ -375,9 +570,14 @@ pub fn prove(m: usize, f: &[F], w0: Vec<F>, claim0: F, c0: Commit0, wr: &mut Wri
                 wr.put(pp::F_SIBS, &d);
             }
             wr.put(pp::F_SIBS, &vec![0u8; 32 * (pp::STAR_SIB[i] - sib)]);
+            let k = (p >> sib) as usize;
+            dig.extend_from_slice(&tree.cap()[k]);
+            ent.push(pp::CAP_OFF[i] + k);
             ys.push(column_fold(col, &es));
         }
         lap("open", i);
+        wr.fs.phase = "P3n";
+        wr.send_pow(pp::F_NONCE, &[], pp::P3_SQ);
         wr.fs.phase = "P3";
         let kc = wr.fs.coords(pp::P3_SQ);
         match ntree {
@@ -393,7 +593,7 @@ pub fn prove(m: usize, f: &[F], w0: Vec<F>, claim0: F, c0: Commit0, wr: &mut Wri
                     wn.push(*b);
                     wn.push(mul_u(*b));
                 }
-                wtab = Tab::K(wn);
+                wtab = Some(Tab::K(wn));
                 lap("weights", i);
                 g = gn;
                 cw = ncw;
@@ -416,10 +616,38 @@ pub fn prove(m: usize, f: &[F], w0: Vec<F>, claim0: F, c0: Commit0, wr: &mut Wri
                     fk = fold_k(&fk, s);
                 }
                 debug_assert_eq!(claim, wk[0] * fk[0]);
+                cap_check(wr, &dig, &ent);
                 return;
             }
         }
     }
+}
+
+/// (β′) phases 52–55 (`FRShape4.capChkPh`): absorb `D` (the reads' path roots, read order), squeeze
+/// `ζ` (`chK`: all 32 bytes), absorb `A` (`A_{offᵢ+k} = Σ_{r: offᵢ + k_r = offᵢ + k} ζ^r`, 1,536 K
+/// elements), squeeze `z` (unused by the prover).
+fn cap_check(wr: &mut Writer, dig: &[u8], ent: &[usize]) {
+    assert_eq!(ent.len(), pp::CAP_READS);
+    wr.fs.phase = "CapD";
+    wr.send(pp::F_D, dig);
+    wr.fs.phase = "CapZeta";
+    let zeta = wr.fs.chal_k();
+    let a = selectors(zeta, ent);
+    wr.fs.phase = "CapChk";
+    wr.send_k(pp::F_A, &a);
+    wr.fs.phase = "CapChkZ";
+    wr.fs.squeeze();
+}
+
+/// `A_g = Σ_{r : ent_r = g} ζ^r` (`IRDumpA2pp.honestA`).
+pub fn selectors(zeta: K, ent: &[usize]) -> Vec<K> {
+    let mut a = vec![K::ZERO; pp::CAP_ENTRIES];
+    let mut pw = K::ONE;
+    for &g in ent {
+        a[g] += pw;
+        pw = pw * zeta;
+    }
+    a
 }
 
 // ---------------------------------------------------------------- verifier
@@ -464,6 +692,10 @@ pub fn verify(m: usize, cap0: &[Digest], claim0: F, rd: &mut Reader, w0: &dyn Fn
     let mut cap: Vec<Digest> = cap0.to_vec();
     let mut recs: Vec<LevelRec> = Vec::new();
     let zero = [0u8; 32];
+    // (β′): every level's cap (zero-padded slots, `capEntries` 1,536), each read's entry, `D`'s offset
+    let mut caps: Vec<Digest> = Vec::with_capacity(pp::CAP_ENTRIES);
+    let mut ent: Vec<usize> = Vec::with_capacity(pp::CAP_READS);
+    let d_off = pp::field_off(pp::F_D);
     for i in 0..LEVELS {
         let lv: Level = lad[i];
         let rows = 1usize << lv.rows_log;
@@ -479,7 +711,7 @@ pub fn verify(m: usize, cap0: &[Digest], claim0: F, rd: &mut Reader, w0: &dyn Fn
         if !last {
             next_cap = read_cap_slot(rd, i + 1, lad[i + 1].cap_log);
         } else {
-            fin = rd.recv_k(pp::F_FINAL, pp::FINAL_ELEMS);
+            fin = rd.recv_pow(pp::F_FINAL, 32 * pp::FINAL_ELEMS).chunks_exact(32).map(K::from_bytes).collect();
             let real = 1usize << lv.msg_log;
             let pad_zero = fin[real..].iter().all(|x| *x == K::ZERO);
             rd.check(pad_zero);
@@ -503,10 +735,18 @@ pub fn verify(m: usize, cap0: &[Digest], claim0: F, rd: &mut Reader, w0: &dyn Fn
                     rd.fs.ask_node(i, d, &zero, &zero);
                 }
             }
-            let ok = cur == cap[(p >> sib) as usize];
-            rd.check(ok);
+            // the static read `piDigest fD (32 r)` and `assertEq cur D_r`
+            let r = ent.len();
+            let dr: Digest = rd.pi[d_off + 32 * r..d_off + 32 * r + 32].try_into().unwrap();
+            rd.check(cur == dr);
+            ent.push(pp::CAP_OFF[i] + (p >> sib) as usize);
             ys.push(column_fold(&col, &es));
         }
+        let mut slot = cap.clone();
+        slot.resize(1 << pp::CAP_LOG[i], zero);
+        caps.extend_from_slice(&slot);
+        rd.fs.phase = "P3n";
+        rd.recv(pp::F_NONCE, pp::NONCE_LEN);
         rd.fs.phase = "P3";
         let kc = rd.fs.coords(pp::P3_SQ)[..pp::KAPPA_C].to_vec();
         if !last {
@@ -544,4 +784,36 @@ pub fn verify(m: usize, cap0: &[Digest], claim0: F, rd: &mut Reader, w0: &dyn Fn
             rd.check(claim == wv * fv);
         }
     }
+    // (β′) `capChkOps`: (I) `Σ_r ζ^r·D_r = Σ_k A_k·cap[k]` (lo and hi halves), (II) `Σ_k A_k z^k = Σ_r ζ^r z^{ent_r}`
+    rd.fs.phase = "CapD";
+    let db = rd.recv(pp::F_D, 32 * pp::CAP_READS);
+    rd.fs.phase = "CapZeta";
+    let zeta = rd.fs.chal_k();
+    rd.fs.phase = "CapChk";
+    let a = rd.recv_k(pp::F_A, pp::CAP_ENTRIES);
+    rd.fs.phase = "CapChkZ";
+    let z = rd.fs.chal_k();
+    let half = |d: &[u8], h: usize| F::from_bytes(&d[16 * h..16 * h + 16]);
+    let mut zp = Vec::with_capacity(pp::CAP_ENTRIES);
+    let mut x = K::ONE;
+    for _ in 0..pp::CAP_ENTRIES {
+        zp.push(x);
+        x = x * z;
+    }
+    let (mut il, mut ih, mut ii) = (K::ZERO, K::ZERO, K::ZERO);
+    let mut pw = K::ONE;
+    for (r, &g) in ent.iter().enumerate() {
+        let d = &db[32 * r..32 * r + 32];
+        il += pw.mulf(half(d, 0));
+        ih += pw.mulf(half(d, 1));
+        ii += pw * zp[g];
+        pw = pw * zeta;
+    }
+    let (mut al, mut ah, mut ai) = (K::ZERO, K::ZERO, K::ZERO);
+    for (k, ak) in a.iter().enumerate() {
+        al += ak.mulf(half(&caps[k], 0));
+        ah += ak.mulf(half(&caps[k], 1));
+        ai += *ak * zp[k];
+    }
+    rd.check(il == al && ih == ah && ii == ai);
 }

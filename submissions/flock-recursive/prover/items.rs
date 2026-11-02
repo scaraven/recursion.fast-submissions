@@ -33,39 +33,48 @@ pub fn items_seq() -> Vec<(&'static str, It)> {
             v.push((ph, It::Squeeze));
         }
     };
+    // `flock-128` (D128 §4.1, `FRShape4.phasesOf seq4`): a 16-byte nonce after the absorb before
+    // every grinded phase (`NONCE_LEN`), the degree-3 rounds 64 B, the standalone nonce absorbs
+    // `S1n`, `Lr1n`, `E1n`, `B'n`, `P3n` (field `F_NONCE`), E1 13, RS1 5 and P2.4 7 squeezes, E4 end
+    // 128 B.
+    let nb = pp::NONCE_LEN;
     v.push(("seed", It::Seed));
     ab(&mut v, "stmt", 128, pp::F_STMT);
-    ab(&mut v, "cap0", 32 << pp::CAP_LOG[0], pp::F_CAPS);
+    ab(&mut v, "cap0", (32 << pp::CAP_LOG[0]) + nb, pp::F_CAPS);
     sq(&mut v, "Z1", pp::Z1_SQ);
     rounds(&mut v, "Z2", 1, 2048, pp::F_Z2);
-    rounds(&mut v, "Z3", pp::Z3_ROUNDS, 48, pp::F_Z3);
-    ab(&mut v, "Zend", 32, pp::F_ZEND);
+    rounds(&mut v, "Z3", pp::Z3_ROUNDS, pp::RND3_LEN, pp::F_Z3);
+    ab(&mut v, "Zend", 32 + nb, pp::F_ZEND);
     sq(&mut v, "L1", 1);
-    rounds(&mut v, "L2", pp::L2_ROUNDS, 48, pp::F_L2);
-    ab(&mut v, "L3", 16 * pp::L3_KINDS, pp::F_L2);
+    rounds(&mut v, "L2", pp::L2_ROUNDS, pp::RND2_LEN, pp::F_L2);
+    ab(&mut v, "L3", 16 * pp::L3_KINDS + nb, pp::F_L2);
     sq(&mut v, "L3β", 1);
+    ab(&mut v, "S1n", nb, pp::F_NONCE);
     sq(&mut v, "S1", pp::S1_SQ);
-    rounds(&mut v, "S2", pp::S2_ROUNDS, 48, pp::F_S2);
+    rounds(&mut v, "S2", pp::S2_ROUNDS, pp::RND2_LEN, pp::F_S2);
+    ab(&mut v, "Lr1n", nb, pp::F_NONCE);
     sq(&mut v, "Lr1", pp::LR1_SQ);
-    rounds(&mut v, "Lr2", pp::LR_ROUNDS, 48, pp::F_LR);
-    ab(&mut v, "Lrend", 48, pp::F_LREND);
+    rounds(&mut v, "Lr2", pp::LR_ROUNDS, pp::RND3_LEN, pp::F_LR);
+    ab(&mut v, "Lrend", pp::LREND_LEN + nb, pp::F_LREND);
     sq(&mut v, "Lr3", 1);
+    ab(&mut v, "E1n", nb, pp::F_NONCE);
     sq(&mut v, "E1", pp::E1_SQ);
-    rounds(&mut v, "E2", pp::E2_ROUNDS, 48, pp::F_E);
-    ab(&mut v, "Eend", 48, pp::F_EEND);
+    rounds(&mut v, "E2", pp::E2_ROUNDS, pp::RND3_LEN, pp::F_E);
+    ab(&mut v, "Eend", pp::EEND_LEN + nb, pp::F_EEND);
     sq(&mut v, "E3", 1);
-    rounds(&mut v, "E4", pp::E4_ROUNDS, 48, pp::F_E);
+    rounds(&mut v, "E4", pp::E4_ROUNDS, pp::RND2_LEN, pp::F_E);
     ab(&mut v, "E4end", pp::E4END_LEN, pp::F_E);
-    ab(&mut v, "RS0", pp::RS_CLAIMS * 128 * 16, pp::F_RS0);
+    ab(&mut v, "RS0", pp::RS_CLAIMS * 128 * 16 + nb, pp::F_RS0);
     sq(&mut v, "RS1", pp::RS1_SQ);
+    ab(&mut v, "B'n", nb, pp::F_NONCE);
     sq(&mut v, "B'", 1);
     let star = ladder(M_STAR);
     for i in 0..LEVELS {
         rounds(&mut v, "P1", star[i].rows_log, 96, pp::F_P1);
         if i + 1 < LEVELS {
-            ab(&mut v, "C", 32 << pp::CAP_LOG[i + 1], pp::F_CAPS);
+            ab(&mut v, "C", (32 << pp::CAP_LOG[i + 1]) + nb, pp::F_CAPS);
         } else {
-            ab(&mut v, "C", 32 * pp::FINAL_ELEMS, pp::F_FINAL);
+            ab(&mut v, "C", 32 * pp::FINAL_ELEMS + nb, pp::F_FINAL);
         }
         sq(&mut v, "P2", STAR_SQ[i]);
         for _ in 0..star[i].queries {
@@ -74,10 +83,41 @@ pub fn items_seq() -> Vec<(&'static str, It)> {
                 v.push(("Q", It::Node { level: i, depth: d }));
             }
         }
+        ab(&mut v, "P3n", nb, pp::F_NONCE);
         sq(&mut v, "P3", pp::P3_SQ);
     }
     rounds(&mut v, "Pf", pp::PF_ROUNDS, 96, pp::F_PF);
+    // revision 4.4.1 (β′): the committed path digests, ζ, the selectors, z (phases 52–55)
+    ab(&mut v, "CapD", 32 * pp::CAP_READS, pp::F_D);
+    sq(&mut v, "CapZeta", 1);
+    ab(&mut v, "CapChk", 32 * pp::CAP_ENTRIES, pp::F_A);
+    sq(&mut v, "CapChkZ", 1);
     v
+}
+
+/// `flock-128` (D128 §2.1, `FRShape4.powPosOf seq4`): the Fiat–Shamir positions (index among the
+/// seed, absorb and squeeze items) of the last squeeze of every grinded phase, where the answer's
+/// byte `POW_BYTE` must be zero: every squeeze run's last squeeze except K phases' (`P1`, `Pf`, the
+/// cap check's `CapZeta`, `CapChkZ`). 154 of them.
+pub fn pow_positions() -> Vec<usize> {
+    let fs: Vec<(&'static str, It)> =
+        items_seq().into_iter().filter(|(_, it)| !matches!(it, It::Col { .. } | It::Node { .. })).collect();
+    let mut v = Vec::with_capacity(pp::N_POW);
+    for p in 0..fs.len() {
+        let (ph, it) = fs[p];
+        let last = p + 1 == fs.len() || fs[p + 1].1 != It::Squeeze;
+        if it == It::Squeeze && last && !matches!(ph, "P1" | "Pf" | "CapZeta" | "CapChkZ") {
+            v.push(p);
+        }
+    }
+    v
+}
+
+/// The phase of grinded answer `p` (`pow_positions` order, the node's `T.pw` order): for error messages.
+pub fn pow_phase(p: usize) -> &'static str {
+    let fs: Vec<&'static str> =
+        items_seq().into_iter().filter(|(_, it)| !matches!(it, It::Col { .. } | It::Node { .. })).map(|(ph, _)| ph).collect();
+    pow_positions().get(p).map_or("?", |&i| fs[i])
 }
 
 /// The items as `ItemRec`s (the KAT's form).
@@ -92,6 +132,32 @@ pub fn item_recs() -> Vec<ItemRec> {
             It::Node { level, depth } => ItemRec { phase, q: "node", len: None, level: Some(level), depth: Some(depth), qlen: 72 },
         })
         .collect()
+}
+
+/// G4's cheap check of a taped trace (`oracle::finish_trace`): `k` segment item sequences (A.4),
+/// with the 89-byte spacer between consecutive ones (`agg::spacer_q`), every query of its item's
+/// length. The tape is the verifier's trace by construction; this catches a missing, extra or
+/// misplaced item before `SIGN`.
+pub fn shape_ok(tr: &[(Vec<u8>, Digest)], k: usize) -> bool {
+    static Q: std::sync::OnceLock<Vec<usize>> = std::sync::OnceLock::new();
+    let ql = Q.get_or_init(|| item_recs().iter().map(|r| r.qlen).collect());
+    if k == 0 || tr.len() != k * ql.len() + (k - 1) {
+        return false;
+    }
+    let mut at = 0;
+    for s in 0..k {
+        if s > 0 {
+            if tr[at].0 != crate::agg::spacer_q() {
+                return false;
+            }
+            at += 1;
+        }
+        if tr[at..at + ql.len()].iter().zip(ql.iter()).any(|((q, _), &l)| q.len() != l) {
+            return false;
+        }
+        at += ql.len();
+    }
+    true
 }
 
 /// `reassemble tr` (A.5) for a leaf kind: `None` if the trace does not have A.4's shape.
@@ -192,10 +258,28 @@ mod tests {
         let recs = item_recs();
         assert_eq!(recs.len(), pp::N_ITEMS);
         assert_eq!(recs.iter().filter(|r| r.q != "col" && r.q != "node").count(), pp::N_FS_ITEMS);
-        let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../logs/INT-8/dump/items.json");
+        // `FLOCK_ITEMS_JSON` (`flock-128`: `logs/I12/dump/items.json`, `itemdump items`), else E1b's dump
+        let p = std::env::var_os("FLOCK_ITEMS_JSON").map(std::path::PathBuf::from).unwrap_or_else(|| {
+            std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../logs/I6b/dump/items.json")
+        });
         match crate::kat::load_items(&p) {
             Some(want) => crate::kat::compare(&recs, &want).unwrap(),
             None => eprintln!("items_seq_kat: items.json absent, counts only"),
+        }
+    }
+
+    /// The grinded positions: 154, and Lean's `powPosOf seq4` when `FLOCK_POWPOS` names its dump
+    /// (`itemdump powpos`, one position per line).
+    #[test]
+    fn pow_positions_kat() {
+        let v = pow_positions();
+        assert_eq!(v.len(), pp::N_POW);
+        match std::env::var_os("FLOCK_POWPOS").and_then(|p| std::fs::read_to_string(p).ok()) {
+            Some(s) => {
+                let want: Vec<usize> = s.split_whitespace().map(|x| x.parse().unwrap()).collect();
+                assert_eq!(v, want);
+            }
+            None => eprintln!("pow_positions_kat: FLOCK_POWPOS absent, count only"),
         }
     }
 

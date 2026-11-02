@@ -291,6 +291,195 @@ pub fn rs_weight(claims: &[(&[F], F)], rpp: &[F], rho: &[K]) -> K {
     out
 }
 
+// ---------------------------------------------------------------- the direct open (lever G1)
+//
+// Ligerito's level 0 folds the `DLO = 6` low variables `l` of the packed index `y = l + 64h` first
+// (`ROW_LOG[0]`). A claim's weight is `W_j(l, h) = c_j Φ(eqlo(l)·ehi(h))` with `eqlo = eq(hi[..6], ·)`
+// and `ehi = eq(hi[6..], ·)` (times the node's `kf(h >> 1)`), and `Φ` is `F₂`-linear, so
+// `W_j(l, h) = Σ_β bit_β(ehi(h)) Wst[β, l]` with `Wst[β, l] = c_j Φ(eqlo(l)·b_β)`. Hence
+// `Σ_h W_j(l, h) g(l′, h) = Σ_β Wst[β, l] A[β, l′]` with the banked statistic
+// `A[β, l′] = Σ_h bit_β(ehi(h)) f(l′, h)`, the bit transpose of `M_{l′}[γ] = Σ_h ehi(h) bit_γ(f(l′, h))`,
+// which is the block partial fold `Z(t) = Σ_blk eblk(blk) z(blk, t)` (`t = 128 y_in + γ`) read at
+// `y_in = l′ + 64 b₆` and combined over `b₆` by `eq(hi[6], b₆)`. The 6 rounds then run on 128 banks
+// of 64 entries per claim (`ligerito::rounds_direct`), never touching `W`'s 2^(m−7) entries; after
+// them the folded weight is `wk[h] = Σ_j Ψ_j(ehi_j(h))`, `Ψ_j(b_β) = W̃st[β](s)` (16 byte tables),
+// and `f` is folded once by `eq(s, ·)` (one 64 → 1 pass). Every quantity is the field element the
+// table path computes, so `π` is unchanged (Flock `docs/yukon-optimizations.tex` §directopen,
+// §directopenrefine, §statsladder; re-derived for this weight).
+
+/// The variables of level 0 that the direct open folds (`params::ROW_LOG[0]`).
+pub const DLO: usize = 6;
+
+/// One claim of the direct open.
+pub struct DClaim {
+    /// `wst[64β + l] = c Φ(eqlo(l)·b_β)`.
+    pub wst: Vec<F>,
+    /// `a[64β + l] = Σ_h bit_β(ehi(h)) f(l, h)`.
+    pub a: Vec<F>,
+    /// The coordinates of `h` (`hi[6..]`).
+    pub hh: Vec<F>,
+    /// The per-block factor (`kf[h >> 1]`), if any.
+    pub kf: Option<Vec<F>>,
+    /// `k₀ ≤ DLO`: `hi[k₀..DLO] = 0`, so `W` lives on `l < 2^k₀` and `A` is kept for those `l`
+    /// only (Sh's claim: `k₀ = 3`, its block fold is the shift's 16-word prefix `zs`). Rounds
+    /// `r ≥ k₀` take this claim's message from `f` directly (`ligerito::rounds_direct`).
+    pub k0: usize,
+}
+
+/// The level-0 weight of the direct open: the claims and the sparse point weights `(y, p)` (a node's
+/// public cells).
+pub struct Direct {
+    pub claims: Vec<DClaim>,
+    pub cells: Vec<(usize, F)>,
+}
+
+/// The direct open is the default; `FLOCK_NO_OPEN_DIRECT=1` (or `set_direct(false)` on the calling
+/// thread) restores the weight table (`weight_table_kf`), for A/B runs and tests.
+pub fn direct_on() -> bool {
+    static ENV: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    let env = *ENV.get_or_init(|| std::env::var_os("FLOCK_NO_OPEN_DIRECT").is_none());
+    DIRECT.with(|d| d.get().unwrap_or(env))
+}
+
+thread_local! {
+    static DIRECT: std::cell::Cell<Option<bool>> = const { std::cell::Cell::new(None) };
+}
+
+/// Force the direct open on or off on this thread (tests).
+pub fn set_direct(on: Option<bool>) {
+    DIRECT.with(|d| d.set(on));
+}
+
+/// A claim of the direct open from its point `hi` (`μ` coordinates), coefficient `c`, per-block
+/// factor `kf`, and its block fold `zf` (`Z(t)` at `hi[7..]`, times `kf`, for `t < zf.len()`; the
+/// positions `≥ 8192` are needed only when `hi[6] ≠ 0`).
+pub fn dclaim(hi: &[F], c: F, kf: Option<&[F]>, zf: &[F], rpp: &[F]) -> DClaim {
+    assert!(hi.len() > DLO + 1 && zf.len() >= 128 && zf.len().is_power_of_two());
+    let e6 = [F::ONE + hi[DLO], hi[DLO]];
+    assert!(zf.len() >= 1 << 14 || e6[1].is_zero(), "dclaim: the block fold misses y_in ≥ 64");
+    // a fold shorter than 64 elements: the claim must vanish beyond them (`hi[k₀..DLO] = 0`)
+    let k0 = (zf.len() / 128).trailing_zeros().min(DLO as u32) as usize;
+    assert!(hi[k0..DLO].iter().all(|x| x.is_zero()), "dclaim: the block fold misses y_in ≥ 2^k0");
+    let eqlo = eq_table(&hi[..DLO]);
+    let t = phi_tables(rpp, c);
+    // per l: the column `Wst[·, l]` and the column `A[·, l]` (the bit transpose of `M_l`)
+    let cols: Vec<(Vec<F>, Vec<F>)> = par::collect_vec(64, 1, |l| {
+        let mut w = vec![F::ZERO; 128];
+        if !eqlo[l].is_zero() {
+            for (b, x) in w.iter_mut().enumerate() {
+                *x = phi_apply(&t, eqlo[l] * basis(b));
+            }
+        }
+        let mut ml = [F::ZERO; 128];
+        for (b6, e) in e6.iter().enumerate() {
+            if e.is_zero() || l >> k0 != 0 {
+                continue;
+            }
+            let o = 128 * (l + 64 * b6);
+            for (g, x) in ml.iter_mut().enumerate() {
+                *x += *e * zf[o + g];
+            }
+        }
+        let mut a = vec![F::ZERO; 128];
+        for (g, x) in ml.iter().enumerate() {
+            let (gw, gb) = (g >> 6, 1u64 << (g & 63));
+            for (wi, mut word) in [x.lo, x.hi].into_iter().enumerate() {
+                while word != 0 {
+                    let b = 64 * wi + word.trailing_zeros() as usize;
+                    if gw == 0 {
+                        a[b].lo ^= gb;
+                    } else {
+                        a[b].hi ^= gb;
+                    }
+                    word &= word - 1;
+                }
+            }
+        }
+        (w, a)
+    });
+    let mut wst = vec![F::ZERO; 128 * 64];
+    let mut a = vec![F::ZERO; 128 * 64];
+    for (l, (w, x)) in cols.iter().enumerate() {
+        for b in 0..128 {
+            wst[64 * b + l] = w[b];
+            a[64 * b + l] = x[b];
+        }
+    }
+    DClaim { wst, a, hh: hi[DLO..].to_vec(), kf: kf.map(|k| k.to_vec()), k0 }
+}
+
+/// `Ψ`'s 16 byte tables for the bank weights `w` (`Ψ(b_β) = w[β·stride]`, `β < 128`).
+pub fn psi_tables(w: &[K], stride: usize) -> Vec<K> {
+    let mut t = vec![K::ZERO; 16 * 256];
+    for p in 0..16 {
+        for val in 1..256usize {
+            let low = val & val.wrapping_neg();
+            t[p * 256 + val] = t[p * 256 + (val ^ low)] + w[(8 * p + low.trailing_zeros() as usize) * stride];
+        }
+    }
+    t
+}
+
+#[inline(always)]
+pub fn psi_apply(t: &[K], e: F) -> K {
+    let b = e.to_bytes();
+    let mut acc = K::ZERO;
+    for p in 0..16 {
+        acc += t[p * 256 + b[p] as usize];
+    }
+    acc
+}
+
+/// `ehi(h) = eq(hh, h)·kf(h >> 1)` by split tables.
+pub struct Ehi<'a> {
+    lo: Vec<F>,
+    hi: Vec<F>,
+    nlo: usize,
+    kf: Option<&'a [F]>,
+}
+impl<'a> Ehi<'a> {
+    pub fn new(c: &'a DClaim) -> Ehi<'a> {
+        let nlo = c.hh.len().min(10);
+        Ehi { lo: eq_table(&c.hh[..nlo]), hi: eq_table(&c.hh[nlo..]), nlo, kf: c.kf.as_deref() }
+    }
+    #[inline(always)]
+    pub fn at(&self, h: usize) -> F {
+        let eh = self.hi[h >> self.nlo];
+        if eh.is_zero() {
+            return F::ZERO;
+        }
+        let e = self.lo[h & ((1 << self.nlo) - 1)] * eh;
+        match self.kf {
+            Some(k) => e * k[h >> 1],
+            None => e,
+        }
+    }
+}
+
+/// The folded weight `wk[h] = Σ_j Ψ_j(ehi_j(h)) + Σ_{cells at h} cw` (`nh` entries): `ws[j]` are claim
+/// `j`'s 128 folded bank weights `W̃st[β](s)`, `cw` the cells' folded weights `(h, value)`.
+pub fn folded_weight(claims: &[DClaim], ws: &[&[K]], cells: &[(usize, K)], nh: usize) -> Vec<K> {
+    let mut wk: Vec<K> = par::uninit_vec(nh);
+    par::for_each_chunk_mut(&mut wk, 1 << 12, |_, ch| ch.iter_mut().for_each(|x| *x = K::ZERO));
+    for (c, w) in claims.iter().zip(ws.iter()) {
+        assert_eq!(1usize << c.hh.len(), nh);
+        let t = psi_tables(w, 1);
+        let eh = Ehi::new(c);
+        par::for_each_chunk_mut(&mut wk, 1 << 12, |off, ch| {
+            for (i, x) in ch.iter_mut().enumerate() {
+                let e = eh.at(off + i);
+                if !e.is_zero() {
+                    *x += psi_apply(&t, e);
+                }
+            }
+        });
+    }
+    for &(h, v) in cells {
+        wk[h] += v;
+    }
+    wk
+}
+
 /// `x` as a BF64 if it is one (tests).
 pub fn _b(x: F) -> Option<B64> {
     (x.hi == 0).then_some(B64(x.lo))
@@ -341,6 +530,79 @@ mod tests {
             lhs += w[y] * F::new(z[2 * y], z[2 * y + 1]);
         }
         assert_eq!(lhs, kap * switched(&sv, &rpp));
+    }
+
+    /// The direct open's identities (lever G1) against the weight table: the banked statistics give
+    /// `Σ_h W(l, h) f(l′, h)` for every `(l, l′)`, and `folded_weight` is `W` folded at `s` (a dense
+    /// claim, one with a per-block factor, one with zero coordinates, and that one from the 16-word
+    /// prefix fold as Sh's).
+    #[test]
+    fn direct_open_identities() {
+        let mut s = 123u64;
+        let mut rf = || F::new(rnd(&mut s), rnd(&mut s));
+        let mu = 18; // m = 25: 2^11 blocks of 128 elements
+        let rpp: Vec<F> = (0..7).map(|_| rf()).collect();
+        let h0: Vec<F> = (0..mu).map(|_| rf()).collect();
+        let h1: Vec<F> = (0..mu).map(|_| rf()).collect();
+        let h2: Vec<F> = (0..mu).map(|i| if (3..7).contains(&i) { F::ZERO } else { rf() }).collect();
+        let kf: Vec<F> = (0..1usize << (mu - 7)).map(|_| rf()).collect();
+        let cs = [rf(), rf(), rf()];
+        let mut s2 = 99u64;
+        let z: Vec<u64> = (0..(2usize << mu)).map(|i| if (i >> 8) % 5 == 3 { 0 } else { rnd(&mut s2) }).collect();
+        let nb = z.len() / 256;
+        let f: Vec<F> = (0..1usize << mu).map(|y| F::new(z[2 * y], z[2 * y + 1])).collect();
+        // block folds: Z at hi[7..] (times kf for claim 1), over the whole block or its first half
+        let fold = |hb: &[F], kf: Option<&[F]>, nw: usize| -> Vec<F> {
+            let e = crate::mle::eq_table(hb);
+            let mut out = vec![F::ZERO; 64 * nw];
+            for b in 0..nb {
+                let w = e[b] * kf.map_or(F::ONE, |k| k[b]);
+                for t in 0..64 * nw {
+                    if (z[256 * b + t / 64] >> (t % 64)) & 1 == 1 {
+                        out[t] += w;
+                    }
+                }
+            }
+            out
+        };
+        assert!(crate::lincheck::partial_fold(&z, &h0[7..], nb) == fold(&h0[7..], None, 256));
+        let dc = [
+            dclaim(&h0, cs[0], None, &fold(&h0[7..], None, 256), &rpp),
+            dclaim(&h1, cs[1], Some(&kf[..]), &fold(&h1[7..], Some(&kf[..]), 256), &rpp),
+            dclaim(&h2, cs[2], None, &fold(&h2[7..], None, 128), &rpp),
+        ];
+        // Sh's form: the 16-word prefix fold (`k₀ = 3`) keeps the same `Wst` and `A` on `l < 8`
+        let d3 = dclaim(&h2, cs[2], None, &fold(&h2[7..], None, 16), &rpp);
+        assert!(d3.k0 == 3 && dc[2].k0 == DLO && d3.wst == dc[2].wst);
+        assert!((0..128 * 64).all(|i| if i % 64 < 8 { d3.a[i] == dc[2].a[i] } else { d3.a[i].is_zero() }));
+        let cl: Vec<(&[F], F, Option<&[F]>)> = vec![(&h0[..], cs[0], None), (&h1[..], cs[1], Some(&kf[..])), (&h2[..], cs[2], None)];
+        for j in 0..3 {
+            let w = weight_table_kf_ref(&cl[j..j + 1], &rpp);
+            for (l, lp) in [(0usize, 0usize), (5, 5), (3, 40), (63, 1), (7, 9), (2, 33)] {
+                let mut want = F::ZERO;
+                for h in 0..(1usize << (mu - 6)) {
+                    want += w[64 * h + l] * f[64 * h + lp];
+                }
+                let mut got = F::ZERO;
+                for b in 0..128 {
+                    got += dc[j].wst[64 * b + l] * dc[j].a[64 * b + lp];
+                }
+                assert_eq!(got, want, "claim {j} (l, l') = ({l}, {lp})");
+            }
+            // the folded weight at a K point
+            let sp: Vec<K> = (0..6).map(|_| K { a: rf(), b: rf() }).collect();
+            let es = crate::mle::eq_table_k(&sp);
+            let ws: Vec<K> = (0..128).map(|b| (0..64).fold(K::ZERO, |a, l| a + es[l].mulf(dc[j].wst[64 * b + l]))).collect();
+            let cells = [(5usize, K { a: rf(), b: rf() })];
+            let wk = folded_weight(&dc[j..j + 1], &[&ws[..]], &cells, 1 << (mu - 6));
+            for h in 0..(1usize << (mu - 6)) {
+                let mut want = (0..64).fold(K::ZERO, |a, l| a + es[l].mulf(w[64 * h + l]));
+                if h == 5 {
+                    want += cells[0].1;
+                }
+                assert_eq!(wk[h], want, "claim {j} h {h}");
+            }
+        }
     }
 
     /// The row-table weight table equals the reference (dense, sparse, and a per-block factor) at

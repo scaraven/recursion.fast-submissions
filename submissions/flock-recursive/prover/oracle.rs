@@ -25,6 +25,8 @@ use crate::par;
 
 /// Writes query `i` by appending its bytes to the buffer.
 pub type Builder<'a> = dyn Fn(usize, &mut Vec<u8>) + Sync + 'a;
+/// Writes query `i` of batch `b` (`build(b, i, buf)`).
+pub type Builder2<'a> = dyn Fn(usize, usize, &mut Vec<u8>) + Sync + 'a;
 
 pub trait Oracle: Sync {
     /// The answer to one query.
@@ -38,6 +40,54 @@ pub trait Oracle: Sync {
             *o = self.ask(&buf);
         }
     }
+    /// Several independent batches at once (the grinder's sub-batches, `transcript::Fs::grind`):
+    /// `outs[b][i]` is the answer to query `i` of batch `b`. Not recorded for the replay (the grinder
+    /// asks the winning attempt again through `ask`). The default runs `ask_many` per batch in
+    /// parallel.
+    fn ask_batches(&self, outs: &mut [Vec<Digest>], build: &Builder2) {
+        par::for_each_chunk_mut(outs, 1, |off, ch| {
+            for (j, o) in ch.iter_mut().enumerate() {
+                self.ask_many(o, &|i, buf: &mut Vec<u8>| build(off + j, i, buf));
+            }
+        });
+    }
+    /// G4: a verifier item whose answer the prover already holds, in the verifier's order (an
+    /// opened column or Merkle node, a grinded phase's winning absorb and squeezes). Nothing is
+    /// sent; a taping `Recorder` appends it to the trace (and, when keeping, to the replay table).
+    fn note(&self, _q: &[u8], _a: &Digest) {}
+    /// Whether `note` records anything (the prover builds the noted queries only then).
+    fn taping(&self) -> bool {
+        false
+    }
+    /// The grinder's search in one call (`transcript::Fs::grind`), for an oracle that has one
+    /// (`service::Service`: pipelined batches); `None`: the grinder uses `ask_batches`.
+    fn grind(&self, _job: &GrindJob) -> Option<GrindWin> {
+        None
+    }
+}
+
+/// A grinded phase (D128 §2.1, `transcript::Fs::grind`): the attempt for nonce `n` is the absorb
+/// query `pre ‖ enc64 n ‖ 0^8` followed by `nsq` squeezes `"FRSQZ000" ‖ a`; it wins if the last
+/// answer's byte `POW_BYTE` is zero. The search must return the **smallest** winning nonce.
+pub struct GrindJob<'a> {
+    pub pre: &'a [u8],
+    pub nsq: usize,
+    /// nonces per request
+    pub batch: usize,
+    /// requests in flight (one connection each)
+    pub depth: usize,
+}
+
+/// The smallest winning nonce, its attempt's answers (absorb, then the `nsq` squeezes) and the
+/// cost counters of the search.
+pub struct GrindWin {
+    pub nonce: u64,
+    pub abs: Digest,
+    pub sq: Vec<Digest>,
+    pub attempts: u64,
+    pub queries: u64,
+    pub compressions: u64,
+    pub rounds: u64,
 }
 
 /// An in-process oracle.
@@ -155,16 +205,34 @@ pub struct Recorder<'a> {
     /// batch queries longer than this are not kept (the replay asks them again)
     pub batch_max: usize,
     table: Mutex<Vec<(u128, Digest)>>,
+    /// G4: every `ask` and `note`, in order (the verifier's trace), when taping
+    tape: Option<Mutex<Trace>>,
     pub stats: Stats,
 }
 
 impl<'a> Recorder<'a> {
     pub fn new(inner: &'a dyn Oracle) -> Recorder<'a> {
-        Recorder { inner, keep: true, batch_max: usize::MAX, table: Mutex::new(Vec::new()), stats: Stats::default() }
+        Recorder { inner, keep: true, batch_max: usize::MAX, table: Mutex::new(Vec::new()), tape: None, stats: Stats::default() }
     }
     /// Counts only; `into_table` is then empty.
     pub fn counting(inner: &'a dyn Oracle) -> Recorder<'a> {
         Recorder { keep: false, ..Recorder::new(inner) }
+    }
+    /// G4: also tape every `ask` and `note` in order (`take_tape`).
+    pub fn taped(mut self) -> Recorder<'a> {
+        self.tape = Some(Mutex::new(Vec::with_capacity(4 * crate::params::N_ITEMS + 8)));
+        self
+    }
+    /// The prover's recorder for a signed proof: taping, and keeping the replay table only for the
+    /// cross-check (`trace_check`).
+    pub fn for_trace(inner: &'a dyn Oracle) -> Recorder<'a> {
+        let mut r = if trace_check() { Recorder::new(inner) } else { Recorder::counting(inner) }.taped();
+        r.batch_max = 128;
+        r
+    }
+    /// The tape so far (emptied).
+    pub fn take_tape(&self) -> Trace {
+        self.tape.as_ref().map(|t| std::mem::take(&mut *t.lock().unwrap())).unwrap_or_default()
     }
     pub fn into_table(self) -> Table {
         let mut v = self.table.into_inner().unwrap();
@@ -174,6 +242,42 @@ impl<'a> Recorder<'a> {
 }
 
 impl Oracle for Recorder<'_> {
+    fn note(&self, q: &[u8], a: &Digest) {
+        if let Some(t) = &self.tape {
+            t.lock().unwrap().push((q.to_vec(), *a));
+        }
+        if self.keep {
+            self.table.lock().unwrap().push((fp(q), *a));
+        }
+    }
+    fn taping(&self) -> bool {
+        self.tape.is_some() || self.keep
+    }
+    /// Forwarded and counted; nothing kept (the winning attempt reaches the trace by `note`).
+    fn grind(&self, job: &GrindJob) -> Option<GrindWin> {
+        let t = Instant::now();
+        let w = self.inner.grind(job)?;
+        self.stats.many_ns.fetch_add(t.elapsed().as_nanos() as u64, Ordering::Relaxed);
+        self.stats.manys.fetch_add(w.rounds, Ordering::Relaxed);
+        self.stats.queries.fetch_add(w.queries, Ordering::Relaxed);
+        Some(w)
+    }
+    /// Forwarded, counted, never kept in the table (the grinder's failed attempts are not asked by
+    /// the verifier; its winning attempt reaches the trace and the table by `note`).
+    fn ask_batches(&self, outs: &mut [Vec<Digest>], build: &Builder2) {
+        let t = Instant::now();
+        let bytes = AtomicU64::new(0);
+        self.inner.ask_batches(outs, &|b, i, buf: &mut Vec<u8>| {
+            let st = buf.len();
+            build(b, i, buf);
+            bytes.fetch_add((buf.len() - st) as u64, Ordering::Relaxed);
+        });
+        let n: usize = outs.iter().map(|o| o.len()).sum();
+        self.stats.many_ns.fetch_add(t.elapsed().as_nanos() as u64, Ordering::Relaxed);
+        self.stats.manys.fetch_add(1, Ordering::Relaxed);
+        self.stats.queries.fetch_add(n as u64, Ordering::Relaxed);
+        self.stats.bytes.fetch_add(bytes.into_inner(), Ordering::Relaxed);
+    }
     fn ask(&self, q: &[u8]) -> Digest {
         let t = Instant::now();
         let a = self.inner.ask(q);
@@ -183,6 +287,9 @@ impl Oracle for Recorder<'_> {
         self.stats.bytes.fetch_add(q.len() as u64, Ordering::Relaxed);
         if self.keep {
             self.table.lock().unwrap().push((fp(q), a));
+        }
+        if let Some(t) = &self.tape {
+            t.lock().unwrap().push((q.to_vec(), a));
         }
         a
     }
@@ -231,6 +338,40 @@ impl Oracle for Recorder<'_> {
 
 /// A trace: queries with their answers, in the order the verifier asks them.
 pub type Trace = Vec<(Vec<u8>, Digest)>;
+
+/// `FLOCK_TRACE_CHECK=1`: besides taping the trace while proving (G4), replay the native verifier
+/// on the prover's answers and require the same trace (the pre-G4 path, now a test-mode check).
+pub fn trace_check() -> bool {
+    static C: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *C.get_or_init(|| std::env::var("FLOCK_TRACE_CHECK").is_ok_and(|v| v != "0"))
+}
+
+/// The verifier's trace of a proof made through `rec` (`Recorder::for_trace`): its tape (G4). When
+/// `rec` kept its table (`trace_check`), the native verifier `verify` is also replayed on the
+/// prover's answers (`fallback` for a query the table lacks), and it must accept and ask exactly
+/// the tape's queries with the tape's answers.
+pub fn finish_trace(rec: Recorder, fallback: &dyn Oracle, verify: &dyn Fn(&dyn Oracle) -> bool) -> Result<Trace, String> {
+    let tape = rec.take_tape();
+    if !rec.keep {
+        return Ok(tape);
+    }
+    let table = rec.into_table();
+    let mut rp = Replay::new(&table);
+    rp.fallback = Some(fallback);
+    if !verify(&rp) {
+        return Err("the native verifier rejects the proof (replay)".into());
+    }
+    let (tr, missing) = rp.finish();
+    if missing != 0 {
+        return Err(format!("{missing} verifier queries were not asked while proving"));
+    }
+    if tr != tape {
+        let i = tr.iter().zip(tape.iter()).position(|(a, b)| a != b).unwrap_or(tr.len().min(tape.len()));
+        return Err(format!("the tape differs from the replay at item {i} (|tape| {}, |replay| {})", tape.len(), tr.len()));
+    }
+    eprintln!("trace check: the tape equals the native verifier's replay ({} items)", tr.len());
+    Ok(tape)
+}
 
 /// Answers from the prover's table and records the queries asked, in order.
 pub struct Replay<'a> {

@@ -2,7 +2,7 @@
 -- the 3.x soundness modules that the revision 4.1 certificate reads, moved here verbatim (same
 -- names, statements and proofs) from `FRSoundnessFrWalk` (20). Content: the front walk's bridge
 -- lemmas (`walk_bridge`, `lc_bridge`, `free_term`, …). The 3.x modules import this one.
-import FRSoundnessCoreAcc
+import FRSoundness4P4aSeg
 import FRSoundnessCoreFront
 
 /-! ## From `FRSoundnessFrWalk` (20 declarations) -/

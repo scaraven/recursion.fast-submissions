@@ -96,7 +96,7 @@ theorem TL_same4 (hz : ZwSame zw) (h : T4.Same L es L' es' p) (hp : 69 ≤ p) :
   unfold TL rbLc rwL rhiL
   rw [zN_same4 hz h (by omega), hk, hl, hr, ha]
 
-theorem TL_local4 (hz : ZwSame zw) : TruthLocal2 69 (fun _ es => c0L es) (TL M zw) :=
+theorem TL_local4 (hz : ZwSame zw) : TruthLocal 69 (fun _ es => c0L es) (TL M zw) :=
   fun L _ _ h => ⟨TL_same4 hz (T4.same_of_agree L h) le_rfl, c0L_agree h⟩
 
 theorem TL_size4 (L es : Log) : ∀ t ∈ TL M zw L es, t.size = 2 ^ (fun _ => 14) (kindOfC es) :=
@@ -148,7 +148,7 @@ theorem pendLcN_reads4 (hz : ZwSame zw) : T4.Reads 99 (PendLcN M zw) :=
 
 theorem pLc_reads4 (b : Bool) : T4.Reads 98 (PLc M b) := fun L es L' es' _ _ hS => by
   obtain ⟨hk, hl, hr, ha, -, -⟩ := lin_agree4 (hS.1.mono (by norm_num))
-  have hc := clR2_same (b := 69) (wd := 16) (rd := readF) (ch := fun d => chF d 0)
+  have hc := T4.clR2d_same (b := 69)
     (c0 := fun _ es => c0L es) (L := L) (L' := L') (c0L_agree (hS.1.mono (by norm_num)))
     (l := 14) (hS.1.mono (by norm_num))
   have hrw : rwL es = rwL es' := by unfold rwL rhiL; rw [hl, hr]
@@ -163,7 +163,7 @@ theorem lDooms_log4 (hz : ZwSame zw) (h : T4.Same L X L' X p) (hp : 3 ≤ p) :
   have ha : aLin M zw L X = aLin M zw L' X ∧ bLin M zw L X = bLin M zw L' X := by
     unfold aLin bLin; rw [hzN]; exact ⟨rfl, rfl⟩
   have hf : zfL M zw L X = zfL M zw L' X := by unfold zfL; rw [hzN]
-  refine ⟨by unfold L1Bad; rw [ha.1, ha.2], T4.D2_congrL (by unfold TL; rw [hzN]) rfl,
+  refine ⟨by unfold L1Bad; rw [ha.1, ha.2], Iff.symm (T4.D2d_log_congr (by unfold TL; rw [hzN]) rfl),
     by unfold L3Bad; rw [hf], by unfold PendLc tL; rw [hf], by unfold L3BadN; rw [hf],
     by unfold PendLcN tNL; rw [hf]⟩
 
@@ -176,15 +176,17 @@ variable {M : ZLM4} {zw : Wit}
 
 open Classical in
 /-- **L1's squeeze** (A.10 L1, `1·2^128`; `batch_count` at 2 claims). -/
-theorem l1_single4 (hz : ZwSame zw) (L es : Log) (hl : es.length = 68) :
-    (univ.filter fun a => ZendBad M zw L es ∧ ¬ L1Bad M zw L (ext1 es a)).card ≤ 1 * 2 ^ 128 := by
+theorem l1_single4 (hz : ZwSame zw) (L es : Log) (hl : es.length = 68) (Q : Digest → Prop)
+    (hQ : ∀ a, Q a → pow a) :
+    (univ.filter fun a => ZendBad M zw L es ∧ ¬ L1Bad M zw L (ext1 es a) ∧ Q a).card ≤
+      1 * 2 ^ 120 := by
   by_cases hzb : ZendBad M zw L es
   swap
   · exact (Finset.card_eq_zero.mpr (Finset.filter_eq_empty_iff.mpr fun a _ h =>
       hzb h.1)).trans_le (Nat.zero_le _)
-  refine batch_count _ (fun i : Fin 2 => if i.val = 0 then vZ es 0 else vZ es 1)
+  refine batch_count_pow _ (fun i : Fin 2 => if i.val = 0 then vZ es 0 else vZ es 1)
     (fun i : Fin 2 => if i.val = 0 then aLin M zw L es else bLin M zw L es) (fun he => ?_)
-    fun a ⟨_, hn⟩ => ?_
+    fun a ⟨_, hn, hq⟩ => ⟨?_, hQ a hq⟩
   · apply hzb.2
     have h0 := congrFun he 0; have h1 := congrFun he 1
     simp only [Fin.val_zero, Fin.val_one, if_true, one_ne_zero, if_false] at h0 h1
@@ -211,26 +213,24 @@ theorem l2_habs4 (hz : ZwSame zw) {L es : Log} (x : ByteArray × Digest) (hl : e
   have ha0 : T4.ans3 69 (fun _ => 14) (es ++ [x]) = 0 := by
     simp only [T4.ans3, List.length_append, List.length_singleton, hl]; simp
   rw [ha0]
-  simp only [T4.Wrong2, clR2, rchs2, List.range_zero, List.map_nil, bindAll, Nat.sub_zero]
+  simp only [T4.Wrong2d, clR2d, rchs, List.range_zero, List.map_nil, bindAll, Nat.sub_zero]
   rw [TL_same4 hz hS le_rfl, c0L_agree hS.1]
   unfold TL; rw [lin_trueSum_kinds]
   exact hb.2
 
 open Classical in
-/-- **L2's squeezes** (A.10 L2, `2·2^128`; T4's `D2_single`), with the round checks from
-`¬ RejL2`. -/
-theorem l2_single4 (hz : ZwSame zw) (L es : Log)
-    (hchk : ∀ j, es.length = 69 + 2 * j + 1 → j < 14 →
-      Chk2 69 16 readF (fun d => chF d 0) (fun _ es => c0L es) L es j) :
-    (univ.filter fun d => D2L M zw L es ∧ ¬ D2L M zw L (ext1 es d)).card ≤ 2 * 2 ^ 128 :=
-  T4.D2_single (by norm_num) (TL_local4 hz) (kindExpr_deg 8) card_chF_fiber (TL_size4 (M := M))
-    L es hchk
+/-- **L2's squeezes** (A.10 L2; `flock-128`: `c₂` derived, the proof of work at every round's
+squeeze, `2·2^120`, T4's `D2d_single_pow`). -/
+theorem l2_single4 (hz : ZwSame zw) (L es : Log) (Q : Digest → Prop)
+    (hQ : ∀ j, es.length = 69 + 2 * j + 1 → j < 14 → ∀ a, Q a → pow a) :
+    (univ.filter fun d => D2L M zw L es ∧ ¬ D2L M zw L (ext1 es d) ∧ Q d).card ≤ 2 * 2 ^ 120 :=
+  T4.D2d_single_pow (by norm_num) (TL_local4 hz) (kindExpr_deg 8) (TL_size4 (M := M)) L es Q hQ
 
 /-- An L2 round's absorb keeps the doom. -/
 theorem append_L2_4 (hz : ZwSame zw) {L es : Log} (x : ByteArray × Digest) (hlen : 69 < es.length)
     (hc : (es.length - 69) % 2 = 0 ∨ 14 ≤ (es.length - 69) / 2) :
     D2L M zw L (es ++ [x]) ↔ D2L M zw L es :=
-  T4.D2_append_iff (by norm_num) (TL_local4 hz) x hlen hc
+  T4.D2d_append_iff (nr := fun _ => 14) (by norm_num) (TL_local4 hz) x hlen hc
 
 /-- **L2's round checks are a `T4.RejOK`** (the rounds' absorbs are not `seq4` squeezes). -/
 theorem rejL2_ok4 : T4.RejOK RejL2 where
@@ -265,22 +265,22 @@ theorem l3_core (hz : ZwSame zw) {L es : Log} (x : ByteArray × Digest) (hl : es
   obtain ⟨-, hw⟩ := hd
   have ha : T4.ans3 69 (fun _ => 14) es = 14 := by simp [T4.ans3, hl]
   rw [ha] at hw
-  unfold T4.Wrong2 at hw
+  unfold T4.Wrong2d at hw
   rw [Nat.sub_self] at hw
-  have hfin : trueSum (kindExpr 8) (bindAll (TL M zw L es) (rchs2 69 (fun d => chF d 0) es 14)) 0 =
+  have hfin : trueSum (kindExpr 8) (bindAll (TL M zw L es) (rchs 69 es 14)) 0 =
       ∑ j, mle (linM (M.Ak j) (M.Bk j) (rwL es) (alL es)) (ptOf 14 (rkL es)) * zfL M zw L es j :=
-    lin_final_kinds _ _ _ _ _ _ _ _ (by simp [rchs2])
+    lin_final_kinds _ _ _ _ _ _ _ _ (by simp [rchs])
   rw [hfin] at hw
   obtain ⟨-, hlam, hr, hal, -, -⟩ := lin_agree4 (hS.1.mono (by norm_num))
   have hrk : rkL (es ++ [x]) = rkL es := rkL_agree4 hS.1 le_rfl
   have hrw : rwL (es ++ [x]) = rwL es := by unfold rwL rhiL; rw [hlam, hr]
-  have hc : clR2 69 16 readF (fun d => chF d 0) (fun _ es => c0L es) L (es ++ [x]) 14 =
-      clR2 69 16 readF (fun d => chF d 0) (fun _ es => c0L es) L es 14 :=
-    clR2_congr (c0L_agree (hS.1.mono (by norm_num))) (hS.1.mono (by norm_num))
+  have hc : clR2d 69 (fun _ es => c0L es) L (es ++ [x]) 14 =
+      clR2d 69 (fun _ es => c0L es) L es 14 :=
+    clR2d_congr (c0L_agree (hS.1.mono (by norm_num))) (hS.1.mono (by norm_num))
   by_cases hrej : PLc M (kindOfC es).isNode L (es ++ [x])
   · exact .inl hrej
   refine .inr ?_
-  have hchk : clR2 69 16 readF (fun d => chF d 0) (fun _ es => c0L es) L es 14 =
+  have hchk : clR2d 69 (fun _ es => c0L es) L es 14 =
       ∑ j, vM (kindOfC es) (es ++ [x]) j *
         mle (linM (M.Ak j) (M.Bk j) (rwL es) (alL es)) (ptOf 14 (rkL es)) := by
     by_contra hne
@@ -328,16 +328,18 @@ theorem vBetaL_ext1 (es : Log) (a : Digest) (hb : fAt (ext1 es a) 98 0 = chF a 0
 
 open Classical in
 /-- **L3β's squeeze on a segment** (A.10 L3β, `7·2^128`; `batch_count` at 8 values). -/
-theorem l3b_single4 (hz : ZwSame zw) (hI : M.IndKinds) (L es : Log) (hl : es.length = 98) :
-    (univ.filter fun a => L3Bad M zw L es ∧ ¬ PendLc M zw L (ext1 es a)).card ≤ 7 * 2 ^ 128 := by
+theorem l3b_single4 (hz : ZwSame zw) (hI : M.IndKinds) (L es : Log) (hl : es.length = 98)
+    (Q : Digest → Prop) (hQ : ∀ a, Q a → pow a) :
+    (univ.filter fun a => L3Bad M zw L es ∧ ¬ PendLc M zw L (ext1 es a) ∧ Q a).card ≤
+      7 * 2 ^ 120 := by
   by_cases hb : L3Bad M zw L es
   swap
   · exact (Finset.card_eq_zero.mpr (Finset.filter_eq_empty_iff.mpr fun a _ h =>
       hb h.1)).trans_le (Nat.zero_le _)
   have hzr : ∀ j : Fin 9, (∀ t, M.Ind (kindOfC es) j t = 0) → zfL M zw L es j = 0 := fun j h =>
     mle_zfoldK_zero (Ind := IndF M (kindOfC es) _) (fun t => h t.val) _ _ _
-  refine batch_count _ (fun i : Fin 8 => vL es i) (tL M zw L es) (fun he => ?_)
-    fun a ⟨_, hn⟩ => ?_
+  refine batch_count_pow _ (fun i : Fin 8 => vL es i) (tL M zw L es) (fun he => ?_)
+    fun a ⟨_, hn, hq⟩ => ⟨?_, hQ a hq⟩
   · obtain ⟨-, hn, j, hj⟩ := hb
     by_cases h0 : j = 0
     · subst h0
@@ -356,15 +358,16 @@ theorem l3b_single4 (hz : ZwSame zw) (hI : M.IndKinds) (L es : Log) (hl : es.len
 
 open Classical in
 /-- **L3β's squeeze on a node** (`7·2^128`; `batch_count` at 8 values). -/
-theorem l3bN_single4 (hz : ZwSame zw) (hI : M.IndKinds) (L es : Log) (hl : es.length = 98) :
-    (univ.filter fun a => L3BadN M zw L es ∧ ¬ PendLcN M zw L (ext1 es a)).card ≤
-      7 * 2 ^ 128 := by
+theorem l3bN_single4 (hz : ZwSame zw) (hI : M.IndKinds) (L es : Log) (hl : es.length = 98)
+    (Q : Digest → Prop) (hQ : ∀ a, Q a → pow a) :
+    (univ.filter fun a => L3BadN M zw L es ∧ ¬ PendLcN M zw L (ext1 es a) ∧ Q a).card ≤
+      7 * 2 ^ 120 := by
   by_cases hb : L3BadN M zw L es
   swap
   · exact (Finset.card_eq_zero.mpr (Finset.filter_eq_empty_iff.mpr fun a _ h =>
       hb h.1)).trans_le (Nat.zero_le _)
-  refine batch_count _ (fun i : Fin 8 => vL es i) (tNL M zw L es) (fun he => ?_)
-    fun a ⟨_, hn⟩ => ?_
+  refine batch_count_pow _ (fun i : Fin 8 => vL es i) (tNL M zw L es) (fun he => ?_)
+    fun a ⟨_, hn, hq⟩ => ⟨?_, hQ a hq⟩
   · obtain ⟨-, hn, j, hj⟩ := hb
     by_cases h0 : j = 0
     · subst h0

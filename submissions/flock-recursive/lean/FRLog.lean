@@ -825,6 +825,310 @@ theorem card_idx_fiber (b k : ℕ) (hkb : k * b ≤ 256) (f : Fin k → Fin (2 ^
       Finset.mem_singleton, hiff, Fin.ext_iff, he]]
   simp
 
+/-! ## The proof of work (D128 §2): byte 31 of an answer is zero
+
+`flock-128` grinds every F phase and every Ligerito position phase on byte 31 of the phase's last
+answer (`pow`). Byte 31 is byte 15 of the answer's second F coordinate (`top_byte_eq`) and the top
+byte of `natLE` (`pow_iff_natLE_lt`), so a grinded answer's challenge and indices are as uniform as
+before, on `2^-8` of the answers: `card_chF_pow_fiber` (`|S| · 2^120`, against `card_chF_fiber`'s
+`|S| · 2^128`) and `card_idx_pow_fiber` (`2^(248 − k b)`). `card_cyl` counts a predicate that does
+not read one coordinate together with a condition on that coordinate (the tuple counts of
+`FRSoundnessCoreSteps`). -/
+
+section Pow
+
+open Finset
+
+/-- **The proof of work** (D128 §2.1): byte 31 of an answer is zero. -/
+def pow (a : Digest) : Prop := a[31] = 0
+
+instance (a : Digest) : Decidable (pow a) := inferInstanceAs (Decidable (a[31] = 0))
+
+theorem natLE_low_lt (a : Digest) : ∀ n ≤ 32,
+    ∑ i : Fin n, a[i.1]!.toNat * 256 ^ i.1 < 256 ^ n := by
+  intro n hn
+  induction n with
+  | zero => simp
+  | succ n ih =>
+    rw [Fin.sum_univ_castSucc]
+    have h1 := ih (by omega)
+    have h2 : a[n]!.toNat < 256 := UInt8.toNat_lt _
+    simp only [Fin.val_castSucc, Fin.val_last]
+    calc _ < 256 ^ n + a[n]!.toNat * 256 ^ n := by omega
+      _ ≤ 256 ^ n + 255 * 256 ^ n := by gcongr; omega
+      _ = 256 ^ (n + 1) := by ring
+
+/-- `natLE a` is its low 31 bytes plus byte 31 at `2^248`. -/
+theorem natLE_split (a : Digest) :
+    natLE a = (∑ i : Fin 31, a[i.1]!.toNat * 256 ^ i.1) + a[31].toNat * 2 ^ 248 := by
+  rw [natLE, Fin.sum_univ_castSucc]
+  congr 1
+
+theorem pow_iff_natLE_lt (a : Digest) : pow a ↔ natLE a < 2 ^ 248 := by
+  have h := natLE_low_lt a 31 (by omega)
+  have e : (256 : ℕ) ^ 31 = 2 ^ 248 := by norm_num
+  rw [e] at h
+  rw [natLE_split, pow]
+  generalize (∑ i : Fin 31, a[i.1]!.toNat * 256 ^ i.1) = lo at h ⊢
+  generalize (2 : ℕ) ^ 248 = M at h ⊢
+  constructor
+  · intro h0; rw [h0]; simpa using h
+  · intro hl
+    by_contra hne
+    have : a[31].toNat ≠ 0 := fun h' => hne (UInt8.toNat_inj.mp (by simpa using h'))
+    have : M ≤ a[31].toNat * M := Nat.le_mul_of_pos_left M (Nat.pos_of_ne_zero this)
+    omega
+
+/-- **`card_idx_pow_fiber`** (D128 §2.2): the answers whose first `k` indices of `b` bits
+(`k b ≤ 248`, so they lie below byte 31) are `f` and whose byte 31 is zero number
+`2^(248 − k b)` (`card_idx_fiber`: `2^(256 − k b)`). -/
+theorem card_idx_pow_fiber (b k : ℕ) (hkb : k * b ≤ 248) (f : Fin k → Fin (2 ^ b)) :
+    (Finset.univ.filter fun a : Digest => (∀ i : Fin k, idxOf b a i = f i) ∧ pow a).card =
+      2 ^ (248 - k * b) := by
+  classical
+  set M := (2 ^ b) ^ k with hM
+  have hM' : M = 2 ^ (k * b) := by rw [hM, ← pow_mul, mul_comm]
+  set c : ℕ := (finFunctionFinEquiv f : ℕ)
+  have hc : c < M := (finFunctionFinEquiv f).isLt
+  have hiff : ∀ a : Digest, (∀ i : Fin k, idxOf b a i = f i) ↔ natLE a % M = c := by
+    intro a
+    have hx : natLE a % M < M := Nat.mod_lt _ (by positivity)
+    have key : ∀ i : Fin k, idxOf b a i =
+        (finFunctionFinEquiv.symm (⟨natLE a % M, hx⟩ : Fin ((2 ^ b) ^ k)) i : ℕ) := by
+      intro i
+      rw [finFunctionFinEquiv_symm_apply_val, idxOf, idx_mod _ b k i i.isLt, ← hM', pow_mul']
+    constructor
+    · intro h
+      have : finFunctionFinEquiv.symm (⟨natLE a % M, hx⟩ : Fin ((2 ^ b) ^ k)) = f :=
+        funext fun i => Fin.ext ((key i).symm.trans (h i))
+      have := congrArg (fun g => (finFunctionFinEquiv g : ℕ)) this
+      simpa [c] using this
+    · intro h i
+      rw [key]
+      have : (⟨natLE a % M, hx⟩ : Fin ((2 ^ b) ^ k)) = finFunctionFinEquiv f := Fin.ext h
+      rw [this, Equiv.symm_apply_apply]
+  have h256 : 2 ^ 256 = 2 ^ (256 - k * b) * M := by
+    rw [hM', ← pow_add]; congr 1; omega
+  have h248 : 2 ^ 248 = 2 ^ (248 - k * b) * M := by
+    rw [hM', ← pow_add]; congr 1; omega
+  let e : Digest ≃ Fin (2 ^ (256 - k * b)) × Fin M :=
+    natLEEquiv.trans ((finCongr h256).trans finProdFinEquiv.symm)
+  have hn : ∀ a, ((e a).2 : ℕ) + M * ((e a).1 : ℕ) = natLE a := by
+    intro a
+    have h1 : (finProdFinEquiv (e a) : ℕ) = natLE a := by
+      simp only [e, Equiv.trans_apply, Equiv.apply_symm_apply, finCongr_apply, Fin.val_cast,
+        natLEEquiv_val]
+    rwa [finProdFinEquiv_apply_val] at h1
+  have hMpos : 0 < M := by positivity
+  have he : ∀ a, ((e a).2 : ℕ) = natLE a % M := by
+    intro a
+    rw [← hn a, Nat.add_mul_mod_self_left, Nat.mod_eq_of_lt (e a).2.isLt]
+  have hp : ∀ a, pow a ↔ ((e a).1 : ℕ) < 2 ^ (248 - k * b) := by
+    intro a
+    rw [pow_iff_natLE_lt, ← hn a, h248]
+    have := (e a).2.isLt
+    constructor
+    · intro h
+      by_contra hq
+      have : 2 ^ (248 - k * b) * M ≤ ((e a).1 : ℕ) * M := Nat.mul_le_mul_right _ (not_lt.mp hq)
+      nlinarith
+    · intro h
+      have : ((e a).1 : ℕ) * M + M ≤ 2 ^ (248 - k * b) * M := by
+        rw [← Nat.succ_mul]; exact Nat.mul_le_mul_right _ h
+      nlinarith
+  have h248le : 2 ^ (248 - k * b) ≤ 2 ^ (256 - k * b) :=
+    Nat.pow_le_pow_right (by norm_num) (by omega)
+  rw [Finset.card_equiv e (t := (Finset.univ.filter fun q : Fin (2 ^ (256 - k * b)) =>
+      (q : ℕ) < 2 ^ (248 - k * b)) ×ˢ {⟨c, hc⟩}) fun a => by
+    simp only [Finset.mem_filter, Finset.mem_univ, true_and, Finset.mem_product,
+      Finset.mem_singleton, hiff, Fin.ext_iff, he, hp]; exact And.comm]
+  rw [Finset.card_product, Finset.card_singleton, mul_one]
+  rw [Fin.card_filter_val_lt]
+  omega
+/-- `F` as its sixteen bytes (`toBytes`/`ofBytes` are inverse). -/
+noncomputable def fBytesEquiv : F ≃ (Fin 16 → Fin 256) where
+  toFun x i := (F.toBytes x)[i.1].toFin
+  invFun f := F.ofBytes (Vector.ofFn fun i => UInt8.ofFin (f i))
+  left_inv x := by
+    have : (Vector.ofFn fun i : Fin 16 => UInt8.ofFin (F.toBytes x)[i.1].toFin) = F.toBytes x := by
+      ext i hi; simp
+    show F.ofBytes (Vector.ofFn fun i : Fin 16 => UInt8.ofFin (F.toBytes x)[i.1].toFin) = x
+    rw [this, F.ofBytes_toBytes]
+  right_inv f := by funext i; simp [F.toBytes_ofBytes]
+
+/-- The F elements whose byte 15 is zero number `2^120`. -/
+theorem card_top_byte_zero :
+    (univ.filter fun x : F => (F.toBytes x)[15] = 0).card = 2 ^ 120 := by
+  classical
+  have h : (univ.filter fun x : F => (F.toBytes x)[15] = 0).card =
+      (univ.filter fun f : Fin 16 → Fin 256 => f 15 = 0).card := by
+    refine Finset.card_equiv fBytesEquiv fun x => ?_
+    simp only [Finset.mem_filter, Finset.mem_univ, true_and, fBytesEquiv, Equiv.coe_fn_mk]
+    show (F.toBytes x)[15] = 0 ↔ (F.toBytes x)[((15 : Fin 16) : ℕ)].toFin = 0
+    constructor
+    · intro hx; simp [hx]
+    · intro hx
+      have := congrArg UInt8.ofFin hx
+      simp only [UInt8.ofFin_toFin] at this
+      exact this.trans rfl
+  rw [h]
+  have hpi : (univ.filter fun f : Fin 16 → Fin 256 => f 15 = 0) =
+      Fintype.piFinset fun i : Fin 16 => if i = 15 then ({0} : Finset (Fin 256)) else univ := by
+    ext f
+    simp only [Finset.mem_filter, Finset.mem_univ, true_and, Fintype.mem_piFinset]
+    constructor
+    · intro hf i
+      split_ifs with hi
+      · subst hi; simpa using hf
+      · simp
+    · intro hf
+      have := hf 15
+      simpa using this
+  rw [hpi, Fintype.card_piFinset, Fin.prod_univ_castSucc]
+  have hne : ∀ i : Fin 15, i.castSucc ≠ 15 := fun i h => by
+    have := Fin.castSucc_lt_last i
+    rw [h] at this
+    exact absurd this (by decide)
+  have hlast : (Fin.last 15 : Fin 16) = 15 := rfl
+  rw [Finset.prod_congr rfl fun i _ => congrArg Finset.card (ite_eq_right (hne i)), hlast, ite_eq_left rfl,
+    Finset.prod_const, Finset.card_univ, Fintype.card_fin, Finset.card_univ, Fintype.card_fin,
+    Finset.card_singleton]
+  norm_num
+
+/-- `a[31]` is byte 15 of the second coordinate. -/
+theorem top_byte_eq (a : Digest) : (F.toBytes (chF a 1))[15] = a[31] := by
+  simp only [chF, F.toBytes_ofBytes]
+  rw [getElem_digestBytes a (16 * 1) 16 15 (by omega) (by omega)]
+
+/-- **`card_chF_pow_fiber`**: the answers whose first F coordinate lies in `S` and whose byte 31
+is zero number `|S| · 2^120`. -/
+theorem card_chF_pow_fiber (S : Finset F) :
+    (univ.filter fun a : Digest => chF a 0 ∈ S ∧ pow a).card = S.card * 2 ^ 120 := by
+  have h1 : (univ.filter fun a : Digest => chF a 0 ∈ S ∧ pow a) =
+      univ.filter fun a : Digest => (fun p : F × F => p.1 ∈ S ∧ (F.toBytes p.2)[15] = 0)
+        (chF a 0, chF a 1) := by
+    ext a; simp only [mem_filter, mem_univ, true_and, top_byte_eq]; rfl
+  rw [h1, card_chF2_fiber (fun p : F × F => p.1 ∈ S ∧ (F.toBytes p.2)[15] = 0)]
+  have h2 : (univ.filter fun p : F × F => p.1 ∈ S ∧ (F.toBytes p.2)[15] = 0) =
+      S ×ˢ (univ.filter fun x : F => (F.toBytes x)[15] = 0) := by
+    ext p; simp
+  rw [h2, Finset.card_product, card_top_byte_zero]
+
+
+/-! ### Cylinders -/
+
+/-- **A cylinder count**: if `P` does not read coordinate `L`, the tuples with `P` and `Q` at `L`
+are `|Q| / |β|` of the tuples with `P`. -/
+theorem card_cyl {ι β : Type*} [Fintype ι] [DecidableEq ι] [Fintype β] [DecidableEq β] (L : ι)
+    (P : (ι → β) → Prop) [DecidablePred P] (hP : ∀ w x, P (Function.update w L x) ↔ P w)
+    (Q : β → Prop) [DecidablePred Q] :
+    (univ.filter fun w => P w ∧ Q (w L)).card * Fintype.card β =
+      (univ.filter P).card * (univ.filter Q).card := by
+  -- every fibre `{w | P w ∧ w L = x}` has the size of the fibre at any `y`
+  have hfib : ∀ x y : β, (univ.filter fun w => P w ∧ w L = x).card =
+      (univ.filter fun w => P w ∧ w L = y).card := by
+    intro x y
+    refine Finset.card_bij (fun w _ => Function.update w L y) (fun w hw => ?_)
+      (fun w₁ hw₁ w₂ hw₂ he => ?_) (fun w hw => ?_)
+    · simp only [mem_filter, mem_univ, true_and] at hw ⊢
+      exact ⟨(hP w y).mpr hw.1, by simp⟩
+    · simp only [mem_filter, mem_univ, true_and] at hw₁ hw₂
+      funext j
+      by_cases hj : j = L
+      · subst hj; rw [hw₁.2, hw₂.2]
+      · have := congrFun he j; simpa [Function.update_of_ne hj] using this
+    · simp only [mem_filter, mem_univ, true_and] at hw
+      refine ⟨Function.update w L x, ?_, ?_⟩
+      · simp only [mem_filter, mem_univ, true_and]; exact ⟨(hP w x).mpr hw.1, by simp⟩
+      · funext j; by_cases hj : j = L
+        · subst hj; simp [hw.2]
+        · simp [Function.update_of_ne hj]
+  have hsplit : ∀ (R : β → Prop) [DecidablePred R], (univ.filter fun w => P w ∧ R (w L)).card =
+      ∑ x ∈ univ.filter R, (univ.filter fun w => P w ∧ w L = x).card := by
+    intro R _
+    rw [Finset.card_eq_sum_card_fiberwise (f := fun w => w L) (t := univ.filter R)
+      fun w hw => Finset.mem_filter.mpr ⟨mem_univ _, (Finset.mem_filter.mp hw).2.2⟩]
+    refine Finset.sum_congr rfl fun x hx => congrArg card (Finset.ext fun w => ?_)
+    simp only [mem_filter, mem_univ, true_and] at hx ⊢
+    constructor
+    · rintro ⟨⟨h1, -⟩, h2⟩; exact ⟨h1, h2⟩
+    · rintro ⟨h1, h2⟩; exact ⟨⟨h1, h2 ▸ hx⟩, h2⟩
+  rcases isEmpty_or_nonempty β with hβ | hβ
+  · have : univ.filter Q = ∅ := by ext x; exact isEmptyElim x
+    rw [Fintype.card_eq_zero, this, Finset.card_empty]; simp
+  obtain ⟨y0⟩ := hβ
+  have hall : (univ.filter P).card = (univ.filter fun w => P w ∧ (fun _ : β => True) (w L)).card :=
+    congrArg card (Finset.filter_congr fun w _ => by simp)
+  rw [hall, hsplit Q, hsplit (fun _ => True), Finset.sum_congr rfl fun x _ => hfib x y0,
+    Finset.sum_congr rfl fun x _ => hfib x y0, Finset.sum_const, Finset.sum_const, smul_eq_mul,
+    smul_eq_mul, Finset.filter_true_of_mem fun _ _ => trivial, Finset.card_univ]
+  ring
+
+/-- Controls: (+) the zero answer passes the proof of work, (−) an answer with byte 31 set does not;
+(+) the answers that pass number `2^248` (`card_chF_pow_fiber` at `S = F`). -/
+theorem pow_ctrl : pow 0 ∧ ¬ pow (Vector.replicate 32 1) ∧
+    (univ.filter fun a : Digest => chF a 0 ∈ (univ : Finset F) ∧ pow a).card = 2 ^ 248 := by
+  refine ⟨rfl, by decide, ?_⟩
+  rw [card_chF_pow_fiber, Finset.card_univ, F.card_F, ← pow_add]
+
+/-! ### Why the proof of work (D128 §1.1): the counting fact
+
+For any knowledge state, an answer set `T` on which the verifier accepts what the extractor misses
+costs `|T| / 2^256 ≤ μ L + ε` at its query (`jump_lower`); for an F challenge with `|S|` bad values,
+`|S| / 2^128 ≤ μ L + ε` (`F_challenge_lower`). Without the proof of work no F phase with a bad value
+fits `errorCap = 2^-128` next to the H row. -/
+
+open scoped NNReal
+
+/-- If, on a log `L` below `logCap` with potential below `1`, a fresh query `q` has a set `T` of
+answers each of which makes the verifier accept a proof the extractor misses, then
+`|T| / 2^256 ≤ μ L + ε`. The charge of a phase can be split between the query that draws its
+challenge and the potential accumulated before it, but nothing else. -/
+theorem jump_lower {R : Digest → Wit → Prop} {V : Digest → Proof → OProg Bool}
+    {E : Digest → Proof → Log → Option Wit} {ε : ℝ≥0} (k : KState R V E ε) {L : Log}
+    {q : ByteArray} (hl : L.length + 1 ≤ logCap) (hμ : k.μ L < 1) (hq : q ∉ L.map Prod.fst)
+    (T : Finset Digest)
+    (hT : ∀ a ∈ T, ∃ c π, (V c π).runLog (L ++ [(q, a)]) = some true ∧
+      ¬ ∃ w, E c π (L ++ [(q, a)]) = some w ∧ R c w) :
+    (T.card : ℝ≥0) / 2 ^ 256 ≤ k.μ L + ε := by
+  have h1 : ∀ a ∈ T, (1 : ℝ≥0) ≤ k.μ (L ++ [(q, a)]) := by
+    intro a ha
+    by_contra h
+    push Not at h
+    obtain ⟨c, π, hacc, hne⟩ := hT a ha
+    exact hne (k.final _ c π (by simpa using hl) h hacc)
+  have h2 := k.step L q (by omega) hμ hq
+  have h3 : (T.card : ℝ≥0) ≤ ∑ a : Digest, k.μ (L ++ [(q, a)]) :=
+    calc (T.card : ℝ≥0) = ∑ a ∈ T, (1 : ℝ≥0) := by simp
+      _ ≤ ∑ a ∈ T, k.μ (L ++ [(q, a)]) := Finset.sum_le_sum h1
+      _ ≤ ∑ a : Digest, k.μ (L ++ [(q, a)]) :=
+          Finset.sum_le_sum_of_subset_of_nonneg (subset_univ _) (by intros; positivity)
+  rw [div_le_iff₀ (by positivity)]
+  exact h3.trans h2
+
+set_option linter.constructorNameAsVariable false in
+/-- **An F challenge with `c` bad values costs `c / 2^128` at its query, less what the potential
+already holds**: `c / 2^128 ≤ μ L + ε`. With `μ L` bounded only by the earlier steps, the charge
+can be pushed back at most to the previous fresh query (the fork attack, D128.md §1.2), never
+below `c / 2^129` per query. In particular the entry's potential, which charges each phase at its
+own squeeze (`μ L` carries nothing for the phase), needs `ε ≥ c / 2^128` for every F phase. -/
+theorem F_challenge_lower {R : Digest → Wit → Prop} {V : Digest → Proof → OProg Bool}
+    {E : Digest → Proof → Log → Option Wit} {ε : ℝ≥0} (k : KState R V E ε) {L : Log}
+    {q : ByteArray} (hl : L.length + 1 ≤ logCap) (hμ : k.μ L < 1) (hq : q ∉ L.map Prod.fst)
+    (S : Finset F)
+    (hS : ∀ a : Digest, chF a 0 ∈ S → ∃ c π, (V c π).runLog (L ++ [(q, a)]) = some true ∧
+      ¬ ∃ w, E c π (L ++ [(q, a)]) = some w ∧ R c w) :
+    (S.card : ℝ≥0) / 2 ^ 128 ≤ k.μ L + ε := by
+  classical
+  have h := jump_lower k hl hμ hq (univ.filter fun a : Digest => chF a 0 ∈ S) fun a ha => by
+    simp only [Finset.mem_filter, Finset.mem_univ, true_and] at ha; exact hS a ha
+  rw [card_chF_fiber] at h
+  refine le_trans (le_of_eq ?_) h
+  rw [Nat.cast_mul, Nat.cast_pow, Nat.cast_ofNat, div_eq_div_iff (by positivity) (by positivity)]
+  ring
+
+end Pow
+
 /-! ## Controls -/
 
 /-- The empty log is not bad. -/

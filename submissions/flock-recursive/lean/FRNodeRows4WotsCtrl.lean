@@ -10,7 +10,7 @@ import FRNodeRows4Agg
 | `muxR` | `muxR_ctl`: selector `1` takes `x`, `0` takes `y` | `muxR_neg`: selector `1` with `m = y ≠ x` fails |
 | `digV` | `digV_ctl`: bits `(1, 1)` give digit 3 | `digV_ctl`: bits `(0, 1)` give 2, not 1 |
 | `gW` (the checksum's generator) | `gW_order` (order above 1023) | `one_not_inj`: `1` would not separate exponents (`1^0 = 1^1`) |
-| `lastR` | `lastR_eq` (64, 63, 62, 61) | `lastR_ne`: `k = 2` does not fill its last block |
+| `lastR` | `lastR_eq` (64 for `k = 1 … 4`: R-A′) | `lastR_no_spacer`: without the spacer `k = 2` would not fill its last block |
 | `ind` | `ind_ctl`: at `k = 2 < maxK`, `ind 2 = 1`, `ind 1 = ind 3 = 0` | (the same) |
 -/
 
@@ -47,7 +47,7 @@ theorem digV_ctl (κ : NodeKind) (σ : ℕ) :
 
 theorem one_not_inj : (1 : F) ^ 0 = (1 : F) ^ 1 ∧ (0 : ℕ) ≠ 1 := by simp
 
-theorem lastR_ne : lastR 2 ≠ 64 := by decide
+theorem lastR_no_spacer : (1 + 2 * (segB - 1)) - 64 * ((1 + 2 * (segB - 1) + 63) / 64 - 1) = 63 := by decide
 
 theorem ind_ctl {w : Asg} (hP : ∀ i < NodeKind.N4.maxK,
     (selSum .N4 (N4c.sub .N4 0 i)).ev w = if i < 2 then 1 else 0) :

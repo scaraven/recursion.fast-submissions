@@ -6,7 +6,8 @@
 //! read as Boolean variables, so the resulting z-claim is a plain multilinear one,
 //! `z̃(t₀ … t₁₃, s_out) = vz`.
 //!
-//! The partial fold uses 256-entry sum tables per 8-block stripe after 8×8 bit transposes
+//! The partial fold uses 256-entry sum tables per 8-block stripe after 8×8 bit transposes, four
+//! stripes a pass (pass PC)
 //! (Flock `lincheck.rs`, `pack_z_lincheck` / `partial_fold_packed_z_fast`, as ported in
 //! `probe/kernels/src/lin.rs`; `../LICENSE-flock`).
 
@@ -30,27 +31,36 @@ pub fn transpose8(mut x: u64) -> u64 {
 /// `Z(j) = Σ_blk eq(s_out, blk) z(blk, j)` (`z` block-major words; at least 8 blocks; blocks `≥ used`
 /// are zero and skipped).
 pub fn partial_fold(z: &[u64], s_out: &[F], used: usize) -> Vec<F> {
+    partial_fold_with(z, s_out, used, 4)
+}
+
+/// `partial_fold` with at most `group` stripes a pass (`bench-lc`: 1 is pass 6's one stripe a pass).
+pub fn partial_fold_with(z: &[u64], s_out: &[F], used: usize, group: usize) -> Vec<F> {
     let nb = z.len() / 256;
     assert!(nb >= 8 && nb == 1 << s_out.len());
     let e = eq_table(s_out);
     let stripes = nb / 8;
+    // pass PC (G10): the nonzero stripes of a chunk go to `simd::pf_stripes` `group` at a time
+    assert!((1..=4).contains(&group));
     let parts = par::map_chunks(stripes.min(used.div_ceil(8)), 1, |lo, hi| {
         let mut acc = vec![F::ZERO; BLOCK];
-        let mut t = [F::ZERO; 256];
+        let mut ts = [[F::ZERO; 256]; 4];
+        let mut zs: Vec<&[u64]> = Vec::with_capacity(4);
         for s in lo..hi {
-            let base = 8 * s * 256;
+            let zsl = &z[8 * s * 256..(8 * s + 8) * 256];
             // a stripe of zero blocks adds nothing (`t[0] = 0`; a node's free blocks)
-            if z[base..base + 8 * 256].iter().all(|&x| x == 0) {
+            if zsl.iter().all(|&x| x == 0) {
                 continue;
             }
-            t[0] = F::ZERO;
-            for i in 0..8 {
-                let h = 1 << i;
-                for j in 0..h {
-                    t[h + j] = t[j] + e[8 * s + i];
-                }
+            crate::simd::stripe_table(&e[8 * s..8 * s + 8], &mut ts[zs.len()]);
+            zs.push(zsl);
+            if zs.len() == group {
+                crate::simd::pf_stripes(&zs, &ts[..group], &mut acc);
+                zs.clear();
             }
-            crate::simd::pf_stripe(&z[base..base + 8 * 256], &t, &mut acc);
+        }
+        if !zs.is_empty() {
+            crate::simd::pf_stripes(&zs, &ts[..zs.len()], &mut acc);
         }
         acc
     });
@@ -79,4 +89,39 @@ pub fn eta(c: &Circuit, lambda: F, s_in: &[F], alpha: F) -> Vec<F> {
     let w = row_weights(lambda, s_in);
     let wb: Vec<F> = w.iter().map(|x| *x * alpha).collect();
     c.transpose(&w, &wb)
+}
+
+#[cfg(test)]
+mod pc_tests {
+    use super::*;
+    /// Pass PC: `partial_fold` (four stripes a pass) and the node's `partial_fold_kinds` against
+    /// the definition `Σ_blk eq(s_out, blk)·[kind]·z(blk, j)`, with zero stripes, a partial last
+    /// group and blocks past `used`.
+    #[test]
+    fn partial_folds_match_definition() {
+        let mut s = 0xBB67_AE85_84CA_A73Bu64;
+        let mut rnd = move || { s ^= s << 13; s ^= s >> 7; s ^= s << 17; s };
+        let nb = 128usize;
+        let s_out: Vec<F> = (0..7).map(|_| F::new(rnd(), rnd())).collect();
+        let e = eq_table(&s_out);
+        let mut z: Vec<u64> = (0..nb * 256).map(|_| rnd()).collect();
+        for st in [1usize, 2, 5, 9, 10] {
+            z[8 * st * 256..(8 * st + 8) * 256].fill(0);
+        }
+        let used = 101;
+        z[used * 256..].fill(0);
+        let kind: Vec<u8> = (0..nb).map(|b| if b % 16 < 8 { 0 } else { (rnd() % 9) as u8 }).collect();
+        let mut want = vec![F::ZERO; BLOCK];
+        let mut want_k = vec![vec![F::ZERO; BLOCK]; 9];
+        for b in 0..nb {
+            for j in 0..BLOCK {
+                if (z[b * 256 + j / 64] >> (j % 64)) & 1 == 1 {
+                    want[j] += e[b];
+                    want_k[kind[b] as usize][j] += e[b];
+                }
+            }
+        }
+        assert!(partial_fold(&z, &s_out, used) == want, "partial_fold");
+        assert!(crate::nodeprove::partial_fold_kinds(&z, &s_out, &kind) == want_k, "partial_fold_kinds");
+    }
 }

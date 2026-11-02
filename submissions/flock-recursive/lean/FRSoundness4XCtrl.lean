@@ -1,6 +1,6 @@
 -- New for `flock-recursive` (stage X4): positive and negative controls for the composed front, the
 -- run facts and the per-kind laws.
-import FRSoundness4XFinal
+import FRNodeStmtR4
 
 /-!
 # Controls for X4
@@ -31,9 +31,10 @@ theorem bgA4_seg {L es : Log} {σ : SegKind} (hk : kindOfC es = .seg σ) :
   · exact absurd h (P4b.not_onNode_seg hk)
   · exact absurd h (P4b.not_onNode_seg hk)
 
-/-- (+) S2's failed round is a front check. -/
-theorem rejFX_of_rejS2 {L es : Log} (h : P4a.RejS2 L es) : RejFX L es :=
-  .inl (P4a.rejF4a_of_rejS2 h)
+/-- (+) A node's failed `finLc` (ii) is a front check (`flock-128`: S2's round check holds by
+construction and is no longer one). -/
+theorem rejFX_of_rejLcN {L es : Log} (h : P4a.RejLcN P4X.M L es) : RejFX L es :=
+  .inl (P4a.rejF4a_of_rejLcN h)
 
 /-- (−) On a segment, P4b's checks reduce to RS0's slice check (the Lr/E checks are the node's). -/
 theorem rejF4b_seg {L es : Log} {σ : SegKind} (hk : kindOfC es = .seg σ) :

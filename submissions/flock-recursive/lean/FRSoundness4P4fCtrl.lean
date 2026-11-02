@@ -1,15 +1,15 @@
 -- New for `flock-recursive` (BLUEPRINT revision 4.1, A.10; stage P4f): controls for the front's
--- phases 13 … 25 (`FRSoundness4P4fDF`, `FRSoundness4P4fObl`).
-import FRSoundness4P4fObl
+-- phases 14 … 29 (`flock-128`; `FRSoundness4P4fDF`, `FRSoundness4P4fObl`).
+import FRNodeStmtR4
 
 /-!
 # Controls for P4f
 
 | Definition | Positive | Negative |
 |---|---|---|
-| `DFhi` | `DFhi_of_far` (a far word dooms phases 14 … 25 but the `msD` ones), `DFhi13_of_far` (Lr1's last answer) | `DFhi_out` (no doom outside 13 … 25), `not_DFhi25_true` (a close word with the true claim clears B′) |
+| `DFhi` | `DFhi_of_far` (a far word dooms phases 16 … 29 but the `msD` ones), `DFhi15_of_far` (Lr1's last answer) | `DFhi_out` (no doom outside 14 … 29), `not_DFhi29_true` (a close word with the true claim clears B′) |
 | `bg12X`, `bg16X` | `bg12X_of_nE`, `bg16X_of_bat` (a node's M rows, Lr's batch) | `bg12X_seg`, `bg16X_seg` (on a segment only `bg20X` is left) |
-| `frontClsHi` | `frontClsHi_pos` (Lr2's first squeeze, Lr2's first absorb, RS1) | `frontClsHi_neg` (Lrend is no squeeze, Lr3 no absorb) |
+| `frontClsHi` | `frontClsHi_pos` (Lr1's last squeeze, Lr2's first absorb, RS1) | `frontClsHi_neg` (Lrend is no squeeze, Lr3 no absorb) |
 | F1 (`final_segU`) | `eqAtR_pad_past` (past the blocks the end term is `0`) | `eqAtR_pad_in` (inside, it is the short point's) |
 | `FrontHi` | `frontHi_X`, `frontObl_P4f`, `ks_rev4F` | — (X4's `FrontHi` is a `Prop` structure; its content is `T4.FrontObl`'s) |
 -/
@@ -17,27 +17,27 @@ import FRSoundness4P4fObl
 namespace FR.Snd.P4f
 open RecursionFast FR.Merkle FR.Rev4 Finset FR.Impl
 
-/-- (+) A far level-0 word dooms every phase from 14 to 25 but E1's and RS1's (`msD`). -/
+/-- (+) A far level-0 word dooms every phase from 16 to 29 but E1's and RS1's (`msD`). -/
 theorem DFhi_of_far {L es : Log} (h : far0X L es) :
-    ∀ k, 14 ≤ k → k ≤ 25 → k ≠ 17 → k ≠ 24 → DFhi k L es := by
-  intro k h1 h2 h17 h24
+    ∀ k, 16 ≤ k → k ≤ 29 → k ≠ 20 → k ≠ 27 → DFhi k L es := by
+  intro k h1 h2 h20 h27
   have b : bg20X L es := .inl h
   interval_cases k <;> first
     | exact .inl (.inl b) | exact .inl b | exact .inl (.inl (.inl b)) | exact .inl h | omega
 
 /-- (+) After Lr1's last answer a far word dooms Lr1. -/
-theorem DFhi13_of_far {L es : Log} (h : far0X L es) (hl : 169 + 9 < es.length) : DFhi 13 L es := by
-  simp only [DFhi, msD, if_neg (show ¬ es.length ≤ 169 + 9 by omega)]
+theorem DFhi15_of_far {L es : Log} (h : far0X L es) (hl : 171 + 9 < es.length) : DFhi 15 L es := by
+  simp only [DFhi, msD, if_neg (show ¬ es.length ≤ 171 + 9 by omega)]
   exact .inl (.inl (.inl h))
 
-/-- (−) No phase outside 13 … 25 is doomed by `DFhi` (phases 0 … 12 are P4a's in `DFX`). -/
-theorem DFhi_out : DFhi 12 = (fun _ _ => False) ∧ DFhi 26 = fun _ _ => False := ⟨rfl, rfl⟩
+/-- (−) No phase outside 14 … 29 is doomed by `DFhi` (phases 0 … 13 are P4a's in `DFX`). -/
+theorem DFhi_out : DFhi 13 = (fun _ _ => False) ∧ DFhi 30 = fun _ _ => False := ⟨rfl, rfl⟩
 
 /-- (−) B′'s doom is cleared on a close word whose claim is `⟨W₀, f⁽⁰⁾⟩`. -/
-theorem not_DFhi25_true {L es : Log} (hnf : ¬ far0X L es)
+theorem not_DFhi29_true {L es : Log} (hnf : ¬ far0X L es)
     (hc : P4b.vStarL4 (kindOfC es) es = P4b.ipW (P4b.wrsL4 N4c.kf4 (kindOfC es) es)
-      (P4b.cellsC N4c.cells4 (kindOfC es)) (P4b.kpL4 es) ((kindOfC es).m - 7) (X4.src4.fz L es)) :
-    ¬ DFhi 25 L es :=
+      (P4b.cellsC X4.cellsX (kindOfC es)) (P4b.kpL4 es) ((kindOfC es).m - 7) (X4.src4.fz L es)) :
+    ¬ DFhi 29 L es :=
   P4b.dB4_ctrl.2 hnf hc
 
 /-- (+) A node's failed M rows are in `bg12X`. -/
@@ -53,14 +53,14 @@ theorem bg12X_seg {L es : Log} {σ : SegKind} (h : kindOfC es = .seg σ) : bg12X
 theorem bg16X_seg {L es : Log} {σ : SegKind} (h : kindOfC es = .seg σ) : bg16X L es ↔ bg20X L es :=
   ⟨fun h' => h'.resolve_right (P4b.not_onNode_seg h), .inl⟩
 
-/-- (+) Lr2's first squeeze (180), first round absorb (181) and RS1's squeezes are classified. -/
-theorem frontClsHi_pos : frontClsHi 180 .squeeze = true ∧ frontClsHi 181 (.absorb 48) = true ∧
-    frontClsHi 328 .squeeze = true := by
+/-- (+) Lr1's last squeeze (180), Lr2's first round absorb (181) and RS1's squeezes are classified. -/
+theorem frontClsHi_pos : frontClsHi 180 .squeeze = true ∧ frontClsHi 181 (.absorb 64) = true ∧
+    frontClsHi 332 .squeeze = true := by
   unfold frontClsHi rndClsHi absPtsHi sqPtsHi rndPhHi fsRnd4
   rw [fsRanges4_eq]; decide
 
-/-- (−) Lrend's absorb (213) is no squeeze class, Lr3's squeeze (214) no absorb class. -/
-theorem frontClsHi_neg : frontClsHi 213 .squeeze = false ∧ frontClsHi 214 (.absorb 48) = false := by
+/-- (−) Lrend's absorb (215) is no squeeze class, Lr3's squeeze (216) no absorb class. -/
+theorem frontClsHi_neg : frontClsHi 215 .squeeze = false ∧ frontClsHi 216 (.absorb 64) = false := by
   unfold frontClsHi rndClsHi absPtsHi sqPtsHi rndPhHi fsRnd4
   rw [fsRanges4_eq]; decide
 

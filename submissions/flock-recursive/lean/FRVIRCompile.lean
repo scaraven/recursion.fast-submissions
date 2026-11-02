@@ -360,7 +360,9 @@ def opOut (P : Params) (cs : CS) : Op → Out
   | .addK a b =>
     if both (cs.slot a) (cs.slot b) then
       let x := asK (cs.slot a); let y := asK (cs.slot b)
-      { slots := [some (.k, [x.1 ++ y.1, x.2 ++ y.2])] }
+      -- `b`'s terms first (B2′): a running sum `addK s t` then shares `s`'s list, so a chain of `n`
+      -- sums builds `O(n)` terms, not `O(n²)` (the cap check's `capChkOps`: 1.3 GB at plan start)
+      { slots := [some (.k, [y.1 ++ x.1, y.2 ++ x.2])] }
     else skip 1
   | .mulKF a b =>
     if both (cs.slot a) (cs.slot b) then
@@ -500,17 +502,77 @@ to 16; (−) a 54-row position keeps 64, a block of 64 rows its 64. -/
 theorem strideBits_ctl : strideBits 383 = 7 ∧ strideBits 42 = 4 ∧ strideBits 54 = 6 ∧ strideBits 64 = 6 := by
   decide
 
+/-- The bits of a cap-check bit power after its `bitOf k t` (B2′, `FRVIRFinals4.bitPowOps`): the
+run of `(selectHalf, mulK, bitOf k (t + 1))` that follows, counting this bit. -/
+def bitRun (k t : ℕ) : List Op → ℕ
+  | .selectHalf .. :: .mulK .. :: .bitOf k' t' :: ops =>
+    if k' = k ∧ t' = t + 1 then bitRun k (t + 1) ops + 1 else 1
+  | .selectHalf .. :: .mulK .. :: _ => 1
+  | _ => 0
+
+/-- The steps of a power chain's block (B2′, `FRVIRFinals4.powChainOps`): `3·21 = 63` rows and cells,
+one piece of `2^6`. -/
+def chainStep : ℕ := 21
+
+/-- The reads of a block of read MACs (B2′, `FRVIRFinals4.macDOps`): `7·9 = 63` rows and cells. -/
+def macDStep : ℕ := 9
+
+/-- The cap entries of a block of entry MACs (B2′, `FRVIRFinals4.macAOps`): `7·23 = 161` rows (a
+`2^6` stride), `11·23 = 253` cells (a `2^8` window: the cells are the scarcer resource). -/
+def macAStep : ℕ := 23
+
 /-- **The alignment hint** of an op given the ops after it (S-E5, performance only): a Merkle
 position (`posOps`, from its `idx`; at most `4s + 10` rows and `9s + 8` cells for `s` steps) and a
 Horner block (`encOps`, from the first of its 7 `tensorW`; 383 rows, 395 cells); the rows by the
-stride policy (B0), the cells to the block's window. -/
+stride policy (B0), the cells to the block's window. B2′ adds the cap check's four regular families
+(`FRVIRFinals4.capChkOps`), so that the plan groups their blocks as instances of one key each:
+
+* a **bit power** (`bitPowOps`, from its `bitOf k 0`): `n` bits, `5n` rows, `6n` cells;
+* the **MACs of the reads** (`macDOps`, from a `splitDigest` whose `ζ^r` register `p` is `≡ 0`):
+  `macDStep` reads of 7 rows and 7 cells;
+* the **MACs of the cap entries** (`macAOps`, from a `piElemK` at `o` with `o / 32 ≡ 0`): `macAStep`
+  entries of 7 rows and 11 cells;
+* a **power chain** (`powChainOps`: `mulK a g` then `mulK (a + 1) g`, at `a ≡ 0`): `chainStep` steps
+  of 3 rows and 3 cells.
+
+The moduli read register numbers and offsets, so they only place the block boundaries: a block
+whose ops are not the family's is laid out as any other ops. -/
 def alignOf : Op → List Op → Option (ℕ × ℕ)
   | .idx .., ops => let s := stepsAhead ops; some (strideBits (4 * s + 10), Nat.size (9 * s + 7))
   | .tensorW .., ops =>
     match ops.drop 6 with
     | .mulK .. :: _ => if (ops.take 6).all (fun o => o matches .tensorW ..) then some (strideBits 383, 9) else none
     | _ => none
+  | .bitOf k 0, ops =>
+    let n := bitRun k 0 ops
+    if 2 ≤ n then some (strideBits (5 * n), Nat.size (6 * n - 1)) else none
+  | .splitDigest _, .mulKF p _ :: .addK .. :: .mulKF .. :: .addK .. :: .mulK .. :: .addK .. :: _ =>
+    if p % macDStep = 0 then some (strideBits (7 * macDStep), Nat.size (7 * macDStep - 1)) else none
+  | .piElemK 0 o, .piElem 0 _ :: .piElem 0 _ :: .mulKF .. :: .addK .. :: .mulKF .. :: .addK .. ::
+      .mulK .. :: .addK .. :: _ =>
+    if o / 32 % macAStep = 0 then some (strideBits (7 * macAStep), Nat.size (11 * macAStep - 1))
+    else none
+  | .mulK a g, .mulK a' g' :: _ =>
+    if a' = a + 1 ∧ g' = g ∧ a % chainStep = 0 then some (strideBits (3 * chainStep), 6) else none
   | _, _ => none
+
+/-- (+) The cap check's families are aligned: a 9-bit power to 16 rows and 64 cells, nine reads'
+MACs at `p = 18` to 64 and 64, 23 entries' MACs at `o = 32·46` to 64 rows and 256 cells, a chain step
+at `a = 42` to 64 and 64; (−) a lone `bitOf` (a Merkle path's), the MACs off their boundary, a chain
+step off its boundary and a `mulK` that is no chain step are not. -/
+theorem alignOf_cap_ctl :
+    alignOf (.bitOf 5 0) ((List.range 9).flatMap fun t => [.selectHalf 1 2 3, .mulK 4 5, .bitOf 5 (t + 1)])
+      = some (4, 6) ∧
+    alignOf (.splitDigest 1) [.mulKF 18 3, .addK 4 5, .mulKF 18 6, .addK 7 8, .mulK 18 9, .addK 1 2]
+      = some (6, 6) ∧
+    alignOf (.piElemK 0 1472) [.piElem 0 0, .piElem 0 16, .mulKF 1 2, .addK 3 4, .mulKF 1 3,
+      .addK 5 6, .mulK 1 7, .addK 8 9] = some (6, 8) ∧
+    alignOf (.mulK 42 7) [.mulK 43 7] = some (6, 6) ∧
+    alignOf (.bitOf 5 0) [.selectHalf 1 2 3, .askNode 0 0 1 2 fun _ => true] = none ∧
+    alignOf (.splitDigest 1) [.mulKF 19 3, .addK 4 5, .mulKF 19 6, .addK 7 8, .mulK 19 9, .addK 1 2]
+      = none ∧
+    alignOf (.mulK 43 7) [.mulK 44 7] = none ∧ alignOf (.mulK 42 7) [.mulK 43 8] = none := by
+  decide
 
 /-- The compiler from a state (each op after its alignment). -/
 def compileFromX (X : Ext) (P : Params) : CS → List Op → CS
@@ -966,7 +1028,8 @@ theorem opOut_sound {impl : OpImpl} {κ : Kind} {inp : Input} {w : Asg} {P : Par
       have ha := asK_slot hI hb.1; have hb' := asK_slot hI hb.2
       simp only [List.forall₂_cons, List.Forall₂.nil, and_true, RepS, tyOf, encV, encK,
         List.map_cons, List.map_nil, Lin.ev_append, ha.1, ha.2, hb'.1, hb'.2, true_and]
-      exact ⟨fun _ => rfl, fun _ => trivial⟩
+      exact ⟨fun _ => by rw [List.cons.injEq, List.cons.injEq]; exact ⟨add_comm _ _, add_comm _ _, rfl⟩,
+        fun _ => trivial⟩
     · simp [skip, RepS]
   case mulKF a b =>
     simp only [opOut] at hr ⊢; split_ifs at hr ⊢ with hb

@@ -2,7 +2,7 @@
 -- `v4/flock-recursive` at `783328c`), namespace `SpartanSrom` → `FR`; that file was ported from v3
 -- `spartan-chain` (submissions repo, local `main` at `1f59b38`). Changes are listed in the module
 -- docstring.
-import FRPubTarget
+import FRVerifierImplOps
 import Mathlib.Algebra.Field.ZMod
 
 /-!

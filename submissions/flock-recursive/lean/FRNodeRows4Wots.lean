@@ -39,8 +39,9 @@ step selectors `565 + 3i + s`; the new bits and products from 8704, JOURNAL §0.
 
 **`aggPad` rows of aggregate `a`** (`padRows`): for each candidate `j < maxK`, gated by `ind j`,
 `F_{a,j}`'s `h_in` is main block `aggL j − 2`'s `h_out` and its message is main block
-`aggL j − 1`'s cut at `r_j` bytes (element 7 through its bits from `j = 2`); for `j = maxK` the main
-chain's last block's element 7 is cut at `r_maxK` bytes.
+`aggL j − 1`'s, whole (revision 4.4.1, R-A′: an aggregate stream fills its last block, `lastR = 64`,
+so there is no padding and no element-7 decomposition; its L cells `pbC` hold the spacers' bits,
+`FRNodeRows4Pack.spC`).
 -/
 
 namespace FR
@@ -103,7 +104,8 @@ def prC (κ : NodeKind) (σ i : ℕ) : ℕ := Lc κ σ (8720 + i)
 def rbC (κ : NodeKind) (σ t q : ℕ) : ℕ := Lc κ σ (8960 + 128 * t + q)
 /-- The `k`-mux term `T_{j,h}` (`1 ≤ j ≤ 4`). -/
 def tmC (κ : NodeKind) (σ j h : ℕ) : ℕ := Lc κ σ (11008 + 2 * (j - 1) + h)
-/-- `aggPad`: bit `q` of main block `aggL j − 1`'s element 7 (`2 ≤ j ≤ maxK`). -/
+/-- Revision 4.1's `aggPad` cells (bit `q` of main block `aggL j − 1`'s element 7, `2 ≤ j ≤ maxK`); since
+R-A′ (whole blocks) the spacers' bits (`FRNodeRows4Pack.spC κ σ (j − 1) q`). -/
 def pbC (κ : NodeKind) (σ j q : ℕ) : ℕ := Lc κ σ (11264 + 128 * (j - 2) + q)
 
 /-- Chain `i`'s end mirror source: `end9` (`400 + i/2`) for an even end, `end41` (`467 + i/2`)
@@ -207,34 +209,28 @@ def wotsRows (κ : NodeKind) (σ : ℕ) (S : ℕ → Lin) : List Row :=
 
 /-! ## `aggPad` (R-4-m2) -/
 
-/-- The bytes of the last block of a `k`-segment stream (`64, 63, 62, 61` for `k = 1 … 4`). -/
+/-- The bytes of the last block of a `k`-segment stream (`64` for `k = 1 … 4`: R-A′'s whole blocks). -/
 def lastR (k : ℕ) : ℕ := aggB k - 64 * (aggL k - 1)
 
 /-- Main block `i` of signed child `σ`. -/
 def mb (κ : NodeKind) (σ i : ℕ) : ℕ := chBase κ σ + i
 
-/-- **Aggregate `a`'s `aggPad` rows** (`σ = aggChild κ a`, `S` its sub-slots' activities). -/
+/-- **Aggregate `a`'s `aggPad` rows** (`σ = aggChild κ a`, `S` its sub-slots' activities): for each
+candidate `j < maxK`, gated by `[k = j]`, `F_{a,j}`'s `h_in` (elements 0–1) and its message (elements
+4–7, the whole block) are the main chain's. -/
 def padRows (κ : NodeKind) (a : ℕ) (S : ℕ → Lin) : List Row :=
   let σ := aggChild κ a
-  ((List.range (κ.maxK - 1)).flatMap fun j' =>
+  (List.range (κ.maxK - 1)).flatMap fun j' =>
     let j := j' + 1
     let F := finBlk κ σ j
     (List.range 2).map (fun h =>
       gateR (ind κ S j) ((Lin.cell (hc F h)).sub (Lin.cell (hc (mb κ σ (aggL j - 2)) (2 + h))))) ++
-    (List.range 3).map (fun e =>
-      gateR (ind κ S j) ((Lin.cell (hc F (4 + e))).sub (Lin.cell (hc (mb κ σ (aggL j - 1)) (4 + e))))) ++
-    [gateR (ind κ S j) ((Lin.cell (hc F 7)).sub
-      (if j = 1 then Lin.cell (hc (mb κ σ (aggL j - 1)) 7) else pk (pbC κ σ j) (8 * (lastR j - 48))))]) ++
-  ((List.range (κ.maxK - 1)).flatMap fun j' =>
-    let j := j' + 2
-    (List.range 128).map (fun q => boolR κ (pbC κ σ j q)) ++
-    [eqR κ (Lin.cell (hc (mb κ σ (aggL j - 1)) 7)) (pk (pbC κ σ j) 128)]) ++
-  [gateR (ind κ S κ.maxK) ((Lin.cell (hc (mb κ σ (aggL κ.maxK - 1)) 7)).sub
-    (pk (pbC κ σ κ.maxK) (8 * (lastR κ.maxK - 48))))]
+    (List.range 4).map (fun e =>
+      gateR (ind κ S j) ((Lin.cell (hc F (4 + e))).sub (Lin.cell (hc (mb κ σ (aggL j - 1)) (4 + e)))))
 
 /-! ## Facts and controls -/
 
-theorem lastR_eq : lastR 1 = 64 ∧ lastR 2 = 63 ∧ lastR 3 = 62 ∧ lastR 4 = 61 := by decide
+theorem lastR_eq : lastR 1 = 64 ∧ lastR 2 = 64 ∧ lastR 3 = 64 ∧ lastR 4 = 64 := by decide
 
 end W4
 end FR
