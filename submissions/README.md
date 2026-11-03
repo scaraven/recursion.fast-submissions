@@ -1,85 +1,23 @@
 # `submissions/`: one root per entry
 
-Each entry is one directory `submissions/<root>/`. This file is the layout of a root. The rules a
-submitter reads are in `../AGENTS.md`.
+Each entry is one directory, `submissions/<root>/`, where `<root>` matches `[a-z][a-z0-9-]{0,39}`.
+A pull request creates or changes exactly one root and nothing else. On `main` this directory holds
+the standing record's root, which the bot copies here, and no other entry. Every evaluated root
+stays at its tag `rf-source/<id>`. A root may not take the name of another directory kept here.
 
-On this branch the only v4 entry is `spartan-srom`: the baseline, v3's Spartan+Ligero leaf SNARK
-under the signed random oracle, with σ0-bundle nodes. Its own `README.md` and `NOTES.md` describe
-it, and its blueprint is `../docs/v4/flock-baseline/BLUEPRINT.md`. It is also the worked example of
-a root's layout. The v3 entries, `baseline` and `spartan-chain`, exist only on the local, unpushed
-`main` of the organiser's checkout, and they are not v4 entries.
+| Path | Required | What |
+|---|---|---|
+| `claim.json` | yes | the declared numbers: `error`, `completeness_error`, `qV`, `fuel_base`, `fuel_per_word` |
+| `lean/Solution.lean` | yes | `RecursionFast.Challenge.submission` and the theorem `certified` |
+| `lean/*.lean` | as needed | your other modules, flat in `lean/`, with fresh module names |
+| `prover/*.s` | yes | the x86-64 prover as GNU assembly |
+| `NOTES.md` | yes | the journal: idea, result, what failed and why, what to try next |
+| `README.md` | recommended | what the entry is, for a reader |
+| anything else | no | read by people, ignored by the evaluation |
 
-The harness that reads a root is the core's `harness/evaluate.py` and `harness/ci/fetch-entry.sh`
-at the `.contract` pin.
+Only regular files and directories are allowed (no symbolic links). The size caps are the core's
+`[entry]` caps (root 2,048 files and 512 MiB, `lean/` 1,024 files and 32 MiB, `prover/` 256 files
+and 256 MiB); see [`../AGENTS.md`](../AGENTS.md), section 8.
 
-## Root rules
-
-1. **One root per entry.** An entry pull request changes files under exactly one
-   `submissions/<root>/`. It never touches `records.json`, `.contract`, `docs/`, the workflows or
-   another root. The evaluation's `select` job refuses anything else.
-2. **Root name.** A lowercase identifier (`[a-z][a-z0-9-]*`), unique in this directory. The result
-   and the record refer to it. The intake, not built yet, fixes the rule.
-3. **Subdirectories, not flat.** v3 proposed flat roots, reading its §7.7 ("the intake exports a
-   root as flat regular files") as ots.golf does. **v4's harness requires two subdirectories**:
-   - it reads the Lean sources from `lean/`;
-   - it builds the prover from `prover/*.s`;
-   - `claim.json` stays at the root.
-
-   `fetch-entry.sh` exports the root with `git archive` and refuses anything that is not a regular
-   file or a directory. The rule is therefore now **regular files and directories, no symbolic
-   links, no special files**. A link could point the harness at a host file, and a directory
-   cannot.
-4. **Lean modules.**
-   - Every `.lean` file directly in `lean/` is a module of one generated library: `lean/Foo.lean`
-     is the module `Foo`. Subdirectories of `lean/` are not read.
-   - The harness ignores any lakefile, `leanOptions` and `moreLeanArgs`.
-   - `lean/Solution.lean` is required. It copies the rendered challenge verbatim, defines
-     `RecursionFast.Challenge.submission` and proves `RecursionFast.Challenge.certified`
-     (`AGENTS.md` §3.2).
-   - **Only `Solution`'s import closure is built.** The harness builds the targets `Challenge` and
-     `Solution` once, and nothing else (the core's FIXLIST Q7, V4-A9); the comparator, the gate and
-     the badge read that build. A module of `lean/` that `Solution` does not import, directly or
-     not, is never built or checked by the harness. So import the controls from `Solution` if the
-     harness is to check them.
-   - Module names must be fresh. No module root may exist in the organiser's build, the toolchain
-     or any package (so not `RecursionFast`, `Mathlib`, `CompPoly`, …), and `Challenge` is taken.
-     Use a prefix that names the entry, such as `SpartanSrom…`.
-   - Imports and hard rules: `AGENTS.md` §6.
-5. **Files a root holds:**
-
-   | File | Required | What |
-   |---|---|---|
-   | `claim.json` | yes | the declared numbers: `error`, `completeness_error` (strings `"a"` or `"a/b"`), `qV`, `fuel_base`, `fuel_per_word` (integers); exactly these keys (`AGENTS.md` §3.2) |
-   | `lean/Solution.lean` | yes | the solution module (rule 4) |
-   | `lean/*.lean` | yes | `V`, `P`, `E`, `ext`, the proofs and the controls |
-   | `prover/*.s` | yes | the native prover as x86-64 GNU assembly, linked by the runner with `gcc -static -O2 -pthread *.s -o prover -lm` in its sandbox; it must assemble with the runner image's GNU Binutils 2.42 (`AGENTS.md` §4.5) |
-   | prover sources and build script | expected | what the `.s` is generated from and the script that does it, so that it can be regenerated byte for byte; the runner does not build them |
-   | `README.md` | recommended | what the entry is, for a reader: the construction, what is proved, the measurements, how to check it (as `spartan-srom/README.md`) |
-   | `NOTES.md` | expected | the untrusted journal: the idea, the result, what did not work and why, what to try next. Published whatever the verdict (as `spartan-srom/NOTES.md`) |
-   | `LICENSE-…` | when needed | the licence of code derived from elsewhere (as `spartan-srom/LICENSE-leanerVM`) |
-
-6. **No secrets, and no binaries the harness would trust.**
-   - The harness renders the challenge from your claim and builds the prover from your `.s` files,
-     in its sandbox; prebuilt executables are never run.
-   - The assembly build sees only copies of the `.s` files, so `.include` and `.incbin` cannot
-     reach anything else.
-7. **Size.** A signed-proof file the runner reads is capped at 64 MiB. Open: no per-root file or
-   byte limit is fixed; the intake, when it is built, fixes them.
-
-## Registry
-
-`../records.json` is the registry, and only the intake writes it. It is at `{"version": 2,
-"records": {}}` (version 1 was v3's).
-
-**A v4 record** is held per season, under the season's name. It holds:
-
-- the standing entry's root and commit;
-- `S`, `T_tree`, `t_link` and the season's `K`;
-- the core commit (the pin) and the harness commit;
-- the attested result's digest and the run that produced it;
-- the CPU model.
-
-A record is admitted only with an ACCEPT whose attestation verifies (`AGENTS.md` §5.4) and a
-paired comparison in one job (`AGENTS.md` §8). PROVISIONAL results are never recorded. The
-acceptance check is the core's `harness/verify-record.sh RESULT.json` at the pin (`AGENTS.md`
-§5.4). Open: the exact record schema, which the intake fixes when it is built.
+The full procedure, from setup and local checks to the bot's statuses and the record rule, is
+[`../AGENTS.md`](../AGENTS.md). The rules themselves are `.contract/AGENTS.md`.
