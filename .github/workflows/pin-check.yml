@@ -35,6 +35,10 @@ jobs:
           REPO: ${{ github.repository }}
           NUM: ${{ github.event.pull_request.number }}
         run: |
+          if [[ ! -f base/.github/bot/pin.py ]]; then
+            echo "::notice title=pin check::the base branch has no bot yet (the launch PR itself); nothing to check against"
+            exit 0
+          fi
           git init -q --bare pr.git
           git --git-dir pr.git fetch -q --depth=1 --no-tags "https://github.com/$REPO.git" "refs/pull/$NUM/head"
           python3 -I base/.github/bot/pin.py --core --git pr.git FETCH_HEAD
