@@ -141,12 +141,12 @@
     <li>it <strong>beats the standing record by more than the margin</strong>:
       <span class="math">S</span> &lt; (1 &minus; <i>m</i>) &times; <span class="math">S</span><sub>record</sub>,
       with <span class="math">S</span><sub>record</sub> the record's own score at the pin and
-      <i>m</i> = 8&nbsp;%, measured on the evaluation machine as 3&radic;2 times the run-to-run
-      spread of one entry's score with the fixed chain lengths (1.75&nbsp;% over ten runs), rounded
-      up to a whole percent. The margin covers that noise only: every evaluation runs the same chain
-      lengths. A near-copy of the record can still win, but only by beating it by more than
-      8&nbsp;%; the margin may be re-derived from runs at the full season shape, and the owner may
-      change it between seasons;</li>
+      <i>m</i> = 2&nbsp;%, set by the owner. The run-to-run spread of one entry's score on the
+      evaluation machine with the fixed chain lengths is &sigma; &asymp; 1.75&nbsp;% (ten runs at the
+      smoke shape, likely smaller at the season shape), so two runs of one entry differ by about
+      &radic;2&sigma; &asymp; 2.5&nbsp;%, and a near-copy of the record can beat it by noise. Byte
+      copies and re-used record prover binaries are refused, and the owner can retire a record that
+      won by noise. The owner may change the margin between seasons;</li>
     <li>its prover binary is not one an earlier record already had.</li>
   </ul>
   <p>With no standing record at the pin (at the start, after the owner retires the record, or when
@@ -166,8 +166,10 @@
       <caption class="visually-hidden">The season's caps</caption>
       <thead><tr><th scope="col">What</th><th scope="col">Limit</th></tr></thead>
       <tbody>
-        <tr><td>Machine</td><td>a modern x86-64 server: x86-64-v3 guaranteed; newer extensions such as
-          AVX-512 or GFNI may be present: detect at run time and keep a portable fallback</td></tr>
+        <tr><td>Machine</td><td>an AMD Ryzen 7 PRO 8700GE (Zen 4, 8 cores / 16 threads); the benchmark VM:
+          4 cores / 8 threads pinned at a fixed 3.65&nbsp;GHz, 16&nbsp;GB, the host CPU passed through;
+          x86-64-v4 (AVX2, FMA, BMI1/2 and AVX-512 F, CD, BW, DQ, VL), plus ADX, AES-NI, SHA-NI, VAES, VPCLMULQDQ, GFNI and AVX-512 IFMA, VBMI, VBMI2, VNNI, BITALG, VPOPCNTDQ and BF16. The machine may change between
+          seasons: detect features at run time and keep a portable fallback</td></tr>
         <tr><td>Queue</td><td>one evaluation at a time, about 100&nbsp;minutes each with the pin's caches warm (up to about three hours when they must first be built); at most 3 started per author in any 24&nbsp;hours</td></tr>
         <tr><td>Stream</td><td>96 steps; chains of 2<sup>17</sup> to 2<sup>20</sup> permutations, one fixed, published sequence of lengths</td></tr>
         <tr><td>One step</td><td>60&nbsp;s from its inputs to the death of its last process; ready within 10&nbsp;s</td></tr>

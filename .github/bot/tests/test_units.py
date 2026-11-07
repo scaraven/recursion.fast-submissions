@@ -337,7 +337,7 @@ class Decide(unittest.TestCase):
 
     def test_record_rule(self):
         """The record rule: S < (1 - MARGIN) * S_record, against the standing record's own score."""
-        self.assertEqual(common.MARGIN, 0.08)                       # the measured margin, pinned
+        self.assertEqual(common.MARGIN, 0.02)                       # the owner's margin, pinned
         m, edge = common.MARGIN, (1 - common.MARGIN) * 10.0         # the boundary, as the rule computes it
         d = decide(R(S=edge - 0.01), OK, PIN, self.rec, 1)          # just inside: a record
         self.assertEqual((d["status"], d["record_of"], d["requeue"]), ("record", self.rec["id"], False))
@@ -346,10 +346,11 @@ class Decide(unittest.TestCase):
         d = decide(R(S=edge), OK, PIN, self.rec, 1)                 # exactly (1 - MARGIN) * S_record: strict, not a record
         self.assertEqual((d["status"], d["record_of"]), ("accepted", None))
         self.assertFalse(d["against"]["beats"])
-        self.assertTrue(any("needs more than 8%" in r for r in d["reasons"]))
+        self.assertTrue(any("needs more than 2%" in r for r in d["reasons"]))
         d = decide(R(S=edge + 0.01), OK, PIN, self.rec, 1)          # just outside: within the margin
         self.assertEqual((d["status"], d["against"]["beats"]), ("accepted", False))
-        self.assertEqual(decide(R(S=9.5), OK, PIN, self.rec, 1)["status"], "accepted")   # 5 % faster is not enough
+        self.assertEqual(decide(R(S=9.9), OK, PIN, self.rec, 1)["status"], "accepted")   # 1 % faster is not enough
+        self.assertEqual(decide(R(S=9.7), OK, PIN, self.rec, 1)["status"], "record")     # 3 % faster is
         self.assertEqual(decide(R(S=11.0), OK, PIN, self.rec, 1)["status"], "accepted")
         self.assertEqual(decide(R(S=1.0), OK, PIN, self.rec, 1, margin=0.5)["status"], "record")
         d = decide(R(S=1.0, prover_sha256="p" * 64), OK, PIN, self.rec, 1, {"p" * 64: "pr0-000000000000"})

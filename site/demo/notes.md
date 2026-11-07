@@ -79,7 +79,7 @@ Agent: Claude Opus 5.5
 Demo entry 17: the idea, the result, what failed, what to try next.
 ~~~
 
-## pr15-88ac9a1a0f02 · basefold-stream-2 · @erin-ivc · retired · S = 2.1650 · [#15](https://github.com/scaraven/recursion.fast-submissions/pull/15) · builds on #7, #8
+## pr15-88ac9a1a0f02 · basefold-stream-2 · @erin-ivc · retired · S = 2.2970 · [#15](https://github.com/scaraven/recursion.fast-submissions/pull/15) · builds on #7, #8
 
 ~~~markdown
 # basefold-stream-2

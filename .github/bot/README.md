@@ -13,7 +13,7 @@ Four workflows and a small Python package (standard library only, run as `python
 | `precheck.py` | the paths rule (files API) and the tree rule (`git ls-tree`/`cat-file`), the core's `[entry]` caps |
 | `rfqueue.py` | `submissions.json`: order (a waiting port, then fair by author), the per-author quota, supersede, withdraw, reap, duplicates, records per pin, retirement, ports, compaction |
 | `decide.py` | status and record rule (`S < (1 − MARGIN) · S_record`), record-cache retry |
-| `common.py` | constants: `MARGIN` (0.08: 3·√2 times the measured run-to-run spread of one entry's score, rounded up to a whole percent), the quota (`AUTHOR_QUOTA` = 3 per `QUOTA_WINDOW_S` = 24 h), and the caps |
+| `common.py` | constants: `MARGIN` (0.02, the owner's choice; the measured run-to-run spread of one entry's score is about 1.75 %, so it does not keep noise out), the quota (`AUTHOR_QUOTA` = 3 per `QUOTA_WINDOW_S` = 24 h), and the caps |
 | `render.py`, `attest.py`, `gitdata.py`, `gh.py`, `pin.py`, `pin-core.sh`, `purge-caches.sh`, `wfcheck.py` | comments/statuses/notes.md/records.json; provenance; git plumbing; REST; the pin, and the purge of caches naming a new pin; the workflow safety check |
 | `simulate.py`, `tests/` | a local end-to-end run against a bare repository, and the tests |
 
@@ -95,7 +95,7 @@ A submitter controls the PR's title, body, branch name and every byte of its roo
 | Change the pin, the CI or the bot | Workflows run from `main`. The precheck refuses any path outside one `submissions/<root>/` (renames included). The evaluation uses `main`'s pin literal. `pin.py` refuses a disagreement at run time, and `pin-check` checks the core's inputs and caps at the pin. |
 | PR into `data` or another branch | The jobs run only for `refs/heads/main`, and the bot ignores a PR whose base is not `main`. (Old branches must carry no workflows: settings above.) |
 | Skip the queue | The queue time is the bot's status time; fork tokens cannot write statuses in the base repository. The order is fair by author. Forcing needs write access. Many accounts each get a fair share (residual: use `hold`, blocking, interaction limits). |
-| Re-roll the noise (empty commits, resubmissions, near-copies) | A root tree already evaluated, being evaluated, or queued in another PR is `invalid`. A record needs `S < (1 − MARGIN) · S_record` on the season's machine (fingerprint), `MARGIN` (8 %) set from that machine's measured run-to-run noise. At most 3 evaluations start per author per 24 h. A prover binary of an earlier record never takes the record. Residual: a near-copy (one changed byte) is a fresh candidate and can still win, but only by beating the record by more than 8 % (by noise alone, in at most about 0.13 % of attempts); the owner retires it if it does. |
+| Re-roll the noise (empty commits, resubmissions, near-copies) | A root tree already evaluated, being evaluated, or queued in another PR is `invalid`. A record needs `S < (1 − MARGIN) · S_record` on the season's machine (fingerprint), `MARGIN` = 2 % (the owner's). At most 3 evaluations start per author per 24 h. A prover binary of an earlier record never takes the record. Residual: one entry's score varies by σ ≈ 1.75 % from run to run (measured at the smoke shape), so two runs differ by about √2·σ ≈ 2.5 %, more than the margin: a near-copy (one changed byte) is a fresh candidate and can beat the record by noise alone (roughly one attempt in five); the owner retires it if it does. A noise-proof margin would be 3·√2·σ ≈ 7.4 %. |
 | Take the record after a pin move | The port of the standing record runs before any other entry at the new pin, forced runs and its own re-runs after an ERROR included; the prover-binary rule exempts the record's own commit. |
 | Steal credit | The earliest entry with a root tree wins; a later copy by another author is `invalid`. The author is the PR's opener. `Builds on:` keeps only PRs the bot knows. Residual: copying a fork's commits before its PR is opened (submitters: open the PR first). |
 | Take a name the organiser keeps on `main` | A root named like a directory under `main:submissions/` that is not a record's root is `invalid`. |
@@ -231,12 +231,13 @@ paused queue stays paused across the move (resume it as in step 6 above).
 
 ### Changing the margin
 
-Between seasons, from new measurements of the machine's run-to-run noise. Every place that states
-it: here `MARGIN` and its derivation comment in `common.py`, `margin` in `records.json`, this
+The owner's choice (now 2 %), between seasons; the measured run-to-run noise of one entry's
+score (σ ≈ 1.75 % at the smoke shape) is the reference for it. Every place that states it: here `MARGIN` and its comment in `common.py`, `margin` in `records.json`, this
 README (the `common.py` row and the "Re-roll the noise" defence), `AGENTS.md` §10, `README.md`,
-`site/rules.html`, `site/llms.txt`, and the fallback `0.08` in `site/common.js` (used when
+`site/rules.html`, `site/llms.txt`, the two demo datasets (`site/demo/submissions.json` and
+`site/demo/empty/submissions.json`, with the demo reasons that quote it), and the fallback `0.02` in `site/common.js` (used when
 `submissions.json` cannot be read; twice); in the core, `README.md`, `AGENTS.md` §8 (the rule
-and "The margin … is measured") and §12 (the near-copy limitation and the end-of-stream gain),
+and "The margin") and §12 (the near-copy limitation and the end-of-stream gain),
 changed by a core commit and a pin move. The next `sync` or `select` treats a stored state with
 another margin as stale and rewrites `data` and `records.json` with the new one; no entry changes
 status, and records already taken stand.

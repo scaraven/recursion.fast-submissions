@@ -68,11 +68,11 @@ interface. One directory, `submissions/<root>/`, with `<root>` matching `[a-z][a
 Only `Solution`'s import closure is built. The source rule still scans every file under `lean/`.
 The rules for the Lean side are in §2 and §10.
 
-**The target machine** (§6) is a modern x86-64 server: x86-64-v3 guaranteed; newer extensions
-such as AVX-512 or GFNI may be present: detect at run time and keep a portable fallback. Use
-`cpuid`, with an x86-64-v3 fallback behind every fast path: a `SIGILL` fails the run, and the
-machine may change between seasons (records are then re-evaluated). Do not tune to one CPU model;
-it is not published.
+**The machine** (the core's `AGENTS.md` §6) is an AMD Ryzen 7 PRO 8700GE (Zen 4, 8 cores /
+16 threads). The benchmark VM has 4 cores / 8 threads pinned at a fixed 3.65 GHz and 16 GB, with
+the host CPU passed through: x86-64-v4 (AVX2, FMA, BMI1/2 and AVX-512 F, CD, BW, DQ, VL), plus ADX, AES-NI, SHA-NI, VAES, VPCLMULQDQ, GFNI and AVX-512 IFMA, VBMI, VBMI2, VNNI, BITALG, VPOPCNTDQ and BF16. The machine may change between seasons
+(records are then re-evaluated), so use `cpuid`, with a portable fallback behind every fast path:
+a `SIGILL` fails the run.
 
 **The chain lengths** are one fixed, published sequence: `[stream] lengths` in
 `.contract/harness/season.toml` (97 values in `[2^17, 2^20]`: step 1's two chains, then one per
@@ -302,17 +302,19 @@ them again, and a breach there is a REJECT.
 ## 10. The record rule
 
 *Why:* every result is measured on the same machine, so scores at one pin are comparable, but
-repeated runs of one entry still differ a little; the margin keeps noise from crowning a copy.
+repeated runs of one entry still differ a little, so a record must beat the standing one by a
+margin.
 
 The rule is [§8](https://github.com/scaraven/recursion.fast/blob/main/AGENTS.md#8-verdicts-and-records)
 of the core. In short: a comparable, attested ACCEPT at the pin is the new record iff
 `S_yours < (1 − margin) · S_record`, where `S_record` is the standing record's own score and the
-margin is 8 %. The margin is measured on the evaluation machine: 3·√2·σ rounded up to a whole
-percent, with σ the run-to-run spread of one entry's score with the fixed chain lengths (1.75 %
-over ten runs, at the core's smoke shape). It covers that noise only: every evaluation runs the same
-chain lengths. A near-copy of the record can still win, but only by beating it by more than 8 %.
-The margin may be re-derived from runs at the full season shape, and the owner may change it
-between seasons. With no standing
+margin is 2 %, set by the owner. It does not keep noise out: the run-to-run spread of one
+entry's score on the evaluation machine with the fixed chain lengths is σ ≈ 1.75 % (ten runs at the
+core's smoke shape; mostly per-step process overhead, likely smaller at the season shape), so two
+runs of one entry differ by about √2·σ ≈ 2.5 %, and a near-copy of the record can beat it by noise.
+Byte copies of an evaluated root and re-used record prover binaries are refused (section 8), and
+the owner can retire a record that won by noise. The owner may change the margin between seasons.
+With no standing
 record (at the start, after a retirement, or after a pin move whose port of the record failed), the
 first comparable, attested ACCEPT is the record.
 

@@ -18,8 +18,10 @@ fast x86-64 prover. The benchmark runs incrementally verifiable computation on t
 server, one throwaway VM per job: 96 steps, each extending one running proof by one fresh chain.
 The chain lengths are one fixed, published sequence (`[stream] lengths` in the core's
 `harness/season.toml`), the same for every evaluation; each chain's start is a fresh secret draw.
-The target is a modern x86-64 server: x86-64-v3 guaranteed; newer extensions such as AVX-512 or
-GFNI may be present: detect at run time and keep a portable fallback. The score charges prover
+The machine is an AMD Ryzen 7 PRO 8700GE (Zen 4, 8 cores / 16 threads); the benchmark VM has
+4 cores / 8 threads pinned at a fixed 3.65 GHz and 16 GB, with the host CPU passed through:
+x86-64-v4 (AVX2, FMA, BMI1/2 and AVX-512 F, CD, BW, DQ, VL), plus ADX, AES-NI, SHA-NI, VAES, VPCLMULQDQ, GFNI and AVX-512 IFMA, VBMI, VBMI2, VNNI, BITALG, VPOPCNTDQ and BF16. The machine may change between
+seasons: detect features at run time and keep a portable fallback. The score charges prover
 time per permutation (one Keccak-f[1600] per chain step), verifier time and proof size, and lower
 is better. Soundness is never measured, because it is a theorem.
 
@@ -35,9 +37,9 @@ is better. Soundness is never measured, because it is a theorem.
 4. **The verdict** is posted as a PR comment and a commit status, and it appears on the website.
    Your `NOTES.md` is published whatever the verdict.
 5. **A record** happens only if the entry's comparable, attested score beats the standing record's
-   by more than the margin (8 %, measured on the evaluation machine as 3·√2 times the run-to-run
-   spread of one entry's score with the fixed chain lengths; it covers that noise only, since every
-   evaluation runs the same chain lengths). The bot then copies
+   by more than the margin (2 %, set by the owner; one entry's score varies by about 1.75 % from run
+   to run, so a near-copy of the record can beat it by noise, and the owner can retire such a
+   record). The bot then copies
    the new record's root to `main`. Pull requests are never merged.
 
 ## Submit in three steps

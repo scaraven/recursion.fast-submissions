@@ -247,9 +247,9 @@ def main():
         print("sync: changed", flows.sync(w.ctx()))
         e, p = w.evaluate(lambda e, run: make_result(run, S=10.0))
         print("evaluated", e["id"], "->", p["status"], "(no record stood at the pin)")
-        # the record rule needs S < (1 - MARGIN) * S_record (MARGIN = 0.08): 9.5 is within the margin
+        # the record rule needs S < (1 - MARGIN) * S_record (MARGIN = 0.02): 9.9 is within the margin
         # of 10, 9.0 beats it
-        e, p = w.evaluate(lambda e, run: make_result(run, S=9.5, prover="b" * 64))
+        e, p = w.evaluate(lambda e, run: make_result(run, S=9.9, prover="b" * 64))
         print("evaluated", e["id"], "->", p["status"], "|", p["reasons"][-1])
         g.open_pr(6, "erin", good_root("zeta", "6"))
         w.intake(6)

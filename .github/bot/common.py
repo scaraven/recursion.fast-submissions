@@ -11,16 +11,17 @@ SIGNER_WORKFLOW = "scaraven/recursion.fast/.github/workflows/evaluate.yml"
 STATUS_CONTEXT = "recursion.fast/evaluation"
 # The record rule (AGENTS.md §10): a comparable, attested ACCEPT at the pin is a new record iff
 # S < (1 - MARGIN) * S_record, S_record the standing record's score at the pin.
-# MARGIN derivation: σ is the relative run-to-run spread of S for one entry on the evaluation
-# machine, every run with the same fixed chain lengths. S and S_record are two independent runs, so
-# their difference has spread √2·σ; MARGIN = 3·√2·σ, rounded up to a whole percent, lets a copy of
-# the record beat it by noise with probability at most about 0.13 % per attempt. Measured: σ = 1.75 %
-# over 10 runs of one entry at the smoke shape (the core's harness/smoke.toml; the machine's
-# calibration CV, 1.55 %, is smaller), so 3·√2·σ = 7.42 % and MARGIN = 8 %. It may be re-derived
-# from runs at the full season shape, and the owner may change it between seasons (a stored state
-# with another margin is rewritten at once, rfqueue.load; README.md, "Changing the margin", lists
-# every place that states it).
-MARGIN = 0.08
+# MARGIN is the owner's choice (2 %), not derived from the noise. For reference: σ, the relative
+# run-to-run spread of S for one entry on the evaluation machine with the fixed chain lengths, was
+# measured at 1.75 % over 10 runs at the smoke shape (the core's harness/smoke.toml; mostly per-step
+# process overhead, likely smaller at the season shape). S and S_record are two independent runs, so
+# two runs of one entry differ by about √2·σ ≈ 2.5 %: a near-copy of the record can beat it by noise
+# alone (at σ = 1.75 %, in roughly one attempt in five). A noise-proof margin would be 3·√2·σ ≈ 7.4 %.
+# The defences are elsewhere: a byte copy of an evaluated root is invalid, a record's prover binary
+# never takes the record again, and the owner retires a record won by noise (`retire`). The owner may
+# change MARGIN between seasons (a stored state with another margin is rewritten at once,
+# rfqueue.load; README.md, "Changing the margin", lists every place that states it).
+MARGIN = 0.02
 MAX_ATTEMPTS = 2          # an organiser-side ERROR is evaluated once more, then left for the owner
 # The quota (AGENTS.md §9): at most AUTHOR_QUOTA evaluations started per author in any
 # QUOTA_WINDOW_S; beyond that an author's next entry waits, keeping its place (retries and the

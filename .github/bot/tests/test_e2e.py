@@ -58,7 +58,7 @@ class E2E(unittest.TestCase):
         self.assertFalse(any(k in p for k in ("duel", "duels", "duel_with", "cpu")))
         self.assertTrue(any("Against the record" in c[1] for c in self.g.comments))
         r2 = json.loads(self.w.show("main:records.json"))
-        self.assertEqual(([r2["record"]["pr"]] + [h["pr"] for h in r2["history"]], r2["margin"]), ([3, 1], 0.08))
+        self.assertEqual(([r2["record"]["pr"]] + [h["pr"] for h in r2["history"]], r2["margin"]), ([3, 1], 0.02))
         self.assertEqual(git(self.w.bare, "ls-tree", "--name-only", "main", "submissions/").split(),
                          ["submissions/README.md", "submissions/example", "submissions/r3"])
         self.assertTrue(self.w.show(f"data:notes/{p['id']}.md").startswith(b"# r3"))
@@ -588,10 +588,10 @@ class E2E(unittest.TestCase):
         """At the same pin, a stored state with another margin is rewritten (the evaluated entries kept)."""
         rec = self.record_at()
         raw = json.loads(self.w.show("data:submissions.json"))
-        raw["margin"] = 0.02
+        raw["margin"] = 0.05
         self.seed(json.dumps(raw).encode(), self.w.show("main:records.json").replace(
-            b'"margin": %s' % str(common.MARGIN).encode(), b'"margin": 0.02'))
-        self.assertIn(b'"margin": 0.02', self.w.show("main:records.json"))
+            b'"margin": %s' % str(common.MARGIN).encode(), b'"margin": 0.05'))
+        self.assertIn(b'"margin": 0.05', self.w.show("main:records.json"))
         flows.sync(self.w.ctx())
         st = json.loads(self.w.show("data:submissions.json"))
         self.assertEqual((st["margin"], st["record"], [e["id"] for e in st["submissions"]]), (common.MARGIN, rec["id"], [rec["id"]]))

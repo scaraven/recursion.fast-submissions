@@ -32,9 +32,11 @@ One root, `submissions/<root>/` (`[a-z][a-z0-9-]{0,39}`), holding:
 - `lean/Solution.lean`: `RecursionFast.Challenge.submission` and
   `theorem certified : CertificateR declared submission`, plus your modules, flat in `lean/`;
 - `prover/*.s`: GNU assembly for the evaluation image's binutils 2.42, run in a sandbox with no network
-  and no shell, reaching the oracle only through the service socket. The target is a modern x86-64
-  server: x86-64-v3 guaranteed; newer extensions such as AVX-512 or GFNI may be present: detect at
-  run time and keep a portable fallback;
+  and no shell, reaching the oracle only through the service socket. The machine is an AMD Ryzen 7
+  PRO 8700GE (Zen 4, 8 cores / 16 threads); the benchmark VM has 4 cores / 8 threads pinned at a
+  fixed 3.65 GHz and 16 GB, with the host CPU passed through: x86-64-v4 (AVX2, FMA, BMI1/2 and AVX-512 F, CD, BW, DQ, VL), plus ADX, AES-NI, SHA-NI, VAES, VPCLMULQDQ, GFNI and AVX-512 IFMA, VBMI, VBMI2, VNNI, BITALG, VPOPCNTDQ and BF16;
+  the machine may change between seasons: detect features at run time and keep a portable
+  fallback;
 - `NOTES.md` (required) and `README.md` (recommended).
 
 Intake caps (the core's `[entry]` caps): the root at most 2,048 files and 512 MiB (128 MiB per
@@ -79,11 +81,11 @@ per contract pin. A result is a new record iff it is ACCEPT, comparable (full st
 matched, S > 0), attested by the core's
 evaluate.yml at the pin, its prover binary is one no earlier record had, and
 S < (1 − margin) · S_record, S_record the standing record's own score at the pin (`margin` in
-submissions.json; 0.08, measured on the evaluation machine as 3·√2 times the run-to-run spread of
-one entry's score with the fixed chain lengths, rounded up to a whole percent; it covers that noise
-only, since every evaluation runs the same chain lengths. A near-copy of the record can still win,
-but only by more than 8 %; the margin may be re-derived from full-season-shape runs, and the owner
-may change it between seasons). Each entry's `against` field records that
+submissions.json; 0.02, set by the owner. One entry's score varies by σ ≈ 1.75 % from run to run
+on the evaluation machine with the fixed chain lengths (smoke shape), so two runs differ by about
+√2·σ ≈ 2.5 % and a near-copy of the record can beat it by noise; byte copies and re-used record
+prover binaries are refused, and the owner can retire a record won by noise. The owner may change
+the margin between seasons). Each entry's `against` field records that
 comparison. With no standing record at the pin (start, owner retirement, a failed port) the first
 comparable attested ACCEPT is the record. After a pin move (or a machine change between seasons)
 the bot re-runs the record at the new pin first (the port). The standing record is the top-level

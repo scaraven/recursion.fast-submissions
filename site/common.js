@@ -139,7 +139,7 @@
       let res;
       try { res = await fetchWithTimeout(BASE + 'submissions.json', 15000); } catch (err) {
         // the branch `data` does not exist yet: nothing has been published, which is not an error
-        if (err.status === 404) return { updated: null, core: await mainPin(), margin: 0.08, subs: [], skipped: 0, notShown: 0, record: null, unpublished: true };
+        if (err.status === 404) return { updated: null, core: await mainPin(), margin: 0.02, subs: [], skipped: 0, notShown: 0, record: null, unpublished: true };
         throw err;
       }
       const raw = await res.json().catch(() => { throw new Error('submissions.json is not valid JSON'); });
@@ -157,7 +157,7 @@
       return {
         updated: date(raw.updated),
         core: typeof raw.core === 'string' && RE.sha.test(raw.core) ? raw.core : null,
-        margin: margin !== null && margin >= 0 && margin < 1 ? margin : 0.08,
+        margin: margin !== null && margin >= 0 && margin < 1 ? margin : 0.02,
         subs,
         skipped: Math.min(raw.submissions.length, CAP) - subs.length,
         notShown: Math.max(0, raw.submissions.length - CAP),

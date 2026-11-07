@@ -3,7 +3,7 @@
  "updated": "2026-11-03T08:05:34Z",
  "repo": "scaraven/recursion.fast-submissions",
  "core": "c0dec0dec0dec0dec0dec0dec0dec0dec0dec0de",
- "margin": 0.08,
+ "margin": 0.02,
  "submissions": [
   {
    "id": "pr3-5d84396bc69e",
@@ -266,7 +266,7 @@
    "comparable": true,
    "truncated": false,
    "reasons": [
-    "S = 4.0900 against the record pr5-b08f59d2dfd5's S = 4.1180 (+0.7%; a record needs more than 8%)"
+    "S = 4.0900 against the record pr5-b08f59d2dfd5's S = 4.1180 (+0.7%; a record needs more than 2%)"
    ],
    "run_url": "https://github.com/scaraven/recursion.fast-submissions/actions/runs/106",
    "tag": "rf-source/pr7-acd08d0c260f",
@@ -494,8 +494,8 @@
    "status": "retired",
    "verdict": "ACCEPT",
    "score": {
-    "S": 2.165,
-    "P_bar": 1.849,
+    "S": 2.297,
+    "P_bar": 1.981,
     "V_bar": 0.316,
     "M": 96,
     "c_P": 1.031,
@@ -506,7 +506,7 @@
    "comparable": true,
    "truncated": false,
    "reasons": [
-    "S = 2.1650 beats the record pr8-f87ede97e4c7 (S = 2.3710) by 8.7%",
+    "S = 2.2970 beats the record pr8-f87ede97e4c7 (S = 2.3710) by 3.1%",
     "retired by the owner"
    ],
    "run_url": "https://github.com/scaraven/recursion.fast-submissions/actions/runs/111",
@@ -522,9 +522,9 @@
    "build_manifest": null,
    "against": {
     "record": "pr8-f87ede97e4c7",
-    "S": 2.165,
+    "S": 2.297,
     "S_record": 2.371,
-    "gain": 0.08688317165752846,
+    "gain": 0.031210459721636385,
     "beats": true
    },
    "counted_at": "2026-11-01T07:11:17Z",
