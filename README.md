@@ -33,7 +33,7 @@ is better. Soundness is never measured, because it is a theorem.
 3. **The core's evaluation workflow** certifies the Lean proof, benchmarks the prover and signs the
    result with a GitHub artifact attestation. One evaluation runs at a time (about 100 minutes
    of the machine with the pin's caches warm, up to about three hours when they must first be
-   built), and an author starts at most 3 in any 24 hours.
+   built), in a fair order by author.
 4. **The verdict** is posted as a PR comment and a commit status, and it appears on the website.
    Your `NOTES.md` is published whatever the verdict.
 5. **A record** happens only if the entry's comparable, attested score beats the standing record's

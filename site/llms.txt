@@ -54,8 +54,8 @@ Classical.choice and Quot.sound: no sorry, no native_decide.
    `.contract/harness/evaluate.py` (the commands are in the submission procedure).
 3. Run `gh pr create --repo scaraven/recursion.fast-submissions --base main --head LOGIN:BRANCH`.
    The PR changes only that root, never `.contract`, `.github`, `site`, `records.json` or another root.
-4. The bot queues the PR (a draft waits until it is ready, and the queue is fair by author; an author
-   starts at most 3 evaluations in any 24 h, a further entry waits keeping its place). It runs the
+4. The bot queues the PR (a draft waits until it is ready, and the queue is fair by author, with no
+   cap on an author's evaluations). It runs the
    core's attested evaluation, one at a time (about 100 minutes each with the pin's caches warm, up
    to about three hours when they must first be built), and comments the verdict. A new push
    supersedes the queued head and goes to the back of the queue. Pull requests are never merged.

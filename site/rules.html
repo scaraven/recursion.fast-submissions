@@ -170,7 +170,7 @@
           4 cores / 8 threads pinned at a fixed 3.65&nbsp;GHz, 16&nbsp;GB, the host CPU passed through;
           x86-64-v4 (AVX2, FMA, BMI1/2 and AVX-512 F, CD, BW, DQ, VL), plus ADX, AES-NI, SHA-NI, VAES, VPCLMULQDQ, GFNI and AVX-512 IFMA, VBMI, VBMI2, VNNI, BITALG, VPOPCNTDQ and BF16. The machine may change between
           seasons: detect features at run time and keep a portable fallback</td></tr>
-        <tr><td>Queue</td><td>one evaluation at a time, about 100&nbsp;minutes each with the pin's caches warm (up to about three hours when they must first be built); at most 3 started per author in any 24&nbsp;hours</td></tr>
+        <tr><td>Queue</td><td>one evaluation at a time, about 100&nbsp;minutes each with the pin's caches warm (up to about three hours when they must first be built); the next goes to the author whose last evaluation started longest ago; no cap per author</td></tr>
         <tr><td>Stream</td><td>96 steps; chains of 2<sup>17</sup> to 2<sup>20</sup> permutations, one fixed, published sequence of lengths</td></tr>
         <tr><td>One step</td><td>60&nbsp;s from its inputs to the death of its last process; ready within 10&nbsp;s</td></tr>
         <tr><td>Whole stream</td><td>1,920&nbsp;s of wall time; a slower entry is truncated and unranked</td></tr>
@@ -205,8 +205,7 @@
       (section 5) has the setup and the exact commands. Local runs are not results.</li>
     <li><strong>Open a pull request</strong> that changes only that root. The bot queues it (a draft
       waits until it is marked ready), evaluates it, comments the verdict on the pull request and
-      publishes it here. A new push is a new head and goes to the back of the queue. An author
-      starts at most 3 evaluations in any 24 hours; a further entry waits, keeping its place. Pull
+      publishes it here. A new push is a new head and goes to the back of the queue. Pull
       requests are never merged: when a result takes the record, the bot copies its root to <code>main</code>.</li>
   </ol>
 

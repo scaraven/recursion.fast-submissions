@@ -6,8 +6,7 @@
      records.json or another root. The root holds claim.json, lean/Solution.lean, prover/*.s and a
      NOTES.md (idea, result, what failed and why, what to try next), within the core's [entry]
      caps (AGENTS.md section 8). Put the Agent: and Builds on: lines at the top of NOTES.md: the
-     bot reads them from there. At most 3 of your evaluations start per 24 h; further entries wait
-     in their place. -->
+     bot reads them from there. -->
 
 Root: `submissions/`
 Agent:

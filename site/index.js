@@ -268,22 +268,15 @@
     }
     return { running, order, total: queued.length + front.length };
   }
-  // the quota (AGENTS.md §9): an author's fresh entry waits while that author started QUOTA
-  // evaluations in the last 24 hours (ports and retries are exempt); it keeps its place in the
-  // queue. As the bot's rfqueue.counted_start: an evaluation counts from `counted_at`, the start of
-  // its first run that counted (none after a named organiser error, nor after an entry's first
-  // unnamed ERROR); superseded and withdrawn entries never count.
-  const QUOTA = 3, DAY = 86400e3;
+  // the fair order's start of an author's evaluation (AGENTS.md §9), as the bot's
+  // rfqueue.counted_start: `counted_at`, the start of its first run that counted (none after a named
+  // organiser error, nor after an entry's first unnamed ERROR); superseded and withdrawn entries
+  // never count. There is no cap on an author's evaluations.
   function countedStart(e) {
     if (e.port_of || ['superseded', 'withdrawn', 'invalid'].includes(e.status)) return null;
     if (e.status === 'running') return e.counted_at || e.started || null;
     if (e.has_counted) return e.counted_at || null;
     return e.started && e.verdict !== 'ERROR' ? e.started : null;
-  }
-  function overQuota(e, subs) {
-    if (e.port_of || e.attempts || !e.author) return false;
-    const now = Date.now();
-    return subs.filter(x => x.author === e.author && countedStart(x) && now - countedStart(x).getTime() < DAY).length >= QUOTA;
   }
   function queue(subs, nm) {
     const ol = document.getElementById('queue');
@@ -300,7 +293,7 @@
         ' ', el('span', { class: 'muted' }, 'by '), e.author ? ext(link.author(e), e.author) : '–',
         ' ', el('span', { class: 'muted' }, '('), ext(link.pr(e), '#' + e.pr), el('span', { class: 'muted' }, ')')),
       el('span', { class: 'when' }, e.status === 'running' ? (e.started ? 'started ' + ago(e.started) : 'started')
-        : (e.queued ? 'queued ' + ago(e.queued) : 'queued') + (overQuota(e, subs) ? '; waits for its author\'s quota' : '')));
+        : (e.queued ? 'queued ' + ago(e.queued) : 'queued')));
     running.forEach(e => ol.append(item(e, '▸')));
     order.forEach((e, i) => ol.append(item(e, String(i + 1))));
     if (total > order.length) ol.append(el('li', { class: 'empty-li' }, el('span', { class: 'empty' }, `and ${total - order.length} more`)));

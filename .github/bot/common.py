@@ -23,21 +23,17 @@ STATUS_CONTEXT = "recursion.fast/evaluation"
 # rfqueue.load; README.md, "Changing the margin", lists every place that states it).
 MARGIN = 0.02
 MAX_ATTEMPTS = 2          # an organiser-side ERROR is evaluated once more, then left for the owner
-# The quota (AGENTS.md §9): at most AUTHOR_QUOTA evaluations started per author in any
-# QUOTA_WINDOW_S; beyond that an author's next entry waits, keeping its place (retries and the
-# owner's forced runs are exempt)
-AUTHOR_QUOTA = 3
-QUOTA_WINDOW_S = 24 * 3600
 # Organiser errors the core names in a result (`organiser_error`), and `attestation`, which the bot
 # gives a result whose provenance does not verify (nothing an entry runs can reach the attest job).
-# `drift` is exempt although c_P is sampled during the entry's stream: the sandbox leaves no entry
-# process alive, so only a thermal effect could carry over (accepted and documented). These are the
-# organiser's alone: a run that ends in one costs the author nothing (no quota, no place in the fair
-# order). A `fingerprint` error (the machine is not the season's) or a `lengths` error (the stream did
-# not use the season's fixed chain lengths: an organiser bug, the same at every retry at one pin) does
-# not even use up the entry's retry; the others are retried once (MAX_ATTEMPTS).
-EXEMPT_ERRORS = ("fingerprint", "lengths", "drift", "setup", "cache", "attestation")   # attestation: an unverified result (the bot's)
-ORGANISER_ERRORS = EXEMPT_ERRORS + ("harness",)
+# `drift` is among them although c_P is sampled during the entry's stream: the sandbox leaves no
+# entry process alive, so only a thermal effect could carry over (accepted and documented). These are
+# the organiser's alone: a run that ends in one never counts against the author (it does not move
+# the author back in the fair order). A `fingerprint` error (the machine is not the season's) or a
+# `lengths` error (the stream did not use the season's fixed chain lengths: an organiser bug, the
+# same at every retry at one pin) does not even use up the entry's retry; the others are retried
+# once (MAX_ATTEMPTS). `attestation`: an unverified result (the bot's).
+UNCOUNTED_ERRORS = ("fingerprint", "lengths", "drift", "setup", "cache", "attestation")
+ORGANISER_ERRORS = UNCOUNTED_ERRORS + ("harness",)
 PAUSING_ERRORS = ("fingerprint", "lengths")     # a retry cannot clear them: re-queued in place without an attempt
 # The pause (AGENTS.md §9): every run that ends on the organiser's side (any ERROR, named or not, a
 # result whose provenance fails, no result at all, a run reaped after it died) joins the error

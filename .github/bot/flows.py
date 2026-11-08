@@ -362,9 +362,8 @@ def sync(ctx):
 
 # ---- select -------------------------------------------------------------------------------------
 def select(ctx, force_pr=None, retire_id=None, resume=False):
-    """Picks the next entry (`rfqueue.order`, skipping an author over the quota, AGENTS.md §9, whose
-    entry keeps its place; `force_pr`: that pull request's waiting or errored entry, exempt from the
-    quota), marks it running, and returns a copy of it (None: nothing to evaluate). Entries a
+    """Picks the next entry (`rfqueue.order`, AGENTS.md §9; `force_pr`: that pull request's waiting
+    or errored entry), marks it running, and returns a copy of it (None: nothing to evaluate). Entries a
     previous run left running are reaped first (runs are serialised by `rf-eval`). `retire_id`: the
     owner retires that record first. When no record stands at the pin and the last record is of an
     earlier pin, its port to this pin is created and evaluated before anything else, forced runs
@@ -442,8 +441,6 @@ def select(ctx, force_pr=None, retire_id=None, resume=False):
                 continue
             if force_pr is None and (p.get("draft") or "hold" in _labels(p)):
                 continue
-            if force_pr is None and rfqueue.over_quota(st, e, now):
-                continue                     # the quota: it keeps its place until its author's window frees
             rfqueue.mark_running(e, now, ctx.run_url)
             e["run_attempt"] = ctx.run_attempt
             rec = rfqueue.current_record(st, ctx.pin)
@@ -528,7 +525,7 @@ def publish(ctx, eid, result_path):
         e.update({k: d[k] for k in ("verdict", "score", "comparable", "truncated", "harness_commit",
                                     "verified", "record_of", "against", "reasons")},
                  prover_sha256=ps if isinstance(ps, str) and len(ps) == 64 and ps.isalnum() else None)
-        # does this run count for the author (quota, fair order)? a named organiser error never does
+        # does this run count as the author's start in the fair order? a named organiser error never does
         rfqueue.settle_run(e, d["organiser_error"], error=d["verdict"] == "ERROR" or not d["verified"])
         if d["organiser_error"] in PAUSING_ERRORS:
             e["attempts"] = max(0, e.get("attempts", 1) - 1)      # the organiser's fault: not an attempt

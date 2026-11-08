@@ -6,9 +6,9 @@
 # select and publish on `rf-light`, the core's evaluation on its own labels (`rf-bench`, `rf-light`).
 #
 #   select    picks the next entry (.github/bot/rfqueue.py: a due port of the record to a new pin,
-#             then the fair order, an author over the quota of 3 evaluations per 24 h waiting in
-#             place), marks it running on `data`, reaps any entry a previous run left running (a
-#             reaped run joins the error streak and may pause the queue); no entry code
+#             then the fair order by author), marks it running on `data`, reaps any entry a
+#             previous run left running (a reaped run joins the error streak and may pause the
+#             queue); no entry code
 #   evaluate  the core's reusable workflow at the PIN, with the entry fetched from its retention tag
 #   publish   no entry code: verifies the attestation (.github/bot/attest.py, the checks of the
 #             core's harness/verify-record.sh, which it also runs for an ACCEPT), decides the status

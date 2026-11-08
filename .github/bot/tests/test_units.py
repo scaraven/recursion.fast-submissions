@@ -52,42 +52,28 @@ class Queue(unittest.TestCase):
         self.assertFalse(rfqueue.any_queued(self.st(E(5, 5, "e", status="running"))))
         self.assertNotIn("confirming", common.STATUSES)
 
-    def test_author_quota(self):
-        """The quota: at most AUTHOR_QUOTA evaluations started per author in a rolling 24 h; beyond, the
-        author's fresh entry waits in place; retries and ports are exempt."""
-        self.assertEqual((common.AUTHOR_QUOTA, common.QUOTA_WINDOW_S), (3, 86400))
-        now = "2026-01-02T12:00:00Z"
-        done = [E(k, k, "ann", status="rejected", started=t) for k, t in
-                ((1, "2026-01-01T12:00:01Z"), (2, "2026-01-02T00:00:00Z"), (3, "2026-01-02T11:59:59Z"))]
-        fresh, retry = E(4, 4, "ann"), E(5, 5, "ann", attempts=1, started="2026-01-02T11:00:00Z")
-        s = self.st(*done, fresh, E(6, 6, "bob"))
-        self.assertEqual(len(rfqueue.started_recently(s, "ann", now)), 3)
-        self.assertTrue(rfqueue.over_quota(s, fresh, now))
-        self.assertFalse(rfqueue.over_quota(s, rfqueue.find(s, "pr6-000000000006"), now))
-        self.assertFalse(rfqueue.over_quota(s, retry, now))                       # a retry is exempt
-        self.assertFalse(rfqueue.over_quota(s, dict(fresh, port_of="pr1-000000000001"), now))
-        self.assertFalse(rfqueue.over_quota(s, fresh, "2026-01-02T12:00:02Z"))   # the oldest left the window
-        self.assertEqual([e["pr"] for e in rfqueue.order(s)][0:2], [6, 4])       # it keeps its place
-        ported = self.st(*[dict(e, port_of="pr9-000000000009") for e in done], fresh)
-        self.assertFalse(rfqueue.over_quota(ported, fresh, now))                 # ports are the organiser's
+    def test_no_cap_per_author(self):
+        """There is no cap on an author's evaluations: with nobody else waiting, an author's next entry
+        runs whatever that author ran recently; another author's waiting entry goes first (the fair
+        order decides who goes next, and caps nothing)."""
+        self.assertFalse(any(hasattr(common, k) for k in ("AUTHOR_QUOTA", "QUOTA_WINDOW_S")))
+        self.assertFalse(any(hasattr(rfqueue, k) for k in ("over_quota", "started_recently")))
+        done = [dict(E(k, k, "ann", status="rejected", started=f"2026-01-02T1{k}:00:00Z"), counted_at=f"2026-01-02T1{k}:00:00Z")
+                for k in range(6)]
+        fresh = E(7, 7, "ann")
+        self.assertEqual([e["pr"] for e in rfqueue.order(self.st(*done, fresh))], [7])
+        self.assertEqual([e["pr"] for e in rfqueue.order(self.st(*done, fresh, E(8, 8, "bob")))], [8, 7])
 
-    def test_quota_named_organiser_errors_are_exempt(self):
-        """A run that ended in a named organiser error (fingerprint, lengths, drift,
-        setup, cache) costs the author nothing, for the quota and the fair order."""
-        now = "2026-01-02T12:00:00Z"
-        for kind in common.EXEMPT_ERRORS:
+    def test_named_organiser_errors_never_count_against_the_author(self):
+        """A run that ended in a named organiser error (fingerprint, lengths, drift, setup, cache,
+        attestation) never counts as the author's start in the fair order, nor uses up the
+        entry's one uncounted unnamed ERROR."""
+        for kind in common.UNCOUNTED_ERRORS:
             e = E(2, 2, "ann", started="2026-01-02T11:10:00Z")
             self.assertFalse(rfqueue.settle_run(e, kind, error=True), kind)
             self.assertIsNone(rfqueue.counted_start(dict(e, status="queued", verdict="ERROR")), kind)
-            self.assertEqual(e.get("generic_errors", 0), 0, kind)      # it does not use up the unnamed exemption
-        self.assertTrue(rfqueue.settle_run(E(3, 3, "ann", started="t"), "harness", error=True) is False)  # first unnamed: exempt
-        done = [dict(E(k, k, "ann", status="rejected", started=f"2026-01-02T1{k}:00:00Z"), counted_at=f"2026-01-02T1{k}:00:00Z")
-                for k in (0, 1)]
-        err = dict(E(4, 4, "ann", status="queued", verdict="ERROR", attempts=1, started="2026-01-02T11:30:00Z"), counted_at=None)
-        fresh = E(5, 5, "ann")
-        s = self.st(*done, err, fresh, E(6, 6, "bob", queued="2026-01-01T00:00:09Z"))
-        self.assertEqual(len(rfqueue.started_recently(s, "ann", now)), 2)
-        self.assertFalse(rfqueue.over_quota(s, fresh, now))
+            self.assertEqual(e.get("generic_errors", 0), 0, kind)
+        self.assertTrue(rfqueue.settle_run(E(3, 3, "ann", started="t"), "harness", error=True) is False)  # the first unnamed one
 
     def test_pause_count_needs_two_authors_or_an_entry_proof_error(self):
         """The streak's errors that count toward a pause: every entry-proof one (fingerprint,
@@ -137,7 +123,7 @@ class Queue(unittest.TestCase):
         self.assertIn("`2026-11-08T00:00:01Z`", body)
 
     def test_unnamed_errors_count_after_the_first(self):
-        """A catch-all harness ERROR or a reaped run is exempt once; the retry's ERROR
+        """A catch-all harness ERROR or a reaped run is not counted the first time; the retry's ERROR
         counts (from the first counted start, never refreshed)."""
         e = E(1, 1, "cat", started="2026-01-02T10:00:00Z", attempts=1)
         self.assertFalse(rfqueue.settle_run(e, None, error=True))          # the first unnamed ERROR
@@ -172,7 +158,6 @@ class Queue(unittest.TestCase):
         e, _ = rfqueue.enqueue(s, E(1, 1, "dan"), now)             # the hold is lifted
         self.assertEqual((e["status"], e["attempts"]), ("queued", 0))
         self.assertIsNone(rfqueue.counted_start(e))
-        self.assertEqual(rfqueue.started_recently(s, "dan", now), [])
 
     def test_retried_entry_takes_the_fair_order(self):
         """A re-queued entry keeps its queue time but has no front-of-queue: once its author's
@@ -181,7 +166,7 @@ class Queue(unittest.TestCase):
                            queued="2026-01-01T00:00:01Z"), counted_at="2026-01-02T11:00:00Z", generic_errors=2),
                     E(2, 2, "bob", queued="2026-01-01T00:00:05Z"))
         self.assertEqual([e["pr"] for e in rfqueue.order(s)], [2, 1])
-        s["submissions"][0]["counted_at"] = None                    # an exempt run: its place is kept
+        s["submissions"][0]["counted_at"] = None                    # a run that did not count: its place is kept
         self.assertEqual([e["pr"] for e in rfqueue.order(s)], [1, 2])
 
     def test_never_evaluated_first_in_queue_order(self):

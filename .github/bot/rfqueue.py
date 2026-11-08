@@ -3,13 +3,13 @@
 Order: first a waiting port of the record to a new pin (oldest first); then, among the other
 queued entries, the author whose most recent evaluation started earliest (never-evaluated authors
 first), then that author's oldest queued entry. `queued` is the bot's timestamp, so a push goes to
-the back of its author's line. The per-author quota (AGENTS.md §9, `over_quota`) holds an
-author's next entry back without moving it."""
+the back of its author's line. There is no cap on an author's evaluations: the order only decides
+who goes next."""
 import datetime
 import json
 
-from common import (AUTHOR_QUOTA, ENTRY_PROOF_ERRORS, EXEMPT_ERRORS, FINAL, MARGIN, MAX_ATTEMPTS, MAX_HEADS_PER_PR,
-                    PAUSE_AFTER, QUEUED, QUOTA_WINDOW_S, RUNNING, STATUSES, STREAK_CAP, STREAK_WINDOW_S, now_iso)
+from common import (ENTRY_PROOF_ERRORS, UNCOUNTED_ERRORS, FINAL, MARGIN, MAX_ATTEMPTS, MAX_HEADS_PER_PR,
+                    PAUSE_AFTER, QUEUED, RUNNING, STATUSES, STREAK_CAP, STREAK_WINDOW_S, now_iso)
 
 EVALUATED = ("record", "retired", "accepted", "unranked", "provisional", "rejected", "error")
 
@@ -168,12 +168,12 @@ def _ts(iso):
 
 
 def counted_start(e):
-    """When an entry's evaluation counts as started, for the quota and the fair order (AGENTS.md
-    §9): `counted_at`, the start of its first run that counted (a retry never refreshes it), or the
-    start of the run in progress. A run does not count when it ended in a named organiser error
-    (`EXEMPT_ERRORS`: fingerprint, lengths, drift, setup, cache), nor the first unnamed ERROR of an
-    entry (a catch-all harness error or a reaped run); a later one does (`settle_run`). Ports (the
-    organiser's), superseded and withdrawn entries never count."""
+    """When an entry's evaluation counts as started, for the fair order (AGENTS.md §9):
+    `counted_at`, the start of its first run that counted (a retry never refreshes it), or the start
+    of the run in progress. A run does not count when it ended in a named organiser error
+    (`UNCOUNTED_ERRORS`: fingerprint, lengths, drift, setup, cache, attestation), nor the first
+    unnamed ERROR of an entry (a catch-all harness error or a reaped run); a later one does
+    (`settle_run`). Ports (the organiser's), superseded and withdrawn entries never count."""
     if e.get("port_of") or e.get("status") in ("superseded", "withdrawn", "invalid"):
         return None
     if e.get("status") == RUNNING:
@@ -185,10 +185,10 @@ def counted_start(e):
 
 
 def settle_run(e, organiser_error=None, error=False):
-    """Whether the run that just ended counts for the author, recorded in `counted_at`: not after a
-    named organiser error, not after the entry's first unnamed ERROR (`generic_errors`), otherwise
-    yes (from the run's start, once)."""
-    if organiser_error in EXEMPT_ERRORS:
+    """Whether the run that just ended counts as the author's start in the fair order, recorded in
+    `counted_at`: not after a named organiser error, not after the entry's first unnamed ERROR
+    (`generic_errors`), otherwise yes (from the run's start, once)."""
+    if organiser_error in UNCOUNTED_ERRORS:
         counts = False
     elif error:
         e["generic_errors"] = e.get("generic_errors", 0) + 1
@@ -199,23 +199,6 @@ def settle_run(e, organiser_error=None, error=False):
         e["counted_at"] = e.get("started")
     e.setdefault("counted_at", None)
     return counts
-
-
-def started_recently(st, author, now):
-    """The author's evaluations started in the quota window before `now` (AGENTS.md §9): their
-    entries whose counted start (`counted_start`) lies within `QUOTA_WINDOW_S`."""
-    t = _ts(now)
-    return [e for e in st["submissions"] if e.get("author") == author and counted_start(e)
-            and 0 <= t - _ts(counted_start(e)) < QUOTA_WINDOW_S]
-
-
-def over_quota(st, e, now):
-    """True if `e` must wait for its author's quota (AGENTS.md §9): a fresh entry (never started in
-    this round, not a port) whose author started `AUTHOR_QUOTA` evaluations in the window. It keeps
-    its place in the queue; retries are exempt."""
-    if e.get("port_of") or e.get("attempts", 0) > 0:
-        return False
-    return len(started_recently(st, e["author"], now)) >= AUTHOR_QUOTA
 
 
 def _noted(x):
@@ -275,7 +258,7 @@ def reap(st, now):
         if e["status"] == RUNNING:
             why = "harness error: the evaluation run ended without publishing a verdict"
             e["verdict"] = "ERROR"
-            settle_run(e, error=True)             # a reaped run: exempt once, then it counts
+            settle_run(e, error=True)             # a reaped run: not counted the first time, then it counts
             paused = note_error(st, e, "reaped", now, why, e.get("run_url")) or paused
             if e.get("attempts", 0) < MAX_ATTEMPTS:
                 e["status"], e["reasons"] = QUEUED, [why + " (queued again)"]

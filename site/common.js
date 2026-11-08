@@ -20,7 +20,7 @@
     rejected: ['rejected', 'The certificate or the benchmark failed. The reasons say why.'],
     error: ['error', 'Waiting on the organiser: an organiser-side fault, not the entry\'s. Requeued once, then left for the owner.'],
     invalid: ['invalid', 'Failed the intake check; not evaluated.'],
-    queued: ['queued', 'Waiting for the evaluator (or for its author\'s quota of evaluations per 24 hours).'],
+    queued: ['queued', 'Waiting for the evaluator.'],
     running: ['running', 'Being evaluated now.'],
     superseded: ['superseded', 'The pull request moved before evaluation; the new head is queued instead.'],
     withdrawn: ['withdrawn', 'The pull request was closed, made a draft or put on hold before evaluation.']

@@ -265,7 +265,8 @@ def main():
         print("another machine:", e["id"], "->", p["status"], "|", p["reasons"][-2])
         e, p = w.evaluate(lambda e, run: make_result(run, S=1.0, comparable=False, prover="f" * 64))
         print("re-run, truncated:", e["id"], "->", p["status"], "|", p["reasons"][-1])
-        # the quota: an author's fourth evaluation within 24 h waits, keeping its place
+        # no cap per author: with nobody else waiting, one author's entries run back to back; another
+        # author's entry then goes before that author's next (the fair order)
         for n in (8, 9, 10, 12):
             g.open_pr(n, "carol", good_root(f"c{n}", str(n)))
             w.intake(n)
@@ -275,12 +276,9 @@ def main():
         g.open_pr(11, "dave", good_root("theta", "11"))
         w.intake(11)
         e, p = w.evaluate(lambda e, run: make_result(run, "REJECT"))
-        print("quota: carol's #12 waits; next is", e["id"], "->", p["status"], "| carol's #12:",
-              next(x["status"] for x in w.state()["submissions"] if x["pr"] == 12),
-              "| then:", w.evaluate(lambda e, run: make_result(run, "REJECT"))[0])
-        w.t += 24 * 3600
+        print("fair order: dave's #11 before carol's #12:", e["id"], "->", p["status"])
         e, p = w.evaluate(lambda e, run: make_result(run, "REJECT"))
-        print("a day later:", e["id"], "->", p["status"])
+        print("then carol's #12:", e["id"], "->", p["status"])
         # the pin moves: the record's port runs first and keeps the crown; then an entry beats it
         g.open_pr(5, "dave", good_root("eps", "5"))
         w.intake(5)

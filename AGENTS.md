@@ -214,7 +214,7 @@ port, section 10) adds `-<first 8 hex of the pin>`. The commit status has the co
 
 | Status | Commit status | Meaning |
 |---|---|---|
-| `queued` | pending: `queued` | waiting its turn (or for your quota, section 9). `ERROR, queued again`: an organiser-side failure, retried once (a machine-fingerprint or chain-lengths failure uses up no attempt) |
+| `queued` | pending: `queued` | waiting its turn (section 9). `ERROR, queued again`: an organiser-side failure, retried once (a machine-fingerprint or chain-lengths failure uses up no attempt) |
 | `running` | pending: `evaluating` | the evaluation is running |
 | `record` | success: `ACCEPT: new record, S = …` | the record (section 10); it keeps this status after it is beaten |
 | `retired` | (unchanged) | a record the owner removed from the throne |
@@ -263,17 +263,19 @@ them again, and a breach there is a REJECT.
 
 ## 9. The queue, and re-submitting
 
-*Why:* one author opening many pull requests should delay only themselves.
+*Why:* one author opening many pull requests should delay others by at most one evaluation per
+round: the next entry goes to the author who waited longest.
 
 - **First, the bot's own work**: a waiting port of the record after a pin move (even when it is
   re-run after an organiser error, and before a forced run; section 10).
 - **Fair order.** The next entry belongs to the author whose most recent evaluation *started*
   earliest. Authors never evaluated go first. Within an author, the oldest queued entry goes first.
   So an author's second entry runs only after every other waiting author's first.
-- **Quota.** At most 3 of your evaluations start in any 24 hours. Your next entry then waits,
-  keeping its place, and runs once the oldest of the three is 24 hours old; meanwhile others go
-  ahead. A run that ends in a named organiser error (machine fingerprint, chain lengths, `c_P` drift, setup,
-  a missing organiser cache, a result whose attestation fails) does not count, nor does an entry's first unnamed ERROR; a later one
+- **No cap.** There is no limit on the number of your evaluations: the fair order only decides who
+  goes next, and with nobody else waiting your entries run back to back.
+- **What counts as a start.** A run that ends in a named organiser error (machine fingerprint,
+  chain lengths, `c_P` drift, setup, a missing organiser cache, a result whose attestation fails)
+  never counts against you in the fair order, nor does an entry's first unnamed ERROR; a later one
   does. An evaluation counts from its first counted start (a retry never moves it), and superseded
   or withdrawn entries never count. A retried entry keeps its queue time and takes its turn in the
   fair order.

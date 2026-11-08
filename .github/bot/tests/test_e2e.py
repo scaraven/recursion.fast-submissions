@@ -294,8 +294,8 @@ class E2E(unittest.TestCase):
         self.assertTrue(any(r.startswith("workflow check:") for r in self.entry(3)["reasons"]))
 
     def test_unverified_results_are_the_organisers(self):
-        """A result whose attestation fails is an exempt organiser error (no quota, no
-        place lost), two in a row pause the queue (nothing an entry runs reaches the attestation),
+        """A result whose attestation fails is a named organiser error (it never counts against the
+        author: no place lost), two in a row pause the queue (nothing an entry runs reaches the attestation),
         and it never clears a pause."""
         self.g.open_pr(1, "ann", good_root("a1", "1"))
         self.w.intake(1)
@@ -305,7 +305,7 @@ class E2E(unittest.TestCase):
         _, p = self.w.evaluate(unverified)
         self.assertEqual((p["status"], p["counted_at"], p.get("generic_errors", 0)), ("error", None, 0))
         import rfqueue
-        self.assertEqual(rfqueue.started_recently(self.w.state(), "ann", flows.now_iso(self.w.clock)), [])
+        self.assertEqual([x for x in self.w.state()["submissions"] if rfqueue.counted_start(x)], [])
         st = self.w.state()
         self.assertEqual(([x["kind"] for x in st["error_streak"]], bool(st.get("paused"))), (["attestation"] * 2, True))
         self.assertEqual(len(self.g.issues), 1)
@@ -335,7 +335,7 @@ class E2E(unittest.TestCase):
         import rfqueue
         st = self.w.state()
         self.assertEqual([x["pr"] for x in rfqueue.order(st)], [2, 3])      # bob's ERROR run does not move him back
-        self.assertEqual(rfqueue.started_recently(st, "bob", flows.now_iso(self.w.clock)), [])
+        self.assertIsNone(rfqueue.counted_start(self.entry(2)))
         self.assertEqual((len(st["error_streak"]), st.get("paused")), (1, None))
         self.assertEqual(self.head_status(2)["state"], "pending")
         e, p = self.w.evaluate(off)
@@ -373,7 +373,7 @@ class E2E(unittest.TestCase):
         import rfqueue
         st = self.w.state()
         self.assertEqual([x["pr"] for x in rfqueue.order(st)], [1, 2])      # ann keeps her place
-        self.assertEqual(rfqueue.started_recently(st, "ann", flows.now_iso(self.w.clock)), [])
+        self.assertIsNone(rfqueue.counted_start(self.entry(1)))
         self.assertEqual((len(st["error_streak"]), st.get("paused")), (1, None))
         e, p = self.w.evaluate(bad)
         self.assertEqual((e["pr"], p["status"], p["attempts"], p.get("generic_errors", 0)), (1, "queued", 0, 0))
@@ -392,8 +392,8 @@ class E2E(unittest.TestCase):
         self.assertEqual((st["error_streak"], st.get("paused")), ([], None))
 
     def test_named_and_unnamed_errors(self):
-        """A named organiser error (setup, cache, drift) is exempt and uses the retry; an
-        unnamed ERROR is exempt once, then counts; after two ERRORs the status says the entry is
+        """A named organiser error (setup, cache, drift) never counts against the author and uses the
+        retry; an unnamed ERROR is not counted the first time, then counts; after two ERRORs the status says the entry is
         waiting on the organiser (pending, not red). Two entry-proof errors in a row (setup, cache)
         pause the queue."""
         self.g.open_pr(1, "ann", good_root("a1", "1"))
@@ -408,7 +408,7 @@ class E2E(unittest.TestCase):
         self.assertIn(e["id"], self.g.issues[0][1].split("Left in `error`")[1])
         self.g.open_pr(2, "ann", good_root("a2", "2"))
         self.w.intake(2)
-        e, p = self.w.evaluate(lambda e, run: make_result(run, "ERROR"), force=2)   # unnamed: exempt once
+        e, p = self.w.evaluate(lambda e, run: make_result(run, "ERROR"), force=2)   # unnamed: not counted the first time
         self.assertEqual((p["status"], p["counted_at"], p["generic_errors"]), ("queued", None, 1))
         e, p = self.w.evaluate(lambda e, run: make_result(run, "ERROR"), force=2)   # the retry's ERROR counts
         self.assertEqual((p["status"], p["generic_errors"]), ("error", 2))
@@ -522,27 +522,23 @@ class E2E(unittest.TestCase):
         e, p = self.w.evaluate(lambda e, run: make_result(run, "REJECT"), force=2)
         self.assertEqual((e["pr"], p["status"], self.w.state().get("paused")), (2, "rejected", None))
 
-    def test_author_quota(self):
-        """The quota: an author's fourth evaluation started within 24 h waits, keeping its place;
-        another author's entry runs meanwhile; the owner's forced run is exempt."""
-        for n in (1, 2, 3, 4, 5):
+    def test_one_author_runs_back_to_back_with_no_cap(self):
+        """There is no cap on an author's evaluations: with nobody else waiting, one author's entries
+        run back to back, as many as there are; another author's entry, once queued, goes before that
+        author's next (the fair order caps nothing, it only decides who goes next)."""
+        for n in range(1, 7):
             self.g.open_pr(n, "carol", good_root(f"c{n}", str(n)))
             self.w.intake(n)
-        for n in (1, 2, 3):
+        for n in range(1, 6):
             e, p = self.w.evaluate(lambda e, run: make_result(run, "REJECT"))
-            self.assertEqual(e["pr"], n)
-        self.assertIsNone(self.w.evaluate(lambda e, run: make_result(run, "REJECT"))[0])   # carol is at her quota
-        self.assertEqual((self.entry(4)["status"], self.entry(5)["status"]), ("queued", "queued"))
-        self.g.open_pr(6, "dave", good_root("d6", "6"))
-        self.w.intake(6)
+            self.assertEqual((e["pr"], p["status"]), (n, "rejected"))
+        self.g.open_pr(7, "dave", good_root("d7", "7"))
+        self.w.intake(7)
+        e, _ = self.w.evaluate(lambda e, run: make_result(run, "REJECT"))
+        self.assertEqual(e["pr"], 7)
         e, _ = self.w.evaluate(lambda e, run: make_result(run, "REJECT"))
         self.assertEqual(e["pr"], 6)
-        e, _ = self.w.evaluate(lambda e, run: make_result(run, "REJECT"), force=4)        # the owner's forced run
-        self.assertEqual(e["pr"], 4)
         self.assertIsNone(self.w.evaluate(lambda e, run: make_result(run, "REJECT"))[0])
-        self.w.t += 24 * 3600                                                              # the window moves on
-        e, _ = self.w.evaluate(lambda e, run: make_result(run, "REJECT"))
-        self.assertEqual(e["pr"], 5)
 
     def test_pin_move_refreshes_data_and_main_at_once(self):
         rec = self.record_at()
