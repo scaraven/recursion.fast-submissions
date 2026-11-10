@@ -3,53 +3,6 @@
 (function () {
   const { el, svg, ext, page, link, fmtS, fmtDate, timeEl, ago, badge, evaluatedAt, gainOf, marginText, pct, unverified } = window.RF;
 
-  // ---- the stream figure: the season's fixed chain lengths ------------------------------------
-  // `[stream] lengths` of the core's harness/season.toml at the pin: M + 1 values, step 1's two
-  // chains, then one per step (the same in every evaluation; the starts are fresh per evaluation)
-  const LENGTHS = [
-    202109, 151388, 556082, 207817, 394830, 542490, 355707, 348583, 331757, 353644,
-    279314, 263002, 545955, 314021, 152163, 159823, 145404, 176242, 186633, 224157,
-    174590, 287231, 165190, 164913, 197040, 150598, 167100, 136058, 292052, 236696,
-    491493, 298824, 489211, 404649, 254274, 186064, 201614, 580522, 329791, 750780,
-    149611, 146725, 986256, 684942, 195865, 270010, 202428, 324889, 501473, 260038,
-    238449, 448940, 298915, 370193, 204450, 446253, 432030, 522345, 278618, 155263,
-    158119, 237412, 442472, 284980, 162386, 210558, 148933, 641165, 980030, 791452,
-    133460, 429685, 251011, 182656, 301491, 151149, 181150, 194910, 205798, 1011610,
-    346439, 597766, 389391, 656622, 403982, 153100, 149058, 319683, 155616, 638315,
-    237618, 218729, 328702, 662587, 377019, 150940, 206820,
-  ];
-  function drawStream(animate) {
-    const s = document.querySelector('#stream svg');
-    if (!s) return;
-    // drawn in CSS pixels so labels keep their size at every width
-    const W = Math.max(280, Math.round(s.parentNode.clientWidth)), H = W < 600 ? 120 : 150;
-    s.setAttribute('viewBox', `0 0 ${W} ${H}`);
-    const hi = 2 ** 20, M = LENGTHS.length - 1;
-    const x0 = 12, x1 = W - 12, yP = 30, yB = H - 4;
-    const dx = (x1 - x0) / (M - 1);
-    const r = Math.min(3.4, dx * 0.4), bw = Math.min(2.2, dx * 0.55);
-    const g = svg('g');
-    const pts = [];
-    for (let i = 0; i < M; i++) {
-      const n = Math.min(hi, i === 0 ? LENGTHS[0] + LENGTHS[1] : LENGTHS[i + 1]); // step i + 1's new permutations
-      const x = x0 + i * dx;
-      const h = 4 + (n / hi) * (yB - yP - r - 8);
-      g.append(svg('line', { class: 'bar', x1: x, y1: yP + r + 4, x2: x, y2: yP + r + 4 + h, 'stroke-width': bw }));
-      pts.push(x);
-    }
-    const proof = svg('path', { class: 'proof' + (animate ? ' draw' : ''), d: `M${x0} ${yP}H${x1}` });
-    proof.style.setProperty('--len', String(x1 - x0));
-    g.append(proof);
-    pts.forEach((x, i) => {
-      const c = svg('circle', { class: 'node' + (animate ? ' draw' : ''), cx: x, cy: yP, r });
-      if (animate) c.style.animationDelay = (0.15 + 1.6 * (i / (M - 1)) ** 0.85) + 's';
-      g.append(c);
-    });
-    g.append(svg('text', { class: 'lbl', x: x0 - 2, y: yP - 12 }, '\u03c0\u2081'));
-    g.append(svg('text', { class: 'lbl', x: x1 + 2, y: yP - 12, 'text-anchor': 'end' }, '\u03c0\u2089\u2086'));
-    s.replaceChildren(g);
-  }
-
   // the record an entry beat, in words: its gain and a link to that record
   function beat(e, data, nm) {
     const a = e.against;
@@ -408,12 +361,6 @@
   }
 
   document.addEventListener('DOMContentLoaded', () => {
-    drawStream(true);
-    let sw = document.getElementById('stream').clientWidth;
-    new ResizeObserver(() => {
-      const nw = document.getElementById('stream').clientWidth;
-      if (Math.abs(nw - sw) > 4) { sw = nw; drawStream(false); }
-    }).observe(document.getElementById('stream'));
     const q = document.getElementById('q');
     let timer = 0;
     q.addEventListener('input', () => {

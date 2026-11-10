@@ -101,19 +101,6 @@ h3 { font-size: 17px; margin: 24px 0 6px; }
 .hero { padding-top: 28px; }
 .hero h1 { font-size: clamp(30px, 4.6vw, 48px); line-height: 1.08; letter-spacing: -.03em; margin: 0 0 16px; max-width: 25ch; font-weight: 720; text-wrap: balance; }
 .hero .lede a { white-space: nowrap; }
-.stream { margin: 28px 0 0; }
-.stream svg { display: block; width: 100%; height: auto; overflow: visible; }
-.stream figcaption { margin-top: 8px; font-size: 14px; color: var(--muted); max-width: 72ch; }
-.stream .bar { stroke: var(--line-2); stroke-linecap: round; }
-.stream .proof { stroke: var(--accent); stroke-width: 2.5; fill: none; stroke-linecap: round; }
-.stream .node { fill: var(--surface); stroke: var(--accent); stroke-width: 1.6; }
-.stream .lbl { fill: var(--muted); font: italic 16px var(--math); }
-@media (prefers-reduced-motion: no-preference) {
-  .stream .proof.draw { stroke-dasharray: var(--len); stroke-dashoffset: var(--len); animation: draw 1.6s cubic-bezier(.4,.1,.2,1) .15s forwards; }
-  .stream .node.draw { opacity: 0; animation: pop .25s ease-out forwards; }
-}
-@keyframes draw { to { stroke-dashoffset: 0; } }
-@keyframes pop { to { opacity: 1; } }
 
 /* record */
 .record { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); border: 1px solid var(--line); border-left: 4px solid var(--accent); border-radius: 10px; background: var(--surface); }
@@ -309,5 +296,5 @@ details.readme[open] > summary { margin-bottom: 8px; }
 }
 @media (forced-colors: active) {
   .badge { border: 1px solid CanvasText; }
-  .chart-box .step, .stream .proof { stroke: CanvasText; }
+  .chart-box .step { stroke: CanvasText; }
 }
