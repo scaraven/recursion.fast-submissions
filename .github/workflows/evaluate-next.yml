@@ -79,14 +79,14 @@ jobs:
     needs: select
     if: needs.select.outputs.id != ''
     # the core's evaluation, pinned by commit (THE PIN)
-    uses: scaraven/recursion.fast/.github/workflows/evaluate.yml@f3538eb2a198240d864eb773331a88bf16283688
+    uses: scaraven/recursion.fast/.github/workflows/evaluate.yml@7ecd179d4eabdda97e7caba492810dfc9c2ce9db
     permissions: { contents: read, id-token: write, attestations: write }
     with:
       entry_repo: ${{ github.repository }}
       entry_sha: ${{ needs.select.outputs.sha }}
       entry_path: ${{ needs.select.outputs.path }}
       pr_ref: ${{ needs.select.outputs.ref }}
-      core_ref: f3538eb2a198240d864eb773331a88bf16283688
+      core_ref: 7ecd179d4eabdda97e7caba492810dfc9c2ce9db
       # the record build cache (false after a failure that used it)
       record_cache: ${{ needs.select.outputs.record_cache != 'false' }}
       # the standing record's attested entry_build.manifest_sha256 ("" if none): the core refuses a
@@ -117,7 +117,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: scaraven/recursion.fast
-          ref: f3538eb2a198240d864eb773331a88bf16283688   # THE PIN (a literal: wfcheck rule 4)
+          ref: 7ecd179d4eabdda97e7caba492810dfc9c2ce9db   # THE PIN (a literal: wfcheck rule 4)
           path: core
           persist-credentials: false
           sparse-checkout: harness
