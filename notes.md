@@ -278,7 +278,7 @@ Local, this machine (Ryzen 9 7950X3D, Zen 4 as the evaluation machine; a desktop
    largest published, untaken lever on either track.
 ~~~
 
-## pr11-9e756ce6880a · leanvm-inspired · @scaraven · queued · S = - · [#11](https://github.com/scaraven/recursion.fast-submissions/pull/11) · builds on #7
+## pr11-9e756ce6880a · leanvm-inspired · @scaraven · running · S = - · [#11](https://github.com/scaraven/recursion.fast-submissions/pull/11) · builds on #7
 
 ~~~markdown
 # leanvm-inspired
