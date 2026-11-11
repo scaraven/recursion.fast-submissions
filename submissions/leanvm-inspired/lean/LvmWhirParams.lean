@@ -145,17 +145,17 @@ theorem eBatch_ud_le {κ R : ℕ} {h64 hκ hR} (J c : ℕ) (h : (J - 1) * 2 ^ c 
 /-! ## The configurations -/
 
 /-- `C_main` at P20: `μ = 26`, levels `(6,1,311) (4,2,191) (4,3,156) (4,4,142)`, root `0` of `2`. -/
-def cfgMain20 : UdConfig := ⟨26, [⟨6, 1, 311⟩, ⟨4, 2, 191⟩, ⟨4, 3, 156⟩, ⟨4, 4, 142⟩], 8, 0, 2, false⟩
+def cfgMain20 : UdConfig := ⟨26, [⟨6, 1, 311⟩, ⟨4, 2, 191⟩, ⟨4, 3, 156⟩, ⟨4, 4, 142⟩], 8, 0, 2, false, 0⟩
 
 /-- `C_rec` at P20: `μ = 19`, one level `(6,2,191)`, final `2^13` scalars, root `1` of `2`; no direct
 final check (A20). -/
-def cfgRec20 : UdConfig := ⟨19, [⟨6, 2, 191⟩], 8, 1, 2, false⟩
+def cfgRec20 : UdConfig := ⟨19, [⟨6, 2, 191⟩], 8, 1, 2, false, 0⟩
 
 /-- `C_main` at P8: `μ = 23`, levels `(6,1,49) (4,2,30) (4,3,25) (4,4,22)`, root `0` of `2`. -/
-def cfgMain8 : UdConfig := ⟨23, [⟨6, 1, 49⟩, ⟨4, 2, 30⟩, ⟨4, 3, 25⟩, ⟨4, 4, 22⟩], 8, 0, 2, false⟩
+def cfgMain8 : UdConfig := ⟨23, [⟨6, 1, 49⟩, ⟨4, 2, 30⟩, ⟨4, 3, 25⟩, ⟨4, 4, 22⟩], 8, 0, 2, false, 0⟩
 
 /-- `C_rec` at P8: `μ = 17`, one level `(6,2,30)`, final `2^11` scalars, root `1` of `2`. -/
-def cfgRec8 : UdConfig := ⟨17, [⟨6, 2, 30⟩], 8, 1, 2, false⟩
+def cfgRec8 : UdConfig := ⟨17, [⟨6, 2, 30⟩], 8, 1, 2, false, 0⟩
 
 /-- The UD codes of `C_main` at P20: `κ = 20, 16, 12, 8`, `R = 1, 2, 3, 4`. -/
 noncomputable def codesMain20 : ℕ → LevelCode
@@ -215,19 +215,19 @@ theorem eQuery_rec20 : eQueryFinal (codesRec20 0) 191 ≤ (2 : ENNReal)⁻¹ ^ 1
   eQueryFinal_ud_le _ _ (by simp only [udThr]; norm_num)
 
 /-- **`εmax` of `C_main` at P20**: every group escape is at most `2^-129`. -/
-theorem whirEps_main20 : whirEpsUd codesMain20 cfgMain20.levels ≤ (2 : ENNReal)⁻¹ ^ 129 := by
+theorem whirEps_main20 : whirEpsUd codesMain20 cfgMain20.grind cfgMain20.levels ≤ (2 : ENNReal)⁻¹ ^ 129 := by
   obtain ⟨f0, f1, f2, f3, -⟩ := eFold_P20
   obtain ⟨q0, q1, q2, q3⟩ := eQuery_main20
-  simp only [whirEpsUd, cfgMain20, levelEpsUd, max_le_iff]
+  simp only [whirEpsUd, cfgMain20, levelEpsUd, max_le_iff, pow_zero, one_mul]
   exact ⟨⟨f0.trans (inv_two_pow_anti (by norm_num)), q0⟩,
     ⟨f1.trans (inv_two_pow_anti (by norm_num)), q1⟩,
     ⟨f2.trans (inv_two_pow_anti (by norm_num)), q2⟩,
     f3.trans (inv_two_pow_anti (by norm_num)), q3, eTail_le.trans (inv_two_pow_anti (by norm_num))⟩
 
 /-- **`εmax` of `C_rec` at P20.** -/
-theorem whirEps_rec20 : whirEpsUd codesRec20 cfgRec20.levels ≤ (2 : ENNReal)⁻¹ ^ 129 := by
+theorem whirEps_rec20 : whirEpsUd codesRec20 cfgRec20.grind cfgRec20.levels ≤ (2 : ENNReal)⁻¹ ^ 129 := by
   obtain ⟨-, -, -, -, f⟩ := eFold_P20
-  simp only [whirEpsUd, cfgRec20, levelEpsUd, max_le_iff]
+  simp only [whirEpsUd, cfgRec20, levelEpsUd, max_le_iff, pow_zero, one_mul]
   exact ⟨f.trans (inv_two_pow_anti (by norm_num)), eQuery_rec20,
     eTail_le.trans (inv_two_pow_anti (by norm_num))⟩
 
@@ -248,16 +248,16 @@ theorem ladderArith_rec20 :
 /-! ## P8: the test set, `2^-20` -/
 
 /-- **`εmax` of `C_main` at P8**: every group escape is at most `2^-20`. -/
-theorem whirEps_main8 : whirEpsUd codesMain8 cfgMain8.levels ≤ (2 : ENNReal)⁻¹ ^ 20 := by
-  simp only [whirEpsUd, cfgMain8, levelEpsUd, max_le_iff]
+theorem whirEps_main8 : whirEpsUd codesMain8 cfgMain8.grind cfgMain8.levels ≤ (2 : ENNReal)⁻¹ ^ 20 := by
+  simp only [whirEpsUd, cfgMain8, levelEpsUd, max_le_iff, pow_zero, one_mul]
   refine ⟨⟨eFold_ud_le _ _ ?_, eQueryUd_ud_le _ _ ?_⟩, ⟨eFold_ud_le _ _ ?_, eQueryUd_ud_le _ _ ?_⟩,
     ⟨eFold_ud_le _ _ ?_, eQueryUd_ud_le _ _ ?_⟩, eFold_ud_le _ _ ?_, eQueryFinal_ud_le _ _ ?_,
     eTail_le.trans (inv_two_pow_anti (by norm_num))⟩ <;> simp only [udMca, mcaUd, udThr] <;>
     norm_num
 
 /-- **`εmax` of `C_rec` at P8.** -/
-theorem whirEps_rec8 : whirEpsUd codesRec8 cfgRec8.levels ≤ (2 : ENNReal)⁻¹ ^ 20 := by
-  simp only [whirEpsUd, cfgRec8, levelEpsUd, max_le_iff]
+theorem whirEps_rec8 : whirEpsUd codesRec8 cfgRec8.grind cfgRec8.levels ≤ (2 : ENNReal)⁻¹ ^ 20 := by
+  simp only [whirEpsUd, cfgRec8, levelEpsUd, max_le_iff, pow_zero, one_mul]
   refine ⟨eFold_ud_le _ _ ?_, eQueryFinal_ud_le _ _ ?_,
     eTail_le.trans (inv_two_pow_anti (by norm_num))⟩ <;> simp only [udMca, mcaUd, udThr] <;>
     norm_num
@@ -296,7 +296,7 @@ noncomputable def stackedMain20Spec (claims : List StackClaim)
       (fun h ↦ StackedPreUd cfgMain20 (codesMain20 0) claims (commits h)) (fun _ _ ↦ False)
       ((2 : ENNReal)⁻¹ ^ 129) (eBatch claims.length (codesMain20 0)) T :=
   stackedUdSpec claims hcl rfl rfl (by norm_num [cfgMain20]) rfl (by norm_num [cfgMain20])
-    (by norm_num [cfgMain20]) ladderArith_main20 whirEps_main20 T
+    (by norm_num [cfgMain20]) (by norm_num [cfgMain20]) ladderArith_main20 whirEps_main20 T
 
 /-- **`C_rec`'s stacked opening at P20.** -/
 noncomputable def stackedRec20Spec (claims : List StackClaim)
@@ -305,7 +305,7 @@ noncomputable def stackedRec20Spec (claims : List StackClaim)
       (fun h ↦ StackedPreUd cfgRec20 (codesRec20 0) claims (commits h)) (fun _ _ ↦ False)
       ((2 : ENNReal)⁻¹ ^ 129) (eBatch claims.length (codesRec20 0)) T :=
   stackedUdSpec claims hcl rfl rfl (by norm_num [cfgRec20]) rfl (by norm_num [cfgRec20])
-    (by norm_num [cfgRec20]) ladderArith_rec20 whirEps_rec20 T
+    (by norm_num [cfgRec20]) (by norm_num [cfgRec20]) ladderArith_rec20 whirEps_rec20 T
 
 /-- **`C_main`'s stacked opening at P8.** -/
 noncomputable def stackedMain8Spec (claims : List StackClaim)
@@ -314,7 +314,7 @@ noncomputable def stackedMain8Spec (claims : List StackClaim)
       (fun h ↦ StackedPreUd cfgMain8 (codesMain8 0) claims (commits h)) (fun _ _ ↦ False)
       ((2 : ENNReal)⁻¹ ^ 20) (eBatch claims.length (codesMain8 0)) T :=
   stackedUdSpec claims hcl rfl rfl (by norm_num [cfgMain8]) rfl (by norm_num [cfgMain8])
-    (by norm_num [cfgMain8]) ladderArith_main8 whirEps_main8 T
+    (by norm_num [cfgMain8]) (by norm_num [cfgMain8]) ladderArith_main8 whirEps_main8 T
 
 /-- **`C_rec`'s stacked opening at P8.** -/
 noncomputable def stackedRec8Spec (claims : List StackClaim)
@@ -323,7 +323,7 @@ noncomputable def stackedRec8Spec (claims : List StackClaim)
       (fun h ↦ StackedPreUd cfgRec8 (codesRec8 0) claims (commits h)) (fun _ _ ↦ False)
       ((2 : ENNReal)⁻¹ ^ 20) (eBatch claims.length (codesRec8 0)) T :=
   stackedUdSpec claims hcl rfl rfl (by norm_num [cfgRec8]) rfl (by norm_num [cfgRec8])
-    (by norm_num [cfgRec8]) ladderArith_rec8 whirEps_rec8 T
+    (by norm_num [cfgRec8]) (by norm_num [cfgRec8]) ladderArith_rec8 whirEps_rec8 T
 
 /-- The batching challenge at the roots: at most `2^-129` for `J ≤ 2^63` claims. -/
 theorem eBatch_P20 (J : ℕ) (hJ : J ≤ 2 ^ 63) :

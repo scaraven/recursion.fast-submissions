@@ -85,12 +85,12 @@ structure AuxStatic (arrs : List InArr) : Prop where
   inj : GInj (max ((Qn lay I qa nK nE).cells .K) ((Qn lay I qa nK nE).cells .E))
 
 /-- The memory of the node program on the pair `(qm, qr)` of statement `x`. -/
-noncomputable abbrev memX (x : List UInt8) (qm : Column 26) (qr : Column 19) : Mem :=
+noncomputable abbrev memX (x : List UInt8) (qm : Column CMain.nu20) (qr : Column 19) : Mem :=
   memN lay I qa nK nE pl groups (arrsX x) aux lay26 (hτ' x) (stackOf lay26 qm qr)
 
 /-- **The input map** (A19) on the committed memory of a node statement `x` (`b = 1`) and a pair:
 where each part's inputs are and what they hold. -/
-structure InMapN (vk : RecursionFast.Digest) (x : List UInt8) (qm : Column 26) (qr : Column 19) : Prop where
+structure InMapN (vk : RecursionFast.Digest) (x : List UInt8) (qm : Column CMain.nu20) (qr : Column 19) : Prop where
   /-- The stream lanes (Q_link's and Q_sig's stream region; `C_rec`'s stream columns). -/
   stream : ∀ j < 2 ^ lay.m, (memX lay I qa nK nE pl groups arrsX aux hτ' x qm qr).k (lay.sb + j) =
     laneK (wsOf (Lvm.X.laneOf (wOfCol qr))) j

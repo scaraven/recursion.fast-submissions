@@ -220,14 +220,15 @@ stream's lanes, `P4 … P8` the starts of phases 4–8). -/
 structure HarStatic (C : QCfg) (D : QData) (T P4 P5 P6 P7 P8 : Nat) : Prop where
   /-- Phases 4–7 (`p47_at`): positions, sizes, lane bounds, the links' glue checks. -/
   pos47 : P47Pos C.p P4 P5 P6 P7 P8
-  hn : 4 ≤ C.p.logN
+  hn : 5 ≤ C.p.logN
   hk : 4 ≤ C.p.ksLog
   hr : C.p.recRowsLog < C.p.ksLog
-  hlay : layOk (C.p.logN - 4) = true
+  hlay : layOk (C.p.logN - 5) = true
   hlayk : layOk (C.p.ksLog - 4) = true
   hq : 5 ≤ aLane C.p 2
+  hqw : 5 ≤ aLane C.p 3
   hqk : 5 ≤ aLane C.p 6
-  hTg : gkrEnd (C.p.logN - 4) (aLane C.p 2) + 48 ≤ T
+  hTw : Lvm.Q1.wireEnd (C.p.logN - 5) (aLane C.p 3) + 2 ≤ T
   hTgk : gkrEnd (C.p.ksLog - 4) (aLane C.p 6) + 48 ≤ T
   hTr : aLane C.p 0 + 9 * C.p.logN + 2 < T
   hTv : aLane C.p 1 + 3 * 25 + 2 < T
@@ -235,16 +236,8 @@ structure HarStatic (C : QCfg) (D : QData) (T P4 P5 P6 P7 P8 : Nat) : Prop where
   hTvk : aLane C.p 5 + 3 * 25 + 2 < T
   hD : C.p.logN ≤ 2 ^ clog2 C.p.logN
   hDk : C.p.ksLog ≤ 2 ^ clog2 C.p.ksLog
-  hTl : chQC C.p.logN (aLane C.p 3) + 240 ≤ T
   hTlk : ksQV C.p.ksLog (aLane C.p 7) + 3 * 4 + 3 ≤ T
   hTlk' : aLane C.p 7 + 9 * (C.p.ksLog + laneBits) + 15 * C.p.ksLog + 12 ≤ T
-  okA : SLok (chGlueAG C.p.logN (aLane C.p 3) ((sigIn C).bn + 2)) = true
-  okB : ∀ oA sh : LoopOut, SLok (chGlueBG (chQB C.p.logN (aLane C.p 3)) (rhoC oA C.p.logN)
-    (rho'C sh C.p.logN) (eZC oA C.p.logN) (mbC oA C.p.logN) (sh.cell 5 (C.p.logN - 1))) = true
-  okC : ∀ oA sc2 oB : LoopOut, SLok (chGlueCG (chQC C.p.logN (aLane C.p 3)) [sc2.cell 2 0, sc2.cell 2 1]
-    (eLC oA C.p.logN) (eZC oA C.p.logN) (oB.cell (14 * C.p.logN + 126) 0) (sc2.cell 5 1) (kc (pbB C))) = true
-  /-- The gated link's `c₁₆·lt_n(ρ')` claim block (S1-Q's `ltNIns`). -/
-  okN : ∀ l : List Cell, l.length = C.p.logN → SLok (ltNIns ((sigIn C).bn + 2) l) = true
   hB : 1 ≤ spongeBlocks C.p
   hB2 : spongeBlocks C.p ≤ 2 ^ C.p.ksLog
   hK : 2 ^ C.p.recRowsLog + 431 ≤ 2 ^ C.p.ksLog
@@ -269,13 +262,15 @@ structure HarStatic (C : QCfg) (D : QData) (T P4 P5 P6 P7 P8 : Nat) : Prop where
   hzL : accZ0 C D + 5 + 2 < T
   hH : 11 + pubLanes ≤ T
   hP4 : 8 * accZ0 C D + 24 = P4
-  /-- The claims (`chClaims_val`). -/
+  /-- The claims (the header lanes `pub_h`, `pub_s`). -/
   hT29 : 29 ≤ T
-  hlog : C.p.logN ≤ 64
+  hlog64 : C.p.logN ≤ 64
   /-- Phases 8–9 (`openPh_run`): the layouts, the start. -/
   hlr : LayOk (cfgRec C.p (posBase C)) T = true
   hlm : LayOk (cfgMain C.p (posBase C)) T = true
   hP8 : P8 = 8 * openU C.p
+  /-- Step A: no grinding (`g = 0`). -/
+  hgr : C.p.grind = 0
 
 /-! ## Phases 2, 3, 3b -/
 
@@ -368,82 +363,77 @@ theorem real_eq (p : Params) (ts : Pub → List M3.Tab) :
       (fun pub => M3.fixSentR (M3.sumcheckTabs (ts pub)) p.pubTab)
       (fun pub => M3.pubCheckR p.pubTab pub) := rfl
 
-/-- The child's `n'` bit cells (`NBits`, Q_sig's class `sN`) as the gated link's `bitQ` (S1-INT). -/
-theorem nbits_bitQ {M : Mem} {sig : ByteArray} {T nb n : Nat} {vk cL : Vector UInt8 32}
-    (hS : Streamed M sig T) (hT : 29 ≤ T) (hlog : n ≤ 64) (hnb : NBits M.k nb n) :
-    ∀ i < n, FE.ofK (M.k (nb + i)) = Lvm.Q1.bitQ (pubOf vk cL sig).n i := by
-  intro i hi
-  rw [pub_n hS hT]
-  exact bitE_out1 (by omega) (hnb i hi)
+theorem bitE_out1 {v : Nat → FK} {w nb j : Nat} (hj : j < 64) (h : Lvm.QSig.Out1 v w (.bit j) (nb + j)) :
+    FE.ofK (v (nb + j)) = bitE (v w).val.toNat j := by
+  rw [h, Lvm.QSig.w64, bit_word _ hj, bitE]
+  split_ifs <;> rfl
+
+/-- **The tape's claims as cells are T-V's `tapeClaims`** on the phases' values (`TW`), the header lanes
+`h'` the stream's (`pub_h`). -/
+theorem tapeClaimsC_val (C : QCfg) {M : Mem} {z o : Nat} (hz : M.e z = 0) (ho : M.e o = 1) {oP : P47Out}
+    {tp : TapeRes} {wo : WireOut} {pub : Pub} (htw : TW C M oP pub tp wo) (hvl : oP.v.length = 25)
+    (hh : pub.h = (List.range 4).map fun l => M.k (hLane l)) :
+    (tapeClaimsC C.p z o oP).map (CClaim.val M) = (tapeClaims C.p tp wo pub).map (.main, ·) := by
+  obtain ⟨hr, hv, -, hsc, hsl, hring, hmb⟩ := htw
+  have e4 : List.range 4 = [0, 1, 2, 3] := rfl
+  simp only [tapeClaimsC, tapeClaims, dLanes, e4, hh, List.map_cons, List.map_nil, List.zipIdx_cons,
+    List.zipIdx_nil, List.cons_append, List.nil_append, CClaim.val, vs_append, selC_vs hz ho, hr, hv, hmb,
+    hring, hsc, hsl, vs_getD M oP.v (show 0 < oP.v.length by omega), vs_getD M oP.v (show 1 < oP.v.length by omega),
+    vs_getD M oP.v (show 2 < oP.v.length by omega), vs_getD M oP.v (show 3 < oP.v.length by omega)]
+  rfl
 
 /-- **The claim list Q_arith builds is `F`'s** (`claimsOf`, phase 8's list) on the values of the phases'
-cells: the table claims (phase 3's cells), `CH`'s Keccak and fixed claims, `KS`'s Keccak claims (the ring
-switches as `F` computes them after the GKRs, `ringGkr_rel`), the links' claims (`F`'s link views at
-`P5`, `P7`), `KS`'s output claims. -/
+cells: the table claims (phase 3's cells), the tape's claims (`tapeClaimsC_val`), `KS`'s Keccak claims
+(the ring switch as `F` computes it after the GKR, `ringGkr_rel`), the link's claims (`F`'s link view at
+`P7`), `KS`'s output claims. -/
 theorem claims_at (C : QCfg) (D : QData) (G : M3.PG) (vk cL : Vector UInt8 32) {c : Ctx} {M : Mem}
     {sig : ByteArray} {T P4 P5 P6 P7 P8 : Nat} (hst : HarStatic C D T P4 P5 P6 P7 P8)
-    (hS : Streamed M sig T) (hsb : SBits M.k (bsB C)) (hnb : NBits M.k ((sigIn C).bn + 2) C.p.logN)
-    (hn1 : 1 ≤ (pubOf vk cL sig).n) (hn2 : (pubOf vk cL sig).n ≤ 2 ^ C.p.logN) {p2 : Ptr}
-    (h47 : Lvm.QSig.Ok c M (phases47 C) p2)
-    {o : P47Out} (ho47 : (phases47 C p2).1 = o)
+    (hS : Streamed M sig T) {p2 : Ptr} (h47 : Lvm.QSig.Ok c M (phases47 C) p2)
+    {o : P47Out} (ho47 : (phases47 C p2).1 = o) {tp : TapeRes} {wo : WireOut}
+    (htw : TW C M o (pubOf vk cL sig) tp wo)
     {ze oe : Nat} (hz : M.e ze = 0) (ho : M.e oe = 1) (bus : BusOut) (hbus : bus.claims = [])
-    (tab : List (List Cell × List Cell)) {q5 q6 q7 q8 q9 : Ptr}
-    (h5 : SegsHold c M q5 (ringGkr (C.p.logN - 4) (aLane C.p 2) ze q5).2)
-    (h6 : SegsHold c M q6 (chFixedG C.p.logN 52 ⟨C.p.logN + slotLog, (layout0 C.p).ch⟩ ze oe (bsB C)
-      ((sigIn C).bn + 2) o.r o.v q6).2)
-    (h7 : SegsHold c M q7 (chLinkGG C.p.logN (aLane C.p 3) ze oe ((sigIn C).bn + 2) ⟨C.p.logN + slotLog, (layout0 C.p).ch⟩ 52 q7).2)
+    (tab : List (List Cell × List Cell)) {q8 q9 : Ptr}
     (h8 : SegsHold c M q8 (ringGkr (C.p.ksLog - 4) (aLane C.p 6) ze q8).2)
     (h9 : SegsHold c M q9 (ksLinkG C.p (aLane C.p 7) ze oe q9).2) :
-    (claimsC (tabClaims (shapesOf C D) tab (ec ze))
-      (kClaimsC ⟨C.p.logN + slotLog, (layout0 C.p).ch⟩ o.ko (ringGkr (C.p.logN - 4) (aLane C.p 2) ze q5).1 ++
-        (chFixedG C.p.logN 52 ⟨C.p.logN + slotLog, (layout0 C.p).ch⟩ ze oe (bsB C) ((sigIn C).bn + 2) o.r o.v q6).1)
+    (claimsC (tabClaims (shapesOf C D) tab (ec ze)) (tapeClaimsC C.p ze oe o)
       (kClaimsC ⟨C.p.ksLog + slotLog, (layout0 C.p).ks⟩ o.kko (ringGkr (C.p.ksLog - 4) (aLane C.p 6) ze q8).1)
-      (chLinkGG C.p.logN (aLane C.p 3) ze oe ((sigIn C).bn + 2) ⟨C.p.logN + slotLog, (layout0 C.p).ch⟩ 52 q7).1
       (ksOutC C.p o.rk o.vk ze oe) (ksLinkG C.p (aLane C.p 7) ze oe q9).1).map (CClaim.val M) =
-    claimsOf C.p (M3.real C.p (tabs C G D)) (pubOf vk cL sig) bus (Lvm.QAcc.evV M tab) (vs M o.r) (vs M o.v)
-      (o.ko.vals M) (ringAt (feAt sig) (8 * gkrEnd (C.p.logN - 4) (aLane C.p 2) - 40) (o.ko.vals M).slicePoint
-        (o.ko.vals M).slices)
-      ((M3.real C.p (tabs C G D)).chLink (chLinkView C.p (M3.real C.p (tabs C G D)) (feAt sig) P5 (vs M o.r)
-        (vs M o.v) (pubOf vk cL sig))).2
+    claimsOf C.p (M3.real C.p (tabs C G D)) (pubOf vk cL sig) bus (Lvm.QAcc.evV M tab) tp wo
       (vs M o.rk) (vs M o.vk) (o.kko.vals M)
       (ringAt (feAt sig) (8 * gkrEnd (C.p.ksLog - 4) (aLane C.p 6) - 40) (o.kko.vals M).slicePoint
         (o.kko.vals M).slices)
       ((M3.real C.p (tabs C G D)).ksLink (ksLinkView C.p (M3.real C.p (tabs C G D)) (feAt sig) P7 (vs M o.rk)
         (pubOf vk cL sig))).2 := by
-  have hO := phases47_fst C p2
-  simp only at hO
-  rw [ho47] at hO
-  have eko := congrArg P47Out.ko hO
+  have hO : (phases47 C p2).1 = o := ho47
+  simp only [phases47, bind_apply, pure_apply] at hO
   have ekko := congrArg P47Out.kko hO
-  dsimp only at eko ekko
-  have ev : o.v.length = 25 := by rw [hO]; simp only [List.length_map, List.length_range]
-  have evk : o.vk.length = 25 := by rw [hO]; simp only [List.length_map, List.length_range]
+  have ev : o.v.length = 25 := by rw [← hO]; simp only [List.length_map, List.length_range]
+  have evk : o.vk.length = 25 := by rw [← hO]; simp only [List.length_map, List.length_range]
+  dsimp only at ekko
   clear hO
   obtain ⟨hh, -⟩ := h47
   simp only [phases47] at hh
   rw [hold_bind] at hh; obtain ⟨-, hh⟩ := hh
   rw [hold_bind] at hh; obtain ⟨-, hh⟩ := hh
-  rw [hold_bind] at hh; obtain ⟨hhG, hh⟩ := hh
+  rw [hold_bind] at hh; obtain ⟨-, hh⟩ := hh
+  rw [hold_bind] at hh; obtain ⟨-, hh⟩ := hh
+  rw [hold_bind] at hh; obtain ⟨-, hh⟩ := hh
+  rw [hold_bind] at hh; obtain ⟨-, hh⟩ := hh
   rw [hold_bind] at hh; obtain ⟨-, hh⟩ := hh
   rw [hold_bind] at hh; obtain ⟨-, hh⟩ := hh
   rw [hold_bind] at hh; obtain ⟨-, hh⟩ := hh
   rw [hold_bind] at hh; obtain ⟨hhGk, -⟩ := hh
-  have sC := gkrGadget_slices hst.hlay hst.hq hS (by have := hst.hTg; omega) hhG
   have sK := gkrGadget_slices hst.hlayk hst.hqk hS (by have := hst.hTgk; omega) hhGk
-  rw [← eko] at sC
-  rw [← ekko] at sK
-  have rC := ringGkr_rel _ hst.hq sC hS hst.hTg hz h5
+  rw [ekko] at sK
   have rK := ringGkr_rel _ hst.hqk sK hS hst.hTgk hz h8
   have hz' : (ec ze).val M = 0 := hz
   rw [real_eq]
-  refine claimsC_val M C.p _ _ bus _ _ _ _ _ _ _ _ _ _ _ hbus ?_ ?_ ?_ ?_ ?_ ?_
+  refine claimsC_val M C.p _ _ bus _ _ _ _ _ _ _ _ hbus ?_ ?_ ?_ ?_ ?_
   · rw [shapesOf_eq C D G (pubOf vk cL sig), tabClaims_val hz']
     rfl
-  · exact chClaims_val C.p vk cL hS hst.hT29 hz ho ev hsb hnb hst.hlog hn1 rC h6
+  · exact tapeClaimsC_val C hz ho htw ev (pub_h hS hst.hT29 vk cL)
   · have := kClaimsC_val (M := M) ⟨C.p.ksLog + slotLog, (layout0 C.p).ks⟩ _ _ _ rK
     exact this
-  · exact chLinkG_val' C.p _ _ _ (by have := hst.hn; omega) hst.pos47.l5 hS hst.hTl hz ho hn1 hn2
-      (nbits_bitQ hS hst.hT29 hst.hlog hnb) hst.okN h7
   · exact ksOutC_val C.p _ _ hz ho evk
   · exact ksLinkG_val' C.p _ _ hst.pos47.l7 hS hst.hTlk' hz ho h9
 
@@ -467,7 +457,7 @@ theorem open_at (C : QCfg) (D : QData) {c : Ctx} {M : Mem} {sig : ByteArray} {T 
       (openPh C.p (cs.map (CClaim.val M)) sig s).2.msg = 0 := by
   intro s hs hok
   obtain ⟨o1, o2, o3⟩ := openPh_run C.p (cfgRec C.p (posBase C)) (cfgMain C.p (posBase C)) cs z one (kc (pbB C))
-    hS rfl rfl rfl rfl rfl hst.hlr hst.hlm hwr hwm hz ho hzE hoE (gate_val C hg) rfl hposr hposm hq h s
+    hS rfl rfl rfl rfl hst.hgr rfl hst.hlr hst.hlm hwr hwm hz ho hzE hoE (gate_val C hg) rfl hposr hposm hq h s
     (by rw [hs, hst.hP8]; rfl)
   refine ⟨o1.trans hok, ?_, o3⟩
   simp only [pos] at o2
@@ -490,17 +480,13 @@ def qarithCs (C : QCfg) (D : QData) (o : P47Out) : BM (List CClaim) := do
   let z ← const .E 0 (kc 0)
   let one ← const .E 1 (kc 0)
   let _zK ← const .K 0 (kc 0)
-  let chB : Placement := ⟨p.logN + slotLog, (layout0 p).ch⟩
   let ksB : Placement := ⟨p.ksLog + slotLog, (layout0 p).ks⟩
   let bus ← busG p z one g (busPos p)
   let tab ← tabG S p.tableRounds (tabPos p) z one g bus
   Lvm.QAcc.qacc (accInOf C S tab z)
-  let rgC ← ringGkr (p.logN - 4) (aLane p 2) z.n
-  let chF ← chFixedG p.logN 52 chB z.n one.n (bsB C) ((sigIn C).bn + 2) o.r o.v
-  let clC ← chLinkGG p.logN (aLane p 3) z.n one.n ((sigIn C).bn + 2) chB 52
   let rgK ← ringGkr (p.ksLog - 4) (aLane p 6) z.n
   let clK ← ksLinkG p (aLane p 7) z.n one.n
-  pure (claimsC (tabClaims S tab z) (kClaimsC chB o.ko rgC ++ chF) (kClaimsC ksB o.kko rgK) clC
+  pure (claimsC (tabClaims S tab z) (tapeClaimsC p z.n one.n o) (kClaimsC ksB o.kko rgK)
     (ksOutC p o.rk o.vk z.n one.n) clK)
 
 /-- **`harith`, node level** (BLUEPRINT §12.6): wherever Q_arith on the record `D` holds and asserts at
@@ -512,8 +498,8 @@ theorem harith_core (C : QCfg) (D : QData) (G : M3.PG) (vk cL : Vector UInt8 32)
     {p2 : Ptr} (h : Lvm.QSig.Ok c M (qarith' C D) p2)
     (hS : Streamed M sig T) (hg : M.k (pbB C) = 1)
     (hvk : ∀ i < 4, M.k (pbB C + 1 + i) = (digestLanes vk).getD i 0)
-    (hsb : SBits M.k (bsB C)) (hnb : NBits M.k ((sigIn C).bn + 2) C.p.logN)
-    (hn1 : 1 ≤ (pubOf vk cL sig).n) (hn2 : (pubOf vk cL sig).n ≤ 2 ^ C.p.logN)
+    (hsb : Lvm.Q1.SBitsS M.k (sigIn C).hd (bsB C)) (hnb : NBits M.k ((sigIn C).bn + 2) C.p.logN)
+    (hn1 : 1 ≤ (pubOf vk cL sig).n) (hnN : (pubOf vk cL sig).n ≤ 2 ^ C.p.logN)
     (hposr : PosOk (cfgRec C.p (posBase C)) M sig 0 C.p.recLevels (openU C.p + 15))
     (hposm : PosOk (cfgMain C.p (posBase C)) M sig 0 C.p.mainLevels
       (stackEndL C.p.recLevels (openU C.p + 15) + 15))
@@ -557,18 +543,9 @@ theorem harith_core (C : QCfg) (D : QData) (G : M3.PG) (vk cL : Vector UInt8 32)
     (kc (pbB C)) bus q3).2 = q4 at hR hwr hwm
   obtain ⟨hA, hR⟩ := okb hR
   generalize hq5 : q4.adv (Lvm.QAcc.qacc (accInOf C (shapesOf C D) tab (ec q0.e)) q4).2 = q5 at hR hwr hwm
-  -- the ring switches and claims
-  obtain ⟨h5, hR⟩ := okb hR
-  generalize hq6 : q5.adv (ringGkr (C.p.logN - 4) (aLane C.p 2) q0.e q5).2 = q6 at hR hwr hwm
-  obtain ⟨h6, hR⟩ := okb hR
-  generalize hq7 : q6.adv (chFixedG C.p.logN 52 ⟨C.p.logN + slotLog, (layout0 C.p).ch⟩ q0.e (q0.e + 1) (bsB C)
-    ((sigIn C).bn + 2) o.r o.v q6).2 = q7 at hR hwr hwm
-  obtain ⟨h7, hR⟩ := okb hR
-  generalize hq8 : q7.adv (chLinkGG C.p.logN (aLane C.p 3) q0.e (q0.e + 1) ((sigIn C).bn + 2)
-    ⟨C.p.logN + slotLog, (layout0 C.p).ch⟩
-    52 q7).2 = q8 at hR hwr hwm
+  -- the ring switch and claims
   obtain ⟨h8, hR⟩ := okb hR
-  generalize hq9 : q8.adv (ringGkr (C.p.ksLog - 4) (aLane C.p 6) q0.e q8).2 = q9 at hR hwr hwm
+  generalize hq9 : q5.adv (ringGkr (C.p.ksLog - 4) (aLane C.p 6) q0.e q5).2 = q9 at hR hwr hwm
   obtain ⟨h9, hR⟩ := okb hR
   generalize hq10 : q9.adv (ksLinkG C.p (aLane C.p 7) q0.e (q0.e + 1) q9).2 = q10 at hR hwr hwm
   -- the pointer of the openings
@@ -578,14 +555,9 @@ theorem harith_core (C : QCfg) (D : QData) (G : M3.PG) (vk cL : Vector UInt8 32)
     have e4 := Lvm.Har.adv_e_le q3 (tabG (shapesOf C D) C.p.tableRounds (tabPos C.p) (ec q0.e) (ec (q0.e + 1))
       (kc (pbB C)) bus q3).2
     have e5 := Lvm.Har.adv_e_le q4 (Lvm.QAcc.qacc (accInOf C (shapesOf C D) tab (ec q0.e)) q4).2
-    have e6 := Lvm.Har.adv_e_le q5 (ringGkr (C.p.logN - 4) (aLane C.p 2) q0.e q5).2
-    have e7 := Lvm.Har.adv_e_le q6 (chFixedG C.p.logN 52 ⟨C.p.logN + slotLog, (layout0 C.p).ch⟩ q0.e (q0.e + 1)
-      (bsB C) ((sigIn C).bn + 2) o.r o.v q6).2
-    have e8 := Lvm.Har.adv_e_le q7 (chLinkGG C.p.logN (aLane C.p 3) q0.e (q0.e + 1) ((sigIn C).bn + 2)
-      ⟨C.p.logN + slotLog, (layout0 C.p).ch⟩ 52 q7).2
-    have e9 := Lvm.Har.adv_e_le q8 (ringGkr (C.p.ksLog - 4) (aLane C.p 6) q0.e q8).2
+    have e9 := Lvm.Har.adv_e_le q5 (ringGkr (C.p.ksLog - 4) (aLane C.p 6) q0.e q5).2
     have e10 := Lvm.Har.adv_e_le q9 (ksLinkG C.p (aLane C.p 7) q0.e (q0.e + 1) q9).2
-    rw [hq3] at e3; rw [hq4] at e4; rw [hq5] at e5; rw [hq6] at e6; rw [hq7] at e7; rw [hq8] at e8
+    rw [hq3] at e3; rw [hq4] at e4; rw [hq5] at e5
     rw [hq9] at e9; rw [hq10] at e10
     simp only at e3
     omega
@@ -593,17 +565,24 @@ theorem harith_core (C : QCfg) (D : QData) (G : M3.PG) (vk cL : Vector UInt8 32)
   obtain ⟨hb, hbok, htb, hac⟩ := p23_at C D G vk cL hst hS hg hvk (z := ec q0.e) (one := ec (q0.e + 1)) rfl rfl
     hzv hov hB hbus hT htab hA
   have hgv : (kc (pbB C)).val M = 1 := gate_val C hg
-  obtain ⟨hch, hchl, hokL, hks, hksl, hokK⟩ := p47_at C (pubOf vk cL sig) hst.pos47 hst.hn hst.hk hst.hr
-    hst.hlay hst.hlayk hst.hq hst.hqk hS (by have := hst.hTg; omega) (by have := hst.hTgk; omega) hst.hTr
-    hst.hTv hst.hTrk hst.hTvk hst.hD hst.hDk (by have := hst.hTl; omega) hst.hTlk hst.okA hst.okB hst.okC
-    hn1 hn2 (nbits_bitQ hS hst.hT29 hst.hlog hnb) hst.hB
-    hst.hB2 hst.hK hst.okE hgv h47 o ho47 (M3.real C.p (tabs C G D)) (real_eq _ _)
-  have hcl := claims_at C D G vk cL hst hS hsb hnb hn1 hn2 h47 ho47 hzv hov
+  have hnb' : ∀ j < C.p.logN, (kc ((sigIn C).bn + 2 + j)).val M = bitE (pubOf vk cL sig).n j := by
+    intro j hj
+    rw [pub_n hS hst.hT29 vk cL, Cell.val_K]
+    exact bitE_out1 (by have := hst.hlog64; omega) (hnb j hj)
+  have hsl : (pubOf vk cL sig).s = (List.range 4).map fun l => M.k ((sigIn C).hd + 9 + l) := by
+    rw [pub_s hS hst.hT29 vk cL]
+    refine List.map_congr_left fun l _ => ?_
+    rw [sLane_eq]; rfl
+  obtain ⟨tp, wo, htp, hwi, htw, hks, hksl, hokK⟩ := p47_at C (pubOf vk cL sig) hst.pos47 hst.hn hst.hk hst.hr
+    hst.hlay hst.hlayk hst.hq hst.hqw hst.hqk hS hst.hTw (by have := hst.hTgk; omega) hst.hTr
+    hst.hTv hst.hTrk hst.hTvk hst.hD hst.hDk hst.hTlk hst.hB hst.hB2 hst.hK hst.okE hnb' hn1 hnN hsb hsl
+    hgv h47 o ho47 (M3.real C.p (tabs C G D)) (real_eq _ _)
+  have hcl := claims_at C D G vk cL hst hS h47 ho47 htw hzv hov
     ((M3.real C.p (tabs C G D)).busFinal ⟨vs M bus.al, bus.be.val M, bus.cnt.val M, vs M bus.pt,
-      vs M bus.vals, [0], pubOf vk cL sig⟩) rfl tab h5.1 h6.1 h7.1 h8.1 h9.1
+      vs M bus.vals, [0], pubOf vk cL sig⟩) rfl tab h8.1 h9.1
   unfold busV at hb
   refine core_of_phases C.p (M3.real C.p (tabs C G D)) vk cL sig (Nat.add_assoc _ _ _).symm hb hbok htb hac
-    hch hchl hokL hks hksl hokK ?_
+    htp hwi hks hksl hokK ?_
   intro s hs hok
   have e := open_at C D hst hS hg hposr hposm hend _ hwr hwm rfl rfl hzv hov hq hR s hs hok
   rw [hcl] at e

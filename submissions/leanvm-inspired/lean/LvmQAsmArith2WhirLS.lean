@@ -316,9 +316,9 @@ theorem levels_run (C : SCfg) {sig : ByteArray} {T : Nat} (hS : Lvm.Q1.Streamed 
       st.folds = (ptv M pc C.nu).take f → ChOk M sig pc f Ls V → PosOk C M sig i Ls V →
       GlOk M pc C.nu f st gl → Lvm.QSig.Ok c M (levelsG C pc zc oc g zk bas Ls i f V q gl) p →
       ∀ s : RS, pos s = 8 * V →
-        (whirLevels C.nu lf B false Ls st sig s).2.ok = s.ok ∧
-        pos (whirLevels C.nu lf B false Ls st sig s).2 = 8 * stackEndL Ls V ∧
-        (whirLevels C.nu lf B false Ls st sig s).2.msg = 0 := by
+        (whirLevels C.nu lf B false 0 Ls st sig s).2.ok = s.ok ∧
+        pos (whirLevels C.nu lf B false 0 Ls st sig s).2 = 8 * stackEndL Ls V ∧
+        (whirLevels C.nu lf B false 0 Ls st sig s).2.msg = 0 := by
   intro Ls
   induction Ls with
   | nil => intro i f V q gl st p hok; simp [lvOk] at hok

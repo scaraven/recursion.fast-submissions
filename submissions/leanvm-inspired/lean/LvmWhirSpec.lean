@@ -1,6 +1,6 @@
 -- Ported from leanVM `formal/lean_vm/LeanVM/Protocol/Whir/Sound/Spec.lean` (formal rev 40f877dc) as `LvmWhirSpec` for
 -- lvm (WP-7). Changed for the unique-decoding regime and lvm's openings: `whirSpec`/`stackedSpec` become
--- `whirUdSpec`/`stackedUdSpec` for `verifyWhirUd`/`verifyStackedUd` (no out-of-domain step, no proof of work, the
+-- `whirUdSpec`/`stackedUdSpec` for `verifyWhirUd`/`verifyStackedUd` (no out-of-domain step, the proof of work as a read nonce (PI-GRIND), the
 -- levels given by the configuration, positions `per` per challenge, the root `c₀` of `n₀` commitments);
 -- `LadderArith`/`levelEps` become `LadderArithUd`/`levelEpsUd` (no `eOod`, `eQueryUd`, no `2^-17` discount, the
 -- positions' width, the next code's list bound `≤ 1`); `card_batch_bad_le` reads the root's word. `anyT`, the
@@ -32,9 +32,9 @@ challenge, root `c₀` of the `n₀` commitments present at its start) and a cod
 * `levelEpsUd codes i levels`, `whirEpsUd codes levels`: the largest group escape, **the `εmax` of
   the opening**:
 
-  `max_i max( (2·L_i + 2^(ℓ_i−1)·E_i)/|E|,  ((A_i − 1)/n_i)^{t_i} + t_i·L_{i+1}/|E| )`
+  `max_i max( (2·L_i + 2^(ℓ_i−1)·E_i)/|E|,  2^-g·(((A_i − 1)/n_i)^{t_i} + t_i·L_{i+1}/|E|) )`
   over the levels with a next level, and for the final level
-  `max( (2·L + 2^(ℓ−1)·E)/|E|, ((A − 1)/n)^t + t/|E|, 2/|E| )`, `n_i = 2^(κ_i+R_i)`;
+  `max( (2·L + 2^(ℓ−1)·E)/|E|, 2^-g·(((A − 1)/n)^t + t/|E|), 2/|E| )`, `n_i = 2^(κ_i+R_i)`;
 * `whirUdSpec`: **`verifyWhirUd cfg t w` from `WhirPreUd`**: the history has the `n₀` commitments,
   the root `c₀` is shaped as level 0, and every candidate of its word at the level-0 threshold
   violates `(w, t)`, for `w` multiaffine. Post `False`: the program does not return in doom.
@@ -71,18 +71,20 @@ end Ladder
 
 section Eps
 
-variable (codes : ℕ → LevelCode)
+variable (codes : ℕ → LevelCode) (g : ℕ)
 
-/-- **The largest group escape** of the levels from level `i`. -/
+/-- **The largest group escape** of the levels from level `i`, the query groups discounted by the
+proof of work of `g` bits (PI-GRIND; `2^-0 = 1`). -/
 noncomputable def levelEpsUd : ℕ → List Whir.Level → ENNReal
   | _, [] => 0
   | i, [level] => max (eFold (codes i) level.fold)
-      (max (eQueryFinal (codes i) level.queries) eTail)
+      (max ((2 : ENNReal)⁻¹ ^ g * eQueryFinal (codes i) level.queries) eTail)
   | i, level :: next :: rest => max (max (eFold (codes i) level.fold)
-      (eQueryUd (codes i) (codes (i + 1)) level.queries)) (levelEpsUd (i + 1) (next :: rest))
+      ((2 : ENNReal)⁻¹ ^ g * eQueryUd (codes i) (codes (i + 1)) level.queries))
+      (levelEpsUd (i + 1) (next :: rest))
 
 /-- **The `εmax` of the WHIR opening.** -/
-noncomputable def whirEpsUd (levels : List Whir.Level) : ENNReal := levelEpsUd codes 0 levels
+noncomputable def whirEpsUd (levels : List Whir.Level) : ENNReal := levelEpsUd codes g 0 levels
 
 end Eps
 
@@ -102,21 +104,21 @@ def anyT {α : Type} {p : VerifierProgram α} {Pre : List Ev → Prop} {εmax L 
 
 /-! ## The levels -/
 
-variable {μ ℓ₀ per c₀ n₀ : ℕ} {dir : Bool} {w : List E → E} {codes : ℕ → LevelCode} {εmax : ENNReal}
+variable {μ ℓ₀ per c₀ n₀ g : ℕ} {dir : Bool} {w : List E → E} {codes : ℕ → LevelCode} {εmax : ENNReal}
 
 /-- **The levels' specification.** -/
 noncomputable def levelsSpec (hw : IsMultiaffine μ w) (hℓ₀ : ℓ₀ ≤ μ) (hc : c₀ < n₀)
-    (hper : 1 ≤ per) :
+    (hper : 1 ≤ per) (hg : g ≤ 192) :
     (levels : List Whir.Level) → (i pre : ℕ) → LadderArithUd μ per codes i pre levels →
-      levelEpsUd codes i levels ≤ εmax → (s : WhirStateT) →
-      Spec (whirLevelsUd μ ℓ₀ per c₀ n₀ dir w i levels s)
+      levelEpsUd codes g i levels ≤ εmax → (s : WhirStateT) →
+      Spec (whirLevelsUd μ ℓ₀ per c₀ n₀ g dir w i levels s)
         (fun h ↦ LevelPreL μ codes ℓ₀ w i pre levels s (viewC c₀ n₀ (commits h)))
         (fun _ _ ↦ False) εmax εmax 0
   | [], i, pre, _, _, s => (Spec.fail (Pre := fun h ↦ LevelPreL μ codes ℓ₀ w i pre [] s
         (viewC c₀ n₀ (commits h))) (Post := fun _ _ ↦ False)).mono (fun _ h ↦ h)
         (fun _ _ h ↦ h) le_rfl zero_le le_rfl
   | [level], i, pre, hA, hε, s =>
-    finSpec ⟨hw, hℓ₀, hA.1, hA.2.1, hc, hper, hA.2.2.2⟩ ((le_max_left _ _).trans hε) hA.2.2.1
+    finSpec ⟨hw, hℓ₀, hA.1, hA.2.1, hc, hper, hA.2.2.2⟩ hg ((le_max_left _ _).trans hε) hA.2.2.1
       ((le_max_left _ _).trans ((le_max_right _ _).trans hε))
       ((le_max_right _ _).trans ((le_max_right _ _).trans hε)) s
   | level :: next :: rest, i, pre, hA, hε, s =>
@@ -124,10 +126,10 @@ noncomputable def levelsSpec (hw : IsMultiaffine μ w) (hℓ₀ : ℓ₀ ≤ μ)
         have := hA.2.2.2.2.2
         cases rest <;> exact this.1, hA.2.1, by
         have := hA.2.2.2.2.2
-        cases rest <;> exact this.2.1, hc, hper, hA.2.2.2.1, hA.2.2.2.2.1⟩
+        cases rest <;> exact this.2.1, hc, hper, hA.2.2.2.1, hA.2.2.2.2.1⟩ hg
       ((le_max_left _ _).trans ((le_max_left _ _).trans hε)) hA.2.2.1
       ((le_max_right _ _).trans ((le_max_left _ _).trans hε))
-      (fun s' ↦ levelsSpec hw hℓ₀ hc hper (next :: rest) (i + 1) (pre + level.fold)
+      (fun s' ↦ levelsSpec hw hℓ₀ hc hper hg (next :: rest) (i + 1) (pre + level.fold)
         hA.2.2.2.2.2 ((le_max_right _ _).trans hε) s') s
 
 /-! ## The opening -/
@@ -136,7 +138,7 @@ noncomputable def levelsSpec (hw : IsMultiaffine μ w) (hℓ₀ : ℓ₀ ≤ μ)
 theorem verifyWhirUd_eq {cfg : UdConfig} {t : E} {level : Whir.Level} {rest : List Whir.Level}
     (hc : cfg.levels = level :: rest) :
     verifyWhirUd cfg t w = (sumcheckRoundPoly 3 t none).bind fun quad ↦
-      whirLevelsUd cfg.μ level.fold cfg.per cfg.c₀ cfg.n₀ cfg.direct w 0 (level :: rest)
+      whirLevelsUd cfg.μ level.fold cfg.per cfg.c₀ cfg.n₀ cfg.grind cfg.direct w 0 (level :: rest)
         ⟨t, quad, [], []⟩ := by
   rw [verifyWhirUd, hc]
   rfl
@@ -148,14 +150,14 @@ most `εmax ≥ whirEpsUd codes cfg.levels` each, and it never returns in doom. 
 noncomputable def whirUdSpec {cfg : UdConfig} {t : E} {level : Whir.Level}
     {rest : List Whir.Level} (hc : cfg.levels = level :: rest) (hℓ : level.fold = laneBits)
     (hμ : laneBits ≤ cfg.μ) (hκ₀ : (codes 0).κ = cfg.μ - laneBits) (hcn : cfg.c₀ < cfg.n₀)
-    (hper : 1 ≤ cfg.per) (hw : IsMultiaffine cfg.μ w)
+    (hper : 1 ≤ cfg.per) (hg : cfg.grind ≤ 192) (hw : IsMultiaffine cfg.μ w)
     (hA : LadderArithUd cfg.μ cfg.per codes 0 0 (level :: rest))
-    (hε : whirEpsUd codes (level :: rest) ≤ εmax) (T : ENNReal) :
+    (hε : whirEpsUd codes cfg.grind (level :: rest) ≤ εmax) (T : ENNReal) :
     Spec (verifyWhirUd cfg t w) (fun h ↦ WhirPreUd cfg (codes 0) w t (commits h))
       (fun _ _ ↦ False) εmax 0 T :=
   anyT (Spec.congr (p' := verifyWhirUd cfg t w) (by rw [verifyWhirUd_eq hc, hℓ]; rfl)
     ((roundPolyInv (WhirPreUd cfg (codes 0) w t) t (T := εmax) le_rfl).bind' fun quad ↦
-      (levelsSpec (ℓ₀ := laneBits) hw hμ hcn hper (level :: rest) 0 0 hA hε
+      (levelsSpec (ℓ₀ := laneBits) hw hμ hcn hper hg (level :: rest) 0 0 hA hε
           ⟨t, quad, [], []⟩).mono
         (fun h hp ↦ by
           show LevelPre cfg.μ laneBits w 0 (codes 0) level.fold 0 _ _
@@ -288,8 +290,9 @@ noncomputable def stackedUdSpec {cfg : UdConfig} {level : Whir.Level} {rest : Li
     (claims : List StackClaim) (hcl : ∀ c ∈ claims, IsMultiaffine cfg.μ c.1)
     (hc : cfg.levels = level :: rest) (hℓ : level.fold = laneBits)
     (hμ : laneBits ≤ cfg.μ) (hκ₀ : (codes 0).κ = cfg.μ - laneBits) (hcn : cfg.c₀ < cfg.n₀)
-    (hper : 1 ≤ cfg.per) (hA : LadderArithUd cfg.μ cfg.per codes 0 0 (level :: rest))
-    (hε : whirEpsUd codes (level :: rest) ≤ εmax) (T : ENNReal) :
+    (hper : 1 ≤ cfg.per) (hg : cfg.grind ≤ 192)
+    (hA : LadderArithUd cfg.μ cfg.per codes 0 0 (level :: rest))
+    (hε : whirEpsUd codes cfg.grind (level :: rest) ≤ εmax) (T : ENNReal) :
     Spec (verifyStackedUd cfg claims)
       (fun h ↦ StackedPreUd cfg (codes 0) claims (commits h)) (fun _ _ ↦ False) εmax
       (eBatch claims.length (codes 0)) T :=
@@ -313,7 +316,7 @@ noncomputable def stackedUdSpec {cfg : UdConfig} {level : Whir.Level} {rest : Li
       exact hρ2 ⟨hp.1, hp.2.1, hp.2.2.1, fun q hq hh ↦ hno ⟨q, hq, hh⟩⟩
   have F0 := fun ρ : E ↦
     whirUdSpec (w := fun point ↦ dot (powers ρ claims.length) (claims.map fun c ↦ c.1 point))
-      (t := dot (powers ρ claims.length) (claims.map (·.2))) hc hℓ hμ hκ₀ hcn hper
+      (t := dot (powers ρ claims.length) (claims.map (·.2))) hc hℓ hμ hκ₀ hcn hper hg
       (isMultiaffine_batched claims hcl ρ) hA hε 0
   have S1 := Spec.bind S0 F0
   exact anyT (Spec.congr (p' := verifyStackedUd cfg claims)

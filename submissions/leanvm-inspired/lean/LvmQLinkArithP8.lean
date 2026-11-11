@@ -1,10 +1,10 @@
 import LvmQLinkArithKS
 
 /-!
-# QA1 links: the `P8` instances (smoke check of `chLink_sound`, `ksLink_sound`)
+# QA1 links: the `P8` instance (smoke check of `ksLink_sound`)
 
-The template checks (`SLok`) of every block are discharged by evaluation at `P8`'s sizes
-(`logN = 9`, `ksLog = 13`, `recRowsLog = 12`, `spongeBlocks P8 = 3,379` from WP-11a's `sizes_P8`).
+The `KS` link's template check (`SLok`) is discharged by evaluation at `P8`'s sizes (lvm2 S2: `ksLog = 14`,
+`recRowsLog = 13`, `spongeBlocks P8` from `sizes_P8`). S2 has no `CH` link.
 -/
 
 set_option autoImplicit false
@@ -13,7 +13,7 @@ namespace Lvm.Q1
 
 open Lvm Lvm.Loop Lvm.Loop.Build
 
-theorem spongeBlocks_P8 : spongeBlocks P8 = 3998 := by
+theorem spongeBlocks_P8 : spongeBlocks P8 = 4507 := by
   rw [spongeBlocks, sizes_P8.2.2.2.2.2.2.2.1]
 
 /-! ## The template check does not read addresses -/
@@ -173,35 +173,13 @@ theorem loadsAt_shape (q s N : Nat) : (loadsAt q s N).map Ins.shape = (loadsAt 0
 /-- A placeholder loop output (only its shape matters to `SLok`). -/
 def defOut : LoopOut := ⟨⟨0, 0⟩, [], []⟩
 
-theorem okA_P8 (Q : Nat) : SLok (chGlueA 9 Q) = true := by
-  rw [← SLok_shape, show (chGlueA 9 Q).map Ins.shape = (chGlueA 9 0).map Ins.shape from rfl, SLok_shape]
-  decide +kernel
-
-theorem okB_P8 (Q : Nat) (oA sh : LoopOut) :
-    SLok (chGlueB (chQB 9 Q) (rhoC oA 9) (rho'C sh 9) (eZC oA 9) (sh.cell 5 (9 - 1))) = true := by
-  rw [← SLok_shape]
-  simp only [chGlueB, List.map_append]
-  rw [loadsAt_shape, dotIns_shape, shiftRecIns_shape]
-  simp only [List.map_append, List.map_cons, List.map_nil, List.map_map, Function.comp_def, shape_cellSrc, shape_mulI, shape_linI, shape_addI, shape_loc, shape_shape, shape_getD_cellSrc, rhoC, rho'C, eZC, eLC, preP, List.length_map, List.length_range, shape_ins_mk, shape_getD_mapCellSrc, eMus_any]
-  decide +kernel
-
-theorem okC_P8 (Q : Nat) (gate : Cell) (oA sh sc2 oB : LoopOut) :
-    SLok (chGlueC (chQC 9 Q) [sc2.cell 2 0, sc2.cell 2 1] (eLC oA 9) (eZC oA 9) (rho'C sh 9)
-      (oA.cell (2 * 9 + 163) 0) (oB.cell (8 * 9 + 123) 0) (sc2.cell 5 1) gate) = true := by
-  rw [← SLok_shape]
-  simp only [chGlueC, List.map_append]
-  rw [loadsAt_shape, eqTabGo_shape, dotIns_shape, dotIns_shape (n := 78), dotIns_shape (n := 82),
-    dotIns_shape (n := 138), mulChainIns_shape]
-  simp only [List.map_append, List.map_cons, List.map_nil, List.map_map, Function.comp_def, shape_cellSrc, shape_mulI, shape_linI, shape_addI, shape_loc, shape_shape, shape_getD_cellSrc, rhoC, rho'C, eZC, eLC, preP, List.length_map, List.length_range, shape_ins_mk, shape_getD_mapCellSrc, eMus_any]
-  decide +kernel
-
 theorem okE_P8 (Q : Nat) (gate : Cell) (sh : LoopOut) :
-    SLok (ksGlueE 13 Q (ksQV 13 Q) 3997 (2 ^ 12 + 399 + 31) (2 ^ 12 + 399) (rho'C sh 13) (sh.cell 2 12)
-      (sh.cell 5 (13 - 1)) gate) = true := by
+    SLok (ksGlueE 14 Q (ksQV 14 Q) 4506 (2 ^ 13 + 399 + 31) (2 ^ 13 + 399) (rho'C sh 14) (sh.cell 2 13)
+      (sh.cell 5 (14 - 1)) gate) = true := by
   rw [← SLok_shape]
   simp only [ksGlueE, List.map_append]
-  rw [loadsAt_shape, loadsAt_shape (q := ksQV 13 Q), preRecIns_shape, preRecIns_shape (n := 13 * 13 + 6),
-    preRecIns_shape (n := 25 * 13 + 6), mulChainIns_shape]
+  rw [loadsAt_shape, loadsAt_shape (q := ksQV 14 Q), preRecIns_shape, preRecIns_shape (n := 13 * 14 + 6),
+    preRecIns_shape (n := 25 * 14 + 6), mulChainIns_shape]
   simp only [List.map_append, List.map_cons, List.map_nil, List.map_map, Function.comp_def, shape_cellSrc, shape_mulI, shape_linI, shape_addI, shape_loc, shape_shape, shape_getD_cellSrc, rhoC, rho'C, eZC, eLC, preP, List.length_map, List.length_range, shape_ins_mk, shape_getD_mapCellSrc, eMus_any]
   decide +kernel
 
@@ -210,7 +188,7 @@ theorem ksLink_sound_P8 {bf : BusIn → BusOut} {tb : Pub → List TableSpec}
     {tcl : Pub → List (List FE × List FE) → List (Com × BlockClaim)} {tfv : Pub → List FE → List FE}
     {tfs : Pub → List (List FE × List FE) → List FE} {tpc : Pub → List (List FE × List FE) → Bool}
     {c : Ctx} {M : Mem} {ptr : Ptr} {sig : ByteArray} {T P Q : Nat} (rk : List FE) (pub : Pub)
-    (gate : Cell) (hPQ : P + 40 = 8 * Q) (hS : Streamed M sig T) (hT : ksQV 13 Q + 3 * 4 + 3 ≤ T)
+    (gate : Cell) (hPQ : P + 40 = 8 * Q) (hS : Streamed M sig T) (hT : ksQV 14 Q + 3 * 4 + 3 ≤ T)
     (hg : gate.val M = 1) (h : SegsHold c M ptr (ksLinkGadget P8 4 Q gate ptr).2)
     (hA : SegsAssert M ptr (ksLinkGadget P8 4 Q gate ptr).2) :
     (ksLink0 P8 (ksLinkView P8 (M3.ofParts P8 bf tb tcl tfv tfs tpc) (feAt sig) P rk pub)).1 = true :=

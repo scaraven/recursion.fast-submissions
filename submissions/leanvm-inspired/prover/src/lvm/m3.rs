@@ -38,6 +38,7 @@ pub struct FlushW {
 /// column that already lives in a commitment (the stream columns `M_l` and `σ'` in `C_rec`, the `KS`
 /// digests in `C_main`: checked, not written), `true` for one placed by the program's M3 spec; the others
 /// are placed by [`place`].
+#[derive(Clone)]
 pub struct TableW {
     pub tau: usize,
     pub cols: Vec<Vec<F64>>,
@@ -295,21 +296,35 @@ fn group_table(c: &Compiled, tb: &loopir::Tables, g: &Grp) -> TableW {
                 V::C(u) => com.iter().position(|&w| w == u).unwrap(),
                 V::F(f) => com.len() + fc.iter().position(|&g| g == f).unwrap(),
             };
-            let mut cols = vec![vec![F64::ZERO; h]; com.len() + fc.len()];
+            // P-FIX: the fixed columns depend on the program only. They are computed once per group and kept
+            // in the program's cache (the zero build before `ready` fills it), then copied.
             for &(n, off) in &g.mem {
                 let p = &c.pieces[n];
                 assert_eq!(&p.shape, s, "a group's members share a shape");
                 let hp = 1usize << c.height(p);
                 assert!(off % hp == 0 && off + hp <= h, "a member is aligned inside its group");
+            }
+            let fixed = c.fixed_cols((g.tau, g.mem.clone()), || {
+                let mut fcols = vec![vec![F64::ZERO; h]; fc.len()];
+                for &(n, off) in &g.mem {
+                    let p = &c.pieces[n];
+                    let hp = 1usize << c.height(p);
+                    for (k, &f) in fc.iter().enumerate() {
+                        for x in 0..hp {
+                            fcols[k][off + x] = c.fval(p, f, x);
+                        }
+                    }
+                }
+                fcols
+            });
+            let mut cols = vec![vec![F64::ZERO; h]; com.len()];
+            for &(n, off) in &g.mem {
+                let hp = 1usize << c.height(&c.pieces[n]);
                 for (k, col) in tb.cols[n].iter().enumerate() {
                     cols[k][off..off + hp].copy_from_slice(col);
                 }
-                for (k, &f) in fc.iter().enumerate() {
-                    for x in 0..hp {
-                        cols[com.len() + k][off + x] = c.fval(p, f, x);
-                    }
-                }
             }
+            cols.extend(fixed.iter().cloned());
             assert_eq!(g.mem.iter().map(|&(n, _)| 1usize << c.height(&c.pieces[n])).sum::<usize>(), h, "no padding row");
             let cons = shape_constraints(s)
                 .into_iter()
@@ -581,9 +596,9 @@ pub fn spec_tables(
 ) -> Vec<TableW> {
     use crate::lvm::loopir::ArrKind;
     let extra: Vec<usize> = spec.bits.iter().flat_map(|b| b.reads()).collect();
-    let tb = c.tables_ext(run, &extra);
+    let tb = crate::lv::tracing::info_span!("B tables_ext").in_scope(|| c.tables_ext(run, &extra));
     let groups: Vec<Grp> = spec.groups.iter().map(|(tau, mem, _)| Grp { tau: *tau, mem: mem.clone() }).collect();
-    let mut tabs = group_tables(c, &tb, &groups);
+    let mut tabs = crate::lv::tracing::info_span!("B groups").in_scope(|| group_tables(c, &tb, &groups));
     for (t, (_, _, com)) in tabs.iter_mut().zip(&spec.groups) {
         assert_eq!(com.len(), t.n_committed(), "a placement per committed column");
         t.pre = com.iter().enumerate().map(|(k, &(r, o))| (k, r, o, true)).collect();

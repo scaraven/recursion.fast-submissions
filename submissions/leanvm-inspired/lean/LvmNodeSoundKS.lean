@@ -28,14 +28,14 @@ open RecursionFast Lvm Lvm.Replay Lvm.Loop Lvm.QLink Lvm.QSig Lvm.KG
 open LeanVM.Parameters LeanVM.Protocol
 
 /-- `KS`'s output lanes on a good pair's `C_main`. -/
-abbrev Yq (qm : Column 26) : ℕ → ℕ → K := ksYRow 15 ksY2 (colM qm) (ksCol qm)
+abbrev Yq (qm : Column CMain.nu20) : ℕ → ℕ → K := ksYRow 15 ksY2 (colM qm) (ksCol qm)
 
 /-- `KS`'s message lanes on a good pair. -/
-abbrev Mq (qm : Column 26) (qr : Column 19) : ℕ → ℕ → K := ksMsg 14 (msgM qr) (msgX qm)
+abbrev Mq (qm : Column CMain.nu20) (qr : Column 19) : ℕ → ℕ → K := ksMsg 14 (msgM qr) (msgX qm)
 
 /-- The `cont` rows at `P20`: the trace rows `1 … B − 1` and the key leaf's rows `1 … 31`. -/
-theorem mem_contRows {i : ℕ} : i ∈ contRows P20 ↔ (1 ≤ i ∧ i < 14719) ∨ (16784 ≤ i ∧ i < 16815) := by
-  have hB : spongeBlocks P20 = 14719 := sizes_P20.2.2.2.2.2.2.2.2
+theorem mem_contRows {i : ℕ} : i ∈ contRows P20 ↔ (1 ≤ i ∧ i < 13096) ∨ (16784 ≤ i ∧ i < 16815) := by
+  have hB : spongeBlocks P20 = 13096 := sizes_P20.2.2.2.2.2.2.2.2
   have hr : P20.recRowsLog = 14 := rfl
   simp only [contRows, List.mem_append, List.mem_map, List.mem_range, hB, hr, Nat.reducePow]
   constructor
@@ -47,7 +47,7 @@ theorem mem_contRows {i : ℕ} : i ∈ contRows P20 ↔ (1 ≤ i ∧ i < 14719) 
 /-! ## The stream's bytes are `KS`'s message bytes -/
 
 /-- **Byte `p` of the child's stream is byte `p mod 136` of `KS` row `p / 136`** (below row `2^14`). -/
-theorem msgBytes_eq_stream (qm : Column 26) (qr : Column 19) {p : ℕ} (hp : p / 136 < 2 ^ 14) :
+theorem msgBytes_eq_stream (qm : Column CMain.nu20) (qr : Column 19) {p : ℕ} (hp : p / 136 < 2 ^ 14) :
     Lvm.KG.msgBytes (Mq qm qr) (p / 136) (p % 136) =
       (wordsBytes (wsOf (Lvm.X.laneOf (wOfCol qr)))).getD p 0 := by
   have hq : p % 136 < 136 := Nat.mod_lt _ (by norm_num)
@@ -75,7 +75,7 @@ theorem nBlk_eq (L : ℕ) : Lvm.QLink.nBlk L = Lvm.KSponge.nBlk L := rfl
 theorem streamOk_P20 : StreamOk P20 := Lvm.QLink.streamOk_P20
 
 /-- **`KS` outputs the child's trace digest** at row `B − 1`. -/
-theorem traceDigest_of_goodK {x : List UInt8} {qm : Column 26} {qr : Column 19}
+theorem traceDigest_of_goodK {x : List UInt8} {qm : Column CMain.nu20} {qr : Column 19}
     (hG : GoodK x (qm, qr)) (hL : LaneLink P20 (wsOf (Lvm.X.laneOf (wOfCol qr))))
     (hpad : PadOkB (wordsBytes (wsOf (Lvm.X.laneOf (wOfCol qr)))) (hashedLen P20)) :
     Lvm.KSponge.stDigest (yState (Yq qm) (spongeBlocks P20 - 1)) =
@@ -84,16 +84,16 @@ theorem traceDigest_of_goodK {x : List UInt8} {qm : Column 26} {qr : Column 19}
   have hS := stream_of_laneLink streamOk_P20 hL
   have hsz : hashedLen P20 ≤ (wordsBytes (wsOf (Lvm.X.laneOf (wOfCol qr)))).length := by
     rw [wordsBytes_length]; exact hL.size
-  have hhl : hashedLen P20 = 2001648 := sizes_P20.2.2.2.2.2.1
+  have hhl : hashedLen P20 = 1781000 := sizes_P20.2.2.2.2.2.1
   rw [sizes_P20.2.2.2.2.2.2.2.2]
   generalize hashedLen P20 = L at hS hsz hpad hhl
-  have hnb : Lvm.KSponge.nBlk L = 14719 := by rw [hhl]; rfl
+  have hnb : Lvm.KSponge.nBlk L = 13096 := by rw [hhl]; rfl
   rw [← hnb]
   refine traceDigest_of_KS 15 (ksCol qm) (Yq qm) (Mq qm qr) _ H L (by rw [hnb]; norm_num)
     (fun i h1 h2 => by rw [hnb] at h2; simp only [decide_eq_true_eq, mem_contRows]; omega) ?_ _ ?_
   · intro p h1 h2
     rw [hnb] at h2
-    have h2' : p < 136 * 14719 := h2
+    have h2' : p < 136 * 13096 := h2
     have := msgBytes_eq_stream qm qr (p := p) (by omega)
     rw [show p / RecursionFast.Keccak.rate = p / 136 from rfl,
       show p % RecursionFast.Keccak.rate = p % 136 from rfl, this, ← padAt_eq]
@@ -123,7 +123,7 @@ theorem digAt_of_cells {v : ℕ → FK} {a : ℕ} {Yt : ℕ → ℕ → K} {i : 
 /-! ## `SigKSin` -/
 
 /-- A row above `2^14` absorbs the `X` cells. -/
-theorem xorMsg_cells {qm : Column 26} {qr : Column 19} {v : ℕ → FK} {f : ℕ → ℕ} {r : ℕ}
+theorem xorMsg_cells {qm : Column CMain.nu20} {qr : Column 19} {v : ℕ → FK} {f : ℕ → ℕ} {r : ℕ}
     (h : ∀ l < 17, v (f l) = FK.ofBF64 (msgX qm r l)) (a : RecursionFast.Keccak.State) :
     Lvm.KSponge.xorMsg a (Lvm.Wots.laneByte (lanesW v f)) =
       Lvm.KSponge.xorMsg a (Lvm.KG.msgBytes (Mq qm qr) (2 ^ 14 + r)) := by
@@ -140,7 +140,7 @@ theorem xorMsg_cells {qm : Column 26} {qr : Column 19} {v : ℕ → FK} {f : ℕ
   simp only [Lvm.KSponge.xorMsg, e]
 
 /-- **Q_sig's `KS` hypothesis from a good pair** (rows `2^14 + r`). -/
-theorem sigKSin_of_goodK {x : List UInt8} {qm : Column 26} {qr : Column 19} {I : SigIn} {v : ℕ → FK}
+theorem sigKSin_of_goodK {x : List UInt8} {qm : Column CMain.nu20} {qr : Column 19} {I : SigIn} {v : ℕ → FK}
     (hG : GoodK x (qm, qr))
     (hx : ∀ r < 449, ∀ l < 17, v (I.xs + 17 * r + l) = FK.ofBF64 (msgX qm r l))
     (hys : ∀ r < 399, ∀ l < 4, v (I.ys + 4 * r + l) = FK.ofBF64 (Yq qm (2 ^ 14 + r) l))

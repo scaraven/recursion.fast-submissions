@@ -1,7 +1,7 @@
 -- WP-14 (ASM). New for lvm (O1): the query bound of `V_S` on every oracle path, by a static count
 -- of the schedule (the driver's loops are fixed by the schedule; only rejections stop early).
 import LvmVerifier
-import LvmQAsmV
+import LvmVerifierS
 import LvmCertS
 
 /-!
@@ -122,9 +122,10 @@ theorem queries_VS_le (p : Params) (m : M3) (vk c : Digest) (π : Proof) (H : By
 /-- At P20 the static count is within the declared `qV`. -/
 theorem qcItems_P20 : 2 + qcItems P20 (schedule P20) 0 ≤ 16384 := by decide +kernel
 
-/-- **O1**: `V_S` at P20 asks at most `qV = 16384` queries on every oracle path. -/
-theorem hq_VS20 (H : ByteArray → Digest) (vk c : Digest) (π : Proof) :
-    ((VS20 vk c π).queries H).length ≤ Lvm.T.qVlvm :=
+/-- **O1**: `V_S` at P20 on any tables asks at most `qV = 16384` queries on every oracle path
+(lvm2 S2-CERT: generic in the node program's tables; `VS20`'s is `LvmSubmissionS20.hq_VS20`). -/
+theorem hq_VSL (tabs : Pub → List M3.Tab) (H : ByteArray → Digest) (vk c : Digest) (π : Proof) :
+    ((VSL P20 tabs vk c π).queries H).length ≤ Lvm.T.qVlvm :=
   (queries_VS_le P20 _ vk c π H).trans qcItems_P20
 
 end Lvm

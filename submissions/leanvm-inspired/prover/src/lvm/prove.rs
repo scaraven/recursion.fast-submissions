@@ -63,6 +63,8 @@ pub struct SProof {
     /// The outgoing accumulator (`accOutOf` of this proof's stream).
     pub acc_out: Acc,
     pub stages: Vec<(&'static str, f64)>,
+    /// PI-GRIND: per WHIR level (`C_rec`'s, then `C_main`'s), the attempts up to its accepted nonce
+    pub grind_attempts: Vec<u64>,
 }
 
 /// `Σ (8 + |q| + 32)` + 1: the hashed length of the trace digest, and its sponge blocks.
@@ -86,8 +88,8 @@ fn mixed(c: Claim) -> MixedClaim {
     }
 }
 
-fn whir_config(levels: &[Level]) -> crate::lv::pcs::whir::ProverConfig {
-    config_of_levels(&levels.iter().map(|l| (l.fold, l.rate, l.cap, l.t)).collect::<Vec<_>>())
+fn whir_config(levels: &[Level], grind: usize) -> crate::lv::pcs::whir::ProverConfig {
+    config_of_levels(&levels.iter().map(|l| (l.fold, l.rate, l.cap, l.t)).collect::<Vec<_>>(), grind)
 }
 
 /// Builds the recursion tables once the commitments' fixed contents are written (CH, KS, the stream, `σ'`)
@@ -114,9 +116,16 @@ pub fn prove(p: &Params, mut hd: Header, mut rec: RecWitness, build: Option<&Bui
     let lay = Layout::new(p);
     let mut stages = Vec::new();
     let mut t = Instant::now();
+    let prof = crate::lv::tracing::enabled();
+    let mut c0 = if prof { crate::lv::tracing::cpu_now() } else { (0.0, 0.0) };
     let mut lap = |name: &'static str, stages: &mut Vec<(&'static str, f64)>| {
         let s = t.elapsed().as_secs_f64();
         crate::lv::tracing::record(name, s);
+        if prof {
+            let c = crate::lv::tracing::cpu_now();
+            eprintln!("  PCPU {name:<14} wall {s:.3} cpu {:.3} svc {:.2}", c.0 - c0.0, c.1 - c0.1);
+            c0 = c;
+        }
         crate::alloc::memlog(name);
         stages.push((name, s));
         t = Instant::now();
@@ -137,34 +146,42 @@ pub fn prove(p: &Params, mut hd: Header, mut rec: RecWitness, build: Option<&Bui
     }
     // P-QUICK lever 3 (prover-only: the same columns and tables, computed in another order): the serial chain
     // walk runs on its own thread; meanwhile this thread runs the sponge walk, allocates the commitments and
-    // writes KS, σ' and the stream. The recursion tables need `h = chainEnd s n` (the header) and read
-    // C_rec and C_main outside the CH block: they are built on a third thread from row n − 1 of the walk on,
-    // beside the CH witness. A read that would touch the CH columns (in, mid, Y) is not served there: the
-    // build is then redone after the CH witness (the old order).
-    let (ch_lo, ch_hi) = (lay.ch_off, lay.ch_off + (50usize << p.log_n));
-    let (y_lo, y_hi) = (lay.ch_y(0), lay.ch_y(0) + (4usize << p.log_n));
+    // writes KS's lanes, σ' and the stream. The recursion tables need `h = chainEnd s n` (the header) and read C_rec
+    // and C_main outside the `D` block: they are built on a third thread once the walk is done, beside the tape's
+    // GKR witness (which commits nothing). P-FIX: KS's GKR witness is generated on a fourth thread beside the walk,
+    // into the KS slots `[ks_off, ks_off + 50·2^ks_log)`, so that the build starts as soon as `h` is known. A read that would touch `D` or those slots is not served there:
+    // the build is then redone after both are written (the old order).
+    let (d_lo, d_hi) = (lay.d_off, lay.d_off + (1usize << lay.d_vars()));
+    let (k_lo, k_hi) = (lay.ks_off, lay.ks_off + (50usize << lay.ks_log));
     let rec_msg = std::mem::take(&mut rec.msg);
     let t0w = Instant::now();
     let tl = std::env::var_os("LVM_LOG").is_some();
-    let (chain, ks, mut cmain, mut crec, ch_w, ks_w, built, h) = std::thread::scope(|sc| {
+    let (chain, ks, mut cmain, mut crec, tape_w, ks_w, built, h) = std::thread::scope(|sc| {
         let (tx, rx) = std::sync::mpsc::channel();
         let s = hd.s;
         let walk = sc.spawn(move || Chain::run_gated_notify(p.log_n, &s, n, dense, move |h| tx.send(h).expect("the end of the chain")));
         let ks = Sponge::run(p.ks_log, cont, rec_msg);
+        let t_s = t0w.elapsed().as_secs_f64();
         let mut cmain = vec![F64::ZERO; 1 << p.nu_main];
         let mut crec = vec![F64::ZERO; 1 << p.nu_rec()];
-        let ks_w = tables::write_ks(&lay, &ks, &mut cmain, &mut crec);
+        let t_a = t0w.elapsed().as_secs_f64();
+        tables::write_ks_lanes(&lay, &ks, &mut cmain, &mut crec);
         for (i, &w) in rec.sigma.iter().enumerate() {
             crec[lay.rec_col(REC_STREAM_COLS) + i] = F64(w);
         }
-        let h = rx.recv().expect("the walk reaches row n − 1");
-        let t_h = t0w.elapsed().as_secs_f64();
-        let mut hd_b = hd.clone();
-        hd_b.h = h;
-        let (chain, ch_w, built) = std::thread::scope(|si| {
-            let (a, rest) = cmain.split_at_mut(ch_lo);
-            let (mid, c) = rest.split_at_mut(ch_hi - ch_lo);
-            let (a, c, cr, hd_b) = (&*a, &*c, &crec, &hd_b);
+        let (chain, ks_w, tape_w, built, h) = std::thread::scope(|si| {
+            let (lo, rest) = cmain.split_at_mut(k_lo);
+            let (kblk, hi) = rest.split_at_mut(k_hi - k_lo);
+            let (lo, hi, cr, ks_r) = (&*lo, &*hi, &crec, &ks);
+            // KS's GKR witness beside the walk, into its slots
+            let ksj = si.spawn(move || {
+                let w = crate::lv::keccak_gkr::Witness::generate(ks_r.shape, &ks_r.inputs, kblk);
+                (w, t0w.elapsed().as_secs_f64())
+            });
+            let h = rx.recv().expect("the walk reaches row n − 1");
+            let t_h = t0w.elapsed().as_secs_f64();
+            let mut hd_b = hd.clone();
+            hd_b.h = h;
             let tabs = build.map(|b| {
                 si.spawn(move || {
                     let hit = std::cell::Cell::new(false);
@@ -172,33 +189,36 @@ pub fn prove(p: &Params, mut hd: Header, mut rec: RecWitness, build: Option<&Bui
                         let e = o + len;
                         if r {
                             cr[o..e].to_vec()
-                        } else if (o < ch_hi && e > ch_lo) || (o < y_hi && e > y_lo) {
+                        } else if (o < d_hi && e > d_lo) || (o < k_hi && e > k_lo) {
                             hit.set(true);
                             vec![F64::ZERO; len]
-                        } else if e <= ch_lo {
-                            a[o..e].to_vec()
+                        } else if e <= k_lo {
+                            lo[o..e].to_vec()
                         } else {
-                            c[o - ch_hi..e - ch_hi].to_vec()
+                            hi[o - k_hi..e - k_hi].to_vec()
                         }
                     };
-                    let t = b(hd_b, &col);
+                    let t = b(&hd_b, &col);
                     let t_b = t0w.elapsed().as_secs_f64();
                     (!hit.get()).then_some((t, t_b))
                 })
             });
             let chain = walk.join().expect("the chain walk");
             let t_w = t0w.elapsed().as_secs_f64();
-            let ch_w = crate::lv::keccak_gkr::Witness::generate(chain.shape, &chain.inputs, mid);
+            let tape_w = crate::lv::keccak_gkr::Witness::generate_uncommitted(chain.shape, &chain.inputs);
             let t_g = t0w.elapsed().as_secs_f64();
+            let (ks_w, t_k) = ksj.join().expect("KS's GKR witness");
             let built = tabs.map(|t| t.join().expect("the recursion tables"));
             if tl {
                 let t_b = built.as_ref().and_then(|b| b.as_ref().map(|x| x.1));
-                eprintln!("lvm: witness timeline n={n}: h at {t_h:.3} s, walk {t_w:.3} s, CH witness {t_g:.3} s, tables {t_b:?} s");
+                eprintln!(
+                    "lvm: witness timeline n={n}: sponge {t_s:.3}, alloc {t_a:.3}, h at {t_h:.3}, KS witness {t_k:.3}, walk {t_w:.3}, tape witness {t_g:.3}, tables {t_b:?} s"
+                );
             }
-            (chain, ch_w, built.map(|b| b.map(|x| x.0)))
+            (chain, ks_w, tape_w, built.map(|b| b.map(|x| x.0)), h)
         });
-        tables::write_ch_y(&lay, &chain, &mut cmain);
-        (chain, ks, cmain, crec, ch_w, ks_w, built, h)
+        tables::write_d(&lay, &chain, &mut cmain);
+        (chain, ks, cmain, crec, tape_w, ks_w, built, h)
     });
     hd.h = chain.end(n);
     assert_eq!(hd.h, h, "chainEnd s n");
@@ -288,8 +308,7 @@ pub fn prove(p: &Params, mut hd: Header, mut rec: RecWitness, build: Option<&Bui
     stages.push(("line eval", fold.secs));
     lap("acc", &mut stages);
 
-    // ---- CH: instance point, 25 lanes, the Keccak GKR, ring switch; fixed claims (Lean `chFixedClaims`)
-    let ch_block = lay.ch_off..lay.ch_off + (1 << lay.ch_vars());
+    // ---- Tape (BLUEPRINT2 §1.2 T1–T2, S2; T-P1 C.3–C.4): r, the 25 output lanes, the depth-24 GKR to the input claim
     let r = ps.sample_vec(p.log_n);
     let out = if dense {
         OutputClaim::of_inputs(chain.shape, &chain.inputs, r.clone())
@@ -297,32 +316,22 @@ pub fn prove(p: &Params, mut hd: Header, mut rec: RecWitness, build: Option<&Bui
         OutputClaim::of_inputs_padded(chain.shape, &chain.inputs, r.clone())
     };
     ps.add_scalars(&out.lanes);
-    let openings = ch_w.prove(&mut ps, &cmain[ch_block.clone()], &out);
-    drop(ch_w);
-    let (ring, word) = openings.into_pcs_claims(lay.ch_off);
-    let ch_map: [F192; RING_STAGES] = std::array::from_fn(|_| ps.sample());
-    let word = word.expect("two segments: the committed outputs' word claim");
-    let StackClaim::Point { offset, low_point, value } = word;
-    main_claims.push(Claim::point(offset, low_point, value));
-    let rc = ring.claims.into_iter().next().unwrap();
-    main_claims.push(Claim::Ring { offset: lay.ch_off, point: rc.suffix_point, slices: rc.s_hat_v.unwrap(), map: ch_map });
-    for m in 0..4 {
-        main_claims.push(Claim::point(lay.ch_y(m), r.clone(), out.lanes[m]));
-    }
-    let pad = crate::keccak::chain_block(&hd.s);
-    for (l, &w) in pad.iter().enumerate() {
-        main_claims.push(Claim::point(lay.ch_slot(l), bits_point(0, p.log_n), e(w)));
-    }
-    let hl = tables::digest_lanes(&hd.h);
-    for m in 0..4 {
-        main_claims.push(Claim::point(lay.ch_y(m), bits_point(n - 1, p.log_n), e(hl[m])));
-    }
-    lap("CH gkr", &mut stages);
+    let fin = tape_w.prove_tape(&mut ps, &out);
+    drop(tape_w);
+    lap("tape", &mut stages);
 
-    // ---- CH link
-    let link_claims = link::prove_ch_gated(&mut ps, &lay, &chain, &cmain, Some((n, !dense)));
+    // ---- Wire (T3–T4; T-P1 C.5–C.6), then the CH claims in the order of C.7: T1's words, the D ring, the boundary
+    let d_ring = crate::lvm::wire::prove_wire(&mut ps, &lay, &chain, &cmain, &fin, &hd.s, n, dense);
+    for l in 0..4 {
+        main_claims.push(Claim::point(lay.d(l), r.clone(), out.lanes[l]));
+    }
+    main_claims.push(d_ring);
+    let hl = tables::digest_lanes(&hd.h);
+    for l in 0..4 {
+        main_claims.push(Claim::point(lay.d(l), bits_point(n - 1, p.log_n), e(hl[l])));
+    }
     drop(chain);
-    lap("CH link", &mut stages);
+    lap("wire", &mut stages);
 
     // ---- KS
     let ks_block = lay.ks_off..lay.ks_off + (1 << lay.ks_vars());
@@ -344,8 +353,7 @@ pub fn prove(p: &Params, mut hd: Header, mut rec: RecWitness, build: Option<&Bui
     drop(ks);
     lap("KS link", &mut stages);
 
-    // ---- the claim lists (Lean: bus ++ tables ++ (CH ++ KS) ++ link ++ KS outputs ++ KS link), by commitment
-    main_claims.extend(link_claims);
+    // ---- the claim lists (S2, T-P1 C.7: bus ++ tables ++ (T1 words ++ D ring ++ boundary) ++ KS ++ KS outputs ++ KS link)
     for l in 0..LANES {
         main_claims.push(Claim::point(lay.ks_y(l), rk.clone(), kout.lanes[l]));
     }
@@ -355,16 +363,18 @@ pub fn prove(p: &Params, mut hd: Header, mut rec: RecWitness, build: Option<&Bui
     // KS link order is [Y, in, M, X]: M is the C_rec one; the others keep their order on main.
 
     // ---- openings: C_rec, then C_main
-    open_mixed_whir_stacked(&mut ps, p.nu_rec(), crec, rec_data, &whir_config(&p.rec_levels), rec_claims.into_iter().map(mixed).collect());
+    open_mixed_whir_stacked(&mut ps, p.nu_rec(), crec, rec_data, &whir_config(&p.rec_levels, p.grind), rec_claims.into_iter().map(mixed).collect());
     lap("open rec", &mut stages);
-    open_mixed_whir_stacked(&mut ps, p.nu_main, cmain, main_data, &whir_config(&p.main_levels), main_claims.into_iter().map(mixed).collect());
+    open_mixed_whir_stacked(&mut ps, p.nu_main, cmain, main_data, &whir_config(&p.main_levels, p.grind), main_claims.into_iter().map(mixed).collect());
     lap("open main", &mut stages);
 
     assert!(ps.nothing_pending(), "the schedule ends with an FS query");
+    let grind_attempts = std::mem::take(&mut ps.grind_attempts);
+    assert_eq!(grind_attempts.len(), if p.grind > 0 { p.rec_levels.len() + p.main_levels.len() } else { 0 }, "one grind per WHIR level");
     let proof = std::mem::take(&mut ps.body);
     let trace = std::mem::take(&mut ps.trace);
     check_shape(p, &proof, &trace);
-    SProof { proof, trace, h: hd.h, acc_out: fold.out, stages }
+    SProof { proof, trace, h: hd.h, acc_out: fold.out, stages, grind_attempts }
 }
 
 /// The proof has the schedule's size and the trace the schedule's query classes and lengths, in order.

@@ -1,4 +1,4 @@
-import LvmDecideM3
+import LvmDecideTape
 import LvmSchedule
 
 /-!
@@ -17,13 +17,12 @@ import LvmSchedule
    the line polynomial `h` (`accVars + 1` coefficients), `t`, one zero scalar; `h(0) = acc_in.y`,
    `h(1) = y_own = Σ_k eq(κ, k)·v_fix[k]`; the folded claim `accOut = (line(t), h(t))` is the
    program's value;
-4. **CH**: the instance point `r ∈ E^logN`, the 25 output lanes, the Keccak GKR
-   (`verifyKeccak`), ring switching of its 64 slices; claims: the output lanes 0–3 on `Y`
-   (slots `chYSlot … chYSlot + 3`, 52–55 in `M3.ofParts`) at `r`, the committed-output word, the ring-switched slices, and the
-   **boundary claims** (§4.1, A1): `in_0 = Pad43(s)` (25 word claims at row 0) and
-   `Y(bits(n − 1)) = h` (4 word claims);
-5. **CH link** (WP-0 [model], `M3.chLink`): `ρ, λ, ζ`, the shift sumcheck, 64 `in` slices, a ring
-   switch, a two-round sumcheck, 64 `Y` slices, a ring switch, 5 lane challenges;
+4. **tape** (lvm2 stage S2, BLUEPRINT2 §2.2; `LvmDecideTape.dTape`): the instance point
+   `r ∈ E^logN`, the 25 output scalars, the depth-24 Keccak GKR on one segment; it leaves the input
+   claim `C_in`;
+5. **wire** (`dWire`): the wiring sumcheck, `g_D`, `D`'s slot reduction and ring switch; claims
+   (`tapeClaims`): `D̃_l(r) = a_l` (`l < 4`), the ring-switched slices, and the **boundary claims**
+   `D̃(bits(n − 1)) = h` (A1). v1's `CH` link is gone (the wiring is the link);
 6. **KS**: the same GKR on `2^ksLog` instances; claims: `M3.ksOutputClaims`, the word, the ring;
 7. **KS link** ([model], `M3.ksLink`): `ρ, λ`, the shift sumcheck, 4 scalars;
 8. **openings**: `C_rec`'s claims batched into its one-level WHIR, then `C_main`'s into its
@@ -155,23 +154,11 @@ def decideProg (p : Params) (m : M3) (vk c : Vector UInt8 32) : DM Acc := do
   let evals ← tableSumcheck p.tableRounds tables bus.forms (xiPowers.take nC) formPowers
     point (dot formPowers bus.totals)
   let accOut ← accFold p m pub evals
-  -- 4] CH
-  let r ← samples p.logN
-  let v ← readEs lanes
-  let ko ← verifyKeccak p.logN r v
-  let ring ← ringSwitch ko.slicePoint ko.slices
-  let chClaims := keccakClaims m.chBlock ko ring ++ chFixedClaims p m.chBlock m.chYSlot r v pub
-  -- 5] CH link
-  let chal ← samples (p.logN + 3 + 6)
-  let shift ← sumcheck (m.chShiftTarget pub chal) 3 (List.replicate p.logN none)
-  let inS ← readEs kBits
-  let ringIn ← ringRaw inS
-  let sc2 ← sumcheck (m.chSc2Target pub chal shift inS) 3 [none, none]
-  let yS ← readEs kBits
-  let ringY ← ringRaw yS
-  let constLanes ← samples laneBits
-  let (okL, linkClaims) := m.chLink ⟨chal, shift, inS, ringIn, sc2, yS, ringY, constLanes, r, v, pub⟩
-  require okL
+  -- 4] the tape (lvm2 S2, T1–T2)
+  let tp ← dTape p.logN
+  -- 5] the wire (T3–T4), after A1's range of `n`
+  dRange p pub
+  let wo ← dWire p pub tp.claim
   -- 6] KS
   let rk ← samples p.ksLog
   let vks ← readEs lanes
@@ -186,11 +173,11 @@ def decideProg (p : Params) (m : M3) (vk c : Vector UInt8 32) : DM Acc := do
   require okK
   -- 8] the openings
   let claims : List (Com × BlockClaim) :=
-    bus.claims ++ m.tableClaims pub evals ++ (chClaims ++ ksClaims).map (.main, ·) ++ linkClaims ++
+    bus.claims ++ m.tableClaims pub evals ++ (tapeClaims p tp wo pub ++ ksClaims).map (.main, ·) ++
       m.ksOutputClaims rk vks ++ kLinkClaims
   let on (com : Com) := (claims.filter (·.1 == com)).map (·.2.onStack)
-  verifyStackedOpening p.recLevels p.nuRec (on .crec) false
-  verifyStackedOpening p.mainLevels p.nuMain (on .main) false
+  verifyStackedOpening p.recLevels p.nuRec (on .crec) false p.grind
+  verifyStackedOpening p.mainLevels p.nuMain (on .main) false p.grind
   pure accOut
 
 /-- **`decideCore`**: every check of the decision program held and it read `Σ` to the end

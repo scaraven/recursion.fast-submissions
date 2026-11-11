@@ -45,7 +45,7 @@ theorem toy_inOkS_bad :
     inOkB toy (toyArrsS.set 2 ⟨.K, 2, 11, 3, [(false, 24)], (false, 28), none⟩) = false := by
   decide +kernel
 
-theorem toy_layOk : layOkB ⟨26, 19⟩ (toyArrs.map InArr.tab) = true := by decide +kernel
+theorem toy_layOk : layOkB ⟨26, 19⟩ (toyArrs.map InArr.tab) = true := by decide +kernel  -- a toy; layout-lint: allow
 
 end Lvm.M3
 

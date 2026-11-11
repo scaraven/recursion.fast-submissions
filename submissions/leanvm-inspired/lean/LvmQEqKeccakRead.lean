@@ -118,6 +118,31 @@ def layerSpec (v : Nat → FE) (logSteps step : Nat) (claim : KeccakClaim) (p : 
     pk.2.1 * weightedLayerF sc.1 claim * (kappa * t.getD 0 0 + (kappa + t.getD 1 0) * t.getD 2 0) == sc.2,
     p3 + 72 + 24 * 3⟩
 
+/-- **A layer on a view with the `ι` term given** (`io`, a function of the claim): `layerSpec` is the
+instance `io = iotaLayerF logSteps step` (`layerSpec_eq_I`); the tape (lvm2) uses one segment's
+`ι` (`RC[23 − step]`). -/
+def layerSpecI (v : Nat → FE) (logSteps : Nat) (io : KeccakClaim → FE) (claim : KeccakClaim) (p : Nat) :
+    LayerOut :=
+  let product := scalarsAt v (p + 40) productBits
+  let s := v (p + 40 + 24 * productBits)
+  let mu := keccakInstanceWeights s
+  let kappa := sumE mu
+  let pk := packSpec v claim.point (polyEval product s) 1 (p + 72 + 24 * productBits)
+  let sc := scSpec v 4 pk.2.2.2 pk.1 (List.replicate localBits none)
+  let p3 := pk.2.2.2 + localBits * roundLen 4
+  let t := scalarsAt v (p3 + 40) 3
+  let beta := v (p3 + 40 + 24 * 3)
+  let eqZ := eqKernelA (sc.1.take 6)
+  let laneW := laneWF sc.1 beta
+  ⟨⟨t.getD 0 0 + beta * (t.getD 1 0 + beta * t.getD 2 0), mu, pk.2.2.1,
+      keccakLinearTranspose ((List.range keccakBits).map fun j => eqZ.getD (j % 64) 0 * laneW.getD (j / 64) 0)⟩,
+    projF claim product + io claim * sumE claim.mu == claim.value,
+    pk.2.1 * weightedLayerF sc.1 claim * (kappa * t.getD 0 0 + (kappa + t.getD 1 0) * t.getD 2 0) == sc.2,
+    p3 + 72 + 24 * 3⟩
+
+theorem layerSpec_eq_I (v : Nat → FE) (logSteps step : Nat) (claim : KeccakClaim) (p : Nat) :
+    layerSpec v logSteps step claim p = layerSpecI v logSteps (iotaLayerF logSteps step) claim p := rfl
+
 /-! The reading equations as proof-producing `simp` rules: as `rfl` lemmas `simp` applies them
 definitionally and the kernel re-derives each step by unfolding `>>=`, comparing the remaining
 reads first (3–8 s in `verifyKeccakLayer_run`); with a proof that is not `rfl`, `simp` cites them. -/

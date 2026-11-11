@@ -56,21 +56,21 @@ theorem layOk_pb (lv : List Level) (nu U : Nat) (pb pb' : Nat → Nat) (pch cch 
   rw [lvOk_congr (C := ⟨lv, nu, U, pb, pch, cch⟩) (C' := ⟨lv, nu, U, pb', pch, cch⟩) rfl rfl rfl]
   rfl
 
-theorem phB20 : phByte P20 .openRec = 285408 ∧ phByte P20 .openMain = 750656 := by decide +kernel
-theorem phB8 : phByte P8 .openRec = 242776 ∧ phByte P8 .openMain = 339184 := by decide +kernel
+theorem phB20 : phByte P20 .openRec = 322992 ∧ phByte P20 .openMain = 788240 := by decide +kernel
+theorem phB8 : phByte P8 .openRec = 269608 ∧ phByte P8 .openMain = 418408 := by decide +kernel
 
-theorem lay20₀ : LayOk ⟨P20.recLevels, P20.nuRec, 35688, fun _ => 0, fun i => pchOf (P20.recLevels.getD i default).t,
-      fun i => bitsDesc (P20.recLevels.getD i default).kappa⟩ 250206 = true ∧
-    LayOk ⟨P20.mainLevels, P20.nuMain, 93832, fun _ => 0, fun i => pchOf (P20.mainLevels.getD i default).t,
-      fun i => bitsDesc (P20.mainLevels.getD i default).kappa⟩ 250206 = true ∧
-    stackEndL P20.recLevels (35688 + 15) = 93832 ∧ 8 * stackEndL P20.mainLevels (93832 + 15) = 2001648 := by
+theorem lay20₀ : LayOk ⟨P20.recLevels, P20.nuRec, 40386, fun _ => 0, fun i => pchOf (P20.recLevels.getD i default).t,
+      fun i => bitsDesc (P20.recLevels.getD i default).kappa⟩ 222625 = true ∧
+    LayOk ⟨P20.mainLevels, P20.nuMain, 98530, fun _ => 0, fun i => pchOf (P20.mainLevels.getD i default).t,
+      fun i => bitsDesc (P20.mainLevels.getD i default).kappa⟩ 222625 = true ∧
+    stackEndL P20.recLevels (40386 + 15) = 98530 ∧ 8 * stackEndL P20.mainLevels (98530 + 15) = 1781000 := by
   decide +kernel
 
-theorem lay8₀ : LayOk ⟨P8.recLevels, P8.nuRec, 30359, fun _ => 0, fun i => pchOf (P8.recLevels.getD i default).t,
-      fun i => bitsDesc (P8.recLevels.getD i default).kappa⟩ 67962 = true ∧
-    LayOk ⟨P8.mainLevels, P8.nuMain, 42398, fun _ => 0, fun i => pchOf (P8.mainLevels.getD i default).t,
-      fun i => bitsDesc (P8.mainLevels.getD i default).kappa⟩ 67962 = true ∧
-    stackEndL P8.recLevels (30359 + 15) = 42398 ∧ 8 * stackEndL P8.mainLevels (42398 + 15) = 543696 := by
+theorem lay8₀ : LayOk ⟨P8.recLevels, P8.nuRec, 33713, fun _ => 0, fun i => pchOf (P8.recLevels.getD i default).t,
+      fun i => bitsDesc (P8.recLevels.getD i default).kappa⟩ 76603 = true ∧
+    LayOk ⟨P8.mainLevels, P8.nuMain, 52301, fun _ => 0, fun i => pchOf (P8.mainLevels.getD i default).t,
+      fun i => bitsDesc (P8.mainLevels.getD i default).kappa⟩ 76603 = true ∧
+    stackEndL P8.recLevels (33713 + 15) = 52301 ∧ 8 * stackEndL P8.mainLevels (52301 + 15) = 612824 := by
   decide +kernel
 
 /-- **`P20`'s layout**: both openings pass the static checks below the stream's lanes; `C_rec` ends
@@ -80,9 +80,9 @@ theorem lay20 (pb : Nat → Nat) :
     8 * stackEndL P20.recLevels (openU P20 + 15) = phByte P20 .openMain ∧
     8 * stackEndL P20.mainLevels (stackEndL P20.recLevels (openU P20 + 15) + 15) = hashedLen P20 ∧
     8 * openU P20 = phByte P20 .openRec + 96 := by
-  have hT : streamLanes P20 = 250206 := sizes_P20.2.2.2.2.2.2.1
-  have hL : hashedLen P20 = 2001648 := sizes_P20.2.2.2.2.2.1
-  have hU : openU P20 = 35688 := by rw [openU, phB20.1]
+  have hT : streamLanes P20 = 222625 := sizes_P20.2.2.2.2.2.2.1
+  have hL : hashedLen P20 = 1781000 := sizes_P20.2.2.2.2.2.1
+  have hU : openU P20 = 40386 := by rw [openU, phB20.1]
   obtain ⟨l1, l2, l3, l4⟩ := lay20₀
   refine ⟨?_, ?_, ?_, ?_, ?_⟩
   · rw [hT, cfgRec, hU, layOk_pb _ _ _ pb (fun _ => 0)]; exact l1
@@ -97,9 +97,9 @@ theorem lay8 (pb : Nat → Nat) :
     8 * stackEndL P8.recLevels (openU P8 + 15) = phByte P8 .openMain ∧
     8 * stackEndL P8.mainLevels (stackEndL P8.recLevels (openU P8 + 15) + 15) = hashedLen P8 ∧
     8 * openU P8 = phByte P8 .openRec + 96 := by
-  have hT : streamLanes P8 = 67962 := sizes_P8.2.2.2.2.2.2.2.2.1
-  have hL : hashedLen P8 = 543696 := sizes_P8.2.2.2.2.2.2.2.1
-  have hU : openU P8 = 30359 := by rw [openU, phB8.1]
+  have hT : streamLanes P8 = 76603 := sizes_P8.2.2.2.2.2.2.2.2.1
+  have hL : hashedLen P8 = 612824 := sizes_P8.2.2.2.2.2.2.2.1
+  have hU : openU P8 = 33713 := by rw [openU, phB8.1]
   obtain ⟨l1, l2, l3, l4⟩ := lay8₀
   refine ⟨?_, ?_, ?_, ?_, ?_⟩
   · rw [hT, cfgRec, hU, layOk_pb _ _ _ pb (fun _ => 0)]; exact l1

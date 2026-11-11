@@ -10,8 +10,8 @@ import LvmVEqArith
   (`sumClaim`) agree with their `E` twins (`BClaim.point`, `sumClaimE`) on mapped arguments;
 * `onStack_rel`: agreeing block claims put agreeing claims on the stack; `on_rel`: per commitment,
   for agreeing lists;
-* `chFixedClaims_rel` (CH's output lanes and boundary claims), `ksOutputClaims_rel` (KS's 25 output
-  lanes) at `P20`; `chBlk_eq`, `ksYPart_rel`: the P20 layout of `M3.real` is LvmVEqMid's.
+* `tapeClaims_rel` (lvm2 S2: the tape's claims), `ksOutputClaims_rel` (KS's 25 output
+  lanes) at `P20`; `dBlk_eq`, `ksYPart_rel`: the P20 layout of `M3.real` is LvmVEqMid's.
 
 Helpers live in `Lvm.VEq.Lk` (no clash with the other phases' helpers).
 -/
@@ -64,8 +64,9 @@ theorem sumClaim_rel (nu : ℕ) (parts : List (FE × Lvm.Placement × List FE)) 
 
 /-! ## The P20 layout -/
 
-/-- `CH`'s block of `M3.real P20`. -/
-theorem chBlk_eq (tabs : Pub → List M3.Tab) : plE (M3.real P20 tabs).chBlock = chBlk := rfl
+/-- `D`'s block at `P20` (lvm2 S2). -/
+theorem dBlk_eq : plE (dBlock P20) = dBlkE := by
+  rw [dBlock, layout0_P20]; rfl
 
 /-- `KS`'s `Y` lane `l` of `P20`. -/
 theorem ksYPart_rel (l : ℕ) (pt : List FE) :
@@ -103,17 +104,20 @@ theorem on_rel {l : List (Com × BlockClaim)} {l' : List (Com × BClaim)} (h : L
 
 /-! ## The claim lists -/
 
-/-- **`CH`'s output lanes and boundary claims.** -/
-theorem chFixedClaims_rel (tabs : Pub → List M3.Tab) (r v : List FE) (pub : Pub) :
-    List.Forall₂ BCRel (chFixedClaims P20 (M3.real P20 tabs).chBlock 52 r v pub)
-      (chFixedClaimsE (r.map FE.toExt3) (v.map FE.toExt3) pub) := by
-  have hb := (chBlk_eq tabs).symm
-  simp only [chFixedClaims, chFixedClaimsE]
+/-- **The tape's claims** (lvm2 S2, T1, T4, T5) against `tapeClaimsE`, given related `r`, lanes
+and ring. -/
+theorem tapeClaims_rel (tp : TapeRes) (wo : WireOut) (tpE : Lvm.KG.TapeOutE) (pub : Pub)
+    (hr : tpE.1 = tp.r.map FE.toExt3) (hv : tpE.2.1 = tp.v.map FE.toExt3)
+    (hring1 : tpE.2.2.2.d.ring.1 = FE.toExt3 wo.ring.1)
+    (hring2 : ∀ xs, tpE.2.2.2.d.ring.2 (xs.map FE.toExt3) = FE.toExt3 (wo.ring.2 xs)) :
+    List.Forall₂ BCRel (tapeClaims P20 tp wo pub) (tapeClaimsE tpE pub) := by
+  have hb := dBlk_eq.symm
+  simp only [tapeClaims, tapeClaimsE]
   refine forall₂_append (forall₂_append ?_ ?_) ?_
   · exact forall₂_map_map _ fun l _ ↦ point_rel _ _ _ hb
-      (by simp only [List.map_append, map_selectorPoint]) (getD_map_toExt3 v l)
-  · exact forall₂_map_map _ fun ⟨w, l⟩ _ ↦ point_rel _ _ _ hb
-      (by simp only [List.map_append, map_selectorPoint]; rfl) (tE_ofK w).symm
+      (by simp only [hr, List.map_append, map_selectorPoint])
+      (by rw [hv]; exact getD_map_toExt3 tp.v l)
+  · exact List.Forall₂.cons ⟨rfl, hring1, hring2⟩ List.Forall₂.nil
   · exact forall₂_map_map _ fun ⟨w, l⟩ _ ↦ point_rel _ _ _ hb
       (by simp only [List.map_append, map_selectorPoint]; rfl) (tE_ofK w).symm
 

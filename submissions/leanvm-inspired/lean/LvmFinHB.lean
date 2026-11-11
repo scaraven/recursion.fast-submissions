@@ -14,7 +14,7 @@ import LvmAccNodeLen
 
 * `hH : HarStatic cfg20 data20 (streamLanes P20) P4 P5 P6 P7 P8` (HAR's static facts, decided by FIN);
 * `S : StaticFacts` (A24's guard: `hwr`, `hwm` at `p2C cfg20`);
-* `BV : BVFacts hτ' hτT` (FIN-BV: `SBits`, `NBits`, `1 ≤ n'`, both `PosOk`), each under the premises
+* `BV : BVFacts hτ' hτT` (FIN-BV: `SBitsS`, `NBits`, `1 ≤ n' ≤ 2^logN`, both `PosOk`), each under the premises
   of `NodeBase.harith` (`HBPrem`).
 
 Proved here: the stream binds `Σ'` (`streamed_child`; `T ≤ 2^m` from `hQ20`, `T ≤ |ws|` from
@@ -91,7 +91,7 @@ variable
   (hτT : ∀ x, ∀ t ∈ TS M3.tabsP20 x, t.τ ≤ lay26.μ)
 
 /-- The memory of the P20 node program on the pair `(qm, qr)` of statement `x`. -/
-noncomputable abbrev mem20 (x : List UInt8) (qm : Column 26) (qr : Column 19) : Mem :=
+noncomputable abbrev mem20 (x : List UInt8) (qm : Column CMain.nu20) (qr : Column 19) : Mem :=
   memX (lay cfg20) (sigIn cfg20) (qarith cfg20) (nK cfg20) 0 (plOf data20) data20.groups
     (fun x => arrs cfg20 data20 (pubX x)) (aux cfg20 data20) hτ' x qm qr
 
@@ -102,7 +102,7 @@ abbrev ws20 (qr : Column 19) : List Word := wsOf (Lvm.X.laneOf (wOfCol qr))
 abbrev sig20 (qr : Column 19) : ByteArray := traceBytesB (decode P20 (ws20 qr))
 
 /-- **The premises of `NodeBase.harith`** at the P20 node program. -/
-structure HBPrem (vk c : RecursionFast.Digest) (x : List UInt8) (qm : Column 26) (qr : Column 19) : Prop where
+structure HBPrem (vk c : RecursionFast.Digest) (x : List UInt8) (qm : Column CMain.nu20) (qr : Column 19) : Prop where
   ok : okS vk c x = true
   b1 : (hdrOf x).b = 1
   good : GoodN (TS M3.tabsP20) hτT x qm qr
@@ -113,14 +113,15 @@ structure HBPrem (vk c : RecursionFast.Digest) (x : List UInt8) (qm : Column 26)
   run : Ok (ctxOf (Qn (lay cfg20) (sigIn cfg20) (qarith cfg20) (nK cfg20) 0)) (mem20 hτ' x qm qr)
     (qarith cfg20) (p2 (lay cfg20) (sigIn cfg20) (nK cfg20) 0)
 
-/-- **FIN-BV's memory facts** (`harith_core`'s `hsb`, `hnb`, `hn1`, `hposr`, `hposm`), each under
+/-- **FIN-BV's memory facts** (`harith_core`'s `hsb`, `hnb`, `hn1`, `hnN`, `hposr`, `hposm`), each under
 `NodeBase.harith`'s premises. -/
 structure BVFacts : Prop where
-  sb : ∀ vk c x qm qr, HBPrem hτ' hτT vk c x qm qr → Lvm.Har.SBits (mem20 hτ' x qm qr).k (bsB cfg20)
+  sb : ∀ vk c x qm qr, HBPrem hτ' hτT vk c x qm qr →
+    Lvm.Q1.SBitsS (mem20 hτ' x qm qr).k (sigIn cfg20).hd (bsB cfg20)
   nb : ∀ vk c x qm qr, HBPrem hτ' hτT vk c x qm qr →
     Lvm.Har.NBits (mem20 hτ' x qm qr).k ((sigIn cfg20).bn + 2) P20.logN
   n1 : ∀ vk c x qm qr, HBPrem hτ' hτT vk c x qm qr → 1 ≤ (pubOf vk (hdrOf x).cL (sig20 qr)).n
-  n2 : ∀ vk c x qm qr, HBPrem hτ' hτT vk c x qm qr → (pubOf vk (hdrOf x).cL (sig20 qr)).n ≤ 2 ^ P20.logN
+  nN : ∀ vk c x qm qr, HBPrem hτ' hτT vk c x qm qr → (pubOf vk (hdrOf x).cL (sig20 qr)).n ≤ 2 ^ P20.logN
   posr : ∀ vk c x qm qr, HBPrem hτ' hτT vk c x qm qr →
     Lvm.Har.PosOk (Lvm.Har.cfgRec P20 (Lvm.Har.posBase cfg20)) (mem20 hτ' x qm qr) (sig20 qr) 0
       P20.recLevels (Lvm.Har.openU P20 + 15)
@@ -176,7 +177,7 @@ theorem harith20 {P4 P5 P6 P7 P8 : ℕ}
     rw [show cfg20.p = P20 from rfl]; exact BV.posm vk c x qm qr P
   obtain ⟨h1, h2⟩ := Lvm.Har.harith_core cfg20 data20 M3.G20 vk (hdrOf x).cL hH h hS hin.flag
     (vk_cells hpub (okS_vk hok)) (BV.sb vk c x qm qr P) (BV.nb vk c x qm qr P) (BV.n1 vk c x qm qr P)
-    (BV.n2 vk c x qm qr P) hposr hposm hend S.hwr S.hwm
+    (BV.nN vk c x qm qr P) hposr hposm hend S.hwr S.hwm
   rw [real_cfg20] at h1 h2
   exact ⟨h1, h2.trans (accC_eq hpub)⟩
 

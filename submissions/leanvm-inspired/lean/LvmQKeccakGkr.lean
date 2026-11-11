@@ -249,6 +249,74 @@ def gkrGadget (P qs : Nat) (inst out : Nat → Cell) (b : Cell) : BM GkrOut :=
       (List.range 6).map (fun i => sc3.cell 2 i),
     (List.range 64).map fun k => ((G 0).1.sl.getD k default).gkCell f1⟩
 
+/-! ## The tape (lvm2 S2, BLUEPRINT2 T2): one segment of depth 24
+
+T-G's `tapeGkr` (`gkrProgS Shape.tape`): five lane challenges, the `24` layers of
+`verifyKeccakLayerS Shape.tape` from `tapeFirstClaim`, no segment challenge, no `committed`, no
+openings; the result is the input claim. The layer template is v1's (`layerTB`, `P + 1` pack
+rounds): the tape's claim has `P + 1` point coordinates (`ClaimShape P`, the top one the pack's top
+bit) and its `ι` uses one round constant, `RC[23 − step]` (`layerRCS Shape.tape`). The template's
+two-segment mix `(1 + σ)·ι₀ + σ·ι₁` is the identity when both constant slots hold the same bits, so
+the tape's constants put `RC[23 − step]` in slots `0–6` and `7–13`: no new template, no new layer
+proof (`layer_core` is generic in the two constants). The `24` iterations are two loops, `2^4` then
+`2^3` (no dummy iteration: `2^5` would cost 8 layers' words for nothing), the second relocated by
+`16` layers; its carried claim at iteration `0` is the first loop's last copy rows (`E` cells are
+contiguous across the two blocks). -/
+
+/-- Constant `j < 15` of tape layer `jf`: `RC[23 − jf]`'s bits at `2^i − 1` in slots `0–6` and
+again in `7–13`, `first = [jf = 0]`. -/
+def cstKT (jf j : Nat) : FK :=
+  if tapeDepth ≤ jf then 0
+  else if j < 7 then rcK (keccakRC.getD (tapeDepth - jf - 1) 0) j
+  else if j < 14 then rcK (keccakRC.getD (tapeDepth - jf - 1) 0) (j - 7)
+  else if jf = 0 then 1 else 0
+
+/-- Row `t = 16·jf + j` of the tape's constants: `b + b + k'`, or the gate `b` (every layer real). -/
+def cstIT (b : Src) (t : Nat) : Ins :=
+  if t % 16 = 15 then ⟨.lin 0 0, .K, [b, b]⟩
+  else ⟨.lin 1 (cstKT (t / 16) (t % 16)), .K, [b, b]⟩
+
+/-- The tape's constants block (`16` per layer). -/
+def cstInsT (b : Src) : List Ins := (List.range (16 * tapeDepth)).map (cstIT b)
+
+/-- **The tape's first claim** (`tapeFirstClaim inst lanesPt output`): the lane challenges at lanes
+`qs + 9 k`, `value = Σ_{l<25} lanes_l·output_l`, `μ = eq(inst[0..4))`, `κ = 1`, point
+`inst[4..P+5)`, `B = lanes[0..25)`, `a = 0`, `flip_i = lanes_0·x^(2^i − 1)`. -/
+def preTBT (P qs : Nat) (inst out : Nat → Src) (b : Src) : TB PreOut :=
+  gZero b >>= fun z => gOne z >>= fun one =>
+  mapTB (fun k => gLoad (qs + 9 * k) []) (List.range 5) >>= fun lp =>
+  gEqTab z [one] lp >>= fun lanes =>
+  gDot z ((List.range 25).map fun l => (lanes.getD l default, out l)) >>= fun v0 =>
+  gEqTab z [one] ((List.range 4).map inst) >>= fun mu =>
+  mapTB (fun i => gScale (FK.x ^ iotaPos i) (lanes.getD 0 default)) (List.range 7) >>= fun fl =>
+  pure ⟨z, z, lanes, [v0] ++ mu ++ [one] ++ (List.range (P + 1)).map (fun i => inst (4 + i)) ++
+    lanes.take 25 ++ List.replicate 6 z ++ fl⟩
+
+/-- The lane of the first layer's first product scalar. -/
+def tapeQ (qs : Nat) : Nat := qs + 45
+
+/-- The lane after the tape (the wiring phase's first message). -/
+def tapeEnd (P qs : Nat) : Nat := tapeQ qs + tapeDepth * (lay0 P).str
+
+/-- The tape's result: the input claim's carried cells (`value, μ[16], κ, point[P+1], B[25], a[6],
+flip[7]`), cell `j` of the claim. -/
+structure TapeOut where
+  /-- The carried values of the last layer. -/
+  cv : Nat → Cell
+
+/-- **`F`'s tape GKR** (`tapeGkr (P + 5) inst output`), its first lane challenge at lane `qs`, the
+instance point in `inst i` (`i < P + 5`), the `25` output scalars in `out l`, every check gated by
+`b`. -/
+def tapeGadget (P qs : Nat) (inst out : Nat → Cell) (b : Cell) : BM TapeOut :=
+  getPtr >>= fun p =>
+  loop [] (tplOf (cstInsT (gkS b))) >>= fun _ =>
+  loop [] (tplOf (preTBT P qs (fun i => gkS (inst i)) (fun l => gkS (out l)) (gkS b) 0).2) >>= fun pre =>
+  let F := (preTBT P qs (fun i => gkS (inst i)) (fun l => gkS (out l)) (gkS b) 0).1
+  loop [] (tplOf (cpIns (F.carried.map (Src.gkOut pre)))) >>= fun _ =>
+  loop [4] (layTpl P (tapeQ qs) p.k) >>= fun _ =>
+  loop [3] (layTpl P (tapeQ qs + 16 * (lay0 P).str) (p.k + 16 * 16)) >>= fun lay =>
+  pure ⟨fun j => lay.cell (cbOf P + j) 7⟩
+
 /-! ## The layer template's structure, per shape
 
 The kernel decides `layOk P` on the RMFE literals (`projLit`, `embedLit`): `layOk_eq_lit` rewrites
@@ -327,12 +395,16 @@ theorem layOk_eq_T (P : Nat) : layOk P = layOkT layerTB P := rfl
 theorem layOk_eq_lit (P : Nat) : layOk P = layOkT (layerTBT projLit embedLit) P := by
   rw [layOk_eq_T, layerTB_eq_tbl, rmfeProject_eq, rmfeEmbed_eq]
 
-theorem layOk_16 : layOk 16 = true := by rw [layOk_eq_lit]; decide +kernel
-
+/-- `KS` at P20 (`ksLog = 15`: `P = 11`). -/
 theorem layOk_11 : layOk 11 = true := by rw [layOk_eq_lit]; decide +kernel
 
-theorem layOk_9 : layOk 9 = true := by rw [layOk_eq_lit]; decide +kernel
+/-- `KS` at P8 (`ksLog = 14`: `P = 10`). -/
+theorem layOk_10 : layOk 10 = true := by rw [layOk_eq_lit]; decide +kernel
 
-theorem layOk_5 : layOk 5 = true := by rw [layOk_eq_lit]; decide +kernel
+/-- The tape at P20 (`n_log = 20`: `P = 15`). -/
+theorem layOk_15 : layOk 15 = true := by rw [layOk_eq_lit]; decide +kernel
+
+/-- The tape at P8 (`n_log = 9`: `P = 4`). -/
+theorem layOk_4 : layOk 4 = true := by rw [layOk_eq_lit]; decide +kernel
 
 end Lvm.Q1

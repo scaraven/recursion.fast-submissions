@@ -115,11 +115,33 @@ theorem nc_samplePositions (per depth count : ℕ) : (samplePositions per depth 
 theorem ng_samplePositions (per depth count : ℕ) : (samplePositions per depth count).NoGrind :=
   ng_samplePositionsAux _ _ _ _
 
+/-- The separating challenge and the nonce (PI-GRIND) ask no proof of work and commit nothing. -/
+theorem ng_grindPre (g : ℕ) : (grindPre g).NoGrind := by
+  unfold grindPre; split
+  · trivial
+  · exact NoGrind.bind ng_sample fun _ ↦ NoGrind.bind ng_readScalar fun _ ↦ ng_ret _
+
+theorem nc_grindPre (g : ℕ) : (grindPre g).NoCommit := by
+  unfold grindPre; split
+  · trivial
+  · exact NoCommit.bind nc_sample fun _ ↦ NoCommit.bind nc_readScalar fun _ ↦ nc_ret _
+
+/-- The proof of work's challenge and check (PI-GRIND): no `grind` node, no commitment. -/
+theorem ng_powCheck (g : ℕ) : (powCheck g).NoGrind := by
+  unfold powCheck; split
+  · trivial
+  · exact NoGrind.bind ng_sample fun _ ↦ ng_require _
+
+theorem nc_powCheck (g : ℕ) : (powCheck g).NoCommit := by
+  unfold powCheck; split
+  · trivial
+  · exact NoCommit.bind nc_sample fun _ ↦ nc_require _
+
 /-! ## The level loop -/
 
-theorem ng_whirLevelsUd (logN lf per c₀ n₀ : ℕ) (dir : Bool) (eb : List E → E) :
+theorem ng_whirLevelsUd (logN lf per c₀ n₀ g : ℕ) (dir : Bool) (eb : List E → E) :
     ∀ (levels : List LeanVM.Parameters.Whir.Level) i s,
-      (whirLevelsUd logN lf per c₀ n₀ dir eb i levels s).NoGrind
+      (whirLevelsUd logN lf per c₀ n₀ g dir eb i levels s).NoGrind
   | [], _, _ => trivial
   | [level], i, s => by
     unfold whirLevelsUd
@@ -127,6 +149,8 @@ theorem ng_whirLevelsUd (logN lf per c₀ n₀ : ℕ) (dir : Bool) (eb : List E 
     rcases r with ⟨s', lf'⟩
     dsimp only
     refine NoGrind.bind (ng_readScalars _) fun res ↦ ?_
+    refine NoGrind.bind (ng_grindPre _) fun _ ↦ ?_
+    refine NoGrind.bind (ng_powCheck _) fun _ ↦ ?_
     refine NoGrind.bind (ng_samplePositions _ _ _) fun qs ↦ ?_
     refine NoGrind.bind ng_sample fun lam ↦ ?_
     refine NoGrind.bind (ng_query _ _) fun words ↦ ?_
@@ -145,21 +169,25 @@ theorem ng_whirLevelsUd (logN lf per c₀ n₀ : ℕ) (dir : Bool) (eb : List E 
     dsimp only
     refine NoGrind.bind (ng_commit _ _) fun _ ↦ ?_
     refine NoGrind.bind (ng_ret _) fun res ↦ ?_
+    refine NoGrind.bind (ng_grindPre _) fun _ ↦ ?_
+    refine NoGrind.bind (ng_powCheck _) fun _ ↦ ?_
     refine NoGrind.bind (ng_samplePositions _ _ _) fun qs ↦ ?_
     refine NoGrind.bind ng_sample fun lam ↦ ?_
     refine NoGrind.bind (ng_query _ _) fun words ↦ ?_
     refine NoGrind.bind (ng_roundPoly _ _ _) fun intro ↦ ?_
-    exact ng_whirLevelsUd logN lf per c₀ n₀ dir eb (next :: rest) (i + 1) _
+    exact ng_whirLevelsUd logN lf per c₀ n₀ g dir eb (next :: rest) (i + 1) _
 
 /-- The one-level loop commits nothing (the residual is read, no next oracle). -/
-theorem nc_whirLevelsUd_one (logN lf per c₀ n₀ : ℕ) (dir : Bool) (eb : List E → E)
+theorem nc_whirLevelsUd_one (logN lf per c₀ n₀ g : ℕ) (dir : Bool) (eb : List E → E)
     (level : LeanVM.Parameters.Whir.Level) (i : ℕ) (s : WhirStateT) :
-    (whirLevelsUd logN lf per c₀ n₀ dir eb i [level] s).NoCommit := by
+    (whirLevelsUd logN lf per c₀ n₀ g dir eb i [level] s).NoCommit := by
   unfold whirLevelsUd
   refine NoCommit.bind (nc_foldRoundsT _ _ _) fun r ↦ ?_
   rcases r with ⟨s', lf'⟩
   dsimp only
   refine NoCommit.bind (nc_readScalars _) fun res ↦ ?_
+  refine NoCommit.bind (nc_grindPre _) fun _ ↦ ?_
+  refine NoCommit.bind (nc_powCheck _) fun _ ↦ ?_
   refine NoCommit.bind (nc_samplePositions _ _ _) fun qs ↦ ?_
   refine NoCommit.bind nc_sample fun lam ↦ ?_
   refine NoCommit.bind (nc_query _ _) fun words ↦ ?_
@@ -178,7 +206,7 @@ theorem ng_stacked (cfg : UdConfig) (cl : List LeanVM.Protocol.Verifier.StackCla
     (verifyStackedUd cfg cl).NoGrind := by
   unfold verifyStackedUd verifyWhirUd
   exact NoGrind.bind ng_sample fun _ ↦
-    NoGrind.bind (ng_roundPoly _ _ _) fun _ ↦ ng_whirLevelsUd _ _ _ _ _ _ _ _ _ _
+    NoGrind.bind (ng_roundPoly _ _ _) fun _ ↦ ng_whirLevelsUd _ _ _ _ _ _ _ _ _ _ _
 
 /-- A one-level stacked opening commits nothing (generic in the configuration, so that no
 concrete program is unfolded). -/
@@ -188,7 +216,7 @@ theorem nc_stacked_one (cfg : UdConfig) (level : LeanVM.Parameters.Whir.Level)
   rw [verifyStackedUd_eq]
   refine NoCommit.bind nc_sample fun ρ ↦ ?_
   rw [verifyWhirUd_eq hc]
-  exact NoCommit.bind (nc_roundPoly _ _ _) fun _ ↦ nc_whirLevelsUd_one _ _ _ _ _ _ _ _ _ _
+  exact NoCommit.bind (nc_roundPoly _ _ _) fun _ ↦ nc_whirLevelsUd_one _ _ _ _ _ _ _ _ _ _ _
 
 /-! ## The concrete openings (kept folded: unfolding a P20 opening is expensive) -/
 
@@ -214,7 +242,7 @@ theorem ng_seq2 {p q : VerifierProgram Unit} (hp : p.NoGrind) (hq : q.NoGrind) :
   NoGrind.bind hp fun _ ↦ NoGrind.bind hq fun _ ↦ ng_ret _
 
 theorem ng_openProg (cl : OpenClaims) : (openProg cl).NoGrind :=
-  ng_seq2 (ng_stacked cfgRec20 cl.1) (ng_stacked cfgMain20 cl.2)
+  ng_seq2 (ng_stacked cfgRec20 cl.1) (ng_stacked cfgMain24 cl.2)
 
 theorem ng_seq3 {p q : VerifierProgram Unit} {m : VerifierProgram OpenClaims}
     {o : OpenClaims → VerifierProgram Bool} (hp : p.NoGrind) (hq : q.NoGrind) (hm : m.NoGrind)
@@ -225,7 +253,7 @@ theorem ng_seq3 {p q : VerifierProgram Unit} {m : VerifierProgram OpenClaims}
 theorem ng_PSWith {mid : List UInt8 → VerifierProgram OpenClaims} (hm : ∀ x, (mid x).NoGrind)
     (x : List UInt8) : (PSWith mid x).NoGrind := by
   rw [PSWith_eq]
-  exact ng_seq3 (ng_commitRootUd cfgMain20) (ng_commitRootUd cfgRec20) (hm x) ng_openProg
+  exact ng_seq3 (ng_commitRootUd cfgMain24) (ng_commitRootUd cfgRec20) (hm x) ng_openProg
 
 end Concrete
 

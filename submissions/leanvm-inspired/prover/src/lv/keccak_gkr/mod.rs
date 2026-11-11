@@ -91,7 +91,8 @@ use crate::lv::fiat_shamir::transcript::ProverState;
 use keccak::LANE_VARS;
 use crate::lv::primitives::field::{F64, F192, F192Unreduced};
 use crate::lv::primitives::multilinear::eq_table;
-use protocol::{Claim, dot, first_claim};
+pub use protocol::Claim;
+use protocol::{dot, first_claim};
 
 mod basis;
 #[cfg(feature = "bench")]
@@ -214,6 +215,25 @@ fn first(shape: Shape, output: &OutputClaim, segment: Vec<F192>, r_lane: &[F192]
     let last = eq_table(&segment)[shape.segments() - 1];
     claim.value = last * dot(&eq_table(r_lane)[..keccak::LANES], &output.lanes);
     claim
+}
+
+impl Witness {
+    /// lvm2 T-P1 (BLUEPRINT2 §1.2 T2, S2): the layers alone, for a one-segment batch whose inputs are virtual. The
+    /// caller has bound `output`'s lanes; this samples the 5 lane challenges, runs `depth` layers and returns the
+    /// claim on the input state (no output or input opening): `value = Σ_i eq(point, i ≫ 4)·mu[i & 15]·Σ_j
+    /// weights[j]·bit_j(in(i))`.
+    pub fn prove_tape(&self, ps: &mut ProverState, output: &OutputClaim) -> Claim {
+        let shape = self.shape;
+        assert_eq!(shape.segments(), 1, "the tape is one segment");
+        let (segment, r_lane) = (ps.sample_vec(shape.seg_log()), ps.sample_vec(LANE_VARS));
+        let mut claim = first(shape, output, segment, &r_lane);
+        let mut scratch = prover::Scratch::new(shape);
+        for step in 0..shape.depth {
+            claim = crate::lv::tracing::info_span!("Layer", step)
+                .in_scope(|| prover::prove_layer(ps, self, &mut scratch, step, &claim));
+        }
+        claim
+    }
 }
 
 impl Witness {

@@ -1,12 +1,11 @@
--- WP-16b (CERT). New for lvm (O6 link, the two links): the `CH` link's and the `KS` link's
--- assembled claims (`chLinkClaimsE`, `ksLinkClaimsE`) holding on the commitments give WP-8's
--- `ChLinkClaims` and `KsLinkClaims` with WP-14c's accessors.
+-- WP-16b (CERT). New for lvm (O6 link, the `KS` link): the `KS` link's assembled claims
+-- (`ksLinkClaimsE`) holding on the commitments give WP-8's `KsLinkClaims` with WP-14c's accessors.
+-- lvm2 S2 (WP S2-CERT): `KS` at `C_main` word `4·2^20` (FRZ-0); v1's `CH` link is gone.
 import LvmCertSMid3Blk
 
 /-!
 # The links' claims
 
-* **`chLinkClaims_of`**: the two ring claims and the 17 constant lanes at `ρ'`;
 * **`ksLinkClaims_of`**: the four combined claims `yC`, `inC`, `mC` (on `C_rec`), `xC`.
 -/
 
@@ -112,42 +111,9 @@ theorem lk_holds_sumClaim {μ k : ℕ} (F : ℕ → E × VPlacement × List E) (
 
 /-! ## The links -/
 
-/-- A ring claim on `CH`'s block is the ring claim on `C_main`'s first `2^26` words. -/
-theorem lk_ringCol {qm : Column 26} (ring : E × (List E → E))
-    (h : StackClaim.Holds 26 (BClaim.onStack ⟨chBlk, ring.2, ring.1⟩) qm) :
-    Lvm.KG.RingColTrue 20 (colM qm) ring := by
-  rw [holds_onStack _ (dvd_zero _) (by simp [chBlk, slotLog])] at h
-  simp only [chBlk, zero_add] at h
-  exact h.symm
-
-/-- **The `CH` link's claims.** -/
-theorem chLinkClaims_of (n : ℕ) (lo : Lvm.KG.ChLinkOut) (hρ : lo.shift.1.length = 20)
-    {qm : Column 26} {qr : Column 19} (h : ∀ e ∈ chLinkClaimsE n lo, HoldsC qm qr e) :
-    Lvm.KG.ChLinkClaims 20 n (colM qm) lo := by
-  refine ⟨lk_ringCol _ (h (.main, ⟨chBlk, lo.ringIn.2, lo.ringIn.1⟩) (List.mem_map.mpr
-      ⟨_, List.mem_append_left _ (List.mem_cons_self ..), rfl⟩)),
-    lk_ringCol _ (h (.main, ⟨chBlk, lo.ringY.2, lo.ringY.1⟩) (List.mem_map.mpr
-      ⟨_, List.mem_append_left _ (List.mem_cons_of_mem _ (List.mem_cons_self ..)), rfl⟩)), ?_⟩
-  intro t ht8 ht25
-  have hj : t - 8 < 17 := by omega
-  have hc := h (.main, BClaim.point chBlk (lo.shift.1 ++ selE (8 + (t - 8)) slotLog)
-      (M3.kE (if 8 + (t - 8) = 16 then ⟨(0x80 : UInt64) <<< 56⟩ else 0) * Lvm.KG.ltEvalE lo.shift.1 n))
-    (List.mem_map.mpr ⟨_, List.mem_append_right _
-      (List.mem_map.mpr ⟨t - 8, List.mem_range.mpr hj, rfl⟩), rfl⟩)
-  have hc' := (holds_point (μ := 26) (v := 20 + 6) (off := 0) (dvd_zero _) (by norm_num) _
-    (by simp [hρ, selE, selectorPoint_eq_boolPoint, slotLog]) _ qm).mp hc
-  rw [show 8 + (t - 8) = t by omega, show slotLog = 6 from rfl] at hc'
-  simp only [zero_add] at hc'
-  rw [lk_sum_sel hρ (by omega)] at hc'
-  unfold LeanVM.Protocol.KeccakGkr.stepMle
-  refine hc'.trans (congrArg (· * Lvm.KG.ltEvalE lo.shift.1 n) ?_)
-  unfold Lvm.KG.padConstLane
-  split_ifs <;> rfl
-
-
 /-- **The `KS` link's claims.** -/
 theorem ksLinkClaims_of (kchal : List E) (kshift : List E × E) (vals : List E)
-    (h1 : kchal.length = 20) (h2 : kshift.1.length = 15) {qm : Column 26} {qr : Column 19}
+    (h1 : kchal.length = 20) (h2 : kshift.1.length = 15) {qm : Column CMain.nu20} {qr : Column 19}
     (h : ∀ e ∈ ksLinkClaimsE kchal kshift vals, HoldsC qm qr e) :
     Lvm.KG.KsLinkClaims 15 14 (ksCol qm) (Lvm.KG.ksYRow 15 ksY2 (colM qm) (ksCol qm)) (msgM qr)
       (msgX qm) (kchal, kshift, vals) := by
@@ -162,7 +128,7 @@ theorem ksLinkClaims_of (kchal : List E) (kshift : List E × E) (vals : List E)
   have hx := h _ (List.mem_cons_of_mem _ (List.mem_cons_of_mem _ (List.mem_cons_of_mem _
     (List.mem_cons_self ..))))
   refine ⟨?_, ?_, ?_, ?_⟩
-  · have e := lk_holds_sumClaim (μ := 26) (k := 25) (fun l ↦
+  · have e := lk_holds_sumClaim (μ := CMain.nu20) (k := 25) (fun l ↦
       ((LeanVM.Protocol.Verifier.eqKernel (kchal.drop 15)).getD l 0, (ksYPartE l kshift.1).1,
         (ksYPartE l kshift.1).2)) (vals.getD 0 0) qm ?_ hy
     · dsimp only at e ⊢
@@ -173,7 +139,7 @@ theorem ksLinkClaims_of (kchal : List E) (kshift : List E × E) (vals : List E)
       refine congrArg (eqAt (kchal.drop 15) l * ·) ?_
       unfold LeanVM.Protocol.KeccakGkr.stepMle
       by_cases hl14 : l < 14
-      · simp only [ksYPartE, hl14, ↓reduceIte]
+      · simp only [ksYPartE, hl14, ↓reduceIte, ksBlk]
         rw [show slotLog = 6 from rfl, lk_sum_sel h2 (by omega)]
         refine Finset.sum_congr rfl fun x _ ↦ ?_
         simp only [Lvm.KG.ksYRow, Lvm.KG.ksY, hl14, ↓reduceIte, ksCol, Lvm.NS.wd]
@@ -183,18 +149,18 @@ theorem ksLinkClaims_of (kchal : List E) (kshift : List E × E) (vals : List E)
     · intro l hl
       dsimp only
       by_cases hl14 : l < 14
-      · simp only [ksYPartE, hl14, ↓reduceIte]
-        exact ⟨by simp [h2, selE, selectorPoint_eq_boolPoint, slotLog], ⟨25, by norm_num [slotLog]⟩,
+      · simp only [ksYPartE, hl14, ↓reduceIte, ksBlk]
+        exact ⟨by simp [h2, selE, selectorPoint_eq_boolPoint, slotLog], ⟨2, by norm_num [slotLog]⟩,
           by norm_num [slotLog]⟩
       · simp only [ksYPartE, hl14, ↓reduceIte]
-        exact ⟨h2, ⟨56 * 2 ^ 5 + (l - 14), by rw [ksY2Off]; ring⟩, by rw [ksY2Off]; norm_num; omega⟩
-  · have e := lk_holds_sumClaim (μ := 26) (k := 25) (fun l ↦
+        exact ⟨h2, ⟨6 * 2 ^ 5 + (l - 14), by rw [ksY2Off]; ring⟩, by rw [ksY2Off]; norm_num; omega⟩
+  · have e := lk_holds_sumClaim (μ := CMain.nu20) (k := 25) (fun l ↦
       ((LeanVM.Protocol.Verifier.eqKernel (kchal.drop 15)).getD l 0,
-        ({ variableCount := 15 + slotLog, index := 50 * 2 ^ 20 } : VPlacement),
+        ({ variableCount := 15 + slotLog, index := CMain.ksOff20 } : VPlacement),
         kshift.1 ++ selE l slotLog)) (vals.getD 1 0) qm
       (fun l hl ↦ by
         dsimp only
-        exact ⟨by simp [h2, selE, selectorPoint_eq_boolPoint, slotLog], ⟨25, by norm_num [slotLog]⟩,
+        exact ⟨by simp [h2, selE, selectorPoint_eq_boolPoint, slotLog], ⟨2, by norm_num [slotLog]⟩,
           by norm_num [slotLog]⟩) hi
     dsimp only at e ⊢
     rw [← e]
@@ -222,22 +188,22 @@ theorem ksLinkClaims_of (kchal : List E) (kshift : List E × E) (vals : List E)
     unfold LeanVM.Protocol.KeccakGkr.stepMle
     refine congrArg (eqAt (kchal.drop 15) l * ·) (Finset.sum_congr rfl fun x _ ↦ ?_)
     simp only [msgM, Lvm.NS.wd]
-  · have e := lk_holds_sumClaim (μ := 26) (k := 17) (fun l ↦
+  · have e := lk_holds_sumClaim (μ := CMain.nu20) (k := 17) (fun l ↦
       ((LeanVM.Protocol.Verifier.eqKernel (kchal.drop 15)).getD l 0,
         ({ variableCount := 14, index := xOff + l * 2 ^ 14 } : VPlacement), kshift.1.take 14))
       (vals.getD 3 0) qm
-      (fun l hl ↦ ⟨hlo, ⟨56 * 2 ^ 6 + 2 ^ 5 + l, by rw [xOff]; ring⟩, by
+      (fun l hl ↦ ⟨hlo, ⟨6 * 2 ^ 6 + 2 ^ 5 + l, by rw [xOff]; ring⟩, by
         have : l * 2 ^ 14 + 2 ^ 14 ≤ 17 * 2 ^ 14 := by nlinarith
         rw [add_assoc]
         calc _ ≤ xOff + 17 * 2 ^ 14 := Nat.add_le_add_left this _
-          _ ≤ 2 ^ 26 := by rw [xOff]; norm_num⟩) hx
+          _ ≤ 2 ^ 24 := by rw [xOff]; norm_num⟩) hx
     dsimp only at e ⊢
     rw [← e]
     refine Finset.sum_congr rfl fun l hl ↦ ?_
     have hl' := Finset.mem_range.1 hl
     rw [hom l (by omega)]
     unfold LeanVM.Protocol.KeccakGkr.stepMle
-    have hidx : xOff + l * 2 ^ 14 = ksY2 + 2 ^ 19 + l * 2 ^ 14 := by simp only [xOff, ksY2]
+    have hidx : xOff + l * 2 ^ 14 = CMain.xOff20 + l * 2 ^ 14 := rfl
     refine congrArg (eqAt (kchal.drop 15) l * ·) (Finset.sum_congr rfl fun x _ ↦ ?_)
     simp only [msgX, Lvm.NS.wd, hidx]
 

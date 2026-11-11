@@ -1,7 +1,7 @@
--- WP-16b (CERT). New for lvm (O6 link, the Keccak tables): `CH`'s and `KS`'s assembled claims
--- (`keccakClaimsE`, `chFixedClaimsE`, `ksOutputClaimsE`) holding on `C_main` give WP-8's
--- `CallerClaims` with WP-14c's accessors, and `CH`'s boundary claims give `BndS` (WP-14c's
--- `Bnd` via WP-8's `lane_pad43St`).
+-- WP-16b (CERT). New for lvm (O6 link, the Keccak tables): `KS`'s assembled claims
+-- (`keccakClaimsE`, `ksOutputClaimsE`) holding on `C_main` give WP-8's `CallerClaims` with WP-14c's
+-- accessors. lvm2 S2 (WP S2-CERT): the tape's claims (`tapeClaimsE`) give the ring claim and the
+-- tied digest lanes (`tapeClaims_of`), its boundary claims give `BndS` (`bndS_of_tape`).
 import LvmCertSMid3Blk
 import LvmChainTablePad
 import LvmVEqParse
@@ -9,9 +9,9 @@ import LvmVEqParse
 /-!
 # The Keccak tables' claims
 
-* **`callerClaims_ch`**, **`callerClaims_ks`**: the ring claim, the column claims and the tied
-  output lanes;
-* **`bndS_of_chFixed`**: `in_0 = Pad43(s)` and `Y_{n−1} = h` from the header (`pubX`).
+* **`tapeClaims_of`** (lvm2 S2): the tape's ring claim on `C_main` and `D̃_l(r) = a_l`;
+* **`bndS_of_tape`** (lvm2 S2): `D_{n−1} = h` from T5's claims and the header (`pubX`);
+* **`callerClaims_ks`**: `KS`'s ring claim, column claims and tied output lanes.
 
 The helpers (namespace `Kec`): a point claim at `(a, sel(b))` on a block is slot `b`'s extension at
 `a` (`holds_split`, after WP-8's `col_split`); the stream's header lanes are the statement's digest
@@ -26,7 +26,7 @@ open LeanVM.Parameters LeanVM.Protocol LeanVM.Protocol.Verifier LeanVM.Protocol.
 open LeanVM.Protocol.EndToEnd.Front LeanVM.Protocol.KeccakGkr LeanVM.Protocol.Whir.Sound
 open LeanVM.Protocol.EndToEnd.Sound (RetOK)
 open Lvm.VEq Finset
-open Lvm.NS (colM ksCol ksY2 msgM msgX)
+open Lvm.NS (colM dD ksCol ksY2 msgM msgX)
 
 namespace Kec
 
@@ -136,103 +136,77 @@ end Kec
 
 open Kec
 
-/-- **`CH`'s caller claims** (ring, column claims, lanes 0–3 tied on `Y` at slots 52–55). -/
-theorem callerClaims_ch (co : CallerOut) (hr : co.1.length = 20)
-    (hcol : ∀ c ∈ co.2.2.1.1, c.column = qkeccak ∧ c.point.length = 26) (pub : Lvm.Pub)
-    {qm : Column 26} (hk : ∀ b ∈ keccakClaimsE chBlk co, StackClaim.Holds 26 b.onStack qm)
-    (hf : ∀ b ∈ chFixedClaimsE co.1 co.2.1 pub, StackClaim.Holds 26 b.onStack qm) :
-    Lvm.KG.CallerClaims 20 4 (colM qm) (Lvm.KG.chY 20 52 (colM qm)) co := by
-  have hal : 2 ^ (20 + 6) ∣ 0 := dvd_zero _
-  have hfit : 0 + 2 ^ (20 + 6) ≤ 2 ^ 26 := le_of_eq (by norm_num)
-  refine ⟨?_, fun c hc ↦ ?_, fun l hl ↦ ?_⟩
-  · have H := ringCol_of_holds (ring := co.2.2.2) hal hfit
-      (hk _ (List.mem_append_right _ (List.mem_singleton_self _)))
-    simp only [zero_add] at H
-    exact H
-  · have H := colTrue_of_holds hal hfit (hcol c hc)
-      (hk _ (List.mem_append_left _ (List.mem_map_of_mem hc)))
-    simp only [zero_add] at H
-    exact H
-  · have H := holds_split (h := 20) (k := 6) hal hfit hr (b := 52 + l) (by omega)
-      (hf _ (List.mem_append_left _ (List.mem_append_left _
-        (List.mem_map.2 ⟨l, List.mem_range.2 hl, rfl⟩))))
-    simp only [zero_add] at H
-    exact H
-
-/-- The header's chain length, read by `V_S` (`pubX`) and by the statement check (`hdrOf`). -/
+/-- `pubX`'s chain length is the header's (`V_S` reads the header's lane of `n` from the stream). -/
 theorem pubX_n (x : List UInt8) : (pubX x).n = (hdrOf x).n :=
   congrArg UInt64.toNat (laneAt_shift fun k _ ↦ sig_get x (by norm_num) k)
 
-/-- **`CH`'s boundary claims** give `BndS`. -/
-theorem bndS_of_chFixed (x : List UInt8) (r v : List E) {qm : Column 26}
-    (hf : ∀ b ∈ chFixedClaimsE r v (pubX x), StackClaim.Holds 26 b.onStack qm) : BndS x qm := by
-  intro hn
-  have hal : 2 ^ (20 + 6) ∣ 0 := dvd_zero _
-  have hfit : 0 + 2 ^ (20 + 6) ≤ 2 ^ 26 := le_of_eq (by norm_num)
-  have hpt : ∀ a b w, a < 2 ^ 20 → b < 2 ^ 6 →
-      BClaim.point chBlk (selE a 20 ++ selE b slotLog) (M3.kE w) ∈ chFixedClaimsE r v (pubX x) →
-      colM qm (a + 2 ^ 20 * b) = FK.toBF64 w := by
-    intro a b w ha hb hmem
-    have H := holds_split (h := 20) (k := 6) hal hfit (by simp [selE_eq_bitsE]) hb (hf _ hmem)
-    rw [selE_eq_bitsE, sum_eqAt_bitsE ha, zero_add] at H
-    exact Lvm.KG.ofK_injective H
-  have hN : (pubX x).n = (hdrOf x).n :=
-    congrArg UInt64.toNat (laneAt_shift fun k _ ↦ sig_get x (by norm_num) k)
-  have hS : ∀ m < 4, ((pubX x).s.getD m 0).val =
-      RecursionFast.Keccak.blockLane (hdrOf x).s.toArray m := by
-    intro m hm
-    show (((List.range 4).map fun i ↦ kAt (sigOfX x) (headerAt 80 + 8 * i)).getD m 0).val = _
-    rw [List.getD_eq_getElem?_getD, List.getElem?_map, List.getElem?_range hm]
-    exact lane_hdr x (by norm_num) hm
+/-- **The tape's claims** (lvm2 S2, T1 and T4): the ring claim on the whole `C_main` (`h = 18`) and
+the tied digest lanes `D̃_l(r) = a_l` on `D`'s slots 0–3. -/
+theorem tapeClaims_of (tp : Lvm.KG.TapeOutE) (hr : tp.1.length = 20) (pub : Lvm.Pub) {qm : Column CMain.nu20}
+    (h : ∀ b ∈ tapeClaimsE tp pub, StackClaim.Holds CMain.nu20 b.onStack qm) :
+    Lvm.KG.RingColTrue 18 (colM qm) tp.2.2.2.d.ring ∧ Lvm.KG.TiedD 20 (dD qm) tp.1 tp.2.1 := by
+  have hal : 2 ^ (18 + 6) ∣ 0 := dvd_zero _
+  have hfit : 0 + 2 ^ (18 + 6) ≤ 2 ^ 24 := le_of_eq (by norm_num)
+  have hal2 : 2 ^ (20 + 2) ∣ 0 := dvd_zero _
+  have hfit2 : 0 + 2 ^ (20 + 2) ≤ 2 ^ 24 := by norm_num
+  refine ⟨?_, fun l hl ↦ ?_⟩
+  · have H := ringCol_of_holds (ring := tp.2.2.2.d.ring) hal hfit
+      (h _ (List.mem_append_left _ (List.mem_append_right _ (List.mem_singleton_self _))))
+    simp only [zero_add] at H
+    exact H
+  · have H := holds_split (h := 20) (k := 2) hal2 hfit2 hr (b := l) (by omega)
+      (h _ (List.mem_append_left _ (List.mem_append_left _
+        (List.mem_map.2 ⟨l, List.mem_range.2 hl, rfl⟩))))
+    simp only [zero_add] at H
+    simp only [stepMle, dD, Lvm.KG.dOf, colM, Lvm.NS.wd, Nat.mul_zero, Nat.add_zero]
+    exact H
+
+/-- **T5's boundary claims** give `BndS` (`D̃_l(bits(n − 1)) = h_l`, the header's `n`, `h`). -/
+theorem bndS_of_tape (x : List UInt8) (tp : Lvm.KG.TapeOutE) {qm : Column CMain.nu20}
+    (h : ∀ b ∈ tapeClaimsE tp (pubX x), StackClaim.Holds CMain.nu20 b.onStack qm) : BndS x qm := by
+  intro hn m hm
+  have hal2 : 2 ^ (20 + 2) ∣ 0 := dvd_zero _
+  have hfit2 : 0 + 2 ^ (20 + 2) ≤ 2 ^ 24 := by norm_num
+  have hN : (pubX x).n = (hdrOf x).n := pubX_n x
   have hH : ∀ m < 4, ((pubX x).h.getD m 0).val =
       RecursionFast.Keccak.blockLane (hdrOf x).h.toArray m := by
     intro m hm
     show (((List.range 4).map fun i ↦ kAt (sigOfX x) (headerAt 120 + 8 * i)).getD m 0).val = _
     rw [List.getD_eq_getElem?_getD, List.getElem?_map, List.getElem?_range hm]
     exact lane_hdr x (by norm_num) hm
-  have hlenP : (pad43 (pubX x).s).length = 25 := by simp [pad43]
   have hlenH : (pubX x).h.length = 4 := by simp [pubX, pubOf]
-  refine ⟨?_, fun m hm ↦ ?_⟩
-  · refine Vector.ext fun l hl ↦ ?_
-    rw [← LeanVM.Protocol.KeccakGkr.lane_eq (Lvm.KG.pad43St (Lvm.KG.digestBits (hdrOf x).s)) hl,
-      Lvm.KG.lane_pad43St _ hl]
-    have hmem : BClaim.point chBlk (selE 0 20 ++ selE l slotLog)
-        (M3.kE ((pad43 (pubX x).s).getD l 0)) ∈ chFixedClaimsE r v (pubX x) :=
-      List.mem_append_left _ (List.mem_append_right _
-        (List.mem_map.2 ⟨_, getD_mem_zipIdx _ (by omega), rfl⟩))
-    have H := hpt 0 l _ (by norm_num) (by omega) hmem
-    simp only [inState, Vector.getElem_ofFn, Nat.mul_zero, Nat.zero_add] at H ⊢
-    rw [H]
-    show ((pad43 (pubX x).s).getD l 0).val = _
-    rw [pad43_getD _ hl]
-    exact pad43Lane_congr hS l
-  · have hmem : BClaim.point chBlk (selE ((pubX x).n - 1) 20 ++ selE (52 + m) slotLog)
-        (M3.kE ((pubX x).h.getD m 0)) ∈ chFixedClaimsE r v (pubX x) :=
-      List.mem_append_right _ (List.mem_map.2 ⟨_, getD_mem_zipIdx _ (by omega), rfl⟩)
-    have H := hpt _ _ _ (by omega) (by omega) hmem
-    rw [hN] at H
-    rw [H, ← hH m hm]
-    rfl
+  have hmem : BClaim.point dBlkE (selE ((pubX x).n - 1) 20 ++ selE m 2)
+      (M3.kE ((pubX x).h.getD m 0)) ∈ tapeClaimsE tp (pubX x) :=
+    List.mem_append_right _ (List.mem_map.2 ⟨_, getD_mem_zipIdx _ (by omega), rfl⟩)
+  have hlt : (pubX x).n - 1 < 2 ^ 20 := by rw [hN]; omega
+  have H := holds_split (h := 20) (k := 2) hal2 hfit2 (by simp [selE_eq_bitsE]) (b := m)
+    (by omega) (h _ hmem)
+  rw [selE_eq_bitsE, sum_eqAt_bitsE hlt, zero_add] at H
+  have H' := Lvm.KG.ofK_injective H
+  rw [hN] at H'
+  simp only [dD, Lvm.KG.dOf, colM, Lvm.NS.wd, Nat.mul_zero, Nat.add_zero]
+  rw [H', ← hH m hm]
+  rfl
 
 /-- **`KS`'s caller claims** (ring, column claims, all 25 output lanes tied). -/
 theorem callerClaims_ks (co : CallerOut) (hr : co.1.length = 15)
-    (hcol : ∀ c ∈ co.2.2.1.1, c.column = qkeccak ∧ c.point.length = 21) {qm : Column 26}
-    {qr : Column 19} (hk : ∀ b ∈ keccakClaimsE ksBlk co, StackClaim.Holds 26 b.onStack qm)
+    (hcol : ∀ c ∈ co.2.2.1.1, c.column = qkeccak ∧ c.point.length = 21) {qm : Column CMain.nu20}
+    {qr : Column 19} (hk : ∀ b ∈ keccakClaimsE ksBlk co, StackClaim.Holds CMain.nu20 b.onStack qm)
     (ho : ∀ e ∈ ksOutputClaimsE co.1 co.2.1, HoldsC qm qr e) :
     Lvm.KG.CallerClaims 15 25 (ksCol qm) (Lvm.KG.ksY 15 ksY2 (colM qm) (ksCol qm)) co := by
-  have hal : 2 ^ (15 + 6) ∣ 50 * 2 ^ 20 := ⟨25, by norm_num⟩
-  have hfit : 50 * 2 ^ 20 + 2 ^ (15 + 6) ≤ 2 ^ 26 := by norm_num
+  have hal : 2 ^ (15 + 6) ∣ CMain.ksOff20 := ⟨2, by decide⟩
+  have hfit : CMain.ksOff20 + 2 ^ (15 + 6) ≤ 2 ^ 24 := by decide
   refine ⟨ringCol_of_holds (ring := co.2.2.2) hal hfit
       (hk _ (List.mem_append_right _ (List.mem_singleton_self _))),
     fun c hc ↦ colTrue_of_holds hal hfit (hcol c hc)
       (hk _ (List.mem_append_left _ (List.mem_map_of_mem hc))), fun l hl ↦ ?_⟩
-  have H : StackClaim.Holds 26
+  have H : StackClaim.Holds CMain.nu20
       (BClaim.point (ksYPartE l co.1).1 (ksYPartE l co.1).2 (co.2.1.getD l 0)).onStack qm :=
     ho _ (List.mem_map.2 ⟨l, List.mem_range.2 hl, rfl⟩)
   unfold stepMle Lvm.KG.ksY
   by_cases h14 : l < 14
   · simp only [ite_eq_left h14]
-    have e : ksYPartE l co.1 = (⟨15 + slotLog, 50 * 2 ^ 20⟩, co.1 ++ selE (50 + l) slotLog) :=
+    have e : ksYPartE l co.1 = (⟨15 + slotLog, CMain.ksOff20⟩, co.1 ++ selE (50 + l) slotLog) :=
       ite_eq_left h14
     rw [e] at H
     exact holds_split (h := 15) (k := 6) hal hfit hr (by omega) H
@@ -240,8 +214,8 @@ theorem callerClaims_ks (co : CallerOut) (hr : co.1.length = 15)
     have e : ksYPartE l co.1 = (⟨15, ksY2Off + (l - 14) * 2 ^ 15⟩, co.1) := ite_eq_right h14
     rw [e] at H
     have hal' : 2 ^ 15 ∣ ksY2Off + (l - 14) * 2 ^ 15 :=
-      Nat.dvd_add ⟨56 * 2 ^ 5, by norm_num [ksY2Off]⟩ (Nat.dvd_mul_left _ _)
-    have hfit' : ksY2Off + (l - 14) * 2 ^ 15 + 2 ^ 15 ≤ 2 ^ 26 := by
+      Nat.dvd_add ⟨6 * 2 ^ 5, by norm_num [ksY2Off]⟩ (Nat.dvd_mul_left _ _)
+    have hfit' : ksY2Off + (l - 14) * 2 ^ 15 + 2 ^ 15 ≤ 2 ^ 24 := by
       simp only [ksY2Off]; norm_num; omega
     exact (holds_point hal' hfit' _ hr _ qm).1 H
 

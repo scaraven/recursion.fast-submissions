@@ -308,7 +308,7 @@ theorem mem_arrs_pub :
 
 end Arrs
 
-theorem ksY20 (l : ℕ) : ksY cfg20 l = 50 * 2 ^ 20 + 2 ^ 15 * (50 + l) := by
+theorem ksY20 (l : ℕ) : ksY cfg20 l = CMain.ksOff20 + 2 ^ 15 * (50 + l) := by
   simp only [ksY, cfg20, if_true]
   ring
 
@@ -326,19 +326,19 @@ theorem hSg20 (x : List UInt8) :
 
 /-- **`KS`'s `X` message lanes** (a 17-bundle on `C_main`). -/
 theorem hX20 (x : List UInt8) :
-    Bundle (arrs cfg20 data20 (pubX x)) 17 9 (sigIn cfg20).xs false fun l => ksY2 + 2 ^ 19 + l * 2 ^ 14 :=
+    Bundle (arrs cfg20 data20 (pubX x)) 17 9 (sigIn cfg20).xs false fun l => CMain.xOff20 + l * 2 ^ 14 :=
   bundle_of_mem fun l hl => ⟨_, mem_arrs_xs _ hl, rfl, rfl, rfl, rfl, rfl, rfl⟩
 
 /-- **`KS`'s output lanes 0–3 of rows `[2^14, 2^14 + 2^9)`** (a 4-bundle). -/
 theorem hY20 (x : List UInt8) :
     Bundle (arrs cfg20 data20 (pubX x)) 4 9 (sigIn cfg20).ys false
-      fun l => 50 * 2 ^ 20 + 2 ^ 15 * (50 + l) + 2 ^ 14 :=
+      fun l => CMain.ksOff20 + 2 ^ 15 * (50 + l) + 2 ^ 14 :=
   bundle_of_mem fun l hl => ⟨_, mem_arrs_ys _ hl, rfl, rfl, rfl, rfl, rfl, by rw [ksY20]; rfl⟩
 
 /-- **The trace digest** (`KS` row `B − 1`, a 4-bundle of height 1). -/
 theorem hMd20 (x : List UInt8) :
     Bundle (arrs cfg20 data20 (pubX x)) 4 0 (sigIn cfg20).md false
-      fun l => 50 * 2 ^ 20 + 2 ^ 15 * (50 + l) + (spongeBlocks P20 - 1) :=
+      fun l => CMain.ksOff20 + 2 ^ 15 * (50 + l) + (spongeBlocks P20 - 1) :=
   bundle_of_mem fun l hl => ⟨_, mem_arrs_md _ hl, rfl, rfl, rfl, rfl, rfl,
     by rw [ksY20, show cfg20.p = P20 from rfl]⟩
 

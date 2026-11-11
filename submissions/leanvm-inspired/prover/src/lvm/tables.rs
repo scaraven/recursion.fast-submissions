@@ -1,21 +1,25 @@
 //! The committed tables and where they sit (BLUEPRINT §3.1, §4.1–4.2, §11 A7, A9; WP-15a layout, sent to
 //! WP-11a for `M3.chBlock`/`ksBlock`):
 //!
-//! `C_main` (`2^nu_main` K words):
-//! - `P20` (`nu_main = log_n + 6`): the `CH` block is the whole of `C_main`: slot `s` at `s·2^20`, `in` in
-//!   slots 0–24, `mid` 25–49, **`Y` lanes 0–3 in slots 52–55** (an aligned 4-slot cube, for the link's
-//!   `Y` slices). The `KS` block (`ks_log + 6` variables) is `CH` slots 50–51; its own slots: `in` 0–24, `mid`
-//!   25–49, `Y` lanes 0–13 in 50–63. `CH` slots 56–63: `KSY2` (KS `Y` lanes 14–24, one `2^ks_log` column
-//!   each) then `X` (`X_l`, the KS messages of rows `≥ 2^rec_rows_log`, one `2^rec_rows_log` column each).
-//! - `P8`: `KS` block at 0, `CH` block at `2^(ks_log+6)`, then `KSY2`, then `X`.
+//! `C_main` (`2^nu_main` K words), S2 (BLUEPRINT2 §2.2; FRZ-0's layout, docs/lvm2/stages/T-P1.md C.1): the fixed
+//! blocks largest first from word 0 (ties `D`, `KS`, `KSY2`, `X`), then the recursion tables from `free_lo`.
+//! - `D`: the chain digests, lane `l < 4` at `d_off + l·2^log_n` (an aligned 4-column cube).
+//! - `KS` (`ks_log + 6` variables): its own slots `in` 0–24, `mid` 25–49, `Y` lanes 0–13 in 50–63.
+//! - `KSY2` (KS `Y` lanes 14–24, one `2^ks_log` column each), `X` (`X_l`, the KS messages of rows `≥ 2^rec_rows_log`).
+//! - `P20` (ν = 24): `D` 0, `KS` 4·2^20, `KSY2` 6·2^20, `X` 6·2^20 + 2^19, tables from 7·2^20.
+//!   `P8` (ν = 23): `KS` 0, `KSY2` 2^20, `X` 2^20 + 2^18, `D` 2^20 + 2^19.
 //!
 //! `C_rec` (`2^(rec_rows_log + 5)` words): column `c` at `c·2^rec_rows_log`: the 17 stream columns `M_l`, then
 //! `σ'`, then 14 zero columns. With the recursion part zero (`b = 0` convention, WP-15b fills it) it is zero.
 
 use crate::lv::keccak_gkr::{Shape, Witness};
 use crate::lv::primitives::field::F64;
-use crate::lvm::params::{GKR_DEPTH, LANES, Params, REC_STREAM_COLS, SLOT_LOG};
+use crate::lvm::layout;
+use crate::lvm::params::{GKR_DEPTH, LANES, Params, REC_STREAM_COLS, SLOT_LOG, TAPE_DEPTH};
 use crate::oracle::Digest;
+
+/// `log2` of the `D` block's lanes (4).
+pub const D_LOG: usize = 2;
 
 /// Where every column of the two commitments sits (word offsets).
 #[derive(Clone, Debug)]
@@ -25,60 +29,67 @@ pub struct Layout {
     pub rec_log: usize,
     pub nu_main: usize,
     pub nu_rec: usize,
-    pub ch_off: usize,
+    /// S2: the chain digests `D_l` (4 lanes × `2^log_n`), one aligned block (BLUEPRINT2 §1.1, T-P1 C.1).
+    pub d_off: usize,
     pub ks_off: usize,
     pub ksy2_off: usize,
     pub x_off: usize,
+    /// The end of the fixed blocks: where the recursion tables go.
+    free_lo: usize,
 }
 
-/// The CH slot of `Y` lane 0.
-pub const CH_Y_SLOT: usize = 52;
 /// The KS slot of `Y` lane 0; lanes `0..KS_Y_IN_BLOCK` are in the KS block.
 pub const KS_Y_SLOT: usize = 50;
 pub const KS_Y_IN_BLOCK: usize = 14;
 
 impl Layout {
     pub fn new(p: &Params) -> Self {
-        let (ch_vars, ks_vars) = (p.log_n + SLOT_LOG, p.ks_log + SLOT_LOG);
-        let (ch_off, ks_off, spare) = if p.nu_main == ch_vars {
-            assert!(ks_vars <= p.log_n + 1, "the KS block fits two CH slots");
-            (0, 50usize << p.log_n, 56usize << p.log_n)
-        } else {
-            assert!(ks_vars >= ch_vars);
-            (1usize << ks_vars, 0, (1usize << ks_vars) + (1usize << ks_vars.max(ch_vars)))
-        };
+        // S2 (T-P1 C.1 = FRZ-0's rule): the fixed blocks largest first from word 0, ties in the order D, KS, KSY2, X
+        // (each a power of two, so each lands aligned to its size); the recursion tables from the end (`free_lo`)
+        let (d_vars, ks_vars) = (p.log_n + D_LOG, p.ks_log + SLOT_LOG);
         let ksy2 = 16usize << p.ks_log;
+        let mut blocks = [(0usize, 1usize << d_vars), (1, 1usize << ks_vars), (2, ksy2), (3, 32usize << p.rec_rows_log)];
+        blocks.sort_by_key(|&(k, size)| (std::cmp::Reverse(size), k));
+        let mut off = [0usize; 4];
+        let mut at = 0usize;
+        for (k, size) in blocks {
+            off[k] = at;
+            at += size;
+        }
+        let [d_off, ks_off, spare, x_off] = off;
         let l = Self {
             log_n: p.log_n,
             ks_log: p.ks_log,
             rec_log: p.rec_rows_log,
             nu_main: p.nu_main,
             nu_rec: p.nu_rec(),
-            ch_off,
+            d_off,
             ks_off,
             ksy2_off: spare,
-            x_off: spare + ksy2,
+            x_off,
+            free_lo: at,
         };
-        assert!(l.x_off + (32usize << l.rec_log) <= 1 << p.nu_main, "the layout fits C_main");
-        assert_eq!(l.ch_off % (1 << ch_vars), 0);
+        assert!(l.free_lo <= 1 << p.nu_main, "the layout fits C_main");
+        // the rule's offsets are the shared layout's (`layout.rs`, generated with Lean's `LvmLayout` from params.py)
+        let b = layout::of(p.name);
+        assert_eq!((b.nu_main, b.d_off, b.ks_off, b.ksy2_off, b.x_off, b.free_lo),
+            (l.nu_main, l.d_off, l.ks_off, l.ksy2_off, l.x_off, l.free_lo), "layout.rs is this layout");
+        assert_eq!(l.d_off % (1 << d_vars), 0);
         assert_eq!(l.ks_off % (1 << ks_vars), 0);
         assert_eq!(l.ksy2_off % ksy2, 0);
         assert_eq!(l.x_off % (32 << l.rec_log), 0);
         assert_eq!(p.ks_log, p.rec_rows_log + 1, "KS rows: the stream half, then the X half");
         l
     }
-    pub fn ch_vars(&self) -> usize {
-        self.log_n + SLOT_LOG
+    pub fn d_vars(&self) -> usize {
+        self.log_n + D_LOG
     }
     pub fn ks_vars(&self) -> usize {
         self.ks_log + SLOT_LOG
     }
-    /// The CH column of slot `s`.
-    pub fn ch_slot(&self, s: usize) -> usize {
-        self.ch_off + (s << self.log_n)
-    }
-    pub fn ch_y(&self, m: usize) -> usize {
-        self.ch_slot(CH_Y_SLOT + m)
+    /// The `D` column of lane `l < 4`.
+    pub fn d(&self, l: usize) -> usize {
+        self.d_off + (l << self.log_n)
     }
     pub fn ks_slot(&self, s: usize) -> usize {
         self.ks_off + (s << self.ks_log)
@@ -89,9 +100,10 @@ impl Layout {
     pub fn x(&self, l: usize) -> usize {
         self.x_off + (l << self.rec_log)
     }
-    /// The first word above WP-15a's tables (`X` takes 32 columns of `2^rec`): where the recursion tables go.
+    /// The first word above the fixed blocks (`layout.rs`; v1: the end of `X`, which takes 32 columns of
+    /// `2^rec`): where the recursion tables go.
     pub fn free_lo(&self) -> usize {
-        self.x_off + (32usize << self.rec_log)
+        self.free_lo
     }
     /// `C_rec` column `c`.
     pub fn rec_col(&self, c: usize) -> usize {
@@ -146,7 +158,7 @@ impl Chain {
                 at_end(d);
             }
         }
-        Self { shape: Shape::new(n, GKR_DEPTH), inputs, y }
+        Self { shape: Shape::new(n, TAPE_DEPTH), inputs, y }
     }
     /// S1 (BLUEPRINT2 §2.1; P-GATE): walk only the `n` live rows; rows `≥ n` hold the all-zero input and
     /// `Y = Keccak-f(0)[0..4)`. `explicit` keeps the zero inputs as written rows (the dense reference prover,
@@ -177,7 +189,7 @@ impl Chain {
         if explicit {
             inputs.resize(big, [0u64; LANES]);
         }
-        Self { shape: Shape::new(big, GKR_DEPTH), inputs, y }
+        Self { shape: Shape::new(big, TAPE_DEPTH), inputs, y }
     }
     /// `chainEnd s n` for `1 ≤ n ≤ 2^log_n`: lanes 0–3 of row `n − 1`.
     pub fn end(&self, n: usize) -> Digest {
@@ -230,18 +242,11 @@ impl Sponge {
     }
 }
 
-/// Write `CH` (its GKR witness's committed lanes and its `Y`) into `C_main`.
-pub fn write_ch(lay: &Layout, ch: &Chain, cmain: &mut [F64]) -> Witness {
-    let n = 1usize << lay.log_n;
-    let w = Witness::generate(ch.shape, &ch.inputs, &mut cmain[lay.ch_off..lay.ch_off + 50 * n]);
-    write_ch_y(lay, ch, cmain);
-    w
-}
-
-/// Write `CH`'s `Y` lanes 0–3 into `C_main`.
-pub fn write_ch_y(lay: &Layout, ch: &Chain, cmain: &mut [F64]) {
+/// S2: write `D` (lanes 0–3 of every chain row's output; `z*[0..4)` on rows `≥ n`) into `C_main`. The tape's GKR
+/// witness commits nothing (its inputs are virtual, BLUEPRINT2 §1.1): `Witness::generate_uncommitted`.
+pub fn write_d(lay: &Layout, ch: &Chain, cmain: &mut [F64]) {
     for m in 0..4 {
-        let o = lay.ch_y(m);
+        let o = lay.d(m);
         for (i, y) in ch.y.iter().enumerate() {
             cmain[o + i] = F64(y[m]);
         }
@@ -252,8 +257,16 @@ pub fn write_ch_y(lay: &Layout, ch: &Chain, cmain: &mut [F64]) {
 /// messages into `C_rec`.
 pub fn write_ks(lay: &Layout, ks: &Sponge, cmain: &mut [F64], crec: &mut [F64]) -> Witness {
     let n = 1usize << lay.ks_log;
-    let half = 1usize << lay.rec_log;
     let w = Witness::generate(ks.shape, &ks.inputs, &mut cmain[lay.ks_off..lay.ks_off + 50 * n]);
+    write_ks_lanes(lay, ks, cmain, crec);
+    w
+}
+
+/// The KS columns outside its GKR witness's slots `[ks_off, ks_off + 50·2^ks_log)`: its 25 `Y` lanes and the `X`
+/// messages in `C_main`, the stream messages in `C_rec` (P-FIX: written before the witness, which
+/// [`write_ks`] writes, so that the recursion tables can be built meanwhile).
+pub fn write_ks_lanes(lay: &Layout, ks: &Sponge, cmain: &mut [F64], crec: &mut [F64]) {
+    let half = 1usize << lay.rec_log;
     for l in 0..LANES {
         let o = lay.ks_y(l);
         for (i, y) in ks.outputs.iter().enumerate() {
@@ -266,5 +279,4 @@ pub fn write_ks(lay: &Layout, ks: &Sponge, cmain: &mut [F64], crec: &mut [F64]) 
             cmain[lay.x(l) + i] = F64(ks.msg[half + i][l]);
         }
     }
-    w
 }

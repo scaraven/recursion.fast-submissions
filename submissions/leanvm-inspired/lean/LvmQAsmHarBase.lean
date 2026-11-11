@@ -2,6 +2,7 @@
 -- circuit cells (`CClaim`), the phase-replay statement (`Replays`), table shapes (`TShape`), and the
 -- binding of the node program's stream cells to `Σ` (`streamed_sigma`).
 import LvmQAsmHarRun
+import LvmQRingG
 import LvmQLinkMain
 import LvmQSumcheckCore
 import LvmLoopMleFast
@@ -57,8 +58,6 @@ structure CClaim where
   /-- The value. -/
   value : Cell
 
-/-- The values of a list of cells. -/
-def vs (M : Mem) (l : List Cell) : List FE := l.map (Cell.val M)
 
 /-- **The claim a `CClaim` stands for** in memory `M`. -/
 def CClaim.val (M : Mem) (cc : CClaim) : Com × BlockClaim :=

@@ -322,9 +322,39 @@ fn cmd_sprove(args: &[String]) {
             lvm::m3::committed_words(&rec.tables), t.elapsed().as_secs_f64()
         );
     }
+    // P-FIX dev: `--build-emu` (with `--synth`): the stream's order, where `prove` builds the recursion tables
+    // beside the chain walk (lever 3) once `h` is known. The build is emulated by the shipped node program's
+    // table build on zero inputs (its cost), whose tables are dropped; the synthetic tables are the result.
+    let emu = args.iter().any(|a| a == "--build-emu") && !rec.tables.is_empty();
+    let (p, synth_tabs) = if emu {
+        let mut v = std::mem::take(&mut rec.tables);
+        v.retain(lvm::m3::active);
+        let (d, l, r, e) = lvm::m3::shape(&v);
+        (lvm::params::Params { bus_depth: d, leafdec_reads: l, table_rounds: r, table_evals: e, ..p.clone() }, v)
+    } else {
+        (p.clone(), Vec::new())
+    };
+    let q_emu = emu.then(|| {
+        let (q, spec) = lvm::loopir::parse_blob(if p.name == "P20" { lvm::stream::Q_P20 } else { lvm::stream::Q_P8 });
+        Some((lvm::loopir::Compiled::new(q), spec))
+    }).flatten();
+    let pl = vec![0u64; lvm::m3::pub_lanes_len(&p)];
+    if emu {
+        // the stream's zero build before `ready` (untimed), on the same program
+        drop(lvm::stream::build_q_tables(&q_emu, &|_, _, n| vec![lv::primitives::field::F64::ZERO; n], &pl));
+    }
+    let emu_build = |_hd: &lvm::prove::Header, _col: &lvm::prove::Col| -> Vec<lvm::m3::TableW> {
+        let t = Instant::now();
+        let z = lvm::stream::build_q_tables(&q_emu, &|_, _, n| vec![lv::primitives::field::F64::ZERO; n], &pl);
+        if std::env::var_os("LVM_LOG").is_some() {
+            eprintln!("lvm: build-emu {} tables in {:.3} s", z.len(), t.elapsed().as_secs_f64());
+        }
+        drop(z);
+        synth_tabs.clone()
+    };
     oracle::reset_stats();
     let t0 = Instant::now();
-    let sp = lvm::prove::prove(&p, hd, rec, None);
+    let sp = lvm::prove::prove(&p, hd, rec, if emu { Some(&emu_build as &lvm::prove::Build) } else { None });
     let prove_s = t0.elapsed().as_secs_f64();
     println!(
         "sprove {} n={n} prove_s={prove_s:.3} peak_rss_mib={:.0} proof_bytes={} qS={} h={}",
@@ -336,6 +366,17 @@ fn cmd_sprove(args: &[String]) {
     );
     for (name, s) in &sp.stages {
         println!("  stage {name:<14} {s:>9.3} s");
+    }
+    if p.grind > 0 {
+        let g = oracle::stat(oracle::Class::Grind);
+        println!(
+            "  grind g={} attempts per level (rec; main) {:?} total {} queried {} wall_ms {:.1}",
+            p.grind,
+            sp.grind_attempts,
+            sp.grind_attempts.iter().sum::<u64>(),
+            g.queries,
+            oracle::grind_wall_s() * 1e3
+        );
     }
     print!("{}", lv::tracing::report());
     print!("{}", oracle::report());
@@ -501,6 +542,96 @@ fn cmd_setup(dir: &str) -> i32 {
     0
 }
 
+/// P-FIX dev: `tbench P8|P20 REPS`: time the recursion-table build of the shipped node program on zero inputs
+/// (the pre-`ready` zero build; `LVM_PROF=1` for its spans).
+fn cmd_tbench(args: &[String]) {
+    let p = lvm::params::Params::by_name(args.get(2).map_or("P20", |s| s.as_str())).expect("P8|P20");
+    let reps: usize = args.get(3).map_or(3, |v| v.parse().expect("REPS"));
+    lv::parallel::init();
+    let t = Instant::now();
+    let (q, spec) = lvm::loopir::parse_blob(if p.name == "P20" { lvm::stream::Q_P20 } else { lvm::stream::Q_P8 });
+    let q = Some((lvm::loopir::Compiled::new(q), spec));
+    println!("tbench parse+compile {:.3} s", t.elapsed().as_secs_f64());
+    let pl = vec![0u64; lvm::m3::pub_lanes_len(&p)];
+    if std::env::var_os("TB_ARRS").is_some() {
+        if let Some((_, Some(spec))) = &q {
+            for a in spec.arrs.iter().filter(|a| a.kind == lvm::loopir::ArrKind::Aliased) {
+                for &(r, o) in &a.val {
+                    println!("aliased {} {o} {}", if r { "rec" } else { "main" }, 1usize << a.tau);
+                }
+            }
+        }
+    }
+    let mut last = 0;
+    for r in 0..reps {
+        let t = Instant::now();
+        let tabs = lvm::stream::build_q_tables(&q, &|_, _, n| vec![lv::primitives::field::F64::ZERO; n], &pl);
+        let el = t.elapsed().as_secs_f64();
+        let mut hsh = 0xcbf2_9ce4_8422_2325u64;
+        for tw in &tabs {
+            for c in &tw.cols {
+                for w in c {
+                    hsh = (hsh ^ w.0).wrapping_mul(0x100_0000_01b3);
+                }
+                hsh = (hsh ^ c.len() as u64).wrapping_mul(0x100_0000_01b3);
+            }
+        }
+        println!("tbench rep {r} build {el:.3} s ({} tables, digest {hsh:016x})", tabs.len());
+        last = tabs.len();
+    }
+    let _ = last;
+    print!("{}", lv::tracing::report());
+}
+
+/// P-FIX dev: `gbench N REPS`: the tape's output claim and depth-24 GKR alone at `n` (P20 shape, local oracle),
+/// then the KS GKR (2^15 rows); `LVM_PROF=1` for the spans.
+fn cmd_gbench(args: &[String]) {
+    use lv::primitives::field::F64;
+    let n: usize = args.get(2).map_or(1, |v| v.parse().expect("N"));
+    let reps: usize = args.get(3).map_or(3, |v| v.parse().expect("REPS"));
+    oracle::install(Box::new(oracle::Local::keyed(&[0x5A; 32])));
+    lv::parallel::init();
+    let p = lvm::params::Params::by_name("P20").unwrap();
+    let chain = lvm::tables::Chain::run_gated(p.log_n, &[7u8; 32], n, false);
+    for r in 0..reps {
+        let t = Instant::now();
+        let w = lv::keccak_gkr::Witness::generate_uncommitted(chain.shape, &chain.inputs);
+        let tw = t.elapsed().as_secs_f64();
+        let mut ps = lv::fiat_shamir::transcript::ProverState::seeded(b"gbench-tape-0123");
+        let t = Instant::now();
+        let rr = ps.sample_vec(p.log_n);
+        let out = lv::keccak_gkr::OutputClaim::of_inputs_padded(chain.shape, &chain.inputs, rr);
+        let to = t.elapsed().as_secs_f64();
+        ps.add_scalars(&out.lanes);
+        let t = Instant::now();
+        let _ = w.prove_tape(&mut ps, &out);
+        let tg = t.elapsed().as_secs_f64();
+        println!("gbench n={n} rep {r}: witness {tw:.3} out {to:.3} tape gkr {tg:.3} s");
+    }
+    if std::env::var_os("GB_NOKS").is_some() {
+        print!("{}", lv::tracing::report());
+        return;
+    }
+    let lay = lvm::tables::Layout::new(&p);
+    let cont = lvm::tables::cont_column(p.ks_log, p.rec_rows_log, lvm::prove::sponge_blocks(&p));
+    let ks = lvm::tables::Sponge::run(p.ks_log, cont, vec![[0u64; lvm::params::REC_STREAM_COLS]; 1 << p.ks_log]);
+    let mut cmain = vec![F64::ZERO; 1 << p.nu_main];
+    let mut crec = vec![F64::ZERO; 1 << p.nu_rec()];
+    for r in 0..reps {
+        let ks_w = lvm::tables::write_ks(&lay, &ks, &mut cmain, &mut crec);
+        let mut ps = lv::fiat_shamir::transcript::ProverState::seeded(b"gbench-ks-01234");
+        let t = Instant::now();
+        let rk = ps.sample_vec(p.ks_log);
+        let kout = lv::keccak_gkr::OutputClaim::of_inputs(ks.shape, &ks.inputs, rk);
+        let to = t.elapsed().as_secs_f64();
+        ps.add_scalars(&kout.lanes);
+        let t = Instant::now();
+        let _ = ks_w.prove(&mut ps, &cmain[lay.ks_off..lay.ks_off + (1 << lay.ks_vars())], &kout);
+        println!("gbench KS rep {r}: out {to:.3} gkr {:.3} s", t.elapsed().as_secs_f64());
+    }
+    print!("{}", lv::tracing::report());
+}
+
 /// `first DIR` / `step DIR` (PROVER.md §3): connect, `ready`, wait for `go`, prove, write `proof.bin`, `done`.
 /// Parameter set `P20` (`LVM_PARAMS=P8` for local tests), 8 threads unless `LEANVM_NUM_THREADS` says otherwise.
 fn cmd_stream(mode: &str, dir: &str) {
@@ -566,7 +697,14 @@ fn run(args: Vec<String>) -> i32 {
         }
         Some("batch") => cmd_batch(&args),
         Some("sprove") => cmd_sprove(&args),
+        Some("tbench") => cmd_tbench(&args),
+        Some("gbench") => cmd_gbench(&args),
         Some("pgbench") => cmd_pgbench(&args),
+        Some("s2check") => {
+            lvm::wire::check::closed_forms_match_brute_force();
+            println!("s2check wire closed forms: ok");
+            lvm::params::print_numbers();
+        }
         Some("setup") => {
             let dir = args.get(2).cloned().or_else(|| std::env::var("RF_SETUP").ok()).unwrap_or_else(|| "/setup".into());
             return cmd_setup(&dir);

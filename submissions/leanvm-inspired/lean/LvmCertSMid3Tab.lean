@@ -149,15 +149,15 @@ theorem retOK_lbusTableCheckProg (T : List Lvm.M3.Tab) (μ : ℕ) :
 /-! ## The table claims on the commitments -/
 
 /-- A commitment's cell is its word's entry, `0` past it. -/
-theorem comCell_lay26 (qm : Column 26) (qr : Column 19) (rec : Bool) (n : ℕ) :
+theorem comCell_lay26 (qm : Column CMain.nu20) (qr : Column 19) (rec : Bool) (n : ℕ) :
     Lvm.M3.comCell Lvm.M3.lay26 qm qr rec n =
       if rec then qr.values.getD n 0 else qm.values.getD n 0 := by
-  cases rec <;> simp [Lvm.M3.comCell, Vector.getD]
-  all_goals (split <;> simp_all)
+  cases rec <;> simp only [Lvm.M3.comCell, Vector.getD, Array.getD, Vector.size_toArray,
+    Bool.false_eq_true, ↓reduceIte] <;> rfl
 
 open CompPoly CMlPolynomialEval in
 /-- A block's extension at a point of its height is the `eqAt`-weighted sum of its cells. -/
-theorem eval_comBlock_sum (qm : Column 26) (qr : Column 19) (rec : Bool) (τ off : ℕ) (z : List E)
+theorem eval_comBlock_sum (qm : Column CMain.nu20) (qr : Column 19) (rec : Bool) (τ off : ℕ) (z : List E)
     (hz : z.length = τ) :
     eval₂Mle (Lvm.M3.comBlock Lvm.M3.lay26 qm qr rec τ off).values (algebraMap K E) (vecOf τ z) =
       ∑ n ∈ range (2 ^ τ), eqAt z n * ofK (Lvm.M3.comCell Lvm.M3.lay26 qm qr rec (off + n)) := by
@@ -172,7 +172,7 @@ theorem eval_comBlock_sum (qm : Column 26) (qr : Column 19) (rec : Bool) (τ off
 
 /-- **The table claims' link**: `tableClaimsE` holding on the commitments gives `BlockHolds`. -/
 theorem blockHolds_of_tableClaims {T : List Lvm.M3.Tab} (hlay : Lvm.M3.LayOk Lvm.M3.lay26 T)
-    {cl : List ColumnClaim} (hret : TabRet T cl) {qm : Column 26} {qr : Column 19}
+    {cl : List ColumnClaim} (hret : TabRet T cl) {qm : Column CMain.nu20} {qr : Column 19}
     (h : ∀ e ∈ tableClaimsE T cl, HoldsC qm qr e) :
     ∀ c ∈ cl, Lvm.M3.BlockHolds Lvm.M3.lay26 T qm qr c := by
   intro c hc j i hj rec off hloc hcol

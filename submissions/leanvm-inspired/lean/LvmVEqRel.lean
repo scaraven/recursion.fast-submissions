@@ -7,9 +7,9 @@ import LvmVEqPhases
 /-!
 # P20's commitments; native and language claims
 
-* `capS` (= WP-14's `capOfS`: cap level 8 for `C_main`'s root of `2^21` leaves, 7 otherwise),
-  `shpS` (the five commitments in commit order: `C_main` root `(21, 64)`, `C_rec` root `(15, 64)`,
-  `C_main`'s levels 1–3 `(18, 48)`, `(15, 48)`, `(12, 48)`), `idxS` (an oracle's commitment
+* `capS` (= WP-14's `capOfS`: cap level 8 for `C_main`'s root of `2^19` leaves (lvm2 S2), 7 otherwise),
+  `shpS` (the four commitments in commit order: `C_main` root `(19, 64)`, `C_rec` root `(15, 64)`,
+  `C_main`'s levels 1–2 `(16, 48)`, `(13, 48)`), `idxS` (an oracle's commitment
   index);
 * `BCRel c c'`: a native block claim and a language block claim (`LvmVEqMid.BClaim`) agree: same
   block, value and weight through `FE.toExt3` (the weight on every image point);
@@ -23,15 +23,14 @@ namespace Lvm.VEq
 open Lvm
 
 /-- The cap level of a tree of `2^ht` leaves at P20 (WP-14's `capOfS`). -/
-def capS (ht _w : ℕ) : ℕ := if ht = 21 then 8 else 7
+def capS (ht _w : ℕ) : ℕ := if ht = 19 then 8 else 7
 
 /-- The five commitments' shapes `(height, width)` in commit order at P20. -/
 def shpS : ℕ → ℕ × ℕ
-  | 0 => (21, 64)
+  | 0 => (19, 64)
   | 1 => (15, 64)
-  | 2 => (18, 48)
-  | 3 => (15, 48)
-  | _ => (12, 48)
+  | 2 => (16, 48)
+  | _ => (13, 48)
 
 /-- An oracle's commitment index (`C_main`'s root 0, `C_rec`'s root 1, `C_main`'s level `j + 1` at
 `j + 2`; WHIR's `cidx`). -/

@@ -56,7 +56,7 @@ structure QCfg where
 def cfg20 : QCfg := ⟨P20, 14, 20, 11, 8, 18, 10, 13, 15⟩
 
 /-- `P8`'s node program (the test parameter set; `readd` region 2^17 lanes: the stream passes 2^16). -/
-def cfg8 : QCfg := ⟨P8, 12, 9, 10, 5, 17, 8, 12, 16⟩
+def cfg8 : QCfg := ⟨P8, 13, 9, 11, 5, 17, 8, 13, 16⟩
 
 section Regions
 
@@ -197,13 +197,14 @@ def posSpecs (C : QCfg) (bpl : Nat → Nat → Bool × Nat) : List BSpec :=
 def nPosCls (C : QCfg) : Nat :=
   ((List.range (opens C.p).length).map fun k => nLanes ((opens C.p).getD k default).L.height).sum
 
-/-- The byte-shift outputs of the child's chain start `s'` (HAR's boundary claim `Pad43(s')`): 8 cells after
-the spares, `shl 8` of lane `l` at `bsB + 2l`, `shr 56` at `bsB + 2l + 1`. -/
+/-- The bit outputs of the child's chain start `s'` (lvm2 S2: the wiring target's `⟨ω, Pad43(s')⟩`):
+256 cells after the spares, bit `z` of lane `l` at `bsB + 64 l + z`. -/
 def bsB (C : QCfg) : Nat := spB C + spBefore C.p (opens C.p).length
 
-/-- **The `s'` byte-shift class**: 4 rows, row `l` reads the stream lane `hd + 9 + l` (the child's header
-lane `s_l`), outputs `shl 8`, `shr 56` (as Q_sig's `h'`/`c_L'` rows of WP-12b's class 4). -/
+/-- **The `s'` bit class** (lvm2 S2; replaces v1's byte shifts, which served only the deleted `CH`
+start claims): 4 rows, row `l` reads the stream lane `hd + 9 + l` (the child's header lane `s_l`),
+outputs its 64 bits (`.bit z`). -/
 def sSpec (C : QCfg) (pl : Nat → Bool × Nat) : BSpec :=
-  ⟨2, 4, [.shl 8, .shr 56], true, fun x => (sigIn C).hd + 9 + x, fun j x => bsB C + 2 * x + j, pl⟩
+  ⟨2, 4, (List.range 64).map BOut.bit, true, fun x => (sigIn C).hd + 9 + x, fun j x => bsB C + 64 * x + j, pl⟩
 
 end Lvm.QAsm

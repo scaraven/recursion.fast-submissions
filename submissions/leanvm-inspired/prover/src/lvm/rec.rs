@@ -205,7 +205,7 @@ pub mod check {
         let msg: Digest = std::array::from_fn(|k| (k as u8).wrapping_mul(13));
         let (vk, sig) = format::toy_sign(7, &msg);
         // a fake child whose trace digest is not `msg`: sign its digest instead
-        let p = crate::lvm::params::p8();
+        let p = crate::lvm::params::p8_g(0);
         let tr: Vec<(Vec<u8>, Digest)> = crate::lvm::params::query_list(&p)
             .iter()
             .enumerate()

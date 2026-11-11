@@ -12,6 +12,8 @@
 //!   and its lanes 0–2 are the challenge (WP-15a: the Lean driver's `fsQuery`, `LvmDriver.lean`);
 //! - positions: `⌈t/8⌉` queries, the first `st ‖ pending`, the others `st`; position `j` of a query is
 //!   the bits `[d·j, d·j + d)` of lanes 0–2, low first ([`ProverState::sample_positions`]);
+//! - PI-GRIND: with grinding bits `g > 0`, a separating sample, the nonce and the PoW sample precede the
+//!   positions, which then all ask `st` ([`ProverState::grind`]);
 //! - opened rows and siblings are never absorbed (the driver's `pend := off` after an opening);
 //! - the length rule is a property of the schedule (`LvmSchedule.lengthRule`): every FS query is
 //!   asserted not to have a reserved length (64, 384, 512) or the seed's; nothing is ever split.
@@ -59,6 +61,8 @@ pub struct ProverState {
     pub trace: Vec<(Vec<u8>, Digest)>,
     /// Fiat–Shamir queries asked (round trips)
     pub fs_queries: usize,
+    /// PI-GRIND: per grinding level, the attempts made up to the accepted nonce (`counter + 1`)
+    pub grind_attempts: Vec<u64>,
 }
 
 #[inline]
@@ -73,6 +77,42 @@ fn scalar_bytes(x: F192) -> [u8; 24] {
     b[8..16].copy_from_slice(&x.c1.to_le_bytes());
     b[16..].copy_from_slice(&x.c2.to_le_bytes());
     b
+}
+
+/// The PoW predicate on the challenge's lane 2 (`c.c2`): its top `g` bits are zero, `c2 < 2^(64 − g)`.
+#[inline]
+pub fn pow_ok(lane2: u64, g: u32) -> bool {
+    g == 0 || lane2 >> (64 - g) == 0
+}
+
+/// The grinding query `st ‖ (counter, 0, 0)` (32 + 24 bytes).
+#[inline]
+pub fn grind_query(st: &Digest, counter: u64, buf: &mut Vec<u8>) {
+    buf.extend_from_slice(st);
+    buf.extend_from_slice(&scalar_bytes(F192::new(counter, 0, 0)));
+}
+
+/// The smallest `counter` whose query `st ‖ (counter, 0, 0)` passes [`pow_ok`]. Rounds of `2^(g+1)` attempts
+/// (at least 256, at most 2^13), split over the worker threads, each on its own oracle connection.
+fn pow_search(st: &Digest, g: u32) -> u64 {
+    use crate::lv::parallel;
+    let round = (1usize << (g + 1).min(13)).max(256);
+    let tasks = parallel::num_threads().clamp(1, round / 128);
+    let chunk = round.div_ceil(tasks);
+    let mut out = vec![[0u8; 32]; round];
+    let mut base = 0u64;
+    loop {
+        let t = std::time::Instant::now();
+        parallel::chunks_mut(&mut out, chunk, |i, sub| {
+            let off = base + (i * chunk) as u64;
+            oracle::get().ask_many_here(sub, &|j, buf: &mut Vec<u8>| grind_query(st, off + j as u64, buf));
+        });
+        oracle::note_grind(round, round.div_ceil(chunk), t);
+        if let Some(j) = out.iter().position(|a| pow_ok(u64::from_le_bytes(a[16..24].try_into().unwrap()), g)) {
+            return base + j as u64;
+        }
+        base += round as u64;
+    }
 }
 
 impl ProverState {
@@ -96,6 +136,7 @@ impl ProverState {
             body: header.to_vec(),
             trace,
             fs_queries: 0,
+            grind_attempts: Vec::new(),
         }
     }
 
@@ -271,10 +312,27 @@ impl ProverState {
         }
     }
 
-    /// Grinding is not used (BLUEPRINT §3.1, D6): only the no-work grind is accepted, and it
-    /// sends and absorbs nothing.
+    /// PI-GRIND (`docs/lvm2/stages/PI-GRIND.md`, Gate §2): with `bits = g = 0` nothing is sent or absorbed (the
+    /// v1/S2 schedule). With `g > 0`, right before a level's positions (its cap or final scalars waiting):
+    /// 1. a separating sample `st ‖ pending`, discarded (the positions queries then all ask `st` alone);
+    /// 2. the nonce, one `E` scalar `(counter, 0, 0)`: the smallest `counter ≥ 0` that passes;
+    /// 3. the PoW challenge `c`, the sample `st ‖ nonce` (56 bytes); it passes when `eToNat c < 2^(192 − g)`,
+    ///    i.e. the top `g` bits of lane 2 are zero.
+    ///
+    /// The search asks `st ‖ nonce` for whole rounds of counters over the oracle's connections (class `Grind`,
+    /// not in `V`'s trace); only the accepted query is asked again as the Fiat–Shamir step. The result does not
+    /// depend on the round size or the threads: the smallest passing counter.
     pub fn grind(&mut self, bits: u32) {
-        assert_eq!(bits, 0, "no grinding in the lvm parameter sets");
+        if bits == 0 {
+            return;
+        }
+        assert!(bits <= 64, "the PoW bits lie in lane 2 of the challenge (g ≤ 64)");
+        self.sample();
+        let counter = pow_search(&self.st, bits);
+        self.add_scalar(F192::new(counter, 0, 0));
+        let c = self.sample();
+        assert!(pow_ok(c.c2, bits), "the accepted nonce's challenge passes");
+        self.grind_attempts.push(counter + 1);
     }
 
     /// The verifier's query count so far.

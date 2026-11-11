@@ -85,6 +85,11 @@ def gkrDepth : Nat := 12
 def gkrSegments : Nat := 2
 /-- `⌈log₂ gkrSegments⌉` (leanVM `KECCAK_SEGMENT_BITS`). -/
 def segmentBits : Nat := 1
+/-- The tape's Keccak GKR depth (lvm2 BLUEPRINT2 §1.2 T2, S2: `Shape { logN, 24 }`, one segment, no
+segment bits). -/
+def tapeDepth : Nat := 24
+/-- Lanes of the digest column `D` (lanes 0–3 of each tape row's output; BLUEPRINT2 §1.1). -/
+def dLanes : Nat := 4
 /-- Slots per `CH` row, as a log: 64 (leanVM `q_keccak` slot bits). -/
 def slotLog : Nat := 6
 /-- `CH` slots used: `in` 25, `mid` 25, `Y` 4. -/
@@ -164,6 +169,10 @@ structure Params where
   /-- The index of the header array `PUB` among the sumcheck tables (A23: its value column is the
   one fixed column outside `Φ`; `pubCheck` evaluates it from the header lanes). -/
   pubTab : Nat
+  /-- The proof-of-work bits on every WHIR level's query group (PI-GRIND; `UdConfig.grind`): `0`
+  is no grinding (v1's levels and reading); with `g > 0` each level's `t` is `udQueries (sec − g) R`
+  and the level reads a separating challenge, a nonce and a PoW challenge before its positions. -/
+  grind : Nat
   deriving Repr, Inhabited
 
 namespace Params
@@ -183,10 +192,12 @@ def accLog (p : Params) : Nat := accVars - p.tableRounds
 
 end Params
 
-/-- A parameter set from its free choices (`params.py`, `make`). -/
+/-- A parameter set from its free choices (`params.py`, `make`). With `grind = g > 0` (PI-GRIND)
+every level's query count is `udQueries (secBits − g) R`: the PoW challenge's `g` zero bits take
+`2^-g` off each group's escape. -/
 def mkParams (name : String) (logN secBits recRowsLog nuMain : Nat)
     (mainFolds mainRates mainCaps recFolds recRates recCaps : List Nat) (ksLog bitsLog : Nat)
-    (busDepth leafdecReads tableRounds tableEvals pubTab : Nat) : Params where
+    (busDepth leafdecReads tableRounds tableEvals pubTab : Nat) (grind : Nat := 0) : Params where
   name := name
   logN := logN
   ksLog := ksLog
@@ -194,28 +205,48 @@ def mkParams (name : String) (logN secBits recRowsLog nuMain : Nat)
   nuMain := nuMain
   recRowsLog := recRowsLog
   secBits := secBits
-  mainLevels := mkLevels secBits 0 nuMain (mainFolds.zip (mainRates.zip mainCaps))
-  recLevels := mkLevels secBits 0 (recRowsLog + 5) (recFolds.zip (recRates.zip recCaps))
+  mainLevels := mkLevels (secBits - grind) 0 nuMain (mainFolds.zip (mainRates.zip mainCaps))
+  recLevels := mkLevels (secBits - grind) 0 (recRowsLog + 5) (recFolds.zip (recRates.zip recCaps))
   busDepth := busDepth
   leafdecReads := leafdecReads
   tableRounds := tableRounds
   tableEvals := tableEvals
   pubTab := pubTab
+  grind := grind
 
-/-- **The production set** (BLUEPRINT §3.1; `params.py`, `P20`). The four LoopIR feedback values
-are WP-16a2's freeze of the node program's M3 sizes for `P20` (`bus_depth 22, leafdec_reads 1, table_rounds 17,
-table_evals 4199`; lvm2 S1-INT: `4253`). `PUB` is sumcheck table 131 (88 groups, then input array 43). -/
+/-- **The production set** (BLUEPRINT §3.1; lvm2 BLUEPRINT2 §1.4, §2.2: stage S2; FRZ-0's record,
+`docs/lvm2/ref/params.py`, `S2P20`). `C_main` has `2^24` words (16 slots of `2^20`: `D` 4, `KS` 2,
+`KSY2`/`X` 1, the recursion tables 9) and three WHIR levels `(ℓ, R, c) = (6,1,8) (4,2,7) (4,3,7)`
+(`cfgMain24`, final `2^10`); `C_rec` and `KS` as v1. The five LoopIR feedback values are FRZ-1's (T-Q's S2
+node program at its fixpoint, `qasm gen`: `22, 1, 17, 3805`, `PUB` table 124). -/
 def P20 : Params :=
-  mkParams "P20" 20 129 14 26 [6, 4, 4, 4] [1, 2, 3, 4] [8, 7, 7, 7] [6] [2] [7] 15 13
-    22 1 17 4253 131
+  mkParams "P20" 20 129 14 24 [6, 4, 4] [1, 2, 3] [8, 7, 7] [6] [2] [7] 15 13
+    22 1 17 3805 124
 
-/-- **The test set** (`params.py`, `P8`): `CH` = 2^9 (leanVM's minimum Keccak batch), 20-bit
-query security, `C_rec` 32 × 2^12, caps 2^4. The feedback values are INT-2's freeze for `P8`
-(`21, 1, 16, 3879`, WP-16a2; lvm2 S1-INT: `3951`); `PUB` is sumcheck table 128 (85 groups, then input array
-43). -/
+/-- **The test set** (lvm2 FRZ-0, `S2P8`): the tape has `2^9` rows (leanVM's minimum Keccak batch),
+20-bit query security, `C_main` `2^23` with three levels (caps `2^4`, final `2^9`), and, since the
+depth-24 tape overflows v1's stream, `C_rec` 32 × 2^13 (`ν = 18`, final `2^12`) and `KS` `2^14`
+(FRZ-0 "P8 deviation"). The feedback values are FRZ-1's (`21, 1, 16, 3611`, `PUB` 118). -/
 def P8 : Params :=
-  mkParams "P8" 9 20 12 23 [6, 4, 4, 4] [1, 2, 3, 4] [4, 4, 4, 4] [6] [2] [4] 13 12
-    21 1 16 3951 128
+  mkParams "P8" 9 20 13 23 [6, 4, 4] [1, 2, 3] [4, 4, 4] [6] [2] [4] 14 12
+    21 1 16 3611 118
+
+/-! ## Test sets with grinding (PI-GRIND; not frozen)
+
+`P20`'s and `P8`'s free choices with `g` PoW bits per WHIR query group (`grind`): the query counts
+drop to `udQueries (sec − g) R`, each level reads one more scalar (the nonce) and draws two more
+challenges (the separator, the PoW challenge). Not a frozen record: FRZ-1 re-freezes `P20` with
+`g = 14` (and the stream, layout and LoopIR feedback values with it). -/
+
+/-- `P20` with `g = 14`: `C_main` `t = 278, 170, 139`, `C_rec` `t = 170` (PI-GRIND §3). -/
+def P20G : Params :=
+  mkParams "P20G" 20 129 14 24 [6, 4, 4] [1, 2, 3] [8, 7, 7] [6] [2] [7] 15 13
+    22 1 17 3805 124 14
+
+/-- `P8` with `g = 4`: the test set of the end-to-end grinding test. -/
+def P8G : Params :=
+  mkParams "P8G" 9 20 13 23 [6, 4, 4] [1, 2, 3] [4, 4, 4] [6] [2] [4] 14 12
+    21 1 16 3611 118 4
 
 /-! ## Checks against WP-0 (`ref/sizes.md`, Parameters table) -/
 
@@ -223,42 +254,65 @@ def P8 : Params :=
 theorem headerBytes_eq : headerBytes = 5624 := by decide
 
 /-- A23's accumulator: `D = 28`, `acc_in` at byte 4,928; `dk = 11` at `P20`, `12` at `P8`;
-`PUB` is sumcheck table 131 at `P20`, 128 at `P8` (after the groups). -/
+`PUB` is sumcheck table 124 at `P20`, 118 at `P8` (after the groups). -/
 theorem acc_P20_P8 : accVars = 28 ∧ offAcc = 4928 ∧ P20.accLog = 11 ∧ P8.accLog = 12 ∧
-    P20.pubTab = 131 ∧ P8.pubTab = 128 := by decide
+    P20.pubTab = 124 ∧ P8.pubTab = 118 := by decide
 
-/-- The query counts of `P20`: 311, 191, 156, 142 (`C_main`) and 191 (`C_rec`). -/
-theorem t_P20 : P20.mainLevels.map Level.t = [311, 191, 156, 142] ∧
+/-- The query counts of `P20`: 311, 191, 156 (`C_main`) and 191 (`C_rec`). -/
+theorem t_P20 : P20.mainLevels.map Level.t = [311, 191, 156] ∧
     P20.recLevels.map Level.t = [191] := by decide +kernel
 
-/-- The query counts of `P8`: 49, 30, 25, 22 and 30. -/
-theorem t_P8 : P8.mainLevels.map Level.t = [49, 30, 25, 22] ∧
+/-- The query counts of `P8`: 49, 30, 25 and 30. -/
+theorem t_P8 : P8.mainLevels.map Level.t = [49, 30, 25] ∧
     P8.recLevels.map Level.t = [30] := by decide +kernel
 
 /-- A level's geometry `[ℓ, κ, R, height, cap, path, row]`, the columns of `sizes.md`. -/
 def Level.shape (L : Level) : List Nat := [L.fold, L.kappa, L.rate, L.height, L.cap, L.path, L.row]
 
-/-- `P20`'s levels: `[ℓ, κ, R, height, cap, path, row]` as in `sizes.md`. -/
+/-- `P20`'s levels: `[ℓ, κ, R, height, cap, path, row]` as in lvm2 `ref/sizes.md` (FRZ-0). -/
 theorem levels_P20 :
     P20.mainLevels.map Level.shape =
-      [[6, 20, 1, 21, 8, 13, 512], [4, 16, 2, 18, 7, 11, 384], [4, 12, 3, 15, 7, 8, 384],
-        [4, 8, 4, 12, 7, 5, 384]] ∧
+      [[6, 18, 1, 19, 8, 11, 512], [4, 14, 2, 16, 7, 9, 384], [4, 10, 3, 13, 7, 6, 384]] ∧
     P20.recLevels.map Level.shape =
       [[6, 13, 2, 15, 7, 8, 512]] ∧
-    P20.mainFinalLog = 8 ∧ P20.recFinalLog = 13 ∧ P20.nuRec = 19 := by decide +kernel
+    P20.mainFinalLog = 10 ∧ P20.recFinalLog = 13 ∧ P20.nuRec = 19 := by decide +kernel
 
-/-- `P8`'s levels, as in `sizes.md`. -/
+/-- `P8`'s levels, as in lvm2 `ref/sizes.md` (FRZ-0). -/
 theorem levels_P8 :
     P8.mainLevels.map Level.shape =
-      [[6, 17, 1, 18, 4, 14, 512], [4, 13, 2, 15, 4, 11, 384], [4, 9, 3, 12, 4, 8, 384],
-        [4, 5, 4, 9, 4, 5, 384]] ∧
+      [[6, 17, 1, 18, 4, 14, 512], [4, 13, 2, 15, 4, 11, 384], [4, 9, 3, 12, 4, 8, 384]] ∧
     P8.recLevels.map Level.shape =
-      [[6, 11, 2, 13, 4, 9, 512]] ∧
-    P8.mainFinalLog = 5 ∧ P8.recFinalLog = 11 ∧ P8.nuRec = 17 := by decide +kernel
+      [[6, 12, 2, 14, 4, 10, 512]] ∧
+    P8.mainFinalLog = 9 ∧ P8.recFinalLog = 12 ∧ P8.nuRec = 18 := by decide +kernel
+
+/-- The test sets are the frozen sets but for `t` and `grind` (so they cannot drift apart silently). -/
+theorem shapes_G : P20G.mainLevels.map Level.shape = P20.mainLevels.map Level.shape ∧
+    P20G.recLevels.map Level.shape = P20.recLevels.map Level.shape ∧
+    P8G.mainLevels.map Level.shape = P8.mainLevels.map Level.shape ∧
+    P8G.recLevels.map Level.shape = P8.recLevels.map Level.shape ∧
+    [P20G.logN, P20G.ksLog, P20G.bitsLog, P20G.nuMain, P20G.recRowsLog, P20G.secBits, P20G.busDepth,
+      P20G.leafdecReads, P20G.tableRounds, P20G.tableEvals, P20G.pubTab] =
+    [P20.logN, P20.ksLog, P20.bitsLog, P20.nuMain, P20.recRowsLog, P20.secBits, P20.busDepth,
+      P20.leafdecReads, P20.tableRounds, P20.tableEvals, P20.pubTab] ∧
+    [P8G.logN, P8G.ksLog, P8G.bitsLog, P8G.nuMain, P8G.recRowsLog, P8G.secBits, P8G.busDepth,
+      P8G.leafdecReads, P8G.tableRounds, P8G.tableEvals, P8G.pubTab] =
+    [P8.logN, P8.ksLog, P8.bitsLog, P8.nuMain, P8.recRowsLog, P8.secBits, P8.busDepth,
+      P8.leafdecReads, P8.tableRounds, P8.tableEvals, P8.pubTab] := by
+  decide +kernel
+
+/-- No grinding in the frozen sets. -/
+theorem grind_P20_P8 : P20.grind = 0 ∧ P8.grind = 0 := ⟨rfl, rfl⟩
+
+/-- The query counts of `P20G` (`udQueries 115 R`) and `P8G` (`udQueries 16 R`). -/
+theorem t_P20G_P8G : P20G.mainLevels.map Level.t = [278, 170, 139] ∧
+    P20G.recLevels.map Level.t = [170] ∧ P20G.grind = 14 ∧
+    P8G.mainLevels.map Level.t = [39, 24, 20] ∧ P8G.recLevels.map Level.t = [24] ∧ P8G.grind = 4 := by
+  decide +kernel
 
 /-- Every positions answer carries 8 positions: `8 · height ≤ 192` on every level of both sets. -/
 theorem positions_fit :
-    (P20.mainLevels ++ P20.recLevels ++ P8.mainLevels ++ P8.recLevels).all
+    (P20.mainLevels ++ P20.recLevels ++ P8.mainLevels ++ P8.recLevels ++ P20G.mainLevels ++
+      P20G.recLevels ++ P8G.mainLevels ++ P8G.recLevels).all
       (fun L => decide (positionsPerAnswer * L.height ≤ 192)) = true := by decide +kernel
 
 end Lvm

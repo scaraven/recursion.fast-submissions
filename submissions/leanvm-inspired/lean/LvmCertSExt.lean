@@ -135,17 +135,17 @@ theorem foldRoundsT_after : ∀ (n : ℕ) (s : WhirStateT) (lf : List E) {l : Li
     · exact e5 hn
 
 theorem roots_after {l : List Ev} (h : rootsProg.after l = some (.ret ())) :
-    ∃ W₁ W₂, l = [Ev.commit 21 64 W₁, Ev.commit 15 64 W₂] := by
+    ∃ W₁ W₂, l = [Ev.commit 19 64 W₁, Ev.commit 15 64 W₂] := by
   rcases l with _ | ⟨e₁, _ | ⟨e₂, _ | ⟨e₃, es⟩⟩⟩
-  · simp [rootsProg, commitRootUd, cfgMain20, cfgRec20, VerifierProgram.readCommitment,
+  · simp [rootsProg, commitRootUd, cfgMain24, cfgRec20, VerifierProgram.readCommitment,
       VerifierProgram.bind, VerifierProgram.after] at h
-  · cases e₁ <;> simp [rootsProg, commitRootUd, cfgMain20, cfgRec20, VerifierProgram.readCommitment,
+  · cases e₁ <;> simp [rootsProg, commitRootUd, cfgMain24, cfgRec20, VerifierProgram.readCommitment,
       VerifierProgram.bind, VerifierProgram.after] at h
-  · cases e₁ <;> cases e₂ <;> simp [rootsProg, commitRootUd, cfgMain20, cfgRec20,
+  · cases e₁ <;> cases e₂ <;> simp [rootsProg, commitRootUd, cfgMain24, cfgRec20,
       VerifierProgram.readCommitment, VerifierProgram.bind, VerifierProgram.after] at h
     obtain ⟨⟨rfl, rfl⟩, rfl, rfl⟩ := h
     exact ⟨_, _, rfl⟩
-  · cases e₁ <;> cases e₂ <;> cases e₃ <;> simp [rootsProg, commitRootUd, cfgMain20, cfgRec20,
+  · cases e₁ <;> cases e₂ <;> cases e₃ <;> simp [rootsProg, commitRootUd, cfgMain24, cfgRec20,
       VerifierProgram.readCommitment, VerifierProgram.bind, VerifierProgram.after] at h
 
 /-- The words a reachable history commits are well shaped. -/
@@ -273,12 +273,12 @@ noncomputable def extS (mid : List UInt8 → VerifierProgram OpenClaims)
 /-! ## The doom after the roots, and at the start -/
 
 theorem rootsProg_after_roots (W₁ W₂ : Compile.Word) :
-    rootsProg.after [Ev.commit 21 64 W₁, Ev.commit 15 64 W₂] = some (.ret ()) := by
-  simp [rootsProg, commitRootUd, cfgMain20, cfgRec20, VerifierProgram.readCommitment,
+    rootsProg.after [Ev.commit 19 64 W₁, Ev.commit 15 64 W₂] = some (.ret ()) := by
+  simp [rootsProg, commitRootUd, cfgMain24, cfgRec20, VerifierProgram.readCommitment,
     VerifierProgram.bind, VerifierProgram.after]
 
 theorem rootsProg_ne_ret (a : Unit) : rootsProg ≠ .ret a := by
-  simp [rootsProg, commitRootUd, cfgMain20, VerifierProgram.readCommitment, VerifierProgram.bind]
+  simp [rootsProg, commitRootUd, cfgMain24, VerifierProgram.readCommitment, VerifierProgram.bind]
 
 theorem after_nil' (p : VerifierProgram α) : p.after [] = some p := by simp [VerifierProgram.after]
 
@@ -290,21 +290,21 @@ variable {mid : List UInt8 → VerifierProgram OpenClaims} {Good : GoodRel} {Lm 
 
 /-- **The doom right after the roots** (`rootsSpec`): the doom the second root creates. -/
 theorem rootsSpec_D {Post : Unit → List Ev → Prop} {εm T : ℝ≥0∞} (hT : T ≤ εm) (W₁ W₂ : Compile.Word) :
-    (rootsSpec Post hT).D [] [Ev.commit 21 64 W₁, Ev.commit 15 64 W₂] ↔
-      Post () [Ev.commit 21 64 W₁, Ev.commit 15 64 W₂] := by
-  have h1 : (commitRootUd cfgMain20).after [Ev.commit 21 64 W₁] = some (.ret ()) := by
-    simp [commitRootUd, cfgMain20, VerifierProgram.readCommitment, VerifierProgram.after]
+    (rootsSpec Post hT).D [] [Ev.commit 19 64 W₁, Ev.commit 15 64 W₂] ↔
+      Post () [Ev.commit 19 64 W₁, Ev.commit 15 64 W₂] := by
+  have h1 : (commitRootUd cfgMain24).after [Ev.commit 19 64 W₁] = some (.ret ()) := by
+    simp [commitRootUd, cfgMain24, VerifierProgram.readCommitment, VerifierProgram.after]
   rw [rootsSpec, show (Spec.bind' _ _ : Spec (_ >>= _) _ _ _ _ _) = Spec.bind _ _ from rfl,
-    show [Ev.commit 21 64 W₁, Ev.commit 15 64 W₂] = [Ev.commit 21 64 W₁] ++ [Ev.commit 15 64 W₂]
+    show [Ev.commit 19 64 W₁, Ev.commit 15 64 W₂] = [Ev.commit 19 64 W₁] ++ [Ev.commit 15 64 W₂]
       from rfl, bind_D_after _ _ h1 (by simp)]
   exact Iff.rfl
 
 /-- **The statement's doom after the roots**: `CommitDoomS ∧ RootShape` is doom there. -/
 theorem psSpec_D_roots (hnc : RecNoCommit) (hmid : MidSpec mid Good εS Lm) (hLm : Lm ≤ εS)
     (x : List UInt8) (W₁ W₂ : Compile.Word)
-    (h : CommitDoomS Good x [Ev.commit 21 64 W₁, Ev.commit 15 64 W₂] ∧
-      RootShape [Ev.commit 21 64 W₁, Ev.commit 15 64 W₂]) :
-    (psSpec hnc hmid hLm x).D [] [Ev.commit 21 64 W₁, Ev.commit 15 64 W₂] := by
+    (h : CommitDoomS Good x [Ev.commit 19 64 W₁, Ev.commit 15 64 W₂] ∧
+      RootShape [Ev.commit 19 64 W₁, Ev.commit 15 64 W₂]) :
+    (psSpec hnc hmid hLm x).D [] [Ev.commit 19 64 W₁, Ev.commit 15 64 W₂] := by
   rw [psSpec, Spec.congr_D, show (Spec.bind' _ _ : Spec (_ >>= _) _ _ _ _ _) = Spec.bind _ _ from rfl,
     bind_D_ret _ _ (rootsProg_after_roots W₁ W₂)]
   exact ⟨(rootsSpec_D _ W₁ W₂).2 h, Spec.start_D _ _ (by simpa using h)⟩
@@ -316,7 +316,7 @@ theorem psSpec_D_nil (hnc : RecNoCommit) (hmid : MidSpec mid Good εS Lm) (hLm :
     bind_D_inside _ _ (after_nil' rootsProg) rootsProg_ne_ret, rootsSpec,
     show (Spec.bind' _ _ : Spec (_ >>= _) _ _ _ _ _) = Spec.bind _ _ from rfl,
     bind_D_inside _ _ (after_nil' _) (by
-      simp [commitRootUd, cfgMain20, VerifierProgram.readCommitment])]
+      simp [commitRootUd, cfgMain24, VerifierProgram.readCommitment])]
   exact id
 
 /-- No doom at the start of `resSpec`. -/
@@ -424,7 +424,7 @@ theorem decode_S (hmid : MidSpec mid Good εS Lm) (hLm : Lm ≤ εS) (hsh : MidS
     accept_split hacc
   obtain ⟨W₁, W₂, rfl⟩ := roots_after h1
   have hws := reachable_commit_ws hreach
-  have hW₁ : WellShaped 64 W₁ := hws 21 64 W₁ (by simp)
+  have hW₁ : WellShaped 64 W₁ := hws 19 64 W₁ (by simp)
   have hW₂ : WellShaped 64 W₂ := hws 15 64 W₂ (by simp)
   -- the fold state and the residual
   obtain ⟨e1, e2, e3, e4, e5⟩ := foldRoundsT_after 6 _ [] h10
@@ -437,15 +437,15 @@ theorem decode_S (hmid : MidSpec mid Good εS Lm) (hLm : Lm ≤ εS) (hsh : MidS
   have hcq : commits lq = [] := NoCommit.after_commits (nc_roundPoly _ _ _) h8
   have hcf : commits lf = [] := NoCommit.after_commits (nc_foldRoundsT _ _ _) h10
   have hcr : commits lres = [] := NoCommit.after_commits (nc_readScalars _) h12
-  have hcs : commits ([Ev.commit 21 64 W₁, Ev.commit 15 64 W₂] ++ lm ++ [Ev.sample ρ] ++ lq ++ lf ++
-      lres) = [(21, 64, W₁), (15, 64, W₂)] := by
+  have hcs : commits ([Ev.commit 19 64 W₁, Ev.commit 15 64 W₂] ++ lm ++ [Ev.sample ρ] ++ lq ++ lf ++
+      lres) = [(19, 64, W₁), (15, 64, W₂)] := by
     simp only [commits_append, hcm, hcq, hcf, hcr, List.append_nil]
     rfl
   -- (1) a good candidate pair
-  have hDr := hD [Ev.commit 21 64 W₁, Ev.commit 15 64 W₂] (List.prefix_append _ _) (by
+  have hDr := hD [Ev.commit 19 64 W₁, Ev.commit 15 64 W₂] (List.prefix_append _ _) (by
     simp [Boundary])
-  have hRS : RootShape [Ev.commit 21 64 W₁, Ev.commit 15 64 W₂] := ⟨W₁, W₂, rfl, hW₁, hW₂⟩
-  have hgood : ¬ CommitDoomS Good x [Ev.commit 21 64 W₁, Ev.commit 15 64 W₂] := fun hc ↦
+  have hRS : RootShape [Ev.commit 19 64 W₁, Ev.commit 15 64 W₂] := ⟨W₁, W₂, rfl, hW₁, hW₂⟩
+  have hgood : ¬ CommitDoomS Good x [Ev.commit 19 64 W₁, Ev.commit 15 64 W₂] := fun hc ↦
     hDr ((SPS_D hmid hLm x _ _).2 (.inl (psSpec_D_roots recNoCommit hmid hLm x W₁ W₂ ⟨hc, hRS⟩)))
   simp only [CommitDoomS, not_forall, not_not] at hgood
   obtain ⟨⟨qm, qr⟩, ⟨-, hqr⟩, hG⟩ := hgood
@@ -461,7 +461,7 @@ theorem decode_S (hmid : MidSpec mid Good εS Lm) (hLm : Lm ≤ εS) (hsh : MidS
     obtain ⟨e, he⟩ := List.getLast?_isSome.2 hne |> Option.isSome_iff_exists.1
     obtain ⟨y, rfl⟩ := readScalars_reads _ h12 e (List.mem_of_getLast? he)
     exact ⟨y, he⟩
-  have hbnd : Boundary ([Ev.commit 21 64 W₁, Ev.commit 15 64 W₂] ++ (lm ++ ([Ev.sample ρ] ++
+  have hbnd : Boundary ([Ev.commit 19 64 W₁, Ev.commit 15 64 W₂] ++ (lm ++ ([Ev.sample ρ] ++
       (lq ++ (lf ++ lres))))) := by
     obtain ⟨y, hy⟩ := hlast
     refine boundary_of_last_read (y := y) ?_
@@ -470,11 +470,11 @@ theorem decode_S (hmid : MidSpec mid Good εS Lm) (hLm : Lm ≤ εS) (hsh : MidS
       List.getLast?_append_of_ne_nil _ hne, hy]
   have hDres := hD _ ⟨rest, by simp [List.append_assoc]⟩ hbnd
   have hnR : ¬ ResC 19 6 (batW cl.1 ρ) 0 (codesRec20 0) 6 0 r res
-      (viewC 1 2 (commits ([Ev.commit 21 64 W₁, Ev.commit 15 64 W₂] ++ lm ++ [Ev.sample ρ] ++ lq ++
+      (viewC 1 2 (commits ([Ev.commit 19 64 W₁, Ev.commit 15 64 W₂] ++ lm ++ [Ev.sample ρ] ++ lq ++
         lf ++ lres))) := fun hR ↦
     hDres ((SPS_D hmid hLm x _ _).2 (.inr (resSpec_D mid x h1 h3 hcl h8 h10 h12 hR)))
   rw [hcs] at hnR
-  have hview : viewC 1 2 [(21, 64, W₁), (15, 64, W₂)] = [(15, 64, W₂)] := rfl
+  have hview : viewC 1 2 [(19, 64, W₁), (15, 64, W₂)] = [(15, 64, W₂)] := rfl
   rw [hview] at hnR
   have hbook : res.length = 2 ^ (19 - r.1.folds.length) ∧
       FinBook 19 0 (codesRec20 0) 6 0 r [(15, 64, W₂)] := by
@@ -504,7 +504,7 @@ theorem decode_S (hmid : MidSpec mid Good εS Lm) (hLm : Lm ≤ εS) (hsh : MidS
   -- (5) the decoder on the history's inputs
   refine ⟨qm, q, hG, r, res, recData_split h1 h3 h8 h10 h12, ?_⟩
   unfold WrOf
-  rw [rootsOf_split h1, show wordOf (commits [Ev.commit 21 64 W₁, Ev.commit 15 64 W₂]) 1 = W₂ from rfl,
+  rw [rootsOf_split h1, show wordOf (commits [Ev.commit 19 64 W₁, Ev.commit 15 64 W₂]) 1 = W₂ from rfl,
     hdec hnl]
 
 /-- **The extraction is a witness** (O11): at an accepted history of `P_S` outside the doom

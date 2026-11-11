@@ -45,8 +45,9 @@ theorem rootShape_append {h₀ l : List Ev} (hl : commits l = []) (hr : Lvm.ASM.
   obtain ⟨Wm, Wr, hc, hw⟩ := hr
   exact ⟨Wm, Wr, by rw [commits_append, hl, List.append_nil, hc], hw⟩
 
-/-- WP-14's commitment sizes as a layout: `C_main` 2^26 words, `C_rec` 2^19. -/
-abbrev lay26 : Lay := ⟨26, 19⟩
+/-- WP-14's commitment sizes as a layout: `C_main` 2^24 words (lvm2 S2, FRZ-0; v1: 2^26), `C_rec` 2^19
+(the name is v1's). -/
+abbrev lay26 : Lay := ⟨24, 19⟩
 
 variable (tabs : List Tab) (hτ : ∀ t ∈ tabs, t.τ ≤ lay26.μ) {L₀ : ℕ} {εmax : ℝ≥0∞}
 
@@ -54,7 +55,7 @@ variable (tabs : List Tab) (hτ : ∀ t ∈ tabs, t.τ ≤ lay26.μ) {L₀ : ℕ
 `M3Holds ∘ stackOf ∧ R` to the doom of the returned claims on the pairs' blocks, with `R`, and
 `RootShape`. `hc` is the unique-decoding bound on the candidate pairs (WP-14's
 `candPairs_ncard_le_one` for `L₀ = 1`). -/
-noncomputable def midBusTableSpecS (R : Column 26 × Column 19 → Prop) (hlay : LayOk lay26 tabs)
+noncomputable def midBusTableSpecS (R : Column CMain.nu20 × Column 19 → Prop) (hlay : LayOk lay26 tabs)
     (hsc : AllSc tabs) (hkey : KeysOk tabs) (hw : ∀ t ∈ tabs, 0 < t.w) (hfix : FixOk tabs)
     (hc : ∀ h, (Lvm.ASM.candPairs h).ncard ≤ L₀)
     (hμ : (inst lay26 tabs hτ).μBus ≠ 0) (hab : abError (inst lay26 tabs hτ) L₀ < 1)

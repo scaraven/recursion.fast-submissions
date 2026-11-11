@@ -46,3 +46,18 @@ lvm2 P-GATE / S1-P (FA-2 stage S1, shipped since S1-P):
 | file | edit | why |
 |---|---|---|
 | `keccak_gkr/mod.rs` | `OutputClaim::of_inputs_padded`: `of_inputs` with the padding rows' sum in closed form, `Keccak-f(0)·(1 − Σ_{i<len} eq(r, i))` | the same claim at work linear in the written rows; the default (`LVM_PGATE=dense` uses `of_inputs`) |
+
+lvm2 T-P1 (S2, BLUEPRINT2 §2.2):
+
+| file | edit | why |
+|---|---|---|
+| `keccak_gkr/witness.rs` | `Witness::generate_uncommitted`: `generate` without the committed column | the tape's inputs are virtual |
+| `keccak_gkr/mod.rs` | `Witness::prove_tape`: lane samples, `depth` layers, the input claim returned (no output or input opening, no extra scalars); `pub use protocol::Claim` | the layers-only entry point the tape needs |
+
+lvm2 PI-GRIND-P (grinding before each WHIR level's positions, `docs/lvm2/stages/PI-GRIND.md` Gate §2):
+
+| file | edit | why |
+|---|---|---|
+| `fiat_shamir/transcript.rs` | `grind(g)`: `g = 0` as before (nothing); `g > 0`: a separating `sample` (`st ‖ pending`, discarded), the smallest nonce `(counter, 0, 0)` whose query `st ‖ nonce` answers with lane 2 `< 2^(64−g)` (searched in rounds over the oracle connections, class `Grind`, not in the trace), the nonce sent as one scalar, then the PoW `sample`; leanVM's check (low bits of limb 0 after absorbing the nonce) is not used | the PoW bits lie inside the challenge `E` (Gate §2a); one 56-byte query per attempt (§2b) |
+| `pcs/whir.rs` | `C_rec`'s one-level path (`level_steps = 0`) calls `grind` after the final scalars, as the multi-level path does at every level | every level of both openings grinds |
+| `pcs/whir_config.rs` | `config_of_levels(levels, grind)`: `grinding_bits = grind` at every level | the record's `grind` |

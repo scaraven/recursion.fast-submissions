@@ -31,7 +31,7 @@ theorem core_of_phases (p : Params) (m : M3) (vk c : Vector UInt8 32) (sig : Byt
     {Pb Pt P3 P4 P5 P6 P7 P8 : Nat}
     {alphas : List FE} {beta countRoot : FE} {point values leafdec : List FE}
     {evals : List (List FE × List FE)} {acc : Acc}
-    {r v : List FE} {ko : KeccakOut} {ring : FE × (List FE → FE)} {okL : Bool} {linkClaims : List (Com × BlockClaim)}
+    {tp : TapeRes} {wo : WireOut}
     {rk vks : List FE} {kko : KeccakOut} {kring : FE × (List FE → FE)} {okK : Bool}
     {kLinkClaims : List (Com × BlockClaim)}
     (h0 : RS.start.ent + (nodeBytes * 2 ^ (p.level ⟨.main, 0⟩).cap + nodeBytes * 2 ^ (p.level ⟨.crec, 0⟩).cap) = Pb)
@@ -40,14 +40,14 @@ theorem core_of_phases (p : Params) (m : M3) (vk c : Vector UInt8 32) (sig : Byt
     (htab : PhaseAt (tabPh p m (pubOf vk c sig)
       (m.busFinal ⟨alphas, beta, countRoot, point, values, leafdec, pubOf vk c sig⟩) point) sig Pt P3 evals)
     (hacc : PhaseAt (accFold p m (pubOf vk c sig) evals) sig P3 P4 acc)
-    (hch : PhaseAt (chPh p) sig P4 P5 (r, v, ko, ring))
-    (hchl : PhaseAt (chLinkPh p m r v (pubOf vk c sig)) sig P5 P6 (okL, linkClaims)) (hokL : okL = true)
+    (htape : PhaseAt (tapePh p) sig P4 P5 tp)
+    (hwire : PhaseAt (wirePh p (pubOf vk c sig) tp.claim) sig P5 P6 wo)
     (hks : PhaseAt (ksPh p) sig P6 P7 (rk, vks, kko, kring))
     (hksl : PhaseAt (ksLinkPh p m rk (pubOf vk c sig)) sig P7 P8 (okK, kLinkClaims)) (hokK : okK = true)
     (hopen : ∀ s : RS, pos s = P8 → s.ok = true →
       let o := openPh p (claimsOf p m (pubOf vk c sig)
-        (m.busFinal ⟨alphas, beta, countRoot, point, values, leafdec, pubOf vk c sig⟩) evals r v ko ring
-        linkClaims rk vks kko kring kLinkClaims) sig s
+        (m.busFinal ⟨alphas, beta, countRoot, point, values, leafdec, pubOf vk c sig⟩) evals tp wo
+        rk vks kko kring kLinkClaims) sig s
       o.2.ok = true ∧ o.2.ent = sig.size ∧ o.2.msg = 0) :
     decideCore p m vk c sig = true ∧ accOutOf p m vk c sig = acc := by
   obtain ⟨s1, hs1⟩ : ∃ s1 : RS, s1 = ⟨RS.start.ent, nodeBytes * 2 ^ (p.level ⟨.main, 0⟩).cap +
@@ -74,19 +74,18 @@ theorem core_of_phases (p : Params) (m : M3) (vk c : Vector UInt8 32) (sig : Byt
   obtain ⟨av, s4⟩ := AA
   simp only at a1 a2 a3
   rw [a1] at hA
-  obtain ⟨c1, c2, c3⟩ := hch s4 a3 a2
-  generalize hC : chPh p sig s4 = CC at c1 c2 c3
+  obtain ⟨c1, c2, c3⟩ := htape s4 a3 a2
+  generalize hC : tapePh p sig s4 = CC at c1 c2 c3
   obtain ⟨cv, s5⟩ := CC
   simp only at c1 c2 c3
   rw [c1] at hC
-  obtain ⟨l1, l2, l3⟩ := hchl s5 c3 c2
-  generalize hL : chLinkPh p m r v (pubOf vk c sig) sig s5 = LL at l1 l2 l3
-  obtain ⟨lv, s6⟩ := LL
+  obtain ⟨l1, l2, l3⟩ := hwire s5 c3 c2
+  generalize hL : wirePh p (pubOf vk c sig) tp.claim sig s5 = LL at l1 l2 l3
+  obtain ⟨lv, s6'⟩ := LL
   simp only at l1 l2 l3
   rw [l1] at hL
-  obtain ⟨s6', hs6'⟩ : ∃ s6' : RS, s6' = { s6 with ok := okL && s6.ok } := ⟨_, rfl⟩
-  have e6 : pos s6' = P6 := by rw [hs6']; exact l3
-  have o6 : s6'.ok = true := by rw [hs6']; simp [hokL, l2]
+  have e6 : pos s6' = P6 := l3
+  have o6 : s6'.ok = true := l2
   obtain ⟨k1, k2, k3⟩ := hks s6' e6 o6
   generalize hK : ksPh p sig s6' = KK at k1 k2 k3
   obtain ⟨kv, s7⟩ := KK
@@ -103,7 +102,7 @@ theorem core_of_phases (p : Params) (m : M3) (vk c : Vector UInt8 32) (sig : Byt
   obtain ⟨o1, o2', o3⟩ := hopen s8' e8 o8
   generalize hO : openPh p (claimsOf p m (pubOf vk c sig) (m.busFinal ⟨alphas, beta, countRoot, point, values, leafdec,
     pubOf vk c sig⟩)
-    evals r v ko ring linkClaims rk vks kko kring kLinkClaims) sig s8' = OO at o1 o2' o3
+    evals tp wo rk vks kko kring kLinkClaims) sig s8' = OO at o1 o2' o3
   obtain ⟨ov, s9⟩ := OO
   simp only at o1 o2' o3
   have run : decideProgH p m vk c sig RS.start = (acc, s9) := by
@@ -119,7 +118,7 @@ theorem core_of_phases (p : Params) (m : M3) (vk c : Vector UInt8 32) (sig : Byt
     simp only
     rw [hL]
     simp only
-    rw [← hs6', hK]
+    rw [hK]
     simp only
     rw [hM]
     simp only

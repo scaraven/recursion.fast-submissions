@@ -7,6 +7,7 @@ import LvmQAsmInb
 import LvmQAsmFacts
 import LvmQAsmHarPos
 import LvmQLinkBits
+import LvmQWireSound
 
 /-!
 # `BITS` facts of the `P20` node program
@@ -16,10 +17,11 @@ For `Q = Qn (lay cfg20) (sigIn cfg20) (qarith cfg20) (nK cfg20) 0` on the tables
 tables `T` with `hT` (`T = TS M3.tabsP20` for `NodeBase`):
 
 * **`auxH20`**: `loopir_sound`'s hypotheses (`AuxHyps`) on a good pair;
-* **`sBits20`**: `SBits M.k (bsB cfg20)` from the `s'` byte-shift class `sSpec` (its outputs are
-  input cells: `bsB cfg20 + 8 ≤ nK cfg20`);
+* **`sBits20`**: `SBitsS M.k hd (bsB cfg20)` from the `s'` bit class `sSpec` (its outputs are
+  input cells: `bsB cfg20 + 256 ≤ nK cfg20`);
 * **`nBits20`**: `NBits M.k ((sigIn cfg20).bn + 2) P20.logN` (`SigBits.n_bit`);
-* **`n1_20`**: `1 ≤ n'` of the child's public values (Q_sig's `ChildOk`; `n'` is stream lane 24);
+* **`n1_20`**, **`nN_20`**: `1 ≤ n' ≤ 2^logN` of the child's public values (Q_sig's `ChildOk`; `n'` is
+  stream lane 24);
 * **`posBits_of`**: QL's `PosBits` from the position classes (any configuration);
   **`hpos20`**: `NodeBase.hpos` (QL's `qin_bits`).
 -/
@@ -106,15 +108,15 @@ theorem auxH20
           lay26 (hτ' x) (stackOf lay26 qm qr))
         (inEOf (Qn (lay cfg20) (sigIn cfg20) (qarith cfg20) (nK cfg20) 0) pl groups (arrsX x) (aux cfg20 D)
           lay26 (hτ' x) (stackOf lay26 qm qr))).inb = true)
-    {vk c : RecursionFast.Digest} {x : List UInt8} {qm : Column 26} {qr : Column 19}
+    {vk c : RecursionFast.Digest} {x : List UInt8} {qm : Column CMain.nu20} {qr : Column 19}
     (hok : okS vk c x = true) (hb : (hdrOf x).b = 1) (hG : GoodN T hτ x qm qr) :
     AuxHyps (Qn (lay cfg20) (sigIn cfg20) (qarith cfg20) (nK cfg20) 0) pl groups (arrsX x) (aux cfg20 D) lay26
       (hτ' x) (stackOf lay26 qm qr) :=
   ⟨(hst x).wf, (hst x).grp, (hst x).inOk, (hst x).auxSeeds, (hst x).cnt, (hst x).len, (hst x).inj,
     m3Holds_congr (hT x) hG.1, hinb vk c x qm qr hok hb hG⟩
 
-/-- **The `s'` byte shifts** (`harith_core`'s `hsb`): the class `sSpec` (last of `aux`) reads stream
-lane `20 + l` and writes `shl 8`, `shr 56` at `bsB + 2l`, `bsB + 2l + 1`; its outputs are input cells
+/-- **The bits of `s'`** (`harith_core`'s `hsb`, lvm2 S2): the class `sSpec` (last of `aux`) reads stream
+lane `hd + 9 + l = 20 + l` and writes its 64 `bit` outputs at `bsB + 64 l + z`; they are input cells
 (`hbs`, a static bound like `PosCellsLt`). -/
 theorem sBits20
     (hT : ∀ x, T x = lvmTabs (Qn (lay cfg20) (sigIn cfg20) (qarith cfg20) (nK cfg20) 0) pl groups (arrsX x)
@@ -127,17 +129,19 @@ theorem sBits20
           lay26 (hτ' x) (stackOf lay26 qm qr))
         (inEOf (Qn (lay cfg20) (sigIn cfg20) (qarith cfg20) (nK cfg20) 0) pl groups (arrsX x) (aux cfg20 D)
           lay26 (hτ' x) (stackOf lay26 qm qr))).inb = true)
-    (hbs : bsB cfg20 + 8 ≤ nK cfg20) :
+    (hbs : bsB cfg20 + 256 ≤ nK cfg20) :
     ∀ vk c x qm qr, okS vk c x = true → (hdrOf x).b = 1 → GoodN T hτ x qm qr →
-      SBits (memX (lay cfg20) (sigIn cfg20) (qarith cfg20) (nK cfg20) 0 pl groups arrsX (aux cfg20 D) hτ' x qm
-        qr).k (bsB cfg20) := by
-  intro vk c x qm qr hok hb hG l hl
+      Lvm.Q1.SBitsS (memX (lay cfg20) (sigIn cfg20) (qarith cfg20) (nK cfg20) 0 pl groups arrsX (aux cfg20 D) hτ'
+        x qm qr).k (sigIn cfg20).hd (bsB cfg20) := by
+  intro vk c x qm qr hok hb hG l hl z hz
   have H := auxH20 hT hst hinb hok hb hG
   have hK : nK cfg20 ≤ (Qn (lay cfg20) (sigIn cfg20) (qarith cfg20) (nK cfg20) 0).cells .K :=
     nK_le_cells _ _ _
   have h24 : 24 ≤ nK cfg20 := by decide
   have hS : (sSpec cfg20 (bplOf D (6 + nPosCls cfg20))).tab ∈ aux cfg20 D :=
     List.mem_map_of_mem (List.mem_append_right _ (List.mem_singleton_self _))
+  have hlen : (sSpec cfg20 (bplOf D (6 + nPosCls cfg20))).outs.length = 64 := by
+    show ((List.range 64).map BOut.bit).length = 64; simp
   have hc : ((sSpec cfg20 (bplOf D (6 + nPosCls cfg20))).rd = true →
       (sSpec cfg20 (bplOf D (6 + nPosCls cfg20))).wc l <
         (Qn (lay cfg20) (sigIn cfg20) (qarith cfg20) (nK cfg20) 0).cells .K) ∧
@@ -145,17 +149,17 @@ theorem sBits20
         (sSpec cfg20 (bplOf D (6 + nPosCls cfg20))).oc j l <
           (Qn (lay cfg20) (sigIn cfg20) (qarith cfg20) (nK cfg20) 0).cells .K :=
     ⟨fun _ => show 11 + 9 + l < _ by omega, fun j hj => by
-      change j < 2 at hj
-      show bsB cfg20 + 2 * l + j < _
+      rw [hlen] at hj
+      show bsB cfg20 + 64 * l + j < _
       omega⟩
-  have hA : (sSpec cfg20 (bplOf D (6 + nPosCls cfg20))).wc l = sLane l := by
-    rw [sLane_eq]; show 11 + 9 + l = 20 + l; omega
   have hn : (sSpec cfg20 (bplOf D (6 + nPosCls cfg20))).n ≤ 2 ^ (sSpec cfg20 (bplOf D (6 + nPosCls cfg20))).τ :=
     show 4 ≤ 2 ^ 2 by decide
-  exact ⟨out1_at _ pl groups (arrsX x) (aux cfg20 D) lay26 (hτ' x) _ H _ hS hn rfl l 0 hl
-      (show 0 < 2 by decide) hc hA (Nat.add_zero _) rfl (by simp [BOut.Valid]),
-    out1_at _ pl groups (arrsX x) (aux cfg20 D) lay26 (hτ' x) _ H _ hS hn rfl l 1 hl
-      (show 1 < 2 by decide) hc hA rfl rfl (by simp [BOut.Valid])⟩
+  have hout : (sSpec cfg20 (bplOf D (6 + nPosCls cfg20))).out z = .bit z := by
+    show ((List.range 64).map BOut.bit).getD z (.bit 0) = .bit z
+    rw [List.getD_eq_getElem _ _ (by simpa using hz)]
+    simp
+  exact out1_at _ pl groups (arrsX x) (aux cfg20 D) lay26 (hτ' x) _ H _ hS hn rfl l z hl (by rw [hlen]; exact hz)
+    hc rfl rfl hout (show z < 64 from hz)
 
 /-- **The bits of the child's `n'`** (`harith_core`'s `hnb`): Q_sig's class `sN` (`SigBits.n_bit`). -/
 theorem nBits20 {bpl : ℕ → ℕ → Bool × ℕ} {rest : List Tab}
@@ -236,9 +240,8 @@ theorem n1_20 {bpl : ℕ → ℕ → Bool × ℕ} {rest : List Tab}
       (kAt (sigma P20 (wsOf (Lvm.X.laneOf (wOfCol qr)))) (8 * 24)).val from rfl, hk]
   exact h1
 
-/-- **`n' ≤ 2^20`** (`harith_core`'s `hn2`, lvm2's gated link): Q_sig's `ChildOk` on the child's header lane `n'` (stream
-lane 24), which is `pubOf`'s `n` on `Σ' = sigma` (`traceBytesB_decode`, `kAt_sigma`). -/
-theorem n2_20 {bpl : ℕ → ℕ → Bool × ℕ} {rest : List Tab}
+/-- **`n' ≤ 2^logN`** (`harith_core`'s `hnN`, T-V's `dRange`): `ChildOk`'s upper bound, as `n1_20`. -/
+theorem nN_20 {bpl : ℕ → ℕ → Bool × ℕ} {rest : List Tab}
     (hT : ∀ x, T x = lvmTabs (Qn (lay cfg20) (sigIn cfg20) (qarith cfg20) (nK cfg20) 0) pl groups (arrsX x)
       (aux cfg20 D))
     (hst : ∀ x, AuxStatic (lay cfg20) (sigIn cfg20) (qarith cfg20) (nK cfg20) 0 pl groups (aux cfg20 D)
@@ -266,13 +269,13 @@ theorem n2_20 {bpl : ℕ → ℕ → Bool × ℕ} {rest : List Tab}
   have hks := sigKSin_of_goodK hG.2 mp.xs mp.ys mp.yc mp.yls mp.yns
   obtain ⟨-, hch⟩ := sig_of_aux H mp.flag hks bpl hTabs (sigCellsLt_qsig bpl hR hP) rfl
   have h1 : ((memX (lay cfg20) (sigIn cfg20) (qarith cfg20) (nK cfg20) 0 pl groups arrsX (aux cfg20 D) hτ'
-      x qm qr).k ((sigIn cfg20).hd + 13)).val.toNat ≤ 2 ^ (sigIn cfg20).ln := hch.2.2.2.1
+      x qm qr).k ((sigIn cfg20).hd + 13)).val.toNat ≤ 2 ^ P20.logN := hch.2.2.2.1
   rw [mp.hd 13 (by norm_num)] at h1
   have hlen := hashedLen_ge hS
   have hws : (wsOf (Lvm.X.laneOf (wOfCol qr))).length = 17 * 2 ^ 14 := by simp [wsOf]
   have hk := kAt_sigma P20 (wsOf (Lvm.X.laneOf (wOfCol qr))) 24 (by omega) (by omega)
   rw [traceBytesB_decode hS hL]
-  show (laneAt (sigma P20 _) (headerAt 112)).toNat ≤ 2 ^ 20
+  show (laneAt (sigma P20 _) (headerAt 112)).toNat ≤ _
   rw [show headerAt 112 = 8 * 24 from rfl,
     show laneAt (sigma P20 (wsOf (Lvm.X.laneOf (wOfCol qr)))) (8 * 24) =
       (kAt (sigma P20 (wsOf (Lvm.X.laneOf (wOfCol qr)))) (8 * 24)).val from rfl, hk]

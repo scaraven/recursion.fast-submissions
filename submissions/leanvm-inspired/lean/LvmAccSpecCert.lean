@@ -8,8 +8,8 @@ import LvmCertSMid3
 /-!
 # O6 with phase 3b: `Good := GoodN ∧ AccOk`
 
-* `midSA tabs x`: the middle phases with phase 3b (`lbusTableAccProg`, then WP-8's `kgProgS`, then
-  WP-14a's `assembleS`), i.e. AC-N's `midS` once its phases 2–3b are `lbusTableAccProg`;
+* `midSA tabs x`: the middle phases with phase 3b (`lbusTableAccProg`, then `kgProgS s n` (lvm2 S2:
+  the tape, then `KS`), then WP-14a's `assembleS`), i.e. AC-N's `midS` once its phases 2–3b are `lbusTableAccProg`;
 * **`AccOkN tabs x`**: the statement's incoming claim holds (native `AccOk … (pubX x).accIn`);
   **`GoodA`** = WP-16b's `GoodS` with `AccOkN` (`goodA_iff`); **`nodeSound_goodA`**: `NodeSound` for
   `GoodA` from `NodeSound` for `GoodN ∧ AccOkN` (AC-N's form: `harith` gives `decideCore` and
@@ -82,7 +82,7 @@ def GoodA (tabs : Pub → List Tab) (hτ : ∀ x, ∀ t ∈ TS tabs x, t.τ ≤ 
   fun x qm qr ↦ GbA tabs hτ x (qm, qr) ∧ GkS x (qm, qr)
 
 theorem goodA_iff (tabs : Pub → List Tab) (hτ : ∀ x, ∀ t ∈ TS tabs x, t.τ ≤ lay26.μ)
-    (x : List UInt8) (qm : Column 26) (qr : Column 19) :
+    (x : List UInt8) (qm : Column CMain.nu20) (qr : Column 19) :
     GoodA tabs hτ x qm qr ↔ GoodS (TS tabs) hτ x qm qr ∧ AccOkN tabs x :=
   ⟨fun ⟨⟨hb, ha⟩, hk⟩ ↦ ⟨⟨hb, hk⟩, ha⟩, fun ⟨⟨hb, hk⟩, ha⟩ ↦ ⟨⟨hb, ha⟩, hk⟩⟩
 
@@ -93,7 +93,7 @@ theorem nodeSound_goodA {VS : Lvm.T.SProg} {vk : RecursionFast.Digest} {tabs : P
     (h : NodeSound VS vk (fun x qm qr ↦ GoodN (TS tabs) hτ x qm qr ∧ AccOkN tabs x) child) :
     NodeSound VS vk (GoodA tabs hτ) child :=
   fun c x qm qr hok hG ↦ h c x qm qr hok
-    ⟨⟨hG.1.1.1, pubX_n x ▸ hG.2.1, hG.2.2, hG.1.1.2 (Lvm.NS.okS_n hok).2⟩, hG.1.2⟩
+    ⟨⟨hG.1.1.1, hG.2.1, hG.2.2, hG.1.1.2 (Lvm.NS.okS_n hok).2⟩, hG.1.2⟩
 
 /-! ## Phase 3b's facts and errors -/
 
@@ -163,8 +163,9 @@ theorem acc_errs : max (Lvm.P20.accLog * errE 1) LkS = LkS ∧ errE accVars ≤ 
 
 /-- **The middle phases with phase 3b**: phases 2–3b, V_S phases 4–7, the claims. -/
 def midSA (tabs : Pub → List Tab) (x : List UInt8) : VerifierProgram OpenClaims :=
-  lbusTableAccProg Lvm.P20 tabs (pubX x) Lvm.P20.busDepth >>= fun a ↦ kgProgS (pubX x).n >>= fun k ↦
-    VerifierProgram.ret (assembleS (TS tabs x) (pubX x) a k)
+  lbusTableAccProg Lvm.P20 tabs (pubX x) Lvm.P20.busDepth >>= fun a ↦
+    kgProgS (hdX x).s (pubX x).n >>= fun k ↦
+      VerifierProgram.ret (assembleS (TS tabs x) (pubX x) a k)
 
 variable {tabs : Pub → List Tab}
 
@@ -194,20 +195,21 @@ noncomputable def specBusA (H : MidHyp tabs) (HA : AccMidHyp tabs) (x : List UIn
 theorem midSpec_midSA (H : MidHyp tabs) (HA : AccMidHyp tabs) :
     MidSpec (midSA tabs) (GoodA tabs H.hτ) εS εS :=
   midSpecOfR (busP := fun x ↦ lbusTableAccProg Lvm.P20 tabs (pubX x) Lvm.P20.busDepth)
-    (kgP := fun x ↦ kgProgS (pubX x).n) (asm := fun x a k ↦ assembleS (TS tabs x) (pubX x) a k) (Lb := εS) (Lk := LkS)
+    (kgP := fun x ↦ kgProgS (hdX x).s (pubX x).n)
+    (asm := fun x a k ↦ assembleS (TS tabs x) (pubX x) a k) (Lb := εS) (Lk := LkS)
     (Gb := GbA tabs H.hτ) (Gk := GkS)
-    (B := BS tabs) (Kc := fun x ↦ KcS (pubX x).n) (Qa := fun x ↦ TabRet (TS tabs x)) (Qk := KgRet)
+    (B := BS tabs) (Kc := KcS) (Qa := fun x ↦ TabRet (TS tabs x)) (Qk := KgRet)
     (specBusA H HA) (fun x ↦ retOK_lbusTableAccProg _ _ _ _) (fun x a T hT ↦ specKgS x a T hT)
-    (fun _ ↦ retOK_kgProgS _) (fun _ ↦ cg_kgProgS _) (link_assembleS H) (side_midS H)
+    (fun _ ↦ retOK_kgProgS _ _) (fun _ ↦ cg_kgProgS _ _) (link_assembleS H) (side_midS H)
 
 /-- **The middle phases' shape** (`hsh`) with phase 3b. -/
 theorem midShape_midSA (H : MidHyp tabs) : MidShape (midSA tabs) where
   noCommit x := (Lvm.M3.NoCG.bind (noCG_lbusTableAccProg _ _ _ _) fun _ ↦
-    Lvm.M3.NoCG.bind (cg_kgProgS _) fun _ ↦ Lvm.M3.cg_ret _).1
+    Lvm.M3.NoCG.bind (cg_kgProgS _ _) fun _ ↦ Lvm.M3.cg_ret _).1
   noGrind x := (Lvm.M3.NoCG.bind (noCG_lbusTableAccProg _ _ _ _) fun _ ↦
-    Lvm.M3.NoCG.bind (cg_kgProgS _) fun _ ↦ Lvm.M3.cg_ret _).2
+    Lvm.M3.NoCG.bind (cg_kgProgS _ _) fun _ ↦ Lvm.M3.cg_ret _).2
   recAffine x l cl hl :=
-    ((retOK_lbusTableAccProg _ _ _ _).bind fun a ha ↦ (retOK_kgProgS _).bind fun k hk ↦
+    ((retOK_lbusTableAccProg _ _ _ _).bind fun a ha ↦ (retOK_kgProgS _ _).bind fun k hk ↦
       LeanVM.Protocol.EndToEnd.Sound.RetOK.ret (side_midS H x a k ha hk).1 :
       RetOK (fun cl : OpenClaims ↦ ∀ c ∈ cl.1, IsMultiaffine 19 c.1) (midSA tabs x)) l cl hl
 

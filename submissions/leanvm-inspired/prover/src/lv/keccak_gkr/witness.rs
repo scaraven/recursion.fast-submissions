@@ -386,6 +386,24 @@ impl Witness {
         unsafe { Self::from_extents(shape, vec![extent], written, padding.map(|(extent, _)| extent)) }
     }
 
+    /// lvm2 T-P1 (BLUEPRINT2 §2.2): [`Witness::generate`] with nothing committed, for a batch whose inputs are
+    /// virtual (the tape: the caller ties the input claim to its own columns). The blocks after the last input are
+    /// run once, as the padding block.
+    pub fn generate_uncommitted(shape: Shape, inputs: &[[u64; LANES]]) -> Self {
+        assert!(inputs.len() <= shape.n());
+        let written = inputs.len().div_ceil(BLOCK);
+        let padding = padding(shape, written);
+        let mut extent = Extent::new(0, written);
+        let slots: Vec<Slot> = (0..written).map(|g| extent.slot(g)).collect();
+        crate::lv::parallel::for_each(written, |g| {
+            let inputs = &inputs[g * BLOCK..((g + 1) * BLOCK).min(inputs.len())];
+            // SAFETY: block `g` owns its slot; nothing is committed.
+            unsafe { block(shape.depth, inputs, Some(slots[g]), |_, _, _| {}) };
+        });
+        // SAFETY: the blocks below `written` were run into `extent` just above.
+        unsafe { Self::from_extents(shape, vec![extent], written, padding.map(|(extent, _)| extent)) }
+    }
+
     /// Write the committed lanes of every block into `committed`, laid out as `generate` does.
     ///
     /// - Block `g`'s lanes are `lanes[g]`.

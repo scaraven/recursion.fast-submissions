@@ -2,7 +2,6 @@
 -- that the kernel cannot evaluate are one closed Bool `b` (`LvmFinStatic.staticOkB`), checked by the
 -- compiled `V` once per process; the certificate case-splits on `b`.
 import LvmSubmissionS
-import LvmVFast
 
 /-!
 # The static guard of `V_S` (A24)
@@ -13,8 +12,9 @@ import LvmVFast
 * **`certificateR_reject`**: with the guard off the `S` branch accepts nothing, so its knowledge
   soundness holds with a trivial scheme (`P_S := .ret false`, empty doom, no luck); the `W` branch,
   completeness (`P := encode`, `δ = 0`) and the extractor are those of every `subWith`.
-* **`certificateR_guard`**: the certificate of `subG b VS20` from the open obligations under
-  `b = true`. `subG true VS20 = Lvm.T.submission` (`rfl`).
+* **`certificateR_guardT`**: the certificate of `subG b (VSt tabs)` from the open obligations under
+  `b = true` (lvm2 S2-CERT: generic in the node program's tables; v1's `certificateR_guard` at
+  `VS20`, `subG_true` and `subG_F` are in `LvmFinCert`, which imports the node program).
 -/
 
 set_option autoImplicit false
@@ -34,8 +34,6 @@ def subG (b : Bool) (VS : SProg) : Submission :=
   subWith (VSg b VS) (Lvm.X.EX (accV (VSg b VS))) Lvm.X.extX
 
 theorem VSg_true (VS : SProg) : VSg true VS = VS := rfl
-
-theorem subG_true : subG true Lvm.VS20 = Lvm.T.submission := rfl
 
 /-! ## The guard off: a scheme that rejects -/
 
@@ -119,15 +117,13 @@ theorem certificateR_reject (VS : SProg) :
         simp [isS, this, sByte] at h,
       fun vk => sSound_reject VS _ vk⟩
 
-/-- **The certificate of the guarded submission** from the open obligations under `b = true`. -/
-theorem certificateR_guard {b : Bool} (h : b = true → Lvm.T.Open) :
+/-- **The certificate of the guarded submission on the tables `tabs`** from the open obligations
+under `b = true`. -/
+theorem certificateR_guardT (tabs : Lvm.Pub → List Lvm.M3.Tab) {b : Bool} (h : b = true → OpenT tabs) :
     CertificateR ⟨(1 : ℝ≥0) / 340282366920938463463374607431768211456, (0 : ℝ≥0) / 1, 16384,
-      fun t => 70368744177664 + 8192 * t⟩ (subG b Lvm.VS20) := by
+      fun t => 70368744177664 + 8192 * t⟩ (subG b (VSt tabs)) := by
   cases b with
   | false => exact certificateR_reject _
-  | true => exact Lvm.T.certificateR_open (h rfl)
-
-/-- The compiled guarded submission (`VS20F`, V-PERF) is the specified one. -/
-theorem subG_F (b : Bool) : subG b Lvm.VF.VS20F = subG b Lvm.VS20 := by rw [Lvm.VF.VS20F_eq]
+  | true => exact certificateR_openT tabs (h rfl)
 
 end Lvm.Fin

@@ -9,9 +9,13 @@ whir.rs`, `lib.rs:122-139`, Annex B), on the reader `DM`: `subspaceRoots`, `indu
 `verifyWhir`, `verifyStackedOpening`.
 
 Deviations (BLUEPRINT §1, §3.1, §11 A10, A11; WP-0):
-* **No OOD, no grinding.** A non-final level's next commitment is a cap (`2^c` nodes, skipped
+* **No OOD.** A non-final level's next commitment is a cap (`2^c` nodes, skipped
   here: the driver checks every opening against it), with no out-of-domain sample, value or
-  intro round; no proof-of-work nonce.
+  intro round.
+* **Grinding in the answer** (PI-GRIND, `g = Params.grind`): with `g > 0`, after the cap or the
+  final, a separating challenge, the nonce (one scalar) and the PoW challenge, whose top `g` bits
+  must be zero (`grindPreR`, `powCheckR`), before the positions; leanVM's nonce is a `grind`
+  query instead. `g = 0` reads nothing more (v1).
 * **Positions** are 8 per FS answer (`positionsR`), not leanVM's `192 / depth` per sample.
 * **Parameters** are the record's (`Level`), not leanVM's Johnson ladder and query table.
 * **Rows** are read from `Σ` in place: a level-0 row is `2^ℓ` `K` words, word `t` the code of
@@ -209,8 +213,9 @@ def glue (lam : FE) (state : WhirState) (pending : List (List FE × (List FE →
 def directFinal (residual : List FE) (L : Level) (queries : List Nat) (folds : List FE) : Bool :=
   (List.zip (lchEncodeAt residual.toArray L.kappa L.rate queries) folds).all fun (e, f) => e == f
 
-/-- **One level of the UD WHIR and every level after it** (`whir.rs:158-262`). -/
-def whirLevels (logN laneFolds : Nat) (evaluateBasis : List FE → FE) (direct : Bool) :
+/-- **One level of the UD WHIR and every level after it** (`whir.rs:158-262`; the proof of work of
+`g` bits before the positions). -/
+def whirLevels (logN laneFolds : Nat) (evaluateBasis : List FE → FE) (direct : Bool) (g : Nat) :
     List Level → WhirState → DM Unit
   | [], _ => require false
   | L :: rest, s => do
@@ -219,6 +224,8 @@ def whirLevels (logN laneFolds : Nat) (evaluateBasis : List FE → FE) (direct :
     let residual ← match rest with
       | [] => readEs (2 ^ messageLog)
       | N :: _ => do skip (nodeBytes * 2 ^ N.cap); pure []
+    grindPreR g
+    powCheckR g
     let queries ← positionsR L
     let lam ← sampleE
     let queryWeights := powers lam queries.length
@@ -241,21 +248,21 @@ def whirLevels (logN laneFolds : Nat) (evaluateBasis : List FE → FE) (direct :
         (evaluateBasis (point.drop laneFolds ++ point.take laneFolds))
       let terminal := weight * multilinearEval residual tailFolds
       require (terminal == target)
-    | _ :: _ => whirLevels logN laneFolds evaluateBasis direct rest s
+    | _ :: _ => whirLevels logN laneFolds evaluateBasis direct g rest s
 
 /-- `verify_whir(…, log_n, …, target, root, evaluate_basis)` on the record's levels
 (`whir.rs:141-265`). -/
 def verifyWhir (levels : List Level) (logN : Nat) (target : FE) (evaluateBasis : List FE → FE)
-    (direct : Bool) : DM Unit := do
+    (direct : Bool) (g : Nat) : DM Unit := do
   let quad ← sumcheckRoundPoly 3 target none
-  whirLevels logN ((levels.head?.map (·.fold)).getD 0) evaluateBasis direct levels ⟨quad, [], []⟩
+  whirLevels logN ((levels.head?.map (·.fold)).getD 0) evaluateBasis direct g levels ⟨quad, [], []⟩
 
 /-- **`verify_stacked_opening`**: the claims batched with powers of one challenge into one WHIR
-opening (`lib.rs:122-139`). -/
+opening (`lib.rs:122-139`), `g` PoW bits per level. -/
 def verifyStackedOpening (levels : List Level) (stackLog : Nat) (claims : List StackClaim)
-    (direct : Bool) : DM Unit := do
+    (direct : Bool) (g : Nat) : DM Unit := do
   let scales := powers (← sampleE) claims.length
   verifyWhir levels stackLog (dot scales (claims.map (·.2)))
-    (fun point => dot scales (claims.map fun c => c.1 point)) direct
+    (fun point => dot scales (claims.map fun c => c.1 point)) direct g
 
 end Lvm

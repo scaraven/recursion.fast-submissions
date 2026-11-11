@@ -8,6 +8,7 @@ import LvmSubmission
 import LvmCompileCodec
 import LvmSpecRulesCert
 import LvmWhirParams
+import LvmWhirParams24
 import LvmWhirDoom
 import LvmFrontMech
 
@@ -19,8 +20,8 @@ byte 8 (`hdrLen = 5,616` bytes, absorbed by the seed: `enc = id`); `hdrS π` acc
 `piSz` bytes starting `'S' 0^7` and splits it into that header and the body; `okS vk c x` is
 `V_S`'s native header check (`parseOk`) with the specification hashes, minus what `hdrS` checks;
 `q₀ = "lvm/1\0\0"`; `E` scalars, `K` words and challenges by WP-5's codec (`eOfBytes`, `kOfBytes`,
-`chalOf`); the cap level is `8` for `C_main`'s root (`2^21` leaves) and `7` for every other tree
-(`cfgMain20`/`cfgRec20`, BLUEPRINT §3.1).
+`chalOf`); the cap level is `8` for `C_main`'s root (`2^19` leaves, lvm2 S2) and `7` for every other tree
+(`cfgMain24`/`cfgRec20`, BLUEPRINT §3.1).
 
 **`P_S`** (`PSWith mid x`, BLUEPRINT §5, WP-11a's `decideProg` order): the roots of `C_main` and
 `C_rec` (`commitRootUd`), the middle phases `mid x` (bus, tables, `CH` GKR with its caller claims
@@ -80,7 +81,7 @@ def okS (vk c : Digest) (x : List UInt8) : Bool :=
      else decide (c = nodeStmt hd.cL (leafStmt hd.h hd.n)) && SigOk vk (traceDigest []) hd.sig)
 
 /-- The cap level of a tree of `2^ht` leaves: `8` for `C_main`'s root, `7` for the others (P20). -/
-def capOfS (ht _w : ℕ) : ℕ := if ht = 21 then 8 else 7
+def capOfS (ht _w : ℕ) : ℕ := if ht = 19 then 8 else 7
 
 /-- **The `S` branch's scheme** for the program `P` under the key `vk`. -/
 def schemeS (vk : Digest) (P : List UInt8 → VerifierProgram Bool) : Scheme where
@@ -106,17 +107,17 @@ abbrev OpenClaims : Type :=
 
 /-- **The IOP verifier `P_S`** with the middle phases `mid`. -/
 def PSWith (mid : List UInt8 → VerifierProgram OpenClaims) (x : List UInt8) : VerifierProgram Bool := do
-  commitRootUd cfgMain20
+  commitRootUd cfgMain24
   commitRootUd cfgRec20
   let cl ← mid x
   verifyStackedUd cfgRec20 cl.1
-  verifyStackedUd cfgMain20 cl.2
+  verifyStackedUd cfgMain24 cl.2
   return true
 
 /-! ## The doom root -/
 
 /-- `C_main`'s unique-decoding threshold (level 0). -/
-noncomputable def thrMain : ℕ := (codesMain20 0).thr
+noncomputable def thrMain : ℕ := (codesMain24 0).thr
 
 /-- `C_rec`'s unique-decoding threshold. -/
 noncomputable def thrRec : ℕ := (codesRec20 0).thr
@@ -125,11 +126,11 @@ noncomputable def thrRec : ℕ := (codesRec20 0).thr
 theorem thrRec_eq : thrRec = LeanVM.Protocol.Whir.udThr 13 2 := rfl
 
 /-- The M3 witness relation on a candidate pair (`C_main`, `C_rec`) for a statement. -/
-abbrev GoodRel : Type := List UInt8 → LeanVM.Protocol.Column 26 → LeanVM.Protocol.Column 19 → Prop
+abbrev GoodRel : Type := List UInt8 → LeanVM.Protocol.Column CMain.nu20 → LeanVM.Protocol.Column 19 → Prop
 
 /-- The candidate pairs of a history's two first commitments. -/
-def candPairs (h : List Ev) : Set (LeanVM.Protocol.Column 26 × LeanVM.Protocol.Column 19) :=
-  {p | p.1 ∈ Candidates 26 1 thrMain (wordOf (commits h) 0) ∧
+def candPairs (h : List Ev) : Set (LeanVM.Protocol.Column CMain.nu20 × LeanVM.Protocol.Column 19) :=
+  {p | p.1 ∈ Candidates CMain.nu20 1 thrMain (wordOf (commits h) 0) ∧
     p.2 ∈ Candidates 19 2 thrRec (wordOf (commits h) 1)}
 
 /-- **The doom root**: no candidate pair of the committed words is a witness of the M3 instance. -/
@@ -149,22 +150,22 @@ theorem candPairs_stable : LeanVM.Protocol.EndToEnd.Front.Stable candPairs := by
 
 /-- The shape of the two root commitments (heights, widths), and nothing else committed. -/
 def RootShape (h : List Ev) : Prop :=
-  ∃ Wm Wr, commits h = [(21, 64, Wm), (15, 64, Wr)] ∧ WellShaped 64 Wm ∧ WellShaped 64 Wr
+  ∃ Wm Wr, commits h = [(19, 64, Wm), (15, 64, Wr)] ∧ WellShaped 64 Wm ∧ WellShaped 64 Wr
 
 /-- **The middle phases' postcondition** (in doom): every candidate pair fails a claim on `C_rec`
 or on `C_main`, and the roots' shape is kept; the returned claims are multiaffine and at most
 `2^63` per commitment (the WHIR specs' side conditions, `retInv` facts of the phases). -/
 def OpenPost (cl : OpenClaims) (h : List Ev) : Prop :=
   (∀ p ∈ candPairs h, (∃ c ∈ cl.1, ¬ LeanVM.Protocol.EndToEnd.StackClaim.Holds 19 c p.2) ∨
-    (∃ c ∈ cl.2, ¬ LeanVM.Protocol.EndToEnd.StackClaim.Holds 26 c p.1)) ∧ RootShape h ∧
-  (∀ c ∈ cl.1, IsMultiaffine 19 c.1) ∧ (∀ c ∈ cl.2, IsMultiaffine 26 c.1) ∧
+    (∃ c ∈ cl.2, ¬ LeanVM.Protocol.EndToEnd.StackClaim.Holds CMain.nu20 c p.1)) ∧ RootShape h ∧
+  (∀ c ∈ cl.1, IsMultiaffine 19 c.1) ∧ (∀ c ∈ cl.2, IsMultiaffine CMain.nu20 c.1) ∧
   cl.1.length ≤ 2 ^ 63 ∧ cl.2.length ≤ 2 ^ 63
 
 /-- **The openings' precondition splits** (no unique decoding needed): if some candidate of
 `C_rec` meets all its claims, every candidate of `C_main` fails one of its claims. -/
 theorem openPost_split {cl : OpenClaims} {h : List Ev} (hp : OpenPost cl h) :
     StackedPreUd cfgRec20 (codesRec20 0) cl.1 (commits h) ∨
-      StackedPreUd cfgMain20 (codesMain20 0) cl.2 (commits h) := by
+      StackedPreUd cfgMain24 (codesMain24 0) cl.2 (commits h) := by
   obtain ⟨hpairs, ⟨Wm, Wr, hc, hWm, hWr⟩, -⟩ := hp
   by_cases hr : ∀ q ∈ Candidates 19 2 thrRec (wordOf (commits h) 1),
       ∃ c ∈ cl.1, ¬ LeanVM.Protocol.EndToEnd.StackClaim.Holds 19 c q
@@ -292,9 +293,9 @@ theorem sSound_of (VS : SProg) (E : Digest → Proof → Log → Option Wit) (vk
 theorem hdrS_ctl : hdrS ⟨#[0x57]⟩ = none := by
   simp [hdrS, piSz, sPrefix]
 
-/-- (+) `P_S` starts with the two root commitments (`C_main`: `2^21` leaves of `64` words; `C_rec`:
+/-- (+) `P_S` starts with the two root commitments (`C_main`: `2^19` leaves (lvm2 S2) of `64` words; `C_rec`:
 `2^15` leaves of `64` words). -/
 theorem PSWith_roots (mid : List UInt8 → VerifierProgram OpenClaims) (x : List UInt8) :
-    ∃ k, PSWith mid x = .commit 21 64 (.commit 15 64 k) := ⟨_, rfl⟩
+    ∃ k, PSWith mid x = .commit 19 64 (.commit 15 64 k) := ⟨_, rfl⟩
 
 end Lvm.ASM

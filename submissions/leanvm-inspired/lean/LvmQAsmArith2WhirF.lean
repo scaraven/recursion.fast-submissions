@@ -328,8 +328,8 @@ theorem openingR_mk (L : Level) (sig : ByteArray) (a : Nat) (o : Bool) :
 
 theorem whirLevels_step (ν lf : Nat) (B : List FE → FE) (L N : Level) (rest : List Level) (st : WhirState)
     (sig : ByteArray) (s : RS) (V : Nat) (hs : pos s = 8 * V) (hrow : L.row % 8 = 0) :
-    whirLevels ν lf B false (L :: N :: rest) st sig s =
-      whirLevels ν lf B false (N :: rest)
+    whirLevels ν lf B false 0 (L :: N :: rest) st sig s =
+      whirLevels ν lf B false 0 (N :: rest)
         (glue (feAt sig (8 * (lvLanes L (some N) V).V3 + 40))
           ⟨frQ sig (8 * V) L.fold st.runningQuad, st.folds ++ frC sig (8 * V) L.fold, st.glued⟩
           [([feAt sig (8 * (lvLanes L (some N) V).V5 + 40),
@@ -347,7 +347,7 @@ theorem whirLevels_step (ν lf : Nat) (B : List FE → FE) (L N : Level) (rest :
         sig ⟨8 * (lvLanes L (some N) V).V5, 48, s.ok⟩ := by
   have hD : 40 + L.row + 104 * L.path = 8 * oStr L := by unfold oStr; omega
   conv_lhs => rw [whirLevels]
-  simp only [dm_bind, dm_pure, skip_run, read_run, sampleE_run, srp3_run, foldRounds_fst, foldRounds_pos,
+  simp only [grindPreR, powCheckR, ↓reduceIte, dm_bind, dm_pure, skip_run, read_run, sampleE_run, srp3_run, foldRounds_fst, foldRounds_pos,
     foldRounds_ok, positionsR_fst, positionsR_pos, positionsR_ok, pos_upd, pos_mk0, openingR_mk, hs,
     List.nil_append, List.length_append, frC_length, qsAt_length, List.map_map, Nat.zero_add,
     Function.comp_def]
@@ -381,14 +381,14 @@ theorem whirLevels_final (ν lf : Nat) (B : List FE → FE) (L : Level) (st : Wh
     let weight := st'.glued.foldl
       (fun w cl => w + cl.scalar * cl.weightAt (st'.folds.drop cl.foldStart ++ tf))
       (B (point.drop lf ++ point.take lf))
-    whirLevels ν lf B false [L] st sig s =
+    whirLevels ν lf B false 0 [L] st sig s =
       ((), ⟨8 * ll.V6 + 120 * (L.kappa - 1) + 72, 0,
         (weight * multilinearEval ((List.range (2 ^ L.kappa)).map fun i => feAt sig (8 * ll.V1 + 40 + 24 * i)) tf ==
           tlT sig (8 * ll.V6) L.kappa st'.runningQuad) && s.ok⟩) := by
   dsimp only
   have hD : 40 + L.row + 104 * L.path = 8 * oStr L := by unfold oStr; omega
   conv_lhs => rw [whirLevels]
-  simp only [dm_bind, dm_pure, read_run, sampleE_run, srp3_run, readEs_run, require_runW, foldRounds_fst,
+  simp only [grindPreR, powCheckR, ↓reduceIte, dm_bind, dm_pure, read_run, sampleE_run, srp3_run, readEs_run, require_runW, foldRounds_fst,
     foldRounds_pos, foldRounds_ok, positionsR_fst, positionsR_pos, positionsR_ok, pos_upd, pos_mk0, pos_mk48,
     openingR_mk, hs, List.nil_append, List.length_append, frC_length, qsAt_length, List.map_map, Nat.zero_add,
     Function.comp_def, ← hκ, tailRounds_run L.kappa hm, Bool.false_eq_true, ↓reduceIte]

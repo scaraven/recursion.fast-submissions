@@ -13,8 +13,8 @@ values, the two caps skipped (`dCommit`), then
 * `dTab p m pub point bus` (phase 3): `ξ`, the table sumcheck; the evaluations; then AC-V's
   `accFold` (phase 3b, A23): `PUB`'s check, `κ`, `h`, `t`, the zero scalar; the folded accumulator;
 * `dKec h` (phases 4 and 6): the instance point, the 25 lanes, the Keccak GKR, the ring switch;
-* `dChLink p m r v pub` (phase 5), `dKsLink p m rk pub` (phase 7): the links, `require ok`; their
-  claims;
+* `dTape`, `dWire` (lvm2 S2, phases 4–5, `LvmDecideTape`); `dChLink` (v1's phase 5) is kept but
+  unused; `dKsLink p m rk pub` (phase 7): the `KS` link, `require ok`; its claims;
 * `dOpen p claims` (phases 8–9): the two stacked openings of the claims, per commitment;
   `decidePhases` returns phase 3b's accumulator (A23).
 -/
@@ -64,10 +64,10 @@ def dKec (h : Nat) : DM (List FE × List FE × KeccakOut × (FE × (List FE → 
 /-- The `CH` link (phase 5): its claims. -/
 def dChLink (p : Params) (m : M3) (r v : List FE) (pub : Pub) : DM (List (Com × BlockClaim)) := do
   let chal ← samples (p.logN + 3 + 6)
-  let shift ← sumcheck (m.chShiftTarget pub chal) 3 (List.replicate p.logN none)
+  let shift ← sumcheck (m.chShiftTarget chal) 3 (List.replicate p.logN none)
   let inS ← readEs kBits
   let ringIn ← ringRaw inS
-  let sc2 ← sumcheck (m.chSc2Target pub chal shift inS) 3 [none, none]
+  let sc2 ← sumcheck (m.chSc2Target chal shift inS) 3 [none, none]
   let yS ← readEs kBits
   let ringY ← ringRaw yS
   let constLanes ← samples laneBits
@@ -87,18 +87,17 @@ def dKsLink (p : Params) (m : M3) (rk : List FE) (pub : Pub) : DM (List (Com × 
 /-- The openings (phases 8–9). -/
 def dOpen (p : Params) (claims : List (Com × BlockClaim)) : DM Unit := do
   let on (com : Com) := (claims.filter (·.1 == com)).map (·.2.onStack)
-  verifyStackedOpening p.recLevels p.nuRec (on .crec) false
-  verifyStackedOpening p.mainLevels p.nuMain (on .main) false
+  verifyStackedOpening p.recLevels p.nuRec (on .crec) false p.grind
+  verifyStackedOpening p.mainLevels p.nuMain (on .main) false p.grind
 
-/-- The claims of phases 2–7 (`decideProg`'s list). -/
+/-- The claims of phases 2–7 (`decideProg`'s list; lvm2 S2: the tape's claims in place of `CH`'s
+and the `CH` link's). -/
 def dClaims (m : M3) (p : Params) (pub : Pub) (bus : BusOut) (evals : List (List FE × List FE))
-    (ch : List FE × List FE × KeccakOut × (FE × (List FE → FE)))
+    (tp : TapeRes) (wo : WireOut)
     (ks : List FE × List FE × KeccakOut × (FE × (List FE → FE)))
-    (linkClaims kLinkClaims : List (Com × BlockClaim)) : List (Com × BlockClaim) :=
+    (kLinkClaims : List (Com × BlockClaim)) : List (Com × BlockClaim) :=
   bus.claims ++ m.tableClaims pub evals ++
-    ((keccakClaims m.chBlock ch.2.2.1 ch.2.2.2 ++
-        chFixedClaims p m.chBlock m.chYSlot ch.1 ch.2.1 pub) ++
-      keccakClaims m.ksBlock ks.2.2.1 ks.2.2.2).map (.main, ·) ++ linkClaims ++
+    (tapeClaims p tp wo pub ++ keccakClaims m.ksBlock ks.2.2.1 ks.2.2.2).map (.main, ·) ++
     m.ksOutputClaims ks.1 ks.2.1 ++ kLinkClaims
 
 /-- **`decideProg` by phases** (its value: phase 3b's folded accumulator). -/
@@ -109,17 +108,18 @@ def decidePhases (p : Params) (m : M3) (vk c : Vector UInt8 32) : DM Acc := do
   let pb ← dBus p m pub
   let evals ← dTab p m pub pb.1 pb.2
   let accOut ← accFold p m pub evals
-  let ch ← dKec p.logN
-  let linkClaims ← dChLink p m ch.1 ch.2.1 pub
+  let tp ← dTape p.logN
+  dRange p pub
+  let wo ← dWire p pub tp.claim
   let ks ← dKec p.ksLog
   let kLinkClaims ← dKsLink p m ks.1 pub
-  dOpen p (dClaims m p pub pb.2 evals ch ks linkClaims kLinkClaims)
+  dOpen p (dClaims m p pub pb.2 evals tp wo ks kLinkClaims)
   pure accOut
 
 /-- `decideProg` is its phases. -/
 theorem decideProg_eq (p : Params) (m : M3) (vk c : Vector UInt8 32) :
     decideProg p m vk c = decidePhases p m vk c := by
-  simp only [decideProg, decidePhases, dCommit, dBus, dTab, dKec, dChLink, dKsLink, dOpen, dClaims,
+  simp only [decideProg, decidePhases, dCommit, dBus, dTab, dKec, dKsLink, dOpen, dClaims,
     bind_assoc, pure_bind]
 
 end Lvm.VEq

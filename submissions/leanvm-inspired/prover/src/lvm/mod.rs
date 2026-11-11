@@ -3,6 +3,7 @@
 pub mod acc;
 pub mod bits;
 pub mod bus;
+pub mod layout;
 pub mod link;
 pub mod loopir;
 pub mod m3;
@@ -11,3 +12,4 @@ pub mod prove;
 pub mod rec;
 pub mod stream;
 pub mod tables;
+pub mod wire;

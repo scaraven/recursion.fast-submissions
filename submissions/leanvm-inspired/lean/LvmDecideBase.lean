@@ -20,7 +20,8 @@ message bytes of that entry (an FS query) read so far. An FS entry is
 `enc64 |q| (8) ‖ st (32) ‖ msg ‖ answer (32)`, a leaf entry `enc64 |q| ‖ row ‖ answer`, a node
 entry 104 B. `readE` takes the next 24 message bytes; `sampleE` takes the answer that follows
 the message (lanes 0–2 as an `E` element) and moves to the next entry; `positionsR` takes `⌈t/8⌉`
-answers' bit fields; `openingR` returns the rows' offsets and skips the paths. The cursor never
+answers' bit fields (after `grindPreR`, `powCheckR`: a level's proof of
+work, PI-GRIND); `openingR` returns the rows' offsets and skips the paths. The cursor never
 reads a length lane: every offset is fixed by `F`'s own sequence of reads, which is the
 schedule's (`LvmSchedule`). Checks do not stop the reading: `require` clears a flag, so `F`'s
 reading is the same on every stream (a static shape, as the circuit's).
@@ -272,6 +273,25 @@ def positionsAux (h : Nat) : (n rem : Nat) → DM (List Nat)
 /-- The positions of the oracle of level `L`. -/
 def positionsR (L : Level) : DM (List Nat) :=
   positionsAux L.height ((L.t + positionsPerAnswer - 1) / positionsPerAnswer) L.t
+
+/-- The proof of work holds on the challenge `c`: its top `g` bits (of `192`) are zero, i.e.
+`eToNat c < 2^(192 − g)` (LvmWhirProg `powOK`; for `g ≤ 64`, lane 2 `< 2^(64 − g)`). -/
+def powOKR (g : Nat) (c : FE) : Bool := decide (eToNat c < 2 ^ (192 - g))
+
+/-- Before a level's proof of work (PI-GRIND; LvmWhirProg `grindPre`): the separating challenge
+(it absorbs the cap or the final; its value is unused) and the nonce. Nothing at `g = 0`. -/
+def grindPreR (g : Nat) : DM Unit :=
+  if g = 0 then pure () else do
+    let _ ← sampleE
+    let _ ← readE
+    pure ()
+
+/-- A level's proof of work (PI-GRIND; LvmWhirProg `powCheck`): the PoW challenge (it absorbs the
+nonce), its top `g` bits zero. Nothing at `g = 0`. -/
+def powCheckR (g : Nat) : DM Unit :=
+  if g = 0 then pure () else do
+    let c ← sampleE
+    require (powOKR g c)
 
 /-- The openings of the oracle of level `L` at `t` positions: the offsets in `Σ` of the rows
 (each leaf entry's query), the node entries skipped. No message may be pending. -/

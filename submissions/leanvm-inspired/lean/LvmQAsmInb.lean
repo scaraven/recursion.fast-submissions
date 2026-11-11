@@ -151,7 +151,7 @@ theorem qlt_le_nK20 (hQ : QOk P20 (lay cfg20)) : (lay cfg20).qt + (qltData P20 (
 
 theorem qlt_le_nK8 (hQ : QOk P8 (lay cfg8)) : (lay cfg8).qt + (qltData P8 (lay cfg8)).length ≤ nK cfg8 := by
   rw [qltData, tblOf_length, qltPadded_length _ _ hQ.qlen]
-  show qtB cfg8 + 3 * 2 ^ 10 ≤ qtB cfg8 + 2 ^ 12 + 2 ^ 16
+  show qtB cfg8 + 3 * 2 ^ 11 ≤ qtB cfg8 + 2 ^ 13 + 2 ^ 16
   omega
 
 /-! ## `hinb` at `P20` (`nodeSound_layout`'s form) -/

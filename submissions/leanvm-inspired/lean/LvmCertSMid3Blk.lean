@@ -21,8 +21,8 @@ import LvmNodeSoundGood
 * `claimsS`, `HoldsC`, **`holdsC_of_assembleS`**: `assembleS`'s two stack lists hold on `(qr, qm)`
   iff every assembled claim holds on its commitment;
 * the link's vocabulary: `TabRet` / `KgRet` (facts of every return of the table phase / of the
-  Keccak phases), `BndS` (WP-14c's boundary claims when `n ≤ 2^20`), `KcS` (`kgSpec`'s claims at
-  P20 with WP-14c's accessors).
+  Keccak phases), `BndS` (WP-14c's boundary claims when `n ≤ 2^20`), `KcS` (`kgSpecS`'s claims at
+  P20 with WP-14c's accessors; lvm2 S2: the tape's claims in place of `CH`'s).
 -/
 
 set_option autoImplicit false
@@ -194,13 +194,13 @@ theorem isMultiaffine_onStack {n : ℕ} (c : BClaim) (hv : c.block.variableCount
 
 /-! ## The assembled claims, per commitment -/
 
-/-- The claims of `assembleS` before the split by commitment. -/
+/-- The claims of `assembleS` before the split by commitment (lvm2 S2: the tape's claims in place
+of `CH`'s and the `CH` link's). -/
 def claimsS (T : List Lvm.M3.Tab) (pub : Lvm.Pub) (cl : List ColumnClaim) (kg : KgOut) :
     List (Com × BClaim) :=
   tableClaimsE T cl ++
-    ((keccakClaimsE chBlk kg.1.1 ++ chFixedClaimsE kg.1.1.1 kg.1.1.2.1 pub) ++
-      keccakClaimsE ksBlk kg.2.1).map (.main, ·) ++
-    chLinkClaimsE pub.n kg.1.2 ++ ksOutputClaimsE kg.2.1.1 kg.2.1.2.1 ++
+    (tapeClaimsE kg.1 pub ++ keccakClaimsE ksBlk kg.2.1).map (.main, ·) ++
+    ksOutputClaimsE kg.2.1.1 kg.2.1.2.1 ++
     ksLinkClaimsE kg.2.2.1 kg.2.2.2.1 kg.2.2.2.2
 
 theorem assembleS_eq (T : List Lvm.M3.Tab) (pub : Lvm.Pub) (cl : List ColumnClaim) (kg : KgOut) :
@@ -208,16 +208,16 @@ theorem assembleS_eq (T : List Lvm.M3.Tab) (pub : Lvm.Pub) (cl : List ColumnClai
       ((claimsS T pub cl kg).filter (·.1 == .main)).map (·.2.onStack)) := rfl
 
 /-- An assembled claim holds on its commitment. -/
-def HoldsC (qm : Column 26) (qr : Column 19) (e : Com × BClaim) : Prop :=
+def HoldsC (qm : Column CMain.nu20) (qr : Column 19) (e : Com × BClaim) : Prop :=
   match e.1 with
   | .crec => StackClaim.Holds 19 e.2.onStack qr
-  | .main => StackClaim.Holds 26 e.2.onStack qm
+  | .main => StackClaim.Holds CMain.nu20 e.2.onStack qm
 
 /-- **`assembleS`'s two lists hold** on `(qr, qm)`: every assembled claim holds on its commitment. -/
 theorem holdsC_of_assembleS {T : List Lvm.M3.Tab} {pub : Lvm.Pub} {cl : List ColumnClaim}
-    {kg : KgOut} {qm : Column 26} {qr : Column 19}
+    {kg : KgOut} {qm : Column CMain.nu20} {qr : Column 19}
     (h1 : ∀ c ∈ (assembleS T pub cl kg).1, StackClaim.Holds 19 c qr)
-    (h2 : ∀ c ∈ (assembleS T pub cl kg).2, StackClaim.Holds 26 c qm) :
+    (h2 : ∀ c ∈ (assembleS T pub cl kg).2, StackClaim.Holds CMain.nu20 c qm) :
     ∀ e ∈ claimsS T pub cl kg, HoldsC qm qr e := by
   rw [assembleS_eq] at h1 h2
   intro e he
@@ -227,8 +227,8 @@ theorem holdsC_of_assembleS {T : List Lvm.M3.Tab} {pub : Lvm.Pub} {cl : List Col
   | main => exact h2 _ (List.mem_map.mpr ⟨_, List.mem_filter.mpr ⟨he, rfl⟩, rfl⟩)
 
 /-- The main-commitment claims of a mapped list. -/
-theorem holdsC_main {qm : Column 26} {qr : Column 19} {l : List BClaim}
-    (h : ∀ e ∈ l.map (Com.main, ·), HoldsC qm qr e) : ∀ b ∈ l, StackClaim.Holds 26 b.onStack qm :=
+theorem holdsC_main {qm : Column CMain.nu20} {qr : Column 19} {l : List BClaim}
+    (h : ∀ e ∈ l.map (Com.main, ·), HoldsC qm qr e) : ∀ b ∈ l, StackClaim.Holds CMain.nu20 b.onStack qm :=
   fun b hb ↦ h _ (List.mem_map.mpr ⟨b, hb, rfl⟩)
 
 /-! ## The link's vocabulary -/
@@ -236,7 +236,7 @@ theorem holdsC_main {qm : Column 26} {qr : Column 19} {l : List BClaim}
 open Lvm.NS (colM ksCol ksY2 msgM msgX Bnd) in
 /-- **The chain's boundary claims, when the chain fits `CH`** (`n ≤ 2^20`, which `okS` ensures):
 `V_S`'s boundary claims read row `(n − 1) mod 2^20`, so they say nothing of `Bnd` beyond it. -/
-def BndS (x : List UInt8) (qm : Column 26) : Prop := (hdrOf x).n ≤ 2 ^ 20 → Bnd x qm
+def BndS (x : List UInt8) (qm : Column CMain.nu20) : Prop := (hdrOf x).n ≤ 2 ^ 20 → Bnd x qm
 
 /-- **Facts of every return of the table phase** (`lbusTableCheckProg T μ`): a claim on column
 `(j, i)` has table `j`'s height coordinates; there are at most `Σ w` claims. -/
@@ -244,26 +244,24 @@ def TabRet (T : List Lvm.M3.Tab) (cl : List ColumnClaim) : Prop :=
   (∀ c ∈ cl, ∀ j i, Lvm.M3.colLoc T c.column = some (j, i) →
     c.point.length = (T[j]?.map (·.τ)).getD 0) ∧ cl.length ≤ (T.map (·.w)).sum
 
-/-- **Facts of every return of V_S phases 4–7** (`kgProgS`): the lengths of the points, the
-Keccak column claims (on `q_keccak`, at most one, on the block's coordinates), the ring weights'
-multiaffinity. -/
+/-- **Facts of every return of V_S phases 4–7** (`kgProgS s n`, lvm2 S2): the lengths of `r` and
+the 25 scalars, the multiaffinity of the tape's ring weight; for `KS`: the lengths of the points,
+the Keccak column claims (on `q_keccak`, at most one, on the block's coordinates), the ring
+weight's multiaffinity. -/
 def KgRet (k : KgOut) : Prop :=
-  (k.1.1.1.length = 20 ∧ k.1.1.2.1.length = 25 ∧
-    (∀ c ∈ k.1.1.2.2.1.1, c.column = qkeccak ∧ c.point.length = 26) ∧ k.1.1.2.2.1.1.length ≤ 1 ∧
-    (∀ n, IsMultiaffine n k.1.1.2.2.2.2) ∧
-    k.1.2.shift.1.length = 20 ∧ (∀ n, IsMultiaffine n k.1.2.ringIn.2) ∧
-    (∀ n, IsMultiaffine n k.1.2.ringY.2)) ∧
+  (k.1.1.length = 20 ∧ k.1.2.1.length = 25 ∧ ∀ n, IsMultiaffine n k.1.2.2.2.d.ring.2) ∧
   (k.2.1.1.length = 15 ∧ k.2.1.2.1.length = 25 ∧
     (∀ c ∈ k.2.1.2.2.1.1, c.column = qkeccak ∧ c.point.length = 21) ∧ k.2.1.2.2.1.1.length ≤ 1 ∧
     (∀ n, IsMultiaffine n k.2.1.2.2.2.2) ∧
     k.2.2.1.length = 20 ∧ k.2.2.2.1.1.length = 15)
 
 open Lvm.KG in
-open Lvm.NS (colM ksCol ksY2 msgM msgX) in
-/-- **The claims V_S phases 4–7 leave** (`kgSpec`'s post at P20, `P = 16`, `Pk = 11`, `r = 14`) on a
-pair, with WP-14c's accessors (`GoodK`'s); `n` the chain length (lvm2's gated link). -/
-def KcS (n : ℕ) (k : KgOut) (p : Column 26 × Column 19) : Prop :=
-  (CallerClaims 20 4 (colM p.1) (chY 20 52 (colM p.1)) k.1.1 ∧ ChLinkClaims 20 n (colM p.1) k.1.2) ∧
+open Lvm.NS (colM dD ksCol ksY2 msgM msgX) in
+/-- **The claims V_S phases 4–7 leave** (`kgSpecS`'s post at P20: the tape's ring claim on `C_main`
+(`h = 18`) and the tied digest lanes `D̃_l(r) = a_l`; `KS`'s claims at `Pk = 11`, `r = 14`) on a
+pair, with WP-14c's accessors (`GoodK`'s). -/
+def KcS (k : KgOut) (p : Column CMain.nu20 × Column 19) : Prop :=
+  (RingColTrue 18 (colM p.1) k.1.2.2.2.d.ring ∧ TiedD 20 (dD p.1) k.1.1 k.1.2.1) ∧
   (CallerClaims 15 25 (ksCol p.1) (ksY 15 ksY2 (colM p.1) (ksCol p.1)) k.2.1 ∧
     KsLinkClaims 15 14 (ksCol p.1) (ksYRow 15 ksY2 (colM p.1) (ksCol p.1)) (msgM p.2) (msgX p.1)
       k.2.2)

@@ -1,6 +1,6 @@
 -- WP-16b (CERT). New for lvm (O6): `MidSpec (midS tabs)` for WP-14a's middle phases, from WP-9b's
--- `midBusTableSpecS` and WP-8's `kgSpec` (WP-14's glue `LvmCertSMid.midSpecOf`, here with the
--- programs' return facts), the semantic link of `assembleS`'s claims (`LvmCertSMid3Tab/Kec/Link`)
+-- `midBusTableSpecS` and WP-8's `kgSpec` (lvm2 S2: `kgSpecS`, the tape then `KS`) (WP-14's glue
+-- `LvmCertSMid.midSpecOf`, here with the programs' return facts), the semantic link of `assembleS`'s claims (`LvmCertSMid3Tab/Kec/Link`)
 -- and its side conditions (`LvmCertSMid3Side`); `MidShape (midS tabs)`; `NodeSound` for the good
 -- pair `GoodS` from WP-14c's `GoodN`.
 import LvmCertSMid2
@@ -42,23 +42,24 @@ section Glue
 variable {α κ : Type} {busP : List UInt8 → VerifierProgram α} {kgP : List UInt8 → VerifierProgram κ}
   {asm : List UInt8 → α → κ → OpenClaims}
   {Gb Gk : List UInt8 → Pair → Prop} {B : List UInt8 → α → Pair → Prop}
-  {Kc : List UInt8 → κ → Pair → Prop} {Qa : List UInt8 → α → Prop} {Qk : κ → Prop} {Lb Lk : ℝ≥0∞}
+  {Kc : κ → Pair → Prop} {Qa : List UInt8 → α → Prop} {Qk : κ → Prop} {Lb Lk : ℝ≥0∞}
 
 open Classical in
-/-- **`MidSpec` from the phases, with return facts** (`midSpecOf` with `Qa`, `Qk`). -/
+/-- **`MidSpec` from the phases, with return facts** (`midSpecOf` with `Qa`, `Qk`; lvm2 S2: the Keccak
+phases read the statement, `kgP x`). -/
 theorem midSpecOfR
     (SB : ∀ x, Spec (busP x)
       (fun h ↦ RootShape h ∧ Doomed candPairs (fun p ↦ Gb x p ∧ Gk x p) h)
       (fun a h ↦ Doomed candPairs (fun p ↦ B x a p ∧ Gk x p) h ∧ RootShape h) εS Lb Lk)
     (hQa : ∀ x, RetOK (Qa x) (busP x))
     (SK : ∀ x a (T : ℝ≥0∞), T ≤ εS → Spec (kgP x) (Doomed candPairs (fun p ↦ Gk x p ∧ B x a p))
-      (fun k h ↦ Doomed candPairs (fun p ↦ Kc x k p ∧ B x a p) h) εS Lk T)
+      (fun k h ↦ Doomed candPairs (fun p ↦ Kc k p ∧ B x a p) h) εS Lk T)
     (hQk : ∀ x, RetOK Qk (kgP x)) (hkc : ∀ x, NoCG (kgP x))
     (hasm : ∀ x a k (p : Pair), Qa x a → Qk k →
       (∀ c ∈ (asm x a k).1, StackClaim.Holds 19 c p.2) →
-      (∀ c ∈ (asm x a k).2, StackClaim.Holds 26 c p.1) → Kc x k p ∧ B x a p)
+      (∀ c ∈ (asm x a k).2, StackClaim.Holds CMain.nu20 c p.1) → Kc k p ∧ B x a p)
     (hside : ∀ x a k, Qa x a → Qk k → (∀ c ∈ (asm x a k).1, IsMultiaffine 19 c.1) ∧
-      (∀ c ∈ (asm x a k).2, IsMultiaffine 26 c.1) ∧ (asm x a k).1.length ≤ 2 ^ 63 ∧
+      (∀ c ∈ (asm x a k).2, IsMultiaffine CMain.nu20 c.1) ∧ (asm x a k).1.length ≤ 2 ^ 63 ∧
       (asm x a k).2.length ≤ 2 ^ 63) :
     MidSpec (fun x ↦ busP x >>= fun a ↦ kgP x >>= fun k ↦ VerifierProgram.ret (asm x a k))
       (fun x qm qr ↦ Gb x (qm, qr) ∧ Gk x (qm, qr)) εS Lb := fun x T hT ↦
@@ -80,12 +81,13 @@ end Glue
 
 /-! ## The good pair -/
 
-/-- The Keccak tables' relations on a pair (`GoodK` without the boundary claims). -/
+/-- The Keccak tables' relations on a pair (`GoodK` without the boundary claims; lvm2 S2: the
+tape's chain part on `D`, then `KS`'s). -/
 def GkS (x : List UInt8) (p : Pair) : Prop :=
-  CHRel 20 52 (colM p.1) (pubX x).n ∧
+  Lvm.NS.TapeG x p.1 ∧
   KSRel 15 14 ksY2 (Lvm.contRows Lvm.P20) (colM p.1) (ksCol p.1) (msgM p.2) (msgX p.1)
 
-/-- **The good pair of O6**: WP-14c's `GoodN` with the boundary claims when the chain fits `CH`. -/
+/-- **The good pair of O6**: WP-14c's `GoodN` with the boundary claims when the chain fits `D`. -/
 def GoodS (T : List UInt8 → List Tab) (hτ : ∀ x, ∀ t ∈ T x, t.τ ≤ lay26.μ) : GoodRel :=
   fun x qm qr ↦ (GoodB T hτ x (qm, qr) ∧ BndS x qm) ∧ GkS x (qm, qr)
 
@@ -94,7 +96,7 @@ theorem nodeSound_goodS {VS : Lvm.T.SProg} {vk : RecursionFast.Digest} {T : List
     {hτ : ∀ x, ∀ t ∈ T x, t.τ ≤ lay26.μ} {child : Column 19 → RecursionFast.Signed}
     (h : NodeSound VS vk (GoodN T hτ) child) : NodeSound VS vk (GoodS T hτ) child :=
   fun c x qm qr hok hG ↦ h c x qm qr hok
-    ⟨hG.1.1, pubX_n x ▸ hG.2.1, hG.2.2, hG.1.2 (Lvm.NS.okS_n hok).2⟩
+    ⟨hG.1.1, hG.2.1, hG.2.2, hG.1.2 (Lvm.NS.okS_n hok).2⟩
 
 /-! ## Errors -/
 
@@ -110,8 +112,9 @@ theorem εS_lt_one : εS < 1 := by
   unfold εS
   exact pow_lt_one₀ (by simp) (ENNReal.inv_lt_one.mpr (by norm_num)) (by norm_num)
 
-/-- The `KS`/`CH` phases' lead at P20 with one candidate pair. -/
-noncomputable abbrev LkS : ℝ≥0∞ := ((16 + 4 : ℕ) : ℝ≥0∞) * (((1 : ℕ) : ℝ≥0∞) * errE 1) + 0
+/-- The Keccak phases' lead at P20 with one candidate pair (lvm2 S2: the tape's `w = 20` zero-test
+samples). -/
+noncomputable abbrev LkS : ℝ≥0∞ := ((15 + 5 : ℕ) : ℝ≥0∞) * (((1 : ℕ) : ℝ≥0∞) * errE 1) + 0
 
 theorem LkS_eq : LkS = errE 20 := by
   simp only [LkS, Nat.cast_one, one_mul, add_zero, errE_smul]
@@ -203,49 +206,48 @@ noncomputable def specBusS (H : MidHyp tabs) (x : List UInt8) :
   (hμeq ▸ S0).mono (fun _ hp ↦ ⟨hp.1, Doomed.mono hp.2 fun _ hq ↦ ⟨⟨hq.1, hq.2.1⟩, hq.2.2⟩⟩)
     (fun _ _ hp ↦ ⟨Doomed.mono hp.1 fun _ hq ↦ ⟨hq.1.1, hq.1.2, hq.2⟩, hp.2⟩) le_rfl e.2.1 le_rfl
 
-/-- V_S phases 4–7 at P20, in `midSpecOfR`'s form. -/
+/-- V_S phases 4–7 at P20, in `midSpecOfR`'s form (lvm2 S2: `kgSpecS`, the tape then `KS`). -/
 noncomputable def specKgS (x : List UInt8) (a : List ColumnClaim) (T : ℝ≥0∞) (hT : T ≤ εS) :
-    Spec (kgProgS (pubX x).n) (Doomed candPairs (fun p ↦ GkS x p ∧ BS tabs x a p))
-      (fun k h ↦ Doomed candPairs (fun p ↦ KcS (pubX x).n k p ∧ BS tabs x a p) h) εS LkS T :=
+    Spec (kgProgS (hdX x).s (pubX x).n) (Doomed candPairs (fun p ↦ GkS x p ∧ BS tabs x a p))
+      (fun k h ↦ Doomed candPairs (fun p ↦ KcS k p ∧ BS tabs x a p) h) εS LkS T :=
   have e := kg_errs
   have s := kg_struct
-  (kgSpec (C := candPairs) (L₀ := 1) (εmax := εS) (T := T) candPairs_stable candPairs_ncard_le_one
-    16 52 11 14 ksY2 (pubX x).n s.1 s.2.1 s.2.2.1 (Lvm.contRows Lvm.P20) s.2.2.2.1 s.2.2.2.2
+  (kgSpecS (C := candPairs) (L₀ := 1) (εmax := εS) (T := T) candPairs_stable candPairs_ncard_le_one
+    (hdX x).s (pubX x).n 11 14 ksY2 s.1 (Lvm.contRows Lvm.P20) s.2.1 s.2.2
     (fun q ↦ colM q.1) (fun q ↦ colM q.1) (fun q ↦ ksCol q.1) (fun q ↦ msgM q.2)
-    (fun q ↦ msgX q.1) (BS tabs x a) e.1 e.2.1 e.2.2.1 e.2.2.2.1 e.2.2.2.2.1 e.2.2.2.2.2.1
-    hT).mono (fun _ hd ↦ Doomed.mono hd fun _ hq ↦ ⟨⟨hq.1, hq.2.1⟩, hq.2.2⟩)
+    (fun q ↦ msgX q.1) (BS tabs x a) e.1 e.2.1 e.2.2.1 e.2.2.2.1 hT).mono
+    (fun _ hd ↦ Doomed.mono hd fun q ⟨ht, hk, hb⟩ ↦
+      ⟨⟨by rw [pubX_n x] at ht; exact ht, hk⟩, hb⟩)
     (fun _ _ hp ↦ Doomed.mono hp.2 fun _ hq ↦ ⟨hq.1.1, hq.1.2, hq.2⟩) le_rfl le_rfl le_rfl
 
-/-- **The semantic link**: the assembled claims holding on a pair give `KcS ∧ BS`. -/
+/-- **The semantic link**: the assembled claims holding on a pair give `KcS ∧ BS` (lvm2 S2: the
+tape's ring claim, tied lanes and boundary claims). -/
 theorem link_assembleS (H : MidHyp tabs) (x : List UInt8) (a : List ColumnClaim) (k : KgOut)
     (p : Pair) (ha : TabRet (TS tabs x) a) (hk : KgRet k)
     (h1 : ∀ c ∈ (assembleS (TS tabs x) (pubX x) a k).1, StackClaim.Holds 19 c p.2)
-    (h2 : ∀ c ∈ (assembleS (TS tabs x) (pubX x) a k).2, StackClaim.Holds 26 c p.1) :
-    KcS (pubX x).n k p ∧ BS tabs x a p := by
+    (h2 : ∀ c ∈ (assembleS (TS tabs x) (pubX x) a k).2, StackClaim.Holds CMain.nu20 c p.1) :
+    KcS k p ∧ BS tabs x a p := by
   have hc := holdsC_of_assembleS h1 h2
-  obtain ⟨⟨hr, -, hcc, -, -, hρ, -, -⟩, ⟨hrk, -, hck, -, -, hkc, hks⟩⟩ := hk
+  obtain ⟨⟨hr, -, -⟩, ⟨hrk, -, hck, -, -, hkc, hks⟩⟩ := hk
   have hm : ∀ b, (Com.main, b) ∈ claimsS (TS tabs x) (pubX x) a k →
-      StackClaim.Holds 26 b.onStack p.1 := fun b hb ↦ hc _ hb
-  have hKC : ∀ b ∈ keccakClaimsE chBlk k.1.1, StackClaim.Holds 26 b.onStack p.1 :=
+      StackClaim.Holds CMain.nu20 b.onStack p.1 := fun b hb ↦ hc _ hb
+  have hTP : ∀ b ∈ tapeClaimsE k.1 (pubX x), StackClaim.Holds CMain.nu20 b.onStack p.1 :=
     fun b hb ↦ hm b (by simp [claimsS, hb])
-  have hF : ∀ b ∈ chFixedClaimsE k.1.1.1 k.1.1.2.1 (pubX x), StackClaim.Holds 26 b.onStack p.1 :=
-    fun b hb ↦ hm b (by simp [claimsS, hb])
-  have hKK : ∀ b ∈ keccakClaimsE ksBlk k.2.1, StackClaim.Holds 26 b.onStack p.1 :=
+  have hKK : ∀ b ∈ keccakClaimsE ksBlk k.2.1, StackClaim.Holds CMain.nu20 b.onStack p.1 :=
     fun b hb ↦ hm b (by simp [claimsS, hb])
   have hsub : ∀ l : List (Com × BClaim), (∀ e ∈ l, e ∈ claimsS (TS tabs x) (pubX x) a k) →
       ∀ e ∈ l, HoldsC p.1 p.2 e := fun l hl e he ↦ hc e (hl e he)
-  refine ⟨⟨⟨callerClaims_ch k.1.1 hr hcc (pubX x) hKC hF,
-      chLinkClaims_of (pubX x).n k.1.2 hρ (hsub _ (fun e he ↦ by simp [claimsS, he]))⟩,
+  refine ⟨⟨tapeClaims_of k.1 hr (pubX x) hTP,
     ⟨callerClaims_ks k.2.1 hrk hck hKK (hsub _ (fun e he ↦ by simp [claimsS, he])),
       ksLinkClaims_of k.2.2.1 k.2.2.2.1 k.2.2.2.2 hkc hks
         (hsub _ (fun e he ↦ by simp [claimsS, he]))⟩⟩,
     blockHolds_of_tableClaims (T := TS tabs x) (fit_of Lvm.P20 _ (H.fit (pubX x))).layOk ha
-      (hsub _ (fun e he ↦ by simp [claimsS, he])), bndS_of_chFixed x _ _ hF⟩
+      (hsub _ (fun e he ↦ by simp [claimsS, he])), bndS_of_tape x _ hTP⟩
 
 theorem side_midS (H : MidHyp tabs) (x : List UInt8) (a : List ColumnClaim) (k : KgOut)
     (ha : TabRet (TS tabs x) a) (hk : KgRet k) :
     (∀ c ∈ (assembleS (TS tabs x) (pubX x) a k).1, IsMultiaffine 19 c.1) ∧
-    (∀ c ∈ (assembleS (TS tabs x) (pubX x) a k).2, IsMultiaffine 26 c.1) ∧
+    (∀ c ∈ (assembleS (TS tabs x) (pubX x) a k).2, IsMultiaffine CMain.nu20 c.1) ∧
     (assembleS (TS tabs x) (pubX x) a k).1.length ≤ 2 ^ 63 ∧
     (assembleS (TS tabs x) (pubX x) a k).2.length ≤ 2 ^ 63 :=
   have F := fit_of Lvm.P20 _ (H.fit (pubX x))

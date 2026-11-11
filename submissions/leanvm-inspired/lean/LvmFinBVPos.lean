@@ -258,7 +258,7 @@ theorem posCells20
           lay26 (hτ' x) (stackOf lay26 qm qr))).inb = true)
     (hS : StreamOk P20) (hQ : QOk P20 (lay cfg20))
     (hpc : PosCellsLt (Qn (lay cfg20) (sigIn cfg20) (qarith cfg20) (nK cfg20) 0) cfg20)
-    {vk c : RecursionFast.Digest} {x : List UInt8} {qm : Column 26} {qr : Column 19}
+    {vk c : RecursionFast.Digest} {x : List UInt8} {qm : Column CMain.nu20} {qr : Column 19}
     (hok : okS vk c x = true) (hb : (hdrOf x).b = 1) (hG : GoodN T hτ x qm qr)
     (mp : InMapN (lay cfg20) (sigIn cfg20) (qarith cfg20) (nK cfg20) 0 pl groups arrsX (aux cfg20 D) hτ' vk x qm
       qr) :

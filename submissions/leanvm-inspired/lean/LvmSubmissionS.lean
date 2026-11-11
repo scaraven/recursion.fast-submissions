@@ -8,10 +8,12 @@ import LvmCertSQ
 /-!
 # The submission and its open obligations
 
-`submission := subWith VS20 (EX (accV VS20)) extX`: `V_S` at P20 (WP-11a), WP-13a's extractor
-program `extX` and its specification `EX` (the search branch under `accV VS20`).
+`submissionT tabs := subWith (VSL P20 tabs) (EX (accV (VSL P20 tabs))) extX`: `V_S` at P20 (WP-11a) on
+the node program's tables `tabs` (lvm2 S2-CERT: generic; `LvmSubmissionS20`'s `submission` takes
+`M3.tabsP20`), WP-13a's extractor program `extX` and its specification `EX` (the search branch
+under `accV`).
 
-**Closed** here: O1 the query bound (`hq_VS20`, `LvmCertSQ`), O2 `Computes extX (EX A) fuel`
+**Closed** here: O1 the query bound (`hq_VSL`, `LvmCertSQ`), O2 `Computes extX (EX A) fuel`
 (`computesX`), O3 the program's size (`extX_caps`),
 O4 `EX` on `W` proofs (`EX_W`), O5a the knowledge certificate from its parts (`kcertS`), O7, O8, O9,
 O11.
@@ -72,31 +74,40 @@ theorem sSound_of_openS {VS : SProg} {E : Digest → Proof → Log → Option Wi
     (εFS_kcertS o.hmid o.hLm o.hsh (o.hnode vk)) (o.refines vk)
     fun L c π hS hl hμ hv ↦ o.ext_eq vk L c π hS hl hμ hv
 
-/-! ## The current submission -/
+/-! ## The submission on the node program's tables `tabs`
 
-/-- The extractor specification: WP-13a's `EX` with the search branch under `accV VS20`. -/
-def EX20 : Digest → Proof → Log → Option Wit := Lvm.X.EX (accV Lvm.VS20)
+lvm2 S2-CERT: everything below is generic in the tables `tabs` of `V_S`'s M3 instance (the node
+program's), so the certificate does not depend on the program's data; `LvmSubmissionS20` takes
+`tabs := M3.tabsP20` (`submission`, `Open`, `certificateR_open`). -/
 
-/-- **The current submission**: `V_S` at P20, WP-13a's extractor. -/
-def submission : Submission := subWith Lvm.VS20 EX20 Lvm.X.extX
+/-- `V_S` at P20 on the tables `tabs`. -/
+abbrev VSt (tabs : Lvm.Pub → List Lvm.M3.Tab) : SProg := Lvm.VSL Lvm.P20 tabs
+
+/-- The extractor specification: WP-13a's `EX` with the search branch under `accV (VSt tabs)`. -/
+def EXt (tabs : Lvm.Pub → List Lvm.M3.Tab) : Digest → Proof → Log → Option Wit :=
+  Lvm.X.EX (accV (VSt tabs))
+
+/-- **The submission on the tables `tabs`**: `V_S` at P20, WP-13a's extractor. -/
+def submissionT (tabs : Lvm.Pub → List Lvm.M3.Tab) : Submission := subWith (VSt tabs) (EXt tabs) Lvm.X.extX
 
 /-- O4: on witness-sending proofs `EX` decodes (WP-13a `EX_W`). -/
-theorem EX20_W (c : Digest) (π : Proof) (L : Log) (h : isS π = false) : EX20 c π L = decode π := by
+theorem EXt_W (tabs : Lvm.Pub → List Lvm.M3.Tab) (c : Digest) (π : Proof) (L : Log)
+    (h : isS π = false) : EXt tabs c π L = decode π := by
   refine Lvm.X.EX_W _ c π L fun h0 ↦ ?_
   have : π.data.getD 0 0 = 0x53 := by
     rw [Array.getD_eq_getD_getElem?, h0]; rfl
   simp [isS, this, sByte] at h
 
-/-- **The open obligations of the current submission.** -/
-abbrev Open : Type := OpenS Lvm.VS20 EX20
+/-- **The open obligations of the submission on `tabs`.** -/
+abbrev OpenT (tabs : Lvm.Pub → List Lvm.M3.Tab) : Type := OpenS (VSt tabs) (EXt tabs)
 
-/-- **The certificate of the current submission** against `claim.json`, from its open
+/-- **The certificate of the submission on `tabs`** against `claim.json`, from its open
 obligations. -/
-theorem certificateR_open (o : Open) :
+theorem certificateR_openT (tabs : Lvm.Pub → List Lvm.M3.Tab) (o : OpenT tabs) :
     CertificateR ⟨(1 : ℝ≥0) / 340282366920938463463374607431768211456, (0 : ℝ≥0) / 1, 16384,
-      fun t => 70368744177664 + 8192 * t⟩ submission :=
-  certificateR_claim Lvm.VS20 EX20 Lvm.X.extX
-    ⟨fun H vk c π _ ↦ Lvm.hq_VS20 H vk c π, Lvm.X.computesX _, Lvm.X.extX_caps.2, EX20_W,
+      fun t => 70368744177664 + 8192 * t⟩ (submissionT tabs) :=
+  certificateR_claim (VSt tabs) (EXt tabs) Lvm.X.extX
+    ⟨fun H vk c π _ ↦ Lvm.hq_VSL tabs H vk c π, Lvm.X.computesX _, Lvm.X.extX_caps.2, EXt_W tabs,
       sSound_of_openS o⟩
 
 end Lvm.T

@@ -7,14 +7,12 @@ import LvmVEqSum
 /-!
 # The `CH` and `KS` links: V_S refines the verifier language
 
-`ref_dChLink`: wherever V_S's phase 5 ends with its checks held, WP-8's `chLinkProg 20 52 n`
-(lvm2: gated by the header's chain length `n`, S1-L) read off the stream returns `lo` at the same
-cursor with V_S's link claims `CRel`-related to `chLinkClaimsE n lo`; `ref_dKsLink` the same for
-phase 7, `ksLinkProg 15 14 (contRows P20)` and `ksLinkClaimsE`. Read for read: the samples and
-scalars by `ref_samples`/`ref_readEs`, the sumchecks by H1's `ref_sumcheck` (their claims transported
-by LvmVEqLinkArith), the caller-placed ring switches by `ref_ringRaw`, the final `require` by the
-transported check (`toExt3_chOk`, `toExt3_ksOk`); the gated closed forms are `LvmMask`'s automata
-through `FE.toExt3` (`toExt3_ltEvalF`, `toExt3_gShiftEvalF`, `toExt3_gMaskEvalF`).
+(lvm2 S2: v1's `CH` link is gone from V_S, so `ref_dChLink` is deleted.) v1's `ref_dChLink`: wherever V_S's phase 5 ends with its checks held, WP-8's `chLinkProg 20 52` read off
+the stream returns `lo` at the same cursor with V_S's link claims `CRel`-related to
+`chLinkClaimsE lo`; `ref_dKsLink` the same for phase 7, `ksLinkProg 15 14 (contRows P20)` and
+`ksLinkClaimsE`. Read for read: the samples and scalars by `ref_samples`/`ref_readEs`, the sumchecks
+by H1's `ref_sumcheck` (their claims transported by LvmVEqLinkArith), the caller-placed ring switches
+by `ref_ringRaw`, the final `require` by the transported check (`toExt3_chOk`, `toExt3_ksOk`).
 `monoD_dChLink`, `monoD_dKsLink` hold for every `p`, `m`.
 -/
 
@@ -69,77 +67,6 @@ theorem ref_sumcheckL (count : ℕ) (eqs : List (Option FE)) (claim : FE) :
     (length_sumcheck count eqs claim sig)
 
 end Lk
-
-/-- **V_S's phase 5 (the `CH` link) refines WP-8's `chLinkProg`.** -/
-theorem ref_dChLink (tabs : Pub → List M3.Tab) (r v : List FE) (pub : Pub) :
-    Ref20 sig (dChLink P20 (M3.real P20 tabs) r v pub) (Lvm.KG.chLinkProg (16 + 4) 52 pub.n)
-      (fun cl lo ↦ List.Forall₂ CRel cl (chLinkClaimsE pub.n lo)) := by
-  unfold dChLink Lvm.KG.chLinkProg
-  -- ρ, λ, ζ
-  refine RefAt.bind (fun _ ↦ (monoD_sumcheck _ _ _).bind fun _ ↦ (monoD_readEs _).bind fun _ ↦
-    (monoD_ringRaw _).bind fun _ ↦ (monoD_sumcheck _ _ _).bind fun _ ↦ (monoD_readEs _).bind fun _ ↦
-      (monoD_ringRaw _).bind fun _ ↦ (monoD_samples _).bind fun _ ↦
-        (MonoD.require _).bind fun _ ↦ MonoD.pure _) (ref_samplesL _) ?_
-  rintro chal _ ⟨rfl, hc⟩
-  replace hc : chal.length = 29 := hc
-  -- the shift sumcheck
-  have h2 := ref_sumcheckL (cap := capS) (shp := shpS) (sig := sig) 3 (List.replicate 20 none)
-    (Lvm.chShiftTarget0 P20 pub chal)
-  simp only [toExt3_chShiftTarget0 pub chal hc, List.map_replicate, Option.map_none] at h2
-  refine RefAt.bind (fun _ ↦ (monoD_readEs _).bind fun _ ↦
-    (monoD_ringRaw _).bind fun _ ↦ (monoD_sumcheck _ _ _).bind fun _ ↦ (monoD_readEs _).bind fun _ ↦
-      (monoD_ringRaw _).bind fun _ ↦ (monoD_samples _).bind fun _ ↦
-        (MonoD.require _).bind fun _ ↦ MonoD.pure _) h2 ?_
-  rintro ⟨rho', f1⟩ _ ⟨rfl, -⟩
-  -- the 64 `in` slices
-  refine RefAt.bind (fun _ ↦ (monoD_ringRaw _).bind fun _ ↦ (monoD_sumcheck _ _ _).bind fun _ ↦
-    (monoD_readEs _).bind fun _ ↦ (monoD_ringRaw _).bind fun _ ↦ (monoD_samples _).bind fun _ ↦
-      (MonoD.require _).bind fun _ ↦ MonoD.pure _) (ref_readEsL _) ?_
-  rintro inS _ ⟨rfl, hin⟩
-  replace hin : inS.length = 64 := hin
-  -- their ring switch
-  refine RefAt.bind (fun _ ↦ (monoD_sumcheck _ _ _).bind fun _ ↦
-    (monoD_readEs _).bind fun _ ↦ (monoD_ringRaw _).bind fun _ ↦ (monoD_samples _).bind fun _ ↦
-      (MonoD.require _).bind fun _ ↦ MonoD.pure _) (ref_ringRaw inS _) ?_
-  rintro ⟨t1, cs1⟩ _ rfl
-  -- the `Y`-lane sumcheck
-  have h5 := ref_sumcheckL (cap := capS) (shp := shpS) (sig := sig) 3 [none, none]
-    (Lvm.chSc2Target0 P20 pub chal (rho', f1) inS)
-  simp only [toExt3_chSc2Target0 pub chal (rho', f1) inS hc hin, List.map_cons, List.map_nil,
-    Option.map_none] at h5
-  refine RefAt.bind (fun _ ↦ (monoD_readEs _).bind fun _ ↦ (monoD_ringRaw _).bind fun _ ↦
-    (monoD_samples _).bind fun _ ↦ (MonoD.require _).bind fun _ ↦ MonoD.pure _) h5 ?_
-  rintro ⟨mu, f2⟩ _ ⟨rfl, hmu⟩
-  replace hmu : mu.length = 2 := hmu
-  -- the 64 `Y` slices and their ring switch
-  refine RefAt.bind (fun _ ↦ (monoD_ringRaw _).bind fun _ ↦
-    (monoD_samples _).bind fun _ ↦ (MonoD.require _).bind fun _ ↦ MonoD.pure _) (ref_readEsL _) ?_
-  rintro yS _ ⟨rfl, -⟩
-  refine RefAt.bind (fun _ ↦ (monoD_samples _).bind fun _ ↦ (MonoD.require _).bind fun _ ↦
-    MonoD.pure _) (ref_ringRaw yS _) ?_
-  rintro ⟨t2, cs2⟩ _ rfl
-  -- the 5 lane challenges
-  refine RefAt.bind (fun _ ↦ (MonoD.require _).bind fun _ ↦ MonoD.pure _) (ref_samples _) ?_
-  rintro cl _ rfl
-  -- the check and the claims
-  have hl : ((chal.drop 20).take 3).length = 3 := by simp [hc]
-  have hz : (chal.drop 23).length = 6 := by simp [hc]
-  refine RefAt.bind (fun _ ↦ MonoD.pure _) (RefAt.require fun hok ↦ ?_) fun _ _ _ ↦ RefAt.pure ?_
-  · have h := congrArg FE.toExt3 (FE_eq_of_beq hok)
-    dsimp only at h ⊢
-    simp only [show P20.logN = 20 from rfl, Nat.reduceAdd] at h
-    rw [toExt3_chOk _ _ _ _ _ _ _ hl hz hmu] at h
-    simpa only [KG.chRho, KG.chLam, KG.chZeta, ← List.map_take, ← List.map_drop, Nat.reduceAdd] using h
-  · dsimp only
-    simp only [M3.real, M3.ofParts, Lvm.chLink0, chSplit_P20, chLinkClaimsE]
-    refine forall₂_map_both (forall₂_append (.cons ⟨rfl, rfl, rfl, fun xs ↦ ?_⟩
-      (.cons ⟨rfl, rfl, rfl, fun xs ↦ ?_⟩ .nil)) (forall₂_map_map _ fun j _ ↦
-        ⟨rfl, point_rel _ _ _ rfl (by simp only [List.map_append, map_selectorPoint])
-          (by rw [tE_mul, tE_ofK, toExt3_ltEvalF])⟩)) <;> rw [toExt3_ringWeight] <;> congr 1
-    · simp only [KG.chInPt, KG.chLam, List.map_append, ← List.map_take, ← List.map_drop, List.map_cons,
-        List.map_nil, tE_zero]
-    · simp only [KG.chYPt, List.map_append, map_selectorPoint]
-      rfl
 
 /-- **V_S's phase 7 (the `KS` link) refines WP-8's `ksLinkProg`.** -/
 theorem ref_dKsLink (tabs : Pub → List M3.Tab) (rk : List FE) (pub : Pub) :

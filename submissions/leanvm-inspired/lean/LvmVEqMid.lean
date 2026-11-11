@@ -4,6 +4,7 @@
 -- 8 transcribed over `E`.
 import LvmM3Mid
 import LvmKeccakCallerPhases
+import LvmKeccakCallerTape
 import LvmVerifierS
 import LvmAccSpecT
 
@@ -19,8 +20,8 @@ import LvmAccSpecT
    `κ`, `h`, `t`, the zero scalar, and the folded claim `Φ̃(line(t)) = h(t)`, which V_S checks only
    after the run, `AccOk` in `decideF`): `busTabAccProg = Acc.lbusTableAccProg P20` (so `midS` is
    AC-S's `midSA` by `rfl`);
-3. phases 4–7: `kgProgS`, syntactically WP-8's `kgSpec` program at `P = 16`, `ys = 52`, `Pk = 11`,
-   `r = 14`, `rows = contRows P20`;
+3. phases 4–7 (lvm2 S2): `kgProgS s n`, the tape caller `tapeProg 20 2 0 s n`, then WP-8's `KS`
+   caller and `KS` link at `Pk = 11`, `r = 14`, `rows = contRows P20`;
 4. the claims (`assembleS`): `decideProg`'s claim list over `E` (`BClaim` is V_S's `BlockClaim`
    with the verifier language's `Placement`), filtered by commitment and put on the stack, `C_rec`'s
    first.
@@ -83,16 +84,20 @@ def sumClaimE (nu : ℕ) (parts : List (E × VPlacement × List E)) (value : E) 
   ⟨⟨nu, 0⟩, fun x => LeanVM.Protocol.Verifier.sumE (parts.map fun (c, blk, z) =>
     c * blk.eqAbove x * LeanVM.Protocol.Verifier.eqEval z (x.take blk.variableCount)), value⟩
 
-/-! ## The P20 layout (V_S's `M3.ofParts P20`, `layout0 P20`) -/
+/-! ## The P20 layout (V_S's `M3.ofParts P20`, `layout0 P20`; lvm2 FRZ-0) -/
 
-/-- `CH`'s block. -/
+/-- v1's `CH` block (dead at lvm2 S2; kept for v1's `CH` link lemmas). -/
 def chBlk : VPlacement := ⟨20 + slotLog, 0⟩
+/-- `D`'s block (lvm2 S2: `dBlock P20`, 4 lanes of `2^20` rows at word 0). -/
+def dBlkE : VPlacement := ⟨20 + 2, CMain.dOff20⟩
 /-- `KS`'s block. -/
-def ksBlk : VPlacement := ⟨15 + slotLog, 50 * 2 ^ 20⟩
+def ksBlk : VPlacement := ⟨15 + slotLog, CMain.ksOff20⟩
 /-- `KS`'s `Y` lanes 14–24. -/
-def ksY2Off : ℕ := 56 * 2 ^ 20
+def ksY2Off : ℕ := CMain.ksY2Off20
 /-- The `X` message columns. -/
-def xOff : ℕ := 56 * 2 ^ 20 + 2 ^ (15 + 4)
+def xOff : ℕ := CMain.xOff20
+/-- `C_main`'s variables at `P20` (lvm2 S2: `2^24` words). -/
+def nuMainE : ℕ := CMain.nu20
 
 /-! ## The claims of phases 2–7 over `E` -/
 
@@ -116,25 +121,24 @@ def keccakClaimsE (blk : VPlacement) (co : CallerOut) : List BClaim :=
 
 /-- `CH`'s output lanes 0–3 on `Y` and the boundary claims (V_S's `chFixedClaims`). -/
 def chFixedClaimsE (r v : List E) (pub : Pub) : List BClaim :=
-  ((List.range 4).map fun l => BClaim.point chBlk (r ++ selE (52 + l) slotLog) (v.getD l 0)) ++
+  ((List.range 4).map fun l => BClaim.point chBlk (r ++ selE (Lvm.chYSlotV1 + l) slotLog) (v.getD l 0)) ++
   ((pad43 pub.s).zipIdx.map fun (w, l) =>
     BClaim.point chBlk (selE 0 20 ++ selE l slotLog) (M3.kE w)) ++
   (pub.h.zipIdx.map fun (w, l) =>
-    BClaim.point chBlk (selE (pub.n - 1) 20 ++ selE (52 + l) slotLog) (M3.kE w))
+    BClaim.point chBlk (selE (pub.n - 1) 20 ++ selE (Lvm.chYSlotV1 + l) slotLog) (M3.kE w))
 
-/-- The `CH` link's claims (V_S's `chLink0` claims): the two ring switches, the 17 constant lanes
-(lvm2's gated link: `c_l·lt̃_n(ρ')`, `n` the chain length). -/
-def chLinkClaimsE (n : ℕ) (lo : ChLinkOut) : List (Com × BClaim) :=
+/-- The `CH` link's claims (V_S's `chLink0` claims): the two ring switches, the 17 constant lanes. -/
+def chLinkClaimsE (lo : ChLinkOut) : List (Com × BClaim) :=
   let rho' := lo.shift.1
   let consts := (List.range 17).map fun j =>
     BClaim.point chBlk (rho' ++ selE (8 + j) slotLog)
-      (M3.kE (if 8 + j = 16 then ⟨(0x80 : UInt64) <<< 56⟩ else 0) * ltEvalE rho' n)
+      (M3.kE (if 8 + j = 16 then ⟨(0x80 : UInt64) <<< 56⟩ else 0))
   ([(⟨chBlk, lo.ringIn.2, lo.ringIn.1⟩ : BClaim), ⟨chBlk, lo.ringY.2, lo.ringY.1⟩] ++ consts).map
     (.main, ·)
 
 /-- `KS`'s `Y` lane `l` (V_S's `ksYPart`). -/
 def ksYPartE (l : ℕ) (pt : List E) : VPlacement × List E :=
-  if l < 14 then (⟨15 + slotLog, 50 * 2 ^ 20⟩, pt ++ selE (50 + l) slotLog)
+  if l < 14 then (ksBlk, pt ++ selE (50 + l) slotLog)
   else (⟨15, ksY2Off + (l - 14) * 2 ^ 15⟩, pt)
 
 /-- The openings of `KS`'s 25 output lanes (V_S's `ksOutputClaims0`). -/
@@ -149,43 +153,48 @@ def ksLinkClaimsE (kchal : List E) (kshift : List E × E) (vals : List E) : List
   let om := LeanVM.Protocol.Verifier.eqKernel (kchal.drop 15)
   let rho' := kshift.1
   let lo := rho'.take 14
-  let yC := sumClaimE 26 ((List.range 25).map fun l =>
+  let yC := sumClaimE nuMainE ((List.range 25).map fun l =>
     let bz := ksYPartE l rho'
     (om.getD l 0, bz.1, bz.2)) (vals.getD 0 0)
-  let inC := sumClaimE 26 ((List.range 25).map fun l =>
-    (om.getD l 0, (⟨15 + slotLog, 50 * 2 ^ 20⟩ : VPlacement), rho' ++ selE l slotLog)) (vals.getD 1 0)
+  let inC := sumClaimE nuMainE ((List.range 25).map fun l =>
+    (om.getD l 0, ksBlk, rho' ++ selE l slotLog)) (vals.getD 1 0)
   let mC := sumClaimE 19 ((List.range 17).map fun l =>
     (om.getD l 0, (⟨14, l * 2 ^ 14⟩ : VPlacement), lo)) (vals.getD 2 0)
-  let xC := sumClaimE 26 ((List.range 17).map fun l =>
+  let xC := sumClaimE nuMainE ((List.range 17).map fun l =>
     (om.getD l 0, (⟨14, xOff + l * 2 ^ 14⟩ : VPlacement), lo)) (vals.getD 3 0)
   [(.main, yC), (.main, inC), (.crec, mC), (.main, xC)]
 
+/-- **The tape's claims** (V_S's `tapeClaims P20`, lvm2 S2): `D̃_l(r) = a_l` (`l < 4`), the ring claim on
+`C_main`, the boundary claims `D̃_l(bits(n − 1)) = h_l`. -/
+def tapeClaimsE (tp : TapeOutE) (pub : Pub) : List BClaim :=
+  ((List.range 4).map fun l => BClaim.point dBlkE (tp.1 ++ selE l 2) (tp.2.1.getD l 0)) ++
+  [⟨⟨nuMainE, 0⟩, tp.2.2.2.d.ring.2, tp.2.2.2.d.ring.1⟩] ++
+  (pub.h.zipIdx.map fun (w, l) =>
+    BClaim.point dBlkE (selE (pub.n - 1) 20 ++ selE l 2) (M3.kE w))
+
 /-! ## The program -/
 
-/-- **V_S phases 4–7**: WP-8's `kgSpec` program at `P20` (`logN = 16 + 4`, `ksLog = 11 + 4`), the
-`CH` link gated by the chain length `n` (lvm2). -/
-def kgProgS (n : ℕ) :=
-  (callerProg (16 + 4) >>= fun co ↦ chLinkProg (16 + 4) 52 n >>= fun lo ↦
-      VerifierProgram.ret (co, lo)) >>= fun ch ↦
+/-- **V_S phases 4–7** (lvm2 S2): the tape caller (`tapeProg 20 2 0 s n`: `D` is block 0 of the four
+`2^22`-word blocks of `C_main`), then WP-8's `KS` caller and `KS` link at `P20` (`ksLog = 11 + 4`). -/
+def kgProgS (s : RecursionFast.Digest) (n : ℕ) :=
+  tapeProg 20 2 0 s n >>= fun tp ↦
     (callerProg (11 + 4) >>= fun co ↦ ksLinkProg (11 + 4) 14 (contRows P20) >>= fun lo ↦
-      VerifierProgram.ret (co, lo)) >>= fun kso ↦ VerifierProgram.ret (ch, kso)
+      VerifierProgram.ret (co, lo)) >>= fun kso ↦ VerifierProgram.ret (tp, kso)
 
 /-- What `kgProgS` returns. -/
 abbrev KgOut : Type :=
-  (CallerOut × ChLinkOut) × (CallerOut × (List E × (List E × E) × List E))
+  TapeOutE × (CallerOut × (List E × (List E × E) × List E))
 
-/-- **The claims of phases 2–7** (V_S's claim list of phase 8: tables, `CH` and `KS` Keccak claims,
-`CH`'s fixed claims, the `CH` link, `KS`'s output lanes, the `KS` link), put on the stack per
-commitment: `(C_rec, C_main)`. -/
+/-- **The claims of phases 2–7** (V_S's claim list of phase 8: tables, the tape's claims, `KS`'s
+Keccak claims, `KS`'s output lanes, the `KS` link), put on the stack per commitment:
+`(C_rec, C_main)`. -/
 def assembleS (T : List M3.Tab) (pub : Pub) (cl : List LeanVM.Protocol.Verifier.ColumnClaim)
     (kg : KgOut) : List VStackClaim × List VStackClaim :=
-  let ch := kg.1.1
   let ks := kg.2.1
   let claims : List (Com × BClaim) :=
     tableClaimsE T cl ++
-      ((keccakClaimsE chBlk ch ++ chFixedClaimsE ch.1 ch.2.1 pub) ++ keccakClaimsE ksBlk ks).map
-        (.main, ·) ++
-      chLinkClaimsE pub.n kg.1.2 ++ ksOutputClaimsE ks.1 ks.2.1 ++
+      (tapeClaimsE kg.1 pub ++ keccakClaimsE ksBlk ks).map (.main, ·) ++
+      ksOutputClaimsE ks.1 ks.2.1 ++
       ksLinkClaimsE kg.2.2.1 kg.2.2.2.1 kg.2.2.2.2
   let on (com : Com) := (claims.filter (·.1 == com)).map (·.2.onStack)
   (on .crec, on .main)
@@ -206,6 +215,6 @@ def midS (tabs : Pub → List M3.Tab) (x : List UInt8) :
   let pub := pubX x
   let T := M3.sumcheckTabs (tabs pub)
   busTabAccProg tabs pub >>= fun cl ↦
-    kgProgS pub.n >>= fun kg ↦ VerifierProgram.ret (assembleS T pub cl kg)
+    kgProgS (hdX x).s pub.n >>= fun kg ↦ VerifierProgram.ret (assembleS T pub cl kg)
 
 end Lvm.VEq

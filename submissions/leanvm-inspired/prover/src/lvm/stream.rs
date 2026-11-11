@@ -18,8 +18,8 @@ use crate::oracle::Digest;
 use crate::service::{Service, fatal};
 
 /// The node programs (WP-16a, `qasm gen P20|P8`: program, M3B tables, PUBX): every `S` proof carries its tables.
-const Q_P20: &str = include_str!("q-p20.blob");
-const Q_P8: &str = include_str!("q-p8.blob");
+pub const Q_P20: &str = include_str!("q-p20.blob");
+pub const Q_P8: &str = include_str!("q-p8.blob");
 
 pub fn unhex(s: &str) -> Digest {
     let s = s.trim();
@@ -145,81 +145,7 @@ impl Ctx {
     /// to its word function, until nothing changes: the program defines each word before it reads the
     /// word's outputs, so this ends after the BITS dependency depth + 1 runs), then WP-9's tables.
     pub fn build_tables(&self, col: &dyn Fn(bool, usize, usize) -> Vec<F64>, pub_lanes: &[u64]) -> Vec<crate::lvm::m3::TableW> {
-        use crate::lv::primitives::field::F192;
-        use crate::lvm::loopir::{ArrKind, Ty};
-        let Some((c, Some(spec))) = &self.q else { return Vec::new() };
-        let lanes: Vec<u64> = pub_lanes.iter().chain(&spec.pubx).copied().collect();
-        let pub_lanes = &lanes[..];
-        let mut in_k = vec![F64::ZERO; c.q.n_in[0]];
-        let mut in_e = vec![F192::ZERO; c.q.n_in[1]];
-        for a in &spec.arrs {
-            let n = 1usize << a.tau;
-            let cols: Vec<Vec<F64>> = match a.kind {
-                ArrKind::Aliased => a.val.iter().map(|&(r, o)| col(r, o, n)).collect(),
-                ArrKind::Public => vec![(0..n).map(|x| F64(a.sel.get(x).and_then(|&i| pub_lanes.get(i).copied()).unwrap_or(0))).collect()],
-                ArrKind::Written => continue,
-            };
-            for x in 0..n {
-                match a.ty {
-                    Ty::K => in_k[a.base + a.stride * x] = cols[0][x],
-                    Ty::E => in_e[a.base + a.stride * x] = F192::new(cols[0][x].0, cols[1][x].0, cols[2][x].0),
-                }
-            }
-        }
-        // every BITS output cell is a K input cell outside the aliased/public arrays, written once
-        let mut owner = vec![0u8; c.q.n_in[0]];
-        for a in spec.arrs.iter().filter(|a| a.ty == Ty::K && a.kind != ArrKind::Written) {
-            for x in 0..1usize << a.tau {
-                owner[a.base + a.stride * x] = 1;
-            }
-        }
-        for b in &spec.bits {
-            for o in &b.oc {
-                for &e in o {
-                    assert!(e < c.q.n_in[0], "a BITS output is a K input cell ({e})");
-                    assert!(owner[e] != 1, "a BITS output cell lies in an aliased or public array ({e})");
-                    assert!(owner[e] != 2, "two BITS outputs write cell {e}");
-                    owner[e] = 2;
-                }
-            }
-        }
-        let mut runs = 0;
-        let run = loop {
-            let run = c.interp(&in_k, &in_e);
-            runs += 1;
-            let mut changed = false;
-            for (bi, b) in spec.bits.iter().enumerate() {
-                for x in 0..b.n {
-                    let w = match spec.free.iter().find(|f| f.0 == bi) {
-                        // the WOTS checksum of the digest's 32 bytes (4 digits per byte, low bits first)
-                        Some(&(_, 0, cell)) => crate::lvm::m3::free_checksum(&in_k[cell..cell + 4]),
-                        Some(&(_, k, _)) => panic!("LoopIR blob: free word kind {k}"),
-                        None => run.kc[b.wc[x]].0,
-                    };
-                    for (j, o) in b.outs.iter().enumerate() {
-                        let e = b.oc[j][x];
-                        let v = F64(o.word(w));
-                        if in_k[e] != v {
-                            in_k[e] = v;
-                            changed = true;
-                        }
-                    }
-                }
-            }
-            if !changed {
-                break run;
-            }
-            assert!(runs < 64, "the BITS outputs settle");
-        };
-        if !run.ok || !run.inb {
-            if std::env::var_os("LVM_QDEBUG").is_some() { eprintln!("lvm qdebug: ---- end of run"); }
-            if let Some(path) = std::env::var_os("LVM_QDEBUG_DUMP") {
-                let b: Vec<u8> = in_k.iter().flat_map(|v| v.0.to_le_bytes()).collect();
-                let _ = std::fs::write(path, b);
-            }
-            eprintln!("lvm: the node program's run on these inputs: ok {} inb {} (dev: LVM_QDEBUG=1 lists the rows)", run.ok, run.inb);
-        }
-        crate::lvm::m3::spec_tables(c, &run, spec, col, pub_lanes, pub_lanes.len() - spec.pubx.len())
+        build_q_tables(&self.q, col, pub_lanes)
     }
 
     /// The builder `prove` calls (M3 section present): aliased columns from the commitments, public lanes from
@@ -299,6 +225,89 @@ impl Ctx {
         let rec = self.attach(RecWitness::from_child(&self.p, prev));
         self.s_proof(hd, rec, None).0
     }
+}
+
+/// [`Ctx::build_tables`] on a program alone (no service: the `tbench` dev command times it).
+pub fn build_q_tables(
+    q: &Option<(crate::lvm::loopir::Compiled, Option<crate::lvm::loopir::M3Spec>)>,
+    col: &dyn Fn(bool, usize, usize) -> Vec<F64>,
+    pub_lanes: &[u64],
+) -> Vec<crate::lvm::m3::TableW> {
+    use crate::lv::primitives::field::F192;
+    use crate::lvm::loopir::{ArrKind, Ty};
+    let Some((c, Some(spec))) = q else { return Vec::new() };
+    let lanes: Vec<u64> = pub_lanes.iter().chain(&spec.pubx).copied().collect();
+    let pub_lanes = &lanes[..];
+    let mut in_k = vec![F64::ZERO; c.q.n_in[0]];
+    let mut in_e = vec![F192::ZERO; c.q.n_in[1]];
+    for a in &spec.arrs {
+        let n = 1usize << a.tau;
+        let cols: Vec<Vec<F64>> = match a.kind {
+            ArrKind::Aliased => a.val.iter().map(|&(r, o)| col(r, o, n)).collect(),
+            ArrKind::Public => vec![(0..n).map(|x| F64(a.sel.get(x).and_then(|&i| pub_lanes.get(i).copied()).unwrap_or(0))).collect()],
+            ArrKind::Written => continue,
+        };
+        for x in 0..n {
+            match a.ty {
+                Ty::K => in_k[a.base + a.stride * x] = cols[0][x],
+                Ty::E => in_e[a.base + a.stride * x] = F192::new(cols[0][x].0, cols[1][x].0, cols[2][x].0),
+            }
+        }
+    }
+    // every BITS output cell is a K input cell outside the aliased/public arrays, written once
+    let mut owner = vec![0u8; c.q.n_in[0]];
+    for a in spec.arrs.iter().filter(|a| a.ty == Ty::K && a.kind != ArrKind::Written) {
+        for x in 0..1usize << a.tau {
+            owner[a.base + a.stride * x] = 1;
+        }
+    }
+    for b in &spec.bits {
+        for o in &b.oc {
+            for &e in o {
+                assert!(e < c.q.n_in[0], "a BITS output is a K input cell ({e})");
+                assert!(owner[e] != 1, "a BITS output cell lies in an aliased or public array ({e})");
+                assert!(owner[e] != 2, "two BITS outputs write cell {e}");
+                owner[e] = 2;
+            }
+        }
+    }
+    let mut runs = 0;
+    let run = loop {
+        let run = crate::lv::tracing::info_span!("B interp").in_scope(|| c.interp(&in_k, &in_e));
+        runs += 1;
+        let mut changed = false;
+        for (bi, b) in spec.bits.iter().enumerate() {
+            for x in 0..b.n {
+                let w = match spec.free.iter().find(|f| f.0 == bi) {
+                    // the WOTS checksum of the digest's 32 bytes (4 digits per byte, low bits first)
+                    Some(&(_, 0, cell)) => crate::lvm::m3::free_checksum(&in_k[cell..cell + 4]),
+                    Some(&(_, k, _)) => panic!("LoopIR blob: free word kind {k}"),
+                    None => run.kc[b.wc[x]].0,
+                };
+                for (j, o) in b.outs.iter().enumerate() {
+                    let e = b.oc[j][x];
+                    let v = F64(o.word(w));
+                    if in_k[e] != v {
+                        in_k[e] = v;
+                        changed = true;
+                    }
+                }
+            }
+        }
+        if !changed {
+            break run;
+        }
+        assert!(runs < 64, "the BITS outputs settle");
+    };
+    if !run.ok || !run.inb {
+        if std::env::var_os("LVM_QDEBUG").is_some() { eprintln!("lvm qdebug: ---- end of run"); }
+        if let Some(path) = std::env::var_os("LVM_QDEBUG_DUMP") {
+            let b: Vec<u8> = in_k.iter().flat_map(|v| v.0.to_le_bytes()).collect();
+            let _ = std::fs::write(path, b);
+        }
+        eprintln!("lvm: the node program's run on these inputs: ok {} inb {} (dev: LVM_QDEBUG=1 lists the rows)", run.ok, run.inb);
+    }
+    crate::lv::tracing::info_span!("B spec_tables").in_scope(|| crate::lvm::m3::spec_tables(c, &run, spec, col, pub_lanes, pub_lanes.len() - spec.pubx.len()))
 }
 
 /// `first`/`step` inputs from `/work`.

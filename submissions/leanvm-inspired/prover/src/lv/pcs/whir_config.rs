@@ -1090,8 +1090,9 @@ pub fn ud_config(log_n: usize) -> ProverConfig {
 }
 
 /// WP-15a: the configuration of a parameter record's levels (`LvmParams.Level`: fold, rate, cap, queries),
-/// one level allowed (`C_rec`: its final is the level-0 fold in the clear).
-pub fn config_of_levels(levels: &[(usize, usize, usize, usize)]) -> ProverConfig {
+/// one level allowed (`C_rec`: its final is the level-0 fold in the clear). PI-GRIND: `grind` bits at every
+/// level (`ProverState::grind`; 0 = none).
+pub fn config_of_levels(levels: &[(usize, usize, usize, usize)], grind: usize) -> ProverConfig {
     assert!(!levels.is_empty());
     assert_eq!(levels[0].0, INITIAL_FOLDING_FACTOR, "level 0 folds the 64 lanes of a leaf");
     ProverConfig {
@@ -1100,7 +1101,7 @@ pub fn config_of_levels(levels: &[(usize, usize, usize, usize)]) -> ProverConfig
         initial_k: levels[0].0,
         level_ks: levels[1..].iter().map(|l| l.0).collect(),
         queries: levels.iter().map(|l| l.3).collect(),
-        grinding_bits: vec![0; levels.len()],
+        grinding_bits: vec![grind; levels.len()],
         ood_samples: vec![0; levels.len()],
         cap_logs: levels.iter().map(|l| l.2).collect(),
     }

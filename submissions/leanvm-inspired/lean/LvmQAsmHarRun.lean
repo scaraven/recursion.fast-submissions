@@ -14,8 +14,8 @@ sequence of phase programs, each of which a Q_arith gadget family replays:
 | 2 bus | `busPh p` | `α`, `β`, the grand-product GKR, `count ≠ 0`, the leaf-decomposition scalars |
 | 3 tables | `tabPh p m pub bus point` | `ξ`, the table sumcheck and the evaluations |
 | 3b accumulator | `accFold p m pub evals` (AC-V, A23) | `pubCheck`, `κ`, `h`, `t`, the zero scalar (Q_acc: AC-Q) |
-| 4 CH | `chPh p` | `r`, the 25 lanes, the Keccak GKR, the ring switch |
-| 5 CH link | `chLinkPh p m r v pub` | the link (WP-8 / QA1) |
+| 4 tape (lvm2 S2) | `tapePh p` | `r`, the 25 scalars, the tape GKR (T-V's `dTape`) |
+| 5 wire | `wirePh p pub claim` | A1's range of `n` (`dRange`), the wiring (T-V's `dWire`) |
 | 6 KS | `ksPh p` | as `chPh` on `2^ksLog` instances |
 | 7 KS link | `ksLinkPh p m rk pub` | the link |
 | 8–9 openings | `openPh p claims` | `C_rec`'s, then `C_main`'s stacked WHIR opening |
@@ -57,25 +57,13 @@ def tabPh (p : Params) (m : M3) (pub : Pub) (bus : BusOut) (point : List FE) :
   tableSumcheck p.tableRounds tables bus.forms (xiPowers.take nC) formPowers
     point (dot formPowers bus.totals)
 
-/-- **Phase 4**: `CH`'s instance point, its 25 lanes, the Keccak GKR, the ring switch. -/
-def chPh (p : Params) : DM (List FE × List FE × KeccakOut × (FE × (List FE → FE))) := do
-  let r ← samples p.logN
-  let v ← readEs lanes
-  let ko ← verifyKeccak p.logN r v
-  let ring ← ringSwitch ko.slicePoint ko.slices
-  pure (r, v, ko, ring)
+/-- **Phase 4** (lvm2 S2): the tape (T1–T2, T-V's `dTape`). -/
+def tapePh (p : Params) : DM TapeRes := dTape p.logN
 
-/-- **Phase 5**: the `CH` link (its check and claims). -/
-def chLinkPh (p : Params) (m : M3) (r v : List FE) (pub : Pub) : DM (Bool × List (Com × BlockClaim)) := do
-  let chal ← samples (p.logN + 3 + 6)
-  let shift ← sumcheck (m.chShiftTarget pub chal) 3 (List.replicate p.logN none)
-  let inS ← readEs kBits
-  let ringIn ← ringRaw inS
-  let sc2 ← sumcheck (m.chSc2Target pub chal shift inS) 3 [none, none]
-  let yS ← readEs kBits
-  let ringY ← ringRaw yS
-  let constLanes ← samples laneBits
-  pure (m.chLink ⟨chal, shift, inS, ringIn, sc2, yS, ringY, constLanes, r, v, pub⟩)
+/-- **Phase 5** (lvm2 S2): A1's range of `n` (`dRange`), then the wire (T3–T4, `dWire`). -/
+def wirePh (p : Params) (pub : Pub) (claim : KeccakClaim) : DM WireOut := do
+  dRange p pub
+  dWire p pub claim
 
 /-- **Phase 6**: `KS`'s instance point, lanes, GKR, ring switch. -/
 def ksPh (p : Params) : DM (List FE × List FE × KeccakOut × (FE × (List FE → FE))) := do
@@ -94,19 +82,17 @@ def ksLinkPh (p : Params) (m : M3) (rk : List FE) (pub : Pub) : DM (Bool × List
 
 /-- The claims of phase 8 (`decideProg`'s list). -/
 def claimsOf (p : Params) (m : M3) (pub : Pub) (bus : BusOut) (evals : List (List FE × List FE))
-    (r v : List FE) (ko : KeccakOut) (ring : FE × (List FE → FE)) (linkClaims : List (Com × BlockClaim))
-    (rk vks : List FE) (kko : KeccakOut) (kring : FE × (List FE → FE))
+    (tp : TapeRes) (wo : WireOut) (rk vks : List FE) (kko : KeccakOut) (kring : FE × (List FE → FE))
     (kLinkClaims : List (Com × BlockClaim)) : List (Com × BlockClaim) :=
   bus.claims ++ m.tableClaims pub evals ++
-    ((keccakClaims m.chBlock ko ring ++ chFixedClaims p m.chBlock m.chYSlot r v pub) ++
-      keccakClaims m.ksBlock kko kring).map (.main, ·) ++ linkClaims ++
+    (tapeClaims p tp wo pub ++ keccakClaims m.ksBlock kko kring).map (.main, ·) ++
     m.ksOutputClaims rk vks ++ kLinkClaims
 
 /-- **Phases 8–9**: the two stacked openings. -/
 def openPh (p : Params) (claims : List (Com × BlockClaim)) : DM Unit := do
   let on (com : Com) := (claims.filter (·.1 == com)).map (·.2.onStack)
-  verifyStackedOpening p.recLevels p.nuRec (on .crec) false
-  verifyStackedOpening p.mainLevels p.nuMain (on .main) false
+  verifyStackedOpening p.recLevels p.nuRec (on .crec) false p.grind
+  verifyStackedOpening p.mainLevels p.nuMain (on .main) false p.grind
 
 /-- **`decideProg` by phases.** -/
 def decideProgH (p : Params) (m : M3) (vk c : Vector UInt8 32) : DM Acc := do
@@ -119,20 +105,19 @@ def decideProgH (p : Params) (m : M3) (vk c : Vector UInt8 32) : DM Acc := do
   require bus.ok
   let evals ← tabPh p m pub bus point
   let accOut ← accFold p m pub evals
-  let (r, v, ko, ring) ← chPh p
-  let (okL, linkClaims) ← chLinkPh p m r v pub
-  require okL
+  let tp ← tapePh p
+  let wo ← wirePh p pub tp.claim
   let (rk, vks, kko, kring) ← ksPh p
   let (okK, kLinkClaims) ← ksLinkPh p m rk pub
   require okK
-  openPh p (claimsOf p m pub bus evals r v ko ring linkClaims rk vks kko kring kLinkClaims)
+  openPh p (claimsOf p m pub bus evals tp wo rk vks kko kring kLinkClaims)
   pure accOut
 
 set_option maxHeartbeats 4000000 in
 theorem decideProg_eq (p : Params) (m : M3) (vk c : Vector UInt8 32) :
     decideProg p m vk c = decideProgH p m vk c := by
   funext sig s
-  simp only [decideProg, decideProgH, busPh, tabPh, chPh, chLinkPh, ksPh, ksLinkPh, openPh, claimsOf,
+  simp only [decideProg, decideProgH, busPh, tabPh, tapePh, wirePh, ksPh, ksLinkPh, openPh, claimsOf,
     bind_assoc, pure_bind]
 
 end Lvm.Har

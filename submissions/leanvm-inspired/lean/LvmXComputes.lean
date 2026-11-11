@@ -158,7 +158,7 @@ def fuel (t : ℕ) : ℕ := fuelBase + fuelPerWord * t
 
 /-- What the SNARK branch may cost: the fuel less the memory, the parse and the `W` branch, with
 room to spare. -/
-def decBudget (t : ℕ) : ℕ := fuelBase - 2 ^ 26 + (fuelPerWord - 16) * t
+def decBudget (t : ℕ) : ℕ := fuelBase - 2 ^ 26 + (fuelPerWord - 16) * t  -- a fuel margin; layout-lint: allow
 
 /-- **The obligations on the SNARK branch** for `Computes`, at the SNARK proof size `pz`. -/
 structure DecOk (pz : ℕ) (dec : XIR) : Prop where

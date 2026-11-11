@@ -1099,6 +1099,8 @@ pub(crate) fn recursive_prover_with_prepared_basis(
         // final, the L0 positions, λ, the L0 openings, the intro, then the tail rounds (the Lean `levelI`).
         let n_res = log_n - initial_k;
         ps.add_scalars(sc_prover.f_ext());
+        // PI-GRIND: the level's separator, nonce and PoW sample (nothing when its grinding bits are 0)
+        ps.grind(config.grinding_bits[0] as u32);
         let queries_0 = sample_queries_ordered(ps, block_len_0, config.queries[0]);
         let lambda_0 = ps.sample();
         let weights_0 = powers(lambda_0, queries_0.len());

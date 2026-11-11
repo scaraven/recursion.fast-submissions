@@ -18,7 +18,7 @@ import LvmWhirTail
 /-!
 # The final level
 
-`whirLevelsUd μ ℓ₀ per c₀ n₀ dir w i [level] s` is, definitionally, `finProg`: the fold rounds, the
+`whirLevelsUd μ ℓ₀ per c₀ n₀ g dir w i [level] s` is, definitionally, `finProg`: the fold rounds, the
 residual `f_final` (`2^κ` scalars), positions, `λ`, opening, the query intro polynomial, the glue
 (`λ^(1+q)` for the consistency claims), with `dir` the direct check of the opened positions
 against `Enc(f_final)` (a `require`: doom is kept), the tail rounds and the terminal check
@@ -40,7 +40,7 @@ section
 
 section Program
 
-variable (μ ℓ₀ per c₀ n₀ : ℕ) (dir : Bool) (w : List E → E) (i : ℕ) (level : Whir.Level)
+variable (μ ℓ₀ per c₀ n₀ g : ℕ) (dir : Bool) (w : List E → E) (i : ℕ) (level : Whir.Level)
 
 /-- After the query group of the final level. -/
 def finFinish (r : WhirStateT × List E) (residual : List E) (qs : List ℕ) (lam : E)
@@ -57,17 +57,18 @@ def finFinish (r : WhirStateT × List E) (residual : List E) (qs : List ℕ) (la
 /-- After the fold rounds of the final level. -/
 def finTail (r : WhirStateT × List E) : VerifierProgram Unit :=
   (readScalars (2 ^ (μ - r.1.folds.length))).bind fun residual ↦
+  (grindPre g).bind fun _ ↦ (powCheck g).bind fun _ ↦
   (samplePositions per (μ - r.1.folds.length + level.logInvRate) level.queries).bind fun qs ↦
   sampleChallenge.bind fun lam ↦ (queryOpenings (cidx c₀ n₀ i) qs).bind fun words ↦
     finFinish μ ℓ₀ dir w i level r residual qs lam words
 
 /-- The final level, unfolded. -/
 def finProg (s : WhirStateT) : VerifierProgram Unit :=
-  (foldRoundsT level.fold s []).bind fun r ↦ finTail μ ℓ₀ per c₀ n₀ dir w i level r
+  (foldRoundsT level.fold s []).bind fun r ↦ finTail μ ℓ₀ per c₀ n₀ g dir w i level r
 
 /-- **`whirLevelsUd` on the final level is `finProg`.** -/
 theorem whirLevels_fin (s : WhirStateT) :
-    whirLevelsUd μ ℓ₀ per c₀ n₀ dir w i [level] s = finProg μ ℓ₀ per c₀ n₀ dir w i level s := rfl
+    whirLevelsUd μ ℓ₀ per c₀ n₀ g dir w i [level] s = finProg μ ℓ₀ per c₀ n₀ g dir w i level s := rfl
 
 end Program
 
@@ -174,30 +175,31 @@ noncomputable def readNInvSucc (I : CInv) {εmax T : ENNReal} (hT : T ≤ εmax)
       (Spec.ret (x :: xs)).mono (fun _ h ↦ ⟨by simp [h.1], h.2⟩) (fun _ _ h ↦ h) le_rfl
         le_rfl le_rfl
 
-variable {μ ℓ₀ per c₀ n₀ : ℕ} {dir : Bool} {w : List E → E} {i : ℕ} {P : LevelCode} {level : Whir.Level}
+variable {μ ℓ₀ per c₀ n₀ g : ℕ} {dir : Bool} {w : List E → E} {i : ℕ} {P : LevelCode} {level : Whir.Level}
   {pre : ℕ} {εmax : ENNReal}
 
 /-- The query group of the final level, the tail and the terminal check, from the residual's
 doom. -/
-noncomputable def finQuerySpec (H : FinHyp μ ℓ₀ per c₀ n₀ w P level pre)
+noncomputable def finQuerySpec (H : FinHyp μ ℓ₀ per c₀ n₀ w P level pre) (hg : g ≤ 192)
     (hQlt : eQueryFinal P level.queries < 1) (hεT : eTail ≤ εmax)
     (r : WhirStateT × List E) (res : List E) :
-    Spec ((queryFrag per (μ - r.1.folds.length + level.logInvRate) level.queries
+    Spec ((queryFragG g per (μ - r.1.folds.length + level.logInvRate) level.queries
         (cidx c₀ n₀ i)).bind fun g ↦ finFinish μ ℓ₀ dir w i level r res g.1 g.2.1 g.2.2)
       (fun h ↦ ResC μ ℓ₀ w i P level.fold pre r res (viewC c₀ n₀ (commits h)))
-      (fun _ _ ↦ False) εmax (eQueryFinal P level.queries) 0 :=
-  ((Spec.ofNoMove (p := queryFrag per (μ - r.1.folds.length + level.logInvRate) level.queries
+      (fun _ _ ↦ False) εmax ((2 : ENNReal)⁻¹ ^ g * eQueryFinal P level.queries) 0 :=
+  ((Spec.ofNoMove (p := queryFragG g per (μ - r.1.folds.length + level.logInvRate) level.queries
         (cidx c₀ n₀ i))
       (Pre := fun h ↦ ResC μ ℓ₀ w i P level.fold pre r res (viewC c₀ n₀ (commits h)))
       (Post := fun g h ↦ GlueFinC μ ℓ₀ w i P level.fold pre r res g (viewC c₀ n₀ (commits h)))
-      (εmax := εmax) (T := 0) (noMoves_queryFrag _ _ _ _).noMove hQlt fun h₀ hp ↦ by
+      (εmax := εmax) (T := 0) (noMoves_queryFragG _ _ _ _ _).noMove
+      ((grind_disc_le g _).trans_lt hQlt) fun h₀ hp ↦ by
         obtain ⟨⟨hres, hbook⟩, hD⟩ := hp
         have hκm := finBook_κ hbook
         have hd : μ - r.1.folds.length + level.logInvRate = P.κ + P.R := by rw [hκm, H.hR]
         have hlf : r.2.length = level.fold := hbook.2.2
         have hW' := commits_cidx H.hc (shapeOK_word hbook.2.1).1
         rw [hd]
-        refine escRet_queryFrag_le_finViol P per level.queries (cidx c₀ n₀ i) H.hper H.hpd h₀ hW'
+        refine escRet_queryFragG_le_finViol g hg P per level.queries (cidx c₀ n₀ i) H.hper H.hpd h₀ hW'
           _ (runW w ℓ₀ r.1) r.1.target (resMsg res) hD
           (fun g cs ↦ GlueFinC μ ℓ₀ w i P level.fold pre r res g (viewC c₀ n₀ cs))
           fun qs lam hr hlen hv ↦ ⟨⟨hres, hbook⟩, ?_⟩
@@ -220,42 +222,50 @@ noncomputable def finQuerySpec (H : FinHyp μ ℓ₀ per c₀ n₀ w P level pre
 
 /-- After the fold rounds of the final level: the residual (whose doom `ResC` is the doom of the
 boundary after its last scalar), then the query group. -/
-noncomputable def finTailSpec (H : FinHyp μ ℓ₀ per c₀ n₀ w P level pre)
-    (hQlt : eQueryFinal P level.queries < 1) (hεQ : eQueryFinal P level.queries ≤ εmax)
+noncomputable def finTailSpec (H : FinHyp μ ℓ₀ per c₀ n₀ w P level pre) (hg : g ≤ 192)
+    (hQlt : eQueryFinal P level.queries < 1)
+    (hεQ : (2 : ENNReal)⁻¹ ^ g * eQueryFinal P level.queries ≤ εmax)
     (hεT : eTail ≤ εmax) (r : WhirStateT × List E) :
-    Spec (finTail μ ℓ₀ per c₀ n₀ dir w i level r)
+    Spec (finTail μ ℓ₀ per c₀ n₀ g dir w i level r)
       (fun h ↦ AfterFold μ ℓ₀ w i P level.fold pre r (viewC c₀ n₀ (commits h)))
       (fun _ _ ↦ False) εmax 0 0 :=
   Spec.congr (p := (readScalars (2 ^ (μ - r.1.folds.length) - 1 + 1)).bind fun res ↦
-      (VerifierProgram.ret res).bind fun res ↦
-        (queryFrag per (μ - r.1.folds.length + level.logInvRate) level.queries
+      (VerifierProgram.ret res).bind fun res ↦ (grindPre g).bind fun _ ↦
+        (queryFragG g per (μ - r.1.folds.length + level.logInvRate) level.queries
           (cidx c₀ n₀ i)).bind fun g ↦ finFinish μ ℓ₀ dir w i level r res g.1 g.2.1 g.2.2)
     (by
       rw [Nat.sub_add_cancel Nat.one_le_two_pow]
       simp only [finTail, VerifierProgram.ret_bind]
       congr 1
       funext res
-      exact (query_bind per (cidx c₀ n₀ i) _ _ _).symm)
+      congr 1
+      funext _
+      exact (query_bindG per g (cidx c₀ n₀ i) _ _ _).symm)
     ((readNInvSucc (fun cs ↦ AfterFold μ ℓ₀ w i P level.fold pre r (viewC c₀ n₀ cs))
-        (T := eQueryFinal P level.queries) hεQ (2 ^ (μ - r.1.folds.length) - 1)).bind fun res ↦
+        (T := (2 : ENNReal)⁻¹ ^ g * eQueryFinal P level.queries) hεQ
+        (2 ^ (μ - r.1.folds.length) - 1)).bind fun res ↦
       ((Spec.ret (Post := fun res h ↦ ResC μ ℓ₀ w i P level.fold pre r res
-          (viewC c₀ n₀ (commits h))) (εmax := εmax) (T := eQueryFinal P level.queries) res).mono
+          (viewC c₀ n₀ (commits h))) (εmax := εmax)
+          (T := (2 : ENNReal)⁻¹ ^ g * eQueryFinal P level.queries) res).mono
         (fun _ hp ↦ resC_of_afterFold hp.2 (by
           rw [hp.1, Nat.sub_add_cancel Nat.one_le_two_pow])) (fun _ _ h ↦ h) le_rfl le_rfl
-          le_rfl).bind fun res ↦ finQuerySpec H hQlt hεT r res)
+          le_rfl).bind fun res ↦
+        (grindPreInv (fun cs ↦ ResC μ ℓ₀ w i P level.fold pre r res (viewC c₀ n₀ cs)) g
+          hεQ).bind fun _ ↦ finQuerySpec H hg hQlt hεT r res)
 
 /-- **The specification of the final level.** -/
-noncomputable def finSpec (H : FinHyp μ ℓ₀ per c₀ n₀ w P level pre)
+noncomputable def finSpec (H : FinHyp μ ℓ₀ per c₀ n₀ w P level pre) (hg : g ≤ 192)
     (hεF : eFold P level.fold ≤ εmax) (hQlt : eQueryFinal P level.queries < 1)
-    (hεQ : eQueryFinal P level.queries ≤ εmax) (hεT : eTail ≤ εmax) (s : WhirStateT) :
-    Spec (whirLevelsUd μ ℓ₀ per c₀ n₀ dir w i [level] s)
+    (hεQ : (2 : ENNReal)⁻¹ ^ g * eQueryFinal P level.queries ≤ εmax) (hεT : eTail ≤ εmax)
+    (s : WhirStateT) :
+    Spec (whirLevelsUd μ ℓ₀ per c₀ n₀ g dir w i [level] s)
       (fun h ↦ LevelPre μ ℓ₀ w i P level.fold pre s (viewC c₀ n₀ (commits h)))
       (fun _ _ ↦ False) εmax εmax 0 :=
   (((foldRoundsSpec μ ℓ₀ w i P level.fold pre (viewC c₀ n₀)
       (fun cs ↦ ShapeOK i P level.fold (viewC c₀ n₀ cs)) H.hw H.hℓ₀ hεF level.fold s []).bind'
-      fun r ↦ finTailSpec H hQlt hεQ hεT r).mono
+      fun r ↦ finTailSpec H hg hQlt hεQ hεT r).mono
     (fun _ hp ↦ ⟨⟨hp.1, hp.2⟩, by simp⟩) (fun _ _ h ↦ h) le_rfl hεF le_rfl).congr
-    (whirLevels_fin μ ℓ₀ per c₀ n₀ dir w i level s).symm
+    (whirLevels_fin μ ℓ₀ per c₀ n₀ g dir w i level s).symm
 
 end
 end LeanVM.Protocol.Whir.Sound

@@ -62,40 +62,47 @@ theorem bind_D_ret {p : VerifierProgram α} {f : α → VerifierProgram β} {Pre
 
 section Tail
 
-variable {μ ℓ₀ per c₀ n₀ : ℕ} {dir : Bool} {w : List E → E} {i : ℕ} {P : LevelCode}
+variable {μ ℓ₀ per c₀ n₀ g : ℕ} {dir : Bool} {w : List E → E} {i : ℕ} {P : LevelCode}
   {level : LeanVM.Parameters.Whir.Level} {pre : ℕ} {εmax : ℝ≥0∞}
 
-/-- The final level after its fold rounds, as the residual's read, then the query group. -/
+/-- The final level after its fold rounds, as the residual's read, the moves before the proof of
+work (PI-GRIND; nothing at `g = 0`), then the query group with the proof of work. -/
 theorem finTail_eq (r : WhirStateT × List E) :
-    finTail μ ℓ₀ per c₀ n₀ dir w i level r =
-      (readScalars (2 ^ (μ - r.1.folds.length))).bind fun res ↦
-        (queryFrag per (μ - r.1.folds.length + level.logInvRate) level.queries
-          (cidx c₀ n₀ i)).bind fun g ↦ finFinish μ ℓ₀ dir w i level r res g.1 g.2.1 g.2.2 := by
+    finTail μ ℓ₀ per c₀ n₀ g dir w i level r =
+      (readScalars (2 ^ (μ - r.1.folds.length))).bind fun res ↦ (grindPre g).bind fun _ ↦
+        (queryFragG g per (μ - r.1.folds.length + level.logInvRate) level.queries
+          (cidx c₀ n₀ i)).bind fun gg ↦ finFinish μ ℓ₀ dir w i level r res gg.1 gg.2.1 gg.2.2 := by
   simp only [finTail]
   congr 1
   funext res
-  exact query_bind per (cidx c₀ n₀ i) _ _ _
+  congr 1
+  funext _
+  exact query_bindG per g (cidx c₀ n₀ i) _ _ _
 
 /-- **After the fold rounds, from no doom**: doom is created at the residual's last scalar iff
 `ResC` holds; then WP-7's query group, tail and terminal check. -/
-noncomputable def resTailSpec (H : FinHyp μ ℓ₀ per c₀ n₀ w P level pre)
-    (hQlt : eQueryFinal P level.queries < 1) (hεQ : eQueryFinal P level.queries ≤ εmax)
+noncomputable def resTailSpec (H : FinHyp μ ℓ₀ per c₀ n₀ w P level pre) (hg : g ≤ 192)
+    (hQlt : eQueryFinal P level.queries < 1)
+    (hεQ : (2 : ℝ≥0∞)⁻¹ ^ g * eQueryFinal P level.queries ≤ εmax)
     (hεT : eTail ≤ εmax) (r : WhirStateT × List E) :
-    Spec (finTail μ ℓ₀ per c₀ n₀ dir w i level r) (fun _ ↦ False) (fun _ _ ↦ False) εmax 0 0 :=
+    Spec (finTail μ ℓ₀ per c₀ n₀ g dir w i level r) (fun _ ↦ False) (fun _ _ ↦ False) εmax 0 0 :=
   Spec.congr (finTail_eq r).symm
     ((Spec.atRet (Post := fun res h ↦ ResC μ ℓ₀ w i P level.fold pre r res
         (viewC c₀ n₀ (commits h))) (movesOnly_readScalars _) hεQ).bind fun res ↦
-      finQuerySpec H hQlt hεT r res)
+      (grindPreInv (fun cs ↦ ResC μ ℓ₀ w i P level.fold pre r res (viewC c₀ n₀ cs)) g
+        hεQ).bind fun _ ↦ finQuerySpec H hg hQlt hεT r res)
 
 /-- **The residual's doom**: at the boundary after the residual's last scalar, `ResC` is doom. -/
-theorem resTailSpec_D (H : FinHyp μ ℓ₀ per c₀ n₀ w P level pre)
-    (hQlt : eQueryFinal P level.queries < 1) (hεQ : eQueryFinal P level.queries ≤ εmax)
+theorem resTailSpec_D (H : FinHyp μ ℓ₀ per c₀ n₀ w P level pre) (hg : g ≤ 192)
+    (hQlt : eQueryFinal P level.queries < 1)
+    (hεQ : (2 : ℝ≥0∞)⁻¹ ^ g * eQueryFinal P level.queries ≤ εmax)
     (hεT : eTail ≤ εmax) (r : WhirStateT × List E) {h₀ l : List Ev} {res : List E}
     (ha : (readScalars (2 ^ (μ - r.1.folds.length))).after l = some (.ret res))
     (hR : ResC μ ℓ₀ w i P level.fold pre r res (viewC c₀ n₀ (commits (h₀ ++ l)))) :
-    (resTailSpec (dir := dir) (i := i) H hQlt hεQ hεT r).D h₀ l := by
+    (resTailSpec (dir := dir) (i := i) H hg hQlt hεQ hεT r).D h₀ l := by
   rw [resTailSpec, Spec.congr_D, bind_D_ret _ _ ha]
-  exact ⟨⟨res, ha, hR⟩, (finQuerySpec H hQlt hεT r res).start_D _ hR⟩
+  exact ⟨⟨res, ha, hR⟩, ((grindPreInv (fun cs ↦ ResC μ ℓ₀ w i P level.fold pre r res
+    (viewC c₀ n₀ cs)) g hεQ).bind fun _ ↦ finQuerySpec (dir := dir) H hg hQlt hεT r res).start_D _ hR⟩
 
 end Tail
 
@@ -115,7 +122,7 @@ theorem stacked_one_eq (cfg : UdConfig) (level : LeanVM.Parameters.Whir.Level)
     verifyStackedUd cfg cl = sampleChallenge.bind fun ρ ↦
       (LeanVM.Protocol.Verifier.sumcheckRoundPoly 3 (batT cl ρ) none).bind fun quad ↦
         (foldRoundsT level.fold ⟨batT cl ρ, quad, [], []⟩ []).bind fun r ↦
-          finTail cfg.μ level.fold cfg.per cfg.c₀ cfg.n₀ cfg.direct (batW cl ρ) 0 level r := by
+          finTail cfg.μ level.fold cfg.per cfg.c₀ cfg.n₀ cfg.grind cfg.direct (batW cl ρ) 0 level r := by
   rw [verifyStackedUd_eq]
   congr 1
   funext ρ
@@ -127,7 +134,8 @@ section Rec
 variable (cfg : UdConfig) (level : LeanVM.Parameters.Whir.Level) (hc : cfg.levels = [level])
   (P : LevelCode) (cl : List LeanVM.Protocol.Verifier.StackClaim) {εmax : ℝ≥0∞}
   (H : ∀ ρ, FinHyp cfg.μ level.fold cfg.per cfg.c₀ cfg.n₀ (batW cl ρ) P level 0)
-  (hQlt : eQueryFinal P level.queries < 1) (hεQ : eQueryFinal P level.queries ≤ εmax)
+  (hg : cfg.grind ≤ 192) (hQlt : eQueryFinal P level.queries < 1)
+  (hεQ : (2 : ℝ≥0∞)⁻¹ ^ cfg.grind * eQueryFinal P level.queries ≤ εmax)
   (hεT : eTail ≤ εmax)
 
 /-- **A one-level stacked opening from no doom**, doom only the residual's. -/
@@ -137,15 +145,15 @@ noncomputable def recResSpec :
     ((Spec.dead (p := sampleChallenge) (Post := fun _ _ ↦ False) (L := 0) (T := 0)).bind fun ρ ↦
       (Spec.dead (Post := fun _ _ ↦ False) (L := 0) (T := 0)).bind fun quad ↦
         (Spec.dead (Post := fun _ _ ↦ False) (L := 0) (T := 0)).bind fun r ↦
-          resTailSpec (dir := cfg.direct) (i := 0) (H ρ) hQlt hεQ hεT r)
+          resTailSpec (dir := cfg.direct) (i := 0) (H ρ) hg hQlt hεQ hεT r)
 
 /-- The doom of `recResSpec` after the residual: `resTailSpec`'s. -/
 theorem recResSpec_D {h₀ lq lf lres : List Ev} {ρ : E} {quad : List E} {r : WhirStateT × List E}
     (hq : (LeanVM.Protocol.Verifier.sumcheckRoundPoly 3 (batT cl ρ) none).after lq = some (.ret quad))
     (hf : (foldRoundsT level.fold ⟨batT cl ρ, quad, [], []⟩ []).after lf = some (.ret r))
     (hne : lres ≠ []) :
-    (recResSpec cfg level hc P cl H hQlt hεQ hεT).D h₀ ([Ev.sample ρ] ++ (lq ++ (lf ++ lres))) ↔
-      (resTailSpec (dir := cfg.direct) (i := 0) (H ρ) hQlt hεQ hεT r).D
+    (recResSpec cfg level hc P cl H hg hQlt hεQ hεT).D h₀ ([Ev.sample ρ] ++ (lq ++ (lf ++ lres))) ↔
+      (resTailSpec (dir := cfg.direct) (i := 0) (H ρ) hg hQlt hεQ hεT r).D
         (h₀ ++ [Ev.sample ρ] ++ lq ++ lf) lres := by
   rw [recResSpec, Spec.congr_D, bind_D_after _ _ (rfl : sampleChallenge.after [Ev.sample ρ] = _)
     (by simp [hne]), bind_D_after _ _ hq (by simp [hne]), bind_D_after _ _ hf hne]
@@ -184,13 +192,17 @@ theorem after_bind_ret {p : VerifierProgram α} {f : α → VerifierProgram β} 
     | _ => simp [VerifierProgram.bind] at he
   · exact ⟨a, l₁, l₂, rfl, h1, h2⟩
 
-/-- The positions' first challenge: a query group with at least one position starts with a
-challenge. -/
-theorem queryFrag_bind_ne_ret (per d t c : ℕ) (ht : t ≠ 0) (g : List ℕ × E × List (List K) → VerifierProgram Unit)
-    (a : Unit) : (queryFrag per d t c).bind g ≠ .ret a := by
+/-- The positions' first challenge: a query group with at least one position (after the moves
+before the proof of work, PI-GRIND) starts with a challenge. -/
+theorem queryFrag_bind_ne_ret (gb per d t c : ℕ) (ht : t ≠ 0)
+    (g : List ℕ × E × List (List K) → VerifierProgram Unit) (a : Unit) :
+    ((grindPre gb).bind fun _ ↦ (queryFragG gb per d t c).bind g) ≠ .ret a := by
   obtain ⟨t, rfl⟩ := Nat.exists_eq_succ_of_ne_zero ht
-  simp [queryFrag, samplePositions, samplePositionsAux, VerifierProgram.bind,
-    VerifierProgram.sampleChallenge]
+  by_cases hg : gb = 0
+  · subst hg
+    simp [grindPre, powCheck, queryFragG, queryFrag, samplePositions, samplePositionsAux,
+      VerifierProgram.bind, VerifierProgram.sampleChallenge]
+  · simp [grindPre, hg, VerifierProgram.bind, VerifierProgram.sampleChallenge]
 
 /-- A one-level stacked opening, after its residual, is at its query group. -/
 theorem after_stacked_one (cfg : UdConfig) (level : LeanVM.Parameters.Whir.Level)
@@ -200,7 +212,8 @@ theorem after_stacked_one (cfg : UdConfig) (level : LeanVM.Parameters.Whir.Level
     (hf : (foldRoundsT level.fold ⟨batT cl ρ, quad, [], []⟩ []).after lf = some (.ret r))
     (hr : (readScalars (2 ^ (cfg.μ - r.1.folds.length))).after lres = some (.ret res)) :
     (verifyStackedUd cfg cl).after ([Ev.sample ρ] ++ (lq ++ (lf ++ lres))) =
-      some ((queryFrag cfg.per (cfg.μ - r.1.folds.length + level.logInvRate) level.queries
+      some ((grindPre cfg.grind).bind fun _ ↦
+        (queryFragG cfg.grind cfg.per (cfg.μ - r.1.folds.length + level.logInvRate) level.queries
         (cidx cfg.c₀ cfg.n₀ 0)).bind fun g ↦
           finFinish cfg.μ level.fold cfg.direct (batW cl ρ) 0 level r res g.1 g.2.1 g.2.2) := by
   rw [stacked_one_eq cfg level hc cl,
@@ -222,7 +235,11 @@ theorem finHyp_rec20 (cl : List LeanVM.Protocol.Verifier.StackClaim)
 theorem hQlt20 : eQueryFinal (codesRec20 0) recLevel.queries < 1 :=
   eQuery_rec20.trans_lt (inv_two_pow_lt_one (by norm_num))
 
-theorem hεQ20 : eQueryFinal (codesRec20 0) recLevel.queries ≤ εS := eQuery_rec20
+theorem hεQ20 : (2 : ℝ≥0∞)⁻¹ ^ cfgRec20.grind * eQueryFinal (codesRec20 0) recLevel.queries ≤ εS := by
+  rw [show cfgRec20.grind = 0 from rfl, pow_zero, one_mul]
+  exact eQuery_rec20
+
+theorem hg20 : cfgRec20.grind ≤ 192 := by decide
 
 theorem hεT20 : eTail ≤ εS := eTail_le.trans (inv_two_pow_anti (by norm_num))
 
@@ -238,7 +255,7 @@ not multiaffine). -/
 noncomputable def recRes20 (cl : List LeanVM.Protocol.Verifier.StackClaim) :
     Spec (verifyStackedUd cfgRec20 cl) (fun _ ↦ False) (fun _ _ ↦ False) εS 0 0 :=
   if hcl : ∀ c ∈ cl, IsMultiaffine 19 c.1 then
-    recResSpec cfgRec20 recLevel rec20_levels (codesRec20 0) cl (finHyp_rec20 cl hcl) hQlt20 hεQ20 hεT20
+    recResSpec cfgRec20 recLevel rec20_levels (codesRec20 0) cl (finHyp_rec20 cl hcl) hg20 hQlt20 hεQ20 hεT20
   else Spec.dead
 
 /-- The openings from no doom, doom only `C_rec`'s residual's. -/
@@ -249,7 +266,7 @@ noncomputable def openRes (cl : OpenClaims) :
 /-- **The residual's doom of `P_S`** (from no doom). -/
 noncomputable def resSpec (mid : List UInt8 → VerifierProgram OpenClaims) (x : List UInt8) :
     Spec (PSWith mid x) (fun _ ↦ False) (fun b _ ↦ b = false) εS 0 0 :=
-  (Spec.bind' (Spec.dead (p := commitRootUd cfgMain20 >>= fun _ ↦ commitRootUd cfgRec20)
+  (Spec.bind' (Spec.dead (p := commitRootUd cfgMain24 >>= fun _ ↦ commitRootUd cfgRec20)
       (Post := fun _ _ ↦ False) (L := 0) (T := 0)) fun _ ↦
     Spec.bind' (Spec.dead (p := mid x) (Post := fun _ _ ↦ False) (L := 0) (T := 0)) fun cl ↦
       openRes cl).congr (PSWith_eq mid x).symm
@@ -260,7 +277,7 @@ middle phases (`hm`), `C_rec`'s batching challenge, first round polynomial (`hq`
 theorem resSpec_D (mid : List UInt8 → VerifierProgram OpenClaims) (x : List UInt8)
     {hr lm lq lf lres : List Ev} {cl : OpenClaims} {ρ : E} {quad res : List E}
     {r : WhirStateT × List E}
-    (hroots : (commitRootUd cfgMain20 >>= fun _ ↦ commitRootUd cfgRec20).after hr = some (.ret ()))
+    (hroots : (commitRootUd cfgMain24 >>= fun _ ↦ commitRootUd cfgRec20).after hr = some (.ret ()))
     (hm : (mid x).after lm = some (.ret cl))
     (hcl : ∀ c ∈ cl.1, IsMultiaffine 19 c.1)
     (hq : (LeanVM.Protocol.Verifier.sumcheckRoundPoly 3 (batT cl.1 ρ) none).after lq = some (.ret quad))
@@ -283,11 +300,11 @@ theorem resSpec_D (mid : List UInt8 → VerifierProgram OpenClaims) (x : List UI
     bind_D_after _ _ hm (by simp)]
   rw [openRes, show (Spec.bind' _ _ : Spec (_ >>= _) _ _ _ _ _) = Spec.bind _ _ from rfl,
     bind_D_inside _ _ (after_stacked_one cfgRec20 recLevel rec20_levels cl.1 hq hf hres)
-      (queryFrag_bind_ne_ret _ _ _ _ (by decide) _)]
+      (queryFrag_bind_ne_ret _ _ _ _ _ (by decide) _)]
   rw [recRes20, dif_pos hcl]
   refine (recResSpec_D cfgRec20 recLevel rec20_levels (codesRec20 0) cl.1 (finHyp_rec20 cl.1 hcl)
-    hQlt20 hεQ20 hεT20 hq hf hne).2 ?_
-  refine resTailSpec_D _ _ _ _ r hres ?_
+    hg20 hQlt20 hεQ20 hεT20 hq hf hne).2 ?_
+  refine resTailSpec_D _ _ _ _ _ r hres ?_
   simp only [List.nil_append, List.append_assoc] at hR ⊢
   exact hR
 

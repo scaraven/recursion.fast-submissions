@@ -1,5 +1,6 @@
 -- New for lvm (V-PERF): the node program and Q_link's static table built in linear time.
 import LvmQAsmProg
+import LvmQAsmArith2P47
 
 /-!
 # The node program and `qltData`, built once in linear time
@@ -204,19 +205,39 @@ theorem gkrGadgetF_eq : gkrGadgetF = gkrGadget := by
   rw [loopF_eq]
   rfl
 
-/-- `Lvm.Har.phases47` with `gkrGadgetF`. -/
+/-- `tapeGadget` with `loopF` (the 24 layers' template: two `mkLoop`s over QA1's layer rows). -/
+def tapeGadgetF (P qs : Nat) (inst out : Nat → Cell) (b : Cell) : BM TapeOut :=
+  getPtr >>= fun p =>
+  loopF [] (tplOf (cstInsT (gkS b))) >>= fun _ =>
+  loopF [] (tplOf (preTBT P qs (fun i => gkS (inst i)) (fun l => gkS (out l)) (gkS b) 0).2) >>= fun pre =>
+  let F := (preTBT P qs (fun i => gkS (inst i)) (fun l => gkS (out l)) (gkS b) 0).1
+  loopF [] (tplOf (cpIns (F.carried.map (Src.gkOut pre)))) >>= fun _ =>
+  loopF [4] (layTpl P (tapeQ qs) p.k) >>= fun _ =>
+  loopF [3] (layTpl P (tapeQ qs + 16 * (lay0 P).str) (p.k + 16 * 16)) >>= fun lay =>
+  pure ⟨fun j => lay.cell (cbOf P + j) 7⟩
+
+theorem tapeGadgetF_eq : tapeGadgetF = tapeGadget := by
+  funext P qs inst out b
+  unfold tapeGadgetF
+  rw [loopF_eq]
+  rfl
+
+/-- `Lvm.Har.phases47` with `tapeGadgetF`, `gkrGadgetF`. -/
 def phases47F (C : QCfg) : BM Lvm.Har.P47Out := do
   let g := kc (pbB C)
   let p := C.p
   let r ← Lvm.Har.loadEs (clog2 p.logN) (Lvm.Har.aLane p 0) 9
   let v ← Lvm.Har.loadEs 5 (Lvm.Har.aLane p 1) 3
-  let ko ← gkrGadgetF (p.logN - 4) (Lvm.Har.aLane p 2) (fun i => r.cell 0 i) (fun l => v.cell 0 l) g
-  Lvm.Q1.chLinkGadgetG p.logN (clog2 p.logN) (Lvm.Har.aLane p 3) ((sigIn C).bn + 2) g
+  let tp ← tapeGadgetF (p.logN - 5) (Lvm.Har.aLane p 2) (fun i => r.cell 0 i) (fun l => v.cell 0 l) g
+  let z ← const .E 0 (kc 0)
+  let one ← const .E 1 (kc 0)
+  let mb ← Lvm.Har.borrow ((sigIn C).bn + 2) one.n p.logN
+  let wo ← Lvm.Q1.wireGadget (p.logN - 5) (Lvm.Har.aLane p 3) tp.cv mb (Lvm.Har.sbCells C) g z.n
   let rk ← Lvm.Har.loadEs (clog2 p.ksLog) (Lvm.Har.aLane p 4) 9
   let vk ← Lvm.Har.loadEs 5 (Lvm.Har.aLane p 5) 3
   let kko ← gkrGadgetF (p.ksLog - 4) (Lvm.Har.aLane p 6) (fun i => rk.cell 0 i) (fun l => vk.cell 0 l) g
   Lvm.Q1.ksLinkGadget p (clog2 p.ksLog) (Lvm.Har.aLane p 7) g
-  pure ⟨(List.range p.logN).map (r.cell 0), (List.range 25).map (v.cell 0), ko,
+  pure ⟨(List.range p.logN).map (r.cell 0), (List.range 25).map (v.cell 0), tp, mb, wo,
     (List.range p.ksLog).map (rk.cell 0), (List.range 25).map (vk.cell 0), kko⟩
 
 /-- `QAsm.qarith` with `gkrGadgetF` (HAR mirrors every change of `qarith` here). -/
@@ -234,7 +255,7 @@ def QF (C : QCfg) : Program := toProgramF (nK C) 0 (qprogF C)
 /-- **It is the node program.** -/
 theorem QF_eq (C : QCfg) : QF C = QAsm.Q C := by
   unfold QF QAsm.Q qprogF qprogC qarithF qarith phases47F Lvm.Har.phases47
-  rw [gkrGadgetF_eq, toProgramF_eq]
+  rw [tapeGadgetF_eq, gkrGadgetF_eq, toProgramF_eq]
 
 /-- `QAsm.qprogT` with `phases47F` (the assembler's fixed-point iteration). -/
 def qprogTF (C : QCfg) (D : QData) : BM Unit := do
@@ -247,7 +268,7 @@ def QTF (C : QCfg) (D : QData) : Program := toProgramF (nK C) 0 (qprogTF C D)
 
 theorem QTF_eq (C : QCfg) (D : QData) : QTF C D = QAsm.QT C D := by
   unfold QTF QAsm.QT qprogTF QAsm.qprogT phases47F Lvm.Har.phases47
-  rw [gkrGadgetF_eq, toProgramF_eq]
+  rw [tapeGadgetF_eq, gkrGadgetF_eq, toProgramF_eq]
 
 /-! ## The pieces and the program cache in linear time -/
 

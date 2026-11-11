@@ -6,9 +6,9 @@ import LvmCertSMid3Blk
 /-!
 # The side conditions
 
-* **`retOK_kgProgS`**: every return of `kgProgS` meets `KgRet` (from `retOK_callerProg`,
-  `retOK_chLinkProg`, `retOK_ksLinkProg`; ring weights `Σ_k c_k eq(r^(2^k), ·)` are multiaffine);
-* `okC_claimsS`: every assembled claim's block fits its commitment (`τ ≤ 19` on `C_rec`, `≤ 26` on
+* **`retOK_kgProgS`**: every return of `kgProgS s n` meets `KgRet` (lvm2 S2: `retOK_tapeProg`, then
+  `retOK_callerProg`, `retOK_ksLinkProg`; ring weights `Σ_k c_k eq(r^(2^k), ·)` are multiaffine);
+* `okC_claimsS`: every assembled claim's block fits its commitment (`τ ≤ 19` on `C_rec`, `≤ 24` on
   `C_main`, from `LayOk` for the tables) with a weight multiaffine on the block;
 * **`side_assembleS`**: `assembleS`'s claims are multiaffine, at most `2^63` per commitment, when
   `pub.h` has at most `2^61` lanes (`length_pubX_h`: `pubX`'s has four; `C_main` gets one boundary
@@ -59,16 +59,6 @@ theorem retOK_callerProg (h : ℕ) (hh : 4 ≤ h) : RetOK (CallerRet h) (Lvm.KG.
       fun res hres ↦ (retOK_ringSwitch _ _).bind fun ring hring ↦ RetOK.ret ?_
   exact ⟨hr, hv, fun c hc ↦ hr ▸ hres.1 c hc, hres.2, hring⟩
 
-/-- Every return of the `CH` link: `ρ'` has `h` coordinates, the ring weights are multiaffine. -/
-theorem retOK_chLinkProg (h ys n : ℕ) :
-    RetOK (fun lo : Lvm.KG.ChLinkOut ↦ lo.shift.1.length = h ∧ (∀ n, IsMultiaffine n lo.ringIn.2) ∧
-      ∀ n, IsMultiaffine n lo.ringY.2) (Lvm.KG.chLinkProg h ys n) := by
-  unfold Lvm.KG.chLinkProg
-  refine RetOK.bind_true fun _ ↦ (retOK_sumcheck _ _ _).bind fun shift hs ↦
-    RetOK.bind_true fun _ ↦ (retOK_ringSwitch _ _).bind fun ringIn hi ↦ RetOK.bind_true fun _ ↦
-      RetOK.bind_true fun _ ↦ (retOK_ringSwitch _ _).bind fun ringY hy ↦ RetOK.bind_true fun _ ↦
-        RetOK.bind_true fun _ ↦ RetOK.ret ⟨by simpa using hs, hi, hy⟩
-
 /-- Every return of the `KS` link: `hk + 5` challenges, `ρ'` has `hk` coordinates. -/
 theorem retOK_ksLinkProg (hk r : ℕ) (rows : List ℕ) :
     RetOK (fun lo : List E × (List E × E) × List E ↦ lo.1.length = hk + 5 ∧ lo.2.1.1.length = hk)
@@ -77,27 +67,47 @@ theorem retOK_ksLinkProg (hk r : ℕ) (rows : List ℕ) :
   exact (retOK_sampleN _).bind fun kchal hk' ↦ (retOK_sumcheck _ _ _).bind fun kshift hs ↦
     RetOK.bind_true fun _ ↦ RetOK.bind_true fun _ ↦ RetOK.ret ⟨hk', by simpa using hs⟩
 
-/-- **Every return of V_S phases 4–7 meets `KgRet`.** -/
-theorem retOK_kgProgS (n : ℕ) : RetOK KgRet (kgProgS n) := by
+/-- Every return of a slot reduction: its ring weight is multiaffine. -/
+theorem retOK_slotProg (b sb blk : ℕ) (W : ℕ → ℕ → E) (pt : List E) (v : E) :
+    RetOK (fun o : Lvm.KG.SlotOut ↦ ∀ n, IsMultiaffine n o.ring.2) (Lvm.KG.slotProg b sb blk W pt v) := by
+  unfold Lvm.KG.slotProg
+  exact RetOK.bind_true fun _ ↦ RetOK.bind_true fun _ ↦ RetOK.bind_true fun _ ↦
+    (retOK_ringSwitch _ _).bind fun _ hr ↦ RetOK.ret hr
+
+/-- Every return of the chain wiring phase: its ring weight is multiaffine. -/
+theorem retOK_wireChProg (w sb dsel : ℕ) (s : RecursionFast.Digest) (n : ℕ) (claim : LeanVM.Protocol.Verifier.KeccakClaim) :
+    RetOK (fun o : Lvm.KG.WireChOut ↦ ∀ n, IsMultiaffine n o.d.ring.2)
+      (Lvm.KG.wireChProg w sb dsel s n claim) := by
+  unfold Lvm.KG.wireChProg
+  exact RetOK.bind_true fun _ ↦ RetOK.bind_true fun _ ↦ RetOK.bind_true fun _ ↦
+    (retOK_slotProg _ _ _ _ _ _).bind fun _ hd ↦ RetOK.ret hd
+
+/-- **Every return of the tape caller** (lvm2 S2): `w` challenges `r`, 25 scalars, a multiaffine ring
+weight. -/
+theorem retOK_tapeProg (w sb dsel : ℕ) (s : RecursionFast.Digest) (n : ℕ) :
+    RetOK (fun tp : Lvm.KG.TapeOutE ↦ tp.1.length = w ∧ tp.2.1.length = 25 ∧
+      ∀ n, IsMultiaffine n tp.2.2.2.d.ring.2) (Lvm.KG.tapeProg w sb dsel s n) := by
+  unfold Lvm.KG.tapeProg
+  exact (retOK_sampleN w).bind fun _ hr ↦ (RetOK.readN 25).bind fun _ hv ↦ RetOK.bind_true fun _ ↦
+    RetOK.bind_true fun _ ↦ (retOK_wireChProg _ _ _ _ _ _).bind fun _ hw ↦ RetOK.ret ⟨hr, hv, hw⟩
+
+/-- **Every return of V_S phases 4–7 meets `KgRet`** (lvm2 S2: the tape, then `KS`). -/
+theorem retOK_kgProgS (s : RecursionFast.Digest) (n : ℕ) : RetOK KgRet (kgProgS s n) := by
   unfold kgProgS
-  refine ((retOK_callerProg _ (by norm_num)).bind fun co hco ↦ (retOK_chLinkProg _ _ _).bind
-    fun lo hlo ↦ RetOK.ret (Q := fun ch : CallerOut × Lvm.KG.ChLinkOut ↦
-      CallerRet 20 ch.1 ∧ ch.2.shift.1.length = 20 ∧ (∀ n, IsMultiaffine n ch.2.ringIn.2) ∧
-        ∀ n, IsMultiaffine n ch.2.ringY.2) ⟨hco, hlo⟩).bind fun ch hch ↦
+  refine (retOK_tapeProg 20 2 0 s n).bind fun tp htp ↦
     ((retOK_callerProg _ (by norm_num)).bind fun co hco ↦ (retOK_ksLinkProg _ _ _).bind
       fun lo hlo ↦ RetOK.ret (Q := fun ks : CallerOut × (List E × (List E × E) × List E) ↦
         CallerRet 15 ks.1 ∧ ks.2.1.length = 20 ∧ ks.2.2.1.1.length = 15) ⟨hco, hlo⟩).bind
       fun ks hks ↦ RetOK.ret ?_
-  obtain ⟨⟨h1, h2, h3, h4, h5⟩, h6, h7, h8⟩ := hch
   obtain ⟨⟨k1, k2, k3, k4, k5⟩, k6, k7⟩ := hks
-  exact ⟨⟨h1, h2, h3, h4, h5, h6, h7, h8⟩, ⟨k1, k2, k3, k4, k5, k6, k7⟩⟩
+  exact ⟨htp, ⟨k1, k2, k3, k4, k5, k6, k7⟩⟩
 
 /-! ## The side conditions of `assembleS` -/
 
 /-- The log-size of a commitment. -/
 def nuOf : Com → ℕ
   | .crec => 19
-  | .main => 26
+  | .main => 24
 
 /-- An assembled claim's block fits its commitment and its weight is multiaffine on the block. -/
 def OkC (e : Com × BClaim) : Prop :=
@@ -125,8 +135,8 @@ theorem okC_tableClaimsE (T : List Lvm.M3.Tab) (cl : List ColumnClaim)
     refine okC_point _ _ _ _ ?_
     simp only [ht, Option.map_some, Option.getD_some]
     cases rec
-    · have hp : 2 ^ t.τ ≤ 2 ^ 26 := by
-        have h' : off + 2 ^ t.τ ≤ 2 ^ 26 := hfit
+    · have hp : 2 ^ t.τ ≤ 2 ^ 24 := by
+        have h' : off + 2 ^ t.τ ≤ 2 ^ 24 := hfit
         omega
       exact (Nat.pow_le_pow_iff_right (by norm_num)).mp hp
     · have hp : 2 ^ t.τ ≤ 2 ^ 19 := by
@@ -165,7 +175,7 @@ theorem isMultiaffine_sumClaimE (nu : ℕ) (parts : List (E × VPlacement × Lis
   exact h
 
 /-- A Keccak table's claims on `C_main`. -/
-theorem okC_keccakClaimsE (blk : VPlacement) (co : CallerOut) (hv : blk.variableCount ≤ 26)
+theorem okC_keccakClaimsE (blk : VPlacement) (co : CallerOut) (hv : blk.variableCount ≤ 24)
     (hr : ∀ n, IsMultiaffine n co.2.2.2.2) : ∀ b ∈ keccakClaimsE blk co, OkC (.main, b) := by
   intro b hb
   simp only [keccakClaimsE, List.mem_append, List.mem_map, List.mem_singleton] at hb
@@ -173,38 +183,34 @@ theorem okC_keccakClaimsE (blk : VPlacement) (co : CallerOut) (hv : blk.variable
   · exact okC_point _ _ _ _ hv
   · exact ⟨hv, hr _⟩
 
-/-- `CH`'s fixed claims on `C_main`. -/
-theorem okC_chFixedClaimsE (r v : List E) (pub : Lvm.Pub) :
-    ∀ b ∈ chFixedClaimsE r v pub, OkC (.main, b) := by
+/-- The tape's claims on `C_main` (lvm2 S2): point claims on `D`'s block, the ring claim on all of
+`C_main`. -/
+theorem okC_tapeClaimsE (tp : Lvm.KG.TapeOutE) (pub : Lvm.Pub)
+    (hr : ∀ n, IsMultiaffine n tp.2.2.2.d.ring.2) : ∀ b ∈ tapeClaimsE tp pub, OkC (.main, b) := by
   intro b hb
-  simp only [chFixedClaimsE, List.mem_append, List.mem_map] at hb
-  rcases hb with (⟨l, -, rfl⟩ | ⟨⟨w, l⟩, -, rfl⟩) | ⟨⟨w, l⟩, -, rfl⟩ <;>
-    exact okC_point _ _ _ _ (by simp [chBlk, nuOf, slotLog])
+  simp only [tapeClaimsE, List.mem_append, List.mem_map, List.mem_singleton] at hb
+  rcases hb with (⟨l, -, rfl⟩ | rfl) | ⟨⟨w, l⟩, -, rfl⟩
+  · exact okC_point _ _ _ _ (by simp [dBlkE, nuOf])
+  · exact ⟨by simp [nuMainE, nuOf], hr _⟩
+  · exact okC_point _ _ _ _ (by simp [dBlkE, nuOf])
 
 /-- `KS`'s `Y` lane blocks fit `C_main`. -/
-theorem ksYPartE_le (l : ℕ) (pt : List E) : (ksYPartE l pt).1.variableCount ≤ 26 := by
+theorem ksYPartE_le (l : ℕ) (pt : List E) : (ksYPartE l pt).1.variableCount ≤ 24 := by
   unfold ksYPartE
-  split <;> simp [slotLog]
+  split <;> simp [slotLog, ksBlk]
 
 /-- **Every assembled claim** fits its commitment with a multiaffine weight. -/
 theorem okC_claimsS (T : List Lvm.M3.Tab) (pub : Lvm.Pub) (cl : List ColumnClaim) (kg : KgOut)
     (hlay : Lvm.M3.LayOk Lvm.M3.lay26 T) (hk : KgRet kg) : ∀ e ∈ claimsS T pub cl kg, OkC e := by
-  obtain ⟨⟨-, -, -, -, hr1, -, hin, hy⟩, ⟨-, -, -, -, hr2, -, -⟩⟩ := hk
+  obtain ⟨⟨-, -, hr1⟩, ⟨-, -, -, -, hr2, -, -⟩⟩ := hk
   intro e he
   simp only [claimsS, List.mem_append] at he
-  rcases he with (((htab | hm) | hch) | hko) | hkl
+  rcases he with ((htab | hm) | hko) | hkl
   · exact okC_tableClaimsE T cl hlay e htab
   · simp only [List.mem_map, List.mem_append] at hm
-    obtain ⟨b, (hb | hb) | hb, rfl⟩ := hm
-    · exact okC_keccakClaimsE _ _ (by simp [chBlk, slotLog]) hr1 b hb
-    · exact okC_chFixedClaimsE _ _ _ b hb
+    obtain ⟨b, hb | hb, rfl⟩ := hm
+    · exact okC_tapeClaimsE _ _ hr1 b hb
     · exact okC_keccakClaimsE _ _ (by simp [ksBlk, slotLog]) hr2 b hb
-  · simp only [chLinkClaimsE, List.mem_map, List.mem_append, List.mem_cons, List.mem_nil_iff,
-      or_false] at hch
-    obtain ⟨b, (rfl | rfl) | ⟨j, -, rfl⟩, rfl⟩ := hch
-    · exact ⟨by simp [chBlk, nuOf, slotLog], hin _⟩
-    · exact ⟨by simp [chBlk, nuOf, slotLog], hy _⟩
-    · exact okC_point _ _ _ _ (by simp [chBlk, nuOf, slotLog])
   · simp only [ksOutputClaimsE, List.mem_map] at hko
     obtain ⟨l, -, rfl⟩ := hko
     exact okC_point _ _ _ _ (ksYPartE_le l _)
@@ -217,38 +223,37 @@ theorem okC_claimsS (T : List Lvm.M3.Tab) (pub : Lvm.Pub) (cl : List ColumnClaim
     · refine ⟨le_rfl, isMultiaffine_sumClaimE _ _ _ fun p hp ↦ ?_⟩
       simp only [List.mem_map] at hp
       obtain ⟨l, -, rfl⟩ := hp
-      simp [sumClaimE, slotLog]
+      simp [sumClaimE, slotLog, ksBlk, nuMainE, CMain.nu20]
     · refine ⟨le_rfl, isMultiaffine_sumClaimE _ _ _ fun p hp ↦ ?_⟩
       simp only [List.mem_map] at hp
       obtain ⟨l, -, rfl⟩ := hp
-      simp [sumClaimE]
+      simp [sumClaimE, nuMainE, CMain.nu20]
     · refine ⟨le_rfl, isMultiaffine_sumClaimE _ _ _ fun p hp ↦ ?_⟩
       simp only [List.mem_map] at hp
       obtain ⟨l, -, rfl⟩ := hp
-      simp [sumClaimE]
+      simp [sumClaimE, nuMainE, CMain.nu20]
 
 /-- `C_rec`'s claims: the tables' on it and `mC`. -/
 theorem length_crec_le (T : List Lvm.M3.Tab) (pub : Lvm.Pub) (cl : List ColumnClaim)
     (kg : KgOut) : ((claimsS T pub cl kg).filter (·.1 == .crec)).length ≤ cl.length + 1 := by
   have hmc : (Com.main == Com.crec) = false := rfl
-  simp [hmc, claimsS, chLinkClaimsE, ksOutputClaimsE, ksLinkClaimsE, List.filter_append,
+  simp [hmc, claimsS, ksOutputClaimsE, ksLinkClaimsE, List.filter_append,
     List.filter_map, Function.comp_def]
   exact (List.length_filter_le _ _).trans (List.length_filterMap_le _ _)
 
 /-- The number of assembled claims. -/
 theorem length_claimsS (T : List Lvm.M3.Tab) (pub : Lvm.Pub) (cl : List ColumnClaim)
     (kg : KgOut) : (claimsS T pub cl kg).length = (tableClaimsE T cl).length +
-      kg.1.1.2.2.1.1.length + kg.2.1.2.2.1.1.length + pub.h.length + 79 := by
-  simp [claimsS, chLinkClaimsE, ksOutputClaimsE, ksLinkClaimsE, keccakClaimsE, chFixedClaimsE,
-    pad43]
+      kg.2.1.2.2.1.1.length + pub.h.length + 35 := by
+  simp [claimsS, ksOutputClaimsE, ksLinkClaimsE, keccakClaimsE, tapeClaimsE]
   omega
 
-/-- `C_main` holds one claim per lane of `pub.h` (`chFixedClaimsE`'s boundary claims), and more. -/
+/-- `C_main` holds one claim per lane of `pub.h` (`tapeClaimsE`'s boundary claims), and more. -/
 theorem length_h_lt_main (T : List Lvm.M3.Tab) (pub : Lvm.Pub) (cl : List ColumnClaim)
     (kg : KgOut) : pub.h.length < (assembleS T pub cl kg).2.length := by
   rw [assembleS_eq]
-  simp [claimsS, chLinkClaimsE, ksOutputClaimsE, ksLinkClaimsE, keccakClaimsE, chFixedClaimsE,
-    pad43, List.filter_append, List.filter_map, Function.comp_def]
+  simp [claimsS, ksOutputClaimsE, ksLinkClaimsE, keccakClaimsE, tapeClaimsE,
+    List.filter_append, List.filter_map, Function.comp_def]
   omega
 
 /-- **`assembleS`'s side conditions**, when `pub.h` has at most `2^61` lanes. -/
@@ -256,11 +261,10 @@ theorem side_assembleS (T : List Lvm.M3.Tab) (pub : Lvm.Pub) (cl : List ColumnCl
     (kg : KgOut) (hlay : Lvm.M3.LayOk Lvm.M3.lay26 T) (hret : TabRet T cl)
     (hn : (T.map (·.w)).sum ≤ 2 ^ 62) (hk : KgRet kg) (hh : pub.h.length ≤ 2 ^ 61) :
     (∀ c ∈ (assembleS T pub cl kg).1, IsMultiaffine 19 c.1) ∧
-    (∀ c ∈ (assembleS T pub cl kg).2, IsMultiaffine 26 c.1) ∧
+    (∀ c ∈ (assembleS T pub cl kg).2, IsMultiaffine CMain.nu20 c.1) ∧
     (assembleS T pub cl kg).1.length ≤ 2 ^ 63 ∧ (assembleS T pub cl kg).2.length ≤ 2 ^ 63 := by
   have hok := okC_claimsS T pub cl kg hlay hk
   have hcl := hret.2
-  have hk1 := hk.1.2.2.2.1
   have hk2 := hk.2.2.2.2.1
   rw [assembleS_eq]
   refine ⟨fun c hc ↦ ?_, fun c hc ↦ ?_, ?_, ?_⟩

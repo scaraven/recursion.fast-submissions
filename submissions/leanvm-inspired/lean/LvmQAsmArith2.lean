@@ -135,21 +135,16 @@ def qarithT (C : QCfg) (D : QData) (o : P47Out) : BM Unit := do
   let z ← const .E 0 (kc 0)
   let one ← const .E 1 (kc 0)
   let zK ← const .K 0 (kc 0)
-  let chB : Placement := ⟨p.logN + slotLog, (layout0 p).ch⟩
   let ksB : Placement := ⟨p.ksLog + slotLog, (layout0 p).ks⟩
   withPad zK z do
     -- phases 2–3 (HAR-BT), 3b (AC-Q)
     let bus ← busG p z one g (busPos p)
     let tab ← tabG S p.tableRounds (tabPos p) z one g bus
     qacc (accInOf C S tab z)
-    -- ring switches and claims of phases 4–7 (HAR-RC)
-    let rgC ← ringGkr (p.logN - 4) (aLane p 2) z.n
-    let chF ← chFixedG p.logN 52 chB z.n one.n (bsB C) ((sigIn C).bn + 2) o.r o.v
-    let clC ← chLinkGG p.logN (aLane p 3) z.n one.n ((sigIn C).bn + 2) chB 52
+    -- ring switch and claims of phases 4–7 (HAR-RC; lvm2 S2: the tape's claims, `KS`'s)
     let rgK ← ringGkr (p.ksLog - 4) (aLane p 6) z.n
     let clK ← ksLinkG p (aLane p 7) z.n one.n
-    -- phases 8–9 (HAR-WH)
-    let cs := claimsC (tabClaims S tab z) (kClaimsC chB o.ko rgC ++ chF) (kClaimsC ksB o.kko rgK) clC
+    let cs := claimsC (tabClaims S tab z) (tapeClaimsC p z.n one.n o) (kClaimsC ksB o.kko rgK)
       (ksOutC p o.rk o.vk z.n one.n) clK
     openG (cfgRec p (posBase C)) (cfgMain p (posBase C)) cs z one g
 

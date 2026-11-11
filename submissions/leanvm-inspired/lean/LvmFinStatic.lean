@@ -24,7 +24,7 @@ open Lvm Lvm.Loop Lvm.Loop.Build Lvm.QAsm Lvm.M3 Lvm.Har
 
 theorem phases47F_eq (C : QCfg) : VF.phases47F C = phases47 C := by
   unfold VF.phases47F phases47
-  rw [VF.gkrGadgetF_eq]
+  rw [VF.tapeGadgetF_eq, VF.gkrGadgetF_eq]
 
 theorem qarithF_eq (C : QCfg) : VF.qarithF C = qarith C := by
   unfold VF.qarithF qarith

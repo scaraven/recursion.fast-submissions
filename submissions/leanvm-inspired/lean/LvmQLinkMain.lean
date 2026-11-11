@@ -220,13 +220,13 @@ def layOf (p : Params) (aQ K m pa : Nat) : Layout :=
 /-- The input cells of the standalone layout. -/
 def nInKOf (lay : Layout) : Nat := lay.fl + 2 * 2 ^ lay.pa
 
-/-- At `P20`: 2^11 QLT iterations (1,229 entries), step array 2^8, `readd` region 2^18 lanes, 2^10
+/-- At `P20`: 2^11 QLT iterations (1,471 entries), step array 2^8, `readd` region 2^18 lanes, 2^10
 position cells (991 positions). -/
 def lay20 : Layout := layOf P20 11 8 18 10
 
-/-- At `P8`: 2^10 QLT iterations (902 entries), step array 2^5, `readd` region 2^17 lanes (the
-stream's 67,962 lanes pass 2^16; as `LvmQAsmLay.cfg8`), 2^8 position cells (156 positions). -/
-def lay8 : Layout := layOf P8 10 5 17 8
+/-- At `P8`: 2^10 QLT iterations (914 entries), step array 2^5, `readd` region 2^17 lanes (the
+stream's 76,603 lanes pass 2^16; as `LvmQAsmLay.cfg8`), 2^8 position cells (156 positions). -/
+def lay8 : Layout := layOf P8 11 5 17 8
 
 theorem ksLog_P20 : P20.ksLog = P20.recRowsLog + 1 := by decide
 
@@ -245,7 +245,7 @@ theorem qOk_P20 : QOk P20 lay20 :=
 
 set_option maxRecDepth 200000 in
 theorem qOk_P8 : QOk P8 lay8 :=
-  qOk_of streamOk_P8 (by show qOkB P8 (layOf P8 10 5 17 8) = true; rw [P8_eq]; decide +kernel)
+  qOk_of streamOk_P8 (by show qOkB P8 (layOf P8 11 5 17 8) = true; rw [P8_eq]; decide +kernel)
 
 set_option maxRecDepth 200000 in
 /-- Q_link's program check at `P20` (so `(toProgram …).wf`, by `toProgram_wf`). -/
@@ -256,8 +256,8 @@ theorem segsOk_P20 : segsOk ⟨nInKOf lay20, 0⟩ (qlink P20 lay20 ⟨nInKOf lay
 
 set_option maxRecDepth 200000 in
 theorem segsOk_P8 : segsOk ⟨nInKOf lay8, 0⟩ (qlink P8 lay8 ⟨nInKOf lay8, 0⟩).2 = true := by
-  show segsOk ⟨nInKOf (layOf P8 10 5 17 8), 0⟩
-    (qlink P8 (layOf P8 10 5 17 8) ⟨nInKOf (layOf P8 10 5 17 8), 0⟩).2 = true
+  show segsOk ⟨nInKOf (layOf P8 11 5 17 8), 0⟩
+    (qlink P8 (layOf P8 11 5 17 8) ⟨nInKOf (layOf P8 11 5 17 8), 0⟩).2 = true
   rw [P8_eq]; decide +kernel
 
 section

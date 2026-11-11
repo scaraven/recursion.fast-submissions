@@ -53,9 +53,10 @@ def bplOf (D : QData) (k c : Nat) : Bool × Nat :=
 /-! ## Arrays and aux tables -/
 
 /-- Where `KS`'s `X` columns of rows `≥ R` start, and `KS`'s output lane `l` (from the prover's
-`Layout`: `tables.rs`; `P20`: `KS` at `50·2^20`, slots 50–55). -/
-def xOff (C : QCfg) : Nat := if C.rl = 14 then 56 * 2 ^ 20 + 2 ^ 19 else 2 ^ 20 + 2 ^ 17
-def ksY (C : QCfg) (l : Nat) : Nat := if C.rl = 14 then 50 * 2 ^ 20 + (50 + l) * 2 ^ 15 else (50 + l) * 2 ^ 13
+`Layout`: `tables.rs`; the shared `Lvm.CMain` numbers, `LvmLayout`; `KS`'s `Y` lane `l < 14` at `KS` slot `50 + l`; `KS` has `2^(rl + 1)` rows, `tables.rs`). -/
+def xOff (C : QCfg) : Nat := if C.rl = 14 then CMain.xOff20 else CMain.xOff8
+def ksY (C : QCfg) (l : Nat) : Nat :=
+  if C.rl = 14 then CMain.ksOff20 + (50 + l) * 2 ^ 15 else CMain.ksOff8 + (50 + l) * 2 ^ (C.rl + 1)
 
 /-- The header's lanes from the public values (`Pub.hdrLanes`, A23: 702 = 615 + `acc_in`'s 87;
 `LvmNodeSoundIn.hdrLanes`' order). -/

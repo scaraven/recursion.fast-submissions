@@ -1,5 +1,5 @@
 -- New for lvm (V-PERF): the shipped `V_S` with its header-independent tables built once.
-import LvmSubmissionS
+import LvmSubmissionS20
 import LvmVFastQ
 
 /-!
@@ -926,23 +926,11 @@ def decideProgB (p : Params) (m : M3) (bb : BusIn → BusOutB) (vk c : Vector UI
   let evals ← tableSumcheckG p.tableRounds tables bus.fv (xiPowers.take nC) formPowers
     point (dot formPowers bus.totals)
   let accOut ← accFold p m pub evals
-  -- 4] CH
-  let r ← samples p.logN
-  let v ← readEs lanes
-  let ko ← verifyKeccak p.logN r v
-  let ring ← ringSwitch ko.slicePoint ko.slices
-  let chClaims := keccakClaims m.chBlock ko ring ++ chFixedClaims p m.chBlock m.chYSlot r v pub
-  -- 5] CH link
-  let chal ← samples (p.logN + 3 + 6)
-  let shift ← sumcheck (m.chShiftTarget pub chal) 3 (List.replicate p.logN none)
-  let inS ← readEs kBits
-  let ringIn ← ringRaw inS
-  let sc2 ← sumcheck (m.chSc2Target pub chal shift inS) 3 [none, none]
-  let yS ← readEs kBits
-  let ringY ← ringRaw yS
-  let constLanes ← samples laneBits
-  let (okL, linkClaims) := m.chLink ⟨chal, shift, inS, ringIn, sc2, yS, ringY, constLanes, r, v, pub⟩
-  require okL
+  -- 4] the tape (lvm2 S2, T1–T2)
+  let tp ← dTape p.logN
+  -- 5] the wire (T3–T4), after A1's range of `n`
+  dRange p pub
+  let wo ← dWire p pub tp.claim
   -- 6] KS
   let rk ← samples p.ksLog
   let vks ← readEs lanes
@@ -957,11 +945,11 @@ def decideProgB (p : Params) (m : M3) (bb : BusIn → BusOutB) (vk c : Vector UI
   require okK
   -- 8] the openings
   let claims : List (Com × BlockClaim) :=
-    bus.claims ++ m.tableClaims pub evals ++ (chClaims ++ ksClaims).map (.main, ·) ++ linkClaims ++
+    bus.claims ++ m.tableClaims pub evals ++ (tapeClaims p tp wo pub ++ ksClaims).map (.main, ·) ++
       m.ksOutputClaims rk vks ++ kLinkClaims
   let on (com : Com) := (claims.filter (·.1 == com)).map (·.2.onStack)
-  verifyStackedOpening p.recLevels p.nuRec (on .crec) false
-  verifyStackedOpening p.mainLevels p.nuMain (on .main) false
+  verifyStackedOpening p.recLevels p.nuRec (on .crec) false p.grind
+  verifyStackedOpening p.mainLevels p.nuMain (on .main) false p.grind
   pure accOut
 
 theorem decideProgB_eq (p : Params) (m : M3) (bb : BusIn → BusOutB) (h : BusAgree m bb) (vk c : Vector UInt8 32) :

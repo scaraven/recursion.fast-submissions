@@ -129,64 +129,64 @@ theorem laneWF_eq (lp : List FE) (beta : FE) :
   simp only [getD_eqKernelA]
 /-! ## `layerSpec`'s fields, its intermediate values named -/
 
-theorem layerSpec_claim (v : Nat → FE) (ls step : Nat) (C : KeccakClaim) (p : Nat) {sF : FE}
+theorem layerSpec_claim (v : Nat → FE) (ls : Nat) (io : KeccakClaim → FE) (C : KeccakClaim) (p : Nat) {sF : FE}
     (hs : v (p + 40 + 24 * productBits) = sF) {pkF : FE × FE × List FE × Nat}
     (hpk : packSpec v C.point (polyEval (scalarsAt v (p + 40) productBits) sF) 1 (p + 72 + 24 * productBits) = pkF)
     {scF : List FE × FE} (hsc : scSpec v 4 pkF.2.2.2 pkF.1 (List.replicate localBits none) = scF)
     {p3 : Nat} (hp3 : pkF.2.2.2 + localBits * roundLen 4 = p3) {tF : List FE} (ht : scalarsAt v (p3 + 40) 3 = tF)
     {βF : FE} (hβ : v (p3 + 40 + 24 * 3) = βF) :
-    (layerSpec v ls step C p).claim = ⟨tF.getD 0 0 + βF * (tF.getD 1 0 + βF * tF.getD 2 0), keccakInstanceWeights sF, pkF.2.2.1,
+    (layerSpecI v ls io C p).claim = ⟨tF.getD 0 0 + βF * (tF.getD 1 0 + βF * tF.getD 2 0), keccakInstanceWeights sF, pkF.2.2.1,
           keccakLinearTranspose ((List.range keccakBits).map fun j =>
             (eqKernelA (scF.1.take 6)).getD (j % 64) 0 * (laneWF scF.1 βF).getD (j / 64) 0)⟩ := by
   subst hs hpk hsc hp3 ht hβ
   rfl
 
-theorem layerSpec_ok1 (v : Nat → FE) (ls step : Nat) (C : KeccakClaim) (p : Nat) {sF : FE}
+theorem layerSpec_ok1 (v : Nat → FE) (ls : Nat) (io : KeccakClaim → FE) (C : KeccakClaim) (p : Nat) {sF : FE}
     (hs : v (p + 40 + 24 * productBits) = sF) {pkF : FE × FE × List FE × Nat}
     (hpk : packSpec v C.point (polyEval (scalarsAt v (p + 40) productBits) sF) 1 (p + 72 + 24 * productBits) = pkF)
     {scF : List FE × FE} (hsc : scSpec v 4 pkF.2.2.2 pkF.1 (List.replicate localBits none) = scF)
     {p3 : Nat} (hp3 : pkF.2.2.2 + localBits * roundLen 4 = p3) {tF : List FE} (ht : scalarsAt v (p3 + 40) 3 = tF)
     {βF : FE} (hβ : v (p3 + 40 + 24 * 3) = βF) :
-    (layerSpec v ls step C p).ok1 = (projF C (scalarsAt v (p + 40) productBits) + iotaLayerF ls step C * sumE C.mu == C.value) := by
+    (layerSpecI v ls io C p).ok1 = (projF C (scalarsAt v (p + 40) productBits) + io C * sumE C.mu == C.value) := by
   subst hs hpk hsc hp3 ht hβ
   rfl
 
-theorem layerSpec_ok2 (v : Nat → FE) (ls step : Nat) (C : KeccakClaim) (p : Nat) {sF : FE}
+theorem layerSpec_ok2 (v : Nat → FE) (ls : Nat) (io : KeccakClaim → FE) (C : KeccakClaim) (p : Nat) {sF : FE}
     (hs : v (p + 40 + 24 * productBits) = sF) {pkF : FE × FE × List FE × Nat}
     (hpk : packSpec v C.point (polyEval (scalarsAt v (p + 40) productBits) sF) 1 (p + 72 + 24 * productBits) = pkF)
     {scF : List FE × FE} (hsc : scSpec v 4 pkF.2.2.2 pkF.1 (List.replicate localBits none) = scF)
     {p3 : Nat} (hp3 : pkF.2.2.2 + localBits * roundLen 4 = p3) {tF : List FE} (ht : scalarsAt v (p3 + 40) 3 = tF)
     {βF : FE} (hβ : v (p3 + 40 + 24 * 3) = βF) :
-    (layerSpec v ls step C p).ok2 = (pkF.2.1 * weightedLayerF scF.1 C * (sumE (keccakInstanceWeights sF) * tF.getD 0 0 +
+    (layerSpecI v ls io C p).ok2 = (pkF.2.1 * weightedLayerF scF.1 C * (sumE (keccakInstanceWeights sF) * tF.getD 0 0 +
           (sumE (keccakInstanceWeights sF) + tF.getD 1 0) * tF.getD 2 0) == scF.2) := by
   subst hs hpk hsc hp3 ht hβ
   rfl
 
-theorem layerSpec_pos (v : Nat → FE) (ls step : Nat) (C : KeccakClaim) (p : Nat) {sF : FE}
+theorem layerSpec_pos (v : Nat → FE) (ls : Nat) (io : KeccakClaim → FE) (C : KeccakClaim) (p : Nat) {sF : FE}
     (hs : v (p + 40 + 24 * productBits) = sF) {pkF : FE × FE × List FE × Nat}
     (hpk : packSpec v C.point (polyEval (scalarsAt v (p + 40) productBits) sF) 1 (p + 72 + 24 * productBits) = pkF)
     {scF : List FE × FE} (hsc : scSpec v 4 pkF.2.2.2 pkF.1 (List.replicate localBits none) = scF)
     {p3 : Nat} (hp3 : pkF.2.2.2 + localBits * roundLen 4 = p3) {tF : List FE} (ht : scalarsAt v (p3 + 40) 3 = tF)
     {βF : FE} (hβ : v (p3 + 40 + 24 * 3) = βF) :
-    (layerSpec v ls step C p).pos = p3 + 72 + 24 * 3 := by
+    (layerSpecI v ls io C p).pos = p3 + 72 + 24 * 3 := by
   subst hs hpk hsc hp3 ht hβ
   rfl
 
-/-- **The layer**, read along `layerTB`'s chain from the walking invariant `TInv`. -/
-theorem layer_core {c : LCfg} {xv : Src → FE} {V : Nat → FE} {TA : Prop} {L : Nat}
+/-- **The layer** (any `ι` term `io` that the template's two-constant mix computes), read along `layerTB`'s chain from the walking invariant `TInv`. -/
+theorem layer_coreI {c : LCfg} {xv : Src → FE} {V : Nat → FE} {TA : Prop} {L : Nat}
     (h0 : TInv xv V TA L True (layerTB c) 0) (hcb : c.cb + c.C = L)
     {C : KeccakClaim} {first : Bool} (hR : Rep c.P (fun j => xv (c.pv j)) C first)
-    {step : Nat} (hstep : step < gkrDepth)
-    (hrc : ∀ i < 7, xv (c.k i) = rcBit (keccakRC.getD (gkrDepth * 1 - step - 1) 0) i ∧
-      xv (c.k (7 + i)) = rcBit (keccakRC.getD (gkrDepth * 2 - step - 1) 0) i)
+    {io : KeccakClaim → FE} {rc0 rc1 : UInt64} (RC1m : rc0 ∈ keccakRC) (RC2m : rc1 ∈ keccakRC)
+    (hio : io C = (1 + C.point.getD c.P 0) * iotaF rc0 C.weights + C.point.getD c.P 0 * iotaF rc1 C.weights)
+    (hrc : ∀ i < 7, xv (c.k i) = rcBit rc0 i ∧ xv (c.k (7 + i)) = rcBit rc1 i)
     (hfirst : xv (c.k 14) = if first then 1 else 0)
     {v : Nat → FE} {off p : Nat} (hv : ∀ m < c.q + c.str, lv xv [c.str] m = v (8 * m + off))
     (hp : p + 40 = 8 * c.q + off) :
-    Rep c.P (fun j => V (c.cb + j)) (layerSpec v (c.P + 4) step C p).claim false ∧
-    (layerSpec v (c.P + 4) step C p).pos = p + 8 * c.str ∧
+    Rep c.P (fun j => V (c.cb + j)) (layerSpecI v (c.P + 4) io C p).claim false ∧
+    (layerSpecI v (c.P + 4) io C p).pos = p + 8 * c.str ∧
     (TA → xv (c.k 15) = 1 →
-      (layerSpec v (c.P + 4) step C p).ok1 = true ∧ (layerSpec v (c.P + 4) step C p).ok2 = true) ∧
-    ((layerSpec v (c.P + 4) step C p).ok1 = true → (layerSpec v (c.P + 4) step C p).ok2 = true → TA) := by
+      (layerSpecI v (c.P + 4) io C p).ok1 = true ∧ (layerSpecI v (c.P + 4) io C p).ok2 = true) ∧
+    ((layerSpecI v (c.P + 4) io C p).ok1 = true → (layerSpecI v (c.P + 4) io C p).ok2 = true → TA) := by
   have hstr : c.str = 366 + 15 * (c.P + 1) := rfl
   have hPB : productBits = 47 := rfl
   have hLB : localBits = 11 := rfl
@@ -207,10 +207,10 @@ theorem layer_core {c : LCfg} {xv : Src → FE} {V : Nat → FE} {TA : Prop} {L 
     rw [← hpkF, packSpec_pos, hCptL, hPB]
   have hp3' : p3 = p + 2784 + 120 * (c.P + 1) := by rw [← hp3, hpkEnd, hLB, hRL]; omega
   have hscL : scF.1.length = 11 := by rw [← hscF, scSpec_length, List.length_replicate]; rfl
-  rw [layerSpec_claim v (c.P + 4) step C p hsF hpkF hscF hp3 htF hβF,
-    layerSpec_ok1 v (c.P + 4) step C p hsF hpkF hscF hp3 htF hβF,
-    layerSpec_ok2 v (c.P + 4) step C p hsF hpkF hscF hp3 htF hβF,
-    layerSpec_pos v (c.P + 4) step C p hsF hpkF hscF hp3 htF hβF]
+  rw [layerSpec_claim v (c.P + 4) io C p hsF hpkF hscF hp3 htF hβF,
+    layerSpec_ok1 v (c.P + 4) io C p hsF hpkF hscF hp3 htF hβF,
+    layerSpec_ok2 v (c.P + 4) io C p hsF hpkF hscF hp3 htF hβF,
+    layerSpec_pos v (c.P + 4) io C p hsF hpkF hscF hp3 htF hβF]
   dsimp only [layerTB] at h0
   -- zero, one, the product, `s`
   obtain ⟨z, n1, ez, h1, h0⟩ := peelN h0 (noA_gZero _)
@@ -250,18 +250,14 @@ theorem layer_core {c : LCfg} {xv : Src → FE} {V : Nat → FE} {TA : Prop} {L 
   have hflS : ∀ i < 7, ((List.range 7).map fun i => c.pv (50 + c.P + i)).getD i default = c.pv (50 + c.P + i) := by
     intro i hi
     rw [List.getD_eq_getElem _ _ (by simpa using hi), List.getElem_map, List.getElem_range]
-  have RC1m : keccakRC.getD (gkrDepth * 1 - step - 1) 0 ∈ keccakRC :=
-    rc_mem (by simp only [gkrDepth] at hstep ⊢; omega)
-  have RC2m : keccakRC.getD (gkrDepth * 2 - step - 1) 0 ∈ keccakRC :=
-    rc_mem (by simp only [gkrDepth] at hstep ⊢; omega)
-  have hin0 : in0.valF xv V = iotaF (keccakRC.getD (gkrDepth * 1 - step - 1) 0) C.weights := by
+  have hin0 : in0.valF xv V = iotaF rc0 C.weights := by
     rw [iota_rep hR RC1m, ← ein0, gDot_spec _ _ _ h7, hz, zero_add, List.map_map, sumE_eq_sum]
     refine congrArg List.sum (List.map_congr_left fun i hi => ?_)
     have hi' := List.mem_range.mp hi
     show (c.k i).valF xv V * (((List.range 7).map fun i => c.pv (50 + c.P + i)).getD i default).valF xv V = _
     rw [hflS i hi', show (c.k i).valF xv V = xv (c.k i) from rfl, (hrc i hi').1]
     rfl
-  have hin1 : in1.valF xv V = iotaF (keccakRC.getD (gkrDepth * 2 - step - 1) 0) C.weights := by
+  have hin1 : in1.valF xv V = iotaF rc1 C.weights := by
     rw [iota_rep hR RC2m, ← ein1, gDot_spec _ _ _ h8, hz, zero_add, List.map_map, sumE_eq_sum]
     refine congrArg List.sum (List.map_congr_left fun i hi => ?_)
     have hi' := List.mem_range.mp hi
@@ -270,17 +266,17 @@ theorem layer_core {c : LCfg} {xv : Src → FE} {V : Nat → FE} {TA : Prop} {L 
     rfl
   have hseg0 : seg0.valF xv V = 1 + C.point.getD c.P 0 := by
     rw [← eseg0, gOne_spec h6, hptP, hσ]; rfl
-  have hiota : iota.valF xv V = iotaLayerF (c.P + 4) step C := by
-    rw [iotaLayer_eq hCptL, ← hin0, ← hin1, ← hseg0, ← eiota, gDot_spec _ _ _ h9, hz, hptP]
+  have hiota : iota.valF xv V = io C := by
+    rw [hio, ← hin0, ← hin1, ← hseg0, ← eiota, gDot_spec _ _ _ h9, hz, hptP]
     simp only [List.map_cons, List.map_nil, List.sum_cons, List.sum_nil, zero_add, add_zero]
     rw [show (c.pv (18 + c.P)).valF xv V = C.point.getD c.P 0 from hσ.symm]
   have he1' : e1'.valF xv V =
-      (iotaLayerF (c.P + 4) step C * sumE C.mu + projF C (scalarsAt v (p + 40) productBits)) + C.value := by
+      (io C * sumE C.mu + projF C (scalarsAt v (p + 40) productBits)) + C.value := by
     rw [← ee1', gAdd_spec h11, ← ee1, gMul_spec h10, hiota, hproj,
       show (c.pv 17).valF xv V = sumE C.mu from hR.kappa, show (c.pv 0).valF xv V = C.value from hR.value]
   have hK1 : e1'.valF xv V = 0 ↔
-      (projF C (scalarsAt v (p + 40) productBits) + iotaLayerF (c.P + 4) step C * sumE C.mu == C.value) = true := by
-    rw [he1', fe_beq_iff, fe_add_eq_zero, add_comm (iotaLayerF _ _ _ * _)]
+      (projF C (scalarsAt v (p + 40) productBits) + io C * sumE C.mu == C.value) = true := by
+    rw [he1', fe_beq_iff, fe_add_eq_zero, add_comm (io C * _)]
   -- instance weights, the pack value, the rounds
   obtain ⟨mk, n13, emk, h13, h0⟩ := peelN h0 (noA_gInst _ _ _ _)
   have hmk := gInst_spec hz hone rmfeEmbed _ h13
@@ -565,6 +561,8 @@ theorem layer_spec {c : LCfg} {xv : Src → FE} {V : Nat → FE} (hH : THold xv 
       (layerSpec v (c.P + 4) step C p).ok1 = true ∧ (layerSpec v (c.P + 4) step C p).ok2 = true) ∧
     ((layerSpec v (c.P + 4) step C p).ok1 = true → (layerSpec v (c.P + 4) step C p).ok2 = true →
       TAssert xv V (layerTB c 0).2) :=
-  layer_core (inv_start hH) hcb hR hstep hrc hfirst hv hp
+  (layerSpec_eq_I v (c.P + 4) step C p) ▸ layer_coreI (inv_start hH) hcb hR
+    (rc_mem (by simp only [gkrDepth] at hstep ⊢; omega)) (rc_mem (by simp only [gkrDepth] at hstep ⊢; omega))
+    (iotaLayer_eq (by rw [← hR.point, List.length_map, List.length_range])) hrc hfirst hv hp
 
 end Lvm.Q1

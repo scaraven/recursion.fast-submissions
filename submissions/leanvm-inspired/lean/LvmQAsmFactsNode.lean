@@ -104,7 +104,7 @@ theorem qltLen20 : (qltData P20 (lay cfg20)).length = 3 * 2 ^ 11 := by
 /-- Q_link's `QLT` cells hold the static table `qltData` on the memory of any pair of any statement
 (the `QLT` array is public: `inKOf_pub`; no `inb`, `Program.interpMem_inK`). -/
 theorem qltMem20 {hτ' : ∀ x, ∀ t ∈ lvmTabs Q20n (plOf data20) data20.groups (arrs20 x) (aux cfg20 data20),
-      t.τ ≤ lay26.μ} (x : List UInt8) (qm : LeanVM.Protocol.Column 26) (qr : LeanVM.Protocol.Column 19) :
+      t.τ ≤ lay26.μ} (x : List UInt8) (qm : LeanVM.Protocol.Column CMain.nu20) (qr : LeanVM.Protocol.Column 19) :
     ∀ y < (qltData P20 (lay cfg20)).length,
       (memX (lay cfg20) (sigIn cfg20) (qarith cfg20) (nK cfg20) 0 (plOf data20) data20.groups arrs20
         (aux cfg20 data20) hτ' x qm qr).k ((lay cfg20).qt + y) = (qltData P20 (lay cfg20)).getD y 0 := by

@@ -510,7 +510,11 @@ pub struct Compiled {
     pub glue_mat: Vec<Vec<F64>>,
     /// `g^e` for every cell exponent `e < max(cells)` and every count.
     pub gp: Vec<F64>,
+    /// P-FIX: the fixed columns of every table group built so far (`m3::group_table`), by `(tau, members)`.
+    fcache: FixedCache,
 }
+
+type FixedCache = std::sync::Mutex<HashMap<(usize, Vec<(usize, usize)>), std::sync::Arc<Vec<Vec<F64>>>>>;
 
 impl Compiled {
     pub fn new(q: Program) -> Self {
@@ -518,7 +522,7 @@ impl Compiled {
         let pieces = q.pieces();
         let n = cells[0].max(cells[1]) + 2;
         let gp = crate::lv::primitives::field::g_powers(n);
-        let mut c = Compiled { q, lay, cells, pieces, glue_mat: Vec::new(), gp };
+        let mut c = Compiled { q, lay, cells, pieces, glue_mat: Vec::new(), gp, fcache: Default::default() };
         let mut gm = Vec::new();
         for p in c.pieces.iter().filter(|p| c.q.glue.contains(&p.blk)) {
             for col in p.shape.fcols().into_iter().filter(|&f| f != FCol::F) {
@@ -575,6 +579,16 @@ impl Compiled {
     }
 
     /// `fixMat j`.
+    /// The fixed columns of the table group `key`, from the cache, or `make`'s (then cached). They depend on
+    /// the program only, so every build of the same program gets the same columns.
+    pub fn fixed_cols(&self, key: (usize, Vec<(usize, usize)>), make: impl FnOnce() -> Vec<Vec<F64>>) -> std::sync::Arc<Vec<Vec<F64>>> {
+        if let Some(v) = self.fcache.lock().unwrap().get(&key) {
+            return v.clone();
+        }
+        let v = std::sync::Arc::new(make());
+        self.fcache.lock().unwrap().entry(key).or_insert(v).clone()
+    }
+
     pub fn fix_mat(&self, j: &[usize]) -> F64 {
         let (c, x) = (j.first().copied().unwrap_or(0), j.get(1).copied().unwrap_or(0));
         self.glue_mat.get(c).and_then(|col| col.get(x)).copied().unwrap_or(F64::ZERO)
@@ -601,11 +615,36 @@ impl Compiled {
         if dbg {
             eprintln!("lvm qdebug: interp start");
         }
+        // P-FIX: the block indices `j` kept in one buffer (no `unflat` per iteration), and rows whose result and
+        // arguments are all `K` cells computed in `K` (the same values: `K` is a subfield of `E`, and `put` keeps
+        // a `K` result's `c0`)
+        let mut j: Vec<usize> = Vec::new();
         for (b, blk) in self.q.blocks.iter().enumerate() {
+            let all_k: Vec<bool> = blk.tpl.iter().map(|r| r.ty == Ty::K && r.args.iter().all(|a| a.ty == Ty::K)).collect();
+            j.clear();
+            j.resize(blk.dims.len(), 0);
             for jf in 0..self.lay[b].size {
-                let j = unflat(&blk.dims, jf);
+                let mut rest = jf;
+                for (jk, &d) in j.iter_mut().zip(&blk.dims) {
+                    *jk = rest % (1 << d);
+                    rest >>= d;
+                }
+                let j = &j[..];
                 for (ri, r) in blk.tpl.iter().enumerate() {
-                    let rd = |s: &Run, o: usize| s.rd(r.args[o].ty, r.args[o].at(&j));
+                    if all_k[ri] {
+                        let rk = |s: &Run, o: usize| s.kc.get(r.args[o].at(j)).copied().unwrap_or(F64::ZERO);
+                        let v = match r.op {
+                            Op::MulAdd => Some(rk(&s, 0) * rk(&s, 1) + rk(&s, 2)),
+                            Op::Lin(k, k2) => Some(rk(&s, 0) + rk(&s, 1) * k + k2),
+                            Op::FixMul => Some(rk(&s, 0) * self.fix_mat(j) + rk(&s, 1)),
+                            _ => None,
+                        };
+                        if let Some(v) = v {
+                            s.kc.push(v);
+                            continue;
+                        }
+                    }
+                    let rd = |s: &Run, o: usize| s.rd(r.args[o].ty, r.args[o].at(j));
                     match r.op {
                         Op::MulAdd => {
                             let v = rd(&s, 0) * rd(&s, 1) + rd(&s, 2);
@@ -619,7 +658,7 @@ impl Compiled {
                             let z = (rd(&s, 1) * rd(&s, 0)).is_zero();
                             if !z && dbg && nbad < 4000 {
                                 nbad += 1;
-                                eprintln!("lvm qdebug: assert0 fails: block {b} iteration {jf} row {ri} (cells {} {})", r.args[0].at(&j), r.args[1].at(&j));
+                                eprintln!("lvm qdebug: assert0 fails: block {b} iteration {jf} row {ri} (cells {} {})", r.args[0].at(j), r.args[1].at(j));
                             }
                             s.ok &= z
                         }
@@ -628,7 +667,7 @@ impl Compiled {
                             s.put(r.ty, v)
                         }
                         Op::FixMul => {
-                            let v = rd(&s, 0).mul_base(self.fix_mat(&j)) + rd(&s, 1);
+                            let v = rd(&s, 0).mul_base(self.fix_mat(j)) + rd(&s, 1);
                             s.put(r.ty, v)
                         }
                         Op::Readd(lo, m) => {

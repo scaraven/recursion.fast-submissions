@@ -6,13 +6,16 @@ import LvmFinDec
 import LvmQAsmFactsNode
 import LvmFinHB
 import LvmFinGuard
+import LvmCertSFinal20
+import LvmVFast
 
 /-!
 # The certificate
 
 * **`harStatic20`**: `HarStatic cfg20 data20 T P4 … P8` at the stream's lanes and the first positions
   of phases 4–8 (`harStatic_of` from `harNum20`, the table shape facts `shpOk_P20` through HAR's
-  `shapesOf_eq`, the layer checks, QA1/HAR's glue checks at `P20`, `okE_P20`, HAR-WH's `lay20`).
+  `shapesOf_eq`, the layer checks (the tape's `layOk_15`, `KS`'s `layOk_11`), `okE_P20`, HAR-WH's
+  `lay20`).
 * **`nodeBase20 S`**: `NodeBase` for WP-16a's `P20` node program (`hτ' := hτL20`, `bpl := bplOf data20`,
   `rest := rest20`, `haux20`'s split), from A24's facts `S`.
 * **`openFin S`**: `Lvm.T.Open` from `midHyp20 S`, `accMidHyp_P20`, `nodeHyp20` and `fixStatic_P20`.
@@ -35,18 +38,14 @@ theorem shapes20 : Har.shapesOf cfg20 data20 = (sumcheckTabs (M3.tabsP20 default
   Har.shapesOf_eq cfg20 data20 M3.G20 default
 
 /-- **`harith_core`'s static facts at `P20`** (the stream's lanes, the first positions of phases 4–8). -/
-theorem harStatic20 : Har.HarStatic cfg20 data20 (streamLanes P20) (Har.phaseByte P20 .ch + 24)
-    (Har.phaseByte P20 .chLink) (Har.phaseByte P20 .ks) (Har.phaseByte P20 .ksLink) (8 * Har.openU P20) := by
-  have hS : ShpOk cfg20.p (Har.shapesOf cfg20 data20) (streamLanes P20) (Har.phaseByte P20 .ch + 24) := by
+theorem harStatic20 : Har.HarStatic cfg20 data20 (streamLanes P20) (Har.phaseByte P20 .tape + 24)
+    (Har.phaseByte P20 .wire) (Har.phaseByte P20 .ks) (Har.phaseByte P20 .ksLink) (8 * Har.openU P20) := by
+  have hS : ShpOk cfg20.p (Har.shapesOf cfg20 data20) (streamLanes P20) (Har.phaseByte P20 .tape + 24) := by
     rw [cfg20_p, shapes20]; exact shpOk_P20
   obtain ⟨htT, hpubT, hpubτ, hRmax, hnf, hzL, hP4⟩ := hS
-  refine harStatic_of harNum20 ?_ ?_ ?_ ?_ ?_ ?_ ?_ htT hpubT hpubτ hRmax hnf hzL hP4 ?_ ?_
-  · rw [cfg20_p]; exact Q1.layOk_16
+  refine harStatic_of harNum20 ?_ ?_ ?_ htT hpubT hpubτ hRmax hnf hzL hP4 ?_ ?_
+  · rw [cfg20_p]; exact Q1.layOk_15
   · rw [cfg20_p]; exact Q1.layOk_11
-  · rw [cfg20_p]; exact Q1.okAG_P20 _ _
-  · rw [cfg20_p]; exact Q1.okBG_P20 _
-  · rw [cfg20_p]; exact Q1.okCG_P20 _ _
-  · rw [cfg20_p]; exact Q1.okN_P20 _
   · rw [cfg20_p, sizes_P20.2.2.2.2.2.2.2.2]; exact okE_P20 _ _
   · rw [cfg20_p]; exact (Har.lay20 (Har.posBase cfg20)).1
   · rw [cfg20_p]; exact (Har.lay20 (Har.posBase cfg20)).2.1
@@ -77,8 +76,8 @@ theorem bv20 (S : StaticFacts) : BVFacts hτL20 hτT20 where
   nb vk c x qm qr P := nBits20 hT20 (hst20 S) (hinbL20 S) haux20 hR20 hP20 vk c x qm qr P.ok P.b1 P.good
   n1 vk c x qm qr P :=
     n1_20 hT20 (hst20 S) (hinbL20 S) hS20 haux20 hR20 hP20 vk c x qm qr P.ok P.b1 P.good P.inm P.ll
-  n2 vk c x qm qr P :=
-    n2_20 hT20 (hst20 S) (hinbL20 S) hS20 haux20 hR20 hP20 vk c x qm qr P.ok P.b1 P.good P.inm P.ll
+  nN vk c x qm qr P :=
+    nN_20 hT20 (hst20 S) (hinbL20 S) hS20 haux20 hR20 hP20 vk c x qm qr P.ok P.b1 P.good P.inm P.ll
   posr vk c x qm qr P := posOkR20 hT20 (hst20 S) (hinbL20 S) hS20 hQ20 posCellsLt20 posLanesR20 vk c x qm qr
     P.ok P.b1 P.good P.inm P.ll
   posm vk c x qm qr P := posOkM20 hT20 (hst20 S) (hinbL20 S) hS20 hQ20 posCellsLt20 posLanesM20 vk c x qm qr
@@ -87,7 +86,7 @@ theorem bv20 (S : StaticFacts) : BVFacts hτL20 hτT20 where
 /-- **`NodeBase` for WP-16a's `P20` node program** from A24's facts. -/
 theorem nodeBase20 (S : StaticFacts) :
     NodeBase (lay cfg20) (sigIn cfg20) (qarith cfg20) (nK cfg20) 0 (plOf data20) data20.groups arrs20
-      (aux cfg20 data20) hτL20 (bplOf data20) rest20 (pbB cfg20) where
+      (aux cfg20 data20) hτL20 (bplOf data20) rest20 (pbB cfg20) M3.tabsP20 where
   hT := hT20
   hst := hst20 S
   hlay := hlay20
@@ -120,6 +119,17 @@ theorem nodeBase20 (S : StaticFacts) :
   harith := harith20 harStatic20 S (bv20 S)
 
 /-! ## The certificate -/
+
+theorem subG_true : subG true Lvm.VS20 = Lvm.T.submission := rfl
+
+/-- **The certificate of the guarded submission** from the open obligations under `b = true`. -/
+theorem certificateR_guard {b : Bool} (h : b = true → Lvm.T.Open) :
+    CertificateR ⟨(1 : ℝ≥0) / 340282366920938463463374607431768211456, (0 : ℝ≥0) / 1, 16384,
+      fun t => 70368744177664 + 8192 * t⟩ (subG b Lvm.VS20) :=
+  certificateR_guardT Lvm.M3.tabsP20 h
+
+/-- The compiled guarded submission (`VS20F`, V-PERF) is the specified one. -/
+theorem subG_F (b : Bool) : subG b Lvm.VF.VS20F = subG b Lvm.VS20 := by rw [Lvm.VF.VS20F_eq]
 
 /-- **The open obligations** from A24's facts. -/
 noncomputable def openFin (S : StaticFacts) : Lvm.T.Open :=

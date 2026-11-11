@@ -13,12 +13,12 @@ import LvmCertSExqRun
 
 **`ext_eq_S`**: for `mid` with `MidSpec`, `MidShape`, `MidFollows` (WP-14a, the middle phases'
 event kinds are the schedule's) and `child` of WP-13a's form (`ChildX`, WP-14c's `childS`):
-on an accepted `'S'` proof over a log with `μ K L < 1`, `EX20 = S.Ex K.ext` or `EX20` returns a
+on an accepted `'S'` proof over a log with `μ K L < 1`, `EXt tabs = S.Ex K.ext` or `EXt tabs` returns a
 witness (an `S` node outside the extractor's domain: the search).
 
 Cases (`b` = π word 1): `b = 0`: `EX_leaf` and the header bridge; `b ≠ 0` outside the domain:
 `EX_node_out` and `search_spec_acc` from `K.extract`; `b ≠ 0` in the domain: `EX_node` with
-* the chain answers `fmAns (fsQL π)` at positions `1035 … 1040` = the replay's fold samples
+* the chain answers `fmAns (fsQL π)` at positions `1308 … 1313` = the replay's fold samples
   (`simK_chain` on the kinds after the roots; `fsPre_P20`: the schedule's slices);
 * `readWd L (capRec π)` = `C_rec`'s committed word (`readRow_eq_wordOf`, `capRec_eq`);
 * `f1E π` = the replay's residual (`simK_reads`, `f1E_eq`, `f1_off`);
@@ -99,7 +99,7 @@ theorem byte0_of_prefix {π : RecursionFast.Proof} (h : π.data.toList.take 8 = 
 /-! ## The roots -/
 
 theorem capBytes_main (vk : RecursionFast.Digest) (P : List UInt8 → VerifierProgram Bool) :
-    (schemeS vk P).capBytes 21 64 = 8192 := by
+    (schemeS vk P).capBytes 19 64 = 8192 := by
   simp only [Scheme.capBytes, schemeS, capOfS]; norm_num
 
 theorem capBytes_rec (vk : RecursionFast.Digest) (P : List UInt8 → VerifierProgram Bool) :
@@ -111,13 +111,13 @@ pending. -/
 theorem roots_trun {vk : RecursionFast.Digest} {mid : List UInt8 → VerifierProgram OpenClaims}
     {x : List UInt8} {L : Log} {B : List UInt8} {st : RecursionFast.Digest} {h : List Ev}
     (e : (schemeS vk (PSWith mid)).trun L (PSWith mid x) st [] [] (B.drop 5624) [] = some (true, h)) :
-    ∃ k caps rest, h = [Ev.commit 21 64 ((schemeS vk (PSWith mid)).wordOf L
-        ((schemeS vk (PSWith mid)).capI 21 64 (B.drop 5624))),
+    ∃ k caps rest, h = [Ev.commit 19 64 ((schemeS vk (PSWith mid)).wordOf L
+        ((schemeS vk (PSWith mid)).capI 19 64 (B.drop 5624))),
         Ev.commit 15 64 ((schemeS vk (PSWith mid)).wordOf L
           ((schemeS vk (PSWith mid)).capI 15 64 (B.drop 13816)))] ++ rest ∧
       (schemeS vk (PSWith mid)).trun L k st (sl B 5624 (17912 - 5624)) caps (B.drop 17912)
-        [Ev.commit 21 64 ((schemeS vk (PSWith mid)).wordOf L
-          ((schemeS vk (PSWith mid)).capI 21 64 (B.drop 5624))),
+        [Ev.commit 19 64 ((schemeS vk (PSWith mid)).wordOf L
+          ((schemeS vk (PSWith mid)).capI 19 64 (B.drop 5624))),
         Ev.commit 15 64 ((schemeS vk (PSWith mid)).wordOf L
           ((schemeS vk (PSWith mid)).capI 15 64 (B.drop 13816)))] = some (true, h) := by
   obtain ⟨k, hk⟩ := PSWith_roots mid x
@@ -226,12 +226,12 @@ theorem offK_eq_offI : ∀ (its : List Item) (off : ℕ), RSItems its = true →
   | .opening _ :: _, _, h => by simp [RSItems] at h
 
 /-- **The schedule at P20** (one kernel evaluation): the middle phases and `C_rec`'s head are reads
-and samples; their slices from the roots' end are the chain's messages of positions `2 … 1040`;
-the residual starts at `f1Off`; the middle phases draw `1032` samples. -/
+and samples; their slices from the roots' end are the chain's messages of positions `2 … 1313`;
+the residual starts at `f1Off`; the middle phases draw `1305` samples. -/
 theorem sched_P20 : RSItems (midItems ++ recHead) = true ∧
-    Lvm.X.fsPre P20 (midItems ++ recHead) 17912 5624 = ((Lvm.X.fsMsgs P20).drop 1).take 1039 ∧
+    Lvm.X.fsPre P20 (midItems ++ recHead) 17912 5624 = ((Lvm.X.fsMsgs P20).drop 1).take 1312 ∧
     offI (midItems ++ recHead) 17912 = Lvm.X.f1Off P20 ∧
-    (itemKinds midItems).count .sample = 1032 ∧ Lvm.X.f1Off P20 = 211424 ∧
+    (itemKinds midItems).count .sample = 1305 ∧ Lvm.X.f1Off P20 = 229352 ∧
     (Lvm.X.fsMsgs P20).getD 0 (0, 0) = (8, 5616) := by
   decide +kernel
 
@@ -353,26 +353,28 @@ theorem bitsToNat_symm (v : ℕ) (hv : v < 2 ^ 13) :
   rw [← bitsEquiv_val, Equiv.apply_symm_apply]
 
 open Classical in
-/-- **O5c** for `EX20`: on an accepted `'S'` proof over a log of potential below `1`, WP-13a's
+/-- **O5c** for `EXt tabs` (lvm2 S2-CERT: generic in the node program's tables; v1's `EX20`): on
+an accepted `'S'` proof over a log of potential below `1`, WP-13a's
 `EX` is the specification extractor of `kcertS` (WP-13b's decoder on the replayed history), or
 returns a witness of the relation. Hypotheses beyond `kcertS`'s: the middle phases' event kinds
 (`MidFollows`, WP-14a) and the child's form (`ChildX`, WP-14c's `childS`). -/
 theorem ext_eq_S {mid : List UInt8 → VerifierProgram OpenClaims} {Good : GoodRel} {Lm : ℝ≥0∞}
     (hmid : MidSpec mid Good εS Lm) (hLm : Lm ≤ εS) (hsh : MidShape mid)
-    {child : Column 19 → Signed} (hnode : ∀ vk, NodeSound Lvm.VS20 vk Good child)
+    {tabs : Lvm.Pub → List Lvm.M3.Tab}
+    {child : Column 19 → Signed} (hnode : ∀ vk, NodeSound (Lvm.T.VSt tabs) vk Good child)
     (hch : ChildX child) (hfol : MidFollows mid) (vk : RecursionFast.Digest) (L : Log)
     (c : RecursionFast.Digest) (π : RecursionFast.Proof) (_hS : isS π = true)
     (_hl : L.length ≤ logCap)
     (hμ : Scheme.μ (kcertS hmid hLm hsh (hnode vk)) L < 1)
     (hacc : ((schemeS vk (PSWith mid)).V c π).runLog L = some true) :
-    (∃ w, EX20 c π L = some w ∧ Rel (accV Lvm.VS20 vk) c w) ∨
-      EX20 c π L = (schemeS vk (PSWith mid)).Ex (kcertS hmid hLm hsh (hnode vk)).ext c π L := by
+    (∃ w, Lvm.T.EXt tabs c π L = some w ∧ Rel (accV (Lvm.T.VSt tabs) vk) c w) ∨
+      Lvm.T.EXt tabs c π L = (schemeS vk (PSWith mid)).Ex (kcertS hmid hLm hsh (hnode vk)).ext c π L := by
   obtain ⟨x, h, hok, hreach, hafter, hB, hBp, hD, hEx⟩ :=
     Scheme.final_good (kcertS hmid hLm hsh (hnode vk)) L c π hμ hacc
   obtain ⟨body, e₀, e₁, hhdr, h0, h1, htr⟩ := Ex_inv _ hEx
   obtain ⟨hsz, hpre8, rfl, rfl⟩ := hdrS_inv hhdr
   have hsize : π.size = Lvm.piSize Lvm.X.pX := hsz
-  have hpi : π.size = 1181488 := by rw [hsize]; exact Lvm.X.piSize_eq
+  have hpi : π.size = 1094248 := by rw [hsize]; exact Lvm.X.piSize_eq
   have hBlen : π.data.toList.length = π.size := Array.length_toList
   have hb0 : π.data[0]? = some 0x53 := byte0_of_prefix hpre8
   have hhd : hdrOf ((π.data.toList.drop 8).take hdrLen) = Header.ofProof π :=
@@ -393,7 +395,7 @@ theorem ext_eq_S {mid : List UInt8 → VerifierProgram OpenClaims} {Good : GoodR
   by_cases hb : Lvm.X.pw π 1 = 0
   · -- a leaf
     right
-    rw [EX20, Lvm.X.EX_leaf _ c π L hsize hb0 hb]
+    rw [Lvm.T.EXt, Lvm.X.EX_leaf _ c π L hsize hb0 hb]
     unfold extS witOf
     rw [hhd, if_pos (by rw [hfb, hb]; rfl), hfs, hfn]
     rfl
@@ -403,15 +405,17 @@ theorem ext_eq_S {mid : List UInt8 → VerifierProgram OpenClaims} {Good : GoodR
   swap
   · -- a node outside the domain: the search
     left
-    rw [EX20, Lvm.X.EX_node_out _ c π L hdom hsize hb0 hb]
+    rw [Lvm.T.EXt, Lvm.X.EX_node_out _ c π L hdom hsize hb0 hb]
     have hvk : Lvm.X.hdD π 2 = vk := by
       have := hok
       simp only [schemeS, okS, Bool.and_eq_true, beq_iff_eq] at this
       rw [← hfvk, ← hhd]
       exact this.1.1.1.2
     rw [hvk]
-    refine Lvm.X.search_spec_acc (fun c' p hp => Lvm.X.sFits_of_acc (S := submission)
-      (by decide) (by rw [show submission.acc = accV Lvm.VS20 from subWith_acc _ _ _]; exact hp))
+    refine Lvm.X.search_spec_acc (fun c' p hp => Lvm.X.sFits_of_acc (S := Lvm.T.submissionT tabs)
+      (by show Lvm.T.qVlvm ≤ Lvm.X.qMax; decide)
+      (by rw [show (Lvm.T.submissionT tabs).acc = accV (Lvm.T.VSt tabs) from
+        subWith_acc (Lvm.T.VSt tabs) (Lvm.T.EXt tabs) Lvm.X.extX]; exact hp))
       ⟨_, (kcertS hmid hLm hsh (hnode vk)).extract hok hreach hafter hB hBp hD⟩
   -- a node in the domain
   right
@@ -444,7 +448,7 @@ theorem ext_eq_S {mid : List UInt8 → VerifierProgram OpenClaims} {Good : GoodR
   obtain ⟨st₁, p₁, caps₁, hsim1, hle1, htr1⟩ := trun_simK _ L π.data.toList _ k 17912 5624 e₁.2 caps _
     (lm ++ ([Ev.sample ρ] ++ (lq ++ lf))) (lres ++ rest) true (other_not_mem _ hRS) (by norm_num) hk1
     (by rw [htrk, hsplit]; simp only [List.append_assoc, List.cons_append, List.nil_append])
-  have hoff1 : offK (itemKinds (midItems ++ recHead)) 17912 = 211424 := by
+  have hoff1 : offK (itemKinds (midItems ++ recHead)) 17912 = 229352 := by
     rw [offK_eq_offI _ _ hRS, sched_P20.2.2.1, sched_P20.2.2.2.2.1]
   have hk2 : lres.map kindOf = List.replicate (2 ^ 13) .read := by
     rw [hres, List.map_map, ← hreslen]
@@ -453,7 +457,7 @@ theorem ext_eq_S {mid : List UInt8 → VerifierProgram OpenClaims} {Good : GoodR
   obtain ⟨st₂, -, -, hsim2, -, -⟩ := trun_simK _ L π.data.toList _ p₁ _ _ st₁ caps₁ _ lres rest true
     (fun hm => by cases (List.mem_replicate.1 hm).2) hle1 hk2 (by rw [htr1]; simp only [List.append_assoc])
   rw [simK_reads, hoff1] at hsim2
-  have hresv : res = (List.range (2 ^ 13)).map fun i => eOfBytes (sl π.data.toList (211424 + 24 * i) 24) := by
+  have hresv : res = (List.range (2 ^ 13)).map fun i => eOfBytes (sl π.data.toList (229352 + 24 * i) 24) := by
     have e := (Prod.mk.inj (Option.some.inj hsim2)).1
     rw [hres] at e
     apply List.map_injective_iff.2 (fun a b hab => Ev.read.inj hab)
@@ -468,19 +472,19 @@ theorem ext_eq_S {mid : List UInt8 → VerifierProgram OpenClaims} {Good : GoodR
       rfl
     simp only [Lvm.X.fmAns, hq0, h0, Option.map_some, Option.bind_some, hseed, h1]
   have hPre : fsPreK (itemKinds (midItems ++ recHead)) 17912 5624 =
-      ((Lvm.X.fsMsgs P20).drop 1).take 1039 := by
+      ((Lvm.X.fsMsgs P20).drop 1).take 1312 := by
     rw [← fsPre_eq_fsPreK _ _ _ _ hRS]
     exact sched_P20.2.1
   obtain ⟨hch1, -⟩ := simK_chain _ L π.data.toList (Lvm.X.fsQL π) Lvm.X.zeroDL _ 17912 5624 e₁.2 1 _ st₁
     hsim1 hfm1 (fun i hi s => by
       rw [fsQL_eq π (by omega), msgL_eq, ← List.getD_eq_getElem _ (0, 0) hi, hPre]
-      have hi' : i < 1039 := by
+      have hi' : i < 1312 := by
         have := hi
         rw [hPre] at this
         exact lt_of_lt_of_le this (List.length_take_le _ _)
       rw [List.getD_eq_getElem?_getD, List.getD_eq_getElem?_getD, List.getElem?_take, if_pos hi',
         List.getElem?_drop, show 1 + 1 + i - 1 = 1 + i by omega])
-  have hlm : (lm.filterMap sampleOf).length = 1032 := by
+  have hlm : (lm.filterMap sampleOf).length = 1305 := by
     rw [samples_length, fm]; exact sched_P20.2.2.2.1
   have hlq : lq.filterMap sampleOf = [] := by
     have := samples_length lq
@@ -493,13 +497,13 @@ theorem ext_eq_S {mid : List UInt8 → VerifierProgram OpenClaims} {Good : GoodR
   have hfold : ∀ j < 6, ∃ a, Lvm.X.fmAns (Lvm.X.fsQL π) Lvm.X.zeroDL L (Lvm.X.alphaPos Lvm.X.pX j) =
       some a ∧ r.2.getD j 0 = chalOf a := by
     intro j hj
-    have hlen : 1033 + j < ((lm ++ ([Ev.sample ρ] ++ (lq ++ lf))).filterMap sampleOf).length := by
+    have hlen : 1306 + j < ((lm ++ ([Ev.sample ρ] ++ (lq ++ lf))).filterMap sampleOf).length := by
       rw [hpreS, List.length_append, hlm, List.length_cons, hlen6]; omega
-    obtain ⟨a, ha, hea⟩ := hch1 (1033 + j) hlen
-    refine ⟨a, by rw [Lvm.X.alphaPos_eq, show 1035 + j = 1 + 1 + (1033 + j) by omega]; exact ha, ?_⟩
+    obtain ⟨a, ha, hea⟩ := hch1 (1306 + j) hlen
+    refine ⟨a, by rw [Lvm.X.alphaPos_eq, show 1308 + j = 1 + 1 + (1306 + j) by omega]; exact ha, ?_⟩
     rw [show chalOf a = (schemeS vk (PSWith mid)).chal a from rfl, ← hea,
       ← List.getD_eq_getElem _ 0 hlen, hpreS, List.getD_append_right _ _ _ _ (by omega), hlm,
-      show 1033 + j - 1032 = j + 1 by omega]
+      show 1306 + j - 1305 = j + 1 by omega]
     rfl
   -- the decoder
   let αd : ℕ → RecursionFast.Digest := fun j => if j < 6 then
@@ -538,7 +542,7 @@ theorem ext_eq_S {mid : List UInt8 → VerifierProgram OpenClaims} {Good : GoodR
     rw [ew, ea, decodeRec_congr_f _ _ (f' := Lvm.X.fNr (resMsg res)) ?_]
     · exact hdec
     · intro v hv
-      have hf1 : Lvm.X.f1Off Lvm.X.pX = 211424 := sched_P20.2.2.2.2.1
+      have hf1 : Lvm.X.f1Off Lvm.X.pX = 229352 := sched_P20.2.2.2.2.1
       rw [f1E_eq π v (by rw [hf1, hpi]; omega), hf1]
       unfold Lvm.X.fNr
       rw [dif_pos hv]
@@ -548,7 +552,7 @@ theorem ext_eq_S {mid : List UInt8 → VerifierProgram OpenClaims} {Good : GoodR
         List.getElem_map, List.getElem_range]
       rfl
   -- the witness
-  rw [EX20, Lvm.X.EX_node _ c π L hdom hsize hb0 hb hS' αd hα _ hdecEX]
+  rw [Lvm.T.EXt, Lvm.X.EX_node _ c π L hdom hsize hb0 hb hS' αd hα _ hdecEX]
   unfold extS
   rw [hrd]
   simp only [Option.bind_some]

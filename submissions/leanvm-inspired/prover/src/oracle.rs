@@ -87,9 +87,11 @@ pub enum Class {
     Leaf,
     /// a Merkle node `left ‖ right` (64 bytes)
     Node,
+    /// PI-GRIND: a grinding attempt `st ‖ nonce` (56 bytes; not in `V`'s trace, only its accepted one, as `Fs`)
+    Grind,
 }
 
-pub const CLASSES: [Class; 4] = [Class::Seed, Class::Fs, Class::Leaf, Class::Node];
+pub const CLASSES: [Class; 5] = [Class::Seed, Class::Fs, Class::Leaf, Class::Node, Class::Grind];
 
 struct Counter {
     requests: AtomicU64,
@@ -102,7 +104,7 @@ struct Counter {
 const Z: AtomicU64 = AtomicU64::new(0);
 #[allow(clippy::declare_interior_mutable_const)]
 const C0: Counter = Counter { requests: Z, queries: Z, bytes: Z, perms: Z, wait_ns: Z };
-static STATS: [Counter; 4] = [C0, C0, C0, C0];
+static STATS: [Counter; 5] = [C0, C0, C0, C0, C0];
 
 fn counter(c: Class) -> &'static Counter {
     &STATS[c as usize]
@@ -131,6 +133,7 @@ pub fn stat(c: Class) -> Stat {
 }
 
 pub fn reset_stats() {
+    GRIND_WALL_NS.store(0, Ordering::Relaxed);
     for k in &STATS {
         for a in [&k.requests, &k.queries, &k.bytes, &k.perms, &k.wait_ns] {
             a.store(0, Ordering::Relaxed);
@@ -159,6 +162,28 @@ pub fn ask(c: Class, q: &[u8]) -> Digest {
     let a = get().ask(q);
     note(c, 1, std::iter::once(q.len()), t);
     a
+}
+
+/// PI-GRIND: the grinding rounds' wall time (the class's `wait_s` is thread-seconds, as for the other classes).
+static GRIND_WALL_NS: AtomicU64 = AtomicU64::new(0);
+
+/// PI-GRIND: one round of `n` grinding attempts (56 bytes each) in `tasks` batches on as many threads, which
+/// took since `t`.
+pub fn note_grind(n: usize, tasks: usize, t: Instant) {
+    let wall = t.elapsed().as_nanos() as u64;
+    let k = counter(Class::Grind);
+    let per = n.div_ceil(tasks.max(1));
+    k.requests.fetch_add(tasks as u64 * requests_for(per, 56 * per), Ordering::Relaxed);
+    k.queries.fetch_add(n as u64, Ordering::Relaxed);
+    k.bytes.fetch_add(56 * n as u64, Ordering::Relaxed);
+    k.perms.fetch_add(n as u64 * oracle_perms(56), Ordering::Relaxed);
+    k.wait_ns.fetch_add(tasks as u64 * wall, Ordering::Relaxed);
+    GRIND_WALL_NS.fetch_add(wall, Ordering::Relaxed);
+}
+
+/// PI-GRIND: the grinding rounds' wall time so far, in seconds.
+pub fn grind_wall_s() -> f64 {
+    GRIND_WALL_NS.load(Ordering::Relaxed) as f64 * 1e-9
 }
 
 /// Items of a batch request (`service.rs` `BATCH_ITEMS`, `BATCH_BYTES`), for the request count.

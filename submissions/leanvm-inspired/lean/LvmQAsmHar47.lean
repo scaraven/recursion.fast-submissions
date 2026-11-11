@@ -10,10 +10,9 @@ import LvmQBusBase
 # Phases 4–7: the reading
 
 * `ringSwitch_run`: a ring switch reads 6 challenges and moves the position by `72·6`.
-* `chPh_run`, `ksPh_run`: the instance point, the lanes, the Keccak GKR (`verifyKeccak_run`), the
-  ring switch, from any position.
-* `chLinkPh_run`, `ksLinkPh_run`: QA1's `chLinkPhase_run`/`ksLinkPhase_run` without the `require`
-  (which `decideProgH` does after the phase).
+* `ksPh_run`: `KS`'s instance point, lanes, Keccak GKR (`verifyKeccak_run`), ring switch, from any
+  position (lvm2 S2: v1's `CH` phases are gone; the tape and wire are `LvmQAsmHarP47`'s).
+* `ksLinkPh_run`: QA1's `ksLinkPhase_run` without the `require` (which `decideProgH` does after the phase).
 * `loadEs_val`: a `loadEs` cell is the stream's scalar (`phases47`'s points and lanes).
 -/
 
@@ -61,15 +60,6 @@ theorem kPh_run (sig : ByteArray) (ls : Nat) (hls : 1 ≤ ls) (s : RS) :
   rw [bind_run, ringSwitch_run, pure_run]
   simp only [pos, samplesAt, kV, Nat.add_zero]
 
-theorem chPh_run (p : Params) (hn : 1 ≤ p.logN) (sig : ByteArray) (s : RS) :
-    chPh p sig s =
-      let r := samplesAt (feAt sig) (pos s) p.logN
-      let v := scalarsAt (feAt sig) (kV p.logN (pos s) + 40) lanes
-      let K := vkSpec (feAt sig) p.logN r v (kG p.logN (pos s)) s.ok
-      ((r, v, K.1, ringAt (feAt sig) (K.2.2 + 24 * kBits) K.1.slicePoint K.1.slices),
-        ⟨K.2.2 + 24 * kBits + 72 * ringStages, 0, K.2.1⟩) :=
-  kPh_run sig p.logN hn s
-
 theorem ksPh_run (p : Params) (hn : 1 ≤ p.ksLog) (sig : ByteArray) (s : RS) :
     ksPh p sig s =
       let r := samplesAt (feAt sig) (pos s) p.ksLog
@@ -78,37 +68,6 @@ theorem ksPh_run (p : Params) (hn : 1 ≤ p.ksLog) (sig : ByteArray) (s : RS) :
       ((r, v, K.1, ringAt (feAt sig) (K.2.2 + 24 * kBits) K.1.slicePoint K.1.slices),
         ⟨K.2.2 + 24 * kBits + 72 * ringStages, 0, K.2.1⟩) :=
   kPh_run sig p.ksLog hn s
-
-/-- **Phase 5 from position `P`** (QA1's reading; the link's check is `decideProgH`'s `require`). -/
-theorem chLinkPh_run (p : Params) (m : M3) (r w : List FE) (pub : Pub) (sig : ByteArray) (s : RS)
-    (hn : 1 ≤ p.logN) :
-    chLinkPh p m r w pub sig s =
-      (m.chLink (chLinkView p m (feAt sig) (pos s) r w pub), ⟨chP6 p (pos s), 0, s.ok⟩) := by
-  unfold chLinkPh
-  rw [bind_run, samples_run sig _ s (by omega)]
-  dsimp only
-  rw [bind_run, sumcheck_run sig 3 (by omega)]
-  dsimp only
-  rw [bind_run, readEs_run]
-  dsimp only
-  rw [bind_run, ringRaw_run]
-  dsimp only
-  rw [bind_run, sumcheck_run sig 3 (by omega)]
-  dsimp only
-  rw [bind_run, readEs_run]
-  dsimp only
-  rw [bind_run, ringRaw_run]
-  dsimp only
-  rw [bind_run, samples_run sig _ _ (by decide)]
-  dsimp only
-  rw [scState_replicate_lk _ _ hn, show ([none, none] : List (Option FE)) = List.replicate 2 none from rfl,
-    scState_replicate_lk _ _ (by decide)]
-  simp only [Nat.add_zero, Nat.zero_add]
-  rw [show (List.replicate 2 none : List (Option FE)) = [none, none] from rfl]
-  unfold pos
-  generalize s.ent + s.msg = P
-  rw [pure_run]
-  rfl
 
 theorem ksLinkPh_run (p : Params) (m : M3) (rk : List FE) (pub : Pub) (sig : ByteArray) (s : RS)
     (hn : 1 ≤ p.ksLog) :

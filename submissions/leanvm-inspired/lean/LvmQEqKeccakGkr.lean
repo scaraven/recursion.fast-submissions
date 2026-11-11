@@ -1987,21 +1987,14 @@ theorem gkr_spec {c : Ctx} {M : Mem} {p : Ptr} {P qs : Nat} {inst out : Nat → 
   exact ⟨fun ⟨h2, h1, ho, hl⟩ => ⟨ho, h2, h1, hl⟩, fun ⟨ho, h2, h1, hl⟩ => ⟨h2, h1, ho, hl⟩⟩
 
 
-/-! ## The shapes: `P20`'s `CH` (`logSteps = 20`) and `KS` (`15`), `P8`'s (`9`, `13`) -/
-
-/-- `P20`'s `CH` GKR (`logSteps = 20`). -/
-example {c : Ctx} {M : Mem} {p : Ptr} {qs : Nat} {inst out : Nat → Cell} {b : Cell} {sig : ByteArray} {T : Nat} :=
-  @gkr_spec c M p 16 qs inst out b sig T layOk_16
+/-! ## The shapes: `KS` at `P20` (`logSteps = 15`) and `P8` (`14`) -/
 
 /-- `P20`'s `KS` GKR (`logSteps = 15`). -/
 example {c : Ctx} {M : Mem} {p : Ptr} {qs : Nat} {inst out : Nat → Cell} {b : Cell} {sig : ByteArray} {T : Nat} :=
   @gkr_spec c M p 11 qs inst out b sig T layOk_11
 
-/-- `P8`'s two GKRs (`logSteps = 9`, `13`). -/
+/-- `P8`'s `KS` GKR (`logSteps = 14`). -/
 example {c : Ctx} {M : Mem} {p : Ptr} {qs : Nat} {inst out : Nat → Cell} {b : Cell} {sig : ByteArray} {T : Nat} :=
-  @gkr_spec c M p 5 qs inst out b sig T layOk_5
-
-example {c : Ctx} {M : Mem} {p : Ptr} {qs : Nat} {inst out : Nat → Cell} {b : Cell} {sig : ByteArray} {T : Nat} :=
-  @gkr_spec c M p 9 qs inst out b sig T layOk_9
+  @gkr_spec c M p 10 qs inst out b sig T layOk_10
 
 end Lvm.Q1

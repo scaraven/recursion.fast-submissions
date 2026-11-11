@@ -25,7 +25,7 @@ open LeanVM.Protocol.EndToEnd.Front (Doomed)
 open scoped ENNReal
 
 /-- A pair of candidates. -/
-abbrev Pair : Type := Column 26 × Column 19
+abbrev Pair : Type := Column CMain.nu20 × Column 19
 
 theorem rootShape_append' {h₀ l : List Ev} (hl : commits l = []) (hr : RootShape h₀) :
     RootShape (h₀ ++ l) := by
@@ -42,8 +42,8 @@ variable {α κ : Type} {busP : List UInt8 → VerifierProgram α} {kgP : Verifi
 /-- The assembled claims' doom: a pair failing `Kc ∧ B` fails one of the assembled claims. -/
 theorem openPost_of {x : List UInt8} {a : α} {k : κ} {h : List Ev}
     (hasm : ∀ p : Pair, (∀ c ∈ (asm x a k).1, StackClaim.Holds 19 c p.2) →
-      (∀ c ∈ (asm x a k).2, StackClaim.Holds 26 c p.1) → Kc k p ∧ B x a p)
-    (hside : (∀ c ∈ (asm x a k).1, IsMultiaffine 19 c.1) ∧ (∀ c ∈ (asm x a k).2, IsMultiaffine 26 c.1) ∧
+      (∀ c ∈ (asm x a k).2, StackClaim.Holds CMain.nu20 c p.1) → Kc k p ∧ B x a p)
+    (hside : (∀ c ∈ (asm x a k).1, IsMultiaffine 19 c.1) ∧ (∀ c ∈ (asm x a k).2, IsMultiaffine CMain.nu20 c.1) ∧
       (asm x a k).1.length ≤ 2 ^ 63 ∧ (asm x a k).2.length ≤ 2 ^ 63)
     (hD : Doomed candPairs (fun p ↦ Kc k p ∧ B x a p) h) (hR : RootShape h) :
     OpenPost (asm x a k) h := by
@@ -61,9 +61,9 @@ noncomputable def midSpecOf
       (fun k h ↦ Doomed candPairs (fun p ↦ Kc k p ∧ B x a p) h) εS Lk T)
     (hkc : kgP.NoCommit) (hLk : Lk ≤ εS)
     (hasm : ∀ x a k (p : Pair), (∀ c ∈ (asm x a k).1, StackClaim.Holds 19 c p.2) →
-      (∀ c ∈ (asm x a k).2, StackClaim.Holds 26 c p.1) → Kc k p ∧ B x a p)
+      (∀ c ∈ (asm x a k).2, StackClaim.Holds CMain.nu20 c p.1) → Kc k p ∧ B x a p)
     (hside : ∀ x a k, (∀ c ∈ (asm x a k).1, IsMultiaffine 19 c.1) ∧
-      (∀ c ∈ (asm x a k).2, IsMultiaffine 26 c.1) ∧ (asm x a k).1.length ≤ 2 ^ 63 ∧
+      (∀ c ∈ (asm x a k).2, IsMultiaffine CMain.nu20 c.1) ∧ (asm x a k).1.length ≤ 2 ^ 63 ∧
       (asm x a k).2.length ≤ 2 ^ 63) :
     MidSpec (fun x ↦ busP x >>= fun a ↦ kgP >>= fun k ↦ VerifierProgram.ret (asm x a k))
       (fun x qm qr ↦ Gb x (qm, qr) ∧ Gk (qm, qr)) εS Lb := fun x T hT ↦

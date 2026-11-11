@@ -79,6 +79,10 @@ fn mk_levels(sec: usize, nu: usize, spec: &[(usize, usize, usize)]) -> Vec<Level
 }
 
 pub const GKR_DEPTH: usize = 12;
+/// S2: the chain tape's GKR is one segment of 24 rounds (`Shape { log_n, 24 }`).
+pub const TAPE_DEPTH: usize = 24;
+/// `Pad43`'s digest offset in the state (`Λ`: digest bit `p` to state bit `8 + p`).
+pub const PAD_SHIFT: usize = 8;
 pub const SLOT_LOG: usize = 6;
 pub const REC_STREAM_COLS: usize = 17;
 pub const REC_COLS: usize = 32;
@@ -122,6 +126,9 @@ pub struct Params {
     pub nu_main: usize,
     pub rec_rows_log: usize,
     pub sec_bits: usize,
+    /// PI-GRIND: grinding bits `g` at every WHIR level of both openings (0: none, the v1/S2 schedule). The query
+    /// counts are `udQueries (sec − g) R`.
+    pub grind: usize,
     pub main_levels: Vec<Level>,
     pub rec_levels: Vec<Level>,
     pub bus_depth: usize,
@@ -166,20 +173,23 @@ impl Params {
     }
 }
 
+/// `main` is the `C_main` levels, any number (S2: three, v1: four), in `refreeze2.py`'s form `[(fold, rate, cap), …]`.
 #[allow(clippy::too_many_arguments)]
 fn mk(
     name: &'static str,
     log_n: usize,
     sec: usize,
+    grind: usize,
     rec_rows_log: usize,
     nu_main: usize,
-    main: [(usize, usize, usize); 4],
+    main: impl AsRef<[(usize, usize, usize)]>,
     rec: (usize, usize, usize),
     ks_log: usize,
     bits_log: usize,
     fb: (usize, usize, usize, usize),
     pub_tab: usize,
 ) -> Params {
+    assert!(grind <= 64 && grind < sec, "{name}: {grind} grinding bits (at most 64, and below sec = {sec})");
     Params {
         name,
         log_n,
@@ -188,8 +198,9 @@ fn mk(
         nu_main,
         rec_rows_log,
         sec_bits: sec,
-        main_levels: mk_levels(sec, nu_main, &main),
-        rec_levels: mk_levels(sec, rec_rows_log + 5, &[rec]),
+        grind,
+        main_levels: mk_levels(sec - grind, nu_main, main.as_ref()),
+        rec_levels: mk_levels(sec - grind, rec_rows_log + 5, &[rec]),
         bus_depth: fb.0,
         leafdec_reads: fb.1,
         table_rounds: fb.2,
@@ -198,15 +209,42 @@ fn mk(
     }
 }
 
-/// `P20` (BLUEPRINT §3.1); the M3 numbers `(busDepth, leafdecReads, tableRounds, tableEvals)` are INT-2's
-/// freeze (`LvmParams.P20`, A21).
-pub fn p20() -> Params {
-    mk("P20", 20, 129, 14, 26, [(6, 1, 8), (4, 2, 7), (4, 3, 7), (4, 4, 7)], (6, 2, 7), 15, 13, (22, 1, 17, 4253), 131)
+/// PI-GRIND's grinding bits per set (`LVM_GRIND=std`): P20 14, P8 4.
+pub const GRIND_P20: usize = 14;
+pub const GRIND_P8: usize = 4;
+
+/// PI-GRIND's switch: `LVM_GRIND` unset or `0` gives the records without grinding (the defaults); `std` gives the
+/// set's grinding bits ([`GRIND_P20`], [`GRIND_P8`]); a number `g` gives `g` bits at either set.
+pub fn grind_env(std_bits: usize) -> usize {
+    match std::env::var("LVM_GRIND") {
+        Err(_) => 0,
+        Ok(v) if v == "std" => std_bits,
+        Ok(v) if v.is_empty() => 0,
+        Ok(v) => v.parse().unwrap_or_else(|_| panic!("LVM_GRIND: std or a number of bits, not {v:?}")),
+    }
 }
 
-/// `P8` (WP-0's test set).
+/// `P20` (BLUEPRINT §3.1); the M3 numbers `(busDepth, leafdecReads, tableRounds, tableEvals)` are INT-2's
+/// freeze (`LvmParams.P20`, A21). Grinding bits from `LVM_GRIND` ([`grind_env`]; 0 by default).
+pub fn p20() -> Params {
+    p20_g(grind_env(GRIND_P20))
+}
+
+/// `P20` with `g` grinding bits.
+pub fn p20_g(g: usize) -> Params {
+    // S2 (BLUEPRINT2 §1.4): C_main at ν = 24, three levels
+    mk("P20", 20, 129, g, 14, 24, &[(6, 1, 8), (4, 2, 7), (4, 3, 7)], (6, 2, 7), 15, 13, (22, 1, 17, 3805), 124)
+}
+
+/// `P8` (WP-0's test set). Grinding bits from `LVM_GRIND` ([`grind_env`]; 0 by default).
 pub fn p8() -> Params {
-    mk("P8", 9, 20, 12, 23, [(6, 1, 4), (4, 2, 4), (4, 3, 4), (4, 4, 4)], (6, 2, 4), 13, 12, (21, 1, 16, 3951), 128)
+    p8_g(grind_env(GRIND_P8))
+}
+
+/// `P8` with `g` grinding bits.
+pub fn p8_g(g: usize) -> Params {
+    // S2 P8 (FRZ-0): rec rows 2^13 and KS 2^14 (the tape's trace overflows 2^12 blocks), three C_main levels
+    mk("P8", 9, 20, g, 13, 23, &[(6, 1, 4), (4, 2, 4), (4, 3, 4)], (6, 2, 4), 14, 12, (21, 1, 16, 3611), 118)
 }
 
 // ------------------------------------------------------------------------------------------- the schedule
@@ -237,6 +275,9 @@ fn sumcheck_i(rounds: usize, d: usize) -> Vec<Item> {
 }
 fn keccak_layer_i(point: usize) -> Vec<Item> {
     [rd(PRODUCT_BITS), smp(1), sumcheck_i(point, 2), sumcheck_i(LOCAL_BITS, 3), rd(3), smp(1)].concat()
+}
+fn tape_layers_i(log_n: usize) -> Vec<Item> {
+    (0..TAPE_DEPTH).flat_map(|_| keccak_layer_i(log_n - PACK_BITS)).collect()
 }
 fn keccak_i(log_steps: usize) -> Vec<Item> {
     let mut v = [smp(SEGMENT_BITS + LANE_BITS), rd(1)].concat();
@@ -271,7 +312,11 @@ fn tail_i(n: usize) -> Vec<Item> {
     }
     v
 }
-fn whir_i(com: Com, levels: &[Level], final_log: usize) -> Vec<Item> {
+/// PI-GRIND: a level's separating sample, nonce and PoW sample (none when `g = 0`).
+fn grind_i(g: usize) -> Vec<Item> {
+    if g == 0 { vec![] } else { [smp(1), rd(1), smp(1)].concat() }
+}
+fn whir_i(com: Com, levels: &[Level], final_log: usize, g: usize) -> Vec<Item> {
     let mut v = rd(2);
     for (i, l) in levels.iter().enumerate() {
         for _ in 0..l.fold {
@@ -283,6 +328,7 @@ fn whir_i(com: Com, levels: &[Level], final_log: usize) -> Vec<Item> {
             None => v.extend(rd(1 << final_log)),
             Some(n) => v.push(Item::Cap(n.cap, com, l.level + 1)),
         }
+        v.extend(grind_i(g));
         v.push(Item::Positions(com, l.level));
         v.extend(smp(1));
         v.push(Item::Opening(com, l.level));
@@ -301,8 +347,10 @@ pub enum Phase {
     Tables,
     /// A23 phase 3b: `κ` (dk samples), `h` (D + 1), `t`, one zero scalar.
     Acc,
-    Ch,
-    ChLink,
+    /// S2: T1 (output claim) and T2 (the depth-24 GKR) on the chain digests `D`.
+    Tape,
+    /// S2: T3 (wiring sumcheck) and T4 (`D` slot reduction, ring switch).
+    Wire,
     Ks,
     KsLink,
     OpenRec,
@@ -315,16 +363,12 @@ pub fn phases(p: &Params) -> Vec<(Phase, Vec<Item>)> {
         (Phase::Bus, [smp(BUS_BITS + 1), rd(2), gp_layers_i(p.bus_depth, 0), rd(p.leafdec_reads)].concat()),
         (Phase::Tables, [smp(1), sumcheck_i(p.table_rounds, 3), rd(p.table_evals)].concat()),
         (Phase::Acc, [smp(p.acc_log()), rd(p.acc_d() + 1), smp(1), rd(1)].concat()),
-        (Phase::Ch, [smp(p.log_n), rd(LANES), keccak_i(p.log_n), smp(RING_STAGES)].concat()),
-        (
-            Phase::ChLink,
-            [smp(p.log_n + 3 + 6), sumcheck_i(p.log_n, 2), rd(K_BITS), smp(RING_STAGES), sumcheck_i(2, 2), rd(K_BITS), smp(RING_STAGES), smp(LANE_BITS)]
-                .concat(),
-        ),
+        (Phase::Tape, [smp(p.log_n), rd(LANES), smp(LANE_BITS), tape_layers_i(p.log_n)].concat()),
+        (Phase::Wire, [sumcheck_i(p.log_n, 2), rd(1), sumcheck_i(2, 2), rd(K_BITS), smp(RING_STAGES)].concat()),
         (Phase::Ks, [smp(p.ks_log), rd(LANES), keccak_i(p.ks_log), smp(RING_STAGES)].concat()),
         (Phase::KsLink, [smp(p.ks_log + LANE_BITS), sumcheck_i(p.ks_log, 2), rd(4)].concat()),
-        (Phase::OpenRec, [smp(1), whir_i(Com::Rec, &p.rec_levels, p.rec_final_log())].concat()),
-        (Phase::OpenMain, [smp(1), whir_i(Com::Main, &p.main_levels, p.main_final_log())].concat()),
+        (Phase::OpenRec, [smp(1), whir_i(Com::Rec, &p.rec_levels, p.rec_final_log(), p.grind)].concat()),
+        (Phase::OpenMain, [smp(1), whir_i(Com::Main, &p.main_levels, p.main_final_log(), p.grind)].concat()),
     ]
 }
 
@@ -377,6 +421,21 @@ pub fn query_list(p: &Params) -> Vec<(QClass, usize)> {
     out
 }
 
+/// S2 dev check: `piSize`, `qS` and trace sponge blocks against `2^rec`, for P20 and P8, without grinding and at
+/// PI-GRIND's bits (with the query counts `t` and the positions queries `Σ ⌈t/8⌉`).
+pub fn print_numbers() {
+    for p in [p20_g(0), p8_g(0), p20_g(GRIND_P20), p8_g(GRIND_P8)] {
+        let ql = query_list(&p);
+        let l: usize = 1 + ql.iter().map(|(_, len)| 40 + len).sum::<usize>();
+        let ts: Vec<usize> = p.rec_levels.iter().chain(&p.main_levels).map(|l| l.t).collect();
+        let pos: usize = ts.iter().map(|t| t.div_ceil(POSITIONS_PER_ANSWER)).sum();
+        println!(
+            "{} g {} piSize {} qS {} t (rec; main) {:?} positions queries {} trace blocks {} (2^rec = {})",
+            p.name, p.grind, pi_size(&p), ql.len(), ts, pos, l / 136 + 1, 1usize << p.rec_rows_log
+        );
+    }
+}
+
 /// `piSize`.
 pub fn pi_size(p: &Params) -> usize {
     let mut s = header_bytes(p);
@@ -399,15 +458,31 @@ mod tests {
     use super::*;
     #[test]
     fn frozen_numbers() {
-        let p = p20();
-        assert_eq!(p.main_levels.iter().map(|l| l.t).collect::<Vec<_>>(), vec![311, 191, 156, 142]);
+        let p = p20_g(0);
+        assert_eq!(p.main_levels.iter().map(|l| l.t).collect::<Vec<_>>(), vec![311, 191, 156]);
         assert_eq!(p.rec_levels[0].t, 191);
         // A21's record + A23 (D = 28: header + 696 B, phase 3b 12 queries and 30 scalars)
-        assert_eq!(query_list(&p).len(), 11832);
-        assert_eq!(pi_size(&p), 1181488);
-        let q = p8();
-        assert_eq!(q.main_levels.iter().map(|l| l.t).collect::<Vec<_>>(), vec![49, 30, 25, 22]);
-        assert_eq!(query_list(&q).len(), 2649);
-        assert_eq!(pi_size(&q), 357992);
+        // S2 (T-P1; BLUEPRINT2 §2.2's model: 9,916 and 1,103,704)
+        assert_eq!(query_list(&p).len(), 9916);
+        assert_eq!(pi_size(&p), 1094248);
+        let q = p8_g(0);
+        assert_eq!(q.main_levels.iter().map(|l| l.t).collect::<Vec<_>>(), vec![49, 30, 25]);
+        // S2 P8 (FRZ-0)
+        assert_eq!(query_list(&q).len(), 2711);
+        assert_eq!(pi_size(&q), 421952);
+    }
+
+    #[test]
+    fn grind_numbers() {
+        // PI-GRIND Gate §3: t = udQueries (129 − 14) R
+        let p = p20_g(GRIND_P20);
+        assert_eq!(p.main_levels.iter().map(|l| l.t).collect::<Vec<_>>(), vec![278, 170, 139]);
+        assert_eq!(p.rec_levels[0].t, 170);
+        // PI-GRIND-P's record at g > 0 (dev `s2check`)
+        assert_eq!((query_list(&p).len(), pi_size(&p)), (9000, 1025800));
+        let q = p8_g(GRIND_P8);
+        assert_eq!(q.main_levels.iter().map(|l| l.t).collect::<Vec<_>>(), vec![39, 24, 20]);
+        assert_eq!(q.rec_levels[0].t, 24);
+        assert_eq!((query_list(&q).len(), pi_size(&q)), (2381, 399840));
     }
 }

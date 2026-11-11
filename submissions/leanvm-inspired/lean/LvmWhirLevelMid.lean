@@ -12,13 +12,14 @@
 -/
 
 import LvmWhirProg
-import LvmWhirGroupEscape
+import LvmWhirGrind
 
 /-!
 # A level with a next commitment
 
-`whirLevelsUd μ ℓ₀ per c₀ n₀ dir w i (level :: next :: rest) s` (lvm's loop body) is, definitionally,
-`midProg`: the fold rounds, then `midTail` (commitment, positions, `λ`, opening, query intro
+`whirLevelsUd μ ℓ₀ per c₀ n₀ g dir w i (level :: next :: rest) s` (lvm's loop body) is, definitionally,
+`midProg`: the fold rounds, then `midTail` (commitment, the moves before the proof of work and the
+proof of work (`grindPre g`, `powCheck g`; nothing at `g = 0`), positions, `λ`, opening, query intro
 polynomial, glue, next level).
 
 Doom along the level (all functions of the opening's view `cs` of the commitments and of the
@@ -42,7 +43,7 @@ section
 
 section Program
 
-variable (μ ℓ₀ per c₀ n₀ : ℕ) (dir : Bool) (w : List E → E) (i : ℕ) (level next : Whir.Level)
+variable (μ ℓ₀ per c₀ n₀ g : ℕ) (dir : Bool) (w : List E → E) (i : ℕ) (level next : Whir.Level)
   (rest : List Whir.Level)
 
 /-- The enforced sum of a level's opened rows. -/
@@ -61,24 +62,25 @@ def glueLv (r : WhirStateT × List E) (qs : List ℕ) (lam : E) (words : List (L
 def midFinish (r : WhirStateT × List E) (qs : List ℕ) (lam : E) (words : List (List K)) :
     VerifierProgram Unit :=
   (sumcheckRoundPoly 3 (enfOf i r.2 qs lam words) none).bind fun hq ↦
-    whirLevelsUd μ ℓ₀ per c₀ n₀ dir w (i + 1) (next :: rest) (glueLv μ i r qs lam words hq)
+    whirLevelsUd μ ℓ₀ per c₀ n₀ g dir w (i + 1) (next :: rest) (glueLv μ i r qs lam words hq)
 
 /-- After the fold rounds. -/
 def midTail (r : WhirStateT × List E) : VerifierProgram Unit :=
   (readCommitment (μ - r.1.folds.length - next.fold + next.logInvRate) (3 * 2 ^ next.fold)).bind
     fun _ ↦
+  (grindPre g).bind fun _ ↦ (powCheck g).bind fun _ ↦
   (samplePositions per (μ - r.1.folds.length + level.logInvRate) level.queries).bind fun qs ↦
   sampleChallenge.bind fun lam ↦ (queryOpenings (cidx c₀ n₀ i) qs).bind fun words ↦
-    midFinish μ ℓ₀ per c₀ n₀ dir w i next rest r qs lam words
+    midFinish μ ℓ₀ per c₀ n₀ g dir w i next rest r qs lam words
 
 /-- The level, unfolded. -/
 def midProg (s : WhirStateT) : VerifierProgram Unit :=
-  (foldRoundsT level.fold s []).bind fun r ↦ midTail μ ℓ₀ per c₀ n₀ dir w i level next rest r
+  (foldRoundsT level.fold s []).bind fun r ↦ midTail μ ℓ₀ per c₀ n₀ g dir w i level next rest r
 
 /-- **`whirLevelsUd` on a level with a next commitment is `midProg`.** -/
 theorem whirLevels_mid (s : WhirStateT) :
-    whirLevelsUd μ ℓ₀ per c₀ n₀ dir w i (level :: next :: rest) s =
-      midProg μ ℓ₀ per c₀ n₀ dir w i level next rest s := rfl
+    whirLevelsUd μ ℓ₀ per c₀ n₀ g dir w i (level :: next :: rest) s =
+      midProg μ ℓ₀ per c₀ n₀ g dir w i level next rest s := rfl
 
 /-- The query group as one fragment. -/
 theorem query_bind (c d t : ℕ) (K : List ℕ → E → List (List K) → VerifierProgram Unit) :
@@ -86,6 +88,13 @@ theorem query_bind (c d t : ℕ) (K : List ℕ → E → List (List K) → Verif
       (queryOpenings c qs).bind fun words ↦ K qs lam words) =
       (queryFrag per d t c).bind fun g ↦ K g.1 g.2.1 g.2.2 := by
   simp only [queryFrag, bind_eq, VerifierProgram.bind_assoc, VerifierProgram.ret_bind]
+
+/-- The query group with the proof of work as one fragment. -/
+theorem query_bindG (c d t : ℕ) (K : List ℕ → E → List (List K) → VerifierProgram Unit) :
+    ((powCheck g).bind fun _ ↦ (samplePositions per d t).bind fun qs ↦
+      sampleChallenge.bind fun lam ↦ (queryOpenings c qs).bind fun words ↦ K qs lam words) =
+      (queryFragG g per d t c).bind fun gg ↦ K gg.1 gg.2.1 gg.2.2 := by
+  simp only [queryFragG, queryFrag, bind_eq, VerifierProgram.bind_assoc, VerifierProgram.ret_bind]
 
 end Program
 

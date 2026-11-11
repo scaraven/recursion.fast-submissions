@@ -78,10 +78,10 @@ theorem stack_run (C : SCfg) (cl : List CClaim) (zc oc g : Cell) {sig : ByteArra
     (ho : oc.val M = 1) (hzE : zc.ty = .E) (hoE : oc.ty = .E) (hg : g.val M = 1) (hgK : g.ty = .K)
     (hpos : PosOk C M sig 0 C.levels (C.U + 15)) {p : Ptr} (hp : 1 ≤ p.e)
     (h : Lvm.QSig.Ok c M (stackGW C cl zc oc g) p) (s : RS) (hs : pos s = 8 * C.U) :
-    (verifyStackedOpening C.levels C.nu (cl.map fun cc => (cc.val M).2.onStack) false sig s).2.ok = s.ok ∧
-    pos (verifyStackedOpening C.levels C.nu (cl.map fun cc => (cc.val M).2.onStack) false sig s).2 =
+    (verifyStackedOpening C.levels C.nu (cl.map fun cc => (cc.val M).2.onStack) false 0 sig s).2.ok = s.ok ∧
+    pos (verifyStackedOpening C.levels C.nu (cl.map fun cc => (cc.val M).2.onStack) false 0 sig s).2 =
       8 * stackEndL C.levels (C.U + 15) ∧
-    (verifyStackedOpening C.levels C.nu (cl.map fun cc => (cc.val M).2.onStack) false sig s).2.msg = 0 := by
+    (verifyStackedOpening C.levels C.nu (cl.map fun cc => (cc.val M).2.onStack) false 0 sig s).2.msg = 0 := by
   simp only [StackOk, LayOk, Bool.and_eq_true, List.all_eq_true] at hok
   obtain ⟨⟨⟨⟨hlv, hch⟩, hU⟩, hlf⟩, hwf⟩ := hok
   replace hU := of_decide_eq_true hU
@@ -187,8 +187,8 @@ def openG (Cr Cm : SCfg) (cs : List CClaim) (zc oc g : Cell) : BM Unit := do
 `8 · stackEndL` of `C_main`, `msg = 0`. -/
 theorem openPh_run (p : Params) (Cr Cm : SCfg) (cs : List CClaim) (zc oc g : Cell) {sig : ByteArray}
     {T : Nat} (hS : Lvm.Q1.Streamed M sig T) (hr : Cr.levels = p.recLevels) (hrν : Cr.nu = p.nuRec)
-    (hm : Cm.levels = p.mainLevels) (hmν : Cm.nu = p.nuMain) (hU : Cm.U = stackEndL Cr.levels (Cr.U + 15))
-    (hlr : LayOk Cr T = true) (hlm : LayOk Cm T = true) (hwr : ClaimsWF Cr.nu (onCom cs .crec) = true)
+    (hm : Cm.levels = p.mainLevels) (hmν : Cm.nu = p.nuMain) (hgr : p.grind = 0)
+    (hU : Cm.U = stackEndL Cr.levels (Cr.U + 15)) (hlr : LayOk Cr T = true) (hlm : LayOk Cm T = true) (hwr : ClaimsWF Cr.nu (onCom cs .crec) = true)
     (hwm : ClaimsWF Cm.nu (onCom cs .main) = true) (hz : zc.val M = 0) (ho : oc.val M = 1)
     (hzE : zc.ty = .E) (hoE : oc.ty = .E) (hg : g.val M = 1) (hgK : g.ty = .K)
     (hposr : PosOk Cr M sig 0 Cr.levels (Cr.U + 15)) (hposm : PosOk Cm M sig 0 Cm.levels (Cm.U + 15))
@@ -199,7 +199,7 @@ theorem openPh_run (p : Params) (Cr Cm : SCfg) (cs : List CClaim) (zc oc g : Cel
     (openPh p (cs.map (CClaim.val M)) sig s).2.msg = 0 := by
   simp only [openG] at h
   obtain ⟨h1, h2⟩ := okb h
-  simp only [openPh]
+  simp only [openPh, hgr]
   rw [dm_bind, on_eq, on_eq, ← hr, ← hrν, ← hm, ← hmν]
   obtain ⟨o1, p1, -⟩ := stack_run Cr _ zc oc g hS (by simp [StackOk, hlr, hwr]) hz ho hzE hoE hg hgK
     hposr hp h1 s hs
@@ -210,8 +210,8 @@ theorem openPh_run (p : Params) (Cr Cm : SCfg) (cs : List CClaim) (zc oc g : Cel
 /-- **Q_arith phases 8–9 replay `openPh`** (`Replays`, the soundness direction). -/
 theorem openPh_replays (p : Params) (Cr Cm : SCfg) (cs : List CClaim) (zc oc g : Cell) {sig : ByteArray}
     {T : Nat} (hS : Lvm.Q1.Streamed M sig T) (hr : Cr.levels = p.recLevels) (hrν : Cr.nu = p.nuRec)
-    (hm : Cm.levels = p.mainLevels) (hmν : Cm.nu = p.nuMain) (hU : Cm.U = stackEndL Cr.levels (Cr.U + 15))
-    (hlr : LayOk Cr T = true) (hlm : LayOk Cm T = true) (hwr : ClaimsWF Cr.nu (onCom cs .crec) = true)
+    (hm : Cm.levels = p.mainLevels) (hmν : Cm.nu = p.nuMain) (hgr : p.grind = 0)
+    (hU : Cm.U = stackEndL Cr.levels (Cr.U + 15)) (hlr : LayOk Cr T = true) (hlm : LayOk Cm T = true) (hwr : ClaimsWF Cr.nu (onCom cs .crec) = true)
     (hwm : ClaimsWF Cm.nu (onCom cs .main) = true) (hz : zc.val M = 0) (ho : oc.val M = 1)
     (hzE : zc.ty = .E) (hoE : oc.ty = .E) (hg : g.val M = 1) (hgK : g.ty = .K)
     (hposr : PosOk Cr M sig 0 Cr.levels (Cr.U + 15)) (hposm : PosOk Cm M sig 0 Cm.levels (Cm.U + 15))
@@ -219,7 +219,7 @@ theorem openPh_replays (p : Params) (Cr Cm : SCfg) (cs : List CClaim) (zc oc g :
     Replays c M sig (openPh p (cs.map (CClaim.val M))) (openG Cr Cm cs zc oc g) ptr (8 * Cr.U)
       (8 * stackEndL Cm.levels (Cm.U + 15)) (fun _ _ => True) := by
   intro h s hs hok
-  obtain ⟨o, q, -⟩ := openPh_run p Cr Cm cs zc oc g hS hr hrν hm hmν hU hlr hlm hwr hwm hz ho hzE hoE hg
+  obtain ⟨o, q, -⟩ := openPh_run p Cr Cm cs zc oc g hS hr hrν hm hmν hgr hU hlr hlm hwr hwm hz ho hzE hoE hg
     hgK hposr hposm hp h s hs
   exact ⟨o.trans hok, q, trivial⟩
 

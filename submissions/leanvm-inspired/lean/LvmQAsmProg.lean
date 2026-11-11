@@ -31,9 +31,9 @@ evaluations went into `κ`'s query), its 25 lanes, its GKR, the `CH`
 link; the same for `KS` (no pending scalars), the `KS` link. A value at position `P` is at byte
 `P + 40` (`readE`, `answerAt`), lane `(P + 40)/8`. -/
 def arithPos (p : Params) : List Nat :=
-  let ch := phaseByte p .ch + 24
+  let tp := phaseByte p .tape + 24
   let ks := phaseByte p .ks
-  [ch, ch + 72 * p.logN, ch + 72 * p.logN + 24 * lanes, phaseByte p .chLink,
+  [tp, tp + 72 * p.logN, tp + 72 * p.logN + 24 * lanes, phaseByte p .wire,
    ks, ks + 72 * p.ksLog, ks + 72 * p.ksLog + 24 * lanes, phaseByte p .ksLink]
 
 /-- The lane of position `k` of `arithPos`. -/

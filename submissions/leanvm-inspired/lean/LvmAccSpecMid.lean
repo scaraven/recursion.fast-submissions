@@ -161,7 +161,7 @@ variable (P : Params) (tabs : Pub → List Tab) (pub : Pub)
 of the fixed-column check, BLUEPRINT §12.6): from `RootShape` and the root doom of
 `M3Holds ∘ stackOf ∧ R ∧ AccOk acc_in` to the doom of the returned claims on the pairs' blocks, with
 `R`, and `RootShape`. `AccOk acc_in` is discharged: it is not in the post. -/
-noncomputable def midBusTableAccSpecS (R : Column 26 × Column 19 → Prop)
+noncomputable def midBusTableAccSpecS (R : Column CMain.nu20 × Column 19 → Prop)
     (hlay : Lvm.M3.LayOk lay26 (sumcheckTabs (tabs pub))) (hsc : Lvm.M3.AllSc (sumcheckTabs (tabs pub)))
     (H : AccInst P (sumcheckTabs (tabs pub)) pub)
     (hkey : Lvm.M3.KeysOk (sumcheckTabs (tabs pub))) (hw : ∀ t ∈ sumcheckTabs (tabs pub), 0 < t.w)

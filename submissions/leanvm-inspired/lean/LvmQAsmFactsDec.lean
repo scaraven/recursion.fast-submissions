@@ -11,7 +11,7 @@ cache `M3.G20` only inside fixed columns' closures, which no check forces).
 
 * `chkFit_P20`: one evaluation of the tables `T = M3.tabsP20 default` for three checks:
   `chkB lay26 T` (**`chkB_P20`**), the record's fit `fitsR P20 T` (**`fitsR_P20`**, WP-16a2's
-  re-frozen record `(22, 1, 17, 4253)` (lvm2 S1-INT; WP-16a2: `4199`)), and HAR's table phase facts on the sumcheck tables' shapes
+  re-frozen record `(22, 1, 17, 4199)`), and HAR's table phase facts on the sumcheck tables' shapes
   (**`shpOk_P20`**, `ShpOk`; HAR's `shapesOf cfg20 data20` by `shapesOf_eq`). The aux tables'
   committed columns are checked on the placement lists `data20.bpl` (`auxOffB`, one pass per class:
   `layOkB_aux`, `colsFitB_aux`), not column by column through `bplOf`'s `getD`s (WP-16b: 24.1 s →
@@ -200,10 +200,10 @@ set_option maxRecDepth 200000 in
 /-- The decided part of `chkFit_P20` (`chkB`, `fitsR` without the aux tables' placements, the aux
 tables' placements in one pass, `ShpOk`). -/
 theorem chkFitD_P20 : (chkB0 (M3.tabsP20 default) && layOkB lay26 (tabsGA default) &&
-    fitsR0 P20 (M3.tabsP20 default) && colsFitB P20 (tabsGA default) && auxOffB 26 cfg20 data20 &&
-    decide (P20.nuMain = 26) && decide (P20.nuRec ≤ 26)) = true ∧
+    fitsR0 P20 (M3.tabsP20 default) && colsFitB P20 (tabsGA default) && auxOffB 24 cfg20 data20 &&
+    decide (P20.nuMain = 24) && decide (P20.nuRec ≤ 24)) = true ∧
     ShpOk P20 ((sumcheckTabs (M3.tabsP20 default)).map Tab.shape) (streamLanes P20)
-      (Har.phaseByte P20 .ch + 24) := by
+      (Har.phaseByte P20 .tape + 24) := by
   rw [sizes_P20.2.2.2.2.2.2.1]
   unfold M3.tabsP20 tabsGA cfg20 ShpOk
   rw [P20_eq]
@@ -215,7 +215,7 @@ end Aux
 evaluation of the tables' skeletons, `chkFitD_P20`; the aux tables' placements through `auxOffB`). -/
 theorem chkFit_P20 : (chkB lay26 (M3.tabsP20 default) && fitsR P20 (M3.tabsP20 default)) = true ∧
     ShpOk P20 ((sumcheckTabs (M3.tabsP20 default)).map Tab.shape) (streamLanes P20)
-      (Har.phaseByte P20 .ch + 24) := by
+      (Har.phaseByte P20 .tape + 24) := by
   obtain ⟨h, hS⟩ := chkFitD_P20
   simp only [Bool.and_eq_true, decide_eq_true_eq] at h
   obtain ⟨⟨⟨⟨⟨⟨h0, hl⟩, hf0⟩, hc⟩, ha⟩, hnu⟩, hrec⟩ := h
@@ -235,7 +235,7 @@ theorem fitsR_P20 : fitsR P20 (M3.tabsP20 default) = true :=
 
 /-- **HAR's table phase facts** on the sumcheck tables' shapes at `default`. -/
 theorem shpOk_P20 : ShpOk P20 ((sumcheckTabs (M3.tabsP20 default)).map Tab.shape) (streamLanes P20)
-    (Har.phaseByte P20 .ch + 24) :=
+    (Har.phaseByte P20 .tape + 24) :=
   chkFit_P20.2
 
 /-! ## The position classes' cells through their regions' ends

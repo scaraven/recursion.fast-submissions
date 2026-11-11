@@ -27,7 +27,9 @@ lvm's opening (BLUEPRINT §3, A11, A13; `docs/lvm/ref/params.py`, `Sched.whir`) 
 
 * **no out-of-domain step** (list size `1` makes it useless): a level with a next commitment
   glues one claim (the batched queries, with `λ¹`), as leanVM's final level does;
-* **no proof of work**;
+* **the proof of work as a read nonce** (PI-GRIND, `UdConfig.grind = g`): with `g > 0`, a
+  separating challenge, the nonce (a prover scalar) and a PoW challenge with its top `g` bits
+  zero before the positions; no `grind` node (the compiler needs `NoGrind`); `g = 0` is v1's level;
 * the levels given as a list (`UdConfig.levels`), not derived by `Whir.ladder`;
 * query positions drawn `per` at a time from a challenge (`samplePositions`: bit fields of
   `depth` bits, low first, `min per remaining` per challenge; lvm: `per = 8`);
@@ -151,10 +153,37 @@ structure UdConfig where
   n₀ : ℕ
   /-- The direct final check (A10). -/
   direct : Bool
+  /-- The proof-of-work bits on every level's query group (PI-GRIND; `0`: none, v1's program). -/
+  grind : ℕ
 
-/-- **The level loop** (leanVM `whirLevelsT` without the out-of-domain step and the proof of work):
-level `index` of the levels, from the state `s`. -/
-def whirLevelsUd (logN laneFolds per c₀ n₀ : ℕ) (direct : Bool) (evaluateBasis : List E → E) :
+/-! ## In-answer grinding (PI-GRIND)
+
+With `g > 0`, a level's query group starts with a proof of work: after the cap (or the final
+scalars) the verifier draws a **separating challenge** (its query absorbs the cap or the final, so
+that a nonce attempt is one short query `st ‖ nonce`), reads the **nonce** (a prover scalar, so
+the query group starts at the boundary it ends), then draws the **PoW challenge**, whose top `g`
+bits must be zero (`powOK`: `int(c) < 2^(192 − g)`), before the positions. The PoW challenge and
+the positions are one group: its escape is `2^-g` times the positions' (`LvmWhirGrind`:
+`escRet_powCheck_le`, `escRet_queryFragG_le_ud`, `escRet_queryFragG_le_finViol`). -/
+
+/-- The proof of work holds on the challenge `c`: its top `g` bits (of `192`) are zero. -/
+def powOK (g : ℕ) (c : E) : Prop := eToNat c < 2 ^ (192 - g)
+
+instance (g : ℕ) (c : E) : Decidable (powOK g c) := by unfold powOK; infer_instance
+
+/-- Before the proof of work: the separating challenge and the nonce (nothing at `g = 0`). -/
+def grindPre (g : ℕ) : VerifierProgram Unit :=
+  if g = 0 then pure () else
+    VerifierProgram.sampleChallenge.bind fun _ ↦ VerifierProgram.readScalar.bind fun _ ↦ pure ()
+
+/-- The proof of work: the PoW challenge, its top `g` bits zero (nothing at `g = 0`). -/
+def powCheck (g : ℕ) : VerifierProgram Unit :=
+  if g = 0 then pure () else
+    VerifierProgram.sampleChallenge.bind fun c ↦ VerifierProgram.require (powOK g c)
+
+/-- **The level loop** (leanVM `whirLevelsT` without the out-of-domain step; the proof of work of `g`
+bits as `grindPre g`, `powCheck g`): level `index` of the levels, from the state `s`. -/
+def whirLevelsUd (logN laneFolds per c₀ n₀ g : ℕ) (direct : Bool) (evaluateBasis : List E → E) :
     ℕ → List Whir.Level → WhirStateT → VerifierProgram Unit
   | _, [], _ => VerifierProgram.fail
   | index, level :: rest, s => do
@@ -166,6 +195,8 @@ def whirLevelsUd (logN laneFolds per c₀ n₀ : ℕ) (direct : Bool) (evaluateB
         VerifierProgram.readCommitment (messageLog - next.fold + next.logInvRate)
           (3 * 2 ^ next.fold)
         pure []
+    grindPre g
+    powCheck g
     let queries ← samplePositions per (messageLog + level.logInvRate) level.queries
     let lam ← VerifierProgram.sampleChallenge
     let queryWeights := powers lam queries.length
@@ -188,14 +219,14 @@ def whirLevelsUd (logN laneFolds per c₀ n₀ : ℕ) (direct : Bool) (evaluateB
         (evaluateBasis (point.drop laneFolds ++ point.take laneFolds))
       let terminal := weight * multilinearEval residual tailFolds
       VerifierProgram.require (terminal = target)
-    | _ :: _ => whirLevelsUd logN laneFolds per c₀ n₀ direct evaluateBasis (index + 1) rest s
+    | _ :: _ => whirLevelsUd logN laneFolds per c₀ n₀ g direct evaluateBasis (index + 1) rest s
 
 /-- **The unique-decoding WHIR opening** of the claim `(evaluateBasis, target)` on the stack whose
 root is commitment `cfg.c₀`. -/
 def verifyWhirUd (cfg : UdConfig) (target : E) (evaluateBasis : List E → E) :
     VerifierProgram Unit := do
   let quad ← sumcheckRoundPoly 3 target none
-  whirLevelsUd cfg.μ ((cfg.levels.head?.map (·.fold)).getD 0) cfg.per cfg.c₀ cfg.n₀ cfg.direct
+  whirLevelsUd cfg.μ ((cfg.levels.head?.map (·.fold)).getD 0) cfg.per cfg.c₀ cfg.n₀ cfg.grind cfg.direct
     evaluateBasis 0 cfg.levels ⟨target, quad, [], []⟩
 
 /-- **The stacked opening**: the claims batched with powers of one challenge (leanVM

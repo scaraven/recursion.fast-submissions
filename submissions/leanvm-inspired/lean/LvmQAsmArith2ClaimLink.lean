@@ -4,7 +4,6 @@
 -- functions `chQ1 … chQC`, `take_range_map`, `drop_range_map`, `scSpec_fst_getD`), HAR's
 -- `chLinkPh_run`/`ksLinkPh_run`, QA2's `eqTab_eq` (the `KS` link's `eq(λ, ·)`), this family's `ringG`.
 import LvmQAsmArith2Claim
-import LvmQLinkArithCHSound
 import LvmQWhirBatch
 
 /-!
@@ -38,182 +37,6 @@ theorem scSpec_fst (v : Nat → FE) (count : Nat) (es : List (Option FE)) (p : N
   rw [List.getD_eq_getElem _ _ h1] at e
   rw [e]
   simp
-
-/-! ## The `CH` link -/
-
-/-- `ρ'`'s lanes (the shift sumcheck's answers), `λ`'s (samples `n … n + 2`), `μ`'s (the two-round
-sumcheck's answers). -/
-def chRhoL (n Q : Nat) : List Nat := (List.range n).map fun i => chQ1 n Q + 6 + 15 * i
-def chLamL (n Q : Nat) : List Nat := (List.range 3).map fun j => Q + 9 * (n + j)
-def chMuL (n Q : Nat) : List Nat := (List.range 2).map fun j => chQ2 n Q + 6 + 15 * j
-
-/-- The `CH` link's claims as cells. -/
-def chLinkC (blk : Placement) (ySlot z o : Nat) (rho' lam mu : List Cell) (rIn rY : RingOut)
-    (c80 : Nat) : List CClaim :=
-  [⟨.main, .ring blk (rho' ++ lam ++ [ec z, ec z, ec z]) rIn.cs, rIn.target⟩,
-    ⟨.main, .ring blk (rho' ++ mu ++ selC z o (ySlot >>> 2) (slotLog - 2)) rY.cs, rY.target⟩] ++
-  (List.range 17).map fun j =>
-    ⟨.main, .point blk (rho' ++ selC z o (8 + j) slotLog), if 8 + j = 16 then ec c80 else ec z⟩
-
-/-- **The `CH` link's claims** (phase 5; `P + 40 = 8 Q`). -/
-def chLinkG (n Q z o : Nat) (blk : Placement) (ySlot : Nat) : BM (List CClaim) := do
-  let rho' ← loadAt (chRhoL n Q)
-  let lam ← loadAt (chLamL n Q)
-  let mu ← loadAt (chMuL n Q)
-  let rIn ← ringG (chQB n Q + 192) (chQB n Q) z
-  let rY ← ringG (chQC n Q + 192) (chQC n Q) z
-  let c80 ← const .E ⟨(0x80 : UInt64) <<< 56⟩ (ec z)
-  pure (chLinkC blk ySlot z o rho' lam mu rIn rY c80.n)
-
-/-! ## The `CH` link, gated (lvm2 S1; S1-Q): the constant lanes' claims carry `lt_N(ρ')` -/
-
-/-- The gated `CH` link's claims as cells: `chLinkC` with lane 16's value the cell `c16` (`c₁₆·lt_N(ρ')`). -/
-def chLinkCG (blk : Placement) (ySlot z o : Nat) (rho' lam mu : List Cell) (rIn rY : RingOut)
-    (c16 : Cell) : List CClaim :=
-  [⟨.main, .ring blk (rho' ++ lam ++ [ec z, ec z, ec z]) rIn.cs, rIn.target⟩,
-    ⟨.main, .ring blk (rho' ++ mu ++ selC z o (ySlot >>> 2) (slotLog - 2)) rY.cs, rY.target⟩] ++
-  (List.range 17).map fun j =>
-    ⟨.main, .point blk (rho' ++ selC z o (8 + j) slotLog), if 8 + j = 16 then c16 else ec z⟩
-
-/-- **The gated `CH` link's claims** (phase 5; `P + 40 = 8 Q`; `N`'s bits at the `K` cells `nb + i`):
-`chLinkG` with `c₁₆·lt_N(ρ')` from `ltNIns` instead of the constant `c₁₆`. -/
-def chLinkGG (n Q z o nb : Nat) (blk : Placement) (ySlot : Nat) : BM (List CClaim) := do
-  let rho' ← loadAt (chRhoL n Q)
-  let lam ← loadAt (chLamL n Q)
-  let mu ← loadAt (chMuL n Q)
-  let rIn ← ringG (chQB n Q + 192) (chQB n Q) z
-  let rY ← ringG (chQC n Q + 192) (chQC n Q) z
-  let oN ← loop [] (tplOf (ltNIns nb rho'))
-  pure (chLinkCG blk ySlot z o rho' lam mu rIn rY (oN.cell (7 * n + 4) 0))
-
-theorem chLinkCG_val (p : Params) (blk : Placement) {ySlot z o N : Nat} (hz : M.e z = 0) (ho : M.e o = 1)
-    (rho' lam mu : List Cell) (rIn rY : RingOut) (c16 : Cell) (i : ChLinkIn)
-    (hrho : vs M rho' = i.shift.1) (hlam : vs M lam = ((i.chal.drop p.logN).take 3))
-    (hmu : vs M mu = i.sc2.1) (hIn : rIn.target.val M = i.ringIn.1 ∧ vs M rIn.cs = i.ringIn.2)
-    (hY : rY.target.val M = i.ringY.1 ∧ vs M rY.cs = i.ringY.2)
-    (hc : c16.val M = FE.ofK c80K * ltSum i.shift.1 N) :
-    (chLinkCG blk ySlot z o rho' lam mu rIn rY c16).map (CClaim.val M) = chLinkClaimsG p blk ySlot N i := by
-  have e1 : vs M (rho' ++ lam ++ [ec z, ec z, ec z]) = i.shift.1 ++ (i.chal.drop p.logN).take 3 ++ [0, 0, 0] := by
-    rw [vs_append, vs_append, hrho, hlam]; simp [vs, hz]
-  have e2 : vs M (rho' ++ mu ++ selC z o (ySlot >>> 2) (slotLog - 2)) =
-      i.shift.1 ++ i.sc2.1 ++ selectorPoint (ySlot >>> 2) (slotLog - 2) := by
-    rw [vs_append, vs_append, hrho, hmu, selC_vs hz ho]
-  simp only [chLinkCG, chLinkClaimsG, chSplit, List.map_append, List.map_cons, List.map_nil, List.map_map]
-  refine congrArg₂ (· ++ ·) ?_ ?_
-  · simp only [CClaim.val, e1, e2, hIn.1, hIn.2, hY.1, hY.2]
-  · refine List.map_congr_left fun j _ => ?_
-    simp only [Function.comp_apply, CClaim.val, vs_append, hrho, selC_vs hz ho]
-    split_ifs with h
-    · simp [hc, c80K]
-    · simp [hz, ofK_zero]
-
-/-- **Q_arith_eq, the gated `CH` link's claims** (S1): the cells are `chLinkClaimsG`'s claims (`N` the
-child's chain length) on what phase 5 reads, for any targets `tA`, `tB`. -/
-theorem chLinkGG_val (p : Params) (tA : List FE → FE) (tB : List FE → List FE × FE → List FE → FE)
-    (blk : Placement) {ySlot z o Q P T nb N : Nat} {sig : ByteArray}
-    {ptr : Ptr} (r w : List FE) (pub : Pub) (hn : 1 ≤ p.logN) (hPQ : P + 40 = 8 * Q) (hS : Streamed M sig T)
-    (hT : chQC p.logN Q + 240 ≤ T) (hz : M.e z = 0) (ho : M.e o = 1)
-    (hN1 : 1 ≤ N) (hN2 : N ≤ 2 ^ p.logN) (hbits : ∀ i < p.logN, FE.ofK (M.k (nb + i)) = bitQ N i)
-    (hokN : ∀ l : List Cell, l.length = p.logN → SLok (ltNIns nb l) = true)
-    (h : SegsHold c M ptr (chLinkGG p.logN Q z o nb blk ySlot ptr).2) :
-    (chLinkGG p.logN Q z o nb blk ySlot ptr).1.map (CClaim.val M) =
-      chLinkClaimsG p blk ySlot N (chLinkViewT p tA tB (feAt sig) P r w pub) := by
-  simp only [chLinkGG] at h ⊢
-  rw [hold_bind] at h; obtain ⟨h1, h⟩ := h
-  rw [hold_bind] at h; obtain ⟨h2, h⟩ := h
-  rw [hold_bind] at h; obtain ⟨h3, h⟩ := h
-  rw [hold_bind] at h; obtain ⟨h4, h⟩ := h
-  rw [hold_bind] at h; obtain ⟨h5, h⟩ := h
-  rw [hold_bind] at h; obtain ⟨h6, -⟩ := h
-  simp only [bind_apply, pure_apply]
-  have hQB : chQB p.logN Q + 192 + 48 ≤ T := by simp only [chQC, chQ2] at hT; omega
-  have hQ1 : chQ1 p.logN Q ≤ chQB p.logN Q := by simp only [chQB]; omega
-  obtain ⟨rI1, rI2⟩ := ringG_spec hS hQB (by omega) hz h4
-  obtain ⟨rY1, rY2⟩ := ringG_spec hS hT (by omega) hz h5
-  have hslIn : slAt sig (chQB p.logN Q) = scalarsAt (feAt sig) (chP2 p P + 40) kBits := by
-    simp only [slAt, scalarsAt]
-    refine List.map_congr_left fun k _ => congrArg (feAt sig) ?_
-    simp only [chP2, chP1, chQB, chQ1, roundLen]; omega
-  have hchIn : chsAt sig (chQB p.logN Q + 192) = samplesAt (feAt sig) (chP2 p P + 24 * kBits) ringStages := by
-    simp only [chsAt, samplesAt]
-    refine List.map_congr_left fun k _ => congrArg (feAt sig) ?_
-    simp only [chP2, chP1, chQB, chQ1, roundLen, kBits]; omega
-  have hslY : slAt sig (chQC p.logN Q) = scalarsAt (feAt sig) (chP4 p P + 40) kBits := by
-    simp only [slAt, scalarsAt]
-    refine List.map_congr_left fun k _ => congrArg (feAt sig) ?_
-    simp only [chP4, chP3, chP2, chP1, chQC, chQ2, chQB, chQ1, roundLen, kBits, ringStages]; omega
-  have hchY : chsAt sig (chQC p.logN Q + 192) = samplesAt (feAt sig) (chP4 p P + 24 * kBits) ringStages := by
-    simp only [chsAt, samplesAt]
-    refine List.map_congr_left fun k _ => congrArg (feAt sig) ?_
-    simp only [chP4, chP3, chP2, chP1, chQC, chQ2, chQB, chQ1, roundLen, kBits, ringStages]; omega
-  have hrho : vs M (loadAt (chRhoL p.logN Q) ptr).1 = (chLinkViewT p tA tB (feAt sig) P r w pub).shift.1 := by
-    rw [loadAt_vs hS _ _ (fun q hq => by
-      simp only [chRhoL, List.mem_map, List.mem_range] at hq
-      obtain ⟨i, hi, rfl⟩ := hq
-      simp only [chQC, chQ2, chQB] at hT; omega) h1]
-    simp only [chLinkViewT, scSpec_fst, List.length_replicate, chRhoL, List.map_map]
-    refine List.map_congr_left fun i _ => ?_
-    simp only [Function.comp_apply]
-    exact congrArg (feAt sig) (by simp only [chP1, chQ1, roundLen]; omega)
-  have hrl : (loadAt (chRhoL p.logN Q) ptr).1.length = p.logN := by rw [loadAt_out]; simp [chRhoL]
-  -- `c₁₆·lt_N(ρ')`
-  have hc16 := ltN_cell (hokN _ hrl) h6 (by omega) hN1 (by rw [hrl]; exact hN2) (fun i hi => hbits i (by omega))
-  refine chLinkCG_val p blk hz ho _ _ _ _ _ _ _ hrho ?_ ?_ ⟨?_, ?_⟩ ⟨?_, ?_⟩ ?_
-  · -- `λ`
-    rw [loadAt_vs hS _ _ (fun q hq => by
-      simp only [chLamL, List.mem_map, List.mem_range] at hq
-      obtain ⟨j, hj, rfl⟩ := hq
-      simp only [chQC, chQ2, chQB, chQ1] at hT; omega) h2]
-    simp only [chLinkViewT, samplesAt, chLamL, List.map_map]
-    rw [drop_range_map, show p.logN + 3 + 6 - p.logN = 9 by omega, take_range_map _ (by omega)]
-    refine List.map_congr_left fun j _ => ?_
-    simp only [Function.comp_apply]
-    exact congrArg (feAt sig) (by omega)
-  · -- `μ`
-    rw [loadAt_vs hS _ _ (fun q hq => by
-      simp only [chMuL, List.mem_map, List.mem_range] at hq
-      obtain ⟨j, hj, rfl⟩ := hq
-      simp only [chQC] at hT; omega) h3]
-    simp only [chLinkViewT, scSpec_fst, chMuL, List.map_map, List.length_cons, List.length_nil]
-    refine List.map_congr_left fun j _ => ?_
-    simp only [Function.comp_apply]
-    exact congrArg (feAt sig) (by
-      simp only [chP3, chP2, chP1, chQ2, chQB, chQ1, roundLen, kBits, ringStages]; omega)
-  · rw [rI2, hslIn, hchIn]; rfl
-  · rw [rI1, hchIn]; rfl
-  · rw [rY2, hslY, hchY]; rfl
-  · rw [rY1, hchY]; rfl
-  · rw [hrl] at hc16; rw [hc16, ← hrho]; rfl
-
-/-- **Q_arith_eq, the gated `CH` link's claims against `F`** (S1-V's `chLink0`, `m = M3.ofParts p …`;
-`N = pub.n`, the child's chain length). -/
-theorem chLinkGG_val0 (p : Params) (m : M3) (blk : Placement) {ySlot z o Q P T nb : Nat} {sig : ByteArray}
-    {ptr : Ptr} (r w : List FE) (pub : Pub) (hn : 1 ≤ p.logN) (hPQ : P + 40 = 8 * Q) (hS : Streamed M sig T)
-    (hT : chQC p.logN Q + 240 ≤ T) (hz : M.e z = 0) (ho : M.e o = 1)
-    (hN1 : 1 ≤ pub.n) (hN2 : pub.n ≤ 2 ^ p.logN) (hbits : ∀ i < p.logN, FE.ofK (M.k (nb + i)) = bitQ pub.n i)
-    (hokN : ∀ l : List Cell, l.length = p.logN → SLok (ltNIns nb l) = true)
-    (h : SegsHold c M ptr (chLinkGG p.logN Q z o nb blk ySlot ptr).2) :
-    (chLinkGG p.logN Q z o nb blk ySlot ptr).1.map (CClaim.val M) =
-      (chLink0 p blk ySlot (chLinkView p m (feAt sig) P r w pub)).2 := by
-  rw [chLinkGG_val p (m.chShiftTarget pub) (m.chSc2Target pub) blk r w pub hn hPQ hS hT hz ho hN1 hN2 hbits hokN h,
-    chLinkView_eq, chLink0_claims_G p blk ySlot _ (by simp only [chLinkViewT]; rw [lnk_scSpec_length]; simp) hN2]
-  rfl
-
-/-- **`F`'s phase-5 claims** (`chLinkPh`, `m = M3.ofParts p …`), gated, from the reader at `P`. -/
-theorem chLinkPhG_claims (p : Params) {bf : BusIn → BusOut} {tb : Pub → List TableSpec}
-    {tcl : Pub → List (List FE × List FE) → List (Com × BlockClaim)}
-    {fv : Pub → List FE → List FE}
-    {fs : Pub → List (List FE × List FE) → List FE} {pck : Pub → List (List FE × List FE) → Bool} {z o Q T nb : Nat}
-    {sig : ByteArray} {ptr : Ptr}
-    (r w : List FE) (pub : Pub) (s : RS) (hn : 1 ≤ p.logN) (hPQ : pos s + 40 = 8 * Q)
-    (hS : Streamed M sig T) (hT : chQC p.logN Q + 240 ≤ T) (hz : M.e z = 0) (ho : M.e o = 1)
-    (hN1 : 1 ≤ pub.n) (hN2 : pub.n ≤ 2 ^ p.logN) (hbits : ∀ i < p.logN, FE.ofK (M.k (nb + i)) = bitQ pub.n i)
-    (hokN : ∀ l : List Cell, l.length = p.logN → SLok (ltNIns nb l) = true)
-    (h : SegsHold c M ptr (chLinkGG p.logN Q z o nb (M3.ofParts p bf tb tcl fv fs pck).chBlock 52 ptr).2) :
-    (chLinkPh p (M3.ofParts p bf tb tcl fv fs pck) r w pub sig s).1.2 =
-      (chLinkGG p.logN Q z o nb (M3.ofParts p bf tb tcl fv fs pck).chBlock 52 ptr).1.map (CClaim.val M) := by
-  rw [chLinkPh_run p _ r w pub sig s hn]
-  exact (chLinkGG_val0 p _ _ r w pub hn hPQ hS hT hz ho hN1 hN2 hbits hokN h).symm
 
 /-! ## The `KS` link -/
 
@@ -360,13 +183,13 @@ open Lvm.QAsm in
 lanes are their phases' first positions, and `KS`'s ring switch ends where `KS`'s link begins. -/
 def RCLanes (p : Params) : Prop :=
   5 ≤ aLane p 2 ∧ 5 ≤ aLane p 6 ∧
-  gkrEnd (p.logN - 4) (aLane p 2) + 48 ≤ streamLanes p ∧
+  Lvm.Q1.wireEnd (p.logN - 5) (aLane p 3) + 2 ≤ streamLanes p ∧
   gkrEnd (p.ksLog - 4) (aLane p 6) + 48 ≤ streamLanes p ∧
-  chQC p.logN (aLane p 3) + 240 ≤ streamLanes p ∧
+  Lvm.Q1.tapeEnd (p.logN - 5) (aLane p 2) = aLane p 3 ∧
   aLane p 7 + 9 * (p.ksLog + laneBits) + 15 * p.ksLog + 12 ≤ streamLanes p ∧
-  phaseByte p .chLink + 40 = 8 * aLane p 3 ∧ phaseByte p .ksLink + 40 = 8 * aLane p 7 ∧
+  phaseByte p .wire + 40 = 8 * aLane p 3 ∧ phaseByte p .ksLink + 40 = 8 * aLane p 7 ∧
   8 * gkrEnd (p.ksLog - 4) (aLane p 6) - 40 + 72 * ringStages = phaseByte p .ksLink ∧
-  8 * gkrEnd (p.logN - 4) (aLane p 2) - 40 + 72 * ringStages = phaseByte p .chLink
+  8 * Lvm.Q1.wireEnd (p.logN - 5) (aLane p 3) - 40 = phaseByte p .ks
 
 theorem rcLanes20 : RCLanes P20 := by
   unfold RCLanes; decide +kernel
@@ -374,24 +197,7 @@ theorem rcLanes20 : RCLanes P20 := by
 theorem rcLanes8 : RCLanes P8 := by
   unfold RCLanes; decide +kernel
 
-/-- **`P20`'s phase-5 claims** (gated, S1) from the reader at the phase's first position. -/
-theorem chLinkPh_claims20 {bf : BusIn → BusOut} {tb : Pub → List TableSpec}
-    {tcl : Pub → List (List FE × List FE) → List (Com × BlockClaim)} {fv : Pub → List FE → List FE}
-    {fs : Pub → List (List FE × List FE) → List FE} {pck : Pub → List (List FE × List FE) → Bool}
-    {z o nb : Nat} {sig : ByteArray} {ptr : Ptr} (r w : List FE) (pub : Pub) (s : RS)
-    (hs : pos s = phaseByte P20 .chLink) (hS : Streamed M sig (streamLanes P20)) (hz : M.e z = 0)
-    (ho : M.e o = 1) (hN1 : 1 ≤ pub.n) (hN2 : pub.n ≤ 2 ^ P20.logN)
-    (hbits : ∀ i < P20.logN, FE.ofK (M.k (nb + i)) = bitQ pub.n i)
-    (hokN : ∀ l : List Cell, l.length = P20.logN → SLok (ltNIns nb l) = true)
-    (h : SegsHold c M ptr (chLinkGG P20.logN (aLane P20 3) z o nb
-      (M3.ofParts P20 bf tb tcl fv fs pck).chBlock 52 ptr).2) :
-    (chLinkPh P20 (M3.ofParts P20 bf tb tcl fv fs pck) r w pub sig s).1.2 =
-      (chLinkGG P20.logN (aLane P20 3) z o nb (M3.ofParts P20 bf tb tcl fv fs pck).chBlock 52 ptr).1.map
-        (CClaim.val M) :=
-  chLinkPhG_claims P20 r w pub s (by decide) (by rw [hs]; exact rcLanes20.2.2.2.2.2.2.1) hS
-    rcLanes20.2.2.2.2.1 hz ho hN1 hN2 hbits hokN h
-
-/-- **`P20`'s phase-7 claims** from the reader at the phase's first position. -/
+/-- **`P20`'s phase-5 claims** from the reader at the phase's first position. -/
 theorem ksLinkPh_claims20 {bf : BusIn → BusOut} {tb : Pub → List TableSpec}
     {tcl : Pub → List (List FE × List FE) → List (Com × BlockClaim)} {fv : Pub → List FE → List FE}
     {fs : Pub → List (List FE × List FE) → List FE} {pck : Pub → List (List FE × List FE) → Bool}
@@ -416,34 +222,6 @@ theorem ksRing20 {sig : ByteArray} {z : Nat} {p : Ptr} (instV outV : List FE)
     8 * gkrEnd (P20.ksLog - 4) (aLane P20 6) - 40 + 72 * ringStages = phaseByte P20 .ksLink :=
   ⟨ringGkr_ringAt (by decide) rcLanes20.2.1 instV outV hinst ok hS rcLanes20.2.2.2.1 hz h,
     rcLanes20.2.2.2.2.2.2.2.2.1⟩
-
-/-- **`P20`'s `CH` ring switch** (after `CH`'s GKR at WP-16a's lane `aLane P20 2`). -/
-theorem chRing20 {sig : ByteArray} {z : Nat} {p : Ptr} (instV outV : List FE)
-    (hinst : instV.length = P20.logN) (ok : Bool) (hS : Streamed M sig (streamLanes P20))
-    (hz : M.e z = 0) (h : SegsHold c M p (ringGkr (P20.logN - 4) (aLane P20 2) z p).2) :
-    RingRel M (vkSpec (feAt sig) P20.logN instV outV (8 * aLane P20 2 - 40) ok).1.slicePoint
-      (ringAt (feAt sig) (8 * gkrEnd (P20.logN - 4) (aLane P20 2) - 40)
-        (vkSpec (feAt sig) P20.logN instV outV (8 * aLane P20 2 - 40) ok).1.slicePoint
-        (vkSpec (feAt sig) P20.logN instV outV (8 * aLane P20 2 - 40) ok).1.slices)
-      (ringGkr (P20.logN - 4) (aLane P20 2) z p).1 ∧
-    8 * gkrEnd (P20.logN - 4) (aLane P20 2) - 40 + 72 * ringStages = phaseByte P20 .chLink :=
-  ⟨ringGkr_ringAt (by decide) rcLanes20.1 instV outV hinst ok hS rcLanes20.2.2.1 hz h,
-    rcLanes20.2.2.2.2.2.2.2.2.2⟩
-
-/-- `chLinkGG_val0` in `F`'s form `m.chLink (chLinkView …)` (`m = M3.ofParts p …`; gated, S1). -/
-theorem chLinkG_val' (p : Params) {bf : BusIn → BusOut} {tb : Pub → List TableSpec}
-    {tcl : Pub → List (List FE × List FE) → List (Com × BlockClaim)} {fv : Pub → List FE → List FE}
-    {fs : Pub → List (List FE × List FE) → List FE} {pck : Pub → List (List FE × List FE) → Bool}
-    {z o Q P T nb : Nat} {sig : ByteArray} {ptr : Ptr} (r w : List FE) (pub : Pub) (hn : 1 ≤ p.logN)
-    (hPQ : P + 40 = 8 * Q) (hS : Streamed M sig T) (hT : chQC p.logN Q + 240 ≤ T) (hz : M.e z = 0)
-    (ho : M.e o = 1) (hN1 : 1 ≤ pub.n) (hN2 : pub.n ≤ 2 ^ p.logN)
-    (hbits : ∀ i < p.logN, FE.ofK (M.k (nb + i)) = bitQ pub.n i)
-    (hokN : ∀ l : List Cell, l.length = p.logN → SLok (ltNIns nb l) = true)
-    (h : SegsHold c M ptr (chLinkGG p.logN Q z o nb (M3.ofParts p bf tb tcl fv fs pck).chBlock 52 ptr).2) :
-    (chLinkGG p.logN Q z o nb (M3.ofParts p bf tb tcl fv fs pck).chBlock 52 ptr).1.map (CClaim.val M) =
-      ((M3.ofParts p bf tb tcl fv fs pck).chLink
-        (chLinkView p (M3.ofParts p bf tb tcl fv fs pck) (feAt sig) P r w pub)).2 :=
-  chLinkGG_val0 p _ _ r w pub hn hPQ hS hT hz ho hN1 hN2 hbits hokN h
 
 /-- `ksLinkG_val` in `F`'s form `m.ksLink (ksLinkView …)` (`m = M3.ofParts p …`). -/
 theorem ksLinkG_val' (p : Params) {bf : BusIn → BusOut} {tb : Pub → List TableSpec}

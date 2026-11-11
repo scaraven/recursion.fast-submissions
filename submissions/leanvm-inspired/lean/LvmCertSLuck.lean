@@ -40,7 +40,7 @@ def sampleOf : Ev → Option E
   | _ => none
 
 /-- The roots' program. -/
-abbrev rootsProg : VerifierProgram Unit := commitRootUd cfgMain20 >>= fun _ ↦ commitRootUd cfgRec20
+abbrev rootsProg : VerifierProgram Unit := commitRootUd cfgMain24 >>= fun _ ↦ commitRootUd cfgRec20
 
 /-- The roots' events, and the events after the middle phases returned. -/
 def afterMid (mid : List UInt8 → VerifierProgram OpenClaims) (x : List UInt8) (h : List Ev) :
@@ -288,7 +288,7 @@ theorem LuckB_nil : ¬ LuckB mid x [] := by
   apply not_luckB_of_foldChal_nil
   unfold foldChal afterMid
   have : rootsProg.retSplit [] = none := by
-    simp [rootsProg, commitRootUd, cfgMain20, VerifierProgram.readCommitment, VerifierProgram.bind,
+    simp [rootsProg, commitRootUd, cfgMain24, VerifierProgram.readCommitment, VerifierProgram.bind,
       retSplit]
   rw [this]
 
@@ -309,9 +309,9 @@ theorem cands_rec_unique (W : Word) {q q' : Column 19} (hq : q ∈ Candidates 19
   cands_unique (by norm_num) (by norm_num) (by rw [thrRec_eq]; norm_num [udThr]) W hq hq'
 
 /-- `C_main`'s candidates are at most one (unique decoding). -/
-theorem cands_main_unique (W : Word) {q q' : Column 26} (hq : q ∈ Candidates 26 1 thrMain W)
-    (hq' : q' ∈ Candidates 26 1 thrMain W) : q = q' :=
-  cands_unique (by norm_num) (by norm_num) (by norm_num [thrMain, codesMain20, LevelCode.ud, udThr])
+theorem cands_main_unique (W : Word) {q q' : Column CMain.nu20} (hq : q ∈ Candidates CMain.nu20 1 thrMain W)
+    (hq' : q' ∈ Candidates CMain.nu20 1 thrMain W) : q = q' :=
+  cands_unique (by norm_num) (by norm_num) (by norm_num [thrMain, codesMain24, LevelCode.ud, udThr])
     W hq hq'
 
 /-- **The candidate pairs are at most one** (review fact; `kgSpec`'s `L₀ = 1`). -/

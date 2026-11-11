@@ -413,6 +413,26 @@ theorem folP_tailRoundsT : ∀ (n : ℕ) (t : E) (q : List E),
     exact folP_sampleChallenge.bind fun _ _ ↦ (folP_sumcheckRoundPoly rfl (by norm_num) _ none).bind
       fun _ _ ↦ (folP_tailRoundsT (n + 1) _ _).bind_nil fun _ _ ↦ FolP.ret trivial
 
+/-- **A level's proof of work** (PI-GRIND; `grindPre g`, `powCheck g`) against `grindI g`: the
+separator, the nonce and the PoW challenge (nothing at `g = 0`), then the rest. -/
+theorem fol_grind {β : Type} (g : ℕ) {k : VerifierProgram β} {bs : List Atom} {pp : List ℕ}
+    {Q : β → List ℕ → Prop} (hk : Fol cap shp idx k bs pp Q) :
+    Fol cap shp idx ((Verifier.grindPre g).bind fun _ ↦ (Verifier.powCheck g).bind fun _ ↦ k)
+      (atomsOf p (grindI g) ++ bs) pp Q := by
+  by_cases hg : g = 0
+  · subst hg
+    exact hk
+  · have h1 : FolP cap shp idx (Verifier.grindPre g) [.sm, .rd] fun _ ↦ True := by
+      rw [Verifier.grindPre, if_neg hg]
+      exact folP_sampleChallenge.bind fun _ _ ↦ folP_readScalar.bind fun _ _ ↦ FolP.ret trivial
+    have h2 : FolP cap shp idx (Verifier.powCheck g) [.sm] fun _ ↦ True := by
+      rw [Verifier.powCheck, if_neg hg]
+      exact folP_sampleChallenge.bind fun _ _ ↦ (folP_require _).mono fun _ _ ↦ trivial
+    have ha : atomsOf p (grindI g) ++ bs = [.sm, .rd] ++ ([.sm] ++ bs) := by
+      simp [grindI, hg, atomsOf, itemAtoms]
+    rw [ha]
+    exact Fol.bindP h1 fun _ _ ↦ Fol.bindP h2 fun _ _ ↦ hk
+
 theorem foldl_folds {β : Type} (F : Verifier.WhirStateT × E → β → Verifier.WhirStateT × E)
     (hF : ∀ acc x, (F acc x).1.folds = acc.1.folds) :
     ∀ (l : List β) (acc : Verifier.WhirStateT × E), (l.foldl F acc).1.folds = acc.1.folds
@@ -458,12 +478,12 @@ theorem nPosQ_eq {L : Level} {t : ℕ} (h : L.t = t) : L.nPosQ = (t + 7) / 8 := 
   simp only [Level.nPosQ, h, positionsPerAnswer]
   omega
 
-/-- **The WHIR levels against `whirLevelsI`.** -/
-theorem fol_whirLevelsUd (com : Com) (logN laneFolds c₀ n₀ finalLog : ℕ) (direct : Bool)
+/-- **The WHIR levels against `whirLevelsI`** (`g` PoW bits per level). -/
+theorem fol_whirLevelsUd (com : Com) (logN laneFolds c₀ n₀ g finalLog : ℕ) (direct : Bool)
     (eB : List E → E) : ∀ (Ls : List Level) (ws : List Whir.Level) (index : ℕ) (s : Verifier.WhirStateT),
       LvMatch p cap shp idx com logN c₀ n₀ finalLog index s.folds.length ws Ls → ∀ pp,
-      Fol cap shp idx (Verifier.whirLevelsUd logN laneFolds 8 c₀ n₀ direct eB index ws s)
-        (atomsOf p (whirLevelsI com finalLog Ls)) pp fun _ _ ↦ True
+      Fol cap shp idx (Verifier.whirLevelsUd logN laneFolds 8 c₀ n₀ g direct eB index ws s)
+        (atomsOf p (whirLevelsI com finalLog g Ls)) pp fun _ _ ↦ True
   | [L], [w], index, s, h, pp => by
     obtain ⟨⟨hfold, hh, ht, hc⟩, hfin⟩ := h
     simp only [whirLevelsI, levelI, List.flatten_cons, List.flatten_nil, List.append_nil, atomsOf_append,
@@ -475,6 +495,7 @@ theorem fol_whirLevelsUd (com : Com) (logN laneFolds c₀ n₀ finalLog : ℕ) (
     dsimp only at hx ⊢
     rw [hx, hfin]
     refine Fol.bindP (folP_readScalars _) fun res _ ↦ ?_
+    refine fol_grind p g ?_
     refine Fol.bindQ (fol_samplePositions _ _ pp) fun qs pp' hq ↦ ?_
     subst hq
     refine Fol.bindP folP_sampleChallenge fun lam _ ↦ ?_
@@ -500,12 +521,13 @@ theorem fol_whirLevelsUd (com : Com) (logN laneFolds c₀ n₀ finalLog : ℕ) (
     rw [hx]
     refine Fol.bindP (folP_readCommitment hcap hshp) fun _ _ ↦ ?_
     refine Fol.bindP (as := []) (R := fun _ ↦ True) (FolP.ret trivial) fun res _ ↦ ?_
+    refine fol_grind p g ?_
     refine Fol.bindQ (fol_samplePositions _ _ pp) fun qs pp' hq ↦ ?_
     subst hq
     refine Fol.bindP folP_sampleChallenge fun lam _ ↦ ?_
     refine fol_queryBind hc rfl fun rows ↦ ?_
     refine Fol.bindP (folP_sumcheckRoundPoly rfl (by norm_num) _ none) fun intro _ ↦ ?_
-    refine fol_whirLevelsUd com logN laneFolds c₀ n₀ finalLog direct eB (L' :: Ls) (w' :: ws) (index + 1) _ ?_ _
+    refine fol_whirLevelsUd com logN laneFolds c₀ n₀ g finalLog direct eB (L' :: Ls) (w' :: ws) (index + 1) _ ?_ _
     rw [glueT_folds, hx]
     exact hrest
   | [], [], _, _, h, _ => (h : False).elim
@@ -520,19 +542,19 @@ theorem fol_whirLevelsUd (com : Com) (logN laneFolds c₀ n₀ finalLog : ℕ) (
 theorem fol_verifyWhirUd (cfg : Verifier.UdConfig) (hper : cfg.per = 8) (com : Com) (Ls : List Level)
     (finalLog : ℕ) (h : LvMatch p cap shp idx com cfg.μ cfg.c₀ cfg.n₀ finalLog 0 0 cfg.levels Ls)
     (target : E) (eB : List E → E) (pp : List ℕ) :
-    Fol cap shp idx (Verifier.verifyWhirUd cfg target eB) (atomsOf p (whirI com Ls finalLog)) pp
+    Fol cap shp idx (Verifier.verifyWhirUd cfg target eB) (atomsOf p (whirI com Ls finalLog cfg.grind)) pp
       fun _ _ ↦ True := by
   rw [whirI, atomsOf_append, atomsOf_rd]
   unfold Verifier.verifyWhirUd
   rw [hper]
   exact Fol.bindP (folP_sumcheckRoundPoly rfl (by norm_num) _ none) fun _ _ ↦
-    fol_whirLevelsUd com _ _ _ _ finalLog _ eB Ls cfg.levels 0 _ h pp
+    fol_whirLevelsUd com _ _ _ _ _ finalLog _ eB Ls cfg.levels 0 _ h pp
 
 /-- **The stacked opening against `smp 1 ++ whirI`** (the schedule's opening phases). -/
 theorem fol_verifyStackedUd (cfg : Verifier.UdConfig) (hper : cfg.per = 8) (com : Com) (Ls : List Level)
     (finalLog : ℕ) (h : LvMatch p cap shp idx com cfg.μ cfg.c₀ cfg.n₀ finalLog 0 0 cfg.levels Ls)
     (claims : List Verifier.StackClaim) (pp : List ℕ) :
-    Fol cap shp idx (Verifier.verifyStackedUd cfg claims) (atomsOf p (smp 1 ++ whirI com Ls finalLog)) pp
+    Fol cap shp idx (Verifier.verifyStackedUd cfg claims) (atomsOf p (smp 1 ++ whirI com Ls finalLog cfg.grind)) pp
       fun _ _ ↦ True := by
   rw [atomsOf_append, atomsOf_smp]
   unfold Verifier.verifyStackedUd

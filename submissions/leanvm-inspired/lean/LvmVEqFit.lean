@@ -26,7 +26,7 @@ open Lvm.M3 LeanVM.Protocol
 /-- The layout of a parameter record: `C_main`, `C_rec`. -/
 def layOf (p : Params) : Lay := ⟨p.nuMain, p.nuRec⟩
 
-theorem layOf_P20 : layOf P20 = ⟨26, 19⟩ := rfl
+theorem layOf_P20 : layOf P20 = ⟨24, 19⟩ := rfl
 
 /-- `log2Ceil` is `Nat.clog 2`. -/
 theorem log2Ceil_eq_clog (n : ℕ) : log2Ceil n = Nat.clog 2 n := by
@@ -134,8 +134,8 @@ theorem Fit.layOk (F : Fit p tabs) : LayOk (layOf p) (sumcheckTabs tabs) := by
   | fix f ev => rfl
 
 /-- **`μBus` at `P20`** (WP-14's request): the bus depth of `midS`'s tables. -/
-theorem μBus_P20 (h : fitsR P20 tabs = true) (hτ : ∀ t ∈ sumcheckTabs tabs, t.τ ≤ (⟨26, 19⟩ : Lay).μ) :
-    (inst ⟨26, 19⟩ (sumcheckTabs tabs) hτ).μBus = P20.busDepth :=
+theorem μBus_P20 (h : fitsR P20 tabs = true) (hτ : ∀ t ∈ sumcheckTabs tabs, t.τ ≤ (⟨24, 19⟩ : Lay).μ) :
+    (inst ⟨24, 19⟩ (sumcheckTabs tabs) hτ).μBus = P20.busDepth :=
   (fit_of P20 tabs h).μBus_eq hτ
 
 end Fit

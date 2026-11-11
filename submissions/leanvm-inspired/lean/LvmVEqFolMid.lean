@@ -15,8 +15,8 @@ the phase's atoms and keeps `pp`):
 * `folP_busTabAccProg`: WP-9b's bus phase and table sumcheck, then A23's phase 3b (`folP_accProg`),
   against `busI ++ tablesI`, given the record's `leafdecReads = 1`, `tableRounds` and `tableEvals`
   of the tables (`Fit`);
-* `folP_callerProg`, `folP_chLinkProg`, `folP_ksLinkProg`, `folP_kgProgS`: WP-8's `kgSpec` program
-  against `chI ++ chLinkI ++ ksI ++ ksLinkI`;
+* `folP_tapeProg` (lvm2 S2: `folP_tapeGkr`, `folP_wireChProg`), `folP_callerProg`, `folP_ksLinkProg`,
+  `folP_kgProgS`: the tape caller and WP-8's `KS` programs against `tapeI ++ wireI ++ ksI ++ ksLinkI`;
 * **`folP_midS`**, `fol_midS`: `midS tabs x` against `midItems` when every `tabs pub` fits `P20`;
 * **`midFollows_midS`**: WP-14d's `MidFollows (midS tabs)`.
 -/
@@ -40,31 +40,30 @@ def busI : List Item := List.flatten [smp (busBits + 1), gpI p.busDepth, rd p.le
 /-- The table sumcheck, then phase 3b (A23: `κ`, the line polynomial, `t`, the zero scalar). -/
 def tablesI : List Item := List.flatten [smp 1, sumcheckI p.tableRounds 3, rd p.tableEvals,
   smp p.accLog, rd (accVars + 1), smp 1, rd 1]
-/-- `CH`'s Keccak GKR. -/
-def chI : List Item := List.flatten [smp p.logN, rd lanes, keccakI p.logN, smp ringStages]
-/-- The `CH` link. -/
-def chLinkI : List Item := List.flatten [smp (p.logN + 3 + 6), sumcheckI p.logN 2, rd kBits, smp ringStages,
-  sumcheckI 2 2, rd kBits, smp ringStages, smp laneBits]
+/-- The tape (lvm2 S2, T1–T2). -/
+def tapeI : List Item := List.flatten [smp p.logN, rd lanes, tapeLayersI p.logN]
+/-- The wire (lvm2 S2, T3–T4). -/
+def wireI : List Item := List.flatten [sumcheckI p.logN 2, rd 1, sumcheckI 2 2, rd kBits, smp ringStages]
 /-- `KS`'s Keccak GKR. -/
 def ksI : List Item := List.flatten [smp p.ksLog, rd lanes, keccakI p.ksLog, smp ringStages]
 /-- The `KS` link. -/
 def ksLinkI : List Item := List.flatten [smp (p.ksLog + laneBits), sumcheckI p.ksLog 2, rd 4]
 /-- `C_rec`'s opening. -/
-def openRecI : List Item := smp 1 ++ whirI .crec p.recLevels p.recFinalLog
+def openRecI : List Item := smp 1 ++ whirI .crec p.recLevels p.recFinalLog p.grind
 /-- `C_main`'s opening. -/
-def openMainI : List Item := smp 1 ++ whirI .main p.mainLevels p.mainFinalLog
+def openMainI : List Item := smp 1 ++ whirI .main p.mainLevels p.mainFinalLog p.grind
 
-theorem phases_eq : phases p = [(.commit, commitI p), (.bus, busI p), (.tables, tablesI p), (.ch, chI p),
-    (.chLink, chLinkI p), (.ks, ksI p), (.ksLink, ksLinkI p), (.openRec, openRecI p),
+theorem phases_eq : phases p = [(.commit, commitI p), (.bus, busI p), (.tables, tablesI p), (.tape, tapeI p),
+    (.wire, wireI p), (.ks, ksI p), (.ksLink, ksLinkI p), (.openRec, openRecI p),
     (.openMain, openMainI p)] := rfl
 
-theorem schedule_eq : schedule p = commitI p ++ (busI p ++ (tablesI p ++ (chI p ++ (chLinkI p ++
+theorem schedule_eq : schedule p = commitI p ++ (busI p ++ (tablesI p ++ (tapeI p ++ (wireI p ++
     (ksI p ++ (ksLinkI p ++ (openRecI p ++ (openMainI p ++ [])))))))) := rfl
 
 end Items
 
 theorem midItems_eq : Lvm.ASM.midItems =
-    busI P20 ++ (tablesI P20 ++ (chI P20 ++ (chLinkI P20 ++ (ksI P20 ++ (ksLinkI P20 ++ []))))) := rfl
+    busI P20 ++ (tablesI P20 ++ (tapeI P20 ++ (wireI P20 ++ (ksI P20 ++ (ksLinkI P20 ++ []))))) := rfl
 
 /-! ## The bus phase and the table sumcheck -/
 
@@ -192,20 +191,6 @@ theorem folP_callerProg (h : ℕ) :
   exact (folP_sampleChallenges h).bind fun r hr ↦ (folP_readScalars 25).bind fun v _ ↦
     (folP_verifyKeccak p h r v hr).bind fun _ _ ↦ (folP_ringSwitch _ _).bind_ret fun _ _ ↦ trivial
 
-/-- **The `CH` link** against its items. -/
-theorem folP_chLinkProg (h ys n : ℕ) :
-    FolP cap shp idx (KG.chLinkProg h ys n) (atomsOf p (List.flatten [smp (h + 3 + 6), sumcheckI h 2, rd kBits,
-      smp ringStages, sumcheckI 2 2, rd kBits, smp ringStages, smp laneBits])) fun _ ↦ True := by
-  simp only [List.flatten_cons, List.flatten_nil, List.append_nil, atomsOf_append, atomsOf_smp, atomsOf_rd]
-  rw [show h + 3 + 6 = h + 9 by omega]
-  unfold KG.chLinkProg
-  exact (folP_sampleChallenges _).bind fun _ _ ↦
-    (folP_sumcheck p rfl (by norm_num) _ h _ (List.length_replicate ..)).bind fun _ _ ↦
-    (folP_readScalars 64).bind fun _ _ ↦ (folP_ringSwitch _ _).bind fun _ _ ↦
-    (folP_sumcheck p rfl (by norm_num) _ 2 _ (List.length_replicate ..)).bind fun _ _ ↦
-    (folP_readScalars 64).bind fun _ _ ↦ (folP_ringSwitch _ _).bind fun _ _ ↦
-    (folP_sampleChallenges 5).bind_nil fun _ _ ↦ (folP_require _).bind_nil fun _ _ ↦ FolP.ret trivial
-
 /-- **The `KS` link** against its items. -/
 theorem folP_ksLinkProg (hk r : ℕ) (rows : List ℕ) :
     FolP cap shp idx (KG.ksLinkProg hk r rows)
@@ -216,18 +201,100 @@ theorem folP_ksLinkProg (hk r : ℕ) (rows : List ℕ) :
     (folP_sumcheck p rfl (by norm_num) _ hk _ (List.length_replicate ..)).bind fun _ _ ↦
     (folP_readScalars 4).bind_nil fun _ _ ↦ (folP_require _).bind_nil fun _ _ ↦ FolP.ret trivial
 
-/-- **V_S phases 4–7** (`kgProgS`) against `CH`, the `CH` link, `KS`, the `KS` link at `P20`. -/
-theorem folP_kgProgS (n : ℕ) :
-    FolP cap shp idx (kgProgS n) (atomsOf P20 (chI P20 ++ (chLinkI P20 ++ (ksI P20 ++ ksLinkI P20))))
+/-- **A generic Keccak layer** (T-G's `verifyKeccakLayerS`) against `keccakLayerI`. -/
+theorem folP_verifyKeccakLayerS (sh : KeccakGkr.Shape) (logSteps step : ℕ) (claim : Verifier.KeccakClaim) :
+    FolP cap shp idx (KeccakGkr.verifyKeccakLayerS sh logSteps step claim)
+      (atomsOf p (keccakLayerI claim.point.length)) fun c ↦ c.point.length = claim.point.length := by
+  simp only [keccakLayerI, List.flatten_cons, List.flatten_nil, List.append_nil, atomsOf_append,
+    atomsOf_rd, atomsOf_smp]
+  unfold KeccakGkr.verifyKeccakLayerS
+  exact (folP_readScalars _).bind fun _ _ ↦ (folP_require _).bind fun _ _ ↦
+    folP_sampleChallenge.bind fun _ _ ↦ (folP_keccakPackRounds p claim.point _ _).bind fun x hx ↦
+    (folP_sumcheck p rfl (by norm_num) _ localBits _ (List.length_replicate ..)).bind fun _ _ ↦
+    (folP_readScalars 3).bind fun _ _ ↦ (folP_require _).bind fun _ _ ↦
+    folP_sampleChallenge.bind_ret fun _ _ ↦ hx
+
+theorem folP_keccakLayersS (sh : KeccakGkr.Shape) (logSteps : ℕ) :
+    ∀ (steps : List ℕ) (claim : Verifier.KeccakClaim),
+    FolP cap shp idx (KeccakGkr.keccakLayersS sh logSteps steps claim)
+      (List.replicate steps.length (atomsOf p (keccakLayerI claim.point.length))).flatten
+      fun c ↦ c.point.length = claim.point.length
+  | [], _ => FolP.ret rfl
+  | st :: steps, claim => by
+    rw [List.length_cons, List.replicate_succ, List.flatten_cons]
+    exact (folP_verifyKeccakLayerS p sh logSteps st claim).bind fun c hc ↦ by
+      rw [← hc]
+      exact folP_keccakLayersS sh logSteps steps c
+
+/-- **The tape's GKR** (T-G's `tapeGkr`) against `tapeLayersI`, the instance point of `logSteps`
+coordinates. -/
+theorem folP_tapeGkr (logSteps : ℕ) (inst output : List E) (hinst : inst.length = logSteps) :
+    FolP cap shp idx (KeccakGkr.tapeGkr logSteps inst output) (atomsOf p (tapeLayersI logSteps))
       fun _ ↦ True := by
-  have e : atomsOf P20 (chI P20 ++ (chLinkI P20 ++ (ksI P20 ++ ksLinkI P20))) =
-      (atomsOf P20 (chI P20) ++ atomsOf P20 (chLinkI P20)) ++
+  rw [KeccakGkr.tapeGkr_eq]
+  simp only [tapeLayersI, atomsOf_append, atomsOf_smp, atomsOf_flatten, List.map_replicate]
+  refine (folP_sampleChallenges _).bind fun lp _ ↦ ?_
+  have hpt' : (KeccakGkr.tapeFirstClaim inst lp output).point.length = logSteps - packBits := by
+    simp only [KeccakGkr.tapeFirstClaim, List.length_drop, hinst]; rfl
+  rw [← hpt', show tapeDepth = (List.range 24).length by simp; rfl]
+  exact (folP_keccakLayersS p KeccakGkr.Shape.tape logSteps _ _).mono fun _ _ ↦ trivial
+
+/-- **T-W's slot reduction** (two lane bits) against its items. -/
+theorem folP_slotProg (sb blk : ℕ) (W : ℕ → ℕ → E) (pt : List E) (v : E) :
+    FolP cap shp idx (KG.slotProg 2 sb blk W pt v)
+      (atomsOf p (List.flatten [sumcheckI 2 2, rd kBits, smp ringStages])) fun _ ↦ True := by
+  simp only [List.flatten_cons, List.flatten_nil, List.append_nil, atomsOf_append, atomsOf_smp, atomsOf_rd]
+  unfold KG.slotProg
+  exact (folP_sumcheck p rfl (by norm_num) _ 2 _ (List.length_replicate ..)).bind fun _ _ ↦
+    (folP_readScalars 64).bind fun _ _ ↦ (folP_require _).bind fun _ _ ↦
+    (folP_ringSwitch _ _).bind_ret fun _ _ ↦ trivial
+
+/-- **T-W's wiring phase** against `wireI`'s items. -/
+theorem folP_wireChProg (w sb dsel : ℕ) (s : RecursionFast.Digest) (n : ℕ) (claim : Verifier.KeccakClaim) :
+    FolP cap shp idx (KG.wireChProg w sb dsel s n claim)
+      (atomsOf p (List.flatten [sumcheckI w 2, rd 1, sumcheckI 2 2, rd kBits, smp ringStages]))
+      fun _ ↦ True := by
+  have e : atomsOf p (List.flatten [sumcheckI w 2, rd 1, sumcheckI 2 2, rd kBits, smp ringStages]) =
+      atomsOf p (sumcheckI w 2) ++ (List.replicate 1 .rd ++
+        atomsOf p (List.flatten [sumcheckI 2 2, rd kBits, smp ringStages])) := by
+    simp only [List.flatten_cons, List.flatten_nil, List.append_nil, atomsOf_append, atomsOf_rd,
+      atomsOf_smp, List.append_assoc]
+  rw [e]
+  unfold KG.wireChProg
+  exact (folP_sumcheck p rfl (by norm_num) _ w _ (List.length_replicate ..)).bind fun _ _ ↦
+    (folP_readScalars 1).bind fun _ _ ↦ (folP_require _).bind fun _ _ ↦
+    (folP_slotProg p _ _ _ _ _).bind_ret fun _ _ ↦ trivial
+
+/-- **The tape caller** (lvm2 S2, `tapeProg`) against the tape's and the wire's items. -/
+theorem folP_tapeProg (w sb dsel : ℕ) (s : RecursionFast.Digest) (n : ℕ) :
+    FolP cap shp idx (KG.tapeProg w sb dsel s n)
+      (atomsOf p (List.flatten [smp w, rd lanes, tapeLayersI w]) ++
+        atomsOf p (List.flatten [sumcheckI w 2, rd 1, sumcheckI 2 2, rd kBits, smp ringStages]))
+      fun _ ↦ True := by
+  have e : atomsOf p (List.flatten [smp w, rd lanes, tapeLayersI w]) ++
+        atomsOf p (List.flatten [sumcheckI w 2, rd 1, sumcheckI 2 2, rd kBits, smp ringStages]) =
+      List.replicate w .sm ++ (List.replicate 25 .rd ++ (atomsOf p (tapeLayersI w) ++
+        atomsOf p (List.flatten [sumcheckI w 2, rd 1, sumcheckI 2 2, rd kBits, smp ringStages]))) := by
+    simp only [List.flatten_cons, List.flatten_nil, List.append_nil, atomsOf_append, atomsOf_rd,
+      atomsOf_smp, List.append_assoc]; rfl
+  rw [e]
+  unfold KG.tapeProg
+  exact (folP_sampleChallenges w).bind fun r hr ↦ (folP_readScalars 25).bind fun v _ ↦
+    (folP_tapeGkr p w r v hr).bind fun _ _ ↦ (folP_require _).bind fun _ _ ↦
+    (folP_wireChProg p _ _ _ _ _ _).bind_ret fun _ _ ↦ trivial
+
+/-- **V_S phases 4–7** (`kgProgS`, lvm2 S2) against the tape, the wire, `KS`, the `KS` link at
+`P20`. -/
+theorem folP_kgProgS (s : RecursionFast.Digest) (n : ℕ) :
+    FolP cap shp idx (kgProgS s n) (atomsOf P20 (tapeI P20 ++ (wireI P20 ++ (ksI P20 ++ ksLinkI P20))))
+      fun _ ↦ True := by
+  have e : atomsOf P20 (tapeI P20 ++ (wireI P20 ++ (ksI P20 ++ ksLinkI P20))) =
+      (atomsOf P20 (tapeI P20) ++ atomsOf P20 (wireI P20)) ++
         (atomsOf P20 (ksI P20) ++ atomsOf P20 (ksLinkI P20)) := by
     simp only [atomsOf_append, List.append_assoc]
   rw [e]
   unfold kgProgS
-  exact (FolP.bind (S := fun _ ↦ True) (folP_callerProg P20 (16 + 4)) fun _ _ ↦
-    (folP_chLinkProg P20 (16 + 4) 52 n).bind_ret fun _ _ ↦ trivial).bind fun _ _ ↦
+  exact (folP_tapeProg P20 20 2 0 s n).bind fun _ _ ↦
     (FolP.bind (S := fun _ ↦ True) (folP_callerProg P20 (11 + 4)) fun _ _ ↦
       (folP_ksLinkProg P20 (11 + 4) 14 _).bind_ret fun _ _ ↦ trivial).bind_ret fun _ _ ↦ trivial
 
@@ -244,12 +311,12 @@ theorem folP_midS (tabs : Pub → List M3.Tab) (hfit : ∀ pub, M3.fitsR P20 (ta
     (x : List UInt8) : FolP cap shp idx (midS tabs x) (atomsOf P20 Lvm.ASM.midItems) fun _ ↦ True := by
   have F := fit_of P20 _ (hfit (pubX x))
   have e : atomsOf P20 Lvm.ASM.midItems = atomsOf P20 (busI P20 ++ tablesI P20) ++
-      atomsOf P20 (chI P20 ++ (chLinkI P20 ++ (ksI P20 ++ ksLinkI P20))) := by
+      atomsOf P20 (tapeI P20 ++ (wireI P20 ++ (ksI P20 ++ ksLinkI P20))) := by
     simp only [midItems_eq, atomsOf_append, List.append_nil, List.append_assoc]
   rw [e]
   unfold midS
   exact (folP_busTabAccProg tabs (pubX x) F.leafdec F.rounds F.evals).bind fun _ _ ↦
-    (folP_kgProgS _).bind_ret fun _ _ ↦ trivial
+    (folP_kgProgS _ _).bind_ret fun _ _ ↦ trivial
 
 /-- `midS` at P20's commitment table, from any pending positions (stated with `@`: elaborating a
 `Fol` at concrete atoms by the default application elaborator unfolds it). -/

@@ -8,7 +8,7 @@ import LvmReplay
 /-!
 # `P_S` follows the schedule
 
-* `lvMatch_rec`, `lvMatch_main`: `cfgRec20`'s and `cfgMain20`'s levels are P20's (`LvMatch`, at
+* `lvMatch_rec`, `lvMatch_main`: `cfgRec20`'s and `cfgMain24`'s levels are P20's (`LvMatch`, at
   `capS`, `shpS`, `idxS`), by evaluation on `P20L` (LvmReplay's `P20_eq`: the levels written out);
 * `fol_openRec`, `fol_openMain`: the openings against `openRecI P20`, `openMainI P20`;
 * `folP_commit`: the two roots against `commitI P20`;
@@ -23,7 +23,7 @@ set_option autoImplicit false
 namespace Lvm.VEq
 
 open LeanVM.Parameters LeanVM.Protocol LeanVM.Protocol.Compile
-open LeanVM.Protocol.Whir.Sound (cfgMain20 cfgRec20)
+open LeanVM.Protocol.Whir.Sound (cfgMain24 cfgRec20)
 open Lvm.Replay (P20_eq)
 
 theorem lvMatch_rec : LvMatch P20 capS shpS idxS .crec cfgRec20.μ cfgRec20.c₀ cfgRec20.n₀ P20.recFinalLog
@@ -31,11 +31,10 @@ theorem lvMatch_rec : LvMatch P20 capS shpS idxS .crec cfgRec20.μ cfgRec20.c₀
   rw [P20_eq]
   exact ⟨⟨rfl, rfl, rfl, rfl⟩, rfl⟩
 
-theorem lvMatch_main : LvMatch P20 capS shpS idxS .main cfgMain20.μ cfgMain20.c₀ cfgMain20.n₀
-    P20.mainFinalLog 0 0 cfgMain20.levels P20.mainLevels := by
+theorem lvMatch_main : LvMatch P20 capS shpS idxS .main cfgMain24.μ cfgMain24.c₀ cfgMain24.n₀
+    P20.mainFinalLog 0 0 cfgMain24.levels P20.mainLevels := by
   rw [P20_eq]
-  exact ⟨⟨rfl, rfl, rfl, rfl⟩, rfl, rfl, ⟨⟨rfl, rfl, rfl, rfl⟩, rfl, rfl, ⟨⟨rfl, rfl, rfl, rfl⟩, rfl, rfl,
-    ⟨⟨rfl, rfl, rfl, rfl⟩, rfl⟩⟩⟩⟩
+  exact ⟨⟨rfl, rfl, rfl, rfl⟩, rfl, rfl, ⟨⟨rfl, rfl, rfl, rfl⟩, rfl, rfl, ⟨⟨rfl, rfl, rfl, rfl⟩, rfl⟩⟩⟩
 
 /-- **`C_rec`'s opening** against `openRecI P20`. -/
 theorem fol_openRec (claims : List Verifier.StackClaim) (pp : List ℕ) :
@@ -45,12 +44,12 @@ theorem fol_openRec (claims : List Verifier.StackClaim) (pp : List ℕ) :
 
 /-- **`C_main`'s opening** against `openMainI P20`. -/
 theorem fol_openMain (claims : List Verifier.StackClaim) (pp : List ℕ) :
-    Fol capS shpS idxS (Verifier.verifyStackedUd cfgMain20 claims) (atomsOf P20 (openMainI P20)) pp
+    Fol capS shpS idxS (Verifier.verifyStackedUd cfgMain24 claims) (atomsOf P20 (openMainI P20)) pp
       fun _ _ ↦ True :=
-  @fol_verifyStackedUd P20 capS shpS idxS cfgMain20 rfl .main P20.mainLevels P20.mainFinalLog lvMatch_main
+  @fol_verifyStackedUd P20 capS shpS idxS cfgMain24 rfl .main P20.mainLevels P20.mainFinalLog lvMatch_main
     claims pp
 
-theorem cap_main0 : capS (cfgMain20.μ - 6 + 1) (2 ^ 6) = (P20.level ⟨.main, 0⟩).cap := by
+theorem cap_main0 : capS (cfgMain24.μ - 6 + 1) (2 ^ 6) = (P20.level ⟨.main, 0⟩).cap := by
   rw [P20_eq]; rfl
 
 theorem cap_rec0 : capS (cfgRec20.μ - 6 + 2) (2 ^ 6) = (P20.level ⟨.crec, 0⟩).cap := by
@@ -61,10 +60,10 @@ theorem atomsOf_commitI : atomsOf P20 (commitI P20) =
 
 /-- **The roots** against `commitI P20`. -/
 theorem folP_commit : FolP capS shpS idxS
-    ((Verifier.commitRootUd cfgMain20).bind fun _ ↦ Verifier.commitRootUd cfgRec20)
+    ((Verifier.commitRootUd cfgMain24).bind fun _ ↦ Verifier.commitRootUd cfgRec20)
     (atomsOf P20 (commitI P20)) fun _ ↦ True := by
   rw [atomsOf_commitI]
-  exact (folP_commitRootUd cfgMain20 rfl cap_main0 rfl).bind fun _ _ ↦
+  exact (folP_commitRootUd cfgMain24 rfl cap_main0 rfl).bind fun _ _ ↦
     folP_commitRootUd cfgRec20 rfl cap_rec0 rfl
 
 theorem atomsOf_schedule : atomsOf P20 (schedule P20) =
@@ -78,7 +77,7 @@ theorem fol_PS (tabs : Pub → List M3.Tab) (hfit : ∀ pub, M3.fitsR P20 (tabs 
     Fol capS shpS idxS (Lvm.ASM.PSWith (midS tabs) x) (atomsOf P20 (schedule P20)) [] fun _ _ ↦ True := by
   rw [atomsOf_schedule]
   unfold Lvm.ASM.PSWith
-  refine Fol.bindP (folP_commitRootUd cfgMain20 rfl cap_main0 rfl) fun _ _ ↦ ?_
+  refine Fol.bindP (folP_commitRootUd cfgMain24 rfl cap_main0 rfl) fun _ _ ↦ ?_
   refine Fol.bindP (folP_commitRootUd cfgRec20 rfl cap_rec0 rfl) fun _ _ ↦ ?_
   refine Fol.bindP (folP_midS tabs hfit x) fun cl _ ↦ ?_
   refine @Fol.bindQ capS shpS idxS _ _ _ _ (atomsOf P20 (openRecI P20)) _ [] _ _ (@fol_openRec cl.1 []) fun _ pp' _ ↦ ?_

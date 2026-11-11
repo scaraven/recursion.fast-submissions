@@ -63,6 +63,27 @@ fn add(name: &'static str, s: f64) {
     }
 }
 
+/// Process CPU seconds (all threads) and the oracle service's CPU seconds (`LVM_SVC_PID`, from
+/// `/proc/<pid>/stat`, 10 ms ticks), for the per-stage `PCPU` lines of `LVM_PROF=1`.
+pub fn cpu_now() -> (f64, f64) {
+    #[repr(C)]
+    struct Ts {
+        s: i64,
+        ns: i64,
+    }
+    unsafe extern "C" {
+        fn clock_gettime(clk: i32, ts: *mut Ts) -> i32;
+    }
+    let mut t = Ts { s: 0, ns: 0 };
+    unsafe { clock_gettime(2, &mut t) };
+    let svc = std::env::var("LVM_SVC_PID").ok().and_then(|p| std::fs::read_to_string(format!("/proc/{p}/stat")).ok()).map_or(0.0, |st| {
+        let f: Vec<&str> = st.rsplit(')').next().unwrap_or("").split_whitespace().collect();
+        let tk = |i: usize| f.get(i).and_then(|x| x.parse::<f64>().ok()).unwrap_or(0.0);
+        (tk(11) + tk(12)) / 100.0
+    });
+    (t.s as f64 + t.ns as f64 * 1e-9, svc)
+}
+
 /// Record a named interval measured elsewhere (the drivers' own stages).
 pub fn record(name: &'static str, s: f64) {
     if enabled() {
