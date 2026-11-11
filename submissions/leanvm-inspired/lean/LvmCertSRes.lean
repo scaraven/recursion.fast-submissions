@@ -223,27 +223,26 @@ theorem after_stacked_one (cfg : UdConfig) (level : LeanVM.Parameters.Whir.Level
 
 /-! ## P20: `C_rec`'s opening and `P_S` -/
 
-/-- `C_rec`'s level at P20: fold `6`, rate `2`, `191` positions. -/
-def recLevel : LeanVM.Parameters.Whir.Level := ⟨6, 2, 191⟩
+/-- `C_rec`'s level at P20: fold `6`, rate `2`, `170` positions (lvm2 S2G: PI-GRIND's `g = 14`). -/
+def recLevel : LeanVM.Parameters.Whir.Level := ⟨6, 2, 170⟩
 
 theorem finHyp_rec20 (cl : List LeanVM.Protocol.Verifier.StackClaim)
     (hcl : ∀ c ∈ cl, IsMultiaffine 19 c.1) (ρ : E) :
-    FinHyp cfgRec20.μ recLevel.fold cfgRec20.per cfgRec20.c₀ cfgRec20.n₀ (batW cl ρ)
+    FinHyp cfgRec20G.μ recLevel.fold cfgRec20G.per cfgRec20G.c₀ cfgRec20G.n₀ (batW cl ρ)
       (codesRec20 0) recLevel 0 :=
   ⟨isMultiaffine_batched cl hcl ρ, by decide, rfl, rfl, by decide, by decide, by decide⟩
 
 theorem hQlt20 : eQueryFinal (codesRec20 0) recLevel.queries < 1 :=
-  eQuery_rec20.trans_lt (inv_two_pow_lt_one (by norm_num))
+  eQuery_main24G.2.2.2.trans_lt (inv_two_pow_lt_one (by norm_num))
 
-theorem hεQ20 : (2 : ℝ≥0∞)⁻¹ ^ cfgRec20.grind * eQueryFinal (codesRec20 0) recLevel.queries ≤ εS := by
-  rw [show cfgRec20.grind = 0 from rfl, pow_zero, one_mul]
-  exact eQuery_rec20
+theorem hεQ20 : (2 : ℝ≥0∞)⁻¹ ^ cfgRec20G.grind * eQueryFinal (codesRec20 0) recLevel.queries ≤ εS :=
+  (disc_le 14 eQuery_main24G.2.2.2).trans pow129_le_εS
 
-theorem hg20 : cfgRec20.grind ≤ 192 := by decide
+theorem hg20 : cfgRec20G.grind ≤ 192 := by decide
 
-theorem hεT20 : eTail ≤ εS := eTail_le.trans (inv_two_pow_anti (by norm_num))
+theorem hεT20 : eTail ≤ εS := (eTail_le.trans (inv_two_pow_anti (by norm_num))).trans pow129_le_εS
 
-theorem rec20_levels : cfgRec20.levels = [recLevel] := rfl
+theorem rec20_levels : cfgRec20G.levels = [recLevel] := rfl
 
 section Concrete
 
@@ -253,9 +252,9 @@ open Classical in
 /-- **`C_rec`'s opening at P20 from no doom**, doom only the residual's (dead when the claims are
 not multiaffine). -/
 noncomputable def recRes20 (cl : List LeanVM.Protocol.Verifier.StackClaim) :
-    Spec (verifyStackedUd cfgRec20 cl) (fun _ ↦ False) (fun _ _ ↦ False) εS 0 0 :=
+    Spec (verifyStackedUd cfgRec20G cl) (fun _ ↦ False) (fun _ _ ↦ False) εS 0 0 :=
   if hcl : ∀ c ∈ cl, IsMultiaffine 19 c.1 then
-    recResSpec cfgRec20 recLevel rec20_levels (codesRec20 0) cl (finHyp_rec20 cl hcl) hg20 hQlt20 hεQ20 hεT20
+    recResSpec cfgRec20G recLevel rec20_levels (codesRec20 0) cl (finHyp_rec20 cl hcl) hg20 hQlt20 hεQ20 hεT20
   else Spec.dead
 
 /-- The openings from no doom, doom only `C_rec`'s residual's. -/
@@ -266,7 +265,7 @@ noncomputable def openRes (cl : OpenClaims) :
 /-- **The residual's doom of `P_S`** (from no doom). -/
 noncomputable def resSpec (mid : List UInt8 → VerifierProgram OpenClaims) (x : List UInt8) :
     Spec (PSWith mid x) (fun _ ↦ False) (fun b _ ↦ b = false) εS 0 0 :=
-  (Spec.bind' (Spec.dead (p := commitRootUd cfgMain24 >>= fun _ ↦ commitRootUd cfgRec20)
+  (Spec.bind' (Spec.dead (p := commitRootUd cfgMain24G >>= fun _ ↦ commitRootUd cfgRec20G)
       (Post := fun _ _ ↦ False) (L := 0) (T := 0)) fun _ ↦
     Spec.bind' (Spec.dead (p := mid x) (Post := fun _ _ ↦ False) (L := 0) (T := 0)) fun cl ↦
       openRes cl).congr (PSWith_eq mid x).symm
@@ -277,7 +276,7 @@ middle phases (`hm`), `C_rec`'s batching challenge, first round polynomial (`hq`
 theorem resSpec_D (mid : List UInt8 → VerifierProgram OpenClaims) (x : List UInt8)
     {hr lm lq lf lres : List Ev} {cl : OpenClaims} {ρ : E} {quad res : List E}
     {r : WhirStateT × List E}
-    (hroots : (commitRootUd cfgMain24 >>= fun _ ↦ commitRootUd cfgRec20).after hr = some (.ret ()))
+    (hroots : (commitRootUd cfgMain24G >>= fun _ ↦ commitRootUd cfgRec20G).after hr = some (.ret ()))
     (hm : (mid x).after lm = some (.ret cl))
     (hcl : ∀ c ∈ cl.1, IsMultiaffine 19 c.1)
     (hq : (LeanVM.Protocol.Verifier.sumcheckRoundPoly 3 (batT cl.1 ρ) none).after lq = some (.ret quad))
@@ -299,10 +298,10 @@ theorem resSpec_D (mid : List UInt8 → VerifierProgram OpenClaims) (x : List UI
   rw [show (Spec.bind' _ _ : Spec (_ >>= _) _ _ _ _ _) = Spec.bind _ _ from rfl,
     bind_D_after _ _ hm (by simp)]
   rw [openRes, show (Spec.bind' _ _ : Spec (_ >>= _) _ _ _ _ _) = Spec.bind _ _ from rfl,
-    bind_D_inside _ _ (after_stacked_one cfgRec20 recLevel rec20_levels cl.1 hq hf hres)
+    bind_D_inside _ _ (after_stacked_one cfgRec20G recLevel rec20_levels cl.1 hq hf hres)
       (queryFrag_bind_ne_ret _ _ _ _ _ (by decide) _)]
   rw [recRes20, dif_pos hcl]
-  refine (recResSpec_D cfgRec20 recLevel rec20_levels (codesRec20 0) cl.1 (finHyp_rec20 cl.1 hcl)
+  refine (recResSpec_D cfgRec20G recLevel rec20_levels (codesRec20 0) cl.1 (finHyp_rec20 cl.1 hcl)
     hg20 hQlt20 hεQ20 hεT20 hq hf hne).2 ?_
   refine resTailSpec_D _ _ _ _ _ r hres ?_
   simp only [List.nil_append, List.append_assoc] at hR ⊢

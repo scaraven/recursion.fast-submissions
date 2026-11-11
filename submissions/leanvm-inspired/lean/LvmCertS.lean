@@ -9,6 +9,8 @@ import LvmCompileCodec
 import LvmSpecRulesCert
 import LvmWhirParams
 import LvmWhirParams24
+import LvmWhirParamsG
+import LvmWhirParamsJ
 import LvmWhirDoom
 import LvmFrontMech
 
@@ -21,7 +23,7 @@ byte 8 (`hdrLen = 5,616` bytes, absorbed by the seed: `enc = id`); `hdrS π` acc
 `V_S`'s native header check (`parseOk`) with the specification hashes, minus what `hdrS` checks;
 `q₀ = "lvm/1\0\0"`; `E` scalars, `K` words and challenges by WP-5's codec (`eOfBytes`, `kOfBytes`,
 `chalOf`); the cap level is `8` for `C_main`'s root (`2^19` leaves, lvm2 S2) and `7` for every other tree
-(`cfgMain24`/`cfgRec20`, BLUEPRINT §3.1).
+(`cfgMain24G`/`cfgRec20G`, BLUEPRINT §3.1).
 
 **`P_S`** (`PSWith mid x`, BLUEPRINT §5, WP-11a's `decideProg` order): the roots of `C_main` and
 `C_rec` (`commitRootUd`), the middle phases `mid x` (bus, tables, `CH` GKR with its caller claims
@@ -105,19 +107,22 @@ def schemeS (vk : Digest) (P : List UInt8 → VerifierProgram Bool) : Scheme whe
 abbrev OpenClaims : Type :=
   List LeanVM.Protocol.Verifier.StackClaim × List LeanVM.Protocol.Verifier.StackClaim
 
-/-- **The IOP verifier `P_S`** with the middle phases `mid`. -/
+/-- **The IOP verifier `P_S`** with the middle phases `mid` (lvm2 JB-VQP, J1: `C_main`'s opening at
+the Johnson radius with OOD samples, `verifyStackedJ (cfgMain24J 2)`, `n₀ = 2` commitments before it;
+`C_rec` in unique decoding at `g = 14`; the roots' shapes are unchanged: `cfgMain24G`'s root is
+`cfgMain24J`'s). -/
 def PSWith (mid : List UInt8 → VerifierProgram OpenClaims) (x : List UInt8) : VerifierProgram Bool := do
-  commitRootUd cfgMain24
-  commitRootUd cfgRec20
+  commitRootUd cfgMain24G
+  commitRootUd cfgRec20G
   let cl ← mid x
-  verifyStackedUd cfgRec20 cl.1
-  verifyStackedUd cfgMain24 cl.2
+  verifyStackedUd cfgRec20G cl.1
+  verifyStackedJ (cfgMain24J 2) cl.2
   return true
 
 /-! ## The doom root -/
 
-/-- `C_main`'s unique-decoding threshold (level 0). -/
-noncomputable def thrMain : ℕ := (codesMain24 0).thr
+/-- `C_main`'s threshold (level 0; lvm2 JB-VQP J1: the Johnson threshold, `(codesMain24J 0).thr`). -/
+noncomputable def thrMain : ℕ := (codesMain24J 0).thr
 
 /-- `C_rec`'s unique-decoding threshold. -/
 noncomputable def thrRec : ℕ := (codesRec20 0).thr
@@ -159,13 +164,13 @@ def OpenPost (cl : OpenClaims) (h : List Ev) : Prop :=
   (∀ p ∈ candPairs h, (∃ c ∈ cl.1, ¬ LeanVM.Protocol.EndToEnd.StackClaim.Holds 19 c p.2) ∨
     (∃ c ∈ cl.2, ¬ LeanVM.Protocol.EndToEnd.StackClaim.Holds CMain.nu20 c p.1)) ∧ RootShape h ∧
   (∀ c ∈ cl.1, IsMultiaffine 19 c.1) ∧ (∀ c ∈ cl.2, IsMultiaffine CMain.nu20 c.1) ∧
-  cl.1.length ≤ 2 ^ 63 ∧ cl.2.length ≤ 2 ^ 63
+  cl.1.length ≤ 2 ^ 63 ∧ cl.2.length ≤ 2 ^ 40
 
 /-- **The openings' precondition splits** (no unique decoding needed): if some candidate of
 `C_rec` meets all its claims, every candidate of `C_main` fails one of its claims. -/
 theorem openPost_split {cl : OpenClaims} {h : List Ev} (hp : OpenPost cl h) :
-    StackedPreUd cfgRec20 (codesRec20 0) cl.1 (commits h) ∨
-      StackedPreUd cfgMain24 (codesMain24 0) cl.2 (commits h) := by
+    StackedPreUd cfgRec20G (codesRec20 0) cl.1 (commits h) ∨
+      StackedPreUd (cfgMain24J 2).toUdConfig (codesMain24J 0) cl.2 (commits h) := by
   obtain ⟨hpairs, ⟨Wm, Wr, hc, hWm, hWr⟩, -⟩ := hp
   by_cases hr : ∀ q ∈ Candidates 19 2 thrRec (wordOf (commits h) 1),
       ∃ c ∈ cl.1, ¬ LeanVM.Protocol.EndToEnd.StackClaim.Holds 19 c q
@@ -266,10 +271,12 @@ theorem εFS_kcertOfSpec {S : Scheme} {R : Digest → Wit → Prop} {εm : ℝ�
     (SP : ∀ x, Spec (S.P x) (fun _ ↦ False) (fun b _ ↦ b = false) (εm : ℝ≥0∞) L 0)
     (hstart : ∀ x, (SP x).D [] [] → (SP x).V [] [] ≤ εm) (hε1 : εm < 1)
     (hng : ∀ x h, (S.P x).Reachable h → grindBits h = 0)
-    (LE : LuckExt S R fun x ↦ (SP x).D []) (hεm : εm ≤ (2 : ℝ≥0)⁻¹ ^ 129)
-    (hεB : LE.εB ≤ (2 : ℝ≥0)⁻¹ ^ 130) :
+    (LE : LuckExt S R fun x ↦ (SP x).D []) (hεm : εm ≤ 7 * (2 : ℝ≥0)⁻¹ ^ 131)
+    (hεB : LE.εB ≤ (2 : ℝ≥0)⁻¹ ^ 132) :
     Scheme.εFS (kcertOfSpec SP hstart hε1 hng LE) ≤ (2 : ℝ≥0)⁻¹ ^ 128 :=
-  Scheme.εFS_le _ hεm hεB
+  -- lvm2 JB-VQP: the exact budget `7·2^-131 + 2^-132 + 2^-139 ≤ 2^-128`
+  Scheme.εFS_le_of _ ((add_le_add (add_le_add hεm hεB) le_rfl).trans (by
+    rw [← NNReal.coe_le_coe]; push_cast; norm_num))
 
 /-! ## `SSound` from the scheme -/
 

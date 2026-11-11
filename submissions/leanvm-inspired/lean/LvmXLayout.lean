@@ -187,9 +187,9 @@ one decision evaluates each of them once (separately they cost 1–3 s of kernel
 set_option maxRecDepth 100000 in
 /-- The layout, the blocks' tallies and sizes, `|π|`, and the FS messages' facts at `P20`. -/
 theorem layout_all_P20 :
-    (nPre pX = 1305 ∧ nChain pX = 1314 ∧ alphaPos pX 0 = 1308 ∧ f1Off pX = 229352 ∧
-      capRecOff pX = 13816 ∧ (fsMsgs pX).length = 1338 ∧
-      (fsMsgs pX).getD 1313 (0, 0) = (229304, 196656)) ∧
+    (nPre pX = 1294 ∧ nChain pX = 1303 ∧ alphaPos pX 0 = 1297 ∧ f1Off pX = 233264 ∧
+      capRecOff pX = 13816 ∧ (fsMsgs pX).length = 1327 ∧
+      (fsMsgs pX).getD 1302 (0, 0) = (233216, 196656)) ∧
     (1 + ((blocks pX).map Blk.count).sum = qS pX ∧
       47 + ((blocks pX).map Blk.trBytes).sum = (tally pX).trace ∧
       ((blocks pX).map fun b => match b with | .opn t _ _ => t | _ => 0).sum = (tally pX).nLeaf ∧
@@ -198,21 +198,21 @@ theorem layout_all_P20 :
       8 + ((blocks pX).map Blk.pBytes).sum = piSize pX ∧
       (blocks pX).all (fun b => match b with
         | .one _ len => len % 8 == 0 && 32 ≤ len | .opn _ row _ => row % 8 == 0) = true) ∧
-    piSize pX = 1094248 ∧
+    piSize pX = 915712 ∧
     (fsMsgs pX).all (fun m => 32 + m.2 ≤ queryCap) = true ∧
     ((fsMsgs pX).take (nChain pX - 1)).all (fun m =>
       m.1 % 8 == 0 && m.2 % 8 == 0 && m.1 + m.2 ≤ piSize pX && 32 + m.2 ≤ queryCap) = true ∧
     ((blocks pX).all blkLensOkL = true ∧ 8 + 8 * ((blocks pX).map blkPieceLenL).sum = piSize pX) ∧
-    ((blocks pX).map blkPCostL).sum = 7408208 ∧ ((blocks pX).map blkTCostL).sum = 7907536 ∧
-    ((blocks pX).map blkPOutsL).sum = 136780 ∧ ((blocks pX).map blkTOutsL).sum = 222619 ∧
-    ((blocks pX).map blkPSizeL).sum = 76518 ∧ ((blocks pX).map blkTSizeL).sum = 81002 := by
+    ((blocks pX).map blkPCostL).sum = 5886588 ∧ ((blocks pX).map blkTCostL).sum = 6362815 ∧
+    ((blocks pX).map blkPOutsL).sum = 114463 ∧ ((blocks pX).map blkTOutsL).sum = 179046 ∧
+    ((blocks pX).map blkPSizeL).sum = 76416 ∧ ((blocks pX).map blkTSizeL).sum = 80892 := by
   decide +kernel
 
-/-- **The layout numbers at `P20`**: 1314 targets, `α_j` at positions 1308–1313, `f₁` at π byte
-229,352 (absorbed by position 1314, the first positions query), `C_rec`'s cap at byte 13,816. -/
-theorem layout_P20 : nPre pX = 1305 ∧ nChain pX = 1314 ∧ alphaPos pX 0 = 1308 ∧ f1Off pX = 229352 ∧
-    capRecOff pX = 13816 ∧ (fsMsgs pX).length = 1338 ∧
-    (fsMsgs pX).getD 1313 (0, 0) = (229304, 196656) :=
+/-- **The layout numbers at `P20`**: 1303 targets, `α_j` at positions 1297–1302, `f₁` at π byte
+233,264 (absorbed by position 1303, the first positions query), `C_rec`'s cap at byte 13,816. -/
+theorem layout_P20 : nPre pX = 1294 ∧ nChain pX = 1303 ∧ alphaPos pX 0 = 1297 ∧ f1Off pX = 233264 ∧
+    capRecOff pX = 13816 ∧ (fsMsgs pX).length = 1327 ∧
+    (fsMsgs pX).getD 1302 (0, 0) = (233216, 196656) :=
   layout_all_P20.1
 
 /-- **The blocks are `V_S`'s queries** (`LvmSchedule.tally`): `qS − 1` entries after `q₀`, the

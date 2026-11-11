@@ -46,8 +46,8 @@ def capWX : ℕ := 5 + capRecOff pX / 8
 /-- The tape word of `f₁`. -/
 def f1WX : ℕ := 5 + f1Off pX / 8
 
-theorem layoutX : pLX = 136786 ∧ capWX = 1732 ∧ f1WX = 28674 ∧ f1Off pX % 8 = 0 ∧
-    alphaPos pX 0 = 1308 := by
+theorem layoutX : pLX = 114469 ∧ capWX = 1732 ∧ f1WX = 29163 ∧ f1Off pX % 8 = 0 ∧
+    alphaPos pX 0 = 1297 := by
   refine ⟨?_, ?_, ?_, ?_, layout_P20.2.2.1⟩
   · rw [pLX, piSize_eq]; rfl
   · rw [capWX, layout_P20.2.2.2.2.1]
@@ -226,10 +226,10 @@ private theorem segTSs : ∀ (u : ℕ) (bs : List Blk), segSize (blkTSegs u bs) 
   | u, b :: bs => by
     rw [blkTSegs, segSize, segTSs _ bs, segTS_u, List.map_cons, List.sum_cons, ← segTS b]; omega
 
-private theorem segAll : (segCost pSegL = 7408213 ∧ segCost trSegL = 7907744 ∧
+private theorem segAll : (segCost pSegL = 5886593 ∧ segCost trSegL = 6363023 ∧
       segCost (.cp 0 597) = 21506) ∧
-    (segOuts pSegL = 136781 ∧ segOuts trSegL = 222626 ∧ segOuts (.cp 0 597) = 597) ∧
-    (segSize pSegL = 76523 ∧ segSize trSegL = 81102 ∧ segSize (.cp 0 597) = 50) := by
+    (segOuts pSegL = 114464 ∧ segOuts trSegL = 179053 ∧ segOuts (.cp 0 597) = 597) ∧
+    (segSize pSegL = 76421 ∧ segSize trSegL = 80992 ∧ segSize (.cp 0 597) = 50) := by
   obtain ⟨h1, h2, h3, h4, h5, h6⟩ := layout_all_P20.2.2.2.2.2.2.2
   refine ⟨⟨?_, ?_, rfl⟩, ⟨?_, ?_, rfl⟩, ⟨?_, ?_, rfl⟩⟩
   · rw [pSegL, segCost, segCost, segPCs, h1]
@@ -239,11 +239,11 @@ private theorem segAll : (segCost pSegL = 7408213 ∧ segCost trSegL = 7907744 �
   · rw [pSegL, segSize, segSize, segPSs, h5]
   · rw [trSegL, segSize, segSize, segSize, segSize, segSize, segSize, segSize, segTSs, h6]; rfl
 
-theorem segCosts : segCost pSegL = 7408213 ∧ segCost trSegL = 7907744 ∧ segCost (.cp 0 597) = 21506 :=
+theorem segCosts : segCost pSegL = 5886593 ∧ segCost trSegL = 6363023 ∧ segCost (.cp 0 597) = 21506 :=
   segAll.1
 
 /-- **The node output's cost.** -/
-theorem cost_outIR (m t : ℕ) : cost (outIR m) t ≤ 24100000 := by
+theorem cost_outIR (m t : ℕ) : cost (outIR m) t ≤ 21100000 := by
   have h1 := cost_segIR apC pSegL 0 t
   have h2 := cost_segIR apC trSegL 0 t
   have h3 := cost_segIR apC (.cp 0 597) 0 t
@@ -260,7 +260,7 @@ theorem cost_acpIR (t : ℕ) : cost acpIR t = 335 := by
 theorem cost_sdL (t : ℕ) : cost sdL t = 8 := by
   simp only [sdL, cost, blkSteps, List.length_cons, List.length_nil]; norm_num
 
-theorem chTabL_len : chTabL.length = 5260 := by rw [chTabL_length, nChain_eq]
+theorem chTabL_len : chTabL.length = 5216 := by rw [chTabL_length, nChain_eq]
 
 /-- **The SNARK branch's cost**: the fixed `≈ 2^37.95` (decoder) plus `≈ 2,547` steps a word. -/
 theorem cost_decX (t : ℕ) : cost decX t ≤ 2 ^ 39 + t / 5 * 11895 + t * 168 := by
@@ -280,10 +280,10 @@ theorem cost_decX (t : ℕ) : cost decX t ≤ 2 ^ 39 + t / 5 * 11895 + t * 168 :
 theorem outs_tcpIR (a n t : ℕ) (hn : n < 2 ^ 64) : outs (tcpIR a n) t = n := by
   simp [tcpIR, tcpBody, outs, toNat_toWord hn]
 
-theorem segOutsV : segOuts pSegL = 136781 ∧ segOuts trSegL = 222626 ∧ segOuts (.cp 0 597) = 597 :=
+theorem segOutsV : segOuts pSegL = 114464 ∧ segOuts trSegL = 179053 ∧ segOuts (.cp 0 597) = 597 :=
   segAll.2.1
 
-theorem outs_outIR (m t : ℕ) : outs (outIR m) t ≤ 360619 := by
+theorem outs_outIR (m t : ℕ) : outs (outIR m) t ≤ 294729 := by
   have h1 := outs_segIR apC pSegL 0 t
   have h2 := outs_segIR apC trSegL 0 t
   have h3 := outs_segIR apC (.cp 0 597) 0 t
@@ -303,7 +303,7 @@ theorem outs_decX (t : ℕ) : outs decX t ≤ outCap := by
   simp [acpIR, outs_mcpIR, thcpIR, thcpBody, outs, outCap] at *
   omega
 
-theorem segSizes : segSize pSegL = 76523 ∧ segSize trSegL = 81102 ∧ segSize (.cp 0 597) = 50 :=
+theorem segSizes : segSize pSegL = 76421 ∧ segSize trSegL = 80992 ∧ segSize (.cp 0 597) = 50 :=
   segAll.2.2
 
 theorem sizeIR_idxX : sizeIR (idxIR4 memX pLX) = 294 := by decide +kernel

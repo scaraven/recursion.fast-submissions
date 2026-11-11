@@ -78,11 +78,15 @@ theorem bspecs_pl (C : QCfg) (D : QData) (i : ℕ) (h : i < (bspecs C D).length)
       omega
   · rename_i h1
     simp only [List.length_append, hs, posSpecs_length] at h1 h
-    simp only [List.length_append, hs, posSpecs_length, List.getElem_singleton]
-    show bplOf D (6 + nPosCls C) = bplOf D i
-    congr 1
-    simp at h
-    omega
+    simp only [List.length_cons, List.length_nil] at h
+    obtain ⟨k, rfl⟩ : ∃ k, i = 6 + nPosCls C + k := ⟨i - (6 + nPosCls C), by omega⟩
+    have hk : k < 2 := by omega
+    simp only [List.length_append, hs, posSpecs_length, Nat.add_sub_cancel_left]
+    interval_cases k
+    · show bplOf D (6 + nPosCls C) = bplOf D (6 + nPosCls C + 0)
+      rfl
+    · show bplOf D (7 + nPosCls C) = bplOf D (6 + nPosCls C + 1)
+      congr 1; omega
 
 theorem getD_mem_or {α : Type} (l : List α) (i : ℕ) (d : α) : l.getD i d ∈ l ∨ l.getD i d = d := by
   rcases Nat.lt_or_ge i l.length with hi | hi
@@ -159,7 +163,7 @@ def chkB0 (ts : List Tab) : Bool :=
   ts.all (fun t => (t.reads.all fun r => decide (r.1.val.length ≤ 13)) &&
     t.seeds.all fun s => decide (s.1.val.length ≤ 13)) &&
   ts.all (fun t => decide (0 < t.w)) &&
-  decide ((ts.map fun t => t.cons.length).sum ≤ 2 ^ 60) &&
+  decide ((ts.map fun t => t.cons.length).sum ≤ 2 ^ 56) &&
   ts.all (fun t => !t.cons.isEmpty || !t.reads.isEmpty || !t.seeds.isEmpty)
 
 theorem chkB_eq (L : Lay) (ts : List Tab) : chkB L ts = (chkB0 ts && layOkB L ts) := by

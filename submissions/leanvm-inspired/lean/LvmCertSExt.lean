@@ -137,15 +137,15 @@ theorem foldRoundsT_after : ∀ (n : ℕ) (s : WhirStateT) (lf : List E) {l : Li
 theorem roots_after {l : List Ev} (h : rootsProg.after l = some (.ret ())) :
     ∃ W₁ W₂, l = [Ev.commit 19 64 W₁, Ev.commit 15 64 W₂] := by
   rcases l with _ | ⟨e₁, _ | ⟨e₂, _ | ⟨e₃, es⟩⟩⟩
-  · simp [rootsProg, commitRootUd, cfgMain24, cfgRec20, VerifierProgram.readCommitment,
+  · simp [rootsProg, commitRootUd, cfgMain24G, cfgRec20G, VerifierProgram.readCommitment,
       VerifierProgram.bind, VerifierProgram.after] at h
-  · cases e₁ <;> simp [rootsProg, commitRootUd, cfgMain24, cfgRec20, VerifierProgram.readCommitment,
+  · cases e₁ <;> simp [rootsProg, commitRootUd, cfgMain24G, cfgRec20G, VerifierProgram.readCommitment,
       VerifierProgram.bind, VerifierProgram.after] at h
-  · cases e₁ <;> cases e₂ <;> simp [rootsProg, commitRootUd, cfgMain24, cfgRec20,
+  · cases e₁ <;> cases e₂ <;> simp [rootsProg, commitRootUd, cfgMain24G, cfgRec20G,
       VerifierProgram.readCommitment, VerifierProgram.bind, VerifierProgram.after] at h
     obtain ⟨⟨rfl, rfl⟩, rfl, rfl⟩ := h
     exact ⟨_, _, rfl⟩
-  · cases e₁ <;> cases e₂ <;> cases e₃ <;> simp [rootsProg, commitRootUd, cfgMain24, cfgRec20,
+  · cases e₁ <;> cases e₂ <;> cases e₃ <;> simp [rootsProg, commitRootUd, cfgMain24G, cfgRec20G,
       VerifierProgram.readCommitment, VerifierProgram.bind, VerifierProgram.after] at h
 
 /-- The words a reachable history commits are well shaped. -/
@@ -210,8 +210,8 @@ theorem accept_split {h : List Ev} (hacc : (PSWith mid x).after h = some (.ret t
   rw [PSWith_eq] at hacc
   obtain ⟨_, hr, l₂, rfl, h1, h2⟩ := after_bind_ret (p := rootsProg) hacc
   obtain ⟨cl, lm, l₃, rfl, h3, h4⟩ := after_bind_ret (p := mid x) h2
-  obtain ⟨_, lrec, lmain, rfl, h5, -⟩ := after_bind_ret (p := verifyStackedUd cfgRec20 cl.1) h4
-  rw [stacked_one_eq cfgRec20 recLevel rec20_levels cl.1] at h5
+  obtain ⟨_, lrec, lmain, rfl, h5, -⟩ := after_bind_ret (p := verifyStackedUd cfgRec20G cl.1) h4
+  rw [stacked_one_eq cfgRec20G recLevel rec20_levels cl.1] at h5
   obtain ⟨ρ, l₆, l₇, rfl, h6, h7⟩ := after_bind_ret h5
   obtain rfl := sample_after h6
   obtain ⟨quad, lq, l₈, rfl, h8, h9⟩ := after_bind_ret h7
@@ -274,11 +274,11 @@ noncomputable def extS (mid : List UInt8 → VerifierProgram OpenClaims)
 
 theorem rootsProg_after_roots (W₁ W₂ : Compile.Word) :
     rootsProg.after [Ev.commit 19 64 W₁, Ev.commit 15 64 W₂] = some (.ret ()) := by
-  simp [rootsProg, commitRootUd, cfgMain24, cfgRec20, VerifierProgram.readCommitment,
+  simp [rootsProg, commitRootUd, cfgMain24G, cfgRec20G, VerifierProgram.readCommitment,
     VerifierProgram.bind, VerifierProgram.after]
 
 theorem rootsProg_ne_ret (a : Unit) : rootsProg ≠ .ret a := by
-  simp [rootsProg, commitRootUd, cfgMain24, VerifierProgram.readCommitment, VerifierProgram.bind]
+  simp [rootsProg, commitRootUd, cfgMain24G, VerifierProgram.readCommitment, VerifierProgram.bind]
 
 theorem after_nil' (p : VerifierProgram α) : p.after [] = some p := by simp [VerifierProgram.after]
 
@@ -292,8 +292,8 @@ variable {mid : List UInt8 → VerifierProgram OpenClaims} {Good : GoodRel} {Lm 
 theorem rootsSpec_D {Post : Unit → List Ev → Prop} {εm T : ℝ≥0∞} (hT : T ≤ εm) (W₁ W₂ : Compile.Word) :
     (rootsSpec Post hT).D [] [Ev.commit 19 64 W₁, Ev.commit 15 64 W₂] ↔
       Post () [Ev.commit 19 64 W₁, Ev.commit 15 64 W₂] := by
-  have h1 : (commitRootUd cfgMain24).after [Ev.commit 19 64 W₁] = some (.ret ()) := by
-    simp [commitRootUd, cfgMain24, VerifierProgram.readCommitment, VerifierProgram.after]
+  have h1 : (commitRootUd cfgMain24G).after [Ev.commit 19 64 W₁] = some (.ret ()) := by
+    simp [commitRootUd, cfgMain24G, VerifierProgram.readCommitment, VerifierProgram.after]
   rw [rootsSpec, show (Spec.bind' _ _ : Spec (_ >>= _) _ _ _ _ _) = Spec.bind _ _ from rfl,
     show [Ev.commit 19 64 W₁, Ev.commit 15 64 W₂] = [Ev.commit 19 64 W₁] ++ [Ev.commit 15 64 W₂]
       from rfl, bind_D_after _ _ h1 (by simp)]
@@ -316,7 +316,7 @@ theorem psSpec_D_nil (hnc : RecNoCommit) (hmid : MidSpec mid Good εS Lm) (hLm :
     bind_D_inside _ _ (after_nil' rootsProg) rootsProg_ne_ret, rootsSpec,
     show (Spec.bind' _ _ : Spec (_ >>= _) _ _ _ _ _) = Spec.bind _ _ from rfl,
     bind_D_inside _ _ (after_nil' _) (by
-      simp [commitRootUd, cfgMain24, VerifierProgram.readCommitment])]
+      simp [commitRootUd, cfgMain24G, VerifierProgram.readCommitment])]
   exact id
 
 /-- No doom at the start of `resSpec`. -/
@@ -529,16 +529,16 @@ section KCert
 
 variable {mid : List UInt8 → VerifierProgram OpenClaims} {Good : GoodRel} {Lm : ℝ≥0∞}
 
-theorem coe_εS : (((2 : ℝ≥0)⁻¹ ^ 129 : ℝ≥0) : ℝ≥0∞) = εS := by
+theorem coe_εS : ((7 * (2 : ℝ≥0)⁻¹ ^ 131 : ℝ≥0) : ℝ≥0∞) = εS := by
+  rw [ENNReal.coe_mul, ENNReal.coe_pow, ENNReal.coe_inv (by norm_num), ENNReal.coe_ofNat, ENNReal.coe_ofNat]
+
+theorem coe_εB : (((2 : ℝ≥0)⁻¹ ^ 132 : ℝ≥0) : ℝ≥0∞) = (2 : ℝ≥0∞)⁻¹ ^ 132 := by
   rw [ENNReal.coe_pow, ENNReal.coe_inv (by norm_num), ENNReal.coe_ofNat]
 
-theorem coe_εB : (((2 : ℝ≥0)⁻¹ ^ 130 : ℝ≥0) : ℝ≥0∞) = (2 : ℝ≥0∞)⁻¹ ^ 130 := by
-  rw [ENNReal.coe_pow, ENNReal.coe_inv (by norm_num), ENNReal.coe_ofNat]
-
-/-- `P_S`'s specification at the certificate's `ε = 2^-129` (as `ℝ≥0`). -/
+/-- `P_S`'s specification at the certificate's `ε = εS = 7·2^-131` (as `ℝ≥0`). -/
 noncomputable def SPSε (hmid : MidSpec mid Good εS Lm) (hLm : Lm ≤ εS) (x : List UInt8) :
     Spec (PSWith mid x) (fun _ ↦ False) (fun b _ ↦ b = false)
-      ((((2 : ℝ≥0)⁻¹ ^ 129 : ℝ≥0)) : ℝ≥0∞) 0 0 :=
+      (((7 * (2 : ℝ≥0)⁻¹ ^ 131 : ℝ≥0)) : ℝ≥0∞) 0 0 :=
   (SPS hmid hLm x).mono (fun _ h ↦ h) (fun _ _ h ↦ h) coe_εS.ge le_rfl le_rfl
 
 /-- The luck and the extraction of the `S` branch. -/
@@ -547,7 +547,7 @@ noncomputable def luckExtS (hmid : MidSpec mid Good εS Lm) (hLm : Lm ≤ εS) (
     (hnode : NodeSound VS vk Good child) :
     LuckExt (schemeS vk (PSWith mid)) (Rel (accV VS vk)) fun x ↦ (SPSε hmid hLm x).D [] where
   B := LuckB mid
-  εB := (2 : ℝ≥0)⁻¹ ^ 130
+  εB := (2 : ℝ≥0)⁻¹ ^ 132
   εB_lt_one := pow_lt_one₀ (by positivity) (by norm_num) (by norm_num)
   B_nil _ := LuckB_nil
   B_read _ _ _ hB := not_luckB_snoc rfl hB
@@ -569,7 +569,8 @@ noncomputable def kcertS (hmid : MidSpec mid Good εS Lm) (hLm : Lm ≤ εS) (hs
     (hnode : NodeSound VS vk Good child) :
     KCert (schemeS vk (PSWith mid)) (Rel (accV VS vk)) :=
   kcertOfSpec (S := schemeS vk (PSWith mid)) (SPSε hmid hLm)
-    (fun x hD ↦ (SPS_D_nil hmid hLm x hD).elim) (pow_lt_one₀ (by positivity) (by norm_num) (by norm_num))
+    (fun x hD ↦ (SPS_D_nil hmid hLm x hD).elim)
+    (by rw [← NNReal.coe_lt_coe]; push_cast; norm_num)
     (fun x _ hr ↦ NoGrind.reach_grindBits (ng_PSWith hsh.noGrind x) hr) (luckExtS hmid hLm hsh hnode)
 
 /-- **Its error**: `εFS ≤ 2^-128`. -/

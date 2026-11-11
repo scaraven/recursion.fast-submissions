@@ -81,7 +81,7 @@ def arrs (C : QCfg) (D : QData) (P : Pub) : List InArr :=
 /-- The `BITS` classes: Q_sig's six, the position classes, the `s'` byte shifts (`sSpec`). -/
 def bspecs (C : QCfg) (D : QData) : List BSpec :=
   sigSpecs (sigIn C) (sigOut C) (bplOf D) ++ posSpecs C (fun c => bplOf D (6 + c)) ++
-    [sSpec C (bplOf D (6 + nPosCls C))]
+    [sSpec C (bplOf D (6 + nPosCls C)), powSpec C (bplOf D (7 + nPosCls C))]
 
 /-- **The aux tables.** -/
 def aux (C : QCfg) (D : QData) : List Tab := (bspecs C D).map BSpec.tab

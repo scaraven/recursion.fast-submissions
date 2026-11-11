@@ -231,10 +231,11 @@ theorem posTabsA_eq (C : QCfg) (bpl : Nat → Nat → Bool × Nat) :
     rw [getD_map_toArray _ _ j _ hj, getD_range _ _ _ _ hx, posCellF_eq, List.getD_eq_getElem?_getD,
       List.getElem?_eq_getElem hj, Option.getD_some]
 
-/-- The aux tables with the position classes cached (then the `s'` byte-shift class, `sSpec`). -/
+/-- The aux tables with the position classes cached (then the `s'` bit class `sSpec` and the PoW class
+`powSpec`). -/
 def auxF (C : QCfg) (D : QData) : List Tab :=
   (sigSpecs (sigIn C) (sigOut C) (bplOf D)).map cacheTab ++ posTabsA C (fun c => bplOf D (6 + c)) ++
-    [cacheTab (sSpec C (bplOf D (6 + nPosCls C)))]
+    [cacheTab (sSpec C (bplOf D (6 + nPosCls C))), cacheTab (powSpec C (bplOf D (7 + nPosCls C)))]
 
 theorem auxF_eq (C : QCfg) (D : QData) : auxF C D = aux C D := by
   unfold auxF aux bspecs
@@ -948,8 +949,8 @@ def decideProgB (p : Params) (m : M3) (bb : BusIn → BusOutB) (vk c : Vector UI
     bus.claims ++ m.tableClaims pub evals ++ (tapeClaims p tp wo pub ++ ksClaims).map (.main, ·) ++
       m.ksOutputClaims rk vks ++ kLinkClaims
   let on (com : Com) := (claims.filter (·.1 == com)).map (·.2.onStack)
-  verifyStackedOpening p.recLevels p.nuRec (on .crec) false p.grind
-  verifyStackedOpening p.mainLevels p.nuMain (on .main) false p.grind
+  verifyStackedOpening p.recLevels p.nuRec (on .crec) false p.grind false
+  verifyStackedOpening p.mainLevels p.nuMain (on .main) false p.grind p.mainOod
   pure accOut
 
 theorem decideProgB_eq (p : Params) (m : M3) (bb : BusIn → BusOutB) (h : BusAgree m bb) (vk c : Vector UInt8 32) :

@@ -5,7 +5,7 @@ import LvmCertSOpen
 /-!
 # `P_S` commits nothing after its roots in `C_rec`'s opening, and grinds nowhere
 
-* `noCommit_stackedRec`: `verifyStackedUd cfgRec20 cl` commits nothing (one level: the residual is
+* `noCommit_stackedRec`: `verifyStackedUd cfgRec20G cl` commits nothing (one level: the residual is
   read, no next commitment); **`recNoCommit`** (O7a, `RecNoCommit`).
 * `noGrind_stacked`: every stacked UD opening asks no proof of work; `noGrind_PSWith`: neither does
   `P_S` when its middle phases do not; `NoGrind.reach_grindBits`: a reachable history of a program
@@ -177,6 +177,37 @@ theorem ng_whirLevelsUd (logN lf per c₀ n₀ g : ℕ) (dir : Bool) (eb : List 
     refine NoGrind.bind (ng_roundPoly _ _ _) fun intro ↦ ?_
     exact ng_whirLevelsUd logN lf per c₀ n₀ g dir eb (next :: rest) (i + 1) _
 
+theorem ng_sampleChallengesN : ∀ n, (VerifierProgram.sampleChallenges n).NoGrind
+  | 0 => trivial
+  | n + 1 => by
+    unfold VerifierProgram.sampleChallenges
+    exact NoGrind.bind ng_sample fun _ ↦ NoGrind.bind (ng_sampleChallengesN n) fun _ ↦ ng_ret _
+
+/-- **The level loop with OOD samples asks no proof of work** beyond PI-GRIND's (lvm2 JB-VQP). -/
+theorem ng_whirLevelsJ (logN lf per c₀ n₀ g : ℕ) (dir : Bool) (eb : List E → E) :
+    ∀ (levels : List LeanVM.Parameters.Whir.Level) i s,
+      (whirLevelsJ logN lf per c₀ n₀ g dir eb i levels s).NoGrind
+  | [], _, _ => trivial
+  | [level], i, s => by
+    rw [whirLevelsJ_one]
+    exact ng_whirLevelsUd logN lf per c₀ n₀ g dir eb [level] i s
+  | level :: next :: rest, i, s => by
+    unfold whirLevelsJ
+    refine NoGrind.bind (ng_foldRoundsT _ _ _) fun r ↦ ?_
+    rcases r with ⟨s', lf'⟩
+    dsimp only
+    refine NoGrind.bind (ng_commit _ _) fun _ ↦ ?_
+    refine NoGrind.bind (ng_sampleChallengesN _) fun _ ↦ ?_
+    refine NoGrind.bind ng_readScalar fun _ ↦ ?_
+    refine NoGrind.bind (ng_roundPoly _ _ _) fun _ ↦ ?_
+    refine NoGrind.bind (ng_grindPre _) fun _ ↦ ?_
+    refine NoGrind.bind (ng_powCheck _) fun _ ↦ ?_
+    refine NoGrind.bind (ng_samplePositions _ _ _) fun qs ↦ ?_
+    refine NoGrind.bind ng_sample fun lam ↦ ?_
+    refine NoGrind.bind (ng_query _ _) fun words ↦ ?_
+    refine NoGrind.bind (ng_roundPoly _ _ _) fun intro ↦ ?_
+    exact ng_whirLevelsJ logN lf per c₀ n₀ g dir eb (next :: rest) (i + 1) _
+
 /-- The one-level loop commits nothing (the residual is read, no next oracle). -/
 theorem nc_whirLevelsUd_one (logN lf per c₀ n₀ g : ℕ) (dir : Bool) (eb : List E → E)
     (level : LeanVM.Parameters.Whir.Level) (i : ℕ) (s : WhirStateT) :
@@ -208,6 +239,16 @@ theorem ng_stacked (cfg : UdConfig) (cl : List LeanVM.Protocol.Verifier.StackCla
   exact NoGrind.bind ng_sample fun _ ↦
     NoGrind.bind (ng_roundPoly _ _ _) fun _ ↦ ng_whirLevelsUd _ _ _ _ _ _ _ _ _ _ _
 
+/-- The stacked opening with OOD samples (`verifyStackedJ`) asks no proof of work beyond PI-GRIND's. -/
+theorem ng_stackedJ (cfg : WhirConfig) (cl : List LeanVM.Protocol.Verifier.StackClaim) :
+    (verifyStackedJ cfg cl).NoGrind := by
+  unfold verifyStackedJ verifyWhirJ
+  refine NoGrind.bind ng_sample fun _ ↦ ?_
+  split
+  · exact NoGrind.bind (ng_roundPoly _ _ _) fun _ ↦ ng_whirLevelsJ _ _ _ _ _ _ _ _ _ _ _
+  · unfold verifyWhirUd
+    exact NoGrind.bind (ng_roundPoly _ _ _) fun _ ↦ ng_whirLevelsUd _ _ _ _ _ _ _ _ _ _ _
+
 /-- A one-level stacked opening commits nothing (generic in the configuration, so that no
 concrete program is unfolded). -/
 theorem nc_stacked_one (cfg : UdConfig) (level : LeanVM.Parameters.Whir.Level)
@@ -222,12 +263,12 @@ theorem nc_stacked_one (cfg : UdConfig) (level : LeanVM.Parameters.Whir.Level)
 
 section Concrete
 
-attribute [local irreducible] verifyStackedUd
+attribute [local irreducible] verifyStackedUd verifyStackedJ
 
 /-- **`C_rec`'s opening commits nothing.** -/
 theorem nc_stackedRec (cl : List LeanVM.Protocol.Verifier.StackClaim) :
-    (verifyStackedUd cfgRec20 cl).NoCommit :=
-  nc_stacked_one cfgRec20 ⟨6, 2, 191⟩ rfl cl
+    (verifyStackedUd cfgRec20G cl).NoCommit :=
+  nc_stacked_one cfgRec20G ⟨6, 2, 170⟩ rfl cl
 
 /-- **O7a**: `C_rec`'s one-level opening commits nothing. -/
 theorem recNoCommit : RecNoCommit := fun cl _ _ hl ↦ (nc_stackedRec cl).reach_commits hl
@@ -242,7 +283,7 @@ theorem ng_seq2 {p q : VerifierProgram Unit} (hp : p.NoGrind) (hq : q.NoGrind) :
   NoGrind.bind hp fun _ ↦ NoGrind.bind hq fun _ ↦ ng_ret _
 
 theorem ng_openProg (cl : OpenClaims) : (openProg cl).NoGrind :=
-  ng_seq2 (ng_stacked cfgRec20 cl.1) (ng_stacked cfgMain24 cl.2)
+  ng_seq2 (ng_stacked cfgRec20G cl.1) (ng_stackedJ (cfgMain24J 2) cl.2)
 
 theorem ng_seq3 {p q : VerifierProgram Unit} {m : VerifierProgram OpenClaims}
     {o : OpenClaims → VerifierProgram Bool} (hp : p.NoGrind) (hq : q.NoGrind) (hm : m.NoGrind)
@@ -253,7 +294,7 @@ theorem ng_seq3 {p q : VerifierProgram Unit} {m : VerifierProgram OpenClaims}
 theorem ng_PSWith {mid : List UInt8 → VerifierProgram OpenClaims} (hm : ∀ x, (mid x).NoGrind)
     (x : List UInt8) : (PSWith mid x).NoGrind := by
   rw [PSWith_eq]
-  exact ng_seq3 (ng_commitRootUd cfgMain24) (ng_commitRootUd cfgRec20) (hm x) ng_openProg
+  exact ng_seq3 (ng_commitRootUd cfgMain24G) (ng_commitRootUd cfgRec20G) (hm x) ng_openProg
 
 end Concrete
 

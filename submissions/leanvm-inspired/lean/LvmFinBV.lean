@@ -139,7 +139,7 @@ theorem sBits20
     nK_le_cells _ _ _
   have h24 : 24 ≤ nK cfg20 := by decide
   have hS : (sSpec cfg20 (bplOf D (6 + nPosCls cfg20))).tab ∈ aux cfg20 D :=
-    List.mem_map_of_mem (List.mem_append_right _ (List.mem_singleton_self _))
+    List.mem_map_of_mem (List.mem_append_right _ (by simp))
   have hlen : (sSpec cfg20 (bplOf D (6 + nPosCls cfg20))).outs.length = 64 := by
     show ((List.range 64).map BOut.bit).length = 64; simp
   have hc : ((sSpec cfg20 (bplOf D (6 + nPosCls cfg20))).rd = true →
@@ -160,6 +160,83 @@ theorem sBits20
     simp
   exact out1_at _ pl groups (arrsX x) (aux cfg20 D) lay26 (hτ' x) _ H _ hS hn rfl l z hl (by rw [hlen]; exact hz)
     hc rfl rfl hout (show z < 64 from hz)
+
+/-- The low `m` bits field of a word is below `2^m`. -/
+theorem fld_lt (w : UInt64) {m : Nat} (hm : 1 ≤ m) (hm' : m ≤ 64) :
+    ((BOut.fld 0 m 0).word w).toNat < 2 ^ m := by
+  simp only [BOut.word]
+  rw [UInt64.toNat_shiftRight]
+  have h1 : ((64 - m - 0 : Nat).toUInt64).toNat % 64 = 64 - m := by
+    rw [Nat.toUInt64_eq, UInt64.toNat_ofNat']; omega
+  rw [h1, Nat.shiftRight_eq_div_pow]
+  have hlt := (((w >>> (0 : Nat).toUInt64) <<< (64 - m : Nat).toUInt64)).toNat_lt
+  have e : 2 ^ 64 = 2 ^ (64 - m) * 2 ^ m := by rw [← pow_add]; congr 1; omega
+  rw [e] at hlt
+  exact Nat.div_lt_of_lt_mul hlt
+
+/-- **The PoW fields** (`harith_core`'s `hpw`, PI-GRIND): the class `powSpec` (last of `aux`) writes the
+low `64 − g` bits of lane 2 of each opening's PoW answer at `pwB + x`; so each field is below `2^(64−g)`.
+Its reads and outputs are input cells (`hpe`, `hpwb`, the stream's lanes below `nK`). -/
+theorem pw20
+    (hT : ∀ x, T x = lvmTabs (Qn (lay cfg20) (sigIn cfg20) (qarith cfg20) (nK cfg20) 0) pl groups (arrsX x)
+      (aux cfg20 D))
+    (hst : ∀ x, AuxStatic (lay cfg20) (sigIn cfg20) (qarith cfg20) (nK cfg20) 0 pl groups (aux cfg20 D)
+      (arrsX x))
+    (hinb : ∀ vk c x qm qr, okS vk c x = true → (hdrOf x).b = 1 → GoodN T hτ x qm qr →
+      ((Qn (lay cfg20) (sigIn cfg20) (qarith cfg20) (nK cfg20) 0).interp
+        (inKOf (Qn (lay cfg20) (sigIn cfg20) (qarith cfg20) (nK cfg20) 0) pl groups (arrsX x) (aux cfg20 D)
+          lay26 (hτ' x) (stackOf lay26 qm qr))
+        (inEOf (Qn (lay cfg20) (sigIn cfg20) (qarith cfg20) (nK cfg20) 0) pl groups (arrsX x) (aux cfg20 D)
+          lay26 (hτ' x) (stackOf lay26 qm qr))).inb = true)
+    (hS : StreamOk P20) (hnk : hashedLen P20 / 8 + 5 ≤ nK cfg20)
+    (hpe : ∀ k < (opens P20).length, 2 ≤ ((opens P20).getD k default).pe ∧
+      ((opens P20).getD k default).pe < (plan P20).length)
+    (hpwb : pwB cfg20 + (opens P20).length ≤ nK cfg20) (hg : 1 ≤ 64 - P20.grind) :
+    ∀ vk c x qm qr, okS vk c x = true → (hdrOf x).b = 1 → GoodN T hτ x qm qr →
+      ∀ k < (opens P20).length,
+        ((memX (lay cfg20) (sigIn cfg20) (qarith cfg20) (nK cfg20) 0 pl groups arrsX (aux cfg20 D) hτ' x qm
+          qr).k (pwB cfg20 + k)).val.toNat < 2 ^ (64 - P20.grind) := by
+  intro vk c x qm qr hok hb hG k hk
+  have H := auxH20 hT hst hinb hok hb hG
+  have hK : nK cfg20 ≤ (Qn (lay cfg20) (sigIn cfg20) (qarith cfg20) (nK cfg20) 0).cells .K :=
+    nK_le_cells _ _ _
+  have hS' : (powSpec cfg20 (bplOf D (7 + nPosCls cfg20))).tab ∈ aux cfg20 D :=
+    List.mem_map_of_mem (List.mem_append_right _ (by simp))
+  have hcp : cfg20.p = P20 := rfl
+  obtain ⟨hp2, hpl⟩ := hpe k hk
+  have hrd : ansLane P20 (((opens P20).getD k default).pe - 1) + 4 ≤ hashedLen P20 / 8 := by
+    have := lanes_in hS (i := ((opens P20).getD k default).pe - 1) (by omega) (by omega)
+    simp only [ansLane, ite_eq_right (show ((opens P20).getD k default).pe - 1 ≠ 0 by omega)]
+    omega
+  have ewc : (powSpec cfg20 (bplOf D (7 + nPosCls cfg20))).wc k =
+      ansLane cfg20.p (((opens cfg20.p).getD k default).pe - 1) + 2 := by simp only [powSpec]
+  have eoc : (powSpec cfg20 (bplOf D (7 + nPosCls cfg20))).oc 0 k = pwB cfg20 + k := by simp only [powSpec]
+  have eout : (powSpec cfg20 (bplOf D (7 + nPosCls cfg20))).out 0 = .fld 0 (64 - cfg20.p.grind) 0 := by
+    simp only [powSpec, BitsTab.BSpec.out, List.getD_cons_zero]
+  have elen : (powSpec cfg20 (bplOf D (7 + nPosCls cfg20))).outs.length = 1 := by simp only [powSpec, List.length_singleton]
+  have hc : ((powSpec cfg20 (bplOf D (7 + nPosCls cfg20))).rd = true →
+      (powSpec cfg20 (bplOf D (7 + nPosCls cfg20))).wc k <
+        (Qn (lay cfg20) (sigIn cfg20) (qarith cfg20) (nK cfg20) 0).cells .K) ∧
+      ∀ j < (powSpec cfg20 (bplOf D (7 + nPosCls cfg20))).outs.length,
+        (powSpec cfg20 (bplOf D (7 + nPosCls cfg20))).oc j k <
+          (Qn (lay cfg20) (sigIn cfg20) (qarith cfg20) (nK cfg20) 0).cells .K := by
+    refine ⟨fun _ => ?_, fun j hj => ?_⟩
+    · rw [ewc, hcp]; omega
+    · rw [elen] at hj
+      obtain rfl : j = 0 := by omega
+      rw [eoc]; omega
+  have hn : (powSpec cfg20 (bplOf D (7 + nPosCls cfg20))).n ≤ 2 ^ (powSpec cfg20 (bplOf D (7 + nPosCls cfg20))).τ := by
+    simp only [powSpec]; exact le_two_pow_clog2 _
+  have hx : k < (powSpec cfg20 (bplOf D (7 + nPosCls cfg20))).n := by
+    simp only [powSpec]; rw [hcp]; exact hk
+  have h1 := out1_at _ pl groups (arrsX x) (aux cfg20 D) lay26 (hτ' x) _ H _ hS' hn rfl k 0 hx
+    (by rw [elen]; decide) hc ewc eoc eout (by rw [hcp]; exact ⟨by decide, hg, by omega⟩)
+  unfold Out1 at h1
+  show ((memK _ pl groups (arrsX x) (aux cfg20 D) lay26 (hτ' x) _) (pwB cfg20 + k)).val.toNat < _
+  rw [h1]
+  show ((BOut.fld 0 (64 - cfg20.p.grind) 0).word _).toNat < _
+  rw [hcp]
+  exact fld_lt _ hg (by omega)
 
 /-- **The bits of the child's `n'`** (`harith_core`'s `hnb`): Q_sig's class `sN` (`SigBits.n_bit`). -/
 theorem nBits20 {bpl : ℕ → ℕ → Bool × ℕ} {rest : List Tab}

@@ -73,7 +73,7 @@ def chkB (L : Lay) (ts : List Tab) : Bool :=
   ts.all (fun t => (t.reads.all fun r => decide (r.1.val.length ≤ 13)) &&
     t.seeds.all fun s => decide (s.1.val.length ≤ 13)) &&
   ts.all (fun t => decide (0 < t.w)) &&
-  decide ((ts.map fun t => t.cons.length).sum ≤ 2 ^ 60) &&
+  decide ((ts.map fun t => t.cons.length).sum ≤ 2 ^ 56) &&
   ts.all (fun t => !t.cons.isEmpty || !t.reads.isEmpty || !t.seeds.isEmpty)
 
 theorem colOkB_sk (L : Lay) (τ : ℕ) (c : ColSrc) : colOkB L τ (colSk c) = colOkB L τ c := by
@@ -167,7 +167,7 @@ theorem chkB_width : ∀ t ∈ ts, 0 < t.w := by
   simp only [chkB, Bool.and_eq_true, List.all_eq_true, decide_eq_true_eq] at h
   exact h.1.1.2
 
-theorem chkB_cons : (ts.map fun t => t.cons.length).sum ≤ 2 ^ 60 := by
+theorem chkB_cons : (ts.map fun t => t.cons.length).sum ≤ 2 ^ 56 := by
   simp only [chkB, Bool.and_eq_true, decide_eq_true_eq] at h
   exact h.1.2
 

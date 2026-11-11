@@ -40,7 +40,7 @@ def sampleOf : Ev → Option E
   | _ => none
 
 /-- The roots' program. -/
-abbrev rootsProg : VerifierProgram Unit := commitRootUd cfgMain24 >>= fun _ ↦ commitRootUd cfgRec20
+abbrev rootsProg : VerifierProgram Unit := commitRootUd cfgMain24G >>= fun _ ↦ commitRootUd cfgRec20G
 
 /-- The roots' events, and the events after the middle phases returned. -/
 def afterMid (mid : List UInt8 → VerifierProgram OpenClaims) (x : List UInt8) (h : List Ev) :
@@ -288,7 +288,7 @@ theorem LuckB_nil : ¬ LuckB mid x [] := by
   apply not_luckB_of_foldChal_nil
   unfold foldChal afterMid
   have : rootsProg.retSplit [] = none := by
-    simp [rootsProg, commitRootUd, cfgMain24, VerifierProgram.readCommitment, VerifierProgram.bind,
+    simp [rootsProg, commitRootUd, cfgMain24G, VerifierProgram.readCommitment, VerifierProgram.bind,
       retSplit]
   rw [this]
 
@@ -308,19 +308,13 @@ theorem cands_rec_unique (W : Word) {q q' : Column 19} (hq : q ∈ Candidates 19
     (hq' : q' ∈ Candidates 19 2 thrRec W) : q = q' :=
   cands_unique (by norm_num) (by norm_num) (by rw [thrRec_eq]; norm_num [udThr]) W hq hq'
 
-/-- `C_main`'s candidates are at most one (unique decoding). -/
-theorem cands_main_unique (W : Word) {q q' : Column CMain.nu20} (hq : q ∈ Candidates CMain.nu20 1 thrMain W)
-    (hq' : q' ∈ Candidates CMain.nu20 1 thrMain W) : q = q' :=
-  cands_unique (by norm_num) (by norm_num) (by norm_num [thrMain, codesMain24, LevelCode.ud, udThr])
-    W hq hq'
-
-/-- **The candidate pairs are at most one** (review fact; `kgSpec`'s `L₀ = 1`). -/
-theorem candPairs_ncard_le_one (h : List Ev) : (candPairs h).ncard ≤ 1 := by
-  have hs : (candPairs h).Subsingleton := fun p hp p' hp' ↦
-    Prod.ext (cands_main_unique _ hp.1 hp'.1) (cands_rec_unique _ hp.2 hp'.2)
-  rw [Set.ncard_def]
-  have := Set.encard_le_one_iff_subsingleton.2 hs
-  exact ENat.toNat_le_of_le_coe this
+/-- **The candidate pairs are at most `98`** (lvm2 JB-VQP, J1: `C_main`'s root at the Johnson threshold
+has at most `98` candidates, `candidates_main24J_ncard_le`; `C_rec`'s is unique; `kgSpec`'s
+`L₀ = 98`). -/
+theorem candPairs_ncard_le (h : List Ev) : (candPairs h).ncard ≤ 98 := by
+  refine (Set.ncard_le_ncard_of_injOn Prod.fst (fun p hp ↦ hp.1) (fun p hp p' hp' he ↦
+    Prod.ext he (cands_rec_unique _ hp.2 hp'.2)) (Set.toFinite _)).trans ?_
+  exact candidates_main24J_ncard_le _
 
 /-- The per-round luck bound, `2^15 / |E|`. -/
 noncomputable def δL : ℝ≥0∞ := (2 ^ 15 : ℝ≥0∞) / Fintype.card E
@@ -423,8 +417,8 @@ theorem esc_luck_le : ∀ (p : VerifierProgram Bool) (h : List Ev), ¬ LuckB mid
             rwa [hf c] at this
         _ = _ := Spec.avg_const _
 
-/-- The luck bound: `6 · 2^15 / |E| ≤ 2^-130`. -/
-theorem six_δL_le : (6 : ℝ≥0∞) * δL ≤ (2 : ℝ≥0∞)⁻¹ ^ 130 := by
+/-- The luck bound: `6 · 2^15 / |E| ≤ 2^-132` (lvm2 JB-VQP: within the exact budget's margin). -/
+theorem six_δL_le : (6 : ℝ≥0∞) * δL ≤ (2 : ℝ≥0∞)⁻¹ ^ 132 := by
   rw [δL, card_E_ennreal, ← mul_div_assoc, ← two_pow_cast 192,
     show (6 : ℝ≥0∞) * 2 ^ 15 = ((6 * 2 ^ 15 : ℕ) : ℝ≥0∞) by push_cast; ring]
   exact natCast_div_le_inv_pow (by positivity) (by norm_num)

@@ -207,4 +207,15 @@ outputs its 64 bits (`.bit z`). -/
 def sSpec (C : QCfg) (pl : Nat → Bool × Nat) : BSpec :=
   ⟨2, 4, (List.range 64).map BOut.bit, true, fun x => (sigIn C).hd + 9 + x, fun j x => bsB C + 64 * x + j, pl⟩
 
+/-- The PoW fields (PI-GRIND): one `K` cell per opening after `s'`'s 256 bits. -/
+def pwB (C : QCfg) : Nat := bsB C + 256
+
+/-- **The PoW class** (PI-GRIND; T-Q step B): one row per opening `x` (`opens`: `C_rec`'s level, then
+`C_main`'s), reading lane 2 of its PoW challenge's answer (the entry before its first positions entry) and
+writing the field of its low `64 − g` bits at `pwB + x`: the circuit asserts that the lane equals it, so the
+lane is below `2^(64−g)`. -/
+def powSpec (C : QCfg) (pl : Nat → Bool × Nat) : BSpec :=
+  ⟨clog2 (opens C.p).length, (opens C.p).length, [BOut.fld 0 (64 - C.p.grind) 0], true,
+    fun x => ansLane C.p (((opens C.p).getD x default).pe - 1) + 2, fun _ x => pwB C + x, pl⟩
+
 end Lvm.QAsm

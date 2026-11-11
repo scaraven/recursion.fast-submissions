@@ -228,7 +228,7 @@ theorem rdK_toBitVec (M : Mem) (a : ℕ) : BF64.toBitVec (rdK M a) = rd M a := r
 
 theorem rdE_eq (M : Mem) (a : ℕ) : rdE M a = mkE (wK (rd M a)) (wK (rd M (a + 1))) (wK (rd M (a + 2))) := rfl
 
-theorem alphaPos_eq (j : ℕ) : alphaPos pX j = 1308 + j := by
+theorem alphaPos_eq (j : ℕ) : alphaPos pX j = 1297 + j := by
   rw [alphaPos, layout_P20.1]
 
 /-- One 3-word copy of the `α` copies. -/
@@ -248,38 +248,38 @@ theorem acpIR_sem (I : Array Word) (s : St) (hM : Inv s.M) (hsz : 2 ^ 25 ≤ s.M
     (∀ j < 6, ∀ m < 3, rd (semXIR I acpIR s).M (aBX + 3 * j + m) = rd s.M (ansB + 4 * alphaPos pX j + m)) ∧
     (∀ r, regs ≤ r → (r < aBX ∨ aBX + 18 ≤ r) → rd (semXIR I acpIR s).M r = rd s.M r) ∧
     Inv (semXIR I acpIR s).M ∧ (semXIR I acpIR s).M.size = s.M.size ∧ (semXIR I acpIR s).o = s.o := by
-  have hA : ∀ j, ansB + 4 * alphaPos pX j = 16793600 + 4 * (1308 + j) := fun j => by
+  have hA : ∀ j, ansB + 4 * alphaPos pX j = 16793600 + 4 * (1297 + j) := fun j => by
     rw [alphaPos_eq, ansB_eq]
   simp only [acpIR, hA]
   simp only [aBX]
-  obtain ⟨p1, q1, i1, z1, o1⟩ := mcp3 I s hM hsz (src := 16793600 + 4 * (1308 + 0)) (dst := 2 ^ 19)
+  obtain ⟨p1, q1, i1, z1, o1⟩ := mcp3 I s hM hsz (src := 16793600 + 4 * (1297 + 0)) (dst := 2 ^ 19)
     (by simp only [regs]; norm_num) (by norm_num) (by norm_num) (by norm_num)
   rw [semXIR_seq]
-  generalize semXIR I (mcpIR 3 (16793600 + 4 * (1308 + 0)) 1 (2 ^ 19)) s = s1 at p1 q1 i1 z1 o1
-  obtain ⟨p2, q2, i2, z2, o2⟩ := mcp3 I s1 i1 (by omega) (src := 16793600 + 4 * (1308 + 1))
+  generalize semXIR I (mcpIR 3 (16793600 + 4 * (1297 + 0)) 1 (2 ^ 19)) s = s1 at p1 q1 i1 z1 o1
+  obtain ⟨p2, q2, i2, z2, o2⟩ := mcp3 I s1 i1 (by omega) (src := 16793600 + 4 * (1297 + 1))
     (dst := 2 ^ 19 + 3) (by simp only [regs]; norm_num) (by norm_num) (by norm_num) (by norm_num)
   rw [semXIR_seq]
-  generalize semXIR I (mcpIR 3 (16793600 + 4 * (1308 + 1)) 1 (2 ^ 19 + 3)) s1 = s2 at p2 q2 i2 z2 o2
-  obtain ⟨p3, q3, i3, z3, o3⟩ := mcp3 I s2 i2 (by omega) (src := 16793600 + 4 * (1308 + 2))
+  generalize semXIR I (mcpIR 3 (16793600 + 4 * (1297 + 1)) 1 (2 ^ 19 + 3)) s1 = s2 at p2 q2 i2 z2 o2
+  obtain ⟨p3, q3, i3, z3, o3⟩ := mcp3 I s2 i2 (by omega) (src := 16793600 + 4 * (1297 + 2))
     (dst := 2 ^ 19 + 6) (by simp only [regs]; norm_num) (by norm_num) (by norm_num) (by norm_num)
   rw [semXIR_seq]
-  generalize semXIR I (mcpIR 3 (16793600 + 4 * (1308 + 2)) 1 (2 ^ 19 + 6)) s2 = s3 at p3 q3 i3 z3 o3
-  obtain ⟨p4, q4, i4, z4, o4⟩ := mcp3 I s3 i3 (by omega) (src := 16793600 + 4 * (1308 + 3))
+  generalize semXIR I (mcpIR 3 (16793600 + 4 * (1297 + 2)) 1 (2 ^ 19 + 6)) s2 = s3 at p3 q3 i3 z3 o3
+  obtain ⟨p4, q4, i4, z4, o4⟩ := mcp3 I s3 i3 (by omega) (src := 16793600 + 4 * (1297 + 3))
     (dst := 2 ^ 19 + 9) (by simp only [regs]; norm_num) (by norm_num) (by norm_num) (by norm_num)
   rw [semXIR_seq]
-  generalize semXIR I (mcpIR 3 (16793600 + 4 * (1308 + 3)) 1 (2 ^ 19 + 9)) s3 = s4 at p4 q4 i4 z4 o4
-  obtain ⟨p5, q5, i5, z5, o5⟩ := mcp3 I s4 i4 (by omega) (src := 16793600 + 4 * (1308 + 4))
+  generalize semXIR I (mcpIR 3 (16793600 + 4 * (1297 + 3)) 1 (2 ^ 19 + 9)) s3 = s4 at p4 q4 i4 z4 o4
+  obtain ⟨p5, q5, i5, z5, o5⟩ := mcp3 I s4 i4 (by omega) (src := 16793600 + 4 * (1297 + 4))
     (dst := 2 ^ 19 + 12) (by simp only [regs]; norm_num) (by norm_num) (by norm_num) (by norm_num)
   rw [semXIR_seq]
-  generalize semXIR I (mcpIR 3 (16793600 + 4 * (1308 + 4)) 1 (2 ^ 19 + 12)) s4 = s5 at p5 q5 i5 z5 o5
-  obtain ⟨p6, q6, i6, z6, o6⟩ := mcp3 I s5 i5 (by omega) (src := 16793600 + 4 * (1308 + 5))
+  generalize semXIR I (mcpIR 3 (16793600 + 4 * (1297 + 4)) 1 (2 ^ 19 + 12)) s4 = s5 at p5 q5 i5 z5 o5
+  obtain ⟨p6, q6, i6, z6, o6⟩ := mcp3 I s5 i5 (by omega) (src := 16793600 + 4 * (1297 + 5))
     (dst := 2 ^ 19 + 15) (by simp only [regs]; norm_num) (by norm_num) (by norm_num) (by norm_num)
-  generalize semXIR I (mcpIR 3 (16793600 + 4 * (1308 + 5)) 1 (2 ^ 19 + 15)) s5 = s6 at p6 q6 i6 z6 o6
+  generalize semXIR I (mcpIR 3 (16793600 + 4 * (1297 + 5)) 1 (2 ^ 19 + 15)) s5 = s6 at p6 q6 i6 z6 o6
   have hR : ∀ r, regs ≤ r → (r < 2 ^ 19 ∨ 2 ^ 19 + 18 ≤ r) → rd s6.M r = rd s.M r := fun r hr h => by
     rw [q6 r hr (by omega), q5 r hr (by omega), q4 r hr (by omega), q3 r hr (by omega), q2 r hr (by omega),
       q1 r hr (by omega)]
-  have hsrc : ∀ j < 6, ∀ m < 3, regs ≤ 16793600 + 4 * (1308 + j) + m ∧
-      (16793600 + 4 * (1308 + j) + m < 2 ^ 19 ∨ 2 ^ 19 + 18 ≤ 16793600 + 4 * (1308 + j) + m) :=
+  have hsrc : ∀ j < 6, ∀ m < 3, regs ≤ 16793600 + 4 * (1297 + j) + m ∧
+      (16793600 + 4 * (1297 + j) + m < 2 ^ 19 ∨ 2 ^ 19 + 18 ≤ 16793600 + 4 * (1297 + j) + m) :=
     fun j _ m _ => ⟨by simp only [regs]; omega, .inr (by omega)⟩
   refine ⟨fun j hj m hm => ?_, hR, i6, by rw [z6, z5, z4, z3, z2, z1], by rw [o6, o5, o4, o3, o2, o1]⟩
   have hr : regs ≤ 2 ^ 19 + 3 * j + m := by simp only [regs]; omega
