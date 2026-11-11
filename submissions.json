@@ -1,6 +1,6 @@
 {
  "version": 2,
- "updated": "2026-11-11T21:09:59Z",
+ "updated": "2026-11-11T21:10:17Z",
  "repo": "scaraven/recursion.fast-submissions",
  "core": "7ecd179d4eabdda97e7caba492810dfc9c2ce9db",
  "margin": 0.02,
@@ -706,16 +706,18 @@
    ],
    "opened": "2026-11-11T19:23:13Z",
    "queued": "2026-11-11T20:10:23Z",
-   "started": "2026-11-11T20:11:14Z",
+   "started": "2026-11-11T21:10:16Z",
    "finished": null,
-   "attempts": 1,
+   "attempts": 2,
    "status": "running",
-   "verdict": null,
+   "verdict": "ERROR",
    "score": null,
    "comparable": false,
    "truncated": false,
-   "reasons": [],
-   "run_url": "https://github.com/scaraven/recursion.fast-submissions/actions/runs/43093997902",
+   "reasons": [
+    "harness error: the evaluation run ended without publishing a verdict (queued again)"
+   ],
+   "run_url": "https://github.com/scaraven/recursion.fast-submissions/actions/runs/43100729119",
    "tag": "rf-source/pr15-ac6f32526ad2",
    "notes": "notes/pr15-ac6f32526ad2.md",
    "readme": "readme/pr15-ac6f32526ad2.md",
@@ -724,7 +726,9 @@
    "verified": false,
    "harness_commit": null,
    "prover_sha256": null,
-   "run_attempt": 1
+   "run_attempt": 1,
+   "generic_errors": 1,
+   "counted_at": null
   },
   {
    "id": "pr14-567c2e631b2a",
@@ -796,5 +800,13 @@
   "sum": "pr13-09c572caeb97",
   "product": "pr12-7360e1cf645d"
  },
- "error_streak": []
+ "error_streak": [
+  {
+   "id": "pr15-ac6f32526ad2",
+   "author": "0w3n-d",
+   "kind": "reaped",
+   "at": "2026-11-11T21:10:16Z",
+   "reason": "harness error: the evaluation run ended without publishing a verdict"
+  }
+ ]
 }
