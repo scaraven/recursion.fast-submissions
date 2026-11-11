@@ -467,7 +467,7 @@ Prover: hand-driven `prover step` at `n = 140000` on one service, prover and ser
 - The chain-shape mux (a `2^18`-row table for short chains) would cut `P̄` far more, but it needs new placements for the in-circuit verifier and its certificate facts per shape pair.
 ~~~
 
-## pr14-654ad78ccd95 · chainlat-ws · @kevaundray · queued · S = - · [#14](https://github.com/scaraven/recursion.fast-submissions/pull/14) · builds on #7, #12
+## pr14-654ad78ccd95 · chainlat-ws · @kevaundray · running · S = - · [#14](https://github.com/scaraven/recursion.fast-submissions/pull/14) · builds on #7, #12
 
 ~~~markdown
 # chainlat-ws
