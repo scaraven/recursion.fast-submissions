@@ -5,12 +5,16 @@ contract's signed random oracle and to its cheap-extractor fuel cap. Each step i
 Keccak-256 chain, plus the previous signed proof verified inside the circuit. `NOTES.md` has the design,
 the numbers and the dead ends.
 
-**Changes since pr11-983bdcfa21d6** (accepted on the evaluation machine: S = 10.17, S× = 8.19):
-- the chain link is gated by `n` (rows `≥ n` hold the zero input), so the prover's work grows with `n`: steps of 4.9–11.7 s
-  on the dev VM, against 12–14 s;
-- faster prover plumbing (node program built before `ready`, AVX-512 Keccak-f walks, overlapped witness phases);
-- a faster native verifier: fast twins in `LvmVFast`, proved equal to the specified `VS20`, 506 → 276 ms per check;
-- local season shape (dev VM): ACCEPT, S 16.21 → 8.76, S× 15.74 → 6.46. `|π|` is 1,181,488 B (+1,296).
+**Changes since pr11-2f57ce79224a** (the gated chain link; local S = 8.76, S× = 6.46):
+- the chain is a digest-only Keccak tape: only lanes 0–3 of each row's output are committed, each row's input is
+  `Pad43` of the previous digest (virtual), one GKR of depth 24 proves the permutations, and a 20-round wiring
+  sumcheck ties the GKR's input claim to the committed digests, masked to the live rows `i < n`;
+- `C_main` shrinks from 2^26 to 2^24 words, with three WHIR levels instead of four; `|π|` 1,181,488 → 1,094,248 B,
+  `qS` 11,832 → 9,916;
+- local season shape (dev VM): ACCEPT, S 8.76 → 6.26, S× 6.46 → 3.94; steps 2.8–8.9 s (were 4.9–11.7 s).
+
+pr11-2f57ce79224a itself gated the chain link by `n`, sped up the prover plumbing and made the native verifier
+faster (fast twins in `LvmVFast`, proved equal to the specified `VS20`).
 
 ## Trust surface
 
@@ -35,9 +39,11 @@ the numbers and the dead ends.
   - Right child: a witness-sending leaf, checked natively.
   - Left child: the previous signed proof, verified in the circuit.
   - A flag `b = 0` gives step 1's first proof.
-- **Chain.** A 2^20-row Keccak table, proved by leanVM's GKR (RMFE); rows `≥ n` hold the zero input. The
-  link `in_{i+1} = Pad43(Y_i)` is a bit-sliced shift sumcheck with ring switching, masked to the live rows
-  (`i + 1 < n`); `V` evaluates the masks in closed form.
+- **Chain.** A 2^20-row Keccak tape that commits only each row's 256-bit digest `D[i]`. Row `i`'s input is
+  `Pad43(D[i−1])` (`Pad43(s)` at row 0, zero for rows `≥ n`), never committed. leanVM's GKR (RMFE), one segment
+  of depth 24, proves the permutations; a wiring sumcheck with the public kernel `ι(x + 1)·[x + 1 ≤ n − 1]`, a
+  slot reduction and one ring switch tie its input claim to bit slices of `D`. `V` evaluates the kernel in closed
+  form from `n`'s bits.
 - **Child verification.**
   - A 2^15-row sponge table: the trace digest, one WOTS walk and the statements.
   - BITS tables.
@@ -46,11 +52,11 @@ the numbers and the dead ends.
   claims, `V` checks one evaluation, and the parent's circuit checks the child's fold.
 - **Memory.** leanVM's `g`-power logup bus, a grand-product GKR and a table sumcheck.
 - **Commitments**, both stacked WHIR in the unique-decoding regime, with no OOD sample and no grinding:
-  - `C_main`: 2^26 words, 4 levels, never decoded;
+  - `C_main`: 2^24 words, 3 levels (folds 6/4/4, 311/191/156 queries), never decoded;
   - `C_rec`: 2^19 words holding the child's trace and signature; 1 level, decoded by the extractor.
 - **Transcript.** A hash chain over the contract oracle. Merkle hashes are oracle queries, and queries are
   lane-aligned and classified by length.
-- **Sizes (P20).** `qS = 11,832`, `|π| = 1,181,488 B`, 6.83 M committed table words.
+- **Sizes (P20).** `qS = 9,916`, `|π| = 1,094,248 B`, 6.31 M committed table words (of 9.44 M free in `C_main`).
 
 ## Main theorem chain (modules in `lean/`)
 
@@ -59,8 +65,8 @@ the numbers and the dead ends.
 | certificate | `certificateFin`; guard `certificateR_guard`, `certificateR_reject`; `staticFacts` | `LvmFinCert`, `LvmFinGuard`, `LvmFinStatic` |
 | assembly | `openFin`, `certificateR_open`, `sSound_of_openS` | `LvmFinCert`, `LvmSubmissionS` |
 | FS compiler | `kstate_of_kcert`, `ks_of_kcert`: `KCert` (leanVM `Cert` + luck) ⇒ `KState` ⇒ `KS` | `LvmCompileKS` |
-| IOP | `kcertS`; WHIR-UD `whirUdSpec`, `card_foldBad_le_ud`; Keccak `callerSpec`, `kgSpec`; bus `midBusTableSpecS`; accumulator | `LvmCertS*`, `LvmWhir*`, `LvmMcaUd`, `LvmKeccakCaller*`, `LvmM3Mid*`, `LvmAccSpec*` |
-| tables ⇒ relation | `chain_of_CH`, `traceDigest_of_KS`, `loopir_sound`, `qlink_sound`, `qsig_sound`, `qacc_replays`, `harith_core`/`harith20`, `nodeSound_of` | `LvmChainTable`, `LvmMask`, `LvmSpongeTable`, `LvmLoopSound`, `LvmQ*`, `LvmQAcc*`, `LvmQAsmHarMain`, `LvmFinHB`, `LvmNodeSound*` |
+| IOP | `kcertS`; WHIR-UD `whirUdSpec`, `card_foldBad_le_ud`; tape and `KS` phases `kgSpecS`; wiring `wireChSpec`; Keccak `callerSpec`, `kgSpec`; bus `midBusTableSpecS`; accumulator | `LvmCertS*`, `LvmWhir*`, `LvmMcaUd`, `LvmWireSpec`, `LvmWireKernel`, `LvmKeccakCaller*`, `LvmM3Mid*`, `LvmAccSpec*` |
+| tables ⇒ relation | `chain_of_tape`, `traceDigest_of_KS`, `loopir_sound`, `qlink_sound`, `qsig_sound`, `qacc_replays`, `tape_spec`, `wire_spec`, `harith_core`/`harith20`, `nodeSound_of` | `LvmTapeRel`, `LvmSpongeTable`, `LvmLoopSound`, `LvmQ*`, `LvmQAcc*`, `LvmQEqKeccakTape`, `LvmQWireSound`, `LvmQAsmHarMain`, `LvmFinHB`, `LvmNodeSound*` |
 | verifier | `VS20F_eq` (compiled = specified); `refines_VSL` (native ⇒ compiled IOP); `Vwith`, `complete` | `LvmVFast`, `LvmVEqRefines`, `LvmVerifier` |
 | extractor | `computesX` (cost at the declared fuel), `EX_node`, `decodeRec_of_ud` | `LvmXTop`, `LvmXSpec`, `LvmXDecUd` |
 
@@ -68,13 +74,15 @@ Completeness is the witness-sending kind (`P := encode`, error 0). The harness t
 
 ## Layout
 
-`lean/` holds 481 flat modules, all prefixed `Lvm` (`Solution`'s import closure holds 452; `LvmTapeRel` and `LvmWire*` are work towards a later version):
+`lean/` holds 496 flat modules, all prefixed `Lvm` (`Solution`'s import closure holds 470; it still imports pr11-983bdcfa21d6's
+chain-table and shift-link modules, `LvmChainTable*`, `LvmShift`, `LvmQLinkArithCH*`, which the certificate no
+longer uses):
 
 | group | prefixes |
 |---|---|
 | fields, DSL, doom rules | `LvmField*`, `LvmDsl*`, `LvmSpec*`, `LvmProg`, `LvmVCore`, `LvmVParams` |
 | FS compiler | `LvmCompile*`, `LvmLog`, `LvmForest`, `LvmPotential` |
-| polynomials, Keccak GKR | `LvmMl*`, `LvmCp*`, `LvmSumcheck*`, `LvmGrand*`, `LvmKeccak*`, `LvmK*`, `LvmChain*`, `LvmSponge*`, `LvmShift`, `LvmMask*` |
+| polynomials, Keccak GKR, tape | `LvmMl*`, `LvmCp*`, `LvmSumcheck*`, `LvmGrand*`, `LvmKeccak*`, `LvmK*`, `LvmTapeRel`, `LvmWire*`, `LvmChain*`, `LvmSponge*`, `LvmShift` |
 | bus, M3, ring switching | `LvmBus*`, `LvmSpine*`, `LvmFront*`, `LvmM3*`, `LvmRing*`, `LvmLayout*` |
 | WHIR-UD | `LvmWhir*`, `LvmRS`, `LvmUd*`, `LvmMcaUd`, `LvmNovelBasis` |
 | LoopIR, circuit, program | `LvmLoop*`, `LvmQ*` (`LvmQAsm*` assembles the real `Q`), `LvmQAcc*`, `LvmBits*`, `LvmWots*`, `LvmSig*`, `LvmReplay*` |
@@ -103,8 +111,8 @@ Completeness is the witness-sending kind (`P := encode`, error 0). The harness t
 ## Trust notes
 
 - **Measured vs estimated.** Local timings come from a QEMU dev VM on which v4 cannot start. They use the
-  dev variant v4p: 4.9–11.7 s per step (`≈ 4.3 + 7.6·n/2^20` s), 9.7 s for step 1, 7.67 GiB peak, and `V`
-  ≈ 0.28 s per check. Zen 4 numbers come from the harness.
+  dev variant v4p: 2.8–8.9 s per step (`≈ 2.04 + 7.06·n/2^20` s), 6.5 s for step 1, 6.86 GiB peak, and `V`
+  ≈ 0.27 s per check. Zen 4 numbers come from the harness.
 - **CPU safety.** `prover setup` self-tests each variant (KATs, a batch proof, a full P8 proof) against
   the portable reference's digest, and writes a cap that `dispatch.s` honours. v4 was byte-identical to
   v2 under Intel SDE.
