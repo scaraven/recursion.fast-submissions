@@ -1,6 +1,6 @@
 {
  "version": 2,
- "updated": "2026-11-11T21:43:17Z",
+ "updated": "2026-11-11T21:44:39Z",
  "repo": "scaraven/recursion.fast-submissions",
  "core": "7ecd179d4eabdda97e7caba492810dfc9c2ce9db",
  "margin": 0.02,
@@ -707,28 +707,121 @@
    "opened": "2026-11-11T19:23:13Z",
    "queued": "2026-11-11T20:10:23Z",
    "started": "2026-11-11T21:10:16Z",
-   "finished": null,
+   "finished": "2026-11-11T21:44:39Z",
    "attempts": 2,
-   "status": "running",
-   "verdict": "ERROR",
-   "score": null,
-   "comparable": false,
+   "status": "record",
+   "verdict": "ACCEPT",
+   "score": {
+    "S": 9.082552566594044,
+    "P_bar": 6.230912211315977,
+    "V_bar": 2.851640355278067,
+    "share_P": 0.686030955023976,
+    "share_V": 0.31396904497602396,
+    "K": 5.0,
+    "kappa": 3.2975,
+    "n_ref": 262144,
+    "s_ref": 2097152,
+    "c_P": 0.9993188931056294,
+    "T_triv_ns": 6595019883,
+    "v_ref_ns": 659501988.3,
+    "M": 96,
+    "sum_n": 32060318,
+    "truncated": false,
+    "c_P_provisional": false,
+    "x_bar": 0.8647885838599143,
+    "V_mean_s": 0.19918884766666667,
+    "g": 1.0912216282570264,
+    "S_product": 6.799306168758809,
+    "pi_mean_bytes": 1180192.0,
+    "tracks": {
+     "sum": "S",
+     "product": "S_product"
+    },
+    "fit": {
+     "a_s_per_permutation": 1.677387773425326e-08,
+     "b_s": 6.1481868334331455,
+     "a_ci95": [
+      -1.2109593901289394e-08,
+      4.5657349369795916e-08
+     ],
+     "b_ci95": [
+      6.136384510330569,
+      6.159989156535722
+     ],
+     "estimator": "trimmed least squares (lowest 80% of residuals, from a Theil–Sen start, to a fixed point)",
+     "scored": false
+    },
+    "P_bar_per_octave": {
+     "2^17": 9.025718530423449,
+     "2^18": 4.843548889948232,
+     "2^19": 2.377638727069029
+    },
+    "marginal": {
+     "chain_speed_1pct": -0.0068603095502397515,
+     "product_chain_speed_1pct": -0.010000000000000009,
+     "overhead_0.1s_per_step": -0.010953731493101637,
+     "product_overhead_0.1s_per_step": -0.015966818133911542,
+     "verifier_10ms": -0.0055050437518379125,
+     "product_verifier_10ms": -0.008182934909366169,
+     "proof_100KB": -0.017311989307477682,
+     "product_proof_100KB": 0.0,
+     "note": "relative change of S (and, prefixed product_, of S_product) at the current point (negative: better)"
+    },
+    "largest_x": {
+     "index": 45,
+     "x": 0.8743878200193866,
+     "x_verifier": 0.3116284206053242,
+     "x_size": 0.5627593994140625
+    },
+    "batching": {
+     "top_decile_share_of_P3": 0.24155339834010034,
+     "residual_lag1_autocorrelation": 0.0034427912941541287,
+     "note": "diagnostic only: work deferred to some steps shows as a large top-decile share"
+    }
+   },
+   "comparable": true,
    "truncated": false,
    "reasons": [
-    "harness error: the evaluation run ended without publishing a verdict (queued again)"
+    "sum: 9.0826 s beats the record pr13-09c572caeb97 (9.8390 s) by 7.7%",
+    "product: 6.7993 s against the record pr12-7360e1cf645d's 2.1710 s (-213.2%; a record needs more than 2%)"
    ],
    "run_url": "https://github.com/scaraven/recursion.fast-submissions/actions/runs/43100729119",
    "tag": "rf-source/pr15-ac6f32526ad2",
    "notes": "notes/pr15-ac6f32526ad2.md",
    "readme": "readme/pr15-ac6f32526ad2.md",
-   "record_of": null,
+   "record_of": {
+    "sum": "pr13-09c572caeb97",
+    "product": null
+   },
    "tree": "af65ceebb6fdeacd58bf7d0c81578e8f0ac0bd98",
-   "verified": false,
-   "harness_commit": null,
-   "prover_sha256": null,
+   "verified": true,
+   "harness_commit": "7ecd179d4eabdda97e7caba492810dfc9c2ce9db",
+   "prover_sha256": "b3d00dbf2794325677482e9848149a2b9a1627c3957c0d3a4e5ec8acd9e465a6",
    "run_attempt": 1,
    "generic_errors": 1,
-   "counted_at": null
+   "counted_at": "2026-11-11T21:10:16Z",
+   "build_manifest": "9f84467263275ef280f02563e559adc8f8b5061bcafb9daeb76330256b31ec6c",
+   "against": {
+    "sum": {
+     "record": "pr13-09c572caeb97",
+     "S": 9.082552566594044,
+     "S_record": 9.838988126997094,
+     "gain": 0.07688143848120665,
+     "beats": true
+    },
+    "product": {
+     "record": "pr12-7360e1cf645d",
+     "S": 6.799306168758809,
+     "S_record": 2.1709843280530845,
+     "gain": -2.1319001620137694,
+     "beats": false
+    }
+   },
+   "record_in": [
+    "sum"
+   ],
+   "retired_in": {},
+   "result": "results/pr15-ac6f32526ad2.json"
   },
   {
    "id": "pr14-567c2e631b2a",
@@ -811,16 +904,8 @@
   }
  ],
  "record": {
-  "sum": "pr13-09c572caeb97",
+  "sum": "pr15-ac6f32526ad2",
   "product": "pr12-7360e1cf645d"
  },
- "error_streak": [
-  {
-   "id": "pr15-ac6f32526ad2",
-   "author": "0w3n-d",
-   "kind": "reaped",
-   "at": "2026-11-11T21:10:16Z",
-   "reason": "harness error: the evaluation run ended without publishing a verdict"
-  }
- ]
+ "error_streak": []
 }
