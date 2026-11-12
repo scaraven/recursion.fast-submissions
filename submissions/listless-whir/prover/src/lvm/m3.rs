@@ -116,20 +116,31 @@ fn c(i: usize) -> Coord {
 }
 
 impl InArr {
-    /// Columns: the value limbs, `fin` (committed), the address `g^(base + stride·x)` (fixed).
-    pub fn table(&self) -> TableW {
-        let n = 1usize << self.tau;
-        let lim = self.ty.limbs();
-        assert_eq!(self.vals.len(), lim);
-        let step = crate::lv::primitives::field::g_pow(self.stride);
+    /// The address column `g^(base + stride·x)`, `x < 2^tau`.
+    pub fn addr(base: usize, stride: usize, tau: usize) -> Vec<F64> {
+        let n = 1usize << tau;
+        let step = crate::lv::primitives::field::g_pow(stride);
         let mut addr: Vec<F64> = Vec::with_capacity(n);
-        let mut a = crate::lv::primitives::field::g_pow(self.base);
+        let mut a = crate::lv::primitives::field::g_pow(base);
         for _ in 0..n {
             addr.push(a);
             a = a * step;
         }
-        let mut cols = self.vals.clone();
-        cols.push(self.fin.clone());
+        addr
+    }
+
+    /// Columns: the value limbs, `fin` (committed), the address `g^(base + stride·x)` (fixed).
+    pub fn table(&self) -> TableW {
+        InArr { vals: self.vals.clone(), fin: self.fin.clone(), pre: self.pre.clone(), ..*self }.into_table(Self::addr(self.base, self.stride, self.tau))
+    }
+
+    /// [`InArr::table`] with its address column given (TB: the build keeps them, [`Compiled::fixed_cols`]).
+    pub fn into_table(self, addr: Vec<F64>) -> TableW {
+        let lim = self.ty.limbs();
+        assert_eq!(self.vals.len(), lim);
+        assert_eq!(addr.len(), 1usize << self.tau);
+        let mut cols = self.vals;
+        cols.push(self.fin);
         cols.push(addr);
         let sep = Coord::Const(loopir::sep(self.ty));
         let vals: Vec<Coord> = (0..lim).map(c).collect();
@@ -598,56 +609,66 @@ pub fn spec_tables(
     let extra: Vec<usize> = spec.bits.iter().flat_map(|b| b.reads()).collect();
     let tb = crate::lv::tracing::info_span!("B tables_ext").in_scope(|| c.tables_ext(run, &extra));
     let groups: Vec<Grp> = spec.groups.iter().map(|(tau, mem, _)| Grp { tau: *tau, mem: mem.clone() }).collect();
-    let mut tabs = crate::lv::tracing::info_span!("B groups").in_scope(|| group_tables(c, &tb, &groups));
+    // TB: the groups' tables on their threads while this thread (the only one that calls `col`) builds the
+    // arrays' and the BITS tables; the tables keep their order (groups, arrays, BITS)
+    let (mut tabs, rest) = std::thread::scope(|sc| {
+        let gt = sc.spawn(|| crate::lv::tracing::info_span!("B groups").in_scope(|| group_tables(c, &tb, &groups)));
+        let mut rest = Vec::with_capacity(spec.arrs.len() + spec.bits.len());
+        for a in &spec.arrs {
+            let k = if a.ty == Ty::K { 0 } else { 1 };
+            let n = 1usize << a.tau;
+            let cell = |x: usize| a.base + a.stride * x;
+            let fins = (0..n).map(|x| tb.in_fin[k][cell(x)]).collect();
+            let vals: Vec<Vec<F64>> = match a.kind {
+                ArrKind::Aliased => a.val.iter().map(|&(r, o)| col(r, o, n)).collect(),
+                ArrKind::Written => (0..a.ty.limbs())
+                    .map(|l| (0..n).map(|x| F64(if k == 0 { run.kc[cell(x)].0 } else { run.ec[cell(x)].to_limbs()[l] })).collect())
+                    .collect(),
+                ArrKind::Public => {
+                    assert_eq!(a.ty, Ty::K, "public arrays are K arrays");
+                    vec![(0..n).map(|x| F64(a.sel.get(x).and_then(|&i| pub_lanes.get(i).copied()).unwrap_or(0))).collect()]
+                }
+            };
+            // the address column depends on the program only: kept in the fixed-column cache, under a key no
+            // group has (piece `usize::MAX`)
+            let addr = c.fixed_cols((a.tau, vec![(usize::MAX, a.base), (usize::MAX, a.stride)]), || vec![InArr::addr(a.base, a.stride, a.tau)]);
+            let mut t = InArr {
+                ty: a.ty,
+                tau: a.tau,
+                base: a.base,
+                stride: a.stride,
+                vals,
+                fin: fins,
+                pre: vec![None; a.ty.limbs()],
+                public: a.kind == ArrKind::Public,
+            }
+            .into_table(addr[0].clone());
+            match a.kind {
+                ArrKind::Aliased => t.pre = a.val.iter().enumerate().map(|(l, &(r, o))| (l, r, o, false)).collect(),
+                ArrKind::Written => t.pre = a.val.iter().enumerate().map(|(l, &(r, o))| (l, r, o, true)).collect(),
+                // the header array: a public array that selects header lanes only (QLT selects `PUBX` lanes)
+                ArrKind::Public => t.hdr = a.sel.iter().all(|&i| i < hdr_lanes),
+            }
+            t.pre.push((a.ty.limbs(), a.fin.0, a.fin.1, true));
+            rest.push(t);
+        }
+        let mut off = 0;
+        for (bi, b) in spec.bits.iter().enumerate() {
+            let nr = b.reads().len();
+            let words: Vec<u64> = match spec.free.iter().find(|f| f.0 == bi) {
+                Some(&(_, 0, cell)) => vec![free_checksum(&run.kc[cell..cell + 4]); b.n],
+                Some(&(_, k, _)) => panic!("LoopIR blob: free word kind {k}"),
+                None => b.wc.iter().map(|&e| run.kc[e].0).collect(),
+            };
+            rest.push(b.table(&words, &tb.extra_cnt[off..off + nr], &|e| c.g(e)));
+            off += nr;
+        }
+        (gt.join().expect("the groups' tables"), rest)
+    });
     for (t, (_, _, com)) in tabs.iter_mut().zip(&spec.groups) {
         assert_eq!(com.len(), t.n_committed(), "a placement per committed column");
         t.pre = com.iter().enumerate().map(|(k, &(r, o))| (k, r, o, true)).collect();
     }
-    for a in &spec.arrs {
-        let k = if a.ty == Ty::K { 0 } else { 1 };
-        let n = 1usize << a.tau;
-        let cells: Vec<usize> = (0..n).map(|x| a.base + a.stride * x).collect();
-        let fins = cells.iter().map(|&e| tb.in_fin[k][e]).collect();
-        let vals: Vec<Vec<F64>> = match a.kind {
-            ArrKind::Aliased => a.val.iter().map(|&(r, o)| col(r, o, n)).collect(),
-            ArrKind::Written => (0..a.ty.limbs())
-                .map(|l| cells.iter().map(|&e| F64(if k == 0 { run.kc[e].0 } else { run.ec[e].to_limbs()[l] })).collect())
-                .collect(),
-            ArrKind::Public => {
-                assert_eq!(a.ty, Ty::K, "public arrays are K arrays");
-                vec![(0..n).map(|x| F64(a.sel.get(x).and_then(|&i| pub_lanes.get(i).copied()).unwrap_or(0))).collect()]
-            }
-        };
-        let mut t = InArr {
-            ty: a.ty,
-            tau: a.tau,
-            base: a.base,
-            stride: a.stride,
-            vals,
-            fin: fins,
-            pre: vec![None; a.ty.limbs()],
-            public: a.kind == ArrKind::Public,
-        }
-        .table();
-        match a.kind {
-            ArrKind::Aliased => t.pre = a.val.iter().enumerate().map(|(l, &(r, o))| (l, r, o, false)).collect(),
-            ArrKind::Written => t.pre = a.val.iter().enumerate().map(|(l, &(r, o))| (l, r, o, true)).collect(),
-            // the header array: a public array that selects header lanes only (QLT selects `PUBX` lanes)
-            ArrKind::Public => t.hdr = a.sel.iter().all(|&i| i < hdr_lanes),
-        }
-        t.pre.push((a.ty.limbs(), a.fin.0, a.fin.1, true));
-        tabs.push(t);
-    }
-    let mut off = 0;
-    for (bi, b) in spec.bits.iter().enumerate() {
-        let nr = b.reads().len();
-        let words: Vec<u64> = match spec.free.iter().find(|f| f.0 == bi) {
-            Some(&(_, 0, cell)) => vec![free_checksum(&run.kc[cell..cell + 4]); b.n],
-            Some(&(_, k, _)) => panic!("LoopIR blob: free word kind {k}"),
-            None => b.wc.iter().map(|&e| run.kc[e].0).collect(),
-        };
-        tabs.push(b.table(&words, &tb.extra_cnt[off..off + nr], &|e| c.g(e)));
-        off += nr;
-    }
+    tabs.extend(rest);
     tabs
 }

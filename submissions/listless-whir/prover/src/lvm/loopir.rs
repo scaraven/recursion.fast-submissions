@@ -484,6 +484,9 @@ pub struct Run {
     pub ok: bool,
     /// Every `readd` found its cell.
     pub inb: bool,
+    /// TB: the instances (numbered in program order) whose `assert0` fails (`false`) or whose `readd` misses
+    /// (`true`), in order.
+    pub(crate) fails: Vec<(u32, bool)>,
 }
 
 impl Run {
@@ -519,7 +522,12 @@ pub struct Compiled {
     /// built once (at the first build, the zero build before `ready`) instead of in every `interp` run and every
     /// `tables_ext`. Only tables whose `2^m` keys are distinct are kept, so the reverse insertion order of `interp`
     /// and the forward one of `tables_fast` give the same map; any other table is built in place as before.
-    dlogs: std::sync::OnceLock<HashMap<(usize, u32), HashMap<u64, usize>>>,
+    /// TB: kept as open-addressing tables ([`DLog`]), sorted by `(lo, m)`.
+    dlogs: std::sync::OnceLock<Vec<DLog>>,
+    /// TB: the cone of the BITS output cells ([`Compiled::cone`]).
+    cone: std::sync::OnceLock<Option<Cone>>,
+    /// TB: [`Compiled::unread`]'s cells and answer.
+    unread: std::sync::OnceLock<(Vec<usize>, bool)>,
 }
 
 type FixedCache = std::sync::Mutex<HashMap<(usize, Vec<(usize, usize)>), std::sync::Arc<Vec<Vec<F64>>>>>;
@@ -530,7 +538,7 @@ impl Compiled {
         let pieces = q.pieces();
         let n = cells[0].max(cells[1]) + 2;
         let gp = crate::lv::primitives::field::g_powers(n);
-        let mut c = Compiled { q, lay, cells, pieces, glue_mat: Vec::new(), gp, fcache: Default::default(), counts: Default::default(), dlogs: Default::default() };
+        let mut c = Compiled { q, lay, cells, pieces, glue_mat: Vec::new(), gp, fcache: Default::default(), counts: Default::default(), dlogs: Default::default(), cone: Default::default(), unread: Default::default() };
         let mut gm = Vec::new();
         for p in c.pieces.iter().filter(|p| c.q.glue.contains(&p.blk)) {
             for col in p.shape.fcols().into_iter().filter(|&f| f != FCol::F) {
@@ -546,21 +554,32 @@ impl Compiled {
     }
 
     /// DIAG-P2: the cached discrete-log table of `Readd(lo, m)` ([`Compiled::dlogs`]), if it is cached.
-    fn dlog(&self, lo: usize, m: u32) -> Option<&HashMap<u64, usize>> {
-        self.dlogs
-            .get_or_init(|| {
-                let mut keys: Vec<(usize, u32)> =
-                    self.q.blocks.iter().flat_map(|b| b.tpl.iter()).filter_map(|r| if let Op::Readd(lo, m) = r.op { Some((lo, m)) } else { None }).collect();
-                keys.sort_unstable();
-                keys.dedup();
-                keys.into_iter()
-                    .filter_map(|(lo, m)| {
-                        let tab: HashMap<u64, usize> = (0..1usize << m).map(|i| (self.g(lo + i).0, lo + i)).collect();
-                        (tab.len() == 1usize << m).then_some(((lo, m), tab))
-                    })
-                    .collect()
-            })
-            .get(&(lo, m))
+    fn dlog(&self, lo: usize, m: u32) -> Option<&DLog> {
+        let v = self.dlogs.get_or_init(|| {
+            let mut keys: Vec<(usize, u32)> =
+                self.q.blocks.iter().flat_map(|b| b.tpl.iter()).filter_map(|r| if let Op::Readd(lo, m) = r.op { Some((lo, m)) } else { None }).collect();
+            keys.sort_unstable();
+            keys.dedup();
+            keys.into_iter().filter_map(|(lo, m)| DLog::new(lo, m, |e| self.g(e).0)).collect()
+        });
+        v.binary_search_by(|d| (d.lo, d.m).cmp(&(lo, m))).ok().map(|i| &v[i])
+    }
+
+    /// The cell of a `readd(lo, m)` whose argument is `alpha`: the cached table's, else (keys that collide) a
+    /// table built in place in `found`, inserting `i` in decreasing order if `rev` (`interp`), else increasing.
+    #[inline(always)]
+    fn readd_cell(&self, lo: usize, m: u32, alpha: u64, rev: bool, found: &mut HashMap<(usize, u32), HashMap<u64, usize>>) -> Option<usize> {
+        match self.dlog(lo, m) {
+            Some(t) => t.get(alpha),
+            None => found
+                .entry((lo, m))
+                .or_insert_with(|| {
+                    let ins = |i: usize| (self.g(lo + i).0, lo + i);
+                    if rev { (0..1usize << m).rev().map(ins).collect() } else { (0..1usize << m).map(ins).collect() }
+                })
+                .get(&alpha)
+                .copied(),
+        }
     }
 
     /// `log₂` of a piece's height.
@@ -631,7 +650,7 @@ impl Compiled {
     /// `interp`: run every instance in order from the inputs.
     pub fn interp(&self, in_k: &[F64], in_e: &[F192]) -> Run {
         assert_eq!([in_k.len(), in_e.len()], self.q.n_in, "input sizes");
-        let mut s = Run { kc: Vec::with_capacity(self.cells[0]), ec: Vec::with_capacity(self.cells[1]), ok: true, inb: true };
+        let mut s = Run { kc: Vec::with_capacity(self.cells[0]), ec: Vec::with_capacity(self.cells[1]), ok: true, inb: true, fails: Vec::new() };
         s.kc.extend_from_slice(in_k);
         s.ec.extend_from_slice(in_e);
         let mut found: HashMap<(usize, u32), HashMap<u64, usize>> = HashMap::new();
@@ -641,12 +660,11 @@ impl Compiled {
         if dbg {
             eprintln!("lvm qdebug: interp start");
         }
-        // P-FIX: the block indices `j` kept in one buffer (no `unflat` per iteration), and rows whose result and
-        // arguments are all `K` cells computed in `K` (the same values: `K` is a subfield of `E`, and `put` keeps
-        // a `K` result's `c0`)
+        // P-FIX: the block indices `j` kept in one buffer (no `unflat` per iteration)
         let mut j: Vec<usize> = Vec::new();
+        let mut seq = 0u32;
         for (b, blk) in self.q.blocks.iter().enumerate() {
-            let all_k: Vec<bool> = blk.tpl.iter().map(|r| r.ty == Ty::K && r.args.iter().all(|a| a.ty == Ty::K)).collect();
+            let all_k: Vec<bool> = blk.tpl.iter().map(all_k).collect();
             j.clear();
             j.resize(blk.dims.len(), 0);
             for jf in 0..self.lay[b].size {
@@ -657,74 +675,344 @@ impl Compiled {
                 }
                 let j = &j[..];
                 for (ri, r) in blk.tpl.iter().enumerate() {
-                    if all_k[ri] {
-                        let rk = |s: &Run, o: usize| s.kc.get(r.args[o].at(j)).copied().unwrap_or(F64::ZERO);
-                        let v = match r.op {
-                            Op::MulAdd => Some(rk(&s, 0) * rk(&s, 1) + rk(&s, 2)),
-                            Op::Lin(k, k2) => Some(rk(&s, 0) + rk(&s, 1) * k + k2),
-                            Op::FixMul => Some(rk(&s, 0) * self.fix_mat(j) + rk(&s, 1)),
-                            _ => None,
-                        };
-                        if let Some(v) = v {
-                            s.kc.push(v);
-                            continue;
-                        }
+                    let mut a = [usize::MAX; 3];
+                    for (x, ad) in a.iter_mut().zip(&r.args) {
+                        *x = ad.at(j);
                     }
-                    let rd = |s: &Run, o: usize| s.rd(r.args[o].ty, r.args[o].at(j));
-                    match r.op {
-                        Op::MulAdd => {
-                            let v = rd(&s, 0) * rd(&s, 1) + rd(&s, 2);
-                            s.put(r.ty, v)
-                        }
-                        Op::Lin(k, k2) => {
-                            let v = rd(&s, 0) + rd(&s, 1).mul_base(k) + F192::from(k2);
-                            s.put(r.ty, v)
-                        }
-                        Op::Assert0 => {
-                            let z = (rd(&s, 1) * rd(&s, 0)).is_zero();
-                            if !z && dbg && nbad < 4000 {
-                                nbad += 1;
-                                eprintln!("lvm qdebug: assert0 fails: block {b} iteration {jf} row {ri} (cells {} {})", r.args[0].at(j), r.args[1].at(j));
+                    let lim = match r.ty {
+                        Ty::K => s.kc.len(),
+                        Ty::E => s.ec.len(),
+                    };
+                    match self.eval(r, all_k[ri], &a, || self.fix_mat(j), lim, &s.kc, &s.ec, &mut found) {
+                        Out::K(v) => s.kc.push(v),
+                        Out::E(v) => s.put(r.ty, v),
+                        Out::Ok(z) => {
+                            if !z {
+                                if dbg && nbad < 4000 {
+                                    nbad += 1;
+                                    eprintln!("lvm qdebug: assert0 fails: block {b} iteration {jf} row {ri} (cells {} {})", a[0], a[1]);
+                                }
+                                s.fails.push((seq, false));
                             }
                             s.ok &= z
                         }
-                        Op::LoadE => {
-                            let v = rd(&s, 0) + F192::Y * rd(&s, 1) + F192::Y * F192::Y * rd(&s, 2);
-                            s.put(r.ty, v)
-                        }
-                        Op::FixMul => {
-                            let v = rd(&s, 0).mul_base(self.fix_mat(j)) + rd(&s, 1);
-                            s.put(r.ty, v)
-                        }
-                        Op::Readd(lo, m) => {
-                            let alpha = rd(&s, 0).c0;
-                            let tab: &HashMap<u64, usize> = match self.dlog(lo, m) {
-                                Some(t) => t,
-                                None => found.entry((lo, m)).or_insert_with(|| {
-                                    (0..1usize << m).rev().map(|i| (self.g(lo + i).0, lo + i)).collect()
-                                }),
-                            };
-                            match tab.get(&alpha) {
-                                Some(&e) => {
-                                    let v = s.rd(r.ty, e);
-                                    s.put(r.ty, v)
-                                }
-                                None => {
-                                    if dbg && nbad < 4000 {
-                                        nbad += 1;
-                                        eprintln!("lvm qdebug: readd misses: block {b} iteration {jf} row {ri}");
-                                    }
-                                    s.put(r.ty, F192::ZERO);
-                                    s.inb = false
-                                }
+                        Out::Miss => {
+                            if dbg && nbad < 4000 {
+                                nbad += 1;
+                                eprintln!("lvm qdebug: readd misses: block {b} iteration {jf} row {ri}");
                             }
+                            s.fails.push((seq, true));
+                            s.put(r.ty, F192::ZERO);
+                            s.inb = false
                         }
                     }
+                    seq += 1;
                 }
             }
         }
         debug_assert_eq!([s.kc.len(), s.ec.len()], self.cells);
         s
+    }
+
+    /// One instance of row `r` (no operation reads past its third operand): operand cells `a` (a cell not yet defined reads 0: `a` past the cells written
+    /// so far, or `usize::MAX`), `fix` its `fixMat` entry, `lim` the cells of memory `r.ty` defined before it
+    /// (a `readd` of a later cell reads 0). P-FIX: rows whose result and arguments are all `K` cells are
+    /// computed in `K` (the same values: `K` is a subfield of `E`, and `put` keeps a `K` result's `c0`).
+    #[inline(always)]
+    #[allow(clippy::too_many_arguments)]
+    fn eval(
+        &self,
+        r: &Row,
+        all_k: bool,
+        a: &[usize; 3],
+        fix: impl Fn() -> F64,
+        lim: usize,
+        kc: &[F64],
+        ec: &[F192],
+        found: &mut HashMap<(usize, u32), HashMap<u64, usize>>,
+    ) -> Out {
+        if all_k {
+            let rk = |o: usize| kc.get(a[o]).copied().unwrap_or(F64::ZERO);
+            match r.op {
+                Op::MulAdd => return Out::K(rk(0) * rk(1) + rk(2)),
+                Op::Lin(k, k2) => return Out::K(rk(0) + rk(1) * k + k2),
+                Op::FixMul => return Out::K(rk(0) * fix() + rk(1)),
+                _ => {}
+            }
+        }
+        let rd = |o: usize| match r.args[o].ty {
+            Ty::K => F192::from(kc.get(a[o]).copied().unwrap_or(F64::ZERO)),
+            Ty::E => ec.get(a[o]).copied().unwrap_or(F192::ZERO),
+        };
+        match r.op {
+            Op::MulAdd => Out::E(rd(0) * rd(1) + rd(2)),
+            Op::Lin(k, k2) => Out::E(rd(0) + rd(1).mul_base(k) + F192::from(k2)),
+            Op::Assert0 => Out::Ok((rd(1) * rd(0)).is_zero()),
+            Op::LoadE => Out::E(rd(0) + F192::Y * rd(1) + F192::Y * F192::Y * rd(2)),
+            Op::FixMul => Out::E(rd(0).mul_base(fix()) + rd(1)),
+            Op::Readd(lo, m) => {
+                match self.readd_cell(lo, m, rd(0).c0, true, found) {
+                    Some(e) => Out::E(if e < lim {
+                        match r.ty {
+                            Ty::K => F192::from(kc[e]),
+                            Ty::E => ec[e],
+                        }
+                    } else {
+                        F192::ZERO
+                    }),
+                    None => Out::Miss,
+                }
+            }
+        }
+    }
+}
+
+/// Whether a row's result and operands are all `K` cells.
+fn all_k(r: &Row) -> bool {
+    r.ty == Ty::K && r.args.iter().all(|a| a.ty == Ty::K)
+}
+
+/// An instance's effect ([`Compiled::eval`]): a `K` result computed in `K`, a result of type `r.ty`, an
+/// `assert0`'s outcome, a `readd` that finds no cell (writes 0).
+enum Out {
+    K(F64),
+    E(F192),
+    Ok(bool),
+    Miss,
+}
+
+/// TB: a discrete-log table `g^(lo + i) ↦ lo + i` (`i < 2^m`, the keys distinct), open addressing with linear
+/// probing at load ≤ 1/2 (a `HashMap` lookup cost ≈ 0.26 µs per `readd` here, mostly SipHash and misses).
+struct DLog {
+    lo: usize,
+    m: u32,
+    shift: u32,
+    keys: Vec<u64>,
+    /// `i + 1` (0: empty).
+    vals: Vec<u32>,
+}
+
+impl DLog {
+    /// The table of `key(lo + i)`, `i < 2^m`; `None` if two keys are equal (or `2^m` exceeds `u32`).
+    fn new(lo: usize, m: u32, key: impl Fn(usize) -> u64) -> Option<DLog> {
+        if m >= 31 {
+            return None;
+        }
+        let bits = m + 1;
+        let mut t = DLog { lo, m, shift: 64 - bits, keys: vec![0; 1 << bits], vals: vec![0; 1 << bits] };
+        for i in 0..1usize << m {
+            let k = key(lo + i);
+            let mut h = t.slot(k);
+            while t.vals[h] != 0 {
+                if t.keys[h] == k {
+                    return None;
+                }
+                h = (h + 1) & (t.keys.len() - 1);
+            }
+            t.keys[h] = k;
+            t.vals[h] = i as u32 + 1;
+        }
+        Some(t)
+    }
+    #[inline(always)]
+    fn slot(&self, k: u64) -> usize {
+        (k.wrapping_mul(0x9E37_79B9_7F4A_7C15) >> self.shift) as usize
+    }
+    #[inline(always)]
+    fn get(&self, k: u64) -> Option<usize> {
+        let mut h = self.slot(k);
+        loop {
+            match self.vals[h] {
+                0 => return None,
+                v if self.keys[h] == k => return Some(self.lo + v as usize - 1),
+                _ => h = (h + 1) & (self.keys.len() - 1),
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------- TB: the BITS cone
+
+/// One instance of a [`Cone`], its cells resolved.
+#[derive(Clone, Copy)]
+struct CIns {
+    /// Its number in program order.
+    seq: u32,
+    blk: u32,
+    t: u32,
+    /// The cell it writes (`u32::MAX`: an `assert0`).
+    dst: u32,
+    /// Its operand cells (`u32::MAX`: a cell not yet defined there, which reads 0).
+    a: [u32; 3],
+    /// A `fixmul`'s `fixMat` entry.
+    fix: F64,
+}
+
+/// TB: the instances whose value may depend on a set of `K` input cells (the BITS outputs), in program order:
+/// those with an operand among the cells (or the cells such instances write), and every `readd` whose table
+/// covers one. Every other instance computes the same value whatever those cells hold, so after a change of
+/// those cells alone, re-running the cone in order gives [`Compiled::interp`]'s run on the new inputs.
+pub struct Cone {
+    seeds: Vec<usize>,
+    ins: Vec<CIns>,
+}
+
+impl Cone {
+    /// The instances in the cone.
+    pub fn len(&self) -> usize {
+        self.ins.len()
+    }
+    pub fn is_empty(&self) -> bool {
+        self.ins.is_empty()
+    }
+}
+
+impl Compiled {
+    /// The cone of the `K` input cells `seeds` ([`Cone`]), computed at the first call (the zero build before
+    /// `ready`) and kept; `None` if the cells are not inputs or a cell index exceeds `u32`.
+    pub fn cone(&self, seeds: &[usize]) -> Option<&Cone> {
+        let c = self.cone.get_or_init(|| self.make_cone(seeds)).as_ref();
+        if let Some(c) = c {
+            assert!(c.seeds == seeds, "one cone per program");
+        }
+        c
+    }
+
+    /// TB (H-taint): whether no instance's value depends on the `K` input cells `cells` (their cone is empty:
+    /// no instance reads one, no `readd` table covers one), computed at the first call and kept (one set of
+    /// cells per program).
+    pub fn unread(&self, cells: &[usize]) -> bool {
+        let (c, b) = self.unread.get_or_init(|| (cells.to_vec(), self.make_cone(cells).is_some_and(|c| c.is_empty())));
+        assert!(c == cells, "one set of unread cells per program");
+        *b
+    }
+
+    fn make_cone(&self, seeds: &[usize]) -> Option<Cone> {
+        let n_ins: usize = self.q.blocks.iter().enumerate().map(|(b, blk)| self.lay[b].size * blk.tpl.len()).sum();
+        if seeds.iter().any(|&e| e >= self.q.n_in[0]) || self.cells.iter().chain([&n_ins]).any(|&n| n >= u32::MAX as usize) {
+            return None;
+        }
+        let mut dirty: [Vec<bool>; 2] = [vec![false; self.cells[0]], vec![false; self.cells[1]]];
+        // the `readd` tables: (memory, lo, hi) and whether one of their cells is dirty
+        let mut tabs: Vec<(usize, usize, usize)> = Vec::new();
+        for r in self.q.blocks.iter().flat_map(|b| b.tpl.iter()) {
+            if let Op::Readd(lo, m) = r.op {
+                let k = (r.ty.ix(), lo, lo + (1usize << m));
+                if !tabs.contains(&k) {
+                    tabs.push(k);
+                }
+            }
+        }
+        let mut tab_dirty = vec![false; tabs.len()];
+        let mark = |dirty: &mut [Vec<bool>; 2], tab_dirty: &mut Vec<bool>, k: usize, e: usize| {
+            dirty[k][e] = true;
+            for (f, &(tk, lo, hi)) in tab_dirty.iter_mut().zip(&tabs) {
+                *f |= tk == k && lo <= e && e < hi;
+            }
+        };
+        for &e in seeds {
+            mark(&mut dirty, &mut tab_dirty, 0, e);
+        }
+        let mut clk = self.q.n_in;
+        let mut ins = Vec::new();
+        let mut seq = 0u32;
+        let mut j: Vec<usize> = Vec::new();
+        for (b, blk) in self.q.blocks.iter().enumerate() {
+            let tab_of: Vec<Option<usize>> = blk
+                .tpl
+                .iter()
+                .map(|r| if let Op::Readd(lo, m) = r.op { tabs.iter().position(|&t| t == (r.ty.ix(), lo, lo + (1usize << m))) } else { None })
+                .collect();
+            j.clear();
+            j.resize(blk.dims.len(), 0);
+            for jf in 0..self.lay[b].size {
+                let mut rest = jf;
+                for (jk, &d) in j.iter_mut().zip(&blk.dims) {
+                    *jk = rest % (1 << d);
+                    rest >>= d;
+                }
+                for (t, r) in blk.tpl.iter().enumerate() {
+                    let mut a = [u32::MAX; 3];
+                    let mut hit = tab_of[t].is_some_and(|x| tab_dirty[x]);
+                    for (x, ad) in a.iter_mut().zip(&r.args) {
+                        let (k, e) = (ad.ty.ix(), ad.at(&j));
+                        if e < clk[k] {
+                            *x = e as u32;
+                            hit |= dirty[k][e];
+                        }
+                    }
+                    let dst = r.writes().map(|ty| clk[ty.ix()]);
+                    if hit {
+                        let fix = if r.op == Op::FixMul { self.fix_mat(&j) } else { F64::ZERO };
+                        ins.push(CIns { seq, blk: b as u32, t: t as u32, dst: dst.map_or(u32::MAX, |d| d as u32), a, fix });
+                        if let Some(ty) = r.writes() {
+                            mark(&mut dirty, &mut tab_dirty, ty.ix(), clk[ty.ix()]);
+                        }
+                    }
+                    if let Some(ty) = r.writes() {
+                        clk[ty.ix()] += 1;
+                    }
+                    seq += 1;
+                }
+            }
+        }
+        debug_assert_eq!(clk, self.cells);
+        if std::env::var_os("LVM_LOG").is_some() {
+            eprintln!("lvm: a cone: {} seed cells, {} of {} instances", seeds.len(), ins.len(), self.cells[0] + self.cells[1] - self.q.n_in[0] - self.q.n_in[1]);
+        }
+        Some(Cone { seeds: seeds.to_vec(), ins })
+    }
+
+    /// Re-run the cone after a change of its seed cells: `in_k` the new `K` inputs (they differ from `run`'s in
+    /// seed cells only), `run` [`Compiled::interp`]'s run on the old inputs (or a re-run's). Afterwards `run` is
+    /// `interp`'s run on `in_k`: the cone's cells recomputed in order, the other cells and the other instances'
+    /// failed checks unchanged.
+    pub fn rerun(&self, cone: &Cone, run: &mut Run, in_k: &[F64]) {
+        for &e in &cone.seeds {
+            run.kc[e] = in_k[e];
+        }
+        let mut found: HashMap<(usize, u32), HashMap<u64, usize>> = HashMap::new();
+        let mut fails: Vec<(u32, bool)> = Vec::new();
+        let mut old = std::mem::take(&mut run.fails).into_iter().peekable();
+        let none = |x: u32| if x == u32::MAX { usize::MAX } else { x as usize };
+        for i in &cone.ins {
+            // the failures of instances outside the cone before this one stay
+            while let Some(&(q, m)) = old.peek() {
+                if q > i.seq {
+                    break;
+                }
+                old.next();
+                if q < i.seq {
+                    fails.push((q, m));
+                }
+            }
+            let r = &self.q.blocks[i.blk as usize].tpl[i.t as usize];
+            let a = i.a.map(none);
+            let dst = none(i.dst);
+            match self.eval(r, all_k(r), &a, || i.fix, dst, &run.kc, &run.ec, &mut found) {
+                Out::K(v) => run.kc[dst] = v,
+                Out::E(v) => match r.ty {
+                    Ty::K => run.kc[dst] = F64(v.c0),
+                    Ty::E => run.ec[dst] = v,
+                },
+                Out::Ok(z) => {
+                    if !z {
+                        fails.push((i.seq, false))
+                    }
+                }
+                Out::Miss => {
+                    match r.ty {
+                        Ty::K => run.kc[dst] = F64::ZERO,
+                        Ty::E => run.ec[dst] = F192::ZERO,
+                    }
+                    fails.push((i.seq, true))
+                }
+            }
+        }
+        fails.extend(old);
+        run.ok = fails.iter().all(|f| f.1);
+        run.inb = fails.iter().all(|f| !f.1);
+        run.fails = fails;
     }
 }
 
@@ -1011,9 +1299,12 @@ pub struct Counts {
     total: [Vec<u32>; 2],
     /// The `Readd` reads in order: `(sequence number, piece, row, memory, lo, m, the argument's K cell)`.
     readd: Vec<(u64, usize, usize, usize, usize, u32, usize)>,
-    /// The static reads of every cell some `Readd` table covers, in order: `(memory, cell) ->
-    /// [(sequence number, piece, column, row, static count)]`.
-    sites: HashMap<(usize, usize), Vec<(u64, usize, usize, usize, u32)>>,
+    /// TB: the cells some `Readd` table covers, numbered (`u32::MAX`: not covered), per memory.
+    cov: [Vec<u32>; 2],
+    /// The static reads of every covered cell, in order: those of cell number `i` are
+    /// `site[site_off[i]..site_off[i + 1]]`, each `(sequence number, piece, column, row, static count)`.
+    site_off: Vec<u32>,
+    site: Vec<(u64, u32, u32, u32, u32)>,
     /// The writer pieces' result cells (for `Fin`): `(piece, column, memory type, cells)`.
     fin_of: Vec<(usize, usize, Ty, Vec<usize>)>,
 }
@@ -1108,7 +1399,15 @@ impl Compiled {
                 }
             }
             let (mut cnt, mut dcnt, mut readd, mut fin_of) = (Vec::new(), Vec::new(), Vec::new(), Vec::new());
-            let mut sites: HashMap<(usize, usize), Vec<(u64, usize, usize, usize, u32)>> = HashMap::new();
+            let mut cov: [Vec<u32>; 2] = [vec![u32::MAX; self.cells[0]], vec![u32::MAX; self.cells[1]]];
+            let mut ncov = 0u32;
+            for (cv, cd) in cov.iter_mut().zip(&covered) {
+                for (i, _) in cd.iter().enumerate().filter(|x| *x.1) {
+                    cv[i] = ncov;
+                    ncov += 1;
+                }
+            }
+            let mut raw: Vec<(u32, (u64, u32, u32, u32, u32))> = Vec::new();
             let mut seq = 0u64;
             for n in 0..self.pieces.len() {
                 let p = &self.pieces[n];
@@ -1132,7 +1431,7 @@ impl Compiled {
                         let c = &mut total[k][e];
                         cols[col_of[o]].1[x] = *c;
                         if covered[k][e] {
-                            sites.entry((k, e)).or_default().push((seq, n, cnt_pos[o], x, *c));
+                            raw.push((cov[k][e], (seq, n as u32, cnt_pos[o] as u32, x as u32, *c)));
                         }
                         *c += 1;
                         seq += 1;
@@ -1150,15 +1449,29 @@ impl Compiled {
                 cnt.push(cols);
                 dcnt.push(has_readd.then_some(dcnt_pos));
             }
+            // the sites by cell number, each cell's in order (a stable counting sort)
+            let mut site_off = vec![0u32; ncov as usize + 1];
+            for &(i, _) in &raw {
+                site_off[i as usize + 1] += 1;
+            }
+            for i in 0..ncov as usize {
+                site_off[i + 1] += site_off[i];
+            }
+            let mut next = site_off.clone();
+            let mut site = vec![(0u64, 0u32, 0u32, 0u32, 0u32); raw.len()];
+            for (i, st) in raw {
+                site[next[i as usize] as usize] = st;
+                next[i as usize] += 1;
+            }
             if std::env::var_os("LVM_LOG").is_some() {
                 eprintln!(
                     "lvm: read counts: {seq} reads, {} Readd, {} covered cells with {} static reads",
                     readd.len(),
-                    sites.len(),
-                    sites.values().map(|v| v.len()).sum::<usize>()
+                    site_off.windows(2).filter(|w| w[1] > w[0]).count(),
+                    site.len()
                 );
             }
-            Counts { cnt, dcnt, total, readd, sites, fin_of }
+            Counts { cnt, dcnt, total, readd, cov, site_off, site, fin_of }
         })
     }
 
@@ -1167,39 +1480,69 @@ impl Compiled {
     fn tables_fast(&self, run: &Run, extra: &[usize]) -> Tables {
         let cs = self.counts();
         let mut reads = cs.total.clone();
-        // the `Readd` reads in order: their cells, their counts, and per cell the sequence numbers of its reads
+        // the `Readd` reads in order: their cells (a discrete log of the argument)
         let mut dlog: HashMap<(usize, u32), HashMap<u64, usize>> = HashMap::new();
-        let mut events: HashMap<(usize, usize), Vec<u64>> = HashMap::new();
-        let mut dval: Vec<(usize, usize, u32)> = Vec::with_capacity(cs.readd.len());
-        for &(seq, n, x, k, lo, m, arg) in &cs.readd {
-            let alpha = run.rd(Ty::K, arg).c0;
-            let tab: &HashMap<u64, usize> = match self.dlog(lo, m) {
-                Some(t) => t,
-                None => dlog.entry((lo, m)).or_insert_with(|| (0..1usize << m).map(|i| (self.g(lo + i).0, lo + i)).collect()),
-            };
-            let e = *tab.get(&alpha).expect("readd: the cell (interp.inb)");
-            let ev = events.entry((k, e)).or_default();
-            let before_static = cs.sites.get(&(k, e)).map_or(0, |v| v.partition_point(|s| s.0 < seq));
-            dval.push((n, x, (before_static + ev.len()) as u32));
-            ev.push(seq);
+        let mut cell: Vec<u32> = Vec::with_capacity(cs.readd.len());
+        for &(_, _, _, k, lo, m, arg) in &cs.readd {
+            let e = self.readd_cell(lo, m, run.rd(Ty::K, arg).c0, false, &mut dlog).expect("readd: the cell (interp.inb)");
+            cell.push(cs.cov[k][e]);
             reads[k][e] += 1;
         }
-        // the patches: a static read after `d` `Readd` reads of its cell counts `d` more
+        // TB: per covered cell, its `Readd` reads (in order) merged with its static reads (in order): a `Readd`
+        // read counts the reads of its cell before it; a static read after `d` `Readd` reads counts `d` more
+        let ncov = cs.site_off.len() - 1;
+        let mut r_off = vec![0u32; ncov + 1];
+        for &i in &cell {
+            r_off[i as usize + 1] += 1;
+        }
+        for i in 0..ncov {
+            r_off[i + 1] += r_off[i];
+        }
+        let mut next = r_off.clone();
+        let mut by_cell = vec![0u32; cell.len()];
+        for (r, &i) in cell.iter().enumerate() {
+            by_cell[next[i as usize] as usize] = r as u32;
+            next[i as usize] += 1;
+        }
         let mut patch: Vec<Vec<(usize, usize, u32)>> = vec![Vec::new(); self.pieces.len()];
-        for (key, ev) in &events {
-            for &(seq, n, col, x, c) in cs.sites.get(key).map_or(&[][..], |v| &v[..]) {
-                let d = ev.partition_point(|&t| t < seq);
-                if d > 0 {
-                    patch[n].push((col, x, c + d as u32));
+        let mut dby: Vec<Vec<(usize, u32)>> = vec![Vec::new(); self.pieces.len()];
+        for i in (0..ncov).filter(|&i| r_off[i + 1] > r_off[i]) {
+            let rs = &by_cell[r_off[i] as usize..r_off[i + 1] as usize];
+            let ss = &cs.site[cs.site_off[i] as usize..cs.site_off[i + 1] as usize];
+            let mut si = 0;
+            for (d, &r) in rs.iter().enumerate() {
+                let (seq, n, x, ..) = cs.readd[r as usize];
+                while si < ss.len() && ss[si].0 < seq {
+                    let (_, sn, col, sx, c) = ss[si];
+                    if d > 0 {
+                        patch[sn as usize].push((col as usize, sx as usize, c + d as u32));
+                    }
+                    si += 1;
                 }
+                dby[n].push((x, (si + d) as u32));
+            }
+            for &(_, sn, col, sx, c) in &ss[si..] {
+                patch[sn as usize].push((col as usize, sx as usize, c + rs.len() as u32));
             }
         }
-        let mut dby: Vec<Vec<(usize, u32)>> = vec![Vec::new(); self.pieces.len()];
-        for &(n, x, c) in &dval {
-            dby[n].push((x, c));
+        // the extra reads count after every program read; then every count is final, and the writer pieces'
+        // `Fin` columns are filled with their values (TB: on the workers)
+        let extra_cnt = extra
+            .iter()
+            .map(|&e| {
+                let k = &mut reads[0][e];
+                let c = self.g(*k as usize);
+                *k += 1;
+                c
+            })
+            .collect();
+        let mut fin_at = vec![usize::MAX; self.pieces.len()];
+        for (i, f) in cs.fin_of.iter().enumerate() {
+            fin_at[f.0] = i;
         }
+        let reads = reads;
         let g = |c: u32| if c == u32::MAX { F64::ZERO } else { self.g(c as usize) };
-        let mut cols: Vec<Vec<Vec<F64>>> = par_map(self.pieces.len(), |n| {
+        let cols: Vec<Vec<Vec<F64>>> = par_map(self.pieces.len(), |n| {
             let p = &self.pieces[n];
             let h = 1usize << self.height(p);
             let (res_pos, arg_pos, _, _, _) = self.positions(n);
@@ -1241,23 +1584,21 @@ impl Compiled {
             for v in c.iter_mut().filter(|v| v.is_empty()) {
                 *v = vec![F64::ZERO; h];
             }
+            if let Some((_, at, t, cells)) = cs.fin_of.get(fin_at[n]) {
+                assert!(cells.len() <= h, "a result cell per row");
+                let r = &reads[t.ix()];
+                for (v, &e) in c[*at].iter_mut().zip(cells) {
+                    *v = self.g(r[e] as usize);
+                }
+            }
             c
         });
-        let extra_cnt = extra
-            .iter()
-            .map(|&e| {
-                let k = &mut reads[0][e];
-                let c = self.g(*k as usize);
-                *k += 1;
-                c
-            })
-            .collect();
-        for (n, col, t, cells) in &cs.fin_of {
-            let r = &reads[t.ix()];
-            let fin: Vec<F64> = cells.iter().map(|&e| self.g(r[e] as usize)).collect();
-            cols[*n][*col][..fin.len()].copy_from_slice(&fin);
-        }
-        let in_fin = [0, 1].map(|k| (0..self.q.n_in[k]).map(|e| self.g(reads[k][e] as usize)).collect());
+        // the inputs' finalize counts, in chunks on the workers
+        const CH: usize = 1 << 15;
+        let in_fin = [0, 1].map(|k| {
+            let n = self.q.n_in[k];
+            par_map(n.div_ceil(CH), |i| (i * CH..n.min((i + 1) * CH)).map(|e| self.g(reads[k][e] as usize)).collect::<Vec<F64>>()).concat()
+        });
         Tables { cols, in_fin, reads, extra_cnt }
     }
 }

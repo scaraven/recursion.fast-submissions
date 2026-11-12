@@ -81,6 +81,18 @@ fn mk_levels(sec: usize, nu: usize, spec: &[(usize, usize, usize)], ts: &[usize]
         .collect()
 }
 
+/// The levels with level 0's leaf narrowed to the stack's `occ` occupied lanes (`LvmParams.withRow0`).
+fn with_row0(mut levels: Vec<Level>, occ: usize) -> Vec<Level> {
+    assert!(1 <= occ && occ <= 1 << levels[0].fold, "the occupied lanes are some of level 0's 2^ℓ");
+    levels[0].row = 8 * occ;
+    levels
+}
+
+/// The occupied lanes of a commitment's root: the words its level-0 leaf carries (`row / 8`).
+pub fn occ_lanes(levels: &[Level]) -> usize {
+    levels[0].row / 8
+}
+
 pub const GKR_DEPTH: usize = 12;
 /// S2: the chain tape's GKR is one segment of 24 rounds (`Shape { log_n, 24 }`).
 pub const TAPE_DEPTH: usize = 24;
@@ -183,7 +195,9 @@ impl Params {
 
 /// `main` is the `C_main` levels, any number (S2: three, v1: four), in `refreeze2.py`'s form `[(fold, rate, cap), …]`;
 /// `main_t` their query counts (`[]`: `udQueries (sec − g) R`), `main_ood` [`Params::main_ood`]; `rec_t`, `rec_ood`
-/// the same for `C_rec` (J2′).
+/// the same for `C_rec` (J2′); `main_occ` and `rec_occ` the stacks' occupied lanes (`LvmParams.mkParams`'s `mainOcc`,
+/// `recOcc`; Z2, after #17): level 0's leaf carries only those words, so its row is `8 · occ` bytes (the verifier
+/// reads the other lanes as zero).
 #[allow(clippy::too_many_arguments)]
 fn mk(
     name: &'static str,
@@ -202,6 +216,8 @@ fn mk(
     main_ood: bool,
     rec_t: impl AsRef<[usize]>,
     rec_ood: bool,
+    main_occ: usize,
+    rec_occ: usize,
 ) -> Params {
     assert!(grind <= 64 && grind < sec, "{name}: {grind} grinding bits (at most 64, and below sec = {sec})");
     Params {
@@ -213,9 +229,9 @@ fn mk(
         rec_rows_log,
         sec_bits: sec,
         grind,
-        main_levels: mk_levels(sec - grind, nu_main, main.as_ref(), main_t.as_ref()),
+        main_levels: with_row0(mk_levels(sec - grind, nu_main, main.as_ref(), main_t.as_ref()), main_occ),
         main_ood,
-        rec_levels: mk_levels(sec - grind, rec_rows_log + 5, rec.as_ref(), rec_t.as_ref()),
+        rec_levels: with_row0(mk_levels(sec - grind, rec_rows_log + 5, rec.as_ref(), rec_t.as_ref()), rec_occ),
         rec_ood,
         bus_depth: fb.0,
         leafdec_reads: fb.1,
@@ -252,8 +268,9 @@ pub fn p20() -> Params {
 
 /// `P20` with `g` grinding bits.
 pub fn p20_g(g: usize) -> Params {
-    // S2 (BLUEPRINT2 §1.4): C_main at ν = 24, three levels
-    mk("P20", 20, 129, g, 14, 24, [(6, 1, 8), (4, 2, 7), (4, 3, 7)], [(6, 2, 7), (4, 3, 7)], 15, 13, (21, 1, 16, 2576), 125, [230, 115, 77], true, [115, 77], true)
+    // S2 (BLUEPRINT2 §1.4): C_main at ν = 24, three levels; the root leaves carry C_main's 48 occupied lanes (the
+    // node program's tables) and C_rec's 35 (the stream's columns and σ')
+    mk("P20", 20, 129, g, 14, 24, [(6, 1, 8), (4, 2, 7), (4, 3, 7)], [(6, 2, 7), (4, 3, 7)], 15, 13, (21, 1, 16, 2576), 125, [230, 115, 77], true, [115, 77], true, 48, 35)
 }
 
 /// `P8` (WP-0's test set). Grinding bits from `LVM_GRIND` ([`grind_env`]; the frozen record's by default).
@@ -263,8 +280,9 @@ pub fn p8() -> Params {
 
 /// `P8` with `g` grinding bits.
 pub fn p8_g(g: usize) -> Params {
-    // S2 P8 (FRZ-0): rec rows 2^13 and KS 2^14 (the tape's trace overflows 2^12 blocks), three C_main levels
-    mk("P8", 9, 20, g, 13, 23, [(6, 1, 4), (4, 2, 4), (4, 3, 4)], [(6, 2, 4), (4, 3, 4)], 14, 12, (21, 1, 16, 2443), 114, [33, 17, 11], true, [17, 11], true)
+    // S2 P8 (FRZ-0): rec rows 2^13 and KS 2^14 (the tape's trace overflows 2^12 blocks), three C_main levels; the
+    // root leaves carry 39 and 35 lanes
+    mk("P8", 9, 20, g, 13, 23, [(6, 1, 4), (4, 2, 4), (4, 3, 4)], [(6, 2, 4), (4, 3, 4)], 14, 12, (21, 1, 16, 2443), 114, [33, 17, 11], true, [17, 11], true, 39, 35)
 }
 
 /// `p` with `C_main` and `C_rec` in the unique-decoding regime (PI-GRIND-P's S2G record): `t = udQueries (sec − g) R`,
@@ -511,19 +529,19 @@ mod tests {
         // A21's record + A23 (D = 28: header + 696 B, phase 3b 12 queries and 30 scalars)
         // S2 (T-P1; BLUEPRINT2 §2.2's model: 9,916 and 1,103,704)
         assert_eq!(query_list(&p).len(), 7426);
-        assert_eq!(pi_size(&p), 700696);
+        assert_eq!(pi_size(&p), 644576);
         let q = p8_g(FROZEN_GRIND_P8);
         assert_eq!(q.main_levels.iter().map(|l| l.t).collect::<Vec<_>>(), vec![33, 17, 11]);
         // S2 P8 (FRZ-0)
         assert_eq!(query_list(&q).len(), 2183);
-        assert_eq!(pi_size(&q), 264640);
+        assert_eq!(pi_size(&q), 254096);
         // JB-VQP J1: C_main's OOD (P20 κ 18, 14; P8 κ 17, 13) and the trace's sponge blocks
         assert!(p.main_ood && q.main_ood);
         // J2P-VQP J2′: C_rec's OOD (P20 κ 13; P8 κ 12)
         assert!(p.rec_ood && q.rec_ood);
         assert_eq!(q.rec_levels.iter().map(|l| l.t).collect::<Vec<_>>(), vec![17, 11]);
         let blocks = |p: &Params| (1 + query_list(p).iter().map(|(_, len)| 40 + len).sum::<usize>()) / 136 + 1;
-        assert_eq!((blocks(&p), blocks(&q)), (10533, 3926));
+        assert_eq!((blocks(&p), blocks(&q)), (8527, 3003));
     }
 
     #[test]
@@ -533,10 +551,10 @@ mod tests {
         assert_eq!(pg.main_levels.iter().map(|l| l.t).collect::<Vec<_>>(), vec![278, 170, 139]);
         assert_eq!(pg.rec_levels.iter().map(|l| l.t).collect::<Vec<_>>(), vec![170, 139]);
         // PI-GRIND-P's record at g > 0 (dev `s2check`)
-        assert_eq!((query_list(&pg).len(), pi_size(&pg)), (9844, 890592));
+        assert_eq!((query_list(&pg).len(), pi_size(&pg)), (9844, 815568));
         let qg = ud_main(p8_g(GRIND_P8));
         assert_eq!(qg.main_levels.iter().map(|l| l.t).collect::<Vec<_>>(), vec![39, 24, 20]);
         assert_eq!(qg.rec_levels[0].t, 24);
-        assert_eq!((query_list(&qg).len(), pi_size(&qg)), (2547, 292392));
+        assert_eq!((query_list(&qg).len(), pi_size(&qg)), (2547, 279024));
     }
 }

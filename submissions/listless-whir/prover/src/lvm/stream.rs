@@ -97,6 +97,10 @@ impl Ctx {
                 Some((_, Some(_))) => self.build_tables(&|_, _, n| vec![F64::ZERO; n], &vec![0; crate::lvm::m3::pub_lanes_len(&self.p)]),
                 _ => self.attach(RecWitness::zero(&self.p)).tables,
             };
+            // TB: the H-taint check's program walk, before `ready`
+            if let Some((c, Some(spec))) = &self.q {
+                let _ = h_sites(c, spec);
+            }
             let z: Vec<_> = z.into_iter().filter(crate::lvm::m3::active).collect();
             let (d, l, r, e) = crate::lvm::m3::shape(&z);
             if (d, l, r, e) != (self.p.bus_depth, self.p.leafdec_reads, self.p.table_rounds, self.p.table_evals) {
@@ -149,17 +153,44 @@ impl Ctx {
     }
 
     /// The builder `prove` calls (M3 section present): aliased columns from the commitments, public lanes from
-    /// the header and its statement.
-    fn builder(&self) -> Option<impl Fn(&Header, &crate::lvm::prove::Col) -> Vec<crate::lvm::m3::TableW> + Sync + '_> {
-        matches!(&self.q, Some((_, Some(_)))).then_some(move |hd: &Header, col: &crate::lvm::prove::Col| {
-            self.build_tables(col, &crate::lvm::m3::pub_lanes(&hd.bytes(), &stmt_of(hd)))
+    /// the header and its statement. TB (OH-DES P1, "H-taint"): it starts before `h` is known (`get_h` waits
+    /// for it). When the tables depend on `h` only through public-array cells no instance reads ([`h_sites`]),
+    /// they are built with `h = 0` and those cells' values are set once `h` comes; else the build waits.
+    fn builder(&self) -> Option<impl Fn(&Header, &crate::lvm::prove::Col, &crate::lvm::prove::GetH) -> Vec<crate::lvm::m3::TableW> + Sync + '_> {
+        let lanes = |hd: &Header| crate::lvm::m3::pub_lanes(&hd.bytes(), &stmt_of(hd));
+        matches!(&self.q, Some((_, Some(_)))).then_some(move |hd: &Header, col: &crate::lvm::prove::Col, get_h: &crate::lvm::prove::GetH| {
+            let Some((c, Some(spec))) = &self.q else { unreachable!() };
+            let mut hd = hd.clone();
+            hd.h = [0; 32];
+            let l0 = lanes(&hd);
+            hd.h = [0xff; 32];
+            let l1 = lanes(&hd);
+            // dev: `LVM_HTAINT=0` waits for `h` as before
+            let on = std::env::var("LVM_HTAINT").map_or(true, |v| v != "0");
+            let sites = h_sites(c, spec).filter(|_| on && (0..l0.len()).all(|i| l0[i] == l1[i] || H_LANES.contains(&i)));
+            match sites {
+                Some(sites) => {
+                    let mut t = self.build_tables(col, &l0);
+                    hd.h = get_h();
+                    let l = lanes(&hd);
+                    for (ti, x, i) in sites {
+                        t[ti].cols[0][x] = F64(l[i]);
+                    }
+                    t
+                }
+                None => {
+                    hd.h = get_h();
+                    self.build_tables(col, &lanes(&hd))
+                }
+            }
         })
     }
 
     fn sign(&self, pi: Vec<u8>, tr: crate::oracle::Trace) -> Signed {
         let t = Instant::now();
-        let sig = crate::proc::sign_checked(self.svc, &tr);
-        if !format::sig_ok(&self.vk, &format::trace_digest(&tr), &sig) {
+        // P6B (OH-DES P4): the trace digest of the check while the service signs
+        let (sig, m) = crate::proc::sign_checked(self.svc, &tr, || format::trace_digest(&tr));
+        if !format::sig_ok(&self.vk, &m, &sig) {
             fatal("SIGN: SigOk fails on the returned signature");
         }
         if self.log {
@@ -227,6 +258,34 @@ impl Ctx {
     }
 }
 
+/// TB (H-taint): the public lanes that depend on `h`: the statement `c` (lanes 5..9 of [`crate::lvm::m3::pub_lanes`])
+/// and `h` (header bytes 120..152, lanes 18..22). The builder checks on every call that no other lane moves with `h`.
+const H_LANES: [usize; 8] = [5, 6, 7, 8, 18, 19, 20, 21];
+
+/// TB (H-taint): the cells `(table, row, lane)` of the public arrays that select an [`H_LANES`] lane (the tables
+/// in [`build_q_tables`]'s order: groups, arrays, BITS), if nothing else in the build depends on those cells: no
+/// instance reads them ([`crate::lvm::loopir::Compiled::unread`]), no BITS word or free word is one, no written
+/// array holds one. Then the tables built with any `h` differ only in those cells' values (column 0). A cell
+/// that two public arrays share is patched in both: a public array's values come from its selectors, not from
+/// the cell.
+fn h_sites(c: &crate::lvm::loopir::Compiled, spec: &crate::lvm::loopir::M3Spec) -> Option<Vec<(usize, usize, usize)>> {
+    use crate::lvm::loopir::ArrKind;
+    let (mut sites, mut cells) = (Vec::new(), Vec::new());
+    for (ai, a) in spec.arrs.iter().enumerate().filter(|(_, a)| a.kind == ArrKind::Public) {
+        for (x, &i) in a.sel.iter().enumerate().take(1 << a.tau).filter(|(_, i)| H_LANES.contains(i)) {
+            sites.push((spec.groups.len() + ai, x, i));
+            cells.push(a.base + a.stride * x);
+        }
+    }
+    cells.sort_unstable();
+    cells.dedup();
+    let hit = |e: usize| cells.binary_search(&e).is_ok();
+    let words = spec.bits.iter().any(|b| b.wc.iter().any(|&e| hit(e)));
+    let free = spec.free.iter().any(|&(_, _, cell)| (cell..cell + 4).any(hit));
+    let written = spec.arrs.iter().filter(|a| a.kind == ArrKind::Written).any(|a| (0..1usize << a.tau).any(|x| hit(a.base + a.stride * x)));
+    (!words && !free && !written && c.unread(&cells)).then_some(sites)
+}
+
 /// [`Ctx::build_tables`] on a program alone (no service: the `tbench` dev command times it).
 pub fn build_q_tables(
     q: &Option<(crate::lvm::loopir::Compiled, Option<crate::lvm::loopir::M3Spec>)>,
@@ -271,9 +330,20 @@ pub fn build_q_tables(
             }
         }
     }
+    // TB: after the first run, only the BITS outputs' cone is re-run (the same run as a full one, `Cone`);
+    // with `LVM_QDEBUG` (its listing of the failed checks) every run is a full one, as before
+    let seeds: Vec<usize> = spec.bits.iter().flat_map(|b| b.oc.iter().flatten().copied()).collect();
+    let cone = c.cone(&seeds).filter(|_| std::env::var_os("LVM_QDEBUG").is_none());
+    let mut prev: Option<crate::lvm::loopir::Run> = None;
     let mut runs = 0;
     let run = loop {
-        let run = crate::lv::tracing::info_span!("B interp").in_scope(|| c.interp(&in_k, &in_e));
+        let run = crate::lv::tracing::info_span!("B interp").in_scope(|| match (prev.take(), cone) {
+            (Some(mut r), Some(cone)) => {
+                c.rerun(cone, &mut r, &in_k);
+                r
+            }
+            _ => c.interp(&in_k, &in_e),
+        });
         runs += 1;
         let mut changed = false;
         for (bi, b) in spec.bits.iter().enumerate() {
@@ -298,7 +368,13 @@ pub fn build_q_tables(
             break run;
         }
         assert!(runs < 64, "the BITS outputs settle");
+        prev = Some(run);
     };
+    if std::env::var_os("LVM_TB_REF").is_some() {
+        let r = c.interp(&in_k, &in_e);
+        assert!(r.kc == run.kc && r.ec == run.ec && r.ok == run.ok && r.inb == run.inb && r.fails == run.fails, "TB: the cone re-runs give the full run");
+        eprintln!("lvm: LVM_TB_REF: {runs} runs, the last equals a full run");
+    }
     if !run.ok || !run.inb {
         if std::env::var_os("LVM_QDEBUG").is_some() { eprintln!("lvm qdebug: ---- end of run"); }
         if let Some(path) = std::env::var_os("LVM_QDEBUG_DUMP") {

@@ -81,8 +81,8 @@ theorem queries_openOne (H : ByteArray → Digest) (ci : CapI) (p : ℕ) (body :
   · simp only [OProg.queries, List.length_cons]
     refine (Nat.succ_le_succ (length_queries_bind_le H _ _ 0 fun r => ?_)).trans ?_
     · rcases r with _ | ⟨top, rest⟩ <;> simp [OProg.queries]
-    · have := queries_climb H (ci.ht - ci.lv) (H (toQ (body.take (8 * ci.wd))))
-        (p % 2 ^ ci.ht) (body.drop (8 * ci.wd))
+    · have := queries_climb H (ci.ht - ci.lv) (H (toQ (body.take (S.lb ci))))
+        (p % 2 ^ ci.ht) (body.drop (S.lb ci))
       omega
 
 /-- An opening of `ps` asks at most `ps.length · (lv + 1)` queries. -/

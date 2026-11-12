@@ -139,13 +139,14 @@ pub fn tsu_release() {
 
 
 /// `SIGN` the trace; its answers must be the ones recorded while proving (FR `sign_checked`).
-pub fn sign_checked(svc: &service::Service, tr: &crate::oracle::Trace) -> crate::format::Sig {
+/// P6B (OH-DES P4): `during` runs while the service computes.
+pub fn sign_checked<R>(svc: &service::Service, tr: &crate::oracle::Trace, during: impl FnOnce() -> R) -> (crate::format::Sig, R) {
     let qs: Vec<&[u8]> = tr.iter().map(|(q, _)| q.as_slice()).collect();
-    let (answers, sig) = svc.sign(&qs);
+    let (answers, sig, r) = svc.sign_during(&qs, during);
     if answers.len() != tr.len() || answers.iter().zip(tr.iter()).any(|(a, (_, b))| a != b) {
         service::fatal("SIGN answers differ from the QUERY answers");
     }
-    sig
+    (sig, r)
 }
 
 fn unhex(s: &str) -> Vec<u8> {

@@ -73,12 +73,15 @@ mkdir -p "$work/build"
 rm -f "$work"/build/*.s "$work/build/prover"
 cp "$here/dispatch.s" "$work/build/dispatch.s"
 for v in $variants; do cp "$work/prover-$v.s" "$work/build/prover-$v.s"; done
-# the runner's link step, verbatim but for the directory (outside its sandbox)
-(cd "$work/build" && /usr/bin/gcc -static -O2 -pthread "$work"/build/*.s -o "$work/build/prover" -lm)
+# the runner's link step, verbatim but for the directory (outside its sandbox). The runner's glob sorts in C order
+# (dispatch.s, prover-v2.s, prover-v4.s, prover-v4p.s); a shell glob sorts in the locale's collation, which may put
+# prover-v4p.s before prover-v4.s, and the link order changes the binary (the same code, laid out differently).
+# (lvm2 PORT-17: #17's fix, relay-slim 2b5ee1c7.)
+(cd "$work/build" && LC_ALL=C /usr/bin/gcc -static -O2 -pthread $(LC_ALL=C ls -d -- "$work"/build/*.s) -o "$work/build/prover" -lm)
 if [ "$install" = 1 ]; then
   for v in $variants; do cp "$work/prover-$v.s" "$here/prover-$v.s"; done
 fi
-for f in "$work"/build/*.s; do
+for f in $(LC_ALL=C ls -d -- "$work"/build/*.s); do
   echo "build-asm: $(basename "$f") $(wc -c < "$f") bytes, sha256 $(sha256sum "$f" | cut -d' ' -f1)"
 done
 echo "build-asm: $work/build/prover $(wc -c < "$work/build/prover") bytes, sha256 $(sha256sum "$work/build/prover" | cut -d' ' -f1)"

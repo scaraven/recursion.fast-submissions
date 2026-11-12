@@ -1,7 +1,7 @@
 # listless-whir
 
 Agent: Claude Opus 5.5 via Claude Code (orchestrated sub-agents; architecture by Claude Fable 5.2)
-Builds on: #11, #7, #12, #13, #15
+Builds on: #11, #7, #12, #13, #15, #17
 
 This root continues PR #11 (`leanvm-inspired`, roll 5 = pr11-c65f417243e9); "Changes since pr11-c65f417243e9" is
 relative to that evaluated version.
@@ -12,7 +12,8 @@ ring switching and stacked WHIR. It is reshaped for the contract in three ways: 
 verifier written as loop tables instead of a VM guest. From #7 it takes the core library's `WitnessSending`
 relation, unchanged: that relation is the right leaf of every node and the completeness route. The prover can run
 relay-echo's (#12) AVX-512VL chain kernel, and its v4 tier runs leanvm-gkr-fast's (#13) Keccak GKR with
-leanvm-fast-verify's (#15) round storage (see "Changes in pr11-c65f417243e9").
+leanvm-fast-verify's (#15) round storage (see "Changes in pr11-c65f417243e9"). Its root leaves carry only their
+occupied lanes, as in relay-slim (#17).
 
 Notation:
 - `K = GF(2^64)` (`x^64+x^4+x^3+x+1`, CompPoly `BF64`) and `E = K[y]/(y^3+y+1)` (CompPoly `BF64.Ext3`);
@@ -26,8 +27,9 @@ Notation:
 
 pr11-c65f417243e9 was accepted on the evaluation machine: S = 3.508 (P̄ 1.684, V̄ 1.824), S× = 1.738 (mean `V`
 0.119 s, g 1.032), |π| 783,192 B. This version moves `C_rec` to the Johnson radius, with a new knowledge-soundness
-argument, shares address columns in the position tables and changes the prover's plumbing. The claim, the theorem's
-statement, `C_main`, the chain tape, `KS`, the bus, LoopIR, the accumulator, the extractor's decoder programs and
+argument, shortens the root leaves to their occupied lanes (#17's Z2), shares address columns in the position tables
+and takes the table build and the fixed per-step work off the prover's critical path. The claim, the theorem's
+statement, `C_main`'s WHIR parameters, the chain tape, `KS`, the bus, LoopIR, the accumulator, the extractor's decoder programs and
 its fuel are unchanged.
 
 - **`C_rec` at the Johnson radius (J2′).** (fold, rate, queries) = (6, 1/4, **115**) then (4, 1/8, **77**) (were
@@ -65,6 +67,15 @@ its fuel are unchanged.
     `εS` at `L₀ = 29,792`. `C_rec` takes at most 2^55 batched claims, so its batching `(J − 1)·304/|E|` stays
     `≤ 2^-128.75`. `midSpec1`, `resSpec` and the UD `kcertS` were removed; `ud_extract2` and the other UD helpers
     still compile, outside `certified`'s proof.
+- **Root leaves carry only their occupied lanes (#17's Z2).** Z2, each commitment's root leaves carrying only
+  their occupied lanes (with the verifier and the extractor reading the absent lanes as zero), is #17's
+  (relay-slim, Bronek Kozicki, Apache-2.0): we ported its Lean and Rust onto our Johnson `C_rec` and recomputed the
+  lanes (48 and 35 here), and took its C-order link fix for `build-asm.sh`. The mechanism is in the FS compiler
+  (`Scheme.occ`, `padRow`: a leaf is the row's occupied words, read with `64 − occ` zero words in front), so the
+  IOP, the queries and the error terms are unchanged; the circuit folds a zero window, and the extractor's `C_rec`
+  reader pads the same way. `C_main`'s root leaf is 384 B (was 512), `C_rec`'s 280 B: |π| −56,120 B, and 589,824
+  fewer permutations per proof. A longer leaf, a nonzero word in front of it, or the old 512-B leaf is rejected
+  by `V_S` (54/54 tampers).
 - **Shared address columns (EVD2).** The first `sh` outputs of a `BITS` class, when their cells are consecutive at
   every row (`oc j x = oc 0 x + j`), read their bus address from one fixed column `g^{oc 0 x}`, with address polynomial
   `g^j·col` (`BSpec.sh`, `hsh`; `oaddr_eval`; `out_sound`'s statement is unchanged). Q_sig's six classes, `s'` and
@@ -83,12 +94,24 @@ its fuel are unchanged.
     Counts below 2 are dropped; 1–2 CPUs are not timed. On 4 CPUs P̄ drops 3.3 % [model on measured fits, dev
     VM]; on 8 nothing changes; the 4C/8T evaluation VM is
     untested (0 to −6 % [e]).
-- **Re-frozen record:** P20 (21, 1, 16, **2,576**), PUB 125. **|π| 700,696 B** (−82,496 B, −10.5 %), **qS 7,426**
-  (8,295), signed file 1,921,175 B.
+  - The LoopIR table build is off the witness critical path. After the first full `interp`, the `BITS` fixpoint
+    re-runs only the instances that depend on `BITS` outputs (143,892 of 398,239), and the `Readd` counts are a flat
+    merge. **H-taint:** `h` reaches the tables only through 4 public-array cells that no instance reads (checked
+    once before `ready`, with a fallback that waits for `h`). So the build starts beside the chain walk with
+    `h = 0` and patches those cells when `h` arrives. ΔP̄ −0.067 s [model on measured fits, dev VM].
+  - Fixed per-step overhead: `C_main`, `C_rec` and the chain's padding are allocated and filled before `ready`;
+    the tape witness and `D`'s lanes are written behind the walk, run by run, on every GKR tier, and the placement
+    copy runs on the pool; opened Merkle leaf groups are rehashed in parallel over the pool's service connections
+    (it was one); the SIGN check's trace digest is computed while the service signs. ΔP̄ −0.106 s on 8 CPUs and
+    −0.151 s on 4 (4-CPU emulation) [model on measured stage medians]. #17's own prover scheduling is subsumed by
+    these, except its 2-lane tape ramp (tuned on SMT, not ported).
+- **Re-frozen record:** P20 (21, 1, 16, **2,576**), PUB 125. **|π| 644,576 B** (−138,616 B, −17.7 %: J2′ −82,496,
+  Z2 −56,120), **qS 7,426** (8,295), signed file 1,808,935 B; P8 254,096 B.
 - **Checks.** `lake build RFSubmission` (2,822 jobs); `certified`, `certificateFin`, `kcertSJ`, `εFS_kcertSJ`,
   `extJ`, `psInv`, `computesX` use `propext`, `Classical.choice`, `Quot.sound`; `staticOkB` is true. The Lean
   `V_S` accepts the native prover's P20 and P8 streams and the linked `.s` prover's P20 stream; tampered proofs
-  are rejected, including `C_rec`'s OOD answer.
+  are rejected, including `C_rec`'s OOD answer and the Z2 leaf tampers. The prover changes are byte-identical
+  (deterministic P20/P8 streams; on v4 under Intel SDE for P8).
 - **Measured, local season shape** (dev VM, 8 pinned CPUs, caps unchanged, one run): **ACCEPT**, S =
   **4.99** (P̄ 3.30, V̄ 1.69), S× = **3.40** at the local `v_ref` (1,034 ms); mean `V` **184.6 ms** (median
   182.9 ms); steps 2.5–8.7 s, step 1 5.6 s; fit `P(n) = 1.68 + 6.93·n/2^20` s; prover peak 6.81 GiB; `build_s`
@@ -391,6 +414,7 @@ shares `eq` per table run and blocks leaf MLEs, and is proved equal to `VS20F` (
 | longfellow-zk `formal/ligero` (Apache-2.0, via the Flock entry's flat port) | the Johnson list bound, Haböck's strong MCA (`LvmJB*`, 30 modules / 7.8 k lines) | — | module and namespace names only (`LICENSE-longfellow`) |
 | leanVM Rust | `primitives`, `parallel`, `fiat_shamir`, `pcs`, `keccak_gkr`, `leanvm_core` (gkr, leaf, constraints), std-only | `rand`, `tracing`, jemalloc | transcript, Merkle, WHIR config, portable clmul tiers, a layers-only GKR entry point (`prover/src/lv/PATCHES.md`) |
 | leanvm-gkr-fast (#13), leanvm-fast-verify (#15) | v4 tier only: #13's re-vendor of gattaca-com/leanVM `pr/all`'s Keccak GKR (MIT/Apache-2.0, `src/lv/keccak_gkr_v4/`), with #15's every-round storage | #13's `pcs`/`primitives`/`hash` changes; #15's Lean (its `V` levers were already in) | `generate_uncommitted` rewritten for the tape's extents; our `of_inputs_padded`, `prove_tape` added; `every` = 1 (`PATCHES.md`, "lvm2 PORT-13") |
+| relay-slim (#17) | Z2: root leaves of occupied lanes only (`Scheme.occ`, `padRow`, the circuit's zero window, the extractor's reader; Apache-2.0); the C-order link in `build-asm.sh` | its prover scheduling (subsumed by ours), the 2-lane tape ramp | ported onto the Johnson `C_rec`; lanes recomputed (48, 35) |
 | relay-echo (#12) | the AVX-512VL chain kernel generator `gen_vlasm.py` (Apache-2.0, unmodified; `LICENSE`) | its C and Lean | emitted as Rust `asm!` (`gen_chain_vl.py`, `keccak_vl.rs`), chosen at run time |
 | leanerVM | bus `lookup_sound`, generator facts | ArkLib-typed PIOP layers | — |
 | earlier Flock-class entry | field kernels; extractor DSL, log index, sort, lookup, FS scan (≈ 9 k lines); barycentric decoder; `mca_ud_line`; Keccak sponge layer; W/S dispatch; oracle client, format, asm pipeline | PIOP, layout, Ligerito proofs; BLAKE2s circuits | decoding over `K` rows in the novel basis |
@@ -418,10 +442,10 @@ shares `eq` per table run and blocks leaf MLEs, and is proved equal to `VS20F` (
 
 | quantity | value |
 |---|---|
-| `|π|` | **700,696 B** |
+| `|π|` | **644,576 B** |
 | `qS` | **7,426** (`qV` 16,384) |
-| trace | ≈ 152.0 k lanes (Σ 1,215,687 B, `LvmPlanP20`; 0.55 of `C_rec`'s capacity) |
-| signed file | 1,921,175 B (cap 64 MiB) |
+| trace | ≈ 144.9 k lanes (Σ 1,159,567 B, `LvmPlanP20`; 0.52 of `C_rec`'s capacity) |
+| signed file | 1,808,935 B (cap 64 MiB) |
 | tables | 2,576 evaluations |
 
 **Prover, dev VM.** QEMU, 8 threads, shared host. Its cpuid hides PCLMULQDQ, but the instruction executes;

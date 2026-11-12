@@ -172,6 +172,9 @@ impl oracle::Oracle for Shared {
     fn ask_rows_here(&self, out: &mut [Digest], rows: &[u8], row_bytes: usize, pad: usize) {
         oracle::Oracle::ask_rows_here(self.0, out, rows, row_bytes, pad)
     }
+    fn ask_tails_here(&self, out: &mut [Digest], rows: &[u8], row_bytes: usize, skip: usize) {
+        oracle::Oracle::ask_tails_here(self.0, out, rows, row_bytes, skip)
+    }
 }
 
 /// `sprove --params P8|P20 [--local] [--n N] [--seed S] [--b 0|1] [--out FILE] [--trace FILE] [--sign FILE]`: one
@@ -259,7 +262,8 @@ fn cmd_pgbench(args: &[String]) {
     for r in 0..reps {
         oracle::reset_stats();
         let t = Instant::now();
-        let (c, d) = lv::pcs::whir::commit(&msg, nu, lv::pcs::whir::INITIAL_FOLDING_FACTOR, m0.rate, m0.cap);
+        let fold = lv::pcs::whir::INITIAL_FOLDING_FACTOR;
+        let (c, d) = lv::pcs::whir::commit(&msg, nu, fold, m0.rate, m0.cap, 1 << fold);
         let s = t.elapsed().as_secs_f64();
         println!("pgbench commit nu={nu} rep={r} wall_s={s:.3} cap0={:02x}", c.cap[0][0]);
         drop(d);
@@ -345,7 +349,7 @@ fn cmd_sprove(args: &[String]) {
         // the stream's zero build before `ready` (untimed), on the same program
         drop(lvm::stream::build_q_tables(&q_emu, &|_, _, n| vec![lv::primitives::field::F64::ZERO; n], &pl));
     }
-    let emu_build = |_hd: &lvm::prove::Header, _col: &lvm::prove::Col| -> Vec<lvm::m3::TableW> {
+    let emu_build = |_hd: &lvm::prove::Header, _col: &lvm::prove::Col, _h: &lvm::prove::GetH| -> Vec<lvm::m3::TableW> {
         let t = Instant::now();
         let z = lvm::stream::build_q_tables(&q_emu, &|_, _, n| vec![lv::primitives::field::F64::ZERO; n], &pl);
         if std::env::var_os("LVM_LOG").is_some() {
@@ -815,6 +819,8 @@ fn cmd_stream(mode: &str, dir: &str) {
     // input, so it is built before `ready` (untimed) instead of after `go`
     crate::chainwalk::select(); // PORT-12 / P-FIX2: the chain walk's kernel, timed before `ready`
     let ctx = lvm::stream::Ctx { p, svc, vk, log, q: None, phi0: lv::primitives::field::F192::ZERO }.with_loop();
+    // P6B (OH-DES P1d): the first proof's commitment buffers, before `ready` (untimed)
+    lvm::prove::prepare(&ctx.p);
     if log {
         eprintln!("lvm: {mode} {} {} start-up {:.3} s; {tsel}", ctx.p.name, kat::info(), t_start.elapsed().as_secs_f64());
     }

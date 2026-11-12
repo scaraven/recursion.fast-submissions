@@ -103,6 +103,42 @@ pub fn walk(k: Kernel, s: [u64; 4], n: usize, n_end: usize, at_end: impl FnMut([
     walk_cap(k, s, n, n_end, n, n, at_end)
 }
 
+/// The rows [`walk_emit`] hands over at a time (a multiple of the tape witness's 512-row block).
+pub const CHUNK: usize = 1024;
+
+/// P6B (OH-DES P1c): [`walk`]'s `n` steps into the caller's rows `inputs[..n]`, `y[..n]` (the same rows), handing
+/// every finished run of [`CHUNK`] rows (the last one shorter) to `emit` in order, so that a consumer can use them
+/// while the walk goes on. `at_end(lanes of chainEnd s n)` is called before the last run is emitted.
+pub fn walk_emit<'a>(
+    k: Kernel,
+    s: [u64; 4],
+    inputs: &'a mut [[u64; 25]],
+    y: &'a mut [[u64; 4]],
+    at_end: impl FnOnce([u64; 4]),
+    mut emit: impl FnMut(&'a [[u64; 25]], &'a [[u64; 4]]),
+) {
+    assert_eq!(inputs.len(), y.len());
+    assert!(!inputs.is_empty(), "a walk of at least one step (`at_end` is called at its last)");
+    let (mut ri, mut ry) = (inputs, y);
+    let mut h = s;
+    let mut at_end = Some(at_end);
+    while !ri.is_empty() {
+        let m = ri.len().min(CHUNK);
+        let (ci, ti) = std::mem::take(&mut ri).split_at_mut(m);
+        let (cy, ty) = std::mem::take(&mut ry).split_at_mut(m);
+        (ri, ry) = (ti, ty);
+        ci[0] = block_of_lanes(&h);
+        h = walk_y(k, h, cy);
+        for j in 1..m {
+            ci[j] = block_of_lanes(&cy[j - 1]);
+        }
+        if ri.is_empty() {
+            (at_end.take().unwrap())(h);
+        }
+        emit(ci, cy);
+    }
+}
+
 /// [`walk`], with the vectors' capacities given (P-FIX2: S2's gated walk pads them to `2^log_n` rows after).
 pub fn walk_cap(
     k: Kernel,

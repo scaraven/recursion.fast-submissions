@@ -107,7 +107,7 @@ theorem openRec_head : ((phases pX).getD 7 default).1 = .openRec ∧
         .sample, .sample, .read 1, .read 2, .sample, .read 1, .sample,
         .positions ⟨.crec, 0⟩, .sample, .opening ⟨.crec, 0⟩, .read 2, .sample, .read 2, .sample,
         .read 2, .sample, .read 2, .sample, .read 2, .read (2 ^ 9)] ∧
-    (recL pX 0).nPosQ = 15 ∧ (recL pX 0).t = 115 ∧ oQs pX = 13 ∧ (recL pX 0).row = 512 ∧ (recL pX 0).path = 8 ∧
+    (recL pX 0).nPosQ = 15 ∧ (recL pX 0).t = 115 ∧ oQs pX = 13 ∧ (recL pX 0).row = 280 ∧ (recL pX 0).path = 8 ∧
     (recL pX 1).fold = 4 ∧ (recL pX 0).fold = 6 ∧ gQs pX = 2 := by
   decide +kernel
 
@@ -173,9 +173,26 @@ def blkLensOkL : Blk → Bool
   | .one _ len => len % 8 == 0 && 32 ≤ len
   | .opn _ row _ => row % 8 == 0 && 32 ≤ row
 
+/-- **The leaf lengths at `pX`**: the rows of both commitments' levels (`leafLens_rows`), a leaf
+carrying its row's occupied words (`C_main`'s root: 48 of 64, 384 B, the later levels' length too;
+`C_rec`'s root: 35 of 64, 280 B; the later levels' 48, 384 B; lvm2 PORT-17, Z2 after #17). The reassembly copies a query of one of these lengths whole
+(a leaf), and the length rule (`LvmSchedule.lengthRule`) keeps every FS query off them. -/
+def leafLens : List ℕ := [384, 280]
+
+/-- `leafLens` is the set of `pX`'s row lengths. -/
+theorem leafLens_rows :
+    leafLens.all (fun l => ((pX.mainLevels ++ pX.recLevels).map Level.row).contains l) = true ∧
+      ((pX.mainLevels ++ pX.recLevels).map Level.row).all (fun l => leafLens.contains l) = true := by
+  decide +kernel
+
+/-- A leaf is not a node query. -/
+theorem ne64_of_leaf {len : ℕ} (h : len ∈ leafLens) : len ≠ 64 := by
+  simp only [leafLens, List.mem_cons, List.not_mem_nil, or_false] at h
+  omega
+
 /-- The words a query of `len` bytes contributes to the proof (`LvmXOut`'s `pieceLen`). -/
 def pieceLenL (len : ℕ) : ℕ :=
-  if len = 64 then 4 else if len = 384 ∨ len = 512 then len / 8 else (len - 32) / 8
+  if len = 64 then 4 else if len ∈ leafLens then len / 8 else (len - 32) / 8
 
 /-- A block's contribution to the proof in words (`LvmXOut`'s `blkPieceLen`). -/
 def blkPieceLenL : Blk → ℕ
@@ -231,7 +248,7 @@ set_option maxRecDepth 100000 in
 theorem layout_all_P20 :
     (nPre pX = 1294 ∧ nChain pX = 1338 ∧ alphaPos pX 0 = 1297 ∧ capRec1Off pX = 198680 ∧
       capRecOff pX = 13816 ∧ (fsMsgs pX).length = 1479 ∧
-      (fsMsgs pX).getD 1337 (0, 0) = (291384, 12336) ∧ alpha1Pos pX 0 = 1334 ∧ f2Off pX = 291432 ∧
+      (fsMsgs pX).getD 1337 (0, 0) = (264704, 12336) ∧ alpha1Pos pX 0 = 1334 ∧ f2Off pX = 264752 ∧
       (fsMsgs pX).getD 1302 (0, 0) = (198632, 4144)) ∧
     (1 + ((blocks pX).map Blk.count).sum = qS pX ∧
       47 + ((blocks pX).map Blk.trBytes).sum = (tally pX).trace ∧
@@ -241,24 +258,24 @@ theorem layout_all_P20 :
       8 + ((blocks pX).map Blk.pBytes).sum = piSize pX ∧
       (blocks pX).all (fun b => match b with
         | .one _ len => len % 8 == 0 && 32 ≤ len | .opn _ row _ => row % 8 == 0) = true) ∧
-    piSize pX = 700696 ∧
+    piSize pX = 644576 ∧
     (fsMsgs pX).all (fun m => 32 + m.2 ≤ queryCap) = true ∧
     ((fsMsgs pX).take (nChain pX - 1)).all (fun m =>
       m.1 % 8 == 0 && m.2 % 8 == 0 && m.1 + m.2 ≤ piSize pX && 32 + m.2 ≤ queryCap) = true ∧
     ((blocks pX).all blkLensOkL = true ∧ 8 + 8 * ((blocks pX).map blkPieceLenL).sum = piSize pX) ∧
-    ((blocks pX).map blkPCostL).sum = 4902462 ∧ ((blocks pX).map blkTCostL).sum = 5387878 ∧
-    ((blocks pX).map blkPOutsL).sum = 87586 ∧ ((blocks pX).map blkTOutsL).sum = 151955 ∧
+    ((blocks pX).map blkPCostL).sum = 4649922 ∧ ((blocks pX).map blkTCostL).sum = 5135338 ∧
+    ((blocks pX).map blkPOutsL).sum = 80571 ∧ ((blocks pX).map blkTOutsL).sum = 144940 ∧
     ((blocks pX).map blkPSizeL).sum = 77874 ∧ ((blocks pX).map blkTSizeL).sum = 82085 := by
   decide +kernel
 
 /-- **The layout numbers at `P20`** (J2′ on S4 with EV-DIET, re-decided at every freeze): 1338 targets,
 `α₀_j` at positions 1297–1302, level 0's OOD point at 1303–1315, its separator and PoW challenge at 1316–1317,
 its positions queries at 1318–1332, `λ` at 1333, `α₁_j` at 1334–1337; level 1's cap at π byte 198,680
-(absorbed by position 1303, the first OOD sample), `f₂` at 291,432 (absorbed by position 1338, level 1's
+(absorbed by position 1303, the first OOD sample), `f₂` at 264,752 (absorbed by position 1338, level 1's
 separator), `C_rec`'s cap at byte 13,816. -/
 theorem layout_P20 : nPre pX = 1294 ∧ nChain pX = 1338 ∧ alphaPos pX 0 = 1297 ∧
     capRec1Off pX = 198680 ∧ capRecOff pX = 13816 ∧ (fsMsgs pX).length = 1479 ∧
-    (fsMsgs pX).getD 1337 (0, 0) = (291384, 12336) ∧ alpha1Pos pX 0 = 1334 ∧ f2Off pX = 291432 ∧
+    (fsMsgs pX).getD 1337 (0, 0) = (264704, 12336) ∧ alpha1Pos pX 0 = 1334 ∧ f2Off pX = 264752 ∧
     (fsMsgs pX).getD 1302 (0, 0) = (198632, 4144) :=
   layout_all_P20.1
 

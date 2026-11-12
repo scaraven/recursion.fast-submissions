@@ -89,3 +89,11 @@ slower than `0b850750`'s on AVX-512 + PCLMUL (`docs/lvm2/stages/PORT-13-15.md` �
 | `keccak_gkr_v4/witness.rs` | `every(_) = 1`: every round stored (#15's value; `pr/all`: 4 at ≥ 8 threads, else 2) | #15 measured it faster on Zen 4 at 4C/8T; the memory is the 0b850750 copy's |
 | `keccak_gkr_v4/witness.rs` | `Witness::generate_uncommitted` (T-P1's, above), rewritten for `pr/all`'s `Extent::new(first, blocks, depth)` and `slots()`, as `from_committed` runs its blocks | the tape |
 | `keccak_gkr_v4/mod.rs` | `OutputClaim::of_inputs_padded` (P-GATE's) and `Witness::prove_tape` (T-P1's), copied unchanged; `pub use protocol::Claim` | the tape and the KS output claim |
+
+Z2 (after #17, relay-slim, Apache-2.0; a commitment's root leaves carry its occupied lanes; `LvmCompile.Scheme.occ`, `LvmParams.withRow0`):
+
+| file | edit | why |
+|---|---|---|
+| `pcs/whir.rs` | `commit` takes `leaf_words` (`n_lanes ≤ leaf_words ≤ 2^log_batch_size`) and keeps it in `ProverData`; a leaf is the image's last `leaf_words` words, and the L0 openings send those (`CutTree::open` with `leaf_words`) | a level-0 leaf is its stack's occupied words (`C_main` 48, 384 B at P20; `C_rec` 35, 280 B; lvm2 PORT-17); the caller commits the stack truncated to them (the padding-free path) |
+| `pcs/merkle.rs` | `LeafHasher::Tail`: a leaf shorter than its row is the row's last `leaf_bytes`, hashed through `oracle::hash_tails` | the leaves leave out the row's leading zero lanes |
+| `fiat_shamir/transcript.rs` | `LEAF_LENS` (384, 312, 280, 512): the leaf lengths `hint_merkle` accepts and the length rule reserves | the records' rows; 512 for `batch.rs` |

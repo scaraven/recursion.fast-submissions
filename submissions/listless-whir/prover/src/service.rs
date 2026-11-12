@@ -203,13 +203,20 @@ impl Service {
 
     /// `SIGN` the queries: their answers (computed by the service) and the signature.
     pub fn sign(&self, qs: &[&[u8]]) -> (Vec<Digest>, Sig) {
+        let (a, s, ()) = self.sign_during(qs, || ());
+        (a, s)
+    }
+
+    /// [`Self::sign`], running `during` while the service computes (P6B, OH-DES P4).
+    pub fn sign_during<R>(&self, qs: &[&[u8]], during: impl FnOnce() -> R) -> (Vec<Digest>, Sig, R) {
         let mut req = vec![0u8; 16];
         for q in qs {
             Self::push_item(&mut req, q);
         }
         let conn = self.sign_start(&mut req, qs.len());
+        let r = during();
         let (body, sig) = self.sign_finish(conn, qs.len(), req.len() - 16);
-        (body.chunks_exact(32).map(|a| a.try_into().unwrap()).collect(), sig)
+        (body.chunks_exact(32).map(|a| a.try_into().unwrap()).collect(), sig, r)
     }
 
     /// Send a `SIGN` of the `count` items in `req[16..]` (each `len:u32 ‖ q`), without waiting for
@@ -299,11 +306,21 @@ impl Service {
     /// `batches_on` for the queries `0^pad ‖ row_i` (one length each), the body written by `writev` straight
     /// from `rows`: per item the shared `len ‖ 0^pad` prefix and the row. The same bytes on the socket as
     /// `batches_on` would write, in batches of the same size rule (at most `IOV_ITEMS` items).
-    fn row_batches_on(&self, conn: &mut UnixStream, out: &mut [Digest], rows: &[u8], row_bytes: usize, pad: usize) {
+    /// Items `0^pad ‖ rows[k·row_bytes + skip ..][.. row_bytes − skip]`: each row's tail behind `pad` zeros.
+    #[allow(clippy::too_many_arguments)]
+    fn row_batches_on(
+        &self,
+        conn: &mut UnixStream,
+        out: &mut [Digest],
+        rows: &[u8],
+        row_bytes: usize,
+        pad: usize,
+        skip: usize,
+    ) {
         use std::io::IoSlice;
         /// 2 iovecs per item and the header stay within `IOV_MAX` = 1024.
         const IOV_ITEMS: usize = 511;
-        let len = pad + row_bytes;
+        let len = pad + row_bytes - skip;
         if len > QUERY_CAP {
             fatal(&format!("a query of {len} bytes is above the cap of {QUERY_CAP}"));
         }
@@ -326,7 +343,7 @@ impl Service {
             iov.push(IoSlice::new(&hdr));
             for k in i..i + count {
                 iov.push(IoSlice::new(&prefix));
-                iov.push(IoSlice::new(&rows[k * row_bytes..][..row_bytes]));
+                iov.push(IoSlice::new(&rows[k * row_bytes + skip..][..row_bytes - skip]));
             }
             let mut bufs = &mut iov[..];
             while !bufs.is_empty() {
@@ -453,7 +470,13 @@ impl Oracle for Service {
 
     fn ask_rows_here(&self, out: &mut [Digest], rows: &[u8], row_bytes: usize, pad: usize) {
         let mut conn = self.take();
-        self.row_batches_on(&mut conn, out, rows, row_bytes, pad);
+        self.row_batches_on(&mut conn, out, rows, row_bytes, pad, 0);
+        self.put(conn);
+    }
+
+    fn ask_tails_here(&self, out: &mut [Digest], rows: &[u8], row_bytes: usize, skip: usize) {
+        let mut conn = self.take();
+        self.row_batches_on(&mut conn, out, rows, row_bytes, 0, skip);
         self.put(conn);
     }
 }

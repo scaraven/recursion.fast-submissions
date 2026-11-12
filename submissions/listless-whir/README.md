@@ -15,11 +15,16 @@ the numbers and the dead ends.
   `kcertSJ`).
   **No list decoder**: off list luck the transcript is advice that singles out the good member, and the
   extractor runs the same UD decoder programs (`extSJ`, `decode_SJ`) at the same fuel;
+- **root leaves of occupied lanes only** (#17's Z2, ported): V and the extractor read the absent lanes as zero;
+  `C_main`'s root leaf 512 → 384 B, `C_rec`'s → 280 B;
 - **shared address columns**: a `BITS` class's leading outputs with consecutive cells read their addresses from one fixed column
   (`g^j·col`); table evaluations 2,851 → 2,576;
 - **prover plumbing** (proofs byte-identical): the `Readd` tables cached per program, the opening basis's setup in
-  parallel, and `prover setup` picks the worker count (`min(CPUs, 8)`, ¾ or ½ of it) by timing a whole P20 step;
-- `|π|` 783,192 → 700,696 B, `qS` 8,295 → 7,426;
+  parallel, and `prover setup` picks the worker count (`min(CPUs, 8)`, ¾ or ½ of it) by timing a whole P20 step.
+  The LoopIR table build starts beside the chain walk: only the `BITS` cone is re-run, and with H-taint the build
+  begins with `h = 0` and patches the 4 cells `h` reaches. The commitment buffers are prepared before `ready`, the
+  tape witness runs behind the walk, and opened leaf groups are rehashed in parallel;
+- `|π|` 783,192 → 644,576 B, `qS` 8,295 → 7,426;
 - local season shape (dev VM): ACCEPT, S 5.24 → 4.99, S× 3.49 → 3.40, mean `V` 196.9 → 184.6 ms.
 
 Earlier: pr11-c65f417243e9 added grinding (g = 14) on every WHIR level, moved `C_main` to the Johnson radius
@@ -74,7 +79,7 @@ pr11-2f57ce79224a gated the chain link by `n`, sped up the prover plumbing and m
     OOD after level 0, final 2^9), decoded by the extractor with UD programs on the transcript's advice.
 - **Transcript.** A hash chain over the contract oracle. Merkle hashes are oracle queries, and queries are
   lane-aligned and classified by length.
-- **Sizes (P20).** `qS = 7,426`, `|π| = 700,696 B`, 2,576 table evaluations.
+- **Sizes (P20).** `qS = 7,426`, `|π| = 644,576 B`, 2,576 table evaluations; root leaves 384 B (`C_main`, 48 lanes) and 280 B (`C_rec`, 35 lanes).
 
 ## Main theorem chain (modules in `lean/`)
 
@@ -147,6 +152,8 @@ longer uses):
 - [leanVM](https://github.com/leanEthereum/leanVM): the protocol, the Rust crates and the `formal/` proofs.
 - [leanerVM](https://github.com/Verified-zkEVM/leanerVM): the bus lookup lemma, the generator facts and
   reference formalisations.
+- relay-slim (#17): Z2, root leaves carrying only their occupied lanes (Apache-2.0), ported onto the Johnson
+  `C_rec`, and the C-order link in `build-asm.sh`.
 - relay-echo (#12): the AVX-512VL Keccak chain kernel generator (Apache-2.0, `LICENSE`).
 - leanvm-gkr-fast (#13): the re-vendor of gattaca-com/leanVM `pr/all`'s Keccak GKR (MIT/Apache-2.0), our v4
   tier; leanvm-fast-verify (#15): every-round storage, measured faster on Zen 4.

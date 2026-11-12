@@ -60,23 +60,23 @@ theorem layOk_pb (lv : List Level) (nu U : Nat) (pb pb' : Nat → Nat) (pch cch 
     rfl rfl rfl rfl rfl]
   rfl
 
-theorem phB20 : phByte P20 .openRec = 291528 ∧ phByte P20 .openMain = 545592 := by decide +kernel
-theorem phB8 : phByte P8 .openRec = 241576 ∧ phByte P8 .openMain = 292168 := by decide +kernel
+theorem phB20 : phByte P20 .openRec = 291528 ∧ phByte P20 .openMain = 518912 := by decide +kernel
+theorem phB8 : phByte P8 .openRec = 241576 ∧ phByte P8 .openMain = 288224 := by decide +kernel
 
 theorem lay20₀ : LayOk ⟨P20.recLevels, P20.nuRec, 36453, fun _ => 0, fun i => pchOf (P20.recLevels.getD i default).t,
-      fun i => bitsDesc (P20.recLevels.getD i default).kappa, P20.grind, P20.recOod, fun _ => 0⟩ 151961 = true ∧
-    LayOk ⟨P20.mainLevels, P20.nuMain, 68199, fun _ => 0, fun i => pchOf (P20.mainLevels.getD i default).t,
-      fun i => bitsDesc (P20.mainLevels.getD i default).kappa, P20.grind, P20.mainOod, fun _ => 0⟩ 151961 = true ∧
-    stackEndL P20.grind P20.recOod P20.recLevels (36453 + 15) = 68199 ∧
-    8 * stackEndL P20.grind P20.mainOod P20.mainLevels (68199 + 15) = 1215688 := by
+      fun i => bitsDesc (P20.recLevels.getD i default).kappa, P20.grind, P20.recOod, fun _ => 0⟩ 144946 = true ∧
+    LayOk ⟨P20.mainLevels, P20.nuMain, 64864, fun _ => 0, fun i => pchOf (P20.mainLevels.getD i default).t,
+      fun i => bitsDesc (P20.mainLevels.getD i default).kappa, P20.grind, P20.mainOod, fun _ => 0⟩ 144946 = true ∧
+    stackEndL P20.grind P20.recOod P20.recLevels (36453 + 15) = 64864 ∧
+    8 * stackEndL P20.grind P20.mainOod P20.mainLevels (64864 + 15) = 1159568 := by
   decide +kernel
 
 theorem lay8₀ : LayOk ⟨P8.recLevels, P8.nuRec, 30209, fun _ => 0, fun i => pchOf (P8.recLevels.getD i default).t,
-      fun i => bitsDesc (P8.recLevels.getD i default).kappa, P8.grind, P8.recOod, fun _ => 0⟩ 52367 = true ∧
-    LayOk ⟨P8.mainLevels, P8.nuMain, 36521, fun _ => 0, fun i => pchOf (P8.mainLevels.getD i default).t,
-      fun i => bitsDesc (P8.mainLevels.getD i default).kappa, P8.grind, P8.mainOod, fun _ => 0⟩ 52367 = true ∧
-    stackEndL P8.grind P8.recOod P8.recLevels (30209 + 15) = 36521 ∧
-    8 * stackEndL P8.grind P8.mainOod P8.mainLevels (36521 + 15) = 418936 := by
+      fun i => bitsDesc (P8.recLevels.getD i default).kappa, P8.grind, P8.recOod, fun _ => 0⟩ 51049 = true ∧
+    LayOk ⟨P8.mainLevels, P8.nuMain, 36028, fun _ => 0, fun i => pchOf (P8.mainLevels.getD i default).t,
+      fun i => bitsDesc (P8.mainLevels.getD i default).kappa, P8.grind, P8.mainOod, fun _ => 0⟩ 51049 = true ∧
+    stackEndL P8.grind P8.recOod P8.recLevels (30209 + 15) = 36028 ∧
+    8 * stackEndL P8.grind P8.mainOod P8.mainLevels (36028 + 15) = 408392 := by
   decide +kernel
 
 /-- **`P20`'s layout**: both openings pass the static checks below the stream's lanes; `C_rec` ends
@@ -87,8 +87,8 @@ theorem lay20 (pb pw : Nat → Nat) :
     8 * stackEndL P20.grind P20.mainOod P20.mainLevels (stackEndL P20.grind P20.recOod P20.recLevels (openU P20 + 15) + 15) =
       hashedLen P20 ∧
     8 * openU P20 = phByte P20 .openRec + 96 := by
-  have hT : streamLanes P20 = 151961 := sizes_P20.2.2.2.2.2.2.1
-  have hL : hashedLen P20 = 1215688 := sizes_P20.2.2.2.2.2.1
+  have hT : streamLanes P20 = 144946 := sizes_P20.2.2.2.2.2.2.1
+  have hL : hashedLen P20 = 1159568 := sizes_P20.2.2.2.2.2.1
   have hU : openU P20 = 36453 := by rw [openU, phB20.1]
   obtain ⟨l1, l2, l3, l4⟩ := lay20₀
   refine ⟨?_, ?_, ?_, ?_, ?_⟩
@@ -106,8 +106,8 @@ theorem lay8 (pb pw : Nat → Nat) :
     8 * stackEndL P8.grind P8.mainOod P8.mainLevels (stackEndL P8.grind P8.recOod P8.recLevels (openU P8 + 15) + 15) =
       hashedLen P8 ∧
     8 * openU P8 = phByte P8 .openRec + 96 := by
-  have hT : streamLanes P8 = 52367 := sizes_P8.2.2.2.2.2.2.2.2.1
-  have hL : hashedLen P8 = 418936 := sizes_P8.2.2.2.2.2.2.2.1
+  have hT : streamLanes P8 = 51049 := sizes_P8.2.2.2.2.2.2.2.2.1
+  have hL : hashedLen P8 = 408392 := sizes_P8.2.2.2.2.2.2.2.1
   have hU : openU P8 = 30209 := by rw [openU, phB8.1]
   obtain ⟨l1, l2, l3, l4⟩ := lay8₀
   refine ⟨?_, ?_, ?_, ?_, ?_⟩

@@ -252,7 +252,9 @@ impl Keccak256 {
         for i in 0..RATE_LANES {
             a[i] ^= u64::from_le_bytes(blk[8 * i..8 * i + 8].try_into().unwrap());
         }
-        keccak_f(a);
+        // P6B (OH-DES P4): the vendored single-state permutation (AVX-512 tier where built; `kat keccak` checks it
+        // against [`keccak_f`])
+        crate::lv::primitives::hash::keccak_f(a);
     }
     pub fn update(&mut self, mut data: &[u8]) -> &mut Self {
         if self.len > 0 {
