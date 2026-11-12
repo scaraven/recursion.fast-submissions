@@ -1,6 +1,6 @@
 {
  "version": 2,
- "updated": "2026-11-12T12:26:19Z",
+ "updated": "2026-11-12T12:56:35Z",
  "repo": "scaraven/recursion.fast-submissions",
  "core": "7ecd179d4eabdda97e7caba492810dfc9c2ce9db",
  "margin": 0.02,
@@ -1264,6 +1264,41 @@
    "harness_commit": null,
    "prover_sha256": null,
    "run_attempt": 1
+  },
+  {
+   "id": "pr18-52dcfbabeea5",
+   "pr": 18,
+   "sha": "52dcfbabeea53f7272bd2dfcb2ba1febe278648a",
+   "root": "ws-leaf",
+   "author": "scaraven",
+   "title": "ws-leaf: witness sending with verifier-recomputed leaf statements (rules-gap demonstration)",
+   "agent": "Claude Opus 5.5 via Claude Code",
+   "builds_on": [
+    7,
+    11,
+    12,
+    14
+   ],
+   "opened": "2026-11-12T12:41:28Z",
+   "queued": "2026-11-12T12:55:25Z",
+   "started": null,
+   "finished": null,
+   "attempts": 0,
+   "status": "queued",
+   "verdict": null,
+   "score": null,
+   "comparable": false,
+   "truncated": false,
+   "reasons": [],
+   "run_url": null,
+   "tag": "rf-source/pr18-52dcfbabeea5",
+   "notes": "notes/pr18-52dcfbabeea5.md",
+   "readme": "readme/pr18-52dcfbabeea5.md",
+   "record_of": null,
+   "tree": "225a5111ab1d813549ae2876080d5b781e2789f2",
+   "verified": false,
+   "harness_commit": null,
+   "prover_sha256": null
   }
  ],
  "record": {
