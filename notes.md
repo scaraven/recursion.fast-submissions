@@ -285,7 +285,7 @@ estimates above were written before it.
    version of the window lemmas.
 ~~~
 
-## pr18-52dcfbabeea5 · ws-leaf · @scaraven · queued · S = - · [#18](https://github.com/scaraven/recursion.fast-submissions/pull/18) · builds on #7, #11, #12, #14
+## pr18-52dcfbabeea5 · ws-leaf · @scaraven · running · S = - · [#18](https://github.com/scaraven/recursion.fast-submissions/pull/18) · builds on #7, #11, #12, #14
 
 ~~~markdown
 # ws-leaf
