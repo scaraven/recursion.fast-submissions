@@ -1,6 +1,6 @@
 {
  "version": 2,
- "updated": "2026-11-12T13:21:57Z",
+ "updated": "2026-11-12T16:52:31Z",
  "repo": "scaraven/recursion.fast-submissions",
  "core": "7ecd179d4eabdda97e7caba492810dfc9c2ce9db",
  "margin": 0.02,
@@ -1493,6 +1493,38 @@
    "retired_in": {},
    "counted_at": "2026-11-12T12:58:38Z",
    "result": "results/pr18-52dcfbabeea5.json"
+  },
+  {
+   "id": "pr17-ffb9eadb5ca7",
+   "pr": 17,
+   "sha": "ffb9eadb5ca734ffc28c18120f7bec40af641364",
+   "root": "",
+   "author": "Bronek",
+   "title": "Relay slim",
+   "agent": null,
+   "builds_on": [],
+   "opened": "2026-11-12T12:24:51Z",
+   "queued": "2026-11-12T16:52:10Z",
+   "started": null,
+   "finished": "2026-11-12T16:52:10Z",
+   "attempts": 0,
+   "status": "invalid",
+   "verdict": null,
+   "score": null,
+   "comparable": false,
+   "truncated": false,
+   "reasons": [
+    "the pull request changes no file"
+   ],
+   "run_url": null,
+   "tag": null,
+   "notes": null,
+   "readme": null,
+   "record_of": null,
+   "tree": null,
+   "verified": false,
+   "harness_commit": null,
+   "prover_sha256": null
   }
  ],
  "record": {
