@@ -1,12 +1,14 @@
--- WP-14 (ASM). New for lvm: the structural facts O7a (`C_rec`'s opening commits nothing) and O7b
--- (`P_S` asks no proof of work), by induction on WP-7's UD programs (`LvmWhirProg`).
+-- WP-14 (ASM). New for lvm: the structural facts O7a (`C_rec`'s opening commits exactly its level-1
+-- oracle; lvm2 S4, was "nothing" at one level) and O7b (`P_S` asks no proof of work), by induction on
+-- WP-7's UD programs (`LvmWhirProg`).
 import LvmCertSOpen
 
 /-!
-# `P_S` commits nothing after its roots in `C_rec`'s opening, and grinds nowhere
+# `C_rec`'s opening commits one word, and `P_S` grinds nowhere
 
-* `noCommit_stackedRec`: `verifyStackedUd cfgRec20G cl` commits nothing (one level: the residual is
-  read, no next commitment); **`recNoCommit`** (O7a, `RecNoCommit`).
+* `CommitsN p n`: every completed run of `p` commits exactly `n` words (`CommitsN.after_ret`).
+  `commitsN_stacked_two`: a two-level stacked opening commits one (its level-1 oracle; the final
+  level reads the residual); **`recCommitsOne`** (O7a, `RecCommitsOne`).
 * `noGrind_stacked`: every stacked UD opening asks no proof of work; `noGrind_PSWith`: neither does
   `P_S` when its middle phases do not; `NoGrind.reach_grindBits`: a reachable history of a program
   with no proof of work ends in no grind (`grindBits = 0`, the `hng` of `kcertOfSpec`).
@@ -259,19 +261,133 @@ theorem nc_stacked_one (cfg : UdConfig) (level : LeanVM.Parameters.Whir.Level)
   rw [verifyWhirUd_eq hc]
   exact NoCommit.bind (nc_roundPoly _ _ _) fun _ ↦ nc_whirLevelsUd_one _ _ _ _ _ _ _ _ _ _ _
 
+/-! ## Commitment counts (lvm2, S4) -/
+
+end Lvm.ASM
+
+namespace LeanVM.Protocol.Compile.VerifierProgram
+
+variable {α β : Type}
+
+/-- **Every completed run of `p` commits exactly `n` words.** -/
+def CommitsN : VerifierProgram α → ℕ → Prop
+  | .ret _, n => n = 0
+  | .fail, _ => True
+  | .read k, n => ∀ x, CommitsN (k x) n
+  | .sample k, n => ∀ c, CommitsN (k c) n
+  | .grind _ k, n => CommitsN k n
+  | .commit _ _ _, 0 => False
+  | .commit _ _ k, n + 1 => CommitsN k n
+  | .query _ _ k, n => ∀ r, CommitsN (k r) n
+
+theorem CommitsN.bind {p : VerifierProgram α} {f : α → VerifierProgram β} {m n : ℕ}
+    (hp : p.CommitsN m) (hf : ∀ a, (f a).CommitsN n) : (p.bind f).CommitsN (m + n) := by
+  induction p generalizing m with
+  | ret a =>
+    have hm : m = 0 := hp
+    subst hm; rw [Nat.zero_add]; exact hf a
+  | fail => trivial
+  | read k ih => exact fun x ↦ ih x (hp x)
+  | sample k ih => exact fun c ↦ ih c (hp c)
+  | grind b k ih => exact ih hp
+  | commit ht w k ih =>
+    cases m with
+    | zero => exact hp.elim
+    | succ m =>
+      rw [show m + 1 + n = (m + n) + 1 by omega]
+      exact ih hp
+  | query i ps k ih => exact fun r ↦ ih r (hp r)
+
+theorem CommitsN.bind' {p : VerifierProgram α} {f : α → VerifierProgram β} {m n k : ℕ}
+    (hp : p.CommitsN m) (hf : ∀ a, (f a).CommitsN n) (hk : m + n = k) : (p.bind f).CommitsN k :=
+  hk ▸ CommitsN.bind hp hf
+
+theorem CommitsN.of_noCommit {p : VerifierProgram α} (hp : p.NoCommit) : p.CommitsN 0 := by
+  induction p with
+  | ret a => rfl
+  | fail => trivial
+  | read k ih => exact fun x ↦ ih x (hp x)
+  | sample k ih => exact fun c ↦ ih c (hp c)
+  | grind b k ih => exact ih hp
+  | commit ht w k ih => exact (hp : False).elim
+  | query i ps k ih => exact fun r ↦ ih r (hp r)
+
+/-- **A completed run of `p` commits `n` words.** -/
+theorem CommitsN.after_ret {p : VerifierProgram α} {n : ℕ} {l : List Ev} {a : α}
+    (hp : p.CommitsN n) (h : p.after l = some (.ret a)) : (commits l).length = n := by
+  induction l generalizing p n with
+  | nil =>
+    simp only [VerifierProgram.after, Option.some.injEq] at h
+    subst h
+    exact (hp : n = 0).symm
+  | cons e es ih =>
+    cases p <;> cases e <;> simp only [VerifierProgram.after, reduceCtorEq] at h
+    · exact ih (hp _) h
+    · exact ih (hp _) h
+    · split_ifs at h
+      refine ih ?_ h; exact hp
+    · split_ifs at h
+      cases n with
+      | zero => exact (hp : False).elim
+      | succ n =>
+        simp only [commits, List.length_cons, Nat.add_right_cancel_iff]
+        refine ih ?_ h; exact hp
+    · exact ih (hp _) h
+
+end LeanVM.Protocol.Compile.VerifierProgram
+
+namespace Lvm.ASM
+
+open LeanVM.Parameters LeanVM.Protocol.Compile LeanVM.Protocol.Verifier
+open LeanVM.Protocol.Compile.VerifierProgram LeanVM.Protocol.Whir.Sound
+
+variable {α β : Type}
+
+theorem cn_commit (ht w : ℕ) : (readCommitment ht w).CommitsN 1 := rfl
+
+/-- A level with a next level, followed by a final level: one commitment. -/
+theorem commitsN_whirLevelsUd_two (logN lf per c₀ n₀ g : ℕ) (dir : Bool) (eb : List E → E)
+    (level next : LeanVM.Parameters.Whir.Level) (i : ℕ) (s : WhirStateT) :
+    (whirLevelsUd logN lf per c₀ n₀ g dir eb i [level, next] s).CommitsN 1 := by
+  rw [whirLevels_mid]
+  refine CommitsN.bind' (CommitsN.of_noCommit (nc_foldRoundsT _ _ _)) (fun r ↦ ?_) (Nat.zero_add 1)
+  refine CommitsN.bind' (cn_commit _ _) (fun _ ↦ ?_) (Nat.add_zero 1)
+  refine CommitsN.bind' (CommitsN.of_noCommit (nc_grindPre _)) (fun _ ↦ ?_) (Nat.zero_add 0)
+  refine CommitsN.bind' (CommitsN.of_noCommit (nc_powCheck _)) (fun _ ↦ ?_) (Nat.zero_add 0)
+  refine CommitsN.bind' (CommitsN.of_noCommit (nc_samplePositions _ _ _)) (fun qs ↦ ?_)
+    (Nat.zero_add 0)
+  refine CommitsN.bind' (CommitsN.of_noCommit nc_sample) (fun lam ↦ ?_) (Nat.zero_add 0)
+  refine CommitsN.bind' (CommitsN.of_noCommit (nc_query _ _)) (fun words ↦ ?_) (Nat.zero_add 0)
+  refine CommitsN.bind' (CommitsN.of_noCommit (nc_roundPoly _ _ _)) (fun hq ↦ ?_) (Nat.zero_add 0)
+  exact CommitsN.of_noCommit (nc_whirLevelsUd_one _ _ _ _ _ _ _ _ _ _ _)
+
+/-- **A two-level stacked opening commits one word** (generic in the configuration, so that no
+concrete program is unfolded). -/
+theorem commitsN_stacked_two (cfg : UdConfig) (level next : LeanVM.Parameters.Whir.Level)
+    (hc : cfg.levels = [level, next]) (cl : List LeanVM.Protocol.Verifier.StackClaim) :
+    (verifyStackedUd cfg cl).CommitsN 1 := by
+  rw [verifyStackedUd_eq]
+  refine CommitsN.bind' (CommitsN.of_noCommit nc_sample) (fun ρ ↦ ?_) (Nat.zero_add 1)
+  rw [verifyWhirUd_eq hc]
+  exact CommitsN.bind' (CommitsN.of_noCommit (nc_roundPoly _ _ _))
+    (fun _ ↦ commitsN_whirLevelsUd_two _ _ _ _ _ _ _ _ _ _ _ _) (Nat.zero_add 1)
+
 /-! ## The concrete openings (kept folded: unfolding a P20 opening is expensive) -/
 
 section Concrete
 
 attribute [local irreducible] verifyStackedUd verifyStackedJ
 
-/-- **`C_rec`'s opening commits nothing.** -/
-theorem nc_stackedRec (cl : List LeanVM.Protocol.Verifier.StackClaim) :
-    (verifyStackedUd cfgRec20G cl).NoCommit :=
-  nc_stacked_one cfgRec20G ⟨6, 2, 170⟩ rfl cl
+/-- `C_rec`'s levels at P20 (lvm2 S4 on S2J): `(6, 2, 170)`, `(4, 3, 139)`. -/
+theorem rec20_levels2 : cfgRec20G.levels = [⟨6, 2, 170⟩, ⟨4, 3, 139⟩] := rfl
 
-/-- **O7a**: `C_rec`'s one-level opening commits nothing. -/
-theorem recNoCommit : RecNoCommit := fun cl _ _ hl ↦ (nc_stackedRec cl).reach_commits hl
+/-- **`C_rec`'s opening commits one word.** -/
+theorem commitsN_stackedRec (cl : List LeanVM.Protocol.Verifier.StackClaim) :
+    (verifyStackedUd cfgRec20G cl).CommitsN 1 :=
+  commitsN_stacked_two cfgRec20G _ _ rec20_levels2 cl
+
+/-- **O7a**: every completed run of `C_rec`'s two-level opening commits exactly one word. -/
+theorem recCommitsOne : RecCommitsOne := fun cl _ _ hl ↦ (commitsN_stackedRec cl).after_ret hl
 
 theorem ng_commitRootUd (cfg : UdConfig) : (commitRootUd cfg).NoGrind := by
   unfold commitRootUd; split
@@ -283,7 +399,7 @@ theorem ng_seq2 {p q : VerifierProgram Unit} (hp : p.NoGrind) (hq : q.NoGrind) :
   NoGrind.bind hp fun _ ↦ NoGrind.bind hq fun _ ↦ ng_ret _
 
 theorem ng_openProg (cl : OpenClaims) : (openProg cl).NoGrind :=
-  ng_seq2 (ng_stacked cfgRec20G cl.1) (ng_stackedJ (cfgMain24J 2) cl.2)
+  ng_seq2 (ng_stacked cfgRec20G cl.1) (ng_stackedJ (cfgMain24J 3) cl.2)
 
 theorem ng_seq3 {p q : VerifierProgram Unit} {m : VerifierProgram OpenClaims}
     {o : OpenClaims → VerifierProgram Bool} (hp : p.NoGrind) (hq : q.NoGrind) (hm : m.NoGrind)

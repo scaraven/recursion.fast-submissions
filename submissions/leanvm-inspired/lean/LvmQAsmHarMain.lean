@@ -270,7 +270,8 @@ structure HarStatic (C : QCfg) (D : QData) (T P4 P5 P6 P7 P8 : Nat) : Prop where
   hlm : LayOk (cfgMain C.p (posBase C) (pwBase C)) T = true
   hP8 : P8 = 8 * openU C.p
   /-- The PoW class's rows cover the openings (`C_rec`'s levels, then `C_main`'s). -/
-  hop : C.p.recLevels.length ≤ 1 ∧ 1 + C.p.mainLevels.length ≤ (Lvm.QLink.opens C.p).length
+  hop : C.p.recLevels.length ≤ (Lvm.QLink.opens C.p).length ∧
+    C.p.recLevels.length + C.p.mainLevels.length ≤ (Lvm.QLink.opens C.p).length
 
 /-! ## Phases 2, 3, 3b -/
 
@@ -461,7 +462,7 @@ theorem open_at (C : QCfg) (D : QData) {c : Ctx} {M : Mem} {sig : ByteArray} {T 
   obtain ⟨o1, o2, o3⟩ := openPh_run C.p (cfgRec C.p (posBase C) (pwBase C)) (cfgMain C.p (posBase C) (pwBase C)) cs z one (kc (pbB C))
     hS rfl rfl rfl rfl rfl rfl rfl rfl rfl hst.hlr hst.hlm hwr hwm hz ho hzE hoE (gate_val C hg) rfl hposr hposm
     (fun i hi hg0 => hpw (0 + i) (by have := hst.hop; simp only [cfgRec] at hi; omega) hg0)
-    (fun i hi hg0 => hpw (1 + (0 + i)) (by have := hst.hop; simp only [cfgMain] at hi; omega) hg0) hq h s
+    (fun i hi hg0 => hpw (C.p.recLevels.length + (0 + i)) (by have := hst.hop; simp only [cfgMain] at hi; omega) hg0) hq h s
     (by rw [hs, hst.hP8]; rfl)
   refine ⟨o1.trans hok, ?_, o3⟩
   simp only [pos] at o2

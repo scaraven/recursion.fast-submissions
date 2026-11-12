@@ -28,8 +28,8 @@ byte 8 (`hdrLen = 5,616` bytes, absorbed by the seed: `enc = id`); `hdrS π` acc
 **`P_S`** (`PSWith mid x`, BLUEPRINT §5, WP-11a's `decideProg` order): the roots of `C_main` and
 `C_rec` (`commitRootUd`), the middle phases `mid x` (bus, tables, `CH` GKR with its caller claims
 and link, `KS` GKR and sponge link; they return the claims on `C_rec` and on `C_main`), then
-`C_rec`'s one-level opening and `C_main`'s four-level opening (WP-7 `verifyStackedUd`; A16:
-`C_rec` first), then `true`.
+`C_rec`'s two-level opening (lvm2 S4: it commits `C_rec`'s level-1 oracle) and `C_main`'s
+four-level opening (WP-7 `verifyStackedUd`; A16: `C_rec` first), then `true`.
 
 **The doom root** (`CommitDoomS Good x h`): no pair of candidates of the two committed words (the
 codewords within the unique-decoding radius, WHIR `Candidates`) is a witness of the M3 instance
@@ -108,7 +108,7 @@ abbrev OpenClaims : Type :=
   List LeanVM.Protocol.Verifier.StackClaim × List LeanVM.Protocol.Verifier.StackClaim
 
 /-- **The IOP verifier `P_S`** with the middle phases `mid` (lvm2 JB-VQP, J1: `C_main`'s opening at
-the Johnson radius with OOD samples, `verifyStackedJ (cfgMain24J 2)`, `n₀ = 2` commitments before it;
+the Johnson radius with OOD samples, `verifyStackedJ (cfgMain24J 3)`, `n₀ = 2` commitments before it;
 `C_rec` in unique decoding at `g = 14`; the roots' shapes are unchanged: `cfgMain24G`'s root is
 `cfgMain24J`'s). -/
 def PSWith (mid : List UInt8 → VerifierProgram OpenClaims) (x : List UInt8) : VerifierProgram Bool := do
@@ -116,7 +116,7 @@ def PSWith (mid : List UInt8 → VerifierProgram OpenClaims) (x : List UInt8) : 
   commitRootUd cfgRec20G
   let cl ← mid x
   verifyStackedUd cfgRec20G cl.1
-  verifyStackedJ (cfgMain24J 2) cl.2
+  verifyStackedJ (cfgMain24J 3) cl.2
   return true
 
 /-! ## The doom root -/
@@ -166,11 +166,36 @@ def OpenPost (cl : OpenClaims) (h : List Ev) : Prop :=
   (∀ c ∈ cl.1, IsMultiaffine 19 c.1) ∧ (∀ c ∈ cl.2, IsMultiaffine CMain.nu20 c.1) ∧
   cl.1.length ≤ 2 ^ 63 ∧ cl.2.length ≤ 2 ^ 40
 
+/-- **`C_main`'s opening precondition before `C_rec`'s opening** (lvm2, S4): the two roots are
+present, `C_main`'s root has level 0's shape, and every candidate of its word violates one of the
+claims. `C_rec`'s two-level opening then adds one commitment, after which this is `C_main`'s
+`StackedPreUd` (`stackedPreUd_of_mainPre`). -/
+def MainPre (cl : List LeanVM.Protocol.Verifier.StackClaim)
+    (cs : List (ℕ × ℕ × LeanVM.Protocol.Compile.Word)) : Prop :=
+  cs.length = 2 ∧
+    (∃ W, cs[0]? = some ((codesMain24J 0).κ + (codesMain24J 0).R,
+      2 ^ LeanVM.Protocol.EndToEnd.laneBits, W) ∧ WellShaped (2 ^ LeanVM.Protocol.EndToEnd.laneBits) W) ∧
+    ∀ q ∈ Candidates CMain.nu20 (codesMain24J 0).R (codesMain24J 0).thr (wordOf cs 0), ∃ c ∈ cl,
+      ¬ LeanVM.Protocol.EndToEnd.StackClaim.Holds CMain.nu20 c q
+
+/-- After one more commitment, `MainPre` is `C_main`'s opening precondition. -/
+theorem stackedPreUd_of_mainPre {cl : List LeanVM.Protocol.Verifier.StackClaim}
+    {cs l : List (ℕ × ℕ × LeanVM.Protocol.Compile.Word)} (h : MainPre cl cs) (hl : l.length = 1) :
+    StackedPreUd (cfgMain24J 3).toUdConfig (codesMain24J 0) cl (cs ++ l) := by
+  obtain ⟨hlen, ⟨W, hW, hws⟩, hc⟩ := h
+  have h0 : 0 < cs.length := by omega
+  have hw : wordOf (cs ++ l) 0 = wordOf cs 0 := by
+    simp [wordOf, List.getElem?_append_left h0]
+  refine ⟨by decide, by simp [hlen, hl, cfgMain24J], ⟨W, ?_, hws⟩, ?_⟩
+  · show (cs ++ l)[0]? = _
+    rw [List.getElem?_append_left h0]; exact hW
+  · show ∀ q ∈ Candidates CMain.nu20 _ _ (wordOf (cs ++ l) 0), _
+    rw [hw]; exact hc
+
 /-- **The openings' precondition splits** (no unique decoding needed): if some candidate of
-`C_rec` meets all its claims, every candidate of `C_main` fails one of its claims. -/
+`C_rec` meets all its claims, every candidate of `C_main` fails one of its claims (`MainPre`). -/
 theorem openPost_split {cl : OpenClaims} {h : List Ev} (hp : OpenPost cl h) :
-    StackedPreUd cfgRec20G (codesRec20 0) cl.1 (commits h) ∨
-      StackedPreUd (cfgMain24J 2).toUdConfig (codesMain24J 0) cl.2 (commits h) := by
+    StackedPreUd cfgRec20G (codesRec20 0) cl.1 (commits h) ∨ MainPre cl.2 (commits h) := by
   obtain ⟨hpairs, ⟨Wm, Wr, hc, hWm, hWr⟩, -⟩ := hp
   by_cases hr : ∀ q ∈ Candidates 19 2 thrRec (wordOf (commits h) 1),
       ∃ c ∈ cl.1, ¬ LeanVM.Protocol.EndToEnd.StackClaim.Holds 19 c q
@@ -179,7 +204,7 @@ theorem openPost_split {cl : OpenClaims} {h : List Ev} (hp : OpenPost cl h) :
   · right
     push Not at hr
     obtain ⟨qr, hqr, hall⟩ := hr
-    refine ⟨by decide, by rw [hc]; rfl, ⟨Wm, by rw [hc]; rfl, hWm⟩, fun qm hqm => ?_⟩
+    refine ⟨by rw [hc]; rfl, ⟨Wm, by rw [hc]; rfl, hWm⟩, fun qm hqm => ?_⟩
     rcases hpairs (qm, qr) ⟨hqm, hqr⟩ with ⟨c, hc1, hn⟩ | h2
     · exact absurd (hall c hc1) hn
     · exact h2

@@ -68,3 +68,24 @@ lvm2 JB-VQP J1 (`C_main` at the Johnson radius, `docs/lvm2/stages/JB-L.md` §3):
 |---|---|---|
 | `pcs/whir_config.rs` | `config_of_levels(levels, grind, ood)`: with `ood`, `ood_samples = [0, 1, …, 1]` (leanVM's `send_ood` unchanged: after the next cap, `κ` samples, `y`, the intro's `(u_0, u_2)`; glued at `λ¹` before the queries' batch) | `C_main`'s `whirLevelsJ`; `C_rec` passes `false` |
 | `pcs/whir.rs` | `final_claim_holds`: after the tail rounds, assert running claim = `f(r)·w(r)` (prover-only check, no byte changes) | the J1 self-check: a wrong OOD value or intro would break the batched sumcheck |
+
+
+lvm2 PORT-13 (the v4 tier's GKR: leanvm-gkr-fast, PR #13, and leanvm-fast-verify, PR #15):
+
+`keccak_gkr_v4/` is #13's `src/lv/keccak_gkr/` (09c572ca) byte for byte, then the edits below. #13 re-vendored it with
+`tools/vendor.py` from leanVM `0b850750` plus `git diff 04fba039b edd857be9` of the crate, the
+[gattaca-com/leanVM `pr/all`](https://github.com/gattaca-com/leanVM/tree/pr/all) branch (`04fba039b` is where `pr/all`
+forked; MIT OR Apache-2.0); each file's first line says so. The `pr/all` commits in the crate are prover-only (their
+messages state the proofs are unchanged); its new kernels are gated on `avx512vbmi` + `gfni`, and its fallback is 2.0×
+slower than `0b850750`'s on AVX-512 + PCLMUL (`docs/lvm2/stages/PORT-13-15.md` §2). So `mod.rs` mounts
+`keccak_gkr_v4/` as `keccak_gkr` only where `avx512f`, `avx512vbmi`, `gfni` and `vpclmulqdq` are compiled in (the v4
+`.s`); v2 and v4p keep `keccak_gkr/` (`0b850750`). Both copies take the same callers and give the same proof bytes.
+`primitives`, `parallel`, `fiat_shamir` and `pcs` stay `0b850750`'s: `pr/all`'s GKR compiles against them unchanged
+(its other changes to those crates are additive or commit-side, not ported).
+
+| file | edit | why |
+|---|---|---|
+| `mod.rs` | `keccak_gkr` from `keccak_gkr/` or, under the v4 features, `#[path = "keccak_gkr_v4/mod.rs"]` | v4 only |
+| `keccak_gkr_v4/witness.rs` | `every(_) = 1`: every round stored (#15's value; `pr/all`: 4 at ≥ 8 threads, else 2) | #15 measured it faster on Zen 4 at 4C/8T; the memory is the 0b850750 copy's |
+| `keccak_gkr_v4/witness.rs` | `Witness::generate_uncommitted` (T-P1's, above), rewritten for `pr/all`'s `Extent::new(first, blocks, depth)` and `slots()`, as `from_committed` runs its blocks | the tape |
+| `keccak_gkr_v4/mod.rs` | `OutputClaim::of_inputs_padded` (P-GATE's) and `Witness::prove_tape` (T-P1's), copied unchanged; `pub use protocol::Claim` | the tape and the KS output claim |

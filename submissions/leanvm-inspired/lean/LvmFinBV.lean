@@ -49,42 +49,12 @@ theorem posBits_of {Q : Program} {pl : ℕ → Var → Bool × ℕ} {groups : Li
     PosBits C.p (lay C) (memK Q pl groups arrs aux L hτ q) := by
   constructor
   intro k hk j hj z hz
-  obtain ⟨n, hn⟩ : ∃ n, n = j % 8 * ((opens C.p).getD k default).L.height + z := ⟨_, rfl⟩
-  have hl0 : n / 64 < nLanes ((opens C.p).getD k default).L.height := by
-    have : j % 8 * ((opens C.p).getD k default).L.height ≤ 7 * ((opens C.p).getD k default).L.height :=
-      Nat.mul_le_mul_right _ (by omega)
-    unfold QAsm.nLanes; omega
-  obtain ⟨c, hS⟩ := mem_posSpecs C bpl hk hl0
-  have hpc := hpc k hk (n / 64) hl0
-  have hjp := lt_padT hj
-  rw [← hn]
-  generalize (opens C.p).getD k default = o at hj hz hn hS hpc hjp ⊢
-  generalize hH : o.L.height = Hh at hz hn hS hpc ⊢
-  have hj8 : j % 8 < 8 := Nat.mod_lt _ (by norm_num)
-  have hn8 : n < 8 * Hh := by
-    have : j % 8 * Hh ≤ 7 * Hh := Nat.mul_le_mul_right _ (by omega)
-    omega
-  have hnH : n / Hh = j % 8 := by
-    rw [hn, Nat.add_comm, Nat.add_mul_div_right _ _ (by omega), Nat.div_eq_of_lt hz, Nat.zero_add]
-  have hnm : n % Hh = z := by
-    rw [hn, Nat.add_comm, Nat.add_mul_mod_self_right, Nat.mod_eq_of_lt hz]
-  have hdm := Nat.div_add_mod n 64
-  obtain ⟨hlen, hget⟩ := laneOuts_bit (H := Hh) (l := n / 64) (z := n % 64) (Nat.mod_lt _ (by norm_num))
-    (by omega)
-  have hlen' : n % 64 < ((laneOuts Hh (n / 64)).map (·.1)).length := by rw [List.length_map]; exact hlen
-  have hout : ((laneOuts Hh (n / 64)).map (·.1)).getD (n % 64) (.bit 0) = .bit (n % 64) := by
-    rw [List.getD_eq_getElem _ _ hlen', List.getElem_map, ← List.getD_eq_getElem _ (.bit 0, 0, 0) hlen, hget]
-  have hoc : posCell C k o (j / 8) ((laneOuts Hh (n / 64)).getD (n % 64) (.bit 0, 0, 0)) =
-      bitBase C.p (lay C) k + Hh * j + z := by
-    rw [hget, show 64 * (n / 64) + n % 64 = n by omega]
-    have hjj : 8 * (j / 8) + n / Hh = j := by rw [hnH]; omega
-    simp only [posCell, hH, hjj, if_pos hjp, hnm]
-  have hx : j / 8 < nRows o := by unfold nRows; omega
-  have hA : ansLane C.p (o.pe + j / 8) + n / 64 = (lay C).sb + ansLane C.p (o.pe + j / 8) + n / 64 := by
-    show _ = 0 + _ + _; rw [Nat.zero_add]
-  exact out1_at Q pl groups arrs aux L hτ q H _ (haux _ hS) (le_two_pow_clog2 _) rfl (j / 8) (n % 64) hx
-    hlen' ⟨fun _ => (hpc (j / 8) hx).1, fun jo hjo => (hpc (j / 8) hx).2 jo (by simpa using hjo)⟩ hA hoc
-    hout (Nat.mod_lt _ (by norm_num))
+  obtain ⟨S, hS, hτS, hrd, y, hy, hwc, jo, hjo, hout, hoc⟩ := posSpecs_bit C bpl hk (lt_padT hj) hz
+  have hA : S.wc y = (lay C).sb + ansLane C.p (((opens C.p).getD k default).pe + j / 8) +
+      (j % 8 * ((opens C.p).getD k default).L.height + z) / 64 := by
+    rw [hwc]; show _ = 0 + _ + _; rw [Nat.zero_add]
+  exact out1_at Q pl groups arrs aux L hτ q H S (haux _ hS) hτS hrd y jo hy hjo
+    (posCellsLt_spec hpc bpl hS hy) hA hoc hout (Nat.mod_lt _ (by norm_num))
 
 /-! ## The `P20` node program -/
 

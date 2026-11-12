@@ -9,7 +9,7 @@ import LvmReplay
 /-!
 # `P_S` follows the schedule
 
-* `lvMatch_rec`, `lvMatch_main`: `cfgRec20G`'s and `cfgMain24J 2`'s levels are P20's (`LvMatch`,
+* `lvMatch_rec`, `lvMatch_main`: `cfgRec20G`'s and `cfgMain24J 3`'s levels are P20's (`LvMatch`,
   `LvMatchJ` with the OOD samples' `κ`, at `capS`, `shpS`, `idxS`), by evaluation on `P20L`
   (LvmReplay's `P20_eq`: the levels written out);
 * `fol_openRec`, `fol_openMain`: the openings against `openRecI P20`, `openMainI P20`;
@@ -31,10 +31,10 @@ open Lvm.Replay (P20_eq)
 theorem lvMatch_rec : LvMatch P20 capS shpS idxS .crec cfgRec20G.μ cfgRec20G.c₀ cfgRec20G.n₀ P20.recFinalLog
     0 0 cfgRec20G.levels P20.recLevels := by
   rw [P20_eq]
-  exact ⟨⟨rfl, rfl, rfl, rfl⟩, rfl⟩
+  exact ⟨⟨rfl, rfl, rfl, rfl⟩, rfl, rfl, ⟨⟨rfl, rfl, rfl, rfl⟩, rfl⟩⟩
 
-theorem lvMatch_main : LvMatchJ P20 capS shpS idxS .main (cfgMain24J 2).μ (cfgMain24J 2).c₀
-    (cfgMain24J 2).n₀ P20.mainFinalLog 0 0 (cfgMain24J 2).levels P20.mainLevels := by
+theorem lvMatch_main : LvMatchJ P20 capS shpS idxS .main (cfgMain24J 3).μ (cfgMain24J 3).c₀
+    (cfgMain24J 3).n₀ P20.mainFinalLog 0 0 (cfgMain24J 3).levels P20.mainLevels := by
   rw [P20_eq]
   exact ⟨⟨rfl, rfl, rfl, rfl⟩, rfl, rfl, rfl, ⟨⟨rfl, rfl, rfl, rfl⟩, rfl, rfl, rfl, ⟨⟨rfl, rfl, rfl, rfl⟩, rfl⟩⟩⟩
 
@@ -49,10 +49,10 @@ theorem fol_openRec (claims : List Verifier.StackClaim) (pp : List ℕ) :
 
 /-- **`C_main`'s opening** (J1: with OOD samples) against `openMainI P20`. -/
 theorem fol_openMain (claims : List Verifier.StackClaim) (pp : List ℕ) :
-    Fol capS shpS idxS (Verifier.verifyStackedJ (cfgMain24J 2) claims) (atomsOf P20 (openMainI P20)) pp
+    Fol capS shpS idxS (Verifier.verifyStackedJ (cfgMain24J 3) claims) (atomsOf P20 (openMainI P20)) pp
       fun _ _ ↦ True := by
   rw [openMainI_P20]
-  exact @fol_verifyStackedJ P20 capS shpS idxS (cfgMain24J 2) rfl rfl .main P20.mainLevels P20.mainFinalLog
+  exact @fol_verifyStackedJ P20 capS shpS idxS (cfgMain24J 3) rfl rfl .main P20.mainLevels P20.mainFinalLog
     lvMatch_main claims pp
 
 theorem cap_main0 : capS (cfgMain24G.μ - 6 + 1) (2 ^ 6) = (P20.level ⟨.main, 0⟩).cap := by

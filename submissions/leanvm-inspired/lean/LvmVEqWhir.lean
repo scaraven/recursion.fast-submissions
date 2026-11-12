@@ -2,7 +2,7 @@
 -- `direct = false`, A20) refine WP-7's `verifyStackedUd cfgRec20` / `cfgMain24` (lvm2 S2) (LvmWhirProg, LvmWhirParams)
 -- event for event; the level loop is generic in a level correspondence and in the PoW bits `g`, instantiated at
 -- P20 and at the grinding test set P20G (g = 14). lvm2 JB-VQP: with `ood` the level loop refines JB-L's
--- `whirLevelsJ` (`verifyStackedJ`); at P20 (J1) `C_main`'s opening is `verifyStackedJ (cfgMain24J 2)`.
+-- `whirLevelsJ` (`verifyStackedJ`); at P20 (J1) `C_main`'s opening is `verifyStackedJ (cfgMain24J 3)`.
 import LvmVEqWhirPure
 import LvmWhirParams24
 import LvmWhirParamsG
@@ -24,7 +24,7 @@ import LvmWhirParamsJ
   `ref_verifyStackedJ`; the same `LevelsCorr` (the OOD point has the folded message's variables
   on both sides);
 * at P20 (J1): `corrRec20`, `corrMain24` (by `decide` on the literal levels; `C_main` against
-  `cfgMain24J 2`), **`ref_dOpen`** (`verifyStackedUd cfgRec20G`, then `verifyStackedJ (cfgMain24J 2)`),
+  `cfgMain24J 3`), **`ref_dOpen`** (`verifyStackedUd cfgRec20G`, then `verifyStackedJ (cfgMain24J 3)`),
   `monoD_dOpen`;
 * at the grinding test set P20G (PI-GRIND, `g = 14`, not frozen): `corrRec20G`, `corrMain24G`,
   **`ref_dOpenG`** against `cfgRec20G`, `cfgMain24G`.
@@ -669,7 +669,8 @@ end Ref
 
 /-! ## P20 -/
 
-theorem recLevels_P20 : P20.recLevels = [⟨0, 6, 13, 2, 15, 7, 8, 170, 512⟩] := by decide +kernel
+theorem recLevels_P20 : P20.recLevels = [⟨0, 6, 13, 2, 15, 7, 8, 170, 512⟩, ⟨1, 4, 9, 3, 12, 7, 5, 139, 384⟩] := by
+  decide +kernel
 
 /-- `C_main`'s levels at P20 (J1: `t = 230, 115, 77`). -/
 theorem mainLevels_P20 : P20.mainLevels = [⟨0, 6, 18, 1, 19, 8, 11, 230, 512⟩,
@@ -681,8 +682,8 @@ theorem corrRec20 : LevelsCorr capS shpS 19 1 2 0 0 P20.recLevels cfgRec20G.leve
   simp only [LevelsCorr, NextOK, cfgRec20G]
   decide
 
-/-- `C_main`'s levels against `cfgMain24J 2` (lvm2 JB-VQP J1; commitments 0, 2, 3; caps 8, 7, 7). -/
-theorem corrMain24 : LevelsCorr capS shpS 24 0 2 0 0 P20.mainLevels (cfgMain24J 2).levels := by
+/-- `C_main`'s levels against `cfgMain24J 3` (lvm2 JB-VQP J1; commitments 0, 2, 3; caps 8, 7, 7). -/
+theorem corrMain24 : LevelsCorr capS shpS 24 0 3 0 0 P20.mainLevels (cfgMain24J 3).levels := by
   rw [mainLevels_P20]
   simp only [LevelsCorr, NextOK, cfgMain24J]
   decide
@@ -692,21 +693,22 @@ theorem mainOod_P20 : P20.mainOod = true := by decide +kernel
 
 /-- **Phases 8–9 at P20**: V_S's two stacked openings (`C_rec` in unique decoding, then `C_main`
 with its OOD samples; `direct = false`) refine `verifyStackedUd cfgRec20G` then
-`verifyStackedJ (cfgMain24J 2)` on claims related by `SCRel`. -/
+`verifyStackedJ (cfgMain24J 3)` on claims related by `SCRel`. -/
 theorem ref_dOpen {sig : ByteArray} (claims : List (Com × Lvm.BlockClaim))
     (cl : List VStackClaim × List VStackClaim)
     (h1 : List.Forall₂ SCRel ((claims.filter (·.1 == .crec)).map (·.2.onStack)) cl.1)
     (h2 : List.Forall₂ SCRel ((claims.filter (·.1 == .main)).map (·.2.onStack)) cl.2) :
     Ref20 sig (dOpen P20 claims)
       (LeanVM.Protocol.Verifier.verifyStackedUd cfgRec20G cl.1 >>= fun _ ↦
-        verifyStackedJ (cfgMain24J 2) cl.2) (fun _ _ ↦ True) :=
+        verifyStackedJ (cfgMain24J 3) cl.2) (fun _ _ ↦ True) :=
   RefAt.bind (fun _ ↦ monoD_verifyStacked _ _ _ _ _ _)
     (ref_verifyStacked _ cfgRec20G _ _ _ _ h1 rfl rfl rfl rfl corrRec20)
-    fun _ _ _ ↦ ref_verifyStackedJ _ (cfgMain24J 2) _ _ _ _ _ h2 mainOod_P20 rfl rfl rfl rfl rfl corrMain24
+    fun _ _ _ ↦ ref_verifyStackedJ _ (cfgMain24J 3) _ _ _ _ _ h2 mainOod_P20 rfl rfl rfl rfl rfl corrMain24
 
 /-! ## P20G (PI-GRIND's test set: P20 with `g = 14`) -/
 
-theorem recLevels_P20G : P20G.recLevels = [⟨0, 6, 13, 2, 15, 7, 8, 170, 512⟩] := by decide +kernel
+theorem recLevels_P20G : P20G.recLevels = [⟨0, 6, 13, 2, 15, 7, 8, 170, 512⟩, ⟨1, 4, 9, 3, 12, 7, 5, 139, 384⟩] := by
+  decide +kernel
 
 theorem mainLevels_P20G : P20G.mainLevels = [⟨0, 6, 18, 1, 19, 8, 11, 278, 512⟩,
     ⟨1, 4, 14, 2, 16, 7, 9, 170, 384⟩, ⟨2, 4, 10, 3, 13, 7, 6, 139, 384⟩] := by decide +kernel
@@ -718,7 +720,7 @@ theorem corrRec20G : LevelsCorr capS shpS 19 1 2 0 0 P20G.recLevels cfgRec20G.le
   decide
 
 /-- `C_main`'s levels against `cfgMain24G` (as `corrMain24`, `t = 278, 170, 139`). -/
-theorem corrMain24G : LevelsCorr capS shpS 24 0 2 0 0 P20G.mainLevels cfgMain24G.levels := by
+theorem corrMain24G : LevelsCorr capS shpS 24 0 3 0 0 P20G.mainLevels cfgMain24G.levels := by
   rw [mainLevels_P20G]
   simp only [LevelsCorr, NextOK, cfgMain24G]
   decide

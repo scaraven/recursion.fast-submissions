@@ -13,8 +13,9 @@ import LvmCertSFrame
 * **`openSpec cl`** (O7): `C_rec`'s opening, `C_main`'s opening, `ret true`, from `OpenPost cl`
   (which splits into "`C_rec`'s claims fail" or "`C_main`'s claims fail", `openPost_split`) to
   rejection, every group's escape at most `2^-129`, lead at most `2^-129`. `C_main`'s
-  precondition is carried across `C_rec`'s opening by `Spec.orStable`: `C_rec`'s opening commits
-  nothing (hypothesis `hnc`, the open fact O7a).
+  precondition (`MainPre`, two commitments) is carried across `C_rec`'s two-level opening by
+  `Spec.orStableRet`: that opening's completed runs commit exactly one word (hypothesis `hnc`,
+  O7a `RecCommitsOne`), after which it is `C_main`'s `StackedPreUd` (three commitments).
 * **`psSpec`**: `PSWith mid x` from no doom, given `MidSpec mid Good` at `2^-129` with lead at
   most `2^-129`: roots (doom `CommitDoomS Good x ∧ RootShape`), the middle phases, the openings.
 -/
@@ -73,27 +74,22 @@ noncomputable def rootsSpec (Post : Unit → List Ev → Prop) {εm T : ℝ≥0�
 
 /-! ## The openings (O7) -/
 
-/-- **O7a** (open): `C_rec`'s one-level opening commits nothing. -/
-def RecNoCommit : Prop :=
-  ∀ (cl : List LeanVM.Protocol.Verifier.StackClaim) (h₀ l : List Ev),
-    (verifyStackedUd cfgRec20G cl).Reach h₀ l → commits l = []
-
-/-- `C_main`'s opening precondition survives a run that commits nothing. -/
-theorem stackedPre_keep {cl : List LeanVM.Protocol.Verifier.StackClaim} {h₀ l : List Ev}
-    (hl : commits l = []) (h : StackedPreUd (cfgMain24J 2).toUdConfig (codesMain24J 0) cl (commits h₀)) :
-    StackedPreUd (cfgMain24J 2).toUdConfig (codesMain24J 0) cl (commits (h₀ ++ l)) := by
-  rwa [LeanVM.Protocol.Whir.Sound.commits_append, hl, List.append_nil]
+/-- **O7a** (lvm2, S4): every completed run of `C_rec`'s two-level opening commits exactly one
+word (its level-1 oracle). -/
+def RecCommitsOne : Prop :=
+  ∀ (cl : List LeanVM.Protocol.Verifier.StackClaim) (l : List Ev) (a : Unit),
+    (verifyStackedUd cfgRec20G cl).after l = some (.ret a) → (commits l).length = 1
 
 /-- The program of the openings. -/
 def openProg (cl : OpenClaims) : VerifierProgram Bool :=
-  verifyStackedUd cfgRec20G cl.1 >>= fun _ ↦ verifyStackedJ (cfgMain24J 2) cl.2 >>= fun _ ↦ .ret true
+  verifyStackedUd cfgRec20G cl.1 >>= fun _ ↦ verifyStackedJ (cfgMain24J 3) cl.2 >>= fun _ ↦ .ret true
 
 /-- **`C_main`'s stacked opening at the Johnson radius at `εS`** (JB-L's `stackedMain24JSpec` at the
 exact budget: `whirEps_main24J`'s margin `2^-131` left for luck and hash). -/
 noncomputable def stackedMain24JSpecS (claims : List LeanVM.Protocol.Verifier.StackClaim)
-    (hcl : ∀ c ∈ claims, IsMultiaffine (cfgMain24J 2).μ c.1) (T : ℝ≥0∞) :
-    Spec (verifyStackedJ (cfgMain24J 2) claims)
-      (fun h ↦ StackedPreUd (cfgMain24J 2).toUdConfig (codesMain24J 0) claims (commits h))
+    (hcl : ∀ c ∈ claims, IsMultiaffine (cfgMain24J 3).μ c.1) (T : ℝ≥0∞) :
+    Spec (verifyStackedJ (cfgMain24J 3) claims)
+      (fun h ↦ StackedPreUd (cfgMain24J 3).toUdConfig (codesMain24J 0) claims (commits h))
       (fun _ _ ↦ False) εS (eBatch claims.length (codesMain24J 0)) T :=
   stackedSpecJ claims hcl rfl rfl rfl (by norm_num [cfgMain24J]) rfl (by norm_num [cfgMain24J])
     (by norm_num [cfgMain24J]) (by norm_num [cfgMain24J]) (ladderArith_main24J 2)
@@ -113,16 +109,19 @@ theorem eBatch_main24J (J : ℕ) (hJ : J ≤ 2 ^ 40) : eBatch J (codesMain24J 0)
 
 open Classical in
 /-- **The openings** (O7), from `OpenPost cl`. -/
-noncomputable def openSpec (hnc : RecNoCommit) (cl : OpenClaims) :
+noncomputable def openSpec (hnc : RecCommitsOne) (cl : OpenClaims) :
     Spec (openProg cl) (OpenPost cl) (fun b _ ↦ b = false) εS εS 0 :=
   if hside : (∀ c ∈ cl.1, IsMultiaffine 19 c.1) ∧ (∀ c ∈ cl.2, IsMultiaffine CMain.nu20 c.1) ∧
       cl.1.length ≤ 2 ^ 63 ∧ cl.2.length ≤ 2 ^ 40 then
     have hb1 := (eBatch_P20 _ hside.2.2.1).2.trans pow129_le_εS
     have hb2 := eBatch_main24J _ hside.2.2.2
     let S1 := ((stackedRec20GSpec cl.1 hside.1 (eBatch cl.2.length (codesMain24J 0))).mono
-        (fun _ h ↦ h) (fun _ _ h ↦ h) pow129_le_εS le_rfl le_rfl).orStable
-      (M := fun h ↦ StackedPreUd (cfgMain24J 2).toUdConfig (codesMain24J 0) cl.2 (commits h))
-      (fun _ _ hl hM ↦ stackedPre_keep (hnc _ _ _ hl) hM) hb2
+        (fun _ h ↦ h) (fun _ _ h ↦ h) pow129_le_εS le_rfl le_rfl).orStableRet
+      (M := fun h ↦ MainPre cl.2 (commits h))
+      (M' := fun h ↦ StackedPreUd (cfgMain24J 3).toUdConfig (codesMain24J 0) cl.2 (commits h))
+      (fun _ _ _ _ ha hM ↦ by
+        rw [LeanVM.Protocol.Whir.Sound.commits_append]
+        exact stackedPreUd_of_mainPre hM (hnc _ _ _ ha)) hb2
     let S2 := (stackedMain24JSpecS cl.2 hside.2.1 0).bind' fun _ ↦
       ((Spec.ret (Post := fun b (_ : List Ev) ↦ b = false) (εmax := εS) (T := 0) true).mono
         (fun _ h ↦ h.elim) (fun _ _ h ↦ h) le_rfl le_rfl le_rfl :
@@ -140,8 +139,8 @@ theorem PSWith_eq (mid : List UInt8 → VerifierProgram OpenClaims) (x : List UI
 
 /-- **`P_S`'s specification** (from no doom, rejection where it returns in doom, every group's
 escape at most `2^-129`, lead `0`), from the middle phases' `MidSpec` at `2^-129` with a lead at
-most `2^-129` and O7a. -/
-noncomputable def psSpec (hnc : RecNoCommit) {mid : List UInt8 → VerifierProgram OpenClaims}
+most `2^-129` and O7a (`RecCommitsOne`). -/
+noncomputable def psSpec (hnc : RecCommitsOne) {mid : List UInt8 → VerifierProgram OpenClaims}
     {Good : GoodRel} {Lm : ℝ≥0∞} (hmid : MidSpec mid Good εS Lm) (hLm : Lm ≤ εS) (x : List UInt8) :
     Spec (PSWith mid x) (fun _ ↦ False) (fun b _ ↦ b = false) εS 0 0 :=
   (Spec.bind' (rootsSpec (fun _ h ↦ CommitDoomS Good x h ∧ RootShape h) hLm) fun _ ↦

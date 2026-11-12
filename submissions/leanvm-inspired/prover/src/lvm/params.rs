@@ -190,7 +190,7 @@ fn mk(
     rec_rows_log: usize,
     nu_main: usize,
     main: impl AsRef<[(usize, usize, usize)]>,
-    rec: (usize, usize, usize),
+    rec: impl AsRef<[(usize, usize, usize)]>,
     ks_log: usize,
     bits_log: usize,
     fb: (usize, usize, usize, usize),
@@ -210,7 +210,7 @@ fn mk(
         grind,
         main_levels: mk_levels(sec - grind, nu_main, main.as_ref(), main_t.as_ref()),
         main_ood,
-        rec_levels: mk_levels(sec - grind, rec_rows_log + 5, &[rec], &[]),
+        rec_levels: mk_levels(sec - grind, rec_rows_log + 5, rec.as_ref(), &[]),
         bus_depth: fb.0,
         leafdec_reads: fb.1,
         table_rounds: fb.2,
@@ -247,7 +247,7 @@ pub fn p20() -> Params {
 /// `P20` with `g` grinding bits.
 pub fn p20_g(g: usize) -> Params {
     // S2 (BLUEPRINT2 §1.4): C_main at ν = 24, three levels
-    mk("P20", 20, 129, g, 14, 24, [(6, 1, 8), (4, 2, 7), (4, 3, 7)], (6, 2, 7), 15, 13, (21, 1, 16, 4017), 131, [230, 115, 77], true)
+    mk("P20", 20, 129, g, 14, 24, [(6, 1, 8), (4, 2, 7), (4, 3, 7)], [(6, 2, 7), (4, 3, 7)], 15, 13, (21, 1, 16, 2851), 127, [230, 115, 77], true)
 }
 
 /// `P8` (WP-0's test set). Grinding bits from `LVM_GRIND` ([`grind_env`]; the frozen record's by default).
@@ -258,7 +258,7 @@ pub fn p8() -> Params {
 /// `P8` with `g` grinding bits.
 pub fn p8_g(g: usize) -> Params {
     // S2 P8 (FRZ-0): rec rows 2^13 and KS 2^14 (the tape's trace overflows 2^12 blocks), three C_main levels
-    mk("P8", 9, 20, g, 13, 23, [(6, 1, 4), (4, 2, 4), (4, 3, 4)], (6, 2, 4), 14, 12, (21, 1, 16, 3532), 107, [33, 17, 11], true)
+    mk("P8", 9, 20, g, 13, 23, [(6, 1, 4), (4, 2, 4), (4, 3, 4)], [(6, 2, 4), (4, 3, 4)], 14, 12, (21, 1, 16, 2522), 108, [33, 17, 11], true)
 }
 
 /// `p` with `C_main` in the unique-decoding regime (PI-GRIND-P's S2G record): `t = udQueries (sec − g) R`, no OOD.
@@ -502,13 +502,13 @@ mod tests {
         assert_eq!(p.rec_levels[0].t, 170);
         // A21's record + A23 (D = 28: header + 696 B, phase 3b 12 queries and 30 scalars)
         // S2 (T-P1; BLUEPRINT2 §2.2's model: 9,916 and 1,103,704)
-        assert_eq!(query_list(&p).len(), 7440);
-        assert_eq!(pi_size(&p), 915712);
+        assert_eq!(query_list(&p).len(), 8295);
+        assert_eq!(pi_size(&p), 783192);
         let q = p8_g(FROZEN_GRIND_P8);
         assert_eq!(q.main_levels.iter().map(|l| l.t).collect::<Vec<_>>(), vec![33, 17, 11]);
         // S2 P8 (FRZ-0)
-        assert_eq!(query_list(&q).len(), 2155);
-        assert_eq!(pi_size(&q), 381416);
+        assert_eq!(query_list(&q).len(), 2321);
+        assert_eq!(pi_size(&q), 277760);
         // JB-VQP J1: C_main's OOD (P20 κ 18, 14; P8 κ 17, 13) and the trace's sponge blocks
         assert!(p.main_ood && q.main_ood);
         let blocks = |p: &Params| (1 + query_list(p).iter().map(|(_, len)| 40 + len).sum::<usize>()) / 136 + 1;
@@ -520,12 +520,12 @@ mod tests {
         // PI-GRIND Gate §3: t = udQueries (129 − 14) R (C_main in UD, the S2G record)
         let pg = ud_main(p20_g(GRIND_P20));
         assert_eq!(pg.main_levels.iter().map(|l| l.t).collect::<Vec<_>>(), vec![278, 170, 139]);
-        assert_eq!(pg.rec_levels[0].t, 170);
+        assert_eq!(pg.rec_levels.iter().map(|l| l.t).collect::<Vec<_>>(), vec![170, 139]);
         // PI-GRIND-P's record at g > 0 (dev `s2check`)
-        assert_eq!((query_list(&pg).len(), pi_size(&pg)), (8989, 1029712));
+        assert_eq!((query_list(&pg).len(), pi_size(&pg)), (9844, 897192));
         let qg = ud_main(p8_g(GRIND_P8));
         assert_eq!(qg.main_levels.iter().map(|l| l.t).collect::<Vec<_>>(), vec![39, 24, 20]);
         assert_eq!(qg.rec_levels[0].t, 24);
-        assert_eq!((query_list(&qg).len(), pi_size(&qg)), (2381, 397944));
+        assert_eq!((query_list(&qg).len(), pi_size(&qg)), (2547, 294288));
     }
 }

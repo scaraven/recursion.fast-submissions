@@ -244,7 +244,7 @@ theorem ref_decideOf
       List.Forall₂ SCRel ((claims.filter (·.1 == .crec)).map (·.2.onStack)) cl.1 →
       List.Forall₂ SCRel ((claims.filter (·.1 == .main)).map (·.2.onStack)) cl.2 →
       Ref20 sig (dOpen P20 claims)
-        (Verifier.verifyStackedUd cfgRec20G cl.1 >>= fun _ ↦ Verifier.verifyStackedJ (cfgMain24J 2) cl.2)
+        (Verifier.verifyStackedUd cfgRec20G cl.1 >>= fun _ ↦ Verifier.verifyStackedJ (cfgMain24J 3) cl.2)
         fun _ _ ↦ True)
     (hmO : ∀ claims, MonoD (dOpen P20 claims))
     (tabs : Pub → List M3.Tab) (vk c : RecursionFast.Digest) (x : List UInt8)
@@ -279,8 +279,8 @@ theorem ref_decideOf
   have h := RefAt.bind (fun _ ↦ MonoD.pure _) (hO r.1 cl h1 h2)
     fun _ _ _ ↦ RefAt.pure (R := fun (_ : Acc) (b : Bool) ↦ b = true) (b := r.2) (a := true) rfl
   have e : ((Verifier.verifyStackedUd cfgRec20G cl.1 >>= fun _ ↦
-      Verifier.verifyStackedJ (cfgMain24J 2) cl.2).bind fun _ ↦ VerifierProgram.ret true) =
-      (Verifier.verifyStackedUd cfgRec20G cl.1 >>= fun _ ↦ Verifier.verifyStackedJ (cfgMain24J 2) cl.2 >>=
+      Verifier.verifyStackedJ (cfgMain24J 3) cl.2).bind fun _ ↦ VerifierProgram.ret true) =
+      (Verifier.verifyStackedUd cfgRec20G cl.1 >>= fun _ ↦ Verifier.verifyStackedJ (cfgMain24J 3) cl.2 >>=
         fun _ ↦ pure true) := VerifierProgram.bind_assoc _ _ _
   rw [e] at h
   exact h.toP _
