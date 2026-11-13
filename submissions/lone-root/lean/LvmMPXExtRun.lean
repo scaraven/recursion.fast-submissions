@@ -76,6 +76,8 @@ theorem openMain_P20 :
     itemK2 P20 shMain mainHeadA3 = .commit 13 48 4096 :: (preKinds 13 10).map toK2 ∧
     itemK2 P20 shMain mainHeadB2 = (foldKinds 4).map toK2 ∧
     Lvm.X.capOffM P20 1 = 141856 ∧ Lvm.X.capOffM P20 2 = 230008 ∧ Lvm.X.resOffM P20 = 286184 := by
+  obtain ⟨-, -, -, -, -, -, c1, c2, r, -⟩ := Lvm.X.layoutM_P20
+  rw [c1, c2, r]
   decide +kernel
 
 end Lvm.ASM

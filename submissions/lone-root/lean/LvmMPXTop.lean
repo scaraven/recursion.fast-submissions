@@ -217,7 +217,10 @@ theorem sizeIR_idxM : sizeIR (idxIR4 memM pLX) = 294 := by decide +kernel
 theorem sizeIR_dec2M : sizeIR (decMP2IR dB2M wB2M aB2M fB2M fB1M) ≤ 2 ^ 15 := by decide +kernel
 theorem sizeIR_dec1M : sizeIR (decMP1IR dB1M wB1M aB1M fB1M fB0M) ≤ 2 ^ 15 := by decide +kernel
 theorem sizeIR_dec0M : sizeIR (decMP0IRW dB0M wB0M aB0M fB0M) ≤ 2 ^ 15 := by decide +kernel
-theorem sizeIR_outM : sizeIR (.seq streamM (outIR mBM)) ≤ 2 ^ 18 := by decide +kernel
+theorem sizeIR_outM : sizeIR (.seq streamM (outIR mBM)) ≤ 2 ^ 18 := by
+  rw [szSeqM, outIR]
+  simp only [szSeqM, sizeIR_leafStmtIR, sizeIR_segIR, segSizes.1, segSizes.2.1, segSizes.2.2]
+  decide +kernel
 
 theorem sizeIR_decXM : sizeIR decXM ≤ 2 ^ 19 := by
   have h2 := sizeIR_dec2M
@@ -232,7 +235,8 @@ theorem sizeIR_decXM : sizeIR decXM ≤ 2 ^ 19 := by
     szSeqM, szIteM, blkSteps, List.length_cons, List.length_nil, sizeIR_idxM,
     show chainLM = chainIR (posL (piSize pX)) (nChainM pX) chTabM sdL from rfl, sizeIR_chainIR, chTabM_len,
     read0M, read1M, read2M, sizeIR_readGIR, hA, hB, hC]
-  simp [tcpIR, tcpBody, thcpIR, thcpBody, sdL, sizeIR, blkSteps]
+  simp only [tcpIR, tcpBody, thcpIR, thcpBody, sdL, sizeIR, blkSteps, List.length_cons, List.length_nil,
+    Nat.zero_add, Nat.add_eq_zero_iff, one_ne_zero, and_false, ↓reduceIte]
   omega
 
 end Lvm.X
