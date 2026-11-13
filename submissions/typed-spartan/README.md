@@ -33,7 +33,7 @@ the numbers and the dead ends.
 - **Measured on dev, against roll 7:**
   - V badge 218.5/206.5 → **140/138 ms** (small/big);
   - step medians −0.32 to −0.75 s on a real stream.
-- **Local season shape:** TODO(lead: S, S×, mean `V`).
+- **Local season shape:** S 3.655, S× 2.577, mean `V` 120.2 ms [measured, dev, host loaded].
 
 Earlier:
 - pr19-0bdb3ad5e872 (#19) moved `C_rec` to the Johnson radius. Its knowledge soundness comes from one invariant
@@ -126,8 +126,7 @@ Completeness is the witness-sending kind (`P := encode`, error 0). The harness t
 
 ## Layout
 
-`lean/` holds flat modules, all prefixed `Lvm`; TODO(lead: module and line counts, and `Solution`'s closure, after
-the prune).
+`lean/` holds 663 flat modules (≈ 203 k lines), all prefixed `Lvm`; `Solution`'s closure is 599 of them.
 
 | group | prefixes |
 |---|---|
@@ -174,8 +173,8 @@ the prune).
 
 - **Measured vs estimated.**
   - Local timings come from a QEMU dev VM, on which v4 cannot start. They use the dev variant v4p.
-  - Against roll 7 on the same stream: steps −0.32 to −0.75 s; V badge 140/138 ms. TODO(lead: local season step
-    range, fit, peak RSS and mean `V`).
+  - Against roll 7 on the same stream: steps −0.32 to −0.75 s; V badge 140/138 ms. Local season: steps 1.61–8.15 s,
+    fit 0.729 s + 6.84 µs per permutation, peak RSS 6.66 GiB, mean `V` 120.2 ms.
   - Zen 4 numbers come from the harness. The v4 tier, #13's GKR, the chain kernel and the worker choice on SMT
     cannot be timed on the dev VM.
 - **CPU safety.** `prover setup` self-tests each variant (KATs, a batch proof, a typed P8 proof) against the portable

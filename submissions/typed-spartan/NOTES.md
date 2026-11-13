@@ -169,11 +169,14 @@ pr19-0bdb3ad5e872 was accepted on the evaluation machine: S = 3.088 (P̄ 1.511, 
     S,0 and a 3-node-step stream.
   - Every tamper is rejected (Result). An operand tamper in any class is caught only by `Φ_Q(acc_out)`.
   - The deterministic P20 stream is byte-identical across runs, the dense small-shape reference and the linked `.s`.
-  - TODO(lead: cert status, `build_s`, comparator s, gate).
-- **Measured, local season shape** (dev VM, 8 pinned CPUs, caps unchanged): TODO(lead: ACCEPT?, S, P̄, V̄, S×, mean
-  `V`, step range, step 1, fit `P(n)`, prover peak).
-- **Expected on the evaluation machine [e]:** TODO(lead: S, S× projected from the local bench). The design model
-  gave S 2.24 and S× 1.18 [model], and past model gains have realised about 40 %.
+  - Harness cert (`evaluate.py cert`, pin 7ecd179, under the timing lock on dev): **ok**, gate PASS; `build_s` 661.5 s,
+    Lean kernel 592.8 s, peak 4.69 GB, 599 modules built [measured].
+- **Measured, local season shape** (dev VM, 8 pinned CPUs, caps unchanged): **ACCEPT**, 96 steps, not truncated;
+  S 3.655 (P̄ 2.543, V̄ 1.112), S× 2.577, mean `V` 120.2 ms; step 1 3.97 s, later steps 1.61–8.15 s; fit
+  `P(n)` = 0.729 s + 6.84 µs per permutation; prover peak 6.66 GiB [measured]. The host was loaded (`c_P` 1.077),
+  so P̄ reads high.
+- **Expected on the evaluation machine [model]:** S ≈ 2.36, S× ≈ 1.29 (P̄ × 0.5, mean `V` × 0.6 from the local bench),
+  i.e. S −23.5 % and S× −17.3 % against pr19-0bdb3ad5e872. The design model gave S 2.24 and S× 1.18 [model].
 
 ## Changes in pr19-0bdb3ad5e872 (since pr11-c65f417243e9)
 
@@ -397,8 +400,8 @@ serves every proof, and the program need not be a fixed point of itself.
 | pr19-0bdb3ad5e872, local season shape (dev VM, 8 CPUs) | ACCEPT; S = 4.99 (P̄ 3.30, V̄ 1.69), S× = 3.40, mean V 0.185 s; `build_s` 591 s, comparator 534 s |
 | pr19-0bdb3ad5e872, evaluation machine | ACCEPT; S = 3.088 (P̄ 1.511, V̄ 1.577), S× = 1.555 (mean V 0.113 s, g 1.029); Lean kernel 260.1 s |
 | roll 7 with Z2 (not submitted), cert only | ok; comparator 593.2 s at host load 8–43 |
-| this version, local season shape (dev VM, 8 CPUs) | TODO(lead: verdict; S (P̄, V̄), S×, mean V; `build_s`, comparator) |
-| this version, evaluation machine | from this PR's evaluation (projected TODO(lead: S, S×)) |
+| this version, local season shape (dev VM, 8 CPUs) | ACCEPT; S 3.655 (P̄ 2.543, V̄ 1.112), S× 2.577, mean V 120.2 ms; `build_s` 661.5 s, Lean kernel 592.8 s |
+| this version, evaluation machine | from this PR's evaluation (projected S ≈ 2.36, S× ≈ 1.29 [model]) |
 
 **Frozen P20 record** (busDepth, leafdec, rounds, evals) = (13, 1, 6, 936), the mini-bus's. `accVars` is 43.
 
@@ -423,7 +426,8 @@ and GFNI do not, so the evaluation variant v4 cannot start there; the runs use v
   - Σ flips (88/88), header `n` (46/46), `C_rec`'s OOD answer (22/22), and Z2's leaf tampers (132/132).
 - **Step times against roll 7** (real stream, AB3): see "Changes since". The binary's own setup before `ready` is
   1.4–1.5 s (roll 7: 0.7 s) for the matrices and the class kernels. It is untimed.
-- **Local season shape:** TODO(lead: step 1, later steps, fit `P(n)`, peak RSS (cap 11 GiB)).
+- **Local season shape:** step 1 3.97 s, later steps 1.61–8.15 s, fit `P(n)` = 0.729 s + 6.84 µs per permutation,
+  peak RSS 6.66 GiB (cap 11 GiB) [measured, host loaded].
 - **`prover setup`** on dev: v2 ok, v4 SIGILL, cap v4p, 8 threads. A typed P20 step at `n = 2^17` takes 1,514 ms with
   8 threads, 1,841 with 6 and 2,559 with 4.
 - **`.s` files.** ≈ 33 MB a tier (v2 33,449,277 B), up from 18 MB, because of the embedded layout dumps. Linking
@@ -435,7 +439,7 @@ and GFNI do not, so the evaluation variant v4 cannot start there; the runs use v
   - big 206.5 → **138.0 ms** (0.668×).
 
   #19's badge read 181.0 ms in its own session.
-- **Harness mean `V`:** TODO(lead: ms).
+- **Harness mean `V`:** 120.2 ms on dev [measured].
 - **Start-up** is not charged: 16.4–16.9 s per process at P20 (no lock, 530 MB). It builds `Q`, the layout and
   `Φ_Q`'s cache (`compileT`, 7.5 s), then checks the guard. That is about 12 processes per stream at the harness's
   batches of 8.
@@ -472,7 +476,7 @@ and GFNI do not, so the evaluation variant v4 cannot start there; the runs use v
 **Extractor.** `fuel = 2^46 + 8192·t`. The decoding's fixed cost (both `C_rec` levels, ≤ 2^38 steps) is
 unchanged.
 
-**Lean.** TODO(lead: module and line counts after the prune). Before the prune: 646 flat modules, ≈ 199 k lines;
+**Lean.** 663 flat modules, ≈ 203 k lines; the cert builds 599 of them (`Solution`'s closure). Before the prune: 646 flat modules, ≈ 199 k lines;
 `Solution`'s import closure held 577 of them. A quiet comparator reading with the last stubs still open gave 359.4 s
 on dev, a lower bound. Roll 7's base read 536.9 s quiet.
 
