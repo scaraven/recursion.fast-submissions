@@ -8,7 +8,7 @@ contract's signed random oracle and to its cheap-extractor fuel cap. Each step i
 Keccak-256 chain, plus the previous signed proof verified inside the circuit. `NOTES.md` has the design,
 the numbers and the dead ends.
 
-**Changes since #20** (`typed-spartan`, not yet evaluated; local S 3.655, S× 2.577, projected S ≈ 2.36, S× ≈ 1.29):
+**Changes since pr20-79a1a990cd1a** (#20, `typed-spartan`; evaluated S = 2.341, S× = 1.258):
 - **`C_rec` merged into `C_main` (M′).** The child's stream, `σ'` and the `X` rows are `C_main`'s stream block `S`
   (2^19 words, column stride 2^14). One commitment, one opening, every claim on `C_main`; the stream sits in lanes
   40–47, the window the extractor decodes.
@@ -17,7 +17,10 @@ the numbers and the dead ends.
   the window). The guard gains `sigInSB` (`σ'` lies in `S`).
 - **Measured on dev, against #20's code:** V badge 118.0/116.5 → **100.0/90.0 ms** (small/big, 0.847×/0.773×);
   prover step medians 2^17 1.601 → 1.495 s, 2^18 + 1 2.593 → 2.482 s, 2^20 7.530 → 7.552 s.
-- **Local season shape:** TODO(lead: S, S×, mean `V`).
+- **Local season shape:** ACCEPT; S 3.484, S× 2.664, mean `V` 103.4 ms [measured, dev, host loaded]; projected S ≈ 2.15
+  (−8.1 % against pr20-79a1a990cd1a's 2.341), S× ≈ 1.33 (unreliable on the loaded bench) [model].
+- **Certificate:** provisional at the local default cap (the dev kernel timed out at 602.1 s of 600 s); with the cap
+  raised to 900 s the Lean kernel accepts in 690.5 s [measured, host loaded], ≈ 341 s on the evaluation machine at 0.494× [model].
 
 **Changes in #20** (since pr19-0bdb3ad5e872, evaluated S = 3.088, S× = 1.555):
 - **A typed backend for the recursion circuit.** The node program commits only its row results: one word per `K`
@@ -134,13 +137,13 @@ Earlier:
 | rows ⇒ relation | `holds_of_wiring`, `rowDef_of_wiring`, `auxRow_of_wiring`; `nodeM20` from `nodeT20`, `nodeT20B` (`nodeSoundTG`, `posLanesS20`, `inMapT`, `readdOk_of_chk`, `mbRead_seeded`, `outT_sound`, `decideFT_of`); typed HAR `harithT20`; roll 7's `chain_of_tape`, `qlink_sound`, `qsig_sound` | `LvmTyped`, `LvmTypedLHolds`, `LvmNodeSoundT*`, `LvmQTypedHar*`, `LvmQTypedBitsS`, `LvmTapeRel`, `LvmQLink*`, `LvmQSig*` |
 | `Φ_Q` | `PhiQC_eq` (the compiled evaluator is the multilinear extension of the four matrices), `compileT_eq`, `compileTF_eq`, `cacheT20_eq` | `LvmWiring*`, `LvmQTypedInst` |
 | verifier | `refinesM20`, `refinesM20L`, `midFollowsM20` (native `VST` ⇒ the compiled typed program of `PSWithM`); closed forms `regClaim_rel`, `relayKernF_rel`, `virtEF_rel` | `LvmMPVEq*`, `LvmTypedVEq*`, `LvmTypedV*`, `LvmVerifierS` |
-| extractor | `computesX` (cost at the declared fuel), `extJM`, `decodeMP0`–`decodeMP2` (`LvmMPDec`), the list luck 2^-159.93; TODO(lead: M′'s names) | `LvmXTop`, `LvmXSpec`, `LvmCertSExtJ*`, `LvmCertSLuckJ`, `LvmXDec*` |
+| extractor | `EXM`, `extXM`, `computesXM` (`decXM` ≤ 2^45 + O(t), under the declared fuel), `ext_eqM20`, `extJM`, `decodeMP0`–`decodeMP2`, the list luck 2^-159.93 | `LvmMPX*`, `LvmMPDec*`, `LvmMPCert*`, `LvmCertM20`, `LvmXTop`, `LvmXDec*` |
 
 Completeness is the witness-sending kind (`P := encode`, error 0). The harness tests the native prover.
 
 ## Layout
 
-`lean/` holds 703 flat modules (≈ 213 k lines), all prefixed `Lvm`; `Solution`'s closure is TODO(lead: count from the cert's modules built) of them.
+`lean/` holds 703 flat modules (≈ 213 k lines), all prefixed `Lvm`; `Solution`'s closure is 638 of them.
 
 | group | prefixes |
 |---|---|

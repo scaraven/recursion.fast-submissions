@@ -5,7 +5,7 @@ Builds on: #11, #7, #12, #13, #15, #17, #19, #20
 
 This root continues #20 (`typed-spartan`, rolls 7 and 8), which continued #19 (`listless-whir`, roll 6 =
 pr19-0bdb3ad5e872) and PR #11 (`leanvm-inspired`). "Changes since #20" is relative to #20's submitted version; this
-root is roll 11 (M′: one commitment). #20 has no evaluation yet, so its local bench and projection are the reference.
+root is roll 11 (M′: one commitment). #20 was evaluated as pr20-79a1a990cd1a: S = 2.341, S× = 1.258.
 
 A recursive SNARK entry built from leanVM's proof system: binary fields, Keccak-f by GKR, ring switching and
 stacked WHIR. It is reshaped for the contract in four ways:
@@ -33,8 +33,8 @@ Notation:
 
 ## Changes since #20 (typed-spartan)
 
-#20 (roll 8) was not evaluated when this root was cut. Its local season shape read S 3.655, S× 2.577 (dev, host
-loaded), projected to S ≈ 2.36, S× ≈ 1.29 on the evaluation machine [model].
+pr20-79a1a990cd1a (#20, roll 8) was accepted on the evaluation machine: S = 2.341, S× = 1.258, Lean kernel 293.1 s
+(592.8 s on dev, so eval/dev = 0.494). Its local season shape read S 3.655, S× 2.577 (dev, host loaded).
 - **Roll 11 (M′) merges `C_rec` into `C_main`.** There is one commitment and one opening.
 - **Unchanged:** the claim and the theorem's statement; `εFS ≤ 2^-128` with the same form
   (`0 + (7·2^-131 + 2^-132) + 2^-139`); `C_main`'s WHIR (ν = 23, rate 1/4, the same levels and query counts); the
@@ -63,13 +63,16 @@ loaded), projected to S ≈ 2.36, S× ≈ 1.29 on the evaluation machine [model]
   - The extractor: `decodeMP2` (2^13 positions) → `decodeMP1` (2^16) → `decodeMP0` (2^19, lanes 40–47 only), all
     instances of the generic decoders that the shipped `decodeRec`/`decodeRec1` are instances of. The list luck over
     the three lists and 14 fold rounds is 14·615·2^19/|E| = 2^-159.93 [exact]. `ext_eqM20` ties the executable
-    extractor to it. The fuel `2^46 + 8192·t` is unchanged. TODO(lead: the M′ extractor's cost against 2^46.)
+    extractor to it (`EXM`, `extXM`, `computesXM`; `LvmMPX*`). The fuel `2^46 + 8192·t` is unchanged: the
+    top-level program `decXM` costs ≤ 2^45 + t/5·11,895 + 168·t [exact, `LvmMPXTop`], and level 0's decoder
+    2^44.52 [exact, `cost`].
   - The node relation: `nodeT20` on stream-block pairs (`GoodT ∧ SBlk`), through `nodeSoundTG`; the child's one
     `C_main` opening (`LvmMPNodePos`).
   - The refinement: `refinesM20`, `midFollowsM20`, with the relocation `reloc20` (`relocLaw20`).
   - **The guard gains `sigInSB`:** `staticOkB20 = staticOkT20 && oneOkB && sigInSB && nodeChkB && harChkB`.
     `sigInSB` checks that `σ'`'s region lies in `S`. It is `true` at P20 [measured].
-  - TODO(lead: `#print axioms certified`, module and line counts.)
+  - `#print axioms RecursionFast.Challenge.certified`: `propext`, `Classical.choice`, `Quot.sound` [measured]. The
+    source has no `sorry`. `lean/` holds 703 modules, ≈ 213 k lines; the cert builds 638 of them.
 - **Prover.** One commitment: no `C_rec` buffer, commit or opening. The opening is zero-padded to `S`'s end. R9's
   pooled typed witness and relayout gather (already in #20) now read `C_main`'s `S`.
 - **Measured on dev** (QEMU, v4p, 8 threads):
@@ -93,11 +96,26 @@ loaded), projected to S ≈ 2.36, S× ≈ 1.29 on the evaluation machine [model]
   - **Tampers are rejected on node steps**, not only on S,0: a stream word of `S` (`sword`) and a `σ'` word (`sig`),
     in both shapes at P20, and at P8, are caught by the relayout. R11-E's V-side tampers (Σ flips, header `n`, the
     root leaf's bytes in every window lane, an absent-lane word, the 512-B leaf) are all rejected.
-  - TODO(lead: harness cert: ok?, gate, `build_s`, Lean kernel / comparator, peak, modules built.)
-- **Measured, local season shape:** TODO(lead: ACCEPT?, S, P̄, V̄, S×, mean `V`, step range, step 1, fit `P(n)`,
-  prover peak, `c_P`.)
-- **Expected on the evaluation machine [model]:** TODO(lead: S, S× projected from the local bench). G0's model:
-  ΔV̄ ≈ −0.197 from `|π|` alone, ΔS ≈ −0.24 to −0.28 against roll 8's model [model].
+  - Harness cert (`evaluate.py cert`, pin 7ecd179, under the timing lock on dev, CPUs 8–15):
+    - **PROVISIONAL at the default cap** [measured]: the Lean kernel run timed out at 602.1 s against `kernel_s` =
+      600 s, loaded and quiet alike. The dev VM is about 2× slower than the evaluation machine (#20: 592.8 s on dev,
+      293.1 s on eval).
+    - **With the local kernel cap raised to 900 s: ok**, Lean default kernel accepts in **690.5 s** [measured,
+      local cap raised to 900 s, host heavily loaded (1-min load 79 at its end); an earlier run before three proof-only kernel trims read 627.6 s
+      at load ≤ 15]; `build_s` 999.1 s (8 CPUs), peak 4.83 GB, 638 modules built, gate PASS.
+    - On the evaluation machine that is ≈ 341 s at 0.494× (310 s from the 627.6 s reading) [model, calibrated on
+      #20], under its 600 s cap.
+- **Measured, local season shape** (dev VM, 8 pinned CPUs, caps unchanged): **ACCEPT**, 96 steps, not truncated;
+  S 3.484 (P̄ 2.639, V̄ 0.845), S× 2.664, mean `V` 103.4 ms; step 1 3.93 s, later steps 1.66–8.93 s; fit `P(n)` =
+  0.924 s + 6.57 µs per permutation; prover peak 6.66 GiB [measured]. The host was loaded (`c_P` 1.094, drift
+  0.094 > 0.065), so P̄ reads high and a gate on S× is unreliable.
+- **Expected on the evaluation machine [model]:** S ≈ 2.15, S× ≈ 1.33 (P̄ × 0.5, mean `V` × 0.6 from the local
+  bench).
+  - Against pr20-79a1a990cd1a (S 2.341, S× 1.258): **S −8.1 %, which passes the 5 % bar**; S× +5.8 %.
+  - The S× figure is unreliable: the bench host was loaded (`c_P` drift 0.094 > 0.065), and S× is bound by P̄,
+    which read high. The clean measurements against #20's code show no prover loss: step medians −0.106 s (2^17),
+    −0.111 s (2^18 + 1), +0.022 s (2^20) [measured, quiet, lock], and the V badge at 0.847× / 0.773×.
+  - G0's model was ΔS ≈ −0.24 to −0.28 [model].
 
 ## Changes in #20 (typed-spartan; since pr19-0bdb3ad5e872)
 
@@ -405,7 +423,7 @@ ends at level 2's residual on a good list member's fold path (`GoodRes`), and of
 that member out. `Ex` decodes three levels, each an instance of the generic decoders that #20's `decodeRec`/
 `decodeRec1` were instances of: `decodeMP2` (2^13 positions, `k` = 2^9) → `decodeMP1` (2^16, 2^13) → `decodeMP0`
 (2^19, 2^17, lanes 40–47 only). The list luck over the three lists and 14 fold rounds is 2^-159.93. The fixed cost
-is under `fuel_base = 2^46`: TODO(lead: the M′ bound). No list is ever enumerated.
+is under `fuel_base = 2^46`: `decXM` ≤ 2^45 + t/5·11,895 + 168·t [exact] (`computesXM`). No list is ever enumerated.
 
 **Fiat–Shamir is a hash chain over the contract oracle.**
 - `q₀ = "lvm/1\0\0"`, then the seed `a₀ ‖ header`.
@@ -472,16 +490,16 @@ serves every proof, and the program need not be a fixed point of itself.
 | pr19-0bdb3ad5e872, evaluation machine | ACCEPT; S = 3.088 (P̄ 1.511, V̄ 1.577), S× = 1.555 (mean V 0.113 s, g 1.029); Lean kernel 260.1 s |
 | roll 7 with Z2 (not submitted), cert only | ok; comparator 593.2 s at host load 8–43 |
 | #20 (typed-spartan), local season shape (dev VM, 8 CPUs) | ACCEPT; S 3.655 (P̄ 2.543, V̄ 1.112), S× 2.577, mean V 120.2 ms; `build_s` 661.5 s, Lean kernel 592.8 s |
-| #20, evaluation machine | not evaluated when this root was cut (projected S ≈ 2.36, S× ≈ 1.29 [model]) |
-| this version, local season shape (dev VM, 8 CPUs) | TODO(lead: verdict; S (P̄, V̄), S×, mean V; `build_s`, comparator) |
-| this version, evaluation machine | from this PR's evaluation (projected TODO(lead: S, S×)) |
+| #20 (pr20-79a1a990cd1a), evaluation machine | ACCEPT; S = 2.341, S× = 1.258; Lean kernel 293.1 s |
+| this version, local season shape (dev VM, 8 CPUs) | ACCEPT; S 3.484 (P̄ 2.639, V̄ 0.845), S× 2.664, mean V 103.4 ms; `build_s` 999.1 s, Lean kernel 690.5 s at a local cap raised to 900 s (default cap: provisional, 602.1 s timeout) |
+| this version, evaluation machine | from this PR's evaluation (projected S ≈ 2.15, S× ≈ 1.33 [model]) |
 
 **Frozen P20 record** (busDepth, leafdec, rounds, evals) = (12, 1, 6, 633), the mini-bus's (#20: (13, 1, 6, 936)).
 `accVars` is 43.
 
 | quantity | value |
 |---|---|
-| `\|π\|` | **332,336 B** (#20: 464,544 B). TODO(lead: the split into scalars, caps, rows, siblings, header) |
+| `\|π\|` | **332,336 B**: scalars 141,096, caps 16,384, rows 95,080, siblings 73,792, header 5,984 (`sizes_P20`; #20: 464,544 B) |
 | `qS` | **3,895** (`qV` 16,384) |
 | trace | 75,593 lanes (hashed 604,744 B; 4,447 sponge blocks of KS13's 7,680) |
 | signed file | 941,871 B (cap 64 MiB) |
@@ -529,33 +547,35 @@ and GFNI do not, so the evaluation variant v4 cannot start there; the runs use v
 | pr11-9e756ce6880a | 4.374 | 1.993 |
 | pr11-c65f417243e9 | 3.508 | 1.738 |
 | pr19-0bdb3ad5e872 | 3.088 | 1.555 |
+| pr20-79a1a990cd1a | 2.341 | 1.258 |
 | #7 | 105.9 | 505.8 |
 
-**Error budget (model, P20, per fresh query, log₂), as #20 (roll 8).** The groups outside WHIR carry the union over
-the `124·304 = 37,696` candidate pairs (+15.2). The WHIR query groups include the 2^-14 PoW discount. At M′ the
-`C_rec` rows go, `L₀` is 124 (+7.0) and the extractor's list luck is 2^-159.93; `C_main`'s worst group, −128.33,
-stays the worst. TODO(lead: the re-derived table for roll 11.)
+**Error budget (model, P20, per fresh query, log₂), roll 11.** The groups outside WHIR carry the union over the
+`L₀ = 124` candidate pairs (+6.95; #20: 37,696, +15.2), so each of those rows is #20's shifted by log₂ 304 = 8.25
+bits [model]. The WHIR query groups include the 2^-14 PoW discount. `C_rec`'s rows are gone; `C_main`'s are
+unchanged.
 
 | group | bound |
 |---|---|
-| `τ` and `κ` coordinates (1/\|E\|) | −176.80 |
-| zerocheck rounds (degree 3) | −175.21 |
-| `γ`; wiring and relayout rounds (degree 2) | −175.80 |
-| accumulator `t` (`Φ_Q`: 43 variables) | −171.37 |
-| Keccak GKR step 2 (degree 46; tape and `KS13`) | −171.27 |
-| other leads (ring switches, `KS13`, `LkSJ`) | −172.2 to −172.6 |
-| mini-bus fingerprint (2^13 leaves) | −161.80 |
-| stacked-claim batching (main `(J − 1)·124/\|E\|`, `J ≤ 2^40` / rec `(J − 1)·304/\|E\|`, `J ≤ 2^55`) | ≤ −129 / ≤ −128.75 |
-| WHIR folds (main 0–2 / rec 0–1) | −130.00, −132.00, −130.00 / −130.0, −134.5 |
-| WHIR OOD points (main 0–1 / rec 0) | −173.22, −170.77 / −172.7 |
-| WHIR query groups: positions, `λ`, openings (main 0–2 / rec 0–1) | **−128.33**, −129.07, −129.92 / −128.75, −129.36 |
-| extractor list luck (`C_rec`, both levels) / hash | −165.4 / Lean ≤ −139 |
+| `τ` and `κ` coordinates (1/\|E\|) | −185.05 |
+| zerocheck rounds (degree 3) | −183.46 |
+| `γ`; wiring and relayout rounds (degree 2) | −184.05 |
+| accumulator `t` (`Φ_Q`: 43 variables) | −179.62 |
+| Keccak GKR step 2 (degree 46; tape and `KS13`) | −179.52 |
+| other leads (ring switches, `KS13`, `LkSJ`) | −180.45 to −180.85 |
+| mini-bus fingerprint (depth 12; #20's depth-13 row shifted) | ≤ −170.05 |
+| stacked-claim batching (`(J − 1)·124/\|E\|`, `J ≤ 2^40`) | ≤ −129 |
+| WHIR folds (levels 0–2) | −130.00, −132.00, −130.00 |
+| WHIR OOD points (levels 0–1) | −173.22, −170.77 |
+| WHIR query groups: positions, `λ`, openings (levels 0–2) | **−128.33**, −129.07, −129.92 |
+| extractor list luck (three lists, 14 fold rounds) / hash | −159.93 [exact] / Lean ≤ −139 |
 | **worst** | **−128.33** (Lean: `εFS ≤ 0 + (7·2^-131 + 2^-132) + 2^-139 ≤ 2^-128`) |
 
 **Extractor.** `fuel = 2^46 + 8192·t`, unchanged. At M′ it decodes `C_main`'s window at three levels (2^13, 2^16,
-2^19 positions). TODO(lead: its cost against the 2^46 base.)
+2^19 positions). The top-level program `decXM` costs ≤ 2^45 + t/5·11,895 + 168·t [exact], under the 2^46 base;
+level 0's decoder is 2^44.52, level 1's 2^37.67 and level 2's 2^29.88 [exact, `cost`].
 
-**Lean.** 703 flat modules, ≈ 213 k lines; the cert builds TODO(lead: modules built) of them (`Solution`'s closure). #20: 663 modules, ≈ 203 k lines, 599 built. Before roll 8's prune: 646 flat modules, ≈ 199 k lines;
+**Lean.** 703 flat modules, ≈ 213 k lines; the cert builds 638 of them (`Solution`'s closure). #20: 663 modules, ≈ 203 k lines, 599 built. Before roll 8's prune: 646 flat modules, ≈ 199 k lines;
 `Solution`'s import closure held 577 of them. A quiet comparator reading with the last stubs still open gave 359.4 s
 on dev, a lower bound. Roll 7's base read 536.9 s quiet.
 
