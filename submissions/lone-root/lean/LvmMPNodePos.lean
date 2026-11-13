@@ -7,7 +7,7 @@ import LvmQAsmArith2WhirP
 # The child's position lanes at `S2GM`
 
 * **`posLanesKS20`** (`decide +kernel` on `posLanesKB`, the extractor's blocks): level `i` of `C_main`'s opening is
-  Q_link's opening `i`; its first positions entry starts block `1268`, `1304`, `1322` [exact, `#eval`].
+  Q_link's opening `i`; its first positions entry starts block `1268`, `1304`, `1322` [exact, evaluated].
 * **`posLanesS20`**: `PosLanes P20 g ood mainLevels (openU P20 + 15) 0` (`posLanes_of`, `posLanesR_of_K`).
 -/
 
