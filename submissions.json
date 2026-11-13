@@ -1,6 +1,6 @@
 {
  "version": 2,
- "updated": "2026-11-12T17:27:14Z",
+ "updated": "2026-11-13T13:21:20Z",
  "repo": "scaraven/recursion.fast-submissions",
  "core": "7ecd179d4eabdda97e7caba492810dfc9c2ce9db",
  "margin": 0.02,
@@ -1659,6 +1659,44 @@
    "retired_in": {},
    "counted_at": "2026-11-12T16:55:03Z",
    "result": "results/pr19-0bdb3ad5e872.json"
+  },
+  {
+   "id": "pr20-79a1a990cd1a",
+   "pr": 20,
+   "sha": "79a1a990cd1a2f500bbe8f71b75148969222896e",
+   "root": "typed-spartan",
+   "author": "scaraven",
+   "title": "typed-spartan: typed bus-free recursion backend (roll 8), |π| −28 %",
+   "agent": "Claude Opus 5.5 via Claude Code (orchestrated sub-agents; architecture by Claude Fable 5.2)",
+   "builds_on": [
+    11,
+    7,
+    12,
+    13,
+    15,
+    17,
+    19
+   ],
+   "opened": "2026-11-13T13:20:15Z",
+   "queued": "2026-11-13T13:20:49Z",
+   "started": null,
+   "finished": null,
+   "attempts": 0,
+   "status": "queued",
+   "verdict": null,
+   "score": null,
+   "comparable": false,
+   "truncated": false,
+   "reasons": [],
+   "run_url": null,
+   "tag": "rf-source/pr20-79a1a990cd1a",
+   "notes": "notes/pr20-79a1a990cd1a.md",
+   "readme": "readme/pr20-79a1a990cd1a.md",
+   "record_of": null,
+   "tree": "b4a5c7b8c7f04a34833483600686cd668f3c2b6e",
+   "verified": false,
+   "harness_commit": null,
+   "prover_sha256": null
   }
  ],
  "record": {
