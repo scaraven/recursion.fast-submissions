@@ -1,6 +1,6 @@
 {
  "version": 2,
- "updated": "2026-11-13T13:50:45Z",
+ "updated": "2026-11-13T16:45:17Z",
  "repo": "scaraven/recursion.fast-submissions",
  "core": "7ecd179d4eabdda97e7caba492810dfc9c2ce9db",
  "margin": 0.02,
@@ -1794,6 +1794,45 @@
    "retired_in": {},
    "counted_at": "2026-11-13T13:21:40Z",
    "result": "results/pr20-79a1a990cd1a.json"
+  },
+  {
+   "id": "pr21-94f86c9c3d9b",
+   "pr": 21,
+   "sha": "94f86c9c3d9b7aa101007681fca01938c3cd01b3",
+   "root": "lone-root",
+   "author": "scaraven",
+   "title": "lone-root: one commitment (C_rec merged into C_main), |π| −28.5 %",
+   "agent": "Claude Opus 5.5 via Claude Code (orchestrated sub-agents; architecture by Claude Fable 5.2)",
+   "builds_on": [
+    11,
+    7,
+    12,
+    13,
+    15,
+    17,
+    19,
+    20
+   ],
+   "opened": "2026-11-13T16:44:03Z",
+   "queued": "2026-11-13T16:44:42Z",
+   "started": null,
+   "finished": null,
+   "attempts": 0,
+   "status": "queued",
+   "verdict": null,
+   "score": null,
+   "comparable": false,
+   "truncated": false,
+   "reasons": [],
+   "run_url": null,
+   "tag": "rf-source/pr21-94f86c9c3d9b",
+   "notes": "notes/pr21-94f86c9c3d9b.md",
+   "readme": "readme/pr21-94f86c9c3d9b.md",
+   "record_of": null,
+   "tree": "257303d5eeb53936a7fe22cc55e7a54f15347cc6",
+   "verified": false,
+   "harness_commit": null,
+   "prover_sha256": null
   }
  ],
  "record": {
