@@ -49,12 +49,11 @@ for this version is **V̄ ≈ 0.78, S ≈ 1.91** [model: V̄ = c_V·(V/c₀ + |�
   - `rowLeafGL`, `rowNuGL`: a squaring loop gives the Frobenius powers, then a `ν` loop accumulates the component
     sums. Iteration `j` handles component `(j+1) mod 64`, which is correct because `a^(2^64) = a` in `K`
     (`fk_pow_two_pow_64`).
-  - `lRhoGL` puts the row tail in loops.
   - The PoW answers' booleanity rows run as 7 power-of-two loops instead of one block per answer.
 
   The row layout changes and nothing else does. The prover embeds the new blob files with no code change. `T`
   (dense 749,008 / padded 868,999 ≤ 0.95·2^20) still fits [exact]. `Φ_Q` at `E3` costs 49.7 ms on dev against #22's
-  ≈ 70 ms [measured, timing lock]. Lean: `rowNuGL_ok`, `hs_rowLeafGL`, `lRhoGL_spec` and `powOk_of_blks` over the
+  ≈ 70 ms [measured, timing lock]. Lean: `rowNuGL_ok`, `hs_rowLeafGL` and `powOk_of_blks` over the
   looped blocks (`LvmQRingCrtL`, `LvmQRingCrtLSem`, `LvmE2QAsmSpec`). The generic `rowNuOk_of_hs` keeps #22's
   `rowNuG_ok` as an instance.
 - **`V`'s opening shares work across claims.**
