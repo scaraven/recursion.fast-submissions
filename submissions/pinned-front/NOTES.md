@@ -332,8 +332,8 @@ equal to CompPoly; it does not interpret `Q`.
 | pr19-0bdb3ad5e872, evaluation machine | ACCEPT; S = 3.088 (P̄ 1.511, V̄ 1.577), S× = 1.555; Lean kernel 260.1 s |
 | pr20-79a1a990cd1a (#20), evaluation machine | ACCEPT; S = 2.341, S× = 1.258; Lean kernel 293.1 s |
 | pr21-94f86c9c3d9b (#21), evaluation machine | ACCEPT; S = 2.070 (P̄ 1.238, V̄ 0.832), S× = 1.2485, mean V 62.0 ms; Lean kernel 291.1 s |
-| this version, harness cert (dev VM) | ok; numbers in the PR body |
-| this version, local quick season (dev VM, 8 CPUs) | ACCEPT; numbers in the PR body |
+| this version, harness cert (dev VM, pin 7ecd179, timing lock) | ok, gate PASS; Lean default kernel **553.9 s** at the default cap (≈ 274 s on the evaluation machine at #20's 0.494× [model]); `build_s` 627.5 s (8 CPUs), peak 4.90 GB, 516 modules built [measured] |
+| this version, local quick season (dev VM, 8 CPUs; the first 24 published lengths) | ACCEPT; S 3.125 (P̄ 2.215, V̄ 0.910), S× 2.252, mean V 134.0 ms, \|π\| 306,992 B [measured]; host loaded (`c_P` drift 0.096), and a prefix is not comparable with full-season numbers |
 | this version, evaluation machine | from this PR's evaluation (projected S ≈ 1.96–2.02, S× ≈ 1.09–1.11 [model]) |
 
 **Frozen P20 record (stage `S2GF`)** [exact, `checks_P20F`]:
@@ -403,7 +403,7 @@ groups include the 2^-14 PoW discount.
 | extractor list luck / hash | −159.93 [exact] / Lean ≤ −139 |
 | **worst** | **−128.33** (Lean: `εFS ≤ 0 + (7·2^-131 + 2^-132) + 2^-139 ≤ 2^-128`) |
 
-**Lean.** `lean/` holds 873 flat modules, ≈ 264 k lines (#21: 703, ≈ 213 k); the cert builds `Solution`'s closure. Roll E2-FT added 170
+**Lean.** `lean/` holds 873 flat modules, ≈ 264 k lines (#21: 703, ≈ 213 k); the cert builds 516 of them (`Solution`'s closure; #21: 638). Roll E2-FT added 170
 modules and changed 513 (+130 k / −79 k lines against #21, including a mechanical fold of 267 single-importer modules
 into 121 hosts, whose old files stay as one-line import stubs) [measured, `git diff --shortstat`].
 
