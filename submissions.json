@@ -1,6 +1,6 @@
 {
  "version": 2,
- "updated": "2026-11-15T23:10:26Z",
+ "updated": "2026-11-15T23:38:16Z",
  "repo": "scaraven/recursion.fast-submissions",
  "core": "7ecd179d4eabdda97e7caba492810dfc9c2ce9db",
  "margin": 0.02,
@@ -2228,24 +2228,118 @@
    "opened": "2026-11-15T23:08:48Z",
    "queued": "2026-11-15T23:09:28Z",
    "started": "2026-11-15T23:10:25Z",
-   "finished": null,
+   "finished": "2026-11-15T23:38:16Z",
    "attempts": 1,
-   "status": "running",
-   "verdict": null,
-   "score": null,
-   "comparable": false,
+   "status": "accepted",
+   "verdict": "ACCEPT",
+   "score": {
+    "S": 1.9849734551603992,
+    "P_bar": 1.0601978472305478,
+    "V_bar": 0.9247756079298516,
+    "share_P": 0.5341118514579212,
+    "share_V": 0.46588814854207883,
+    "K": 5.0,
+    "kappa": 3.2975,
+    "n_ref": 262144,
+    "s_ref": 2097152,
+    "c_P": 1.0013779886148007,
+    "T_triv_ns": 6596057313,
+    "v_ref_ns": 659605731.3,
+    "M": 96,
+    "sum_n": 32060318,
+    "truncated": false,
+    "c_P_provisional": false,
+    "x_bar": 0.28044749292793075,
+    "V_mean_s": 0.08842826146874999,
+    "g": 1.0179727002965293,
+    "S_product": 1.079252465393848,
+    "pi_mean_bytes": 306992.0,
+    "tracks": {
+     "sum": "S",
+     "product": "S_product"
+    },
+    "fit": {
+     "a_s_per_permutation": 2.355604204683976e-06,
+     "b_s": 0.4864172527962951,
+     "a_ci95": [
+      2.323682377444453e-06,
+      2.3875260319234994e-06
+     ],
+     "b_ci95": [
+      0.47351288464412683,
+      0.4993216209484634
+     ],
+     "estimator": "trimmed least squares (lowest 80% of residuals, from a Theil–Sen start, to a fixed point)",
+     "scored": false
+    },
+    "P_bar_per_octave": {
+     "2^17": 1.3041788553876308,
+     "2^18": 1.0308164304343002,
+     "2^19": 0.7968269350770036
+    },
+    "marginal": {
+     "chain_speed_1pct": -0.00534111851457908,
+     "product_chain_speed_1pct": -0.009999999999999898,
+     "overhead_0.1s_per_step": -0.046321835777714426,
+     "product_overhead_0.1s_per_step": -0.0867268450442985,
+     "verifier_10ms": -0.0251852160215279,
+     "product_verifier_10ms": -0.0037673694935634883,
+     "proof_100KB": -0.07921368041910393,
+     "product_proof_100KB": 0.0,
+     "note": "relative change of S (and, prefixed product_, of S_product) at the current point (negative: better)"
+    },
+    "largest_x": {
+     "index": 95,
+     "x": 0.2931403337174571,
+     "x_verifier": 0.14675514084636337,
+     "x_size": 0.14638519287109375
+    },
+    "batching": {
+     "top_decile_share_of_P3": 0.12419883972519109,
+     "residual_lag1_autocorrelation": 0.0023201265756582485,
+     "note": "diagnostic only: work deferred to some steps shows as a large top-decile share"
+    }
+   },
+   "comparable": true,
    "truncated": false,
-   "reasons": [],
+   "reasons": [
+    "sum: 1.9850 s against the record pr23-01ba10cfcceb's 1.9973 s (+0.6%; a record needs more than 2%)",
+    "product: 1.0793 s against the record pr18-52dcfbabeea5's 0.0524 s (-1961.3%; a record needs more than 2%)"
+   ],
    "run_url": "https://github.com/scaraven/recursion.fast-submissions/actions/runs/43773312971",
    "tag": "rf-source/pr24-810b0fd3cf70",
    "notes": "notes/pr24-810b0fd3cf70.md",
    "readme": "readme/pr24-810b0fd3cf70.md",
-   "record_of": null,
+   "record_of": {
+    "sum": null,
+    "product": null
+   },
    "tree": "a097251d15659e32e8a5182e12fdb2de06a68451",
-   "verified": false,
-   "harness_commit": null,
-   "prover_sha256": null,
-   "run_attempt": 1
+   "verified": true,
+   "harness_commit": "7ecd179d4eabdda97e7caba492810dfc9c2ce9db",
+   "prover_sha256": "bc3cf2eb8354fc57f1b103ffa01b8ef80c301c3f3beb0f3e9dd1fd444fce647e",
+   "run_attempt": 1,
+   "build_manifest": "13e2ad5b4476ea46efd4ac1e51d006df08b9de51ee932ad8f0a34958b5cef51e",
+   "against": {
+    "sum": {
+     "record": "pr23-01ba10cfcceb",
+     "S": 1.9849734551603992,
+     "S_record": 1.997292854977799,
+     "gain": 0.006168048810016313,
+     "beats": false
+    },
+    "product": {
+     "record": "pr18-52dcfbabeea5",
+     "S": 1.079252465393848,
+     "S_record": 0.052359010395797496,
+     "gain": -19.61254514238245,
+     "beats": false
+    }
+   },
+   "record_in": [],
+   "retired_in": {},
+   "counted_at": "2026-11-15T23:10:25Z",
+   "result": "results/pr24-810b0fd3cf70.json"
   }
  ],
  "record": {
