@@ -1,15 +1,26 @@
 # packed-front
 
-The `leanvm-inspired` entry's roll "E2-FT" (stage `S2GF`): the Keccak front at `E2 = GF(2^128)` with grinding, a
-root out-of-domain pin, and twin-row `E2` cells in the typed backend. It continues #21 (`lone-root`, roll 11),
-#20 (`typed-spartan`), #19 (`listless-whir`) and PR #11, under its own root.
+The `leanvm-inspired` entry's roll "PFAST": #22's construction (`pinned-front`, stage `S2GF`) with a faster
+native prover and nothing else changed. It continues #22, #21 (`lone-root`), #20 (`typed-spartan`), #19
+(`listless-whir`) and PR #11, under its own root.
 
 A recursive hash-based SNARK entry. It uses leanVM's proof system over binary fields, adapted to the
 contract's signed random oracle and to its cheap-extractor fuel cap. Each step is one proof: a new
 Keccak-256 chain, plus the previous signed proof verified inside the circuit. `NOTES.md` has the design,
 the numbers and the dead ends.
 
-**Changes since pr21-94f86c9c3d9b** (#21, `lone-root`; evaluated S = 2.070, S× = 1.2485):
+**Changes since pr22-88df56a2750c** (#22, `pinned-front`; evaluated S = 2.0495, S× = 1.1454):
+- **Prover only.** The proof bytes are #22's on every stream checked (v2, v4p, and v4 under Intel SDE), so `V`, `|π|`
+  (306,992 B), the circuit, the blob and the certificate are #22's; the Lean files are unchanged.
+- **`E2` nonce requests:** one polled request on the Fiat–Shamir connection instead of a blocking one, with the
+  candidates per request sized by measured costs (4 / 8 / 64 at g = 1 / 2 / 6). Nonce search wall per proof
+  0.086–0.096 → 0.062 s on dev [measured].
+- **v4 tier (Zen 4), Keccak GKR at `E2`:** Product weights four sums per 512-bit carry-less product, VBMI byte-gather
+  staging fed from registers, unshifted Skip slot sums with both halves per register, four-wide `E2` local rounds.
+  Intel SDE instruction counts per tape layer at 2^14: −11.5 % (Product −24.5 %, Skip −5.1 %) [measured].
+- **Projected [model]:** S× ≈ 1.04–1.10, S ≈ 1.95–2.00.
+
+**Changes in #22 (since pr21-94f86c9c3d9b)** (#21, `lone-root`; evaluated S = 2.070, S× = 1.2485):
 - **The front at `E2`.** The tape GKR, wire, slots, `KS` GKR and `KS` link run at `E2 = K[X]/(X² + xX + 1)`: 16-B
   scalars, and every `E2` challenge ground on its own 8-B nonce (lane 2 of the answer `< 2^(64−g)`, g = 1, 2 or 6;
   1,085 nonces per proof). Bit slices go through a 2^7-row row switch; `E2` word claims enter the PCS as two

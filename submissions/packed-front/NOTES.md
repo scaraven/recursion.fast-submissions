@@ -39,7 +39,7 @@ Notation:
 **Conclusion.** A prover-only roll: the proof bytes are #22's on every input checked, so `V`, `|π|` (306,992 B), the
 circuit, the blob and the certificate (`certificateF20S`, same Lean files) are #22's. The native prover is faster in
 two places: the Fiat–Shamir round trips of the `E2` nonce search (every tier), and the evaluation tier's (v4, Zen 4)
-Keccak GKR at `E2`. Projected on the evaluation machine: @PROJ@ [model].
+Keccak GKR at `E2`. Projected on the evaluation machine: S× ≈ 1.04–1.10 (#22: 1.1454, −4 to −9 %) and S ≈ 1.95–2.00 (#22: 2.0495; record #21: 2.0699) [model].
 
 - **Nonce requests (every tier).** Each `E2` challenge asks its nonce candidates in one `QUERY`. #22 sent it on a pool
   connection and blocked in `read`; now it goes on the Fiat–Shamir connection, non-blocking and polled like the single
@@ -60,8 +60,19 @@ Keccak GKR at `E2`. Projected on the evaluation machine: @PROJ@ [model].
     Skip 299.6 → 284.4 M (−5.1 %), serial rest 67.9 → 54.3 M, whole layer 1,032.0 → 913.0 M (**−11.5 %**). Groups,
     Tables and Tail are unchanged. Wall time on Zen 4 is not measurable here; the icount ratio is the proxy that
     predicted v4p's wall within 0.03 in E2-K [model].
-- **Byte identity [measured].** @IDENT@
-- **Measured on dev (v4p, linked `.s`, timing lock, 4 interleaved rounds, against #22's shipped binary):** @AB@
+- **Byte identity [measured].** The deterministic real-oracle streams (test keys, fixed starts) give #22's
+  signed files byte for byte: the linked `.s` prover forced to v4p and on its v2 fallback, on an `S,0` at 2^18 + 2
+  followed by `S,1` steps at 2^17, 2^20 and 2^18, and on `S,0` at 2^17 + 1 and 2^20 + 1; the timing runs' streams
+  (`S,0` at 2^18 then `S,1` at 2^17, 2^18, 2^17, 2^20, 2^18 + 1, every round); the v4 tier under Intel SDE `-spr`
+  on short streams (n = 1, and three steps at 2^14), and PFAST-K's `e2check` (fast layer prover against the reference,
+  12 layers, E3 and E2). The v2 and v4p tiers compile the other GKR tree, so their binaries differ from #22's only
+  by the nonce requests.
+- **Measured on dev (v4p, linked `.s`, timing lock, 4 interleaved rounds, against #22's shipped binary):** step medians #22 → this root: 2^17 1.690 → 1.658 s, 2^18
+  2.377 → 2.441 s, 2^18 + 1 2.611 → 2.518 s, 2^20 7.072 → 7.116 s [measured]. The host's load was 25–35 and paired
+  differences spread ±0.1–0.3 s, so these medians do not resolve the change; v4p does not run the changed GKR kernels,
+  so on dev only the nonce requests move. Their search wall per proof is 0.092 → 0.066 s (median of 24 proofs per arm)
+  [measured]. The projection uses the nonce saving at 0.4–1× and the v4 layer's icount ratio (0.885) applied to the
+  tape's share of P̄ (0.50–0.63, DIAG-P's ∂P̄/∂b and ∂P̄/∂a on dev's fit) [model].
 
 ## Changes since #21 (lone-root)
 
