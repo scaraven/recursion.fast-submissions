@@ -426,6 +426,16 @@ fn fold_gfni<const B: usize, const WIDTH: usize, const DIFFERENCES: bool, const 
 ) {
     use core::arch::x86_64::*;
     use crate::lv::primitives::simd::{load, store, transpose8};
+    if W == 2 {
+        // SAFETY: the same features.
+        return unsafe {
+            if rows.len() == 2 * W * WIDTH {
+                fold_gfni_e2::<B, WIDTH, DIFFERENCES, W, 2>(maps, block, rows)
+            } else {
+                fold_gfni_e2::<B, WIDTH, DIFFERENCES, W, 1>(maps, block, rows)
+            }
+        };
+    }
     // Byte `8b + m` of the output is byte `8m + b` of the input: an 8 x 8 byte transpose per word.
     let gather: [u8; 64] = std::array::from_fn(|o| (8 * (o % 8) + o / 8) as u8);
     let gather = load(&gather[..], 0);
@@ -474,6 +484,95 @@ fn fold_gfni<const B: usize, const WIDTH: usize, const DIFFERENCES: bool, const 
                     0,
                     _mm512_permutexvar_epi8(gather, acc),
                 );
+            }
+        }
+    }
+}
+
+/// lvm2 PFAST-K2: [`fold_gfni`] at E2 with the affine maps' operands swapped: the maps register (`maps[i][z]`, its
+/// qword `l` for output byte `8 z + l`) is the source and the eight positions' input byte `i` (a qword, byte `m`
+/// for position `m`) the broadcast matrix, so the broadcast rides the instruction and each maps register, loaded
+/// once, serves eight chunks of eight positions and both groups. The sum's byte `8 l + s`, bit `j`, is bit `7 - s` of
+/// output byte `8 z + l` of position `7 - j`; one bit transpose and one byte permute give the same rows as
+/// [`fold_gfni`].
+#[cfg(all(
+    target_arch = "x86_64",
+    target_feature = "avx512f",
+    target_feature = "avx512vbmi",
+    target_feature = "gfni"
+))]
+#[target_feature(enable = "avx512f,avx512bw,avx512vbmi,gfni")]
+fn fold_gfni_e2<const B: usize, const WIDTH: usize, const DIFFERENCES: bool, const W: usize, const G: usize>(
+    maps: &[[[u64; 8]; W]; B],
+    block: &[u64],
+    rows: &mut [u64],
+) {
+    use core::arch::x86_64::*;
+    use crate::lv::primitives::simd::{load, store, transpose8};
+    /// Chunks of eight positions a step.
+    const CHUNKS: usize = 8;
+    // Byte `8b + m` of the output is byte `8m + b` of the input: an 8 x 8 byte transpose per word.
+    let gather: [u8; 64] = std::array::from_fn(|o| (8 * (o % 8) + o / 8) as u8);
+    let gather = load(&gather[..], 0);
+    // Byte `8m + l` of a row word is byte `8l + 7 - m` of the transposed sum.
+    let spread: [u8; 64] = std::array::from_fn(|o| (8 * (o % 8) + 7 - o / 8) as u8);
+    let spread = load(&spread[..], 0);
+    // The GF2P8AFFINE source that makes it an 8 x 8 bit transpose of its matrix operand (bytes reversed).
+    let bit_transpose = _mm512_set1_epi64(0x8040_2010_0804_0201_u64 as i64);
+    // `G` groups (rows of `W * WIDTH` words), one or two.
+    assert!(W == 2 && B % 2 == 0 && (1..=2).contains(&G) && (WIDTH / 8).is_multiple_of(CHUNKS));
+    assert!(block.len() >= WIDTH * 8 && rows.len() == G * W * WIDTH);
+    let mut spilled: [Spill; CHUNKS] = std::array::from_fn(|_| Spill([0u64; 64]));
+    for c0 in (0..WIDTH / 8).step_by(CHUNKS) {
+        for (cc, spilled) in spilled.iter_mut().enumerate() {
+            let c = c0 + cc;
+            let words = transpose8(std::array::from_fn(|m| load(&block[64 * c..], m)));
+            let mut bytes = words.map(|w| _mm512_permutexvar_epi8(gather, w));
+            if DIFFERENCES {
+                bytes = [
+                    _mm512_xor_si512(bytes[0], bytes[2]),
+                    _mm512_xor_si512(bytes[1], bytes[3]),
+                    _mm512_xor_si512(bytes[4], bytes[6]),
+                    _mm512_xor_si512(bytes[5], bytes[7]),
+                    _mm512_setzero_si512(),
+                    _mm512_setzero_si512(),
+                    _mm512_setzero_si512(),
+                    _mm512_setzero_si512(),
+                ];
+            }
+            for (k, b) in bytes.iter().enumerate().take(if DIFFERENCES { 4 } else { 8 }) {
+                store(&mut spilled.0[8 * k..][..8], 0, *b);
+            }
+        }
+        // One output word at a time, so that each input qword's broadcast has one use and rides its affine map.
+        for z in 0..2 {
+            // `acc[g][cc]`: group `g`, chunk `c0 + cc`.
+            let mut acc = [[_mm512_setzero_si512(); CHUNKS]; G];
+            for i in (0..B).step_by(2) {
+                let m: [__m512i; 2] = std::array::from_fn(|h| load(&maps[i + h][z % W][..], 0));
+                for (g, acc) in acc.iter_mut().enumerate() {
+                    for (cc, acc) in acc.iter_mut().enumerate() {
+                        let x = |h: usize| _mm512_set1_epi64(spilled[cc].0[B * g + i + h] as i64);
+                        *acc = _mm512_ternarylogic_epi64(
+                            *acc,
+                            _mm512_gf2p8affine_epi64_epi8(m[0], x(0), 0),
+                            _mm512_gf2p8affine_epi64_epi8(m[1], x(1), 0),
+                            0x96,
+                        );
+                    }
+                }
+            }
+            for (g, acc) in acc.iter().enumerate() {
+                for (cc, &acc) in acc.iter().enumerate() {
+                    let c = c0 + cc;
+                    let at = if DIFFERENCES {
+                        (c / 8) * factor_row::<W>() + z * 64 + (8 * c) % 64
+                    } else {
+                        z * WIDTH + 8 * c
+                    };
+                    let v = _mm512_gf2p8affine_epi64_epi8(bit_transpose, acc, 0);
+                    store(&mut rows[g * W * WIDTH + at..][..8], 0, _mm512_permutexvar_epi8(spread, v));
+                }
             }
         }
     }

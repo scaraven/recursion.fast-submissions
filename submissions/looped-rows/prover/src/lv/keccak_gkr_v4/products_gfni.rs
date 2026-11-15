@@ -501,6 +501,31 @@ impl<const W: usize> ProductSums<W> {
                 let mut a24 = [_mm512_setzero_si512(); WEIGHT_BYTES];
                 let m = |a: usize| -> &[u64] { &matrices[a * Self::BYTES..][..Self::BYTES] };
                 let mut a = 0;
+                // lvm2 PFAST-K2: four lane bytes a step, by pointers (their bounds asserted once): the same affine
+                // maps, each accumulator's terms XORed in another order.
+                if W == 2 {
+                    assert!(matrices.len() >= n_active * Self::BYTES);
+                    let (sp, mp) = (staged.as_ptr(), matrices.as_ptr());
+                    let ldp = |a: usize| _mm512_loadu_si512(sp.add(staged_index(2 * pair, a, n_active)).cast());
+                    while a + 3 < n_active {
+                        let c = [ldp(a), ldp(a + 1), ldp(a + 2), ldp(a + 3)];
+                        let mrow = mp.add(a * 16);
+                        let g = |i: usize, b: usize| _mm512_gf2p8affine_epi64_epi8(c[i], bc(*mrow.add(16 * i + b)), 0);
+                        // Unrolled by hand, so that the accumulators stay in registers.
+                        macro_rules! step {
+                            ($($b:literal)*) => {$(
+                                a24[$b] = _mm512_ternarylogic_epi64(
+                                    a24[$b],
+                                    _mm512_ternarylogic_epi64(g(0, $b), g(1, $b), g(2, $b), 0x96),
+                                    g(3, $b),
+                                    0x96,
+                                );
+                            )*};
+                        }
+                        step!(0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15);
+                        a += 4;
+                    }
+                }
                 while a + 1 < n_active {
                     let (c0, c1, m0, m1) = (ld(a), ld(a + 1), m(a), m(a + 1));
                     for (b, ab) in a24[..Self::BYTES].iter_mut().enumerate() {

@@ -1,14 +1,15 @@
 # looped-rows
 
 Agent: Claude Opus 5.5 via Claude Code (orchestrated sub-agents; architecture by Claude Fable 5.2)
-Builds on: #11, #7, #12, #13, #15, #17, #19, #20, #21, #22, #23
+Builds on: #11, #7, #12, #13, #15, #17, #19, #20, #21, #22, #23, #24
 
 This root continues #22 (`pinned-front`, roll "E2-FT" = pr22-88df56a2750c), which continued #21 (`lone-root`), #20
-(`typed-spartan`), #19 (`listless-whir`) and PR #11 (`leanvm-inspired`), and it carries the prover-only roll
-`packed-front` (#23). This root is stage `S2GF` on blob v4: the same proof size, transcript and statement as #22, with a
-circuit that evaluates the same relation in fewer `Φ_Q` products and a `V` whose opening shares work across claims.
-"Changes since #22" is relative to #22's submitted version, which was evaluated at S = 2.0495, S× = 1.1454 (mean `V`
-88.3 ms). The sections from "Changes since #21" on describe #22's construction, which is otherwise unchanged.
+(`typed-spartan`), #19 (`listless-whir`) and PR #11 (`leanvm-inspired`), and it carries the prover-only rolls
+`packed-front` (#23, the current sum record at S = 1.9973) and `wide-lanes` (#24). This root is stage `S2GF` on blob
+v4: the same proof size, transcript and statement as #22, with a circuit that evaluates the same relation in fewer
+`Φ_Q` products and a `V` whose opening shares work across claims. "Changes since #22" is relative to #22's submitted
+version, which was evaluated at S = 2.0495, S× = 1.1454 (mean `V` 88.3 ms). The sections from "Changes since #21" on
+describe #22's construction, which is otherwise unchanged.
 
 A recursive SNARK entry built from leanVM's proof system: binary fields, Keccak-f by GKR, ring switching and
 stacked WHIR. It is reshaped for the contract in four ways:
@@ -78,12 +79,13 @@ for this version is **V̄ ≈ 0.78, S ≈ 1.91** [model: V̄ = c_V·(V/c₀ + |�
   - It rejects every `V`-side tamper and all 14 prover tampers.
   - v4p = v2 = dev = the linked `.s`, and v4 under SDE, give byte-identical proofs.
   - `staticOkBF20` holds natively with every conjunct.
-- **Prover: `packed-front` (#23, merged).** The prover carries `packed-front`'s two speed-ups. They do not
-  change the bytes:
+- **Prover: `packed-front` (#23) and `wide-lanes` (#24), merged.** The prover carries their speed-ups. They do
+  not change the bytes:
   - the `E2` nonce requests go on the Fiat–Shamir connection, polled, with per-`g` batch sizes;
-  - the v4 tier's tape and `KS` GKR at `E2` gets six kernel changes (−11.5 % SDE instructions per tape layer).
+  - the v4 tier's tape and `KS` GKR at `E2` gets #23's six kernel changes (−11.5 % SDE instructions per tape layer)
+    and #24's further v4 kernels (only `prover-v4.s` changes).
   With them merged on blob v4, v4p, v2, the linked `.s` and v4 under SDE reproduce the honest blob-v4 stream byte
-  for byte [measured]. The details are in #23's NOTES.
+  for byte [measured]. The details are in #23's and #24's NOTES.
 - **Next.** The code for stage `S2GT` (typed phases at `E2`, `Φ_Q` evaluated with `E2` products) is in `lean/` but
   outside `Solution`'s closure. Its statements are in progress. Measured on dev, it reaches 104.4 / 85.5 ms.
 

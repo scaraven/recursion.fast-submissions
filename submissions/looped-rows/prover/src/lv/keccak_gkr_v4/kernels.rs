@@ -451,8 +451,7 @@ mod x86 {
     #[inline]
     fn embed_vector(words: &[u64; BLOCK_WORDS]) -> [u32; PACKS] {
         let v = simd::load(words, 0);
-        let low = _mm512_or_si512(embedding_byte(v, 0), _mm512_slli_epi16(embedding_byte(v, 1), 8));
-        let high = embedding_byte(v, 2);
+        let (low, high) = embedding_words(v);
         // Interleaving the halves leaves each lane's four low packs, then its four high ones.
         let (first, second) = (_mm512_unpacklo_epi16(low, high), _mm512_unpackhi_epi16(low, high));
         let mut out = [0u32; PACKS];
@@ -473,7 +472,92 @@ mod x86 {
         out
     }
 
+    /// lvm2 PFAST-K2: the bytes of the unpacks that spread a word register's embedding (`low`, `high`, then zero)
+    /// over four registers, a pack's 24 bits zero-extended to 64: `out = [lo32(f, 0), hi32(f, 0), lo32(g, 0),
+    /// hi32(g, 0)]` with `(f, g) = (lo32(e, o), hi32(e, o))`, `(e, o) = (lo16(low, high), hi16(low, high))`.
+    /// Entry `[k][i]` is output `k`'s byte `i`, as a two-source byte permute index (bit 6: `high`).
+    #[repr(C, align(64))]
+    struct Spread([[u8; 64]; 4]);
+
+    /// Source byte labels: `low` byte `i` is `i`, `high` byte `i` is `64 + i`, zero is `ZERO`.
+    const ZERO: u8 = 0xff;
+
+    /// `_mm512_unpack{lo,hi}_epi{16,32}` on byte labels: elements of `size` bytes, per 128-bit lane.
+    const fn unpack(a: [u8; 64], b: [u8; 64], size: usize, hi: bool) -> [u8; 64] {
+        let mut r = [ZERO; 64];
+        let half = 8 / size;
+        let mut lane = 0;
+        while lane < 4 {
+            let mut i = 0;
+            while i < half {
+                let e = if hi { half + i } else { i };
+                let mut t = 0;
+                while t < size {
+                    r[16 * lane + 2 * i * size + t] = a[16 * lane + e * size + t];
+                    r[16 * lane + (2 * i + 1) * size + t] = b[16 * lane + e * size + t];
+                    t += 1;
+                }
+                i += 1;
+            }
+            lane += 1;
+        }
+        r
+    }
+
+    static SPREAD: Spread = {
+        let (mut low, mut high, zero) = ([0u8; 64], [0u8; 64], [ZERO; 64]);
+        let mut i = 0;
+        while i < 64 {
+            low[i] = i as u8;
+            high[i] = 64 + i as u8;
+            i += 1;
+        }
+        let (e, o) = (unpack(low, high, 2, false), unpack(low, high, 2, true));
+        let (f, g) = (unpack(e, o, 4, false), unpack(e, o, 4, true));
+        let out = [unpack(f, zero, 4, false), unpack(f, zero, 4, true), unpack(g, zero, 4, false), unpack(g, zero, 4, true)];
+        let mut idx = [[0u8; 64]; 4];
+        let mut k = 0;
+        while k < 4 {
+            let mut i = 0;
+            while i < 64 {
+                // Zero bytes stay zero by the mask; their index is any.
+                idx[k][i] = if out[k][i] == ZERO { 0 } else { out[k][i] };
+                i += 1;
+            }
+            k += 1;
+        }
+        Spread(idx)
+    };
+
+    /// The bytes [`SPREAD`] takes from a source, the same in every output: three of each eight.
+    const SPREAD_MASK: __mmask64 = 0x0707_0707_0707_0707;
+
+    /// lvm2 PFAST-K2: per pack of `v`, bytes 0 and 1 of its embedding (`low`) and byte 2 in the low byte of its
+    /// 16 bits (`high`), as [`embedding_byte`] gives them: byte-masked affine maps on `v` and on `v` with each
+    /// pack's bytes swapped put each output byte's two terms in place, so they meet in one XOR (ten instructions
+    /// where the shifted form takes seventeen).
+    #[target_feature(enable = "avx512f,avx512bw,vpclmulqdq,gfni")]
+    #[inline]
+    fn embedding_words(v: __m512i) -> (__m512i, __m512i) {
+        const EVEN: __mmask64 = 0x5555_5555_5555_5555;
+        const ODD: __mmask64 = 0xAAAA_AAAA_AAAA_AAAA;
+        let m = |half: usize, k: usize| _mm512_set1_epi64(MATRICES[half][k]);
+        // Each pack's two bytes swapped: its high byte at the even place, its low one at the odd.
+        let swap: [u8; 16] = [1, 0, 3, 2, 5, 4, 7, 6, 9, 8, 11, 10, 13, 12, 15, 14];
+        let swapped = _mm512_shuffle_epi8(v, _mm512_broadcast_i32x4(unsafe { core::mem::transmute::<[u8; 16], __m128i>(swap) }));
+        // Even bytes: the low byte's share of output byte 0; odd: the high byte's share of output byte 1.
+        let x = _mm512_mask_gf2p8affine_epi64_epi8::<0>(_mm512_maskz_gf2p8affine_epi64_epi8::<0>(EVEN, v, m(0, 0)), ODD, v, m(1, 1));
+        // Even bytes: the high byte's share of byte 0; odd: the low byte's share of byte 1.
+        let y = _mm512_mask_gf2p8affine_epi64_epi8::<0>(_mm512_maskz_gf2p8affine_epi64_epi8::<0>(EVEN, swapped, m(1, 0)), ODD, swapped, m(0, 1));
+        let high = _mm512_xor_si512(
+            _mm512_maskz_gf2p8affine_epi64_epi8::<0>(EVEN, v, m(0, 2)),
+            _mm512_maskz_gf2p8affine_epi64_epi8::<0>(EVEN, swapped, m(1, 2)),
+        );
+        (_mm512_xor_si512(x, y), high)
+    }
+
     /// Byte `k` of the embedding of each pack of `v`, in the low byte of the pack's 16 bits.
+    #[cfg(test)]
     #[target_feature(enable = "avx512f,avx512bw,vpclmulqdq,gfni")]
     #[inline]
     fn embedding_byte(v: __m512i, k: usize) -> __m512i {
@@ -522,17 +606,17 @@ mod x86 {
                 high(c[i], c[i + 4])
             }
         });
-        let zero = _mm512_setzero_si512();
         for (w, &v) in words.iter().enumerate() {
-            let low = _mm512_or_si512(embedding_byte(v, 0), _mm512_slli_epi16(embedding_byte(v, 1), 8));
-            let high = embedding_byte(v, 2);
-            // Per lane, the four packs of its even word, then of its odd one.
-            let (even, odd) = (_mm512_unpacklo_epi16(low, high), _mm512_unpackhi_epi16(low, high));
-            let (first, second) = (_mm512_unpacklo_epi32(even, odd), _mm512_unpackhi_epi32(even, odd));
-            out[4 * w] = V(_mm512_unpacklo_epi32(first, zero));
-            out[4 * w + 1] = V(_mm512_unpackhi_epi32(first, zero));
-            out[4 * w + 2] = V(_mm512_unpacklo_epi32(second, zero));
-            out[4 * w + 3] = V(_mm512_unpackhi_epi32(second, zero));
+            let (low, high) = embedding_words(v);
+            // lvm2 PFAST-K2: per lane, the four packs of its even word, then of its odd one: the unpacks' bytes
+            // (`SPREAD`), one zero-masked two-source byte permute an output.
+            for (k, out) in out[4 * w..][..4].iter_mut().enumerate() {
+                // SAFETY: AVX-512 VBMI is enabled at compile time (the v4 tree is built only with it); the index
+                // load reads one 64-byte row of `SPREAD`.
+                *out = V(unsafe {
+                    _mm512_maskz_permutex2var_epi8(SPREAD_MASK, low, _mm512_loadu_si512(SPREAD.0[k].as_ptr().cast()), high)
+                });
+            }
         }
     }
 
@@ -558,7 +642,6 @@ mod x86 {
             let (x, y) = (b[4 * m + t % 2], b[4 * m + 2 + t % 2]);
             if t < 2 { low(x, y) } else { high(x, y) }
         });
-        let zero = _mm512_setzero_si512();
         for (half, out) in out.iter_mut().enumerate() {
         let words: [__m512i; 4] = std::array::from_fn(|i| {
             if half == 0 {
@@ -568,15 +651,16 @@ mod x86 {
             }
         });
         for (w, &v) in words.iter().enumerate() {
-            let low = _mm512_or_si512(embedding_byte(v, 0), _mm512_slli_epi16(embedding_byte(v, 1), 8));
-            let high = embedding_byte(v, 2);
-            // Per lane, the four packs of its even word, then of its odd one.
-            let (even, odd) = (_mm512_unpacklo_epi16(low, high), _mm512_unpackhi_epi16(low, high));
-            let (first, second) = (_mm512_unpacklo_epi32(even, odd), _mm512_unpackhi_epi32(even, odd));
-            out[4 * w] = V(_mm512_unpacklo_epi32(first, zero));
-            out[4 * w + 1] = V(_mm512_unpackhi_epi32(first, zero));
-            out[4 * w + 2] = V(_mm512_unpacklo_epi32(second, zero));
-            out[4 * w + 3] = V(_mm512_unpackhi_epi32(second, zero));
+            let (low, high) = embedding_words(v);
+            // lvm2 PFAST-K2: per lane, the four packs of its even word, then of its odd one: the unpacks' bytes
+            // (`SPREAD`), one zero-masked two-source byte permute an output.
+            for (k, out) in out[4 * w..][..4].iter_mut().enumerate() {
+                // SAFETY: AVX-512 VBMI is enabled at compile time (the v4 tree is built only with it); the index
+                // load reads one 64-byte row of `SPREAD`.
+                *out = V(unsafe {
+                    _mm512_maskz_permutex2var_epi8(SPREAD_MASK, low, _mm512_loadu_si512(SPREAD.0[k].as_ptr().cast()), high)
+                });
+            }
         }
         }
     }
@@ -613,6 +697,10 @@ mod skip {
     pub struct SkipBlock {
         /// Per slot, the low and high polynomial halves, each split into even and odd positions.
         acc: Vec<[V; 4]>,
+        /// lvm2 PFAST-K2: E2's sums with AVX-512 ([`points_e2`]), at the first 64 slots of each half (the others are
+        /// unused): the products with weight word 0, then with word 1, even and odd positions together.
+        #[cfg(target_feature = "avx512f")]
+        acc2: Vec<[V; 2]>,
         /// lvm2 PFAST-K: per position of the row, both halves' packs.
         packs: [[[V; HALF]; 2]; 5],
         tile: [[V; 4]; 5],
@@ -635,12 +723,79 @@ mod skip {
         }
     }
 
+    /// lvm2 PFAST-K2: one high pair's points of [`SkipBlock::sum_e2`] (E2, AVX-512): the low pair's four mixed
+    /// points and their lane sum, and with `BINARY` (the new high pairs) its four binary points. Per point and
+    /// lane `x`, `b c` of the point's values at `x + 1` and `x + 2`, then times both weight words of `x`'s
+    /// positions; slot `p`'s word-`k` sum takes the even and the odd positions' products together.
+    ///
+    /// # Safety
+    /// AVX-512F and VPCLMULQDQ.
+    #[cfg(target_feature = "avx512f")]
+    #[inline(always)]
+    unsafe fn points_e2<const BINARY: bool>(
+        acc: &mut [[V; 2]],
+        v: [&[V]; 5],
+        w: &[[core::arch::x86_64::__m512i; 2]; 5],
+        high: usize,
+    ) {
+        use core::arch::x86_64::*;
+        let acc = &mut acc[..64];
+        let v: [&[V; 4]; 5] = v.map(|v| v.try_into().unwrap());
+        unsafe {
+            let point = |acc: &mut [V; 2], e: [__m512i; 5]| point_e2(acc, &e, w);
+            // The tile is read where a point needs it, so that the weights stay in registers.
+            let xr = |a: usize, b: usize| -> [__m512i; 5] { std::array::from_fn(|x| _mm512_xor_si512(v[x][a].0, v[x][b].0)) };
+            let lane = |l: usize| -> [__m512i; 5] { std::array::from_fn(|x| v[x][l].0) };
+            point(&mut acc[20 + 4 * high], xr(0, 1));
+            point(&mut acc[21 + 4 * high], xr(2, 3));
+            point(&mut acc[22 + 4 * high], xr(0, 2));
+            point(&mut acc[23 + 4 * high], xr(1, 3));
+            let all: [__m512i; 5] = std::array::from_fn(|x| _mm512_ternarylogic_epi64::<0x96>(v[x][0].0, v[x][1].0, _mm512_xor_si512(v[x][2].0, v[x][3].0)));
+            point(&mut acc[56 + high], all);
+            if BINARY {
+                for l in 0..4 {
+                    point(&mut acc[4 * (high - 4) + l], lane(l));
+                }
+            }
+        }
+    }
+
+    /// lvm2 PFAST-K2: one point of [`points_e2`]: 30 carry-less products, two slot words.
+    ///
+    /// # Safety
+    /// AVX-512F and VPCLMULQDQ.
+    #[cfg(target_feature = "avx512f")]
+    #[inline(always)]
+    unsafe fn point_e2(acc: &mut [V; 2], e: &[core::arch::x86_64::__m512i; 5], w: &[[core::arch::x86_64::__m512i; 2]; 5]) {
+        use core::arch::x86_64::*;
+        unsafe {
+            let (mut s0, mut s1) = (acc[0].0, acc[1].0);
+            for x in 0..5 {
+                let (b, c) = (e[(x + 1) % 5], e[(x + 2) % 5]);
+                let (even, odd) = (_mm512_clmulepi64_epi128::<0x00>(b, c), _mm512_clmulepi64_epi128::<0x11>(b, c));
+                s0 = _mm512_ternarylogic_epi64::<0x96>(
+                    s0,
+                    _mm512_clmulepi64_epi128::<0x00>(even, w[x][0]),
+                    _mm512_clmulepi64_epi128::<0x10>(odd, w[x][0]),
+                );
+                s1 = _mm512_ternarylogic_epi64::<0x96>(
+                    s1,
+                    _mm512_clmulepi64_epi128::<0x00>(even, w[x][1]),
+                    _mm512_clmulepi64_epi128::<0x10>(odd, w[x][1]),
+                );
+            }
+            *acc = [V(s0), V(s1)];
+        }
+    }
+
     impl SkipBlock {
         pub fn new() -> Box<Self> {
             // SAFETY: the features of `V` are enabled at compile time.
             let zero = unsafe { V::zero() };
             Box::new(Self {
                 acc: vec![[zero; 4]; 2 * MIXED],
+                #[cfg(target_feature = "avx512f")]
+                acc2: vec![[zero; 2]; 128],
                 packs: [[[zero; HALF]; 2]; 5],
                 tile: [[zero; 4]; 5],
             })
@@ -657,6 +812,10 @@ mod skip {
             /// The sums over a block, whose positions [`run`](Self::run) has checked.
             #[cfg_attr(target_feature = "gfni", target_feature(enable = "gfni"))]
             fn sum<const W: usize>(&mut self, t: &Tables, block: &[u64], weights: &SkipWeights<W>) {
+                #[cfg(target_feature = "avx512f")]
+                if W == 2 {
+                    return self.sum_e2(t, block, &weights.0);
+                }
                 self.acc.fill([V::zero(); 4]);
                 // lvm2 PFAST-K: both halves per row register (the positions' words loaded and transposed once, the
                 // weights loaded once); the slots' sums are the same XORs in another order.
@@ -734,9 +893,61 @@ mod skip {
             }
         }
 
+        clmul_kernel! {
+            /// lvm2 PFAST-K2: [`Self::sum`] at E2 with AVX-512: per row register, each half's six high pairs with
+            /// their points unrolled ([`points_e2`]), the tiles in registers and the slots at fixed offsets. The same
+            /// products, XORed in another order.
+            #[cfg(target_feature = "avx512f")]
+            #[target_feature(enable = "gfni")]
+            fn sum_e2(&mut self, t: &Tables, block: &[u64], weights: &[u64]) {
+                use core::arch::x86_64::*;
+                assert!(weights.len() >= 2 * BITS && self.acc2.len() >= 128);
+                self.acc2.fill([V::zero(); 2]);
+                for r in 0..5 {
+                    for z in (0..64).step_by(WIDTH) {
+                        let js = row_positions(r, z);
+                        for (packs, &j) in self.packs.iter_mut().zip(&js) {
+                            let positions = &block[BLOCK_WORDS * j..][..WIDTH * BLOCK_WORDS];
+                            super::simd::embed_positions2(t, positions, packs);
+                        }
+                        let w: [[__m512i; 2]; 5] =
+                            std::array::from_fn(|x| std::array::from_fn(|k| V::load(weights, k * BITS + js[x]).0));
+                        for half in 0..2 {
+                            let p: [&[V; HALF]; 5] = std::array::from_fn(|x| &self.packs[x][half]);
+                            let acc = &mut self.acc2[64 * half..][..64];
+                            // `HIGH[6..]` have the group at infinity, which the rounds do not use.
+                            for high in 0..4 {
+                                let v: [&[V]; 5] = std::array::from_fn(|x| &p[x][4 * high..][..4]);
+                                // SAFETY: AVX-512F and VPCLMULQDQ are enabled at compile time; slots `20 + 4 high ..`
+                                // and `56 + high` are below 64.
+                                unsafe { points_e2::<false>(acc, v, &w, high) };
+                            }
+                            for high in 4..6 {
+                                let q = 8 * (high - 4);
+                                let tile = &mut self.tile;
+                                for (tile, p) in tile.iter_mut().zip(&p) {
+                                    *tile = std::array::from_fn(|l| p[q + l].xor(p[q + 4 + l]));
+                                }
+                                let v: [&[V]; 5] = std::array::from_fn(|x| &self.tile[x][..]);
+                                // SAFETY: as above; slots `4 (high - 4) ..` are below 8.
+                                unsafe { points_e2::<true>(acc, v, &w, high) };
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         /// lvm2 PFAST-K: [`Self::get`] after an E2 `run` (`W = 2`), whose slots hold the products at bit 0 (even and
         /// odd positions) and at bit 64 (likewise) unshifted: the same four words.
         pub fn get_e2(&self, i: usize) -> [u64; 4] {
+            #[cfg(target_feature = "avx512f")]
+            let [x, y]: [u128; 2] = std::array::from_fn(|k| {
+                // lvm2 PFAST-K2: `sum_e2`'s slots (each half's first 64; the rounds read no others).
+                // SAFETY: the features of `V` are enabled at compile time.
+                unsafe { self.acc2[i][k].sum() }
+            });
+            #[cfg(not(target_feature = "avx512f"))]
             let [x, y]: [u128; 2] = std::array::from_fn(|k| {
                 let mut lanes = [0u128; V::N];
                 // SAFETY: the features of `V` are enabled at compile time.

@@ -29,6 +29,27 @@ pub const fn factor_row<const W: usize>() -> usize {
     W * 64
 }
 
+/// lvm2 PFAST-K2: `dst[z] = src[z] ^ x` for 64 words, a register at a time where AVX-512 is (the scalar loop
+/// checked each index and did not vectorize).
+#[inline(always)]
+fn xor_splat64(dst: &mut [u64], src: &[u64], x: u64) {
+    let (dst, src): (&mut [u64; 64], &[u64; 64]) = (dst.try_into().unwrap(), src.try_into().unwrap());
+    #[cfg(target_feature = "avx512f")]
+    {
+        use core::arch::x86_64::*;
+        use crate::lv::primitives::simd::{load, store};
+        // SAFETY: AVX-512F is enabled at compile time; `load` and `store` check their bounds.
+        let splat = unsafe { _mm512_set1_epi64(x as i64) };
+        for i in 0..8 {
+            store(&mut dst[..], i, unsafe { _mm512_xor_si512(load(&src[..], i), splat) });
+        }
+    }
+    #[cfg(not(target_feature = "avx512f"))]
+    for (d, s) in dst.iter_mut().zip(src) {
+        *d = s ^ x;
+    }
+}
+
 /// A row kernel's vector form, where one is compiled and `width` is whole vectors of it, else
 /// `portable`. The caller bounds every row.
 macro_rules! row_kernel {
@@ -296,14 +317,12 @@ impl<F: Ext<W>, const W: usize> PowerField<F, W> {
             for (i, row) in rows.iter().enumerate() {
                 let (a, b) = (&mut a[i * fr..][..fr], &mut b[i * fr..][..fr]);
                 for k in 0..W {
-                    for z in 0..64 {
-                        b[64 * k + z] = row[BITS * k + along(64 * lane, 1) + z] ^ kappa[k];
-                    }
+                    xor_splat64(&mut b[64 * k..][..64], &row[BITS * k + along(64 * lane, 1)..][..64], kappa[k]);
                 }
                 let at = lane * fr;
                 self.mul_row(a, &weights[at..], b, &constant[at..], 64);
                 for k in 0..W {
-                    b[64 * k..][..64].copy_from_slice(&row[BITS * k + along(64 * lane, 2)..][..64]);
+                    xor_splat64(&mut b[64 * k..][..64], &row[BITS * k + along(64 * lane, 2)..][..64], 0);
                 }
             }
             for row in [&mut *a, &mut *b] {
