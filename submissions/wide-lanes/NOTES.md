@@ -6,9 +6,10 @@ Builds on: #11, #7, #12, #13, #15, #17, #19, #20, #21, #22, #23
 This root continues #23 (`packed-front`, roll "PFAST"), a prover-only roll on #22 (`pinned-front`, roll "E2-FT"
 = pr22-88df56a2750c), which continued #21 (`lone-root`), #20 (`typed-spartan`), #19 (`listless-whir`) and PR #11
 (`leanvm-inspired`). This root is roll "PFAST-2", prover-only again: every proof byte, the circuit, the blob, `V`
-and the Lean certificate are #22's (stage `S2GF`); only the v4 tier of the native prover is faster. #23 is not yet
-evaluated, so projections are against #22's evaluation (S = 2.0495, S× = 1.1454). The sections from "Changes since
-#21" on describe #22's construction, which is unchanged.
+and the Lean certificate are #22's (stage `S2GF`); only the v4 tier of the native prover is faster.
+#23 was evaluated at S = 1.9973, S× = 1.0920 (pr23-01ba10cfcceb; #22: 2.0495, 1.1454), and the projections below
+are calibrated on that. The sections from
+"Changes since #21" on describe #22's construction, which is unchanged.
 
 A recursive SNARK entry built from leanVM's proof system: binary fields, Keccak-f by GKR, ring switching and
 stacked WHIR. It is reshaped for the contract in four ways:
@@ -39,8 +40,8 @@ Notation:
 
 **Conclusion.** Prover-only, v4 tier only: the `.s` of the v2 and v4p tiers are #23's byte for byte, and
 `prover-v4.s` runs five more kernel changes in the `E2` tape and `KS` GKR (`keccak_gkr_v4`). The proof bytes are
-#22's. Projected on the evaluation machine, with #23's changes: S× ≈ 0.93–1.05 and S ≈ 1.83–1.95 against #22's
-1.1454 and 2.0495 [model, below].
+#22's. Projected on the evaluation machine: S× ≈ 1.02–1.05 and S ≈ 1.92–1.96 against #23's evaluated
+1.0920 and 1.9973 [model, below].
 
 - **Skip:** a dedicated `E2` kernel. The points are unrolled per high pair with fixed slots, the weights stay in
   registers, the high tiles are read in place, and the even and odd sums share one accumulator per slot (two per
@@ -64,11 +65,10 @@ Notation:
   and `S,0` at 2^17 + 1 (41c559ddd49f), all #22's. The fast layer prover equals the
   reference at E2 and E3 (`e2check`, 12 layers, under SDE) after each change. Two Opus reviews,
   which together cover all five changes, found no defect.
-- **Projection [model].** Dev cannot run v4, so the gain is the icount ratio (0.701 against #22's kernels) applied
-  to the tape's share of P̄ (0.50–0.63), discounted to 50–90 % realisation because these changes remove mostly
-  shuffles, loads and scalar loop overhead, whose Zen 4 cost per instruction is below a clmul's or an affine's; plus
-  #23's nonce saving (−1 to −2 % of P̄): P̄ −8.5 to −19 %, so P̄ ≈ 0.91–1.03 against #22's 1.125, with V̄ and
-  `g` unchanged.
+- **Projection [model], calibrated on #23.** #23's kernels cut the v4 layer's icount by 11.5 % and its P̄ fell 4.6 %
+  on the evaluation machine (1.125 → ≈ 1.073 with `g` ≈ 1.018), of which the nonce requests are ≈ 1–2 %. That gives
+  ≈ 0.2–0.35 % of P̄ per 1 % of layer icount. This root's −20.0 % then gives P̄ −4 to −7 % (≈ 1.00–1.03), so S× ≈
+  1.02–1.05 and S ≈ 1.92–1.96 with V̄ and `g` unchanged. Dev cannot run v4, so this is not measured.
 
 ## Changes in #23 (packed-front; since #22)
 

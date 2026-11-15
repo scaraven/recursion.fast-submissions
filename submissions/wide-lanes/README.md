@@ -9,14 +9,14 @@ contract's signed random oracle and to its cheap-extractor fuel cap. Each step i
 Keccak-256 chain, plus the previous signed proof verified inside the circuit. `NOTES.md` has the design,
 the numbers and the dead ends.
 
-**Changes since #23** (`packed-front`, not yet evaluated):
+**Changes since #23** (`packed-front`; evaluated S = 1.9973, S× = 1.0920):
 - **Prover only, v4 tier only.** `prover-v2.s` and `prover-v4p.s` are #23's byte for byte; the proof bytes are #22's
   (v4 under Intel SDE through the linked `.s`), so `V`, `|π|` and the certificate are #22's.
 - **v4 `E2` GKR kernels:** a dedicated Skip kernel (points unrolled, weights in registers, merged even/odd sums),
   affine-map embedding, a register-resident Product phase 2, a swapped-operand GFNI fold for Tables and Groups, and
   vectorised `κ`/shift copies. Intel SDE instruction counts per tape layer at 2^14: −20.0 % against #23, −29.9 %
   against #22 [measured].
-- **Projected with #23's changes [model]:** S× ≈ 0.93–1.05, S ≈ 1.83–1.95 (#22: 1.1454, 2.0495).
+- **Projected [model], calibrated on #23's evaluation:** S× ≈ 1.02–1.05, S ≈ 1.92–1.96 (#23: 1.0920, 1.9973).
 
 **Changes in #23 (since pr22-88df56a2750c)** (#22, `pinned-front`; evaluated S = 2.0495, S× = 1.1454):
 - **Prover only.** The proof bytes are #22's on every stream checked (v2, v4p, and v4 under Intel SDE), so `V`, `|π|`
