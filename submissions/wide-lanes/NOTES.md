@@ -60,7 +60,8 @@ Notation:
   (−26.0 %), Tail 72.9 → 56.4 M (−22.6 %), rest 49.0 M unchanged; **layer 904.7 → 723.7 M (−20.0 %)**. Against #22's
   v4 kernels: 1,032.0 → 723.7 M (−29.9 %).
 - **Byte identity [measured].** The v2 and v4p `.s` equal #23's, whose streams equal #22's (see below). The v4 tier
-  under Intel SDE `-spr`, through the linked `.s` and the real oracle: @SDE@. The fast layer prover equals the
+  under Intel SDE `-spr`, through the linked `.s` and the real oracle: `S,0` at n = 1 (5f719a9b7a00), three steps at 2^14 (86e4d160a3cf, a963c7dc458a)
+  and `S,0` at 2^17 + 1 (41c559ddd49f), all #22's. The fast layer prover equals the
   reference at E2 and E3 (`e2check`, 12 layers, under SDE) after each change. Two Opus reviews,
   which together cover all five changes, found no defect.
 - **Projection [model].** Dev cannot run v4, so the gain is the icount ratio (0.701 against #22's kernels) applied
