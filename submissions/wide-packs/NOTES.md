@@ -77,7 +77,17 @@ points per half instead of 38. The proof grows to **284,872 B** (+21,312) [exact
   +0.003); the tape −11 to −13 % of the slope at a realisation of 0.65 of the SDE model (−0.074). **ΔS ≈ −0.030 to −0.033
   (central), −0.013 (realisation 0.5), −0.070 (1.0); break-even ≈ 0.35. S ≈ 1.47–1.49** against the bar 1.5007.
   ΔS× ≈ −0.07 (central), since `|π|` does not enter it.
-- **Checked locally** [measured]: PENDING-CHECKED
+- **Checked locally** [measured]: cert **ok**, not provisional (timing lock, CPUs 8–15, quiet host): Lean kernel
+  **453.1 s** (stop 560, cap 600), `build_s` 869.6 s, peak 4.87 GB; cone 1,229.05 M heartbeats [exact] (+22.62 M over
+  #34: the RMFE decides, `layOk2_15`, `V`'s range-32 sums). Statement gate against #34's Lean: `certified`'s source and
+  pp.all statement identical, axioms the three; every changed statement is in the classified intended set (K = 32
+  literals, the `1 ≤ P` hypothesis, the removed E3 chain), none unexpected; `checkall` clean, 0 `sorry`. NGATE-W
+  **204/204** (`V_S` accepts 16 honest files and controls, rejects 188 tampers) and `V_S` accepts all 15 files of the
+  honest stream set; `staticOkBS20` true; blob W regenerates byte-identically. identall **10/10** on the linked `.s`
+  (v4p, v2, v4 under Intel SDE). `prover setup` picks v4p on dev; v4's self-test digest equals v2's under SDE. The
+  self-test proves a P20 `S,0` at S2GS: its old Keccak batch proof and P8 proof reach the K = 16 KS input opening, which
+  aborts at K = 32, and setup would have capped the prover at v2. Quick bench ACCEPT: S 2.549 (P̄ 1.886, V̄ 0.663),
+  S× 1.894, mean `V` 66.0 ms, `c_P` drift 0.02 (#34's quick run, host loaded: S 2.836, P̄ 2.197, mean `V` 71.2 ms).
 
 ## Changes in #34 (swift-twins), since #33 (sealed-leaf)
 
