@@ -1,8 +1,8 @@
 # swift-twins
 
-The `leanvm-inspired` entry's roll after #SLFPR (`sealed-leaf`, stage `S2GS`, σ_LEAF): proved fast twins of `V`'s hot
-loops, and `lean/` consolidated (the modules outside `Solution`'s closure that no native tool imports are removed). The protocol, the proof and the prover are #SLFPR's.
-It continues #SLFPR, #32, #31, #30, #29, #28, #27 (`single-tape`, stage `S2GU`), #26, #25, #22, #21, #20, #19 and
+The `leanvm-inspired` entry's roll after #33 (`sealed-leaf`, stage `S2GS`, σ_LEAF): proved fast twins of `V`'s hot
+loops, and `lean/` consolidated (the modules outside `Solution`'s closure that no native tool imports are removed). The protocol, the proof and the prover are #33's.
+It continues #33, #32, #31, #30, #29, #28, #27 (`single-tape`, stage `S2GU`), #26, #25, #22, #21, #20, #19 and
 PR #11, under its own root.
 
 A recursive hash-based SNARK entry. It uses leanVM's proof system over binary fields, adapted to the
@@ -10,7 +10,7 @@ contract's signed random oracle and to its cheap-extractor fuel cap. Each step i
 Keccak-256 chain, plus the previous signed proof verified inside the circuit. `NOTES.md` has the design,
 the numbers and the dead ends.
 
-**Changes since #SLFPR** (`sealed-leaf`):
+**Changes since #33** (`sealed-leaf`):
 - **`V`:** fast twins in `LvmE2VFast` for WHIR's induced weights (computed in `K`), the RMFE projection and embedding
   weights, the tape GKR's first layer in closed form, the typed columns' `K` scalings and the nibble tables. Each is
   proved equal to the definition it replaces, at hinge lemmas whose statements do not change. `V_S` is −3.0 to
@@ -18,11 +18,11 @@ the numbers and the dead ends.
 - **`lean/` 1,014 → 580 files** [exact]: the stubs and dead stages outside `Solution`'s closure are removed,
   `sumClaim_rel` moves back to `LvmVEqClaims` (16 modules leave the closure), and 17 single-importer modules are merged
   into their hosts. No theorem statement changed.
-- **Unchanged:** `|π|` 263,560 B, blob S, and the prover, which is byte-identical to #SLFPR's.
-- **Projected [model]:** S ≈ 1.503–1.518 (ΔS ≈ −0.009 to −0.020 against #SLFPR's projected 1.523–1.527): a stacking gain
+- **Unchanged:** `|π|` 263,560 B, blob S, and the prover, which is byte-identical to #33's.
+- **Projected [model]:** S ≈ 1.503–1.518 (ΔS ≈ −0.009 to −0.020 against #33's projected 1.523–1.527): a stacking gain
   (record #32: 1.5313; bar 1.5007).
 
-**Changes in #SLFPR (`sealed-leaf`) since #32** (`tableless`; evaluated S = 1.5313, mean `V` 41.2 ms):
+**Changes in #33 (`sealed-leaf`) since #32** (`tableless`; evaluated S = 1.5313, mean `V` 41.2 ms):
 - **`|π|` 268,336 → 263,560 B (−4,776)** [exact]: the header loses `σ_leaf` (888 B); `σ_leaf` sits in `C_main`'s window
   (the stream block's column 17, words 1024..1620) and the node program walks it under the header's `vk` at the
   constant message `traceDigest []` (a walk specialised to its digits: 204 chain steps, key leaf, path). `E` decodes it

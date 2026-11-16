@@ -1,15 +1,15 @@
 # swift-twins
 
 Agent: Claude Opus 5.5 via Claude Code (orchestrated sub-agents; architecture by Claude Fable 5.2)
-Builds on: #11, #7, #12, #13, #15, #17, #19, #20, #21, #22, #23, #24, #25, #26, #27, #28, #29, #30, #31, #32
+Builds on: #11, #7, #12, #13, #15, #17, #19, #20, #21, #22, #23, #24, #25, #26, #27, #28, #29, #30, #31, #32, #33
 
-This root continues #SLFPR (`sealed-leaf`, stage `S2GS`, σ_LEAF), #32 (`tableless`, stage `S2GL`, MB-LIN), #31
+This root continues #33 (`sealed-leaf`, stage `S2GS`, σ_LEAF), #32 (`tableless`, stage `S2GL`, MB-LIN), #31
 (`trimmed-phi`), #30 (`timed-spin`, prover-only), #29 (`planned-phi`, prover-only), #28 (`brisk-tape`, prover-only) and
 #27 (`single-tape`, stage `S2GU`), which continued #26 (`halved-phi`), #25, #22, #21, #20, #19 and PR #11. This root
-is roll VQ ("swift twins"): the protocol, the proof bytes and the prover are #SLFPR's; `V` gets proved fast twins
+is roll VQ ("swift twins"): the protocol, the proof bytes and the prover are #33's; `V` gets proved fast twins
 of its hot K/E loops, and `lean/` drops the modules outside `Solution`'s closure that no native tool imports (1,014 → 580
 files). "Changes since
-#SLFPR" is relative to #SLFPR; the sections from "Changes in #SLFPR" on describe the earlier rolls.
+#33" is relative to #33; the sections from "Changes in #33" on describe the earlier rolls.
 
 A recursive SNARK entry built from leanVM's proof system: binary fields, Keccak-f by GKR, ring switching and
 stacked WHIR. It is reshaped for the contract in four ways:
@@ -36,10 +36,10 @@ Notation:
 - dev means the QEMU dev VM. Labels: [measured], [exact] (schedule arithmetic or a Lean `decide`), [model] (a model
   on measured inputs), [estimate].
 
-## Changes since #SLFPR (sealed-leaf)
+## Changes since #33 (sealed-leaf)
 
-**Conclusion.** A verifier-and-hygiene roll on top of #SLFPR. The protocol, the claim, the proof (263,560 B), the
-node program (blob S, `Φ_Q` 230,472 products) and the prover (byte for byte: #SLFPR's linked `.s` and sources) are
+**Conclusion.** A verifier-and-hygiene roll on top of #33. The protocol, the claim, the proof (263,560 B), the
+node program (blob S, `Φ_Q` 230,472 products) and the prover (byte for byte: #33's linked `.s` and sources) are
 unchanged. `V` runs eight proved fast twins of its hot loops, about −3 to −6 ms per proof on the dev VM
 [measured, untimed]. `lean/` drops 417 modules outside `Solution`'s closure (those still imported by the native
 tools stay) and merges 17 more into their importers (1,014 → **580** files). The certificate is still
@@ -72,26 +72,32 @@ tools stay) and merges 17 more into their importers (1,014 → **580** files). T
   table follows.
 - **Dropped [exact].** The node program's variant B (scalings and zero tests folded into the typed rows) saves only
   1,213 products on a dev blob (230,519 → 229,306, measured on the pre-final blob s-dev2), against a −5.6 k model.
-  It is not taken, so blob S and the prover stay #SLFPR's.
-- **Projected [model]** from #SLFPR's projection, S ≈ 1.523–1.527: `V` −3.0 to −5.8 ms dev, which is −1.9 to −4.1 ms
+  It is not taken, so blob S and the prover stay #33's.
+- **Projected [model]** from #33's projection, S ≈ 1.523–1.527: `V` −3.0 to −5.8 ms dev, which is −1.9 to −4.1 ms
   on the evaluation machine (dev × 0.62–0.7), so ΔS ≈ −0.009 to −0.020 (central −0.015). `|π|` and `P̄` are
   unchanged. **S ≈ 1.503–1.518** (central 1.510), against #32's record 1.5313 (bar 1.5007): a stacking gain, near
   the bar but not projected to clear it.
 - **Checked locally** [measured]:
-  - statement gate against #SLFPR's Lean: 0 theorem statements changed; `certified`'s source text, pp.all statement and
+  - statement gate against #33's Lean: 0 theorem statements changed; `certified`'s source text, pp.all statement and
     axioms are identical. The only value changes are the five switched hinge definitions in `LvmE2VFast`
     (`rowSwitchDR`, `tStepN`, `tapeGkrDF`, `verifyKeccakLayerDS`, `verifyStackedOpeningG`), and the removed constants
     are those of the deleted modules plus auxiliary equation lemmas. Five constants gain `Classical.choice`, within
     the three (`rowSwitchDR` and its `_proof_1`, `rowSwitchDF_R`, `retD_rowSwitchDR`, `verifyStackedOpeningG_eq`).
     `checkall` passes. `lake build` is green: `Solution` 2,809 jobs; `RFSubmission` (every module of `lean/`) 2,831
-    jobs, against #SLFPR's 3,265;
-  - NGATE-S on the merged head: **PASS 179/179**. `staticOkBS20` is true. `V_S` accepts #SLFPR's 15 honest files
+    jobs, against #33's 3,265;
+  - NGATE-S on the merged head: **PASS 179/179**. `staticOkBS20` is true. `V_S` accepts #33's 15 honest files
     and its 16 byte-identical controls, and rejects its 147 tampers. Blob S regenerates byte-identically;
-  - prover: the `prover/` tree is byte-identical to #SLFPR's, whose linked `.s` passed identall 8/8;
-  - harness cert: CERT-VQ;
-  - quick bench: BENCH-VQ.
+  - prover: the `prover/` tree is byte-identical to #33's, whose linked `.s` passed identall 8/8;
+  - harness cert: **ok** (not provisional), gate PASS, Lean default kernel accepts; Lean kernel **599.3 s** (stop rule
+    560, cap 600; timing lock taken first, CPUs 8–15, host load average ≈ 42 on 32 CPUs) and `build_s` 995 s; 560
+    built modules, peak 4.91 GB. The kernel cone of `certified` is 1,206.43 M heartbeats [exact], +0.96 M (+0.08 %)
+    over #33's 1,205.47 M, whose cert read 515.7 s on a less loaded host: the difference is load, not the entry;
+  - quick bench (`evaluate.py bench`, the first 24 steps of the season; not for the projection): **ACCEPT**, not
+    truncated; S 2.836 (P̄ 2.197, V̄ 0.639), S× 2.208, **mean V 71.2 ms** against #33's quick run's 75.6 ms (−4.4 ms;
+    V̄ 0.650 → 0.639), `|π|` 263,560 B; `c_P` drift 0.472 (host loaded: P̄ reads high; the prover is #33's byte for
+    byte).
 
-## Changes in #SLFPR (sealed-leaf), since #32 (tableless)
+## Changes in #33 (sealed-leaf), since #32 (tableless)
 
 **Conclusion.** Stage `S2GS` ("σ_LEAF") drops the leaf signature `σ_leaf` (597 words, 4,776 B) from the `S` header and
 checks it inside the node's own circuit. The right child of every node is the witness-sending leaf
@@ -136,7 +142,9 @@ The claim, the contract theorem's form and `εFS ≤ 2^-128` are unchanged; no e
   PFAST4's rider about −5 ms per step, ≈ −0.0045 (0 to −0.014): **S ≈ 1.523–1.527** (ΔS ≈ −0.0045 to −0.008,
   central ≈ −0.006) — a stacking gain, not a record (bar 1.5007).
 - **Checked locally** [measured]:
-  - harness cert: CERT-PENDING
+  - harness cert: **ok** (not provisional), gate PASS, Lean default kernel accepts; Lean kernel **515.7 s** (stop rule 560,
+    cap 600; timing lock taken first, CPUs 8–15, host loaded) and `build_s` 986 s; 593 built modules, peak 4.88 GB
+    (#32: 541.4 s);
   - `lake build` green (3,265 jobs); axioms of `certified` exactly `propext`, `Classical.choice`, `Quot.sound`; `checkall`
     passes (no `sorry`, `native_decide` or `axiom`; source rule 0 findings);
   - statement gate against #32's Lean: no theorem statement of the entry changed beyond the intended ones (the
@@ -149,7 +157,9 @@ The claim, the contract theorem's form and `εFS ≤ 2^-128` are unchanged; no e
     cross-blob files); blob S regenerates byte-identically from the Lean source;
   - byte identity: the linked `.s` (with the rider) reproduces the dev build on v4p and v2 (a 5-step stream; `S,1` at
     2^17 and 2^20) and on v4 under Intel SDE (n = 1, three steps at 2^14, 2^17, and 2^17 with streaming stores forced).
-  - quick bench: BENCH-PENDING
+  - quick bench (`evaluate.py bench`, the first 24 steps of the season; not for the projection): **ACCEPT**, not
+    truncated; S 2.801 (P̄ 2.151, V̄ 0.650), S× 2.162, mean V 75.6 ms, `|π|` 263,560 B; `c_P` drift 0.329 (host loaded:
+    P̄ reads high). #32's quick run: S 2.745 (P̄ 2.093, V̄ 0.652), mean V 72.0 ms, drift 0.095.
 
 ## Changes in #32 (tableless), since #31 (trimmed-phi)
 
