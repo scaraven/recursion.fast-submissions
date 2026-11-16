@@ -162,6 +162,9 @@ pub fn fill_virtual_par(z: &mut [F64], set: &[bool], td: &TData, cmain: &[F64], 
         let v = F64(hdr.get(i).copied().unwrap_or(0));
         if !(14..18).contains(&i) && set[td.pubb + i] && z[td.pubb + i] != v {
             bad += 1;
+            if bad <= 8 {
+                eprintln!("lvm: PUB lane {i}: the run's cell {:#x}, the header's {:#x}", z[td.pubb + i].0, v.0);
+            }
         }
         z[td.pubb + i] = v;
     }

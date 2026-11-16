@@ -498,7 +498,7 @@ theorem harithF20 (S : NodeGF frzF20 QF20 layF20 NTF20) (hhar : harChkBF20 = tru
   obtain ⟨hrw, hrk⟩ := rowWordsF S H hG.1
   have hch := childOkF S H hok hb hG
   have hsb := sBits_onC (outsOnF S H hG.1)
-  obtain ⟨hnb, hn, hsbv⟩ := frontIns hS hT29 (hbitsF S H hG.1) hch hsb accVF vk (hdrOf x).cL
+  obtain ⟨hnb, hn, hsbv⟩ := frontIns hS hT29 (hbitsF S H hG.1) hch hsb accVF vk (hdrOf x).cL rfl rfl
   have hpow := powOkF S H hG.1 (pw := powF20) rfl hS (fun a ha => ha) hPW
   have hh : (pubOfA accVF vk (hdrOf x).cL (sigCF qr)).h = (List.range 4).map fun l => (memF TiF20 x qm qr).k (Lvm.Har.hLane l) :=
     Lvm.Har.pub_h hS hT29 vk (hdrOf x).cL

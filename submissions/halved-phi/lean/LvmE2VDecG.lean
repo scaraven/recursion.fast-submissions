@@ -5,6 +5,7 @@ import LvmE2VFast
 import LvmE2TV
 import LvmE2TSpec
 import LvmS2GTSched
+import LvmQTypedHarC
 
 /-!
 # V_S's decision at S2GT
@@ -38,27 +39,98 @@ def affPairD (N : TNatT) (s : Lvm.Typed.YSrc) (r : List FE2) : List FE → FE ×
       ⟨acc.re + w.re, acc.im + w.im⟩) ⟨0, 0⟩
     (acc.re, acc.im)
 
+/-- **`affPairD` in a region of the small shape** (stack `nu0`, region `reg`): a term whose block misses the region is
+skipped, its `eqAtF` being `0` at the region's points (`Shape.eqAbove_relocF_eq_zero`, `keepPart`). -/
+def affPairDR (N : TNatT) (s : Lvm.Typed.YSrc) (r : List FE2) (nu : Nat) :
+    Nat → (Nat × Nat × Nat) → List FE → FE × FE :=
+  let terms := (N.toN.regsOf s).map fun g =>
+    (FE6.ofE2 (hiWG r g.log g.base), r.take g.log, g.log, g.dst)
+  fun nu0 reg X =>
+    let acc := terms.foldl (fun (acc : FE6) t =>
+      if keepPart nu0 nu reg ⟨t.2.2.1, t.2.2.2⟩ then
+        let w := FE6.mul (FE6.mul t.1 (wordWDF t.2.1 (X.take t.2.2.1)))
+          (FE6.ofE (eqAtF (X.drop t.2.2.1) (t.2.2.2 >>> t.2.2.1)))
+        ⟨acc.re + w.re, acc.im + w.im⟩
+      else acc) ⟨0, 0⟩
+    (acc.re, acc.im)
+
+theorem affPairDR_eq (N : TNatT) (s : Lvm.Typed.YSrc) (r : List FE2) (nu nu0 : Nat) (x : List FE)
+    (reg : Nat × Nat × Nat) (hreg : reg ∈ (TypedV.regionsN nu0).filter (Shape.meets ⟨nu, 0⟩)) :
+    affPairDR N s r nu nu0 reg ((TypedV.relocN nu0 x reg).take nu) =
+      affPairD N s r ((TypedV.relocN nu0 x reg).take nu) := by
+  simp only [affPairDR, affPairD, List.foldl_map]
+  refine Prod.ext ?_ ?_ <;>
+  · first
+      | refine congrArg FE6.re (List.foldl_ext _ _ _ fun acc g _ => ?_)
+      | refine congrArg FE6.im (List.foldl_ext _ _ _ fun acc g _ => ?_)
+    by_cases hk : keepPart nu0 nu reg ⟨g.log, g.dst⟩ = false
+    · rw [if_neg (by rw [hk]; exact Bool.false_ne_true)]
+      unfold keepPart at hk
+      simp only [Bool.or_eq_false_iff, Bool.not_eq_eq_eq_not, Bool.not_false, Bool.and_eq_true, beq_iff_eq] at hk
+      obtain ⟨⟨⟨h1, h2⟩, hm⟩, hst⟩ := hk
+      subst h1 h2
+      have hr23 : reg ∈ Shape.regions := (List.mem_filter.mp hreg).1
+      obtain ⟨hk1, -, -⟩ := Shape.regions_facts reg hr23
+      have hlen : (TypedV.relocN 23 x reg).length = 23 :=
+        Shape.length_relocF x reg (by (clear * - hk1; omega))
+      have h0 : eqAtF (((TypedV.relocN 23 x reg).take 23).drop g.log) (g.dst >>> g.log) = 0 := by
+        rw [List.take_of_length_le (by omega), ← Lvm.Har.eqAbove_eqAtF]
+        exact Shape.eqAbove_relocF_eq_zero ⟨g.log, g.dst⟩ (inStack_of_B hst) x hr23 hm
+      obtain ⟨are, aim⟩ := acc
+      simp only [h0, FE6.mul, FE6.ofE, FE6.mk.injEq]
+      constructor <;> ring
+    · simp only [Bool.not_eq_false] at hk
+      rw [if_pos hk]
+
 /-- **The typed claims at S2GT as opening items** (`typedClaimsND`'s order): the relayout's split point claim, then
 `σ′`'s, the committed block's and the `KS` aliases' region claims, each `E2` claim's halves weighed together. -/
 def typedItemsND (N : TNatT) (p : Params) (ry rv rr : List FE2) (vR : FE2) : List FItem :=
   let reg (s : Lvm.Typed.YSrc) (v : FE2) : FItem :=
-    .pairG p.nuMain (affPairD N s ry) (FE.ofK v.re) (FE.ofK v.im) 0 0
+    .pairR p.nuMain (affPairD N s ry) (affPairDR N s ry p.nuMain)
+      (fun nu0 x reg h => affPairDR_eq N s ry p.nuMain nu0 x reg h) (FE.ofK v.re) (FE.ofK v.im) 0 0
   [.split p.nuMain [(1, ⟨p.nuRec, (layout0 p).s⟩, rr)] vR 0 0, reg .sigma (rv.getD 2 0), reg .com (rv.getD 0 0),
     reg .ks (rv.getD 3 0)]
 
 /-- The mini-bus's instance at S2GT: `M3.real` with `PUB`'s check on the 2-lane header (`Pub.hdrLanesT`, A2). -/
 def m3G (N : TNatT) (p : Params) : M3 := M3.realW Pub.hdrLanesT p fun _ => N.mbT
 
-/-- **The decision program at S2GT** (`decideProgFFG` at `P20T`, the typed claims as items). -/
+/-- **The mini-bus's column claims as items**: one `FItem.tab` per table (its committed columns at the table's point,
+`M3.tableClaimsR`'s order). -/
+def tabItemsR (tabs : List M3.Tab) (evs : List (List FE × List FE)) : List FItem :=
+  (tabs.zip evs).map fun te => FItem.tab te.1.τ te.2.1 (te.1.cols.zipIdx.filterMap fun ci => match ci.1 with
+    | .com rec off => some (if rec then .crec else .main, off, te.2.2.getD ci.2 0)
+    | .fix _ _ => none)
+
+theorem tabItemsR_flat (tabs : List M3.Tab) (evs : List (List FE × List FE)) :
+    (tabItemsR tabs evs).flatMap FItem.flat = Shape.zeroTails (M3.tableClaimsR tabs evs) := by
+  unfold tabItemsR M3.tableClaimsR Shape.zeroTails
+  generalize tabs.zip evs = l
+  induction l with
+  | nil => rfl
+  | cons te l ih =>
+    obtain ⟨t, pt, ev⟩ := te
+    rw [List.map_cons, List.flatMap_cons, List.flatMap_cons, List.map_append, ih]
+    congr 1
+    simp only [FItem.flat, List.map_filterMap]
+    congr 1
+    funext ci
+    obtain ⟨c, i⟩ := ci
+    cases c <;> rfl
+
+/-- **The decision program at S2GT** (`decideProgFFGM` at `P20T`: the typed claims as items, the mini-bus's claims
+one item per table). -/
 def decideProgG (N : TNatT) (vk c : Vector UInt8 32) : DM Acc :=
-  decideProgFFG pubG contRowsT P20T (fun m pub => dTypedTG P20 N m pub (typedItemsND N P20)) (m3G N) vk c
+  decideProgFFGM pubG contRowsT P20T (fun m pub => dTypedTG P20 N m pub (typedItemsND N P20)) (m3G N)
+    (fun _ evals => tabItemsR (M3.sumcheckTabs N.mbT) evals) vk c
 
 /-- **The items stand for the typed claims**: `typedItemsND` flattens to `typedClaimsND` (the relayout's split by
 `splitDF = splitD`, each region pair by `wordWDF = wordWD`). -/
 theorem typedItemsND_flat (N : TNatT) (p : Params) (ry rv rr : List FE2) (vR : FE2) :
     (typedItemsND N p ry rv rr vR).flatMap FItem.flat = typedClaimsND N p ry rv rr vR := by
   have hreg : ∀ (s : Lvm.Typed.YSrc) (v : FE2),
-      FItem.flat (.pairG p.nuMain (affPairD N s ry) (FE.ofK v.re) (FE.ofK v.im) 0 0) = regClaimsND N p s ry v := by
+      FItem.flat (.pairR p.nuMain (affPairD N s ry) (affPairDR N s ry p.nuMain)
+        (fun nu0 x reg h => affPairDR_eq N s ry p.nuMain nu0 x reg h) (FE.ofK v.re) (FE.ofK v.im) 0 0) =
+        regClaimsND N p s ry v := by
     intro s v
     have h0 : (fun y => (affPairD N s ry y).1) = affWD N s ry false := by
       funext X; simp only [affPairD, affWD, wordWDF_eq, if_false, Bool.false_eq_true]
@@ -81,11 +153,11 @@ theorem flatI_typedT (N : TNatT) :
   unfold flatI dTypedT dTypedTG
   simp only [map_bind, map_pure, typedItemsND_flat]
 
-/-- **V_S's S2GT decision program is `decideProgFG`'s instance** (the fast twins out: `decideProgFFG_eq`). -/
+/-- **V_S's S2GT decision program is `decideProgFG`'s instance** (the fast twins out: `decideProgFFGM_eq`). -/
 theorem decideProgG_eq (N : TNatT) (vk c : Vector UInt8 32) :
     decideProgG N vk c = decideProgFG pubG contRowsT P20T (fun m pub => dTypedT P20 N m pub) (m3G N) vk c := by
   unfold decideProgG
-  rw [decideProgFFG_eq, flatI_typedT]
+  rw [decideProgFFGM_eq _ _ _ _ _ _ (fun _ evals => tabItemsR_flat _ evals), flatI_typedT]
 
 /-- **V_S's decision at S2GT** on the stream `sig` for the native record `N`. -/
 def decideFGX (N : TNatT) (vk c : Vector UInt8 32) (sig : ByteArray) : Bool :=

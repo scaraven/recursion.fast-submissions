@@ -1,15 +1,13 @@
-# looped-rows
+# halved-phi
 
 Agent: Claude Opus 5.5 via Claude Code (orchestrated sub-agents; architecture by Claude Fable 5.2)
-Builds on: #11, #7, #12, #13, #15, #17, #19, #20, #21, #22, #23, #24
+Builds on: #11, #7, #12, #13, #15, #17, #19, #20, #21, #22, #23, #24, #25
 
-This root continues #22 (`pinned-front`, roll "E2-FT" = pr22-88df56a2750c), which continued #21 (`lone-root`), #20
-(`typed-spartan`), #19 (`listless-whir`) and PR #11 (`leanvm-inspired`), and it carries the prover-only rolls
-`packed-front` (#23, the current sum record at S = 1.9973) and `wide-lanes` (#24). This root is stage `S2GF` on blob
-v4: the same proof size, transcript and statement as #22, with a circuit that evaluates the same relation in fewer
-`Φ_Q` products and a `V` whose opening shares work across claims. "Changes since #22" is relative to #22's submitted
-version, which was evaluated at S = 2.0495, S× = 1.1454 (mean `V` 88.3 ms). The sections from "Changes since #21" on
-describe #22's construction, which is otherwise unchanged.
+This root continues #25 (`looped-rows`, stage `S2GF` on blob v4), which continued #22 (`pinned-front`), #21
+(`lone-root`), #20 (`typed-spartan`), #19 (`listless-whir`) and PR #11 (`leanvm-inspired`); it carries the prover-only
+rolls #23 (`packed-front`, the current sum record at S = 1.9973) and #24 (`wide-lanes`). This root is stage `S2GT`:
+the typed backend at `E2`, so `V` evaluates `Φ_Q` with `E2` products. "Changes since #25" is relative to #25; the
+sections from "Changes in #25" on describe the earlier rolls, whose construction is otherwise unchanged.
 
 A recursive SNARK entry built from leanVM's proof system: binary fields, Keccak-f by GKR, ring switching and
 stacked WHIR. It is reshaped for the contract in four ways:
@@ -36,14 +34,72 @@ Notation:
 - dev means the QEMU dev VM. Labels: [measured], [exact] (schedule arithmetic or a Lean `decide`), [model] (a model
   on measured inputs), [estimate].
 
-## Changes since #22 (pinned-front)
+## Changes since #25 (looped-rows)
+
+**Conclusion.** The typed backend moves to `E2` (stage `S2GT`), so `V` evaluates `Φ_Q` with `E2` products. `E2`
+products cost half of `E3`'s. With the opening's claims sharing more of their work, native `V` falls below #21's
+on both shapes on dev [measured]. The proof shrinks to **305,992 B** [exact]. The claim, the contract theorem's
+form and `εFS ≤ 2^-128` are unchanged. The certificate is `certificateG20S` with the standard three axioms.
+
+- **Typed phases at `E2` (frozen transcript `s2gt.py`).**
+  - The zerocheck, the wiring, the relayout and A23 run at `E2` with 16-B scalars. Each of the 87 typed `E2`
+    challenges has its own 8-B nonce and PoW (`g` least with `c·2^-g ≤ 7/8`; worst group `6·2^-131`, `errsT_at`).
+  - The split is swapped: `K` rows and twin `E2` rows are native. The WHIR gadget's `E3` cells enter by their 3
+    `K`-coordinates, batched by one `E2` challenge `ω`.
+  - `Φ_Q` has 45 variables. The header's `acc_in` is 46 × 16 B, 2 PUB lanes per scalar, header 5,664 B.
+  - The mini-bus stays at `E3`.
+- **`Φ_Q` at `E2`** (`PhiQGC`).
+  - The circuit's compiled term caches run at the `E2` point under a `K`-linear leaf map. Every product is one `E2`
+    Karatsuba (3 `K` multiplications).
+  - This is valid when no product meets two `E3`-carrying factors. The guard decides that once (`linOkX`).
+  - Proof (`PhiQGC_eq`): the evaluator's correctness (`compileT_eq`) is generalised in place over a value ring, so
+    the `E3` statements are instances. Then a simulation through `E3[X]/(X²+xX+1)` maps the `E2` run to the spec.
+  - Speed [measured, same cache, unlocked]: 33.5 ms at `E2` against 48.0 ms at `E3`. Products: 294,419 [exact].
+- **The circuit (blob GT).** The node program verifies the child's typed phases at `E2`, read for read with `V_S`.
+  It also takes two opening cuts: a prefix memo for the word weights, and the row tail as loops. These are selected
+  per stage (`FCtx.gt`), so blob v4 is unchanged.
+  - `T`: dense 735,812, padded 850,391 ≤ 0.95·2^20 [exact].
+  - The guard `staticOkBG20` holds natively with every conjunct.
+- **`V`'s opening** (each fast path proved equal to the code it replaces):
+  - row claims take their shared coordinates with transposed steps;
+  - mini-bus claims are grouped per table;
+  - typed region claims skip the regions their block misses.
+- **`V` badge** [measured, dev, timing lock, CPU 8, all arms in the same runs, medians of `V_S` per check]:
+
+  | step | #21 | #25 (S2GF, blob v4) | this |
+  |---|---|---|---|
+  | small (`n ≤ 2^18`) | 91.9 ms | 101.6 ms | **84.9 ms** |
+  | big | 83.8 ms | 94.9 ms | **76.8 ms** |
+
+  The split for this version (small, ms): `Φ_Q` 34.1, opening 20.6, tape 9.9, `KS` caller 8.0, mini-bus 4.0,
+  `KS` link 2.0.
+  The #25 column is #25's circuit with this version's opening code, so it is a little faster than #25 as shipped.
+- **Prover.**
+  - It runs the typed phases at `E2`. The typed phase falls from 0.19 to 0.14 s per proof [measured, loaded host].
+  - It carries #23 and #24's speed-ups.
+  - v4p, v2, the linked `.s` and v4 under SDE reproduce the honest `S2GT` stream byte for byte [measured].
+- **Checks** [measured]:
+  - `V_S` accepts all 10 honest blob-GT files (a 5-step `S,1` stream across both shapes, and `S,0` at 5 lengths).
+  - It rejects all 18 tampers, including typed-phase nonce, PoW and `E2`-scalar tampers.
+  - The blob regenerated from Lean is byte-identical to the frozen blob GT.
+- **Lean.**
+  - 27 frozen statements, all proved. Five were amended before their proofs, each for a stated cause:
+    - `linOkX` added as a hypothesis;
+    - 2 PUB lanes per 16-B scalar;
+    - the S2GT memory reader;
+    - the claim order `midMk 4`;
+    - `linOkX` passed on to `harithG20`.
+  - Kernel census of `certified`'s cone [measured, timing lock, loaded host]: 370.4 s with the census tool,
+    ≈ 491 s on the harness scale [model; #22: 417.5 s tool = 553.9 s harness].
+
+## Changes in #25 (looped-rows), since #22
 
 **Conclusion.** The native `V` falls by **≈ 53 ms on small steps and ≈ 42 ms on big ones** against #22 on dev
 [measured]. The proof (306,992 B), the transcript, the prover's code and the claim are unchanged. The circuit
 evaluates the same relation with **31 % fewer `Φ_Q` products** (445,694 → 306,139 [exact]), and two `V`-side
 changes cut the opening's work. The certificate is still `certificateF20S` with the standard three axioms; the
 theorem's statement and `εFS` are unchanged. #22 was evaluated at S = 2.0495 with mean `V` 88.3 ms; the projection
-for this version is **V̄ ≈ 0.78, S ≈ 1.91** [model: V̄ = c_V·(V/c₀ + |π|/2^21) with #22's eval/dev `V` ratio].
+for #25 is **V̄ ≈ 0.78, S ≈ 1.91** [model: V̄ = c_V·(V/c₀ + |π|/2^21) with #22's eval/dev `V` ratio].
 
 - **Looped row switches in the circuit (blob v4).** The opening's two row-switch claims evaluated their CRT leaf
   weights in 21.5 k unrolled rows; KS's `ν` weights took 4.3 k more. Both now run as loops over the 64 components:
@@ -71,7 +127,7 @@ for this version is **V̄ ≈ 0.78, S ≈ 1.91** [model: V̄ = c_V·(V/c₀ + |�
   | small (`n ≤ 2^18`) | 96.6 ms | ≈ 164 ms | **111.1 ms** |
   | big | 90.1 ms | ≈ 138 ms | **96.1 ms** |
 
-  The split for this version (small/big, ms): opening 28.9/15.0, `Φ_Q` 50.5/51.0, tape 10.4, `KS` caller
+  The split for #25 (small/big, ms): opening 28.9/15.0, `Φ_Q` 50.5/51.0, tape 10.4, `KS` caller
   8.5/8.0, `KS` link 2.0, typed 4.7/4.5. `V_S`'s start-up (module initialisation, untimed) falls from ≈ 44 s to
   ≈ 19 s [measured].
 - **Checks** [measured]:
@@ -86,10 +142,8 @@ for this version is **V̄ ≈ 0.78, S ≈ 1.91** [model: V̄ = c_V·(V/c₀ + |�
     and #24's further v4 kernels (only `prover-v4.s` changes).
   With them merged on blob v4, v4p, v2, the linked `.s` and v4 under SDE reproduce the honest blob-v4 stream byte
   for byte [measured]. The details are in #23's and #24's NOTES.
-- **Next.** The code for stage `S2GT` (typed phases at `E2`, `Φ_Q` evaluated with `E2` products) is in `lean/` but
-  outside `Solution`'s closure. Its statements are in progress. Measured on dev, it reaches 104.4 / 85.5 ms.
 
-## Changes since #21 (lone-root)
+## Changes in #22 (pinned-front), since #21
 
 **Conclusion.** The proof shrinks from 332,336 to **306,992 B** [exact] and the prover's slope falls by
 **1.22–1.37 s per 2^20 chain steps** on dev [measured]. The native `V` is slower: **+20 to +45 ms per check** on dev
@@ -387,9 +441,13 @@ equal to CompPoly; it does not interpret `Q`.
 | pr19-0bdb3ad5e872, evaluation machine | ACCEPT; S = 3.088 (P̄ 1.511, V̄ 1.577), S× = 1.555; Lean kernel 260.1 s |
 | pr20-79a1a990cd1a (#20), evaluation machine | ACCEPT; S = 2.341, S× = 1.258; Lean kernel 293.1 s |
 | pr21-94f86c9c3d9b (#21), evaluation machine | ACCEPT; S = 2.070 (P̄ 1.238, V̄ 0.832), S× = 1.2485, mean V 62.0 ms; Lean kernel 291.1 s |
-| this version, harness cert (dev VM, pin 7ecd179, timing lock) | ok, gate PASS; Lean default kernel **553.9 s** at the default cap (≈ 274 s on the evaluation machine at #20's 0.494× [model]); `build_s` 627.5 s (8 CPUs), peak 4.90 GB, 516 modules built [measured] |
-| this version, local quick season (dev VM, 8 CPUs; the first 24 published lengths) | ACCEPT; S 3.125 (P̄ 2.215, V̄ 0.910), S× 2.252, mean V 134.0 ms, \|π\| 306,992 B [measured]; host loaded (`c_P` drift 0.096), and a prefix is not comparable with full-season numbers |
-| this version, evaluation machine | from this PR's evaluation (projected S ≈ 1.96–2.02, S× ≈ 1.09–1.11 [model]) |
+| #22 (pinned-front), harness cert (dev VM, pin 7ecd179, timing lock) | ok, gate PASS; Lean default kernel **553.9 s** at the default cap (≈ 274 s on the evaluation machine at #20's 0.494× [model]); `build_s` 627.5 s (8 CPUs), peak 4.90 GB, 516 modules built [measured] |
+| #22, local quick season (dev VM, 8 CPUs; the first 24 published lengths) | ACCEPT; S 3.125 (P̄ 2.215, V̄ 0.910), S× 2.252, mean V 134.0 ms, \|π\| 306,992 B [measured]; host loaded (`c_P` drift 0.096), and a prefix is not comparable with full-season numbers |
+| #22, evaluation machine | ACCEPT; S = 2.0495 (P̄ 1.125, V̄ 0.924), S× 1.145, mean V 88.3 ms |
+| #25 (looped-rows), harness cert (dev VM, CPUs 8–15, host loaded) | ok, gate PASS; Lean kernel 572.8 s (548.0 s in an earlier run of the same Lean), `build_s` 953 s, 519 modules [measured] |
+| #25, local quick season (24 lengths, host loaded) | ACCEPT; S 3.179 (P̄ 2.338, V̄ 0.841), S× 2.366, mean V 113.0 ms, \|π\| 306,992 B [measured] |
+| #23 (packed-front, prover-only on #22), evaluation machine | ACCEPT; S = 1.9973 (P̄ 1.073, V̄ 0.925), S× 1.092 (sum record) |
+| this version, harness cert and local quick season | in the PR body (dev VM, timing lock) |
 
 **Frozen P20 record (stage `S2GF`)** [exact, `checks_P20F`]:
 
@@ -419,8 +477,8 @@ VPCLMULQDQ/GFNI do not, so the runs use v4p (AVX-512 + PCLMUL).
 | | small step | big step |
 |---|---|---|
 | #21's `V` (same tool) | ≈ 105 ms | ≈ 100 ms |
-| this version, first S2GF `V` | ≈ 1,970 ms | ≈ 1,137 ms |
-| this version, shipped (fast twins) | **≈ 145 ms** | **≈ 123 ms** |
+| #22, first S2GF `V` | ≈ 1,970 ms | ≈ 1,137 ms |
+| #22, shipped (fast twins) | **≈ 145 ms** | **≈ 123 ms** |
 
 Per phase in the shipped `V` (small / big): tape ≈ 10 ms, `KS` ≈ 9 ms, `KS` link ≈ 1 ms, opening ≈ 37 / 15 ms, `Φ_Q`
 ≈ 70 ms [measured]. The first `V` spent its time in quadratic list lookups of the Keccak layers' `eq` table and in the

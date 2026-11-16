@@ -83,17 +83,18 @@ theorem sBitsD_of {v : ℕ → FK} {hd sb : ℕ} (h : Lvm.Q1.SBitsS v hd sb) {s 
 
 /-- **The child's `n'`, its bits and range, the bits of `s'`** (the front's inputs from Q_sig's `SigBits`, its
 `ChildOk` and the `s'` bit class), on any memory whose stream is `Σ`. -/
-theorem frontIns {M : Mem} {sig : ByteArray} {T : ℕ} (hS : Lvm.Q1.Streamed M sig T) (hT : 29 ≤ T)
-    {o : SigOut} (hbits : SigBits (sigIn cfgF20) o M.k) (hch : ChildOk (sigIn cfgF20) M.k)
-    (hsb : Lvm.Q1.SBitsS M.k (sigIn cfgF20).hd (bsB cfgF20)) (accV : ℕ) (vk cL : Vector UInt8 32) :
-    (∀ j < 20, (kc ((sigIn cfgF20).bn + 2 + j)).val M = bitE (pubOfA accV vk cL sig).n j) ∧
+theorem frontIns {C : QCfg} {M : Mem} {sig : ByteArray} {T : ℕ} (hS : Lvm.Q1.Streamed M sig T) (hT : 29 ≤ T)
+    {o : SigOut} (hbits : SigBits (sigIn C) o M.k) (hch : ChildOk (sigIn C) M.k)
+    (hsb : Lvm.Q1.SBitsS M.k (sigIn C).hd (bsB C)) (accV : ℕ) (vk cL : Vector UInt8 32)
+    (hln : (sigIn C).ln = 20) (hhd : (sigIn C).hd + 13 = nLane) :
+    (∀ j < 20, (kc ((sigIn C).bn + 2 + j)).val M = bitE (pubOfA accV vk cL sig).n j) ∧
       (1 ≤ (pubOfA accV vk cL sig).n ∧ (pubOfA accV vk cL sig).n ≤ 2 ^ 20) ∧
-      ∀ i < 256, M.k (bsB cfgF20 + i) = if sBitsD (pubOfA accV vk cL sig).s i then 1 else 0 := by
+      ∀ i < 256, M.k (bsB C + i) = if sBitsD (pubOfA accV vk cL sig).s i then 1 else 0 := by
   have hn : (pubOfA accV vk cL sig).n = (M.k nLane).val.toNat := pub_n hS hT vk cL
   refine ⟨fun j hj => ?_, ?_, sBitsD_of hsb ?_⟩
   · rw [hn, Cell.val_K]
-    exact bitE_out1 (by omega) (hbits.n_bit j (show j ≤ 20 by omega))
-  · rw [hn]
+    exact bitE_out1 (by omega) (hhd ▸ hbits.n_bit j (show j ≤ (sigIn C).ln by omega))
+  · rw [hn, ← hhd, ← hln]
     exact ⟨hch.2.2.1, hch.2.2.2.1⟩
   · rw [show (pubOfA accV vk cL sig).s = (pubOf vk cL sig).s from rfl, pub_s hS hT vk cL]
     refine List.map_congr_left fun l _ => ?_

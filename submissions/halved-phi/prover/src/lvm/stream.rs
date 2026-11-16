@@ -24,7 +24,7 @@ pub const Q_P8: &str = include_str!("q-p8.blob");
 /// the B program's `M3B` section (its input arrays, `BITS`, PUBX, FREE) and its typed layout (`layDump`).
 pub const QB_P20_M3B: &str = include_str!("qb-p20.m3b");
 pub const QB_P20_LAY: &str = include_str!("qb-p20.lay");
-/// E2F (S2GF, the default stage): E2F-B's dev-dir files at P20 (`s2gf-v1`: `prog.blob` = the program here + the M3B
+/// E2F (S2GF; since S2GT-P: blob GT, stage S2GT, the default): E2F-B's dev-dir files at P20 (`s2gf-v1`: `prog.blob` = the program here + the M3B
 /// section `qb-p20.m3b`, `layout.txt`, `tdata.txt`, `mb.txt`), loaded by [`TypedQ::new`]. P8 keeps roll 11's S2GM blob
 /// (no P8 S2GF instance; `LVM_STAGE=S2GM LVM_PARAMS=P8`).
 pub const QB_P20_TD: &str = include_str!("qb-p20.td");
@@ -141,7 +141,7 @@ impl TypedQ {
         spec.xaux = typed_lay::XAux::new(&lay, &spec, c.q.n_in[0]);
         let words = typed_lay::Words::new(&c, &lay);
         // the constants' values: a zero build's inputs (PUBX, after the public lanes)
-        let nl = (crate::lvm::params::HEADER_BASE + crate::lvm::params::E_BYTES * (crate::lvm::params::acc_vars() + 1) - 8) / 8 + 4;
+        let nl = (crate::lvm::params::HEADER_BASE + crate::lvm::params::acc_w() * (crate::lvm::params::acc_vars() + 1) - 8) / 8 + 4;
         let (run0, _) = run_q(&c, &spec, &|_, _, n| vec![F64::ZERO; n], &vec![0; nl], None);
         let e = typed_lay::entries(&c, &lay, &words, &run0.kc);
         let mut b1 = typed_lay::typed_of(e, &lay);
@@ -230,8 +230,9 @@ impl Ctx {
                 // E2F (S2GF): P20's embedded files are the dev-dir format
                 (None, Some((b, m, l))) if self.p.name == "P20" => {
                     let cfg = crate::lvm::params::FrontCfg::get();
-                    if !cfg.typed_x && !cfg.typed_t {
-                        fatal("P20's embedded node program is S2GF's: LVM_STAGE=S2GM needs roll 11's blob dir (LVM_TYPED_DIR)");
+                    // (S2GT-P: the embedded P20 program is blob GT's, stage S2GT)
+                    if !cfg.typed_t {
+                        fatal("P20's embedded node program is S2GT's: LVM_STAGE=S2GF needs blob v4's dir, S2GM roll 11's (LVM_TYPED_DIR)");
                     }
                     TypedQ::new(&format!("{b} {m}"), l, QB_P20_TD, QB_P20_MB)
                 }
@@ -575,10 +576,21 @@ pub fn run_q(
     use crate::lvm::loopir::{ArrKind, Ty};
     let mut tq = Instant::now();
     let hdr_pub = pub_lanes;
-    let lanes: Vec<u64> = pub_lanes.iter().chain(&spec.pubx).copied().collect();
+    // PUBX's first index: the public arrays' last selector + 1 - |PUBX| (S2GF: `pub_lanes_len`). S2GT's blob GT selects
+    // PUB lanes up to 753 (the PUB window's cells past the header's 707 lanes) and PUBX from 757: the lanes between
+    // the header's and PUBX's are zero (V's virtual PUB region is the header's lanes, zero after)
+    let sel_end = spec.arrs.iter().filter(|a| a.kind == ArrKind::Public).flat_map(|a| a.sel.iter().copied()).max().map_or(0, |m| m + 1);
+    let pubx_at = sel_end.saturating_sub(spec.pubx.len()).max(pub_lanes.len());
+    let lanes: Vec<u64> = pub_lanes.iter().copied().chain(std::iter::repeat_n(0, pubx_at - pub_lanes.len())).chain(spec.pubx.iter().copied()).collect();
     let pub_lanes = &lanes[..];
     let mut in_k = vec![F64::ZERO; c.q.n_in[0]];
     let mut in_e = vec![F192::ZERO; c.q.n_in[1]];
+    if std::env::var_os("LVM_QDEBUG_PUB").is_some() {
+        for a in spec.arrs.iter().filter(|a| a.kind == ArrKind::Public) {
+            let s = &a.sel;
+            eprintln!("lvm: public array: tau {} base {} stride {} sel len {} first {:?} last {:?} (header lanes {}, PUBX {})", a.tau, a.base, a.stride, s.len(), &s[..s.len().min(12)], &s[s.len().saturating_sub(6)..], hdr_pub.len(), spec.pubx.len());
+        }
+    }
     for a in &spec.arrs {
         let n = 1usize << a.tau;
         let cols: Vec<Vec<F64>> = match a.kind {

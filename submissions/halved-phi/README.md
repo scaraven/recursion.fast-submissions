@@ -1,4 +1,4 @@
-# looped-rows
+# halved-phi
 
 The `leanvm-inspired` entry's roll "E2-FT" (stage `S2GF`): the Keccak front at `E2 = GF(2^128)` with grinding, a
 root out-of-domain pin, and twin-row `E2` cells in the typed backend. It continues #21 (`lone-root`, roll 11),

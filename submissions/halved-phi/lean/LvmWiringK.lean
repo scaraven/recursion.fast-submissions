@@ -28,10 +28,32 @@ Statements (wave X: stated; L-A proves them): `eqTab_get`, `kfVal_pair`, `succVa
 -/
 
 set_option autoImplicit false
+set_option linter.unusedSectionVars false
 
 namespace Lvm.Typed.K
 
 open Lvm.Loop
+
+/-! ## The value ring (S2GT-W)
+
+The native evaluator below runs over `FE`. Its correctness proofs run over any **value ring** `𝔽`: a commutative
+ring of characteristic two, with `E3`'s weights mapped in (`KRing.ofE`) where the weights enter. Each native
+function has a proof-side twin `…G` over `𝔽`; the native ones are their `FE` instances (`evalC_eqG`). S2GT
+evaluates `Φ_Q` at an `E2` point through the twins over `E3 ⊗ E2`. -/
+
+/-- **The weights' map** of a value ring: `E3 → 𝔽`, a ring map. -/
+class KRing (𝔽 : Type) [CommRing 𝔽] where
+  /-- The weights' map. -/
+  ofE : FE →+* 𝔽
+
+instance : KRing FE := ⟨RingHom.id FE⟩
+
+variable {𝔽 : Type} [CommRing 𝔽] [CharP 𝔽 2]
+
+/-- `eq(r, x) = Π_i (x_i ? r_i : 1 - r_i)` over a value ring (the twin of `eqW`). -/
+def eqWG : List 𝔽 → ℕ → 𝔽
+  | [], _ => 1
+  | r :: rs, x => (if x % 2 = 1 then r else 1 - r) * eqWG rs (x / 2)
 
 /-! ## The point -/
 
@@ -45,12 +67,29 @@ structure Pt where
   ry : Array FE
   deriving Inhabited
 
+/-- The proof-side twin of `Pt` over a value ring (S2GT-W). -/
+structure PtG (𝔽 : Type) where
+  /-- The selector coordinates. -/
+  kap : Array 𝔽
+  /-- The slot coordinates. -/
+  rx : Array 𝔽
+  /-- The word coordinates. -/
+  ry : Array 𝔽
+  deriving Inhabited
+
 /-- The point of `Φ_Q`'s coordinates `o ++ x ++ y`. -/
 def Pt.ofList (pt : List FE) : Pt :=
   ⟨(pt.take 2).toArray, ((pt.drop 2).take xVars).toArray, ((pt.drop (2 + xVars)).take yVars).toArray⟩
 
+/-- The proof-side twin of `Pt.ofList` over a value ring (S2GT-W). -/
+def PtG.ofList (pt : List 𝔽) : PtG 𝔽 :=
+  ⟨(pt.take 2).toArray, ((pt.drop 2).take xVars).toArray, ((pt.drop (2 + xVars)).take yVars).toArray⟩
+
 /-- One factor of `eq`: `r` at bit `1`, `1 − r` at bit `0`. -/
 @[inline] def eq1 (r : FE) (b : Bool) : FE := if b then r else 1 - r
+
+/-- The proof-side twin of `eq1` over a value ring (S2GT-W). -/
+@[inline] def eq1G (r : 𝔽) (b : Bool) : 𝔽 := if b then r else 1 - r
 
 /-- `FK`'s product, inlined (B1-K2: `FK.mul`'s body, so that the hot loops pay no calls). -/
 @[inline] def fkMulI (a b : FK) : FK :=
@@ -85,6 +124,19 @@ def eqTab (r : Array FE) (lo n : ℕ) : Array FE := Id.run do
     t := nt
   return t
 
+/-- The proof-side twin of `eqTab` over a value ring (S2GT-W). -/
+def eqTabG (r : Array 𝔽) (lo n : ℕ) : Array 𝔽 := Id.run do
+  let mut t : Array 𝔽 := #[1]
+  for i in [0:n] do
+    let a := r.getD (lo + n - 1 - i) 0
+    let mut nt : Array 𝔽 := Array.mkEmpty (2 * t.size)
+    for v in t do
+      let hi := v * a
+      nt := nt.push (v - hi)
+      nt := nt.push hi
+    t := nt
+  return t
+
 /-- **The `eq` table over the coordinates `r[bits]`** (any bit list): entry `v` is
 `Π_k eq1 r[bits[k]] (bit k of v)`. -/
 def eqTabB (r : Array FE) (bits : List ℕ) : Array FE := Id.run do
@@ -101,6 +153,21 @@ def eqTabB (r : Array FE) (bits : List ℕ) : Array FE := Id.run do
     t := nt
   return t
 
+/-- The proof-side twin of `eqTabB` over a value ring (S2GT-W). -/
+def eqTabBG (r : Array 𝔽) (bits : List ℕ) : Array 𝔽 := Id.run do
+  let ba := bits.toArray
+  let n := ba.size
+  let mut t : Array 𝔽 := #[1]
+  for i in [0:n] do
+    let a := r.getD (ba.getD (n - 1 - i) 0) 0
+    let mut nt : Array 𝔽 := Array.mkEmpty (2 * t.size)
+    for v in t do
+      let hi := v * a
+      nt := nt.push (v - hi)
+      nt := nt.push hi
+    t := nt
+  return t
+
 /-- The bits `bits` of `v` from position `k` on, packed. -/
 def pextGo (v : ℕ) : ℕ → List ℕ → ℕ
   | _, [] => 0
@@ -110,16 +177,16 @@ def pextGo (v : ℕ) : ℕ → List ℕ → ℕ
 def pext (v : ℕ) (bits : List ℕ) : ℕ := pextGo v 0 bits
 
 /-- A table represents `eqW L`: the right size and the right entries. -/
-def tab_Rep (t : Array FE) (L : List FE) : Prop :=
-  t.size = 2 ^ L.length ∧ ∀ x < 2 ^ L.length, t.getD x 0 = eqW L x
+def tab_Rep (t : Array 𝔽) (L : List 𝔽) : Prop :=
+  t.size = 2 ^ L.length ∧ ∀ x < 2 ^ L.length, t.getD x 0 = eqWG L x
 
 /-- One doubling step, as the loops elaborate it. -/
-def tab_dbl (t : Array FE) (a : FE) : Array FE :=
+def tab_dbl (t : Array 𝔽) (a : 𝔽) : Array 𝔽 :=
   Array.foldl (fun b v => (b.push (v - v * a)).push (v * a)) (Array.mkEmpty (2 * t.size)) t
 
-theorem tab_dbl_list (l : List FE) (a : FE) :
-    (l.foldl (fun b v => (b.push (v - v * a)).push (v * a)) (#[] : Array FE)).size = 2 * l.length ∧
-    ∀ x < 2 * l.length, (l.foldl (fun b v => (b.push (v - v * a)).push (v * a)) (#[] : Array FE)).getD x 0 =
+theorem tab_dbl_list (l : List 𝔽) (a : 𝔽) :
+    (l.foldl (fun b v => (b.push (v - v * a)).push (v * a)) (#[] : Array 𝔽)).size = 2 * l.length ∧
+    ∀ x < 2 * l.length, (l.foldl (fun b v => (b.push (v - v * a)).push (v * a)) (#[] : Array 𝔽)).getD x 0 =
       (if x % 2 = 1 then a else 1 - a) * l.getD (x / 2) 0 := by
   induction l using List.reverseRecOn with
   | nil => simp
@@ -145,44 +212,44 @@ theorem tab_dbl_list (l : List FE) (a : FE) :
         simp [this, List.getD_eq_getElem?_getD]
         ring
 
-theorem tab_dbl_rep (t : Array FE) (L : List FE) (a : FE) (h : tab_Rep t L) : tab_Rep (tab_dbl t a) (a :: L) := by
+theorem tab_dbl_rep (t : Array 𝔽) (L : List 𝔽) (a : 𝔽) (h : tab_Rep t L) : tab_Rep (tab_dbl t a) (a :: L) := by
   obtain ⟨h1, h2⟩ := h
-  have e : tab_dbl t a = t.toList.foldl (fun b v => (b.push (v - v * a)).push (v * a)) (#[] : Array FE) := by
+  have e : tab_dbl t a = t.toList.foldl (fun b v => (b.push (v - v * a)).push (v * a)) (#[] : Array 𝔽) := by
     simp [tab_dbl, Array.foldl_toList]
   obtain ⟨d1, d2⟩ := tab_dbl_list t.toList a
   simp only [Array.length_toList] at d1 d2
   rw [e]
   refine ⟨by rw [d1, h1, List.length_cons, pow_succ]; ring, fun x hx => ?_⟩
   have hx' : x < 2 * t.size := by rw [h1]; simp [pow_succ] at hx; (clear * - hx; omega)
-  rw [d2 x hx', eqW, List.getD_eq_getElem?_getD, Array.getElem?_toList, ← Array.getD_eq_getD_getElem?,
+  rw [d2 x hx', eqWG, List.getD_eq_getElem?_getD, Array.getElem?_toList, ← Array.getD_eq_getD_getElem?,
     h2 _ (by simp [pow_succ] at hx; (clear * - h1 hx'; omega))]
 
-theorem tab_loop_rep (g : ℕ → FE) (k : ℕ) :
+theorem tab_loop_rep (g : ℕ → 𝔽) (k : ℕ) :
     tab_Rep ((List.range' 0 k).foldl (fun t i ↦ tab_dbl t (g i)) #[1]) ((List.range k).map g).reverse := by
   induction k with
-  | zero => exact ⟨by simp, fun x hx => by simp at hx; subst hx; simp [eqW]⟩
+  | zero => exact ⟨by simp, fun x hx => by simp at hx; subst hx; simp [eqWG]⟩
   | succ k ih =>
     rw [List.range'_1_concat, List.foldl_append, List.range_succ]
     simpa using tab_dbl_rep _ _ (g k) ih
 
-theorem tab_eqTab_eq (r : Array FE) (lo n : ℕ) :
-    eqTab r lo n = (List.range' 0 n).foldl (fun t i ↦ tab_dbl t (r.getD (lo + n - 1 - i) 0)) #[1] := by
-  unfold eqTab
+theorem tab_eqTab_eq (r : Array 𝔽) (lo n : ℕ) :
+    eqTabG r lo n = (List.range' 0 n).foldl (fun t i ↦ tab_dbl t (r.getD (lo + n - 1 - i) 0)) #[1] := by
+  unfold eqTabG
   simp only [Id.run, Std.Legacy.Range.forIn_eq_forIn_range', Array.forIn_pure_yield_eq_foldl,
     List.forIn_pure_yield_eq_foldl, pure_bind, bind_pure, Std.Legacy.Range.size, Nat.sub_zero, Nat.add_sub_cancel,
     Nat.div_one]
   rfl
 
-theorem tab_eqTabB_eq (r : Array FE) (bits : List ℕ) :
-    eqTabB r bits = (List.range' 0 bits.length).foldl
+theorem tab_eqTabB_eq (r : Array 𝔽) (bits : List ℕ) :
+    eqTabBG r bits = (List.range' 0 bits.length).foldl
       (fun t i ↦ tab_dbl t (r.getD (bits.toArray.getD (bits.length - 1 - i) 0) 0)) #[1] := by
-  unfold eqTabB
+  unfold eqTabBG
   simp only [Id.run, Std.Legacy.Range.forIn_eq_forIn_range', Array.forIn_pure_yield_eq_foldl,
     List.forIn_pure_yield_eq_foldl, pure_bind, bind_pure, Std.Legacy.Range.size, Nat.sub_zero, Nat.add_sub_cancel,
     Nat.div_one, List.size_toArray]
   rfl
 
-theorem tab_rev_range (n : ℕ) (g : ℕ → FE) (c : ℕ → FE) (h : ∀ j < n, g (n - 1 - j) = c j) :
+theorem tab_rev_range (n : ℕ) (g : ℕ → 𝔽) (c : ℕ → 𝔽) (h : ∀ j < n, g (n - 1 - j) = c j) :
     ((List.range n).map g).reverse = (List.range n).map c := by
   apply List.ext_getElem (by simp)
   intro j h1 h2
@@ -191,8 +258,8 @@ theorem tab_rev_range (n : ℕ) (g : ℕ → FE) (c : ℕ → FE) (h : ∀ j < n
   exact h j h1
 
 /-- **The bit-list table is `eqW`** at the packed bits (statement). Owner L-A. -/
-theorem eqTabB_get (r : Array FE) (bits : List ℕ) (v : ℕ) (hv : v < 2 ^ bits.length) :
-    (eqTabB r bits).getD v 0 = eqW (bits.map fun b ↦ r.getD b 0) v := by
+theorem eqTabB_get (r : Array 𝔽) (bits : List ℕ) (v : ℕ) (hv : v < 2 ^ bits.length) :
+    (eqTabBG r bits).getD v 0 = eqWG (bits.map fun b ↦ r.getD b 0) v := by
   have h := tab_loop_rep (fun i ↦ r.getD (bits.toArray.getD (bits.length - 1 - i) 0) 0) bits.length
   have e : bits.map (fun b ↦ r.getD b 0) = (List.range bits.length).map fun j ↦ r.getD (bits.getD j 0) 0 := by
     apply List.ext_getElem (by simp)
@@ -205,11 +272,11 @@ theorem eqTabB_get (r : Array FE) (bits : List ℕ) (v : ℕ) (hv : v < 2 ^ bits
   exact h.2 v (by simpa using hv)
 
 /-- The coordinates `r[lo, lo + n)` as a list. -/
-def sub (r : Array FE) (lo n : ℕ) : List FE := (List.range n).map fun k ↦ r.getD (lo + k) 0
+def sub (r : Array 𝔽) (lo n : ℕ) : List 𝔽 := (List.range n).map fun k ↦ r.getD (lo + k) 0
 
 /-- **The `eq` table is `eqW`** on the range. Owner L-A. -/
-theorem eqTab_get (r : Array FE) (lo n v : ℕ) (hv : v < 2 ^ n) :
-    (eqTab r lo n).getD v 0 = eqW (sub r lo n) v := by
+theorem eqTab_get (r : Array 𝔽) (lo n v : ℕ) (hv : v < 2 ^ n) :
+    (eqTabG r lo n).getD v 0 = eqWG (sub r lo n) v := by
   have h := tab_loop_rep (fun i ↦ r.getD (lo + n - 1 - i) 0) n
   rw [tab_rev_range n _ (fun k ↦ r.getD (lo + k) 0) (fun j hj ↦ by congr 1; (clear * - hj; omega))] at h
   rw [tab_eqTab_eq]
@@ -250,29 +317,45 @@ def succVal (xs ys : List FE) : FE := Id.run do
     e := (1 - a - b + ab + ab) * e
   return s
 
+/-- The proof-side twin of `succVal` over a value ring (S2GT-W). -/
+def succValG (xs ys : List 𝔽) : 𝔽 := Id.run do
+  let n := xs.length
+  let xa := xs.toArray
+  let ya := ys.toArray
+  let mut e : 𝔽 := 1
+  let mut s : 𝔽 := 0
+  for i in [0:n] do
+    let k := n - 1 - i
+    let a := xa.getD k 0
+    let b := ya.getD k 0
+    let ab := a * b
+    s := (a - ab) * e + (b - ab) * s
+    e := (1 - a - b + ab + ab) * e
+  return s
+
 /-- The `eq` sum `Σ_{v < 2^n} eq(xs, v)·eq(ys, v)` (helper for `succVal_eq`). -/
-def succ_E (xs ys : List FE) : FE :=
-  ((List.range (2 ^ xs.length)).map fun v ↦ eqW xs v * eqW ys v).sum
+def succ_E (xs ys : List 𝔽) : 𝔽 :=
+  ((List.range (2 ^ xs.length)).map fun v ↦ eqWG xs v * eqWG ys v).sum
 
 /-- The successor sum `Σ_{v < 2^n - 1} eq(xs, v + 1)·eq(ys, v)` (helper for `succVal_eq`). -/
-def succ_S (xs ys : List FE) : FE :=
-  ((List.range (2 ^ xs.length - 1)).map fun v ↦ eqW xs (v + 1) * eqW ys v).sum
+def succ_S (xs ys : List 𝔽) : 𝔽 :=
+  ((List.range (2 ^ xs.length - 1)).map fun v ↦ eqWG xs (v + 1) * eqWG ys v).sum
 
 /-- One step of `succVal`'s loop. -/
-def succ_step (a b : FE) (p : FE × FE) : FE × FE :=
+def succ_step (a b : 𝔽) (p : 𝔽 × 𝔽) : 𝔽 × 𝔽 :=
   ((1 - a - b + a * b + a * b) * p.1, (a - a * b) * p.1 + (b - a * b) * p.2)
 
-theorem succ_eqW_even (r : FE) (rs : List FE) (w : ℕ) : eqW (r :: rs) (2 * w) = (1 - r) * eqW rs w := by
+theorem succ_eqW_even (r : 𝔽) (rs : List 𝔽) (w : ℕ) : eqWG (r :: rs) (2 * w) = (1 - r) * eqWG rs w := by
   have h1 : ¬ (2 * w % 2 = 1) := by omega
-  rw [eqW, show 2 * w / 2 = w by (clear * -; omega)]
+  rw [eqWG, show 2 * w / 2 = w by (clear * -; omega)]
   simp only [h1, ↓reduceIte]
 
-theorem succ_eqW_odd (r : FE) (rs : List FE) (w : ℕ) : eqW (r :: rs) (2 * w + 1) = r * eqW rs w := by
+theorem succ_eqW_odd (r : 𝔽) (rs : List 𝔽) (w : ℕ) : eqWG (r :: rs) (2 * w + 1) = r * eqWG rs w := by
   have h1 : (2 * w + 1) % 2 = 1 := by omega
-  rw [eqW, show (2 * w + 1) / 2 = w by omega]
+  rw [eqWG, show (2 * w + 1) / 2 = w by omega]
   simp only [h1, ↓reduceIte]
 
-theorem succ_sum_two (f : ℕ → FE) (M : ℕ) :
+theorem succ_sum_two (f : ℕ → 𝔽) (M : ℕ) :
     ((List.range (2 * M)).map f).sum =
       ((List.range M).map fun w ↦ f (2 * w)).sum + ((List.range M).map fun w ↦ f (2 * w + 1)).sum := by
   induction M with
@@ -283,7 +366,7 @@ theorem succ_sum_two (f : ℕ → FE) (M : ℕ) :
       List.sum_nil]
     ring
 
-theorem succ_sum_two_one (f : ℕ → FE) (M : ℕ) :
+theorem succ_sum_two_one (f : ℕ → 𝔽) (M : ℕ) :
     ((List.range (2 * M + 1)).map f).sum =
       ((List.range (M + 1)).map fun w ↦ f (2 * w)).sum + ((List.range M).map fun w ↦ f (2 * w + 1)).sum := by
   rw [List.range_succ, List.range_succ]
@@ -291,39 +374,39 @@ theorem succ_sum_two_one (f : ℕ → FE) (M : ℕ) :
     List.sum_nil]
   ring
 
-theorem succ_E_nil : succ_E [] [] = 1 := by
-  simp [succ_E, eqW]
+theorem succ_E_nil : succ_E ([] : List 𝔽) [] = 1 := by
+  simp [succ_E, eqWG]
 
-theorem succ_S_nil : succ_S [] [] = 0 := by
+theorem succ_S_nil : succ_S ([] : List 𝔽) [] = 0 := by
   simp [succ_S]
 
-theorem succ_E_cons (x y : FE) (xs ys : List FE) :
+theorem succ_E_cons (x y : 𝔽) (xs ys : List 𝔽) :
     succ_E (x :: xs) (y :: ys) = (x * y + (1 - x) * (1 - y)) * succ_E xs ys := by
   unfold succ_E
   rw [List.length_cons, pow_succ, mul_comm, succ_sum_two]
   simp only [succ_eqW_even, succ_eqW_odd]
-  rw [show (fun w ↦ (1 - x) * eqW xs w * ((1 - y) * eqW ys w)) =
-      fun w ↦ ((1 - x) * (1 - y)) * (eqW xs w * eqW ys w) from funext fun w ↦ by ring,
-    show (fun w ↦ x * eqW xs w * (y * eqW ys w)) =
-      fun w ↦ (x * y) * (eqW xs w * eqW ys w) from funext fun w ↦ by ring,
+  rw [show (fun w ↦ (1 - x) * eqWG xs w * ((1 - y) * eqWG ys w)) =
+      fun w ↦ ((1 - x) * (1 - y)) * (eqWG xs w * eqWG ys w) from funext fun w ↦ by ring,
+    show (fun w ↦ x * eqWG xs w * (y * eqWG ys w)) =
+      fun w ↦ (x * y) * (eqWG xs w * eqWG ys w) from funext fun w ↦ by ring,
     List.sum_map_mul_left, List.sum_map_mul_left]
   ring
 
-theorem succ_S_cons (x y : FE) (xs ys : List FE) :
+theorem succ_S_cons (x y : 𝔽) (xs ys : List 𝔽) :
     succ_S (x :: xs) (y :: ys) = x * (1 - y) * succ_E xs ys + (1 - x) * y * succ_S xs ys := by
   unfold succ_S succ_E
   have h1 : 1 ≤ 2 ^ xs.length := Nat.one_le_two_pow
   rw [List.length_cons, show 2 ^ (xs.length + 1) - 1 = 2 * (2 ^ xs.length - 1) + 1 by
     rw [pow_succ]; omega, succ_sum_two_one, show 2 ^ xs.length - 1 + 1 = 2 ^ xs.length by omega]
   simp only [succ_eqW_even, succ_eqW_odd, show ∀ w : ℕ, 2 * w + 1 + 1 = 2 * (w + 1) from fun w ↦ by (clear * -; omega)]
-  rw [show (fun w ↦ x * eqW xs w * ((1 - y) * eqW ys w)) =
-      fun w ↦ (x * (1 - y)) * (eqW xs w * eqW ys w) from funext fun w ↦ by ring,
-    show (fun w ↦ (1 - x) * eqW xs (w + 1) * (y * eqW ys w)) =
-      fun w ↦ ((1 - x) * y) * (eqW xs (w + 1) * eqW ys w) from funext fun w ↦ by ring,
+  rw [show (fun w ↦ x * eqWG xs w * ((1 - y) * eqWG ys w)) =
+      fun w ↦ (x * (1 - y)) * (eqWG xs w * eqWG ys w) from funext fun w ↦ by ring,
+    show (fun w ↦ (1 - x) * eqWG xs (w + 1) * (y * eqWG ys w)) =
+      fun w ↦ ((1 - x) * y) * (eqWG xs (w + 1) * eqWG ys w) from funext fun w ↦ by ring,
     List.sum_map_mul_left, List.sum_map_mul_left]
 
-theorem succ_fold (xs ys : List FE) (h : xs.length = ys.length) (i : ℕ) (hi : i ≤ xs.length) :
-    List.foldl (fun (p : FE × FE) (j : ℕ) ↦
+theorem succ_fold (xs ys : List 𝔽) (h : xs.length = ys.length) (i : ℕ) (hi : i ≤ xs.length) :
+    List.foldl (fun (p : 𝔽 × 𝔽) (j : ℕ) ↦
         succ_step (xs.toArray.getD (xs.length - 1 - j) 0) (ys.toArray.getD (xs.length - 1 - j) 0) p)
       (1, 0) (List.range i) =
       (succ_E (xs.drop (xs.length - i)) (ys.drop (xs.length - i)),
@@ -345,9 +428,9 @@ theorem succ_fold (xs ys : List FE) (h : xs.length = ys.length) (i : ℕ) (hi : 
     refine Prod.ext ?_ ?_ <;> dsimp only <;> ring
 
 /-- **The successor polynomial** (statement). Owner L-A. -/
-theorem succVal_eq (xs ys : List FE) (h : xs.length = ys.length) :
-    succVal xs ys = ((List.range (2 ^ xs.length - 1)).map fun v ↦ eqW xs (v + 1) * eqW ys v).sum := by
-  simp only [succVal, Id.run, Std.Legacy.Range.forIn_eq_forIn_range', List.forIn_pure_yield_eq_foldl,
+theorem succVal_eq (xs ys : List 𝔽) (h : xs.length = ys.length) :
+    succValG xs ys = ((List.range (2 ^ xs.length - 1)).map fun v ↦ eqWG xs (v + 1) * eqWG ys v).sum := by
+  simp only [succValG, Id.run, Std.Legacy.Range.forIn_eq_forIn_range', List.forIn_pure_yield_eq_foldl,
     Std.Legacy.Range.size, pure_bind]
   rw [show (xs.length - 0 + 1 - 1) / 1 = xs.length by omega, ← List.range_eq_range']
   have hf := congrArg Prod.snd (succ_fold xs ys h xs.length le_rfl)
@@ -359,10 +442,18 @@ def limbVal (a b : FE) : FE :=
   let ab := a * b
   (1 - a - b + ab) + (a - ab) * FE.y + (b - ab) * (FE.y * FE.y)
 
+section L1
+variable [KRing 𝔽] [BEq 𝔽] [LawfulBEq 𝔽]
+
+/-- The proof-side twin of `limbVal` over a value ring (S2GT-W). -/
+def limbValG (a b : 𝔽) : 𝔽 :=
+  let ab := a * b
+  (1 - a - b + ab) + (a - ab) * KRing.ofE FE.y + (b - ab) * (KRing.ofE FE.y * KRing.ofE FE.y)
+
 /-- **The limb factor.** -/
-theorem limbVal_eq (a b : FE) :
-    limbVal a b = ((List.range 3).map fun m ↦ eqW [a, b] m * (FE.y ^ m)).sum := by
-  simp [limbVal, List.range_succ, eqW]
+theorem limbVal_eq (a b : 𝔽) :
+    limbValG a b = ((List.range 3).map fun m ↦ eqWG [a, b] m * (KRing.ofE FE.y ^ m)).sum := by
+  simp [limbValG, List.range_succ, eqWG]
   ring
 
 /-- **A factor's value** at the point. -/
@@ -373,19 +464,33 @@ def kfVal (P : Pt) : KF → FE
   | .limb e => limbVal (P.ry.getD e 0) (P.ry.getD (e + 1) 0)
   | .ypow j c => let r := P.ry.getD j 0; (1 - r) + FE.smulBase c r
 
+/-- The proof-side twin of `kfVal` over a value ring (S2GT-W). -/
+def kfValG (P : PtG 𝔽) : KF → 𝔽
+  | .pair i j => 1 - P.rx.getD i 0 - P.ry.getD j 0
+  | .fixX i b => eq1G (P.rx.getD i 0) b
+  | .succ xs ys => succValG (xs.map fun i ↦ P.rx.getD i 0) (ys.map fun j ↦ P.ry.getD j 0)
+  | .limb e => limbValG (P.ry.getD e 0) (P.ry.getD (e + 1) 0)
+  | .ypow j c => let r := P.ry.getD j 0; (1 - r) + KRing.ofE (FE.ofK c) * r
+
+omit [KRing 𝔽] [BEq 𝔽] [LawfulBEq 𝔽] in
 /-- `1 − a − c` is the one-bit sum `Σ_b eq(a, b)·eq(c, b)` in characteristic 2. -/
-theorem pair_sum (a c : FE) : 1 - a - c = ((List.range 2).map fun b ↦ eqW [a] b * eqW [c] b).sum := by
-  simp [List.range_succ, eqW]
-  have h2 : (2 : FE) = 0 := CharTwo.two_eq_zero
+theorem pair_sum (a c : 𝔽) : 1 - a - c = ((List.range 2).map fun b ↦ eqWG [a] b * eqWG [c] b).sum := by
+  simp [List.range_succ, eqWG]
+  have h2 : (2 : 𝔽) = 0 := CharTwo.two_eq_zero
   linear_combination (- a * c) * h2
 
 /-- **The paired factor is the one-bit sum** (characteristic 2). -/
-theorem kfVal_pair (P : Pt) (i j : ℕ) :
-    kfVal P (.pair i j) = ((List.range 2).map fun b ↦
-      eqW [P.rx.getD i 0] b * eqW [P.ry.getD j 0] b).sum := pair_sum _ _
+theorem kfVal_pair (P : PtG 𝔽) (i j : ℕ) :
+    kfValG P (.pair i j) = ((List.range 2).map fun b ↦
+      eqWG [P.rx.getD i 0] b * eqWG [P.ry.getD j 0] b).sum := pair_sum _ _
 
 /-- A kernel's value: the product of its factors. -/
 def kerVal (P : Pt) (fs : List KF) : FE := fs.foldl (fun acc f ↦ acc * kfVal P f) 1
+
+/-- The proof-side twin of `kerVal` over a value ring (S2GT-W). -/
+def kerValG (P : PtG 𝔽) (fs : List KF) : 𝔽 := fs.foldl (fun acc f ↦ acc * kfValG P f) 1
+
+end L1
 
 /-! ## Tables -/
 
@@ -422,6 +527,11 @@ def kapTab (κ : Array FE) : Array FE :=
   let e := eqTab κ 0 2
   (Array.range 16).map fun m ↦ (List.range 4).foldl (fun acc o ↦ if m.testBit o then acc + e.getD o 0 else acc) 0
 
+/-- The proof-side twin of `kapTab` over a value ring (S2GT-W). -/
+def kapTabG (κ : Array 𝔽) : Array 𝔽 :=
+  let e := eqTabG κ 0 2
+  (Array.range 16).map fun m ↦ (List.range 4).foldl (fun acc o ↦ if m.testBit o then acc + e.getD o 0 else acc) 0
+
 /-- A table's entries at the point (`prod` tables are filled by `tabsAt`). -/
 def TRec.eval (P : Pt) : TRec → Array FE
   | .one => #[1]
@@ -431,13 +541,30 @@ def TRec.eval (P : Pt) : TRec → Array FE
   | .ker ks => ks.map (kerVal P)
   | .prod _ => #[]
 
+/-- The proof-side twin of `TRec.eval` over a value ring (S2GT-W). -/
+def TRec.evalG [KRing 𝔽] (P : PtG 𝔽) : TRec → Array 𝔽
+  | .one => #[1]
+  | .eqx bits => eqTabBG P.rx bits
+  | .eqy bits => eqTabBG P.ry bits
+  | .kap => kapTabG P.kap
+  | .ker ks => ks.map (kerValG P)
+  | .prod _ => #[]
+
 /-- The value of key `k` in the tables. -/
 @[inline] def keyVal (T : Array (Array FE)) (k : ℕ × ℕ) : FE := (T.getD k.1 #[]).getD k.2 0
+
+/-- The proof-side twin of `keyVal` over a value ring (S2GT-W). -/
+@[inline] def keyValG (T : Array (Array 𝔽)) (k : ℕ × ℕ) : 𝔽 := (T.getD k.1 #[]).getD k.2 0
 
 /-- A product of keys (one key: no product). -/
 def prodKeys (T : Array (Array FE)) : List (ℕ × ℕ) → FE
   | [] => 1
   | k :: ks => ks.foldl (fun acc k' ↦ acc * keyVal T k') (keyVal T k)
+
+/-- The proof-side twin of `prodKeys` over a value ring (S2GT-W). -/
+def prodKeysG (T : Array (Array 𝔽)) : List (ℕ × ℕ) → 𝔽
+  | [] => 1
+  | k :: ks => ks.foldl (fun acc k' ↦ acc * keyValG T k') (keyValG T k)
 
 /-- **The level tables** of `r[lo, lo + n)`: `levels[k]` is the `eq` table over `r[lo + k, lo + n)` (one doubling
 pass from the top bit builds all of them; one product per entry of the last). -/
@@ -455,8 +582,23 @@ def eqLevels (r : Array FE) (lo n : ℕ) : Array (Array FE) := Id.run do
     lv := lv.push t
   return lv.reverse
 
+/-- The proof-side twin of `eqLevels` over a value ring (S2GT-W). -/
+def eqLevelsG (r : Array 𝔽) (lo n : ℕ) : Array (Array 𝔽) := Id.run do
+  let mut t : Array 𝔽 := #[1]
+  let mut lv : Array (Array 𝔽) := #[t]
+  for i in [0:n] do
+    let a := r.getD (lo + n - 1 - i) 0
+    let mut nt : Array 𝔽 := Array.mkEmpty (2 * t.size)
+    for v in t do
+      let hi := v * a
+      nt := nt.push (v - hi)
+      nt := nt.push hi
+    t := nt
+    lv := lv.push t
+  return lv.reverse
+
 /-- Sum out relative bit `p` of a table (`Σ_b eq(r, b) = 1`): additions only. -/
-def sumOut (t : Array FE) (p : ℕ) : Array FE :=
+def sumOut (t : Array 𝔽) (p : ℕ) : Array 𝔽 :=
   (Array.range (t.size / 2)).map fun i ↦
     let lo := i % 2 ^ p
     let hi := (i >>> p) <<< (p + 1)
@@ -487,6 +629,28 @@ def margTab (lv : Array (Array FE)) (lo n : ℕ) (bits : List ℕ) : Array FE :=
       x := ((x ||| miss) + 1) &&& kept
     return out
 
+/-- The proof-side twin of `margTab` over a value ring (S2GT-W). -/
+def margTabG (lv : Array (Array 𝔽)) (lo n : ℕ) (bits : List ℕ) : Array 𝔽 := Id.run do
+  match bits.head? with
+  | none => return #[1]
+  | some b0 =>
+    let k := b0 - lo
+    let t := lv.getD k #[]
+    let kept := bits.foldl (fun acc b ↦ acc ||| 2 ^ (b - lo - k)) 0
+    let miss := (2 ^ (n - k) - 1) ^^^ kept
+    let nIn := 2 ^ (n - k - bits.length)
+    let mut out : Array 𝔽 := Array.mkEmpty (2 ^ bits.length)
+    let mut x := 0
+    for _ in [0:2 ^ bits.length] do
+      let mut acc : 𝔽 := 0
+      let mut m := 0
+      for _ in [0:nIn] do
+        acc := acc + t.getD (x ||| m) 0
+        m := ((m ||| kept) + 1) &&& miss
+      out := out.push acc
+      x := ((x ||| miss) + 1) &&& kept
+    return out
+
 /-- A group's sub-table: a level table, else by marginalisation or by doubling, whichever is cheaper (a product
 costs about twenty marginalisation reads, B1-K2). `bits` is sorted, distinct and inside the group (the compiler's
 groups: `rangeKeys`, `mkPass`), as `margTab` needs. -/
@@ -499,18 +663,28 @@ def subTab (r : Array FE) (lv : Array (Array FE)) (lo n : ℕ) (bits : List ℕ)
     else if 20 * 2 ^ bits.length ≤ 2 ^ (n - k) then eqTabB r bits
     else margTab lv lo n bits
 
-theorem tab_eqLevels_eq (r : Array FE) (lo n : ℕ) :
-    eqLevels r lo n = ((List.range' 0 n).foldl (fun s i ↦ (tab_dbl s.1 (r.getD (lo + n - 1 - i) 0),
-      s.2.push (tab_dbl s.1 (r.getD (lo + n - 1 - i) 0)))) ((#[1] : Array FE), #[#[1]])).2.reverse := by
-  unfold eqLevels
+/-- The proof-side twin of `subTab` over a value ring (S2GT-W). -/
+def subTabG (r : Array 𝔽) (lv : Array (Array 𝔽)) (lo n : ℕ) (bits : List ℕ) : Array 𝔽 :=
+  match bits.head? with
+  | none => #[1]
+  | some b0 =>
+    let k := b0 - lo
+    if bits == (List.range (n - k)).map (b0 + ·) then lv.getD k #[]
+    else if 20 * 2 ^ bits.length ≤ 2 ^ (n - k) then eqTabBG r bits
+    else margTabG lv lo n bits
+
+theorem tab_eqLevels_eq (r : Array 𝔽) (lo n : ℕ) :
+    eqLevelsG r lo n = ((List.range' 0 n).foldl (fun s i ↦ (tab_dbl s.1 (r.getD (lo + n - 1 - i) 0),
+      s.2.push (tab_dbl s.1 (r.getD (lo + n - 1 - i) 0)))) ((#[1] : Array 𝔽), #[#[1]])).2.reverse := by
+  unfold eqLevelsG
   simp only [Id.run, Std.Legacy.Range.forIn_eq_forIn_range', Array.forIn_pure_yield_eq_foldl,
     List.forIn_pure_yield_eq_foldl, pure_bind, Std.Legacy.Range.size, Nat.sub_zero, Nat.add_sub_cancel,
     Nat.div_one]
   rfl
 
-theorem tab_lv_loop (g : ℕ → FE) (k : ℕ) :
+theorem tab_lv_loop (g : ℕ → 𝔽) (k : ℕ) :
     (List.range' 0 k).foldl (fun s i ↦ (tab_dbl s.1 (g i), s.2.push (tab_dbl s.1 (g i))))
-      ((#[1] : Array FE), #[#[1]]) =
+      ((#[1] : Array 𝔽), #[#[1]]) =
     ((List.range' 0 k).foldl (fun t i ↦ tab_dbl t (g i)) #[1],
       ((List.range (k + 1)).map fun j ↦ (List.range' 0 j).foldl (fun t i ↦ tab_dbl t (g i)) #[1]).toArray) := by
   induction k with
@@ -519,8 +693,8 @@ theorem tab_lv_loop (g : ℕ → FE) (k : ℕ) :
     rw [List.range'_1_concat, List.foldl_append, ih, List.range_succ (n := k + 1), List.map_append]
     simp [List.range'_1_concat]
 
-theorem tab_eqLevels_rep (r : Array FE) (lo n k : ℕ) (hk : k ≤ n) :
-    tab_Rep ((eqLevels r lo n).getD k #[]) (sub r (lo + k) (n - k)) := by
+theorem tab_eqLevels_rep (r : Array 𝔽) (lo n k : ℕ) (hk : k ≤ n) :
+    tab_Rep ((eqLevelsG r lo n).getD k #[]) (sub r (lo + k) (n - k)) := by
   rw [tab_eqLevels_eq, tab_lv_loop]
   have e : ((((List.range (n + 1)).map fun j ↦ (List.range' 0 j).foldl
       (fun t i ↦ tab_dbl t (r.getD (lo + n - 1 - i) 0)) #[1]).toArray).reverse).getD k #[] =
@@ -533,27 +707,27 @@ theorem tab_eqLevels_rep (r : Array FE) (lo n k : ℕ) (hk : k ≤ n) :
   have h := tab_loop_rep (fun i ↦ r.getD (lo + n - 1 - i) 0) (n - k)
   rwa [tab_rev_range _ _ (fun j ↦ r.getD (lo + k + j) 0) (fun j hj ↦ by congr 1; (clear * - hk hj; omega))] at h
 
-theorem tab_eqLevels_get (r : Array FE) (lo n k v : ℕ) (hk : k ≤ n) (hv : v < 2 ^ (n - k)) :
-    ((eqLevels r lo n).getD k #[]).getD v 0 = eqW (sub r (lo + k) (n - k)) v :=
+theorem tab_eqLevels_get (r : Array 𝔽) (lo n k v : ℕ) (hk : k ≤ n) (hv : v < 2 ^ (n - k)) :
+    ((eqLevelsG r lo n).getD k #[]).getD v 0 = eqWG (sub r (lo + k) (n - k)) v :=
   (tab_eqLevels_rep r lo n k hk).2 v (by simpa [sub] using hv)
 
-theorem tab_eqW_append (a b : List FE) (u v : ℕ) (hu : u < 2 ^ a.length) :
-    eqW (a ++ b) (u + 2 ^ a.length * v) = eqW a u * eqW b v := by
+theorem tab_eqW_append (a b : List 𝔽) (u v : ℕ) (hu : u < 2 ^ a.length) :
+    eqWG (a ++ b) (u + 2 ^ a.length * v) = eqWG a u * eqWG b v := by
   induction a generalizing u with
-  | nil => simp at hu; subst hu; simp [eqW]
+  | nil => simp at hu; subst hu; simp [eqWG]
   | cons x a ih =>
-    simp only [List.cons_append, eqW, List.length_cons]
+    simp only [List.cons_append, eqWG, List.length_cons]
     have e : u + 2 ^ (a.length + 1) * v = u + 2 * (2 ^ a.length * v) := by rw [pow_succ]; ring
     have h1 : (u + 2 * (2 ^ a.length * v)) % 2 = u % 2 := by (clear * -; omega)
     have h2 : (u + 2 * (2 ^ a.length * v)) / 2 = u / 2 + 2 ^ a.length * v := by (clear * - h1; omega)
     rw [e, h1, h2, ih (u / 2) (by rw [List.length_cons, pow_succ] at hu; (clear * - hu h1; omega))]
     ring
 
-theorem tab_eqW_mod (r : List FE) (x : ℕ) : eqW r (x % 2 ^ r.length) = eqW r x := by
+theorem tab_eqW_mod (r : List 𝔽) (x : ℕ) : eqWG r (x % 2 ^ r.length) = eqWG r x := by
   induction r generalizing x with
-  | nil => simp [eqW]
+  | nil => simp [eqWG]
   | cons a r ih =>
-    simp only [eqW, List.length_cons]
+    simp only [eqWG, List.length_cons]
     simp only [Nat.mod_mod_of_dvd x (dvd_pow_self 2 (by (clear * -; omega) : r.length + 1 ≠ 0))]
     simp only [pow_succ', Nat.mod_mul_right_div_self, ih]
 
@@ -562,7 +736,7 @@ theorem tab_bound (l q b P Q : ℕ) (hl : l < P) (hq : q < Q) (hb : b ≤ 1) : l
     _ = P * (b + 2 * q + 1) := by ring
     _ ≤ P * (2 * Q) := Nat.mul_le_mul_left _ (by (clear * - hq hb; omega))
 
-theorem tab_sumOut_rep (t : Array FE) (A B : List FE) (c : FE) (h : tab_Rep t (A ++ c :: B)) :
+theorem tab_sumOut_rep (t : Array 𝔽) (A B : List 𝔽) (c : 𝔽) (h : tab_Rep t (A ++ c :: B)) :
     tab_Rep (sumOut t A.length) (A ++ B) := by
   obtain ⟨h1, h2⟩ := h
   have hs : 2 ^ (A ++ c :: B).length = 2 ^ A.length * (2 * 2 ^ B.length) := by
@@ -599,7 +773,7 @@ theorem tab_sumOut_rep (t : Array FE) (A B : List FE) (c : FE) (h : tab_Rep t (A
   rw [hmod, hdiv, e0, e1, ← Array.getD_eq_getD_getElem?, ← Array.getD_eq_getD_getElem?, h2 _ (by rw [hs]; exact tab_bound _ _ _ _ _ hl hq (by (clear * -; omega))),
     h2 _ (by rw [hs]; exact tab_bound _ _ _ _ _ hl hq le_rfl), tab_eqW_append _ _ _ _ hl,
     tab_eqW_append _ _ _ _ hl, tab_eqW_append _ _ _ _ hl]
-  simp only [eqW]
+  simp only [eqWG]
   rw [show (0 + 2 * q) % 2 = 0 by (clear * - hdiv; omega), show (1 + 2 * q) % 2 = 1 by (clear * - hdiv; omega), show (0 + 2 * q) / 2 = q by (clear * - hdiv; omega),
     show (1 + 2 * q) / 2 = q by (clear * - hdiv; omega)]
   simp only [show (0 : ℕ) ≠ 1 from by (clear * -; omega), ↓reduceIte]
@@ -611,7 +785,7 @@ theorem tab_range_split (N m : ℕ) (hm : m < N) :
   rw [List.range_eq_range', List.range_eq_range', ← List.range'_append_1, List.range'_succ]
   simp
 
-theorem tab_marg_loop (N : ℕ) (c : ℕ → FE) (Q : ℕ → Bool) (m : ℕ) (hm : m ≤ N) (t : Array FE)
+theorem tab_marg_loop (N : ℕ) (c : ℕ → 𝔽) (Q : ℕ → Bool) (m : ℕ) (hm : m ≤ N) (t : Array 𝔽)
     (h : tab_Rep t (((List.range N).filter fun i ↦ decide (i < m) || Q i).map c)) :
     tab_Rep ((((List.range m).filter fun i ↦ !Q i).reverse).foldl (fun b a ↦ sumOut b a) t)
       (((List.range N).filter Q).map c) := by
@@ -687,7 +861,7 @@ def marg_dep : List Bool → ℕ → ℕ
   | false :: ms, v => 0 + 2 * marg_dep ms v
 
 /-- The entries of `L` at the set positions of a bit pattern. -/
-def marg_filt : List Bool → List FE → List FE
+def marg_filt : List Bool → List 𝔽 → List 𝔽
   | true :: ms, a :: L => a :: marg_filt ms L
   | false :: ms, _ :: L => marg_filt ms L
   | _, _ => []
@@ -768,7 +942,7 @@ theorem marg_dep_lt (ms : List Bool) (v : ℕ) : marg_dep ms v < 2 ^ ms.length :
     have := ih (v / 2); have := ih v
     cases b <;> simp only [marg_dep, List.length_cons, pow_succ] <;> omega
 
-theorem marg_sum_two (f : ℕ → FE) (N : ℕ) :
+theorem marg_sum_two (f : ℕ → 𝔽) (N : ℕ) :
     ∑ u ∈ Finset.range (2 * N), f u = ∑ w ∈ Finset.range N, (f (2 * w) + f (2 * w + 1)) := by
   induction N with
   | zero => simp
@@ -777,13 +951,13 @@ theorem marg_sum_two (f : ℕ → FE) (N : ℕ) :
       Finset.sum_range_succ]
     ring
 
-theorem marg_sum (ms : List Bool) (L : List FE) (hl : L.length = ms.length) (v : ℕ) :
+theorem marg_sum (ms : List Bool) (L : List 𝔽) (hl : L.length = ms.length) (v : ℕ) :
     ∑ u ∈ Finset.range (2 ^ (ms.map not).count true),
-      eqW L (marg_dep ms v ||| marg_dep (ms.map not) u) = eqW (marg_filt ms L) v := by
+      eqWG L (marg_dep ms v ||| marg_dep (ms.map not) u) = eqWG (marg_filt ms L) v := by
   induction ms generalizing L v with
   | nil =>
     cases L with
-    | nil => simp [marg_filt, eqW]
+    | nil => simp [marg_filt, eqWG]
     | cons _ _ => simp at hl
   | cons b ms ih =>
     cases L with
@@ -797,7 +971,7 @@ theorem marg_sum (ms : List Bool) (L : List FE) (hl : L.length = ms.length) (v :
         intro w _
         simp only [marg_dep]
         rw [marg_or2 _ _ _ _ (by (clear * -; omega)) (by (clear * -; omega)), marg_or2 _ _ _ _ (by (clear * -; omega)) (by (clear * -; omega))]
-        simp only [eqW, Nat.zero_or, Nat.mul_mod_right, Nat.mul_div_right _ (by (clear * -; omega) : 0 < 2),
+        simp only [eqWG, Nat.zero_or, Nat.mul_mod_right, Nat.mul_div_right _ (by (clear * -; omega) : 0 < 2),
           show (2 * w + 1) % 2 = 1 by (clear * -; omega), show (2 * w + 1) / 2 = w by (clear * -; omega)]
         rw [show (1 + 2 * (marg_dep ms v ||| marg_dep (ms.map not) w)) % 2 = 1 by (clear * -; omega),
           show (1 + 2 * (marg_dep ms v ||| marg_dep (ms.map not) w)) / 2 =
@@ -809,17 +983,17 @@ theorem marg_sum (ms : List Bool) (L : List FE) (hl : L.length = ms.length) (v :
         ring
       · simp only [List.map_cons, Bool.not_true, List.count_cons, beq_iff_eq, Bool.false_eq_true,
           ↓reduceIte, Nat.add_zero, marg_filt]
-        rw [eqW, ← ih L hl (v / 2), Finset.mul_sum]
+        rw [eqWG, ← ih L hl (v / 2), Finset.mul_sum]
         apply Finset.sum_congr rfl
         intro u _
         simp only [marg_dep]
-        rw [marg_or2 _ _ _ _ (by (clear * -; omega)) (by (clear * -; omega)), Nat.or_zero, eqW,
+        rw [marg_or2 _ _ _ _ (by (clear * -; omega)) (by (clear * -; omega)), Nat.or_zero, eqWG,
           show (v % 2 + 2 * (marg_dep ms (v / 2) ||| marg_dep (ms.map not) u)) % 2 = v % 2 by (clear * -; omega),
           show (v % 2 + 2 * (marg_dep ms (v / 2) ||| marg_dep (ms.map not) u)) / 2 =
             marg_dep ms (v / 2) ||| marg_dep (ms.map not) u by (clear * -; omega)]
 
-theorem marg_inner (F : ℕ → FE) (sx d : ℕ → ℕ) (M : ℕ) (h : ∀ u, u + 1 < M → sx (d u) = d (u + 1))
-    (N s j : ℕ) (a : FE) (hN : j + N ≤ M) :
+theorem marg_inner (F : ℕ → 𝔽) (sx d : ℕ → ℕ) (M : ℕ) (h : ∀ u, u + 1 < M → sx (d u) = d (u + 1))
+    (N s j : ℕ) (a : 𝔽) (hN : j + N ≤ M) :
     ((List.range' s N).foldl (fun b _ ↦ (b.1 + F b.2, sx b.2)) (a, d j)).1 =
       a + ∑ u ∈ Finset.range N, F (d (j + u)) := by
   induction N generalizing s j a with
@@ -834,8 +1008,8 @@ theorem marg_inner (F : ℕ → FE) (sx d : ℕ → ℕ) (M : ℕ) (h : ∀ u, u
       simp only [e, Nat.add_zero]
       ring
 
-theorem marg_outer (G : ℕ → FE) (sx d : ℕ → ℕ) (M : ℕ) (h : ∀ u, u + 1 < M → sx (d u) = d (u + 1))
-    (N s j : ℕ) (arr : Array FE) (hN : j + N ≤ M) :
+theorem marg_outer (G : ℕ → 𝔽) (sx d : ℕ → ℕ) (M : ℕ) (h : ∀ u, u + 1 < M → sx (d u) = d (u + 1))
+    (N s j : ℕ) (arr : Array 𝔽) (hN : j + N ≤ M) :
     ((List.range' s N).foldl (fun b _ ↦ (b.1.push (G b.2), sx b.2)) (arr, d j)).1.toList =
       arr.toList ++ (List.range N).map fun u ↦ G (d (j + u)) := by
   induction N generalizing s j arr with
@@ -883,7 +1057,7 @@ theorem marg_count_not (ms : List Bool) : (ms.map not).count true + ms.count tru
   | nil => simp
   | cons b ms ih => cases b <;> simp <;> omega
 
-theorem marg_filt_map (l : List ℕ) (f : ℕ → Bool) (g : ℕ → FE) :
+theorem marg_filt_map (l : List ℕ) (f : ℕ → Bool) (g : ℕ → 𝔽) :
     marg_filt (l.map f) (l.map g) = (l.filter f).map g := by
   induction l with
   | nil => simp [marg_filt]
@@ -894,7 +1068,7 @@ theorem marg_dep_zero (ms : List Bool) : marg_dep ms 0 = 0 := by
   | nil => rfl
   | cons b ms ih => cases b <;> simp [marg_dep, ih]
 
-theorem marg_filt_length (ms : List Bool) (L : List FE) (hl : L.length = ms.length) :
+theorem marg_filt_length (ms : List Bool) (L : List 𝔽) (hl : L.length = ms.length) :
     (marg_filt ms L).length = ms.count true := by
   induction ms generalizing L with
   | nil => cases L <;> simp_all [marg_filt]
@@ -903,19 +1077,19 @@ theorem marg_filt_length (ms : List Bool) (L : List FE) (hl : L.length = ms.leng
     | nil => simp at hl
     | cons a L => cases b <;> simp_all [marg_filt]
 
-theorem marg_body (t : Array FE) (ms : List Bool) (L : List FE) (hrep : tab_Rep t L)
+theorem marg_body (t : Array 𝔽) (ms : List Bool) (L : List 𝔽) (hrep : tab_Rep t L)
     (hl : L.length = ms.length) (N M cap : ℕ) (hN : N = 2 ^ ms.count true)
     (hM : M = 2 ^ (ms.map not).count true) :
     tab_Rep ((List.range' 0 N).foldl (fun b _ ↦ (b.1.push ((List.range' 0 M).foldl
       (fun b' _ ↦ (b'.1 + t.getD (b.2 ||| b'.2) 0, ((b'.2 ||| marg_val ms) + 1) &&& marg_val (ms.map not)))
-        ((0 : FE), 0)).1, ((b.2 ||| marg_val (ms.map not)) + 1) &&& marg_val ms))
+        ((0 : 𝔽), 0)).1, ((b.2 ||| marg_val (ms.map not)) + 1) &&& marg_val ms))
       (Array.mkEmpty cap, 0)).1 (marg_filt ms L) := by
   subst hN hM
   have hout := marg_outer (fun x ↦ ((List.range' 0 (2 ^ (ms.map not).count true)).foldl
       (fun b' _ ↦ (b'.1 + t.getD (x ||| b'.2) 0, ((b'.2 ||| marg_val ms) + 1) &&& marg_val (ms.map not)))
-        ((0 : FE), 0)).1) (fun x ↦ ((x ||| marg_val (ms.map not)) + 1) &&& marg_val ms) (marg_dep ms)
+        ((0 : 𝔽), 0)).1) (fun x ↦ ((x ||| marg_val (ms.map not)) + 1) &&& marg_val ms) (marg_dep ms)
     (2 ^ ms.count true) (fun u hu ↦ marg_succ ms u hu) (2 ^ ms.count true) 0 0 (Array.mkEmpty cap) (by (clear * -; omega))
-  have he : (Array.mkEmpty cap : Array FE).toList = [] := rfl
+  have he : (Array.mkEmpty cap : Array 𝔽).toList = [] := rfl
   rw [marg_dep_zero, he, List.nil_append] at hout
   have hfl := marg_filt_length ms L hl
   refine ⟨?_, fun v hv ↦ ?_⟩
@@ -967,9 +1141,9 @@ theorem marg_kept (bits : List ℕ) (b0 c K : ℕ) (hc : c = b0) (hb : ∀ b ∈
     have := hb b hb'
     (clear * - hi he this; omega)
 
-theorem tab_margTab_rep (r : Array FE) (lo n b0 : ℕ) (bs : List ℕ) (hs : (b0 :: bs).Pairwise (· < ·))
+theorem tab_margTab_rep (r : Array 𝔽) (lo n b0 : ℕ) (bs : List ℕ) (hs : (b0 :: bs).Pairwise (· < ·))
     (hb : ∀ b ∈ b0 :: bs, lo ≤ b ∧ b < lo + n) :
-    tab_Rep (margTab (eqLevels r lo n) lo n (b0 :: bs)) ((b0 :: bs).map fun b ↦ r.getD b 0) := by
+    tab_Rep (margTabG (eqLevelsG r lo n) lo n (b0 :: bs)) ((b0 :: bs).map fun b ↦ r.getD b 0) := by
   have h0 := hb b0 List.mem_cons_self
   have hk : lo + (b0 - lo) = b0 := by (clear * - h0; omega)
   have hb' : ∀ b ∈ b0 :: bs, b0 ≤ b ∧ b < b0 + (n - (b0 - lo)) := fun b hb'' ↦ by
@@ -997,14 +1171,14 @@ theorem tab_margTab_rep (r : Array FE) (lo n b0 : ℕ) (bs : List ℕ) (hs : (b0
     conv_lhs => rw [← hbits]
     rw [List.map_map]
     rfl
-  unfold margTab
+  unfold margTabG
   simp only [Id.run, List.head?_cons, Std.Legacy.Range.forIn_eq_forIn_range', List.forIn_pure_yield_eq_foldl,
     pure_bind, Std.Legacy.Range.size, Nat.sub_zero, Nat.add_sub_cancel, Nat.div_one, Nat.sub_sub]
   rw [hkept, hmiss, hres]
   exact marg_body _ ms _ hrep (by simp [hL, hlen]) _ _ _ (by rw [hcnt]) (by rw [Nat.sub_add_eq, ← hcnt, ← hlen]; congr 1; (clear * - hlen hcnt hcn; omega))
 
 /-- B1-K's `margTab` (one `sumOut` per missing bit), verbatim. -/
-def marg_margTab0 (lv : Array (Array FE)) (lo n : ℕ) (bits : List ℕ) : Array FE := Id.run do
+def marg_margTab0 (lv : Array (Array 𝔽)) (lo n : ℕ) (bits : List ℕ) : Array 𝔽 := Id.run do
   match bits.head? with
   | none => return #[1]
   | some b0 =>
@@ -1016,9 +1190,9 @@ def marg_margTab0 (lv : Array (Array FE)) (lo n : ℕ) (bits : List ℕ) : Array
     return t
 
 /-- B1-K's proof of `tab_margTab_rep`, for `marg_margTab0`. -/
-theorem marg_margTab0_rep (r : Array FE) (lo n b0 : ℕ) (bs : List ℕ) (hs : (b0 :: bs).Pairwise (· < ·))
+theorem marg_margTab0_rep (r : Array 𝔽) (lo n b0 : ℕ) (bs : List ℕ) (hs : (b0 :: bs).Pairwise (· < ·))
     (hb : ∀ b ∈ b0 :: bs, lo ≤ b ∧ b < lo + n) :
-    tab_Rep (marg_margTab0 (eqLevels r lo n) lo n (b0 :: bs)) ((b0 :: bs).map fun b ↦ r.getD b 0) := by
+    tab_Rep (marg_margTab0 (eqLevelsG r lo n) lo n (b0 :: bs)) ((b0 :: bs).map fun b ↦ r.getD b 0) := by
   unfold marg_margTab0
   simp only [Id.run, List.head?_cons, List.forIn_pure_yield_eq_foldl, pure_bind]
   have h0 := hb b0 List.mem_cons_self
@@ -1043,29 +1217,29 @@ theorem marg_margTab0_rep (r : Array FE) (lo n b0 : ℕ) (bs : List ℕ) (hs : (
   rw [heq]
   exact this
 
-theorem marg_rep_unique (t t' : Array FE) (L : List FE) (h : tab_Rep t L) (h' : tab_Rep t' L) : t = t' := by
+theorem marg_rep_unique (t t' : Array 𝔽) (L : List 𝔽) (h : tab_Rep t L) (h' : tab_Rep t' L) : t = t' := by
   apply Array.ext (h.1.trans h'.1.symm)
   intro i hi hi'
   have e := (h.2 i (h.1 ▸ hi)).trans (h'.2 i (h.1 ▸ hi)).symm
   simpa [Array.getD_eq_getD_getElem?, Array.getElem?_eq_getElem hi, Array.getElem?_eq_getElem hi'] using e
 
 /-- **The one-pass `margTab` (B1-K2) equals B1-K's** on the level tables, for sorted bits inside the range. -/
-theorem marg_margTab_eq (r : Array FE) (lo n : ℕ) (bits : List ℕ) (hs : bits.Pairwise (· < ·))
+theorem marg_margTab_eq (r : Array 𝔽) (lo n : ℕ) (bits : List ℕ) (hs : bits.Pairwise (· < ·))
     (hb : ∀ b ∈ bits, lo ≤ b ∧ b < lo + n) :
-    margTab (eqLevels r lo n) lo n bits = marg_margTab0 (eqLevels r lo n) lo n bits := by
+    margTabG (eqLevelsG r lo n) lo n bits = marg_margTab0 (eqLevelsG r lo n) lo n bits := by
   cases bits with
   | nil => rfl
   | cons b0 bs =>
     exact marg_rep_unique _ _ _ (tab_margTab_rep r lo n b0 bs hs hb) (marg_margTab0_rep r lo n b0 bs hs hb)
 
-theorem tab_subTab_get (r : Array FE) (lo n : ℕ) (bits : List ℕ) (hs : bits.Pairwise (· < ·))
+theorem tab_subTab_get (r : Array 𝔽) (lo n : ℕ) (bits : List ℕ) (hs : bits.Pairwise (· < ·))
     (hb : ∀ b ∈ bits, lo ≤ b ∧ b < lo + n) (v : ℕ) (hv : v < 2 ^ bits.length) :
-    (subTab r (eqLevels r lo n) lo n bits).getD v 0 = eqW (bits.map fun b ↦ r.getD b 0) v := by
+    (subTabG r (eqLevelsG r lo n) lo n bits).getD v 0 = eqWG (bits.map fun b ↦ r.getD b 0) v := by
   cases bits with
-  | nil => simp at hv; subst hv; simp [subTab, eqW]
+  | nil => simp at hv; subst hv; simp [subTabG, eqWG]
   | cons b0 bs =>
     have h0 := hb b0 List.mem_cons_self
-    simp only [subTab, List.head?_cons]
+    simp only [subTabG, List.head?_cons]
     split_ifs with h1 h2
     · have h1' := beq_iff_eq.1 h1
       have hlen : (b0 :: bs).length = n - (b0 - lo) := by rw [h1']; simp
@@ -1078,11 +1252,11 @@ theorem tab_subTab_get (r : Array FE) (lo n : ℕ) (bits : List ℕ) (hs : bits.
     · exact eqTabB_get r _ v hv
     · exact (tab_margTab_rep r lo n b0 bs hs hb).2 v (by simpa using hv)
 
-theorem tab_kapTab_get (κ : Array FE) (m : ℕ) (hm : m < 16) :
-    (kapTab κ).getD m 0 = ((List.range 4).map fun o ↦ if m.testBit o then eqW (sub κ 0 2) o else 0).sum := by
-  simp only [kapTab, Array.getD_eq_getD_getElem?, Array.getElem?_map, Array.getElem?_range, hm, ↓reduceIte,
+theorem tab_kapTab_get (κ : Array 𝔽) (m : ℕ) (hm : m < 16) :
+    (kapTabG κ).getD m 0 = ((List.range 4).map fun o ↦ if m.testBit o then eqWG (sub κ 0 2) o else 0).sum := by
+  simp only [kapTabG, Array.getD_eq_getD_getElem?, Array.getElem?_map, Array.getElem?_range, hm, ↓reduceIte,
     Option.map_some, Option.getD_some]
-  have e : ∀ o < 4, (eqTab κ 0 2)[o]?.getD 0 = eqW (sub κ 0 2) o := fun o ho ↦ by
+  have e : ∀ o < 4, (eqTabG κ 0 2)[o]?.getD 0 = eqWG (sub κ 0 2) o := fun o ho ↦ by
     rw [← Array.getD_eq_getD_getElem?]; exact eqTab_get κ 0 2 o (by simpa using ho)
   simp only [List.range_succ, List.range_zero, List.nil_append, List.cons_append, List.foldl_cons, List.foldl_nil, List.map_cons,
     List.map_nil, List.sum_cons, List.sum_nil, e 0 (by (clear * -; omega)), e 1 (by (clear * -; omega)), e 2 (by (clear * -; omega)), e 3 (by (clear * -; omega))]
@@ -1110,26 +1284,47 @@ def tabsAt (P : Pt) (rs : Array TRec) : Array (Array FE) :=
     | .prod rows => rows.map (prodKeys T0)
     | _ => T0.getD i #[]
 
-theorem tab_tabsAt_one (P : Pt) (rs : Array TRec) (i : ℕ) (hi : i < rs.size) (h : rs[i] = .one) :
-    (tabsAt P rs).getD i #[] = #[1] := by
-  simp [tabsAt, Array.getD_eq_getD_getElem?, Array.getElem?_mapIdx, Array.getElem?_eq_getElem hi, h, TRec.eval]
+section L1
+variable [KRing 𝔽] [BEq 𝔽] [LawfulBEq 𝔽]
 
-theorem tab_tabsAt_kap (P : Pt) (rs : Array TRec) (i : ℕ) (hi : i < rs.size) (h : rs[i] = .kap) :
-    (tabsAt P rs).getD i #[] = kapTab P.kap := by
-  simp [tabsAt, Array.getD_eq_getD_getElem?, Array.getElem?_mapIdx, Array.getElem?_eq_getElem hi, h, TRec.eval]
+/-- The proof-side twin of `tabsAt` over a value ring (S2GT-W). -/
+def tabsAtG (P : PtG 𝔽) (rs : Array TRec) : Array (Array 𝔽) :=
+  let lx0 := eqLevelsG P.rx 0 10
+  let lx1 := eqLevelsG P.rx 10 (xVars - 10)
+  let ly0 := eqLevelsG P.ry 0 11
+  let ly1 := eqLevelsG P.ry 11 (yVars - 11)
+  let T0 := rs.map fun r ↦ match r with
+    | .eqx bits =>
+      let (lo, n) := groupOf xVars 10 bits
+      subTabG P.rx (if lo == 0 then lx0 else lx1) lo n bits
+    | .eqy bits =>
+      let (lo, n) := groupOf yVars 11 bits
+      subTabG P.ry (if lo == 0 then ly0 else ly1) lo n bits
+    | r => TRec.evalG P r
+  rs.mapIdx fun i r ↦ match r with
+    | .prod rows => rows.map (prodKeysG T0)
+    | _ => T0.getD i #[]
 
-theorem tab_tabsAt_ker (P : Pt) (rs : Array TRec) (i : ℕ) (hi : i < rs.size) (ks : Array (List KF))
+theorem tab_tabsAt_one (P : PtG 𝔽) (rs : Array TRec) (i : ℕ) (hi : i < rs.size) (h : rs[i] = .one) :
+    (tabsAtG P rs).getD i #[] = #[1] := by
+  simp [tabsAtG, Array.getD_eq_getD_getElem?, Array.getElem?_mapIdx, Array.getElem?_eq_getElem hi, h, TRec.evalG]
+
+theorem tab_tabsAt_kap (P : PtG 𝔽) (rs : Array TRec) (i : ℕ) (hi : i < rs.size) (h : rs[i] = .kap) :
+    (tabsAtG P rs).getD i #[] = kapTabG P.kap := by
+  simp [tabsAtG, Array.getD_eq_getD_getElem?, Array.getElem?_mapIdx, Array.getElem?_eq_getElem hi, h, TRec.evalG]
+
+theorem tab_tabsAt_ker (P : PtG 𝔽) (rs : Array TRec) (i : ℕ) (hi : i < rs.size) (ks : Array (List KF))
     (h : rs[i] = .ker ks) :
-    (tabsAt P rs).getD i #[] = ks.map (kerVal P) := by
-  simp [tabsAt, Array.getD_eq_getD_getElem?, Array.getElem?_mapIdx, Array.getElem?_eq_getElem hi, h, TRec.eval]
+    (tabsAtG P rs).getD i #[] = ks.map (kerValG P) := by
+  simp [tabsAtG, Array.getD_eq_getD_getElem?, Array.getElem?_mapIdx, Array.getElem?_eq_getElem hi, h, TRec.evalG]
 
-theorem tab_tabsAt_eqx (P : Pt) (rs : Array TRec) (i : ℕ) (hi : i < rs.size) (bits : List ℕ) (h : rs[i] = .eqx bits)
+theorem tab_tabsAt_eqx (P : PtG 𝔽) (rs : Array TRec) (i : ℕ) (hi : i < rs.size) (bits : List ℕ) (h : rs[i] = .eqx bits)
     (hs : bits.Pairwise (· < ·)) (hg : (∀ b ∈ bits, b < 10) ∨ (∀ b ∈ bits, 10 ≤ b ∧ b < xVars))
     (v : ℕ) (hv : v < 2 ^ bits.length) :
-    ((tabsAt P rs).getD i #[]).getD v 0 = eqW (bits.map fun b ↦ P.rx.getD b 0) v := by
-  have e : (tabsAt P rs).getD i #[] = (let (lo, n) := groupOf xVars 10 bits
-      subTab P.rx (if lo == 0 then eqLevels P.rx 0 10 else eqLevels P.rx 10 (xVars - 10)) lo n bits) := by
-    simp [tabsAt, Array.getD_eq_getD_getElem?, Array.getElem?_mapIdx, Array.getElem?_eq_getElem hi, h]
+    ((tabsAtG P rs).getD i #[]).getD v 0 = eqWG (bits.map fun b ↦ P.rx.getD b 0) v := by
+  have e : (tabsAtG P rs).getD i #[] = (let (lo, n) := groupOf xVars 10 bits
+      subTabG P.rx (if lo == 0 then eqLevelsG P.rx 0 10 else eqLevelsG P.rx 10 (xVars - 10)) lo n bits) := by
+    simp [tabsAtG, Array.getD_eq_getD_getElem?, Array.getElem?_mapIdx, Array.getElem?_eq_getElem hi, h]
   rw [e]
   unfold groupOf
   by_cases hall : bits.all (· < 10) = true
@@ -1145,13 +1340,13 @@ theorem tab_tabsAt_eqx (P : Pt) (rs : Array TRec) (i : ℕ) (hi : i < rs.size) (
     · exact absurd (List.all_eq_true.2 (fun b hb ↦ by simpa using hg b hb)) hall
     · intro b hb; have := hg b hb; omega
 
-theorem tab_tabsAt_eqy (P : Pt) (rs : Array TRec) (i : ℕ) (hi : i < rs.size) (bits : List ℕ) (h : rs[i] = .eqy bits)
+theorem tab_tabsAt_eqy (P : PtG 𝔽) (rs : Array TRec) (i : ℕ) (hi : i < rs.size) (bits : List ℕ) (h : rs[i] = .eqy bits)
     (hs : bits.Pairwise (· < ·)) (hg : (∀ b ∈ bits, b < 11) ∨ (∀ b ∈ bits, 11 ≤ b ∧ b < yVars))
     (v : ℕ) (hv : v < 2 ^ bits.length) :
-    ((tabsAt P rs).getD i #[]).getD v 0 = eqW (bits.map fun b ↦ P.ry.getD b 0) v := by
-  have e : (tabsAt P rs).getD i #[] = (let (lo, n) := groupOf yVars 11 bits
-      subTab P.ry (if lo == 0 then eqLevels P.ry 0 11 else eqLevels P.ry 11 (yVars - 11)) lo n bits) := by
-    simp [tabsAt, Array.getD_eq_getD_getElem?, Array.getElem?_mapIdx, Array.getElem?_eq_getElem hi, h]
+    ((tabsAtG P rs).getD i #[]).getD v 0 = eqWG (bits.map fun b ↦ P.ry.getD b 0) v := by
+  have e : (tabsAtG P rs).getD i #[] = (let (lo, n) := groupOf yVars 11 bits
+      subTabG P.ry (if lo == 0 then eqLevelsG P.ry 0 11 else eqLevelsG P.ry 11 (yVars - 11)) lo n bits) := by
+    simp [tabsAtG, Array.getD_eq_getD_getElem?, Array.getElem?_mapIdx, Array.getElem?_eq_getElem hi, h]
   rw [e]
   unfold groupOf
   by_cases hall : bits.all (· < 11) = true
@@ -1178,7 +1373,7 @@ structure Atom where
   deriving Inhabited
 
 /-- **An atom's value**: `w · Π_λ T[key_λ]`. -/
-def atomVal (T : Array (Array FE)) (a : Atom) : FE := a.keys.foldl (fun acc k ↦ acc * keyVal T k) a.w
+def atomVal (T : Array (Array 𝔽)) (a : Atom) : 𝔽 := a.keys.foldl (fun acc k ↦ acc * keyValG T k) (KRing.ofE a.w)
 
 /-- The end of the run of atoms from `i` (below `hi`) that agree with atom `i` at level `d`. -/
 def runEnd (as : Array Atom) (d i hi : ℕ) : ℕ := Id.run do
@@ -1191,20 +1386,20 @@ def runEnd (as : Array Atom) (d i hi : ℕ) : ℕ := Id.run do
 /-- **The atom sum over `[lo, hi)` from level `d`** (levels `[d, D)`): each maximal run of equal level-`d`
 keys is one product with the run's sum over the deeper levels; at level `D` the weights are summed. A key of
 table `0` multiplies by nothing. -/
-def evalRuns (T : Array (Array FE)) (as : Array Atom) (D : ℕ) : ℕ → ℕ → ℕ → ℕ → FE
+def evalRuns (T : Array (Array 𝔽)) (as : Array Atom) (D : ℕ) : ℕ → ℕ → ℕ → ℕ → 𝔽
   | 0, _, _, _ => 0
   | fuel + 1, d, lo, hi =>
     if d ≥ D then
-      (List.range (hi - lo)).foldl (fun acc i ↦ acc + (as.getD (lo + i) default).w) 0
+      (List.range (hi - lo)).foldl (fun acc i ↦ acc + KRing.ofE (as.getD (lo + i) default).w) 0
     else Id.run do
-      let mut acc : FE := 0
+      let mut acc : 𝔽 := 0
       let mut i := lo
       let mut guard := hi - lo
       while i < hi && guard > 0 do
         let j := runEnd as d i hi
         let k := (as.getD i default).keys.getD d (0, 0)
         let s := evalRuns T as D fuel (d + 1) i j
-        acc := acc + (if k.1 == 0 then s else if s == 1 then keyVal T k else fmul (keyVal T k) s)
+        acc := acc + (if k.1 == 0 then s else if s == 1 then keyValG T k else keyValG T k * s)
         i := j
         guard := guard - 1
       return acc
@@ -1288,11 +1483,11 @@ theorem runs_runEnd (as : Array Atom) (d i hi : ℕ) :
     rw [show t = i by omega]
 
 /-- An atom's value from level `d` on. -/
-def runs_valFrom (T : Array (Array FE)) (d : ℕ) (a : Atom) : FE :=
-  (a.keys.toList.drop d).foldl (fun acc k ↦ acc * keyVal T k) a.w
+def runs_valFrom (T : Array (Array 𝔽)) (d : ℕ) (a : Atom) : 𝔽 :=
+  (a.keys.toList.drop d).foldl (fun acc k ↦ acc * keyValG T k) (KRing.ofE a.w)
 
-theorem runs_foldl_mul (T : Array (Array FE)) (l : List (ℕ × ℕ)) (c x : FE) :
-    l.foldl (fun acc k ↦ acc * keyVal T k) (c * x) = l.foldl (fun acc k ↦ acc * keyVal T k) c * x := by
+theorem runs_foldl_mul (T : Array (Array 𝔽)) (l : List (ℕ × ℕ)) (c x : 𝔽) :
+    l.foldl (fun acc k ↦ acc * keyValG T k) (c * x) = l.foldl (fun acc k ↦ acc * keyValG T k) c * x := by
   induction l generalizing c with
   | nil => rfl
   | cons k l ih =>
@@ -1305,8 +1500,8 @@ theorem runs_getD_toList (a : Atom) (d : ℕ) (h : d < a.keys.toList.length) :
   simp only [Array.length_toList] at h
   simp [h]
 
-theorem runs_valFrom_succ (T : Array (Array FE)) (d : ℕ) (a : Atom) (h : d < a.keys.size) :
-    runs_valFrom T d a = keyVal T (a.keys.getD d (0, 0)) * runs_valFrom T (d + 1) a := by
+theorem runs_valFrom_succ (T : Array (Array 𝔽)) (d : ℕ) (a : Atom) (h : d < a.keys.size) :
+    runs_valFrom T d a = keyValG T (a.keys.getD d (0, 0)) * runs_valFrom T (d + 1) a := by
   have h' : d < a.keys.toList.length := by simpa using h
   unfold runs_valFrom
   rw [List.drop_eq_getElem_cons h', List.foldl_cons, runs_foldl_mul, mul_comm, runs_getD_toList a d h']
@@ -1317,8 +1512,8 @@ theorem runs_key_mem (a : Atom) (d : ℕ) (h : d < a.keys.size) :
   rw [List.drop_eq_getElem_cons h', runs_getD_toList a d h']
   exact List.mem_cons_self
 
-theorem runs_valFrom_ge (T : Array (Array FE)) (d : ℕ) (a : Atom) (h : a.keys.size ≤ d) :
-    runs_valFrom T d a = a.w := by
+theorem runs_valFrom_ge (T : Array (Array 𝔽)) (d : ℕ) (a : Atom) (h : a.keys.size ≤ d) :
+    runs_valFrom T d a = KRing.ofE a.w := by
   unfold runs_valFrom
   rw [List.drop_eq_nil_of_le (by simpa using h)]
   rfl
@@ -1326,13 +1521,13 @@ theorem runs_valFrom_ge (T : Array (Array FE)) (d : ℕ) (a : Atom) (h : a.keys.
 theorem runs_getD_mem (as : Array Atom) (t : ℕ) (h : t < as.size) : as.getD t default ∈ as := by
   simp [h]
 
-theorem runs_foldl_add (l : List ℕ) (g : ℕ → FE) (c : FE) :
+theorem runs_foldl_add (l : List ℕ) (g : ℕ → 𝔽) (c : 𝔽) :
     l.foldl (fun acc i ↦ acc + g i) c = c + (l.map g).sum := by
   induction l generalizing c with
   | nil => simp
   | cons x l ih => simp only [List.foldl_cons, ih, List.map_cons, List.sum_cons, add_assoc]
 
-theorem runs_sum_split (f : ℕ → FE) (i j hi : ℕ) (hij : i ≤ j) (hjh : j ≤ hi) :
+theorem runs_sum_split (f : ℕ → 𝔽) (i j hi : ℕ) (hij : i ≤ j) (hjh : j ≤ hi) :
     ((List.range (hi - i)).map fun t ↦ f (i + t)).sum =
       ((List.range (j - i)).map fun t ↦ f (i + t)).sum + ((List.range (hi - j)).map fun t ↦ f (j + t)).sum := by
   obtain ⟨a, rfl⟩ := Nat.exists_eq_add_of_le hij
@@ -1344,12 +1539,12 @@ theorem runs_sum_split (f : ℕ → FE) (i j hi : ℕ) (hij : i ≤ j) (hjh : j 
   simp only [Function.comp, Nat.add_assoc]
 
 /-- On a run of equal keys at level `d`, the sum from level `d` is the key times the sum from `d + 1`. -/
-theorem runs_sum_run (T : Array (Array FE)) (as : Array Atom) (D d i j : ℕ) (hD : ∀ a ∈ as, a.keys.size = D)
+theorem runs_sum_run (T : Array (Array 𝔽)) (as : Array Atom) (D d i j : ℕ) (hD : ∀ a ∈ as, a.keys.size = D)
     (hd : d < D) (hj : j ≤ as.size)
     (hk : ∀ t, i ≤ t → t < j →
       (as.getD t default).keys.getD d (0, 0) = (as.getD i default).keys.getD d (0, 0)) :
     ((List.range (j - i)).map fun t ↦ runs_valFrom T d (as.getD (i + t) default)).sum =
-      keyVal T ((as.getD i default).keys.getD d (0, 0)) *
+      keyValG T ((as.getD i default).keys.getD d (0, 0)) *
         ((List.range (j - i)).map fun t ↦ runs_valFrom T (d + 1) (as.getD (i + t) default)).sum := by
   rw [← List.sum_map_mul_left]
   refine congrArg List.sum (List.map_congr_left fun t ht ↦ ?_)
@@ -1357,8 +1552,8 @@ theorem runs_sum_run (T : Array (Array FE)) (as : Array Atom) (D d i j : ℕ) (h
   have hm := runs_getD_mem as (i + t) (by (clear * - hj ht; omega))
   rw [runs_valFrom_succ T d _ (by rw [hD _ hm]; exact hd), hk (i + t) (by (clear * -; omega)) (by (clear * - ht; omega))]
 
-theorem runs_evalRuns_sum (T : Array (Array FE)) (as : Array Atom) (D fuel d lo hi : ℕ)
-    (hD : ∀ a ∈ as, a.keys.size = D) (hT : keyVal T (0, 0) = 1)
+theorem runs_evalRuns_sum (T : Array (Array 𝔽)) (as : Array Atom) (D fuel d lo hi : ℕ)
+    (hD : ∀ a ∈ as, a.keys.size = D) (hT : keyValG T (0, 0) = 1)
     (h0 : ∀ a ∈ as, ∀ k ∈ a.keys.toList.drop d, k.1 = 0 → k.2 = 0)
     (hfuel : D - d < fuel) (hhi : hi ≤ as.size) :
     evalRuns T as D fuel d lo hi =
@@ -1379,11 +1574,11 @@ theorem runs_evalRuns_sum (T : Array (Array FE)) (as : Array Atom) (D fuel d lo 
         rw [← List.drop_drop] at hk
         exact List.drop_subset _ _ hk
       refine runs_loop _ _
-        (fun s : FE × ℕ × ℕ ↦ s.1 + ((List.range (hi - s.2.1)).map fun i ↦ runs_valFrom T d (as.getD (s.2.1 + i) default)).sum =
+        (fun s : 𝔽 × ℕ × ℕ ↦ s.1 + ((List.range (hi - s.2.1)).map fun i ↦ runs_valFrom T d (as.getD (s.2.1 + i) default)).sum =
             ((List.range (hi - lo)).map fun i ↦ runs_valFrom T d (as.getD (lo + i) default)).sum ∧
           hi - s.2.1 ≤ s.2.2)
-        (fun s : FE × ℕ × ℕ ↦ s.1 = ((List.range (hi - lo)).map fun i ↦ runs_valFrom T d (as.getD (lo + i) default)).sum)
-        (fun s : FE × ℕ × ℕ ↦ s.2.2) ?_ ?_ _ ⟨zero_add _, le_rfl⟩
+        (fun s : 𝔽 × ℕ × ℕ ↦ s.1 = ((List.range (hi - lo)).map fun i ↦ runs_valFrom T d (as.getD (lo + i) default)).sum)
+        (fun s : 𝔽 × ℕ × ℕ ↦ s.2.2) ?_ ?_ _ ⟨zero_add _, le_rfl⟩
       · rintro ⟨acc, i, g⟩ ⟨h1, h2⟩ hc
         dsimp only at h1 h2 hc ⊢
         simp only [Bool.and_eq_true, decide_eq_true_eq] at hc
@@ -1413,14 +1608,14 @@ theorem runs_evalRuns_sum (T : Array (Array FE)) (as : Array Atom) (D fuel d lo 
           rw [hT, one_mul]
         · rw [ite_eq_right ha]
           by_cases hb : (e == 1) = true
-          · rw [ite_eq_left hb, runs_FE_beq hb, mul_one]
-          · rw [ite_eq_right hb, runs_fmul, mul_comm]
+          · rw [ite_eq_left hb, beq_iff_eq.1 hb, mul_one]
+          · rw [ite_eq_right hb]
       · rintro ⟨acc, i, g⟩ ⟨h1, h2⟩ hc
         dsimp only at h1 h2 hc ⊢
         simp only [Bool.and_eq_false_iff, decide_eq_false_iff_not] at hc
         rw [← h1, show hi - i = 0 by (clear * - h2 hc; omega), List.range_zero, List.map_nil, List.sum_nil, add_zero]
 
-theorem runs_range_map (as : Array Atom) (g : Atom → FE) :
+theorem runs_range_map (as : Array Atom) (g : Atom → 𝔽) :
     (List.range (as.size - 0)).map (fun i ↦ g (as.getD (0 + i) default)) = as.toList.map g := by
   apply List.ext_getElem
   · simp
@@ -1429,8 +1624,8 @@ theorem runs_range_map (as : Array Atom) (g : Atom → FE) :
     simp [h2]
 
 /-- **The atom sum is the sum of the atoms' values** (any order; sorting only shares the products). Owner L-A. -/
-theorem evalRuns_eq (T : Array (Array FE)) (as : Array Atom) (D : ℕ)
-    (hD : ∀ a ∈ as, a.keys.size = D) (hT : keyVal T (0, 0) = 1)
+theorem evalRuns_eq (T : Array (Array 𝔽)) (as : Array Atom) (D : ℕ)
+    (hD : ∀ a ∈ as, a.keys.size = D) (hT : keyValG T (0, 0) = 1)
     (h0 : ∀ a ∈ as, ∀ k ∈ a.keys, k.1 = 0 → k.2 = 0) :
     evalRuns T as D (D + 1) 0 0 as.size = (as.toList.map (atomVal T)).sum := by
   rw [runs_evalRuns_sum T as D (D + 1) 0 0 as.size hD hT
@@ -1514,6 +1709,33 @@ def runCode (T : Array (Array FE)) (c : Code) : FE × Array (ℕ × FE) := Id.ru
           if s == 1 then e else fmul e s)
   return (top, em)
 
+/-- The proof-side twin of `runCode` over a value ring (S2GT-W). -/
+def runCodeG (T : Array (Array 𝔽)) (c : Code) : 𝔽 × Array (ℕ × 𝔽) := Id.run do
+  -- `top`: the open sum; `st`: the enclosing ones
+  let mut top : 𝔽 := 0
+  let mut st : Array 𝔽 := #[]
+  let mut em : Array (ℕ × 𝔽) := #[]
+  for k in [0:c.op.size] do
+    let o := c.op.getD k 0
+    if o == 2 then
+      let v := (T.getD (c.ta.getD k 0) #[]).getD (c.ix.getD k 0) 0
+      let w := c.wi.getD k 0
+      top := top + (if w == 0 then v else v * KRing.ofE (c.ws.getD w 1))
+    else if o == 0 then
+      st := st.push top
+      top := 0
+    else
+      let s := top
+      top := st.back?.getD 0
+      st := st.pop
+      if o == 3 then em := em.push (c.ix.getD k 0, s)
+      else
+        let t := c.ta.getD k 0
+        top := top + (if t == 0 then s else
+          let e := (T.getD t #[]).getD (c.ix.getD k 0) 0
+          if s == 1 then e else e * s)
+  return (top, em)
+
 /-- The code of an atom sum. -/
 def atomCode (as : Array Atom) (D : ℕ) : Code := genCode as D (D + 1) 0 0 as.size ⟨#[], #[], #[], #[], #[1]⟩
 
@@ -1545,6 +1767,10 @@ theorem code_beq_iff (a b : FE) : (a == b) = true ↔ a = b := by
   change (a0 == b0 && a1 == b1 && a2 == b2) = true ↔ _
   simp only [Bool.and_eq_true, beq_iff_eq, FE.mk.injEq, and_assoc]
 
+instance k_lawfulBEq_FE : LawfulBEq FE where
+  eq_of_beq h := (code_beq_iff _ _).1 h
+  rfl {a} := (code_beq_iff a a).2 rfl
+
 theorem code_fmul (a b : FE) : fmul a b = a * b := by
   obtain ⟨b0, b1, b2⟩ := b
   unfold fmul
@@ -1568,13 +1794,12 @@ theorem code_fmul (a b : FE) : fmul a b = a * b := by
     rw [this]; ring
   · rfl
 
-theorem code_term (T : Array (Array FE)) (k : ℕ × ℕ) (s : FE) (hk : k.1 = 0 → keyVal T k = 1) :
-    (if (k.1 == 0) = true then s else if (s == 1) = true then keyVal T k else fmul (keyVal T k) s) =
-      keyVal T k * s := by
-  rw [code_fmul]
+theorem code_term (T : Array (Array 𝔽)) (k : ℕ × ℕ) (s : 𝔽) (hk : k.1 = 0 → keyValG T k = 1) :
+    (if (k.1 == 0) = true then s else if (s == 1) = true then keyValG T k else keyValG T k * s) =
+      keyValG T k * s := by
   split_ifs with h1 h2
   · rw [hk (by simpa using h1), one_mul]
-  · rw [(code_beq_iff _ _).1 h2, mul_one]
+  · rw [beq_iff_eq.1 h2, mul_one]
   · rfl
 
 /-! ## Loops -/
@@ -1607,11 +1832,11 @@ theorem code_loop {X : Type} (hi : ℕ) (f : X → ℕ → X) (n : ℕ → ℕ)
     · simp [h, code_wl]
 
 /-- A guarded sum loop. -/
-def code_ws (hi : ℕ) (t : ℕ → FE) (n : ℕ → ℕ) : ℕ → ℕ → FE
+def code_ws (hi : ℕ) (t : ℕ → 𝔽) (n : ℕ → ℕ) : ℕ → ℕ → 𝔽
   | 0, _ => 0
   | g + 1, i => if i < hi then t i + code_ws hi t n g (n i) else 0
 
-theorem code_wl_sum (hi : ℕ) (t : ℕ → FE) (n : ℕ → ℕ) :
+theorem code_wl_sum (hi : ℕ) (t : ℕ → 𝔽) (n : ℕ → ℕ) :
     ∀ g a i, code_wl hi (fun acc i ↦ acc + t i) n g a i = a + code_ws hi t n g i := by
   intro g
   induction g with
@@ -1675,22 +1900,22 @@ def code_instrs (c : Code) : List (ℕ × ℕ × ℕ × ℕ) :=
   (List.range c.op.size).map fun k ↦ (c.op.getD k 0, c.ta.getD k 0, c.ix.getD k 0, c.wi.getD k 0)
 
 /-- One instruction of `runCode` (weights `W`). -/
-def code_step (T : Array (Array FE)) (W : Array FE) (s : FE × Array FE × Array (ℕ × FE))
-    (q : ℕ × ℕ × ℕ × ℕ) : FE × Array FE × Array (ℕ × FE) :=
+def code_step (T : Array (Array 𝔽)) (W : Array FE) (s : 𝔽 × Array 𝔽 × Array (ℕ × 𝔽))
+    (q : ℕ × ℕ × ℕ × ℕ) : 𝔽 × Array 𝔽 × Array (ℕ × 𝔽) :=
   if q.1 == 2 then
     (s.1 + if q.2.2.2 == 0 then (T.getD q.2.1 #[]).getD q.2.2.1 0
-      else fmul ((T.getD q.2.1 #[]).getD q.2.2.1 0) (W.getD q.2.2.2 1), s.2.1, s.2.2)
+      else (T.getD q.2.1 #[]).getD q.2.2.1 0 * KRing.ofE (W.getD q.2.2.2 1), s.2.1, s.2.2)
   else if q.1 == 0 then (0, s.2.1.push s.1, s.2.2)
   else if q.1 == 3 then (s.2.1.back?.getD 0, s.2.1.pop, s.2.2.push (q.2.2.1, s.1))
   else
     (s.2.1.back?.getD 0 + if q.2.1 == 0 then s.1 else
-      if s.1 == 1 then (T.getD q.2.1 #[]).getD q.2.2.1 0 else fmul ((T.getD q.2.1 #[]).getD q.2.2.1 0) s.1,
+      if s.1 == 1 then (T.getD q.2.1 #[]).getD q.2.2.1 0 else (T.getD q.2.1 #[]).getD q.2.2.1 0 * s.1,
       s.2.1.pop, s.2.2)
 
-theorem code_runCode (T : Array (Array FE)) (c : Code) :
-    runCode T c = (((code_instrs c).foldl (code_step T c.ws) (0, #[], #[])).1,
+theorem code_runCode (T : Array (Array 𝔽)) (c : Code) :
+    runCodeG T c = (((code_instrs c).foldl (code_step T c.ws) (0, #[], #[])).1,
       ((code_instrs c).foldl (code_step T c.ws) (0, #[], #[])).2.2) := by
-  unfold runCode
+  unfold runCodeG
   simp only [Id.run]
   rw [Std.Legacy.Range.forIn_eq_forIn_range', code_forIn_list _ _ _
     (fun s k ↦ code_step T c.ws s (c.op.getD k 0, c.ta.getD k 0, c.ix.getD k 0, c.wi.getD k 0))
@@ -1728,14 +1953,14 @@ theorem code_emit (c : Code) (o t i w : ℕ) (hc : code_Al c) :
 /-! ## Appended code blocks -/
 
 /-- `c'` is `c` with a block appended that adds `E` to the open sum (weights may be appended too). -/
-def code_Spec (T : Array (Array FE)) (c c' : Code) (E : FE) : Prop :=
+def code_Spec (T : Array (Array 𝔽)) (c c' : Code) (E : 𝔽) : Prop :=
   code_Al c' ∧ (∃ R, c'.ws = c.ws ++ R) ∧ ∃ L, code_instrs c' = code_instrs c ++ L ∧
     ∀ (R : Array FE) top st em, L.foldl (code_step T (c'.ws ++ R)) (top, st, em) = (top + E, st, em)
 
-theorem code_Spec_zero (T : Array (Array FE)) (c : Code) (hc : code_Al c) : code_Spec T c c 0 :=
+theorem code_Spec_zero (T : Array (Array 𝔽)) (c : Code) (hc : code_Al c) : code_Spec T c c 0 :=
   ⟨hc, ⟨#[], by simp⟩, [], by simp, by simp⟩
 
-theorem code_Spec_trans (T : Array (Array FE)) (c c1 c2 : Code) (E1 E2 : FE)
+theorem code_Spec_trans (T : Array (Array 𝔽)) (c c1 c2 : Code) (E1 E2 : 𝔽)
     (h1 : code_Spec T c c1 E1) (h2 : code_Spec T c1 c2 E2) : code_Spec T c c2 (E1 + E2) := by
   obtain ⟨-, ⟨R1, hR1⟩, L1, hL1, hf1⟩ := h1
   obtain ⟨hA, ⟨R2, hR2⟩, L2, hL2, hf2⟩ := h2
@@ -1751,30 +1976,30 @@ def code_leaf (c : Code) (k : ℕ × ℕ) (w : FE) : Code :=
     if w == 1 then c.emit 2 k.1 k.2 0 else { c.emit 2 k.1 k.2 c.ws.size with ws := c.ws.push w }
   else c
 
-theorem code_Spec_leaf (T : Array (Array FE)) (c : Code) (k : ℕ × ℕ) (w : FE) (hc : code_Al c)
-    (hw : 0 < c.ws.size) : code_Spec T c (code_leaf c k w) (keyVal T k * w) := by
+theorem code_Spec_leaf (T : Array (Array 𝔽)) (c : Code) (k : ℕ × ℕ) (w : FE) (hc : code_Al c)
+    (hw : 0 < c.ws.size) : code_Spec T c (code_leaf c k w) (keyValG T k * KRing.ofE w) := by
   obtain ⟨hA, hI, hW⟩ := code_emit c 2 k.1 k.2 0 hc
   obtain ⟨hA', hI', hW'⟩ := code_emit c 2 k.1 k.2 c.ws.size hc
   unfold code_leaf
   split_ifs with h0 h1
-  · rw [(code_beq_iff _ _).1 h1, mul_one]
+  · rw [(code_beq_iff _ _).1 h1, map_one, mul_one]
     refine ⟨hA, ⟨#[], by simp [hW]⟩, _, hI, fun R top st em ↦ ?_⟩
-    simp [code_step, keyVal]
+    simp [code_step, keyValG]
   · refine ⟨hA', ⟨#[w], Array.push_eq_append⟩, _, hI', fun R top st em ↦ ?_⟩
     have hne : (c.ws.size == 0) = false := beq_eq_false_iff_ne.2 (by (clear * - hw; omega))
     have hg : (c.ws.push w ++ R).getD c.ws.size 1 = w := by
       simp [Array.getElem?_append_left]
     simp only [List.foldl_cons, List.foldl_nil, code_step, beq_self_eq_true, ite_true, hne,
-      Bool.false_eq_true, ite_false, hg, code_fmul]
+      Bool.false_eq_true, ite_false, hg]
     rfl
   · have : w = 0 := by simpa [code_beq_iff] using h0
-    rw [this, mul_zero]
+    rw [this, map_zero, mul_zero]
     exact code_Spec_zero T c hc
 
 /-- An open sum, a block adding `E`, and a close by key `(t, ix)` (`t ≠ 0`). -/
-theorem code_Spec_wrap (T : Array (Array FE)) (c c2 : Code) (E : FE) (t ix : ℕ) (hc : code_Al c)
+theorem code_Spec_wrap (T : Array (Array 𝔽)) (c c2 : Code) (E : 𝔽) (t ix : ℕ) (hc : code_Al c)
     (ht : t ≠ 0) (h : code_Spec T (c.emit 0 0 0 0) c2 E) :
-    code_Spec T c (c2.emit 1 t ix 0) (keyVal T (t, ix) * E) := by
+    code_Spec T c (c2.emit 1 t ix 0) (keyValG T (t, ix) * E) := by
   obtain ⟨hA0, hI0, hW0⟩ := code_emit c 0 0 0 0 hc
   obtain ⟨hA2, ⟨R2, hR2⟩, L2, hL2, hf2⟩ := h
   obtain ⟨hA3, hI3, hW3⟩ := code_emit c2 1 t ix 0 hA2
@@ -1831,22 +2056,32 @@ theorem code_genCode_eq (as : Array Atom) (D fuel d lo hi : ℕ) (c : Code) :
   · rw [if_neg h0, if_neg h0]
 
 /-- One iteration of `evalRuns`'s loop. -/
-def code_eTerm (T : Array (Array FE)) (as : Array Atom) (D fuel d hi : ℕ) (i : ℕ) : FE :=
+def code_eTerm (T : Array (Array 𝔽)) (as : Array Atom) (D fuel d hi : ℕ) (i : ℕ) : 𝔽 :=
   if ((as.getD i default).keys.getD d (0, 0)).1 == 0 then evalRuns T as D fuel (d + 1) i (runEnd as d i hi)
   else if evalRuns T as D fuel (d + 1) i (runEnd as d i hi) == 1 then
-    keyVal T ((as.getD i default).keys.getD d (0, 0))
-  else fmul (keyVal T ((as.getD i default).keys.getD d (0, 0))) (evalRuns T as D fuel (d + 1) i (runEnd as d i hi))
+    keyValG T ((as.getD i default).keys.getD d (0, 0))
+  else keyValG T ((as.getD i default).keys.getD d (0, 0)) * evalRuns T as D fuel (d + 1) i (runEnd as d i hi)
 
-theorem code_evalRuns_eq (T : Array (Array FE)) (as : Array Atom) (D fuel d lo hi : ℕ) (h : ¬ d ≥ D) :
+theorem code_evalRuns_eq (T : Array (Array 𝔽)) (as : Array Atom) (D fuel d lo hi : ℕ) (h : ¬ d ≥ D) :
     evalRuns T as D (fuel + 1) d lo hi =
       code_ws hi (code_eTerm T as D fuel d hi) (fun i ↦ runEnd as d i hi) (hi - lo) lo := by
   rw [evalRuns, ite_eq_right_of_eq_false _ _ (eq_false h), ← zero_add (code_ws _ _ _ _ _), ← code_wl_sum]
   exact code_loop _ _ _ _ (fun x i g ↦ rfl) _ _ _
 
+/-- The weights' map of a sum of weights. -/
+theorem runs_ofE_foldl (l : List ℕ) (f : ℕ → FE) :
+    KRing.ofE (l.foldl (fun acc i ↦ acc + f i) 0) = l.foldl (fun acc i ↦ acc + KRing.ofE (f i)) (0 : 𝔽) := by
+  suffices h : ∀ a : FE, KRing.ofE (l.foldl (fun acc i ↦ acc + f i) a) =
+      l.foldl (fun acc i ↦ acc + KRing.ofE (f i)) (KRing.ofE a : 𝔽) by
+    simpa using h 0
+  induction l with
+  | nil => intro a; rfl
+  | cons x l ih => intro a; simp only [List.foldl_cons, ih, map_add]
+
 /-- **`genCode` appends a block adding `evalRuns`.** -/
-theorem code_genCode (T : Array (Array FE)) (as : Array Atom) (D d0 : ℕ) (hT : keyVal T (0, 0) = 1)
+theorem code_genCode (T : Array (Array 𝔽)) (as : Array Atom) (D d0 : ℕ) (hT : keyValG T (0, 0) = 1)
     (hK : ∀ i m, d0 ≤ m → ((as.getD i default).keys.getD m (0, 0)).1 = 0 →
-      keyVal T ((as.getD i default).keys.getD m (0, 0)) = 1)
+      keyValG T ((as.getD i default).keys.getD m (0, 0)) = 1)
     (hZ : ∀ i m, D ≤ m → (as.getD i default).keys.getD m (0, 0) = (0, 0)) :
     ∀ fuel d lo hi (c : Code), d0 ≤ d → D + 1 ≤ d + fuel → code_Al c → 0 < c.ws.size →
       code_Spec T c (genCode as D fuel d lo hi c) (evalRuns T as D fuel d lo hi) := by
@@ -1870,7 +2105,7 @@ theorem code_genCode (T : Array (Array FE)) (as : Array Atom) (D d0 : ℕ) (hT :
         have := code_Spec_leaf T c ((as.getD lo default).keys.getD d (0, 0))
           ((List.range (hi - lo)).foldl (fun acc m ↦ acc + (as.getD (lo + m) default).w) 0) hc hw
         rw [hZ lo d hdD, ← hg]
-        rwa [hZ lo d hdD, hT, one_mul] at this
+        rwa [hZ lo d hdD, hT, one_mul, runs_ofE_foldl] at this
       · rw [show hi - lo = 0 by (clear * - hlo; omega), code_wl]
         simpa using code_Spec_zero T c hc
     · rw [code_evalRuns_eq T as D f d lo hi hdD]
@@ -1885,7 +2120,9 @@ theorem code_genCode (T : Array (Array FE)) (as : Array Atom) (D d0 : ℕ) (hT :
         split_ifs with h1 h2
         · obtain ⟨f', rfl⟩ : ∃ f', f = f' + 1 := ⟨f - 1, by (clear * - hf hdD h1; omega)⟩
           rw [evalRuns, ite_eq_left_of_eq_true _ _ (eq_true h1)]
-          exact code_Spec_leaf T c _ _ hc hw
+          have := code_Spec_leaf T c ((as.getD i default).keys.getD d (0, 0))
+            ((List.range (runEnd as d i hi - i)).foldl (fun acc m ↦ acc + (as.getD (i + m) default).w) 0) hc hw
+          rwa [runs_ofE_foldl] at this
         · rw [hk (by simpa using h2), one_mul]
           exact ih (d + 1) _ _ c (by (clear * - hd; omega)) (by (clear * - hf; omega)) hc hw
         · have ht : ((as.getD i default).keys.getD d (0, 0)).1 ≠ 0 := by simpa using h2
@@ -1935,12 +2172,12 @@ theorem code_hZ (as : Array Atom) (D : ℕ) (hD : ∀ a ∈ as, a.keys.size = D)
 theorem code_atom0 : code_Al (⟨#[], #[], #[], #[], #[1]⟩ : Code) := ⟨rfl, rfl, rfl⟩
 
 /-- **The code computes the atom sum** (statement). Owner L-A. -/
-theorem runCode_atomCode (T : Array (Array FE)) (as : Array Atom) (D : ℕ)
-    (hD : ∀ a ∈ as, a.keys.size = D) (hT : keyVal T (0, 0) = 1)
+theorem runCode_atomCode (T : Array (Array 𝔽)) (as : Array Atom) (D : ℕ)
+    (hD : ∀ a ∈ as, a.keys.size = D) (hT : keyValG T (0, 0) = 1)
     (h0 : ∀ a ∈ as, ∀ k ∈ a.keys, k.1 = 0 → k.2 = 0) :
-    (runCode T (atomCode as D)).1 = evalRuns T as D (D + 1) 0 0 as.size := by
+    (runCodeG T (atomCode as D)).1 = evalRuns T as D (D + 1) 0 0 as.size := by
   have hK : ∀ i m, 0 ≤ m → ((as.getD i default).keys.getD m (0, 0)).1 = 0 →
-      keyVal T ((as.getD i default).keys.getD m (0, 0)) = 1 := by
+      keyValG T ((as.getD i default).keys.getD m (0, 0)) = 1 := by
     intro i m _ h1
     rcases code_key as i m with h | ⟨a, ha, hm, h⟩
     · rw [h]; exact hT
@@ -2442,7 +2679,7 @@ theorem greedy_runsAt_size (as : Array Atom) (L : ℕ) (xs : Array ℕ) : (runsA
   simpa using this
 
 /-- Summing over `ix` is summing over the runs of `runsAt` of the sorted `ix`. -/
-theorem greedy_runs_sum (as : Array Atom) (L : ℕ) (ix : Array ℕ) (f : ℕ → FE) :
+theorem greedy_runs_sum (as : Array Atom) (L : ℕ) (ix : Array ℕ) (f : ℕ → 𝔽) :
     (ix.toList.map f).sum = ((runsAt as L (sortAt as L ix)).toList.map fun r ↦ (r.2.toList.map f).sum).sum := by
   rw [← ((greedy_sortAt_perm as L ix).map f).sum_eq, ← (greedy_runsAt_spec as L (sortAt as L ix)).1]
   simp [List.map_flatten, List.sum_flatten, List.map_map, Function.comp_def]
@@ -2486,7 +2723,7 @@ theorem greedy_bestLevel (as : Array Atom) (ix : Array ℕ) (L0 : ℕ) (t : List
 
 /-! ## `genG` -/
 
-theorem greedy_loop_Spec {X : Type} (T : Array (Array FE)) (F : Code → X → Code) (e : X → FE) (l : List X)
+theorem greedy_loop_Spec {X : Type} (T : Array (Array 𝔽)) (F : Code → X → Code) (e : X → 𝔽) (l : List X)
     (hF : ∀ c x, x ∈ l → code_Al c → 0 < c.ws.size → code_Spec T c (F c x) (e x)) :
     ∀ c, code_Al c → 0 < c.ws.size → code_Spec T c (l.foldl F c) (l.map e).sum := by
   induction l with
@@ -2500,12 +2737,12 @@ theorem greedy_loop_Spec {X : Type} (T : Array (Array FE)) (F : Code → X → C
       (ih (fun c x hx ↦ hF c x (List.mem_cons_of_mem _ hx)) _ hA1 (by rw [hR1, Array.size_append]; (clear * - hw; omega)))
 
 /-- The sum over `ix` of `w · Π_levels`, split by the runs at `L0 ∈ levels`. -/
-theorem greedy_sum_level (T : Array (Array FE)) (as : Array Atom) (levels : List ℕ) (L0 : ℕ) (hL0 : L0 ∈ levels)
+theorem greedy_sum_level (T : Array (Array 𝔽)) (as : Array Atom) (levels : List ℕ) (L0 : ℕ) (hL0 : L0 ∈ levels)
     (ix : Array ℕ) :
-    (ix.toList.map fun i ↦ (as.getD i default).w * (levels.map fun L ↦ keyVal T (keyAt as L i)).prod).sum =
-      ((runsAt as L0 (sortAt as L0 ix)).toList.map fun r ↦ keyVal T r.1 *
-        (r.2.toList.map fun i ↦ (as.getD i default).w *
-          ((levels.erase L0).map fun L ↦ keyVal T (keyAt as L i)).prod).sum).sum := by
+    (ix.toList.map fun i ↦ KRing.ofE (as.getD i default).w * (levels.map fun L ↦ keyValG T (keyAt as L i)).prod).sum =
+      ((runsAt as L0 (sortAt as L0 ix)).toList.map fun r ↦ keyValG T r.1 *
+        (r.2.toList.map fun i ↦ KRing.ofE (as.getD i default).w *
+          ((levels.erase L0).map fun L ↦ keyValG T (keyAt as L i)).prod).sum).sum := by
   rw [greedy_runs_sum as L0 ix]
   refine congrArg List.sum (List.map_congr_left fun r hr ↦ ?_)
   rw [← List.sum_map_mul_left]
@@ -2514,12 +2751,12 @@ theorem greedy_sum_level (T : Array (Array FE)) (as : Array Atom) (levels : List
   rw [((List.perm_cons_erase hL0).map _).prod_eq, List.map_cons, List.prod_cons, hk]
   ring
 
-theorem greedy_genG_P (T : Array (Array FE)) (as : Array Atom) (P : ℕ → Prop) (hT : keyVal T (0, 0) = 1)
-    (hK : ∀ i m, P m → (keyAt as m i).1 = 0 → keyVal T (keyAt as m i) = 1) :
+theorem greedy_genG_P (T : Array (Array 𝔽)) (as : Array Atom) (P : ℕ → Prop) (hT : keyValG T (0, 0) = 1)
+    (hK : ∀ i m, P m → (keyAt as m i).1 = 0 → keyValG T (keyAt as m i) = 1) :
     ∀ fuel (ix : Array ℕ) (levels : List ℕ) (c : Code), levels.Nodup → levels.length < fuel →
       (∀ L ∈ levels, P L) → code_Al c → 0 < c.ws.size →
       code_Spec T c (genG as fuel ix levels c)
-        ((ix.toList.map fun i ↦ (as.getD i default).w * (levels.map fun L ↦ keyVal T (keyAt as L i)).prod).sum) := by
+        ((ix.toList.map fun i ↦ KRing.ofE (as.getD i default).w * (levels.map fun L ↦ keyValG T (keyAt as L i)).prod).sum) := by
   intro fuel
   induction fuel with
   | zero => intro ix levels c _ h; (clear * - h; omega)
@@ -2536,7 +2773,7 @@ theorem greedy_genG_P (T : Array (Array FE)) (as : Array Atom) (P : ℕ → Prop
       rw [hT, one_mul] at this
       convert this using 1
       rw [← Array.foldl_toList, runs_foldl_add, zero_add]
-      simp
+      simp [map_list_sum, Function.comp_def]
     | [L], _, _, _ =>
       have e : genG as (f + 1) ix [L] c = (runsAt as L (sortAt as L ix)).toList.foldl
           (fun c r ↦ code_leaf c r.1 (r.2.foldl (fun acc i ↦ acc + (as.getD i default).w) 0)) c := by
@@ -2550,7 +2787,7 @@ theorem greedy_genG_P (T : Array (Array FE)) (as : Array Atom) (P : ℕ → Prop
       have := code_Spec_leaf T c r.1 (r.2.foldl (fun acc i ↦ acc + (as.getD i default).w) 0) hc hw
       convert this using 1
       rw [← Array.foldl_toList, runs_foldl_add, zero_add]
-      simp
+      simp [map_list_sum, Function.comp_def]
     | L :: L' :: t, hn, hl, hP =>
       obtain ⟨L0, hL0, hb⟩ := greedy_bestLevel as ix L (L' :: t)
       have e : genG as (f + 1) ix (L :: L' :: t) c = (runsAt as L0 (sortAt as L0 ix)).toList.foldl
@@ -2571,7 +2808,7 @@ theorem greedy_genG_P (T : Array (Array FE)) (as : Array Atom) (P : ℕ → Prop
       have hP' : ∀ M ∈ (L :: L' :: t).erase L0, P M := fun M h ↦ hP M (List.mem_of_mem_erase h)
       split_ifs with h0
       · obtain ⟨i, hi⟩ := List.exists_mem_of_ne_nil _ hne
-        have hk1 : keyVal T r.1 = 1 := by
+        have hk1 : keyValG T r.1 = 1 := by
           rw [← hkey i hi]; exact hK i L0 (hP L0 hL0) (by rw [hkey i hi]; simpa using h0)
         rw [hk1, one_mul]
         exact ih _ _ _ hn' hl' hP' hc hw
@@ -2579,17 +2816,17 @@ theorem greedy_genG_P (T : Array (Array FE)) (as : Array Atom) (P : ℕ → Prop
         exact code_Spec_wrap T c _ _ _ _ hc (by simpa using h0) (ih _ _ _ hn' hl' hP' hA0 (by rw [hW0]; exact hw))
 
 /-- The greedy code's block adds Σ_{i ∈ ix} w_i Π_{L ∈ levels} keyVal(key_L(i)). -/
-theorem greedy_genG (T : Array (Array FE)) (as : Array Atom) (hT : keyVal T (0, 0) = 1)
-    (hK : ∀ i m, ((as.getD i default).keys.getD m (0, 0)).1 = 0 → keyVal T ((as.getD i default).keys.getD m (0, 0)) = 1) :
+theorem greedy_genG (T : Array (Array 𝔽)) (as : Array Atom) (hT : keyValG T (0, 0) = 1)
+    (hK : ∀ i m, ((as.getD i default).keys.getD m (0, 0)).1 = 0 → keyValG T ((as.getD i default).keys.getD m (0, 0)) = 1) :
     ∀ fuel (ix : Array ℕ) (levels : List ℕ) (c : Code), levels.Nodup → levels.length < fuel → code_Al c → 0 < c.ws.size →
       code_Spec T c (genG as fuel ix levels c)
-        ((ix.toList.map fun i ↦ (as.getD i default).w * (levels.map fun L ↦ keyVal T (keyAt as L i)).prod).sum) :=
+        ((ix.toList.map fun i ↦ KRing.ofE (as.getD i default).w * (levels.map fun L ↦ keyValG T (keyAt as L i)).prod).sum) :=
   fun fuel ix levels c hn hl hc hw ↦ greedy_genG_P T as (fun _ ↦ True) hT (fun i m _ h ↦ hK i m h) fuel ix levels c
     hn hl (fun _ _ ↦ trivial) hc hw
 
 /-! ## The atom sum -/
 
-theorem greedy_range_map (as : Array Atom) (g : Atom → FE) :
+theorem greedy_range_map (as : Array Atom) (g : Atom → 𝔽) :
     (List.range as.size).map (fun i ↦ g (as.getD i default)) = as.toList.map g := by
   apply List.ext_getElem
   · simp
@@ -2597,8 +2834,8 @@ theorem greedy_range_map (as : Array Atom) (g : Atom → FE) :
     simp only [List.length_map, Array.length_toList] at h2
     simp [h2]
 
-theorem greedy_foldl_mul (T : Array (Array FE)) (l : List (ℕ × ℕ)) (c : FE) :
-    l.foldl (fun acc k ↦ acc * keyVal T k) c = c * (l.map (keyVal T)).prod := by
+theorem greedy_foldl_mul (T : Array (Array 𝔽)) (l : List (ℕ × ℕ)) (c : 𝔽) :
+    l.foldl (fun acc k ↦ acc * keyValG T k) c = c * (l.map (keyValG T)).prod := by
   induction l generalizing c with
   | nil => simp
   | cons k l ih => rw [List.foldl_cons, ih, List.map_cons, List.prod_cons, mul_assoc]
@@ -2611,14 +2848,14 @@ theorem greedy_keys_toList (a : Atom) :
     simp only [Array.length_toList] at h1
     simp [h1]
 
-theorem greedy_atom_prod (T : Array (Array FE)) (a : Atom) (D : ℕ) (h : a.keys.size = D) :
-    a.w * ((List.range D).map fun L ↦ keyVal T (a.keys.getD L (0, 0))).prod = atomVal T a := by
+theorem greedy_atom_prod (T : Array (Array 𝔽)) (a : Atom) (D : ℕ) (h : a.keys.size = D) :
+    KRing.ofE a.w * ((List.range D).map fun L ↦ keyValG T (a.keys.getD L (0, 0))).prod = atomVal T a := by
   rw [atomVal, ← Array.foldl_toList, greedy_foldl_mul, greedy_keys_toList, h, List.map_map]
   rfl
 
-theorem greedy_hK (T : Array (Array FE)) (as : Array Atom) (hT : keyVal T (0, 0) = 1)
+theorem greedy_hK (T : Array (Array 𝔽)) (as : Array Atom) (hT : keyValG T (0, 0) = 1)
     (h0 : ∀ a ∈ as, ∀ k ∈ a.keys, k.1 = 0 → k.2 = 0) :
-    ∀ i m, ((as.getD i default).keys.getD m (0, 0)).1 = 0 → keyVal T ((as.getD i default).keys.getD m (0, 0)) = 1 := by
+    ∀ i m, ((as.getD i default).keys.getD m (0, 0)).1 = 0 → keyValG T ((as.getD i default).keys.getD m (0, 0)) = 1 := by
   intro i m h1
   rcases code_key as i m with h | ⟨a, ha, hm, h⟩
   · rw [h]; exact hT
@@ -2627,10 +2864,10 @@ theorem greedy_hK (T : Array (Array FE)) (as : Array Atom) (hT : keyVal T (0, 0)
     congr 1
     exact Prod.ext (h ▸ h1) h2
 
-theorem runCode_atomCodeG (T : Array (Array FE)) (as : Array Atom) (D : ℕ)
-    (hD : ∀ a ∈ as, a.keys.size = D) (hT : keyVal T (0, 0) = 1)
+theorem runCode_atomCodeG (T : Array (Array 𝔽)) (as : Array Atom) (D : ℕ)
+    (hD : ∀ a ∈ as, a.keys.size = D) (hT : keyValG T (0, 0) = 1)
     (h0 : ∀ a ∈ as, ∀ k ∈ a.keys, k.1 = 0 → k.2 = 0) :
-    (runCode T (atomCodeG as D)).1 = (as.toList.map (atomVal T)).sum := by
+    (runCodeG T (atomCodeG as D)).1 = (as.toList.map (atomVal T)).sum := by
   obtain ⟨-, -, L, hL, hf⟩ := greedy_genG T as hT (greedy_hK T as hT h0) (D + 1) (Array.range as.size)
     (List.range D) _ List.nodup_range (by simp) code_atom0 (by decide)
   rw [code_runCode]
@@ -2675,6 +2912,16 @@ def flatTabs (rs : Array TRec) (T : Array (Array FE)) : Array FE := Id.run do
       F := F.push (tt.getD i 0)
   return F
 
+omit [KRing 𝔽] [BEq 𝔽] [LawfulBEq 𝔽] in
+/-- The proof-side twin of `flatTabs` over a value ring (S2GT-W). -/
+def flatTabsG (rs : Array TRec) (T : Array (Array 𝔽)) : Array 𝔽 := Id.run do
+  let mut F : Array 𝔽 := Array.mkEmpty ((tabOffs rs).getD rs.size 0)
+  for t in [0:rs.size] do
+    let tt := T.getD t #[]
+    for i in [0:(rs.getD t .one).size] do
+      F := F.push (tt.getD i 0)
+  return F
+
 /-- A weight's kind: `m < 3` for `c·y^m` with `c ∈ K` (`fmul`'s cases, in its order), `3` otherwise. -/
 def wKind (w : FE) : ℕ :=
   if w.c₁ == 0 && w.c₂ == 0 then 0 else if w.c₀ == 0 && w.c₂ == 0 then 1
@@ -2684,6 +2931,11 @@ def wKind (w : FE) : ℕ :=
 @[inline] def wmul (m : ℕ) (v w : FE) : FE :=
   if m == 0 then FE.smulBase w.c₀ v else if m == 1 then mulY (FE.smulBase w.c₁ v)
   else if m == 2 then mulY (mulY (FE.smulBase w.c₂ v)) else v * w
+
+/-- The proof-side twin of `wmul` over a value ring (S2GT-W). -/
+@[inline] def wmulG (m : ℕ) (v : 𝔽) (w : FE) : 𝔽 :=
+  if m == 0 then KRing.ofE (FE.ofK w.c₀) * v else if m == 1 then KRing.ofE FE.y * (KRing.ofE (FE.ofK w.c₁) * v)
+  else if m == 2 then KRing.ofE FE.y * (KRing.ofE FE.y * (KRing.ofE (FE.ofK w.c₂) * v)) else v * KRing.ofE w
 
 /-- **Fused code**: instruction `ins[k] = op + 16·m + 2^6·a + 2^26·b + 2^46·w` (flat indices `a, b < 2^20`,
 weight kind `m < 4`, weight index `w < 2^17` into `ws`; an emitted state is `b + 2^20·w`). `op`:
@@ -2733,6 +2985,44 @@ def runF (F : Array FE) (c : FCode) : FE × Array (ℕ × FE) := Id.run do
     else if op == 2 then
       st := st.push top
       top := wmul ((n >>> 4) &&& 3) a (c.ws.getD (n >>> 46) 1)
+    else
+      top := st.getD (st.size - 1) 0 + top
+      st := st.pop
+  return (top, em)
+
+/-- The proof-side twin of `runF` over a value ring (S2GT-W). -/
+def runFG (F : Array 𝔽) (c : FCode) : 𝔽 × Array (ℕ × 𝔽) := Id.run do
+  let mut top : 𝔽 := 0
+  let mut st : Array 𝔽 := Array.mkEmpty 8
+  let mut em : Array (ℕ × 𝔽) := #[]
+  for k in [0:c.ins.size] do
+    let n := c.ins.getD k 0
+    let op := n &&& 15
+    let a := F.getD ((n >>> 6) &&& 0xFFFFF) 0
+    if op == 7 then
+      top := top + a * (F.getD ((n >>> 26) &&& 0xFFFFF) 0)
+    else if op == 5 then
+      top := top + a
+    else if op == 6 then
+      top := top + wmulG ((n >>> 4) &&& 3) a (c.ws.getD (n >>> 46) 1)
+    else if op == 3 then
+      top := st.getD (st.size - 1) 0 + a * top
+      st := st.pop
+    else if op == 1 then
+      st := st.push top
+      top := a
+    else if op == 0 then
+      st := st.push top
+      top := 0
+    else if op == 8 then
+      top := top + a * (wmulG ((n >>> 4) &&& 3) (F.getD ((n >>> 26) &&& 0xFFFFF) 0) (c.ws.getD (n >>> 46) 1))
+    else if op == 4 then
+      em := em.push (n >>> 26, top)
+      top := st.getD (st.size - 1) 0
+      st := st.pop
+    else if op == 2 then
+      st := st.push top
+      top := wmulG ((n >>> 4) &&& 3) a (c.ws.getD (n >>> 46) 1)
     else
       top := st.getD (st.size - 1) 0 + top
       st := st.pop
@@ -2791,20 +3081,20 @@ def fuse (rs : Array TRec) (c : Code) : Option FCode :=
 -- runCode T c`, for any tables `T`.
 
 /-- One fused instruction of `runF` (flat tables `F`, weights `W`). -/
-def fuse_fstep (F : Array FE) (W : Array FE) (s : FE × Array FE × Array (ℕ × FE)) (n : ℕ) :
-    FE × Array FE × Array (ℕ × FE) :=
+def fuse_fstep (F : Array 𝔽) (W : Array FE) (s : 𝔽 × Array 𝔽 × Array (ℕ × 𝔽)) (n : ℕ) :
+    𝔽 × Array 𝔽 × Array (ℕ × 𝔽) :=
   let a := F.getD ((n >>> 6) &&& 0xFFFFF) 0
-  if n &&& 15 == 7 then (s.1 + mulI a (F.getD ((n >>> 26) &&& 0xFFFFF) 0), s.2.1, s.2.2)
+  if n &&& 15 == 7 then (s.1 + a * (F.getD ((n >>> 26) &&& 0xFFFFF) 0), s.2.1, s.2.2)
   else if n &&& 15 == 5 then (s.1 + a, s.2.1, s.2.2)
-  else if n &&& 15 == 6 then (s.1 + wmul ((n >>> 4) &&& 3) a (W.getD (n >>> 46) 1), s.2.1, s.2.2)
-  else if n &&& 15 == 3 then (s.2.1.getD (s.2.1.size - 1) 0 + mulI a s.1, s.2.1.pop, s.2.2)
+  else if n &&& 15 == 6 then (s.1 + wmulG ((n >>> 4) &&& 3) a (W.getD (n >>> 46) 1), s.2.1, s.2.2)
+  else if n &&& 15 == 3 then (s.2.1.getD (s.2.1.size - 1) 0 + a * s.1, s.2.1.pop, s.2.2)
   else if n &&& 15 == 1 then (a, s.2.1.push s.1, s.2.2)
   else if n &&& 15 == 0 then (0, s.2.1.push s.1, s.2.2)
   else if n &&& 15 == 8 then
-    (s.1 + mulI a (wmul ((n >>> 4) &&& 3) (F.getD ((n >>> 26) &&& 0xFFFFF) 0) (W.getD (n >>> 46) 1)),
+    (s.1 + a * (wmulG ((n >>> 4) &&& 3) (F.getD ((n >>> 26) &&& 0xFFFFF) 0) (W.getD (n >>> 46) 1)),
       s.2.1, s.2.2)
   else if n &&& 15 == 4 then (s.2.1.getD (s.2.1.size - 1) 0, s.2.1.pop, s.2.2.push (n >>> 26, s.1))
-  else if n &&& 15 == 2 then (wmul ((n >>> 4) &&& 3) a (W.getD (n >>> 46) 1), s.2.1.push s.1, s.2.2)
+  else if n &&& 15 == 2 then (wmulG ((n >>> 4) &&& 3) a (W.getD (n >>> 46) 1), s.2.1.push s.1, s.2.2)
   else (s.2.1.getD (s.2.1.size - 1) 0 + s.1, s.2.1.pop, s.2.2)
 
 theorem fuse_and_mask (x n : ℕ) (k : ℕ) (hk : k = 2 ^ n - 1) : x &&& k = x % 2 ^ n := by
@@ -2848,42 +3138,66 @@ theorem fuse_wmul (v w : FE) : wmul (wKind w) v w = v * w := by
       · rw [if_pos h3, if_pos h3]; rfl
       · rw [if_neg h3, if_neg h3]; rfl
 
+/-- `c·y = (0, c, 0)` in `E3`. -/
+theorem fuse_fe_y1 (c : FK) : (⟨0, c, 0⟩ : FE) = FE.ofK c * FE.y := by
+  apply FE.toExt3_injective
+  rw [FE.toExt3_mul, FE.toExt3_ofK, FE.toExt3_eq, FE.toExt3_eq FE.y]
+  simp only [FE.y, FK.toBF64_zero, FK.toBF64_one, map_zero, map_one]; ring
+
+/-- `c·y² = (0, 0, c)` in `E3`. -/
+theorem fuse_fe_y2 (c : FK) : (⟨0, 0, c⟩ : FE) = FE.ofK c * (FE.y * FE.y) := by
+  apply FE.toExt3_injective
+  rw [FE.toExt3_mul, FE.toExt3_mul, FE.toExt3_ofK, FE.toExt3_eq, FE.toExt3_eq FE.y]
+  simp only [FE.y, FK.toBF64_zero, FK.toBF64_one, map_zero, map_one]; ring
+
+/-- `c = (c, 0, 0)` in `E3`. -/
+theorem fuse_fe_y0 (c : FK) : (⟨c, 0, 0⟩ : FE) = FE.ofK c := rfl
+
+theorem fuse_wmulG (v : 𝔽) (w : FE) : wmulG (wKind w) v w = v * KRing.ofE w := by
+  obtain ⟨w0, w1, w2⟩ := w
+  unfold wmulG wKind
+  simp only [Bool.and_eq_true, beq_iff_eq]
+  split_ifs with h1 h2 h3 <;> simp_all
+  · rw [fuse_fe_y0, mul_comm]
+  · rw [fuse_fe_y1, map_mul]; ring
+  · rw [fuse_fe_y2, map_mul, map_mul]; ring
+
 /-- `fuse_fstep` on a decoded instruction (`op`, kind `m`, indices `a`, `b`, weight `w`). -/
-def fuse_dstep (F : Array FE) (W : Array FE) (s : FE × Array FE × Array (ℕ × FE)) (op m a b w : ℕ) :
-    FE × Array FE × Array (ℕ × FE) :=
+def fuse_dstep (F : Array 𝔽) (W : Array FE) (s : 𝔽 × Array 𝔽 × Array (ℕ × 𝔽)) (op m a b w : ℕ) :
+    𝔽 × Array 𝔽 × Array (ℕ × 𝔽) :=
   if op == 7 then (s.1 + F.getD a 0 * F.getD b 0, s.2.1, s.2.2)
   else if op == 5 then (s.1 + F.getD a 0, s.2.1, s.2.2)
-  else if op == 6 then (s.1 + wmul m (F.getD a 0) (W.getD w 1), s.2.1, s.2.2)
+  else if op == 6 then (s.1 + wmulG m (F.getD a 0) (W.getD w 1), s.2.1, s.2.2)
   else if op == 3 then (s.2.1.back?.getD 0 + F.getD a 0 * s.1, s.2.1.pop, s.2.2)
   else if op == 1 then (F.getD a 0, s.2.1.push s.1, s.2.2)
   else if op == 0 then (0, s.2.1.push s.1, s.2.2)
-  else if op == 8 then (s.1 + F.getD a 0 * wmul m (F.getD b 0) (W.getD w 1), s.2.1, s.2.2)
+  else if op == 8 then (s.1 + F.getD a 0 * wmulG m (F.getD b 0) (W.getD w 1), s.2.1, s.2.2)
   else if op == 4 then (s.2.1.back?.getD 0, s.2.1.pop, s.2.2.push (b + 2 ^ 20 * w, s.1))
-  else if op == 2 then (wmul m (F.getD a 0) (W.getD w 1), s.2.1.push s.1, s.2.2)
+  else if op == 2 then (wmulG m (F.getD a 0) (W.getD w 1), s.2.1.push s.1, s.2.2)
   else (s.2.1.back?.getD 0 + s.1, s.2.1.pop, s.2.2)
 
-theorem fuse_back (st : Array FE) : st.getD (st.size - 1) 0 = st.back?.getD 0 := by
+theorem fuse_back (st : Array 𝔽) : st.getD (st.size - 1) 0 = st.back?.getD 0 := by
   simp [Array.back?]
 
 theorem fuse_hi_mask (b w : ℕ) (hb : b < 2 ^ 20) : (b + 2 ^ 20 * w) &&& 1048575 = b := by
   rw [fuse_and_mask _ 20 1048575 rfl]; omega
 
-theorem fuse_fstep_pk (F W : Array FE) (s : FE × Array FE × Array (ℕ × FE)) (op m a b w : ℕ) (hop : op < 16)
+theorem fuse_fstep_pk (F : Array 𝔽) (W : Array FE) (s : 𝔽 × Array 𝔽 × Array (ℕ × 𝔽)) (op m a b w : ℕ) (hop : op < 16)
     (hm : m < 4) (ha : a < 2 ^ 20) (hb : b < 2 ^ 20) :
     fuse_fstep F W s (pkI op m a b w) = fuse_dstep F W s op m a b w := by
   unfold fuse_fstep fuse_dstep
   simp only [fuse_pk_op op m a b w hop, fuse_pk_m op m a b w hop hm, fuse_pk_a op m a b w hop hm ha,
     fuse_hi_mask b w hb, fuse_pk_w op m a b w hop hm ha hb, fuse_pk_hi op m a b w hop hm ha,
-    fuse_back, mulI_eq]
+    fuse_back]
 
-theorem fuse_term (e s : FE) : (if (s == 1) = true then e else fmul e s) = e * s := by
-  rw [code_fmul]; split_ifs with h
-  · rw [(code_beq_iff _ _).1 h, mul_one]
+theorem fuse_term (e s : 𝔽) : (if (s == 1) = true then e else e * s) = e * s := by
+  split_ifs with h
+  · rw [beq_iff_eq.1 h, mul_one]
   · rfl
 
 section
 
-variable (F W : Array FE) (T : Array (Array FE)) (s : FE × Array FE × Array (ℕ × FE))
+variable (F : Array 𝔽) (W : Array FE) (T : Array (Array 𝔽)) (s : 𝔽 × Array 𝔽 × Array (ℕ × 𝔽))
 
 theorem fuse_hx_open (x y z : ℕ) :
     fuse_fstep F W s (pkI 0 0 0 0 0) = [(0, x, y, z)].foldl (code_step T W) s := by
@@ -2919,7 +3233,7 @@ theorem fuse_hx_leaf (t i w b : ℕ) (hb : b < 2 ^ 20) (hv : F.getD b 0 = (T.get
   · have hw' : (w == 0) = false := by simpa using hw
     simp only [hw', Bool.false_eq_true, ↓reduceIte]
     rw [fuse_fstep_pk F W s 6 _ b 0 w (by norm_num) (fuse_wKind_lt _) hb (by norm_num)]
-    simp [fuse_dstep, code_step, hv, hw, fuse_wmul, code_fmul]
+    simp [fuse_dstep, code_step, hv, hw, fuse_wmulG]
 
 theorem fuse_hx_open1 (x y z t i w b : ℕ) (hb : b < 2 ^ 20) (hv : F.getD b 0 = (T.getD t #[]).getD i 0) :
     fuse_fstep F W s (if (w == 0) = true then pkI 1 0 b 0 0 else pkI 2 (wKind (W.getD w 1)) b 0 w) =
@@ -2932,7 +3246,7 @@ theorem fuse_hx_open1 (x y z t i w b : ℕ) (hb : b < 2 ^ 20) (hv : F.getD b 0 =
   · have hw' : (w == 0) = false := by simpa using hw
     simp only [hw', Bool.false_eq_true, ↓reduceIte]
     rw [fuse_fstep_pk F W s 2 _ b 0 w (by norm_num) (fuse_wKind_lt _) hb (by norm_num)]
-    simp [fuse_dstep, code_step, hv, hw, fuse_wmul, code_fmul]
+    simp [fuse_dstep, code_step, hv, hw, fuse_wmulG]
 
 theorem fuse_hx_leafc (x y z t i w t' i' z' b : ℕ) (ht : (t' == 0) = true) (hb : b < 2 ^ 20)
     (hv : F.getD b 0 = (T.getD t #[]).getD i 0) :
@@ -2946,7 +3260,7 @@ theorem fuse_hx_leafc (x y z t i w t' i' z' b : ℕ) (ht : (t' == 0) = true) (hb
   · have hw' : (w == 0) = false := by simpa using hw
     simp only [hw', Bool.false_eq_true, ↓reduceIte]
     rw [fuse_fstep_pk F W s 6 _ b 0 w (by norm_num) (fuse_wKind_lt _) hb (by norm_num)]
-    simp [fuse_dstep, code_step, hv, hw, ht, fuse_wmul, code_fmul]
+    simp [fuse_dstep, code_step, hv, hw, ht, fuse_wmulG]
 
 theorem fuse_hx_prod (x y z t i w t' i' z' a b : ℕ) (ht : ¬ (t' == 0) = true) (ha : a < 2 ^ 20) (hb : b < 2 ^ 20)
     (hva : F.getD a 0 = (T.getD t' #[]).getD i' 0) (hv : F.getD b 0 = (T.getD t #[]).getD i 0) :
@@ -2964,7 +3278,7 @@ theorem fuse_hx_prod (x y z t i w t' i' z' a b : ℕ) (ht : ¬ (t' == 0) = true)
     rw [fuse_fstep_pk F W s 8 _ a b w (by norm_num) (fuse_wKind_lt _) ha hb]
     simp only [fuse_dstep, code_step, List.foldl_cons, List.foldl_nil]
     simp only [ht, Bool.false_eq_true, ↓reduceIte, fuse_term]
-    simp only [hv, hva, fuse_wmul, code_fmul]
+    simp only [hv, hva, fuse_wmulG]
     simp [hw]
 
 end
@@ -2974,10 +3288,10 @@ theorem fuse_ite_pure {β : Type} (p : Prop) [Decidable p] (a b : β) :
       pure (ForInStep.yield (if p then a else b)) := by
   split <;> rfl
 
-theorem fuse_runF (F : Array FE) (c : FCode) :
-    runF F c = ((c.ins.toList.foldl (fuse_fstep F c.ws) (0, #[], #[])).1,
+theorem fuse_runF (F : Array 𝔽) (c : FCode) :
+    runFG F c = ((c.ins.toList.foldl (fuse_fstep F c.ws) (0, #[], #[])).1,
       (c.ins.toList.foldl (fuse_fstep F c.ws) (0, #[], #[])).2.2) := by
-  unfold runF
+  unfold runFG
   simp only [Id.run]
   rw [Std.Legacy.Range.forIn_eq_forIn_range', code_forIn_list _ _ _
     (fun s k ↦ fuse_fstep F c.ws s (c.ins.getD k 0))
@@ -3006,13 +3320,14 @@ theorem fuse_foldl_rows {α : Type} (g : ℕ → ℕ → α) (sz : ℕ → ℕ) 
   | cons x L ih =>
     intro b; simp only [List.foldl_cons]; rw [ih, fuse_foldl_push]; simp [List.range_eq_range']
 
-theorem fuse_flatTabs (rs : Array TRec) (T : Array (Array FE)) :
-    (flatTabs rs T).toList = (List.range rs.size).flatMap
+omit [KRing 𝔽] [BEq 𝔽] [LawfulBEq 𝔽] in
+theorem fuse_flatTabs (rs : Array TRec) (T : Array (Array 𝔽)) :
+    (flatTabsG rs T).toList = (List.range rs.size).flatMap
       (fun t ↦ (List.range (rs.getD t .one).size).map fun i ↦ (T.getD t #[]).getD i 0) := by
-  unfold flatTabs
+  unfold flatTabsG
   simp only [Id.run, Std.Legacy.Range.forIn_eq_forIn_range', List.forIn_pure_yield_eq_foldl,
     Std.Legacy.Range.size, pure_bind, Nat.sub_zero, Nat.add_sub_cancel, Nat.div_one]
-  rw [show ∀ x : Array FE, (pure x : Id (Array FE)) = x from fun _ ↦ rfl,
+  rw [show ∀ x : Array 𝔽, (pure x : Id (Array 𝔽)) = x from fun _ ↦ rfl,
     fuse_foldl_rows (fun t i ↦ (T.getD t #[]).getD i 0) (fun t ↦ (rs.getD t .one).size)]
   simp [List.range_eq_range']
 
@@ -3054,9 +3369,10 @@ theorem fuse_rows_get {α : Type} (rs : Array TRec) (g : ℕ → ℕ → α) (n 
       simp only [List.flatMap_cons, List.flatMap_nil, List.append_nil, List.getElem?_map, List.getElem?_range hi]
       rfl
 
-theorem fuse_flat_get (rs : Array TRec) (T : Array (Array FE)) (t i : ℕ) (ht : t < rs.size)
+omit [KRing 𝔽] [BEq 𝔽] [LawfulBEq 𝔽] in
+theorem fuse_flat_get (rs : Array TRec) (T : Array (Array 𝔽)) (t i : ℕ) (ht : t < rs.size)
     (hi : i < (rs.getD t .one).size) :
-    (flatTabs rs T).getD (fuse_off rs t + i) 0 = (T.getD t #[]).getD i 0 := by
+    (flatTabsG rs T).getD (fuse_off rs t + i) 0 = (T.getD t #[]).getD i 0 := by
   rw [Array.getD_eq_getD_getElem?, ← Array.getElem?_toList, fuse_flatTabs,
     fuse_rows_get rs (fun t i ↦ (T.getD t #[]).getD i 0) _ t i ht hi]
   rfl
@@ -3117,9 +3433,9 @@ theorem fuse_tabOffs (rs : Array TRec) (t : ℕ) (ht : t ≤ rs.size) : (tabOffs
   rw [h, fuse_take_sum rs t ht]
   simp
 
-theorem fuse_flatIx (rs : Array TRec) (T : Array (Array FE)) (t i b : ℕ)
+theorem fuse_flatIx (rs : Array TRec) (T : Array (Array 𝔽)) (t i b : ℕ)
     (h : flatIx rs (tabOffs rs) t i = some b) :
-    b < 2 ^ 20 ∧ (flatTabs rs T).getD b 0 = (T.getD t #[]).getD i 0 := by
+    b < 2 ^ 20 ∧ (flatTabsG rs T).getD b 0 = (T.getD t #[]).getD i 0 := by
   unfold flatIx at h
   split_ifs at h with hc
   obtain ⟨h1, h2, h3⟩ := hc
@@ -3127,7 +3443,7 @@ theorem fuse_flatIx (rs : Array TRec) (T : Array (Array FE)) (t i b : ℕ)
   rw [fuse_tabOffs rs t h1.le] at h3 ⊢
   exact ⟨h3, fuse_flat_get rs T t i h1 h2⟩
 
-theorem fuse_push (F W : Array FE) (T : Array (Array FE)) (x : ℕ) (L rest : List (ℕ × ℕ × ℕ × ℕ))
+theorem fuse_push (F : Array 𝔽) (W : Array FE) (T : Array (Array 𝔽)) (x : ℕ) (L rest : List (ℕ × ℕ × ℕ × ℕ))
     (acc out : Array ℕ)
     (ih : ∀ s, out.toList.foldl (fuse_fstep F W) s =
       rest.foldl (code_step T W) ((acc.push x).toList.foldl (fuse_fstep F W) s))
@@ -3137,11 +3453,11 @@ theorem fuse_push (F W : Array FE) (T : Array (Array FE)) (x : ℕ) (L rest : Li
   intro s
   rw [ih, Array.toList_push, List.foldl_append, List.foldl_append, List.foldl_cons, List.foldl_nil, hx]
 
-theorem fuse_sim (rs : Array TRec) (T : Array (Array FE)) (ws : Array FE) (acc : Array ℕ)
+theorem fuse_sim (rs : Array TRec) (T : Array (Array 𝔽)) (ws : Array FE) (acc : Array ℕ)
     (l : List (ℕ × ℕ × ℕ × ℕ)) :
     ∀ out, fuseL rs (tabOffs rs) ws acc l = some out → ∀ s,
-      out.toList.foldl (fuse_fstep (flatTabs rs T) ws) s =
-        l.foldl (code_step T ws) (acc.toList.foldl (fuse_fstep (flatTabs rs T) ws) s) := by
+      out.toList.foldl (fuse_fstep (flatTabsG rs T) ws) s =
+        l.foldl (code_step T ws) (acc.toList.foldl (fuse_fstep (flatTabsG rs T) ws) s) := by
   induction acc, l using fuseL.induct rs (tabOffs rs) ws with
   | case1 acc =>
     intro out h s; rw [fuseL.eq_1] at h; cases h; rfl
@@ -3226,8 +3542,8 @@ theorem fuse_sim (rs : Array TRec) (T : Array (Array FE)) (ws : Array FE) (acc :
     intro out h; rw [fuseL.eq_8 _ _ _ _ _ _ h1 h2 h3 h4 h5 h6] at h; cases h
 
 /-- **The fused code computes the code.** -/
-theorem runF_fuse (rs : Array TRec) (T : Array (Array FE)) (c : Code) (fc : FCode) (h : fuse rs c = some fc) :
-    runF (flatTabs rs T) fc = runCode T c := by
+theorem runF_fuse (rs : Array TRec) (T : Array (Array 𝔽)) (c : Code) (fc : FCode) (h : fuse rs c = some fc) :
+    runFG (flatTabsG rs T) fc = runCodeG T c := by
   unfold fuse at h
   obtain ⟨ins, h1, rfl⟩ := Option.map_eq_some_iff.1 h
   have hs := fuse_sim rs T c.ws _ _ ins h1 (0, #[], #[])
@@ -3237,6 +3553,8 @@ theorem runF_fuse (rs : Array TRec) (T : Array (Array FE)) (c : Code) (fc : FCod
   simp only at hs ⊢
   rw [hs]
   rfl
+
+end L1
 
 /-! ## The carry automaton (K3) -/
 
@@ -3268,7 +3586,7 @@ emits `y` bit `(c + j·R) mod 2` and moves to `(c + j·R) / 2`, with weight `eq(
 product (`v + r_y·(v + v')`) and both halves meet in one more (`A + r_x·(A + B)`); a lone source is one product
 with the step's precomputed weight `e[j][bit]`. About 1.5 products per state on dense windows, 2 on sparse
 ones (never more than the direct two products per state). -/
-def autoStep (R : ℕ) (rxk ryk : FE) (st : Array (ℕ × FE)) : Array (ℕ × FE) := Id.run do
+def autoStep (R : ℕ) (rxk ryk : 𝔽) (st : Array (ℕ × 𝔽)) : Array (ℕ × 𝔽) := Id.run do
   let p := rxk * ryk
   -- e[j][b] = eq(r_x, j)·eq(r_y, b)
   let e00 := 1 - rxk - ryk + p
@@ -3277,8 +3595,8 @@ def autoStep (R : ℕ) (rxk ryk : FE) (st : Array (ℕ × FE)) : Array (ℕ × F
   let e11 := p
   -- the half sums of one half: `(t, val, kind)`, kind 0/1 a lone source at that bit (`val` raw), 2 a pair
   -- already weighted by `eq(r_y, ·)`
-  let half (sh : ℕ) : Array (ℕ × FE × ℕ) := Id.run do
-    let mut out : Array (ℕ × FE × ℕ) := Array.mkEmpty st.size
+  let half (sh : ℕ) : Array (ℕ × 𝔽 × ℕ) := Id.run do
+    let mut out : Array (ℕ × 𝔽 × ℕ) := Array.mkEmpty st.size
     let mut i := 0
     while i < st.size do
       let (c, v) := st.getD i (0, 0)
@@ -3297,8 +3615,8 @@ def autoStep (R : ℕ) (rxk ryk : FE) (st : Array (ℕ × FE)) : Array (ℕ × F
     return out
   let as := half 0
   let bs := half R
-  let wy (val : FE) (k : ℕ) : FE := if k == 2 then val else if k == 0 then val - ryk * val else ryk * val
-  let mut out : Array (ℕ × FE) := Array.mkEmpty (as.size + bs.size)
+  let wy (val : 𝔽) (k : ℕ) : 𝔽 := if k == 2 then val else if k == 0 then val - ryk * val else ryk * val
+  let mut out : Array (ℕ × 𝔽) := Array.mkEmpty (as.size + bs.size)
   let mut i := 0
   let mut j := 0
   while i < as.size || j < bs.size do
@@ -3387,94 +3705,18 @@ def autoStepP (R : ℕ) (rxk ryk : FE) (cs : Array ℕ) (vs : Array FE) : Array 
       j := j + 1
   return (oc, ov)
 
-/-- The automaton over `n` steps from the sorted initial states. -/
-def runAuto (P : Pt) (xs : Array ℕ) (R : ℕ) (st : Array (ℕ × FE)) : Array (ℕ × FE) := Id.run do
-  let mut cs := st.map (·.1)
-  let mut vs := st.map (·.2)
-  for k in [0:xs.size] do
-    let r := autoStepP R (P.rx.getD (xs.getD k 0) 0) (P.ry.getD k 0) cs vs
-    cs := r.1
-    vs := r.2
-  return (Array.range cs.size).map fun i ↦ (cs.getD i 0, vs.getD i 0)
-
-theorem auto_loop {β : Type} (f : Unit → β → Id (ForInStep β)) (μ : β → ℕ) (P Q : β → Prop)
-    (h : ∀ b, P b → match (f () b).run with
-      | .done b' => Q b'
-      | .yield b' => P b' ∧ μ b' < μ b)
-    (b : β) (hb : P b) : Q (forIn Lean.Loop.mk b f).run := by
-  induction hm : μ b using Nat.strong_induction_on generalizing b with
-  | _ n ih =>
-    have := h b hb
-    rw [show forIn Lean.Loop.mk b f = Lean.Loop.forIn Lean.Loop.mk b f from rfl,
-      Lean.Loop.forIn_eq_of_monadTail]
-    revert this
-    rcases hf : (f () b).run with b' | b' <;> intro this
-    · simp only [Id.run] at hf ⊢; rw [hf]; exact this
-    · simp only [Id.run] at hf ⊢; rw [hf]; exact ih _ (hm ▸ this.2) b' this.1 rfl
-
-theorem auto_getD_push {α : Type} (a : Array α) (x d : α) (i : ℕ) :
-    (a.push x).getD i d = if i < a.size then a.getD i d else if i = a.size then x else d := by
-  simp only [Array.getD_eq_getD_getElem?, Array.getElem?_push]
-  split_ifs with h1 h2 <;> try omega
-  · rfl
-  · rfl
-  · rw [Array.getElem?_eq_none (by omega)]; rfl
-
-/-! Helpers for `runAuto_eq` (L-A agent, prefix `auto_`). The per-step sum identity holds for any input
-states, so the sortedness hypothesis of `runAuto_eq` is not needed. -/
-
-/-- One `eq` factor at bit 0 of `x`. -/
-def auto_e (r : FE) (x : ℕ) : FE := if x % 2 = 1 then r else 1 - r
-
-/-- The weight of a half entry of kind `k`. -/
-def auto_W (b x : FE) (k : ℕ) : FE := if k = 2 then x else if k = 0 then (1 - b) * x else b * x
-
-theorem auto_W_two (b x : FE) : auto_W b x 2 = x := by simp [auto_W]
-
-theorem auto_W_zero (b x : FE) : auto_W b x 0 = (1 - b) * x := by simp [auto_W]
-
-theorem auto_W_one (b x : FE) : auto_W b x 1 = b * x := by simp [auto_W]
-
-/-- The state sum. -/
-def auto_S (cs : Array ℕ) (vs : Array FE) (g : ℕ → FE) : FE :=
-  ∑ i ∈ Finset.range cs.size, vs.getD i 0 * g (cs.getD i 0)
-
-/-- The half sum of the first `m` entries. -/
-def auto_HS (b : FE) (ts : Array ℕ) (xs : Array FE) (ks : Array ℕ) (g : ℕ → FE) (m : ℕ) : FE :=
-  ∑ i ∈ Finset.range m, auto_W b (xs.getD i 0) (ks.getD i 0) * g (ts.getD i 0)
-
-theorem auto_S_push (cs : Array ℕ) (vs : Array FE) (g : ℕ → FE) (c : ℕ) (v : FE)
-    (h : cs.size = vs.size) : auto_S (cs.push c) (vs.push v) g = auto_S cs vs g + v * g c := by
-  unfold auto_S
-  rw [Array.size_push, Finset.sum_range_succ]
-  congr 1
-  · refine Finset.sum_congr rfl fun i hi => ?_
-    have hi := Finset.mem_range.1 hi
-    rw [auto_getD_push, auto_getD_push, if_pos hi, if_pos (h ▸ hi)]
-  · simp only [auto_getD_push, ← h, lt_irrefl, ↓reduceIte]
-
-theorem auto_HS_push (b : FE) (ts : Array ℕ) (xs : Array FE) (ks : Array ℕ) (g : ℕ → FE)
-    (t : ℕ) (x : FE) (k : ℕ) (h1 : ts.size = xs.size) (h2 : ts.size = ks.size) :
-    auto_HS b (ts.push t) (xs.push x) (ks.push k) g (ts.push t).size =
-      auto_HS b ts xs ks g ts.size + auto_W b x k * g t := by
-  unfold auto_HS
-  rw [Array.size_push, Finset.sum_range_succ]
-  refine congrArg₂ (· + ·) ?_ ?_
-  · refine Finset.sum_congr rfl fun i hi => ?_
-    have hi := Finset.mem_range.1 hi
-    rw [auto_getD_push, auto_getD_push, auto_getD_push, if_pos hi, if_pos (h1 ▸ hi), if_pos (h2 ▸ hi)]
-  · simp only [auto_getD_push, ← h1, ← h2, lt_irrefl, ↓reduceIte]
-
-theorem auto_HS_succ (b : FE) (ts : Array ℕ) (xs : Array FE) (ks : Array ℕ) (g : ℕ → FE) (m : ℕ) :
-    auto_HS b ts xs ks g (m + 1) =
-      auto_HS b ts xs ks g m + auto_W b (xs.getD m 0) (ks.getD m 0) * g (ts.getD m 0) := by
-  unfold auto_HS; rw [Finset.sum_range_succ]
-
-/-- `autoStepP`'s `half`. -/
-def auto_half (cs : Array ℕ) (vs : Array FE) (ryk : FE) (sh : ℕ) : Array ℕ × Array FE × Array ℕ := Id.run do
-    let n := cs.size
+/-- The proof-side twin of `autoStepP` over a value ring (S2GT-W). -/
+def autoStepPG (R : ℕ) (rxk ryk : 𝔽) (cs : Array ℕ) (vs : Array 𝔽) : Array ℕ × Array 𝔽 := Id.run do
+  let p := rxk * ryk
+  let e00 := 1 - rxk - ryk + p
+  let e01 := ryk - p
+  let e10 := rxk - p
+  let e11 := p
+  let n := cs.size
+  -- one half: targets, values, kinds (0/1 a lone source at that bit, raw; 2 a pair, `eq(r_y)`-weighted)
+  let half (sh : ℕ) : Array ℕ × Array 𝔽 × Array ℕ := Id.run do
     let mut ts : Array ℕ := Array.mkEmpty n
-    let mut xs : Array FE := Array.mkEmpty n
+    let mut xs : Array 𝔽 := Array.mkEmpty n
     let mut ks : Array ℕ := Array.mkEmpty n
     let mut i := 0
     while i < n do
@@ -3493,70 +3735,11 @@ def auto_half (cs : Array ℕ) (vs : Array FE) (ryk : FE) (sh : ℕ) : Array ℕ
         ts := ts.push (d / 2); xs := xs.push v; ks := ks.push 1
         i := i + 1
     return (ts, xs, ks)
-
-theorem auto_half_gen (cs : Array ℕ) (vs : Array FE) (b : FE) (sh : ℕ) (g : ℕ → FE)
-    (Φ : Array ℕ × Array FE × Array ℕ → Prop)
-    (hΦ : ∀ s : Array ℕ × Array FE × Array ℕ × ℕ, s.1.size = s.2.1.size → s.1.size = s.2.2.1.size →
-      auto_HS b s.1 s.2.1 s.2.2.1 g s.1.size = ∑ l ∈ Finset.range cs.size,
-        vs.getD l 0 * auto_e b (cs.getD l 0 + sh) * g ((cs.getD l 0 + sh) / 2) → Φ (s.1, s.2.1, s.2.2.1)) :
-    Φ (auto_half cs vs b sh) := by
-  unfold auto_half
-  simp only [Id.run_bind, Id.run_pure]
-  refine auto_loop (β := Array ℕ × Array FE × Array ℕ × ℕ) _ (fun s => cs.size - s.2.2.2)
-    (fun s => s.1.size = s.2.1.size ∧ s.1.size = s.2.2.1.size ∧ s.2.2.2 ≤ cs.size ∧
-      auto_HS b s.1 s.2.1 s.2.2.1 g s.1.size = ∑ l ∈ Finset.range s.2.2.2,
-        vs.getD l 0 * auto_e b (cs.getD l 0 + sh) * g ((cs.getD l 0 + sh) / 2))
-    (fun s => Φ (s.1, s.2.1, s.2.2.1)) ?_ _ ?_
-  · rintro ⟨ts, xs, ks, i⟩ ⟨h1, h2, hi, hS⟩
-    dsimp only at h1 h2 hi hS ⊢
-    by_cases hlt : i < cs.size
-    · rw [if_pos hlt]
-      by_cases hev : (cs.getD i 0 + sh) % 2 = 0
-      · rw [if_pos (by simpa using hev)]
-        by_cases hp : i + 1 < cs.size ∧ cs.getD (i + 1) 0 = cs.getD i 0 + 1
-        · rw [if_pos (by simpa using hp)]
-          obtain ⟨hp1, hp2⟩ := hp
-          refine ⟨⟨by simp [h1], by simp [h2], by dsimp only; (clear * - hp1; omega), ?_⟩, by dsimp only; (clear * - hp1; omega)⟩
-          dsimp only
-          rw [auto_HS_push _ _ _ _ _ _ _ _ h1 h2, hS, show i + 2 = i + 1 + 1 from rfl, Finset.sum_range_succ,
-            Finset.sum_range_succ, hp2]
-          have e1 : auto_e b (cs.getD i 0 + sh) = 1 - b := by unfold auto_e; rw [if_neg (by (clear * - hev; omega))]
-          have e2 : auto_e b (cs.getD i 0 + 1 + sh) = b := by unfold auto_e; rw [if_pos (by (clear * - hev; omega))]
-          have e3 : (cs.getD i 0 + 1 + sh) / 2 = (cs.getD i 0 + sh) / 2 := by (clear * - hev; omega)
-          rw [e1, e2, e3]
-          rw [auto_W_two]
-          linear_combination (b * vs.getD i 0 * g ((cs.getD i 0 + sh) / 2)) * (CharTwo.two_eq_zero (R := FE))
-        · rw [if_neg (by simpa using hp)]
-          refine ⟨⟨by simp [h1], by simp [h2], by dsimp only; (clear * - hlt; omega), ?_⟩, by dsimp only; (clear * - hlt; omega)⟩
-          dsimp only
-          rw [auto_HS_push _ _ _ _ _ _ _ _ h1 h2, hS, Finset.sum_range_succ]
-          rw [show auto_e b (cs.getD i 0 + sh) = 1 - b by unfold auto_e; rw [if_neg (by (clear * - hev; omega))]]
-          rw [auto_W_zero]
-          ring
-      · rw [if_neg (by simpa using hev)]
-        have hev' : (cs.getD i 0 + sh) % 2 = 1 := by (clear * - hev; omega)
-        refine ⟨⟨by simp [h1], by simp [h2], by dsimp only; (clear * - hlt; omega), ?_⟩, by dsimp only; (clear * - hlt; omega)⟩
-        dsimp only
-        rw [auto_HS_push _ _ _ _ _ _ _ _ h1 h2, hS, Finset.sum_range_succ]
-        rw [show auto_e b (cs.getD i 0 + sh) = b by unfold auto_e; rw [if_pos hev']]
-        rw [auto_W_one]
-        ring
-    · rw [if_neg hlt]
-      exact hΦ (ts, xs, ks, i) h1 h2 (by rw [hS, show i = cs.size by (clear * - hi hlt; omega)])
-  · simp [auto_HS]
-
-/-- `autoStepP`'s merge of the two halves. -/
-def auto_merge (rxk ryk : FE) (A B : Array ℕ × Array FE × Array ℕ) : Array ℕ × Array FE := Id.run do
-  let p := rxk * ryk
-  let e00 := 1 - rxk - ryk + p
-  let e01 := ryk - p
-  let e10 := rxk - p
-  let e11 := p
-  let (ta, va, ka) := A
-  let (tb, vb, kb) := B
-  let wy (val : FE) (k : ℕ) : FE := if k == 2 then val else if k == 0 then val - ryk * val else ryk * val
+  let (ta, va, ka) := half 0
+  let (tb, vb, kb) := half R
+  let wy (val : 𝔽) (k : ℕ) : 𝔽 := if k == 2 then val else if k == 0 then val - ryk * val else ryk * val
   let mut oc : Array ℕ := Array.mkEmpty (ta.size + tb.size)
-  let mut ov : Array FE := Array.mkEmpty (ta.size + tb.size)
+  let mut ov : Array 𝔽 := Array.mkEmpty (ta.size + tb.size)
   let mut i := 0
   let mut j := 0
   while i < ta.size || j < tb.size do
@@ -3588,16 +3771,227 @@ def auto_merge (rxk ryk : FE) (A B : Array ℕ × Array FE × Array ℕ) : Array
       j := j + 1
   return (oc, ov)
 
-theorem auto_autoStepP_eq (R : ℕ) (rxk ryk : FE) (cs : Array ℕ) (vs : Array FE) :
-    autoStepP R rxk ryk cs vs = auto_merge rxk ryk (auto_half cs vs ryk 0) (auto_half cs vs ryk R) := rfl
+/-- The automaton over `n` steps from the sorted initial states. -/
+def runAuto (P : Pt) (xs : Array ℕ) (R : ℕ) (st : Array (ℕ × FE)) : Array (ℕ × FE) := Id.run do
+  let mut cs := st.map (·.1)
+  let mut vs := st.map (·.2)
+  for k in [0:xs.size] do
+    let r := autoStepP R (P.rx.getD (xs.getD k 0) 0) (P.ry.getD k 0) cs vs
+    cs := r.1
+    vs := r.2
+  return (Array.range cs.size).map fun i ↦ (cs.getD i 0, vs.getD i 0)
 
-theorem auto_half_sum (cs : Array ℕ) (vs : Array FE) (b : FE) (sh : ℕ) (g : ℕ → FE) :
+/-- The proof-side twin of `runAuto` over a value ring (S2GT-W). -/
+def runAutoG (P : PtG 𝔽) (xs : Array ℕ) (R : ℕ) (st : Array (ℕ × 𝔽)) : Array (ℕ × 𝔽) := Id.run do
+  let mut cs := st.map (·.1)
+  let mut vs := st.map (·.2)
+  for k in [0:xs.size] do
+    let r := autoStepPG R (P.rx.getD (xs.getD k 0) 0) (P.ry.getD k 0) cs vs
+    cs := r.1
+    vs := r.2
+  return (Array.range cs.size).map fun i ↦ (cs.getD i 0, vs.getD i 0)
+
+theorem auto_loop {β : Type} (f : Unit → β → Id (ForInStep β)) (μ : β → ℕ) (P Q : β → Prop)
+    (h : ∀ b, P b → match (f () b).run with
+      | .done b' => Q b'
+      | .yield b' => P b' ∧ μ b' < μ b)
+    (b : β) (hb : P b) : Q (forIn Lean.Loop.mk b f).run := by
+  induction hm : μ b using Nat.strong_induction_on generalizing b with
+  | _ n ih =>
+    have := h b hb
+    rw [show forIn Lean.Loop.mk b f = Lean.Loop.forIn Lean.Loop.mk b f from rfl,
+      Lean.Loop.forIn_eq_of_monadTail]
+    revert this
+    rcases hf : (f () b).run with b' | b' <;> intro this
+    · simp only [Id.run] at hf ⊢; rw [hf]; exact this
+    · simp only [Id.run] at hf ⊢; rw [hf]; exact ih _ (hm ▸ this.2) b' this.1 rfl
+
+theorem auto_getD_push {α : Type} (a : Array α) (x d : α) (i : ℕ) :
+    (a.push x).getD i d = if i < a.size then a.getD i d else if i = a.size then x else d := by
+  simp only [Array.getD_eq_getD_getElem?, Array.getElem?_push]
+  split_ifs with h1 h2 <;> try omega
+  · rfl
+  · rfl
+  · rw [Array.getElem?_eq_none (by omega)]; rfl
+
+/-! Helpers for `runAuto_eq` (L-A agent, prefix `auto_`). The per-step sum identity holds for any input
+states, so the sortedness hypothesis of `runAuto_eq` is not needed. -/
+
+/-- One `eq` factor at bit 0 of `x`. -/
+def auto_e (r : 𝔽) (x : ℕ) : 𝔽 := if x % 2 = 1 then r else 1 - r
+
+/-- The weight of a half entry of kind `k`. -/
+def auto_W (b x : 𝔽) (k : ℕ) : 𝔽 := if k = 2 then x else if k = 0 then (1 - b) * x else b * x
+
+theorem auto_W_two (b x : 𝔽) : auto_W b x 2 = x := by simp [auto_W]
+
+theorem auto_W_zero (b x : 𝔽) : auto_W b x 0 = (1 - b) * x := by simp [auto_W]
+
+theorem auto_W_one (b x : 𝔽) : auto_W b x 1 = b * x := by simp [auto_W]
+
+/-- The state sum. -/
+def auto_S (cs : Array ℕ) (vs : Array 𝔽) (g : ℕ → 𝔽) : 𝔽 :=
+  ∑ i ∈ Finset.range cs.size, vs.getD i 0 * g (cs.getD i 0)
+
+/-- The half sum of the first `m` entries. -/
+def auto_HS (b : 𝔽) (ts : Array ℕ) (xs : Array 𝔽) (ks : Array ℕ) (g : ℕ → 𝔽) (m : ℕ) : 𝔽 :=
+  ∑ i ∈ Finset.range m, auto_W b (xs.getD i 0) (ks.getD i 0) * g (ts.getD i 0)
+
+theorem auto_S_push (cs : Array ℕ) (vs : Array 𝔽) (g : ℕ → 𝔽) (c : ℕ) (v : 𝔽)
+    (h : cs.size = vs.size) : auto_S (cs.push c) (vs.push v) g = auto_S cs vs g + v * g c := by
+  unfold auto_S
+  rw [Array.size_push, Finset.sum_range_succ]
+  congr 1
+  · refine Finset.sum_congr rfl fun i hi => ?_
+    have hi := Finset.mem_range.1 hi
+    rw [auto_getD_push, auto_getD_push, if_pos hi, if_pos (h ▸ hi)]
+  · simp only [auto_getD_push, ← h, lt_irrefl, ↓reduceIte]
+
+theorem auto_HS_push (b : 𝔽) (ts : Array ℕ) (xs : Array 𝔽) (ks : Array ℕ) (g : ℕ → 𝔽)
+    (t : ℕ) (x : 𝔽) (k : ℕ) (h1 : ts.size = xs.size) (h2 : ts.size = ks.size) :
+    auto_HS b (ts.push t) (xs.push x) (ks.push k) g (ts.push t).size =
+      auto_HS b ts xs ks g ts.size + auto_W b x k * g t := by
+  unfold auto_HS
+  rw [Array.size_push, Finset.sum_range_succ]
+  refine congrArg₂ (· + ·) ?_ ?_
+  · refine Finset.sum_congr rfl fun i hi => ?_
+    have hi := Finset.mem_range.1 hi
+    rw [auto_getD_push, auto_getD_push, auto_getD_push, if_pos hi, if_pos (h1 ▸ hi), if_pos (h2 ▸ hi)]
+  · simp only [auto_getD_push, ← h1, ← h2, lt_irrefl, ↓reduceIte]
+
+theorem auto_HS_succ (b : 𝔽) (ts : Array ℕ) (xs : Array 𝔽) (ks : Array ℕ) (g : ℕ → 𝔽) (m : ℕ) :
+    auto_HS b ts xs ks g (m + 1) =
+      auto_HS b ts xs ks g m + auto_W b (xs.getD m 0) (ks.getD m 0) * g (ts.getD m 0) := by
+  unfold auto_HS; rw [Finset.sum_range_succ]
+
+/-- `autoStepP`'s `half`. -/
+def auto_half (cs : Array ℕ) (vs : Array 𝔽) (ryk : 𝔽) (sh : ℕ) : Array ℕ × Array 𝔽 × Array ℕ := Id.run do
+    let n := cs.size
+    let mut ts : Array ℕ := Array.mkEmpty n
+    let mut xs : Array 𝔽 := Array.mkEmpty n
+    let mut ks : Array ℕ := Array.mkEmpty n
+    let mut i := 0
+    while i < n do
+      let c := cs.getD i 0
+      let v := vs.getD i 0
+      let d := c + sh
+      if d % 2 == 0 then
+        if i + 1 < n && cs.getD (i + 1) 0 == c + 1 then
+          let v' := vs.getD (i + 1) 0
+          ts := ts.push (d / 2); xs := xs.push (v + ryk * (v + v')); ks := ks.push 2
+          i := i + 2
+        else
+          ts := ts.push (d / 2); xs := xs.push v; ks := ks.push 0
+          i := i + 1
+      else
+        ts := ts.push (d / 2); xs := xs.push v; ks := ks.push 1
+        i := i + 1
+    return (ts, xs, ks)
+
+theorem auto_half_gen (cs : Array ℕ) (vs : Array 𝔽) (b : 𝔽) (sh : ℕ) (g : ℕ → 𝔽)
+    (Φ : Array ℕ × Array 𝔽 × Array ℕ → Prop)
+    (hΦ : ∀ s : Array ℕ × Array 𝔽 × Array ℕ × ℕ, s.1.size = s.2.1.size → s.1.size = s.2.2.1.size →
+      auto_HS b s.1 s.2.1 s.2.2.1 g s.1.size = ∑ l ∈ Finset.range cs.size,
+        vs.getD l 0 * auto_e b (cs.getD l 0 + sh) * g ((cs.getD l 0 + sh) / 2) → Φ (s.1, s.2.1, s.2.2.1)) :
+    Φ (auto_half cs vs b sh) := by
+  unfold auto_half
+  simp only [Id.run_bind, Id.run_pure]
+  refine auto_loop (β := Array ℕ × Array 𝔽 × Array ℕ × ℕ) _ (fun s => cs.size - s.2.2.2)
+    (fun s => s.1.size = s.2.1.size ∧ s.1.size = s.2.2.1.size ∧ s.2.2.2 ≤ cs.size ∧
+      auto_HS b s.1 s.2.1 s.2.2.1 g s.1.size = ∑ l ∈ Finset.range s.2.2.2,
+        vs.getD l 0 * auto_e b (cs.getD l 0 + sh) * g ((cs.getD l 0 + sh) / 2))
+    (fun s => Φ (s.1, s.2.1, s.2.2.1)) ?_ _ ?_
+  · rintro ⟨ts, xs, ks, i⟩ ⟨h1, h2, hi, hS⟩
+    dsimp only at h1 h2 hi hS ⊢
+    by_cases hlt : i < cs.size
+    · rw [if_pos hlt]
+      by_cases hev : (cs.getD i 0 + sh) % 2 = 0
+      · rw [if_pos (by simpa using hev)]
+        by_cases hp : i + 1 < cs.size ∧ cs.getD (i + 1) 0 = cs.getD i 0 + 1
+        · rw [if_pos (by simpa using hp)]
+          obtain ⟨hp1, hp2⟩ := hp
+          refine ⟨⟨by simp [h1], by simp [h2], by dsimp only; (clear * - hp1; omega), ?_⟩, by dsimp only; (clear * - hp1; omega)⟩
+          dsimp only
+          rw [auto_HS_push _ _ _ _ _ _ _ _ h1 h2, hS, show i + 2 = i + 1 + 1 from rfl, Finset.sum_range_succ,
+            Finset.sum_range_succ, hp2]
+          have e1 : auto_e b (cs.getD i 0 + sh) = 1 - b := by unfold auto_e; rw [if_neg (by (clear * - hev; omega))]
+          have e2 : auto_e b (cs.getD i 0 + 1 + sh) = b := by unfold auto_e; rw [if_pos (by (clear * - hev; omega))]
+          have e3 : (cs.getD i 0 + 1 + sh) / 2 = (cs.getD i 0 + sh) / 2 := by (clear * - hev; omega)
+          rw [e1, e2, e3]
+          rw [auto_W_two]
+          linear_combination (b * vs.getD i 0 * g ((cs.getD i 0 + sh) / 2)) * (CharTwo.two_eq_zero (R := 𝔽))
+        · rw [if_neg (by simpa using hp)]
+          refine ⟨⟨by simp [h1], by simp [h2], by dsimp only; (clear * - hlt; omega), ?_⟩, by dsimp only; (clear * - hlt; omega)⟩
+          dsimp only
+          rw [auto_HS_push _ _ _ _ _ _ _ _ h1 h2, hS, Finset.sum_range_succ]
+          rw [show auto_e b (cs.getD i 0 + sh) = 1 - b by unfold auto_e; rw [if_neg (by (clear * - hev; omega))]]
+          rw [auto_W_zero]
+          ring
+      · rw [if_neg (by simpa using hev)]
+        have hev' : (cs.getD i 0 + sh) % 2 = 1 := by (clear * - hev; omega)
+        refine ⟨⟨by simp [h1], by simp [h2], by dsimp only; (clear * - hlt; omega), ?_⟩, by dsimp only; (clear * - hlt; omega)⟩
+        dsimp only
+        rw [auto_HS_push _ _ _ _ _ _ _ _ h1 h2, hS, Finset.sum_range_succ]
+        rw [show auto_e b (cs.getD i 0 + sh) = b by unfold auto_e; rw [if_pos hev']]
+        rw [auto_W_one]
+        ring
+    · rw [if_neg hlt]
+      exact hΦ (ts, xs, ks, i) h1 h2 (by rw [hS, show i = cs.size by (clear * - hi hlt; omega)])
+  · simp [auto_HS]
+
+/-- `autoStepP`'s merge of the two halves. -/
+def auto_merge (rxk ryk : 𝔽) (A B : Array ℕ × Array 𝔽 × Array ℕ) : Array ℕ × Array 𝔽 := Id.run do
+  let p := rxk * ryk
+  let e00 := 1 - rxk - ryk + p
+  let e01 := ryk - p
+  let e10 := rxk - p
+  let e11 := p
+  let (ta, va, ka) := A
+  let (tb, vb, kb) := B
+  let wy (val : 𝔽) (k : ℕ) : 𝔽 := if k == 2 then val else if k == 0 then val - ryk * val else ryk * val
+  let mut oc : Array ℕ := Array.mkEmpty (ta.size + tb.size)
+  let mut ov : Array 𝔽 := Array.mkEmpty (ta.size + tb.size)
+  let mut i := 0
+  let mut j := 0
+  while i < ta.size || j < tb.size do
+    let a := ta.getD i 0
+    let b := tb.getD j 0
+    if j ≥ tb.size || (i < ta.size && a < b) then
+      let x := va.getD i 0
+      let k := ka.getD i 0
+      oc := oc.push a; ov := ov.push (if k == 2 then x - rxk * x else x * (if k == 0 then e00 else e01))
+      i := i + 1
+    else if i ≥ ta.size || b < a then
+      let x := vb.getD j 0
+      let k := kb.getD j 0
+      oc := oc.push b; ov := ov.push (if k == 2 then rxk * x else x * (if k == 0 then e10 else e11))
+      j := j + 1
+    else
+      let x := va.getD i 0
+      let y := vb.getD j 0
+      let k := ka.getD i 0
+      let k' := kb.getD j 0
+      oc := oc.push a
+      if k != 2 && k' != 2 then
+        ov := ov.push (x * (if k == 0 then e00 else e01) + y * (if k' == 0 then e10 else e11))
+      else
+        let A := wy x k
+        let B := wy y k'
+        ov := ov.push (A + rxk * (A + B))
+      i := i + 1
+      j := j + 1
+  return (oc, ov)
+
+theorem auto_autoStepP_eq (R : ℕ) (rxk ryk : 𝔽) (cs : Array ℕ) (vs : Array 𝔽) :
+    autoStepPG R rxk ryk cs vs = auto_merge rxk ryk (auto_half cs vs ryk 0) (auto_half cs vs ryk R) := rfl
+
+theorem auto_half_sum (cs : Array ℕ) (vs : Array 𝔽) (b : 𝔽) (sh : ℕ) (g : ℕ → 𝔽) :
     auto_HS b (auto_half cs vs b sh).1 (auto_half cs vs b sh).2.1 (auto_half cs vs b sh).2.2 g
       (auto_half cs vs b sh).1.size =
       ∑ l ∈ Finset.range cs.size, vs.getD l 0 * auto_e b (cs.getD l 0 + sh) * g ((cs.getD l 0 + sh) / 2) :=
   auto_half_gen cs vs b sh g (fun r => auto_HS b r.1 r.2.1 r.2.2 g r.1.size = _) fun _ _ _ h => h
 
-theorem auto_V1 (a b x : FE) (k : ℕ) :
+theorem auto_V1 (a b x : 𝔽) (k : ℕ) :
     (if (k == 2) = true then x - a * x else x * if (k == 0) = true then 1 - a - b + a * b else b - a * b) =
       (1 - a) * auto_W b x k := by
   by_cases h2 : k = 2
@@ -3606,7 +4000,7 @@ theorem auto_V1 (a b x : FE) (k : ℕ) :
     · subst h0; simp [auto_W]; ring
     · simp [auto_W, h2, h0]; ring
 
-theorem auto_V2 (a b x : FE) (k : ℕ) :
+theorem auto_V2 (a b x : 𝔽) (k : ℕ) :
     (if (k == 2) = true then a * x else x * if (k == 0) = true then a - a * b else a * b) =
       a * auto_W b x k := by
   by_cases h2 : k = 2
@@ -3615,7 +4009,7 @@ theorem auto_V2 (a b x : FE) (k : ℕ) :
     · subst h0; simp [auto_W]; ring
     · simp [auto_W, h2, h0]; ring
 
-theorem auto_wy (b x : FE) (k : ℕ) :
+theorem auto_wy (b x : 𝔽) (k : ℕ) :
     (if (k == 2) = true then x else if (k == 0) = true then x - b * x else b * x) = auto_W b x k := by
   by_cases h2 : k = 2
   · subst h2; simp [auto_W]
@@ -3623,7 +4017,7 @@ theorem auto_wy (b x : FE) (k : ℕ) :
     · subst h0; simp [auto_W]; ring
     · simp [auto_W, h2, h0]
 
-theorem auto_V3 (a b x y : FE) (k k' : ℕ) :
+theorem auto_V3 (a b x y : 𝔽) (k k' : ℕ) :
     (if (k != 2 && k' != 2) = true then
         x * (if (k == 0) = true then 1 - a - b + a * b else b - a * b) +
           y * (if (k' == 0) = true then a - a * b else a * b)
@@ -3638,17 +4032,17 @@ theorem auto_V3 (a b x y : FE) (k k' : ℕ) :
     rw [if_pos (by simp [h2, h2'])]
     by_cases h0 : k = 0 <;> by_cases h0' : k' = 0 <;> simp [auto_W, h2, h2', h0, h0'] <;> ring
   · rw [if_neg (by simpa using hc)]
-    linear_combination (a * auto_W b x k) * (CharTwo.two_eq_zero (R := FE))
+    linear_combination (a * auto_W b x k) * (CharTwo.two_eq_zero (R := 𝔽))
 
-theorem auto_merge_gen (a b : FE) (ta : Array ℕ) (va : Array FE) (ka : Array ℕ) (tb : Array ℕ)
-    (vb : Array FE) (kb : Array ℕ) (g : ℕ → FE) (Φ : Array ℕ × Array FE → Prop)
-    (hΦ : ∀ s : Array ℕ × Array FE × ℕ × ℕ, s.1.size = s.2.1.size →
+theorem auto_merge_gen (a b : 𝔽) (ta : Array ℕ) (va : Array 𝔽) (ka : Array ℕ) (tb : Array ℕ)
+    (vb : Array 𝔽) (kb : Array ℕ) (g : ℕ → 𝔽) (Φ : Array ℕ × Array 𝔽 → Prop)
+    (hΦ : ∀ s : Array ℕ × Array 𝔽 × ℕ × ℕ, s.1.size = s.2.1.size →
       auto_S s.1 s.2.1 g = (1 - a) * auto_HS b ta va ka g ta.size + a * auto_HS b tb vb kb g tb.size →
         Φ (s.1, s.2.1)) :
     Φ (auto_merge a b (ta, va, ka) (tb, vb, kb)) := by
   unfold auto_merge
   simp only [Id.run_bind, Id.run_pure]
-  refine auto_loop (β := Array ℕ × Array FE × ℕ × ℕ) _ (fun s => (ta.size - s.2.2.1) + (tb.size - s.2.2.2))
+  refine auto_loop (β := Array ℕ × Array 𝔽 × ℕ × ℕ) _ (fun s => (ta.size - s.2.2.1) + (tb.size - s.2.2.2))
     (fun s => s.1.size = s.2.1.size ∧ s.2.2.1 ≤ ta.size ∧ s.2.2.2 ≤ tb.size ∧
       auto_S s.1 s.2.1 g = (1 - a) * auto_HS b ta va ka g s.2.2.1 + a * auto_HS b tb vb kb g s.2.2.2)
     (fun s => Φ (s.1, s.2.1)) ?_ _ ?_
@@ -3692,11 +4086,11 @@ theorem auto_merge_gen (a b : FE) (ta : Array ℕ) (va : Array FE) (ka : Array �
   · simp [auto_S, auto_HS]
 
 /-- One automaton step on a test function. -/
-def auto_T (R : ℕ) (a b : FE) (g : ℕ → FE) (c : ℕ) : FE :=
+def auto_T (R : ℕ) (a b : 𝔽) (g : ℕ → 𝔽) (c : ℕ) : 𝔽 :=
   (1 - a) * auto_e b c * g (c / 2) + a * auto_e b (c + R) * g ((c + R) / 2)
 
-theorem auto_step_sum (R : ℕ) (a b : FE) (cs : Array ℕ) (vs : Array FE) (g : ℕ → FE) :
-    auto_S (autoStepP R a b cs vs).1 (autoStepP R a b cs vs).2 g = auto_S cs vs (auto_T R a b g) := by
+theorem auto_step_sum (R : ℕ) (a b : 𝔽) (cs : Array ℕ) (vs : Array 𝔽) (g : ℕ → 𝔽) :
+    auto_S (autoStepPG R a b cs vs).1 (autoStepPG R a b cs vs).2 g = auto_S cs vs (auto_T R a b g) := by
   rw [auto_autoStepP_eq]
   have hA := auto_half_sum cs vs b 0 g
   have hB := auto_half_sum cs vs b R g
@@ -3714,7 +4108,7 @@ theorem auto_step_sum (R : ℕ) (a b : FE) (cs : Array ℕ) (vs : Array FE) (g :
   exact Finset.sum_congr rfl fun i _ => by ring
 
 /-- The composed steps. -/
-def auto_Tc (R : ℕ) (A B : ℕ → FE) : List ℕ → (ℕ → FE) → (ℕ → FE)
+def auto_Tc (R : ℕ) (A B : ℕ → 𝔽) : List ℕ → (ℕ → 𝔽) → (ℕ → 𝔽)
   | [], g => g
   | k :: l, g => auto_T R (A k) (B k) (auto_Tc R A B l g)
 
@@ -3727,24 +4121,24 @@ theorem auto_nat (t u m : ℕ) :
   · rw [Nat.mod_mul_right_div_self, show (t + 2 * u) / 2 = t / 2 + u by omega]
   · rw [← Nat.div_div_eq_div_mul, show (t + 2 * u) / 2 = t / 2 + u by omega]
 
-theorem auto_eqW_cons (r : FE) (rs : List FE) (x : ℕ) :
-    eqW (r :: rs) x = auto_e r x * eqW rs (x / 2) := rfl
+theorem auto_eqW_cons (r : 𝔽) (rs : List 𝔽) (x : ℕ) :
+    eqWG (r :: rs) x = auto_e r x * eqWG rs (x / 2) := rfl
 
-theorem auto_term (b : FE) (bs : List FE) (g : ℕ → FE) (m t u : ℕ) :
-    eqW (b :: bs) ((t + 2 * u) % 2 ^ (m + 1)) * g ((t + 2 * u) / 2 ^ (m + 1)) =
-      auto_e b t * (eqW bs ((t / 2 + u) % 2 ^ m) * g ((t / 2 + u) / 2 ^ m)) := by
+theorem auto_term (b : 𝔽) (bs : List 𝔽) (g : ℕ → 𝔽) (m t u : ℕ) :
+    eqWG (b :: bs) ((t + 2 * u) % 2 ^ (m + 1)) * g ((t + 2 * u) / 2 ^ (m + 1)) =
+      auto_e b t * (eqWG bs ((t / 2 + u) % 2 ^ m) * g ((t / 2 + u) / 2 ^ m)) := by
   obtain ⟨h1, h2, h3⟩ := auto_nat t u m
   rw [auto_eqW_cons, h2, h3, mul_assoc]
   congr 1
   unfold auto_e; rw [h1]
 
-theorem auto_e_even (r : FE) (j : ℕ) : auto_e r (2 * j) = 1 - r := by
+theorem auto_e_even (r : 𝔽) (j : ℕ) : auto_e r (2 * j) = 1 - r := by
   unfold auto_e; rw [if_neg (by omega)]
 
-theorem auto_e_odd (r : FE) (j : ℕ) : auto_e r (2 * j + 1) = r := by
+theorem auto_e_odd (r : 𝔽) (j : ℕ) : auto_e r (2 * j + 1) = r := by
   unfold auto_e; rw [if_pos (by omega)]
 
-theorem auto_sum_double (f : ℕ → FE) (N : ℕ) :
+theorem auto_sum_double (f : ℕ → 𝔽) (N : ℕ) :
     ∑ j ∈ Finset.range (2 * N), f j = ∑ j ∈ Finset.range N, (f (2 * j) + f (2 * j + 1)) := by
   induction N with
   | zero => simp
@@ -3752,12 +4146,12 @@ theorem auto_sum_double (f : ℕ → FE) (N : ℕ) :
     rw [show 2 * (N + 1) = 2 * N + 1 + 1 by ring, Finset.sum_range_succ, Finset.sum_range_succ, ih,
       Finset.sum_range_succ, add_assoc]
 
-theorem auto_Tc_eq (R : ℕ) (A B : ℕ → FE) (g : ℕ → FE) (m : ℕ) :
+theorem auto_Tc_eq (R : ℕ) (A B : ℕ → 𝔽) (g : ℕ → 𝔽) (m : ℕ) :
     ∀ k0 s, auto_Tc R A B (List.range' k0 m) g s =
-      ∑ j ∈ Finset.range (2 ^ m), eqW ((List.range' k0 m).map A) j *
-        eqW ((List.range' k0 m).map B) ((s + R * j) % 2 ^ m) * g ((s + R * j) / 2 ^ m) := by
+      ∑ j ∈ Finset.range (2 ^ m), eqWG ((List.range' k0 m).map A) j *
+        eqWG ((List.range' k0 m).map B) ((s + R * j) % 2 ^ m) * g ((s + R * j) / 2 ^ m) := by
   induction m with
-  | zero => intro k0 s; simp [auto_Tc, eqW]
+  | zero => intro k0 s; simp [auto_Tc, eqWG]
   | succ m ih =>
     intro k0 s
     simp only [List.range'_succ, auto_Tc, List.map_cons]
@@ -3766,18 +4160,18 @@ theorem auto_Tc_eq (R : ℕ) (A B : ℕ → FE) (g : ℕ → FE) (m : ℕ) :
       auto_sum_double, Finset.sum_add_distrib, Finset.mul_sum, Finset.mul_sum]
     refine congrArg₂ (· + ·) ?_ ?_
     · refine Finset.sum_congr rfl fun j _ => ?_
-      rw [show s + R * (2 * j) = s + 2 * (R * j) by ring, mul_assoc (eqW _ (2 * j)), auto_term, auto_eqW_cons,
+      rw [show s + R * (2 * j) = s + 2 * (R * j) by ring, mul_assoc (eqWG _ (2 * j)), auto_term, auto_eqW_cons,
         show 2 * j / 2 = j by (clear * -; omega), auto_e_even]
       ring
     · refine Finset.sum_congr rfl fun j _ => ?_
-      rw [show s + R * (2 * j + 1) = s + R + 2 * (R * j) by ring, mul_assoc (eqW _ (2 * j + 1)), auto_term,
+      rw [show s + R * (2 * j + 1) = s + R + 2 * (R * j) by ring, mul_assoc (eqWG _ (2 * j + 1)), auto_term,
         auto_eqW_cons, show (2 * j + 1) / 2 = j by (clear * -; omega), auto_e_odd]
       ring
 
-theorem auto_fold (R : ℕ) (A B : ℕ → FE) (l : List ℕ) (s : Array ℕ × Array FE) (g : ℕ → FE) :
-    auto_S (l.foldl (fun b a => ((autoStepP R (A a) (B a) b.1 b.2).1, (autoStepP R (A a) (B a) b.1 b.2).2))
+theorem auto_fold (R : ℕ) (A B : ℕ → 𝔽) (l : List ℕ) (s : Array ℕ × Array 𝔽) (g : ℕ → 𝔽) :
+    auto_S (l.foldl (fun b a => ((autoStepPG R (A a) (B a) b.1 b.2).1, (autoStepPG R (A a) (B a) b.1 b.2).2))
         s).1
-      (l.foldl (fun b a => ((autoStepP R (A a) (B a) b.1 b.2).1, (autoStepP R (A a) (B a) b.1 b.2).2)) s).2 g =
+      (l.foldl (fun b a => ((autoStepPG R (A a) (B a) b.1 b.2).1, (autoStepPG R (A a) (B a) b.1 b.2).2)) s).2 g =
       auto_S s.1 s.2 (auto_Tc R A B l g) := by
   induction l generalizing s with
   | nil => rfl
@@ -3785,18 +4179,18 @@ theorem auto_fold (R : ℕ) (A B : ℕ → FE) (l : List ℕ) (s : Array ℕ × 
     rw [List.foldl_cons, ih]
     exact auto_step_sum R (A k) (B k) s.1 s.2 _
 
-theorem auto_listsum (f : ℕ → FE) (n : ℕ) : ((List.range n).map f).sum = ∑ i ∈ Finset.range n, f i := by
+theorem auto_listsum (f : ℕ → 𝔽) (n : ℕ) : ((List.range n).map f).sum = ∑ i ∈ Finset.range n, f i := by
   induction n with
   | zero => simp
   | succ n ih => rw [List.range_succ, List.map_append, List.sum_append, ih, Finset.sum_range_succ]; simp
 
-theorem auto_out (cs : Array ℕ) (vs : Array FE) (g : ℕ → FE) :
+theorem auto_out (cs : Array ℕ) (vs : Array 𝔽) (g : ℕ → 𝔽) :
     (((Array.range cs.size).map fun i => (cs.getD i 0, vs.getD i 0)).toList.map fun cv => cv.2 * g cv.1).sum =
       auto_S cs vs g := by
   simp only [Array.toList_map, Array.toList_range, List.map_map]
   rw [auto_listsum]; rfl
 
-theorem auto_init (st : Array (ℕ × FE)) (h : ℕ → FE) :
+theorem auto_init (st : Array (ℕ × 𝔽)) (h : ℕ → 𝔽) :
     auto_S (st.map (·.1)) (st.map (·.2)) h = (st.toList.map fun sv => sv.2 * h sv.1).sum := by
   unfold auto_S
   rw [← auto_listsum]
@@ -3806,36 +4200,39 @@ theorem auto_init (st : Array (ℕ × FE)) (h : ℕ → FE) :
   simp at h1
   simp [Array.getD_eq_getD_getElem?, h1]
 
-theorem auto_rx (rx : Array FE) (xs : Array ℕ) :
+theorem auto_rx (rx : Array 𝔽) (xs : Array ℕ) :
     (List.range' 0 xs.size).map (fun a => rx.getD (xs.getD a 0) 0) = xs.toList.map fun i => rx.getD i 0 := by
   apply List.ext_getElem (by simp)
   intro i h1 h2
   simp at h1
   simp [Array.getD_eq_getD_getElem?, h1]
 
-theorem auto_ry (ry : Array FE) (n : ℕ) : (List.range' 0 n).map (fun a => ry.getD a 0) = sub ry 0 n := by
+theorem auto_ry (ry : Array 𝔽) (n : ℕ) : (List.range' 0 n).map (fun a => ry.getD a 0) = sub ry 0 n := by
   unfold sub
   rw [List.range_eq_range']
   simp
 
 /-- **The automaton** (statement): on states sorted with distinct keys, the final states carry
 `Σ_s v_s Σ_j eq(r_x,xs, j)·eq(r_y[0,n), (s + R·j) mod 2^n)` on `(s + R·j) / 2^n`. Owner L-A. -/
-theorem runAuto_eq (P : Pt) (xs : Array ℕ) (R : ℕ) (st : Array (ℕ × FE))
-    (hs : st.toList.Pairwise fun a b ↦ a.1 < b.1) (g : ℕ → FE) :
-    ((runAuto P xs R st).toList.map fun cv ↦ cv.2 * g cv.1).sum =
+theorem runAuto_eq (P : PtG 𝔽) (xs : Array ℕ) (R : ℕ) (st : Array (ℕ × 𝔽))
+    (hs : st.toList.Pairwise fun a b ↦ a.1 < b.1) (g : ℕ → 𝔽) :
+    ((runAutoG P xs R st).toList.map fun cv ↦ cv.2 * g cv.1).sum =
       (st.toList.map fun sv ↦ sv.2 * ((List.range (2 ^ xs.size)).map fun j ↦
-        eqW (xs.toList.map fun i ↦ P.rx.getD i 0) j *
-          eqW (sub P.ry 0 xs.size) ((sv.1 + R * j) % 2 ^ xs.size) * g ((sv.1 + R * j) / 2 ^ xs.size)).sum).sum := by
-  unfold runAuto
+        eqWG (xs.toList.map fun i ↦ P.rx.getD i 0) j *
+          eqWG (sub P.ry 0 xs.size) ((sv.1 + R * j) % 2 ^ xs.size) * g ((sv.1 + R * j) / 2 ^ xs.size)).sum).sum := by
+  unfold runAutoG
   simp only [Id.run_bind, Id.run_pure, Std.Legacy.Range.forIn_eq_forIn_range', List.forIn_pure_yield_eq_foldl]
   have hn : [:xs.size].size = xs.size := by simp [Std.Legacy.Range.size]
   rw [hn, auto_out, auto_fold R (fun a => P.rx.getD (xs.getD a 0) 0) (fun a => P.ry.getD a 0), auto_init]
   refine congrArg List.sum (List.map_congr_left fun sv _ => ?_)
   rw [auto_Tc_eq, auto_listsum, auto_rx, auto_ry]
 
+section L1
+variable [KRing 𝔽] [BEq 𝔽] [LawfulBEq 𝔽]
+
 /-- The initial states of a pass: per run of equal level-0 keys, the state and the run's atom sum. -/
-def passInit (T : Array (Array FE)) (p : Pass) : Array (ℕ × FE) := Id.run do
-  let mut out : Array (ℕ × FE) := #[]
+def passInit (T : Array (Array 𝔽)) (p : Pass) : Array (ℕ × 𝔽) := Id.run do
+  let mut out : Array (ℕ × 𝔽) := #[]
   let mut i := 0
   let mut guard := p.atoms.size
   while i < p.atoms.size && guard > 0 do
@@ -3849,14 +4246,14 @@ def passInit (T : Array (Array FE)) (p : Pass) : Array (ℕ × FE) := Id.run do
 /-! ## The initial-state code -/
 
 /-- `c'` is `c` with a block appended that emits `O` (and leaves the open sum alone). -/
-def code_ISpec (T : Array (Array FE)) (c c' : Code) (O : Array (ℕ × FE)) : Prop :=
+def code_ISpec (T : Array (Array 𝔽)) (c c' : Code) (O : Array (ℕ × 𝔽)) : Prop :=
   code_Al c' ∧ (∃ R, c'.ws = c.ws ++ R) ∧ ∃ L, code_instrs c' = code_instrs c ++ L ∧
     ∀ (R : Array FE) top st em, L.foldl (code_step T (c'.ws ++ R)) (top, st, em) = (top, st, em ++ O)
 
-theorem code_ISpec_zero (T : Array (Array FE)) (c : Code) (hc : code_Al c) : code_ISpec T c c #[] :=
+theorem code_ISpec_zero (T : Array (Array 𝔽)) (c : Code) (hc : code_Al c) : code_ISpec T c c #[] :=
   ⟨hc, ⟨#[], by simp⟩, [], by simp, by simp⟩
 
-theorem code_ISpec_trans (T : Array (Array FE)) (c c1 c2 : Code) (O1 O2 : Array (ℕ × FE))
+theorem code_ISpec_trans (T : Array (Array 𝔽)) (c c1 c2 : Code) (O1 O2 : Array (ℕ × 𝔽))
     (h1 : code_ISpec T c c1 O1) (h2 : code_ISpec T c1 c2 O2) : code_ISpec T c c2 (O1 ++ O2) := by
   obtain ⟨-, ⟨R1, hR1⟩, L1, hL1, hf1⟩ := h1
   obtain ⟨hA, ⟨R2, hR2⟩, L2, hL2, hf2⟩ := h2
@@ -3867,7 +4264,7 @@ theorem code_ISpec_trans (T : Array (Array FE)) (c c1 c2 : Code) (O1 O2 : Array 
   rw [this, hf1, ← this, hf2, Array.append_assoc]
 
 /-- An open sum, a block adding `E`, and a close emitting `(s, E)`. -/
-theorem code_ISpec_wrap (T : Array (Array FE)) (c c2 : Code) (E : FE) (s : ℕ) (hc : code_Al c)
+theorem code_ISpec_wrap (T : Array (Array 𝔽)) (c c2 : Code) (E : 𝔽) (s : ℕ) (hc : code_Al c)
     (h : code_Spec T (c.emit 0 0 0 0) c2 E) : code_ISpec T c (c2.emit 3 0 s 0) #[(s, E)] := by
   obtain ⟨hA0, hI0, hW0⟩ := code_emit c 0 0 0 0 hc
   obtain ⟨hA2, ⟨R2, hR2⟩, L2, hL2, hf2⟩ := h
@@ -3884,7 +4281,7 @@ theorem code_ISpec_wrap (T : Array (Array FE)) (c c2 : Code) (E : FE) (s : ℕ) 
     Option.getD_some, Array.pop_push]
   rfl
 
-theorem greedy_loop_ISpec {X : Type} (T : Array (Array FE)) (F : Code → X → Code) (s : X → ℕ) (v : X → FE)
+theorem greedy_loop_ISpec {X : Type} (T : Array (Array 𝔽)) (F : Code → X → Code) (s : X → ℕ) (v : X → 𝔽)
     (l : List X) (hF : ∀ c x, x ∈ l → code_Al c → 0 < c.ws.size → code_ISpec T c (F c x) #[(s x, v x)]) :
     ∀ c, code_Al c → 0 < c.ws.size → code_ISpec T c (l.foldl F c) (l.map fun x ↦ (s x, v x)).toArray := by
   induction l with
@@ -3958,9 +4355,9 @@ theorem greedy_strict (l : List (ℕ × ℕ)) (h1 : l.Pairwise fun x y ↦ x.2 �
       · exact hxy
       · exact lt_trans hxy ((List.pairwise_cons.1 ih').1 z hz)
 
-theorem greedy_hK1 (T : Array (Array FE)) (as : Array Atom) (hT : keyVal T (0, 0) = 1)
+theorem greedy_hK1 (T : Array (Array 𝔽)) (as : Array Atom) (hT : keyValG T (0, 0) = 1)
     (h0 : ∀ a ∈ as, ∀ k ∈ a.keys.toList.drop 1, k.1 = 0 → k.2 = 0) :
-    ∀ i m, m ≠ 0 → (keyAt as m i).1 = 0 → keyVal T (keyAt as m i) = 1 := by
+    ∀ i m, m ≠ 0 → (keyAt as m i).1 = 0 → keyValG T (keyAt as m i) = 1 := by
   intro i m hm h1
   unfold keyAt at *
   rcases code_key as i m with h | ⟨a, ha, hm', h⟩
@@ -3987,17 +4384,17 @@ theorem greedy_range_erase_zero (D : ℕ) : (List.range D).erase 0 = (List.range
   | zero => simp
   | succ n => rw [List.range_succ_eq_map]; simp
 
-theorem greedy_valFrom1 (T : Array (Array FE)) (a : Atom) (D : ℕ) (h : a.keys.size = D) :
-    a.w * (((List.range D).erase 0).map fun L ↦ keyVal T (a.keys.getD L (0, 0))).prod = runs_valFrom T 1 a := by
+theorem greedy_valFrom1 (T : Array (Array 𝔽)) (a : Atom) (D : ℕ) (h : a.keys.size = D) :
+    KRing.ofE a.w * (((List.range D).erase 0).map fun L ↦ keyValG T (a.keys.getD L (0, 0))).prod = runs_valFrom T 1 a := by
   rw [runs_valFrom, greedy_foldl_mul, greedy_keys_toList, h, ← List.map_drop, List.map_map, greedy_range_erase_zero]
   rfl
 
-theorem greedy_initCodeG (T : Array (Array FE)) (as : Array Atom) (D : ℕ)
-    (hD : ∀ a ∈ as, a.keys.size = D) (hT : keyVal T (0, 0) = 1)
+theorem greedy_initCodeG (T : Array (Array 𝔽)) (as : Array Atom) (D : ℕ)
+    (hD : ∀ a ∈ as, a.keys.size = D) (hT : keyValG T (0, 0) = 1)
     (h0 : ∀ a ∈ as, ∀ k ∈ a.keys.toList.drop 1, k.1 = 0 → k.2 = 0) (h1 : ∀ a ∈ as, (a.keys.getD 0 (0, 0)).1 = 0)
-    (g : ℕ → FE) :
-    ((runCode T (initCodeG as D)).2.toList.Pairwise fun a b ↦ a.1 < b.1) ∧
-      ((runCode T (initCodeG as D)).2.toList.map fun sv ↦ sv.2 * g sv.1).sum =
+    (g : ℕ → 𝔽) :
+    ((runCodeG T (initCodeG as D)).2.toList.Pairwise fun a b ↦ a.1 < b.1) ∧
+      ((runCodeG T (initCodeG as D)).2.toList.map fun sv ↦ sv.2 * g sv.1).sum =
         (as.toList.map fun a ↦ runs_valFrom T 1 a * g (a.keys.getD 0 (0, 0)).2).sum := by
   have hcode : initCodeG as D = (runsAt as 0 (sortAt as 0 (Array.range as.size))).toList.foldl
       (fun c r ↦ (genG as (D + 1) r.2 ((List.range D).erase 0) (c.emit 0 0 0 0)).emit 3 0 r.1.2 0)
@@ -4010,8 +4407,8 @@ theorem greedy_initCodeG (T : Array (Array FE)) (as : Array Atom) (D : ℕ)
   have hspec := greedy_loop_ISpec T
     (fun c r ↦ (genG as (D + 1) r.2 ((List.range D).erase 0) (c.emit 0 0 0 0)).emit 3 0 r.1.2 0)
     (fun r ↦ r.1.2)
-    (fun r ↦ (r.2.toList.map fun i ↦ (as.getD i default).w *
-      (((List.range D).erase 0).map fun L ↦ keyVal T (keyAt as L i)).prod).sum)
+    (fun r ↦ (r.2.toList.map fun i ↦ KRing.ofE (as.getD i default).w *
+      (((List.range D).erase 0).map fun L ↦ keyValG T (keyAt as L i)).prod).sum)
     (runsAt as 0 (sortAt as 0 (Array.range as.size))).toList
     (fun c r _ hc hw ↦ code_ISpec_wrap T c _ _ _ hc
       (greedy_genG_P T as (· ≠ 0) hT (greedy_hK1 T as hT h0) (D + 1) r.2 ((List.range D).erase 0)
@@ -4020,9 +4417,9 @@ theorem greedy_initCodeG (T : Array (Array FE)) (as : Array Atom) (D : ℕ)
         (fun L hL ↦ (List.nodup_range.mem_erase_iff.1 hL).1) (code_emit c 0 0 0 0 hc).1
         (by rw [(code_emit c 0 0 0 0 hc).2.2]; exact hw)))
     _ code_atom0 (by decide)
-  have hem : (runCode T (initCodeG as D)).2 = ((runsAt as 0 (sortAt as 0 (Array.range as.size))).toList.map
-      fun r ↦ (r.1.2, (r.2.toList.map fun i ↦ (as.getD i default).w *
-        (((List.range D).erase 0).map fun L ↦ keyVal T (keyAt as L i)).prod).sum)).toArray := by
+  have hem : (runCodeG T (initCodeG as D)).2 = ((runsAt as 0 (sortAt as 0 (Array.range as.size))).toList.map
+      fun r ↦ (r.1.2, (r.2.toList.map fun i ↦ KRing.ofE (as.getD i default).w *
+        (((List.range D).erase 0).map fun L ↦ keyValG T (keyAt as L i)).prod).sum)).toArray := by
     obtain ⟨-, -, L, hL, hf⟩ := hspec
     have := hf #[] 0 #[] #[]
     rw [Array.append_empty] at this
@@ -4048,10 +4445,10 @@ theorem greedy_initCodeG (T : Array (Array FE)) (as : Array Atom) (D : ℕ)
     exact this
   · rw [List.map_map]
     have e1 : ∀ r ∈ (runsAt as 0 (sortAt as 0 (Array.range as.size))).toList,
-        (Function.comp (fun sv ↦ sv.2 * g sv.1) fun r ↦ (r.1.2, (r.2.toList.map fun i ↦ (as.getD i default).w *
-          (((List.range D).erase 0).map fun L ↦ keyVal T (keyAt as L i)).prod).sum)) r =
-        (r.2.toList.map fun i ↦ (as.getD i default).w *
-          (((List.range D).erase 0).map fun L ↦ keyVal T (keyAt as L i)).prod * g (keyAt as 0 i).2).sum := by
+        (Function.comp (fun sv ↦ sv.2 * g sv.1) fun r ↦ (r.1.2, (r.2.toList.map fun i ↦ KRing.ofE (as.getD i default).w *
+          (((List.range D).erase 0).map fun L ↦ keyValG T (keyAt as L i)).prod).sum)) r =
+        (r.2.toList.map fun i ↦ KRing.ofE (as.getD i default).w *
+          (((List.range D).erase 0).map fun L ↦ keyValG T (keyAt as L i)).prod * g (keyAt as 0 i).2).sum := by
       intro r hr
       simp only [Function.comp_apply]
       rw [← List.sum_map_mul_right]
@@ -4069,16 +4466,16 @@ def code_iStep (as : Array Atom) (D : ℕ) (c : Code) (i : ℕ) : Code :=
     ((as.getD i default).keys.getD 0 (0, 0)).2 0
 
 /-- One iteration of `passInit`'s loop. -/
-def code_pStep (T : Array (Array FE)) (as : Array Atom) (D : ℕ) (out : Array (ℕ × FE)) (i : ℕ) :
-    Array (ℕ × FE) :=
+def code_pStep (T : Array (Array 𝔽)) (as : Array Atom) (D : ℕ) (out : Array (ℕ × 𝔽)) (i : ℕ) :
+    Array (ℕ × 𝔽) :=
   out.push (((as.getD i default).keys.getD 0 (0, 0)).2, evalRuns T as D (D + 1) 1 i (runEnd as 0 i as.size))
 
-theorem code_runCode_initCode (T : Array (Array FE)) (p : Pass)
-    (hD : ∀ a ∈ p.atoms, a.keys.size = p.depth) (hT : keyVal T (0, 0) = 1)
+theorem code_runCode_initCode (T : Array (Array 𝔽)) (p : Pass)
+    (hD : ∀ a ∈ p.atoms, a.keys.size = p.depth) (hT : keyValG T (0, 0) = 1)
     (h0 : ∀ a ∈ p.atoms, ∀ k ∈ a.keys.toList.drop 1, k.1 = 0 → k.2 = 0) :
-    (runCode T (initCode p.atoms p.depth)).2 = passInit T p := by
+    (runCodeG T (initCode p.atoms p.depth)).2 = passInit T p := by
   have hK : ∀ i m, 1 ≤ m → ((p.atoms.getD i default).keys.getD m (0, 0)).1 = 0 →
-      keyVal T ((p.atoms.getD i default).keys.getD m (0, 0)) = 1 := by
+      keyValG T ((p.atoms.getD i default).keys.getD m (0, 0)) = 1 := by
     intro i m hm1 h1
     rcases code_key p.atoms i m with h | ⟨a, ha, hm, h⟩
     · rw [h]; exact hT
@@ -4130,14 +4527,14 @@ theorem code_runCode_initCode (T : Array (Array FE)) (p : Pass)
 /-! ## Paste below `passInit` (they use `Pass`, `passInit`) -/
 
 /-- passInit: the initial states of a pass and their sums. -/
-theorem runs_passInit_sum (T : Array (Array FE)) (p : Pass) (hD : ∀ a ∈ p.atoms, a.keys.size = p.depth)
-    (hT : keyVal T (0, 0) = 1) (h0 : ∀ a ∈ p.atoms, ∀ k ∈ a.keys.toList.drop 1, k.1 = 0 → k.2 = 0) (g : ℕ → FE) :
+theorem runs_passInit_sum (T : Array (Array 𝔽)) (p : Pass) (hD : ∀ a ∈ p.atoms, a.keys.size = p.depth)
+    (hT : keyValG T (0, 0) = 1) (h0 : ∀ a ∈ p.atoms, ∀ k ∈ a.keys.toList.drop 1, k.1 = 0 → k.2 = 0) (g : ℕ → 𝔽) :
     ((passInit T p).toList.map fun sv ↦ sv.2 * g sv.1).sum =
       (p.atoms.toList.map fun a ↦ runs_valFrom T 1 a * g (a.keys.getD 0 (0, 0)).2).sum := by
   rw [← runs_range_map p.atoms (fun a ↦ runs_valFrom T 1 a * g (a.keys.getD 0 (0, 0)).2)]
   unfold passInit
   refine runs_loop _ _
-    (fun s : Array (ℕ × FE) × ℕ × ℕ ↦ (s.1.toList.map fun sv ↦ sv.2 * g sv.1).sum +
+    (fun s : Array (ℕ × 𝔽) × ℕ × ℕ ↦ (s.1.toList.map fun sv ↦ sv.2 * g sv.1).sum +
         ((List.range (p.atoms.size - s.2.1)).map fun i ↦
           runs_valFrom T 1 (p.atoms.getD (s.2.1 + i) default) *
             g ((p.atoms.getD (s.2.1 + i) default).keys.getD 0 (0, 0)).2).sum =
@@ -4145,11 +4542,11 @@ theorem runs_passInit_sum (T : Array (Array FE)) (p : Pass) (hD : ∀ a ∈ p.at
           runs_valFrom T 1 (p.atoms.getD (0 + i) default) *
             g ((p.atoms.getD (0 + i) default).keys.getD 0 (0, 0)).2).sum ∧
       p.atoms.size - s.2.1 ≤ s.2.2)
-    (fun s : Array (ℕ × FE) × ℕ × ℕ ↦ (s.1.toList.map fun sv ↦ sv.2 * g sv.1).sum =
+    (fun s : Array (ℕ × 𝔽) × ℕ × ℕ ↦ (s.1.toList.map fun sv ↦ sv.2 * g sv.1).sum =
         ((List.range (p.atoms.size - 0)).map fun i ↦
           runs_valFrom T 1 (p.atoms.getD (0 + i) default) *
             g ((p.atoms.getD (0 + i) default).keys.getD 0 (0, 0)).2).sum)
-    (fun s : Array (ℕ × FE) × ℕ × ℕ ↦ s.2.2) ?_ ?_ _
+    (fun s : Array (ℕ × 𝔽) × ℕ × ℕ ↦ s.2.2) ?_ ?_ _
     ⟨by simp only [List.map_nil, List.sum_nil, zero_add], le_rfl⟩
   · rintro ⟨out, i, gd⟩ ⟨h1, h2⟩ hc
     dsimp only at h1 h2 hc ⊢
@@ -4182,16 +4579,16 @@ theorem runs_sorted_getD (as : Array Atom) (R : Atom → Atom → Prop) (hs : as
   simpa [show t < as.size by (clear * - htu hu; omega), hu] using this
 
 /-- passInit: the states are strictly increasing (atoms sorted by level-0 index, level-0 keys of table `0`). -/
-theorem runs_passInit_sorted (T : Array (Array FE)) (p : Pass)
+theorem runs_passInit_sorted (T : Array (Array 𝔽)) (p : Pass)
     (h1 : ∀ a ∈ p.atoms, (a.keys.getD 0 (0, 0)).1 = 0)
     (hs : p.atoms.toList.Pairwise fun a b ↦ (a.keys.getD 0 (0, 0)).2 ≤ (b.keys.getD 0 (0, 0)).2) :
     (passInit T p).toList.Pairwise fun a b ↦ a.1 < b.1 := by
   unfold passInit
   refine runs_loop _ _
-    (fun s : Array (ℕ × FE) × ℕ × ℕ ↦ (s.1.toList.Pairwise fun a b ↦ a.1 < b.1) ∧
+    (fun s : Array (ℕ × 𝔽) × ℕ × ℕ ↦ (s.1.toList.Pairwise fun a b ↦ a.1 < b.1) ∧
       (s.2.1 < p.atoms.size → ∀ x ∈ s.1.toList, x.1 < ((p.atoms.getD s.2.1 default).keys.getD 0 (0, 0)).2))
-    (fun s : Array (ℕ × FE) × ℕ × ℕ ↦ s.1.toList.Pairwise fun a b ↦ a.1 < b.1)
-    (fun s : Array (ℕ × FE) × ℕ × ℕ ↦ s.2.2) ?_ (fun s hs _ ↦ hs.1) _ ?_
+    (fun s : Array (ℕ × 𝔽) × ℕ × ℕ ↦ s.1.toList.Pairwise fun a b ↦ a.1 < b.1)
+    (fun s : Array (ℕ × 𝔽) × ℕ × ℕ ↦ s.2.2) ?_ (fun s hs _ ↦ hs.1) _ ?_
   swap
   · exact ⟨List.Pairwise.nil, fun _ x hx ↦ by simp at hx⟩
   rintro ⟨out, i, gd⟩ ⟨hP, hlt⟩ hc
@@ -4217,8 +4614,14 @@ theorem runs_passInit_sorted (T : Array (Array FE)) (p : Pass)
     · exact (hlt x hx).trans hij2
     · exact hij2
 
+end L1
+
 /-- A pass's finish at a final state `c` (`y ≫ n`). -/
 def finVal (T : Array (Array FE)) (p : Pass) (c : ℕ) : FE :=
+  p.fin.foldl (fun acc (t, bs) ↦ acc * (T.getD t #[]).getD (pext c bs) 0) 1
+
+/-- The proof-side twin of `finVal` over a value ring (S2GT-W). -/
+def finValG (T : Array (Array 𝔽)) (p : Pass) (c : ℕ) : 𝔽 :=
   p.fin.foldl (fun acc (t, bs) ↦ acc * (T.getD t #[]).getD (pext c bs) 0) 1
 
 /-- `lo` if `bs` is the run `[lo, lo + bs.length)` (`pext` is then a shift and a mask). -/
@@ -4257,12 +4660,38 @@ def finSum (T : Array (Array FE)) (p : Pass) (fs : Array (ℕ × FE)) : FE := Id
     inner := inner + mulI v (Tl.getD (pextR rl ml c bl) 0)
   return tot + Th.getD h 0 * inner
 
+/-- The proof-side twin of `finSum` over a value ring (S2GT-W). -/
+def finSumG (T : Array (Array 𝔽)) (p : Pass) (fs : Array (ℕ × 𝔽)) : 𝔽 := Id.run do
+  if p.fin.size != 2 then return fs.foldl (fun acc (c, v) ↦ acc + v * finValG T p c) 0
+  let (tl, bl) := p.fin.getD 0 (0, [])
+  let (th, bh) := p.fin.getD 1 (0, [])
+  let rl := runOf bl
+  let rh := runOf bh
+  let ml := 2 ^ bl.length - 1
+  let mh := 2 ^ bh.length - 1
+  let Tl := T.getD tl #[]
+  let Th := T.getD th #[]
+  let mut tot : 𝔽 := 0
+  let mut inner : 𝔽 := 0
+  let mut h := pextR rh mh (fs.getD 0 (0, 0)).1 bh
+  for (c, v) in fs do
+    let h' := pextR rh mh c bh
+    if h' != h then
+      tot := tot + Th.getD h 0 * inner
+      inner := 0
+      h := h'
+    inner := inner + v * (Tl.getD (pextR rl ml c bl) 0)
+  return tot + Th.getD h 0 * inner
+
+section L1
+variable [KRing 𝔽] [BEq 𝔽] [LawfulBEq 𝔽]
+
 /-- **A pass's value.** -/
-def runPass (P : Pt) (T : Array (Array FE)) (p : Pass) : FE :=
-  let fs := runAuto P p.xs p.R (runCode T p.code).2
-  let s := finSum T p fs
+def runPass (P : PtG 𝔽) (T : Array (Array 𝔽)) (p : Pass) : 𝔽 :=
+  let fs := runAutoG P p.xs p.R (runCodeG T p.code).2
+  let s := finSumG T p fs
   match p.limbE with
-  | some e => s * limbVal (P.ry.getD e 0) (P.ry.getD (e + 1) 0)
+  | some e => s * limbValG (P.ry.getD e 0) (P.ry.getD (e + 1) 0)
   | none => s
 
 /-! ## The compiled evaluator -/
@@ -4293,6 +4722,16 @@ def runPassF (P : Pt) (T : Array (Array FE)) (F : Array FE) (p : Pass) : FE :=
   | some e => s * limbVal (P.ry.getD e 0) (P.ry.getD (e + 1) 0)
   | none => s
 
+/-- The proof-side twin of `runPassF` over a value ring (S2GT-W). -/
+def runPassFG (P : PtG 𝔽) (T : Array (Array 𝔽)) (F : Array 𝔽) (p : Pass) : 𝔽 :=
+  let ini := match p.fcode with
+    | some fc => (runFG F fc).2
+    | none => (runCodeG T p.code).2
+  let s := finSumG T p (runAutoG P p.xs p.R ini)
+  match p.limbE with
+  | some e => s * limbValG (P.ry.getD e 0) (P.ry.getD (e + 1) 0)
+  | none => s
+
 /-- **The compiled evaluator**: the atom sum plus the passes, on the flat tables where the code is fused. -/
 def evalC (c : Comp) (pt : List FE) : FE :=
   let P := Pt.ofList pt
@@ -4302,5 +4741,123 @@ def evalC (c : Comp) (pt : List FE) : FE :=
     | some fc => (runF F fc).1
     | none => (runCode T c.code).1
   c.passes.foldl (fun acc p ↦ acc + runPassF P T F p) a
+
+/-- The proof-side twin of `evalC` over a value ring (S2GT-W). -/
+def evalCG (c : Comp) (pt : List 𝔽) : 𝔽 :=
+  let P := PtG.ofList pt
+  let T := tabsAtG P c.tabs
+  let F := flatTabsG c.tabs T
+  let a := match c.fcode with
+    | some fc => (runFG F fc).1
+    | none => (runCodeG T c.code).1
+  c.passes.foldl (fun acc p ↦ acc + runPassFG P T F p) a
+
+end L1
+
+/-! ## The native evaluator is the twin at `FE` (S2GT-W)
+
+Each native function equals its twin at `𝔽 = FE` by its equation lemmas (the twins differ by `mulI` against
+`*`, `fmul`/`wmul`/`FE.smulBase` against the weights' map, and `Pt` against `PtG FE`). -/
+
+/-- The weights' map at `FE` is the identity. -/
+@[simp] theorem ofE_FE (w : FE) : (KRing.ofE w : FE) = w := rfl
+
+/-- `eqW` is its twin at `FE`. -/
+theorem eqW_eqG (l : List FE) (x : ℕ) : eqW l x = eqWG l x := by
+  induction l generalizing x with
+  | nil => rfl
+  | cons r rs ih => simp only [eqW, eqWG, ih]
+
+/-- The native point as the twin's. -/
+def Pt.toG (P : Pt) : PtG FE := ⟨P.kap, P.rx, P.ry⟩
+
+theorem fmul_eqG : fmul = fun a b : FE ↦ a * b := funext fun a ↦ funext fun b ↦ runs_fmul a b
+
+theorem mulI_eqG : mulI = fun a b : FE ↦ a * b := rfl
+
+theorem eqTab_eqG (r : Array FE) (lo n : ℕ) : eqTab r lo n = eqTabG r lo n := by
+  unfold eqTab eqTabG; simp only [mulI_eqG]
+
+theorem eqTabB_eqG (r : Array FE) (bits : List ℕ) : eqTabB r bits = eqTabBG r bits := by
+  unfold eqTabB eqTabBG; simp only [mulI_eqG]
+
+theorem eqLevels_eqG (r : Array FE) (lo n : ℕ) : eqLevels r lo n = eqLevelsG r lo n := by
+  unfold eqLevels eqLevelsG; simp only [mulI_eqG]
+
+theorem margTab_eqG (lv : Array (Array FE)) (lo n : ℕ) (bits : List ℕ) :
+    margTab lv lo n bits = margTabG lv lo n bits := by
+  unfold margTab margTabG; rfl
+
+theorem subTab_eqG (r : Array FE) (lv : Array (Array FE)) (lo n : ℕ) (bits : List ℕ) :
+    subTab r lv lo n bits = subTabG r lv lo n bits := by
+  unfold subTab subTabG; simp only [eqTabB_eqG, margTab_eqG]
+
+theorem kapTab_eqG (κ : Array FE) : kapTab κ = kapTabG κ := by
+  unfold kapTab kapTabG; simp only [eqTab_eqG]
+
+theorem succVal_eqG (xs ys : List FE) : succVal xs ys = succValG xs ys := by
+  unfold succVal succValG; rfl
+
+theorem limbVal_eqG (a b : FE) : limbVal a b = limbValG a b := by
+  unfold limbVal limbValG; simp only [ofE_FE]
+
+theorem kfVal_eqG (P : Pt) (f : KF) : kfVal P f = kfValG P.toG f := by
+  cases f <;> simp only [kfVal, kfValG, Pt.toG, eq1, eq1G, succVal_eqG, limbVal_eqG, ofE_FE, FE.smulBase_eq_mul]
+
+theorem kerVal_eqG (P : Pt) (fs : List KF) : kerVal P fs = kerValG P.toG fs := by
+  unfold kerVal kerValG; simp only [kfVal_eqG]
+
+theorem TRec.eval_eqG (P : Pt) (r : TRec) : TRec.eval P r = TRec.evalG P.toG r := by
+  have hk : kerVal P = kerValG P.toG := funext (kerVal_eqG P)
+  cases r <;> simp only [TRec.eval, TRec.evalG, eqTabB_eqG, kapTab_eqG, hk] <;> rfl
+
+theorem keyVal_eqG (T : Array (Array FE)) (k : ℕ × ℕ) : keyVal T k = keyValG T k := rfl
+
+theorem prodKeys_eqG (T : Array (Array FE)) (ks : List (ℕ × ℕ)) : prodKeys T ks = prodKeysG T ks := by
+  cases ks <;> rfl
+
+theorem tabsAt_eqG (P : Pt) (rs : Array TRec) : tabsAt P rs = tabsAtG P.toG rs := by
+  have hp : prodKeys = prodKeysG (𝔽 := FE) := funext fun T ↦ funext fun ks ↦ prodKeys_eqG T ks
+  unfold tabsAt tabsAtG
+  simp only [eqLevels_eqG, subTab_eqG, TRec.eval_eqG, hp, Pt.toG]
+
+theorem flatTabs_eqG (rs : Array TRec) (T : Array (Array FE)) : flatTabs rs T = flatTabsG rs T := by
+  unfold flatTabs flatTabsG; rfl
+
+theorem wmul_eqG (m : ℕ) (v w : FE) : wmul m v w = wmulG m v w := by
+  unfold wmul wmulG
+  simp only [ofE_FE, FE.smulBase_eq_mul, code_mulY, show (⟨0, 1, 0⟩ : FE) = FE.y from rfl]
+
+theorem runF_eqG (F : Array FE) (c : FCode) : runF F c = runFG F c := by
+  have hw : wmul = wmulG := funext fun m ↦ funext fun v ↦ funext fun w ↦ wmul_eqG m v w
+  unfold runF runFG; simp only [mulI_eqG, hw]
+
+theorem runCode_eqG (T : Array (Array FE)) (c : Code) : runCode T c = runCodeG T c := by
+  unfold runCode runCodeG; simp only [fmul_eqG, ofE_FE]
+
+theorem autoStepP_eqG (R : ℕ) (rxk ryk : FE) (cs : Array ℕ) (vs : Array FE) :
+    autoStepP R rxk ryk cs vs = autoStepPG R rxk ryk cs vs := by
+  unfold autoStepP autoStepPG; rfl
+
+theorem runAuto_eqG (P : Pt) (xs : Array ℕ) (R : ℕ) (st : Array (ℕ × FE)) :
+    runAuto P xs R st = runAutoG P.toG xs R st := by
+  unfold runAuto runAutoG; simp only [autoStepP_eqG, Pt.toG]
+
+theorem finVal_eqG (T : Array (Array FE)) (p : Pass) (c : ℕ) : finVal T p c = finValG T p c := by
+  unfold finVal finValG; rfl
+
+theorem finSum_eqG (T : Array (Array FE)) (p : Pass) (fs : Array (ℕ × FE)) : finSum T p fs = finSumG T p fs := by
+  unfold finSum finSumG; simp only [mulI_eqG, finVal_eqG]
+
+theorem runPassF_eqG (P : Pt) (T : Array (Array FE)) (F : Array FE) (p : Pass) :
+    runPassF P T F p = runPassFG P.toG T F p := by
+  unfold runPassF runPassFG
+  simp only [runF_eqG, runCode_eqG, runAuto_eqG, finSum_eqG, limbVal_eqG, Pt.toG]
+
+/-- **The native evaluator is the twin at `FE`.** -/
+theorem evalC_eqG (c : Comp) (pt : List FE) : evalC c pt = evalCG c pt := by
+  unfold evalC evalCG
+  simp only [tabsAt_eqG, flatTabs_eqG, runF_eqG, runCode_eqG, runPassF_eqG]
+  rfl
 
 end Lvm.Typed.K

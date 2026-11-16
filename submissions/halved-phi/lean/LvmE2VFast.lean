@@ -1390,24 +1390,73 @@ theorem pairWG_snd (s : Bool) (nu nu' : Nat) (w : List FE → FE × FE) (v t : F
   · simp only [pairWG, toStk, TypedV.onStackZBN, BlockClaim.onStack, List.map_map, Function.comp_def,
       ite_true, mul_assoc]
 
+/-- `pairWG` with a weight per region (`wr nu r`, equal to `w` at the region's relocated points: `pairWR_eq`). -/
+def pairWR (s : Bool) (nu nu' : Nat) (w : List FE → FE × FE) (wr : Nat → (Nat × Nat × Nat) → List FE → FE × FE)
+    (x : List FE) : FE × FE :=
+  if s then
+    let L := ((TypedV.regionsN nu).filter (Shape.meets ⟨nu', 0⟩)).map fun r =>
+      let y := TypedV.relocN nu x r
+      ((⟨r.1, r.2.2⟩ : Placement).eqAbove x.tail * (⟨nu', 0⟩ : Placement).eqAbove y, wr nu r (y.take nu'))
+    let h := 1 - x.headD 0
+    (h * (L.map fun q => q.1 * q.2.1).sum, h * (L.map fun q => q.1 * q.2.2).sum)
+  else pairWG s nu nu' w x
+
+theorem pairWR_eq (s : Bool) (nu nu' : Nat) (w : List FE → FE × FE) (wr : Nat → (Nat × Nat × Nat) → List FE → FE × FE)
+    (hw : ∀ (nu0 : Nat) (x : List FE) (r : Nat × Nat × Nat), r ∈ (TypedV.regionsN nu0).filter (Shape.meets ⟨nu', 0⟩) →
+      wr nu0 r ((TypedV.relocN nu0 x r).take nu') = w ((TypedV.relocN nu0 x r).take nu')) (x : List FE) :
+    pairWR s nu nu' w wr x = pairWG s nu nu' w x := by
+  cases s
+  · rw [pairWR, if_neg Bool.false_ne_true]
+  · have hL : (((TypedV.regionsN nu).filter (Shape.meets ⟨nu', 0⟩)).map fun r =>
+        ((⟨r.1, r.2.2⟩ : Placement).eqAbove x.tail * (⟨nu', 0⟩ : Placement).eqAbove (TypedV.relocN nu x r),
+          wr nu r ((TypedV.relocN nu x r).take nu'))) =
+        (((TypedV.regionsN nu).filter (Shape.meets ⟨nu', 0⟩)).map fun r =>
+        ((⟨r.1, r.2.2⟩ : Placement).eqAbove x.tail * (⟨nu', 0⟩ : Placement).eqAbove (TypedV.relocN nu x r),
+          w ((TypedV.relocN nu x r).take nu'))) :=
+      List.map_congr_left fun r hr => by rw [hw nu x r hr]
+    simp only [pairWR, pairWG, ite_true]
+    rw [hL]
+
 /-- The regions' common width: the small shape's points share their first `18` coordinates. -/
 def rowShare : Nat := 18
 
 /-- The guard of the shared form: every region meeting the block keeps the first `rowShare` coordinates of `x.tail`. -/
 def rowShareOk (nu : Nat) (blk : Placement) (R : RowR) : Bool :=
-  decide (rowShare ≤ R.cols.length) && decide (rowShare ≤ blk.variableCount) &&
+  decide (rowShare ≤ R.cols.length) && decide (rowShare ≤ blk.variableCount) && decide (rowShare ≤ nu - 1) &&
     ((TypedV.regionsN nu).filter (Shape.meets blk)).all fun r => decide (rowShare ≤ r.1) && decide (r.1 ≤ nu - 1)
 
-/-- **A row claim's stack weight** (block `blk`, weight `R.w`): in the small shape the regions' common
-`rowShare` coordinates are multiplied out once (`rowPre`), each region adds its own (`rowSuf`). -/
+/-- `Σ_q c_q·v_q` on the 128 coordinates. -/
+def comb128 (L : List (FE × Array FE)) : Array FE :=
+  (List.range 128).toArray.map fun k => (L.map fun q => q.1 * q.2.getD k 0).sum
+
+theorem dot128_comb (u : Array FE) (L : List (FE × Array FE)) :
+    dot128 u (comb128 L) = (L.map fun q => q.1 * dot128 u q.2).sum := by
+  simp only [dot128_eq]
+  have hc : ∀ k ∈ Finset.range 128, u.getD k 0 * (comb128 L).getD k 0 =
+      u.getD k 0 * (L.map fun q => q.1 * q.2.getD k 0).sum := fun k hk => by
+    rw [comb128, getD_map128' _ _ (Finset.mem_range.mp hk)]
+  rw [Finset.sum_congr rfl hc]
+  clear hc
+  induction L with
+  | nil => simp
+  | cons q L ih =>
+    have e : ∀ k, u.getD k 0 * ((q :: L).map fun q => q.1 * q.2.getD k 0).sum =
+        q.1 * (u.getD k 0 * q.2.getD k 0) + u.getD k 0 * (L.map fun q => q.1 * q.2.getD k 0).sum := fun k => by
+      rw [List.map_cons, List.sum_cons]; ring
+    rw [Finset.sum_congr rfl fun k _ => e k, Finset.sum_add_distrib, ← Finset.mul_sum, ih, List.map_cons,
+      List.sum_cons]
+
+/-- **A row claim's stack weight** (block `blk`, weight `R.w`): in the small shape each region's own coordinates
+are taken by the transposed steps (`rowSuf`), the regions' combination of them is formed (`comb128`), and the
+regions' common `rowShare` coordinates are taken once, also transposed (`tensorDotT`; linear in `eq(r'', ·)`). -/
 def rowStackW (s : Bool) (nu : Nat) (blk : Placement) (R : RowR) (x : List FE) : FE :=
   if s && rowShareOk nu blk R then
-    let u := rowPre (R.cols.take rowShare) ((x.tail ++ List.replicate (nu - 1) 0).take rowShare)
     let sc := R.cols.drop rowShare
-    (1 - x.headD 0) * (((TypedV.regionsN nu).filter (Shape.meets blk)).map fun r =>
+    let V := comb128 (((TypedV.regionsN nu).filter (Shape.meets blk)).map fun r =>
       let y := TypedV.relocN nu x r
-      (⟨r.1, r.2.2⟩ : Placement).eqAbove x.tail *
-        (blk.eqAbove y * dot128 u (rowSuf sc R.eqA ((y.take blk.variableCount).drop rowShare)))).sum
+      ((⟨r.1, r.2.2⟩ : Placement).eqAbove x.tail * blk.eqAbove y,
+        rowSuf sc R.eqA ((y.take blk.variableCount).drop rowShare)))
+    (1 - x.headD 0) * tensorDotT (R.cols.take rowShare) V ((x.tail ++ List.replicate (nu - 1) 0).take rowShare)
   else (toStk s nu (⟨blk, R.w, R.tgt⟩, 0)).1 x
 
 theorem rowStackW_eq (s : Bool) (nu : Nat) (blk : Placement) (R : RowR) (hR : R.OfZ) (v t : FE) (x : List FE) :
@@ -1419,7 +1468,7 @@ theorem rowStackW_eq (s : Bool) (nu : Nat) (blk : Placement) (R : RowR) (hR : R.
     obtain ⟨rfl, hok⟩ := hg
     unfold rowShareOk at hok
     simp only [Bool.and_eq_true, decide_eq_true_eq, List.all_eq_true, List.mem_filter] at hok
-    obtain ⟨⟨hc, hn⟩, hr⟩ := hok
+    obtain ⟨⟨⟨hc, hn⟩, hnu⟩, hr⟩ := hok
     obtain ⟨z, hz⟩ := hR
     have hzl : rowShare ≤ z.length := by rw [hz, List.length_map] at hc; exact hc
     have key : ∀ r ∈ (TypedV.regionsN nu).filter (Shape.meets blk),
@@ -1443,9 +1492,25 @@ theorem rowStackW_eq (s : Bool) (nu : Nat) (blk : Placement) (R : RowR) (hR : R.
       unfold RowR.w
       rw [hz]
       conv_rhs => rw [hsplit, tensorDotT_split z R.eqA _ _ (by rw [hlen]; exact hzl), hlen]
+    have hxl : ((x.tail ++ List.replicate (nu - 1) 0).take rowShare).length = rowShare := by
+      rw [List.length_take, List.length_append, List.length_replicate]; omega
+    have hpre : ∀ V : Array FE, tensorDotT (R.cols.take rowShare) V
+        ((x.tail ++ List.replicate (nu - 1) 0).take rowShare) =
+        dot128 (rowPre (R.cols.take rowShare) ((x.tail ++ List.replicate (nu - 1) 0).take rowShare)) V := by
+      intro V
+      have hzt : ((z.take rowShare).map tColsW).length = rowShare := by
+        rw [List.length_map, List.length_take]; omega
+      have h := tensorDotT_split (z.take rowShare) V ((x.tail ++ List.replicate (nu - 1) 0).take rowShare) []
+        (by rw [hxl, List.length_take]; omega)
+      rw [List.append_nil, hxl, List.take_of_length_le (Nat.le_of_eq hzt),
+        List.drop_of_length_le (Nat.le_of_eq hzt)] at h
+      rw [hz, ← List.map_take, h]
+      simp only [rowSuf, List.zip_nil_left, List.foldr_nil]
     simp only [toStk, ite_true, TypedV.onStackZBN, BlockClaim.onStack]
+    rw [hpre, dot128_comb, List.map_map]
     refine congrArg (fun q => (1 - x.headD 0) * q) (congrArg List.sum (List.map_congr_left fun r hrm => ?_))
-    rw [key r hrm]
+    simp only [Function.comp_apply]
+    rw [key r hrm, mul_assoc]
   · cases s <;> rfl
 
 theorem zip_append_gen {α β : Type} : ∀ (z : List α) (a b : List β),
@@ -1473,13 +1538,31 @@ def pairShareOk (nu nu' : Nat) : Bool :=
     ((TypedV.regionsN nu).filter (Shape.meets ⟨nu', 0⟩)).all fun r => decide (rowShare ≤ r.1) && decide (r.1 ≤ nu - 1)
 
 /-- One region's sum of the parts from their word prefixes `pre` (`sumW6DF` with each `wordWDF` continued). -/
-def sumW6Pre (parts : List ((FE2 × Placement × List FE2) × FE6)) (yk : List FE) : FE6 :=
+def sumW6Pre (keep : Placement → Bool) (parts : List ((FE2 × Placement × List FE2) × FE6)) (yk : List FE) :
+    FE6 :=
   parts.foldl (fun acc qp =>
-    let q := qp.1
-    let m := min rowShare q.2.1.variableCount
-    let w := FE6.mul (FE6.mul (FE6.ofE2 q.1) (FE6.ofE (q.2.1.eqAbove yk)))
-      ((List.zip (q.2.2.drop m) ((yk.take q.2.1.variableCount).drop m)).foldl wordStepF qp.2)
-    ⟨acc.re + w.re, acc.im + w.im⟩) ⟨0, 0⟩
+    if keep qp.1.2.1 then
+      let q := qp.1
+      let m := min rowShare q.2.1.variableCount
+      let w := FE6.mul (FE6.mul (FE6.ofE2 q.1) (FE6.ofE (q.2.1.eqAbove yk)))
+        ((List.zip (q.2.2.drop m) ((yk.take q.2.1.variableCount).drop m)).foldl wordStepF qp.2)
+      ⟨acc.re + w.re, acc.im + w.im⟩
+    else acc) ⟨0, 0⟩
+
+/-- `Shape.InStack` decided. -/
+def inStackB (b : Placement) : Bool :=
+  decide (b.variableCount ≤ CMain.nu20) && decide (b.index % 2 ^ b.variableCount = 0) &&
+    decide (b.index < 2 ^ CMain.nu20)
+
+theorem inStack_of_B {b : Placement} (h : inStackB b = true) : Shape.InStack b := by
+  unfold inStackB at h
+  simp only [Bool.and_eq_true, decide_eq_true_eq] at h
+  exact ⟨h.1.1, h.1.2, h.2⟩
+
+/-- A part on a block that the region `r` does not meet (stack `ν = 23`) weighs `0` there
+(`Shape.eqAbove_relocF_eq_zero`): the parts `pairWS` keeps. -/
+def keepPart (nu nu' : Nat) (r : Nat × Nat × Nat) (blk : Placement) : Bool :=
+  !(nu == 23 && nu' == 23) || Shape.meets blk r || !inStackB blk
 
 /-- **`pairW` with the regions' common coordinates shared**: each part's word weight over the first `rowShare`
 coordinates once, each region continues it. -/
@@ -1489,7 +1572,8 @@ def pairWS (s : Bool) (nu nu' : Nat) (parts : List (FE2 × Placement × List FE2
     let pp := parts.map fun q => (q, wordWDF q.2.2 (xt.take (min rowShare q.2.1.variableCount)))
     let L := ((TypedV.regionsN nu).filter (Shape.meets ⟨nu', 0⟩)).map fun r =>
       let y := TypedV.relocN nu x r
-      ((⟨r.1, r.2.2⟩ : Placement).eqAbove x.tail * (⟨nu', 0⟩ : Placement).eqAbove y, sumW6Pre pp (y.take nu'))
+      ((⟨r.1, r.2.2⟩ : Placement).eqAbove x.tail * (⟨nu', 0⟩ : Placement).eqAbove y,
+        sumW6Pre (keepPart nu nu' r) pp (y.take nu'))
     let h := 1 - x.headD 0
     (h * (L.map fun q => q.1 * q.2.re).sum, h * (L.map fun q => q.1 * q.2.im).sum)
   else pairW s nu nu' parts x
@@ -1505,8 +1589,8 @@ theorem pairWS_eq (s : Bool) (nu nu' : Nat) (parts : List (FE2 × Placement × L
     simp only [Bool.and_eq_true, decide_eq_true_eq, List.all_eq_true, List.mem_filter] at hok
     obtain ⟨hn, hr⟩ := hok
     have key : ∀ r ∈ (TypedV.regionsN nu).filter (Shape.meets ⟨nu', 0⟩),
-        sumW6Pre (parts.map fun q => (q, wordWDF q.2.2 (((x.tail ++ List.replicate (nu - 1) 0).take rowShare).take
-          (min rowShare q.2.1.variableCount)))) ((TypedV.relocN nu x r).take nu') =
+        sumW6Pre (keepPart nu nu' r) (parts.map fun q => (q, wordWDF q.2.2 (((x.tail ++ List.replicate (nu - 1) 0).take
+          rowShare).take (min rowShare q.2.1.variableCount)))) ((TypedV.relocN nu x r).take nu') =
         sumW6DF parts ((TypedV.relocN nu x r).take nu') := by
       intro r hrm
       obtain ⟨hr1, hr2⟩ := hr r (List.mem_filter.mp hrm)
@@ -1514,6 +1598,22 @@ theorem pairWS_eq (s : Bool) (nu nu' : Nat) (parts : List (FE2 × Placement × L
       rw [sumW6Go_eq _ parts _ none (fun _ _ _ h => by cases h), List.foldl_map]
       refine List.foldl_ext _ _ _ fun acc q _ => ?_
       obtain ⟨c, blk, z⟩ := q
+      by_cases hk : keepPart nu nu' r blk = false
+      · simp only [hk, Bool.false_eq_true, if_false]
+        unfold keepPart at hk
+        simp only [Bool.or_eq_false_iff, Bool.not_eq_eq_eq_not, Bool.not_false, Bool.and_eq_true, beq_iff_eq] at hk
+        obtain ⟨⟨⟨h1, h2⟩, hm⟩, hst⟩ := hk
+        subst h1 h2
+        have hr23 : r ∈ Shape.regions := (List.mem_filter.mp hrm).1
+        have hlen : (TypedV.relocN 23 x r).length = 23 := Shape.length_relocF x r (by omega)
+        have h0 : blk.eqAbove ((TypedV.relocN 23 x r).take 23) = 0 := by
+          rw [List.take_of_length_le (by omega)]
+          exact Shape.eqAbove_relocF_eq_zero blk (inStack_of_B hst) x hr23 hm
+        obtain ⟨are, aim⟩ := acc
+        simp only [h0, FE6.mul, FE6.ofE, FE6.mk.injEq]
+        constructor <;> ring
+      simp only [Bool.not_eq_false] at hk
+      simp only [hk, if_true]
       have hlenY : (TypedV.relocN nu x r).length = nu := by
         unfold TypedV.relocN
         rw [List.length_append, List.length_take, List.length_append, List.length_replicate, selectorPoint,
@@ -1543,7 +1643,8 @@ theorem pairWS_eq (s : Bool) (nu nu' : Nat) (parts : List (FE2 × Placement × L
     simp only [pairW, ite_true]
     have hL : (((TypedV.regionsN nu).filter (Shape.meets ⟨nu', 0⟩)).map fun r =>
         ((⟨r.1, r.2.2⟩ : Placement).eqAbove x.tail * (⟨nu', 0⟩ : Placement).eqAbove (TypedV.relocN nu x r),
-          sumW6Pre (parts.map fun q => (q, wordWDF q.2.2 (((x.tail ++ List.replicate (nu - 1) 0).take
+          sumW6Pre (keepPart nu nu' r) (parts.map fun q => (q, wordWDF q.2.2
+            (((x.tail ++ List.replicate (nu - 1) 0).take
             rowShare).take (min rowShare q.2.1.variableCount)))) ((TypedV.relocN nu x r).take nu'))) =
         (((TypedV.regionsN nu).filter (Shape.meets ⟨nu', 0⟩)).map fun r =>
         ((⟨r.1, r.2.2⟩ : Placement).eqAbove x.tail * (⟨nu', 0⟩ : Placement).eqAbove (TypedV.relocN nu x r),
@@ -1551,6 +1652,43 @@ theorem pairWS_eq (s : Bool) (nu nu' : Nat) (parts : List (FE2 × Placement × L
       List.map_congr_left fun r hrm => by rw [key r hrm]
     rw [hL]
   · rfl
+
+/-- **One table's point claims' stack weights together** (the mini-bus's columns of a table: blocks `⟨τ, off⟩`, one
+point `pt`): `eqEval pt` once (once per region the table meets when small), each column its own `eqAbove`. -/
+def tabW (s : Bool) (nu τ : Nat) (pt : List FE) (cs : List (Com × Nat × FE)) (x : List FE) : List FE :=
+  if s then
+    let h := 1 - x.headD 0
+    let R := (((TypedV.regionsN nu).filter fun r => cs.any fun e => Shape.meets ⟨τ, e.2.1⟩ r).map fun r =>
+      let y := TypedV.relocN nu x r
+      (r, y, (⟨r.1, r.2.2⟩ : Placement).eqAbove x.tail * eqEval pt (y.take τ)))
+    cs.map fun e => h * ((R.filter fun q => Shape.meets ⟨τ, e.2.1⟩ q.1).map fun q =>
+      q.2.2 * (⟨τ, e.2.1⟩ : Placement).eqAbove q.2.1).sum
+  else
+    let E := eqEval pt (x.take τ)
+    cs.map fun e => (⟨τ, e.2.1⟩ : Placement).eqAbove x * E
+
+theorem tabW_eq (s : Bool) (nu τ : Nat) (pt : List FE) (cs : List (Com × Nat × FE)) (x : List FE) :
+    tabW s nu τ pt cs x = cs.map fun e => (toStk s nu (BlockClaim.point ⟨τ, e.2.1⟩ pt e.2.2, 0)).1 x := by
+  cases s
+  · rfl
+  · simp only [tabW, toStk, ite_true, TypedV.onStackZBN, BlockClaim.onStack, BlockClaim.point]
+    refine List.map_congr_left fun e he => ?_
+    refine congrArg (fun q => (1 - x.headD 0) * q) ?_
+    rw [List.filter_map, List.map_map, List.filter_filter]
+    have hf : ∀ r ∈ TypedV.regionsN nu,
+        (((fun q : (Nat × Nat × Nat) × List FE × FE => Shape.meets ⟨τ, e.2.1⟩ q.1) ∘ fun r =>
+          (r, TypedV.relocN nu x r, (⟨r.1, r.2.2⟩ : Placement).eqAbove x.tail *
+            eqEval pt ((TypedV.relocN nu x r).take τ))) r &&
+          cs.any fun e => Shape.meets ⟨τ, e.2.1⟩ r) = Shape.meets ⟨τ, e.2.1⟩ r := fun r _ => by
+      simp only [Function.comp_apply]
+      cases hm : Shape.meets ⟨τ, e.2.1⟩ r
+      · rfl
+      · simp only [Bool.true_and]
+        exact List.any_eq_true.mpr ⟨e, he, hm⟩
+    rw [List.filter_congr hf]
+    refine congrArg List.sum (List.map_congr_left fun r _ => ?_)
+    simp only [Function.comp_apply]
+    ring
 
 /-- A claim of the opening's list, or the two halves of an `E2` claim, or the `KS` link's `X` and `M` halves in the
 spec's order `X_re, M_re, M_im, X_im`. -/
@@ -1561,8 +1699,15 @@ inductive FItem where
       (vm : FE2)
   /-- Two claims on `⟨nu, 0⟩` whose weights are computed together (`w = (w₀, w₁)`; S2GT's split region claims). -/
   | pairG (nu : Nat) (w : List FE → FE × FE) (v0 v1 t0 t1 : FE)
+  /-- `pairG` with a weight per region of the small shape (`wr`, equal to `w` at its relocated points). -/
+  | pairR (nu : Nat) (w : List FE → FE × FE) (wr : Nat → (Nat × Nat × Nat) → List FE → FE × FE)
+      (hw : ∀ (nu0 : Nat) (x : List FE) (r : Nat × Nat × Nat), r ∈ (TypedV.regionsN nu0).filter (Shape.meets ⟨nu, 0⟩) →
+        wr nu0 r ((TypedV.relocN nu0 x r).take nu) = w ((TypedV.relocN nu0 x r).take nu)) (v0 v1 t0 t1 : FE)
   /-- A row switch's claim on `⟨nu, 0⟩` from its data (`rowStackW`: the small shape's regions share the point). -/
   | rowS (blk : Placement) (R : RowR) (hR : R.OfZ) (t : FE)
+  /-- One table's point claims `(com, off, v)` on the blocks `⟨τ, off⟩` at the point `pt`, tails `0` (`tabW`: the
+  point's `eqEval` once). -/
+  | tab (τ : Nat) (pt : List FE) (cs : List (Com × Nat × FE))
 
 /-- The claims an item stands for. -/
 def FItem.flat : FItem → List (Com × BlockClaim × FE)
@@ -1573,7 +1718,10 @@ def FItem.flat : FItem → List (Com × BlockClaim × FE)
       (.main, splitIm nu px vx, 0)]
   | .pairG nu w v0 v1 t0 t1 =>
     [(.main, ⟨⟨nu, 0⟩, fun y => (w y).1, v0⟩, t0), (.main, ⟨⟨nu, 0⟩, fun y => (w y).2, v1⟩, t1)]
+  | .pairR nu w _ _ v0 v1 t0 t1 =>
+    [(.main, ⟨⟨nu, 0⟩, fun y => (w y).1, v0⟩, t0), (.main, ⟨⟨nu, 0⟩, fun y => (w y).2, v1⟩, t1)]
   | .rowS blk R _ t => [(.main, ⟨blk, R.w, R.tgt⟩, t)]
+  | .tab τ pt cs => cs.map fun e => (e.1, BlockClaim.point ⟨τ, e.2.1⟩ pt e.2.2, 0)
 
 /-- An item's groups for the opening at stack size `nu` (`dOpenF`: `C_main`'s claims only). -/
 def FItem.groups (s : Bool) (nu : Nat) : FItem → List SGroup
@@ -1594,9 +1742,21 @@ def FItem.groups (s : Bool) (nu : Nat) : FItem → List SGroup
       fun x => let q := pairWG s nu nu' w x; [q.1, q.2],
       fun x => by simp only [List.map_cons, List.map_nil, pairWG_fst s nu nu' w v0 t0 x,
         pairWG_snd s nu nu' w v1 t1 x]⟩]
+  | .pairR nu' w wr hw v0 v1 t0 t1 =>
+    [⟨[toStk s nu (⟨⟨nu', 0⟩, fun y => (w y).1, v0⟩, t0), toStk s nu (⟨⟨nu', 0⟩, fun y => (w y).2, v1⟩, t1)],
+      fun x => let q := pairWR s nu nu' w wr x; [q.1, q.2],
+      fun x => by simp only [List.map_cons, List.map_nil, pairWR_eq s nu nu' w wr hw x, pairWG_fst s nu nu' w v0 t0 x,
+        pairWG_snd s nu nu' w v1 t1 x]⟩]
   | .rowS blk R hR t =>
     [⟨[toStk s nu (⟨blk, R.w, R.tgt⟩, t)], fun x => [rowStackW s nu blk R x],
       fun x => by simp only [List.map_cons, List.map_nil, rowStackW_eq s nu blk R hR R.tgt t x]⟩]
+  | .tab τ pt cs =>
+    [⟨((cs.map fun e => (e.1, BlockClaim.point ⟨τ, e.2.1⟩ pt e.2.2, (0 : FE))).filter (·.1 == .main)).map
+        fun e => toStk s nu e.2,
+      fun x => tabW s nu τ pt (cs.filter (·.1 == .main)) x,
+      fun x => by
+        rw [tabW_eq, List.filter_map, List.map_map, List.map_map]
+        rfl⟩]
 
 theorem groups_flat (s : Bool) (nu : Nat) (items : List FItem) :
     (items.flatMap (FItem.groups s nu)).flatMap (·.flat) =
@@ -1613,7 +1773,9 @@ theorem groups_flat (s : Bool) (nu : Nat) (items : List FItem) :
     | split nu' parts v tre tim => rfl
     | xm nu' px vx pm vm => rfl
     | pairG nu' w v0 v1 t0 t1 => rfl
+    | pairR nu' w wr hw v0 v1 t0 t1 => rfl
     | rowS blk R hR t => rfl
+    | tab τ pt cs => simp only [FItem.groups, FItem.flat, List.flatMap_cons, List.flatMap_nil, List.append_nil]
 
 /-- **`dOpenF` on items**: the same claims, the halves of each `E2` claim weighed together. -/
 def dOpenFFI (p : Params) (s : Bool) (pin : BlockClaim) (ti : List FItem) (items : List FItem) : DM Unit := do
@@ -1729,7 +1891,8 @@ theorem frontItemsF_flat (p : Params) (pub : Pub)
     List.drop_zero, List.cons_append, List.nil_append, List.append_assoc, flatMap_single]
 
 /-- The closures' form of the front's data. -/
-def mapTp (tp : List FE2 × List FE2 × KClaim FE2 × ((List FE2 × FE2) × List FE2 × ((List FE2 × FE2) × List FE2 × RowZ))) :
+def mapTp
+    (tp : List FE2 × List FE2 × KClaim FE2 × ((List FE2 × FE2) × List FE2 × ((List FE2 × FE2) × List FE2 × RowZ))) :
     List FE2 × List FE2 × KClaim FE2 ×
       ((List FE2 × FE2) × List FE2 × ((List FE2 × FE2) × List FE2 × ((FE × (List FE → FE)) × List FE))) :=
   (tp.1, tp.2.1, tp.2.2.1, (tp.2.2.2.1, tp.2.2.2.2.1, (tp.2.2.2.2.2.1, tp.2.2.2.2.2.2.1, tp.2.2.2.2.2.2.2.1.out)))
@@ -1797,6 +1960,38 @@ theorem decideProgFFG_eq (pubR : Vector UInt8 32 → Vector UInt8 32 → ByteArr
     bind_map_left]
   rw [← tapeDF_eq, ← callerDF_eq, ← ksLinkDF_eq]
   simp only [tapeDF_R, callerDF_R, bind_map_left]
+  have h1 : ∀ l : List (Com × BlockClaim × FE), (l.map FItem.one).flatMap FItem.flat = l := by
+    intro l
+    induction l with
+    | nil => rfl
+    | cons c l ih => rw [List.map_cons, List.flatMap_cons, ih]; rfl
+  simp only [h1]
+
+/-- **`decideProgFFG` with the mini-bus's claims as items** (`mini pub evals`, e.g. one `FItem.tab` per table). -/
+def decideProgFFGM (pubR : Vector UInt8 32 → Vector UInt8 32 → ByteArray → Pub) (rows : List ℕ) (p : Params)
+    (typedI : M3 → Pub → DM (Acc × List FItem × List (List FE × List FE)))
+    (m3 : Params → M3) (mini : Pub → List (List FE × List FE) → List FItem) (vk c : Vector UInt8 32) : DM Acc := do
+  let sig ← read
+  let pub := pubR vk c sig
+  let m := m3 p
+  skip (nodeBytes * 2 ^ (p.level ⟨.main, 0⟩).cap)
+  let pin ← pinD p.nuMain
+  let (acc, ti, evals) ← typedI m pub
+  let tp ← tapeDFG rowSwitchDR p.logN (dSelBits p) (dSel p) pub.s pub.n
+  let co ← callerDFG rowSwitchDR p.ksLog
+  let lo ← ksLinkDF p.ksLog (ksXLog p) rows
+  dOpenFFI p (TypedV.smallT p pub) pin (ti ++ mini pub evals) (frontItemsFG rowAccR p pub tp co lo)
+  pure acc
+
+theorem decideProgFFGM_eq (pubR : Vector UInt8 32 → Vector UInt8 32 → ByteArray → Pub) (rows : List ℕ) (p : Params)
+    (typedI : M3 → Pub → DM (Acc × List FItem × List (List FE × List FE))) (m3 : Params → M3)
+    (mini : Pub → List (List FE × List FE) → List FItem)
+    (hmini : ∀ pub evals, (mini pub evals).flatMap FItem.flat = Shape.zeroTails ((m3 p).tableClaims pub evals))
+    (vk c : Vector UInt8 32) :
+    decideProgFFGM pubR rows p typedI m3 mini vk c = decideProgFG pubR rows p (flatI typedI) m3 vk c := by
+  rw [← decideProgFFG_eq]
+  unfold decideProgFFGM decideProgFFG
+  simp only [dOpenFFI_eq, List.flatMap_append, hmini]
   have h1 : ∀ l : List (Com × BlockClaim × FE), (l.map FItem.one).flatMap FItem.flat = l := by
     intro l
     induction l with

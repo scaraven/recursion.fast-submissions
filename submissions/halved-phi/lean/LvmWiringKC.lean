@@ -26,19 +26,29 @@ terms' sums.
 -/
 
 set_option autoImplicit false
+set_option linter.unusedSectionVars false
 
 namespace Lvm.Typed.K
 
 open Lvm.Loop
+
+variable {𝔽 : Type} [CommRing 𝔽] [CharP 𝔽 2] [Nontrivial 𝔽] [KRing 𝔽] [BEq 𝔽] [LawfulBEq 𝔽]
 
 /-! ## A term's sum (the semantics the compiler preserves) -/
 
 /-- `eq(pt, idx)` of a term's entry at `jf`, weighted: the term's contribution at one iteration. -/
 def termAt (t : CTerm) (pt : List FE) (jf : ℕ) : FE := t.wAt jf * eqW pt (t.at jf).idx
 
+/-- The proof-side twin of `termAt` over a value ring (S2GT-W). -/
+def termAtG (t : CTerm) (pt : List 𝔽) (jf : ℕ) : 𝔽 := KRing.ofE (t.wAt jf) * eqWG pt (t.at jf).idx
+
 /-- **A term's sum** over its iterations. -/
 def termSum (t : CTerm) (pt : List FE) : FE :=
   (List.range (2 ^ t.l)).foldr (fun jf acc ↦ termAt t pt jf + acc) 0
+
+/-- The proof-side twin of `termSum` over a value ring (S2GT-W). -/
+def termSumG (t : CTerm) (pt : List 𝔽) : 𝔽 :=
+  (List.range (2 ^ t.l)).foldr (fun jf acc ↦ termAtG t pt jf + acc) 0
 
 /-- **A well-formed term**: matrix `o < 4`; its slots `x0 + jf` aligned and below `2^xVars`. -/
 def TermWF (t : CTerm) : Prop := t.o < 4 ∧ t.x0 % 2 ^ t.l = 0 ∧ t.x0 + 2 ^ t.l ≤ 2 ^ xVars
@@ -955,17 +965,18 @@ example (m2 : Array Atom) :
 /-! ## Semantics -/
 
 /-- `eq(pt, idx)` of the entry `(o, x, y)`. -/
-def ct_E (pt : List FE) (o x y : ℕ) : FE := eqW pt (o + 4 * (x + 2 ^ xVars * y))
+def ct_E (pt : List 𝔽) (o x y : ℕ) : 𝔽 := eqWG pt (o + 4 * (x + 2 ^ xVars * y))
 
 /-- With a merged `E` cell (`lim = some e`): the three limbs `y + m·2^e`, weights `y^m`. -/
-def ct_EL (pt : List FE) (lim : Option ℕ) (o x y : ℕ) : FE :=
+def ct_EL (pt : List 𝔽) (lim : Option ℕ) (o x y : ℕ) : 𝔽 :=
   match lim with
   | none => ct_E pt o x y
-  | some e => ct_E pt o x y + FE.y * ct_E pt o x (y + 2 ^ e) + FE.y * FE.y * ct_E pt o x (y + 2 * 2 ^ e)
+  | some e => ct_E pt o x y + KRing.ofE FE.y * ct_E pt o x (y + 2 ^ e) +
+    KRing.ofE FE.y * KRing.ofE FE.y * ct_E pt o x (y + 2 * 2 ^ e)
 
 /-- A term with its limb merge: the sum it stands for. -/
-def ct_pairSum (pt : List FE) (p : CTerm × Option ℕ) : FE :=
-  ((List.range (2 ^ p.1.l)).map fun jf ↦ p.1.wAt jf * ct_EL pt p.2 p.1.o (p.1.x0 + jf) (p.1.cls.at jf)).sum
+def ct_pairSum (pt : List 𝔽) (p : CTerm × Option ℕ) : 𝔽 :=
+  ((List.range (2 ^ p.1.l)).map fun jf ↦ KRing.ofE (p.1.wAt jf) * ct_EL pt p.2 p.1.o (p.1.x0 + jf) (p.1.cls.at jf)).sum
 
 /-- A limb merge is valid: constant weight, the limb bits free in every word. -/
 def ct_LimOk (t : CTerm) : Option ℕ → Prop
@@ -978,11 +989,11 @@ def ct_affOf : OpClass → Aff
   | _ => default
 
 /-- A geometric run's sum. -/
-def ct_geoSum (pt : List FE) (r : CTerm × ℕ × ℕ × FK) : FE :=
+def ct_geoSum (pt : List 𝔽) (r : CTerm × ℕ × ℕ × FK) : 𝔽 :=
   let (t, q, b, g) := r
   let a := ct_affOf t.cls
   ((List.range (2 ^ b)).map fun z ↦ ((List.range (2 ^ t.l)).map fun jf ↦
-    t.w * FE.ofK (g ^ z) * ct_E pt t.o (t.x0 + jf) (a.at jf + z * 2 ^ q)).sum).sum
+    KRing.ofE t.w * KRing.ofE (FE.ofK (g ^ z)) * ct_E pt t.o (t.x0 + jf) (a.at jf + z * 2 ^ q)).sum).sum
 
 /-- A geometric run is valid (what `geoOf` checks). -/
 def ct_GeoOk (r : CTerm × ℕ × ℕ × FK) : Prop :=
@@ -992,9 +1003,9 @@ def ct_GeoOk (r : CTerm × ℕ × ℕ × FK) : Prop :=
     (a.y0 >>> q) % 2 ^ b = 0 ∧ q + b ≤ yVars
 
 /-- A pass member's sum: `(st, o, x, w)` over the automaton's `2^n` steps. -/
-def ct_memSem (pt : List FE) (key : List ℕ × ℕ × Option ℕ) (m : ℕ × ℕ × ℕ × FE) : FE :=
+def ct_memSem (pt : List 𝔽) (key : List ℕ × ℕ × Option ℕ) (m : ℕ × ℕ × ℕ × FE) : 𝔽 :=
   ((List.range (2 ^ key.1.length)).map fun j ↦
-    m.2.2.2 * ct_EL pt key.2.2 m.2.1
+    KRing.ofE m.2.2.2 * ct_EL pt key.2.2 m.2.1
       (m.2.2.1 + ((List.range key.1.length).map fun k ↦ if j.testBit k then 2 ^ key.1.getD k 0 else 0).sum)
       (m.1 + key.2.1 * j)).sum
 
@@ -1009,18 +1020,18 @@ def ct_MemOk (key : List ℕ × ℕ × Option ℕ) (m : ℕ × ℕ × ℕ × FE)
 /-! ## The compiler state's invariants -/
 
 /-- The masks' value. -/
-def ct_kapV (P : Pt) (m : ℕ) : FE :=
-  ((List.range 4).map fun o ↦ if m.testBit o then eqW (sub P.kap 0 2) o else 0).sum
+def ct_kapV (P : PtG 𝔽) (m : ℕ) : 𝔽 :=
+  ((List.range 4).map fun o ↦ if m.testBit o then eqWG (sub P.kap 0 2) o else 0).sum
 
 /-- **Tables consistent with a state**: every key the state can have made has its value. -/
-def ct_Cons (P : Pt) (s : CS) (T : Array (Array FE)) : Prop :=
-  keyVal T (0, 0) = 1 ∧
-  (∀ m < 16, keyVal T (1, m) = ct_kapV P m) ∧
-  (∀ (i : ℕ) (fs : List KF), s.kers[i]? = some fs → keyVal T (2, i) = kerVal P fs) ∧
+def ct_Cons (P : PtG 𝔽) (s : CS) (T : Array (Array 𝔽)) : Prop :=
+  keyValG T (0, 0) = 1 ∧
+  (∀ m < 16, keyValG T (1, m) = ct_kapV P m) ∧
+  (∀ (i : ℕ) (fs : List KF), s.kers[i]? = some fs → keyValG T (2, i) = kerValG P fs) ∧
   (∀ (t : ℕ) (bits : List ℕ), s.tabs[t]? = some (.eqx bits) → ∀ v < 2 ^ bits.length,
-    keyVal T (t, v) = eqW (bits.map fun b ↦ P.rx.getD b 0) v) ∧
+    keyValG T (t, v) = eqWG (bits.map fun b ↦ P.rx.getD b 0) v) ∧
   (∀ (t : ℕ) (bits : List ℕ), s.tabs[t]? = some (.eqy bits) → ∀ v < 2 ^ bits.length,
-    keyVal T (t, v) = eqW (bits.map fun b ↦ P.ry.getD b 0) v)
+    keyValG T (t, v) = eqWG (bits.map fun b ↦ P.ry.getD b 0) v)
 
 /-- A bit list of one table group: sorted, inside `[0, cut)` or `[cut, N)`. -/
 def ct_GrpOk (N cut : ℕ) (bits : List ℕ) : Prop :=
@@ -1054,15 +1065,15 @@ def ct_Le (s s' : CS) : Prop :=
     (∀ (i : ℕ) (fs : List KF), s.kers[i]? = some fs → s'.kers[i]? = some fs)
 
 /-- The atoms' sum. -/
-def ct_aSum (T : Array (Array FE)) (s : CS) : FE := (s.atoms.toList.map (atomVal T)).sum
+def ct_aSum (T : Array (Array 𝔽)) (s : CS) : 𝔽 := (s.atoms.toList.map (atomVal T)).sum
 
 /-- The pass members' sum. -/
-def ct_pmSum (pt : List FE) (s : CS) : FE :=
+def ct_pmSum (pt : List 𝔽) (s : CS) : 𝔽 :=
   (s.pm.toList.map fun km ↦ (km.2.toList.map (ct_memSem pt km.1)).sum).sum
 
 /-- **A step adds `V`**: invariants kept, the state extended, and every consistent table sees `V` more. -/
-def ct_Adds (pt : List FE) (s s' : CS) (V : FE) : Prop :=
-  ct_WF s' ∧ ct_Le s s' ∧ ∀ T, ct_Cons (Pt.ofList pt) s' T →
+def ct_Adds (pt : List 𝔽) (s s' : CS) (V : 𝔽) : Prop :=
+  ct_WF s' ∧ ct_Le s s' ∧ ∀ T, ct_Cons (PtG.ofList pt) s' T →
     ct_aSum T s' + ct_pmSum pt s' = ct_aSum T s + ct_pmSum pt s + V
 
 /-! ## Framework lemmas (C7) -/
@@ -1072,25 +1083,25 @@ theorem ct_Le_refl (s : CS) : ct_Le s s := ⟨fun _ _ h ↦ h, fun _ _ h ↦ h�
 theorem ct_Le_trans {s₁ s₂ s₃ : CS} (h₁ : ct_Le s₁ s₂) (h₂ : ct_Le s₂ s₃) : ct_Le s₁ s₃ :=
   ⟨fun i r h ↦ h₂.1 i r (h₁.1 i r h), fun i fs h ↦ h₂.2 i fs (h₁.2 i fs h)⟩
 
-theorem ct_Cons_mono {P : Pt} {s s' : CS} {T : Array (Array FE)} (h : ct_Le s s') (hc : ct_Cons P s' T) :
+theorem ct_Cons_mono {P : PtG 𝔽} {s s' : CS} {T : Array (Array 𝔽)} (h : ct_Le s s') (hc : ct_Cons P s' T) :
     ct_Cons P s T :=
   ⟨hc.1, hc.2.1, fun i fs hi ↦ hc.2.2.1 i fs (h.2 i fs hi), fun t bits ht ↦ hc.2.2.2.1 t bits (h.1 t _ ht),
     fun t bits ht ↦ hc.2.2.2.2 t bits (h.1 t _ ht)⟩
 
-theorem ct_Adds_trans {pt : List FE} {s₁ s₂ s₃ : CS} {V₁ V₂ : FE} (h₁ : ct_Adds pt s₁ s₂ V₁)
+theorem ct_Adds_trans {pt : List 𝔽} {s₁ s₂ s₃ : CS} {V₁ V₂ : 𝔽} (h₁ : ct_Adds pt s₁ s₂ V₁)
     (h₂ : ct_Adds pt s₂ s₃ V₂) : ct_Adds pt s₁ s₃ (V₁ + V₂) := by
   refine ⟨h₂.1, ct_Le_trans h₁.2.1 h₂.2.1, fun T hT ↦ ?_⟩
   rw [h₂.2.2 T hT, h₁.2.2 T (ct_Cons_mono h₂.2.1 hT)]
   ring
 
-theorem ct_Adds_refl {pt : List FE} {s : CS} (h : ct_WF s) : ct_Adds pt s s 0 :=
+theorem ct_Adds_refl {pt : List 𝔽} {s : CS} (h : ct_WF s) : ct_Adds pt s s 0 :=
   ⟨h, ct_Le_refl s, fun _ _ ↦ by ring⟩
 
-theorem ct_Adds_congr {pt : List FE} {s s' : CS} {V V' : FE} (h : ct_Adds pt s s' V) (e : V = V') :
+theorem ct_Adds_congr {pt : List 𝔽} {s s' : CS} {V V' : 𝔽} (h : ct_Adds pt s s' V) (e : V = V') :
     ct_Adds pt s s' V' := e ▸ h
 
 /-- A fold of steps. -/
-theorem ct_Adds_foldl {α : Type} (pt : List FE) (f : CS → α → CS) (v : α → FE) (P : α → Prop)
+theorem ct_Adds_foldl {α : Type} (pt : List 𝔽) (f : CS → α → CS) (v : α → 𝔽) (P : α → Prop)
     (hf : ∀ s a, ct_WF s → P a → ct_Adds pt s (f s a) (v a)) :
     ∀ (l : List α) (s : CS), ct_WF s → (∀ a ∈ l, P a) → ct_Adds pt s (l.foldl f s) (l.map v).sum := by
   intro l
@@ -1118,61 +1129,61 @@ theorem ct_WF_empty : ct_WF ({} : CS) := by
   · intro a ha; simp at ha
   · intro k ms h; simp at h
 
-theorem ct_pmSum_empty (pt : List FE) : ct_pmSum pt ({} : CS) = 0 := by
+theorem ct_pmSum_empty (pt : List 𝔽) : ct_pmSum pt ({} : CS) = 0 := by
   simp [ct_pmSum]
 
-theorem ct_aSum_empty (T : Array (Array FE)) : ct_aSum T ({} : CS) = 0 := by
+theorem ct_aSum_empty (T : Array (Array 𝔽)) : ct_aSum T ({} : CS) = 0 := by
   simp [ct_aSum]
 
 /-! ## Shared algebra and state operations (C0; black boxes for C1–C6) -/
 
 /-- `eq` on the listed coordinates of `r` at the bits of `v`. -/
-def ct_eqOn (r : Array FE) (bits : List ℕ) (v : ℕ) : FE := (bits.map fun b ↦ eq1 (r.getD b 0) (v.testBit b)).prod
+def ct_eqOn (r : Array 𝔽) (bits : List ℕ) (v : ℕ) : 𝔽 := (bits.map fun b ↦ eq1G (r.getD b 0) (v.testBit b)).prod
 
-theorem c0a_eqW_range (r : Array FE) (n : ℕ) : ∀ (lo v : ℕ),
-    eqW ((List.range n).map fun k ↦ r.getD (lo + k) 0) v =
-      ((List.range n).map fun k ↦ eq1 (r.getD (lo + k) 0) (v.testBit k)).prod := by
+theorem c0a_eqW_range (r : Array 𝔽) (n : ℕ) : ∀ (lo v : ℕ),
+    eqWG ((List.range n).map fun k ↦ r.getD (lo + k) 0) v =
+      ((List.range n).map fun k ↦ eq1G (r.getD (lo + k) 0) (v.testBit k)).prod := by
   induction n with
-  | zero => intro lo v; simp [eqW]
+  | zero => intro lo v; simp [eqWG]
   | succ n ih =>
     intro lo v
-    rw [List.range_succ_eq_map, List.map_cons, List.map_cons, List.prod_cons, eqW, List.map_map, List.map_map]
+    rw [List.range_succ_eq_map, List.map_cons, List.map_cons, List.prod_cons, eqWG, List.map_map, List.map_map]
     have e1 : (List.range n).map ((fun k ↦ r.getD (lo + k) 0) ∘ Nat.succ) =
         (List.range n).map fun k ↦ r.getD (lo + 1 + k) 0 :=
       List.map_congr_left (fun k _ ↦ by simp only [Function.comp_apply]; congr 1; (clear * -; omega))
-    have e2 : (List.range n).map ((fun k ↦ eq1 (r.getD (lo + k) 0) (v.testBit k)) ∘ Nat.succ) =
-        (List.range n).map fun k ↦ eq1 (r.getD (lo + 1 + k) 0) ((v / 2).testBit k) :=
+    have e2 : (List.range n).map ((fun k ↦ eq1G (r.getD (lo + k) 0) (v.testBit k)) ∘ Nat.succ) =
+        (List.range n).map fun k ↦ eq1G (r.getD (lo + 1 + k) 0) ((v / 2).testBit k) :=
       List.map_congr_left (fun k _ ↦ by
         simp only [Function.comp_apply, Nat.testBit_div_two]; congr 2; (clear * -; omega))
     rw [e1, e2, ih (lo + 1) (v / 2), Nat.testBit_zero]
-    by_cases h : v % 2 = 1 <;> simp [h, eq1]
+    by_cases h : v % 2 = 1 <;> simp [h, eq1G]
 
-theorem ct_eqW_sub (r : Array FE) (n v : ℕ) : eqW (sub r 0 n) v = ct_eqOn r (List.range n) v := by
+theorem ct_eqW_sub (r : Array 𝔽) (n v : ℕ) : eqWG (sub r 0 n) v = ct_eqOn r (List.range n) v := by
   simpa [sub, ct_eqOn] using c0a_eqW_range r n 0 v
 
-theorem ct_eqOn_append (r : Array FE) (A B : List ℕ) (v : ℕ) :
+theorem ct_eqOn_append (r : Array 𝔽) (A B : List ℕ) (v : ℕ) :
     ct_eqOn r (A ++ B) v = ct_eqOn r A v * ct_eqOn r B v := by
   simp [ct_eqOn, List.prod_append]
 
-theorem ct_eqOn_perm (r : Array FE) {A B : List ℕ} (h : A.Perm B) (v : ℕ) : ct_eqOn r A v = ct_eqOn r B v :=
+theorem ct_eqOn_perm (r : Array 𝔽) {A B : List ℕ} (h : A.Perm B) (v : ℕ) : ct_eqOn r A v = ct_eqOn r B v :=
   (h.map _).prod_eq
 
-theorem ct_eqOn_congr (r : Array FE) (A : List ℕ) (v v' : ℕ) (h : ∀ b ∈ A, v.testBit b = v'.testBit b) :
+theorem ct_eqOn_congr (r : Array 𝔽) (A : List ℕ) (v v' : ℕ) (h : ∀ b ∈ A, v.testBit b = v'.testBit b) :
     ct_eqOn r A v = ct_eqOn r A v' := by
   unfold ct_eqOn
   rw [List.map_congr_left (fun b hb ↦ by rw [h b hb])]
 
-theorem c0a_sub_self (L : List FE) : sub L.toArray 0 L.length = L := by
+theorem c0a_sub_self (L : List 𝔽) : sub L.toArray 0 L.length = L := by
   apply List.ext_getElem (by simp [sub])
   intro i h1 h2
   simp [sub, Array.getD_eq_getD_getElem?, List.getElem?_eq_getElem h2]
 
 /-- `eq` of `pt` at an entry index splits into the selector, the slot and the word (bits of the word past
 `yVars` are ignored). -/
-theorem ct_E_split (pt : List FE) (hpt : pt.length = 2 + xVars + yVars) (o x y : ℕ) (ho : o < 4)
+theorem ct_E_split (pt : List 𝔽) (hpt : pt.length = 2 + xVars + yVars) (o x y : ℕ) (ho : o < 4)
     (hx : x < 2 ^ xVars) :
-    ct_E pt o x y = eqW (sub (Pt.ofList pt).kap 0 2) o * ct_eqOn (Pt.ofList pt).rx (List.range xVars) x *
-      ct_eqOn (Pt.ofList pt).ry (List.range yVars) y := by
+    ct_E pt o x y = eqWG (sub (PtG.ofList pt).kap 0 2) o * ct_eqOn (PtG.ofList pt).rx (List.range xVars) x *
+      ct_eqOn (PtG.ofList pt).ry (List.range yVars) y := by
   set A := pt.take 2 with hA
   set B := (pt.drop 2).take xVars with hB
   set C := (pt.drop (2 + xVars)).take yVars with hC
@@ -1186,9 +1197,9 @@ theorem ct_E_split (pt : List FE) (hpt : pt.length = 2 + xVars + yVars) (o x y :
     calc pt = A ++ pt.drop 2 := (List.take_append_drop _ _).symm
       _ = A ++ (B ++ (pt.drop 2).drop xVars) := by rw [hB, List.take_append_drop xVars (pt.drop 2)]
       _ = A ++ (B ++ C) := by rw [e2, e1]
-  have hkap : (Pt.ofList pt).kap = A.toArray := rfl
-  have hrx : (Pt.ofList pt).rx = B.toArray := rfl
-  have hry : (Pt.ofList pt).ry = C.toArray := rfl
+  have hkap : (PtG.ofList pt).kap = A.toArray := rfl
+  have hrx : (PtG.ofList pt).rx = B.toArray := rfl
+  have hry : (PtG.ofList pt).ry = C.toArray := rfl
   rw [hkap, hrx, hry, ← ct_eqW_sub, ← ct_eqW_sub, ← hAl, ← hBl, ← hCl, c0a_sub_self, c0a_sub_self,
     c0a_sub_self, ct_E]
   conv_lhs => rw [hsplit]
@@ -1197,7 +1208,7 @@ theorem ct_E_split (pt : List FE) (hpt : pt.length = 2 + xVars + yVars) (o x y :
   ring
 
 /-- The sum over the cube of a product of one-bit factors. -/
-theorem ct_sum_prod_bits (l : ℕ) (f : ℕ → Bool → FE) :
+theorem ct_sum_prod_bits (l : ℕ) (f : ℕ → Bool → 𝔽) :
     ((List.range (2 ^ l)).map fun jf ↦ ((List.range l).map fun i ↦ f i (jf.testBit i)).prod).sum =
       ((List.range l).map fun i ↦ f i false + f i true).prod := by
   induction l with
@@ -1229,7 +1240,7 @@ theorem ct_sum_prod_bits (l : ℕ) (f : ℕ → Bool → FE) :
     ring
 
 /-- The selector key's value. -/
-theorem ct_kapV_single (P : Pt) (o : ℕ) (ho : o < 4) : ct_kapV P (1 <<< o) = eqW (sub P.kap 0 2) o := by
+theorem ct_kapV_single (P : PtG 𝔽) (o : ℕ) (ho : o < 4) : ct_kapV P (1 <<< o) = eqWG (sub P.kap 0 2) o := by
   simp only [ct_kapV, Nat.one_shiftLeft, Nat.testBit_two_pow]
   interval_cases o <;> simp [List.range_succ]
 
@@ -1249,10 +1260,10 @@ def ct_xFree (xm : ℕ) : List ℕ := (List.range xVars).filter fun b ↦ !decid
 /-- The `y` bits an atom keys: those not in `ym`. -/
 def ct_yFree (ym : List ℕ) : List ℕ := (List.range yVars).filter fun b ↦ !ym.contains b
 
-theorem c0b_eqOn_perm (r : Array FE) {A B : List ℕ} (h : A.Perm B) (v : ℕ) : ct_eqOn r A v = ct_eqOn r B v :=
+theorem c0b_eqOn_perm (r : Array 𝔽) {A B : List ℕ} (h : A.Perm B) (v : ℕ) : ct_eqOn r A v = ct_eqOn r B v :=
   (h.map _).prod_eq
 
-theorem c0b_kapV_single (P : Pt) (o : ℕ) (ho : o < 4) : ct_kapV P (1 <<< o) = eqW (sub P.kap 0 2) o := by
+theorem c0b_kapV_single (P : PtG 𝔽) (o : ℕ) (ho : o < 4) : ct_kapV P (1 <<< o) = eqWG (sub P.kap 0 2) o := by
   interval_cases o <;> simp +decide [ct_kapV, List.range_succ]
 
 instance c0b_lawfulBEq_TKey : LawfulBEq TKey where
@@ -1362,13 +1373,13 @@ theorem c0b_pext_lt (v : ℕ) : ∀ bs : List ℕ, pext v bs < 2 ^ bs.length
     simp only [List.length_cons, pow_succ]
     split <;> omega
 
-theorem c0b_eqW_pext (r : Array FE) (v : ℕ) :
-    ∀ bs : List ℕ, eqW (bs.map fun b ↦ r.getD b 0) (pext v bs) = ct_eqOn r bs v
-  | [] => by simp [eqW, ct_eqOn]
+theorem c0b_eqW_pext (r : Array 𝔽) (v : ℕ) :
+    ∀ bs : List ℕ, eqWG (bs.map fun b ↦ r.getD b 0) (pext v bs) = ct_eqOn r bs v
+  | [] => by simp [eqWG, ct_eqOn]
   | b :: bs => by
-    rw [c0b_pext_cons, List.map_cons, eqW]
+    rw [c0b_pext_cons, List.map_cons, eqWG]
     have ih := c0b_eqW_pext r v bs
-    simp only [ct_eqOn, List.map_cons, List.prod_cons, eq1] at ih ⊢
+    simp only [ct_eqOn, List.map_cons, List.prod_cons, eq1G] at ih ⊢
     cases v.testBit b
     · have h1 : (0 + 2 * pext v bs) % 2 = 0 := by omega
       have h2 : (0 + 2 * pext v bs) / 2 = pext v bs := by omega
@@ -1378,7 +1389,7 @@ theorem c0b_eqW_pext (r : Array FE) (v : ℕ) :
       have h2 : (1 + 2 * pext v bs) / 2 = pext v bs := by omega
       simp only [ite_true, h1, h2, ih]
 
-theorem c0b_prod_filter_ne {α : Type} (f : List α → FE) (hf : f [] = 1) :
+theorem c0b_prod_filter_ne {α : Type} (f : List α → 𝔽) (hf : f [] = 1) :
     ∀ G : List (List α), ((G.filter (!·.isEmpty)).map f).prod = (G.map f).prod
   | [] => rfl
   | g :: G => by
@@ -1394,23 +1405,23 @@ def c0b_rkF (isX : Bool) (v : ℕ) (acc : CS × List (ℕ × ℕ)) (bs : List �
   let (s', t) := acc.1.tab (if isX then .eqx bs else .eqy bs)
   (s', acc.2 ++ [(t, pext v bs)])
 
-theorem c0b_keyVal (P : Pt) (s : CS) (T : Array (Array FE)) (hc : ct_Cons P s T) (isX : Bool) (t : ℕ)
+theorem c0b_keyVal (P : PtG 𝔽) (s : CS) (T : Array (Array 𝔽)) (hc : ct_Cons P s T) (isX : Bool) (t : ℕ)
     (bs : List ℕ) (v : ℕ) (ht : s.tabs[t]? = some (ct_rec (if isX then .eqx bs else .eqy bs))) :
-    keyVal T (t, pext v bs) = ct_eqOn (if isX then P.rx else P.ry) bs v := by
+    keyValG T (t, pext v bs) = ct_eqOn (if isX then P.rx else P.ry) bs v := by
   cases isX
   · simp only [Bool.false_eq_true, ite_false, ct_rec] at ht ⊢
     rw [hc.2.2.2.2 t bs ht _ (c0b_pext_lt v bs), c0b_eqW_pext]
   · simp only [ite_true, ct_rec] at ht ⊢
     rw [hc.2.2.2.1 t bs ht _ (c0b_pext_lt v bs), c0b_eqW_pext]
 
-theorem c0b_rk_fold (P : Pt) (isX : Bool) (v : ℕ) :
+theorem c0b_rk_fold (P : PtG 𝔽) (isX : Bool) (v : ℕ) :
     ∀ (G : List (List ℕ)) (s : CS) (acc : List (ℕ × ℕ)), ct_WF s →
       (∀ bs ∈ G, c0b_hk (if isX then .eqx bs else .eqy bs)) →
       ct_WF (G.foldl (c0b_rkF isX v) (s, acc)).1 ∧ ct_Le s (G.foldl (c0b_rkF isX v) (s, acc)).1 ∧
       (G.foldl (c0b_rkF isX v) (s, acc)).1.atoms = s.atoms ∧ (G.foldl (c0b_rkF isX v) (s, acc)).1.pm = s.pm ∧
       ∃ ks, (G.foldl (c0b_rkF isX v) (s, acc)).2 = acc ++ ks ∧ (∀ k ∈ ks, 5 ≤ k.1) ∧
         ∀ T, ct_Cons P (G.foldl (c0b_rkF isX v) (s, acc)).1 T →
-          (ks.map (keyVal T)).prod = (G.map fun bs ↦ ct_eqOn (if isX then P.rx else P.ry) bs v).prod := by
+          (ks.map (keyValG T)).prod = (G.map fun bs ↦ ct_eqOn (if isX then P.rx else P.ry) bs v).prod := by
   intro G
   induction G with
   | nil =>
@@ -1447,13 +1458,13 @@ theorem c0b_grp (N cut : ℕ) (mask : ℕ → Bool) :
     simp only [List.mem_filter, List.mem_range] at hb
     exact ⟨by simpa using hb.2, hb.1.1⟩
 
-theorem c0b_rangeKeys (P : Pt) (s : CS) (hs : ct_WF s) (isX : Bool) (N cut : ℕ) (mask : ℕ → Bool) (v : ℕ)
+theorem c0b_rangeKeys (P : PtG 𝔽) (s : CS) (hs : ct_WF s) (isX : Bool) (N cut : ℕ) (mask : ℕ → Bool) (v : ℕ)
     (hG : ∀ bs, ct_GrpOk N cut bs → c0b_hk (if isX then .eqx bs else .eqy bs)) :
     ct_WF (s.rangeKeys isX N cut mask v).1 ∧ ct_Le s (s.rangeKeys isX N cut mask v).1 ∧
       (s.rangeKeys isX N cut mask v).1.atoms = s.atoms ∧ (s.rangeKeys isX N cut mask v).1.pm = s.pm ∧
       (∀ k ∈ (s.rangeKeys isX N cut mask v).2, 5 ≤ k.1) ∧
       ∀ T, ct_Cons P (s.rangeKeys isX N cut mask v).1 T →
-        ((s.rangeKeys isX N cut mask v).2.map (keyVal T)).prod =
+        ((s.rangeKeys isX N cut mask v).2.map (keyValG T)).prod =
           ct_eqOn (if isX then P.rx else P.ry) ((List.range N).filter fun b ↦ !mask b) v := by
   have e : s.rangeKeys isX N cut mask v = ([((List.range N).filter (!mask ·)).filter (· < cut),
       ((List.range N).filter (!mask ·)).filter (· ≥ cut)].filter (!·.isEmpty)).foldl (c0b_rkF isX v) (s, []) := rfl
@@ -1471,21 +1482,21 @@ theorem c0b_rangeKeys (P : Pt) (s : CS) (hs : ct_WF s) (isX : Bool) (N cut : ℕ
   rwa [List.filter_congr (p := fun b ↦ !decide (b < cut)) (q := fun b ↦ decide (b ≥ cut)) (by intro x _; by_cases h : x < cut <;> simp [h]; (clear * - h; omega))]
     at this
 
-theorem ct_rangeKeysX (P : Pt) (s : CS) (hs : ct_WF s) (mask : ℕ → Bool) (v : ℕ) :
+theorem ct_rangeKeysX (P : PtG 𝔽) (s : CS) (hs : ct_WF s) (mask : ℕ → Bool) (v : ℕ) :
     ct_WF (s.rangeKeys true xVars xCut mask v).1 ∧ ct_Le s (s.rangeKeys true xVars xCut mask v).1 ∧
       (s.rangeKeys true xVars xCut mask v).1.atoms = s.atoms ∧ (s.rangeKeys true xVars xCut mask v).1.pm = s.pm ∧
       (∀ k ∈ (s.rangeKeys true xVars xCut mask v).2, 5 ≤ k.1) ∧
       ∀ T, ct_Cons P (s.rangeKeys true xVars xCut mask v).1 T →
-        ((s.rangeKeys true xVars xCut mask v).2.map (keyVal T)).prod =
+        ((s.rangeKeys true xVars xCut mask v).2.map (keyValG T)).prod =
           ct_eqOn P.rx ((List.range xVars).filter fun b ↦ !mask b) v :=
   c0b_rangeKeys P s hs true xVars xCut mask v (fun _ h ↦ h)
 
-theorem ct_rangeKeysY (P : Pt) (s : CS) (hs : ct_WF s) (mask : ℕ → Bool) (v : ℕ) :
+theorem ct_rangeKeysY (P : PtG 𝔽) (s : CS) (hs : ct_WF s) (mask : ℕ → Bool) (v : ℕ) :
     ct_WF (s.rangeKeys false yVars yCut mask v).1 ∧ ct_Le s (s.rangeKeys false yVars yCut mask v).1 ∧
       (s.rangeKeys false yVars yCut mask v).1.atoms = s.atoms ∧ (s.rangeKeys false yVars yCut mask v).1.pm = s.pm ∧
       (∀ k ∈ (s.rangeKeys false yVars yCut mask v).2, 5 ≤ k.1) ∧
       ∀ T, ct_Cons P (s.rangeKeys false yVars yCut mask v).1 T →
-        ((s.rangeKeys false yVars yCut mask v).2.map (keyVal T)).prod =
+        ((s.rangeKeys false yVars yCut mask v).2.map (keyValG T)).prod =
           ct_eqOn P.ry ((List.range yVars).filter fun b ↦ !mask b) v :=
   c0b_rangeKeys P s hs false yVars yCut mask v (fun _ h ↦ h)
 
@@ -1504,20 +1515,20 @@ theorem c0b_interleave_perm {α : Type} : ∀ (a b : List α), (CS.interleave a 
     simp only [CS.interleave, List.cons_append]
     exact List.Perm.cons x ((List.Perm.cons y (c0b_interleave_perm xs ys)).trans List.perm_middle.symm)
 
-theorem c0b_foldl_mul (f : ℕ × ℕ → FE) : ∀ (l : List (ℕ × ℕ)) (w : FE),
+theorem c0b_foldl_mul (f : ℕ × ℕ → 𝔽) : ∀ (l : List (ℕ × ℕ)) (w : 𝔽),
     l.foldl (fun acc k ↦ acc * f k) w = w * (l.map f).prod
   | [], w => by simp
   | k :: l, w => by simp only [List.foldl_cons, c0b_foldl_mul f l, List.map_cons, List.prod_cons]; ring
 
-theorem c0b_atomVal (T : Array (Array FE)) (l : List (ℕ × ℕ)) (w : FE) :
-    atomVal T ⟨l.toArray, w⟩ = w * (l.map (keyVal T)).prod := by
+theorem c0b_atomVal (T : Array (Array 𝔽)) (l : List (ℕ × ℕ)) (w : FE) :
+    atomVal T ⟨l.toArray, w⟩ = KRing.ofE w * (l.map (keyValG T)).prod := by
   simp only [atomVal, List.foldl_toArray']
-  exact c0b_foldl_mul _ l w
+  exact c0b_foldl_mul _ l _
 
 /-- Pushing a well-shaped atom. -/
-theorem c0b_atom_push (pt : List FE) (s s3 : CS) (hs3 : ct_WF s3) (hle : ct_Le s s3) (hat : s3.atoms = s.atoms)
-    (hpm : s3.pm = s.pm) (keys : List (ℕ × ℕ)) (w V : FE) (hok : ct_AtomOk ⟨keys.toArray, w⟩)
-    (hval : ∀ T, ct_Cons (Pt.ofList pt) s3 T → w * (keys.map (keyVal T)).prod = V) :
+theorem c0b_atom_push (pt : List 𝔽) (s s3 : CS) (hs3 : ct_WF s3) (hle : ct_Le s s3) (hat : s3.atoms = s.atoms)
+    (hpm : s3.pm = s.pm) (keys : List (ℕ × ℕ)) (w : FE) (V : 𝔽) (hok : ct_AtomOk ⟨keys.toArray, w⟩)
+    (hval : ∀ T, ct_Cons (PtG.ofList pt) s3 T → KRing.ofE w * (keys.map (keyValG T)).prod = V) :
     ct_Adds pt s { s3 with atoms := s3.atoms.push ⟨keys.toArray, w⟩ } V := by
   refine ⟨⟨hs3.size, hs3.t0, hs3.t1, hs3.eqx, hs3.eqy, hs3.tix, hs3.kix, ?_, hs3.pm⟩, hle, fun T hT ↦ ?_⟩
   · intro a ha
@@ -1545,17 +1556,17 @@ theorem c0b_kerStep (s : CS) (hs : ct_WF s) (fs : List KF) :
 theorem c0b_shift_lt (o : ℕ) (ho : o < 4) : 1 <<< o < 16 := by
   interval_cases o <;> decide
 
-theorem c0b_addAtomCore (pt : List FE) (s : CS) (hs : ct_WF s) (fs : List KF) (o xm x : ℕ) (ym : List ℕ) (y : ℕ)
+theorem c0b_addAtomCore (pt : List 𝔽) (s : CS) (hs : ct_WF s) (fs : List KF) (o xm x : ℕ) (ym : List ℕ) (y : ℕ)
     (w : FE) (ho : o < 4) :
     ct_Adds pt s (c0b_atomCore s fs o xm x ym y w)
-      (w * eqW (sub (Pt.ofList pt).kap 0 2) o * kerVal (Pt.ofList pt) fs *
-        ct_eqOn (Pt.ofList pt).rx (ct_xFree xm) x * ct_eqOn (Pt.ofList pt).ry (ct_yFree ym) y) := by
+      (KRing.ofE w * eqWG (sub (PtG.ofList pt).kap 0 2) o * kerValG (PtG.ofList pt) fs *
+        ct_eqOn (PtG.ofList pt).rx (ct_xFree xm) x * ct_eqOn (PtG.ofList pt).ry (ct_yFree ym) y) := by
   dsimp only [c0b_atomCore]
   obtain ⟨a1, a2, a3, a4, a5⟩ := c0b_kerStep s hs fs
   generalize (if fs.isEmpty then (s, 0) else s.ker fs) = q1 at a1 a2 a3 a4 a5 ⊢
-  obtain ⟨b1, b2, b3, b4, b5, b6⟩ := ct_rangeKeysX (Pt.ofList pt) q1.1 a1 (fun b ↦ b < xm) x
+  obtain ⟨b1, b2, b3, b4, b5, b6⟩ := ct_rangeKeysX (PtG.ofList pt) q1.1 a1 (fun b ↦ b < xm) x
   generalize q1.1.rangeKeys true xVars xCut (fun b ↦ b < xm) x = q2 at b1 b2 b3 b4 b5 b6 ⊢
-  obtain ⟨c1, c2, c3, c4, c5, c6⟩ := ct_rangeKeysY (Pt.ofList pt) q2.1 b1 (fun b ↦ ym.contains b) y
+  obtain ⟨c1, c2, c3, c4, c5, c6⟩ := ct_rangeKeysY (PtG.ofList pt) q2.1 b1 (fun b ↦ ym.contains b) y
   generalize q2.1.rangeKeys false yVars yCut (fun b ↦ ym.contains b) y = q3 at c1 c2 c3 c4 c5 c6 ⊢
   have hperm : (CS.interleave q2.2.reverse q3.2.reverse).Perm (q2.2 ++ q3.2) :=
     (c0b_interleave_perm _ _).trans (List.reverse_perm _ |>.append (List.reverse_perm _))
@@ -1570,27 +1581,27 @@ theorem c0b_addAtomCore (pt : List FE) (s : CS) (hs : ct_WF s) (fs : List KF) (o
       · have := b5 k hk; (clear * - hk0 this; omega)
       · have := c5 k hk; (clear * - hk0 this; omega)
   · intro T hT
-    have hT2 : ct_Cons (Pt.ofList pt) q2.1 T := ct_Cons_mono c2 hT
-    have hT1 : ct_Cons (Pt.ofList pt) q1.1 T := ct_Cons_mono b2 hT2
-    have hkk : keyVal T (if fs.isEmpty then (0, 0) else (2, q1.2)) = kerVal (Pt.ofList pt) fs := by
+    have hT2 : ct_Cons (PtG.ofList pt) q2.1 T := ct_Cons_mono c2 hT
+    have hT1 : ct_Cons (PtG.ofList pt) q1.1 T := ct_Cons_mono b2 hT2
+    have hkk : keyValG T (if fs.isEmpty then (0, 0) else (2, q1.2)) = kerValG (PtG.ofList pt) fs := by
       cases h : fs.isEmpty
       · exact hT1.2.2.1 q1.2 fs (a5 h)
       · have : fs = [] := List.isEmpty_iff.mp h
         subst this
-        simpa [kerVal] using hT1.1
-    have hsel : keyVal T (1, 1 <<< o) = eqW (sub (Pt.ofList pt).kap 0 2) o := by
+        simpa [kerValG] using hT1.1
+    have hsel : keyValG T (1, 1 <<< o) = eqWG (sub (PtG.ofList pt).kap 0 2) o := by
       rw [hT.2.1 _ (c0b_shift_lt o ho), c0b_kapV_single _ o ho]
-    simp only [List.cons_append, List.map_cons, List.prod_cons, hkk, hsel, (hperm.map (keyVal T)).prod_eq,
+    simp only [List.cons_append, List.map_cons, List.prod_cons, hkk, hsel, (hperm.map (keyValG T)).prod_eq,
       List.map_append, List.prod_append, b6 T hT2, c6 T hT, List.map_nil, List.prod_nil]
     simp only [ct_xFree, ct_yFree]
     ring
 
 /-- **An atom.** -/
-theorem ct_addAtom (pt : List FE) (s : CS) (hs : ct_WF s) (fs : List KF) (o xm x : ℕ) (ym : List ℕ) (y : ℕ)
+theorem ct_addAtom (pt : List 𝔽) (s : CS) (hs : ct_WF s) (fs : List KF) (o xm x : ℕ) (ym : List ℕ) (y : ℕ)
     (w : FE) (lim : Option ℕ) (ho : o < 4) :
     ct_Adds pt s (s.addAtom fs o xm x ym y w lim)
-      (w * eqW (sub (Pt.ofList pt).kap 0 2) o * kerVal (Pt.ofList pt) (ct_limFs fs lim) *
-        ct_eqOn (Pt.ofList pt).rx (ct_xFree xm) x * ct_eqOn (Pt.ofList pt).ry (ct_yFree (ct_limYm ym lim)) y) := by
+      (KRing.ofE w * eqWG (sub (PtG.ofList pt).kap 0 2) o * kerValG (PtG.ofList pt) (ct_limFs fs lim) *
+        ct_eqOn (PtG.ofList pt).rx (ct_xFree xm) x * ct_eqOn (PtG.ofList pt).ry (ct_yFree (ct_limYm ym lim)) y) := by
   have e : s.addAtom fs o xm x ym y w lim = c0b_atomCore s (ct_limFs fs lim) o xm x (ct_limYm ym lim) y w := by
     cases lim <;> rfl
   rw [e]
@@ -1635,10 +1646,10 @@ theorem c0b_filter_key {K β : Type} [BEq K] [Hashable K] [LawfulBEq K] (m : Std
 
 /-- The sum over a hash map of arrays after an insert. -/
 theorem c0b_sum_insert {K α : Type} [BEq K] [Hashable K] [LawfulBEq K] (m : Std.HashMap K (Array α))
-    (F : K → α → FE) (k : K) (a : Array α) :
+    (F : K → α → 𝔽) (k : K) (a : Array α) :
     ((m.insert k a).toList.map fun km ↦ (km.2.toList.map (F km.1)).sum).sum + ((m.getD k #[]).toList.map (F k)).sum =
       (m.toList.map fun km ↦ (km.2.toList.map (F km.1)).sum).sum + (a.toList.map (F k)).sum := by
-  set g : K × Array α → FE := fun km ↦ (km.2.toList.map (F km.1)).sum with hg
+  set g : K × Array α → 𝔽 := fun km ↦ (km.2.toList.map (F km.1)).sum with hg
   rw [((Std.HashMap.toList_insert_perm (m := m) (k := k) (v := a)).map g).sum_eq]
   have hp := ((List.filter_append_perm (fun x : K × Array α ↦ k == x.1) m.toList).map g).sum_eq
   rw [← hp, c0b_filter_key, List.filter_congr (q := fun x : K × Array α ↦ !(k == x.1)) (by intro x _; simp)]
@@ -1653,7 +1664,7 @@ theorem c0b_fold_push (o x : ℕ) : ∀ (ms : List (ℕ × FE)) (A : Array (ℕ 
       List.singleton_append]
 
 /-- Inserting pass members. -/
-theorem c0b_push (pt : List FE) (s : CS) (hs : ct_WF s) (key : List ℕ × ℕ × Option ℕ) (o x : ℕ)
+theorem c0b_push (pt : List 𝔽) (s : CS) (hs : ct_WF s) (key : List ℕ × ℕ × Option ℕ) (o x : ℕ)
     (ms : List (ℕ × FE)) (hms : ∀ p ∈ ms, ct_MemOk key (p.1, o, x, p.2)) :
     ct_Adds pt s { s with pm := s.pm.insert key (ms.foldl (fun a (p : ℕ × FE) ↦ a.push (p.1, o, x, p.2))
       (s.pm.getD key #[])) } ((ms.map fun p ↦ ct_memSem pt key (p.1, o, x, p.2)).sum) := by
@@ -1687,7 +1698,7 @@ theorem c0b_push (pt : List FE) (s : CS) (hs : ct_WF s) (key : List ℕ × ℕ �
     simp only [ct_aSum]
     ring
 
-theorem c0b_memSem_limb (pt : List FE) (xs : List ℕ) (R st o x e : ℕ) (w : FE) :
+theorem c0b_memSem_limb (pt : List 𝔽) (xs : List ℕ) (R st o x e : ℕ) (w : FE) :
     ct_memSem pt (xs, R, some e) (st, o, x, w) =
       ct_memSem pt (xs, R, none) (st, o, x, w) + ct_memSem pt (xs, R, none) (st + 2 ^ e, o, x, w * FE.y) +
         ct_memSem pt (xs, R, none) (st + 2 * 2 ^ e, o, x, w * FE.y * FE.y) := by
@@ -1696,11 +1707,12 @@ theorem c0b_memSem_limb (pt : List FE) (xs : List ℕ) (R st o x e : ℕ) (w : F
   apply List.map_congr_left
   intro j _
   simp only [ct_EL]
-  rw [show st + 2 ^ e + R * j = st + R * j + 2 ^ e by ring, show st + 2 * 2 ^ e + R * j = st + R * j + 2 * 2 ^ e by ring]
+  rw [show st + 2 ^ e + R * j = st + R * j + 2 ^ e by ring, show st + 2 * 2 ^ e + R * j = st + R * j + 2 * 2 ^ e by ring,
+    map_mul, map_mul, map_mul]
   ring
 
 /-- **A pass member.** -/
-theorem ct_addMember (pt : List FE) (s : CS) (hs : ct_WF s) (xs : List ℕ) (R st o x : ℕ) (w : FE)
+theorem ct_addMember (pt : List 𝔽) (s : CS) (hs : ct_WF s) (xs : List ℕ) (R st o x : ℕ) (w : FE)
     (lim : Option ℕ) (hok : ct_MemOk (xs, R, none) (st, o, x, w))
     (hlim : match lim with
       | none => True
@@ -1783,7 +1795,7 @@ theorem c4_modify_last (m : Array Atom) (b : Atom) (g : Atom → Atom) (h : m.ba
   simp
 
 /-- **A merge loop** keeps a key property `Q` and the sum of `V`, if each merge does. -/
-theorem c4_fold (Q : Atom → Prop) (V : Atom → FE) (C : Atom → Atom → Bool) (H : Atom → Atom → Atom → Atom)
+theorem c4_fold (Q : Atom → Prop) (V : Atom → 𝔽) (C : Atom → Atom → Bool) (H : Atom → Atom → Atom → Atom)
     (hH : ∀ b a, Q b → Q a → C b a = true → Q (H b a b) ∧ V (H b a b) = V b + V a) :
     ∀ (l : List Atom) (m : Array Atom), (∀ x ∈ m, Q x) → (∀ a ∈ l, Q a) →
       (∀ x ∈ l.foldl (c4_mstep C H) m, Q x) ∧
@@ -1826,16 +1838,16 @@ theorem c4_fold (Q : Atom → Prop) (V : Atom → FE) (C : Atom → Atom → Boo
 
 /-! ## Atom values -/
 
-theorem c4_atomVal (T : Array (Array FE)) (a : Atom) :
-    atomVal T a = a.w * (a.keys.toList.map (keyVal T)).prod := by
+theorem c4_atomVal (T : Array (Array 𝔽)) (a : Atom) :
+    atomVal T a = KRing.ofE a.w * (a.keys.toList.map (keyValG T)).prod := by
   unfold atomVal
   rw [← Array.foldl_toList]
-  generalize a.w = w
+  generalize (KRing.ofE a.w : 𝔽) = w
   induction a.keys.toList generalizing w with
   | nil => simp
   | cons k ks ih => simp only [List.foldl_cons, List.map_cons, List.prod_cons]; rw [ih]; ring
 
-theorem c4_kapV_or (P : Pt) (x y : ℕ) (h : x &&& y = 0) :
+theorem c4_kapV_or (P : PtG 𝔽) (x y : ℕ) (h : x &&& y = 0) :
     ct_kapV P (x ||| y) = ct_kapV P x + ct_kapV P y := by
   unfold ct_kapV
   rw [← List.sum_map_add]
@@ -1847,8 +1859,8 @@ theorem c4_kapV_or (P : Pt) (x y : ℕ) (h : x &&& y = 0) :
   rw [Nat.testBit_or]
   rcases this with h1 | h1 <;> simp [h1]
 
-theorem c4_split (T : Array (Array FE)) (k : Array (ℕ × ℕ)) (hk : 1 < k.size) :
-    (k.toList.map (keyVal T)).prod = keyVal T (k.getD 1 (0, 0)) * ((c4_wo k).toList.map (keyVal T)).prod := by
+theorem c4_split (T : Array (Array 𝔽)) (k : Array (ℕ × ℕ)) (hk : 1 < k.size) :
+    (k.toList.map (keyValG T)).prod = keyValG T (k.getD 1 (0, 0)) * ((c4_wo k).toList.map (keyValG T)).prod := by
   rcases k with ⟨_ | ⟨x0, _ | ⟨x1, r⟩⟩⟩
   · simp at hk
   · simp at hk
@@ -1872,15 +1884,15 @@ theorem c4_one_lt (k : Array (ℕ × ℕ)) (h : (k.getD 1 (0, 0)).1 = 1) : 1 < k
   rw [this] at h
   exact absurd h (by decide)
 
-theorem c4_step1 (T : Array (Array FE)) (as : Array Atom) (D : ℕ) (b a : Atom) (hb : c4_Q as D b)
+theorem c4_step1 (T : Array (Array 𝔽)) (as : Array Atom) (D : ℕ) (b a : Atom) (hb : c4_Q as D b)
     (_ : c4_Q as D a) (hc : c4_C1 b a = true) :
     c4_Q as D (c4_H1 b a b) ∧ atomVal T (c4_H1 b a b) = atomVal T b + atomVal T a := by
   refine ⟨hb, ?_⟩
   have hk : b.keys = a.keys := by simpa [c4_C1] using hc
-  simp only [c4_atomVal, c4_H1, hk]
+  simp only [c4_atomVal, c4_H1, hk, map_add]
   ring
 
-theorem c4_step3 (P : Pt) (T : Array (Array FE)) (hk : ∀ m < 16, keyVal T (1, m) = ct_kapV P m)
+theorem c4_step3 (P : PtG 𝔽) (T : Array (Array 𝔽)) (hk : ∀ m < 16, keyValG T (1, m) = ct_kapV P m)
     (as : Array Atom) (D : ℕ) (b a : Atom) (hb : c4_Q as D b) (ha : c4_Q as D a) (hc : c4_C3 b a = true) :
     c4_Q as D (c4_H3 b a b) ∧ atomVal T (c4_H3 b a b) = atomVal T b + atomVal T a := by
   obtain ⟨hbD, hb1, hb16, c, hc0, hcb⟩ := hb
@@ -1910,7 +1922,7 @@ theorem c4_step3 (P : Pt) (T : Array (Array FE)) (hk : ∀ m < 16, keyVal T (1, 
       ← h1, ← h2, hk _ h16, hk _ hb16, hk _ ha16, c4_kapV_or P _ _ h3]
     ring
 
-theorem c4_filter (T : Array (Array FE)) (l : List Atom) :
+theorem c4_filter (T : Array (Array 𝔽)) (l : List Atom) :
     ((l.filter fun a ↦ !a.w == 0).map (atomVal T)).sum = (l.map (atomVal T)).sum := by
   induction l with
   | nil => rfl
@@ -1919,7 +1931,7 @@ theorem c4_filter (T : Array (Array FE)) (l : List Atom) :
     · have : a.w = 0 := (code_beq_iff _ _).1 h
       simp only [List.filter_cons, h, Bool.not_true, Bool.false_eq_true, ite_false, List.map_cons,
         List.sum_cons, ih]
-      rw [c4_atomVal, this, zero_mul, zero_add]
+      rw [c4_atomVal, this, map_zero, zero_mul, zero_add]
     · simp [h, ih]
 
 theorem c4_pad_getD (k : Array (ℕ × ℕ)) (n i : ℕ) :
@@ -1930,14 +1942,14 @@ theorem c4_pad_getD (k : Array (ℕ × ℕ)) (n i : ℕ) :
   · rw [Array.getElem?_eq_none (Nat.le_of_not_lt h), Array.getElem?_replicate]
     split_ifs <;> rfl
 
-theorem c4_perm (Q : Atom → Prop) (V : Atom → FE) (xs ys : Array Atom) (h : xs.toList.Perm ys.toList)
+theorem c4_perm (Q : Atom → Prop) (V : Atom → 𝔽) (xs ys : Array Atom) (h : xs.toList.Perm ys.toList)
     (hQ : ∀ x ∈ ys, Q x) : (∀ x ∈ xs, Q x) ∧ (xs.toList.map V).sum = (ys.toList.map V).sum :=
   ⟨fun x hx ↦ hQ x (Array.mem_toList_iff.1 (h.mem_iff.1 (Array.mem_toList_iff.2 hx))), (h.map V).sum_eq⟩
 
 /-- **The final atoms** (C4): padding and merging keep the sum and the keys but the selector level; the result is
 sorted. -/
-theorem ct_mergeAtoms (P : Pt) (T : Array (Array FE)) (hT : keyVal T (0, 0) = 1)
-    (hk : ∀ m < 16, keyVal T (1, m) = ct_kapV P m) (as : Array Atom) (D : ℕ)
+theorem ct_mergeAtoms (P : PtG 𝔽) (T : Array (Array 𝔽)) (hT : keyValG T (0, 0) = 1)
+    (hk : ∀ m < 16, keyValG T (1, m) = ct_kapV P m) (as : Array Atom) (D : ℕ)
     (hD : ∀ a ∈ as, a.keys.size ≤ D)
     (hsel : ∀ a ∈ as, 2 ≤ a.keys.size ∧ (a.keys.getD 1 (0, 0)).1 = 1 ∧ (a.keys.getD 1 (0, 0)).2 < 16) :
     (∀ a ∈ mergeAtoms 1 (padTo D as), a.keys.size = D ∧ (a.keys.getD 1 (0, 0)).1 = 1 ∧
@@ -2284,13 +2296,13 @@ theorem c1_bit_hit (jf : ℕ) : ∀ (F : List (ℕ × ℕ)) (u U : ℕ), injOk U
 
 /-! ### Lists -/
 
-theorem c1_kerVal_eq (P : Pt) (fs : List KF) : kerVal P fs = (fs.map (kfVal P)).prod := by
-  have : ∀ (c : FE) (fs : List KF), fs.foldl (fun acc f ↦ acc * kfVal P f) c = c * (fs.map (kfVal P)).prod := by
+theorem c1_kerVal_eq (P : PtG 𝔽) (fs : List KF) : kerValG P fs = (fs.map (kfValG P)).prod := by
+  have : ∀ (c : 𝔽) (fs : List KF), fs.foldl (fun acc f ↦ acc * kfValG P f) c = c * (fs.map (kfValG P)).prod := by
     intro c fs
     induction fs generalizing c with
     | nil => simp
     | cons f fs ih => rw [List.foldl_cons, ih, List.map_cons, List.prod_cons, mul_assoc]
-  rw [kerVal, this, one_mul]
+  rw [kerValG, this, one_mul]
 
 @[to_additive]
 
@@ -2354,8 +2366,8 @@ theorem c1_filter_nil {β : Type} (L : List (ℕ × β)) (i : ℕ) (h : ∀ q �
   simpa using h q hq
 
 theorem c1_inFix_prod (jf : ℕ) (fix : List (ℕ × Bool)) :
-    (if ct_inFix fix jf = true then (1 : FE) else 0) =
-      (fix.map fun p ↦ if jf.testBit p.1 = p.2 then (1 : FE) else 0).prod := by
+    (if ct_inFix fix jf = true then (1 : 𝔽) else 0) =
+      (fix.map fun p ↦ if jf.testBit p.1 = p.2 then (1 : 𝔽) else 0).prod := by
   induction fix with
   | nil => simp [ct_inFix]
   | cons a fix ih =>
@@ -2370,41 +2382,41 @@ theorem c1_inFix_iff (jf : ℕ) (fix : List (ℕ × Bool)) :
 
 /-! ### The kernel: the sum over the sub-cube of the per-bit factors -/
 
-theorem c1_core (P : Pt) (l : ℕ) (fix : List (ℕ × Bool)) (prs : List (ℕ × ℕ))
+theorem c1_core (P : PtG 𝔽) (l : ℕ) (fix : List (ℕ × Bool)) (prs : List (ℕ × ℕ))
     (hfk : ∀ p ∈ fix, p.1 < l) (hpk : ∀ p ∈ prs, p.1 < l) (hfn : (fix.map (·.1)).Nodup)
     (hpn : (prs.map (·.1)).Nodup) (hdis : ∀ p ∈ fix, ∀ q ∈ prs, p.1 ≠ q.1) :
-    ((List.range (2 ^ l)).map fun jf ↦ (if ct_inFix fix jf = true then (1 : FE) else 0) *
-        ct_eqOn P.rx (List.range l) jf * (prs.map fun p ↦ eq1 (P.ry.getD p.2 0) (jf.testBit p.1)).prod).sum =
-      kerVal P (fix.map (fun p ↦ KF.fixX p.1 p.2) ++ prs.map fun p ↦ KF.pair p.1 p.2) := by
-  set f : ℕ → Bool → FE := fun i b ↦
-    ((fix.filter fun p ↦ p.1 == i).map fun p ↦ if b = p.2 then (1 : FE) else 0).prod *
-      eq1 (P.rx.getD i 0) b * ((prs.filter fun p ↦ p.1 == i).map fun p ↦ eq1 (P.ry.getD p.2 0) b).prod with hf
-  have hstep1 : ∀ jf, (if ct_inFix fix jf = true then (1 : FE) else 0) *
-        ct_eqOn P.rx (List.range l) jf * (prs.map fun p ↦ eq1 (P.ry.getD p.2 0) (jf.testBit p.1)).prod =
+    ((List.range (2 ^ l)).map fun jf ↦ (if ct_inFix fix jf = true then (1 : 𝔽) else 0) *
+        ct_eqOn P.rx (List.range l) jf * (prs.map fun p ↦ eq1G (P.ry.getD p.2 0) (jf.testBit p.1)).prod).sum =
+      kerValG P (fix.map (fun p ↦ KF.fixX p.1 p.2) ++ prs.map fun p ↦ KF.pair p.1 p.2) := by
+  set f : ℕ → Bool → 𝔽 := fun i b ↦
+    ((fix.filter fun p ↦ p.1 == i).map fun p ↦ if b = p.2 then (1 : 𝔽) else 0).prod *
+      eq1G (P.rx.getD i 0) b * ((prs.filter fun p ↦ p.1 == i).map fun p ↦ eq1G (P.ry.getD p.2 0) b).prod with hf
+  have hstep1 : ∀ jf, (if ct_inFix fix jf = true then (1 : 𝔽) else 0) *
+        ct_eqOn P.rx (List.range l) jf * (prs.map fun p ↦ eq1G (P.ry.getD p.2 0) (jf.testBit p.1)).prod =
       ((List.range l).map fun i ↦ f i (jf.testBit i)).prod := by
     intro jf
-    have hA : ∀ i, ((fix.filter fun p ↦ p.1 == i).map fun p ↦ if jf.testBit p.1 = p.2 then (1 : FE) else 0) =
-        ((fix.filter fun p ↦ p.1 == i).map fun p ↦ if jf.testBit i = p.2 then (1 : FE) else 0) := by
+    have hA : ∀ i, ((fix.filter fun p ↦ p.1 == i).map fun p ↦ if jf.testBit p.1 = p.2 then (1 : 𝔽) else 0) =
+        ((fix.filter fun p ↦ p.1 == i).map fun p ↦ if jf.testBit i = p.2 then (1 : 𝔽) else 0) := by
       intro i
       apply List.map_congr_left
       intro p hp
       simp only [List.mem_filter, beq_iff_eq] at hp
       rw [hp.2]
-    have hC : ∀ i, ((prs.filter fun p ↦ p.1 == i).map fun p ↦ eq1 (P.ry.getD p.2 0) (jf.testBit p.1)) =
-        ((prs.filter fun p ↦ p.1 == i).map fun p ↦ eq1 (P.ry.getD p.2 0) (jf.testBit i)) := by
+    have hC : ∀ i, ((prs.filter fun p ↦ p.1 == i).map fun p ↦ eq1G (P.ry.getD p.2 0) (jf.testBit p.1)) =
+        ((prs.filter fun p ↦ p.1 == i).map fun p ↦ eq1G (P.ry.getD p.2 0) (jf.testBit i)) := by
       intro i
       apply List.map_congr_left
       intro p hp
       simp only [List.mem_filter, beq_iff_eq] at hp
       rw [hp.2]
-    rw [c1_inFix_prod, ← c1_regroup l (fun p ↦ if jf.testBit p.1 = p.2 then (1 : FE) else 0) fix hfk,
-      ← c1_regroup l (fun p ↦ eq1 (P.ry.getD p.2 0) (jf.testBit p.1)) prs hpk]
+    rw [c1_inFix_prod, ← c1_regroup l (fun p ↦ if jf.testBit p.1 = p.2 then (1 : 𝔽) else 0) fix hfk,
+      ← c1_regroup l (fun p ↦ eq1G (P.ry.getD p.2 0) (jf.testBit p.1)) prs hpk]
     simp only [hf, List.prod_map_mul, hA, hC, ct_eqOn]
   rw [List.map_congr_left (fun jf _ ↦ hstep1 jf), ct_sum_prod_bits]
-  have h2 : (2 : FE) = 0 := CharTwo.two_eq_zero
+  have h2 : (2 : 𝔽) = 0 := CharTwo.two_eq_zero
   have hF : ∀ i, f i false + f i true =
-      ((fix.filter fun p ↦ p.1 == i).map fun p ↦ kfVal P (KF.fixX p.1 p.2)).prod *
-        ((prs.filter fun p ↦ p.1 == i).map fun p ↦ kfVal P (KF.pair p.1 p.2)).prod := by
+      ((fix.filter fun p ↦ p.1 == i).map fun p ↦ kfValG P (KF.fixX p.1 p.2)).prod *
+        ((prs.filter fun p ↦ p.1 == i).map fun p ↦ kfValG P (KF.pair p.1 p.2)).prod := by
     intro i
     by_cases hA : ∃ p ∈ fix, p.1 = i
     · obtain ⟨p, hp, rfl⟩ := hA
@@ -2412,20 +2424,20 @@ theorem c1_core (P : Pt) (l : ℕ) (fix : List (ℕ × Bool)) (prs : List (ℕ �
       simp only
       rw [c1_filter_single fix hfn p hp, c1_filter_nil prs p.1 (fun q hq he ↦ hdis p hp q hq he.symm)]
       obtain ⟨i, b⟩ := p
-      cases b <;> simp [kfVal, eq1]
+      cases b <;> simp [kfValG, eq1G]
     · by_cases hB : ∃ q ∈ prs, q.1 = i
       · obtain ⟨q, hq, rfl⟩ := hB
         rw [hf]
         simp only
         rw [c1_filter_single prs hpn q hq, c1_filter_nil fix q.1 (fun p hp he ↦ hdis p hp q hq he)]
-        simp only [List.map_nil, List.prod_nil, List.map_cons, List.prod_cons, mul_one, one_mul, eq1, kfVal,
+        simp only [List.map_nil, List.prod_nil, List.map_cons, List.prod_cons, mul_one, one_mul, eq1G, kfValG,
           Bool.false_eq_true, if_false, if_true]
         linear_combination (P.rx.getD q.1 0 * P.ry.getD q.2 0) * h2
       · simp only [not_exists, not_and] at hA hB
         rw [hf]
         simp only
         rw [c1_filter_nil fix i hA, c1_filter_nil prs i hB]
-        simp [eq1]
+        simp [eq1G]
   simp only [hF, List.prod_map_mul]
   rw [c1_regroup l _ fix hfk, c1_regroup l _ prs hpk, c1_kerVal_eq, List.map_append, List.prod_append,
     List.map_map, List.map_map]
@@ -2530,7 +2542,7 @@ theorem c1_at (l : ℕ) (a : Aff) (fix : List (ℕ × Bool)) (hfk : ∀ p ∈ fi
 
 /-! ### The `x` and `y` factors -/
 
-theorem c1_eqOn_x (r : Array FE) (x0 l jf : ℕ) (hx : x0 % 2 ^ l = 0) (hl : l ≤ xVars) (hjf : jf < 2 ^ l) :
+theorem c1_eqOn_x (r : Array 𝔽) (x0 l jf : ℕ) (hx : x0 % 2 ^ l = 0) (hl : l ≤ xVars) (hjf : jf < 2 ^ l) :
     ct_eqOn r (List.range xVars) (x0 + jf) = ct_eqOn r (List.range l) jf * ct_eqOn r (ct_xFree l) x0 := by
   have hperm : (List.range xVars).Perm (List.range l ++ ct_xFree l) := by
     have h1 := List.filter_append_perm (fun b ↦ decide (b < l)) (List.range xVars)
@@ -2557,7 +2569,7 @@ theorem c1_eqOn_x (r : Array FE) (x0 l jf : ℕ) (hx : x0 % 2 ^ l = 0) (hl : l �
     conv_rhs => rw [hk, Nat.testBit_two_pow_mul_add _ (Nat.two_pow_pos l)]
     simp [hb.2]
 
-theorem c1_eqOn_y (r : Array FE) (M : List ℕ) (hM : M.Nodup) (hMr : ∀ j ∈ M, j < yVars) (v y0 : ℕ)
+theorem c1_eqOn_y (r : Array 𝔽) (M : List ℕ) (hM : M.Nodup) (hMr : ∀ j ∈ M, j < yVars) (v y0 : ℕ)
     (hv : ∀ j < yVars, j ∉ M → v.testBit j = y0.testBit j) :
     ct_eqOn r (List.range yVars) v = ct_eqOn r M v * ct_eqOn r (ct_yFree M) y0 := by
   have hperm : (List.range yVars).Perm (M ++ ct_yFree M) := by
@@ -2581,7 +2593,7 @@ theorem c1_eqOn_y (r : Array FE) (M : List ℕ) (hM : M.Nodup) (hMr : ∀ j ∈ 
   exact Bool.false_ne_true this
 
 /-- `addSub`'s injective case (C1). -/
-theorem ct_addSub_inj (pt : List FE) (hpt : pt.length = 2 + xVars + yVars) (s : CS) (hs : ct_WF s)
+theorem ct_addSub_inj (pt : List 𝔽) (hpt : pt.length = 2 + xVars + yVars) (s : CS) (hs : ct_WF s)
     (o : ℕ) (w : FE) (x0 l : ℕ) (a : Aff) (fix : List (ℕ × Bool)) (lim : Option ℕ)
     (ho : o < 4) (hx : x0 % 2 ^ l = 0) (hxl : x0 + 2 ^ l ≤ 2 ^ xVars)
     (hfix : (∀ bv ∈ fix, bv.1 < l) ∧ (fix.map (·.1)).Nodup)
@@ -2591,7 +2603,7 @@ theorem ct_addSub_inj (pt : List FE) (hpt : pt.length = 2 + xVars + yVars) (s : 
     (hinj : injOk (subAff l a fix).y0 ((subAff l a fix).free.map (·.2)) = true) :
     ct_Adds pt s (s.addSub o w x0 (subAff l a fix) lim)
       ((List.range (2 ^ l)).map fun jf ↦
-        if ct_inFix fix jf then w * ct_EL pt lim o (x0 + jf) (a.at jf) else 0).sum := by
+        if ct_inFix fix jf then KRing.ofE w * ct_EL pt lim o (x0 + jf) (a.at jf) else 0).sum := by
   obtain ⟨hfk, hfn⟩ := hfix
   have hxs : x0 >>> l <<< l = x0 := by
     rw [Nat.shiftLeft_eq, Nat.shiftRight_eq_div_pow]
@@ -2608,7 +2620,7 @@ theorem ct_addSub_inj (pt : List FE) (hpt : pt.length = 2 + xVars + yVars) (s : 
     rw [h1, h2, hxs]
   rw [hstep]
   refine ct_Adds_congr (ct_addAtom pt s hs fs o l x0 ym y0 w lim ho) ?_
-  set P := Pt.ofList pt with hP
+  set P := PtG.ofList pt with hP
   have hl : l ≤ xVars := by
     have h2 : 2 ^ l ≤ 2 ^ xVars := by (clear * - hxl hxs; omega)
     exact (Nat.pow_le_pow_iff_right (by norm_num)).mp h2
@@ -2669,7 +2681,7 @@ theorem ct_addSub_inj (pt : List FE) (hpt : pt.length = 2 + xVars + yVars) (s : 
   have hat : ∀ jf < 2 ^ l, ct_inFix fix jf = true → a.at jf = y0 + c1_S F jf :=
     fun jf hjf hin ↦ c1_at l a fix hfk hfn jf hjf hin
   have hYp : ∀ v jf : ℕ, (∀ p ∈ pairs, v.testBit (log2 p.2) = jf.testBit p.1) →
-      ct_eqOn P.ry ym v = (pairs.map fun p ↦ eq1 (P.ry.getD (log2 p.2) 0) (jf.testBit p.1)).prod := by
+      ct_eqOn P.ry ym v = (pairs.map fun p ↦ eq1G (P.ry.getD (log2 p.2) 0) (jf.testBit p.1)).prod := by
     intro v jf hv
     simp only [ct_eqOn, hym, List.map_map]
     congr 1
@@ -2692,15 +2704,15 @@ theorem ct_addSub_inj (pt : List FE) (hpt : pt.length = 2 + xVars + yVars) (s : 
       rw [hprs, List.mem_map] at hr
       obtain ⟨q, hq, rfl⟩ := hr
       exact (hFmem q (hPmem q hq).1).2 p hp)
-  have hprs_prod : ∀ jf : ℕ, (prs.map fun p ↦ eq1 (P.ry.getD p.2 0) (jf.testBit p.1)).prod =
-      (pairs.map fun p ↦ eq1 (P.ry.getD (log2 p.2) 0) (jf.testBit p.1)).prod := by
+  have hprs_prod : ∀ jf : ℕ, (prs.map fun p ↦ eq1G (P.ry.getD p.2 0) (jf.testBit p.1)).prod =
+      (pairs.map fun p ↦ eq1G (P.ry.getD (log2 p.2) 0) (jf.testBit p.1)).prod := by
     intro jf
     simp only [hprs, List.map_map]
     rfl
-  have hker : kerVal P fs = kerVal P (fix.map (fun p ↦ KF.fixX p.1 p.2) ++ prs.map fun p ↦ KF.pair p.1 p.2) := by
+  have hker : kerValG P fs = kerValG P (fix.map (fun p ↦ KF.fixX p.1 p.2) ++ prs.map fun p ↦ KF.pair p.1 p.2) := by
     simp only [hfs, hprs, List.map_map]
     rfl
-  have hE : ∀ jf < 2 ^ l, ∀ v, ct_E pt o (x0 + jf) v = eqW (sub P.kap 0 2) o *
+  have hE : ∀ jf < 2 ^ l, ∀ v, ct_E pt o (x0 + jf) v = eqWG (sub P.kap 0 2) o *
       (ct_eqOn P.rx (List.range l) jf * ct_eqOn P.rx (ct_xFree l) x0) * ct_eqOn P.ry (List.range yVars) v := by
     intro jf hjf v
     rw [ct_E_split pt hpt o (x0 + jf) v ho (by (clear * - hxl hxs hjf; omega)), c1_eqOn_x _ x0 l jf hx hl hjf]
@@ -2708,10 +2720,10 @@ theorem ct_addSub_inj (pt : List FE) (hpt : pt.length = 2 + xVars + yVars) (s : 
   | none =>
     simp only [ct_limFs, ct_limYm, ct_EL]
     have hterm : ∀ jf ∈ List.range (2 ^ l),
-        (if ct_inFix fix jf = true then w * ct_E pt o (x0 + jf) (a.at jf) else 0) =
-          (w * eqW (sub P.kap 0 2) o * ct_eqOn P.rx (ct_xFree l) x0 * ct_eqOn P.ry (ct_yFree ym) y0) *
-            ((if ct_inFix fix jf = true then (1 : FE) else 0) * ct_eqOn P.rx (List.range l) jf *
-              (prs.map fun p ↦ eq1 (P.ry.getD p.2 0) (jf.testBit p.1)).prod) := by
+        (if ct_inFix fix jf = true then KRing.ofE w * ct_E pt o (x0 + jf) (a.at jf) else 0) =
+          (KRing.ofE w * eqWG (sub P.kap 0 2) o * ct_eqOn P.rx (ct_xFree l) x0 * ct_eqOn P.ry (ct_yFree ym) y0) *
+            ((if ct_inFix fix jf = true then (1 : 𝔽) else 0) * ct_eqOn P.rx (List.range l) jf *
+              (prs.map fun p ↦ eq1G (P.ry.getD p.2 0) (jf.testBit p.1)).prod) := by
       intro jf hjf
       rw [List.mem_range] at hjf
       by_cases hin : ct_inFix fix jf = true
@@ -2760,8 +2772,8 @@ theorem ct_addSub_inj (pt : List FE) (hpt : pt.length = 2 + xVars + yVars) (s : 
         (clear * - he hj; omega)
     have hY : ∀ jf < 2 ^ l, ct_inFix fix jf = true → ∀ m < 4,
         ct_eqOn P.ry (List.range yVars) (a.at jf + m * 2 ^ e) =
-          (pairs.map fun p ↦ eq1 (P.ry.getD (log2 p.2) 0) (jf.testBit p.1)).prod *
-            (eq1 (P.ry.getD e 0) (m.testBit 0) * eq1 (P.ry.getD (e + 1) 0) (m.testBit 1)) *
+          (pairs.map fun p ↦ eq1G (P.ry.getD (log2 p.2) 0) (jf.testBit p.1)).prod *
+            (eq1G (P.ry.getD e 0) (m.testBit 0) * eq1G (P.ry.getD (e + 1) 0) (m.testBit 1)) *
             ct_eqOn P.ry (ct_yFree (ym ++ [e, e + 1])) y0 := by
       intro jf hjf hin m hm
       have hb := c1_limb_bits (a.at jf) e m (hlim jf hjf hin) hm
@@ -2784,13 +2796,13 @@ theorem ct_addSub_inj (pt : List FE) (hpt : pt.length = 2 + xVars + yVars) (s : 
     have t20 : (2 : ℕ).testBit 0 = false := by decide
     have t21 : (2 : ℕ).testBit 1 = true := by decide
     have hterm : ∀ jf ∈ List.range (2 ^ l),
-        (if ct_inFix fix jf = true then w * (ct_E pt o (x0 + jf) (a.at jf) +
-          FE.y * ct_E pt o (x0 + jf) (a.at jf + 2 ^ e) + FE.y * FE.y * ct_E pt o (x0 + jf) (a.at jf + 2 * 2 ^ e))
+        (if ct_inFix fix jf = true then KRing.ofE w * (ct_E pt o (x0 + jf) (a.at jf) +
+          KRing.ofE FE.y * ct_E pt o (x0 + jf) (a.at jf + 2 ^ e) + KRing.ofE FE.y * KRing.ofE FE.y * ct_E pt o (x0 + jf) (a.at jf + 2 * 2 ^ e))
           else 0) =
-          (w * eqW (sub P.kap 0 2) o * ct_eqOn P.rx (ct_xFree l) x0 *
-            ct_eqOn P.ry (ct_yFree (ym ++ [e, e + 1])) y0 * limbVal (P.ry.getD e 0) (P.ry.getD (e + 1) 0)) *
-            ((if ct_inFix fix jf = true then (1 : FE) else 0) * ct_eqOn P.rx (List.range l) jf *
-              (prs.map fun p ↦ eq1 (P.ry.getD p.2 0) (jf.testBit p.1)).prod) := by
+          (KRing.ofE w * eqWG (sub P.kap 0 2) o * ct_eqOn P.rx (ct_xFree l) x0 *
+            ct_eqOn P.ry (ct_yFree (ym ++ [e, e + 1])) y0 * limbValG (P.ry.getD e 0) (P.ry.getD (e + 1) 0)) *
+            ((if ct_inFix fix jf = true then (1 : 𝔽) else 0) * ct_eqOn P.rx (List.range l) jf *
+              (prs.map fun p ↦ eq1G (P.ry.getD p.2 0) (jf.testBit p.1)).prod) := by
       intro jf hjf
       rw [List.mem_range] at hjf
       by_cases hin : ct_inFix fix jf = true
@@ -2800,13 +2812,13 @@ theorem ct_addSub_inj (pt : List FE) (hpt : pt.length = 2 + xVars + yVars) (s : 
         rw [Nat.zero_mul, Nat.add_zero] at h0
         rw [Nat.one_mul] at h1
         rw [if_pos hin, if_pos hin, hE jf hjf, hE jf hjf, hE jf hjf, h0, h1, h2, hprs_prod]
-        simp only [t00, t01, t10, t11, t20, t21, eq1, limbVal, if_true, Bool.false_eq_true, ite_false]
+        simp only [t00, t01, t10, t11, t20, t21, eq1G, limbValG, if_true, Bool.false_eq_true, ite_false]
         ring
       · rw [if_neg hin, if_neg hin]
         ring
     rw [List.map_congr_left hterm, List.sum_map_mul_left, hcore, ← hker, c1_kerVal_eq, List.map_append,
       List.prod_append, ← c1_kerVal_eq]
-    simp only [List.map_cons, List.map_nil, List.prod_cons, List.prod_nil, mul_one, kfVal]
+    simp only [List.map_cons, List.map_nil, List.prod_cons, List.prod_nil, mul_one, kfValG]
     ring
 
 theorem c2_loop {β : Type} (f : Unit → β → Id (ForInStep β)) (μ : β → ℕ) (P Q : β → Prop)
@@ -3329,7 +3341,7 @@ theorem c2_testBit_add (x0 y l b : ℕ) (hx : x0 % 2 ^ l = 0) (hy : y < 2 ^ l) (
   exact h1.symm
 
 /-- `addSub`'s carry-automaton case (C2). -/
-theorem ct_addSub_K3 (pt : List FE) (hpt : pt.length = 2 + xVars + yVars) (s : CS) (hs : ct_WF s)
+theorem ct_addSub_K3 (pt : List 𝔽) (hpt : pt.length = 2 + xVars + yVars) (s : CS) (hs : ct_WF s)
     (o : ℕ) (w : FE) (x0 l : ℕ) (a : Aff) (fix : List (ℕ × Bool)) (lim : Option ℕ)
     (ho : o < 4) (hx : x0 % 2 ^ l = 0) (hxl : x0 + 2 ^ l ≤ 2 ^ xVars)
     (hfix : (∀ bv ∈ fix, bv.1 < l) ∧ (fix.map (·.1)).Nodup)
@@ -3339,7 +3351,7 @@ theorem ct_addSub_K3 (pt : List FE) (hpt : pt.length = 2 + xVars + yVars) (s : C
     (hinj : injOk (subAff l a fix).y0 ((subAff l a fix).free.map (·.2)) = false) :
     ct_Adds pt s (s.addSub o w x0 (subAff l a fix) lim)
       ((List.range (2 ^ l)).map fun jf ↦
-        if ct_inFix fix jf then w * ct_EL pt lim o (x0 + jf) (a.at jf) else 0).sum := by
+        if ct_inFix fix jf then KRing.ofE w * ct_EL pt lim o (x0 + jf) (a.at jf) else 0).sum := by
   rw [CS.addSub, ite_eq_right_iff.mpr (fun h => absurd (hinj ▸ h) (by decide))]
   rcases hA : autoRun (subAff l a fix).free with ⟨xs, R⟩
   dsimp only
@@ -3464,13 +3476,13 @@ theorem ct_addSub_K3 (pt : List FE) (hpt : pt.length = 2 + xVars + yVars) (s : C
         simp only [ite_eq_left_iff, one_ne_zero, imp_false, not_not] at H
         simpa only [add_assoc] using H
   · have e1 : ((List.range (2 ^ l)).map fun jf ↦
-        if ct_inFix fix jf then w * ct_EL pt lim o (x0 + jf) (a.at jf) else 0) =
+        if ct_inFix fix jf then KRing.ofE w * ct_EL pt lim o (x0 + jf) (a.at jf) else 0) =
         ((List.range (2 ^ l)).map fun jf ↦ if ct_inFix fix jf = true then
-          (fun u : ℕ × ℕ => w * ct_EL pt lim o (x0 + u.1) (a.y0 + u.2))
+          (fun u : ℕ × ℕ => KRing.ofE w * ct_EL pt lim o (x0 + u.1) (a.y0 + u.2))
             (jf, ((List.range l).map fun k => if jf.testBit k then a.coef.getD k 0 else 0).sum) else 0) := by
       refine List.map_congr_left fun jf hjf => ?_
       rw [c2_at_eq a l jf (List.mem_range.mp hjf)]
-    rw [e1, hR (fun k => a.coef.getD k 0) (fun u : ℕ × ℕ => w * ct_EL pt lim o (x0 + u.1) (a.y0 + u.2))]
+    rw [e1, hR (fun k => a.coef.getD k 0) (fun u : ℕ × ℕ => KRing.ofE w * ct_EL pt lim o (x0 + u.1) (a.y0 + u.2))]
     refine congrArg List.sum ?_
     refine List.map_congr_left fun m _ => ?_
     simp only [ct_memSem]
@@ -3480,7 +3492,7 @@ theorem ct_addSub_K3 (pt : List FE) (hpt : pt.length = 2 + xVars + yVars) (s : C
     simp only [add_assoc]
 
 /-- **A sub-cube's pieces** (C1: the injective atom; C2: the pass members). -/
-theorem ct_addSub (pt : List FE) (hpt : pt.length = 2 + xVars + yVars) (s : CS) (hs : ct_WF s)
+theorem ct_addSub (pt : List 𝔽) (hpt : pt.length = 2 + xVars + yVars) (s : CS) (hs : ct_WF s)
     (o : ℕ) (w : FE) (x0 l : ℕ) (a : Aff) (fix : List (ℕ × Bool)) (lim : Option ℕ)
     (ho : o < 4) (hx : x0 % 2 ^ l = 0) (hxl : x0 + 2 ^ l ≤ 2 ^ xVars)
     (hfix : (∀ bv ∈ fix, bv.1 < l) ∧ (fix.map (·.1)).Nodup)
@@ -3489,7 +3501,7 @@ theorem ct_addSub (pt : List FE) (hpt : pt.length = 2 + xVars + yVars) (s : CS) 
       | some e => e + 1 < yVars ∧ ∀ jf < 2 ^ l, ct_inFix fix jf = true → (a.at jf >>> e) % 4 = 0) :
     ct_Adds pt s (s.addSub o w x0 (subAff l a fix) lim)
       ((List.range (2 ^ l)).map fun jf ↦
-        if ct_inFix fix jf then w * ct_EL pt lim o (x0 + jf) (a.at jf) else 0).sum := by
+        if ct_inFix fix jf then KRing.ofE w * ct_EL pt lim o (x0 + jf) (a.at jf) else 0).sum := by
   cases hinj : injOk (subAff l a fix).y0 ((subAff l a fix).free.map (·.2))
   · exact ct_addSub_K3 pt hpt s hs o w x0 l a fix lim ho hx hxl hfix hlim hinj
   · exact ct_addSub_inj pt hpt s hs o w x0 l a fix lim ho hx hxl hfix hlim hinj
@@ -3561,13 +3573,13 @@ theorem c6_tb_add {x j L : ℕ} (hx : x % 2 ^ L = 0) (hj : j < 2 ^ L) (i : ℕ) 
   · rfl
   · rw [h0, if_neg h]
 
-theorem c6_eqOn_range (r : Array FE) (N v : ℕ) :
-    ct_eqOn r (List.range N) v = ∏ i ∈ Finset.range N, eq1 (r.getD i 0) (v.testBit i) :=
+theorem c6_eqOn_range (r : Array 𝔽) (N v : ℕ) :
+    ct_eqOn r (List.range N) v = ∏ i ∈ Finset.range N, eq1G (r.getD i 0) (v.testBit i) :=
   c6_lprod _ _
 
-theorem c6_eqOn_filter (r : Array FE) (N : ℕ) (P : ℕ → Bool) (v : ℕ) :
+theorem c6_eqOn_filter (r : Array 𝔽) (N : ℕ) (P : ℕ → Bool) (v : ℕ) :
     ct_eqOn r ((List.range N).filter P) v =
-      ∏ i ∈ Finset.range N, if P i = true then eq1 (r.getD i 0) (v.testBit i) else 1 :=
+      ∏ i ∈ Finset.range N, if P i = true then eq1G (r.getD i 0) (v.testBit i) else 1 :=
   c6_lprod_filter _ _ _
 
 theorem c6_prod_lt {M : Type*} [CommMonoid M] {N L : ℕ} (h : L ≤ N) (f : ℕ → M) :
@@ -3577,27 +3589,27 @@ theorem c6_prod_lt {M : Type*} [CommMonoid M] {N L : ℕ} (h : L ≤ N) (f : ℕ
   rw [Finset.prod_congr rfl (fun i hi ↦ if_pos (Finset.mem_range.mp hi)),
     Finset.prod_congr rfl (fun i _ ↦ if_neg (by (clear * -; omega) : ¬ L + i < L)), Finset.prod_const_one, mul_one]
 
-theorem c6_foldl_mul {α : Type} (g : α → FE) (fs : List α) (a : FE) :
+theorem c6_foldl_mul {α : Type} (g : α → 𝔽) (fs : List α) (a : 𝔽) :
     fs.foldl (fun acc f ↦ acc * g f) a = a * (fs.map g).prod := by
   induction fs generalizing a with
   | nil => simp
   | cons f fs ih => simp only [List.foldl_cons, ih, List.map_cons, List.prod_cons]; ring
 
-theorem c6_kerVal (P : Pt) (fs : List KF) : kerVal P fs = (fs.map (kfVal P)).prod := by
-  rw [kerVal, c6_foldl_mul, one_mul]
+theorem c6_kerVal (P : PtG 𝔽) (fs : List KF) : kerValG P fs = (fs.map (kfValG P)).prod := by
+  rw [kerValG, c6_foldl_mul, one_mul]
 
-theorem c6_eqW_map (f : ℕ → FE) (n u : ℕ) :
-    eqW ((List.range n).map f) u = ∏ k ∈ Finset.range n, eq1 (f k) (u.testBit k) := by
+theorem c6_eqW_map (f : ℕ → 𝔽) (n u : ℕ) :
+    eqWG ((List.range n).map f) u = ∏ k ∈ Finset.range n, eq1G (f k) (u.testBit k) := by
   induction n generalizing f u with
-  | zero => simp [eqW]
+  | zero => simp [eqWG]
   | succ n ih =>
-    rw [List.range_succ_eq_map, List.map_cons, List.map_map, eqW, Finset.prod_range_succ']
+    rw [List.range_succ_eq_map, List.map_cons, List.map_map, eqWG, Finset.prod_range_succ']
     have := ih (f ∘ Nat.succ) (u / 2)
     rw [this, mul_comm]
     congr 1
     · apply Finset.prod_congr rfl; intro k _
       simp [Nat.testBit_add_one]
-    · simp [eq1, Nat.testBit_zero]
+    · simp [eq1G, Nat.testBit_zero]
 
 theorem c6_limb_tb {y e m : ℕ} (hy : (y >>> e) % 4 = 0) (hm : m < 4) (b : ℕ) :
     (y + m * 2 ^ e).testBit b =
@@ -3618,7 +3630,7 @@ theorem c6_limb_tb {y e m : ℕ} (hy : (y >>> e) % 4 = 0) (hm : m < 4) (b : ℕ)
       · subst h3; simp
       · simp [h1, h2, h3, show ¬ (b - e < 2) by (clear * - h1 h2 h3; omega)]
 
-theorem c6_prod_two {N e : ℕ} (h : e + 1 < N) (g : ℕ → FE) :
+theorem c6_prod_two {N e : ℕ} (h : e + 1 < N) (g : ℕ → 𝔽) :
     ∏ i ∈ Finset.range N, g i =
       g e * g (e + 1) * ∏ i ∈ Finset.range N, (if i = e ∨ i = e + 1 then 1 else g i) := by
   have hs : ∏ i ∈ Finset.range N, (if i = e ∨ i = e + 1 then g i else 1) = g e * g (e + 1) := by
@@ -3630,9 +3642,9 @@ theorem c6_prod_two {N e : ℕ} (h : e + 1 < N) (g : ℕ → FE) :
   apply Finset.prod_congr rfl; intro i _
   split_ifs <;> simp
 
-theorem c6_limb_eqOn (r : Array FE) {N e y m : ℕ} (he : e + 1 < N) (hy : (y >>> e) % 4 = 0) (hm : m < 4) :
+theorem c6_limb_eqOn (r : Array 𝔽) {N e y m : ℕ} (he : e + 1 < N) (hy : (y >>> e) % 4 = 0) (hm : m < 4) :
     ct_eqOn r (List.range N) (y + m * 2 ^ e) =
-      eq1 (r.getD e 0) (m.testBit 0) * eq1 (r.getD (e + 1) 0) (m.testBit 1) *
+      eq1G (r.getD e 0) (m.testBit 0) * eq1G (r.getD (e + 1) 0) (m.testBit 1) *
         ct_eqOn r ((List.range N).filter fun b ↦ !(([] : List ℕ) ++ [e, e + 1]).contains b) y := by
   rw [c6_eqOn_range, c6_prod_two he, c6_eqOn_filter]
   simp only [c6_limb_tb hy hm, if_true, show e + 1 ≠ e by (clear * -; omega), if_false]
@@ -3645,32 +3657,32 @@ theorem c6_limb_eqOn (r : Array FE) {N e y m : ℕ} (he : e + 1 < N) (hy : (y >>
     · simp [h1, h2]
 
 /-- `ct_EL` split into the selector, the slot, the limb factor and the word off the limb bits. -/
-theorem c6_EL_split (pt : List FE) (hpt : pt.length = 2 + xVars + yVars) (lim : Option ℕ) (o x y : ℕ)
+theorem c6_EL_split (pt : List 𝔽) (hpt : pt.length = 2 + xVars + yVars) (lim : Option ℕ) (o x y : ℕ)
     (ho : o < 4) (hx : x < 2 ^ xVars)
     (hl : ∀ e, lim = some e → e + 1 < yVars ∧ (y >>> e) % 4 = 0) :
-    ct_EL pt lim o x y = eqW (sub (Pt.ofList pt).kap 0 2) o * ct_eqOn (Pt.ofList pt).rx (List.range xVars) x *
-      kerVal (Pt.ofList pt) (ct_limFs [] lim) * ct_eqOn (Pt.ofList pt).ry (ct_yFree (ct_limYm [] lim)) y := by
+    ct_EL pt lim o x y = eqWG (sub (PtG.ofList pt).kap 0 2) o * ct_eqOn (PtG.ofList pt).rx (List.range xVars) x *
+      kerValG (PtG.ofList pt) (ct_limFs [] lim) * ct_eqOn (PtG.ofList pt).ry (ct_yFree (ct_limYm [] lim)) y := by
   cases lim with
   | none =>
     have h1 : ct_yFree (ct_limYm [] none) = List.range yVars := by simp [ct_yFree, ct_limYm]
-    have h2 : kerVal (Pt.ofList pt) (ct_limFs [] none) = 1 := rfl
+    have h2 : kerValG (PtG.ofList pt) (ct_limFs [] none) = 1 := rfl
     rw [ct_EL, ct_E_split pt hpt o x y ho hx, h1, h2, mul_one]
   | some e =>
     obtain ⟨he, hy⟩ := hl e rfl
     have hz : ct_yFree (ct_limYm [] (some e)) =
         (List.range yVars).filter fun b ↦ !(([] : List ℕ) ++ [e, e + 1]).contains b := rfl
     have key : ∀ m < 4, ct_E pt o x (y + m * 2 ^ e) =
-        eqW (sub (Pt.ofList pt).kap 0 2) o * ct_eqOn (Pt.ofList pt).rx (List.range xVars) x *
-          (eq1 ((Pt.ofList pt).ry.getD e 0) (m.testBit 0) * eq1 ((Pt.ofList pt).ry.getD (e + 1) 0) (m.testBit 1)) *
-          ct_eqOn (Pt.ofList pt).ry (ct_yFree (ct_limYm [] (some e))) y := by
+        eqWG (sub (PtG.ofList pt).kap 0 2) o * ct_eqOn (PtG.ofList pt).rx (List.range xVars) x *
+          (eq1G ((PtG.ofList pt).ry.getD e 0) (m.testBit 0) * eq1G ((PtG.ofList pt).ry.getD (e + 1) 0) (m.testBit 1)) *
+          ct_eqOn (PtG.ofList pt).ry (ct_yFree (ct_limYm [] (some e))) y := by
       intro m hm
       rw [ct_E_split pt hpt o x _ ho hx, c6_limb_eqOn _ he hy hm, hz]
       ring
     have k0 := key 0 (by norm_num); have k1 := key 1 (by norm_num); have k2 := key 2 (by norm_num)
     simp only [zero_mul, add_zero, one_mul] at k0 k1
-    have hk : kerVal (Pt.ofList pt) (ct_limFs [] (some e)) =
-        limbVal ((Pt.ofList pt).ry.getD e 0) ((Pt.ofList pt).ry.getD (e + 1) 0) := by
-      rw [c6_kerVal]; simp [ct_limFs, kfVal]
+    have hk : kerValG (PtG.ofList pt) (ct_limFs [] (some e)) =
+        limbValG ((PtG.ofList pt).ry.getD e 0) ((PtG.ofList pt).ry.getD (e + 1) 0) := by
+      rw [c6_kerVal]; simp [ct_limFs, kfValG]
     rw [ct_EL, k0, k1, k2, hk]
     have b0 : Nat.testBit 0 0 = false := by decide
     have b0' : Nat.testBit 0 1 = false := by decide
@@ -3678,36 +3690,36 @@ theorem c6_EL_split (pt : List FE) (hpt : pt.length = 2 + xVars + yVars) (lim : 
     have b1' : Nat.testBit 1 1 = false := by decide
     have b2 : Nat.testBit 2 0 = false := by decide
     have b3 : Nat.testBit 2 1 = true := by decide
-    simp only [limbVal, eq1, b0, b0', b1, b1', b2, b3, if_true, if_false, Bool.false_eq_true]
+    simp only [limbValG, eq1G, b0, b0', b1, b1', b2, b3, if_true, if_false, Bool.false_eq_true]
     ring
 
 /-- **A point** atom. -/
-theorem c6_point (pt : List FE) (hpt : pt.length = 2 + xVars + yVars) (s : CS) (hs : ct_WF s) (o x y : ℕ)
+theorem c6_point (pt : List 𝔽) (hpt : pt.length = 2 + xVars + yVars) (s : CS) (hs : ct_WF s) (o x y : ℕ)
     (w : FE) (lim : Option ℕ) (ho : o < 4) (hx : x < 2 ^ xVars)
     (hl : ∀ e, lim = some e → e + 1 < yVars ∧ (y >>> e) % 4 = 0) :
-    ct_Adds pt s (s.addAtom [] o 0 x [] y w lim) (w * ct_EL pt lim o x y) := by
+    ct_Adds pt s (s.addAtom [] o 0 x [] y w lim) (KRing.ofE w * ct_EL pt lim o x y) := by
   refine ct_Adds_congr (ct_addAtom pt s hs [] o 0 x [] y w lim ho) ?_
   rw [c6_EL_split pt hpt lim o x y ho hx hl]
   have : ct_xFree 0 = List.range xVars := by simp [ct_xFree]
   rw [this]; ring
 
 /-- **The points** of a term. -/
-theorem c6_addPoints (pt : List FE) (hpt : pt.length = 2 + xVars + yVars) (s : CS) (hs : ct_WF s) (t : CTerm)
+theorem c6_addPoints (pt : List 𝔽) (hpt : pt.length = 2 + xVars + yVars) (s : CS) (hs : ct_WF s) (t : CTerm)
     (lim : Option ℕ) (ht : TermWF t)
     (hl : ∀ e, lim = some e → e + 1 < yVars ∧ ∀ jf < 2 ^ t.l, (t.cls.at jf >>> e) % 4 = 0) :
     ct_Adds pt s (s.addPoints t lim)
-      ((List.range (2 ^ t.l)).map fun jf ↦ t.w * ct_EL pt lim t.o (t.x0 + jf) (t.cls.at jf)).sum := by
+      ((List.range (2 ^ t.l)).map fun jf ↦ KRing.ofE t.w * ct_EL pt lim t.o (t.x0 + jf) (t.cls.at jf)).sum := by
   unfold CS.addPoints
   exact ct_Adds_foldl pt (fun s jf ↦ s.addAtom [] t.o 0 (t.x0 + jf) [] (t.cls.at jf) t.w lim) _
     (fun jf ↦ jf < 2 ^ t.l)
     (fun s jf hs hjf ↦ c6_point pt hpt s hs t.o _ _ t.w lim ht.1 (by have := ht.2.2; (clear * - hjf this; omega))
       (fun e he ↦ ⟨(hl e he).1, (hl e he).2 jf hjf⟩)) _ s hs (fun jf hjf ↦ List.mem_range.mp hjf)
 
-theorem c6_eq1_sum (r : FE) : eq1 r false + eq1 r true = 1 := by simp [eq1]
+theorem c6_eq1_sum (r : 𝔽) : eq1G r false + eq1G r true = 1 := by simp [eq1G]
 
-theorem c6_prod_eq1_cube (r : Array FE) (a : ℕ) :
-    ∑ j ∈ Finset.range (2 ^ a), ∏ i ∈ Finset.range a, eq1 (r.getD i 0) (j.testBit i) = 1 := by
-  rw [c6_sum_prod_bits a (fun i b ↦ eq1 (r.getD i 0) b)]
+theorem c6_prod_eq1_cube (r : Array 𝔽) (a : ℕ) :
+    ∑ j ∈ Finset.range (2 ^ a), ∏ i ∈ Finset.range a, eq1G (r.getD i 0) (j.testBit i) = 1 := by
+  rw [c6_sum_prod_bits a (fun i b ↦ eq1G (r.getD i 0) b)]
   simp [c6_eq1_sum]
 
 theorem c6_le_of_pow {a b c : ℕ} (h : c + 2 ^ a ≤ 2 ^ b) : a ≤ b := by
@@ -3715,18 +3727,18 @@ theorem c6_le_of_pow {a b c : ℕ} (h : c + 2 ^ a ≤ 2 ^ b) : a ≤ b := by
   exact (Nat.pow_le_pow_iff_right (by norm_num)).mp this
 
 /-- The sub-cube `k0 + [0, 2^a)` of the slots: the fixed bits' factors times the high slot bits. -/
-theorem c6_cubeX (P : Pt) (x0 l k0 a : ℕ) (hx : x0 % 2 ^ l = 0) (hxl : x0 + 2 ^ l ≤ 2 ^ xVars)
+theorem c6_cubeX (P : PtG 𝔽) (x0 l k0 a : ℕ) (hx : x0 % 2 ^ l = 0) (hxl : x0 + 2 ^ l ≤ 2 ^ xVars)
     (hk : k0 % 2 ^ a = 0) (hkl : k0 + 2 ^ a ≤ 2 ^ l) :
     ∑ j ∈ Finset.range (2 ^ a), ct_eqOn P.rx (List.range xVars) (x0 + (k0 + j)) =
-      kerVal P (((List.range l).filter (fun x ↦ decide (x ≥ a))).map fun i ↦ KF.fixX i (k0.testBit i)) *
+      kerValG P (((List.range l).filter (fun x ↦ decide (x ≥ a))).map fun i ↦ KF.fixX i (k0.testBit i)) *
         ct_eqOn P.rx (ct_xFree l) x0 := by
   have hlx : l ≤ xVars := c6_le_of_pow hxl
   have hal : a ≤ l := c6_le_of_pow hkl
   have hfac : ∀ j < 2 ^ a, ct_eqOn P.rx (List.range xVars) (x0 + (k0 + j)) =
-      (∏ i ∈ Finset.range xVars, if i < a then eq1 (P.rx.getD i 0) (j.testBit i) else 1) *
+      (∏ i ∈ Finset.range xVars, if i < a then eq1G (P.rx.getD i 0) (j.testBit i) else 1) *
       ((∏ i ∈ Finset.range xVars, if i < l then (if decide (i ≥ a) = true then
-          eq1 (P.rx.getD i 0) (k0.testBit i) else 1) else 1) *
-        ∏ i ∈ Finset.range xVars, if (!decide (i < l)) = true then eq1 (P.rx.getD i 0) (x0.testBit i) else 1) := by
+          eq1G (P.rx.getD i 0) (k0.testBit i) else 1) else 1) *
+        ∏ i ∈ Finset.range xVars, if (!decide (i < l)) = true then eq1G (P.rx.getD i 0) (x0.testBit i) else 1) := by
     intro j hj
     rw [c6_eqOn_range, ← Finset.prod_mul_distrib, ← Finset.prod_mul_distrib]
     apply Finset.prod_congr rfl; intro i _
@@ -3742,10 +3754,10 @@ theorem c6_cubeX (P : Pt) (x0 l k0 a : ℕ) (hx : x0 % 2 ^ l = 0) (hxl : x0 + 2 
   rfl
 
 /-- **The halving recursion** of a term with varying weights. -/
-theorem c6_go (pt : List FE) (hpt : pt.length = 2 + xVars + yVars) (t : CTerm) (ht : TermWF t) :
+theorem c6_go (pt : List 𝔽) (hpt : pt.length = 2 + xVars + yVars) (t : CTerm) (ht : TermWF t) :
     ∀ (fuel k0 a : ℕ) (s : CS), ct_WF s → a < fuel → k0 % 2 ^ a = 0 → k0 + 2 ^ a ≤ 2 ^ t.l →
       ct_Adds pt s (CS.addVarying.go t fuel k0 a s)
-        (∑ j ∈ Finset.range (2 ^ a), t.wAt (k0 + j) * ct_E pt t.o (t.x0 + (k0 + j)) (t.cls.at (k0 + j))) := by
+        (∑ j ∈ Finset.range (2 ^ a), KRing.ofE (t.wAt (k0 + j)) * ct_E pt t.o (t.x0 + (k0 + j)) (t.cls.at (k0 + j))) := by
   obtain ⟨ho, hx, hxl⟩ := ht
   intro fuel
   induction fuel with
@@ -3763,20 +3775,20 @@ theorem c6_go (pt : List FE) (hpt : pt.length = 2 + xVars + yVars) (t : CTerm) (
         rcases Bool.or_eq_true_iff.mp hsame with h | h
         · have := List.all_eq_true.mp h j (List.mem_range.mpr hj)
           simp only [Bool.and_eq_true, beq_iff_eq] at this
-          exact ⟨this.1, c6_FE_eq_of_beq this.2⟩
+          exact ⟨this.1, this.2⟩
         · have ha0 : a = 0 := by simpa using h
           subst ha0
           have : j = 0 := by simpa using hj
           subst this; simp
-      have hsum : (∑ j ∈ Finset.range (2 ^ a), t.wAt (k0 + j) * ct_E pt t.o (t.x0 + (k0 + j)) (t.cls.at (k0 + j))) =
-          t.wAt k0 * ∑ j ∈ Finset.range (2 ^ a), ct_E pt t.o (t.x0 + (k0 + j)) (t.cls.at k0) := by
+      have hsum : (∑ j ∈ Finset.range (2 ^ a), KRing.ofE (t.wAt (k0 + j)) * ct_E pt t.o (t.x0 + (k0 + j)) (t.cls.at (k0 + j))) =
+          KRing.ofE (t.wAt k0) * ∑ j ∈ Finset.range (2 ^ a), ct_E pt t.o (t.x0 + (k0 + j)) (t.cls.at k0) := by
         rw [Finset.mul_sum]
         apply Finset.sum_congr rfl; intro j hj
         obtain ⟨h1, h2⟩ := hconst j (Finset.mem_range.mp hj)
         rw [h1, h2]
       rw [hsum]
       by_cases hw : (t.wAt k0 == 0) = true
-      · rw [if_pos hw, c6_FE_eq_of_beq hw, zero_mul]
+      · rw [if_pos hw, c6_FE_eq_of_beq hw, map_zero, zero_mul]
         exact ct_Adds_refl hs
       · rw [if_neg hw]
         by_cases ha0 : (a == 0) = true
@@ -3968,12 +3980,12 @@ theorem c6_all_one (N : ℕ) (f : ℕ → ℕ) (h1 : ∀ i < N, f i ≤ 1) (hs :
   simp at hlt; (clear * - hs hlt; omega)
 
 /-- **A split** whose parts are disjoint and cover the cube. -/
-theorem c6_split (pt : List FE) (hpt : pt.length = 2 + xVars + yVars) (s : CS) (hs : ct_WF s) (t : CTerm)
+theorem c6_split (pt : List 𝔽) (hpt : pt.length = 2 + xVars + yVars) (s : CS) (hs : ct_WF s) (t : CTerm)
     (lim : Option ℕ) (ht : TermWF t) (parts : List (List (ℕ × Bool) × Aff)) (hc : t.cls = .split parts)
     (hok : splitOk t.l parts = true)
     (hL : ∀ e, lim = some e → e + 1 < yVars ∧ ∀ jf < 2 ^ t.l, (t.cls.at jf >>> e) % 4 = 0) :
     ct_Adds pt s (parts.foldl (fun s x ↦ s.addSub t.o t.w t.x0 (subAff t.l x.2 x.1) lim) s)
-      ((List.range (2 ^ t.l)).map fun jf ↦ t.w * ct_EL pt lim t.o (t.x0 + jf) (t.cls.at jf)).sum := by
+      ((List.range (2 ^ t.l)).map fun jf ↦ KRing.ofE t.w * ct_EL pt lim t.o (t.x0 + jf) (t.cls.at jf)).sum := by
   simp only [splitOk, Bool.and_eq_true, List.all_eq_true, List.any_eq_true, List.mem_range, beq_iff_eq,
     decide_eq_true_eq, bne_iff_ne, ne_eq, Prod.exists] at hok
   obtain ⟨⟨hok1, hdisj⟩, hcov⟩ := hok
@@ -4019,7 +4031,7 @@ theorem c6_split (pt : List FE) (hpt : pt.length = 2 + xVars + yVars) (s : CS) (
     rw [c6_pw_eq (fun q ↦ ct_inFix q.1 jf) parts (hpw jf) q (List.mem_of_find?_eq_some hq) pq hpq hm' hm]
   refine ct_Adds_congr (ct_Adds_foldl pt (fun s x ↦ s.addSub t.o t.w t.x0 (subAff t.l x.2 x.1) lim)
     (fun pq ↦ ((List.range (2 ^ t.l)).map fun jf ↦
-      if ct_inFix pq.1 jf then t.w * ct_EL pt lim t.o (t.x0 + jf) (pq.2.at jf) else 0).sum)
+      if ct_inFix pq.1 jf then KRing.ofE t.w * ct_EL pt lim t.o (t.x0 + jf) (pq.2.at jf) else 0).sum)
     (fun pq ↦ pq ∈ parts) (fun s pq hs hpq ↦ ct_addSub pt hpt s hs t.o t.w t.x0 t.l pq.2 pq.1 lim ht.1 ht.2.1
       ht.2.2 (hok1 pq hpq) ?_) parts s hs (fun _ h ↦ h)) ?_
   · cases lim with
@@ -4034,7 +4046,7 @@ theorem c6_split (pt : List FE) (hpt : pt.length = 2 + xVars + yVars) (s : CS) (
     have hjf' := List.mem_range.mp hjf
     obtain ⟨q, hq⟩ := hfind jf hjf'
     have hm' : ct_inFix q.1 jf = true := List.find?_some (p := fun (q : List (ℕ × Bool) × Aff) ↦ ct_inFix q.1 jf) hq
-    rw [c6_sum_find (fun pq ↦ ct_inFix pq.1 jf) (fun pq ↦ t.w * ct_EL pt lim t.o (t.x0 + jf) (pq.2.at jf))
+    rw [c6_sum_find (fun pq ↦ ct_inFix pq.1 jf) (fun pq ↦ KRing.ofE t.w * ct_EL pt lim t.o (t.x0 + jf) (pq.2.at jf))
       parts (hpw jf) q hq, hat q (List.mem_of_find?_eq_some hq) jf hjf' hm']
 
 /-! ## Shifts -/
@@ -4102,13 +4114,13 @@ theorem c6_cls_shift {t : CTerm} {p n : ℕ} {sh ini : Aff} (hc : t.cls = .shift
     t.cls.at jf = if jf / 2 ^ p % 2 ^ n = 0 then ini.at jf else sh.at (jf - 2 ^ p) := by
   rw [hc]; rfl
 
-theorem c6_shift_sum (pt : List FE) (t : CTerm) (lim : Option ℕ) {p n : ℕ} {sh ini : Aff}
+theorem c6_shift_sum (pt : List 𝔽) (t : CTerm) (lim : Option ℕ) {p n : ℕ} {sh ini : Aff}
     (hc : t.cls = .shift p n sh ini) :
-    ((List.range (2 ^ t.l)).map fun jf ↦ t.w * ct_EL pt lim t.o (t.x0 + jf) (t.cls.at jf)).sum =
+    ((List.range (2 ^ t.l)).map fun jf ↦ KRing.ofE t.w * ct_EL pt lim t.o (t.x0 + jf) (t.cls.at jf)).sum =
       ((List.range (2 ^ t.l)).map fun jf ↦
-        if jf / 2 ^ p % 2 ^ n = 0 then t.w * ct_EL pt lim t.o (t.x0 + jf) (ini.at jf) else 0).sum +
+        if jf / 2 ^ p % 2 ^ n = 0 then KRing.ofE t.w * ct_EL pt lim t.o (t.x0 + jf) (ini.at jf) else 0).sum +
       ((List.range (2 ^ t.l)).map fun jf ↦
-        if jf / 2 ^ p % 2 ^ n = 0 then 0 else t.w * ct_EL pt lim t.o (t.x0 + jf) (sh.at (jf - 2 ^ p))).sum := by
+        if jf / 2 ^ p % 2 ^ n = 0 then 0 else KRing.ofE t.w * ct_EL pt lim t.o (t.x0 + jf) (sh.at (jf - 2 ^ p))).sum := by
   rw [← List.sum_map_add]
   congr 1
   apply List.map_congr_left; intro jf _
@@ -4116,13 +4128,13 @@ theorem c6_shift_sum (pt : List FE) (t : CTerm) (lim : Option ℕ) {p n : ℕ} {
   split_ifs <;> simp
 
 /-- K2's field-zero half. -/
-theorem c6_shift0 (pt : List FE) (hpt : pt.length = 2 + xVars + yVars) (s : CS) (hs : ct_WF s) (t : CTerm)
+theorem c6_shift0 (pt : List 𝔽) (hpt : pt.length = 2 + xVars + yVars) (s : CS) (hs : ct_WF s) (t : CTerm)
     (lim : Option ℕ) (ht : TermWF t) {p n : ℕ} {sh ini : Aff} (hc : t.cls = .shift p n sh ini)
     (hpn : p + n ≤ t.l)
     (hL : ∀ e, lim = some e → e + 1 < yVars ∧ ∀ jf < 2 ^ t.l, (t.cls.at jf >>> e) % 4 = 0) :
     ct_Adds pt s (s.addSub t.o t.w t.x0 (subAff t.l ini ((List.range n).map fun k ↦ (p + k, false))) lim)
       ((List.range (2 ^ t.l)).map fun jf ↦
-        if jf / 2 ^ p % 2 ^ n = 0 then t.w * ct_EL pt lim t.o (t.x0 + jf) (ini.at jf) else 0).sum := by
+        if jf / 2 ^ p % 2 ^ n = 0 then KRing.ofE t.w * ct_EL pt lim t.o (t.x0 + jf) (ini.at jf) else 0).sum := by
   have hfix : (∀ bv ∈ (List.range n).map (fun k ↦ (p + k, false)), bv.1 < t.l) ∧
       (((List.range n).map (fun k ↦ (p + k, false))).map (·.1)).Nodup := by
     constructor
@@ -4145,7 +4157,7 @@ theorem c6_shift0 (pt : List FE) (hpt : pt.length = 2 + xVars + yVars) (s : CS) 
     · rw [if_neg h, if_neg (fun h' ↦ h ((c6_F_zero jf p n).mpr h'))]
 
 /-- K2's shifted half with a one-bit field. -/
-theorem c6_shift1 (pt : List FE) (hpt : pt.length = 2 + xVars + yVars) (s : CS) (hs : ct_WF s) (t : CTerm)
+theorem c6_shift1 (pt : List 𝔽) (hpt : pt.length = 2 + xVars + yVars) (s : CS) (hs : ct_WF s) (t : CTerm)
     (lim : Option ℕ) (ht : TermWF t) {p : ℕ} {sh ini : Aff} (hc : t.cls = .shift p 1 sh ini)
     (hpn : p + 1 ≤ t.l)
     (hL : ∀ e, lim = some e → e + 1 < yVars ∧ ∀ jf < 2 ^ t.l, (t.cls.at jf >>> e) % 4 = 0) :
@@ -4153,7 +4165,7 @@ theorem c6_shift1 (pt : List FE) (hpt : pt.length = 2 + xVars + yVars) (s : CS) 
         { y0 := sh.y0, coef := (List.range t.l).map fun i ↦ if (i == p) = true then 0 else sh.coef.getD i 0 }
         [(p, true)]) lim)
       ((List.range (2 ^ t.l)).map fun jf ↦
-        if jf / 2 ^ p % 2 ^ 1 = 0 then 0 else t.w * ct_EL pt lim t.o (t.x0 + jf) (sh.at (jf - 2 ^ p))).sum := by
+        if jf / 2 ^ p % 2 ^ 1 = 0 then 0 else KRing.ofE t.w * ct_EL pt lim t.o (t.x0 + jf) (sh.at (jf - 2 ^ p))).sum := by
   have hF : ∀ jf, ct_inFix [(p, true)] jf = true ↔ ¬ jf / 2 ^ p % 2 ^ 1 = 0 := by
     intro jf
     rw [c6_F_zero]
@@ -4191,14 +4203,14 @@ theorem c6_shift1 (pt : List FE) (hpt : pt.length = 2 + xVars + yVars) (s : CS) 
     · rw [if_neg h, if_pos (by by_contra h'; exact h ((hF jf).mpr h'))]
 
 /-- K2's shifted half as points. -/
-theorem c6_shiftPts (pt : List FE) (hpt : pt.length = 2 + xVars + yVars) (s : CS) (hs : ct_WF s) (t : CTerm)
+theorem c6_shiftPts (pt : List 𝔽) (hpt : pt.length = 2 + xVars + yVars) (s : CS) (hs : ct_WF s) (t : CTerm)
     (lim : Option ℕ) (ht : TermWF t) {p n : ℕ} {sh ini : Aff} (hc : t.cls = .shift p n sh ini)
     (hL : ∀ e, lim = some e → e + 1 < yVars ∧ ∀ jf < 2 ^ t.l, (t.cls.at jf >>> e) % 4 = 0) :
     ct_Adds pt s ((List.range (2 ^ t.l)).foldl (fun s jf ↦
           if (jf / 2 ^ p % 2 ^ n == 0) = true then s
           else s.addAtom [] t.o 0 (t.x0 + jf) [] (sh.at (jf - 2 ^ p)) t.w lim) s)
       ((List.range (2 ^ t.l)).map fun jf ↦
-        if jf / 2 ^ p % 2 ^ n = 0 then 0 else t.w * ct_EL pt lim t.o (t.x0 + jf) (sh.at (jf - 2 ^ p))).sum := by
+        if jf / 2 ^ p % 2 ^ n = 0 then 0 else KRing.ofE t.w * ct_EL pt lim t.o (t.x0 + jf) (sh.at (jf - 2 ^ p))).sum := by
   refine ct_Adds_foldl pt _ _ (fun jf ↦ jf < 2 ^ t.l) (fun s jf hs hjf ↦ ?_) _ s hs
     (fun jf hjf ↦ List.mem_range.mp hjf)
   by_cases h : jf / 2 ^ p % 2 ^ n = 0
@@ -4310,16 +4322,16 @@ theorem c6_tb_add_ite {x m : ℕ} (hx : x.testBit m = false) (β : Bool) (b : �
   · simp
   · simp [c6_tb_add_pow hx]
 
-theorem c6_eqOn_cons (r : Array FE) (b : ℕ) (Z : List ℕ) (v : ℕ) :
-    ct_eqOn r (b :: Z) v = eq1 (r.getD b 0) (v.testBit b) * ct_eqOn r Z v := by
+theorem c6_eqOn_cons (r : Array 𝔽) (b : ℕ) (Z : List ℕ) (v : ℕ) :
+    ct_eqOn r (b :: Z) v = eq1G (r.getD b 0) (v.testBit b) * ct_eqOn r Z v := by
   simp [ct_eqOn]
 
 /-- **The `eq` of an injective affine word**: the bits hit by a coefficient are the selector bits. -/
-theorem c6_inj_eqOn (r : Array FE) : ∀ (L : List (ℕ × Bool)) (u u' : ℕ) (Z : List ℕ),
+theorem c6_inj_eqOn (r : Array 𝔽) : ∀ (L : List (ℕ × Bool)) (u u' : ℕ) (Z : List ℕ),
     injOk u (L.map (·.1)) = true → Z.Nodup → (∀ b, u'.testBit b = true → u.testBit b = true) →
     ct_eqOn r Z (u' + (L.map fun cb ↦ if cb.2 = true then cb.1 else 0).sum) =
       ct_eqOn r (Z.filter fun b ↦ !((L.map (·.1)).any (· == 2 ^ b))) u' *
-        (L.map fun cb ↦ if cb.1 ≠ 0 ∧ log2 cb.1 ∈ Z then eq1 (r.getD (log2 cb.1) 0) cb.2 else 1).prod := by
+        (L.map fun cb ↦ if cb.1 ≠ 0 ∧ log2 cb.1 ∈ Z then eq1G (r.getD (log2 cb.1) 0) cb.2 else 1).prod := by
   intro L
   induction L with
   | nil => intro u u' Z _ _ _; simp
@@ -4495,7 +4507,7 @@ theorem c6_sum_field {M : Type*} [AddCommMonoid M] {p n l : ℕ} (h : p + n ≤ 
 
 theorem c6_indic (jf p n l : ℕ) (h : p + n ≤ l) (u : ℕ) (hu : u < 2 ^ n) :
     ∏ i ∈ Finset.range l, (if p ≤ i ∧ i < p + n then
-        (if jf.testBit i = u.testBit (i - p) then (1 : FE) else 0) else 1) =
+        (if jf.testBit i = u.testBit (i - p) then (1 : 𝔽) else 0) else 1) =
       if jf / 2 ^ p % 2 ^ n = u then 1 else 0 := by
   rw [c6_prod_field h]
   simp only [Nat.add_sub_cancel_left]
@@ -4514,14 +4526,14 @@ theorem c6_indic (jf p n l : ℕ) (h : p + n ≤ l) (u : ℕ) (hu : u < 2 ^ n) :
   simp only [hiff]
 
 /-- **The field's sum**: the indicator of the field value expanded into one-bit factors. -/
-theorem c6_engine {p n l : ℕ} (h : p + n ≤ l) (A : ℕ → FE) (gg : ℕ → Bool → FE) :
+theorem c6_engine {p n l : ℕ} (h : p + n ≤ l) (A : ℕ → 𝔽) (gg : ℕ → Bool → 𝔽) :
     ∑ jf ∈ Finset.range (2 ^ l), A (jf / 2 ^ p % 2 ^ n) *
         ∏ i ∈ Finset.range l, (if p ≤ i ∧ i < p + n then 1 else gg i (jf.testBit i)) =
       (∑ u ∈ Finset.range (2 ^ n), A u) *
         ∏ i ∈ Finset.range l, (if p ≤ i ∧ i < p + n then 1 else gg i false + gg i true) := by
   have hA : ∀ jf, A (jf / 2 ^ p % 2 ^ n) = ∑ u ∈ Finset.range (2 ^ n), A u *
       ∏ i ∈ Finset.range l, (if p ≤ i ∧ i < p + n then
-        (if jf.testBit i = u.testBit (i - p) then (1 : FE) else 0) else 1) := by
+        (if jf.testBit i = u.testBit (i - p) then (1 : 𝔽) else 0) else 1) := by
     intro jf
     rw [Finset.sum_congr rfl (fun u hu ↦ by rw [c6_indic jf p n l h u (Finset.mem_range.mp hu)])]
     simp only [mul_ite, mul_one, mul_zero]
@@ -4532,7 +4544,7 @@ theorem c6_engine {p n l : ℕ} (h : p + n ≤ l) (A : ℕ → FE) (gg : ℕ →
   simp only [mul_assoc, ← Finset.mul_sum]
   congr 1
   rw [Finset.sum_congr rfl (fun jf _ ↦ (Finset.prod_mul_distrib).symm)]
-  rw [c6_sum_prod_bits l (fun i b ↦ (if p ≤ i ∧ i < p + n then (if b = u.testBit (i - p) then (1 : FE) else 0)
+  rw [c6_sum_prod_bits l (fun i b ↦ (if p ≤ i ∧ i < p + n then (if b = u.testBit (i - p) then (1 : 𝔽) else 0)
     else 1) * (if p ≤ i ∧ i < p + n then 1 else gg i b))]
   apply Finset.prod_congr rfl; intro i _
   by_cases h1 : p ≤ i ∧ i < p + n
@@ -4739,16 +4751,16 @@ theorem c6_Zrest {n q : ℕ} {sh : Aff} {others : List (ℕ × ℕ)} (lim : Opti
     simp only [ct_limYm]
     rw [List.contains_append, List.nil_append, Bool.not_or]
 
-theorem c6_xsplit (P : Pt) {x0 l jf : ℕ} (hx : x0 % 2 ^ l = 0) (hxl : x0 + 2 ^ l ≤ 2 ^ xVars) (hjf : jf < 2 ^ l) :
+theorem c6_xsplit (P : PtG 𝔽) {x0 l jf : ℕ} (hx : x0 % 2 ^ l = 0) (hxl : x0 + 2 ^ l ≤ 2 ^ xVars) (hjf : jf < 2 ^ l) :
     ct_eqOn P.rx (List.range xVars) (x0 + jf) =
-      (∏ i ∈ Finset.range l, eq1 (P.rx.getD i 0) (jf.testBit i)) * ct_eqOn P.rx (ct_xFree l) x0 := by
+      (∏ i ∈ Finset.range l, eq1G (P.rx.getD i 0) (jf.testBit i)) * ct_eqOn P.rx (ct_xFree l) x0 := by
   have h := c6_cubeX P x0 l jf 0 hx hxl (Nat.mod_one _) (by simpa using hjf)
   simp only [pow_zero, Finset.sum_range_one, add_zero] at h
   rw [h, c6_kerVal, List.map_map, c6_lprod_filter]
-  simp [kfVal]
+  simp [kfValG]
 
 /-- One iteration of K2's shifted half, in the successor kernel's factors. -/
-theorem c6_succ_summand (P : Pt) {l p n q : ℕ} {sh : Aff} {others : List (ℕ × ℕ)} (Z : List ℕ) (hZnd : Z.Nodup)
+theorem c6_succ_summand (P : PtG 𝔽) {l p n q : ℕ} {sh : Aff} {others : List (ℕ × ℕ)} (Z : List ℕ) (hZnd : Z.Nodup)
     (hZ : ∀ b ∈ Z, b < yVars) (hpn : p + n ≤ l)
     (hfield : ∀ k < n, sh.coef.getD (p + k) 0 = 2 ^ (q + k))
     (hoth : others = ((List.range l).filter (fun i ↦ decide (i < p) || decide (i ≥ p + n))).map
@@ -4756,23 +4768,23 @@ theorem c6_succ_summand (P : Pt) {l p n q : ℕ} {sh : Aff} {others : List (ℕ 
     (hinj : injOk sh.y0 (others.map (·.2) ++ (List.range n).map fun k ↦ 2 ^ (q + k)) = true)
     (hqZ : ∀ k < n, q + k ∈ Z) (hpZ : ∀ x ∈ others, x.2 ≠ 0 → log2 x.2 < yVars → log2 x.2 ∈ Z)
     {jf : ℕ} (hjf : jf < 2 ^ l) (hF : jf / 2 ^ p % 2 ^ n ≠ 0) :
-    (∏ i ∈ Finset.range l, eq1 (P.rx.getD i 0) (jf.testBit i)) * ct_eqOn P.ry Z (sh.at (jf - 2 ^ p)) =
+    (∏ i ∈ Finset.range l, eq1G (P.rx.getD i 0) (jf.testBit i)) * ct_eqOn P.ry Z (sh.at (jf - 2 ^ p)) =
       ct_eqOn P.ry (Z.filter fun b ↦ !((others.map (fun x : ℕ × ℕ ↦ x.2) ++
           (List.range n).map fun k ↦ 2 ^ (q + k)).any (· == 2 ^ b))) sh.y0 *
-        (eqW ((List.range n).map fun k ↦ P.rx.getD (p + k) 0) (jf / 2 ^ p % 2 ^ n) *
-          eqW ((List.range n).map fun k ↦ P.ry.getD (q + k) 0) (jf / 2 ^ p % 2 ^ n - 1) *
+        (eqWG ((List.range n).map fun k ↦ P.rx.getD (p + k) 0) (jf / 2 ^ p % 2 ^ n) *
+          eqWG ((List.range n).map fun k ↦ P.ry.getD (q + k) 0) (jf / 2 ^ p % 2 ^ n - 1) *
           ∏ i ∈ Finset.range l, (if p ≤ i ∧ i < p + n then 1 else
-            eq1 (P.rx.getD i 0) (jf.testBit i) *
+            eq1G (P.rx.getD i 0) (jf.testBit i) *
               (if (decide (i < p) || decide (i ≥ p + n)) = true ∧ sh.coef.getD i 0 ≠ 0 ∧
                   log2 (sh.coef.getD i 0) < yVars then
-                eq1 (P.ry.getD (log2 (sh.coef.getD i 0)) 0) (jf.testBit i) else 1))) := by
+                eq1G (P.ry.getD (log2 (sh.coef.getD i 0)) 0) (jf.testBit i) else 1))) := by
   rw [c6_Y_eq hpn hfield hoth hjf hF,
     c6_inj_eqOn P.ry _ sh.y0 sh.y0 Z (by rw [c6_Lw_fst]; exact hinj) hZnd (fun _ h ↦ h), c6_Lw_fst]
   set F := jf / 2 ^ p % 2 ^ n with hFdef
   -- the field's `y` factors
   have hfy : (((List.range n).map fun k ↦ (2 ^ (q + k), (F - 1).testBit k)).map fun cb : ℕ × Bool ↦
-      if cb.1 ≠ 0 ∧ log2 cb.1 ∈ Z then eq1 (P.ry.getD (log2 cb.1) 0) cb.2 else 1).prod =
-      eqW ((List.range n).map fun k ↦ P.ry.getD (q + k) 0) (F - 1) := by
+      if cb.1 ≠ 0 ∧ log2 cb.1 ∈ Z then eq1G (P.ry.getD (log2 cb.1) 0) cb.2 else 1).prod =
+      eqWG ((List.range n).map fun k ↦ P.ry.getD (q + k) 0) (F - 1) := by
     rw [List.map_map, c6_lprod, c6_eqW_map]
     apply Finset.prod_congr rfl; intro k hk
     have hk' := Finset.mem_range.mp hk
@@ -4781,21 +4793,21 @@ theorem c6_succ_summand (P : Pt) {l p n q : ℕ} {sh : Aff} {others : List (ℕ 
     rw [if_pos ⟨(Nat.two_pow_pos _).ne', hqZ k hk'⟩]
   -- the other bits' `y` factors
   have hoy : ((others.map fun x ↦ (x.2, jf.testBit x.1)).map fun cb : ℕ × Bool ↦
-      if cb.1 ≠ 0 ∧ log2 cb.1 ∈ Z then eq1 (P.ry.getD (log2 cb.1) 0) cb.2 else 1).prod =
+      if cb.1 ≠ 0 ∧ log2 cb.1 ∈ Z then eq1G (P.ry.getD (log2 cb.1) 0) cb.2 else 1).prod =
       ∏ i ∈ Finset.range l, if (decide (i < p) || decide (i ≥ p + n)) = true then
         (if sh.coef.getD i 0 ≠ 0 ∧ log2 (sh.coef.getD i 0) ∈ Z then
-          eq1 (P.ry.getD (log2 (sh.coef.getD i 0)) 0) (jf.testBit i) else 1) else 1 := by
+          eq1G (P.ry.getD (log2 (sh.coef.getD i 0)) 0) (jf.testBit i) else 1) else 1 := by
     rw [List.map_map]
     conv_lhs => rw [hoth]
     rw [List.map_map, c6_lprod_filter]
     rfl
   -- the field's `x` factors
-  have hfx : (∏ i ∈ Finset.range l, eq1 (P.rx.getD i 0) (jf.testBit i)) =
-      eqW ((List.range n).map fun k ↦ P.rx.getD (p + k) 0) F *
-        ∏ i ∈ Finset.range l, (if p ≤ i ∧ i < p + n then 1 else eq1 (P.rx.getD i 0) (jf.testBit i)) := by
-    have h1 : (∏ i ∈ Finset.range l, eq1 (P.rx.getD i 0) (jf.testBit i)) =
-        (∏ i ∈ Finset.range l, (if p ≤ i ∧ i < p + n then eq1 (P.rx.getD i 0) (jf.testBit i) else 1)) *
-        ∏ i ∈ Finset.range l, (if p ≤ i ∧ i < p + n then 1 else eq1 (P.rx.getD i 0) (jf.testBit i)) := by
+  have hfx : (∏ i ∈ Finset.range l, eq1G (P.rx.getD i 0) (jf.testBit i)) =
+      eqWG ((List.range n).map fun k ↦ P.rx.getD (p + k) 0) F *
+        ∏ i ∈ Finset.range l, (if p ≤ i ∧ i < p + n then 1 else eq1G (P.rx.getD i 0) (jf.testBit i)) := by
+    have h1 : (∏ i ∈ Finset.range l, eq1G (P.rx.getD i 0) (jf.testBit i)) =
+        (∏ i ∈ Finset.range l, (if p ≤ i ∧ i < p + n then eq1G (P.rx.getD i 0) (jf.testBit i) else 1)) *
+        ∏ i ∈ Finset.range l, (if p ≤ i ∧ i < p + n then 1 else eq1G (P.rx.getD i 0) (jf.testBit i)) := by
       rw [← Finset.prod_mul_distrib]
       apply Finset.prod_congr rfl; intro i _
       split_ifs <;> simp
@@ -4805,15 +4817,15 @@ theorem c6_succ_summand (P : Pt) {l p n q : ℕ} {sh : Aff} {others : List (ℕ 
     rw [hFdef, c6_tbF]
     simp [Finset.mem_range.mp hk, add_comm]
   rw [c6_Lw, List.map_append, List.prod_append, hfy, hoy, hfx]
-  have hcomb : (∏ i ∈ Finset.range l, (if p ≤ i ∧ i < p + n then 1 else eq1 (P.rx.getD i 0) (jf.testBit i))) *
+  have hcomb : (∏ i ∈ Finset.range l, (if p ≤ i ∧ i < p + n then 1 else eq1G (P.rx.getD i 0) (jf.testBit i))) *
       (∏ i ∈ Finset.range l, if (decide (i < p) || decide (i ≥ p + n)) = true then
         (if sh.coef.getD i 0 ≠ 0 ∧ log2 (sh.coef.getD i 0) ∈ Z then
-          eq1 (P.ry.getD (log2 (sh.coef.getD i 0)) 0) (jf.testBit i) else 1) else 1) =
+          eq1G (P.ry.getD (log2 (sh.coef.getD i 0)) 0) (jf.testBit i) else 1) else 1) =
       ∏ i ∈ Finset.range l, (if p ≤ i ∧ i < p + n then 1 else
-            eq1 (P.rx.getD i 0) (jf.testBit i) *
+            eq1G (P.rx.getD i 0) (jf.testBit i) *
               (if (decide (i < p) || decide (i ≥ p + n)) = true ∧ sh.coef.getD i 0 ≠ 0 ∧
                   log2 (sh.coef.getD i 0) < yVars then
-                eq1 (P.ry.getD (log2 (sh.coef.getD i 0)) 0) (jf.testBit i) else 1)) := by
+                eq1G (P.ry.getD (log2 (sh.coef.getD i 0)) 0) (jf.testBit i) else 1)) := by
     rw [← Finset.prod_mul_distrib]
     apply Finset.prod_congr rfl; intro i hi
     have hi' := Finset.mem_range.mp hi
@@ -4832,29 +4844,29 @@ theorem c6_succ_summand (P : Pt) {l p n q : ℕ} {sh : Aff} {others : List (ℕ 
   rw [← hcomb]
   ring
 
-theorem c6_kerVal_limFs (P : Pt) (fs : List KF) (lim : Option ℕ) :
-    kerVal P (ct_limFs fs lim) = kerVal P fs * kerVal P (ct_limFs [] lim) := by
+theorem c6_kerVal_limFs (P : PtG 𝔽) (fs : List KF) (lim : Option ℕ) :
+    kerValG P (ct_limFs fs lim) = kerValG P fs * kerValG P (ct_limFs [] lim) := by
   cases lim with
-  | none => simp [ct_limFs, kerVal]
+  | none => simp [ct_limFs, kerValG]
   | some e => simp [ct_limFs, c6_kerVal, List.map_append, List.prod_append]
 
-theorem c6_sum_A (xs ys : List FE) (n : ℕ) (hx : xs.length = n) (hy : ys.length = n) :
-    ∑ u ∈ Finset.range (2 ^ n), (if u = 0 then 0 else eqW xs u * eqW ys (u - 1)) = succVal xs ys := by
+theorem c6_sum_A (xs ys : List 𝔽) (n : ℕ) (hx : xs.length = n) (hy : ys.length = n) :
+    ∑ u ∈ Finset.range (2 ^ n), (if u = 0 then 0 else eqWG xs u * eqWG ys (u - 1)) = succValG xs ys := by
   rw [succVal_eq xs ys (by rw [hx, hy]), c6_lsum, hx,
     show 2 ^ n = (2 ^ n - 1) + 1 by have := Nat.two_pow_pos n; (clear * - this; omega), Finset.sum_range_succ']
   simp
 
-theorem c6_pairs_ker (P : Pt) (l p n : ℕ) (coef : List ℕ) (others : List (ℕ × ℕ))
+theorem c6_pairs_ker (P : PtG 𝔽) (l p n : ℕ) (coef : List ℕ) (others : List (ℕ × ℕ))
     (hoth : others = ((List.range l).filter (fun i ↦ decide (i < p) || decide (i ≥ p + n))).map
         (fun i ↦ (i, coef.getD i 0))) :
     ∏ i ∈ Finset.range l, (if p ≤ i ∧ i < p + n then 1 else
-        (eq1 (P.rx.getD i 0) false *
+        (eq1G (P.rx.getD i 0) false *
             (if (decide (i < p) || decide (i ≥ p + n)) = true ∧ coef.getD i 0 ≠ 0 ∧ log2 (coef.getD i 0) < yVars then
-              eq1 (P.ry.getD (log2 (coef.getD i 0)) 0) false else 1) +
-          eq1 (P.rx.getD i 0) true *
+              eq1G (P.ry.getD (log2 (coef.getD i 0)) 0) false else 1) +
+          eq1G (P.rx.getD i 0) true *
             (if (decide (i < p) || decide (i ≥ p + n)) = true ∧ coef.getD i 0 ≠ 0 ∧ log2 (coef.getD i 0) < yVars then
-              eq1 (P.ry.getD (log2 (coef.getD i 0)) 0) true else 1))) =
-      kerVal P ((others.filter fun x ↦ x.2 != 0 && decide (log2 x.2 < yVars)).map
+              eq1G (P.ry.getD (log2 (coef.getD i 0)) 0) true else 1))) =
+      kerValG P ((others.filter fun x ↦ x.2 != 0 && decide (log2 x.2 < yVars)).map
         fun x ↦ KF.pair x.1 (log2 x.2)) := by
   rw [c6_kerVal, hoth, List.filter_map, List.filter_filter, List.map_map, List.map_map, c6_lprod_filter]
   apply Finset.prod_congr rfl; intro i _
@@ -4865,13 +4877,13 @@ theorem c6_pairs_ker (P : Pt) (l p n : ℕ) (coef : List ℕ) (others : List (�
     simp only [h1, if_false, hO, true_and, Function.comp, Bool.and_true, Bool.and_eq_true, bne_iff_ne, ne_eq,
       decide_eq_true_eq]
     split_ifs with h2
-    · simp only [eq1, kfVal, Bool.false_eq_true, if_false, if_true]
-      have h2' : (2 : FE) = 0 := CharTwo.two_eq_zero
+    · simp only [eq1G, kfValG, Bool.false_eq_true, if_false, if_true]
+      have h2' : (2 : 𝔽) = 0 := CharTwo.two_eq_zero
       linear_combination (P.rx.getD i 0 * P.ry.getD (log2 (coef.getD i 0)) 0) * h2'
-    · simp [eq1]
+    · simp [eq1G]
 
 /-- **K2's successor atom.** -/
-theorem c6_shiftSucc (pt : List FE) (hpt : pt.length = 2 + xVars + yVars) (s : CS) (hs : ct_WF s) (t : CTerm)
+theorem c6_shiftSucc (pt : List 𝔽) (hpt : pt.length = 2 + xVars + yVars) (s : CS) (hs : ct_WF s) (t : CTerm)
     (lim : Option ℕ) (ht : TermWF t) {p n : ℕ} {sh ini : Aff} {q : ℕ} {others : List (ℕ × ℕ)}
     (hc : t.cls = .shift p n sh ini) (hpn : p + n ≤ t.l) (hn : 2 ≤ n) (hso : shiftOk t.l p n sh = some (q, others))
     (hL : ∀ e, lim = some e → e + 1 < yVars ∧ ∀ jf < 2 ^ t.l, (t.cls.at jf >>> e) % 4 = 0) :
@@ -4880,7 +4892,7 @@ theorem c6_shiftSucc (pt : List FE) (hpt : pt.length = 2 + xVars + yVars) (s : C
         t.o t.l t.x0 ((List.range n).map (fun x ↦ q + x) ++
           (others.filter fun x ↦ x.2 != 0 && decide (log2 x.2 < yVars)).map fun x ↦ log2 x.2) sh.y0 t.w lim)
       ((List.range (2 ^ t.l)).map fun jf ↦
-        if jf / 2 ^ p % 2 ^ n = 0 then 0 else t.w * ct_EL pt lim t.o (t.x0 + jf) (sh.at (jf - 2 ^ p))).sum := by
+        if jf / 2 ^ p % 2 ^ n = 0 then 0 else KRing.ofE t.w * ct_EL pt lim t.o (t.x0 + jf) (sh.at (jf - 2 ^ p))).sum := by
   obtain ⟨hfield, hqn, hoth, hinj⟩ := c6_shiftOk_dec hso
   obtain ⟨ho, hx, hxl⟩ := ht
   have hlimbY : ∀ e, lim = some e → ∀ jf < 2 ^ t.l, jf / 2 ^ p % 2 ^ n ≠ 0 →
@@ -4893,59 +4905,59 @@ theorem c6_shiftSucc (pt : List FE) (hpt : pt.length = 2 + xVars + yVars) (s : C
   have hqZ := c6_qZ hpn hn hfield hqn hoth hinj hlimbY
   have hpZ := c6_pZ hpn hn hfield hoth hinj hlimbY
   have hsum : ((List.range (2 ^ t.l)).map fun jf ↦
-      if jf / 2 ^ p % 2 ^ n = 0 then 0 else t.w * ct_EL pt lim t.o (t.x0 + jf) (sh.at (jf - 2 ^ p))).sum =
-      t.w * eqW (sub (Pt.ofList pt).kap 0 2) t.o * kerVal (Pt.ofList pt) (ct_limFs [] lim) *
-        ct_eqOn (Pt.ofList pt).rx (ct_xFree t.l) t.x0 *
-        ct_eqOn (Pt.ofList pt).ry ((ct_yFree (ct_limYm [] lim)).filter fun b ↦
+      if jf / 2 ^ p % 2 ^ n = 0 then 0 else KRing.ofE t.w * ct_EL pt lim t.o (t.x0 + jf) (sh.at (jf - 2 ^ p))).sum =
+      KRing.ofE t.w * eqWG (sub (PtG.ofList pt).kap 0 2) t.o * kerValG (PtG.ofList pt) (ct_limFs [] lim) *
+        ct_eqOn (PtG.ofList pt).rx (ct_xFree t.l) t.x0 *
+        ct_eqOn (PtG.ofList pt).ry ((ct_yFree (ct_limYm [] lim)).filter fun b ↦
           !((others.map (fun x : ℕ × ℕ ↦ x.2) ++ (List.range n).map fun k ↦ 2 ^ (q + k)).any (· == 2 ^ b))) sh.y0 *
         ∑ jf ∈ Finset.range (2 ^ t.l),
           (fun u ↦ if u = 0 then 0 else
-            eqW ((List.range n).map fun k ↦ (Pt.ofList pt).rx.getD (p + k) 0) u *
-            eqW ((List.range n).map fun k ↦ (Pt.ofList pt).ry.getD (q + k) 0) (u - 1)) (jf / 2 ^ p % 2 ^ n) *
+            eqWG ((List.range n).map fun k ↦ (PtG.ofList pt).rx.getD (p + k) 0) u *
+            eqWG ((List.range n).map fun k ↦ (PtG.ofList pt).ry.getD (q + k) 0) (u - 1)) (jf / 2 ^ p % 2 ^ n) *
           ∏ i ∈ Finset.range t.l, (if p ≤ i ∧ i < p + n then 1 else
-            (fun i b ↦ eq1 ((Pt.ofList pt).rx.getD i 0) b *
+            (fun i b ↦ eq1G ((PtG.ofList pt).rx.getD i 0) b *
               (if (decide (i < p) || decide (i ≥ p + n)) = true ∧ sh.coef.getD i 0 ≠ 0 ∧
                   log2 (sh.coef.getD i 0) < yVars then
-                eq1 ((Pt.ofList pt).ry.getD (log2 (sh.coef.getD i 0)) 0) b else 1)) i (jf.testBit i)) := by
+                eq1G ((PtG.ofList pt).ry.getD (log2 (sh.coef.getD i 0)) 0) b else 1)) i (jf.testBit i)) := by
     rw [c6_lsum, Finset.mul_sum]
     apply Finset.sum_congr rfl; intro jf hjf
     have hjf' := Finset.mem_range.mp hjf
     by_cases hF : jf / 2 ^ p % 2 ^ n = 0
     · simp [hF]
     · rw [if_neg hF, c6_EL_split pt hpt lim t.o _ _ ho (by (clear * - hxl hjf'; omega))
-        (fun e he ↦ ⟨(hL e he).1, hlimbY e he jf hjf' hF⟩), c6_xsplit (Pt.ofList pt) hx hxl hjf']
-      have hs := c6_succ_summand (Pt.ofList pt) _ hZnd hZ hpn hfield hoth hinj hqZ hpZ hjf' hF
+        (fun e he ↦ ⟨(hL e he).1, hlimbY e he jf hjf' hF⟩), c6_xsplit (PtG.ofList pt) hx hxl hjf']
+      have hs := c6_succ_summand (PtG.ofList pt) _ hZnd hZ hpn hfield hoth hinj hqZ hpZ hjf' hF
       simp only [hF, if_false]
-      calc _ = t.w * eqW (sub (Pt.ofList pt).kap 0 2) t.o * kerVal (Pt.ofList pt) (ct_limFs [] lim) *
-            ct_eqOn (Pt.ofList pt).rx (ct_xFree t.l) t.x0 *
-            ((∏ i ∈ Finset.range t.l, eq1 ((Pt.ofList pt).rx.getD i 0) (jf.testBit i)) *
-              ct_eqOn (Pt.ofList pt).ry (ct_yFree (ct_limYm [] lim)) (sh.at (jf - 2 ^ p))) := by ring
+      calc _ = KRing.ofE t.w * eqWG (sub (PtG.ofList pt).kap 0 2) t.o * kerValG (PtG.ofList pt) (ct_limFs [] lim) *
+            ct_eqOn (PtG.ofList pt).rx (ct_xFree t.l) t.x0 *
+            ((∏ i ∈ Finset.range t.l, eq1G ((PtG.ofList pt).rx.getD i 0) (jf.testBit i)) *
+              ct_eqOn (PtG.ofList pt).ry (ct_yFree (ct_limYm [] lim)) (sh.at (jf - 2 ^ p))) := by ring
         _ = _ := by rw [hs]; ring
   refine ct_Adds_congr (ct_addAtom pt s hs _ t.o t.l t.x0 _ sh.y0 t.w lim ho) ?_
   rw [hsum, c6_engine hpn (fun u ↦ if u = 0 then 0 else
-            eqW ((List.range n).map fun k ↦ (Pt.ofList pt).rx.getD (p + k) 0) u *
-            eqW ((List.range n).map fun k ↦ (Pt.ofList pt).ry.getD (q + k) 0) (u - 1))
-      (fun i b ↦ eq1 ((Pt.ofList pt).rx.getD i 0) b *
+            eqWG ((List.range n).map fun k ↦ (PtG.ofList pt).rx.getD (p + k) 0) u *
+            eqWG ((List.range n).map fun k ↦ (PtG.ofList pt).ry.getD (q + k) 0) (u - 1))
+      (fun i b ↦ eq1G ((PtG.ofList pt).rx.getD i 0) b *
               (if (decide (i < p) || decide (i ≥ p + n)) = true ∧ sh.coef.getD i 0 ≠ 0 ∧
                   log2 (sh.coef.getD i 0) < yVars then
-                eq1 ((Pt.ofList pt).ry.getD (log2 (sh.coef.getD i 0)) 0) b else 1))]
+                eq1G ((PtG.ofList pt).ry.getD (log2 (sh.coef.getD i 0)) 0) b else 1))]
   rw [c6_sum_A _ _ n (by simp) (by simp),
-    c6_pairs_ker (Pt.ofList pt) t.l p n sh.coef others hoth, c6_kerVal_limFs, c6_Zrest lim hinj]
-  have hks : kerVal (Pt.ofList pt) (KF.succ ((List.range n).map fun x ↦ p + x) ((List.range n).map fun x ↦ q + x) ::
+    c6_pairs_ker (PtG.ofList pt) t.l p n sh.coef others hoth, c6_kerVal_limFs, c6_Zrest lim hinj]
+  have hks : kerValG (PtG.ofList pt) (KF.succ ((List.range n).map fun x ↦ p + x) ((List.range n).map fun x ↦ q + x) ::
         (others.filter fun x ↦ x.2 != 0 && decide (log2 x.2 < yVars)).map fun x ↦ KF.pair x.1 (log2 x.2)) =
-      succVal ((List.range n).map fun k ↦ (Pt.ofList pt).rx.getD (p + k) 0)
-          ((List.range n).map fun k ↦ (Pt.ofList pt).ry.getD (q + k) 0) *
-        kerVal (Pt.ofList pt) ((others.filter fun x ↦ x.2 != 0 && decide (log2 x.2 < yVars)).map
+      succValG ((List.range n).map fun k ↦ (PtG.ofList pt).rx.getD (p + k) 0)
+          ((List.range n).map fun k ↦ (PtG.ofList pt).ry.getD (q + k) 0) *
+        kerValG (PtG.ofList pt) ((others.filter fun x ↦ x.2 != 0 && decide (log2 x.2 < yVars)).map
           fun x ↦ KF.pair x.1 (log2 x.2)) := by
     rw [c6_kerVal, List.map_cons, List.prod_cons, ← c6_kerVal]
-    simp only [kfVal, List.map_map, Function.comp_def]
+    simp only [kfValG, List.map_map, Function.comp_def]
   rw [hks]
   ring
 
 /-! ## The target -/
 
 /-- **A term's pieces** (C6). -/
-theorem ct_addTerm (pt : List FE) (hpt : pt.length = 2 + xVars + yVars) (s : CS) (hs : ct_WF s)
+theorem ct_addTerm (pt : List 𝔽) (hpt : pt.length = 2 + xVars + yVars) (s : CS) (hs : ct_WF s)
     (t : CTerm) (lim : Option ℕ) (ht : TermWF t) (hl : ct_LimOk t lim) :
     ct_Adds pt s (s.addTerm t lim) (ct_pairSum pt (t, lim)) := by
   have hb : termWFB t = true := by
@@ -4958,7 +4970,7 @@ theorem ct_addTerm (pt : List FE) (hpt : pt.length = 2 + xVars + yVars) (s : CS)
   by_cases hwv : t.wv = []
   · have hwAt : ∀ jf, t.wAt jf = t.w := fun jf ↦ by simp [CTerm.wAt, hwv]
     have hps : ct_pairSum pt (t, lim) =
-        ((List.range (2 ^ t.l)).map fun jf ↦ t.w * ct_EL pt lim t.o (t.x0 + jf) (t.cls.at jf)).sum := by
+        ((List.range (2 ^ t.l)).map fun jf ↦ KRing.ofE t.w * ct_EL pt lim t.o (t.x0 + jf) (t.cls.at jf)).sum := by
       simp only [ct_pairSum, hwAt]
     rw [hps]
     simp only [hwv, List.isEmpty_nil, Bool.not_true, Bool.false_eq_true, if_false]
@@ -5295,31 +5307,31 @@ theorem c5a_pow_bin (g : FK) (b z : ℕ) :
     rw [show ∀ x y : FK, FE.ofK (x * y) = FE.ofK x * FE.ofK y from fun x y ↦ map_mul FE.ofKRingHom x y]
     rcases Nat.mod_two_eq_zero_or_one (z / 2 ^ b) with h | h <;> simp [h, show FE.ofK 1 = 1 from rfl]
 
-theorem c5a_sum_mul_left (L : List ℕ) (c : FE) (f : ℕ → FE) :
+theorem c5a_sum_mul_left (L : List ℕ) (c : 𝔽) (f : ℕ → 𝔽) :
     (L.map fun x ↦ c * f x).sum = c * (L.map f).sum := by
   induction L with
   | nil => simp
   | cons x L ih => simp [ih, mul_add]
 
-theorem c5a_kerVal (P : Pt) (fs : List KF) : kerVal P fs = (fs.map (kfVal P)).prod := by
-  have : ∀ acc, fs.foldl (fun acc f ↦ acc * kfVal P f) acc = acc * (fs.map (kfVal P)).prod := by
+theorem c5a_kerVal (P : PtG 𝔽) (fs : List KF) : kerValG P fs = (fs.map (kfValG P)).prod := by
+  have : ∀ acc, fs.foldl (fun acc f ↦ acc * kfValG P f) acc = acc * (fs.map (kfValG P)).prod := by
     induction fs with
     | nil => simp
     | cons f fs ih => intro acc; simp [ih, mul_assoc]
-  rw [kerVal, this, one_mul]
+  rw [kerValG, this, one_mul]
 
 /-- The pairs of a geometric run's atom (`CS.addGeo`). -/
 def c5a_pairs (l : ℕ) (coef : List ℕ) : List (ℕ × ℕ) :=
   ((List.range l).map fun i ↦ (i, coef.getD i 0)).filter fun x ↦ x.2 != 0 && decide (log2 x.2 < yVars)
 
-theorem c5a_prod_filter (L : List ℕ) (c : ℕ → ℕ) (p : ℕ × ℕ → Bool) (φ : ℕ × ℕ → FE) :
+theorem c5a_prod_filter (L : List ℕ) (c : ℕ → ℕ) (p : ℕ × ℕ → Bool) (φ : ℕ × ℕ → 𝔽) :
     (((L.map fun i ↦ (i, c i)).filter p).map φ).prod = (L.map fun i ↦ if p (i, c i) then φ (i, c i) else 1).prod := by
   induction L with
   | nil => simp
   | cons x L ih =>
     by_cases h : p (x, c x) <;> simp [h, ih]
 
-theorem c5a_prod_pairs (l : ℕ) (coef : List ℕ) (φ : ℕ × ℕ → FE) :
+theorem c5a_prod_pairs (l : ℕ) (coef : List ℕ) (φ : ℕ × ℕ → 𝔽) :
     ((c5a_pairs l coef).map φ).prod = ((List.range l).map fun i ↦
       if (coef.getD i 0 != 0 && decide (log2 (coef.getD i 0) < yVars)) then φ (i, coef.getD i 0) else 1).prod :=
   c5a_prod_filter _ _ _ _
@@ -5368,10 +5380,10 @@ theorem c5a_at_append (a : Aff) (l q b jf z : ℕ) (hlen : a.coef.length = l) (h
     c5a_bin_sum, Nat.mod_eq_of_lt hz]
   ring
 
-theorem c5a_x_split (r : Array FE) (l x0 jf : ℕ) (hx : x0 % 2 ^ l = 0) (hxl : x0 + 2 ^ l ≤ 2 ^ xVars)
+theorem c5a_x_split (r : Array 𝔽) (l x0 jf : ℕ) (hx : x0 % 2 ^ l = 0) (hxl : x0 + 2 ^ l ≤ 2 ^ xVars)
     (hjf : jf < 2 ^ l) :
     ct_eqOn r (List.range xVars) (x0 + jf) =
-      ((List.range l).map fun i ↦ eq1 (r.getD i 0) (jf.testBit i)).prod * ct_eqOn r (ct_xFree l) x0 := by
+      ((List.range l).map fun i ↦ eq1G (r.getD i 0) (jf.testBit i)).prod * ct_eqOn r (ct_xFree l) x0 := by
   have hl : l ≤ xVars := by
     have : 2 ^ l ≤ 2 ^ xVars := by (clear * - hxl; omega)
     exact (Nat.pow_le_pow_iff_right (by norm_num)).mp this
@@ -5400,12 +5412,12 @@ theorem c5a_x_split (r : Array FE) (l x0 jf : ℕ) (hx : x0 % 2 ^ l = 0) (hxl : 
     rw [hb, hb0]
     simp
 
-theorem c5a_y_split (r : Array FE) (a : Aff) (l q b jf z : ℕ) (hlen : a.coef.length = l)
+theorem c5a_y_split (r : Array 𝔽) (a : Aff) (l q b jf z : ℕ) (hlen : a.coef.length = l)
     (hinj : injOk a.y0 (a.coef ++ (List.range b).map fun k ↦ 2 ^ (q + k)) = true) (hqb : q + b ≤ yVars)
     (hjf : jf < 2 ^ l) (hz : z < 2 ^ b) :
     ct_eqOn r (List.range yVars) (a.at jf + z * 2 ^ q) =
-      ((c5a_pairs l a.coef).map fun x ↦ eq1 (r.getD (log2 x.2) 0) (jf.testBit x.1)).prod *
-      ((List.range b).map fun k ↦ eq1 (r.getD (q + k) 0) (z.testBit k)).prod *
+      ((c5a_pairs l a.coef).map fun x ↦ eq1G (r.getD (log2 x.2) 0) (jf.testBit x.1)).prod *
+      ((List.range b).map fun k ↦ eq1G (r.getD (q + k) 0) (z.testBit k)).prod *
       ct_eqOn r (ct_yFree ((c5a_pairs l a.coef).map (fun x ↦ log2 x.2) ++ (List.range b).map (q + ·))) a.y0 := by
   rw [c5a_at_append a l q b jf z hlen hjf hz]
   set CS := a.coef ++ (List.range b).map fun k ↦ 2 ^ (q + k) with hCS
@@ -5510,7 +5522,7 @@ theorem c5a_y_split (r : Array FE) (a : Aff) (l q b jf z : ℕ) (hlen : a.coef.l
     exact hmem_ym i hi hne (by rw [heq]; exact hj.1)
 
 /-- **A geometric run's atom** (C5). -/
-theorem ct_addGeo (pt : List FE) (hpt : pt.length = 2 + xVars + yVars) (s : CS) (hs : ct_WF s)
+theorem ct_addGeo (pt : List 𝔽) (hpt : pt.length = 2 + xVars + yVars) (s : CS) (hs : ct_WF s)
     (r : CTerm × ℕ × ℕ × FK) (hr : ct_GeoOk r) :
     ct_Adds pt s (s.addGeo r) (ct_geoSum pt r) := by
   obtain ⟨t, q, b, g⟩ := r
@@ -5527,23 +5539,29 @@ theorem ct_addGeo (pt : List FE) (hpt : pt.length = 2 + xVars + yVars) (s : CS) 
   simp only [ct_limFs, ct_limYm]
   unfold ct_geoSum
   simp only [ct_affOf]
-  set C := w * eqW (sub (Pt.ofList pt).kap 0 2) o * ct_eqOn (Pt.ofList pt).rx (ct_xFree l) x0 * ct_eqOn (Pt.ofList pt).ry (ct_yFree ((c5a_pairs l a.coef).map (fun x ↦ log2 x.2) ++ (List.range b).map (q + ·))) a.y0 with hC
-  set f : ℕ → Bool → FE := fun i β ↦ eq1 ((Pt.ofList pt).rx.getD i 0) β *
+  set C := KRing.ofE w * eqWG (sub (PtG.ofList pt).kap 0 2) o * ct_eqOn (PtG.ofList pt).rx (ct_xFree l) x0 * ct_eqOn (PtG.ofList pt).ry (ct_yFree ((c5a_pairs l a.coef).map (fun x ↦ log2 x.2) ++ (List.range b).map (q + ·))) a.y0 with hC
+  set f : ℕ → Bool → 𝔽 := fun i β ↦ eq1G ((PtG.ofList pt).rx.getD i 0) β *
     (if (a.coef.getD i 0 != 0 && decide (log2 (a.coef.getD i 0) < yVars)) then
-      eq1 ((Pt.ofList pt).ry.getD (log2 (a.coef.getD i 0)) 0) β else 1) with hf
-  set h : ℕ → Bool → FE := fun k β ↦ (if β then FE.ofK (g ^ 2 ^ k) else 1) * eq1 ((Pt.ofList pt).ry.getD (q + k) 0) β with hh
-  have hterm : ∀ z < 2 ^ b, ∀ jf < 2 ^ l, w * FE.ofK (g ^ z) * ct_E pt o (x0 + jf) (a.at jf + z * 2 ^ q) =
+      eq1G ((PtG.ofList pt).ry.getD (log2 (a.coef.getD i 0)) 0) β else 1) with hf
+  set h : ℕ → Bool → 𝔽 := fun k β ↦ (if β then KRing.ofE (FE.ofK (g ^ 2 ^ k)) else 1) * eq1G ((PtG.ofList pt).ry.getD (q + k) 0) β with hh
+  have hterm : ∀ z < 2 ^ b, ∀ jf < 2 ^ l, KRing.ofE w * KRing.ofE (FE.ofK (g ^ z)) * ct_E pt o (x0 + jf) (a.at jf + z * 2 ^ q) =
       (C * ((List.range b).map fun k ↦ h k (z.testBit k)).prod) * ((List.range l).map fun i ↦ f i (jf.testBit i)).prod := by
     intro z hz jf hjf
     rw [ct_E_split pt hpt o _ _ ho (by (clear * - hxl hjf; omega)), c5a_x_split _ l x0 jf hx hxl hjf,
       c5a_y_split _ a l q b jf z hlen hinj hqb hjf hz]
-    have hg : FE.ofK (g ^ z) = ((List.range b).map fun k ↦ if z.testBit k then FE.ofK (g ^ 2 ^ k) else 1).prod := by
-      rw [← c5a_pow_bin, Nat.mod_eq_of_lt hz]
+    have hg : (KRing.ofE (FE.ofK (g ^ z)) : 𝔽) =
+        ((List.range b).map fun k ↦ if z.testBit k then KRing.ofE (FE.ofK (g ^ 2 ^ k)) else (1 : 𝔽)).prod := by
+      have hg0 := c5a_pow_bin g b z
+      rw [Nat.mod_eq_of_lt hz] at hg0
+      rw [hg0, map_list_prod, List.map_map]
+      refine congrArg List.prod (List.map_congr_left fun k _ ↦ ?_)
+      simp only [Function.comp_apply]
+      split_ifs <;> simp
     rw [hg, hf, hh, List.prod_map_mul, List.prod_map_mul, c5a_prod_pairs]
     rw [hC]
     ring
   have hsum : ((List.range (2 ^ b)).map fun z ↦ ((List.range (2 ^ l)).map fun jf ↦
-      w * FE.ofK (g ^ z) * ct_E pt o (x0 + jf) (a.at jf + z * 2 ^ q)).sum).sum =
+      KRing.ofE w * KRing.ofE (FE.ofK (g ^ z)) * ct_E pt o (x0 + jf) (a.at jf + z * 2 ^ q)).sum).sum =
       C * ((List.range (2 ^ b)).map fun z ↦ ((List.range b).map fun k ↦ h k (z.testBit k)).prod).sum *
         ((List.range (2 ^ l)).map fun jf ↦ ((List.range l).map fun i ↦ f i (jf.testBit i)).prod).sum := by
     rw [List.map_congr_left fun z hz ↦ congrArg List.sum (List.map_congr_left fun jf hjf ↦
@@ -5552,18 +5570,18 @@ theorem ct_addGeo (pt : List FE) (hpt : pt.length = 2 + xVars + yVars) (s : CS) 
   rw [hsum, ct_sum_prod_bits l f, ct_sum_prod_bits b h, c5a_kerVal, List.map_append, List.prod_append,
     List.map_map, List.map_map, c5a_prod_pairs]
   have hf2 : ∀ i, f i false + f i true = if (a.coef.getD i 0 != 0 && decide (log2 (a.coef.getD i 0) < yVars)) then
-      kfVal (Pt.ofList pt) (KF.pair i (log2 (a.coef.getD i 0))) else 1 := by
+      kfValG (PtG.ofList pt) (KF.pair i (log2 (a.coef.getD i 0))) else 1 := by
     intro i
     rw [hf]
-    simp only [eq1, kfVal, Bool.false_eq_true, ite_false, ite_true]
+    simp only [eq1G, kfValG, Bool.false_eq_true, ite_false, ite_true]
     split_ifs
-    · have h2 : (2 : FE) = 0 := CharTwo.two_eq_zero
-      linear_combination ((Pt.ofList pt).rx.getD i 0 * (Pt.ofList pt).ry.getD (log2 (a.coef.getD i 0)) 0) * h2
+    · have h2 : (2 : 𝔽) = 0 := CharTwo.two_eq_zero
+      linear_combination ((PtG.ofList pt).rx.getD i 0 * (PtG.ofList pt).ry.getD (log2 (a.coef.getD i 0)) 0) * h2
     · ring
-  have hh2 : ∀ k, h k false + h k true = kfVal (Pt.ofList pt) (KF.ypow (q + k) (g ^ 2 ^ k)) := by
+  have hh2 : ∀ k, h k false + h k true = kfValG (PtG.ofList pt) (KF.ypow (q + k) (g ^ 2 ^ k)) := by
     intro k
     rw [hh]
-    simp only [eq1, kfVal, Bool.false_eq_true, ite_false, ite_true, FE.smulBase_eq_mul]
+    simp only [eq1G, kfValG, Bool.false_eq_true, ite_false, ite_true, FE.smulBase_eq_mul]
     ring
   simp only [hf2, hh2, Function.comp_def]
   rw [hC]
@@ -5627,25 +5645,25 @@ theorem c5a_geoOf_some (ts : Array CTerm) (i q b : ℕ) (g : FK) (h : geoOf ts i
     obtain ⟨⟨⟨hy, hqb⟩, hall⟩, hinj⟩ := hok
     refine ⟨a, rfl, h1.1.1.1, h1.1.1.2, h1.1.2, hb0, hy, hqb, hinj, fun z hz ↦ ?_⟩
     obtain ⟨⟨⟨⟨⟨⟨⟨⟨hz1, -⟩, -⟩, ho⟩, hx⟩, hl⟩, hwv⟩, hcls⟩, hw⟩ := hall z hz
-    exact ⟨hz1, ho, hx, hl, hwv, hcls, c5a_FE_beq hw⟩
+    exact ⟨hz1, ho, hx, hl, hwv, hcls, by simpa using hw⟩
   | _ => simp at h
 
-theorem c5a_termSum_eq (t : CTerm) (pt : List FE) :
-    termSum t pt = ((List.range (2 ^ t.l)).map (termAt t pt)).sum := by
-  unfold termSum
+theorem c5a_termSum_eq (t : CTerm) (pt : List 𝔽) :
+    termSumG t pt = ((List.range (2 ^ t.l)).map (termAtG t pt)).sum := by
+  unfold termSumG
   rw [List.sum, List.foldr_map]
 
-theorem c5a_termAt_member (t t0 : CTerm) (a : Aff) (q z : ℕ) (g : FK) (pt : List FE) (jf : ℕ)
+theorem c5a_termAt_member (t t0 : CTerm) (a : Aff) (q z : ℕ) (g : FK) (pt : List 𝔽) (jf : ℕ)
     (ho : t.o = t0.o) (hx : t.x0 = t0.x0) (hwv : t.wv = []) (hc : t.cls = .aff ⟨a.y0 + z * 2 ^ q, a.coef⟩)
     (hw : t.w = t0.w * FE.ofK (g ^ z)) :
-    termAt t pt jf = t0.w * FE.ofK (g ^ z) * ct_E pt t0.o (t0.x0 + jf) (a.at jf + z * 2 ^ q) := by
-  unfold termAt CTerm.wAt CTerm.at Ent.idx ct_E
+    termAtG t pt jf = KRing.ofE t0.w * KRing.ofE (FE.ofK (g ^ z)) * ct_E pt t0.o (t0.x0 + jf) (a.at jf + z * 2 ^ q) := by
+  unfold termAtG CTerm.wAt CTerm.at Ent.idx ct_E
   rw [hwv, hc, hw, ho, hx]
-  simp only [List.isEmpty_nil, ite_true, OpClass.at, Aff.at]
+  simp only [List.isEmpty_nil, ite_true, OpClass.at, Aff.at, map_mul]
   rw [Nat.add_right_comm a.y0]
 
-theorem c5a_run_sum (ts : Array CTerm) (i q b : ℕ) (g : FK) (pt : List FE) (h : geoOf ts i = some (q, b, g)) :
-    ((List.range (2 ^ b)).map fun z ↦ termSum (ts.getD (i + z) default) pt).sum =
+theorem c5a_run_sum (ts : Array CTerm) (i q b : ℕ) (g : FK) (pt : List 𝔽) (h : geoOf ts i = some (q, b, g)) :
+    ((List.range (2 ^ b)).map fun z ↦ termSumG (ts.getD (i + z) default) pt).sum =
       ct_geoSum pt (ts.getD i default, q, b, g) := by
   obtain ⟨a, ha, -, -, -, -, -, -, -, hm⟩ := c5a_geoOf_some ts i q b g h
   unfold ct_geoSum
@@ -5655,7 +5673,7 @@ theorem c5a_run_sum (ts : Array CTerm) (i q b : ℕ) (g : FK) (pt : List FE) (h 
   rw [c5a_termSum_eq, hl]
   exact congrArg List.sum <| List.map_congr_left fun jf _ ↦ c5a_termAt_member _ _ a q z g pt jf ho hx hwv hc hw
 
-theorem c5a_take_add {α : Type} [Inhabited α] (ts : Array α) (f : α → FE) (i : ℕ) :
+theorem c5a_take_add {α : Type} [Inhabited α] (ts : Array α) (f : α → 𝔽) (i : ℕ) :
     ∀ n, i + n ≤ ts.size → ((ts.toList.take (i + n)).map f).sum =
       ((ts.toList.take i).map f).sum + ((List.range n).map fun z ↦ f (ts.getD (i + z) default)).sum := by
   intro n
@@ -5674,20 +5692,20 @@ theorem c5a_termWF_of (t : CTerm) (h : termWFB t = true) : TermWF t := by
   simpa [termWFB, TermWF, and_assoc] using h
 
 /-- **The geometric runs** (C5). -/
-theorem ct_mergeGeo (pt : List FE) (ts : Array CTerm) (hwf : ∀ t ∈ ts, TermWF t) :
+theorem ct_mergeGeo (pt : List 𝔽) (ts : Array CTerm) (hwf : ∀ t ∈ ts, TermWF t) :
     (∀ t ∈ (mergeGeo ts).1, TermWF t) ∧ (∀ r ∈ (mergeGeo ts).2, ct_GeoOk r) ∧
-      (ts.toList.map fun t ↦ termSum t pt).sum =
-        ((mergeGeo ts).1.toList.map fun t ↦ termSum t pt).sum + ((mergeGeo ts).2.toList.map (ct_geoSum pt)).sum := by
+      (ts.toList.map fun t ↦ termSumG t pt).sum =
+        ((mergeGeo ts).1.toList.map fun t ↦ termSumG t pt).sum + ((mergeGeo ts).2.toList.map (ct_geoSum pt)).sum := by
   show (∀ t ∈ (forIn (m := Id) Lean.Loop.mk ((#[] : Array CTerm), (#[] : Array (CTerm × ℕ × ℕ × FK)), 0) _).1,
       TermWF t) ∧
     (∀ r ∈ (forIn (m := Id) Lean.Loop.mk ((#[] : Array CTerm), (#[] : Array (CTerm × ℕ × ℕ × FK)), 0) _).2.1,
       ct_GeoOk r) ∧ _
   refine c5a_loop (Q := fun (s : Array CTerm × Array (CTerm × ℕ × ℕ × FK) × ℕ) ↦ (∀ t ∈ s.1, TermWF t) ∧ (∀ r ∈ s.2.1, ct_GeoOk r) ∧
-      (ts.toList.map fun t ↦ termSum t pt).sum =
-        (s.1.toList.map fun t ↦ termSum t pt).sum + (s.2.1.toList.map (ct_geoSum pt)).sum) _
+      (ts.toList.map fun t ↦ termSumG t pt).sum =
+        (s.1.toList.map fun t ↦ termSumG t pt).sum + (s.2.1.toList.map (ct_geoSum pt)).sum) _
     (fun (s : Array CTerm × Array (CTerm × ℕ × ℕ × FK) × ℕ) ↦ s.2.2 ≤ ts.size ∧ (∀ t ∈ s.1, TermWF t) ∧ (∀ r ∈ s.2.1, ct_GeoOk r) ∧
-      ((ts.toList.take s.2.2).map fun t ↦ termSum t pt).sum =
-        (s.1.toList.map fun t ↦ termSum t pt).sum + (s.2.1.toList.map (ct_geoSum pt)).sum)
+      ((ts.toList.take s.2.2).map fun t ↦ termSumG t pt).sum =
+        (s.1.toList.map fun t ↦ termSumG t pt).sum + (s.2.1.toList.map (ct_geoSum pt)).sum)
     (fun (s : Array CTerm × Array (CTerm × ℕ × ℕ × FK) × ℕ) ↦ ts.size - s.2.2) ?_ ?_ _ ?_
   · rintro ⟨rest, runs, i⟩ ⟨hi, hrest, hruns, hsum⟩ s' hf
     simp only at hf hi hrest hruns hsum
@@ -5784,7 +5802,7 @@ theorem c5b_forIn_list {α β : Type} (l : List α) (f : α → β → Id (ForIn
     rw [List.forIn_cons, hb']
     exact ih (fun j b ↦ I (j + 1) b) (fun j hj b hb ↦ h (j + 1) (by simp; omega) b hb) b' hI
 
-theorem c5b_sum_getD {α : Type} (a : Array α) (d : α) (f : α → FE) :
+theorem c5b_sum_getD {α : Type} (a : Array α) (d : α) (f : α → 𝔽) :
     (a.toList.map f).sum = ((List.range a.size).map fun j ↦ f (a.getD j d)).sum := by
   have : (List.range a.size).map (fun j ↦ a.getD j d) = a.toList := by
     apply List.ext_getElem
@@ -5796,19 +5814,19 @@ theorem c5b_sum_getD {α : Type} (a : Array α) (d : α) (f : α → FE) :
   rw [← this, List.map_map]
   rfl
 
-theorem c5b_foldr_sum (l : List ℕ) (f : ℕ → FE) :
+theorem c5b_foldr_sum (l : List ℕ) (f : ℕ → 𝔽) :
     l.foldr (fun jf acc ↦ f jf + acc) 0 = (l.map f).sum := by
   induction l with
   | nil => rfl
   | cons a l ih => simp [ih]
 
-theorem c5b_termSum (t : CTerm) (pt : List FE) :
-    termSum t pt = ((List.range (2 ^ t.l)).map fun jf ↦ t.wAt jf * ct_E pt t.o (t.x0 + jf) (t.cls.at jf)).sum := by
-  unfold termSum
+theorem c5b_termSum (t : CTerm) (pt : List 𝔽) :
+    termSumG t pt = ((List.range (2 ^ t.l)).map fun jf ↦ KRing.ofE (t.wAt jf) * ct_E pt t.o (t.x0 + jf) (t.cls.at jf)).sum := by
+  unfold termSumG
   rw [c5b_foldr_sum]
   rfl
 
-theorem c5b_pairSum_none (pt : List FE) (t : CTerm) : ct_pairSum pt (t, none) = termSum t pt := by
+theorem c5b_pairSum_none (pt : List 𝔽) (t : CTerm) : ct_pairSum pt (t, none) = termSumG t pt := by
   rw [c5b_termSum]
   rfl
 
@@ -5840,8 +5858,8 @@ theorem c5b_limbOf {t0 t1 t2 : CTerm} {e : ℕ} (h : limbOf t0 t1 t2 = some e) :
   obtain ⟨⟨a, b⟩, c⟩ := hall jf hjf
   exact ⟨a, b, c⟩
 
-theorem c5b_limb_sum (pt : List FE) {t0 t1 t2 : CTerm} {e : ℕ} (h : limbOf t0 t1 t2 = some e) :
-    termSum t0 pt + termSum t1 pt + termSum t2 pt = ct_pairSum pt (t0, some e) := by
+theorem c5b_limb_sum (pt : List 𝔽) {t0 t1 t2 : CTerm} {e : ℕ} (h : limbOf t0 t1 t2 = some e) :
+    termSumG t0 pt + termSumG t1 pt + termSumG t2 pt = ct_pairSum pt (t0, some e) := by
   obtain ⟨h01, h02, h03, ho1, ho2, hx1, hx2, hl1, hl2, hw1, hw2, -, hall⟩ := c5b_limbOf h
   rw [c5b_termSum, c5b_termSum, c5b_termSum, hl1, hl2, ← List.sum_map_add, ← List.sum_map_add]
   unfold ct_pairSum ct_EL
@@ -5850,7 +5868,8 @@ theorem c5b_limb_sum (pt : List FE) {t0 t1 t2 : CTerm} {e : ℕ} (h : limbOf t0 
   intro jf hjf
   rw [List.mem_range] at hjf
   obtain ⟨-, hy1, hy2⟩ := hall jf hjf
-  simp only [CTerm.wAt, h01, h02, h03, List.isEmpty_nil, ite_true, ho1, ho2, hx1, hx2, hw1, hw2, hy1, hy2]
+  simp only [CTerm.wAt, h01, h02, h03, List.isEmpty_nil, ite_true, ho1, ho2, hx1, hx2, hw1, hw2, hy1, hy2,
+    map_mul]
   ring
 
 theorem c5b_limb_ok {t0 t1 t2 : CTerm} {e : ℕ} (h : limbOf t0 t1 t2 = some e) : ct_LimOk t0 (some e) := by
@@ -5858,18 +5877,18 @@ theorem c5b_limb_ok {t0 t1 t2 : CTerm} {e : ℕ} (h : limbOf t0 t1 t2 = some e) 
   exact ⟨h01, he, fun jf hjf ↦ (hall jf hjf).1⟩
 
 /-- **The limb merge** (C5). -/
-theorem ct_mergeLimbs (pt : List FE) (ts : Array CTerm) (hwf : ∀ t ∈ ts, TermWF t) :
+theorem ct_mergeLimbs (pt : List 𝔽) (ts : Array CTerm) (hwf : ∀ t ∈ ts, TermWF t) :
     (∀ p ∈ mergeLimbs ts, TermWF p.1 ∧ ct_LimOk p.1 p.2) ∧
-      (ts.toList.map fun t ↦ termSum t pt).sum = ((mergeLimbs ts).toList.map (ct_pairSum pt)).sum := by
+      (ts.toList.map fun t ↦ termSumG t pt).sum = ((mergeLimbs ts).toList.map (ct_pairSum pt)).sum := by
   have hmem : ∀ i < ts.size, ts.getD i default ∈ ts := fun i hi ↦ by
     simp [Array.getD_eq_getD_getElem?, hi]
   unfold mergeLimbs
   simp only [Id.run]
   refine c5b_while _ (fun s : Array (CTerm × Option ℕ) × ℕ ↦ ts.size - s.2)
     (fun s : Array (CTerm × Option ℕ) × ℕ ↦ s.2 ≤ ts.size ∧ (∀ p ∈ s.1, TermWF p.1 ∧ ct_LimOk p.1 p.2) ∧
-      ((List.range s.2).map fun j ↦ termSum (ts.getD j default) pt).sum = (s.1.toList.map (ct_pairSum pt)).sum)
+      ((List.range s.2).map fun j ↦ termSumG (ts.getD j default) pt).sum = (s.1.toList.map (ct_pairSum pt)).sum)
     (fun s : Array (CTerm × Option ℕ) × ℕ ↦ (∀ p ∈ s.1, TermWF p.1 ∧ ct_LimOk p.1 p.2) ∧
-      (ts.toList.map fun t ↦ termSum t pt).sum = (s.1.toList.map (ct_pairSum pt)).sum) ?_ _ ?_
+      (ts.toList.map fun t ↦ termSumG t pt).sum = (s.1.toList.map (ct_pairSum pt)).sum) ?_ _ ?_
   · rintro ⟨out, i⟩ ⟨hi, hok, hsum⟩
     simp only at hi hok hsum ⊢
     by_cases hlt : i < ts.size
@@ -5963,7 +5982,7 @@ theorem c5b_aff_ext (y0 d k m jf L : ℕ) (coef : List ℕ) (hc : coef.length = 
   rw [h1, h2, c5b_bits_sum d k m hm]
   ring
 
-theorem c5b_sum_split (N : ℕ) (F : ℕ → FE) : ∀ M : ℕ, ((List.range (N * M)).map F).sum =
+theorem c5b_sum_split (N : ℕ) (F : ℕ → 𝔽) : ∀ M : ℕ, ((List.range (N * M)).map F).sum =
     ((List.range M).map fun m ↦ ((List.range N).map fun jf ↦ F (N * m + jf)).sum).sum := by
   intro M
   induction M with
@@ -5974,7 +5993,7 @@ theorem c5b_sum_split (N : ℕ) (F : ℕ → FE) : ∀ M : ℕ, ((List.range (N 
     simp [Function.comp_def]
 
 /-- A term, well-formed with a constant weight: the members of a merged run. -/
-theorem c5b_pairSum_merge (pt : List FE) (t : CTerm) (lim : Option ℕ) (k d y0 : ℕ) (coef : List ℕ)
+theorem c5b_pairSum_merge (pt : List 𝔽) (t : CTerm) (lim : Option ℕ) (k d y0 : ℕ) (coef : List ℕ)
     (hwv : t.wv = []) (hc : coef.length = t.l) (G : ℕ → CTerm)
     (hG : ∀ m < 2 ^ k, (G m).wv = [] ∧ (G m).l = t.l ∧ (G m).o = t.o ∧ (G m).w = t.w ∧
       (G m).x0 = t.x0 + m * 2 ^ t.l ∧ (G m).cls = .aff ⟨y0 + m * d, coef⟩) :
@@ -6109,10 +6128,10 @@ def c5b_Ent (ps : Array (CTerm × Option ℕ)) (K : ℕ × FE × ℕ × List ℕ
     t.x0 = e.1 ∧ t.o = K.1 ∧ t.w = K.2.1 ∧ t.l = K.2.2.1 ∧ t.wv = [] ∧ K.2.2.2.1.length = K.2.2.1
 
 /-- The buckets' sum. -/
-def c5b_G (f : ℕ × ℕ × ℕ → FE) (m : Std.HashMap (ℕ × FE × ℕ × List ℕ × Option ℕ) (Array (ℕ × ℕ × ℕ))) : FE :=
+def c5b_G (f : ℕ × ℕ × ℕ → 𝔽) (m : Std.HashMap (ℕ × FE × ℕ × List ℕ × Option ℕ) (Array (ℕ × ℕ × ℕ))) : 𝔽 :=
   (m.toList.map fun kg ↦ (kg.2.toList.map f).sum).sum
 
-theorem c5b_G_insert (f : ℕ × ℕ × ℕ → FE)
+theorem c5b_G_insert (f : ℕ × ℕ × ℕ → 𝔽)
     (m : Std.HashMap (ℕ × FE × ℕ × List ℕ × Option ℕ) (Array (ℕ × ℕ × ℕ))) (K : ℕ × FE × ℕ × List ℕ × Option ℕ)
     (e : ℕ × ℕ × ℕ) : c5b_G f (m.insert K ((m.getD K #[]).push e)) = c5b_G f m + f e := by
   unfold c5b_G
@@ -6170,7 +6189,7 @@ theorem c5b_ok_spec {ps : Array (CTerm × Option ℕ)} {g : Array (ℕ × ℕ ×
 theorem c5b_getD_mem {α : Type} (g : Array α) (d : α) (i : ℕ) (h : i < g.size) : g.getD i d ∈ g := by
   simp [Array.getD_eq_getD_getElem?, h]
 
-theorem c5b_step0 (pt : List FE) (ps : Array (CTerm × Option ℕ)) (hwf : ∀ p ∈ ps, c5b_Good p)
+theorem c5b_step0 (pt : List 𝔽) (ps : Array (CTerm × Option ℕ)) (hwf : ∀ p ∈ ps, c5b_Good p)
     (K : ℕ × FE × ℕ × List ℕ × Option ℕ) (g : Array (ℕ × ℕ × ℕ)) (hg : ∀ e ∈ g, c5b_Ent ps K e) (i : ℕ)
     (hlt : i < g.size) (hk : (c5b_k ps g i == 0) = true) :
     i + 2 ^ c5b_k ps g i ≤ g.size ∧ c5b_Good (ps.getD (g.getD i (0, 0, 0)).2.2 default) ∧
@@ -6181,7 +6200,7 @@ theorem c5b_step0 (pt : List FE) (ps : Array (CTerm × Option ℕ)) (hwf : ∀ p
   obtain ⟨t, hpt, htm, -⟩ := hg _ (c5b_getD_mem g (0, 0, 0) i hlt)
   refine ⟨by simpa using hlt, by rw [hpt]; exact hwf _ htm, by simp⟩
 
-theorem c5b_step1 (pt : List FE) (ps : Array (CTerm × Option ℕ)) (hwf : ∀ p ∈ ps, c5b_Good p)
+theorem c5b_step1 (pt : List 𝔽) (ps : Array (CTerm × Option ℕ)) (hwf : ∀ p ∈ ps, c5b_Good p)
     (K : ℕ × FE × ℕ × List ℕ × Option ℕ) (g : Array (ℕ × ℕ × ℕ)) (hg : ∀ e ∈ g, c5b_Ent ps K e) (i : ℕ)
     (hlt : i < g.size) (hk : ¬ (c5b_k ps g i == 0) = true) :
     i + 2 ^ c5b_k ps g i ≤ g.size ∧ c5b_Good (c5b_merged ps g i, (ps.getD (g.getD i (0, 0, 0)).2.2 default).2) ∧
@@ -6234,7 +6253,7 @@ theorem c5b_step1 (pt : List FE) (ps : Array (CTerm × Option ℕ)) (hwf : ∀ p
     rw [List.mem_range] at hm
     rw [← (hG m hm).2.2.2.2.2.2.1]
 
-theorem c5b_inner_spec (pt : List FE) (ps : Array (CTerm × Option ℕ)) (hwf : ∀ p ∈ ps, c5b_Good p)
+theorem c5b_inner_spec (pt : List 𝔽) (ps : Array (CTerm × Option ℕ)) (hwf : ∀ p ∈ ps, c5b_Good p)
     (K : ℕ × FE × ℕ × List ℕ × Option ℕ) (g : Array (ℕ × ℕ × ℕ)) (hg : ∀ e ∈ g, c5b_Ent ps K e)
     (out0 : Array (CTerm × Option ℕ)) (hout : ∀ p ∈ out0, c5b_Good p) :
     (∀ p ∈ c5b_inner ps g out0, c5b_Good p) ∧
@@ -6285,7 +6304,7 @@ theorem c5b_inner_spec (pt : List FE) (ps : Array (CTerm × Option ℕ)) (hwf : 
     refine ⟨hok, ?_⟩
     rw [hsum, c5b_sum_getD g (0, 0, 0), show i = g.size by (clear * - hi hlt; omega)]
 
-theorem c5b_ph2_spec (pt : List FE) (ps : Array (CTerm × Option ℕ)) (hwf : ∀ p ∈ ps, c5b_Good p)
+theorem c5b_ph2_spec (pt : List 𝔽) (ps : Array (CTerm × Option ℕ)) (hwf : ∀ p ∈ ps, c5b_Good p)
     (grp : Std.HashMap (ℕ × FE × ℕ × List ℕ × Option ℕ) (Array (ℕ × ℕ × ℕ)))
     (hgrp : ∀ K g, grp[K]? = some g → ∀ e ∈ g, c5b_Ent ps K e)
     (out0 : Array (CTerm × Option ℕ)) (hout : ∀ p ∈ out0, c5b_Good p) :
@@ -6312,7 +6331,7 @@ theorem c5b_ph2_spec (pt : List FE) (ps : Array (CTerm × Option ℕ)) (hwf : �
       List.sum_cons, List.sum_nil, add_zero]
     ring
 
-theorem c5b_ph1_spec (pt : List FE) (ps : Array (CTerm × Option ℕ)) (hwf : ∀ p ∈ ps, c5b_Good p) :
+theorem c5b_ph1_spec (pt : List 𝔽) (ps : Array (CTerm × Option ℕ)) (hwf : ∀ p ∈ ps, c5b_Good p) :
     (∀ p ∈ (c5b_ph1 ps).2, c5b_Good p) ∧ (∀ K g, (c5b_ph1 ps).1[K]? = some g → ∀ e ∈ g, c5b_Ent ps K e) ∧
       (ps.toList.map (ct_pairSum pt)).sum = ((c5b_ph1 ps).2.toList.map (ct_pairSum pt)).sum +
         c5b_G (fun e ↦ ct_pairSum pt (ps.getD e.2.2 default)) (c5b_ph1 ps).1 := by
@@ -6375,7 +6394,7 @@ theorem c5b_ph1_spec (pt : List FE) (ps : Array (CTerm × Option ℕ)) (hwf : �
   all_goals exact ⟨(grp, out.push (t, lim)), by simp only [hc], hgood', hgrp, hpush.symm⟩
 
 /-- **The slot-run merge** (C5). -/
-theorem ct_runMerge (pt : List FE) (ps : Array (CTerm × Option ℕ)) (hwf : ∀ p ∈ ps, TermWF p.1 ∧ ct_LimOk p.1 p.2) :
+theorem ct_runMerge (pt : List 𝔽) (ps : Array (CTerm × Option ℕ)) (hwf : ∀ p ∈ ps, TermWF p.1 ∧ ct_LimOk p.1 p.2) :
     (∀ p ∈ runMerge ps, TermWF p.1 ∧ ct_LimOk p.1 p.2) ∧
       (ps.toList.map (ct_pairSum pt)).sum = ((runMerge ps).toList.map (ct_pairSum pt)).sum := by
   obtain ⟨h1, h2, h3⟩ := c5b_ph1_spec pt ps hwf
@@ -6425,30 +6444,30 @@ theorem c3_tb_add_pow (x b : ℕ) (hx : x.testBit b = false) (c : Bool) (i : ℕ
 
 /-! ## `eqOn` -/
 
-theorem c3_eqOn_split (r : Array FE) (L : List ℕ) (p : ℕ → Bool) (v : ℕ) :
+theorem c3_eqOn_split (r : Array 𝔽) (L : List ℕ) (p : ℕ → Bool) (v : ℕ) :
     ct_eqOn r L v = ct_eqOn r (L.filter p) v * ct_eqOn r (L.filter fun b ↦ !p b) v := by
   rw [← ct_eqOn_append, ct_eqOn_perm r (List.filter_append_perm p L)]
 
-theorem c3_eqOn_nil (r : Array FE) (v : ℕ) : ct_eqOn r [] v = 1 := by simp [ct_eqOn]
+theorem c3_eqOn_nil (r : Array 𝔽) (v : ℕ) : ct_eqOn r [] v = 1 := by simp [ct_eqOn]
 
-theorem c3_eqOn_cons (r : Array FE) (b : ℕ) (L : List ℕ) (v : ℕ) :
-    ct_eqOn r (b :: L) v = eq1 (r.getD b 0) (v.testBit b) * ct_eqOn r L v := by simp [ct_eqOn]
+theorem c3_eqOn_cons (r : Array 𝔽) (b : ℕ) (L : List ℕ) (v : ℕ) :
+    ct_eqOn r (b :: L) v = eq1G (r.getD b 0) (v.testBit b) * ct_eqOn r L v := by simp [ct_eqOn]
 
-theorem c3_eqOn_list (r : Array FE) (l : List ℕ) (X : ℕ) :
+theorem c3_eqOn_list (r : Array 𝔽) (l : List ℕ) (X : ℕ) :
     ∀ j, (∀ k < l.length, X.testBit (l.getD k 0) = j.testBit k) →
-      ct_eqOn r l X = eqW (l.map fun b ↦ r.getD b 0) j := by
+      ct_eqOn r l X = eqWG (l.map fun b ↦ r.getD b 0) j := by
   induction l with
-  | nil => intro j _; simp [ct_eqOn, eqW]
+  | nil => intro j _; simp [ct_eqOn, eqWG]
   | cons b l ih =>
     intro j h
-    rw [c3_eqOn_cons, List.map_cons, eqW, ih (j / 2) (fun k hk ↦ by
+    rw [c3_eqOn_cons, List.map_cons, eqWG, ih (j / 2) (fun k hk ↦ by
       rw [Nat.testBit_div_two]; simpa using h (k + 1) (by simp; omega))]
     have h0 := h 0 (by simp)
     simp only [List.getD_cons_zero, Nat.testBit_zero] at h0
     rw [h0]
-    by_cases hj : j % 2 = 1 <;> simp [eq1, hj]
+    by_cases hj : j % 2 = 1 <;> simp [eq1G, hj]
 
-theorem c3_eqOn_perm_ext (r : Array FE) (A B : List ℕ) (hA : A.Nodup) (hB : B.Nodup)
+theorem c3_eqOn_perm_ext (r : Array 𝔽) (A B : List ℕ) (hA : A.Nodup) (hB : B.Nodup)
     (h : ∀ b, b ∈ A ↔ b ∈ B) (v : ℕ) : ct_eqOn r A v = ct_eqOn r B v :=
   ct_eqOn_perm r ((List.perm_ext_iff_of_nodup hA hB).mpr h) v
 
@@ -6539,10 +6558,10 @@ theorem c3_xx_lt (xs : List ℕ) (hnd : xs.Nodup) (hlt : ∀ b ∈ xs, b < xVars
   rw [(c3_xx_bits xs hnd x j hx).1 i (fun h ↦ by have := hlt i h; (clear * - hi this; omega))]
   exact Nat.testBit_lt_two_pow (lt_of_lt_of_le hxv (Nat.pow_le_pow_right (by (clear * -; omega)) hi))
 
-theorem c3_xpart (r : Array FE) (xs : List ℕ) (hsort : xs.Pairwise (· < ·)) (hlt : ∀ b ∈ xs, b < xVars)
+theorem c3_xpart (r : Array 𝔽) (xs : List ℕ) (hsort : xs.Pairwise (· < ·)) (hlt : ∀ b ∈ xs, b < xVars)
     (x j : ℕ) (hx : ∀ b ∈ xs, x.testBit b = false) :
     ct_eqOn r (List.range xVars) (c3_xx xs x j) =
-      ct_eqOn r ((List.range xVars).filter fun b ↦ !xs.contains b) x * eqW (xs.map fun b ↦ r.getD b 0) j := by
+      ct_eqOn r ((List.range xVars).filter fun b ↦ !xs.contains b) x * eqWG (xs.map fun b ↦ r.getD b 0) j := by
   have hnd : xs.Nodup := hsort.imp (fun h ↦ Nat.ne_of_lt h)
   obtain ⟨h1, h2⟩ := c3_xx_bits xs hnd x j hx
   rw [c3_eqOn_split r _ (fun b ↦ xs.contains b), mul_comm]
@@ -6558,9 +6577,9 @@ theorem c3_xpart (r : Array FE) (xs : List ℕ) (hsort : xs.Pairwise (· < ·)) 
 
 /-! ## The `y` side -/
 
-theorem c3_limb_split (r : Array FE) (y e m : ℕ) (he : e + 1 < yVars) (hy : (y >>> e) % 4 = 0) (hm : m < 4) :
+theorem c3_limb_split (r : Array 𝔽) (y e m : ℕ) (he : e + 1 < yVars) (hy : (y >>> e) % 4 = 0) (hm : m < 4) :
     ct_eqOn r (List.range yVars) (y + m * 2 ^ e) =
-      ct_eqOn r (ct_yFree [e, e + 1]) y * (eq1 (r.getD e 0) (m.testBit 0) * eq1 (r.getD (e + 1) 0) (m.testBit 1)) := by
+      ct_eqOn r (ct_yFree [e, e + 1]) y * (eq1G (r.getD e 0) (m.testBit 0) * eq1G (r.getD (e + 1) 0) (m.testBit 1)) := by
   have hb := c3_tb_add_mul y m e 2 (by simpa using hy) (by simpa using hm)
   rw [c3_eqOn_split r _ (fun b ↦ [e, e + 1].contains b), mul_comm]
   congr 1
@@ -6580,11 +6599,11 @@ theorem c3_limb_split (r : Array FE) (y e m : ℕ) (he : e + 1 < yVars) (hy : (y
     simp only [c3_eqOn_cons, c3_eqOn_nil, mul_one, hb]
     simp
 
-theorem c3_kerVal_lim (P : Pt) (lim : Option ℕ) :
-    kerVal P (ct_limFs [] lim) = match lim with
+theorem c3_kerVal_lim (P : PtG 𝔽) (lim : Option ℕ) :
+    kerValG P (ct_limFs [] lim) = match lim with
       | none => 1
-      | some e => limbVal (P.ry.getD e 0) (P.ry.getD (e + 1) 0) := by
-  cases lim <;> simp [ct_limFs, kerVal, kfVal]
+      | some e => limbValG (P.ry.getD e 0) (P.ry.getD (e + 1) 0) := by
+  cases lim <;> simp [ct_limFs, kerValG, kfValG]
 
 /-- The limb bits of a word are free. -/
 def c3_limOk (lim : Option ℕ) (y : ℕ) : Prop :=
@@ -6593,10 +6612,10 @@ def c3_limOk (lim : Option ℕ) (y : ℕ) : Prop :=
   | some e => e + 1 < yVars ∧ (y >>> e) % 4 = 0
 
 /-- The atom of one entry, as `ct_addAtom` gives it for a point. -/
-theorem c3_EL (pt : List FE) (hpt : pt.length = 2 + xVars + yVars) (o x y : ℕ) (lim : Option ℕ) (ho : o < 4)
+theorem c3_EL (pt : List 𝔽) (hpt : pt.length = 2 + xVars + yVars) (o x y : ℕ) (lim : Option ℕ) (ho : o < 4)
     (hx : x < 2 ^ xVars) (hl : c3_limOk lim y) :
-    ct_EL pt lim o x y = eqW (sub (Pt.ofList pt).kap 0 2) o * ct_eqOn (Pt.ofList pt).rx (List.range xVars) x *
-      ct_eqOn (Pt.ofList pt).ry (ct_yFree (ct_limYm [] lim)) y * kerVal (Pt.ofList pt) (ct_limFs [] lim) := by
+    ct_EL pt lim o x y = eqWG (sub (PtG.ofList pt).kap 0 2) o * ct_eqOn (PtG.ofList pt).rx (List.range xVars) x *
+      ct_eqOn (PtG.ofList pt).ry (ct_yFree (ct_limYm [] lim)) y * kerValG (PtG.ofList pt) (ct_limFs [] lim) := by
   rw [c3_kerVal_lim]
   cases lim with
   | none =>
@@ -6605,9 +6624,9 @@ theorem c3_EL (pt : List FE) (hpt : pt.length = 2 + xVars + yVars) (o x y : ℕ)
   | some e =>
     obtain ⟨he, hy⟩ := hl
     simp only [ct_EL, ct_E_split pt hpt o x _ ho hx, ct_limYm, List.nil_append]
-    have h0 := c3_limb_split (Pt.ofList pt).ry y e 0 he hy (by (clear * -; omega))
-    have h1 := c3_limb_split (Pt.ofList pt).ry y e 1 he hy (by (clear * -; omega))
-    have h2 := c3_limb_split (Pt.ofList pt).ry y e 2 he hy (by (clear * -; omega))
+    have h0 := c3_limb_split (PtG.ofList pt).ry y e 0 he hy (by (clear * -; omega))
+    have h1 := c3_limb_split (PtG.ofList pt).ry y e 1 he hy (by (clear * -; omega))
+    have h2 := c3_limb_split (PtG.ofList pt).ry y e 2 he hy (by (clear * -; omega))
     simp only [zero_mul, add_zero, one_mul] at h0 h1
     rw [h0, h1, h2]
     have t00 : Nat.testBit 0 0 = false := by decide
@@ -6616,7 +6635,7 @@ theorem c3_EL (pt : List FE) (hpt : pt.length = 2 + xVars + yVars) (o x y : ℕ)
     have t11 : Nat.testBit 1 1 = false := by decide
     have t20 : Nat.testBit 2 0 = false := by decide
     have t21 : Nat.testBit 2 1 = true := by decide
-    simp only [eq1, limbVal, t00, t01, t10, t11, t20, t21, Bool.false_eq_true, ↓reduceIte]
+    simp only [eq1G, limbValG, t00, t01, t10, t11, t20, t21, Bool.false_eq_true, ↓reduceIte]
     ring
 
 /-- The `y` bits a pass masks: the automaton's and the limb bits. -/
@@ -6632,8 +6651,8 @@ def c3_limLe (lim : Option ℕ) (n : ℕ) : Prop :=
   | none => True
   | some e => n ≤ e
 
-theorem c3_ypart (r : Array FE) (n : ℕ) (lim : Option ℕ) (hn : n ≤ yVars) (hne : c3_limLe lim n) (Y : ℕ) :
-    ct_eqOn r (ct_yFree (ct_limYm [] lim)) Y = eqW (sub r 0 n) (Y % 2 ^ n) * ct_eqOn r (c3_free n lim) Y := by
+theorem c3_ypart (r : Array 𝔽) (n : ℕ) (lim : Option ℕ) (hn : n ≤ yVars) (hne : c3_limLe lim n) (Y : ℕ) :
+    ct_eqOn r (ct_yFree (ct_limYm [] lim)) Y = eqWG (sub r 0 n) (Y % 2 ^ n) * ct_eqOn r (c3_free n lim) Y := by
   unfold ct_yFree
   rw [c3_eqOn_split r _ (fun b ↦ decide (b < n))]
   congr 1
@@ -6692,7 +6711,7 @@ theorem c3_pts_pm (s : CS) (xs : List ℕ) (R : ℕ) (lim : Option ℕ) (raw : A
   intro b' j hb'
   rw [c3_addAtom_pm, hb']
 
-theorem c3_pts_adds (pt : List FE) (hpt : pt.length = 2 + xVars + yVars) (s : CS) (hs : ct_WF s)
+theorem c3_pts_adds (pt : List 𝔽) (hpt : pt.length = 2 + xVars + yVars) (s : CS) (hs : ct_WF s)
     (xs : List ℕ) (R : ℕ) (lim : Option ℕ) (raw : Array (ℕ × ℕ × ℕ × FE))
     (hraw : ∀ m ∈ raw, ct_MemOk (xs, R, lim) m) :
     ct_Adds pt s (c3_pts s xs R lim raw) (raw.toList.map (ct_memSem pt (xs, R, lim))).sum := by
@@ -6702,7 +6721,7 @@ theorem c3_pts_adds (pt : List FE) (hpt : pt.length = 2 + xVars + yVars) (s : CS
     (fun m hm ↦ hraw m (Array.mem_toList_iff.mp hm))
   rintro s' ⟨st, o, x, w⟩ hs' ⟨ho, hsort, hlt, hxb, hxv, hlim⟩
   have hnd : xs.Nodup := hsort.imp (fun h ↦ Nat.ne_of_lt h)
-  refine ct_Adds_foldl pt _ (fun j ↦ w * ct_EL pt lim o (c3_xx xs x j) (st + R * j)) (fun j ↦ j < 2 ^ xs.length)
+  refine ct_Adds_foldl pt _ (fun j ↦ KRing.ofE w * ct_EL pt lim o (c3_xx xs x j) (st + R * j)) (fun j ↦ j < 2 ^ xs.length)
     ?_ (List.range (2 ^ xs.length)) s' hs' (fun j hj ↦ List.mem_range.mp hj)
   intro s'' j hs'' hj
   refine ct_Adds_congr (ct_addAtom pt s'' hs'' [] o 0 (c3_xx xs x j) [] (st + R * j) w lim ho) ?_
@@ -6717,19 +6736,20 @@ theorem c3_pts_adds (pt : List FE) (hpt : pt.length = 2 + xVars + yVars) (s : CS
 
 /-! ## The finish sum -/
 
-theorem c3_finLoop (TL TH : Array FE) (bl bh : List ℕ)
-    (body : ForInStep (FE × FE × ℕ) → ℕ × FE → Id (ForInStep (FE × FE × ℕ)))
+omit [KRing 𝔽] [BEq 𝔽] [LawfulBEq 𝔽] in
+theorem c3_finLoop (TL TH : Array 𝔽) (bl bh : List ℕ)
+    (body : ForInStep (𝔽 × 𝔽 × ℕ) → ℕ × 𝔽 → Id (ForInStep (𝔽 × 𝔽 × ℕ)))
     (hbody : ∀ b a, body (.yield b) a = pure (.yield (if pext a.1 bh = b.2.2 then
       (b.1, b.2.1 + a.2 * TL[pext a.1 bl]?.getD 0, b.2.2) else
       (b.1 + TH[b.2.2]?.getD 0 * b.2.1, a.2 * TL[pext a.1 bl]?.getD 0, pext a.1 bh))))
-    (fs : Array (ℕ × FE)) (h0 : ℕ) :
-    (ForInStep.value <$> Array.foldlM body (ForInStep.yield ((0 : FE), (0 : FE), h0)) fs).run.1 +
-      TH[(ForInStep.value <$> Array.foldlM body (ForInStep.yield ((0 : FE), (0 : FE), h0)) fs).run.2.2]?.getD 0 *
-        (ForInStep.value <$> Array.foldlM body (ForInStep.yield ((0 : FE), (0 : FE), h0)) fs).run.2.1 =
+    (fs : Array (ℕ × 𝔽)) (h0 : ℕ) :
+    (ForInStep.value <$> Array.foldlM body (ForInStep.yield ((0 : 𝔽), (0 : 𝔽), h0)) fs).run.1 +
+      TH[(ForInStep.value <$> Array.foldlM body (ForInStep.yield ((0 : 𝔽), (0 : 𝔽), h0)) fs).run.2.2]?.getD 0 *
+        (ForInStep.value <$> Array.foldlM body (ForInStep.yield ((0 : 𝔽), (0 : 𝔽), h0)) fs).run.2.1 =
     (fs.toList.map fun cv ↦ cv.2 * (TL[pext cv.1 bl]?.getD 0 * TH[pext cv.1 bh]?.getD 0)).sum := by
   rw [← Array.foldlM_toList]
   generalize fs.toList = l
-  suffices H : ∃ b, List.foldlM body (ForInStep.yield ((0 : FE), (0 : FE), h0)) l = pure (.yield b) ∧
+  suffices H : ∃ b, List.foldlM body (ForInStep.yield ((0 : 𝔽), (0 : 𝔽), h0)) l = pure (.yield b) ∧
       b.1 + TH[b.2.2]?.getD 0 * b.2.1 =
         (l.map fun cv ↦ cv.2 * (TL[pext cv.1 bl]?.getD 0 * TH[pext cv.1 bh]?.getD 0)).sum by
     obtain ⟨b, hb, he⟩ := H
@@ -6746,8 +6766,9 @@ theorem c3_finLoop (TL TH : Array FE) (bl bh : List ℕ)
     · rw [hk]; ring
     · ring
 
-theorem c3_foldl_sum (g : ℕ → FE) (l : List (ℕ × FE)) (c : FE) :
-    l.foldl (fun acc (cv : ℕ × FE) ↦ acc + cv.2 * g cv.1) c = c + (l.map fun cv ↦ cv.2 * g cv.1).sum := by
+omit [KRing 𝔽] [BEq 𝔽] [LawfulBEq 𝔽] in
+theorem c3_foldl_sum (g : ℕ → 𝔽) (l : List (ℕ × 𝔽)) (c : 𝔽) :
+    l.foldl (fun acc (cv : ℕ × 𝔽) ↦ acc + cv.2 * g cv.1) c = c + (l.map fun cv ↦ cv.2 * g cv.1).sum := by
   induction l generalizing c with
   | nil => simp
   | cons a l ih => simp only [List.foldl_cons, List.map_cons, List.sum_cons]; rw [ih]; ring
@@ -6780,14 +6801,15 @@ theorem la2_pextR (bs : List ℕ) (v : ℕ) : pextR (runOf bs) (2 ^ bs.length - 
       simp
     · rfl
 
-theorem c3_finSum (T : Array (Array FE)) (p : Pass) (fs : Array (ℕ × FE)) :
-    finSum T p fs = (fs.toList.map fun cv ↦ cv.2 * finVal T p cv.1).sum := by
+omit [KRing 𝔽] [BEq 𝔽] [LawfulBEq 𝔽] in
+theorem c3_finSum (T : Array (Array 𝔽)) (p : Pass) (fs : Array (ℕ × 𝔽)) :
+    finSumG T p fs = (fs.toList.map fun cv ↦ cv.2 * finValG T p cv.1).sum := by
   by_cases h2 : p.fin.size = 2
   · obtain ⟨xs, R, atoms, depth, ⟨fl⟩, limbE, code, fcode⟩ := p
     simp only [List.size_toArray] at h2
     match fl, h2 with
     | [(tl, bl), (th, bh)], _ =>
-      simp only [finSum, finVal, la2_pextR, mulI_eq]
+      simp only [finSumG, finValG, la2_pextR, mulI_eq]
       simp only [List.size_toArray, List.length_cons, List.length_nil, zero_add, Nat.reduceAdd, bne_self_eq_false,
         Bool.false_eq_true, ↓reduceIte, Array.getD_eq_getD_getElem?, Order.lt_two_iff, Std.le_refl, ↓reduceDIte,
         Array.getInternal_eq_getElem, List.getElem_toArray, List.getElem_cons_succ, List.getElem_cons_zero, bne_iff_ne,
@@ -6799,8 +6821,8 @@ theorem c3_finSum (T : Array (Array FE)) (p : Pass) (fs : Array (ℕ × FE)) :
       simp only
       split_ifs <;> rfl
   · have h2' : (p.fin.size != 2) = true := by simpa using h2
-    simp only [finSum, h2', ↓reduceIte, Id.run]
-    show fs.foldl (fun acc (cv : ℕ × FE) ↦ acc + cv.2 * finVal T p cv.1) 0 = _
+    simp only [finSumG, h2', ↓reduceIte, Id.run]
+    show fs.foldl (fun acc (cv : ℕ × 𝔽) ↦ acc + cv.2 * finValG T p cv.1) 0 = _
     rw [← Array.foldl_toList, c3_foldl_sum, zero_add]
 
 /-! ## Merging keeps the state-weighted sums -/
@@ -6818,35 +6840,35 @@ theorem c3_drop1 (a : Atom) (h1 : (a.keys.getD 1 (0, 0)).1 = 1)
   · exact h2 _ (by (clear * -; omega)) hk0
 
 /-- The tables with table `0` replaced by `h` on `[0, N)`. -/
-def c3_Th (T : Array (Array FE)) (h : ℕ → FE) (N : ℕ) : Array (Array FE) := T.set! 0 ((Array.range N).map h)
+def c3_Th (T : Array (Array 𝔽)) (h : ℕ → 𝔽) (N : ℕ) : Array (Array 𝔽) := T.set! 0 ((Array.range N).map h)
 
-theorem c3_Th_ne (T : Array (Array FE)) (h : ℕ → FE) (N : ℕ) (k : ℕ × ℕ) (hk : k.1 ≠ 0) :
-    keyVal (c3_Th T h N) k = keyVal T k := by
-  simp [c3_Th, keyVal, Array.getElem?_setIfInBounds_ne (Ne.symm hk)]
+theorem c3_Th_ne (T : Array (Array 𝔽)) (h : ℕ → 𝔽) (N : ℕ) (k : ℕ × ℕ) (hk : k.1 ≠ 0) :
+    keyValG (c3_Th T h N) k = keyValG T k := by
+  simp [c3_Th, keyValG, Array.getElem?_setIfInBounds_ne (Ne.symm hk)]
 
-theorem c3_Th_zero (T : Array (Array FE)) (h : ℕ → FE) (N : ℕ) (hT : 0 < T.size) (v : ℕ) (hv : v < N) :
-    keyVal (c3_Th T h N) (0, v) = h v := by
-  simp [c3_Th, keyVal, hT, hv]
+theorem c3_Th_zero (T : Array (Array 𝔽)) (h : ℕ → 𝔽) (N : ℕ) (hT : 0 < T.size) (v : ℕ) (hv : v < N) :
+    keyValG (c3_Th T h N) (0, v) = h v := by
+  simp [c3_Th, keyValG, hT, hv]
 
-theorem c3_atomVal_eq (T : Array (Array FE)) (a : Atom) : atomVal T a = runs_valFrom T 0 a := by
+theorem c3_atomVal_eq (T : Array (Array 𝔽)) (a : Atom) : atomVal T a = runs_valFrom T 0 a := by
   unfold atomVal runs_valFrom
   rw [List.drop_zero, Array.foldl_toList]
 
-theorem c3_foldl_prod (T : Array (Array FE)) (l : List (ℕ × ℕ)) (c : FE) :
-    l.foldl (fun acc k ↦ acc * keyVal T k) c = c * (l.map (keyVal T)).prod := by
+theorem c3_foldl_prod (T : Array (Array 𝔽)) (l : List (ℕ × ℕ)) (c : 𝔽) :
+    l.foldl (fun acc k ↦ acc * keyValG T k) c = c * (l.map (keyValG T)).prod := by
   induction l generalizing c with
   | nil => simp
   | cons k l ih => simp only [List.foldl_cons, List.map_cons, List.prod_cons]; rw [ih]; ring
 
-theorem c3_foldl_congr (T T' : Array (Array FE)) (l : List (ℕ × ℕ)) (h : ∀ k ∈ l, keyVal T k = keyVal T' k)
-    (c : FE) : l.foldl (fun acc k ↦ acc * keyVal T k) c = l.foldl (fun acc k ↦ acc * keyVal T' k) c := by
+theorem c3_foldl_congr (T T' : Array (Array 𝔽)) (l : List (ℕ × ℕ)) (h : ∀ k ∈ l, keyValG T k = keyValG T' k)
+    (c : 𝔽) : l.foldl (fun acc k ↦ acc * keyValG T k) c = l.foldl (fun acc k ↦ acc * keyValG T' k) c := by
   rw [c3_foldl_prod, c3_foldl_prod, List.map_congr_left h]
 
-theorem c3_atomVal_Th (T : Array (Array FE)) (hT : keyVal T (0, 0) = 1) (hTs : 0 < T.size) (h : ℕ → FE)
+theorem c3_atomVal_Th (T : Array (Array 𝔽)) (hT : keyValG T (0, 0) = 1) (hTs : 0 < T.size) (h : ℕ → 𝔽)
     (hh : h 0 = 1) (N : ℕ) (hN : 0 < N) (a : Atom) (hs : 0 < a.keys.size) (ha0 : (a.keys.getD 0 (0, 0)).1 = 0)
     (haN : (a.keys.getD 0 (0, 0)).2 < N) (hd : ∀ k ∈ a.keys.toList.drop 1, k.1 = 0 → k.2 = 0) :
     atomVal (c3_Th T h N) a = h (a.keys.getD 0 (0, 0)).2 * runs_valFrom T 1 a := by
-  have hk0 : keyVal (c3_Th T h N) (a.keys.getD 0 (0, 0)) = h (a.keys.getD 0 (0, 0)).2 := by
+  have hk0 : keyValG (c3_Th T h N) (a.keys.getD 0 (0, 0)) = h (a.keys.getD 0 (0, 0)).2 := by
     have : a.keys.getD 0 (0, 0) = (0, (a.keys.getD 0 (0, 0)).2) := Prod.ext ha0 rfl
     rw [this, c3_Th_zero T h N hTs _ haN]
   have hr : runs_valFrom (c3_Th T h N) 1 a = runs_valFrom T 1 a := by
@@ -6859,7 +6881,7 @@ theorem c3_atomVal_Th (T : Array (Array FE)) (hT : keyVal T (0, 0) = 1) (hTs : 0
     · exact c3_Th_ne T h N k hk0
   rw [c3_atomVal_eq, runs_valFrom_succ _ _ _ hs, hk0, hr]
 
-theorem c3_lin (l : List Atom) (V : Atom → FE) (f : Atom → ℕ) (g : ℕ → FE) :
+theorem c3_lin (l : List Atom) (V : Atom → 𝔽) (f : Atom → ℕ) (g : ℕ → 𝔽) :
     (l.map fun a ↦ V a * g (f a)).sum = (l.map fun a ↦ V a * (1 + g (f a) - g 0)).sum -
       (l.map fun a ↦ V a * 1).sum + g 0 * (l.map fun a ↦ V a * 1).sum := by
   induction l with
@@ -6867,8 +6889,8 @@ theorem c3_lin (l : List Atom) (V : Atom → FE) (f : Atom → ℕ) (g : ℕ →
   | cons a l ih => simp only [List.map_cons, List.sum_cons]; rw [ih]; ring
 
 /-- The merged atoms' properties used by the pass. -/
-theorem c3_merged (P : Pt) (T : Array (Array FE)) (hT : keyVal T (0, 0) = 1)
-    (hk : ∀ m < 16, keyVal T (1, m) = ct_kapV P m) (as : Array Atom) (D : ℕ)
+theorem c3_merged (P : PtG 𝔽) (T : Array (Array 𝔽)) (hT : keyValG T (0, 0) = 1)
+    (hk : ∀ m < 16, keyValG T (1, m) = ct_kapV P m) (as : Array Atom) (D : ℕ)
     (hD : ∀ a ∈ as, a.keys.size ≤ D)
     (hsel : ∀ a ∈ as, 2 ≤ a.keys.size ∧ (a.keys.getD 1 (0, 0)).1 = 1 ∧ (a.keys.getD 1 (0, 0)).2 < 16)
     (h0 : ∀ a ∈ as, (a.keys.getD 0 (0, 0)).1 = 0)
@@ -6886,31 +6908,31 @@ theorem c3_merged (P : Pt) (T : Array (Array FE)) (hT : keyVal T (0, 0) = 1)
     rw [hkeys i (by (clear * - hi; omega))]
     exact h2 b hb i hi
 
-theorem c3_merge_g (P : Pt) (T : Array (Array FE)) (hT : keyVal T (0, 0) = 1)
-    (hk : ∀ m < 16, keyVal T (1, m) = ct_kapV P m) (as : Array Atom) (D : ℕ)
+theorem c3_merge_g (P : PtG 𝔽) (T : Array (Array 𝔽)) (hT : keyValG T (0, 0) = 1)
+    (hk : ∀ m < 16, keyValG T (1, m) = ct_kapV P m) (as : Array Atom) (D : ℕ)
     (hD : ∀ a ∈ as, a.keys.size ≤ D)
     (hsel : ∀ a ∈ as, 2 ≤ a.keys.size ∧ (a.keys.getD 1 (0, 0)).1 = 1 ∧ (a.keys.getD 1 (0, 0)).2 < 16)
     (h0 : ∀ a ∈ as, (a.keys.getD 0 (0, 0)).1 = 0)
-    (h2 : ∀ a ∈ as, ∀ i, 2 ≤ i → (a.keys.getD i (0, 0)).1 = 0 → (a.keys.getD i (0, 0)).2 = 0) (g : ℕ → FE) :
+    (h2 : ∀ a ∈ as, ∀ i, 2 ≤ i → (a.keys.getD i (0, 0)).1 = 0 → (a.keys.getD i (0, 0)).2 = 0) (g : ℕ → 𝔽) :
     ((mergeAtoms 1 (padTo D as)).toList.map fun a ↦ runs_valFrom T 1 a * g (a.keys.getD 0 (0, 0)).2).sum =
       (as.toList.map fun a ↦ runs_valFrom T 1 a * g (a.keys.getD 0 (0, 0)).2).sum := by
   have hM := c3_merged P T hT hk as D hD hsel h0 h2
   have hTs : 0 < T.size := by
     by_contra hc
     have : T.size = 0 := by (clear * - hc; omega)
-    simp [keyVal, Array.getElem?_eq_none (by (clear * - hc; omega) : T.size ≤ 0)] at hT
+    simp [keyValG, Array.getElem?_eq_none (by (clear * - hc; omega) : T.size ≤ 0)] at hT
   set N := (as.toList.map fun a ↦ (a.keys.getD 0 (0, 0)).2).sum + 1 with hN
   have hasN : ∀ b ∈ as, (b.keys.getD 0 (0, 0)).2 < N := by
     intro b hb
     have := List.le_sum_of_mem (List.mem_map_of_mem (f := fun a : Atom ↦ (a.keys.getD 0 (0, 0)).2)
       (Array.mem_toList_iff.mpr hb))
     (clear * - this; omega)
-  have key : ∀ h : ℕ → FE, h 0 = 1 →
+  have key : ∀ h : ℕ → 𝔽, h 0 = 1 →
       ((mergeAtoms 1 (padTo D as)).toList.map fun a ↦ runs_valFrom T 1 a * h (a.keys.getD 0 (0, 0)).2).sum =
         (as.toList.map fun a ↦ runs_valFrom T 1 a * h (a.keys.getD 0 (0, 0)).2).sum := by
     intro h hh
-    have hT' : keyVal (c3_Th T h N) (0, 0) = 1 := by rw [c3_Th_zero T h N hTs 0 (by (clear * -; omega)), hh]
-    have hk' : ∀ m < 16, keyVal (c3_Th T h N) (1, m) = ct_kapV P m := fun m hm ↦ by
+    have hT' : keyValG (c3_Th T h N) (0, 0) = 1 := by rw [c3_Th_zero T h N hTs 0 (by (clear * -; omega)), hh]
+    have hk' : ∀ m < 16, keyValG (c3_Th T h N) (1, m) = ct_kapV P m := fun m hm ↦ by
       rw [c3_Th_ne T h N _ (by simp)]; exact hk m hm
     obtain ⟨-, e, -⟩ := ct_mergeAtoms P (c3_Th T h N) hT' hk' as D hD hsel
     have eM : (mergeAtoms 1 (padTo D as)).toList.map (atomVal (c3_Th T h N)) =
@@ -7003,17 +7025,17 @@ theorem c3_fin_spec (n : ℕ) : ∀ (G : List (List ℕ)) (s0 : CS) (acc : Array
       · exact htabs tb htb
 
 /-- A member and its atom. -/
-def c3_MemRel (P : Pt) (xs : List ℕ) (s : CS) (m : ℕ × ℕ × ℕ × FE) (a : Atom) : Prop :=
+def c3_MemRel (P : PtG 𝔽) (xs : List ℕ) (s : CS) (m : ℕ × ℕ × ℕ × FE) (a : Atom) : Prop :=
   ∃ xk : List (ℕ × ℕ), a = ⟨#[(0, m.1), (1, 1 <<< m.2.1)] ++ xk.reverse.toArray, m.2.2.2⟩ ∧ (∀ k ∈ xk, 5 ≤ k.1) ∧
     ∀ T, ct_Cons P s T →
-      (xk.map (keyVal T)).prod = ct_eqOn P.rx ((List.range xVars).filter fun b ↦ !xs.contains b) m.2.2.1
+      (xk.map (keyValG T)).prod = ct_eqOn P.rx ((List.range xVars).filter fun b ↦ !xs.contains b) m.2.2.1
 
-theorem c3_MemRel_mono (P : Pt) (xs : List ℕ) {s s' : CS} (h : ct_Le s s') (m : ℕ × ℕ × ℕ × FE) (a : Atom)
+theorem c3_MemRel_mono (P : PtG 𝔽) (xs : List ℕ) {s s' : CS} (h : ct_Le s s') (m : ℕ × ℕ × ℕ × FE) (a : Atom)
     (hr : c3_MemRel P xs s m a) : c3_MemRel P xs s' m a := by
   obtain ⟨xk, ha, h5, hv⟩ := hr
   exact ⟨xk, ha, h5, fun T hT ↦ hv T (ct_Cons_mono h hT)⟩
 
-theorem c3_mem_spec (P : Pt) (xs : List ℕ) : ∀ (L : List (ℕ × ℕ × ℕ × FE)) (s0 : CS) (acc : Array Atom),
+theorem c3_mem_spec (P : PtG 𝔽) (xs : List ℕ) : ∀ (L : List (ℕ × ℕ × ℕ × FE)) (s0 : CS) (acc : Array Atom),
     ct_WF s0 →
     ct_WF (L.foldl (c3_memStep xs) (s0, acc)).1 ∧ ct_Le s0 (L.foldl (c3_memStep xs) (s0, acc)).1 ∧
       (L.foldl (c3_memStep xs) (s0, acc)).1.atoms = s0.atoms ∧ (L.foldl (c3_memStep xs) (s0, acc)).1.pm = s0.pm ∧
@@ -7061,7 +7083,7 @@ theorem c3_shl_lt (o : ℕ) (ho : o < 4) : 1 <<< o < 16 := by
 theorem c3_memAtom_keys (st q : ℕ) (xk : List (ℕ × ℕ)) :
     (#[(0, st), (1, q)] ++ xk.reverse.toArray) = ((0, st) :: (1, q) :: xk.reverse).toArray := by simp
 
-theorem c3_memAtom_props (P : Pt) (xs : List ℕ) (s : CS) (m : ℕ × ℕ × ℕ × FE) (a : Atom)
+theorem c3_memAtom_props (P : PtG 𝔽) (xs : List ℕ) (s : CS) (m : ℕ × ℕ × ℕ × FE) (a : Atom)
     (hr : c3_MemRel P xs s m a) (ho : m.2.1 < 4) :
     2 ≤ a.keys.size ∧ (a.keys.getD 1 (0, 0)).1 = 1 ∧ (a.keys.getD 1 (0, 0)).2 < 16 ∧
       (a.keys.getD 0 (0, 0)).1 = 0 ∧ (a.keys.getD 0 (0, 0)).2 = m.1 ∧
@@ -7081,11 +7103,11 @@ theorem c3_memAtom_props (P : Pt) (xs : List ℕ) (s : CS) (m : ℕ × ℕ × �
     simp at hi0
     (clear * - hi0 this; omega)
 
-theorem c3_forall2_sum (P : Pt) (xs : List ℕ) (s : CS) (T : Array (Array FE)) (hC : ct_Cons P s T)
-    (G : ℕ → FE) : ∀ (L : List (ℕ × ℕ × ℕ × FE)) (l : List Atom), List.Forall₂ (c3_MemRel P xs s) L l →
+theorem c3_forall2_sum (P : PtG 𝔽) (xs : List ℕ) (s : CS) (T : Array (Array 𝔽)) (hC : ct_Cons P s T)
+    (G : ℕ → 𝔽) : ∀ (L : List (ℕ × ℕ × ℕ × FE)) (l : List Atom), List.Forall₂ (c3_MemRel P xs s) L l →
       (∀ m ∈ L, m.2.1 < 4) →
       (l.map fun a ↦ runs_valFrom T 1 a * G (a.keys.getD 0 (0, 0)).2).sum =
-        (L.map fun m ↦ m.2.2.2 * eqW (sub P.kap 0 2) m.2.1 *
+        (L.map fun m ↦ KRing.ofE m.2.2.2 * eqWG (sub P.kap 0 2) m.2.1 *
           ct_eqOn P.rx ((List.range xVars).filter fun b ↦ !xs.contains b) m.2.2.1 * G m.1).sum := by
   intro L l h
   induction h with
@@ -7093,7 +7115,7 @@ theorem c3_forall2_sum (P : Pt) (xs : List ℕ) (s : CS) (T : Array (Array FE)) 
   | @cons m a L l hr _ ih =>
     intro ho
     have ho' := ho m (by simp)
-    have hhead : runs_valFrom T 1 a * G (a.keys.getD 0 (0, 0)).2 = m.2.2.2 * eqW (sub P.kap 0 2) m.2.1 *
+    have hhead : runs_valFrom T 1 a * G (a.keys.getD 0 (0, 0)).2 = KRing.ofE m.2.2.2 * eqWG (sub P.kap 0 2) m.2.1 *
         ct_eqOn P.rx ((List.range xVars).filter fun b ↦ !xs.contains b) m.2.2.1 * G m.1 := by
       obtain ⟨-, -, -, -, hst, -⟩ := c3_memAtom_props P xs s m a hr ho'
       rw [hst]
@@ -7108,7 +7130,7 @@ theorem c3_forall2_sum (P : Pt) (xs : List ℕ) (s : CS) (T : Array (Array FE)) 
 
 /-! ## The finish value -/
 
-theorem c3_prod_filter_ne (r : Array FE) (Y : ℕ) (l : List (List ℕ)) :
+theorem c3_prod_filter_ne (r : Array 𝔽) (Y : ℕ) (l : List (List ℕ)) :
     ((l.filter (!·.isEmpty)).map fun bs ↦ ct_eqOn r bs Y).prod = (l.map fun bs ↦ ct_eqOn r bs Y).prod := by
   induction l with
   | nil => rfl
@@ -7117,7 +7139,7 @@ theorem c3_prod_filter_ne (r : Array FE) (Y : ℕ) (l : List (List ℕ)) :
     · simp [ih, c3_eqOn_nil]
     · simp [ih]
 
-theorem c3_groups_prod (r : Array FE) (n : ℕ) (lim : Option ℕ) (Y : ℕ) :
+theorem c3_groups_prod (r : Array 𝔽) (n : ℕ) (lim : Option ℕ) (Y : ℕ) :
     ((c3_groups n lim).map fun bs ↦ ct_eqOn r bs Y).prod = ct_eqOn r (c3_free n lim) Y := by
   unfold c3_groups
   rw [c3_prod_filter_ne, c3_eqOn_split r (c3_free n lim) (fun b ↦ decide (b < yCut)) Y]
@@ -7147,11 +7169,11 @@ theorem c3_groups_grp (n : ℕ) (lim : Option ℕ) : ∀ bs ∈ c3_groups n lim,
   · exact ⟨hs.filter _, Or.inr fun b hb ↦ ⟨by simpa using (List.mem_filter.mp hb).2,
       hlt b (List.mem_filter.mp hb).1⟩⟩
 
-theorem c3_finVal (P : Pt) (T : Array (Array FE)) (p : Pass) (n : ℕ) (lim : Option ℕ) (s : CS)
+theorem c3_finVal (P : PtG 𝔽) (T : Array (Array 𝔽)) (p : Pass) (n : ℕ) (lim : Option ℕ) (s : CS)
     (hC : ct_Cons P s T) (L : List (ℕ × List ℕ)) (hL : L.map (·.2) = c3_groups n lim)
     (hfin : p.fin.toList = L.map (fun tb ↦ (tb.1, tb.2.map (· - n))))
     (htabs : ∀ tb ∈ L, s.tabs[tb.1]? = some (.eqy tb.2)) (Y : ℕ) :
-    finVal T p (Y / 2 ^ n) = ct_eqOn P.ry (c3_free n lim) Y := by
+    finValG T p (Y / 2 ^ n) = ct_eqOn P.ry (c3_free n lim) Y := by
   have hfac : ∀ tb ∈ L, (T.getD tb.1 #[]).getD (pext (Y / 2 ^ n) (tb.2.map (· - n))) 0 = ct_eqOn P.ry tb.2 Y := by
     intro tb htb
     have hge : ∀ b ∈ tb.2, n ≤ b := fun b hb ↦
@@ -7159,14 +7181,14 @@ theorem c3_finVal (P : Pt) (T : Array (Array FE)) (p : Pass) (n : ℕ) (lim : Op
     have hv := c3_pext_lt (Y / 2 ^ n) (tb.2.map (· - n))
     rw [List.length_map] at hv
     rw [show (T.getD tb.1 #[]).getD (pext (Y / 2 ^ n) (tb.2.map (· - n))) 0 =
-      keyVal T (tb.1, pext (Y / 2 ^ n) (tb.2.map (· - n))) from rfl, hC.2.2.2.2 tb.1 tb.2 (htabs tb htb) _ hv]
+      keyValG T (tb.1, pext (Y / 2 ^ n) (tb.2.map (· - n))) from rfl, hC.2.2.2.2 tb.1 tb.2 (htabs tb htb) _ hv]
     symm
     apply c3_eqOn_list
     intro k hk
     rw [c3_pext_testBit _ _ k (by simpa using hk), List.getD_eq_getElem _ _ hk,
       List.getD_eq_getElem _ _ (by simpa using hk), List.getElem_map, Nat.testBit_div_two_pow,
       Nat.sub_add_cancel (hge _ (List.getElem_mem hk))]
-  have hgen : ∀ L' : List (ℕ × List ℕ), (∀ tb ∈ L', tb ∈ L) → ∀ c : FE,
+  have hgen : ∀ L' : List (ℕ × List ℕ), (∀ tb ∈ L', tb ∈ L) → ∀ c : 𝔽,
       (L'.map (fun tb ↦ (tb.1, tb.2.map (· - n)))).foldl
         (fun acc (tb : ℕ × List ℕ) ↦ acc * (T.getD tb.1 #[]).getD (pext (Y / 2 ^ n) tb.2) 0) c =
       c * (L'.map fun tb ↦ ct_eqOn P.ry tb.2 Y).prod := by
@@ -7178,7 +7200,7 @@ theorem c3_finVal (P : Pt) (T : Array (Array FE)) (p : Pass) (n : ℕ) (lim : Op
       simp only [List.map_cons, List.foldl_cons, List.prod_cons]
       rw [hfac tb (hsub tb (by simp)), ih (fun tb' h ↦ hsub tb' (by simp [h]))]
       ring
-  unfold finVal
+  unfold finValG
   rw [← Array.foldl_toList, hfin]
   rw [hgen L (fun _ h ↦ h) 1, one_mul, ← c3_groups_prod P.ry n lim Y, ← hL, List.map_map]
   rfl
@@ -7186,21 +7208,21 @@ theorem c3_finVal (P : Pt) (T : Array (Array FE)) (p : Pass) (n : ℕ) (lim : Op
 /-! ## A member's value -/
 
 /-- The automaton's sum from initial state `s` with finish `F` (`runAuto_eq`'s right side). -/
-def c3_G (P : Pt) (xs : List ℕ) (R : ℕ) (F : ℕ → FE) (s : ℕ) : FE :=
-  ((List.range (2 ^ xs.length)).map fun j ↦ eqW (xs.map fun i ↦ P.rx.getD i 0) j *
-    eqW (sub P.ry 0 xs.length) ((s + R * j) % 2 ^ xs.length) * F ((s + R * j) / 2 ^ xs.length)).sum
+def c3_G (P : PtG 𝔽) (xs : List ℕ) (R : ℕ) (F : ℕ → 𝔽) (s : ℕ) : 𝔽 :=
+  ((List.range (2 ^ xs.length)).map fun j ↦ eqWG (xs.map fun i ↦ P.rx.getD i 0) j *
+    eqWG (sub P.ry 0 xs.length) ((s + R * j) % 2 ^ xs.length) * F ((s + R * j) / 2 ^ xs.length)).sum
 
 theorem c3_len_le (xs : List ℕ) (hsort : xs.Pairwise (· < ·)) (hlt : ∀ b ∈ xs, b < xVars) : xs.length ≤ xVars := by
   have hnd : xs.Nodup := hsort.imp (fun h ↦ Nat.ne_of_lt h)
   have := (hnd.subperm (l₂ := List.range xVars) (fun b hb ↦ List.mem_range.mpr (hlt b hb))).length_le
   simpa using this
 
-theorem c3_member (pt : List FE) (hpt : pt.length = 2 + xVars + yVars) (xs : List ℕ) (R : ℕ) (lim : Option ℕ)
-    (F : ℕ → FE) (hF : ∀ Y, F (Y / 2 ^ xs.length) = ct_eqOn (Pt.ofList pt).ry (c3_free xs.length lim) Y)
+theorem c3_member (pt : List 𝔽) (hpt : pt.length = 2 + xVars + yVars) (xs : List ℕ) (R : ℕ) (lim : Option ℕ)
+    (F : ℕ → 𝔽) (hF : ∀ Y, F (Y / 2 ^ xs.length) = ct_eqOn (PtG.ofList pt).ry (c3_free xs.length lim) Y)
     (m : ℕ × ℕ × ℕ × FE) (hm : ct_MemOk (xs, R, lim) m) :
-    m.2.2.2 * eqW (sub (Pt.ofList pt).kap 0 2) m.2.1 *
-        ct_eqOn (Pt.ofList pt).rx ((List.range xVars).filter fun b ↦ !xs.contains b) m.2.2.1 *
-        c3_G (Pt.ofList pt) xs R F m.1 * kerVal (Pt.ofList pt) (ct_limFs [] lim) =
+    KRing.ofE m.2.2.2 * eqWG (sub (PtG.ofList pt).kap 0 2) m.2.1 *
+        ct_eqOn (PtG.ofList pt).rx ((List.range xVars).filter fun b ↦ !xs.contains b) m.2.2.1 *
+        c3_G (PtG.ofList pt) xs R F m.1 * kerValG (PtG.ofList pt) (ct_limFs [] lim) =
       ct_memSem pt (xs, R, lim) m := by
   obtain ⟨st, o, x, w⟩ := m
   obtain ⟨ho, hsort, hlt, hxb, hxv, hlim⟩ := hm
@@ -7211,11 +7233,11 @@ theorem c3_member (pt : List FE) (hpt : pt.length = 2 + xVars + yVars) (xs : Lis
     cases lim with
     | none => trivial
     | some e => exact hlim.1
-  set P := Pt.ofList pt with hP
-  have hj : ∀ j ∈ List.range (2 ^ xs.length), w * ct_EL pt lim o (c3_xx xs x j) (st + R * j) =
-      (w * eqW (sub P.kap 0 2) o * ct_eqOn P.rx ((List.range xVars).filter fun b ↦ !xs.contains b) x *
-        kerVal P (ct_limFs [] lim)) *
-      (eqW (xs.map fun i ↦ P.rx.getD i 0) j * eqW (sub P.ry 0 xs.length) ((st + R * j) % 2 ^ xs.length) *
+  set P := PtG.ofList pt with hP
+  have hj : ∀ j ∈ List.range (2 ^ xs.length), KRing.ofE w * ct_EL pt lim o (c3_xx xs x j) (st + R * j) =
+      (KRing.ofE w * eqWG (sub P.kap 0 2) o * ct_eqOn P.rx ((List.range xVars).filter fun b ↦ !xs.contains b) x *
+        kerValG P (ct_limFs [] lim)) *
+      (eqWG (xs.map fun i ↦ P.rx.getD i 0) j * eqWG (sub P.ry 0 xs.length) ((st + R * j) % 2 ^ xs.length) *
         F ((st + R * j) / 2 ^ xs.length)) := by
     intro j hj
     have hl : c3_limOk lim (st + R * j) := by
@@ -7226,7 +7248,7 @@ theorem c3_member (pt : List FE) (hpt : pt.length = 2 + xVars + yVars) (xs : Lis
       c3_ypart P.ry xs.length lim hn hne, hF]
     ring
   rw [show ct_memSem pt (xs, R, lim) (st, o, x, w) =
-    ((List.range (2 ^ xs.length)).map fun j ↦ w * ct_EL pt lim o (c3_xx xs x j) (st + R * j)).sum from rfl]
+    ((List.range (2 ^ xs.length)).map fun j ↦ KRing.ofE w * ct_EL pt lim o (c3_xx xs x j) (st + R * j)).sum from rfl]
   unfold c3_G
   rw [List.map_congr_left hj, List.sum_map_mul_left]
   ring
@@ -7244,7 +7266,7 @@ theorem c3_fin_spec' (s : CS) (hs : ct_WF s) (n : ℕ) (lim : Option ℕ) :
       (#[] : Array (ℕ × List ℕ)).toList ++ L.map (fun tb ↦ (tb.1, tb.2.map (· - n))) := h6
   exact ⟨h1, h2, h3, h4, L, h5, by simpa using h6', h7⟩
 
-theorem c3_mem_spec' (P : Pt) (xs : List ℕ) (s : CS) (hs : ct_WF s) (raw : Array (ℕ × ℕ × ℕ × FE)) :
+theorem c3_mem_spec' (P : PtG 𝔽) (xs : List ℕ) (s : CS) (hs : ct_WF s) (raw : Array (ℕ × ℕ × ℕ × FE)) :
     ct_WF (c3_mem s xs raw).1 ∧ ct_Le s (c3_mem s xs raw).1 ∧ (c3_mem s xs raw).1.atoms = s.atoms ∧
       (c3_mem s xs raw).1.pm = s.pm ∧
       List.Forall₂ (c3_MemRel P xs (c3_mem s xs raw).1) raw.toList (c3_mem s xs raw).2.toList := by
@@ -7254,22 +7276,22 @@ theorem c3_mem_spec' (P : Pt) (xs : List ℕ) (s : CS) (hs : ct_WF s) (raw : Arr
   rw [h5]
   exact ⟨h1, h2, h3, h4, by simpa using h6⟩
 
-theorem c3_lim_match (P : Pt) (lim : Option ℕ) (v : FE) :
+theorem c3_lim_match (P : PtG 𝔽) (lim : Option ℕ) (v : 𝔽) :
     (match lim with
-      | some e => v * limbVal (P.ry.getD e 0) (P.ry.getD (e + 1) 0)
-      | none => v) = v * kerVal P (ct_limFs [] lim) := by
+      | some e => v * limbValG (P.ry.getD e 0) (P.ry.getD (e + 1) 0)
+      | none => v) = v * kerValG P (ct_limFs [] lim) := by
   rw [c3_kerVal_lim]; cases lim <;> simp
 
-theorem c3_pass_value (pt : List FE) (hpt : pt.length = 2 + xVars + yVars) (xs : List ℕ) (R : ℕ)
+theorem c3_pass_value (pt : List 𝔽) (hpt : pt.length = 2 + xVars + yVars) (xs : List ℕ) (R : ℕ)
     (lim : Option ℕ) (raw : Array (ℕ × ℕ × ℕ × FE)) (hraw : ∀ m ∈ raw, ct_MemOk (xs, R, lim) m)
     (fin : Array (ℕ × List ℕ)) (mem : Array Atom) (s1 s2 : CS) (hle : ct_Le s1 s2)
-    (T : Array (Array FE)) (hT : ct_Cons (Pt.ofList pt) s2 T)
+    (T : Array (Array 𝔽)) (hT : ct_Cons (PtG.ofList pt) s2 T)
     (L : List (ℕ × List ℕ)) (hL : L.map (·.2) = c3_groups xs.length lim)
     (hfin : fin.toList = L.map (fun tb ↦ (tb.1, tb.2.map (· - xs.length))))
     (htabs : ∀ tb ∈ L, s1.tabs[tb.1]? = some (.eqy tb.2))
-    (hF2 : List.Forall₂ (c3_MemRel (Pt.ofList pt) xs s2) raw.toList mem.toList) :
-    runPass (Pt.ofList pt) T (c3_pass xs R lim fin mem) = (raw.toList.map (ct_memSem pt (xs, R, lim))).sum := by
-  set P := Pt.ofList pt with hP
+    (hF2 : List.Forall₂ (c3_MemRel (PtG.ofList pt) xs s2) raw.toList mem.toList) :
+    runPass (PtG.ofList pt) T (c3_pass xs R lim fin mem) = (raw.toList.map (ct_memSem pt (xs, R, lim))).sum := by
+  set P := PtG.ofList pt with hP
   set p := c3_pass xs R lim fin mem with hp
   set D := c3_D mem with hDdef
   have ho : ∀ m ∈ raw.toList, m.2.1 < 4 := fun m hm ↦ (hraw m (Array.mem_toList_iff.mp hm)).1
@@ -7291,32 +7313,32 @@ theorem c3_pass_value (pt : List FE) (hpt : pt.length = 2 + xVars + yVars) (xs :
   have hM := c3_merged P T hT.1 hT.2.1 mem D hDle hsel h0m h2m
   have hD' : ∀ a ∈ p.atoms, a.keys.size = p.depth := fun a ha ↦ (hM a ha).1
   have h0' : ∀ a ∈ p.atoms, ∀ k ∈ a.keys.toList.drop 1, k.1 = 0 → k.2 = 0 := fun a ha ↦ (hM a ha).2.2.2.2
-  have hG : ∀ g : ℕ → FE, ((runCode T p.code).2.toList.Pairwise fun a b ↦ a.1 < b.1) ∧
-      ((runCode T p.code).2.toList.map fun sv ↦ sv.2 * g sv.1).sum =
+  have hG : ∀ g : ℕ → 𝔽, ((runCodeG T p.code).2.toList.Pairwise fun a b ↦ a.1 < b.1) ∧
+      ((runCodeG T p.code).2.toList.map fun sv ↦ sv.2 * g sv.1).sum =
         (p.atoms.toList.map fun a ↦ runs_valFrom T 1 a * g (a.keys.getD 0 (0, 0)).2).sum :=
     greedy_initCodeG T p.atoms p.depth hD' hT.1 h0' (fun a ha ↦ (hM a ha).2.2.2.1)
-  have hsrt : (runCode T p.code).2.toList.Pairwise fun a b ↦ a.1 < b.1 := (hG (fun _ ↦ 0)).1
-  have hfv : ∀ Y, finVal T p (Y / 2 ^ xs.length) = ct_eqOn P.ry (c3_free xs.length lim) Y :=
+  have hsrt : (runCodeG T p.code).2.toList.Pairwise fun a b ↦ a.1 < b.1 := (hG (fun _ ↦ 0)).1
+  have hfv : ∀ Y, finValG T p (Y / 2 ^ xs.length) = ct_eqOn P.ry (c3_free xs.length lim) Y :=
     c3_finVal P T p xs.length lim s1 (ct_Cons_mono hle hT) L hL hfin htabs
-  have hra : ((runAuto P xs.toArray R (runCode T p.code).2).toList.map fun cv ↦ cv.2 * finVal T p cv.1).sum =
-      ((runCode T p.code).2.toList.map fun sv ↦ sv.2 * c3_G P xs R (finVal T p) sv.1).sum := by
-    rw [runAuto_eq P xs.toArray R (runCode T p.code).2 hsrt (finVal T p)]
+  have hra : ((runAutoG P xs.toArray R (runCodeG T p.code).2).toList.map fun cv ↦ cv.2 * finValG T p cv.1).sum =
+      ((runCodeG T p.code).2.toList.map fun sv ↦ sv.2 * c3_G P xs R (finValG T p) sv.1).sum := by
+    rw [runAuto_eq P xs.toArray R (runCodeG T p.code).2 hsrt (finValG T p)]
     simp only [List.size_toArray, c3_G]
-  have hsum := (hG (c3_G P xs R (finVal T p))).2
-  have hmg := c3_merge_g P T hT.1 hT.2.1 mem D hDle hsel h0m h2m (c3_G P xs R (finVal T p))
-  have hfa := c3_forall2_sum P xs s2 T hT (c3_G P xs R (finVal T p)) raw.toList mem.toList hF2 ho
-  have hfinal : finSum T p (runAuto P p.xs p.R (runCode T p.code).2) * kerVal P (ct_limFs [] lim) =
+  have hsum := (hG (c3_G P xs R (finValG T p))).2
+  have hmg := c3_merge_g P T hT.1 hT.2.1 mem D hDle hsel h0m h2m (c3_G P xs R (finValG T p))
+  have hfa := c3_forall2_sum P xs s2 T hT (c3_G P xs R (finValG T p)) raw.toList mem.toList hF2 ho
+  have hfinal : finSumG T p (runAutoG P p.xs p.R (runCodeG T p.code).2) * kerValG P (ct_limFs [] lim) =
       (raw.toList.map (ct_memSem pt (xs, R, lim))).sum := by
     rw [c3_finSum]
-    change ((runAuto P xs.toArray R (runCode T p.code).2).toList.map fun cv ↦ cv.2 * finVal T p cv.1).sum * _ = _
+    change ((runAutoG P xs.toArray R (runCodeG T p.code).2).toList.map fun cv ↦ cv.2 * finValG T p cv.1).sum * _ = _
     rw [hra, hsum]
     change ((mergeAtoms 1 (padTo D mem)).toList.map fun a ↦
-      runs_valFrom T 1 a * c3_G P xs R (finVal T p) (a.keys.getD 0 (0, 0)).2).sum * _ = _
+      runs_valFrom T 1 a * c3_G P xs R (finValG T p) (a.keys.getD 0 (0, 0)).2).sum * _ = _
     rw [hmg, hfa, ← List.sum_map_mul_right]
     apply congrArg List.sum
     apply List.map_congr_left
     intro m hm
-    exact c3_member pt hpt xs R lim (finVal T p) hfv m (hraw m (Array.mem_toList_iff.mp hm))
+    exact c3_member pt hpt xs R lim (finValG T p) hfv m (hraw m (Array.mem_toList_iff.mp hm))
   unfold runPass
   simp only
   rw [show p.limbE = lim from rfl]
@@ -7327,15 +7349,15 @@ theorem c3_pass_value (pt : List FE) (hpt : pt.length = 2 + xVars + yVars) (xs :
 /-! ## The target -/
 
 /-- **A pass** (C3): the members become atoms (points) or one pass whose value is their sum. -/
-theorem ct_mkPass (pt : List FE) (hpt : pt.length = 2 + xVars + yVars) (s : CS) (hs : ct_WF s)
+theorem ct_mkPass (pt : List 𝔽) (hpt : pt.length = 2 + xVars + yVars) (s : CS) (hs : ct_WF s)
     (xs : List ℕ) (R : ℕ) (lim : Option ℕ) (raw : Array (ℕ × ℕ × ℕ × FE))
     (hraw : ∀ m ∈ raw, ct_MemOk (xs, R, lim) m) :
     ct_WF (s.mkPass xs R lim raw).1 ∧ ct_Le s (s.mkPass xs R lim raw).1 ∧
       (s.mkPass xs R lim raw).1.pm = s.pm ∧
-      ∀ T, ct_Cons (Pt.ofList pt) (s.mkPass xs R lim raw).1 T →
+      ∀ T, ct_Cons (PtG.ofList pt) (s.mkPass xs R lim raw).1 T →
         ct_aSum T (s.mkPass xs R lim raw).1 +
           (match (s.mkPass xs R lim raw).2 with
-           | some p => runPass (Pt.ofList pt) T p
+           | some p => runPass (PtG.ofList pt) T p
            | none => 0) =
         ct_aSum T s + (raw.toList.map (ct_memSem pt (xs, R, lim))).sum := by
   rcases c3_cases s xs R lim raw with h | h <;> rw [h]
@@ -7351,7 +7373,7 @@ theorem ct_mkPass (pt : List FE) (hpt : pt.length = 2 + xVars + yVars) (s : CS) 
     generalize c3_fin s xs.length (c3_groups xs.length lim) = fr at *
     obtain ⟨s1, fin⟩ := fr
     simp only at hw1 hle1 hat1 hpm1 hfin htabs ⊢
-    obtain ⟨hw2, hle2, hat2, hpm2, hF2⟩ := c3_mem_spec' (Pt.ofList pt) xs s1 hw1 raw
+    obtain ⟨hw2, hle2, hat2, hpm2, hF2⟩ := c3_mem_spec' (PtG.ofList pt) xs s1 hw1 raw
     generalize c3_mem s1 xs raw = mr at *
     obtain ⟨s2, mem⟩ := mr
     simp only at hw2 hle2 hat2 hpm2 hF2 ⊢
@@ -7373,9 +7395,9 @@ theorem c0a_final_get (s : CS) (hs : 5 ≤ s.tabs.size) (i : ℕ) :
   simp [Ne.symm h4, Ne.symm h3, Ne.symm h2, h4, h3, h2]
 
 /-- **The final tables are consistent** (C7, with the tables lemmas). -/
-theorem ct_final_Cons (pt : List FE) (hpt : pt.length = 2 + xVars + yVars) (s : CS) (hs : ct_WF s) :
-    ct_Cons (Pt.ofList pt) s
-      (tabsAt (Pt.ofList pt) (((s.tabs.set! 2 (.ker s.kers)).set! 3 (.prod s.xm)).set! 4 (.prod s.ym))) := by
+theorem ct_final_Cons (pt : List 𝔽) (hpt : pt.length = 2 + xVars + yVars) (s : CS) (hs : ct_WF s) :
+    ct_Cons (PtG.ofList pt) s
+      (tabsAtG (PtG.ofList pt) (((s.tabs.set! 2 (.ker s.kers)).set! 3 (.prod s.xm)).set! 4 (.prod s.ym))) := by
   set rs := ((s.tabs.set! 2 (.ker s.kers)).set! 3 (.prod s.xm)).set! 4 (.prod s.ym) with hrs
   have hg := c0a_final_get s hs.size
   rw [← hrs] at hg
@@ -7383,27 +7405,27 @@ theorem ct_final_Cons (pt : List FE) (hpt : pt.length = 2 + xVars + yVars) (s : 
     fun i r h ↦ Array.getElem?_eq_some_iff.1 h
   refine ⟨?_, ?_, ?_, ?_, ?_⟩
   · obtain ⟨hi, h⟩ := hof 0 .one (by rw [hg]; simpa using hs.t0)
-    simp [keyVal, tab_tabsAt_one _ rs 0 hi h]
+    simp [keyValG, tab_tabsAt_one _ rs 0 hi h]
   · intro m hm
     obtain ⟨hi, h⟩ := hof 1 .kap (by rw [hg]; simpa using hs.t1)
-    simp only [keyVal, tab_tabsAt_kap _ rs 1 hi h]
+    simp only [keyValG, tab_tabsAt_kap _ rs 1 hi h]
     exact tab_kapTab_get _ m hm
   · intro i fs hfs
     obtain ⟨hi, h⟩ := hof 2 (.ker s.kers) (by rw [hg]; simp)
-    simp [keyVal, tab_tabsAt_ker _ rs 2 hi _ h, Array.getD_eq_getD_getElem?, hfs]
+    simp [keyValG, tab_tabsAt_ker _ rs 2 hi _ h, Array.getD_eq_getD_getElem?, hfs]
   · intro t bits ht v hv
     obtain ⟨h5, hgrp⟩ := hs.eqx t bits ht
     obtain ⟨hi, h⟩ := hof t (.eqx bits) (by
       rw [hg]; simp only [show ¬ t = 4 by (clear * - h5; omega), show ¬ t = 3 by (clear * - h5; omega), show ¬ t = 2 by (clear * - h5; omega), ↓reduceIte]
       exact ht)
-    unfold keyVal
+    unfold keyValG
     exact tab_tabsAt_eqx _ rs t hi bits h hgrp.1 hgrp.2 v hv
   · intro t bits ht v hv
     obtain ⟨h5, hgrp⟩ := hs.eqy t bits ht
     obtain ⟨hi, h⟩ := hof t (.eqy bits) (by
       rw [hg]; simp only [show ¬ t = 4 by (clear * - h5; omega), show ¬ t = 3 by (clear * - h5; omega), show ¬ t = 2 by (clear * - h5; omega), ↓reduceIte]
       exact ht)
-    unfold keyVal
+    unfold keyValG
     exact tab_tabsAt_eqy _ rs t hi bits h hgrp.1 hgrp.2 v hv
 
 /-- The pass fold's step (as `compileT` has it after `simp only [compileT]`). -/
@@ -7414,13 +7436,13 @@ def ct_pf (acc : CS × Array Pass) (x : (List ℕ × ℕ × Option ℕ) × Array
     | none => acc.2)
 
 /-- The pass fold (C7): every member is accounted for, by a pass or by atoms. -/
-theorem ct_passFold (pt : List FE) (hpt : pt.length = 2 + xVars + yVars) :
+theorem ct_passFold (pt : List 𝔽) (hpt : pt.length = 2 + xVars + yVars) :
     ∀ (L : List ((List ℕ × ℕ × Option ℕ) × Array (ℕ × ℕ × ℕ × FE))) (s : CS) (ps : Array Pass),
       ct_WF s → (∀ km ∈ L, ∀ m ∈ km.2, ct_MemOk km.1 m) →
       ct_WF (L.foldl ct_pf (s, ps)).1 ∧ ct_Le s (L.foldl ct_pf (s, ps)).1 ∧
-        ∀ T, ct_Cons (Pt.ofList pt) (L.foldl ct_pf (s, ps)).1 T →
-        ct_aSum T (L.foldl ct_pf (s, ps)).1 + ((L.foldl ct_pf (s, ps)).2.toList.map (runPass (Pt.ofList pt) T)).sum =
-          ct_aSum T s + (ps.toList.map (runPass (Pt.ofList pt) T)).sum +
+        ∀ T, ct_Cons (PtG.ofList pt) (L.foldl ct_pf (s, ps)).1 T →
+        ct_aSum T (L.foldl ct_pf (s, ps)).1 + ((L.foldl ct_pf (s, ps)).2.toList.map (runPass (PtG.ofList pt) T)).sum =
+          ct_aSum T s + (ps.toList.map (runPass (PtG.ofList pt) T)).sum +
             (L.map fun km ↦ (km.2.toList.map (ct_memSem pt km.1)).sum).sum := by
   intro L
   induction L with
@@ -7468,29 +7490,29 @@ def la2_tail (r : CS × Array Pass) : Comp :=
         (r.1.atoms.foldl (fun d a ↦ max d a.keys.size) 0)) }
 
 /-- A pass with its fused initial code runs as the pass. -/
-theorem la2_runPassF (P : Pt) (rs : Array TRec) (T : Array (Array FE)) (p : Pass) :
-    runPassF P T (flatTabs rs T) { p with fcode := fuse rs p.code } = runPass P T p := by
-  unfold runPassF runPass
+theorem la2_runPassF (P : PtG 𝔽) (rs : Array TRec) (T : Array (Array 𝔽)) (p : Pass) :
+    runPassFG P T (flatTabsG rs T) { p with fcode := fuse rs p.code } = runPass P T p := by
+  unfold runPassFG runPass
   cases h : fuse rs p.code with
   | none => rfl
   | some fc => simp only [runF_fuse rs T p.code fc h]; rfl
 
 /-- The tail's value: the atoms' code plus the passes, fused or not. -/
-theorem la2_evalC_tail (pt : List FE) (r : CS × Array Pass) :
-    evalC (la2_tail r) pt =
-      (runCode (tabsAt (Pt.ofList pt) (((r.1.tabs.set! 2 (.ker r.1.kers)).set! 3 (.prod r.1.xm)).set! 4
+theorem la2_evalC_tail (pt : List 𝔽) (r : CS × Array Pass) :
+    evalCG (la2_tail r) pt =
+      (runCodeG (tabsAtG (PtG.ofList pt) (((r.1.tabs.set! 2 (.ker r.1.kers)).set! 3 (.prod r.1.xm)).set! 4
         (.prod r.1.ym))) (atomCodeG (mergeAtoms 1 (padTo (r.1.atoms.foldl (fun d a ↦ max d a.keys.size) 0)
           r.1.atoms)) (r.1.atoms.foldl (fun d a ↦ max d a.keys.size) 0))).1 +
-      (r.2.toList.map (runPass (Pt.ofList pt) (tabsAt (Pt.ofList pt) (((r.1.tabs.set! 2 (.ker r.1.kers)).set! 3
+      (r.2.toList.map (runPass (PtG.ofList pt) (tabsAtG (PtG.ofList pt) (((r.1.tabs.set! 2 (.ker r.1.kers)).set! 3
         (.prod r.1.xm)).set! 4 (.prod r.1.ym))))).sum := by
-  unfold evalC la2_tail
+  unfold evalCG la2_tail
   simp only
   generalize ((r.1.tabs.set! 2 (.ker r.1.kers)).set! 3 (.prod r.1.xm)).set! 4 (.prod r.1.ym) = rs
   generalize atomCodeG (mergeAtoms 1 (padTo (r.1.atoms.foldl (fun d a ↦ max d a.keys.size) 0) r.1.atoms))
     (r.1.atoms.foldl (fun d a ↦ max d a.keys.size) 0) = code
-  suffices H : ∀ a0 : FE, Array.foldl (fun acc p ↦ acc + runPassF (Pt.ofList pt) (tabsAt (Pt.ofList pt) rs)
-      (flatTabs rs (tabsAt (Pt.ofList pt) rs)) p) a0 (r.2.map fun p ↦ { p with fcode := fuse rs p.code }) =
-      a0 + (r.2.toList.map (runPass (Pt.ofList pt) (tabsAt (Pt.ofList pt) rs))).sum by
+  suffices H : ∀ a0 : 𝔽, Array.foldl (fun acc p ↦ acc + runPassFG (PtG.ofList pt) (tabsAtG (PtG.ofList pt) rs)
+      (flatTabsG rs (tabsAtG (PtG.ofList pt) rs)) p) a0 (r.2.map fun p ↦ { p with fcode := fuse rs p.code }) =
+      a0 + (r.2.toList.map (runPass (PtG.ofList pt) (tabsAtG (PtG.ofList pt) rs))).sum by
     rcases h : fuse rs code with _ | fc
     · exact H _
     · simp only [runF_fuse rs _ code fc h]; exact H _
@@ -7505,9 +7527,9 @@ theorem la2_evalC_tail (pt : List FE) (r : CS × Array Pass) :
 
 /-- **The compiler is exact** (statement): on well-formed terms, the compiled evaluator is the terms' sum at
 every point of `phiVars` coordinates. Owner L-A. -/
-theorem compileT_eq (ts : Array CTerm) (hwf : ∀ t ∈ ts, TermWF t) (pt : List FE)
+theorem compileT_eqG (ts : Array CTerm) (hwf : ∀ t ∈ ts, TermWF t) (pt : List 𝔽)
     (hpt : pt.length = 2 + xVars + yVars) :
-    evalC (compileT ts) pt = (ts.toList.map fun t ↦ termSum t pt).sum := by
+    evalCG (compileT ts) pt = (ts.toList.map fun t ↦ termSumG t pt).sum := by
   obtain ⟨h1wf, h1geo, h1sum⟩ := ct_mergeGeo pt ts hwf
   rcases hg : mergeGeo ts with ⟨rest, geos⟩
   rw [hg] at h1wf h1geo h1sum
@@ -7530,23 +7552,23 @@ theorem compileT_eq (ts : Array CTerm) (hwf : ∀ t ∈ ts, TermWF t) (pt : List
     intro km hkm m hm
     exact A3.1.pm km.1 km.2 (Std.HashMap.mem_toList_iff_getElem?_eq_some.mp hkm) m hm
   have A4 := ct_passFold pt hpt s3.pm.toList s3 #[] A3.1 hmem
-  change evalC (la2_tail (s3.pm.toList.foldl ct_pf (s3, #[]))) pt = _
+  change evalCG (la2_tail (s3.pm.toList.foldl ct_pf (s3, #[]))) pt = _
   generalize hr : s3.pm.toList.foldl ct_pf (s3, #[]) = r at A4 ⊢
   obtain ⟨s4, ps⟩ := r
   simp only at A4 ⊢
   obtain ⟨hwf4, hle4, hv4⟩ := A4
   set D := s4.atoms.foldl (fun d a ↦ max d a.keys.size) 0 with hD
-  set T := tabsAt (Pt.ofList pt) (((s4.tabs.set! 2 (.ker s4.kers)).set! 3 (.prod s4.xm)).set! 4 (.prod s4.ym)) with hT
-  have hC4 : ct_Cons (Pt.ofList pt) s4 T := ct_final_Cons pt hpt s4 hwf4
-  have hC3 : ct_Cons (Pt.ofList pt) s3 T := ct_Cons_mono hle4 hC4
-  have hC2 : ct_Cons (Pt.ofList pt) s2 T := ct_Cons_mono A3.2.1 hC3
-  obtain ⟨hma1, hma2, -⟩ := ct_mergeAtoms (Pt.ofList pt) T hC4.1 hC4.2.1 s4.atoms D (ct_le_foldl_max s4.atoms)
+  set T := tabsAtG (PtG.ofList pt) (((s4.tabs.set! 2 (.ker s4.kers)).set! 3 (.prod s4.xm)).set! 4 (.prod s4.ym)) with hT
+  have hC4 : ct_Cons (PtG.ofList pt) s4 T := ct_final_Cons pt hpt s4 hwf4
+  have hC3 : ct_Cons (PtG.ofList pt) s3 T := ct_Cons_mono hle4 hC4
+  have hC2 : ct_Cons (PtG.ofList pt) s2 T := ct_Cons_mono A3.2.1 hC3
+  obtain ⟨hma1, hma2, -⟩ := ct_mergeAtoms (PtG.ofList pt) T hC4.1 hC4.2.1 s4.atoms D (ct_le_foldl_max s4.atoms)
     (fun a ha ↦ ⟨(hwf4.atoms a ha).1, (hwf4.atoms a ha).2.1, (hwf4.atoms a ha).2.2.1⟩)
   have h0 := ct_mergeAtoms_h0 s4.atoms D hwf4.atoms hma1
-  have hcode : (runCode T (atomCodeG (mergeAtoms 1 (padTo D s4.atoms)) D)).1 = ct_aSum T s4 := by
+  have hcode : (runCodeG T (atomCodeG (mergeAtoms 1 (padTo D s4.atoms)) D)).1 = ct_aSum T s4 := by
     rw [runCode_atomCodeG T _ D (fun a ha ↦ (hma1 a ha).1) hC4.1 h0, hma2]
     rfl
-  have hev : evalC (la2_tail (s4, ps)) pt = ct_aSum T s4 + (ps.toList.map (runPass (Pt.ofList pt) T)).sum := by
+  have hev : evalCG (la2_tail (s4, ps)) pt = ct_aSum T s4 + (ps.toList.map (runPass (PtG.ofList pt) T)).sum := by
     rw [la2_evalC_tail, ← hT, ← hD, hcode]
   rw [hev, hv4 T hC4]
   have e3 := A3.2.2 T hC3
@@ -7557,5 +7579,18 @@ theorem compileT_eq (ts : Array CTerm) (hwf : ∀ t ∈ ts, TermWF t) (pt : List
   simp only [List.map_nil, List.sum_nil, add_zero]
   rw [← hpm, e3, e2]
   ring
+
+/-- A term's sum is its twin's at `FE`. -/
+theorem termSum_eqG (t : CTerm) (pt : List FE) : termSum t pt = termSumG t pt := by
+  unfold termSum termSumG termAt termAtG
+  simp only [eqW_eqG, ofE_FE]
+
+/-- **The compiler is exact** (statement): on well-formed terms, the compiled evaluator is the terms' sum at
+every point of `phiVars` coordinates. Owner L-A. (S2GT-W: the instance `𝔽 = FE` of `compileT_eqG`.) -/
+theorem compileT_eq (ts : Array CTerm) (hwf : ∀ t ∈ ts, TermWF t) (pt : List FE)
+    (hpt : pt.length = 2 + xVars + yVars) :
+    evalC (compileT ts) pt = (ts.toList.map fun t ↦ termSum t pt).sum := by
+  rw [evalC_eqG, compileT_eqG ts hwf pt hpt]
+  exact congrArg List.sum (List.map_congr_left fun t _ ↦ (termSum_eqG t pt).symm)
 
 end Lvm.Typed.K

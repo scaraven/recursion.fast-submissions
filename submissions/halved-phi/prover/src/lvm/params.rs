@@ -369,9 +369,10 @@ impl FrontCfg {
             // (dev, timing only: S2GF-B without the pin)
             Ok("S2GF-B-NOPIN") => FrontCfg { tape_e2: true, ks_e2: true, pin: false, typed_x: false, typed_t: false },
             Ok("S2GF-NOKS") => FrontCfg { tape_e2: true, ks_e2: false, pin: true, typed_x: true, typed_t: false },
-            // (unset: S2GF, the default stage since E2F-P3's refreeze)
-            Ok("S2GF") | Err(_) => FrontCfg { tape_e2: true, ks_e2: true, pin: true, typed_x: true, typed_t: false },
-            Ok("S2GT") => FrontCfg { tape_e2: true, ks_e2: true, pin: true, typed_x: false, typed_t: true },
+            // (S2GF: #22's stage; at P20 it needs blob v4's dir, `LVM_TYPED_DIR`)
+            Ok("S2GF") => FrontCfg { tape_e2: true, ks_e2: true, pin: true, typed_x: true, typed_t: false },
+            // (unset: S2GT, the default stage since S2GT-P's refreeze to blob GT)
+            Ok("S2GT") | Err(_) => FrontCfg { tape_e2: true, ks_e2: true, pin: true, typed_x: false, typed_t: true },
             Ok(s) => panic!("LVM_STAGE={s}: S2GF, S2GF-NOKS, S2GT, S2GF-B or S2GM"),
         }
     }
@@ -762,8 +763,8 @@ pub mod check {
         // per stage at C_main occupancy 47: (P20 qS, |π|, blocks), (P8 qS, |π|, blocks). S2GM: R11 G0's model at 47
         // (340,328 B); E2F S2GF: s2gf-items.tsv (P20) and LvmScheduleF's piSizeF/qSF P8 44 (P8); S2GT: s2gt.py at 47
         let want = match std::env::var("LVM_STAGE").as_deref() {
-            Ok("S2GF") | Err(_) => ((3959, 306992, 4295), (1900, 153968, BLOCKS_P8_S2GF)),
-            Ok("S2GT") => ((3961, 305992, BLOCKS_P20_S2GT), (1902, 152968, BLOCKS_P8_S2GT)),
+            Ok("S2GF") => ((3959, 306992, 4295), (1900, 153968, BLOCKS_P8_S2GF)),
+            Ok("S2GT") | Err(_) => ((3961, 305992, BLOCKS_P20_S2GT), (1902, 152968, BLOCKS_P8_S2GT)),
             Ok("S2GM") => ((3895, 332336, 4447), (1836, 177288, 2262)),
             Ok(s) => panic!("frozen_numbers: no record for LVM_STAGE={s}"),
         };
