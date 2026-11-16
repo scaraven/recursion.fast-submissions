@@ -1,6 +1,6 @@
 {
  "version": 2,
- "updated": "2026-11-16T15:59:49Z",
+ "updated": "2026-11-16T16:00:08Z",
  "repo": "scaraven/recursion.fast-submissions",
  "core": "7ecd179d4eabdda97e7caba492810dfc9c2ce9db",
  "margin": 0.02,
@@ -3366,16 +3366,16 @@
    ],
    "opened": "2026-11-16T15:58:21Z",
    "queued": "2026-11-16T15:59:10Z",
-   "started": null,
+   "started": "2026-11-16T16:00:07Z",
    "finished": null,
-   "attempts": 0,
-   "status": "queued",
+   "attempts": 1,
+   "status": "running",
    "verdict": null,
    "score": null,
    "comparable": false,
    "truncated": false,
    "reasons": [],
-   "run_url": null,
+   "run_url": "https://github.com/scaraven/recursion.fast-submissions/actions/runs/43902546995",
    "tag": "rf-source/pr32-6acc2f85e708",
    "notes": "notes/pr32-6acc2f85e708.md",
    "readme": "readme/pr32-6acc2f85e708.md",
@@ -3383,7 +3383,8 @@
    "tree": "90e19951978ddd92e693bad6a711f94412d948f2",
    "verified": false,
    "harness_commit": null,
-   "prover_sha256": null
+   "prover_sha256": null,
+   "run_attempt": 1
   }
  ],
  "record": {
