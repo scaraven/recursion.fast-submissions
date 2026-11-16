@@ -25,9 +25,97 @@ use crate::lv::primitives::field::{Ext, F128, F128Unreduced, F192, F192Unreduced
 use crate::lv::primitives::multilinear::eq_table_serial;
 use crate::lvm::typed::{Ent, Typed};
 
+/// PFAST-PQ: the E2 kernels in vector registers (the tiers with PCLMULQDQ).
+#[cfg(all(target_arch = "x86_64", target_feature = "pclmulqdq"))]
+mod e2x;
+/// PFAST-PQ: K1 and the points regrouped by repeated work.
+mod plan;
+
+/// `$body` with `const $n: usize` bound to `$np` for the batch sizes the kernels are compiled at (else `0`: the
+/// point count read at run time), and `const $q: usize` to `$n / 4` (the E2 kernels' four-point registers).
+macro_rules! by_n {
+    ($np:expr, $n:ident, $q:ident => $body:expr) => {
+        match $np {
+            3 => {
+                const $n: usize = 3;
+                const $q: usize = 0;
+                $body
+            }
+            4 => {
+                const $n: usize = 4;
+                const $q: usize = 1;
+                $body
+            }
+            5 => {
+                const $n: usize = 5;
+                const $q: usize = 1;
+                $body
+            }
+            6 => {
+                const $n: usize = 6;
+                const $q: usize = 1;
+                $body
+            }
+            8 => {
+                const $n: usize = 8;
+                const $q: usize = 2;
+                $body
+            }
+            9 => {
+                const $n: usize = 9;
+                const $q: usize = 2;
+                $body
+            }
+            12 => {
+                const $n: usize = 12;
+                const $q: usize = 3;
+                $body
+            }
+            _ => {
+                const $n: usize = 0;
+                const $q: usize = 0;
+                $body
+            }
+        }
+    };
+}
+
+/// (In a function with `const N, Q4`, at `F = F128`.) Return the E2 kernel `$f` at `N` points: four per register
+/// when the tier has VPCLMULQDQ and `4 | N`, else one.
+#[cfg(all(target_arch = "x86_64", target_feature = "pclmulqdq"))]
+macro_rules! e2x_call {
+    ($n:ident, $q4:ident, $f:ident ( $($a:expr),* )) => {{
+        #[cfg(all(target_feature = "vpclmulqdq", target_feature = "avx512f", target_feature = "avx512bw"))]
+        if $q4 > 0 && $q4 * 4 == $n && zmm_on() {
+            return e2x::$f::<core::arch::x86_64::__m512i, $q4>($($a),*);
+        }
+        return e2x::$f::<core::arch::x86_64::__m128i, $n>($($a),*);
+    }};
+}
+
+/// PFAST-PQ (dev): `TYPED_PHIK_ZMM=0` keeps the v4 tier's E2 kernels at one point per register.
+#[cfg(all(target_arch = "x86_64", target_feature = "pclmulqdq", target_feature = "vpclmulqdq", target_feature = "avx512f", target_feature = "avx512bw"))]
+fn zmm_on() -> bool {
+    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ON.get_or_init(|| std::env::var("TYPED_PHIK_ZMM").map_or(true, |v| v != "0"))
+}
+
+/// Points per batch: [`BATCH`], or 8 (two four-point registers) at the v4 tier.
+fn batch() -> usize {
+    let d = if cfg!(all(target_arch = "x86_64", target_feature = "pclmulqdq", target_feature = "vpclmulqdq", target_feature = "avx512f", target_feature = "avx512bw")) { 8 } else { BATCH };
+    std::env::var("TYPED_PHIK_BATCH").ok().and_then(|v| v.parse().ok()).unwrap_or(d).max(1)
+}
+
+/// PFAST-PQ (dev): `TYPED_PHIK_E2X=0` runs the generic kernels at E2 too.
+#[cfg(all(target_arch = "x86_64", target_feature = "pclmulqdq"))]
+fn e2x_on() -> bool {
+    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ON.get_or_init(|| std::env::var("TYPED_PHIK_E2X").map_or(true, |v| v != "0"))
+}
+
 /// E2F (S2GT): the field of the points and the coefficients: `F192` (E3), or `F128` (E2: S2GT's split matrices,
 /// whose `Typed` entries carry their E2 coefficients as `(c₀, c₁, 0)`).
-pub trait PhiF: Copy + Send + Sync + PartialEq + Add<Output = Self> + AddAssign + Mul<Output = Self> + MulAssign + Sum {
+pub trait PhiF: 'static + Copy + Send + Sync + PartialEq + Add<Output = Self> + AddAssign + Mul<Output = Self> + MulAssign + Sum {
     type U: Unreduced<Self> + From<Self>;
     const ZERO: Self;
     const ONE: Self;
@@ -38,7 +126,18 @@ pub trait PhiF: Copy + Send + Sync + PartialEq + Add<Output = Self> + AddAssign 
     fn eq_serial(r: &[Self]) -> Vec<Self>;
     /// An entry's coefficient.
     fn of_coef(c: F192) -> Self;
+    /// PFAST-PQ: the coefficient's kind for the E2 vector kernels ([`CK_ONE`], …); `CK_GEN` elsewhere.
+    fn coef_kind(self) -> u8 {
+        CK_GEN
+    }
 }
+
+/// PFAST-PQ: coefficient kinds at E2: `1`, `X`, `(l, 0)`, `(0, l)`, any other.
+const CK_ONE: u8 = 0;
+const CK_X: u8 = 1;
+const CK_K: u8 = 2;
+const CK_KX: u8 = 3;
+const CK_GEN: u8 = 4;
 
 impl PhiF for F192 {
     type U = F192Unreduced;
@@ -79,6 +178,15 @@ impl PhiF for F128 {
         assert_eq!(c.c2, 0, "an E2 coefficient");
         F128::new(c.c0, c.c1)
     }
+    fn coef_kind(self) -> u8 {
+        match (self.c0, self.c1) {
+            (1, 0) => CK_ONE,
+            (0, 1) => CK_X,
+            (_, 0) => CK_K,
+            (0, _) => CK_KX,
+            _ => CK_GEN,
+        }
+    }
 }
 
 const NONE: u32 = u32::MAX;
@@ -86,7 +194,7 @@ const NONE: u32 = u32::MAX;
 /// split (`m + 4j`).
 const OS: u32 = 4;
 const OM: u32 = 15;
-/// Points per batch of [`PhiK::mats`] (`TYPED_PHIK_BATCH`): 42 line points in 7 batches.
+/// Points per batch of [`PhiK::mats`] (`TYPED_PHIK_BATCH`): S2GT's 45 points (A23's 44 and the wiring's) in 8 batches (the last of 3).
 const BATCH: usize = 6;
 /// Work items per batch.
 const CHUNKS: usize = 24;
@@ -152,6 +260,8 @@ pub struct PhiK<F: PhiF = F192> {
     x_log: usize,
     y_log: usize,
     coefs: Vec<F>,
+    /// PFAST-PQ: per coefficient, its kind ([`PhiF::coef_kind`])
+    ckind: Vec<u8>,
     /// K1 pieces, sorted by [`k1_key`].
     k1e: Vec<K1E>,
     /// Per pattern, its injected `(x bit, y bit)` pairs.
@@ -166,6 +276,8 @@ pub struct PhiK<F: PhiF = F192> {
     pty: Vec<(u32, u32, u32)>,
     /// The work split (by the static counts) of one batch of points.
     chunks: Vec<Chunk>,
+    /// PFAST-PQ: K1 and the points by repeated work (`TYPED_PHIK_PLAN=0`, dev: the kernels as before)
+    plan: Option<plan::Plan>,
     /// Static product count per point, by class: tables, K1, automaton, points.
     pub products: [usize; 4],
     pub report: String,
@@ -201,6 +313,18 @@ impl<F: PhiF> Lev<F> {
         Lev { s, n, lo, hi }
     }
 
+    /// [`Self::new`], by the E2 vector kernels where they apply.
+    fn new_fast(rs: &[&[F]], s: usize) -> Lev<F> {
+        #[cfg(all(target_arch = "x86_64", target_feature = "pclmulqdq"))]
+        if std::any::TypeId::of::<F>() == std::any::TypeId::of::<F128>() && e2x_on() {
+            // SAFETY: `F` is `F128` (the same type), so each cast is to the type it already has.
+            let rs: &[&[F128]] = unsafe { std::slice::from_raw_parts(rs.as_ptr() as *const &[F128], rs.len()) };
+            let lv: Box<dyn std::any::Any> = Box::new(e2x::lev_new(rs, s));
+            return *lv.downcast::<Lev<F>>().expect("F is F128");
+        }
+        Self::new(rs, s)
+    }
+
     /// Table entries built (products, roughly one per entry) per point.
     fn size(&self, np: usize) -> usize {
         (self.lo.iter().map(Vec::len).sum::<usize>() + self.hi.iter().map(Vec::len).sum::<usize>()) / np
@@ -224,6 +348,14 @@ impl<F: PhiF> Lev<F> {
             out.copy_from_slice(&self.hi[ell - self.s][v * np..][..np]);
         }
         true
+    }
+}
+
+impl<F> Tabs<F> {
+    /// (dev) The tables' bytes.
+    fn bytes(&self) -> usize {
+        let v = |t: &Vec<Vec<F>>| t.iter().map(Vec::len).sum::<usize>();
+        (v(&self.x.lo) + v(&self.x.hi) + v(&self.y.lo) + v(&self.y.hi) + self.rx.len() + self.ry.len() + self.iy.len() + self.pat.len() + self.fy.len() + self.fxy.len()) * std::mem::size_of::<F>()
     }
 }
 
@@ -534,6 +666,14 @@ impl<F: PhiF> PhiK<F> {
             x_log: t.x_log,
             y_log: t.y_log,
             coefs: coefs.iter().map(|&c| F::of_coef(c)).collect(),
+            // (`TYPED_PHIK_CK=0`, dev: only the unit special)
+            ckind: coefs
+                .iter()
+                .map(|&c| match F::of_coef(c).coef_kind() {
+                    k if k != CK_ONE && std::env::var("TYPED_PHIK_CK").is_ok_and(|v| v == "0") => CK_GEN,
+                    k => k,
+                })
+                .collect(),
             k1e,
             pats,
             shapes,
@@ -542,11 +682,15 @@ impl<F: PhiF> PhiK<F> {
             pt,
             pty,
             chunks: Vec::new(),
+            plan: None,
             products: [0; 4],
             report: String::new(),
         };
         pk.products = pk.count();
         pk.chunks = pk.split();
+        if std::env::var("TYPED_PHIK_PLAN").map_or(true, |v| v != "0") {
+            pk.plan = Some(plan::Plan::new(&pk));
+        }
         if diag {
             let mut pc: Vec<(usize, usize)> = pk.passes.iter().enumerate().map(|(i, ps)| (pass_cost(&pk.shapes[ps.shape as usize], ps, &pk.mem), i)).collect();
             pc.sort_unstable_by(|a, b| b.cmp(a));
@@ -556,6 +700,104 @@ impl<F: PhiF> PhiK<F> {
                 let ps = &pk.passes[i];
                 let sh = &pk.shapes[ps.shape as usize];
                 eprintln!("  pass {i}: cost {cost}, o {}, ℓ {}, members {}, span {}, ybase {}, levels {:?}", ps.o, sh.ell, ps.mhi - ps.mlo, ps.span, ps.ybase, sh.levels);
+            }
+        }
+        if diag {
+            // PFAST-PQ: repeated work. Runs (one outer coordinate's entries): distinct inner lists `[(inner low, c)]`;
+            // groups: distinct `[(x low, y low, c)]` signatures (their sums before the high halves are equal)
+            let (xs, ys) = (10.min(t.x_log), 11.min(t.y_log));
+            let ym = (1u32 << ys) - 1;
+            let xm = (1u32 << xs) - 1;
+            let mut runs: HashMap<Vec<(u32, u32)>, usize> = HashMap::new();
+            let mut grps: HashMap<Vec<(u32, u32, u32, u32)>, usize> = HashMap::new();
+            let (mut nruns, mut nent) = (0usize, 0usize);
+            let mut i = 0;
+            let k1 = &pk.k1e;
+            while i < k1.len() {
+                let key = k1_key(&k1[i], xs, ys);
+                let ell = key.2 as u32;
+                let mut j = i;
+                let mut sig = Vec::new();
+                while j < k1.len() && k1_key(&k1[j], xs, ys) == key {
+                    let x = k1[j].x;
+                    let mut run = Vec::new();
+                    while j < k1.len() && k1[j].x == x && k1_key(&k1[j], xs, ys) == key {
+                        run.push((k1[j].y0 & ym, k1[j].c));
+                        sig.push((ell, x & (xm >> ell.min(xs as u32)), k1[j].y0 & ym, k1[j].c));
+                        j += 1;
+                    }
+                    nent += run.len();
+                    nruns += 1;
+                    *runs.entry(run).or_default() += 1;
+                }
+                *grps.entry(sig).or_default() += 1;
+                i = j;
+            }
+            let dent: usize = runs.keys().map(Vec::len).sum();
+            let gent: usize = grps.keys().map(Vec::len).sum();
+            eprintln!("phik diag PQ: K1 runs {nruns} ({nent} pieces): distinct inner lists {} ({dent} pieces); groups {} distinct {} ({gent} pieces)", runs.len(), grps.values().sum::<usize>(), grps.len());
+            for (name, v, y) in [("pt", &pk.pt, false), ("pty", &pk.pty, true)] {
+                let mut runs: HashMap<Vec<(u32, u32)>, usize> = HashMap::new();
+                let mut grps: HashMap<Vec<(u32, u32, u32)>, usize> = HashMap::new();
+                let (mut nruns, mut nent) = (0usize, 0usize);
+                let grp = |e: &(u32, u32, u32)| (e.2 & OM, e.0 >> xs, e.1 >> ys);
+                let (outer, inner) = (|e: &(u32, u32, u32)| if y { e.1 } else { e.0 }, |e: &(u32, u32, u32)| if y { e.0 & xm } else { e.1 & ym });
+                let mut i = 0;
+                while i < v.len() {
+                    let g = grp(&v[i]);
+                    let mut j = i;
+                    let mut sig = Vec::new();
+                    while j < v.len() && grp(&v[j]) == g {
+                        let u = outer(&v[j]);
+                        let mut run = Vec::new();
+                        while j < v.len() && grp(&v[j]) == g && outer(&v[j]) == u {
+                            run.push((inner(&v[j]), v[j].2 >> OS));
+                            sig.push((v[j].0 & xm, v[j].1 & ym, v[j].2 >> OS));
+                            j += 1;
+                        }
+                        nent += run.len();
+                        nruns += 1;
+                        *runs.entry(run).or_default() += 1;
+                    }
+                    *grps.entry(sig).or_default() += 1;
+                    i = j;
+                }
+                let dent: usize = runs.keys().map(Vec::len).sum();
+                let gent: usize = grps.keys().map(Vec::len).sum();
+                eprintln!("phik diag PQ: {name} runs {nruns} ({nent} entries): distinct inner lists {} ({dent} entries); groups {} distinct {} ({gent} entries)", runs.len(), grps.values().sum::<usize>(), grps.len());
+            }
+            // PFAST-PQ: the passes' automata by (levels, kstop, ybase, span): their transitions and finish are equal
+            {
+                let mut cls: HashMap<(Vec<(u8, Vec<(u8, i64)>)>, u8, i64, u32), (usize, usize)> = HashMap::new();
+                let (mut tot, mut memc) = (0usize, 0usize);
+                for ps in &pk.passes {
+                    let sh = &pk.shapes[ps.shape as usize];
+                    let c = pass_cost(sh, ps, &pk.mem);
+                    let m: usize = pk.mem[ps.mlo as usize..ps.mhi as usize].iter().map(|m| 2 + m.mask.count_ones() as usize).sum();
+                    tot += c;
+                    memc += m;
+                    let e = cls.entry((sh.levels.clone(), sh.kstop, ps.ybase, ps.span)).or_default();
+                    e.0 += 1;
+                    e.1 = c - m;
+                }
+                let dist: usize = cls.values().map(|v| v.1).sum();
+                let mut ylow: HashMap<(Vec<(u8, Vec<(u8, i64)>)>, u8, i64, u32), usize> = HashMap::new();
+                for ps in &pk.passes {
+                    let sh = &pk.shapes[ps.shape as usize];
+                    *ylow.entry((sh.levels.clone(), sh.kstop, ps.ybase & ((1i64 << sh.kstop) - 1), ps.span)).or_default() += 1;
+                }
+                eprintln!("phik diag PQ: passes {} cost {tot} (members {memc}); distinct automata (levels, kstop, ybase, span) {} cost {dist}; by ybase low bits {}", pk.passes.len(), cls.len(), ylow.len());
+            }
+            // PFAST-PQ: the coefficients' uses by kernel (K1, points, members)
+            let mut uses = vec![[0usize; 3]; pk.coefs.len()];
+            pk.k1e.iter().for_each(|e| uses[e.c as usize][0] += 1);
+            pk.pt.iter().chain(&pk.pty).for_each(|e| uses[(e.2 >> OS) as usize][1] += 1);
+            pk.mem.iter().for_each(|m| uses[m.c as usize][2] += 1);
+            let mut v: Vec<(usize, [usize; 3])> = uses.into_iter().enumerate().collect();
+            v.sort_by_key(|u| std::cmp::Reverse(u.1.iter().sum::<usize>()));
+            eprintln!("phik diag: {} coefficients; by uses (index: [K1, points, members] value limbs):", coefs.len());
+            for (i, u) in v.iter().take(30) {
+                eprintln!("  coef {i}: {u:?} {:x?}", coefs[*i].to_limbs());
             }
         }
         // which kernel cases this program reaches (the exactness check covers only these)
@@ -587,7 +829,8 @@ impl<F: PhiF> PhiK<F> {
             p[2],
             p[3],
             p.iter().sum::<usize>()
-        ) + &cov;
+        ) + &cov
+            + pk.plan.as_ref().map_or("", |p| p.report.as_str());
         pk
     }
 
@@ -674,8 +917,7 @@ impl<F: PhiF> PhiK<F> {
         let sel = self.sel;
         let rxs: Vec<&[F]> = pts.iter().map(|p| &p[sel..sel + xl]).collect();
         let rys: Vec<&[F]> = pts.iter().map(|p| &p[sel + xl..sel + xl + yl]).collect();
-        let x = Lev::new(&rxs, 10);
-        let y = Lev::new(&rys, 11);
+        let (x, y) = (Lev::new_fast(&rxs, 10), Lev::new_fast(&rys, 11));
         let mut rx = vec![F::ZERO; xl * np];
         let mut ry = vec![F::ZERO; yl * np];
         let mut iy = vec![F::ZERO; yl * np];
@@ -745,26 +987,73 @@ impl<F: PhiF> PhiK<F> {
     /// The points go in batches of [`BATCH`] (each batch's tables stay in L2); every (batch, chunk) pair is one task.
     pub fn mats_timed(&self, pts: &[Vec<F>]) -> (Vec<F>, [f64; 4]) {
         let np = pts.len();
-        let bp: usize = std::env::var("TYPED_PHIK_BATCH").ok().and_then(|v| v.parse().ok()).unwrap_or(BATCH).max(1);
+        let bp = batch();
+        // PFAST-PQ: at the v4 tier (`TYPED_PHIK_PAD=0|1` to choose, dev) the last batch is filled up with copies of the
+        // last point, so every batch takes the four-point kernels; the copies' values are dropped (each point's values
+        // are its own)
+        let pad = std::env::var("TYPED_PHIK_PAD").map_or(cfg!(all(target_arch = "x86_64", target_feature = "vpclmulqdq", target_feature = "avx512f", target_feature = "avx512bw")), |v| v == "1");
+        if pad && self.plan.is_some() && np % bp != 0 {
+            let mut pp = pts.to_vec();
+            pp.resize(np.div_ceil(bp) * bp, pts[np - 1].clone());
+            let (m, t) = self.mats_timed(&pp);
+            let npp = pp.len();
+            return ((0..self.no()).flat_map(|o| m[o * npp..o * npp + np].iter().copied()).collect(), t);
+        }
         let nb = np.div_ceil(bp);
         let t0 = std::time::Instant::now();
         let tabs: Vec<Tabs<F>> = crate::lv::parallel::map_collect(nb, |b| self.tabs(&pts[b * bp..((b + 1) * bp).min(np)]));
         let t_tab = t0.elapsed().as_secs_f64();
+        if let Some(pl) = &self.plan {
+            let no = self.no();
+            // the lists' sums (one buffer per batch, list-major) with the automaton's passes; then the signatures
+            let nlists = pl.lside.len();
+            let mut sb: Vec<Vec<F>> = tabs.iter().map(|t| vec![F::ZERO; nlists * t.np]).collect();
+            let sp: Vec<crate::lv::parallel::SendPtr<F>> = sb.iter_mut().map(|v| crate::lv::parallel::SendPtr(v.as_mut_ptr())).collect();
+            let auto = &pl.auto;
+            let nl = pl.lch.len();
+            let pa: Vec<Option<Vec<F>>> = crate::lv::parallel::map_collect(nb * (nl + auto.len()), |it| {
+                let (b, ci) = (it % nb, it / nb);
+                let tb = &tabs[b];
+                if ci < nl {
+                    let r = pl.lch[ci].clone();
+                    // SAFETY: the list chunks are disjoint ranges of lists, so item (b, ci) alone writes this range of
+                    // batch b's buffer, which outlives the dispatch
+                    let s = unsafe { sp[b].slice(r.start * tb.np, r.len() * tb.np) };
+                    by_n!(tb.np, N, Q4 => self.plan_lists_dispatch::<N, Q4>(tb, r, s));
+                    None
+                } else {
+                    let mut out = vec![F::ZERO; no * tb.np];
+                    by_n!(tb.np, N, Q4 => self.run_chunk::<N, Q4>(tb, &auto[ci - nl], &mut out));
+                    Some(out)
+                }
+            });
+            let ns = pl.sch.len();
+            let ps: Vec<Vec<F>> = crate::lv::parallel::map_collect(nb * ns, |it| {
+                let (b, ci) = (it % nb, it / nb);
+                let tb = &tabs[b];
+                let mut out = vec![F::ZERO; no * tb.np];
+                by_n!(tb.np, N, Q4 => self.plan_sigs_dispatch::<N, Q4>(tb, &sb[b], pl.sch[ci].clone(), &mut out));
+                out
+            });
+            let mut m = vec![F::ZERO; no * np];
+            for (it, part) in pa.into_iter().enumerate().filter_map(|(it, p)| p.map(|p| (it, p))).chain(ps.into_iter().enumerate()) {
+                let b = it % nb;
+                let bn = tabs[b].np;
+                for o in 0..no {
+                    for q in 0..bn {
+                        m[o * np + b * bp + q] += part[o * bn + q];
+                    }
+                }
+            }
+            return (m, [t_tab, t0.elapsed().as_secs_f64() - t_tab, 0.0, 0.0]);
+        }
         let nc = self.chunks.len();
         let parts: Vec<Vec<F>> = crate::lv::parallel::map_collect(nb * nc, |it| {
             let (b, ci) = (it % nb, it / nb);
             let tb = &tabs[b];
             let mut out = vec![F::ZERO; self.no() * tb.np];
-            match &self.chunks[ci] {
-                Chunk::K1(r) => self.eval_k1(tb, r.clone(), &mut out),
-                Chunk::Auto(r) => {
-                    for ps in &self.passes[r.clone()] {
-                        self.eval_pass(tb, ps, &mut out);
-                    }
-                }
-                Chunk::Pts(r) => self.eval_points(tb, r.clone(), &mut out),
-                Chunk::PtsY(r) => self.eval_points_y(tb, r.clone(), &mut out),
-            }
+            // PFAST-T: the kernels at a compile-time point count for the usual batch sizes (fixed-length loops)
+            by_n!(tb.np, N, Q4 => self.run_chunk::<N, Q4>(tb, &self.chunks[ci], &mut out));
             out
         });
         let no = self.no();
@@ -781,6 +1070,143 @@ impl<F: PhiF> PhiK<F> {
         (m, [t_tab, t0.elapsed().as_secs_f64() - t_tab, 0.0, 0.0])
     }
 
+    /// (dev, `lvm-prover phit`) The batch run serially on one thread, timed per phase and kernel class: tables, K1,
+    /// automaton, points (x-major), points (y-major); and the dearest work item.
+    pub fn prof(&self, pts: &[Vec<F>]) -> String {
+        let np = pts.len();
+        let bp = batch();
+        let nb = np.div_ceil(bp);
+        let t0 = thread_cpu();
+        let tabs: Vec<Tabs<F>> = (0..nb).map(|b| self.tabs(&pts[b * bp..((b + 1) * bp).min(np)])).collect();
+        let t_tab = thread_cpu() - t0;
+        let mut cls = [0f64; 4];
+        let mut items: Vec<f64> = Vec::new();
+        if let Some(pl) = &self.plan {
+            // (plan: the lists' sums in K1's slot, the signatures in the points' x-major slot)
+            let sb: Vec<Vec<F>> = tabs
+                .iter()
+                .map(|tb| {
+                    let mut s = vec![F::ZERO; pl.lside.len() * tb.np];
+                    for r in &pl.lch {
+                        let t = thread_cpu();
+                        by_n!(tb.np, N, Q4 => self.plan_lists_dispatch::<N, Q4>(tb, r.clone(), &mut s[r.start * tb.np..r.end * tb.np]));
+                        let e = thread_cpu() - t;
+                        cls[0] += e;
+                        items.push(e);
+                    }
+                    s
+                })
+                .collect();
+            for (b, tb) in tabs.iter().enumerate() {
+                for r in &pl.sch {
+                    let mut out = vec![F::ZERO; self.no() * tb.np];
+                    let t = thread_cpu();
+                    by_n!(tb.np, N, Q4 => self.plan_sigs_dispatch::<N, Q4>(tb, &sb[b], r.clone(), &mut out));
+                    let e = thread_cpu() - t;
+                    std::hint::black_box(&out);
+                    cls[2] += e;
+                    items.push(e);
+                }
+            }
+        }
+        let chunks = self.plan.as_ref().map_or(&self.chunks, |p| &p.auto);
+        for ch in chunks {
+            let k = match ch {
+                Chunk::K1(_) => 0,
+                Chunk::Auto(_) => 1,
+                Chunk::Pts(_) => 2,
+                Chunk::PtsY(_) => 3,
+            };
+            for tb in &tabs {
+                let mut out = vec![F::ZERO; self.no() * tb.np];
+                let t = thread_cpu();
+                by_n!(tb.np, N, Q4 => self.run_chunk::<N, Q4>(tb, ch, &mut out));
+                let e = thread_cpu() - t;
+                std::hint::black_box(&out);
+                cls[k] += e;
+                items.push(e);
+            }
+        }
+        let tot: f64 = cls.iter().sum();
+        items.sort_by(|a, b| b.total_cmp(a));
+        format!(
+            "serial (thread CPU): tables {:.2} ms ({nb} batches) K1 {:.2} automaton {:.2} points-x {:.2} points-y {:.2} = {:.2} ms; {} items, dearest {:.3} {:.3} {:.3} ms; table bytes per batch {}",
+            t_tab * 1e3,
+            cls[0] * 1e3,
+            cls[1] * 1e3,
+            cls[2] * 1e3,
+            cls[3] * 1e3,
+            (tot + t_tab) * 1e3,
+            items.len(),
+            items[0] * 1e3,
+            items[1] * 1e3,
+            items[2] * 1e3,
+            tabs[0].bytes()
+        )
+    }
+
+    /// [`Self::plan_lists`], by the E2 vector kernels where they apply.
+    fn plan_lists_dispatch<const N: usize, const Q4: usize>(&self, tb: &Tabs<F>, r: std::ops::Range<usize>, s: &mut [F]) {
+        #[cfg(all(target_arch = "x86_64", target_feature = "pclmulqdq"))]
+        if N > 0 && std::any::TypeId::of::<F>() == std::any::TypeId::of::<F128>() && e2x_on() {
+            // SAFETY: `F` is `F128` (the same type), so each cast is to the type it already has.
+            let (pk, tb, s) = unsafe {
+                (
+                    &*(self as *const Self as *const PhiK<F128>),
+                    &*(tb as *const Tabs<F> as *const Tabs<F128>),
+                    std::slice::from_raw_parts_mut(s.as_mut_ptr() as *mut F128, s.len()),
+                )
+            };
+            e2x_call!(N, Q4, plan_lists(pk, tb, r, s));
+        }
+        self.plan_lists::<N>(tb, r, s)
+    }
+
+    /// [`Self::plan_sigs`], by the E2 vector kernels where they apply.
+    fn plan_sigs_dispatch<const N: usize, const Q4: usize>(&self, tb: &Tabs<F>, s: &[F], r: std::ops::Range<usize>, out: &mut [F]) {
+        #[cfg(all(target_arch = "x86_64", target_feature = "pclmulqdq"))]
+        if N > 0 && std::any::TypeId::of::<F>() == std::any::TypeId::of::<F128>() && e2x_on() {
+            // SAFETY: `F` is `F128` (the same type), so each cast is to the type it already has.
+            let (pk, tb, s, out) = unsafe {
+                (
+                    &*(self as *const Self as *const PhiK<F128>),
+                    &*(tb as *const Tabs<F> as *const Tabs<F128>),
+                    std::slice::from_raw_parts(s.as_ptr() as *const F128, s.len()),
+                    std::slice::from_raw_parts_mut(out.as_mut_ptr() as *mut F128, out.len()),
+                )
+            };
+            e2x_call!(N, Q4, plan_sigs(pk, tb, s, r, out));
+        }
+        self.plan_sigs::<N>(tb, s, r, out)
+    }
+
+    /// One work item of a batch; `N > 0`: the batch has `N` points (`N = 0`: `tb.np`, read at run time).
+    fn run_chunk<const N: usize, const Q4: usize>(&self, tb: &Tabs<F>, chunk: &Chunk, out: &mut [F]) {
+        #[cfg(all(target_arch = "x86_64", target_feature = "pclmulqdq"))]
+        if let (true, Chunk::Auto(r)) = (N > 0 && std::any::TypeId::of::<F>() == std::any::TypeId::of::<F128>() && e2x_on(), chunk) {
+            // SAFETY: `F` is `F128` (the same type), so each cast is to the type it already has.
+            let (pk, tb, out) = unsafe {
+                (
+                    &*(self as *const Self as *const PhiK<F128>),
+                    &*(tb as *const Tabs<F> as *const Tabs<F128>),
+                    std::slice::from_raw_parts_mut(out.as_mut_ptr() as *mut F128, out.len()),
+                )
+            };
+            let r = r.clone();
+            e2x_call!(N, Q4, run_auto(pk, tb, r, out));
+        }
+        match chunk {
+            Chunk::K1(r) => self.eval_k1::<N>(tb, r.clone(), out),
+            Chunk::Auto(r) => {
+                for ps in &self.passes[r.clone()] {
+                    self.eval_pass::<N>(tb, ps, out);
+                }
+            }
+            Chunk::Pts(r) => self.eval_points::<N>(tb, r.clone(), out),
+            Chunk::PtsY(r) => self.eval_points_y::<N>(tb, r.clone(), out),
+        }
+    }
+
     /// `Φ_Q` at every point.
     pub fn eval(&self, pts: &[Vec<F>]) -> Vec<F> {
         let np = pts.len();
@@ -795,13 +1221,14 @@ impl<F: PhiF> PhiK<F> {
 
     /// K1 pieces `r` (whole groups of [`k1_key`]): per piece `c·eq_x,lo·eq_y,lo`, per group the high halves and the
     /// pattern once.
-    fn eval_k1(&self, tb: &Tabs<F>, r: std::ops::Range<usize>, out: &mut [F]) {
-        let np = tb.np;
+    fn eval_k1<const N: usize>(&self, tb: &Tabs<F>, r: std::ops::Range<usize>, out: &mut [F]) {
+        let np = if N == 0 { tb.np } else { N };
+        debug_assert_eq!(np, tb.np);
         let (xs, ys) = (tb.x.s, tb.y.s);
         let ym = (1u32 << ys) - 1;
         let ones = vec![F::ONE; np];
-        let mut run = vec![F::UZ; np];
-        let mut sub = vec![F::UZ; np];
+        let (mut run, mut sub) = (vec![F::UZ; np], vec![F::UZ; np]);
+        let (run, sub) = (&mut run[..np], &mut sub[..np]);
         let es = &self.k1e[r];
         let mut i = 0;
         while i < es.len() {
@@ -843,8 +1270,9 @@ impl<F: PhiF> PhiK<F> {
         }
     }
 
-    fn eval_pass(&self, tb: &Tabs<F>, ps: &Pass, out: &mut [F]) {
-        let np = tb.np;
+    fn eval_pass<const N: usize>(&self, tb: &Tabs<F>, ps: &Pass, out: &mut [F]) {
+        let np = if N == 0 { tb.np } else { N };
+        debug_assert_eq!(np, tb.np);
         let sh = &self.shapes[ps.shape as usize];
         let ell = sh.ell as usize;
         // initial states: offsets 0..=span
@@ -956,12 +1384,13 @@ impl<F: PhiF> PhiK<F> {
 
     /// Point entries `r` (whole groups): per entry `c·eq_lo(x)·eq_lo(y)`, per group of equal `(o, x ≫ 10, y ≫ 11)`
     /// the high halves once.
-    fn eval_points(&self, tb: &Tabs<F>, r: std::ops::Range<usize>, out: &mut [F]) {
-        let np = tb.np;
+    fn eval_points<const N: usize>(&self, tb: &Tabs<F>, r: std::ops::Range<usize>, out: &mut [F]) {
+        let np = if N == 0 { tb.np } else { N };
+        debug_assert_eq!(np, tb.np);
         let (xs, ys) = (tb.x.s, tb.y.s);
         let (xm, ym) = ((1u32 << xs) - 1, (1u32 << ys) - 1);
-        let mut run = vec![F::UZ; np];
-        let mut sub = vec![F::UZ; np];
+        let (mut run, mut sub) = (vec![F::UZ; np], vec![F::UZ; np]);
+        let (run, sub) = (&mut run[..np], &mut sub[..np]);
         let es = &self.pt[r];
         let mut i = 0;
         while i < es.len() {
@@ -1003,12 +1432,13 @@ impl<F: PhiF> PhiK<F> {
 
 impl<F: PhiF> PhiK<F> {
     /// [`Self::eval_points`] on `pty[r]`: per group `Σ_y eq_lo(y)·Σ_x c·eq_lo(x)`, then the high halves.
-    fn eval_points_y(&self, tb: &Tabs<F>, r: std::ops::Range<usize>, out: &mut [F]) {
-        let np = tb.np;
+    fn eval_points_y<const N: usize>(&self, tb: &Tabs<F>, r: std::ops::Range<usize>, out: &mut [F]) {
+        let np = if N == 0 { tb.np } else { N };
+        debug_assert_eq!(np, tb.np);
         let (xs, ys) = (tb.x.s, tb.y.s);
         let (xm, ym) = ((1u32 << xs) - 1, (1u32 << ys) - 1);
-        let mut run = vec![F::UZ; np];
-        let mut sub = vec![F::UZ; np];
+        let (mut run, mut sub) = (vec![F::UZ; np], vec![F::UZ; np]);
+        let (run, sub) = (&mut run[..np], &mut sub[..np]);
         let es = &self.pty[r];
         let mut i = 0;
         while i < es.len() {
@@ -1045,6 +1475,22 @@ impl<F: PhiF> PhiK<F> {
             i = j;
         }
     }
+}
+
+/// (dev) The calling thread's CPU time, in seconds.
+fn thread_cpu() -> f64 {
+    #[repr(C)]
+    struct Ts {
+        s: i64,
+        ns: i64,
+    }
+    unsafe extern "C" {
+        fn clock_gettime(clk: i32, ts: *mut Ts) -> i32;
+    }
+    let mut t = Ts { s: 0, ns: 0 };
+    // SAFETY: `clock_gettime(CLOCK_THREAD_CPUTIME_ID, &mut t)` writes `t` only.
+    unsafe { clock_gettime(3, &mut t) };
+    t.s as f64 + t.ns as f64 * 1e-9
 }
 
 /// R9-TY: split the point entries (sorted by `(o, x ≫ xs, y ≫ ys, x, y)`) into the groups kept x-major and the ones

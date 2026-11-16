@@ -1,14 +1,13 @@
-# single-tape
+# planned-phi
 
 Agent: Claude Opus 5.5 via Claude Code (orchestrated sub-agents; architecture by Claude Fable 5.2)
-Builds on: #11, #7, #12, #13, #15, #17, #19, #20, #21, #22, #23, #24, #25, #26
+Builds on: #11, #7, #12, #13, #15, #17, #19, #20, #21, #22, #23, #24, #25, #26, #27, #28
 
-This root continues #26 (`halved-phi`, stage `S2GT`: the typed backend at `E2`), which continued #25
-(`looped-rows`), #22 (`pinned-front`), #21 (`lone-root`), #20 (`typed-spartan`), #19 (`listless-whir`) and PR #11
-(`leanvm-inspired`); it carries the prover-only rolls #23 (`packed-front`), #24 (`wide-lanes`) and the PFAST-3
-prover bundle. This root is stage `S2GU`: the Keccak sponge table is merged into the tape. "Changes since #26" is
-relative to #26; the sections from "Changes in #26" on describe the earlier rolls, whose construction is otherwise
-unchanged.
+This root continues #28 (`brisk-tape`, a prover-only roll) and #27 (`single-tape`, stage `S2GU`: the Keccak sponge
+table merged into the tape), which continued #26 (`halved-phi`), #25, #22, #21, #20, #19 and PR #11; it carries the
+prover-only rolls #23, #24 and #28. This root is again prover-only: the Lean certificate, the transcript, the blob and
+every proof byte are #27's. "Changes since #28" is relative to #28; the sections from "Changes in #28" on describe the
+earlier rolls.
 
 A recursive SNARK entry built from leanVM's proof system: binary fields, Keccak-f by GKR, ring switching and
 stacked WHIR. It is reshaped for the contract in four ways:
@@ -35,7 +34,49 @@ Notation:
 - dev means the QEMU dev VM. Labels: [measured], [exact] (schedule arithmetic or a Lean `decide`), [model] (a model
   on measured inputs), [estimate].
 
-## Changes since #26 (halved-phi)
+## Changes since #28 (brisk-tape)
+
+**Conclusion.** Prover-only, typed phase only: on dev it falls from 0.075 to 0.045 s per step (paired −30.5 ms,
+whole step −58 ms) [measured]; proofs, transcript, blob and certificate are #27's. Calibrated on #28 (dev typed
+−49 ms became ≈ −14 ms of eval fixed cost, P̄ −1.45 %), this roll models at **P̄ ≈ −0.7 to −1.2 %**: S× ≈ 0.933–0.938
+and S ≈ 1.611–1.616 against #28's 0.944 and 1.6224 [model].
+
+- **The Φ_Q batch** (`typed_phi.rs`, new `typed_phi/plan.rs`, `typed_phi/e2x.rs`). A plan built once at setup collapses
+  the program's repetition: 311,698 runs of 514,827 entries reduce to 17,007 distinct inner lists, and 6,655 groups to
+  3,583 distinct signatures. Each list is summed once per batch, groups with equal low parts share one sum, and each
+  instance multiplies by its own high halves (the same field sum regrouped). E2 kernels keep the four carry-less pieces
+  of a product unreduced and reduce once; coefficients 1, X, (l, 0), (0, l) take 0–2 carry-less products. On the v4 tier
+  (cfg-gated on VPCLMULQDQ + AVX-512F/BW) four points share a 512-bit register (SDE: kernel instructions −54 %). Dev:
+  the batch 30.7 → 12.4 ms (paired −17.2 ms) [measured].
+- **The zerocheck and uz sumchecks** (`typed_t.rs`). 89 % of rows carry only their j = 0 coordinates, in long runs:
+  such 2^8-slot chunks keep 48 B per slot (was 144 B) until round 8 and fold with 3 products. Rows are built with
+  K products, rounds 0 and 1 of the zerocheck share one pass and a 4-to-1 fold (the round-1 table is never written),
+  and the uz sumchecks' rounds 0 and 1 are merged the same way. Dev: zerocheck −15 ms, uz −2.5 to −4.7 ms [measured].
+- **Byte identity [measured].** The linked `.s` equals #27's stream on v4p and v2 (an `S,0` at 2^18 + 2 then `S,1` at
+  2^17, 2^20, 2^18; `S,0` at 2^17 + 1; v4p `S,0` at 2^20 + 1), on v4 under Intel SDE (n = 1, three steps at 2^14,
+  `S,0` at 2^17 + 1), and on the timing runs' streams. Kernel self-tests (`phit` against the plain evaluator, `e2tzc`
+  fast against general zerocheck, n = 1–16) pass; two Opus reviews found no correctness issue.
+- **Calibration note [model].** #28's typed gain reached the evaluation machine at ≈ 0.28× its dev size (fixed b
+  0.4273 → 0.4134 s for −49 ms dev), well below the 1/1.12–1/1.54 assumed so far for compute phases; this roll's
+  projection uses #28's ratio.
+
+## Changes in #28 (brisk-tape), since #27 (single-tape)
+
+**Prover only.** The typed phases lose their serial stretches; proofs are byte-identical to #27's on every tier
+[measured], and the certificate is #27's (`certificateU20S`, unchanged Lean).
+- **Zerocheck:** each round's fold runs in the same pass as the next round's sums (no single-thread fold, no resize
+  copies); the rows are built in round 0's pass.
+- **Wiring and the `uz` sumchecks:** buffers are filled in place by the pool (no serial zero fill).
+- **Eq tables:** the wiring's `u` and the relayout's `K` use two small eq tables instead of a 2^20 table.
+- **A23 `Φ_Q`:** its 44 line points and the wiring point are one kernel batch; a Karatsuba `mul_y3`.
+- **v4:** `inline(never)` on the Product staging.
+- **Measured** [dev, linked `.s` against #27's linked `.s`, v4p, timing lock, 3 rounds, 12 pairs]: the typed phase
+  0.137 → 0.088 s per step (paired −54 ms: zerocheck −30, accumulator and wiring −20; typed CPU −147 ms). Proof
+  bytes [measured]: v4p, v2 and v4 under SDE reproduce #27's honest `S2GU` stream; the native gate (`V_S` accepts the
+  honest files and rejects 34 tampers, guard TRUE, blob regenerated byte-identically) passes unchanged.
+- **Projected** [model]: −35 to −48 ms per step on the evaluation machine, P̄ −3 to −4 %.
+
+## Changes in #27 (single-tape), since #26 (halved-phi)
 
 **Conclusion.** The Keccak sponge table `KS` and its link are merged into the tape: one GKR of depth 24 over
 `μ = 21` rows proves both the chain and the in-circuit sponges (stage `S2GU`, BLUEPRINT2 §1 "uniform tape", now at
@@ -70,11 +111,8 @@ unchanged; no new soundness group class. The certificate is `certificateU20S` wi
   connections; proofs byte-identical): against the U-TAPE prover without it, 2^17 −0.017 s, 2^20 −0.26 s [measured,
   dev v4p, 3 rounds; the v4 kernels cannot run on dev]. v4p, v2, the linked `.s` and v4 under SDE reproduce the honest
   `S2GU` stream byte for byte [measured].
-- **Checked locally** (dev VM, core pin 7ecd179, caps unchanged): `evaluate.py cert` **ok**, gate PASS, axioms
-  `propext`, `Classical.choice`, `Quot.sound`; `build_s` 971 s, Lean kernel 549 s, 560 modules, peak 4.7 GB.
-  `evaluate.py bench` on the first 24 of the 96 local-season steps: **ACCEPT**, |π| 283,960 B, mean `V` 83 ms,
-  S 3.245 (P̄ 2.538, V̄ 0.707) [measured, loaded host: `c_P` drift 0.34, so P̄ reads high; not comparable with
-  the organiser's machine].
+- **Checked locally** (#27) [measured]: harness cert ok, `build_s` 971 s, Lean kernel 549 s, 560 modules; quick bench
+  ACCEPT, |π| 283,960 B, mean `V` 83 ms (loaded host).
 
 ## Changes in #26 (halved-phi), since #25 (looped-rows)
 

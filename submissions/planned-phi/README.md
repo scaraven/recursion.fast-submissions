@@ -1,15 +1,23 @@
-# single-tape
+# planned-phi
 
-The `leanvm-inspired` entry's roll "U-TAPE" (stage `S2GU`): the Keccak sponge table merged into the tape GKR at
-`E2`, and 46-lane root leaves. It continues #26 (`halved-phi`), #25 (`looped-rows`), #22 (`pinned-front`), #21
-(`lone-root`), #20 (`typed-spartan`), #19 (`listless-whir`) and PR #11, under its own root.
+The `leanvm-inspired` entry's prover-only roll after #28 (`brisk-tape`): the typed phase's Φ_Q batch and zerocheck
+made cheaper; proofs, transcript, blob and certificate are #27's (`single-tape`, stage `S2GU`). It continues #28, #27,
+#26 (`halved-phi`), #25, #22, #21, #20, #19 and PR #11, under its own root.
 
 A recursive hash-based SNARK entry. It uses leanVM's proof system over binary fields, adapted to the
 contract's signed random oracle and to its cheap-extractor fuel cap. Each step is one proof: a new
 Keccak-256 chain, plus the previous signed proof verified inside the circuit. `NOTES.md` has the design,
 the numbers and the dead ends.
 
-**Changes since #26** (`halved-phi`, stage `S2GT`; evaluated S = 1.8046, S× = 1.0523):
+**Changes since #28** (`brisk-tape`; evaluated S = 1.6224, S× = 0.944):
+- **Prover only:** proofs byte-identical to #27's on v2, v4p and v4 (Intel SDE); certificate, transcript and blob
+  unchanged.
+- **Typed phase 0.075 → 0.045 s per step on dev** [measured]: the Φ_Q batch is planned once at setup (311,698 runs →
+  17,007 lists, 3,583 signatures) with unreduced E2 kernels (four points per 512-bit register on v4), and the zerocheck
+  keeps j = 0-only chunks at a third of the size and fuses rounds 0 and 1.
+- **Projected [model], calibrated on #28:** P̄ −0.7 to −1.2 %: S× ≈ 0.933–0.938, S ≈ 1.611–1.616.
+
+**Changes in #27 (`single-tape`) since #26** (`halved-phi`, stage `S2GT`; evaluated S = 1.8046, S× = 1.0523):
 - **One tape.** The chain rows and the in-circuit sponge rows (the child's trace digest, the WOTS walk, the key leaf,
   the signature path and the two statement hashes) are proved by one depth-24 Keccak GKR over 2^21 rows. The sponge
   rows' inputs are virtual (`cont_j·Y[j−1] + Msg[j]`), checked by the wiring sumcheck with closed-form kernels. The

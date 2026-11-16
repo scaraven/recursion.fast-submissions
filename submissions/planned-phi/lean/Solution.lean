@@ -1,6 +1,6 @@
 /-
   The solution of the challenge (`harness/challenge/Challenge.lean.in`, rendered from this entry's
-  `claim.json` by `harness/render-challenge.py`) for `single-tape`. Everything except
+  `claim.json` by `harness/render-challenge.py`) for `planned-phi`. Everything except
   `submission` and `certified` is the rendered stub, copied verbatim.
 
   `submission` is the guarded S2GU submission (lvm2 U-TAPE: `Lvm.CT.submissionU20`): `V` dispatches on `π[0]`
@@ -24,7 +24,7 @@ noncomputable def declared : Declared where
   qV := 16384
   fuel t := 70368744177664 + 8192 * t
 
-/-- The submission: `single-tape` at S2GU (`V_S` with the merged tape at `E2` and the typed phases at `E2`),
+/-- The submission: `planned-phi` at S2GU (`V_S` with the merged tape at `E2` and the typed phases at `E2`),
 guarded by the static check `staticOkBU20`. -/
 def submission : Submission := Lvm.CT.submissionU20
 

@@ -1343,7 +1343,13 @@ fn run(args: Vec<String>) -> i32 {
             use lv::primitives::field::F128;
             assert!(lvm::params::FrontCfg::get().typed_t, "phit: run with LVM_STAGE=S2GT");
             let t0 = std::time::Instant::now();
-            let tq = lvm::stream::TypedQ::from_blob(lvm::stream::Q_P20, lvm::stream::QB_P20_M3B, lvm::stream::QB_P20_LAY);
+            // (S2GU, the default stage: the embedded P20 program is blob U's, in the dev-dir format)
+            let tq = if lvm::params::FrontCfg::get().utape {
+                let s = lvm::stream::Q_P20.to_string() + " " + lvm::stream::QB_P20_M3B;
+                lvm::stream::TypedQ::new(&s, lvm::stream::QB_P20_LAY, lvm::stream::QB_P20_TD, lvm::stream::QB_P20_MB)
+            } else {
+                lvm::stream::TypedQ::from_blob(lvm::stream::Q_P20, lvm::stream::QB_P20_M3B, lvm::stream::QB_P20_LAY)
+            };
             let b1 = &tq.b1;
             let pk = b1.phik_t.as_ref().expect("phik_t built at S2GT");
             println!("phit: TypedQ + phik_t {:.3} s; {}", t0.elapsed().as_secs_f64(), pk.report);
@@ -1360,6 +1366,28 @@ fn run(args: Vec<String>) -> i32 {
                 pts.push((0..d).map(|i| if i < 4 { F128::new((tag >> i) as u64 & 1, 0) } else { a[i] }).collect());
             }
             pts.extend((2..=d as u64).map(|j| a.iter().zip(&b).map(|(&x, &y)| x + F128::new(j, 0) * (x + y)).collect::<Vec<_>>()));
+            // PFAST-PQ: the S2GT batch's shape (the wiring point `0⁴ ‖ x ‖ y` and the 44 line points, κ-part zero),
+            // `PHIT_REPS` times (median wall)
+            let reps: usize = std::env::var("PHIT_REPS").ok().and_then(|v| v.parse().ok()).unwrap_or(0);
+            if reps > 0 {
+                let mut bpts: Vec<Vec<F128>> = vec![(0..d).map(|i| if i < 4 { F128::ZERO } else { b[i] }).collect()];
+                bpts.extend(pts[10..].iter().map(|p| (0..d).map(|i| if i < 4 { F128::ZERO } else { p[i] }).collect()));
+                let mut ws: Vec<f64> = (0..reps)
+                    .map(|_| {
+                        let t = std::time::Instant::now();
+                        std::hint::black_box(pk.mats(&bpts));
+                        t.elapsed().as_secs_f64()
+                    })
+                    .collect();
+                ws.sort_by(f64::total_cmp);
+                println!("phit: mats at {} points x{reps}: median {:.4} s min {:.4} s", bpts.len(), ws[reps / 2], ws[0]);
+                for _ in 0..std::env::var("PHIT_PROF").ok().and_then(|v| v.parse().ok()).unwrap_or(0usize) {
+                    println!("phit: {}", pk.prof(&bpts));
+                }
+            }
+            if std::env::var_os("PHIT_NOCHECK").is_some() {
+                return 0;
+            }
             for _ in 0..3 {
                 let t = std::time::Instant::now();
                 let k = pk.eval(&pts[10..]);

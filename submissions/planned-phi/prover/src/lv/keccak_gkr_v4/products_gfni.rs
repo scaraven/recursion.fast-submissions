@@ -600,7 +600,7 @@ impl<const W: usize> ProductSums<W> {
     /// AVX-512F/BW/VBMI, VPCLMULQDQ and GFNI; `staged + staged_index(2 R, a, n_active)` writable for 64 bytes,
     /// `R < STAGED / 2`, for the row byte's active lane bytes `a`; `mask == 0x1f` if `FULL`.
     #[cfg(all(target_feature = "avx512f", target_feature = "avx512bw", target_feature = "avx512vbmi", target_feature = "vpclmulqdq", target_feature = "gfni"))]
-    #[inline(always)]
+    #[inline(never)]
     unsafe fn stage_row_s<const FULL: bool>(lanes: &[[__m512i; 8]; 5], mask: u8, staged: *mut V, a0: usize, n_active: usize) {
         unsafe {
             let bit_transpose = _mm512_set1_epi64(BIT_TRANSPOSE);
