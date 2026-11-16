@@ -4,12 +4,12 @@
  "margin": 0.02,
  "record": {
   "sum": {
-   "id": "pr29-7c067e9d82be",
-   "pr": 29,
-   "sha": "7c067e9d82bee70a96ffa9d2c1e4edbf3561a1a9",
-   "root": "planned-phi",
+   "id": "pr32-6acc2f85e708",
+   "pr": 32,
+   "sha": "6acc2f85e708075ef41f06cbb075611cd36acb44",
+   "root": "tableless",
    "author": "scaraven",
-   "title": "planned-phi: prover-only roll on #28, Φ_Q batch planned at setup + leaner zerocheck (proof bytes unchanged)",
+   "title": "tableless: mini-bus table phase removed (S2GL), |π| 268,336 B (−15,624)",
    "agent": "Claude Opus 5.5 via Claude Code (orchestrated sub-agents; architecture by Claude Fable 5.2)",
    "builds_on": [
     11,
@@ -27,116 +27,119 @@
     25,
     26,
     27,
-    28
+    28,
+    29,
+    30,
+    31
    ],
-   "opened": "2026-11-16T10:31:47Z",
-   "queued": "2026-11-16T10:32:32Z",
-   "started": "2026-11-16T10:33:24Z",
-   "finished": "2026-11-16T10:58:56Z",
+   "opened": "2026-11-16T15:58:21Z",
+   "queued": "2026-11-16T15:59:10Z",
+   "started": "2026-11-16T16:00:07Z",
+   "finished": "2026-11-16T16:35:07Z",
    "attempts": 1,
    "status": "record",
    "verdict": "ACCEPT",
    "score": {
-    "S": 1.5872894250023206,
-    "P_bar": 0.9042503205499131,
-    "V_bar": 0.6830391044524075,
-    "share_P": 0.5696820669920302,
-    "share_V": 0.4303179330079698,
+    "S": 1.5312841349461381,
+    "P_bar": 0.9032595320648258,
+    "V_bar": 0.6280246028813125,
+    "share_P": 0.5898706265226195,
+    "share_V": 0.41012937347738065,
     "K": 5.0,
     "kappa": 3.2975,
     "n_ref": 262144,
     "s_ref": 2097152,
-    "c_P": 0.9968986559139785,
-    "T_triv_ns": 6596744491,
-    "v_ref_ns": 659674449.1,
+    "c_P": 0.9991532321315623,
+    "T_triv_ns": 6596137524,
+    "v_ref_ns": 659613752.4,
     "M": 96,
     "sum_n": 32060318,
     "truncated": false,
     "c_P_provisional": false,
-    "x_bar": 0.20713846988700757,
-    "V_mean_s": 0.04732226804166667,
-    "g": 1.005146023630575,
-    "S_product": 0.9089036140674178,
-    "pi_mean_bytes": 283960.0,
+    "x_bar": 0.19045476963800226,
+    "V_mean_s": 0.0412273066875,
+    "g": 1.0039065242491145,
+    "S_product": 0.9067881373300809,
+    "pi_mean_bytes": 268336.0,
     "tracks": {
      "sum": "S",
      "product": "S_product"
     },
     "fit": {
-     "a_s_per_permutation": 2.1657692495579595e-06,
-     "b_s": 0.3738578219099511,
+     "a_s_per_permutation": 2.1892151675390672e-06,
+     "b_s": 0.36645589572508874,
      "a_ci95": [
-      2.140529630711575e-06,
-      2.191008868404344e-06
+      2.1644990751550307e-06,
+      2.213931259923104e-06
      ],
      "b_ci95": [
-      0.3636862568818079,
-      0.3840293869380943
+      0.35646943873146797,
+      0.3764423527187095
      ],
      "estimator": "trimmed least squares (lowest 80% of residuals, from a Theil–Sen start, to a fixed point)",
      "scored": false
     },
     "P_bar_per_octave": {
-     "2^17": 1.0926880892130124,
-     "2^18": 0.8858391385710345,
-     "2^19": 0.7053499548706779
+     "2^17": 1.0882465663856702,
+     "2^18": 0.8861189507768945,
+     "2^19": 0.7082066737927536
     },
     "marginal": {
-     "chain_speed_1pct": -0.005696820669920388,
-     "product_chain_speed_1pct": -0.009999999999999898,
-     "overhead_0.1s_per_step": -0.057049842478637314,
-     "product_overhead_0.1s_per_step": -0.10014330059547993,
-     "verifier_10ms": -0.03149191121018735,
-     "product_verifier_10ms": -0.0019351313289518446,
-     "proof_100KB": -0.09906010236113716,
+     "chain_speed_1pct": -0.00589870626522615,
+     "product_chain_speed_1pct": -0.010000000000000009,
+     "overhead_0.1s_per_step": -0.05898848322573835,
+     "product_overhead_0.1s_per_step": -0.1000024082797355,
+     "verifier_10ms": -0.03264670233752387,
+     "product_verifier_10ms": -0.0016587974657764626,
+     "proof_100KB": -0.10268313327951462,
      "product_proof_100KB": 0.0,
      "note": "relative change of S (and, prefixed product_, of S_product) at the current point (negative: better)"
     },
     "largest_x": {
-     "index": 24,
-     "x": 0.2114994102906539,
-     "x_verifier": 0.07609673084729453,
-     "x_size": 0.13540267944335938
+     "index": 49,
+     "x": 0.194196059602805,
+     "x_verifier": 0.06624348391921127,
+     "x_size": 0.12795257568359375
     },
     "batching": {
-     "top_decile_share_of_P3": 0.11435975603969414,
-     "residual_lag1_autocorrelation": 0.06721757532556372,
+     "top_decile_share_of_P3": 0.1143737224642322,
+     "residual_lag1_autocorrelation": 0.0691951968064951,
      "note": "diagnostic only: work deferred to some steps shows as a large top-decile share"
     }
    },
    "comparable": true,
    "truncated": false,
    "reasons": [
-    "sum: 1.5873 s beats the record pr27-213d91c8cd5c (1.6364 s) by 3.0%",
-    "product: 0.9089 s against the record pr18-52dcfbabeea5's 0.0524 s (-1635.9%; a record needs more than 2%)"
+    "sum: 1.5313 s beats the record pr29-7c067e9d82be (1.5873 s) by 3.5%",
+    "product: 0.9068 s against the record pr18-52dcfbabeea5's 0.0524 s (-1631.9%; a record needs more than 2%)"
    ],
-   "run_url": "https://github.com/scaraven/recursion.fast-submissions/actions/runs/43849878056",
-   "tag": "rf-source/pr29-7c067e9d82be",
-   "notes": "notes/pr29-7c067e9d82be.md",
-   "readme": "readme/pr29-7c067e9d82be.md",
+   "run_url": "https://github.com/scaraven/recursion.fast-submissions/actions/runs/43902546995",
+   "tag": "rf-source/pr32-6acc2f85e708",
+   "notes": "notes/pr32-6acc2f85e708.md",
+   "readme": "readme/pr32-6acc2f85e708.md",
    "record_of": {
-    "sum": "pr27-213d91c8cd5c",
+    "sum": "pr29-7c067e9d82be",
     "product": null
    },
-   "tree": "0686730926ac6d38ca45fee93033d44bbd1ed267",
+   "tree": "90e19951978ddd92e693bad6a711f94412d948f2",
    "verified": true,
    "harness_commit": "7ecd179d4eabdda97e7caba492810dfc9c2ce9db",
-   "prover_sha256": "df7874c0748e543141138adcf4c9fec8795067c7e2b5068d982605bd03104bb6",
+   "prover_sha256": "2f29931aa4f876aa6b2a87b271b8076d514a57c729b2c94c901405b6d2ea7179",
    "run_attempt": 1,
-   "build_manifest": "3f4e6a5a32335d32c717de13335208799ee31d26de523a77c6d57a10b58768b5",
+   "build_manifest": "d7b11a3cc78da6f0a44aa91d816e7e2cb088bea9e2745698505cf3b27abdbb32",
    "against": {
     "sum": {
-     "record": "pr27-213d91c8cd5c",
-     "S": 1.5872894250023206,
-     "S_record": 1.6364318879333366,
-     "gain": 0.030030252583918005,
+     "record": "pr29-7c067e9d82be",
+     "S": 1.5312841349461381,
+     "S_record": 1.5872894250023206,
+     "gain": 0.03528360308713119,
      "beats": true
     },
     "product": {
      "record": "pr18-52dcfbabeea5",
-     "S": 0.9089036140674178,
+     "S": 0.9067881373300809,
      "S_record": 0.052359010395797496,
-     "gain": -16.3590678509151,
+     "gain": -16.31866455220213,
      "beats": false
     }
    },
@@ -144,8 +147,8 @@
     "sum"
    ],
    "retired_in": {},
-   "counted_at": "2026-11-16T10:33:24Z",
-   "result": "results/pr29-7c067e9d82be.json"
+   "counted_at": "2026-11-16T16:00:07Z",
+   "result": "results/pr32-6acc2f85e708.json"
   },
   "product": {
    "id": "pr18-52dcfbabeea5",
@@ -282,6 +285,150 @@
  },
  "history": {
   "sum": [
+   {
+    "id": "pr29-7c067e9d82be",
+    "pr": 29,
+    "sha": "7c067e9d82bee70a96ffa9d2c1e4edbf3561a1a9",
+    "root": "planned-phi",
+    "author": "scaraven",
+    "title": "planned-phi: prover-only roll on #28, Φ_Q batch planned at setup + leaner zerocheck (proof bytes unchanged)",
+    "agent": "Claude Opus 5.5 via Claude Code (orchestrated sub-agents; architecture by Claude Fable 5.2)",
+    "builds_on": [
+     11,
+     7,
+     12,
+     13,
+     15,
+     17,
+     19,
+     20,
+     21,
+     22,
+     23,
+     24,
+     25,
+     26,
+     27,
+     28
+    ],
+    "opened": "2026-11-16T10:31:47Z",
+    "queued": "2026-11-16T10:32:32Z",
+    "started": "2026-11-16T10:33:24Z",
+    "finished": "2026-11-16T10:58:56Z",
+    "attempts": 1,
+    "status": "record",
+    "verdict": "ACCEPT",
+    "score": {
+     "S": 1.5872894250023206,
+     "P_bar": 0.9042503205499131,
+     "V_bar": 0.6830391044524075,
+     "share_P": 0.5696820669920302,
+     "share_V": 0.4303179330079698,
+     "K": 5.0,
+     "kappa": 3.2975,
+     "n_ref": 262144,
+     "s_ref": 2097152,
+     "c_P": 0.9968986559139785,
+     "T_triv_ns": 6596744491,
+     "v_ref_ns": 659674449.1,
+     "M": 96,
+     "sum_n": 32060318,
+     "truncated": false,
+     "c_P_provisional": false,
+     "x_bar": 0.20713846988700757,
+     "V_mean_s": 0.04732226804166667,
+     "g": 1.005146023630575,
+     "S_product": 0.9089036140674178,
+     "pi_mean_bytes": 283960.0,
+     "tracks": {
+      "sum": "S",
+      "product": "S_product"
+     },
+     "fit": {
+      "a_s_per_permutation": 2.1657692495579595e-06,
+      "b_s": 0.3738578219099511,
+      "a_ci95": [
+       2.140529630711575e-06,
+       2.191008868404344e-06
+      ],
+      "b_ci95": [
+       0.3636862568818079,
+       0.3840293869380943
+      ],
+      "estimator": "trimmed least squares (lowest 80% of residuals, from a Theil–Sen start, to a fixed point)",
+      "scored": false
+     },
+     "P_bar_per_octave": {
+      "2^17": 1.0926880892130124,
+      "2^18": 0.8858391385710345,
+      "2^19": 0.7053499548706779
+     },
+     "marginal": {
+      "chain_speed_1pct": -0.005696820669920388,
+      "product_chain_speed_1pct": -0.009999999999999898,
+      "overhead_0.1s_per_step": -0.057049842478637314,
+      "product_overhead_0.1s_per_step": -0.10014330059547993,
+      "verifier_10ms": -0.03149191121018735,
+      "product_verifier_10ms": -0.0019351313289518446,
+      "proof_100KB": -0.09906010236113716,
+      "product_proof_100KB": 0.0,
+      "note": "relative change of S (and, prefixed product_, of S_product) at the current point (negative: better)"
+     },
+     "largest_x": {
+      "index": 24,
+      "x": 0.2114994102906539,
+      "x_verifier": 0.07609673084729453,
+      "x_size": 0.13540267944335938
+     },
+     "batching": {
+      "top_decile_share_of_P3": 0.11435975603969414,
+      "residual_lag1_autocorrelation": 0.06721757532556372,
+      "note": "diagnostic only: work deferred to some steps shows as a large top-decile share"
+     }
+    },
+    "comparable": true,
+    "truncated": false,
+    "reasons": [
+     "sum: 1.5873 s beats the record pr27-213d91c8cd5c (1.6364 s) by 3.0%",
+     "product: 0.9089 s against the record pr18-52dcfbabeea5's 0.0524 s (-1635.9%; a record needs more than 2%)"
+    ],
+    "run_url": "https://github.com/scaraven/recursion.fast-submissions/actions/runs/43849878056",
+    "tag": "rf-source/pr29-7c067e9d82be",
+    "notes": "notes/pr29-7c067e9d82be.md",
+    "readme": "readme/pr29-7c067e9d82be.md",
+    "record_of": {
+     "sum": "pr27-213d91c8cd5c",
+     "product": null
+    },
+    "tree": "0686730926ac6d38ca45fee93033d44bbd1ed267",
+    "verified": true,
+    "harness_commit": "7ecd179d4eabdda97e7caba492810dfc9c2ce9db",
+    "prover_sha256": "df7874c0748e543141138adcf4c9fec8795067c7e2b5068d982605bd03104bb6",
+    "run_attempt": 1,
+    "build_manifest": "3f4e6a5a32335d32c717de13335208799ee31d26de523a77c6d57a10b58768b5",
+    "against": {
+     "sum": {
+      "record": "pr27-213d91c8cd5c",
+      "S": 1.5872894250023206,
+      "S_record": 1.6364318879333366,
+      "gain": 0.030030252583918005,
+      "beats": true
+     },
+     "product": {
+      "record": "pr18-52dcfbabeea5",
+      "S": 0.9089036140674178,
+      "S_record": 0.052359010395797496,
+      "gain": -16.3590678509151,
+      "beats": false
+     }
+    },
+    "record_in": [
+     "sum"
+    ],
+    "retired_in": {},
+    "counted_at": "2026-11-16T10:33:24Z",
+    "result": "results/pr29-7c067e9d82be.json"
+   },
    {
     "id": "pr27-213d91c8cd5c",
     "pr": 27,
