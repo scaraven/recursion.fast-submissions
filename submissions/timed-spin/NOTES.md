@@ -34,7 +34,7 @@ Notation:
 - dev means the QEMU dev VM. Labels: [measured], [exact] (schedule arithmetic or a Lean `decide`), [model] (a model
   on measured inputs), [estimate].
 
-## Changes since #29 (planned-phi)
+## Changes since #29 (planned-phi; evaluated S = 1.5873, S× = 0.9089)
 
 **Conclusion.** Prover-only, scheduling only: the worker pool's idle spin before a worker parks is now a time (20 µs),
 converted to a count of `PAUSE` hints at start-up by timing them, instead of a fixed 4,096 hints. On the dev VM the
@@ -52,12 +52,15 @@ and certificate are #27's.
   (rms 6 ms, against 21 ms for the harness's line): the step is `C_main`'s large shape. The service's
   calibration shows 4.5× scaling from 1 to 8 threads on the evaluation machine against 8.4× on dev, so it behaves as
   4 cores with SMT: all-core work runs at about dev's speed, one thread ≈ 1.9× faster. The service's hashing
-  (1.74 M permutations a small-shape proof, 2.57 M a large one) costs its whole-machine time, ≈ 0.17 s of the 0.434 s;
-  #28's typed-phase gain reached the evaluation at ≈ 0.28× because that phase is VPCLMUL-bound on v4 and serial on
-  dev's v4p. Round trips and wake-ups do not get faster with the clock, which is why this roll targets them.
+  (1.74 M permutations a small-shape proof, 2.57 M a large one) costs its whole-machine time, ≈ 0.17 s of the 0.434 s
+  (#28). Two calibration pairs: #28's typed gain (dev v4p only, −49 ms) moved the step-model intercept −7 ms (≈ 0.15–
+  0.28×); #29's (dev step −58 ms, with v4-only 4-per-zmm VPCLMUL Φ_Q kernels dev cannot time) moved it 0.433 →
+  0.394 s, −39 ms (≈ 0.67×) [measured, eval]. Round trips and wake-ups do not get faster with the clock, which is
+  why this roll targets them.
 - **Projection [model].** If the evaluation machine's `PAUSE` is ≈ 65 cycles, the step loses the nonce part of dev's
-  penalty (≈ −12 ms) and some of the rest (0 to −42 ms): P̄ −1.3 to −5.8 %, S× ≈ −1.2 to −5.3 % against #29. If its
-  `PAUSE` is short, the change does nothing there.
+  penalty (≈ −12 ms) and some of the rest (0 to −42 ms): against #29's evaluated P̄ 0.904 and S× 0.9089 (marginal
+  0.1 s a step ≈ −0.091 of S× and of S), P̄ −1.3 to −6.0 %: **S× ≈ 0.860–0.898, S ≈ 1.538–1.576** (from 0.9089 and
+  1.5873). If its `PAUSE` is short, the change does nothing there.
 - **Byte identity [measured].** The linked `.s` reproduces #27's stream on v4p and v2 (an `S,0` at 2^18 + 2 then `S,1`
   at 2^17, 2^20, 2^18; `S,0` at 2^17 + 1; v4p `S,0` at 2^20 + 1) and on v4 under Intel SDE (n = 1, three steps at 2^14,
   `S,0` at 2^17 + 1). The spin count changes when a thread sleeps, never a field sum or a query.

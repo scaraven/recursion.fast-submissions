@@ -9,15 +9,15 @@ contract's signed random oracle and to its cheap-extractor fuel cap. Each step i
 Keccak-256 chain, plus the previous signed proof verified inside the circuit. `NOTES.md` has the design,
 the numbers and the dead ends.
 
-**Changes since #29** (`planned-phi`):
+**Changes since #29** (`planned-phi`; evaluated S = 1.5873, S× = 0.9089):
 - **Prover only:** proofs byte-identical to #27's on v2, v4p and v4 (Intel SDE); certificate, transcript and blob
   unchanged.
 - **Idle spin as a time.** A worker spins 20 µs before it parks, counted in `PAUSE` hints timed at start-up, instead of
   4,096 hints: ≈ 20 µs on dev, but ≈ 70 µs on Zen 4 (≈ 65 cycles a `PAUSE` [estimate]). Spinning workers keep the
   service's thread off the CPUs during the ≈ 1,190 sequential Fiat–Shamir round trips of a proof; on dev a 70 µs spin
   costs a step +6 to +130 ms (median ≈ +55 ms) [measured].
-- **Projected [model]:** S× −1.2 to −5.3 % against #29 if the evaluation machine's `PAUSE` is ≈ 65 cycles; nothing if
-  it is short.
+- **Projected [model]:** S× ≈ 0.860–0.898 and S ≈ 1.538–1.576 (−12 to −54 ms a step against #29) if the evaluation
+  machine's `PAUSE` is ≈ 65 cycles; nothing if it is short.
 
 **Changes in #29** (`planned-phi`) **since #28** (`brisk-tape`; evaluated S = 1.6224, S× = 0.944):
 - **Prover only:** proofs byte-identical to #27's on v2, v4p and v4 (Intel SDE); certificate, transcript and blob
