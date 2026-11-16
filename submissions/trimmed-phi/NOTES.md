@@ -7,8 +7,8 @@ This root continues #29 (`planned-phi`, a prover-only roll), #28 (`brisk-tape`, 
 stage `S2GU`: the Keccak sponge table merged into the tape), which continued #26 (`halved-phi`), #25, #22, #21, #20,
 #19 and PR #11; it carries the prover-only rolls #23, #24, #28 and #29. This root changes the node program's `Φ_Q`
 (blob U′) and `V`'s `Φ_Q` code, and slims the certificate (GOLF2's import closure, GOLF3's proofs). The transcript,
-`|π|`, the claim and the theorem's statement are #27's; the prover's code is #29's, with blob U′ embedded. "Changes since #29" is
-relative to #29; the sections from "Changes in #29" on describe the earlier rolls.
+`|π|`, the claim and the theorem's statement are #27's; the prover's code is #29's, with blob U′ embedded.
+"Changes since #29" is relative to #29; the sections from "Changes in #29" on describe the earlier rolls.
 
 A recursive SNARK entry built from leanVM's proof system: binary fields, Keccak-f by GKR, ring switching and
 stacked WHIR. It is reshaped for the contract in four ways:
@@ -41,9 +41,10 @@ Notation:
 five convolution loops instead of 260 unrolled lane forms (blob U′), and `V`'s fused `Φ_Q` code keeps its accumulator
 in two machine words. `Φ_Q` has **230,349 products** (blob U: 249,188, −7.6 %) [exact], and `V`'s `Φ_Q` falls by
 **3.9 / 4.4 ms** on dev (small / big) [measured]. The certificate is also cheaper to check (GOLF2's import closure,
-GOLF3's proofs). The transcript, `|π|` = 283,960 B, `qS`, `εFS`, the claim and the theorem's statement are unchanged; the proof bytes differ
-from #29's (different node program, same lengths). Projected from #29's evaluation (`V` 47.3 ms, S 1.5873):
-**`V` −2 to −3 ms, S ≈ 1.571–1.577, S× ≈ 0.908** [model; eval `V` ≈ 0.6 × dev `V`, ΔS = κ·ΔV/v_ref ≈ 0.005 per ms].
+GOLF3's proofs; Lean kernel 454 s locally against #29's 563 s). The transcript, `|π|` = 283,960 B, `qS`, `εFS`, the
+claim and the theorem's statement are unchanged; the proof bytes differ from #29's (different node program, same
+lengths). Projected from #29's evaluation (`V` 47.3 ms, S 1.5873): **`V` −2 to −3 ms, S ≈ 1.571–1.577, S× ≈ 0.908**
+[model; eval `V` ≈ 0.6 × dev `V`, ΔS = κ·ΔV/v_ref ≈ 0.005 per ms].
 
 - **`Φ_Q` remainder, lever 1: `runF2` without state allocation** (`LvmE2VPhiT`, `LvmE2VPhiTEq`). `Φ_Q`'s fused code at
   `E2` ran one state record per instruction; `runF2` is now `runF2Go`, tail-recursive on fuel, with the accumulator
@@ -73,7 +74,19 @@ from #29's (different node program, same lengths). Projected from #29's evaluati
   `S2GUSched`) are re-proved with bounded case splits. Gate against the GOLF2 base: 0 theorem types changed, 0 removed,
   axioms of `certified` exactly the three [measured]. Kernel census of `certified`'s cone: 1,362.8 → 1,206.0 M
   heartbeats (−156.8 M, −11.5 %) [measured]; ≈ −61 s of kernel [model, census-to-harness scale].
-- **Checked locally** [measured]: TODO-CHECKED
+- **Checked locally** [measured]:
+  - harness cert **ok** (fresh, timing lock first, CPUs 8–15, quiet host): Lean kernel **454.0 s** (#29: 562.6 s
+    loaded; #27: 549.3 s), `build_s` 861.5 s, 548 modules, peak 4.86 GB; axioms `propext`, `Classical.choice`,
+    `Quot.sound`. Before GOLF3 (GOLF2 only) the same cert took 582.2 s under load (547 modules).
+  - NGATE-U (the S2GU native gate) on blob U′: `staticOkBU20` true; `V_S` accepts the 8 honest files made by the
+    shipped linked `.s` (a 5-step stream across both shapes, `S,0` at 1, 2^17, 2^20) and rejects 34 fresh U′ tampers
+    (nonce, PoW, `E2` scalars, pin, tape, typed words, sums, `h`, shape); blob U′ regenerates byte-identically.
+  - Byte identity of the prover: run on blob U (`LVM_TYPED_DIR`), the linked `.s` reproduces #27's stream on v4p and
+    v2 and on v4 under Intel SDE (n = 1, three steps at 2^14, `S,0` at 2^17 + 1); on its embedded blob U′ it
+    reproduces the reference U′ files of an independent build (stream and `S,0` at 1, 2^17, 2^20), and v4p, v2 and
+    v4 (SDE) agree at 2^17 + 1.
+  - quick bench (24 steps): ACCEPT, S 2.663 (P̄ 1.978, V̄ 0.685), S× 1.988, mean `V` 74.3 ms, `|π|` 283,960 B,
+    `c_P` drift 0.034.
 
 ## Changes in #29 (planned-phi), since #28 (brisk-tape)
 
