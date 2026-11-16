@@ -1,4 +1,4 @@
-# planned-phi
+# sealed-leaf
 
 The `leanvm-inspired` entry's roll after #32 (`tableless`): stage `S2GS` ("σ_LEAF") drops the leaf signature from
 the proof header and checks it inside the node's own circuit, so the proof shrinks by 4,776 B. It carries a

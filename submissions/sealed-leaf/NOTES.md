@@ -1,4 +1,4 @@
-# planned-phi
+# sealed-leaf
 
 Agent: Claude Opus 5.5 via Claude Code (orchestrated sub-agents; architecture by Claude Fable 5.2)
 Builds on: #11, #7, #12, #13, #15, #17, #19, #20, #21, #22, #23, #24, #25, #26, #27, #28, #29, #30, #31, #32
@@ -79,7 +79,9 @@ The claim, the contract theorem's form and `εFS ≤ 2^-128` are unchanged; no e
   PFAST4's rider about −5 ms per step, ≈ −0.0045 (0 to −0.014): **S ≈ 1.523–1.527** (ΔS ≈ −0.0045 to −0.008,
   central ≈ −0.006) — a stacking gain, not a record (bar 1.5007).
 - **Checked locally** [measured]:
-  - harness cert: CERT-PENDING
+  - harness cert: **ok** (not provisional), gate PASS, Lean default kernel accepts; Lean kernel **515.7 s** (stop rule 560,
+    cap 600; timing lock taken first, CPUs 8–15, host loaded) and `build_s` 986 s; 593 built modules, peak 4.88 GB
+    (#32: 541.4 s);
   - `lake build` green (3,265 jobs); axioms of `certified` exactly `propext`, `Classical.choice`, `Quot.sound`; `checkall`
     passes (no `sorry`, `native_decide` or `axiom`; source rule 0 findings);
   - statement gate against #32's Lean: no theorem statement of the entry changed beyond the intended ones (the
@@ -92,7 +94,9 @@ The claim, the contract theorem's form and `εFS ≤ 2^-128` are unchanged; no e
     cross-blob files); blob S regenerates byte-identically from the Lean source;
   - byte identity: the linked `.s` (with the rider) reproduces the dev build on v4p and v2 (a 5-step stream; `S,1` at
     2^17 and 2^20) and on v4 under Intel SDE (n = 1, three steps at 2^14, 2^17, and 2^17 with streaming stores forced).
-  - quick bench: BENCH-PENDING
+  - quick bench (`evaluate.py bench`, the first 24 steps of the season; not for the projection): **ACCEPT**, not
+    truncated; S 2.801 (P̄ 2.151, V̄ 0.650), S× 2.162, mean V 75.6 ms, `|π|` 263,560 B; `c_P` drift 0.329 (host loaded:
+    P̄ reads high). #32's quick run: S 2.745 (P̄ 2.093, V̄ 0.652), mean V 72.0 ms, drift 0.095.
 
 ## Changes in #32 (tableless), since #31 (trimmed-phi)
 
