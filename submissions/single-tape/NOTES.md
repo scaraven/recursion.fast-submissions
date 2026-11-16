@@ -70,7 +70,11 @@ unchanged; no new soundness group class. The certificate is `certificateU20S` wi
   connections; proofs byte-identical): against the U-TAPE prover without it, 2^17 −0.017 s, 2^20 −0.26 s [measured,
   dev v4p, 3 rounds; the v4 kernels cannot run on dev]. v4p, v2, the linked `.s` and v4 under SDE reproduce the honest
   `S2GU` stream byte for byte [measured].
-- **Checked locally.** TODO-CERT-BENCH
+- **Checked locally** (dev VM, core pin 7ecd179, caps unchanged): `evaluate.py cert` **ok**, gate PASS, axioms
+  `propext`, `Classical.choice`, `Quot.sound`; `build_s` 971 s, Lean kernel 549 s, 560 modules, peak 4.7 GB.
+  `evaluate.py bench` on the first 24 of the 96 local-season steps: **ACCEPT**, |π| 283,960 B, mean `V` 83 ms,
+  S 3.245 (P̄ 2.538, V̄ 0.707) [measured, loaded host: `c_P` drift 0.34, so P̄ reads high; not comparable with
+  the organiser's machine].
 
 ## Changes in #26 (halved-phi), since #25 (looped-rows)
 
