@@ -41,10 +41,10 @@ theorem msgLS_ok (st : XStage) (hp : ProgOK st) {p : ℕ} (hp0 : 0 < p) (hpN : p
     (msgLS st p).1 % 8 = 0 ∧ (msgLS st p).2 % 8 = 0 ∧ (msgLS st p).1 + (msgLS st p).2 ≤ st.pz ∧
       32 + (msgLS st p).2 ≤ queryCap := by
   have hl := hp.nCh_le
-  have hm : (fsMsgsS st)[p - 1]'(by omega) ∈ (fsMsgsS st).take (nChainS st) :=
-    List.mem_iff_getElem.mpr ⟨p - 1, by simp; omega, by simp⟩
+  have hm : (fsMsgsS st)[p - 1]'(by (clear * - p st hp0 hpN hl; omega)) ∈ (fsMsgsS st).take (nChainS st) :=
+    List.mem_iff_getElem.mpr ⟨p - 1, by simp; (clear * - p st hp0 hpN hl; omega), by simp⟩
   have h := List.all_eq_true.mp hp.msgs _ hm
-  rw [msgLS, List.getD_eq_getElem _ _ (by omega)]
+  rw [msgLS, List.getD_eq_getElem _ _ (by (clear * - p st hp0 hpN hl; omega))]
   simp only [msgOkS, msgOkP, Bool.and_eq_true, beq_iff_eq, decide_eq_true_eq] at h
   exact ⟨h.1.1.1, h.1.1.2, h.1.2, h.2⟩
 
@@ -53,12 +53,12 @@ theorem msgLS_cap (st : XStage) (hp : ProgOK st) (p : ℕ) : 32 + (msgLS st p).2
   by_cases h : p - 1 < (fsMsgsS st).length
   · rw [List.getD_eq_getElem _ _ h]
     exact of_decide_eq_true (List.all_eq_true.mp hp.qcap _ (List.getElem_mem h))
-  · rw [List.getD_eq_default _ _ (by omega)]; decide
+  · rw [List.getD_eq_default _ _ (by (clear * - st p h; omega))]; decide
 
 theorem fsQLS_data (st : XStage) {π : Proof} (p : ℕ) (hp0 : 0 < p) (d : Digest) :
     (fsQLS st π p d).data.toList =
       d.toList ++ (π.extract (msgLS st p).1 ((msgLS st p).1 + (msgLS st p).2)).data.toList := by
-  rw [fsQLS, if_neg (by omega), ByteArray.data_append, Array.toList_append]
+  rw [fsQLS, if_neg (by (clear * - p hp0; omega)), ByteArray.data_append, Array.toList_append]
   rfl
 
 /-- Every query after `q₀` carries its state. -/
@@ -67,40 +67,40 @@ theorem stateIn_fsQLS (st : XStage) (hp : ProgOK st) (π : Proof) {p : ℕ} (hp0
   have hc := msgLS_cap st hp p
   have hd := fsQLS_data st (π := π) p hp0 d
   have hz : (fsQLS st π p d).size = 32 + (π.extract (msgLS st p).1 ((msgLS st p).1 + (msgLS st p).2)).size := by
-    rw [fsQLS, if_neg (by omega), ByteArray.size_append, digestBytes_size]
+    rw [fsQLS, if_neg (by (clear * - p st hp0; omega)), ByteArray.size_append, digestBytes_size]
   generalize msgLS st p = m at hc hd hz
   have he : (π.extract m.1 (m.1 + m.2)).size ≤ m.2 := by
-    rw [ByteArray.size_extract]; omega
+    rw [ByteArray.size_extract]; (clear * - m π st p d; omega)
   generalize fsQLS st π p d = q at hd hz ⊢
   generalize π.extract m.1 (m.1 + m.2) = x at hd hz he
   have hl : q.data.toList.length = q.size := Array.length_toList
-  rw [stateIn, if_pos ⟨by omega, by omega⟩]
+  rw [stateIn, if_pos ⟨by (clear * - q p m x hz hl; omega), by (clear * - q p m hc x hz he hl; omega)⟩]
   refine congrArg some (Vector.ext fun i hi => ?_)
-  rw [Vector.getElem_ofFn, List.getD_eq_getElem _ _ (by omega), List.getElem_of_eq hd,
-    List.getElem_append_left (by simp; omega), Vector.getElem_toList]
+  rw [Vector.getElem_ofFn, List.getD_eq_getElem _ _ (by (clear * - i hi q p m x hz hl; omega)), List.getElem_of_eq hd,
+    List.getElem_append_left (by simp; (clear * - hi; omega)), Vector.getElem_toList]
 
 theorem chTabS_getD (st : XStage) {p k : ℕ} (hp : p ≤ nChainS st) (hk : k < 4) :
     (chTabS st).getD (4 * p + k) 0 = (tabEntS st p).getD k 0 :=
-  getD_flatMap4 (tabEntS st) (tabEntS_length st) _ p k (by omega) hk
+  getD_flatMap4 (tabEntS st) (tabEntS_length st) _ p k (by (clear * - p st k hp; omega)) hk
 
 /-- **The table realises `V_S`'s chain** at a stage. -/
 theorem tabW_chTabS (st : XStage) (hp : ProgOK st) (c : Digest) (π : Proof) (L : Log) (hs : π.size = st.pz) :
     TabW (extractorInput c π L).toArray (fsQLS st π) (nChainS st) (chTabS st) := by
   have hpz := hp.pz_lt
   refine ⟨chTabS_length st, fun p hp0 hpN => ⟨?_, fun hpN' d => ?_⟩⟩
-  · rw [chTabS_getD st hpN (by norm_num), tabEntS, if_neg (by omega)]
+  · rw [chTabS_getD st hpN (by norm_num), tabEntS, if_neg (by (clear * - p st π hp0; omega))]
     show (toWord (5 + (msgLS st p).1 / 8)).toNat < 2 ^ 62
-    have : (msgLS st p).1 ≤ st.pz := by have := (msgLS_ok st hp hp0 hpN).2.2.1; omega
+    have : (msgLS st p).1 ≤ st.pz := by have := (msgLS_ok st hp hp0 hpN).2.2.1; (clear * - st p π this; omega)
     generalize msgLS st p = m at this
-    rw [toNat_toWord (by omega)]; omega
-  · obtain ⟨ho, hl, hol, hq⟩ := msgLS_ok st hp hp0 (by omega)
+    rw [toNat_toWord (by (clear * - m st π hs hpz p this; omega))]; (clear * - m st π hs hpz p this; omega)
+  · obtain ⟨ho, hl, hol, hq⟩ := msgLS_ok st hp hp0 (by (clear * - hpN; omega))
     have e0 := chTabS_getD st hpN (k := 0) (by norm_num)
     have e1 := chTabS_getD st hpN (k := 1) (by norm_num)
     rw [Nat.add_zero] at e0
-    rw [e0, e1, tabEntS, if_neg (by omega)]
+    rw [e0, e1, tabEntS, if_neg (by (clear * - p st π hp0; omega))]
     have hz : (fsQLS st π p d).size = 32 + (msgLS st p).2 := by
-      rw [fsQLS, if_neg (by omega), ByteArray.size_append, extract_size π (by omega), digestBytes_size]
-    refine ⟨by rw [hz]; rfl, by rw [hz]; omega, fun j hj => ?_⟩
+      rw [fsQLS, if_neg (by (clear * - p st π hp0; omega)), ByteArray.size_append, extract_size π (by (clear * - st p π hs ho hl hol; omega)), digestBytes_size]
+    refine ⟨by rw [hz]; rfl, by rw [hz]; (clear * - st p π hs hpz d ho hl hol; omega), fun j hj => ?_⟩
     rw [hz] at hj
     rw [fsQLS_data st p hp0, packBytes_appendK _ _ (k := 4) (by simp)]
     show _ = if j < 4 then _ else (extractorInput c π L).toArray.getD
@@ -108,14 +108,14 @@ theorem tabW_chTabS (st : XStage) (hp : ProgOK st) (c : Digest) (π : Proof) (L 
     split_ifs with h4
     · rfl
     · generalize msgLS st p = m at ho hl hol hj ⊢
-      obtain ⟨a, ha⟩ : ∃ a, m.1 = 8 * a := ⟨m.1 / 8, by omega⟩
-      obtain ⟨n, hn⟩ : ∃ n, m.2 = 8 * n := ⟨m.2 / 8, by omega⟩
+      obtain ⟨a, ha⟩ : ∃ a, m.1 = 8 * a := ⟨m.1 / 8, by (clear * - m st π p d j ho; omega)⟩
+      obtain ⟨n, hn⟩ : ∃ n, m.2 = 8 * n := ⟨m.2 / 8, by (clear * - m st π p d j hl a; omega)⟩
       rw [ha, hn] at hol ⊢
       rw [hn] at hj
-      rw [toNat_toWord (by omega), getD_toArray,
-        show 5 + 8 * a / 8 + (j - 4) = 5 + (a + (j - 4)) by omega,
-        tape_getD_proof c π L (by rw [hs]; omega), ← List.getD_eq_getElem _ 0,
-        extract_words π (by rw [hs]; omega) (by omega)]
+      rw [toNat_toWord (by (clear * - a st π hs hpz p d j h4 m n hj hol; omega)), getD_toArray,
+        show 5 + 8 * a / 8 + (j - 4) = 5 + (a + (j - 4)) by (clear * - a j st π p d m n; omega),
+        tape_getD_proof c π L (by rw [hs]; (clear * - a j st π p d h4 m n hj hol; omega)), ← List.getD_eq_getElem _ 0,
+        extract_words π (by rw [hs]; (clear * - hol; omega)) (by (clear * - j n st π p d h4 m a hj; omega))]
 
 /-- **`chainLS_spec`**: the machine's chain answers at a stage are the first-match chain's. -/
 theorem chainLS_spec (st : XStage) (hp : ProgOK st) (c : Digest) (π : Proof) (L : Log) (hs : π.size = st.pz)
@@ -145,13 +145,13 @@ theorem chainLS_spec (st : XStage) (hp : ProgOK st) (c : Digest) (π : Proof) (L
 /-- π's packed words on the tape of a proof of `pz` bytes. -/
 theorem tape_pwN (c : Digest) (π : Proof) (L : Log) {pz : ℕ} (hs : π.size = pz) {j : ℕ}
     (hj : j < pz / 8) : (extractorInput c π L).toArray.getD (5 + j) 0 = pw π j := by
-  rw [getD_toArray, tape_getD_proof c π L (by rw [hs]; omega), pw, List.getD_eq_getElem]
+  rw [getD_toArray, tape_getD_proof c π L (by rw [hs]; (clear * - j pz π hj; omega)), pw, List.getD_eq_getElem]
 
 theorem wsAt_tapeN (c : Digest) (π : Proof) (L : Log) {pz : ℕ} (hs : π.size = pz) {a n : ℕ}
     (h : a + n ≤ pz / 8) :
     (List.range n).map (fun j => (extractorInput c π L).toArray.getD (5 + a + j) 0) = wsAt (pw π) a n :=
   List.map_congr_left fun j hj => by
-    rw [Nat.add_assoc, tape_pwN c π L hs (by simp at hj; omega)]
+    rw [Nat.add_assoc, tape_pwN c π L hs (by simp at hj; (clear * - a j pz π n h hj; omega))]
 
 theorem den_SS (c : Digest) (π : Proof) (L : Log) {pz : ℕ} {dec : XIR} (hwf : WF dec) (hs : π.size = pz)
     (h0 : π.data[0]? = some 0x53) :
@@ -192,14 +192,14 @@ theorem EXS_leaf (st : XStage) (hp : ProgOK st) (A : Digest → Digest → Signe
       (by decide) (by norm_num)
     rw [decXS, semXIR_seq]
     generalize semXIR I (readAt rBb 6) s1 = s2 at b1 hM2 bo
-    have h6 : I.getD 6 0 = 0 := by rw [show (6 : ℕ) = 5 + 1 from rfl, tape_pwN c π L hs (by omega), hb]
+    have h6 : I.getD 6 0 = 0 := by rw [show (6 : ℕ) = 5 + 1 from rfl, tape_pwN c π L hs (by (clear * - st π hs hc0; omega)), hb]
     rw [semXIR_ite, if_pos (by rw [b1, h6]), leafIR, semXIR_seq]
     obtain ⟨e1, -⟩ := emitIR_sem I s2 hM2 (toWord 0)
     have hM3 := inv_sem I (wf_emitIR (toWord 0)) hM2
     generalize semXIR I (emitIR (toWord 0)) s2 = s3 at e1 hM3
     obtain ⟨t1, -⟩ := tcpIR_sem I s3 hM3 (a := 15) (n := 5) (by norm_num)
     rw [t1, e1, bo, ho1]
-    have t2 := wsAt_tapeN c π L hs (a := 10) (n := 5) (by omega)
+    have t2 := wsAt_tapeN c π L hs (a := 10) (n := 5) (by (clear * - st π hs hc0; omega))
     simp only [show (5 + 10 : ℕ) = 15 from rfl] at t2
     rw [t2]
     have hw : witWords (leafW π) = toWord 0 :: wsAt (pw π) 10 5 := by
@@ -242,21 +242,21 @@ theorem streamM_semS (c : Digest) (π : Proof) (L : Log) {pz : ℕ} (hs : π.siz
   have r2 : Lvm.X.rd (semXIR I (.blk [.const eA (toWord (2 ^ 18 + 1)), .op .ltu eW eW eA]) s1).M eW =
       if I.getD 19 0 < toWord (2 ^ 18 + 1) then 1 else 0 := by
     simp only [semXIR, runPrims, List.foldl, Prim.run]
-    rw [rd_set_self (by simp only [size_set, eW]; omega), rd_set_ne (by decide),
-      rd_set_self (by simp only [eA]; omega), b1]
+    rw [rd_set_self (by simp only [size_set, eW]; (clear * - s1 c π L pz s hsz z1 z2; omega)), rd_set_ne (by decide),
+      rd_set_self (by simp only [eA]; (clear * - s1 c π L pz s hsz z1 z2; omega)), b1]
     rfl
   have k2 : ∀ y, regs ≤ y →
       Lvm.X.rd (semXIR I (.blk [.const eA (toWord (2 ^ 18 + 1)), .op .ltu eW eW eA]) s1).M y = Lvm.X.rd s.M y :=
     fun y hy => by
       simp only [regs] at hy
       simp only [semXIR, runPrims, List.foldl, Prim.run]
-      rw [rd_set_ne (by simp only [eW]; omega), rd_set_ne (by simp only [eA]; omega),
-        b2 _ (by simp only [eW]; omega) (by simp only [rA]; omega)]
+      rw [rd_set_ne (by simp only [eW]; (clear * - y c π L pz s s1 hy; omega)), rd_set_ne (by simp only [eA]; (clear * - y c π L pz s s1 hy; omega)),
+        b2 _ (by simp only [eW]; (clear * - y c π L pz s s1 hy; omega)) (by simp only [rA]; (clear * - y c π L pz s s1 hy; omega))]
   rw [semXIR_seq]
   generalize semXIR I (.blk [.const eA (toWord (2 ^ 18 + 1)), .op .ltu eW eW eA]) s1 = s2 at hM2 z2 r2 k2
-  have hn : I.getD 19 0 = pw π 14 := by rw [show (19 : ℕ) = 5 + 14 from rfl, tape_pwN c π L hs (by omega)]
+  have hn : I.getD 19 0 = pw π 14 := by rw [show (19 : ℕ) = 5 + 14 from rfl, tape_pwN c π L hs (by (clear * - pz π h15 s s1 s2; omega))]
   rw [hn] at r2
-  have hsz2 : memM ≤ s2.M.size := by rw [z2, z1]; simp only [memM]; omega
+  have hsz2 : memM ≤ s2.M.size := by rw [z2, z1]; simp only [memM]; (clear * - hsz; omega)
   simp only [memM] at hsz2
   rw [semXIR_ite]
   by_cases hsm : pw π 14 < toWord (2 ^ 18 + 1)
@@ -264,21 +264,21 @@ theorem streamM_semS (c : Digest) (π : Proof) (L : Log) {pz : ℕ} (hs : π.siz
     rw [if_neg (by rw [r2]; decide)]
     obtain ⟨m1, m2, m3⟩ := mcpIR_sem I s2 hM2 (n := 2 ^ 19) (src := winM) (str := 2) (dst := mBM) (by norm_num)
       (by rw [hwin]; norm_num) (by norm_num) (by simp only [regs, mBM]; norm_num) (by simp only [mBM]; norm_num)
-      (by simp only [mBM]; omega) (fun i hi => .inr (by rw [hwin]; simp only [mBM]; omega))
-      (fun i hi => by rw [hwin]; simp only [regs]; omega)
+      (by simp only [mBM]; (clear * - s2 π pz s hsz s1 z1 z2; omega)) (fun i hi => .inr (by rw [hwin]; simp only [mBM]; (clear * - i π pz s s1 s2 hi; omega)))
+      (fun i hi => by rw [hwin]; simp only [regs]; (clear * - i π pz s s1 s2 hi; omega))
     refine ⟨fun i hi => ?_, fun y hy h => ?_, m3⟩
-    · rw [m1 i hi, k2 _ (by rw [hwin]; simp only [regs]; omega), hW _ (by omega), wStreamM, if_pos hsm]
+    · rw [m1 i hi, k2 _ (by rw [hwin]; simp only [regs]; (clear * - i π pz s s1 s2 hi; omega)), hW _ (by (clear * - i π pz s s1 s2 hi; omega)), wStreamM, if_pos hsm]
     · rw [m2 y hy h, k2 y hy]
   · rw [if_neg hsm] at r2
     rw [if_pos r2]
     obtain ⟨m1, m2, m3⟩ := mcpIR_sem I s2 hM2 (n := 2 ^ 19) (src := winM + 2 ^ 19) (str := 1) (dst := mBM)
       (by norm_num) (by rw [hwin]; norm_num) (by norm_num) (by simp only [regs, mBM]; norm_num)
-      (by simp only [mBM]; norm_num) (by simp only [mBM]; omega)
-      (fun i hi => .inr (by rw [hwin]; simp only [mBM]; omega))
-      (fun i hi => by rw [hwin]; simp only [regs]; omega)
+      (by simp only [mBM]; norm_num) (by simp only [mBM]; (clear * - s2 π pz s hsz s1 z1 z2; omega))
+      (fun i hi => .inr (by rw [hwin]; simp only [mBM]; (clear * - i π pz s s1 s2 hi; omega)))
+      (fun i hi => by rw [hwin]; simp only [regs]; (clear * - i π pz s s1 s2 hi; omega))
     refine ⟨fun i hi => ?_, fun y hy h => ?_, m3⟩
-    · rw [m1 i hi, k2 _ (by rw [hwin]; simp only [regs]; omega), Nat.one_mul, Nat.add_assoc,
-        hW _ (by omega), wStreamM, if_neg hsm]
+    · rw [m1 i hi, k2 _ (by rw [hwin]; simp only [regs]; (clear * - i π pz s s1 s2 hi; omega)), Nat.one_mul, Nat.add_assoc,
+        hW _ (by (clear * - i π pz s s1 s2 hi; omega)), wStreamM, if_neg hsm]
     · rw [m2 y hy h, k2 y hy]
 
 /-! ## S2GU's shape-dependent window (lvm2 U-TAPE, decision D-WIN (B)) -/
@@ -324,17 +324,17 @@ theorem shapeTest_sem (c : Digest) (π : Proof) (L : Log) {pz : ℕ} (hs : π.si
   have r2 : Lvm.X.rd (semXIR I (.blk [.const eA (toWord (2 ^ 18 + 1)), .op .ltu eW eW eA]) s1).M eW =
       if I.getD 19 0 < toWord (2 ^ 18 + 1) then 1 else 0 := by
     simp only [semXIR, runPrims, List.foldl, Prim.run]
-    rw [rd_set_self (by simp only [size_set, eW]; omega), rd_set_ne (by decide),
-      rd_set_self (by simp only [eA]; omega), b1]
+    rw [rd_set_self (by simp only [size_set, eW]; (clear * - s1 c π L pz s z1 hs1 z2; omega)), rd_set_ne (by decide),
+      rd_set_self (by simp only [eA]; (clear * - s1 c π L pz s z1 hs1 z2; omega)), b1]
     rfl
   have k2 : ∀ y, regs ≤ y →
       Lvm.X.rd (semXIR I (.blk [.const eA (toWord (2 ^ 18 + 1)), .op .ltu eW eW eA]) s1).M y = Lvm.X.rd s.M y :=
     fun y hy => by
       simp only [regs] at hy
       simp only [semXIR, runPrims, List.foldl, Prim.run]
-      rw [rd_set_ne (by simp only [eW]; omega), rd_set_ne (by simp only [eA]; omega),
-        b2 _ (by simp only [eW]; omega) (by simp only [rA]; omega)]
-  have hn : I.getD 19 0 = pw π 14 := by rw [show (19 : ℕ) = 5 + 14 from rfl, tape_pwN c π L hs (by omega)]
+      rw [rd_set_ne (by simp only [eW]; (clear * - y c π L pz s s1 hy; omega)), rd_set_ne (by simp only [eA]; (clear * - y c π L pz s s1 hy; omega)),
+        b2 _ (by simp only [eW]; (clear * - y c π L pz s s1 hy; omega)) (by simp only [rA]; (clear * - y c π L pz s s1 hy; omega))]
+  have hn : I.getD 19 0 = pw π 14 := by rw [show (19 : ℕ) = 5 + 14 from rfl, tape_pwN c π L hs (by (clear * - pz c π L h15 s s1; omega))]
   rw [hn] at r2
   rw [semXIR_seq]
   exact ⟨_, hM2, by rw [z2, z1], by rw [o2, o1], r2, k2, rfl⟩
@@ -356,7 +356,7 @@ theorem streamU_sem (c : Digest) (π : Proof) (L : Log) {pz : ℕ} (hs : π.size
   obtain ⟨s2, hM2, z2, o2, r2, k2, e2⟩ := shapeTest_sem c π L hs h15 s hM
     (.ite eW (mcpIR (2 ^ 19) winM 2 mBM) (mcpIR (2 ^ 19) winM 1 mBM))
   rw [streamU, e2]
-  have hsz2 : 67108864 ≤ s2.M.size := by rw [z2]; omega
+  have hsz2 : 67108864 ≤ s2.M.size := by rw [z2]; (clear * - hsz; omega)
   suffices H : (∀ i < 2 ^ 19, Lvm.X.rd (semXIR I (.ite eW (mcpIR (2 ^ 19) winM 2 mBM) (mcpIR (2 ^ 19) winM 1 mBM))
         s2).M (mBM + i) = BF64.toBitVec (out.getD (if pw π 14 < toWord (2 ^ 18 + 1) then 2 * i else i) 0)) ∧
       (∀ y, regs ≤ y → (y < mBM ∨ mBM + 2 ^ 19 ≤ y) →
@@ -370,20 +370,20 @@ theorem streamU_sem (c : Digest) (π : Proof) (L : Log) {pz : ℕ} (hs : π.size
     rw [if_neg (by rw [r2]; decide)]
     obtain ⟨m1, m2, m3⟩ := mcpIR_sem I s2 hM2 (n := 2 ^ 19) (src := winM) (str := 2) (dst := mBM) (by norm_num)
       (by rw [hwin]; norm_num) (by norm_num) (by simp only [regs, mBM]; norm_num) (by simp only [mBM]; norm_num)
-      (by simp only [mBM]; omega) (fun i hi => .inr (by rw [hwin]; simp only [mBM]; omega))
-      (fun i hi => by rw [hwin]; simp only [regs]; omega)
+      (by simp only [mBM]; (clear * - s2 π pz s hsz z2; omega)) (fun i hi => .inr (by rw [hwin]; simp only [mBM]; (clear * - i π pz s s2 hi; omega)))
+      (fun i hi => by rw [hwin]; simp only [regs]; (clear * - i π pz s s2 hi; omega))
     refine ⟨fun i hi => ?_, fun y hy h => ?_, m3⟩
-    · rw [m1 i hi, k2 _ (by rw [hwin]; simp only [regs]; omega), hW _ (by omega), if_pos hsm]
+    · rw [m1 i hi, k2 _ (by rw [hwin]; simp only [regs]; (clear * - i π pz s s2 hi; omega)), hW _ (by (clear * - i π pz s s2 hi; omega)), if_pos hsm]
     · rw [m2 y hy h, k2 y hy]
   · rw [if_neg hsm] at r2
     rw [if_pos r2]
     obtain ⟨m1, m2, m3⟩ := mcpIR_sem I s2 hM2 (n := 2 ^ 19) (src := winM) (str := 1) (dst := mBM)
       (by norm_num) (by rw [hwin]; norm_num) (by norm_num) (by simp only [regs, mBM]; norm_num)
-      (by simp only [mBM]; norm_num) (by simp only [mBM]; omega)
-      (fun i hi => .inr (by rw [hwin]; simp only [mBM]; omega))
-      (fun i hi => by rw [hwin]; simp only [regs]; omega)
+      (by simp only [mBM]; norm_num) (by simp only [mBM]; (clear * - s2 π pz s hsz z2; omega))
+      (fun i hi => .inr (by rw [hwin]; simp only [mBM]; (clear * - i π pz s s2 hi; omega)))
+      (fun i hi => by rw [hwin]; simp only [regs]; (clear * - i π pz s s2 hi; omega))
     refine ⟨fun i hi => ?_, fun y hy h => ?_, m3⟩
-    · rw [m1 i hi, k2 _ (by rw [hwin]; simp only [regs]; omega), Nat.one_mul, hW _ (by omega), if_neg hsm]
+    · rw [m1 i hi, k2 _ (by rw [hwin]; simp only [regs]; (clear * - i π pz s s2 hi; omega)), Nat.one_mul, hW _ (by (clear * - i π pz s s2 hi; omega)), if_neg hsm]
     · rw [m2 y hy h, k2 y hy]
 
 /-- **The stage's stream block** (`streamM_semS`, S2GU's `streamU_sem`). -/
@@ -437,9 +437,9 @@ theorem dec0S_sem (st : XStage) (c : Digest) (π : Proof) (L : Log) {pz : ℕ} (
       (.ite eW (decMP0IR 19 19 17 32 8 dB0M wB0M aB0M fB0M) (decMP0IRW dB0M wB0M aB0M fB0M))
     rw [e2]
     have hreg : ∀ y, wB0M ≤ y ∨ aB0M ≤ y ∨ fB0M ≤ y → regs ≤ y := fun y h => by
-      simp only [regs, wB0M, aB0M, fB0M] at h ⊢; omega
+      simp only [regs, wB0M, aB0M, fB0M] at h ⊢; (clear * - y st π pz s s2 h; omega)
     have hW2 : ∀ q < 2 ^ 19, ∀ t < 64, rdK s2.M (wB0M + 64 * q + t) = wd q t := fun q hq t ht => by
-      rw [← hW q hq t ht]; exact rdK_congrB (k2 _ (hreg _ (.inl (by omega))))
+      rw [← hW q hq t ht]; exact rdK_congrB (k2 _ (hreg _ (.inl (by (clear * - q t st π pz s s2 hq ht; omega)))))
     have hA2 : ∀ i < 6, rdE s2.M (aB0M + 3 * i) = α i := fun i hi => by
       rw [← hA i hi]; exact rdE_congr fun k _ => k2 _ (hreg _ (.inr (.inl (by omega))))
     have hF2 : ∀ v < 2 ^ 17, rdE s2.M (fB0M + 3 * v) = f v := fun v hv => by
@@ -477,7 +477,7 @@ theorem capS_tape (st : XStage) (hp : ProgOK st) (c : Digest) (π : Proof) (L : 
         (packBytes (capS st π i)[e].toList).getD m 0 := by
   intro e he m hm
   have hco : capOffS st i / 8 + 4 * capNM i ≤ st.pz / 8 := by
-    rcases (by omega : i = 0 ∨ i = 1 ∨ i = 2) with rfl | rfl | rfl
+    rcases (by (clear * - i st π hi e m; omega) : i = 0 ∨ i = 1 ∨ i = 2) with rfl | rfl | rfl
     · exact hp.cap0
     · exact hp.cap1
     · exact hp.cap2
@@ -485,18 +485,18 @@ theorem capS_tape (st : XStage) (hp : ProgOK st) (c : Digest) (π : Proof) (L : 
   simp only [capS, List.getElem_map, List.getElem_range, hdD, packBytes_digW (length_wsAt _ _ _)]
   rw [List.getD_eq_getElem _ _ (by simpa using hm)]
   simp only [wsAt, List.getElem_map, List.getElem_range]
-  rw [show capWS st i + 4 * e + m = 5 + (capOffS st i / 8 + 4 * e + m) by rw [capWS]; omega,
-    tape_pwN c π L hs (by omega)]
+  rw [show capWS st i + 4 * e + m = 5 + (capOffS st i / 8 + 4 * e + m) by rw [capWS]; (clear * - st i e m π; omega),
+    tape_pwN c π L hs (by (clear * - st i e m π hm hco he'; omega))]
 
 theorem foldPosS_add (st : XStage) (i j : ℕ) : foldPosS st i j = foldPosS st i 0 + j := by
-  unfold foldPosS; omega
+  unfold foldPosS; (clear * - st i j; omega)
 
 theorem foldPosKS_0 (st : XStage) {j : ℕ} (hj : j < 6) : foldPosKS st j = foldPosS st 0 0 + j := by
   rw [foldPosKS, if_pos hj, foldPosS_add]
 theorem foldPosKS_1 (st : XStage) {j : ℕ} (hj : j < 4) : foldPosKS st (6 + j) = foldPosS st 1 0 + j := by
-  rw [foldPosKS, if_neg (by omega), if_pos (by omega), foldPosS_add, Nat.add_sub_cancel_left]
+  rw [foldPosKS, if_neg (by (clear * - j hj; omega)), if_pos (by (clear * - j hj; omega)), foldPosS_add, Nat.add_sub_cancel_left]
 theorem foldPosKS_2 (st : XStage) {j : ℕ} (hj : j < 4) : foldPosKS st (10 + j) = foldPosS st 2 0 + j := by
-  rw [foldPosKS, if_neg (by omega), if_neg (by omega), foldPosS_add, Nat.add_sub_cancel_left]
+  rw [foldPosKS, if_neg (by (clear * - j hj; omega)), if_neg (by (clear * - j hj; omega)), foldPosS_add, Nat.add_sub_cancel_left]
 
 theorem hasOut_chainLS (st : XStage) : hasOut (chainLS st) = false := by
   simp only [chainLS, chainIR, hasOut_seq, hasOut_storesIR, cntIR, cntBody, readAt, sdL, startPs, wordIR,
@@ -517,8 +517,8 @@ theorem le_add2 {L C x y : ℕ} (h : L ≤ C) : L ≤ C + x + y :=
 
 theorem lt_aff {C a i n m k B : ℕ} (hi : i < n) (hm : m < k) (h : C + a * (n - 1) + k ≤ B) :
     C + a * i + m < B := by
-  have : a * i ≤ a * (n - 1) := Nat.mul_le_mul_left a (by omega)
-  omega
+  have : a * i ≤ a * (n - 1) := Nat.mul_le_mul_left a (by (clear * - i n C a m k B hi; omega))
+  (clear * - C a i m B n k hm h this; omega)
 
 theorem le_add3 {L C x y z : ℕ} (h : L ≤ C) : L ≤ C + x + y + z :=
   Nat.le_trans (le_add2 h) (Nat.le_add_right _ z)
@@ -526,17 +526,17 @@ theorem le_add3 {L C x y z : ℕ} (h : L ≤ C) : L ≤ C + x + y + z :=
 theorem lt_affC {C a i n m B : ℕ} (hi : i < n) (hm : m < a) (h : C + a * n ≤ B) : C + a * i + m < B := by
   have : a * (i + 1) ≤ a * n := Nat.mul_le_mul_left a hi
   rw [Nat.mul_succ] at this
-  omega
+  (clear * - C a i m B n hm h this; omega)
 
 theorem lt_ans {x N m B : ℕ} (hx : x < N) (hN : N < 2 ^ 11) (hm : m < 4) (h : ansB + 4 * 2 ^ 11 ≤ B) :
     ansB + 4 * x + m < B := by omega
 
 theorem le_ans {x n N : ℕ} (hx : x + n ≤ N) (hN : N < 2 ^ 11) : ansB + 4 * x + 4 * n ≤ 2 ^ 25 := by
-  rw [ansB_v]; omega
+  rw [ansB_v]; (clear * - x n N hx hN; omega)
 
 theorem lt_aff0 {a i n m k B : ℕ} (hi : i < n) (hm : m < k) (h : a * (n - 1) + k ≤ B) : a * i + m < B := by
-  have : a * i ≤ a * (n - 1) := Nat.mul_le_mul_left a (by omega)
-  omega
+  have : a * i ≤ a * (n - 1) := Nat.mul_le_mul_left a (by (clear * - i n a m k B hi; omega))
+  (clear * - a i m B n k hm h this; omega)
 
 /-- The layout's numbers, for `simp only` before `omega` (the decoders' flags at their numeric workspaces). -/
 theorem layNum : memM = 67108864 ∧ wB0M = 33554368 ∧ wB1M = 17039360 ∧ wB2M = 2097152 ∧ dB0M = 8388608 ∧
@@ -586,7 +586,7 @@ theorem EXS_node (st : XStage) (hp : ProgOK st) (ho : OutOK st) (A : Digest → 
     have h1 := length_logEntries L
     rw [tape_eq]
     simp only [List.length_append, logWords, List.length_cons]
-    omega
+    (clear * - L c π st s1 h1; omega)
   simp only [memM, mpwX] at z1
   -- the flag
   obtain ⟨b1, -, hM2, z2, bo⟩ := readAt_val I s1 hM1 (d := rBb) (pos := 6) (by decide) (by decide)
@@ -603,7 +603,7 @@ theorem EXS_node (st : XStage) (hp : ProgOK st) (ho : OutOK st) (A : Digest → 
   rw [semXIR_seq]
   generalize hs3 : semXIR I (idxIR4 memM (pLS st)) s2 = s3 at hM3 z3 o3
   have hsz3 : 2 ^ 26 + 3 * (extractorInput c π L).length ≤ s3.M.size := by rw [z3, z2, z1]
-  have hs2' : memM + L.length + L.length ≤ s2.M.size := by rw [layNum.1, z2, z1]; omega
+  have hs2' : memM + L.length + L.length ≤ s2.M.size := by rw [layNum.1, z2, z1]; (clear * - L c π st s1 hLt s2 s3; omega)
   have hm3 : 2 ^ 26 ≤ s3.M.size := Nat.le_trans (Nat.le_add_right _ _) hsz3
   clear z1 z2 z3 hsz3 hLt
   -- 2. the chain
@@ -739,8 +739,8 @@ theorem EXS_node (st : XStage) (hp : ProgOK st) (ho : OutOK st) (A : Digest → 
   have K79 : ∀ y, regs ≤ y → (y < aB0M ∨ aB2M + 12 ≤ y) → (y < fB2M ∨ fB2M + 3 * 2 ^ 9 ≤ y) →
       Lvm.X.rd s9.M y = Lvm.X.rd s7.M y := fun y hy h1 h2 => by
     simp only [layNum] at h1
-    rw [f2 y hy h2, a22 y hy (by simp only [layNum]; omega), a12 y hy (by simp only [layNum]; omega),
-      a02 y hy (by simp only [layNum]; omega)]
+    rw [f2 y hy h2, a22 y hy (by simp only [layNum]; (clear * - y st π s9 h1; omega)), a12 y hy (by simp only [layNum]; (clear * - y st π s9 h1; omega)),
+      a02 y hy (by simp only [layNum]; (clear * - y st π s9 h1; omega))]
   -- 8. level 2's decoder
   have hW2 : ∀ q < 2 ^ 13, ∀ t < 48, rdK s9.M (wB2M + 48 * q + t) = wd₂ q t := fun q hq t ht' => by
     simp only [rdK]

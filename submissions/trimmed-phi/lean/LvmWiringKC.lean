@@ -658,42 +658,42 @@ theorem qs_loop_part {α : Type} {n : ℕ} (lt : α → α → Bool) (lo hi : �
   · rw [dite_eq_left h]
     by_cases hl : lt as[k] pivot = true
     · rw [ite_eq_left hl]
-      refine qs_part_of_R (qs_R_swap as i k (by omega) (by omega) ilo (by omega) (by omega) (by omega))
+      refine qs_part_of_R (qs_R_swap as i k (by (clear * - i n lo hi hhi k ik h; omega)) (by (clear * - k n lo hi hhi i h; omega)) ilo (by (clear * - i hi n lo k ik h; omega)) (by (clear * - lo k n hi i ilo ik; omega)) (by (clear * - w; omega)))
         (qs_loop_part lt lo hi hhi pivot _ (i + 1) (k + 1) _ _ _ ?_ ?_ ?_)
       · rw [Vector.getElem_swap]; split_ifs <;> omega
       · intro j hj a1 a2
         rw [Vector.getElem_swap]
         split_ifs with e1 e2
         · exact hl
-        · omega
-        · exact h1 j hj a1 (by omega)
+        · (clear * - lt α n as i lo hi hhi k ik h pivot j a2 e1 e2; omega)
+        · exact h1 j hj a1 (by (clear * - j i n lo hi k ik a2 e1 e2; omega))
       · intro j hj a1 a2
         rw [Vector.getElem_swap]
         split_ifs with e1 e2
-        · omega
-        · exact h2 i (by omega) le_rfl (by omega)
-        · exact h2 j hj (by omega) (by omega)
+        · (clear * - lt α n as k lo hi hhi i h pivot j a1 e1; omega)
+        · exact h2 i (by (clear * - i n lo hi hhi k h j a1 e2; omega)) le_rfl (by (clear * - i k n lo hi j a1 e2; omega))
+        · exact h2 j hj (by (clear * - i j n lo hi k a1; omega)) (by (clear * - j k n lo hi i a2 e2; omega))
     · rw [ite_eq_right hl]
       refine qs_loop_part lt lo hi hhi pivot as i (k + 1) _ _ _ hpiv h1 ?_
       intro j hj a1 a2
       by_cases e : j = k
       · subst e; simpa using hl
-      · exact h2 j hj a1 (by omega)
+      · exact h2 j hj a1 (by (clear * - j k n lo hi i a2 e; omega))
   · rw [dite_eq_right h]
-    have hk : k = hi := by omega
-    refine ⟨qs_R_swap as i hi (by omega) hhi ilo (by omega) (by omega) le_rfl, ?_, ?_⟩
+    have hk : k = hi := by (clear * - k hi n lo i w h; omega)
+    refine ⟨qs_R_swap as i hi (by (clear * - i n lo hi hhi k ik w h; omega)) hhi ilo (by (clear * - i hi n lo k ik w h; omega)) (by (clear * - lo hi n i k ilo ik w h; omega)) le_rfl, ?_, ?_⟩
     · intro j hj a1 a2
       dsimp only at a2
       simp only [Vector.getElem_swap, ite_true]
-      rw [ite_eq_right (by omega), ite_eq_right (by omega), hpiv]
+      rw [ite_eq_right (by (clear * - j i n lo hi k a2; omega)), ite_eq_right (by (clear * - j hi n lo i k ik w h a2; omega)), hpiv]
       exact h1 j hj a1 a2
     · intro j hj a1 a2
       dsimp only at a1
       simp only [Vector.getElem_swap, ite_true]
-      rw [ite_eq_right (by omega), hpiv]
+      rw [ite_eq_right (by (clear * - j i n lo hi k a1; omega)), hpiv]
       split_ifs with e
-      · exact h2 i (by omega) le_rfl (by omega)
-      · exact h2 j hj (by omega) (by omega)
+      · exact h2 i (by (clear * - i n lo hi k j hj a1; omega)) le_rfl (by (clear * - i k n lo hi w h j a1 e; omega))
+      · exact h2 j hj (by (clear * - i j n lo hi k a1; omega)) (by (clear * - j k n lo hi i w h a2 e; omega))
 termination_by hi - k
 
 theorem qs_loop_lt_hi {α : Type} {n : ℕ} (lt : α → α → Bool) (lo hi : ℕ) (hhi : hi < n) (pivot : α)
@@ -707,14 +707,14 @@ theorem qs_loop_lt_hi {α : Type} {n : ℕ} (lt : α → α → Bool) (lo hi : �
     · rw [ite_eq_left hl]
       refine qs_loop_lt_hi lt lo hi hhi pivot _ (i + 1) (k + 1) _ _ _ ?_
       rcases h with h | ⟨j, hj, a1, a2, a3⟩
-      · exact Or.inl (by omega)
+      · exact Or.inl (by (clear * - i k n lo hi h; omega))
       · right
         have hjk : j ≠ k := by rintro rfl; simp [hl] at a3
-        refine ⟨j, hj, by omega, a2, ?_⟩
-        rw [Vector.getElem_swap, ite_eq_right (by omega), ite_eq_right hjk]
+        refine ⟨j, hj, by (clear * - k j n lo hi i a1 hjk; omega), a2, ?_⟩
+        rw [Vector.getElem_swap, ite_eq_right (by (clear * - j i n lo hi k ik a1 hjk; omega)), ite_eq_right hjk]
         exact a3
     · rw [ite_eq_right hl]
-      exact qs_loop_lt_hi lt lo hi hhi pivot as i (k + 1) _ _ _ (Or.inl (by omega))
+      exact qs_loop_lt_hi lt lo hi hhi pivot as i (k + 1) _ _ _ (Or.inl (by (clear * - i k n lo hi ik; omega)))
   · rw [dite_eq_right hk]
     show i < hi
     rcases h with h | ⟨j, hj, a1, a2, a3⟩ <;> omega
@@ -772,8 +772,8 @@ theorem qs_sort_R {α : Type} (lt : α → α → Bool) {n : ℕ} (as : Vector �
     split
     · exact hp.1
     · rename_i h₂
-      exact qs_R_trans hp.1 (qs_R_trans (qs_R_mono (qs_sort_R lt b lo mid _ _ _) le_rfl (by omega))
-        (qs_R_mono (qs_sort_R lt _ (mid + 1) hi _ _ _) (by omega) le_rfl))
+      exact qs_R_trans hp.1 (qs_R_trans (qs_R_mono (qs_sort_R lt b lo mid _ _ _) le_rfl (by (clear * - mid hi n lo h₂; omega)))
+        (qs_R_mono (qs_sort_R lt _ (mid + 1) hi _ _ _) (by (clear * - lo mid n hi hmid; omega)) le_rfl))
   · exact qs_R_refl _ _ _
 termination_by hi - lo
 
@@ -795,22 +795,22 @@ theorem qs_sort_sorted {α : Type} (lt : α → α → Bool)
     split
     · omega
     · rename_i h₂
-      have Rc := qs_sort_R lt b lo mid hmid.1 hlo (by omega)
-      have Rd := qs_sort_R lt (Array.qsort.sort lt b lo mid hmid.1 hlo (by omega)) (mid + 1) hi
-        (by omega) (by omega) hhi
+      have Rc := qs_sort_R lt b lo mid hmid.1 hlo (by (clear * - mid n lo hi hhi i j hlt; omega))
+      have Rd := qs_sort_R lt (Array.qsort.sort lt b lo mid hmid.1 hlo (by (clear * - mid n lo hi hhi i j hlt; omega))) (mid + 1) hi
+        (by (clear * - mid hi n lo i j hlt; omega)) (by (clear * - mid n lo hi hhi i j hlt; omega)) hhi
       by_cases hA : mid + 1 ≤ i
       · exact qs_sort_sorted lt htrans hasymm _ (mid + 1) hi _ _ _ i j hi' hj hA a2 a3
       by_cases hB : j ≤ mid
-      · rw [Rd.2.1 i hi' (by omega), Rd.2.1 j hj (by omega)]
+      · rw [Rd.2.1 i hi' (by (clear * - i mid hi n lo j hA; omega)), Rd.2.1 j hj (by (clear * - j mid hi n lo i hB; omega))]
         exact qs_sort_sorted lt htrans hasymm b lo mid _ _ _ i j hi' hj a1 a2 hB
-      · rw [Rd.2.1 i hi' (by omega)]
-        obtain ⟨i', hi'', b1, b2, ei⟩ := Rc.2.2 i hi' a1 (by omega)
-        obtain ⟨j', hj', c1, c2, ej⟩ := Rd.2.2 j hj (by omega) a3
-        rw [ei, ej, Rc.2.1 j' hj' (by omega)]
-        have hr := hp.2.2 j' hj' (by omega) c2
+      · rw [Rd.2.1 i hi' (by (clear * - i mid hi n lo j hA; omega))]
+        obtain ⟨i', hi'', b1, b2, ei⟩ := Rc.2.2 i hi' a1 (by (clear * - i mid n lo hi j hA; omega))
+        obtain ⟨j', hj', c1, c2, ej⟩ := Rd.2.2 j hj (by (clear * - mid j n lo hi i hB i'; omega)) a3
+        rw [ei, ej, Rc.2.1 j' hj' (by (clear * - j' lo mid n hi i j i' c1; omega))]
+        have hr := hp.2.2 j' hj' (by (clear * - mid j' n lo hi i j i' c1; omega)) c2
         by_cases e : i' = mid
         · subst e; exact hr
-        · have hl := hp.2.1 i' hi'' b1 (by omega)
+        · have hl := hp.2.1 i' hi'' b1 (by (clear * - i' mid n lo hi i j b2 j' e; omega))
           cases hc : lt b[j'] b[i']
           · rfl
           · rw [htrans _ _ _ hc hl] at hr; exact hr
@@ -907,13 +907,13 @@ theorem qs_kres (a b : Array (ℕ × ℕ)) (k : ℕ) : ∀ s, s + k = min a.size
 theorem qs_keysLt_iff (a b : Array (ℕ × ℕ)) :
     keysLt a b = true ↔ List.Lex (Prod.Lex (· < ·) (· < ·)) a.toList b.toList := by
   rw [qs_keysLt_eq, Std.Legacy.Range.forIn_eq_forIn_range']
-  have := qs_kres a b (min a.size b.size) 0 (by omega)
+  have := qs_kres a b (min a.size b.size) 0 (by (clear * - a b; omega))
   simpa [Std.Legacy.Range.size] using this
 
 theorem qs_prodLex_trans {x y z : ℕ × ℕ} (h₁ : Prod.Lex (· < ·) (· < ·) x y)
     (h₂ : Prod.Lex (· < ·) (· < ·) y z) : Prod.Lex (· < ·) (· < ·) x z := by
   rw [Prod.lex_def] at *
-  omega
+  (clear * - x z y h₁ h₂; omega)
 
 theorem qs_keysLt_trans (a b c : Array (ℕ × ℕ)) :
     keysLt a b = true → keysLt b c = true → keysLt a c = true := by
@@ -1150,11 +1150,11 @@ theorem c0a_eqW_range (r : Array 𝔽) (n : ℕ) : ∀ (lo v : ℕ),
     rw [List.range_succ_eq_map, List.map_cons, List.map_cons, List.prod_cons, eqWG, List.map_map, List.map_map]
     have e1 : (List.range n).map ((fun k ↦ r.getD (lo + k) 0) ∘ Nat.succ) =
         (List.range n).map fun k ↦ r.getD (lo + 1 + k) 0 :=
-      List.map_congr_left (fun k _ ↦ by simp only [Function.comp_apply]; congr 1; (clear * -; omega))
+      List.map_congr_left (fun k _ ↦ by simp only [Function.comp_apply]; congr 1; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))
     have e2 : (List.range n).map ((fun k ↦ eq1G (r.getD (lo + k) 0) (v.testBit k)) ∘ Nat.succ) =
         (List.range n).map fun k ↦ eq1G (r.getD (lo + 1 + k) 0) ((v / 2).testBit k) :=
       List.map_congr_left (fun k _ ↦ by
-        simp only [Function.comp_apply, Nat.testBit_div_two]; congr 2; (clear * -; omega))
+        simp only [Function.comp_apply, Nat.testBit_div_two]; congr 2; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))
     rw [e1, e2, ih (lo + 1) (v / 2), Nat.testBit_zero]
     by_cases h : v % 2 = 1 <;> simp [h, eq1G]
 
@@ -1189,7 +1189,7 @@ theorem ct_E_split (pt : List 𝔽) (hpt : pt.length = 2 + xVars + yVars) (o x y
   set C := (pt.drop (2 + xVars)).take yVars with hC
   have hAl : A.length = 2 := by simp only [hA, List.length_take, hpt]; (clear * - hpt; omega)
   have hBl : B.length = xVars := by simp only [hB, List.length_take, List.length_drop, hpt]; (clear * - hpt; omega)
-  have hCl : C.length = yVars := by simp only [hC, List.length_take, List.length_drop, hpt]; (clear * -; omega)
+  have hCl : C.length = yVars := by simp only [hC, List.length_take, List.length_drop, hpt]; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)
   have hsplit : pt = A ++ (B ++ C) := by
     have e1 : pt.drop (2 + xVars) = C := by
       rw [hC, List.take_of_length_le (by simp only [List.length_drop, hpt]; (clear * - hCl; omega))]
@@ -1203,7 +1203,7 @@ theorem ct_E_split (pt : List 𝔽) (hpt : pt.length = 2 + xVars + yVars) (o x y
   rw [hkap, hrx, hry, ← ct_eqW_sub, ← ct_eqW_sub, ← hAl, ← hBl, ← hCl, c0a_sub_self, c0a_sub_self,
     c0a_sub_self, ct_E]
   conv_lhs => rw [hsplit]
-  rw [show (4 : ℕ) = 2 ^ A.length by rw [hAl]; rfl, tab_eqW_append _ _ _ _ (by rw [hAl]; omega), ← hBl,
+  rw [show (4 : ℕ) = 2 ^ A.length by rw [hAl]; rfl, tab_eqW_append _ _ _ _ (by rw [hAl]; (clear * - ho; omega)), ← hBl,
     tab_eqW_append _ _ _ _ (by rw [hBl]; exact hx)]
   ring
 
@@ -1371,7 +1371,7 @@ theorem c0b_pext_lt (v : ℕ) : ∀ bs : List ℕ, pext v bs < 2 ^ bs.length
     rw [c0b_pext_cons]
     have := c0b_pext_lt v bs
     simp only [List.length_cons, pow_succ]
-    split <;> omega
+    split <;> (clear * - v bs this; omega)
 
 theorem c0b_eqW_pext (r : Array 𝔽) (v : ℕ) :
     ∀ bs : List ℕ, eqWG (bs.map fun b ↦ r.getD b 0) (pext v bs) = ct_eqOn r bs v
@@ -1381,12 +1381,12 @@ theorem c0b_eqW_pext (r : Array 𝔽) (v : ℕ) :
     have ih := c0b_eqW_pext r v bs
     simp only [ct_eqOn, List.map_cons, List.prod_cons, eq1G] at ih ⊢
     cases v.testBit b
-    · have h1 : (0 + 2 * pext v bs) % 2 = 0 := by omega
-      have h2 : (0 + 2 * pext v bs) / 2 = pext v bs := by omega
+    · have h1 : (0 + 2 * pext v bs) % 2 = 0 := by (clear * - v bs; omega)
+      have h2 : (0 + 2 * pext v bs) / 2 = pext v bs := by (clear * - v bs h1; omega)
       simp only [Bool.false_eq_true, ite_false, h1, h2, ih]
       simp
-    · have h1 : (1 + 2 * pext v bs) % 2 = 1 := by omega
-      have h2 : (1 + 2 * pext v bs) / 2 = pext v bs := by omega
+    · have h1 : (1 + 2 * pext v bs) % 2 = 1 := by (clear * - v bs; omega)
+      have h2 : (1 + 2 * pext v bs) / 2 = pext v bs := by (clear * - v bs h1; omega)
       simp only [ite_true, h1, h2, ih]
 
 theorem c0b_prod_filter_ne {α : Type} (f : List α → 𝔽) (hf : f [] = 1) :
@@ -2104,7 +2104,7 @@ theorem c1_limb_bits (v0 e m : ℕ) (h : (v0 >>> e) % 4 = 0) (hm : m < 4) (j : �
   rw [h3, Nat.testBit_two_pow_mul_add _ hr]
   conv_rhs => rw [h1, Nat.testBit_two_pow_mul_add _ hr]
   rw [Nat.testBit_two_pow_mul_add _ (by norm_num : (0:ℕ) < 2 ^ 2),
-    Nat.testBit_two_pow_mul_add _ (by norm_num; omega : m < 2 ^ 2)]
+    Nat.testBit_two_pow_mul_add _ (by norm_num; (clear * - hm; omega) : m < 2 ^ 2)]
   by_cases hj : j < e
   · simp [hj, show j ≠ e by (clear * - hj; omega), show j ≠ e + 1 by (clear * - hj; omega)]
   · obtain ⟨d, rfl⟩ : ∃ d, j = e + d := ⟨j - e, by (clear * - hj; omega)⟩
@@ -2112,8 +2112,8 @@ theorem c1_limb_bits (v0 e m : ℕ) (h : (v0 >>> e) % 4 = 0) (hm : m < 4) (j : �
     rcases d with _ | _ | d
     · simp
     · simp
-    · simp only [show e + (d + 2) ≠ e by (clear * -; omega), show e + (d + 2) ≠ e + 1 by (clear * -; omega), ite_false,
-        show ¬ (d + 2 < 2) by (clear * -; omega), Nat.zero_testBit]
+    · simp only [show e + (d + 2) ≠ e by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - e d; omega)), show e + (d + 2) ≠ e + 1 by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - e d; omega)), ite_false,
+        show ¬ (d + 2 < 2) by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - d; omega)), Nat.zero_testBit]
 
 /-- A number with prescribed bits below `n`. -/
 def c1_ofBits (h : ℕ → Bool) : ℕ → ℕ
@@ -2138,7 +2138,7 @@ theorem c1_ofBits_spec (h : ℕ → Bool) (n : ℕ) :
         rw [Nat.add_sub_cancel_left]
         rcases d with _ | d
         · split <;> simp_all
-        · have : ¬ (n + (d + 1) < n + 1) := by (clear * -; omega)
+        · have : ¬ (n + (d + 1) < n + 1) := by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - n d; omega))
           simp only [this, decide_false, Bool.false_and]
           split <;> simp [Nat.testBit_add_one]
 
@@ -2484,7 +2484,7 @@ theorem c1_sum_range_ext (h : ℕ → ℕ) (n : ℕ) (hz : ∀ i, n ≤ i → h 
   | zero => rfl
   | succ d ih =>
     rw [← Nat.add_assoc, List.range_succ, List.map_append, List.sum_append, ih]
-    simp [hz (n + d) (by (clear * -; omega))]
+    simp [hz (n + d) (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - n d; omega)))]
 
 theorem c1_sum_filter_eq {α : Type} (L : List α) (p : α → Bool) (h : α → ℕ) :
     ((L.filter p).map h).sum = (L.map fun i ↦ if p i = true then h i else 0).sum := by
@@ -2500,7 +2500,7 @@ theorem c1_sum_filter_split {α : Type} (L : List α) (p : α → Bool) (h : α 
   | nil => rfl
   | cons a L ih =>
     rw [List.filter_cons, List.filter_cons]
-    cases hp : p a <;> simp [ih] <;> (clear * -; omega)
+    cases hp : p a <;> simp [ih] <;> (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)
 
 theorem c1_at (l : ℕ) (a : Aff) (fix : List (ℕ × Bool)) (hfk : ∀ p ∈ fix, p.1 < l)
     (hfn : (fix.map (·.1)).Nodup) (jf : ℕ) (hjf : jf < 2 ^ l) (hin : ct_inFix fix jf = true) :
@@ -2787,7 +2787,7 @@ theorem ct_addSub_inj (pt : List 𝔽) (hpt : pt.length = 2 + xVars + yVars) (s 
         rw [hb, if_neg (hne p hp).1, if_neg (hne p hp).2, hat jf hjf hin, hhit jf p hp]
       rw [c1_eqOn_y P.ry _ hMn hMr _ y0 hv, ct_eqOn_append, hYp _ jf hp]
       simp only [ct_eqOn, List.map_cons, List.map_nil, List.prod_cons, List.prod_nil, mul_one, hb, if_true,
-        show e + 1 ≠ e by (clear * -; omega), if_false]
+        show e + 1 ≠ e by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - e; omega)), if_false]
     simp only [ct_limFs, ct_limYm, ct_EL]
     have t00 : (0 : ℕ).testBit 0 = false := by decide
     have t01 : (0 : ℕ).testBit 1 = false := by decide
@@ -2876,7 +2876,7 @@ theorem c2_autoRun (free : List (ℕ × ℕ)) : c2_RunOk free (autoRun free) := 
             exact ⟨by rw [hc2]; (clear * - hij htj this; omega), by rw [hc3]; congr 2; (clear * - hij htj this; omega)⟩
         · simp only [hc, ↓reduceIte, Bool.false_eq_true]
           exact ⟨hij, hjs, hj⟩
-      · refine ⟨by (clear * -; omega), by (clear * - hi; omega), fun t ht => ?_⟩
+      · refine ⟨by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - i; omega)), by (clear * - hi; omega), fun t ht => ?_⟩
         have : t = 0 := by (clear * - ht; omega)
         subst this
         simpa using hgD.symm
@@ -2933,7 +2933,7 @@ theorem c2_cs_enum {V M : Type} [AddCommMonoid V] [AddCommMonoid M] :
     obtain ⟨g, st⟩ := p
     rw [List.length_cons, pow_succ, mul_comm, c2_sum_range_two_mul]
     have e0 : ∀ x : ℕ, (2 * x) % 2 = 0 ∧ (2 * x) / 2 = x ∧ (2 * x + 1) % 2 = 1 ∧ (2 * x + 1) / 2 = x :=
-      fun x => ⟨by (clear * -; omega), by (clear * -; omega), by (clear * -; omega), by (clear * -; omega)⟩
+      fun x => ⟨by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - x; omega)), by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - x; omega)), by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - x; omega)), by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - x; omega))⟩
     simp only [List.map_cons, c2_ok, c2_vs, e0, List.sum_map_add]
     rcases st with _ | _ | _
     · simp only [c2_cp, Bool.true_and, c2_cs, ← ih]
@@ -2996,7 +2996,7 @@ theorem c2_ok_iff : ∀ (S : List (Option Bool)) (n : ℕ),
       · simpa [Nat.testBit_zero] using h0
       · simpa [Nat.testBit_add_one] using h1 k (by (clear * - hk; omega))
     · intro h
-      refine ⟨by simpa [Nat.testBit_zero] using h 0 (by (clear * -; omega)), fun k hk => ?_⟩
+      refine ⟨by simpa [Nat.testBit_zero] using h 0 (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - S; omega))), fun k hk => ?_⟩
       simpa [Nat.testBit_add_one] using h (k + 1) (by (clear * - hk; omega))
 
 theorem c2_vs_eq {V : Type} [AddCommMonoid V] : ∀ (G : List V) (n : ℕ),
@@ -3205,7 +3205,7 @@ theorem c2_bits_sum : ∀ (l jf : ℕ), jf < 2 ^ l →
     ((List.range l).map fun k => if jf.testBit k then 2 ^ k else 0).sum = jf := by
   intro l
   induction l with
-  | zero => intro jf h; simp at h ⊢; omega
+  | zero => intro jf h; simp at h ⊢; (clear * - jf h; omega)
   | succ l ih =>
     intro jf h
     rw [List.sum_range_succ']
@@ -3224,7 +3224,7 @@ theorem c2_sum_range_le {M : Type} [AddCommMonoid M] (f : ℕ → M) (N N' : ℕ
   intro x hx
   simp only [List.mem_map, List.mem_range, Function.comp] at hx
   obtain ⟨k, hk, rfl⟩ := hx
-  exact h _ (by (clear * -; omega)) (by (clear * - hk; omega))
+  exact h _ (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - N k; omega))) (by (clear * - hk; omega))
 
 theorem c2_at_eq (a : Aff) (l jf : ℕ) (h : jf < 2 ^ l) :
     a.at jf = a.y0 + ((List.range l).map fun k => if jf.testBit k then a.coef.getD k 0 else 0).sum := by
@@ -3234,12 +3234,12 @@ theorem c2_at_eq (a : Aff) (l jf : ℕ) (h : jf < 2 ^ l) :
       (if jf.testBit k then a.coef.getD k 0 else 0) = 0 := by
     intro k hk
     rcases hk with hk | hk
-    · rw [Nat.testBit_eq_false_of_lt (lt_of_lt_of_le h (Nat.pow_le_pow_right (by norm_num) (by omega)))]
+    · rw [Nat.testBit_eq_false_of_lt (lt_of_lt_of_le h (Nat.pow_le_pow_right (by norm_num) (by (clear * - hk; omega))))]
       rfl
     · simp [List.getD_eq_getElem?_getD, hk]
   rw [← c2_sum_range_le _ a.coef.length (max a.coef.length l) (le_max_left _ _)
-      (fun k hk1 hk2 => h0 k (Or.inr (by omega))),
-    ← c2_sum_range_le _ l (max a.coef.length l) (le_max_right _ _) (fun k hk1 hk2 => h0 k (Or.inl (by omega)))]
+      (fun k hk1 hk2 => h0 k (Or.inr (by (clear * - hk1; omega)))),
+    ← c2_sum_range_le _ l (max a.coef.length l) (le_max_right _ _) (fun k hk1 hk2 => h0 k (Or.inl (by (clear * - hk1; omega))))]
 
 /-- The free bits of the sub-cube. -/
 def c2_FB (l : ℕ) (fix : List (ℕ × Bool)) : List ℕ := (List.range l).filter (fun i => !fix.any (·.1 == i))
@@ -3320,7 +3320,7 @@ theorem c2_sum_single (g : ℕ → ℕ) (b : ℕ) : ∀ N, b < N →
     ((List.range N).map fun k => if k = b then g k else 0).sum = g b := by
   intro N
   induction N with
-  | zero => intro h; omega
+  | zero => intro h; (clear * - b g h; omega)
   | succ N ih =>
     intro h
     rw [List.range_succ, List.map_append, List.sum_append]
@@ -3451,7 +3451,7 @@ theorem ct_addSub_K3 (pt : List 𝔽) (hpt : pt.length = 2 + xVars + yVars) (s :
       simp only [hz, add_zero, e1, e2] at H
       simpa using H
     refine ct_addMember pt s' hs' xs R _ o _ w lim ⟨ho, ?_, ?_, ?_, ?_, trivial⟩ ?_
-    · rw [hxs0]; exact List.pairwise_map.mpr (List.pairwise_lt_range.imp (by (clear * -; omega)))
+    · rw [hxs0]; exact List.pairwise_map.mpr (List.pairwise_lt_range.imp (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - b0; omega))))
     · intro b hb
       have hbF := hxsF b hb
       simp only [c2_FB, List.mem_filter, List.mem_range] at hbF
@@ -3587,7 +3587,7 @@ theorem c6_prod_lt {M : Type*} [CommMonoid M] {N L : ℕ} (h : L ≤ N) (f : ℕ
   obtain ⟨d, rfl⟩ := Nat.exists_eq_add_of_le h
   rw [Finset.prod_range_add]
   rw [Finset.prod_congr rfl (fun i hi ↦ if_pos (Finset.mem_range.mp hi)),
-    Finset.prod_congr rfl (fun i _ ↦ if_neg (by (clear * -; omega) : ¬ L + i < L)), Finset.prod_const_one, mul_one]
+    Finset.prod_congr rfl (fun i _ ↦ if_neg (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - L i; omega)) : ¬ L + i < L)), Finset.prod_const_one, mul_one]
 
 theorem c6_foldl_mul {α : Type} (g : α → 𝔽) (fs : List α) (a : 𝔽) :
     fs.foldl (fun acc f ↦ acc * g f) a = a * (fs.map g).prod := by
@@ -3636,8 +3636,8 @@ theorem c6_prod_two {N e : ℕ} (h : e + 1 < N) (g : ℕ → 𝔽) :
   have hs : ∏ i ∈ Finset.range N, (if i = e ∨ i = e + 1 then g i else 1) = g e * g (e + 1) := by
     rw [← Finset.prod_filter]
     have : (Finset.range N).filter (fun i ↦ i = e ∨ i = e + 1) = {e, e + 1} := by
-      ext i; simp only [Finset.mem_filter, Finset.mem_range, Finset.mem_insert, Finset.mem_singleton]; omega
-    rw [this, Finset.prod_pair (by (clear * -; omega))]
+      ext i; simp only [Finset.mem_filter, Finset.mem_range, Finset.mem_insert, Finset.mem_singleton]; (clear * - i N e h; omega)
+    rw [this, Finset.prod_pair (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - e; omega)))]
   rw [← hs, ← Finset.prod_mul_distrib]
   apply Finset.prod_congr rfl; intro i _
   split_ifs <;> simp
@@ -3647,7 +3647,7 @@ theorem c6_limb_eqOn (r : Array 𝔽) {N e y m : ℕ} (he : e + 1 < N) (hy : (y 
       eq1G (r.getD e 0) (m.testBit 0) * eq1G (r.getD (e + 1) 0) (m.testBit 1) *
         ct_eqOn r ((List.range N).filter fun b ↦ !(([] : List ℕ) ++ [e, e + 1]).contains b) y := by
   rw [c6_eqOn_range, c6_prod_two he, c6_eqOn_filter]
-  simp only [c6_limb_tb hy hm, if_true, show e + 1 ≠ e by (clear * -; omega), if_false]
+  simp only [c6_limb_tb hy hm, if_true, show e + 1 ≠ e by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - e; omega)), if_false]
   congr 1
   apply Finset.prod_congr rfl; intro i _
   by_cases h1 : i = e
@@ -3723,7 +3723,7 @@ theorem c6_prod_eq1_cube (r : Array 𝔽) (a : ℕ) :
   simp [c6_eq1_sum]
 
 theorem c6_le_of_pow {a b c : ℕ} (h : c + 2 ^ a ≤ 2 ^ b) : a ≤ b := by
-  have : 2 ^ a ≤ 2 ^ b := by omega
+  have : 2 ^ a ≤ 2 ^ b := by (clear * - a b c h; omega)
   exact (Nat.pow_le_pow_iff_right (by norm_num)).mp this
 
 /-- The sub-cube `k0 + [0, 2^a)` of the slots: the fixed bits' factors times the high slot bits. -/
@@ -4249,8 +4249,8 @@ theorem c6_tb_add_pow {x m : ℕ} (hx : x.testBit m = false) (b : ℕ) :
       have : b = m := by (clear * - h1 hk; omega)
       simp [this, Nat.testBit_zero]
     | succ k =>
-      rw [Nat.testBit_add_one, Nat.testBit_add_one, show (2 * h + 1) / 2 = h by (clear * -; omega),
-        show 2 * h / 2 = h by (clear * -; omega)]
+      rw [Nat.testBit_add_one, Nat.testBit_add_one, show (2 * h + 1) / 2 = h by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - h; omega)),
+        show 2 * h / 2 = h by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - h; omega))]
       simp [h1, show b ≠ m by (clear * - hk; omega)]
 
 theorem c6_pow2 {c : ℕ} (h : isPow2 c = true) : c = 2 ^ log2 c := by
@@ -4491,7 +4491,7 @@ theorem c6_prod_field {M : Type*} [CommMonoid M] {p n l : ℕ} (h : p + n ≤ l)
       ¬ (p ≤ i ∧ i < p + n))),
     Finset.prod_congr rfl (fun i hi ↦ if_pos (by have := Finset.mem_range.mp hi; (clear * - this; omega) :
       (p ≤ p + i ∧ p + i < p + n))),
-    Finset.prod_congr rfl (fun i _ ↦ if_neg (by (clear * -; omega) : ¬ (p ≤ p + n + i ∧ p + n + i < p + n)))]
+    Finset.prod_congr rfl (fun i _ ↦ if_neg (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - p n i; omega)) : ¬ (p ≤ p + n + i ∧ p + n + i < p + n)))]
   simp
 
 theorem c6_sum_field {M : Type*} [AddCommMonoid M] {p n l : ℕ} (h : p + n ≤ l) (g : ℕ → M) :
@@ -4502,7 +4502,7 @@ theorem c6_sum_field {M : Type*} [AddCommMonoid M] {p n l : ℕ} (h : p + n ≤ 
       ¬ (p ≤ i ∧ i < p + n))),
     Finset.sum_congr rfl (fun i hi ↦ if_pos (by have := Finset.mem_range.mp hi; (clear * - this; omega) :
       (p ≤ p + i ∧ p + i < p + n))),
-    Finset.sum_congr rfl (fun i _ ↦ if_neg (by (clear * -; omega) : ¬ (p ≤ p + n + i ∧ p + n + i < p + n)))]
+    Finset.sum_congr rfl (fun i _ ↦ if_neg (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - p n i; omega)) : ¬ (p ≤ p + n + i ∧ p + n + i < p + n)))]
   simp
 
 theorem c6_indic (jf p n l : ℕ) (h : p + n ≤ l) (u : ℕ) (hu : u < 2 ^ n) :
@@ -4597,7 +4597,7 @@ theorem c6_Y_eq {l p n q : ℕ} {sh : Aff} {others : List (ℕ × ℕ)} (hpn : p
   have hi' := Finset.mem_range.mp hi
   rw [c6_sub_tb hF]
   by_cases h1 : p ≤ i ∧ i < p + n
-  · have hO : (decide (i < p) || decide (i ≥ p + n)) = false := by simp; omega
+  · have hO : (decide (i < p) || decide (i ≥ p + n)) = false := by simp; (clear * - h1; omega)
     simp only [h1, and_self, if_true, hO, Bool.false_eq_true, if_false, zero_add]
     have := hfield (i - p) (by (clear * - h1; omega))
     rw [show p + (i - p) = i by (clear * - h1; omega)] at this
@@ -4627,7 +4627,7 @@ theorem c6_mem_Z {lim : Option ℕ} {b : ℕ} :
   | some e => simp [ct_limYm]
 
 theorem c6_two_pow_lt {k n : ℕ} (hk : k < n) (hn : 2 ≤ n) : 2 ^ k + 1 < 2 ^ n := by
-  have h1 : 2 ^ k ≤ 2 ^ (n - 1) := Nat.pow_le_pow_right (by norm_num) (by omega)
+  have h1 : 2 ^ k ≤ 2 ^ (n - 1) := Nat.pow_le_pow_right (by norm_num) (by (clear * - k n hk hn; omega))
   have h2 : 2 ^ n = 2 * 2 ^ (n - 1) := by rw [← pow_succ']; congr 1; (clear * - hn; omega)
   have h3 : 2 ≤ 2 ^ (n - 1) := by
     calc 2 = 2 ^ 1 := by norm_num
@@ -4830,7 +4830,7 @@ theorem c6_succ_summand (P : PtG 𝔽) {l p n q : ℕ} {sh : Aff} {others : List
     apply Finset.prod_congr rfl; intro i hi
     have hi' := Finset.mem_range.mp hi
     by_cases h1 : p ≤ i ∧ i < p + n
-    · have hO : (decide (i < p) || decide (i ≥ p + n)) = false := by simp; omega
+    · have hO : (decide (i < p) || decide (i ≥ p + n)) = false := by simp; (clear * - h1; omega)
       simp only [h1, and_self, if_true, hO, Bool.false_eq_true, if_false, mul_one]
     · have hO : (decide (i < p) || decide (i ≥ p + n)) = true := by simp; (clear * - h1; omega)
       simp only [h1, if_false, hO, if_true, true_and]
@@ -4871,7 +4871,7 @@ theorem c6_pairs_ker (P : PtG 𝔽) (l p n : ℕ) (coef : List ℕ) (others : Li
   rw [c6_kerVal, hoth, List.filter_map, List.filter_filter, List.map_map, List.map_map, c6_lprod_filter]
   apply Finset.prod_congr rfl; intro i _
   by_cases h1 : p ≤ i ∧ i < p + n
-  · have hO : (decide (i < p) || decide (i ≥ p + n)) = false := by simp; omega
+  · have hO : (decide (i < p) || decide (i ≥ p + n)) = false := by simp; (clear * - h1; omega)
     simp [h1, hO]
   · have hO : (decide (i < p) || decide (i ≥ p + n)) = true := by simp; (clear * - h1; omega)
     simp only [h1, if_false, hO, true_and, Function.comp, Bool.and_true, Bool.and_eq_true, bne_iff_ne, ne_eq,
@@ -5009,7 +5009,7 @@ theorem ct_addTerm (pt : List 𝔽) (hpt : pt.length = 2 + xVars + yVars) (s : C
           simp only [hc] at h
           exact h
         · rw [if_neg hpn]
-          have hpn' : p + n ≤ t.l ∧ n ≠ 0 := by simp at hpn; omega
+          have hpn' : p + n ≤ t.l ∧ n ≠ 0 := by simp at hpn; (clear * - hpn; omega)
           have A0 := c6_shift0 pt hpt s hs t lim ht hc hpn'.1 hL
           rw [← hc, c6_shift_sum pt t lim hc]
           by_cases h1 : (n == 1) = true
@@ -5044,7 +5044,7 @@ theorem ct_addTerm (pt : List 𝔽) (hpt : pt.length = 2 + xVars + yVars) (s : C
       | cons _ _ => rfl
     simp only [hne, Bool.not_false, if_true]
     unfold CS.addVarying
-    refine ct_Adds_congr (c6_go pt hpt t ht (t.l + 1) 0 t.l s hs (by (clear * -; omega)) (by simp) (by simp)) ?_
+    refine ct_Adds_congr (c6_go pt hpt t ht (t.l + 1) 0 t.l s hs (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - t; omega))) (by simp) (by simp)) ?_
     rw [ct_pairSum, c6_lsum]
     simp [ct_EL]
 
@@ -5800,7 +5800,7 @@ theorem c5b_forIn_list {α β : Type} (l : List α) (f : α → β → Id (ForIn
     obtain ⟨b', hb', hI⟩ := h 0 (by simp) b hb
     simp only [List.getElem_cons_zero] at hb'
     rw [List.forIn_cons, hb']
-    exact ih (fun j b ↦ I (j + 1) b) (fun j hj b hb ↦ h (j + 1) (by simp; omega) b hb) b' hI
+    exact ih (fun j b ↦ I (j + 1) b) (fun j hj b hb ↦ h (j + 1) (by simp; (clear * - hj; omega)) b hb) b' hI
 
 theorem c5b_sum_getD {α : Type} (a : Array α) (d : α) (f : α → 𝔽) :
     (a.toList.map f).sum = ((List.range a.size).map fun j ↦ f (a.getD j d)).sum := by
@@ -5918,7 +5918,7 @@ theorem ct_mergeLimbs (pt : List 𝔽) (ts : Array CTerm) (hwf : ∀ t ∈ ts, T
           · exact ⟨hwf _ (hmem i hlt), c5b_limb_ok hm⟩
         · rw [Array.toList_push, List.map_append, List.sum_append, ← hsum]
           simp only [List.map_cons, List.map_nil, List.sum_cons, List.sum_nil, add_zero]
-          rw [← c5b_limb_sum pt hm, show i + 3 = i + 1 + 1 + 1 by (clear * -; omega)]
+          rw [← c5b_limb_sum pt hm, show i + 3 = i + 1 + 1 + 1 by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)]
           simp only [List.range_succ, List.map_append, List.sum_append, List.map_cons, List.map_nil,
             List.sum_cons, List.sum_nil, add_zero]
           ring
@@ -5975,9 +5975,9 @@ theorem c5b_aff_ext (y0 d k m jf L : ℕ) (coef : List ℕ) (hc : coef.length = 
     apply List.map_congr_left
     intro j hj
     rw [List.mem_range] at hj
-    simp only [Function.comp, Nat.testBit_two_pow_mul_add m hjf, show ¬ coef.length + j < coef.length by (clear * -; omega),
+    simp only [Function.comp, Nat.testBit_two_pow_mul_add m hjf, show ¬ coef.length + j < coef.length by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - coef j; omega)),
       ite_false, Nat.add_sub_cancel_left, List.getD_eq_getElem?_getD,
-      List.getElem?_append_right (show coef.length ≤ coef.length + j by (clear * -; omega)), List.getElem?_map,
+      List.getElem?_append_right (show coef.length ≤ coef.length + j by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - coef j; omega))), List.getElem?_map,
       List.getElem?_range hj, Option.map_some, Option.getD_some]
   rw [h1, h2, c5b_bits_sum d k m hm]
   ring
@@ -6436,7 +6436,7 @@ theorem c3_tb_add_pow (x b : ℕ) (hx : x.testBit b = false) (c : Bool) (i : ℕ
   rw [show (if c then 2 ^ b else 0) = (if c then 1 else 0) * 2 ^ b by split <;> simp, this]
   by_cases h : i = b
   · subst h
-    have h1 : i ≤ i ∧ i < i + 1 := by (clear * -; omega)
+    have h1 : i ≤ i ∧ i < i + 1 := by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - i; omega))
     simp only [h1, ↓reduceIte, Nat.sub_self]
     cases c <;> simp
   · have h1 : ¬ (b ≤ i ∧ i < b + 1) := by (clear * - h; omega)
@@ -6461,7 +6461,7 @@ theorem c3_eqOn_list (r : Array 𝔽) (l : List ℕ) (X : ℕ) :
   | cons b l ih =>
     intro j h
     rw [c3_eqOn_cons, List.map_cons, eqWG, ih (j / 2) (fun k hk ↦ by
-      rw [Nat.testBit_div_two]; simpa using h (k + 1) (by simp; omega))]
+      rw [Nat.testBit_div_two]; simpa using h (k + 1) (by simp; (clear * - hk; omega)))]
     have h0 := h 0 (by simp)
     simp only [List.getD_cons_zero, Nat.testBit_zero] at h0
     rw [h0]
@@ -6493,7 +6493,7 @@ theorem c3_pext_lt (v : ℕ) (l : List ℕ) : pext v l < 2 ^ l.length := by
   | nil => simp [pext, pextGo]
   | cons b l ih =>
     rw [c3_pext_cons]; simp only [List.length_cons, pow_succ]
-    split <;> omega
+    split <;> (clear * - v l ih; omega)
 
 theorem c3_pext_testBit (v : ℕ) (l : List ℕ) : ∀ k < l.length, (pext v l).testBit k = v.testBit (l.getD k 0) := by
   induction l with
@@ -6503,8 +6503,8 @@ theorem c3_pext_testBit (v : ℕ) (l : List ℕ) : ∀ k < l.length, (pext v l).
     rw [c3_pext_cons, Nat.testBit_two_pow_mul_add _ (by split <;> simp)]
     rcases k with _ | k
     · by_cases hb : v.testBit b <;> simp [hb]
-    · simp only [show ¬ k + 1 < 1 by (clear * -; omega), ite_false, Nat.add_sub_cancel, List.getD_cons_succ]
-      exact ih k (by simp at hk; omega)
+    · simp only [show ¬ k + 1 < 1 by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - k; omega)), ite_false, Nat.add_sub_cancel, List.getD_cons_succ]
+      exact ih k (by simp at hk; (clear * - hk; omega))
 
 /-! ## The `x` value of a member's step -/
 
@@ -6549,14 +6549,14 @@ theorem c3_xx_bits (xs : List ℕ) (hnd : xs.Nodup) :
         rw [ih1 b hnd.1, c3_tb_add_pow x b hxb]
         simp
       · simp only [List.getD_cons_succ]
-        rw [ih2 k (by simp at hk; omega), Nat.testBit_div_two]
+        rw [ih2 k (by simp at hk; (clear * - hk; omega)), Nat.testBit_div_two]
 
 theorem c3_xx_lt (xs : List ℕ) (hnd : xs.Nodup) (hlt : ∀ b ∈ xs, b < xVars) (x j : ℕ)
     (hx : ∀ b ∈ xs, x.testBit b = false) (hxv : x < 2 ^ xVars) : c3_xx xs x j < 2 ^ xVars := by
   apply Nat.lt_pow_two_of_testBit
   intro i hi
   rw [(c3_xx_bits xs hnd x j hx).1 i (fun h ↦ by have := hlt i h; (clear * - hi this; omega))]
-  exact Nat.testBit_lt_two_pow (lt_of_lt_of_le hxv (Nat.pow_le_pow_right (by (clear * -; omega)) hi))
+  exact Nat.testBit_lt_two_pow (lt_of_lt_of_le hxv (Nat.pow_le_pow_right (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)) hi))
 
 theorem c3_xpart (r : Array 𝔽) (xs : List ℕ) (hsort : xs.Pairwise (· < ·)) (hlt : ∀ b ∈ xs, b < xVars)
     (x j : ℕ) (hx : ∀ b ∈ xs, x.testBit b = false) :
@@ -6624,9 +6624,9 @@ theorem c3_EL (pt : List 𝔽) (hpt : pt.length = 2 + xVars + yVars) (o x y : �
   | some e =>
     obtain ⟨he, hy⟩ := hl
     simp only [ct_EL, ct_E_split pt hpt o x _ ho hx, ct_limYm, List.nil_append]
-    have h0 := c3_limb_split (PtG.ofList pt).ry y e 0 he hy (by (clear * -; omega))
-    have h1 := c3_limb_split (PtG.ofList pt).ry y e 1 he hy (by (clear * -; omega))
-    have h2 := c3_limb_split (PtG.ofList pt).ry y e 2 he hy (by (clear * -; omega))
+    have h0 := c3_limb_split (PtG.ofList pt).ry y e 0 he hy (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))
+    have h1 := c3_limb_split (PtG.ofList pt).ry y e 1 he hy (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))
+    have h2 := c3_limb_split (PtG.ofList pt).ry y e 2 he hy (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))
     simp only [zero_mul, add_zero, one_mul] at h0 h1
     rw [h0, h1, h2]
     have t00 : Nat.testBit 0 0 = false := by decide
@@ -6781,7 +6781,7 @@ theorem la2_pextGo_run (v : ℕ) : ∀ (n b k : ℕ),
   | succ n ih =>
     intro b k
     rw [List.range_succ_eq_map, List.map_cons, List.map_map]
-    have e : ((b + ·) ∘ Nat.succ) = ((b + 1) + ·) := by funext i; simp [Function.comp]; (clear * -; omega)
+    have e : ((b + ·) ∘ Nat.succ) = ((b + 1) + ·) := by funext i; simp [Function.comp]; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)
     rw [e, pextGo, ih (b + 1) (k + 1), Nat.add_zero]
     have h1 : (v >>> b) % 2 ^ (n + 1) = (v >>> b) % 2 + 2 * ((v >>> (b + 1)) % 2 ^ n) := by
       rw [show v >>> (b + 1) = (v >>> b) / 2 by rw [Nat.shiftRight_succ]]
@@ -6837,7 +6837,7 @@ theorem c3_drop1 (a : Atom) (h1 : (a.keys.getD 1 (0, 0)).1 = 1)
   rw [← runs_getD_toList a _ hlt] at hk0 ⊢
   rcases i with _ | i
   · rw [h1] at hk0; exact absurd hk0 (by decide)
-  · exact h2 _ (by (clear * -; omega)) hk0
+  · exact h2 _ (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - i; omega))) hk0
 
 /-- The tables with table `0` replaced by `h` on `[0, N)`. -/
 def c3_Th (T : Array (Array 𝔽)) (h : ℕ → 𝔽) (N : ℕ) : Array (Array 𝔽) := T.set! 0 ((Array.range N).map h)
@@ -6931,7 +6931,7 @@ theorem c3_merge_g (P : PtG 𝔽) (T : Array (Array 𝔽)) (hT : keyValG T (0, 0
       ((mergeAtoms 1 (padTo D as)).toList.map fun a ↦ runs_valFrom T 1 a * h (a.keys.getD 0 (0, 0)).2).sum =
         (as.toList.map fun a ↦ runs_valFrom T 1 a * h (a.keys.getD 0 (0, 0)).2).sum := by
     intro h hh
-    have hT' : keyValG (c3_Th T h N) (0, 0) = 1 := by rw [c3_Th_zero T h N hTs 0 (by (clear * -; omega)), hh]
+    have hT' : keyValG (c3_Th T h N) (0, 0) = 1 := by rw [c3_Th_zero T h N hTs 0 (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - N as; omega))), hh]
     have hk' : ∀ m < 16, keyValG (c3_Th T h N) (1, m) = ct_kapV P m := fun m hm ↦ by
       rw [c3_Th_ne T h N _ (by simp)]; exact hk m hm
     obtain ⟨-, e, -⟩ := ct_mergeAtoms P (c3_Th T h N) hT' hk' as D hD hsel
@@ -6939,12 +6939,12 @@ theorem c3_merge_g (P : PtG 𝔽) (T : Array (Array 𝔽)) (hT : keyValG T (0, 0
         (mergeAtoms 1 (padTo D as)).toList.map fun a ↦ h (a.keys.getD 0 (0, 0)).2 * runs_valFrom T 1 a :=
       List.map_congr_left (fun a ha ↦ by
         obtain ⟨-, hs, ⟨b, hb, hab⟩, h0a, hd⟩ := hM a (Array.mem_toList_iff.mp ha)
-        exact c3_atomVal_Th T hT hTs h hh N (by (clear * -; omega)) a hs h0a (hab ▸ hasN b hb) hd)
+        exact c3_atomVal_Th T hT hTs h hh N (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - N as; omega))) a hs h0a (hab ▸ hasN b hb) hd)
     have eA : as.toList.map (atomVal (c3_Th T h N)) =
         as.toList.map fun a ↦ h (a.keys.getD 0 (0, 0)).2 * runs_valFrom T 1 a :=
       List.map_congr_left (fun a ha ↦ by
         have ha' := Array.mem_toList_iff.mp ha
-        exact c3_atomVal_Th T hT hTs h hh N (by (clear * -; omega)) a (by have := (hsel a ha').1; (clear * - this; omega)) (h0 a ha')
+        exact c3_atomVal_Th T hT hTs h hh N (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - N as; omega))) a (by have := (hsel a ha').1; (clear * - this; omega)) (h0 a ha')
           (hasN a ha') (c3_drop1 a (hsel a ha').2.1 (h2 a ha')))
     rw [eM, eA] at e
     simpa only [mul_comm] using e
@@ -7077,7 +7077,7 @@ theorem c3_forall2_mem {α β : Type} (R : α → β → Prop) :
 
 theorem c3_shl_lt (o : ℕ) (ho : o < 4) : 1 <<< o < 16 := by
   rw [Nat.shiftLeft_eq, one_mul]
-  calc 2 ^ o < 2 ^ 4 := Nat.pow_lt_pow_right (by (clear * -; omega)) ho
+  calc 2 ^ o < 2 ^ 4 := Nat.pow_lt_pow_right (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)) ho
     _ = 16 := by norm_num
 
 theorem c3_memAtom_keys (st q : ℕ) (xk : List (ℕ × ℕ)) :
@@ -7091,7 +7091,7 @@ theorem c3_memAtom_props (P : PtG 𝔽) (xs : List ℕ) (s : CS) (m : ℕ × ℕ
   obtain ⟨xk, rfl, h5, -⟩ := hr
   simp only [c3_memAtom_keys, Array.getD_eq_getD_getElem?, List.getElem?_toArray, List.size_toArray,
     List.length_cons]
-  refine ⟨by (clear * -; omega), by simp, by simpa using c3_shl_lt _ ho, by simp, by simp, ?_⟩
+  refine ⟨by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - xk; omega)), by simp, by simpa using c3_shl_lt _ ho, by simp, by simp, ?_⟩
   intro i hi hi0
   obtain ⟨i, rfl⟩ : ∃ i', i = i' + 2 := ⟨i - 2, by (clear * - hi; omega)⟩
   simp only [List.getElem?_cons_succ] at hi0 ⊢
@@ -7144,7 +7144,7 @@ theorem c3_groups_prod (r : Array 𝔽) (n : ℕ) (lim : Option ℕ) (Y : ℕ) :
   unfold c3_groups
   rw [c3_prod_filter_ne, c3_eqOn_split r (c3_free n lim) (fun b ↦ decide (b < yCut)) Y]
   have : (c3_free n lim).filter (fun b ↦ decide (b ≥ yCut)) = (c3_free n lim).filter fun b ↦ !decide (b < yCut) :=
-    List.filter_congr (fun b _ ↦ by by_cases h : b < yCut <;> (simp [h]; try omega))
+    List.filter_congr (fun b _ ↦ by by_cases h : b < yCut <;> (simp [h]; try (clear * - b h; omega)))
   simp only [List.map_cons, List.map_nil, List.prod_cons, List.prod_nil, mul_one, this]
 
 theorem c3_groups_ge (n : ℕ) (lim : Option ℕ) : ∀ bs ∈ c3_groups n lim, ∀ b ∈ bs, n ≤ b ∧ b ∈ c3_free n lim := by
@@ -7387,7 +7387,7 @@ theorem c0a_final_get (s : CS) (hs : 5 ≤ s.tabs.size) (i : ℕ) :
       else s.tabs[i]? := by
   simp only [Array.set!, Array.getElem?_setIfInBounds, Array.size_setIfInBounds]
   by_cases h4 : i = 4
-  · subst h4; simp; omega
+  · subst h4; simp; (clear * - s hs; omega)
   by_cases h3 : i = 3
   · subst h3; simp; (clear * - hs; omega)
   by_cases h2 : i = 2

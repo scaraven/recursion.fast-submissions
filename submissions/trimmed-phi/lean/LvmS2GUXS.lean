@@ -3,6 +3,7 @@
 import LvmS2GUSched
 import LvmXSStage
 import LvmXSExtEq
+import LvmS2GUSchedLit
 
 /-!
 # S2GU's extractor stage
@@ -44,7 +45,8 @@ theorem outOK_allU :
     ((blocksS stU20).map blkPCostL).sum + ((blocksS stU20).map blkTCostL).sum ≤ 7128485 ∧
     ((blocksS stU20).map blkPOutsL).sum + ((blocksS stU20).map blkTOutsL).sum ≤ 163533 ∧
     ((blocksS stU20).map blkPSizeL).sum + ((blocksS stU20).map blkTSizeL).sum ≤ 250000 := by
-  rw [stU20_pz]
+  -- the schedule read off the literal `schedU20` (GOLF3-U, `schedule_P20U_lit`)
+  rw [stU20_pz, qSS, XStage.items, blocksS, blocks, show stU20.p = P20U from rfl, schedule_P20U_lit]
   decide +kernel
 
 /-- **UTAPE-STMT 27** (owner L): the node output's static facts at S2GU (one kernel evaluation, `outOK_stG20`'s). -/
@@ -77,7 +79,11 @@ set_option maxRecDepth 200000 in
 theorem replayOK_stU20 : Lvm.ASM.ReplayOK stU20 :=
   Lvm.ASM.replayOK_ofR (pre := ((phases P20U).take 5).flatMap (·.2)) (rest := ((phases P20U).drop 5).flatMap (·.2))
     (by show schedule P20U = _; rw [schedule, ← List.flatMap_append, List.take_append_drop]) rfl
-    (by decide +kernel)
+    (by
+      -- `|π|` as its value and the items read off the literal `phasesU20` (GOLF3-U, `LvmS2GTXS`'s pattern)
+      rw [show stU20 = ⟨P20U, headerBytesP P20U, 283960, leafLensU, (((phases P20U).take 5).flatMap (·.2)).length, 46⟩
+        by rw [stU20, sizes_P20U.1.1], phases_P20U_lit]
+      decide +kernel)
 
 /-- `stU20`'s read widths are `readWidthsP P20U`. -/
 theorem readWidthsS_stU20 : readWidthsS stU20 = readWidthsP P20U := by

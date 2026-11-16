@@ -185,7 +185,7 @@ theorem flatMap_digest_length (ends : List Digest) :
     (ends.flatMap Vector.toList).length = 32 * ends.length := by
   induction ends with
   | nil => simp
-  | cons e es ih => simp [List.length_flatMap] at ih ⊢; omega
+  | cons e es ih => simp [List.length_flatMap] at ih ⊢; (clear * - es ih; omega)
 
 /-- **The key leaf's bytes**, pointwise: stream byte 0 is the tag, bytes `1 … 8` are `enc64 j`, and
 byte `k` of end `i` is at offset `9 + 32 i + k` (the mirrors' `133` ends, K0-DES §3.4). -/

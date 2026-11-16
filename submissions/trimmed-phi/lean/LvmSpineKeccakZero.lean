@@ -77,7 +77,7 @@ theorem foldHi_cons (δ : ℕ → E) {n : ℕ} (c : E) {acc : List E} (h : acc.l
     foldHi δ n (c :: acc) v =
       (1 - c) * foldHi δ n acc v + c * foldHi δ n acc (v + 2 ^ (n - acc.length - 1)) := by
   obtain ⟨m, h1, h2, h3⟩ : ∃ m, n - (acc.length + 1) = m ∧ n - acc.length = m + 1 ∧
-      n - acc.length - 1 = m := ⟨n - (acc.length + 1), rfl, by omega, by (clear * -; omega)⟩
+      n - acc.length - 1 = m := ⟨n - (acc.length + 1), rfl, by (clear * - n acc h; omega), by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - n acc; omega))⟩
   unfold foldHi
   rw [List.length_cons, h1, h2, Nat.add_sub_cancel, pow_succ, mul_comm _ 2, sum_range_two_mul,
     Finset.mul_sum,
@@ -87,7 +87,7 @@ theorem foldHi_cons (δ : ℕ → E) {n : ℕ} (c : E) {acc : List E} (h : acc.l
     simp [eqAt, Nat.mul_mod_right, Nat.mul_div_cancel_left w (by norm_num : 0 < 2)]
   have e1 : eqAt (c :: acc) (2 * w + 1) = c * eqAt acc w := by
     simp only [eqAt]
-    rw [ite_eq_left (by (clear * -; omega)), show (2 * w + 1) / 2 = w by (clear * -; omega)]
+    rw [ite_eq_left (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - w; omega))), show (2 * w + 1) / 2 = w by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - w; omega))]
   have i0 : v + 2 ^ m * (2 * w) = v + 2 ^ (m + 1) * w := by
     rw [pow_succ]; ring
   have i1 : v + 2 ^ m * (2 * w + 1) = v + 2 ^ m + 2 ^ (m + 1) * w := by
@@ -143,7 +143,7 @@ theorem card_zeroOnHi_cons_le (δ : ℕ → E) {n : ℕ} {acc : List E} (hacc : 
   rw [Finite.card_le_one_iff_subsingleton]
   refine ⟨fun ⟨c₁, h₁⟩ ⟨c₂, h₂⟩ ↦ Subtype.ext ?_⟩
   have hv' : v < 2 ^ (n - (c₁ :: acc).length) := by
-    simp only [List.length_cons]; rw [show n - (acc.length + 1) = m by omega]; exact hv
+    simp only [List.length_cons]; rw [show n - (acc.length + 1) = m by (clear * - hm; omega)]; exact hv
   have z₁ := h₁ v hv'
   have z₂ := h₂ v hv'
   rw [foldHi_cons δ c₁ hacc] at z₁
@@ -251,7 +251,7 @@ theorem auxStage_full (q : Column I.μ) {ch : List E} (hch : ch.length = I.τmax
   unfold auxStage auxAt
   refine forall₂_congr fun r _ ↦ ?_
   rw [List.reverse_drop, hch, show I.τmax - (I.τmax - r.logSteps) = min r.logSteps I.τmax by
-    omega]
+    (clear * - I r ch hch; omega)]
 
 /-- The Keccak predicate holds along every point. -/
 theorem auxAt_of_aux {q : Column I.μ} (h : I.aux q) (point : List E) : I.auxAt point q :=

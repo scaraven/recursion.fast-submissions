@@ -70,8 +70,19 @@ private theorem hx : FK.toBF64 FK.x = g := rfl
 /-- Kernel check: `c · x² = 1`. -/
 private theorem cFK_mul : cFK * (FK.x * FK.x) = 1 := by decide +kernel
 
+/-- `trChain` on the words as natural numbers (GOLF3: the kernel computes `ℕ`'s operations natively). -/
+private def trN : ℕ → ℕ → ℕ → ℕ
+  | 0, _, acc => acc
+  | n + 1, a, acc => trN n (FK.sqN a) (acc ^^^ a)
+
+private theorem trChain_toNat : ∀ (n : ℕ) (a acc : FK),
+    (trChain n a acc).val.toNat = trN n a.val.toNat acc.val.toNat
+  | 0, _, _ => rfl
+  | n + 1, a, acc => by rw [trChain, trN, trChain_toNat n, FK.mul_self_toNat, FK.add_toNat]
+
 /-- Kernel check: `Tr(c) = 1` along 64 squarings. -/
-private theorem cFK_tr : trChain 64 cFK 0 = 1 := by decide +kernel
+private theorem cFK_tr : trChain 64 cFK 0 = 1 := by
+  rw [FK.eq_iff_toNat, trChain_toNat]; decide +kernel
 
 /-- `c = 1/x²` in `K`. -/
 private theorem c_mul : FK.toBF64 cFK * (g * g) = 1 := by

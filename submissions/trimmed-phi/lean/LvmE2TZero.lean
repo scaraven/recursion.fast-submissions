@@ -92,8 +92,8 @@ theorem zeroGT_eq (Q : Program) (lay : Lay) (z : ℕ → FK) (ω : E2) (pt : Lis
   refine Finset.sum_congr rfl fun k hk ↦ ?_
   have hk3 := Finset.mem_range.mp hk
   rw [mulY3_congr (a' := fun j ↦ mleX pt (colT Q lay z j)) (b' := fun j ↦ mleX pt (colT Q lay z (3 + j)))
-    (fun j hj ↦ vals9_getD Q lay z pt (by omega)) (fun j hj ↦ vals9_getD Q lay z pt (by omega)),
-    vals9_getD Q lay z pt (by omega)]
+    (fun j hj ↦ vals9_getD Q lay z pt (by (clear * - j k hj; omega))) (fun j hj ↦ vals9_getD Q lay z pt (by (clear * - j k hj; omega))),
+    vals9_getD Q lay z pt (by (clear * - k hk3; omega))]
 
 theorem polyLEF_mleX (pre post : List E2) (f : ℕ → E2) : PolyLEF 1 fun x ↦ mleX (pre ++ x :: post) f :=
   (polyLEF_mle pre post (2 ^ (pre.length + post.length + 1)) f).congr fun x ↦ by
@@ -129,8 +129,8 @@ theorem zeroGT_bits (Q : Program) (lay : Lay) (z : ℕ → FK) (ω : E2) {u : �
     mulY3_congr (a' := fun j ↦ FE2.toE2 (matZT Q lay (4 * j) z u))
       (b' := fun j ↦ FE2.toE2 (matZT Q lay (1 + 4 * j) z u))
       (fun j hj ↦ by rw [mleX_bits hu, colT, if_pos hj])
-      (fun j hj ↦ by rw [mleX_bits hu, colT, if_neg (by omega), if_pos (by omega), Nat.add_sub_cancel_left]) k,
-    mleX_bits hu, colT, if_neg (by omega), if_neg (by omega), Nat.add_sub_cancel_left, FE2.toE2_add]
+      (fun j hj ↦ by rw [mleX_bits hu, colT, if_neg (by (clear * - j u k hj; omega)), if_pos (by (clear * - j u k hj; omega)), Nat.add_sub_cancel_left]) k,
+    mleX_bits hu, colT, if_neg (by (clear * - k u hk3 h1; omega)), if_neg (by (clear * - k u hk3 h1; omega)), Nat.add_sub_cancel_left, FE2.toE2_add]
 
 /-- **The zerocheck's start**: the equality cube sum of the summand is `Σ_k ω^k·f_k`, `f_k` the folded
 coordinates. -/

@@ -57,12 +57,12 @@ theorem powOK_iff_lane2 {g : ℕ} (hg : g ≤ 64) (c : E) :
   have hlow : kToNat (c.limb 0) + 2 ^ 64 * kToNat (c.limb 1) < 2 ^ 128 := by
     have h0 := kToNat_lt (c.limb 0)
     have h1 := kToNat_lt (c.limb 1)
-    have : 2 ^ 64 * kToNat (c.limb 1) ≤ 2 ^ 64 * (2 ^ 64 - 1) := Nat.mul_le_mul_left _ (by omega)
-    omega
+    have : 2 ^ 64 * kToNat (c.limb 1) ≤ 2 ^ 64 * (2 ^ 64 - 1) := Nat.mul_le_mul_left _ (by (clear * - c g h1; omega))
+    (clear * - c g h0 h1; omega)
   have hsplit : 2 ^ (192 - g) = 2 ^ 128 * 2 ^ (64 - g) := by
     rw [← pow_add]
     congr 1
-    omega
+    (clear * - g hg c; omega)
   rw [powOK, eToNat, hsplit]
   set L := kToNat (c.limb 0) + 2 ^ 64 * kToNat (c.limb 1)
   set h := kToNat (c.limb 2)
@@ -70,11 +70,11 @@ theorem powOK_iff_lane2 {g : ℕ} (hg : g ≤ 64) (c : E) :
   · intro hl
     by_contra hh
     have : 2 ^ 128 * 2 ^ (64 - g) ≤ 2 ^ 128 * h := Nat.mul_le_mul_left _ (not_lt.mp hh)
-    omega
+    (clear * - g c hlow hl hh; omega)
   · intro hh
     have : 2 ^ 128 * (h + 1) ≤ 2 ^ 128 * 2 ^ (64 - g) := Nat.mul_le_mul_left _ hh
     rw [Nat.mul_succ] at this
-    omega
+    (clear * - L h g c hlow hh; omega)
 
 /-- `2^k` words of `K` lie below `2^k`. -/
 theorem card_kToNat_lt {k : ℕ} (hk : k ≤ 64) :
@@ -94,7 +94,7 @@ theorem card_kToNat_lt {k : ℕ} (hk : k ≤ 64) :
 theorem card_powOK_prod {g : ℕ} (hg : g ≤ 64) (P : E2 → Prop) [DecidablePred P] :
     (univ.filter fun c : E ↦ powOK g c ∧ P (e2OfE c)).card =
       (univ.filter P).card * 2 ^ (64 - g) := by
-  rw [← card_kToNat_lt (k := 64 - g) (by omega), ← Finset.card_product, ← Finset.card_map eSplit.toEmbedding]
+  rw [← card_kToNat_lt (k := 64 - g) (by (clear * - g hg; omega)), ← Finset.card_product, ← Finset.card_map eSplit.toEmbedding]
   congr 1
   ext ⟨y, a⟩
   simp only [Finset.mem_map_equiv, Finset.mem_filter, Finset.mem_univ, true_and, Finset.mem_product]
@@ -113,7 +113,7 @@ theorem avgE_powOK_prod {g : ℕ} (hg : g ≤ 64) (P : E2 → Prop) [DecidablePr
   have h : (2 : ℝ≥0∞) ^ 192 = 2 ^ g * 2 ^ 128 * 2 ^ (64 - g) := by
     rw [← pow_add, ← pow_add]
     congr 1
-    omega
+    (clear * - g hg; omega)
   rw [← card_filter_eq_avgE, card_powOK_prod hg, card_E, Nat.cast_pow, Nat.cast_mul, Nat.cast_pow,
     Nat.cast_ofNat, h, ENNReal.mul_inv (by simp) (by simp), ENNReal.mul_inv (by simp) (by simp),
     ENNReal.inv_pow]

@@ -835,7 +835,7 @@ theorem fl_psumA_toList (xs : Array ℕ) (a : ℕ) :
 theorem fl_psumA_getD (xs : Array ℕ) (a i : ℕ) (hi : i ≤ xs.size) :
     (psumA xs a).getD i 0 = a + (xs.toList.take i).sum := by
   have h1 : i < (psumA xs a).size := by
-    rw [← Array.length_toList, fl_psumA_toList]; simp; omega
+    rw [← Array.length_toList, fl_psumA_toList]; simp; (clear * - hi; omega)
   rw [Array.getD_eq_getD_getElem?, Array.getElem?_eq_getElem h1, Option.getD_some, ← Array.getElem_toList]
   simp only [fl_psumA_toList, List.getElem_map, List.getElem_range]
 
@@ -886,7 +886,7 @@ theorem fl_owner?_ownL (lay : Lay) (τ : Ty) (n : ℕ) :
     · have h0 : (lay.blocks.getD b default).tw τ = 0 := by (clear * - h; omega)
       have hq : ¬ ((lay.blocks.getD b default).st τ ≤ n ∧
           n < (lay.blocks.getD b default).st τ + (lay.blocks.getD b default).tw τ * 2 ^ (lay.blocks.getD b default).l) := by
-        rw [h0]; (clear * -; omega)
+        rw [h0]; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - lay b τ n; omega))
       rw [ite_eq_right_of_eq_false _ _ (eq_false h), decide_eq_false hq]; exact ih
 
 theorem fl_forIn_modify (N : ℕ) (L : List XChunk) (out : Array (Array XChunk)) (hN : out.size = N) :
@@ -994,7 +994,7 @@ theorem fl_bsLoop_spec (a : Array (ℕ × ℕ × ℕ)) (n : ℕ) (hs : a.toList.
   suffices H : ∀ g lo hi, hi ≤ a.size → hi - lo < g →
       (∀ i (h : i < a.size), a[i].1 ≤ n → n < a[i].2.1 → lo ≤ i ∧ i < hi) →
       fl_bsLoop a n lo hi g = (a.toList.find? fun x ↦ decide (x.1 ≤ n ∧ n < x.2.1)).map (·.2.2) from
-    H _ _ _ le_rfl (by (clear * -; omega)) (fun i h _ _ ↦ ⟨Nat.zero_le _, h⟩)
+    H _ _ _ le_rfl (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - a; omega))) (fun i h _ _ ↦ ⟨Nat.zero_le _, h⟩)
   intro g
   induction g with
   | zero => intro lo hi _ h; (clear * - h; omega)
@@ -1308,7 +1308,7 @@ theorem entCount_eq (Q : Program) (lay : Lay) (s : TSrc) (jf : ℕ) :
     simp only [Program.inst, Lay.argEnts, Lay.resEnts]
     generalize (Q.blk b).tpl.getD t default = row
     obtain ⟨op, ty, args⟩ := row
-    cases op <;> simp [tagE, fl_cellEnts_length] <;> omega
+    cases op <;> simp [tagE, fl_cellEnts_length] <;> (clear * - args ty; omega)
   | aux k r =>
     unfold srcEnts auxRowEnts entCount K.auxEntCount
     rw [List.length_flatMap]
@@ -1528,7 +1528,7 @@ theorem phi_tplInsts (b jf : ℕ) (j : List ℕ) : ∀ (rs : List Row) (t k e : 
     intro m _
     simp only [Function.comp, List.getD_cons_succ, List.take_succ_cons, List.map_cons, List.sum_cons,
       Inst.mk.injEq, true_and]
-    refine ⟨by omega, by omega, by omega⟩
+    refine ⟨by (clear * - t m; omega), by (clear * - k r m rs; omega), by (clear * - e r m rs; omega)⟩
 
 theorem phi_insts (Q : Program) : Q.insts = (List.range Q.blocks.length).flatMap fun b =>
     (List.range (2 ^ (Q.blk b).lsize)).flatMap fun jf => (List.range (Q.blk b).tpl.length).map (Q.inst b jf) := by

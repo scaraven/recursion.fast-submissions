@@ -530,7 +530,7 @@ theorem claimSum_inducedWeight (P : LevelCode) {ℓ' κ' : ℕ} (hκ : P.κ = �
     (g : (Fin ℓ' → Bool) → (Fin κ' → Bool) → E) :
     claimSum (fun r ↦ Verifier.inducedWeight P.κ qs (powers lam qs.length) r) g =
       ∑ k : Fin qs.length, lam ^ (k : ℕ) * encAt P.κ P.R (joinMsg hκ g) qs[k] := by
-  rw [← sum_joinMsg hκ, sum_inducedWeight_mul P.R (by have := P.h64; omega) qs _
+  rw [← sum_joinMsg hκ, sum_inducedWeight_mul P.R (by have := P.h64; (clear * - P ℓ' κ' hκ this; omega)) qs _
     (length_powers lam qs.length) hqs, sum_zip_powers]
 
 open Classical in
@@ -582,7 +582,7 @@ theorem card_lambda_bad_le_final (P : LevelCode) (C : Fin P.n → E) (Φ : List 
       (bitsL x)) * G x = ∑ x, Φ (bitsL x) * G x +
         lam * ∑ k : Fin qs.length, lam ^ (k : ℕ) * encAt P.κ P.R G qs[k] := by
     intro lam
-    rw [← sum_zip_powers, ← sum_inducedWeight_mul P.R (by have := P.h64; omega) qs _
+    rw [← sum_zip_powers, ← sum_inducedWeight_mul P.R (by have := P.h64; (clear * - P this; omega)) qs _
       (length_powers lam qs.length) hqs G, Finset.mul_sum, ← Finset.sum_add_distrib]
     exact Finset.sum_congr rfl fun x _ ↦ by ring
   simp only [hsum]
@@ -670,7 +670,7 @@ theorem shapeOK_word {i : ℕ} {P : LevelCode} {ℓ : ℕ} {cs : List (ℕ × �
 theorem shapeOK_append {i : ℕ} {P : LevelCode} {ℓ : ℕ} {cs : List (ℕ × ℕ × Word)}
     (h : ShapeOK i P ℓ cs) (x : ℕ × ℕ × Word) :
     (cs ++ [x])[i]? = some (P.κ + P.R, wdOf i ℓ, wordOf cs i) := by
-  rw [List.getElem?_append_left (by rw [h.1]; omega)]
+  rw [List.getElem?_append_left (by rw [h.1]; (clear * - i; omega))]
   exact (shapeOK_word h).1
 
 /-- The rows of a well-shaped leaf of commitment `i` give `2^ℓ` lanes. -/
@@ -727,7 +727,7 @@ theorem pow_frac_le (P : LevelCode) (A : Finset (Fin P.n)) (hA : A.card + 1 ≤ 
   have hn : ((P.n : ℕ) : ENNReal) = 2 ^ (P.κ + P.R) := by simp [LevelCode.n]
   rw [hn]
   gcongr
-  exact_mod_cast (show A.card ≤ P.thr - 1 by omega)
+  exact_mod_cast (show A.card ≤ P.thr - 1 by (clear * - P A hA; omega))
 
 open Classical in
 /-- **The query group of a level with a next commitment** (unique decoding). -/

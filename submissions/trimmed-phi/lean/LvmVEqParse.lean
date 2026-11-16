@@ -48,15 +48,15 @@ theorem getD_xOf (π : ByteArray) {t : ℕ} (ht : t < Lvm.ASM.hdrLen) :
 /-- The statement's byte array (`hdrOf`'s) holds the proof's header bytes. -/
 theorem get!_hdrBytes (π : ByteArray) {o : ℕ} (h1 : 8 ≤ o) (h2 : o < headerBytes) :
     (⟨(List.replicate 8 0 ++ xOf π).toArray⟩ : ByteArray).get! o = π.get! o := by
-  rw [get!_mk, List.getD_append_right _ _ _ _ (by simp only [List.length_replicate]; omega),
-    List.length_replicate, getD_xOf π (by rw [hdrLen_eq]; rw [headerBytes_eq] at h2; omega)]
+  rw [get!_mk, List.getD_append_right _ _ _ _ (by simp only [List.length_replicate]; (clear * - h1; omega)),
+    List.length_replicate, getD_xOf π (by rw [hdrLen_eq]; rw [headerBytes_eq] at h2; (clear * - o h1 h2; omega))]
   congr 1
   (clear * - h1; omega)
 
 /-- `sigOfX` of the statement holds the proof's header bytes. -/
 theorem get!_sigOfX (π : ByteArray) {t : ℕ} (ht : t < Lvm.ASM.hdrLen) :
     (sigOfX (xOf π)).get! (headerAt 8 + t) = π.get! (8 + t) := by
-  rw [sigOfX, get!_mk, List.getD_append_right _ _ _ _ (by simp only [List.length_replicate]; (clear * -; omega)),
+  rw [sigOfX, get!_mk, List.getD_append_right _ _ _ _ (by simp only [List.length_replicate]; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - t; omega))),
     List.length_replicate, Nat.add_sub_cancel_left, getD_xOf π ht]
 
 /-! ## Congruence of the readers -/
@@ -81,7 +81,7 @@ theorem u64At_congr {b b' : ByteArray} {o : ℕ} (h : ∀ i, o ≤ i → i < o +
 theorem digestAt_congr {b b' : ByteArray} {o : ℕ} (h : ∀ i, o ≤ i → i < o + 32 → b.get! i = b'.get! i) :
     digestAt b o = digestAt b' o := by
   unfold digestAt
-  exact congrArg Vector.ofFn (funext fun i ↦ h _ (by (clear * -; omega)) (by have := i.isLt; (clear * - this; omega)))
+  exact congrArg Vector.ofFn (funext fun i ↦ h _ (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - o i; omega))) (by have := i.isLt; (clear * - this; omega)))
 
 theorem sigAt_congr {b b' : ByteArray} {o : ℕ}
     (h : ∀ i, o ≤ i → i < o + sigBytes → b.get! i = b'.get! i) : sigAt b o = sigAt b' o := by
@@ -141,11 +141,11 @@ theorem pubOf_congr {vk c : Digest} {sig sig' : ByteArray}
     intro i hi
     have hi' : i ≤ 43 := hi
     unfold feAt
-    rw [kAt_congr fun j h1 h2 ↦ hR (offAcc + eBytes * i) 24 (by simp only [offAcc, sigBytes]; (clear * -; omega))
+    rw [kAt_congr fun j h1 h2 ↦ hR (offAcc + eBytes * i) 24 (by simp only [offAcc, sigBytes]; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - i; omega)))
         (by simp only [offAcc, eBytes, sigBytes]; (clear * - hi'; omega)) j h1 (by (clear * - h1 h2; omega)),
-      kAt_congr fun j h1 h2 ↦ hR (offAcc + eBytes * i) 24 (by simp only [offAcc, sigBytes]; (clear * -; omega))
+      kAt_congr fun j h1 h2 ↦ hR (offAcc + eBytes * i) 24 (by simp only [offAcc, sigBytes]; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - i; omega)))
         (by simp only [offAcc, eBytes, sigBytes]; (clear * - hi'; omega)) j (by (clear * - h1 h2; omega)) (by (clear * - h1 h2; omega)),
-      kAt_congr fun j h1 h2 ↦ hR (offAcc + eBytes * i) 24 (by simp only [offAcc, sigBytes]; (clear * -; omega))
+      kAt_congr fun j h1 h2 ↦ hR (offAcc + eBytes * i) 24 (by simp only [offAcc, sigBytes]; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - i; omega)))
         (by simp only [offAcc, eBytes, sigBytes]; (clear * - hi'; omega)) j (by (clear * - h1 h2; omega)) (by omega)]
   rw [List.map_congr_left fun k hk ↦ hE k (List.mem_range.mp hk).le, hE accVars le_rfl]
 
@@ -164,14 +164,14 @@ theorem zeroBytes_spec' (b : ByteArray) :
     simp only [zeroBytes, Bool.and_eq_true, beq_iff_eq] at h
     rcases x with _ | x
     · simpa using h.1
-    · rw [show o + (x + 1) = o + 1 + x by (clear * -; omega)]; exact zeroBytes_spec' b n (o + 1) h.2 x (by (clear * - hx; omega))
+    · rw [show o + (x + 1) = o + 1 + x by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)]; exact zeroBytes_spec' b n (o + 1) h.2 x (by (clear * - hx; omega))
 
 /-- The first eight bytes of a proof that passes the header check are `'S'` and seven zeros. -/
 theorem take8_of_parse' {π : ByteArray} (h8 : 8 ≤ π.size) (h0 : π.get! 0 = 0x53)
     (hz : zeroBytes π 1 7 = true) : π.data.toList.take 8 = Lvm.ASM.sPrefix := by
   have hz' := zeroBytes_spec' π 7 1 hz
   have hl : 8 ≤ π.data.toList.length := by rw [Array.length_toList]; exact h8
-  apply List.ext_getElem (by simp [Lvm.ASM.sPrefix]; omega)
+  apply List.ext_getElem (by simp [Lvm.ASM.sPrefix]; (clear * - h8; omega))
   intro n h1 h2
   have hn8 : n < 8 := by simpa [Lvm.ASM.sPrefix] using h2
   have hnl : n < π.data.toList.length := by (clear * - hl hn8; omega)
@@ -206,7 +206,7 @@ theorem parseOk_parts {p : Params} {vk c : Digest} {π : ByteArray} (h : parseOk
 
 theorem headerBytes_le_piSize {p : Params} (hS : p.stage < 2) : headerBytes ≤ piSize p := by
   simp only [piSize, headerBytesP_ne2 hS]
-  omega
+  (clear * - p; omega)
 
 /-- **`parseOk` ⇒ the compiled verifier's header parse.** -/
 theorem hdrS_of_parseOk {vk c : Digest} {π : ByteArray} (h : parseOk P20 vk c π = true) :

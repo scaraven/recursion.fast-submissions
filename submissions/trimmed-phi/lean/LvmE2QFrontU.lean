@@ -29,6 +29,76 @@ open Lvm Lvm.Loop Lvm.Loop.Build Lvm.Har Lvm.QSig Lvm.QAsm Lvm.Typed Lvm.QTyped
 
 /-! ## Positions at `P20U` -/
 
+/-! Proof help (GOLF3-U, generic in the parameter set): the lanes the position facts read, as lookups into one
+suffix of `itemLanes p` per phase (`laneOf_drop` …), and `List.drop`/`List.getD` in `List.rec` form (`dropLN`,
+`getDLN`, `itemLanesR`): the kernel computes each phase's suffix once (a closed term, cached) and walks only within the
+phase (the bus's runs from their first lane, `getDLN_add`), where `List.getD` from the list's head cost ≈ 0.5 M heartbeats
+per lane past item 2,600. -/
+
+/-- `List.drop` on lane lists by `List.rec` (proof help: `dropLN_eq`). -/
+noncomputable def dropLN (l : List Nat) : Nat → List Nat :=
+  l.rec (fun _ => []) (fun a t ih n => Nat.casesOn (motive := fun _ => List Nat) n (a :: t) (fun m => ih m))
+
+/-- `List.getD _ _ 0` on lane lists by `List.rec` (proof help: `getDLN_eq`). -/
+noncomputable def getDLN (l : List Nat) : Nat → Nat :=
+  l.rec (fun _ => 0) (fun a _ ih i => Nat.casesOn (motive := fun _ => Nat) i a (fun j => ih j))
+
+theorem dropLN_eq : ∀ (l : List Nat) (n : Nat), dropLN l n = l.drop n
+  | [], 0 => rfl
+  | [], _ + 1 => rfl
+  | _ :: _, 0 => rfl
+  | _ :: l, n + 1 => (dropLN_eq l n : _)
+
+theorem getDLN_eq : ∀ (l : List Nat) (n : Nat), getDLN l n = l.getD n 0
+  | [], 0 => rfl
+  | [], _ + 1 => rfl
+  | _ :: _, 0 => rfl
+  | _ :: l, n + 1 => (getDLN_eq l n : _)
+
+theorem getDLN_add (l : List Nat) (a j : Nat) : getDLN l (a + j) = getDLN (dropLN l a) j := by
+  rw [getDLN_eq, getDLN_eq, dropLN_eq, List.getD_eq_getElem?_getD, List.getD_eq_getElem?_getD, List.getElem?_drop]
+
+/-- `itemLanesAux` by `List.rec` (proof help: `itemLanesAux_eq_R`). -/
+noncomputable def itemLanesR (p : Params) (l : List Item) : Nat → Nat → List Nat :=
+  l.rec (fun _ _ => []) fun it _ ih b pend =>
+    match it with
+    | .read m => (b + 40 + pend) / 8 :: ih b (pend + eBytes * m)
+    | .readW m w => (b + 40 + pend) / 8 :: ih b (pend + w * m)
+    | .cap c _ => (b + 40 + pend) / 8 :: ih b (pend + nodeBytes * 2 ^ c)
+    | .sample => (b + 40 + pend) / 8 :: ih (b + 72 + pend) 0
+    | .positions ref => (b + 40 + pend) / 8 :: ih (b + 72 + pend + ((p.level ref).nPosQ - 1) * 72) 0
+    | .opening ref =>
+      b / 8 :: ih (b + (p.level ref).t * (40 + (p.level ref).row) + (p.level ref).t * (p.level ref).path * 104) pend
+
+theorem itemLanesAux_eq_R (p : Params) :
+    ∀ (l : List Item) (b pend : Nat), itemLanesAux p b pend l = itemLanesR p l b pend
+  | [], _, _ => by rw [itemLanesAux]; rfl
+  | it :: l, b, pend => by cases it <;> (rw [itemLanesAux]; simp only [itemLanesAux_eq_R p l]; rfl)
+
+theorem laneOf_drop (p : Params) (a j : Nat) : laneOf p (a + j) = ((itemLanes p).drop a).getD j 0 := by
+  simp only [laneOf, List.getD_eq_getElem?_getD, List.getElem?_drop]
+
+theorem phaseLane_drop (p : Params) (ph : Phase) (j : Nat) :
+    phaseLane p ph j = ((itemLanes p).drop (phaseItem0 p ph)).getD j 0 := laneOf_drop p _ j
+
+theorem posOf_drop (p : Params) (k : Nat) : posOf p k = 8 * ((itemLanes p).drop k).getD 0 0 - 40 := by
+  rw [posOf, ← laneOf_drop, Nat.add_zero]
+
+theorem busL_drop (p : Params) (j : Nat) : busL p j = ((itemLanes p).drop (phaseItem0 p .bus)).getD j 0 := by
+  rw [← laneOf_drop]
+  simp only [busL, laneOf, Array.getD_eq_getD_getElem?, List.getElem?_toArray, List.getD_eq_getElem?_getD]
+
+set_option maxRecDepth 100000 in
+/-- The first items of `P20U`'s phases (proof help, GOLF3-U: one walk of the literal `phasesU20`). -/
+private theorem phaseItem0_P20U : phaseItem0 P20U .commit = 0 ∧ phaseItem0 P20U .bus = 25 ∧
+    phaseItem0 P20U .tape = 371 ∧ phaseItem0 P20U .wire = 2609 ∧ phaseItem0 P20U .openMain = 2730 := by
+  simp only [phaseItem0, phases_P20U_lit]; decide +kernel
+
+/-- The phases' suffixes at `P20U` from one another (proof help: `.wire` and `.openMain` from `.tape`'s suffix). -/
+private theorem drop_chainU (l : List Nat) :
+    l.drop 2730 = ((l.drop 371).drop 2238).drop 121 ∧ l.drop 2609 = (l.drop 371).drop 2238 := by
+  constructor <;> simp only [List.drop_drop]
+
 set_option maxRecDepth 200000 in
 /-- **`P20U`'s positions** (one kernel evaluation of the schedule's lanes): the pin's start after the cap, its first
 answer, its value, its end at the typed phases, and the lanes of the phase `bus`. -/
@@ -44,7 +114,13 @@ theorem posU20 : startByte P20U + nodeBytes * 2 ^ (P20U.level ⟨.main, 0⟩).ca
       8 * phaseLane P20U .wire 0 = posOf P20U (phaseItem0 P20U .wire) + 40 ∧
       posOf P20U (phaseItem0 P20U .openMain) = posOf P20U (phaseItem0 P20U .wire) + 8216 ∧
       posOf P20U (phaseItem0 P20U .tape) % 8 = 0) := by
-  unfold P20U P20T; rw [Lvm.Replay.P20_eq]; decide +kernel
+  -- GOLF3-U: the lanes over the literals `phasesU20`, `schedU20` and `P20UL`, one suffix per phase (`unfold P20U P20T;
+  -- rw [P20_eq]` left the kernel the builders, a defeq through the rewritten motive and ~40 lookups from the head)
+  simp only [posOf_drop, phaseLane_drop, typedPosF, busLanesB, busL_drop, phaseItem0_P20U.1, phaseItem0_P20U.2.1,
+    phaseItem0_P20U.2.2.1, phaseItem0_P20U.2.2.2.1, phaseItem0_P20U.2.2.2.2]
+  rw [itemLanes, schedule_P20U_lit, P20U_eqL, (drop_chainU _).1, (drop_chainU _).2, itemLanesAux_eq_R]
+  simp only [← dropLN_eq, ← getDLN_eq, iZR, iWR, iRR, getDLN_add]
+  decide +kernel
 
 theorem hbU : Lvm.Har.pos (RS.startH (headerBytesP P20U)) + nodeBytes * 2 ^ (P20U.level ⟨.main, 0⟩).cap =
     posOf P20U 1 := by
@@ -609,7 +685,9 @@ theorem slotWF_mWG {M : Mem} {cv : ℕ → C2} {ω : List FE2} (hω : ∀ j < 16
 theorem wireLanesU_20 (qw : ℕ) : wireLanesU 20 qw =
     ⟨qw + 280, qw + 286, qw + 314, qw + 442, qw + 505, qw + 575, qw + 703, qw + 766, qw + 836, qw + 964,
       qw + 1027⟩ := by
-  simp only [wireLanesU, slotLanesU, roundLanes2]
+  -- GOLF3-U: the numerals summed by `simp` (the closing `rfl` compared `qw + 14 * 20 + 6 + …` with `qw + 286` by
+  -- unary `Nat.succ` unfolding: 0.98 M → 0.01 M heartbeats)
+  simp only [wireLanesU, slotLanesU, roundLanes2, Nat.add_assoc, Nat.reduceMul, Nat.reduceAdd]
 
 /-- The wire's proof of work by round family (`wireChalsU` at `w = 20`, first message lane `8 qw = P + 40`). -/
 theorem powW_of {sig : ByteArray} {qw P : ℕ} (hq : 8 * qw = P + 40)
@@ -679,6 +757,9 @@ theorem front_phasesU {c : Ctx} {M : Mem} {sig : ByteArray} {q : Ptr}
   obtain ⟨hn1, hn2⟩ := hn
   obtain ⟨T, hTl⟩ : ∃ T, streamLanes P20U = T := ⟨_, rfl⟩
   rw [hTl] at hS hTo
+  -- GOLF3-U: no `streamLanes P20U` fact left: every later `omega` listed it as an atom and the kernel evaluated the
+  -- tally while checking each certificate (0.2–0.5 M heartbeats per `omega`)
+  clear hTl
   have hgv : (kc (pbB cfgU20)).val M = 1 := by rw [Cell.val_K, hg, ofK_one]
   have hp : cfgU20.p = P20U := rfl
   -- the positions
@@ -752,23 +833,33 @@ theorem front_phasesU {c : Ctx} {M : Mem} {sig : ByteArray} {q : Ptr}
   rw [E] at hfo
   clear E
   -- names
-  set Pt := posOf P20U (phaseItem0 P20U .tape) with hPt
-  set Pw := posOf P20U (phaseItem0 P20U .wire) with hPw
-  set qs := laneOf P20U (phaseItem0 P20U .tape + 45) with hqs
-  set qw := laneOf P20U (phaseItem0 P20U .wire + 0) with hqw
-  set tOut := laneOf P20U (phaseItem0 P20U .tape + 41) with htOut
-  set q0 := laneOf P20U (phaseItem0 P20U .tape + 2) with hq0
-  have hq0' : 8 * q0 = Pt + 120 := by have := pR 0 (by norm_num); simpa using this
+  -- GOLF3-U: `generalize`, not `set`: as `let` values the positions were closed atoms of every later `omega`, which
+  -- the kernel evaluated (the lanes' walk) while checking the certificates
+  have hq0' : 8 * laneOf P20U (phaseItem0 P20U .tape + 2) = posOf P20U (phaseItem0 P20U .tape) + 120 := by
+    have := pR 0 (by norm_num); simpa using this
+  generalize posOf P20U (phaseItem0 P20U .tape) = Pt at *
+  generalize posOf P20U (phaseItem0 P20U .wire) = Pw at *
+  generalize posOf P20U (phaseItem0 P20U .openMain) = Pop at *
+  generalize laneOf P20U (phaseItem0 P20U .tape + 45) = qs at *
+  generalize laneOf P20U (phaseItem0 P20U .wire + 0) = qw at *
+  generalize laneOf P20U (phaseItem0 P20U .tape + 41) = tOut at *
+  generalize laneOf P20U (phaseItem0 P20U .tape + 43) = r43 at *
+  generalize laneOf P20U (phaseItem0 P20U .tape + 2) = q0 at *
   have hri : ∀ i < 20, laneOf P20U (phaseItem0 P20U .tape + (2 + 2 * i)) = q0 + 10 * i := fun i hi => by
     have := pR i hi; omega
   have htE : qs + 49 ≤ Lvm.Q1.tapeEnd2 16 qs := by unfold Lvm.Q1.tapeEnd2 Lvm.Q1.tapeQ2; omega
   have hqwE : qw = Lvm.Q1.tapeEnd2 16 qs := by omega
   have hTw : qw + 1027 < T := by omega
+  -- GOLF3-U: the tape's end as a variable too (as a closed `omega` atom the kernel evaluated `lay02 16`); the link kept
+  -- as a `HEq`, which `omega` does not read
+  generalize hE : Lvm.Q1.tapeEnd2 16 qs = E at *
+  have hEh : HEq (Lvm.Q1.tapeEnd2 16 qs) E := heq_of_eq hE
+  clear hE
   -- T1's values and the tape GKR
   set F : FCtx := ⟨ec q.e, ec q1.e, kc q2.k, ⟨kc q2.k, kc q2.k⟩, ⟨kc q3.k, kc q2.k⟩, false⟩ with hF
   set r : List C2 := (List.range 20).map fun i => Lvm.Q1.laneC2 (laneOf P20U (phaseItem0 P20U .tape + (2 + 2 * i)))
     with hr
-  set r20 := Lvm.Q1.laneC2 (laneOf P20U (phaseItem0 P20U .tape + 43)) with hr20
+  set r20 := Lvm.Q1.laneC2 r43 with hr20
   set a : List C2 := (List.range 25).map fun l => Lvm.Q1.laneC2 (tOut + 2 * l) with ha
   set bb : List C2 := (List.range 25).map fun l => Lvm.Q1.laneC2 (tOut + 50 + 2 * l) with hbb
   have hz2v : F.z2.val M = 0 := by
@@ -813,7 +904,7 @@ theorem front_phasesU {c : Ctx} {M : Mem} {sig : ByteArray} {q : Ptr}
     conv_rhs => unfold Lvm.E2U.t1ValsF
     exact List.map_congr_left fun l hl => by
       unfold Lvm.E2U.t1ValsF; exact getD_map_range0 _ (List.mem_range.mp hl)
-  have TG := tapeGkr_phaseU hS (P := Pt) (qs := qs) pQs (by omega) hT.1 hT.2 hgv hpT hinst hout
+  have TG := tapeGkr_phaseU hS (P := Pt) (qs := qs) pQs (by rw [eq_of_heq hEh]; omega) hT.1 hT.2 hgv hpT hinst hout
   obtain ⟨TG1, hR⟩ := TG
   set claimV := (tapeGkrD 21 (sampsG sig (Pt + 72) 20 ++ [fe2At sig (Pt + 2520)]) (Lvm.E2U.t1ValsF 20 13
     (sampsG sig (Pt + 72) 20 ++ [fe2At sig (Pt + 2520)]) (readsE2 sig (Pt + 1672) 50)) sig ⟨Pt + 2552, 0, true⟩).1
@@ -886,7 +977,7 @@ theorem front_phasesU {c : Ctx} {M : Mem} {sig : ByteArray} {q : Ptr}
   have WP := wireUDG_phase (P := Pw) (q := qw) P20U rfl rfl pub.s pub.n claimV pQw hpw hpD hpY hpM hfin hD hY hM
   have TG1' : Lvm.Har.PhaseAt (tapeGkrDF 21 (sampsG sig (Pt + 72) 20 ++ [fe2At sig (Pt + 2520)])
       (Lvm.E2U.t1ValsF 20 13 (sampsG sig (Pt + 72) 20 ++ [fe2At sig (Pt + 2520)]) (readsE2 sig (Pt + 1672) 50)))
-      sig (Pt + 2552) Pw claimV := by rw [pW]; exact TG1
+      sig (Pt + 2552) Pw claimV := by rw [pW, ← eq_of_heq hEh]; exact TG1
   have hp20' : DM.powOKR E2V.gC1 (feAt sig (Pt + 2520)) = true := by
     have := hp20 _ List.mem_cons_self; rwa [p20] at this
   have TP := tapeUDG_phase (P := Pt) (q0 := q0) P20U rfl rfl pub.s pub.n hq0' hpR hp20' TG1' ⟨hn1, hn2⟩ WP
@@ -969,6 +1060,19 @@ namespace Lvm.Har
 
 open Lvm DM Lvm.E2T Lvm.E2U
 
+/-! Proof help (GOLF3-U): the `DM` run lemmas with a non-`rfl` proof (`LvmE2QHarTop`'s private `bind_runH` …): as `rfl`
+lemmas in `simp` the kernel re-checked the rewritten run against the program through `DM`'s `bind`. -/
+
+private theorem bind_runU {α β : Type} (m : DM α) (f : α → DM β) (sig : ByteArray) (s : RS) :
+    (m >>= f) sig s = f (m sig s).1 sig (m sig s).2 := (bind_run' m f sig s).trans rfl
+private theorem pure_runU {α : Type} (a : α) (sig : ByteArray) (s : RS) : (pure a : DM α) sig s = (a, s) :=
+  (pure_run' a sig s).trans rfl
+private theorem skip_runU (n : Nat) (sig : ByteArray) (s : RS) :
+    skip n sig s = ((), { s with msg := s.msg + n }) := (skip_run' n sig s).trans rfl
+private theorem read_runU (sig : ByteArray) (s : RS) : (read : DM ByteArray) sig s = (sig, s) :=
+  (read_run' sig s).trans rfl
+private theorem stRunU {α : Type} (x : StateM RS α) (s : RS) : x.run s = x s := (rfl : x.run s = x s).trans rfl
+
 theorem core_of_phasesU (p pT : Params) (N : TNatT) (vk c : Vector UInt8 32) (sig : ByteArray)
     {Pb P1 P2 P3 : Nat} {pin : BlockClaim} {acc : Acc} {ti : List FItem}
     {evals : List (List FE × List FE)} {tp : TapeU RowZ}
@@ -1012,7 +1116,7 @@ theorem core_of_phasesU (p pT : Params) (N : TNatT) (vk c : Vector UInt8 32) (si
   simp only at o1 o2 o3
   refine ⟨s5, ?_, o1, o2, o3⟩
   unfold decideProgUG
-  simp only [bind_run', read_run', skip_run', pure_run']
+  simp only [bind_runU, read_runU, skip_runU, pure_runU]
   rw [← hs1, hA]
   simp only
   rw [hB]
@@ -1029,8 +1133,14 @@ theorem decideFUG_of (p pT : Params) (N : TNatT) (vk c : Vector UInt8 32) (sig :
     (hphi : N.phiT (acc.pt.map Lvm.e2OfFE) = Lvm.e2OfFE acc.y) :
     decideFUG p pT N vk c sig = true := by
   obtain ⟨s₉, h1, h2, h3, h4⟩ := hrun
-  unfold decideFUG DM.runOnH
-  simp only [StateT.run, h1, h2, h3, h4, hphi, Bool.true_and, beq_self_eq_true, Bool.and_self]
+  -- `delta` and a non-`rfl` `StateT.run` step (as `decideFGX_of`): `unfold` and the `rfl` lemma `StateT.run` left the
+  -- kernel a check that ran `decideProgUG` symbolically
+  have eD : @decideFUG = @decideFUG := rfl
+  conv at eD => rhs; delta decideFUG
+  rw [eD]
+  beta_reduce
+  rw [DM.runOnH, stRunU, h1]
+  simp only [h2, h3, h4, hphi, beq_self_eq_true, Bool.and_self]
 
 /-- `dMiniT` reads only the bus depth, the leaf reads, the table rounds and the record's `busFinal` and tables
 (`Lvm.VEq.dMiniT_congr`'s copy). -/

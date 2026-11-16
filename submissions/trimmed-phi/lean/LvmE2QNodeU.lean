@@ -551,10 +551,9 @@ theorem readdTGLU (F : TFrz) (Q : Program) (tl : Typed.Lay) (N : TNat) (pl : Lvm
 
 -- `tblU20`, `passR_P20U`, `planSt_P20U`, `streamOk_P20U`: UT-L's `LvmS2GUPlan`.
 
-set_option maxRecDepth 200000 in
-/-- **Q_link's static checks at S2GU.** -/
+/-- **Q_link's static checks at S2GU** (`qOkB` decided as `qOkF` in `LvmS2GUPlan`'s shared decision). -/
 theorem hQU20 : QOk P20U (lay cfgU20) :=
-  qOk_of streamOk_P20U (by rw [← qOkF_eq]; unfold P20U P20T; rw [P20_eq]; decide +kernel)
+  qOk_of streamOk_P20U (by rw [← qOkF_eq]; exact qOkF_P20U)
 
 /-- S2GU's plan facts. -/
 theorem planC_P20U : PlanC P20U :=

@@ -84,7 +84,7 @@ theorem Partial.ofVector_push (off : ℕ) {k : ℕ} (v : Vector R k) (c : R) :
     simp only [Partial.ofVector]
     split_ifs with h₁ h₂ h₂
     · rw [Vector.getElem_push_lt (by (clear * - h₁ h₂; omega))]
-    · omega
+    · (clear * - off k i hi h₁ h₂; omega)
     · (clear * - h₁ h₂; omega)
     · rfl
 
@@ -180,7 +180,7 @@ private theorem Partial.point_update_of_le {n : ℕ} (σ : Partial R) (k : ℕ) 
     Partial.point (Function.update σ k (some c)) b = σ.point b := by
   apply Vector.ext
   intro j hj
-  simp [Partial.point, Function.update_of_ne (show j ≠ k by omega)]
+  simp [Partial.point, Function.update_of_ne (show j ≠ k by (clear * - j k n hk hj; omega))]
 
 /-- Setting a coordinate of a completion to its own value changes nothing. -/
 private theorem Partial.point_set_self {n : ℕ} (σ : Partial R) (k : ℕ) (hk : k < n)

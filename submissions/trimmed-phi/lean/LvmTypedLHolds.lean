@@ -71,7 +71,7 @@ theorem lh_blocksOk_at (nInK : ℕ) (xs : List XChunk) : ∀ (Bs : List BLay) (B
         refine ⟨a1, ?_, ?_, a4, a5, a6, a7, a8, ?_⟩
         · rw [a2, htK, Nat.add_assoc]
         · rw [a3, htE, Nat.add_assoc]
-        · rwa [show b0 + (i + 1) = b0 + 1 + i by (clear * -; omega)]
+        · rwa [show b0 + (i + 1) = b0 + 1 + i by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)]
 
 /-- **Block `b` of a checked layout** is what `blocksOk` checks. -/
 theorem lh_blk {Q : Program} {lay : Lay} (hlay : lay.Ok Q) {b : ℕ} (hb : b < lay.blocks.length) :
@@ -96,7 +96,7 @@ theorem lh_auxOk_at (xs : List XChunk) : ∀ (As : List ABlk) (k0 : ℕ), auxOk 
     | succ k =>
       obtain ⟨a1, a2⟩ := ih (k0 + 1) h3 k (by simpa using hk)
       refine ⟨a1, ?_⟩
-      rw [List.getD_cons_succ, show k0 + (k + 1) = k0 + 1 + k by (clear * -; omega)]
+      rw [List.getD_cons_succ, show k0 + (k + 1) = k0 + 1 + k by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)]
       exact a2
 
 /-- **Auxiliary block `k` of a checked layout**. -/
@@ -480,7 +480,7 @@ theorem lh_tplOk (size nInK : ℕ) : ∀ (rows : List Row) (cr : List (Option �
           unfold lh_cnt
           rw [List.take_succ_cons, List.filter_cons]
           by_cases hc : Row.isCon r = true
-          · simp only [hc, ↓reduceIte, List.length_cons]; congr 2; (clear * -; omega)
+          · simp only [hc, ↓reduceIte, List.length_cons]; congr 2; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)
           · simp only [hc, ↓reduceIte, Bool.false_eq_true]
         · rw [← lh_getD_drop]; exact a2 hw
         · rw [← lh_getD_drop]; exact a3 hw
@@ -510,7 +510,7 @@ theorem lh_rank_lt (B : Block) (τ : Ty) {t : ℕ} (ht : t < B.tpl.length) (hw :
   conv => rhs; rw [← List.take_append_drop t B.tpl, List.drop_eq_getElem_cons ht]
   rw [List.getD_eq_getElem?_getD, List.getElem?_eq_getElem ht, Option.getD_some] at hw
   simp only [List.map_append, List.map_cons, List.sum_append, List.sum_cons, Row.w, hw, ↓reduceIte]
-  (clear * -; omega)
+  (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - τ t B; omega))
 
 /-! ## Chunks and slots -/
 
@@ -687,7 +687,7 @@ theorem lh_flatMap_single {β : Type} (n a0 : ℕ) (f : ℕ → List β) (h0 : a
     · subst hn
       rw [List.flatMap_eq_nil_iff.mpr fun a ha ↦ h a (by rw [List.mem_range] at ha; (clear * - ha; omega))
         (by rw [List.mem_range] at ha; (clear * - ha; omega)), List.nil_append]
-    · rw [ih (by (clear * - h0 hn; omega)) (fun a ha hne ↦ h a (by (clear * - ha; omega)) hne), h n (by (clear * -; omega)) (Ne.symm hn), List.append_nil]
+    · rw [ih (by (clear * - h0 hn; omega)) (fun a ha hne ↦ h a (by (clear * - ha; omega)) hne), h n (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - n; omega))) (Ne.symm hn), List.append_nil]
 
 /-- **At a constraint slot only its instance has entries.** -/
 theorem lh_ents_at {Q : Program} {lay : Lay} (hlay : lay.Ok Q) {b t jf : ℕ}
@@ -818,13 +818,13 @@ theorem lh_wordE_load {Q : Program} {lay : Lay} (hlay : lay.Ok Q) {b jf t : ℕ}
   have hl : (lay.blocks.getD b default).l = (Q.blk b).lsize := by rw [BLay.l, hd, Block.lsize]
   have hown : lay.owner? .E (Q.start .E b + (Q.blk b).tw .E * jf + (Q.blk b).rank .E t) = some b := by
     refine lh_owner?_eq hlay .E hb' ?_ ?_
-    · simp only [BLay.st, hE]; (clear * -; omega)
+    · simp only [BLay.st, hE]; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - Q b jf t; omega))
     · simp only [BLay.st, BLay.tw, hE, htE, hl]
       have : (Q.blk b).tw .E * (jf + 1) ≤ (Q.blk b).tw .E * 2 ^ (Q.blk b).lsize := Nat.mul_le_mul_left _ hjf
       rw [Nat.mul_add, Nat.mul_one] at this
       (clear * - hr this; omega)
   have hoff : Q.start .E b + (Q.blk b).tw .E * jf + (Q.blk b).rank .E t - (lay.blocks.getD b default).stE =
-      (Q.blk b).tw .E * jf + (Q.blk b).rank .E t := by rw [hE]; (clear * -; omega)
+      (Q.blk b).tw .E * jf + (Q.blk b).rank .E t := by rw [hE]; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - Q b jf t; omega))
   have htw : 0 < (Q.blk b).tw .E := by (clear * - htE hr hoff; omega)
   unfold Lay.wordE
   rw [hown]
@@ -847,7 +847,7 @@ theorem lh_dot_le : ∀ (s dims : List ℕ) (jf : ℕ), dot s (unflat dims jf) �
   | _ :: _, [], _ => by simp [dot, unflat]
   | s :: ss, d :: ds, jf => by
     simp only [unflat, List.map_cons, dot]
-    have h1 : jf % 2 ^ d ≤ 2 ^ d - 1 := by have := Nat.mod_lt jf (Nat.two_pow_pos d); omega
+    have h1 : jf % 2 ^ d ≤ 2 ^ d - 1 := by have := Nat.mod_lt jf (Nat.two_pow_pos d); (clear * - jf d this; omega)
     have := Nat.mul_le_mul_left s h1
     have := lh_dot_le ss ds (jf / 2 ^ d)
     (clear h1; omega)
@@ -956,7 +956,7 @@ theorem lh_row_at (Q : Program) (lay : Lay) (z : ℕ → FK) (hwf : Q.wf = true)
         ((((Q.blk b).tpl.getD t default).args.getD m default).at (unflat (Q.blk b).dims jf)) = _
       rw [hK]
       simp only [Mem.rd, memOf, hcst, Option.getD_none]
-    rw [hres, harg 0 (by (clear * -; omega)), harg 1 (by (clear * -; omega)), harg 2 (by (clear * -; omega))]
+    rw [hres, harg 0 (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)), harg 1 (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)), harg 2 (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))]
     simp only [memOf]
     rw [lh_wordE_load hlay hb ht hjf _ hw hsrc 0, lh_wordE_load hlay hb ht hjf _ hw hsrc 1,
       lh_wordE_load hlay hb ht hjf _ hw hsrc 2]

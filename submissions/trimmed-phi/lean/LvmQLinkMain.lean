@@ -51,7 +51,7 @@ section
 variable {p : Params} {lay : Layout}
 
 theorem hashedLen_mod (hS : StreamOk p) : hashedLen p % 8 = 0 := by
-  have := bOff_mod hS.1 (plan p).length (by have := plan_length_ge p; omega) le_rfl
+  have := bOff_mod hS.1 (plan p).length (by have := plan_length_ge p; (clear * - p this; omega)) le_rfl
   rw [bOff_end, ← hS.2] at this; exact this
 
 /-- **The QLT entries' bounds**, from the plan's stream facts. -/
@@ -60,19 +60,19 @@ theorem qbound_of (hS : StreamOk p) (hT2 : 17 * nBlk (hashedLen p) + 4 ≤ 2 ^ l
       e.2.1 + 4 ≤ lay.sb + 2 ^ lay.m ∧ e.2.2 < 2 ^ 64 := by
   have hL8 := hashedLen_mod hS
   have hL48 := hashedLen_ge hS
-  have hLb : hashedLen p / 8 + 5 ≤ 2 ^ lay.m := by simp only [nBlk] at hT2; omega
+  have hLb : hashedLen p / 8 + 5 ≤ 2 ^ lay.m := by simp only [nBlk] at hT2; (clear * - p lay hT2 hL8; omega)
   intro e he
   simp only [qltEntries, List.mem_append] at he
   rcases he with (h01 | hmid) | hpad
   · simp only [List.mem_cons, List.mem_nil_iff, or_false] at h01
     rcases h01 with rfl | rfl <;> dsimp only
-    · exact ⟨le_rfl, by omega, by omega, by omega, by simp [lane0C]⟩
-    · exact ⟨by omega, by omega, by omega, by omega, lane1C_lt⟩
+    · exact ⟨le_rfl, by (clear * - lay p; omega), by (clear * - lay p h64 hL8 hL48 hLb; omega), by (clear * - lay p h64 hL8 hL48 hLb; omega), by simp [lane0C]⟩
+    · exact ⟨by (clear * - lay p; omega), by (clear * - lay p; omega), by (clear * - lay p h64 hL8 hL48 hLb; omega), by (clear * - lay p h64 hL8 hL48 hLb; omega), lane1C_lt⟩
   · obtain ⟨⟨pe, i⟩, hx, hf⟩ := List.mem_filterMap.mp hmid
     have hgi := List.mem_zipIdx_iff_getElem?.mp hx
     simp only at hgi hf
     have hi : i < (plan p).length := by
-      by_contra hc; rw [List.getElem?_eq_none (by omega)] at hgi; cases hgi
+      by_contra hc; rw [List.getElem?_eq_none (by (clear * - p i lay hc; omega))] at hgi; cases hgi
     have hpe : (plan p).getD i default = pe := by
       rw [List.getD_eq_getElem?_getD, hgi, Option.getD_some]
     split at hf
@@ -88,16 +88,16 @@ theorem qbound_of (hS : StreamOk p) (hT2 : 17 * nBlk (hashedLen p) + 4 ≤ 2 ^ l
       rw [hpe] at h8
       have hans : ansLane p st + 4 ≤ hashedLen p / 8 := by
         by_cases h0 : st = 0
-        · subst h0; simp only [ansLane, ite_true]; omega
-        · have := lanes_in hS (i := st) (by omega) (by omega)
-          simp only [ansLane, h0, ite_false]; omega
+        · subst h0; simp only [ansLane, ite_true]; (clear * - p lay h64 hL8 hL48 pe i; omega)
+        · have := lanes_in hS (i := st) (by (clear * - st p lay pe i h0; omega)) (by (clear * - st p lay pe i hi hst; omega))
+          simp only [ansLane, h0, ite_false]; (clear * - p st lay pe i this; omega)
       dsimp only
-      exact ⟨by omega, by omega, by omega, by omega, by omega⟩
+      exact ⟨by (clear * - lay p i pe st; omega), by (clear * - lay p st pe i; omega), by (clear * - lay p i hLb pe st h32 hin h8; omega), by (clear * - lay p st hLb pe i hans; omega), by (clear * - pe p lay h64 hL8 hL48 i st hin h8; omega)⟩
     · cases hf
   · obtain ⟨k, hk, rfl⟩ := List.mem_map.mp hpad
     rw [List.mem_range] at hk
     simp only [nBlk] at hT2 hk ⊢
-    exact ⟨by omega, by omega, by omega, by omega, padLane_lt _ _⟩
+    exact ⟨by (clear * - lay p k h64 hL8 hL48; omega), by (clear * - lay p k h64 hL8 hL48; omega), by (clear * - lay p k hT2 hL8 hk; omega), by (clear * - lay p k hT2 hL8 hk; omega), padLane_lt _ _⟩
 
 theorem qOk_of (hS : StreamOk p) (h : qOkB p lay = true) : QOk p lay := by
   simp only [qOkB, Bool.and_eq_true, decide_eq_true_eq, List.all_eq_true] at h

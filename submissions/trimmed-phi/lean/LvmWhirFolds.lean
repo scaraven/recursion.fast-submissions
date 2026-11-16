@@ -434,9 +434,9 @@ theorem length_extRow (m : ℕ) : ∀ (l : List K), l.length = 3 * m → (extRow
     rw [extRow, List.length_cons]
     cases m with
     | zero => simp at h
-    | succ m => rw [length_extRow m rest (by simp at h; omega)]
-  | [c0, c1], h => by simp at h; omega
-  | [c0], h => by simp at h; omega
+    | succ m => rw [length_extRow m rest (by simp at h; (clear * - rest m h; omega))]
+  | [c0, c1], h => by simp at h; (clear * - c0 c1 m h; omega)
+  | [c0], h => by simp at h; (clear * - c0 m h; omega)
   | [], h => by simp at h; subst h; rfl
 
 /-- The lanes of a well-shaped leaf: `2^ℓ` of them. -/
@@ -651,10 +651,10 @@ theorem card_foldBad_le_eFold (hw : IsMultiaffine μ w) (hℓ₀ : ℓ₀ ≤ μ
       2 * P.listMax + 2 ^ (ℓ - 1) * P.mcaMax := by
   obtain ⟨hlen, -, hκ, hg, ⟨c₀, c₁, c₂, hq, hσ⟩, hviol⟩ := hI
   set m := ℓ - (lf.length + 1) with hm
-  have hm1 : ℓ - lf.length = m + 1 := by omega
+  have hm1 : ℓ - lf.length = m + 1 := by (clear * - ℓ lf m μ ℓ₀ P pre s hlf hlen; omega)
   have hma : IsMultiaffine (m + 1 + P.κ) (runW w ℓ₀ s) := by
-    have := isMultiaffine_runW hw hℓ₀ s (by omega) hg
-    rwa [show μ - s.folds.length = m + 1 + P.κ by omega] at this
+    have := isMultiaffine_runW hw hℓ₀ s (by (clear * - s μ ℓ₀ P ℓ pre lf hlf hlen hκ; omega)) hg
+    rwa [show μ - s.folds.length = m + 1 + P.κ by (clear * - μ s m P ℓ₀ ℓ pre lf hlf hlen hκ hm1; omega)] at this
   rw [hm1] at hviol
   rw [hq] at hσ
   have hstep := card_foldStep_bad_le P (runW w ℓ₀ s) hma (foldsN lf (laneO i cs P.n)) s.target
@@ -666,7 +666,7 @@ theorem card_foldBad_le_eFold (hw : IsMultiaffine μ w) (hℓ₀ : ℓ₀ ≤ μ
     rw [hq]
     rwa [foldsN, List.foldl_append, List.foldl_cons, List.foldl_nil]
   · exact Nat.add_le_add_left (Nat.mul_le_mul_right _ (Nat.pow_le_pow_right (by norm_num)
-      (by omega))) _
+      (by (clear * - m ℓ μ ℓ₀ w i P pre s lf hlf cs hlen c₀ c₁ c₂ hm1; omega)))) _
 
 open Classical in
 /-- The escape count as the calculus averages it. -/
@@ -688,9 +688,9 @@ theorem foldInv_step (s : WhirStateT) (lf : List E) (c : E) (cs : List (ℕ × �
       { s with target := polyEval s.quad c, quad := quad, folds := s.folds ++ [c] }
       (lf ++ [c]) cs := by
   obtain ⟨hlen, hlf, hκ, hg, hviol⟩ := hmid
-  refine ⟨by simp [hlen]; omega, by simp; omega, hκ, fun g hgm ↦ ?_, hq, ?_⟩
+  refine ⟨by simp [hlen]; (clear * - pre lf μ P ℓ s; omega), by simp; (clear * - hlf; omega), hκ, fun g hgm ↦ ?_, hq, ?_⟩
   · obtain ⟨h1, h2⟩ := hg g hgm
-    exact ⟨by simp; omega, h2⟩
+    exact ⟨by simp; (clear * - g s μ P ℓ pre lf hlen hκ h1; omega), h2⟩
   · have hfun := funext (runW_fold w ℓ₀ s c (polyEval s.quad c) quad
       fun g hgm ↦ (hg g hgm).1)
     rw [hfun, List.length_append, List.length_singleton]

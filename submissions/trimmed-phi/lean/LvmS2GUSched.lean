@@ -40,6 +40,37 @@ theorem phases_P20U : phases P20U = phasesS2GU P20U := by
 theorem headerBytesP_P20U : headerBytesP P20U = 5664 ∧ seedLenP P20U = 5688 ∧ P20U.accV = Lvm.VEq.accVT := by
   decide
 
+/-- Proof help (GOLF3-U, `LvmS2GTSched`'s private `readWidthsP_all_of`): a read width is `eBytes` or a `readW` item's
+width, so `readWidthsP`'s check is one walk of the items. -/
+private theorem readWidthsP_all_ofU (p : Params) (g : Nat → Bool) (he : g eBytes = true)
+    (h : (schedule p).all (fun it => match it with | .readW _ w => g w | _ => true) = true) :
+    (readWidthsP p).all g = true := by
+  rw [List.all_eq_true] at h ⊢
+  intro w hw
+  rw [readWidthsP] at hw
+  obtain ⟨it, hit, hw⟩ := List.mem_flatMap.mp hw
+  have hi := h it hit
+  cases it with
+  | read m => rw [List.eq_of_mem_replicate hw]; exact he
+  | readW m w' => rw [List.eq_of_mem_replicate hw]; exact hi
+  | cap => simp at hw
+  | sample => simp at hw
+  | positions => simp at hw
+  | opening => simp at hw
+
+set_option maxRecDepth 100000 in
+/-- Proof help (GOLF3-U): S2GU's sizes, read widths (as one walk of the items) and query bound in one kernel evaluation
+of the schedule (the three decisions each rebuilt it: 17.9 → 10.1 M heartbeats). -/
+private theorem schedFactsU : ((piSize P20U = 283960 ∧ qS P20U = 3649 ∧ hashedLen P20U = 538656 ∧
+    streamLanes P20U = 67332 ∧ spongeBlocks P20U = 3961 ∧ (schedule P20U).length = 2835 ∧
+    (P20U.level ⟨.main, 0⟩).row = 368) ∧
+    lengthRule P20U = true ∧
+    (100 * streamLanes P20U ≤ 95 * streamCap P20U ∧ 100 * qS P20U ≤ 95 * 16384 ∧
+      100 * spongeBlocks P20U ≤ 95 * 2 ^ P20U.recRowsLog)) ∧
+    (schedule P20U).all (fun it => match it with | .readW _ w => decide (0 < w) | _ => true) = true ∧
+    (2 + qcItems P20U (schedule P20U) 0 ≤ 16384) := by
+  decide +kernel
+
 set_option maxRecDepth 100000 in
 /-- **UTAPE-STMT 3** (owner L): **S2GU's sizes** (`ref/utape.py --occ 46` [exact]; one kernel evaluation of the
 tally): `|π| = 283,960`, `qS = 3,649`, `L = 538,656`, `T = 67,332`, 3,961 sponge blocks, 2,835 items (`utape-items.tsv` has 2,835 lines), the root leaf of
@@ -49,13 +80,13 @@ theorem sizes_P20U : (piSize P20U = 283960 ∧ qS P20U = 3649 ∧ hashedLen P20U
     (P20U.level ⟨.main, 0⟩).row = 368) ∧
     lengthRule P20U = true ∧
     (100 * streamLanes P20U ≤ 95 * streamCap P20U ∧ 100 * qS P20U ≤ 95 * 16384 ∧
-      100 * spongeBlocks P20U ≤ 95 * 2 ^ P20U.recRowsLog) := by
-  decide +kernel
+      100 * spongeBlocks P20U ≤ 95 * 2 ^ P20U.recRowsLog) :=
+  schedFactsU.1
 
 set_option maxRecDepth 100000 in
 /-- Every read width of the S2GU schedule is positive (one kernel evaluation of `readWidthsP P20U`). -/
-theorem readWidthsP_pos_P20U : (readWidthsP P20U).all (fun w ↦ decide (0 < w)) = true := by
-  decide +kernel
+theorem readWidthsP_pos_P20U : (readWidthsP P20U).all (fun w ↦ decide (0 < w)) = true :=
+  readWidthsP_all_ofU P20U _ (by decide) schedFactsU.2.1
 
 /-- **UTAPE-STMT 4** (owner L): every read width of the S2GU schedule is positive. -/
 theorem rwU20_pos : ∀ n, 0 < rwU20 n := fun n ↦ by
@@ -68,8 +99,8 @@ theorem rwU20_pos : ∀ n, 0 < rwU20 n := fun n ↦ by
 
 set_option maxRecDepth 100000 in
 /-- **UTAPE-STMT 5** (owner L): S2GU's query bound (one kernel evaluation of the schedule's query count). -/
-theorem qcItems_P20U : 2 + qcItems P20U (schedule P20U) 0 ≤ 16384 := by
-  decide +kernel
+theorem qcItems_P20U : 2 + qcItems P20U (schedule P20U) 0 ≤ 16384 :=
+  schedFactsU.2.2
 
 /-- **S2GU's layout** (`layoutU` at `P20U`) is `LvmLayout`'s: `D` 0, `Y` (the `ks` field) 5,767,168, `Y` lane 14
 5,881,856, `X` 5,250,560, `free_lo` 5,971,968, `T` 4,194,304, `S` 5,242,880. -/

@@ -758,11 +758,25 @@ def zsumG (a b z : Cell) : BM Cell := do
 
 theorem zF_eq (a b : FE) : zF a b = zStarF 0 + (zStarF 0 + zStarF 1) * a + (zStarF 0 + zStarF 2) * b +
     (zStarF 0 + zStarF 1 + zStarF 2 + zStarF 3) * (a * b) := by
-  simp only [zF, List.range_succ, List.range_zero, List.map_cons, List.map_nil, List.nil_append, List.map_append,
-    List.sum_append, List.sum_cons, List.sum_nil, selectorPoint, eqEval]
-  norm_num [eOfNat_zero, eOfNat_one]
-  linear_combination (zStarF 1 * (1 + b) + zStarF 2 * (1 + a) + zStarF 3 * (a + b) + 2 * zStarF 3) *
-    (CharTwo.two_eq_zero : (2 : FE) = 0)
+  -- the four selector points and `eqEval` on two coordinates by `rfl`/`simp only`, then the identity on variables
+  -- (GOLF3: `norm_num` on the unfolded `eqEval`s cost the kernel 2 M heartbeats)
+  have e : ∀ u v : FE, eqEval [a, b] [u, v] = (1 + a + u) * (1 + b + v) := fun u v => by
+    simp only [eqEval, List.zipWith_cons_cons, List.zipWith_nil_left, List.foldl_cons, List.foldl_nil, one_mul]
+  have s0 : selectorPoint 0 2 = [0, 0] := by
+    rw [show selectorPoint 0 2 = [eOfNat 0, eOfNat 0] from rfl, eOfNat_zero]
+  have s1 : selectorPoint 1 2 = [1, 0] := by
+    rw [show selectorPoint 1 2 = [eOfNat 1, eOfNat 0] from rfl, eOfNat_zero, eOfNat_one]
+  have s2 : selectorPoint 2 2 = [0, 1] := by
+    rw [show selectorPoint 2 2 = [eOfNat 0, eOfNat 1] from rfl, eOfNat_zero, eOfNat_one]
+  have s3 : selectorPoint 3 2 = [1, 1] := by
+    rw [show selectorPoint 3 2 = [eOfNat 1, eOfNat 1] from rfl, eOfNat_one]
+  rw [zF, show List.range 4 = [0, 1, 2, 3] from rfl]
+  simp only [List.map_cons, List.map_nil, List.sum_cons, List.sum_nil, s0, s1, s2, s3, e]
+  generalize zStarF 0 = z0
+  generalize zStarF 1 = z1
+  generalize zStarF 2 = z2
+  generalize zStarF 3 = z3
+  linear_combination (z1 * (1 + b) + z2 * (1 + a) + z3 * (a + b) + 2 * z3) * (CharTwo.two_eq_zero : (2 : FE) = 0)
 
 theorem zsumG_spec {a b z : Cell} (hz : z.val M = 0) :
     Hs c M (zsumG a b z) (fun r ↦ r.val M = zF (a.val M) (b.val M)) :=

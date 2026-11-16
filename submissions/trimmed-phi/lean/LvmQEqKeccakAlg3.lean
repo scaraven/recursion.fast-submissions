@@ -165,17 +165,17 @@ theorem transposeList_getDE (A : Array FE) (g : ℕ → FE) (hA : ∀ p < 1600, 
         ((List.range 5).flatMap fun x ↦ (List.range 64).map fun z ↦
           sumE ((List.range 5).map fun y ↦ A.getD (64 * (x + 5 * y) + z) 0)).toArray.getD
           (64 * ((lane % 5 + 4) % 5) + (z + 1) % 64) 0).getD p 0 = thetaTE g p := by
-  have hp' : p = 64 * (p / 64) + p % 64 := by (clear * -; omega)
+  have hp' : p = 64 * (p / 64) + p % 64 := by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)
   conv_lhs => rw [hp']
-  rw [flatMap_getD' _ 64 25 (p / 64) (p % 64) (by (clear * - hp; omega)) (Nat.mod_lt _ (by (clear * -; omega)))]
-  rw [columns_getDE _ (by (clear * -; omega)) (Nat.mod_lt _ (by (clear * -; omega))),
-    columns_getDE _ (by (clear * -; omega)) (Nat.mod_lt _ (by (clear * -; omega))), ← hp', hA p hp]
+  rw [flatMap_getD' _ 64 25 (p / 64) (p % 64) (by (clear * - hp; omega)) (Nat.mod_lt _ (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)))]
+  rw [columns_getDE _ (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)) (Nat.mod_lt _ (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))),
+    columns_getDE _ (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)) (Nat.mod_lt _ (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))), ← hp', hA p hp]
   have hcol : ∀ x z, x < 5 → z < 64 → colLE (fun p ↦ A.getD p 0) x z = colLE g x z := by
     intro x z hx hz
     refine Finset.sum_congr rfl fun y hy ↦ ?_
     simp only [Finset.mem_range] at hy
     exact hA _ (by (clear * - hx hz hy; omega))
-  rw [hcol _ _ (by (clear * -; omega)) (Nat.mod_lt _ (by (clear * -; omega))), hcol _ _ (by (clear * -; omega)) (Nat.mod_lt _ (by (clear * -; omega)))]
+  rw [hcol _ _ (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)) (Nat.mod_lt _ (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))), hcol _ _ (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)) (Nat.mod_lt _ (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)))]
   rfl
 
 /-- **`keccakLinearTranspose` in closed form** (`F`'s copy over `Lvm.FE`). -/
@@ -222,7 +222,7 @@ theorem gOf_prodW (A : ℕ → FE) (B : List FE) {p : ℕ} (hp : p < 1600) :
   have hpi := keccakPi_lt (i := p / 64) (by omega)
   rw [gOfE, prodW_getD A B (by unfold rhoPiDstE; (clear * - hpi; omega)), rhoPiDstE]
   have e1 : (64 * keccakPi (p / 64) + (p % 64 + keccakRho.getD (p / 64) 0) % 64) % 64 =
-      (p % 64 + keccakRho.getD (p / 64) 0) % 64 := by (clear * -; omega)
+      (p % 64 + keccakRho.getD (p / 64) 0) % 64 := by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)
   have e2 : (64 * keccakPi (p / 64) + (p % 64 + keccakRho.getD (p / 64) 0) % 64) / 64 =
       keccakPi (p / 64) := by (clear * - e1; omega)
   rw [e1, e2]
@@ -238,7 +238,7 @@ theorem col_dot (A u : ℕ → FE) (B : List FE) {x : ℕ} (hx : x < 5) (c : ℕ
   refine Finset.sum_congr rfl fun y hy ↦ Finset.sum_congr rfl fun z hz ↦ ?_
   simp only [Finset.mem_range] at hy hz
   rw [gOf_prodW A B (by (clear * - hx hy; omega))]
-  have e1 : (64 * (x + 5 * y) + (z + c) % 64) % 64 = (z + c) % 64 := by (clear * -; omega)
+  have e1 : (64 * (x + 5 * y) + (z + c) % 64) % 64 = (z + c) % 64 := by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)
   have e2 : (64 * (x + 5 * y) + (z + c) % 64) / 64 = x + 5 * y := by (clear * - e1; omega)
   rw [e1, e2]
   ring
@@ -260,7 +260,7 @@ theorem lane_dot (A u : ℕ → FE) (B : List FE) {l : ℕ} (hl : l < 25) :
     have e3 : (z + 0) % 64 = z := by (clear * - e1 e2; omega)
     rw [e1, e2, e3, mul_add, mul_add]
   rw [Finset.sum_congr rfl hz, Finset.sum_add_distrib, Finset.sum_add_distrib,
-    col_dot A u B (by (clear * -; omega)), col_dot A u B (by (clear * -; omega))]
+    col_dot A u B (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)), col_dot A u B (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))]
   have h1 : ∑ z ∈ range 64, u z * gOfE (prodW A B) (64 * l + z) =
       B.getD (keccakPi l) 0 * rotSum u A (rho l) := by
     rw [rotSum, sumE_range, Finset.mul_sum]
@@ -288,7 +288,7 @@ theorem lane_dot (A u : ℕ → FE) (B : List FE) {l : ℕ} (hl : l < 25) :
     refine Finset.sum_congr rfl fun y _ ↦ ?_
     rw [rotSum, sumE_range]
     rw [Finset.sum_congr rfl (fun z _ => by
-      rw [show ((z + 1) % 64 + rho (x + 5 * y)) % 64 = (z + (rho (x + 5 * y) + 1) % 64) % 64 by (clear * -; omega)])]
+      rw [show ((z + 1) % 64 + rho (x + 5 * y)) % 64 = (z + (rho (x + 5 * y) + 1) % 64) % 64 by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)])]
   rw [h1, h2, h3]
   rfl
 
@@ -369,7 +369,7 @@ theorem eqAt_prod : ∀ (p : List FE) {z : ℕ}, z < 2 ^ p.length → eqAt p z =
     · obtain ⟨z', rfl⟩ : ∃ z', z = 2 ^ p.length + z' := ⟨z - 2 ^ p.length, by (clear * - hl hz'; omega)⟩
       have hz'' : z' < 2 ^ p.length := by (clear * - hz; omega)
       rw [List.getD_append_right _ _ _ _ (by simp [hl]), List.length_map, hl,
-        show 2 ^ p.length + z' - 2 ^ p.length = z' by (clear * -; omega), getD_map_mul]
+        show 2 ^ p.length + z' - 2 ^ p.length = z' by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega), getD_map_mul]
       have := ih hz''
       unfold eqAt eqProd at this
       rw [this, Nat.testBit_two_pow_add_eq, Nat.testBit_lt_two_pow hz'']
@@ -381,7 +381,7 @@ theorem eqAt_prod : ∀ (p : List FE) {z : ℕ}, z < 2 ^ p.length → eqAt p z =
 /-- **`eq` of a 6-point splits** into its low and high three coordinates. -/
 theorem eqAt_split {a : List FE} (ha : a.length = 6) {z : ℕ} (hz : z < 64) :
     eqAt a z = eqAt (a.take 3) (z % 8) * eqAt (a.drop 3) (z / 8) := by
-  rw [eqAt_prod a (by rw [ha]; omega), eqAt_prod _ (by simp [ha]; (clear * -; omega)),
+  rw [eqAt_prod a (by rw [ha]; omega), eqAt_prod _ (by simp [ha]; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)),
     eqAt_prod _ (by simp [ha]; (clear * - hz; omega))]
   unfold eqProd
   rw [ha, show (6 : ℕ) = 3 + 3 from rfl, Finset.prod_range_add]
@@ -409,7 +409,7 @@ theorem shift_LH {a b : List FE} (ha : a.length = 6) (hb : b.length = 6) {r : �
       (eqAt (b.take 3) zl * eqAt (a.take 3) ((zl + r % 8) % 8)) *
         (eqAt (b.drop 3) zh * eqAt (a.drop 3) ((zh + (r / 8 + (zl + r % 8) / 8) % 8) % 8)) := by
     intro zh hzh zl hzl
-    rw [eqAt_split hb (by (clear * - hzh hzl; omega)), eqAt_split ha (by (clear * -; omega))]
+    rw [eqAt_split hb (by (clear * - hzh hzl; omega)), eqAt_split ha (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))]
     have e1 : (8 * zh + zl) % 8 = zl := by (clear * - hzl; omega)
     have e2 : (8 * zh + zl) / 8 = zh := by (clear * - e1; omega)
     have e3 : (8 * zh + zl + r) % 64 % 8 = (zl + r % 8) % 8 := by (clear * - e1; omega)

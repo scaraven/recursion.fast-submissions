@@ -130,7 +130,10 @@ theorem traceDigest_of_GkU {x : List UInt8} {qm : Column CMain.nu20} {qr : Colum
   have hin : ∀ i, 0 < i → i < Lvm.KSponge.nBlk (hashedLen P20U) → contU i = true :=
     fun i h1 h2 => contU_of h1 (by rw [← hsb, sizes_P20U.1.2.2.2.2.1] at h2; omega)
   rw [hsb] at hB ⊢
-  generalize hashedLen P20U = L at hS' hsz hpad hB hin
+  -- `L` opaque (`obtain`, not `generalize`, whose `L` is substituted back): the `omega`s below then do not make the
+  -- kernel compute `hashedLen P20U` (GOLF3: 3.8 M heartbeats)
+  obtain ⟨L, hL⟩ : ∃ L, hashedLen P20U = L := ⟨_, rfl⟩
+  rw [hL] at hS' hsz hpad hB hin ⊢
   have hnbL : Lvm.KSponge.nBlk L = L / 136 + 1 := rfl
   refine traceDigest_of_KS 13 _ (YqU qm) (MqU qm) _ H L (le_trans hB (by norm_num)) hin ?_ _ ?_
   · intro p h1 h2

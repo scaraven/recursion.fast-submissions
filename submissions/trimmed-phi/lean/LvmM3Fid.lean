@@ -691,7 +691,7 @@ theorem roots_keep (hI : Bus.Conditions I) {C : Set (∀ i, TheOracle I i)}
 theorem rootStmt_eq (shared count : E) :
     Gkr.rootStmt 3 (data, ![shared, shared, count]) =
       layerStmtOf data 0 ⟨[shared, shared, count], []⟩ := by
-  refine Prod.ext rfl (Prod.ext (Vector.ext fun i hi ↦ absurd hi (by omega)) ?_)
+  refine Prod.ext rfl (Prod.ext (Vector.ext fun i hi ↦ absurd hi (by (clear * - i hi; omega))) ?_)
   funext t
   fin_cases t <;> rfl
 
@@ -1052,13 +1052,13 @@ private theorem point_push {j : ℕ} (hj : j < n) (c : Vector F j) (x : F)
   intro k hk
   simp only [point, Vector.getElem_ofFn, Vector.getElem_cast, Vector.getElem_push]
   by_cases h1 : k < n - (j + 1)
-  · simp [h1, show k < n - j by omega]
+  · simp [h1, show k < n - j by (clear * - k n j hj h1; omega)]
   · by_cases h2 : k < n - j
-    · have hk' : k = n - (j + 1) := by omega
+    · have hk' : k = n - (j + 1) := by (clear * - k n j hj h1 h2; omega)
       subst hk'
-      have e1 : ¬ n - 1 - (n - (j + 1)) < j := by omega
+      have e1 : ¬ n - 1 - (n - (j + 1)) < j := by (clear * - n j hj hk h2; omega)
       simp [e1, h2]
-    · simp [h1, h2, show n - 1 - k < j by omega]
+    · simp [h1, h2, show n - 1 - k < j by (clear * - n k j hj hk h2; omega)]
 
 omit [Field F] in
 /-- The coordinate the next challenge takes, set to `x`. -/
@@ -1070,11 +1070,11 @@ private theorem point_push_set {j : ℕ} (hj : j < n) (c : Vector F j) (x y : F)
   intro k hk
   simp only [point, Vector.getElem_ofFn, Vector.getElem_set, Vector.getElem_push]
   by_cases h : n - 1 - j = k
-  · simp [h.symm, show ¬ n - 1 - j < n - (j + 1) by omega, show n - 1 - (n - 1 - j) = j by omega]
+  · simp [h.symm, show ¬ n - 1 - j < n - (j + 1) by (clear * - n j hj k; omega), show n - 1 - (n - 1 - j) = j by (clear * - n j hj k hk h; omega)]
   · simp only [h, ite_false]
     by_cases h1 : k < n - (j + 1)
     · simp [h1]
-    · simp [h1, show n - 1 - k < j by omega]
+    · simp [h1, show n - 1 - k < j by (clear * - n k j hj hk h h1; omega)]
 
 omit [Field F] in
 /-- With every coordinate bound, the point is the challenges in coordinate order. -/
@@ -1119,9 +1119,9 @@ private theorem claim_split {j : ℕ} (hj : j < n) (ctx : SumcheckRound.Ctx X O 
         (wt ctx.1.1 ⟨n - 1 - j, by omega⟩).2 * claim V wt ctx (j + 1) (c.push 1) := by
   rw [claim, dite_eq_left hj.le, claim, dite_eq_left (Nat.succ_le_of_lt hj), claim,
     dite_eq_left (Nat.succ_le_of_lt hj),
-    weightedCubeSum_cast (show n - j = n - (j + 1) + 1 by omega), weightedCubeSum_succ]
-  have hw : (⟨(Fin.cast (show n - (j + 1) + 1 = n - j by omega) (Fin.last (n - (j + 1)))).val,
-      by omega⟩ : Fin n) = ⟨n - 1 - j, by omega⟩ := Fin.ext (by simp; omega)
+    weightedCubeSum_cast (show n - j = n - (j + 1) + 1 by (clear * - n j hj; omega)), weightedCubeSum_succ]
+  have hw : (⟨(Fin.cast (show n - (j + 1) + 1 = n - j by (clear * - n j hj; omega)) (Fin.last (n - (j + 1)))).val,
+      by (clear * - n j hj; omega)⟩ : Fin n) = ⟨n - 1 - j, by (clear * - n j hj; omega)⟩ := Fin.ext (by simp; (clear * - n j hj; omega))
   simp only [hw]
   congr 2 <;> refine congrArg₂ (fun w g ↦ weightedCubeSum w g) rfl (funext fun v ↦ ?_) <;>
     rw [point_push hj]
@@ -1133,7 +1133,7 @@ private theorem exists_claim_poly {d : ℕ} (hV : ∀ ctx, IndividualDegreeLE (V
     ∃ P : F[X], P.natDegree ≤ d ∧ ∀ x, claim V wt ctx (j + 1) (c.push x) = P.eval x := by
   have hle : j + 1 ≤ n := hj
   choose p hp hpe using fun v : Fin (2 ^ (n - (j + 1))) ↦
-    hV ctx (n - 1 - j) (point hle (c.push 0) (boolVec v)) (by omega)
+    hV ctx (n - 1 - j) (point hle (c.push 0) (boolVec v)) (by (clear * - n j hj; omega))
   refine ⟨∑ v, Polynomial.C (cubeWeight (fun a : Fin (n - (j + 1)) ↦ wt ctx.1.1 ⟨a, by (clear * - hj; omega)⟩) v) *
     p v, ?_, fun x ↦ ?_⟩
   · exact Polynomial.natDegree_sum_le_of_forall_le _ _ fun v _ ↦
@@ -1667,7 +1667,7 @@ private theorem degreeLEAt_formAt (hd : I.d ≤ 2) {j : Fin I.ntab} (f : I.Form 
     simp only [formAt, List.map_cons, List.sum_cons] at ih ⊢
     exact (((DegreeLEAt.const p.1).mul
       (DegreeLEAt.mvPolynomial_eval₂ (algebraMap K E) p.2.1 (p.2.2.trans hd) he)).mono
-        (by (clear * -; omega))).add ih
+        (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))).add ih
 
 /-- The summand has degree at most `3` in each variable when the instance's degree bound is at
 most `2`: the weight of a table's coordinates has degree one in each, and what the table owes
@@ -1688,9 +1688,9 @@ theorem tableSummand_degree (hd : I.d ≤ 2) (ctx : SumcheckRound.Ctx (Data I) (
     fun t ↦ (DegreeLEAt.sum _ fun i _ ↦ ((DegreeLEAt.const _).mul
       (DegreeLEAt.mvPolynomial_eval₂ (algebraMap K E) _
         ((I.constraints_degree t.1 _ (List.getElem_mem _)).trans hd) (hval t))).mono
-          (by (clear * -; omega))).add
+          (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))).add
       (DegreeLEAt.sum _ fun s _ ↦ ((DegreeLEAt.const _).mul
-        (degreeLEAt_formAt I hd _ (hval t))).mono (by (clear * -; omega)))
+        (degreeLEAt_formAt I hd _ (hval t))).mono (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)))
   show DegreeLEAt (fun z ↦ ∑ t : I.SumcheckTables,
     prodWeight (tableWeights I ctx.1.1.1.2.point t) z *
       rowValue I ctx.1.1 t (tableValues I ((tableSummand I).values ctx z) t)) k (1 + 2)
@@ -1839,7 +1839,7 @@ theorem card_xi_le (s : I.Stmt × BusOut I) (o : ∀ i, TheOracle I i)
       push Not at h
       exact (ha () ρ₀ hin hρ₀).1 (funext fun k ↦ (h k).symm)
     refine (Finset.card_le_card fun ρ hρ ↦ ?_).trans
-      ((card_false_batch_le (claimed I s) a hne).trans (by (clear * -; omega)))
+      ((card_false_batch_le (claimed I s) a hne).trans (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - I; omega))))
     rw [Finset.mem_filter] at hρ ⊢
     exact ⟨Finset.mem_univ _, (ha () ρ hin hρ.2).2⟩
   · push Not at hex
@@ -1912,7 +1912,7 @@ theorem xi_escape {L₀ : ℕ} {C : Set (∀ i, TheOracle I i)} (hfin : C.Finite
       have h := card_xi_le I s o ho
       have hc : (Finset.univ.filter fun ξ ↦ ((start I s ξ (powerBatch (claimed I s) ξ), o), ()) ∈
           Sumcheck.relIn (tableSummand I) Sumcheck.unitWeights (side I)).card ≤ I.B + 3 - 1 := by
-        convert h using 1; omega
+        convert h using 1; (clear * - I L₀ C s o; omega)
       refine @inv_card_mul_card_le_of_natCard_le _ (fun _ ↦ Classical.propDecidable _) _ ?_
       rw [Nat.card_eq_fintype_card, Fintype.card_subtype]
       exact hc) hpre
@@ -2393,8 +2393,8 @@ theorem inst_conditions (hcon : ∀ t ∈ tabs, t.cons ≠ [] → t.reads ≠ []
       intro h; apply hj; show List.map _ (tabs.get j).cons = []; rw [h]; rfl
     have hpos : 1 ≤ (tabs.get j).reads.length + (tabs.get j).seeds.length := by
       rcases hcon _ (List.get_mem _ _) hc with h | h
-      · have := List.length_pos_of_ne_nil h; omega
-      · have := List.length_pos_of_ne_nil h; omega
+      · have := List.length_pos_of_ne_nil h; (clear * - tabs j L hτ this; omega)
+      · have := List.length_pos_of_ne_nil h; (clear * - tabs j L hτ this; omega)
     have h1 : 2 ^ (tabs.get j).τ ≤ Bus.leafCount (inst L tabs hτ) 0 := by
       rw [leafCount_push_eq]
       refine le_trans ?_ (List.le_sum_of_mem (List.mem_map_of_mem (List.mem_finRange j)))

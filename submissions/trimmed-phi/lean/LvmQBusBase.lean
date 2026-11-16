@@ -204,7 +204,7 @@ theorem lrank_allE : ∀ {tpl : List LRow}, AllE tpl → ∀ t ≤ tpl.length, l
     · rfl
     · have ih := lrank_allE (fun x hx => h x (List.mem_cons_of_mem _ hx)) t (by simpa using ht)
       simp only [lrank, List.take_succ_cons, List.map_cons, List.sum_cons] at ih ⊢
-      rw [ih, (lrow_wE (h r List.mem_cons_self)).1]; (clear * -; omega)
+      rw [ih, (lrow_wE (h r List.mem_cons_self)).1]; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)
 
 theorem ltw_allE : ∀ {tpl : List LRow}, AllE tpl → ltw .E tpl = tpl.length ∧ ltw .K tpl = 0
   | [], _ => ⟨rfl, rfl⟩
@@ -212,7 +212,7 @@ theorem ltw_allE : ∀ {tpl : List LRow}, AllE tpl → ltw .E tpl = tpl.length �
     have ih := ltw_allE (fun x hx => h x (List.mem_cons_of_mem _ hx))
     have hr := lrow_wE (h r List.mem_cons_self)
     simp only [ltw, List.map_cons, List.sum_cons] at ih ⊢
-    rw [ih.1, ih.2, hr.1, hr.2]; simp; (clear * -; omega)
+    rw [ih.1, ih.2, hr.1, hr.2]; simp; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)
 
 theorem getD_ty_allE {tpl : List LRow} (h : AllE tpl) {t : Nat} (ht : t < tpl.length) :
     (tpl.getD t default).ty = .E := by
@@ -372,9 +372,9 @@ theorem rowEq_ld {M : Mem} {p : Ptr} {L jf t b s : Nat} (h : RowEq M p L jf t (l
 
 theorem kE_lanes {M : Mem} {sig : ByteArray} {b : Nat} (h : ∀ j < 3, M.k (b + j) = lane sig (b + j)) :
     kE M b = feAt sig (8 * b) := by
-  have h0 := h 0 (by (clear * -; omega))
-  have h1 := h 1 (by (clear * -; omega))
-  have h2 := h 2 (by (clear * -; omega))
+  have h0 := h 0 (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))
+  have h1 := h 1 (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))
+  have h2 := h 2 (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))
   simp only [Nat.add_zero] at h0
   simp only [kE, h0, h1, h2, feAt, lane]
   rw [show 8 * (b + 1) = 8 * b + 8 by ring, show 8 * (b + 2) = 8 * b + 16 by ring]
@@ -451,7 +451,7 @@ theorem chain_fold (E : Nat → FE) (b L : Nat) (rnd : Nat → Option FE × List
   induction n with
   | zero => simp [scFold]
   | succ n ih =>
-    rw [scFold_range_succ, ← ih (fun i hi => h i (by (clear * - hi; omega))), h n (by (clear * -; omega))]
+    rw [scFold_range_succ, ← ih (fun i hi => h i (by (clear * - hi; omega))), h n (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - n; omega)))]
 
 theorem linE_adv (k k' : FK) (a b : Cell) (p : Ptr) : p.adv (lin .E k k' a b p).2 = ⟨p.k, p.e + 1⟩ := by
   simp [Ptr.adv, segsW, Seg.w, Row.w, Row.writes, lin, rowRes]

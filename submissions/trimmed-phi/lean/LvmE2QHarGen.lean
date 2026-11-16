@@ -149,7 +149,7 @@ theorem regClaim_ok {zc : Cell} {com : Com} {rs : List Lvm.QTyped.TReg} {ry : Li
     rw [e]
     have := (hrs R hR).1
     simp only [List.length_take, hry]
-    exact ⟨by show R.log ≤ CMain.nu20; simp only [CMain.nu20]; omega, by show min R.log 21 = R.log; omega⟩
+    exact ⟨by show R.log ≤ CMain.nu20; simp only [CMain.nu20]; (clear * - R ry this; omega), by show min R.log 21 = R.log; (clear * - R ry this; omega)⟩
   · obtain ⟨R, hR, e⟩ := key x hx
     rw [e]; exact (hrs R hR).2
 
@@ -274,9 +274,9 @@ theorem powRecRows_mem : ∀ (bw : ℕ) (as : List (ℕ × ℕ)) {q g : ℕ}, (q
       simp only [Lvm.Q2.powWords, List.map_cons, List.sum_cons]
     rcases List.mem_cons.mp h with e | h
     · obtain ⟨rfl, rfl⟩ := Prod.mk.inj e
-      exact ⟨bw, le_rfl, by rw [hw]; omega, List.mem_cons_self⟩
+      exact ⟨bw, le_rfl, by rw [hw]; (clear * - bw g as q; omega), List.mem_cons_self⟩
     · obtain ⟨b, h1, h2, hb⟩ := powRecRows_mem (bw + (64 - g')) as h
-      exact ⟨b, by omega, by rw [hw]; omega, List.mem_cons_of_mem _ hb⟩
+      exact ⟨b, by (clear * - bw b q' g' as g h1; omega), by rw [hw]; (clear * - b g bw g' as q' h2; omega), List.mem_cons_of_mem _ hb⟩
 
 /-- `n mod 2^(k+1)` is `n mod 2^k` plus bit `k`'s weight. -/
 theorem mod_two_pow_succ' (n k : ℕ) : n % 2 ^ (k + 1) = n % 2 ^ k + (if n.testBit k then 2 ^ k else 0) := by
@@ -299,9 +299,9 @@ theorem boolRuns_cover (bw n : ℕ) : ∀ (k o : ℕ), n - n % 2 ^ k ≤ o → o
         by_contra hf
         rw [Bool.not_eq_true] at hf
         rw [hf, if_neg (by simp), Nat.add_zero] at hm
-        omega
+        (clear * - n k o h1 hm hle ho; omega)
       rw [ht, if_pos rfl] at hm
-      refine ⟨k, bw + (n - n % 2 ^ (k + 1)), ?_, by omega, by omega⟩
+      refine ⟨k, bw + (n - n % 2 ^ (k + 1)), ?_, by (clear * - bw n k o h1; omega), by (clear * - bw o n k hm hle hle' ho; omega)⟩
       rw [boolRuns, ht, if_pos rfl]
       exact List.mem_append_left _ List.mem_cons_self
 
@@ -345,12 +345,12 @@ theorem powOk_of_blks (C : QCfg) {Q : Program} {tl : Typed.Lay} {z : ℕ → FK}
       rw [List.mem_range] at hi
       -- booleanity of the word `bw' + i`: its run in `boolRuns`
       obtain ⟨a, b, hB, hb1, hb2⟩ := boolRuns_cover bw (Lvm.Q2.powWords pw) ((Lvm.Q2.powWords pw).log2 + 1) (bw' + i - bw)
-        (by rw [Nat.mod_eq_of_lt Nat.lt_log2_self]; omega) (by omega)
+        (by rw [Nat.mod_eq_of_lt Nat.lt_log2_self]; (clear * - pw bw' i bw C Q T q g f h1; omega)) (by (clear * - bw' i bw pw C Q T q g f h1 h2 hi; omega))
       have hBm : (⟨a, [Lvm.Q2.rowBoolL b]⟩ : ABlk) ∈ tl.aux := hP _ (List.mem_append_left _ hB)
-      have hj : bw' + i - b < 2 ^ a := by omega
+      have hj : bw' + i - b < 2 ^ a := by (clear * - bw' i b a C Q pw T q g f hb1 hb2; omega)
       refine (Lvm.Q2.aRowHolds_congr ?_).mpr (auxRow_mem hlay hone h hBm List.mem_cons_self hj)
       simp only [Lvm.Q2.aRowVals, Lvm.Q2.rowBoolL, List.map_cons, List.map_nil, aopVal, Nat.mul_zero, Nat.add_zero,
-        Nat.one_mul, show b + (bw' + i - b) = bw' + i by omega]
+        Nat.one_mul, show b + (bw' + i - b) = bw' + i by (clear * - b bw' i C Q pw T q g f h1 a hb1; omega)]
     · rw [List.mem_singleton] at hr
       subst hr
       exact auxRow_mem hlay hone h (hP _ (List.mem_append_right _ List.mem_cons_self)) hb (by simp)
@@ -395,11 +395,11 @@ theorem pw_onC {C : QCfg} {v : ℕ → FK} (hv : OutsOnC C v) (hg : 1 ≤ 64 - C
   have hx : k < (powSpec C (bplOf noData (7 + nPosCls C))).n := by
     simp only [powSpec]; exact hk
   have h1 := out1_ofC hv hS rfl hx (j := 0) (Bc := pwB C + k) (by simp [powSpec]) rfl rfl eout
-    ⟨by decide, hg, by (clear * -; omega)⟩
+    ⟨by decide, hg, by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - C; omega))⟩
   unfold Out1 at h1
   rw [h1]
   show ((BOut.fld 0 (64 - C.p.grind) 0).word _).toNat < _
-  exact fld_lt' _ hg (by (clear * -; omega))
+  exact fld_lt' _ hg (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - C; omega)))
 
 /-- **A row switch's words from its looped blocks** (`rowAuxL_sound`): when the three `rowAuxL` blocks are blocks of
 the layout and the wiring relation holds, the free cells `t_j` are V's row words of the slices. -/
@@ -420,12 +420,12 @@ theorem sBitsD_of {v : ℕ → FK} {hd sb : ℕ} (h : Lvm.Q1.SBitsS v hd sb) {s 
     (hs : s = (List.range 4).map fun l => v (hd + 9 + l)) :
     ∀ i < 256, v (sb + i) = if sBitsD s i then 1 else 0 := by
   intro i hi
-  have h1 := h (i / 64) (by omega) (i % 64) (Nat.mod_lt _ (by norm_num))
-  rw [show sb + 64 * (i / 64) + i % 64 = sb + i by omega] at h1
+  have h1 := h (i / 64) (by (clear * - i hi; omega)) (i % 64) (Nat.mod_lt _ (by norm_num))
+  rw [show sb + 64 * (i / 64) + i % 64 = sb + i by (clear * - sb i; omega)] at h1
   unfold Lvm.QSig.Out1 at h1
   rw [h1, Lvm.Q1.bitWord _ (Nat.mod_lt _ (by norm_num)), hs]
   simp only [sBitsD, decide_eq_true hi, Bool.true_and, List.getD_eq_getElem?_getD, List.getElem?_map,
-    List.getElem?_range (show i / 64 < 4 by omega), Option.map_some, Option.getD_some]
+    List.getElem?_range (show i / 64 < 4 by (clear * - i hi; omega)), Option.map_some, Option.getD_some]
   split_ifs <;> rfl
 
 /-- **The child's `n'`, its bits and range, the bits of `s'`** (the front's inputs from Q_sig's `SigBits`, its
@@ -440,7 +440,7 @@ theorem frontIns {C : QCfg} {M : Mem} {sig : ByteArray} {T : ℕ} (hS : Lvm.Q1.S
   have hn : (pubOfA accV vk cL sig).n = (M.k nLane).val.toNat := pub_n hS hT vk cL
   refine ⟨fun j hj => ?_, ?_, sBitsD_of hsb ?_⟩
   · rw [hn, Cell.val_K]
-    exact bitE_out1 (by omega) (hhd ▸ hbits.n_bit j (show j ≤ (sigIn C).ln by omega))
+    exact bitE_out1 (by (clear * - j C M sig T accV vk cL hj; omega)) (hhd ▸ hbits.n_bit j (show j ≤ (sigIn C).ln by (clear * - j C M sig T accV vk cL hln hj; omega)))
   · rw [hn, ← hhd, ← hln]
     exact ⟨hch.2.2.1, hch.2.2.2.1⟩
   · rw [show (pubOfA accV vk cL sig).s = (pubOf vk cL sig).s from rfl, pub_s hS hT vk cL]
@@ -505,7 +505,7 @@ theorem posOk_ofG (p : Params) (Cq : QCfg) (hp : Cq.p = p) (C : SCfg) (k0 : ℕ)
   have hin := lanes_in hS h1 hlt
   have hab := ansLane_bound hS hL.size hlt
   have e1 : posBase Cq (k0 + i) + j = nK Cq + posIdx p (k0 + i) j := by
-    simp only [posBase, posIdx, hp]; (clear * -; omega)
+    simp only [posBase, posIdx, hp]; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)
   rw [e1, hcell _ hk (by rw [hLeq]; exact hH) j hjt]
   have hx : j / 8 < nAns ((opens p).getD (k0 + i) default) := by unfold nAns; (clear * - hjt e1; omega)
   have hb : j % 8 * (Ls.getD i default).height + (Ls.getD i default).height ≤ 192 := by rw [← hLeq]; exact h192
@@ -703,8 +703,8 @@ theorem regHalves_rel {zc : Cell} {b : Bool} {N : TNatT} {p : Params} (hν : p.n
     have hl := (hR R hRm).1
     refine ⟨hpK e he, fun x hx => ?_, ?_, ?_⟩
     · rw [hE] at hx; exact hryK x (List.mem_of_mem_take hx)
-    · rw [hE]; simp only [List.length_take, hry]; omega
-    · rw [hE]; show R.log ≤ CMain.nu20; simp only [CMain.nu20]; omega
+    · rw [hE]; simp only [List.length_take, hry]; (clear * - R p ry hl; omega)
+    · rw [hE]; show R.log ≤ CMain.nu20; simp only [CMain.nu20]; (clear * - R p ry hl; omega)
   have hreg : ∀ e ∈ ps, RegP e.2.1 := fun e he => by
     obtain ⟨R, hRm, hE⟩ := key e he
     rw [hE]; exact (hR R hRm).2
@@ -809,12 +809,12 @@ theorem borrowGoK_vs (N nb : Nat) : ∀ (k j : Nat) (cy : Cell) (p : Ptr), cy.ty
     obtain ⟨h3, -⟩ := h
     have e1 := add_val h1
     have e2 := mad_val h2
-    have hb0 := hb 0 (by omega)
+    have hb0 := hb 0 (by (clear * - k N; omega))
     simp only [Nat.add_zero] at hb0
     have ih := borrowGoK_vs N nb k (j + 1) _ _ (by rw [mad_out, hty]; rfl)
       (by rw [e2, hcy, hb0, carry_succ]) (fun i hi => by
-        rw [show nb + (j + 1) + i = nb + j + (i + 1) by omega, hb (i + 1) (by omega)]
-        congr 1; omega) hN h3
+        rw [show nb + (j + 1) + i = nb + j + (i + 1) by (clear * - nb j i N k; omega), hb (i + 1) (by (clear * - i k N hi; omega))]
+        congr 1; (clear * - j i N k; omega)) hN h3
     rw [bind_apply, bind_apply, bind_apply, pure_apply]
     simp only [vs, List.map_cons] at ih ⊢
     rw [ih, List.range_succ_eq_map, List.map_cons, List.map_map, e1, hb0, hcy, ← pred_bit N j hN,
@@ -822,7 +822,7 @@ theorem borrowGoK_vs (N nb : Nat) : ∀ (k j : Nat) (cy : Cell) (p : Ptr), cy.ty
     congr 1
     refine List.map_congr_left fun i _ => ?_
     simp only [Function.comp_apply]
-    congr 1; omega
+    congr 1; (clear * - j i N; omega)
 
 /-- **`borrowK`'s cells are the bits of `N − 1`** (`o` the `K` one). -/
 theorem borrowK_vs {N nb o n : Nat} {p : Ptr} (ho : M.k o = 1) (hb : ∀ j < n, (kc (nb + j)).val M = bitE N j)
@@ -837,7 +837,7 @@ theorem borrowK_vs {N nb o n : Nat} {p : Ptr} (ho : M.k o = 1) (hb : ∀ j < n, 
     rw [hold_bind] at h
     obtain ⟨h2, -⟩ := h
     have e1 := add_val h1
-    have hb0 := hb 0 (by omega)
+    have hb0 := hb 0 (by (clear * - k N; omega))
     simp only [Nat.add_zero] at hb0
     have hc1 : (add (kc nb) (kc o) p).1.val M = carryE N 1 := by
       rw [e1, hb0, Cell.val_K, ho, ofK_one]
@@ -845,7 +845,7 @@ theorem borrowK_vs {N nb o n : Nat} {p : Ptr} (ho : M.k o = 1) (hb : ∀ j < n, 
       simp only [carryE, pow_zero, Nat.mod_one, if_true, one_mul, Nat.zero_add] at this ⊢
       rw [this, add_comm]
     have ih := borrowGoK_vs N nb k 1 _ _ rfl hc1 (fun i hi => by
-      rw [show nb + 1 + i = nb + (1 + i) by omega]; exact hb (1 + i) (by omega)) hN h2
+      rw [show nb + 1 + i = nb + (1 + i) by (clear * - nb i N k; omega)]; exact hb (1 + i) (by (clear * - i k N hi; omega))) hN h2
     rw [bind_apply, bind_apply, pure_apply]
     simp only [vs, List.map_cons] at ih ⊢
     rw [ih, List.range_succ_eq_map, List.map_cons, List.map_map, e1, hb0, Cell.val_K, ho, ofK_one,
@@ -854,7 +854,7 @@ theorem borrowK_vs {N nb o n : Nat} {p : Ptr} (ho : M.k o = 1) (hb : ∀ j < n, 
     congr 1
     refine List.map_congr_left fun i _ => ?_
     simp only [Function.comp_apply]
-    congr 1; omega
+    congr 1; (clear * - i N; omega)
 
 /-- `bitsF z m` is the list of `z`'s low `m` bits. -/
 theorem bitsF_eq {F : Type} [Field F] : ∀ (m z : Nat),
@@ -969,7 +969,7 @@ theorem hs_mapB_getD {α β : Type} [Inhabited β] (f : α → BM β) (P : α �
   | a :: l => hs_bind (hf a) fun r hr => hs_bind (hs_mapB_getD f P hf l) fun rs hrs => hs_pure fun i h => by
     cases i with
     | zero => exact hr
-    | succ i => exact hrs i (by simp at h; omega)
+    | succ i => exact hrs i (by simp at h; (clear * - h; omega))
 
 /-- A builder's output as an opaque value. -/
 theorem ok_out {α : Type} {m : BM α} {p : Ptr} (_ : Lvm.QSig.Ok c M m p) : ∃ a, (m p).1 = a := ⟨_, rfl⟩
@@ -1847,7 +1847,7 @@ theorem bound_rel {zc : Cell} {b : Bool} {mbE : List Cell} {N : ℕ} (hmb : vs M
     simp [hlen]
   · show 0 = if (⟨22, 0⟩ : Placement) = ⟨22, 0⟩ then tailD (vs M (mbE ++ Lvm.Har.selC zE oE l 2)) else 0
     simp only [↓reduceIte, hv]
-    rw [tailD_small (by have := hsm hb; omega)]
+    rw [tailD_small (by have := hsm hb; (clear * - N mbE hN zE oE l this; omega))]
 
 /-! ## The front's claims -/
 
@@ -1954,11 +1954,11 @@ theorem front_claimsG {p : Params} (hR : RegsP p) (hD : DselP p) {zc : Cell} {b 
     rw [this]; simp [hkcl, hksL]
   have homg : ∀ l < 32, (kl.om.getD l default).val M =
       (E2V.eqKernelF ((kl.kchal.map (C2.val M)).drop p.ksLog)).getD l 0 := fun l hl => by
-    rw [← getD_mapV (by omega), hom, List.map_drop]
+    rw [← getD_mapV (by (clear * - l kl p pub r ki wo ko homl hl; omega)), hom, List.map_drop]
   have hvv : ∀ k < 4, (kl.vals.getD k default).val M = (kl.vals.map (C2.val M)).getD k 0 := fun k hk =>
-    (getD_mapV (by omega)).symm
-  have hvK' : ∀ k < 4, KC2 (kl.vals.getD k default) := fun k hk => getD_K hvK (by omega)
-  have homK' : ∀ l < 25, KC2 (kl.om.getD l default) := fun l hl => getD_K homK (by omega)
+    (getD_mapV (by (clear * - k kl p pub r ki wo ko hvl hk; omega))).symm
+  have hvK' : ∀ k < 4, KC2 (kl.vals.getD k default) := fun k hk => getD_K hvK (by (clear * - k kl p pub r ki wo ko hvl hk; omega))
+  have homK' : ∀ l < 25, KC2 (kl.om.getD l default) := fun l hl => getD_K homK (by (clear * - l kl p pub r ki wo ko homl hl; omega))
   have hselC : ∀ l, ∀ x ∈ kl.shift ++ selC2 F l slotLog, KC2 x := fun l x hx => by
     rcases List.mem_append.mp hx with h | h
     · exact hshK x h
@@ -2018,7 +2018,7 @@ theorem front_claimsG {p : Params} (hR : RegsP p) (hD : DselP p) {zc : Cell} {b 
       fun l hl => ⟨homK' l hl, ksYPart2_K hz2K ho2K _ _ hshK, ksYPart2_len _ _ _ _ (hshl.trans hksL.symm),
         by rw [ksYPart2_fst]; exact (rY l hl).2, by rw [ksYPart2_fst]; exact (rY l hl).1⟩
     have hxv : ∀ l < 17, (kl.om.getD l default).val M =
-        (E2V.eqKernelF ((kl.kchal.map (C2.val M)).drop p.ksLog)).getD l 0 := fun l hl => homg l (by omega)
+        (E2V.eqKernelF ((kl.kchal.map (C2.val M)).drop p.ksLog)).getD l 0 := fun l hl => homg l (by (clear * - l p pub r ki wo ko kl hl; omega))
     have hX : partsV M ((List.range 17).map fun l => (kl.om.getD l default,
           (⟨ksXLog p, (layout0 p).x + l * 2 ^ p.recRowsLog⟩ : Placement), kl.shift.take (ksXLog p))) =
         (List.range 17).map fun l => ((E2V.eqKernelF ((kl.kchal.map (C2.val M)).drop p.ksLog)).getD l 0,
@@ -2029,26 +2029,26 @@ theorem front_claimsG {p : Params} (hR : RegsP p) (hD : DselP p) {zc : Cell} {b 
           (⟨ksXLog p, (layout0 p).x + l * 2 ^ p.recRowsLog⟩ : Placement), kl.shift.take (ksXLog p))),
         KC2 e.1 ∧ (∀ x ∈ e.2.2, KC2 x) ∧ e.2.2.length = e.2.1.variableCount ∧ e.2.1.variableCount ≤ CMain.nu20 ∧
           RegP e.2.1 :=
-      mem_map_range fun l hl => ⟨homK' l (by omega), htakeK, htakel, by show ksXLog p ≤ CMain.nu20; rw [hxl]; decide,
+      mem_map_range fun l hl => ⟨homK' l (by (clear * - l p pub r ki wo ko kl hl; omega)), htakeK, htakel, by show ksXLog p ≤ CMain.nu20; rw [hxl]; decide,
         (rS l hl).2.2⟩
     refine List.rel_append (List.rel_append (List.rel_append (List.rel_append ?_ ?_) ?_) ?_) ?_
-    · refine halves_rel (mem_map_range hY) (partsV_range fun l hl => ⟨homg l (by omega), ?_, ?_⟩)
-        (hvK' 0 (by omega)) (hvv 0 (by omega))
+    · refine halves_rel (mem_map_range hY) (partsV_range fun l hl => ⟨homg l (by (clear * - l p pub r ki wo ko kl hl; omega)), ?_, ?_⟩)
+        (hvK' 0 (by (clear * - p pub r ki wo ko kl; omega))) (hvv 0 (by (clear * - p pub r ki wo ko kl; omega)))
       · simp only [ksYPart2_fst, ksYPartD_fst]
       · simp only [ksYPart2_snd hz2 ho2]
     · refine halves_rel (mem_map_range fun l hl => ⟨homK' l hl, hselC l, ?_,
         by show p.ksLog + slotLog ≤ CMain.nu20; rw [hksL]; decide, rK⟩)
-        (partsV_range fun l hl => ⟨homg l (by omega), rfl, ?_⟩) (hvK' 1 (by omega)) (hvv 1 (by omega))
+        (partsV_range fun l hl => ⟨homg l (by (clear * - l p pub r ki wo ko kl hl; omega)), rfl, ?_⟩) (hvK' 1 (by (clear * - p pub r ki wo ko kl; omega))) (hvv 1 (by (clear * - p pub r ki wo ko kl; omega)))
       · simp [hshl, selC2_length, hksL]
       · rw [List.map_append, selC2_vals hz2 ho2]
     · rw [splitZ_eq, List.take_succ_cons, List.take_zero]
-      exact .cons (half_rel false hXp hX (by rw [kre_val (hvK' 3 (by omega)), hvv 3 (by omega)])) .nil
-    · refine halves_rel ?_ ?_ (hvK' 2 (by omega)) (hvv 2 (by omega))
+      exact .cons (half_rel false hXp hX (by rw [kre_val (hvK' 3 (by (clear * - p pub r ki wo ko kl; omega))), hvv 3 (by (clear * - p pub r ki wo ko kl; omega))])) .nil
+    · refine halves_rel ?_ ?_ (hvK' 2 (by (clear * - p pub r ki wo ko kl; omega))) (hvv 2 (by (clear * - p pub r ki wo ko kl; omega)))
       · intro e he
         rcases List.mem_append.mp he with h | h
         · refine mem_map_range (P := PartOk) ?_ e h
           intro l hl
-          exact ⟨homK' l (by omega), hshK, by rw [hshl, hksL],
+          exact ⟨homK' l (by (clear * - l p pub r ki wo ko kl hl; omega)), hshK, by rw [hshl, hksL],
             by show p.ksLog ≤ CMain.nu20; rw [hksL]; decide,
             (rS l hl).1⟩
         · refine mem_map_range (P := PartOk) ?_ e h
@@ -2056,9 +2056,9 @@ theorem front_claimsG {p : Params} (hR : RegsP p) (hD : DselP p) {zc : Cell} {b 
           exact ⟨(homS l hl).1, htakeK, htakel, by show ksXLog p ≤ CMain.nu20; rw [hxl]; decide, (rS l hl).2.1⟩
       · rw [partsV_append]
         congr 1
-        · exact partsV_range fun l hl => ⟨homg l (by omega), rfl, rfl⟩
-        · exact partsV_range fun l hl => ⟨by rw [(homS l hl).2, homg l (by omega), hsel], rfl, List.map_take ..⟩
+        · exact partsV_range fun l hl => ⟨homg l (by (clear * - l p pub r ki wo ko kl hl; omega)), rfl, rfl⟩
+        · exact partsV_range fun l hl => ⟨by rw [(homS l hl).2, homg l (by (clear * - l p pub r ki wo ko kl hl; omega)), hsel], rfl, List.map_take ..⟩
     · rw [splitZ_eq, List.drop_succ_cons, List.drop_zero]
-      exact .cons (half_rel true hXp hX (by rw [kim_val (hvK' 3 (by omega)), hvv 3 (by omega)])) .nil
+      exact .cons (half_rel true hXp hX (by rw [kim_val (hvK' 3 (by (clear * - p pub r ki wo ko kl; omega))), hvv 3 (by (clear * - p pub r ki wo ko kl; omega))])) .nil
 
 end Lvm.E2Q

@@ -84,7 +84,30 @@ private theorem betaK_qcL (m : ℕ) (hm : m < 64) : betaK m = (qcL 63).getD m 0 
   rw [betaK, if_pos hm, show quotCoefs = (qcL 63).toArray from rfl, Array.getD_eq_getD_getElem?,
     List.getElem?_toArray, List.getD_eq_getElem?_getD]
 
-private theorem quot0 : ((0 : FK) + FK.x * betaK 0 == fC 0) = true := by decide +kernel
+/-- `qcL` on the words as natural numbers (GOLF3: the kernel computes `ℕ`'s operations natively). -/
+private def qcN (k : ℕ) : List ℕ := (List.range k).foldl (fun (acc : List ℕ) i =>
+    ((fCoef (63 - i)).val.toNat ^^^ FK.mulN 2 (acc.headD 1)) :: acc) [1]
+
+private theorem qcN_succ (k : ℕ) :
+    qcN (k + 1) = ((fCoef (63 - k)).val.toNat ^^^ FK.mulN 2 ((qcN k).headD 1)) :: qcN k := by
+  rw [qcN, List.range_succ, List.foldl_append]; rfl
+
+private theorem qcL_toNat : ∀ k : ℕ, (qcL k).map (fun a : FK => a.val.toNat) = qcN k
+  | 0 => rfl
+  | k + 1 => by
+    rw [qcL_succ, qcN_succ, List.map_cons, ← qcL_toNat k, FK.add_toNat, FK.mul_toNat]
+    obtain ⟨b, t, hbt⟩ := List.exists_cons_of_ne_nil (qcL_ne k)
+    rw [hbt]
+    rfl
+
+private theorem quot0 : ((0 : FK) + FK.x * betaK 0 == fC 0) = true := by
+  have h : ((qcL 63).getD 0 0).val.toNat = (qcN 63).getD 0 0 := by
+    rw [← qcL_toNat]
+    obtain ⟨b, t, hbt⟩ := List.exists_cons_of_ne_nil (qcL_ne 63)
+    rw [hbt]
+    rfl
+  rw [beq_iff_eq, FK.eq_iff_toNat, FK.add_toNat, FK.mul_toNat, betaK_qcL 0 (by decide), h]
+  decide +kernel
 
 theorem quotOkB_true : quotOkB = true := by
   refine List.all_eq_true.mpr fun n hn => beq_iff_eq.mpr ?_

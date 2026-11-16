@@ -133,12 +133,12 @@ theorem ref_positionsAux (h : ℕ) : ∀ (n fuel rem : ℕ), rem ≤ positionsPe
 theorem ref_positionsR (L : Level) :
     RefAt cap occ shp sig (DM.positionsR L)
       (LeanVM.Protocol.Verifier.samplePositions positionsPerAnswer L.height L.t) fun ps ps' ↦ ps' = ps :=
-  ref_positionsAux _ _ _ _ (by simp only [positionsPerAnswer]; omega)
-    (by simp only [positionsPerAnswer]; omega)
+  ref_positionsAux _ _ _ _ (by simp only [positionsPerAnswer]; (clear * - L; omega))
+    (by simp only [positionsPerAnswer]; (clear * - L; omega))
     (by
       rcases Nat.eq_zero_or_pos ((L.t + positionsPerAnswer - 1) / positionsPerAnswer) with h | h
       · exact .inl h
-      · right; simp only [positionsPerAnswer] at h ⊢; omega)
+      · right; simp only [positionsPerAnswer] at h ⊢; (clear * - L h; omega))
 
 theorem openingAux_succ (L : Level) (n : ℕ) (s : RS) :
     runD (DM.openingAux L (n + 1)) sig s =

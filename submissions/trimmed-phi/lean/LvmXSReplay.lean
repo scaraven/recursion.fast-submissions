@@ -125,7 +125,7 @@ theorem trun_simK2W (S : Scheme) (L : Log) (B : List UInt8) : ∀ (ks : List K2)
         rw [sl_append B hle, drop_drop'] at e
         obtain ⟨st', p', hs, ha, hle', ht⟩ := ih _ (n + 1) (off + S.rw n) pend st caps
           (h ++ [Ev.read (S.decE ((B.drop off).take (S.rw n)))]) pre' post b (by rw [nReads_read, hn])
-          hcb' (by omega) hks (by rw [e]; simp)
+          hcb' (by (clear * - pend off S n B h hle; omega)) hks (by rw [e]; simp)
         refine ⟨st', p', ?_, ?_, hle', by simpa [pendK2W, offK2W, capsK2W] using ht⟩
         · simp only [simK2W, hs, Option.map_some]
           rfl
@@ -173,7 +173,7 @@ theorem trun_simK2W (S : Scheme) (L : Log) (B : List UInt8) : ∀ (ks : List K2)
         obtain ⟨st', p', hs, ha, hle', ht'⟩ := ih k' n (off + nb) pend st
           (caps ++ [S.capI ht w (B.drop off)])
           (h ++ [Ev.commit ht w (S.wordOf L (S.capI ht w (B.drop off)))]) pre' post b
-          (by rw [nReads_commit, hn]) hcb' (by omega) hks (by rw [e]; simp)
+          (by rw [nReads_commit, hn]) hcb' (by (clear * - pend off nb S B n h hle ht w hnb; omega)) hks (by rw [e]; simp)
         refine ⟨st', p', ?_, ?_, hle', by simpa [pendK2W, offK2W, capsK2W] using ht'⟩
         · simp only [simK2W, hs, Option.map_some]
         · simp only [VerifierProgram.after, and_self, ite_true]
@@ -254,20 +254,20 @@ theorem simK2W_chain (S : Scheme) (L : Log) (B : List UInt8) (T : ℕ → Digest
           have hj1 : Lvm.X.fmAns T st₀ L (j + 1) = some e.2 := by
             simp only [Lvm.X.fmAns, hj, Option.bind_some, hT0, hfd, Option.map_some]
           obtain ⟨h1, h2⟩ := ih n off off e.2 (j + 1) pre₁ st₁ hr hj1 (fun i hi s => by
-            have := hT (i + 1) (by simp [fsPreK2W]; omega) s
+            have := hT (i + 1) (by simp [fsPreK2W]; (clear * - hi; omega)) s
             simp only [fsPreK2W, List.getElem_cons_succ] at this
-            rw [show j + 1 + 1 + i = j + 1 + (i + 1) by omega]
+            rw [show j + 1 + 1 + i = j + 1 + (i + 1) by (clear * - j i S ks n off; omega)]
             exact this)
           refine ⟨fun i hi => ?_, ?_⟩
           · rcases i with _ | i
             · exact ⟨e.2, by simpa using hj1, by simp [smpOf]⟩
             · simp only [List.filterMap_cons, smpOf, List.length_cons] at hi
-              obtain ⟨a, ha, he⟩ := h1 i (by omega)
-              refine ⟨a, by rw [show j + 1 + (i + 1) = j + 1 + 1 + i by omega]; exact ha, ?_⟩
+              obtain ⟨a, ha, he⟩ := h1 i (by (clear * - i pre₁ hi; omega))
+              refine ⟨a, by rw [show j + 1 + (i + 1) = j + 1 + 1 + i by (clear * - j i pre₁; omega)]; exact ha, ?_⟩
               simpa [smpOf] using he
           · simp only [List.filterMap_cons, smpOf, List.length_cons]
             rw [show j + (List.length (List.filterMap smpOf pre₁) + 1) =
-              j + 1 + (List.filterMap smpOf pre₁).length by omega]
+              j + 1 + (List.filterMap smpOf pre₁).length by (clear * - j pre₁; omega)]
             exact h2
 
 /-! ## The reads' values -/

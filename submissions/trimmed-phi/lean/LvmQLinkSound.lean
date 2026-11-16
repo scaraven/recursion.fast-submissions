@@ -90,7 +90,7 @@ theorem openItems_open (p : Params) : ∀ (its : List Item) (w : WS) {x : Nat},
     · rw [List.getD_append _ _ _ _ h1] at he ⊢
       obtain ⟨o, ho, hi, hp⟩ := planItem_open p w it h1 he
       refine ⟨o, by simp [openItems, ho], by (clear * - hi; omega), by rw [← hp, hi]; (clear * - h1; omega), ?_⟩
-      rw [hi, show w.i + x - w.i = x by (clear * -; omega), hp]
+      rw [hi, show w.i + x - w.i = x by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - w x; omega)), hp]
     · rw [List.getD_append_right _ _ _ _ (by (clear * - h1; omega))] at he ⊢
       obtain ⟨o, ho, h2, h3, h4⟩ := openItems_open p its (planItem p w it).2 (x := x - (planItem p w it).1.length)
         (by (clear * - hx h1; omega)) he
@@ -107,7 +107,7 @@ theorem open_of_entry (p : Params) {i : Nat} (hi : i < (plan p).length)
     rcases i with _ | _ | i
     · rw [plan_zero] at he; simp [EK.isOpen] at he
     · rw [plan_one] at he; simp [EK.isOpen] at he
-    · (clear * -; omega)
+    · (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - i; omega))
   have hpl : (plan p).getD i default = (planAll p).1.getD (i - 2) default := by
     obtain ⟨k, rfl⟩ : ∃ k, i = k + 2 := ⟨i - 2, by (clear * - h2; omega)⟩
     simp [plan, List.getD_eq_getElem?_getD]
@@ -151,11 +151,11 @@ theorem openPlan_getD (L : Level) (pe ce co : Nat) {j y : Nat} (hj : j < L.t) (h
         simp [Nat.add_one_inj]
     · rw [List.getD_append_right _ _ _ _ (by simp; nlinarith)]
       have := ih (k + 1) j (by (clear * - hj; omega))
-      rw [show k + (j + 1) = k + 1 + j by (clear * -; omega)]
+      rw [show k + (j + 1) = k + 1 + j by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)]
       rw [← this]
       congr 1
       simp only [Nat.succ_mul, List.length_cons, List.length_map, List.length_range]
-      ring_nf; (clear * -; omega)
+      ring_nf; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - j L y; omega))
 
 theorem openItems_al (p : Params) {P : List PE} : ∀ (its : List Item) (w : WS),
     Al P w.i (planItems p w its).1 → ∀ o ∈ openItems p w its, Al P o.i0 (openPlan o.L o.pe o.ce o.co)
@@ -179,7 +179,7 @@ theorem opens_al (p : Params) {o : OpenInfo} (ho : o ∈ opens p) : Al (plan p) 
   refine openItems_al p (schedule p) w0 ⟨by simp [w0, plan_length, planAll], fun x hx => ?_⟩ o ho
   show (plan p).getD (2 + x) default = _
   simp only [plan, planAll, List.getD_eq_getElem?_getD]
-  rw [show 2 + x = x + 1 + 1 by (clear * -; omega)]
+  rw [show 2 + x = x + 1 + 1 by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)]
   simp
 
 theorem opens_i0 (p : Params) {o : OpenInfo} (ho : o ∈ opens p) : 2 ≤ o.i0 := by
@@ -221,7 +221,7 @@ theorem eLane_open {p : Params} (hS : StreamOk p) {o : OpenInfo} (ho : o ∈ ope
     split <;> rfl
   have hrow8 : o.L.row % 8 = 0 := by
     have := streamOk_len hS.1 (i := o.i0) (by (clear * - h2; omega)) (by nlinarith)
-    have e := entry 0 (by (clear * - hj; omega)) 0 (by (clear * -; omega))
+    have e := entry 0 (by (clear * - hj; omega)) 0 (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - o; omega)))
     simp only [Nat.zero_mul, Nat.add_zero, ite_true] at e
     rw [e] at this; exact this
   -- within a position
@@ -235,7 +235,7 @@ theorem eLane_open {p : Params} (hS : StreamOk p) {o : OpenInfo} (ho : o ∈ ope
       rw [← Nat.add_assoc, eLane_succ hS.1 (by (clear * - h2; omega)) (by nlinarith), ih (by (clear * - hy'; omega)), entry j' hj' y' (by (clear * - hy'; omega))]
       simp only [slotOff, Nat.add_one_ne_zero, ite_false, Nat.add_sub_cancel]
       split
-      · next h => subst h; simp; (clear * -; omega)
+      · next h => subst h; simp; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)
       · next h => (clear * - h; omega)
   have leaf : ∀ j' < o.L.t, eLane p (o.i0 + j' * (1 + o.L.path)) = eLane p o.i0 + j' * posStride o.L := by
     intro j'
@@ -245,7 +245,7 @@ theorem eLane_open {p : Params} (hS : StreamOk p) {o : OpenInfo} (ho : o ∈ ope
       intro hj'
       have hstep : o.i0 + (j' + 1) * (1 + o.L.path) = o.i0 + j' * (1 + o.L.path) + o.L.path + 1 := by ring
       rw [hstep, eLane_succ hS.1 (by (clear * - h2 hstep; omega)) (by nlinarith), within j' (by (clear * - hj'; omega)) o.L.path le_rfl,
-        ih (by (clear * - hj'; omega)), entry j' (by (clear * - hj'; omega)) o.L.path (by (clear * -; omega))]
+        ih (by (clear * - hj'; omega)), entry j' (by (clear * - hj'; omega)) o.L.path (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - o; omega)))]
       simp only [slotOff, posStride]
       split
       · next h => rw [h]; ring_nf
@@ -312,7 +312,7 @@ theorem chunksG_cover : ∀ (fuel s rem k : Nat), rem ≤ fuel → s ≤ k → k
 
 /-- **Every `k < n` lies in a chunk.** -/
 theorem chunks_cover {n k : Nat} (hk : k < n) : ∃ c ∈ chunks n, c.1 ≤ k ∧ k < c.1 + 2 ^ c.2 :=
-  chunksG_cover n 0 n k le_rfl (by (clear * -; omega)) (by omega)
+  chunksG_cover n 0 n k le_rfl (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - k; omega))) (by (clear * - k n hk; omega))
 
 /-! ## Check loops -/
 
@@ -376,8 +376,8 @@ theorem qltLoop_spec {c : Ctx} {M : Mem} {p : Ptr} {a qt lo m : Nat} {g : Nat}
   simp only [qltLoop, hold_bind, assert_bind] at h hA
   have hj : jf < 2 ^ [a].sum := by simpa using hjf
   set o := (loop [a] (qltTpl qt lo m (kc g)) p).1 with ho
-  have hR := fun t (ht : t < 26) => loop_rel h.1 hj (t := t) (by simp [qltTpl]; omega)
-  have hS := fun t (ht : t < 26) => loop_assert hA.1 hj (t := t) (by simp [qltTpl]; omega)
+  have hR := fun t (ht : t < 26) => loop_rel h.1 hj (t := t) (by simp [qltTpl]; (clear * - ht; omega))
+  have hS := fun t (ht : t < 26) => loop_assert hA.1 hj (t := t) (by simp [qltTpl]; (clear * - ht; omega))
   have hu : unflat o.dims jf = [jf] := unflat_one' hj
   -- the operand values
   have vα : (Opd.abs ⟨.K, qt, [3]⟩).val M o jf = FE.ofK (gpow e₁) := by
@@ -393,27 +393,27 @@ theorem qltLoop_spec {c : Ctx} {M : Mem} {p : Ptr} {a qt lo m : Nat} {g : Nat}
     rw [lrel_lin hr (hR t ht)]
     simp only [List.getD_cons_zero, List.getD_cons_succ, hx, ofK_zero, add_zero]
     rw [← ofK_mul, ← ofK_add, ← gpow_scale l e, add_zero]
-  have a1 := hadr 0 1 e₁ _ rfl vα (by (clear * -; omega))
-  have a2 := hadr 1 2 e₁ _ rfl vα (by (clear * -; omega))
-  have a3 := hadr 2 3 e₁ _ rfl vα (by (clear * -; omega))
-  have a4 := hadr 3 4 e₁ _ rfl vα (by (clear * -; omega))
-  have b1 := hadr 4 1 e₂ _ rfl vβ (by (clear * -; omega))
-  have b2 := hadr 5 2 e₂ _ rfl vβ (by (clear * -; omega))
-  have b3 := hadr 6 3 e₂ _ rfl vβ (by (clear * -; omega))
+  have a1 := hadr 0 1 e₁ _ rfl vα (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))
+  have a2 := hadr 1 2 e₁ _ rfl vα (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))
+  have a3 := hadr 2 3 e₁ _ rfl vα (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))
+  have a4 := hadr 3 4 e₁ _ rfl vα (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))
+  have b1 := hadr 4 1 e₂ _ rfl vβ (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))
+  have b2 := hadr 5 2 e₂ _ rfl vβ (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))
+  have b3 := hadr 6 3 e₂ _ rfl vβ (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))
   -- the reads
   have hrd : ∀ (t : Nat) (x : Opd) (e : Nat), o.tpl.getD t default = ⟨.readd lo m, .K, [x]⟩ →
       x.val M o jf = FE.ofK (gpow e) → e < N → t < 26 → (o.cell t jf).val M = FE.ofK (M.k e) := by
     intro t x e hr hx he ht
     exact lreadd_spec hr (hR t ht) hinj hN he (by simp [hx]; rfl)
-  have r0 := hrd 7 _ e₁ rfl vα (by (clear * - he₁; omega)) (by (clear * -; omega))
-  have r1 := hrd 8 (.cur 0) (e₁ + 1) rfl (by rw [Opd.val_cur _ _ hj]; exact a1) (by (clear * - he₁; omega)) (by (clear * -; omega))
-  have r2 := hrd 9 (.cur 1) (e₁ + 2) rfl (by rw [Opd.val_cur _ _ hj]; exact a2) (by (clear * - he₁; omega)) (by (clear * -; omega))
-  have r3 := hrd 10 (.cur 2) (e₁ + 3) rfl (by rw [Opd.val_cur _ _ hj]; exact a3) (by (clear * - he₁; omega)) (by (clear * -; omega))
-  have r4 := hrd 11 (.cur 3) (e₁ + 4) rfl (by rw [Opd.val_cur _ _ hj]; exact a4) (by (clear * - he₁; omega)) (by (clear * -; omega))
-  have s0 := hrd 12 _ e₂ rfl vβ (by (clear * - he₂; omega)) (by (clear * -; omega))
-  have s1 := hrd 13 (.cur 4) (e₂ + 1) rfl (by rw [Opd.val_cur _ _ hj]; exact b1) (by (clear * - he₂; omega)) (by (clear * -; omega))
-  have s2 := hrd 14 (.cur 5) (e₂ + 2) rfl (by rw [Opd.val_cur _ _ hj]; exact b2) (by (clear * - he₂; omega)) (by (clear * -; omega))
-  have s3 := hrd 15 (.cur 6) (e₂ + 3) rfl (by rw [Opd.val_cur _ _ hj]; exact b3) (by (clear * - he₂; omega)) (by (clear * -; omega))
+  have r0 := hrd 7 _ e₁ rfl vα (by (clear * - he₁; omega)) (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))
+  have r1 := hrd 8 (.cur 0) (e₁ + 1) rfl (by rw [Opd.val_cur _ _ hj]; exact a1) (by (clear * - he₁; omega)) (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))
+  have r2 := hrd 9 (.cur 1) (e₁ + 2) rfl (by rw [Opd.val_cur _ _ hj]; exact a2) (by (clear * - he₁; omega)) (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))
+  have r3 := hrd 10 (.cur 2) (e₁ + 3) rfl (by rw [Opd.val_cur _ _ hj]; exact a3) (by (clear * - he₁; omega)) (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))
+  have r4 := hrd 11 (.cur 3) (e₁ + 4) rfl (by rw [Opd.val_cur _ _ hj]; exact a4) (by (clear * - he₁; omega)) (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))
+  have s0 := hrd 12 _ e₂ rfl vβ (by (clear * - he₂; omega)) (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))
+  have s1 := hrd 13 (.cur 4) (e₂ + 1) rfl (by rw [Opd.val_cur _ _ hj]; exact b1) (by (clear * - he₂; omega)) (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))
+  have s2 := hrd 14 (.cur 5) (e₂ + 2) rfl (by rw [Opd.val_cur _ _ hj]; exact b2) (by (clear * - he₂; omega)) (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))
+  have s3 := hrd 15 (.cur 6) (e₂ + 3) rfl (by rw [Opd.val_cur _ _ hj]; exact b3) (by (clear * - he₂; omega)) (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))
   -- the checks
   have hchk : ∀ (t : Nat) (x y : Opd) (X Y : FK), o.tpl.getD t default = ⟨.lin 1 0, .K, [x, y]⟩ →
       o.tpl.getD (t + 1) default = ⟨.assert0, .K, [.cur t, (kc g).opd]⟩ →
@@ -427,16 +427,16 @@ theorem qltLoop_spec {c : Ctx} {M : Mem} {p : Ptr} {a qt lo m : Nat} {g : Nat}
     have := ofK_inj (ha.trans ofK_zero.symm)
     have e := congrArg (· + Y) this
     simpa [add_assoc, FK.add_self] using e
-  refine ⟨hchk 16 (.cur 7) _ _ _ rfl rfl (by rw [Opd.val_cur _ _ hj]; exact r0) vv (by (clear * -; omega)), fun l hl => ?_⟩
+  refine ⟨hchk 16 (.cur 7) _ _ _ rfl rfl (by rw [Opd.val_cur _ _ hj]; exact r0) vv (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)), fun l hl => ?_⟩
   interval_cases l
   · exact hchk 18 (.cur 8) (.cur 12) _ _ rfl rfl (by rw [Opd.val_cur _ _ hj]; exact r1)
-      (by rw [Opd.val_cur _ _ hj]; exact s0) (by (clear * -; omega))
+      (by rw [Opd.val_cur _ _ hj]; exact s0) (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))
   · exact hchk 20 (.cur 9) (.cur 13) _ _ rfl rfl (by rw [Opd.val_cur _ _ hj]; exact r2)
-      (by rw [Opd.val_cur _ _ hj]; exact s1) (by (clear * -; omega))
+      (by rw [Opd.val_cur _ _ hj]; exact s1) (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))
   · exact hchk 22 (.cur 10) (.cur 14) _ _ rfl rfl (by rw [Opd.val_cur _ _ hj]; exact r3)
-      (by rw [Opd.val_cur _ _ hj]; exact s2) (by (clear * -; omega))
+      (by rw [Opd.val_cur _ _ hj]; exact s2) (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))
   · exact hchk 24 (.cur 11) (.cur 15) _ _ rfl rfl (by rw [Opd.val_cur _ _ hj]; exact r4)
-      (by rw [Opd.val_cur _ _ hj]; exact s3) (by (clear * -; omega))
+      (by rw [Opd.val_cur _ _ hj]; exact s3) (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))
 
 /-! ## Node queries -/
 
@@ -484,8 +484,8 @@ theorem nodeLoop_spec {c : Ctx} {M : Mem} {p : Ptr} {dims : List Nat} {len L R P
       if M.k (bt + dot sb (unflat dims jf)) = 1 then M.k (R + l + dot s (unflat dims jf))
       else M.k (L + l + dot s (unflat dims jf)) := by
   simp only [nodeLoop, hold_bind, assert_bind] at h hA
-  have hR := fun t (ht : t < 18) => loop_rel h.1 hjf (t := t) (by simp [nodeTpl, nodeLane]; omega)
-  have hS := fun t (ht : t < 18) => loop_assert hA.1 hjf (t := t) (by simp [nodeTpl, nodeLane]; omega)
+  have hR := fun t (ht : t < 18) => loop_rel h.1 hjf (t := t) (by simp [nodeTpl, nodeLane]; (clear * - ht; omega))
+  have hS := fun t (ht : t < 18) => loop_assert hA.1 hjf (t := t) (by simp [nodeTpl, nodeLane]; (clear * - ht; omega))
   have hd : (loop dims (nodeTpl len L R P s bt sb z sz) p).1.dims = dims := rfl
   have vK : ∀ (b : Nat) (st : List Nat), (Opd.abs ⟨.K, b, st⟩).val M (loop dims (nodeTpl len L R P s bt sb z sz) p).1 jf = FE.ofK (M.k (b + dot st (unflat dims jf))) :=
     fun b st => by rw [Opd.val_absK, hd]
@@ -498,10 +498,10 @@ theorem nodeLoop_spec {c : Ctx} {M : Mem} {p : Ptr} {dims : List Nat} {len L R P
     simp only [List.getD_cons_zero, List.getD_cons_succ, vK, vc, hX] at this
     exact gate_one this hz
   refine ⟨?_, fun l hl => ?_⟩
-  · have h0 := lrel_lin (t := 0) rfl (hR 0 (by (clear * -; omega)))
+  · have h0 := lrel_lin (t := 0) rfl (hR 0 (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)))
     simp only [List.getD_cons_zero, List.getD_cons_succ, vK, ofK_zero, zero_mul, add_zero] at h0
     rw [← ofK_add] at h0
-    exact char2_eq (hzero 0 (by (clear * -; omega)) rfl _ h0)
+    exact char2_eq (hzero 0 (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)) rfl _ h0)
   · have key : ∀ (lv : Nat), lv < 4 →
         (loop dims (nodeTpl len L R P s bt sb z sz) p).1.tpl.getD (2 + 4 * lv) default = ⟨.lin 1 0, .K, [.abs ⟨.K, L + lv, s⟩, .abs ⟨.K, R + lv, s⟩]⟩ ∧
         (loop dims (nodeTpl len L R P s bt sb z sz) p).1.tpl.getD (3 + 4 * lv) default = ⟨.muladd, .K, [.abs ⟨.K, bt, sb⟩, .cur (2 + 4 * lv), .abs ⟨.K, L + lv, s⟩]⟩ ∧
@@ -588,7 +588,7 @@ theorem capChain_getD (bt : Nat) (sb : List Nat) (c y : Nat) (hy : y + 1 < c) :
     · have := ih (k + 1) y (by (clear * - hy; omega))
       rw [show 2 * (y + 1) = 2 * y + 1 + 1 by ring, show 2 * y + 1 + 1 + 1 = 2 * y + 1 + 1 + 1 from rfl]
       simp only [List.cons_append, List.nil_append, List.getD_cons_succ]
-      rw [show k + (y + 1) = k + 1 + y by (clear * -; omega)]
+      rw [show k + (y + 1) = k + 1 + y by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)]
       exact this
 
 /-- The number whose bit `y < n` is `1` iff cell `bt + y` (moved by `st` at `J`) holds `1`. -/
@@ -603,17 +603,17 @@ theorem bitSum_lt (M : Mem) (bt : Nat) (st J : List Nat) : ∀ n, bitSum M bt st
   | 0 => by simp [bitSum]
   | n + 1 => by
     rw [bitSum_succ, Nat.pow_succ]; have := bitSum_lt M bt st J n
-    split <;> omega
+    split <;> (clear * - M bt st J n this; omega)
 
 theorem getD_app3 {l₁ l₂ l₃ : List LRow} {i : Nat} :
     (l₁ ++ l₂ ++ l₃).getD (l₁.length + l₂.length + i) default = l₃.getD i default := by
-  rw [List.append_assoc, List.getD_append_right _ _ _ _ (by omega),
-    show l₁.length + l₂.length + i - l₁.length = l₂.length + i by omega,
-    List.getD_append_right _ _ _ _ (by omega), Nat.add_sub_cancel_left]
+  rw [List.append_assoc, List.getD_append_right _ _ _ _ (by (clear * - l₁ l₂ i; omega)),
+    show l₁.length + l₂.length + i - l₁.length = l₂.length + i by (clear * - l₁ l₂ i; omega),
+    List.getD_append_right _ _ _ _ (by (clear * - l₂ i; omega)), Nat.add_sub_cancel_left]
 
 theorem getD_app2 {l₁ l₂ l₃ : List LRow} {i : Nat} (hi : i < l₂.length) :
     (l₁ ++ l₂ ++ l₃).getD (l₁.length + i) default = l₂.getD i default := by
-  rw [List.append_assoc, List.getD_append_right _ _ _ _ (by (clear * -; omega)), Nat.add_sub_cancel_left,
+  rw [List.append_assoc, List.getD_append_right _ _ _ _ (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - l₁ i; omega))), Nat.add_sub_cancel_left,
     List.getD_append _ _ _ _ hi]
 
 theorem capTpl_chain (lenL row A lo rlo m : Nat) (s : List Nat) (bt : Nat) (sb : List Nat) (c z : Nat)
@@ -699,8 +699,8 @@ theorem capLoop_spec {cx : Ctx} {M : Mem} {p : Ptr} {dims : List Nat} {lenL row 
         have r1 := capTpl_chain lenL row A lo rlo m s bt sb c z sz (i := 2 * y) (by (clear * - hc hy; omega))
         have r2 := capTpl_chain lenL row A lo rlo m s bt sb c z sz (i := 2 * y + 1) (by (clear * - hc hy; omega))
         rw [k1] at r1; rw [k2] at r2
-        rw [show 3 + 2 * y = 2 * y + 3 by (clear * -; omega)] at r1
-        rw [show 3 + (2 * y + 1) = 2 * (y + 1) + 2 by (clear * -; omega)] at r2
+        rw [show 3 + 2 * y = 2 * y + 3 by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)] at r1
+        rw [show 3 + (2 * y + 1) = 2 * (y + 1) + 2 by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)] at r2
         have e1 := lrel_lin r1 (hR _ (by (clear * - hy; omega)))
         have e2 := lrel_muladd r2 (hR _ (by (clear * - hy; omega)))
         simp only [List.getD_cons_zero, List.getD_cons_succ, vK, vc, ofK_zero, add_zero] at e1 e2
@@ -741,12 +741,12 @@ theorem capLoop_spec {cx : Ctx} {M : Mem} {p : Ptr} {dims : List Nat} {lenL row 
       rw [vc]
       rcases i with _ | i
       · simpa using hα0
-      · have := sc i (by (clear * - hi; omega)); rw [show 2 * c + (i + 1) = 2 * c + 1 + i by (clear * -; omega), this]
+      · have := sc i (by (clear * - hi; omega)); rw [show 2 * c + (i + 1) = 2 * c + 1 + i by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega), this]
     -- the reads
     have rd : ∀ i < 4, ((loop dims (capTpl lenL row A lo rlo m s bt sb c z sz) p).1.cell (2 * c + 4 + i) jf).val M = FE.ofK (M.k (lo + 4 * idx + i)) := by
       intro i hi
       have hr : (loop dims (capTpl lenL row A lo rlo m s bt sb c z sz) p).1.tpl.getD (2 * c + 4 + i) default = ⟨.readd rlo m, .K, [.cur (2 * c + i)]⟩ := by
-        rw [show 2 * c + 4 + i = 2 * c + 1 + (3 + i) by (clear * -; omega)]
+        rw [show 2 * c + 4 + i = 2 * c + 1 + (3 + i) by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)]
         interval_cases i
         · exact hpost 3
         · exact hpost 4
@@ -756,14 +756,14 @@ theorem capLoop_spec {cx : Ctx} {M : Mem} {p : Ptr} {dims : List Nat} {lenL row 
         (by rw [List.getD_cons_zero, vcur i hi]; rfl)
     intro l hl
     have hr1 : (loop dims (capTpl lenL row A lo rlo m s bt sb c z sz) p).1.tpl.getD (2 * c + 8 + 2 * l) default = ⟨.lin 1 0, .K, [.cur (2 * c + 4 + l), .abs ⟨.K, A + l, s⟩]⟩ := by
-      rw [show 2 * c + 8 + 2 * l = 2 * c + 1 + (7 + 2 * l) by (clear * -; omega)]
+      rw [show 2 * c + 8 + 2 * l = 2 * c + 1 + (7 + 2 * l) by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)]
       interval_cases l
       · exact hpost 7
       · exact hpost 9
       · exact hpost 11
       · exact hpost 13
     have hr2 : (loop dims (capTpl lenL row A lo rlo m s bt sb c z sz) p).1.tpl.getD (2 * c + 8 + 2 * l + 1) default = ⟨.assert0, .K, [.cur (2 * c + 8 + 2 * l), .abs ⟨.K, z, sz⟩]⟩ := by
-      rw [show 2 * c + 8 + 2 * l + 1 = 2 * c + 1 + (8 + 2 * l) by (clear * -; omega)]
+      rw [show 2 * c + 8 + 2 * l + 1 = 2 * c + 1 + (8 + 2 * l) by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)]
       interval_cases l
       · exact hpost 8
       · exact hpost 10
@@ -1049,7 +1049,7 @@ structure QOk (p : Params) (lay : Layout) : Prop where
 
 theorem qltPadded_length (p : Params) (lay : Layout) (h : (qltEntries p lay).length ≤ 2 ^ lay.aQ) :
     (qltPadded p lay).length = 2 ^ lay.aQ := by
-  simp [qltPadded]; omega
+  simp [qltPadded]; (clear * - p lay h; omega)
 
 theorem tblOf_length : ∀ l : List (Nat × Nat × Nat), (tblOf l).length = 3 * l.length
   | [] => rfl
@@ -1112,15 +1112,15 @@ theorem unflat_two' {dc dx c y : Nat} (hc : c < 2 ^ dc) (hy : y < 2 ^ dx) :
 
 theorem pchunks_cover {t j : Nat} (hj : j < t) :
     ∃ c ∈ pchunks t, c.1 ≤ j ∧ j - c.1 < realCount t c.1 c.2 ∧ j - c.1 < 2 ^ c.2 := by
-  have ht : t ≠ 0 := by omega
+  have ht : t ≠ 0 := by (clear * - t j hj; omega)
   have h1 := Nat.log2_self_le ht
   have h2 := @Nat.lt_log2_self t
   unfold pchunks realCount
   split
-  · next he => exact ⟨(0, t.log2), by simp, by (clear * -; omega), by simp; (clear * - hj he; omega), by simp; (clear * - hj he; omega)⟩
+  · next he => exact ⟨(0, t.log2), by simp, by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - t j; omega)), by simp; (clear * - hj he; omega), by simp; (clear * - hj he; omega)⟩
   · next he =>
     by_cases hj2 : j < 2 ^ t.log2
-    · exact ⟨(0, t.log2), by simp, by (clear * -; omega), by simp; (clear * - hj hj2; omega), by simp; omega⟩
+    · exact ⟨(0, t.log2), by simp, by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - t j; omega)), by simp; (clear * - hj hj2; omega), by simp; omega⟩
     · have h3 := @Nat.lt_log2_self (t - 2 ^ t.log2 - 1)
       refine ⟨(2 ^ t.log2, (t - 2 ^ t.log2 - 1).log2 + 1), by simp, by simp; (clear * - hj2; omega), ?_, ?_⟩ <;> simp <;> (clear * - hj h1 hj2 h3; omega)
 
@@ -1168,7 +1168,7 @@ theorem open_facts (hQ : QOk p lay) (hin : QIn p lay ws M) {N : Nat} (hinj : GIn
       M.k (zo + 2 ^ lay.K - realCount o.L.t cc.1 cc.2 + jj) = 1 := by
     intro jj hjj
     have hr := realCount_le o.L.t cc.1 cc.2
-    have hKc : 2 ^ cc.2 ≤ 2 ^ lay.K := Nat.pow_le_pow_right (by (clear * -; omega)) (hK cc hcc)
+    have hKc : 2 ^ cc.2 ≤ 2 ^ lay.K := Nat.pow_le_pow_right (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)) (hK cc hcc)
     rw [show zo + 2 ^ lay.K - realCount o.L.t cc.1 cc.2 + jj = zo + (2 ^ lay.K - realCount o.L.t cc.1 cc.2 + jj) by (clear * - hr hKc; omega)]
     exact hz _ (by (clear * - hjj hr hKc; omega))
   have hjs : j = cc.1 + (j - cc.1) := by (clear * - hc1; omega)
@@ -1241,7 +1241,7 @@ end
 
 theorem byte_of_lane (ws : List Word) (q b : Nat) (hb : b < 8) :
     (wordsBytes ws).getD (8 * q + b) 0 = ((lw ws q) / 256 ^ b % 256).toUInt8 := by
-  rw [← wordByte_eq_getD, wordByte, show (8 * q + b) / 8 = q by omega, show (8 * q + b) % 8 = b by omega,
+  rw [← wordByte_eq_getD, wordByte, show (8 * q + b) / 8 = q by (clear * - q b hb; omega), show (8 * q + b) % 8 = b by (clear * - q b hb; omega),
     ← toUInt8_mod]
   rfl
 
@@ -1259,7 +1259,7 @@ theorem posL_lt (p : Params) (ws : List Word) (e s : Nat) : ∀ h, posL p ws e s
   | 0 => by simp [posL]
   | h + 1 => by
     rw [posL_succ, Nat.pow_succ]; have := posL_lt p ws e s h
-    split <;> omega
+    split <;> (clear * - p ws e s h this; omega)
 
 theorem bitSum_posL {p : Params} {ws : List Word} {M : Mem} {bt e s n : Nat}
     (hb : ∀ y < n, M.k (bt + y) = if ansBit p ws e (s + y) then 1 else 0) :
@@ -1288,7 +1288,7 @@ theorem open_pos {p : Params} {i : Nat} (hi : i < (plan p).length)
   obtain ⟨o, ho, h1, h2, h3⟩ := open_of_entry p hi he
   obtain ⟨k, hk, hko⟩ := List.mem_iff_getElem.mp ho
   rw [openPlan_length] at h2
-  have hP : 0 < 1 + o.L.path := by (clear * -; omega)
+  have hP : 0 < 1 + o.L.path := by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - o; omega))
   have hx : (i - o.i0) / (1 + o.L.path) * (1 + o.L.path) + (i - o.i0) % (1 + o.L.path) = i - o.i0 :=
     Nat.div_add_mod' _ _
   have hjt : (i - o.i0) / (1 + o.L.path) < o.L.t := by
@@ -1383,7 +1383,7 @@ theorem qlinkCore_sound (hS : StreamOk p) (hQ : QOk p lay) (hin : QIn p lay ws M
         rw [hpe, if_pos rfl] at hin_
         refine LV _ _ (by (clear * - hT hin_ hEL; omega)) hrow ?_
         rw [hEL, show lay.sb + (eLane p o.i0 + posStride o.L * jj + slotOff o.L 0) =
-          lay.sb + eLane p o.i0 + posStride o.L * jj by simp [slotOff]; (clear * -; omega)]
+          lay.sb + eLane p o.i0 + posStride o.L * jj by simp [slotOff]; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)]
         exact f1
       · rw [hpe, if_neg hy0]
         rw [hpe, if_neg hy0] at hin_
@@ -1391,7 +1391,7 @@ theorem qlinkCore_sound (hS : StreamOk p) (hQ : QOk p lay) (hin : QIn p lay ws M
         rw [show y - 1 + 1 = y by (clear * - hy0; omega)] at this
         refine LV _ _ (by (clear * - hT hEL hin_; omega)) (by norm_num) ?_
         rw [hEL, show lay.sb + (eLane p o.i0 + posStride o.L * jj + slotOff o.L y) =
-          lay.sb + eLane p o.i0 + posStride o.L * jj + slotOff o.L y by (clear * -; omega)]
+          lay.sb + eLane p o.i0 + posStride o.L * jj + slotOff o.L y by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)]
         exact this
     · intro hy0 l hl
       have e := (f3 (y - 1) (by (clear * - hy hp1; omega))).2 l hl
@@ -1399,7 +1399,7 @@ theorem qlinkCore_sound (hS : StreamOk p) (hQ : QOk p lay) (hin : QIn p lay ws M
       have hs5 : 5 ≤ slotOff o.L y := by simp only [slotOff, if_neg hy0]; (clear * - hrow; omega)
       have hb := hbits (y - 1) (by (clear * - hy hp1 hph; omega))
       rw [hpe, if_neg hy0] at hin_
-      have h13 : eLane p i + 13 ≤ hashedLen p / 8 := by simp only at hin_; omega
+      have h13 : eLane p i + 13 ≤ hashedLen p / 8 := by simp only at hin_; (clear * - hin_; omega)
       by_cases hab : ansBit p ws (o.pe + jj / 8) (jj % 8 * o.L.height + (y - 1)) = true
       · rw [if_pos hab] at hb ⊢; rw [if_pos hb] at e
         refine (LE _ _ (by (clear * - hT hL8 hEL hl h13; omega)) (by (clear * - hT hEL hin_ hl; omega)) ?_).symm
@@ -1427,13 +1427,13 @@ theorem qlinkCore_sound (hS : StreamOk p) (hQ : QOk p lay) (hin : QIn p lay ws M
       have hpl := posL_lt p ws (o.pe + jj / 8) (jj % 8 * o.L.height + o.L.path) (o.L.height - o.L.path)
       have hy0 : o.L.path ≠ 0 := by (clear * - hp1; omega)
       rw [hpe, if_neg hy0] at hin_
-      have h13 : eLane p i + 13 ≤ hashedLen p / 8 := by simp only at hin_; omega
+      have h13 : eLane p i + 13 ≤ hashedLen p / 8 := by simp only at hin_; (clear * - hin_; omega)
       refine LE _ _ (by (clear * - hT hl hEL h13; omega)) (by (clear * - hcapb hl hpl; omega)) ?_
       rw [show lay.sb + (eLane p i + 9 + l) = lay.sb + eLane p o.i0 + posStride o.L * jj + slotOff o.L o.L.path + 9 + l
           by (clear * - hEL; omega),
         show lay.sb + (eLane p o.ce + 1 + o.co / 8 + 4 * posL p ws (o.pe + jj / 8) (jj % 8 * o.L.height + o.L.path)
           (o.L.height - o.L.path) + l) = lay.sb + (eLane p o.ce + 1 + o.co / 8) +
-          4 * posL p ws (o.pe + jj / 8) (jj % 8 * o.L.height + o.L.path) (o.L.height - o.L.path) + l by (clear * -; omega)]
+          4 * posL p ws (o.pe + jj / 8) (jj % 8 * o.L.height + o.L.path) (o.L.height - o.L.path) + l by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)]
       exact e
   -- the constant lanes
   have m0 : (lay.sb, lay.sb + 1, lane0C) ∈ qltEntries p lay :=
@@ -1464,8 +1464,8 @@ theorem qlinkCore_sound (hS : StreamOk p) (hQ : QOk p lay) (hin : QIn p lay ws M
     obtain ⟨-, -, b3, b4, -⟩ := QB _ _ _ hm
     have e := (QE _ _ _ hm).2 l hl
     refine LE _ _ (by (clear * - hl b3; omega)) (by (clear * - hl b4; omega)) ?_
-    rw [show lay.sb + (eLane p i + 1 + l) = lay.sb + eLane p i + 1 + l by (clear * -; omega),
-      show lay.sb + (ansLane p st + l) = lay.sb + ansLane p st + l by (clear * -; omega)]
+    rw [show lay.sb + (eLane p i + 1 + l) = lay.sb + eLane p i + 1 + l by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega),
+      show lay.sb + (ansLane p st + l) = lay.sb + ansLane p st + l by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)]
     exact e
   · intro i hi pe h j lvl cap hk l hl
     obtain ⟨k, o, jj, y, -, -, -, -, hpe, -, hnode, -⟩ := OE i hi (by rw [hk]; rfl)
@@ -1500,9 +1500,9 @@ theorem qlinkCore_sound (hS : StreamOk p) (hQ : QOk p lay) (hin : QIn p lay ws M
         simp only [show hashedLen p / 8 + (q / 8 - hashedLen p / 8) = q / 8 by (clear * - hL8 hq1; omega)]⟩
     obtain ⟨-, -, b3, -, b5⟩ := QB _ _ _ hm
     have hv := LV _ _ (by (clear * - b3; omega)) b5 (QE _ _ _ hm).1
-    have hb := byte_of_lane ws (q / 8) (q % 8) (by (clear * -; omega))
-    rw [show 8 * (q / 8) + q % 8 = q by (clear * -; omega), hv, padLane_byte _ _ _ (by (clear * -; omega)),
-      show 8 * (q / 8) + q % 8 = q by (clear * -; omega)] at hb
+    have hb := byte_of_lane ws (q / 8) (q % 8) (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - q; omega)))
+    rw [show 8 * (q / 8) + q % 8 = q by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - q; omega)), hv, padLane_byte _ _ _ (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - q; omega))),
+      show 8 * (q / 8) + q % 8 = q by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - q; omega))] at hb
     exact hb
 
 /-- **Q_link is sound**: its rows and assertions, with its inputs where the layout says, make the
@@ -1531,7 +1531,7 @@ theorem posLoop_spec {pt : Ptr} {a lo hi : Nat} (h : SegsHold c M pt (posLoop a 
 
 theorem sum_take_add_lt (l : List Nat) {k : Nat} (hk : k < l.length) : (l.take k).sum + l[k] ≤ l.sum := by
   conv_rhs => rw [← List.take_append_drop k l, List.sum_append, List.drop_eq_getElem_cons hk, List.sum_cons]
-  omega
+  (clear * - k l hk; omega)
 
 theorem posIdx_lt (hQ : QOk p lay) {k j : Nat} (hk : k < (opens p).length)
     (hj : j < ((opens p).getD k default).L.t) : posIdx p k j < 2 ^ lay.pa := by

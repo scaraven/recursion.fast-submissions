@@ -665,7 +665,7 @@ theorem FP_eqFamily {β : Type} (Tq : β → States) (r : List E) (hr : r.length
     rw [hm, sum_cube_succ, hdrop, Finset.mul_sum, Finset.mul_sum, ← Finset.sum_add_distrib]
     refine Finset.sum_congr rfl fun z _ ↦ ?_
     rw [eqAt_cons, eqAt_cons, bitsE_two_mul, bitsE_two_mul_add_one]
-    have h1 : 2 * z % 2 = 0 := by (clear * -; omega)
+    have h1 : 2 * z % 2 = 0 := by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)
     have h2 : (2 * z + 1) % 2 = 1 := by (clear * - h1; omega)
     have h3 : 2 * z / 2 = z := by (clear * - h1; omega)
     have h4 : (2 * z + 1) / 2 = z := by (clear * - h1 h2; omega)

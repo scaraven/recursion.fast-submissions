@@ -231,7 +231,7 @@ theorem trun_accept (K : KCert S R) {L : Log} (hb : ¬ Bad L) (hS : sumT K L < 1
       obtain ⟨⟨hr, ha⟩, -⟩ := S.steps_inv (S.wellShaped_wordOf L) (node_inv hN) _ hsteps
       obtain ⟨hgD, hgB⟩ := S.group_end K hb hS hN hsteps (Or.inl ⟨k, rfl⟩)
       set y := S.decE (body.take (S.rw (nReads h))) with hy
-      have h24 : (body.take (S.rw (nReads h))).length = S.rw (nReads h) := by simp; omega
+      have h24 : (body.take (S.rw (nReads h))).length = S.rw (nReads h) := by simp; (clear * - S h body hl; omega)
       have hBn : ¬ K.B I.x (h ++ [.read y]) := K.B_read y hr ha (hgB hB)
       refine ih y st (buf ++ body.take (S.rw (nReads h))) caps (body.drop (S.rw (nReads h))) (h ++ [.read y])
         (h ++ [.read y]) j I hf hN rfl hst ?_ ?_ hBn ?_ ?_ hrun
@@ -239,7 +239,7 @@ theorem trun_accept (K : KCert S R) {L : Log} (hb : ¬ Bad L) (hS : sumT K L < 1
         simp only [List.nil_append] at h1
         refine h1.tail ?_
         have := Step.read (S := S) (W := S.wordOf L) (k := k) (h := h) (hb := hbc) (caps := caps)
-          (msg := body.take (S.rw (nReads h))) (by omega)
+          (msg := body.take (S.rw (nReads h))) (by (clear * - S h body h24; omega))
         rwa [List.take_take, min_self, List.drop_eq_nil_of_le (by rw [h24])] at this
       · intro h' hp' hbd' hD'
         rcases List.prefix_concat_iff.mp hp' with rfl | hp''
@@ -269,7 +269,7 @@ theorem trun_accept (K : KCert S R) {L : Log} (hb : ¬ Bad L) (hS : sumT K L < 1
           by_contra hle
           refine not_inWins_of_not_bad hb (i := j') (j := j) (by (clear * - hle; omega)) hgj' he₀ ?_
           refine ⟨by rw [size_toQ, List.length_append, Vector.length_toList]; exact hcap, 0,
-            by rw [size_toQ, List.length_append, Vector.length_toList]; (clear * -; omega), ?_⟩
+            by rw [size_toQ, List.length_append, Vector.length_toList]; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - buf; omega)), ?_⟩
           unfold win
           rw [qb_toQ, List.drop_zero, dg_toList_append]
           exact hst₀
@@ -400,7 +400,7 @@ theorem final_law (K : KCert S R) (L : Log) (c : Digest) (π : Proof) (hμ : μ 
             have hrj : r < j₁ := by
               by_contra hle
               refine not_inWins_of_not_bad hb (i := j₁) (j := r) (by (clear * - hle; omega)) hgj hgr ?_
-              refine ⟨by rw [seedQ_size]; exact hcap, 0, by rw [seedQ_size]; (clear * -; omega), ?_⟩
+              refine ⟨by rw [seedQ_size]; exact hcap, 0, by rw [seedQ_size]; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - S x; omega)), ?_⟩
               unfold win seedQ
               rw [qb_toQ, List.drop_zero, dg_toList_append]
             have hN : S.IsNode L j₁ (S.seedNI x) := IsNode.seed x hrj hgr hgj hcap

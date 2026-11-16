@@ -350,11 +350,11 @@ theorem prologueSegs_spec {c : Ctx} {M : Mem} (init : Nat → Cell) : ∀ (p : P
       exact h2
     · have ih := prologueSegs_spec init _ (t₀ + 1) rs h.2 t (by simpa using ht) (by simpa using hop)
       simp only [List.getD_cons_succ] at ih ⊢
-      rw [show t₀ + (t + 1) = t₀ + 1 + t by (clear * -; omega), ← ih]
+      rw [show t₀ + (t + 1) = t₀ + 1 + t by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega), ← ih]
       congr 1
       simp only [Ptr.adv, lrank, List.take_succ_cons, List.map_cons, List.sum_cons, prologueRow_w]
       generalize (rs.getD t default).ty = τ
-      cases τ <;> simp only [Ptr.at] <;> (clear * -; omega)
+      cases τ <;> simp only [Ptr.at] <;> (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)
 
 theorem loopP_apply (dims : List Nat) (tpl : List LRow) (init : Nat → Cell) (p : Ptr) :
     loopP dims tpl init p =
@@ -388,7 +388,7 @@ theorem loopP_prev_zero {c : Ctx} {M : Mem} {dims : List Nat} {tpl : List LRow}
   simp only [loopP_apply] at hp ⊢
   rw [hp]
   congr 1
-  (clear * -; omega)
+  (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - p tpl t; omega))
 
 /-- `prev` at iteration `jf + 1` of `loopP` is the row's result at `jf`. -/
 theorem loopP_prev_succ (M : Mem) (dims : List Nat) (tpl : List LRow) (init : Nat → Cell) (p : Ptr)

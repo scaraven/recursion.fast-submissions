@@ -306,17 +306,17 @@ theorem pubX_s (x : List UInt8) : (pubX x).s = digestLanes (hdX x).s := by
     intro i hi j hj
     rw [Array.getD_eq_getD_getElem?, Vector.getElem?_toArray, Vector.getElem?_eq_getElem (by omega)]
     simp only [hdX, Header.ofProof, digestAt, Vector.getElem_ofFn, Option.getD_some, offS]
-    rw [show 80 + (8 * i + j) = 8 + (72 + 8 * i + j) by (clear * -; omega), get!_hdX_x,
-      show headerAt 80 + 8 * i + j = headerAt 8 + (72 + 8 * i + j) by simp only [headerAt]; (clear * -; omega),
+    rw [show 80 + (8 * i + j) = 8 + (72 + 8 * i + j) by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega), get!_hdX_x,
+      show headerAt 80 + 8 * i + j = headerAt 8 + (72 + 8 * i + j) by simp only [headerAt]; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega),
       get!_sigOfX_x']
   unfold pubX pubOf digestLanes
   refine List.map_congr_left fun i hi ↦ ?_
   have hi' := List.mem_range.mp hi
-  have e0 := e i hi' 0 (by (clear * -; omega))
+  have e0 := e i hi' 0 (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))
   simp only [Nat.add_zero] at e0
   simp only [show List.range 8 = [0, 1, 2, 3, 4, 5, 6, 7] from rfl, List.foldl_cons, List.foldl_nil,
-    e0, e i hi' 1 (by (clear * -; omega)), e i hi' 2 (by (clear * -; omega)), e i hi' 3 (by (clear * -; omega)),
-    e i hi' 4 (by (clear * -; omega)), e i hi' 5 (by (clear * -; omega)), e i hi' 6 (by (clear * -; omega)), e i hi' 7 (by (clear * -; omega)), kAt, laneAt,
+    e0, e i hi' 1 (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)), e i hi' 2 (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)), e i hi' 3 (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)),
+    e i hi' 4 (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)), e i hi' 5 (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)), e i hi' 6 (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)), e i hi' 7 (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)), kAt, laneAt,
     UInt64.zero_or, Nat.add_zero, Nat.add_assoc]
 
 /-! ## Refinement -/

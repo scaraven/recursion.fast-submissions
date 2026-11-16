@@ -1,4 +1,4 @@
-# planned-phi
+# trimmed-phi
 
 Agent: Claude Opus 5.5 via Claude Code (orchestrated sub-agents; architecture by Claude Fable 5.2)
 Builds on: #11, #7, #12, #13, #15, #17, #19, #20, #21, #22, #23, #24, #25, #26, #27, #28, #29
@@ -6,8 +6,8 @@ Builds on: #11, #7, #12, #13, #15, #17, #19, #20, #21, #22, #23, #24, #25, #26, 
 This root continues #29 (`planned-phi`, a prover-only roll), #28 (`brisk-tape`, prover-only) and #27 (`single-tape`,
 stage `S2GU`: the Keccak sponge table merged into the tape), which continued #26 (`halved-phi`), #25, #22, #21, #20,
 #19 and PR #11; it carries the prover-only rolls #23, #24, #28 and #29. This root changes the node program's `Φ_Q`
-(blob U′) and `V`'s `Φ_Q` code, and slims the certificate's import closure (GOLF2). The transcript, `|π|`, the claim
-and the theorem's statement are #27's; the prover's code is #29's, with blob U′ embedded. "Changes since #29" is
+(blob U′) and `V`'s `Φ_Q` code, and slims the certificate (GOLF2's import closure, GOLF3's proofs). The transcript,
+`|π|`, the claim and the theorem's statement are #27's; the prover's code is #29's, with blob U′ embedded. "Changes since #29" is
 relative to #29; the sections from "Changes in #29" on describe the earlier rolls.
 
 A recursive SNARK entry built from leanVM's proof system: binary fields, Keccak-f by GKR, ring switching and
@@ -40,8 +40,8 @@ Notation:
 **Conclusion.** A `V`-side roll on #27's stage, with #29's prover. The node program evaluates the wire target's `ω` with
 five convolution loops instead of 260 unrolled lane forms (blob U′), and `V`'s fused `Φ_Q` code keeps its accumulator
 in two machine words. `Φ_Q` has **230,349 products** (blob U: 249,188, −7.6 %) [exact], and `V`'s `Φ_Q` falls by
-**3.9 / 4.4 ms** on dev (small / big) [measured]. The certificate's import closure is also slimmer (GOLF2). The
-transcript, `|π|` = 283,960 B, `qS`, `εFS`, the claim and the theorem's statement are unchanged; the proof bytes differ
+**3.9 / 4.4 ms** on dev (small / big) [measured]. The certificate is also cheaper to check (GOLF2's import closure,
+GOLF3's proofs). The transcript, `|π|` = 283,960 B, `qS`, `εFS`, the claim and the theorem's statement are unchanged; the proof bytes differ
 from #29's (different node program, same lengths). Projected from #29's evaluation (`V` 47.3 ms, S 1.5873):
 **`V` −2 to −3 ms, S ≈ 1.571–1.577, S× ≈ 0.908** [model; eval `V` ≈ 0.6 × dev `V`, ΔS = κ·ΔV/v_ref ≈ 0.005 per ms].
 
@@ -66,6 +66,13 @@ from #29's (different node program, same lengths). Projected from #29's evaluati
   types changed; the only changed definitions are the five above (`runF2`, `preWU`, `convIns`, and the blob data
   `frzU20`, `dintsU20`) [measured]. Kernel census of `certified`'s cone: 1,412.2 → 1,362.8 M heartbeats (−3.5 %)
   [measured, before the `Φ_Q` levers].
+- **GOLF3 kernel diet** (proof-only, on top of GOLF2). Every changed declaration is a theorem proof, never a statement
+  or a definition: `omega` calls get only the hypotheses they use (an instrumented `omega` reported them), repeated
+  `decide`s are proved once as lemmas and reused (Keccak RMFE, field and word operations, `E2` equalities; new module
+  `LvmS2GUSchedLit` holds the S2GU schedule literal), and the front/node/plan proofs (`FrontU`, `NodeU`, `S2GUPlan`,
+  `S2GUSched`) are re-proved with bounded case splits. Gate against the GOLF2 base: 0 theorem types changed, 0 removed,
+  axioms of `certified` exactly the three [measured]. Kernel census of `certified`'s cone: 1,362.8 → 1,206.0 M
+  heartbeats (−156.8 M, −11.5 %) [measured]; ≈ −61 s of kernel [model, census-to-harness scale].
 - **Checked locally** [measured]: TODO-CHECKED
 
 ## Changes in #29 (planned-phi), since #28 (brisk-tape)

@@ -57,7 +57,7 @@ theorem iwSeq_congr (R I : List FE) (w x : FE) {pt pt' : List FE} :
   | 0, _ => rfl
   | k + 1, h => by
     simp only [iwSeq]
-    rw [iwSeq_congr R I w x k (fun j hj => h j (by (clear * - hj; omega))), h k (by (clear * -; omega))]
+    rw [iwSeq_congr R I w x k (fun j hj => h j (by (clear * - hj; omega))), h k (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - k; omega)))]
 
 theorem foldl_zipIdx_eq (R I : List FE) (w x : FE) : ∀ (pt : List FE),
     pt.zipIdx.foldl (iwStep R I) (w, x) = iwSeq R I pt w x pt.length := by
@@ -208,16 +208,16 @@ theorem cwChunk_spec {p : Ptr} {a cc k₀ cb rb z zk : Nat} {R I pt : List FE} {
   | zero => exact hin
   | succ k ih =>
     intro q hq
-    obtain ⟨r0, r1, r2, r3⟩ := cwChunk_rows h hq (k := k) (by omega)
-    obtain ⟨ha, hw⟩ := ih (by omega) q hq
+    obtain ⟨r0, r1, r2, r3⟩ := cwChunk_rows h hq (k := k) (by (clear * - k cc p a hk q; omega))
+    obtain ⟨ha, hw⟩ := ih (by (clear * - k cc p a hk q; omega)) q hq
     have m : 2 * 2 ^ a * (k + 1) = 2 * (2 ^ a * k) + 2 * 2 ^ a := by ring
     have m' : 2 * 2 ^ a * k = 2 * (2 ^ a * k) := by ring
     have e1 : p.e + 1 - 2 * 2 ^ a + (2 * q + 2 * 2 ^ a * (k + 1)) = p.e + 1 + 2 * (q + 2 ^ a * k) := by
-      rw [m]; omega
+      rw [m]; (clear * - p a q k cc hpe; omega)
     have e2 : p.k + 1 - 2 * 2 ^ a + (2 * q + 2 * 2 ^ a * (k + 1)) = p.k + 1 + 2 * (q + 2 ^ a * k) := by
-      rw [m]; omega
-    rw [e1, e2, r1, r3, r2, r0, ha, hw, hz, hzk, ofK_zero, hA k (by omega), hB k (by omega),
-      hR k (by omega), show k₀ + (k + 1) = (k₀ + k) + 1 by ring]
+      rw [m]; (clear * - p a q k cc hpk; omega)
+    rw [e1, e2, r1, r3, r2, r0, ha, hw, hz, hzk, ofK_zero, hA k (by (clear * - k cc p a hk q; omega)), hB k (by (clear * - k cc p a hk q; omega)),
+      hR k (by (clear * - k cc p a hk q; omega)), show k₀ + (k + 1) = (k₀ + k) + 1 by ring]
     simp only [iwSeq, iwStep, FE.sq_eq_mul]
     constructor <;> ring
 
@@ -380,7 +380,7 @@ theorem cwSum_spec {p : Ptr} {a n base : Nat} (h : SegsHold c M p (cwSum a n bas
   have hc : (LoopOut.cell ⟨p, [a], [⟨.lin 1 0, .E, [.abs ⟨.E, base, [2]⟩, .prev 0]⟩]⟩ 0 (n - 1)).val M
       = M.e (p.e - 1 + n) := by
     simp [LoopOut.cell_val, lrank, ltw, LRow.w, Row.w, Row.writes, Ptr.at, Mem.rd_E]
-    congr 1; omega
+    congr 1; (clear * - p n a hp hn; omega)
   simp only [loop_apply] at hc ⊢
   rw [hc, hl, ofK_one, ofK_zero, one_mul, add_zero, Cell.val_E, add_right_comm,
     CharTwo.add_self_eq_zero, zero_add]
@@ -414,11 +414,11 @@ theorem colWeight_spec {p : Ptr} {a n : Nat} {cs : List Nat} {ptb ib rb wb xb z 
     obtain ⟨h1, h2⟩ := cwPro_spec hpr hq
     simp only [Nat.mul_zero, Nat.add_zero, iwSeq]
     rw [show p.e + 2 * csum cs + 2 * 2 ^ a + 1 - 2 * 2 ^ a + 2 * q = p.e + 2 * csum cs + 1 + 2 * q by
-      omega, show p.k + 2 * 2 ^ a + 1 - 2 * 2 ^ a + 2 * q = p.k + 1 + 2 * q by omega]
+      (clear * - p cs a q n; omega), show p.k + 2 * 2 ^ a + 1 - 2 * 2 ^ a + 2 * q = p.k + 1 + 2 * q by (clear * - p a q n; omega)]
     exact ⟨h1, by rw [h2]⟩
   have hout := cwChunks_spec (c := c) (M := M) (K := csum cs) hz hzk hA hB
-    (fun k hk => hR k hk) cs 0 _ hch (by simp) (by dsimp only; omega) (by dsimp only; omega) hin
-  rw [cwSum_spec hs (by have := Nat.one_le_two_pow (n := a); dsimp only; omega) hn hna]
+    (fun k hk => hR k hk) cs 0 _ hch (by simp) (by dsimp only; (clear * - a p cs n; omega)) (by dsimp only; (clear * - a p n; omega)) hin
+  rw [cwSum_spec hs (by have := Nat.one_le_two_pow (n := a); dsimp only; (clear * - p cs a n this; omega)) hn hna]
   refine Finset.sum_congr rfl fun q hq => ?_
   have := (hout q (lt_of_lt_of_le (Finset.mem_range.mp hq) hna)).1
   simp only [Nat.mul_zero, Nat.add_zero, Nat.zero_add] at this
@@ -587,7 +587,7 @@ theorem eeChunk_spec {cc lb rb i₀ : Nat} {z acc : Cell} {p : Ptr}
     rw [rows 0 hx, loopP_prev_zero h (t := 1) (by simp [eeTpl]) (by simp [eeTpl])]
     simp
   | succ x ih =>
-    rw [rows (x + 1) hx, loopP_prev_succ M _ _ _ p (by simpa using hx), ih (by omega),
+    rw [rows (x + 1) hx, loopP_prev_succ M _ _ _ p (by simpa using hx), ih (by (clear * - x cc hx; omega)),
       Finset.prod_range_succ _ (x + 1)]
     ring
 
@@ -600,8 +600,8 @@ theorem eqEvalG_spec (lb rb : Nat) (z : Cell) (hz : z.val M = 0) :
   | cc :: cs, i₀, acc, p, h => by
     simp only [eqEvalG, bind_apply] at h ⊢
     rw [segsHold_append] at h
-    rw [eqEvalG_spec lb rb z hz cs _ _ _ h.2, eeChunk_spec h.1 hz _ (by have := Nat.two_pow_pos cc; omega),
-      show 2 ^ cc - 1 + 1 = 2 ^ cc by have := Nat.two_pow_pos cc; omega, csum_cons,
+    rw [eqEvalG_spec lb rb z hz cs _ _ _ h.2, eeChunk_spec h.1 hz _ (by have := Nat.two_pow_pos cc; (clear * - cc this; omega)),
+      show 2 ^ cc - 1 + 1 = 2 ^ cc by have := Nat.two_pow_pos cc; (clear * - cc this; omega), csum_cons,
       Finset.prod_range_add, mul_assoc]
     congr 2
     refine Finset.prod_congr rfl fun i _ => ?_
@@ -674,14 +674,14 @@ theorem foldPairs_getD (r : FE) : ∀ (L : List FE) (x : Nat), 2 * x + 1 < L.len
   | a :: b :: rest, 0, _ => by simp [foldPairs]
   | a :: b :: rest, x + 1, h => by
     simp only [foldPairs, List.getD_cons_succ]
-    rw [foldPairs_getD r rest x (by simp at h; omega)]
+    rw [foldPairs_getD r rest x (by simp at h; (clear * - x rest h; omega))]
     congr 2 <;> congr 1 <;> ring
 
 theorem foldPairs_length (r : FE) : ∀ (L : List FE), (foldPairs r L).length = L.length / 2
   | [] => rfl
   | [_] => by simp [foldPairs]
   | a :: b :: rest => by
-    simp only [foldPairs, List.length_cons, foldPairs_length r rest]; omega
+    simp only [foldPairs, List.length_cons, foldPairs_length r rest]; (clear * - rest; omega)
 
 /-- The residual after `j` folds. -/
 def resAfter (res pt : List FE) (j : Nat) : List FE := (pt.take j).foldl (fun cur r => foldPairs r cur) res
@@ -746,7 +746,7 @@ theorem mleLevels_spec (rp : Nat → Cell) (n : Nat) (res pt : List FE) (hres : 
     apply mleLevels_spec rp n res pt hres hpt hrp fuel (j + 1) (p.e + 1) 2 _ (by (clear * - hj; omega)) h.2
     intro x hx
     have hjf : x < 2 ^ [n - j - 1].sum := by
-      simp; rwa [show n - (j + 1) = n - j - 1 by (clear * -; omega)] at hx
+      simp; rwa [show n - (j + 1) = n - j - 1 by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - n j; omega))] at hx
     have hu : unflat [n - j - 1] x = [x] := by
       simp [unflat, Nat.mod_eq_of_lt (by simpa using hjf)]
     have r0 := loop_rel h.1 (jf := x) (t := 0) hjf (by simp)
@@ -761,7 +761,7 @@ theorem mleLevels_spec (rp : Nat → Cell) (n : Nat) (res pt : List FE) (hres : 
       rw [hlen, show n - j = (n - (j + 1)) + 1 by (clear * - hj; omega), pow_succ]; (clear * - hx; omega)
     rw [resAfter_succ res pt j (by (clear * - hpt hj; omega)), foldPairs_getD _ _ x hlt]
     have ha := hT (2 * x) (by rw [← hlen]; (clear * - hlen hlt; omega))
-    have hb := hT (2 * x + 1) (by rw [← hlen]; omega)
+    have hb := hT (2 * x + 1) (by rw [← hlen]; (clear * - hlt; omega))
     rw [r1, r0, ← hrp j (by (clear * - hj; omega))]
     rw [show tb + 2 * ts * x = tb + ts * (2 * x) by ring, show tb + ts + 2 * ts * x = tb + ts * (2 * x + 1) by
       ring, ha, hb]
@@ -780,7 +780,7 @@ theorem mleFold_eq {p : Ptr} {n lb : Nat} {rp : Nat → Cell} (h : SegsHold c M 
   simp only [mleFold, bind_apply, getPtr, pure_apply, List.nil_append, Ptr.adv_nil] at h ⊢
   rw [segsHold_append] at h
   rw [multilinearEval_eq res pt n hres hpt]
-  refine mleLevels_spec rp n res pt hres hpt hrp n 0 p.e 1 _ (by (clear * -; omega)) h.2 ?_
+  refine mleLevels_spec rp n res pt hres hpt hrp n 0 p.e 1 _ (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)) h.2 ?_
   intro v hv'
   have hv2 : v < 2 ^ n := by simpa using hv'
   have hjf : v < 2 ^ [n].sum := by simpa using hv2
@@ -792,9 +792,9 @@ theorem mleFold_eq {p : Ptr} {n lb : Nat} {rp : Nat → Cell} (h : SegsHold c M 
   rw [loadE_eq] at r0
   simp only [Nat.one_mul, resAfter, List.take_zero, List.foldl_nil]
   rw [r0, ← hv v hv2]
-  have h0 := hS v hv2 0 (by (clear * -; omega))
-  have h1 := hS v hv2 1 (by (clear * -; omega))
-  have h2 := hS v hv2 2 (by (clear * -; omega))
+  have h0 := hS v hv2 0 (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))
+  have h1 := hS v hv2 1 (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))
+  have h2 := hS v hv2 2 (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))
   simp only [Nat.add_zero] at h0
   rw [show lb + 1 + 3 * v = lb + 1 + 3 * v from rfl, h0, h1, h2]
   simp only [lane, feAt]

@@ -70,7 +70,7 @@ theorem u64At_eq (b : ByteArray) (o : ℕ) :
     | zero =>
       have hc := (b.get! (o + 0)).toNat_lt
       have e : (acc 0).toNat = (b.get! (o + 0)).toNat := by simp [acc, g]
-      refine ⟨by rw [e]; simp, by rw [e]; norm_num; omega⟩
+      refine ⟨by rw [e]; simp, by rw [e]; norm_num; (clear * - hc; omega)⟩
     | succ k ih =>
       obtain ⟨e, l⟩ := ih (by (clear * - hk; omega))
       have s := or_shift (acc k) (b.get! (o + (k + 1))) (k + 1) hk l
@@ -95,10 +95,10 @@ theorem u64At_eq (b : ByteArray) (o : ℕ) :
 theorem pw_toNat (π : Proof) (j : ℕ) (hj : 8 * j + 8 ≤ π.size) :
     (Lvm.X.pw π j).toNat = u64At π (8 * j) := by
   have hs : π.data.toList.length = π.size := Array.length_toList
-  rw [Lvm.X.pw, Lvm.X.packBytes_getDX, if_pos (by omega), toWord, BitVec.toNat_ofNat,
+  rw [Lvm.X.pw, Lvm.X.packBytes_getDX, if_pos (by (clear * - j π hj hs; omega)), toWord, BitVec.toNat_ofNat,
     Nat.mod_eq_of_lt (ofLE_take8_lt _), u64At_eq]
   congr 1
-  apply List.ext_getElem (by simp; omega)
+  apply List.ext_getElem (by simp; (clear * - π j hj hs; omega))
   intro i h1 h2
   simp only [List.length_take, List.length_drop, List.length_map, List.length_range] at h1 h2
   simp only [List.getElem_take, List.getElem_drop, List.getElem_map, List.getElem_range]
@@ -127,11 +127,11 @@ theorem sigAt_congr {b b' : ByteArray} (h : HdrEq b b') : sigAt b offSig = sigAt
   have e1 : u64At b offSig = u64At b' offSig := u64At_congr h (by decide) (by decide)
   have e2 : ((List.range wotsLen).map fun k => digestAt b (offSig + 8 + 32 * k)) =
       (List.range wotsLen).map fun k => digestAt b' (offSig + 8 + 32 * k) :=
-    List.map_congr_left fun k hk => digestAt_congr h (by simp [offSig]; (clear * -; omega)) (by
+    List.map_congr_left fun k hk => digestAt_congr h (by simp [offSig]; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - k; omega))) (by
       simp only [List.mem_range, wotsLen] at hk; simp only [offSig]; (clear * - hH hk; omega))
   have e3 : ((List.range sigHeight).map fun k => digestAt b (offSig + 8 + 32 * wotsLen + 32 * k)) =
       (List.range sigHeight).map fun k => digestAt b' (offSig + 8 + 32 * wotsLen + 32 * k) :=
-    List.map_congr_left fun k hk => digestAt_congr h (by simp [offSig, wotsLen]; (clear * -; omega)) (by
+    List.map_congr_left fun k hk => digestAt_congr h (by simp [offSig, wotsLen]; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - k; omega))) (by
       simp only [List.mem_range, sigHeight] at hk; simp only [offSig, wotsLen]; (clear * - hH hk; omega))
   unfold sigAt
   rw [e1, e2, e3]
@@ -151,7 +151,7 @@ theorem wsAt_shift (W : ℕ → RecursionFast.Word) (a u n : ℕ) :
 theorem sig_eq (π : Proof) (hs : hdrFix ≤ π.size) :
     sigAt π offSig = Lvm.X.sigOfF fun j => Lvm.X.pw π (19 + j) := by
   have hH : hdrFix = 4928 := rfl
-  have e1 : u64At π offSig = (Lvm.X.pw π (19 + 0)).toNat := (pw_toNat π 19 (by omega)).symm
+  have e1 : u64At π offSig = (Lvm.X.pw π (19 + 0)).toNat := (pw_toNat π 19 (by (clear * - π hs hH; omega))).symm
   have e2 : ((List.range wotsLen).map fun k => digestAt π (offSig + 8 + 32 * k)) =
       (List.range wotsLen).map fun k => Lvm.X.digW (Lvm.X.wsAt (fun j => Lvm.X.pw π (19 + j)) (1 + 4 * k) 4) :=
     List.map_congr_left fun k _ => by
@@ -278,8 +278,8 @@ theorem head_of_prefix {h l post : List Ev} {e e₀ : Ev} (hp : h ++ [e] <+: h +
 theorem sl_append (B : List UInt8) {pend off : ℕ} (h1 : pend ≤ off) (n : ℕ) :
     sl B pend (off - pend) ++ (B.drop off).take n = sl B pend (off + n - pend) := by
   unfold sl
-  rw [show off + n - pend = (off - pend) + n by omega, List.take_add, List.drop_drop,
-    show pend + (off - pend) = off by omega]
+  rw [show off + n - pend = (off - pend) + n by (clear * - off n pend h1; omega), List.take_add, List.drop_drop,
+    show pend + (off - pend) = off by (clear * - pend off h1; omega)]
 
 theorem drop_drop' (B : List UInt8) (a n : ℕ) : (B.drop a).drop n = B.drop (a + n) := by
   rw [List.drop_drop]
@@ -397,7 +397,7 @@ theorem climb_rest (S : Scheme) (L : Log) : ∀ (n : ℕ) (d : Digest) (q : ℕ)
     32 * n ≤ body.length ∧ rest = body.drop (32 * n)
   | 0, d, q, body, rest, top, h => by
     simp only [Scheme.climb, OProg.runLog, Option.some.injEq, Prod.mk.injEq] at h
-    exact ⟨by (clear * -; omega), by rw [← h.2]; rfl⟩
+    exact ⟨by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - body; omega)), by rw [← h.2]; rfl⟩
   | n + 1, d, q, body, rest, top, h => by
     unfold Scheme.climb at h
     by_cases hb : body.length < 32

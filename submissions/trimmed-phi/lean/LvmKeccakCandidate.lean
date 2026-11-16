@@ -44,7 +44,7 @@ theorem toBitVec_sum_getLsbD (bv : BitVec 64) :
   | 0, _, i, _ => by simp
   | n + 1, hn, i, hi => by
     rw [Finset.sum_range_succ, toBitVec_add, BitVec.getLsbD_xor,
-      toBitVec_sum_getLsbD bv n (by omega) i hi]
+      toBitVec_sum_getLsbD bv n (by (clear * - n hn i; omega)) i hi]
     have hpow : (K.ofBits (2 ^ n)).toBitVec.getLsbD i = decide (n = i) := by
       rw [K.ofBits, BF64.toBitVec_ofBitVec, BitVec.getLsbD_ofNat, Nat.testBit_two_pow]
       simp [hi]
@@ -52,12 +52,12 @@ theorem toBitVec_sum_getLsbD (bv : BitVec 64) :
     · rw [ite_eq_left hb, hpow]
       by_cases hin : n = i
       · subst hin; simp [hb]
-      · have : (i < n + 1) = (i < n) := by apply propext; omega
+      · have : (i < n + 1) = (i < n) := by apply propext; (clear * - i n hin; omega)
         simp [hin, this]
     · rw [ite_eq_right hb]
       by_cases hin : n = i
       · subst hin; simp [hb]
-      · have : (i < n + 1) = (i < n) := by apply propext; omega
+      · have : (i < n + 1) = (i < n) := by apply propext; (clear * - i n hin; omega)
         simp [this]
 
 /-- **A word is the sum of its bits times the powers of `x`.** -/
@@ -200,9 +200,9 @@ theorem s_escape {product : List E} (hlen : product.length = 47) {G : E[X]} (hG 
     rw [← he, listPoly, finsetSum_coeff, Finset.sum_eq_single c]
     · simp
     · intro b _ hb; simp [coeff_C_mul, coeff_X_pow, Ne.symm hb]
-    · intro hn; exact absurd (Finset.mem_range.2 (by omega)) hn
+    · intro hn; exact absurd (Finset.mem_range.2 (by (clear * - c product hlen G hc; omega))) hn
   refine (avgE_mono fun s ↦ indE_mono fun hs ↦ ?_).trans
-    (sz_escape hne ((natDegree_listPoly product).trans (by omega)) hG)
+    (sz_escape hne ((natDegree_listPoly product).trans (by (clear * - product hlen G; omega))) hG)
   rw [eval_listPoly]; exact hs
 
 /-- **β's escape**: distinct triples give distinct quadratics in `β`. -/
@@ -742,7 +742,7 @@ theorem iota_eqS {sh : Shape} (hsh : sh.Ok) (step P : ℕ) (claim : KeccakClaim)
   rw [sumE_eq_sum, list_sum_range]
   rcases hsh.1 with h1 | h2
   · have hd : claim.point.drop (sh.logSteps P - 4) = [] := by
-      rw [Shape.logSteps, if_pos h1]; exact List.drop_eq_nil_of_le (by rw [hpt]; (clear * -; omega))
+      rw [Shape.logSteps, if_pos h1]; exact List.drop_eq_nil_of_le (by rw [hpt]; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - P; omega)))
     have hseg : ∀ m, layerRCS sh step m = keccakRC.getD (sh.depth * (0 + 1) - step - 1) 0 :=
       fun m ↦ by rw [layerRCS, Shape.seg, if_pos h1]
     have h2 : ∑ m ∈ range 2, eqAt (claim.point.drop P) m = 1 := by
@@ -750,7 +750,7 @@ theorem iota_eqS {sh : Shape} (hsh : sh.Ok) (step P : ℕ) (claim : KeccakClaim)
     simp only [hseg]
     rw [← Finset.sum_mul, h2, one_mul, h1, Finset.sum_range_one, hd, eqKernel_getD, hsum]
     simp
-  · have hlog : sh.logSteps P - 4 = P := by rw [Shape.logSteps, if_neg (by (clear * - h2; omega))]; (clear * -; omega)
+  · have hlog : sh.logSteps P - 4 = P := by rw [Shape.logSteps, if_neg (by (clear * - h2; omega))]; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - P; omega))
     rw [hlog, h2]
     refine Finset.sum_congr rfl fun m hm ↦ ?_
     have hm' := Finset.mem_range.1 hm

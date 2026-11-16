@@ -554,7 +554,7 @@ theorem gLocalRound_spec {xv : Src → FE} {V : Nat → FE} {v : Nat → FE}
     List.map_append, List.map_nil, List.nil_append, List.map_cons, sumE, polyEval, List.cons_append,
     List.singleton_append, List.foldl_cons, List.foldl_nil, List.foldr_cons, List.foldr_nil]
   rw [e9, e8, e7, e6, e5, e1, e2, e3, e4]
-  simp only [Nat.mul_zero, Nat.add_zero, Nat.mul_one, show p + 64 + 24 = p + 88 by (clear * -; omega)]
+  simp only [Nat.mul_zero, Nat.add_zero, Nat.mul_one, show p + 64 + 24 = p + 88 by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)]
   ring
 
 /-- **The position rounds are `F`'s `scSpec` with four coefficients.** -/
@@ -792,7 +792,7 @@ theorem gLowTab_spec {xv : Src → FE} {V : Nat → FE} {z : Src} (hz : z.valF x
   refine gSumMap_spec' hz (fun zz hzz m hm => ?_) n h
   by_cases hc : (zz + rl) / 8 = c
   · simp only [hc, if_true] at hm ⊢
-    rw [gMul_spec hm, hz, add_zero, getD_vals _ (by (clear * - lb hzz; omega)), getD_vals _ (by rw [la]; exact Nat.mod_lt _ (by (clear * -; omega))),
+    rw [gMul_spec hm, hz, add_zero, getD_vals _ (by (clear * - lb hzz; omega)), getD_vals _ (by rw [la]; exact Nat.mod_lt _ (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))),
       hta, htb]
     rfl
   · simp only [hc, if_false] at hm ⊢
@@ -808,7 +808,7 @@ theorem gHighTab_spec {xv : Src → FE} {V : Nat → FE} {z : Src} (hz : z.valF 
     have := congrArg List.length htb; rw [List.length_map, eqKernel_len] at this; simp [this, hb]
   rw [highTab, sumE_eq_sum]
   refine gSumMap_spec' hz (fun zz hzz m hm => ?_) n h
-  rw [gMul_spec hm, hz, add_zero, getD_vals _ (by (clear * - lb hzz; omega)), getD_vals _ (by rw [la]; exact Nat.mod_lt _ (by (clear * -; omega))),
+  rw [gMul_spec hm, hz, add_zero, getD_vals _ (by (clear * - lb hzz; omega)), getD_vals _ (by rw [la]; exact Nat.mod_lt _ (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))),
     hta, htb]
   rfl
 
@@ -827,11 +827,11 @@ theorem gShift_spec {xv : Src → FE} {V : Nat → FE} {z : Src} (hz : z.valF xv
   have lH : H.length = 8 := by simpa using congrArg List.length hH
   obtain ⟨g1, g2⟩ := (thold_bind _ _).mp h
   rw [gShift, tb_bind, gMul_spec g2, gMul_spec g1, hz, add_zero,
-    getD_vals _ (by rw [l0]; exact Nat.mod_lt _ (by (clear * -; omega))), getD_vals _ (by rw [lH]; (clear * - hr; omega)),
-    getD_vals _ (by rw [l1]; exact Nat.mod_lt _ (by (clear * -; omega))), getD_vals _ (by rw [lH]; exact Nat.mod_lt _ (by (clear * -; omega))),
+    getD_vals _ (by rw [l0]; exact Nat.mod_lt _ (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))), getD_vals _ (by rw [lH]; (clear * - hr; omega)),
+    getD_vals _ (by rw [l1]; exact Nat.mod_lt _ (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))), getD_vals _ (by rw [lH]; exact Nat.mod_lt _ (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))),
     h0, h1, hH]
-  simp [List.getD_eq_getElem?_getD, Nat.mod_lt _ (show 0 < 8 by (clear * -; omega)), show r / 8 < 8 by (clear * - hr; omega),
-    Nat.mod_lt _ (show 0 < 8 by (clear * -; omega)), shiftLH]
+  simp [List.getD_eq_getElem?_getD, Nat.mod_lt _ (show 0 < 8 by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)), show r / 8 < 8 by (clear * - hr; omega),
+    Nat.mod_lt _ (show 0 < 8 by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)), shiftLH]
 
 theorem kPi_lt : ∀ l < 25, keccakPi l < 25 := by decide
 
@@ -858,10 +858,10 @@ theorem gLaneForm_spec {xv : Src → FE} {V : Nat → FE} {z : Src} (hz : z.valF
   · congr 1
     apply List.map_congr_left
     intro y hy
-    rw [getD_vals _ (hp _ _ (Nat.mod_lt _ (by (clear * -; omega))) (List.mem_range.mp hy))]
+    rw [getD_vals _ (hp _ _ (Nat.mod_lt _ (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))) (List.mem_range.mp hy))]
   · apply List.map_congr_left
     intro y hy
-    rw [getD_vals _ (hp _ _ (Nat.mod_lt _ (by (clear * -; omega))) (List.mem_range.mp hy))]
+    rw [getD_vals _ (hp _ _ (Nat.mod_lt _ (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))) (List.mem_range.mp hy))]
 
 /-- `flip_i = flipForm B A i`, `A` given as an `eq` table of 64 sources. -/
 def gFlip (z : Src) (B A : List Src) (i : Nat) : TB Src :=
@@ -870,10 +870,10 @@ def gFlip (z : Src) (B A : List Src) (i : Nat) : TB Src :=
 theorem gFlip_spec {xv : Src → FE} {V : Nat → FE} {z : Src} (hz : z.valF xv V = 0) {B A : List Src}
     (hB : 25 ≤ B.length) (hA : A.length = 64) (i n : Nat) (h : THold xv V n (gFlip z B A i n).2) :
     (gFlip z B A i n).1.valF xv V = flipForm (vals xv V B) (fun s => (vals xv V A).getD s 0) i := by
-  rw [gFlip, gLaneForm_spec hz hB _ (by (clear * -; omega)) n h, flipForm]
+  rw [gFlip, gLaneForm_spec hz hB _ (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)) n h, flipForm]
   congr 1
   funext s
-  rw [getD_vals _ (by rw [hA]; exact Nat.mod_lt _ (by (clear * -; omega)))]
+  rw [getD_vals _ (by rw [hA]; exact Nat.mod_lt _ (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)))]
 
 /-- `F`'s next lane weights from the `eq` table `eL` of the lane challenges. -/
 def gLaneW (eL : List Src) (beta : Src) : TB (List Src) :=

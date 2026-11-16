@@ -81,9 +81,9 @@ theorem foldl_eqStep_getD : ∀ (a acc : List FE) (z : Nat), z < acc.length * 2 
     have key : z % (2 * acc.length) = z % acc.length + acc.length * (z / acc.length % 2) := by
       rw [Nat.mul_comm 2 acc.length, Nat.mod_mul]
     rcases Nat.mod_two_eq_zero_or_one (z / acc.length) with h0 | h1
-    · rw [key, h0, Nat.mul_zero, Nat.add_zero, if_pos (Nat.mod_lt _ hN), if_neg (by (clear * -; omega))]
+    · rw [key, h0, Nat.mul_zero, Nat.add_zero, if_pos (Nat.mod_lt _ hN), if_neg (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))]
       rw [sub_eq_add']; ring
-    · rw [key, h1, Nat.mul_one, if_neg (by (clear * -; omega)), if_pos rfl, Nat.add_sub_cancel]
+    · rw [key, h1, Nat.mul_one, if_neg (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)), if_pos rfl, Nat.add_sub_cancel]
       ring
 
 /-- **`eqKernel a` at `z` is `eq(a, z)`** (`eqW`, first coordinate the low bit). -/

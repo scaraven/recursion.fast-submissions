@@ -148,7 +148,7 @@ theorem walkC_append : ∀ (u : ℕ) (l₁ l₂ : List (QClass × ℕ)),
   | _, [], _ => by simp [lanesOf, walkC]
   | u, q :: r, l₂ => by
     simp only [List.cons_append, walkC, walkC_append _ r l₂, lanesOf, List.map_cons, List.sum_cons]
-    congr 3; omega
+    congr 3; (clear * - u q r; omega)
 
 theorem walkC_rep64 : ∀ (w path : ℕ),
     walkC w (List.replicate path (.node, 64)) = (List.range path).map fun h => (w + 13 * h, (.node, 64))
@@ -157,7 +157,7 @@ theorem walkC_rep64 : ∀ (w path : ℕ),
     rw [List.replicate_succ, walkC, walkC_rep64 _ path, List.range_succ_eq_map]
     simp only [List.map_cons, List.map_map, Function.comp_def, Nat.mul_zero, Nat.add_zero]
     congr 1
-    exact List.map_congr_left fun h _ => by simp only [Prod.mk.injEq, and_true]; omega
+    exact List.map_congr_left fun h _ => by simp only [Prod.mk.injEq, and_true]; (clear * - w h; omega)
 
 theorem walkC_reps (row path : ℕ) : ∀ (u t : ℕ),
     walkC u (List.replicate t ((.leaf, row) :: List.replicate path (.node, 64))).flatten =
@@ -188,16 +188,16 @@ theorem segOut_blkPSegC (W : ℕ → Word) (κ : Bool) (b u : ℕ) (blk : Blk) (
     generalize opS row path * j = A
     simp only [pieceWC, wsAt]
     congr 1
-    · exact List.map_congr_left fun k _ => by congr 1; omega
+    · exact List.map_congr_left fun k _ => by congr 1; (clear * - b A u k; omega)
     · refine List.flatMap_congr fun h _ => ?_
       rw [sibWs]
       simp only [wsAt]
       have e1 : ∀ k, b + A + 13 * h + (u + 5 + row / 8) + 1 + k = b + u + A + 5 + row / 8 + 13 * h + 1 + k :=
-        fun k => by omega
+        fun k => by (clear * - b A h u row k; omega)
       have e2 : ∀ k, b + A + 13 * h + (u + 5 + row / 8) - 4 + k = b + u + A + 5 + row / 8 + 13 * h - 4 + k :=
-        fun k => by omega
+        fun k => by (clear * - b A h u row k; omega)
       have e3 : ∀ k, b + A + 13 * h + (u + 5 + row / 8) + 5 + k = b + u + A + 5 + row / 8 + 13 * h + 5 + k :=
-        fun k => by omega
+        fun k => by (clear * - b A h u row k; omega)
       simp only [e1, e2, e3]
       exact if_congr Iff.rfl rfl rfl
 
@@ -422,7 +422,7 @@ theorem pieceC_entAt (W : ℕ → Word) {u : ℕ} {q : QClass × ℕ} (hq : QryO
   | q0 => rfl
   | seed | fs =>
     simp only [pieceC, pieceWC, hb, hd]
-    congr 3; omega
+    congr 3; (clear * - len h8; omega)
   | leaf => rfl
   | node =>
     obtain rfl := h64 rfl
@@ -442,9 +442,9 @@ theorem piecesC_walk (W : ℕ → Word) : ∀ (l : List (QClass × ℕ)) (u : �
     rw [pieceC_qcN, pieceC_entAt W (hq q List.mem_cons_self)]
     congr 1
     have e : (entAt W u q.2).2 = digW (wsAt W (u + 5 + q.2 / 8 - 4) 4) := by
-      rw [entAt, show u + 5 + q.2 / 8 - 4 = u + 1 + q.2 / 8 by omega]
+      rw [entAt, show u + 5 + q.2 / 8 - 4 = u + 1 + q.2 / 8 by (clear * - u q hu; omega)]
     rw [e]
-    exact piecesC_walk W r _ (by omega) fun y hy => hq y (List.mem_cons_of_mem _ hy)
+    exact piecesC_walk W r _ (by (clear * - u q hu; omega)) fun y hy => hq y (List.mem_cons_of_mem _ hy)
 
 theorem length_planS (st : XStage) (hP : (planItems st.p w0 st.items).2.ok = true) (W : ℕ → Word) :
     (planS st).length = (readTraceLS st W).length := by
@@ -491,15 +491,15 @@ theorem lanesOf_flatMapB : ∀ bs : List Blk, lanesOf (bs.flatMap lensB) = (bs.m
 theorem readTraceLS_congr (st : XStage) {W W' : ℕ → Word}
     (h : ∀ v < 6 + ((blocksS st).map Blk.lanes).sum, W v = W' v) : readTraceLS st W = readTraceLS st W' := by
   have hT : lanesOf (lensLS st) = ((blocksS st).map Blk.lanes).sum := lanesOf_flatMapB _
-  have h6 : ∀ v < 6, W v = W' v := fun v hv => h v (by omega)
+  have h6 : ∀ v < 6, W v = W' v := fun v hv => h v (by (clear * - v st hT hv; omega))
   have hq : q0Ent W = q0Ent W' := by
-    have e : wsAt W 2 4 = wsAt W' 2 4 := List.map_congr_left fun j hj => h6 _ (by simp at hj; omega)
+    have e : wsAt W 2 4 = wsAt W' 2 4 := List.map_congr_left fun j hj => h6 _ (by simp at hj; (clear * - j st hj; omega))
     simp only [q0Ent, e, h6 1 (by norm_num)]
   unfold readTraceLS
   rw [hq]
   refine congrArg _ (List.map_congr_left fun x hx => entAt_congr fun v hv => h v ?_)
   have := walk_lt 6 (lensLS st) x hx
-  omega
+  (clear * - v st hT x hv this; omega)
 
 /-! ## The segments' static facts -/
 
@@ -511,7 +511,7 @@ theorem okSeg_blkPSegS (u : ℕ) (b : Blk) : okSeg (blkPSeg u b) = okSeg (blkPSe
   | one c len => cases c <;> simp [blkPSeg, okSeg]
   | opn t row path =>
     simp only [blkPSeg, okSeg]
-    rw [decide_eq_true (by omega : 4 ≤ u + 5 + row / 8), decide_eq_true (by omega : 4 ≤ 5 + row / 8)]
+    rw [decide_eq_true (by (clear * - u row; omega) : 4 ≤ u + 5 + row / 8), decide_eq_true (by (clear * - row; omega) : 4 ≤ 5 + row / 8)]
 
 theorem okSeg_blkTSegsS : ∀ (u : ℕ) (bs : List Blk), okSeg (blkTSegs u bs) = bs.all fun b => okSeg (blkTSeg 0 b)
   | _, [] => rfl

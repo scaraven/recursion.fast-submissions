@@ -234,14 +234,14 @@ theorem chainG_spec {xb : Nat} {z o : Cell} {zl : List Cell} (hz : z.val M = 0) 
         (fun r => MemoOk M (fun i => M.e (xb + i)) r.1 ∧ r.2.val M = cv M (fun i => M.e (xb + i)) zl n)
   | 0, memo, _, hm => hs_pure ⟨hm, by simp [cv, ho]⟩
   | n + 1, memo, hn, hm => by
-    have hlen : (zl.take (n + 1)).length = n + 1 := by simp; omega
+    have hlen : (zl.take (n + 1)).length = n + 1 := by simp; (clear * - n zl hn; omega)
     rw [chainG]
     split
     · next e he =>
       refine hs_pure ⟨hm, ?_⟩
       have he1 : e.1 = zl.take (n + 1) := by simpa using List.find?_some he
       rw [hm e (List.mem_of_find?_eq_some he), he1, hlen, cv_take _ _ le_rfl]
-    · refine hs_bind (chainG_spec hz ho n memo (by omega) hm) fun r ⟨hm', hv⟩ =>
+    · refine hs_bind (chainG_spec hz ho n memo (by (clear * - n zl hn hlen; omega)) hm) fun r ⟨hm', hv⟩ =>
         hs_bind (hs_lin _ _ _ _ _) fun f hf => hs_bind (hs_mulAdd _ _ _ _) fun c' hc' => hs_pure ⟨?_, ?_⟩
       · have hval : c'.val M = cv M (fun i => M.e (xb + i)) zl (n + 1) := by
           rw [hc', hf, hv, hz, cv, cv, Finset.prod_range_succ, ofK_one]
@@ -300,14 +300,14 @@ theorem targetGo_spec {sp N : Nat} {s : FE} (hs : ∀ i < N, M.e (sp + i) = s ^ 
     simp only [List.length_cons] at hN
     show Hs c M (mulAdd .E (ec (sp + i)) cc.value acc >>= fun a => targetGo sp (i + 1) cl a) _
     refine hs_bind (hs_mulAdd _ _ _ _) fun a ha =>
-      hs_mono (targetGo_spec hs cl (i + 1) a (by omega)) fun r hr => ?_
-    rw [hr, ha, List.map_cons, bsum, Cell.val_E, hs i (by omega)]
+      hs_mono (targetGo_spec hs cl (i + 1) a (by (clear * - i cl N hN; omega))) fun r hr => ?_
+    rw [hr, ha, List.map_cons, bsum, Cell.val_E, hs i (by (clear * - i N cl hN; omega))]
     ring
 
 theorem targetG_spec {cl : List CClaim} {sp : Nat} {z : Cell} {p : Ptr} (h : SegsHold c M p (targetG cl sp z p).2)
     (hz : z.val M = 0) (s : FE) (hs : ∀ i < cl.length, M.e (sp + i) = s ^ i) :
     (targetG cl sp z p).1.val M = Lvm.dot (powers s cl.length) (cl.map fun cc => (cc.val M).2.value) := by
-  have e := targetGo_spec (c := c) hs cl 0 z (by omega) p h
+  have e := targetGo_spec (c := c) hs cl 0 z (by (clear * - cl; omega)) p h
   rw [show (targetG cl sp z p).1 = (targetGo sp 0 cl z p).1 from rfl, e, hz, zero_add]
   have hl : cl.length = (cl.map fun cc => (cc.val M).2.value).length := by simp
   rw [hl, dot_powers_bsum]
@@ -358,7 +358,7 @@ theorem copyN_adv : ∀ (cs : List Cell) (p : Ptr), p.adv (copyN cs p).2 = ⟨p.
     simp only [copyN]
     rw [bind_adv_eq rfl (linE_adv _ _ _ _ _), copyN_adv cs, List.length_cons]
     simp only [Ptr.mk.injEq, true_and]
-    omega
+    (clear * - p cs; omega)
 
 theorem copyN_spec : ∀ (cs : List Cell) (p : Ptr), SegsHold c M p (copyN cs p).2 →
     ∀ k < cs.length, M.e (p.e + k) = (cs.getD k default).val M
@@ -434,11 +434,11 @@ theorem ringWeightC_spec {bs : List Nat} {cs : List Cell} {r0 rp0 z : Nat} {R R'
   have hC := copyN_spec cs _ hc
   simp only [hcs] at hC
   have hP := pChunks_spec hz bs _ 0 ⟨p.k, p.e + 66 * sz bs + 64⟩
-    (fun k => (cs.getD k default).val M) (by show 64 ≤ p.e + 66 * sz bs + 64; (clear * -; omega))
+    (fun k => (cs.getD k default).val M) (by show 64 ≤ p.e + 66 * sz bs + 64; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - p bs; omega)))
     (fun k hk => by
       rw [← hC k hk]
       show M.e (p.e + 66 * sz bs + 64 - 64 + k) = M.e (p.e + 66 * sz bs + k)
-      rw [show p.e + 66 * sz bs + 64 - 64 + k = p.e + 66 * sz bs + k by (clear * -; omega)]) hF hp
+      rw [show p.e + 66 * sz bs + 64 - 64 + k = p.e + 66 * sz bs + k by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - p bs k; omega))]) hF hp
   simp only [Nat.zero_add] at hP
   have h0 := (copyE_spec hq).2
   simp only [ec, Ptr.at, hcs] at h0 hH
@@ -458,7 +458,7 @@ theorem ringWeightC_spec {bs : List Nat} {cs : List Cell} {r0 rp0 z : Nat} {R R'
         Nat.add_zero, ofK_zero, ofK_one, one_mul, Nat.one_mul, add_zero] at e
       rw [e, Finset.sum_range_succ, ← ih (by (clear * - hk; omega)), ← hP (k + 1) hk, add_comm]
       congr 2
-      (clear * -; omega)
+      (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)
   rw [show p.e + 130 * sz bs + 128 = p.e + 66 * sz bs + 64 + 64 * sz bs + 1 + 63 by ring,
     hacc 63 (by norm_num)]
 
@@ -572,8 +572,8 @@ theorem kprod_keyOf (X : Nat → FE) (bit : Nat → Bool) (k : Nat) :
   | n + 1 => by
     simp only [keyOf]
     split_ifs with h
-    · rw [Finset.Ico_eq_empty_of_le (by omega), Finset.prod_empty]; rfl
-    · rw [kprod, kprod_keyOf X bit k n, Finset.prod_Ico_succ_top (by omega)]
+    · rw [Finset.Ico_eq_empty_of_le (by (clear * - n k h; omega)), Finset.prod_empty]; rfl
+    · rw [kprod, kprod_keyOf X bit k n, Finset.prod_Ico_succ_top (by (clear * - k n h; omega))]
       ring
 
 /-! ## The algebra -/
@@ -854,7 +854,7 @@ theorem basisG_spec {ν : Nat} {cl : List CClaim} {sp xb : Nat} {z o g : Cell} {
     (basisG ν cl sp xb z o g p).1.val M =
       Lvm.dot (powers s cl.length) (cl.map fun cc => (cc.val M).2.onStack.1 ((List.range ν).map fun i => M.e (xb + i))) := by
   have key := hs_bind (claimTerms_spec (c := c) (ν := ν) (xb := xb) hz ho hzE hs cl 0 [] hwf
-    (fun _ he => by simp at he) (by (clear * -; omega))) fun r ⟨_, hv⟩ =>
+    (fun _ he => by simp at he) (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - cl; omega)))) fun r ⟨_, hv⟩ =>
       hs_mono (trieG_spec (c := c) (xb := xb) hz ν r.2) fun w hw => hw.trans hv
   have e := key p h
   rw [show (basisG ν cl sp xb z o g p).1 = ((claimTerms ν xb z o sp 0 cl [] >>= fun r => trieG xb z ν r.2) p).1

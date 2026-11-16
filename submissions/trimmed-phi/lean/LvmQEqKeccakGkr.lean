@@ -101,7 +101,7 @@ theorem outer_rowsE (segments w : List FE) (first count : ℕ) (hfc : first + co
     refine ⟨⟨by simp, fun o ho ↦ ?_⟩, fun o z ↦ ?_⟩
     · simp [Array.getD_eq_getD_getElem?, ho]
     · simp only [List.range_zero, List.foldl_nil, rowsFE, slotWE]
-      rw [ite_eq_right (by (clear * -; omega))]
+      rw [ite_eq_right (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))]
       simp only [Array.getD_eq_getD_getElem?, Array.getElem?_replicate]
       by_cases h : o < 64
       · by_cases h' : z < 64 <;> simp [h, h']
@@ -220,7 +220,7 @@ theorem foldAll_eqE : ∀ (pt : List FE) (rows : List (List FE)), rows.length = 
         List.zipWith (fun lo hi ↦ lo + c * (lo + hi)) (rows.getD (2 * i) [])
           (rows.getD (2 * i + 1) [])) := rfl
     have hl' : rows.length / 2 = 2 ^ pt.length := by
-      rw [hl, List.length_cons, pow_succ]; (clear * -; omega)
+      rw [hl, List.length_cons, pow_succ]; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)
     have hrow : ∀ i < rows.length / 2, ((List.range (rows.length / 2)).map fun i ↦
         List.zipWith (fun lo hi ↦ lo + c * (lo + hi)) (rows.getD (2 * i) [])
           (rows.getD (2 * i + 1) [])).getD i [] =
@@ -242,7 +242,7 @@ theorem foldAll_eqE : ∀ (pt : List FE) (rows : List (List FE)), rows.length = 
     rw [hrow i (by (clear * - hl' hi'; omega)), zipWith_getDE _ _ _ (by rw [hr _ (by (clear * - hl hl' hi'; omega))]; exact hz)
       (by rw [hr _ (by (clear * - hl hl' hi'; omega))]; exact hz), eqAt_cons c pt (by rw [pow_succ]; (clear * - hi'; omega)),
       eqAt_cons c pt (by rw [pow_succ]; (clear * - hi'; omega))]
-    have e1 : 2 * i % 2 = 0 := by (clear * -; omega)
+    have e1 : 2 * i % 2 = 0 := by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)
     have e2 : (2 * i + 1) % 2 = 1 := by (clear * - e1; omega)
     have e3 : 2 * i / 2 = i := by (clear * - e1; omega)
     have e4 : (2 * i + 1) / 2 = i := by (clear * - e1 e2; omega)
@@ -291,7 +291,7 @@ theorem open_committed (logSteps : ℕ) (claim : KeccakClaim) {slot : List FE} (
       rw [slotWE, if_neg (by have := Finset.mem_range.mp ho; (clear * - this; omega)), mul_zero]
   have h2 : ∑ k ∈ range 14, eqAt slot (25 + (25 + k)) *
       slotWE (eqKernel (claim.point.drop (logSteps - 4))) claim.weights 1 1 (25 + (25 + k)) 0 = 0 :=
-    Finset.sum_eq_zero fun k _ => by rw [slotWE, if_neg (by (clear * -; omega)), mul_zero]
+    Finset.sum_eq_zero fun k _ => by rw [slotWE, if_neg (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)), mul_zero]
   rw [h0, h2, zero_add, add_zero]
   refine Finset.sum_congr rfl fun l hl => ?_
   have hl' := Finset.mem_range.mp hl
@@ -326,7 +326,7 @@ theorem open_input (logSteps : ℕ) (claim : KeccakClaim) {slot slices : List FE
       slotWE (eqKernel (claim.point.drop (logSteps - 4))) claim.weights 0 2 (2 * 25 + k) z *
         slices.getD z 0 = 0 :=
     Finset.sum_eq_zero fun k _ => Finset.sum_eq_zero fun z _ => by
-      rw [slotWE, if_neg (by (clear * -; omega)), mul_zero, zero_mul]
+      rw [slotWE, if_neg (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)), mul_zero, zero_mul]
   rw [h2, add_zero, sum_range_mul', sumE_range]
   refine Finset.sum_congr rfl fun s hs' => ?_
   rw [sumE_range]
@@ -881,7 +881,7 @@ theorem layer_coreI {c : LCfg} {xv : Src → FE} {V : Nat → FE} {TA : Prop} {L
   obtain ⟨βF, hβF⟩ : ∃ x, v (p3 + 40 + 24 * 3) = x := ⟨_, rfl⟩
   have hpkEnd : pkF.2.2.2 = p + 1200 + 120 * (c.P + 1) := by
     rw [← hpkF, packSpec_pos, hCptL, hPB]
-  have hp3' : p3 = p + 2784 + 120 * (c.P + 1) := by rw [← hp3, hpkEnd, hLB, hRL]; (clear * -; omega)
+  have hp3' : p3 = p + 2784 + 120 * (c.P + 1) := by rw [← hp3, hpkEnd, hLB, hRL]; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)
   have hscL : scF.1.length = 11 := by rw [← hscF, scSpec_length, List.length_replicate]; rfl
   rw [layerSpec_claim v (c.P + 4) io C p hsF hpkF hscF hp3 htF hβF,
     layerSpec_ok1 v (c.P + 4) io C p hsF hpkF hscF hp3 htF hβF,
@@ -986,7 +986,7 @@ theorem layer_coreI {c : LCfg} {xv : Src → FE} {V : Nat → FE} {TA : Prop} {L
   have hptS : ((List.range (c.P + 1)).map fun i => c.pv (18 + i)).map (Src.valF xv V) = C.point := by
     rw [List.map_map]; exact hRpt
   have hpk := gPackRounds_spec hz hv _ (c.q + 150) (p + 72 + 24 * productBits)
-    (by simp only [List.length_map, List.length_range]; rw [hstr]; (clear * -; omega)) (by rw [hPB]; (clear * - hp; omega)) v0 one _ h15
+    (by simp only [List.length_map, List.length_range]; rw [hstr]; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)) (by rw [hPB]; (clear * - hp; omega)) v0 one _ h15
   rw [epk, hptS, hv0, hone, hpkF] at hpk
   obtain ⟨hpk1, hpk2, hpk3⟩ := hpk
   have hpkL : pk.2.2.length = c.P + 1 := by
@@ -995,7 +995,7 @@ theorem layer_coreI {c : LCfg} {xv : Src → FE} {V : Nat → FE} {TA : Prop} {L
     exact this
   obtain ⟨lc, n16, elc, h16, h0⟩ := peelN h0 (noA_gLocalRounds _ _ _ _)
   have hlc := gLocalRounds_spec hv 11 (c.q + 150 + 15 * (c.P + 1)) pkF.2.2.2
-    (by rw [hstr]; (clear * -; omega)) (by rw [hpkEnd]; (clear * - hp; omega)) pk.1 _ h16
+    (by rw [hstr]; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)) (by rw [hpkEnd]; (clear * - hp; omega)) pk.1 _ h16
   rw [elc, hpk1, show List.replicate 11 (none : Option FE) = List.replicate localBits none from rfl, hscF] at hlc
   obtain ⟨hlc1, hlc2⟩ := hlc
   have hlcL : lc.2.length = 11 := by
@@ -1014,7 +1014,7 @@ theorem layer_coreI {c : LCfg} {xv : Src → FE} {V : Nat → FE} {TA : Prop} {L
     rw [getD_valF _ (by (clear * - htL hk; omega)), ht]
   obtain ⟨beta, n18, ebeta, h18, h0⟩ := peelN h0 (noA_gLoad _ _)
   have hbeta : beta.valF xv V = βF := by
-    rw [← ebeta, gLoad_lv h18, hv _ (by rw [hstr]; (clear * -; omega)), ← hβF]; exact congrArg v (by rw [hp3']; (clear * - hp; omega))
+    rw [← ebeta, gLoad_lv h18, hv _ (by rw [hstr]; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)), ← hβF]; exact congrArg v (by rw [hp3']; (clear * - hp; omega))
   -- the `eq` tables
   obtain ⟨tbLo, n19, etbLo, h19, h0⟩ := peelN h0 (noA_gEqTab _ _ _)
   obtain ⟨tbHi, n20, etbHi, h20, h0⟩ := peelN h0 (noA_gEqTab _ _ _)
@@ -1171,11 +1171,11 @@ theorem layer_coreI {c : LCfg} {xv : Src → FE} {V : Nat → FE} {TA : Prop} {L
   have hrA : repA c.P (fun j => V (c.cb + j)) = scF.1.take 6 := by
     rw [← hlc2, ← List.map_take, ← cp_range cA (k := 6) (by simp [hlcL])]
     unfold repA
-    exact List.map_congr_left fun i _ => congrArg V (by (clear * -; omega))
+    exact List.map_congr_left fun i _ => congrArg V (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))
   have hrB : repB c.P (fun j => V (c.cb + j)) = B'.map (Src.valF xv V) := by
     rw [← cp_range cB hB'L]
     unfold repB
-    exact List.map_congr_left fun i _ => congrArg V (by (clear * -; omega))
+    exact List.map_congr_left fun i _ => congrArg V (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))
   refine ⟨⟨?_, ?_, ?_, ?_, ?_, ?_⟩, ?_, ?_, ?_⟩
   · -- value
     show V (c.cb + 0) = tF.getD 0 0 + βF * (tF.getD 1 0 + βF * tF.getD 2 0)
@@ -1185,17 +1185,17 @@ theorem layer_coreI {c : LCfg} {xv : Src → FE} {V : Nat → FE} {TA : Prop} {L
   · -- μ
     show (List.range 16).map (fun i => V (c.cb + (1 + i))) = keccakInstanceWeights sF
     rw [← hmu', ← cp_range cM hmkL]
-    exact List.map_congr_left fun i _ => congrArg V (by (clear * -; omega))
+    exact List.map_congr_left fun i _ => congrArg V (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))
   · -- κ
     show V (c.cb + 17) = sumE (keccakInstanceWeights sF)
     have := cp_get cK 0 (by simp)
-    rw [show c.cb + 17 = c.cb + (1 + 16) + 0 by (clear * -; omega), this]
+    rw [show c.cb + 17 = c.cb + (1 + 16) + 0 by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega), this]
     simp only [List.map_cons, List.map_nil, List.getD_cons_zero]
     exact hkap
   · -- the point
     show (List.range (c.P + 1)).map (fun i => V (c.cb + (18 + i))) = pkF.2.2.1
     rw [← hpk3, ← cp_range cPt hpkL]
-    exact List.map_congr_left fun i _ => congrArg V (by (clear * -; omega))
+    exact List.map_congr_left fun i _ => congrArg V (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))
   · -- the weights
     show keccakLinearTranspose ((List.range keccakBits).map fun j =>
         (eqKernelA (scF.1.take 6)).getD (j % 64) 0 * (laneWF scF.1 βF).getD (j / 64) 0) =
@@ -1210,10 +1210,10 @@ theorem layer_coreI {c : LCfg} {xv : Src → FE} {V : Nat → FE} {TA : Prop} {L
     simp only [Bool.false_eq_true, ite_false]
     rw [hrA, hrB]
     have := cp_get cfl i (by rw [hflL]; exact hi)
-    rw [show c.cb + (50 + c.P + i) = c.cb + (1 + 16 + 1 + (c.P + 1) + 25 + min 6 11) + i by (clear * -; omega), this, hfl,
+    rw [show c.cb + (50 + c.P + i) = c.cb + (1 + 16 + 1 + (c.P + 1) + 25 + min 6 11) + i by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega), this, hfl,
       List.getD_eq_getElem _ _ (by simpa using hi), List.getElem_map, List.getElem_range]
   · -- the position
-    rw [hp3', hstr]; (clear * -; omega)
+    rw [hp3', hstr]; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)
   · intro hta hg
     obtain ⟨⟨-, q1⟩, q2⟩ := hTA.mp hta
     rw [show (c.k 15).valF xv V = xv (c.k 15) from rfl, hg, one_mul] at q1 q2

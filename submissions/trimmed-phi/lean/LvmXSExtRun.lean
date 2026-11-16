@@ -402,12 +402,12 @@ def replayOkR (st : XStage) (pre rest : List Item) : Bool :=
 
 theorem getD_msgs (x : ℕ × ℕ) (F R : List (ℕ × ℕ)) (k : ℕ) :
     (x :: (F ++ R)).getD (F.length + 1 + k) (0, 0) = R.getD k (0, 0) := by
-  rw [List.getD_eq_getElem?_getD, show F.length + 1 + k = F.length + k + 1 by omega, List.getElem?_cons_succ,
+  rw [List.getD_eq_getElem?_getD, show F.length + 1 + k = F.length + k + 1 by (clear * - F k; omega), List.getElem?_cons_succ,
     List.getElem?_append_right (Nat.le_add_right _ _), Nat.add_sub_cancel_left, ← List.getD_eq_getElem?_getD]
 
 theorem drop_msgs (x : ℕ × ℕ) (F R : List (ℕ × ℕ)) (k : ℕ) :
     (x :: (F ++ R)).drop (F.length + 1 + k) = R.drop k := by
-  rw [show F.length + 1 + k = F.length + k + 1 by omega, List.drop_succ_cons, List.drop_append,
+  rw [show F.length + 1 + k = F.length + k + 1 by (clear * - F k; omega), List.drop_succ_cons, List.drop_append,
     List.drop_eq_nil_of_le (Nat.le_add_right _ _), List.nil_append, Nat.add_sub_cancel_left]
 
 /-- `replayOkG` at the stage's own `A1` values gives `ReplayOK`, the chain's messages being `F ++ R` after the seed
@@ -418,7 +418,7 @@ theorem replayOK_ofG {st : XStage} (F R : List (ℕ × ℕ)) (rs : RSItemsF (mid
     (h : replayOkG st ((readWidthsS st).drop (nr1 st)) (offA1 st) (pendA1 st) F.length R = true) :
     ReplayOK st := by
   have hfp : ∀ i j, foldPosS st i j = F.length + 1 + (2 + lvOffS st i + j) := fun i j => by
-    rw [show foldPosS st i j = nPreS st + 3 + lvOffS st i + j from rfl, hnP]; omega
+    rw [show foldPosS st i j = nPreS st + 3 + lvOffS st i + j from rfl, hnP]; (clear * - F st i j; omega)
   have hc : ∀ i, (fsMsgsS st).getD (foldPosS st i ((mainLS st i).fold - 1)) (0, 0) =
       R.getD (2 + lvOffS st i + ((mainLS st i).fold - 1)) (0, 0) := fun i => by
     rw [hfp, hmsg, getD_msgs]
@@ -431,15 +431,15 @@ theorem replayOK_ofG {st : XStage} (F R : List (ℕ × ℕ)) (rs : RSItemsF (mid
   simp only [replayOkG, Bool.and_eq_true, beq_iff_eq, decide_eq_true_eq, List.drop_drop] at h
   obtain ⟨oA1, fA2, oA2, fB1, oB1, fA3, oA3, fB2, oB2, r24, l0, l1, l2, l3, a0, a1, a2, ar, hl, h8, oc,
     s0, s1, s2, sr⟩ := h
-  refine ⟨rs, fA1, by rw [hc1]; exact oA1, by rw [hd 7 _ (by omega)]; exact fA2, oA2,
-    by rw [hd 42 _ (by omega)]; exact fB1, by rw [hc2]; exact oB1, by rw [hd 46 _ (by omega)]; exact fA3, oA3,
-    by rw [hd 72 _ (by omega)]; exact fB2, by rw [hcr]; exact oB2, r24, ?_, ?_, ?_, ?_, a0, by rw [hc1]; exact a1,
+  refine ⟨rs, fA1, by rw [hc1]; exact oA1, by rw [hd 7 _ (by (clear * - st F R; omega))]; exact fA2, oA2,
+    by rw [hd 42 _ (by (clear * - st F R; omega))]; exact fB1, by rw [hc2]; exact oB1, by rw [hd 46 _ (by (clear * - st F R; omega))]; exact fA3, oA3,
+    by rw [hd 72 _ (by (clear * - st F R; omega))]; exact fB2, by rw [hcr]; exact oB2, r24, ?_, ?_, ?_, ?_, a0, by rw [hc1]; exact a1,
     by rw [hc2]; exact a2, by rw [hcr]; exact ar, hl, h8, oc, s0, by rw [hc1]; exact s1, by rw [hc2]; exact s2,
     by rw [hcr]; exact sr⟩
-  · have := hfp 0 0; omega
-  · have := hfp 1 0; omega
-  · have := hfp 2 0; omega
-  · have := hfp 2 ((mainLS st 2).fold - 1); rw [nChainS]; omega
+  · have := hfp 0 0; (clear * - st F R hnM hnP l0 this; omega)
+  · have := hfp 1 0; (clear * - st F R hnM hnP l1 this; omega)
+  · have := hfp 2 0; (clear * - st F R hnM hnP l2 this; omega)
+  · have := hfp 2 ((mainLS st 2).fold - 1); rw [nChainS]; (clear * - st F R hnM hnP l2 l3 this; omega)
 
 /-- **The run-length checker gives the replay's facts** (every stage, at any split of its items with `pre` of
 length `st.nOpen`). -/

@@ -77,8 +77,8 @@ theorem entry_bytes {B : List UInt8} {o len : Nat} (hl : o + 40 + len ≤ B.leng
     simp only
     rw [List.getElem_take, List.getElem_drop, List.getElem_drop, List.getD_eq_getElem?_getD,
       List.getElem?_eq_getElem (by (clear * - hl hq h₁; omega)), Option.getD_some]
-    congr 1; (clear * -; omega)
-  rw [hq, show 40 + len = 8 + (len + 32) by (clear * -; omega), List.take_add, List.take_add, hw, h1, h2, List.drop_drop,
+    congr 1; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)
+  rw [hq, show 40 + len = 8 + (len + 32) by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega), List.take_add, List.take_add, hw, h1, h2, List.drop_drop,
     List.drop_drop]
   simp only [List.append_assoc, List.drop_drop, Nat.add_assoc]
 
@@ -104,7 +104,7 @@ theorem readEntries_getD (B : List UInt8) : ∀ (ls : List Nat) (o i : Nat), i <
     simp only [readEntries, List.getD_cons_succ, List.take_succ_cons]
     rw [readEntries_getD B ls _ i (by simpa using h)]
     congr 1
-    simp [slenS]; (clear * -; omega)
+    simp [slenS]; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)
 
 /-! ## The trace a stream of lanes encodes -/
 
@@ -189,7 +189,7 @@ open RecursionFast Lvm Lvm.Replay
 /-! ## Words and bytes -/
 
 theorem or_shift_add {acc b k : Nat} (hacc : acc < 2 ^ k) : acc ||| b <<< k = acc + b <<< k := by
-  rw [Nat.or_comm, ← Nat.shiftLeft_add_eq_or_of_lt hacc]; (clear * -; omega)
+  rw [Nat.or_comm, ← Nat.shiftLeft_add_eq_or_of_lt hacc]; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)
 
 theorem or8 (x0 x1 x2 x3 x4 x5 x6 x7 : Nat) (h0 : x0 < 256) (h1 : x1 < 256) (h2 : x2 < 256)
     (h3 : x3 < 256) (h4 : x4 < 256) (h5 : x5 < 256) (h6 : x6 < 256) (_h7 : x7 < 256) :
@@ -197,13 +197,13 @@ theorem or8 (x0 x1 x2 x3 x4 x5 x6 x7 : Nat) (h0 : x0 < 256) (h1 : x1 < 256) (h2 
       x5 * 2 ^ (8 * 5) ||| x6 * 2 ^ (8 * 6) ||| x7 * 2 ^ (8 * 7)) =
     x0 + 256 * (x1 + 256 * (x2 + 256 * (x3 + 256 * (x4 + 256 * (x5 + 256 * (x6 + 256 * (x7 + 256 * 0))))))) := by
   simp only [← Nat.shiftLeft_eq]
-  rw [or_shift_add (k := 8 * 1) (by simp; omega), or_shift_add (k := 8 * 2) (by simp [Nat.shiftLeft_eq]; (clear * - h0 h1; omega)),
+  rw [or_shift_add (k := 8 * 1) (by simp; (clear * - h0; omega)), or_shift_add (k := 8 * 2) (by simp [Nat.shiftLeft_eq]; (clear * - h0 h1; omega)),
     or_shift_add (k := 8 * 3) (by simp [Nat.shiftLeft_eq]; (clear * - h0 h1 h2; omega)),
     or_shift_add (k := 8 * 4) (by simp [Nat.shiftLeft_eq]; (clear * - h0 h1 h2 h3; omega)),
     or_shift_add (k := 8 * 5) (by simp [Nat.shiftLeft_eq]; (clear * - h0 h1 h2 h3 h4; omega)),
     or_shift_add (k := 8 * 6) (by simp [Nat.shiftLeft_eq]; (clear * - h0 h1 h2 h3 h4 h5; omega)),
     or_shift_add (k := 8 * 7) (by simp [Nat.shiftLeft_eq]; (clear * - h0 h1 h2 h3 h4 h5 h6; omega))]
-  simp [Nat.shiftLeft_eq]; (clear * -; omega)
+  simp [Nat.shiftLeft_eq]; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)
 
 theorem toNat_byte_shift (x : UInt8) (i : Nat) (hi : i < 8) :
     (x.toUInt64 <<< (8 * i).toUInt64).toNat = x.toNat * 2 ^ (8 * i) := by
@@ -215,15 +215,15 @@ theorem toNat_byte_shift (x : UInt8) (i : Nat) (hi : i < 8) :
   rw [h1, Nat.shiftLeft_eq, Nat.mod_eq_of_lt]
   calc x.toNat * 2 ^ (8 * i) < 256 * 2 ^ (8 * i) := Nat.mul_lt_mul_of_pos_right hx (Nat.two_pow_pos _)
     _ ≤ 2 ^ 64 := by
-        rw [show (256 : Nat) = 2 ^ 8 by rfl, ← Nat.pow_add]; exact Nat.pow_le_pow_right (by (clear * -; omega)) (by (clear * - hi; omega))
+        rw [show (256 : Nat) = 2 ^ 8 by rfl, ← Nat.pow_add]; exact Nat.pow_le_pow_right (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)) (by (clear * - hi; omega))
 
 /-- **The driver's word reader** is the little-endian number of the eight bytes. -/
 theorem u64At_eq (b : ByteArray) (o : Nat) :
     u64At b o = ofLE ((List.range 8).map fun i => b.get! (o + i)) := by
   simp only [u64At, UInt64.toNat_or]
-  rw [toNat_byte_shift _ 0 (by omega), toNat_byte_shift _ 1 (by omega), toNat_byte_shift _ 2 (by omega),
-    toNat_byte_shift _ 3 (by omega), toNat_byte_shift _ 4 (by omega), toNat_byte_shift _ 5 (by omega),
-    toNat_byte_shift _ 6 (by omega), toNat_byte_shift _ 7 (by omega)]
+  rw [toNat_byte_shift _ 0 (by (clear * -; omega)), toNat_byte_shift _ 1 (by (clear * -; omega)), toNat_byte_shift _ 2 (by (clear * -; omega)),
+    toNat_byte_shift _ 3 (by (clear * -; omega)), toNat_byte_shift _ 4 (by (clear * -; omega)), toNat_byte_shift _ 5 (by (clear * -; omega)),
+    toNat_byte_shift _ 6 (by (clear * -; omega)), toNat_byte_shift _ 7 (by (clear * -; omega))]
   rw [or8 _ _ _ _ _ _ _ _ (UInt8.toNat_lt _) (UInt8.toNat_lt _) (UInt8.toNat_lt _) (UInt8.toNat_lt _)
     (UInt8.toNat_lt _) (UInt8.toNat_lt _) (UInt8.toNat_lt _) (UInt8.toNat_lt _)]
   simp [List.range_succ, ofLE, Nat.add_zero]
@@ -354,7 +354,7 @@ theorem bOff_succ (p : Params) {i : Nat} (hi : i < (plan p).length) :
   simp only [Option.toList_some, List.map_append, List.sum_append, List.map_cons, List.map_nil,
     List.sum_cons, List.sum_nil, Nat.add_zero]
   rw [← lens_getD, List.getD_eq_getElem?_getD, List.getElem?_eq_getElem (by rw [lens_length]; exact hi)]
-  simp; omega
+  simp; (clear * - i p hi; omega)
 
 theorem plan_zero (p : Params) : (plan p).getD 0 default = ⟨.q0, 7⟩ := rfl
 
@@ -363,15 +363,15 @@ theorem plan_one (p : Params) : (plan p).getD 1 default = ⟨.fs 0, seedLenP p�
 theorem plan_length_ge (p : Params) : 2 ≤ (plan p).length := by simp [plan]
 
 theorem bOff_one (p : Params) : bOff p 1 = 48 := by
-  rw [show 1 = 0 + 1 from rfl, bOff_succ p (by have := plan_length_ge p; omega), plan_zero]; rfl
+  rw [show 1 = 0 + 1 from rfl, bOff_succ p (by have := plan_length_ge p; (clear * - p this; omega)), plan_zero]; rfl
 
 theorem bOff_mod (hS : streamOkL (plan p) = true) : ∀ i, 1 ≤ i → i ≤ (plan p).length → bOff p i % 8 = 0
   | 0, h, _ => absurd h (by omega)
   | 1, _, _ => by rw [bOff_one]
   | i + 2, _, hi => by
-    rw [bOff_succ p (by omega)]
-    have := bOff_mod hS (i + 1) (by omega) (by omega)
-    have := streamOk_len hS (i := i + 1) (by omega) (by omega)
+    rw [bOff_succ p (by (clear * - i p hi; omega))]
+    have := bOff_mod hS (i + 1) (by (clear * - i p; omega)) (by (clear * - i p hi; omega))
+    have := streamOk_len hS (i := i + 1) (by (clear * - i p; omega)) (by (clear * - i p hi; omega))
     omega
 
 theorem bOff_eq (hS : streamOkL (plan p) = true) {i : Nat} (h1 : 1 ≤ i) (hi : i ≤ (plan p).length) :
@@ -424,7 +424,7 @@ theorem decode_length (p : Params) (ws : List Word) : (decode p ws).length = (pl
 /-- Entries end inside the hashed length. -/
 theorem entry_end (p : Params) {i : Nat} (hi : i < (plan p).length) :
     bOff p i + 40 + ((plan p).getD i default).len ≤ 1 + slenS (lens p) := by
-  rw [← bOff_succ p hi, ← bOff_end]; exact bOff_mono p (by omega) le_rfl
+  rw [← bOff_succ p hi, ← bOff_end]; exact bOff_mono p (by (clear * - i p hi; omega)) le_rfl
 
 theorem bl_qOf (p : Params) (ws : List Word) {i : Nat} (hi : i < (plan p).length) :
     bl (qOf (decode p ws) i) = ((wordsBytes ws).drop (bOff p i + 8)).take ((plan p).getD i default).len := by
@@ -513,17 +513,17 @@ theorem posVal_shift (tr : Trace) (pe h j path : Nat) (hp : path ≤ h) :
   apply Nat.eq_of_testBit_eq; intro t
   simp only [posVal, Nat.testBit_shiftRight, Nat.testBit_mod_two_pow, Nat.add_assoc]
   congr 1
-  simp only [decide_eq_decide]; omega
+  simp only [decide_eq_decide]; (clear * - path t h hp; omega)
 
 /-- `posL` is the field of `k` bits from bit `s` of the number whose bits `ansBit` reads. -/
 theorem posL_eq (p : Params) (ws : List Word) (A e s : Nat) :
     ∀ k, (∀ n, s ≤ n → n < s + k → ansBit p ws e n = A.testBit n) → posL p ws e s k = (A >>> s) % 2 ^ k
   | 0, _ => by simp [posL, Nat.mod_one]
   | k + 1, hb => by
-    have ih := posL_eq p ws A e s k (fun n h1 h2 => hb n h1 (by omega))
+    have ih := posL_eq p ws A e s k (fun n h1 h2 => hb n h1 (by (clear * - n s k h2; omega)))
     simp only [posL, List.range_succ, List.map_append, List.sum_append, List.map_cons, List.map_nil,
       List.sum_cons, List.sum_nil, Nat.add_zero] at ih ⊢
-    rw [ih, Nat.mod_pow_succ, hb (s + k) (by omega) (by omega), Nat.shiftRight_eq_div_pow,
+    rw [ih, Nat.mod_pow_succ, hb (s + k) (by (clear * - s k p ws A e; omega)) (by (clear * - s k p ws A e; omega)), Nat.shiftRight_eq_div_pow,
       Nat.div_div_eq_div_mul, ← Nat.pow_add, ← Nat.toNat_testBit]
     cases A.testBit (s + k) <;> simp
 
@@ -540,7 +540,7 @@ theorem ansLane_bound (hS : StreamOk p) (hw : hashedLen p ≤ 8 * ws.length) {e 
     have : bOff p 0 = 1 := rfl
     rw [plan_zero] at *; simp at *; omega
   · have h8 := streamOk_len hS.1 (i := e) (by (clear * - h0; omega)) he
-    have hb := bOff_eq hS.1 (i := e + 1) (by (clear * -; omega)) (by (clear * - he; omega))
+    have hb := bOff_eq hS.1 (i := e + 1) (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - e; omega))) (by (clear * - he; omega))
     have := entry_end p he
     rw [← bOff_succ p he, ← hS.2] at this
     have := eLane_succ hS.1 (i := e) (by (clear * - h0; omega)) he
@@ -557,10 +557,10 @@ theorem answerBits_lanes (hS : StreamOk p) (hw : hashedLen p ≤ 8 * ws.length) 
   have ha := aOf_lanes hS hw he
   have u := fun k hk => u64At_digest hlen ha (k := k) hk
   simp only [answerBits]
-  rw [show (0 : Nat) = 8 * 0 from rfl, u 0 (by (clear * -; omega)), show (8 : Nat) = 8 * 1 from rfl, u 1 (by (clear * -; omega)),
-    show (16 : Nat) = 8 * 2 from rfl, u 2 (by (clear * -; omega))]
-  simp only [lw, lw_of_slice (by (clear * -; omega) : 0 < 4) (by omega), lw_of_slice (by (clear * -; omega) : 1 < 4) (by omega),
-    lw_of_slice (by (clear * -; omega) : 2 < 4) (by omega), Nat.add_zero]
+  rw [show (0 : Nat) = 8 * 0 from rfl, u 0 (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)), show (8 : Nat) = 8 * 1 from rfl, u 1 (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)),
+    show (16 : Nat) = 8 * 2 from rfl, u 2 (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))]
+  simp only [lw, lw_of_slice (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega) : 0 < 4) (by (clear * - hb; omega)), lw_of_slice (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega) : 1 < 4) (by (clear * - hb; omega)),
+    lw_of_slice (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega) : 2 < 4) (by (clear * - hb; omega)), Nat.add_zero]
 
 theorem testBit_answerBits (hS : StreamOk p) (hw : hashedLen p ≤ 8 * ws.length) {e : Nat}
     (he : e < (plan p).length) {n : Nat} (hn : n < 192) :
@@ -582,7 +582,7 @@ section
 variable {p : Params} {ws : List Word}
 
 theorem hashedLen_ge (hS : StreamOk p) : 48 ≤ hashedLen p := by
-  rw [hS.2]; simp [lens, plan, slenS]; (clear * -; omega)
+  rw [hS.2]; simp [lens, plan, slenS]; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - p; omega))
 
 theorem take16 (hS : StreamOk p) (hL : LaneLink p ws) :
     (wordsBytes ws).take 16 = enc64 lane0C ++ enc64 lane1C := by
@@ -603,7 +603,7 @@ theorem wfAt_of (B : List UInt8) : ∀ (ls : List Nat) (o : Nat),
 
 theorem drop_take_of_take {l : List UInt8} {a n m : Nat} (h : a + n ≤ m) :
     (l.drop a).take n = ((l.take m).drop a).take n := by
-  rw [List.drop_take, List.take_take, Nat.min_eq_left (by omega)]
+  rw [List.drop_take, List.take_take, Nat.min_eq_left (by (clear * - n m a h; omega))]
 
 theorem byte0 (hS : StreamOk p) (hL : LaneLink p ws) : (wordsBytes ws).head? = some tagTrace := by
   have h := congrArg List.head? (take16 hS hL)
@@ -611,7 +611,7 @@ theorem byte0 (hS : StreamOk p) (hL : LaneLink p ws) : (wordsBytes ws).head? = s
   simpa [tagTrace] using h
 
 theorem wf0 (hS : StreamOk p) (hL : LaneLink p ws) : ((wordsBytes ws).drop 1).take 8 = enc64 7 := by
-  rw [drop_take_of_take (m := 16) (by (clear * -; omega)), take16 hS hL, first16]; decide
+  rw [drop_take_of_take (m := 16) (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)), take16 hS hL, first16]; decide
 
 /-- **The stream is the trace it encodes**: its first `hashedLen p` bytes are `tagTrace ::
 traceBytes (decode p ws)`. -/
@@ -664,7 +664,7 @@ theorem linkOk_of_laneLink (hS : StreamOk p) (hL : LaneLink p ws) : LinkOk p (de
     apply ba_ext
     rw [bl_qOf p ws hi, plan_zero]
     show ((wordsBytes ws).drop 9).take 7 = q0Bytes
-    rw [drop_take_of_take (m := 16) (by (clear * -; omega)), take16 hS hL, first16]; decide
+    rw [drop_take_of_take (m := 16) (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)), take16 hS hL, first16]; decide
   | fs st =>
     simp only [entryOk, Bool.and_eq_true, decide_eq_true_eq] at hE
     obtain ⟨⟨h32, hst⟩, h1⟩ := hE
@@ -716,7 +716,7 @@ theorem linkOk_of_laneLink (hS : StreamOk p) (hL : LaneLink p ws) : LinkOk p (de
         have hlt : nodeBytes * posL p ws (pe + j / 8) (j % 8 * h + path) (h - path) + 32 ≤ 32 * 2 ^ (h - path) := by
           simp only [nodeBytes]
           have := Nat.mul_le_mul_left 32 (show posL p ws (pe + j / 8) (j % 8 * h + path) (h - path) + 1 ≤ 2 ^ (h - path) by (clear * - hidxlt; omega))
-          omega
+          (clear * - this; omega)
         apply digest_ext
         rw [aOf_lanes hS hw hi, Vector.toList_ofFn, hidx]
         have hq : (List.ofFn fun x : Fin 32 => (qOf (decode p ws) ce).get!
@@ -733,7 +733,7 @@ theorem linkOk_of_laneLink (hS : StreamOk p) (hL : LaneLink p ws) : LinkOk p (de
           congr 1; simp only [nodeBytes]; (clear * - hco8; omega)
         rw [hq]
         congr 1
-        refine slice_eq (by have := ansLane_bound hS hw (e := i) hi; omega) (by simp [nodeBytes] at hlt; (clear * - hcob hco8 hidxlt hcb; omega)) ?_
+        refine slice_eq (by have := ansLane_bound hS hw (e := i) hi; (clear * - this; omega)) (by simp [nodeBytes] at hlt; (clear * - hcob hco8 hidxlt hcb; omega)) ?_
         intro l hl
         have := hL.cap i hi pe h j lvl ce co path (by rw [he]) l hl
         simp only [ansLane, show i ≠ 0 by (clear * - h2; omega), ite_false, he]

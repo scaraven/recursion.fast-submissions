@@ -136,8 +136,8 @@ def Seg (ins : List Ins) (n : Nat) (seg : List Ins) : Prop :=
 
 theorem seg_append (A seg B : List Ins) : Seg (A ++ seg ++ B) A.length seg := by
   intro i hi
-  rw [List.append_assoc, List.getD_eq_getElem?_getD, List.getElem?_append_right (by (clear * -; omega)),
-    show A.length + i - A.length = i by (clear * -; omega), List.getElem?_append_left hi,
+  rw [List.append_assoc, List.getD_eq_getElem?_getD, List.getElem?_append_right (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)),
+    show A.length + i - A.length = i by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega), List.getElem?_append_left hi,
     ← List.getD_eq_getElem?_getD]
 
 theorem seg_sub {ins : List Ins} {n : Nat} {seg : List Ins} (h : Seg ins n seg) (A B : List Ins)
@@ -145,8 +145,8 @@ theorem seg_sub {ins : List Ins} {n : Nat} {seg : List Ins} (h : Seg ins n seg) 
   intro i hi
   have := h (A.length + i) (by rw [hs]; simp; omega)
   rw [← Nat.add_assoc] at this
-  rw [this, hs, List.getD_eq_getElem?_getD, List.getElem?_append_right (by (clear * -; omega)),
-    show A.length + i - A.length = i by (clear * -; omega), ← List.getD_eq_getElem?_getD]
+  rw [this, hs, List.getD_eq_getElem?_getD, List.getElem?_append_right (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)),
+    show A.length + i - A.length = i by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega), ← List.getD_eq_getElem?_getD]
 
 theorem seg_len {ins : List Ins} {n : Nat} {seg : List Ins} (h : Seg ins n seg) (hlen : n + seg.length ≤ ins.length)
     {i : Nat} (hi : i < seg.length) : n + i < ins.length := by (clear * - hlen hi; omega)
@@ -212,7 +212,7 @@ theorem sum_val {xv : Src → FE} {ins : List Ins} {V : List FE} (hF : Fix xv in
     have hs : sumSrc n s₀ (c :: cs) = sumSrc (n + 1) (.loc n) cs := by
       cases cs with
       | nil => simp [sumSrc]
-      | cons _ _ => simp [sumSrc]; (clear * -; omega)
+      | cons _ _ => simp [sumSrc]; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)
     rw [hs, ih]
     show V.getD n 0 + _ = _
     rw [h0, List.map_cons, List.sum_cons, add_assoc]
@@ -252,7 +252,7 @@ theorem horner_val {xv : Src → FE} {ins : List Ins} {V : List FE} (hF : Fix xv
     have hs : sumSrc n h (c :: cs) = sumSrc (n + 1) (.loc n) cs := by
       cases cs with
       | nil => simp [sumSrc]
-      | cons _ _ => simp [sumSrc]; (clear * -; omega)
+      | cons _ _ => simp [sumSrc]; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)
     rw [hs, ih]
     show hornerVal _ (V.getD n 0) _ = _
     rw [h0]

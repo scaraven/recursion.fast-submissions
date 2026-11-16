@@ -189,30 +189,30 @@ theorem ivpW_fol {cap' : ℕ → ℕ → ℕ} {shp' : ℕ → ℕ × ℕ} {idx :
       cases P with
       | read k =>
         simp only [atomReads_cons] at hw ⊢
-        have hw0 : rw i = 24 := by simpa using hw 0 (by omega)
+        have hw0 : rw i = 24 := by simpa using hw 0 (by (clear * - as; omega))
         have ih := ivpW_fol sig as (k (Lvm.FS.eOfBytes (sbs sig (s.ent + 40 + s.msg) 24))) pp Qf (h _)
           { s with msg := s.msg + 24 } (i + 1) fun k' hk' ↦ by
-            have := hw (k' + 1) (by omega)
-            rwa [show i + (k' + 1) = i + 1 + k' by omega] at this
+            have := hw (k' + 1) (by (clear * - k' as rw i hk'; omega))
+            rwa [show i + (k' + 1) = i + 1 + k' by (clear * - i k' rw as; omega)] at this
         simp only [ivpW, ivp, hw0]
         refine ⟨ih.1, ih.2.1, fun hs ↦ ?_⟩
         rw [ih.2.2 hs]
-        omega
+        (clear * - i as rw; omega)
       | fail => exact ⟨rfl, rfl, fun h' ↦ absurd h' (by simp [ivp])⟩
       | _ => simp [Fol] at h
     | rdw w =>
       cases P with
       | read k =>
         simp only [atomReads_cons] at hw ⊢
-        have hw0 : rw i = 24 := by simpa using hw 0 (by omega)
+        have hw0 : rw i = 24 := by simpa using hw 0 (by (clear * - as; omega))
         have ih := ivpW_fol sig as (k (Lvm.FS.eOfBytes (sbs sig (s.ent + 40 + s.msg) 24))) pp Qf (h _)
           { s with msg := s.msg + 24 } (i + 1) fun k' hk' ↦ by
-            have := hw (k' + 1) (by omega)
-            rwa [show i + (k' + 1) = i + 1 + k' by omega] at this
+            have := hw (k' + 1) (by (clear * - k' as rw i hk'; omega))
+            rwa [show i + (k' + 1) = i + 1 + k' by (clear * - i k' rw as; omega)] at this
         simp only [ivpW, ivp, hw0]
         refine ⟨ih.1, ih.2.1, fun hs ↦ ?_⟩
         rw [ih.2.2 hs]
-        omega
+        (clear * - i as rw; omega)
       | fail => exact ⟨rfl, rfl, fun h' ↦ absurd h' (by simp [ivp])⟩
       | _ => simp [Fol] at h
     | sm =>
@@ -371,7 +371,7 @@ theorem refW_dZeroT {i : ℕ} (hw : WAt rw i wZeroT) :
     refine (RefAtW.pure ⟨by rw [hr1], by rw [hr3, List.length_map, htau], hv⟩).idx ?_
     simp only [wZeroT, List.length_append, List.length_replicate, wSampleG, List.length_cons, List.length_nil,
       length_wSc, length_wReads, List.length_map, htau]
-    omega
+    (clear * - i rw tau rf v; omega)
 
 /-- **The wiring at `E2`** (`virtD_rel`). -/
 theorem refW_dWiringT (N : TNatT) (Q : Lvm.Loop.Program) (lay : Lay) (hok : N.toN.okB P20.nuMain P20.nuRec = true)
@@ -406,7 +406,7 @@ theorem refW_dWiringT (N : TNatT) (Q : Lvm.Loop.Program) (lay : Lay) (hok : N.to
     refine (RefAtW.pure ⟨by rw [hr1], hr3, hvs, hrv⟩).idx ?_
     simp only [wWireT, List.length_append, wSampleG, List.length_cons, List.length_nil, length_wSc,
       length_wReads, List.length_replicate]
-    omega
+    (clear * - i rw rf vs rv; omega)
 
 /-- **The relayout at `E2`** (`relayKernD_rel`). -/
 theorem refW_dRelayT2 (N : TNatT) (Q : Lvm.Loop.Program) (lay : Lay)
@@ -434,7 +434,7 @@ theorem refW_dRelayT2 (N : TNatT) (Q : Lvm.Loop.Program) (lay : Lay)
   · intro _ _ _
     refine (RefAtW.pure ⟨by rw [hr1], hr3⟩).idx ?_
     simp only [wRelayT, List.length_append, length_wSc, length_wReads, List.length_replicate]
-    omega
+    (clear * - i rw ry rf; omega)
 
 /-- **A23 at `E2`** under the promise that the folded claim holds natively (lanes 0–1 of the accumulator). -/
 theorem refW_dAccT (N : TNatT) (Q : Lvm.Loop.Program) (lay : Lay)
@@ -489,7 +489,7 @@ theorem refW_dAccT (N : TNatT) (Q : Lvm.Loop.Program) (lay : Lay)
         show (Lvm.Typed.ofE2 ∘ toE2) = id from funext fun _ ↦ rfl, List.map_id, hA', toE2_hEvalD]
   · simp only [wAccT, List.length_append, List.length_replicate, length_wReads, wSampleG, List.length_cons,
       List.length_nil]
-    omega
+    (clear * - i rw pub rxy κ; omega)
 
 end Phases
 
@@ -574,7 +574,7 @@ theorem ref_dTypedTO {cap : ℕ → ℕ → ℕ} {occ : ℕ → ℕ → ℕ} {sh
   rintro evs cl ⟨rfl, hlen, hcl⟩ -
   refine RefAtWP.idx (RefAtW.toP (RefAtW.pure ⟨w.1, w.2.2, r.1, r.2, rfl, hry, hrv, hrr, rfl, hlen, hcl⟩) _) ?_
   simp only [wTypedT, List.length_append, List.length_replicate, nMiniRd]
-  omega
+  (clear * - i N Q lay pub z w r; omega)
 
 /-- **The typed phases at S2GT refine `typedProgT`** (`ref_dTypedTO` at `P20`). -/
 theorem ref_dTypedT {cap : ℕ → ℕ → ℕ} {occ : ℕ → ℕ → ℕ} {shp : ℕ → ℕ × ℕ} {rw : ℕ → ℕ} {sig : ByteArray}

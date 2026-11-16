@@ -127,7 +127,7 @@ theorem acc1_sem (I : Array Word) (s : St) (hM : Inv s.M) :
   refine ⟨?_, fun i hi => rd_blk_of_not_dst I _ s ?_,
     inv_sem I (by simp +decide [WF]) hM⟩
   · simp only [rdE, rdK, sem_blk, runPrims, List.foldl, Prim.run]
-    simp (disch := first | decide | (simp only [size_set, h1A, h1T]; omega)) only
+    simp (disch := first | decide | (simp only [size_set, h1A, h1T]; (clear * - s hs; omega))) only
       [rd_set_self, rd_set_ne]
     simp only [eval_xor, wK_xor]
     rw [mkE_add]
@@ -148,12 +148,12 @@ theorem lane1Body_sem (I : Array Word) (s : St) (hM : Inv s.M) {pw pe : ℕ} (hp
   simp only [regs] at hs hpwR hpeR
   rw [lane1Body, semXIR_seq]
   obtain ⟨l1, l2, l3, hM1⟩ := eqtLdE_sem I s hM (d := h1S) (p := gPe) (x := pe) (by decide)
-    (by decide) (by decide) (by decide) (by decide) hP (by simp only [regs]; omega) hpe
+    (by decide) (by decide) (by decide) (by decide) hP (by simp only [regs]; (clear * - hpeR; omega)) hpe
   generalize semXIR I (eqtLdE h1S gPe) s = s1 at l1 l2 l3 hM1
   rw [semXIR_seq]
   obtain ⟨m1, m2, m3, hM2⟩ := eqtLdE_sem I s1 hM1 (d := h1W) (p := gPw) (x := pw) (by decide)
     (by decide) (by decide) (by decide) (by decide) (by rw [l3 _ (by decide) (by decide), hW])
-    (by simp only [regs]; omega) hpw
+    (by simp only [regs]; (clear * - hpwR; omega)) hpw
   generalize semXIR I (eqtLdE h1W gPw) s1 = s2 at m1 m2 m3 hM2
   rw [semXIR_seq]
   have p3 : rdE (semXIR I (mulE h1T h1S h1W) s2).M h1T = rdE s2.M h1S * rdE s2.M h1W :=
@@ -189,7 +189,7 @@ def Keep1F (r : ℕ) : Prop :=
   (r < 5 ∨ 46 ≤ r) ∧ r ≠ gPe ∧ r ≠ gPw ∧ r ≠ gK ∧ r ≠ gC2 ∧ r ≠ gN2 ∧ r ≠ cTmp
 
 theorem keep1F_of_regs {r : ℕ} (h : regs ≤ r) : Keep1F r := by
-  simp only [Keep1F, regs, gPe, gPw, gK, gC2, gN2, cTmp] at *; omega
+  simp only [Keep1F, regs, gPe, gPw, gK, gC2, gN2, cTmp] at *; (clear * - r h; omega)
 
 /-! ## The comparison -/
 

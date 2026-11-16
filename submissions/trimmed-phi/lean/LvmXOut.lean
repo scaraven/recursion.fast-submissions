@@ -79,7 +79,7 @@ theorem wordsBytes_take (ws : List Word) (a : ℕ) : (wordsBytes ws).take (8 * a
     | succ a =>
       rw [show wordsBytes (w :: ws) = wordBytes w ++ wordsBytes ws from rfl,
         show 8 * (a + 1) = 8 + 8 * a by ring, List.take_append, List.take_of_length_le
-          (by rw [wordBytes_length]; (clear * -; omega)), wordBytes_length, Nat.add_sub_cancel_left, ih,
+          (by rw [wordBytes_length]; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)), wordBytes_length, Nat.add_sub_cancel_left, ih,
         List.take_succ_cons]
       rfl
 
@@ -168,7 +168,7 @@ private theorem qlens_all (b : Blk) (h : blkLensOk b = true) :
     rintro x ⟨l, ⟨-, rfl⟩, hx⟩
     rcases List.mem_cons.mp hx with rfl | hx
     · exact h
-    · rw [(List.mem_replicate.mp hx).2]; (clear * -; omega)
+    · rw [(List.mem_replicate.mp hx).2]; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)
 
 private theorem qlens_pieces (b : Blk) :
     ((b.queries.map Prod.snd).map pieceLen).sum = blkPieceLen b := by
@@ -213,7 +213,7 @@ def entW (W : ℕ → Word) (u len : ℕ) : List Word := toWord len :: wsAt W (u
 theorem enc64_drop1 (n : ℕ) : (enc64 n).drop 1 = List.ofFn fun i : Fin 7 => (n / 256 / 256 ^ i.val).toUInt8 := by
   refine List.ext_getElem (by simp [enc64]) fun i h1 h2 => ?_
   simp only [enc64, List.getElem_drop, List.getElem_ofFn, Nat.div_div_eq_div_mul, ← pow_succ']
-  congr 3; (clear * -; omega)
+  congr 3; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)
 
 /-- Bytes 1–7 of a word (FR `FRXOut.sh8_bytes`). -/
 theorem sh8_bytes (x : Word) : toWord (ofLE ((wordBytes x).drop 1)) = x >>> 8 := by
@@ -221,7 +221,7 @@ theorem sh8_bytes (x : Word) : toWord (ofLE ((wordBytes x).drop 1)) = x >>> 8 :=
   rw [wordBytes, enc64_drop1, ofLE_ofFn]
   apply BitVec.eq_of_toNat_eq
   simp only [toWord, BitVec.toNat_ofNat, BitVec.toNat_ushiftRight, Nat.shiftRight_eq_div_pow]
-  rw [Nat.mod_eq_of_lt (by (clear * -; omega) : x.toNat / 256 % 256 ^ 7 < 2 ^ 64)]
+  rw [Nat.mod_eq_of_lt (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega) : x.toNat / 256 % 256 ^ 7 < 2 ^ 64)]
   rw [Nat.mod_eq_of_lt (by omega : x.toNat / 256 < 256 ^ 7)]
 
 theorem entryWords_entAt (W : ℕ → Word) (u len : ℕ) (h : len % 8 = 0) :
@@ -238,7 +238,7 @@ theorem entryWords_q0 (W : ℕ → Word) :
   congr 1
   rw [packBytes, hl]
   simp only [show (7 + 7) / 8 = 1 from rfl, List.range_one, List.map_cons, List.map_nil,
-    Nat.mul_zero, List.drop_zero, List.take_of_length_le (by rw [hl]; (clear * -; omega) : _ ≤ 8),
+    Nat.mul_zero, List.drop_zero, List.take_of_length_le (by rw [hl]; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega) : _ ≤ 8),
     sh8_bytes, List.singleton_append]
 
 end Lvm.X

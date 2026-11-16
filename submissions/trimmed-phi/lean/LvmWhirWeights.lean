@@ -226,7 +226,7 @@ private theorem subspaceRoots_loop (k j : ℕ) :
     simp only [hlast, List.map_cons, List.map_map, Function.comp_def, hstep, List.headD_cons,
       List.tail_cons]
     have h := ih (j + 1)
-    rw [show j + 1 + k + 1 = j + (k + 1) + 1 by (clear * -; omega)] at h
+    rw [show j + 1 + k + 1 = j + (k + 1) + 1 by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)] at h
     rw [← h, List.range_succ (n := j + 1), List.map_append, List.map_singleton]
 
 /-- `K.ofBits 1` is the unit of `K` (lvm WP-7: replaces leanVM's `decide +kernel` on
@@ -265,8 +265,8 @@ private theorem inner_fold (roots inverses : List E) (x : K) (l : List E) (s : �
     have hW : ofK (vanishingAt s x) ^ 2 + root s * ofK (vanishingAt s x) =
         ofK (vanishingAt (s + 1) x) := by
       rw [vanishingAt_succ, ofK_add, ofK_mul, ofK_pow]
-    rw [hW, ih (s + 1) _ (fun c h1 h2 ↦ hr c (by omega) (by simp; omega))
-      (fun c h1 h2 ↦ hi c (by omega) (by simp; omega))]
+    rw [hW, ih (s + 1) _ (fun c h1 h2 ↦ hr c (by (clear * - s c a l h1; omega)) (by simp; (clear * - c s l a h2; omega)))
+      (fun c h1 h2 ↦ hi c (by (clear * - s c a l h1; omega)) (by simp; (clear * - c s l a h2; omega)))]
     have hn : ofK (vanishingAt s x) * (root s)⁻¹ = ofK (normVanishingAt s x) := by
       rw [normVanishingAt, ofK_mul, ofK_inv]
     refine Prod.ext ?_ ?_
@@ -277,12 +277,12 @@ private theorem inner_fold (roots inverses : List E) (x : K) (l : List E) (s : �
             (a :: l)[(i.succ : ℕ)] * ofK (normVanishingAt (s + (i.succ : ℕ)) x)) := by
         refine Finset.prod_congr rfl fun i _ ↦ ?_
         simp only [Fin.val_succ, List.getElem_cons_succ, Fin.getElem_fin]
-        rw [show s + 1 + (i : ℕ) = s + ((i : ℕ) + 1) by omega]
+        rw [show s + 1 + (i : ℕ) = s + ((i : ℕ) + 1) by (clear * - s l i a; omega)]
       rw [hprod]
       simp only [Fin.val_zero, add_zero, List.getElem_cons_zero, Fin.getElem_fin]
       ring
     · change ofK (vanishingAt (s + 1 + l.length) x) = ofK (vanishingAt (s + (l.length + 1)) x)
-      rw [show s + 1 + l.length = s + (l.length + 1) by omega]
+      rw [show s + 1 + l.length = s + (l.length + 1) by (clear * - s l a; omega)]
 
 /-- The outer loop of `induced_weight` is a sum. -/
 private theorem foldl_add_eq_sum {α : Type*} (f : α → E) (t : E)
@@ -461,7 +461,7 @@ def rotL (j : ℕ) (l : List E) : List E := l.drop j ++ l.take j
 
 theorem length_rotL (j : ℕ) (l : List E) : (rotL j l).length = l.length := by
   simp only [rotL, List.length_append, List.length_drop, List.length_take]
-  omega
+  (clear * - l j; omega)
 
 theorem rotL_set (j : ℕ) (l : List E) (hj : j ≤ l.length) {k : ℕ} (hk : k < l.length) (X : E) :
     rotL j (l.set k X) = (rotL j l).set (if k < j then l.length - j + k else k - j) X := by
@@ -471,7 +471,7 @@ theorem rotL_set (j : ℕ) (l : List E) (hj : j ≤ l.length) {k : ℕ} (hk : k 
     congr 2
     simp
   · rw [List.set_eq_of_length_le (l := l.take j) (by simp; (clear * - h; omega)),
-      List.set_append_left _ _ (by simp; omega)]
+      List.set_append_left _ _ (by simp; (clear * - k j l hj hk h; omega))]
 
 /-- Rotating the point keeps a weight multiaffine. -/
 theorem isMultiaffine_rotL {n j : ℕ} {w : List E → E} (hw : IsMultiaffine n w) (hj : j ≤ n) :
@@ -519,7 +519,7 @@ private theorem subspaceRootsAux_eq (k j : ℕ) :
     rw [List.range'_succ]
     simp only [subspaceRootsAux, List.map_cons, List.map_map, Function.comp_def, hstep]
     have := ih (j + 1)
-    simp only [show j + 1 + 1 = j + 2 by (clear * -; omega)] at this ⊢
+    simp only [show j + 1 + 1 = j + 2 by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)] at this ⊢
     rw [this]
 
 /-- The verifier's `subspace_roots(n)` is `[W_0(e_0), …, W_n(e_n)]`. -/

@@ -142,7 +142,7 @@ theorem retOK_slotProgE2U (b sb blk : ℕ) (W : ℕ → ℕ → E2) (pt : List E
       show IsMultiaffine 23 row.2
       have e : (pt ++ sl.1 ++ selPtF blk sb : List E2).length = 23 := by
         simp only [List.length_append, hsl, List.length_replicate, selPtF, List.length_map, List.length_range]
-        omega
+        (clear * - h; omega)
       rw [← e]; exact hrow)
 
 theorem retOK_wireProgU (s : RecursionFast.Digest) (n : ℕ) (claim : KClaim E2) :
@@ -176,7 +176,7 @@ theorem tiedYF_of (hS : E2V.SplitSound) (tp : TapeOutU) (hr : tp.1.length = 21) 
   have hal : 2 ^ 13 ∣ CMain.yOffU20 + l * 2 ^ 13 := Nat.dvd_add ⟨704, by norm_num⟩ (Nat.dvd_mul_left _ _)
   have e := E2V.point_of_split hS (nu := CMain.nu20) (blk := ⟨13, CMain.yOffU20 + l * 2 ^ 13⟩) (z := tp.1.take 13)
     (by simp [hr]) (by show 13 ≤ CMain.nu20; norm_num) hal
-    (by show CMain.yOffU20 + l * 2 ^ 13 + 2 ^ 13 ≤ 2 ^ CMain.nu20; simp only [CMain.yOffU20]; norm_num; omega)
+    (by show CMain.yOffU20 + l * 2 ^ 13 + 2 ^ 13 ≤ 2 ^ CMain.nu20; simp only [CMain.yOffU20]; norm_num; (clear * - l tp hl; omega))
     qm (H l hl)
   rw [← e]
   refine Finset.sum_congr rfl fun x _ ↦ ?_
@@ -194,7 +194,7 @@ theorem tiedDFU_of (hS : E2V.SplitSound) (tp : TapeOutU) (hr : tp.1.length = 21)
   have e := E2V.point_of_split hS (blk := dBlkE) (z := tp.1.take 20 ++ selPtF l 2)
     (by simp [hr20, dBlkE, selPtF]) (by decide) (by simp [dBlkE]) (by decide) qm (H l hl)
   simp only [dBlkE, CMain.dOff20, zero_add] at e
-  rw [E2V.sum_selF (h := 20) (k := 2) hr20 (by omega)] at e
+  rw [E2V.sum_selF (h := 20) (k := 2) hr20 (by (clear * - hl; omega))] at e
   rw [← e]
   refine Finset.sum_congr rfl fun x _ ↦ ?_
   simp only [dU, Lvm.KG.dOf, colM, Lvm.NS.wd, Nat.mul_zero, Nat.add_zero]
@@ -234,10 +234,10 @@ theorem bndS_of_tapeU (x : List UInt8) (tp : TapeOutU) {qm : Column CMain.nu20}
   have hlenH : (pubX x).h.length = 4 := Lvm.ASM.length_pubX_h x
   have hmem : BClaim.point dBlkE (selE ((pubX x).n - 1) 20 ++ selE m 2)
       (Lvm.M3.kE ((pubX x).h.getD m 0)) ∈ tapeClaimsU tp (pubX x) :=
-    List.mem_append_right _ (List.mem_map.2 ⟨_, Lvm.ASM.Kec.getD_mem_zipIdx _ (by omega), rfl⟩)
-  have hlt : (pubX x).n - 1 < 2 ^ 20 := by rw [hN]; omega
+    List.mem_append_right _ (List.mem_map.2 ⟨_, Lvm.ASM.Kec.getD_mem_zipIdx _ (by (clear * - m x hm hlenH; omega)), rfl⟩)
+  have hlt : (pubX x).n - 1 < 2 ^ 20 := by rw [hN]; (clear * - x hn m hN; omega)
   have H := Lvm.ASM.Kec.holds_split (h := 20) (k := 2) hal2 hfit2 (by simp [Lvm.ASM.Kec.selE_eq_bitsE])
-    (b := m) (by omega) (h _ hmem)
+    (b := m) (by (clear * - hm; omega)) (h _ hmem)
   rw [Lvm.ASM.Kec.selE_eq_bitsE, sum_eqAt_bitsE hlt, zero_add] at H
   have H' := Lvm.KG.ofK_injective H
   rw [hN] at H'
@@ -290,7 +290,7 @@ theorem isMultiaffine_tapeClaimsU (hA : E2V.SplitAffine) (pub : Lvm.Pub) (k : Ta
         exact hA _ _ (E2V.fitsE2_point _ (by simp [hr]) (by show 13 ≤ nuMainE; decide)
           (Nat.dvd_add ⟨704, by norm_num⟩ (Nat.dvd_mul_left _ _))
           (by show CMain.yOffU20 + l * 2 ^ 13 + 2 ^ 13 ≤ 2 ^ nuMainE
-              simp only [CMain.yOffU20, nuMainE, CMain.nu20]; norm_num; omega)) b hb
+              simp only [CMain.yOffU20, nuMainE, CMain.nu20]; norm_num; (clear * - l k hl'; omega))) b hb
     · simp only [List.mem_cons, List.not_mem_nil, or_false] at hb
       rcases hb with rfl | rfl | rfl
       · exact Lvm.ASM.isMultiaffine_onStack _ le_rfl hd
@@ -319,14 +319,14 @@ theorem sideU (hA : E2V.SplitAffine) (x : List UInt8) (a : OpenClaims) (k : Tape
     · obtain ⟨b, hb, rfl⟩ := List.mem_map.1 hc
       exact isMultiaffine_tapeClaimsU hA _ k hk b hb
   have hl := length_tapeClaimsU k x
-  refine ⟨a1, fun c hc ↦ ?_, by simp only [assembleU₂]; omega, ?_⟩
+  refine ⟨a1, fun c hc ↦ ?_, by simp only [assembleU₂]; (clear * - a x k a3; omega), ?_⟩
   · unfold assembleU₂ Lvm.Shape.onStackZs at hc
     split_ifs at hc
     · obtain ⟨c', hc', rfl⟩ := List.mem_map.mp hc
       exact Lvm.Shape.isMultiaffine_onStackZ (hm c' hc')
     · exact hm c hc
   · simp only [assembleU₂, Lvm.Shape.onStackZs]
-    split_ifs <;> simp only [List.length_map, List.length_append, hl] <;> omega
+    split_ifs <;> simp only [List.length_map, List.length_append, hl] <;> (clear * - a x k a3; omega)
 
 end Mid18b
 
@@ -416,7 +416,7 @@ theorem retOK_midGU_len (Ti : TInst) (H : THypT Ti) (x : List UInt8) :
       List.length_range]
   simp only [assembleU₂, hz, List.length_append, List.length_map, hf]
   have := ha.2.2
-  omega
+  (clear * - a x ha k; omega)
 
 /-- **UTAPE-STMT 20** (owner L): **S2GU's middle phases commit nothing and ask no proof of work** (`cg_midGT`'s
 twin: `noCG_typedProgT`, the front's `NoCG`). -/

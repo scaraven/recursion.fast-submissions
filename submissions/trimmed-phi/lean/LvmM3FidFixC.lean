@@ -44,7 +44,7 @@ theorem base_eq (tabs : List Tab) {j : ℕ} (hj : j < tabs.length) :
 theorem sum_take_mono (l : List ℕ) {a b : ℕ} (h : a ≤ b) : (l.take a).sum ≤ (l.take b).sum := by
   obtain ⟨d, rfl⟩ := Nat.exists_eq_add_of_le h
   rw [List.take_add, List.sum_append]
-  (clear * -; omega)
+  (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)
 
 variable (L : Lay) (tabs : List Tab) (hτ : ∀ t ∈ tabs, t.τ ≤ L.μ)
 

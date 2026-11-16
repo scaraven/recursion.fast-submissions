@@ -332,13 +332,13 @@ variable {μ ℓ₀ : ℕ} {w : List E → E} {i : ℕ} {P P' : LevelCode} {ℓ 
 theorem afterFoldR_len {r : WhirStateT × List E} {cs : List (ℕ × ℕ × Word)}
     (h : AfterFoldR μ ℓ₀ w i P ℓ pre Gd r cs) : r.1.folds.length = pre + ℓ := by
   obtain ⟨⟨⟨hl, -⟩, -⟩, hr⟩ := h
-  omega
+  (clear * - r pre ℓ hr hl; omega)
 
 theorem afterFoldR_κ {r : WhirStateT × List E} {cs : List (ℕ × ℕ × Word)}
     (h : AfterFoldR μ ℓ₀ w i P ℓ pre Gd r cs) : μ - r.1.folds.length = P.κ := by
   have := afterFoldR_len h
   obtain ⟨⟨⟨-, -, hκ, -⟩, -⟩, -⟩ := h
-  omega
+  (clear * - μ r P ℓ pre this hκ; omega)
 
 /-- The glue keeps the fold challenges. -/
 theorem glueMid_folds (r : WhirStateT × List E) (z : List E) (y : E) (hy : List E) (qs : List ℕ)
@@ -357,7 +357,7 @@ theorem midCR_of_commit {r : WhirStateT × List E} {cs : List (ℕ × ℕ × Wor
   subst hℓ'
   refine ⟨cs, W, ?_, hW, h⟩
   congr 3
-  omega
+  (clear * - μ r next P' ℓ pre hR' hlen hP'; omega)
 
 /-- The commitments after the next commitment, at index `i`. -/
 theorem midCR_word {r : WhirStateT × List E} {cs : List (ℕ × ℕ × Word)}
@@ -366,7 +366,7 @@ theorem midCR_word {r : WhirStateT × List E} {cs : List (ℕ × ℕ × Word)}
       laneO i cs P.n = laneO i cs₀ P.n ∧ AfterFoldR μ ℓ₀ w i P ℓ pre Gd r cs₀ := by
   obtain ⟨cs₀, W', rfl, -, haf⟩ := h
   have hsh := haf.1.2
-  have hi : i < cs₀.length := by rw [hsh.1]; omega
+  have hi : i < cs₀.length := by rw [hsh.1]; (clear * - i; omega)
   exact ⟨cs₀, shapeOK_append hsh _, wordOf_append _ _ hi, laneO_append _ _ hi _, haf⟩
 
 /-- **The next level's relativised doom** from the glued doom and the query intro polynomial,

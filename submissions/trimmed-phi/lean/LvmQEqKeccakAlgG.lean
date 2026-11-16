@@ -32,7 +32,7 @@ open Lvm Lvm.E2V Finset
 /-! ## Constants -/
 
 theorem keccakPi_ltG {i : ℕ} (hi : i < 25) : keccakPi i < 25 := by
-  unfold keccakPi; omega
+  unfold keccakPi; (clear * - i hi; omega)
 
 theorem iotaPos_ltG {i : ℕ} (hi : i < 7) : iotaPos i < 64 := by
   unfold iotaPos
@@ -121,15 +121,15 @@ theorem prodWG_length (A : ℕ → F) (B : List F) : (prodWG A B).length = 1600 
 
 theorem gOf_prodWG (A : ℕ → F) (B : List F) {p : ℕ} (hp : p < 1600) :
     gOfF (prodWG A B) p = A ((p % 64 + rho (p / 64)) % 64) * B.getD (keccakPi (p / 64)) 0 := by
-  have hpi := keccakPi_ltG (i := p / 64) (by omega)
+  have hpi := keccakPi_ltG (i := p / 64) (by (clear * - p hp; omega))
   have hd : LeanVM.Protocol.KeccakGkr.rhoPiDst p =
       64 * keccakPi (p / 64) + (p % 64 + keccakRho.getD (p / 64) 0) % 64 := by
     unfold LeanVM.Protocol.KeccakGkr.rhoPiDst; rw [keccakPi_eqV, keccakRho_eqV]
-  rw [gOfF, hd, prodWG_getD A B (by omega)]
+  rw [gOfF, hd, prodWG_getD A B (by (clear * - p hpi hd; omega))]
   have e1 : (64 * keccakPi (p / 64) + (p % 64 + keccakRho.getD (p / 64) 0) % 64) % 64 =
-      (p % 64 + keccakRho.getD (p / 64) 0) % 64 := by omega
+      (p % 64 + keccakRho.getD (p / 64) 0) % 64 := by (clear * - p hd; omega)
   have e2 : (64 * keccakPi (p / 64) + (p % 64 + keccakRho.getD (p / 64) 0) % 64) / 64 =
-      keccakPi (p / 64) := by omega
+      keccakPi (p / 64) := by (clear * - p e1; omega)
   rw [e1, e2]
   rfl
 
@@ -141,9 +141,9 @@ theorem col_dotG (A u : ℕ → F) (B : List F) {x : ℕ} (hx : x < 5) (c : ℕ)
   rw [Finset.sum_comm]
   refine Finset.sum_congr rfl fun y hy ↦ Finset.sum_congr rfl fun z hz ↦ ?_
   simp only [Finset.mem_range] at hy hz
-  rw [gOf_prodWG A B (by omega)]
-  have e1 : (64 * (x + 5 * y) + (z + c) % 64) % 64 = (z + c) % 64 := by omega
-  have e2 : (64 * (x + 5 * y) + (z + c) % 64) / 64 = x + 5 * y := by omega
+  rw [gOf_prodWG A B (by (clear * - x y z c hx hy; omega))]
+  have e1 : (64 * (x + 5 * y) + (z + c) % 64) % 64 = (z + c) % 64 := by (clear * - x y z c; omega)
+  have e2 : (64 * (x + 5 * y) + (z + c) % 64) / 64 = x + 5 * y := by (clear * - x y z c e1; omega)
   rw [e1, e2]
   ring
 
@@ -158,21 +158,21 @@ theorem lane_dotG (A u : ℕ → F) (B : List F) {l : ℕ} (hl : l < 25) :
         u z * colLF (gOfF (prodWG A B)) ((l % 5 + 4) % 5) ((z + 1) % 64) := by
     intro z hz
     simp only [Finset.mem_range] at hz
-    rw [linearTransposeF_getD _ (by omega), thetaTF]
-    have e1 : (64 * l + z) / 64 % 5 = l % 5 := by omega
-    have e2 : (64 * l + z) % 64 = z := by omega
-    have e3 : (z + 0) % 64 = z := by omega
+    rw [linearTransposeF_getD _ (by (clear * - l z hl hz; omega)), thetaTF]
+    have e1 : (64 * l + z) / 64 % 5 = l % 5 := by (clear * - l z hz; omega)
+    have e2 : (64 * l + z) % 64 = z := by (clear * - l z hz e1; omega)
+    have e3 : (z + 0) % 64 = z := by (clear * - z l e1 e2; omega)
     rw [e1, e2, e3, mul_add, mul_add]
   rw [Finset.sum_congr rfl hz, Finset.sum_add_distrib, Finset.sum_add_distrib,
-    col_dotG A u B (by omega), col_dotG A u B (by omega)]
+    col_dotG A u B (by (clear * - l; omega)), col_dotG A u B (by (clear * - l; omega))]
   have h1 : ∑ z ∈ range 64, u z * gOfF (prodWG A B) (64 * l + z) =
       B.getD (keccakPi l) 0 * rotSumG u A (rho l) := by
     rw [rotSumG, sumF_map_range, Finset.mul_sum]
     refine Finset.sum_congr rfl fun z hz ↦ ?_
     simp only [Finset.mem_range] at hz
-    rw [gOf_prodWG A B (by omega)]
-    have e1 : (64 * l + z) % 64 = z := by omega
-    have e2 : (64 * l + z) / 64 = l := by omega
+    rw [gOf_prodWG A B (by (clear * - l z hl hz; omega))]
+    have e1 : (64 * l + z) % 64 = z := by (clear * - l z hz; omega)
+    have e2 : (64 * l + z) / 64 = l := by (clear * - l z e1; omega)
     rw [e1, e2]
     ring
   have h2 : ∀ x, ∑ y ∈ range 5, B.getD (keccakPi (x + 5 * y)) 0 *
@@ -192,25 +192,25 @@ theorem lane_dotG (A u : ℕ → F) (B : List F) {l : ℕ} (hl : l < 25) :
     refine Finset.sum_congr rfl fun y _ ↦ ?_
     rw [rotSumG, sumF_map_range]
     rw [Finset.sum_congr rfl (fun z _ => by
-      rw [show ((z + 1) % 64 + rho (x + 5 * y)) % 64 = (z + (rho (x + 5 * y) + 1) % 64) % 64 by omega])]
+      rw [show ((z + 1) % 64 + rho (x + 5 * y)) % 64 = (z + (rho (x + 5 * y) + 1) % 64) % 64 by (clear * - z x y l; omega)])]
   rw [h1, h2, h3]
   rfl
 
 /-- **Entry `j` of the transposed product weights** is a lane form at slice `j mod 64` (`lt_pos` over `F`). -/
 theorem lt_posF (A : ℕ → F) (B : List F) {j : ℕ} (hj : j < 1600) :
     (linearTransposeF (prodWG A B)).getD j 0 = laneFormF B (fun s => A ((j % 64 + s) % 64)) (j / 64) := by
-  have h := lane_dotG A (fun z => if z = j % 64 then 1 else 0) B (l := j / 64) (by omega)
+  have h := lane_dotG A (fun z => if z = j % 64 then 1 else 0) B (l := j / 64) (by (clear * - j hj; omega))
   rw [sumF_map_range] at h
   simp only [ite_mul, one_mul, zero_mul, Finset.sum_ite_eq', Finset.mem_range,
-    show j % 64 < 64 from Nat.mod_lt _ (by omega), if_true] at h
-  rw [show 64 * (j / 64) + j % 64 = j by omega] at h
+    show j % 64 < 64 from Nat.mod_lt _ (by (clear * - j; omega)), if_true] at h
+  rw [show 64 * (j / 64) + j % 64 = j by (clear * - j; omega)] at h
   rw [h]
   congr 1
   funext s
   unfold rotSumG
   rw [sumF_map_range]
   simp only [ite_mul, one_mul, zero_mul, Finset.sum_ite_eq', Finset.mem_range,
-    show j % 64 < 64 from Nat.mod_lt _ (by omega), if_true]
+    show j % 64 < 64 from Nat.mod_lt _ (by (clear * - j; omega)), if_true]
 
 /-! ## `eqKernelF` entries: the product formula, the split, the rotated sum -/
 
@@ -260,8 +260,8 @@ theorem eqAtG_prod : ∀ (p : List F) {z : ℕ}, z < 2 ^ p.length → eqAtG p z 
 /-- **`eq` of a 6-point splits** into its low and high three coordinates. -/
 theorem eqAtG_split {a : List F} (ha : a.length = 6) {z : ℕ} (hz : z < 64) :
     eqAtG a z = eqAtG (a.take 3) (z % 8) * eqAtG (a.drop 3) (z / 8) := by
-  rw [eqAtG_prod a (by rw [ha]; omega), eqAtG_prod _ (by simp [ha]; omega),
-    eqAtG_prod _ (by simp [ha]; omega)]
+  rw [eqAtG_prod a (by rw [ha]; (clear * - hz; omega)), eqAtG_prod _ (by simp [ha]; (clear * - z F a; omega)),
+    eqAtG_prod _ (by simp [ha]; (clear * - z F a hz; omega))]
   unfold eqProdG
   rw [ha, show (6 : ℕ) = 3 + 3 from rfl, Finset.prod_range_add]
   simp only [List.length_take, List.length_drop, ha, show min 3 6 = 3 from rfl,
@@ -288,11 +288,11 @@ theorem shift_LHG {a b : List F} (ha : a.length = 6) (hb : b.length = 6) {r : �
       (eqAtG (b.take 3) zl * eqAtG (a.take 3) ((zl + r % 8) % 8)) *
         (eqAtG (b.drop 3) zh * eqAtG (a.drop 3) ((zh + (r / 8 + (zl + r % 8) / 8) % 8) % 8)) := by
     intro zh hzh zl hzl
-    rw [eqAtG_split hb (by omega), eqAtG_split ha (by omega)]
-    have e1 : (8 * zh + zl) % 8 = zl := by omega
-    have e2 : (8 * zh + zl) / 8 = zh := by omega
-    have e3 : (8 * zh + zl + r) % 64 % 8 = (zl + r % 8) % 8 := by omega
-    have e4 : (8 * zh + zl + r) % 64 / 8 = (zh + (r / 8 + (zl + r % 8) / 8) % 8) % 8 := by omega
+    rw [eqAtG_split hb (by (clear * - zh zl F a b r hzh hzl; omega)), eqAtG_split ha (by (clear * - zh zl r F a b; omega))]
+    have e1 : (8 * zh + zl) % 8 = zl := by (clear * - zh zl F a b r hzl; omega)
+    have e2 : (8 * zh + zl) / 8 = zh := by (clear * - zh zl F a b r e1; omega)
+    have e3 : (8 * zh + zl + r) % 64 % 8 = (zl + r % 8) % 8 := by (clear * - zh zl r F a b e1; omega)
+    have e4 : (8 * zh + zl + r) % 64 / 8 = (zh + (r / 8 + (zl + r % 8) / 8) % 8) % 8 := by (clear * - zh zl r F a b e1 e3; omega)
     rw [e1, e2, e3, e4]
     ring
   unfold rotSumG
@@ -304,9 +304,9 @@ theorem shift_LHG {a b : List F} (ha : a.length = 6) (hb : b.length = 6) {r : �
   simp only [sumF_map_range, Finset.sum_mul, ← Finset.sum_add_distrib]
   refine Finset.sum_congr rfl fun zl hzl => ?_
   have hzl' := Finset.mem_range.mp hzl
-  rcases (show (zl + r % 8) / 8 = 0 ∨ (zl + r % 8) / 8 = 1 by omega) with hc | hc
+  rcases (show (zl + r % 8) / 8 = 0 ∨ (zl + r % 8) / 8 = 1 by (clear * - zl r F a b hzl'; omega)) with hc | hc
   · rw [hc, if_pos rfl, if_neg (by decide), zero_mul, Nat.add_zero, add_zero,
-      Nat.mod_eq_of_lt (show r / 8 < 8 by omega)]
+      Nat.mod_eq_of_lt (show r / 8 < 8 by (clear * - r F a b hr zl; omega))]
   · rw [hc, if_neg (by decide), if_pos rfl, zero_mul, zero_add]
 
 /-! ## The iota term -/
@@ -371,10 +371,10 @@ theorem iota_flipsG {rc : UInt64} (hrc : rc ∈ keccakRC) (A : ℕ → F) (B : L
 
 theorem firstWG_getD (g : F) (lanes : List F) {l z : ℕ} (hl : l < 25) (hz : z < 64) :
     (firstWG g lanes).getD (64 * l + z) 0 = lanes.getD l 0 * g ^ z := by
-  have h : 64 * l + z < 1600 := by omega
+  have h : 64 * l + z < 1600 := by (clear * - l z hl hz; omega)
   simp only [firstWG, keccakBits, List.getD_eq_getElem?_getD, List.getElem?_map,
     List.getElem?_range h, Option.map_some, Option.getD_some]
-  rw [show (64 * l + z) / 64 = l by omega, show (64 * l + z) % 64 = z by omega]
+  rw [show (64 * l + z) / 64 = l by (clear * - l z hz; omega), show (64 * l + z) % 64 = z by (clear * - l z hz; omega)]
 
 theorem firstWG_length (g : F) (lanes : List F) : (firstWG g lanes).length = 1600 := by
   simp [firstWG, keccakBits]
@@ -470,14 +470,14 @@ theorem open_committedG (logSteps : ℕ) (claim : KClaim F) {slot : List F} (hs 
   have h0 : ∑ o ∈ range 25, eqAtG slot o *
       slotWtF (eqKernelF (claim.point.drop (logSteps - 4))) claim.weights 1 1 o 0 = 0 :=
     Finset.sum_eq_zero fun o ho => by
-      rw [slotWtF, if_neg (by have := Finset.mem_range.mp ho; omega), mul_zero]
+      rw [slotWtF, if_neg (by have := Finset.mem_range.mp ho; (clear * - o F slot this; omega)), mul_zero]
   have h2 : ∑ k ∈ range 14, eqAtG slot (25 + (25 + k)) *
       slotWtF (eqKernelF (claim.point.drop (logSteps - 4))) claim.weights 1 1 (25 + (25 + k)) 0 = 0 :=
-    Finset.sum_eq_zero fun k _ => by rw [slotWtF, if_neg (by omega), mul_zero]
+    Finset.sum_eq_zero fun k _ => by rw [slotWtF, if_neg (by (clear * - k F slot; omega)), mul_zero]
   rw [h0, h2, zero_add, add_zero]
   refine Finset.sum_congr rfl fun l hl => ?_
   have hl' := Finset.mem_range.mp hl
-  rw [slotWtF, if_pos (by omega), show (25 + l) / 25 - 1 = 0 by omega, show (25 + l) % 25 = l by omega,
+  rw [slotWtF, if_pos (by (clear * - l F slot hl'; omega)), show (25 + l) / 25 - 1 = 0 by (clear * - l F slot hl'; omega), show (25 + l) % 25 = l by (clear * - l F slot hl'; omega),
     Nat.add_zero, mul_assoc]
 
 theorem dotF_eq_sumG {l r : List F} (hl : l.length = 64) (hr : r.length = 64) :
@@ -499,7 +499,7 @@ theorem open_inputG (logSteps : ℕ) (claim : KClaim F) {slot slices : List F} (
       slotWtF (eqKernelF (claim.point.drop (logSteps - 4))) claim.weights 0 2 (2 * 25 + k) z *
         slices.getD z 0 = 0 :=
     Finset.sum_eq_zero fun k _ => Finset.sum_eq_zero fun z _ => by
-      rw [slotWtF, if_neg (by omega), mul_zero, zero_mul]
+      rw [slotWtF, if_neg (by (clear * - k z F slot slices; omega)), mul_zero, zero_mul]
   rw [h2, add_zero, sum_range_mulB, sumF_map_range]
   refine Finset.sum_congr rfl fun s hs' => ?_
   rw [sumF_map_range]
@@ -509,8 +509,8 @@ theorem open_inputG (logSteps : ℕ) (claim : KClaim F) {slot slices : List F} (
   rw [sumF_map_range, Finset.mul_sum]
   refine Finset.sum_congr rfl fun z hz => ?_
   have hz' := Finset.mem_range.mp hz
-  rw [slotWtF, if_pos (by omega), show (25 * s + l) / 25 - 0 = s by omega,
-    show (25 * s + l) % 25 = l by omega]
+  rw [slotWtF, if_pos (by (clear * - s l z F slot slices hs2 hl' hz'; omega)), show (25 * s + l) / 25 - 0 = s by (clear * - s l F slot slices hs2 hl' z; omega),
+    show (25 * s + l) % 25 = l by (clear * - s l F slot slices hl' z; omega)]
   ring
 
 /-- The inputs' opening on transposed product weights: lane forms against the slices. -/

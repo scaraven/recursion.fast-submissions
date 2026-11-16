@@ -128,10 +128,10 @@ theorem ofBits_eq_sum {i v : ℕ} (hv : v < 2 ^ i) :
     · have hlt : v - 2 ^ i < 2 ^ i := by
         have := Nat.ge_two_pow_of_testBit hb
         rw [pow_succ] at hv
-        omega
+        (clear * - v i hv this; omega)
       have hv' : v = 2 ^ i + (v - 2 ^ i) := by
         have := Nat.ge_two_pow_of_testBit hb
-        omega
+        (clear * - v i this; omega)
       have hbits : ∀ c < i, v.testBit c = (v - 2 ^ i).testBit c := by
         intro c hc
         conv_lhs => rw [hv']
@@ -147,7 +147,7 @@ theorem ofBits_eq_sum {i v : ℕ} (hv : v < 2 ^ i) :
         by_contra h
         have h1 : 2 ^ i ≤ v := not_lt.mp h
         have : v.testBit i = true := by
-          have hv2 : v - 2 ^ i < 2 ^ i := by rw [pow_succ] at hv; omega
+          have hv2 : v - 2 ^ i < 2 ^ i := by rw [pow_succ] at hv; (clear * - v i hv h; omega)
           have := Nat.testBit_two_pow_add_eq (v - 2 ^ i) i
           rw [Nat.add_sub_cancel' h1, Nat.testBit_lt_two_pow hv2] at this
           simpa using this
@@ -258,10 +258,10 @@ theorem vanishingAt_basisVec_ne_zero {i : ℕ} (hi : i < 64) : vanishingAt i (ba
   have hlt : 2 ^ i + v < 2 ^ 64 := by
     have : 2 ^ (i + 1) ≤ 2 ^ 64 := Nat.pow_le_pow_right (by norm_num) hi
     rw [pow_succ] at this
-    omega
+    (clear * - i v hv' this; omega)
   rw [Ne, ofBits_eq_zero_iff hlt]
   have := Nat.two_pow_pos i
-  omega
+  (clear * - i v hv'; omega)
 
 /-! ## The normalized polynomials -/
 
@@ -625,7 +625,7 @@ theorem enc_injective {κ R : ℕ} (h : κ + R ≤ 64) : Function.Injective (enc
       · rw [h0, natDegree_zero]
         exact Nat.two_pow_pos κ
       · exact (natDegree_lt_iff_degree_lt h0).mpr hmem
-    exact lt_of_lt_of_le hlt (Nat.pow_le_pow_right (by norm_num) (by (clear * -; omega)))
+    exact lt_of_lt_of_le hlt (Nat.pow_le_pow_right (by norm_num) (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - κ R; omega))))
 
 end
 end LeanVM.Protocol.Whir

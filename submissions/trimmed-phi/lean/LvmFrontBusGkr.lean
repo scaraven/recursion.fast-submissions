@@ -523,18 +523,18 @@ theorem layersPre_of_stepPost (n m : ℕ) (h : m + n = μ) (hn : n ≠ 0) (s : G
   obtain ⟨hl, hv, W, hW, hR⟩ := hp
   unfold LayersPre
   split_ifs with h0
-  · have hlast : n = ρOf n := by have := ρOf_le hn; omega
-    have hm : m + ρOf n = μ := by omega
+  · have hlast : n = ρOf n := by have := ρOf_le hn; (clear * - n μ m h s hl h0 this; omega)
+    have hm : m + ρOf n = μ := by (clear * - m n μ h s hl hlast; omega)
     unfold trackOf at hR
     rw [dite_eq_left hlast] at hR
-    refine ⟨by omega, hv, W, hW, fun o ho hin ↦ hR o ho ?_⟩
+    refine ⟨by (clear * - s μ n m h hl hlast; omega), hv, W, hW, fun o ho hin ↦ hR o ho ?_⟩
     have hvec : Vector.cast hm (vecOf (m + ρOf n) s.point) = vecOf μ s.point := by
       apply Vector.ext
       intro k hk
       simp [vecOf]
     refine (Gkr.stepOutT_progTrack_iff 3 μ leaves riders (ρOf n) m hm _ o).mpr ?_
     simpa only [layerStmtOf, hvec] using hin
-  · have hlast : ¬ n = ρOf n := by omega
+  · have hlast : ¬ n = ρOf n := by (clear * - n μ m h s hl h0; omega)
     unfold trackOf at hR
     rw [dite_eq_right hlast] at hR
     exact ⟨hl, hv, W, hW, fun o ho hin ↦ hR o ho

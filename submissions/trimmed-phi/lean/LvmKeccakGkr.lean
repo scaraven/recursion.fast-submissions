@@ -124,7 +124,7 @@ theorem outer_rows (segments w : List E) (first count : ℕ) (hfc : first + coun
     refine ⟨⟨by simp, fun o ho ↦ ?_⟩, fun o z ↦ ?_⟩
     · simp [Array.getD_eq_getD_getElem?, ho]
     · simp only [List.range_zero, List.foldl_nil, rowsF, slotW]
-      rw [ite_eq_right (by (clear * -; omega))]
+      rw [ite_eq_right (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))]
       simp only [Array.getD_eq_getD_getElem?, Array.getElem?_replicate]
       by_cases h : o < 64
       · by_cases h' : z < 64 <;> simp [h, h']
@@ -223,7 +223,7 @@ theorem foldAll_eq : ∀ (pt : List E) (rows : List (List E)), rows.length = 2 ^
         List.zipWith (fun lo hi ↦ lo + c * (lo + hi)) (rows.getD (2 * i) [])
           (rows.getD (2 * i + 1) [])) := rfl
     have hl' : rows.length / 2 = 2 ^ pt.length := by
-      rw [hl, List.length_cons, pow_succ]; (clear * -; omega)
+      rw [hl, List.length_cons, pow_succ]; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)
     have hrow : ∀ i < rows.length / 2, ((List.range (rows.length / 2)).map fun i ↦
         List.zipWith (fun lo hi ↦ lo + c * (lo + hi)) (rows.getD (2 * i) [])
           (rows.getD (2 * i + 1) [])).getD i [] =
@@ -245,7 +245,7 @@ theorem foldAll_eq : ∀ (pt : List E) (rows : List (List E)), rows.length = 2 ^
     rw [← hl'] at hi' 
     rw [hrow i (by omega), zipWith_getD _ _ _ (by rw [hr _ (by (clear * - hl hl' hi'; omega))]; exact hz)
       (by rw [hr _ (by (clear * - hl hl' hi'; omega))]; exact hz), eqAt_cons, eqAt_cons]
-    have e1 : 2 * i % 2 = 0 := by (clear * -; omega)
+    have e1 : 2 * i % 2 = 0 := by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)
     have e2 : (2 * i + 1) % 2 = 1 := by (clear * - e1; omega)
     have e3 : 2 * i / 2 = i := by (clear * - e1; omega)
     have e4 : (2 * i + 1) / 2 = i := by (clear * - e1 e2; omega)
@@ -364,8 +364,8 @@ theorem firstClaim_shape {P : ℕ} {inst segment lanesPt output : List E} (commi
     (hi : inst.length = P + 4) (hs : segment.length = 1) :
     ClaimShape P (firstClaim inst segment lanesPt output committed) := by
   refine ⟨?_, ?_, ?_⟩
-  · rw [firstClaim_mu, eqKernel_length, List.length_take, hi, min_eq_left (by (clear * -; omega))]; rfl
-  · rw [firstClaim_point, List.length_append, List.length_drop, hi, hs]; (clear * -; omega)
+  · rw [firstClaim_mu, eqKernel_length, List.length_take, hi, min_eq_left (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))]; rfl
+  · rw [firstClaim_point, List.length_append, List.length_drop, hi, hs]; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)
   · rw [firstClaim_weights]; exact firstWeights_length lanesPt
 
 /-- The first claim's weights read a state's lanes as words. -/
@@ -557,7 +557,7 @@ theorem claims_of_zeroOnS {sh : Shape} (hsh : sh.Ok) (h : ℕ) (I : ℕ → ℕ 
       rw [h1]
       exact add_eq_zero_iff_E.1 this
     · have := hz (1 + 2 * l) (hb _ (by rw [h2]; exact lt_of_lt_of_le (by (clear * - hl; omega) : 1 + 2 * l < 64) (by norm_num)))
-      have e1 : (1 + 2 * l) / 2 = l := by (clear * -; omega)
+      have e1 : (1 + 2 * l) / 2 = l := by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)
       have e2 : (1 + 2 * l) % 2 = 1 := by (clear * - e1; omega)
       rw [startDeltaS, h2, e1, e2, if_pos hl, if_pos rfl] at this
       rw [h2]
@@ -566,7 +566,7 @@ theorem claims_of_zeroOnS {sh : Shape} (hsh : sh.Ok) (h : ℕ) (I : ℕ → ℕ 
       rw [Shape.segBits_of_ok hsh, h2]
       exact lt_of_lt_of_le (by (clear * - hl; omega) : 2 * l < 64) (by norm_num)
     have := hz (2 * l) hl2
-    have e1 : 2 * l / 2 = l := by (clear * -; omega)
+    have e1 : 2 * l / 2 = l := by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)
     have e2 : 2 * l % 2 = 0 := by (clear * - e1; omega)
     rw [startDeltaS, h2, e1, e2, if_pos hl, if_neg (by norm_num)] at this
     exact add_eq_zero_iff_E.1 this
@@ -604,7 +604,7 @@ theorem zeroOn_of_firstS {sh : Shape} (hsh : sh.Ok) (P : ℕ) (I : ℕ → ℕ �
     have hz : ∑ x ∈ range 7, eqAt lanesPt (25 + x) *
         startDeltaS sh (sh.logSteps P) I inst output (25 + x) = 0 :=
       Finset.sum_eq_zero fun x _ ↦ by
-        rw [startDeltaS, h1, Nat.div_one, if_neg (by (clear * -; omega)), mul_zero]
+        rw [startDeltaS, h1, Nat.div_one, if_neg (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)), mul_zero]
     rw [hz, add_zero]
     have hm : ∑ l ∈ range 25, eqAt lanesPt l * startDeltaS sh (sh.logSteps P) I inst output l =
         ∑ l ∈ range 25, eqAt lanesPt l *
@@ -649,7 +649,7 @@ theorem zeroOn_of_firstS {sh : Shape} (hsh : sh.Ok) (P : ℕ) (I : ℕ → ℕ �
         ← Finset.sum_add_distrib]
       refine Finset.sum_congr rfl fun l hl' ↦ ?_
       have hl'' := Finset.mem_range.1 hl'
-      rw [startDeltaS, h2, show (2 * l + 0) / 2 = l by (clear * -; omega), show (2 * l + 0) % 2 = 0 by (clear * -; omega),
+      rw [startDeltaS, h2, show (2 * l + 0) / 2 = l by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega), show (2 * l + 0) % 2 = 0 by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega),
         if_pos hl'', if_neg (by norm_num), mul_add]
     have hm1 : ∑ l ∈ range 32, eqAt lanesPt l *
           startDeltaS sh (sh.logSteps P) I inst output (2 * l + 1) =
@@ -660,7 +660,7 @@ theorem zeroOn_of_firstS {sh : Shape} (hsh : sh.Ok) (P : ℕ) (I : ℕ → ℕ �
         ← Finset.sum_add_distrib]
       refine Finset.sum_congr rfl fun l hl' ↦ ?_
       have hl'' := Finset.mem_range.1 hl'
-      rw [startDeltaS, h2, show (2 * l + 1) / 2 = l by (clear * -; omega), show (2 * l + 1) % 2 = 1 by (clear * -; omega),
+      rw [startDeltaS, h2, show (2 * l + 1) / 2 = l by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega), show (2 * l + 1) % 2 = 1 by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega),
         if_pos hl'', if_pos rfl, mul_add]
     rw [hsplit, Finset.sum_range_succ (n := 1), Finset.sum_range_succ (n := 0),
       Finset.sum_range_zero, zero_add, hm0, hm1]
@@ -890,7 +890,7 @@ theorem slotW_out {segment lanesPt : List E} (hs : segment.length = 1) (hl : lan
   by_cases ho : 25 ≤ o ∧ o < 50
   · rw [ite_eq_left (show 25 * 1 ≤ o ∧ o < 25 * (1 + 1) ∧ 0 < 64 by (clear * - ho; omega)), ite_eq_left ho]
     have e1 : o / 25 - 1 = 0 := by (clear * - ho; omega)
-    have e2 : 64 * (o % 25) + 0 < 1600 := by (clear * -; omega)
+    have e2 : 64 * (o % 25) + 0 < 1600 := by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)
     rw [e1, eqKernel_getD, hs, ite_eq_left (by norm_num), firstWeights,
       List.getD_eq_getElem?_getD, List.getElem?_map,
       List.getElem?_range (by simpa [keccakBits] using e2)]
@@ -920,7 +920,7 @@ theorem Fo_nil (col : ℕ → K) (inst : List E) {segment lanesPt : List E}
       rw [slotW_out hs hl, ite_eq_right (by have := Finset.mem_range.1 hu; (clear * - this; omega)), zero_mul]
   have h3 : ∑ u ∈ range 14, slotW (eqKernel segment) (firstWeights lanesPt) 1 1 (25 + (25 + u)) 0 *
       stepMle h inst (fun x ↦ col (x + 2 ^ h * (25 + (25 + u)))) = 0 :=
-    Finset.sum_eq_zero fun u _ ↦ by rw [slotW_out hs hl, ite_eq_right (by (clear * -; omega)), zero_mul]
+    Finset.sum_eq_zero fun u _ ↦ by rw [slotW_out hs hl, ite_eq_right (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)), zero_mul]
   rw [h1, h3, zero_add, add_zero]
   refine Finset.sum_congr rfl fun l hl' ↦ ?_
   have hl'' := Finset.mem_range.1 hl'
@@ -942,7 +942,7 @@ theorem fold_out {P : ℕ} {inst segment lanesPt output : List E} (hi : inst.len
   rw [headD_eq_getD, h3 0 (by norm_num), Wo, hslot]
   refine Finset.sum_congr rfl fun o ho ↦ ?_
   rw [slotWeights_getD _ _ 1 1 (by norm_num) (Finset.mem_range.1 ho), firstClaim_point,
-    firstClaim_weights, show P + 4 - 4 = P by (clear * -; omega),
+    firstClaim_weights, show P + 4 - 4 = P by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega),
     List.drop_left' (by simp [hi])]
 
 end
@@ -1095,7 +1095,7 @@ theorem phi_eq (col : ℕ → K) (claim : KeccakClaim) (hshape : ClaimShape P cl
       slotW (eqKernel (claim.point.drop P)) claim.weights 0 2 (2 * 25 + x) z *
         sliceMle P col (low ++ claim.point.take P) (2 * 25 + x) z = 0 :=
     Finset.sum_eq_zero fun x _ ↦ Finset.sum_eq_zero fun z _ ↦ by
-      rw [slotW, ite_eq_right (by (clear * -; omega)), zero_mul]
+      rw [slotW, ite_eq_right (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)), zero_mul]
   rw [hzero, add_zero]
   refine Finset.sum_congr rfl fun m hm ↦ ?_
   have hm' := Finset.mem_range.1 hm
@@ -1131,7 +1131,7 @@ theorem fold_in (claim : KeccakClaim) {slot : List E} (hslot : slot.length = 6) 
   rw [h3 z hz, Ws, hslot]
   refine Finset.sum_congr rfl fun o ho ↦ ?_
   rw [slotWeights_getD _ _ 0 keccakSegments (by decide) (Finset.mem_range.1 ho),
-    show P + 4 - 4 = P by (clear * -; omega)]
+    show P + 4 - 4 = P by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)]
   rfl
 
 theorem fold_in_length (claim : KeccakClaim) {slot : List E} (hslot : slot.length = 6) :
@@ -1557,7 +1557,7 @@ theorem lead_eqS (L₀ b : ℕ) :
     rw [Finset.sum_congr rfl fun i hi ↦ by
       rw [ztE, if_pos (by have := Finset.mem_range.1 hi; (clear * - hnk this; omega))], Finset.sum_const,
       Finset.card_range, nsmul_eq_mul]
-  rw [e1 b (b + 5) (by (clear * -; omega)), e1 5 5 le_rfl, errE, errE]
+  rw [e1 b (b + 5) (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)), e1 5 5 le_rfl, errE, errE]
   push_cast
   ring
 

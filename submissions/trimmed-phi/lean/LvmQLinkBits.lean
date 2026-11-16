@@ -54,7 +54,7 @@ theorem open_pos_facts (hS : StreamOk p) (hQ : QOk p lay) {o : OpenInfo} (ho : o
   have hx : j * (1 + o.L.path) + 1 < (openPlan o.L o.pe o.ce o.co).length := by
     rw [openPlan_length]; nlinarith
   have hi := hal.2 _ hx
-  rw [openPlan_getD _ _ _ _ hj (by (clear * - hp1; omega)), if_neg (by (clear * -; omega))] at hi
+  rw [openPlan_getD _ _ _ _ hj (by (clear * - hp1; omega)), if_neg (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))] at hi
   have hilt : o.i0 + (j * (1 + o.L.path) + 1) < (plan p).length := by have := hal.1; (clear * - hx this; omega)
   have he := streamOk_entry hS.1 hilt
   rw [hi] at he

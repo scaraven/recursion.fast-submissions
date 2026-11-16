@@ -117,7 +117,7 @@ theorem valid_of_callDelta_zero (hnt : nt ≤ 25) (hz : ZeroOn (callDelta h nt c
       lane_inState h col 1 x hl, Nat.mul_one, ← hmid x hx l hl, laneWord, lane_ofLane']
   refine ⟨hv, fun l hl x hx ↦ ?_⟩
   have := at_ x hx (25 + l) (by (clear * - hnt hl; omega))
-  simp only [callDelta, e1 x hx, e2 x hx, show ¬ 25 + l < 25 by (clear * -; omega), ite_false,
+  simp only [callDelta, e1 x hx, e2 x hx, show ¬ 25 + l < 25 by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega), ite_false,
     show 25 + l < 25 + nt by (clear * - hl; omega), ite_true, Nat.add_sub_cancel_left] at this
   rw [ofK_injective (add_eq_zero_iff_E.1 this), keccakF_eq, hv x hx]
 
@@ -127,7 +127,7 @@ theorem callDelta_zeroOn {r v : List E} (hr : r.length = h) (hnt : nt ≤ 25)
     (hout : outClaimsTrueMid h col r v) (hmid : midAgree h col r)
     (htied : TiedTrue h nt Y r v) : ZeroOn (callDelta h nt col Y) r (h + 6) := by
   intro t ht
-  rw [hr, show h + 6 - h = 6 by (clear * -; omega)] at ht
+  rw [hr, show h + 6 - h = 6 by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)] at ht
   unfold foldT
   rw [hr]
   have e : ∀ w ∈ range (2 ^ h), callDelta h nt col Y (w + 2 ^ h * t) =

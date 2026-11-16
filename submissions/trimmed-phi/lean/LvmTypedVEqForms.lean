@@ -75,7 +75,7 @@ theorem fm_sum_eqAt_mul : ∀ (a c : List E), c.length ≤ a.length →
       ← fm_eqEval_prod, ← fm_sum_eqAt_mul a c (by simpa using h), Finset.mul_sum]
     refine Finset.sum_congr rfl fun w _ ↦ ?_
     simp only [eqAt_cons]
-    have h1 : 2 * w % 2 = 0 := by (clear * -; omega)
+    have h1 : 2 * w % 2 = 0 := by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)
     have h2 : (2 * w + 1) % 2 = 1 := by (clear * - h1; omega)
     have h3 : 2 * w / 2 = w := by (clear * - h1; omega)
     have h4 : (2 * w + 1) / 2 = w := by (clear * - h1 h2; omega)

@@ -305,7 +305,7 @@ c_k` makes `q(0) + q(1)` the claim. -/
 theorem weightedSum_plain {d : ℕ} (claim c₀ : E) (tail : List E) (hlen : tail.length + 2 = d + 1) :
     SumcheckRound.weightedSum d (wireDomain none)
       (toMessage d (c₀ :: (claim + sumE tail) :: tail)) = claim := by
-  have hl : (c₀ :: (claim + sumE tail) :: tail).length = d + 1 := by simp; omega
+  have hl : (c₀ :: (claim + sumE tail) :: tail).length = d + 1 := by simp; (clear * - tail d hlen; omega)
   simp only [SumcheckRound.weightedSum, wireDomain, List.map_cons, List.map_nil, List.sum_cons,
     List.sum_nil, add_zero, one_mul]
   rw [evaluate_toMessage _ hl, evaluate_toMessage _ hl, polyEval_zero, polyEval_one]
@@ -317,7 +317,7 @@ theorem weightedSum_plain {d : ℕ} (claim c₀ : E) (tail : List E) (hlen : tai
 theorem weightedSum_eq {d : ℕ} (claim r : E) (tail : List E) (hlen : tail.length + 1 = d + 1) :
     SumcheckRound.weightedSum d (wireDomain (some r))
       (toMessage d ((claim + r * sumE tail) :: tail)) = claim := by
-  have hl : ((claim + r * sumE tail) :: tail).length = d + 1 := by simp; omega
+  have hl : ((claim + r * sumE tail) :: tail).length = d + 1 := by simp; (clear * - tail d hlen; omega)
   simp only [SumcheckRound.weightedSum, wireDomain, List.map_cons, List.map_nil, List.sum_cons,
     List.sum_nil, add_zero]
   rw [evaluate_toMessage _ hl, evaluate_toMessage _ hl, polyEval_zero, polyEval_one]

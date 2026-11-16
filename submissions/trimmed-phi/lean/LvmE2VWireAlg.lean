@@ -95,8 +95,8 @@ theorem bitsF_two_mul (z m : ℕ) : (bitsF (2 * z) (m + 1) : List F) = 0 :: bits
   simp [bitsF, Nat.mul_mod_right, Nat.mul_div_cancel_left z (by norm_num : 0 < 2)]
 
 theorem bitsF_two_mul_add_one (z m : ℕ) : (bitsF (2 * z + 1) (m + 1) : List F) = 1 :: bitsF z m := by
-  have h1 : (2 * z + 1) % 2 = 1 := by omega
-  have h2 : (2 * z + 1) / 2 = z := by omega
+  have h1 : (2 * z + 1) % 2 = 1 := by (clear * - z; omega)
+  have h2 : (2 * z + 1) / 2 = z := by (clear * - z h1; omega)
   simp [bitsF, h1, h2]
 
 /-- `selector_point` is the cube point of the selector. -/
@@ -131,7 +131,7 @@ theorem polyLEF_eqAtF (pre post : List F) (w : ℕ) :
 theorem polyLEF_mle (pre post : List F) (N : ℕ) (f : ℕ → F) :
     PolyLEF 1 fun x ↦ ∑ w ∈ range N, eqAtF (pre ++ x :: post) w * f w :=
   PolyLEF.sum _ fun w _ ↦ ((PolyLEF.mul (polyLEF_eqAtF pre post w) (PolyLEF.const 0 (f w))).mono
-    (by omega)).congr fun _ ↦ rfl
+    (by (clear * -; omega))).congr fun _ ↦ rfl
 
 /-- A product of two multilinear extensions has degree two in each coordinate. -/
 theorem polyLEF_mle_mul (f g : ℕ → F) (N M : ℕ) (pre post : List F) :
@@ -165,7 +165,7 @@ theorem cube_plainFamilyF {β : Type} (φ : β → List F → F) {d : ℕ} (n : 
     (hφ : ∀ q pre post, PolyLEF d fun x ↦ φ q (pre ++ x :: post)) :
     PlainFamilyF (fun q acc ↦ cubeSumF (φ q) n acc) d n := by
   intro q acc hacc
-  have hm : n - acc.length = (n - (acc.length + 1)) + 1 := by omega
+  have hm : n - acc.length = (n - (acc.length + 1)) + 1 := by (clear * - n F acc hacc; omega)
   refine ⟨?_, ?_⟩
   · have e : ∀ x, cubeSumF (φ q) n (acc ++ [x]) =
         ∑ u ∈ range (2 ^ (n - (acc.length + 1))), φ q (acc ++ x :: bitsF u (n - (acc.length + 1))) := by
@@ -202,9 +202,9 @@ theorem eqAtF_bitsF_lt : ∀ {m z w : ℕ}, z < 2 ^ m → w < 2 ^ m →
     have : w = 0 := by simpa using hw
     subst z; subst w; simp [bitsF]
   | m + 1, z, w, hz, hw => by
-    rw [bitsF, eqAtF_succ, eqAtF_bitsF_lt (m := m) (by rw [pow_succ] at hz; omega)
-      (by rw [pow_succ] at hw; omega)]
-    have key : w = z ↔ (w % 2 = z % 2 ∧ w / 2 = z / 2) := by omega
+    rw [bitsF, eqAtF_succ, eqAtF_bitsF_lt (m := m) (by rw [pow_succ] at hz; (clear * - z m w hz; omega))
+      (by rw [pow_succ] at hw; (clear * - w m z hw; omega))]
+    have key : w = z ↔ (w % 2 = z % 2 ∧ w / 2 = z / 2) := by (clear * - w z m; omega)
     by_cases h : w / 2 = z / 2
     · rcases Nat.mod_two_eq_zero_or_one z with hz2 | hz2 <;>
         rcases Nat.mod_two_eq_zero_or_one w with hw2 | hw2 <;>

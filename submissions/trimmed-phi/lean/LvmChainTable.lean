@@ -93,14 +93,14 @@ theorem chainStep_pad43 (d : RecursionFast.Digest) :
     refine uint8_ext fun t ht ↦ ?_
     rw [msgOfBits_bit _ _ ht]
     simp only [pad43Bit, digestBits]
-    rw [ite_eq_right (by omega), ite_eq_left (by omega), dite_eq_left (by omega)]
-    simp only [show (8 * (1 + k) + t - 8) / 8 = k by omega, show (8 * (1 + k) + t - 8) % 8 = t by omega]
+    rw [ite_eq_right (by (clear * - k t hk ht; omega)), ite_eq_left (by (clear * - k t hk ht; omega)), dite_eq_left (by (clear * - k t hk ht; omega))]
+    simp only [show (8 * (1 + k) + t - 8) / 8 = k by (clear * - k t hk ht; omega), show (8 * (1 + k) + t - 8) % 8 = t by (clear * - k t hk ht; omega)]
   · intro q h1 h2
     simp only [RecursionFast.Keccak.rate] at h2
     refine uint8_ext fun t ht ↦ ?_
     rw [msgOfBits_bit _ _ ht]
     simp only [pad43Bit, padAt, RecursionFast.Keccak.rate]
-    rw [ite_eq_right (by omega), ite_eq_right (by omega)]
+    rw [ite_eq_right (by (clear * - q t h1 h2 ht; omega)), ite_eq_right (by (clear * - q t h1 h2 ht; omega))]
     by_cases hq : q = 33
     · subst hq
       simp only [ite_true]
@@ -144,7 +144,7 @@ theorem stBit_inState (x : ℕ) {k : ℕ} (hk : k < 1600) :
 /-- The contract's state bit is leanVM's `sbit`. -/
 theorem stBit_eq_sbit (a : RecursionFast.Keccak.State) {k : ℕ} (hk : k < 1600) :
     stBit a k = sbit a k := by
-  rw [stBit, dite_eq_left hk, sbit, lane_eq _ (by omega)]
+  rw [stBit, dite_eq_left hk, sbit, lane_eq _ (by (clear * - k hk; omega))]
 
 theorem keccakF1600_eq' (a : RecursionFast.Keccak.State) :
     keccakF1600 a = RecursionFast.Keccak.keccakF a := keccakF1600_eq a
@@ -156,7 +156,7 @@ theorem yBits_eq {x : ℕ}
     yBits h ys col x j =
       digestBits (stDigest (RecursionFast.Keccak.keccakF (inState h col 0 x))) j := by
   rw [yBits, hout _ (by (clear * - hj; omega)), digestBits, dite_eq_left hj,
-    stDigest_bit _ (by omega) (Nat.mod_lt _ (by decide)), keccakF1600_eq',
+    stDigest_bit _ (by (clear * - j hj; omega)) (Nat.mod_lt _ (by decide)), keccakF1600_eq',
     show 8 * (j / 8) + j % 8 = j from Nat.div_add_mod j 8, stBit, dite_eq_left (by (clear * - hj; omega)), laneWord,
     K.ofLane, lane_eq _ (by (clear * - hj; omega))]
   rfl

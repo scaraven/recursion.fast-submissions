@@ -77,7 +77,7 @@ theorem toNat_laneAt (b : ByteArray) (o : ℕ) :
   rw [Nat.mod_eq_of_lt (by (clear * - h0; omega)), Nat.mod_eq_of_lt (by (clear * - h1; omega)), Nat.mod_eq_of_lt (by (clear * - h2; omega)),
     Nat.mod_eq_of_lt (by (clear * - h3; omega)), Nat.mod_eq_of_lt (by (clear * - h4; omega)), Nat.mod_eq_of_lt (by (clear * - h5; omega)),
     Nat.mod_eq_of_lt (by (clear * - h6; omega)), Nat.mod_eq_of_lt (by (clear * - h7; omega))]
-  rw [or_mul_pow _ _ 8 256 rfl (by omega), or_mul_pow _ _ 16 65536 rfl (by (clear * - h1 h0; omega)),
+  rw [or_mul_pow _ _ 8 256 rfl (by (clear * - h0; omega)), or_mul_pow _ _ 16 65536 rfl (by (clear * - h1 h0; omega)),
     or_mul_pow _ _ 24 16777216 rfl (by (clear * - h2 h1 h0; omega)), or_mul_pow _ _ 32 4294967296 rfl (by (clear * - h3 h2 h1 h0; omega)),
     or_mul_pow _ _ 40 1099511627776 rfl (by (clear * - h4 h3 h2 h1 h0; omega)), or_mul_pow _ _ 48 281474976710656 rfl (by (clear * - h5 h4 h3 h2 h1 h0; omega)),
     or_mul_pow _ _ 56 72057594037927936 rfl (by (clear * - h6 h5 h4 h3 h2 h1 h0; omega))]
@@ -118,9 +118,9 @@ theorem toExt3_feAt_of (sig : ByteArray) (o : ℕ) (l : List UInt8)
   obtain ⟨j, hj⟩ := i
   change j < 3 at hj
   interval_cases j
-  · exact hk 0 (by omega)
-  · exact hk 1 (by omega)
-  · exact hk 2 (by omega)
+  · exact hk 0 (by (clear * - hj; omega))
+  · exact hk 1 (by (clear * - hj; omega))
+  · exact hk 2 (by (clear * - hj; omega))
 
 theorem toBF64_kAt (sig : ByteArray) (o : ℕ) : FK.toBF64 (kAt sig o) = Lvm.FS.kOfBytes (sb sig o 8) :=
   toBF64_kAt_of _ _ _ fun i hi => getD_sb sig o 8 i hi
@@ -130,7 +130,7 @@ theorem toExt3_feAt (sig : ByteArray) (o : ℕ) : FE.toExt3 (feAt sig o) = Lvm.F
 
 theorem toExt3_feAt_chal (sig : ByteArray) (o : ℕ) :
     FE.toExt3 (feAt sig o) = Lvm.FS.chalOf (digestAt sig o) :=
-  toExt3_feAt_of _ _ _ fun i hi => getD_digestAt sig o i (by omega)
+  toExt3_feAt_of _ _ _ fun i hi => getD_digestAt sig o i (by (clear * - i hi; omega))
 
 theorem eToNat_toExt3 (x : FE) : LeanVM.Protocol.Verifier.eToNat (FE.toExt3 x) = Lvm.eToNat x := rfl
 
@@ -146,7 +146,7 @@ theorem rowOf_sb (sig : ByteArray) (o wd j : ℕ) (hj : j < wd) :
     (Lvm.FS.rowOf Lvm.FS.kOfBytes wd (sb sig o (8 * wd))).getD j 0 = FK.toBF64 (kAt sig (o + 8 * j)) := by
   rw [toBF64_kAt_of sig (o + 8 * j) (((sb sig o (8 * wd)).drop (8 * j)).take 8) fun i hi => by
     rw [List.getD_eq_getElem?_getD, List.getElem?_take, ite_eq_left hi, ← List.getD_eq_getElem?_getD, getD_drop_bytes,
-      getD_sb _ _ _ _ (by omega), Nat.add_assoc]]
+      getD_sb _ _ _ _ (by (clear * - j i wd hj hi; omega)), Nat.add_assoc]]
   simp only [Lvm.FS.rowOf, List.getD_eq_getElem?_getD, List.getElem?_map, List.getElem?_range hj,
     Option.map_some, Option.getD_some]
 

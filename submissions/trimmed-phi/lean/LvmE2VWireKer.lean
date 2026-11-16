@@ -51,8 +51,8 @@ def thrSemF (ρ : List F) (s : Bool) (t : ℕ) : F :=
 theorem eqAtF_cons_bit (r : F) (ρ : List F) (y : ℕ) (b : Bool) :
     eqAtF (r :: ρ) (2 * y + b.toNat) = eqBitF r b * eqAtF ρ y := by
   cases b
-  · rw [Bool.toNat_false, add_zero, eqAtF_succ, if_neg (by omega), show 2 * y / 2 = y by omega]; rfl
-  · rw [Bool.toNat_true, eqAtF_succ, if_pos (by omega), show (2 * y + 1) / 2 = y by omega]; rfl
+  · rw [Bool.toNat_false, add_zero, eqAtF_succ, if_neg (by (clear * - y; omega)), show 2 * y / 2 = y by (clear * - y; omega)]; rfl
+  · rw [Bool.toNat_true, eqAtF_succ, if_pos (by (clear * - y; omega)), show (2 * y + 1) / 2 = y by (clear * - y; omega)]; rfl
 
 theorem ite_mul_congrF {P Q : Prop} [Decidable P] [Decidable Q] (hPQ : P ↔ Q) (X Y k : F)
     (hXY : X = k * Y) : (if P then X else 0) = k * (if Q then Y else 0) := by
@@ -73,12 +73,12 @@ theorem msSemF_term (a r : F) (σ ρ : List F) (n y t : ℕ) (b c s : Bool) :
             y + (b && c).toNat + (nextS (b ^^ c) s (t % 2 == 1)).toNat ≤ t / 2 then
           eqAtF σ y * eqAtF ρ (y + (b && c).toNat) else 0) := by
   have hsplit : 2 * y + b.toNat + c.toNat = 2 * (y + (b && c).toNat) + (b ^^ c).toNat := by
-    cases b <;> cases c <;> simp <;> omega
+    cases b <;> cases c <;> simp <;> (clear * - y; omega)
   refine ite_mul_congrF ?_ _ _ _ ?_
   · rw [hsplit, add_assoc, ← le_iff_nextS, pow_succ]
     constructor
-    · rintro ⟨h1, h2⟩; refine ⟨by cases b <;> cases c <;> simp at h1 ⊢ <;> omega, by omega⟩
-    · rintro ⟨h1, h2⟩; refine ⟨by cases b <;> cases c <;> simp at h1 ⊢ <;> omega, by omega⟩
+    · rintro ⟨h1, h2⟩; refine ⟨by cases b <;> cases c <;> simp at h1 ⊢ <;> (clear * - y n t s h1; omega), by (clear * - y b c s t n h2; omega)⟩
+    · rintro ⟨h1, h2⟩; refine ⟨by cases b <;> cases c <;> simp at h1 ⊢ <;> (clear * - y n t s h1; omega), by (clear * - y b c s t n h2; omega)⟩
   · rw [hsplit, eqAtF_cons_bit, eqAtF_cons_bit]
     ring
 
@@ -136,15 +136,15 @@ theorem iotaF_block (ρ μ : List F) (w base y : ℕ) (h4 : 4 ≤ w) (hρ : w - 
     iotaF ρ μ (base + y) =
       eqAtF (ρ.take (w - 4)) (y / 16) * μ.getD (y % 16) 0 * eqAtF (ρ.drop (w - 4)) (base / 2 ^ w) := by
   obtain ⟨k, rfl⟩ := hb
-  obtain ⟨v, rfl⟩ : ∃ v, w = v + 4 := ⟨w - 4, by omega⟩
+  obtain ⟨v, rfl⟩ : ∃ v, w = v + 4 := ⟨w - 4, by (clear * - w F ρ y h4; omega)⟩
   rw [Nat.add_sub_cancel] at hρ ⊢
   have hP : 0 < 2 ^ v := Nat.two_pow_pos v
   have h16 : 2 ^ (v + 4) = 16 * 2 ^ v := by rw [pow_add]; ring
-  have hz : y / 16 < 2 ^ v := by omega
-  have hlen : (ρ.take v).length = v := by simp; omega
+  have hz : y / 16 < 2 ^ v := by (clear * - y v F ρ hy h16; omega)
+  have hlen : (ρ.take v).length = v := by simp; (clear * - hρ; omega)
   have hsplit : 2 ^ (v + 4) * k + y = 16 * (2 ^ v * k) + y := by rw [h16]; ring
-  have e1 : (2 ^ (v + 4) * k + y) / 16 = 2 ^ v * k + y / 16 := by rw [hsplit]; omega
-  have e3 : (2 ^ (v + 4) * k + y) % 16 = y % 16 := by rw [hsplit]; omega
+  have e1 : (2 ^ (v + 4) * k + y) / 16 = 2 ^ v * k + y / 16 := by rw [hsplit]; (clear * - v k y F ρ; omega)
+  have e3 : (2 ^ (v + 4) * k + y) % 16 = y % 16 := by rw [hsplit]; (clear * - v k y F ρ e1; omega)
   have e2 : (2 ^ v * k + y / 16) % 2 ^ v = y / 16 := by
     rw [Nat.mul_add_mod, Nat.mod_eq_of_lt hz]
   have e4 : (2 ^ v * k + y / 16) / 2 ^ v = k := by
@@ -159,10 +159,10 @@ theorem iotaF_block (ρ μ : List F) (w base y : ℕ) (h4 : 4 ≤ w) (hρ : w - 
 theorem sum_msKF (ρ μ σ : List F) (base t : ℕ) (h4 : 4 ≤ σ.length) (hρ : σ.length - 4 ≤ ρ.length)
     (hb : 2 ^ σ.length ∣ base) (ht : t < 2 ^ σ.length) :
     ∑ x ∈ range (2 ^ σ.length), eqAtF σ x * msKF ρ μ base t x = msEvalF ρ μ σ base t := by
-  obtain ⟨v, hv⟩ : ∃ v, σ.length = v + 4 := ⟨σ.length - 4, by omega⟩
-  have hσh : (σ.drop 4).length = v := by simp; omega
-  have hσ4 : (σ.take 4).length = 4 := by simp; omega
-  have hρh : (ρ.take (σ.length - 4)).length = v := by simp; omega
+  obtain ⟨v, hv⟩ : ∃ v, σ.length = v + 4 := ⟨σ.length - 4, by (clear * - F σ ρ base t h4; omega)⟩
+  have hσh : (σ.drop 4).length = v := by simp; (clear * - F σ v ρ base t h4 hv; omega)
+  have hσ4 : (σ.take 4).length = 4 := by simp; (clear * - h4; omega)
+  have hρh : (ρ.take (σ.length - 4)).length = v := by simp; (clear * - F σ ρ v base t h4 hρ hv hσh; omega)
   have hpow : 2 ^ σ.length = 2 ^ v * 16 := by rw [hv, pow_add]; norm_num
   have key : ∀ d ∈ range 16, ∀ x' ∈ range (2 ^ v),
       eqAtF σ (16 * x' + d) * msKF ρ μ base t (16 * x' + d) =
@@ -177,21 +177,21 @@ theorem sum_msKF (ρ μ σ : List F) (base t : ℕ) (h4 : 4 ≤ σ.length) (hρ 
     have hes : eqAtF σ (16 * x' + d) = eqAtF (σ.take 4) d * eqAtF (σ.drop 4) x' := by
       conv_lhs => rw [← List.take_append_drop 4 σ]
       rw [eqAtF_append, hσ4, eqAtF_mod (σ.take 4), hσ4,
-        show (16 * x' + d) % 2 ^ 4 = d by norm_num; omega,
-        show (16 * x' + d) / 2 ^ 4 = x' by norm_num; omega]
+        show (16 * x' + d) % 2 ^ 4 = d by norm_num; (clear * - hd'; omega),
+        show (16 * x' + d) / 2 ^ 4 = x' by norm_num; (clear * - x' d F ρ σ base t v hd'; omega)]
     have hcv : ((16 * x' + d + 1 ≤ t) ↔ (x' + (d == 15).toNat < 2 ^ v ∧
         x' + (d == 15).toNat + (decide (t % 16 < (d + 1) % 16)).toNat ≤ t / 16)) ∧
         (16 * x' + d + 1) / 16 = x' + (d == 15).toNat ∧ (16 * x' + d + 1) % 16 = (d + 1) % 16 := by
-      rcases (show d = 15 ∨ d < 15 by omega) with h | h
-      · subst h; simp; omega
-      · have h15 : (d == 15) = false := by simp; omega
-        rw [h15, Nat.mod_eq_of_lt (show d + 1 < 16 by omega)]
-        by_cases hs : t % 16 < d + 1 <;> simp [hs] <;> omega
+      rcases (show d = 15 ∨ d < 15 by (clear * - d F ρ σ base t v x' hd'; omega)) with h | h
+      · subst h; simp; (clear * - x' t v F ρ σ base ht hpow hx''; omega)
+      · have h15 : (d == 15) = false := by simp; (clear * - d F ρ σ base t v x' hd' h; omega)
+        rw [h15, Nat.mod_eq_of_lt (show d + 1 < 16 by (clear * - d F ρ σ base t v x' hd' h; omega))]
+        by_cases hs : t % 16 < d + 1 <;> simp [hs] <;> (clear * - x' d t v F ρ σ base hd' hx'' h hs; omega)
     rw [msKF]
     by_cases hc' : 16 * x' + d + 1 ≤ t
     · rw [if_pos hc', if_pos (hcv.1.1 hc'),
         show base + (16 * x' + d) + 1 = base + (16 * x' + d + 1) by ring,
-        iotaF_block ρ μ σ.length base _ h4 hρ hb (by omega), hcv.2.1, hcv.2.2, hes]
+        iotaF_block ρ μ σ.length base _ h4 hρ hb (by (clear * - x' d F σ ρ base t ht v hpow hcv hc'; omega)), hcv.2.1, hcv.2.2, hes]
       ring
     · rw [if_neg hc', if_neg (fun h ↦ hc' (hcv.1.2 h))]
       ring
@@ -215,11 +215,11 @@ theorem sum_msKF_zero (ρ μ σ : List F) (t : ℕ) (h4 : 4 ≤ σ.length) (hρ 
 theorem thrEvalF_eq (ρ μ : List F) (t : ℕ) (ht : t < 2 ^ (ρ.length + 4)) :
     ∑ i ∈ range (t + 1), iotaF ρ μ i = thrEvalF ρ μ t := by
   have hpow : 2 ^ (ρ.length + 4) = 2 ^ ρ.length * 16 := by rw [pow_add]; norm_num
-  have hsub : range (t + 1) ⊆ range (2 ^ (ρ.length + 4)) := Finset.range_subset_range.2 (by omega)
+  have hsub : range (t + 1) ⊆ range (2 ^ (ρ.length + 4)) := Finset.range_subset_range.2 (by (clear * - t F ρ ht hpow; omega))
   have h1 : ∑ i ∈ range (t + 1), iotaF ρ μ i =
       ∑ i ∈ range (2 ^ (ρ.length + 4)), if i ≤ t then iotaF ρ μ i else 0 := by
-    rw [← Finset.sum_subset hsub (fun x _ hx ↦ by rw [if_neg (by simp at hx; omega)])]
-    exact Finset.sum_congr rfl fun i hi ↦ by rw [if_pos (by simp at hi; omega)]
+    rw [← Finset.sum_subset hsub (fun x _ hx ↦ by rw [if_neg (by simp at hx; (clear * - x t F ρ hx; omega))])]
+    exact Finset.sum_congr rfl fun i hi ↦ by rw [if_pos (by simp at hi; (clear * - hi; omega))]
   rw [h1, hpow, sum_range_mulB, Finset.sum_comm]
   simp only [thrEvalF]
   rw [sumF_map_range]
@@ -231,7 +231,7 @@ theorem thrEvalF_eq (ρ μ : List F) (t : ℕ) (ht : t < 2 ^ (ρ.length + 4)) :
     simp
   rw [hq, thrSemF, Finset.mul_sum]
   refine Finset.sum_congr rfl fun y _ ↦ ?_
-  rw [iotaF, show (16 * y + d) / 16 = y by omega, show (16 * y + d) % 16 = d by omega, mul_ite,
+  rw [iotaF, show (16 * y + d) / 16 = y by (clear * - y d F ρ t hd'; omega), show (16 * y + d) % 16 = d by (clear * - y d F ρ t hd'; omega), mul_ite,
     mul_zero]
   by_cases hs : t % 16 < d
   · simp only [hs, decide_true, Bool.toNat_true]

@@ -98,6 +98,33 @@ theorem P_xor (x y : UInt64) : P (x ^^^ y) = P x + P y := by
 
 private theorem P_zero : P 0 = 0 := toPoly_zero_eq_zero
 
+/-- `mk_reduce`'s closing identity over any ring of characteristic two (checked once here: `linear_combination`
+in `(ZMod 2)[X]` cost the kernel 0.3 s). -/
+private theorem mk_reduce_ring {R : Type*} [CommRing R] (h2 : (2 : R) = 0) (x lo h a b c : R) :
+    lo + (h + a + b + c) + ((h + a + b + c) * x ^ 1 - x ^ 64 * a) + ((h + a + b + c) * x ^ 3 - x ^ 64 * b) +
+        ((h + a + b + c) * x ^ 4 - x ^ 64 * c) - (lo + x ^ 64 * h) =
+      (x ^ 64 + x ^ 4 + x ^ 3 + x + 1) * -(h + a + b + c) := by
+  linear_combination ((x ^ 4 + x ^ 3 + x + 1) * (h + a + b + c)) * h2
+
+/-- `P_clmul64`'s closing identity over any ring of characteristic two (as `mk_reduce_ring`). -/
+private theorem clmul_ring {R : Type*} [CommRing R] (h2 : (2 : R) = 0) (x a0 a1 b0 b1 q : R) :
+    a0 * b0 + (((a0 + a1) * (b0 + b1) + a0 * b0 + a1 * b1) * x ^ 32 - x ^ 64 * q) + x ^ 64 * (a1 * b1 + q) =
+      (a0 + x ^ 32 * a1) * (b0 + x ^ 32 * b1) := by
+  linear_combination (x ^ 32 * (a0 * b0 + a1 * b1)) * h2
+
+/-- GOLF3: the closing identities at `(ZMod 2)[X]` in one declaration, so that the kernel unfolds
+`Polynomial.commRing`'s operations against `(ZMod 2)[X]`'s once, on variables, not at every use on words. -/
+private theorem fk_ids :
+    (∀ x lo h a b c : (ZMod 2)[X],
+      lo + (h + a + b + c) + ((h + a + b + c) * x ^ 1 - x ^ 64 * a) + ((h + a + b + c) * x ^ 3 - x ^ 64 * b) +
+        ((h + a + b + c) * x ^ 4 - x ^ 64 * c) - (lo + x ^ 64 * h) =
+      (x ^ 64 + x ^ 4 + x ^ 3 + x + 1) * -(h + a + b + c)) ∧
+    (∀ x a0 a1 b0 b1 q : (ZMod 2)[X],
+      a0 * b0 + (((a0 + a1) * (b0 + b1) + a0 * b0 + a1 * b1) * x ^ 32 - x ^ 64 * q) + x ^ 64 * (a1 * b1 + q) =
+        (a0 + x ^ 32 * a1) * (b0 + x ^ 32 * b1)) ∧
+    (∀ a b d : (ZMod 2)[X], b = a + d → a = b - d) :=
+  ⟨mk_reduce_ring ZMod2Poly.two_eq_zero, clmul_ring ZMod2Poly.two_eq_zero, fun _ _ _ h => eq_sub_of_add_eq h.symm⟩
+
 /-- `toPoly_mul_X_pow` for words; the caller supplies the two shifts as `BitVec` shifts. -/
 theorem P_shiftLeft (x : UInt64) (k : ℕ) (hk : k ≤ 64) {s r : UInt64}
     (hs : (x <<< s).toBitVec = x.toBitVec <<< k)
@@ -105,7 +132,7 @@ theorem P_shiftLeft (x : UInt64) (k : ℕ) (hk : k ≤ 64) {s r : UInt64}
     P (x <<< s) = P x * X ^ k - X ^ 64 * P (x >>> r) := by
   have h := toPoly_mul_X_pow x.toBitVec k hk
   simp only [P, hs, hr]
-  linear_combination (-1 : (ZMod 2)[X]) * h
+  exact fk_ids.2.2 _ _ _ h
 
 /-- The mask `0 - (a &&& 1)` selects `x` exactly when bit `0` of `a` is set. -/
 private theorem and_mask (a x : UInt64) :
@@ -196,13 +223,13 @@ private theorem fold_shiftRight (hi : UInt64) (s : UInt64) (hs : 60 ≤ s.toNat)
     BitVec.getLsbD_of_ge _ (60 + (s.toNat + i)) (by omega)]
   simp
 
-/-- `mk_reduce`'s closing identity over any ring of characteristic two (checked once here: `linear_combination`
-in `(ZMod 2)[X]` cost the kernel 0.3 s). -/
-private theorem mk_reduce_ring {R : Type*} [CommRing R] (h2 : (2 : R) = 0) (x lo h a b c : R) :
-    lo + (h + a + b + c) + ((h + a + b + c) * x ^ 1 - x ^ 64 * a) + ((h + a + b + c) * x ^ 3 - x ^ 64 * b) +
-        ((h + a + b + c) * x ^ 4 - x ^ 64 * c) - (lo + x ^ 64 * h) =
-      (x ^ 64 + x ^ 4 + x ^ 3 + x + 1) * -(h + a + b + c) := by
-  linear_combination ((x ^ 4 + x ^ 3 + x + 1) * (h + a + b + c)) * h2
+/-- `mk_reduce`'s class step on variables. -/
+private theorem fk_mk (x l h a b c : (ZMod 2)[X]) (hb : BF64.basePoly = x ^ 64 + x ^ 4 + x ^ 3 + x + 1) :
+    AdjoinRoot.mk BF64.basePoly (l + (h + a + b + c) + ((h + a + b + c) * x ^ 1 - x ^ 64 * a) +
+        ((h + a + b + c) * x ^ 3 - x ^ 64 * b) + ((h + a + b + c) * x ^ 4 - x ^ 64 * c)) =
+      AdjoinRoot.mk BF64.basePoly (l + x ^ 64 * h) := by
+  rw [AdjoinRoot.mk_eq_mk, hb]
+  exact ⟨-(h + a + b + c), fk_ids.1 x l h a b c⟩
 
 /-- `reduce lo hi` is the class of `lo + x^64 hi` modulo the `GF(2^64)` modulus. -/
 theorem mk_reduce (lo hi : UInt64) : Q (reduce lo hi) = AdjoinRoot.mk BF64.basePoly
@@ -219,9 +246,16 @@ theorem mk_reduce (lo hi : UInt64) : Q (reduce lo hi) = AdjoinRoot.mk BF64.baseP
     simp only [hd, P_xor]
   have er : P (reduce lo hi) = P lo + P d + P (d <<< 1) + P (d <<< 3) + P (d <<< 4) := by
     simp only [reduce, P_xor, hd]
-  rw [Q, er, e1, e3, e4, ed, AdjoinRoot.mk_eq_mk, BF64.basePoly_eq]
-  refine ⟨-(P hi + P (hi >>> 63) + P (hi >>> 61) + P (hi >>> 60)), ?_⟩
-  exact mk_reduce_ring ZMod2Poly.two_eq_zero X (P lo) (P hi) _ _ _
+  rw [Q, er, e1, e3, e4, ed]
+  -- the class step on variables (GOLF3: on the words' polynomials the kernel unfolded them, 1 M heartbeats)
+  have hb := BF64.basePoly_eq
+  generalize P (hi >>> 63) = a
+  generalize P (hi >>> 61) = b
+  generalize P (hi >>> 60) = c
+  generalize P lo = l
+  generalize P hi = h
+  generalize (X : (ZMod 2)[X]) = x at hb ⊢
+  exact fk_mk x l h a b c hb
 
 /-! ## The product -/
 
@@ -577,12 +611,6 @@ private theorem lt_xor32 {a b : UInt64} (ha : a.toNat < 2 ^ 32) (hb : b.toNat < 
     (a ^^^ b).toNat < 2 ^ 32 := by
   rw [UInt64.toNat_xor]; exact Nat.xor_lt_two_pow ha hb
 
-/-- `P_clmul64`'s closing identity over any ring of characteristic two (as `mk_reduce_ring`). -/
-private theorem clmul_ring {R : Type*} [CommRing R] (h2 : (2 : R) = 0) (x a0 a1 b0 b1 q : R) :
-    a0 * b0 + (((a0 + a1) * (b0 + b1) + a0 * b0 + a1 * b1) * x ^ 32 - x ^ 64 * q) + x ^ 64 * (a1 * b1 + q) =
-      (a0 + x ^ 32 * a1) * (b0 + x ^ 32 * b1) := by
-  linear_combination (x ^ 32 * (a0 * b0 + a1 * b1)) * h2
-
 /-- **`clmul64` is the carry-less product** of two words: Karatsuba over the halves, each half
 product by `P_clmul32`. -/
 theorem P_clmul64 (a b : UInt64) :
@@ -598,14 +626,18 @@ theorem P_clmul64 (a b : UInt64) :
   -- the `P_xor` rewrites cost 0.2 s)
   simp only [clmul64, P_xor, es, hm, h0, h2] at ha hb ⊢
   rw [ha, hb]
-  exact clmul_ring ZMod2Poly.two_eq_zero X _ _ _ _ _
+  exact fk_ids.2.1 X _ _ _ _ _
 
 /-- **The class of the word product is the product of the classes**: `clmul64`, then
 `reduce`. -/
 theorem Q_mul (a b : FK) : Q (a * b).val = Q a.val * Q b.val := by
   rw [show a * b = mul a b from rfl]
   dsimp only [mul]
-  rw [mk_reduce, P_clmul64, Q, Q, ← map_mul]
+  rw [mk_reduce, P_clmul64, Q, Q]
+  -- `map_mul` on variables (GOLF3: on the words' polynomials the kernel unfolded them, 0.4 M heartbeats)
+  generalize P a.val = A
+  generalize P b.val = B
+  rw [map_mul]
 
 /-- **The product is v3's shift-and-add loop's** (the verifier's arithmetic is unchanged). -/
 theorem mul_eq_mulLoop (a b : FK) : a * b = ⟨mulLoop 16 a.val b.val 0 0 0⟩ := by
@@ -866,12 +898,132 @@ theorem frob_eq_pow (k : ℕ) (a : FK) : frob k a = a ^ (2 ^ k) := by
   | zero => simp [frob]
   | succ k ih => rw [frob, ih, sq_eq_mul, ← _root_.sq, ← pow_mul, pow_succ, mul_comm]
 
+/-! ## The word operations on `ℕ` (GOLF3: the kernel checks run on `ℕ`, whose operations it computes natively) -/
+
+/-- `spread` on `ℕ`. -/
+def spreadN (x : ℕ) : ℕ :=
+  let x := x &&& 0x00000000FFFFFFFF
+  let x := (x ||| (x <<< 16) % 2 ^ 64) &&& 0x0000FFFF0000FFFF
+  let x := (x ||| (x <<< 8) % 2 ^ 64) &&& 0x00FF00FF00FF00FF
+  let x := (x ||| (x <<< 4) % 2 ^ 64) &&& 0x0F0F0F0F0F0F0F0F
+  let x := (x ||| (x <<< 2) % 2 ^ 64) &&& 0x3333333333333333
+  (x ||| (x <<< 1) % 2 ^ 64) &&& 0x5555555555555555
+
+/-- `reduce` on `ℕ`. -/
+def reduceN (lo hi : ℕ) : ℕ :=
+  let d := hi ^^^ (hi >>> 63) ^^^ (hi >>> 61) ^^^ (hi >>> 60)
+  lo ^^^ d ^^^ (d <<< 1) % 2 ^ 64 ^^^ (d <<< 3) % 2 ^ 64 ^^^ (d <<< 4) % 2 ^ 64
+
+/-- `sq` on `ℕ`. -/
+def sqN (a : ℕ) : ℕ := reduceN (spreadN a) (spreadN (a >>> 32))
+
+/-- `frob` on `ℕ`. -/
+def frobN : ℕ → ℕ → ℕ
+  | 0, a => a
+  | k + 1, a => frobN k (sqN a)
+
+theorem spread_toNat (x : UInt64) : (spread x).toNat = spreadN x.toNat := by
+  simp [spread, spreadN]
+
+theorem reduce_toNat (lo hi : UInt64) : (reduce lo hi).toNat = reduceN lo.toNat hi.toNat := by
+  simp [reduce, reduceN]
+
+theorem sq_toNat (a : FK) : (sq a).val.toNat = sqN a.val.toNat := by
+  rw [sq, reduce_toNat, spread_toNat, spread_toNat, sqN, UInt64.toNat_shiftRight]
+  rfl
+
+theorem frob_toNat : ∀ (k : ℕ) (a : FK), (frob k a).val.toNat = frobN k a.val.toNat
+  | 0, _ => rfl
+  | k + 1, a => by rw [frob, frobN, frob_toNat k, sq_toNat]
+
+/-- `clmul32` on `ℕ`. -/
+def clmul32N (x y : ℕ) : ℕ :=
+  let x0 := x &&& 0x11111111
+  let x1 := x &&& 0x22222222
+  let x2 := x &&& 0x44444444
+  let x3 := x &&& 0x88888888
+  let y0 := y &&& 0x11111111
+  let y1 := y &&& 0x22222222
+  let y2 := y &&& 0x44444444
+  let y3 := y &&& 0x88888888
+  (((x0 * y0 % 2 ^ 64) ^^^ (x1 * y3 % 2 ^ 64) ^^^ (x2 * y2 % 2 ^ 64) ^^^ (x3 * y1 % 2 ^ 64)) &&&
+      0x1111111111111111) |||
+    (((x0 * y1 % 2 ^ 64) ^^^ (x1 * y0 % 2 ^ 64) ^^^ (x2 * y3 % 2 ^ 64) ^^^ (x3 * y2 % 2 ^ 64)) &&&
+      0x2222222222222222) |||
+    (((x0 * y2 % 2 ^ 64) ^^^ (x1 * y1 % 2 ^ 64) ^^^ (x2 * y0 % 2 ^ 64) ^^^ (x3 * y3 % 2 ^ 64)) &&&
+      0x4444444444444444) |||
+    (((x0 * y3 % 2 ^ 64) ^^^ (x1 * y2 % 2 ^ 64) ^^^ (x2 * y1 % 2 ^ 64) ^^^ (x3 * y0 % 2 ^ 64)) &&&
+      0x8888888888888888)
+
+/-- The product on `ℕ`: `clmul64`, then `reduce`. -/
+def mulN (a b : ℕ) : ℕ :=
+  let a0 := a &&& 0xFFFFFFFF
+  let a1 := a >>> 32
+  let b0 := b &&& 0xFFFFFFFF
+  let b1 := b >>> 32
+  let p0 := clmul32N a0 b0
+  let p2 := clmul32N a1 b1
+  let pm := clmul32N (a0 ^^^ a1) (b0 ^^^ b1) ^^^ p0 ^^^ p2
+  reduceN (p0 ^^^ (pm <<< 32) % 2 ^ 64) (p2 ^^^ (pm >>> 32))
+
+theorem clmul32_toNat (x y : UInt64) : (clmul32 x y).toNat = clmul32N x.toNat y.toNat := by
+  simp [clmul32, clmul32N]
+
+theorem mul_toNat (a b : FK) : (a * b).val.toNat = mulN a.val.toNat b.val.toNat := by
+  show (reduce (clmul64 a.val b.val).lo (clmul64 a.val b.val).hi).toNat = _
+  rw [reduce_toNat]
+  simp [clmul64, mulN, clmul32_toNat]
+
+theorem add_toNat (a b : FK) : (a + b).val.toNat = a.val.toNat ^^^ b.val.toNat := UInt64.toNat_xor _ _
+
+/-- `powGo` on `ℕ`. -/
+def powGoN : ℕ → ℕ → ℕ → ℕ → ℕ
+  | 0, _, _, acc => acc
+  | k + 1, b, e, acc => if e = 0 then acc else powGoN k (sqN b) (e / 2) (if e % 2 = 1 then mulN acc b else acc)
+
+theorem powGo_toNat : ∀ (k : ℕ) (b : FK) (e : ℕ) (acc : FK),
+    (powGo k b e acc).val.toNat = powGoN k b.val.toNat e acc.val.toNat
+  | 0, _, _, _ => rfl
+  | k + 1, b, e, acc => by
+    rw [powGo, powGoN]
+    split_ifs
+    · rfl
+    · rw [powGo_toNat, sq_toNat, mul_toNat]
+    · rw [powGo_toNat, sq_toNat]
+
+theorem pow_toNat (a : FK) (n : ℕ) : (a ^ n).val.toNat = powGoN n a.val.toNat n 1 := powGo_toNat n a n 1
+
+theorem eq_iff_toNat {a b : FK} : a = b ↔ a.val.toNat = b.val.toNat := by
+  constructor
+  · rintro rfl; rfl
+  · intro h; cases a; cases b; exact congrArg FK.mk (UInt64.toNat_inj.mp h)
+
+theorem mul_self_toNat (a : FK) : (a * a).val.toNat = sqN a.val.toNat := by rw [← sq_eq_mul, sq_toNat]
+
+/-- No two entries are equal (by `Nat.beq`, for kernel checks). -/
+def natDistinct : List ℕ → Bool
+  | [] => true
+  | a :: l => l.all (fun b => !Nat.beq a b) && natDistinct l
+
+theorem nodup_of_natDistinct : ∀ {l : List ℕ}, natDistinct l = true → l.Nodup
+  | [], _ => List.nodup_nil
+  | a :: l, h => by
+    rw [natDistinct, Bool.and_eq_true, List.all_eq_true] at h
+    refine List.nodup_cons.2 ⟨fun ha => ?_, nodup_of_natDistinct h.2⟩
+    have := h.1 a ha
+    simp [Nat.beq_refl] at this
+
 /-- **The 64 conjugates `x^(2^k)`, `k < 64`, of the generator over `GF(2)` are distinct.**
-Kernel-decided on the word arithmetic. -/
+Kernel-decided on the words as natural numbers (`frob_toNat`, `natDistinct`). -/
 theorem conj_distinct : ((List.range 64).map (fun k => x ^ (2 ^ k))).Nodup := by
   have h : (fun k => x ^ (2 ^ k)) = (fun k => frob k x) := funext fun k => (frob_eq_pow k x).symm
   rw [h]
-  decide +kernel
+  refine List.Nodup.of_map (fun a : FK => a.val.toNat) ?_
+  rw [List.map_map]
+  have e : ((fun a : FK => a.val.toNat) ∘ fun k => frob k x) = fun k => frobN k 2 :=
+    funext fun k => frob_toNat k x
+  rw [e]
+  exact nodup_of_natDistinct (by decide +kernel)
 
 /-- The power `x ^ i`, `i < 64`, is the word with only bit `i` set (no reduction below degree
 64). Proved through the polynomial, not by evaluation, so its kernel check is cheap. -/

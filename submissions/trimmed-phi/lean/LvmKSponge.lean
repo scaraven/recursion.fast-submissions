@@ -73,7 +73,7 @@ theorem absorb_spongeSt (P : List UInt8) :
         spongeSt P (j + 1) := rfl
     rw [this, ih (j + 1)]
     congr 1
-    (clear * -; omega)
+    (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | omega)
 
 /-- **The contract's Keccak-256 is the iterated block map.** -/
 theorem keccakDigest_sponge (msg : List UInt8) :

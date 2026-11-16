@@ -135,7 +135,7 @@ theorem mcpBody_sem (I : Array Word) (s : St) (hM : Inv s.M) {a d k : ℕ} (ha2 
   generalize semXIR I (.load yV ySr) s = s1 at l1 l2 hM1 z1
   rw [semXIR_seq]
   obtain ⟨c1, c2, hM2⟩ := store_sem I s1 hM1 (p := yDs) (v := yV) (x := d) (by decide) (by decide)
-    (by rw [l2 _ (by decide), hD]) (by simp only [regs]; omega) (by (clear * - hd hd2; omega)) (by (clear * - hds z1; omega))
+    (by rw [l2 _ (by decide), hD]) (by simp only [regs]; (clear * - hd; omega)) (by (clear * - hd hd2; omega)) (by (clear * - hds z1; omega))
   have z2 := size_sem I (.store yDs yV) s1
   generalize semXIR I (.store yDs yV) s1 = s2 at c1 c2 hM2 z2
   have hdr : ∀ r, r < regs → r ≠ d := fun r hr => by simp only [regs] at hr; (clear * - hd hd2 hr; omega)
@@ -160,7 +160,7 @@ theorem mcpBody_sem (I : Array Word) (s : St) (hM : Inv s.M) {a d k : ℕ} (ha2 
 def KeepC (r : ℕ) : Prop := r ≠ yV ∧ r ≠ ySr ∧ r ≠ yDs ∧ r ≠ yC ∧ r ≠ yN ∧ r ≠ cTmp
 
 theorem keepC_of_regs {r : ℕ} (h : regs ≤ r) : KeepC r := by
-  simp only [KeepC, regs, yV, ySr, yDs, yC, yN, cTmp] at *; omega
+  simp only [KeepC, regs, yV, ySr, yDs, yC, yN, cTmp] at *; (clear * - r h; omega)
 
 /-- **The copy loop**: from `ySr = src`, `yDs = dst`, `yStr = str`, `n` words
 `M[dst + i] := M[src + str·i]`; the heap outside `[dst, dst + n)` and the registers outside the
@@ -217,7 +217,7 @@ theorem mcpLoop_sem (I : Array Word) (s : St) (hM : Inv s.M) {n src str dst : �
       rw [hd _ (hdx _ (by simp only [regs]; (clear * - hdst; omega)))]
       by_cases hij : i = j
       · subst hij
-        rw [b1, i7 _ (keepC_of_regs (hsrcR i (by omega)))
+        rw [b1, i7 _ (keepC_of_regs (hsrcR i (by (clear * - hj; omega))))
           ((hdisj i hj).imp_right (fun h => by (clear * - hj h; omega)))]
       · have hk := keepC_of_regs (show regs ≤ dst + i by simp only [regs]; (clear * - hdst; omega))
         rw [b4 _ hk.1 hk.2.1 hk.2.2.1 hk.2.2.2.2.2 (by (clear * - hij; omega)), i6 i (by (clear * - hi hij; omega))]
@@ -252,7 +252,7 @@ theorem mcpIR_sem (I : Array Word) (s : St) (hM : Inv s.M) {n src str dst : ℕ}
         .const yDs (toWord dst)]) s).M yStr = toWord str := by
     rw [sem_blk']; simp only [runPrims, List.foldl, Prim.run]
     refine ⟨?_, ?_, ?_⟩ <;>
-    simp (disch := first | decide | (simp only [size_set, ySr, yStr, yDs]; omega)) only [rd_set_self, rd_set_ne]
+    simp (disch := first | decide | (simp only [size_set, ySr, yStr, yDs]; (clear * - s I n src str dst hs z0; omega))) only [rd_set_self, rd_set_ne]
   have k0 : ∀ r, regs ≤ r → rd (semXIR I (.blk [.const ySr (toWord src), .const yStr (toWord str),
       .const yDs (toWord dst)]) s).M r = rd s.M r := fun r hr => by
     simp only [regs] at hr
@@ -261,7 +261,7 @@ theorem mcpIR_sem (I : Array Word) (s : St) (hM : Inv s.M) {n src str dst : ℕ}
     rintro p (rfl | rfl | rfl) <;> simp only [Prim.dst, ySr, yStr, yDs] <;> (clear * - hr; omega)
   generalize semXIR I (.blk [.const ySr (toWord src), .const yStr (toWord str),
     .const yDs (toWord dst)]) s = s0 at hM0 z0 r0 k0
-  obtain ⟨a1, a2, a3⟩ := mcpLoop_sem I s0 hM0 hn hsrc2 (by simp only [regs]; omega) hdst2 (by (clear * - hdsts z0; omega))
+  obtain ⟨a1, a2, a3⟩ := mcpLoop_sem I s0 hM0 hn hsrc2 (by simp only [regs]; (clear * - hdst; omega)) hdst2 (by (clear * - hdsts z0; omega))
     hdisj hsrcR r0.1 r0.2.1 r0.2.2
   refine ⟨fun i hi => ?_, fun r hr hr2 => ?_, a3⟩
   · rw [a1 i hi, k0 _ (hsrcR i hi)]
@@ -288,7 +288,7 @@ theorem zeroIR_sem (I : Array Word) (s : St) (hM : Inv s.M) {n dst : ℕ} (hn : 
         toWord n := by
     rw [sem_blk']; simp only [runPrims, List.foldl, Prim.run]
     refine ⟨?_, ?_, ?_⟩ <;>
-    simp (disch := first | decide | (simp only [size_set, yV, yDs, yN]; omega)) only [rd_set_self, rd_set_ne]
+    simp (disch := first | decide | (simp only [size_set, yV, yDs, yN]; (clear * - s I n dst hs z0; omega))) only [rd_set_self, rd_set_ne]
   have k0 : ∀ r, regs ≤ r → rd (semXIR I (.blk [.const yV 0, .const yDs (toWord dst),
       .const yN (toWord n)]) s).M r = rd s.M r := fun r hr => by
     simp only [regs] at hr

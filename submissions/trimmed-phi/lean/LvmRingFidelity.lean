@@ -405,7 +405,7 @@ theorem eq_zero_of_frob_sums_K (d : Fin 64 → K)
       rw [frob_sum] at hk
       rw [← hk]
       refine Finset.sum_congr rfl fun i _ ↦ ?_
-      rw [← pow_mul (d i), ← pow_add, Nat.sub_add_cancel (by (clear * -; omega)), K.pow_two_pow_sixtyFour]
+      rw [← pow_mul (d i), ← pow_add, Nat.sub_add_cancel (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)), K.pow_two_pow_sixtyFour]
   exact congrFun (Matrix.eq_zero_of_forall_index_sum_pow_mul_eq_zero g_conj_injective hroot)
 
 /-! ## Ring switching -/

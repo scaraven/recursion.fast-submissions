@@ -37,7 +37,7 @@ theorem getD_bytes (W : ℕ → Word) {a i : ℕ} (hi : i < 32) (h : a + 4 ≤ n
     (wordsBytes (wsOf W)).getD (8 * a + i) 0 = (wordsBytes (Lvm.X.wsAt W a 4)).getD i 0 := by
   rw [← bytes_slice W h]
   simp only [List.getD_eq_getElem?_getD, List.getElem?_take, List.getElem?_drop,
-    show i < 8 * 4 from by omega, ite_true]
+    show i < 8 * 4 from by (clear * - hi; omega), ite_true]
 
 /-- **A lane-aligned entry** read off the bytes is the lane reader's. -/
 theorem entryAt_eq (W : ℕ → Word) {u len : ℕ} (h8 : len % 8 = 0) (hr : u + 1 + len / 8 + 4 ≤ nLanes) :
@@ -53,7 +53,7 @@ theorem entryAt_eq (W : ℕ → Word) {u len : ℕ} (h8 : len % 8 = 0) (hr : u +
     refine Vector.ext fun i hi => ?_
     simp only [Vector.getElem_ofFn]
     rw [show 8 * u + 8 + len + i = 8 * (u + 1 + len / 8) + i by (clear * - h8; omega)]
-    exact getD_bytes W hi (by omega)
+    exact getD_bytes W hi (by (clear * - hr; omega))
 
 /-- The entries along a walk. -/
 theorem readEntries_walk (W : ℕ → Word) : ∀ (l : List ℕ) (u : ℕ), (∀ len ∈ l, len % 8 = 0) →
@@ -83,7 +83,7 @@ theorem entryAt_q0 (W : ℕ → Word) : entryAt (wordsBytes (wsOf W)) 1 7 = Lvm.
   · simp only [Lvm.X.digW]
     refine Vector.ext fun i hi => ?_
     simp only [Vector.getElem_ofFn]
-    rw [show 1 + 8 + 7 + i = 8 * 2 + i by (clear * -; omega)]
+    rw [show 1 + 8 + 7 + i = 8 * 2 + i by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)]
     exact getD_bytes W hi (by norm_num)
 
 end Lvm.NS

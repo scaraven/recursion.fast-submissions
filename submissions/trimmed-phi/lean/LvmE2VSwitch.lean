@@ -142,21 +142,21 @@ theorem bitE2_basisE2 {k j : ℕ} (hk : k < 128) (hj : j < 128) :
     exact getLsbD_ofBits_two_pow k j hj64
   · simp only [hk64, hj64, ite_true, ite_false]
     rw [toBitVec_zero_K]
-    exact (by simp : BitVec.getLsbD (0 : BitVec 64) _ = false).trans (decide_eq_false (by omega)).symm
+    exact (by simp : BitVec.getLsbD (0 : BitVec 64) _ = false).trans (decide_eq_false (by (clear * - k j hk hj hk64 hj64; omega))).symm
   · simp only [hk64, hj64, ite_true, ite_false]
     rw [toBitVec_zero_K]
-    exact (by simp : BitVec.getLsbD (0 : BitVec 64) _ = false).trans (decide_eq_false (by omega)).symm
+    exact (by simp : BitVec.getLsbD (0 : BitVec 64) _ = false).trans (decide_eq_false (by (clear * - k j hk hj hk64 hj64; omega))).symm
   · simp only [hk64, hj64, ite_false]
-    rw [getLsbD_ofBits_two_pow _ _ (by omega)]
+    rw [getLsbD_ofBits_two_pow _ _ (by (clear * - j k hj hj64; omega))]
     simp only [decide_eq_decide]
-    omega
+    (clear * - k j hk hj hk64 hj64; omega)
 
 theorem ext_bitE2 {x y : E2} (h : ∀ j < 128, bitE2 x j = bitE2 y j) : x = y := by
   refine QuadraticAlgebra.ext (BF64.toBitVec_injective (BitVec.eq_of_getLsbD_eq fun i hi ↦ ?_))
     (BF64.toBitVec_injective (BitVec.eq_of_getLsbD_eq fun i hi ↦ ?_))
-  · have := h i (by omega)
+  · have := h i (by (clear * - i hi; omega))
     simpa [bitE2, hi] using this
-  · have := h (i + 64) (by omega)
+  · have := h (i + 64) (by (clear * - i hi; omega))
     simpa [bitE2] using this
 
 theorem bitE_basisE2 {k j : ℕ} (hk : k < 128) (hj : j < 128) :
@@ -215,25 +215,25 @@ theorem sum_range_pow_succ {M : Type*} [AddCommMonoid M] (f : ℕ → M) (m : �
   rw [pow_succ', sum_range_two_mul]
 
 theorem eqAt_two_mul (a : E) (l : List E) (k : ℕ) : eqAt (a :: l) (2 * k) = (1 + a) * eqAt l k := by
-  rw [LeanVM.Protocol.KeccakGkr.eqAt_cons, ite_eq_right (by omega),
-    show 2 * k / 2 = k by omega]
+  rw [LeanVM.Protocol.KeccakGkr.eqAt_cons, ite_eq_right (by (clear * - k; omega)),
+    show 2 * k / 2 = k by (clear * - k; omega)]
 
 theorem eqAt_two_mul_add_one (a : E) (l : List E) (k : ℕ) :
     eqAt (a :: l) (2 * k + 1) = a * eqAt l k := by
-  rw [LeanVM.Protocol.KeccakGkr.eqAt_cons, ite_eq_left (by omega),
-    show (2 * k + 1) / 2 = k by omega]
+  rw [LeanVM.Protocol.KeccakGkr.eqAt_cons, ite_eq_left (by (clear * - k; omega)),
+    show (2 * k + 1) / 2 = k by (clear * - k; omega)]
 
 theorem eqAtF_cons {F : Type} [Field F] (a : F) (l : List F) (n : ℕ) :
     eqAtF (a :: l) n = (if n % 2 = 1 then a else 1 + a) * eqAtF l (n / 2) := rfl
 
 theorem eqAtF_two_mul {F : Type} [Field F] (a : F) (l : List F) (k : ℕ) :
     eqAtF (a :: l) (2 * k) = (1 + a) * eqAtF l k := by
-  rw [eqAtF_cons, ite_eq_right (by omega), show 2 * k / 2 = k by omega]
+  rw [eqAtF_cons, ite_eq_right (by (clear * - k; omega)), show 2 * k / 2 = k by (clear * - k; omega)]
 
 theorem eqAtF_two_mul_add_one {F : Type} [Field F] (a : F) (l : List F) (k : ℕ) :
     eqAtF (a :: l) (2 * k + 1) = a * eqAtF l k := by
-  rw [eqAtF_cons, ite_eq_left (by omega),
-    show (2 * k + 1) / 2 = k by omega]
+  rw [eqAtF_cons, ite_eq_left (by (clear * - k; omega)),
+    show (2 * k + 1) / 2 = k by (clear * - k; omega)]
 
 /-! ## The row switch -/
 
@@ -385,26 +385,26 @@ theorem testBit_foldl_bits (b : ℕ → Bool) : ∀ N : ℕ,
     set f := (List.range N).foldl (fun acc i ↦ if b i then acc + 2 ^ i else acc) 0
     by_cases hN : b N
     · rw [ite_eq_left hN]
-      refine ⟨by rw [pow_succ]; omega, fun i ↦ ?_⟩
+      refine ⟨by rw [pow_succ]; (clear * - f N b hlt; omega), fun i ↦ ?_⟩
       rw [show f + 2 ^ N = 2 ^ N * 1 + f by ring, Nat.testBit_two_pow_mul_add 1 hlt]
       by_cases hi : i < N
       · rw [ite_eq_left hi, hbit i]
-        simp [hi, show i < N + 1 by omega]
+        simp [hi, show i < N + 1 by (clear * - i N b hi; omega)]
       · rw [ite_eq_right hi]
         by_cases hiN : i = N
         · subst hiN
           simp [hN]
-        · rw [Nat.testBit_eq_false_of_lt (Nat.one_lt_two_pow (by omega))]
-          simp only [show ¬ i < N + 1 by omega, decide_false, Bool.false_and]
+        · rw [Nat.testBit_eq_false_of_lt (Nat.one_lt_two_pow (by (clear * - i N b hi hiN; omega)))]
+          simp only [show ¬ i < N + 1 by (clear * - i N b hi hiN; omega), decide_false, Bool.false_and]
     · rw [ite_eq_right hN]
-      refine ⟨lt_of_lt_of_le hlt (Nat.pow_le_pow_right (by norm_num) (by omega)), fun i ↦ ?_⟩
+      refine ⟨lt_of_lt_of_le hlt (Nat.pow_le_pow_right (by norm_num) (by (clear * - N b; omega))), fun i ↦ ?_⟩
       rw [hbit i]
       by_cases hi : i < N
-      · simp [hi, show i < N + 1 by omega]
+      · simp [hi, show i < N + 1 by (clear * - i N b hi; omega)]
       · by_cases hiN : i = N
         · subst hiN
           simp [hN]
-        · simp only [show ¬ i < N by omega, show ¬ i < N + 1 by omega, decide_false, Bool.false_and]
+        · simp only [show ¬ i < N by (clear * - hi; omega), show ¬ i < N + 1 by (clear * - i N b hi hiN; omega), decide_false, Bool.false_and]
 
 /-- Bit `i` of row `j` is coordinate `j` of `s_i`. -/
 theorem rowWord_bit (sv : List E2) {i : ℕ} (hi : i < 64) (j : ℕ) :
@@ -460,8 +460,8 @@ theorem eqAt_boolPoint : ∀ (m n n' : ℕ), n < 2 ^ m → n' < 2 ^ m →
   | m + 1, n, n', hn, hn' => by
     rw [pow_succ] at hn hn'
     rw [LeanVM.Protocol.Whir.Complete.boolPoint_succ, LeanVM.Protocol.KeccakGkr.eqAt_cons,
-      eqAt_boolPoint m (n / 2) (n' / 2) (by omega) (by omega), Nat.testBit_zero]
-    have e : (n' = n) ↔ (n' / 2 = n / 2 ∧ (n' % 2 = 1 ↔ n % 2 = 1)) := by omega
+      eqAt_boolPoint m (n / 2) (n' / 2) (by (clear * - n m n' hn; omega)) (by (clear * - n' m n hn'; omega)), Nat.testBit_zero]
+    have e : (n' = n) ↔ (n' / 2 = n / 2 ∧ (n' % 2 = 1 ↔ n % 2 = 1)) := by (clear * - n' n m; omega)
     by_cases hq : n' / 2 = n / 2 <;> by_cases ha : n % 2 = 1 <;> by_cases hb : n' % 2 = 1 <;>
       simp [e, ha, hb, hq, LeanVM.Protocol.Whir.Complete.one_add_one_E]
 
@@ -608,7 +608,7 @@ theorem wordW_boolPoint : ∀ (z : List E2) (n : ℕ),
     congr 1
     rcases Nat.mod_two_eq_zero_or_one n with h | h
     · rw [ite_eq_right (by simp [Nat.testBit_zero, h]),
-        ite_eq_right (by omega)]
+        ite_eq_right (by (clear * - n h; omega))]
       simp
     · rw [ite_eq_left (by simp [Nat.testBit_zero, h]), ite_eq_left h,
         map_one, one_add_one_E6]

@@ -56,12 +56,12 @@ theorem ubit_one (i : Nat) : ubit 1 i = decide (i = 0) := by
   simp only [ubit, UInt64.toBitVec_one, BitVec.getLsbD_one]; by_cases h : i = 0 <;> simp [h]
 
 theorem toBitVec_mod64 {k : Nat} (hk : k < 64) : (k.toUInt64).toBitVec % 64 = BitVec.ofNat 64 k := by
-  apply BitVec.eq_of_toNat_eq; simp; omega
+  apply BitVec.eq_of_toNat_eq; simp; (clear * - k hk; omega)
 
 theorem ubit_shl (a : UInt64) {k : Nat} (hk : k < 64) (i : Nat) :
     ubit (a <<< k.toUInt64) i = (decide (i < 64) && decide (k ≤ i) && ubit a (i - k)) := by
   simp only [ubit, UInt64.toBitVec_shiftLeft, toBitVec_mod64 hk, BitVec.shiftLeft_eq',
-    BitVec.getLsbD_shiftLeft, BitVec.toNat_ofNat, Nat.mod_eq_of_lt (show k < 2 ^ 64 by omega)]
+    BitVec.getLsbD_shiftLeft, BitVec.toNat_ofNat, Nat.mod_eq_of_lt (show k < 2 ^ 64 by (clear * - k hk; omega))]
   by_cases h : i < k
   · simp [h, show ¬ k ≤ i by (clear * - h; omega)]
   · simp [h, show k ≤ i by (clear * - h; omega)]
@@ -69,7 +69,7 @@ theorem ubit_shl (a : UInt64) {k : Nat} (hk : k < 64) (i : Nat) :
 theorem ubit_shr (a : UInt64) {k : Nat} (hk : k < 64) (i : Nat) :
     ubit (a >>> k.toUInt64) i = ubit a (k + i) := by
   simp only [ubit, UInt64.toBitVec_shiftRight, toBitVec_mod64 hk, BitVec.ushiftRight_eq',
-    BitVec.getLsbD_ushiftRight, BitVec.toNat_ofNat, Nat.mod_eq_of_lt (show k < 2 ^ 64 by omega)]
+    BitVec.getLsbD_ushiftRight, BitVec.toNat_ofNat, Nat.mod_eq_of_lt (show k < 2 ^ 64 by (clear * - k hk; omega))]
 
 theorem ubit_one_shl {k : Nat} (hk : k < 64) (i : Nat) :
     ubit ((1 : UInt64) <<< k.toUInt64) i = decide (i = k) := by
@@ -125,7 +125,7 @@ theorem byteW_shr8 (a : UInt64) {s t : Nat} (hs : s < 8) (ht : t < 8) :
   byte_ext fun j hj => by
     rw [bbit_byteW _ ht hj, ubit_shr _ (by (clear * - hs; omega))]
     split
-    · rw [bbit_byteW _ (by omega) hj]; congr 1; (clear * -; omega)
+    · rw [bbit_byteW _ (by omega) hj]; congr 1; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)
     · rw [ubit_ge _ (by (clear hs ht; omega))]; simp [bbit]
 
 /-! ## `K` sums -/
@@ -144,10 +144,10 @@ theorem ubit_lsum (g : Nat → FK) (f : Nat → Bool) (e : Nat → Nat) (i : Nat
     (ubit (lsum g n).val i = true ↔ ∃ z < n, f z = true ∧ e z = i)
   | 0, _, _ => by simp [lsum, ubit_val_zero]
   | n + 1, hg, hinj => by
-    have ih := ubit_lsum g f e i n (fun z hz => hg z (by omega))
-      (fun z hz z' hz' => hinj z (by omega) z' (by omega))
+    have ih := ubit_lsum g f e i n (fun z hz => hg z (by (clear * - z n hz; omega)))
+      (fun z hz z' hz' => hinj z (by (clear * - z n hz z'; omega)) z' (by (clear * - z' n z hz'; omega)))
     rw [lsum, show (lsum g n + g n).val = (lsum g n).val ^^^ (g n).val from rfl, ubit_xor,
-      hg n (by omega)]
+      hg n (by (clear * - n; omega))]
     by_cases hn : f n = true ∧ e n = i
     · have hno : ¬ ∃ z < n, f z = true ∧ e z = i := fun ⟨z, hz, h1, h2⟩ =>
         absurd (hinj z (by omega) n (by omega) h1 hn.1 (h2.trans hn.2.symm)) (by omega)
@@ -156,17 +156,17 @@ theorem ubit_lsum (g : Nat → FK) (f : Nat → Bool) (e : Nat → Nat) (i : Nat
         · rfl
         · exact absurd (ih.mp h) hno
       simp only [hl, hn.1, hn.2, decide_true, Bool.and_true, Bool.false_xor, true_iff]
-      exact ⟨n, by omega, hn.1, hn.2⟩
+      exact ⟨n, by (clear * - n e i; omega), hn.1, hn.2⟩
     · have hb : (f n && decide (e n = i)) = false := by
         cases h : f n <;> simp_all
       rw [hb, Bool.xor_false, ih]
       constructor
-      · rintro ⟨z, hz, h⟩; exact ⟨z, by omega, h⟩
+      · rintro ⟨z, hz, h⟩; exact ⟨z, by (clear * - z n e i hz; omega), h⟩
       · rintro ⟨z, hz, h⟩
         refine ⟨z, ?_, h⟩
         rcases Nat.lt_or_ge z n with h' | h'
         · exact h'
-        · exact absurd (show z = n by omega ▸ h) hn
+        · exact absurd (show z = n by (clear * - z n e i hz h'; omega) ▸ h) hn
 
 /-! ## The `BITS` row -/
 
@@ -269,7 +269,7 @@ theorem BOut.dst_inj (o : BOut) {z z' : Nat} (hh : o.hit z = true) (hh' : o.hit 
     (h : o.dst z = o.dst z') : z = z' := by
   cases o with
   | fld z₀ m d =>
-    simp only [BOut.hit, BOut.dst, decide_eq_true_eq] at hh hh' h; omega
+    simp only [BOut.hit, BOut.dst, decide_eq_true_eq] at hh hh' h; (clear * - z z' z₀ m d h hh hh'; omega)
   | _ => simp_all [BOut.hit, BOut.dst] <;> omega
 
 /-- Bit `i < 64` of a valid output word: the source bit when it is hit. -/
@@ -297,7 +297,7 @@ theorem BOut.ubit_word {o : BOut} (ho : o.Valid) (w : UInt64) {i : Nat} (hi : i 
     simp only [BOut.word, ubit_and, ubit_shr w ho, ubit_one, BOut.hit, BOut.dst,
       Bool.and_eq_true, decide_eq_true_eq]
     constructor
-    · rintro ⟨h1, rfl⟩; exact ⟨z₀, ho, ⟨rfl, by simpa using h1⟩, by (clear * -; omega)⟩
+    · rintro ⟨h1, rfl⟩; exact ⟨z₀, ho, ⟨rfl, by simpa using h1⟩, by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - z₀; omega))⟩
     · rintro ⟨z, hz, ⟨rfl, h2⟩, h3⟩; exact ⟨by rw [show z + i = z by (clear * - hi h3; omega)]; exact h2, by (clear * - hi h3; omega)⟩
   | fld z₀ m d =>
     obtain ⟨h0, h1, h2⟩ := ho
@@ -306,7 +306,7 @@ theorem BOut.ubit_word {o : BOut} (ho : o.Valid) (w : UInt64) {i : Nat} (hi : i 
       Bool.and_eq_true, decide_eq_true_eq]
     constructor
     · rintro ⟨⟨h3, h4⟩, h5⟩
-      refine ⟨z₀ + (64 - m - d + i - (64 - m)), ?_, ⟨⟨by (clear * -; omega), by (clear * - h2 h3 h4; omega), by (clear * - h2 h3 h4; omega)⟩, h5⟩, by (clear * - h2 h4; omega)⟩
+      refine ⟨z₀ + (64 - m - d + i - (64 - m)), ?_, ⟨⟨by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - z₀ m d i; omega)), by (clear * - h2 h3 h4; omega), by (clear * - h2 h3 h4; omega)⟩, h5⟩, by (clear * - h2 h4; omega)⟩
       by_contra hc; rw [ubit_ge _ (by (clear * - hc; omega))] at h5; exact absurd h5 (by simp)
     · rintro ⟨z, hz, ⟨⟨h3, h4, h5⟩, h6⟩, rfl⟩
       exact ⟨⟨by (clear * - h2 h3 h4; omega), by (clear * - h2; omega)⟩, by rwa [show z₀ + (64 - m - d + (z - z₀ + d) - (64 - m)) = z by (clear * - h1 h2 h3 h4; omega)]⟩

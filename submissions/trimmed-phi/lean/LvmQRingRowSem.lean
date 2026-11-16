@@ -36,25 +36,25 @@ theorem testBit_bitsum (b : Nat → FK) (hb : ∀ i < 64, b i = 0 ∨ b i = 1) :
     show (0 : Nat).testBit k = _
     simp
   | n + 1, hn, k => by
-    have ih := testBit_bitsum b hb n (by omega) k
+    have ih := testBit_bitsum b hb n (by (clear * - n hn; omega)) k
     have e : bitsum b (n + 1) = bitsum b n + xPowK n * b n := by
       simp only [bitsum, List.range_succ, List.map_append, List.sum_append, List.map_singleton, List.sum_singleton]
     rw [e]
-    rcases hb n (by omega) with h | h
+    rcases hb n (by (clear * - n hn; omega)) with h | h
     · rw [h, mul_zero, add_zero, ih]
       by_cases hk : k = n
       · subst hk; simp [h]
       · by_cases hk' : k < n
-        · simp [hk', show k < n + 1 by omega]
-        · simp [hk', show ¬ k < n + 1 by omega]
+        · simp [hk', show k < n + 1 by (clear * - k n hk'; omega)]
+        · simp [hk', show ¬ k < n + 1 by (clear * - k n hk hk'; omega)]
     · rw [h, mul_one]
       change ((_ : UInt64) ^^^ _).toNat.testBit k = _
-      rw [UInt64.toNat_xor, Nat.testBit_xor, ih, xPowK_toNat (by omega), Nat.testBit_two_pow]
+      rw [UInt64.toNat_xor, Nat.testBit_xor, ih, xPowK_toNat (by (clear * - n hn; omega)), Nat.testBit_two_pow]
       by_cases hk : k = n
       · subst hk; simp [h]
       · by_cases hk' : k < n
-        · simp [hk', show k < n + 1 by omega, hk, Ne.symm hk]
-        · simp [hk', show ¬ k < n + 1 by omega, Ne.symm hk]
+        · simp [hk', show k < n + 1 by (clear * - k n hk'; omega), hk, Ne.symm hk]
+        · simp [hk', show ¬ k < n + 1 by (clear * - k n hk hk'; omega), Ne.symm hk]
 
 /-- `rowWordD`'s sum: `Σ_{i<n, B i} 2^i`. -/
 def natsum (B : Nat → Bool) (n : Nat) : Nat := (List.range n).foldl (fun acc i => if B i then acc + 2 ^ i else acc) 0
@@ -64,7 +64,7 @@ theorem natsum_lt (B : Nat → Bool) : ∀ n, natsum B n < 2 ^ n
   | n + 1 => by
     have ih := natsum_lt B n
     simp only [natsum, List.range_succ, List.foldl_append, List.foldl_cons, List.foldl_nil] at ih ⊢
-    split <;> rw [pow_succ] <;> omega
+    split <;> rw [pow_succ] <;> (clear * - B n ih; omega)
 
 theorem testBit_natsum (B : Nat → Bool) : ∀ n k, (natsum B n).testBit k = (decide (k < n) && B k)
   | 0, k => by simp [natsum]
@@ -78,20 +78,20 @@ theorem testBit_natsum (B : Nat → Bool) : ∀ n k, (natsum B n).testBit k = (d
     · rename_i hB
       rw [Nat.add_comm]
       by_cases hk : k < n
-      · rw [Nat.testBit_two_pow_add_gt hk, ih]; simp [hk, show k < n + 1 by omega]
+      · rw [Nat.testBit_two_pow_add_gt hk, ih]; simp [hk, show k < n + 1 by (clear * - k n B hk; omega)]
       · by_cases hkn : k = n
         · subst hkn; rw [Nat.testBit_two_pow_add_eq, Nat.testBit_lt_two_pow hl]; simp [hB]
         · have : 2 ^ n + natsum B n < 2 ^ k := by
-            have : 2 ^ (n + 1) ≤ 2 ^ k := Nat.pow_le_pow_right (by norm_num) (by omega)
-            rw [pow_succ] at this; omega
-          rw [Nat.testBit_lt_two_pow this]; simp [show ¬ k < n + 1 by omega]
+            have : 2 ^ (n + 1) ≤ 2 ^ k := Nat.pow_le_pow_right (by norm_num) (by (clear * - n k B hk hkn; omega))
+            rw [pow_succ] at this; (clear * - n B k hl this; omega)
+          rw [Nat.testBit_lt_two_pow this]; simp [show ¬ k < n + 1 by (clear * - k n B hk hkn; omega)]
     · rename_i hB
       rw [ih]
       by_cases hkn : k = n
       · subst hkn; simp [hB]
       · by_cases hk : k < n
-        · simp [hk, show k < n + 1 by omega]
-        · simp [hk, show ¬ k < n + 1 by omega]
+        · simp [hk, show k < n + 1 by (clear * - k n B hk; omega)]
+        · simp [hk, show ¬ k < n + 1 by (clear * - k n B hkn hk; omega)]
 
 theorem fk_eq_of_testBit {a b : FK} (h : ∀ k, a.val.toNat.testBit k = b.val.toNat.testBit k) : a = b := by
   rcases a with ⟨a⟩; rcases b with ⟨b⟩
@@ -176,12 +176,12 @@ theorem rowAux_sound (lay : Lay) (z : ℕ → FK) {bw tB qs : ℕ}
     · rename_i hj64
       have := hT 0 (by norm_num) k hk
       rw [Nat.add_zero] at this
-      rw [this, testBit_bitsum _ (fun i hi => by have := hB i (by omega) k hk; simpa using this) 64 le_rfl j]
+      rw [this, testBit_bitsum _ (fun i hi => by have := hB i (by (clear * - i lay z qs j k hi; omega)) k hk; simpa using this) 64 le_rfl j]
       simp [hj64]
     · rename_i hj64
       have := hT 1 (by norm_num) k hk
-      rw [this, testBit_bitsum _ (fun i hi => hB (i + 64) (by omega) k hk) 64 le_rfl (j - 64)]
-      simp [show j - 64 < 64 by omega, show j - 64 + 64 = j by omega]
+      rw [this, testBit_bitsum _ (fun i hi => hB (i + 64) (by (clear * - i lay z qs j k hi; omega)) k hk) 64 le_rfl (j - 64)]
+      simp [show j - 64 < 64 by (clear * - j lay z qs hj k hj64; omega), show j - 64 + 64 = j by (clear * - j lay z qs hj k hj64; omega)]
   · simp [hk]
 
 end Lvm.Q2

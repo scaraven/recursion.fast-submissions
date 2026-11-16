@@ -150,7 +150,7 @@ theorem emitIR_sem (I : Array Word) (s : St) (hM : Inv s.M) (w : Word) :
   simp only [regs] at hs
   refine ⟨?_, fun y hy => ?_⟩
   · simp only [emitIR, semXIR, runPrims, List.foldl, Prim.run, Array.toList_push]
-    rw [rd_set_self (by simp only [eW]; omega)]
+    rw [rd_set_self (by simp only [eW]; (clear * - s hs; omega))]
   · simp only [emitIR, semXIR, runPrims, List.foldl, Prim.run]
     exact rd_set_ne (Ne.symm hy)
 
@@ -177,7 +177,7 @@ theorem tcpBody_sem (I : Array Word) (s : St) (hM : Inv s.M) {p : ℕ} (hp : rd 
   simp only [regs] at hs
   simp only [tcpBody, semXIR, runPrims, List.foldl, Prim.run, Array.toList_push]
   refine ⟨?_, ?_, fun y h1 h2 => ?_, by simp⟩
-  · rw [rd_set_self (by simp only [eW]; omega), hp, toNat_toWord hp2]
+  · rw [rd_set_self (by simp only [eW]; (clear * - s p hs; omega)), hp, toNat_toWord hp2]
   · simp (disch := first | decide | omega | exact Nat.lt_of_lt_of_le (m := 256) (by decide) (by assumption) | (simp only [size_set]; exact Nat.lt_of_lt_of_le (m := 256) (by decide) (by assumption))) only [rd_set_self, rd_set_ne]
     rw [hp, h1]
     exact add_one_toWord p
@@ -214,19 +214,19 @@ theorem tcpIR_sem (I : Array Word) (s : St) (hM : Inv s.M) {a n : ℕ} (h : a + 
     (∀ y, y ≠ eW → y ≠ eP → y ≠ eN → y ≠ eC → y ≠ cTmp → rd t.M y = rd s.M y) ∧ t.M.size = s.M.size
   have h0 : Q 0 ⟨entryK eC eN (toWord n) s1.M, s1.o⟩ := by
     dsimp only [Q]
-    refine ⟨inv_of_frame hM1 (size_entryK eC eN (toWord n) s1.M) fun i hi => entryK_frame _ (by simp only [eC]; omega)
-        (by simp only [cTmp]; omega), ?_, fun y a b c d e => ?_, by rw [size_entryK, z1]⟩
+    refine ⟨inv_of_frame hM1 (size_entryK eC eN (toWord n) s1.M) fun i hi => entryK_frame _ (by simp only [eC]; (clear * - i s a n s1 hi; omega))
+        (by simp only [cTmp]; (clear * - i s a n s1 hi; omega)), ?_, fun y a b c d e => ?_, by rw [size_entryK, z1]⟩
     · rw [entryK_frame _ (by decide) (by decide), p1, Nat.add_zero]
     · rw [entryK_frame _ (Ne.symm d) (Ne.symm e), f1 y b c]
   have hf : ∀ j t, j < n → Q j t → (semXIR I tcpBody t).o.toList = t.o.toList ++ [I.getD (a + j) 0] ∧
       Q (j + 1) (decS eC (semXIR I tcpBody t)) := by
     intro j t hj ⟨q1, q2, q3, q4⟩
-    obtain ⟨b1, b2, b3, b4⟩ := tcpBody_sem I t q1 q2 (by omega)
+    obtain ⟨b1, b2, b3, b4⟩ := tcpBody_sem I t q1 q2 (by (clear * - a j s n h s1 t hj; omega))
     refine ⟨b1, inv_of_frame (inv_sem I hwf.2.2.2.2 q1) (size_decS ..) fun i hi =>
-      rd_decS (by simp only [eC]; omega) _, by rw [rd_decS (by decide), b2, Nat.add_assoc],
+      rd_decS (by simp only [eC]; (clear * - i I s a n s1 j t hi; omega)) _, by rw [rd_decS (by decide), b2, Nat.add_assoc],
       fun y a b c d e => by rw [rd_decS (Ne.symm d), b3 y a b, q3 y a b c d e], by rw [size_decS, b4, q4]⟩
   obtain ⟨l1, l2⟩ := loopK_emit I (b := tcpBody) Q (fun j => [I.getD (a + j) 0]) s1 hM1 (by decide)
-    (by decide) (by decide) (by omega) n1 h0 hf
+    (by decide) (by decide) (by (clear * - n s a h s1; omega)) n1 h0 hf
   refine ⟨?_, l2.2.2.1, l2.1, l2.2.2.2⟩
   rw [l1, o1, flatMap_single]
 
@@ -251,7 +251,7 @@ theorem wf_copyIR (mB : ℕ) : WF (copyIR mB) := by
     cTmp, regs]
 
 theorem crecIdx_lt {u : ℕ} (hu : u < nCp) : crecIdx u < 2 ^ 19 := by
-  simp only [crecIdx, nCp] at hu ⊢; omega
+  simp only [crecIdx, nCp] at hu ⊢; (clear * - u hu; omega)
 
 theorem semXIR_blk_M (I : Array Word) (ps : List Prim) (s : St) :
     (semXIR I (.blk ps) s).M = runPrims ps s.M := rfl
@@ -270,9 +270,9 @@ theorem cpAddr_val (M : Mem) (hs : 256 ≤ M.size) {mB u : ℕ} (hu : u < nCp)
   simp only [nCp] at hu
   simp only [cpAddrPs, runPrims, List.foldl, Prim.run]
   simp (disch := first | decide | omega | exact Nat.lt_of_lt_of_le (m := 256) (by decide) (by assumption) | (simp only [size_set]; exact Nat.lt_of_lt_of_le (m := 256) (by decide) (by assumption))) only [rd_set_self, rd_set_ne]
-  rw [hp, show (17 : Word) = toWord 17 from rfl, divu_toWord (a := u) (b := 17) (by omega) (by norm_num),
-    remu_toWord (a := u) (b := 17) (by omega) (by norm_num), mulW_toWord, add_toWord, add_toWord,
-    show mB + crecIdx u = u % 17 * 2 ^ 14 + u / 17 + mB by unfold crecIdx; omega]
+  rw [hp, show (17 : Word) = toWord 17 from rfl, divu_toWord (a := u) (b := 17) (by (clear * - u M mB hu; omega)) (by norm_num),
+    remu_toWord (a := u) (b := 17) (by (clear * - u M mB hu; omega)) (by norm_num), mulW_toWord, add_toWord, add_toWord,
+    show mB + crecIdx u = u % 17 * 2 ^ 14 + u / 17 + mB by unfold crecIdx; (clear * - mB u M; omega)]
 
 theorem copyBody_sem (I : Array Word) (s : St) (hM : Inv s.M) {mB u : ℕ} (hu : u < nCp)
     (hmB : regs ≤ mB) (hmB2 : mB + 2 ^ 19 ≤ sgB) (hsz : sgB + nCp ≤ s.M.size)
@@ -291,7 +291,7 @@ theorem copyBody_sem (I : Array Word) (s : St) (hM : Inv s.M) {mB u : ℕ} (hu :
     rcases hq with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl <;> simp [Prim.dst, eQ, eR, eA, eK]
   -- the address
   have a1 : rd (semXIR I (.blk (cpAddrPs mB)) s).M eA = toWord (mB + crecIdx u) := by
-    rw [semXIR_blk_M]; exact cpAddr_val s.M hs hu (mB := mB) (by omega) hp
+    rw [semXIR_blk_M]; exact cpAddr_val s.M hs hu (mB := mB) (by (clear * - mB s u hmB hmB2; omega)) hp
   have f1 : ∀ y, y ≠ eQ → y ≠ eR → y ≠ eA → y ≠ eK →
       rd (semXIR I (.blk (cpAddrPs mB)) s).M y = rd s.M y := fun y a b c d => by
     rw [semXIR_blk_M]; exact cpAddr_frame mB s.M a b c d
@@ -301,7 +301,7 @@ theorem copyBody_sem (I : Array Word) (s : St) (hM : Inv s.M) {mB u : ℕ} (hu :
   generalize semXIR I (.blk (cpAddrPs mB)) s = s1 at a1 f1 hM1 z1
   -- the load
   obtain ⟨l1, l2, hM2⟩ := load_sem I s1 hM1 (d := eW) (p := eA) (x := mB + crecIdx u) (by decide)
-    (by decide) a1 (by omega)
+    (by decide) a1 (by (clear * - mB u s hmB hmB2 hci s1; omega))
   have z2 := size_sem I (.load eW eA) s1
   rw [semXIR_seq]
   generalize semXIR I (.load eW eA) s1 = s2 at l1 l2 hM2 z2
@@ -330,8 +330,8 @@ theorem copyBody_sem (I : Array Word) (s : St) (hM : Inv s.M) {mB u : ℕ} (hu :
   generalize semXIR I (.blk [.const eK (toWord sgB), .op .add eA eP eK]) s2 = s3 at a3 f3 hM3 z3
   -- the store
   obtain ⟨c1, c2, hM4⟩ := store_sem I s3 hM3 (p := eA) (v := eW) (x := sgB + u) (by decide)
-    (by decide) a3 (by simp only [regs, sgB]; omega) (by simp only [sgB]; omega)
-    (by rw [z3, z2, z1]; simp only [sgB]; omega)
+    (by decide) a3 (by simp only [regs, sgB]; (clear * - u s mB hu' s1 s2 s3; omega)) (by simp only [sgB]; (clear * - u s mB hu' s1 s2 s3; omega))
+    (by rw [z3, z2, z1]; simp only [sgB]; (clear * - u s mB hsz hu' s1 z1 s2 z2 s3 z3; omega))
   have z4 := size_sem I (.store eA eW) s3
   rw [semXIR_seq]
   generalize semXIR I (.store eA eW) s3 = s4 at c1 c2 hM4 z4
@@ -339,23 +339,23 @@ theorem copyBody_sem (I : Array Word) (s : St) (hM : Inv s.M) {mB u : ℕ} (hu :
   have hwf5 : WF (.blk [.op .add eP eP cOne]) := by simp +decide [WF, Prim.dst, eP]
   have hs4 := hM4.1
   simp only [regs] at hs4
-  have hreg : ∀ y, y < 256 → y ≠ sgB + u := fun y hy => by simp only [sgB]; omega
+  have hreg : ∀ y, y < 256 → y ≠ sgB + u := fun y hy => by simp only [sgB]; (clear * - y u s mB hu' s1 s2 s3 s4 hy; omega)
   refine ⟨?_, ?_, fun y hy hne => ?_, inv_sem I hwf5 hM4, by rw [size_sem, z4, z3, z2, z1]⟩
-  · rw [rd_blk_of_not_dst I _ s4 (by simp [Prim.dst, eP, sgB]; omega), c1,
-      f3 _ (by decide) (by decide), l1, f1 _ (by simp only [eQ, sgB] at *; omega)
-        (by simp only [eR]; omega) (by simp only [eA]; omega) (by simp only [eK]; omega)]
+  · rw [rd_blk_of_not_dst I _ s4 (by simp [Prim.dst, eP, sgB]; (clear * - u s mB hu' s1 s2 s3 s4; omega)), c1,
+      f3 _ (by decide) (by decide), l1, f1 _ (by simp only [eQ, sgB] at *; (clear * - mB u s hmB hmB2 hci s1 s2 s3 s4; omega))
+        (by simp only [eR]; (clear * - mB u s hmB hmB2 hci s1 s2 s3 s4; omega)) (by simp only [eA]; (clear * - mB u s hmB hmB2 hci s1 s2 s3 s4; omega)) (by simp only [eK]; (clear * - mB u s hmB hmB2 hci s1 s2 s3 s4; omega))]
   · rw [semXIR_blk_M]
     simp only [runPrims, List.foldl, Prim.run]
     have h1 : rd s4.M cOne = 1 := hM4.2 0 (by decide)
-    rw [rd_set_self (by simp only [eP]; omega), h1, c2 _ (hreg _ (by decide)) (by decide),
+    rw [rd_set_self (by simp only [eP]; (clear * - s4 s mB u hsz s1 z1 s2 z2 s3 z3 z4; omega)), h1, c2 _ (hreg _ (by decide)) (by decide),
       f3 _ (by decide) (by decide), l2 _ (by decide), f1 _ (by decide) (by decide) (by decide)
         (by decide), hp]
     exact add_one_toWord u
   · simp only [regs] at hy
-    rw [rd_blk_of_not_dst I _ s4 (by simp [Prim.dst, eP]; omega), c2 _ hne (by simp only [cTmp]; omega),
-      f3 _ (by simp only [eK]; omega) (by simp only [eA]; omega), l2 _ (by simp only [eW]; omega),
-      f1 _ (by simp only [eQ]; omega) (by simp only [eR]; omega) (by simp only [eA]; omega)
-        (by simp only [eK]; omega)]
+    rw [rd_blk_of_not_dst I _ s4 (by simp [Prim.dst, eP]; (clear * - y s mB u s1 s2 s3 s4 hy; omega)), c2 _ hne (by simp only [cTmp]; (clear * - y s mB u s1 s2 s3 s4 hy; omega)),
+      f3 _ (by simp only [eK]; (clear * - y s mB u s1 s2 s3 s4 hy; omega)) (by simp only [eA]; (clear * - y s mB u s1 s2 s3 s4 hy; omega)), l2 _ (by simp only [eW]; (clear * - y s mB u s1 s2 s3 s4 hy; omega)),
+      f1 _ (by simp only [eQ]; (clear * - y s mB u s1 s2 s3 s4 hy; omega)) (by simp only [eR]; (clear * - y s mB u s1 s2 s3 s4 hy; omega)) (by simp only [eA]; (clear * - y s mB u s1 s2 s3 s4 hy; omega))
+        (by simp only [eK]; (clear * - y s mB u s1 s2 s3 s4 hy; omega))]
 
 /-- **The stream copy**: `sgB + u` holds the message word `crecIdx u` for every `u < 17·2^14`;
 the heap outside the buffer is kept; no output. -/
@@ -393,21 +393,21 @@ theorem copyIR_sem (I : Array Word) (s : St) (hM : Inv s.M) {mB : ℕ} (hmB : re
     refine ⟨inv_entryK hM1 (by decide), by rw [size_entryK, z1], by rw [entryK_frame _ (by decide)
       (by decide), p1], fun u hu => absurd hu (Nat.not_lt_zero _), fun y hy _ => ?_⟩
     simp only [regs] at hy
-    rw [entryK_frame _ (by simp only [eC]; omega) (by simp only [cTmp]; omega),
-      f1 _ (by simp only [eP]; omega) (by simp only [eN]; omega)]
+    rw [entryK_frame _ (by simp only [eC]; (clear * - y s mB s1 hy; omega)) (by simp only [cTmp]; (clear * - y s mB s1 hy; omega)),
+      f1 _ (by simp only [eP]; (clear * - y s mB s1 hy; omega)) (by simp only [eN]; (clear * - y s mB s1 hy; omega))]
   have hstep : ∀ j t, j < nCp → Q j t → Q (j + 1) (decS eC (semXIR I (copyBody mB) t)) := by
     intro j t hj ⟨q1, q2, q3, q4, q5⟩
     obtain ⟨b1, b2, b3, b4, b5⟩ := copyBody_sem I t q1 hj hmB hmB2 (by rw [q2]; exact hsz) q3
     have hrd : ∀ y, regs ≤ y → rd (decS eC (semXIR I (copyBody mB) t)).M y =
-        rd (semXIR I (copyBody mB) t).M y := fun y hy => rd_decS (by simp only [regs, eC] at *; omega) _
+        rd (semXIR I (copyBody mB) t).M y := fun y hy => rd_decS (by simp only [regs, eC] at *; (clear * - y I s mB s1 j t hy; omega)) _
     have hcl : crecIdx j < 2 ^ 19 := crecIdx_lt hj
     refine ⟨inv_decS b4 (by decide), by rw [size_decS, b5, q2], by rw [rd_decS (by decide), b2], fun u hu => ?_,
       fun y hy hy' => ?_⟩
-    · rw [hrd _ (by simp only [regs, sgB]; omega)]
+    · rw [hrd _ (by simp only [regs, sgB]; (clear * - u I s mB s1 j t; omega))]
       rcases Nat.lt_succ_iff_lt_or_eq.mp hu with h | rfl
-      · rw [b3 _ (by simp only [regs, sgB]; omega) (by omega), q4 u h]
-      · rw [b1, q5 _ (by simp only [regs] at hmB ⊢; omega) (.inl (by simp only [sgB] at hmB2 ⊢; omega))]
-    · rw [hrd _ hy, b3 _ hy (by omega), q5 _ hy (by omega)]
+      · rw [b3 _ (by simp only [regs, sgB]; (clear * - u I s mB s1 j t; omega)) (by (clear * - u j I s mB s1 t h; omega)), q4 u h]
+      · rw [b1, q5 _ (by simp only [regs] at hmB ⊢; (clear * - mB u I s hmB s1 t hcl; omega)) (.inl (by simp only [sgB] at hmB2 ⊢; (clear * - mB u I s hmB2 s1 t hcl; omega)))]
+    · rw [hrd _ hy, b3 _ hy (by (clear * - y j I s mB s1 t hy'; omega)), q5 _ hy (by (clear * - y j I s mB s1 t hy'; omega))]
   have := loopK_run I (copyBody mB) Q ⟨s1.M, s1.o⟩ hM1 (by decide) (by decide) (by decide) n1
     (by simp only [nCp]; norm_num) h0 hstep
   obtain ⟨r1, r2, -, r4, r5⟩ := this
@@ -439,7 +439,7 @@ theorem thcpBody_sem (I : Array Word) (s : St) (hM : Inv s.M) {p x : ℕ} (hp : 
   rw [thcpBody, semXIR_seq]
   have i1 : rd (semXIR I (.input eW eP) s).M eW = I.getD p 0 := by
     show rd (s.M.setIfInBounds eW (I.getD (rd s.M eP).toNat 0)) eW = _
-    rw [rd_set_self (by simp only [eW]; omega), hp, toNat_toWord (by omega)]
+    rw [rd_set_self (by simp only [eW]; (clear * - s p x hs; omega)), hp, toNat_toWord (by (clear * - p s x hp2; omega))]
   have g1 : ∀ y, y ≠ eW → rd (semXIR I (.input eW eP) s).M y = rd s.M y := fun y hy =>
     rd_set_ne (Ne.symm hy)
   have hM1 := inv_sem I (P := .input eW eP) (show 4 ≤ eW by decide) hM
@@ -447,20 +447,20 @@ theorem thcpBody_sem (I : Array Word) (s : St) (hM : Inv s.M) {p x : ℕ} (hp : 
   generalize semXIR I (.input eW eP) s = s1 at i1 g1 hM1 z1
   rw [semXIR_seq]
   obtain ⟨c1, c2, hM2⟩ := store_sem I s1 hM1 (p := eA) (v := eW) (x := x) (by decide) (by decide)
-    (by rw [g1 _ (by decide), hx]) (by simp only [regs]; omega) (by omega) (by omega)
+    (by rw [g1 _ (by decide), hx]) (by simp only [regs]; (clear * - hxr; omega)) (by (clear * - x s p hxr hx2 s1; omega)) (by (clear * - x s1 s p hxs z1; omega))
   have z2 := size_sem I (.store eA eW) s1
   generalize semXIR I (.store eA eW) s1 = s2 at c1 c2 hM2 z2
-  have hx' : ∀ r, r < 256 → r ≠ x := fun r hr => by omega
+  have hx' : ∀ r, r < 256 → r ≠ x := fun r hr => by (clear * - r x s p hxr hx2 s1 s2 hr; omega)
   have h1 : rd s2.M cOne = 1 := hM2.2 0 (by decide)
   refine ⟨?_, ?_, ?_, fun y a b c d e => ?_, inv_sem I (by simp +decide [WF, Prim.dst, eP, eA]) hM2,
     by rw [size_sem, z2, z1]⟩
-  · rw [rd_blk_of_not_dst I _ s2 (by simp [Prim.dst, eP, eA]; omega), c1, i1]
+  · rw [rd_blk_of_not_dst I _ s2 (by simp [Prim.dst, eP, eA]; (clear * - x s p hxr hx2 s1 s2; omega)), c1, i1]
   · rw [semXIR_blk_M]; simp only [runPrims, List.foldl, Prim.run]
-    rw [rd_set_ne (by decide), rd_set_self (by simp only [eP]; omega), h1,
+    rw [rd_set_ne (by decide), rd_set_self (by simp only [eP]; (clear * - s2 s p x hs s1 z1 z2; omega)), h1,
       c2 _ (hx' _ (by decide)) (by decide), g1 _ (by decide), hp]
     exact add_one_toWord p
   · rw [semXIR_blk_M]; simp only [runPrims, List.foldl, Prim.run]
-    rw [rd_set_self (by simp only [size_set, eA]; omega), rd_set_ne (show eP ≠ eA by decide),
+    rw [rd_set_self (by simp only [size_set, eA]; (clear * - s2 s p x hs s1 z1 z2; omega)), rd_set_ne (show eP ≠ eA by decide),
       rd_set_ne (show eP ≠ cOne by decide), h1, c2 _ (hx' _ (by decide)) (by decide), g1 _ (by decide), hx]
     exact add_one_toWord x
   · rw [rd_blk_of_not_dst I _ s2 (by simp [Prim.dst]; exact ⟨Ne.symm b, Ne.symm c⟩), c2 _ e d, g1 _ a]
@@ -502,27 +502,27 @@ theorem thcpIR_sem (I : Array Word) (s : St) (hM : Inv s.M) {a dst n : ℕ} (ha 
       (by decide), v1, Nat.add_zero], by rw [entryK_frame _ (by decide) (by decide), v2, Nat.add_zero],
       fun i hi => absurd hi (Nat.not_lt_zero _), fun y hy _ => ?_⟩
     simp only [regs] at hy
-    rw [entryK_frame _ (by simp only [eC]; omega) (by simp only [cTmp]; omega),
-      f1 _ (by simp only [eP]; omega) (by simp only [eA]; omega) (by simp only [eN]; omega)]
+    rw [entryK_frame _ (by simp only [eC]; (clear * - y s a dst n s1 hy; omega)) (by simp only [cTmp]; (clear * - y s a dst n s1 hy; omega)),
+      f1 _ (by simp only [eP]; (clear * - y s a dst n s1 hy; omega)) (by simp only [eA]; (clear * - y s a dst n s1 hy; omega)) (by simp only [eN]; (clear * - y s a dst n s1 hy; omega))]
   have hstep : ∀ j t, j < n → Q j t → Q (j + 1) (decS eC (semXIR I thcpBody t)) := by
     intro j t hj ⟨q1, q2, q3, q4, q5, q6⟩
-    obtain ⟨b1, b2, b3, b4, b5, b6⟩ := thcpBody_sem I t q1 q3 q4 (by omega) (by simp only [regs]; omega)
-      (by omega) (by rw [q2]; omega)
+    obtain ⟨b1, b2, b3, b4, b5, b6⟩ := thcpBody_sem I t q1 q3 q4 (by (clear * - a j s dst n ha s1 t hj; omega)) (by simp only [regs]; (clear * - dst j s a n hd s1 t; omega))
+      (by (clear * - dst j s a n hd2 s1 t hj; omega)) (by rw [q2]; (clear * - dst j s I a n hds s1 z1 h0 t hj q2; omega))
     have hrd : ∀ y, y ≠ eC → rd (decS eC (semXIR I thcpBody t)).M y = rd (semXIR I thcpBody t).M y :=
       fun y hy => rd_decS (Ne.symm hy) _
     refine ⟨inv_decS b5 (by decide), by rw [size_decS, b6, q2], by rw [hrd _ (by decide), b2, Nat.add_assoc],
       by rw [hrd _ (by decide), b3, Nat.add_assoc], fun i hi => ?_, fun y hy hy' => ?_⟩
-    · rw [hrd _ (by simp only [eC]; omega)]
+    · rw [hrd _ (by simp only [eC]; (clear * - dst i I s a n hd s1 j t; omega))]
       rcases Nat.lt_succ_iff_lt_or_eq.mp hi with h | rfl
-      · rw [b4 _ (by simp only [eW]; omega) (by simp only [eP]; omega) (by simp only [eA]; omega)
-          (by simp only [cTmp]; omega) (by omega), q5 i h]
+      · rw [b4 _ (by simp only [eW]; (clear * - dst i I s a n hd s1 j t; omega)) (by simp only [eP]; (clear * - dst i I s a n hd s1 j t; omega)) (by simp only [eA]; (clear * - dst i I s a n hd s1 j t; omega))
+          (by simp only [cTmp]; (clear * - dst i I s a n hd s1 j t; omega)) (by (clear * - dst i j I s a n s1 t h; omega)), q5 i h]
       · exact b1
     · simp only [regs] at hy
-      rw [hrd _ (by simp only [eC]; omega), b4 _ (by simp only [eW]; omega) (by simp only [eP]; omega)
-        (by simp only [eA]; omega) (by simp only [cTmp]; omega) (by omega), q6 _ (by simp only [regs]; omega)
-        (by omega)]
+      rw [hrd _ (by simp only [eC]; (clear * - y I s a dst n s1 j t hy; omega)), b4 _ (by simp only [eW]; (clear * - y I s a dst n s1 j t hy; omega)) (by simp only [eP]; (clear * - y I s a dst n s1 j t hy; omega))
+        (by simp only [eA]; (clear * - y I s a dst n s1 j t hy; omega)) (by simp only [cTmp]; (clear * - y I s a dst n s1 j t hy; omega)) (by (clear * - y dst j I s a n s1 t hy'; omega)), q6 _ (by simp only [regs]; (clear * - hy; omega))
+        (by (clear * - y dst j I s a n s1 t hy'; omega))]
   obtain ⟨r1, r2, -, -, r5, r6⟩ := loopK_run I thcpBody Q ⟨s1.M, s1.o⟩ hM1 (by decide) (by decide)
-    (by decide) v3 (by omega) h0 hstep
+    (by decide) v3 (by (clear * - n s a dst ha s1; omega)) h0 hstep
   exact ⟨r5, r6, r1, r2, hO⟩
 
 theorem cost_thcpIR (a dst n t : ℕ) (hn : n < 2 ^ 64) : cost (thcpIR a dst n) t = 14 + n * 13 := by
@@ -704,7 +704,7 @@ theorem wf_acpIR : WF acpIR := by
 theorem wf_outIR (m : ℕ) : WF (outIR m) := by
   simp only [outIR, WF]
   refine ⟨wf_emitIR _, wf_tcpIR _ _, wf_leafStmtIR _ _, wf_emitIR _, wf_copyIR _, ?_, wf_segIR _ _ _ (by
-    have := segs_ok.2.2.2; omega), wf_segIR _ _ _ (by have := segs_ok.2.1; omega), ?_,
+    have := segs_ok.2.2.2; (clear * - this; omega)), wf_segIR _ _ _ (by have := segs_ok.2.1; (clear * - this; omega)), ?_,
     wf_segIR _ _ _ (by decide), wf_emitIR _, wf_emitIR _, wf_tcpIR _ _, wf_emitIR _, wf_tcpIR _ _⟩ <;>
   simp +decide [setR, WF, Prim.dst, oR, oKF, oBd]
 
@@ -778,7 +778,7 @@ theorem cost_copyIR (m t : ℕ) : cost (copyIR m) t = 12 + nCp * 31 := by
   simp only [copyIR, copyBody, cpAddrPs, cost, blkSteps, List.length_cons, List.length_nil,
     toNat_toWord (show nCp < 2 ^ 64 by simp only [nCp]; norm_num)]
   norm_num
-  omega
+  (clear * -; omega)
 
 /-! The output segments' costs, outputs and sizes, block by block: a block's segment's measures do
 not depend on its lane (`segPC_u`, …) and are `LvmXLayout`'s closed forms (`segPC`, …) whose sums
@@ -832,7 +832,7 @@ private theorem segTS_u (u : ℕ) (b : Blk) : segSize (blkTSeg u b) = segSize (b
 private theorem segPCs : ∀ (u : ℕ) (bs : List Blk), segCost (blkPSegs u bs) = (bs.map blkPCostL).sum + 1
   | _, [] => rfl
   | u, b :: bs => by
-    rw [blkPSegs, segCost, segPCs _ bs, segPC_u, List.map_cons, List.sum_cons, ← segPC b]; omega
+    rw [blkPSegs, segCost, segPCs _ bs, segPC_u, List.map_cons, List.sum_cons, ← segPC b]; (clear * - b bs; omega)
 private theorem segPOs : ∀ (u : ℕ) (bs : List Blk), segOuts (blkPSegs u bs) = (bs.map blkPOutsL).sum
   | _, [] => rfl
   | u, b :: bs => by
@@ -840,11 +840,11 @@ private theorem segPOs : ∀ (u : ℕ) (bs : List Blk), segOuts (blkPSegs u bs) 
 private theorem segPSs : ∀ (u : ℕ) (bs : List Blk), segSize (blkPSegs u bs) = (bs.map blkPSizeL).sum + 1
   | _, [] => rfl
   | u, b :: bs => by
-    rw [blkPSegs, segSize, segPSs _ bs, segPS_u, List.map_cons, List.sum_cons, ← segPS b]; omega
+    rw [blkPSegs, segSize, segPSs _ bs, segPS_u, List.map_cons, List.sum_cons, ← segPS b]; (clear * - b bs; omega)
 private theorem segTCs : ∀ (u : ℕ) (bs : List Blk), segCost (blkTSegs u bs) = (bs.map blkTCostL).sum + 1
   | _, [] => rfl
   | u, b :: bs => by
-    rw [blkTSegs, segCost, segTCs _ bs, segTC_u, List.map_cons, List.sum_cons, ← segTC b]; omega
+    rw [blkTSegs, segCost, segTCs _ bs, segTC_u, List.map_cons, List.sum_cons, ← segTC b]; (clear * - b bs; omega)
 private theorem segTOs : ∀ (u : ℕ) (bs : List Blk), segOuts (blkTSegs u bs) = (bs.map blkTOutsL).sum
   | _, [] => rfl
   | u, b :: bs => by
@@ -852,7 +852,7 @@ private theorem segTOs : ∀ (u : ℕ) (bs : List Blk), segOuts (blkTSegs u bs) 
 private theorem segTSs : ∀ (u : ℕ) (bs : List Blk), segSize (blkTSegs u bs) = (bs.map blkTSizeL).sum + 1
   | _, [] => rfl
   | u, b :: bs => by
-    rw [blkTSegs, segSize, segTSs _ bs, segTS_u, List.map_cons, List.sum_cons, ← segTS b]; omega
+    rw [blkTSegs, segSize, segTSs _ bs, segTS_u, List.map_cons, List.sum_cons, ← segTS b]; (clear * - b bs; omega)
 
 private theorem segAll : (segCost pSegL = 2262010 ∧ segCost trSegL = 2673767 ∧
       segCost (.cp 0 597) = 21506) ∧
@@ -880,7 +880,7 @@ theorem cost_outIR (m t : ℕ) : cost (outIR m) t ≤ 15800000 := by
     cost_tcpIR _ _ t (show 4 < 2 ^ 64 by norm_num), cost_tcpIR _ _ t (show 5 < 2 ^ 64 by norm_num),
     cost_tcpIR _ _ t (show 597 < 2 ^ 64 by norm_num), cost_leafStmtIR, cost_copyIR, nCp]
   norm_num
-  omega
+  (clear * - t h1 h2 h3; omega)
 
 theorem cost_acpIR (t : ℕ) : cost acpIR t = 335 := by
   simp only [acpIR, cost, cost_mcpIR _ _ _ _ t (show 3 < 2 ^ 64 by norm_num)]
@@ -901,7 +901,7 @@ theorem cost_lvl1 (t : ℕ) :
       cost (dec1IR d1BX w1BX a1BX f2BX fBX) t ≤ 2 ^ 32 + 20300 := by
   have h1 := dec1_fixed_le memX pLX cap1WX w1BX d1BX a1BX f2BX fBX t
   rw [a1cpIR, cost_acp3IR, cost_thcpIR _ _ _ t (by norm_num)]
-  omega
+  (clear * - t h1; omega)
 
 /-- The flag test of level 1, v1's decoder and the output. -/
 theorem cost_ok1XIR (t : ℕ) : cost ok1XIR t ≤ 265710864928 + 21100000 + 200 := by
@@ -941,7 +941,7 @@ theorem outs_outIR (m t : ℕ) : outs (outIR m) t ≤ 164753 := by
     outs_tcpIR _ _ t (show 5 < 2 ^ 64 by norm_num), outs_tcpIR _ _ t (show 597 < 2 ^ 64 by norm_num),
     outs_leafStmtIR, copyIR, copyBody, Nat.zero_add, Nat.add_zero]
   simp [outs] at *
-  omega
+  (clear * - t h1 h2 h3; omega)
 
 theorem outs_acp3IR (src dst t : ℕ) : ∀ n, outs (acp3IR src dst n) t = 0
   | 0 => rfl
@@ -955,7 +955,7 @@ theorem outs_decX (t : ℕ) : outs decX t ≤ outCap := by
       (show outs sdL t = 0 by simp [sdL, outs])]
   simp [acpIR, outs_mcpIR, thcpIR, thcpBody, outs, outCap, outs_read1IR, outs_dec1IR,
     outs_acp3IR, a1cpIR] at *
-  omega
+  (clear * - t h; omega)
 
 theorem segSizes : segSize pSegL = 69710 ∧ segSize trSegL = 74134 ∧ segSize (.cp 0 597) = 50 :=
   segAll.2.2
@@ -980,7 +980,7 @@ theorem sizeIR_acp3IR (src dst : ℕ) : ∀ n, sizeIR (acp3IR src dst n) = 1 + 3
     rw [acp3IR, szSeq, sizeIR_acp3IR src dst n]
     simp only [mcpIR, mcpLoop, mcpBody, szSeq, sizeIR, blkSteps, List.length_cons, List.length_nil]
     simp
-    omega
+    (clear * - n; omega)
 
 theorem sizeIR_read1X : sizeIR (read1IR memX pLX cap1WX w1BX) ≤ 2 ^ 12 := by decide +kernel
 
@@ -997,7 +997,7 @@ theorem sizeIR_decX : sizeIR decX ≤ 2 ^ 19 := by
     sizeIR_leafStmtIR, sizeIR_segIR, segSizes.1, segSizes.2.1, segSizes.2.2]
   simp [tcpIR, tcpBody, copyIR, copyBody, cpAddrPs, thcpIR, thcpBody, mcpIR, mcpLoop, mcpBody, sdL,
     sizeIR, blkSteps]
-  omega
+  (clear * - h1 h2 h3; omega)
 
 /-! ## `DecOk` and `Computes` -/
 

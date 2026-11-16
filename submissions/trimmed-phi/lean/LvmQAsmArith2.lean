@@ -506,9 +506,9 @@ theorem bit_word (w : UInt64) {z : Nat} (hz : z < 64) :
   apply UInt64.toNat_inj.mp
   rw [UInt64.toNat_and, UInt64.toNat_shiftRight]
   have hz' : z.toUInt64.toNat % 64 = z := by
-    rw [Nat.toUInt64_eq, UInt64.toNat_ofNat']; omega
+    rw [Nat.toUInt64_eq, UInt64.toNat_ofNat']; (clear * - z hz; omega)
   rw [hz', show (1 : UInt64).toNat = 1 from rfl, Nat.and_one_is_mod]
-  split_ifs with h <;> simp [Nat.testBit, Nat.shiftRight_eq_div_pow] at h ⊢ <;> omega
+  split_ifs with h <;> simp [Nat.testBit, Nat.shiftRight_eq_div_pow] at h ⊢ <;> (clear * - h; omega)
 
 /-! ## The child's header lanes in the stream -/
 

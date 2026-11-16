@@ -108,22 +108,22 @@ theorem tr1Body_sem (I : Array Word) (s : St) (hM : Inv s.M) {a d k : ℕ} (ha :
   generalize semXIR I (.load yV ySr) s = s1 at l1 l2 hM1 z1
   rw [semXIR_seq]
   obtain ⟨c1, c2, hM2⟩ := store_sem I s1 hM1 (p := yDs) (v := yV) (x := d) (by decide) (by decide)
-    (by rw [l2 _ (by decide), hD]) (by simp only [regs]; omega) (by omega) (by omega)
+    (by rw [l2 _ (by decide), hD]) (by simp only [regs]; (clear * - hd; omega)) (by (clear * - d s a hd hd2 s1; omega)) (by (clear * - d s1 s a hds z1; omega))
   have z2 := size_sem I (.store yDs yV) s1
   generalize semXIR I (.store yDs yV) s1 = s2 at c1 c2 hM2 z2
-  have hdr : ∀ r, r < regs → r ≠ d := fun r hr => by simp only [regs] at hr; omega
+  have hdr : ∀ r, r < regs → r ≠ d := fun r hr => by simp only [regs] at hr; (clear * - r d s a hd hd2 s1 s2 hr; omega)
   have e2 : ∀ r, r ≠ yV → r ≠ cTmp → r ≠ d → rd s2.M r = rd s.M r := fun r h1 h2 h3 =>
     (c2 r h3 h2).trans (l2 r h1)
   have h1 : rd s2.M cOne = 1 := hM2.2 0 (by decide)
   refine ⟨?_, ?_, ?_, fun r r1 r2 r3 r4 r5 => ?_, inv_sem I (P := .blk [.op .add ySr ySr yStr,
     .op .add yDs yDs cOne]) (by simp +decide [WF, Prim.dst, ySr, yDs]) hM2⟩
-  · rw [rd_blk_of_not_dst I _ s2 (by simp [Prim.dst, ySr, yDs]; omega), c1, l1]
+  · rw [rd_blk_of_not_dst I _ s2 (by simp [Prim.dst, ySr, yDs]; (clear * - d s a hd hd2 s1 s2; omega)), c1, l1]
   · rw [sem_blk']; simp only [runPrims, List.foldl, Prim.run]
-    rw [rd_set_ne (by decide), rd_set_self (by simp only [ySr]; omega),
+    rw [rd_set_ne (by decide), rd_set_self (by simp only [ySr]; (clear * - s2 s a d hs s1 z1 z2; omega)),
       e2 _ (by decide) (by decide) (hdr _ (by decide)), e2 _ (by decide) (by decide)
         (hdr _ (by decide)), hS, hK, add_toWord]
   · rw [sem_blk']; simp only [runPrims, List.foldl, Prim.run]
-    rw [rd_set_self (by simp only [size_set, yDs]; omega), rd_set_ne (by decide),
+    rw [rd_set_self (by simp only [size_set, yDs]; (clear * - s2 s a d hs s1 z1 z2; omega)), rd_set_ne (by decide),
       rd_set_ne (by decide), e2 _ (by decide) (by decide) (hdr _ (by decide)), hD, h1,
       add_one_toWord]
   · rw [rd_blk_of_not_dst I _ s2 (by simp [Prim.dst]; exact ⟨Ne.symm r2, Ne.symm r3⟩),
@@ -145,7 +145,7 @@ theorem tr1Loop_sem (I : Array Word) (s : St) (hM : Inv s.M) {n src str dst : �
   have hM0 := inv_sem I (P := .blk [.const yN (toWord n)]) (by simp +decide [WF, Prim.dst, yN]) hM
   have n0 : rd (semXIR I (.blk [.const yN (toWord n)]) s).M yN = toWord n := by
     rw [sem_blk']; simp only [runPrims, List.foldl, Prim.run]
-    rw [rd_set_self (by simp only [yN]; omega)]
+    rw [rd_set_self (by simp only [yN]; (clear * - s n dst hs; omega))]
   have k0 : ∀ r, r ≠ yN → rd (semXIR I (.blk [.const yN (toWord n)]) s).M r = rd s.M r :=
     fun r hr => rd_blk_of_not_dst I _ s (by simp [Prim.dst]; exact Ne.symm hr)
   have z0 := size_sem I (.blk [.const yN (toWord n)]) s
@@ -158,7 +158,7 @@ theorem tr1Loop_sem (I : Array Word) (s : St) (hM : Inv s.M) {n src str dst : �
     fun i h1 h2 => entryK_frame _ (Ne.symm h1) (Ne.symm h2)
   have h0 : P 0 ⟨entryK yC yN (toWord n) s0.M, s0.o⟩ := by
     refine ⟨inv_entryK hM0 (by decide), by simp only [size_entryK, z0], ?_, ?_, ?_,
-      fun i hi => absurd hi (by omega), fun r hr _ => ?_⟩ <;> dsimp only
+      fun i hi => absurd hi (by (clear * - i s n dst s0 hi; omega)), fun r hr _ => ?_⟩ <;> dsimp only
     · rw [hE _ (by decide) (by decide), k0 _ (by decide), hS, Nat.mul_zero, Nat.add_zero]
     · rw [hE _ (by decide) (by decide), k0 _ (by decide), hD, Nat.add_zero]
     · rw [hE _ (by decide) (by decide), k0 _ (by decide), hK]
@@ -167,7 +167,7 @@ theorem tr1Loop_sem (I : Array Word) (s : St) (hM : Inv s.M) {n src str dst : �
   have hstep : ∀ j s', j < n → P j s' → P (j + 1) (decS yC (semXIR I mcpBody s')) := by
     rintro j s' hj ⟨i1, i2, i3, i4, i5, i6, i7⟩
     obtain ⟨b1, b2, b3, b4, hM'⟩ := tr1Body_sem I s' i1 (a := src + str * j) (d := dst + j)
-      (k := str) (hsrc2 j hj) (by simp only [regs]; omega) (by omega) (by omega) i3 i4 i5
+      (k := str) (hsrc2 j hj) (by simp only [regs]; (clear * - dst j s n hdst s0 s'; omega)) (by (clear * - dst j s n hdst2 s0 s' hj; omega)) (by (clear * - dst j s' s n src str hdsts s0 z0 h0 hj i2; omega)) i3 i4 i5
     have hd : ∀ x, x ≠ yC → rd (decS yC (semXIR I mcpBody s')).M x =
         rd (semXIR I mcpBody s').M x := fun x hx => rd_decS (Ne.symm hx) _
     refine ⟨inv_decS hM' (by decide), by rw [size_decS, size_sem, i2], ?_, ?_, ?_,
@@ -175,17 +175,17 @@ theorem tr1Loop_sem (I : Array Word) (s : St) (hM : Inv s.M) {n src str dst : �
     · rw [hd _ (by decide), b2, Nat.mul_succ, Nat.add_assoc]
     · rw [hd _ (by decide), b3, Nat.add_assoc]
     · rw [hd _ (by decide), b4 _ (by decide) (by decide) (by decide) (by decide)
-        (by simp only [yStr, regs] at *; omega), i5]
-    · have hdx : ∀ x, regs ≤ x → x ≠ yC := fun x hx => by simp only [yC, regs] at *; omega
-      rw [hd _ (hdx _ (by simp only [regs]; omega))]
+        (by simp only [yStr, regs] at *; (clear * - dst j s n hdst s0 s'; omega)), i5]
+    · have hdx : ∀ x, regs ≤ x → x ≠ yC := fun x hx => by simp only [yC, regs] at *; (clear * - x s n dst s0 j s' i hx; omega)
+      rw [hd _ (hdx _ (by simp only [regs]; (clear * - dst i s n hdst s0 j s'; omega)))]
       by_cases hij : i = j
       · subst hij
-        rw [b1, i7 _ (keepC_of_regs (hsrcR i (by omega)))
-          ((hdisj i hj).imp_right (fun h => by omega))]
-      · have hk := keepC_of_regs (show regs ≤ dst + i by simp only [regs]; omega)
-        rw [b4 _ hk.1 hk.2.1 hk.2.2.1 hk.2.2.2.2.2 (by omega), i6 i (by omega)]
+        rw [b1, i7 _ (keepC_of_regs (hsrcR i (by (clear * - hj; omega))))
+          ((hdisj i hj).imp_right (fun h => by (clear * - dst i src str s n s0 s' hj h; omega)))]
+      · have hk := keepC_of_regs (show regs ≤ dst + i by simp only [regs]; (clear * - dst i s n hdst s0 j s'; omega))
+        rw [b4 _ hk.1 hk.2.1 hk.2.2.1 hk.2.2.2.2.2 (by (clear * - dst i j s n s0 s' hij; omega)), i6 i (by (clear * - i j s n dst s0 s' hi hij; omega))]
     · obtain ⟨r1, r2, r3, r4, r5, r6⟩ := hr
-      rw [hd _ r4, b4 r r1 r2 r3 r6 (by omega), i7 r ⟨r1, r2, r3, r4, r5, r6⟩ (by omega)]
+      rw [hd _ r4, b4 r r1 r2 r3 r6 (by (clear * - r dst j s n hn s0 s' hj hr2 r1 r2 r3 r4 r5 r6; omega)), i7 r ⟨r1, r2, r3, r4, r5, r6⟩ (by (clear * - r dst j s n s0 s' hr2 r1 r2 r3 r4 r5 r6; omega))]
   have hfin := loopK_run I mcpBody P s0 hM0 (c := yC) (n := yN) (K := n) (by decide) (by decide)
     (by decide) n0 hn h0 hstep
   exact ⟨hfin.2.2.2.2.2.1, fun r hr hr2 => hfin.2.2.2.2.2.2 r hr hr2, hfin.1⟩
@@ -314,6 +314,6 @@ theorem dec1_fixed_le (bX pL capW wB dB aB fB oB t : ℕ) :
     cost (read1IR bX pL capW wB) t + cost (dec1IR dB wB aB fB oB) t ≤ 2 ^ 32 := by
   have h1 := cost_read1IR_le bX pL capW wB t
   have h2 := cost_dec1IR_le dB wB aB fB oB t
-  omega
+  (clear * - bX pL capW wB t dB aB fB oB h1 h2; omega)
 
 end Lvm.X

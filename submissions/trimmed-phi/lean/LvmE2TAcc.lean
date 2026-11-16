@@ -58,8 +58,8 @@ theorem hEvalT_range' (f : ℕ → E2) (t : E2) : ∀ (m k : ℕ),
   | 0, k => by simp [hEvalT]
   | m + 1, k => by
     rw [List.range'_succ, List.map_cons, hEvalT_cons,
-      Finset.sum_eq_sum_Ico_succ_bot (by omega : k < k + (m + 1)),
-      show k + (m + 1) = k + 1 + m by omega, ← hEvalT_range' f t m (k + 1), pow_succ]
+      Finset.sum_eq_sum_Ico_succ_bot (by (clear * - k m; omega) : k < k + (m + 1)),
+      show k + (m + 1) = k + 1 + m by (clear * - k m; omega), ← hEvalT_range' f t m (k + 1), pow_succ]
     ring
 
 /-- The polynomial of a coefficient list. -/
@@ -80,12 +80,12 @@ theorem natDegree_hPolyT : ∀ (hs : List E2) (n : ℕ), hs.length ≤ n + 1 →
     refine (natDegree_add_le _ _).trans (max_le (by simp) ?_)
     rcases hs with _ | ⟨c', hs'⟩
     · simp
-    · have hn : 1 ≤ n := by simp at h; omega
+    · have hn : 1 ≤ n := by simp at h; (clear * - n hs' h; omega)
       refine (natDegree_mul_le).trans ?_
-      have := natDegree_hPolyT (c' :: hs') (n - 1) (by simp at h ⊢; omega)
+      have := natDegree_hPolyT (c' :: hs') (n - 1) (by simp at h ⊢; (clear * - hs' n hn h; omega))
       have hX : (X : E2[X]).natDegree ≤ 1 := natDegree_X_le
       simp only [hPolyT] at this
-      omega
+      (clear * - c' hs' n c hn this hX; omega)
 
 /-- `eq(line(t), w)` as a polynomial in `t`. -/
 noncomputable def eqPolyT : List E2 → List E2 → ℕ → E2[X]
@@ -110,13 +110,13 @@ theorem natDegree_eqPolyT : ∀ (a b : List E2) (w : ℕ), (eqPolyT a b w).natDe
     have ha := natDegree_eqPolyT a b (w / 2)
     have hl : (C x + X * C (x + v) : E2[X]).natDegree ≤ 1 :=
       (natDegree_add_le _ _).trans (max_le (by simp) ((natDegree_mul_le).trans (by
-        have := natDegree_X_le (R := E2); simp only [natDegree_C]; omega)))
+        have := natDegree_X_le (R := E2); simp only [natDegree_C]; (clear * - this; omega))))
     split_ifs
-    · exact (natDegree_mul_le).trans (by omega)
+    · exact (natDegree_mul_le).trans (by (clear * - x v a b w ha hl; omega))
     · refine (natDegree_mul_le).trans ?_
       have : (1 + (C x + X * C (x + v)) : E2[X]).natDegree ≤ 1 :=
         (natDegree_add_le _ _).trans (max_le (by simp) hl)
-      omega
+      (clear * - x v a b w ha this; omega)
 
 /-- **The line-degree lemma at `E2`**: on the line from `a` to `b`, a sparse sum `Σ_{(n, c)} c·eq(·, n)` is a
 polynomial of degree at most `|a|` in `t`. -/
@@ -180,7 +180,7 @@ theorem entsT_o (Q : Program) (lay : Lay) : ∀ e ∈ entsT Q lay, e.o < 12 := b
   · rw [Option.some.injEq] at hje
     rw [← hje]
     dsimp only
-    omega
+    (clear * - e₀ j hj3; omega)
 
 /-- A selector-weighted sum of the per-matrix sums is the weighted sum over all entries (every `o' < 16`). -/
 theorem sum_sel_filterT (g : ℕ → E2) (f : EntT → E2) :
@@ -227,7 +227,7 @@ theorem yOwnT_eq (vs κ : List E2) (hvs : vs.length = 12) (hκ : κ.length = sel
       unfold dotF; rw [zipWith_take_left], dot_eqKernelF κ vs hn, hvs,
     show 2 ^ selBitsT = 12 + 4 from rfl, Finset.sum_range_add]
   rw [Finset.sum_eq_zero (s := range 4) fun i _ ↦ by
-    rw [List.getD_eq_default _ _ (by omega), mul_zero], add_zero]
+    rw [List.getD_eq_default _ _ (by (clear * - vs i κ hvs; omega)), mul_zero], add_zero]
 
 /-- **The selector split at `E2`**: at `κ ++ r_xy`, `y_own − Φ_Q` is the selector extension of the matrices'
 errors. -/
@@ -238,15 +238,15 @@ theorem phiQT_fold (Q : Program) (lay : Lay) (rxy vs : List E2) (hvs : vs.length
   have hphi : PhiQT Q lay (κ ++ rxy) =
       ∑ w ∈ range (2 ^ selBitsT), E2V.eqAtF κ w * matMleT Q lay w rxy := by
     simp only [matMleT_eq_sum]
-    rw [sum_sel_filterT (E2V.eqAtF κ) _ _ fun e he ↦ by have := entsT_o Q lay e he; omega,
+    rw [sum_sel_filterT (E2V.eqAtF κ) _ _ fun e he ↦ by have := entsT_o Q lay e he; (clear * - e vs κ this; omega),
       phiQT_eq_sum]
     refine congrArg List.sum (List.map_congr_left fun e he ↦ ?_)
     have ho := entsT_o Q lay e he
     rw [E2V.eqAtF_append, hκ, E2V.eqAtF_mod κ, hκ, EntT.idx,
       show (e.o + 16 * (e.x + 2 ^ xVars * e.y)) % 2 ^ selBitsT = e.o by
-        rw [show (2 : ℕ) ^ selBitsT = 16 from rfl]; omega,
+        rw [show (2 : ℕ) ^ selBitsT = 16 from rfl]; (clear * - e vs κ ho; omega),
       show (e.o + 16 * (e.x + 2 ^ xVars * e.y)) / 2 ^ selBitsT = e.x + 2 ^ xVars * e.y by
-        rw [show (2 : ℕ) ^ selBitsT = 16 from rfl]; omega]
+        rw [show (2 : ℕ) ^ selBitsT = 16 from rfl]; (clear * - e vs κ ho; omega)]
     ring
   rw [yOwnT_eq vs κ hvs hκ, hphi, ← Finset.sum_sub_distrib]
   refine Finset.sum_congr rfl fun w _ ↦ ?_
@@ -372,7 +372,7 @@ theorem accProgT_complete (Q : Program) (lay : Lay) {ok : Bool} {yIn : E2} (a rx
   have hev : ∀ t, hEvalT ((List.range (phiVarsT + 1)).map g.coeff) t = g.eval t := fun t ↦ by
     have key := hEvalT_range' g.coeff t (phiVarsT + 1) 0
     rw [pow_zero, mul_one, zero_add, ← List.range_eq_range', ← Finset.range_eq_Ico] at key
-    rw [key, eval_eq_sum_range' (n := phiVarsT + 1) (by omega)]
+    rw [key, eval_eq_sum_range' (n := phiVarsT + 1) (by (clear * - g a rxy vs ha κ hgd hlen; omega))]
   refine ⟨(List.range (phiVarsT + 1)).map g.coeff, by simp, fun t ↦ ⟨hg.1, ?_, ?_, rfl, ?_⟩⟩
   · rw [hev, hgv, lineT_zero _ _ hlen, hg.2.1]
   · rw [hev, hgv, lineT_one _ _ hlen, ← sub_eq_zero, ← neg_sub, phiQT_fold Q lay rxy vs hvs κ hκ, neg_eq_zero]

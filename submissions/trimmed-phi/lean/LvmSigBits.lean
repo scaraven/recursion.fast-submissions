@@ -94,27 +94,27 @@ variable (Q : Program) (pl : ℕ → Var → Bool × ℕ) (groups : List Grp) (a
 
 theorem getD_idx {z : Nat} (hz : z < 16) :
     (BOut.shl 8 :: ((List.range 16).map BOut.bit ++ [BOut.shr 16])).getD (1 + z) (.bit 0) = .bit z := by
-  rw [show 1 + z = z + 1 by omega]
-  simp [List.getD_eq_getElem?_getD, List.getElem?_append_left (by simp; omega : z < ((List.range 16).map BOut.bit).length), hz]
+  rw [show 1 + z = z + 1 by (clear * - z; omega)]
+  simp [List.getD_eq_getElem?_getD, List.getElem?_append_left (by simp; (clear * - hz; omega) : z < ((List.range 16).map BOut.bit).length), hz]
 
 theorem getD_n {ln z : Nat} (hz : z ≤ ln) :
     (BOut.shl 8 :: BOut.shr 56 :: ((List.range (ln + 1)).map BOut.bit ++
       [BOut.shr (ln + 1), BOut.shl (64 - ln)])).getD (2 + z) (.bit 0) = .bit z := by
-  rw [show 2 + z = z + 1 + 1 by omega]
+  rw [show 2 + z = z + 1 + 1 by (clear * - z ln; omega)]
   simp [List.getD_eq_getElem?_getD,
-    List.getElem?_append_left (by simp; omega : z < ((List.range (ln + 1)).map BOut.bit).length),
-    show z < ln + 1 by omega]
+    List.getElem?_append_left (by simp; (clear * - hz; omega) : z < ((List.range (ln + 1)).map BOut.bit).length),
+    show z < ln + 1 by (clear * - z ln hz; omega)]
 
 theorem getD_n_top {ln : Nat} :
     (BOut.shl 8 :: BOut.shr 56 :: ((List.range (ln + 1)).map BOut.bit ++
       [BOut.shr (ln + 1), BOut.shl (64 - ln)])).getD (ln + 3) (.bit 0) = .shr (ln + 1) := by
-  rw [show ln + 3 = (ln + 1) + 1 + 1 by omega]
+  rw [show ln + 3 = (ln + 1) + 1 + 1 by (clear * - ln; omega)]
   simp [List.getD_eq_getElem?_getD]
 
 theorem getD_n_low {ln : Nat} :
     (BOut.shl 8 :: BOut.shr 56 :: ((List.range (ln + 1)).map BOut.bit ++
       [BOut.shr (ln + 1), BOut.shl (64 - ln)])).getD (ln + 4) (.bit 0) = .shl (64 - ln) := by
-  rw [show ln + 4 = ((ln + 1) + 1) + 1 + 1 by omega]
+  rw [show ln + 4 = ((ln + 1) + 1) + 1 + 1 by (clear * - ln; omega)]
   simp [List.getD_eq_getElem?_getD]
 
 theorem getD_bit {n z : Nat} (hz : z < n) : ((List.range n).map BOut.bit).getD z (.bit 0) = .bit z := by

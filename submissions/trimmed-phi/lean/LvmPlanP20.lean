@@ -105,19 +105,19 @@ theorem passR_sound : ∀ (P : List PE) (cur : List (ℕ × ℕ)) (i s1 s2 : ℕ
           exact ⟨c :: rest, h', fun x hx => Or.inr hx⟩
     obtain ⟨cur', hr, hcur⟩ := key
     obtain ⟨h1, h2, h3, h4, h5⟩ := passR_sound es cur' (i + 1) _ _ hr
-    refine ⟨fun k hk => ?_, fun x hx => ?_, by simp only [List.length_cons]; omega,
-      by simp only [List.map_cons, List.sum_cons]; omega, by simp only [List.map_cons, List.sum_cons]; omega⟩
+    refine ⟨fun k hk => ?_, fun x hx => ?_, by simp only [List.length_cons]; (clear * - i es n t1 t2 e s1 s2 h3; omega),
+      by simp only [List.map_cons, List.sum_cons]; (clear * - s1 e es t1 n t2 i s2 h4; omega), by simp only [List.map_cons, List.sum_cons]; (clear * - s2 e es t2 n t1 i s1 h5; omega)⟩
     · cases k with
       | zero => simpa using he
       | succ k =>
         have := h1 k (by simpa using hk)
-        rwa [show i + 1 + k = i + (k + 1) by omega] at this
+        rwa [show i + 1 + k = i + (k + 1) by (clear * - i k n t1 t2 e es s1 s2; omega)] at this
     · rcases hcur x hx with ⟨hxi, hxl⟩ | hx'
       · refine ⟨hxi.ge, ?_⟩
         rw [hxi, Nat.sub_self, List.getD_cons_zero, hxl]
       · obtain ⟨hle, hl⟩ := h2 x hx'
-        refine ⟨by omega, ?_⟩
-        rw [show x.1 - i = (x.1 - (i + 1)) + 1 by omega, List.getD_cons_succ, hl]
+        refine ⟨by (clear * - i x n t1 t2 e es s1 s2 h3 hle; omega), ?_⟩
+        rw [show x.1 - i = (x.1 - (i + 1)) + 1 by (clear * - x i n t1 t2 e es s1 s2 h3 hle; omega), List.getD_cons_succ, hl]
 
 end
 
@@ -164,7 +164,7 @@ theorem entF_sound (P : List PE) (lk : ℕ → ℕ) (hlk : ∀ c, lk c = (P.getD
       · rwa [← hl]
       · rw [hl] at h4
         exfalso
-        omega
+        (clear * - lk i len pe hh j lvl ce co path h4 h3 h1; omega)
 
 /-! ## The decision at `P20` -/
 
@@ -201,11 +201,11 @@ theorem streamOkL_of (h : passR (capLk tbl) n c sl P tbl 0 0 0 = true) : streamO
   simp only [streamOkL, Bool.and_eq_true, List.all_eq_true]
   refine ⟨fun e he => ?_, fun x hx => ?_⟩
   · obtain ⟨k, hk, rfl⟩ := List.getElem_of_mem he
-    have hk' : k + 1 < P.length := by rw [List.length_tail] at hk; omega
+    have hk' : k + 1 < P.length := by rw [List.length_tail] at hk; (clear * - k P hk; omega)
     have h := (sound_of h).1 _ hk'
     simp only [elemF, Bool.and_eq_true, Bool.or_eq_true, Nat.beq_eq] at h
     simp only [List.getElem_tail, beq_iff_eq]
-    omega
+    (clear * - P k hk tbl hk' h; omega)
   · obtain ⟨hk, he⟩ : ∃ hk : x.2 < P.length, P[x.2] = x.1 := by
       have := List.mem_zipIdx_iff_getElem?.mp hx
       rw [List.getElem?_eq_some_iff] at this

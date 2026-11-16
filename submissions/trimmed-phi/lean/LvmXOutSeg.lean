@@ -293,7 +293,7 @@ theorem and_one_toWordSg {a : ℕ} (ha : a < 2 ^ 64) :
   apply BitVec.eq_of_toNat_eq
   simp only [XOp.eval]
   rw [BitVec.toNat_and, toNat_toWord ha, show (1 : Word).toNat = 2 ^ 1 - 1 from rfl,
-    Nat.and_two_pow_sub_one_eq_mod, toNat_toWord (by (clear * -; omega))]
+    Nat.and_two_pow_sub_one_eq_mod, toNat_toWord (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - a; omega)))]
 
 theorem and_mask_toWord {a m k : ℕ} (ha : a < 2 ^ 64) (hm : m + 1 = 2 ^ k) (hk : k ≤ 64) :
     XOp.and.eval (toWord a) (toWord m) = toWord (a % 2 ^ k) := by
@@ -310,20 +310,20 @@ theorem toNat_toWord_le (n : ℕ) : (toWord n).toNat ≤ n := by
 
 /-- **`apC` is contiguous**: source word `n` sits at `R + n`. -/
 theorem addrW_apC {R n : ℕ} (h : R + n < 2 ^ 40) : addrW apC (toWord R) (toWord n) = toWord (R + n) := by
-  have hn : n < 2 ^ 64 := by omega
-  have h2 : n / 2 ^ 1 < 2 ^ 64 := by omega
-  have h3 : n / 2 ^ 1 % 2 ^ 40 = n / 2 ^ 1 := Nat.mod_eq_of_lt (by omega)
+  have hn : n < 2 ^ 64 := by (clear * - n R h; omega)
+  have h2 : n / 2 ^ 1 < 2 ^ 64 := by (clear * - n R h hn; omega)
+  have h3 : n / 2 ^ 1 % 2 ^ 40 = n / 2 ^ 1 := Nat.mod_eq_of_lt (by (clear * - n R h hn h2; omega))
   have h4 : n / 2 ^ 63 = 0 := Nat.div_eq_of_lt (by (clear * - h hn; omega))
   simp only [addrW, apC]
   rw [shr_toWordSg hn (by norm_num), and_mask_toWord (k := 40) h2 (by norm_num) (by norm_num), h3,
     shl_toWordSg (by norm_num) (by (clear * - h hn h2; omega)), shr_toWordSg hn (by norm_num), h4,
     shl_toWordSg (by norm_num) (by norm_num), and_one_toWordSg hn, add_toWord, add_toWord, add_toWord]
   congr 1
-  (clear * -; omega)
+  (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - R n; omega))
 
 /-- **The contiguous source** is the heap from `R`. -/
 theorem src_apC (M : Mem) {R n : ℕ} (h : R + n < 2 ^ 40) : src M apC R n = rd M (R + n) := by
-  rw [src, addrW_apC h, toNat_toWord (by omega)]
+  rw [src, addrW_apC h, toNat_toWord (by (clear * - R n h; omega))]
 
 /-- `apC`'s addresses from a heap base `R` stay in the heap. -/
 theorem hA_apC {R : ℕ} (h1 : regs ≤ R) (h2 : R < 2 ^ 62) : ∀ x, regs ≤ (addrW apC (toWord R) x).toNat := by
@@ -353,8 +353,8 @@ theorem hA_apC {R : ℕ} (h1 : regs ≤ R) (h2 : R < 2 ^ 62) : ∀ x, regs ≤ (
   generalize XOp.and.eval x 1 = C at e3
   simp only [XOp.eval, BitVec.toNat_add, hR]
   simp only [regs] at h1 ⊢
-  rw [Nat.mod_eq_of_lt (by omega), Nat.mod_eq_of_lt (by (clear * - h1 h2 hR e1 e2; omega)), Nat.mod_eq_of_lt (by (clear * - h1 h2 hR e1; omega))]
-  omega
+  rw [Nat.mod_eq_of_lt (by (clear * - R A B C h1 h2 hR e1 e2 e3; omega)), Nat.mod_eq_of_lt (by (clear * - h1 h2 hR e1 e2; omega)), Nat.mod_eq_of_lt (by (clear * - h1 h2 hR e1; omega))]
+  (clear * - R A B C h1 h2 hR e1 e2 e3; omega)
 
 /-! ## Proof helpers: what the code writes -/
 
@@ -414,33 +414,33 @@ theorem ow_segIR (ap : AP) : ∀ (seg : Seg) (d r : ℕ), Writes (segIR ap d seg
   | .cat x y, d, r, h => h.elim (ow_segIR ap x d r) (ow_segIR ap y d r)
   | .kite x y, d, r, h => h.elim (ow_segIR ap x d r) (ow_segIR ap y d r)
   | .wd _, _, r, h => by
-    simp [segIR, Writes, Prim.dst] at h; exact .inl (.inr (by simp only [oX] at *; omega))
+    simp [segIR, Writes, Prim.dst] at h; exact .inl (.inr (by simp only [oX] at *; (clear * - r h; omega)))
   | .cp o n, d, r, h => .inl (lw_cpIR ap _ o n r h)
   | .sibc o, d, r, h => .inl (lw_sibcIR ap _ o r h)
   | .shw o, d, r, h => by
     have := writes_wrL _ _ h
     simp only [segIR, ldw, ldPs, wrL, List.map_cons, List.map_nil, Prim.dst, List.cons_append,
       List.nil_append, List.append_nil, List.mem_cons, List.mem_nil_iff, or_false, List.mem_append] at this
-    left; simp only [LW, oK, oT1, oT2, oT3, oAd, oX, oU, oY, cTmp] at *; omega
+    left; simp only [LW, oK, oT1, oT2, oT3, oAd, oX, oU, oY, cTmp] at *; (clear * - r this; omega)
   | .sh8 o, d, r, h => by
     have := writes_wrL _ _ h
     simp only [segIR, ldw, ldPs, wrL, List.map_cons, List.map_nil, Prim.dst, List.cons_append,
       List.nil_append, List.append_nil, List.mem_cons, List.mem_nil_iff, or_false, List.mem_append] at this
-    left; simp only [LW, oK, oT1, oT2, oT3, oAd, oX, oU, cTmp] at *; omega
+    left; simp only [LW, oK, oT1, oT2, oT3, oAd, oX, oU, cTmp] at *; (clear * - r this; omega)
   | .rep c s x, d, r, h => by
     simp only [segIR, Writes, List.mem_cons, List.mem_nil_iff, or_false] at h
     rcases h with ⟨p, hp, rfl⟩ | rfl | rfl | h | ⟨p, hp, rfl⟩
     · rcases hp with rfl | rfl
-      · exact .inr ⟨d, le_rfl, by simp [Prim.dst, oBd]; omega⟩
+      · exact .inr ⟨d, le_rfl, by simp [Prim.dst, oBd]; (clear * - d; omega)⟩
       · exact .inr ⟨d, le_rfl, by simp [Prim.dst, oNd]⟩
     · exact .inr ⟨d, le_rfl, by simp [oCd]⟩
     · exact .inl (.inl rfl)
     · rcases ow_segIR ap x (d + 1) r h with h | ⟨e, he, h⟩
       · exact .inl h
-      · exact .inr ⟨e, by omega, h⟩
+      · exact .inr ⟨e, by (clear * - d e he; omega), h⟩
     · rcases hp with rfl | rfl
       · exact .inl (.inr (by simp [Prim.dst, oK]))
-      · exact .inr ⟨d, le_rfl, by simp [Prim.dst, oBd]; omega⟩
+      · exact .inr ⟨d, le_rfl, by simp [Prim.dst, oBd]; (clear * - d; omega)⟩
 
 theorem not_ow_prot {d r : ℕ} (hp : Prot d r) (hw : OW d r) : False := by
   simp only [Prot, OW, LW, oR, oKF, cTmp] at hp hw
@@ -468,7 +468,7 @@ theorem iterL_hframeSg {f : St → St} {c : ℕ} (hc : c < regs)
     ∀ k s, ∀ x, regs ≤ x → rd (iterL f c k s).M x = rd s.M x
   | 0, _, _, _ => rfl
   | k + 1, s, x, hx => (iterL_hframeSg hc hf k _ x hx).trans
-      ((rd_decS (by omega) _).trans (hf s x hx))
+      ((rd_decS (by (clear * - c x hc hx; omega)) _).trans (hf s x hx))
 
 /-- **Heap frame** for `LoKSg` code. -/
 theorem hframeKSg (I : Array Word) : ∀ (P : XIR) (s : St), LoKSg P → ∀ x, regs ≤ x →
@@ -485,7 +485,7 @@ theorem hframeKSg (I : Array Word) : ∀ (P : XIR) (s : St), LoKSg P → ∀ x, 
   | .loopK c n K b, s, h, x, hx => by
     simp only [semXIR]
     rw [iterL_hframeSg h.1 (fun s' x' hx' => hframeKSg I b s' h.2 x' hx') _ _ x hx]
-    exact entryK_frame _ (by have := h.1; omega) (by simp only [cTmp, regs] at *; omega)
+    exact entryK_frame _ (by have := h.1; (clear * - c x hx this; omega)) (by simp only [cTmp, regs] at *; (clear * - x hx; omega))
   | .store .., _, h, _, _ => h.elim
   | .loopT .., _, h, _, _ => h.elim
 
@@ -536,10 +536,10 @@ theorem wf_sibcIR (ap : AP) (rb o : ℕ) : WF (sibcIR ap rb o) :=
 
 theorem wf_segIR (ap : AP) : ∀ (seg : Seg) (d : ℕ), depthSeg seg + d ≤ 9 → WF (segIR ap d seg)
   | .nil, _, _ => by simp +decide only [segIR, WF]
-  | .cat x y, d, h => ⟨wf_segIR ap x d (by simp [depthSeg] at h; omega),
-      wf_segIR ap y d (by simp [depthSeg] at h; omega)⟩
-  | .kite x y, d, h => ⟨wf_segIR ap x d (by simp [depthSeg] at h; omega),
-      wf_segIR ap y d (by simp [depthSeg] at h; omega)⟩
+  | .cat x y, d, h => ⟨wf_segIR ap x d (by simp [depthSeg] at h; (clear * - x d y h; omega)),
+      wf_segIR ap y d (by simp [depthSeg] at h; (clear * - y d x h; omega))⟩
+  | .kite x y, d, h => ⟨wf_segIR ap x d (by simp [depthSeg] at h; (clear * - x d y h; omega)),
+      wf_segIR ap y d (by simp [depthSeg] at h; (clear * - y d x h; omega))⟩
   | .wd _, _, _ => by simp +decide only [segIR, WF, Prim.dst, oX, List.mem_cons, List.mem_nil_iff,
     forall_eq, or_false, and_true]
   | .cp .., _, _ => wf_cpIR ..
@@ -554,14 +554,14 @@ theorem wf_segIR (ap : AP) : ∀ (seg : Seg) (d : ℕ), depthSeg seg + d ≤ 9 �
   | .rep c s x, d, h => by
     simp only [depthSeg] at h
     refine ⟨by simp +decide only [WF, Prim.dst, oBd, oNd, List.mem_cons, List.mem_nil_iff,
-      forall_eq_or_imp, forall_eq, or_false]; omega, ⟨by simp [oCd, oNd, cTmp]; omega,
-      by simp [oCd, regs]; omega, fun hw => ?_, wf_segIR ap x (d + 1) (by omega),
-      by simp [WF, Prim.dst, oK, oBd]; omega⟩⟩
+      forall_eq_or_imp, forall_eq, or_false]; (clear * - d x; omega), ⟨by simp [oCd, oNd, cTmp]; (clear * - d x; omega),
+      by simp [oCd, regs]; (clear * - d x h; omega), fun hw => ?_, wf_segIR ap x (d + 1) (by (clear * - x d h; omega)),
+      by simp [WF, Prim.dst, oK, oBd]; (clear * - d x; omega)⟩⟩
     rcases hw with hw | ⟨p, hp, he⟩
-    · exact noW_segIR ap x (d + 1) _ (.inr (.inr (.inl ⟨by simp only [oCd]; omega, by simp only [oCd]; omega⟩))) hw
+    · exact noW_segIR ap x (d + 1) _ (.inr (.inr (.inl ⟨by simp only [oCd]; (clear * - d x; omega), by simp only [oCd]; (clear * - d x; omega)⟩))) hw
     · simp only [List.mem_cons, List.mem_nil_iff, or_false] at hp
       rcases hp with rfl | rfl <;> simp [Prim.dst, oK, oCd, oBd] at he
-      all_goals omega
+      all_goals (clear * - x d he; omega)
 
 theorem loK_ldw (ap : AP) : LoKSg (ldw ap) := by
   simp +decide only [ldw, ldPs, LoKSg, Prim.dst, oK, oT1, oT2, oT3, oAd, oX, regs, List.mem_cons,
@@ -587,10 +587,10 @@ theorem loK_sibcIR (ap : AP) (rb o : ℕ) : LoKSg (sibcIR ap rb o) :=
 
 theorem loK_segIR (ap : AP) : ∀ (seg : Seg) (d : ℕ), depthSeg seg + d ≤ 9 → LoKSg (segIR ap d seg)
   | .nil, _, _ => by simp +decide only [segIR, LoKSg]
-  | .cat x y, d, h => ⟨loK_segIR ap x d (by simp [depthSeg] at h; omega),
-      loK_segIR ap y d (by simp [depthSeg] at h; omega)⟩
-  | .kite x y, d, h => ⟨loK_segIR ap x d (by simp [depthSeg] at h; omega),
-      loK_segIR ap y d (by simp [depthSeg] at h; omega)⟩
+  | .cat x y, d, h => ⟨loK_segIR ap x d (by simp [depthSeg] at h; (clear * - x d y h; omega)),
+      loK_segIR ap y d (by simp [depthSeg] at h; (clear * - y d x h; omega))⟩
+  | .kite x y, d, h => ⟨loK_segIR ap x d (by simp [depthSeg] at h; (clear * - x d y h; omega)),
+      loK_segIR ap y d (by simp [depthSeg] at h; (clear * - y d x h; omega))⟩
   | .wd _, _, _ => by simp +decide only [segIR, LoKSg, Prim.dst, oX, regs, List.mem_cons,
     List.mem_nil_iff, forall_eq, or_false, and_true]
   | .cp .., _, _ => loK_cpIR ..
@@ -604,8 +604,8 @@ theorem loK_segIR (ap : AP) : ∀ (seg : Seg) (d : ℕ), depthSeg seg + d ≤ 9 
   | .rep c s x, d, h => by
     simp only [depthSeg] at h
     exact ⟨by simp +decide only [LoKSg, Prim.dst, oBd, oNd, regs, List.mem_cons, List.mem_nil_iff,
-      forall_eq_or_imp, forall_eq, or_false]; omega, by simp [oCd, regs]; omega,
-      loK_segIR ap x (d + 1) (by omega), by simp [LoKSg, Prim.dst, oK, oBd, regs]; omega⟩
+      forall_eq_or_imp, forall_eq, or_false]; (clear * - d x h; omega), by simp [oCd, regs]; (clear * - d x h; omega),
+      loK_segIR ap x (d + 1) (by (clear * - x d h; omega)), by simp [LoKSg, Prim.dst, oK, oBd, regs]; (clear * - d x h; omega)⟩
 
 theorem noLoopT_cpIR (ap : AP) (rb o n : ℕ) : NoLoopT (cpIR ap rb o n) := by
   simp [cpIR, ldw, NoLoopT]
@@ -643,9 +643,9 @@ theorem iterL_emit (I : Array Word) {b : XIR} {c K : ℕ} (Q : ℕ → St → Pr
       s.o.toList ++ (List.range m).flatMap (fun i => out (j + i)) ∧ Q (j + m) (iterL (semXIR I b) c m s)
   | 0, j, s, _, h => ⟨by simp only [iterL, List.range_zero, List.flatMap_nil, List.append_nil], h⟩
   | m + 1, j, s, hm, h => by
-    obtain ⟨h1, h2⟩ := hf j s (by omega) h
-    obtain ⟨g1, g2⟩ := iterL_emit I Q out hf m (j + 1) _ (by omega) h2
-    refine ⟨?_, by rw [show j + (m + 1) = j + 1 + m by omega]; exact g2⟩
+    obtain ⟨h1, h2⟩ := hf j s (by (clear * - j K m hm; omega)) h
+    obtain ⟨g1, g2⟩ := iterL_emit I Q out hf m (j + 1) _ (by (clear * - j m K hm; omega)) h2
+    refine ⟨?_, by rw [show j + (m + 1) = j + 1 + m by (clear * - j m K; omega)]; exact g2⟩
     rw [iterL, g1, show (decS c (semXIR I b s)).o = (semXIR I b s).o from rfl, h1, List.range_succ_eq_map,
       List.flatMap_cons, List.flatMap_map, List.append_assoc, Nat.add_zero]
     simp only [Nat.add_assoc, Nat.add_comm 1, Nat.succ_eq_add_one, Nat.add_zero]
@@ -660,7 +660,7 @@ theorem loopK_emit (I : Array Word) {c n K : ℕ} {b : XIR} (Q : ℕ → St → 
       Q K (semXIR I (.loopK c n (toWord K) b) s) := by
   have e : (rd (entryK c n (toWord K) s.M) c).toNat = K := by
     rw [entryK_countSg hM hc hcr hn hN, toNat_toWord hK]
-  have := iterL_emit I Q out hf K 0 _ (by (clear * -; omega)) h0
+  have := iterL_emit I Q out hf K 0 _ (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - K; omega))) h0
   simp only [Nat.zero_add] at this
   have e2 : semXIR I (.loopK c n (toWord K) b) s =
       iterL (semXIR I b) c K ⟨entryK c n (toWord K) s.M, s.o⟩ := by
@@ -756,7 +756,7 @@ theorem cpIR_sem (I : Array Word) (ap : AP) {M₀ : Mem} {R : ℕ} {κ : Bool}
   have r2 : rd (runPrims [.const oK (toWord o), .op .add oU rb oK, .const oNp (toWord n)] s.M) oNp =
       toWord n := by
     simp only [runPrims, List.foldl, Prim.run]
-    simp (disch := (simp only [size_set, oK, oU, oNp] at *; omega)) only [rd_set_self]
+    simp (disch := (simp only [size_set, oK, oU, oNp] at *; (clear * - s n hs; omega))) only [rd_set_self]
   have c1 := ctx_sem (M₀ := M₀) I (P := .blk [.const oK (toWord o), .op .add oU rb oK, .const oNp (toWord n)])
     (loK_blk (by simp [Prim.dst, oK, oU, oNp, regs])) (wf_blk' (by simp [Prim.dst, oK, oU, oNp]))
     (nw_of (by simp [wrL, Prim.dst, oK, oU, oNp, oR])) (nw_of (by simp [wrL, Prim.dst, oK, oU, oNp, oKF])) hc
@@ -805,10 +805,10 @@ theorem semXIR_blk (I : Array Word) (ps : List Prim) (s : St) : semXIR I (.blk p
   rfl
 
 theorem shr_c (x : Word) (k : ℕ) (hk : k < 64) : XOp.shr.eval x (toWord k) = x >>> k := by
-  simp only [XOp.eval]; congr 1; rw [toNat_toWord (by omega), Nat.mod_eq_of_lt hk]
+  simp only [XOp.eval]; congr 1; rw [toNat_toWord (by (clear * - k hk; omega)), Nat.mod_eq_of_lt hk]
 
 theorem shl_c (x : Word) (k : ℕ) (hk : k < 64) : XOp.shl.eval x (toWord k) = x <<< k := by
-  simp only [XOp.eval]; congr 1; rw [toNat_toWord (by omega), Nat.mod_eq_of_lt hk]
+  simp only [XOp.eval]; congr 1; rw [toNat_toWord (by (clear * - k hk; omega)), Nat.mod_eq_of_lt hk]
 
 theorem keep_of (I : Array Word) {P : XIR} {s : St} (hw : WF P) (hM : Inv s.M) {r : ℕ} (hr : r < regs)
     (h : r ∉ wrL P) : rd (semXIR I P s).M r = rd s.M r :=
@@ -831,7 +831,7 @@ theorem cmpW_sem (I : Array Word) (ap : AP) {M₀ : Mem} {R : ℕ} {κ : Bool}
     (nw_of (by simp [wrL, cmpW, ldw, ldPs, Prim.dst, oK, oT1, oT2, oT3, oAd, oX, oU, oY, oB2, oFl, oR]))
     (nw_of (by simp [wrL, cmpW, ldw, ldPs, Prim.dst, oK, oT1, oT2, oT3, oAd, oX, oU, oY, oB2, oFl, oKF])) hc
   have bW : rd (semXIR I (cmpW ap rb oa ob) s).M rb = toWord b := by
-    rw [keep_of I (wf_cmpW ap rb oa ob) hc.inv (by simp only [regs]; omega) (by
+    rw [keep_of I (wf_cmpW ap rb oa ob) hc.inv (by simp only [regs]; (clear * - hrr; omega)) (by
       simp only [wrL, cmpW, ldw, ldPs, Prim.dst, oK, oT1, oT2, oT3, oAd, oX, oU, oY, oB2, oFl, List.map_cons,
         List.map_nil, List.cons_append, List.nil_append, List.append_nil, List.mem_cons, List.mem_nil_iff,
         or_false]; (clear * - hrb hrr; omega))]
@@ -853,7 +853,7 @@ theorem cmpW_sem (I : Array Word) (ap : AP) {M₀ : Mem} {R : ℕ} {κ : Bool}
     have c2 := ctx_ldw I ap c1
     have w2 : rb ∉ [oK, oT1, oT2, oT3, oAd, oX] := by
       simp only [List.mem_cons, List.mem_nil_iff, or_false, oK, oT1, oT2, oT3, oAd, oX]; (clear * - hrb hrr; omega)
-    have b2 := ldw_keep I ap _ c1.inv (r := rb) (by simp only [regs]; omega) w2
+    have b2 := ldw_keep I ap _ c1.inv (r := rb) (by simp only [regs]; (clear * - hrr; omega)) w2
     have f2 := ldw_keep I ap _ c1.inv (r := oFl) (by simp [oFl, regs]) (by simp [oFl, oK, oT1, oT2, oT3, oAd, oX])
     generalize semXIR I (ldw ap) ⟨runPrims [.const oK (toWord oa), .op .add oU rb oK] s.M, s.o⟩ = s2 at l1 l2 c2 b2 f2
     rw [b1] at b2; rw [f1] at f2
@@ -923,7 +923,7 @@ theorem sibcIR_sem (I : Array Word) (ap : AP) {M₀ : Mem} {R : ℕ} {κ : Bool}
   have w0 : ∀ p ∈ [Prim.const oFl 1], p.dst ≠ rb := by simp [Prim.dst, oFl]; (clear * - hrb hrr; omega)
   have b0 : rd (runPrims [.const oFl 1] s.M) rb = toWord b := by
     rw [rd_runPrims_of_not_writes w0]; exact hb
-  have hrr' : rb < regs := by simp only [regs]; omega
+  have hrr' : rb < regs := by simp only [regs]; (clear * - hrr; omega)
   obtain ⟨c1, o1, b1, f1⟩ := cmpW_sem I ap hA _ c0 (oa := o - 4) (ob := o + 1) hrb hrr' b0
   generalize semXIR I (cmpW ap rb (o - 4) (o + 1)) ⟨runPrims [.const oFl 1] s.M, s.o⟩ = s1 at c1 o1 b1 f1
   obtain ⟨c2, o2, b2, f2⟩ := cmpW_sem I ap hA _ c1 (oa := o - 3) (ob := o + 2) hrb hrr' b1
@@ -933,8 +933,8 @@ theorem sibcIR_sem (I : Array Word) (ap : AP) {M₀ : Mem} {R : ℕ} {κ : Bool}
   obtain ⟨c4, o4, b4, f4⟩ := cmpW_sem I ap hA _ c3 (oa := o - 1) (ob := o + 4) hrb hrr' b3
   generalize semXIR I (cmpW ap rb (o - 1) (o + 4)) s3 = s4 at c4 o4 b4 f4
   rw [f3, f2, f1, f0] at f4
-  rw [show b + (o + 1) = b + o + 1 + 0 by (clear * -; omega), show b + (o + 2) = b + o + 1 + 1 by (clear * -; omega),
-    show b + (o + 3) = b + o + 1 + 2 by (clear * -; omega), show b + (o + 4) = b + o + 1 + 3 by (clear * -; omega),
+  rw [show b + (o + 1) = b + o + 1 + 0 by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega), show b + (o + 2) = b + o + 1 + 1 by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega),
+    show b + (o + 3) = b + o + 1 + 2 by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega), show b + (o + 4) = b + o + 1 + 3 by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega),
     show b + (o - 4) = b + o - 4 + 0 by (clear * - ho; omega), show b + (o - 3) = b + o - 4 + 1 by (clear * - ho; omega),
     show b + (o - 2) = b + o - 4 + 2 by (clear * - ho; omega), show b + (o - 1) = b + o - 4 + 3 by (clear * - ho; omega)] at f4
   have key := flag4 (src M₀ ap R) b o
@@ -962,34 +962,34 @@ theorem segIR_sem (I : Array Word) (ap : AP) {M₀ : Mem} {R : ℕ} {κ : Bool}
   | .cat x y, d, b, s, hok, hd, hc, hb => by
     simp only [okSeg, Bool.and_eq_true] at hok
     simp only [depthSeg] at hd
-    have h1 := segIR_sem I ap hA x d b s hok.1 (by omega) hc hb
-    have c1 := ctx_segIR I ap x d (by omega) hc
+    have h1 := segIR_sem I ap hA x d b s hok.1 (by (clear * - x d y hd; omega)) hc hb
+    have c1 := ctx_segIR I ap x d (by (clear * - x d y hd; omega)) hc
     have k1 : rd (semXIR I (segIR ap d x) s).M (oBd d) = toWord b :=
-      (frame I _ s (wf_segIR ap x d (by omega)) hc.inv _ (by simp only [oBd, regs]; omega)
+      (frame I _ s (wf_segIR ap x d (by (clear * - x d y hd; omega))) hc.inv _ (by simp only [oBd, regs]; (clear * - d x y hd; omega))
         (noW_segIR ap x d _ (.inr (.inr (.inr rfl))))).trans hb
-    rw [segIR, semXIR_seq, segIR_sem I ap hA y d b _ hok.2 (by omega) c1 k1, h1, segOut, List.append_assoc]
+    rw [segIR, semXIR_seq, segIR_sem I ap hA y d b _ hok.2 (by (clear * - y d x hd; omega)) c1 k1, h1, segOut, List.append_assoc]
   | .kite x y, d, b, s, hok, hd, hc, hb => by
     simp only [okSeg, Bool.and_eq_true] at hok
     simp only [depthSeg] at hd
     rw [segIR, semXIR_ite, segOut]
     cases κ
     · rw [if_pos (hc.k.2 rfl), if_neg (by decide)]
-      exact segIR_sem I ap hA y d b s hok.2 (by omega) hc hb
+      exact segIR_sem I ap hA y d b s hok.2 (by (clear * - y d x hd; omega)) hc hb
     · rw [if_neg (fun h => absurd (hc.k.1 h) (by decide)), if_pos rfl]
-      exact segIR_sem I ap hA x d b s hok.1 (by omega) hc hb
+      exact segIR_sem I ap hA x d b s hok.1 (by (clear * - x d y hd; omega)) hc hb
   | .wd x, _, _, s, _, _, hc, _ => by
     have hs := hc.inv.1
     simp only [regs] at hs
     simp [segIR, segOut, semXIR, runPrims, Prim.run, rd_set_self (show oX < s.M.size by simp only [oX]; omega)]
   | .cp o n, d, b, s, hok, _, hc, hb => by
     simp only [okSeg, decide_eq_true_eq] at hok
-    have := cpIR_sem I ap hA (rb := oBd d) (o := o) (n := n) (b := b) (by simp [oBd, oK]; omega) (by omega) s hc hb
+    have := cpIR_sem I ap hA (rb := oBd d) (o := o) (n := n) (b := b) (by simp [oBd, oK]; (clear * - d o n; omega)) (by (clear * - n o d hok; omega)) s hc hb
     rw [segIR, segOut]; exact this
   | .sibc o, d, b, s, hok, hd, hc, hb => by
     simp only [okSeg, decide_eq_true_eq] at hok
     simp only [depthSeg] at hd
     rw [segIR]
-    exact sibcIR_sem I ap hA s hc (by simp only [oBd]; omega) (by simp only [oBd, regs]; omega) hok hb
+    exact sibcIR_sem I ap hA s hc (by simp only [oBd]; (clear * - d o hd; omega)) (by simp only [oBd, regs]; (clear * - d o hd; omega)) hok hb
   | .shw o, d, b, s, _, _, hc, hb => by
     have hs := hc.inv.1
     simp only [regs] at hs
@@ -1048,7 +1048,7 @@ theorem segIR_sem (I : Array Word) (ap : AP) {M₀ : Mem} {R : ℕ} {κ : Bool}
     simp only [regs] at hs
     rw [segIR, semXIR_seq, semXIR_blk]
     have c1 := ctx_blk (ps := [.op .or (oBd (d + 1)) (oBd d) (oBd d), .const (oNd d) (toWord c)])
-      (by simp [Prim.dst, oBd, oNd, oR, oKF, regs]; omega) hc
+      (by simp [Prim.dst, oBd, oNd, oR, oKF, regs]; (clear * - d c x s hd; omega)) hc
     have b1 : rd (runPrims [.op .or (oBd (d + 1)) (oBd d) (oBd d), .const (oNd d) (toWord c)] s.M)
         (oBd (d + 1)) = toWord b := by
       simp only [runPrims, List.foldl, Prim.run]
@@ -1057,31 +1057,31 @@ theorem segIR_sem (I : Array Word) (ap : AP) {M₀ : Mem} {R : ℕ} {κ : Bool}
     have n1 : rd (runPrims [.op .or (oBd (d + 1)) (oBd d) (oBd d), .const (oNd d) (toWord c)] s.M)
         (oNd d) = toWord c := by
       simp only [runPrims, List.foldl, Prim.run]
-      simp (disch := (simp only [size_set, oBd, oNd] at *; omega)) only [rd_set_self, rd_set_ne]
+      simp (disch := (simp only [size_set, oBd, oNd] at *; (clear * - d s c x hd hs; omega))) only [rd_set_self, rd_set_ne]
     generalize runPrims [.op .or (oBd (d + 1)) (oBd d) (oBd d), .const (oNd d) (toWord c)] s.M = M1 at c1 b1 n1 ⊢
     have := loopK_emit I (c := oCd d) (n := oNd d) (K := c)
       (b := .seq (segIR ap (d + 1) x) (.blk [.const oK (toWord s'), .op .add (oBd (d + 1)) (oBd (d + 1)) oK]))
       (fun j s'' => Ctx M₀ R κ s'' ∧ rd s''.M (oBd (d + 1)) = toWord (b + s' * j))
       (fun j => segOut (src M₀ ap R) κ (b + s' * j) x) ⟨M1, s.o⟩ c1.inv
-      (by simp only [oCd]; omega) (by simp only [oCd, regs]; omega) (by simp only [oCd, oNd]; omega)
-      (by omega) n1
-      ⟨ctx_entryK (by simp only [oCd]; omega) (by simp only [oCd, regs]; omega) (by simp only [oCd, oR]; omega)
-        (by simp only [oCd, oKF]; omega) c1,
-        by rw [entryK_frame _ (by simp only [oCd, oBd]; omega) (by simp only [oBd, cTmp]; omega)]; simpa using b1⟩
+      (by simp only [oCd]; (clear * - d c x s; omega)) (by simp only [oCd, regs]; (clear * - d c x s hd; omega)) (by simp only [oCd, oNd]; (clear * - d c x s; omega))
+      (by (clear * - c x d s hok; omega)) n1
+      ⟨ctx_entryK (by simp only [oCd]; (clear * - d c x s; omega)) (by simp only [oCd, regs]; (clear * - d c x s hd; omega)) (by simp only [oCd, oR]; (clear * - d c x s; omega))
+        (by simp only [oCd, oKF]; (clear * - d c x s; omega)) c1,
+        by rw [entryK_frame _ (by simp only [oCd, oBd]; (clear * - d c x s; omega)) (by simp only [oBd, cTmp]; (clear * - d c x s; omega))]; simpa using b1⟩
       (fun j s'' _ ⟨q1, q2⟩ => by
-        have h1 := segIR_sem I ap hA x (d + 1) (b + s' * j) s'' hok.2 (by omega) q1 q2
-        have c2 := ctx_segIR I ap x (d + 1) (by omega) q1
+        have h1 := segIR_sem I ap hA x (d + 1) (b + s' * j) s'' hok.2 (by (clear * - x d c s hd j; omega)) q1 q2
+        have c2 := ctx_segIR I ap x (d + 1) (by (clear * - x d c s hd j; omega)) q1
         have k2 : rd (semXIR I (segIR ap (d + 1) x) s'').M (oBd (d + 1)) = toWord (b + s' * j) :=
-          (frame I _ s'' (wf_segIR ap x (d + 1) (by omega)) q1.inv _ (by simp only [oBd, regs]; omega)
+          (frame I _ s'' (wf_segIR ap x (d + 1) (by (clear * - x d c s hd j; omega))) q1.inv _ (by simp only [oBd, regs]; (clear * - d c x s hd j; omega))
             (noW_segIR ap x (d + 1) _ (.inr (.inr (.inr rfl))))).trans q2
         simp only [semXIR_seq, semXIR_blk]
         generalize semXIR I (segIR ap (d + 1) x) s'' = s3 at h1 c2 k2 ⊢
         have hs3 := c2.inv.1
         simp only [regs] at hs3
-        refine ⟨h1, ctx_decS (by simp only [oCd]; omega) (by simp only [oCd, regs]; omega)
-          (by simp only [oCd, oR]; omega) (by simp only [oCd, oKF]; omega)
-          (ctx_blk (by simp [Prim.dst, oK, oBd, oR, oKF, regs]; omega) c2), ?_⟩
-        rw [rd_decS (by simp only [oCd, oBd]; omega)]
+        refine ⟨h1, ctx_decS (by simp only [oCd]; (clear * - d c x s j s3; omega)) (by simp only [oCd, regs]; (clear * - d c x s hd j s3; omega))
+          (by simp only [oCd, oR]; (clear * - d c x s j s3; omega)) (by simp only [oCd, oKF]; (clear * - d c x s j s3; omega))
+          (ctx_blk (by simp [Prim.dst, oK, oBd, oR, oKF, regs]; (clear * - d c x s hd j s3; omega)) c2), ?_⟩
+        rw [rd_decS (by simp only [oCd, oBd]; (clear * - d c x s j s3; omega))]
         simp only [runPrims, List.foldl, Prim.run]
         simp (disch := (simp only [size_set, oBd, oK] at *; omega)) only [rd_set_self, rd_set_ne]
         rw [k2, add_toWord]; congr 1; ring)
@@ -1101,15 +1101,15 @@ theorem cost_segIR (ap : AP) : ∀ (seg : Seg) (d t : ℕ), cost (segIR ap d seg
   | .wd _, _, _ => by simp [segIR, cost, segCost, blkSteps]
   | .cp _ n, _, _ => by
     have := toNat_toWord_le n
-    simp [segIR, cpIR, ldw, ldPs, cost, segCost, blkSteps]; omega
+    simp [segIR, cpIR, ldw, ldPs, cost, segCost, blkSteps]; (clear * - n this; omega)
   | .rep c _ x, d, t => by
     have h1 := cost_segIR ap x (d + 1) t
     have h2 := toNat_toWord_le c
     have h3 := Nat.mul_le_mul h2 (Nat.add_le_add_right h1 7)
     simp only [segIR, cost, segCost, blkSteps, List.length_cons, List.length_nil]
     rw [show (if 0 + 1 + 1 = 0 then 1 else 2 * (0 + 1 + 1) - 1) = 3 from rfl,
-      show cost (segIR ap (d + 1) x) t + 3 + 1 + 3 = cost (segIR ap (d + 1) x) t + 7 by omega]
-    omega
+      show cost (segIR ap (d + 1) x) t + 3 + 1 + 3 = cost (segIR ap (d + 1) x) t + 7 by (clear * - ap d x t c; omega)]
+    (clear * - c ap d x t h3; omega)
   | .shw _, _, _ => by simp [segIR, ldw, ldPs, cost, segCost, blkSteps]
   | .sh8 _, _, _ => by simp [segIR, ldw, ldPs, cost, segCost, blkSteps]
   | .sibc _, _, _ => by
@@ -1125,7 +1125,7 @@ theorem sizeIR_segIR (ap : AP) : ∀ (seg : Seg) (d : ℕ), sizeIR (segIR ap d s
   | .rep _ _ x, d => by
     simp only [segIR, sizeIR, segSize, sizeIR_segIR ap x (d + 1), blkSteps, List.length_cons,
       List.length_nil]
-    norm_num; omega
+    norm_num; (clear * - x; omega)
   | .shw _, _ => by simp [segIR, ldw, ldPs, sizeIR, segSize, blkSteps]
   | .sh8 _, _ => by simp [segIR, ldw, ldPs, sizeIR, segSize, blkSteps]
   | .sibc _, _ => by simp [segIR, sibcIR, cmpW, cpIR, ldw, ldPs, sizeIR, segSize, blkSteps]
@@ -1142,7 +1142,7 @@ theorem outs_segIR (ap : AP) : ∀ (seg : Seg) (d t : ℕ), outs (segIR ap d seg
   | .wd _, _, _ => by simp [segIR, outs, segOuts]
   | .cp _ n, _, _ => by
     have := toNat_toWord_le n
-    simp [segIR, cpIR, ldw, outs, segOuts]; omega
+    simp [segIR, cpIR, ldw, outs, segOuts]; (clear * - this; omega)
   | .rep c _ x, d, t => by
     have h1 := outs_segIR ap x (d + 1) t
     have h2 := toNat_toWord_le c
@@ -1189,7 +1189,7 @@ theorem walk_append : ∀ (u : ℕ) (l₁ l₂ : List ℕ),
   | _, [], _ => by simp [lanesOf, walk]
   | u, len :: r, l₂ => by
     simp only [List.cons_append, walk, walk_append _ r l₂, lanesOf, List.map_cons, List.sum_cons]
-    congr 3; omega
+    congr 3; (clear * - u len r; omega)
 
 theorem walk_rep64 : ∀ (w path : ℕ),
     walk w (List.replicate path 64) = (List.range path).map fun h => (w + 13 * h, 64)
@@ -1198,7 +1198,7 @@ theorem walk_rep64 : ∀ (w path : ℕ),
     rw [List.replicate_succ, walk, walk_rep64 _ path, List.range_succ_eq_map]
     simp only [List.map_cons, List.map_map, Function.comp_def, Nat.mul_zero, Nat.add_zero]
     congr 1
-    exact List.map_congr_left fun h _ => by simp only [Prod.mk.injEq, and_true]; omega
+    exact List.map_congr_left fun h _ => by simp only [Prod.mk.injEq, and_true]; (clear * - w h; omega)
 
 theorem lanesOf_pos (row path : ℕ) : lanesOf (row :: List.replicate path 64) = opS row path := by
   simp [lanesOf, opS, List.map_replicate, List.sum_replicate]; ring
@@ -1268,10 +1268,10 @@ theorem segOut_blkTSeg (W : ℕ → Word) (κ : Bool) (b u : ℕ) (blk : Blk) :
     generalize opS row path * j = A
     simp only [entW, wsAt, List.singleton_append, List.cons_append, List.nil_append, List.cons.injEq,
       true_and, List.append_cancel_left_eq, show 64 / 8 + 4 = 12 from rfl]
-    refine congrArg₂ (· ++ ·) (List.map_congr_left fun k _ => by congr 1 <;> omega)
+    refine congrArg₂ (· ++ ·) (List.map_congr_left fun k _ => by congr 1 <;> (clear * - b A u k; omega))
       (List.flatMap_congr fun h _ => ?_)
     simp only [List.cons.injEq, true_and]
-    exact List.map_congr_left fun k _ => by congr 1 <;> omega
+    exact List.map_congr_left fun k _ => by congr 1 <;> (clear * - b A h u row k; omega)
 
 theorem segOut_blkTSegs (W : ℕ → Word) (κ : Bool) (b : ℕ) : ∀ (u : ℕ) (bs : List Blk),
     segOut W κ b (blkTSegs u bs) =
@@ -1317,7 +1317,7 @@ private theorem okSeg_blkPSeg (u : ℕ) (b : Blk) : okSeg (blkPSeg u b) = okSeg 
   | one c len => cases c <;> simp [blkPSeg, okSeg]
   | opn t row path =>
     simp only [blkPSeg, okSeg]
-    rw [decide_eq_true (by omega : 4 ≤ u + 5 + row / 8), decide_eq_true (by omega : 4 ≤ 5 + row / 8)]
+    rw [decide_eq_true (by (clear * - u row; omega) : 4 ≤ u + 5 + row / 8), decide_eq_true (by (clear * - row; omega) : 4 ≤ 5 + row / 8)]
 
 private theorem okSeg_blkTSegs : ∀ (u : ℕ) (bs : List Blk),
     okSeg (blkTSegs u bs) = bs.all fun b => okSeg (blkTSeg 0 b)
@@ -1361,9 +1361,9 @@ theorem walk_lt : ∀ (u : ℕ) (l : List ℕ), ∀ x ∈ walk u l, u ≤ x.1 �
   | _, [], x, hx => by cases hx
   | u, len :: r, x, hx => by
     rcases List.mem_cons.mp hx with rfl | hx
-    · simp only [lanesOf, List.map_cons, List.sum_cons]; omega
+    · simp only [lanesOf, List.map_cons, List.sum_cons]; (clear * - u len r; omega)
     · have := walk_lt _ r x hx
-      simp only [lanesOf, List.map_cons, List.sum_cons] at this ⊢; omega
+      simp only [lanesOf, List.map_cons, List.sum_cons] at this ⊢; (clear * - u x len r this; omega)
 
 theorem entAt_congr {W W' : ℕ → Word} {u len : ℕ} (h : ∀ v < u + 5 + len / 8, W v = W' v) :
     entAt W u len = entAt W' u len := by

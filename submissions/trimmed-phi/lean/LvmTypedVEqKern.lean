@@ -98,10 +98,10 @@ theorem kern_ge_inv (n : Nat) : ∀ (c : Nat) (ρ r : List FE), ρ.length = n �
     simp only [Nat.succ_eq_add_one]
     rw [kern_gt_succ, ih (c / 2) ρ r hρ hr hc2, pow_succ, mul_comm _ 2, kern_sum_pairs]
     simp only [kern_gt, kern_toArray_getD, List.getD_cons_zero, Nat.testBit_zero, kern_eqAtF_cons]
-    have e1 : ∀ t : Nat, (2 * t) % 2 = 0 := fun t => by (clear * -; omega)
-    have e2 : ∀ t : Nat, (2 * t) / 2 = t := fun t => by (clear * -; omega)
-    have e3 : ∀ t : Nat, (2 * t + 1) % 2 = 1 := fun t => by (clear * -; omega)
-    have e4 : ∀ t : Nat, (2 * t + 1) / 2 = t := fun t => by (clear * -; omega)
+    have e1 : ∀ t : Nat, (2 * t) % 2 = 0 := fun t => by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)
+    have e2 : ∀ t : Nat, (2 * t) / 2 = t := fun t => by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)
+    have e3 : ∀ t : Nat, (2 * t + 1) % 2 = 1 := fun t => by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)
+    have e4 : ∀ t : Nat, (2 * t + 1) / 2 = t := fun t => by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)
     simp only [e1, e2, e3, e4, kern_eq1_t, kern_eq1_f, ite_true, Nat.zero_ne_one, ite_false]
     rcases Nat.mod_two_eq_zero_or_one c with hc0 | hc1
     · simp only [hc0, Nat.zero_ne_one, decide_false, Bool.false_eq_true, ite_false]
@@ -316,7 +316,7 @@ theorem kern_step_closed (fac : Nat → Bool → Bool → FE) (n i : Nat) :
   unfold kern_C
   rw [pow_succ, mul_comm _ 2, kern_sum_pairs]
   refine Finset.sum_congr rfl fun t _ => ?_
-  have a1 : (2 * t) % 2 = 0 := by (clear * -; omega)
+  have a1 : (2 * t) % 2 = 0 := by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)
   have a2 : (2 * t) / 2 = t := by (clear * - a1; omega)
   have a3 : (2 * t + 1) % 2 = 1 := by (clear * - a1; omega)
   have a4 : (2 * t + 1) / 2 = t := by (clear * - a1 a3; omega)
@@ -375,7 +375,7 @@ theorem kern_U_congr (n : Nat) : ∀ (u u' : Nat → Bool → FE) (t : Nat), (�
   | zero => intros; rfl
   | succ n ih =>
     intro u u' t h
-    simp only [kern_U, h 0 (by (clear * -; omega)), ih (fun m => u (m + 1)) (fun m => u' (m + 1)) (t / 2)
+    simp only [kern_U, h 0 (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)), ih (fun m => u (m + 1)) (fun m => u' (m + 1)) (t / 2)
       (fun m hm => h (m + 1) (by (clear * - hm; omega)))]
 
 theorem kern_U_split (a : Nat) : ∀ (u : Nat → Bool → FE) (b Q : Nat),
@@ -384,7 +384,7 @@ theorem kern_U_split (a : Nat) : ∀ (u : Nat → Bool → FE) (b Q : Nat),
   | zero => intros; simp [kern_U]
   | succ a ih =>
     intro u b Q
-    rw [show a + 1 + b = (a + b) + 1 by (clear * -; omega)]
+    rw [show a + 1 + b = (a + b) + 1 by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)]
     simp only [kern_U, ih, Nat.div_div_eq_div_mul, ← pow_succ']
     have hl : (fun m => u (m + a + 1)) = fun m => u (m + (a + 1)) := funext fun m => by rw [Nat.add_assoc]
     rw [hl, mul_assoc]

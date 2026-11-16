@@ -82,7 +82,7 @@ theorem ringWeight_fold (r y : List FE) (hl : r.length = y.length) :
     have e2 : ∀ i ∈ Finset.range cs.length,
         cs.getD i 0 * ∏ n ∈ Finset.range r.length, wf (r.getD n 0) (y.getD n 0) (k + 1 + i) =
         cs.getD i 0 * ∏ n ∈ Finset.range r.length, wf (r.getD n 0) (y.getD n 0) (k + (i + 1)) :=
-      fun i _ => by rw [show k + 1 + i = k + (i + 1) by (clear * -; omega)]
+      fun i _ => by rw [show k + 1 + i = k + (i + 1) by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)]
     rw [Finset.sum_congr rfl e2]
     ring
 

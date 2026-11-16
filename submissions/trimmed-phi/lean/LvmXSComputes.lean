@@ -125,7 +125,7 @@ theorem cost_dec0S (st : XStage) (t : ℕ) : cost (dec0S st) t ≤ 2526754749826
   split
   · simp only [dec0U, readAt, cost, blkSteps, List.length_cons, List.length_nil, h32, h40, Nat.max_def]
     split_ifs <;> omega
-  · omega
+  · (clear * - t h40; omega)
 
 theorem cost_streamS (st : XStage) (t : ℕ) : cost (streamS st) t ≤ 6815800 := by
   unfold streamS
@@ -197,7 +197,7 @@ theorem outs_decXS (st : XStage) (ho : OutOK st) (t : ℕ) : outs (decXS st) t �
     outs_tcpIR _ _ t (show 5 < 2 ^ 64 by norm_num), chainLS,
     outs_chainIR (pLS st) (nChainS st) t (chTabS st) (show outs sdL t = 0 by simp [sdL, outs])]
   simp at *
-  rw [outCap]; omega
+  rw [outCap]; (clear * - st t h; omega)
 
 /-! ## Cost -/
 
@@ -206,8 +206,8 @@ theorem cost_acpS (st : XStage) (t : ℕ) : cost (acpS st) t = 789 := by
 
 theorem cost_read0S (st : XStage) (hp : ProgOK st) (t : ℕ) : cost (read0S st) t ≤ 41955622926 := by
   have h := hp.occ0
-  rw [read0S, cost_readGIR _ _ _ _ _ _ _ _ t (by norm_num) (by norm_num) (by omega) (by omega)]
-  omega
+  rw [read0S, cost_readGIR _ _ _ _ _ _ _ _ t (by norm_num) (by norm_num) (by (clear * - st h; omega)) (by (clear * - st h; omega))]
+  (clear * - st h; omega)
 
 /-- After level 0: the stream block and the node output. -/
 theorem cost_okL0S (st : XStage) (ho : OutOK st) (t : ℕ) : cost (okL0S st) t ≤ 22700000 := by
@@ -278,7 +278,7 @@ theorem sizeIR_decXS (st : XStage) (hp : ProgOK st) : sizeIR (decXS st) ≤ 2 ^ 
     chTabS_length, read0S, read1M, read2M, sizeIR_readGIR, hA, hB, hC]
   simp only [tcpIR, tcpBody, thcpIR, thcpBody, sdL, sizeIR, blkSteps, List.length_cons, List.length_nil,
     Nat.zero_add, Nat.add_eq_zero_iff, one_ne_zero, and_false, ↓reduceIte]
-  omega
+  (clear * - st h2 h1 h0 hO hS hN; omega)
 
 /-! ## `Computes` -/
 
@@ -314,8 +314,8 @@ theorem run_W_tapeS (st : XStage) (hp : ProgOK st) (hpz : st.pz ≠ 0) (inp : Li
     rw [parse_regs _ I s0 h0, h4, h, if_neg]
     intro he
     have := congrArg BitVec.toNat he
-    rw [toNat_toWord (by omega), BitVec.toNat_ofNat, Nat.mod_eq_of_lt hpz2] at this
-    omega
+    rw [toNat_toWord (by (clear * - st inp a; omega)), BitVec.toNat_ofNat, Nat.mod_eq_of_lt hpz2] at this
+    (clear * - st hpz inp a I hk this; omega)
   have hk' : a ≠ 0 → Lvm.X.rd (semXIR I (parseIR st.pz) s0).M rIsK = 0 := fun h => by
     rw [parse_isK _ I s0 h0, if_neg (hk h)]
   have hpo : (semXIR I (parseIR st.pz) s0).o = #[] := by rw [parse_o, ← hs0, initSt_o]
@@ -327,7 +327,7 @@ theorem run_W_tapeS (st : XStage) (hp : ProgOK st) (hpz : st.pz ≠ 0) (inp : Li
     rw [hs1, boundsOk_ite]
     by_cases hk1 : Lvm.X.rd s1.M rIsK = 0
     · rw [if_pos hk1]
-      exact boundsOk_of_safe (safe_wIR ha h4 (by omega)) hwf.2.2 _ h1
+      exact boundsOk_of_safe (safe_wIR ha h4 (by (clear * - a inp st hlen I hw; omega))) hwf.2.2 _ h1
     · have ha0 : a = 0 := by by_contra h; exact hk1 (hk' h)
       rw [if_neg hk1, boundsOk_ite, if_pos (hz0 ha0)]; trivial
   have hrun := run_toProg (P := extIRWith st.pz (decXS st)) (input := inp) (f := fuel inp.length) hreg hwf
@@ -337,7 +337,7 @@ theorem run_W_tapeS (st : XStage) (hp : ProgOK st) (hpz : st.pz ≠ 0) (inp : Li
   by_cases hk1 : Lvm.X.rd s1.M rIsK = 0
   · have e : semXIR I (extIRWith st.pz (decXS st)) s0 = semXIR I wIR s1 := by
       rw [extIRWith, semXIR_seq, hs1, semXIR_ite, if_pos hk1]
-    rw [congrArg (fun s' : St => s'.o.toList) e, wIR_sem I _ h1 (by omega), hpo, hw]
+    rw [congrArg (fun s' : St => s'.o.toList) e, wIR_sem I _ h1 (by (clear * - I st inp a ha hw; omega)), hpo, hw]
     rfl
   · have ha0 : a = 0 := by by_contra h; exact hk1 (hk' h)
     have e : semXIR I (extIRWith st.pz (decXS st)) s0 = semXIR I (.blk []) s1 := by
@@ -361,8 +361,8 @@ theorem EXS_W (st : XStage) (hp : ProgOK st) (A : Digest → Digest → Signed �
     (L : Log) (hW : π.data[0]? ≠ some 0x53) : EXS st A c π L = WitnessSending.decode π := by
   by_cases hD : InDomE c π L
   · rw [EXS, if_pos hD, EdXS]
-    have hπ : π.size < 2 ^ 64 := by have := hD.1; rw [outCap] at this; omega
-    have hpz : st.pz ≠ 0 := by have := hp.cap0; omega
+    have hπ : π.size < 2 ^ 64 := by have := hD.1; rw [outCap] at this; (clear * - π this; omega)
+    have hpz : st.pz ≠ 0 := by have := hp.cap0; (clear * - st π this; omega)
     have hrun := run_W_tapeS st hp hpz (extractorInput c π L) π.size hπ (by rw [getD_toArray, tape_getD4])
       (tape_length c π L) (fun hne he => by
         obtain ⟨b, hb⟩ : ∃ b, π.data[0]? = some b := by

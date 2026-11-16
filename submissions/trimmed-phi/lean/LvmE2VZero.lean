@@ -81,16 +81,16 @@ theorem zeroOnF_affine (δ : ℕ → F) {n : ℕ} {acc : List F} (hacc : acc.len
   obtain ⟨v, hv, hfv⟩ : ∃ v < 2 ^ (n - acc.length), foldTF δ acc v ≠ 0 := by
     by_contra hall
     exact hne fun v hv ↦ by_contra fun h0 ↦ hall ⟨v, hv, h0⟩
-  have hm : n - acc.length = (n - (acc.length + 1)) + 1 := by omega
+  have hm : n - acc.length = (n - (acc.length + 1)) + 1 := by (clear * - n F acc hacc v; omega)
   have hv2 : v / 2 < 2 ^ (n - (acc.length + 1)) := by
-    rw [hm, pow_succ] at hv; omega
+    rw [hm, pow_succ] at hv; (clear * - v n F acc hv; omega)
   set a0 := foldTF δ acc (2 * (v / 2))
   set a1 := foldTF δ acc (2 * (v / 2) + 1)
   have hpair : ¬ (a0 = 0 ∧ a1 = 0) := by
     rintro ⟨h0, h1⟩
     rcases Nat.mod_two_eq_zero_or_one v with hv0 | hv0
-    · exact hfv (by rw [show v = 2 * (v / 2) by omega]; exact h0)
-    · exact hfv (by rw [show v = 2 * (v / 2) + 1 by omega]; exact h1)
+    · exact hfv (by rw [show v = 2 * (v / 2) by (clear * - v F n acc hv0; omega)]; exact h0)
+    · exact hfv (by rw [show v = 2 * (v / 2) + 1 by (clear * - v F n acc hv0; omega)]; exact h1)
   refine ⟨C a0 + C (a0 + a1) * X, ?_, ?_, fun c hc ↦ ?_⟩
   · intro he
     refine hpair ⟨?_, ?_⟩
@@ -142,7 +142,7 @@ theorem zeroAliveG_escape {g : ℕ} (hg : g ≤ 64) {β : Type} (δ : β → ℕ
       ((avgE_le_of_le fun c ↦ (indE_of_not not_false).le).trans zero_le)
     have := h.2.1
     rw [List.length_append, List.length_singleton] at this
-    omega
+    (clear * - g n acc hl this; omega)
 
 variable {β : Type} {C : List Ev → Set β} [Finite β] {L₀ : ℕ} {εmax T : ℝ≥0∞}
 

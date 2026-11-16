@@ -80,7 +80,7 @@ theorem boolPoint_eq_toList_boolVec {m : ℕ} (x : Fin (2 ^ m)) :
 /-- One fold of `multilinear_eval` halves the table. -/
 theorem length_foldPairs (r : E) (l : List E) : (foldPairs r l).length = l.length / 2 := by
   induction l using foldPairs.induct with
-  | case1 a b rest ih => simp [foldPairs, ih]; (clear * -; omega)
+  | case1 a b rest ih => simp [foldPairs, ih]; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - rest; omega))
   | case2 l h =>
     rcases l with _ | ⟨a, _ | ⟨b, rest⟩⟩
     · simp [foldPairs]
@@ -96,8 +96,8 @@ theorem getElem_foldPairs (r : E) (l : List E) (i : ℕ) (hi : i < (foldPairs r 
     rcases i with _ | i
     · simp [foldPairs]
     · simp only [foldPairs, List.getElem_cons_succ]
-      rw [ih i (by simp [foldPairs] at hi; omega)]
-      simp only [show 2 * (i + 1) = 2 * i + 1 + 1 by omega, List.getElem_cons_succ]
+      rw [ih i (by simp [foldPairs] at hi; (clear * - hi; omega))]
+      simp only [show 2 * (i + 1) = 2 * i + 1 + 1 by (clear * - i r a b rest; omega), List.getElem_cons_succ]
   | case2 l h =>
     exfalso
     rcases l with _ | ⟨a, _ | ⟨b, rest⟩⟩

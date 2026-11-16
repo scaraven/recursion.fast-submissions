@@ -64,7 +64,7 @@ theorem sbit_eq (a : KeccakState) (j : ℕ) :
 theorem sbit_lane (a : KeccakState) (l : ℕ) {z : ℕ} (hz : z < 64) :
     sbit a (64 * l + z) = (Keccak.lane a l).toBitVec.getLsbD z := by
   unfold sbit
-  have h1 : (64 * l + z) / 64 = l := by omega
+  have h1 : (64 * l + z) / 64 = l := by (clear * - l z hz; omega)
   have h2 : (64 * l + z) % 64 = z := by (clear * - h1; omega)
   rw [h1, h2]
 
@@ -78,7 +78,7 @@ theorem rot_bit (x : UInt64) (n z : ℕ) (hn : n < 64) (hz : z < 64) :
       BitVec.getLsbD_or]
     rw [BitVec.shiftLeft_eq', BitVec.ushiftRight_eq']
     have h1 : (n.toUInt64.toBitVec % 64).toNat = n := by
-      simp [Nat.toUInt64]; omega
+      simp [Nat.toUInt64]; (clear * - hn; omega)
     have h2 : ((64 - n).toUInt64.toBitVec % 64).toNat = 64 - n := by
       simp [Nat.toUInt64]; (clear * - hn h0 h1; omega)
     rw [h1, h2, BitVec.getLsbD_shiftLeft, BitVec.getLsbD_ushiftRight]
@@ -95,15 +95,15 @@ theorem keccakAlong_def (j k : ℕ) :
     keccakAlong j k = 64 * ((j / 64 % 5 + k) % 5 + 5 * (j / 64 / 5)) + j % 64 := rfl
 
 theorem keccakAlong_lt {j : ℕ} (k : ℕ) (hj : j < 1600) : keccakAlong j k < 1600 := by
-  rw [keccakAlong_def]; omega
+  rw [keccakAlong_def]; (clear * - j k hj; omega)
 
 theorem keccakAlong_zero {j : ℕ} (hj : j < 1600) : keccakAlong j 0 = j := by
-  rw [keccakAlong_def]; omega
+  rw [keccakAlong_def]; (clear * - j hj; omega)
 
 /-- Going `k` columns along, then `5 - k`, comes back. -/
 theorem keccakAlong_along {j k k' : ℕ} (hk : k + k' = 5) :
     keccakAlong (keccakAlong j k) k' = j := by
-  rw [keccakAlong_def, keccakAlong_def]; omega
+  rw [keccakAlong_def, keccakAlong_def]; (clear * - j k k' hk; omega)
 
 /-! ## The linear map, χ and ι on bits -/
 
@@ -134,7 +134,7 @@ theorem keccakRho_lt (i : ℕ) : keccakRho.getD i 0 < 64 := by
   · revert i; decide
   · have h : keccakRho.length ≤ i := by
       have : keccakRho.length = 25 := rfl
-      omega
+      (clear * - i hi this; omega)
     rw [List.getD_eq_getElem?_getD, List.getElem?_eq_none h]
     decide
 
@@ -147,17 +147,17 @@ def rhoPiDst (p : ℕ) : ℕ := 64 * keccakPi (p / 64) + (p % 64 + keccakRho.get
 
 theorem rhoPiSrc_lt {j : ℕ} : rhoPiSrc j < 1600 := by
   have := @piInv_lt (j / 64)
-  unfold rhoPiSrc; omega
+  unfold rhoPiSrc; (clear * - j this; omega)
 
 theorem rhoPiDst_lt {p : ℕ} (hp : p < 1600) : rhoPiDst p < 1600 := by
-  have := keccakPi_lt (p / 64) (by omega)
+  have := keccakPi_lt (p / 64) (by (clear * - p hp; omega))
   unfold rhoPiDst; (clear * - this; omega)
 
 theorem rhoPiSrc_dst {p : ℕ} (hp : p < 1600) : rhoPiSrc (rhoPiDst p) = p := by
-  have hl : p / 64 < 25 := by omega
+  have hl : p / 64 < 25 := by (clear * - p hp; omega)
   have hr := keccakRho_lt (p / 64)
   have hpi := keccakPi_lt _ hl
-  have h1 : rhoPiDst p / 64 = keccakPi (p / 64) := by unfold rhoPiDst; (clear * -; omega)
+  have h1 : rhoPiDst p / 64 = keccakPi (p / 64) := by unfold rhoPiDst; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - p; omega))
   have h2 : rhoPiDst p % 64 = (p % 64 + keccakRho.getD (p / 64) 0) % 64 := by
     unfold rhoPiDst; (clear * - h1; omega)
   unfold rhoPiSrc
@@ -165,11 +165,11 @@ theorem rhoPiSrc_dst {p : ℕ} (hp : p < 1600) : rhoPiSrc (rhoPiDst p) = p := by
   (clear * - hr h2; omega)
 
 theorem rhoPiDst_src {j : ℕ} (hj : j < 1600) : rhoPiDst (rhoPiSrc j) = j := by
-  have hl : j / 64 < 25 := by omega
+  have hl : j / 64 < 25 := by (clear * - j hj; omega)
   have hr := keccakRho_lt (piInv (j / 64))
-  have h1 : rhoPiSrc j / 64 = piInv (j / 64) := by unfold rhoPiSrc; (clear * -; omega)
+  have h1 : rhoPiSrc j / 64 = piInv (j / 64) := by unfold rhoPiSrc; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - j; omega))
   have h2 : rhoPiSrc j % 64 = (j % 64 + 64 - keccakRho.getD (piInv (j / 64)) 0) % 64 := by
-    unfold rhoPiSrc; (clear * -; omega)
+    unfold rhoPiSrc; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - j; omega))
   unfold rhoPiDst
   rw [h1, h2, keccakPi_piInv _ hl]
   (clear * - hr; omega)
@@ -226,14 +226,14 @@ theorem colV_bit (a : KeccakState) {x z : ℕ} (hx : x < 5) (hz : z < 64) :
     sbit_lane a _ hz]
 
 theorem sbit_theta (a : KeccakState) {p : ℕ} (hp : p < 1600) : sbit (theta a) p = thetaB (sbit a) p := by
-  have hl : p / 64 < 25 := by omega
-  have hz : p % 64 < 64 := Nat.mod_lt _ (by (clear * -; omega))
+  have hl : p / 64 < 25 := by (clear * - p hp; omega)
+  have hz : p % 64 < 64 := Nat.mod_lt _ (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))
   rw [sbit_eq (theta a) p, lane_eq _ hl]
   simp only [theta, Vector.getElem_ofFn, UInt64.toBitVec_xor, BitVec.getLsbD_xor]
-  rw [rot_bit _ 1 _ (by (clear * -; omega)) hz, colV_bit a (by (clear * -; omega)) hz, colV_bit a (by (clear * -; omega)) (by (clear * -; omega))]
-  have e1 : (p / 64 + 4) % 5 = (p / 64 % 5 + 4) % 5 := by (clear * -; omega)
-  have e2 : (p / 64 + 1) % 5 = (p / 64 % 5 + 1) % 5 := by (clear * -; omega)
-  have e3 : (p % 64 + 64 - 1) % 64 = (p % 64 + 63) % 64 := by (clear * -; omega)
+  rw [rot_bit _ 1 _ (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)) hz, colV_bit a (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - p; omega))) hz, colV_bit a (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - p; omega))) (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - p; omega)))]
+  have e1 : (p / 64 + 4) % 5 = (p / 64 % 5 + 4) % 5 := by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - p; omega))
+  have e2 : (p / 64 + 1) % 5 = (p / 64 % 5 + 1) % 5 := by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - p; omega))
+  have e3 : (p % 64 + 64 - 1) % 64 = (p % 64 + 63) % 64 := by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - p; omega))
   rw [e1, e2, e3]
   rfl
 
@@ -272,19 +272,19 @@ theorem lane_rhoPi (a : KeccakState) {k : ℕ} (hk : k < 25) :
       rw [← he, piInv_keccakPi i (List.mem_range.1 hi)]
 
 theorem sbit_rhoPi (a : KeccakState) {j : ℕ} (hj : j < 1600) : sbit (rhoPi a) j = sbit a (rhoPiSrc j) := by
-  have hl : j / 64 < 25 := by omega
-  have hz : j % 64 < 64 := Nat.mod_lt _ (by (clear * -; omega))
+  have hl : j / 64 < 25 := by (clear * - j hj; omega)
+  have hz : j % 64 < 64 := Nat.mod_lt _ (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))
   have hr := keccakRho_lt (piInv (j / 64))
   unfold sbit
   rw [lane_rhoPi a hl, rot_bit _ _ _ hr hz]
-  have h1 : rhoPiSrc j / 64 = piInv (j / 64) := by unfold rhoPiSrc; (clear * -; omega)
+  have h1 : rhoPiSrc j / 64 = piInv (j / 64) := by unfold rhoPiSrc; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - j; omega))
   have h2 : rhoPiSrc j % 64 = (j % 64 + 64 - keccakRho.getD (piInv (j / 64)) 0) % 64 := by
-    unfold rhoPiSrc; (clear * -; omega)
+    unfold rhoPiSrc; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - j; omega))
   rw [h1, h2]
 
 theorem sbit_chi (b : KeccakState) {j : ℕ} (hj : j < 1600) : sbit (chi b) j = chiB (sbit b) j := by
-  have hl : j / 64 < 25 := by omega
-  have hz : j % 64 < 64 := Nat.mod_lt _ (by (clear * -; omega))
+  have hl : j / 64 < 25 := by (clear * - j hj; omega)
+  have hz : j % 64 < 64 := Nat.mod_lt _ (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))
   rw [sbit_eq (chi b) j, lane_eq _ hl]
   simp only [chi, Vector.getElem_ofFn, UInt64.toBitVec_xor, UInt64.toBitVec_and,
     UInt64.toBitVec_not, BitVec.getLsbD_xor, BitVec.getLsbD_and, BitVec.getLsbD_not, hz,
@@ -294,7 +294,7 @@ theorem sbit_chi (b : KeccakState) {j : ℕ} (hj : j < 1600) : sbit (chi b) j = 
     fun k ↦ keccakAlong_def j k
   rw [e 1, e 2, sbit_lane b _ hz, sbit_lane b _ hz]
   have e1 : j / 64 - j / 64 % 5 + (j / 64 + 1) % 5 = (j / 64 % 5 + 1) % 5 + 5 * (j / 64 / 5) := by
-    (clear * -; omega)
+    (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - j; omega))
   have e2 : j / 64 - j / 64 % 5 + (j / 64 + 2) % 5 = (j / 64 % 5 + 2) % 5 + 5 * (j / 64 / 5) := by
     (clear * - e1; omega)
   rw [e1, e2]
@@ -302,11 +302,11 @@ theorem sbit_chi (b : KeccakState) {j : ℕ} (hj : j < 1600) : sbit (chi b) j = 
 
 theorem sbit_iota (a : KeccakState) (rc : UInt64) {j : ℕ} (hj : j < 1600) :
     sbit (iota a rc) j = (sbit a j ^^ iotaB rc j) := by
-  have hl : j / 64 < 25 := by omega
+  have hl : j / 64 < 25 := by (clear * - j hj; omega)
   unfold sbit iota iotaB
   rw [lane_eq _ hl, Vector.getElem_setIfInBounds hl, ← lane_eq _ hl]
   by_cases h0 : j < 64
-  · have hj0 : j / 64 = 0 := by omega
+  · have hj0 : j / 64 = 0 := by (clear * - j hj hl h0; omega)
     have hjz : j % 64 = j := by (clear * - hj0; omega)
     simp only [hj0, ite_true, UInt64.toBitVec_xor, BitVec.getLsbD_xor, hjz, h0, decide_true,
       Bool.true_and]
@@ -340,9 +340,9 @@ theorem roundsFrom_succ {start e : ℕ} (h : start + e < 24) (a : KeccakState) :
   have hlen : keccakRC.length = 24 := rfl
   unfold roundsFrom
   rw [List.take_add_one, List.foldl_append, List.getElem?_drop,
-    List.getElem?_eq_getElem (by omega)]
+    List.getElem?_eq_getElem (by (clear * - start e h hlen; omega))]
   simp only [Option.toList_some, List.foldl_cons, List.foldl_nil]
-  rw [List.getD_eq_getElem?_getD, List.getElem?_eq_getElem (by omega), Option.getD_some]
+  rw [List.getD_eq_getElem?_getD, List.getElem?_eq_getElem (by (clear * - start e h hlen; omega)), Option.getD_some]
 
 /-- `keccakF` is twelve rounds, then the twelve others. -/
 theorem keccakF_eq (a : KeccakState) : keccakF1600 a = roundsFrom 12 12 (roundsFrom 0 12 a) := by
@@ -478,8 +478,8 @@ theorem theta_transpose (g v : ℕ → E) :
       ∑ p ∈ range 1600, v p * colL g ((p / 64 % 5 + 1) % 5) (p % 64) from
         Finset.sum_congr rfl fun _ _ ↦ mul_comm _ _]
     rw [sum_col v (fun x z ↦ colL g ((x + 1) % 5) z)]
-    rw [← sum_perm 5 (fun x ↦ (x + 1) % 5) (fun x ↦ (x + 4) % 5) (by (clear * -; omega)) (by (clear * -; omega))
-      (by (clear * -; omega)) (by (clear * -; omega))]
+    rw [← sum_perm 5 (fun x ↦ (x + 1) % 5) (fun x ↦ (x + 4) % 5) (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)) (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))
+      (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)) (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))]
     refine Finset.sum_congr rfl fun x hx ↦ Finset.sum_congr rfl fun z _ ↦ ?_
     simp only [Finset.mem_range] at hx
     have : ((x + 1) % 5 + 4) % 5 = x := by (clear * - hx; omega)
@@ -491,11 +491,11 @@ theorem theta_transpose (g v : ℕ → E) :
       ∑ p ∈ range 1600, v p * colL g ((p / 64 % 5 + 4) % 5) ((p % 64 + 1) % 64) from
         Finset.sum_congr rfl fun _ _ ↦ mul_comm _ _]
     rw [sum_col v (fun x z ↦ colL g ((x + 4) % 5) ((z + 1) % 64))]
-    rw [← sum_perm 5 (fun x ↦ (x + 4) % 5) (fun x ↦ (x + 1) % 5) (by (clear * -; omega)) (by (clear * -; omega))
-      (by (clear * -; omega)) (by (clear * -; omega))]
+    rw [← sum_perm 5 (fun x ↦ (x + 4) % 5) (fun x ↦ (x + 1) % 5) (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)) (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))
+      (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)) (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))]
     refine Finset.sum_congr rfl fun x hx ↦ ?_
-    rw [← sum_perm 64 (fun z ↦ (z + 1) % 64) (fun z ↦ (z + 63) % 64) (by (clear * -; omega)) (by (clear * -; omega))
-      (by (clear * -; omega)) (by (clear * -; omega))]
+    rw [← sum_perm 64 (fun z ↦ (z + 1) % 64) (fun z ↦ (z + 63) % 64) (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)) (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))
+      (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)) (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))]
     refine Finset.sum_congr rfl fun z hz ↦ ?_
     simp only [Finset.mem_range] at hx hz
     have e1 : ((x + 4) % 5 + 1) % 5 = x := by (clear * - hx; omega)
@@ -583,7 +583,7 @@ theorem outer_loop (w : List E) :
       simp [Array.getD_eq_getD_getElem?, keccakBits, Array.getElem?_replicate]
       split_ifs <;> rfl⟩
   | L + 1, hL => by
-    obtain ⟨hs, hg⟩ := outer_loop w L (by omega)
+    obtain ⟨hs, hg⟩ := outer_loop w L (by (clear * - L hL; omega))
     rw [List.range_succ (n := L), List.foldl_append, List.foldl_cons, List.foldl_nil]
     obtain ⟨hs', hg'⟩ := inner_loop
       (fun z ↦ w.toArray.getD (64 * keccakPi L + (z + keccakRho.getD L 0) % 64) 0) L
@@ -624,17 +624,17 @@ theorem transposeList_getD (A : Array E) (g : ℕ → E) (hA : ∀ p < 1600, A.g
         ((List.range 5).flatMap fun x ↦ (List.range 64).map fun z ↦
           sumE ((List.range 5).map fun y ↦ A.getD (64 * (x + 5 * y) + z) 0)).toArray.getD
           (64 * ((lane % 5 + 4) % 5) + (z + 1) % 64) 0).getD p 0 = thetaT g p := by
-  have hp' : p = 64 * (p / 64) + p % 64 := by (clear * -; omega)
+  have hp' : p = 64 * (p / 64) + p % 64 := by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - p; omega))
   conv_lhs => rw [hp']
-  rw [flatMap_getD _ 64 25 (p / 64) (p % 64) (by (clear * - hp; omega)) (Nat.mod_lt _ (by (clear * -; omega)))]
-  rw [columns_getD _ (by (clear * -; omega)) (Nat.mod_lt _ (by (clear * -; omega))),
-    columns_getD _ (by (clear * -; omega)) (Nat.mod_lt _ (by (clear * -; omega))), ← hp', hA p hp]
+  rw [flatMap_getD _ 64 25 (p / 64) (p % 64) (by (clear * - hp; omega)) (Nat.mod_lt _ (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)))]
+  rw [columns_getD _ (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - p; omega))) (Nat.mod_lt _ (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))),
+    columns_getD _ (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - p; omega))) (Nat.mod_lt _ (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))), ← hp', hA p hp]
   have hcol : ∀ x z, x < 5 → z < 64 → colL (fun p ↦ A.getD p 0) x z = colL g x z := by
     intro x z hx hz
     refine Finset.sum_congr rfl fun y hy ↦ ?_
     simp only [Finset.mem_range] at hy
     exact hA _ (by (clear * - hx hz hy; omega))
-  rw [hcol _ _ (by (clear * -; omega)) (Nat.mod_lt _ (by (clear * -; omega))), hcol _ _ (by (clear * -; omega)) (Nat.mod_lt _ (by (clear * -; omega)))]
+  rw [hcol _ _ (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - p; omega))) (Nat.mod_lt _ (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))), hcol _ _ (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - p; omega))) (Nat.mod_lt _ (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)))]
   rfl
 
 /-- **`keccak_linear_transpose` in closed form**: θ's transpose of the weights moved back
@@ -642,7 +642,7 @@ through ρπ. -/
 theorem keccakLinearTranspose_getD (w : List E) {p : ℕ} (hp : p < 1600) :
     (keccakLinearTranspose w).getD p 0 = thetaT (gOf w) p := by
   obtain ⟨-, hg⟩ := outer_loop w 25 le_rfl
-  exact transposeList_getD _ (gOf w) (fun q hq ↦ by rw [hg, ite_eq_left (by omega)]) hp
+  exact transposeList_getD _ (gOf w) (fun q hq ↦ by rw [hg, ite_eq_left (by (clear * - hq; omega))]) hp
 
 theorem keccakLinearTranspose_length (w : List E) : (keccakLinearTranspose w).length = 1600 := by
   unfold keccakLinearTranspose

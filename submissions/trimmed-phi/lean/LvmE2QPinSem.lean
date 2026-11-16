@@ -43,7 +43,7 @@ theorem pinG_spec {sig : ByteArray} {T : Nat} (hS : Streamed M sig T) {nu qz qa 
       (.main, BlockClaim.point ⟨nu, 0⟩ ((List.range nu).map fun k => feAt sig (8 * (qz + 9 * k)))
         (feAt sig (8 * qa)))) :=
   hs_bind (hs_mapBC _ (fun k => feAt sig (8 * (qz + 9 * k))) (List.range nu)
-      fun k hk => hs_loadLane hS (by have := List.mem_range.mp hk; omega)) fun z hz' =>
+      fun k hk => hs_loadLane hS (by have := List.mem_range.mp hk; (clear * - qz k T nu qa hz this; omega))) fun z hz' =>
     hs_bind (hs_loadLane hS ha) fun a ha' => hs_pure (by
       simp only [CClaim.val, vs, hz', ha'])
 
@@ -63,7 +63,7 @@ theorem pin_replays {sig : ByteArray} {T : Nat} (hS : Streamed M sig T) (s : RS)
   hs_mono (pinG_spec hS hz ha) fun cc h => by
     rw [h, pinD_run sig s hn]
     congr 3
-    · funext k; congr 1; omega
-    · congr 1; omega
+    · funext k; congr 1; (clear * - qz k s T nu qa hP; omega)
+    · congr 1; (clear * - qa s nu T qz hP hqa; omega)
 
 end Lvm.Q2

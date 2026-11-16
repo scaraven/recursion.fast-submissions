@@ -382,7 +382,7 @@ theorem kg_struct : Lvm.ksXLog Lvm.P20 = 9 ∧ Lvm.ksSplit Lvm.P20 = Lvm.KG.ksSp
     simp only [List.mem_map, List.mem_range] at ha hb
     obtain ⟨a', ha', rfl⟩ := ha
     obtain ⟨b', hb', rfl⟩ := hb
-    omega
+    (clear * - hs a' ha' b' hb' hab; omega)
   · intro i hi
     unfold Lvm.contRows at hi
     simp only [List.mem_append, List.mem_map, List.mem_range] at hi
@@ -497,7 +497,7 @@ theorem sum_zip_fst_le {α β : Type} (f : α → ℕ) :
   | a :: l, b :: m => by
     simp only [List.zip_cons_cons, List.map_cons, List.sum_cons]
     have := sum_zip_fst_le f l m
-    omega
+    (clear * - f a α β l m this; omega)
 
 open LeanVM.Protocol.Compile in
 /-- **`tableTermsClaims`'s returns**: the claims meet `P` when the accumulated ones do and every
@@ -527,7 +527,7 @@ theorem retOK_tableTermsClaims (tables : List Verifier.Table) (cp fp point : Lis
       refine ⟨h1, ?_⟩
       rw [h2]
       simp [hevs]
-      (clear * -; omega)
+      (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)
 
 open LeanVM.Protocol.Compile in
 /-- **`tableSumcheckClaims`'s returns**: the claims meet `P` when every row's claim at a point of
@@ -580,7 +580,7 @@ theorem retOK_lbusTableCheckProg (T : List Lvm.M3.Tab) (μ : ℕ) :
   · intro point hpt r hr col hcol v j i hloc
     obtain ⟨k, hk, rfl⟩ := List.mem_iff_getElem.mp hr
     have hkT : k < T.length := by
-      simp only [List.length_zip, Lvm.M3.length_vTables] at hk; (clear hcol hloc hpt hr; omega)
+      simp only [List.length_zip, Lvm.M3.length_vTables] at hk; (clear hcol hloc hpt hr; (clear * - k T b point hk; omega))
     simp only [List.getElem_zip, getElem_vTables T k (by simpa using hkT)] at hcol hloc ⊢
     simp only [Lvm.M3.vLayout, List.getElem_map, Lvm.M3.vTable, Verifier.Table.width,
       List.length_replicate] at hcol hloc hpt ⊢
@@ -676,11 +676,11 @@ theorem blockLane_digestAt (π : ByteArray) (o : ℕ) {m : ℕ} (hm : m < 4) :
     RecursionFast.Keccak.blockLane (digestAt π o).toArray m = laneAt π (o + 8 * m) := by
   have hd : ∀ k < 8, (digestAt π o).toArray.getD (8 * m + k) 0 = π.get! (o + 8 * m + k) := by
     intro k hk
-    simp [digestAt, Array.getD, show 8 * m + k < 32 by omega, Nat.add_assoc]
-  have h0 := hd 0 (by (clear * -; omega))
+    simp [digestAt, Array.getD, show 8 * m + k < 32 by (clear * - m k hm hk; omega), Nat.add_assoc]
+  have h0 := hd 0 (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))
   rw [Nat.add_zero, Nat.add_zero] at h0
-  rw [RecursionFast.Keccak.blockLane_unfold, h0, hd 1 (by (clear * -; omega)), hd 2 (by (clear * -; omega)), hd 3 (by (clear * -; omega)),
-    hd 4 (by (clear * -; omega)), hd 5 (by (clear * -; omega)), hd 6 (by (clear * -; omega)), hd 7 (by (clear * -; omega))]
+  rw [RecursionFast.Keccak.blockLane_unfold, h0, hd 1 (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)), hd 2 (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)), hd 3 (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)),
+    hd 4 (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)), hd 5 (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)), hd 6 (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)), hd 7 (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))]
   simp only [laneAt, UInt64.zero_or, Nat.add_zero]
   rfl
 
@@ -693,7 +693,7 @@ theorem sig_get (x : List UInt8) {j : ℕ} (hj : 8 ≤ j) (k : ℕ) :
   rw [sigOfX, get!_mk, get!_mk, List.getD_append_right, List.getD_append_right]
   · simp only [List.length_replicate]
     congr 1
-    omega
+    (clear * - j k hj h8 hj'; omega)
   · simp only [List.length_replicate]; (clear * - hj; omega)
   · simp only [List.length_replicate]; (clear * - h8 hj'; omega)
 

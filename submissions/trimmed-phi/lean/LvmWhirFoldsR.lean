@@ -105,7 +105,7 @@ theorem foldInvR_step (s : WhirStateT) (lf : List E) (c : E) (cs : List (ℕ × 
       { s with target := polyEval s.quad c, quad := quad, folds := s.folds ++ [c] }
       (lf ++ [c]) cs := by
   obtain ⟨hlen, hlf, hκ, hg, hviol⟩ := hmid
-  refine ⟨by simp [hlen]; (clear * -; omega), by simp; omega, hκ, fun g hgm ↦ ?_, hq, ?_⟩
+  refine ⟨by simp [hlen]; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega), by simp; (clear * - hlf; omega), hκ, fun g hgm ↦ ?_, hq, ?_⟩
   · obtain ⟨h1, h2⟩ := hg g hgm
     exact ⟨by simp; (clear * - hlen hκ h1; omega), h2⟩
   · have hfun := funext (runW_fold w ℓ₀ s c (polyEval s.quad c) quad

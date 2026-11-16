@@ -55,8 +55,10 @@ def inO (k o : ℕ) : Prop :=
 instance (k o : ℕ) : Decidable (inO k o) := by unfold inO; infer_instance
 
 theorem inO_iff {k o : ℕ} (ho : o < 12) : inO k o ↔ k = kT o := by
-  unfold inO kT
-  split_ifs <;> omega
+  -- the bounded cases closed by evaluation (GOLF3: 1.37 M -> 0.05 M kernel heartbeats against `split_ifs <;> omega`)
+  constructor
+  · rintro (⟨hk, rfl⟩ | ⟨hk1, hk2, rfl⟩ | ⟨hk1, hk2, rfl | rfl⟩) <;> interval_cases k <;> rfl
+  · rintro rfl; interval_cases o <;> decide
 
 theorem kT_lt {o : ℕ} (ho : o < 12) : kT o < 9 := by
   unfold kT
@@ -94,22 +96,22 @@ theorem colT_sum (Q : Program) (lay : Lay) (z : ℕ → FK) {k : ℕ} (hk : k < 
     refine congrArg List.sum (List.map_congr_left fun e _ ↦ ?_)
     simp only [inO]
     congr 1
-    apply propext; omega
+    apply propext; (clear * - e k x hk h3; omega)
   · rw [hm]
     refine congrArg List.sum (List.map_congr_left fun e _ ↦ ?_)
     simp only [inO]
     congr 1
-    apply propext; omega
+    apply propext; (clear * - e k x hk h3 h6; omega)
   · rw [FE2.toE2_add, hm, hm, ← List.sum_map_add]
     refine congrArg List.sum (List.map_congr_left fun e _ ↦ ?_)
     by_cases h2 : e.o = 2 + 4 * (k - 6) ∧ e.x = x
-    · have h3' : ¬ (e.o = 3 + 4 * (k - 6) ∧ e.x = x) := fun h ↦ by omega
-      have hi : inO k e.o ∧ e.x = x := ⟨by unfold inO; omega, h2.2⟩
+    · have h3' : ¬ (e.o = 3 + 4 * (k - 6) ∧ e.x = x) := fun h ↦ by (clear * - k x e h2 h; omega)
+      have hi : inO k e.o ∧ e.x = x := ⟨by unfold inO; (clear * - k e hk x h3 h6 h2; omega), h2.2⟩
       rw [if_pos h2, if_neg h3', if_pos hi, add_zero]
     · by_cases h3'' : e.o = 3 + 4 * (k - 6) ∧ e.x = x
-      · have hi : inO k e.o ∧ e.x = x := ⟨by unfold inO; omega, h3''.2⟩
+      · have hi : inO k e.o ∧ e.x = x := ⟨by unfold inO; (clear * - k e hk x h3 h6 h3''; omega), h3''.2⟩
         rw [if_neg h2, if_pos h3'', if_pos hi, zero_add]
-      · have hi : ¬ (inO k e.o ∧ e.x = x) := fun h ↦ by unfold inO at h; omega
+      · have hi : ¬ (inO k e.o ∧ e.x = x) := fun h ↦ by unfold inO at h; (clear * - k hk x h3 h6 e h2 h3'' h; omega)
         rw [if_neg h2, if_neg h3'', if_neg hi, add_zero]
 
 /-- **Collapsing a slot sum**: a weighted sum over the slots of per-slot entry sums is the entry sum, every entry's
@@ -267,7 +269,7 @@ theorem gamma_escape {g : ℕ} (hg : g ≤ 64) {v w : List E2} (hv : v.length = 
     by_contra hall
     push Not at hall
     refine hne (List.ext_getElem (hv.trans hw.symm) fun i hi _ ↦ ?_)
-    have := hall i (by omega)
+    have := hall i (by (clear * - i g v w hv hi; omega))
     rwa [List.getD_eq_getElem _ _ hi, List.getD_eq_getElem _ _ (by omega)] at this
   have hp0 : p ≠ 0 := by
     intro h
@@ -302,15 +304,15 @@ theorem wireMT_vs (Q : Program) (lay : Lay) (γ : E2) (rx ry vs : List E2) (hvs 
     intro o ho
     by_cases h12 : o < 12
     · rw [hV o h12]
-    · rw [List.getD_eq_default _ _ (by omega), matMleT_eq_sum,
-        List.filter_eq_nil_iff.mpr fun e he ↦ by have := entsT_o Q lay e he; simp only [beq_iff_eq]; omega]
+    · rw [List.getD_eq_default _ _ (by (clear * - vs o hvs h12; omega)), matMleT_eq_sum,
+        List.filter_eq_nil_iff.mpr fun e he ↦ by have := entsT_o Q lay e he; simp only [beq_iff_eq]; (clear * - e o vs h12 this; omega)]
       simp
   rw [wGT_eq, show ∑ o ∈ range 12, γ ^ kT o * vs.getD o 0 = ∑ o ∈ range (2 ^ selBitsT), γ ^ kT o * vs.getD o 0
     by rw [show 2 ^ selBitsT = 12 + 4 by rfl, Finset.sum_range_add, left_eq_add]
-       exact Finset.sum_eq_zero fun x _ ↦ by rw [List.getD_eq_default _ _ (by omega), mul_zero],
+       exact Finset.sum_eq_zero fun x _ ↦ by rw [List.getD_eq_default _ _ (by (clear * - vs x hvs; omega)), mul_zero],
     Finset.sum_congr rfl fun o ho ↦ hall o (Finset.mem_range.mp ho)]
   simp only [matMleT_eq_sum]
-  rw [sum_sel_filterT (fun o ↦ γ ^ kT o) _ _ fun e he ↦ by have := entsT_o Q lay e he; simp [selBitsT]; omega]
+  rw [sum_sel_filterT (fun o ↦ γ ^ kT o) _ _ fun e he ↦ by have := entsT_o Q lay e he; simp [selBitsT]; (clear * - e vs this; omega)]
   rfl
 
 theorem sumF_four (rv : List E2) (h : rv.length = 4) :

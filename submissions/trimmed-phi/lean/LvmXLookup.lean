@@ -209,7 +209,7 @@ theorem length_logEntries (L : Log) : 5 * L.length ≤
   | cons e L ih =>
     simp only [List.flatMap_cons, List.length_append, List.length_cons, bytesWords,
       packBytes_digest_length] at ih ⊢
-    omega
+    (clear * - L e ih; omega)
 
 end Lvm.X
 
@@ -256,7 +256,7 @@ theorem entry_length (e : ByteArray × Digest) :
     Vector.length_toList, Array.length_toList, qWords]
   show _ + 1 + _ = _
   have : e.1.data.size = e.1.size := rfl
-  omega
+  (clear * - e this; omega)
 
 theorem entries_length (L : Log) :
     (L.flatMap fun e => bytesWords e.1.data.toList ++ packBytes e.2.toList).length =
@@ -281,9 +281,9 @@ theorem entries_getD : ∀ (L : Log) (k : ℕ) (hk : k < L.length),
     have ho : entryOff (e :: L) (k + 1) = qWords e + entryOff L k := by
       simp [entryOff, List.take_succ_cons]
     rw [ho, List.flatMap_cons, ← entry_length e, List.getD_eq_getElem?_getD,
-      List.getElem?_append_right (by (clear * -; omega)), Nat.add_sub_cancel_left,
+      List.getElem?_append_right (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - e L k; omega))), Nat.add_sub_cancel_left,
       ← List.getD_eq_getElem?_getD]
-    exact entries_getD L k (by simp at hk; omega)
+    exact entries_getD L k (by simp at hk; (clear * - hk; omega))
 
 /-! ## The guarded store to the heap -/
 
@@ -335,20 +335,20 @@ theorem walkBody_sem (I : Array Word) (s : St) (hM : Inv s.M) {p x : ℕ}
     List.nil_append, Prim.run, rXA, rP, rQL, rT1, rT2, rKc, cOne] at hS hsp hsx hs1 ⊢
   rw [hS]
   refine ⟨?_, ?_, fun i hi => ?_⟩
-  · simp (disch := first | decide | omega | (simp only [size_set]; omega))
+  · simp (disch := first | decide | (clear * - S s p x hs hsz; omega) | (simp only [size_set]; (clear * - S s p x hs hsz; omega)))
       [rd_set_self, rd_set_ne, XOp.eval, hsp, toNat_toWord hp2]
     change toWord p + ceil8 (I[p]?.getD 0#64) + 5#64 = toWord (p + 5 + (ceil8 (I[p]?.getD 0#64)).toNat)
     generalize ceil8 (I[p]?.getD 0#64) = C
     have := C.isLt
     apply BitVec.eq_of_toNat_eq
     simp only [toWord, BitVec.toNat_add, BitVec.toNat_ofNat]
-    (clear * -; omega)
-  · simp (disch := first | decide | omega | (simp only [size_set]; omega))
+    (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - p C; omega))
+  · simp (disch := first | decide | (clear * - S s p x hs hsz; omega) | (simp only [size_set]; (clear * - S s p x hs hsz; omega)))
       [rd_set_self, rd_set_ne, XOp.eval, hsx, hs1]
     exact (BitVec.ofNat_add x 1).symm
   · rw [← hSi i hi, ← hS]
     simp only [regs] at hi
-    simp (disch := first | decide | omega | (simp only [size_set]; omega)) [rd_set_ne]
+    simp (disch := first | decide | (clear * - i s p x S hi; omega) | (simp only [size_set]; omega)) [rd_set_ne]
 
 theorem wf_walkBody : WF walkBody := by
   simp [walkBody, ceil8Ps, WF, Prim.dst, rP, rXA, rQL, rT1, rT2, rKc, cTmp]
@@ -387,7 +387,7 @@ theorem tape_getD_posL4 (c : Digest) (π : Proof) (L : Log) (hs : 5 + (π.size +
     (extractorInput c π L).getD pL 0 = toWord L.length := by
   have hl : ((packBytes c.toList ++ [toWord π.size]) ++ packBytes π.data.toList).length = pL := by
     simp only [List.length_append, packBytes_length, ← WitnessSending.size_eq_length,
-      Vector.length_toList, List.length_singleton] <;> omega
+      Vector.length_toList, List.length_singleton] <;> (clear * - hs; omega)
   rw [tape_eq, ← hl]
   exact getD_append_length _ _ _
 
@@ -402,7 +402,7 @@ theorem tape_count_le4 (c : Digest) (π : Proof) (L : Log) (hs : 5 + (π.size + 
     simp only [List.length_append, packBytes_length, ← WitnessSending.size_eq_length,
       logWords, List.length_cons, Vector.length_toList, List.length_singleton]
     (clear * - hs this; omega)
-  rw [getD_toArray, tape_getD_posL4 c π L hs, toNat_toWord (by omega)]
+  rw [getD_toArray, tape_getD_posL4 c π L hs, toNat_toWord (by (clear * - L pL c π hs ht hlen; omega))]
   (clear * - hs hlen; omega)
 
 
@@ -420,7 +420,7 @@ theorem tape_entry4 (c : Digest) (π : Proof) (L : Log) (hs : 5 + (π.size + 7) 
       packBytes π.data.toList ++ [toWord L.length]) ++
       L.flatMap (fun e => bytesWords e.1.data.toList ++ packBytes e.2.toList) := by
     rw [tape_eq, logWords]; simp
-  rw [e2, ← hl, List.getD_eq_getElem?_getD, List.getElem?_append_right (by (clear * -; omega)),
+  rw [e2, ← hl, List.getD_eq_getElem?_getD, List.getElem?_append_right (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - c π L k; omega))),
     Nat.add_sub_cancel_left, ← List.getD_eq_getElem?_getD]
   exact entries_getD L k hk
 
@@ -434,7 +434,7 @@ theorem tape_entries_end4 (c : Digest) (π : Proof) (L : Log) (hs : 5 + (π.size
   simp only [List.length_append, packBytes_length, ← WitnessSending.size_eq_length,
     logWords, List.length_cons, Vector.length_toList, List.length_singleton,
     entries_length]
-  omega
+  (clear * - pL L π hs this; omega)
 
 
 /-- **The walk's loop**: `m` iterations from entry `j` write `pos j, …` into `X[j], …` and leave
@@ -507,12 +507,12 @@ theorem walk_spec4 (c : Digest) (π : Proof) (L : Log) (hs : 5 + (π.size + 7) /
   have hp0 : rd (semXIR I (walkPre4 bX pL) s).M rP = toWord (pL + 1) := by
     have := hM.1; simp only [regs] at this
     simp only [walkPre4, readAt, semXIR, runPrims, List.foldl, Prim.run, rP, rXA, rN, rA]
-    simp (disch := first | decide | omega | (simp only [size_set]; omega)) [rd_set_self, rd_set_ne]
+    simp (disch := first | decide | (clear * - s bX pL c π L k this; omega) | (simp only [size_set]; (clear * - s bX pL c π L k this; omega))) [rd_set_self, rd_set_ne]
     rfl
   have hx0 : rd (semXIR I (walkPre4 bX pL) s).M rXA = toWord bX := by
     have := hM.1; simp only [regs] at this
     simp only [walkPre4, readAt, semXIR, runPrims, List.foldl, Prim.run, rP, rXA, rN, rA]
-    simp (disch := first | decide | omega | (simp only [size_set]; omega)) [rd_set_self, rd_set_ne]
+    simp (disch := first | decide | omega | (simp only [size_set]; (clear * - s bX pL c π L k this; omega))) [rd_set_self, rd_set_ne]
     rfl
   have hc : rCW < (semXIR I (walkPre4 bX pL) s).M.size := by simp only [regs] at hs1; simp only [rCW]; (clear * - hs1; omega)
   have hE : Inv (entryT rCW rN (semXIR I (walkPre4 bX pL) s).M) := inv_of_frame hM1 (size_entryT ..)
@@ -529,7 +529,7 @@ theorem walk_spec4 (c : Digest) (π : Proof) (L : Log) (hs : 5 + (π.size + 7) /
   rw [e]
   generalize entryT rCW rN (semXIR I (walkPre4 bX pL) s).M = M0 at hE hEp hEx hEs
   have hn : bX + L.length < 2 ^ 64 := by (clear * - hbX2 hs ht hk hend h5 hcnt; omega)
-  rw [walkLoop4 hbX hbX2 hpL I L.length (fun j => pL + 1 + entryOff L j) hpos L.length 0 ⟨M0, _⟩ (by (clear * -; omega)) hE
+  rw [walkLoop4 hbX hbX2 hpL I L.length (fun j => pL + 1 + entryOff L j) hpos L.length 0 ⟨M0, _⟩ (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)) hE
     hEs hn hEp hEx (bX + k) (by simp only [regs] at hbX ⊢; (clear * - hbX hbX2; omega)), if_pos (by (clear * - hk hcnt; omega)),
     Nat.add_sub_cancel_left]
 
@@ -608,7 +608,7 @@ theorem cmpWord_sem (I : Array Word) (s : St) (hM : Inv s.M) (w : ℕ) (hw : w <
   simp only [regs] at hs
   simp only [cmpWord, semXIR, runPrims, List.foldl, Prim.run, rKc, rAd, rPa, rPb, rKa, rKb, rG,
     rH, rF]
-  simp (disch := first | decide | omega | (simp only [size_set]; omega)) only [rd_set_self,
+  simp (disch := first | decide | (clear * - s w hs; omega) | (simp only [size_set]; (clear * - s w hs; omega))) only [rd_set_self,
     rd_set_ne]
   rfl
 
@@ -630,7 +630,7 @@ theorem aposIR_sem (I : Array Word) (s : St) (hM : Inv s.M) {d q : ℕ}
   rcases hdq with ⟨rfl, rfl⟩ | ⟨rfl, rfl⟩ <;>
   · simp only [aposIR, ceil8Ps, semXIR, runPrims, List.foldl, List.cons_append, List.nil_append,
       Prim.run, rKc, rT2, rQL, rPa, rPb, rX, rY, cOne] at h1 ⊢
-    simp (disch := first | decide | omega | (simp only [size_set]; omega)) only [rd_set_self,
+    simp (disch := first | decide | (clear * - s hs; omega) | (simp only [size_set]; (clear * - s hs; omega))) only [rd_set_self,
       rd_set_ne, h1]
     simp only [aposW, ceil8, XOp.eval]
     rfl
@@ -666,7 +666,7 @@ theorem cmpIR_sem (I : Array Word) (s : St) (hM : Inv s.M)
     simp only [semXIR, runPrims, List.foldl, Prim.run, XOp.eval, rAd, rX, rY, rSrc, rI, rJ, x,
       y] at hi hj ⊢
     constructor <;>
-      simp (disch := first | decide | omega | (simp only [size_set]; omega)) only [rd_set_self,
+      simp (disch := first | decide | omega | (simp only [size_set]; (clear * - s hs; omega))) only [rd_set_self,
         rd_set_ne]
   have hM4 : Inv (semXIR I (.load rY rAd) (semXIR I (.blk [.op .add rAd rSrc rJ])
       (semXIR I (.load rX rAd) (semXIR I (.blk [.op .add rAd rSrc rI]) s)))).M :=
@@ -843,11 +843,11 @@ theorem good_bstart {lt : Word → Word → Bool} {src : ℕ → Word} {n w : �
       · exact ⟨m, by rw [e4, hm]⟩
     have hblk : ∀ a, s.lo ≤ a → a < s.jE → a / (2 * w) = m := fun a h1 h2 =>
       div_eq_of_block (by (clear * - hm h1; omega)) (by (clear * - e2 hm h2; omega))
-    refine ⟨⟨by simp; (clear * - hk hkj; omega), ⟨by simp, by simp; (clear * -; omega), fun h => by simp at h ⊢; (clear * - hkj h; omega),
+    refine ⟨⟨by simp; (clear * - hk hkj; omega), ⟨by simp, by simp; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - s w n; omega)), fun h => by simp at h ⊢; (clear * - hkj h; omega),
       Or.inl (by simp; (clear * - hkj; omega))⟩, hal, by simp,
       fun a b ha hab hb => absurd hb (by simp at ha ⊢; (clear * - hkj ha hab; omega)),
-      fun a ha hak => absurd hak (by simp at ha ⊢; omega),
-      fun a ha hak => absurd hak (by simp at ha ⊢; omega), fun a ha => ?_,
+      fun a ha hak => absurd hak (by simp at ha ⊢; (clear * - ha; omega)),
+      fun a ha hak => absurd hak (by simp at ha ⊢; (clear * - ha; omega)), fun a ha => ?_,
       fun a b hab hb hd => ?_⟩, by simp; (clear * - hw hk hkj; omega), rfl, rfl⟩
     · simp only at ha ⊢
       by_cases hlo : a < s.lo
@@ -859,7 +859,7 @@ theorem good_bstart {lt : Word → Word → Bool} {src : ℕ → Word} {n w : �
       by_cases hb' : b < s.lo
       · exact hg.dsrt a b hab hb' hd
       · by_cases ha' : s.lo ≤ a
-        · exact hg.srt a b ha' hab (by omega)
+        · exact hg.srt a b ha' hab (by (clear * - hb; omega))
         · exfalso
           have h1 : a / (2 * w) < m := by
             rw [Nat.div_lt_iff_lt_mul (by (clear * - hw; omega))]; rw [hm] at ha'; linarith
@@ -908,7 +908,7 @@ theorem good_mstep {lt : Word → Word → Bool} {src : ℕ → Word} {n w : ℕ
       · rw [if_neg hbk]; exact hg'.srt a b ha hab (by (clear * - hkk hb hbk; omega))
     · intro a ha hak
       by_cases hak' : a = t.k
-      · rw [if_pos hak']; exact ⟨t.i, by omega, by (clear * - o3 o4 hiL; omega), rfl⟩
+      · rw [if_pos hak']; exact ⟨t.i, by (clear * - o1; omega), by (clear * - o3 o4 hiL; omega), rfl⟩
       · rw [if_neg hak']; exact hg'.mem a ha (by (clear * - hkk hak hak'; omega))
     · intro a ha hak
       have hiR : ∀ h : t.j < t.jE, lt (src t.i) (src t.j) = true := fun h => by
@@ -917,12 +917,12 @@ theorem good_mstep {lt : Word → Word → Bool} {src : ℕ → Word} {n w : ℕ
         · exact hc
       by_cases hak' : a = t.k
       · rw [if_pos hak']
-        exact ⟨fun h => hsrt _ _ (by (clear * -; omega)) (by (clear * - o3 o4 o5 h; omega)) (by rw [runL _ (by omega) (by omega),
+        exact ⟨fun h => hsrt _ _ (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - t; omega))) (by (clear * - o3 o4 o5 h; omega)) (by rw [runL _ (by omega) (by omega),
           runL _ (by (clear * - o1 hm e2m; omega)) h]), hiR⟩
       · rw [if_neg hak']
         have hh := hg'.heads a ha (by (clear * - hkk hak hak'; omega))
-        exact ⟨fun h => ho.trans _ _ _ (hh.1 hiL) (hsrt _ _ (by (clear * -; omega)) (by (clear * - o3 o4 o5 h; omega))
-          (by rw [runL _ (by omega) (by omega), runL _ (by (clear * - o1 hm e2m; omega)) h])), hh.2⟩
+        exact ⟨fun h => ho.trans _ _ _ (hh.1 hiL) (hsrt _ _ (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - t; omega))) (by (clear * - o3 o4 o5 h; omega))
+          (by rw [runL _ (by (clear * - o1; omega)) (by (clear * - hiL; omega)), runL _ (by (clear * - o1 hm e2m; omega)) h])), hh.2⟩
     · intro a ha
       have := hg'.kk
       rw [if_neg (by (clear * - hkk o1 o3 hm e2m ha this; omega))]; exact hg'.dmem a ha
@@ -945,7 +945,7 @@ theorem good_mstep {lt : Word → Word → Bool} {src : ℕ → Word} {n w : ℕ
       · exact absurd h1 (by have := (hL h).2; simpa using this)
       · exact h1
     refine ⟨⟨by simp; (clear * - o1 o2 o3 o5 hm e2m hjR; omega), ⟨by simp; omega, by simp; omega, fun h => by
-      simp at h; exact e3 (by omega), by simp; exact e4⟩, ⟨m, hm⟩, by simp; have := hg'.kk; (clear * - hkk this; omega), ?_, ?_, ?_, ?_,
+      simp at h; exact e3 (by (clear * - hjR; omega)), by simp; exact e4⟩, ⟨m, hm⟩, by simp; have := hg'.kk; (clear * - hkk this; omega), ?_, ?_, ?_, ?_,
       ?_⟩, rfl⟩ <;> simp only [upd]
     · intro a b ha hab hb
       rw [if_neg (by (clear * - hkk hab hb; omega))]
@@ -959,12 +959,12 @@ theorem good_mstep {lt : Word → Word → Bool} {src : ℕ → Word} {n w : ℕ
     · intro a ha hak
       by_cases hak' : a = t.k
       · rw [if_pos hak']
-        exact ⟨hji, fun h => hsrt _ _ (by (clear * -; omega)) (by (clear * - o5 h; omega)) (by rw [runR _ hjR (by omega) (by omega),
+        exact ⟨hji, fun h => hsrt _ _ (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - t; omega))) (by (clear * - o5 h; omega)) (by rw [runR _ hjR (by omega) (by omega),
           runR _ hjR (by (clear * - o3; omega)) h])⟩
       · rw [if_neg hak']
         have hh := hg'.heads a ha (by (clear * - hkk hak hak'; omega))
-        exact ⟨hh.1, fun h => ho.trans _ _ _ (hh.2 hjR) (hsrt _ _ (by (clear * -; omega)) (by (clear * - o5 h; omega))
-          (by rw [runR _ hjR (by omega) (by omega), runR _ hjR (by (clear * - o3; omega)) h]))⟩
+        exact ⟨hh.1, fun h => ho.trans _ _ _ (hh.2 hjR) (hsrt _ _ (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - t; omega))) (by (clear * - o5 h; omega))
+          (by rw [runR _ hjR (by (clear * - o3; omega)) (by (clear * - hjR; omega)), runR _ hjR (by (clear * - o3; omega)) h]))⟩
     · intro a ha
       have := hg'.kk
       rw [if_neg (by (clear * - hkk o1 o3 hm e2m ha this; omega))]; exact hg'.dmem a ha
@@ -990,9 +990,9 @@ theorem good_mrun {lt : Word → Word → Bool} {src : ℕ → Word} {n w : ℕ}
       Good lt src n w (mrun lt src n w m s) ∧ (mrun lt src n w m s).k = s.k + m
   | 0, s, hg, _ => ⟨hg, rfl⟩
   | m + 1, s, hg, hm => by
-    obtain ⟨h1, h2⟩ := good_mstep ho hw hsrt hinj hg (by omega)
-    obtain ⟨h3, h4⟩ := good_mrun ho hw hsrt hinj m _ h1 (by omega)
-    exact ⟨h3, by simp only [mrun]; rw [h4, h2]; omega⟩
+    obtain ⟨h1, h2⟩ := good_mstep ho hw hsrt hinj hg (by (clear * - s n w m hm; omega))
+    obtain ⟨h3, h4⟩ := good_mrun ho hw hsrt hinj m _ h1 (by (clear * - lt src n w s m hm h2; omega))
+    exact ⟨h3, by simp only [mrun]; rw [h4, h2]; (clear * - s m lt src n w; omega)⟩
 
 /-- What a pass delivers. -/
 structure PassOut (lt : Word → Word → Bool) (src d : ℕ → Word) (n w : ℕ) : Prop where
@@ -1073,8 +1073,8 @@ theorem wseq_eq {n : ℕ} (hn : 0 < n) : ∀ p, wseq n p = min (2 ^ p) n
   | p + 1 => by
     rw [wseq, wseq_eq hn p, pow_succ]
     rcases Nat.le_total (2 ^ p) n with h | h
-    · rw [Nat.min_eq_left h]; omega
-    · rw [Nat.min_eq_right h]; omega
+    · rw [Nat.min_eq_left h]; (clear * - p n; omega)
+    · rw [Nat.min_eq_right h]; (clear * - n p hn h; omega)
 
 /-- **The sort's correctness, pure form**: if each array is a pass of the previous one at width
 `wseq n p`, starting from an array `X 0` injective on `[0, n)`, then after 64 passes the array is
@@ -1141,7 +1141,7 @@ theorem lexW_trans : ∀ l₁ l₂ l₃ : List Word, lexW l₁ l₂ = true → l
   | a :: l₁, b :: l₂, c :: l₃, h1, h2 => by
     simp only [lexW, Bool.or_eq_true, Bool.and_eq_true, decide_eq_true_eq] at h1 h2 ⊢
     rcases h1 with h1 | ⟨rfl, h1⟩ <;> rcases h2 with h2 | ⟨rfl, h2⟩
-    · left; rw [BitVec.lt_def] at *; omega
+    · left; rw [BitVec.lt_def] at *; (clear * - a c b h1 h2; omega)
     · exact .inl h1
     · exact .inl h2
     · exact .inr ⟨rfl, lexW_trans l₁ l₂ l₃ h1 h2⟩
@@ -1356,7 +1356,7 @@ theorem bstart_props {n w : ℕ} {σ : MS} (hB : Bnd n σ) (hk : σ.k < n) (hw :
   unfold bstart Bnd at *
   split
   · refine ⟨rfl, rfl, ?_, ?_⟩ <;> simp only <;> (clear * - hk hw; omega)
-  · exact ⟨rfl, rfl, by omega, by omega⟩
+  · exact ⟨rfl, rfl, by (clear * - hB; omega), by omega⟩
 
 /-! ## `blockIR` -/
 
@@ -1381,7 +1381,7 @@ theorem blockIR_sem (I : Array Word) (s : St) (hM : Inv s.M) {S D n w : ℕ} {σ
       rG = bW (decide (σ.i = σ.iE) && decide (σ.j = σ.jE)) := by
     have hi := hR.i; have hiE := hR.iE; have hj := hR.j; have hjE := hR.jE
     simp only [semXIR, runPrims, List.foldl, Prim.run, rG, rH, rI, rIE, rJ, rJE] at hi hiE hj hjE ⊢
-    simp (disch := first | decide | omega | (simp only [size_set]; omega)) only [rd_set_self,
+    simp (disch := first | decide | (clear * - s n w σ hs; omega) | (simp only [size_set]; (clear * - s n w σ hs; omega))) only [rd_set_self,
       rd_set_ne]
     rw [hi, hiE, hj, hjE, eqW_toWord (by (clear * - hn b1 b3; omega)) (by (clear * - hn b3; omega)), eqW_toWord (by (clear * - hn b2 b4; omega)) (by (clear * - hn b4; omega)),
       bW_and]
@@ -1404,7 +1404,7 @@ theorem blockIR_sem (I : Array Word) (s : St) (hM : Inv s.M) {S D n w : ℕ} {σ
     simp only [semXIR, minPs, runPrims, List.foldl, List.cons_append, List.nil_append,
       Prim.run, rI, rIE, rJ, rJE, rKk, rW2, rN, rSrc, rDst, rV, rT1, rT2,
       rKc] <;>
-    simp (disch := first | decide | omega | (simp only [size_set]; omega)) only [rd_set_self,
+    simp (disch := first | decide | (clear * - s1 s n w σ hs1; omega) | (simp only [size_set]; (clear * - s1 s n w σ hs1; omega))) only [rd_set_self,
       rd_set_ne] <;>
     simp only [i1, iE1, j1, jE1, k1, w1, n1, S1, D1, or_self_eval, add_toWord] <;>
     simp (disch := omega) only [minP_toWord, add_toWord, or_self_eval]
@@ -1505,19 +1505,19 @@ theorem tail_sem (I : Array Word) (s : St) (hM : Inv s.M) {S D n w h : ℕ} {src
   have hA2 : rd (semXIR I (.seq (.load rV rAd)
       (.blk [.op .add rAd rDst rKk, .op .add rKk rKk cOne])) s).M rAd = toWord (D + τ.k) := by
     simp only [semXIR, runPrims, List.foldl, Prim.run]
-    simp (disch := first | decide | (simp only [size_set, rAd, rKk, rV]; omega)) only
+    simp (disch := first | decide | (simp only [size_set, rAd, rKk, rV]; (clear * - s I S D n h τ hs hz2; omega))) only
       [rd_set_self, rd_set_ne]
     rw [hR.D, hR.k, add_toWord]
   have hK2 : rd (semXIR I (.seq (.load rV rAd)
       (.blk [.op .add rAd rDst rKk, .op .add rKk rKk cOne])) s).M rKk = toWord (τ.k + 1) := by
     simp only [semXIR, runPrims, List.foldl, Prim.run]
-    simp (disch := first | decide | (simp only [size_set, rAd, rKk, rV]; omega)) only
+    simp (disch := first | decide | (simp only [size_set, rAd, rKk, rV]; (clear * - s I S D n h τ hs hz2; omega))) only
       [rd_set_self, rd_set_ne]
     rw [hR.k, hc1, add_one_toWord]
   have hV2 : rd (semXIR I (.seq (.load rV rAd)
       (.blk [.op .add rAd rDst rKk, .op .add rKk rKk cOne])) s).M rV = src h := by
     simp only [semXIR, runPrims, List.foldl, Prim.run]
-    simp (disch := first | decide | (simp only [size_set, rAd, rKk, rV]; omega)) only
+    simp (disch := first | decide | (simp only [size_set, rAd, rKk, rV]; (clear * - s I S D n h τ hs hz2; omega))) only
       [rd_set_self, rd_set_ne]
     rw [hA, toNat_toWord (by (clear * - hh LbS; omega)), hsrc h hh]
   rw [e]
@@ -1617,7 +1617,7 @@ theorem stepIR_sem (I : Array Word) (s : St) {S D n w : ℕ} {src : ℕ → Word
     simp only [regs] at hs1
     simp only [flagsIR, semXIR, runPrims, List.foldl, Prim.run]
     refine ⟨?_, ?_⟩ <;>
-    simp (disch := first | decide | (simp only [size_set, rG, rH]; omega)) only [rd_set_self,
+    simp (disch := first | decide | (simp only [size_set, rG, rH]; (clear * - s1 s S D n σ τ hz1 hs1; omega))) only [rd_set_self,
       rd_set_ne]
     · rw [hR1.i, hR1.iE, ltW_toWord (by (clear * - Lr LbS b1 b3; omega)) (by (clear * - Lr LbS b3; omega))]
     · rw [hR1.j, hR1.jE, ltW_toWord (by (clear * - Lr LbS b2 b4; omega)) (by (clear * - Lr LbS b4; omega))]
@@ -1723,10 +1723,10 @@ theorem stepLoop (I : Array Word) {S D n w : ℕ} {src : ℕ → Word} :
       Rel S D n w src (iterL (semXIR I stepIR) rCS m s).M (mrun (keyLt I) src n w m σ)
   | 0, _, _, _, hR, _ => hR
   | m + 1, s, σ, hL, hR, hm => by
-    obtain ⟨h1, h2⟩ := stepIR_sem I s hL hR (by omega)
+    obtain ⟨h1, h2⟩ := stepIR_sem I s hL hR (by (clear * - σ n m hm; omega))
     simp only [iterL, mrun]
     exact stepLoop I m _ _ (by rw [size_decS, size_sem]; exact hL) (h1.decS hL.rS hL.rD)
-      (by rw [h2]; omega)
+      (by rw [h2]; (clear * - σ m n I w src hm; omega))
 
 /-! ## The sort: 64 passes -/
 
@@ -1737,7 +1737,7 @@ theorem iterL_succ' (f : St → St) (c : ℕ) :
 
 theorem wseq_le (n : ℕ) : ∀ p, wseq n p ≤ n + 1
   | 0 => by simp [wseq]
-  | p + 1 => by simp only [wseq]; omega
+  | p + 1 => by simp only [wseq]; (clear * - n p; omega)
 
 theorem wseq_pos {n : ℕ} (hn : 0 < n) (p : ℕ) : 0 < wseq n p := by
   rw [wseq_eq hn]; exact lt_min (Nat.two_pow_pos p) hn
@@ -1765,7 +1765,7 @@ theorem entryOff_lt (L : Log) {a b : ℕ} (h : a < b) (hb : b ≤ L.length) :
     have : 5 ≤ qWords L[b] := Nat.le_add_right _ _
     rcases Nat.lt_succ_iff_lt_or_eq.1 h with h' | h'
     · have := ih h' (by (clear * - hb; omega)); omega
-    · subst h'; omega
+    · subst h'; (clear * - L a hb this; omega)
 
 /-! ## The sort and the index at a parametric base and log position
 
@@ -1807,8 +1807,8 @@ def baseX4 (n p : ℕ) : ℕ := if p % 2 = 0 then bX else bX + n
 theorem baseX4_two (n p : ℕ) : baseX4 bX n (p + 1 + 1) = baseX4 bX n p := by
   unfold baseX4
   by_cases h : p % 2 = 0
-  · rw [if_pos (by omega), if_pos h]
-  · rw [if_neg (by omega), if_neg h]
+  · rw [if_pos (by (clear * - p h; omega)), if_pos h]
+  · rw [if_neg (by (clear * - p h; omega)), if_neg h]
 
 
 theorem wf_idxIR4 : WF (idxIR4 bX pL) := by
@@ -1824,7 +1824,7 @@ theorem cost_idxIR4 (t : ℕ) : cost (idxIR4 bX pL) t = 2592 + t / 5 * 11871 := 
     stepIR, blockIR, cmpIR, cmpWord, aposIR, ceil8Ps, minPs, readAt, cost, blkSteps,
     List.length_cons, List.length_nil, List.length_append, Aff.eval, Nat.one_mul]
   norm_num
-  omega
+  (clear * - t; omega)
 
 
 theorem sizeIR_idxIR4 : sizeIR (idxIR4 bX pL) ≤ 2 ^ 19 := by
@@ -1888,7 +1888,7 @@ theorem passIR4_sem (I : Array Word) (s : St) (hM : Inv s.M) {S D n w : ℕ}
   have hR0 : Regs (semXIR I (passPre4 pL) s).M S D n w ⟨0, 0, 0, 0, 0, 0, fun a => rd s.M (D + a)⟩ := by
     refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩ <;>
     simp only [passPre4, readAt, semXIR, runPrims, List.foldl, Prim.run] <;>
-    simp (disch := first | decide | (simp only [size_set, rI, rIE, rJ, rJE, rKk, rNS, rA]; omega))
+    simp (disch := first | decide | (simp only [size_set, rI, rIE, rJ, rJE, rKk, rNS, rA]; (clear * - s bX pL n w hs; omega)))
       only [rd_set_self, rd_set_ne] <;>
     first | exact hW | exact hN | exact hS | exact hD | rfl
   have hM0 := inv_sem I hP0 hM
@@ -1905,8 +1905,8 @@ theorem passIR4_sem (I : Array Word) (s : St) (hM : Inv s.M) {S D n w : ℕ}
   rw [e]
   have hRel : Rel S D n w (fun a => rd s.M (S + a)) (entryT rCS rNS s0.M)
       ⟨0, 0, 0, 0, 0, 0, fun a => rd s.M (D + a)⟩ :=
-    Rel.set (M := s0.M) ⟨hM0, hR0, fun a ha => hH0 _ (le_trans hL.rS (by (clear * -; omega))),
-      fun a ha => hH0 _ (le_trans hL.rD (by (clear * -; omega))), by simp [Bnd]⟩ (by decide) (by decide)
+    Rel.set (M := s0.M) ⟨hM0, hR0, fun a ha => hH0 _ (le_trans hL.rS (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - S a; omega)))),
+      fun a ha => hH0 _ (le_trans hL.rD (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - D a; omega)))), by simp [Bnd]⟩ (by decide) (by decide)
       (by decide) hL.rS hL.rD _
   have h1 := stepLoop I n ⟨entryT rCS rNS s0.M, s0.o⟩ _ (by rw [size_entryT, hz0]; exact hL) hRel
     (by simp)
@@ -1920,11 +1920,11 @@ theorem passIR4_sem (I : Array Word) (s : St) (hM : Inv s.M) {S D n w : ℕ}
     rT2, rKc])
     hM1, ?_, ?_, ?_, ?_, fun a ha => ?_⟩
   rotate_left 4
-  · rw [hframe I _ s1 hlo _ (le_trans hL.rD (by (clear * -; omega))), hd1 a ha]; rfl
+  · rw [hframe I _ s1 hlo _ (le_trans hL.rD (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - D a; omega)))), hd1 a ha]; rfl
   all_goals
     simp only [swapPs, minPs, semXIR, runPrims, List.foldl, List.cons_append, List.nil_append,
       Prim.run]
-    simp (disch := first | decide | (simp only [size_set, rV, rSrc, rDst, rW2, rT1, rT2, rKc]; omega))
+    simp (disch := first | decide | (simp only [size_set, rV, rSrc, rDst, rW2, rT1, rT2, rKc]; (clear * - s1 bX pL s n w s0 hs1; omega)))
       only [rd_set_self, rd_set_ne]
     simp only [hR1.S, hR1.D, hR1.w, hR1.n, or_self_eval, add_toWord]
   rw [minP_toWord (by (clear * - Lbn Lbw; omega)) (by (clear * - Lbn; omega)), two_mul]
@@ -1959,7 +1959,7 @@ theorem sortIR4_sem (I : Array Word) (s : St) (hM : Inv s.M) {n : ℕ}
     simp only [regs] at hs'
     simp only [semXIR, runPrims, List.foldl, Prim.run]
     refine ⟨?_, ?_, ?_, ?_, ?_⟩ <;>
-    simp (disch := first | decide | (simp only [size_set, rN, rW2, rSrc, rDst, rNP]; omega)) only
+    simp (disch := first | decide | (simp only [size_set, rN, rW2, rSrc, rDst, rNP]; (clear * - s' bX pL s n hs'; omega))) only
       [rd_set_self, rd_set_ne]
     · exact hN
     · rfl
@@ -2144,14 +2144,14 @@ theorem entries_getD_ans : ∀ (L : Log) (k : ℕ) (hk : k < L.length) (m : ℕ)
     have hp := packBytes_digest_length e.2
     simp only [entryOff, List.take_zero, List.map_nil, List.sum_nil, List.flatMap_cons,
       List.getElem_cons_zero, Nat.zero_add]
-    rw [List.getD_eq_getElem?_getD, List.getElem?_append_left (by rw [List.length_append]; omega),
+    rw [List.getD_eq_getElem?_getD, List.getElem?_append_left (by rw [List.length_append]; (clear * - e m L hm hb hp; omega)),
       List.getElem?_append_right (by (clear * - hm hb; omega)), ← List.getD_eq_getElem?_getD, hb]
     congr 1
     (clear * - hm; omega)
   | e :: L, k + 1, hk, m, hm => by
     have ho : entryOff (e :: L) (k + 1) = qWords e + entryOff L k := by
       simp [entryOff, List.take_succ_cons]
-    have ih := entries_getD_ans L k (by simp at hk; omega) m hm
+    have ih := entries_getD_ans L k (by simp at hk; (clear * - hk; omega)) m hm
     rw [ho, List.flatMap_cons, List.getD_eq_getElem?_getD, List.getElem?_append_right
       (by rw [entry_length]; (clear * - hk hm; omega)), ← List.getD_eq_getElem?_getD, entry_length]
     simp only [List.getElem_cons_succ]
@@ -2217,7 +2217,7 @@ theorem bsStep_inv {p : ℕ → Bool} {n : ℕ}
   by_cases hm : p (lo + len / 2) = true
   · rw [if_pos hm]
     refine ⟨⟨by simp only; (clear * - h1 h0; omega), fun a ha => ?_, fun a ha han => h3 a (by simp only at ha; (clear * - ha; omega)) han⟩,
-      by simp only; (clear * -; omega)⟩
+      by simp only; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - len; omega))⟩
     simp only at ha
     rcases Nat.lt_or_ge a lo with h | h
     · exact h2 a h
@@ -2225,7 +2225,7 @@ theorem bsStep_inv {p : ℕ → Bool} {n : ℕ}
       · exact hp a _ h' (by (clear * - h1 h h'; omega)) hm
       · rw [show a = lo + len / 2 by (clear * - ha h'; omega)]; exact hm
   · rw [if_neg hm]
-    refine ⟨⟨by simp only; (clear * - h1; omega), h2, fun a ha han => ?_⟩, by simp only; (clear * -; omega)⟩
+    refine ⟨⟨by simp only; (clear * - h1; omega), h2, fun a ha han => ?_⟩, by simp only; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - len; omega))⟩
     simp only at ha
     rcases Nat.lt_or_ge a (lo + len) with h | h
     · cases e : p a
@@ -2273,15 +2273,15 @@ def ltT (I : Array Word) (X : ℕ → Word) (T : List Word) (a : ℕ) : Bool := 
 theorem shr_one_toWord {a : ℕ} (ha : a < 2 ^ 64) : XOp.shr.eval (toWord a) 1 = toWord (a / 2) := by
   apply BitVec.eq_of_toNat_eq
   simp only [XOp.eval]
-  rw [BitVec.toNat_ushiftRight, toNat_toWord ha, toNat_toWord (by omega)]
+  rw [BitVec.toNat_ushiftRight, toNat_toWord ha, toNat_toWord (by (clear * - a ha; omega))]
   simp [Nat.shiftRight_eq_div_pow]
 
 theorem sub_toWord {a b : ℕ} (ha : a < 2 ^ 64) (hb : b ≤ a) :
     XOp.sub.eval (toWord a) (toWord b) = toWord (a - b) := by
   apply BitVec.eq_of_toNat_eq
   simp only [XOp.eval]
-  rw [BitVec.toNat_sub, toNat_toWord ha, toNat_toWord (by omega), toNat_toWord (by omega)]
-  omega
+  rw [BitVec.toNat_sub, toNat_toWord ha, toNat_toWord (by (clear * - b a ha hb; omega)), toNat_toWord (by (clear * - a b ha hb; omega))]
+  (clear * - b a ha hb; omega)
 
 theorem eq_bW (a b : Word) : XOp.eq.eval a b = bW (decide (a = b)) := by
   by_cases h : a = b <;> simp [XOp.eval, bW, h]
@@ -2328,7 +2328,7 @@ theorem cmpTWord_sem (I : Array Word) (s : St) (hM : Inv s.M) {w r : ℕ} (hw : 
   rcases hr with rfl | rfl | rfl | rfl <;>
   · simp only [cmpTWord, semXIR, runPrims, List.foldl, Prim.run, rKc, rAd, rPa, rKa, rG, rH, rF,
       rQ0, rQ1, rQ2, rQ3]
-    simp (disch := first | decide | omega | (simp only [size_set]; omega)) only [rd_set_self,
+    simp (disch := first | decide | (clear * - s w hs; omega) | (simp only [size_set]; (clear * - s w hs; omega))) only [rd_set_self,
       rd_set_ne]
     rfl
 
@@ -2457,7 +2457,7 @@ theorem eqTWord_sem (I : Array Word) (s : St) (hM : Inv s.M) {w r : ℕ}
   rcases hr with rfl | rfl | rfl | rfl <;>
   · simp only [eqTWord, semXIR, runPrims, List.foldl, Prim.run, rKc, rAd, rPa, rKa, rH, rFd,
       rQ0, rQ1, rQ2, rQ3]
-    simp (disch := first | decide | omega | (simp only [size_set]; omega)) only [rd_set_self,
+    simp (disch := first | decide | (clear * - s hs; omega) | (simp only [size_set]; (clear * - s hs; omega))) only [rd_set_self,
       rd_set_ne]
     rfl
 
@@ -2726,7 +2726,7 @@ theorem bsBody4_sem (I : Array Word) (s : St) (hM : Inv s.M) {n lo len : ℕ} {T
         toWord (lo + len / 2 + bX) := by
     simp only [semXIR, runPrims, List.foldl, Prim.run]
     refine ⟨?_, ?_, ?_⟩ <;>
-    simp (disch := first | decide | (simp only [size_set, rKc, rHf, rMd, rAd]; omega)) only
+    simp (disch := first | decide | (simp only [size_set, rKc, rHf, rMd, rAd]; (clear * - s bX pL n lo len hs; omega))) only
       [rd_set_self, rd_set_ne] <;>
     rw [hR.len, shr_one_toWord (by (clear * - hb hn; omega))]
     · rw [hR.lo, add_toWord]
@@ -2750,7 +2750,7 @@ theorem bsBody4_sem (I : Array Word) (s : St) (hM : Inv s.M) {n lo len : ℕ} {T
     simp only [semXIR]
     rw [rd_set_self (by simp only [rX]; (clear * - hs1; omega)), ha1, toNat_toWord (by (clear * - hbX2 hb hn; omega)),
       hH1 _ (by simp only [regs] at hbX ⊢; (clear * - hbX hbX2 hb hn; omega)), show lo + len / 2 + bX = bX + (lo + len / 2) by
-      (clear * -; omega), hX _ (by (clear * - hb hn h0; omega))]
+      (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega), hX _ (by (clear * - hb hn h0; omega))]
   have hfr2 : ∀ q ∈ [rHf, rMd] ++ srL, rd (semXIR I (.load rX rAd) s1).M q = rd s1.M q :=
     fun q hq => by
       simp only [semXIR]
@@ -2781,7 +2781,7 @@ theorem bsBody4_sem (I : Array Word) (s : St) (hM : Inv s.M) {n lo len : ℕ} {T
   · rw [hp, if_neg bW_ne_zero, if_pos rfl]
     refine ⟨?_, ?_, ?_, ?_⟩ <;>
     simp only [semXIR, runPrims, List.foldl, Prim.run] <;>
-    simp (disch := first | decide | (simp only [size_set, rLo, rLn]; omega)) only
+    simp (disch := first | decide | (simp only [size_set, rLo, rLn]; (clear * - s3 bX pL s n lo len s1 hs3; omega))) only
       [rd_set_self, rd_set_ne]
     · rw [hmd3, hc3, add_one_toWord]
     · rw [hR3.len, hhf3, hc3, sub_toWord (by (clear * - hb hn; omega)) (by (clear * - hb hn; omega)),
@@ -2791,7 +2791,7 @@ theorem bsBody4_sem (I : Array Word) (s : St) (hM : Inv s.M) {n lo len : ℕ} {T
   · rw [(Bool.not_eq_true _).mp hp, if_pos bW_false, if_neg (by simp)]
     refine ⟨?_, ?_, ?_, ?_⟩ <;>
     simp only [semXIR, runPrims, List.foldl, Prim.run] <;>
-    simp (disch := first | decide | (simp only [size_set, rLn]; omega)) only
+    simp (disch := first | decide | (simp only [size_set, rLn]; (clear * - s3 bX pL s n lo len s1 hs3; omega))) only
       [rd_set_self, rd_set_ne]
     · exact hR3.lo
     · rw [hhf3, or_self_eval]
@@ -2850,11 +2850,11 @@ theorem foundIR4_sem (I : Array Word) (s : St) (hM : Inv s.M) {n lo len : ℕ} {
       (.load rX rAd)) s).M rX = x := by
     simp only [semXIR, runPrims, List.foldl, Prim.run]
     rw [rd_set_self (by simp only [size_set, rX]; (clear * - hs; omega))]
-    simp (disch := first | decide | (simp only [size_set, rKc, rAd]; omega)) only [rd_set_self,
+    simp (disch := first | decide | (simp only [size_set, rKc, rAd]; (clear * - s bX pL n lo hs; omega))) only [rd_set_self,
       rd_set_ne]
     rw [hR.lo, show XOp.add.eval (toWord lo) (BitVec.ofNat 64 bX) = toWord (lo + bX) from
       add_toWord _ _, toNat_toWord (by (clear * - hbX2 hlo hn; omega)), rd_set_ne (by simp only [rAd, regs] at hbX ⊢; (clear * - hbX hbX2; omega)),
-      rd_set_ne (by simp only [rKc, regs] at hbX ⊢; (clear * - hbX hbX2; omega)), show lo + bX = bX + lo by (clear * -; omega)]
+      rd_set_ne (by simp only [rKc, regs] at hbX ⊢; (clear * - hbX hbX2; omega)), show lo + bX = bX + lo by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)]
   have hR1 := hR.sem (I := I) hM hwf1 (by
     simp +decide [srL, Writes, Prim.dst, rKc, rAd, rX, rLo, rLn, rN, rQ0, rQ1, rQ2, rQ3,
       List.mem_cons, List.mem_nil_iff, forall_eq_or_imp, exists_eq_or_imp, forall_eq,
@@ -2952,7 +2952,7 @@ theorem lookIR4_sem (I : Array Word) (s : St) (hM : Inv s.M) {n : ℕ} {T : List
     simp only [regs] at hs'
     simp only [semXIR, runPrims, List.foldl, Prim.run]
     refine ⟨⟨?_, ?_, ?_, ?_⟩, ?_⟩ <;>
-    simp (disch := first | decide | (simp only [size_set, rLo, rLn, rNB]; omega)) only
+    simp (disch := first | decide | (simp only [size_set, rLo, rLn, rNB]; (clear * - s' bX pL s n hs'; omega))) only
       [rd_set_self, rd_set_ne]
     · rfl
     · rw [hN, or_self_eval]
@@ -2981,9 +2981,9 @@ theorem lookIR4_sem (I : Array Word) (s : St) (hM : Inv s.M) {n : ℕ} {T : List
     rw [hE x (by simp only [rCB, regs] at *; (clear * - hx; omega)) (by simp only [cTmp, regs] at *; (clear * - hx; omega)),
       hH0 x hx]
   obtain ⟨l1, l2, l3⟩ := bsLoop4 hbX hbX2 hpL I (X := X) hn2 64 ⟨entryK rCB rNB 64 s0.M, s0.o⟩ 0 n hME hRE
-    (by (clear * -; omega)) (fun a ha => by rw [hHE (bX + a) (by simp only [regs] at hbX ⊢; (clear * - hbX hbX2; omega)), hX a ha])
+    (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - n; omega))) (fun a ha => by rw [hHE (bX + a) (by simp only [regs] at hbX ⊢; (clear * - hbX hbX2; omega)), hX a ha])
   generalize iterL (semXIR I (bsBody4 bX)) rCB 64 ⟨entryK rCB rNB 64 s0.M, s0.o⟩ = s1 at l1 l2 l3
-  have hle := bsRun_le (p := ltT I X T) (n := n) 64 0 n (by (clear * -; omega))
+  have hle := bsRun_le (p := ltT I X T) (n := n) 64 0 n (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - n; omega)))
   obtain ⟨f1, f2⟩ := foundIR4_sem hbX hbX2 hpL I s1 l1 l2 (le_trans (Nat.le_add_right _ _) hle) hn2
   have hH1 : ∀ x, regs ≤ x → rd s1.M x = rd s.M x := fun x hx => (l3 x hx).trans (hHE x hx)
   refine ⟨f2, ?_, fun x hx => (hframe I (foundIR4 bX) s1 (by

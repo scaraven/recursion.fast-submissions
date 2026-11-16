@@ -80,7 +80,7 @@ theorem eqB_congr (s : List E) {j j' : ℕ} (h : ∀ i < s.length, j.testBit i =
     have h0 := h 0 (by simp)
     simp only [Nat.testBit_zero, decide_eq_decide] at h0
     rw [ih (j := j / 2) (j' := j' / 2) fun i hi ↦ by
-      rw [Nat.testBit_div_two, Nat.testBit_div_two]; exact h (i + 1) (by simp; omega)]
+      rw [Nat.testBit_div_two, Nat.testBit_div_two]; exact h (i + 1) (by simp; (clear * - hi; omega))]
     have : (j % 2 = 1) = (j' % 2 = 1) := propext h0
     simp only [this]
 
@@ -111,7 +111,7 @@ theorem getD_append' (A B : List E) (j : ℕ) :
   simp only [List.getD_eq_getElem?_getD]
   split_ifs with h
   · rw [List.getElem?_append_left h]
-  · rw [List.getElem?_append_right (by omega)]
+  · rw [List.getElem?_append_right (by (clear * - A j h; omega))]
 
 /-- **The entries of `eq_kernel(s)`** are the equality weights `eqB s j`. -/
 theorem getD_eqKernel (s : List E) {j : ℕ} (hj : j < 2 ^ s.length) :
@@ -192,7 +192,7 @@ theorem length_foldPairs (r : E) : ∀ (l : List E), (foldPairs r l).length = l.
   | a :: b :: rest => by
     rw [foldPairs, List.length_cons, length_foldPairs r rest]
     simp only [List.length_cons]
-    omega
+    (clear * - rest; omega)
 
 /-- **`multilinear_eval` is the fold**: for a table of `2^|s|` entries,
 `multilinear_eval(t, s) = foldsN s t 0`. -/

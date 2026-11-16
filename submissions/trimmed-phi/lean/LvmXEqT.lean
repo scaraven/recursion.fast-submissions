@@ -138,7 +138,7 @@ theorem eqt_rdE_eq {M M' : Mem} {a b : ℕ} (h0 : rd M' a = rd M b) (h1 : rd M' 
   simp only [rdE, rdK, h0, h1, h2]
 
 theorem eqt_rdE_decS {c a : ℕ} (s : St) (h : c < a ∨ a + 3 ≤ c) : rdE (decS c s).M a = rdE s.M a :=
-  eqt_rdE_eq (rd_decS (by omega) s) (rd_decS (by omega) s) (rd_decS (by omega) s)
+  eqt_rdE_eq (rd_decS (by (clear * - c a h; omega)) s) (rd_decS (by (clear * - c a h; omega)) s) (rd_decS (by (clear * - c a h; omega)) s)
 
 /-- A block keeps every cell it does not name as a destination. -/
 theorem eqt_rd_blk {I : Array Word} {ps : List Prim} {s : St} {r : ℕ} (h : ∀ p ∈ ps, p.dst ≠ r) :
@@ -191,7 +191,7 @@ theorem eqtLdE_sem (I : Array Word) (s : St) (hM : Inv s.M) {d p x : ℕ} (hd : 
   simp only [regs] at hdr hpr hx
   rw [eqtLdE, semXIR_seq]
   obtain ⟨a1, a2, a3, hM1⟩ := eqtLd1_sem I s hM (d := d) (p := p) hd (by simp only [regs]; (clear * - hd hdr; omega))
-    hp (by simp only [regs]; omega) (by (clear * - hdp; omega)) hP (by (clear * - hx hx2; omega))
+    hp (by simp only [regs]; (clear * - hpr; omega)) (by (clear * - hdp; omega)) hP (by (clear * - hx hx2; omega))
   generalize semXIR I (eqtLd1 d p) s = s1 at a1 a2 a3 hM1
   rw [semXIR_seq]
   obtain ⟨b1, b2, b3, hM2⟩ := eqtLd1_sem I s1 hM1 (d := d + 1) (p := p) (by (clear * - hd hdr; omega))
@@ -201,8 +201,8 @@ theorem eqtLdE_sem (I : Array Word) (s : St) (hM : Inv s.M) {d p x : ℕ} (hd : 
     (by simp only [regs]; (clear * - hd hdr; omega)) hp (by simp only [regs]; omega) (by (clear * - hdp; omega)) b2 (by (clear * - hx hx2; omega))
   generalize semXIR I (eqtLd1 (d + 2) p) s2 = s3 at c1 c2 c3 hM3
   refine ⟨eqt_rdE_eq ?_ ?_ ?_, c2, fun i i1 i2 => ?_, hM3⟩
-  · rw [c3 d (by (clear * -; omega)) (by (clear * - hdp; omega)), b3 d (by (clear * -; omega)) (by (clear * - hdp; omega)), a1]
-  · rw [c3 (d + 1) (by (clear * -; omega)) (by (clear * - hdp; omega)), b1, a3 (x + 1) (by (clear * - hd hdr hx hx2; omega)) (by (clear * - hp hpr hx hx2; omega))]
+  · rw [c3 d (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - d; omega))) (by (clear * - hdp; omega)), b3 d (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - d; omega))) (by (clear * - hdp; omega)), a1]
+  · rw [c3 (d + 1) (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - d; omega))) (by (clear * - hdp; omega)), b1, a3 (x + 1) (by (clear * - hd hdr hx hx2; omega)) (by (clear * - hp hpr hx hx2; omega))]
   · rw [c1, b3 (x + 2) (by (clear * - hd hdr hx hx2; omega)) (by (clear * - hp hpr hx hx2; omega)), a3 (x + 2) (by (clear * - hd hdr hx hx2; omega)) (by (clear * - hp hpr hx hx2; omega))]
   · rw [c3 i (by (clear * - i1 i2; omega)) i2, b3 i (by (clear * - i1 i2; omega)) i2, a3 i (by (clear * - i1 i2; omega)) i2]
 
@@ -243,24 +243,24 @@ theorem eqtStE_sem (I : Array Word) (s : St) (hM : Inv s.M) {p v x : ℕ} (hp : 
     Inv (semXIR I (eqtStE p v) s).M := by
   simp only [regs] at hpr hvr hx
   rw [eqtStE, semXIR_seq]
-  obtain ⟨a1, a2, a3, hM1⟩ := eqtSt1_sem I s hM (p := p) (v := v) hp (by simp only [regs]; omega)
+  obtain ⟨a1, a2, a3, hM1⟩ := eqtSt1_sem I s hM (p := p) (v := v) hp (by simp only [regs]; (clear * - hpr; omega))
     (by simp only [cTmp]; (clear * - hv hvr; omega)) hP (by simp only [regs]; omega) (by (clear * - hx hx2; omega)) (by (clear * - hxs; omega))
   have z1 := size_sem I (eqtSt1 p v) s
   generalize semXIR I (eqtSt1 p v) s = s1 at a1 a2 a3 hM1 z1
   rw [semXIR_seq]
   obtain ⟨b1, b2, b3, hM2⟩ := eqtSt1_sem I s1 hM1 (p := p) (v := v + 1) (x := x + 1) hp
-    (by simp only [regs]; omega) (by simp only [cTmp]; (clear * - hv hvr; omega)) a2 (by simp only [regs]; (clear * - hx hx2; omega))
+    (by simp only [regs]; (clear * - hpr; omega)) (by simp only [cTmp]; (clear * - hv hvr; omega)) a2 (by simp only [regs]; (clear * - hx hx2; omega))
     (by (clear * - hx hx2; omega)) (by (clear * - hxs z1; omega))
   have z2 := size_sem I (eqtSt1 p (v + 1)) s1
   generalize semXIR I (eqtSt1 p (v + 1)) s1 = s2 at b1 b2 b3 hM2 z2
   obtain ⟨c1, c2, c3, hM3⟩ := eqtSt1_sem I s2 hM2 (p := p) (v := v + 2) (x := x + 2) hp
-    (by simp only [regs]; omega) (by simp only [cTmp]; (clear * - hv hvr; omega)) b2 (by simp only [regs]; (clear * - hx hx2; omega))
+    (by simp only [regs]; (clear * - hpr; omega)) (by simp only [cTmp]; (clear * - hv hvr; omega)) b2 (by simp only [regs]; (clear * - hx hx2; omega))
     (by (clear * - hx hx2; omega)) (by (clear * - hxs z1 z2; omega))
   generalize semXIR I (eqtSt1 p (v + 2)) s2 = s3 at c1 c2 c3 hM3
   refine ⟨eqt_rdE_eq ?_ ?_ ?_, c2, fun i i1 i2 i3 => ?_, hM3⟩
-  · rw [c3 x (by (clear * -; omega)) (by simp only [cTmp]; (clear * - hx hx2; omega)) (by (clear * - hp hpr hx hx2; omega)),
-      b3 x (by (clear * -; omega)) (by simp only [cTmp]; (clear * - hx hx2; omega)) (by (clear * - hp hpr hx hx2; omega)), a1]
-  · rw [c3 (x + 1) (by (clear * -; omega)) (by simp only [cTmp]; (clear * - hx hx2; omega)) (by (clear * - hp hpr hx hx2; omega)), b1,
+  · rw [c3 x (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - x; omega))) (by simp only [cTmp]; (clear * - hx hx2; omega)) (by (clear * - hp hpr hx hx2; omega)),
+      b3 x (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - x; omega))) (by simp only [cTmp]; (clear * - hx hx2; omega)) (by (clear * - hp hpr hx hx2; omega)), a1]
+  · rw [c3 (x + 1) (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - x; omega))) (by simp only [cTmp]; (clear * - hx hx2; omega)) (by (clear * - hp hpr hx hx2; omega)), b1,
       a3 (v + 1) (by (clear * - hv hvr hx hx2; omega)) (by simp only [cTmp]; (clear * - hv hvr; omega)) (by (clear * - hpv; omega))]
   · rw [c1, b3 (v + 2) (by (clear * - hv hvr hx hx2; omega)) (by simp only [cTmp]; (clear * - hv hvr; omega)) (by (clear * - hpv; omega)),
       a3 (v + 2) (by (clear * - hv hvr hx hx2; omega)) (by simp only [cTmp]; (clear * - hv hvr; omega)) (by (clear * - hpv; omega))]
@@ -279,7 +279,7 @@ theorem eqtOm_sem (I : Array Word) (s : St) (hM : Inv s.M) :
   refine ⟨?_, fun i hi => eqt_rd_blk (fun q hq => ?_),
     inv_sem I (by simp +decide [WF]) hM⟩
   · simp only [rdE, rdK, sem_blk, eqtOm, runPrims, List.foldl, Prim.run]
-    simp (disch := first | decide | (simp only [size_set, etO, etS]; omega)) only
+    simp (disch := first | decide | (simp only [size_set, etO, etS]; (clear * - s hs; omega))) only
       [rd_set_self, rd_set_ne]
     simp only [h1, eval_xor, eval_or, BitVec.or_self, wK_xor, eqt_wK_one]
     exact eqt_one_sub _ _ _
@@ -299,11 +299,11 @@ theorem eqtBitPs_sem (I : Array Word) (s : St) (hM : Inv s.M) {x v : ℕ} (hx : 
   refine ⟨?_, ?_, fun i i1 i2 => eqt_rd_blk (fun q hq => ?_),
     inv_sem I (by simp +decide [WF]) hM⟩
   · simp only [sem_blk, eqtBitPs, runPrims, List.foldl, Prim.run]
-    simp (disch := first | decide | (simp only [size_set, etBit, etV]; omega)) only
+    simp (disch := first | decide | (simp only [size_set, etBit, etV]; (clear * - s x v hs; omega))) only
       [rd_set_self, rd_set_ne]
     rw [hX, hV, h1, eqt_bit_word hx hv]
   · simp only [sem_blk, eqtBitPs, runPrims, List.foldl, Prim.run]
-    simp (disch := first | decide | (simp only [size_set, etBit, etV]; omega)) only
+    simp (disch := first | decide | (simp only [size_set, etBit, etV]; (clear * - s x v hs; omega))) only
       [rd_set_self, rd_set_ne]
     rw [hV, h1, add_one_toWord]
   · simp only [eqtBitPs, List.mem_cons, List.mem_nil_iff, or_false] at hq
@@ -326,7 +326,7 @@ theorem eqtBody_sem (I : Array Word) (s : St) (hM : Inv s.M) {x v a : ℕ} {S : 
   -- `α_v`
   rw [eqtBody, semXIR_seq]
   obtain ⟨l1, l2, l3, hM1⟩ := eqtLdE_sem I s hM (d := etS) (p := etAd) (x := a) (by decide)
-    (by decide) (by decide) (by decide) (by decide) hA (by simp only [regs]; omega) ha2
+    (by decide) (by decide) (by decide) (by decide) hA (by simp only [regs]; (clear * - ha; omega)) ha2
   generalize semXIR I (eqtLdE etS etAd) s = s1 at l1 l2 l3 hM1
   -- `1 − α_v`
   rw [semXIR_seq]
@@ -395,11 +395,11 @@ theorem eqtPre_sem (I : Array Word) (s : St) (hM : Inv s.M) (ℓ aB : ℕ) :
       rcases hq with rfl | rfl | rfl | rfl | rfl | rfl <;> simp only [Prim.dst] <;> (clear * - h1 h2 h3 h4; omega)),
     inv_sem I (by simp +decide [eqtPre, WF, Prim.dst, etA, etV, etAd, etN2]) hM⟩
   · simp only [rdE, rdK, sem_blk, eqtPre, runPrims, List.foldl, Prim.run]
-    simp (disch := first | decide | (simp only [size_set, etA, etV, etAd, etN2]; omega)) only
+    simp (disch := first | decide | (simp only [size_set, etA, etV, etAd, etN2]; (clear * - s hs; omega))) only
       [rd_set_self, rd_set_ne]
     rw [eqt_wK_one, eqt_wK_zero, mkE_one]
   all_goals simp only [sem_blk, eqtPre, runPrims, List.foldl, Prim.run]
-  all_goals simp (disch := first | decide | (simp only [size_set, etA, etV, etAd, etN2]; omega))
+  all_goals simp (disch := first | decide | (simp only [size_set, etA, etV, etAd, etN2]; (clear * - s hs; omega)))
     only [rd_set_self, rd_set_ne] <;> rfl
 
 theorem eqtAd_sem (I : Array Word) (s : St) (hM : Inv s.M) {x qB : ℕ}
@@ -414,7 +414,7 @@ theorem eqtAd_sem (I : Array Word) (s : St) (hM : Inv s.M) {x qB : ℕ}
       rcases hq with rfl | rfl | rfl | rfl <;> simp only [Prim.dst] <;> (clear * - h1 h2; omega)),
     inv_sem I (by simp +decide [eqtAd, WF, Prim.dst, etAd, etK]) hM⟩
   simp only [sem_blk, eqtAd, runPrims, List.foldl, Prim.run]
-  simp (disch := first | decide | (simp only [size_set, etAd, etK]; omega)) only
+  simp (disch := first | decide | (simp only [size_set, etAd, etK]; (clear * - s hs; omega))) only
     [rd_set_self, rd_set_ne]
   rw [hX, add_toWord, add_toWord, add_toWord]
   congr 1
@@ -496,7 +496,7 @@ theorem eqtEnt_sem (I : Array Word) (s : St) (hM : Inv s.M) {ℓ aB qB x : ℕ} 
   rw [semXIR_seq]
   obtain ⟨c1, c2, c3, hM4⟩ := eqtStE_sem I s3 hM3 (p := etAd) (v := etA) (x := qB + 3 * x)
     (by decide) (by decide) (by decide) (by decide) (by decide) a1 (by simp only [regs]; (clear * - hx hqB; omega))
-    (by omega) (by (clear * - hsz z1 q0 j2 z3; omega))
+    (by (clear * - hqB2; omega)) (by (clear * - hsz z1 q0 j2 z3; omega))
   generalize semXIR I (eqtStE etAd etA) s3 = s4 at c1 c2 c3 hM4
   have x4 : rd s4.M etX = toWord x := by
     rw [c3 _ (by simp only [etX]; (clear * - hx hqB; omega)) (by decide) (by decide), a2 _ (by decide) (by decide), hX2]
@@ -544,10 +544,10 @@ theorem eqtIR_sem_of (I : Array Word) (s : St) (hM : Inv s.M) {ℓ aB qB : ℕ} 
         toWord (2 ^ ℓ) := by
     simp only [sem_blk, runPrims, List.foldl, Prim.run]
     refine ⟨?_, ?_⟩
-    · simp (disch := first | decide | (simp only [size_set, etX, etN1]; omega)) only
+    · simp (disch := first | decide | (simp only [size_set, etX, etN1]; (clear * - s ℓ aB qB hs; omega))) only
         [rd_set_self, rd_set_ne]
       rfl
-    · simp (disch := first | decide | (simp only [size_set, etX, etN1]; omega)) only [rd_set_self]
+    · simp (disch := first | decide | (simp only [size_set, etX, etN1]; (clear * - s ℓ aB qB hs; omega))) only [rd_set_self]
   have k0 : ∀ i, i ≠ etX → i ≠ etN1 →
       rd (semXIR I (.blk [.const etX 0, .const etN1 (toWord (2 ^ ℓ))]) s).M i = rd s.M i :=
     fun i h1 h2 => eqt_rd_blk (fun q hq => by
@@ -582,7 +582,7 @@ theorem eqtIR_sem_of (I : Array Word) (s : St) (hM : Inv s.M) {ℓ aB qB : ℕ} 
         (i5 _ (.inr (by simp only [etN2]; (clear * - haB; omega))) (by (clear * - hℓ hdisj hj hv; omega)))
         (i5 _ (.inr (by simp only [etN2]; (clear * - haB; omega))) (by (clear * - hℓ hdisj hj hv; omega)))
     obtain ⟨e1, e2, e3, e4⟩ := eqtEnt_sem I s' i1 (ℓ := ℓ) (aB := aB) (qB := qB) (x := j) (S := S)
-      hℓ (by (clear * - hqB hqB2 hP hj; omega)) (by simp only [regs]; omega) haB2 (by simp only [regs]; omega) (by (clear * - hqB2 hj; omega))
+      hℓ (by (clear * - hqB hqB2 hP hj; omega)) (by simp only [regs]; omega) haB2 (by simp only [regs]; (clear * - hqB; omega)) (by (clear * - hqB2 hj; omega))
       (by rw [i2]; (clear * - hsz z0 p0 hj i2; omega)) i3 hS'
     have hd : ∀ i, i ≠ etC1 → rd (decS etC1 (semXIR I (eqtEnt ℓ aB qB) s')).M i =
         rd (semXIR I (eqtEnt ℓ aB qB) s').M i := fun i h => rd_decS (Ne.symm h) _
@@ -627,9 +627,9 @@ theorem eqtIR_eqA (I : Array Word) (s : St) (hM : Inv s.M) {aB qB : ℕ} (haB : 
     (∀ i, regs ≤ i → (i < qB ∨ qB + 192 ≤ i) → rd (semXIR I (eqtIR 6 aB qB) s).M i = rd s.M i) ∧
     Inv (semXIR I (eqtIR 6 aB qB) s).M := by
   obtain ⟨h1, h2, h3⟩ := eqtIR_sem I s hM (ℓ := 6) (aB := aB) (qB := qB) (by norm_num) haB
-    (by omega) hqB (by omega) (by omega) (by omega)
-  exact ⟨fun l hl => h1 l (by omega), fun i hi hi2 =>
-    h2 i (.inr (lt_of_lt_of_le (by decide) hi)) (by omega), h3⟩
+    (by (clear * - haB2; omega)) hqB (by (clear * - hqB2; omega)) (by (clear * - hsz; omega)) (by (clear * - hdisj; omega))
+  exact ⟨fun l hl => h1 l (by (clear * - hl; omega)), fun i hi hi2 =>
+    h2 i (.inr (lt_of_lt_of_le (by decide) hi)) (by (clear * - hi2; omega)), h3⟩
 
 /-! ## Controls -/
 

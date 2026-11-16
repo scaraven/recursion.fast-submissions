@@ -162,22 +162,22 @@ theorem cr_pk_getD (l : List UInt8) (j : ℕ) :
     (packBytes l).getD j 0 = if 8 * j < l.length then toWord (ofLE ((l.drop (8 * j)).take 8))
       else 0 := by
   by_cases h : 8 * j < l.length
-  · rw [if_pos h, List.getD_eq_getElem _ _ (by rw [packBytes_length]; omega)]
+  · rw [if_pos h, List.getD_eq_getElem _ _ (by rw [packBytes_length]; (clear * - j l h; omega))]
     simp [packBytes]
-  · rw [if_neg h, List.getD_eq_default _ _ (by rw [packBytes_length]; omega)]
+  · rw [if_neg h, List.getD_eq_default _ _ (by rw [packBytes_length]; (clear * - l j h; omega))]
 
 theorem cr_pk_drop8 (l : List UInt8) (a j : ℕ) :
     (packBytes (l.drop (8 * a))).getD j 0 = (packBytes l).getD (a + j) 0 := by
   rw [cr_pk_getD, cr_pk_getD, List.length_drop, List.drop_drop]
   by_cases h : 8 * (a + j) < l.length
-  · rw [if_pos (by omega), if_pos h, show 8 * a + 8 * j = 8 * (a + j) by ring]
-  · rw [if_neg (by omega), if_neg h]
+  · rw [if_pos (by (clear * - j l a h; omega)), if_pos h, show 8 * a + 8 * j = 8 * (a + j) by ring]
+  · rw [if_neg (by (clear * - j l a h; omega)), if_neg h]
 
 theorem cr_pk_take8 (l : List UInt8) {n j : ℕ} (hj : j < n) :
     (packBytes (l.take (8 * n))).getD j 0 = (packBytes l).getD j 0 := by
   rw [cr_pk_getD, cr_pk_getD, List.length_take, List.drop_take, List.take_take]
   by_cases h : 8 * j < l.length
-  · rw [if_pos (by omega), if_pos h, Nat.min_eq_left (by (clear * - hj; omega))]
+  · rw [if_pos (by (clear * - j n l hj h; omega)), if_pos h, Nat.min_eq_left (by (clear * - hj; omega))]
   · rw [if_neg (by (clear * - h; omega)), if_neg h]
 
 /-- A packed word is the little-endian number of its 8 bytes (zero past the end). -/
@@ -187,7 +187,7 @@ theorem cr_pk_getD' (l : List UInt8) (j : ℕ) :
   split
   · rfl
   · next h =>
-    have h' : l.length ≤ 8 * j := by omega
+    have h' : l.length ≤ 8 * j := by (clear * - l j h; omega)
     rw [List.drop_eq_nil_of_le h']; rfl
 
 /-- A digest's four packed words as a list. -/
@@ -199,7 +199,7 @@ theorem cr_pk_digest_eq4 (d : Digest) : packBytes d.toList =
   | [a0, a1, a2, a3], _ => rfl
 
 theorem cr_xDg_toList {b : List UInt8} (h : 32 ≤ b.length) : (xDg b).toList = b.take 32 := by
-  apply List.ext_getElem (by simp only [xDg, Vector.toList_ofFn, List.length_ofFn, List.length_take]; omega)
+  apply List.ext_getElem (by simp only [xDg, Vector.toList_ofFn, List.length_ofFn, List.length_take]; (clear * - b h; omega))
   intro i h1 h2
   have hi : i < 32 := by simpa [xDg] using h1
   have hb : i < b.length := by (clear * - h hi; omega)
@@ -246,12 +246,12 @@ theorem cr_entries_getD_q : ∀ (L : Log) (k : ℕ) (hk : k < L.length) (j : ℕ
     simp only [entryOff, List.take_zero, List.map_nil, List.sum_nil, List.flatMap_cons,
       Nat.zero_add, bytesWords, List.cons_append]
     rw [List.getD_eq_getElem?_getD, Nat.add_comm, List.getElem?_cons_succ,
-      List.getElem?_append_left (by rw [List.length_append]; omega),
-      List.getElem?_append_left (by omega), ← List.getD_eq_getElem?_getD]
+      List.getElem?_append_left (by rw [List.length_append]; (clear * - j e L hj hl; omega)),
+      List.getElem?_append_left (by (clear * - j e L hj hl; omega)), ← List.getD_eq_getElem?_getD]
   | e :: L, k + 1, hk, j, hj => by
     have ho : entryOff (e :: L) (k + 1) = qWords e + entryOff L k := by
       simp [entryOff, List.take_succ_cons]
-    have ih := cr_entries_getD_q L k (by simp at hk; omega) j hj
+    have ih := cr_entries_getD_q L k (by simp at hk; (clear * - hk; omega)) j hj
     rw [ho, List.flatMap_cons, List.getD_eq_getElem?_getD, List.getElem?_append_right
       (by rw [entry_length]; (clear * - hk; omega)), ← List.getD_eq_getElem?_getD, entry_length]
     simp only [List.getElem_cons_succ]
@@ -385,7 +385,7 @@ theorem cr_look_nw (bX pL : ℕ) {r : ℕ} (h : 117 ≤ r ∨ (5 ≤ r ∧ r < 6
   simp [lookIR4, bsBody4, ansLtIR, cmpTWord, eqTWord, foundIR4, aposIR, ceil8Ps, readAt, Writes,
     Prim.dst, rQ0, rQ1, rQ2, rQ3, rLo, rLn, rHf, rMd, rCB, rNB, rFd, rA, rN, rQL, rT2, rKc, rAd,
     rX, rPa, rKa, rG, rH, rF, cTmp]
-  omega
+  (clear * - r h; omega)
 
 theorem cr_loK_look (bX pL : ℕ) : LoK (lookIR4 bX pL) := by
   simp +decide [lookIR4, bsBody4, ansLtIR, cmpTWord, eqTWord, foundIR4, aposIR, ceil8Ps, readAt,
@@ -394,8 +394,8 @@ theorem cr_loK_look (bX pL : ℕ) : LoK (lookIR4 bX pL) := by
 
 theorem wf_readIR (bX pL capW wB : ℕ) : WF (readIR bX pL capW wB) := by
   have h1 := cr_wf_look bX pL
-  have h2 : ¬ Writes (lookIR4 bX pL) 130 := cr_look_nw bX pL (by (clear * -; omega))
-  have h3 : ¬ Writes (lookIR4 bX pL) 119 := cr_look_nw bX pL (by (clear * -; omega))
+  have h2 : ¬ Writes (lookIR4 bX pL) 130 := cr_look_nw bX pL (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))
+  have h3 : ¬ Writes (lookIR4 bX pL) 119 := cr_look_nw bX pL (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))
   simp +decide [readIR, crPos, crLd4, crCapPs, crGet, crChkPs, crChildPs, crNode, crLeaf,
     crCopyBody, crCopy, crZero, crZeroBody, WF, Writes, Prim.dst, crP, crOk, crHc, crNH, crX, crQn,
     crB, crTA, crWA, cr8, crMk, crCw, crNw, crCp, crNp, crV, crK, crQe, crAd, rQ0, rQ1, rQ2, rQ3,
@@ -442,7 +442,7 @@ theorem cost_readIR (bX pL capW wB t : ℕ) :
   have a1 : (toWord (2 ^ 15)).toNat = 2 ^ 15 := toNat_toWord (by norm_num)
   have e : cost (readIR bX pL capW wB) t = 14 + 2 ^ 15 * (cost (crPos bX pL capW) t + 3) := by
     simp only [readIR, cost, blkSteps, List.length_cons, List.length_nil, a1]
-    norm_num <;> (clear * -; omega)
+    norm_num <;> (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)
   exact ⟨e, by rw [e, cost_crPos]; norm_num⟩
 
 end Lvm.X
@@ -513,7 +513,7 @@ theorem cr_ld4_sem (I : Array Word) (s : St) (hM : Inv s.M) {a : ℕ} (ha : a + 
   have h1 : rd s.M cOne = 1 := hM.2 0 (by decide)
   simp only [regs] at hs
   simp only [crLd4, semXIR, runPrims, List.foldl, Prim.run]
-  simp (disch := first | decide | (simp only [size_set, rQ0, rQ1, rQ2, rQ3, crTA]; omega)) only
+  simp (disch := first | decide | (simp only [size_set, rQ0, rQ1, rQ2, rQ3, crTA]; (clear * - s a hs; omega))) only
     [rd_set_self, rd_set_ne]
   rw [hA, h1, add_one_toWord, add_one_toWord, add_one_toWord, toNat_toWord (by (clear * - ha; omega)),
     toNat_toWord (by (clear * - ha; omega)), toNat_toWord (by (clear * - ha; omega)), toNat_toWord (by omega)]
@@ -524,7 +524,7 @@ theorem cr_chk_sem (I : Array Word) (s : St) (hM : Inv s.M) :
   have hs := hM.1
   simp only [regs] at hs
   simp only [crChkPs, semXIR, runPrims, List.foldl, Prim.run]
-  simp (disch := first | decide | (simp only [size_set, crK, crB]; omega)) only
+  simp (disch := first | decide | (simp only [size_set, crK, crB]; (clear * - s hs; omega))) only
     [rd_set_self, rd_set_ne]
   rw [eq_bW]; rfl
 
@@ -537,16 +537,16 @@ theorem cr_child_sem (I : Array Word) (s : St) (hM : Inv s.M) {x p h : ℕ} (hp 
   have h1 : rd s.M cOne = 1 := hM.2 0 (by decide)
   simp only [regs] at hs
   simp only [crChildPs, semXIR, runPrims, List.foldl, Prim.run]
-  simp (disch := first | decide | (simp only [size_set, crK, crB, crTA]; omega)) only
+  simp (disch := first | decide | (simp only [size_set, crK, crB, crTA]; (clear * - s p h hs; omega))) only
     [rd_set_self, rd_set_ne]
   have hb : p / 2 ^ h < 2 ^ 64 := lt_of_le_of_lt (Nat.div_le_self _ _) hp
-  have hbit : p / 2 ^ h % 2 ≤ 1 := by (clear * -; omega)
+  have hbit : p / 2 ^ h % 2 ≤ 1 := by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - p h; omega))
   rw [hH, h1, hP, hX, show (1 : Word) = toWord 1 from rfl, sub_toWord (by (clear * - hh; omega)) (by (clear * - hh; omega)),
     Nat.add_sub_cancel, shr_toWord hp (by (clear * - hh; omega)), show (toWord 1 : Word) = 1 from rfl,
-    and_one_toWord hb, show (2 : Word) = toWord 2 from rfl, shl_toWord (by (clear * -; omega)) (by (clear * - hbit; omega)),
+    and_one_toWord hb, show (2 : Word) = toWord 2 from rfl, shl_toWord (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)) (by (clear * - hbit; omega)),
     add_toWord, add_one_toWord]
   congr 1
-  (clear * -; omega)
+  (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)
 
 theorem cr_wf_chk : WF (.blk crChkPs) := by
   simp +decide only [crChkPs, WF, Prim.dst, crK, crB, List.mem_cons, List.mem_nil_iff,
@@ -649,7 +649,7 @@ theorem cr_cpW_entry (hD : RdDom pL c π L) {k : ℕ} (hk : k < L.length) (t : �
   by_cases ht : 8 * t < L[k].1.size
   · rw [if_pos ht, toWord_add, toNat_toWord (by (clear * - hk hxl ht; omega)),
       show posE4 pL L k + (1 + t) = posE4 pL L k + 1 + t by (clear * - hk; omega), cr_tp_q hD hk (by (clear * - hk ht; omega))]
-  · rw [if_neg ht, cr_pk_getD, if_neg (by rw [cr_size_toList]; omega)]
+  · rw [if_neg ht, cr_pk_getD, if_neg (by rw [cr_size_toList]; (clear * - ht; omega))]
 
 theorem cr_wf_get : WF (crGet bX) := by
   simp +decide [crGet, WF, Prim.dst, crK, crAd, crX, crQn, and_true]
@@ -743,11 +743,11 @@ theorem cr_get_sem (I : Array Word) (s : St) (hM : Inv s.M) {b x : ℕ} (hb : b 
   simp only [regs] at hs
   simp only [crGet, semXIR, runPrims, List.foldl, Prim.run]
   refine ⟨?_, ?_⟩ <;>
-  simp (disch := first | decide | (simp only [size_set, crK, crAd, crX, crQn]; omega))
+  simp (disch := first | decide | (simp only [size_set, crK, crAd, crX, crQn]; (clear * - s bX pL b x hs; omega)))
     only [rd_set_self, rd_set_ne]
   all_goals
     rw [hL, add_toWord, toNat_toWord (by (clear * - hbX2 hb; omega)), rd_set_ne (by simp only [crAd, regs] at hbX ⊢; (clear * - hbX hbX2 hb; omega)),
-      rd_set_ne (by simp only [crK, regs] at hbX ⊢; (clear * - hbX hbX2 hb; omega)), show b + bX = bX + b by (clear * -; omega), hX]
+      rd_set_ne (by simp only [crK, regs] at hbX ⊢; (clear * - hbX hbX2 hb; omega)), show b + bX = bX + b by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega), hX]
   rw [toNat_toWord hx]
 
 /-- **One machine step down the tree is `xStep`**: from `crOk = 1` with the digest `d` in
@@ -877,7 +877,7 @@ theorem cr_copyBody_sem (I : Array Word) (s : St) (hM : Inv s.M) {x : Word} {ql 
   have v1 : rd (semXIR I (.seq (.input crV crTA) (.blk [.op .ltu crMk cr8 crQe, .const crK 0,
       .op .sub crMk crK crMk, .op .and crV crV crMk])) s).M crV = crCpW I x ql j := by
     simp only [semXIR, runPrims, List.foldl, Prim.run]
-    simp (disch := first | decide | (simp only [size_set, crV, crMk, crK]; omega)) only
+    simp (disch := first | decide | (simp only [size_set, crV, crMk, crK]; (clear * - s ql a j hs; omega))) only
       [rd_set_self, rd_set_ne]
     rw [hT, h8, hQ, cr_mask_ltu, crCpW]
     by_cases hc : 8 * j < ql
@@ -910,7 +910,7 @@ theorem cr_copyBody_sem (I : Array Word) (s : St) (hM : Inv s.M) {x : Word} {ql 
   have hsz : a + j < s1.M.size := by (clear * - has hsz1; omega)
   have st : ∀ i, i ≠ cTmp → rd (storeM s1.M crWA crV) i =
       if i = a + j then rd s1.M crV else rd s1.M i := fun i hi =>
-    rd_storeM hM1 hA1 (by simp only [regs]; omega) (by (clear * - ha ha2; omega)) hsz (by decide) (by decide) hi
+    rd_storeM hM1 hA1 (by simp only [regs]; (clear * - ha; omega)) (by (clear * - ha ha2; omega)) hsz (by decide) (by decide) hi
   rw [semXIR_seq]
   have e2 : semXIR I (.store crWA crV) s1 = ⟨storeM s1.M crWA crV, s1.o⟩ := rfl
   rw [e2]
@@ -931,7 +931,7 @@ theorem cr_copyBody_sem (I : Array Word) (s : St) (hM : Inv s.M) {x : Word} {ql 
       rd_set_ne (by simp only [crTA]; (clear * - hy; omega)), rd_set_ne (by simp only [crWA]; (clear * - hy; omega)),
       st _ (by simp only [cTmp]; (clear * - hy; omega)), if_neg hne, hh1 y (by simp only [regs]; omega)]
   refine ⟨?_, ?_, ?_, ?_, ?_⟩ <;>
-  simp (disch := first | decide | (simp only [size_set, size_storeM, crWA, crTA, crK, cr8]; omega))
+  simp (disch := first | decide | (simp only [size_set, size_storeM, crWA, crTA, crK, cr8]; (clear * - s1 s ql a j hs hsz1; omega)))
     only [rd_set_self, rd_set_ne]
   · rw [reg _ (by decide) (by decide), reg _ (by decide) (by decide), hA1, hc1, add_one_toWord,
       Nat.add_assoc]
@@ -977,10 +977,10 @@ theorem cr_copyLoop (I : Array Word) {x : Word} {ql a nw : ℕ} (hql : ql < 2 ^ 
       (by rw [dk _ (by decide), c4]) (by rw [dk _ (by decide), c5]) (by rw [dk _ (by decide), c6])
     simp only [iterL]
     refine ⟨fun i h1 h2 => ?_, fun y hy1 hy2 => ?_, d3,
-      by rw [d4, show j + 1 + m = j + (m + 1) by (clear * -; omega)], ?_⟩
+      by rw [d4, show j + 1 + m = j + (m + 1) by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)], ?_⟩
     · by_cases hij : i = j
       · subst hij
-        rw [d2 _ (by simp only [regs] at *; (clear * - ha; omega)) (.inl (by (clear * -; omega))), dk _ (hy _ (by
+        rw [d2 _ (by simp only [regs] at *; (clear * - ha; omega)) (.inl (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - a i; omega)))), dk _ (hy _ (by
           simp only [regs] at *; (clear * - ha; omega))), c1]
       · exact d1 i (by (clear * - h1 hij; omega)) (by (clear * - h2; omega))
     · rw [d2 _ hy1 (by (clear * - hy2; omega)), dk _ (hy _ hy1), c2 _ hy1 (by (clear * - hy2; omega))]

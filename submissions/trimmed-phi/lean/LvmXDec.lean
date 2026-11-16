@@ -209,9 +209,9 @@ theorem novelX_natDegree (hpt : Set.InjOn pt (Set.Iio (2 ^ N))) {x : ℕ} (hx : 
       bitProd (normW pt) ℓ j ≠ 0 ∧ (bitProd (normW pt) ℓ j).natDegree = j := by
     apply bit_induction
     · intro _; simp [bitProd, bitSel]
-    · intro ℓ j hj ih hℓ; rw [bitProd_succ_lo _ hj]; exact ih (by omega)
+    · intro ℓ j hj ih hℓ; rw [bitProd_succ_lo _ hj]; exact ih (by (clear * - ℓ N x j hℓ; omega))
     · intro ℓ j hj ih hℓ
-      obtain ⟨h0, hd⟩ := ih (by omega)
+      obtain ⟨h0, hd⟩ := ih (by (clear * - ℓ N x j hℓ; omega))
       obtain ⟨hW0, hWd⟩ := normW_natDegree hpt (show ℓ < N by omega)
       rw [bitProd_succ_hi _ hj]
       exact ⟨mul_ne_zero h0 hW0, by rw [natDegree_mul h0 hW0, hd, hWd, add_comm]⟩
@@ -465,7 +465,7 @@ theorem enc_eq_encN (pt : ℕ → L) {n k : ℕ} (c : Fin k → M) (j : Fin n) :
 omit [CharP L 2] in
 theorem novelX_two_pow_add (pt : ℕ → L) {ℓ x : ℕ} (hx : x < 2 ^ ℓ) :
     novelX pt (2 ^ ℓ + x) = novelX pt x * normW pt ℓ := by
-  rw [novelX_eq_bitProd pt (show 2 ^ ℓ + x < 2 ^ (ℓ + 1) by rw [pow_succ]; omega),
+  rw [novelX_eq_bitProd pt (show 2 ^ ℓ + x < 2 ^ (ℓ + 1) by rw [pow_succ]; (clear * - ℓ x hx; omega)),
     bitProd_succ_hi _ hx, ← novelX_eq_bitProd pt hx]
 
 /-- **The inverse additive NTT** on the coset `pt s + pt [0, 2^ℓ)`: from the values `y j` at
@@ -513,11 +513,11 @@ theorem coeffsAt_spec (hadd : ∀ a b, pt (a ^^^ b) = pt a + pt b)
     rw [sum_novel_succ]
     simp only [coeffsAt]
     by_cases hlo : j < 2 ^ ℓ
-    · rw [H j (by omega), normW_add hadd, hW j hlo, add_zero, hα, ← H j (by omega)]
+    · rw [H j (by (clear * - hj; omega)), normW_add hadd, hW j hlo, add_zero, hα, ← H j (by (clear * - hj; omega))]
       rw [← ih s y (by (clear * - hN; omega)) (by (clear * - hs hsN; omega)) (fun i hi => H i (by (clear * - hj hi; omega))) j hlo]
       refine sum_congr rfl fun x hx => ?_
       have hx' := mem_range.1 hx
-      simp only [hx', ite_true, show ¬ (2 ^ ℓ + x < 2 ^ ℓ) by (clear * -; omega), ite_false,
+      simp only [hx', ite_true, show ¬ (2 ^ ℓ + x < 2 ^ ℓ) by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - ℓ x; omega)), ite_false,
         Nat.add_sub_cancel_left]
       ring
     · obtain ⟨j', rfl⟩ := Nat.exists_eq_add_of_le (not_lt.1 hlo)
@@ -526,13 +526,13 @@ theorem coeffsAt_spec (hadd : ∀ a b, pt (a ^^^ b) = pt a + pt b)
       have H' : ∀ i < 2 ^ ℓ, pt (s + 2 ^ ℓ + i) = pt (s + 2 ^ ℓ) + pt i := fun i hi => by
         rw [Nat.add_assoc, H _ (by (clear * - hi; omega)), H _ (by (clear * - hi; omega)), hup i hi, add_assoc]
       have hWv : (normW pt ℓ).eval (pt (s + (2 ^ ℓ + j'))) = wAt pt N ℓ s + 1 := by
-        rw [H _ (by omega), normW_add hadd, hup j' hj', normW_add hadd, hW j' hj',
+        rw [H _ (by (clear * - hj; omega)), normW_add hadd, hup j' hj', normW_add hadd, hW j' hj',
           normW_eval_self hpt (by (clear * - hN; omega)), add_zero, hα]
       rw [hWv, hP]
       rw [← ih (s + 2 ^ ℓ) (fun i => y (2 ^ ℓ + i)) (by (clear * - hN; omega)) (by (clear * - hs; omega)) H' j' hj']
       refine sum_congr rfl fun x hx => ?_
       have hx' := mem_range.1 hx
-      simp only [hx', ite_true, show ¬ (2 ^ ℓ + x < 2 ^ ℓ) by (clear * -; omega), ite_false,
+      simp only [hx', ite_true, show ¬ (2 ^ ℓ + x < 2 ^ ℓ) by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - ℓ x; omega)), ite_false,
         Nat.add_sub_cancel_left, map_add, map_one]
       ring
 
@@ -598,7 +598,7 @@ theorem decode_row (hadd : ∀ a b, pt (a ^^^ b) = pt a + pt b)
   have hdeg : (encPoly pt c).degree < J.card := by
     rw [hJc]; exact mem_degreeLT.1 (encPoly_mem hpt (Nat.pow_le_pow_right two_pos hℓ) c)
   have he : ∀ i, encN pt c i = (encPoly pt c).eval (algebraMap L M (pt i)) := fun i =>
-    (encPoly_eval pt (i + 1) _ c ⟨i, by (clear * -; omega)⟩).symm
+    (encPoly_eval pt (i + 1) _ c ⟨i, by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - i; omega))⟩).symm
   rw [interpF_congr pt J hu, funext he, interpF_eq hJ hdeg]
 
 end Twin
@@ -755,8 +755,8 @@ theorem normW_block {pt : ℕ → L} {N : ℕ} (hadd : ∀ a b, pt (a ^^^ b) = p
   have hℓ : ℓ < N := by
     by_contra h
     have : 2 ^ (N + 1) ≤ 2 ^ (ℓ + 1) := Nat.pow_le_pow_right (by norm_num) (by (clear * - h; omega))
-    have h2 : 2 ^ (ℓ + 1) ≤ (b + 1) * 2 ^ (ℓ + 1) := Nat.le_mul_of_pos_left _ (by (clear * -; omega))
-    have h3 : 2 ^ N < 2 ^ (N + 1) := Nat.pow_lt_pow_right (by norm_num) (by (clear * -; omega))
+    have h2 : 2 ^ (ℓ + 1) ≤ (b + 1) * 2 ^ (ℓ + 1) := Nat.le_mul_of_pos_left _ (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - b; omega)))
+    have h3 : 2 ^ N < 2 ^ (N + 1) := Nat.pow_lt_pow_right (by norm_num) (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - N; omega)))
     (clear * - hN this h2 h3; omega)
   have hb : b * 2 ^ (ℓ + 1) < 2 ^ N := by
     have : 0 < 2 ^ (ℓ + 1) := by positivity
@@ -806,7 +806,7 @@ theorem fwdRun_block {pt : ℕ → L} {N : ℕ} (hadd : ∀ a b, pt (a ^^^ b) = 
       simp only [hdiv, hmod, hxm]
       interval_cases e
       · simp [hx]
-      · rw [if_neg (by (clear * - hi hmod hxm; omega)), if_neg (by (clear * -; omega))]
+      · rw [if_neg (by (clear * - hi hmod hxm; omega)), if_neg (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))]
     -- the target, split by the top coefficient bit
     have hN' : (2 * b + 1 + 1) * 2 ^ ℓ ≤ 2 ^ N := by
       have : (2 * b + 1 + 1) * 2 ^ ℓ = (b + 1) * 2 ^ (ℓ + 1) := by rw [hp]; ring
@@ -1035,7 +1035,7 @@ theorem decodeRec_correct (wd : ℕ → ℕ → BF64) (α f₁ : ℕ → Ext3) (
     exact Finset.sum_congr rfl fun l hl => by rw [hq.2 l (mem_range.1 hl)]
   have hlen : 2 ^ 13 ≤ (agreeL wd α f₁).length := by
     have := (card_le_card hsub).trans (List.toFinset_card_le _)
-    omega
+    (clear * - wd α f₁ msg hclose this; omega)
   rw [decodeRec, if_pos hlen]
   refine congrArg some (List.map_congr_left fun i hi => ?_)
   have hi' := List.mem_range.1 hi
@@ -1049,7 +1049,7 @@ theorem decodeRec_correct (wd : ℕ → ℕ → BF64) (α f₁ : ℕ → Ext3) (
       Nat.min_eq_left hlen]
   have hJlt : ∀ q ∈ J, q < 2 ^ nLog := fun q hq => (mem_agreeL.1 (hJsub q hq)).1
   set l := i / 2 ^ 13 with hl
-  have hl64 : l < 64 := by rw [hl]; omega
+  have hl64 : l < 64 := by rw [hl]; (clear * - i wd α f₁ msg hi'; omega)
   have hrow : ∀ q ∈ J, rowW wd l q = encN ptK (fun x : Fin (2 ^ 13) => msg (l * 2 ^ 13 + x)) q :=
     fun q hq => by
       obtain ⟨hq15, hfq⟩ := mem_agreeL.1 (hJsub q hq)

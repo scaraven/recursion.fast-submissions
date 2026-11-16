@@ -85,7 +85,7 @@ theorem auxRow_of_wiringX (Q : Program) (lay : Typed.Lay) (z : ℕ → FK) (hlay
     unfold aRowMat
     rw [List.filter_eq_nil_iff.mpr fun e he hp ↦ by
       have := ((lh_aux hlay hk).1 _ (lh_getD_mem _ hr) e he).1
-      simp only [beq_iff_eq] at hp; omega]
+      simp only [beq_iff_eq] at hp; (clear * - lay k r j e this hp; omega)]
     rfl
   rw [h4, zero_mul, add_zero] at this
   exact this
@@ -117,7 +117,7 @@ theorem pubOfW_hdrLanesW (rd : ByteArray → ℕ → FE) (w : ℕ) (lw : FE → 
       (List.range (w * n)).map fun j ↦ kAt (Lvm.VEq.sigOfX x) (headerAt offAcc + 8 * j)) :
     (pubOfW rd (8 * w) accV (Lvm.VEq.hdX x).vk (Lvm.VEq.hdX x).stmt (Lvm.VEq.sigOfX x)).hdrLanesW lw =
       (List.range (615 + w * (accV + 1))).map fun k ↦ kAt (Lvm.VEq.sigOfX x) (headerAt 8 + 8 * k) := by
-  rw [show 615 + w * (accV + 1) = 1 + 4 + 4 + 4 + 1 + 4 + 597 + w * (accV + 1) by omega]
+  rw [show 615 + w * (accV + 1) = 1 + 4 + 4 + 4 + 1 + 4 + 597 + w * (accV + 1) by (clear * - w accV; omega)]
   simp only [map_range_add]
   have hd : (Lvm.VEq.hdX x).vk = digestAt (hdrBytesX x) 16 := rfl
   have hacc : ((List.range accV).map fun i ↦ rd (Lvm.VEq.sigOfX x) (headerAt (offAcc + 8 * w * i))) ++
@@ -125,15 +125,15 @@ theorem pubOfW_hdrLanesW (rd : ByteArray → ℕ → FE) (w : ℕ) (lw : FE → 
       (List.range (accV + 1)).map fun i ↦ rd (Lvm.VEq.sigOfX x) (headerAt offAcc + 8 * w * i) := by
     rw [List.range_succ, List.map_append, List.map_singleton]
     refine congrArg₂ (· ++ ·) (List.map_congr_left fun i _ ↦ ?_) ?_
-    · exact congrArg (rd (Lvm.VEq.sigOfX x)) (by simp only [headerAt, offAcc]; omega)
-    · exact congrArg (fun o ↦ [rd (Lvm.VEq.sigOfX x) o]) (by simp only [headerAt, offAcc]; omega)
+    · exact congrArg (rd (Lvm.VEq.sigOfX x)) (by simp only [headerAt, offAcc]; (clear * - w i; omega))
+    · exact congrArg (fun o ↦ [rd (Lvm.VEq.sigOfX x) o]) (by simp only [headerAt, offAcc]; (clear * - w accV; omega))
   unfold Pub.hdrLanesW pubOfW pubOf
   simp only [hd, digestLanes_digestAt, List.append_assoc, hacc, hflat]
   refine congrArg₂ (· ++ ·) ?_ (congrArg₂ (· ++ ·) ?_ (congrArg₂ (· ++ ·) ?_ (congrArg₂ (· ++ ·) ?_
     (congrArg₂ (· ++ ·) ?_ (congrArg₂ (· ++ ·) ?_ (congrArg₂ (· ++ ·) ?_ ?_))))))
   · simp [kAt]
   · refine List.map_congr_left fun i _ ↦ ?_
-    rw [kAt_sigOfX, show 8 + 8 * (1 + i) = 16 + 8 * i by omega]
+    rw [kAt_sigOfX, show 8 + 8 * (1 + i) = 16 + 8 * i by (clear * - i; omega)]
     rfl
   · exact seg _ 48 5 4 rfl
   · exact seg _ 80 9 4 rfl
@@ -141,14 +141,14 @@ theorem pubOfW_hdrLanesW (rd : ByteArray → ℕ → FE) (w : ℕ) (lw : FE → 
   · exact seg _ 120 14 4 rfl
   · rw [show sigBytes / 8 = 597 from rfl]; exact seg _ 152 18 597 rfl
   · exact List.map_congr_left fun j _ ↦
-      congrArg (kAt (Lvm.VEq.sigOfX x)) (by simp only [headerAt, offAcc, sigBytes]; omega)
+      congrArg (kAt (Lvm.VEq.sigOfX x)) (by simp only [headerAt, offAcc, sigBytes]; (clear * - j; omega))
 
 /-- **The public values' header lanes, as words of the stream** (`pubX_hdrLanes` at `acc_in` of `accV`
 coordinates: `pubLanesX accV` lanes). -/
 theorem pubOfA_hdrLanes (accV : ℕ) (x : List UInt8) :
     (pubOfA accV (Lvm.VEq.hdX x).vk (Lvm.VEq.hdX x).stmt (Lvm.VEq.sigOfX x)).hdrLanes =
       (List.range (pubLanesX accV)).map fun k ↦ kAt (Lvm.VEq.sigOfX x) (headerAt 8 + 8 * k) := by
-  rw [show pubLanesX accV = 615 + 3 * (accV + 1) by unfold pubLanesX; omega]
+  rw [show pubLanesX accV = 615 + 3 * (accV + 1) by unfold pubLanesX; (clear * - accV; omega)]
   exact pubOfW_hdrLanesW feAt 3 FE.lanes accV x (flatMap_lanes _ _)
 
 /-- Two-lane `E2` scalars of 16 bytes are consecutive header words (`flatMap_lanes` at S2GT, re-freeze A2). -/

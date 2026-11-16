@@ -189,7 +189,7 @@ theorem blocksHold_iff (c : Ctx) (M : Mem) : ∀ (p : Ptr) (bs : List Block),
       · have := h b (by (clear * - hb; omega))
         simpa [List.take_succ_cons, Ptr.advBs_cons p B (bs.take b)] using this
     · intro h
-      refine ⟨by simpa [Ptr.advBs] using h 0 (by (clear * -; omega)), fun b hb => ?_⟩
+      refine ⟨by simpa [Ptr.advBs] using h 0 (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - bs; omega))), fun b hb => ?_⟩
       have := h (b + 1) (by (clear * - hb; omega))
       simpa [List.take_succ_cons, Ptr.advBs_cons p B (bs.take b)] using this
 
@@ -205,7 +205,7 @@ theorem blocksAssert_iff (M : Mem) : ∀ (p : Ptr) (bs : List Block),
       · have := h b (by (clear * - hb; omega))
         simpa [List.take_succ_cons, Ptr.advBs_cons p B (bs.take b)] using this
     · intro h
-      refine ⟨by simpa [Ptr.advBs] using h 0 (by (clear * -; omega)), fun b hb => ?_⟩
+      refine ⟨by simpa [Ptr.advBs] using h 0 (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - bs; omega))), fun b hb => ?_⟩
       have := h (b + 1) (by (clear * - hb; omega))
       simpa [List.take_succ_cons, Ptr.advBs_cons p B (bs.take b)] using this
 
@@ -284,7 +284,7 @@ theorem instAt_glue_succ (p : Ptr) (r : Row) (rs : List Row) (t : Nat) :
     instAt p ⟨[], r :: rs⟩ 0 (t + 1) = instAt (p.adv [.row r]) ⟨[], rs⟩ 0 t := by
   simp only [instAt, rank_glue_succ, Ptr.adv, segsW, Seg.w, List.map_cons, List.map_nil,
     List.sum_cons, List.sum_nil, Nat.mul_zero, List.getD_cons_succ, unflat]
-  congr 1 <;> omega
+  congr 1 <;> (clear * - p r rs t; omega)
 
 /-- A glue block holds iff its rows, as straight-line segments, do. -/
 theorem glue_iff (c : Ctx) (M : Mem) : ∀ (p : Ptr) (rs : List Row),
@@ -296,7 +296,7 @@ theorem glue_iff (c : Ctx) (M : Mem) : ∀ (p : Ptr) (rs : List Row),
       pow_zero, Nat.lt_one_iff, forall_eq, List.length_cons]
     constructor
     · intro h
-      refine ⟨by simpa [instAt_glue_zero] using h 0 (by (clear * -; omega)), fun t ht => ?_⟩
+      refine ⟨by simpa [instAt_glue_zero] using h 0 (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - rs; omega))), fun t ht => ?_⟩
       have := h (t + 1) (by (clear * - ht; omega))
       rwa [instAt_glue_succ] at this
     · rintro ⟨h0, h⟩ t ht
@@ -313,7 +313,7 @@ theorem glueA_iff (M : Mem) : ∀ (p : Ptr) (rs : List Row),
       pow_zero, Nat.lt_one_iff, forall_eq, List.length_cons]
     constructor
     · intro h
-      refine ⟨by simpa [instAt_glue_zero] using h 0 (by (clear * -; omega)), fun t ht => ?_⟩
+      refine ⟨by simpa [instAt_glue_zero] using h 0 (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - rs; omega))), fun t ht => ?_⟩
       have := h (t + 1) (by (clear * - ht; omega))
       rwa [instAt_glue_succ] at this
     · rintro ⟨h0, h⟩ t ht

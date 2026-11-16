@@ -332,7 +332,7 @@ def hiP (l q : ℕ) : ℕ := loP l q + 2 ^ l
 def pairOf (l i : ℕ) : ℕ := i / 2 ^ (l + 1) * 2 ^ l + i % 2 ^ l
 
 theorem divmod_lin {a x P : ℕ} (hx : x < P) : (a * P + x) / P = a ∧ (a * P + x) % P = x := by
-  have hP : 0 < P := by omega
+  have hP : 0 < P := by (clear * - P x hx; omega)
   constructor
   · rw [Nat.add_comm, Nat.add_mul_div_right _ _ hP, Nat.div_eq_of_lt hx, Nat.zero_add]
   · rw [Nat.add_comm, Nat.add_mul_mod_self_right, Nat.mod_eq_of_lt hx]
@@ -342,13 +342,13 @@ theorem two_pow_succ_eq (l : ℕ) : 2 ^ (l + 1) = 2 ^ l + 2 ^ l := by rw [pow_su
 theorem loP_div (l q : ℕ) : loP l q / 2 ^ (l + 1) = q / 2 ^ l ∧
     loP l q % 2 ^ (l + 1) = q % 2 ^ l := by
   have h := Nat.mod_lt q (show 0 < 2 ^ l by positivity)
-  exact divmod_lin (by rw [two_pow_succ_eq]; omega)
+  exact divmod_lin (by rw [two_pow_succ_eq]; (clear * - q l h; omega))
 
 theorem hiP_div (l q : ℕ) : hiP l q / 2 ^ (l + 1) = q / 2 ^ l ∧
     hiP l q % 2 ^ (l + 1) = q % 2 ^ l + 2 ^ l := by
   have h := Nat.mod_lt q (show 0 < 2 ^ l by positivity)
   have := divmod_lin (a := q / 2 ^ l) (x := q % 2 ^ l + 2 ^ l) (P := 2 ^ (l + 1))
-    (by rw [two_pow_succ_eq]; omega)
+    (by rw [two_pow_succ_eq]; (clear * - q l h; omega))
   simpa [hiP, loP, baseP, Nat.add_assoc] using this
 
 theorem pairOf_loP (l q : ℕ) : pairOf l (loP l q) = q := by
@@ -403,7 +403,7 @@ theorem hiP_lt {ℓ l q : ℕ} (hl : l < ℓ) (hq : q < 2 ^ (ℓ - 1)) : hiP l q
 
 theorem loP_lt_hiP (l q : ℕ) : loP l q < hiP l q := by
   have : 0 < 2 ^ l := by positivity
-  simp only [hiP]; omega
+  simp only [hiP]; (clear * - l q this; omega)
 
 /-- Every position of the row is in a pair below `2^(ℓ−1)`. -/
 theorem pairOf_lt {ℓ l i : ℕ} (hl : l < ℓ) (hi : i < 2 ^ ℓ) : pairOf l i < 2 ^ (ℓ - 1) := by
@@ -426,17 +426,17 @@ theorem bflyLevel_lo (pt : ℕ → BF64) (N l q : ℕ) (Y : ℕ → BF64) :
   obtain ⟨d1, d2⟩ := loP_div l q
   simp only [bflyLevel, d1, d2, Nat.mod_mod, if_pos hm, Nat.zero_add]
   rw [show q / 2 ^ l * 2 ^ (l + 1) + 2 ^ l + q % 2 ^ l = hiP l q by
-    simp only [hiP, loP, baseP]; (clear * -; omega)]
+    simp only [hiP, loP, baseP]; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)]
   rfl
 
 theorem bflyLevel_hi (pt : ℕ → BF64) (N l q : ℕ) (Y : ℕ → BF64) :
     bflyLevel pt N 0 l Y (hiP l q) = Y (hiP l q) + Y (loP l q) := by
   have hm := Nat.mod_lt q (show 0 < 2 ^ l by positivity)
   obtain ⟨d1, d2⟩ := hiP_div l q
-  simp only [bflyLevel, d1, d2, if_neg (show ¬ (q % 2 ^ l + 2 ^ l < 2 ^ l) by (clear * -; omega)),
+  simp only [bflyLevel, d1, d2, if_neg (show ¬ (q % 2 ^ l + 2 ^ l < 2 ^ l) by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - q l; omega))),
     Nat.add_mod_right, Nat.mod_mod]
   rw [show q / 2 ^ l * 2 ^ (l + 1) + 2 ^ l + q % 2 ^ l = hiP l q by
-    simp only [hiP, loP, baseP]; (clear * -; omega)]
+    simp only [hiP, loP, baseP]; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)]
   rfl
 
 /-- **`fwdLevel` at a pair's positions.** -/
@@ -446,7 +446,7 @@ theorem fwdLevel_lo (pt : ℕ → BF64) (N l q : ℕ) (Y : ℕ → BF64) :
   obtain ⟨d1, d2⟩ := loP_div l q
   simp only [fwdLevel, d1, d2, Nat.mod_mod, if_pos hm]
   rw [show q / 2 ^ l * 2 ^ (l + 1) + 2 ^ l + q % 2 ^ l = hiP l q by
-    simp only [hiP, loP, baseP]; (clear * -; omega)]
+    simp only [hiP, loP, baseP]; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)]
   rfl
 
 theorem fwdLevel_hi (pt : ℕ → BF64) (N l q : ℕ) (Y : ℕ → BF64) :
@@ -454,10 +454,10 @@ theorem fwdLevel_hi (pt : ℕ → BF64) (N l q : ℕ) (Y : ℕ → BF64) :
       Y (loP l q) + wAt pt N l (baseP l q) * Y (hiP l q) + Y (hiP l q) := by
   have hm := Nat.mod_lt q (show 0 < 2 ^ l by positivity)
   obtain ⟨d1, d2⟩ := hiP_div l q
-  simp only [fwdLevel, d1, d2, if_neg (show ¬ (q % 2 ^ l + 2 ^ l < 2 ^ l) by (clear * -; omega)),
+  simp only [fwdLevel, d1, d2, if_neg (show ¬ (q % 2 ^ l + 2 ^ l < 2 ^ l) by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - q l; omega))),
     Nat.add_mod_right, Nat.mod_mod]
   rw [show q / 2 ^ l * 2 ^ (l + 1) + 2 ^ l + q % 2 ^ l = hiP l q by
-    simp only [hiP, loP, baseP]; (clear * -; omega)]
+    simp only [hiP, loP, baseP]; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)]
   rfl
 
 /-- The first `j` forward levels, `ℓ − 1, …, ℓ − j`. -/

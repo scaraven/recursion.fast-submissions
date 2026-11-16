@@ -557,7 +557,7 @@ theorem escRet_sampleN_le (P' : LevelCode) {κ ℓ' : ℕ} (hκ : κ = ℓ' + P'
         ((P'.listMax.choose 2 * (κ * Fintype.card E ^ (κ - 1)) : ℕ) : ENNReal) := by
         gcongr; exact hsum.trans hN
     _ = eOod P' κ := by
-        obtain ⟨k, rfl⟩ : ∃ k, κ = k + 1 := ⟨κ - 1, by omega⟩
+        obtain ⟨k, rfl⟩ : ∃ k, κ = k + 1 := ⟨κ - 1, by (clear * - κ P' ℓ' hκ hκ1; omega)⟩
         rw [eOod, ENNReal.div_eq_inv_mul, Nat.add_sub_cancel]
         push_cast
         rw [pow_succ, mul_comm ((Fintype.card E : ENNReal)⁻¹ ^ k), mul_assoc]

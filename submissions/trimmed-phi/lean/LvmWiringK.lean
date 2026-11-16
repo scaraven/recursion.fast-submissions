@@ -204,13 +204,13 @@ theorem tab_dbl_list (l : List 𝔽) (a : 𝔽) :
       simp only [List.getD_eq_getElem?_getD, List.getElem?_append_left (by (clear * - h1; omega) : x / 2 < l.length)]
     · by_cases h2 : x = 2 * l.length
       · subst h2
-        simp only [show ¬ 2 * l.length = 2 * l.length + 1 from by (clear * -; omega), ↓reduceIte]
-        have : 2 * l.length / 2 = l.length := by (clear * -; omega)
+        simp only [show ¬ 2 * l.length = 2 * l.length + 1 from by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - 𝔽 l; omega)), ↓reduceIte]
+        have : 2 * l.length / 2 = l.length := by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - 𝔽 l; omega))
         simp [this, List.getD_eq_getElem?_getD]
         ring
       · have h3 : x = 2 * l.length + 1 := by (clear * - hx h1 h2; omega)
         subst h3
-        have : (2 * l.length + 1) / 2 = l.length := by (clear * -; omega)
+        have : (2 * l.length + 1) / 2 = l.length := by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - 𝔽 l; omega))
         simp [this, List.getD_eq_getElem?_getD]
         ring
 
@@ -348,13 +348,13 @@ def succ_step (a b : 𝔽) (p : 𝔽 × 𝔽) : 𝔽 × 𝔽 :=
   ((1 - a - b + a * b + a * b) * p.1, (a - a * b) * p.1 + (b - a * b) * p.2)
 
 theorem succ_eqW_even (r : 𝔽) (rs : List 𝔽) (w : ℕ) : eqWG (r :: rs) (2 * w) = (1 - r) * eqWG rs w := by
-  have h1 : ¬ (2 * w % 2 = 1) := by omega
-  rw [eqWG, show 2 * w / 2 = w by (clear * -; omega)]
+  have h1 : ¬ (2 * w % 2 = 1) := by (clear * - w; omega)
+  rw [eqWG, show 2 * w / 2 = w by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - w; omega))]
   simp only [h1, ↓reduceIte]
 
 theorem succ_eqW_odd (r : 𝔽) (rs : List 𝔽) (w : ℕ) : eqWG (r :: rs) (2 * w + 1) = r * eqWG rs w := by
-  have h1 : (2 * w + 1) % 2 = 1 := by omega
-  rw [eqWG, show (2 * w + 1) / 2 = w by omega]
+  have h1 : (2 * w + 1) % 2 = 1 := by (clear * - w; omega)
+  rw [eqWG, show (2 * w + 1) / 2 = w by (clear * - w h1; omega)]
   simp only [h1, ↓reduceIte]
 
 theorem succ_sum_two (f : ℕ → 𝔽) (M : ℕ) :
@@ -363,7 +363,7 @@ theorem succ_sum_two (f : ℕ → 𝔽) (M : ℕ) :
   induction M with
   | zero => simp
   | succ M ih =>
-    rw [show 2 * (M + 1) = 2 * M + 1 + 1 by (clear * -; omega), List.range_succ, List.range_succ, List.range_succ]
+    rw [show 2 * (M + 1) = 2 * M + 1 + 1 by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega), List.range_succ, List.range_succ, List.range_succ]
     simp only [List.map_append, List.sum_append, ih, List.map_cons, List.map_nil, List.sum_cons,
       List.sum_nil]
     ring
@@ -399,8 +399,8 @@ theorem succ_S_cons (x y : 𝔽) (xs ys : List 𝔽) :
   unfold succ_S succ_E
   have h1 : 1 ≤ 2 ^ xs.length := Nat.one_le_two_pow
   rw [List.length_cons, show 2 ^ (xs.length + 1) - 1 = 2 * (2 ^ xs.length - 1) + 1 by
-    rw [pow_succ]; omega, succ_sum_two_one, show 2 ^ xs.length - 1 + 1 = 2 ^ xs.length by omega]
-  simp only [succ_eqW_even, succ_eqW_odd, show ∀ w : ℕ, 2 * w + 1 + 1 = 2 * (w + 1) from fun w ↦ by (clear * -; omega)]
+    rw [pow_succ]; (clear * - 𝔽 xs h1; omega), succ_sum_two_one, show 2 ^ xs.length - 1 + 1 = 2 ^ xs.length by (clear * - 𝔽 xs h1; omega)]
+  simp only [succ_eqW_even, succ_eqW_odd, show ∀ w : ℕ, 2 * w + 1 + 1 = 2 * (w + 1) from fun w ↦ by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)]
   rw [show (fun w ↦ x * eqWG xs w * ((1 - y) * eqWG ys w)) =
       fun w ↦ (x * (1 - y)) * (eqWG xs w * eqWG ys w) from funext fun w ↦ by ring,
     show (fun w ↦ (1 - x) * eqWG xs (w + 1) * (y * eqWG ys w)) =
@@ -434,7 +434,7 @@ theorem succVal_eq (xs ys : List 𝔽) (h : xs.length = ys.length) :
     succValG xs ys = ((List.range (2 ^ xs.length - 1)).map fun v ↦ eqWG xs (v + 1) * eqWG ys v).sum := by
   simp only [succValG, Id.run, Std.Legacy.Range.forIn_eq_forIn_range', List.forIn_pure_yield_eq_foldl,
     Std.Legacy.Range.size, pure_bind]
-  rw [show (xs.length - 0 + 1 - 1) / 1 = xs.length by omega, ← List.range_eq_range']
+  rw [show (xs.length - 0 + 1 - 1) / 1 = xs.length by (clear * - 𝔽 xs ys h; omega), ← List.range_eq_range']
   have hf := congrArg Prod.snd (succ_fold xs ys h xs.length le_rfl)
   simp only [Nat.sub_self, List.drop_zero] at hf
   exact hf
@@ -676,9 +676,9 @@ theorem tab_eqLevels_rep (r : Array 𝔽) (lo n k : ℕ) (hk : k ≤ n) :
   have e : ((((List.range (n + 1)).map fun j ↦ (List.range' 0 j).foldl
       (fun t i ↦ tab_dbl t (r.getD (lo + n - 1 - i) 0)) #[1]).toArray).reverse).getD k #[] =
       (List.range' 0 (n - k)).foldl (fun t i ↦ tab_dbl t (r.getD (lo + n - 1 - i) 0)) #[1] := by
-    rw [Array.getD_eq_getD_getElem?, Array.getElem?_reverse (by simp; omega)]
+    rw [Array.getD_eq_getD_getElem?, Array.getElem?_reverse (by simp; (clear * - hk; omega))]
     simp only [List.size_toArray, List.length_map, List.length_range, List.getElem?_toArray, List.getElem?_map,
-      List.getElem?_range (by omega : n + 1 - 1 - k < n + 1), Option.map_some, Option.getD_some]
+      List.getElem?_range (by (clear * - n k hk; omega) : n + 1 - 1 - k < n + 1), Option.map_some, Option.getD_some]
     congr 2
   rw [e]
   have h := tab_loop_rep (fun i ↦ r.getD (lo + n - 1 - i) 0) (n - k)
@@ -691,7 +691,7 @@ theorem tab_eqW_append (a b : List 𝔽) (u v : ℕ) (hu : u < 2 ^ a.length) :
   | cons x a ih =>
     simp only [List.cons_append, eqWG, List.length_cons]
     have e : u + 2 ^ (a.length + 1) * v = u + 2 * (2 ^ a.length * v) := by rw [pow_succ]; ring
-    have h1 : (u + 2 * (2 ^ a.length * v)) % 2 = u % 2 := by (clear * -; omega)
+    have h1 : (u + 2 * (2 ^ a.length * v)) % 2 = u % 2 := by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - u 𝔽 a v; omega))
     have h2 : (u + 2 * (2 ^ a.length * v)) / 2 = u / 2 + 2 ^ a.length * v := by (clear * - h1; omega)
     rw [e, h1, h2, ih (u / 2) (by rw [List.length_cons, pow_succ] at hu; (clear * - hu h1; omega))]
     ring
@@ -730,10 +730,10 @@ def marg_filt : List Bool → List 𝔽 → List 𝔽
   | _, _ => []
 
 theorem marg_tb_zero (a x : ℕ) (ha : a ≤ 1) : (a + 2 * x).testBit 0 = decide (a = 1) := by
-  rw [Nat.testBit_zero]; congr 1; apply propext; omega
+  rw [Nat.testBit_zero]; congr 1; apply propext; (clear * - a x ha; omega)
 
 theorem marg_tb_succ (a x i : ℕ) (ha : a ≤ 1) : (a + 2 * x).testBit (i + 1) = x.testBit i := by
-  rw [Nat.testBit_add_one]; congr 1; omega
+  rw [Nat.testBit_add_one]; congr 1; (clear * - a x ha; omega)
 
 theorem marg_or2 (a b x y : ℕ) (ha : a ≤ 1) (hb : b ≤ 1) :
     (a + 2 * x) ||| (b + 2 * y) = (a ||| b) + 2 * (x ||| y) := by
@@ -764,10 +764,10 @@ theorem marg_dep_and (ms : List Bool) (w : ℕ) :
   | cons b ms ih =>
     cases b
     · simp only [marg_dep, marg_val, List.map_cons, Bool.not_false, Bool.toNat_true, Bool.toNat_false]
-      rw [marg_or2 _ _ _ _ (by (clear * -; omega)) (by (clear * -; omega)), marg_and2 _ _ _ _ (by simp) (by (clear * -; omega)), ih]
+      rw [marg_or2 _ _ _ _ (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)) (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)), marg_and2 _ _ _ _ (by simp) (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)), ih]
       simp
     · simp only [marg_dep, marg_val, List.map_cons, Bool.not_true, Bool.toNat_true, Bool.toNat_false]
-      rw [marg_or2 _ _ _ _ (by (clear * -; omega)) (by (clear * -; omega)), marg_and2 _ _ _ _ (by simp; (clear * -; omega)) (by (clear * -; omega)), ih]
+      rw [marg_or2 _ _ _ _ (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - w; omega))) (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)), marg_and2 _ _ _ _ (by simp; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - w; omega))) (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)), ih]
       simp
 
 theorem marg_succ (ms : List Bool) (v : ℕ) (hv : v + 1 < 2 ^ ms.count true) :
@@ -778,23 +778,23 @@ theorem marg_succ (ms : List Bool) (v : ℕ) (hv : v + 1 < 2 ^ ms.count true) :
     cases b
     · simp only [List.count_cons, beq_iff_eq, Bool.false_eq_true, ↓reduceIte, Nat.add_zero] at hv
       simp only [marg_dep, marg_val, List.map_cons, Bool.not_false, Bool.toNat_true, Bool.toNat_false]
-      rw [marg_or2 _ _ _ _ (by (clear * -; omega)) (by (clear * -; omega)), Nat.zero_or,
+      rw [marg_or2 _ _ _ _ (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)) (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)), Nat.zero_or,
         show 1 + 2 * (marg_dep ms v ||| marg_val (ms.map not)) + 1 =
           0 + 2 * ((marg_dep ms v ||| marg_val (ms.map not)) + 1) by ring,
-        marg_and2 _ _ _ _ (by (clear * -; omega)) (by (clear * -; omega)), ih _ hv]
+        marg_and2 _ _ _ _ (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)) (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)), ih _ hv]
       simp
     · simp only [List.count_cons, BEq.rfl, ↓reduceIte] at hv
       simp only [marg_dep, marg_val, List.map_cons, Bool.not_true, Bool.toNat_true, Bool.toNat_false]
-      rw [marg_or2 _ _ _ _ (by (clear * -; omega)) (by (clear * -; omega)), Nat.or_zero]
+      rw [marg_or2 _ _ _ _ (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - v; omega))) (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)), Nat.or_zero]
       rcases Nat.mod_two_eq_zero_or_one v with h | h
       · rw [h, show 0 + 2 * (marg_dep ms (v / 2) ||| marg_val (ms.map not)) + 1 =
           1 + 2 * (marg_dep ms (v / 2) ||| marg_val (ms.map not)) by ring,
-          marg_and2 _ _ _ _ (by (clear * -; omega)) (by (clear * -; omega)), marg_dep_and,
+          marg_and2 _ _ _ _ (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)) (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)), marg_dep_and,
           show (v + 1) % 2 = 1 by (clear * - h; omega), show (v + 1) / 2 = v / 2 by (clear * - h; omega)]
         rfl
       · rw [h, show 1 + 2 * (marg_dep ms (v / 2) ||| marg_val (ms.map not)) + 1 =
           0 + 2 * ((marg_dep ms (v / 2) ||| marg_val (ms.map not)) + 1) by ring,
-          marg_and2 _ _ _ _ (by (clear * -; omega)) (by (clear * -; omega)), ih _ (by rw [pow_succ] at hv; (clear * - hv h; omega)),
+          marg_and2 _ _ _ _ (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)) (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)), ih _ (by rw [pow_succ] at hv; (clear * - hv h; omega)),
           show (v + 1) % 2 = 0 by (clear * - h; omega), show (v + 1) / 2 = v / 2 + 1 by (clear * - h; omega)]
         rfl
 
@@ -833,16 +833,16 @@ theorem marg_sum (ms : List Bool) (L : List 𝔽) (hl : L.length = ms.length) (v
         apply Finset.sum_congr rfl
         intro w _
         simp only [marg_dep]
-        rw [marg_or2 _ _ _ _ (by (clear * -; omega)) (by (clear * -; omega)), marg_or2 _ _ _ _ (by (clear * -; omega)) (by (clear * -; omega))]
-        simp only [eqWG, Nat.zero_or, Nat.mul_mod_right, Nat.mul_div_right _ (by (clear * -; omega) : 0 < 2),
-          show (2 * w + 1) % 2 = 1 by (clear * -; omega), show (2 * w + 1) / 2 = w by (clear * -; omega)]
-        rw [show (1 + 2 * (marg_dep ms v ||| marg_dep (ms.map not) w)) % 2 = 1 by (clear * -; omega),
+        rw [marg_or2 _ _ _ _ (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)) (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - w; omega))), marg_or2 _ _ _ _ (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)) (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - w; omega)))]
+        simp only [eqWG, Nat.zero_or, Nat.mul_mod_right, Nat.mul_div_right _ (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega) : 0 < 2),
+          show (2 * w + 1) % 2 = 1 by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - w; omega)), show (2 * w + 1) / 2 = w by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - w; omega))]
+        rw [show (1 + 2 * (marg_dep ms v ||| marg_dep (ms.map not) w)) % 2 = 1 by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - ms v w; omega)),
           show (1 + 2 * (marg_dep ms v ||| marg_dep (ms.map not) w)) / 2 =
-            marg_dep ms v ||| marg_dep (ms.map not) w by (clear * -; omega),
-          show (0 + 2 * (marg_dep ms v ||| marg_dep (ms.map not) w)) % 2 = 0 by (clear * -; omega),
+            marg_dep ms v ||| marg_dep (ms.map not) w by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - ms v w; omega)),
+          show (0 + 2 * (marg_dep ms v ||| marg_dep (ms.map not) w)) % 2 = 0 by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - ms v w; omega)),
           show (0 + 2 * (marg_dep ms v ||| marg_dep (ms.map not) w)) / 2 =
-            marg_dep ms v ||| marg_dep (ms.map not) w by (clear * -; omega)]
-        simp only [show (0 : ℕ) ≠ 1 by (clear * -; omega), ↓reduceIte]
+            marg_dep ms v ||| marg_dep (ms.map not) w by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - ms v w; omega))]
+        simp only [show (0 : ℕ) ≠ 1 by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega), ↓reduceIte]
         ring
       · simp only [List.map_cons, Bool.not_true, List.count_cons, beq_iff_eq, Bool.false_eq_true,
           ↓reduceIte, Nat.add_zero, marg_filt]
@@ -850,10 +850,10 @@ theorem marg_sum (ms : List Bool) (L : List 𝔽) (hl : L.length = ms.length) (v
         apply Finset.sum_congr rfl
         intro u _
         simp only [marg_dep]
-        rw [marg_or2 _ _ _ _ (by (clear * -; omega)) (by (clear * -; omega)), Nat.or_zero, eqWG,
-          show (v % 2 + 2 * (marg_dep ms (v / 2) ||| marg_dep (ms.map not) u)) % 2 = v % 2 by (clear * -; omega),
+        rw [marg_or2 _ _ _ _ (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - v; omega))) (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)), Nat.or_zero, eqWG,
+          show (v % 2 + 2 * (marg_dep ms (v / 2) ||| marg_dep (ms.map not) u)) % 2 = v % 2 by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - v ms u; omega)),
           show (v % 2 + 2 * (marg_dep ms (v / 2) ||| marg_dep (ms.map not) u)) / 2 =
-            marg_dep ms (v / 2) ||| marg_dep (ms.map not) u by (clear * -; omega)]
+            marg_dep ms (v / 2) ||| marg_dep (ms.map not) u by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - v ms u; omega))]
 
 theorem marg_inner (F : ℕ → 𝔽) (sx d : ℕ → ℕ) (M : ℕ) (h : ∀ u, u + 1 < M → sx (d u) = d (u + 1))
     (N s j : ℕ) (a : 𝔽) (hN : j + N ≤ M) :
@@ -867,7 +867,7 @@ theorem marg_inner (F : ℕ → 𝔽) (sx d : ℕ → ℕ) (M : ℕ) (h : ∀ u,
     | zero => simp
     | succ N =>
       rw [h j (by (clear * - hN; omega)), ih (s + 1) (j + 1) _ (by (clear * - hN; omega)), Finset.sum_range_succ' _ (N + 1)]
-      have e : ∀ u, j + 1 + u = j + (u + 1) := fun u ↦ by (clear * -; omega)
+      have e : ∀ u, j + 1 + u = j + (u + 1) := fun u ↦ by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)
       simp only [e, Nat.add_zero]
       ring
 
@@ -890,7 +890,7 @@ theorem marg_outer (G : ℕ → 𝔽) (sx d : ℕ → ℕ) (M : ℕ) (h : ∀ u,
       intro u _
       simp only [Function.comp_apply, Nat.succ_eq_add_one]
       congr 2
-      (clear * -; omega)
+      (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)
 
 theorem marg_tb_val (ms : List Bool) (i : ℕ) : (marg_val ms).testBit i = ms.getD i false := by
   induction ms generalizing i with
@@ -918,7 +918,7 @@ theorem marg_val_compl (ms : List Bool) :
 theorem marg_count_not (ms : List Bool) : (ms.map not).count true + ms.count true = ms.length := by
   induction ms with
   | nil => simp
-  | cons b ms ih => cases b <;> simp <;> omega
+  | cons b ms ih => cases b <;> simp <;> (clear * - ms ih; omega)
 
 theorem marg_filt_map (l : List ℕ) (f : ℕ → Bool) (g : ℕ → 𝔽) :
     marg_filt (l.map f) (l.map g) = (l.filter f).map g := by
@@ -951,7 +951,7 @@ theorem marg_body (t : Array 𝔽) (ms : List Bool) (L : List 𝔽) (hrep : tab_
   have hout := marg_outer (fun x ↦ ((List.range' 0 (2 ^ (ms.map not).count true)).foldl
       (fun b' _ ↦ (b'.1 + t.getD (x ||| b'.2) 0, ((b'.2 ||| marg_val ms) + 1) &&& marg_val (ms.map not)))
         ((0 : 𝔽), 0)).1) (fun x ↦ ((x ||| marg_val (ms.map not)) + 1) &&& marg_val ms) (marg_dep ms)
-    (2 ^ ms.count true) (fun u hu ↦ marg_succ ms u hu) (2 ^ ms.count true) 0 0 (Array.mkEmpty cap) (by (clear * -; omega))
+    (2 ^ ms.count true) (fun u hu ↦ marg_succ ms u hu) (2 ^ ms.count true) 0 0 (Array.mkEmpty cap) (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - ms; omega)))
   have he : (Array.mkEmpty cap : Array 𝔽).toList = [] := rfl
   rw [marg_dep_zero, he, List.nil_append] at hout
   have hfl := marg_filt_length ms L hl
@@ -965,7 +965,7 @@ theorem marg_body (t : Array 𝔽) (ms : List Bool) (L : List 𝔽) (hrep : tab_
       (fun m ↦ ((m ||| marg_val ms) + 1) &&& marg_val (ms.map not)) (marg_dep (ms.map not))
       (2 ^ (ms.map not).count true)
       (fun u hu ↦ by simpa [List.map_map, Function.comp_def] using marg_succ (ms.map not) u hu)
-      (2 ^ (ms.map not).count true) 0 0 0 (by (clear * -; omega))
+      (2 ^ (ms.map not).count true) 0 0 0 (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - ms; omega)))
     rw [marg_dep_zero] at hin
     rw [hin, zero_add, ← marg_sum ms L hl v]
     apply Finset.sum_congr rfl
@@ -994,7 +994,7 @@ theorem marg_kept (bits : List ℕ) (b0 c K : ℕ) (hc : c = b0) (hb : ∀ b ∈
     simp only [List.any_eq_true, decide_eq_true_eq, List.contains_iff_mem]
     constructor
     · rintro ⟨b, hb', rfl⟩; rwa [show c + (b - c) = b by have := hb b hb'; (clear * - this; omega)]
-    · intro h; exact ⟨c + i, h, by (clear * -; omega)⟩
+    · intro h; exact ⟨c + i, h, by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - c i; omega))⟩
   · simp only [List.getD_eq_getElem?_getD, List.getElem?_map,
       List.getElem?_eq_none (by simpa using (by (clear * - hi; omega) : K ≤ i) : (List.range K).length ≤ i), Option.map_none,
       Option.getD_none]
@@ -1067,7 +1067,7 @@ theorem tab_kapTab_get (κ : Array 𝔽) (m : ℕ) (hm : m < 16) :
   have e : ∀ o < 4, (eqTabG κ 0 2)[o]?.getD 0 = eqWG (sub κ 0 2) o := fun o ho ↦ by
     rw [← Array.getD_eq_getD_getElem?]; exact eqTab_get κ 0 2 o (by simpa using ho)
   simp only [List.range_succ, List.range_zero, List.nil_append, List.cons_append, List.foldl_cons, List.foldl_nil, List.map_cons,
-    List.map_nil, List.sum_cons, List.sum_nil, e 0 (by (clear * -; omega)), e 1 (by (clear * -; omega)), e 2 (by (clear * -; omega)), e 3 (by (clear * -; omega))]
+    List.map_nil, List.sum_cons, List.sum_nil, e 0 (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)), e 1 (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)), e 2 (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)), e 3 (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))]
   split_ifs <;> ring
 
 /-- The group of a bit list on a side of `N` bits cut at `cut`: `[0, cut)` or `[cut, N)`. -/
@@ -1146,7 +1146,7 @@ theorem tab_tabsAt_eqx (P : PtG 𝔽) (rs : Array TRec) (i : ℕ) (hi : i < rs.s
     apply tab_subTab_get _ _ _ _ hs _ v hv
     rcases hg with hg | hg
     · exact absurd (List.all_eq_true.2 (fun b hb ↦ by simpa using hg b hb)) hall
-    · intro b hb; have := hg b hb; omega
+    · intro b hb; have := hg b hb; (clear * - this; omega)
 
 theorem tab_tabsAt_eqy (P : PtG 𝔽) (rs : Array TRec) (i : ℕ) (hi : i < rs.size) (bits : List ℕ) (h : rs[i] = .eqy bits)
     (hs : bits.Pairwise (· < ·)) (hg : (∀ b ∈ bits, b < 11) ∨ (∀ b ∈ bits, 11 ≤ b ∧ b < yVars))
@@ -1168,7 +1168,7 @@ theorem tab_tabsAt_eqy (P : PtG 𝔽) (rs : Array TRec) (i : ℕ) (hi : i < rs.s
     apply tab_subTab_get _ _ _ _ hs _ v hv
     rcases hg with hg | hg
     · exact absurd (List.all_eq_true.2 (fun b hb ↦ by simpa using hg b hb)) hall
-    · intro b hb; have := hg b hb; omega
+    · intro b hb; have := hg b hb; (clear * - this; omega)
 
 /-! ## The atom sum -/
 
@@ -1644,42 +1644,42 @@ theorem greedy_qs_loop_part {α : Type} {n : ℕ} (lt : α → α → Bool) (lo 
   · rw [dite_eq_left h]
     by_cases hl : lt as[k] pivot = true
     · rw [ite_eq_left hl]
-      refine greedy_qs_part_of_R (greedy_qs_R_swap as i k (by omega) (by omega) ilo (by omega) (by omega) (by omega))
+      refine greedy_qs_part_of_R (greedy_qs_R_swap as i k (by (clear * - i n lo hi hhi k ik h; omega)) (by (clear * - k n lo hi hhi i h; omega)) ilo (by (clear * - i hi n lo k ik h; omega)) (by (clear * - lo k n hi i ilo ik; omega)) (by (clear * - w; omega)))
         (greedy_qs_loop_part lt lo hi hhi pivot _ (i + 1) (k + 1) _ _ _ ?_ ?_ ?_)
       · rw [Vector.getElem_swap]; split_ifs <;> omega
       · intro j hj a1 a2
         rw [Vector.getElem_swap]
         split_ifs with e1 e2
         · exact hl
-        · omega
-        · exact h1 j hj a1 (by omega)
+        · (clear * - lt α n as i lo hi hhi k ik h pivot j a2 e1 e2; omega)
+        · exact h1 j hj a1 (by (clear * - j i n lo hi k ik a2 e1 e2; omega))
       · intro j hj a1 a2
         rw [Vector.getElem_swap]
         split_ifs with e1 e2
-        · omega
-        · exact h2 i (by omega) le_rfl (by omega)
-        · exact h2 j hj (by omega) (by omega)
+        · (clear * - lt α n as k lo hi hhi i h pivot j a1 e1; omega)
+        · exact h2 i (by (clear * - i n lo hi hhi k h j a1 e2; omega)) le_rfl (by (clear * - i k n lo hi j a1 e2; omega))
+        · exact h2 j hj (by (clear * - i j n lo hi k a1; omega)) (by (clear * - j k n lo hi i a2 e2; omega))
     · rw [ite_eq_right hl]
       refine greedy_qs_loop_part lt lo hi hhi pivot as i (k + 1) _ _ _ hpiv h1 ?_
       intro j hj a1 a2
       by_cases e : j = k
       · subst e; simpa using hl
-      · exact h2 j hj a1 (by omega)
+      · exact h2 j hj a1 (by (clear * - j k n lo hi i a2 e; omega))
   · rw [dite_eq_right h]
-    have hk : k = hi := by omega
-    refine ⟨greedy_qs_R_swap as i hi (by omega) hhi ilo (by omega) (by omega) le_rfl, ?_, ?_⟩
+    have hk : k = hi := by (clear * - k hi n lo i w h; omega)
+    refine ⟨greedy_qs_R_swap as i hi (by (clear * - i n lo hi hhi k ik w h; omega)) hhi ilo (by (clear * - i hi n lo k ik w h; omega)) (by (clear * - lo hi n i k ilo ik w h; omega)) le_rfl, ?_, ?_⟩
     · intro j hj a1 a2
       dsimp only at a2
       simp only [Vector.getElem_swap, ite_true]
-      rw [ite_eq_right (by omega), ite_eq_right (by omega), hpiv]
+      rw [ite_eq_right (by (clear * - j i n lo hi k a2; omega)), ite_eq_right (by (clear * - j hi n lo i k ik w h a2; omega)), hpiv]
       exact h1 j hj a1 a2
     · intro j hj a1 a2
       dsimp only at a1
       simp only [Vector.getElem_swap, ite_true]
-      rw [ite_eq_right (by omega), hpiv]
+      rw [ite_eq_right (by (clear * - j i n lo hi k a1; omega)), hpiv]
       split_ifs with e
-      · exact h2 i (by omega) le_rfl (by omega)
-      · exact h2 j hj (by omega) (by omega)
+      · exact h2 i (by (clear * - i n lo hi k j hj a1; omega)) le_rfl (by (clear * - i k n lo hi w h j a1 e; omega))
+      · exact h2 j hj (by (clear * - i j n lo hi k a1; omega)) (by (clear * - j k n lo hi i w h a2 e; omega))
 termination_by hi - k
 
 theorem greedy_qs_loop_lt_hi {α : Type} {n : ℕ} (lt : α → α → Bool) (lo hi : ℕ) (hhi : hi < n) (pivot : α)
@@ -1693,14 +1693,14 @@ theorem greedy_qs_loop_lt_hi {α : Type} {n : ℕ} (lt : α → α → Bool) (lo
     · rw [ite_eq_left hl]
       refine greedy_qs_loop_lt_hi lt lo hi hhi pivot _ (i + 1) (k + 1) _ _ _ ?_
       rcases h with h | ⟨j, hj, a1, a2, a3⟩
-      · exact Or.inl (by omega)
+      · exact Or.inl (by (clear * - i k n lo hi h; omega))
       · right
         have hjk : j ≠ k := by rintro rfl; simp [hl] at a3
-        refine ⟨j, hj, by omega, a2, ?_⟩
-        rw [Vector.getElem_swap, ite_eq_right (by omega), ite_eq_right hjk]
+        refine ⟨j, hj, by (clear * - k j n lo hi i a1 hjk; omega), a2, ?_⟩
+        rw [Vector.getElem_swap, ite_eq_right (by (clear * - j i n lo hi k ik a1 hjk; omega)), ite_eq_right hjk]
         exact a3
     · rw [ite_eq_right hl]
-      exact greedy_qs_loop_lt_hi lt lo hi hhi pivot as i (k + 1) _ _ _ (Or.inl (by omega))
+      exact greedy_qs_loop_lt_hi lt lo hi hhi pivot as i (k + 1) _ _ _ (Or.inl (by (clear * - i k n lo hi ik; omega)))
   · rw [dite_eq_right hk]
     show i < hi
     rcases h with h | ⟨j, hj, a1, a2, a3⟩ <;> omega
@@ -1758,8 +1758,8 @@ theorem greedy_qs_sort_R {α : Type} (lt : α → α → Bool) {n : ℕ} (as : V
     split
     · exact hp.1
     · rename_i h₂
-      exact greedy_qs_R_trans hp.1 (greedy_qs_R_trans (greedy_qs_R_mono (greedy_qs_sort_R lt b lo mid _ _ _) le_rfl (by omega))
-        (greedy_qs_R_mono (greedy_qs_sort_R lt _ (mid + 1) hi _ _ _) (by omega) le_rfl))
+      exact greedy_qs_R_trans hp.1 (greedy_qs_R_trans (greedy_qs_R_mono (greedy_qs_sort_R lt b lo mid _ _ _) le_rfl (by (clear * - mid hi n lo h₂; omega)))
+        (greedy_qs_R_mono (greedy_qs_sort_R lt _ (mid + 1) hi _ _ _) (by (clear * - lo mid n hi hmid; omega)) le_rfl))
   · exact greedy_qs_R_refl _ _ _
 termination_by hi - lo
 
@@ -1781,22 +1781,22 @@ theorem greedy_qs_sort_sorted {α : Type} (lt : α → α → Bool)
     split
     · omega
     · rename_i h₂
-      have Rc := greedy_qs_sort_R lt b lo mid hmid.1 hlo (by omega)
-      have Rd := greedy_qs_sort_R lt (Array.qsort.sort lt b lo mid hmid.1 hlo (by omega)) (mid + 1) hi
-        (by omega) (by omega) hhi
+      have Rc := greedy_qs_sort_R lt b lo mid hmid.1 hlo (by (clear * - mid n lo hi hhi i j hlt; omega))
+      have Rd := greedy_qs_sort_R lt (Array.qsort.sort lt b lo mid hmid.1 hlo (by (clear * - mid n lo hi hhi i j hlt; omega))) (mid + 1) hi
+        (by (clear * - mid hi n lo i j hlt; omega)) (by (clear * - mid n lo hi hhi i j hlt; omega)) hhi
       by_cases hA : mid + 1 ≤ i
       · exact greedy_qs_sort_sorted lt htrans hasymm _ (mid + 1) hi _ _ _ i j hi' hj hA a2 a3
       by_cases hB : j ≤ mid
-      · rw [Rd.2.1 i hi' (by omega), Rd.2.1 j hj (by omega)]
+      · rw [Rd.2.1 i hi' (by (clear * - i mid hi n lo j hA; omega)), Rd.2.1 j hj (by (clear * - j mid hi n lo i hB; omega))]
         exact greedy_qs_sort_sorted lt htrans hasymm b lo mid _ _ _ i j hi' hj a1 a2 hB
-      · rw [Rd.2.1 i hi' (by omega)]
-        obtain ⟨i', hi'', b1, b2, ei⟩ := Rc.2.2 i hi' a1 (by omega)
-        obtain ⟨j', hj', c1, c2, ej⟩ := Rd.2.2 j hj (by omega) a3
-        rw [ei, ej, Rc.2.1 j' hj' (by omega)]
-        have hr := hp.2.2 j' hj' (by omega) c2
+      · rw [Rd.2.1 i hi' (by (clear * - i mid hi n lo j hA; omega))]
+        obtain ⟨i', hi'', b1, b2, ei⟩ := Rc.2.2 i hi' a1 (by (clear * - i mid n lo hi j hA; omega))
+        obtain ⟨j', hj', c1, c2, ej⟩ := Rd.2.2 j hj (by (clear * - mid j n lo hi i hB i'; omega)) a3
+        rw [ei, ej, Rc.2.1 j' hj' (by (clear * - j' lo mid n hi i j i' c1; omega))]
+        have hr := hp.2.2 j' hj' (by (clear * - mid j' n lo hi i j i' c1; omega)) c2
         by_cases e : i' = mid
         · subst e; exact hr
-        · have hl := hp.2.1 i' hi'' b1 (by omega)
+        · have hl := hp.2.1 i' hi'' b1 (by (clear * - i' mid n lo hi i j b2 j' e; omega))
           cases hc : lt b[j'] b[i']
           · rfl
           · rw [htrans _ _ _ hc hl] at hr; exact hr
@@ -2404,25 +2404,25 @@ theorem fuse_and_mask (x n : ℕ) (k : ℕ) (hk : k = 2 ^ n - 1) : x &&& k = x %
   subst hk; exact Nat.and_two_pow_sub_one_eq_mod x n
 
 theorem fuse_pk_op (op m a b w : ℕ) (hop : op < 16) : pkI op m a b w &&& 15 = op := by
-  rw [fuse_and_mask _ 4 15 rfl, pkI]; omega
+  rw [fuse_and_mask _ 4 15 rfl, pkI]; (clear * - op m a b w hop; omega)
 
 theorem fuse_pk_m (op m a b w : ℕ) (hop : op < 16) (hm : m < 4) : (pkI op m a b w >>> 4) &&& 3 = m := by
-  rw [fuse_and_mask _ 2 3 rfl, Nat.shiftRight_eq_div_pow, pkI]; omega
+  rw [fuse_and_mask _ 2 3 rfl, Nat.shiftRight_eq_div_pow, pkI]; (clear * - op m a b w hop hm; omega)
 
 theorem fuse_pk_a (op m a b w : ℕ) (hop : op < 16) (hm : m < 4) (ha : a < 2 ^ 20) :
     (pkI op m a b w >>> 6) &&& 0xFFFFF = a := by
-  rw [fuse_and_mask _ 20 0xFFFFF rfl, Nat.shiftRight_eq_div_pow, pkI]; omega
+  rw [fuse_and_mask _ 20 0xFFFFF rfl, Nat.shiftRight_eq_div_pow, pkI]; (clear * - op m a b w hop hm ha; omega)
 
 theorem fuse_pk_hi (op m a b w : ℕ) (hop : op < 16) (hm : m < 4) (ha : a < 2 ^ 20) :
     pkI op m a b w >>> 26 = b + 2 ^ 20 * w := by
-  rw [Nat.shiftRight_eq_div_pow, pkI]; omega
+  rw [Nat.shiftRight_eq_div_pow, pkI]; (clear * - op m a b w hop hm ha; omega)
 
 theorem fuse_pk_w (op m a b w : ℕ) (hop : op < 16) (hm : m < 4) (ha : a < 2 ^ 20) (hb : b < 2 ^ 20) :
     pkI op m a b w >>> 46 = w := by
-  rw [Nat.shiftRight_eq_div_pow, pkI]; omega
+  rw [Nat.shiftRight_eq_div_pow, pkI]; (clear * - op m a b w hop hm ha hb; omega)
 
 theorem fuse_wKind_lt (w : FE) : wKind w < 4 := by
-  unfold wKind; split_ifs <;> omega
+  unfold wKind; split_ifs <;> (clear * -; omega)
 
 /-- `c·y = (0, c, 0)` in `E3`. -/
 theorem fuse_fe_y1 (c : FK) : (⟨0, c, 0⟩ : FE) = FE.ofK c * FE.y := by
@@ -2466,7 +2466,7 @@ theorem fuse_back (st : Array 𝔽) : st.getD (st.size - 1) 0 = st.back?.getD 0 
   simp [Array.back?]
 
 theorem fuse_hi_mask (b w : ℕ) (hb : b < 2 ^ 20) : (b + 2 ^ 20 * w) &&& 1048575 = b := by
-  rw [fuse_and_mask _ 20 1048575 rfl]; omega
+  rw [fuse_and_mask _ 20 1048575 rfl]; (clear * - b w hb; omega)
 
 theorem fuse_fstep_pk (F : Array 𝔽) (W : Array FE) (s : 𝔽 × Array 𝔽 × Array (ℕ × 𝔽)) (op m a b w : ℕ) (hop : op < 16)
     (hm : m < 4) (ha : a < 2 ^ 20) (hb : b < 2 ^ 20) :
@@ -2651,7 +2651,7 @@ theorem fuse_rows_get {α : Type} (rs : Array TRec) (g : ℕ → ℕ → α) (n 
       rw [List.getElem?_append_left (by rw [hlen]; (clear * - hi this; omega)), ih h1]
     · have h2 : t = n := by (clear * - ht h1; omega)
       subst h2
-      rw [List.getElem?_append_right (by rw [hlen]; (clear * -; omega)), hlen, Nat.add_sub_cancel_left]
+      rw [List.getElem?_append_right (by rw [hlen]; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - rs t i; omega))), hlen, Nat.add_sub_cancel_left]
       simp only [List.flatMap_cons, List.flatMap_nil, List.append_nil, List.getElem?_map, List.getElem?_range hi]
       rfl
 
@@ -2687,9 +2687,9 @@ theorem fuse_ofold_get (l : List TRec) : ∀ (acc : Array ℕ), 0 < acc.size →
     · simp only [Nat.add_zero, List.take_zero, List.map_nil, List.sum_nil]
       exact fuse_ofold_pre _ _ _ (by (clear * - h0; omega))
     · simp only [List.foldl_cons]
-      have h1 := ih (fuse_ostep acc r) (by simp [fuse_ostep]) k (by simp at hk; omega)
+      have h1 := ih (fuse_ostep acc r) (by simp [fuse_ostep]) k (by simp at hk; (clear * - hk; omega))
       have hs : (fuse_ostep acc r).size - 1 = acc.size - 1 + 1 := by simp [fuse_ostep]; (clear * - h0; omega)
-      rw [hs, show acc.size - 1 + 1 + k = acc.size - 1 + (k + 1) by (clear * -; omega)] at h1
+      rw [hs, show acc.size - 1 + 1 + k = acc.size - 1 + (k + 1) by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)] at h1
       rw [h1]
       have hg : (fuse_ostep acc r).getD (acc.size - 1 + 1) 0 = acc.getD (acc.size - 1) 0 + r.size := by
         simp [fuse_ostep, Array.getD_eq_getD_getElem?, show acc.size - 1 + 1 = acc.size by (clear * - h0; omega)]
@@ -3090,7 +3090,7 @@ theorem auto_loop {β : Type} (f : Unit → β → Id (ForInStep β)) (μ : β �
 theorem auto_getD_push {α : Type} (a : Array α) (x d : α) (i : ℕ) :
     (a.push x).getD i d = if i < a.size then a.getD i d else if i = a.size then x else d := by
   simp only [Array.getD_eq_getD_getElem?, Array.getElem?_push]
-  split_ifs with h1 h2 <;> try omega
+  split_ifs with h1 h2 <;> try (clear * - α x d a i h1 h2; omega)
   · rfl
   · rfl
   · rw [Array.getElem?_eq_none (by omega)]; rfl
@@ -3342,7 +3342,7 @@ theorem auto_merge_gen (a b : 𝔽) (ta : Array ℕ) (va : Array 𝔽) (ka : Arr
         by_cases c2 : i ≥ ta.size ∨ tb.getD j 0 < ta.getD i 0
         · rw [if_pos (by simpa using c2)]
           have hj' : j < tb.size := by (clear * - c1; omega)
-          refine ⟨⟨by simp [h1], by dsimp only; omega, by dsimp only; (clear * - c1; omega), ?_⟩, by dsimp only; (clear * - c1; omega)⟩
+          refine ⟨⟨by simp [h1], by dsimp only; (clear * - hi; omega), by dsimp only; (clear * - c1; omega), ?_⟩, by dsimp only; (clear * - c1; omega)⟩
           dsimp only
           rw [auto_S_push _ _ _ _ _ h1, hS, auto_HS_succ, auto_V2]
           ring
@@ -3398,9 +3398,9 @@ theorem auto_nat (t u m : ℕ) :
       (t + 2 * u) / 2 ^ (m + 1) = (t / 2 + u) / 2 ^ m := by
   rw [pow_succ']
   refine ⟨?_, ?_, ?_⟩
-  · rw [Nat.mod_mod_of_dvd _ (dvd_mul_right 2 _)]; omega
-  · rw [Nat.mod_mul_right_div_self, show (t + 2 * u) / 2 = t / 2 + u by omega]
-  · rw [← Nat.div_div_eq_div_mul, show (t + 2 * u) / 2 = t / 2 + u by omega]
+  · rw [Nat.mod_mod_of_dvd _ (dvd_mul_right 2 _)]; (clear * - t u; omega)
+  · rw [Nat.mod_mul_right_div_self, show (t + 2 * u) / 2 = t / 2 + u by (clear * - t u; omega)]
+  · rw [← Nat.div_div_eq_div_mul, show (t + 2 * u) / 2 = t / 2 + u by (clear * - t u; omega)]
 
 theorem auto_eqW_cons (r : 𝔽) (rs : List 𝔽) (x : ℕ) :
     eqWG (r :: rs) x = auto_e r x * eqWG rs (x / 2) := rfl
@@ -3414,10 +3414,10 @@ theorem auto_term (b : 𝔽) (bs : List 𝔽) (g : ℕ → 𝔽) (m t u : ℕ) :
   unfold auto_e; rw [h1]
 
 theorem auto_e_even (r : 𝔽) (j : ℕ) : auto_e r (2 * j) = 1 - r := by
-  unfold auto_e; rw [if_neg (by omega)]
+  unfold auto_e; rw [if_neg (by (clear * - j; omega))]
 
 theorem auto_e_odd (r : 𝔽) (j : ℕ) : auto_e r (2 * j + 1) = r := by
-  unfold auto_e; rw [if_pos (by omega)]
+  unfold auto_e; rw [if_pos (by (clear * - j; omega))]
 
 theorem auto_sum_double (f : ℕ → 𝔽) (N : ℕ) :
     ∑ j ∈ Finset.range (2 * N), f j = ∑ j ∈ Finset.range N, (f (2 * j) + f (2 * j + 1)) := by
@@ -3442,11 +3442,11 @@ theorem auto_Tc_eq (R : ℕ) (A B : ℕ → 𝔽) (g : ℕ → 𝔽) (m : ℕ) :
     refine congrArg₂ (· + ·) ?_ ?_
     · refine Finset.sum_congr rfl fun j _ => ?_
       rw [show s + R * (2 * j) = s + 2 * (R * j) by ring, mul_assoc (eqWG _ (2 * j)), auto_term, auto_eqW_cons,
-        show 2 * j / 2 = j by (clear * -; omega), auto_e_even]
+        show 2 * j / 2 = j by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - j; omega)), auto_e_even]
       ring
     · refine Finset.sum_congr rfl fun j _ => ?_
       rw [show s + R * (2 * j + 1) = s + R + 2 * (R * j) by ring, mul_assoc (eqWG _ (2 * j + 1)), auto_term,
-        auto_eqW_cons, show (2 * j + 1) / 2 = j by (clear * -; omega), auto_e_odd]
+        auto_eqW_cons, show (2 * j + 1) / 2 = j by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - j; omega)), auto_e_odd]
       ring
 
 theorem auto_fold (R : ℕ) (A B : ℕ → 𝔽) (l : List ℕ) (s : Array ℕ × Array 𝔽) (g : ℕ → 𝔽) :
@@ -3572,14 +3572,14 @@ theorem greedy_cmp_trans (κ : ℕ → ℕ × ℕ) (a b c : ℕ) (h1 : greedy_cm
     greedy_cmp κ a c = true := by
   simp only [greedy_cmp, keyLt, Bool.or_eq_true, Bool.and_eq_true, decide_eq_true_eq, beq_iff_eq,
     Prod.ext_iff] at h1 h2 ⊢
-  omega
+  (clear * - κ a c b h1 h2; omega)
 
 theorem greedy_cmp_asymm (κ : ℕ → ℕ × ℕ) (a b : ℕ) (h : greedy_cmp κ a b = true) : greedy_cmp κ b a = false := by
   simp only [greedy_cmp, keyLt, Bool.or_eq_true, Bool.and_eq_true, decide_eq_true_eq, beq_iff_eq,
     Prod.ext_iff] at h
   simp only [greedy_cmp, keyLt, Bool.or_eq_false_iff, Bool.and_eq_false_iff, decide_eq_false_iff_not, beq_eq_false_iff_ne,
     ne_eq, Prod.ext_iff]
-  omega
+  (clear * - κ b a h; omega)
 
 theorem greedy_sortAt_sorted (as : Array Atom) (L : ℕ) (ix : Array ℕ) :
     (sortAt as L ix).toList.Pairwise fun a b ↦ keyLt (keyAt as L b) (keyAt as L a) = false := by

@@ -176,7 +176,7 @@ theorem inWindow_iff_div (b : Fin B.n) (x : ℕ) :
   rw [Nat.mul_comm (B.offset b / 2 ^ B.size b), ha]
   have hp := Nat.two_pow_pos (B.size b)
   change (B.offset b ≤ x ∧ x < B.offset b + 2 ^ B.size b) ↔ _
-  omega
+  (clear * - B b x ha hp; omega)
 
 /-! ## The stack -/
 
@@ -191,8 +191,8 @@ theorem stackAt_getElem_of_inWindow (t : B.Tables R) {μ : ℕ} (pad : R) {b : F
     (hx : x < 2 ^ μ) (h : B.InWindow b x) :
     (B.stackAt t μ pad)[x] = (t b)[x - B.offset b]'(by have := h.2; omega) := by
   simp only [stackAt, Vector.getElem_ofFn]
-  rw [ite_eq_right (by have := B.offset_add_pow_le_total b; omega), Finset.sum_eq_single b]
-  · rw [ite_eq_left h, Vector.getElem?_eq_getElem (by have := h.2; omega), Option.getD_some]
+  rw [ite_eq_right (by have := B.offset_add_pow_le_total b; (clear * - B x μ b h this; omega)), Finset.sum_eq_single b]
+  · rw [ite_eq_left h, Vector.getElem?_eq_getElem (by have := h.2; (clear * - x B b μ h; omega)), Option.getD_some]
   · intro c _ hc
     rw [ite_eq_right fun h' ↦ hc (B.inWindow_unique h' h)]
   · intro h'
@@ -300,8 +300,8 @@ theorem unstack_getElem {μ : ℕ} (hμ : B.total ≤ 2 ^ μ) (q : CMlPolynomial
   rw [B.unstack_getElem hμ _ b hi]
   have hx : i + B.offset b < 2 ^ μ := by
     have := B.offset_add_pow_le_total b
-    omega
-  rw [B.stackAt_getElem_of_inWindow t (b := b) pad hx ⟨by (clear * -; omega), by (clear * - hi; omega)⟩]
+    (clear * - i B b μ hμ hi this; omega)
+  rw [B.stackAt_getElem_of_inWindow t (b := b) pad hx ⟨by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - B b i; omega)), by (clear * - hi; omega)⟩]
   simp
 
 /-- Mapping the entries commutes with reading a block. -/
@@ -366,7 +366,7 @@ private theorem prod_range_offsetNat (t : B.Tables R) {μ : ℕ} (hμ : B.total 
     have hx : B.offsetNat k + y < 2 ^ μ := by
       have := B.offset_add_pow_le_total ⟨k, hkn⟩
       simp only [offset] at this
-      omega
+      (clear * - B k hkn y μ hμ this; omega)
     rw [dite_eq_left hx, B.stackAt_getElem_of_inWindow t pad hx hwin]
     simp [offset]
 
@@ -387,8 +387,8 @@ theorem prod_stackAt (t : B.Tables R) {μ : ℕ} (hμ : B.total ≤ 2 ^ μ) (pad
   · rw [← Finset.card_range (2 ^ μ - B.total), ← Finset.prod_const]
     refine Finset.prod_congr (by simp) fun y hy ↦ ?_
     rw [Finset.mem_range] at hy
-    have hx : B.total + y < 2 ^ μ := by omega
-    rw [dite_eq_left hx, B.stackAt_getElem_of_total_le t pad hx (by omega)]
+    have hx : B.total + y < 2 ^ μ := by (clear * - B y μ hμ hy; omega)
+    rw [dite_eq_left hx, B.stackAt_getElem_of_total_le t pad hx (by (clear * - B y μ; omega))]
 
 end Blocks
 
@@ -465,7 +465,7 @@ theorem windowTable_getElem {μ : ℕ} (hμ : B.total ≤ 2 ^ μ) (b : Fin B.n)
   · have hd := (B.inWindow_iff_div b x.val).mp hx
     have hm := Nat.mod_add_div x.val (2 ^ B.size b)
     rw [hd, Nat.mul_div_cancel' (B.pow_size_dvd_offset b)] at hm
-    have he : x.val % 2 ^ B.size b = x.val - B.offset b := by omega
+    have he : x.val % 2 ^ B.size b = x.val - B.offset b := by (clear * - μ x B b hx hm; omega)
     simp [hx, hd, he]
   · simp [hx, (B.inWindow_iff_div b x.val).not.mp hx]
 

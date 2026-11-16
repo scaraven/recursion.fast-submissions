@@ -140,7 +140,22 @@ def tv : Nat → Nat → FK
   | 0, _ => 0
   | d + 1, q => tv d (q / 2) + (if q % 2 = 1 then w64 ((1 : UInt64) <<< (14 - d : Nat).toUInt64) else 0)
 
-theorem tv_seven : ∀ q < 128, tv 7 q = w64 (q.toUInt64 <<< (8 : Nat).toUInt64) := by decide
+/-- `tv` on the words as natural numbers (GOLF3: the kernel computes `ℕ`'s operations natively). -/
+private def tvN : Nat → Nat → Nat
+  | 0, _ => 0
+  | d + 1, q => tvN d (q / 2) ^^^ (if q % 2 = 1 then ((1 : UInt64) <<< (14 - d : Nat).toUInt64).toNat else 0)
+
+private theorem tv_toNat : ∀ d q : Nat, (tv d q).val.toNat = tvN d q
+  | 0, _ => rfl
+  | d + 1, q => by
+    rw [tv, tvN, FK.add_toNat, tv_toNat d]
+    split_ifs <;> rfl
+
+theorem tv_seven : ∀ q < 128, tv 7 q = w64 (q.toUInt64 <<< (8 : Nat).toUInt64) := by
+  have h : ∀ q < 128, tvN 7 q = (q.toUInt64 <<< (8 : Nat).toUInt64).toNat := by decide +kernel
+  intro q hq
+  rw [FK.eq_iff_toNat, tv_toNat]
+  exact h q hq
 
 theorem cell_lin1 (o : LoopOut) (t jf : Nat) (ht : t < o.tpl.length)
     (hw : ∀ r ∈ o.tpl, r.op ≠ .assert0 ∧ r.ty = .K) :

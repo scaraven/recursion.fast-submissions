@@ -172,17 +172,17 @@ theorem toE2_zsmul (n : ℤ) (a : FE2) : toE2 (n • a) = n • toE2 a := by
 theorem toE2_powGo (k : ℕ) (b : FE2) (e : ℕ) (acc : FE2) (he : e ≤ k) :
     toE2 (powGo k b e acc) = toE2 acc * toE2 b ^ e := by
   induction k generalizing b e acc with
-  | zero => obtain rfl : e = 0 := by omega
+  | zero => obtain rfl : e = 0 := by (clear * - e he; omega)
             rw [powGo, pow_zero, mul_one]
   | succ k ih =>
     rw [powGo]
     split_ifs with h0 ho
     · rw [h0, pow_zero, mul_one]
-    · rw [ih _ _ _ (by omega), fe2_mul_eq, toE2_sq]
-      conv_rhs => rw [show e = 2 * (e / 2) + 1 by omega, pow_succ, pow_mul, _root_.sq]
+    · rw [ih _ _ _ (by (clear * - e k he ho; omega)), fe2_mul_eq, toE2_sq]
+      conv_rhs => rw [show e = 2 * (e / 2) + 1 by (clear * - e k ho; omega), pow_succ, pow_mul, _root_.sq]
       ring
-    · rw [ih _ _ _ (by omega), toE2_sq]
-      conv_rhs => rw [show e = 2 * (e / 2) by omega, pow_mul, _root_.sq]
+    · rw [ih _ _ _ (by (clear * - e k he; omega)), toE2_sq]
+      conv_rhs => rw [show e = 2 * (e / 2) by (clear * - e k ho; omega), pow_mul, _root_.sq]
 
 theorem toE2_npow (a : FE2) (n : ℕ) : toE2 (a ^ n) = toE2 a ^ n := by
   change toE2 (powGo n a n 1) = _

@@ -79,7 +79,7 @@ theorem row_perm (H : SpongeRel hk ks Y msg cont) {i : ℕ} (hi : i < 2 ^ hk) :
       · simp [yState, K.lane]
       · simp [zeroSt]
     · rw [msgBytes_bit _ _ _ (Nat.mod_lt _ (by decide)),
-        show k / 8 / 8 = k / 64 by (clear * -; omega), show 8 * (k / 8 % 8) + k % 8 = k % 64 by (clear * -; omega)]
+        show k / 8 / 8 = k / 64 by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - k; omega)), show 8 * (k / 8 % 8) + k % 8 = k % 64 by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - k; omega))]
       by_cases h17 : k / 64 < 17
       · rw [if_pos h17, decide_eq_true (show k < 1088 by (clear * - hk' h17; omega)), Bool.true_and]
       · rw [if_neg h17, decide_eq_false (show ¬ k < 1088 by (clear * - hk' hl h17; omega)), Bool.false_and,
@@ -103,8 +103,8 @@ theorem sponge_segment (H : SpongeRel hk ks Y msg cont) (a L : ℕ) (ha : a + nB
   refine absorb_sound L (fun i ↦ msgBytes msg (a + i)) (fun i ↦ prevState Y cont (a + i))
     (fun i ↦ yState Y (a + i)) (by simp [prevState, hfirst]) (fun i hi ↦ ?_) (fun i hi ↦ ?_) hpad
   · exact row_perm hk ks Y msg cont H (by (clear * - ha hi; omega))
-  · simp only [prevState, hin (i + 1) (by (clear * -; omega)) hi, ite_true,
-      show a + (i + 1) - 1 = a + i by (clear * -; omega)]
+  · simp only [prevState, hin (i + 1) (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - i; omega))) hi, ite_true,
+      show a + (i + 1) - 1 = a + i by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - a i; omega))]
 
 /-- **The trace digest** (BLUEPRINT §4.2): rows `0 … nBlk L − 1` carrying the stream
 `0x54 ‖ traceBytes tr` (`L` bytes, padding pinned) output `traceDigest tr`. -/

@@ -102,15 +102,15 @@ theorem pr_sum_lt (b : ℕ → FK) (hb : ∀ i, b i = 0 ∨ b i = 1) :
   | 0, _ => by simp [kToNat]; rfl
   | n + 1, hn => by
     rw [List.range_succ, List.map_append, List.sum_append, List.map_singleton, List.sum_singleton]
-    have ih := pr_sum_lt b hb n (by omega)
-    have hpow : 2 ^ n < 2 ^ (n + 1) := Nat.pow_lt_pow_right (by norm_num) (by omega)
+    have ih := pr_sum_lt b hb n (by (clear * - n hn; omega))
+    have hpow : 2 ^ n < 2 ^ (n + 1) := Nat.pow_lt_pow_right (by norm_num) (by (clear * - n b; omega))
     rcases hb n with h | h
     · rw [h, mul_zero, add_zero]; exact ih.trans hpow
     · rw [h, mul_one]
       change ((_ : UInt64) ^^^ _).toNat < _
       rw [UInt64.toNat_xor]
       refine Nat.xor_lt_two_pow (ih.trans hpow) ?_
-      have := pr_pow_val (i := n) (by omega)
+      have := pr_pow_val (i := n) (by (clear * - n b hn; omega))
       simp only [kToNat] at this
       rw [this]; exact hpow
 
@@ -155,7 +155,7 @@ theorem powRange_sem (lay : Lay) (z : ℕ → FK) (j g : ℕ) (hg : g ≤ 64) (b
   exact pr_sum_lt b (fun i ↦ by
     simp only [hbdef]; split
     · exact hw01 i (by assumption)
-    · exact Or.inl rfl) n (by omega)
+    · exact Or.inl rfl) n (by (clear * - n g hg; omega))
 
 /-- **A ground answer whose lane 2 passed the range rows passes `powOK g`** (`powOKR`, V's native check:
 `eToNat c < 2^(192 − g)`). -/
@@ -164,9 +164,9 @@ theorem powOK_of_range {g : ℕ} (hg : g ≤ 64) {c : FE} (h : kToNat c.c₂ < 2
   unfold DM.powOKR eToNat
   have h0 : kToNat c.c₀ < 2 ^ 64 := c.c₀.val.toNat_lt
   have h1 : kToNat c.c₁ < 2 ^ 64 := c.c₁.val.toNat_lt
-  have he : (2 : ℕ) ^ (192 - g) = 2 ^ 128 * 2 ^ (64 - g) := by rw [← pow_add]; congr 1; omega
+  have he : (2 : ℕ) ^ (192 - g) = 2 ^ 128 * 2 ^ (64 - g) := by rw [← pow_add]; congr 1; (clear * - g hg c; omega)
   rw [he, decide_eq_true_eq]
   generalize (2 : ℕ) ^ (64 - g) = A at h ⊢
-  omega
+  (clear * - c A g h0 h1 h; omega)
 
 end Lvm.Typed

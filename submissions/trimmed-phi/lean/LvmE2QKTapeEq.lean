@@ -90,7 +90,7 @@ theorem lrank_suffixK {δ : List Ins} {cb C : Nat} (hl : δ.length = cb + C)
   have hδ : δ = δ.take cb ++ δ.drop cb := (List.take_append_drop cb δ).symm
   have hd : (δ.drop cb).length = C := by rw [List.length_drop]; (clear * - hl; omega)
   have ht : (δ.take cb).length = cb := by rw [List.length_take]; (clear * - hl; omega)
-  rw [lrank_tplOf, ltw_tplOf, hδ, List.take_append, ht, show cb + j - cb = j by (clear * -; omega),
+  rw [lrank_tplOf, ltw_tplOf, hδ, List.take_append, ht, show cb + j - cb = j by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - cb j; omega)),
     List.take_of_length_le (by (clear * - ht; omega) : (δ.take cb).length ≤ cb + j), List.map_append, List.map_append,
     List.sum_append, List.sum_append, sum_ones h, sum_ones (fun i hi => h i (List.mem_of_mem_take hi)),
     List.length_take, hd]
@@ -101,9 +101,9 @@ theorem rep2_congr {P : Nat} {cv cv' : Nat → FE2} {C : KClaim FE2} {f : Bool} 
   have hB : repB2 P cv = repB2 P cv' := List.map_congr_left fun l hl => e _ (by simp at hl; (clear * - hl; omega))
   have hA : repA2 P cv = repA2 P cv' := List.map_congr_left fun l hl => e _ (by simp at hl; (clear * - hl; omega))
   refine ⟨?_, ?_, ?_, ?_, ?_, ?_⟩
-  · rw [← e 0 (by (clear * -; omega))]; exact h.value
+  · rw [← e 0 (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - P; omega)))]; exact h.value
   · rw [← h.mu]; exact (List.map_congr_left fun i hi => e _ (by simp at hi; (clear * - hi; omega))).symm
-  · rw [← e 17 (by (clear * -; omega))]; exact h.kappa
+  · rw [← e 17 (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - P; omega)))]; exact h.kappa
   · rw [← h.point]; exact (List.map_congr_left fun i hi => e _ (by simp at hi; (clear * - hi; omega))).symm
   · rw [h.weights, hB, hA]
   · intro i hi; rw [← e _ (by (clear * - hi; omega)), h.flips i hi, hB, hA]
@@ -192,8 +192,8 @@ theorem layers2_spec {c : Ctx} {M : Mem} {pL : Ptr} {P q cst d : Nat} {sig : Byt
     show iterXv M _ jf (relocS q cst ((lay02 P).k j)) = _
     rw [relocS_k2 P, iterXv_ext1 M _ hdims (by simpa using hjf)]
     show FE.ofK (M.k _) = _
-    rw [show cst + (0 + j) + 16 * jf = cst + (16 * jf + j) by (clear * -; omega)]
-  have hstr : (lay02 P).str2 ≠ 16 := by simp only [lay02, LCfg.str2]; (clear * -; omega)
+    rw [show cst + (0 + j) + 16 * jf = cst + (16 * jf + j) by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)]
+  have hstr : (lay02 P).str2 ≠ 16 := by simp only [lay02, LCfg.str2]; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - P; omega))
   have hv : ∀ jf < N, ∀ m < (lay02 P).q + (lay02 P).str2,
       lv2 (fun s => iterXv M ⟨pL, [d], layTpl2 P q cst⟩ jf (relocS q cst s)) [(lay02 P).str2] m =
         fe2At sig (8 * m + 8 * (q + (lay02 P).str2 * jf)) := by
@@ -211,7 +211,7 @@ theorem layers2_spec {c : Ctx} {M : Mem} {pL : Ptr} {P q cst d : Nat} {sig : Byt
         rw [Nat.mul_comm N]; exact (Nat.mul_succ _ _).symm ▸ Nat.mul_le_mul_left _ hjf
       (clear * - hT hm' this; omega)
     unfold lv2
-    rw [e, e, show q + (m + 1) + (lay02 P).str2 * jf = q + m + (lay02 P).str2 * jf + 1 by (clear * -; omega),
+    rw [e, e, show q + (m + 1) + (lay02 P).str2 * jf = q + m + (lay02 P).str2 * jf + 1 by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega),
       fe_ofK_c0, fe_ofK_c0, hS _ (by (clear * - hlt; omega)), hS _ hlt]
     show (⟨kAt sig (8 * (q + m + (lay02 P).str2 * jf)), kAt sig (8 * (q + m + (lay02 P).str2 * jf + 1))⟩ : FE2) =
       ⟨kAt sig (8 * m + 8 * (q + (lay02 P).str2 * jf)), kAt sig (8 * m + 8 * (q + (lay02 P).str2 * jf) + 8)⟩
@@ -236,7 +236,7 @@ theorem layers2_spec {c : Ctx} {M : Mem} {pL : Ptr} {P q cst d : Nat} {sig : Byt
     have hr1 := hrank (2 * j) (by (clear * - hj; omega))
     have hr2 := hrank (2 * j + 1) (by (clear * - hj; omega))
     show (⟨(Src.valF _ _ (.prev (cbOf2 P + 2 * j))).c₀, (Src.valF _ _ (.prev (cbOf2 P + 2 * j + 1))).c₀⟩ : FE2) = _
-    rw [show cbOf2 P + 2 * j + 1 = cbOf2 P + (2 * j + 1) by (clear * -; omega), h1, h2, fe_ofK_c0, fe_ofK_c0]
+    rw [show cbOf2 P + 2 * j + 1 = cbOf2 P + (2 * j + 1) by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega), h1, h2, fe_ofK_c0, fe_ofK_c0]
     rcases jf with _ | jf
     · show _ = (⟨M.k (pL.k - 2 * (57 + P) + 2 * j), M.k (pL.k - 2 * (57 + P) + 2 * j + 1)⟩ : FE2)
       generalize lrank .K (layTpl2 P q cst) (cbOf2 P + 2 * j) = a at hr1 ⊢
@@ -245,7 +245,7 @@ theorem layers2_spec {c : Ctx} {M : Mem} {pL : Ptr} {P q cst d : Nat} {sig : Byt
       rw [show pL.k + a - w + w * 0 = pL.k - 2 * (57 + P) + 2 * j by (clear * - hpk hr1; omega),
         show pL.k + a' - w + w * 0 = pL.k - 2 * (57 + P) + 2 * j + 1 by (clear * - hpk hr2; omega)]
     · show _ = ((⟨pL, [d], layTpl2 P q cst⟩ : LoopOut).cell2 (cbOf2 P + 2 * j) jf).val M
-      rw [cell2_val, LoopOut.cell_val, LoopOut.cell_val, show cbOf2 P + 2 * j + 1 = cbOf2 P + (2 * j + 1) by (clear * -; omega)]
+      rw [cell2_val, LoopOut.cell_val, LoopOut.cell_val, show cbOf2 P + 2 * j + 1 = cbOf2 P + (2 * j + 1) by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)]
       show _ = (⟨(M.rd ((layTpl2 P q cst).getD (cbOf2 P + 2 * j) default).ty _).c₀,
         (M.rd ((layTpl2 P q cst).getD (cbOf2 P + (2 * j + 1)) default).ty _).c₀⟩ : FE2)
       rw [hty _ (by (clear * - hj; omega)), hty _ (by (clear * - hj; omega))]
@@ -268,7 +268,7 @@ theorem layers2_spec {c : Ctx} {M : Mem} {pL : Ptr} {P q cst d : Nat} {sig : Byt
       (hio k hkN C (by rw [← hR.point, List.length_map, List.length_range]))
       (fun i hi => ⟨(hk k (by (clear * - hN hkN; omega)) i (by (clear * - hi; omega))).trans ((hcst k hkN).1 i hi).1,
         (hk k (by (clear * - hN hkN; omega)) (7 + i) (by (clear * - hi; omega))).trans ((hcst k hkN).1 i hi).2⟩)
-      ((hk k (by (clear * - hN hkN; omega)) 14 (by (clear * -; omega))).trans ((hcst k hkN).2.trans (by rw [hf]))) (va := feAt sig) (fun o => rfl)
+      ((hk k (by (clear * - hN hkN; omega)) 14 (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))).trans ((hcst k hkN).2.trans (by rw [hf]))) (va := feAt sig) (fun o => rfl)
       (hv k (by (clear * - hkN; omega))) (hp k (by (clear * - hN hkN; omega)))
   have hrep : ∀ k ≤ N, Rep2 P (layCv2 M ⟨pL, [d], layTpl2 P q cst⟩ (57 + P) (cbOf2 P) k)
       (chain2 (fe2At sig) (feAt sig) io C0 (8 * q - 40) (8 * (lay02 P).str2) k) (first0 && k == 0) := by
@@ -296,14 +296,14 @@ theorem layers2_spec {c : Ctx} {M : Mem} {pL : Ptr} {P q cst d : Nat} {sig : Byt
     simp only [ha, bne_self_eq_false, Bool.false_or, beq_iff_eq] at hg
     rw [hg]
     show (fun s => iterXv M _ jf (relocS q cst s)) ((lay02 P).k 15) * _ = 0
-    rw [hk jf hjf 15 (by (clear * -; omega)), hgate jf hjf, if_neg (by (clear * - hN'; omega)), zero_mul]
+    rw [hk jf hjf 15 (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)), hgate jf hjf, if_neg (by (clear * - hN'; omega)), zero_mul]
   change SegsAssert M pL (loop [d] (tplOf ((layIns2 P).map (relocI q cst))) pL).2 ↔ _
   rw [segsAssert_loop_iff]
   simp only [tassert_reloc]
   constructor
   · intro hA k hk'
     exact (hL k hk' _ _ (hrep k hk'.le) rfl).2.2.1 (hA k (by simpa using (show k < 2 ^ d by (clear * - hN hk'; omega))))
-      (by rw [show iterXv M _ k (relocS q cst ((lay02 P).k 15)) = _ from hk k (by (clear * - hN hk'; omega)) 15 (by (clear * -; omega)),
+      (by rw [show iterXv M _ k (relocS q cst ((lay02 P).k 15)) = _ from hk k (by (clear * - hN hk'; omega)) 15 (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)),
         hgate k (by (clear * - hN hk'; omega)), if_pos hk', hβ])
   · intro hok jf hjf
     have hjf' : jf < 2 ^ d := by simpa using hjf
@@ -340,7 +340,7 @@ theorem samplesG_run (sig : ByteArray) (g : Nat) : ∀ (n : Nat) (s : RS),
     rw [samplesG_run sig g n]
     simp only [rdE_pure_run]
     rw [Prod.mk.injEq, RS.mk.injEq]
-    refine ⟨rfl, by omega, rfl, ?_⟩
+    refine ⟨rfl, by (clear * - e m n; omega), rfl, ?_⟩
     show (powsG (feAt sig) g (e + m + 80 + 0) (n + 1) && (powOKR g (feAt sig (e + m + 48)) && o)) =
       ((powOKR g (feAt sig (e + m + 48)) && powsG (feAt sig) g (e + m + 80) (n + 1)) && o)
     rw [Nat.add_zero]
@@ -351,7 +351,7 @@ theorem layerSpec2_pos (v : Nat → FE2) (va : Nat → FE) (io : KClaim FE2 → 
   show packSpec2 v va gC3 C.point _ 1 (p + 904) |>.2.2.2.1 + LeanVM.Protocol.Verifier.keccakLocalBits * roundLen2 4 + 128 = _
   rw [packSpec2_pos, show LeanVM.Protocol.Verifier.keccakLocalBits = 11 from rfl]
   simp only [roundLen2]
-  (clear * -; omega)
+  (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)
 
 theorem layerSpec2_point_length (v : Nat → FE2) (va : Nat → FE) (io : KClaim FE2 → FE2) (C : KClaim FE2) (p : Nat) :
     (layerSpec2 v va io C p).claim.point.length = C.point.length :=
@@ -378,10 +378,10 @@ theorem chainOk2_iff (v : Nat → FE2) (va : Nat → FE) (io : Nat → KClaim FE
     · rintro ⟨h1, ⟨h2, h3⟩, h4⟩ k hk
       rcases Nat.lt_or_ge k n with hk' | hk'
       · exact h1 k hk'
-      · obtain rfl : k = n := by omega
+      · obtain rfl : k = n := by (clear * - k n hk hk'; omega)
         exact ⟨h2, h3, h4⟩
     · intro h
-      exact ⟨fun k hk => h k (by omega), ⟨(h n (by omega)).1, (h n (by omega)).2.1⟩, (h n (by omega)).2.2⟩
+      exact ⟨fun k hk => h k (by (clear * - k n hk; omega)), ⟨(h n (by (clear * - n; omega))).1, (h n (by (clear * - n; omega))).2.1⟩, (h n (by (clear * - n; omega))).2.2⟩
 
 theorem chainOk2_succ (v : Nat → FE2) (va : Nat → FE) (io : Nat → KClaim FE2 → FE2) (C₀ : KClaim FE2) (p L : Nat) :
     ∀ n, chainOk2 v va io C₀ p L (n + 1) =
@@ -391,7 +391,7 @@ theorem chainOk2_succ (v : Nat → FE2) (va : Nat → FE) (io : Nat → KClaim F
     show (true && _) = (_ && true)
     rw [Bool.true_and, Bool.and_true]
   | n + 1 => by
-    rw [chainOk2, chainOk2_succ v va io C₀ p L n, chainOk2, show n + 1 = 1 + n by omega, lay2At_add]
+    rw [chainOk2, chainOk2_succ v va io C₀ p L n, chainOk2, show n + 1 = 1 + n by (clear * - n; omega), lay2At_add]
     generalize chainOk2 _ _ _ _ _ _ n = X
     generalize ((lay2At v va io C₀ p L 0).ok1 && (lay2At v va io C₀ p L 0).ok2 && (lay2At v va io C₀ p L 0).pw) = a
     generalize ((lay2At _ _ _ _ _ _ n).ok1 && _ && _) = b
@@ -430,12 +430,12 @@ theorem keccakLayersD_run (sig : ByteArray) (sh : LeanVM.Protocol.KeccakGkr.Shap
     dsimp only
     rw [keccakLayersD_run sig sh ls P n (j0 + 1) _ _ (by rw [layerSpec2_point_length, hC])]
     have hio : (fun k => iotaSF (F := FE2) sh ls (j0 + 1 + k)) = (fun j => iotaSF sh ls (j0 + (1 + j))) := by
-      funext k; rw [show j0 + 1 + k = j0 + (1 + k) by omega]
+      funext k; rw [show j0 + 1 + k = j0 + (1 + k) by (clear * - j0 k P C; omega)]
     have hpos : (layerSpec2 (fe2At sig) (feAt sig) (iotaSF sh ls j0) C (s.ent + s.msg)).pos =
         s.ent + s.msg + 1 * (2440 + 112 * (P + 1)) := by rw [layerSpec2_pos, hC]; ring
     have e := chain2_add (fe2At sig) (feAt sig) (fun k => iotaSF sh ls (j0 + k)) C (s.ent + s.msg)
       (2440 + 112 * (P + 1)) 1 (n + 1)
-    rw [show 1 + (n + 1) = n + 1 + 1 by omega] at e
+    rw [show 1 + (n + 1) = n + 1 + 1 by (clear * - n sig sh ls P j0 C s; omega)] at e
     simp only [chain2_one, Nat.add_zero] at e
     rw [e, chainOk2_succ (fe2At sig) (feAt sig) (fun k => iotaSF sh ls (j0 + k)) C (s.ent + s.msg) _ (n + 1)]
     simp only [lay2At_zero, chain2_one, Nat.add_zero]
@@ -464,7 +464,7 @@ theorem tapeGkrD_run (sig : ByteArray) (P : Nat) (inst out : List FE2) (hinst : 
   dsimp only
   rw [keccakLayersD_run sig _ (P + 5) P 23 0 _ _ (by
     show (inst.drop 4 ++ []).length = P + 1
-    rw [List.append_nil, List.length_drop, hinst]; (clear * -; omega))]
+    rw [List.append_nil, List.length_drop, hinst]; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - P; omega)))]
   simp only [Nat.add_zero]
 
 /-! ## The first claim at `E2` -/
@@ -482,7 +482,7 @@ theorem nF_two_pow {z : Nat} (hz : z < 64) : (nF (2 ^ z) : FE2) = gx ^ z := by
 theorem firstWeightsF_eq (lanesPt : List FE2) : firstWeightsF lanesPt = firstWG gx (eqKernelF lanesPt) := by
   unfold firstWeightsF firstWG
   refine List.map_congr_left fun j _ => ?_
-  rw [nF_two_pow (Nat.mod_lt _ (by (clear * -; omega)))]
+  rw [nF_two_pow (Nat.mod_lt _ (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)))]
 
 theorem firstWG_congr {g : FE2} {l l' : List FE2} (h : ∀ i < 25, l.getD i 0 = l'.getD i 0) :
     firstWG g l = firstWG g l' := by
@@ -550,11 +550,11 @@ theorem carVT2_mu (hmu : mu.length = 16) {i : Nat} (hi : i < 16) :
 
 theorem carVT2_kappa (hmu : mu.length = 16) : (carVT2 v0 mu instP lanes fl).getD 17 0 = 1 := by
   unfold carVT2
-  rw [List.getD_append _ _ _ _ (by simp only [List.length_append, List.length_singleton, hmu]; (clear * -; omega)),
-    List.getD_append _ _ _ _ (by simp only [List.length_append, List.length_singleton, hmu]; (clear * -; omega)),
-    List.getD_append _ _ _ _ (by simp only [List.length_append, List.length_singleton, hmu]; (clear * -; omega)),
-    List.getD_append _ _ _ _ (by simp only [List.length_append, List.length_singleton, hmu]; (clear * -; omega)),
-    List.getD_append_right _ _ _ _ (by simp only [List.length_append, List.length_singleton, hmu]; (clear * -; omega))]
+  rw [List.getD_append _ _ _ _ (by simp only [List.length_append, List.length_singleton, hmu]; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - instP lanes; omega))),
+    List.getD_append _ _ _ _ (by simp only [List.length_append, List.length_singleton, hmu]; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - instP lanes; omega))),
+    List.getD_append _ _ _ _ (by simp only [List.length_append, List.length_singleton, hmu]; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - instP; omega))),
+    List.getD_append _ _ _ _ (by simp only [List.length_append, List.length_singleton, hmu]; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)),
+    List.getD_append_right _ _ _ _ (by simp only [List.length_append, List.length_singleton, hmu]; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))]
   simp [hmu]
 
 theorem carVT2_pt (hmu : mu.length = 16) {P : Nat} (hiP : instP.length = P + 1) {i : Nat} (hi : i < P + 1) :
@@ -563,24 +563,24 @@ theorem carVT2_pt (hmu : mu.length = 16) {P : Nat} (hiP : instP.length = P + 1) 
   rw [List.getD_append _ _ _ _ (by simp only [List.length_append, List.length_singleton, hmu, hiP]; (clear * - hi; omega)),
     List.getD_append _ _ _ _ (by simp only [List.length_append, List.length_singleton, hmu, hiP]; (clear * - hi; omega)),
     List.getD_append _ _ _ _ (by simp only [List.length_append, List.length_singleton, hmu, hiP]; (clear * - hi; omega)),
-    List.getD_append_right _ _ _ _ (by simp only [List.length_append, List.length_singleton, hmu]; (clear * -; omega))]
+    List.getD_append_right _ _ _ _ (by simp only [List.length_append, List.length_singleton, hmu]; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - i; omega)))]
   simp only [List.length_append, List.length_singleton, hmu]
-  rw [show 18 + i - (1 + 16 + 1) = i by (clear * -; omega)]
+  rw [show 18 + i - (1 + 16 + 1) = i by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - i; omega))]
 
 theorem carVT2_B (hmu : mu.length = 16) {P : Nat} (hiP : instP.length = P + 1) (hla : 25 ≤ lanes.length) {l : Nat}
     (hl : l < 25) : (carVT2 v0 mu instP lanes fl).getD (19 + P + l) 0 = lanes.getD l 0 := by
   unfold carVT2
   rw [List.getD_append _ _ _ _ (by simp only [List.length_append, List.length_singleton, hmu, hiP, List.length_take, List.length_replicate]; (clear * - hla hl; omega)),
     List.getD_append _ _ _ _ (by simp only [List.length_append, List.length_singleton, hmu, hiP, List.length_take]; (clear * - hla hl; omega)),
-    List.getD_append_right _ _ _ _ (by simp only [List.length_append, List.length_singleton, hmu, hiP]; (clear * -; omega))]
+    List.getD_append_right _ _ _ _ (by simp only [List.length_append, List.length_singleton, hmu, hiP]; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - P l; omega)))]
   simp only [List.length_append, List.length_singleton, hmu, hiP]
-  rw [show 19 + P + l - (1 + 16 + 1 + (P + 1)) = l by (clear * -; omega)]
+  rw [show 19 + P + l - (1 + 16 + 1 + (P + 1)) = l by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - P l; omega))]
   simp [List.getD_eq_getElem?_getD, List.getElem?_take, hl]
 
 theorem carVT2_fl (hmu : mu.length = 16) {P : Nat} (hiP : instP.length = P + 1) (hla : 25 ≤ lanes.length) {i : Nat} :
     (carVT2 v0 mu instP lanes fl).getD (50 + P + i) 0 = fl.getD i 0 := by
   unfold carVT2
-  rw [List.getD_append_right _ _ _ _ (by simp only [List.length_append, List.length_singleton, hmu, hiP, List.length_take, List.length_replicate]; (clear * -; omega))]
+  rw [List.getD_append_right _ _ _ _ (by simp only [List.length_append, List.length_singleton, hmu, hiP, List.length_take, List.length_replicate]; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - P lanes i; omega)))]
   simp only [List.length_append, List.length_singleton, hmu, hiP, List.length_take, List.length_replicate]
   rw [show 50 + P + i - (1 + 16 + 1 + (P + 1) + min 25 lanes.length + 6) = i by (clear * - hla; omega)]
 
@@ -602,7 +602,7 @@ theorem rep_firstT2 (P : Nat) {instV lp out fl : List FE2} (hinst : instV.length
   have hL : (eqKernelF lp).length = 32 := by rw [eqKernelF_length, hlp]; rfl
   have hmu : (eqKernelF (instV.take 4)).length = 16 := by
     rw [eqKernelF_length, List.length_take, hinst]; rfl
-  have hiP1 : (instV.drop 4).length = P + 1 := by rw [List.length_drop, hinst]; (clear * -; omega)
+  have hiP1 : (instV.drop 4).length = P + 1 := by rw [List.length_drop, hinst]; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - P; omega))
   have hla : 25 ≤ (eqKernelF lp).length := by (clear * - hL; omega)
   have hB : ∀ l < 25, (repB2 P fun j => (carVT2 (((List.range 25).map fun l => (eqKernelF lp).getD l 0 *
       out.getD l 0).sum) (eqKernelF (instV.take 4)) (instV.drop 4) (eqKernelF lp) fl).getD j 0).getD l 0 =
@@ -713,7 +713,7 @@ theorem preTBT2_spec {xv : Src → FE} {V : Nat → FE} {P qs : Nat} {inst out :
   have hmu : mu.length = 16 := by
     have := congrArg List.length em; rw [vals2, List.length_map, eqKernelF_length] at this; simpa using this
   refine ⟨el, ?_, ?_, ?_⟩
-  · simp [hmu, hll, hfl]; (clear * -; omega)
+  · simp [hmu, hll, hfl]; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)
   · intro x hx
     simp only [List.mem_append, List.mem_singleton, List.mem_map, List.mem_range] at hx
     rcases hx with ((((((rfl | hx) | rfl) | ⟨i, -, rfl⟩) | hx) | hx) | hx)
@@ -781,7 +781,7 @@ theorem cp2_spec {c : Ctx} {M : Mem} {p : Ptr} {l : List S2} {o : LoopOut}
     rfl
   simp only [Nat.zero_add] at e
   rw [hcell _ (by (clear * - hj; omega)), hcell _ (by (clear * - hj; omega)), fe_ofK_c0, fe_ofK_c0] at e
-  rw [show p.k + 2 * j + 1 = p.k + (2 * j + 1) by (clear * -; omega), e, ← getD_valF2 _ (by simpa using hj),
+  rw [show p.k + 2 * j + 1 = p.k + (2 * j + 1) by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega), e, ← getD_valF2 _ (by simpa using hj),
     ← getD_valF2 _ hj, List.getD_eq_getElem _ _ (by simpa using hj), List.getElem_map,
     List.getD_eq_getElem _ _ hj, gkOut2_val M o _ 0 _ (hl _ (List.getElem_mem hj))]
 
@@ -810,7 +810,7 @@ theorem layOk2_facts {P : Nat} (hP : layOk2 P = true) :
 theorem lay_ltw2 {P : Nat} (hP : layOk2 P = true) {q cst : Nat} : 2 * (57 + P) ≤ ltw .K (layTpl2 P q cst) := by
   obtain ⟨hlen, hsuf⟩ := layOk2_facts hP
   have hr0 : lrank .K (layTpl2 P q cst) (cbOf2 P + 0) + 2 * (57 + P) = ltw .K (layTpl2 P q cst) + 0 := by
-    rw [layTpl2, lrank_reloc, ltw_reloc]; exact lrank_suffixK hlen (fun i hi => (hsuf i hi).1) (by (clear * -; omega))
+    rw [layTpl2, lrank_reloc, ltw_reloc]; exact lrank_suffixK hlen (fun i hi => (hsuf i hi).1) (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - P; omega)))
   (clear * - hr0; omega)
 
 /-- The copy rows of a layer loop's last iteration are the `2C` `K` cells before the pointer after it. -/
@@ -835,7 +835,7 @@ theorem lay_last_cell2 {M : Mem} {P : Nat} (hP : layOk2 P = true) (pL : Ptr) (q 
     intro t ht
     rw [cell_of_tyK (2 ^ d - 1) (hty t ht)]
     rfl
-  rw [cell2_val, hcell _ (by (clear * - hj; omega)), show cbOf2 P + 2 * j + 1 = cbOf2 P + (2 * j + 1) by (clear * -; omega), hcell _ (by (clear * - hj; omega)),
+  rw [cell2_val, hcell _ (by (clear * - hj; omega)), show cbOf2 P + 2 * j + 1 = cbOf2 P + (2 * j + 1) by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega), hcell _ (by (clear * - hj; omega)),
     fe_ofK_c0, fe_ofK_c0, gk_adv_loop]
   have h1 : 1 ≤ 2 ^ d := Nat.one_le_two_pow
   have e1 : ([d] : List Nat).sum = d := by simp
@@ -869,7 +869,7 @@ theorem iotaSF_tape {P k : Nat} {C : KClaim FE2} (hC : C.point.length = P + 1) :
     iotaSF LeanVM.Protocol.KeccakGkr.Shape.tape (P + 5) k C =
       (1 + C.point.getD P 0) * iotaFG (keccakRC.getD (tapeDepth - k - 1) 0) C.weights +
         C.point.getD P 0 * iotaFG (keccakRC.getD (tapeDepth - k - 1) 0) C.weights := by
-  have hd : C.point.drop (P + 5 - 4) = [] := by rw [show P + 5 - 4 = P + 1 by (clear * -; omega), ← hC, List.drop_length]
+  have hd : C.point.drop (P + 5 - 4) = [] := by rw [show P + 5 - 4 = P + 1 by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - P; omega)), ← hC, List.drop_length]
   have e : iotaSF LeanVM.Protocol.KeccakGkr.Shape.tape (P + 5) k C =
       iotaFG (keccakRC.getD (tapeDepth - k - 1) 0) C.weights := by
     unfold iotaSF
@@ -894,16 +894,16 @@ theorem tape_cst {M : Mem} {cst j0 : Nat} {β : FE}
   · rw [hc _ (by simp only [tapeDepth] at hjf ⊢; (clear * - hjf hi; omega)), if_neg (by (clear * - hi; omega)),
       show (16 * (j0 + jf) + (7 + i)) / 16 = j0 + jf by (clear * - hi; omega), show (16 * (j0 + jf) + (7 + i)) % 16 = 7 + i by (clear * - hi; omega),
       ← ofK_rcK]
-    simp only [cstKT, if_neg (show ¬ tapeDepth ≤ j0 + jf by (clear * - hjf; omega)), if_neg (show ¬ 7 + i < 7 by (clear * -; omega)),
-      if_pos (show 7 + i < 14 by (clear * - hi; omega)), show 7 + i - 7 = i by (clear * -; omega)]
-  · rw [hc _ (by simp only [tapeDepth] at hjf ⊢; (clear * - hjf; omega)), if_neg (by (clear * -; omega)), show (16 * (j0 + jf) + 14) / 16 = j0 + jf by (clear * -; omega),
-      show (16 * (j0 + jf) + 14) % 16 = 14 by (clear * -; omega)]
-    simp only [cstKT, if_neg (show ¬ tapeDepth ≤ j0 + jf by (clear * - hjf; omega)), if_neg (show ¬ 14 < 7 by (clear * -; omega)),
-      if_neg (show ¬ 14 < 14 by (clear * -; omega))]
+    simp only [cstKT, if_neg (show ¬ tapeDepth ≤ j0 + jf by (clear * - hjf; omega)), if_neg (show ¬ 7 + i < 7 by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - i; omega))),
+      if_pos (show 7 + i < 14 by (clear * - hi; omega)), show 7 + i - 7 = i by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - i; omega))]
+  · rw [hc _ (by simp only [tapeDepth] at hjf ⊢; (clear * - hjf; omega)), if_neg (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - j0 jf; omega))), show (16 * (j0 + jf) + 14) / 16 = j0 + jf by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - j0 jf; omega)),
+      show (16 * (j0 + jf) + 14) % 16 = 14 by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - j0 jf; omega))]
+    simp only [cstKT, if_neg (show ¬ tapeDepth ≤ j0 + jf by (clear * - hjf; omega)), if_neg (show ¬ 14 < 7 by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)),
+      if_neg (show ¬ 14 < 14 by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))]
     rcases Nat.eq_zero_or_pos (j0 + jf) with h0 | h0
     · rw [h0]; rfl
     · rw [if_neg (by (clear * - h0; omega)), if_neg (by rw [beq_iff_eq]; (clear * - h0; omega))]; rfl
-  · rw [hc _ (by simp only [tapeDepth] at hjf ⊢; (clear * - hjf; omega)), if_pos (by (clear * -; omega))]
+  · rw [hc _ (by simp only [tapeDepth] at hjf ⊢; (clear * - hjf; omega)), if_pos (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - j0 jf; omega)))]
 
 theorem noA_preTBT2 (P qs : Nat) (inst out : Nat → S2) (b : Src) : NoA (preTBT2 P qs inst out b) :=
   noA_bind (noA_q2Base _) fun _ => noA_bind (noA_q2EqTab _ _ _) fun _ => noA_bind (noA_q2Dot _ _) fun _ =>
@@ -961,7 +961,7 @@ theorem tape_core2 {c : Ctx} {M : Mem} {p : Ptr} {P qs : Nat} {inst out : Nat �
   have hc2 : ∀ t < 16 * tapeDepth - 256, FE.ofK (M.k (p.k + 16 * 16 + t)) =
       if (256 + t) % 16 = 15 then b.val M else FE.ofK (cstKT ((256 + t) / 16) ((256 + t) % 16)) := by
     intro t ht
-    rw [show p.k + 16 * 16 + t = p.k + (256 + t) by (clear * -; omega), hc _ (by (clear * - ht; omega))]
+    rw [show p.k + 16 * 16 + t = p.k + (256 + t) by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega), hc _ (by (clear * - ht; omega))]
   have hAK : SegsAssert M p (loop [] (tplOf (cstInsT (gkS b))) p).2 :=
     segsAssert_loop_iff.mpr fun _ _ => tassert_noA (gnoA_map _ _ fun t => by
       obtain ⟨k, k', hk⟩ := cstIT_op (gkS b) t; rw [hk]; exact Lvm.Loop.Op.noConfusion)
@@ -998,19 +998,19 @@ theorem tape_core2 {c : Ctx} {M : Mem} {p : Ptr} {P qs : Nat} {inst out : Nat �
     intro i hi; simp [List.getD_eq_getElem?_getD, hi]
   have hr := rep_firstT2 P hinstL hlp houtL hfl
   have htake : instV.take 4 = (List.range 4).map fun i => (inst i).val M := by
-    rw [← hinstV, take_range_map2 _ (by (clear * -; omega))]
+    rw [← hinstV, take_range_map2 _ (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - P; omega)))]
   have hdrop : instV.drop 4 = (List.range (P + 1)).map fun i => (inst (4 + i)).val M := by
-    rw [← hinstV, drop_range_map2, show P + 5 - 4 = P + 1 by (clear * -; omega)]
+    rw [← hinstV, drop_range_map2, show P + 5 - 4 = P + 1 by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - P; omega))]
   rw [htake, hdrop] at hr
   set C0 := firstClaimSF LeanVM.Protocol.KeccakGkr.Shape.tape instV [] (lanePtT2 (fun m => fe2At sig (8 * m)) qs) outV 0
     with hC0
   have h0 : Rep2 P (layCv2 M ⟨p3, [4], layTpl2 P (tapeQ2 qs) p.k⟩ (57 + P) (cbOf2 P) 0) C0 true :=
     rep2_congr hr fun j hj => by
       show _ = (⟨M.k (p3.k - 2 * (57 + P) + 2 * j), M.k (p3.k - 2 * (57 + P) + 2 * j + 1)⟩ : FE2)
-      rw [hp3, show p2.k + 2 * (57 + P) - 2 * (57 + P) + 2 * j = p2.k + 2 * j by (clear * -; omega), hcopy j hj, ecar]
+      rw [hp3, show p2.k + 2 * (57 + P) - 2 * (57 + P) + 2 * j = p2.k + 2 * j by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - p2 P j; omega)), hcopy j hj, ecar]
   have hCpt : C0.point.length = P + 1 := by
     show (instV.drop 4 ++ []).length = P + 1
-    rw [List.append_nil, List.length_drop, hinstL]; (clear * -; omega)
+    rw [List.append_nil, List.length_drop, hinstL]; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - P; omega))
   -- the first block of layers (0 … 15)
   have hio : ∀ j0 k, j0 + k < 24 → ∀ C : KClaim FE2, C.point.length = P + 1 →
       iotaSF LeanVM.Protocol.KeccakGkr.Shape.tape (P + 5) (0 + (j0 + k)) C =
@@ -1018,11 +1018,11 @@ theorem tape_core2 {c : Ctx} {M : Mem} {p : Ptr} {P qs : Nat} {inst out : Nat �
           C.point.getD P 0 * iotaFG (keccakRC.getD (tapeDepth - (j0 + k) - 1) 0) C.weights := by
     intro j0 k _ C hC; rw [Nat.zero_add]; exact iotaSF_tape hC
   have hrcm : ∀ j0 k, j0 + k < 24 → keccakRC.getD (tapeDepth - (j0 + k) - 1) 0 ∈ keccakRC :=
-    fun j0 k h => rc_mem (by simp only [tapeDepth]; (clear * -; omega))
+    fun j0 k h => rc_mem (by simp only [tapeDepth]; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - j0 k; omega)))
   obtain ⟨hrep1, hA1⟩ := layers2_spec (d := 4) (N := 16) (first0 := true) (β := b.val M) (C0 := C0)
     (io := fun k => iotaSF LeanVM.Protocol.KeccakGkr.Shape.tape (P + 5) (0 + (0 + k)))
     (rc0 := fun k => keccakRC.getD (tapeDepth - (0 + k) - 1) 0) (rc1 := fun k => keccakRC.getD (tapeDepth - (0 + k) - 1) 0)
-    hP hL1 hS (by simp only [tapeQ2, Nat.reducePow]; (clear * - hT hTe; omega)) (by simp only [tapeQ2]; (clear * -; omega))
+    hP hL1 hS (by simp only [tapeQ2, Nat.reducePow]; (clear * - hT hTe; omega)) (by simp only [tapeQ2]; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - qs; omega)))
     (by norm_num) (by norm_num) (fun k hk => ⟨hrcm 0 k (by (clear * - hk; omega)), hrcm 0 k (by (clear * - hk; omega))⟩)
     (fun k hk => hio 0 k (by (clear * - hk; omega)))
     (fun jf hjf => by
@@ -1040,7 +1040,7 @@ theorem tape_core2 {c : Ctx} {M : Mem} {p : Ptr} {P qs : Nat} {inst out : Nat �
   generalize hp4e : p3.adv (loop [4] (layTpl2 P (tapeQ2 qs) p.k) p3).2 = p4 at hL2 hp4 ⊢
   -- the second block (16 … 23)
   have hL : 8 * tapeQ2 qs - 40 + 16 * (8 * (lay02 P).str2) = 8 * (tapeQ2 qs + 16 * (lay02 P).str2) - 40 := by
-    simp only [tapeQ2]; (clear * -; omega)
+    simp only [tapeQ2]; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - qs P; omega))
   have h0' : Rep2 P (layCv2 M ⟨p4, [3], layTpl2 P (tapeQ2 qs + 16 * (lay02 P).str2) (p.k + 16 * 16)⟩ (57 + P)
       (cbOf2 P) 0) (chain2 (fe2At sig) (feAt sig) (fun k => iotaSF LeanVM.Protocol.KeccakGkr.Shape.tape (P + 5)
         (0 + (0 + k))) C0 (8 * tapeQ2 qs - 40) (8 * (lay02 P).str2) 16) false :=
@@ -1048,20 +1048,20 @@ theorem tape_core2 {c : Ctx} {M : Mem} {p : Ptr} {P qs : Nat} {inst out : Nat �
   obtain ⟨hrep2, hA2⟩ := layers2_spec (d := 3) (N := 8) (first0 := false) (β := b.val M)
     (io := fun k => iotaSF LeanVM.Protocol.KeccakGkr.Shape.tape (P + 5) (0 + (16 + k)))
     (rc0 := fun k => keccakRC.getD (tapeDepth - (16 + k) - 1) 0) (rc1 := fun k => keccakRC.getD (tapeDepth - (16 + k) - 1) 0)
-    hP hL2 hS (by simp only [tapeQ2, Nat.reducePow]; (clear * - hT hTe; omega)) (by simp only [tapeQ2]; (clear * -; omega))
+    hP hL2 hS (by simp only [tapeQ2, Nat.reducePow]; (clear * - hT hTe; omega)) (by simp only [tapeQ2]; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - qs P; omega)))
     (by norm_num) (by norm_num) (fun k hk => ⟨hrcm 16 k (by (clear * - hk; omega)), hrcm 16 k (by (clear * - hk; omega))⟩)
     (fun k hk => hio 16 k (by (clear * - hk; omega)))
     (fun jf hjf => by
       have := tape_cst (j0 := 16) hc (jf := jf) (by simp only [tapeDepth]; (clear * - hjf; omega))
       refine ⟨fun i hi => ?_, ?_⟩
-      · rw [show p.k + 16 * 16 + (16 * jf + i) = p.k + (16 * (16 + jf) + i) by (clear * -; omega),
-          show p.k + 16 * 16 + (16 * jf + (7 + i)) = p.k + (16 * (16 + jf) + (7 + i)) by (clear * -; omega)]
+      · rw [show p.k + 16 * 16 + (16 * jf + i) = p.k + (16 * (16 + jf) + i) by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega),
+          show p.k + 16 * 16 + (16 * jf + (7 + i)) = p.k + (16 * (16 + jf) + (7 + i)) by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)]
         exact this.1 i hi
-      · rw [show p.k + 16 * 16 + (16 * jf + 14) = p.k + (16 * (16 + jf) + 14) by (clear * -; omega), this.2.1,
-          if_neg (by rw [beq_iff_eq]; (clear * -; omega)), Bool.false_and, if_neg (by simp)])
+      · rw [show p.k + 16 * 16 + (16 * jf + 14) = p.k + (16 * (16 + jf) + 14) by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega), this.2.1,
+          if_neg (by rw [beq_iff_eq]; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - jf; omega))), Bool.false_and, if_neg (by simp)])
     (fun jf hjf => by
       have := tape_cst (j0 := 16) hc (jf := jf) (by simp only [tapeDepth] at hjf ⊢; (clear * - hjf; omega))
-      rw [show p.k + 16 * 16 + (16 * jf + 15) = p.k + (16 * (16 + jf) + 15) by (clear * -; omega), this.2.2,
+      rw [show p.k + 16 * 16 + (16 * jf + 15) = p.k + (16 * (16 + jf) + 15) by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega), this.2.2,
         if_pos (by simpa using hjf)])
     (by
       rw [← hp4e, gk_adv_loop]
@@ -1129,10 +1129,10 @@ theorem powsG_iff (va : Nat → FE) (g : Nat) : ∀ (n p : Nat),
     · rintro ⟨h0, h⟩ k hk
       rcases k with _ | k
       · simpa using h0
-      · rw [show p + 48 + 80 * (k + 1) = p + 80 + 48 + 80 * k by ring]; exact h k (by omega)
+      · rw [show p + 48 + 80 * (k + 1) = p + 80 + 48 + 80 * k by ring]; exact h k (by (clear * - k n hk; omega))
     · intro h
-      refine ⟨by simpa using h 0 (by omega), fun k hk => ?_⟩
-      rw [show p + 80 + 48 + 80 * k = p + 48 + 80 * (k + 1) by ring]; exact h (k + 1) (by omega)
+      refine ⟨by simpa using h 0 (by (clear * - n; omega)), fun k hk => ?_⟩
+      rw [show p + 80 + 48 + 80 * k = p + 48 + 80 * (k + 1) by ring]; exact h (k + 1) (by (clear * - k n hk; omega))
 
 theorem sampsG_eq (va : Nat → FE) : ∀ (n p : Nat), sampsG va p n = (List.range n).map fun k => e2OfFE (va (p + 48 + 80 * k))
   | 0, p => rfl
@@ -1155,10 +1155,10 @@ theorem packSpec2_pw (v : Nat → FE2) (va : Nat → FE) (g : Nat) : ∀ (pt : L
     · rintro ⟨h0, h⟩ k hk
       rcases k with _ | k
       · simpa using h0
-      · rw [show p + 80 + 112 * (k + 1) = p + 112 + 80 + 112 * k by ring]; exact h k (by omega)
+      · rw [show p + 80 + 112 * (k + 1) = p + 112 + 80 + 112 * k by ring]; exact h k (by (clear * - k rs hk; omega))
     · intro h
-      refine ⟨by simpa using h 0 (by omega), fun k hk => ?_⟩
-      rw [show p + 112 + 80 + 112 * k = p + 80 + 112 * (k + 1) by ring]; exact h (k + 1) (by omega)
+      refine ⟨by simpa using h 0 (by (clear * - rs; omega)), fun k hk => ?_⟩
+      rw [show p + 112 + 80 + 112 * k = p + 80 + 112 * (k + 1) by ring]; exact h (k + 1) (by (clear * - k rs hk; omega))
 
 theorem scSpec2_pw (v : Nat → FE2) (va : Nat → FE) (g count : Nat) : ∀ (R p : Nat) (claim : FE2),
     (scSpec2 v va g count p claim R).2.2 = true ↔
@@ -1172,11 +1172,11 @@ theorem scSpec2_pw (v : Nat → FE2) (va : Nat → FE) (g count : Nat) : ∀ (R 
       rcases k with _ | k
       · simpa using h0
       · rw [show p + (k + 1) * roundLen2 count = p + roundLen2 count + k * roundLen2 count by ring]
-        exact h k (by omega)
+        exact h k (by (clear * - k R hk; omega))
     · intro h
-      refine ⟨by simpa using h 0 (by omega), fun k hk => ?_⟩
+      refine ⟨by simpa using h 0 (by (clear * - R; omega)), fun k hk => ?_⟩
       rw [show p + roundLen2 count + k * roundLen2 count = p + (k + 1) * roundLen2 count by ring]
-      exact h (k + 1) (by omega)
+      exact h (k + 1) (by (clear * - k R hk; omega))
 
 /-- **A layer's proof-of-work flag** is the checks of its ground answers `layerChals2` (lanes from `q`,
 `p + 40 = 8q`). -/
@@ -1237,12 +1237,12 @@ theorem tape_spec2 {c : Ctx} {M : Mem} {p : Ptr} {P qs : Nat} {inst out : Nat �
   have hL : 2440 + 112 * (P + 1) = 8 * (lay02 P).str2 := by simp only [lay02, LCfg.str2]; ring
   rw [hlanes, hp0, hL]
   refine ⟨hrep, ?_, rfl, fun hb => ?_⟩
-  · simp only [tapeEnd2, tapeQ2, tapeDepth]; (clear * -; omega)
+  · simp only [tapeEnd2, tapeQ2, tapeDepth]; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - qs P; omega))
   · show (chainOk2 _ _ _ _ _ _ 24 && (powsG (feAt sig) gC1 (8 * qs - 48) 5 && s.ok)) = true ↔ _
     have hCpt : (firstClaimSF LeanVM.Protocol.KeccakGkr.Shape.tape instV [] (lanePtT2 (fun m => fe2At sig (8 * m)) qs)
         outV 0).point.length = P + 1 := by
       show (instV.drop 4 ++ []).length = P + 1
-      rw [List.append_nil, List.length_drop, hinstL]; (clear * -; omega)
+      rw [List.append_nil, List.length_drop, hinstL]; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - P; omega))
     rw [Bool.and_eq_true, Bool.and_eq_true, chainOk2_iff, powsG_iff, (hA hb)]
     unfold tapeChals2
     rw [powOkV_append, powOkV_map, powOkV_flatMap]
@@ -1253,7 +1253,7 @@ theorem tape_spec2 {c : Ctx} {M : Mem} {p : Ptr} {P qs : Nat} {inst out : Nat �
       intro k _
       unfold lay2At
       exact layer_pw _ _ _ (by rw [chain2_length, hCpt]) (by
-        rw [show k * (8 * (lay02 P).str2) = 8 * (k * (lay02 P).str2) by ring]; simp only [tapeQ2]; (clear * -; omega))
+        rw [show k * (8 * (lay02 P).str2) = 8 * (k * (lay02 P).str2) by ring]; simp only [tapeQ2]; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - qs k P; omega)))
     have hl : ∀ k < 5, powOKR gC1 (feAt sig (8 * qs - 48 + 48 + 80 * k)) = true ↔
         powOKR ((fun k => (qs + 10 * k, 1)) k).2 (feAt sig (8 * ((fun k => (qs + 10 * k, 1)) k).1)) = true := by
       intro k _

@@ -192,12 +192,12 @@ theorem cost_extIRWith (pz : ℕ) (dec : XIR) (t : ℕ) :
     cost (extIRWith pz dec) t = 21 + max (max (cost dec t) 1 + 1) (23 + 8 * t) := by
   simp only [extIRWith, parseIR, readAt, kindPs, wIR, wPre, wCntPs, wBody, cost, blkSteps,
     List.length_cons, List.length_nil, Aff.eval, Nat.div_one]
-  norm_num; omega
+  norm_num; (clear * - dec t; omega)
 
 theorem sizeIR_extIRWith (pz : ℕ) (dec : XIR) : sizeIR (extIRWith pz dec) = 53 + sizeIR dec := by
   simp only [extIRWith, parseIR, readAt, kindPs, wIR, wPre, wCntPs, wBody, sizeIR, blkSteps,
     List.length_cons, List.length_nil]
-  norm_num; omega
+  norm_num; (clear * - dec; omega)
 
 /-- **The fuel covers the program** whenever the SNARK branch is within `decBudget`. -/
 theorem fuel_covers {pz : ℕ} {dec : XIR} (h : ∀ t, cost dec t ≤ decBudget t) (t : ℕ) :
@@ -209,14 +209,14 @@ theorem fuel_covers {pz : ℕ} {dec : XIR} (h : ∀ t, cost dec t ≤ decBudget 
 
 /-- The declared fuel is within the contract's budget `B t = 2^48 + 2^16 t`. -/
 theorem fuel_le_budget (t : ℕ) : fuel t ≤ extractorBudget t := by
-  simp only [fuel, fuelBase, fuelPerWord, extractorBudget]; omega
+  simp only [fuel, fuelBase, fuelPerWord, extractorBudget]; (clear * - t; omega)
 
 /-- The program is within `progCap`. -/
 theorem size_extWith {pz : ℕ} {dec : XIR} (h : sizeIR dec ≤ 2 ^ 19) :
     (extWith pz dec).body.size ≤ progCap := by
   simp only [extWith, toProg, size_compile, sizeIR, sizeIR_extIRWith, initPs, blkSteps,
     List.length_cons, List.length_nil, progCap]
-  norm_num; omega
+  norm_num; (clear * - dec h; omega)
 
 end Lvm.X
 
@@ -328,7 +328,7 @@ theorem tape_length : (π.size + 7) / 8 + 6 ≤ (extractorInput c π L).length :
   rw [tape_eq]
   simp only [List.length_append, logWords, List.length_cons, packBytes_length,
     ← WitnessSending.size_eq_length, Vector.length_toList]
-  omega
+  (clear * - π L; omega)
 
 theorem tape_getD_proof {j : ℕ} (hj : j < (π.size + 7) / 8) :
     (extractorInput c π L).getD (5 + j) 0 = (packBytes π.data.toList)[j]'(by
@@ -348,7 +348,7 @@ theorem parse_regs (pz : ℕ) (I : Array Word) (s : St) (hM : Inv s.M) :
   simp only [regs] at hs
   simp only [parseIR, readAt, kindPs, semXIR, runPrims, List.foldl, Prim.run, rA, rLen, rK, rB0,
     rIsK, rT, rIsSz]
-  simp (disch := first | decide | omega | (simp only [size_set]; omega)) [rd_set_self, rd_set_ne, XOp.eval]
+  simp (disch := first | decide | (clear * - s hs; omega) | (simp only [size_set]; (clear * - s hs; omega))) [rd_set_self, rd_set_ne, XOp.eval]
 
 /-- What `wPre` leaves: the count `⌈w/8⌉` (`w` tape word 4) and the start position `5`. -/
 theorem wPre_regs (I : Array Word) (s : St) (hM : Inv s.M) :
@@ -358,7 +358,7 @@ theorem wPre_regs (I : Array Word) (s : St) (hM : Inv s.M) :
   simp only [wPre, readAt, wCntPs, semXIR, runPrims, List.foldl, Prim.run, rA, rLen, rK, rCnt, rT,
     rPos]
   refine ⟨?_, ?_⟩ <;>
-    simp (disch := first | decide | omega | (simp only [size_set]; omega)) [rd_set_self, rd_set_ne, XOp.eval, ceil8]
+    simp (disch := first | decide | (clear * - s hs; omega) | (simp only [size_set]; (clear * - s hs; omega))) [rd_set_self, rd_set_ne, XOp.eval, ceil8]
 
 theorem wf_wBody : WF wBody := by
   simp [wBody, WF, Prim.dst, rW, rPos]
@@ -383,11 +383,11 @@ theorem wLoop (I : Array Word) : ∀ (k p : ℕ) (s : St), Inv s.M → rd s.M rP
       (size_decS ..) fun i hi => rd_decS (by simp only [rC]; (clear * - hi; omega)) _
     have hpos : rd (decS rC (semXIR I wBody s)).M rPos = toWord (p + 1) := by
       simp only [decS, wBody, semXIR, runPrims, List.foldl, Prim.run, rC, rPos, rW, cOne] at hp h1 ⊢
-      simp (disch := first | decide | omega | (simp only [size_set]; omega)) [rd_set_self, rd_set_ne, XOp.eval, hp, h1]
+      simp (disch := first | decide | omega | (simp only [size_set]; (clear * - s k p hs; omega))) [rd_set_self, rd_set_ne, XOp.eval, hp, h1]
       exact toWord_add_one p
     have ho : (decS rC (semXIR I wBody s)).o.toList = s.o.toList ++ [I.getD p 0] := by
       simp only [decS, wBody, semXIR, runPrims, List.foldl, Prim.run, rC, rPos, rW] at hp ⊢
-      simp (disch := first | decide | omega | (simp only [size_set]; omega)) [rd_set_self, rd_set_ne, hp,
+      simp (disch := first | decide | (clear * - s k p hs; omega) | (simp only [size_set]; omega)) [rd_set_self, rd_set_ne, hp,
         toNat_toWord (show p < 2 ^ 64 by (clear * - hk; omega))]
     simp only [iterL]
     rw [wLoop I k (p + 1) _ hf hpos (by (clear * - hk; omega)), ho, List.range_succ_eq_map]
@@ -406,7 +406,7 @@ theorem wIR_sem (I : Array Word) (s : St) (hM : Inv s.M)
     fun i hi => entryT_frame _ (by simp only [rC]; (clear * - hi; omega))
   have hc : rC < (semXIR I wPre s).M.size := by simp only [rC]; (clear * - hs; omega)
   have hp : rd (entryT rC rCnt (semXIR I wPre s).M) rPos = toWord 5 := by
-    rw [entryT_frame _ (by simp only [rC, rPos]; (clear * -; omega)), hpos]; exact (toWord_add_one 4).trans rfl
+    rw [entryT_frame _ (by simp only [rC, rPos]; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)), hpos]; exact (toWord_add_one 4).trans rfl
   have ho : (semXIR I wPre s).o = s.o := by simp [wPre, readAt, semXIR]
   have e : semXIR I wIR s = iterL (semXIR I wBody) rC (ceil8 (I.getD 4 0)).toNat
       ⟨entryT rC rCnt (semXIR I wPre s).M, (semXIR I wPre s).o⟩ := by

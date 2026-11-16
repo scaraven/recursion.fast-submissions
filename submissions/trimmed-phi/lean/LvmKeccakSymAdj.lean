@@ -221,11 +221,11 @@ private theorem klt_getD (w : List FE) {p : ℕ} (hp : p < 1600) :
   have hA : ∀ q < 1600, _ := fun q hq ↦ (hg q).trans (ite_eq_left (by omega : q < 64 * 25))
   unfold keccakLinearTranspose
   simp only []
-  have hp' : p = 64 * (p / 64) + p % 64 := by (clear * -; omega)
+  have hp' : p = 64 * (p / 64) + p % 64 := by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)
   conv_lhs => rw [hp']
-  rw [flatMap_getD _ 64 25 (p / 64) (p % 64) (by (clear * - hp; omega)) (Nat.mod_lt _ (by (clear * -; omega)))]
-  rw [columns_getD _ w hA (by (clear * -; omega)) (Nat.mod_lt _ (by (clear * -; omega))),
-    columns_getD _ w hA (by (clear * -; omega)) (Nat.mod_lt _ (by (clear * -; omega))), ← hp', hA p hp]
+  rw [flatMap_getD _ 64 25 (p / 64) (p % 64) (by (clear * - hp; omega)) (Nat.mod_lt _ (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)))]
+  rw [columns_getD _ w hA (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)) (Nat.mod_lt _ (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))),
+    columns_getD _ w hA (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)) (Nat.mod_lt _ (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))), ← hp', hA p hp]
 
 private theorem keccakPi_lt {l : ℕ} (hl : l < 25) : keccakPi l < 25 := by
   unfold keccakPi; omega
@@ -242,7 +242,7 @@ private theorem gW_outer (A laneW : Array FE) {l z : ℕ} (hl : l < 25) (hz : z 
   have e2 : (64 * l + z) % 64 = z := by (clear * - e1; omega)
   have hπ := keccakPi_lt hl
   rw [gW, e1, e2, outerUG_getD _ _ (by (clear * - hπ; omega))]
-  congr 2 <;> (clear * -; omega)
+  congr 2 <;> (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)
 
 /-- `S_c = Σ_y eqL_{c + 5y}`. -/
 private def colS (eqL : Array FE) (c : ℕ) : FE := ∑ y ∈ Finset.range 5, eqL.getD (c + 5 * y) 0
@@ -260,7 +260,7 @@ private theorem weightedC_sum (corr : ℕ → FE) (eqL laneW : Array FE) :
   show ((List.range' 0 25).map _).sum = _
   rw [← List.range_eq_range', list_sum_range]
   refine Finset.sum_congr rfl fun l hl => ?_
-  rw [hS _ (by (clear * -; omega)), hS _ (by (clear * -; omega)), rhoA_getD]
+  rw [hS _ (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)), hS _ (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)), rhoA_getD]
 
 /-- `Σ_l S_{(x+k') mod 5}·f_l = Σ_l e_l·Σ_y f_{(x+k) mod 5 + 5y}` for `{k, k'} = {1, 4}`. -/
 private theorem regroup (e f : ℕ → FE) (k k' : ℕ) (hk : (k = 1 ∧ k' = 4) ∨ (k = 4 ∧ k' = 1)) :
@@ -289,7 +289,7 @@ private theorem klt_outer (A laneW : Array FE) {l z : ℕ} (hl : l < 25) (hz : z
   have e1 : (64 * l + z) / 64 = l := by (clear * - hz; omega)
   have e2 : (64 * l + z) % 64 = z := by (clear * - e1; omega)
   rw [klt_getD _ (by (clear * - hl e1; omega)), gW_outer A laneW hl hz, e1, e2,
-    colW_outer A laneW (by (clear * - e1; omega)) hz, colW_outer A laneW (by (clear * - e1; omega)) (by (clear * -; omega))]
+    colW_outer A laneW (by (clear * - e1; omega)) hz, colW_outer A laneW (by (clear * - e1; omega)) (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))]
   rfl
 
 private theorem weightedRef_closed (A B eqL laneW : Array FE) :
@@ -380,7 +380,7 @@ theorem rcOuter_eq (A laneW : Array FE) (rc : UInt64) :
     simp only [rcRef, filterMap_ite, sumE_eq_sum, sum_filter_range]
     refine Finset.sum_congr rfl fun z hz => ?_
     have hz' : z < 64 := by simp only [Finset.mem_filter, Finset.mem_range] at hz; exact hz.1
-    have := klt_outer A laneW (l := 0) (by (clear * -; omega)) hz'
+    have := klt_outer A laneW (l := 0) (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)) hz'
     simp only [mul_zero, zero_add, Nat.zero_mod] at this
     exact this
   simp only [rcOuter, Id.run, Std.Legacy.Range.forIn_eq_forIn_range',
@@ -409,7 +409,7 @@ theorem rcOuter_eq (A laneW : Array FE) (rc : UInt64) :
     rw [Finset.mul_sum]
     refine Finset.sum_congr rfl fun z _ => ?_
     have : ((z + 1) % 64 + keccakRho.getD (4 + 5 * y) 0) % 64 =
-        (z + 1 + keccakRho.getD (4 + 5 * y) 0) % 64 := by (clear * -; omega)
+        (z + 1 + keccakRho.getD (4 + 5 * y) 0) % 64 := by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)
     simp only [gO, this]; ring
   simp only [Finset.sum_add_distrib]
   rw [t1, t2, t3, add_assoc]

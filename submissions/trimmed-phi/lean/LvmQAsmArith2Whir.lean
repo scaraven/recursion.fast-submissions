@@ -71,7 +71,7 @@ theorem rdQ_spec {sig : ByteArray} {T v : Nat} {cl : Cell} {p : Ptr} (hS : Lvm.Q
   simp only [rdQ, bind_apply, pure_apply, List.append_nil] at h ⊢
   rw [segsHold_append, segsHold_append] at h
   have h0 := ldE_spec hS (by (clear * - hv; omega)) h.1
-  have h2 := ldE_spec hS (by omega) h.2.1
+  have h2 := ldE_spec hS (by (clear * - hv; omega)) h.2.1
   have h1 := lin_spec h.2.2
   simp only [add] at h1 ⊢
   simp only [qv]
@@ -91,7 +91,7 @@ theorem roundsG_spec {sig : ByteArray} {T pc : Nat} (hS : Lvm.Q1.Streamed M sig 
     rw [roundsG_spec hS n (f + 1) (V + 15) _ _ (by (clear * - hT; omega)) (fun j hj => by
       rw [show pc + (f + 1) + j = pc + f + (j + 1) by ring, hc (j + 1) (by (clear * - hj; omega))]
       congr 1; ring) h.2.2, hq, hcl]
-    have h0 := hc 0 (by (clear * -; omega))
+    have h0 := hc 0 (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - n; omega)))
     simp only [Nat.add_zero, Nat.mul_zero] at h0
     simp only [frQ, Cell.val_E, h0]
     rw [show 8 * (V + 15) = 8 * V + 120 by ring, show 8 * (V + 9) + 40 = 8 * V + 112 by ring,
@@ -105,7 +105,7 @@ theorem tailG_spec {sig : ByteArray} {T pc : Nat} (hS : Lvm.Q1.Streamed M sig T)
   | 1, f, V, q, p, _, _, hc, h => by
     simp only [tailG] at h ⊢
     rw [pev_spec h]
-    have h0 := hc 0 (by (clear * -; omega))
+    have h0 := hc 0 (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))
     simp only [Nat.add_zero, Nat.mul_zero] at h0
     simp only [tlT, Cell.val_E, h0]
   | n + 2, f, V, q, p, _, hT, hc, h => by
@@ -113,10 +113,10 @@ theorem tailG_spec {sig : ByteArray} {T pc : Nat} (hS : Lvm.Q1.Streamed M sig T)
     rw [segsHold_append, segsHold_append] at h
     have hcl := pev_spec h.1
     have hq := rdQ_spec hS (by (clear * - hT; omega)) h.2.1
-    rw [tailG_spec hS (n + 1) (f + 1) (V + 15) _ _ (by (clear * -; omega)) (by (clear * - hT; omega)) (fun j hj => by
+    rw [tailG_spec hS (n + 1) (f + 1) (V + 15) _ _ (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - n; omega))) (by (clear * - hT; omega)) (fun j hj => by
       rw [show pc + (f + 1) + j = pc + f + (j + 1) by ring, hc (j + 1) (by (clear * - hj; omega))]
       congr 1; ring) h.2.2, hq, hcl]
-    have h0 := hc 0 (by (clear * -; omega))
+    have h0 := hc 0 (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - n; omega)))
     simp only [Nat.add_zero, Nat.mul_zero] at h0
     simp only [tlT, Cell.val_E, h0]
     rw [show 8 * (V + 15) = 8 * V + 120 by ring, show 8 * (V + 9) + 40 = 8 * V + 112 by ring,
@@ -177,9 +177,9 @@ theorem sum_chunk (G : Nat → FE) (q₀ A t : Nat) (h : q₀ < t) :
     ∑ i ∈ Finset.range (min A (t - q₀)), G (q₀ + i) + ∑ q ∈ Finset.Ico (q₀ + A) t, G q =
       ∑ q ∈ Finset.Ico q₀ t, G q := by
   rcases Nat.le_total A (t - q₀) with hA | hA
-  · rw [min_eq_left hA, ← Finset.sum_Ico_consecutive G (Nat.le_add_right q₀ A) (by omega),
+  · rw [min_eq_left hA, ← Finset.sum_Ico_consecutive G (Nat.le_add_right q₀ A) (by (clear * - q₀ A t h hA; omega)),
       Finset.sum_Ico_eq_sum_range G q₀ (q₀ + A), Nat.add_sub_cancel_left]
-  · rw [min_eq_right hA, Finset.Ico_eq_empty (by omega), Finset.sum_empty, add_zero,
+  · rw [min_eq_right hA, Finset.Ico_eq_empty (by (clear * - q₀ A t h hA; omega)), Finset.sum_empty, add_zero,
       Finset.sum_Ico_eq_sum_range]
 
 theorem chunks_tail {q₀ a t : Nat} {as : List Nat} (ht : t ≤ q₀ + ((a :: as).map (2 ^ ·)).sum)
@@ -187,7 +187,7 @@ theorem chunks_tail {q₀ a t : Nat} {as : List Nat} (ht : t ≤ q₀ + ((a :: a
     q₀ < t ∧ t ≤ q₀ + 2 ^ a + (as.map (2 ^ ·)).sum ∧
       ∀ i < as.length, q₀ + 2 ^ a + ((as.take i).map (2 ^ ·)).sum < t := by
   refine ⟨by simpa using hch 0 (by simp), by simp at ht; (clear * - ht; omega), fun i hi => ?_⟩
-  have := hch (i + 1) (by simp; omega)
+  have := hch (i + 1) (by simp; (clear * - hi; omega))
   simp only [List.take_succ_cons, List.map_cons, List.sum_cons] at this
   (clear * - this; omega)
 
@@ -310,7 +310,7 @@ theorem kconsts_adv (g : Cell) (hg : g.ty = .K) : ∀ (vs : List FK) (p : Ptr),
   | [], p => by simp [kconsts, pure_apply]
   | v :: vs, p => by
     simp only [kconsts, bind_apply, Ptr.adv_append, constK_adv, kconsts_adv g hg vs, List.length_cons]
-    congr 1; (clear * -; omega)
+    congr 1; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)
 
 theorem kconsts_spec {g : Cell} (hg : g.ty = .K) : ∀ (vs : List FK) (p : Ptr), SegsHold c M p (kconsts g vs p).2 →
     ∀ k < vs.length, M.k (p.k + k) = vs.getD k 0
@@ -326,7 +326,7 @@ theorem kconsts_spec {g : Cell} (hg : g.ty = .K) : ∀ (vs : List FK) (p : Ptr),
       simpa using ofK_inj e
     · have := kconsts_spec hg vs _ (by rw [constK_adv] at h; exact h.2) k (by simpa using hk)
       simp only [List.getD_cons_succ]
-      rw [← this]; congr 1; show p.k + (k + 1) = p.k + 1 + k; (clear * -; omega)
+      rw [← this]; congr 1; show p.k + (k + 1) = p.k + 1 + k; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)
 
 theorem iwConsts_spec (m : Nat) {g : Cell} (hg : g.ty = .K) {p : Ptr} (h : SegsHold c M p (iwConsts m g p).2) :
     ∀ k < m, FE.ofK (M.k (p.k + k)) = (iwRoots m).getD k 0 ∧ FE.ofK (M.k (p.k + m + k)) = (iwInvs m).getD k 0 := by
@@ -374,7 +374,7 @@ theorem seqCopy_spec : ∀ (cells : List Cell), (∀ x ∈ cells, x.ty = .E) →
     · have := seqCopy_spec cells (fun y hy => hE y (List.mem_cons_of_mem _ hy)) _ (by rw [QRing.copyE_adv] at h; exact h.2) i
         (by simpa using hi)
       simp only [List.getD_cons_succ]
-      rw [← this]; congr 1; show p.e + (i + 1) = p.e + 1 + i; (clear * -; omega)
+      rw [← this]; congr 1; show p.e + (i + 1) = p.e + 1 + i; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)
 
 theorem copiesG_spec {cells : List Cell} (hE : ∀ x ∈ cells, x.ty = .E) {p : Ptr} (h : SegsHold c M p (copiesG cells p).2) :
     (copiesG cells p).1 = p.e ∧ ∀ i < cells.length, M.e (p.e + i) = (cells.getD i default).val M := by
@@ -385,7 +385,7 @@ theorem seqLd_adv : ∀ (ls : List Nat) (p : Ptr), p.adv (seqAll (ls.map ldEW) p
   | [], p => by simp [seqAll, pure_apply]
   | v :: ls, p => by
     rw [List.map_cons, Lvm.QSig.seqAll_cons_apply, List.append_nil, Ptr.adv_append, ldEW_adv, seqLd_adv ls]
-    simp only [List.length_cons, Ptr.mk.injEq, true_and]; omega
+    simp only [List.length_cons, Ptr.mk.injEq, true_and]; (clear * - p ls; omega)
 
 theorem seqLd_spec {sig : ByteArray} {T : Nat} (hS : Lvm.Q1.Streamed M sig T) : ∀ (ls : List Nat) (p : Ptr),
     (∀ v ∈ ls, v + 2 < T) → SegsHold c M p (seqAll (ls.map ldEW) p).2 →
@@ -400,7 +400,7 @@ theorem seqLd_spec {sig : ByteArray} {T : Nat} (hS : Lvm.Q1.Streamed M sig T) : 
     · have := seqLd_spec hS ls _ (fun w hw => hT w (by simp [hw])) (by rw [ldEW_adv] at h; exact h.2) i
         (by simpa using hi)
       simp only [List.getD_cons_succ]
-      rw [← this]; congr 1; show p.e + (i + 1) = p.e + 1 + i; (clear * -; omega)
+      rw [← this]; congr 1; show p.e + (i + 1) = p.e + 1 + i; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)
 
 theorem preloadG_adv (ls : List Nat) (p : Ptr) : p.adv (preloadG ls p).2 = ⟨p.k, p.e + ls.length⟩ := by
   simp only [preloadG, bind_apply, getPtr, pure_apply, Ptr.adv_nil, List.nil_append, List.append_nil]
@@ -491,10 +491,10 @@ theorem readEs_run (n : Nat) (sig : ByteArray) (s : RS) :
       refine List.map_congr_left fun i _ => ?_
       show feAt sig _ = feAt sig _
       congr 1
-      omega
+      (clear * - en m i; omega)
     · show (⟨en, m + 24 + 24 * n, o⟩ : RS) = ⟨en, m + 24 * (n + 1), o⟩
       congr 1
-      omega
+      (clear * - m n; omega)
 
 theorem srp3_run (claim : FE) (sig : ByteArray) (s : RS) :
     sumcheckRoundPoly 3 claim none sig s =
@@ -508,8 +508,8 @@ theorem srp3_run (claim : FE) (sig : ByteArray) (s : RS) :
   obtain ⟨en, m, o⟩ := s
   simp only [pos_mk, List.range_one, List.map_cons, List.map_nil, sumE, List.foldl_cons,
     List.foldl_nil, zero_add, Nat.mul_zero, Nat.add_zero, Nat.mul_one]
-  have e1 : en + (m + 24) + 40 = en + m + 64 := by omega
-  have e2 : m + 24 + 24 = m + 48 := by omega
+  have e1 : en + (m + 24) + 40 = en + m + 64 := by (clear * - en m; omega)
+  have e2 : m + 24 + 24 = m + 48 := by (clear * - m en; omega)
   rw [e1, e2]
 
 /-! ## Fold rounds -/
@@ -534,7 +534,7 @@ theorem frC_succ (sig : ByteArray) (P n : Nat) :
   refine List.map_congr_left fun i _ => ?_
   simp only [Function.comp]
   congr 1
-  omega
+  (clear * - P i; omega)
 
 theorem foldRounds_run (n : Nat) (st : WhirState) (lf : List FE) (sig : ByteArray) (s : RS) :
     (foldRounds n st lf sig s).1 =
@@ -552,7 +552,7 @@ theorem foldRounds_run (n : Nat) (st : WhirState) (lf : List FE) (sig : ByteArra
     rw [foldRounds_step]
     obtain ⟨h1, h2, h3⟩ := ih _ _ _
     have hp : pos (⟨pos s + 72, 48, s.ok⟩ : RS) = pos s + 120 := by
-      show pos s + 72 + 48 = pos s + 120; omega
+      show pos s + 72 + 48 = pos s + 120; (clear * - s; omega)
     rw [hp] at h1 h2
     refine ⟨?_, ?_, h3⟩
     · rw [h1, frC_succ]
@@ -599,7 +599,7 @@ theorem paF_length (sig : ByteArray) (h : Nat) : ∀ (n P rem : Nat),
   | n + 1, P, rem => by
     rw [paF, List.length_append, List.length_map, List.length_range, paF_length sig h n]
     simp only [positionsPerAnswer]
-    omega
+    (clear * - rem n; omega)
 
 theorem positionsR_run (L : Level) (sig : ByteArray) (s : RS) :
     (positionsR L sig s).1 = qsAt sig (pos s) L ∧
@@ -616,7 +616,7 @@ theorem qsAt_length (sig : ByteArray) (P : Nat) (L : Level) : (qsAt sig P L).len
   show (positionsAux _ _ _ sig ⟨P, 0, true⟩).1.length = L.t
   rw [(positionsAux_run _ _ _ sig ⟨P, 0, true⟩).1, paF_length]
   simp only [positionsPerAnswer]
-  omega
+  (clear * - L; omega)
 
 /-! ## Openings -/
 
@@ -678,10 +678,10 @@ theorem tailRounds_step (n : Nat) (q : List FE) (sig : ByteArray) (s : RS) :
           ⟨pos s + 72, 48, s.ok⟩).2) := by
   rw [tailRounds, dm_bind, sampleE_run]
   dsimp only
-  rw [if_neg (show ¬(n + 1 = 0) by omega), dm_bind, srp3_run]
+  rw [if_neg (show ¬(n + 1 = 0) by (clear * - n; omega)), dm_bind, srp3_run]
   simp only [pos_mk, Nat.add_zero, Nat.zero_add]
-  have e1 : pos s + 72 + 40 = pos s + 112 := by omega
-  have e2 : pos s + 72 + 64 = pos s + 136 := by omega
+  have e1 : pos s + 72 + 40 = pos s + 112 := by (clear * - s; omega)
+  have e2 : pos s + 72 + 64 = pos s + 136 := by (clear * - s; omega)
   rw [e1, e2]
   rfl
 
@@ -697,7 +697,7 @@ theorem tailRounds_run' (n : Nat) : ∀ (q : List FE) (sig : ByteArray) (s : RS)
     intro q sig s
     rw [tailRounds_step, ih]
     have hp : pos (⟨pos s + 72, 48, s.ok⟩ : RS) = pos s + 120 := by
-      show pos s + 72 + 48 = pos s + 120; omega
+      show pos s + 72 + 48 = pos s + 120; (clear * - s; omega)
     rw [hp, frC_succ sig (pos s) (n + 1)]
     refine Prod.ext (Prod.ext rfl rfl) ?_
     show (⟨pos s + 120 + 120 * n + 72, 0, s.ok⟩ : RS) = ⟨pos s + 120 * (n + 1) + 72, 0, s.ok⟩
@@ -706,7 +706,7 @@ theorem tailRounds_run' (n : Nat) : ∀ (q : List FE) (sig : ByteArray) (s : RS)
 
 theorem tailRounds_run (n : Nat) (hn : 1 ≤ n) (q : List FE) (sig : ByteArray) (s : RS) :
     tailRounds n q sig s = ((frC sig (pos s) n, tlT sig (pos s) n q), ⟨pos s + 120 * (n - 1) + 72, 0, s.ok⟩) := by
-  obtain ⟨m, rfl⟩ : ∃ m, n = m + 1 := ⟨n - 1, by omega⟩
+  obtain ⟨m, rfl⟩ : ∃ m, n = m + 1 := ⟨n - 1, by (clear * - n hn; omega)⟩
   rw [tailRounds_run' m]
   simp
 
@@ -738,10 +738,10 @@ theorem frC_length (sig : ByteArray) (P n : Nat) : (frC sig P n).length = n := b
 theorem pos_mk0 (a : Nat) (o : Bool) : pos ⟨a, 0, o⟩ = a := rfl
 
 theorem pos_msg (s : RS) (n : Nat) : pos { s with msg := s.msg + n } = pos s + n := by
-  show s.ent + (s.msg + n) = s.ent + s.msg + n; omega
+  show s.ent + (s.msg + n) = s.ent + s.msg + n; (clear * - s n; omega)
 
 theorem pos_upd (s : RS) (n : Nat) (o : Bool) : pos ⟨s.ent, s.msg + n, o⟩ = pos s + n := by
-  show s.ent + (s.msg + n) = s.ent + s.msg + n; omega
+  show s.ent + (s.msg + n) = s.ent + s.msg + n; (clear * - s n; omega)
 
 theorem pos_mk48 (a : Nat) (o : Bool) : pos ⟨a, 48, o⟩ = a + 48 := rfl
 
@@ -792,7 +792,7 @@ theorem samples_succ_run (sig : ByteArray) : ∀ (n : Nat) (s : RS),
 
 theorem oodStep_true (κ : Nat) (hκ : 1 ≤ κ) (sig : ByteArray) (s : RS) :
     oodStep true κ sig s = (oodF sig true κ (pos s), ⟨pos s + 72 * κ, 72, s.ok⟩) := by
-  obtain ⟨m, rfl⟩ : ∃ m, κ = m + 1 := ⟨κ - 1, by omega⟩
+  obtain ⟨m, rfl⟩ : ∃ m, κ = m + 1 := ⟨κ - 1, by (clear * - κ hκ; omega)⟩
   show (samples (m + 1) >>= fun z => readE >>= fun y => sumcheckRoundPoly 3 y none >>= fun intro =>
     pure [(intro, fun x => eqEval z x)]) sig s = _
   rw [dm_bind, samples_succ_run, dm_bind, readE_run, dm_bind, srp3_run, dm_pure]
@@ -838,7 +838,7 @@ theorem whirLevels_step (ν lf : Nat) (B : List FE → FE) (g : Nat) (ood : Bool
               (qsAt sig (8 * (lvLanes g ood L (some N) V).V2) L)
               (powers (feAt sig (8 * (lvLanes g ood L (some N) V).V3 + 40)) L.t) x)]))
         sig ⟨8 * (lvLanes g ood L (some N) V).V5, 48, powF sig g (8 * (lvLanes g ood L (some N) V).Vo) && s.ok⟩ := by
-  have hD : 40 + L.row + 104 * L.path = 8 * oStr L := by unfold oStr; omega
+  have hD : 40 + L.row + 104 * L.path = 8 * oStr L := by unfold oStr; (clear * - L ν st s V hrow; omega)
   conv_lhs => rw [whirLevels]
   have hfl : ∀ (x : List FE), (st.folds ++ x).length = st.folds.length + x.length := fun x => List.length_append
   have base := fun (h1 : List (List FE × (List FE → FE)) → Prop) => h1
@@ -885,7 +885,7 @@ theorem whirLevels_final (ν lf : Nat) (B : List FE → FE) (g : Nat) (ood : Boo
         (weight * multilinearEval ((List.range (2 ^ L.kappa)).map fun i => feAt sig (8 * ll.V1 + 40 + 24 * i)) tf ==
           tlT sig (8 * ll.V6) L.kappa st'.runningQuad) && (powF sig g (8 * ll.Vo) && s.ok)⟩) := by
   dsimp only
-  have hD : 40 + L.row + 104 * L.path = 8 * oStr L := by unfold oStr; omega
+  have hD : 40 + L.row + 104 * L.path = 8 * oStr L := by unfold oStr; (clear * - L ν st s V hrow; omega)
   conv_lhs => rw [whirLevels]
   have hfl : ∀ (x : List FE), (st.folds ++ x).length = st.folds.length + x.length := fun x => List.length_append
   rcases Nat.eq_zero_or_pos g with rfl | hg
@@ -966,7 +966,7 @@ theorem lvLanes_facts (g : Nat) (ood : Bool) (L : Level) (nxt : Option Level) (V
       else (lvLanes g ood L nxt V).Vc) ∧
     (lvLanes g ood L nxt V).V2 = (if g = 0 then (lvLanes g ood L nxt V).Vo else (lvLanes g ood L nxt V).Vo + 21) ∧
     (lvLanes g ood L nxt V).Vo ≤ (lvLanes g ood L nxt V).V2 := by
-  cases nxt <;> cases ood <;> by_cases hg : g = 0 <;> simp [lvLanes, hg] <;> (clear * -; omega)
+  cases nxt <;> cases ood <;> by_cases hg : g = 0 <;> simp [lvLanes, hg] <;> (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)
 
 /-! ## The OOD weight and the PoW check -/
 
@@ -1346,7 +1346,7 @@ theorem pwOk_head {C : SCfg} {M : Mem} {i : Nat} {L : Level} {rest : List Level}
 theorem pwOk_next {C : SCfg} {M : Mem} {i : Nat} {L : Level} {rest : List Level} (h : PwOk C M i (L :: rest)) :
     PwOk C M (i + 1) rest := by
   intro i' hi' hg
-  have := h (i' + 1) (by simp; omega) hg
+  have := h (i' + 1) (by simp; (clear * - hi'; omega)) hg
   rwa [show i + (i' + 1) = i + 1 + i' by ring] at this
 
 /-- The glued claims are the `(λ, W)` cells (weights at the point's suffix). -/
@@ -1378,7 +1378,7 @@ theorem chOk_next {g : Nat} {ood : Bool} {M : Mem} {sig : ByteArray} {pc f : Nat
     (h : ChOk g ood M sig pc f (L :: N :: rest) V) :
     ChOk g ood M sig pc (f + L.fold) (N :: rest) (lvLanes g ood L (some N) V).V6 := by
   intro j hj
-  have e := h (L.fold + j) (by simp only [chLanes] at hj ⊢; simp; omega)
+  have e := h (L.fold + j) (by simp only [chLanes] at hj ⊢; simp; (clear * - hj; omega))
   simp only [chLanes] at e ⊢
   have hlen : ((List.range L.fold).map (fun j => V + 15 * j + 5)).length = L.fold := by simp
   have ga := getD_app_right ((List.range L.fold).map (fun j => V + 15 * j + 5))
@@ -1391,7 +1391,7 @@ theorem chOk_tail {g : Nat} {ood : Bool} {M : Mem} {sig : ByteArray} {pc f : Nat
     (h : ChOk g ood M sig pc f [L] V) :
     ∀ j < L.kappa, M.e (pc + (f + L.fold) + j) = feAt sig (8 * (lvLanes g ood L none V).V6 + 120 * j + 40) := by
   intro j hj
-  have e := h (L.fold + j) (by simp [chLanes]; omega)
+  have e := h (L.fold + j) (by simp [chLanes]; (clear * - hj; omega))
   simp only [chLanes] at e
   have hlen : ((List.range L.fold).map (fun j => V + 15 * j + 5)).length = L.fold := by simp
   have ga := getD_app_right ((List.range L.fold).map (fun j => V + 15 * j + 5))
@@ -1410,7 +1410,7 @@ theorem posOk_head {C : SCfg} {M : Mem} {sig : ByteArray} {i : Nat} {L : Level} 
 theorem posOk_next {C : SCfg} {M : Mem} {sig : ByteArray} {i : Nat} {L N : Level} {rest : List Level} {V : Nat}
     (h : PosOk C M sig i (L :: N :: rest) V) : PosOk C M sig (i + 1) (N :: rest) (lvLanes C.g C.ood L (some N) V).V6 := by
   intro i' hi' j hj
-  have e := h (i' + 1) (by simp at hi' ⊢; omega) j (by simpa using hj)
+  have e := h (i' + 1) (by simp at hi' ⊢; (clear * - hi'; omega)) j (by simpa using hj)
   simp only [posLanes] at e
   rw [show i + 1 + i' = i + (i' + 1) by ring]
   simpa using e
@@ -1499,7 +1499,7 @@ theorem levels_run (C : SCfg) {sig : ByteArray} {T : Nat} (hS : Lvm.Q1.Streamed 
       simp only [Option.isSome_none, Bool.and_false, Bool.false_eq_true, ↓reduceIte] at eq el
       rw [hq] at eq
       obtain ⟨ht, h⟩ := okb h
-      have et := tailG_spec hS L.kappa (f + L.fold) (lvLanes C.g C.ood L none V).V6 r.1 p' hm (by omega)
+      have et := tailG_spec hS L.kappa (f + L.fold) (lvLanes C.g C.ood L none V).V6 r.1 p' hm (by (clear * - hT2; omega))
         (fun j hj => chOk_tail hch j hj) ht.1
       generalize (tailG pc (f + L.fold) (lvLanes C.g C.ood L none V).V6 L.kappa r.1 p').1 = tgt at h et
       generalize p'.adv (tailG pc (f + L.fold) (lvLanes C.g C.ood L none V).V6 L.kappa r.1 p').2 = p2 at h
@@ -1533,7 +1533,7 @@ theorem levels_run (C : SCfg) {sig : ByteArray} {T : Nat} (hS : Lvm.Q1.Streamed 
         intro _
         rw [wh_fe_beq, glue_one]
         dsimp only
-        rw [← eq, ← et, ← em, hfo, hA L.kappa (by omega)]
+        rw [← eq, ← et, ← em, hfo, hA L.kappa (by (clear * - hν; omega))]
         have hB := ptv_take_append (M := M) (pc := pc) (ν := C.nu) (f := f + L.fold)
           (frC_length sig (8 * (lvLanes C.g C.ood L none V).V6) L.kappa) (by (clear * - hν; omega))
           (fun j hj => by rw [frC_getD _ _ _ _ hj, chOk_tail hch j hj])
@@ -1558,7 +1558,7 @@ theorem levels_run (C : SCfg) {sig : ByteArray} {T : Nat} (hS : Lvm.Q1.Streamed 
           · simp only [List.mem_singleton] at h1; subst h1; simp [ptv_length]
       · simp only [pos, stackEndL]
         have : 1 ≤ L.kappa := hm
-        (clear * -; omega)
+        (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)
     | cons N rest' =>
       simp only [lvOk, Bool.and_eq_true, decide_eq_true_eq, List.all_eq_true, List.mem_range,
         and_assoc, List.head?_cons] at hok
@@ -1582,7 +1582,7 @@ theorem levels_run (C : SCfg) {sig : ByteArray} {T : Nat} (hS : Lvm.Q1.Streamed 
       rw [whirLevels_step C.nu lf B C.g C.ood L N rest' st sig s V hs hrow (by (clear * - hν hcs hm hfl; omega)) hm, epw, Bool.true_and]
       simp only [stackEndL]
       have hfo' : st.folds ++ frC sig (8 * V) L.fold = (ptv M pc C.nu).take (f + L.fold) := by
-        rw [hfo]; exact hA L.kappa (by omega)
+        rw [hfo]; exact hA L.kappa (by (clear * - hν; omega))
       by_cases hod : C.ood = true
       · rw [if_pos hod] at eq el
         rw [show oodF sig C.ood = oodF sig true by rw [hod]]
@@ -1793,7 +1793,7 @@ theorem rotZ_getD (X : List FE) (hX : X.length = CMain.nu20) {i : Nat} (hi : i <
     by_cases h : i < CMain.nu20 - 1
     · rw [getD_append_lo (by (clear * - hxt h; omega)), Nat.mod_eq_of_lt (by (clear * - hi hnu h; omega) : i + 1 < CMain.nu20)]; rfl
     · have e : i = xt.length + 0 := by (clear * - hi hnu hxt h; omega)
-      rw [e, getD_append_hi, show xt.length + 0 + 1 = CMain.nu20 by omega, Nat.mod_self]; rfl
+      rw [e, getD_append_hi, show xt.length + 0 + 1 = CMain.nu20 by (clear * - hX; omega), Nat.mod_self]; rfl
 
 end Z
 
@@ -1839,8 +1839,8 @@ theorem paF_getD (sig : ByteArray) (h : Nat) : ∀ (n P rem j : Nat), j < min (p
       have e1 : j / 8 = 0 := by (clear * - hj8; omega)
       have e2 : j % 8 = j := by (clear * - e1; omega)
       rw [e1, e2, Nat.mul_zero, Nat.add_zero]
-    · have h8 : min 8 rem = 8 := by omega
-      have e := paF_getD sig h n (P + 72) (rem - 8) (j - 8) (by simp only [positionsPerAnswer]; omega)
+    · have h8 : min 8 rem = 8 := by (clear * - rem n j hj hj8; omega)
+      have e := paF_getD sig h n (P + 72) (rem - 8) (j - 8) (by simp only [positionsPerAnswer]; (clear * - j n rem hj hj8 h8; omega))
       have hl : ((List.range (min 8 rem)).map
           (fun j => (eToNat (feAt sig (P + 40)) >>> (j * h)) % 2 ^ h)).length = 8 := by simp [h8]
       rw [List.getD_eq_getElem?_getD, List.getElem?_append_right (by rw [hl]; (clear * - hj8 h8; omega)), hl,

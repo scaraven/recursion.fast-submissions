@@ -33,18 +33,18 @@ theorem getD_xOfH (π : ByteArray) {hb t : ℕ} (ht : t < hb - 8) : (xOfH hb π)
     List.getElem?_drop]
 
 theorem length_xOfH (π : ByteArray) {hb : ℕ} (h : hb ≤ π.size) : (xOfH hb π).length = hb - 8 := by
-  rw [xOfH, List.length_take, List.length_drop, length_blb]; omega
+  rw [xOfH, List.length_take, List.length_drop, length_blb]; (clear * - hb π h; omega)
 
 theorem get!_hdrBytesH (π : ByteArray) {hb o : ℕ} (hH : hdrFix ≤ hb) (h1 : 8 ≤ o) (h2 : o < hdrFix) :
     (⟨(List.replicate 8 0 ++ xOfH hb π).toArray⟩ : ByteArray).get! o = π.get! o := by
-  rw [get!_mk, List.getD_append_right _ _ _ _ (by simp only [List.length_replicate]; omega),
-    List.length_replicate, getD_xOfH π (by omega)]
+  rw [get!_mk, List.getD_append_right _ _ _ _ (by simp only [List.length_replicate]; (clear * - h1; omega)),
+    List.length_replicate, getD_xOfH π (by (clear * - o hb hH h1 h2; omega))]
   congr 1
-  omega
+  (clear * - o hb h1; omega)
 
 theorem get!_sigOfXH (π : ByteArray) {hb t : ℕ} (ht : t < hb - 8) :
     (sigOfX (xOfH hb π)).get! (headerAt 8 + t) = π.get! (8 + t) := by
-  rw [sigOfX, get!_mk, List.getD_append_right _ _ _ _ (by simp only [List.length_replicate]; omega),
+  rw [sigOfX, get!_mk, List.getD_append_right _ _ _ _ (by simp only [List.length_replicate]; (clear * - t hb; omega)),
     List.length_replicate, Nat.add_sub_cancel_left, getD_xOfH π ht]
 
 /-- **The statement's header fields are the proof's** (a header of at least its fixed part `hdrFix`; every header
@@ -65,13 +65,13 @@ theorem stage_withF_ne2 (p : Params) (accV : ℕ) : (p.withF accV).stage < 2 := 
 
 theorem headerBytesP_le_piSize (p : Params) : headerBytesP p ≤ piSize p := by
   simp only [piSize]
-  omega
+  (clear * - p; omega)
 
 /-- **`headerF` is the stage's header** (`accV ≥ accVars`). -/
 theorem headerF_eq (p : Params) {accV : ℕ} (h : accVars ≤ accV) : headerF accV = headerBytesP (p.withF accV) := by
   rw [headerBytesP_ne2 (stage_withF_ne2 p accV)]
   simp only [headerF, headerBytes, Params.withF, eBytes, accVars] at h ⊢
-  omega
+  (clear * - accV h; omega)
 
 /-- S2GF's header: 6,008 bytes. -/
 theorem headerBytesP_P20F : headerBytesP (P20F.withF accVF) = 6008 := by decide
@@ -108,8 +108,8 @@ theorem okS_of_parseOkH {p : Params} {vk c : Digest} {π : ByteArray} (h : parse
 theorem feAt_congr {b b' : ByteArray} {o : ℕ} (h : ∀ i, o ≤ i → i < o + 24 → b.get! i = b'.get! i) :
     feAt b o = feAt b' o := by
   unfold feAt
-  rw [kAt_congr fun j h1 h2 ↦ h j h1 (by omega), kAt_congr fun j h1 h2 ↦ h j (by omega) (by omega),
-    kAt_congr fun j h1 h2 ↦ h j (by omega) (by omega)]
+  rw [kAt_congr fun j h1 h2 ↦ h j h1 (by (clear * - j o h1 h2; omega)), kAt_congr fun j h1 h2 ↦ h j (by (clear * - o j h1 h2; omega)) (by (clear * - j o h1 h2; omega)),
+    kAt_congr fun j h1 h2 ↦ h j (by (clear * - o j h1 h2; omega)) (by (clear * - h2; omega))]
 
 /-- **`pubOfA accV` reads only the stream's header bytes** (to `headerF accV`). -/
 theorem pubOfA_congr {accV : ℕ} (hA : accVars ≤ accV) {vk c : Digest} {sig sig' : ByteArray}
@@ -123,7 +123,7 @@ theorem pubOfA_congr {accV : ℕ} (hA : accVars ≤ accV) {vk c : Digest} {sig s
     refine feAt_congr fun j h1 h2 ↦ h j ?_ ?_ <;>
       simp only [headerAt, offAcc, eBytes, sigBytes, headerF] at h1 h2 ⊢ <;> omega
   unfold pubOfA
-  rw [pubOf_congr fun o h1 h2 ↦ h o h1 (by omega),
+  rw [pubOf_congr fun o h1 h2 ↦ h o h1 (by (clear * - o accV hF h1 h2; omega)),
     List.map_congr_left fun k hk ↦ hE k (List.mem_range.mp hk).le, hE accV le_rfl]
 
 /-- **`pubOf`'s fixed fields read only the header's fixed part** (to `hdrFix`), whatever `acc_in` replaces its own. -/
@@ -164,7 +164,7 @@ theorem pubOfW_congr (rd : ByteArray → ℕ → FE) (ew accV : ℕ)
       simp only [headerAt, offAcc, sigBytes] at h1 h2 hm ⊢ <;> omega
   unfold pubOfW
   rw [List.map_congr_left fun k hk ↦ hE k (List.mem_range.mp hk).le, hE accV le_rfl]
-  exact pubOf_congrFix (fun o h1 h2 ↦ h o h1 (by simp only [headerAt, hdrFix, offAcc, sigBytes] at h2 ⊢; omega)) _
+  exact pubOf_congrFix (fun o h1 h2 ↦ h o h1 (by simp only [headerAt, hdrFix, offAcc, sigBytes] at h2 ⊢; (clear * - o ew accV h2; omega))) _
 
 /-- **V_S's public values at a stage are the statement's**, for `acc_in` read by `rd` in scalars of `ew` bytes (on a
 stream holding the proof's header bytes where the seed query puts them). -/
@@ -179,8 +179,8 @@ theorem pubOfW_eq {p : Params} {vk c : Digest} {π : ByteArray} (h : parseOk p v
   have hx : hdX (xOfH hb π) = Header.ofProof π := hdrOf_xOfH π hH
   rw [hx, hvk, ← hc]
   refine pubOfW_congr rd ew accV hrd fun o h1 h2 ↦ ?_
-  obtain ⟨t, rfl⟩ : ∃ t, o = headerAt 8 + t := ⟨o - headerAt 8, by omega⟩
-  have ht : t < hb - 8 := by simp only [headerAt] at h2 ⊢; omega
+  obtain ⟨t, rfl⟩ : ∃ t, o = headerAt 8 + t := ⟨o - headerAt 8, by (clear * - o ew accV hb h1; omega)⟩
+  have ht : t < hb - 8 := by simp only [headerAt] at h2 ⊢; (clear * - t hb ew accV hF h1 h2; omega)
   rw [hsig t ht, get!_sigOfXH π ht]
 
 /-- **V_S's public values at a stage are the statement's** (`pubOfW_eq` with 24-B scalars, `feAt`). -/
@@ -189,7 +189,7 @@ theorem pubOfA_eq {p : Params} {vk c : Digest} {π : ByteArray} (h : parseOk p v
     (hsig : ∀ t < hb - 8, sig.get! (headerAt 8 + t) = π.get! (8 + t)) :
     pubOfA accV vk c sig = pubOfA accV (hdX (xOfH hb π)).vk (hdX (xOfH hb π)).stmt (sigOfX (xOfH hb π)) :=
   pubOfW_eq h feAt eBytes accV (fun _ _ _ h ↦ feAt_congr h)
-    (le_trans (by simp only [hdrFix, headerF]; omega) hF) (le_trans (by simp only [offAcc, headerF]; omega) hF) hsig
+    (le_trans (by simp only [hdrFix, headerF]; (clear * - accV hb; omega)) hF) (le_trans (by simp only [offAcc, headerF]; (clear * - accV hb; omega)) hF) hsig
 
 /-- **At S2GF**: `pubOfA accVF` on the stream is `pubXF` of the statement. -/
 theorem pubOfA_eq_pubXF {vk c : Digest} {π : ByteArray} (h : parseOk (P20F.withF accVF) vk c π = true)
@@ -207,7 +207,7 @@ theorem entOff_oneH (a₀ : Digest) (e : ByteArray × Digest) (rest : Trace) :
 theorem size_seedQueryH (π : ByteArray) (a₀ : Digest) {hb : ℕ} (hH : hb ≤ π.size) :
     (seedQuery π a₀ hb).size = 32 + (hb - 8) := by
   rw [seedQuery, ByteArray.size_append, size_digestBytes, ← length_blb, blb_extract]
-  simp; omega
+  simp; (clear * - hb π hH; omega)
 
 /-- **The cursor after the seed** of a header of `hb` bytes is `RS.startH hb`'s. -/
 theorem entOff_twoH (π : ByteArray) (a₀ st₀ : Digest) (rest : Trace) {hb : ℕ} (h8 : 8 ≤ hb)
@@ -216,7 +216,7 @@ theorem entOff_twoH (π : ByteArray) (a₀ st₀ : Digest) (rest : Trace) {hb : 
   have hd1 : ((q0Query, a₀) :: (seedQuery π a₀ hb, st₀) :: rest).drop 1 = (seedQuery π a₀ hb, st₀) :: rest := rfl
   rw [(stream_entry hd1).2.2, entOff_oneH, size_seedQueryH π a₀ hH]
   show _ = 1 + 47 + (8 + (32 + hb - 8) + 32)
-  omega
+  (clear * - hb π h8; omega)
 
 /-- The header bytes in the stream: the seed entry holds `π`'s bytes `8 … hb - 1`. -/
 theorem seed_bytesH (π : ByteArray) (a₀ st₀ : Digest) (rest : Trace) {hb : ℕ} (hH : hb ≤ π.size) :
@@ -224,15 +224,15 @@ theorem seed_bytesH (π : ByteArray) (a₀ st₀ : Digest) (rest : Trace) {hb : 
       (headerAt 8 + t) = π.get! (8 + t) := by
   intro t ht
   have hd1 : ((q0Query, a₀) :: (seedQuery π a₀ hb, st₀) :: rest).drop 1 = (seedQuery π a₀ hb, st₀) :: rest := rfl
-  have he := (stream_entry hd1).1 (32 + t) 1 (by rw [size_seedQueryH π a₀ hH]; omega)
-  rw [entOff_oneH, show 48 + 8 + (32 + t) = headerAt 8 + t by simp [headerAt]; omega] at he
+  have he := (stream_entry hd1).1 (32 + t) 1 (by rw [size_seedQueryH π a₀ hH]; (clear * - t hb π ht; omega))
+  rw [entOff_oneH, show 48 + 8 + (32 + t) = headerAt 8 + t by simp [headerAt]; (clear * - t π hb; omega)] at he
   have hg := getD_sb (traceBytesB ((q0Query, a₀) :: (seedQuery π a₀ hb, st₀) :: rest)) (headerAt 8 + t) 1 0
-    (by omega)
+    (by (clear * - π hb t; omega))
   rw [Nat.add_zero] at hg
   rw [← hg, show sb = sbs from rfl, he, get!_blb]
-  rw [List.getD_eq_getElem?_getD, List.getElem?_take_of_lt (by omega), List.getElem?_drop, Nat.add_zero,
+  rw [List.getD_eq_getElem?_getD, List.getElem?_take_of_lt (by (clear * - π hb t; omega)), List.getElem?_drop, Nat.add_zero,
     seedQuery, blb_append, blb_digestBytes, List.getElem?_append_right (by simp),
-    show 32 + t - (Vector.toList a₀).length = t by simp, blb_extract, List.getElem?_take_of_lt (by omega),
+    show 32 + t - (Vector.toList a₀).length = t by simp, blb_extract, List.getElem?_take_of_lt (by (clear * - ht; omega)),
     List.getElem?_drop, ← List.getD_eq_getElem?_getD]
 
 /-- The seed query of the statement is the trace's (`hb ≤ |π|`). -/
@@ -244,6 +244,6 @@ theorem toQ_seedH (π : ByteArray) (a₀ : Digest) (hb : ℕ) :
 theorem fe16At_congr {b b' : ByteArray} {o : ℕ} (h : ∀ i, o ≤ i → i < o + 16 → b.get! i = b'.get! i) :
     fe16At b o = fe16At b' o := by
   unfold fe16At
-  rw [kAt_congr fun j h1 h2 ↦ h j h1 (by omega), kAt_congr fun j h1 h2 ↦ h j (by omega) (by omega)]
+  rw [kAt_congr fun j h1 h2 ↦ h j h1 (by (clear * - j o h1 h2; omega)), kAt_congr fun j h1 h2 ↦ h j (by (clear * - o j h1 h2; omega)) (by (clear * - h2; omega))]
 
 end Lvm.VEq

@@ -86,6 +86,11 @@ theorem wK_eq_of_Qw {v : Word} {x : BF64} (h : Qw v = BF64.toQuot x) : wK v = x 
 
 theorem xf_add_mul_swap {R : Type*} [CommSemiring R] (x a b : R) : a + x * b = b * x + a := by ring
 
+/-- `xf_add_mul_swap` stated at `(ZMod 2)[X]` (GOLF3: its instance at the words' polynomials made the kernel
+unfold them, 0.5 M heartbeats). -/
+private theorem xf_poly : ∀ x a b : (ZMod 2)[X], a + x * b = b * x + a := fun _ _ _ => by
+  rw [add_comm, mul_comm]
+
 theorem clmul_poly (a b : Word) : toPoly (clo a b) + X ^ 64 * toPoly (chi a b) =
     toPoly a * toPoly b := by
   have h := BF64.toPoly_halves (RecursionFast.clmul a b)
@@ -94,7 +99,7 @@ theorem clmul_poly (a b : Word) : toPoly (clo a b) + X ^ 64 * toPoly (chi a b) =
   rw [hc] at h
   -- unfolded by `rw` (left to the kernel's defeq, `clo`/`highHalf` against `setWidth` cost 0.5 s)
   rw [h, BF64.highHalf, BF64.lowHalf, clo, chi, XOp.eval, XOp.eval]
-  exact xf_add_mul_swap _ _ _
+  exact xf_poly _ _ _
 
 theorem chi_red_lt (hi : Word) : (chi hi 0x1B).toNat < 2 ^ 5 :=
   BF64.highHalf_lt _ (BF64.carryLessMul_lt hi BF64.reductionConstant hi.isLt
@@ -108,6 +113,55 @@ theorem chi_chi_red (hi : Word) : chi (chi hi 0x1B) 0x1B = 0 := by
 
 theorem toPoly_red : toPoly (0x1B : Word) = BF64.baseTail := BF64.toPoly_reductionConstant
 
+/-- `Qw_red`'s closing identity over any ring of characteristic two (GOLF3: `linear_combination` in
+`(ZMod 2)[X]` cost the kernel 1.3 M heartbeats). -/
+private theorem qw_red_ring {R : Type*} [CommRing R] (h2 : (2 : R) = 0) (x t lo hi c1 c2 c3 : R)
+    (e1 : c1 + x * c2 = hi * t) (e3 : c3 + x * 0 = c2 * t) :
+    lo + c1 + c3 - (lo + x * hi) = (x + t) * (hi + c2) := by
+  linear_combination e1 + e3 - x * (hi + c2) * h2
+
+/-- `mulEW_spec`'s three closing identities over any commutative ring (GOLF3: `linear_combination` in
+`(ZMod 2)[X]` cost the kernel 5.5 M heartbeats). -/
+private theorem mulEW_ring0 {R : Type*} [CommRing R] (x l1 l2 l3 h1 h2 h3 q1 q2 q3 : R)
+    (e1 : l1 + x * h1 = q1) (e2 : l2 + x * h2 = q2) (e3 : l3 + x * h3 = q3) :
+    l1 + (l2 + l3) + x * (h1 + (h2 + h3)) = q1 + (q2 + q3) := by
+  linear_combination e1 + e2 + e3
+
+private theorem mulEW_ring1 {R : Type*} [CommRing R] (x l1 l2 l3 l4 l5 h1 h2 h3 h4 h5 q1 q2 q3 q4 q5 : R)
+    (e1 : l1 + x * h1 = q1) (e2 : l2 + x * h2 = q2) (e3 : l3 + x * h3 = q3) (e4 : l4 + x * h4 = q4)
+    (e5 : l5 + x * h5 = q5) :
+    l1 + l2 + (l3 + l4) + l5 + x * (h1 + h2 + (h3 + h4) + h5) = q1 + q2 + (q3 + q4) + q5 := by
+  linear_combination e1 + e2 + e3 + e4 + e5
+
+private theorem mulEW_ring2 {R : Type*} [CommRing R] (x l1 l2 l3 l4 h1 h2 h3 h4 q1 q2 q3 q4 : R)
+    (e1 : l1 + x * h1 = q1) (e2 : l2 + x * h2 = q2) (e3 : l3 + x * h3 = q3) (e4 : l4 + x * h4 = q4) :
+    l1 + l2 + l3 + l4 + x * (h1 + h2 + h3 + h4) = q1 + q2 + q3 + q4 := by
+  linear_combination e1 + e2 + e3 + e4
+
+/-- GOLF3: the four identities at `(ZMod 2)[X]` in one declaration, so that the kernel unfolds
+`Polynomial.commRing`'s operations against `(ZMod 2)[X]`'s once, not at every use. -/
+private theorem poly_ids :
+    (∀ x t lo hi c1 c2 c3 : (ZMod 2)[X], c1 + x * c2 = hi * t → c3 + x * 0 = c2 * t →
+      lo + c1 + c3 - (lo + x * hi) = (x + t) * (hi + c2)) ∧
+    (∀ x l1 l2 l3 h1 h2 h3 q1 q2 q3 : (ZMod 2)[X], l1 + x * h1 = q1 → l2 + x * h2 = q2 →
+      l3 + x * h3 = q3 → l1 + (l2 + l3) + x * (h1 + (h2 + h3)) = q1 + (q2 + q3)) ∧
+    (∀ x l1 l2 l3 l4 l5 h1 h2 h3 h4 h5 q1 q2 q3 q4 q5 : (ZMod 2)[X], l1 + x * h1 = q1 → l2 + x * h2 = q2 →
+      l3 + x * h3 = q3 → l4 + x * h4 = q4 → l5 + x * h5 = q5 →
+      l1 + l2 + (l3 + l4) + l5 + x * (h1 + h2 + (h3 + h4) + h5) = q1 + q2 + (q3 + q4) + q5) ∧
+    (∀ x l1 l2 l3 l4 h1 h2 h3 h4 q1 q2 q3 q4 : (ZMod 2)[X], l1 + x * h1 = q1 → l2 + x * h2 = q2 →
+      l3 + x * h3 = q3 → l4 + x * h4 = q4 →
+      l1 + l2 + l3 + l4 + x * (h1 + h2 + h3 + h4) = q1 + q2 + q3 + q4) :=
+  ⟨qw_red_ring ZMod2Poly.two_eq_zero, mulEW_ring0, mulEW_ring1, mulEW_ring2⟩
+
+/-- `Qw_red`'s class step on variables (GOLF3: on the words' polynomials the kernel unfolded them, 1.1 M
+heartbeats). -/
+private theorem qw_mk : ∀ x t l h c1 c2 c3 : (ZMod 2)[X], BF64.basePoly = x + t → c1 + x * c2 = h * t →
+    c3 + x * 0 = c2 * t →
+      AdjoinRoot.mk BF64.basePoly (l + c1 + c3) = AdjoinRoot.mk BF64.basePoly (l + x * h) := by
+  intro x t l h c1 c2 c3 hb e1 e3
+  rw [AdjoinRoot.mk_eq_mk, hb]
+  exact ⟨h + c2, poly_ids.1 x t l h c1 c2 c3 e1 e3⟩
+
 /-- **The reduction is the class** of `lo + x^64 hi`. -/
 theorem Qw_red (lo hi : Word) :
     Qw (redW lo hi) = AdjoinRoot.mk BF64.basePoly (toPoly lo + X ^ 64 * toPoly hi) := by
@@ -115,10 +169,18 @@ theorem Qw_red (lo hi : Word) :
   have h3 := clmul_poly (chi hi 0x1B) 0x1B
   rw [chi_chi_red, show (0 : Word) = BitVec.ofNat 64 0 from rfl, toPoly_zero_eq_zero] at h3
   rw [toPoly_red] at h1 h3
-  rw [Qw, AdjoinRoot.mk_eq_mk, BF64.basePoly_eq_add_tail]
-  refine ⟨toPoly hi + toPoly (chi hi 0x1B), ?_⟩
-  simp only [redW, toPoly_xor]
-  linear_combination h1 + h3 - X ^ 64 * (toPoly hi + toPoly (chi hi 0x1B)) * ZMod2Poly.two_eq_zero
+  have hr : toPoly (redW lo hi) = toPoly lo + toPoly (clo hi 0x1B) + toPoly (clo (chi hi 0x1B) 0x1B) := by
+    simp only [redW, toPoly_xor]
+  have hb := BF64.basePoly_eq_add_tail
+  rw [Qw, hr]
+  generalize toPoly (clo (chi hi 0x1B) 0x1B) = c3 at h3 ⊢
+  generalize toPoly (clo hi 0x1B) = c1 at h1 ⊢
+  generalize toPoly (chi hi 0x1B) = c2 at h1 h3
+  generalize toPoly lo = l
+  generalize toPoly hi = h at h1 ⊢
+  generalize BF64.baseTail = t at h1 h3 hb
+  generalize (X ^ 64 : (ZMod 2)[X]) = x at h1 h3 hb ⊢
+  exact qw_mk x t l h c1 c2 c3 hb h1 h3
 
 /-- A reduction of a sum of carry-less products is the sum of the field products. -/
 theorem wK_red_of_poly {lo hi : Word} {x : BF64} {p : Polynomial (ZMod 2)}
@@ -392,19 +454,20 @@ theorem mulEW_spec (a₀ a₁ a₂ b₀ b₁ b₂ : Word) :
   · refine wK_red_of_poly (p := toPoly a₀ * toPoly b₀ + (toPoly a₁ * toPoly b₂ +
       toPoly a₂ * toPoly b₁)) ?_ ?_
     · simp only [toPoly_xor]
-      linear_combination p a₀ b₀ + p a₁ b₂ + p a₂ b₁
+      exact poly_ids.2.1 _ _ _ _ _ _ _ _ _ _ (p a₀ b₀) (p a₁ b₂) (p a₂ b₁)
     · rw [BF64.toQuot_add, BF64.toQuot_add, toQuot_mulW, toQuot_mulW, toQuot_mulW, map_add,
         map_add]
   · refine wK_red_of_poly (p := toPoly a₀ * toPoly b₁ + toPoly a₁ * toPoly b₀ +
       (toPoly a₁ * toPoly b₂ + toPoly a₂ * toPoly b₁) + toPoly a₂ * toPoly b₂) ?_ ?_
     · simp only [toPoly_xor]
-      linear_combination p a₀ b₁ + p a₁ b₀ + p a₁ b₂ + p a₂ b₁ + p a₂ b₂
+      exact poly_ids.2.2.1 _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ (p a₀ b₁) (p a₁ b₀) (p a₁ b₂) (p a₂ b₁)
+        (p a₂ b₂)
     · rw [BF64.toQuot_add, BF64.toQuot_add, BF64.toQuot_add, BF64.toQuot_add, toQuot_mulW,
         toQuot_mulW, toQuot_mulW, toQuot_mulW, toQuot_mulW, map_add, map_add, map_add, map_add]
   · refine wK_red_of_poly (p := toPoly a₀ * toPoly b₂ + toPoly a₁ * toPoly b₁ +
       toPoly a₂ * toPoly b₀ + toPoly a₂ * toPoly b₂) ?_ ?_
     · simp only [toPoly_xor]
-      linear_combination p a₀ b₂ + p a₁ b₁ + p a₂ b₀ + p a₂ b₂
+      exact poly_ids.2.2.2 _ _ _ _ _ _ _ _ _ _ _ _ _ (p a₀ b₂) (p a₁ b₁) (p a₂ b₀) (p a₂ b₂)
     · rw [BF64.toQuot_add, BF64.toQuot_add, BF64.toQuot_add, toQuot_mulW, toQuot_mulW,
         toQuot_mulW, toQuot_mulW, map_add, map_add, map_add]
 

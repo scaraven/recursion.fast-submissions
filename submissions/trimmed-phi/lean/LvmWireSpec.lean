@@ -101,7 +101,7 @@ theorem chain_of_tape {w : ℕ} {s hd : RecursionFast.Digest} {n : ℕ} {D : ℕ
         pad43St_congr fun j hj ↦ rowBits_eq (H.out x (by (clear * - hN hx; omega))) hj
       have ih' : Yd x = RecursionFast.chainEnd s (x + 1) := ih (by (clear * - hx; omega))
       show stDigest (RecursionFast.Keccak.keccakF (chainIn s n D (x + 1))) = _
-      rw [chainIn, if_neg (by (clear * -; omega)), if_pos hx, Nat.add_sub_cancel, hy, ← chainStep_pad43, ih',
+      rw [chainIn, if_neg (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - x; omega))), if_pos hx, Nat.add_sub_cancel, hy, ← chainStep_pad43, ih',
         RecursionFast.chainEnd, RecursionFast.chainEnd, Function.iterate_succ_apply' _ (x + 1)]
   have hs := step (n - 1) (by (clear * - hn; omega))
   rw [Nat.sub_add_cancel hn] at hs
@@ -151,7 +151,7 @@ theorem spongeRel_of_tape {w hs : ℕ} {s hd : RecursionFast.Digest} {n : ℕ} {
     {cont : ℕ → Bool} (H : TapeRel w hs s n hd D Y Msg cont) (h0 : cont 0 = false) :
     SpongeRel hs (ksVirt hs Y Msg cont) Y Msg cont where
   out i hi l hl := by
-    rw [H.sponge i hi l hl, tapeIn, if_neg (by (clear * -; omega)), if_pos (by (clear * - hi; omega)), Nat.add_sub_cancel_left]
+    rw [H.sponge i hi l hl, tapeIn, if_neg (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - w i; omega))), if_pos (by (clear * - hi; omega)), Nat.add_sub_cancel_left]
   link i hi l hl := by
     rw [ksVirt, Nat.add_mul_mod_self_left, Nat.mod_eq_of_lt hi,
       Nat.add_mul_div_left _ _ (Nat.two_pow_pos hs), Nat.div_eq_of_lt hi, zero_add]
@@ -165,7 +165,7 @@ theorem msgOf_eq_ksMsg (hr : ℕ) (M XM : ℕ → ℕ → K) :
   split_ifs with h
   · rfl
   · show XM j l = XM (j - 2 ^ hr + 2 ^ hr) l
-    rw [Nat.sub_add_cancel (by omega)]
+    rw [Nat.sub_add_cancel (by (clear * - hr j h; omega))]
 
 end Lvm.KG
 end
@@ -287,7 +287,7 @@ theorem padDot_split (ω : List E) (y : ℕ → Bool) :
       rw [if_neg (by have := Finset.mem_range.1 hj; (clear * - this; omega)), mul_zero]
   have h3 : ∑ j ∈ range 1336, ω.getD (8 + (256 + j)) 0 *
       (if 8 ≤ 8 + (256 + j) ∧ 8 + (256 + j) < 264 then bitE (y (8 + (256 + j) - 8)) else 0) = 0 :=
-    Finset.sum_eq_zero fun j _ ↦ by rw [if_neg (by (clear * -; omega)), mul_zero]
+    Finset.sum_eq_zero fun j _ ↦ by rw [if_neg (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - j; omega))), mul_zero]
   rw [h1, h3, zero_add, add_zero]
   refine Finset.sum_congr rfl fun p hp ↦ ?_
   rw [if_pos (by have := Finset.mem_range.1 hp; (clear * - this; omega)), Nat.add_sub_cancel_left]
@@ -305,7 +305,7 @@ theorem wire_identity_ch (ρ μ ω : List E) (s : RecursionFast.Digest) {n : ℕ
   have hrow : ∀ x, iota ρ μ (x + 1) * omegaDot ω (chainIn s n D (x + 1)) =
       msK ρ μ 0 (n - 1) x * (c43Dot ω + gDT ω D x) := by
     intro x
-    rw [chainIn, if_neg (by (clear * -; omega)), msK, Nat.zero_add]
+    rw [chainIn, if_neg (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - x; omega))), msK, Nat.zero_add]
     split_ifs with h1 h2 h2
     · rw [omegaDot_pad43, padDot_split, Nat.add_sub_cancel, gDT]
     · (clear * - hn h1 h2; omega)
@@ -315,7 +315,7 @@ theorem wire_identity_ch (ρ μ ω : List E) (s : RecursionFast.Digest) {n : ℕ
     rw [msK, if_neg (by (clear * - hn hN hM; omega)), zero_mul]
   have hK : ∑ x ∈ range (2 ^ w), msK ρ μ 0 (n - 1) x = ∑ i ∈ range (n - 1), iota ρ μ (i + 1) := by
     rw [show 2 ^ w = (n - 1) + (2 ^ w - (n - 1)) by (clear * - hn hN hM; omega), Finset.sum_range_add]
-    rw [Finset.sum_eq_zero (s := range (2 ^ w - (n - 1))) fun x _ ↦ by rw [msK, if_neg (by (clear * -; omega))],
+    rw [Finset.sum_eq_zero (s := range (2 ^ w - (n - 1))) fun x _ ↦ by rw [msK, if_neg (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - n x; omega)))],
       add_zero]
     exact Finset.sum_congr rfl fun i hi ↦ by
       rw [msK, if_pos (by have := Finset.mem_range.1 hi; (clear * - this; omega)), Nat.zero_add]
@@ -494,7 +494,7 @@ theorem gD_slot (w dsel : ℕ) (ω : List E) (col : ℕ → K) (pt : List E) :
     Finset.sum_congr rfl fun x _ ↦ ?_
   have hz' := Finset.mem_range.1 hz
   simp only [rowBits, dOf, dW, show (64 * l + z) / 64 = l by (clear * - hz'; omega),
-    show (64 * l + z) % 64 = z by (clear * - hz'; omega), show 8 + (64 * l + z) = 8 + 64 * l + z by (clear * -; omega)]
+    show (64 * l + z) % 64 = z by (clear * - hz'; omega), show 8 + (64 * l + z) = 8 + 64 * l + z by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)]
   ring
 
 /-- **The wiring sumcheck's claim is the input claim**: `C_in + const = Σ_x K_ch(x)·G_D(x)` gives

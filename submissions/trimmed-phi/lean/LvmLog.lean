@@ -49,7 +49,7 @@ theorem not_bad_of_append {L L₂ : Log} (h : ¬ Bad (L ++ L₂)) : ¬ Bad L := 
   · exact h (Or.inl fun hn => h1 (by rw [List.map_append] at hn; exact hn.of_append_left))
   · exact h (Or.inr (Or.inl fun hn => h2 (by rw [List.map_append] at hn; exact hn.of_append_left)))
   · refine h (Or.inr (Or.inr ⟨i, j, hij, by simp; (clear * - hj; omega), ?_⟩))
-    rwa [List.getElem_append_left hj, List.getElem_append_left (by omega)]
+    rwa [List.getElem_append_left hj, List.getElem_append_left (by (clear * - i L j hij hj; omega))]
 
 /-- The windows of a query, as a finite set. -/
 def winsF (q : ByteArray) : Finset Digest :=
@@ -69,7 +69,7 @@ theorem card_winsF_le (q : ByteArray) : (winsF q).card ≤ 2 ^ 20 := by
   unfold winsF
   split_ifs with h
   · refine Finset.card_image_le.trans ?_
-    simp only [Finset.card_range]; unfold queryCap at h; omega
+    simp only [Finset.card_range]; unfold queryCap at h; (clear * - q h; omega)
   · simp
 
 set_option linter.constructorNameAsVariable false in

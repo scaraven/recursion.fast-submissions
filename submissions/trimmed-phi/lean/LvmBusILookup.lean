@@ -94,6 +94,9 @@ private theorem FKx_pow_checks : Lvm.FK.x ^ ((2 ^ 64 - 1) / 3) ≠ 1 ∧
   have e6700417 : x ^ ((2 ^ 64 - 1) / 6700417) = pcG ^ 641 := by
     simp only [pcG, pc65535, pc255, pc15, pc3, frob_eq_pow, ← pow_mul, ← pow_add, ← pow_succ]; norm_num
   rw [e3, e5, e17, e257, e641, e65537, e6700417]
+  -- on the words as natural numbers (GOLF3: `FK`'s word operations cost the kernel 3-4 times more)
+  simp only [ne_eq, eq_iff_toNat, mul_toNat, frob_toNat, pow_toNat, pa16, pa8, pa4, pa2, pb8, pb4, pb2, pc3,
+    pc15, pc255, pc65535, pcG, pd4, pd2, pe2]
   decide +kernel
 
 /-- `Lvm.FK.toBF64` sends `FK.x` to `g` (stated again as `Lvm.FK.toBF64_x` below). -/

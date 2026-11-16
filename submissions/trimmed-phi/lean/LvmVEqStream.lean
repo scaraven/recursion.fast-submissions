@@ -196,7 +196,7 @@ theorem climb_run (π : ByteArray) (q : ℕ) : ∀ (j lvl : ℕ) (cur : Digest) 
     rw [climb] at h
     obtain ⟨a, rest, rfl, h'⟩ := ask_run h
     obtain ⟨s', d, n, h1, h2, h3, h4⟩ := climb_run π q j (lvl + 1) a _ k rest h'
-    refine ⟨s', d, n + 1, h1, ?_, ?_, by simp; omega⟩
+    refine ⟨s', d, n + 1, h1, ?_, ?_, by simp; (clear * - h4; omega)⟩
     · exact log_cons h2
     · rw [h3]; simp only [nodeBytes]; ring
 
@@ -212,9 +212,9 @@ theorem openLoop_run (π : ByteArray) (L : Level) (capOff : ℕ) : ∀ (ps : Lis
     split at h1
     · obtain ⟨s', n, h5, h6, h7, h8⟩ := openLoop_run π L capOff qs s1 k _ h1
       refine ⟨s', n1 + 1 + n, ?_, ?_, ?_, ?_⟩
-      · rw [show n1 + 1 + n = (n1 + n) + 1 by (clear * -; omega), drop_succ_cons, ← List.drop_drop]; exact h5
+      · rw [show n1 + 1 + n = (n1 + n) + 1 by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega), drop_succ_cons, ← List.drop_drop]; exact h5
       · have := log_comp (A := rest) (n₁ := n1) (n₂ := n) (L₀ := (_, a) :: s.log) h2 h6
-        rw [show n1 + 1 + n = (n1 + n) + 1 by (clear * -; omega)]
+        rw [show n1 + 1 + n = (n1 + n) + 1 by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)]
         exact log_cons this
       · have : s1.off = s.off + L.row + nodeBytes * L.path := h3
         (clear * - h3 h7 this; omega)
@@ -317,10 +317,10 @@ theorem length_enc64 (n : ℕ) : (enc64 n).length = 8 := by simp [enc64]
 theorem drop_app_len {A B : List UInt8} {k : ℕ} (h : A.length = k) (t : ℕ) :
     (A ++ B).drop (k + t) = B.drop t := by
   subst h
-  rw [List.drop_append, List.drop_eq_nil_of_le (by omega), Nat.add_sub_cancel_left, List.nil_append]
+  rw [List.drop_append, List.drop_eq_nil_of_le (by (clear * - A t; omega)), Nat.add_sub_cancel_left, List.nil_append]
 
 theorem entOff_eq (tr : Trace) (i : ℕ) : entOff tr i = (tagTrace :: traceBytes (tr.take i)).length := by
-  simp [entOff]; omega
+  simp [entOff]; (clear * - i tr; omega)
 
 /-- **Entry `i` in the stream.** -/
 theorem stream_entry {tr : Trace} {i : ℕ} {q : ByteArray} {a : Digest} {rest : Trace}
@@ -352,7 +352,7 @@ theorem stream_entry {tr : Trace} {i : ℕ} {q : ByteArray} {a : Digest} {rest :
     rw [List.take_add_one, hi, Option.toList_some, traceBytes_append, traceBytes_cons]
     simp only [traceBytes_nil, List.append_nil, List.length_append, length_enc64, hq,
       Vector.length_toList]
-    (clear * -; omega)
+    (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)
 
 /-! ## The compiled run with a continuation -/
 

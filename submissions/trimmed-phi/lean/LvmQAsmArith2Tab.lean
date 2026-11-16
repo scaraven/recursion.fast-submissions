@@ -94,7 +94,7 @@ theorem weights_fold (e : List FE) (hs : List Nat) (pt : List FE) : ∀ (k : Nat
     rw [mul_assoc, mul_comm (if k < h then _ else _)]
     congr 2
     refine Finset.prod_congr rfl fun j _ => ?_
-    rw [show k + (j + 1) = k + 1 + j by omega]
+    rw [show k + (j + 1) = k + 1 + j by (clear * - k j e hs r ws; omega)]
 
 /-- **`F`'s table weights**: one product per table. -/
 theorem tableWeights_eq (hs : List Nat) (e pt : List FE) :
@@ -117,21 +117,21 @@ theorem wF_rev (e chs : List FE) (h : Nat) :
   set m := min h R with hm
   have hrev : ∀ c < R, chs.reverse.getD c 0 = chs.getD (R - 1 - c) 0 := by
     intro c hc
-    rw [List.getD_eq_getElem _ _ (by simp; omega), List.getElem_reverse,
-      List.getD_eq_getElem _ _ (by omega)]
+    rw [List.getD_eq_getElem _ _ (by simp; (clear * - hc; omega)), List.getElem_reverse,
+      List.getD_eq_getElem _ _ (by (clear * - R c chs h hc; omega))]
   unfold wF
-  rw [List.length_reverse, ← hR, show R = m + (R - m) by omega, Finset.prod_range_add]
-  rw [show m + (R - m) - m = R - m by omega]
+  rw [List.length_reverse, ← hR, show R = m + (R - m) by (clear * - R m chs h; omega), Finset.prod_range_add]
+  rw [show m + (R - m) - m = R - m by (clear * - m R chs h; omega)]
   congr 1
   · refine Finset.prod_congr rfl fun c hc => ?_
     have hc' := Finset.mem_range.mp hc
-    rw [if_pos (by omega), Nat.zero_add, hrev c (by omega)]
-    congr 3; omega
+    rw [if_pos (by (clear * - c h chs hc'; omega)), Nat.zero_add, hrev c (by (clear * - c R chs h hc'; omega))]
+    congr 3; (clear * - R m chs h c hc'; omega)
   · rw [← Finset.prod_range_reflect (fun j => chs.getD j 0)]
     refine Finset.prod_congr rfl fun x hx => ?_
     have hx' := Finset.mem_range.mp hx
-    rw [if_neg (by omega), hrev _ (by omega)]
-    congr 1; omega
+    rw [if_neg (by (clear * - m x h chs hx'; omega)), hrev _ (by (clear * - m x R chs h hx'; omega))]
+    congr 1; (clear * - R m x chs h; omega)
 
 /-! ## `F`'s final: the weighted sum of the terms -/
 
@@ -268,10 +268,10 @@ theorem tableW_eq {z o : Cell} (hz : z.val M = 0) (ho : o.val M = 1) (e ch : Nat
   congr 1
   · refine Finset.prod_congr rfl fun k hk => ?_
     have hk' := Finset.mem_range.mp hk
-    rw [he k (by omega), hch _ (by omega)]
+    rw [he k (by (clear * - k chs hh hk'; omega)), hch _ (by (clear * - chs k hh hk'; omega))]
   · refine Finset.prod_congr rfl fun j hj => ?_
     have hj' := Finset.mem_range.mp hj
-    rw [hch j (by omega)]
+    rw [hch j (by (clear * - j chs hh hj'; omega))]
 
 /-! ## The final check -/
 
@@ -664,7 +664,7 @@ theorem tableTerms_run (cp fp pt : List FE) (sig : ByteArray) : ∀ (rows : List
     unfold tableTerms
     simp only [Q1.bind_run, Q1.readEs_run, Q1.pure_run]
     rw [tableTerms_run cp fp pt sig rest]
-    have e1 : s.ent + (s.msg + 24 * t.width) + 40 = s.ent + s.msg + 40 + 24 * t.width := by omega
+    have e1 : s.ent + (s.msg + 24 * t.width) + 40 = s.ent + s.msg + 40 + 24 * t.width := by (clear * - s t; omega)
     simp only [e1, QB.finalOf, termsAt, evsAt, List.map_cons, List.zip_cons_cons, List.foldl_cons,
       List.sum_cons, termF]
     refine Prod.ext (Prod.ext rfl rfl) ?_
@@ -691,9 +691,9 @@ theorem tabPh_run (p : Params) (m : M3) (pub : Pub) (bus : BusOut) (point : List
   have hR := QB.sumcheck_run 4 (by decide) sig (List.replicate p.tableRounds none)
   unfold tabPh tableSumcheck
   simp only [Q1.bind_run, Q1.sampleE_run, hm]
-  rw [show s.ent + 40 + s.msg = pos s + 40 by simp [pos]; (clear * -; omega),
+  rw [show s.ent + 40 + s.msg = pos s + 40 by simp [pos]; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega),
     show ({ s with ent := s.ent + 72 + s.msg, msg := 0 } : RS) = ⟨pos s + 72, 0, s.ok⟩ by
-      simp [pos]; (clear * -; omega)]
+      simp [pos]; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)]
   have e1 : (st.map nativeTable).map (·.nConstraints) = st.map (·.cons.length) := by
     simp [nativeTable, Function.comp_def]
   have e2 : (st.map nativeTable).map (·.logHeight) = st.map (·.τ) := by
@@ -716,7 +716,7 @@ theorem powers_length (b : FE) (n : Nat) : (powers b n).length = n := by
 theorem take_drop_powers (ξ : FE) (N cur n : Nat) (h : cur + n ≤ N) :
     ((powers ξ N).drop cur).take n = (List.range n).map fun i => ξ ^ (cur + i) := by
   apply List.ext_getElem
-  · simp [powers_length]; omega
+  · simp [powers_length]; (clear * - n N cur h; omega)
   · intro i h1 h2
     simp only [List.getElem_take, List.getElem_drop, List.getElem_map, List.getElem_range]
     have := Loop.Build.powers_getD ξ N (cur + i) (by simp at h2; (clear * - h h2; omega))
@@ -733,7 +733,7 @@ theorem dot_pows (ξ : FE) : ∀ (vs : List FE) (cur : Nat),
     rw [List.length_cons, List.range_succ_eq_map, List.map_cons, List.map_map, dot_cons]
     have := dot_pows ξ vs (cur + 1)
     rw [show ((fun i => ξ ^ (cur + i)) ∘ Nat.succ) = fun i => ξ ^ (cur + 1 + i) from
-      funext fun i => by simp only [Function.comp_apply]; rw [show cur + i.succ = cur + 1 + i by (clear * -; omega)],
+      funext fun i => by simp only [Function.comp_apply]; rw [show cur + i.succ = cur + 1 + i by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)],
       this]
     simp only [polyEval, List.foldr_cons, Nat.add_zero]
     rw [show List.foldr (fun c acc => acc * ξ + c) 0 vs = polyEval vs ξ from rfl]
@@ -821,7 +821,7 @@ theorem evalE_geo (col : Nat → FE) {a e d : Nat} (hae : a ≤ e) (he : e ≤ 6
     have hz' := Finset.mem_Ico.mp hz
     simp only [Function.comp_apply, monV, if_pos hz', List.map_cons, List.map_nil, List.foldl_cons,
       List.foldl_nil, one_mul]
-    rw [ofK_wt (by (clear * - hae hd hz'; omega)), ← mul_assoc, ← pow_add, show z - a + d = d + (z - a) by (clear * -; omega)]
+    rw [ofK_wt (by (clear * - hae hd hz'; omega)), ← mul_assoc, ← pow_add, show z - a + d = d + (z - a) by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)]
   rw [h1, ← Finset.mul_sum]
   congr 1
   have hsplit := Finset.sum_Ico_consecutive (fun z => gen ^ (z - a) * col (1 + z)) hae he
@@ -1343,7 +1343,7 @@ def HiOk (M : Mem) (ζ : List FE) (hi : List ((Nat × Nat) × Cell)) : Prop :=
 
 theorem lowPt_eq {ζ : List FE} {κ s : Nat} (h : κ + s ≤ ζ.length) : lowPt ζ κ s = (ζ.drop κ).take s := by
   apply List.ext_getElem
-  · simp [lowPt]; omega
+  · simp [lowPt]; (clear * - s ζ κ h; omega)
   · intro i h1 h2
     simp only [lowPt, List.getElem_map, List.getElem_range, List.getElem_take, List.getElem_drop]
     rw [List.getD_eq_getElem _ _ (by simp [lowPt] at h1; (clear * - h h1; omega))]
@@ -1882,11 +1882,11 @@ theorem evLoads_sound {sig : ByteArray} {T : Nat} (hS : Q1.Streamed M sig T) :
         soundG_pure ⟨by simp [hr.1], fun j hj => by
           rcases j with _ | j
           · simp only [List.getD_cons_zero, he, Q1.scalarsAt, pre, List.take_zero, List.sum_nil]
-            exact List.map_congr_left fun i _ => congrArg _ (by (clear * -; omega))
+            exact List.map_congr_left fun i _ => congrArg _ (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))
           · simp only [List.getD_cons_succ]
             rw [hr.2 j (by simpa using hj)]
             simp only [pre, List.take_succ_cons, List.sum_cons]
-            congr 1; (clear * -; omega)⟩
+            congr 1; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)⟩
 
 end
 
@@ -2070,9 +2070,9 @@ theorem termsAt_getD (v : Nat → FE) (cp fp pt : List FE) (d : TRow) : ∀ (row
       rw [termsAt_getD v cp fp pt d rest _ _ j (by simpa using h)]
       simp only [pre, List.map_cons, List.take_succ_cons, List.sum_cons]
       rw [show cur + r.1.nConstraints + (List.take j (List.map (fun x => x.1.nConstraints) rest)).sum =
-          cur + (r.1.nConstraints + (List.take j (List.map (fun x => x.1.nConstraints) rest)).sum) by (clear * -; omega),
+          cur + (r.1.nConstraints + (List.take j (List.map (fun x => x.1.nConstraints) rest)).sum) by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega),
         show o + 24 * r.1.width + 24 * (List.take j (List.map (fun x => x.1.width) rest)).sum =
-          o + 24 * (r.1.width + (List.take j (List.map (fun x => x.1.width) rest)).sum) by (clear * -; omega)]
+          o + 24 * (r.1.width + (List.take j (List.map (fun x => x.1.width) rest)).sum) by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)]
 
 theorem termsAt_length (v : Nat → FE) (cp fp pt : List FE) : ∀ (rows : List TRow) (cur o : Nat),
     (termsAt v cp fp pt rows cur o).length = rows.length
@@ -2091,7 +2091,7 @@ theorem evsAt_getD (v : Nat → FE) (pt : List FE) (d : TRow) : ∀ (rows : List
     · simp only [evsAt, List.getD_cons_succ]
       rw [evsAt_getD v pt d rest _ j (by simpa using h)]
       simp only [pre, List.map_cons, List.take_succ_cons, List.sum_cons]
-      congr 2; (clear * -; omega)
+      congr 2; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)
 
 theorem evsAt_length (v : Nat → FE) (pt : List FE) : ∀ (rows : List TRow) (o : Nat),
     (evsAt v pt rows o).length = rows.length
@@ -2112,11 +2112,11 @@ theorem sumE_zip_filter {M : Mem} {α : Type} (W : α → FE) (q : α → Bool) 
 
 theorem pre_add_le (l : List Nat) {j : Nat} (hj : j < l.length) : pre l j + l.getD j 0 ≤ l.sum := by
   rw [pre, List.getD_eq_getElem _ _ hj, ← List.sum_take_succ, ← List.sum_take_add_sum_drop l (j + 1)]
-  (clear * -; omega)
+  (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - j l; omega))
 
 theorem take_drop_take {α : Type} (l : List α) {m c n : Nat} (h : c + n ≤ m) :
     ((l.take m).drop c).take n = (l.drop c).take n := by
-  rw [List.drop_take, List.take_take, Nat.min_eq_left (by omega)]
+  rw [List.drop_take, List.take_take, Nat.min_eq_left (by (clear * - n m c h; omega))]
 
 theorem sumE_W2 {α : Type} (W f g : α → FE) (A B : FE) (l : List α) :
     sumE (l.map fun x => W x * (A * f x + B * g x)) =
@@ -2166,7 +2166,7 @@ theorem tabG_sound (hS : Q1.Streamed M sig T) {z o g : Cell} (hz : z.val M = 0) 
   have hlenα : (eqKernel alphas).length = 2 ^ bc.al.length := by rw [eqKernel_length, hall]
   refine soundG_bind (tkG_sound hz (Xs.getD S.length o) fp1 bc.be eb (2 ^ bc.al.length) (sepsOf S)
     (eqα := eqKernel alphas) hlenα (by
-      have : 2 ^ 2 ≤ 2 ^ bc.al.length := Nat.pow_le_pow_right (by (clear * -; omega)) (by (clear * - hal2 hall; omega))
+      have : 2 ^ 2 ≤ 2 ^ bc.al.length := Nat.pow_le_pow_right (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)) (by (clear * - hal2 hall; omega))
       (clear * - this; omega)) fun i hi => heb i (by rw [hall] at hi; exact hi)) fun K hK => ?_
   refine soundG_bind (facG_sound bc.pt) fun facs hfacs => ?_
   have hf1 : (facs.map (·.2)).map (·.val M) = point := by rw [hfacs.1, ← hpt]; rfl

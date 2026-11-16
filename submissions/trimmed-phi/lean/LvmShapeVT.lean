@@ -70,7 +70,7 @@ theorem cubePt_split (p q m i : ℕ) (hi : i < 2 ^ p) :
   · refine List.map_congr_left fun j hj ↦ ?_
     simp only [Nat.testBit_two_pow_mul_add m hi, List.mem_range.1 hj, ite_true]
   · refine List.map_congr_left fun j _ ↦ ?_
-    simp only [Function.comp, Nat.testBit_two_pow_mul_add m hi, show ¬ (p + j < p) by (clear * -; omega),
+    simp only [Function.comp, Nat.testBit_two_pow_mul_add m hi, show ¬ (p + j < p) by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - p j; omega)),
       ite_false, Nat.add_sub_cancel_left]
 
 @[simp] theorem eOfNat_zero : eOfNat 0 = 0 := rfl
@@ -263,7 +263,7 @@ theorem eqAbove_tail (b : Placement) (hb : 2 ^ 22 ≤ b.index) (hv : b.variableC
   obtain ⟨j, hj22, hjν, hjb⟩ : ∃ j, 22 ≤ j ∧ j < CMain.nu20 ∧ b.index / 2 ^ j % 2 = 1 := by
     refine ⟨22, le_rfl, by norm_num, ?_⟩
     have h1 : b.index / 2 ^ 22 = 1 :=
-      Nat.div_eq_of_lt_le (by omega) (by simp only [CMain.nu20] at hlt; omega)
+      Nat.div_eq_of_lt_le (by (clear * - hb; omega)) (by simp only [CMain.nu20] at hlt; (clear * - hlt; omega))
     rw [h1]
   have haj : a.testBit j = false := Nat.testBit_lt_two_pow (lt_of_lt_of_le ha (Nat.pow_le_pow_right (by norm_num) hj22))
   unfold Placement.eqAbove
@@ -377,7 +377,7 @@ theorem ringTailN_fold (pt : List FE) : ∀ (cs : List FE) (a : FE) (k : ℕ),
     simp only [List.getD_cons_succ, List.getD_cons_zero, Nat.add_zero]
     have e2 : ∀ i ∈ Finset.range cs.length, cs.getD i 0 * tailPtF (pt.map (· ^ 2 ^ (k + 1 + i))) =
         cs.getD i 0 * tailPtF (pt.map (· ^ 2 ^ (k + (i + 1)))) :=
-      fun i _ ↦ by rw [show k + 1 + i = k + (i + 1) by (clear * -; omega)]
+      fun i _ ↦ by rw [show k + 1 + i = k + (i + 1) by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)]
     rw [Finset.sum_congr rfl e2]
     ring
 

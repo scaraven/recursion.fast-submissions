@@ -111,7 +111,7 @@ theorem natDegree_jet_le (R : K[X][X]) (α₀ : K) : ∀ t, (jet R α₀ t).natD
   | t + 1 => by
       rw [jet_succ]
       refine le_trans (natDegree_sub_le _ _) (max_le ?_ ?_)
-      · exact le_trans (natDegree_jet_le R α₀ t) (by omega)
+      · exact le_trans (natDegree_jet_le R α₀ t) (by (clear * - t; omega))
       · exact natDegree_C_mul_X_pow_le _ _
 
 /-- The constant coefficient of every jet is the initial value `α₀`. -/
@@ -246,7 +246,7 @@ theorem coeff_eval_jet_eq_zero (R : K[X][X]) (α₀ : K) (hξ : xi R α₀ ≠ 0
     ∀ t, ∀ s, 1 ≤ s → s ≤ t → (R.eval (jet R α₀ t)).coeff s = 0 := by
   intro t
   induction t with
-  | zero => (clear * -; omega)
+  | zero => (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)
   | succ t ih =>
       intro s hs1 hst
       rcases Nat.lt_or_ge s (t + 1) with hlt | hge
@@ -410,8 +410,8 @@ def ledger (t s : ℕ) : ℕ :=
 @[simp] theorem ledger_zero_right (t : ℕ) : ledger t 0 = 0 := by simp [ledger]
 
 theorem ledger_self_succ (t : ℕ) : ledger t (t + 1) = 2 * t := by
-  simp only [ledger, if_neg (Nat.succ_ne_zero t), if_neg (by omega : ¬ t + 1 ≤ t)]
-  omega
+  simp only [ledger, if_neg (Nat.succ_ne_zero t), if_neg (by (clear * - t; omega) : ¬ t + 1 ≤ t)]
+  (clear * - t; omega)
 
 /-- **The slack inequality.**  Under the Hasse–Taylor update at order `t + 1`, a term
 landing in coefficient `s = s' + (t+1)·ρ` carries the denominator
@@ -433,7 +433,7 @@ theorem ledger_slack (t s' ρ : ℕ) :
     unfold ledger
     split_ifs <;> first | contradiction | omega
   · -- ρ ≥ 2 : the landing coefficient is beyond `t + 1`; linearize the products.
-    have hnorm : ρ'' + 1 + 1 = ρ'' + 2 := by omega
+    have hnorm : ρ'' + 1 + 1 = ρ'' + 2 := by (clear * - ρ''; omega)
     rw [hnorm]
     have hkey : ledger t s' + 2 ≤ 2 * s' + (ρ'' + 2) := by
       unfold ledger
@@ -526,7 +526,7 @@ theorem jet_coeff_succ_self (t : ℕ) :
       -((xi R α₀)⁻¹ * ((R.eval (jet R α₀ t)).coeff (t + 1))) := by
   rw [jet_succ, coeff_sub, coeff_mul_X_pow']
   have h0 : (jet R α₀ t).coeff (t + 1) = 0 :=
-    coeff_eq_zero_of_natDegree_lt (lt_of_le_of_lt (natDegree_jet_le R α₀ t) (by omega))
+    coeff_eq_zero_of_natDegree_lt (lt_of_le_of_lt (natDegree_jet_le R α₀ t) (by (clear * - t; omega)))
   simp [h0]
 
 /-- The Taylor form of one recursion step, for an arbitrary polynomial `S`. -/
@@ -752,7 +752,7 @@ theorem jet_coeff_stable (t : ℕ) : ∀ T, t ≤ T → (jet R α₀ T).coeff t 
   induction T with
   | zero =>
       intro h
-      have ht0 : t = 0 := by omega
+      have ht0 : t = 0 := by (clear * - t h; omega)
       subst ht0
       rfl
   | succ T ihT =>
@@ -837,7 +837,7 @@ theorem eq_of_sub_dvd_of_degree_le {F : Type*} [Field F] {p q : F[X]} {r : ℕ} 
   rw [hpow] at hdeg
   have hfin : ((r + 1 : ℕ) : WithBot ℕ) ≤ ((r : ℕ) : WithBot ℕ) := le_trans hdeg hle
   rw [Nat.cast_le] at hfin
-  omega
+  (clear * - r hfin; omega)
 
 /-! ### Interpolation: pinning the jet down from `r + 1` coordinates
 

@@ -169,7 +169,7 @@ theorem fs_step {p : Params} {tr : Trace} {π : ByteArray} {s : DSt} {w : WS} (h
   have hbody : (bl π).drop s.pend = (bl (qOf tr w.i)).drop 32 ++ bodyFrom tr (plan p) (w.i + 1) := by
     rw [hI.body, bodyFrom_cons _ _ (by (clear * - hi hn; omega)), hP]; rfl
   have hcl : ((bl (qOf tr w.i)).drop 32).length = w.pend := by
-    rw [List.length_drop, ← size_bl, hlen]; (clear * -; omega)
+    rw [List.length_drop, ← size_bl, hlen]; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - w; omega))
   have hq : digestBytes s.st ++ π.extract s.pend s.off = qOf tr w.i := by
     apply ba_ext
     rw [bl_append, bl_digestBytes, hI.st, hI.off, bl_extract_body hbody hcl, ← hpre, List.take_append_drop]
@@ -203,8 +203,8 @@ theorem posOut_eq (tr : Trace) (h : Nat) : ∀ (n e rem : Nat), rem ≤ position
   | 0, e, rem, hr => by simp [posOut, show rem = 0 by simpa [positionsPerAnswer] using hr]
   | n + 1, e, rem, hr => by
     simp only [posOut]
-    rw [posOut_eq tr h n (e + 1) _ (by simp [positionsPerAnswer] at hr ⊢; omega)]
-    have hc : min positionsPerAnswer rem + (rem - min positionsPerAnswer rem) = rem := by (clear * -; omega)
+    rw [posOut_eq tr h n (e + 1) _ (by simp [positionsPerAnswer] at hr ⊢; (clear * - rem n hr; omega))]
+    have hc : min positionsPerAnswer rem + (rem - min positionsPerAnswer rem) = rem := by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - rem; omega))
     conv_rhs => rw [← hc, List.range_add, List.map_append, List.map_map]
     congr 1
     · refine List.map_congr_left fun j hj => ?_
@@ -213,8 +213,8 @@ theorem posOut_eq (tr : Trace) (h : Nat) : ∀ (n e rem : Nat), rem ≤ position
     · refine List.map_congr_left fun j hj => ?_
       simp only [Function.comp, positionsPerAnswer] at hj ⊢
       by_cases h8 : 8 ≤ rem
-      · rw [show min 8 rem = 8 by (clear * - hc h8; omega), show (8 + j) / 8 = j / 8 + 1 by (clear * -; omega),
-          show (8 + j) % 8 = j % 8 by (clear * -; omega), Nat.add_comm (j / 8) 1, ← Nat.add_assoc]
+      · rw [show min 8 rem = 8 by (clear * - hc h8; omega), show (8 + j) / 8 = j / 8 + 1 by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - j; omega)),
+          show (8 + j) % 8 = j % 8 by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - j; omega)), Nat.add_comm (j / 8) 1, ← Nat.add_assoc]
       · simp at hj; (clear * - hc h8 hj; omega)
 
 theorem stepFS_iter (w : WS) : ∀ n, 1 ≤ n →
@@ -224,8 +224,8 @@ theorem stepFS_iter (w : WS) : ∀ n, 1 ≤ n →
   | 1, _ => by simp [WS.stepFS, WS.settle]
   | n + 2, _ => by
     rw [Function.iterate_succ_apply]
-    obtain ⟨h1, h2, h3, h4, h5⟩ := stepFS_iter w.stepFS (n + 1) (by omega)
-    refine ⟨by rw [h1]; simp [WS.stepFS, WS.settle]; (clear * -; omega), h2, by rw [h3]; simp [WS.stepFS, WS.settle]; (clear * -; omega),
+    obtain ⟨h1, h2, h3, h4, h5⟩ := stepFS_iter w.stepFS (n + 1) (by (clear * - n; omega))
+    refine ⟨by rw [h1]; simp [WS.stepFS, WS.settle]; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega), h2, by rw [h3]; simp [WS.stepFS, WS.settle]; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega),
       h4, by rw [h5]; simp [WS.stepFS, WS.settle]⟩
 
 theorem posLoop_run {p : Params} {tr : Trace} {π : ByteArray} (hn : tr.length = (plan p).length)
@@ -237,7 +237,7 @@ theorem posLoop_run {p : Params} {tr : Trace} {π : ByteArray} (hn : tr.length =
       (posLoop π h n rem s k).runSeq (tr.drop w.i) = (k s').runSeq (tr.drop (w.i + n))
   | 0, rem, s, w, hI, _, _ => ⟨s, hI, by simp [posOut], by simp [posLoop]⟩
   | n + 1, rem, s, w, hI, hl, hP => by
-    have hP0 := hP 0 (by (clear * -; omega))
+    have hP0 := hP 0 (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - n; omega)))
     simp only [ite_true, Nat.add_zero] at hP0
     have hG0 : Good tr w.i ⟨.fs w.st, 32 + w.pend⟩ := by rw [← hP0]; exact hG _ (by (clear * - hn hl; omega))
     have hI' := (fs_step (k := fun _ _ => OProg.ret false) hI (by (clear * - hn hl; omega)) hn hP0 hG0).2
@@ -247,13 +247,13 @@ theorem posLoop_run {p : Params} {tr : Trace} {π : ByteArray} (hn : tr.length =
     obtain ⟨s', hI3, hpos3, hrun3⟩ := posLoop_run hn hG h k n (rem - min positionsPerAnswer rem) _ _ hI2
       (by simp [WS.stepFS, WS.settle]; (clear * - hn hl; omega)) (fun x hx => by
         have := hP (x + 1) (by (clear * - hx; omega))
-        rw [show w.i + (x + 1) = w.stepFS.i + x by simp [WS.stepFS, WS.settle]; (clear * -; omega)] at this
+        rw [show w.i + (x + 1) = w.stepFS.i + x by simp [WS.stepFS, WS.settle]; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)] at this
         rw [this]
         rcases x with _ | x <;> simp [WS.stepFS, WS.settle] <;> omega)
     refine ⟨s', by rw [Function.iterate_succ_apply]; exact hI3, ?_, ?_⟩
     · rw [hpos3]; simp [dStep, posOut, posBatch, List.append_assoc, WS.stepFS, WS.settle]
     · rw [posLoop, (fs_step hI (by (clear * - hn hl; omega)) hn hP0 hG0 _).1]
-      rw [show w.i + (n + 1) = w.stepFS.i + n by simp [WS.stepFS, WS.settle]; (clear * -; omega), ← hrun3]
+      rw [show w.i + (n + 1) = w.stepFS.i + n by simp [WS.stepFS, WS.settle]; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega), ← hrun3]
       rfl
 
 /-! ## Merkle paths and openings -/
@@ -285,7 +285,7 @@ theorem climb_run {p : Params} {tr : Trace} {π : ByteArray} (hn : tr.length = (
     simp only [climb, Nat.mul_zero, Nat.add_zero, ite_true]
     rw [← hlog]
   | m + 1, lvl, cur, s, i, hlog, hb, hle, hcur, hl, hP => by
-    obtain ⟨cap, hPi⟩ := hP 0 (by (clear * -; omega))
+    obtain ⟨cap, hPi⟩ := hP 0 (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - m; omega)))
     simp only [Nat.add_zero] at hPi
     obtain ⟨hlen, hhalf, -⟩ := (show Good tr i ⟨.node pe h j lvl cap, 64⟩ by rw [← hPi]; exact hG i (by (clear * - hn hl; omega)))
     have hq64 : (bl (qOf tr i)).length = 64 := by rw [← size_bl]; exact hlen
@@ -319,21 +319,21 @@ theorem climb_run {p : Params} {tr : Trace} {π : ByteArray} (hn : tr.length = (
       (by simp only; rw [take_succ_rev tr (by (clear * - hn hl; omega)), hlog]) hb' hl' (by simp) (by (clear * - hn hl; omega))
       (fun x hx => by
         obtain ⟨c, hc⟩ := hP (x + 1) (by (clear * - hx; omega))
-        exact ⟨c, by rw [show i + 1 + x = i + (x + 1) by (clear * -; omega), hc]; congr 2; (clear * -; omega)⟩)
+        exact ⟨c, by rw [show i + 1 + x = i + (x + 1) by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega), hc]; congr 2; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)⟩)
     refine ⟨?_, ?_, ?_⟩
     · rw [climb, drop_cons_getD tr (by (clear * - hn hl; omega))]
       rw [ask_run _ _ _ (qOf tr i, aOf tr i) _ hq.symm, hq]
       simp only at ih1
       rw [ih1]
-      have e1 : i + 1 + m = i + (m + 1) := by (clear * -; omega)
+      have e1 : i + 1 + m = i + (m + 1) := by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)
       have e3 : s.off + 32 + 32 * m = s.off + 32 * (m + 1) := by ring
       have e2 : (if m = 0 then aOf tr i else aOf tr (i + 1 + m - 1)) =
           (if m + 1 = 0 then cur else aOf tr (i + (m + 1) - 1)) := by
         rcases m with _ | m
         · simp
-        · simp only [Nat.add_one_ne_zero, ite_false]; congr 1; (clear * -; omega)
+        · simp only [Nat.add_one_ne_zero, ite_false]; congr 1; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)
       rw [e2, e3, e1]
-    · simpa [Nat.mul_succ, Nat.add_assoc, Nat.add_comm 32, show i + 1 + m = i + (m + 1) by (clear * -; omega)] using ih2
+    · simpa [Nat.mul_succ, Nat.add_assoc, Nat.add_comm 32, show i + 1 + m = i + (m + 1) by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)] using ih2
     · have : s.off + 32 + 32 * m = s.off + 32 * (m + 1) := by ring
       simp only at ih3
       (clear * - ih3; omega)
@@ -420,7 +420,7 @@ theorem openLoop_run {p : Params} {tr : Trace} {π : ByteArray} (hn : tr.length 
       rw [Nat.add_assoc capOff, hcap _ (by simp only [nodeBytes] at hb32 hnb ⊢; (clear * - hnb hidx hx; omega)), Nat.add_assoc]
     obtain ⟨d1, d2, d3⟩ := openLoop_run hn hG L capOff pe ce co nb hcap hnb hp1 hph k m (j₀ + 1)
       { s with off := s.off + L.row + 32 * L.path, log := (tr.take (i + 1 + L.path)).reverse } (i + 1 + L.path)
-      rfl (by simpa using c2) (by simpa using c3) (by rw [show i + 1 + L.path = i + (L.path + 1) by (clear * -; omega)]; exact hal2)
+      rfl (by simpa using c2) (by simpa using c3) (by rw [show i + 1 + L.path = i + (L.path + 1) by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)]; exact hal2)
     refine ⟨?_, ?_, ?_⟩
     · rw [List.range'_succ, List.map_cons, openLoop, drop_cons_getD tr (by (clear * - hn hi; omega))]
       rw [ask_run _ _ _ (qOf tr i, aOf tr i) _ hq.symm, hq]
@@ -449,7 +449,7 @@ theorem Inv.congr {p : Params} {tr : Trace} {π : ByteArray} {s : DSt} {w₁ w�
   ⟨hi ▸ h.log, hs ▸ h.st, hp ▸ h.off, hi ▸ h.body, h.le, hp ▸ hpc ▸ hc ▸ h.caps⟩
 
 theorem nPosQ_ge (L : Level) : L.t ≤ positionsPerAnswer * L.nPosQ := by
-  simp only [Level.nPosQ, positionsPerAnswer]; omega
+  simp only [Level.nPosQ, positionsPerAnswer]; (clear * - L; omega)
 
 /-- **One item**: the driver runs it on its entries and continues with the rest. -/
 theorem item_step {p : Params} {tr : Trace} {π : ByteArray} (hn : tr.length = (plan p).length)
@@ -464,16 +464,16 @@ theorem item_step {p : Params} {tr : Trace} {π : ByteArray} (hn : tr.length = (
   | read m =>
     refine ⟨{ s with off := s.off + eBytes * m }, ⟨hI.log, hI.st, ?_, hI.body, hI.le,
       capsRel_wpend (by simp [planItem]) _ _ _ hI.caps⟩, hPo, rfl⟩
-    simp only [planItem]; rw [hI.off]; (clear * -; omega)
+    simp only [planItem]; rw [hI.off]; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)
   | readW m wd =>
     refine ⟨{ s with off := s.off + wd * m }, ⟨hI.log, hI.st, ?_, hI.body, hI.le,
       capsRel_wpend (by simp [planItem]) _ _ _ hI.caps⟩, hPo, rfl⟩
-    simp only [planItem]; rw [hI.off]; (clear * -; omega)
+    simp only [planItem]; rw [hI.off]; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)
   | cap c r =>
     refine ⟨{ s with caps := (r, s.off) :: s.caps, off := s.off + nodeBytes * 2 ^ c },
       ⟨hI.log, hI.st, ?_, hI.body, hI.le, ⟨rfl, hI.off, by simp [planItem], capsRel_wpend (by simp [planItem]) _ _ _ hI.caps⟩⟩,
       hPo, rfl⟩
-    simp only [planItem]; rw [hI.off]; (clear * -; omega)
+    simp only [planItem]; rw [hI.off]; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)
   | sample =>
     have hP0 : (plan p).getD w.i default = ⟨.fs w.st, 32 + w.pend⟩ := by
       simpa [planItem] using (Al_head (es := []) (by simpa [planItem] using hal)).2
@@ -582,7 +582,7 @@ theorem items_run {p : Params} {tr : Trace} {π : ByteArray} (hn : tr.length = (
     exact ⟨s', hI', hPo', by rw [hrun1, hrun']; rfl⟩
 
 theorem plan_length (p : Params) : (plan p).length = 2 + (planAll p).1.length := by
-  simp [plan]; omega
+  simp [plan]; (clear * - p; omega)
 
 theorem bl_reassemble (p : Params) (tr : Trace) : bl (reassemble p tr) = hdr8 ++ bodyFrom tr (plan p) 0 :=
   bl_mk _
@@ -596,52 +596,52 @@ theorem drive_replayP (p : Params) (hP : PlanOk p) (tr : Trace) (hL : LinkOk p t
   have hH8 : 8 ≤ headerBytes := by decide
   have hsl : seedLenP p = 32 + (headerBytesP p - 8) := seedLenP_eq p
   have h8 : 8 ≤ headerBytesP p := eight_le_hdrP p
-  have hlen2 : 2 ≤ tr.length := by rw [hn, plan_length]; omega
+  have hlen2 : 2 ≤ tr.length := by rw [hn, plan_length]; (clear * - p tr; omega)
   set π := reassemble p tr with hπ
   set P := plan p with hPdef
   -- the first two entries
   have hP0 : P.getD 0 default = ⟨.q0, 7⟩ := rfl
   have hP1 : P.getD 1 default = ⟨.fs 0, seedLenP p⟩ := rfl
-  obtain ⟨-, hq0⟩ := (show Good tr 0 ⟨.q0, 7⟩ by rw [← hP0]; exact hG 0 (by omega))
-  obtain ⟨hs1, hq1⟩ := (show Good tr 1 ⟨.fs 0, seedLenP p⟩ by rw [← hP1]; exact hG 1 (by omega))
+  obtain ⟨-, hq0⟩ := (show Good tr 0 ⟨.q0, 7⟩ by rw [← hP0]; exact hG 0 (by (clear * - tr p hlen2 hn; omega)))
+  obtain ⟨hs1, hq1⟩ := (show Good tr 1 ⟨.fs 0, seedLenP p⟩ by rw [← hP1]; exact hG 1 (by (clear * - tr p hlen2 hn; omega)))
   simp only at hq0 hq1 hs1
   have hPl : 2 ≤ (plan p).length := by rw [← hPdef, ← hn]; exact hlen2
   have hbody0 : (bl π).drop 8 = (bl (qOf tr 1)).drop 32 ++ bodyFrom tr P 2 := by
-    rw [hπ, bl_reassemble, List.drop_left' (by rfl : hdr8.length = 8), bodyFrom_cons _ _ (by omega),
-      bodyFrom_cons _ _ (by omega), hP0, hP1]
+    rw [hπ, bl_reassemble, List.drop_left' (by rfl : hdr8.length = 8), bodyFrom_cons _ _ (by (clear * - p tr hPl; omega)),
+      bodyFrom_cons _ _ (by (clear * - p tr hPl; omega)), hP0, hP1]
     -- the two contributions by name: a closing `rfl` here sent the kernel through `bodyFrom tr (plan p)` (the
     -- schedule's items) to align `[] ++ (c ++ b)` with `c ++ b` (GOLF-DEC2: 4.4 s of kernel time)
     have c0 : contrib tr 0 ⟨.q0, 7⟩ = [] := rfl
     have c1 : contrib tr (0 + 1) ⟨.fs 0, seedLenP p⟩ = (bl (qOf tr 1)).drop 32 := rfl
     rw [c0, c1, List.nil_append]
   have hcl1 : ((bl (qOf tr 1)).drop 32).length = headerBytesP p - 8 := by
-    rw [List.length_drop, ← size_bl, hs1, hsl]; omega
+    rw [List.length_drop, ← size_bl, hs1, hsl]; (clear * - p tr hsl hs1; omega)
   have hseed : seedQuery π (aOf tr 0) (headerBytesP p) = qOf tr 1 := by
     apply ba_ext
     rw [seedQuery, bl_append, bl_digestBytes, ← hq1,
-      show headerBytesP p = 8 + (headerBytesP p - 8) by omega, bl_extract_body hbody0 hcl1, List.take_append_drop]
+      show headerBytesP p = 8 + (headerBytesP p - 8) by (clear * - p tr hsl h8 hs1 hcl1; omega), bl_extract_body hbody0 hcl1, List.take_append_drop]
   have hle8 : 8 ≤ π.size := by rw [size_bl, hπ, bl_reassemble]; simp [hdr8]
   have hbodyH : (bl π).drop (headerBytesP p) = bodyFrom tr P 2 := by
-    rw [show headerBytesP p = 8 + ((bl (qOf tr 1)).drop 32).length by rw [hcl1]; omega, ← List.drop_drop,
+    rw [show headerBytesP p = 8 + ((bl (qOf tr 1)).drop 32).length by rw [hcl1]; (clear * - p tr hsl h8 hs1 hcl1; omega), ← List.drop_drop,
       hbody0, List.drop_left]
   have hleH : headerBytesP p ≤ π.size := by
     have := le_of_body hbody0 hle8; rw [hcl1] at this
-    omega
+    (clear * - p π tr hsl h8 hs1 hcl1 this; omega)
   -- the walk from entry 2
   have hI0 : Inv p tr π ⟨headerBytesP p, headerBytesP p, aOf tr 1,
       [(seedQuery π (aOf tr 0) (headerBytesP p), aOf tr 1), (q0Query, aOf tr 0)], [], []⟩ w0 := by
     refine ⟨?_, rfl, rfl, hbodyH, hleH, List.Forall₂.nil⟩
     show _ = (tr.take 2).reverse
     rw [hseed, ← hq0]
-    have e0 := entry_eq tr (i := 0) (by omega)
-    have e1 := entry_eq tr (i := 1) (by omega)
+    have e0 := entry_eq tr (i := 0) (by (clear * - tr p hlen2 hn; omega))
+    have e1 := entry_eq tr (i := 1) (by (clear * - tr p hlen2 hn; omega))
     rw [show 2 = 0 + 1 + 1 from rfl, List.take_add_one, List.take_add_one, List.take_zero,
-      List.getElem?_eq_getElem (by omega), List.getElem?_eq_getElem (by omega), ← e0, ← e1]
+      List.getElem?_eq_getElem (by (clear * - tr p hlen2 hn; omega)), List.getElem?_eq_getElem (by (clear * - tr p hlen2 hn; omega)), ← e0, ← e1]
     rfl
   have hal : Al P w0.i (planAll p).1 := by
-    refine ⟨by simp only [w0, hPdef, plan_length]; omega, fun x hx => ?_⟩
+    refine ⟨by simp only [w0, hPdef, plan_length]; (clear * - p tr; omega), fun x hx => ?_⟩
     simp only [w0, hPdef, plan, List.getD_eq_getElem?_getD]
-    rw [show 2 + x = x + 1 + 1 by omega]
+    rw [show 2 + x = x + 1 + 1 by (clear * - x p tr; omega)]
     simp
   obtain ⟨hok, hpend, -⟩ := hP
   obtain ⟨s', hI', -, hrun⟩ := items_run (π := π) hn hG
@@ -656,12 +656,12 @@ theorem drive_replayP (p : Params) (hP : PlanOk p) (tr : Trace) (hL : LinkOk p t
     rw [show (planItems p w0 (schedule p)).2 = (planAll p).2 from rfl] at h1 h2
     rw [hpend] at h1
     rw [hend, hn, bodyFrom_end _ _ le_rfl, List.drop_eq_nil_iff, ← size_bl] at h2
-    omega
+    (clear * - s' π p tr h1 h2 h3; omega)
   have hlog : s'.log = tr.reverse := by
     rw [hI'.log, show (planItems p w0 (schedule p)).2 = (planAll p).2 from rfl, hend, List.take_length]
   -- run
   have htr : tr = (qOf tr 0, aOf tr 0) :: (qOf tr 1, aOf tr 1) :: tr.drop 2 := by
-    rw [← drop_cons_getD tr (i := 1) (by omega), ← drop_cons_getD tr (i := 0) (by omega)]; rfl
+    rw [← drop_cons_getD tr (i := 1) (by (clear * - tr p hlen2 hn s' hend; omega)), ← drop_cons_getD tr (i := 0) (by (clear * - tr p hlen2 hn s' hend; omega))]; rfl
   have hrun' := hrun
   rw [show (planItems p w0 (schedule p)).2 = (planAll p).2 from rfl, hend, List.drop_length] at hrun'
   conv_lhs => rw [htr]

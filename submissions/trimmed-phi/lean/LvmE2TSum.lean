@@ -126,14 +126,14 @@ theorem eqCubeSumF_full (r : List F) (n : ℕ) (g : List F → F) {acc : List F}
     (hr : r.length = n) : eqCubeSumF r n g acc = g acc := by
   simp only [eqCubeSumF, h, Nat.sub_self, pow_zero, Finset.range_one, Finset.sum_singleton, bitsF,
     List.append_nil]
-  rw [List.drop_eq_nil_of_le (by omega), eqAtF_nil, one_mul]
+  rw [List.drop_eq_nil_of_le (by (clear * - F r n acc hr; omega)), eqAtF_nil, one_mul]
 
 /-- **A cube sum is a plain family** when its summand has degree `d` in each coordinate. -/
 theorem tCubeSumF_plainFamily {β : Type} (n d : ℕ) (G : β → List F → F)
     (hG : ∀ q pre post, PolyLEF d fun x ↦ G q (pre ++ x :: post)) :
     PlainFamilyF (fun q acc ↦ tCubeSumF n (G q) acc) d n := by
   intro q acc hacc
-  have hm : n - acc.length = (n - (acc.length + 1)) + 1 := by omega
+  have hm : n - acc.length = (n - (acc.length + 1)) + 1 := by (clear * - n F acc hacc; omega)
   refine ⟨?_, ?_⟩
   · refine PolyLEF.congr (f := fun x ↦ ∑ u ∈ range (2 ^ (n - (acc.length + 1))),
       G q (acc ++ x :: bitsF u (n - (acc.length + 1)))) ?_ fun x ↦ ?_
@@ -152,7 +152,7 @@ theorem eqCubeSumF_eqFamily {β : Type} (r : List F) (n d : ℕ) (hr : r.length 
     (hG : ∀ q pre post, PolyLEF d fun x ↦ G q (pre ++ x :: post)) :
     EqFamilyF (fun q acc ↦ eqCubeSumF r n (G q) acc) r d := by
   intro q acc hacc
-  have hm : n - acc.length = (n - (acc.length + 1)) + 1 := by omega
+  have hm : n - acc.length = (n - (acc.length + 1)) + 1 := by (clear * - n F acc r hr hacc; omega)
   have hdrop : r.drop acc.length = r[acc.length] :: r.drop (acc.length + 1) :=
     List.drop_eq_getElem_cons hacc
   refine ⟨?_, ?_⟩
@@ -165,10 +165,10 @@ theorem eqCubeSumF_eqFamily {β : Type} (r : List F) (n d : ℕ) (hr : r.length 
     rw [hm, sum_cube_succW, hdrop, Finset.mul_sum, Finset.mul_sum, ← Finset.sum_add_distrib]
     refine Finset.sum_congr rfl fun u _ ↦ ?_
     rw [eqAtF_succ, eqAtF_succ, bitsF_two_mul, bitsF_two_mul_add_one]
-    have h1 : 2 * u % 2 = 0 := by omega
-    have h2 : (2 * u + 1) % 2 = 1 := by omega
-    have h3 : 2 * u / 2 = u := by omega
-    have h4 : (2 * u + 1) / 2 = u := by omega
+    have h1 : 2 * u % 2 = 0 := by (clear * - u F r n acc; omega)
+    have h2 : (2 * u + 1) % 2 = 1 := by (clear * - u F r n acc h1; omega)
+    have h3 : 2 * u / 2 = u := by (clear * - u F r n acc h1; omega)
+    have h4 : (2 * u + 1) / 2 = u := by (clear * - u F r n acc h1 h2; omega)
     simp only [h1, h2, h3, h4, ite_true, zero_ne_one, ite_false, List.append_assoc,
       List.singleton_append]
     ring

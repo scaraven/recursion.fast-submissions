@@ -219,7 +219,7 @@ theorem laneBody_sem (I : Array Word) (s : St) (hM : Inv s.M) {pw pe : ℕ} (hpw
     (by (clear * - hpeR hpe; omega)) c2
   generalize semXIR I (macC gA1) s3 = s4 at d1 d2 d3 hM4
   obtain ⟨f1, f2, f3, hM5⟩ := macC_sem I s4 hM4 (a := gA2) (pe := pe + 1 + 1)
-    (.inr (.inr rfl)) (by omega) d2
+    (.inr (.inr rfl)) (by (clear * - hpe; omega)) d2
   generalize semXIR I (macC gA2) s4 = s5 at f1 f2 f3 hM5
   -- the frames of the three coordinates
   have fr : ∀ r, r ≠ gA0 → r ≠ gA1 → r ≠ gA2 → r ≠ gPe → r ≠ gE → r ≠ gT → (r < 5 ∨ 9 ≤ r) →
@@ -239,7 +239,7 @@ theorem laneBody_sem (I : Array Word) (s : St) (hM : Inv s.M) {pw pe : ℕ} (hpw
   · rw [show rdK s5.M gA0 = rdK s3.M gA0 by
         simp only [rdK]; rw [f3 _ (by decide) (by decide) (by decide) (by decide) (by decide),
           d3 _ (by decide) (by decide) (by decide) (by decide) (by decide)],
-      c1, hV2, hpeK pe (by simp only [regs]; omega)]
+      c1, hV2, hpeK pe (by simp only [regs]; (clear * - hpeR; omega))]
     simp only [rdK]; rw [e2 _ (by decide) (by decide)]
   · rw [show rdK s5.M gA1 = rdK s4.M gA1 by
         simp only [rdK]; rw [f3 _ (by decide) (by decide) (by decide) (by decide) (by decide)],
@@ -283,7 +283,7 @@ def KeepF (r : ℕ) : Prop :=
     r ≠ gC2 ∧ r ≠ gN2 ∧ r ≠ cTmp ∧ (r < 5 ∨ 9 ≤ r)
 
 theorem keepF_of_regs {r : ℕ} (h : regs ≤ r) : KeepF r := by
-  simp only [KeepF, regs, gA0, gA1, gA2, gPe, gPw, gV, gE, gT, gK, gC2, gN2, cTmp] at *; omega
+  simp only [KeepF, regs, gA0, gA1, gA2, gPe, gPw, gV, gE, gT, gK, gC2, gN2, cTmp] at *; (clear * - r h; omega)
 
 /-- **The fold at the position `q`** (`gQ = q`): the three accumulators hold `foldPM … 64`;
 the heap and the registers outside the fold's are kept. -/
@@ -323,7 +323,7 @@ theorem foldIR_sem (I : Array Word) (s : St) (hM : Inv s.M) {wB qB q : ℕ} (hwB
     rw [sem_blk']
     simp only [runPrims, List.foldl, Prim.run]
     refine ⟨?_, ?_, ?_, ?_, ?_, ?_⟩ <;>
-    simp (disch := first | decide | (simp only [size_set, gA0, gA1, gA2, gK, gPw, gPe, gN2]; omega))
+    simp (disch := first | decide | (simp only [size_set, gA0, gA1, gA2, gK, gPw, gPe, gN2]; (clear * - s wB qB q hs; omega)))
       only [rd_set_self, rd_set_ne]
     · rw [hQ, show (64 : Word) = toWord 64 from rfl, mul_toWord, add_toWord]
       congr 1; ring
@@ -365,7 +365,7 @@ theorem foldIR_sem (I : Array Word) (s : St) (hM : Inv s.M) {wB qB q : ℕ} (hwB
         rd (semXIR I laneBody s').M x := fun x hx => rd_decS (Ne.symm hx) _
     have hpw : wB + 64 * q + 63 - j = wB + 64 * q + (63 - j) := by (clear * - hwB hq hwB2 hj; omega)
     refine ⟨inv_decS hM' (by decide), ?_, ?_, ?_, ?_, ?_, fun r hr => ?_⟩
-    · rw [hd _ (by decide), l4, show wB + 64 * q + 63 - j - 1 = wB + 64 * q + 63 - (j + 1) by (clear * -; omega)]
+    · rw [hd _ (by decide), l4, show wB + 64 * q + 63 - j - 1 = wB + 64 * q + 63 - (j + 1) by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - wB q j; omega))]
     · rw [hd _ (by decide), l5, show qB + 3 * j + 3 = qB + 3 * (j + 1) by ring]
     · rw [show rdK (decS gC2 (semXIR I laneBody s')).M gA0 = rdK (semXIR I laneBody s').M gA0 by
         simp only [rdK]; rw [hd _ (by decide)], l1, i4, foldPM, foldPM, Finset.sum_range_succ,
@@ -407,10 +407,10 @@ theorem testIR_sem (I : Array Word) (s : St) (hM : Inv s.M) {eB q : ℕ} (heB : 
   have hw : WF (testIR eB) := by simp +decide [testIR, WF, Prim.dst, gK, gX, gE, gZ, gZ2]
   refine ⟨?_, fun r r1 r2 r3 r4 r5 => ?_, inv_sem I hw hM⟩
   · simp only [testIR, semXIR, runPrims, List.foldl, Prim.run]
-    simp (disch := first | decide | (simp only [size_set, gK, gX, gE, gZ, gZ2, gQ, gA0, gA1, gA2]; omega)) only [rd_set_self, rd_set_ne]
+    simp (disch := first | decide | (simp only [size_set, gK, gX, gE, gZ, gZ2, gQ, gA0, gA1, gA2]; (clear * - s eB q hs; omega))) only [rd_set_self, rd_set_ne]
     rw [hQ, add_toWord, toNat_toWord (by (clear * - heB hq heB2; omega)), add_toWord, toNat_toWord (by (clear * - heB hq heB2; omega)), add_toWord,
       toNat_toWord (by (clear * - heB hq heB2; omega))]
-    simp (disch := first | decide | (simp only [size_set, gK, gX, gE, gZ, gZ2, gQ, gA0, gA1, gA2]; omega)) only [rd_set_self, rd_set_ne]
+    simp (disch := first | decide | (simp only [size_set, gK, gX, gE, gZ, gZ2, gQ, gA0, gA1, gA2]; (clear * - q eB s heB hq heB2; omega))) only [rd_set_self, rd_set_ne]
     rw [eq_bW, eq_bW, eq_bW, bW_and, bW_and]
     congr 3 <;> ring_nf
   · by_cases hr : r < regs
@@ -436,7 +436,7 @@ theorem appendIR_sem (I : Array Word) (s : St) (hM : Inv s.M) {agB c : ℕ} (hag
   have a1 : rd (semXIR I (.blk [.const gK (toWord agB), .op .add gX gCnt gK]) s).M gX =
       toWord (agB + c) := by
     rw [sem_blk']; simp only [runPrims, List.foldl, Prim.run]
-    simp (disch := first | decide | (simp only [size_set, gK, gX, gCnt]; omega)) only [rd_set_self, rd_set_ne]
+    simp (disch := first | decide | (simp only [size_set, gK, gX, gCnt]; (clear * - s agB c hs; omega))) only [rd_set_self, rd_set_ne]
     rw [hC, add_toWord, Nat.add_comm]
   have b1 : ∀ r, r ≠ gK → r ≠ gX → rd (semXIR I (.blk [.const gK (toWord agB),
       .op .add gX gCnt gK]) s).M r = rd s.M r := fun r h1 h2 =>
@@ -498,15 +498,15 @@ theorem posBody_sem (I : Array Word) (s : St) (hM : Inv s.M) {wB qB eB agB q c :
   have hs := hM.1
   simp only [regs] at hs hwB hqB heB hagB
   rw [posBody, semXIR_seq]
-  obtain ⟨f1, f2, hM1⟩ := foldIR_sem I s hM (wB := wB) (qB := qB) (by simp only [regs]; omega) hq
-    hwB2 (by simp only [regs]; omega) hqB2 hQ
+  obtain ⟨f1, f2, hM1⟩ := foldIR_sem I s hM (wB := wB) (qB := qB) (by simp only [regs]; (clear * - hwB; omega)) hq
+    hwB2 (by simp only [regs]; (clear * - hqB; omega)) hqB2 hQ
   have z1 := size_sem I (foldIR wB qB) s
   generalize semXIR I (foldIR wB qB) s = s1 at f1 f2 hM1 z1
   have q1 : rd s1.M gQ = toWord q := (f2 gQ keepF_gQ).trans hQ
   have c1 : rd s1.M gCnt = toWord c := (f2 gCnt keepF_gCnt).trans hC
   have h1 : ∀ x, regs ≤ x → rd s1.M x = rd s.M x := fun x hx => f2 x (keepF_of_regs hx)
   rw [semXIR_seq]
-  obtain ⟨t1, t2, hM2⟩ := testIR_sem I s1 hM1 (eB := eB) (by simp only [regs]; omega) hq heB2 q1
+  obtain ⟨t1, t2, hM2⟩ := testIR_sem I s1 hM1 (eB := eB) (by simp only [regs]; (clear * - heB; omega)) hq heB2 q1
   have z2 := size_sem I (testIR eB) s1
   generalize semXIR I (testIR eB) s1 = s2 at t1 t2 hM2 z2
   -- the flag is the test
@@ -548,7 +548,7 @@ theorem posBody_sem (I : Array Word) (s : St) (hM : Inv s.M) {wB qB eB agB q c :
   by_cases hb : AgreeP s.M wB qB eB q
   · rw [decide_eq_true hb, if_neg bW_true_ne, if_pos hb]
     obtain ⟨a1, a2, a3, hM3⟩ := appendIR_sem I s2 hM2 (agB := agB) (c := c)
-      (by simp only [regs]; omega) (by (clear * - hagB hag2 hq hcq; omega)) (by (clear * - hags hq hcq z1 z2; omega)) (by (clear * - hq hcq; omega)) c2
+      (by simp only [regs]; (clear * - hagB; omega)) (by (clear * - hagB hag2 hq hcq; omega)) (by (clear * - hags hq hcq z1 z2; omega)) (by (clear * - hq hcq; omega)) c2
     generalize semXIR I (appendIR agB) s2 = s3 at a1 a2 a3 hM3
     have hagc : ∀ r, r < regs → r ≠ agB + c := fun r hr => by simp only [regs] at hr; (clear * - hagB hag2 hq hcq hr; omega)
     obtain ⟨g1, g2, hM4⟩ := fin s3 hM3 (by

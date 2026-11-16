@@ -116,7 +116,7 @@ theorem cost_decMP0IR (N nL kL lo C dB wB aB fB t : ℕ) (hN : N < 2 ^ 64) (hn :
     cost_encMC N nL kL _ _ _ t hN hn hk, cost_agreeNIR _ _ _ _ _ t (pow_lt64 hn), cost_okMIR,
     cost_baryIR _ _ _ _ _ _ _ _ t (pow_lt64 hk) hC, cost_bflyAllM N kL C _ _ t hN hk hC,
     cost_rowsMIR kL C _ _ t hk hC, blkSteps, List.length_cons, List.length_nil, ↓reduceIte, Nat.reduceAdd, Nat.reduceMul, Nat.reduceSub]
-  rw [max_eq_left (by (clear * -; omega)), c0Model]
+  rw [max_eq_left (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)), c0Model]
   ring
 
 /-- The level-≥1 decoder's cost model (`cost_dec1MPIR`). -/
@@ -134,7 +134,7 @@ theorem cost_dec1MPIR (N nL kL dB wB aB fB oB t : ℕ) (hN : N < 2 ^ 64) (hn : n
     cost_enc1MC N nL kL _ _ _ t hN hn hk, cost_agree1NIR _ _ _ _ _ t (pow_lt64 hn), cost_okMIR,
     cost_baryIR _ _ _ _ _ _ _ _ t (pow_lt64 hk) (show 48 < 2 ^ 64 by norm_num),
     cost_bflyAllM N kL 48 _ _ t hN hk (by norm_num), cost_tr1MIR kL _ _ t hk, blkSteps, List.length_cons, List.length_nil, ↓reduceIte, Nat.reduceAdd, Nat.reduceMul, Nat.reduceSub]
-  rw [max_eq_left (by (clear * -; omega)), c1Model]
+  rw [max_eq_left (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)), c1Model]
   ring
 
 /-! ## At M′'s shapes -/

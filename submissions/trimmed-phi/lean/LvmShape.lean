@@ -58,7 +58,7 @@ theorem exists_bit_ne {v i k o : ℕ} (hiv : i % 2 ^ v = 0) (hi : i < 2 ^ 24) (h
     intro j
     rw [Nat.testBit_shiftRight, Nat.testBit_shiftRight]
     by_cases hj : max v k + j < 24
-    · have := hne (max v k + j) (by (clear * -; omega)) (by (clear * -; omega)) hj
+    · have := hne (max v k + j) (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - v k j; omega))) (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - k v j; omega))) hj
       rw [Nat.shiftRight_eq_div_pow, Nat.shiftRight_eq_div_pow] at this
       rw [Nat.testBit_eq_decide_div_mod_eq, Nat.testBit_eq_decide_div_mod_eq, this]
     · rw [testBit_lt_two_pow hi (by (clear * - hj; omega)), testBit_lt_two_pow ho (by (clear * - hj; omega))]
@@ -86,7 +86,7 @@ theorem regions_facts : ∀ r ∈ regions, (r.1 = 18 ∨ r.1 = 20) ∧ r.2.1 % 2
 
 theorem length_relocF (x : List FE) (r : ℕ × ℕ × ℕ) (hr : r.1 ≤ 22) : (relocF x r).length = 23 := by
   simp [relocF, length_selectorPointF, CMain.nu20, sLog, CMain.nu20s]
-  omega
+  (clear * - r x hr; omega)
 
 theorem eqAbove_relocF_eq_zero (b : Lvm.Placement) (hb : InStack b) (x : List FE) {r : ℕ × ℕ × ℕ}
     (hr : r ∈ regions) (hm : meets b r = false) : b.eqAbove (relocF x r) = 0 := by
@@ -441,7 +441,7 @@ theorem bigWord_tail (q : Column CMain.nu20) {l u : ℕ} (hl : l < 4) (hu : u < 
 
 theorem bigWord_hi (q : Column CMain.nu20) {j u : ℕ} (hj : j < 3) (hu : u < 2 ^ 20) :
     bigWord q (4 * 2 ^ 20 + (j * 2 ^ 20 + u)) = Lvm.NS.wd q (2 * ((1 + j) * 2 ^ 20 + u)) := by
-  have h1 : ¬ 4 * 2 ^ 20 + (j * 2 ^ 20 + u) < 2 ^ 22 := by omega
+  have h1 : ¬ 4 * 2 ^ 20 + (j * 2 ^ 20 + u) < 2 ^ 22 := by (clear * - j u hj hu; omega)
   have h2 : 4 * 2 ^ 20 + (j * 2 ^ 20 + u) < 2 ^ sLog + hiShift := by simp only [sLog, CMain.nu20s, hiShift]; (clear * - hj hu; omega)
   have e : 4 * 2 ^ 20 + (j * 2 ^ 20 + u) - hiShift = (1 + j) * 2 ^ 20 + u := by simp only [hiShift]; (clear * - h1; omega)
   have hs : smallIdx (4 * 2 ^ 20 + (j * 2 ^ 20 + u)) = some ((1 + j) * 2 ^ 20 + u) := by
@@ -450,8 +450,8 @@ theorem bigWord_hi (q : Column CMain.nu20) {j u : ℕ} (hj : j < 3) (hu : u < 2 
 
 theorem bigWord_top (q : Column CMain.nu20) (a : ℕ) :
     bigWord q (4 * 2 ^ 20 + (3 * 2 ^ 20 + a)) = 0 := by
-  have h1 : ¬ 4 * 2 ^ 20 + (3 * 2 ^ 20 + a) < 2 ^ 22 := by omega
-  have h2 : ¬ 4 * 2 ^ 20 + (3 * 2 ^ 20 + a) < 2 ^ sLog + hiShift := by simp only [sLog, CMain.nu20s, hiShift]; (clear * -; omega)
+  have h1 : ¬ 4 * 2 ^ 20 + (3 * 2 ^ 20 + a) < 2 ^ 22 := by (clear * - a; omega)
+  have h2 : ¬ 4 * 2 ^ 20 + (3 * 2 ^ 20 + a) < 2 ^ sLog + hiShift := by simp only [sLog, CMain.nu20s, hiShift]; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - a; omega))
   have hs : smallIdx (4 * 2 ^ 20 + (3 * 2 ^ 20 + a)) = none := by
     rw [smallIdx, ite_eq_right h1, ite_eq_right h2]
   rw [bigWord, hs, ite_eq_right h1]
@@ -580,7 +580,7 @@ theorem isMultiaffine_onStackZ {c : VStackClaim} (h : IsMultiaffine CMain.nu20 c
       · left; intro X
         simp only [LeanVM.Protocol.Verifier.Placement.eqAbove, List.length_set, List.drop_set_of_lt hkk]
       · right; intro X
-        simp only [List.take_append_of_le_length (by simp [hl]; omega : r.1 ≤ (l.set k' X).length),
+        simp only [List.take_append_of_le_length (by simp [hl]; (clear * - hk; omega) : r.1 ≤ (l.set k' X).length),
           List.take_append_of_le_length (by (clear * - hl hk' hkk; omega) : r.1 ≤ l.length),
           List.take_set_of_le (by (clear * - hkk; omega) : r.1 ≤ k')]
   have hm := Lvm.ASM.isMultiaffine_mul (isMultiaffine_headFactor 22)

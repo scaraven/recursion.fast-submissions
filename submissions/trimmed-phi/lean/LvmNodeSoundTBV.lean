@@ -608,15 +608,15 @@ theorem posVal_on {v : ℕ → FK} (C : QCfg)
   have hl1 : (fields o.L.height (j % 8)).1.1 < QAsm.nLanes o.L.height := by
     simp only [fields, QAsm.nLanes]; (clear * - h192 hp1 hp2 hsH; omega)
   have hl2 : (fields o.L.height (j % 8)).2.1 < QAsm.nLanes o.L.height := by
-    simp only [fields, QAsm.nLanes]; split_ifs <;> omega
+    simp only [fields, QAsm.nLanes]; split_ifs with hc <;> (clear * - hc hH h192 hp1 hp2 hsH hj8; omega)
   have hv1 : (BOut.fld (fields o.L.height (j % 8)).1.2.1 (fields o.L.height (j % 8)).1.2.2.1
       (fields o.L.height (j % 8)).1.2.2.2).Valid := by
     show _ < 64 ∧ _ ∧ _
-    simp only [fields]; split_ifs <;> omega
+    simp only [fields]; split_ifs with hc <;> (clear * - hc hH h192 hp1 hp2 hsH hj8; omega)
   have hv2 : (BOut.fld (fields o.L.height (j % 8)).2.2.1 (fields o.L.height (j % 8)).2.2.2.1
       (fields o.L.height (j % 8)).2.2.2.2).Valid := by
     show _ < 64 ∧ _ ∧ _
-    simp only [fields]; split_ifs <;> omega
+    simp only [fields]; split_ifs with hc <;> (clear * - hc hH h192 hp1 hp2 hsH hj8; omega)
   have o1 := hout hk hoD hl1 hx (Lvm.Fin.lo_mem o.L.height hj8) hv1
   have o2 := hout hk hoD hl2 hx (Lvm.Fin.hi_mem o.L.height hj8) hv2
   have c1 : posCell C k o (j / 8) ((BOut.fld (fields o.L.height (j % 8)).1.2.1
@@ -633,7 +633,7 @@ theorem posVal_on {v : ℕ → FK} (C : QCfg)
   have hl1' : (fields o.L.height (j % 8)).1.1 ≤ 2 := by
     simp only [fields]; (clear * - h192 hsH; omega)
   have hl2' : (fields o.L.height (j % 8)).2.1 ≤ 2 := by
-    simp only [fields]; split_ifs <;> omega
+    simp only [fields]; split_ifs with hc <;> (clear * - hc hH h192 hp1 hp2 hsH hj8; omega)
   have hs' : ∀ l < 2 ^ (lay C).m, v l = laneK ws l := fun l hl => by
     have := hs l hl; rwa [show (lay C).sb = 0 from rfl, Nat.zero_add] at this
   unfold Out1 at o1 o2

@@ -29,7 +29,7 @@ theorem frob_comp {a : Cell} (ha : a.ty = .K) {j : ℕ} (hj : j < 64) :
     a.val M ^ 2 ^ (j + 1) = a.val M ^ 2 ^ ((j + 1) % 64) := by
   rcases Nat.lt_or_ge (j + 1) 64 with h | h
   · rw [Nat.mod_eq_of_lt h]
-  · have h63 : j + 1 = 64 := by omega
+  · have h63 : j + 1 = 64 := by (clear * - j hj h; omega)
     rw [h63, Nat.mod_self, pow_zero, pow_one]
     rcases a with ⟨ty, n⟩
     cases ha
@@ -40,12 +40,12 @@ theorem frob_comp {a : Cell} (ha : a.ty = .K) {j : ℕ} (hj : j < 64) :
 theorem fk_comp (a : FK) {j : ℕ} (hj : j < 64) : a ^ 2 ^ (j + 1) = a ^ 2 ^ ((j + 1) % 64) := by
   rcases Nat.lt_or_ge (j + 1) 64 with h | h
   · rw [Nat.mod_eq_of_lt h]
-  · rw [show j + 1 = 64 by omega, Nat.mod_self, pow_zero, pow_one, fk_pow_two_pow_64]
+  · rw [show j + 1 = 64 by (clear * - j hj h; omega), Nat.mod_self, pow_zero, pow_one, fk_pow_two_pow_64]
 
 /-- Summing over the iterations is summing over the components (`c(j) = (j + 1) mod 64` is a rotation). -/
 theorem sum_rot64 (f : ℕ → FE) : ∑ j ∈ range 64, f ((j + 1) % 64) = ∑ k ∈ range 64, f k := by
   have h : ∑ j ∈ range 63, f ((j + 1) % 64) = ∑ j ∈ range 63, f (j + 1) :=
-    Finset.sum_congr rfl fun j hj => by rw [Nat.mod_eq_of_lt (by have := Finset.mem_range.mp hj; omega)]
+    Finset.sum_congr rfl fun j hj => by rw [Nat.mod_eq_of_lt (by have := Finset.mem_range.mp hj; (clear * - j this; omega))]
   rw [Finset.sum_range_succ, Finset.sum_range_succ' f, h]
 
 /-! ## Loop rows -/
@@ -89,7 +89,7 @@ theorem sv_addr (P F : LoopOut) (hPd : P.dims = F.dims) {j : ℕ} (hj : j < 2 ^ 
 
 theorem getD_pre {L R ins : List Ins} (h : ins = L ++ R) (i : ℕ) :
     ins.getD (L.length + i) default = R.getD i default := by
-  subst h; rw [List.getD_append_right _ _ _ _ (by omega), Nat.add_sub_cancel_left]
+  subst h; rw [List.getD_append_right _ _ _ _ (by (clear * - L i; omega)), Nat.add_sub_cancel_left]
 
 /-- **`qmIns`'s rows compute `qm`**: `re` at `t0 + 1`, `im` at `t0 + 4`. -/
 theorem qm_rows {o : LoopOut} {ins : List Ins} (ho : o.tpl = tplOf ins) {j : ℕ} (hj : j < 2 ^ o.dims.sum)
@@ -98,11 +98,11 @@ theorem qm_rows {o : LoopOut} {ins : List Ins} (ho : o.tpl = tplOf ins) {j : ℕ
     (hlen : t0 + 5 ≤ ins.length) :
     ((o.cell (t0 + 1) j).val M, (o.cell (t0 + 4) j).val M) =
       qm (tw.toOpd.val M o j) (A.toOpd.val M o j, B.toOpd.val M o j) (α.toOpd.val M o j, β.toOpd.val M o j) := by
-  have r0 := row_muladd ho (hrel t0 (by omega)) (by omega) (hseg 0 (by norm_num))
-  have r1 := row_muladd ho (hrel (t0 + 1) (by omega)) (by omega) (hseg 1 (by norm_num))
-  have r2 := row_muladd ho (hrel (t0 + 2) (by omega)) (by omega) (hseg 2 (by norm_num))
-  have r3 := row_muladd ho (hrel (t0 + 3) (by omega)) (by omega) (hseg 3 (by norm_num))
-  have r4 := row_muladd ho (hrel (t0 + 4) (by omega)) (by omega) (hseg 4 (by norm_num))
+  have r0 := row_muladd ho (hrel t0 (by (clear * - t0 ins o j hlen; omega))) (by (clear * - t0 ins o j hlen; omega)) (hseg 0 (by norm_num))
+  have r1 := row_muladd ho (hrel (t0 + 1) (by (clear * - t0 ins o j hlen; omega))) (by (clear * - t0 ins o j hlen; omega)) (hseg 1 (by norm_num))
+  have r2 := row_muladd ho (hrel (t0 + 2) (by (clear * - t0 ins o j hlen; omega))) (by (clear * - t0 ins o j hlen; omega)) (hseg 2 (by norm_num))
+  have r3 := row_muladd ho (hrel (t0 + 3) (by (clear * - t0 ins o j hlen; omega))) (by (clear * - t0 ins o j hlen; omega)) (hseg 3 (by norm_num))
+  have r4 := row_muladd ho (hrel (t0 + 4) (by (clear * - t0 ins o j hlen; omega))) (by (clear * - t0 ins o j hlen; omega)) (hseg 4 (by norm_num))
   rw [sv_cell, hz, add_zero] at r0 r2
   rw [sv_loc o hj] at r1 r2 r3 r4
   simp only [qm]
@@ -189,16 +189,16 @@ theorem cFold_val {F P : LoopOut} {n : ℕ} {κ : Bool} {xb : ℕ} {z : Cell} {i
     obtain ⟨hl, hv⟩ := cFold_val hPt hPd hj hrel hz m ⟨_, hR'⟩
     have hlen : (cFold F n κ xb z m).1.length + 6 ≤ ins.length := by
       rw [hR', List.length_append, List.length_append]; simp [qmIns]
-    have rα := row_lin hPt (hrel (cFold F n κ xb z m).1.length (by omega)) (by omega)
+    have rα := row_lin hPt (hrel (cFold F n κ xb z m).1.length (by (clear * - F n κ xb z m ins P j hl hlen; omega))) (by (clear * - F n κ xb z m ins P j hl hlen; omega))
       (by rw [show (cFold F n κ xb z m).1.length = (cFold F n κ xb z m).1.length + 0 from rfl, getD_pre hR' 0]; rfl)
     have hq := qm_rows (z := z) (t0 := (cFold F n κ xb z m).1.length + 1) hPt hjP hrel hz (fun i hi => by
-      rw [show (cFold F n κ xb z m).1.length + 1 + i = (cFold F n κ xb z m).1.length + (1 + i) by omega,
-        getD_pre hR' (1 + i), List.getD_append _ _ _ _ (by simp [qmIns]; omega), show 1 + i = i + 1 by omega,
-        List.getD_cons_succ]) (by omega)
-    refine ⟨by simp only [cStep, List.length_append, List.length_cons, qmIns, List.length_nil]; omega, ?_⟩
+      rw [show (cFold F n κ xb z m).1.length + 1 + i = (cFold F n κ xb z m).1.length + (1 + i) by (clear * - F n κ xb z m i P ins j; omega),
+        getD_pre hR' (1 + i), List.getD_append _ _ _ _ (by simp [qmIns]; (clear * - i F P n κ xb z ins j m hi; omega)), show 1 + i = i + 1 by (clear * - i F P n κ xb z ins j m; omega),
+        List.getD_cons_succ]) (by (clear * - hlen; omega))
+    refine ⟨by simp only [cStep, List.length_append, List.length_cons, qmIns, List.length_nil]; (clear * - F n κ xb z m P ins j hl; omega), ?_⟩
     simp only [cStep]
     rw [sv_loc P hjP, sv_loc P hjP, show (cFold F n κ xb z m).1.length + 2 = (cFold F n κ xb z m).1.length + 1 + 1 by
-      omega, show (cFold F n κ xb z m).1.length + 5 = (cFold F n κ xb z m).1.length + 1 + 4 by omega, hq,
+      (clear * - F n κ xb z m P ins j; omega), show (cFold F n κ xb z m).1.length + 5 = (cFold F n κ xb z m).1.length + 1 + 4 by (clear * - F n κ xb z m P ins j; omega), hq,
       List.range_succ, List.map_append, List.foldl_append, ← hv]
     simp only [List.map_cons, List.map_nil, List.foldl_cons, List.foldl_nil]
     congr 2
@@ -223,9 +223,9 @@ theorem comp_iter {F P : LoopOut} {n : ℕ} {κ : Bool} {xb : ℕ} {z : Cell} {a
   have he := compIns_eq F n κ xb z a0 a1
   have hlast : (compIns F n κ xb z a0 a1).length - 1 = (cBody F n κ xb z).1.length + 1 := by rw [he]; simp
   have hlen : (cBody F n κ xb z).1.length + 2 = (compIns F n κ xb z a0 a1).length := by rw [he]; simp
-  have rA := row_muladd hPt (hrel (cBody F n κ xb z).1.length (by omega)) (by omega)
+  have rA := row_muladd hPt (hrel (cBody F n κ xb z).1.length (by (clear * - F n κ xb z a0 a1 P j hlen; omega))) (by (clear * - F n κ xb z a0 a1 P j hlen; omega))
     (by rw [show (cBody F n κ xb z).1.length = (cBody F n κ xb z).1.length + 0 from rfl, getD_pre he 0]; rfl)
-  have rB := row_muladd hPt (hrel ((cBody F n κ xb z).1.length + 1) (by omega)) (by omega)
+  have rB := row_muladd hPt (hrel ((cBody F n κ xb z).1.length + 1) (by (clear * - F n κ xb z a0 a1 P j hlen; omega))) (by (clear * - F n κ xb z a0 a1 P j hlen; omega))
     (by rw [getD_pre he 1]; rfl)
   rw [sv_cell, hz, add_zero] at rA
   rw [sv_loc P hjP, rA] at rB
@@ -254,7 +254,7 @@ theorem comp_iter {F P : LoopOut} {n : ℕ} {κ : Bool} {xb : ℕ} {z : Cell} {a
             (.ext (F.addr (2 * n + 1))) ++ R1) :=
         ⟨_, by rw [he]; unfold cBody; simp only [ite_true, List.append_assoc]; exact rfl⟩
       have hq := qm_rows (z := z) (t0 := (cFold F n true xb z (n - 1)).1.length) hPt hjP hrel hz (fun i hi => by
-        rw [getD_pre hR1 i, List.getD_append _ _ _ _ (by simp [qmIns]; omega)]) (by
+        rw [getD_pre hR1 i, List.getD_append _ _ _ _ (by simp [qmIns]; (clear * - hi; omega))]) (by
           rw [hR1, List.length_append, List.length_append]; simp [qmIns])
       simp only [cBody, ite_true, List.foldl_cons, List.foldl_nil]
       rw [sv_loc P hjP, sv_loc P hjP, hq, sv_addr P F hPd hj, sv_addr P F hPd hj, sv_addr P F hPd hj]
@@ -287,7 +287,7 @@ theorem hs_accLoop (P : LoopOut) (hPd : P.dims = [6]) (t : ℕ) {z : Cell} (hz :
       have hr := lrel_lin hrow (loopP_rel h hj' (by simp [tplOf]))
       simp only [List.getD_cons_zero, List.getD_cons_succ] at hr
       rw [hr, Opd.val_abs_addr _ P (by rw [hPd]; rfl) (by rw [hPd]; exact hj'), show FE.ofK 1 = 1 from rfl,
-        show FE.ofK 0 = 0 from rfl, one_mul, add_zero, loopP_prev_succ M [6] _ _ p hj', ih (by omega),
+        show FE.ofK 0 = 0 from rfl, one_mul, add_zero, loopP_prev_succ M [6] _ _ p hj', ih (by (clear * - j hj; omega)),
         Finset.sum_range_succ _ (j + 1)]
   exact key 63 (by norm_num)
 
@@ -330,7 +330,7 @@ theorem hs_accLoop2 (D : LoopOut) (hDd : D.dims = [6]) (l0 l1 : List Cell) {z : 
         Finset.sum_range_one]
       ring
     | succ j ih =>
-      rw [step (j + 1) hj, loopP_prev_succ M [6] _ _ p (by simpa using hj), ih (by omega),
+      rw [step (j + 1) hj, loopP_prev_succ M [6] _ _ p (by simpa using hj), ih (by (clear * - j hj; omega)),
         Finset.sum_range_succ _ (j + 1)]
       ring
   exact key 63 (by norm_num)
@@ -364,11 +364,11 @@ theorem flat2_getD_rest (m : List Cell) (x : Cell) (zs : List C2) (i : ℕ) :
   have hl : (zs.flatMap (fun c => [c.re, c.im])).length = 2 * zs.length := by
     induction zs with
     | nil => rfl
-    | cons y zs ih => simp only [List.flatMap_cons, List.length_append, ih, List.length_cons, List.length_nil]; omega
-  rw [List.append_assoc, List.getD_append_right _ _ _ _ (by omega), hl, Nat.add_sub_cancel_left]
+    | cons y zs ih => simp only [List.flatMap_cons, List.length_append, ih, List.length_cons, List.length_nil]; (clear * - zs; omega)
+  rw [List.append_assoc, List.getD_append_right _ _ _ _ (by (clear * - zs i hl; omega)), hl, Nat.add_sub_cancel_left]
 
 theorem getD_twist (m : List Cell) (x : Cell) {k : ℕ} (hm : m.length = k) : (m ++ [x]).getD k default = x := by
-  rw [List.getD_append_right _ _ _ _ (by omega), hm, Nat.sub_self]; rfl
+  rw [List.getD_append_right _ _ _ _ (by (clear * - m k hm; omega)), hm, Nat.sub_self]; rfl
 
 /-- **The looped row leaf** (`rowLeafGL`): `Σ_k ν₀·A_k + ν₁·B_k`, `(A_k, B_k)` component `k`'s product (`crtL`), the
 `ν` cells read through `nuAt` at iteration `(k + 63) mod 64`. -/
@@ -394,12 +394,12 @@ theorem hs_rowLeafGL (nu : RowNu) (zs : List C2) (κ : Option C2) (xb : ℕ) {z 
       (F.cell (2 * l + 1) j).val M = (zs.getD l default).im.val M ^ 2 ^ ((j + 1) % 64) := by
     intro j hj l hl
     have hKl := hK (zs.getD l default) (by rw [List.getD_eq_getElem _ _ hl]; exact List.getElem_mem hl)
-    rw [hFv (2 * l) (by simp; omega) j hj, hFv (2 * l + 1) (by simp; omega) j hj, (flat2_getD _ _ zs hl).1,
+    rw [hFv (2 * l) (by simp; (clear * - l zs κ j hl; omega)) j hj, hFv (2 * l + 1) (by simp; (clear * - l zs κ j hl; omega)) j hj, (flat2_getD _ _ zs hl).1,
       (flat2_getD _ _ zs hl).2, frob_comp hKl.1 hj, frob_comp hKl.2 hj]
     exact ⟨rfl, rfl⟩
   have htw : ∀ j < 64, (F.cell (2 * zs.length + if κ.isSome then 2 else 0) j).val M = twK ((j + 1) % 64) := by
     intro j hj
-    rw [hFv _ (by cases κ <;> simp <;> omega) j hj, flat2_getD_rest, getD_twist]
+    rw [hFv _ (by cases κ <;> simp <;> (clear * - zs j; omega)) j hj, flat2_getD_rest, getD_twist]
     · rw [hx, twK, show FE.ofK FK.x ^ 2 ^ (j + 1) = FE.ofK (FK.x ^ 2 ^ (j + 1)) from
         (map_pow FE.ofKRingHom _ _).symm, fk_comp _ hj]
     · cases κ <;> rfl
@@ -411,7 +411,7 @@ theorem hs_rowLeafGL (nu : RowNu) (zs : List C2) (κ : Option C2) (xb : ℕ) {z 
     have h0 := flat2_getD_rest [cκ.re, cκ.im] x zs 0
     have h1 := flat2_getD_rest [cκ.re, cκ.im] x zs 1
     rw [Nat.add_zero] at h0
-    rw [hFv _ (by simp; omega) j hj, hFv _ (by simp; omega) j hj]
+    rw [hFv _ (by simp; (clear * - zs j; omega)) j hj, hFv _ (by simp; (clear * - zs j; omega)) j hj]
     refine ⟨?_, ?_⟩
     · show (List.getD (zs.flatMap (fun c => [c.re, c.im]) ++ [cκ.re, cκ.im] ++ [x]) (2 * zs.length) default).val M ^ _ = _
       rw [h0]
@@ -450,7 +450,7 @@ theorem hs_rowLeafGL (nu : RowNu) (zs : List C2) (κ : Option C2) (xb : ℕ) {z 
     (nuAt nu.nu1 ((k + 63) % 64)).val M * (crtL M zs κ xb k).2)]
   refine Finset.sum_congr rfl fun j hj => ?_
   have hj' := Finset.mem_range.mp hj
-  have e : ((j + 1) % 64 + 63) % 64 = j := by omega
+  have e : ((j + 1) % 64 + 63) % 64 = j := by (clear * - j zs hj'; omega)
   simp only [e]
 
 /-- **The looped row leaf is V's row weight** (big shape; `rowLeaf_weightN` for blob v4's `rowLeafGL`): with `ν`'s
@@ -478,7 +478,7 @@ theorem rowLeafGL_weightN (nu : RowNu) (eqR : List FE) (hnu : RowNuOk M nu eqR) 
       have hl : l < zs.length := by simpa [hxl] using h1
       have hKl := hK _ (List.getElem_mem hl)
       simp only [List.getElem_map, List.getElem_zip, List.getElem_range, fct]
-      rw [hx l hl, List.getD_eq_getElem _ _ hl, List.getD_eq_getElem _ _ (by omega)]
+      rw [hx l hl, List.getD_eq_getElem _ _ hl, List.getD_eq_getElem _ _ (by (clear * - l xs M zs xb hxl k hl; omega))]
       have hre : (zs[l]).re.val M = FE.ofK ((zs[l]).re.val M).c₀ := by
         rcases h : zs[l].re with ⟨ty, n⟩; rw [h] at hKl; obtain ⟨rfl, -⟩ := hKl; rfl
       have him : (zs[l]).im.val M = FE.ofK ((zs[l]).im.val M).c₀ := by

@@ -98,7 +98,7 @@ theorem tapeDelta_zeroOn {w : ℕ} (s : RecursionFast.Digest) (n : ℕ) (D : ℕ
       v.getD l 0)
     (htied : TiedD w D r v) : ZeroOn (tapeDelta w s n D) r (w + 2) := by
   intro t ht
-  rw [hr, show w + 2 - w = 2 by (clear * -; omega)] at ht
+  rw [hr, show w + 2 - w = 2 by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)] at ht
   have ht4 : t < 4 := lt_of_lt_of_eq ht (by norm_num)
   unfold foldT
   rw [hr]

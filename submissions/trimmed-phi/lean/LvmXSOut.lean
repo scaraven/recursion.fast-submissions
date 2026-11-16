@@ -106,7 +106,7 @@ theorem fits_XwitS (st : XStage) (hst : OutOK st) (π : Proof) (w : ℕ → Word
     · obtain ⟨-, h2⟩ := walk_lt 6 (lensLS st) x hx
       have h3 : lanesOf (lensLS st) = ((blocksS st).map Blk.lanes).sum := lanesOf_flatMapB _
       simp only [entAt, bArr_size, wordsBytes_length, length_wsAt]
-      omega
+      (clear * - x st hN hL h2 h3; omega)
   · exact (sigCol w 0).isLt
   · simp [childWS, sigOfF]
   · simp [childWS, sigOfF]
@@ -128,7 +128,7 @@ theorem wf_outIRS (st : XStage) (hst : OutOK st) (m : ℕ) : WF (outIRS st m) :=
   have hs := hst.segs
   simp only [outIRS, WF]
   refine ⟨wf_emitIR _, wf_tcpIR _ _, wf_leafStmtIR _ _, wf_emitIR _, wf_copyIR _, ?_, wf_segIR _ _ _ (by
-    have := hs.2.2.2; omega), wf_segIR _ _ _ (by have := hs.2.1; omega), ?_,
+    have := hs.2.2.2; (clear * - st hs; omega)), wf_segIR _ _ _ (by have := hs.2.1; (clear * - st hs; omega)), ?_,
     wf_segIR _ _ _ (by decide), wf_emitIR _, wf_emitIR _, wf_tcpIR _ _, wf_emitIR _, wf_tcpIR _ _⟩ <;>
   simp +decide [setR, WF, Prim.dst, oR, oKF, oBd]
 
@@ -146,7 +146,7 @@ theorem segPCsS : ∀ (u : ℕ) (bs : List Blk), segCost (blkPSegs u bs) = (bs.m
       rcases b with ⟨c, len⟩ | ⟨t, row, path⟩
       · cases c <;> rfl
       · rfl
-    rw [blkPSegs, segCost, segPCsS _ bs, List.map_cons, List.sum_cons, ← this]; omega
+    rw [blkPSegs, segCost, segPCsS _ bs, List.map_cons, List.sum_cons, ← this]; (clear * - u b bs; omega)
 
 theorem segPOsS : ∀ (u : ℕ) (bs : List Blk), segOuts (blkPSegs u bs) = (bs.map blkPOutsL).sum
   | _, [] => rfl
@@ -164,13 +164,13 @@ theorem segPSsS : ∀ (u : ℕ) (bs : List Blk), segSize (blkPSegs u bs) = (bs.m
       rcases b with ⟨c, len⟩ | ⟨t, row, path⟩
       · cases c <;> rfl
       · rfl
-    rw [blkPSegs, segSize, segPSsS _ bs, List.map_cons, List.sum_cons, ← this]; omega
+    rw [blkPSegs, segSize, segPSsS _ bs, List.map_cons, List.sum_cons, ← this]; (clear * - u b bs; omega)
 
 theorem segTCsS : ∀ (u : ℕ) (bs : List Blk), segCost (blkTSegs u bs) = (bs.map blkTCostL).sum + 1
   | _, [] => rfl
   | u, b :: bs => by
     have : segCost (blkTSeg u b) + 1 = blkTCostL b := by cases b <;> rfl
-    rw [blkTSegs, segCost, segTCsS _ bs, List.map_cons, List.sum_cons, ← this]; omega
+    rw [blkTSegs, segCost, segTCsS _ bs, List.map_cons, List.sum_cons, ← this]; (clear * - u b bs; omega)
 
 theorem segTOsS : ∀ (u : ℕ) (bs : List Blk), segOuts (blkTSegs u bs) = (bs.map blkTOutsL).sum
   | _, [] => rfl
@@ -182,19 +182,19 @@ theorem segTSsS : ∀ (u : ℕ) (bs : List Blk), segSize (blkTSegs u bs) = (bs.m
   | _, [] => rfl
   | u, b :: bs => by
     have : segSize (blkTSeg u b) + 1 = blkTSizeL b := by cases b <;> rfl
-    rw [blkTSegs, segSize, segTSsS _ bs, List.map_cons, List.sum_cons, ← this]; omega
+    rw [blkTSegs, segSize, segTSsS _ bs, List.map_cons, List.sum_cons, ← this]; (clear * - u b bs; omega)
 
 theorem segCost_pSegS (st : XStage) : segCost (pSegS st) = ((blocksS st).map blkPCostL).sum + 5 := by
-  simp only [pSegS, segCost, segPCsS]; omega
+  simp only [pSegS, segCost, segPCsS]; (clear * - st; omega)
 
 theorem segCost_trSegS (st : XStage) : segCost (trSegS st) = ((blocksS st).map blkTCostL).sum + 208 := by
-  simp only [trSegS, segCost, segTCsS]; omega
+  simp only [trSegS, segCost, segTCsS]; (clear * - st; omega)
 
 theorem segOuts_pSegS (st : XStage) : segOuts (pSegS st) = ((blocksS st).map blkPOutsL).sum + 1 := by
-  simp only [pSegS, segOuts, segPOsS]; omega
+  simp only [pSegS, segOuts, segPOsS]; (clear * - st; omega)
 
 theorem segOuts_trSegS (st : XStage) : segOuts (trSegS st) = ((blocksS st).map blkTOutsL).sum + 7 := by
-  simp only [trSegS, segOuts, segTOsS]; omega
+  simp only [trSegS, segOuts, segTOsS]; (clear * - st; omega)
 
 theorem cost_outIRS (st : XStage) (hst : OutOK st) (m t : ℕ) : cost (outIRS st m) t ≤ 15800000 := by
   have h1 := cost_segIR apC (pSegS st) 0 t
@@ -206,7 +206,7 @@ theorem cost_outIRS (st : XStage) (hst : OutOK st) (m t : ℕ) : cost (outIRS st
     cost_tcpIR _ _ t (show 4 < 2 ^ 64 by norm_num), cost_tcpIR _ _ t (show 5 < 2 ^ 64 by norm_num),
     cost_tcpIR _ _ t (show 597 < 2 ^ 64 by norm_num), cost_leafStmtIR, cost_copyIR, nCp]
   norm_num
-  omega
+  (clear * - st t h1 h2 h3 h4; omega)
 
 theorem outs_outIRS (st : XStage) (hst : OutOK st) (m t : ℕ) : outs (outIRS st m) t ≤ 164753 := by
   have h1 := outs_segIR apC (pSegS st) 0 t
@@ -218,13 +218,13 @@ theorem outs_outIRS (st : XStage) (hst : OutOK st) (m t : ℕ) : outs (outIRS st
     outs_tcpIR _ _ t (show 5 < 2 ^ 64 by norm_num), outs_tcpIR _ _ t (show 597 < 2 ^ 64 by norm_num),
     outs_leafStmtIR, copyIR, copyBody, Nat.zero_add, Nat.add_zero]
   simp at h1 h2 h3 ⊢
-  omega
+  (clear * - st t h1 h2 h3 h4; omega)
 
 theorem sizeIR_outIRS (st : XStage) (hst : OutOK st) (m : ℕ) : sizeIR (outIRS st m) ≤ 2 ^ 18 - 2 ^ 10 := by
   have h4 := hst.size
   simp only [outIRS, sizeIR, sizeIR_segIR, pSegS, trSegS, segSize, segPSsS, segTSsS, sizeIR_leafStmtIR]
   simp [emitIR, setR, tcpIR, tcpBody, copyIR, copyBody, cpAddrPs, sizeIR, blkSteps]
-  omega
+  (clear * - st h4; omega)
 
 
 /-! ## The semantics -/
@@ -233,13 +233,13 @@ theorem sizeIR_outIRS (st : XStage) (hst : OutOK st) (m : ℕ) : sizeIR (outIRS 
 theorem tape_pwS (st : XStage) (hst : OutOK st) (c : Digest) (π : Proof) (L : Log) (hs : π.size = st.pz) {j : ℕ}
     (hj : j < 616) : (extractorInput c π L).toArray.getD (5 + j) 0 = pw π j := by
   have := hst.pzLo
-  rw [getD_toArray, tape_getD_proof c π L (by rw [hs]; omega), pw, List.getD_eq_getElem]
+  rw [getD_toArray, tape_getD_proof c π L (by rw [hs]; (clear * - j st π hj this; omega)), pw, List.getD_eq_getElem]
 
 theorem wsAt_tapeS (st : XStage) (hst : OutOK st) (c : Digest) (π : Proof) (L : Log) (hs : π.size = st.pz) {a n : ℕ}
     (h : a + n ≤ 616) :
     (List.range n).map (fun j => (extractorInput c π L).toArray.getD (5 + a + j) 0) = wsAt (pw π) a n :=
   List.map_congr_left fun j hj => by
-    rw [Nat.add_assoc, tape_pwS st hst c π L hs (by simp at hj; omega)]
+    rw [Nat.add_assoc, tape_pwS st hst c π L hs (by simp at hj; (clear * - a j st π n h hj; omega))]
 
 /-- **The node output's run** (`outIR_sem`): from a state whose heap holds the decoded message `w` at `mB`, on the
 tape of an `S` proof, `outIRS st mB` appends `outWordsS st π w`. -/
@@ -265,9 +265,9 @@ theorem outIRS_run (st : XStage) (hst : OutOK st) (c : Digest) (π : Proof) (L :
   obtain ⟨o3, f3⟩ := leafStmtIR_sem I s2 hM2 (hW := 20) (nW := 19) (hdD π 15) (pw π 14).toNat
     (fun i hi => by
       rw [hdD, packBytes_digW (length_wsAt _ _ _), wsAt, List.getD_eq_getElem _ _ (by simpa using hi),
-        List.getElem_map, List.getElem_range, show 20 + i = 5 + (15 + i) by omega,
-        tape_pwS st hst c π L hs (by omega)])
-    (by rw [show 19 = 5 + 14 from rfl, tape_pwS st hst c π L hs (by omega), toWord_toNat'])
+        List.getElem_map, List.getElem_range, show 20 + i = 5 + (15 + i) by (clear * - i st π s mB s1 s2; omega),
+        tape_pwS st hst c π L hs (by (clear * - i st π s mB s1 s2 hi; omega))])
+    (by rw [show 19 = 5 + 14 from rfl, tape_pwS st hst c π L hs (by (clear * - st π s mB s1 s2; omega)), toWord_toNat'])
     (pw π 14).isLt (by norm_num) (by norm_num)
   have hM3 := inv_sem I (wf_leafStmtIR 20 19) hM2
   have z3 := size_sem I (leafStmtIR 20 19) s2
@@ -282,21 +282,21 @@ theorem outIRS_run (st : XStage) (hst : OutOK st) (c : Digest) (π : Proof) (L :
   -- the heap so far
   have h4 : ∀ y, regs ≤ y → Lvm.X.rd s4.M y = Lvm.X.rd s.M y := fun y hy => by
     simp only [regs] at hy
-    rw [f4 y (by simp only [eW]; omega), f3 y (by simp only [regs]; omega),
-      f2 y (by simp only [eW]; omega) (by simp only [eP]; omega) (by simp only [eN]; omega)
-        (by simp only [eC]; omega) (by simp only [cTmp]; omega), f1 y (by simp only [eW]; omega)]
+    rw [f4 y (by simp only [eW]; (clear * - y st π s mB s1 s2 s3 s4 hy; omega)), f3 y (by simp only [regs]; (clear * - hy; omega)),
+      f2 y (by simp only [eW]; (clear * - y st π s mB s1 s2 s3 s4 hy; omega)) (by simp only [eP]; (clear * - y st π s mB s1 s2 s3 s4 hy; omega)) (by simp only [eN]; (clear * - y st π s mB s1 s2 s3 s4 hy; omega))
+        (by simp only [eC]; (clear * - y st π s mB s1 s2 s3 s4 hy; omega)) (by simp only [cTmp]; (clear * - y st π s mB s1 s2 s3 s4 hy; omega)), f1 y (by simp only [eW]; (clear * - y st π s mB s1 s2 s3 s4 hy; omega))]
   have zz4 : s4.M.size = s.M.size := by rw [z4, z3, z2, z1]
   -- 5. the stream copy
-  obtain ⟨c1, c2, hM5, z5, o5⟩ := copyIR_sem I s4 hM4 (mB := mB) (by simp only [regs]; omega) hmB2
+  obtain ⟨c1, c2, hM5, z5, o5⟩ := copyIR_sem I s4 hM4 (mB := mB) (by simp only [regs]; (clear * - hmB; omega)) hmB2
     (by rw [zz4]; exact hsz)
   rw [semXIR_seq]
   generalize semXIR I (copyIR mB) s4 = s5 at c1 c2 hM5 z5 o5
   -- the stream's lanes and the signature column in the heap
   have hlane : ∀ u < nCp, Lvm.X.rd s5.M (sgB + u) = laneOf w u := fun u hu => by
-    rw [c1 u hu, h4 _ (by simp only [regs]; omega), hw _ (crecIdx_lt hu)]; rfl
+    rw [c1 u hu, h4 _ (by simp only [regs]; (clear * - mB u st π s hmB s1 s2 s3 s4 s5; omega)), hw _ (crecIdx_lt hu)]; rfl
   have hsig : ∀ j < 597, Lvm.X.rd s5.M (sigB mB + j) = sigCol w j := fun j hj => by
-    rw [c2 _ (by simp only [regs, sigB]; omega) (.inl (by simp only [sigB]; omega)), sigB,
-      Nat.add_assoc, h4 _ (by simp only [regs]; omega), hw _ (by omega)]; rfl
+    rw [c2 _ (by simp only [regs, sigB]; (clear * - mB j st π s hmB s1 s2 s3 s4 s5 hj; omega)) (.inl (by simp only [sigB]; (clear * - mB j st π s hmB2 s1 s2 s3 s4 s5 hj; omega))), sigB,
+      Nat.add_assoc, h4 _ (by simp only [regs]; (clear * - mB j st π s hmB s1 s2 s3 s4 s5 hj; omega)), hw _ (by (clear * - j st π s mB s1 s2 s3 s4 s5 hj; omega))]; rfl
   -- 6–8. the proof's and the trace's segments
   obtain ⟨r1, r2, r3, r4, r5, r6, r7⟩ := setR_sem I s5 hM5 sgB
   rw [semXIR_seq]
@@ -312,7 +312,7 @@ theorem outIRS_run (st : XStage) (hst : OutOK st) (c : Digest) (π : Proof) (L :
   -- the source is the stream below `T`
   have hT := hst.lanes
   have hsrc : ∀ v < 6 + ((blocksS st).map Blk.lanes).sum, src s5.M apC sgB v = laneOf w v := fun v hv => by
-    rw [src_apC _ (by simp only [sgB, nCp] at hT ⊢; omega), hlane v (by omega)]
+    rw [src_apC _ (by simp only [sgB, nCp] at hT ⊢; (clear * - v st π s mB s1 s2 s3 s4 s5 s6 hT hv; omega)), hlane v (by (clear * - v st π s mB s1 s2 s3 s4 s5 s6 hT hv; omega))]
   have eP : segOut (src s5.M apC sgB) false 0 (pSegS st) = pWordsS st (laneOf w) := by
     rw [segOut_pSegS st hst.blkOk, ← packBytes_reassembleS st hst.planOk hst.blkOk, readTraceLS_congr st hsrc,
       packBytes_reassembleS st hst.planOk hst.blkOk]
@@ -326,14 +326,14 @@ theorem outIRS_run (st : XStage) (hst : OutOK st) (c : Digest) (π : Proof) (L :
   generalize semXIR I (setR (sigB mB)) s8 = s9 at u1 u2 u3 u4 u5 u6 u7
   have hc9 : Ctx s5.M (sigB mB) false s9 :=
     ⟨u1, by rw [u2, k2.size], fun y hy => by rw [u3 y hy, k2.heap y hy], u4, by rw [u5]; simp⟩
-  have hA' := hA_apC (R := sigB mB) (by simp only [regs, sigB]; omega) (by simp only [sigB, sgB] at hmB2 ⊢; omega)
+  have hA' := hA_apC (R := sigB mB) (by simp only [regs, sigB]; (clear * - mB st π s hmB s1 s2 s3 s4 s5 s6 s8 s9; omega)) (by simp only [sigB, sgB] at hmB2 ⊢; (clear * - mB st π s hmB hmB2 s1 s2 s3 s4 s5 s6 s8 s9; omega))
   obtain ⟨v1, v2, v3⟩ := seg_step I hA' (.cp 0 597) (by decide) (by decide) s9 hc9 u6
   rw [semXIR_seq]
   generalize semXIR I (segIR apC 0 (.cp 0 597)) s9 = s10 at v1 v2 v3
   have eS : segOut (src s5.M apC (sigB mB)) false 0 (.cp 0 597) = wsAt (sigCol w) 0 597 := by
     simp only [segOut, wsAt, Nat.zero_add]
     exact List.map_congr_left fun j hj => by
-      rw [src_apC _ (by simp only [sigB, sgB] at hmB2 ⊢; simp at hj; omega), hsig j (by simpa using hj)]
+      rw [src_apC _ (by simp only [sigB, sgB] at hmB2 ⊢; simp at hj; (clear * - mB j st π s hmB hmB2 s1 s2 s3 s4 s5 s6 s8 s9 hj; omega)), hsig j (by simpa using hj)]
   -- 11–15. the right child
   have hM10 := v2.inv
   obtain ⟨p1, -⟩ := emitIR_sem I s10 hM10 (toWord 48)

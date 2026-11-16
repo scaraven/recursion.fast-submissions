@@ -113,38 +113,38 @@ theorem two_le_plan : 2 ≤ (plan P20).length := plan_length_ge P20
 theorem seedLenP_ge (p : Params) : 4952 ≤ seedLenP p := by
   have h : hdrFix = 4928 := by decide
   have := hdrFix_le_P p
-  rw [seedLenP_eq]; omega
+  rw [seedLenP_eq]; (clear * - p h this; omega)
 
 /-- **π's header byte `8 + j` is stream byte `88 + j`** (any stage whose stream holds the seed). -/
 theorem reassemble_byteP {p : Params} (hH : 6064 ≤ hashedLen p) (hsz : hashedLen p ≤ 8 * ws.length) {j : ℕ}
     (hj : j < 5976) (hjs : 32 + j < seedLenP p) :
     (reassemble p (decode p ws)).get! (8 + j) = (wordsBytes ws).getD (88 + j) 0 := by
-  have hW : 6064 ≤ (wordsBytes ws).length := by rw [wordsBytes_length]; omega
+  have hW : 6064 ≤ (wordsBytes ws).length := by rw [wordsBytes_length]; (clear * - ws p hH hsz j; omega)
   have h2 := plan_length_ge p
   have hsl := seedLenP_ge p
   have hb : bodyFrom (decode p ws) (plan p) 0 =
       [] ++ ((bl (qOf (decode p ws) 1)).drop 32 ++ bodyFrom (decode p ws) (plan p) 2) := by
-    rw [bodyFrom_cons _ _ (i := 0) (by omega), bodyFrom_cons _ _ (i := 1) (by omega)]; rfl
+    rw [bodyFrom_cons _ _ (i := 0) (by (clear * - p ws j h2; omega)), bodyFrom_cons _ _ (i := 1) (by (clear * - p ws j h2; omega))]; rfl
   have hq : bl (qOf (decode p ws) 1) = ((wordsBytes ws).drop 56).take (seedLenP p) := by
-    rw [bl_qOf p ws (by omega), show ((plan p).getD 1 default).len = seedLenP p from rfl, bOff_one]
+    rw [bl_qOf p ws (by (clear * - p ws j h2; omega)), show ((plan p).getD 1 default).len = seedLenP p from rfl, bOff_one]
   rw [get!_bl, bl_reassemble, hb, List.nil_append, hq, List.getD_eq_getElem?_getD,
     List.getElem?_append_right (by simp [hdr8]), show 8 + j - hdr8.length = j by simp [hdr8],
-    List.getElem?_append_left (by simp; omega), List.getElem?_drop, List.getElem?_take,
-    if_pos (by omega), List.getElem?_drop, ← List.getD_eq_getElem?_getD,
-    show 56 + (32 + j) = 88 + j by omega]
+    List.getElem?_append_left (by simp; (clear * - j p ws hj hjs hW hsl; omega)), List.getElem?_drop, List.getElem?_take,
+    if_pos (by (clear * - hjs; omega)), List.getElem?_drop, ← List.getD_eq_getElem?_getD,
+    show 56 + (32 + j) = 88 + j by (clear * - j ws p; omega)]
 
 /-- **π's header byte `8 + j` is stream byte `88 + j`.** -/
 theorem reassemble_byte (hsz : hashedLen P20 ≤ 8 * ws.length) {j : ℕ} (hj : j < 5976) :
     (reassemble P20 (decode P20 ws)).get! (8 + j) = (wordsBytes ws).getD (88 + j) 0 :=
   reassemble_byteP (by rw [sizes_P20.2.2.2.2.2.1]; norm_num) hsz hj (by
     have : seedLenP P20 = 6008 := by decide
-    omega)
+    (clear * - j ws hj this; omega))
 
 /-- Byte `t` of π's header lane `k` is byte `t` of stream lane `11 + k` (any stage whose stream holds the seed). -/
 theorem reassemble_laneP {p : Params} (hH : 6064 ≤ hashedLen p) (hsz : hashedLen p ≤ 8 * ws.length) {k t : ℕ}
     (hk : k < 615) (ht : t < 8) :
     (reassemble p (decode p ws)).get! (8 + 8 * k + t) = byteW (laneK ws (11 + k)).val t := by
-  rw [Nat.add_assoc, reassemble_byteP hH hsz (by omega) (by have := seedLenP_ge p; omega), show 88 + (8 * k + t) = 8 * (11 + k) + t by omega,
+  rw [Nat.add_assoc, reassemble_byteP hH hsz (by (clear * - k t ws p hk ht; omega)) (by have := seedLenP_ge p; (clear * - k t p ws hk ht this; omega)), show 88 + (8 * k + t) = 8 * (11 + k) + t by (clear * - k t ws p; omega),
     byte_of_lane ws _ _ ht, byteW_toNat _ ht, laneK_val, RecursionFast.toUInt8_mod]
 
 /-- Byte `t` of π's header lane `k` is byte `t` of stream lane `11 + k`. -/
@@ -175,14 +175,14 @@ theorem digestAt_of (hB : ∀ k < 615, ∀ t < 8, π.get! (8 + 8 * k + t) = byte
   refine Vector.ext fun i hi => ?_
   rw [digOfW_get _ hi]
   simp only [digestAt, Vector.getElem_ofFn]
-  rw [show 8 + 8 * k + i = 8 + 8 * (k + i / 8) + i % 8 by (clear * -; omega), hB _ (by (clear * - hk hi; omega)) _ (Nat.mod_lt _ (by (clear * -; omega)))]
+  rw [show 8 + 8 * k + i = 8 + 8 * (k + i / 8) + i % 8 by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - k i; omega)), hB _ (by (clear * - hk hi; omega)) _ (Nat.mod_lt _ (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)))]
 
 theorem zeroBytes_of {b : ByteArray} : ∀ {o n : ℕ}, (∀ i < n, b.get! (o + i) = 0) → zeroBytes b o n = true
   | _, 0, _ => rfl
   | o, n + 1, h => by
     simp only [zeroBytes, Bool.and_eq_true, beq_iff_eq]
-    exact ⟨by simpa using h 0 (by (clear * -; omega)), zeroBytes_of fun i hi => by
-      rw [show o + 1 + i = o + (i + 1) by (clear * -; omega)]; exact h (i + 1) (by (clear * - hi; omega))⟩
+    exact ⟨by simpa using h 0 (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - n; omega))), zeroBytes_of fun i hi => by
+      rw [show o + 1 + i = o + (i + 1) by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)]; exact h (i + 1) (by (clear * - hi; omega))⟩
 
 end Fields
 
@@ -195,7 +195,7 @@ theorem reassemble_get0 (p : Params) (tr : Trace) : (reassemble p tr).get! 0 = 0
 
 theorem reassemble_get_hdr (p : Params) (tr : Trace) {i : ℕ} (h1 : 1 ≤ i) (h8 : i < 8) :
     (reassemble p tr).get! i = 0 := by
-  rw [get!_bl, bl_reassemble, List.getD_append _ _ _ _ (by simp [hdr8]; omega)]
+  rw [get!_bl, bl_reassemble, List.getD_append _ _ _ _ (by simp [hdr8]; (clear * - h8; omega))]
   interval_cases i <;> rfl
 
 theorem digAt_congr {v : ℕ → FK} {a b : ℕ} (h : ∀ l < 4, v (a + l) = v (b + l)) :
@@ -221,26 +221,26 @@ theorem parseOk_of_lanesP {p : Params} (hlog : p.logN = 20) {π : ByteArray} {M 
   have hsig : sigAt π offSig = sigAt' M.k (I.hd + 18) := by
     simp only [sigAt, sigAt', offSig]
     rw [Sig.mk.injEq]
-    refine ⟨hu 18 (by (clear * -; omega)), ?_, ?_⟩
+    refine ⟨hu 18 (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)), ?_, ?_⟩
     · refine List.map_congr_left fun j hj => ?_
       have hj' := List.mem_range.mp hj
       simp only [wotsLen] at hj'
-      rw [show 152 + 8 + 32 * j = 8 + 8 * (19 + 4 * j) by (clear * -; omega), hdig _ (by (clear * - hj'; omega))]
-      congr 1; (clear * -; omega)
+      rw [show 152 + 8 + 32 * j = 8 + 8 * (19 + 4 * j) by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega), hdig _ (by (clear * - hj'; omega))]
+      congr 1; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)
     · refine List.map_congr_left fun j hj => ?_
       have hj' := List.mem_range.mp hj
       simp only [sigHeight] at hj'
-      rw [show 152 + 8 + 32 * wotsLen + 32 * j = 8 + 8 * (551 + 4 * j) by simp only [wotsLen]; (clear * -; omega),
+      rw [show 152 + 8 + 32 * wotsLen + 32 * j = 8 + 8 * (551 + 4 * j) by simp only [wotsLen]; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega),
         hdig _ (by (clear * - hj'; omega))]
-      congr 1; (clear * -; omega)
+      congr 1; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)
   have hH : Header.ofProof π = ⟨(M.k I.hd).val.toNat, digAt M.k (I.hd + 1), digAt M.k (I.hd + 5),
       digAt M.k (I.hd + 9), (M.k (I.hd + 13)).val.toNat, digAt M.k (I.hd + 14),
       sigAt' M.k (I.hd + 18)⟩ := by
     simp only [Header.ofProof]
-    rw [show offB = 8 + 8 * 0 from rfl, hu 0 (by (clear * -; omega)), show offVk = 8 + 8 * 1 from rfl, hdig 1 (by (clear * -; omega)),
-      show offCL = 8 + 8 * 5 from rfl, hdig 5 (by (clear * -; omega)), show offS = 8 + 8 * 9 from rfl, hdig 9 (by (clear * -; omega)),
-      show offN = 8 + 8 * 13 from rfl, hu 13 (by (clear * -; omega)), show offH = 8 + 8 * 14 from rfl,
-      hdig 14 (by (clear * -; omega)), hsig, Nat.add_zero]
+    rw [show offB = 8 + 8 * 0 from rfl, hu 0 (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)), show offVk = 8 + 8 * 1 from rfl, hdig 1 (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)),
+      show offCL = 8 + 8 * 5 from rfl, hdig 5 (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)), show offS = 8 + 8 * 9 from rfl, hdig 9 (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)),
+      show offN = 8 + 8 * 13 from rfl, hu 13 (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)), show offH = 8 + 8 * 14 from rfl,
+      hdig 14 (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)), hsig, Nat.add_zero]
   have hz17 : zeroBytes π 1 7 = true := zeroBytes_of fun i hi => hz _ (by (clear * - hi; omega)) (by (clear * - hi; omega))
   obtain ⟨hb, hvk', hn1, hnL, h0c, h1c, hst⟩ := hchild
   rw [hln] at hnL
@@ -253,8 +253,8 @@ theorem parseOk_of_lanesP {p : Params} (hlog : p.logN = 20) {π : ByteArray} {M 
   · obtain ⟨hz5, hzl⟩ := h0c hb
     have zb : zeroBytes π offSig sigBytes = true := zeroBytes_of fun i hi => by
       simp only [sigBytes] at hi
-      rw [show offSig + i = 8 + 8 * (18 + i / 8) + i % 8 by simp only [offSig]; (clear * -; omega),
-        hB _ (by (clear * - hi; omega)) _ (Nat.mod_lt _ (by (clear * -; omega))), show I.hd + (18 + i / 8) = I.hd + 18 + i / 8 by (clear * -; omega),
+      rw [show offSig + i = 8 + 8 * (18 + i / 8) + i % 8 by simp only [offSig]; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - i; omega)),
+        hB _ (by (clear * - hi; omega)) _ (Nat.mod_lt _ (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))), show I.hd + (18 + i / 8) = I.hd + 18 + i / 8 by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega),
         hzl _ (by (clear * - hi; omega))]
       exact byteW_zero _
     simp only [hb, ↓reduceIte, hz5, zb, Bool.and_eq_true, beq_iff_eq, and_true]
@@ -263,20 +263,20 @@ theorem parseOk_of_lanesP {p : Params} (hlog : p.logN = 20) {π : ByteArray} {M 
     have hs : sigAt' M.k (I.hd + 18) = sigAt' M.k I.sl := by
       simp only [sigAt']
       rw [Sig.mk.injEq]
-      have h00 := hl 0 (by (clear * -; omega))
+      have h00 := hl 0 (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))
       simp only [Nat.add_zero] at h00
       refine ⟨by rw [h00], ?_, ?_⟩
       · refine List.map_congr_left fun j hj => digAt_congr fun l hl4 => ?_
         have hj' := List.mem_range.mp hj
         simp only [wotsLen] at hj'
-        rw [show I.hd + 18 + 1 + 4 * j + l = I.hd + 18 + (1 + 4 * j + l) by (clear * -; omega),
-          show I.sl + 1 + 4 * j + l = I.sl + (1 + 4 * j + l) by (clear * -; omega)]
+        rw [show I.hd + 18 + 1 + 4 * j + l = I.hd + 18 + (1 + 4 * j + l) by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega),
+          show I.sl + 1 + 4 * j + l = I.sl + (1 + 4 * j + l) by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)]
         exact hl _ (by (clear * - hl4 hj'; omega))
       · refine List.map_congr_left fun j hj => digAt_congr fun l hl4 => ?_
         have hj' := List.mem_range.mp hj
         simp only [sigHeight] at hj'
-        rw [show I.hd + 18 + 533 + 4 * j + l = I.hd + 18 + (533 + 4 * j + l) by (clear * -; omega),
-          show I.sl + 533 + 4 * j + l = I.sl + (533 + 4 * j + l) by (clear * -; omega)]
+        rw [show I.hd + 18 + 533 + 4 * j + l = I.hd + 18 + (533 + 4 * j + l) by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega),
+          show I.sl + 533 + 4 * j + l = I.sl + (533 + 4 * j + l) by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)]
         exact hl _ (by (clear * - hl4 hj'; omega))
     simp only [hb, one_ne_zero, ↓reduceIte, Bool.and_eq_true, beq_iff_eq, true_and, hs, hsl,
       SigOkF_eq, traceDigestF_eq, hσl]

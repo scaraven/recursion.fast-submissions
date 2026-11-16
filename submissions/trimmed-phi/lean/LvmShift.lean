@@ -163,7 +163,7 @@ theorem shiftEvalE_cons (a b : E) (x y : List E) (h : x.length = y.length) :
       (1 + a) * b * ∏ u ∈ range x.length, (1 + x.getD u 0 + y.getD u 0) := by
     rw [Finset.prod_range_zero, one_mul, show x.length + 1 - 0 - 1 = x.length by omega]
     refine congrArg _ (Finset.prod_congr rfl fun u _ ↦ ?_)
-    rw [show 0 + 1 + u = u + 1 by (clear * -; omega)]
+    rw [show 0 + 1 + u = u + 1 by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)]
     rfl
   have h1 : ∀ j ∈ range x.length,
       (∏ t ∈ range (j + 1), (a :: x).getD t 0 * (1 + (b :: y).getD t 0)) *
@@ -177,7 +177,7 @@ theorem shiftEvalE_cons (a b : E) (x y : List E) (h : x.length = y.length) :
     rw [Finset.prod_range_succ', show x.length + 1 - (j + 1) - 1 = x.length - j - 1 by (clear * - h; omega)]
     have e : ∀ u, (1 + (a :: x).getD (j + 1 + 1 + u) 0 + (b :: y).getD (j + 1 + 1 + u) 0) =
         (1 + x.getD (j + 1 + u) 0 + y.getD (j + 1 + u) 0) := fun u ↦ by
-      rw [show j + 1 + 1 + u = (j + 1 + u) + 1 by (clear * -; omega)]; rfl
+      rw [show j + 1 + 1 + u = (j + 1 + u) + 1 by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)]; rfl
     simp only [e]
     change (∏ t ∈ range j, x.getD t 0 * (1 + y.getD t 0)) * (a * (1 + b)) *
       ((1 + x.getD j 0) * y.getD j 0) * _ = _
@@ -205,8 +205,8 @@ theorem sum_shiftK (ρ y : List E) (h : ρ.length = y.length) :
   have hp : 0 < 2 ^ ρ.length := Nat.two_pow_pos _
   obtain ⟨M, hM⟩ : ∃ M, 2 ^ ρ.length = M + 1 := ⟨2 ^ ρ.length - 1, by (clear * - hp; omega)⟩
   rw [hM, Finset.sum_range_succ', Finset.sum_range_succ]
-  simp only [shiftK, Nat.le_add_left, ite_true, Nat.add_sub_cancel, show ¬ (1 ≤ 0) by (clear * -; omega),
-    ite_false, mul_zero, add_zero, show ¬ (M + 1 < M + 1) by (clear * -; omega)]
+  simp only [shiftK, Nat.le_add_left, ite_true, Nat.add_sub_cancel, show ¬ (1 ≤ 0) by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega),
+    ite_false, mul_zero, add_zero, show ¬ (M + 1 < M + 1) by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)]
   refine Finset.sum_congr rfl fun i hi ↦ ?_
   rw [if_pos (by have := Finset.mem_range.1 hi; (clear * - this; omega))]
   ring
@@ -224,7 +224,7 @@ theorem sum_maskK (ρ y : List E) (h : ρ.length = y.length) :
   rw [Finset.sum_range_succ] at hfull ⊢
   simp only [Nat.add_sub_cancel] at hl hly
   rw [eqMaskedE, ← hfull, hl, hly]
-  simp only [maskK, hM, show ¬ (M + 1 < M + 1) by (clear * -; omega), ite_false, mul_zero, add_zero]
+  simp only [maskK, hM, show ¬ (M + 1 < M + 1) by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega), ite_false, mul_zero, add_zero]
   rw [Finset.sum_congr rfl fun i hi ↦ by
     rw [if_pos (by have := Finset.mem_range.1 hi; (clear * - this; omega)), mul_comm]]
   linear_combination (-(prodE ρ * prodE y)) * CharTwo.two_eq_zero (R := E)
@@ -239,7 +239,7 @@ theorem sum_maskK_one (ρ : List E) :
   rw [hM] at hs hl ⊢
   rw [Finset.sum_range_succ] at hs ⊢
   simp only [Nat.add_sub_cancel] at hl
-  simp only [maskK, hM, show ¬ (M + 1 < M + 1) by (clear * -; omega), ite_false, add_zero]
+  simp only [maskK, hM, show ¬ (M + 1 < M + 1) by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega), ite_false, add_zero]
   rw [Finset.sum_congr rfl fun i hi ↦ if_pos (by have := Finset.mem_range.1 hi; (clear * - this; omega))]
   rw [hl] at hs
   linear_combination hs + (-(prodE ρ)) * CharTwo.two_eq_zero (R := E)

@@ -285,9 +285,9 @@ theorem filter_range_lt : ∀ (n m : Nat),
   | n + 1, m => by
     rw [List.range_succ, List.filter_append, filter_range_lt n m]
     by_cases h : n < m
-    · rw [show min (n + 1) m = min n m + 1 by omega, List.range_succ, show min n m = n by omega]
+    · rw [show min (n + 1) m = min n m + 1 by (clear * - n m h; omega), List.range_succ, show min n m = n by (clear * - n m h; omega)]
       simp [h]
-    · rw [show min (n + 1) m = min n m by omega]; simp [h]
+    · rw [show min (n + 1) m = min n m by (clear * - n m h; omega)]; simp [h]
 
 /-- The bit outputs of lane `l`'s row: `bit 0 … bit (laneBits − 1)`. -/
 theorem laneOuts_bits (H l : Nat) :
@@ -296,7 +296,7 @@ theorem laneOuts_bits (H l : Nat) :
       (List.range (laneBits H l)).map (fun z => ((BOut.bit z, 0, 64 * l + z) : BOut × Nat × Nat)) := by
   have hf : (List.range 64).filter (fun z => decide (64 * l + z < 8 * H)) = List.range (min 64 (8 * H - 64 * l)) := by
     rw [← filter_range_lt]
-    congr 1; funext y; exact decide_eq_decide.mpr (by omega)
+    congr 1; funext y; exact decide_eq_decide.mpr (by (clear * - l y H; omega))
   rw [hf]; rfl
 
 theorem mem_posRowsAux (u l : Nat) :
@@ -309,7 +309,7 @@ theorem mem_posRowsAux (u l : Nat) :
     simp only [spTot, List.map_cons, List.sum_cons] at *
     rcases h with ⟨x, hx, rfl⟩ | h
     · dsimp only
-      refine ⟨List.mem_cons_self .., hx, by (clear * -; omega), ?_⟩
+      refine ⟨List.mem_cons_self .., hx, by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - b x u o l; omega)), ?_⟩
       have : x * (u - laneBits o.L.height l) + (u - laneBits o.L.height l) ≤
           nRows o * (u - laneBits o.L.height l) := by
         rw [← Nat.succ_mul]; exact Nat.mul_le_mul_right _ hx
@@ -369,7 +369,7 @@ theorem posOc_bit (C : QCfg) (l : Nat) {r : Nat × OpenInfo × Nat × Nat} (hx :
   rw [hU, find?_bit hj]
   have hn : 64 * l + j < 8 * r.2.1.L.height := by unfold laneBits at hj; (clear * - hj; omega)
   have hH : 0 < r.2.1.L.height := by (clear * - hn; omega)
-  have hq : (64 * l + j) / r.2.1.L.height < 8 := (Nat.div_lt_iff_lt_mul hH).mpr (by omega)
+  have hq : (64 * l + j) / r.2.1.L.height < 8 := (Nat.div_lt_iff_lt_mul hH).mpr (by (clear * - hn; omega))
   have hr := Nat.div_add_mod (64 * l + j) r.2.1.L.height
   unfold nRows at hx
   simp only [posCell]
@@ -398,7 +398,7 @@ theorem posOc_sh (C : QCfg) (l : Nat) : ∀ j < lnSh C.p l, ∀ y < (posRows C l
     have hm : lnMin C.p l ≤ laneBits ((posRows C l).getD y default).2.1.L.height l :=
       foldl_min_le 64 (List.mem_map.mpr ⟨_, hko, rfl⟩)
     rw [posOc_bit C l hx h (by (clear * - hj hm; omega)) (lnOuts_bit (by (clear * - hj; omega))), posOc_bit C l hx h (by (clear * - hj hm; omega)) (lnOuts_bit (by (clear * - hj; omega)))]
-    (clear * -; omega)
+    (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)
   · (clear * - hj; omega)
 
 /-- **Lane class `l`**: row `y` is the class row `r = posRows[y]`, reading the opening's answer lane

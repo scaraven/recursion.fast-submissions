@@ -125,7 +125,7 @@ theorem q2LowTab_spec {xv : Src → FE} {V : Nat → FE} {z : S2} (hz : z.valF x
   refine q2SumMap_spec hz (fun zz hzz m hm => ?_) n h
   by_cases hc : (zz + rl) / 8 = c
   · simp only [hc, if_true] at hm ⊢
-    rw [q2Mul_spec hm, hz, add_zero, getD_valF2 _ (by omega), getD_valF2 _ (by rw [la]; exact Nat.mod_lt _ (by omega)),
+    rw [q2Mul_spec hm, hz, add_zero, getD_valF2 _ (by (clear * - zz tb ta a b c rl lb hzz; omega)), getD_valF2 _ (by rw [la]; exact Nat.mod_lt _ (by (clear * - ta tb a b c rl zz; omega))),
       hta, htb]
     rfl
   · simp only [hc, if_false] at hm ⊢
@@ -141,7 +141,7 @@ theorem q2HighTab_spec {xv : Src → FE} {V : Nat → FE} {z : S2} (hz : z.valF 
     have := congrArg List.length htb; rw [List.length_map, eqKernelF_length] at this; simp [this, hb]
   rw [highTabG, sumF_eq_sum]
   refine q2SumMap_spec hz (fun zz hzz m hm => ?_) n h
-  rw [q2Mul_spec hm, hz, add_zero, getD_valF2 _ (by omega), getD_valF2 _ (by rw [la]; exact Nat.mod_lt _ (by omega)),
+  rw [q2Mul_spec hm, hz, add_zero, getD_valF2 _ (by (clear * - zz tb ta a b lb hzz; omega)), getD_valF2 _ (by rw [la]; exact Nat.mod_lt _ (by (clear * - ta tb a b zz; omega))),
     hta, htb]
   rfl
 
@@ -155,11 +155,11 @@ theorem q2Shift_spec {xv : Src → FE} {V : Nat → FE} {z : S2} (hz : z.valF xv
   have lH : H.length = 8 := by simpa using congrArg List.length hH
   obtain ⟨g1, g2⟩ := (thold2_bind _ _).mp h
   rw [q2Shift, tb_bind, q2Mul_spec g2, q2Mul_spec g1, hz, add_zero,
-    getD_valF2 _ (by rw [l0]; exact Nat.mod_lt _ (by omega)), getD_valF2 _ (by rw [lH]; omega),
-    getD_valF2 _ (by rw [l1]; exact Nat.mod_lt _ (by omega)), getD_valF2 _ (by rw [lH]; exact Nat.mod_lt _ (by omega)),
+    getD_valF2 _ (by rw [l0]; exact Nat.mod_lt _ (by (clear * - L0 L1 H r; omega))), getD_valF2 _ (by rw [lH]; (clear * - r L0 L1 H hr; omega)),
+    getD_valF2 _ (by rw [l1]; exact Nat.mod_lt _ (by (clear * - L0 L1 H r; omega))), getD_valF2 _ (by rw [lH]; exact Nat.mod_lt _ (by (clear * - L0 L1 H r; omega))),
     h0, h1, hH]
-  simp [List.getD_eq_getElem?_getD, Nat.mod_lt _ (show 0 < 8 by omega), show r / 8 < 8 by omega,
-    Nat.mod_lt _ (show 0 < 8 by omega), shiftLHG]
+  simp [List.getD_eq_getElem?_getD, Nat.mod_lt _ (show 0 < 8 by (clear * - L0 L1 H r; omega)), show r / 8 < 8 by (clear * - r L0 L1 H hr; omega),
+    Nat.mod_lt _ (show 0 < 8 by (clear * - L0 L1 H r; omega)), shiftLHG]
 
 theorem q2LaneForm_spec {xv : Src → FE} {V : Nat → FE} {z : S2} (hz : z.valF xv V = 0) {B : List S2}
     (hB : 25 ≤ B.length) (R : Nat → S2) {l : Nat} (hl : l < 25) (n : Nat)
@@ -168,7 +168,7 @@ theorem q2LaneForm_spec {xv : Src → FE} {V : Nat → FE} {z : S2} (hz : z.valF
   obtain ⟨g1, h'⟩ := (thold2_bind _ _).mp h
   obtain ⟨g2, g3⟩ := (thold2_bind _ _).mp h'
   have hp : ∀ x y, x < 5 → y < 5 → keccakPi (x + 5 * y) < B.length := fun x y hx hy =>
-    lt_of_lt_of_le (kPi_lt _ (by omega)) hB
+    lt_of_lt_of_le (kPi_lt _ (by (clear * - x y B l hx hy; omega))) hB
   rw [q2LaneForm, tb_bind, tb_bind, q2Dot_spec _ _ _ g3, q2Dot_spec _ _ _ g2, q2Mul_spec g1, hz, add_zero,
     laneFormF, sumF_eq_sum, sumF_eq_sum, getD_valF2 _ (lt_of_lt_of_le (kPi_lt _ hl) hB)]
   simp only [List.map_map, Function.comp_def]
@@ -176,18 +176,18 @@ theorem q2LaneForm_spec {xv : Src → FE} {V : Nat → FE} {z : S2} (hz : z.valF
   · congr 1
     apply List.map_congr_left
     intro y hy
-    rw [getD_valF2 _ (hp _ _ (Nat.mod_lt _ (by omega)) (List.mem_range.mp hy))]
+    rw [getD_valF2 _ (hp _ _ (Nat.mod_lt _ (by (clear * - B l; omega))) (List.mem_range.mp hy))]
   · apply List.map_congr_left
     intro y hy
-    rw [getD_valF2 _ (hp _ _ (Nat.mod_lt _ (by omega)) (List.mem_range.mp hy))]
+    rw [getD_valF2 _ (hp _ _ (Nat.mod_lt _ (by (clear * - B l; omega))) (List.mem_range.mp hy))]
 
 theorem q2Flip_spec {xv : Src → FE} {V : Nat → FE} {z : S2} (hz : z.valF xv V = 0) {B A : List S2}
     (hB : 25 ≤ B.length) (hA : A.length = 64) (i n : Nat) (h : THold2 xv V n (q2Flip z B A i n).2) :
     (q2Flip z B A i n).1.valF xv V = flipFormG (vals2 xv V B) (fun s => (vals2 xv V A).getD s 0) i := by
-  rw [q2Flip, q2LaneForm_spec hz hB _ (by omega) n h, flipFormG]
+  rw [q2Flip, q2LaneForm_spec hz hB _ (by (clear * - B A; omega)) n h, flipFormG]
   congr 1
   funext s
-  rw [getD_valF2 _ (by rw [hA]; exact Nat.mod_lt _ (by omega))]
+  rw [getD_valF2 _ (by rw [hA]; exact Nat.mod_lt _ (by (clear * - B A; omega)))]
 
 theorem q2LaneW_spec {xv : Src → FE} {V : Nat → FE} {eL : List S2} (hL : 25 ≤ eL.length) (beta : S2) (n : Nat)
     (h : THold2 xv V n (q2LaneW eL beta n).2) :
@@ -197,7 +197,7 @@ theorem q2LaneW_spec {xv : Src → FE} {V : Nat → FE} {eL : List S2} (hL : 25 
   refine forall₂_map_eq2 (mapT2_spec_mem (P := fun l x => S2.valF xv V x = _) _ (fun l hl m hm => ?_) n h)
   have hl' := List.mem_range.mp hl
   obtain ⟨g1, g2⟩ := (thold2_bind _ _).mp hm
-  rw [tb_bind, q2Mul_spec g2, q2Mul_spec g1, getD_valF2 (i := l) eL (by omega),
+  rw [tb_bind, q2Mul_spec g2, q2Mul_spec g1, getD_valF2 (i := l) eL (by (clear * - l eL hL hl'; omega)),
     getD_valF2 (i := keccakAlong (64 * l) 3 / 64) eL (lt_of_lt_of_le (along_lt l hl').1 hL),
     getD_valF2 (i := keccakAlong (64 * l) 4 / 64) eL (lt_of_lt_of_le (along_lt l hl').2 hL)]
   ring
@@ -225,7 +225,7 @@ theorem q2Index_spec {xv : Src → FE} {V : Nat → FE} {z : S2} (hz : z.valF xv
     show (q2Index z (k + 1) (q2IndexStep z k acc r n).1 rs (n + (q2IndexStep z k acc r n).2.length)).1.valF xv V = _
     rw [e2, List.length_cons, Finset.prod_range_succ']
     simp only [vals2, List.map_cons, List.getD_cons_succ, List.getD_cons_zero, Nat.add_zero]
-    conv_rhs => rw [Finset.prod_congr rfl (fun t _ => by rw [show k + (t + 1) = k + 1 + t by omega])]
+    conv_rhs => rw [Finset.prod_congr rfl (fun t _ => by rw [show k + (t + 1) = k + 1 + t by (clear * - k t; omega)])]
     ring
 
 /-! ## The stream -/
@@ -288,10 +288,10 @@ theorem q2PackRound_spec {xv : Src → FE} {V : Nat → FE} {z : S2} (hz : z.val
   have e8 := q2Lin_spec h8
   have e9 := q2Mul_spec h9
   have e10 := q2Mul_spec h10
-  have c1 : (lane2 q str).valF xv V = v (p + 40) := by rw [lane2_valF, hv _ (by omega)]; congr 1; omega
-  have c2 : (lane2 (q + 2) str).valF xv V = v (p + 56) := by rw [lane2_valF, hv _ (by omega)]; congr 1; omega
+  have c1 : (lane2 q str).valF xv V = v (p + 40) := by rw [lane2_valF, hv _ (by (clear * - q N off hN p; omega))]; congr 1; (clear * - q off p N hp; omega)
+  have c2 : (lane2 (q + 2) str).valF xv V = v (p + 56) := by rw [lane2_valF, hv _ (by (clear * - q N off hN p; omega))]; congr 1; (clear * - q off p N hp; omega)
   have c3 : (lane2 (q + 5) str).valF xv V = e2OfFE (va (p + 80)) := by
-    rw [lane2_valF, hv _ (by omega), hva]; congr 1; omega
+    rw [lane2_valF, hv _ (by (clear * - hN; omega)), hva]; congr 1; (clear * - q off p N hp; omega)
   simp only [tb_bind, tb_pure]
   rw [c1, c2] at e4
   simp only [scalars2, List.range_succ, List.range_zero, List.map_append, List.map_nil, List.nil_append,
@@ -321,8 +321,8 @@ theorem q2PackRounds_spec {xv : Src → FE} {V : Nat → FE} {z : S2} (hz : z.va
     simp only [q2PackRounds] at h ⊢
     obtain ⟨h1, h⟩ := (thold2_bind _ _).mp h
     obtain ⟨h2, -⟩ := (thold2_bind _ _).mp h
-    obtain ⟨e1, e2, e3⟩ := q2PackRound_spec hz hva hv (by simp at hN; omega) hp r value scale n h1
-    have ih := q2PackRounds_spec hz hva g hv rs (q + 14) (p + 112) (by simp at hN; omega) (by omega) _ _ _ h2
+    obtain ⟨e1, e2, e3⟩ := q2PackRound_spec hz hva hv (by simp at hN; (clear * - q N off rs p hN; omega)) hp r value scale n h1
+    have ih := q2PackRounds_spec hz hva g hv rs (q + 14) (p + 112) (by simp at hN; (clear * - q rs N off p hN; omega)) (by (clear * - p q off N r rs hp; omega)) _ _ _ h2
     simp only [tb_bind, tb_pure, vals2, List.map_cons, packSpec2]
     rw [e1, e2] at ih
     exact ⟨ih.1, ih.2.1, congrArg₂ List.cons e3 ih.2.2⟩
@@ -346,12 +346,12 @@ theorem q2LocalRound_spec {xv : Src → FE} {V : Nat → FE} {v : Nat → FE2} {
   have e7 := q2Mul_spec h7
   have e8 := q2Mul_spec h8
   have e9 := q2Mul_spec h9
-  have c0 : (lane2 q str).valF xv V = v (p + 40) := by rw [lane2_valF, hv _ (by omega)]; congr 1; omega
-  have c2 : (lane2 (q + 2) str).valF xv V = v (p + 56) := by rw [lane2_valF, hv _ (by omega)]; congr 1; omega
+  have c0 : (lane2 q str).valF xv V = v (p + 40) := by rw [lane2_valF, hv _ (by (clear * - q N off hN p; omega))]; congr 1; (clear * - q off p N hp; omega)
+  have c2 : (lane2 (q + 2) str).valF xv V = v (p + 56) := by rw [lane2_valF, hv _ (by (clear * - q N off hN p; omega))]; congr 1; (clear * - q off p N hp; omega)
   have c3 : (lane2 (q + 4) str).valF xv V = v (p + 56 + 16) := by
-    rw [lane2_valF, hv _ (by omega)]; congr 1; omega
+    rw [lane2_valF, hv _ (by (clear * - q N off hN p; omega))]; congr 1; (clear * - q off p N hp; omega)
   have ch : (lane2 (q + 7) str).valF xv V = e2OfFE (va (ansAt2 p 4)) := by
-    rw [lane2_valF, hv _ (by omega), hva]; congr 1; simp only [ansAt2]; omega
+    rw [lane2_valF, hv _ (by (clear * - hN; omega)), hva]; congr 1; simp only [ansAt2]; (clear * - q off p N hp; omega)
   simp only [tb_bind, tb_pure]
   refine ⟨?_, ch⟩
   simp only [roundPoly2, scalars2, show (4 - 2 : Nat) = 2 from rfl, List.range_succ, List.range_zero,
@@ -374,8 +374,8 @@ theorem q2LocalRounds_spec {xv : Src → FE} {V : Nat → FE} {v : Nat → FE2} 
     simp only [q2LocalRounds] at h ⊢
     obtain ⟨h1, h⟩ := (thold2_bind _ _).mp h
     obtain ⟨h2, -⟩ := (thold2_bind _ _).mp h
-    obtain ⟨e1, e2⟩ := q2LocalRound_spec hva hv (by omega) hp value n h1
-    have ih := q2LocalRounds_spec hva g hv k (q + 16) (p + roundLen2 4) (by omega) (by simp [roundLen2]; omega) _ _ h2
+    obtain ⟨e1, e2⟩ := q2LocalRound_spec hva hv (by (clear * - q N off k p hN; omega)) hp value n h1
+    have ih := q2LocalRounds_spec hva g hv k (q + 16) (p + roundLen2 4) (by (clear * - q k N off p hN; omega)) (by simp [roundLen2]; (clear * - p q off N k hp; omega)) _ _ h2
     simp only [tb_bind, tb_pure, vals2, List.map_cons, scSpec2]
     rw [e1] at ih
     exact ⟨ih.1, congrArg₂ List.cons e2 ih.2⟩
@@ -385,7 +385,7 @@ theorem q2LocalRounds_spec {xv : Src → FE} {V : Nat → FE} {v : Nat → FE2} 
 theorem noA_emit2 (f : E2Fn) (xs : List S2) : NoA (emit2 f xs) := by
   intro xv V n k hk ha
   simp only [emit2, e2I, List.length_cons, List.length_nil] at hk
-  rcases (show k = 0 ∨ k = 1 by omega) with rfl | rfl <;> simp [emit2, e2I] at ha
+  rcases (show k = 0 ∨ k = 1 by (clear * - k hk; omega)) with rfl | rfl <;> simp [emit2, e2I] at ha
 
 theorem noA_q2Mul (a b d : S2) : NoA (q2Mul a b d) := noA_emit2 _ _
 theorem noA_q2Lin (k : FK) (k' : FE2) (a b : S2) : NoA (q2Lin k k' a b) := noA_emit2 _ _
@@ -503,7 +503,7 @@ theorem peelN2 {xv : Src → FE} {V : Nat → FE} {TA : Prop} {L : Nat} {Q : Pro
   obtain ⟨h1, h2, h3⟩ := h
   rw [thold2_bind] at h1
   refine ⟨(m n).1, n + (m n).2.length, rfl, h1.1, h1.2, ?_, ?_⟩
-  · rw [h2, tb_bind, List.length_append]; omega
+  · rw [h2, tb_bind, List.length_append]; (clear * - n α m β f L; omega)
   · rw [h3, tassert_bind]
     exact ⟨fun ⟨⟨_, h⟩, hq⟩ => ⟨h, hq⟩, fun ⟨h, hq⟩ => ⟨⟨hm _ _ _, h⟩, hq⟩⟩
 
@@ -514,7 +514,7 @@ theorem peelL2 {xv : Src → FE} {V : Nat → FE} {TA : Prop} {L : Nat} {Q : Pro
   obtain ⟨h1, h2, h3⟩ := h
   rw [thold2_bind] at h1
   refine ⟨h1.1, h1.2, ?_, ?_⟩
-  · rw [h2, tb_bind, List.length_append]; omega
+  · rw [h2, tb_bind, List.length_append]; (clear * - n α m β f L; omega)
   · rw [h3, tassert_bind]
     exact ⟨fun ⟨⟨_, h⟩, hq⟩ => ⟨h, hq⟩, fun ⟨h, hq⟩ => ⟨⟨hm _ _ _, h⟩, hq⟩⟩
 
@@ -532,7 +532,7 @@ theorem peelA2 {xv : Src → FE} {V : Nat → FE} {TA : Prop} {L : Nat} {Q : Pro
   rw [tb_bind, e] at h2
   rw [tassert_bind, e] at h3
   refine ⟨n + (q2Assert a g n).2.length, h1.2, ?_, ?_⟩
-  · rw [h2, List.length_append]; omega
+  · rw [h2, List.length_append]; (clear * - n a g β f L; omega)
   · rw [h3, tassert_q2Assert]
     exact ⟨fun ⟨⟨h, h'⟩, hq⟩ => ⟨h', hq, h⟩, fun ⟨h', hq, h⟩ => ⟨⟨h, h'⟩, hq⟩⟩
 
@@ -565,7 +565,7 @@ theorem mapT2_q2Copy_fst : ∀ (l : List S2) (n : Nat), (mapT2 q2Copy l n).1 =
       Nat.add_zero]
     congr 1
     refine List.map_congr_left fun j _ => ?_
-    congr 2 <;> omega
+    congr 2 <;> (clear * - n j; omega)
 
 theorem mapT2_q2Copy_length (l : List S2) (n : Nat) : (mapT2 q2Copy l n).2.length = 2 * l.length := by
   induction l generalizing n with
@@ -573,7 +573,7 @@ theorem mapT2_q2Copy_length (l : List S2) (n : Nat) : (mapT2 q2Copy l n).2.lengt
   | cons a as ih =>
     simp only [mapT2, tb_bind, tb_pure, List.append_nil, List.length_append, ih, List.length_cons]
     simp only [q2Copy, q2Lin, emit2, e2I, List.length_cons, List.length_nil]
-    omega
+    (clear * - as; omega)
 
 /-- **The copy rows**: value `j` of `l` sits in the twin cells `n + 2j`, `n + 2j + 1`. -/
 theorem cp2_get {xv : Src → FE} {V : Nat → FE} {n : Nat} {l : List S2} (h : THold2 xv V n (mapT2 q2Copy l n).2) :

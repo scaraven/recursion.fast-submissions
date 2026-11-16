@@ -177,13 +177,13 @@ theorem padDotF_split (ω : List F) (y : ℕ → Bool) :
   rw [show 1600 = 8 + (256 + 1336) from rfl, Finset.sum_range_add, Finset.sum_range_add]
   have h1 : ∑ j ∈ range 8, ω.getD j 0 * (if 8 ≤ j ∧ j < 264 then (bitF (y (j - 8)) : F) else 0) = 0 :=
     Finset.sum_eq_zero fun j hj ↦ by
-      rw [if_neg (by have := Finset.mem_range.1 hj; omega), mul_zero]
+      rw [if_neg (by have := Finset.mem_range.1 hj; (clear * - j this; omega)), mul_zero]
   have h3 : ∑ j ∈ range 1336, ω.getD (8 + (256 + j)) 0 *
       (if 8 ≤ 8 + (256 + j) ∧ 8 + (256 + j) < 264 then (bitF (y (8 + (256 + j) - 8)) : F) else 0) = 0 :=
-    Finset.sum_eq_zero fun j _ ↦ by rw [if_neg (by omega), mul_zero]
+    Finset.sum_eq_zero fun j _ ↦ by rw [if_neg (by (clear * - j; omega)), mul_zero]
   rw [h1, h3, zero_add, add_zero]
   refine Finset.sum_congr rfl fun p hp ↦ ?_
-  rw [if_pos (by have := Finset.mem_range.1 hp; omega), Nat.add_sub_cancel_left]
+  rw [if_pos (by have := Finset.mem_range.1 hp; (clear * - p this; omega)), Nat.add_sub_cancel_left]
 
 /-- The digest part of a row: `G_D(x) = Σ_{p<256} ω_{8+p}·bit_p(D[x])`. -/
 def gDTF (ω : List F) (D : ℕ → ℕ → K) (x : ℕ) : F :=
@@ -197,24 +197,24 @@ theorem wire_identity_chF (ρ μ ω : List F) (s : RecursionFast.Digest) {n : �
         padDotF ω (fun _ ↦ false) * ∑ i ∈ range (n - 1), iotaF ρ μ (i + 1) +
         ∑ x ∈ range (2 ^ w), msKF ρ μ 0 (n - 1) x * gDTF ω D x := by
   have hp := Nat.two_pow_pos w
-  obtain ⟨M, hM⟩ : ∃ M, 2 ^ w = M + 1 := ⟨2 ^ w - 1, by omega⟩
+  obtain ⟨M, hM⟩ : ∃ M, 2 ^ w = M + 1 := ⟨2 ^ w - 1, by (clear * - w n hp; omega)⟩
   have hrow : ∀ x, iotaF ρ μ (x + 1) * omegaDotF ω (chainIn s n D (x + 1)) =
       msKF ρ μ 0 (n - 1) x * (padDotF ω (fun _ ↦ false) + gDTF ω D x) := by
     intro x
-    rw [chainIn, if_neg (by omega), msKF, Nat.zero_add]
+    rw [chainIn, if_neg (by (clear * - x n w M; omega)), msKF, Nat.zero_add]
     split_ifs with h1 h2 h2
     · rw [omegaDotF_pad43, padDotF_split, Nat.add_sub_cancel, gDTF]
     · omega
     · omega
     · rw [omegaDotF_zero, mul_zero, zero_mul]
   have hlast : msKF ρ μ 0 (n - 1) M * (padDotF ω (fun _ ↦ false) + gDTF ω D M) = 0 := by
-    rw [msKF, if_neg (by omega), zero_mul]
+    rw [msKF, if_neg (by (clear * - M n w hn hN hM; omega)), zero_mul]
   have hK : ∑ x ∈ range (2 ^ w), msKF ρ μ 0 (n - 1) x = ∑ i ∈ range (n - 1), iotaF ρ μ (i + 1) := by
-    rw [show 2 ^ w = (n - 1) + (2 ^ w - (n - 1)) by omega, Finset.sum_range_add]
-    rw [Finset.sum_eq_zero (s := range (2 ^ w - (n - 1))) fun x _ ↦ by rw [msKF, if_neg (by omega)],
+    rw [show 2 ^ w = (n - 1) + (2 ^ w - (n - 1)) by (clear * - w n hn hN M hM; omega), Finset.sum_range_add]
+    rw [Finset.sum_eq_zero (s := range (2 ^ w - (n - 1))) fun x _ ↦ by rw [msKF, if_neg (by (clear * - n x w M; omega))],
       add_zero]
     exact Finset.sum_congr rfl fun i hi ↦ by
-      rw [msKF, if_pos (by have := Finset.mem_range.1 hi; omega), Nat.zero_add]
+      rw [msKF, if_pos (by have := Finset.mem_range.1 hi; (clear * - i n w M this; omega)), Nat.zero_add]
   rw [hM] at hK
   rw [hM, Finset.sum_range_succ', Finset.sum_congr rfl fun x _ ↦ hrow x]
   rw [show (∑ x ∈ range M, msKF ρ μ 0 (n - 1) x * (padDotF ω (fun _ ↦ false) + gDTF ω D x)) =
@@ -250,8 +250,8 @@ theorem gD_slotF (w dsel : ℕ) (ω : List F) (col : ℕ → K) (pt : List F) :
   refine Finset.sum_congr rfl fun l _ ↦ Finset.sum_congr rfl fun z hz ↦
     Finset.sum_congr rfl fun x _ ↦ ?_
   have hz' := Finset.mem_range.1 hz
-  simp only [Lvm.KG.rowBits, dOf, dWF, show (64 * l + z) / 64 = l by omega,
-    show (64 * l + z) % 64 = z by omega, show 8 + (64 * l + z) = 8 + 64 * l + z by omega]
+  simp only [Lvm.KG.rowBits, dOf, dWF, show (64 * l + z) / 64 = l by (clear * - l z hz'; omega),
+    show (64 * l + z) % 64 = z by (clear * - l z hz'; omega), show 8 + (64 * l + z) = 8 + 64 * l + z by (clear * - l z; omega)]
   ring
 
 variable [CharP F 2]
@@ -269,7 +269,7 @@ theorem inClaim_of_targetF {w : ℕ} (s : RecursionFast.Digest) {n : ℕ} (hn : 
     (hv : wireTargetF s n claim = wireChFF w claim.point claim.mu claim.weights (n - 1) D []) :
     InClaimTrueF w (chainIn s n D) claim := by
   rw [wireChFF_nil] at hv
-  have hS := sum_range_iotaF_succ claim.point claim.mu (n - 1) (by rw [hρ]; omega)
+  have hS := sum_range_iotaF_succ claim.point claim.mu (n - 1) (by rw [hρ]; (clear * - n w F hn hN claim; omega))
   rw [CharTwo.sub_eq_add] at hS
   rw [InClaimTrueF, wire_identity_chF _ _ _ s D hn hN, hS]
   rw [wireTargetF] at hv
@@ -345,13 +345,13 @@ theorem sum_firstWeightsF {lanesPt : List E2} (hl : lanesPt.length = 5) (a : Kec
   rw [laneWord, kF_ofLane, Finset.mul_sum]
   refine Finset.sum_congr rfl fun z hz ↦ ?_
   have hz' := Finset.mem_range.1 hz
-  have hj : 64 * l + z < 1600 := by omega
+  have hj : 64 * l + z < 1600 := by (clear * - l z lanesPt hl'' hz'; omega)
   rw [firstWeightsF, List.getD_eq_getElem?_getD, List.getElem?_map,
     List.getElem?_range (by simpa [keccakBits] using hj)]
   simp only [Option.map_some, Option.getD_some]
-  have e1 : (64 * l + z) / 64 = l := by omega
-  have e2 : (64 * l + z) % 64 = z := by omega
-  rw [e1, e2, eqKernelF_getD, hl, ite_eq_left (by omega),
+  have e1 : (64 * l + z) / 64 = l := by (clear * - l z lanesPt hz'; omega)
+  have e2 : (64 * l + z) % 64 = z := by (clear * - l z lanesPt e1; omega)
+  rw [e1, e2, eqKernelF_getD, hl, ite_eq_left (by (clear * - l lanesPt hl'' z e1; omega)),
     LeanVM.Protocol.KeccakGkr.sbit_lane a l hz']
   ring
 
@@ -391,13 +391,13 @@ theorem firstClaim_sumE2 (P : ℕ) (I : ℕ → KeccakState) {inst lanesPt : Lis
     rw [eqAtF_append, ha, eqAtF_mod (inst.take 4), ha]
     norm_num
   have hpow : (2 : ℕ) ^ (P + 5) = 2 ^ (P + 1) * 16 := by
-    rw [show P + 5 = (P + 1) + 4 by omega, pow_add]; norm_num
+    rw [show P + 5 = (P + 1) + 4 by (clear * - P inst lanesPt; omega), pow_add]; norm_num
   simp only [stepMleF, Finset.mul_sum]
   conv_rhs => rw [Finset.sum_comm, hpow, sum_range_mulB]
   refine Finset.sum_congr rfl fun z _ ↦ Finset.sum_congr rfl fun i hi' ↦
     Finset.sum_congr rfl fun l _ ↦ ?_
   have hi'' := Finset.mem_range.1 hi'
-  rw [hmu i hi', hsplit, show (16 * z + i) % 16 = i by omega, show (16 * z + i) / 16 = z by omega,
+  rw [hmu i hi', hsplit, show (16 * z + i) % 16 = i by (clear * - z i P inst lanesPt hi''; omega), show (16 * z + i) / 16 = z by (clear * - z i P inst lanesPt hi''; omega),
     show i + 16 * z = 16 * z + i by ring]
   ring
 
@@ -411,7 +411,7 @@ theorem laneDelta_of_zeroOn_nil (P : ℕ) (inst output : List E2) (I : ℕ → K
     ∀ l < 25, stepMleF (P + 5) inst (fun x ↦ laneWord (keccakF1600 (I x)) l) = output.getD l 0 := by
   rw [zeroOnF_nil] at h
   intro l hl
-  have := h l (by omega)
+  have := h l (by (clear * - l hl; omega))
   rw [laneDelta, if_pos hl] at this
   exact (add_eq_zero_iff_eq_neg.1 this).trans (CharTwo.neg_eq _)
 
@@ -431,7 +431,7 @@ theorem laneDelta_zeroOn_of_first (P : ℕ) {inst lanesPt output : List E2} (I :
   rw [hv] at htrue
   rw [show 2 ^ 5 = 25 + 7 from rfl, Finset.sum_range_add]
   have h7 : ∑ x ∈ range 7, eqAtF lanesPt (25 + x) * laneDelta P inst output I (25 + x) = 0 :=
-    Finset.sum_eq_zero fun x _ ↦ by rw [laneDelta, if_neg (by omega), mul_zero]
+    Finset.sum_eq_zero fun x _ ↦ by rw [laneDelta, if_neg (by (clear * - x P inst lanesPt output; omega)), mul_zero]
   rw [h7, add_zero, Finset.sum_congr rfl fun l hl' ↦ by
     rw [laneDelta, if_pos (Finset.mem_range.1 hl'), mul_add], Finset.sum_add_distrib, ← htrue]
   exact CharTwo.add_self_eq_zero _
@@ -594,7 +594,7 @@ theorem tapeDelta_zeroOnE2 {w : ℕ} (s : RecursionFast.Digest) (n : ℕ) (D : �
       v.getD l 0)
     (htied : TiedDF w D r v) : ZeroOnF (tapeDeltaE2 w s n D) r (w + 2) := by
   intro t ht
-  rw [hr, show w + 2 - w = 2 by omega] at ht
+  rw [hr, show w + 2 - w = 2 by (clear * - w r t; omega)] at ht
   have ht4 : t < 4 := lt_of_lt_of_eq ht (by norm_num)
   unfold foldTF
   rw [hr]
@@ -610,7 +610,7 @@ theorem tapeDelta_zeroOnE2 {w : ℕ} (s : RecursionFast.Digest) (n : ℕ) (D : �
     simp only [tapeDeltaE2, e1, e2, ht4, ite_true]
   rw [Finset.sum_congr rfl fun x hx ↦ by rw [e x hx]]
   have h3 := htied t ht4
-  have h4 := hout t (by omega)
+  have h4 := hout t (by (clear * - t w r ht; omega))
   simp only [stepMleF] at h3 h4
   simp only [mul_add, Finset.sum_add_distrib, h3, h4]
   exact CharTwo.add_self_eq_zero _
@@ -631,7 +631,7 @@ theorem stAt_tape24 (P : ℕ) (I : ℕ → KeccakState) (z i j : ℕ) :
 theorem claimTrue_of_inClaimF {P : ℕ} (I : ℕ → KeccakState) (c : KClaim E2)
     (h : InClaimTrueF (P + 5) I c) : ClaimTrueF (tapeStates P I 24) P c := by
   have hpow : (2 : ℕ) ^ (P + 5) = 2 ^ (P + 1) * 16 := by
-    rw [show P + 5 = (P + 1) + 4 by omega, pow_add]; norm_num
+    rw [show P + 5 = (P + 1) + 4 by (clear * - P; omega), pow_add]; norm_num
   rw [InClaimTrueF] at h
   rw [ClaimTrueF, h, claimSumF, hpow, sum_range_mulB]
   simp only [stAt_tape24]
@@ -639,7 +639,7 @@ theorem claimTrue_of_inClaimF {P : ℕ} (I : ℕ → KeccakState) (c : KClaim E2
   rw [Finset.mul_sum]
   refine Finset.sum_congr rfl fun i hi ↦ ?_
   have hi' := Finset.mem_range.1 hi
-  rw [iotaF, omegaDotF, show (16 * z + i) / 16 = z by omega, show (16 * z + i) % 16 = i by omega,
+  rw [iotaF, omegaDotF, show (16 * z + i) / 16 = z by (clear * - z i P hi'; omega), show (16 * z + i) % 16 = i by (clear * - z i P hi'; omega),
     show i + 16 * z = 16 * z + i by ring]
   ring
 

@@ -48,12 +48,12 @@ theorem hdrOf_eqW (π : RecursionFast.Proof) {n : ℕ} (hn : hdrFix - 8 ≤ n) (
   have hl : π.data.toList.length = π.size := Array.length_toList
   have hH : hdrFix = 4928 := rfl
   rw [get!_eq_getD, get!_eq_getD]
-  rw [List.getD_append_right _ _ _ _ (by simp; omega)]
+  rw [List.getD_append_right _ _ _ _ (by simp; (clear * - hk; omega))]
   simp only [List.length_replicate]
-  rw [List.getD_eq_getElem _ _ (by simp; omega), List.getD_eq_getElem _ _ (by omega)]
+  rw [List.getD_eq_getElem _ _ (by simp; (clear * - k n π hn hs hk hk' hl hH; omega)), List.getD_eq_getElem _ _ (by (clear * - k π n hs hk hk' hl hH; omega))]
   simp only [List.getElem_take, List.getElem_drop]
   congr 1
-  omega
+  (clear * - k π n hk hk' hH; omega)
 
 /-! ## The scheme's caps at a format -/
 
@@ -87,27 +87,27 @@ theorem digestsOf_capS (st : XStage) (π : RecursionFast.Proof) {i : ℕ} (h8 : 
   unfold digestsOf capS
   refine List.map_congr_left fun e he => ?_
   have he' : e < Lvm.X.capNM i := List.mem_range.1 he
-  rw [Lvm.X.hdD_eq_digestAt, show 8 * (capOffS st i / 8 + 4 * e) = capOffS st i + 32 * e by omega]
+  rw [Lvm.X.hdD_eq_digestAt, show 8 * (capOffS st i / 8 + 4 * e) = capOffS st i + 32 * e by (clear * - st i e π h8; omega)]
   apply Vector.ext
   intro j hj
   simp only [dg, digestAt, Vector.getElem_ofFn]
-  rw [get!_eq_getD, List.getD_eq_getElem _ _ (by simp only [List.length_drop, List.length_take]; omega),
-    List.getD_eq_getElem _ _ (by omega)]
+  rw [get!_eq_getD, List.getD_eq_getElem _ _ (by simp only [List.length_drop, List.length_take]; (clear * - j i π st e h8 hs hB he' hj; omega)),
+    List.getD_eq_getElem _ _ (by (clear * - st i e j π h8 hs hB he' hj; omega))]
   simp only [List.getElem_drop, List.getElem_take]
   congr 1
-  omega
+  (clear * - st i e j π; omega)
 
 /-- **π's residual coefficient at a stage** (`resEM_eq`). -/
 theorem resES_eq (st : XStage) (π : RecursionFast.Proof) (v : ℕ) (h8 : resOffS st % 8 = 0)
     (hv : resOffS st + 24 * v + 24 ≤ π.size) :
     resES st π v = eOfBytes ((π.data.toList.drop (resOffS st + 24 * v)).take 24) := by
   have hs : π.data.toList.length = π.size := Array.length_toList
-  rw [eOfBytes_eq, resES, Lvm.X.pw, Lvm.X.pw, Lvm.X.pw, wK_packBytes _ (by omega), wK_packBytes _ (by omega),
-    wK_packBytes _ (by omega)]
+  rw [eOfBytes_eq, resES, Lvm.X.pw, Lvm.X.pw, Lvm.X.pw, wK_packBytes _ (by (clear * - st v π h8 hv hs; omega)), wK_packBytes _ (by (clear * - st v π h8 hv hs; omega)),
+    wK_packBytes _ (by (clear * - st v π h8 hv hs; omega))]
   simp only [List.take_take, List.drop_take, List.drop_drop]
-  have e0 : 8 * (resOffS st / 8 + 3 * v) = resOffS st + 24 * v := by omega
-  have e1 : 8 * (resOffS st / 8 + 3 * v + 1) = resOffS st + 24 * v + 8 := by omega
-  have e2 : 8 * (resOffS st / 8 + 3 * v + 2) = resOffS st + 24 * v + 16 := by omega
+  have e0 : 8 * (resOffS st / 8 + 3 * v) = resOffS st + 24 * v := by (clear * - st v π h8; omega)
+  have e1 : 8 * (resOffS st / 8 + 3 * v + 1) = resOffS st + 24 * v + 8 := by (clear * - st v π h8; omega)
+  have e2 : 8 * (resOffS st / 8 + 3 * v + 2) = resOffS st + 24 * v + 16 := by (clear * - st v π h8; omega)
   rw [e0, e1, e2]
   simp [Nat.add_comm]
 
@@ -117,7 +117,7 @@ theorem fsQLS_eq (st : XStage) (π : RecursionFast.Proof) {p : ℕ} (hp : 0 < p)
     fsQLS st π p s = toQ (s.toList ++ sl π.data.toList (msgLS st p).1 (msgLS st p).2) := by
   have hd : (fsQLS st π p s).data.toList =
       s.toList ++ (π.extract (msgLS st p).1 ((msgLS st p).1 + (msgLS st p).2)).data.toList := by
-    rw [fsQLS, if_neg (by omega), ByteArray.data_append, Array.toList_append]
+    rw [fsQLS, if_neg (by (clear * - p hp; omega)), ByteArray.data_append, Array.toList_append]
     rfl
   rw [ByteArray.data_extract, Array.toList_extract, List.extract_eq_take_drop,
     Nat.add_sub_cancel_left] at hd
@@ -134,23 +134,23 @@ theorem chainTS (st : XStage) (π : RecursionFast.Proof) {rw : ℕ → ℕ} {ks 
       fsQLS st π (D + 1 + i) s =
         toQ (s.toList ++ sl π.data.toList ((fsPreK2W rw ks n off pend)[i]).1 ((fsPreK2W rw ks n off pend)[i]).2) := by
   intro i hi s
-  rw [fsQLS_eq st π (by omega), msgLS, ← List.getD_eq_getElem _ (0, 0) hi, hPre]
+  rw [fsQLS_eq st π (by (clear * - D i rw ks n off pend; omega)), msgLS, ← List.getD_eq_getElem _ (0, 0) hi, hPre]
   have hi' : i < N := by
     have := hi
     rw [hPre] at this
     exact lt_of_lt_of_le this (List.length_take_le _ _)
   rw [List.getD_eq_getElem?_getD, List.getD_eq_getElem?_getD, List.getElem?_take, if_pos hi',
-    List.getElem?_drop, show D + 1 + i - 1 = D + i by omega]
+    List.getElem?_drop, show D + 1 + i - 1 = D + i by (clear * - D i rw ks n off pend N; omega)]
 
 theorem foldPosS_add (st : XStage) (i j : ℕ) : foldPosS st i j = foldPosS st i 0 + j := by
-  unfold foldPosS; omega
+  unfold foldPosS; (clear * - st i j; omega)
 
 theorem foldPosKS_0 (st : XStage) {j : ℕ} (hj : j < 6) : foldPosKS st j = foldPosS st 0 0 + j := by
   rw [foldPosKS, if_pos hj, foldPosS_add]
 theorem foldPosKS_1 (st : XStage) {j : ℕ} (hj : j < 4) : foldPosKS st (6 + j) = foldPosS st 1 0 + j := by
-  rw [foldPosKS, if_neg (by omega), if_pos (by omega), foldPosS_add, Nat.add_sub_cancel_left]
+  rw [foldPosKS, if_neg (by (clear * - j hj; omega)), if_pos (by (clear * - j hj; omega)), foldPosS_add, Nat.add_sub_cancel_left]
 theorem foldPosKS_2 (st : XStage) {j : ℕ} (hj : j < 4) : foldPosKS st (10 + j) = foldPosS st 2 0 + j := by
-  rw [foldPosKS, if_neg (by omega), if_neg (by omega), foldPosS_add, Nat.add_sub_cancel_left]
+  rw [foldPosKS, if_neg (by (clear * - j hj; omega)), if_neg (by (clear * - j hj; omega)), foldPosS_add, Nat.add_sub_cancel_left]
 
 /-! ## The replay's bookkeeping -/
 
@@ -160,7 +160,7 @@ theorem nReads_of_forall₂ : ∀ {pre : List Ev} {ks : List K2}, List.Forall₂
     obtain ⟨hk, hs⟩ := forall₂_cons_inv h
     have ih := nReads_of_forall₂ hs
     rw [show e :: pre = [e] ++ pre from rfl, nReads_append, ih]
-    cases e <;> cases k <;> simp_all [KM, nReads, readsK2] <;> omega
+    cases e <;> cases k <;> simp_all [KM, nReads, readsK2] <;> (clear * - ks pre; omega)
 
 theorem capsK2W_toK2 (S : Scheme) (B : List UInt8) (rw : ℕ → ℕ) : ∀ (ks : List EvK) (n off : ℕ) (caps : List CapI),
     capsK2W S B rw (ks.map toK2) n off caps = caps
@@ -181,10 +181,10 @@ theorem offK2W_reads24 (rw : ℕ → ℕ) : ∀ (i n : ℕ), (∀ j < i, rw (n +
     ∀ off, offK2W rw (List.replicate i .read) n off = off + 24 * i
   | 0, _, _, off => rfl
   | i + 1, n, h, off => by
-    have h0 := h 0 (by omega)
+    have h0 := h 0 (by (clear * - i; omega))
     rw [Nat.add_zero] at h0
     rw [List.replicate_succ, offK2W, offK2W_reads24 rw i (n + 1)
-      (fun j hj => by rw [Nat.add_assoc, Nat.add_comm 1 j]; exact h _ (by omega)), h0]
+      (fun j hj => by rw [Nat.add_assoc, Nat.add_comm 1 j]; exact h _ (by (clear * - j i rw n hj; omega))), h0]
     ring
 
 /-! ## The root at a format -/
@@ -250,14 +250,14 @@ theorem ext_eqS_gen (st : XStage) (f : SFmt) (hf : FmtOK st f) (hr : ReplayOK st
   have hhb8 : hdrFix ≤ π.size := by
     have := hr.hl; have := hr.s0; simp only [o1S] at *; omega
   have hhd : hdrOf ((B.drop 8).take (f.hb - 8)) = Header.ofProof π :=
-    hdrOf_eqW π (by rw [hhb]; have := hr.hl; omega) hhb8
+    hdrOf_eqW π (by rw [hhb]; have := hr.hl; (clear * - st f π hhb hF this; omega)) hhb8
   have hExK := hEx (kcertSMWτ f hmid hτ hLm hsh (extJML lo hlo hsh (hnode vk))).ext
   rw [hExK]
   have hext : (kcertSMWτ f hmid hτ hLm hsh (extJML lo hlo hsh (hnode vk))).ext = extSML lo mid child := rfl
   rw [hext]
   -- the header fields
-  have hfb : (Header.ofProof π).b = (Lvm.X.pw π 1).toNat := (pw_toNat π 1 (by omega)).symm
-  have hfn : (Header.ofProof π).n = (Lvm.X.pw π 14).toNat := (pw_toNat π 14 (by omega)).symm
+  have hfb : (Header.ofProof π).b = (Lvm.X.pw π 1).toNat := (pw_toNat π 1 (by (clear * - π st f hpz hsz hBlen hF hhb8; omega))).symm
+  have hfn : (Header.ofProof π).n = (Lvm.X.pw π 14).toNat := (pw_toNat π 14 (by (clear * - π st f hpz hsz hBlen hF hhb8; omega))).symm
   have hfs : (Header.ofProof π).s = Lvm.X.hdD π 10 := (Lvm.X.hdD_eq_digestAt π 10).symm
   have hfvk : (Header.ofProof π).vk = Lvm.X.hdD π 2 := (Lvm.X.hdD_eq_digestAt π 2).symm
   have hfcL : (Header.ofProof π).cL = Lvm.X.hdD π 6 := (Lvm.X.hdD_eq_digestAt π 6).symm
@@ -335,7 +335,7 @@ theorem ext_eqS_gen (st : XStage) (f : SFmt) (hf : FmtOK st f) (hr : ReplayOK st
     trun_simK2W S L B (kA1S st) k 0 (o1S st) st.hb e₁.2 _ _ (lm ++ ([Ev.sample ρ] ++ (lq ++ lf0)))
     ((Ev.commit 16 (3 * 2 ^ 4) W₁ :: (pre0 ++ (Ev.query w0 :: (post0 ++ (lf1 ++ (Ev.commit 13 (3 * 2 ^ 4) W₂ ::
       (pre1 ++ (Ev.query w1 :: (post1 ++ (lf2 ++ lres)))))))))) ++ t) true rfl hcA1
-    (by simp only [o1S]; omega) hkA1 (by
+    (by simp only [o1S]; (clear * - st f lo π r0 r1 r2 res qs0 qs1; omega)) hkA1 (by
       rw [show o1S st = st.hb + 8192 from rfl, htrk]
       (simp only [List.append_assoc, List.cons_append, List.nil_append, List.singleton_append] <;> rfl))
   obtain ⟨eoA1, epA1, efA1⟩ := offK2W_eq_L S.rw (kA1S st) 0 (readWidthsS st) (o1S st) st.hb
@@ -548,7 +548,7 @@ theorem ext_eqS_gen (st : XStage) (f : SFmt) (hf : FmtOK st f) (hr : ReplayOK st
     refine List.map_congr_left fun i hi => ?_
     have hi' : i < 2 ^ 9 := List.mem_range.1 hi
     simp only [Function.comp]
-    rw [offK2W_reads24 S.rw i (nr5 st) (fun j hj => h24 j (by omega)), h24 i hi']
+    rw [offK2W_reads24 S.rw i (nr5 st) (fun j hj => h24 j (by (clear * - j st f mid lo vk L π lm ρ lq lf0 r0 W₁ pre0 w0 post0 lf1 r1 W₂ pre1 w1 post1 lf2 r2 res qs0 qs1 i hi' hj; omega))), h24 i hi']
     rfl
   -- the chain
   have hfm1 : Lvm.X.fmAns (fsQLS st π) Lvm.X.zeroDL L 1 = some e₁.2 := by
@@ -572,7 +572,7 @@ theorem ext_eqS_gen (st : XStage) (f : SFmt) (hf : FmtOK st f) (hr : ReplayOK st
     rfl
   have hA1n : ((lm ++ ([Ev.sample ρ] ++ (lq ++ lf0))).filterMap sampleOf).length = nMidS st + 7 := by
     rw [hpreS, List.length_append, hlm, List.length_cons, lf0l]
-  rw [hA1n, show 1 + (nMidS st + 7) = nMidS st + 8 by omega] at fA1
+  rw [hA1n, show 1 + (nMidS st + 7) = nMidS st + 8 by (clear * - st f mid lo vk L π lm ρ lq lf0 r0 W₁ pre0 w0 post0 lf1 r1 W₂ pre1 w1 post1 lf2 r2 res qs0 qs1; omega)] at fA1
   have cA2 := simK2W_chain S L B (fsQLS st π) Lvm.X.zeroDL _ (nr1 st) (offA1 st) (pendA1 st) stA1 (nMidS st + 8) _
     stA2 hsA2 fA1 (chainTS st π (D := nMidS st + 8) (N := 35) (efA2.trans hr.fA2))
   simp only [smpOf_eq] at cA2
@@ -581,14 +581,14 @@ theorem ext_eqS_gen (st : XStage) (f : SFmt) (hf : FmtOK st f) (hr : ReplayOK st
     rw [show (Ev.commit 16 (3 * 2 ^ 4) W₁ :: pre0).filterMap sampleOf = pre0.filterMap sampleOf from rfl,
       samples_length, fp0]
     decide
-  rw [hA2n, show nMidS st + 8 + 35 = nMidS st + 43 by omega] at fA2
+  rw [hA2n, show nMidS st + 8 + 35 = nMidS st + 43 by (clear * - st f mid lo vk L π lm ρ lq lf0 r0 W₁ pre0 w0 post0 lf1 r1 W₂ pre1 w1 post1 lf2 r2 res qs0 qs1; omega)] at fA2
   have cB1 := simK2W_chain S L B (fsQLS st π) Lvm.X.zeroDL _ (nr2 st) (q0End st) (q0End st) stA2 (nMidS st + 43) _
     stB1 hsB1 fA2 (chainTS st π (D := nMidS st + 43) (N := 4) (efB1.trans hr.fB1))
   simp only [smpOf_eq] at cB1
   obtain ⟨cB1, fB1⟩ := cB1
   have hpreB1 : (post0 ++ lf1).filterMap sampleOf = r1.2 := by
     rw [List.filterMap_append, nos post0 fpo0, List.nil_append, sf1]
-  rw [hpreB1, lf1l, show nMidS st + 43 + 4 = nMidS st + 47 by omega] at fB1
+  rw [hpreB1, lf1l, show nMidS st + 43 + 4 = nMidS st + 47 by (clear * - st f mid lo vk L π lm ρ lq lf0 r0 W₁ pre0 w0 post0 lf1 r1 W₂ pre1 w1 post1 lf2 r2 res qs0 qs1; omega)] at fB1
   have cA3 := simK2W_chain S L B (fsQLS st π) Lvm.X.zeroDL _ (nr3 st) (offB1 st) (pendB1 st) stB1 (nMidS st + 47) _
     stA3 hsA3 fB1 (chainTS st π (D := nMidS st + 47) (N := 26) (efA3.trans hr.fA3))
   simp only [smpOf_eq] at cA3
@@ -597,7 +597,7 @@ theorem ext_eqS_gen (st : XStage) (f : SFmt) (hf : FmtOK st f) (hr : ReplayOK st
     rw [show (Ev.commit 13 (3 * 2 ^ 4) W₂ :: pre1).filterMap sampleOf = pre1.filterMap sampleOf from rfl,
       samples_length, fp1]
     decide
-  rw [hA3n, show nMidS st + 47 + 26 = nMidS st + 73 by omega] at fA3
+  rw [hA3n, show nMidS st + 47 + 26 = nMidS st + 73 by (clear * - st f mid lo vk L π lm ρ lq lf0 r0 W₁ pre0 w0 post0 lf1 r1 W₂ pre1 w1 post1 lf2 r2 res qs0 qs1; omega)] at fA3
   have cB2 := simK2W_chain S L B (fsQLS st π) Lvm.X.zeroDL _ (nr4 st) (q1End st) (q1End st) stA3 (nMidS st + 73) _
     stB2 hsB2 fA3 (chainTS st π (D := nMidS st + 73) (N := 4) (efB2.trans hr.fB2))
   simp only [smpOf_eq] at cB2
@@ -612,33 +612,33 @@ theorem ext_eqS_gen (st : XStage) (f : SFmt) (hf : FmtOK st f) (hr : ReplayOK st
     rw [hfolds]
     by_cases k0' : k < 6
     · have hlen : nMidS st + 1 + k < ((lm ++ ([Ev.sample ρ] ++ (lq ++ lf0))).filterMap sampleOf).length := by
-        rw [hA1n]; omega
+        rw [hA1n]; (clear * - st k f mid lo vk L π lm ρ lq lf0 r0 W₁ pre0 w0 post0 lf1 r1 W₂ pre1 w1 post1 lf2 r2 res qs0 qs1 hk k0'; omega)
       obtain ⟨a, ha, hea⟩ := cA1 (nMidS st + 1 + k) hlen
       refine ⟨a, by
-        rw [foldPosKS_0 st k0', hr.fp0, show nMidS st + 3 + k = 1 + 1 + (nMidS st + 1 + k) by omega]; exact ha, ?_⟩
+        rw [foldPosKS_0 st k0', hr.fp0, show nMidS st + 3 + k = 1 + 1 + (nMidS st + 1 + k) by (clear * - st k f mid lo vk L π lm ρ lq lf0 r0 W₁ pre0 w0 post0 lf1 r1 W₂ pre1 w1 post1 lf2 r2 res qs0 qs1; omega)]; exact ha, ?_⟩
       have e1 : (r0.2 ++ r1.2 ++ r2.2).getD k 0 = r0.2.getD k 0 := by
         rw [List.append_assoc, List.getD_append _ _ _ _ (by rw [lf0l]; exact k0')]
       have e2 : (List.filterMap sampleOf lm ++ ρ :: r0.2).getD (nMidS st + 1 + k) 0 = r0.2.getD k 0 := by
-        rw [List.getD_append_right _ _ _ _ (by omega), hlm, show nMidS st + 1 + k - nMidS st = k + 1 by omega]
+        rw [List.getD_append_right _ _ _ _ (by (clear * - lm st k f mid lo vk L π ρ lq lf0 r0 W₁ pre0 w0 post0 lf1 r1 W₂ pre1 w1 post1 lf2 r2 res qs0 qs1 hlm hk k0'; omega)), hlm, show nMidS st + 1 + k - nMidS st = k + 1 by (clear * - st k f mid lo vk L π lm ρ lq lf0 r0 W₁ pre0 w0 post0 lf1 r1 W₂ pre1 w1 post1 lf2 r2 res qs0 qs1 hk k0'; omega)]
         rfl
       rw [e1, show chalOf a = S.chal a from rfl, ← hea, ← List.getD_eq_getElem _ 0 hlen, hpreS, e2]
     by_cases k1' : k < 10
-    · have hlen : k - 6 < ((post0 ++ lf1).filterMap sampleOf).length := by rw [hpreB1, lf1l]; omega
+    · have hlen : k - 6 < ((post0 ++ lf1).filterMap sampleOf).length := by rw [hpreB1, lf1l]; (clear * - k st f mid lo vk L π lm ρ lq lf0 r0 W₁ pre0 w0 post0 lf1 r1 W₂ pre1 w1 post1 lf2 r2 res qs0 qs1 hk k0' k1'; omega)
       obtain ⟨a, ha, hea⟩ := cB1 (k - 6) hlen
       refine ⟨a, by
-        rw [show k = 6 + (k - 6) by omega, foldPosKS_1 st (by omega), hr.fp1,
-          show nMidS st + 44 + (k - 6) = nMidS st + 43 + 1 + (k - 6) by omega]; exact ha, ?_⟩
+        rw [show k = 6 + (k - 6) by (clear * - k st f mid lo vk L π lm ρ lq lf0 r0 W₁ pre0 w0 post0 lf1 r1 W₂ pre1 w1 post1 lf2 r2 res qs0 qs1 hk k0' k1'; omega), foldPosKS_1 st (by (clear * - k st f mid lo vk L π lm ρ lq lf0 r0 W₁ pre0 w0 post0 lf1 r1 W₂ pre1 w1 post1 lf2 r2 res qs0 qs1 hk k0' k1'; omega)), hr.fp1,
+          show nMidS st + 44 + (k - 6) = nMidS st + 43 + 1 + (k - 6) by (clear * - st k f mid lo vk L π lm ρ lq lf0 r0 W₁ pre0 w0 post0 lf1 r1 W₂ pre1 w1 post1 lf2 r2 res qs0 qs1; omega)]; exact ha, ?_⟩
       have e1 : (r0.2 ++ r1.2 ++ r2.2).getD k 0 = r1.2.getD (k - 6) 0 := by
-        rw [List.append_assoc, List.getD_append_right _ _ _ _ (by rw [lf0l]; omega), lf0l,
-          List.getD_append _ _ _ _ (by rw [lf1l]; omega)]
+        rw [List.append_assoc, List.getD_append_right _ _ _ _ (by rw [lf0l]; (clear * - k st f mid lo vk L π lm ρ lq lf0 r0 W₁ pre0 w0 post0 lf1 r1 W₂ pre1 w1 post1 lf2 r2 res qs0 qs1 hk k0' k1'; omega)), lf0l,
+          List.getD_append _ _ _ _ (by rw [lf1l]; (clear * - k st f mid lo vk L π lm ρ lq lf0 r0 W₁ pre0 w0 post0 lf1 r1 W₂ pre1 w1 post1 lf2 r2 res qs0 qs1 hk k0' k1'; omega))]
       rw [e1, show chalOf a = S.chal a from rfl, ← hea, ← List.getD_eq_getElem _ 0 hlen, hpreB1]
-    · have hlen : k - 10 < ((post1 ++ lf2).filterMap sampleOf).length := by rw [hpreB2, lf2l]; omega
+    · have hlen : k - 10 < ((post1 ++ lf2).filterMap sampleOf).length := by rw [hpreB2, lf2l]; (clear * - k st f mid lo vk L π lm ρ lq lf0 r0 W₁ pre0 w0 post0 lf1 r1 W₂ pre1 w1 post1 lf2 r2 res qs0 qs1 hk k0' k1'; omega)
       obtain ⟨a, ha, hea⟩ := cB2 (k - 10) hlen
       refine ⟨a, by
-        rw [show k = 10 + (k - 10) by omega, foldPosKS_2 st (by omega), hr.fp2,
-          show nMidS st + 74 + (k - 10) = nMidS st + 73 + 1 + (k - 10) by omega]; exact ha, ?_⟩
+        rw [show k = 10 + (k - 10) by (clear * - k st f mid lo vk L π lm ρ lq lf0 r0 W₁ pre0 w0 post0 lf1 r1 W₂ pre1 w1 post1 lf2 r2 res qs0 qs1 hk k0' k1'; omega), foldPosKS_2 st (by (clear * - k st f mid lo vk L π lm ρ lq lf0 r0 W₁ pre0 w0 post0 lf1 r1 W₂ pre1 w1 post1 lf2 r2 res qs0 qs1 hk k0' k1'; omega)), hr.fp2,
+          show nMidS st + 74 + (k - 10) = nMidS st + 73 + 1 + (k - 10) by (clear * - st k f mid lo vk L π lm ρ lq lf0 r0 W₁ pre0 w0 post0 lf1 r1 W₂ pre1 w1 post1 lf2 r2 res qs0 qs1; omega)]; exact ha, ?_⟩
       have e1 : (r0.2 ++ r1.2 ++ r2.2).getD k 0 = r2.2.getD (k - 10) 0 := by
-        rw [List.getD_append_right _ _ _ _ (by rw [List.length_append, lf0l, lf1l]; omega), List.length_append, lf0l,
+        rw [List.getD_append_right _ _ _ _ (by rw [List.length_append, lf0l, lf1l]; (clear * - k st f mid lo vk L π lm ρ lq lf0 r0 W₁ pre0 w0 post0 lf1 r1 W₂ pre1 w1 post1 lf2 r2 res qs0 qs1 hk k0' k1'; omega)), List.length_append, lf0l,
           lf1l]
       rw [e1, show chalOf a = S.chal a from rfl, ← hea, ← List.getD_eq_getElem _ 0 hlen, hpreB2]
   let αk : ℕ → RecursionFast.Digest := fun k => if k < 14 then
@@ -687,13 +687,13 @@ theorem ext_eqS_gen (st : XStage) (f : SFmt) (hf : FmtOK st f) (hr : ReplayOK st
   have cp0 : S.capI 19 64 (B.drop f.hb) = ⟨19, (64 - st.occ0) + st.occ0, 8, capS st π 0⟩ := by
     rw [hoc, capI_rootW, hhb, ← show capOffS st 0 = st.hb from rfl, digestsOf_capS st π (i := 0) hr.a0 (by
       rw [show Lvm.X.capNM 0 = 2 ^ 8 from rfl, show capOffS st 0 = st.hb from rfl]
-      have := hr.s0; simp only [o1S] at this; omega)]
+      have := hr.s0; simp only [o1S] at this; (clear * - st π f mid lo vk L hpz hsz hBlen lm ρ lq lf0 r0 W₁ pre0 w0 post0 lf1 r1 W₂ pre1 w1 post1 lf2 r2 res qs0 qs1 this; omega))]
   have cp1 : S.capI 16 48 (B.drop (capOffS st 1)) = ⟨16, 0 + 48, 7, capS st π 1⟩ := by
     rw [capI_lvW f vk (PSWithM mid) (by norm_num) (i := 1) (by norm_num), digestsOf_capS st π (i := 1) hr.a1 (by
-      rw [show Lvm.X.capNM 1 = 2 ^ 7 from rfl]; have := hr.s1; omega)]
+      rw [show Lvm.X.capNM 1 = 2 ^ 7 from rfl]; have := hr.s1; (clear * - st π f mid lo vk L hpz hsz hBlen lm ρ lq lf0 r0 W₁ pre0 w0 post0 lf1 r1 W₂ pre1 w1 post1 lf2 r2 res qs0 qs1 this; omega))]
   have cp2 : S.capI 13 48 (B.drop (capOffS st 2)) = ⟨13, 0 + 48, 7, capS st π 2⟩ := by
     rw [capI_lvW f vk (PSWithM mid) (by norm_num) (i := 2) (by norm_num), digestsOf_capS st π (i := 2) hr.a2 (by
-      rw [show Lvm.X.capNM 2 = 2 ^ 7 from rfl]; have := hr.s2; omega)]
+      rw [show Lvm.X.capNM 2 = 2 ^ 7 from rfl]; have := hr.s2; (clear * - st π f mid lo vk L hpz hsz hBlen lm ρ lq lf0 r0 W₁ pre0 w0 post0 lf1 r1 W₂ pre1 w1 post1 lf2 r2 res qs0 qs1 this; omega))]
   have hd₀P := hd₀
   rw [hlP] at hd₀P
   -- the extractor's run
@@ -704,16 +704,16 @@ theorem ext_eqS_gen (st : XStage) (f : SFmt) (hf : FmtOK st f) (hr : ReplayOK st
       rw [Lvm.X.wdOf, hW1, cp1, readRowG_eq_wordOf S rfl (show S.occ 16 (0 + 48) = 48 from ho1)])
     (fun q' _ t' _ => by
       rw [Lvm.X.wdOf, hW2, cp2, readRowG_eq_wordOf S rfl (show S.occ 13 (0 + 48) = 48 from ho2)])
-    _ _ _ (fun j hj => by rw [Lvm.X.alphaN, dif_pos hj]; exact hfv j (by omega))
-    (fun j hj => by rw [Lvm.X.alphaN1, dif_pos hj]; exact hfv (6 + j) (by omega))
-    (fun j hj => by rw [Lvm.X.alphaN1, dif_pos hj]; exact hfv (10 + j) (by omega))
+    _ _ _ (fun j hj => by rw [Lvm.X.alphaN, dif_pos hj]; exact hfv j (by (clear * - j st f mid lo vk L π lm ρ lq lf0 r0 W₁ pre0 w0 post0 lf1 r1 W₂ pre1 w1 post1 lf2 r2 res qs0 qs1 hj; omega)))
+    (fun j hj => by rw [Lvm.X.alphaN1, dif_pos hj]; exact hfv (6 + j) (by (clear * - j st f mid lo vk L π lm ρ lq lf0 r0 W₁ pre0 w0 post0 lf1 r1 W₂ pre1 w1 post1 lf2 r2 res qs0 qs1 hj; omega)))
+    (fun j hj => by rw [Lvm.X.alphaN1, dif_pos hj]; exact hfv (10 + j) (by (clear * - j st f mid lo vk L π lm ρ lq lf0 r0 W₁ pre0 w0 post0 lf1 r1 W₂ pre1 w1 post1 lf2 r2 res qs0 qs1 hj; omega)))
     _ (fun v hv => by
-      rw [resES_eq st π v hr.ar (by have := hr.sr; omega)]
+      rw [resES_eq st π v hr.ar (by have := hr.sr; (clear * - st v π f mid lo vk L hpz hsz hBlen lm ρ lq lf0 r0 W₁ pre0 w0 post0 lf1 r1 W₂ pre1 w1 post1 lf2 r2 res qs0 qs1 hv this; omega))]
       unfold Lvm.X.fNk
       rw [dif_pos hv]
       unfold resMsg
       erw [bitsToNat_symmN 9 v hv]
-      rw [hresv, List.getD_eq_getElem _ _ (by simp only [List.length_map, List.length_range]; omega),
+      rw [hresv, List.getD_eq_getElem _ _ (by simp only [List.length_map, List.length_range]; (clear * - hv; omega)),
         List.getElem_map, List.getElem_range]
       rfl)
     m₂ hd₂ m₁ hd₁ _ hd₀P]

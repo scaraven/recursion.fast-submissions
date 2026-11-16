@@ -236,27 +236,29 @@ theorem refW_tapeUD (s : List FK) (d : RecursionFast.Digest) (hs : sBitsD s = Lv
   subst hr
   refine RefAtW.bind (fun _ ↦ (monoD_samplesG _ _).bind fun _ ↦ (monoD_tapeGkrD _ _ _).bind fun _ ↦
     (MonoD.require _).bind fun _ ↦ (monoD_wireUD _ _ _).bind fun _ ↦ MonoD.pure _)
-    (refW_readE2s 50 (WAt.idx_eq hw2 (by simp))) ?_
+    (refW_readE2s 50 (WAt.idx_eq hw2 (by simp only [List.length_replicate]))) ?_
   intro ab ab' hab
   subst hab
   refine RefAtW.bind (fun _ ↦ (monoD_tapeGkrD _ _ _).bind fun _ ↦ (MonoD.require _).bind fun _ ↦
     (monoD_wireUD _ _ _).bind fun _ ↦ MonoD.pure _)
-    (refW_samplesGL E2V.gC1 1 (WAt.idx_eq hw3 (by simp [length_wReads]))) ?_
+    (refW_samplesGL E2V.gC1 1
+      (WAt.idx_eq hw3 (by simp only [List.length_append, List.length_replicate, length_wReads]))) ?_
   rintro r20 r20' ⟨h20, h20l⟩
   subst h20
   refine RefAtW.bind (fun _ ↦ (MonoD.require _).bind fun _ ↦ (monoD_wireUD _ _ _).bind fun _ ↦ MonoD.pure _)
     ((refW_tapeGkrD 21 (r ++ r20) (t1ValsF 20 13 (r ++ r20) ab) (by simp [hrl, h20l])
-      (WAt.idx_eq hw4 (by simp [length_wReads]))).congr_prog ?_) ?_
+      (WAt.idx_eq hw4 (by simp only [List.length_append, List.length_replicate, length_wReads]))).congr_prog ?_) ?_
   · rw [List.map_append, map_toE2_t1ValsF, List.map_append]
   rintro c c' ⟨hc, hcl⟩
   subst hc
   refine RefAtW.bind (fun _ ↦ (monoD_wireUD _ _ _).bind fun _ ↦ MonoD.pure _)
     (RefAtW.require fun h ↦ of_decide_eq_true h) fun _ _ _ ↦ ?_
   refine RefAtW.bind (fun _ ↦ MonoD.pure _)
-    (refW_wireUD s d hs n c (by omega) (WAt.idx_eq hw5 (by simp [length_wReads, wTapeGkr]; omega))) ?_
+    (refW_wireUD s d hs n c (by omega)
+      (WAt.idx_eq hw5 (by simp only [List.length_append, List.length_replicate, length_wReads]; omega))) ?_
   intro wo wo' hwo
   exact (RefAtW.pure ⟨by rw [List.map_append], hrl, h20l, rfl, rfl, hwo⟩).idx
-    (by simp [wTapeU, length_wReads, wTapeGkr]; omega)
+    (by simp only [wTapeU, List.length_append, List.length_replicate, length_wReads]; omega)
 
 end Ref
 

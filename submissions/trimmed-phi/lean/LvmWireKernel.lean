@@ -182,14 +182,14 @@ def thrSem (ρ : List E) (s : Bool) (t : ℕ) : E :=
 theorem eqAt_cons_bit (r : E) (ρ : List E) (y : ℕ) (b : Bool) :
     eqAt (r :: ρ) (2 * y + b.toNat) = eqBit r b * eqAt ρ y := by
   cases b
-  · rw [Bool.toNat_false, add_zero, eqAt_cons, if_neg (by omega), show 2 * y / 2 = y by omega]; rfl
-  · rw [Bool.toNat_true, eqAt_cons, if_pos (by omega), show (2 * y + 1) / 2 = y by omega]; rfl
+  · rw [Bool.toNat_false, add_zero, eqAt_cons, if_neg (by (clear * - y; omega)), show 2 * y / 2 = y by (clear * - y; omega)]; rfl
+  · rw [Bool.toNat_true, eqAt_cons, if_pos (by (clear * - y; omega)), show (2 * y + 1) / 2 = y by (clear * - y; omega)]; rfl
 
 /-- The comparison passes to the high bits through the strict flag. -/
 theorem le_iff_nextS (y0 s : Bool) (y t : ℕ) :
     2 * y + y0.toNat + s.toNat ≤ t ↔ y + (nextS y0 s (t % 2 == 1)).toNat ≤ t / 2 := by
   rcases Nat.mod_two_eq_zero_or_one t with h | h <;> cases y0 <;> cases s <;>
-    simp [nextS, h] <;> omega
+    simp [nextS, h] <;> (clear * - y t h; omega)
 
 theorem ite_mul_congr {P Q : Prop} [Decidable P] [Decidable Q] (hPQ : P ↔ Q) (X Y k : E)
     (hXY : X = k * Y) : (if P then X else 0) = k * (if Q then Y else 0) := by
@@ -212,7 +212,7 @@ theorem msSem_term (a r : E) (σ ρ : List E) (n y t : ℕ) (b c s : Bool) :
             y + (b && c).toNat + (nextS (b ^^ c) s (t % 2 == 1)).toNat ≤ t / 2 then
           eqAt σ y * eqAt ρ (y + (b && c).toNat) else 0) := by
   have hsplit : 2 * y + b.toNat + c.toNat = 2 * (y + (b && c).toNat) + (b ^^ c).toNat := by
-    cases b <;> cases c <;> simp <;> omega
+    cases b <;> cases c <;> simp <;> (clear * - y; omega)
   refine ite_mul_congr ?_ _ _ _ ?_
   · rw [hsplit, add_assoc, ← le_iff_nextS, pow_succ]
     constructor
@@ -279,9 +279,9 @@ theorem iota_block (ρ μ : List E) (w base y : ℕ) (h4 : 4 ≤ w) (hρ : w - 4
   have hP : 0 < 2 ^ v := Nat.two_pow_pos v
   have h16 : 2 ^ (v + 4) = 16 * 2 ^ v := by rw [pow_add]; ring
   have hz : y / 16 < 2 ^ v := by (clear * - hy h16; omega)
-  have hlen : (ρ.take v).length = v := by simp; omega
+  have hlen : (ρ.take v).length = v := by simp; (clear * - hρ; omega)
   have hsplit : 2 ^ (v + 4) * k + y = 16 * (2 ^ v * k) + y := by rw [h16]; ring
-  have e1 : (2 ^ (v + 4) * k + y) / 16 = 2 ^ v * k + y / 16 := by rw [hsplit]; (clear * -; omega)
+  have e1 : (2 ^ (v + 4) * k + y) / 16 = 2 ^ v * k + y / 16 := by rw [hsplit]; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - v k y; omega))
   have e3 : (2 ^ (v + 4) * k + y) % 16 = y % 16 := by rw [hsplit]; (clear * - e1; omega)
   have e2 : (2 ^ v * k + y / 16) % 2 ^ v = y / 16 := by
     rw [Nat.mul_add_mod, Nat.mod_eq_of_lt hz]
@@ -301,7 +301,7 @@ theorem sum_msK (ρ μ σ : List E) (base t : ℕ) (h4 : 4 ≤ σ.length) (hρ :
     ∑ x ∈ range (2 ^ σ.length), eqAt σ x * msK ρ μ base t x = msEval ρ μ σ base t := by
   obtain ⟨v, hv⟩ : ∃ v, σ.length = v + 4 := ⟨σ.length - 4, by (clear * - h4; omega)⟩
   have hσh : (σ.drop 4).length = v := by simp; (clear * - h4 hv; omega)
-  have hσ4 : (σ.take 4).length = 4 := by simp; omega
+  have hσ4 : (σ.take 4).length = 4 := by simp; (clear * - h4; omega)
   have hρh : (ρ.take (σ.length - 4)).length = v := by simp; (clear * - h4 hρ hv hσh; omega)
   have hpow : 2 ^ σ.length = 2 ^ v * 16 := by rw [hv, pow_add]; norm_num
   have key : ∀ d ∈ range 16, ∀ x' ∈ range (2 ^ v),
@@ -317,7 +317,7 @@ theorem sum_msK (ρ μ σ : List E) (base t : ℕ) (h4 : 4 ≤ σ.length) (hρ :
     have hes : eqAt σ (16 * x' + d) = eqAt (σ.take 4) d * eqAt (σ.drop 4) x' := by
       conv_lhs => rw [← List.take_append_drop 4 σ]
       rw [eqAt_append, hσ4, eqAt_mod (σ.take 4), hσ4,
-        show (16 * x' + d) % 2 ^ 4 = d by norm_num; omega,
+        show (16 * x' + d) % 2 ^ 4 = d by norm_num; (clear * - hd'; omega),
         show (16 * x' + d) / 2 ^ 4 = x' by norm_num; (clear * - hd'; omega)]
     have hcv : ((16 * x' + d + 1 ≤ t) ↔ (x' + (d == 15).toNat < 2 ^ v ∧
         x' + (d == 15).toNat + (decide (t % 16 < (d + 1) % 16)).toNat ≤ t / 16)) ∧
@@ -369,7 +369,7 @@ theorem sum_ikK (ρ μ σ : List E) (base : ℕ) (h4 : 4 ≤ σ.length) (hρ : �
     ∑ x ∈ range (2 ^ σ.length), eqAt σ x * ikK ρ μ base x = ikEval ρ μ σ base := by
   obtain ⟨v, hv⟩ : ∃ v, σ.length = v + 4 := ⟨σ.length - 4, by (clear * - h4; omega)⟩
   have hσh : (σ.drop 4).length = v := by simp; (clear * - h4 hv; omega)
-  have hσ4 : (σ.take 4).length = 4 := by simp; omega
+  have hσ4 : (σ.take 4).length = 4 := by simp; (clear * - h4; omega)
   have hρh : (ρ.take (σ.length - 4)).length = v := by simp; (clear * - h4 hρ hv hσh; omega)
   have hpow : 2 ^ σ.length = 2 ^ v * 16 := by rw [hv, pow_add]; norm_num
   have key : ∀ d ∈ range 16, ∀ x' ∈ range (2 ^ v),
@@ -382,7 +382,7 @@ theorem sum_ikK (ρ μ σ : List E) (base : ℕ) (h4 : 4 ≤ σ.length) (hρ : �
     have hes : eqAt σ (16 * x' + d) = eqAt (σ.take 4) d * eqAt (σ.drop 4) x' := by
       conv_lhs => rw [← List.take_append_drop 4 σ]
       rw [eqAt_append, hσ4, eqAt_mod (σ.take 4), hσ4,
-        show (16 * x' + d) % 2 ^ 4 = d by norm_num; omega,
+        show (16 * x' + d) % 2 ^ 4 = d by norm_num; (clear * - hd'; omega),
         show (16 * x' + d) / 2 ^ 4 = x' by norm_num; (clear * - hd'; omega)]
     rw [ikK, iota_block ρ μ σ.length base _ h4 hρ hb (by (clear * - hpow hd' hx''; omega)), hes,
       show (16 * x' + d) / 16 = x' by (clear * - hd'; omega), show (16 * x' + d) % 16 = d by (clear * - hd'; omega)]
@@ -398,11 +398,11 @@ theorem sum_ikK (ρ μ σ : List E) (base : ℕ) (h4 : 4 ≤ σ.length) (hρ : �
 theorem thrEval_eq (ρ μ : List E) (t : ℕ) (ht : t < 2 ^ (ρ.length + 4)) :
     ∑ i ∈ range (t + 1), iota ρ μ i = thrEval ρ μ t := by
   have hpow : 2 ^ (ρ.length + 4) = 2 ^ ρ.length * 16 := by rw [pow_add]; norm_num
-  have hsub : range (t + 1) ⊆ range (2 ^ (ρ.length + 4)) := Finset.range_subset_range.2 (by omega)
+  have hsub : range (t + 1) ⊆ range (2 ^ (ρ.length + 4)) := Finset.range_subset_range.2 (by (clear * - t ρ ht hpow; omega))
   have h1 : ∑ i ∈ range (t + 1), iota ρ μ i =
       ∑ i ∈ range (2 ^ (ρ.length + 4)), if i ≤ t then iota ρ μ i else 0 := by
     rw [← Finset.sum_subset hsub (fun x _ hx ↦ by rw [if_neg (by simp at hx; (clear * - hx; omega))])]
-    exact Finset.sum_congr rfl fun i hi ↦ by rw [if_pos (by simp at hi; omega)]
+    exact Finset.sum_congr rfl fun i hi ↦ by rw [if_pos (by simp at hi; (clear * - hi; omega))]
   rw [h1, hpow, sum_range_mul, Finset.sum_comm]
   simp only [thrEval]
   rw [LeanVM.Protocol.Whir.Complete.sumE_eq, Lvm.KG.list_sum_map_range]

@@ -116,8 +116,8 @@ theorem msgG_escape {g : ℕ} (hg : g ≤ 64) {msg : List E2} {d : ℕ} (hd : ms
     exact hne fun x ↦ by rw [← eval_listPolyF, h, hfP]
   have hne'' : Q * listPolyF msg ≠ Q * P := fun h ↦ hne' (mul_left_cancel₀ hQ0 h)
   have h1 : (Q * listPolyF msg).natDegree ≤ d + k :=
-    natDegree_mul_le.trans (by have := natDegree_listPolyF msg; omega)
-  have h2 : (Q * P).natDegree ≤ d + k := natDegree_mul_le.trans (by omega)
+    natDegree_mul_le.trans (by have := natDegree_listPolyF msg; (clear * - Q msg d k g hd P hQ this; omega))
+  have h2 : (Q * P).natDegree ≤ d + k := natDegree_mul_le.trans (by (clear * - Q P d k g msg hP hQ; omega))
   refine (avgE_mono fun c ↦ indE_mono fun hc ↦ ⟨hc.1, ?_⟩).trans (sampleG_escape hg hne'' h1 h2)
   rw [eval_mul, eval_mul, eval_listPolyF, ← hwQ, ← hfP]; exact hc.2
 

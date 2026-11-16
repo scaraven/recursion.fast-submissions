@@ -82,8 +82,8 @@ theorem readEs_run (sig : ByteArray) : ∀ (n : Nat) (s : RS),
     simp only [scalarsAt, List.range_succ_eq_map, List.map_cons, List.map_map, Function.comp_def]
     have h1 : s.ent + 40 + s.msg = s.ent + s.msg + 40 + 24 * 0 := by omega
     have h2 : ∀ k, s.ent + (s.msg + 24) + 40 + 24 * k = s.ent + s.msg + 40 + 24 * (k + 1) := by
-      intro k; (clear * -; omega)
-    have h3 : s.msg + 24 + 24 * n = s.msg + 24 * (n + 1) := by (clear * -; omega)
+      intro k; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)
+    have h3 : s.msg + 24 + 24 * n = s.msg + 24 * (n + 1) := by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)
     simp only [h1, h2, h3]
 
 theorem roundPoly_run (sig : ByteArray) (count : Nat) (hc : 2 ≤ count) (claim : FE) (e : Option FE)
@@ -96,8 +96,8 @@ theorem roundPoly_run (sig : ByteArray) (count : Nat) (hc : 2 ≤ count) (claim 
       fun tail => pure (constant :: (claim + sumE tail) :: tail)) from rfl]
     rw [bind_run, readE_run, bind_run, readEs_run, pure_run]
     generalize feAt sig = v
-    have h1 : s.ent + (s.msg + 24) + 40 = s.ent + s.msg + 64 := by (clear * -; omega)
-    have h2 : s.ent + 40 + s.msg = s.ent + s.msg + 40 := by (clear * -; omega)
+    have h1 : s.ent + (s.msg + 24) + 40 = s.ent + s.msg + 64 := by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)
+    have h2 : s.ent + 40 + s.msg = s.ent + s.msg + 40 := by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)
     have h3 : s.msg + 24 + 24 * (count - 2) = s.msg + 24 * (count - 1) := by (clear * - hc; omega)
     simp only [roundPoly, h1, h2, h3]
   | some r =>
@@ -126,13 +126,13 @@ theorem sumcheck_run (sig : ByteArray) (count : Nat) (hc : 2 ≤ count) :
   | e :: es, claim, s => by
     rw [sumcheck_cons, bind_run, roundPoly_run sig count hc, bind_run, sampleE_run, bind_run,
       sumcheck_run sig count hc es, pure_run]
-    have h1 : s.ent + 40 + (s.msg + 24 * (count - 1)) = s.ent + s.msg + 40 + 24 * (count - 1) := by (clear * -; omega)
+    have h1 : s.ent + 40 + (s.msg + 24 * (count - 1)) = s.ent + s.msg + 40 + 24 * (count - 1) := by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)
     have h2 : s.ent + 72 + (s.msg + 24 * (count - 1)) + 0 = s.ent + s.msg + roundLen count := by
-      simp only [roundLen]; (clear * -; omega)
+      simp only [roundLen]; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)
     generalize feAt sig = v
     simp only [h1, h2, scSpec]
     cases es with
-    | nil => simp only [scState, List.length_cons, List.length_nil]; congr 2; simp [roundLen]; (clear * -; omega)
+    | nil => simp only [scState, List.length_cons, List.length_nil]; congr 2; simp [roundLen]; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)
     | cons e' es' =>
       simp only [scState, List.length_cons]
       congr 1
@@ -307,8 +307,8 @@ theorem sc_loads {c : Ctx} {M : Mem} {p : Ptr} {D d q : Nat} {mode : Mode} {clai
   have ho : (scGadget D d q mode claim p).1.dims = [D] := rfl
   rw [iterXv_ext1 M _ ho hjf, iterXv_ext1 M _ ho hjf, iterXv_ext1 M _ ho hjf]
   simp only [Mem.rd]
-  rw [show q + 3 * m + 1 + roundLanes (d + 1) * jf = q + 3 * m + roundLanes (d + 1) * jf + 1 by (clear * -; omega),
-    show q + 3 * m + 2 + roundLanes (d + 1) * jf = q + 3 * m + roundLanes (d + 1) * jf + 2 by (clear * -; omega)]
+  rw [show q + 3 * m + 1 + roundLanes (d + 1) * jf = q + 3 * m + roundLanes (d + 1) * jf + 1 by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega),
+    show q + 3 * m + 2 + roundLanes (d + 1) * jf = q + 3 * m + roundLanes (d + 1) * jf + 2 by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)]
   exact load_feAt hS (by (clear * - hT hm; omega))
 
 theorem sc_pos (q d jf : Nat) (hq : 5 ≤ q) (m : Nat) :

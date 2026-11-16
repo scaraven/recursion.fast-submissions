@@ -174,7 +174,7 @@ theorem noWin_append {L L₂ : Log} (hb : ¬ Bad (L ++ L₂)) :
   have hjL : j < L₂.length := (List.getElem?_eq_some_iff.mp hj).1
   refine not_inWins_of_not_bad hb (i := i) (j := L.length + j) (by (clear * - hiL; omega)) ?_ ?_
   · rw [List.getElem?_append_left hiL]; exact hi
-  · rw [List.getElem?_append_right (by (clear * -; omega))]; simpa using hj
+  · rw [List.getElem?_append_right (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - L j; omega)))]; simpa using hj
 
 /-- The first entry answering `v` is not changed by entries that do not answer `v`. -/
 theorem findA_append {L L₂ : Log} {v : Digest} (h : ∀ e' ∈ L₂, e'.2 ≠ v) :
@@ -293,7 +293,7 @@ theorem dg_take_drop (b : Bytes) (n i : ℕ) (h : 32 * i + 32 ≤ n) :
   funext j
   have hj := j.isLt
   rw [List.getD_eq_getElem?_getD, List.getD_eq_getElem?_getD, List.getElem?_drop,
-    List.getElem?_drop, List.getElem?_take, ite_eq_left (show 32 * i + j.val < n by omega)]
+    List.getElem?_drop, List.getElem?_take, ite_eq_left (show 32 * i + j.val < n by (clear * - i j n h hj; omega))]
 
 /-- The cap nodes of a commitment read from `m` are windows of `m`. -/
 theorem capI_inMsg {ht w : ℕ} {m : Bytes} (hm : S.capBytes ht w ≤ m.length) :
@@ -307,7 +307,7 @@ theorem capI_inMsg {ht w : ℕ} {m : Bytes} (hm : S.capBytes ht w ≤ m.length) 
 
 theorem inMsg_drop {v : Digest} {m : Bytes} {d : ℕ} (h : InMsg v (m.drop d)) : InMsg v m := by
   obtain ⟨k, hk, rfl⟩ := h
-  refine ⟨d + k, by simp at hk; omega, ?_⟩
+  refine ⟨d + k, by simp at hk; (clear * - d k m hk; omega), ?_⟩
   rw [List.drop_drop]
 
 /-- Reading consumes a prefix: every message on the way is a suffix. -/
@@ -423,7 +423,7 @@ theorem seedQ_size (a₀ : Digest) (x : S.Stmt) : (S.seedQ a₀ x).size = 32 + (
 theorem isNode_size {L : Log} {j : ℕ} {I : S.NI} (h : S.IsNode L j I) :
     ∃ e, L[j]? = some e ∧ 32 ≤ e.1.size := by
   cases h with
-  | seed x hr h0 hq hcap => exact ⟨_, hq, by rw [S.seedQ_size]; (clear * -; omega)⟩
+  | seed x hr h0 hq hcap => exact ⟨_, hq, by rw [S.seedQ_size]; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - S x; omega))⟩
   | child hI hij hi hq hcap hs => exact ⟨_, hq, by simp⟩
 
 theorem toQ_append_inj {a a' : Digest} {m m' : Bytes} (h : toQ (a.toList ++ m) = toQ (a'.toList ++ m')) :
@@ -502,8 +502,8 @@ theorem inWins_of_inMsg {a : Digest} {m : Bytes} (hcap : 32 + m.length ≤ query
   refine ⟨by rw [hs]; exact hcap, 32 + k, by rw [hs]; (clear * - hk hs; omega), ?_⟩
   unfold win
   rw [qb_toQ, List.drop_append,
-    List.drop_eq_nil_of_le (show a.toList.length ≤ 32 + k by rw [Vector.length_toList]; (clear * -; omega)),
-    List.nil_append, Vector.length_toList, show 32 + k - 32 = k by (clear * -; omega)]
+    List.drop_eq_nil_of_le (show a.toList.length ≤ 32 + k by rw [Vector.length_toList]; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - k; omega))),
+    List.nil_append, Vector.length_toList, show 32 + k - 32 = k by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - k; omega))]
 
 theorem isNode_append_aux {L L₂ : Log} {j : ℕ} {I : S.NI}
     (hW : ∀ (a : Digest) (m : Bytes) (e : ByteArray × Digest), e ∈ L →

@@ -92,12 +92,12 @@ theorem ra_contrib (tr : Trace) (i : ℕ) (e : PE) (prev : Digest) (hok : raOk e
   | leaf =>
     simp only [raOk, decide_eq_true_eq] at hok
     have h64 := ne64_of_leaf hok
-    rw [ite_eq_right (by simp only [leafLens, List.mem_cons, List.not_mem_nil, or_false] at hok; omega),
+    rw [ite_eq_right (by simp only [leafLens, List.mem_cons, List.not_mem_nil, or_false] at hok; (clear * - len tr i hok; omega)),
       ite_eq_right h64, ite_eq_left hok]
     rfl
   | node pe h j lvl cap =>
     simp only [raOk, beq_iff_eq] at hok
-    rw [ite_eq_right (by omega), ite_eq_left hok, hprev hok]
+    rw [ite_eq_right (by (clear * - len tr i hok; omega)), ite_eq_left hok, hprev hok]
     rfl
 
 /-! ## The static facts -/
@@ -146,7 +146,7 @@ private theorem ra_ok_fs (st len : ℕ) (h : len != 64 && !decide (len ∈ leafL
   simp only [Bool.and_eq_true, bne_iff_ne, ne_eq, Bool.not_eq_true', decide_eq_false_iff_not] at h
   simp only [raOk, Bool.not_eq_true', Bool.or_eq_false_iff, beq_eq_false_iff_ne, ne_eq,
     decide_eq_false_iff_not]
-  exact ⟨⟨by omega, h.1⟩, h.2⟩
+  exact ⟨⟨by (clear * - len h32; omega), h.1⟩, h.2⟩
 
 private theorem ra_map_range {α : Type} (n : ℕ) (a : α) : (List.range n).map (fun _ => a) = List.replicate n a := by
   rw [List.map_const', List.length_range]
@@ -175,7 +175,7 @@ private theorem ra_pos_ok (m st i pend : ℕ) (h : blkOk (.one .fs (32 + pend)) 
       raOk = true := by
   rw [List.range_succ_eq_map, List.map_cons, List.map_map, List.all_cons]
   simp only [ite_true, Function.comp_def, Nat.succ_ne_zero, ite_false]
-  rw [ra_ok_fs _ _ h (by omega), Bool.true_and, List.all_map, List.all_eq_true]
+  rw [ra_ok_fs _ _ h (by (clear * - pend; omega)), Bool.true_and, List.all_map, List.all_eq_true]
   intro x _
   rfl
 
@@ -212,7 +212,7 @@ private theorem ra_plan_lens (p : Params) : ∀ (its : List Item) (w : WS), (pla
         simpa only [itemBlks, List.all_cons, Bool.and_eq_true] using hb
       obtain ⟨h1, h2⟩ := ih hb'.2
       rw [h1, h2, Bool.and_true]
-      exact ⟨rfl, show raOk ⟨.fs w.st, 32 + w.pend⟩ && true = true by rw [ra_ok_fs _ _ hb'.1 (by omega)]; rfl⟩
+      exact ⟨rfl, show raOk ⟨.fs w.st, 32 + w.pend⟩ && true = true by rw [ra_ok_fs _ _ hb'.1 (by (clear * - w; omega))]; rfl⟩
     | positions r =>
       have hn : 1 ≤ (p.level r).nPosQ := by
         have : (w.ok && decide (1 ≤ (p.level r).nPosQ)) = true := hstep
@@ -275,7 +275,7 @@ private theorem ra_plan_chk_of (p : Params) (hP : PlanOk p) (hb : (blocks p).all
   · rw [plan, blocks, List.map_cons, List.map_cons, List.flatMap_cons]
     exact congrArg (7 :: ·) (congrArg (seedLenP p :: ·) h1)
   · rw [plan, List.all_cons, List.all_cons, ra_ok_fs 0 (seedLenP p) hb.1 (by
-      rw [seedLenP_eq]; omega)]
+      rw [seedLenP_eq]; (clear * - p; omega))]
     exact h2
 
 /-- **The plan at `pX`**: lengths `7 :: lensL` (`q₀`, then the extractor's), classes agreeing. -/
@@ -313,7 +313,7 @@ theorem ra_len_readTraceL (W : ℕ → Word) (i : ℕ) (hi : i < (readTraceL W).
       wordBytes_length]
   | succ k =>
     have hk : k < entL.length := by
-      rw [readTraceL, List.length_cons, List.length_map] at hi; omega
+      rw [readTraceL, List.length_cons, List.length_map] at hi; (clear * - k hi; omega)
     have e1 : (entL.map fun x => entAt W x.1 x.2).getD k dflt = entAt W entL[k].1 entL[k].2 := by
       rw [List.getD_eq_getElem?_getD, List.getElem?_map, List.getElem?_eq_getElem hk]; rfl
     have e2 : lensL.getD k 0 = entL[k].2 := by
@@ -325,7 +325,7 @@ theorem ra_len_readTraceL (W : ℕ → Word) (i : ℕ) (hi : i < (readTraceL W).
     simp only [Bool.and_eq_true, beq_iff_eq, decide_eq_true_eq] at h8
     rw [List.getD_cons_succ, e2, bl, qOf, readTraceL, List.getD_cons_succ, e1]
     simp only [entAt, bArr_data, wordsBytes_length, length_wsAt]
-    omega
+    (clear * - k hk W h8; omega)
 
 /-! ## The theorem -/
 
@@ -396,8 +396,8 @@ theorem hdD_eq_digestAt (π : Proof) (j : ℕ) : hdD π j = digestAt π (8 * j) 
   rw [← wordByte_eq_getD]
   have e : wordByte (wsAt (pw π) j 4) i = wordByte (packBytes π.data.toList) (8 * j + i) := by
     simp only [wordByte, wsAt, pw]
-    rw [List.getD_eq_getElem _ _ (by simp; omega), List.getElem_map, List.getElem_range,
-      show (8 * j + i) / 8 = j + i / 8 by (clear * -; omega), show (8 * j + i) % 8 = i % 8 by (clear * -; omega)]
+    rw [List.getD_eq_getElem _ _ (by simp; (clear * - i hi; omega)), List.getElem_map, List.getElem_range,
+      show (8 * j + i) / 8 = j + i / 8 by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - j i; omega)), show (8 * j + i) % 8 = i % 8 by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - j i; omega))]
   rw [e, wordByte_packBytes]
   rw [List.getD_eq_getElem?_getD, Array.getElem?_toList]
   first
@@ -435,7 +435,7 @@ theorem parse_isK (pz : ℕ) (I : Array Word) (s : St) (hM : Inv s.M) :
   simp only [regs] at hs
   simp only [parseIR, readAt, kindPs, semXIR, runPrims, List.foldl, Prim.run, rA, rLen, rK, rB0,
     rIsK, rT, rIsSz]
-  simp (disch := first | decide | omega | (simp only [size_set]; omega)) [rd_set_self, rd_set_ne, XOp.eval]
+  simp (disch := first | decide | (clear * - s hs; omega) | (simp only [size_set]; (clear * - s hs; omega))) [rd_set_self, rd_set_ne, XOp.eval]
 
 /-! ## The leaf -/
 
@@ -529,7 +529,7 @@ theorem run_W_tape (inp : List Word) (a : ℕ) (ha : a < 2 ^ 64)
     rw [parse_regs _ I s0 h0, h4, h, if_neg]
     intro he
     have := congrArg BitVec.toNat he
-    rw [toNat_toWord (by (clear * -; omega)), BitVec.toNat_ofNat, Nat.mod_eq_of_lt (by rw [piSize_eq]; (clear * -; omega)),
+    rw [toNat_toWord (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)), BitVec.toNat_ofNat, Nat.mod_eq_of_lt (by rw [piSize_eq]; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)),
       piSize_eq] at this
     (clear * - this; omega)
   have hk' : a ≠ 0 → rd (semXIR I (parseIR (piSize pX)) s0).M rIsK = 0 := fun h => by

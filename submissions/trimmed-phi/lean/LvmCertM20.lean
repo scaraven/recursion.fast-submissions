@@ -113,7 +113,7 @@ theorem mapsFit_inst (N : TNat) (Q : Lvm.Loop.Program) (lay : Typed.Lay) (hl : N
       | trivial
       | exact Nat.mod_lt _ (Nat.two_pow_pos 19)
       | (simp only [lay26]; omega)
-      | omega
+      | (clear * - r y N hp hsrc; omega)
       | (have h1 : r.dst + (y - r.base) < 2 ^ 19 := by (clear * - hp hsrc; omega)
          unfold sflatWord
          split <;> simp only [sPos, sLanes, recRowBits, recStreamCols] at * <;> omega)
@@ -278,7 +278,7 @@ theorem readdTGL (C : QCfg) (F : TFrz) (Q : Program) (tl : Typed.Lay) (N : TNat)
     obtain ⟨hl17, hq⟩ := hblk lq hlq
     rw [hrl] at hq
     have hx'16 : x' < 16 := hx'
-    have hj : 17 * (lq.2 + x') + lq.1 < 17 * 2 ^ 14 := by omega
+    have hj : 17 * (lq.2 + x') + lq.1 < 17 * 2 ^ 14 := by (clear * - lq x' C F Q hx' hl17 hq; omega)
     have e : (Lvm.QAsm.lay C).sb + 17 * lq.2 + lq.1 + 17 * x' =
         (Lvm.QAsm.lay C).sb + (17 * (lq.2 + x') + lq.1) := by ring
     have h16 : (2 : ℕ) ^ 14 = 16384 := by norm_num
@@ -290,11 +290,11 @@ theorem readdTGL (C : QCfg) (F : TFrz) (Q : Program) (tl : Typed.Lay) (N : TNat)
       beta_reduce at h1
       have e2 : (17 * (lq.2 + x') + lq.1) % 17 * 2 ^ 14 + (17 * (lq.2 + x') + lq.1) / 17 =
           lq.1 * 2 ^ C.rl + lq.2 + x' := by
-        rw [hrl, h16]; omega
+        rw [hrl, h16]; (clear * - lq x' C F Q hl17; omega)
       have hs : Lvm.sCol C.p lq.1 + lq.2 + x' = CMain.sOff20 + (lq.1 * 2 ^ C.rl + lq.2 + x') := by
         simp only [Lvm.sCol, hs0, hrr, hrl]
-        omega
-      rw [e, h1, e2, hs, comCell_S hSB (by rw [hrl, h16]; omega)]
+        (clear * - lq x' C F Q; omega)
+      rw [e, h1, e2, hs, comCell_S hSB (by rw [hrl, h16]; (clear * - lq x' C F Q hx' hl17 hq hj; omega))]
 
 end Lvm.NS
 end
@@ -438,7 +438,7 @@ theorem vgetD_ofFn_ge {α : Type} {m : ℕ} (f : Fin m → α) (d : α) {n : ℕ
     (Vector.ofFn f).getD n d = d := by
   unfold Vector.getD
   rw [Array.getD_eq_getD_getElem?, Vector.getElem?_toArray, Vector.getElem?_ofFn]
-  simp [show ¬ n < m by omega]
+  simp [show ¬ n < m by (clear * - n m h; omega)]
 
 theorem getD_recB20_ge (q : Column CMain.nu20) {i : ℕ} (hi : 2 ^ 19 ≤ i) :
     (recB20 q).values.getD i 0 = 0 := by
@@ -467,28 +467,28 @@ def sIdx (x : List UInt8) (i : ℕ) : ℕ :=
 theorem getD_winOf (q : Column CMain.nu20) {j : ℕ} (hj : j < 2 ^ 20) :
     (Lvm.X.winOf q).getD j 0 = q.values.getD (Lvm.X.winLo * 2 ^ 17 + j) 0 := by
   unfold Lvm.X.winOf
-  rw [List.getD_eq_getElem?_getD, List.getElem?_map, List.getElem?_range (by simp only [Lvm.X.winC]; omega)]
+  rw [List.getD_eq_getElem?_getD, List.getElem?_map, List.getElem?_range (by simp only [Lvm.X.winC]; (clear * - hj; omega))]
   rfl
 
 /-- The big shape: `S` (`sOff20 ≥ winLo · 2^17`, `sOff20 + 2^19 ≤ (winLo + winC) · 2^17`) is read in place. -/
 theorem win_big (q : Column CMain.nu20) {i : ℕ} (hi : i < 2 ^ 19) :
     (Lvm.X.winOf q).getD (CMain.sOff20 + i - Lvm.X.winLo * 2 ^ 17) 0 = q.values.getD (CMain.sOff20 + i) 0 := by
-  rw [getD_winOf q (by simp only [CMain.sOff20, Lvm.X.winLo]; omega)]
+  rw [getD_winOf q (by simp only [CMain.sOff20, Lvm.X.winLo]; (clear * - i hi; omega))]
   refine congrArg (fun k ↦ q.values.getD k 0) ?_
-  simp only [CMain.sOff20, Lvm.X.winLo]; omega
+  simp only [CMain.sOff20, Lvm.X.winLo]; (clear * - i hi; omega)
 
 /-- The small shape: `S` lies in `Shape.regions`' block `(20, 5·2^20, 2·2^20)` (big `sOff20 = 5·2^20 + 2^19`,
 small logical `sOff20s = 2·2^20 + 2^19`), so `bigOf`'s word `sOff20 + i` is physical word `2·(sOff20s + i)`. -/
 theorem win_small (q : Column CMain.nu20) {i : ℕ} (hi : i < 2 ^ 19) :
     (Lvm.X.winOf q).getD (2 * (CMain.sOff20s + i) - Lvm.X.winLo * 2 ^ 17) 0 =
       (Lvm.Shape.bigOf q).values.getD (CMain.sOff20 + i) 0 := by
-  rw [getD_winOf q (by simp only [CMain.sOff20s, Lvm.X.winLo]; omega),
-    Lvm.Shape.getD_bigOf q (by simp only [CMain.sOff20, CMain.nu20]; omega),
+  rw [getD_winOf q (by simp only [CMain.sOff20s, Lvm.X.winLo]; (clear * - i hi; omega)),
+    Lvm.Shape.getD_bigOf q (by simp only [CMain.sOff20, CMain.nu20]; (clear * - i hi; omega)),
     show CMain.sOff20 + i = 4 * 2 ^ 20 + (1 * 2 ^ 20 + (2 ^ 19 + i)) by
-      simp only [CMain.sOff20]; (clear * -; omega),
-    Lvm.Shape.bigWord_hi q (by norm_num) (by omega), Lvm.NS.wd]
+      simp only [CMain.sOff20]; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega),
+    Lvm.Shape.bigWord_hi q (by norm_num) (by (clear * - i hi; omega)), Lvm.NS.wd]
   refine congrArg (fun k ↦ q.values.getD k 0) ?_
-  simp only [CMain.sOff20s, Lvm.X.winLo]; omega
+  simp only [CMain.sOff20s, Lvm.X.winLo]; (clear * - i hi; omega)
 
 theorem recOf20_eq (x : List UInt8) (q : Column CMain.nu20) :
     recOf20 x q = recB20 (Lvm.Shape.view x q) := rfl

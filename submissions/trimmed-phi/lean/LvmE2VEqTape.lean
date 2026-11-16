@@ -193,19 +193,19 @@ theorem refW_verifyKeccakLayerD (sh : LeanVM.Protocol.KeccakGkr.Shape) (logSteps
   refine RefAtW.bind (fun _ ↦ monoD_layerTailD _ _ _ _)
     ((refW_sumcheckD E2V.gC3 4 (by norm_num)
       (List.replicate LeanVM.Protocol.Verifier.keccakLocalBits none) vsp.1 ?_).congr_prog ?_) ?_
-  · refine WAt.idx_eq h4 (by simp [length_wReads, wSampleG, wPack, length_wSc, show LeanVM.Protocol.Verifier.keccakLocalBits = 11 from rfl]; omega)
+  · refine WAt.idx_eq h4 (by simp [length_wReads, wSampleG, wPack, length_wSc, show LeanVM.Protocol.Verifier.keccakLocalBits = 11 from rfl]; (clear * - i claim rw vsp; omega))
   · rw [map_replicate_noneE2, ← hv1]
   intro lv lv' hl
   obtain ⟨hl1, hl2, hl3⟩ := hl
   refine ((refW_layerTailD claim s vsp lv (WAt.append.2 ⟨?_, ?_⟩)).congr_prog ?_).mono ?_ |>.idx ?_
-  · refine WAt.idx_eq h5 (by simp [length_wReads, wSampleG, wPack, length_wSc, show LeanVM.Protocol.Verifier.keccakLocalBits = 11 from rfl]; omega)
-  · refine WAt.idx_eq h6 (by simp [length_wReads, wSampleG, wPack, length_wSc, show LeanVM.Protocol.Verifier.keccakLocalBits = 11 from rfl]; omega)
+  · refine WAt.idx_eq h5 (by simp [length_wReads, wSampleG, wPack, length_wSc, show LeanVM.Protocol.Verifier.keccakLocalBits = 11 from rfl]; (clear * - i claim rw vsp lv; omega))
+  · refine WAt.idx_eq h6 (by simp [length_wReads, wSampleG, wPack, length_wSc, show LeanVM.Protocol.Verifier.keccakLocalBits = 11 from rfl]; (clear * - i claim rw vsp lv; omega))
   · rw [show vsp' = (vsp'.1, vsp'.2.1, vsp'.2.2) from rfl, show lv' = (lv'.1, lv'.2) from rfl,
       hv1, hv2, hv3, hl1, hl2]
   · exact fun c c' hc ↦ ⟨hc.1, by rw [hc.2, hv4]⟩
   · simp [wLayer, length_wReads, wSampleG, wPack, length_wSc,
       show LeanVM.Protocol.Verifier.keccakLocalBits = 11 from rfl]
-    omega
+    (clear * - i claim rw vsp lv; omega)
 
 /-- **The layers.** -/
 theorem refW_keccakLayersD (sh : LeanVM.Protocol.KeccakGkr.Shape) (logSteps pl : ℕ) :
@@ -246,7 +246,7 @@ theorem refW_tapeGkrD (h : ℕ) (inst output : List FE2) (hi : inst.length = h) 
   · exact WAt.idx_eq hw.2 (by simp [LeanVM.Protocol.Verifier.keccakLaneBits])
   · rw [cE2, E2V.toE2_firstClaimSF, List.map_nil, Lvm.FE2.toE2_zero]
   · simp [wTapeGkr, LeanVM.Protocol.Verifier.keccakLaneBits]
-    omega
+    (clear * - i h inst; omega)
 
 /-- `n` ground challenges, with the native list's length. -/
 theorem refW_samplesGL (g : ℕ) (n : ℕ) {i : ℕ} (hw : WAt rw i (List.replicate n 8)) :
@@ -261,7 +261,7 @@ theorem refW_samplesGL (g : ℕ) (n : ℕ) {i : ℕ} (hw : WAt rw i (List.replic
     intro x y hxy
     refine RefAtW.bind (fun _ ↦ MonoD.pure _) (ih hw.2) ?_
     intro xs ys hs
-    exact (RefAtW.pure ⟨by simp [hxy, hs.1], by simp [hs.2]⟩).idx (by omega)
+    exact (RefAtW.pure ⟨by simp [hxy, hs.1], by simp [hs.2]⟩).idx (by (clear * - i n rw xs; omega))
 
 /-- The widths of a slot reduction of `b` rounds. -/
 def wSlot (b : ℕ) : List ℕ := wSc 3 b ++ wReads 64
@@ -299,7 +299,7 @@ theorem refW_slotD (b sb blk : ℕ) (W : ℕ → ℕ → FE2) (pt : List FE2) (v
   · refine RefAtW.bind (fun _ ↦ MonoD.pure _)
       ((refW_rowSwitchD (pt ++ sl.1 ++ E2V.selPtF blk sb) sv).congr_prog ?_) fun row row' hr ↦ ?_
     · rw [List.map_append, List.map_append, E2V.map_toE2_selPtF, ← h1]
-    · exact (RefAtW.pure ⟨h1, h2, rfl, hr⟩).idx (by simp [wSlot, length_wReads]; omega)
+    · exact (RefAtW.pure ⟨h1, h2, rfl, hr⟩).idx (by simp [wSlot, length_wReads]; (clear * - i b; omega))
 
 /-- The widths of the chain wiring at `w` row coordinates. -/
 def wWire (w : ℕ) : List ℕ := wSc 3 w ++ wReads 1 ++ wSlot 2
@@ -339,11 +339,11 @@ theorem refW_wireD (w sb dsel : ℕ) (s : List FK) (d : RecursionFast.Digest)
       funext fun o ↦ funext fun z ↦ E2V.toE2_dWF _ _ _
     refine RefAtW.bind (fun _ ↦ MonoD.pure _)
       ((refW_slotD 2 sb dsel (E2V.dWF claim.weights) sc.1 (g.getD 0 0)
-        (WAt.idx_eq hw3 (by simp [length_wReads]; omega))).congr_prog
+        (WAt.idx_eq hw3 (by simp [length_wReads]; (clear * - i w; omega)))).congr_prog
         ?_) fun dd dd' hd ↦ ?_
     · rw [hW, toE2_getD, ← h1]
       rfl
-    · exact (RefAtW.pure ⟨h1, h2, rfl, hd⟩).idx (by simp [wSlot, wWire, length_wReads]; omega)
+    · exact (RefAtW.pure ⟨h1, h2, rfl, hd⟩).idx (by simp [wSlot, wWire, length_wReads]; (clear * - i w; omega))
 
 /-- The widths of the tape caller at `w` row coordinates. -/
 def wTape (w : ℕ) : List ℕ := List.replicate w 8 ++ wReads 25 ++ wTapeGkr w ++ wWire w
@@ -376,7 +376,7 @@ theorem refW_tapeD (w sb dsel : ℕ) (s : List FK) (d : RecursionFast.Digest)
   subst hv
   refine RefAtW.bind (fun _ ↦ (MonoD.require _).bind fun _ ↦
     (monoD_wireD _ _ _ _ _ _).bind fun _ ↦ MonoD.pure _)
-    (refW_tapeGkrD w r v hrl (WAt.idx_eq hw3 (by simp [length_wReads]; omega))) ?_
+    (refW_tapeGkrD w r v hrl (WAt.idx_eq hw3 (by simp [length_wReads]; (clear * - i w r; omega)))) ?_
   rintro c c' ⟨hc, -⟩
   subst hc
   refine RefAtW.bind (fun _ ↦ (monoD_wireD _ _ _ _ _ _).bind fun _ ↦ MonoD.pure _)

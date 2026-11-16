@@ -299,6 +299,15 @@ theorem m2_im_def (a b : FE2) : (m2 a b).im.val = FK.reduce
       ((FK.clmul64 a.re.val b.re.val).hi ^^^ (FK.clmul64 a.im.val b.im.val).hi) ^^^
       (((FK.clmul64 a.im.val b.im.val).hi <<< 1) ||| ((FK.clmul64 a.im.val b.im.val).lo >>> 63))) := rfl
 
+/-- `m2_re`'s class step on variables (GOLF3: on the words' polynomials the kernel unfolded them, 1.6 M
+heartbeats). -/
+private theorem m2re_mk : ∀ x L0 L1 H0 H1 A B C D : (ZMod 2)[X], L0 + x * H0 = A * B → L1 + x * H1 = C * D →
+    AdjoinRoot.mk BF64.basePoly (L0 + L1 + x * (H0 + H1)) =
+      AdjoinRoot.mk BF64.basePoly A * AdjoinRoot.mk BF64.basePoly B +
+        AdjoinRoot.mk BF64.basePoly C * AdjoinRoot.mk BF64.basePoly D := by
+  intro x L0 L1 H0 H1 A B C D h0 h1
+  rw [← map_mul, ← map_mul, ← map_add, ← h0, ← h1, mul_add, add_add_add_comm]
+
 /-- `m2`'s constant coordinate is `E2`'s. -/
 theorem m2_re (a b : FE2) : (m2 a b).re = a.re * b.re + a.im * b.im := by
   have h0 := FK.P_clmul64 a.re.val b.re.val
@@ -306,10 +315,19 @@ theorem m2_re (a b : FE2) : (m2 a b).re = a.re * b.re + a.im * b.im := by
   apply kt_FK_eq
   rw [show (a.re * b.re + a.im * b.im).val = (a.re * b.re).val ^^^ (a.im * b.im).val from rfl, kt_Q_xor, FK.Q_mul,
     FK.Q_mul]
-  rw [m2_re_def, FK.mk_reduce]
-  simp only [FK.Q, ← map_mul, ← map_add, FK.P_xor]
-  refine congrArg (AdjoinRoot.mk BF64.basePoly) ?_
-  rw [← h0, ← h1, mul_add, add_add_add_comm]
+  rw [m2_re_def, FK.mk_reduce, FK.P_xor, FK.P_xor]
+  simp only [FK.Q]
+  -- the class step on variables (GOLF3: on the words' polynomials the kernel unfolded them, 1.6 M heartbeats)
+  generalize FK.P (FK.clmul64 a.re.val b.re.val).lo = L0 at h0 ⊢
+  generalize FK.P (FK.clmul64 a.re.val b.re.val).hi = H0 at h0 ⊢
+  generalize FK.P (FK.clmul64 a.im.val b.im.val).lo = L1 at h1 ⊢
+  generalize FK.P (FK.clmul64 a.im.val b.im.val).hi = H1 at h1 ⊢
+  generalize FK.P a.re.val = A at h0 ⊢
+  generalize FK.P b.re.val = B at h0 ⊢
+  generalize FK.P a.im.val = C at h1 ⊢
+  generalize FK.P b.im.val = D at h1 ⊢
+  generalize (X ^ 64 : (ZMod 2)[X]) = x at h0 h1 ⊢
+  exact m2re_mk x L0 L1 H0 H1 A B C D h0 h1
 
 /-- `m2`'s `X` coordinate is `E2`'s. -/
 theorem m2_im (a b : FE2) : (m2 a b).im = a.re * b.im + a.im * b.re + FK.x * (a.im * b.im) := by

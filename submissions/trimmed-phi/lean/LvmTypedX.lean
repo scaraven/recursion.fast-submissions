@@ -112,7 +112,7 @@ theorem lhx_val_hi (Q : Program) (lay : Lay) (z : ℕ → FK) (i : Inst) {o : �
     lh_val z ((instEnts Q lay i).filter (·.o == o)) = 0 := by
   rw [List.filter_eq_nil_iff.mpr fun e he hp ↦ by
     have := (lh_instEnts_mem Q lay i he).1
-    simp only [beq_iff_eq] at hp; omega]
+    simp only [beq_iff_eq] at hp; (clear * - o ho e this hp; omega)]
   rfl
 
 /-- **Both rows of an `E2` twin pair hold from its one slot.** With the program and twin checks, on a checked
@@ -135,7 +135,7 @@ theorem twin_of_wiringX (Q : Program) (lay : Lay) (z : ℕ → FK) (hwf : Q.wf =
     intro o ho
     have hmem : (i.row.args.getD o default) ∈ i.row.args := by
       simp only [List.getD_eq_getElem?_getD, List.getElem?_eq_getElem (show o < i.row.args.length by
-        change o < ((Q.blk b).tpl.getD t default).args.length; omega), Option.getD_some]
+        change o < ((Q.blk b).tpl.getD t default).args.length; (clear * - o Q b t jf f hlen ho; omega)), Option.getD_some]
       exact List.getElem_mem _
     have hK : (i.row.args.getD o default).ty = .K :=
       beq_iff_eq.mp (List.all_eq_true.mp hallK _ (List.mem_map_of_mem (f := fun a : Addr ↦ a.ty) hmem))
@@ -151,7 +151,7 @@ theorem twin_of_wiringX (Q : Program) (lay : Lay) (z : ℕ → FK) (hwf : Q.wf =
         Option.getD_some, Option.toList_some, List.map_append, List.sum_append, List.map_cons, List.map_nil,
         List.sum_cons, List.sum_nil, Nat.add_zero]
     simp only [hi, Program.inst]
-    rw [hr, hw]; omega
+    rw [hr, hw]; (clear * - Q b jf t f; omega)
   have hres0 : M.res i = M.rd .K i.ck := by simp only [Mem.res]; rw [show i.row.ty = .K from hty]; rfl
   have hres1 : M.res (Q.inst b jf (t + 1)) = M.rd .K (i.ck + 1) := by
     simp only [Mem.res]; rw [show (Q.inst b jf (t + 1)).row.ty = .K from h4.trans hty, Inst.clock_K, hck]
@@ -173,7 +173,7 @@ theorem twin_of_wiringX (Q : Program) (lay : Lay) (z : ℕ → FK) (hwf : Q.wf =
     simp only [E2Fn.arity] at hA
     simp only [E2Fn.val, E2Fn.opd, FE2.mul_def, FE2.add_def, FE2.coord_false, FE2.coord_true, Nat.mul_zero,
       Nat.zero_add, Nat.mul_one, Nat.reduceMul, Nat.reduceAdd, lhx_ofK_add, lhx_ofK_mul,
-      hA 0 (by omega), hA 1 (by omega), hA 2 (by omega), hA 3 (by omega), hA 4 (by omega), hA 5 (by omega)]
+      hA 0 (by (clear * - Q b jf t; omega)), hA 1 (by (clear * - Q b jf t; omega)), hA 2 (by (clear * - Q b jf t; omega)), hA 3 (by (clear * - Q b jf t; omega)), hA 4 (by (clear * - Q b jf t; omega)), hA 5 (by (clear * - Q b jf t; omega))]
     exact ⟨lh_c2 R0, lh_c2 R1⟩
   | lin k k₀ k₁ =>
     simp only [instEntsX, hopi, lh_val_append, lh_val_tagE, Nat.reduceEqDiff, ↓reduceIte, add_zero, zero_add,
@@ -182,7 +182,7 @@ theorem twin_of_wiringX (Q : Program) (lay : Lay) (z : ℕ → FK) (hwf : Q.wf =
     simp only [E2Fn.arity] at hA
     simp only [E2Fn.val, E2Fn.opd, FE2.mul_def, FE2.add_def, FE2.ofK, FE2.coord_false, FE2.coord_true,
       Nat.mul_zero, Nat.zero_add, Nat.mul_one, Nat.reduceMul, Nat.reduceAdd, zero_mul, mul_zero, add_zero,
-      lhx_ofK_add, lhx_ofK_mul, hA 0 (by omega), hA 1 (by omega), hA 2 (by omega), hA 3 (by omega)]
+      lhx_ofK_add, lhx_ofK_mul, hA 0 (by (clear * - Q b jf t k k₀ k₁; omega)), hA 1 (by (clear * - Q b jf t k k₀ k₁; omega)), hA 2 (by (clear * - Q b jf t k k₀ k₁; omega)), hA 3 (by (clear * - Q b jf t k k₀ k₁; omega))]
     exact ⟨lh_c2 R0, lh_c2 R1⟩
 
 /-- **One instance's relation and gated assertion from the coordinate-split wiring relation** (its `readd` case from
@@ -198,13 +198,13 @@ theorem rowDef_of_wiringX (Q : Program) (lay : Lay) (z : ℕ → FK) (hwf : Q.wf
     cases hh
     · exact (twin_of_wiringX Q lay z hwf htw hlay hone h hb hjf ht hop).1
     · obtain ⟨hpos, hprev⟩ := twinsTpl_hi _ (Q.twinsTpl_blk htw hb) t f hop
-      have := (twin_of_wiringX Q lay z hwf htw hlay hone h hb hjf (t := t - 1) (by omega) hprev).2
+      have := (twin_of_wiringX Q lay z hwf htw hlay hone h hb hjf (t := t - 1) (by (clear * - t Q b jf ht hpos; omega)) hprev).2
       rwa [Nat.sub_add_cancel hpos] at this
   · have he2 : ∀ f hh, (Q.inst b jf t).row.op ≠ .e2 f hh := fun f hh h' ↦ he ⟨f, hh, h'⟩
     refine lh_row_at Q lay z hwf hlay hone hb hjf ht hi (fun hc ↦ ?_) (fun lo m hop ↦ hrd lo m hop) he2
     obtain ⟨R0, -⟩ := lhx_slot Q lay z hlay h hb ht hjf hc
     simp only [lvX, lhx_instEntsX_ne' Q lay _ he2, lhx_val_hi Q lay z _ (le_refl 4),
-      lhx_val_hi Q lay z _ (show 4 ≤ 5 by omega), mul_zero, add_zero] at R0
+      lhx_val_hi Q lay z _ (show 4 ≤ 5 by (clear * - Q b jf t; omega)), mul_zero, add_zero] at R0
     exact R0
 
 /-- **Statement 11: the coordinate-split wiring relation is the program's relations** (E2AC-DES §1.2, §6): with

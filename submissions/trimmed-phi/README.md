@@ -1,7 +1,7 @@
-# planned-phi
+# trimmed-phi
 
 The `leanvm-inspired` entry's roll after #29 (`planned-phi`): the node program's `Φ_Q` loses 7.6 % of its products
-(blob U′) and `V`'s `Φ_Q` code gets faster; the certificate's import closure is slimmer (GOLF2). The transcript, `|π|`,
+(blob U′) and `V`'s `Φ_Q` code gets faster; the certificate is cheaper to check (GOLF2, GOLF3). The transcript, `|π|`,
 the claim and the prover's code are #29's. It continues #29, #28 (`brisk-tape`), #27 (`single-tape`, stage `S2GU`),
 #26 (`halved-phi`), #25, #22, #21, #20, #19 and PR #11, under its own root.
 
@@ -16,8 +16,9 @@ the numbers and the dead ends.
   Statements unchanged; the guard holds natively on blob U′.
 - **`V`'s `Φ_Q` −3.9 / −4.4 ms on dev** (small / big; `V_S` −3.2 / −7.0 ms) [measured, timing lock].
 - **Prover:** #29's code with blob U′ embedded; the proof bytes change (new node program), their lengths do not.
-- **GOLF2 kernel diet:** 8,506 unused constants moved out of the certificate's import closure; 0 theorem types
-  changed against #27 [measured].
+- **Kernel diet (GOLF2, GOLF3):** 8,506 unused constants moved out of the certificate's import closure, then
+  proof-only golf (`omega` hypotheses, persistent decisions as lemmas); `certified`'s cone 1,412 → 1,206 M heartbeats
+  (−14.6 %); 0 theorem types changed against #27 [measured].
 - **Projected [model]:** `V` −2 to −3 ms on the evaluation machine: S ≈ 1.571–1.577, S× ≈ 0.908.
 
 **Changes in #29 (`planned-phi`) since #28** (`brisk-tape`; evaluated S = 1.6224, S× = 0.944):

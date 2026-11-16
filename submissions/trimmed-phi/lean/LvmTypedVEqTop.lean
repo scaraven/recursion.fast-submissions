@@ -513,10 +513,128 @@ theorem stA_atomsOf (p : Params) {occ : ℕ → ℕ → ℕ} : ∀ (its : List I
       exact stA_atomsOf p its pend cr hs
     | opening r => rw [itemAtoms, List.singleton_append, stA, stI, stA_atomsOf p its]
 
-set_option maxRecDepth 200000 in
+private theorem nw_append {a b : List Item} (ha : noWB a = true) (hb : noWB b = true) : noWB (a ++ b) = true := by
+  rw [noWB, List.all_append, Bool.and_eq_true]; exact ⟨ha, hb⟩
+
+private theorem nw_flatten {L : List (List Item)} (h : ∀ l ∈ L, noWB l = true) : noWB L.flatten = true := by
+  rw [noWB, List.all_eq_true]
+  intro x hx
+  obtain ⟨l, hl, hx⟩ := List.mem_flatten.1 hx
+  exact List.all_eq_true.1 (h l hl) x hx
+
+private theorem nw_rep {n : ℕ} {l : List Item} (h : noWB l = true) : noWB (List.replicate n l).flatten = true :=
+  nw_flatten fun _ hl' => (List.eq_of_mem_replicate hl') ▸ h
+
+private theorem nw_rd (m : ℕ) : noWB (rd m) = true := by unfold rd; split <;> rfl
+
+private theorem nw_smp (n : ℕ) : noWB (smp n) = true := by
+  rw [noWB, List.all_eq_true]; intro x hx; unfold smp at hx; rw [List.eq_of_mem_replicate hx]; rfl
+
+private theorem nw_sumcheckI (r d : ℕ) : noWB (sumcheckI r d) = true := nw_rep (nw_append (nw_rd d) rfl)
+
+private theorem nw_keccakLayerI (pt : ℕ) : noWB (keccakLayerI pt) = true := by
+  refine nw_flatten ?_
+  simp only [List.mem_cons, List.not_mem_nil, or_false]
+  rintro l (rfl | rfl | rfl | rfl | rfl | rfl) <;> first | exact nw_rd _ | exact nw_smp _ | exact nw_sumcheckI _ _
+
+private theorem nw_keccakI (ls : ℕ) : noWB (keccakI ls) = true := by
+  refine nw_flatten ?_
+  simp only [List.mem_cons, List.not_mem_nil, or_false]
+  rintro l (rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl) <;>
+    first | exact nw_rd _ | exact nw_smp _ | exact nw_sumcheckI _ _ | exact nw_rep (nw_keccakLayerI _)
+
+private theorem nw_tapeLayersI (ls : ℕ) : noWB (tapeLayersI ls) = true :=
+  nw_append (nw_smp _) (nw_rep (nw_keccakLayerI _))
+
+private theorem nw_gpLayersI : ∀ (fuel layer point : ℕ), noWB (gpLayersI fuel layer point) = true
+  | 0, _, _ => rfl
+  | fuel + 1, layer, point => by
+    rw [gpLayersI]
+    split
+    · rfl
+    · refine nw_append (nw_flatten ?_) (nw_gpLayersI fuel _ _)
+      simp only [List.mem_cons, List.not_mem_nil, or_false]
+      rintro l (rfl | rfl | rfl | rfl) <;>
+        first | exact nw_rd _ | exact nw_smp _ | exact nw_rep (nw_append (nw_rd _) (nw_smp _))
+
+private theorem nw_tailI : ∀ n : ℕ, noWB (tailI n) = true
+  | 0 => rfl
+  | 1 => rfl
+  | n + 2 => by
+    rw [tailI, noWB, List.all_cons, List.all_cons]
+    exact nw_tailI (n + 1)
+
+private theorem nw_grindI (g : ℕ) : noWB (grindI g) = true := by unfold grindI; split <;> rfl
+
+private theorem nw_levelI (com : Com) (fl g : ℕ) (L : Level) (next : Option Level) :
+    noWB (levelI com fl g L next) = true := by
+  cases next <;>
+  · refine nw_flatten ?_
+    simp only [List.mem_cons, List.not_mem_nil, or_false]
+    rintro l (rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl) <;>
+      first
+        | rfl
+        | exact nw_rd _
+        | exact nw_smp _
+        | exact nw_grindI _
+        | exact nw_tailI _
+        | exact nw_rep (nw_append (nw_smp _) (nw_rd _))
+
+private theorem nw_levelIJ (com : Com) (fl g : ℕ) (L : Level) (next : Option Level) :
+    noWB (levelIJ com fl g L next) = true := by
+  cases next <;>
+  · refine nw_flatten ?_
+    simp only [List.mem_cons, List.not_mem_nil, or_false]
+    rintro l (rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl) <;>
+      first
+        | rfl
+        | exact nw_rd _
+        | exact nw_smp _
+        | exact nw_grindI _
+        | exact nw_tailI _
+        | exact nw_rep (nw_append (nw_smp _) (nw_rd _))
+        | exact nw_append (nw_append (nw_append rfl (nw_smp _)) (nw_rd _)) (nw_rd _)
+
+private theorem nw_whirLevelsI (com : Com) (fl g : ℕ) : ∀ Ls : List Level, noWB (whirLevelsI com fl g Ls) = true
+  | [] => rfl
+  | [L] => nw_levelI com fl g L none
+  | L :: N :: rest => nw_append (nw_levelI com fl g L (some N)) (nw_whirLevelsI com fl g (N :: rest))
+
+private theorem nw_whirLevelsIJ (com : Com) (fl g : ℕ) : ∀ Ls : List Level, noWB (whirLevelsIJ com fl g Ls) = true
+  | [] => rfl
+  | [L] => nw_levelIJ com fl g L none
+  | L :: N :: rest => nw_append (nw_levelIJ com fl g L (some N)) (nw_whirLevelsIJ com fl g (N :: rest))
+
+/-- Stage `0`'s schedule has no `readW`, by the builders (GOLF3: deciding it on `P20`'s 2,489 items cost the
+kernel 2.6 M heartbeats). -/
+private theorem noWB_stage0 (p : Params) (h1 : p.stage ≠ 1) (h2 : p.stage ≠ 2) (h3 : p.stage ≠ 3) :
+    noWB (schedule p) = true := by
+  rw [schedule, phases, if_neg h1, if_neg h2, if_neg h3, noWB, List.all_eq_true]
+  intro x hx
+  obtain ⟨l, hl, hx⟩ := List.mem_flatMap.1 hx
+  suffices hl2 : noWB l.2 = true from List.all_eq_true.1 hl2 x hx
+  simp only [List.mem_cons, List.not_mem_nil, or_false] at hl
+  rcases hl with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
+  · rfl
+  all_goals first
+    | exact nw_append (nw_smp _) (by
+        split
+        · exact nw_append (nw_rd _) (nw_whirLevelsIJ _ _ _ _)
+        · exact nw_append (nw_rd _) (nw_whirLevelsI _ _ _ _))
+    | (refine nw_flatten ?_
+       simp only [List.forall_mem_cons, List.not_mem_nil, false_implies, implies_true, and_true]
+       and_intros <;>
+         first
+           | exact nw_rd _
+           | exact nw_smp _
+           | exact nw_sumcheckI _ _
+           | exact nw_append (nw_rd _) (nw_gpLayersI _ _ _)
+           | exact nw_tapeLayersI _
+           | exact nw_keccakI _)
+
 /-- `P20`'s schedule has no `readW` (stage `0`). -/
-theorem noWB_P20 : noWB (schedule P20) = true := by
-  rw [Lvm.Replay.P20_eq]; decide +kernel
+theorem noWB_P20 : noWB (schedule P20) = true :=
+  noWB_stage0 P20 (by decide) (by decide) (by decide)
 
 /-! ## Read widths of a stage-0 schedule -/
 

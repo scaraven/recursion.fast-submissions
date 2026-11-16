@@ -47,13 +47,13 @@ theorem and_one_toWord {a : ℕ} (ha : a < 2 ^ 64) :
   apply BitVec.eq_of_toNat_eq
   simp only [XOp.eval]
   rw [BitVec.toNat_and, toNat_toWord ha, show (1 : Word).toNat = 2 ^ 1 - 1 from rfl,
-    Nat.and_two_pow_sub_one_eq_mod, toNat_toWord (by (clear * -; omega))]
+    Nat.and_two_pow_sub_one_eq_mod, toNat_toWord (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - a; omega)))]
 
 theorem bit_eq (p h : ℕ) : p / 2 ^ h % 2 = if p.testBit h then 1 else 0 := by
   rw [Nat.testBit_eq_decide_div_mod_eq]
   by_cases e : p / 2 ^ h % 2 = 1
   · simp [e]
-  · simp [e]; omega
+  · simp [e]; (clear * - p h e; omega)
 
 
 /-! ## Heap frames of store-free code with counted loops -/
@@ -133,7 +133,7 @@ theorem iterL_ind {f : St → St} {c m : ℕ} (P : ℕ → St → Prop)
     ∀ k j s, j + k ≤ m → P j s → P (j + k) (iterL f c k s)
   | 0, _, _, _, hP => hP
   | k + 1, j, s, hk, hP => by
-    rw [show j + (k + 1) = (j + 1) + k by (clear * -; omega)]
+    rw [show j + (k + 1) = (j + 1) + k by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)]
     exact iterL_ind P h k (j + 1) _ (by (clear * - hk; omega)) (h j s (by (clear * - hk; omega)) hP)
 
 theorem loopK_eq (I : Array Word) {c n : ℕ} {K : Word} (b : XIR) (s : St) (hM : Inv s.M)
@@ -188,7 +188,7 @@ theorem loopK_run (I : Array Word) {c n K : ℕ} (b : XIR) (P : ℕ → St → P
     (hstep : ∀ j s, j < K → P j s → P (j + 1) (decS c (semXIR I b s))) :
     P K (semXIR I (.loopK c n (toWord K) b) s) := by
   rw [loopK_eq I b s hM hc hcr hn hN, toNat_toWord hK]
-  simpa using iterL_ind P hstep K 0 _ (by (clear * -; omega)) h0
+  simpa using iterL_ind P hstep K 0 _ (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - K; omega))) h0
 
 theorem toWord_zero' : toWord 0 = (0 : Word) := rfl
 

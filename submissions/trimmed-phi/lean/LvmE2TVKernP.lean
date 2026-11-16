@@ -86,7 +86,7 @@ theorem kg_ge_inv (n : Nat) : ∀ (c : Nat) (ρ r : List F), ρ.length = n → r
     intro c ρ r hρ hr hc
     rw [List.length_eq_zero_iff] at hρ hr
     subst hρ hr
-    obtain rfl : c = 0 := by omega
+    obtain rfl : c = 0 := by (clear * - c hc; omega)
     rw [pow_zero, Finset.sum_range_one]
     simp [E2V.eqAtF]
   | succ n ih =>
@@ -94,15 +94,15 @@ theorem kg_ge_inv (n : Nat) : ∀ (c : Nat) (ρ r : List F), ρ.length = n → r
     obtain ⟨a, ρ, rfl⟩ := List.exists_cons_of_length_eq_add_one hρ
     obtain ⟨b, r, rfl⟩ := List.exists_cons_of_length_eq_add_one hr
     simp only [List.length_cons, Nat.add_right_cancel_iff] at hρ hr
-    have hc2 : c / 2 < 2 ^ n := by rw [pow_succ] at hc; omega
+    have hc2 : c / 2 < 2 ^ n := by rw [pow_succ] at hc; (clear * - c n F hc ρ r; omega)
     rw [List.range_succ_eq_map, List.foldr_cons, List.foldr_map]
     simp only [Nat.succ_eq_add_one]
     rw [kg_gt_succ, ih (c / 2) ρ r hρ hr hc2, pow_succ, mul_comm _ 2, kg_sum_pairs]
     simp only [kg_gt, kg_toArray_getD, List.getD_cons_zero, Nat.testBit_zero, kg_eqAtF_cons]
-    have e1 : ∀ t : Nat, (2 * t) % 2 = 0 := fun t => by omega
-    have e2 : ∀ t : Nat, (2 * t) / 2 = t := fun t => by omega
-    have e3 : ∀ t : Nat, (2 * t + 1) % 2 = 1 := fun t => by omega
-    have e4 : ∀ t : Nat, (2 * t + 1) / 2 = t := fun t => by omega
+    have e1 : ∀ t : Nat, (2 * t) % 2 = 0 := fun t => by (clear * - t F n c ρ r; omega)
+    have e2 : ∀ t : Nat, (2 * t) / 2 = t := fun t => by (clear * - t F n c ρ r; omega)
+    have e3 : ∀ t : Nat, (2 * t + 1) % 2 = 1 := fun t => by (clear * - t F n c ρ r; omega)
+    have e4 : ∀ t : Nat, (2 * t + 1) / 2 = t := fun t => by (clear * - t F n c ρ r; omega)
     simp only [e1, e2, e3, e4, kg_eq1_t, kg_eq1_f, ite_true, Nat.zero_ne_one, ite_false]
     rcases Nat.mod_two_eq_zero_or_one c with hc0 | hc1
     · simp only [hc0, Nat.zero_ne_one, decide_false, Bool.false_eq_true, ite_false]
@@ -115,17 +115,17 @@ theorem kg_ge_inv (n : Nat) : ∀ (c : Nat) (ρ r : List F), ρ.length = n → r
         simp only [Finset.mem_range.2 hc2, ite_true]
       · intro t _
         rcases lt_trichotomy (c / 2) t with h | h | h
-        · have h1 : c < 2 * t := by omega
-          have h2 : c < 2 * t + 1 := by omega
-          have h3 : c / 2 ≠ t := by omega
+        · have h1 : c < 2 * t := by (clear * - c t F n ρ r hc0 h; omega)
+          have h2 : c < 2 * t + 1 := by (clear * - c t F n ρ r hc0 h; omega)
+          have h3 : c / 2 ≠ t := by (clear * - c t F n ρ r h; omega)
           simp only [h, h1, h2, h3, ite_true, ite_false]; ring
-        · have h1 : ¬ c < 2 * t := by omega
-          have h2 : c < 2 * t + 1 := by omega
+        · have h1 : ¬ c < 2 * t := by (clear * - c t F n ρ r hc0 h; omega)
+          have h2 : c < 2 * t + 1 := by (clear * - c t F n ρ r hc0 h; omega)
           simp only [h, h1, h2, lt_self_iff_false, ite_true, ite_false]; ring
-        · have h1 : ¬ c < 2 * t := by omega
-          have h2 : ¬ c < 2 * t + 1 := by omega
-          have h3 : ¬ c / 2 < t := by omega
-          have h4 : c / 2 ≠ t := by omega
+        · have h1 : ¬ c < 2 * t := by (clear * - c t F n ρ r hc0 h; omega)
+          have h2 : ¬ c < 2 * t + 1 := by (clear * - c t F n ρ r hc0 h; omega)
+          have h3 : ¬ c / 2 < t := by (clear * - c t F n ρ r h; omega)
+          have h4 : c / 2 ≠ t := by (clear * - c t F n ρ r h; omega)
           simp only [h1, h2, h3, h4, ite_false]; ring
     · simp only [hc1, decide_true, ite_true]
       refine Prod.ext (by simp only; ring) ?_
@@ -133,11 +133,11 @@ theorem kg_ge_inv (n : Nat) : ∀ (c : Nat) (ρ r : List F), ρ.length = n → r
       rw [Finset.sum_mul]
       refine Finset.sum_congr rfl fun t _ => ?_
       by_cases h : c / 2 < t
-      · have h1 : c < 2 * t := by omega
-        have h2 : c < 2 * t + 1 := by omega
+      · have h1 : c < 2 * t := by (clear * - c t F n ρ r hc1 h; omega)
+        have h2 : c < 2 * t + 1 := by (clear * - c t F n ρ r hc1 h; omega)
         simp only [h, h1, h2, ite_true]; ring
-      · have h1 : ¬ c < 2 * t := by omega
-        have h2 : ¬ c < 2 * t + 1 := by omega
+      · have h1 : ¬ c < 2 * t := by (clear * - c t F n ρ r hc1 h; omega)
+        have h2 : ¬ c < 2 * t + 1 := by (clear * - c t F n ρ r hc1 h; omega)
         simp only [h, h1, h2, ite_false]; ring
 
 /-! ## The long-division automaton -/
@@ -269,9 +269,9 @@ theorem kg_f_false (Fb : Bool → Bool → F) (t : Nat) :
   rw [show sLanes = 17 from rfl]
   simp only [Bool.false_eq_true, ite_false, add_zero]
   by_cases h : 17 ≤ 2 * (t % 17)
-  · have h' : (2 * t) / 17 % 2 = 1 := by omega
+  · have h' : (2 * t) / 17 % 2 = 1 := by (clear * - t h; omega)
     simp only [h, h', decide_true, ite_true]
-  · have h' : ¬ (2 * t) / 17 % 2 = 1 := by omega
+  · have h' : ¬ (2 * t) / 17 % 2 = 1 := by (clear * - t h; omega)
     simp only [h, h', decide_false, Bool.false_eq_true, ite_false]
 
 omit [Field F] in
@@ -281,9 +281,9 @@ theorem kg_f_true (Fb : Bool → Bool → F) (t : Nat) :
   rw [show sLanes = 17 from rfl]
   simp only [ite_true]
   by_cases h : 17 ≤ 2 * (t % 17) + 1
-  · have h' : (2 * t + 1) / 17 % 2 = 1 := by omega
+  · have h' : (2 * t + 1) / 17 % 2 = 1 := by (clear * - t h; omega)
     simp only [h, h', decide_true, ite_true]
-  · have h' : ¬ (2 * t + 1) / 17 % 2 = 1 := by omega
+  · have h' : ¬ (2 * t + 1) / 17 % 2 = 1 := by (clear * - t h; omega)
     simp only [h, h', decide_false, Bool.false_eq_true, ite_false]
 
 /-- **One step of the invariant**: the step maps the state after the bits above to the state after this one. -/
@@ -319,12 +319,12 @@ theorem kg_step_closed (fac : Nat → Bool → Bool → F) (n i : Nat) :
   unfold kg_C
   rw [pow_succ, mul_comm _ 2, kg_sum_pairs]
   refine Finset.sum_congr rfl fun t _ => ?_
-  have a1 : (2 * t) % 2 = 0 := by omega
-  have a2 : (2 * t) / 2 = t := by omega
-  have a3 : (2 * t + 1) % 2 = 1 := by omega
-  have a4 : (2 * t + 1) / 2 = t := by omega
-  have a5 : (2 * t) / 17 / 2 = t / 17 := by omega
-  have a6 : (2 * t + 1) / 17 / 2 = t / 17 := by omega
+  have a1 : (2 * t) % 2 = 0 := by (clear * - t; omega)
+  have a2 : (2 * t) / 2 = t := by (clear * - t a1; omega)
+  have a3 : (2 * t + 1) % 2 = 1 := by (clear * - t a1; omega)
+  have a4 : (2 * t + 1) / 2 = t := by (clear * - t a1 a3; omega)
+  have a5 : (2 * t) / 17 / 2 = t / 17 := by (clear * - t a1 a3; omega)
+  have a6 : (2 * t + 1) / 17 / 2 = t / 17 := by (clear * - t a1 a3; omega)
   rw [kg_idx_false, kg_idx_true, kg_f_false, kg_f_true, kg_P_succ, kg_P_succ]
   simp only [a1, a2, a3, a4, a5, a6, Nat.zero_ne_one, decide_false, decide_true]
   split_ifs <;> ring
@@ -378,8 +378,8 @@ theorem kg_U_congr (n : Nat) : ∀ (u u' : Nat → Bool → F) (t : Nat), (∀ m
   | zero => intros; rfl
   | succ n ih =>
     intro u u' t h
-    simp only [kg_U, h 0 (by omega), ih (fun m => u (m + 1)) (fun m => u' (m + 1)) (t / 2)
-      (fun m hm => h (m + 1) (by omega))]
+    simp only [kg_U, h 0 (by (clear * - n; omega)), ih (fun m => u (m + 1)) (fun m => u' (m + 1)) (t / 2)
+      (fun m hm => h (m + 1) (by (clear * - m n hm; omega)))]
 
 theorem kg_U_split (a : Nat) : ∀ (u : Nat → Bool → F) (b Q : Nat),
     kg_U u (a + b) Q = kg_U u a Q * kg_U (fun m => u (m + a)) b (Q / 2 ^ a) := by
@@ -387,7 +387,7 @@ theorem kg_U_split (a : Nat) : ∀ (u : Nat → Bool → F) (b Q : Nat),
   | zero => intros; simp [kg_U]
   | succ a ih =>
     intro u b Q
-    rw [show a + 1 + b = (a + b) + 1 by omega]
+    rw [show a + 1 + b = (a + b) + 1 by (clear * - a b; omega)]
     simp only [kg_U, ih, Nat.div_div_eq_div_mul, ← pow_succ']
     have hl : (fun m => u (m + a + 1)) = fun m => u (m + (a + 1)) := funext fun m => by rw [Nat.add_assoc]
     rw [hl, mul_assoc]
@@ -408,10 +408,10 @@ theorem kg_U_lo (rlo : List F) (hlo : rlo.length = recRowBits) (Q : Nat) (hQ : Q
   have h := kg_U_eqAtF rlo Q
   rw [hlo] at h
   rw [h]
-  rcases (show Q / 2 ^ 14 = 0 ∨ Q / 2 ^ 14 = 1 by omega) with h1 | h1
+  rcases (show Q / 2 ^ 14 = 0 ∨ Q / 2 ^ 14 = 1 by (clear * - Q F rlo hQ; omega)) with h1 | h1
   · rw [h1, kg_U_zero]
-    simp only [show Q < 2 ^ 14 by omega, ite_true]
-  · have h2 : ¬ Q < 2 ^ 14 := by omega
+    simp only [show Q < 2 ^ 14 by (clear * - Q F rlo hQ h1; omega), ite_true]
+  · have h2 : ¬ Q < 2 ^ 14 := by (clear * - Q F rlo hQ h1; omega)
     rw [h1]
     simp only [h2, ite_false]
     simp [kg_U]
@@ -431,10 +431,10 @@ theorem divKernG_eq (ρ rlo rhi : List F) (hρ : ρ.length = posBits) (hlo : rlo
     rw [hρ] at hu
     rw [show kg_fac ρ rlo = fun m b q => (fun m b => eq1G (ρ.toArray.getD m 0) b) m b *
         (fun m q => if m < recRowBits then eq1G (rlo.toArray.getD m 0) q else if q then 0 else 1) m q from rfl,
-      kg_P_mul, kg_U_lo rlo hlo _ (by omega)]
+      kg_P_mul, kg_U_lo rlo hlo _ (by (clear * - t F ρ rlo ht; omega))]
     simp only [kg_toArray_getD]
     rw [hu]
-    simp only [show (t / 17 < 2 ^ 14 ↔ t < sPos) by rw [show sPos = 17 * 2 ^ 14 from rfl]; omega]
+    simp only [show (t / 17 < 2 ^ 14 ↔ t < sPos) by rw [show sPos = 17 * 2 ^ 14 from rfl]; (clear * - t F ρ rlo ht; omega)]
   rw [kg_divKern_closed, kg_sumE_range]
   unfold kg_C
   simp only [Finset.sum_mul]
@@ -446,7 +446,7 @@ theorem divKernG_eq (ρ rlo rhi : List F) (hρ : ρ.length = posBits) (hlo : rlo
       kg_P (kg_fac ρ rlo) 19 (sPos + x) ((sPos + x) / 17) * E2V.eqAtF rhi ((sPos + x) % 17) = 0 := by
     intro x hx
     rw [Finset.mem_range] at hx
-    rw [hP _ (by omega)]
+    rw [hP _ (by (clear * - x F ρ rlo hs hx; omega))]
     simp
   rw [Finset.sum_eq_zero h2, add_zero]
   refine Finset.sum_congr rfl fun t ht => ?_
@@ -468,9 +468,9 @@ theorem geKernG_eq (c l : Nat) (ρ r : List F) (hρ : ρ.length = l) (hr : r.len
     rcases lt_trichotomy c i with h | h | h
     · simp only [h, h.le, h.ne, decide_true, ite_true, ite_false]; ring
     · subst h; simp
-    · have h1 : ¬ c ≤ i := by omega
-      have h2 : c ≠ i := by omega
-      have h3 : ¬ c < i := by omega
+    · have h1 : ¬ c ≤ i := by (clear * - c i F l ρ r h; omega)
+      have h2 : c ≠ i := by (clear * - c i F l ρ r h; omega)
+      have h3 : ¬ c < i := by (clear * - c i F l ρ r h; omega)
       simp only [h1, h2, h3, decide_false, Bool.false_eq_true, ite_false]; ring
 
 end Lvm.E2T

@@ -123,7 +123,7 @@ theorem sLoop_semP (I : Array Word) (s : St) (hM : Inv s.M)
   obtain ⟨htP, htC, hkN, hcC, rJ, rW, rE, rO, rY, tJ, tW, tE, tO, tY, zW, zE, zO, dJW, dJE, dJO, dWE, dWO,
     dEO, dYW, dYE, dYO⟩ := hL
   have hk64 : k < 2 ^ 64 := by (clear * - htP hkN; omega)
-  have hC64 : C < 2 ^ 64 := by omega
+  have hC64 : C < 2 ^ 64 := by (clear * - htC; omega)
   have hcol : ∀ j' < P, ∀ c < C, cb + cs * j' + c < cb + cs * P := fun j' hj' c hc => by
     have := ycell_ltP hj' (show c < cs by (clear * - hcC hc; omega)); (clear * - this; omega)
   let Q : ℕ → St → Prop := fun j st => Inv st.M ∧ st.M.size = s.M.size ∧ rd st.M bS = toWord j ∧
@@ -142,8 +142,8 @@ theorem sLoop_semP (I : Array Word) (s : St) (hM : Inv s.M)
     simp only [regs] at rJ rW rE rO rY
     obtain ⟨b1, b2, b3, hM2⟩ := sBody_sem I st hM' (k := k) (C := C) (jb := jb) (wb := wb)
       (eb := eb) (cb := cb) (cs := cs) (ob := ob) (s0 := j) (x := x) hk64 hC64 hj
-      (by simp only [regs]; omega) (by simp only [regs]; omega) (by simp only [regs]; omega)
-      (by simp only [regs]; omega) (by simp only [regs]; omega) tJ tW tE
+      (by simp only [regs]; (clear * - rJ; omega)) (by simp only [regs]; (clear * - rW; omega)) (by simp only [regs]; (clear * - rE; omega))
+      (by simp only [regs]; (clear * - rY; omega)) (by simp only [regs]; (clear * - rO; omega)) tJ tW tE
       (fun t ht c hc => by have := hcol _ (hJn t ht) c hc; (clear * - tY this; omega))
       (fun c hc => by have := hcol j (by (clear * - hkN hj; omega)) c hc; (clear * - tY this; omega))
       tO (by rw [hz]; exact zO) (by rw [hz]; exact zE) dJE dWE dJO.symm dEO.symm
@@ -214,7 +214,7 @@ theorem baryIR_semP (I : Array Word) (s : St) (hM : Inv s.M)
   simp only [semXIR_seq]
   -- `W`
   obtain ⟨w1, w2, hM1⟩ := wtIR_sem I s hM (k := k) (jb := jb) (wb := wb) (G := djK Jl) hk64
-    (by simp only [regs]; omega) (by simp only [regs]; omega) tJ tW zW dJW
+    (by simp only [regs]; (clear * - rJ; omega)) (by simp only [regs]; (clear * - rW; omega)) tJ tW zW dJW
     (fun m hm => rdK_toWord (hJ m hm))
   have z1 := size_sem I (wtIR k jb wb) s
   generalize semXIR I (wtIR k jb wb) s = q1 at w1 w2 hM1 z1

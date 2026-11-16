@@ -328,7 +328,7 @@ theorem laneOuts_bit {H l z : Nat} (hz : z < 64) (h : 64 * l + z < 8 * H) :
   unfold laneOuts
   rw [laneOuts_bits]
   have hl : z < ((List.range (laneBits H l)).map fun z => ((BOut.bit z, 0, 64 * l + z) : BOut × Nat × Nat)).length := by
-    simp [laneBits]; omega
+    simp [laneBits]; (clear * - z H l hz h; omega)
   refine ⟨by rw [List.length_append]; (clear * - hl; omega), ?_⟩
   rw [List.getD_append _ _ _ _ hl, List.getD_eq_getElem _ _ hl]
   simp
@@ -519,7 +519,7 @@ theorem posSpecs_bit (C : QCfg) (bpl : Nat → Nat → Bool × Nat) {k j z : Nat
         S.oc jo y = bitBase C.p (lay C) k + ((opens C.p).getD k default).L.height * j + z := by
   generalize hn : j % 8 * ((opens C.p).getD k default).L.height + z = n
   have h7 : j % 8 * ((opens C.p).getD k default).L.height ≤ 7 * ((opens C.p).getD k default).L.height :=
-    Nat.mul_le_mul_right _ (by (clear * -; omega))
+    Nat.mul_le_mul_right _ (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - j; omega)))
   have hl0 : n / 64 < nLanes ((opens C.p).getD k default).L.height := by unfold nLanes; (clear * - hz hn h7; omega)
   have hx : j / 8 < nRows ((opens C.p).getD k default) := by unfold nRows; (clear * - hj; omega)
   have hdm := Nat.div_add_mod n 64
@@ -534,8 +534,8 @@ theorem posSpecs_bit (C : QCfg) (bpl : Nat → Nat → Bool × Nat) {k j z : Nat
     rw [← hn, Nat.add_comm, Nat.add_mul_div_right _ _ (by (clear * - hH hz; omega)), Nat.div_eq_of_lt hz, Nat.zero_add]
   have hnm : n % H = z := by
     rw [← hn, Nat.add_comm, Nat.add_mul_mod_self_right, Nat.mod_eq_of_lt hz]
-  rw [show 64 * (n / 64) + n % 64 = n by omega]
-  have hjj : 8 * (j / 8) + n / H = j := by rw [hnH]; (clear * -; omega)
+  rw [show 64 * (n / 64) + n % 64 = n by (clear * - hdm; omega)]
+  have hjj : 8 * (j / 8) + n / H = j := by rw [hnH]; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - j; omega))
   simp only [posCell, hH, hjj, if_pos hj, hnm]
 
 /-! ## Decided: Q_sig reads no cell by address

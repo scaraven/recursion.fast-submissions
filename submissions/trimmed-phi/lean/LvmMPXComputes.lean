@@ -179,7 +179,7 @@ theorem outs_decXM (t : ℕ) : outs decXM t ≤ outCap := by
     outs_tcpIR _ _ t (show 5 < 2 ^ 64 by norm_num), chainLM,
     outs_chainIR (posL (piSize pX)) (nChainM pX) t chTabM (show outs sdL t = 0 by simp [sdL, outs])]
   simp [outs] at *
-  rw [outCap]; omega
+  rw [outCap]; (clear * - t h; omega)
 
 /-! ## Cost -/
 
@@ -249,7 +249,7 @@ theorem sizeIR_decXM : sizeIR decXM ≤ 2 ^ 19 := by
     read0M, read1M, read2M, sizeIR_readGIR, hA, hB, hC]
   simp only [tcpIR, tcpBody, thcpIR, thcpBody, sdL, sizeIR, blkSteps, List.length_cons, List.length_nil,
     Nat.zero_add, Nat.add_eq_zero_iff, one_ne_zero, and_false, ↓reduceIte]
-  omega
+  (clear * - h2 h1 h0 hO; omega)
 
 end Lvm.X
 end
@@ -298,7 +298,7 @@ theorem size_extWithM {pz : ℕ} {dec : XIR} (h : sizeIR dec ≤ 2 ^ 19) :
     (extWithM pz dec).body.size ≤ progCap := by
   simp only [extWithM, toProg, size_compile, sizeIR, sizeIR_extIRWith, initPs, blkSteps,
     List.length_cons, List.length_nil, progCap]
-  norm_num; omega
+  norm_num; (clear * - dec h; omega)
 
 theorem halts_of_tapeM {pz : ℕ} {dec : XIR} (hd : DecOkM pz dec) (inp : List Word) (a : ℕ)
     (ha : a ≤ 8 * outCap)
@@ -423,7 +423,7 @@ theorem run_W_tapeM (inp : List Word) (a : ℕ) (ha : a < 2 ^ 64)
     rw [parse_regs _ I s0 h0, h4, h, if_neg]
     intro he
     have := congrArg BitVec.toNat he
-    rw [toNat_toWord (by (clear * -; omega)), BitVec.toNat_ofNat, Nat.mod_eq_of_lt (by rw [piSize_eq]; (clear * -; omega)),
+    rw [toNat_toWord (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)), BitVec.toNat_ofNat, Nat.mod_eq_of_lt (by rw [piSize_eq]; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)),
       piSize_eq] at this
     (clear * - this; omega)
   have hk' : a ≠ 0 → rd (semXIR I (parseIR (piSize pX)) s0).M rIsK = 0 := fun h => by

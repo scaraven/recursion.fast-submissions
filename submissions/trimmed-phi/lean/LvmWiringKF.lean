@@ -186,34 +186,34 @@ theorem kl_go_iff (a b : Array (ℕ × ℕ)) (k : ℕ) : ∀ i, i + k = min a.si
     intro s hs
     have ha : (a.toList.drop s).length = a.size - s := by simp
     have hb : (b.toList.drop s).length = b.size - s := by simp
-    rw [keysLtF.go, dite_eq_right_of_eq_false (eq_false (by omega))]
+    rw [keysLtF.go, dite_eq_right_of_eq_false (eq_false (by (clear * - s a b hs; omega)))]
     cases hA : a.toList.drop s <;> cases hB : b.toList.drop s <;> simp [hA, hB] at ha hb ⊢ <;> omega
   | succ k ih =>
     intro s hs
-    have hsa : s < a.size := by omega
-    have hsb : s < b.size := by omega
+    have hsa : s < a.size := by (clear * - s a b k hs; omega)
+    have hsb : s < b.size := by (clear * - s b a k hs hsa; omega)
     rw [keysLtF.go, dite_eq_left_of_eq_true (eq_true ⟨hsa, hsb⟩),
       List.drop_eq_getElem_cons (l := a.toList) (i := s) (by simpa using hsa),
       List.drop_eq_getElem_cons (l := b.toList) (i := s) (by simpa using hsb),
-      List.cons_lex_cons_iff, ← ih (s + 1) (by omega)]
+      List.cons_lex_cons_iff, ← ih (s + 1) (by (clear * - s k a b hs; omega))]
     simp only [Array.getElem_toList, Prod.lex_def]
     by_cases h1 : a[s].1 < b[s].1
     · simp [h1]
     by_cases h2 : a[s].1 > b[s].1
-    · have hne : a[s] ≠ b[s] := fun e ↦ by rw [e] at h2; omega
-      simp [h1, h2, hne]; omega
+    · have hne : a[s] ≠ b[s] := fun e ↦ by rw [e] at h2; (clear * - a b k s hsa hsb h2; omega)
+      simp [h1, h2, hne]; (clear * - a s hsa b hsb k h2; omega)
     by_cases h3 : a[s].2 < b[s].2
-    · simp [h1, h2, h3]; omega
+    · simp [h1, h2, h3]; (clear * - a s hsa b hsb k h1 h2; omega)
     by_cases h4 : a[s].2 > b[s].2
-    · have hne : a[s] ≠ b[s] := fun e ↦ by rw [e] at h4; omega
+    · have hne : a[s] ≠ b[s] := fun e ↦ by rw [e] at h4; (clear * - a b k s hsa hsb h4; omega)
       simp [h1, h2, h3, h4, hne]
-    have e : a[s] = b[s] := Prod.ext (by omega) (by omega)
+    have e : a[s] = b[s] := Prod.ext (by (clear * - a s hsa b hsb k h1 h2; omega)) (by (clear * - a s hsa b hsb k h3 h4; omega))
     simp [e]
 
 theorem keysLtF_eq : keysLtF = keysLt := by
   funext a b
   rw [Bool.eq_iff_iff, qs_keysLt_iff]
-  simpa [keysLtF] using kl_go_iff a b (min a.size b.size) 0 (by omega)
+  simpa [keysLtF] using kl_go_iff a b (min a.size b.size) 0 (by (clear * - a b; omega))
 
 /-- The permuted array of `keysLtK`. -/
 theorem kl_perm_size (kl : ℕ) (k : Array (ℕ × ℕ)) :
@@ -227,7 +227,7 @@ theorem kl_pkey (kl : ℕ) (k : Array (ℕ × ℕ)) (j : ℕ)
     pkey kl k (if kl < k.size then k.size else k.size + 1) j =
       ((k.extract 0 kl ++ k.extract (kl + 1) k.size).push (k.getD kl (0, 0)))[j] := by
   have hA : (k.extract 0 kl ++ k.extract (kl + 1) k.size).size = min kl k.size + (k.size - (kl + 1)) := by
-    simp only [Array.size_append, Array.size_extract]; omega
+    simp only [Array.size_append, Array.size_extract]; (clear * - kl k j; omega)
   have hj' : j < (k.extract 0 kl ++ k.extract (kl + 1) k.size).size + 1 := by
     simpa only [Array.size_push] using hj
   unfold pkey
@@ -237,22 +237,22 @@ theorem kl_pkey (kl : ℕ) (k : Array (ℕ × ℕ)) (j : ℕ)
         (k.extract 0 kl ++ k.extract (kl + 1) k.size)[j] := by
     intro hlt
     by_cases h2 : j < kl
-    · rw [ite_eq_left h2, Array.getElem_append_left (by simp only [Array.size_extract]; omega),
-        Array.getElem_extract, Array.getD_eq_getD_getElem?, Array.getElem?_eq_getElem (by omega)]
+    · rw [ite_eq_left h2, Array.getElem_append_left (by simp only [Array.size_extract]; (clear * - j kl k hA hlt h2; omega)),
+        Array.getElem_extract, Array.getD_eq_getD_getElem?, Array.getElem?_eq_getElem (by (clear * - j k kl hA hlt h2; omega))]
       simp
-    · rw [ite_eq_right h2, Array.getElem_append_right (by simp only [Array.size_extract]; omega),
-        Array.getElem_extract, Array.getD_eq_getD_getElem?, Array.getElem?_eq_getElem (by omega)]
+    · rw [ite_eq_right h2, Array.getElem_append_right (by simp only [Array.size_extract]; (clear * - kl k j h2; omega)),
+        Array.getElem_extract, Array.getD_eq_getD_getElem?, Array.getElem?_eq_getElem (by (clear * - j k kl hA hlt h2; omega))]
       simp only [Option.getD_some, Array.size_extract]
-      congr 1; omega
+      congr 1; (clear * - j kl k hA hlt h2; omega)
   by_cases hk : kl < k.size
   · simp only [hk, ite_true]
     by_cases h1 : j + 1 = k.size
-    · rw [ite_eq_left h1, dite_eq_right_of_eq_false (eq_false (by omega))]
-    · rw [ite_eq_right h1, dite_eq_left_of_eq_true (eq_true (by omega))]; exact key (by omega)
+    · rw [ite_eq_left h1, dite_eq_right_of_eq_false (eq_false (by (clear * - j k kl hA hk h1; omega)))]
+    · rw [ite_eq_right h1, dite_eq_left_of_eq_true (eq_true (by (clear * - j k kl hA hj' hk h1; omega)))]; exact key (by (clear * - j k kl hA hj' hk h1; omega))
   · simp only [hk, ite_false]
     by_cases h1 : j + 1 = k.size + 1
-    · rw [ite_eq_left h1, dite_eq_right_of_eq_false (eq_false (by omega))]
-    · rw [ite_eq_right h1, dite_eq_left_of_eq_true (eq_true (by omega))]; exact key (by omega)
+    · rw [ite_eq_left h1, dite_eq_right_of_eq_false (eq_false (by (clear * - j k kl hA hk h1; omega)))]
+    · rw [ite_eq_right h1, dite_eq_left_of_eq_true (eq_true (by (clear * - j k kl hA hj' hk h1; omega)))]; exact key (by (clear * - j k kl hA hj' hk h1; omega))
 
 theorem kl_go_eq (kl : ℕ) (a b pa pb : Array (ℕ × ℕ)) (na nb : ℕ) (hna : pa.size = na) (hnb : pb.size = nb)
     (hpa : ∀ j (h : j < pa.size), pkey kl a na j = pa[j])
@@ -261,11 +261,11 @@ theorem kl_go_eq (kl : ℕ) (a b pa pb : Array (ℕ × ℕ)) (na nb : ℕ) (hna 
   induction k with
   | zero =>
     intro i hi
-    rw [keysLtKGo, keysLtF.go, dite_eq_right_of_eq_false (eq_false (by omega)), dite_eq_right_of_eq_false (eq_false (by omega)), hna, hnb]
+    rw [keysLtKGo, keysLtF.go, dite_eq_right_of_eq_false (eq_false (by (clear * - i na nb pa pb hi; omega))), dite_eq_right_of_eq_false (eq_false (by (clear * - i pa pb na nb hna hnb hi; omega))), hna, hnb]
   | succ k ih =>
     intro i hi
-    rw [keysLtKGo, keysLtF.go, dite_eq_left_of_eq_true (eq_true (by omega)), dite_eq_left_of_eq_true (eq_true (by omega)), ih (i + 1) (by omega),
-      hpa i (by omega), hpb i (by omega)]
+    rw [keysLtKGo, keysLtF.go, dite_eq_left_of_eq_true (eq_true (by (clear * - i na nb pa pb k hi; omega))), dite_eq_left_of_eq_true (eq_true (by (clear * - i pa pb na nb hna hnb k hi; omega))), ih (i + 1) (by (clear * - i k na nb pa pb hi; omega)),
+      hpa i (by (clear * - i pa pb na nb hna k hi; omega)), hpb i (by (clear * - i pb pa na nb hnb k hi; omega))]
 
 theorem keysLtKF_eq (kl : ℕ) : keysLtKF kl = keysLtK kl := by
   funext a b
@@ -403,13 +403,13 @@ theorem qn_mixed (x y i j N : ℕ) (hi : i < N) (hj : j < N) :
   · have : (x + 1) * N ≤ y * N := Nat.mul_le_mul_right _ hxy
     constructor
     · intro; exact Or.inl hxy
-    · intro; rw [Nat.succ_mul] at this; omega
-  · omega
+    · intro; rw [Nat.succ_mul] at this; (clear * - x N i y j hi this; omega)
+  · (clear * - x N i j; omega)
   · have : (y + 1) * N ≤ x * N := Nat.mul_le_mul_right _ hxy
     rw [Nat.succ_mul] at this
     constructor
     · intro; omega
-    · rintro (h | ⟨h, _⟩) <;> omega
+    · rintro (h | ⟨h, _⟩) <;> (clear * - x N i y j hxy h; omega)
 
 theorem qn_foldl_max (g : ℕ → ℕ) (l : List ℕ) (m : ℕ) :
     m ≤ l.foldl (fun m i ↦ max m (g i)) m ∧ ∀ i ∈ l, g i ≤ l.foldl (fun m i ↦ max m (g i)) m := by
@@ -424,11 +424,11 @@ theorem qn_mixed_eq (x y i j N : ℕ) (hi : i < N) (hj : j < N) :
     x * N + i = y * N + j ↔ x = y ∧ i = j := by
   constructor
   · intro h
-    have h1 := (qn_mixed x y i j N hi hj).not.mp (by omega)
-    have h2 := (qn_mixed y x j i N hj hi).not.mp (by omega)
+    have h1 := (qn_mixed x y i j N hi hj).not.mp (by (clear * - x N i y j h; omega))
+    have h2 := (qn_mixed y x j i N hj hi).not.mp (by (clear * - y N j x i h; omega))
     rcases lt_trichotomy x y with hxy | rfl | hxy
     · exact absurd (Or.inl hxy) h1
-    · omega
+    · (clear * - x i j N h; omega)
     · exact absurd (Or.inl hxy) h2
   · rintro ⟨rfl, rfl⟩; rfl
 
@@ -533,18 +533,18 @@ theorem qn2_keyBounds (as : Array Atom) (a : Atom) (ha : a ∈ as) (p : ℕ × �
   dsimp only
   generalize as.foldl (fun m a ↦ a.keys.foldl (fun m p ↦ max m p.2) m) 0 = M1 at h1 ⊢
   generalize as.foldl (fun m a ↦ a.keys.foldl (fun m p ↦ max m p.1) m) 0 = M2 at h2 ⊢
-  refine ⟨by omega, ?_⟩
-  have : (p.1 + 1) * (M1 + 1) ≤ (M2 + 1) * (M1 + 1) := Nat.mul_le_mul_right _ (by omega)
+  refine ⟨by (clear * - p M1 h1 M2; omega), ?_⟩
+  have : (p.1 + 1) * (M1 + 1) ≤ (M2 + 1) * (M1 + 1) := Nat.mul_le_mul_right _ (by (clear * - p M2 M1 h2; omega))
   rw [Nat.succ_mul] at this
-  omega
+  (clear * - p M1 M2 h1 this; omega)
 
 theorem qn2_keyBounds_zero (as : Array Atom) :
     (0, 0).2 < (keyBounds as).1 ∧ (0, 0).1 * (keyBounds as).1 + (0, 0).2 < (keyBounds as).2 := by
   unfold keyBounds
   dsimp only
-  refine ⟨by omega, ?_⟩
+  refine ⟨by (clear * - as; omega), ?_⟩
   simp only [Nat.zero_mul, Nat.add_zero]
-  exact Nat.mul_pos (by omega) (by omega)
+  exact Nat.mul_pos (by (clear * - as; omega)) (by (clear * - as; omega))
 
 theorem qn2_getD_bound (as : Array Atom) (a : Atom) (ha : a ∈ as) (i : ℕ) :
     (a.keys.getD i (0, 0)).2 < (keyBounds as).1 ∧
@@ -553,7 +553,7 @@ theorem qn2_getD_bound (as : Array Atom) (a : Atom) (ha : a ∈ as) (i : ℕ) :
   by_cases hi : i < a.keys.size
   · rw [Array.getElem?_eq_getElem hi, Option.getD_some]
     exact qn2_keyBounds as a ha _ (Array.getElem_mem hi)
-  · rw [Array.getElem?_eq_none (by omega), Option.getD_none]
+  · rw [Array.getElem?_eq_none (by (clear * - a i hi; omega)), Option.getD_none]
     exact qn2_keyBounds_zero as
 
 theorem qn2_all_size (as : Array Atom) (h : as.all (·.keys.size == (as.getD 0 default).keys.size) = true) :
@@ -696,7 +696,7 @@ theorem sortAtF_eq : sortAtF = sortAt := by
     have hBb := hB b (Array.mem_toList_iff.mpr hb)
     have hNa := hN a (Array.mem_toList_iff.mpr ha)
     have hNb := hN b (Array.mem_toList_iff.mpr hb)
-    exact qn_pack_lt _ _ _ _ _ _ (by omega) (by omega) (by omega) (by omega)
+    exact qn_pack_lt _ _ _ _ _ _ (by (clear * - as L a ix b hBa; omega)) (by (clear * - as L b ix a hBb; omega)) (by (clear * - a ix as L b hNa; omega)) (by (clear * - b ix as L a hNb; omega))
 
 /-- `bestLevel`, counting each level's distinct nontrivial keys by a hash set and building the chosen level's runs
 only. -/
@@ -738,7 +738,7 @@ theorem gg_nodup (l : List (ℕ × ℕ)) (h1 : l.Pairwise fun a b ↦ keyLt b a 
         apply h3.1
         simp only [keyLt, Bool.or_eq_false_iff, Bool.and_eq_false_iff, decide_eq_false_iff_not,
           beq_eq_false_iff_ne, ne_eq] at a1 a2
-        ext <;> omega
+        ext <;> (clear * - x y a1 a2; omega)
 
 theorem gg_runs_keys_nodup (as : Array Atom) (L : ℕ) (ix : Array ℕ) :
     ((runsAt as L (sortAt as L ix)).toList.map (·.1)).Nodup :=

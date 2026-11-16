@@ -65,9 +65,9 @@ theorem msgBytes_eq_stream (qm : Column CMain.nu20) (qr : Column 19) {p : ℕ} (
     Lvm.KG.msgBytes (Mq qm qr) (p / 136) (p % 136) =
       (wordsBytes (wsOf (Lvm.X.laneOf (wOfCol qr)))).getD p 0 := by
   have hq : p % 136 < 136 := Nat.mod_lt _ (by norm_num)
-  have hl : p % 136 / 8 < 17 := by (clear * -; omega)
+  have hl : p % 136 / 8 < 17 := by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)
   have hb : p % 136 % 8 < 8 := Nat.mod_lt _ (by norm_num)
-  have e1 : p = 8 * (17 * (p / 136) + p % 136 / 8) + p % 136 % 8 := by (clear * -; omega)
+  have e1 : p = 8 * (17 * (p / 136) + p % 136 / 8) + p % 136 % 8 := by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)
   have hp' : p / 136 < 7680 := hp
   have hu : 17 * (p / 136) + p % 136 / 8 < 17 * 2 ^ 14 := by (clear * - hp'; omega)
   have hc : Lvm.X.crecIdx (17 * (p / 136) + p % 136 / 8) = p % 136 / 8 * 2 ^ 14 + p / 136 := by
@@ -160,7 +160,7 @@ theorem xorMsg_cells {qm : Column CMain.nu20} {qr : Column 19} {v : ℕ → FK} 
     funext j
     have hj : j.val < 136 := j.2
     simp only [Lvm.Wots.laneByte, lanesW, Lvm.KG.msgBytes, Mq, ksMsg, ksSplitN_P20,
-      if_neg (show ¬ ksSplit P20 + r < ksSplit P20 by (clear * -; omega)), Nat.add_sub_cancel_left]
+      if_neg (show ¬ ksSplit P20 + r < ksSplit P20 by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)), Nat.add_sub_cancel_left]
     rw [h _ (by (clear * - hj; omega))]
     rfl
   simp only [Lvm.KSponge.xorMsg, e]
@@ -191,22 +191,22 @@ theorem sigKSin_of_goodKP (ps : Params) (hk : ksSplit ps = 7680) (hB : spongeBlo
       exact oneRow_perm 13 (ksCol qm) (Yq qm) (Mq qm qr) _ H (hrow r hr) (hcF r hr hn),
       digAt_of_cells hy⟩
   refine ⟨fun r hr => one r (by (clear * - hr; omega)) (by (clear * - hr; omega)) _ (hys r hr), ?_, fun t ht => ?_,
-    one 447 (by (clear * -; omega)) (by (clear * -; omega)) _ hyls, one 448 (by (clear * -; omega)) (by (clear * -; omega)) _ hyns⟩
+    one 447 (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)) (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)) _ hyls, one 448 (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)) (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)) _ hyns⟩
   · -- the key leaf: rows `S + 399 … S + 430`
     refine ⟨fun u => prevState (Yq qm) (fun i ↦ decide (i ∈ contRows ps)) (ksSplit P20 + (399 + u)),
       fun u => yState (Yq qm) (ksSplit P20 + (399 + u)), ?_, fun u hu => ?_, fun u hu => ?_, ?_⟩
-    · simp only [prevState, Nat.add_zero, hcF 399 (by (clear * -; omega)) (by (clear * -; omega))]; rfl
+    · simp only [prevState, Nat.add_zero, hcF 399 (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)) (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))]; rfl
     · rw [xorMsg_cells (qm := qm) (qr := qr) (r := 399 + u) (fun l hl => hx _ (by (clear * - hu; omega)) l hl)]
       exact row_perm 13 (ksCol qm) (Yq qm) (Mq qm qr) _ H (hrow _ (by (clear * - hu; omega)))
     · simp only [prevState, hcT (399 + (u + 1)) (by (clear * - hu; omega)) (by (clear * - hu; omega)), if_true]
       congr 1
     · refine digAt_of_cells fun l hl => ?_
-      have := hyc 0 (by (clear * -; omega)) l hl
+      have := hyc 0 (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)) l hl
       simpa using this
   · -- path node `t`: row `S + 431 + t`
     refine one (431 + t) (by (clear * - ht; omega)) (by (clear * - ht; omega)) _ fun l hl => ?_
     have := hyc (t + 1) (by (clear * - ht; omega)) l hl
-    rw [show ksSplit P20 + 430 + (t + 1) = ksSplit P20 + (431 + t) by (clear * -; omega)] at this
+    rw [show ksSplit P20 + 430 + (t + 1) = ksSplit P20 + (431 + t) by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)] at this
     exact this
 
 /-- **Q_sig's `KS` hypothesis from a good pair** at `P20`. -/

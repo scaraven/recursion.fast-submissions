@@ -99,8 +99,8 @@ theorem digAt_eq_digW {v : ℕ → FK} {a : ℕ} {f : ℕ → Word} {c : ℕ}
   rw [digAt, Lvm.Wots.digOfW_get _ hi]
   simp only [Lvm.X.digW, Vector.getElem_ofFn]
   have hq : i / 8 < 4 := by (clear * - hi; omega)
-  have h8 : i % 8 < 8 := Nat.mod_lt _ (by (clear * -; omega))
-  conv_rhs => rw [show i = 8 * (i / 8) + i % 8 by (clear * -; omega)]
+  have h8 : i % 8 < 8 := Nat.mod_lt _ (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))
+  conv_rhs => rw [show i = 8 * (i / 8) + i % 8 by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - i; omega))]
   rw [byte_of_lane _ _ _ h8, Lvm.Wots.byteW_toNat _ h8, ← RecursionFast.toUInt8_mod]
   have hw : (Lvm.X.wsAt f c 4).getD (i / 8) 0 = f (c + i / 8) := by
     simp [Lvm.X.wsAt, List.getD_eq_getElem?_getD, hq]
@@ -110,7 +110,7 @@ theorem digAt_eq_digW {v : ℕ → FK} {a : ℕ} {f : ℕ → Word} {c : ℕ}
 /-- **Cells whose words are `f 0 … f 596` hold the signature `sigOfF f`.** -/
 theorem sigAt'_eq_sigOfF {v : ℕ → FK} {a : ℕ} {f : ℕ → Word}
     (h : ∀ j < 597, (v (a + j)).val.toBitVec = f j) : sigAt' v a = Lvm.X.sigOfF f := by
-  have h0 := h 0 (by (clear * -; omega))
+  have h0 := h 0 (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))
   rw [Nat.add_zero] at h0
   have e1 : (v a).val.toNat = (f 0).toNat := by rw [← h0]; rfl
   have e2 : ((List.range wotsLen).map fun i => digAt v (a + 1 + 4 * i)) =
@@ -118,13 +118,13 @@ theorem sigAt'_eq_sigOfF {v : ℕ → FK} {a : ℕ} {f : ℕ → Word}
     refine List.map_congr_left fun i hi => ?_
     have hi' : i < 133 := by simpa [wotsLen] using List.mem_range.mp hi
     exact digAt_eq_digW fun l hl => by
-      rw [show a + 1 + 4 * i + l = a + (1 + 4 * i + l) by (clear * -; omega)]; exact h _ (by (clear * - hi' hl; omega))
+      rw [show a + 1 + 4 * i + l = a + (1 + 4 * i + l) by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)]; exact h _ (by (clear * - hi' hl; omega))
   have e3 : ((List.range sigHeight).map fun t => digAt v (a + 533 + 4 * t)) =
       (List.range sigHeight).map fun k => Lvm.X.digW (Lvm.X.wsAt f (1 + 4 * wotsLen + 4 * k) 4) := by
     refine List.map_congr_left fun t ht => ?_
     have ht' : t < 16 := by simpa [sigHeight] using List.mem_range.mp ht
     refine digAt_eq_digW fun l hl => ?_
-    rw [show a + 533 + 4 * t + l = a + (533 + 4 * t + l) by (clear * -; omega), h _ (by (clear * - ht' hl; omega))]
+    rw [show a + 533 + 4 * t + l = a + (533 + 4 * t + l) by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega), h _ (by (clear * - ht' hl; omega))]
     congr 1
   unfold sigAt' Lvm.X.sigOfF
   rw [e1, e2, e3]
@@ -132,7 +132,7 @@ theorem sigAt'_eq_sigOfF {v : ℕ → FK} {a : ℕ} {f : ℕ → Word}
 /-- `KS`'s output lane `l < 4` of row `i` is the `C_main` word `CMain.ksYW20 l i` (KS slot `50 + l`; KS13). -/
 theorem Yq_eq (qm : Column CMain.nu20) (i : ℕ) {l : ℕ} (hl : l < 4) :
     Yq qm i l = wd qm (CMain.ksYW20 l i) := by
-  simp only [Yq, Lvm.KG.ksYRow, Lvm.KG.ksY, if_pos (show l < 14 by omega), ksCol, CMain.ksYW20_eq]
+  simp only [Yq, Lvm.KG.ksYRow, Lvm.KG.ksY, if_pos (show l < 14 by (clear * - l hl; omega)), ksCol, CMain.ksYW20_eq]
   congr 1; simp only [CMain.ksOff20]; ring
 
 /-! ## Words of the commitments -/
@@ -223,10 +223,10 @@ theorem ys_v {ys yc yls yns : ℕ} (hb : CellsAt v lay26 qm qr 4 9 ys false fun 
     (∀ l < 4, v (yns + l) = FK.ofBF64 (Yq qm (ksSplit P20 + 448) l)) := by
   refine ⟨fun r hr l hl => y_v hb (by (clear * - hr; omega)) hl, fun t ht l hl => ?_, fun l hl => ?_, fun l hl => ?_⟩
   · rw [hyc, show ys + 4 * 430 + 4 * t = ys + 4 * (430 + t) by ring,
-      show ksSplit P20 + 430 + t = ksSplit P20 + (430 + t) by (clear * -; omega)]
+      show ksSplit P20 + 430 + t = ksSplit P20 + (430 + t) by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)]
     exact y_v hb (by (clear * - ht; omega)) hl
-  · rw [hyls]; exact y_v hb (by (clear * -; omega)) hl
-  · rw [hyns]; exact y_v hb (by (clear * -; omega)) hl
+  · rw [hyls]; exact y_v hb (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)) hl
+  · rw [hyns]; exact y_v hb (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)) hl
 
 /-- **The trace-digest cells** (a 4-bundle of height 1 at `KS` row `B − 1`; any `B ≤ 2^13`, lvm2 E2-FT). -/
 theorem md_vB {md B : ℕ} (hB : B ≤ 2 ^ 13)
@@ -244,7 +244,7 @@ theorem md_v {md : ℕ} (hb : CellsAt v lay26 qm qr 4 0 md false fun l => CMain.
 
 /-- **The flag** (`PUB` lane 0): `1` for a node statement. -/
 theorem flag_v {x : List UInt8} {pb : ℕ} (hp : PubCells v x pb) (hb1 : (hdrOf x).b = 1) : v pb = 1 := by
-  have h0 := hp 0 (by (clear * -; omega))
+  have h0 := hp 0 (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))
   rw [Nat.add_zero] at h0
   rw [h0]
   have e : u64At (hdrBytesX x) 8 = 1 := hb1
@@ -260,30 +260,30 @@ theorem pub_digest_v {x : List UInt8} {pb : ℕ} (hp : PubCells v x pb) {k o : �
 
 /-- **The key's cells** (`PUB` lanes 1–4). -/
 theorem vk_v {x : List UInt8} {pb : ℕ} (hp : PubCells v x pb) : digAt v (pb + 1) = (hdrOf x).vk :=
-  pub_digest_v hp (by (clear * -; omega)) rfl
+  pub_digest_v hp (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)) rfl
 
 /-- **The left statement's cells** (`PUB` lanes 5–8). -/
 theorem cL_v {x : List UInt8} {pb : ℕ} (hp : PubCells v x pb) : digAt v (pb + 5) = (hdrOf x).cL :=
-  pub_digest_v hp (by (clear * -; omega)) rfl
+  pub_digest_v hp (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)) rfl
 
 /-- **The leaf signature's cells** (`PUB` lanes 18–614). -/
 theorem sl_v {x : List UInt8} {pb : ℕ} (hp : PubCells v x pb) : sigAt' v (pb + 18) = (hdrOf x).sig := by
   have hv : ∀ j < 597, v (pb + 18 + j) = hdrLane x (18 + j) := fun j hj => by
     rw [Nat.add_assoc]; exact hp _ (by (clear * - hj; omega))
   have e1 : (v (pb + 18)).val.toNat = u64At (hdrBytesX x) 152 := by
-    have h0 := hv 0 (by (clear * -; omega)); rw [Nat.add_zero] at h0; rw [h0, toNat_hdrLane]
+    have h0 := hv 0 (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)); rw [Nat.add_zero] at h0; rw [h0, toNat_hdrLane]
   have e2 : ((List.range wotsLen).map fun i => digAt v (pb + 18 + 1 + 4 * i)) =
       (List.range wotsLen).map fun k => digestAt (hdrBytesX x) (152 + 8 + 32 * k) := by
     refine List.map_congr_left fun i hi => ?_
     have hi' : i < 133 := by simpa [wotsLen] using List.mem_range.mp hi
-    rw [show pb + 18 + 1 + 4 * i = pb + (19 + 4 * i) by (clear * -; omega)]
-    exact pub_digest_v hp (by (clear * - hi'; omega)) (by (clear * -; omega))
+    rw [show pb + 18 + 1 + 4 * i = pb + (19 + 4 * i) by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)]
+    exact pub_digest_v hp (by (clear * - hi'; omega)) (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))
   have e3 : ((List.range sigHeight).map fun t => digAt v (pb + 18 + 533 + 4 * t)) =
       (List.range sigHeight).map fun k => digestAt (hdrBytesX x) (152 + 8 + 32 * wotsLen + 32 * k) := by
     refine List.map_congr_left fun t ht => ?_
     have ht' : t < 16 := by simpa [sigHeight] using List.mem_range.mp ht
-    rw [show pb + 18 + 533 + 4 * t = pb + (551 + 4 * t) by (clear * -; omega)]
-    exact pub_digest_v hp (by (clear * - ht'; omega)) (by simp only [wotsLen]; (clear * -; omega))
+    rw [show pb + 18 + 533 + 4 * t = pb + (551 + 4 * t) by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)]
+    exact pub_digest_v hp (by (clear * - ht'; omega)) (by simp only [wotsLen]; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))
   have hs : (hdrOf x).sig = sigAt (hdrBytesX x) 152 := rfl
   rw [hs]
   unfold sigAt' sigAt

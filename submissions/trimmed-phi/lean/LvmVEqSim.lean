@@ -43,7 +43,7 @@ theorem length_blb (b : ByteArray) : (blb b).length = b.size := by
   simp only [blb, Array.length_toList]; rfl
 
 theorem size_extract_of {b : ByteArray} {i n : ℕ} (h : i + n ≤ b.size) : (b.extract i (i + n)).size = n := by
-  rw [← length_blb, blb_extract]; simp [length_blb]; omega
+  rw [← length_blb, blb_extract]; simp [length_blb]; (clear * - n b i h; omega)
 
 theorem size_digestBytes (d : Digest) : (digestBytes d).size = 32 := by
   rw [← length_blb, blb_digestBytes]; simp
@@ -81,20 +81,20 @@ theorem climb_sim : ∀ (j lvl : ℕ) (cur : Digest) (s : DSt) (i : ℕ) (kc : D
     obtain ⟨s₂, d₂, n₂, h₂, -, ho₂, -⟩ := climb_run π q j (lvl + 1) a _ kc rest h'
     have hle : s.off + nodeBytes * (j + 1) ≤ π.size := by
       have := hb s₂ d₂ (i + 1 + n₂) (by rw [← List.drop_drop, ← List.drop_drop, hdrop]; exact h₂)
-      rw [ho₂] at this; simp only [nodeBytes] at this ⊢; ring_nf at this ⊢; omega
+      rw [ho₂] at this; simp only [nodeBytes] at this ⊢; ring_nf at this ⊢; (clear * - this; omega)
     have h32 : s.off + 32 ≤ π.size := by simp only [nodeBytes] at hle; (clear * - hle; omega)
     have hrest : tr.drop (i + 1) = rest := by rw [← List.drop_drop, hdrop]; rfl
     obtain ⟨s', top, n, h1, h2, h3, h4, h5, h6, h7, h8⟩ := climb_sim j (lvl + 1) a _ (i + 1) kc
       hb
       (by rw [hrest]; exact h')
-    refine ⟨s', top, n + 1, by rw [show i + (n + 1) = i + 1 + n by (clear * -; omega)]; exact h1, ?_, h3, h4, h5, h6, ?_, ?_⟩
+    refine ⟨s', top, n + 1, by rw [show i + (n + 1) = i + 1 + n by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)]; exact h1, ?_, h3, h4, h5, h6, ?_, ?_⟩
     · rw [h2]; simp only [nodeBytes]; ring
     · -- the node entry is 104 bytes
       have hsz : (if (q >>> lvl) % 2 = 0 then digestBytes cur ++ π.extract s.off (s.off + 32)
           else π.extract s.off (s.off + 32) ++ digestBytes cur).size = 64 := by
         split <;> rw [ByteArray.size_append, size_extract_of h32, size_digestBytes]
       have he := (stream_entry hdrop).2.2
-      rw [show i + (n + 1) = i + 1 + n by (clear * -; omega), h7, he, hsz]; ring
+      rw [show i + (n + 1) = i + 1 + n by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega), h7, he, hsz]; ring
     · -- the compiled climb asks the same node query
       intro K
       have hlen : ¬ ((blb π).drop s.off).length < 32 := by simp [length_blb]; (clear * - h32; omega)
@@ -107,7 +107,7 @@ theorem climb_sim : ∀ (j lvl : ℕ) (cur : Digest) (s : DSt) (i : ℕ) (kc : D
       simp only [Scheme.climb, hlen, ↓reduceIte, OProg.bind, hq, hdrop, OProg.runSeq, ↓reduceIte]
       rw [show (q >>> lvl) / 2 = q >>> (lvl + 1) by rw [Nat.shiftRight_succ],
         show ((blb π).drop s.off).drop 32 = (blb π).drop (s.off + 32) by rw [List.drop_drop]]
-      rw [← hrest, show i + (n + 1) = i + 1 + n by (clear * -; omega)]
+      rw [← hrest, show i + (n + 1) = i + 1 + n by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)]
       exact h8 K
 
 end Climb
@@ -201,7 +201,7 @@ theorem openAll_sim (hdecK : S.decK = kOfBytes) (L : Level) (capOff ht wd : ℕ)
     · rename_i hcap
       have htop : top = digestAt π (capOff + nodeBytes * (q >>> L.path)) := by simpa using hcap
       obtain ⟨s', n, h2, hst, hpe, hca, hpo, hle, he2, hc2⟩ := ih s₁ (i + 1 + n₁) k'' (fun q' hq' ↦ hps q' (List.mem_cons_of_mem _ hq')) hk h1
-      refine ⟨s', n₁ + 1 + n, by rw [show i + (n₁ + 1 + n) = i + 1 + n₁ + n by (clear * -; omega)]; exact h2,
+      refine ⟨s', n₁ + 1 + n, by rw [show i + (n₁ + 1 + n) = i + 1 + n₁ + n by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)]; exact h2,
         by rw [hst, hst1], by rw [hpe, hpe1], by rw [hca, hca1], by rw [hpo, hpo1], ?_, ?_, ?_⟩
       · have : s₁.off ≤ s'.off := hle
         (clear * - hrow ho1 hle; omega)
@@ -209,7 +209,7 @@ theorem openAll_sim (hdecK : S.decK = kOfBytes) (L : Level) (capOff ht wd : ℕ)
         have he0 := (stream_entry hdrop).2.2
         rw [List.length_cons, opRows_succ]
         dsimp only
-        rw [show i + (n₁ + 1 + n) = i + 1 + n₁ + n by (clear * -; omega), ← he2, he1, he0, hsz]
+        rw [show i + (n₁ + 1 + n) = i + 1 + n₁ + n by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega), ← he2, he1, he0, hsz]
         exact congrArg (fun e ↦ (opRows (traceBytesB tr) wd (S.occ ht wd) L.path qs.length e).2) (by ring)
       · intro Kc
         have hlen : ¬ ((blb π).drop s.off).length < 8 * min (S.occ ht wd) wd := by
@@ -228,7 +228,7 @@ theorem openAll_sim (hdecK : S.decK = kOfBytes) (L : Level) (capOff ht wd : ℕ)
             padAt (traceBytesB tr) (entOff tr i + 8) wd (S.occ ht wd) := by
           have hsz : (π.extract s.off (s.off + L.row)).size = 8 * min (S.occ ht wd) wd := by
             rw [size_extract_of hoff, hrow]
-          have := (stream_entry hdrop).1 0 (8 * min (S.occ ht wd) wd) (by rw [hsz]; (clear * -; omega))
+          have := (stream_entry hdrop).1 0 (8 * min (S.occ ht wd) wd) (by rw [hsz]; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - S ht wd; omega)))
           simp only [Nat.add_zero, List.drop_zero] at this
           rw [padAt, hdecK, this, blb_extract, hrow, show s.off + 8 * min (S.occ ht wd) wd - s.off = 8 * min (S.occ ht wd) wd by (clear * - hsz; omega),
             List.take_take, min_self]
@@ -243,7 +243,7 @@ theorem openAll_sim (hdecK : S.decK = kOfBytes) (L : Level) (capOff ht wd : ℕ)
         rw [← hrest, hc1]
         simp only [bind_ret', hcapk, ↓reduceIte, hrow0]
         rw [oprog_bind_assoc, hc2, bind_ret', List.length_cons, opRows_succ,
-          show i + (n₁ + 1 + n) = i + 1 + n₁ + n by (clear * -; omega)]
+          show i + (n₁ + 1 + n) = i + 1 + n₁ + n by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)]
         have hent : entOff tr (i + 1 + n₁) = entOff tr i + 40 + 8 * min (S.occ ht wd) wd + 104 * L.path := by
           rw [he1, (stream_entry hdrop).2.2, size_extract_of hoff, hrow]; ring
         rw [hent]
@@ -325,7 +325,7 @@ theorem nextFS_of_stA {occ : ℕ → ℕ → ℕ} : ∀ (as : List Atom) (pend :
   | .pclr :: as, pend, cr, hs, h, hp => nextFS_of_stA as pend cr [] h hp
   | .ps _ _ :: _, _, _, _, _, _ => trivial
   | .op r :: as, pend, cr, hs, h, hp => by
-    simp only [stA, Bool.and_eq_true, beq_iff_eq] at h; omega
+    simp only [stA, Bool.and_eq_true, beq_iff_eq] at h; (clear * - r as p occ pend cr hs hp h; omega)
 
 /-- **The message bytes on the stream**: under a lookahead entry `st ‖ π[pend, E)`, the message
 bytes from `off` are `π`'s. -/
@@ -336,7 +336,7 @@ theorem msg_bytes {i : ℕ} {st : Digest} {pend off E n : ℕ} {a₀ : Digest} {
   have hsz : (digestBytes st ++ π.extract pend E).size = 32 + (E - pend) := by
     rw [ByteArray.size_append, size_digestBytes, ← length_blb, blb_extract]; simp [length_blb]; (clear * - hE; omega)
   have := (stream_entry hdrop).1 (32 + (off - pend)) n (by rw [hsz]; (clear * - hpo hoE; omega))
-  rw [show entOff tr i + 40 + (off - pend) = entOff tr i + 8 + (32 + (off - pend)) by (clear * -; omega), this,
+  rw [show entOff tr i + 40 + (off - pend) = entOff tr i + 8 + (32 + (off - pend)) by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega), this,
     blb_append, blb_digestBytes, blb_extract, drop_app_len (show st.toList.length = 32 by simp),
     List.drop_take, List.drop_drop, show pend + (off - pend) = off by (clear * - hpo; omega), List.take_take]
   congr 1; (clear * - hpo hoE; omega)
@@ -368,7 +368,7 @@ theorem capsJ_lookup {S : Scheme} {π : ByteArray} {caps : List CapI} {dcaps : L
   · rw [hd]
     apply find_unique
     · rw [List.mem_reverse]
-      exact List.mem_iff_getElem.mpr ⟨j, by simp [hlen]; omega, by simp⟩
+      exact List.mem_iff_getElem.mpr ⟨j, by simp [hlen]; (clear * - hj; omega), by simp⟩
     · intro x hx hxr
       rw [List.mem_reverse] at hx
       obtain ⟨j', hj', hx'⟩ := List.mem_iff_getElem.mp hx
@@ -383,8 +383,8 @@ theorem capsJ_lookup {S : Scheme} {π : ByteArray} {caps : List CapI} {dcaps : L
 
 theorem buf_ext (l : List UInt8) {pend off : ℕ} (h : pend ≤ off) (n : ℕ) :
     (l.drop pend).take (off - pend) ++ (l.drop off).take n = (l.drop pend).take (off + n - pend) := by
-  rw [show off + n - pend = (off - pend) + n by omega, List.take_add, List.drop_drop,
-    show pend + (off - pend) = off by omega]
+  rw [show off + n - pend = (off - pend) + n by (clear * - off n pend h; omega), List.take_add, List.drop_drop,
+    show pend + (off - pend) = off by (clear * - pend off h; omega)]
 
 theorem capS_le (i : ℕ) : capS (shpS i).1 (shpS i).2 ≤ (shpS i).1 := by
   rcases i with _ | _ | _ | _ | _ | i <;> simp [capS, shpS]
@@ -418,11 +418,11 @@ theorem J.fs {s : DSt} {st : Digest} {buf : List UInt8} {caps : List CapI} {body
   have he := stream_entry hdrop
   refine ⟨?_, by rw [← List.drop_drop, hdrop]; rfl, fun s₁ h1 h2 h3 h4 ↦ ?_⟩
   · rw [hJ.ent, hJ.msg, show entOff tr i + 40 + (s.off - s.pend) = entOff tr i + 8 + (32 + (s.off - s.pend)) by
-      (clear * -; omega), ← hsz]
+      (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega), ← hsz]
     exact he.2.1
   · refine ⟨h3.symm, by (clear * - h1 h2; omega), by (clear * - hoff h1 h2; omega), by rw [h1, h2]; simp, by rw [h1]; exact hJ.body, ?_, ?_, ?_⟩
     · show rs.ent + 72 + rs.msg = _
-      rw [he.2.2, hJ.ent, hJ.msg, hsz]; (clear * -; omega)
+      rw [he.2.2, hJ.ent, hJ.msg, hsz]; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)
     · show 0 = _; (clear * - h1 h2; omega)
     · rw [h4]; exact hJ.caps
 
@@ -475,12 +475,12 @@ theorem simW (hdecE : S.decE = eOfBytes) (hchal : S.chal = chalOf) (hdecK : S.de
       obtain ⟨a₀, rest, hdrop⟩ := drive_next p π (Atom.rd :: as) s k _ hnext hd
       have hval : sbs (traceBytesB tr) (rs.ent + 40 + rs.msg) 24 = ((blb π).drop s.off).take 24 := by
         rw [hJ.ent, hJ.msg]
-        exact msg_bytes hdrop (by simp only [pendA, eBytes] at hb ⊢; omega) hpo
-          (by simp only [pendA, eBytes]; omega)
+        exact msg_bytes hdrop (by simp only [pendA, eBytes] at hb ⊢; (clear * - s as π S ri hb; omega)) hpo
+          (by simp only [pendA, eBytes]; (clear * - s as S π ri; omega))
       have hiv' : ivpW capS occ shpS S.rw (k' (eOfBytes (((blb π).drop s.off).take 24))) (traceBytesB tr)
           { rs with msg := rs.msg + 24 } (ri + 1) = (some a, rs', ri') := by
         simp only [ivpW, hw0, hval] at hiv; exact hiv
-      have h24 : s.off + 24 ≤ π.size := by simp only [eBytes] at hb; omega
+      have h24 : s.off + 24 ≤ π.size := by simp only [eBytes] at hb; (clear * - s π S as ri hb; omega)
       have hJ' : J S π tr { s with off := s.off + eBytes } st (buf ++ body.take 24) caps (body.drop 24)
           { rs with msg := rs.msg + 24 } i cr := by
         refine ⟨hJ.st, by simp only; (clear * - hpo; omega), by simp only [eBytes]; omega, ?_, ?_, hJ.ent, ?_, hJ.caps⟩
@@ -490,10 +490,10 @@ theorem simW (hdecE : S.decE = eOfBytes) (hchal : S.chal = chalOf) (hdecK : S.de
         · simp only [eBytes]; rw [hJ.msg]; (clear * - hpo; omega)
       obtain ⟨s', st', buf', caps', body', i', cr', h1, h2, h3, h4⟩ :=
         simW hdecE hchal hdecK hcap hocc as (k' _) pp Q _ st _ caps _ _ i cr hs k a rs' (ri + 1) ri' (hF' _)
-          (by simp only; rw [show s.off + eBytes - s.pend = s.off - s.pend + eBytes by omega]; exact hst')
+          (by simp only; rw [show s.off + eBytes - s.pend = s.off - s.pend + eBytes by (clear * - s S π as ri hpo; omega)]; exact hst')
           hJ' hpos hpk hk hd' hw' hiv'
       refine ⟨s', st', buf', caps', body', i', cr', h1, h2, h3, fun kS ↦ ?_⟩
-      have hlen : ¬ body.length < 24 := by rw [hJ.body, List.length_drop, length_blb]; omega
+      have hlen : ¬ body.length < 24 := by rw [hJ.body, List.length_drop, length_blb]; (clear * - π s S as ri h24; omega)
       simp only [runKW, hw0, hlen, ↓reduceIte, hdecE]
       rw [hJ.body] at h4 ⊢
       exact h4 kS
@@ -510,29 +510,29 @@ theorem simW (hdecE : S.decE = eOfBytes) (hchal : S.chal = chalOf) (hdecK : S.de
       have hb := bound_of_drive hk hd'
       simp only at hb
       have hnext : NextFS (Atom.rdw w :: as) :=
-        nextFS_of_stA (p := p) as _ cr hs hst' (by have := S.rw_pos ri; omega)
+        nextFS_of_stA (p := p) as _ cr hs hst' (by have := S.rw_pos ri; (clear * - s w S π as ri hw0 this; omega))
       obtain ⟨a₀, rest, hdrop⟩ := drive_next p π (Atom.rdw w :: as) s k _ hnext hd
       have hval : sbs (traceBytesB tr) (rs.ent + 40 + rs.msg) w = ((blb π).drop s.off).take w := by
         rw [hJ.ent, hJ.msg]
-        exact msg_bytes hdrop (by simp only [pendA] at hb ⊢; omega) hpo
-          (by simp only [pendA]; omega)
+        exact msg_bytes hdrop (by simp only [pendA] at hb ⊢; (clear * - s w as π S ri hb; omega)) hpo
+          (by simp only [pendA]; (clear * - s w as S π ri; omega))
       have hiv' : ivpW capS occ shpS S.rw (k' (eOfBytes (((blb π).drop s.off).take w))) (traceBytesB tr)
           { rs with msg := rs.msg + w } (ri + 1) = (some a, rs', ri') := by
         simp only [ivpW, hw0, hval] at hiv; exact hiv
-      have h24 : s.off + w ≤ π.size := by omega
+      have h24 : s.off + w ≤ π.size := by (clear * - s w π S as ri hb; omega)
       have hJ' : J S π tr { s with off := s.off + w } st (buf ++ body.take w) caps (body.drop w)
           { rs with msg := rs.msg + w } i cr := by
-        refine ⟨hJ.st, by simp only; omega, by simp only; omega, ?_, ?_, hJ.ent, ?_, hJ.caps⟩
+        refine ⟨hJ.st, by simp only; (clear * - s w S π as ri hw0 hpo; omega), by simp only; (clear * - h24; omega), ?_, ?_, hJ.ent, ?_, hJ.caps⟩
         · simp only
           rw [hJ.buf, hJ.body, buf_ext _ hpo]
         · simp only; rw [hJ.body, List.drop_drop, Nat.add_comm]
-        · simp only; rw [hJ.msg]; omega
+        · simp only; rw [hJ.msg]; (clear * - s w S π as ri hw0 hpo; omega)
       obtain ⟨s', st', buf', caps', body', i', cr', h1, h2, h3, h4⟩ :=
         simW hdecE hchal hdecK hcap hocc as (k' _) pp Q _ st _ caps _ _ i cr hs k a rs' (ri + 1) ri' (hF' _)
-          (by simp only; rw [show s.off + w - s.pend = s.off - s.pend + w by omega]; exact hst')
+          (by simp only; rw [show s.off + w - s.pend = s.off - s.pend + w by (clear * - s w S π as ri hw0 hpo; omega)]; exact hst')
           hJ' hpos hpk hk hd' hw' hiv'
       refine ⟨s', st', buf', caps', body', i', cr', h1, h2, h3, fun kS ↦ ?_⟩
-      have hlen : ¬ body.length < w := by rw [hJ.body, List.length_drop, length_blb]; omega
+      have hlen : ¬ body.length < w := by rw [hJ.body, List.length_drop, length_blb]; (clear * - π s w S as ri hw0 hb h24; omega)
       simp only [runKW, hw0, hlen, ↓reduceIte, hdecE]
       rw [hJ.body] at h4 ⊢
       exact h4 kS
@@ -551,7 +551,7 @@ theorem simW (hdecE : S.decE = eOfBytes) (hchal : S.chal = chalOf) (hdecK : S.de
       simp only at hb
       have hcb : S.capBytes ht w = nodeBytes * 2 ^ c := by
         simp only [Scheme.capBytes, hcap, hc, nodeBytes]
-      have hoff : s.off + nodeBytes * 2 ^ c ≤ π.size := by omega
+      have hoff : s.off + nodeBytes * 2 ^ c ≤ π.size := by (clear * - s c π S r as cr ht w hb hcb; omega)
       have hiv' : ivpW capS occ shpS S.rw k' (traceBytesB tr) { rs with msg := rs.msg + nodeBytes * 2 ^ c } ri =
           (some a, rs', ri') := by
         simp only [ivpW, hc] at hiv; exact hiv
@@ -570,7 +570,7 @@ theorem simW (hdecE : S.decE = eOfBytes) (hchal : S.chal = chalOf) (hdecK : S.de
             simp only [List.length_append, List.length_singleton] at hj
             rcases Nat.lt_or_ge j cr.length with hj' | hj'
             · rw [List.getElem_append_left hj']; exact hix j hj'
-            · rw [List.getElem_append_right (by omega)]
+            · rw [List.getElem_append_right (by (clear * - hj'; omega))]
               simp only [show j - cr.length = 0 by (clear * - hlen hj hj'; omega), List.getElem_singleton]
               (clear * - hidx hlen hj hj'; omega)
           · exact List.nodup_append.mpr ⟨hnd, List.nodup_singleton r, by
@@ -578,10 +578,10 @@ theorem simW (hdecE : S.decE = eOfBytes) (hchal : S.chal = chalOf) (hdecK : S.de
       obtain ⟨s', st', buf', caps', body', i', cr', h1, h2, h3, h4⟩ :=
         simW hdecE hchal hdecK hcap hocc as k' pp Q _ st _ _ _ _ i (cr ++ [r]) hs k a rs' ri ri' hF'
           (by simp only; rw [show s.off + nodeBytes * 2 ^ c - s.pend = s.off - s.pend + nodeBytes * 2 ^ c by
-            omega]; exact hst')
+            (clear * - s c S π r as cr ht w hpo hcb; omega)]; exact hst')
           hJ' hpos hpk hk hd' hw hiv'
       refine ⟨s', st', buf', caps', body', i', cr', h1, h2, h3, fun kS ↦ ?_⟩
-      have hlen : ¬ body.length < S.capBytes ht w := by rw [hJ.body, List.length_drop, length_blb, hcb]; omega
+      have hlen : ¬ body.length < S.capBytes ht w := by rw [hJ.body, List.length_drop, length_blb, hcb]; (clear * - π s c S r as cr ht w hcb hoff; omega)
       simp only [runKW, hlen, ↓reduceIte]
       exact h4 kS
     | fail => simp [ivpW] at hiv

@@ -305,7 +305,7 @@ theorem card_le_of_uniformFamilyBound
     by_contra hne
     have hbound := hpair first second hne
     rw [heq, Finset.inter_self, hselectedCard second] at hbound
-    omega
+    (clear * - n E d hEd hd hbound; omega)
   let family : Finset (Finset (Fin n)) := Finset.univ.image selected
   have hfamilyCard : family.card = candidates.card := by
     change (Finset.univ.image selected).card = candidates.card
@@ -497,7 +497,7 @@ private theorem johnson_family_int {E d : ℕ}
     exact_mod_cast hcanceled
   push_cast at hcauchyInt
   rw [Nat.cast_sub hE, Nat.cast_sub hd,
-    Nat.cast_sub (show 1 ≤ family.card by omega)] at hcauchyInt
+    Nat.cast_sub (show 1 ≤ family.card by (clear * - n family E d hfamilyPos; omega))] at hcauchyInt
   ring_nf at hcauchyInt ⊢
   linarith
 
@@ -831,7 +831,7 @@ variable {F : Type*} [Field F] [Fintype F] [DecidableEq F]
 /-- `rsCode` as JB's `LinearCode` on `Fin n` (the same submodule). -/
 theorem rsCode_minDist {n : ℕ} (domain : Fin n ↪ F) {k : ℕ} (hk : 1 ≤ k) (hkn : k ≤ n) :
     HasMinimumDistanceAtLeast (rsCode domain k) (n - k + 1) := by
-  refine ⟨by omega, fun c hc hc0 ↦ ?_⟩
+  refine ⟨by (clear * - n k hk hkn; omega), fun c hc hc0 ↦ ?_⟩
   by_contra hlt
   apply hc0
   have hsplit := card_filter_add_card_filter_not (s := (univ : Finset (Fin n))) (fun i ↦ c i = 0)

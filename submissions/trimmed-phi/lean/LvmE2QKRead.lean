@@ -60,18 +60,18 @@ theorem readE2s_run (sig : ByteArray) : ∀ (n : Nat) (s : RS),
     rw [readE2s_succ, bind_run, readE2_run, bind_run, readE2s_run sig n, pure_run]
     generalize fe2At sig = v
     simp only [scalars2, List.range_succ_eq_map, List.map_cons, List.map_map, Function.comp_def]
-    have h1 : s.ent + 40 + s.msg = s.ent + s.msg + 40 + 16 * 0 := by omega
+    have h1 : s.ent + 40 + s.msg = s.ent + s.msg + 40 + 16 * 0 := by (clear * - s; omega)
     have h2 : ∀ k, s.ent + (s.msg + 16) + 40 + 16 * k = s.ent + s.msg + 40 + 16 * (k + 1) := by
-      intro k; omega
-    have h3 : s.msg + 16 + 16 * n = s.msg + 16 * (n + 1) := by omega
+      intro k; (clear * - s k; omega)
+    have h3 : s.msg + 16 + 16 * n = s.msg + 16 * (n + 1) := by (clear * - s n; omega)
     simp only [h1, h2, h3]
 
 /-- **A ground challenge**: the nonce, the answer at `ent + msg + 48`, its `powOKR g`. -/
 theorem sampleG_run (sig : ByteArray) (g : Nat) (s : RS) :
     sampleG g sig s = (e2OfFE (feAt sig (s.ent + s.msg + 48)),
       ⟨s.ent + s.msg + 80, 0, powOKR g (feAt sig (s.ent + s.msg + 48)) && s.ok⟩) := by
-  have h1 : s.ent + 40 + (s.msg + 8) = s.ent + s.msg + 48 := by omega
-  have h2 : s.ent + 72 + (s.msg + 8) = s.ent + s.msg + 80 := by omega
+  have h1 : s.ent + 40 + (s.msg + 8) = s.ent + s.msg + 48 := by (clear * - s; omega)
+  have h2 : s.ent + 72 + (s.msg + 8) = s.ent + s.msg + 80 := by (clear * - s; omega)
   show (e2OfFE (feAt sig (s.ent + 40 + (s.msg + 8))),
       (⟨s.ent + 72 + (s.msg + 8), 0, powOKR g (feAt sig (s.ent + 40 + (s.msg + 8))) && s.ok⟩ : RS)) = _
   rw [h1, h2]
@@ -83,9 +83,9 @@ theorem roundPolyD_run (sig : ByteArray) (count : Nat) (hc : 2 ≤ count) (claim
     fun tail => pure (c0 :: (claim + sumF tail) :: tail)) from rfl]
   rw [bind_run, readE2_run, bind_run, readE2s_run, pure_run]
   generalize fe2At sig = v
-  have h1 : s.ent + (s.msg + 16) + 40 = s.ent + s.msg + 56 := by omega
-  have h2 : s.ent + 40 + s.msg = s.ent + s.msg + 40 := by omega
-  have h3 : s.msg + 16 + 16 * (count - 2) = s.msg + 16 * (count - 1) := by omega
+  have h1 : s.ent + (s.msg + 16) + 40 = s.ent + s.msg + 56 := by (clear * - s count; omega)
+  have h2 : s.ent + 40 + s.msg = s.ent + s.msg + 40 := by (clear * - s count; omega)
+  have h3 : s.msg + 16 + 16 * (count - 2) = s.msg + 16 * (count - 1) := by (clear * - s count hc; omega)
   simp only [roundPoly2, h1, h2, h3]
 
 theorem sumcheckD_cons (g : Nat) (claim : FE2) (count : Nat) (e : Option FE2) (es : List (Option FE2)) :
@@ -111,12 +111,12 @@ theorem sumcheckD_run (sig : ByteArray) (g count : Nat) (hc : 2 ≤ count) :
       bind_run, pure_run]
     dsimp only
     have ha : s.ent + (s.msg + 16 * (count - 1)) + 48 = ansAt2 p count := by
-      simp only [ansAt2]; omega
+      simp only [ansAt2]; (clear * - s count p hp; omega)
     rw [ha, hp]
     obtain ⟨i1, i2, i3⟩ := sumcheckD_run sig g count hc R
       (polyEvalF (roundPoly2 (fe2At sig) p count claim) (e2OfFE (feAt sig (ansAt2 p count))))
       ⟨s.ent + (s.msg + 16 * (count - 1)) + 80, 0, powOKR g (feAt sig (ansAt2 p count)) && s.ok⟩
-      (p + roundLen2 count) (by show _ + 0 = _; simp only [roundLen2]; omega)
+      (p + roundLen2 count) (by show _ + 0 = _; simp only [roundLen2]; (clear * - s count p hp; omega))
     refine ⟨?_, ?_, ?_⟩
     · rw [i1]; rfl
     · rw [i2]; ring
@@ -131,7 +131,7 @@ theorem scSpec2_fst_getD (v : Nat → FE2) (va : Nat → FE) (g count : Nat) :
   | 0, R + 1, p, claim, _ => by simp [scSpec2]
   | i + 1, R + 1, p, claim, h => by
     simp only [scSpec2, List.getD_cons_succ]
-    rw [scSpec2_fst_getD v va g count i R _ _ (by omega)]
+    rw [scSpec2_fst_getD v va g count i R _ _ (by (clear * - i R h; omega))]
     congr 3; ring
 
 theorem scSpec2_snd_succ (v : Nat → FE2) (va : Nat → FE) (g count : Nat) :
@@ -154,7 +154,7 @@ theorem scSpec2_snd_succ (v : Nat → FE2) (va : Nat → FE) (g count : Nat) :
 theorem laneC2_val {M : Mem} {sig : ByteArray} {T : Nat} (hS : Streamed M sig T) {a : Nat} (ha : a + 1 < T) :
     (laneC2 a).val M = fe2At sig (8 * a) := by
   show (⟨(FE.ofK (M.k a)).c₀, (FE.ofK (M.k (a + 1))).c₀⟩ : FE2) = _
-  rw [hS a (by omega), hS (a + 1) ha]
+  rw [hS a (by (clear * - a T ha; omega)), hS (a + 1) ha]
   show (⟨kAt sig (8 * a), kAt sig (8 * (a + 1))⟩ : FE2) = ⟨kAt sig (8 * a), kAt sig (8 * a + 8)⟩
   rw [show 8 * (a + 1) = 8 * a + 8 by ring]
 
@@ -180,7 +180,7 @@ theorem lane2_val {M : Mem} {sig : ByteArray} {T : Nat} (hS : Streamed M sig T) 
   show (⟨(iterXv M o jf (.ext ⟨.K, a, [s]⟩)).c₀, (iterXv M o jf (.ext ⟨.K, a + 1, [s]⟩)).c₀⟩ : FE2) = _
   rw [iterXv_ext1 M o ho hjf, iterXv_ext1 M o ho hjf]
   show (⟨M.k (a + s * jf), M.k (a + 1 + s * jf)⟩ : FE2) = _
-  rw [hS _ (by omega), hS _ (by omega)]
+  rw [hS _ (by (clear * - a s jf T D ha; omega)), hS _ (by (clear * - a s jf T D ha; omega))]
   show (⟨kAt sig (8 * (a + s * jf)), kAt sig (8 * (a + 1 + s * jf))⟩ : FE2) =
     ⟨kAt sig (8 * (a + s * jf)), kAt sig (8 * (a + s * jf) + 8)⟩
   rw [show 8 * (a + 1 + s * jf) = 8 * (a + s * jf) + 8 by ring]
@@ -196,8 +196,8 @@ theorem thold2_e2I {xv : Src → FE} {V : Nat → FE} {ins : List Ins} (hH : THo
   have g0 := hseg 0 (by simp [e2I])
   have g1 := hseg 1 (by simp [e2I])
   simp only [Nat.add_zero, e2I, List.getD_cons_zero, List.getD_cons_succ] at g0 g1
-  have h0 := hH n (by omega) (Or.inr ⟨f, false, by rw [g0]⟩)
-  have h1 := hH (n + 1) (by omega) (Or.inr ⟨f, true, by rw [g1]⟩)
+  have h0 := hH n (by (clear * - n ins hlen; omega)) (Or.inr ⟨f, false, by rw [g0]⟩)
+  have h1 := hH (n + 1) (by (clear * - n ins hlen; omega)) (Or.inr ⟨f, true, by rw [g1]⟩)
   rw [Nat.zero_add, g0] at h0
   rw [Nat.zero_add, g1] at h1
   simp only [Ins.evalF2] at h0 h1
@@ -218,10 +218,10 @@ theorem sc2_round_val {xv : Src → FE} {V : Nat → FE} {q : Nat} (hH : THold2 
   have e0 := thold2_e2I hH (n := 0) (f := .lin 1 (0 : FE2).re (0 : FE2).im)
     (xs := [(Src.prev 4, Src.prev 5), lane2 (q + 2) [14]])
     (by intro i hi; simp only [e2I, List.length_cons, List.length_nil] at hi; interval_cases i <;> try rfl)
-    (by rw [hl]; all_goals omega)
+    (by rw [hl]; all_goals (clear * - q; omega))
   have e1 := thold2_e2I hH (n := 2) (f := .mul) (xs := [lane2 (q + 2) [14], lane2 (q + 5) [14], (.loc 0, .loc 1)])
     (by intro i hi; simp only [e2I, List.length_cons, List.length_nil] at hi; interval_cases i <;> try rfl)
-    (by rw [hl]; all_goals omega)
+    (by rw [hl]; all_goals (clear * - q; omega))
   have e2 := thold2_e2I hH (n := 4) (f := .mul) (xs := [(.loc 2, .loc 3), lane2 (q + 5) [14], lane2 q [14]])
     (by intro i hi; simp only [e2I, List.length_cons, List.length_nil] at hi; interval_cases i <;> try rfl)
     (by rw [hl]; all_goals omega)
@@ -259,13 +259,13 @@ theorem sc2_iter {c : Ctx} {M : Mem} {p : Ptr} {D q : Nat} {claim : C2} {sig : B
       fe2At sig (8 * (a + 14 * jf)) := fun a ha => lane2_val hS o ho hjf _ ha
   have hcell : (o.cell2 4 jf).val M = (⟨(iterF M o jf 4).c₀, (iterF M o jf 5).c₀⟩ : FE2) := rfl
   have hprev : S2.valF (iterXv M o jf) (iterF M o jf) (Src.prev 4, Src.prev 5) = scPrev2 M o jf := rfl
-  rw [hcell, hr, hprev, hl (q + 5) (by omega), hl (q + 2) (by omega), hl q (by omega)]
+  rw [hcell, hr, hprev, hl (q + 5) (by (clear * - q jf T D hT; omega)), hl (q + 2) (by (clear * - q jf T D hT; omega)), hl q (by (clear * - q jf T D hT; omega))]
   simp only [roundPoly2, scalars2, polyEvalF, ansAt2, roundLen2, sumF, List.range_one, List.map_cons, List.map_nil,
     List.foldl_cons, List.foldl_nil, List.foldr_cons, List.foldr_nil, show 3 - 2 = 1 from rfl,
     show 3 - 1 = 2 from rfl, e2OfFE_feAt, Nat.mul_zero, Nat.add_zero, zero_add, zero_mul]
-  have p0 : 8 * (q + 14 * jf) = 8 * q - 40 + jf * (80 + 16 * 2) + 40 := by omega
-  have p2 : 8 * (q + 2 + 14 * jf) = 8 * q - 40 + jf * (80 + 16 * 2) + 56 := by omega
-  have p5 : 8 * (q + 5 + 14 * jf) = 8 * q - 40 + jf * (80 + 16 * 2) + 48 + 16 * 2 := by omega
+  have p0 : 8 * (q + 14 * jf) = 8 * q - 40 + jf * (80 + 16 * 2) + 40 := by (clear * - q jf D T hq; omega)
+  have p2 : 8 * (q + 2 + 14 * jf) = 8 * q - 40 + jf * (80 + 16 * 2) + 56 := by (clear * - q jf D T p0; omega)
+  have p5 : 8 * (q + 5 + 14 * jf) = 8 * q - 40 + jf * (80 + 16 * 2) + 48 + 16 * 2 := by (clear * - q jf D T p0; omega)
   rw [p0, p2, p5]
 
 /-- **`scGadget2 D 2 q claim` replays `V`'s plain `E2` sumcheck** (three coefficients, `R ≤ 2^D` rounds) from the
@@ -282,10 +282,10 @@ theorem sc2_spec {c : Ctx} {M : Mem} {p : Ptr} {D q R : Nat} {claim : C2} {sig :
       (scSpec2 (fe2At sig) (feAt sig) g 3 (8 * q - 40) (claim.val M) R).1.getD i 0 := by
     intro i hi
     rw [scSpec2_fst_getD _ _ _ _ i R _ _ hi, e2OfFE_feAt, show scChal2 2 q i = laneC2 (q + 14 * i + 5) from rfl,
-      laneC2_val hS (by omega)]
+      laneC2_val hS (by (clear * - q i T D R hT hi; omega))]
     congr 1
     simp only [ansAt2, roundLen2]
-    omega
+    (clear * - q i D R T hq; omega)
   have hlen : (tplOf (scTpl2 2 q)).length = 6 := rfl
   have hop : ((tplOf (scTpl2 2 q)).getD 4 default).op ≠ .assert0 := by
     rw [scTpl2_two]; simp [tplOf, mul2I, e2I, lin2I, Ins.toLRow]
@@ -297,11 +297,11 @@ theorem sc2_spec {c : Ctx} {M : Mem} {p : Ptr} {D q R : Nat} {claim : C2} {sig :
     intro hi
     refine ⟨hch 0 hi, ?_⟩
     rw [scSpec2_snd_succ, show scClaim2 (scGadget2 D 2 q claim p).1 2 0 = (scGadget2 D 2 q claim p).1.cell2 4 0
-      from rfl, sc2_iter hq hS h (by omega) (by omega)]
+      from rfl, sc2_iter hq hS h (by (clear * - D q R T hR hi; omega)) (by (clear * - q T D R hT hi; omega))]
     have hp : scPrev2 M (scGadget2 D 2 q claim p).1 0 = claim.val M := by
       show (⟨((Opd.prev 4).val M (loopP [D] (tplOf (scTpl2 2 q)) _ p).1 0).c₀,
         ((Opd.prev 5).val M (loopP [D] (tplOf (scTpl2 2 q)) _ p).1 0).c₀⟩ : FE2) = _
-      rw [loopP_prev_zero h (by rw [hlen]; omega) hop, loopP_prev_zero h (by rw [hlen]; omega) hop5]
+      rw [loopP_prev_zero h (by rw [hlen]; (clear * - D q R T; omega)) hop, loopP_prev_zero h (by rw [hlen]; (clear * - D q R T; omega)) hop5]
       rfl
     rw [hp]
     rfl
@@ -309,12 +309,12 @@ theorem sc2_spec {c : Ctx} {M : Mem} {p : Ptr} {D q R : Nat} {claim : C2} {sig :
     intro hi
     refine ⟨hch (i + 1) hi, ?_⟩
     rw [scSpec2_snd_succ, show scClaim2 (scGadget2 D 2 q claim p).1 2 (i + 1) =
-      (scGadget2 D 2 q claim p).1.cell2 4 (i + 1) from rfl, sc2_iter hq hS h (by omega) (by omega)]
+      (scGadget2 D 2 q claim p).1.cell2 4 (i + 1) from rfl, sc2_iter hq hS h (by (clear * - i D q R T hR hi; omega)) (by (clear * - q i T D R hT hi; omega))]
     have hp : scPrev2 M (scGadget2 D 2 q claim p).1 (i + 1) = (scClaim2 (scGadget2 D 2 q claim p).1 2 i).val M := by
       show (⟨((Opd.prev 4).val M (loopP [D] (tplOf (scTpl2 2 q)) _ p).1 (i + 1)).c₀,
         ((Opd.prev 5).val M (loopP [D] (tplOf (scTpl2 2 q)) _ p).1 (i + 1)).c₀⟩ : FE2) = _
-      rw [loopP_prev_succ M [D] _ _ p (by simp; omega), loopP_prev_succ M [D] _ _ p (by simp; omega)]
+      rw [loopP_prev_succ M [D] _ _ p (by simp; (clear * - i D q R T hR hi; omega)), loopP_prev_succ M [D] _ _ p (by simp; (clear * - i D q R T hR hi; omega))]
       rfl
-    rw [hp, (ih (by omega)).2]
+    rw [hp, (ih (by (clear * - i R D q T hi; omega))).2]
 
 end Lvm.Q1

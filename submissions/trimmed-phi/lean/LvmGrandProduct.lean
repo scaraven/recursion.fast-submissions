@@ -101,7 +101,7 @@ theorem partialSum_self {m : ℕ} (g : Vector R m → R) (r : Vector R m) (c : V
   rw [partialSum, dite_eq_left le_rfl, evalMle_eq_sum]
   have hone : 2 ^ (m - m) = 1 := by simp
   have : Unique (Fin (2 ^ (m - m))) :=
-    ⟨⟨⟨0, by omega⟩⟩, fun x ↦ Fin.ext (by have := x.isLt; (clear * - hone; omega))⟩
+    ⟨⟨⟨0, by (clear * - m hone; omega)⟩⟩, fun x ↦ Fin.ext (by have := x.isLt; (clear * - hone; omega))⟩
   rw [Fintype.sum_unique]
   simp only [restrictTable, Fin.getElem_fin, Vector.getElem_ofFn, fixLow_self,
     lagrangeBasis_getElem_nat _ (Fin.isLt _)]
@@ -146,7 +146,7 @@ private theorem fixLow_push_one {m j : ℕ} (hj : j < m) (c : Vector R j)
       simp [Nat.testBit_zero, Nat.add_mod]
     · have hs : i - j = (i - (j + 1)) + 1 := by (clear * - h2; omega)
       simp only [h1, h2, dite_false, hs, Nat.testBit_succ,
-        show (2 * x'.val + 1) / 2 = x'.val by (clear * -; omega)]
+        show (2 * x'.val + 1) / 2 = x'.val by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - m j x'; omega))]
 
 /-- Extending `c` by `X` is extending it by `0` and then setting coordinate `j` to `X`. -/
 theorem fixLow_push_set {m j : ℕ} (hj : j < m) (c : Vector R j) (x : Vector R (m - (j + 1)))
@@ -170,7 +170,7 @@ theorem partialSum_split {m : ℕ} (g : Vector R m → R) (r : Vector R m) {j : 
     partialSum g r j c =
       (1 - r[j]) * partialSum g r (j + 1) (c.push 0) +
         r[j] * partialSum g r (j + 1) (c.push 1) := by
-  have hm : m - j = (m - (j + 1)) + 1 := by omega
+  have hm : m - j = (m - (j + 1)) + 1 := by (clear * - m j hj; omega)
   rw [partialSum, partialSum, partialSum, dite_eq_left hj.le, dite_eq_left (Nat.succ_le_of_lt hj),
     dite_eq_left (Nat.succ_le_of_lt hj)]
   -- The remaining coordinates, with the next one split off.
@@ -182,7 +182,7 @@ theorem partialSum_split {m : ℕ} (g : Vector R m → R) (r : Vector R m) {j : 
     intro i hi
     simp only [Vector.tail_eq_cast_extract, Vector.getElem_cast, Vector.getElem_extract,
       Vector.getElem_drop]
-    exact getElem_congr_idx (by (clear * -; omega))
+    exact getElem_congr_idx (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))
   rw [hhead, htail]
   -- The layer at `r_j` interpolates the two restricted tables.
   have hlayer : evalMleLayer (Vector.cast (congrArg (2 ^ ·) hm) (restrictTable g hj.le c)) r[j] =
@@ -314,11 +314,11 @@ theorem childPoint_set (ρ : ℕ) {n : ℕ} (c : Fin (2 ^ ρ)) (y : Vector R n) 
   intro i hi
   simp only [childPoint, Vector.getElem_cast, Vector.getElem_append, Vector.getElem_set]
   by_cases h : i < ρ
-  · simp [h, show ρ + k ≠ i by omega]
+  · simp [h, show ρ + k ≠ i by (clear * - ρ k i n h; omega)]
   · by_cases hik : ρ + k = i
     · subst hik
       simp [h]
-    · simp [h, hik, show k ≠ i - ρ by omega]
+    · simp [h, hik, show k ≠ i - ρ by (clear * - k i ρ n h hik; omega)]
 
 /-- Evaluating at a point whose low coordinates are `u`: the extension, at `u`, of the table of
 the evaluations at the descendant points of `y`. -/
@@ -393,7 +393,7 @@ theorem layerTable_contractPow {μ : ℕ} (t : CMlPolynomialEval R μ) (ρ : ℕ
   | zero => rfl
   | succ ρ ih =>
     show layerTable t m = contractPow ρ (contract (layerTable t (m + ρ + 1)))
-    rw [← layerTable_contract t (by omega)]
+    rw [← layerTable_contract t (by (clear * - h; omega))]
     exact ih (by (clear * - h; omega))
 
 /-- The level of the leaves, reached at any number equal to `μ`. -/
@@ -405,7 +405,7 @@ theorem layerTable_of_eq {μ : ℕ} (t : CMlPolynomialEval R μ) {m : ℕ} (h : 
 /-- The root: the product of every leaf. -/
 theorem layerTable_zero_getElem {μ : ℕ} (t : CMlPolynomialEval R μ) :
     (layerTable t 0)[0] = ∏ i : Fin (2 ^ μ), t[i] := by
-  rw [layerTable_contractPow t μ (by omega), layerTable_of_eq t (Nat.zero_add μ)]
+  rw [layerTable_contractPow t μ (by (clear * - μ; omega)), layerTable_of_eq t (Nat.zero_add μ)]
   rw [show (contractPow μ (Vector.cast (congrArg (2 ^ ·) (Nat.zero_add μ).symm) t))[0] =
       (contractPow μ (Vector.cast (congrArg (2 ^ ·) (Nat.zero_add μ).symm) t))[
         (⟨0, Nat.two_pow_pos 0⟩ : Fin (2 ^ 0))] from rfl, contractPow_getElem]
@@ -647,7 +647,7 @@ private theorem roundPoly_eval (ctx : LayerCtx X F O nside m) {j : ℕ} (hj : j 
       evalMle (below nside μ leaves ρ m ctx s)
           (childPoint ρ c (fixLow hj (cv.push z) (boolVec x'))) =
         evalMle (below nside μ leaves ρ m ctx s)
-          ((childPoint ρ c (fixLow hj (cv.push 0) (boolVec x'))).set (ρ + j) z (by omega)) := by
+          ((childPoint ρ c (fixLow hj (cv.push 0) (boolVec x'))).set (ρ + j) z (by (clear * - ρ j m hj; omega))) := by
     intro z
     rw [fixLow_push_set hj cv (boolVec x') z, childPoint_set]
   rw [key x, key 1, evalMle_set (below nside μ leaves ρ m ctx s) _ (k := ρ + j) (by (clear * - hj; omega)) x,

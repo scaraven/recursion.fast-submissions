@@ -252,10 +252,10 @@ theorem inMap_of_okGL (B nPub : ℕ) (C : QCfg) (N : TNat) (pl : Lvm.Pub → Lis
   obtain ⟨⟨⟨⟨⟨hSt, hG⟩, hX⟩, hY⟩, hMd⟩, hP⟩ := h
   have e1 : (fun l r ↦ CTgt.cmain (CMain.sW20 l r)) =
       fun l r ↦ CTgt.cmain (CMain.sOff20 + (l * 2 ^ 14 + r)) := by
-    funext l r; rw [CMain.sW20_eq]; simp only [CMain.sOff20]; exact congrArg CTgt.cmain (by (clear * -; omega))
+    funext l r; rw [CMain.sW20_eq]; simp only [CMain.sOff20]; exact congrArg CTgt.cmain (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))
   have e2 : (fun (_ : ℕ) r ↦ CTgt.cmain (CMain.sW20 17 r)) =
       fun (_ : ℕ) r ↦ CTgt.cmain (CMain.sOff20 + (17 * 2 ^ 14 + r)) := by
-    funext l r; rw [CMain.sW20_eq]; simp only [CMain.sOff20]; exact congrArg CTgt.cmain (by (clear * -; omega))
+    funext l r; rw [CMain.sW20_eq]; simp only [CMain.sOff20]; exact congrArg CTgt.cmain (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))
   rw [e1] at hSt
   rw [e2] at hG
   have f1 : ∀ j < 17 * 2 ^ 14, j % 17 * 2 ^ 14 + j / 17 < 2 ^ 19 := fun j hj ↦ by omega

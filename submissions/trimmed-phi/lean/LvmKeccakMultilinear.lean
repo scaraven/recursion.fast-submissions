@@ -78,8 +78,8 @@ theorem sum_eqAt : ∀ pt : List E, ∑ w ∈ range (2 ^ pt.length), eqAt pt w =
   | r :: rs => by
     rw [List.length_cons, sum_cube_succ, ← sum_eqAt rs, Finset.sum_congr rfl fun w _ ↦ ?_]
     rw [eqAt_cons, eqAt_cons]
-    have h1 : 2 * w % 2 = 0 := by omega
-    have h2 : (2 * w + 1) % 2 = 1 := by omega
+    have h1 : 2 * w % 2 = 0 := by (clear * - w; omega)
+    have h2 : (2 * w + 1) % 2 = 1 := by (clear * - w h1; omega)
     have h3 : 2 * w / 2 = w := by (clear * - h1; omega)
     have h4 : (2 * w + 1) / 2 = w := by (clear * - h1 h2; omega)
     simp only [h1, h2, h3, h4, ite_true, zero_ne_one, ite_false]
@@ -149,8 +149,8 @@ theorem bitsE_two_mul (z m : ℕ) : bitsE (2 * z) (m + 1) = 0 :: bitsE z m := by
   simp [bitsE, Nat.mul_mod_right, Nat.mul_div_cancel_left z (by norm_num : 0 < 2)]
 
 theorem bitsE_two_mul_add_one (z m : ℕ) : bitsE (2 * z + 1) (m + 1) = 1 :: bitsE z m := by
-  have h1 : (2 * z + 1) % 2 = 1 := by omega
-  have h2 : (2 * z + 1) / 2 = z := by omega
+  have h1 : (2 * z + 1) % 2 = 1 := by (clear * - z; omega)
+  have h2 : (2 * z + 1) / 2 = z := by (clear * - z h1; omega)
   simp [bitsE, h1, h2]
 
 /-- **Equality weights at a cube point** pick the index. -/
@@ -163,7 +163,7 @@ theorem eqAt_bitsE_lt : ∀ {m z w : ℕ}, z < 2 ^ m → w < 2 ^ m →
   | m + 1, z, w, hz, hw => by
     rw [bitsE, eqAt_cons, eqAt_bitsE_lt (m := m) (by rw [pow_succ] at hz; (clear * - hz; omega))
       (by rw [pow_succ] at hw; (clear * - hw; omega))]
-    have key : w = z ↔ (w % 2 = z % 2 ∧ w / 2 = z / 2) := by (clear * -; omega)
+    have key : w = z ↔ (w % 2 = z % 2 ∧ w / 2 = z / 2) := by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - w z; omega))
     by_cases h : w / 2 = z / 2
     · rcases Nat.mod_two_eq_zero_or_one z with hz2 | hz2 <;>
         rcases Nat.mod_two_eq_zero_or_one w with hw2 | hw2 <;>
@@ -194,7 +194,7 @@ theorem foldPairs_getD (r : E) : ∀ (l : List E) (w : ℕ), 2 * w + 1 < l.lengt
 
 theorem foldPairs_length (r : E) : ∀ l : List E, (foldPairs r l).length = l.length / 2
   | a :: b :: rest => by
-    simp only [foldPairs, List.length_cons, foldPairs_length r rest]; omega
+    simp only [foldPairs, List.length_cons, foldPairs_length r rest]; (clear * - rest; omega)
   | [] => rfl
   | [_] => by simp [foldPairs]
 
@@ -208,14 +208,14 @@ theorem multilinearEval_eq : ∀ (pt mle : List E), mle.length = 2 ^ pt.length �
     · simp at h
   | r :: rs, mle, h => by
     have hl : (foldPairs r mle).length = 2 ^ rs.length := by
-      rw [foldPairs_length, h, List.length_cons, pow_succ]; (clear * -; omega)
+      rw [foldPairs_length, h, List.length_cons, pow_succ]; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - rs; omega))
     have step : multilinearEval mle (r :: rs) = multilinearEval (foldPairs r mle) rs := rfl
     rw [step, multilinearEval_eq rs _ hl, List.length_cons, sum_cube_succ]
     refine Finset.sum_congr rfl fun w hw ↦ ?_
     have hw' := Finset.mem_range.1 hw
     rw [foldPairs_getD r mle w (by rw [h, List.length_cons, pow_succ]; (clear * - hw'; omega)), eqAt_cons,
       eqAt_cons]
-    have h1 : 2 * w % 2 = 0 := by (clear * -; omega)
+    have h1 : 2 * w % 2 = 0 := by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - w; omega))
     have h2 : (2 * w + 1) % 2 = 1 := by (clear * - h1; omega)
     have h3 : 2 * w / 2 = w := by (clear * - h1; omega)
     have h4 : (2 * w + 1) / 2 = w := by (clear * - h1 h2; omega)
@@ -269,7 +269,7 @@ theorem polyLE_eqAt (pre post : List E) (w : ℕ) :
 theorem polyLE_mle (pre post : List E) (N : ℕ) (f : ℕ → E) :
     PolyLE 1 fun x ↦ ∑ w ∈ range N, eqAt (pre ++ x :: post) w * f w :=
   PolyLE.sum _ fun w _ ↦ ((PolyLE.mul (polyLE_eqAt pre post w) (PolyLE.const 0 (f w))).mono
-    (by omega)).congr fun _ ↦ rfl
+    (by (clear * -; omega))).congr fun _ ↦ rfl
 
 end
 end LeanVM.Protocol.KeccakGkr

@@ -557,7 +557,7 @@ theorem xorC_frame (d a b : ℕ) {i : ℕ} (hd : i ≠ d) (M : Mem) :
 
 theorem xorC_inv (d a b : ℕ) (hd : 4 ≤ d) {M : Mem} (hM : Inv M) :
     Inv (runPrims [.op .xor d a b] M) :=
-  inv_runPrims (by simp [Prim.dst]; omega) hM
+  inv_runPrims (by simp [Prim.dst]; (clear * - hd; omega)) hM
 
 /-! ## The compiled code runs as `semXIR` says, in `steps` steps -/
 
@@ -578,7 +578,7 @@ theorem runs_stmts : ∀ (ps : List Prim) (M o : Array Word),
   | [], M, o => runs_nop M o
   | [p], M, o => runs_prim p M o
   | p :: q :: ps, M, o => runs_mono_eq (runs_seq (runs_prim p M o) (runs_stmts (q :: ps) _ o))
-      (by simp [blkSteps]; omega)
+      (by simp [blkSteps]; (clear * - ps; omega))
 
 theorem runs_storeIR (a v : ℕ) (M o : Array Word) :
     Runs I (compile (.store a v)) M o 4 (storeM M a v) o := by
@@ -614,7 +614,7 @@ theorem runs_loop {B : XStmt} {f : St → St} {g : St → ℕ} {c : ℕ} (hc4 : 
       rw [rd_set_self (by have := hf.1; (clear * - hcr this; omega)), hfc s hM, h1]
       exact toNat_sub_one hk
     exact runs_mono_eq (runs_loop_step hne (runs_seq (hB s hM) hd)
-      (runs_loop hc4 hcr hB hinv hfc k _ h' hk')) (by simp only [stepsL]; (clear * -; omega))
+      (runs_loop hc4 hcr hB hinv hfc k _ h' hk')) (by simp only [stepsL]; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))
 
 theorem runs_entryK (c n : ℕ) (K : Word) (L : XStmt) (M o M' o' : Array Word) (m : ℕ)
     (hL : Runs I L (entryK c n K M) o m M' o') :
@@ -626,9 +626,9 @@ theorem runs_entryK (c n : ℕ) (K : Word) (L : XStmt) (M o M' o' : Array Word) 
   dsimp only at hL
   split at hL
   · next h0 => exact runs_mono_eq (runs_seq h1 (runs_seq h2 (runs_seq
-      (runs_ite_false h0 (runs_nop _ _)) hL))) (by (clear * -; omega))
+      (runs_ite_false h0 (runs_nop _ _)) hL))) (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))
   · next h0 => exact runs_mono_eq (runs_seq h1 (runs_seq h2 (runs_seq
-      (runs_ite_true h0 (runs_op _ _ _ _ _ _)) hL))) (by (clear * -; omega))
+      (runs_ite_true h0 (runs_op _ _ _ _ _ _)) hL))) (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))
 
 /-- **The compiler is correct**: from a state satisfying `Inv`, the compiled code of a
 well-formed program runs in exactly `steps I P s` steps to `semXIR I P s`. -/
@@ -655,7 +655,7 @@ theorem compile_correct (P : XIR) : ∀ s : St, WF P → Inv s.M →
     have hL := runs_loop (I := I) (B := compile b) (by have := hP.1; (clear * - this; omega)) hP.2.1
       (fun s' h' => ih s' hP.2.2.2 h') (fun s' h' => inv_sem I hP.2.2.2 h')
       (fun s' h' => frame I b s' hP.2.2.2 h' c hP.2.1 hP.2.2.1) _ ⟨entryK c n K s.M, s.o⟩ h0 rfl
-    exact runs_mono_eq (runs_entryK c n K _ s.M s.o _ _ _ hL) (by simp only [steps]; (clear * -; omega))
+    exact runs_mono_eq (runs_entryK c n K _ s.M s.o _ _ _ hL) (by simp only [steps]; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))
   | loopT c n _ b ih =>
     intro s hP hM
     have h0 : Inv (entryT c n s.M) := inv_of_frame hM (size_entryT ..)
@@ -663,7 +663,7 @@ theorem compile_correct (P : XIR) : ∀ s : St, WF P → Inv s.M →
     have hL := runs_loop (I := I) (B := compile b) (by have := hP.1; (clear * - this; omega)) hP.2.1
       (fun s' h' => ih s' hP.2.2.2 h') (fun s' h' => inv_sem I hP.2.2.2 h')
       (fun s' h' => frame I b s' hP.2.2.2 h' c hP.2.1 hP.2.2.1) _ ⟨entryT c n s.M, s.o⟩ h0 rfl
-    exact runs_mono_eq (runs_seq (runs_op _ _ _ _ _ _) hL) (by simp only [steps]; (clear * -; omega))
+    exact runs_mono_eq (runs_seq (runs_op _ _ _ _ _ _) hL) (by simp only [steps]; (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))
 
 /-! ## Step and output bounds -/
 
@@ -692,7 +692,7 @@ theorem stepsL_le {f : St → St} {g : St → ℕ} {c B : ℕ} : ∀ k s,
     (∀ j < k, g (iterL f c j s) ≤ B) → stepsL f g c k s ≤ 1 + k * (B + 3)
   | 0, _, _ => by simp [stepsL]
   | k + 1, s, h => by
-    have h0 := h 0 (by (clear * -; omega))
+    have h0 := h 0 (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - k; omega)))
     have := stepsL_le k (decS c (f s)) fun j hj => h (j + 1) (by (clear * - hj; omega))
     simp only [stepsL, iterL] at h0 ⊢
     rw [Nat.add_mul]; (clear * - h0 this; omega)
@@ -702,7 +702,7 @@ theorem iterL_outs {f : St → St} {c B : ℕ} : ∀ k s,
       (iterL f c k s).o.size ≤ s.o.size + k * B
   | 0, _, _ => by simp [iterL]
   | k + 1, s, h => by
-    have h0 := h 0 (by (clear * -; omega))
+    have h0 := h 0 (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - k; omega)))
     have := iterL_outs k (decS c (f s)) fun j hj => h (j + 1) (by (clear * - hj; omega))
     simp only [iterL, decS] at h0 this ⊢
     rw [Nat.add_mul]; (clear * - h0 this; omega)
@@ -799,7 +799,7 @@ theorem size_stmts : ∀ ps : List Prim, (stmts ps).size = blkSteps ps.length
   | [p] => by cases p <;> rfl
   | p :: q :: ps => by
     have := size_stmts (q :: ps)
-    cases p <;> simp only [stmts, Prim.stmt, XStmt.size, this, blkSteps] <;> simp <;> (clear * -; omega)
+    cases p <;> simp only [stmts, Prim.stmt, XStmt.size, this, blkSteps] <;> simp <;> (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - ps; omega))
 
 /-- **The compiled size is `sizeIR`**, computed without compiling. -/
 theorem size_compile : ∀ P : XIR, (compile P).size = sizeIR P
@@ -808,7 +808,7 @@ theorem size_compile : ∀ P : XIR, (compile P).size = sizeIR P
   | .seq p q | .ite _ p q => by simp only [compile, XStmt.size, sizeIR, size_compile p,
       size_compile q]
   | .loopK _ _ _ b | .loopT _ _ _ b => by
-    simp only [compile, XStmt.size, sizeIR, size_compile b, nop, decStmt]; omega
+    simp only [compile, XStmt.size, sizeIR, size_compile b, nop, decStmt]; (clear * - b; omega)
 
 /-! ## Programs -/
 
@@ -827,7 +827,7 @@ theorem initSt_M (m : ℕ) : (initSt m).M = runPrims initPs (Array.replicate m 0
 theorem initSt_o (m : ℕ) : (initSt m).o = #[] := by simp only [initSt]
 
 theorem inv_initSt {m : ℕ} (h : regs ≤ m) : Inv (initSt m).M := by
-  have h4 : 4 ≤ m := by simp only [regs] at h; omega
+  have h4 : 4 ≤ m := by simp only [regs] at h; (clear * - m h; omega)
   have e : (initSt m).M = ((((Array.replicate m (0 : Word)).setIfInBounds 0 1).setIfInBounds 1
       256).setIfInBounds 2 0x1B).setIfInBounds 3 63 := by
     rw [initSt_M]; simp only [initPs, runPrims, List.foldl, Prim.run, cOne, cBase, cRed, c63]

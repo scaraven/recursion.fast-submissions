@@ -25,7 +25,7 @@ theorem digAt_congr {v : Nat → FK} {a b : Nat} (h : ∀ l < 4, v (a + l) = v (
   unfold digAt digOfW
   congr 1; funext k
   dsimp only
-  rw [h (k.val / 8) (by (clear * -; omega))]
+  rw [h (k.val / 8) (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - k; omega)))]
 
 theorem digAt_zero {v : Nat → FK} {a : Nat} (h : ∀ l < 4, v (a + l) = 0) : digAt v a = zeroDig := by
   apply Vector.ext; intro k hk
@@ -165,7 +165,7 @@ theorem qsig_child {c : Ctx} {M : Mem} {p : Ptr} {I : SigIn} (hln : 1 ≤ I.ln �
     · rw [hbits.n_bit I.ln le_rfl, hbits.n_low] at hmul
       exact hmul
     · obtain ⟨z, hz, h0⟩ := List.mem_map.mp (List.prod_eq_zero_iff.mp hprod)
-      have hzl : z ≤ I.ln := by simp at hz; omega
+      have hzl : z ≤ I.ln := by simp at hz; (clear * - hz; omega)
       refine ⟨z, hzl, ?_⟩
       have := FK.eq_neg_of_add h0
       rw [hbits.n_bit z hzl] at this
@@ -267,14 +267,14 @@ theorem step_of_lanes {lane X xw : Nat → UInt64} {jw T c : UInt64} {i s : Nat}
     stDigest st = wotsStep jw.toNat i s (digOfW xw) := by
   have h1 : lane 1 = ((i.toUInt64 <<< (8 : ℕ).toUInt64) ^^^ (s.toUInt64 <<< (16 : ℕ).toUInt64)) ^^^
       (xw 0 <<< (24 : ℕ).toUInt64) := by
-    rw [L1, UInt64.xor_assoc, UInt64.xor_comm (X 0), ← UInt64.xor_assoc, hTc, ← (hX 0 (by (clear * -; omega))).1]
+    rw [L1, UInt64.xor_assoc, UInt64.xor_comm (X 0), ← UInt64.xor_assoc, hTc, ← (hX 0 (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))).1]
   have hx : ∀ k, 1 ≤ k → k < 4 →
       lane (k + 1) = (xw (k - 1) >>> (40 : ℕ).toUInt64) ^^^ (xw k <<< (24 : ℕ).toUInt64) := by
     intro k h1 h2
     rw [Lk k h1 h2, show 2 * k - 1 = 2 * (k - 1) + 1 by (clear * - h1 h2; omega), (hX (k - 1) (by (clear * - h1 h2; omega))).2,
       (hX k h2).1]
   have h5 : lane 5 = (xw 3 >>> (40 : ℕ).toUInt64) ^^^ 0x1000000 := by
-    rw [L5, ← (hX 3 (by (clear * -; omega))).2]
+    rw [L5, ← (hX 3 (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))).2]
   obtain ⟨b0, b1, b2, b3, b4, b5⟩ := wotsStep_lanes jw hj i s hi hs xw lane L0 h1 hx h5 Lz L16
   exact wotsStep_block _ _ _ _ _ _ b0 b1 b2 b3 b4 b5 hperm
 
@@ -290,21 +290,21 @@ theorem node_of_lanes {lane A B a b : Nat → UInt64}
     (hperm : BlockPerm (xorMsg zeroSt (laneByte lane)) st) :
     stDigest st = sigNode (digOfW a) (digOfW b) := by
   have h0 : lane 0 = (a 0 <<< (8 : ℕ).toUInt64) ^^^ tagSigNode.toUInt64 := by
-    rw [L0, ← (hA 0 (by (clear * -; omega))).1]; rfl
+    rw [L0, ← (hA 0 (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))).1]; rfl
   have ha : ∀ k, 1 ≤ k → k < 4 →
       lane k = (a (k - 1) >>> (56 : ℕ).toUInt64) ^^^ (a k <<< (8 : ℕ).toUInt64) := by
     intro k h1 h2
     rw [Lk k h1 h2, show 2 * k - 1 = 2 * (k - 1) + 1 by (clear * - h1 h2; omega), (hA (k - 1) (by (clear * - h1 h2; omega))).2,
       (hA k h2).1]
   have h4 : lane 4 = (a 3 >>> (56 : ℕ).toUInt64) ^^^ (b 0 <<< (8 : ℕ).toUInt64) := by
-    rw [L4, ← (hA 3 (by (clear * -; omega))).2, ← (hB 0 (by (clear * -; omega))).1]
+    rw [L4, ← (hA 3 (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))).2, ← (hB 0 (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))).1]
   have hb : ∀ k, 1 ≤ k → k < 4 →
       lane (4 + k) = (b (k - 1) >>> (56 : ℕ).toUInt64) ^^^ (b k <<< (8 : ℕ).toUInt64) := by
     intro k h1 h2
     rw [Lb k h1 h2, show 2 * k - 1 = 2 * (k - 1) + 1 by (clear * - h1 h2; omega), (hB (k - 1) (by (clear * - h1 h2; omega))).2,
       (hB k h2).1]
   have h8 : lane 8 = (b 3 >>> (56 : ℕ).toUInt64) ^^^ 0x100 := by
-    rw [L8, ← (hB 3 (by (clear * -; omega))).2]
+    rw [L8, ← (hB 3 (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))).2]
   obtain ⟨b0, b1, b2, b3⟩ := two_lanes tagSigNode a b lane h0 ha h4 hb h8 Lz L16
   exact sigNode_block _ _ _ _ b0 b1 b2 b3 hperm
 
@@ -327,7 +327,7 @@ theorem leaf_of_lanes {lane E : Nat → UInt64} {jw : UInt64} (hj : jw.toNat < 2
   have hm : ∀ p, laneByte (fun l => lane (17 * (p / rate) + l)) (p % rate) = laneByte lane p := by
     intro p
     simp only [laneByte, hrate]
-    rw [show 17 * (p / 136) + p % 136 / 8 = p / 8 by (clear * -; omega), show p % 136 % 8 = p % 8 by (clear * -; omega)]
+    rw [show 17 * (p / 136) + p % 136 / 8 = p / 8 by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - p; omega)), show p % 136 % 8 = p % 8 by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - p; omega))]
   have hb : ∀ p, laneByte lane (rate * (p / rate) + p % rate) = laneByte lane p := fun p => by
     rw [Nat.div_add_mod]
   beta_reduce at b0 b1 b2 b3
@@ -358,11 +358,11 @@ theorem chain_end {v : Nat → FK} {o : SigOut} {I : SigIn} {i d : Nat} {j : Nat
     unfold digAt
     exact digOfW_congr fun l _ => by simp [lanesW, xin]
   · show digOfW (lanesW v (xin I o i 1)) = _
-    rw [digOfW_ite (w := lanesW v (xin I o i 1)) (hm 1 le_rfl (by (clear * -; omega))),
+    rw [digOfW_ite (w := lanesW v (xin I o i 1)) (hm 1 le_rfl (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))),
       show (2 : Nat) - 1 - 1 = 1 - 1 from rfl]
     split_ifs <;> first | (exfalso; omega) | rfl
   · show digOfW (lanesW v (xin I o i 2)) = _
-    rw [digOfW_ite (w := lanesW v (xin I o i 2)) (hm 2 (by (clear * -; omega)) (by (clear * -; omega))),
+    rw [digOfW_ite (w := lanesW v (xin I o i 2)) (hm 2 (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)) (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))),
       show (3 : Nat) - 1 - 1 = 2 - 1 from rfl]
     split_ifs <;> first | (exfalso; omega) | rfl
 
@@ -371,27 +371,27 @@ theorem chain_end {v : Nat → FK} {o : SigOut} {I : SigIn} {i d : Nat} {j : Nat
 
 theorem xcell_m {o : SigOut} {i s : Nat} (hi : i < 128) (hs : s < 3) (l : Nat) :
     xcell o (3 * i + s) l = (o.msg.xm.cell (17 * s + l) i).n := by
-  simp only [xcell, show 3 * i + s < 384 by omega, ↓reduceIte, show (3 * i + s) % 3 = s by (clear * - hs; omega),
+  simp only [xcell, show 3 * i + s < 384 by (clear * - i s hi hs; omega), ↓reduceIte, show (3 * i + s) % 3 = s by (clear * - hs; omega),
     show (3 * i + s) / 3 = i by (clear * - hs; omega)]
 
 theorem xcell_c {o : SigOut} {u s : Nat} (hu : u < 5) (hs : s < 3) (l : Nat) :
     xcell o (3 * (128 + u) + s) l = ((o.msg.xc.getD u dLoop).cell (17 * s + l) 0).n := by
-  simp only [xcell, show ¬ 3 * (128 + u) + s < 384 by omega, show 3 * (128 + u) + s < 399 by omega,
-    ↓reduceIte, show (3 * (128 + u) + s - 384) % 3 = s by omega,
-    show (3 * (128 + u) + s - 384) / 3 = u by omega]
+  simp only [xcell, show ¬ 3 * (128 + u) + s < 384 by (clear * - u s hu hs; omega), show 3 * (128 + u) + s < 399 by (clear * - u s hu hs; omega),
+    ↓reduceIte, show (3 * (128 + u) + s - 384) % 3 = s by (clear * - u s hu hs; omega),
+    show (3 * (128 + u) + s - 384) / 3 = u by (clear * - u s hu hs; omega)]
 
 theorem xcell_leaf (v : Nat → FK) (o : SigOut) {u : Nat} (hu : u < 32) :
     lanesW v (xcell o (399 + u)) = fun l => (v (leafLane o (17 * u + l))).val := by
   funext l
-  simp only [lanesW, xcell, show ¬ 399 + u < 384 by omega, show ¬ 399 + u < 399 by omega,
-    show 399 + u < 431 by omega, ↓reduceIte, show 399 + u - 399 = u by omega]
+  simp only [lanesW, xcell, show ¬ 399 + u < 384 by (clear * - u hu; omega), show ¬ 399 + u < 399 by (clear * - u hu; omega),
+    show 399 + u < 431 by (clear * - u hu; omega), ↓reduceIte, show 399 + u - 399 = u by (clear * - u hu; omega)]
 
 theorem xcell_path (v : Nat → FK) (o : SigOut) {t : Nat} (ht : t < 16) :
     lanesW v (xcell o (431 + t)) = fun l => (v (o.msg.xp.cell l t).n).val := by
   funext l
-  simp only [lanesW, xcell, show ¬ 431 + t < 384 by omega, show ¬ 431 + t < 399 by omega,
-    show ¬ 431 + t < 431 by omega, show 431 + t < 447 by omega, ↓reduceIte,
-    show 431 + t - 431 = t by omega]
+  simp only [lanesW, xcell, show ¬ 431 + t < 384 by (clear * - t ht; omega), show ¬ 431 + t < 399 by (clear * - t ht; omega),
+    show ¬ 431 + t < 431 by (clear * - t ht; omega), show 431 + t < 447 by (clear * - t ht; omega), ↓reduceIte,
+    show 431 + t - 431 = t by (clear * - t ht; omega)]
 
 theorem ov_nil (M : Mem) (o : LoopOut) (hd : o.dims = []) (n s : Nat) :
     ov M o 0 (oS n s) = M.k n := by
@@ -562,14 +562,14 @@ theorem sel_m {c : Ctx} {M : Mem} {I : SigIn} {o : SigOut} {q : Ptr} {Zn On : Na
     rcases (show s = 1 ∨ s = 2 by (clear * - h1 h2; omega)) with rfl | rfl
     · simp only [← e, xin, chainCell, one_ne_zero, ↓reduceIte, hi, show 8 * 1 + l = 8 + l by ring, C1,
         ov_oS _ _ hd7 hi7]
-      split_ifs <;> exact kval_congr M (by (clear * -; omega))
-    · simp only [← e, xin, chainCell, show (2 : Nat) ≠ 0 by (clear * -; omega), ↓reduceIte, hi,
+      split_ifs <;> exact kval_congr M (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))
+    · simp only [← e, xin, chainCell, show (2 : Nat) ≠ 0 by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega), ↓reduceIte, hi,
         show 8 * 2 + l = 16 + l by ring, C2, ov_oS _ _ hd7 hi7]
-      split_ifs <;> exact kval_congr M (by (clear * -; omega))
+      split_ifs <;> exact kval_congr M (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))
   · obtain ⟨-, -, C3⟩ := C l hl
     simp only [cv] at C3
     simp only [← e, endc, chainCell, hi, ↓reduceIte, C3, ov_oS _ _ hd7 hi7]
-    split_ifs <;> exact kval_congr M (by (clear * -; omega))
+    split_ifs <;> exact kval_congr M (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))
 
 /-- The digit of checksum chain `128 + u` from its bit cells. -/
 def cdig (M : Mem) (I : SigIn) (u : Nat) : Nat :=
@@ -609,10 +609,10 @@ theorem sel_c {c : Ctx} {M : Mem} {I : SigIn} {o : SigOut} {q : Ptr} {Zn On u : 
     rcases (show s = 1 ∨ s = 2 by (clear * - h1 h2; omega)) with rfl | rfl
     · simp only [← e, xin, chainCell, one_ne_zero, ↓reduceIte, hn, hs, show 8 * 1 + l = 8 + l by ring, C1,
         ov_oA]
-      split_ifs <;> exact kval_congr M (by (clear * -; omega))
-    · simp only [← e, xin, chainCell, show (2 : Nat) ≠ 0 by (clear * -; omega), ↓reduceIte, hn, hs,
+      split_ifs <;> exact kval_congr M (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))
+    · simp only [← e, xin, chainCell, show (2 : Nat) ≠ 0 by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega), ↓reduceIte, hn, hs,
         show 8 * 2 + l = 16 + l by ring, C2, ov_oA]
-      split_ifs <;> exact kval_congr M (by (clear * -; omega))
+      split_ifs <;> exact kval_congr M (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))
   · obtain ⟨-, -, C3⟩ := C l hl
     simp only [cv] at C3
     simp only [← e, endc, chainCell, hn, hs, ↓reduceIte, C3, ov_oA]
@@ -628,8 +628,8 @@ theorem mdig_eq {M : Mem} {I : SigIn} {o : SigOut} (hbits : SigBits I o M.k) {i 
   have h1 := hbits.md (2 * i + 1) (by (clear * - hi; omega))
   unfold Out1 at h0 h1
   rw [Nat.add_assoc, h0, h1, bnat_bit _ (Nat.mod_lt _ (by norm_num)),
-    bnat_bit _ (Nat.mod_lt _ (by norm_num)), show 2 * i / 64 = i / 32 by (clear * -; omega),
-    show (2 * i + 1) / 64 = i / 32 by (clear * -; omega), show (2 * i + 1) % 64 = 2 * i % 64 + 1 by (clear * -; omega)]
+    bnat_bit _ (Nat.mod_lt _ (by norm_num)), show 2 * i / 64 = i / 32 by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - i; omega)),
+    show (2 * i + 1) / 64 = i / 32 by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - i; omega)), show (2 * i + 1) % 64 = 2 * i % 64 + 1 by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - i; omega))]
 
 theorem wdig_lt (m : Digest) {i : Nat} (hi : i < 128) :
     (wotsDigits m)[i]'(by rw [wotsDigits_length]; simp [wotsLen]; omega) =
@@ -667,8 +667,8 @@ theorem leaf_digest {c : Ctx} {M : Mem} {I : SigIn} {o : SigOut} {r3 r4 r5 : Ptr
   have hEk : ∀ k < 532, (M.k (I.be + 2 * k)).val = (M.k (endc o (k / 4) (k % 4))).val <<< (8 : Nat).toUInt64 ∧
       (M.k (I.be + 2 * k + 1)).val = (M.k (endc o (k / 4) (k % 4))).val >>> (56 : Nat).toUInt64 := by
     intro k hk
-    have := hbits.e (k / 4) (by (clear * - hk; omega)) (k % 4) (by (clear * -; omega))
-    rw [show 2 * (4 * (k / 4) + k % 4) = 2 * k by (clear * -; omega)] at this
+    have := hbits.e (k / 4) (by (clear * - hk; omega)) (k % 4) (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - k; omega)))
+    rw [show 2 * (4 * (k / 4) + k % 4) = 2 * k by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - k; omega))] at this
     exact ⟨sOut1_val this.1, sOut1_val this.2⟩
   have hbi : (M.k I.bi).val = (M.k I.sg).val <<< (8 : Nat).toUInt64 := by rw [hbits.idx_lo]; rfl
   obtain ⟨A0, A1⟩ := leafA_spec hla (jf := 0) (by simp)
@@ -685,11 +685,11 @@ theorem leaf_digest {c : Ctx} {M : Mem} {I : SigIn} {o : SigOut} {r3 r4 r5 : Ptr
     (fun l h1 h2 => ?_) ?_ (by simp [wotsLen]) (fun i hi k hk => ?_) hstart
     (fun u hu => by have := hperm u hu; rwa [xcell_leaf _ _ hu] at this) hlink
   · show (M.k (leafLane o 0)).val = _
-    simp only [leafLane, show (0 : Nat) < 2 by (clear * -; omega), ↓reduceIte]
+    simp only [leafLane, show (0 : Nat) < 2 by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega), ↓reduceIte]
     rw [A0, hbi]
   · show (M.k (leafLane o 1)).val = _
-    simp only [leafLane, show (1 : Nat) < 2 by (clear * -; omega), ↓reduceIte]
-    rw [A1]; exact (hEk 0 (by (clear * -; omega))).1
+    simp only [leafLane, show (1 : Nat) < 2 by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega), ↓reduceIte]
+    rw [A1]; exact (hEk 0 (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))).1
   · show (M.k (leafLane o m)).val = _
     by_cases hm : m < 514
     · simp only [leafLane, show ¬ m < 2 by (clear * - h1 h2 hm; omega), hm, ↓reduceIte]
@@ -700,15 +700,15 @@ theorem leaf_digest {c : Ctx} {M : Mem} {I : SigIn} {o : SigOut} {r3 r4 r5 : Ptr
         show 513 + (m - 514) = m - 1 by (clear * - h1 h2 hm; omega)]
       exact congrArg₂ _ (hEk (m - 2) (by (clear * - h1 h2 hm; omega))).2 (hEk (m - 1) (by (clear * - h1 h2 hm; omega))).1
   · show (M.k (leafLane o 533)).val = _
-    simp only [leafLane, show ¬ (533 : Nat) < 2 by (clear * -; omega), show ¬ (533 : Nat) < 514 by (clear * -; omega),
+    simp only [leafLane, show ¬ (533 : Nat) < 2 by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega), show ¬ (533 : Nat) < 514 by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega),
       ↓reduceIte]
     rw [show (533 : Nat) - 514 = 19 from rfl, C2]
-    exact congrArg (· ^^^ _) (hEk 531 (by (clear * -; omega))).2
+    exact congrArg (· ^^^ _) (hEk 531 (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))).2
   · show (M.k (leafLane o l)).val = _
     simp only [leafLane, show ¬ l < 2 by (clear * - h1 h2; omega), show ¬ l < 514 by (clear * - h1 h2; omega), ↓reduceIte]
     exact C3 (l - 514) (by (clear * - h1 h2; omega)) (by (clear * - h1 h2; omega))
   · show (M.k (leafLane o 543)).val = _
-    simp only [leafLane, show ¬ (543 : Nat) < 2 by (clear * -; omega), show ¬ (543 : Nat) < 514 by (clear * -; omega),
+    simp only [leafLane, show ¬ (543 : Nat) < 2 by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega), show ¬ (543 : Nat) < 514 by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega),
       ↓reduceIte]
     exact C4
   · simp only [List.getElem_map, List.getElem_range]
@@ -740,19 +740,19 @@ theorem node_digest {c : Ctx} {M : Mem} {I : SigIn} {o : SigOut} {r : Ptr} {Zn :
     (fun k h1 h2 => by rw [hlane]; exact Lk k h1 h2) (by rw [hlane]; exact L4)
     (fun k h1 h2 => by rw [hlane]; exact Lb k h1 h2) (by rw [hlane]; exact L8)
     (fun l h1 h2 => by rw [hlane]; exact Lz l h1 h2) (by rw [hlane]; exact L16) hp
-  · have := (hbits.p t ht 0 (by (clear * -; omega)) l hl).1
+  · have := (hbits.p t ht 0 (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)) l hl).1
     simp only [Nat.mul_zero, Nat.add_zero] at this
     rw [ovS_V hd4 ht4 (show I.bp + 2 * l + 16 * t = I.bp + 2 * (8 * t + l) by ring)]
     dsimp only [V]; rw [sOut1_val this]; rfl
-  · have := (hbits.p t ht 0 (by (clear * -; omega)) l hl).2
+  · have := (hbits.p t ht 0 (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)) l hl).2
     simp only [Nat.mul_zero, Nat.add_zero] at this
     rw [ovS_V hd4 ht4 (show I.bp + (2 * l + 1) + 16 * t = I.bp + 2 * (8 * t + l) + 1 by ring)]
     dsimp only [V]; rw [sOut1_val this]; rfl
-  · have := (hbits.p t ht 1 (by (clear * -; omega)) l hl).1
+  · have := (hbits.p t ht 1 (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)) l hl).1
     rw [show 4 + 4 * 1 + l = 8 + l by ring] at this
     rw [ovS_V hd4 ht4 (show I.bp + 8 + 2 * l + 16 * t = I.bp + 2 * (8 * t + 4 * 1 + l) by ring)]
     dsimp only [V]; rw [sOut1_val this]; rfl
-  · have := (hbits.p t ht 1 (by (clear * -; omega)) l hl).2
+  · have := (hbits.p t ht 1 (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)) l hl).2
     rw [show 4 + 4 * 1 + l = 8 + l by ring] at this
     rw [ovS_V hd4 ht4
       (show I.bp + 8 + (2 * l + 1) + 16 * t = I.bp + 2 * (8 * t + 4 * 1 + l) + 1 by ring)]
@@ -860,12 +860,12 @@ theorem qsig_sigOk {c : Ctx} {M : Mem} {p : Ptr} {I : SigIn} (h : Ok c M (qsig I
         if M.k (I.bi + 1 + t) = 1 then digAt M.k (I.sg + 533 + 4 * t) else digAt M.k (I.yc + 4 * t) :=
       digOfW_ite fun l hl => by
         rw [← epa, (path_spec hpa.1 ht' hl hbool).1]
-        split_ifs <;> exact kval_congr M (by (clear * -; omega))
+        split_ifs <;> exact kval_congr M (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))
     have hB : (digOfW fun l => (M.k (o.pa.cell (8 + l) t).n).val) =
         if M.k (I.bi + 1 + t) = 1 then digAt M.k (I.yc + 4 * t) else digAt M.k (I.sg + 533 + 4 * t) :=
       digOfW_ite fun l hl => by
         rw [← epa, (path_spec hpa.1 ht' hl hbool).2]
-        split_ifs <;> exact kval_congr M (by (clear * -; omega))
+        split_ifs <;> exact kval_congr M (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))
     have key : M.k (I.bi + 1 + t) = 1 ↔ ¬ ((M.k I.sg).val.toNat / 2 ^ t % 2 = 0) := by
       rw [hb, w64_bit _ (by (clear * - ht'; omega)), ubit_testBit, Nat.testBit_eq_decide_div_mod_eq]
       have h01 : ¬ ((0 : FK) = 1) := by decide
@@ -966,14 +966,14 @@ theorem seqAll_loops {d : List Nat} {tp : Nat → List LRow} {w : Nat} (hw : ∀
     refine ⟨?_, fun i hi => ?_⟩
     · rw [List.append_nil, Ptr.adv_append, ih1, loop_advK q (hw u), hl u, List.length_cons,
         Nat.mul_succ]
-      (clear * -; omega)
+      (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)
     · cases i with
       | zero => exact ⟨q, by simp, rfl⟩
       | succ i =>
         obtain ⟨q', e1, e2⟩ := ih2 i (by simpa using hi)
         refine ⟨q', ?_, by simpa using e2⟩
         rw [e1, loop_advK q (hw u), hl u, Nat.mul_succ]
-        (clear * -; omega)
+        (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)
 
 theorem forN_loops {n : Nat} {d : List Nat} {tp : Nat → List LRow} {w : Nat} (hw : ∀ u, AllK (tp u))
     (hl : ∀ u, (tp u).length * 2 ^ d.sum = w) (q : Ptr) :
@@ -1044,7 +1044,7 @@ theorem gMsg_xcell {I : SigIn} {Zn Tb : Nat} {q : Ptr} {o : SigOut} (hm : o.msg 
   dsimp only
   split_ifs with h1 h2 h3 h4 h5 h6 h7
   · rw [loop_cellK _ (stepsTpl_allK _ _ _ _ _ _) _ (by rw [stepsTpl_len]; (clear * - hl; omega)), stepsTpl_len]
-    (clear * -; omega)
+    (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - q r l; omega))
   · obtain ⟨q', e1, e2⟩ := hG ((r - 384) / 3) (by (clear * - hr h1 h2; omega))
     rw [e2, loop_cellK _ (stepsTpl_allK _ _ _ _ _ _) _ (by rw [stepsTpl_len]; (clear * - hl; omega)), e1,
       loop_advK _ (stepsTpl_allK _ _ _ _ _ _), stepsTpl_len]
@@ -1062,18 +1062,18 @@ theorem gMsg_xcell {I : SigIn} {Zn Tb : Nat} {q : Ptr} {o : SigOut} (hm : o.msg 
       loop_advK _ (leafA_allK I), hF, loop_advK _ (stepsTpl_allK _ _ _ _ _ _), stepsTpl_len]
     simp only [List.sum_cons, List.sum_nil, leafA, leafB, List.length_cons, List.length_nil]
     (clear * - hr h1 h2 h3 h5; omega)
-  · rw [loop_cellK _ (twoLanes_allK _ _ _ _ _) _ (by rw [twoLanes_len]; omega), twoLanes_len,
+  · rw [loop_cellK _ (twoLanes_allK _ _ _ _ _) _ (by rw [twoLanes_len]; (clear * - hl; omega)), twoLanes_len,
       loop_advK _ (leafC_allK I Zn), loop_advK _ (leafB_allK I),
       loop_advK _ (leafA_allK I), hF, loop_advK _ (stepsTpl_allK _ _ _ _ _ _), stepsTpl_len, leafC_len]
     simp only [List.sum_cons, List.sum_nil, leafA, leafB, List.length_cons, List.length_nil]
     (clear * - hr h1 h2 h3 h6; omega)
-  · rw [loop_cellK _ (leafStmt_allK _ _) _ (by rw [leafStmt_len]; omega), leafStmt_len,
+  · rw [loop_cellK _ (leafStmt_allK _ _) _ (by rw [leafStmt_len]; (clear * - hl; omega)), leafStmt_len,
       loop_advK _ (twoLanes_allK _ _ _ _ _), twoLanes_len, loop_advK _ (leafC_allK I Zn),
       loop_advK _ (leafB_allK I), loop_advK _ (leafA_allK I), hF, loop_advK _ (stepsTpl_allK _ _ _ _ _ _),
       stepsTpl_len, leafC_len]
     simp only [List.sum_cons, List.sum_nil, leafA, leafB, List.length_cons, List.length_nil]
     (clear * - h7; omega)
-  · rw [loop_cellK _ (twoLanes_allK _ _ _ _ _) _ (by rw [twoLanes_len]; omega), twoLanes_len,
+  · rw [loop_cellK _ (twoLanes_allK _ _ _ _ _) _ (by rw [twoLanes_len]; (clear * - hl; omega)), twoLanes_len,
       loop_advK _ (leafStmt_allK _ _), leafStmt_len,
       loop_advK _ (twoLanes_allK _ _ _ _ _), twoLanes_len, loop_advK _ (leafC_allK I Zn),
       loop_advK _ (leafB_allK I), loop_advK _ (leafA_allK I), hF, loop_advK _ (stepsTpl_allK _ _ _ _ _ _),
@@ -1216,7 +1216,7 @@ theorem sigKS_of_in {c : Ctx} {M : Mem} {p : Ptr} {I : SigIn} (h : Ok c M (qsig 
   refine ⟨fun r hr => oneHash_lanes (hx r (by (clear * - hr; omega))) (hks.step r hr),
     ⟨sIn, sOut, h0, fun u hu => ?_, h2, h3⟩,
     fun t ht => oneHash_lanes (hx _ (by (clear * - ht; omega))) (hks.path t ht),
-    oneHash_lanes (hx _ (by (clear * -; omega))) hks.ls, oneHash_lanes (hx _ (by (clear * -; omega))) hks.ns⟩
+    oneHash_lanes (hx _ (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))) hks.ls, oneHash_lanes (hx _ (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega))) hks.ns⟩
   rw [xorMsg_lanes (hx _ (by (clear * - hu; omega)))]
   exact h1 u hu
 

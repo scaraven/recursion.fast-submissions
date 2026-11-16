@@ -49,10 +49,10 @@ theorem digest_ext {d e : Digest} (h : d.toList = e.toList) : d = e :=
 theorem bodyFrom_cons (tr : Trace) (P : List PE) {i : Nat} (hi : i < P.length) :
     bodyFrom tr P i = contrib tr i (P.getD i default) ++ bodyFrom tr P (i + 1) := by
   unfold bodyFrom
-  rw [show P.length - i = (P.length - (i + 1)) + 1 by omega, List.range'_succ, List.flatMap_cons]
+  rw [show P.length - i = (P.length - (i + 1)) + 1 by (clear * - P i hi; omega), List.range'_succ, List.flatMap_cons]
 
 theorem bodyFrom_end (tr : Trace) (P : List PE) {i : Nat} (hi : P.length ≤ i) : bodyFrom tr P i = [] := by
-  simp [bodyFrom, show P.length - i = 0 by omega]
+  simp [bodyFrom, show P.length - i = 0 by (clear * - P i hi; omega)]
 
 /-! ## The walk -/
 
@@ -75,7 +75,7 @@ theorem planItems_i (p : Params) : ∀ (w : WS) (its : List Item),
   | w, [] => by simp [planItems]
   | w, it :: its => by
     simp only [planItems, List.length_append]
-    rw [planItems_i p _ its, planItem_i]; omega
+    rw [planItems_i p _ its, planItem_i]; (clear * - w p it its; omega)
 
 theorem planItem_ok (p : Params) (w : WS) (it : Item) (h : (planItem p w it).2.ok = true) : w.ok = true := by
   cases it with
@@ -106,7 +106,7 @@ theorem Al_append {P : List PE} {i : Nat} {es₁ es₂ : List PE} :
   · rintro ⟨hl, h⟩
     refine ⟨⟨by (clear * - hl; omega), fun x hx => ?_⟩, ⟨by (clear * - hl; omega), fun x hx => ?_⟩⟩
     · rw [h x (by (clear * - hx; omega)), List.getD_append _ _ _ _ hx]
-    · rw [Nat.add_assoc, h _ (by (clear * - hx; omega)), List.getD_append_right _ _ _ _ (by (clear * -; omega))]
+    · rw [Nat.add_assoc, h _ (by (clear * - hx; omega)), List.getD_append_right _ _ _ _ (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - es₁ x; omega)))]
       simp
   · rintro ⟨⟨hl1, h1⟩, ⟨hl2, h2⟩⟩
     refine ⟨by (clear * - hl2; omega), fun x hx => ?_⟩

@@ -50,12 +50,12 @@ theorem q_climb (q : ℕ) : ∀ (j lvl : ℕ) (cur : Digest) (s : DSt) (k : DSt 
     (K : ℕ), (∀ s' d, s'.pos = s.pos → ((k s' d).queries H).length ≤ K) →
     ((climb π q j lvl cur s k).queries H).length ≤ j + K
   | 0, _, cur, s, k, K, hk => by
-    simp only [climb]; exact (hk s cur rfl).trans (by omega)
+    simp only [climb]; exact (hk s cur rfl).trans (by (clear * - K; omega))
   | j + 1, lvl, cur, s, k, K, hk => by
     simp only [climb, ask, OProg.queries, List.length_cons]
     refine (Nat.add_le_add_right (q_climb q j (lvl + 1) _ _ k K ?_) 1).trans ?_
     · exact fun s' d h ↦ hk s' d h
-    · omega
+    · (clear * - j K; omega)
 
 theorem q_openLoop (L : Level) (capOff : ℕ) : ∀ (qs : List ℕ) (s : DSt) (k : DSt → OProg Bool)
     (K : ℕ), (∀ s', s'.pos = s.pos → ((k s').queries H).length ≤ K) →
@@ -70,7 +70,7 @@ theorem q_openLoop (L : Level) (capOff : ℕ) : ∀ (qs : List ℕ) (s : DSt) (k
       · exact q_openLoop L capOff qs s' k K fun s'' h' ↦ hk s'' (h'.trans h)
       · simp [OProg.queries]
     · rw [Nat.add_mul, Nat.one_mul]
-      omega
+      (clear * - L qs K; omega)
 
 theorem q_posLoop (h : ℕ) : ∀ (n rem : ℕ) (s : DSt) (k : DSt → OProg Bool) (K : ℕ),
     (∀ s', s'.pos.length ≤ s.pos.length + rem → ((k s').queries H).length ≤ K) →
@@ -83,8 +83,8 @@ theorem q_posLoop (h : ℕ) : ∀ (n rem : ℕ) (s : DSt) (k : DSt → OProg Boo
       refine hk s' ?_
       simp only [List.length_append, List.length_map, List.length_range] at hs'
       have := Nat.min_le_right positionsPerAnswer rem
-      omega
-    · omega
+      (clear * - s' s rem hs' this; omega)
+    · (clear * - n K; omega)
 
 theorem q_driveItems (p : Params) (k : DSt → OProg Bool) (K : ℕ)
     (hk : ∀ s, ((k s).queries H).length ≤ K) :
@@ -101,13 +101,13 @@ theorem q_driveItems (p : Params) (k : DSt → OProg Bool) (K : ℕ)
     simp only [driveItems, qcItems, fsQuery, ask, OProg.queries, List.length_cons]
     refine (Nat.add_le_add_right (q_driveItems p k K hk rest b _ ?_) 1).trans ?_
     · exact hs
-    · omega
+    · (clear * - p rest b K s; omega)
   | .positions r :: rest, b, s, _ => by
     simp only [driveItems, qcItems]
     refine (q_posLoop H π (p.level r).height (p.level r).nPosQ (p.level r).t { s with pos := [] }
       _ (qcItems p rest (p.level r).t + K) fun s' hs' ↦
         q_driveItems p k K hk rest (p.level r).t s' (by simpa using hs')).trans ?_
-    omega
+    (clear * - p r rest K b s; omega)
   | .opening r :: rest, b, s, hs => by
     simp only [driveItems, qcItems]
     split
@@ -117,7 +117,7 @@ theorem q_driveItems (p : Params) (k : DSt → OProg Bool) (K : ℕ)
       · refine (q_openLoop H π (p.level r) capOff s.pos s _ (qcItems p rest b + K)
           fun s' hs' ↦ q_driveItems p k K hk rest b _ (by simpa [hs'] using hs)).trans ?_
         have hm := Nat.mul_le_mul_right (1 + (p.level r).path) hs
-        omega
+        (clear * - s p r rest b K hm; omega)
       · simp [OProg.queries]
 
 end Bounds
@@ -130,7 +130,7 @@ theorem queries_VS_le (p : Params) (m : M3) (vk c : Digest) (π : Proof) (H : By
   · simp only [drive, OProg.queries, List.length_cons]
     refine (Nat.add_le_add_right (Nat.add_le_add_right (q_driveItems H π p _ 0 (fun s ↦ by
       simp [OProg.queries]) (schedule p) 0 _ (by simp)) 1) 1).trans ?_
-    omega
+    (clear * - p; omega)
   · simp [OProg.queries]
 
 /-- At P20 the static count is within the declared `qV`. -/

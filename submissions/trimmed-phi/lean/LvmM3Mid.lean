@@ -62,8 +62,8 @@ theorem offsetNat_sortedL (B : Blocks) (hn : B.n = (sortedL L κ).length)
   induction k with
   | zero => simp [Blocks.offsetNat]
   | succ k ih =>
-    rw [Blocks.offsetNat_succ _ k (by omega), ih (by omega),
-      List.take_succ_eq_append_getElem (by omega), List.map_append, List.sum_append, hs]
+    rw [Blocks.offsetNat_succ _ k (by (clear * - k B α L κ hn hk; omega)), ih (by (clear * - k B α L κ hn hk; omega)),
+      List.take_succ_eq_append_getElem (by (clear * - k α L κ B hn hk; omega)), List.map_append, List.sum_append, hs]
     simp
 
 /-! ## Placements and selector weights -/
@@ -161,9 +161,9 @@ theorem eqKernel_getElem_prod (l : List E) (x : ℕ) (hx : x < (eqKernel l).leng
       exact Finset.prod_congr rfl fun j hj ↦ by rw [hgetD j (Finset.mem_range.mp hj)]
     · have hx' : x < 2 ^ l.length + 2 ^ l.length := by
         simp [eqKernel_snoc, hlen] at hx
-        omega
-      obtain ⟨y, rfl⟩ : ∃ y, x = 2 ^ l.length + y := ⟨x - 2 ^ l.length, by omega⟩
-      have hy : y < 2 ^ l.length := by omega
+        (clear * - hx; omega)
+      obtain ⟨y, rfl⟩ : ∃ y, x = 2 ^ l.length + y := ⟨x - 2 ^ l.length, by (clear * - x l r hlo; omega)⟩
+      have hy : y < 2 ^ l.length := by (clear * - y l r hx'; omega)
       rw [List.getElem_append_right (by simp [hlen]), List.getElem_map]
       simp only [List.length_map, hlen, Nat.add_sub_cancel_left]
       rw [ih y (by rw [hlen]; exact hy), Nat.testBit_two_pow_add_eq,
@@ -652,14 +652,14 @@ theorem sum_kvV (eqα : List E) (k : Key) (cnt : CPoly) (v : ℕ → E) (hk : k.
         eqα.getD (i + 1 + 1 + 1) 0 * kvV k cnt v (i + 1 + 1 + 1) = 0 :=
       Finset.sum_eq_zero fun i hi ↦ by
         have hi' := (Finset.mem_Ico.mp hi).1
-        simp only [kvV, show i + 1 + 1 + 1 - 3 = i by (clear * -; omega),
+        simp only [kvV, show i + 1 + 1 + 1 - 3 = i by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - i; omega)),
           List.getD_eq_default _ _ hi', evalV_nil]
         simp
     rw [hz, add_zero]
     refine Finset.sum_congr rfl fun i _ ↦ ?_
-    rw [show i + 1 + 1 + 1 = 3 + i by (clear * -; omega)]
-    simp only [kvV, if_neg (by (clear * -; omega) : 3 + i ≠ 0), if_neg (by (clear * -; omega) : 3 + i ≠ 1),
-      if_neg (by (clear * -; omega) : 3 + i ≠ 2), show 3 + i - 3 = i by (clear * -; omega)]
+    rw [show i + 1 + 1 + 1 = 3 + i by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | omega)]
+    simp only [kvV, if_neg (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - i; omega)) : 3 + i ≠ 0), if_neg (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - i; omega)) : 3 + i ≠ 1),
+      if_neg (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - i; omega)) : 3 + i ≠ 2), show 3 + i - 3 = i by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - i; omega))]
   rw [h13]
   simp only [kvV]
   simp
@@ -948,7 +948,7 @@ theorem flatten_getD : ∀ (l : List (List E)) (t i : ℕ), t < l.length → i <
     simp only [List.getD_cons_succ, List.length_cons] at hi ht ⊢
     rw [Finset.sum_range_succ', List.getD_cons_zero, List.flatten_cons]
     simp only [List.getD_cons_succ]
-    rw [add_comm _ a.length, add_assoc, List.getD_append_right _ _ _ _ (by (clear * -; omega)),
+    rw [add_comm _ a.length, add_assoc, List.getD_append_right _ _ _ _ (by (clear * -; first | decide | (simp only [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc]; done) | ring1 | (clear * - a t l i; omega))),
       Nat.add_sub_cancel_left]
     exact flatten_getD l t i (by (clear * - ht; omega)) hi
 
@@ -1018,7 +1018,7 @@ theorem dot_cps (ξ : E) (n c m : ℕ) (l : List E) (hl : l.length = m) (hcm : c
     dot ((((powers ξ (n + 3)).take n).drop c).take m) l =
       ∑ i ∈ range m, ξ ^ (c + i) * l.getD i 0 := by
   have hlen : ((((powers ξ (n + 3)).take n).drop c).take m).length = m := by
-    simp [powers_eq]; omega
+    simp [powers_eq]; (clear * - m n c l hl hcm; omega)
   rw [Whir.Complete.dot_eq_sum _ _ (by rw [hlen, hl]), hlen]
   refine Finset.sum_congr rfl fun i hi ↦ ?_
   have hi' := Finset.mem_range.mp hi
@@ -1159,7 +1159,7 @@ theorem getD_map_evaluate (l : List Form) (k : ℕ) (col : ℕ → E) :
   by_cases hk : k < l.length
   · rw [List.getD_eq_getElem _ _ (by simpa using hk), List.getElem_map,
       List.getD_eq_getElem _ _ hk]
-  · rw [List.getD_eq_default _ _ (by simp; omega), List.getD_eq_default _ _ (by omega)]
+  · rw [List.getD_eq_default _ _ (by simp; (clear * - l k hk; omega)), List.getD_eq_default _ _ (by (clear * - l k hk; omega))]
     simp [evaluate_eq]
 
 section Fid
