@@ -35,6 +35,8 @@ cfg_select! {
         target_feature = "gfni"
     ) => {
         use x86 as simd;
+        /// lvm2 PFAST-K4: the AVX-512 embedding's two halves, for `products_gfni`'s position-major staging.
+        pub(crate) use x86::embedding_words;
     }
     all(
         target_arch = "x86_64",
@@ -538,7 +540,7 @@ mod x86 {
     /// where the shifted form takes seventeen).
     #[target_feature(enable = "avx512f,avx512bw,vpclmulqdq,gfni")]
     #[inline]
-    fn embedding_words(v: __m512i) -> (__m512i, __m512i) {
+    pub(crate) fn embedding_words(v: __m512i) -> (__m512i, __m512i) {
         const EVEN: __mmask64 = 0x5555_5555_5555_5555;
         const ODD: __mmask64 = 0xAAAA_AAAA_AAAA_AAAA;
         let m = |half: usize, k: usize| _mm512_set1_epi64(MATRICES[half][k]);

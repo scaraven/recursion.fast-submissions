@@ -684,36 +684,70 @@ fn round_msg_blocks(f: &[F192], b: &[F192], block: usize) -> SumcheckMessage {
     // which is a well-formed but wrong round message rather than a panic.
     assert_eq!(b.len(), f.len());
     assert!(block > 0 && f.len().is_multiple_of(block));
-    let (mut u_0, mut u_2) = (Acc8::ZERO, Acc8::ZERO);
-    for (f, b) in f.chunks(2 * block).zip(b.chunks(2 * block)) {
-        let ((f0, f1), (b0, b1)) = (f.split_at(block), b.split_at(block));
-        let (t_0, t_2) = if f1.is_empty() {
-            msg_terms_lone(f0, b0)
-        } else {
-            msg_terms_pair(f0, f1, b0, b1)
-        };
-        u_0 ^= t_0;
-        u_2 ^= t_2;
-    }
+    // One pair of blocks a task (on the pool when the tables are large): unreduced terms combine by XOR in any order.
+    let pair = |i: usize| {
+        let at = 2 * block * i..(2 * block * (i + 1)).min(f.len());
+        pair_terms(&f[at.clone()], &b[at], block)
+    };
+    let add = |(mut a0, mut a2): (Acc8, Acc8), (c0, c2): (Acc8, Acc8)| {
+        a0 ^= c0;
+        a2 ^= c2;
+        (a0, a2)
+    };
+    let n_pairs = f.len().div_ceil(2 * block);
+    let (u_0, u_2) = if f.len() < PAR_THRESHOLD {
+        (0..n_pairs).map(pair).fold((Acc8::ZERO, Acc8::ZERO), add)
+    } else {
+        crate::lv::parallel::map_reduce(n_pairs, || (Acc8::ZERO, Acc8::ZERO), pair, add)
+    };
     SumcheckMessage {
         u_0: u_0.reduce(),
         u_2: u_2.reduce(),
     }
 }
 
-/// `x` after one lane round: block `2j` and block `2j + 1` fold into block `j`, a last
-/// block without a partner against the absent zero padding.
-fn fold_blocks(x: &[F192], block: usize, r: F192) -> Vec<F192> {
-    let mut out = vec![F192::ZERO; x.len().div_ceil(2 * block) * block];
-    for (out, x) in out.chunks_exact_mut(block).zip(x.chunks(2 * block)) {
-        let (lo, hi) = x.split_at(block);
-        if hi.is_empty() {
-            fold_lones_batched(out, lo, r);
-        } else {
-            fold_pairs_batched(out, lo, hi, r);
-        }
+/// `(u_0, u_2)` of one pair of blocks `f = (f0, f1)` against `b`, or of a last block without a partner.
+#[inline]
+fn pair_terms(f: &[F192], b: &[F192], block: usize) -> (Acc8, Acc8) {
+    let ((f0, f1), (b0, b1)) = (f.split_at(block), b.split_at(block));
+    if f1.is_empty() { msg_terms_lone(f0, b0) } else { msg_terms_pair(f0, f1, b0, b1) }
+}
+
+/// One lane round of both tables (block `2j` and block `2j + 1` fold into block `j`, a last block without a partner
+/// against the absent zero padding) and the next lane round's message over the folded ones ([`round_msg_blocks`]), in
+/// one pass on the pool: a task folds the four blocks that make one pair of output blocks, then takes the pair's terms.
+fn fold_blocks_msg(f: &[F192], b: &[F192], block: usize, r: F192) -> (Vec<F192>, Vec<F192>, SumcheckMessage) {
+    assert_eq!(b.len(), f.len());
+    assert!(block > 0 && f.len().is_multiple_of(block));
+    let n_out = f.len().div_ceil(2 * block) * block;
+    let mut sums = (Acc8::ZERO, Acc8::ZERO);
+    // SAFETY: the fill writes every element before it reads any: output block `j` is folded from input blocks
+    // `2j`, `2j + 1`, and the tasks cover every output block.
+    let [nf, nb] = unsafe {
+        crate::lv::primitives::filled_vecs([n_out; 2], |[nf, nb]| {
+            sums = accumulate_msg_chunks(nf, nb, 2 * block, |t, fo, bo| {
+                for (k, (fo, bo)) in fo.chunks_mut(block).zip(bo.chunks_mut(block)).enumerate() {
+                    let at = 2 * block * (2 * t + k)..(2 * block * (2 * t + k + 1)).min(f.len());
+                    fold_block(fo, &f[at.clone()], block, r);
+                    fold_block(bo, &b[at], block, r);
+                }
+                pair_terms(fo, bo, block)
+            });
+        })
+    };
+    let (u_0, u_2) = sums;
+    (nf, nb, SumcheckMessage { u_0: u_0.reduce(), u_2: u_2.reduce() })
+}
+
+/// One block of a lane round: `x = (lo, hi)` folds as `lo + r (lo + hi)`, a `lo` without a partner against zeros.
+#[inline]
+fn fold_block(out: &mut [F192], x: &[F192], block: usize, r: F192) {
+    let (lo, hi) = x.split_at(block);
+    if hi.is_empty() {
+        fold_lones_batched(out, lo, r);
+    } else {
+        fold_pairs_batched(out, lo, hi, r);
     }
-    out
 }
 
 /// The basis the sumcheck starts from: the weight as terms, `b(l, x) = sum_t a[l][t] * K_t(x)`,
@@ -821,6 +855,14 @@ fn prefetch_l2(words: &[F64], at: usize) {
     let _ = (words, at);
 }
 
+/// Output blocks per task of the lift: four tasks per worker at least, so that every worker takes part and the blocks
+/// dense in claims spread (a lane block is `2^7` blocks at every size, which 32 a task left to four tasks), at most
+/// 32. A task's first block sums every lane afresh, so a smaller task costs one such block more; the outputs and the
+/// message are the same.
+fn lift_task(n_blocks: usize) -> usize {
+    (n_blocks / (4 * crate::lv::parallel::num_threads())).clamp(1, 32)
+}
+
 /// The witness and the lifted weight after every lane round, and the message of one against the other.
 ///
 /// The witness is straight from the base lanes: `sum_l eq(rs, l) * base_l`. A block that repeats its predecessor
@@ -837,17 +879,17 @@ fn fold_all_lanes(
     repeats: &[bool],
     lift: &(impl Fn(usize, &[F192], &mut [F192]) -> (Acc8, Acc8) + Sync),
 ) -> (Vec<F192>, Vec<F192>, SumcheckMessage) {
-    const TASK: usize = 32;
     let weights = eq_table(rs);
     let n_blocks = lane_block / lift_len;
     let n_lanes = base.len() / lane_block;
+    let task = lift_task(n_blocks);
     let repeat = |l: usize, h: usize| repeats.get(l * n_blocks + h) == Some(&true);
     let mut sums = (Acc8::ZERO, Acc8::ZERO);
     // Every task streams each of its output blocks below.
     // SAFETY: the fill writes every element before it reads any.
     let [f, b] = unsafe {
         crate::lv::primitives::filled_vecs([lane_block; 2], |[f, b]| {
-            sums = accumulate_msg_chunks(f, b, TASK * lift_len, |c, f_out, b_out| {
+            sums = accumulate_msg_chunks(f, b, task * lift_len, |c, f_out, b_out| {
                 let out_blocks = f_out.len() / lift_len;
                 // The witness block and the weight block stay in L1 and L2; the outputs take only streaming stores,
                 // so they are never fetched.
@@ -856,7 +898,7 @@ fn fold_all_lanes(
                 let (mut u_0, mut u_2) = (Acc8::ZERO, Acc8::ZERO);
                 let stream = crate::lv::primitives::stream::Stream::new();
                 for i in 0..out_blocks {
-                    let h = c * TASK + i;
+                    let h = c * task + i;
                     // A task's first block, or one where no lane repeats, sums every lane afresh.
                     let fresh = i == 0 || !(0..n_lanes).any(|l| repeat(l, h));
                     let lanes = base.chunks_exact(lane_block).enumerate();
@@ -909,17 +951,17 @@ fn fold_all_lanes_even(
     repeats: &[bool],
     lift: &(impl Fn(usize, &[F192], &mut [F192]) -> (Acc8, Acc8) + Sync),
 ) -> (Vec<F192>, Vec<F192>, SumcheckMessage) {
-    const TASK: usize = 32;
     let weights = eq_table(rs);
     let (half_block, half_len) = (lane_block / 2, lift_len / 2);
     let n_blocks = lane_block / lift_len;
     let n_lanes = half.len() / half_block;
+    let task = lift_task(n_blocks);
     let repeat = |l: usize, h: usize| repeats.get(l * n_blocks + h) == Some(&true);
     let mut sums = (Acc8::ZERO, Acc8::ZERO);
     // SAFETY: the fill writes every element before it reads any.
     let [f, b] = unsafe {
         crate::lv::primitives::filled_vecs([lane_block; 2], |[f, b]| {
-            sums = accumulate_msg_chunks(f, b, TASK * lift_len, |c, f_out, b_out| {
+            sums = accumulate_msg_chunks(f, b, task * lift_len, |c, f_out, b_out| {
                 let out_blocks = f_out.len() / lift_len;
                 let mut acc = vec![F192::ZERO; half_len];
                 let mut wide = vec![F192::ZERO; lift_len];
@@ -927,7 +969,7 @@ fn fold_all_lanes_even(
                 let (mut u_0, mut u_2) = (Acc8::ZERO, Acc8::ZERO);
                 let stream = crate::lv::primitives::stream::Stream::new();
                 for i in 0..out_blocks {
-                    let h = c * TASK + i;
+                    let h = c * task + i;
                     let fresh = i == 0 || !(0..n_lanes).any(|l| repeat(l, h));
                     let lanes = half.chunks_exact(half_block).enumerate();
                     let changed = lanes.filter(|&(l, _)| fresh || !repeat(l, h)).map(|(l, lane)| {
@@ -1037,8 +1079,8 @@ impl SumcheckProver {
         let _span =
             crate::lv::tracing::info_span!("Sumcheck round", round = self.round, log_size = self.f.len().ilog2()).entered();
         self.lane_rs.push(r);
-        self.f = fold_blocks(&self.f, self.n_terms, r);
-        self.combined_basis = fold_blocks(&self.combined_basis, self.n_terms, r);
+        let (f, b, msg) = fold_blocks_msg(&self.f, &self.combined_basis, self.n_terms, r);
+        (self.f, self.combined_basis) = (f, b);
         let msg = if last {
             let lift = self.lift.take().expect("the lift is taken by the last lane round only");
             let blocks = lift.blocks(&self.combined_basis);
@@ -1050,7 +1092,7 @@ impl SumcheckProver {
             (self.f, self.combined_basis) = (f, b);
             msg
         } else {
-            round_msg_blocks(&self.f, &self.combined_basis, self.n_terms)
+            msg
         };
         self.quad = RoundQuad::from_msg(msg, self.t_r);
         msg

@@ -198,6 +198,34 @@ impl<F: Ext<W>, const W: usize> PowerField<F, W> {
         sum
     }
 
+    /// lvm2 PFAST-K3: `dot += sum_j (a[j] * weights[j]) * b[j]` at `W = 2` with every product unreduced: [`WideDot::finish`]
+    /// gives `3W` words of six, congruent to the sum of [`Self::weighted_dot`]s modulo the minimal polynomial.
+    pub fn weighted_dot_e2_add(&self, dot: &mut WideDot, a: &[u64], b: &[u64], weights: &[u64], width: usize) {
+        assert!(W == 2);
+        assert!([a, b, weights].iter().all(|row| row.len() >= W * width));
+        row_kernel!(
+            width,
+            weighted_dot_e2_add(&mut dot.vector, a, b, weights, width),
+            self.weighted_dot_e2_portable(&mut dot.words, a, b, weights, width)
+        )
+    }
+
+    fn weighted_dot_e2_portable(&self, sum: &mut [u64; 6], a: &[u64], b: &[u64], weights: &[u64], width: usize) {
+        for j in 0..width {
+            let product = mul_wide_w(&get::<W>(a, width, j), &get::<W>(weights, width, j));
+            let y = get::<W>(b, width, j);
+            for i in 0..2 * W {
+                for (k, &y) in y.iter().enumerate() {
+                    let p = mul_wide(product[i], y);
+                    sum[i + k] ^= p as u64;
+                    if i + k + 1 < 6 {
+                        sum[i + k + 1] ^= (p >> 64) as u64;
+                    }
+                }
+            }
+        }
+    }
+
     /// The dot products of `B[j] = weights[j] * (kappa + T[j + 1]) + constant[j]` and `T[j + 2]`,
     /// at zero and infinity over two rows, unreduced or not. Weights and constants are by lane,
     /// then by word.
@@ -311,6 +339,11 @@ impl<F: Ext<W>, const W: usize> PowerField<F, W> {
                 .all(|row| row.len() >= W * BITS)
         );
         assert!(scratch.len() >= 12 * fr);
+        #[cfg(all(target_arch = "x86_64", target_feature = "avx2", target_feature = "pclmulqdq"))]
+        if W == 2 && 64usize.is_multiple_of(x86::STEP) {
+            // SAFETY: the rows are bounded above, and a lane contains whole vectors.
+            return unsafe { x86::chi_dot_quad_e2(self, rows, weights, constant, kappa) };
+        }
         let (a, b) = scratch.split_at_mut(6 * fr);
         let mut sums = [[0; 6]; 8];
         for lane in 0..BITS / 64 {
@@ -419,6 +452,35 @@ pub fn get<const W: usize>(row: &[u64], width: usize, j: usize) -> Element<W> {
 pub fn set<const W: usize>(row: &mut [u64], width: usize, j: usize, value: &Element<W>) {
     for k in 0..W {
         row[k * width + j] = value[k];
+    }
+}
+
+/// lvm2 PFAST-K3: the running sum of [`PowerField::weighted_dot_e2_add`]: the x86 kernel's Karatsuba sums (six
+/// registers of at most 512 bits, combined once by [`WideDot::finish`]) and the portable kernel's words.
+#[derive(Clone, Copy)]
+pub struct WideDot {
+    vector: [u64; 48],
+    words: [u64; 6],
+}
+
+impl WideDot {
+    pub fn new() -> Self {
+        Self { vector: [0; 48], words: [0; 6] }
+    }
+
+    /// The sum, `3W` words of six (at `W = 2`), unreduced.
+    pub fn finish(&self) -> [u64; 6] {
+        #[allow(unused_mut)]
+        let mut out = self.words;
+        #[cfg(all(target_arch = "x86_64", target_feature = "avx2", target_feature = "pclmulqdq"))]
+        {
+            // SAFETY: the features are enabled at compile time.
+            let v = unsafe { x86::finish_wide_dot(&self.vector) };
+            for (o, v) in out.iter_mut().zip(v) {
+                *o ^= v;
+            }
+        }
+        out
     }
 }
 
@@ -594,6 +656,143 @@ mod x86 {
                 }
             }
             finish_dot(&[acc, [V::zero(); 5]]).0
+        }
+
+        /// lvm2 PFAST-K3: [`weighted_dot`] at `W = 2` with `a * weights` left unreduced, four words a half: its words
+        /// meet `b` in two Karatsuba products by pairs (words 0, 1 and 2, 3), six products a half where the
+        /// reduction and one product took nine. The Karatsuba sums (of the low pair `P0`, `P1`, `M` and the high
+        /// pair `Q0`, `Q1`, `N`) run on in `acc`, six registers, until [`finish_wide_dot`].
+        pub fn weighted_dot_e2_add(acc: &mut [u64; 48], a: &[u64], b: &[u64], weights: &[u64], width: usize) {
+            let mut sums: [V; 6] = std::array::from_fn(|k| V::load(&acc[..], 2 * V::N * k));
+            for j in (0..width).step_by(STEP) {
+                let (x, w, y) = (load_w::<2>(a, width, j), load_w::<2>(weights, width, j), load_w::<2>(b, width, j));
+                let (sx, sw, sy) = (x[0].xor(x[1]), w[0].xor(w[1]), y[0].xor(y[1]));
+                let even = weighted_half::<0x00, 0x00, 0x01>(&x, sx, &w, sw, &y, sy);
+                let odd = weighted_half::<0x11, 0x10, 0x11>(&x, sx, &w, sw, &y, sy);
+                for k in 0..6 {
+                    sums[k] = sums[k].xor(even[k].xor(odd[k]));
+                }
+            }
+            for (k, sum) in sums.into_iter().enumerate() {
+                V::store(&mut acc[..], 2 * V::N * k, sum);
+            }
+        }
+
+        /// The words of [`weighted_dot_e2_add`]'s sums: the two pairs' products at word offsets 0 and 2.
+        pub fn finish_wide_dot(acc: &[u64; 48]) -> [u64; 6] {
+            let [p0, p1, m, q0, q1, n]: [V; 6] = std::array::from_fn(|k| V::load(&acc[..], 2 * V::N * k));
+            let sums = [p0, m.xor(p0).xor(p1), p1.xor(q0), n.xor(q0).xor(q1), q1];
+            finish_dot(&[sums, [V::zero(); 5]]).0
+        }
+
+        /// One half's products for [`weighted_dot_e2_add`]: `AW` picks the half's words of `a` and `weights`, `LO` and
+        /// `HI` a low or a high word of `a * weights` against the half's word of `b`.
+        fn weighted_half<const AW: i32, const LO: i32, const HI: i32>(
+            x: &[V; 2],
+            sx: V,
+            w: &[V; 2],
+            sw: V,
+            y: &[V; 2],
+            sy: V,
+        ) -> [V; 6] {
+            let (p0, p1, m) = (x[0].clmul::<AW>(w[0]), x[1].clmul::<AW>(w[1]), sx.clmul::<AW>(sw));
+            // `a * weights` by words: `W0 = p0.lo`, `W1 = p0.hi + s.lo`, `W2 = s.hi + p1.lo`, `W3 = p1.hi`, where
+            // `s = m + p0 + p1`. `e.lo = W0 + W1`, `f.hi = W2 + W3`, `v = [W1, W2]`.
+            let al = p1.align_high_low(p0);
+            let e = m.xor(p1).xor(al);
+            let f = m.xor(p0).xor(al);
+            let v = e.xor(p0);
+            [
+                p0.clmul::<LO>(y[0]),
+                v.clmul::<LO>(y[1]),
+                e.clmul::<LO>(sy),
+                v.clmul::<HI>(y[0]),
+                p1.clmul::<HI>(y[1]),
+                f.clmul::<HI>(sy),
+            ]
+        }
+
+        /// lvm2 PFAST-K3: one half's product at `W = 2` (`H` picks the words), reduced as [`reduce`] does: `[R0, R1]`
+        /// in each lane. Barrett's constants come as `[low, high]` lanes, so the products pick their words in place.
+        fn mul_half_e2<const H: i32>(x: &[V; 2], sx: V, y: &[V; 2], sy: V, barrett: V, modulus: V) -> V {
+            let (p0, p1, m) = (x[0].clmul::<H>(y[0]), x[1].clmul::<H>(y[1]), sx.clmul::<H>(sy));
+            // The product's words: `[W0, W1] = p0 + s.low()`, `[W2, W3] = p1 + s.high()`, `s = m + p0 + p1`.
+            let s = m.xor(p0).xor(p1);
+            let high = p1.xor(s.high());
+            // `q = high + the top two words of high * barrett`: the products at word offsets 1 and 2.
+            let t1 = high.clmul::<0x10>(barrett).xor(high.clmul::<0x01>(barrett));
+            let q = high.xor(high.clmul::<0x11>(barrett)).xor(t1.high());
+            // The low two words of `q * modulus`: the products at offsets 0 and 1.
+            let r1 = q.clmul::<0x10>(modulus).xor(q.clmul::<0x01>(modulus));
+            p0.xor(q.clmul::<0x00>(modulus)).xor(s.xor(r1).low())
+        }
+
+        /// lvm2 PFAST-K3: `x * y` reduced at `W = 2`, by word.
+        fn mul_e2(x: &[V; 2], y: &[V; 2], sy: V, barrett: V, modulus: V) -> [V; 2] {
+            let sx = x[0].xor(x[1]);
+            let even = mul_half_e2::<0x00>(x, sx, y, sy, barrett, modulus);
+            let odd = mul_half_e2::<0x11>(x, sx, y, sy, barrett, modulus);
+            [even.unpacklo(odd), even.unpackhi(odd)]
+        }
+
+        /// lvm2 PFAST-K3: `acc += x * y` unreduced at `W = 2`, as Karatsuba's three sums (`x0 y0`, `x1 y1`,
+        /// `(x0 + x1)(y0 + y1)`) of both halves, combined by [`finish_karatsuba`].
+        fn dot_add_e2(acc: &mut [V; 3], x: &[V; 2], y: &[V; 2]) {
+            let (sx, sy) = (x[0].xor(x[1]), y[0].xor(y[1]));
+            acc[0] = acc[0].xor(x[0].clmul::<0x00>(y[0]).xor(x[0].clmul::<0x11>(y[0])));
+            acc[1] = acc[1].xor(x[1].clmul::<0x00>(y[1]).xor(x[1].clmul::<0x11>(y[1])));
+            acc[2] = acc[2].xor(sx.clmul::<0x00>(sy).xor(sx.clmul::<0x11>(sy)));
+        }
+
+        fn finish_karatsuba(acc: &[V; 3]) -> [u64; 6] {
+            let [p0, p1, m] = *acc;
+            finish_dot(&[[p0, m.xor(p0).xor(p1), p1, V::zero(), V::zero()], [V::zero(); 5]]).0
+        }
+
+        /// lvm2 PFAST-K3: [`PowerField::chi_dot_quad`] at `W = 2` in one pass over each lane's entries: the four rows'
+        /// `B` (reduced, as `mul_row` gives it) and `T[j + 2]` stay in registers, and the dot products' Karatsuba
+        /// sums run over every lane and are combined once. The same sums, word for word.
+        pub fn chi_dot_quad_e2<F: Ext<W>, const W: usize>(
+            field: &PowerField<F, W>,
+            rows: [&[u64]; 4],
+            weights: &[u64],
+            constant: &[u64],
+            kappa: &Element<W>,
+        ) -> [[u64; 6]; 8] {
+            let fr = factor_row::<W>();
+            let kappa = [V::splat(kappa[0]), V::splat(kappa[1 % W])];
+            let barrett = V::pair(field.barrett[0], field.barrett[1 % W]);
+            let modulus = V::pair(field.modulus[0], field.modulus[1 % W]);
+            let mut acc = [[V::zero(); 3]; 8];
+            // A lane's 64 entries of a row, by word: fixed lengths, so the loads below need no checks.
+            fn words(row: &[u64], at: usize, stride: usize) -> [&[u64; 64]; 2] {
+                std::array::from_fn(|k| row[k * stride + at..][..64].try_into().unwrap())
+            }
+            let load = |words: &[&[u64; 64]; 2], z: usize| -> [V; 2] { std::array::from_fn(|k| V::load(&words[k][..], z)) };
+            for lane in 0..BITS / 64 {
+                let (weights, constant) = (words(weights, fr * lane, 64), words(constant, fr * lane, 64));
+                let (at1, at2) = (along(64 * lane, 1), along(64 * lane, 2));
+                let t: [[&[u64; 64]; 2]; 4] = std::array::from_fn(|i| words(rows[i], at1, BITS));
+                let u: [[&[u64; 64]; 2]; 4] = std::array::from_fn(|i| words(rows[i], at2, BITS));
+                for step in 0..64 / STEP {
+                    let z = step * STEP;
+                    let (w, c) = (load(&weights, z), load(&constant, z));
+                    let sw = w[0].xor(w[1]);
+                    let a: [[V; 2]; 4] = std::array::from_fn(|i| {
+                        let t = xor_w(&load(&t[i], z), &kappa);
+                        xor_w(&c, &mul_e2(&t, &w, sw, barrett, modulus))
+                    });
+                    let b: [[V; 2]; 4] = std::array::from_fn(|i| load(&u[i], z));
+                    let (a4, b4) = (xor_w(&a[0], &a[2]), xor_w(&b[0], &b[2]));
+                    let (a5, b5) = (xor_w(&a[1], &a[3]), xor_w(&b[1], &b[3]));
+                    let pairs = [(a[0], a[1], b[0], b[1]), (a[2], a[3], b[2], b[3]), (a[1], a[3], b[1], b[3]), (a4, a5, b4, b5)];
+                    for (p, (alo, ahi, blo, bhi)) in pairs.into_iter().enumerate() {
+                        dot_add_e2(&mut acc[2 * p], &alo, &blo);
+                        dot_add_e2(&mut acc[2 * p + 1], &xor_w(&alo, &ahi), &xor_w(&blo, &bhi));
+                    }
+                }
+            }
+            std::array::from_fn(|i| finish_karatsuba(&acc[i]))
         }
 
         /// `B` stays unreduced, `2W` words: its two halves each meet `T[j + 2]` in a Karatsuba

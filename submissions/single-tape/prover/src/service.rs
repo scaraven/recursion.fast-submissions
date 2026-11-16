@@ -59,6 +59,19 @@ pub fn in_flight() -> usize {
 /// R9-PCS: the fewest items a batch is cut to so that a call fills its connections (below it, one round trip of
 /// tens of µs outweighs the overlap).
 pub const SPLIT_MIN: usize = 64;
+/// PFAST-3: nonce requests of at least this many candidates go out as two halves on two Fiat–Shamir connections
+/// (`ask_many_fs`). `LVM_FS_SPLIT=k` sets it (measurement only: the answers do not depend on it).
+pub fn fs_split() -> usize {
+    static N: AtomicU64 = AtomicU64::new(0);
+    match N.load(Ordering::Relaxed) {
+        0 => {
+            let k = std::env::var("LVM_FS_SPLIT").ok().and_then(|v| v.parse::<usize>().ok()).unwrap_or(64).max(2);
+            N.store(k as u64, Ordering::Relaxed);
+            k
+        }
+        k => k as usize,
+    }
+}
 
 /// NTM: the `QUERY` body target actually used by `batches_on`: `BATCH_BYTES` unless `LVM_BATCH_KIB`
 /// or a bench (`set_batch_bytes`) says otherwise (measurement only; the answers do not depend on it).
@@ -97,6 +110,8 @@ pub struct Service {
     cv: Condvar,
     /// the connection of the sequential queries (`ask`), non-blocking
     fs: Mutex<Option<UnixStream>>,
+    /// PFAST-3: the second half of a split nonce request (`ask_many_fs`), non-blocking
+    fs2: Mutex<Option<UnixStream>>,
     /// requests sent, queries sent (QUERY and SIGN), query bytes sent
     pub requests: AtomicU64,
     pub queries: AtomicU64,
@@ -138,6 +153,7 @@ impl Service {
             pool: Mutex::new(Pool { idle: vec![c], open: 1 }),
             cv: Condvar::new(),
             fs: Mutex::new(None),
+            fs2: Mutex::new(None),
             requests: AtomicU64::new(0),
             queries: AtomicU64::new(0),
             query_bytes: AtomicU64::new(0),
@@ -573,90 +589,62 @@ impl Oracle for Service {
     }
 
     /// PFAST: `out[i] = H(q_i)` as one `QUERY` on the Fiat–Shamir connection, polled as `ask` polls it (an E2
-    /// challenge's nonce candidates: one sequential request, so the wake-up of a blocking read is all latency). Falls
-    /// back to `ask_many_here` above `BATCH_ITEMS` items or `BATCH_BYTES` body bytes. The answers do not depend on it.
+    /// challenge's nonce candidates: one sequential request, so the wake-up of a blocking read is all latency). At
+    /// `fs_split()` items or more (g = 6's 64), PFAST-3 splits the request in two halves on two such connections, sent
+    /// back to back, so that the service hashes them on two threads (it hashes one request's items one after another).
+    /// Falls back to `ask_many_here` above `BATCH_ITEMS` items or `BATCH_BYTES` body bytes. The answers do not depend
+    /// on any of this.
     fn ask_many_fs(&self, out: &mut [Digest], build: &Builder) {
         let n = out.len();
-        let mut req = Vec::with_capacity(16 + n * 64);
-        req.resize(16, 0);
-        for i in 0..n {
-            let lp = req.len();
-            req.extend_from_slice(&[0u8; 4]);
-            build(i, &mut req);
-            let len = req.len() - lp - 4;
-            if len > QUERY_CAP {
-                fatal(&format!("a query of {len} bytes is above the cap of {QUERY_CAP}"));
+        let parts = if n >= fs_split() { 2 } else { 1 };
+        let cut = n.div_ceil(parts);
+        let mut reqs: Vec<(Vec<u8>, usize, usize)> = Vec::with_capacity(parts);
+        let mut total = 0;
+        for p in 0..parts {
+            let (lo, hi) = (p * cut, ((p + 1) * cut).min(n));
+            let mut req = Vec::with_capacity(16 + (hi - lo) * 64);
+            req.resize(16, 0);
+            for i in lo..hi {
+                let lp = req.len();
+                req.extend_from_slice(&[0u8; 4]);
+                build(i, &mut req);
+                let len = req.len() - lp - 4;
+                if len > QUERY_CAP {
+                    fatal(&format!("a query of {len} bytes is above the cap of {QUERY_CAP}"));
+                }
+                req[lp..lp + 4].copy_from_slice(&(len as u32).to_le_bytes());
             }
-            req[lp..lp + 4].copy_from_slice(&(len as u32).to_le_bytes());
+            let body_len = req.len() - 16;
+            total += body_len;
+            req[0] = OP_QUERY;
+            req[4..8].copy_from_slice(&((hi - lo) as u32).to_le_bytes());
+            req[8..16].copy_from_slice(&(body_len as u64).to_le_bytes());
+            reqs.push((req, lo, hi));
         }
-        let body_len = req.len() - 16;
-        if n == 0 || n > BATCH_ITEMS || body_len > BATCH_BYTES {
+        if n == 0 || n > BATCH_ITEMS || total > BATCH_BYTES {
             return self.ask_many_here(out, build);
         }
-        req[0] = OP_QUERY;
-        req[4..8].copy_from_slice(&(n as u32).to_le_bytes());
-        req[8..16].copy_from_slice(&(body_len as u64).to_le_bytes());
-        let mut g = self.fs.lock().unwrap();
-        if g.is_none() {
-            let c = open_stream(&self.path, &self.dir).unwrap_or_else(|e| fatal(&format!("connect {}: {e}", self.path)));
-            c.set_nonblocking(true).unwrap_or_else(|e| fatal(&format!("socket: {e}")));
-            *g = Some(c);
-        }
-        let conn = g.as_mut().unwrap();
-        let mut sent = 0;
-        while sent < req.len() {
-            match conn.write(&req[sent..]) {
-                Ok(k) => sent += k,
-                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => std::thread::yield_now(),
-                Err(e) => fatal(&format!("QUERY ({n} items, {body_len} bytes): write: {e}")),
+        let mut guards = [&self.fs, &self.fs2].map(|m| m.lock().unwrap());
+        for g in guards.iter_mut().take(parts) {
+            if g.is_none() {
+                let c = open_stream(&self.path, &self.dir).unwrap_or_else(|e| fatal(&format!("connect {}: {e}", self.path)));
+                c.set_nonblocking(true).unwrap_or_else(|e| fatal(&format!("socket: {e}")));
+                **g = Some(c);
             }
         }
-        let want = 16 + 32 * n;
-        let mut buf = vec![0u8; want];
-        let mut got = 0;
-        let mut spins = 0u32;
-        while got < want {
-            match conn.read(&mut buf[got..want]) {
-                Ok(0) => fatal("QUERY: the service closed the connection"),
-                Ok(k) => {
-                    got += k;
-                    if got >= 16 && buf[0] != 0 {
-                        // a refusal: its message is the body
-                        let m = u64::from_le_bytes(buf[8..16].try_into().unwrap()) as usize;
-                        let mut msg = buf[16..got].to_vec();
-                        conn.set_nonblocking(false).ok();
-                        let mut rest = vec![0u8; m.saturating_sub(msg.len())];
-                        conn.read_exact(&mut rest).ok();
-                        msg.extend_from_slice(&rest);
-                        fatal(&format!(
-                            "QUERY ({n} items, {body_len} bytes) refused with status {} {}: {}",
-                            buf[0],
-                            status_name(buf[0]),
-                            String::from_utf8_lossy(&msg)
-                        ));
-                    }
-                }
-                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                    spins += 1;
-                    if spins < 2000 {
-                        std::hint::spin_loop();
-                    } else {
-                        std::thread::yield_now();
-                    }
-                }
-                Err(e) => fatal(&format!("QUERY ({n} items, {body_len} bytes): read: {e}")),
+        for (g, (req, lo, hi)) in guards.iter_mut().zip(&reqs) {
+            polled_send(g.as_mut().unwrap(), req, hi - lo);
+        }
+        for (g, (req, lo, hi)) in guards.iter_mut().zip(&reqs) {
+            let buf = polled_recv(g.as_mut().unwrap(), hi - lo, req.len() - 16);
+            for (o, a) in out[*lo..*hi].iter_mut().zip(buf[16..].chunks_exact(32)) {
+                *o = a.try_into().unwrap();
             }
         }
-        drop(g);
-        if u64::from_le_bytes(buf[8..16].try_into().unwrap()) != 32 * n as u64 {
-            fatal(&format!("QUERY: {} answer bytes for {n} queries", u64::from_le_bytes(buf[8..16].try_into().unwrap())));
-        }
-        for (o, a) in out.iter_mut().zip(buf[16..].chunks_exact(32)) {
-            *o = a.try_into().unwrap();
-        }
-        self.requests.fetch_add(1, Ordering::Relaxed);
+        drop(guards);
+        self.requests.fetch_add(parts as u64, Ordering::Relaxed);
         self.queries.fetch_add(n as u64, Ordering::Relaxed);
-        self.query_bytes.fetch_add((body_len - 4 * n) as u64, Ordering::Relaxed);
+        self.query_bytes.fetch_add((total - 4 * n) as u64, Ordering::Relaxed);
     }
 
     /// `out[i] = H(q_i)` on one pool connection, from the calling thread (each prover thread has its own).
@@ -677,4 +665,61 @@ impl Oracle for Service {
         self.row_batches_on(&mut conns, out, rows, row_bytes, 0, skip);
         self.put_all(conns);
     }
+}
+
+/// PFAST-3 (`Service::ask_many_fs`).
+/// Write a whole request on a non-blocking connection (yielding while the socket is full).
+fn polled_send(conn: &mut UnixStream, req: &[u8], n: usize) {
+    let mut sent = 0;
+    while sent < req.len() {
+        match conn.write(&req[sent..]) {
+            Ok(k) => sent += k,
+            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => std::thread::yield_now(),
+            Err(e) => fatal(&format!("QUERY ({n} items, {} bytes): write: {e}", req.len() - 16)),
+        }
+    }
+}
+
+/// Read a `QUERY`'s answer (header and `n` digests) from a non-blocking connection, polling as `ask` does.
+fn polled_recv(conn: &mut UnixStream, n: usize, body_len: usize) -> Vec<u8> {
+    let want = 16 + 32 * n;
+    let mut buf = vec![0u8; want];
+    let mut got = 0;
+    let mut spins = 0u32;
+    while got < want {
+        match conn.read(&mut buf[got..want]) {
+            Ok(0) => fatal("QUERY: the service closed the connection"),
+            Ok(k) => {
+                got += k;
+                if got >= 16 && buf[0] != 0 {
+                    // a refusal: its message is the body
+                    let m = u64::from_le_bytes(buf[8..16].try_into().unwrap()) as usize;
+                    let mut msg = buf[16..got].to_vec();
+                    conn.set_nonblocking(false).ok();
+                    let mut rest = vec![0u8; m.saturating_sub(msg.len())];
+                    conn.read_exact(&mut rest).ok();
+                    msg.extend_from_slice(&rest);
+                    fatal(&format!(
+                        "QUERY ({n} items, {body_len} bytes) refused with status {} {}: {}",
+                        buf[0],
+                        status_name(buf[0]),
+                        String::from_utf8_lossy(&msg)
+                    ));
+                }
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                spins += 1;
+                if spins < 2000 {
+                    std::hint::spin_loop();
+                } else {
+                    std::thread::yield_now();
+                }
+            }
+            Err(e) => fatal(&format!("QUERY ({n} items, {body_len} bytes): read: {e}")),
+        }
+    }
+    if u64::from_le_bytes(buf[8..16].try_into().unwrap()) != 32 * n as u64 {
+        fatal(&format!("QUERY: {} answer bytes for {n} queries", u64::from_le_bytes(buf[8..16].try_into().unwrap())));
+    }
+    buf
 }

@@ -396,25 +396,30 @@ impl Terms {
     /// SH2-Z (CR-P0): the terms that project a half message (every lane's even words, blocks of
     /// `2^(low_vars - 1)`): each low table restricted to its even entries, `ring_lows` the rings' full low tables;
     /// the block structure (`gamma`, `e_hi`, ranges, activity) is the same. Only [`Self::project`] reads them.
-    fn even_half(&self, ring_lows: &[Vec<F192>]) -> Terms {
+    ///
+    /// `gamma` moves to the half terms (no copy); the caller puts it back once the projection is done. The patterns'
+    /// tables are built on the pool.
+    fn even_half(&mut self, ring_lows: &[Vec<F192>]) -> Terms {
         assert_eq!(self.low_vars, LOW_VARS, "a lane block of whole low blocks");
         Terms {
             lane_vars: self.lane_vars - 1,
             low_vars: self.low_vars - 1,
-            gamma: self.gamma.clone(),
+            gamma: std::mem::take(&mut self.gamma),
             ranges: self.ranges.clone(),
-            patterns: self
-                .patterns
-                .iter()
-                .map(|p| Pattern {
+            patterns: crate::lv::parallel::map_collect(self.patterns.len(), |i| {
+                let p = &self.patterns[i];
+                Pattern {
                     factors: p.factors.clone(),
                     table: p.table.clone(),
                     dot_src: p.dot_src,
                     claims: p.claims.clone(),
-                    low: Low::of_table(evens(p.table.as_deref().map_or_else(|| table(&p.factors), |t| t.to_vec()).as_slice())),
+                    low: Low::of_table(match &p.table {
+                        Some(t) => evens(t),
+                        None => evens(&table(&p.factors)),
+                    }),
                     active: p.active.clone(),
-                })
-                .collect(),
+                }
+            }),
             rings: self
                 .rings
                 .iter()
@@ -482,14 +487,16 @@ impl Terms {
             })
         };
         move |h, f, out| {
-            let live = || {
-                self.patterns
-                    .iter()
-                    .zip(&gs[h * n_patterns..][..n_patterns])
-                    .filter(|(_, g)| **g != F192::ZERO)
-            };
+            // The block's live patterns, once (not once per vector).
+            let live: Vec<(&[F192x8], F192x8)> = self
+                .patterns
+                .iter()
+                .zip(&gs[h * n_patterns..][..n_patterns])
+                .filter(|(_, g)| **g != F192::ZERO)
+                .map(|(pattern, &g)| (&pattern.low.table[..], F192x8::splat(g)))
+                .collect();
             for (k, o) in out.as_chunks_mut::<8>().0.iter_mut().enumerate() {
-                let products = live().map(|(pattern, &g)| pattern.low.table[k].mul_unreduced(F192x8::splat(g)));
+                let products = live.iter().map(|(table, g)| table[k].mul_unreduced(*g));
                 *o = products
                     .reduce(|acc, p| acc ^ p)
                     .map_or([F192::ZERO; 8], |acc| acc.reduce_lanes().to_array());
@@ -631,13 +638,15 @@ fn initial_basis_with(
     let x_k = F64(2);
     // (claims with the same low factors and coordinate share one pattern, as the point claims do: a pattern's dot is
     // taken in every lane where its blocks are active)
-    let explicit: Vec<((Vec<Factor>, Vec<F192>), Vec<(usize, Vec<F192>, Vec<F192>, Vec<F192>)>)> = crate::lv::parallel::map_collect(e6.len(), |i| {
+    // (the low tables depend on the low factors alone, and the terms share a few: each distinct one is built once,
+    // on the pool, with its two coordinate tables)
+    let explicit: Vec<(Vec<Factor>, [(usize, Vec<F192>, Vec<F192>); 4])> = crate::lv::parallel::map_collect(e6.len(), |i| {
         let t6 = &e6[i];
         let pe: Vec<F192> = t6.point.iter().map(|&x| e3_of(x)).collect();
         let factors = point_factors(&pe, t6.offset, bits);
         let (low, rest) = factors.split_at(low_vars);
         let (mid, lane) = rest.split_at(lane_vars - low_vars);
-        let (pi, gm, ln) = (table_e2(low), table_e2(mid), table_e2(lane));
+        let (gm, ln) = (table_e2(mid), table_e2(lane));
         let (u, v): (Vec<F192>, Vec<F192>) = ln
             .iter()
             .map(|l| {
@@ -648,33 +657,55 @@ fn initial_basis_with(
             })
             .unzip();
         let uxv: Vec<F192> = u.iter().zip(&v).map(|(&u, &v)| u + v.mul_base(x_k)).collect();
-        let (p0, p1) = (coord_tab(&pi, 0), coord_tab(&pi, 1));
         (
-            (low.to_vec(), pi.clone()),
-            vec![
-                (0, p0.clone(), coord_tab(&gm, 0), u),
-                (1, p1.clone(), coord_tab(&gm, 1), uxv),
-                (1, p1, coord_tab(&gm, 0), v.clone()),
-                (0, p0, coord_tab(&gm, 1), v),
+            low.to_vec(),
+            [
+                (0, coord_tab(&gm, 0), u),
+                (1, coord_tab(&gm, 1), uxv),
+                (1, coord_tab(&gm, 0), v.clone()),
+                (0, coord_tab(&gm, 1), v),
             ],
         )
     });
+    // The groups in first-occurrence order (`group[i]` term `i`'s), each from its first term's low factors.
+    let (mut firsts, mut seen) = (Vec::new(), std::collections::HashMap::<&[Factor], usize>::new());
+    let group: Vec<usize> = explicit
+        .iter()
+        .enumerate()
+        .map(|(i, (low, _))| {
+            *seen.entry(&low[..]).or_insert_with(|| {
+                firsts.push(i);
+                firsts.len() - 1
+            })
+        })
+        .collect();
+    drop(seen);
+    let built: Vec<(Vec<F192>, Low, [Option<(Vec<F192>, Low)>; 2])> = crate::lv::parallel::map_collect(firsts.len(), |g| {
+        let pi = table_e2(&explicit[firsts[g]].0);
+        let coord = |c| {
+            let t = coord_tab(&pi, c);
+            Some((t.clone(), Low::of_table(t)))
+        };
+        let pair = [coord(0), coord(1)];
+        (pi.clone(), Low::of_table(pi), pair)
+    });
+    let mut coords = Vec::with_capacity(built.len());
+    for (pi_emb, low, pair) in built {
+        terms.e6.push((pi_emb, low, Vec::new()));
+        coords.push(pair);
+    }
     let mut n_claims = claims.len();
-    let mut by_e6: std::collections::HashMap<(Vec<Factor>, usize), usize> = std::collections::HashMap::new();
-    let mut groups6: std::collections::HashMap<Vec<Factor>, usize> = std::collections::HashMap::new();
-    for ((low, pi_emb), four) in explicit {
-        let g = *groups6.entry(low.clone()).or_insert_with(|| {
-            terms.e6.push((pi_emb.clone(), Low::of_table(pi_emb.clone()), Vec::new()));
-            terms.e6.len() - 1
-        });
-        for (c, pi, gm, ln) in four {
+    let mut by_e6: std::collections::HashMap<(usize, usize), usize> = std::collections::HashMap::new();
+    for ((_, four), g) in explicit.into_iter().zip(group) {
+        for (c, gm, ln) in four {
             terms.gamma.extend_from_slice(&gm);
             lanes.extend_from_slice(&ln);
-            match by_e6.get(&(low.clone(), c)) {
+            match by_e6.get(&(g, c)) {
                 Some(&p) => terms.patterns[p].claims.push(n_claims),
                 None => {
-                    by_e6.insert((low.clone(), c), terms.patterns.len());
-                    terms.patterns.push(Pattern { low: Low::of_table(pi.clone()), factors: Vec::new(), table: Some(pi), dot_src: Some((g, c)), claims: vec![n_claims], active: Vec::new() });
+                    by_e6.insert((g, c), terms.patterns.len());
+                    let (pi, low) = coords[g][c].take().expect("one pattern per group and coordinate");
+                    terms.patterns.push(Pattern { low, factors: Vec::new(), table: Some(pi), dot_src: Some((g, c)), claims: vec![n_claims], active: Vec::new() });
                 }
             }
             n_claims += 1;
@@ -683,12 +714,13 @@ fn initial_basis_with(
     drop(_sp_x);
     let _sp_r = crate::lv::tracing::info_span!("Basis/ranges").entered();
     let n_blocks = 1usize << (lane_vars - low_vars);
-    for gamma in terms.gamma.chunks_exact(n_blocks) {
+    terms.ranges = crate::lv::parallel::map_collect(terms.gamma.len() / n_blocks, |c| {
+        let gamma = &terms.gamma[c * n_blocks..][..n_blocks];
         let nonzero = |h: &usize| gamma[*h] != F192::ZERO;
         let first = (0..n_blocks).find(nonzero).unwrap_or(0);
         let end = (0..n_blocks).rfind(nonzero).map_or(0, |h| h + 1);
-        terms.ranges.push(first / 8 * 8..end.next_multiple_of(8).min(n_blocks));
-    }
+        first / 8 * 8..end.next_multiple_of(8).min(n_blocks)
+    });
     let gamma = |c: usize| &terms.gamma[c * n_blocks..][..n_blocks];
     let actives: Vec<Vec<bool>> = crate::lv::parallel::map_collect(terms.patterns.len(), |i| {
         let pattern = &terms.patterns[i];
@@ -736,7 +768,8 @@ fn initial_basis_with(
 
     let n_terms = terms.n_terms();
     let mut a = vec![F192::ZERO; n_lanes * n_terms];
-    for (l, row) in a.chunks_exact_mut(n_terms).enumerate() {
+    // (a lane's row on the pool: an E2 ring's 128 terms are 128 applications of `Φ`, in every lane it reaches)
+    crate::lv::parallel::chunks_mut(&mut a, n_terms, |l, row| {
         let weight_of = |t: usize| lanes[(t << lane_bits) + l];
         for (c, slot) in row[..n_claims].iter_mut().enumerate() {
             *slot = weight_of(c);
@@ -761,10 +794,17 @@ fn initial_basis_with(
                 }
             }
         }
-    }
+    });
     drop(_sp_g);
     let _sp_p = crate::lv::tracing::info_span!("Basis/project").entered();
-    let mut p = if even { terms.even_half(&ring_lows).project(stack) } else { terms.project(stack) };
+    let mut p = if even {
+        let mut half = terms.even_half(&ring_lows);
+        let p = half.project(stack);
+        terms.gamma = std::mem::take(&mut half.gamma);
+        p
+    } else {
+        terms.project(stack)
+    };
     p.resize(n_lanes * n_terms, F192::ZERO);
     drop(_sp_p);
     InitialBasis {

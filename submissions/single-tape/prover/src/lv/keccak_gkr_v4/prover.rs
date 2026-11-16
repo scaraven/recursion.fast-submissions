@@ -26,7 +26,7 @@ use crate::lv::keccak_gkr::keccak::{BITS, LOCAL_VARS, along, linear_transpose, r
 use crate::lv::keccak_gkr::kernels::{
     GROUP, PACK_VARS, PACKS, SKIP, SkipBlock, SkipWeights, TERNARY, embed, mixed_points, products, slot, used,
 };
-use crate::lv::keccak_gkr::power::{Element, PowerField, factor_row, get, set};
+use crate::lv::keccak_gkr::power::{Element, PowerField, WideDot, factor_row, get, set};
 use crate::lv::keccak_gkr::protocol::{Claim, chi_weights, mu_at, tag};
 use crate::lv::keccak_gkr::rmfe::PROD_BITS;
 use crate::lv::keccak_gkr::witness::transpose64;
@@ -790,7 +790,7 @@ impl Layer<'_> {
     /// lvm2 PFAST-K: [`Self::pack_products_gfni`] at E2 (`F` is `F128`): each block's sums meet its weight
     /// four to a register ([`weigh_e2`](crate::lv::keccak_gkr::products_gfni::weigh_e2)). The same sums.
     fn pack_products_e2<F: Ext<W>, const W: usize>(&self, claim: &Claim<F>) -> Vec<[F; PROD_BITS]> {
-        use crate::lv::keccak_gkr::products_gfni::{ProductSums, SumsE2, e2_entry, weigh_e2};
+        use crate::lv::keccak_gkr::products_gfni::{ProductSums, SumsE2, e2_entry};
         assert_eq!(W, 2);
         let weights = self.task_weights(&F::eq_table(&claim.point[PACK_VARS..]));
         let kernel = ProductSums::<W>::new(&claim.weights);
@@ -800,9 +800,9 @@ impl Layer<'_> {
             || vec![SumsE2::default(); PAYLOAD_BITS / 4],
             |(scratch, recompute), sums, task| {
                 let (_, _, block) = self.block(recompute, task);
-                kernel.block_sums(scratch, block);
                 let w = weights[task].to_limbs();
-                weigh_e2([w[0], w[1 % W]], &scratch.out2, sums);
+                // lvm2 PFAST-K4: phase 2, the byte transpose and the weight fused ([`e2_entry`]'s order).
+                kernel.block_sums_weigh_e2(scratch, block, [w[0], w[1 % W]], sums);
             },
             |mut a, b| {
                 for (x, y) in a.iter_mut().zip(b) {
@@ -824,11 +824,13 @@ impl Layer<'_> {
             let v = F128Unreduced::from_products(p).reduce();
             F::from_limbs(std::array::from_fn(|k| [v.c0, v.c1][k]))
         };
-        (0..PACKS).map(|q| std::array::from_fn(|c| value(48 * q + c))).collect()
+        // lvm2 PFAST-K4: the staging's pack order (`staged_pack`).
+        let staged_pack = crate::lv::keccak_gkr::products_gfni::staged_pack;
+        (0..PACKS).map(|q| std::array::from_fn(|c| value(48 * staged_pack(q) + c))).collect()
     }
 
     /// [`Self::pack_products`] by GFNI outer products (`products_gfni`): the same sums. lvm2 PFAST-K: E3 only; at E2
-    /// `block_sums` fills `out2`, not `out`, and [`Self::pack_products_e2`] reads it.
+    /// `block_sums` fills `out2`, not `out`; [`Self::pack_products_e2`] uses `block_sums_weigh_e2` (lvm2 PFAST-K4).
     fn pack_products_gfni<F: Ext<W>, const W: usize>(&self, claim: &Claim<F>) -> Vec<[F; PROD_BITS]> {
         use crate::lv::keccak_gkr::products_gfni::ProductSums;
         let weights = self.task_weights(&F::eq_table(&claim.point[PACK_VARS..]));
@@ -865,7 +867,7 @@ impl Layer<'_> {
             },
         );
         (0..PACKS)
-            .map(|q| std::array::from_fn(|c| sums[48 * q + c].reduce()))
+            .map(|q| std::array::from_fn(|c| sums[48 * crate::lv::keccak_gkr::products_gfni::staged_pack(q) + c].reduce()))
             .collect()
     }
 
@@ -1006,6 +1008,8 @@ impl Layer<'_> {
                 let (segment, g) = wt[task];
                 let block = self.part(segment).state(recompute, self.rounds[segment], g);
                 let mut sums = [[0u64; 6]; 2];
+                // lvm2 PFAST-K3: at E2 the products stay unreduced, `3W` words, summed in registers until the task's end.
+                let mut dots = [WideDot::new(); 2];
                 for r in 0..5 {
                     fold.differences(field, &block[r * 5 * 64 * 8..], rows, wide);
                     for (half, sum) in sums.iter_mut().enumerate() {
@@ -1014,14 +1018,26 @@ impl Layer<'_> {
                             let a = &lanes[(x + 1) % 5 * fr..][..fr];
                             let b = &lanes[(x + 2) % 5 * fr..][..fr];
                             let w = &round.weights[(5 * r + x) * fr..][..fr];
+                            if W == 2 {
+                                field.weighted_dot_e2_add(&mut dots[half], a, b, w, 64);
+                                continue;
+                            }
                             for (sum, value) in sum.iter_mut().zip(field.weighted_dot(a, b, w, 64)) {
                                 *sum ^= value;
                             }
                         }
                     }
                 }
+                if W == 2 {
+                    sums = dots.map(|dot| dot.finish());
+                }
                 for (half, sum) in sums.iter().enumerate() {
-                    add_wide::<W>(total, sum, &groups[2 * (nb * segment + g) + half]);
+                    let weight = &groups[2 * (nb * segment + g) + half];
+                    if W == 2 {
+                        add_mul_n::<6, W, 9, 6>(total, sum, weight);
+                    } else {
+                        add_wide::<W>(total, sum, weight);
+                    }
                 }
             },
             |mut a, b| {
@@ -1031,6 +1047,21 @@ impl Layer<'_> {
                 a
             },
         );
+        if W == 2 {
+            // lvm2 PFAST-K3: `4W` words at E2, past the evaluation table's `3W`: words `2W..4W` reduced first, the
+            // same value at `s`.
+            let high = field.reduce(&std::array::from_fn(|k| if k < 2 * W { sum[2 * W + k] } else { 0 }));
+            let sum: [u64; 9] = std::array::from_fn(|k| {
+                if k < 2 * W {
+                    sum[k]
+                } else if k < 3 * W {
+                    high[k - 2 * W]
+                } else {
+                    0
+                }
+            });
+            return round.field.eval().eval(&sum);
+        }
         round.field.eval().eval(&sum)
     }
 

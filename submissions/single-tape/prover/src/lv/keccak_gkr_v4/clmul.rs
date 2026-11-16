@@ -37,7 +37,7 @@ pub(crate) use clmul_kernel;
 macro_rules! vector {
     (
         $reg:ty, $n:expr, $zero:ident, $splat:ident, $xor:ident, $clmul:ident, $high:ident, $low:ident,
-        $unpacklo:ident,
+        $unpacklo:ident, $unpackhi:ident, $alignr:ident, pair: |$lo:ident, $hi:ident| $pair:expr,
         packs: |$src:ident, $i:ident| $packs:expr,
         sum: |$x:ident| $sum:expr $(,)?
     ) => {
@@ -89,6 +89,18 @@ macro_rules! vector {
                 pub fn unpacklo(self, other: Self) -> Self {
                     V($unpacklo(self.0, other.0))
                 }
+                /// lvm2 PFAST-K3: in each lane, the high word of each.
+                pub fn unpackhi(self, other: Self) -> Self {
+                    V($unpackhi(self.0, other.0))
+                }
+                /// lvm2 PFAST-K3: in each lane, `[other.high, self.low]` (`other`'s high word, then `self`'s low one).
+                pub fn align_high_low(self, other: Self) -> Self {
+                    V($alignr::<8>(self.0, other.0))
+                }
+                /// lvm2 PFAST-K3: every lane `[lo, hi]`.
+                pub fn pair($lo: u64, $hi: u64) -> Self {
+                    V($pair)
+                }
                 /// The sum of the lanes.
                 pub fn sum(self) -> u128 {
                     let $x = self.0;
@@ -103,7 +115,8 @@ cfg_select! {
     all(target_feature = "avx512f", target_feature = "avx512bw", target_feature = "vpclmulqdq") => {
         vector!(
             __m512i, 4, _mm512_setzero_si512, _mm512_set1_epi64, _mm512_xor_si512, _mm512_clmulepi64_epi128,
-            _mm512_bsrli_epi128, _mm512_bslli_epi128, _mm512_unpacklo_epi64,
+            _mm512_bsrli_epi128, _mm512_bslli_epi128, _mm512_unpacklo_epi64, _mm512_unpackhi_epi64, _mm512_alignr_epi8,
+            pair: |lo, hi| _mm512_set4_epi64(hi as i64, lo as i64, hi as i64, lo as i64),
             packs: |src, i| _mm512_cvtepu32_epi64(load_at::<u32, __m256i>(src, i)),
             sum: |x| sum256(_mm512_castsi512_si256(x)) ^ sum256(_mm512_extracti64x4_epi64::<1>(x)),
         );
@@ -111,7 +124,8 @@ cfg_select! {
     target_feature = "vpclmulqdq" => {
         vector!(
             __m256i, 2, _mm256_setzero_si256, _mm256_set1_epi64x, _mm256_xor_si256, _mm256_clmulepi64_epi128,
-            _mm256_bsrli_epi128, _mm256_bslli_epi128, _mm256_unpacklo_epi64,
+            _mm256_bsrli_epi128, _mm256_bslli_epi128, _mm256_unpacklo_epi64, _mm256_unpackhi_epi64, _mm256_alignr_epi8,
+            pair: |lo, hi| _mm256_set_epi64x(hi as i64, lo as i64, hi as i64, lo as i64),
             packs: |src, i| _mm256_cvtepu32_epi64(load_at::<u32, __m128i>(src, i)),
             sum: |x| sum256(x),
         );
@@ -119,7 +133,8 @@ cfg_select! {
     _ => {
         vector!(
             __m128i, 1, _mm_setzero_si128, _mm_set1_epi64x, _mm_xor_si128, _mm_clmulepi64_si128,
-            _mm_srli_si128, _mm_slli_si128, _mm_unpacklo_epi64,
+            _mm_srli_si128, _mm_slli_si128, _mm_unpacklo_epi64, _mm_unpackhi_epi64, _mm_alignr_epi8,
+            pair: |lo, hi| _mm_set_epi64x(hi as i64, lo as i64),
             packs: |src, i| _mm_cvtepu32_epi64(_mm_cvtsi64_si128(load_at::<u32, u64>(src, i) as i64)),
             sum: |x| sum128(x),
         );

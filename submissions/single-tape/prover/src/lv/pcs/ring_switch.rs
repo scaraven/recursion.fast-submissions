@@ -250,11 +250,13 @@ pub(crate) struct RingWeight {
     pub(crate) e2_point: Option<Vec<F128>>,
 }
 
-/// E2F: an E2 weight `Φ(eq(point, ·))` ready to fill its values: the factored E2 `eq` and `Φ` as 16 byte tables.
+/// E2F: an E2 weight `Φ(eq(point, ·))` ready to fill its values: the factored E2 `eq` and `Φ` as 16 byte tables, and
+/// as bit folds of a value's low and high words (64 values at a time, as [`RingFold`]).
 pub(crate) struct E2Fold {
     eq_lo: Vec<F128>,
     eq_hi: Vec<F128>,
     tables: Vec<[F192; 256]>,
+    fold: (BitFold, BitFold),
 }
 
 impl E2Fold {
@@ -270,7 +272,8 @@ impl E2Fold {
                 t
             })
             .collect();
-        Self { eq_lo: F128::eq_table(&point[..n_lo]), eq_hi: F128::eq_table(&point[n_lo..]), tables }
+        let fold = (BitFold::new(&phi[..64]), BitFold::new(&phi[64..128]));
+        Self { eq_lo: F128::eq_table(&point[..n_lo]), eq_hi: F128::eq_table(&point[n_lo..]), tables, fold }
     }
 
     /// `Φ(a)`.
@@ -284,13 +287,37 @@ impl E2Fold {
         acc
     }
 
-    /// `out[j] += Φ(eq(point, start + j))`.
+    /// `out[j] += Φ(eq(point, start + j))`: a run of `eq_lo` at a time against its `eq_hi` entry, 64 products at a
+    /// time through the bit folds (`Φ` is F2-linear: the sum of the weights of the set bits, as [`Self::apply`]).
     pub(crate) fn add_chunk(&self, start: usize, out: &mut [F192]) {
         let block_len = self.eq_lo.len();
         assert!(start + out.len() <= block_len * self.eq_hi.len());
-        for (j, o) in out.iter_mut().enumerate() {
-            let index = start + j;
-            *o += self.apply(self.eq_lo[index % block_len] * self.eq_hi[index / block_len]);
+        let (mut lo_words, mut hi_words) = ([0u64; BLOCK], [0u64; BLOCK]);
+        let mut folded = [F192::ZERO; BLOCK];
+        let mut done = 0;
+        while done < out.len() {
+            let index = start + done;
+            let lo = index % block_len;
+            let len = (block_len - lo).min(out.len() - done);
+            let e_hi = self.eq_hi[index / block_len];
+            for (e_lo, out) in self.eq_lo[lo..lo + len].chunks(BLOCK).zip(out[done..done + len].chunks_mut(BLOCK)) {
+                for ((l, h), &e) in lo_words.iter_mut().zip(&mut hi_words).zip(e_lo) {
+                    let p = e * e_hi;
+                    (*l, *h) = (p.c0, p.c1);
+                }
+                let n = e_lo.len();
+                let head = crate::lv::primitives::cast_slice::<u64, [u8; 8]>(&lo_words);
+                let tail = crate::lv::primitives::cast_slice::<u64, [u8; 8]>(&hi_words);
+                self.fold.0.fold_block_pair(&self.fold.1, &head[..n], &tail[..n], &mut folded);
+                let (out8, out_r) = out.as_chunks_mut::<8>();
+                for (o, f) in out8.iter_mut().zip(folded.as_chunks::<8>().0) {
+                    xor_into8(o, f);
+                }
+                for (o, f) in out_r.iter_mut().zip(&folded[8 * out8.len()..]) {
+                    *o += *f;
+                }
+            }
+            done += len;
         }
     }
 }

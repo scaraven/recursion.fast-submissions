@@ -104,6 +104,59 @@ static GATHER: Gather = {
     g
 };
 
+/// lvm2 PFAST-K4: the byte permutes of the position-major staging ([`ProductSums::stage_row_s`]).
+/// `spread[l]` builds a pack's *staggered* register from the halves of an embedded transposed register whose
+/// 128-bit lane `l` is that pack (16-bit element `k` = position `k`): 128-bit lane `i` holds positions `2 i` in
+/// bits 0..24 and `2 i + 1` in bits 88..112 (qword 1 shifted up by 24 bits), every other byte zero (`high`'s odd
+/// bytes are). `chain[r]` gathers output register pair `r` of four packs (column qwords `8 r .. 8 r + 8`, qword
+/// `c` = coefficient byte `c % 6` of pack `c / 6`, byte `n` from position `TRANSPOSED_ORDER[n]`) from the
+/// products of packs `r` and `r + 1`, whose 128-bit lane `i` holds position `2 i`'s product in bytes 0..6 and
+/// `2 i + 1`'s in bytes 6..12. Aligned, so that each table is one aligned 512-bit load.
+#[repr(C, align(64))]
+struct StagingS {
+    spread: [[u8; 64]; 4],
+    chain: [[u8; 64]; 3],
+}
+
+static STAGING_S: StagingS = {
+    let mut g = StagingS { spread: [[0; 64]; 4], chain: [[0; 64]; 3] };
+    let mut l = 0;
+    while l < 4 {
+        let mut i = 0;
+        while i < 64 {
+            // `high` byte 1: an odd byte, zero.
+            g.spread[l][i] = 64 + 1;
+            i += 1;
+        }
+        let mut k = 0;
+        while k < 8 {
+            let at = 16 * (k / 2) + 11 * (k % 2);
+            g.spread[l][at] = (16 * l + 2 * k) as u8;
+            g.spread[l][at + 1] = (16 * l + 2 * k + 1) as u8;
+            g.spread[l][at + 2] = (64 + 16 * l + 2 * k) as u8;
+            k += 1;
+        }
+        l += 1;
+    }
+    let mut r = 0;
+    while r < 3 {
+        let mut s = 0;
+        while s < 8 {
+            let c = 8 * r + s;
+            let (pack, m) = (c / 6, c % 6);
+            let mut n = 0;
+            while n < 8 {
+                let k = TRANSPOSED_ORDER[n];
+                g.chain[r][8 * s + n] = (((pack - r) << 6) | (16 * (k / 2) + 6 * (k % 2) + m)) as u8;
+                n += 1;
+            }
+            s += 1;
+        }
+        r += 1;
+    }
+    g
+};
+
 /// In-lane byte interleave of the lane's two qwords (16-bit element `d` = byte `d` of both).
 const INTERLEAVE: [u8; 32] = {
     let mut t = [0u8; 32];
@@ -166,6 +219,19 @@ const fn staged_index(r: usize, a: usize, n_active: usize) -> usize {
     }
 }
 
+/// lvm2 PFAST-K4: the pack whose column qwords the staged registers hold in place of pack `q`'s, so that payload bit
+/// `48 staged_pack(q) + c` is coefficient `c` of pack `q`'s product. With VBMI the staging takes the packs `j`,
+/// `8 + j`, `16 + j`, `24 + j` as staged packs `4 j .. 4 j + 4` ([`ProductSums::stage_row_s`]); otherwise in order.
+/// (The same `cfg` as `stage`'s branch that calls it.)
+#[inline(always)]
+pub const fn staged_pack(q: usize) -> usize {
+    if cfg!(all(target_feature = "avx512f", target_feature = "avx512bw", target_feature = "avx512vbmi", target_feature = "vpclmulqdq", target_feature = "gfni")) {
+        4 * (q % 8) + q / 8
+    } else {
+        q
+    }
+}
+
 /// The `8 W` matrices of a lane byte's weights: `M_b` maps a column byte (bit `i` = position
 /// `COLUMN_BIT_POSITION[i]`) to byte `b` of the sum of the weights it selects. An affine byte map
 /// reads output bit `i` off matrix byte `7 - i`, whose bit `k` is then bit `8 b + i` of
@@ -215,19 +281,22 @@ pub struct Scratch {
     pub out2: Box<OutE2>,
 }
 
-/// lvm2 PFAST-K: a block's E2 sums, two words each, payload bit `32 r + 16 l + k` at entry
-/// [`e2_entry`]`= 32 r + 2 k + l` (the order the byte transpose leaves them in, one 256-bit store per pair),
-/// aligned so that four entries are one 512-bit load.
+/// lvm2 PFAST-K: a block's E2 sums, two words each, payload bit `32 r + 16 l + k` at entry `32 r + 2 k + l` (the
+/// order the byte transpose leaves them in, one 256-bit store per pair), aligned so that four entries are one
+/// 512-bit load. (lvm2 PFAST-K4: [`ProductSums::block_sums`]'s E2 form only; the prover's E2 pass uses
+/// [`ProductSums::block_sums_weigh_e2`].)
 #[repr(C, align(64))]
 pub struct OutE2(pub [[u64; 2]; PAYLOAD_BITS]);
 
-/// lvm2 PFAST-K: the entry of [`OutE2`] that holds payload bit `bit`.
+/// lvm2 PFAST-K4: the entry `4 g + i` (`sums[g]`, 128-bit lane `i`) of the [`SumsE2`] that
+/// [`ProductSums::block_sums_weigh_e2`] accumulates payload bit `bit` in: payload bit `64 P + 16 l + k` at
+/// `64 P + 4 k + l`, the order the 512-bit byte transpose of staged register pair `P` leaves.
 #[inline(always)]
 pub const fn e2_entry(bit: usize) -> usize {
-    32 * (bit / 32) + 2 * (bit % 16) + bit % 32 / 16
+    64 * (bit / 64) + 4 * (bit % 16) + bit % 64 / 16
 }
 
-/// lvm2 PFAST-K: E2's weighted sums of four entries of [`OutE2`], unreduced: the Karatsuba products
+/// lvm2 PFAST-K: E2's weighted sums of four entries, unreduced: the Karatsuba products
 /// `P0 = a0 w0`, `P1 = a1 w1` and `M = (a0 + a1)(w0 + w1)` of entry `4 g + i` in 128-bit lane `i` of
 /// `self.0[g]`'s three registers.
 #[derive(Clone, Copy)]
@@ -307,7 +376,7 @@ impl<const W: usize> ProductSums<W> {
     }
 
     /// The weighted bit sums of a block (`BITS` positions of eight words) into `s.out`: entry
-    /// `48 q + c` is `sum over j of weights[j] * coefficient c of product(q, j)`.
+    /// `48 staged_pack(q) + c` is `sum over j of weights[j] * coefficient c of product(q, j)` ([`staged_pack`]).
     fn n_active(&self) -> usize {
         self.matrices.len() / Self::BYTES
     }
@@ -320,6 +389,74 @@ impl<const W: usize> ProductSums<W> {
             Self::to_field_elements_e2(&s.acc, &mut s.out2);
         } else {
             Self::to_field_elements(&s.acc, &mut s.out);
+        }
+    }
+
+    /// lvm2 PFAST-K4: phase 2 at E2 fused with the byte transpose and the block's weight: per pair of staged
+    /// registers, every active lane byte through its 16 matrices (four lane bytes a step), the 16 accumulators
+    /// byte-transposed in registers (four entries of [`e2_entry`]'s order a register) and weighed into `sums`
+    /// as [`weigh_e2`] does. The same sums.
+    #[cfg(all(target_feature = "avx512f", target_feature = "avx512bw", target_feature = "vpclmulqdq"))]
+    pub fn block_sums_weigh_e2(&self, s: &mut Scratch, block: &[u64], w: [u64; 2], sums: &mut [SumsE2]) {
+        assert_eq!(W, 2);
+        let n_active = self.n_active();
+        self.stage(block, &mut s.staged, n_active);
+        let staged = &s.staged;
+        assert!(staged.len() >= STAGED * n_active);
+        assert!(self.matrices.len() >= n_active * Self::BYTES);
+        assert_eq!(4 * sums.len(), PAYLOAD_BITS);
+        // SAFETY: AVX-512F/BW, VPCLMULQDQ and GFNI are enabled at compile time; lane byte `a`'s registers `2 pair`,
+        // `2 pair + 1` are the 64 bytes at `staged_index(2 pair, a, n_active)` (`a < n_active`, asserted size), its
+        // matrices the 16 words at `16 a` (asserted), and `sums[16 pair + k]` is in bounds (`16 STAGED / 2 = 384`).
+        unsafe {
+            let wv = _mm512_broadcast_i32x4(_mm_set_epi64x(w[1] as i64, w[0] as i64));
+            let ws = _mm512_set1_epi64((w[0] ^ w[1]) as i64);
+            let (sp, mp) = (staged.as_ptr(), self.matrices.as_ptr());
+            for pair in 0..STAGED / 2 {
+                let ld = |a: usize| _mm512_loadu_si512(sp.add(staged_index(2 * pair, a, n_active)).cast());
+                let g = |c: __m512i, a: usize, b: usize| _mm512_gf2p8affine_epi64_epi8(c, _mm512_set1_epi64(*mp.add(16 * a + b) as i64), 0);
+                let mut acc = [_mm512_setzero_si512(); 16];
+                // Four lane bytes a step (eight take more registers than there are: spills and copies).
+                for step in 0..n_active / 4 {
+                    let a = 4 * step;
+                    let c: [__m512i; 4] = std::array::from_fn(|i| ld(a + i));
+                    let mrow = mp.add(16 * a);
+                    let g4 = |i: usize, b: usize| _mm512_gf2p8affine_epi64_epi8(c[i], _mm512_set1_epi64(*mrow.add(16 * i + b) as i64), 0);
+                    macro_rules! step {
+                        ($($b:literal)*) => {$(
+                            acc[$b] = _mm512_ternarylogic_epi64(
+                                acc[$b],
+                                _mm512_ternarylogic_epi64(g4(0, $b), g4(1, $b), g4(2, $b), 0x96),
+                                g4(3, $b),
+                                0x96,
+                            );
+                        )*};
+                    }
+                    step!(0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15);
+                }
+                let mut a = n_active - n_active % 4;
+                while a < n_active {
+                    let c = ld(a);
+                    for (b, acc) in acc.iter_mut().enumerate() {
+                        *acc = _mm512_xor_si512(*acc, g(c, a, b));
+                    }
+                    a += 1;
+                }
+                crate::lv::primitives::bits::transpose_bytes16x16_per_lane512(&mut acc);
+                // acc[k] 128-bit lane `l`: payload bit `64 pair + 16 l + k`, entry `64 pair + 4 k + l`.
+                for (k, e) in acc.into_iter().enumerate() {
+                    let a = _mm512_xor_si512(e, _mm512_shuffle_epi32::<0x4e>(e));
+                    let p = [
+                        _mm512_clmulepi64_epi128::<0x00>(e, wv),
+                        _mm512_clmulepi64_epi128::<0x11>(e, wv),
+                        _mm512_clmulepi64_epi128::<0x00>(a, ws),
+                    ];
+                    for (s, p) in sums.get_unchecked_mut(16 * pair + k).0.iter_mut().zip(p) {
+                        let at = s.as_mut_ptr().cast::<__m512i>();
+                        _mm512_store_si512(at, _mm512_xor_si512(_mm512_load_si512(at), p));
+                    }
+                }
+            }
         }
     }
 
@@ -343,6 +480,43 @@ impl<const W: usize> ProductSums<W> {
     /// Phase 1: every active lane byte's column bytes into `staged[staged_index(r, a, n_active)]`.
     fn stage(&self, block: &[u64], staged: &mut [V], n_active: usize) {
         assert!(staged.len() >= STAGED * n_active);
+        // lvm2 PFAST-K4: with VBMI, position-major: per row byte each lane's eight positions transposed once
+        // (pack-major registers), then per pack slot `j` the five lanes embedded in registers and every active lane
+        // byte's products, gathers and stores straight from them ([`Self::stage_row_s`]).
+        #[cfg(all(target_feature = "avx512f", target_feature = "avx512bw", target_feature = "avx512vbmi", target_feature = "vpclmulqdq", target_feature = "gfni"))]
+        {
+            const WORDS: usize = crate::lv::keccak_gkr::witness::BLOCK_WORDS;
+            assert!(block.len() >= BITS * WORDS, "a block's positions");
+            // SAFETY: AVX-512F/BW is enabled at compile time.
+            let mut lanes = [[unsafe { _mm512_setzero_si512() }; 8]; 5];
+            let mut a = 0;
+            for &(y, zb, mask) in &self.row_bytes {
+                let (y, zb) = (y as usize, zb as usize);
+                assert!(y < 5 && zb < 8, "a row byte");
+                for (x, lane) in lanes.iter_mut().enumerate() {
+                    // SAFETY: AVX-512F/BW is enabled at compile time; lane `x + 5 y` (< 25) byte `zb` (< 8) is the
+                    // 64 words from `(64 (x + 5 y) + 8 zb) WORDS`, inside `block` (asserted length `BITS WORDS`).
+                    *lane = unsafe { Self::transpose_lane_s(block.as_ptr().add((64 * (x + 5 * y) + 8 * zb) * WORDS)) };
+                }
+                let count = mask.count_ones() as usize;
+                assert!(a + count <= n_active, "one staged column per active lane byte");
+                // SAFETY: AVX-512F/BW/VBMI, VPCLMULQDQ and GFNI are enabled at compile time; the row byte's active lane
+                // bytes are `a .. a + count`, `a + count <= n_active` (asserted), and the stores are register pairs
+                // `R < STAGED / 2` of those, inside `staged` (asserted size).
+                unsafe {
+                    // Every lane active (the usual case): no per-lane tests in the kernel.
+                    if mask == 0x1f {
+                        Self::stage_row_s::<true>(&lanes, mask, staged.as_mut_ptr(), a, n_active)
+                    } else {
+                        Self::stage_row_s::<false>(&lanes, mask, staged.as_mut_ptr(), a, n_active)
+                    }
+                };
+                a += count;
+            }
+            assert_eq!(a, n_active, "every active lane byte staged");
+            return;
+        }
+        #[allow(unreachable_code)]
         let mut embedded = [[[0u32; PACKS]; 8]; 5];
         let mut prod = [[0u64; PACKS]; 8];
         let mut a = 0;
@@ -381,6 +555,100 @@ impl<const W: usize> ProductSums<W> {
         }
         // Phase 2 reads every active lane byte's registers: none may be left from another block.
         assert_eq!(a, n_active, "every active lane byte staged");
+    }
+
+    /// lvm2 PFAST-K4: a lane's eight positions at `raw` (position `k` = words `8 k .. 8 k + 8`), transposed by
+    /// 16-bit unpacks inside each 128-bit lane: register `j` lane `l` holds pack `8 l + j`, 16-bit element `k` its
+    /// position `k`.
+    ///
+    /// # Safety
+    /// AVX-512F/BW; `raw` readable for 64 words.
+    #[cfg(all(target_feature = "avx512f", target_feature = "avx512bw", target_feature = "avx512vbmi", target_feature = "vpclmulqdq", target_feature = "gfni"))]
+    #[inline(always)]
+    unsafe fn transpose_lane_s(raw: *const u64) -> [__m512i; 8] {
+        const { assert!(crate::lv::keccak_gkr::witness::BLOCK_WORDS == 8, "a position is one 512-bit register") };
+        unsafe {
+            let v: [__m512i; 8] = std::array::from_fn(|k| _mm512_loadu_si512(raw.add(8 * k).cast()));
+            let a: [__m512i; 8] = std::array::from_fn(|i| {
+                let (p, q) = (v[i & !1], v[i | 1]);
+                if i % 2 == 0 { _mm512_unpacklo_epi16(p, q) } else { _mm512_unpackhi_epi16(p, q) }
+            });
+            // b[4 h + 2 u + w]: 32-bit unpack (w) of a[4 h + u], a[4 h + u + 2].
+            let b: [__m512i; 8] = std::array::from_fn(|i| {
+                let (h, u, w) = (i / 4, i / 2 % 2, i % 2);
+                let (p, q) = (a[4 * h + u], a[4 * h + u + 2]);
+                if w == 0 { _mm512_unpacklo_epi32(p, q) } else { _mm512_unpackhi_epi32(p, q) }
+            });
+            // Element `j` of every input: positions 0..4 from b[j / 2], 4..8 from b[4 + j / 2].
+            std::array::from_fn(|j| {
+                let (p, q) = (b[j / 2], b[4 + j / 2]);
+                if j % 2 == 0 { _mm512_unpacklo_epi64(p, q) } else { _mm512_unpackhi_epi64(p, q) }
+            })
+        }
+    }
+
+    /// lvm2 PFAST-K4: [`Self::stage_lane_byte`] for a row byte's active lane bytes (`mask`; lane byte `x` is staged
+    /// column `a0 +` the number of active lanes below `x`), from its five lanes' transposed registers: the same staged
+    /// registers up to the order of the packs ([`staged_pack`]). Per pack slot `j`: the five lanes' embeddings
+    /// ([`embedding_words`](crate::lv::keccak_gkr::kernels::embedding_words)); per pack `8 l + j` each lane's
+    /// *staggered* register ([`StagingS`]: one byte permute) and each active lane byte's product `ones (a + c) + b c`,
+    /// four VPCLMULQDQ and two XORs (two positions a 128-bit lane, the odd one's operands shifted up by 24 bits so
+    /// its product lands at bit 48); per four packs (`l = 0 .. 4`, staged packs `4 j .. 4 j + 4`) three byte permutes
+    /// to the three register pairs their 96 column qwords fill, each then bit-transposed by one affine map.
+    ///
+    /// # Safety
+    /// AVX-512F/BW/VBMI, VPCLMULQDQ and GFNI; `staged + staged_index(2 R, a, n_active)` writable for 64 bytes,
+    /// `R < STAGED / 2`, for the row byte's active lane bytes `a`; `mask == 0x1f` if `FULL`.
+    #[cfg(all(target_feature = "avx512f", target_feature = "avx512bw", target_feature = "avx512vbmi", target_feature = "vpclmulqdq", target_feature = "gfni"))]
+    #[inline(always)]
+    unsafe fn stage_row_s<const FULL: bool>(lanes: &[[__m512i; 8]; 5], mask: u8, staged: *mut V, a0: usize, n_active: usize) {
+        unsafe {
+            let bit_transpose = _mm512_set1_epi64(BIT_TRANSPOSE);
+            let ones = crate::lv::keccak_gkr::rmfe::RMFE.ones as i64;
+            let ones = _mm512_broadcast_i32x4(_mm_set_epi64x(ones << 24, ones));
+            let chain = STAGING_S.chain.each_ref().map(|t| _mm512_loadu_si512(t.as_ptr().cast()));
+            let mut slot = [0usize; 5];
+            let mut next = a0;
+            for (x, slot) in slot.iter_mut().enumerate() {
+                *slot = next;
+                next += usize::from(mask >> x & 1 == 1);
+            }
+            for j in 0..8 {
+                let halves: [(__m512i, __m512i); 5] =
+                    std::array::from_fn(|x| crate::lv::keccak_gkr::kernels::embedding_words(lanes[x][j]));
+                let mut prev = [_mm512_setzero_si512(); 5];
+                for l in 0..4 {
+                    // The spread index is read where it is used (a volatile load), so it takes no register across
+                    // the loop: the vpermi2b it feeds overwrites its index anyway.
+                    let s: [__m512i; 5] = std::array::from_fn(|x| {
+                        let idx = core::ptr::read_volatile(STAGING_S.spread[l].as_ptr().cast::<__m512i>());
+                        _mm512_permutex2var_epi8(halves[x].0, idx, halves[x].1)
+                    });
+                    for x in 0..5 {
+                        if !FULL && mask >> x & 1 == 0 {
+                            continue;
+                        }
+                        let (za, zb, zc) = (s[x], s[(x + 1) % 5], s[(x + 2) % 5]);
+                        let linear = _mm512_xor_si512(za, zc);
+                        let r = _mm512_xor_si512(
+                            _mm512_ternarylogic_epi64(
+                                _mm512_clmulepi64_epi128::<0x00>(linear, ones),
+                                _mm512_clmulepi64_epi128::<0x11>(linear, ones),
+                                _mm512_clmulepi64_epi128::<0x00>(zc, zb),
+                                0x96,
+                            ),
+                            _mm512_clmulepi64_epi128::<0x11>(zc, zb),
+                        );
+                        if l > 0 {
+                            let out = _mm512_permutex2var_epi8(prev[x], chain[l - 1], r);
+                            let out = _mm512_gf2p8affine_epi64_epi8(bit_transpose, out, 0);
+                            _mm512_storeu_si512(staged.add(staged_index(2 * (3 * j + l - 1), slot[x], n_active)).cast(), out);
+                        }
+                        prev[x] = r;
+                    }
+                }
+            }
+        }
     }
 
     /// lvm2 PFAST-K: [`Self::stage_lane_byte`] with AVX-512 VBMI: the same staged registers. Per group of eight

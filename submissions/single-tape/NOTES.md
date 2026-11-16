@@ -65,8 +65,11 @@ unchanged; no new soundness group class. The certificate is `certificateU20S` wi
   before the slot-weight twin), opening 20.6 ms; `KS` (8.9 ms) and its link (1.8 ms) are gone.
 - **Prover.** The two halves of the tape run as one task list per pass (leanVM's segment variable); `KS`'s seven
   all-zero blocks run as the padding block. Step at 2^17 [measured, dev, LTO v4p, timing lock, 15 pairs]:
-  1.561 → 1.422 s (paired −0.136 s) against #26's prover. v4p, v2, the linked `.s` and v4 under SDE reproduce the
-  honest `S2GU` stream byte for byte [measured].
+  1.561 → 1.422 s (paired −0.136 s) against #26's prover. It also carries the PFAST-3 prover bundle (v4 Product
+  staging and phase 2, Groups Karatsuba, fused `chi_dot_quad`, open-main prover levers, nonce requests over two
+  connections; proofs byte-identical): against the U-TAPE prover without it, 2^17 −0.017 s, 2^20 −0.26 s [measured,
+  dev v4p, 3 rounds; the v4 kernels cannot run on dev]. v4p, v2, the linked `.s` and v4 under SDE reproduce the honest
+  `S2GU` stream byte for byte [measured].
 - **Checked locally.** TODO-CERT-BENCH
 
 ## Changes in #26 (halved-phi), since #25 (looped-rows)
