@@ -1,4 +1,4 @@
-# swift-twins
+# wide-packs
 
 The `leanvm-inspired` entry's roll after #34 (`swift-twins`): the Keccak tape GKR packs 32 instances per RMFE element
 (a (32, 53 → 105) RMFE) instead of 16. It continues #34, #33, #32, #31, #30, #29, #28, #27 (`single-tape`, stage `S2GU`),
@@ -228,7 +228,7 @@ removed in this roll); the cert builds `Solution`'s closure.
     to −1.37 s per 2^20. V badge ≈ 145 / 123 ms (small / big) against #21's ≈ 105 / 100 ms; start-up ≈ 44 s.
   - Zen 4 numbers come from the harness. The v4 tier, #13's GKR, the chain kernel and the worker choice on SMT
     cannot be timed on the dev VM.
-- **CPU safety.** `prover setup` self-tests each variant (KATs, a batch proof, a typed P8 proof) against the portable
+- **CPU safety.** `prover setup` self-tests each variant (KATs, a typed P20 `S,0` proof at S2GS) against the portable
   reference's digest, and writes a cap that `dispatch.s` honours. v4 was byte-identical to v2 under Intel SDE.
 - **No Rust verifier.** The Lean `V_S` is the test oracle. It accepts:
   - the shipped prover's P20 streams across both shapes, in both directions;

@@ -653,25 +653,27 @@ fn cmd_sprove(args: &[String]) {
     println!("  total_s={:.3}", t_start.elapsed().as_secs_f64());
 }
 
-/// `selftest` (a child of `setup`, one variant forced by `LVM_CPU`): the KATs, then a Keccak batch proof (2^9)
-/// and an `S` proof at `P8` on the in-process keyed oracle; prints `selftest <variant> <digest>`, the Keccak-256 of
-/// both proofs, which every correct variant gives (the proofs are byte-identical across variants).
+/// `selftest` (a child of `setup`, one variant forced by `LVM_CPU`): the KATs, then an `S` proof at `P20` on the
+/// in-process keyed oracle; prints `selftest <variant> <digest>`, the Keccak-256 of the proof and its oracle trace,
+/// which every correct variant gives (the proofs are byte-identical across variants).
 fn cmd_selftest() {
     kat::keccak();
     kat::field();
     kat::oracle();
     oracle::install(Box::new(oracle::Local::keyed(&[0x5A; 32])));
     lv::parallel::init();
-    let b = batch::prove(9, 7, &[0u8; 32]);
-    let p = lvm::params::p8();
+    // lvm2 W32 (release): the typed backend's S,0 proof at P20, stage S2GS, on the embedded node program (blob W),
+    // loaded as the stream loads it: the shipped path, whose tape GKR runs each variant's K = 32 kernels. The Keccak
+    // batch proof (2^9) and the P8 proof at S2GT used to run here; both reach the KS input opening, K = 16 code not
+    // ported to K = 32, so every variant failed the selftest and setup capped the prover at v2.
+    let p = lvm::params::Params::by_name("P20").unwrap();
     let mut s = [0u8; 32];
     s[0] = 7;
-    // B1 (roll 8): the typed backend's S,0 proof at P8 (the shipped path), from the embedded B program
-    let tq = lvm::stream::TypedQ::from_blob(lvm::stream::Q_P8, lvm::stream::QB_P8_M3B, lvm::stream::QB_P8_LAY);
+    let tq = lvm::stream::TypedQ::new(&format!("{} {}", lvm::stream::Q_P20, lvm::stream::QB_P20_M3B), lvm::stream::QB_P20_LAY, lvm::stream::QB_P20_TD, lvm::stream::QB_P20_MB);
     let hd = lvm::prove::Header { b: 0, vk: [0; 32], c_l: [0; 32], s, n: 300, h: [0; 32], sig_leaf: None, acc_in: lvm::acc::Acc::zero(p.acc_d(), tq.phi0()) };
     let sp = lvm::stream::prove_typed(&tq, &p, hd, lvm::prove::RecWitness::zero(&p));
     let mut h = keccak::Keccak256::new();
-    h.update(&b.proof).update(&sp.proof);
+    h.update(&sp.proof);
     for (q, a) in &sp.trace {
         h.update(q).update(a);
     }
@@ -739,9 +741,8 @@ fn cmd_setup(dir: &str) -> i32 {
         let mut child = cmd
             .arg("selftest")
             .env("LVM_CPU", v)
-            // lvm2 U-TAPE: the selftest is a variant-agreement check on a P8 proof (the embedded S2GT-era P8 blob);
-            // S2GU is P20-only, so the child runs at S2GT (the S2GU halves are covered by the SDE/v4p identity runs)
-            .env("LVM_STAGE", "S2GT")
+            // lvm2 W32 (release): the selftest's S proof is a P20 proof at the shipped stage, S2GS (the default)
+            .env_remove("LVM_STAGE")
             .env("LEANVM_NUM_THREADS", "4")
             .env_remove("RF_SETUP")
             .stdin(std::process::Stdio::null())
