@@ -84,7 +84,10 @@ table phase's groups leave and no group is added. The certificate is `certificat
   eval (dev ×0.62–0.7) ≈ −0.013 to −0.015, #30's spin ≈ −0.004 (#30 against #29), the prover's open main and mini-bus 0 to
   −0.015: **S ≈ 1.515–1.531** against the record #29's 1.5873 (bar 1.5556).
 - **Checked locally** [measured]:
-  - harness cert: CERT-PENDING
+  - harness cert **ok** (fresh, timing lock first, CPUs 8–15): Lean kernel **541.4 s** (stop rule 560, cap 600), `build_s`
+    905.1 s, 578 modules, peak 4.88 GB; axioms `propext`, `Classical.choice`, `Quot.sound`. The kernel is +87 s over
+    #31's 454.0 s: `certified`'s closure now holds both the `S2GL` chain and the `S2GU` chain it imports (30 modules
+    more). Dropping the `S2GU` certificate from the closure is the next kernel lever.
   - axioms of `certified` and `certificateL20S`: exactly `propext`, `Classical.choice`, `Quot.sound`; no `sorry`,
     `native_decide` or axiom declaration in `lean/` (checkall: source rule 0 findings over 993 files).
   - statement gate against #31's Lean (GOLF3-PHI d34b3284): no theorem statement of the entry changed; the only type
@@ -100,7 +103,8 @@ table phase's groups leave and no group is added. The certificate is `certificat
     batching nonce, which the decision does not read, as at `S2GU` (249/250).
   - Byte identity of the prover: the linked `.s` reproduces the dev build's `S2GL` streams on v4p and v2 (a 5-step
     stream, `S,0` at 2^17 and 2^20) and on v4 under Intel SDE (n = 1, three steps at 2^14, `S,0` at 2^17).
-  - quick bench: BENCH-PENDING
+  - quick bench (24 steps): ACCEPT, S 2.745 (P̄ 2.093, V̄ 0.652), S× 2.103, mean `V` 72.0 ms, `|π|` 268,336 B; `c_P`
+    drift 0.095 (host loaded: P̄ reads high). #31's quick run: S 2.663 (P̄ 1.978, V̄ 0.685), mean `V` 74.3 ms, drift 0.034.
 
 ## Changes in #31 (trimmed-phi), since #29 (planned-phi)
 
