@@ -1,3 +1,0 @@
--- GOLF module merge (lvm2): the content of `LvmQTypedBitsS` now lives in `LvmNodeSoundTBV`. This stub keeps `import LvmQTypedBitsS`
--- working for modules outside `Solution`'s import closure; no module in that closure imports it.
-import LvmNodeSoundTBV

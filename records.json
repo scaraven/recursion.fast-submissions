@@ -4,12 +4,12 @@
  "margin": 0.02,
  "record": {
   "sum": {
-   "id": "pr32-6acc2f85e708",
-   "pr": 32,
-   "sha": "6acc2f85e708075ef41f06cbb075611cd36acb44",
-   "root": "tableless",
+   "id": "pr35-3c1d951c5d5f",
+   "pr": 35,
+   "sha": "3c1d951c5d5f5f67fc40815fd5fd4e455ac6b59b",
+   "root": "wide-packs",
    "author": "scaraven",
-   "title": "tableless: mini-bus table phase removed (S2GL), |π| 268,336 B (−15,624)",
+   "title": "wide-packs: RMFE packs of 32, groups of 256 (lvm2)",
    "agent": "Claude Opus 5.5 via Claude Code (orchestrated sub-agents; architecture by Claude Fable 5.2)",
    "builds_on": [
     11,
@@ -30,116 +30,117 @@
     28,
     29,
     30,
-    31
+    31,
+    32
    ],
-   "opened": "2026-11-16T15:58:21Z",
-   "queued": "2026-11-16T15:59:10Z",
-   "started": "2026-11-16T16:00:07Z",
-   "finished": "2026-11-16T16:35:07Z",
+   "opened": "2026-11-17T00:00:51Z",
+   "queued": "2026-11-17T00:01:29Z",
+   "started": "2026-11-17T00:02:23Z",
+   "finished": "2026-11-17T00:38:48Z",
    "attempts": 1,
    "status": "record",
    "verdict": "ACCEPT",
    "score": {
-    "S": 1.5312841349461381,
-    "P_bar": 0.9032595320648258,
-    "V_bar": 0.6280246028813125,
-    "share_P": 0.5898706265226195,
-    "share_V": 0.41012937347738065,
+    "S": 1.4459926721158365,
+    "P_bar": 0.7930312898580161,
+    "V_bar": 0.6529613822578204,
+    "share_P": 0.5484338234561174,
+    "share_V": 0.45156617654388265,
     "K": 5.0,
     "kappa": 3.2975,
     "n_ref": 262144,
     "s_ref": 2097152,
-    "c_P": 0.9991532321315623,
-    "T_triv_ns": 6596137524,
-    "v_ref_ns": 659613752.4,
+    "c_P": 1.0031456862745098,
+    "T_triv_ns": 6594213205,
+    "v_ref_ns": 659421320.5,
     "M": 96,
     "sum_n": 32060318,
     "truncated": false,
     "c_P_provisional": false,
-    "x_bar": 0.19045476963800226,
-    "V_mean_s": 0.0412273066875,
-    "g": 1.0039065242491145,
-    "S_product": 0.9067881373300809,
-    "pi_mean_bytes": 268336.0,
+    "x_bar": 0.1980170984860714,
+    "V_mean_s": 0.04100251671875,
+    "g": 1.0038662956366373,
+    "S_product": 0.7960973832737109,
+    "pi_mean_bytes": 284872.0,
     "tracks": {
      "sum": "S",
      "product": "S_product"
     },
     "fit": {
-     "a_s_per_permutation": 2.1892151675390672e-06,
-     "b_s": 0.36645589572508874,
+     "a_s_per_permutation": 1.7467646198704498e-06,
+     "b_s": 0.3694456631566101,
      "a_ci95": [
-      2.1644990751550307e-06,
-      2.213931259923104e-06
+      1.7168739789820598e-06,
+      1.7766552607588399e-06
      ],
      "b_ci95": [
-      0.35646943873146797,
-      0.3764423527187095
+      0.35746053201721395,
+      0.38143079429600624
      ],
      "estimator": "trimmed least squares (lowest 80% of residuals, from a Theil–Sen start, to a fixed point)",
      "scored": false
     },
     "P_bar_per_octave": {
-     "2^17": 1.0882465663856702,
-     "2^18": 0.8861189507768945,
-     "2^19": 0.7082066737927536
+     "2^17": 0.9732433873167999,
+     "2^18": 0.7738748032377027,
+     "2^19": 0.5949731425355417
     },
     "marginal": {
-     "chain_speed_1pct": -0.00589870626522615,
-     "product_chain_speed_1pct": -0.010000000000000009,
-     "overhead_0.1s_per_step": -0.05898848322573835,
-     "product_overhead_0.1s_per_step": -0.1000024082797355,
-     "verifier_10ms": -0.03264670233752387,
-     "product_verifier_10ms": -0.0016587974657764626,
-     "proof_100KB": -0.10268313327951462,
+     "chain_speed_1pct": -0.005484338234561181,
+     "product_chain_speed_1pct": -0.01000000000000012,
+     "overhead_0.1s_per_step": -0.06334585012447358,
+     "product_overhead_0.1s_per_step": -0.11550317908053331,
+     "verifier_10ms": -0.03458244758996376,
+     "product_verifier_10ms": -0.0016495330206784953,
+     "proof_100KB": -0.10873986843059491,
      "product_proof_100KB": 0.0,
      "note": "relative change of S (and, prefixed product_, of S_product) at the current point (negative: better)"
     },
     "largest_x": {
-     "index": 49,
-     "x": 0.194196059602805,
-     "x_verifier": 0.06624348391921127,
-     "x_size": 0.12795257568359375
+     "index": 40,
+     "x": 0.2011032275176698,
+     "x_verifier": 0.06526567258602917,
+     "x_size": 0.13583755493164062
     },
     "batching": {
-     "top_decile_share_of_P3": 0.1143737224642322,
-     "residual_lag1_autocorrelation": 0.0691951968064951,
+     "top_decile_share_of_P3": 0.1204047815596136,
+     "residual_lag1_autocorrelation": 0.12140451360292841,
      "note": "diagnostic only: work deferred to some steps shows as a large top-decile share"
     }
    },
    "comparable": true,
    "truncated": false,
    "reasons": [
-    "sum: 1.5313 s beats the record pr29-7c067e9d82be (1.5873 s) by 3.5%",
-    "product: 0.9068 s against the record pr18-52dcfbabeea5's 0.0524 s (-1631.9%; a record needs more than 2%)"
+    "sum: 1.4460 s beats the record pr32-6acc2f85e708 (1.5313 s) by 5.6%",
+    "product: 0.7961 s against the record pr18-52dcfbabeea5's 0.0524 s (-1420.5%; a record needs more than 2%)"
    ],
-   "run_url": "https://github.com/scaraven/recursion.fast-submissions/actions/runs/43902546995",
-   "tag": "rf-source/pr32-6acc2f85e708",
-   "notes": "notes/pr32-6acc2f85e708.md",
-   "readme": "readme/pr32-6acc2f85e708.md",
+   "run_url": "https://github.com/scaraven/recursion.fast-submissions/actions/runs/43984292594",
+   "tag": "rf-source/pr35-3c1d951c5d5f",
+   "notes": "notes/pr35-3c1d951c5d5f.md",
+   "readme": "readme/pr35-3c1d951c5d5f.md",
    "record_of": {
-    "sum": "pr29-7c067e9d82be",
+    "sum": "pr32-6acc2f85e708",
     "product": null
    },
-   "tree": "90e19951978ddd92e693bad6a711f94412d948f2",
+   "tree": "cf6eb5a9da9e6780019f50227911c5ebb27f0495",
    "verified": true,
    "harness_commit": "7ecd179d4eabdda97e7caba492810dfc9c2ce9db",
-   "prover_sha256": "2f29931aa4f876aa6b2a87b271b8076d514a57c729b2c94c901405b6d2ea7179",
+   "prover_sha256": "dd1704d46aa1e122d557c8dc6e0fe7cb6a17af5fb7243469212e23b3fa8ecc8d",
    "run_attempt": 1,
-   "build_manifest": "d7b11a3cc78da6f0a44aa91d816e7e2cb088bea9e2745698505cf3b27abdbb32",
+   "build_manifest": "f5f6b3e1650a1e318df5b90372f6c10246b54aee7ac8178ea05313a94a1d93db",
    "against": {
     "sum": {
-     "record": "pr29-7c067e9d82be",
-     "S": 1.5312841349461381,
-     "S_record": 1.5872894250023206,
-     "gain": 0.03528360308713119,
+     "record": "pr32-6acc2f85e708",
+     "S": 1.4459926721158365,
+     "S_record": 1.5312841349461381,
+     "gain": 0.055699305493883244,
      "beats": true
     },
     "product": {
      "record": "pr18-52dcfbabeea5",
-     "S": 0.9067881373300809,
+     "S": 0.7960973832737109,
      "S_record": 0.052359010395797496,
-     "gain": -16.31866455220213,
+     "gain": -14.204591860231345,
      "beats": false
     }
    },
@@ -147,8 +148,8 @@
     "sum"
    ],
    "retired_in": {},
-   "counted_at": "2026-11-16T16:00:07Z",
-   "result": "results/pr32-6acc2f85e708.json"
+   "counted_at": "2026-11-17T00:02:23Z",
+   "result": "results/pr35-3c1d951c5d5f.json"
   },
   "product": {
    "id": "pr18-52dcfbabeea5",
@@ -285,6 +286,153 @@
  },
  "history": {
   "sum": [
+   {
+    "id": "pr32-6acc2f85e708",
+    "pr": 32,
+    "sha": "6acc2f85e708075ef41f06cbb075611cd36acb44",
+    "root": "tableless",
+    "author": "scaraven",
+    "title": "tableless: mini-bus table phase removed (S2GL), |π| 268,336 B (−15,624)",
+    "agent": "Claude Opus 5.5 via Claude Code (orchestrated sub-agents; architecture by Claude Fable 5.2)",
+    "builds_on": [
+     11,
+     7,
+     12,
+     13,
+     15,
+     17,
+     19,
+     20,
+     21,
+     22,
+     23,
+     24,
+     25,
+     26,
+     27,
+     28,
+     29,
+     30,
+     31
+    ],
+    "opened": "2026-11-16T15:58:21Z",
+    "queued": "2026-11-16T15:59:10Z",
+    "started": "2026-11-16T16:00:07Z",
+    "finished": "2026-11-16T16:35:07Z",
+    "attempts": 1,
+    "status": "record",
+    "verdict": "ACCEPT",
+    "score": {
+     "S": 1.5312841349461381,
+     "P_bar": 0.9032595320648258,
+     "V_bar": 0.6280246028813125,
+     "share_P": 0.5898706265226195,
+     "share_V": 0.41012937347738065,
+     "K": 5.0,
+     "kappa": 3.2975,
+     "n_ref": 262144,
+     "s_ref": 2097152,
+     "c_P": 0.9991532321315623,
+     "T_triv_ns": 6596137524,
+     "v_ref_ns": 659613752.4,
+     "M": 96,
+     "sum_n": 32060318,
+     "truncated": false,
+     "c_P_provisional": false,
+     "x_bar": 0.19045476963800226,
+     "V_mean_s": 0.0412273066875,
+     "g": 1.0039065242491145,
+     "S_product": 0.9067881373300809,
+     "pi_mean_bytes": 268336.0,
+     "tracks": {
+      "sum": "S",
+      "product": "S_product"
+     },
+     "fit": {
+      "a_s_per_permutation": 2.1892151675390672e-06,
+      "b_s": 0.36645589572508874,
+      "a_ci95": [
+       2.1644990751550307e-06,
+       2.213931259923104e-06
+      ],
+      "b_ci95": [
+       0.35646943873146797,
+       0.3764423527187095
+      ],
+      "estimator": "trimmed least squares (lowest 80% of residuals, from a Theil–Sen start, to a fixed point)",
+      "scored": false
+     },
+     "P_bar_per_octave": {
+      "2^17": 1.0882465663856702,
+      "2^18": 0.8861189507768945,
+      "2^19": 0.7082066737927536
+     },
+     "marginal": {
+      "chain_speed_1pct": -0.00589870626522615,
+      "product_chain_speed_1pct": -0.010000000000000009,
+      "overhead_0.1s_per_step": -0.05898848322573835,
+      "product_overhead_0.1s_per_step": -0.1000024082797355,
+      "verifier_10ms": -0.03264670233752387,
+      "product_verifier_10ms": -0.0016587974657764626,
+      "proof_100KB": -0.10268313327951462,
+      "product_proof_100KB": 0.0,
+      "note": "relative change of S (and, prefixed product_, of S_product) at the current point (negative: better)"
+     },
+     "largest_x": {
+      "index": 49,
+      "x": 0.194196059602805,
+      "x_verifier": 0.06624348391921127,
+      "x_size": 0.12795257568359375
+     },
+     "batching": {
+      "top_decile_share_of_P3": 0.1143737224642322,
+      "residual_lag1_autocorrelation": 0.0691951968064951,
+      "note": "diagnostic only: work deferred to some steps shows as a large top-decile share"
+     }
+    },
+    "comparable": true,
+    "truncated": false,
+    "reasons": [
+     "sum: 1.5313 s beats the record pr29-7c067e9d82be (1.5873 s) by 3.5%",
+     "product: 0.9068 s against the record pr18-52dcfbabeea5's 0.0524 s (-1631.9%; a record needs more than 2%)"
+    ],
+    "run_url": "https://github.com/scaraven/recursion.fast-submissions/actions/runs/43902546995",
+    "tag": "rf-source/pr32-6acc2f85e708",
+    "notes": "notes/pr32-6acc2f85e708.md",
+    "readme": "readme/pr32-6acc2f85e708.md",
+    "record_of": {
+     "sum": "pr29-7c067e9d82be",
+     "product": null
+    },
+    "tree": "90e19951978ddd92e693bad6a711f94412d948f2",
+    "verified": true,
+    "harness_commit": "7ecd179d4eabdda97e7caba492810dfc9c2ce9db",
+    "prover_sha256": "2f29931aa4f876aa6b2a87b271b8076d514a57c729b2c94c901405b6d2ea7179",
+    "run_attempt": 1,
+    "build_manifest": "d7b11a3cc78da6f0a44aa91d816e7e2cb088bea9e2745698505cf3b27abdbb32",
+    "against": {
+     "sum": {
+      "record": "pr29-7c067e9d82be",
+      "S": 1.5312841349461381,
+      "S_record": 1.5872894250023206,
+      "gain": 0.03528360308713119,
+      "beats": true
+     },
+     "product": {
+      "record": "pr18-52dcfbabeea5",
+      "S": 0.9067881373300809,
+      "S_record": 0.052359010395797496,
+      "gain": -16.31866455220213,
+      "beats": false
+     }
+    },
+    "record_in": [
+     "sum"
+    ],
+    "retired_in": {},
+    "counted_at": "2026-11-16T16:00:07Z",
+    "result": "results/pr32-6acc2f85e708.json"
+   },
    {
     "id": "pr29-7c067e9d82be",
     "pr": 29,
