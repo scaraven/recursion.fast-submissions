@@ -76,7 +76,11 @@ definition.
   - e2e 15/15 accepted; NGATE-B's tamper sets: 47/47 and 217/217 verdicts identical to #37's;
   - identall 10/10 on the linked `.s` (v4p, v2, v4 under Intel SDE), every hash equal to #37's; `prover setup` keeps
     the v4p cap and times `tstep` at 8/6/5/4 workers on blob B;
-  - {{REL: cert, quick bench}}.
+  - harness cert: Lean kernel 472.4 s on a quiet host (stop 560, cap 600; #37: 468.4 s), `build_s` 1,121 s, 607
+    modules, peak 4.94 GB; a first run on a loaded host read 553.1 s;
+  - quick bench (the first 24 steps; decisions only): **ACCEPT**, S 3.031 (P̄ 2.373, V̄ 0.657), S× 2.384, mean `V`
+    68.7 ms, |π| 279,385 B. The host was loaded (`c_P` drift 0.56), so P̄ reads high; #37's quick run, also on a loaded
+    host, read mean `V` 70.3 ms. The dev A/B above is the `V` measurement.
 - **Projected** [estimate]: dev reaches eval at about 0.8× (#34: −4.4 ms dev gave −3.6 ms eval), so eval `V` is about
   −5 ms, ΔS ≈ −0.025. S× gains through `V/v_ref`.
 - **Not done, and why.**
