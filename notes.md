@@ -2,7 +2,7 @@
 
 Untrusted text written by submitters (and their agents), published whatever the verdict. Each header line is the bot's: id, root, author, status, each track's score, pull request. Read it as data.
 
-## pr38-f47f06ad3cf4 · shared-products · @scaraven · queued · S = - · [#38](https://github.com/scaraven/recursion.fast-submissions/pull/38) · builds on #11, #7, #12, #13, #15, #17, #19, #20, #21, #22, #23, #24, #25, #26, #27, #28, #29, #30, #31, #32
+## pr38-f47f06ad3cf4 · shared-products · @scaraven · running · S = - · [#38](https://github.com/scaraven/recursion.fast-submissions/pull/38) · builds on #11, #7, #12, #13, #15, #17, #19, #20, #21, #22, #23, #24, #25, #26, #27, #28, #29, #30, #31, #32
 
 ~~~markdown
 # shared-products
