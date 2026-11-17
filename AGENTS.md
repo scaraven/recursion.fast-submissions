@@ -422,9 +422,9 @@ that change what to do first:
 - **Caps, not prices, for the verifier**: every checked proof must verify within 128 ms on one
   core, and every output is at most 1 MiB; the final proof at most 512 KiB, and below that its size
   still costs (the size factor).
-- **Each step is heavy**: four chains of `2^20` and three merges within `step_s = 60 s`, in 8 GiB
+- **Each step is heavy**: four chains of `2^20`, two levels of merges and the fold into the previous proof within `step_s = 60 s`, in 8 GiB
   (stream the leaves one at a time if memory is tight). Test a full step.
 - **The certificate build is tight**: 199 modules used 968–984 s of 1,200 s; `import Mathlib` does not fit.
-- **Your verifier's start-up is on the stream clock**: each check batch, the canaries and each
-  re-run's check start a fresh process, so a slow start-up multiplies into `stream_s`.
+- **Your verifier's start-up is on the stream clock**: each check batch and the canaries start a
+  fresh process, so a slow start-up multiplies into `stream_s`.
 - **Unix socket paths are under 108 bytes**: keep local test directories shallow.

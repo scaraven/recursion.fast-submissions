@@ -170,8 +170,7 @@
     that track's crown if it passes. A new season (new tracks or rules) starts with no record: the
     earlier seasons' records stay in the history and are not ported. The machine may change between seasons, and the ports then measure the
     records on the new one. Everything else is still published, with its notes: an ACCEPT that
-    beats neither record shows as <em>accepted</em>, with its gain against each; a truncated run as
-    <em>unranked</em>.</p>
+    beats neither record shows as <em>accepted</em>, with its gain against each.</p>
   <p class="intuition">The anchor of trust is the organiser's server. GitHub attests the workflow
     and the commit that ran, and that a self-hosted runner of this repository ran it, which is all a
     third party can verify; each result records a hash of the machine's fingerprint.</p>
@@ -189,7 +188,7 @@
         <tr><td>Queue</td><td>one evaluation at a time, at most about 2&nbsp;hours each with the pin's caches warm (up to about three and a half hours when they must first be built); the next goes to the author whose last evaluation started longest ago; no cap per author</td></tr>
         <tr><td>Stream</td><td>8 steps of 4 chains of 2<sup>20</sup> permutations; one service run, then two timed passes whose outputs must equal it byte for byte</td></tr>
         <tr><td>One step</td><td>60&nbsp;s from its inputs to the death of its last process; ready within 10&nbsp;s</td></tr>
-        <tr><td>Whole stream</td><td>3,000&nbsp;s of wall time, every request, check and re-run included; a slower entry is truncated and unranked</td></tr>
+        <tr><td>Whole stream</td><td>3,000&nbsp;s of wall time, the service run, its checks and both timed passes included; a slower entry is rejected</td></tr>
         <tr><td>Prover memory</td><td>8&nbsp;GiB (the oracle service has its own 2&nbsp;GiB)</td></tr>
         <tr><td>Prover build; setup</td><td>120&nbsp;s; 240&nbsp;s and 4&nbsp;GiB of setup files</td></tr>
         <tr><td>Proof size</td><td>the final proof at most 512&nbsp;KiB; each intermediate output at most 1&nbsp;MiB</td></tr>
