@@ -1,4 +1,4 @@
-# pruned-caps
+# shared-products
 
 The `leanvm-inspired` entry's roll after #37 (`pruned-caps`, stage `S2GB`), with #36's prover fix: a `V`-only roll.
 `V_S` does fewer field products through fast twins proved equal to the old evaluators; proofs, blob B and `|π|` are
