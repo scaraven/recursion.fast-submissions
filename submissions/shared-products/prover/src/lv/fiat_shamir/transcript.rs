@@ -1,0 +1,691 @@
+// Vendored from leanVM 0b850750 `crates/fiat_shamir/src/transcript.rs` (tools/vendor.py; edits: lv/PATCHES.md).
+//! Fiat-Shamir proof transport, prover side.
+//!
+//! **WP-4 replacement of leanVM's duplex** (BLUEPRINT §2.2, D12): the state is a 32-byte answer of
+//! the contract oracle, and every step is one oracle query. The API is leanVM's (`add_scalar`
+//! transmits and binds together; `sample`; `add_round_poly`; `hint_merkle`), so the GKR, sumcheck
+//! and WHIR code call it unchanged; what it does is:
+//!
+//! - `q₀` = the 7 bytes `"lvm/1\0\0"` → `a₀`; seed = `a₀ ‖ header[8..]` → `st₀` ([`ProverState::seeded`]);
+//! - a transmitted scalar or cap waits (a scalar is 24 bytes `c0 ‖ c1 ‖ c2` little-endian, a cap its
+//!   `2^c` nodes); `sample` asks `st ‖ pending` (just `st` when nothing waits), the answer is the new state
+//!   and its lanes 0–2 are the challenge (WP-15a: the Lean driver's `fsQuery`, `LvmDriver.lean`);
+//! - positions: `⌈t/8⌉` queries, the first `st ‖ pending`, the others `st`; position `j` of a query is
+//!   the bits `[d·j, d·j + d)` of lanes 0–2, low first ([`ProverState::sample_positions`]);
+//! - PI-GRIND: with grinding bits `g > 0`, a separating sample, the nonce and the PoW sample precede the
+//!   positions, which then all ask `st` ([`ProverState::grind`]);
+//! - opened rows and siblings are never absorbed (the driver's `pend := off` after an opening);
+//! - the length rule is a property of the schedule (`LvmSchedule.lengthRule`): every FS query is
+//!   asserted not to have a reserved length (a node's, 64, or a leaf's, [`LEAF_LENS`]) or the seed's;
+//!   nothing is ever split.
+//!
+//! Besides the scalar stream and the Merkle phases (leanVM's [`Proof`]), the state keeps the proof
+//! body in schedule order (scalars, caps, and per opened position the row then the siblings
+//! bottom-up, BLUEPRINT §2.1) and the verifier's trace: every query `V` asks, in order, with its
+//! answer (the Fiat–Shamir chain and the leaf and node queries of every opened path), which is what
+//! `SIGN` signs. `hint_merkle` walks each opened path through the oracle and checks that it ends
+//! at the cap node the commitment absorbed.
+
+use crate::lv::fiat_shamir::merkle::{Hash, MerklePath};
+use crate::lv::primitives::field::{Ext, F128, F192};
+use crate::oracle::{self, Class, Digest};
+
+/// The first query: 7 bytes, so every later length is a whole number of lanes (BLUEPRINT §2.2).
+pub const Q0: &[u8; 7] = b"lvm/1\0\0";
+
+/// The leaf lengths of the records (`LvmParams`, roll 11 = M′, S2GM: one commitment): the rows of every level, a
+/// level-0 leaf carrying `C_main`'s occupied lanes (376 B at P20 (47 lanes), 416 B at P8 (52); later levels 384 B), and
+/// the full-width 512 B of the Keccak batch proof (`batch.rs`, whose stack has no empty lanes). lvm2 U-TAPE (S2GU): 368 B
+/// at P20 (46 lanes).
+pub const LEAF_LENS: [usize; 5] = [368, 376, 384, 416, 512];
+
+/// Query lengths a Fiat–Shamir query may not have (a node's, then the leaves'; `LvmSchedule.lengthRule`'s rows).
+const RESERVED: [usize; 6] = [64, LEAF_LENS[0], LEAF_LENS[1], LEAF_LENS[2], LEAF_LENS[3], LEAF_LENS[4]];
+
+/// Positions per positions query.
+pub const POSITIONS_PER_QUERY: usize = 8;
+
+/// A scalar stream and its Merkle opening phases, each query's path in the order the verifier samples them.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Proof {
+    pub stream: Vec<F192>,
+    pub merkle: Vec<Vec<MerklePath>>,
+}
+
+/// Writes scalars into the stream and opening phases to the side.
+pub struct ProverState {
+    /// the chain's state: the last answer
+    st: Digest,
+    /// transmitted bytes not yet absorbed
+    pending: Vec<u8>,
+    /// the length of the seed query, which no other query may have
+    seed_len: usize,
+    stream: Vec<F192>,
+    merkle: Vec<Vec<MerklePath>>,
+    /// the proof body in schedule order
+    pub body: Vec<u8>,
+    /// the verifier's queries and answers, in order
+    pub trace: Vec<(Vec<u8>, Digest)>,
+    /// Fiat–Shamir queries asked (round trips)
+    pub fs_queries: usize,
+    /// PI-GRIND: per grinding level, the attempts made up to the accepted nonce (`counter + 1`)
+    pub grind_attempts: Vec<u64>,
+    /// E2F (S2GF): whether an E2 challenge was drawn yet (the front's first one takes a separator)
+    e2_started: bool,
+    /// E2F: per E2 challenge, `(g, nonce + 1)`: the PoW bits and the attempts up to the accepted nonce
+    pub e2_grinds: Vec<(u32, u64)>,
+    /// E2F: E2 scalars sent (the tamper hooks count them)
+    e2_scalars: usize,
+    /// E2F: the nonce searches' wall time (s)
+    pub e2_grind_s: f64,
+    /// E2F: nonce search requests (batches) and hashed candidate queries
+    pub e2_requests: usize,
+    pub e2_hashed: usize,
+    /// CAP (stage S2GB, `cappr`): per commitment in order, `s`: it sends its tree's `2^s` nodes at depth `s` (empty:
+    /// every commitment sends its cap, the stages before S2GB); see [`ProverState::set_prune`]
+    prune: Vec<usize>,
+    /// CAP: the nodes each commitment sent (the heap's targets), in commitment order
+    pruned: Vec<Vec<Hash>>,
+    /// CAP: the openings so far (the `i`-th opening opens the `i`-th commitment)
+    opened: usize,
+    /// CAP: the π tail (the uncovered layer nodes, per opening in order, ascending `x`); appended after the body
+    pub tail: Vec<u8>,
+    /// CAP: per opening, `|X|` (the covered layer nodes)
+    pub covered: Vec<usize>,
+}
+
+/// CAP (dev): `LVM_CAP_TAMPER` = `sib:O:I` (opening `O`, path `I`: its last sibling's byte 0 flipped, the walk follows,
+/// so the path's top differs), `tail:O:J` (opening `O`'s `J`-th uncovered layer node's byte 0 flipped; the heap
+/// follows), `half:O:K` (opening `O`'s heap query `k = K`: its left half's byte 0 flipped, the answer and the heap
+/// above follow: a broken heap link in the trace), `trunc` / `ext` (the π tail −32 B / +32 zero bytes, in `finish`);
+/// the honest checks are skipped, V_S must reject each.
+pub fn cap_tamper() -> Option<(String, usize, usize)> {
+    static T: std::sync::OnceLock<Option<(String, usize, usize)>> = std::sync::OnceLock::new();
+    T.get_or_init(|| {
+        let v = std::env::var("LVM_CAP_TAMPER").ok()?;
+        let f: Vec<&str> = v.split(':').collect();
+        let n = |i: usize| f.get(i).map_or(usize::MAX, |x| x.parse().expect("LVM_CAP_TAMPER=sib:O:I|tail:O:J|half:O:K|trunc|ext"));
+        eprintln!("lvm: LVM_CAP_TAMPER={v}");
+        Some((f[0].to_string(), n(1), n(2)))
+    })
+    .clone()
+}
+
+fn cap_tamper_is(kind: &str, o: usize, i: usize) -> bool {
+    cap_tamper().is_some_and(|(k, a, b)| k == kind && a == o && b == i)
+}
+
+/// CAP: the `2^s` nodes at depth `s` above a cap of `2^c` nodes (the node query `left ‖ right`, answers not traced).
+fn cap_top(cap: &[Hash], s: usize) -> Vec<Hash> {
+    let mut cur = cap.to_vec();
+    while cur.len() > 1 << s {
+        let q: Vec<u8> = cur.concat();
+        let mut next = vec![[0u8; 32]; cur.len() / 2];
+        oracle::hash_items(Class::Node, &q, 64, &mut next);
+        cur = next;
+    }
+    cur
+}
+
+/// E2F (dev): `LVM_E2F_TAMPER` = `nonce` (the first E2 nonce's byte in the proof flipped), `pow` (one E2 challenge
+/// takes the first nonce that FAILS its PoW), `e2scalar` (the first E2 scalar's byte flipped in the proof), `frontsc`
+/// (the 100th E2 scalar's byte flipped); the transcript itself stays honest, so V_S must reject each.
+fn e2_tamper() -> &'static str {
+    static T: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    T.get_or_init(|| std::env::var("LVM_E2F_TAMPER").unwrap_or_default()).as_str()
+}
+
+/// E2F (S2GT, dev): `LVM_E2F_TAMPER_AT=k` moves the transcript tampers to the `k`-th (1-based) E2 challenge (`nonce`,
+/// `pow`) or E2 scalar (`e2scalar`); unset: S2GF's places (nonce 1, pow 10, e2scalar 1, frontsc 100). At S2GT the
+/// typed phases come first (87 challenges, 193 scalars), so the front's items are `k > 87` / `k > 193`.
+fn e2_tamper_at(default: usize) -> usize {
+    std::env::var("LVM_E2F_TAMPER_AT").ok().and_then(|v| v.parse().ok()).unwrap_or(default)
+}
+
+/// E2F (S2GF, `s2gf.py`'s `FRONT_C` / `FRONT_G_MIN`): an E2 front challenge's group, by its bad-set numerator `c`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Grp {
+    /// `c = 1`: `r (T1)`, `segment, lanes`, `instance`, `rho, lambda`
+    C1,
+    /// `c = 2`: `beta`, `wire round`, `D slot round`, the openings' and the KS link's rounds
+    C2,
+    /// `c = 3`: `pack round`, `position round`
+    C3,
+    /// `c = 104`: `s` (it takes a separator). lvm2 W32 (lead D2): `c = PRODUCT_BITS - 1 = 104` at K = 32 (was 46), so
+    /// `g` 7 (Lean `gC104`): 104 * 2^-135 = 2^-128.30.
+    C104,
+    /// S2GT's typed groups: `g` PoW bits, no separator (`s2gt.py`'s `gmin(c)`: γ `c 8` → 4, `t` `c 45` → 6)
+    Bits(u32),
+}
+
+impl Grp {
+    /// The PoW bits `g` (`FRONT_G_MIN`): the answer's lane 2 is `< 2^(64 - g)`.
+    pub const fn bits(self) -> u32 {
+        match self {
+            Grp::C1 => 1,
+            Grp::C2 | Grp::C3 => 2,
+            Grp::C104 => 7,
+            Grp::Bits(g) => {
+                debug_assert!(g <= 16, "PoW bits of a front group");
+                g
+            }
+        }
+    }
+}
+
+#[inline]
+fn lanes(a: &Digest) -> [u64; 4] {
+    std::array::from_fn(|i| u64::from_le_bytes(a[8 * i..8 * i + 8].try_into().unwrap()))
+}
+
+#[inline]
+fn scalar_bytes(x: F192) -> [u8; 24] {
+    let mut b = [0u8; 24];
+    b[..8].copy_from_slice(&x.c0.to_le_bytes());
+    b[8..16].copy_from_slice(&x.c1.to_le_bytes());
+    b[16..].copy_from_slice(&x.c2.to_le_bytes());
+    b
+}
+
+/// The PoW predicate on the challenge's lane 2 (`c.c2`): its top `g` bits are zero, `c2 < 2^(64 − g)`.
+#[inline]
+pub fn pow_ok(lane2: u64, g: u32) -> bool {
+    g == 0 || lane2 >> (64 - g) == 0
+}
+
+/// The grinding query `st ‖ (counter, 0, 0)` (32 + 24 bytes).
+#[inline]
+pub fn grind_query(st: &Digest, counter: u64, buf: &mut Vec<u8>) {
+    buf.extend_from_slice(st);
+    buf.extend_from_slice(&scalar_bytes(F192::new(counter, 0, 0)));
+}
+
+/// The smallest `counter` whose query `st ‖ (counter, 0, 0)` passes [`pow_ok`]. Rounds of `2^(g+1)` attempts
+/// (at least 256, at most 2^13), split over the worker threads, each on its own oracle connection.
+fn pow_search(st: &Digest, g: u32) -> u64 {
+    use crate::lv::parallel;
+    let round = (1usize << (g + 1).min(13)).max(256);
+    let tasks = parallel::num_threads().clamp(1, round / 128);
+    let chunk = round.div_ceil(tasks);
+    let mut out = vec![[0u8; 32]; round];
+    let mut base = 0u64;
+    loop {
+        let t = std::time::Instant::now();
+        parallel::chunks_mut(&mut out, chunk, |i, sub| {
+            let off = base + (i * chunk) as u64;
+            oracle::get().ask_many_here(sub, &|j, buf: &mut Vec<u8>| grind_query(st, off + j as u64, buf));
+        });
+        oracle::note_grind(round, round.div_ceil(chunk), t);
+        if let Some(j) = out.iter().position(|a| pow_ok(u64::from_le_bytes(a[16..24].try_into().unwrap()), g)) {
+            return base + j as u64;
+        }
+        base += round as u64;
+    }
+}
+
+impl ProverState {
+    /// `q₀`, then the seed `a₀ ‖ header[8..]`: the whole header (statement, `vk`, …) is bound
+    /// before anything is sampled.
+    pub fn seeded(header: &[u8]) -> Self {
+        assert!(header.len() >= 8);
+        let a0 = oracle::ask(Class::Seed, Q0);
+        let mut seed = Vec::with_capacity(32 + header.len() - 8);
+        seed.extend_from_slice(&a0);
+        seed.extend_from_slice(&header[8..]);
+        assert!(!RESERVED.contains(&seed.len()) && seed.len() != 32, "the seed's length is its own");
+        let st = oracle::ask(Class::Seed, &seed);
+        let trace = vec![(Q0.to_vec(), a0), (seed.clone(), st)];
+        Self {
+            st,
+            pending: Vec::new(),
+            seed_len: seed.len(),
+            stream: Vec::new(),
+            merkle: Vec::new(),
+            body: header.to_vec(),
+            trace,
+            fs_queries: 0,
+            grind_attempts: Vec::new(),
+            e2_started: false,
+            e2_grinds: Vec::new(),
+            e2_scalars: 0,
+            e2_grind_s: 0.0,
+            e2_requests: 0,
+            e2_hashed: 0,
+            prune: Vec::new(),
+            pruned: Vec::new(),
+            opened: 0,
+            tail: Vec::new(),
+            covered: Vec::new(),
+        }
+    }
+
+    /// CAP (S2GB): commitment `i` sends `2^send[i]` nodes.
+    pub fn set_prune(&mut self, send: Vec<usize>) {
+        self.prune = send;
+    }
+
+    pub fn into_proof(self) -> Proof {
+        Proof {
+            stream: self.stream,
+            merkle: self.merkle,
+        }
+    }
+
+    pub fn state(&self) -> Digest {
+        self.st
+    }
+
+    /// One query `st ‖ msg`; the answer is the new state.
+    fn step(&mut self, msg: &[u8]) {
+        let mut q = Vec::with_capacity(32 + msg.len());
+        q.extend_from_slice(&self.st);
+        q.extend_from_slice(msg);
+        assert!(q.len() <= crate::format::QUERY_CAP, "a Fiat–Shamir query above queryCap");
+        assert!(!RESERVED.contains(&q.len()) && q.len() != self.seed_len, "the length rule");
+        self.st = oracle::ask(Class::Fs, &q);
+        self.fs_queries += 1;
+        self.trace.push((q, self.st));
+    }
+
+    /// Absorb what waits by one query `st ‖ pending` (the Lean driver never splits a message).
+    fn flush(&mut self) {
+        let msg = std::mem::take(&mut self.pending);
+        self.step(&msg);
+    }
+
+    /// A challenge: the waiting scalars absorbed with it (`st ‖ pending`, or `st` alone
+    /// when nothing waits); the last answer's lanes 0–2.
+    pub fn sample(&mut self) -> F192 {
+        self.flush();
+        let l = lanes(&self.st);
+        F192::new(l[0], l[1], l[2])
+    }
+
+    pub fn sample_vec(&mut self, n: usize) -> Vec<F192> {
+        (0..n).map(|_| self.sample()).collect()
+    }
+
+    /// `count` positions in `[0, 2^d)`: one query `st` per [`POSITIONS_PER_QUERY`], position `j`
+    /// of a query the bits `[d·j, d·j + d)` of its answer's lanes 0–2.
+    pub fn sample_positions(&mut self, d: usize, count: usize) -> Vec<usize> {
+        assert!(d * POSITIONS_PER_QUERY <= 192, "8 positions in 192 bits");
+        let mut out = Vec::with_capacity(count);
+        while out.len() < count {
+            self.flush();
+            let l = lanes(&self.st);
+            let v = (l[0] as u128) | ((l[1] as u128) << 64);
+            for j in 0..POSITIONS_PER_QUERY.min(count - out.len()) {
+                let off = j * d;
+                let chunk = if off + d <= 128 {
+                    (v >> off) as u64
+                } else if off >= 128 {
+                    l[2] >> (off - 128)
+                } else {
+                    ((v >> off) as u64) | (l[2] << (128 - off))
+                };
+                out.push((chunk & ((1u64 << d) - 1)) as usize);
+            }
+        }
+        out
+    }
+
+    /// Merkle data for the next opening phase: per path the leaf image then its siblings, bottom
+    /// first, into the body; every path walked through the oracle (its leaf and node queries are
+    /// the verifier's), and checked to end at `cap[q >> (height − c)]`.
+    pub fn hint_merkle(&mut self, mut paths: Vec<MerklePath>, cap: &[Hash]) {
+        assert!(self.pending.is_empty(), "an opening never follows unabsorbed messages");
+        let prune = !self.prune.is_empty();
+        let o = self.opened;
+        self.opened += 1;
+        if prune {
+            // (CAP dev tamper `sib:O:I`: path I's last sibling moved; its walk, and so its top, follows)
+            for (i, p) in paths.iter_mut().enumerate() {
+                if cap_tamper_is("sib", o, i) {
+                    let h = p.siblings.len();
+                    p.siblings[h - 1][0] ^= 1;
+                    eprintln!("lvm: LVM_CAP_TAMPER: opening {o} path {i} (leaf {}): last sibling moved", p.leaf_index);
+                }
+            }
+        }
+        let c = cap.len().trailing_zeros() as usize;
+        assert!(cap.len().is_power_of_two());
+        let n = paths.len();
+        if n == 0 {
+            self.merkle.push(paths);
+            return;
+        }
+        // the leaf queries, as one batch
+        let leaf_bytes: Vec<Vec<u8>> = paths
+            .iter()
+            .map(|p| p.leaf.iter().flat_map(|w| w.0.to_le_bytes()).collect())
+            .collect();
+        let len = leaf_bytes.first().map_or(0, |b| b.len());
+        assert!(leaf_bytes.iter().all(|b| b.len() == len) && LEAF_LENS.contains(&len), "leaf queries have a record's leaf length");
+        let flat: Vec<u8> = leaf_bytes.concat();
+        let mut cur = vec![[0u8; 32]; n];
+        oracle::hash_items(Class::Leaf, &flat, len, &mut cur);
+        let height = paths.first().map_or(0, |p| p.siblings.len());
+        let mut items: Vec<Vec<(Vec<u8>, Digest)>> = (0..n).map(|i| vec![(leaf_bytes[i].clone(), cur[i])]).collect();
+        // one level of every path at a time
+        for level in 0..height {
+            let mut q = Vec::with_capacity(64 * n);
+            for (i, p) in paths.iter().enumerate() {
+                let sib = &p.siblings[level];
+                if (p.leaf_index >> level) & 1 == 0 {
+                    q.extend_from_slice(&cur[i]);
+                    q.extend_from_slice(sib);
+                } else {
+                    q.extend_from_slice(sib);
+                    q.extend_from_slice(&cur[i]);
+                }
+            }
+            oracle::hash_items(Class::Node, &q, 64, &mut cur);
+            for i in 0..n {
+                items[i].push((q[64 * i..64 * i + 64].to_vec(), cur[i]));
+            }
+        }
+        for (i, p) in paths.iter().enumerate() {
+            let top = (p.leaf_index as usize) >> height;
+            assert!(top < cap.len(), "a path of {height} siblings under a cap of 2^{c}");
+            if !(prune && cap_tamper().is_some()) {
+                assert_eq!(cur[i], cap[top], "an opened path ends at its cap node");
+            }
+            self.body.extend_from_slice(&leaf_bytes[i]);
+            for s in &p.siblings {
+                self.body.extend_from_slice(s);
+            }
+        }
+        for it in items {
+            self.trace.extend(it);
+        }
+        if prune {
+            self.cap_heap(o, &paths, &cur, cap, height);
+        }
+        self.merkle.push(paths);
+    }
+
+    /// CAP (S2GB, FREEZE P1): the layer `L[x]` (the first path's top with `q >> D = x`, else the next tail node, ascending
+    /// `x`), then the heap's node queries `k = 2^m − 1` down to `2^s` (`A[k] = H(A[2k] ‖ A[2k+1])`, `A[2^m + x] = L[x]`),
+    /// traced in that order; `A[2^s + i]` must be the commitment's sent node `i`.
+    fn cap_heap(&mut self, o: usize, paths: &[MerklePath], tops: &[Digest], cap: &[Hash], height: usize) {
+        let m = cap.len().trailing_zeros() as usize;
+        let s = self.prune[o];
+        let mut layer: Vec<Option<Hash>> = vec![None; 1 << m];
+        let mut dups = Vec::new();
+        for (i, (p, t)) in paths.iter().zip(tops).enumerate() {
+            let x = (p.leaf_index as usize) >> height;
+            if layer[x].is_some() {
+                dups.push(i);
+            }
+            layer[x].get_or_insert(*t);
+        }
+        // (dev: the paths whose layer node an earlier path already gave, for the `sib` tampers)
+        if std::env::var_os("LVM_LOG").is_some() {
+            eprintln!("lvm: CAP opening {o}: m {m} s {}, {} paths of {height}, later paths of a covered x: {dups:?}", s, paths.len());
+        }
+        self.covered.push(layer.iter().filter(|l| l.is_some()).count());
+        let mut a = vec![[0u8; 32]; 2 << m];
+        let mut j = 0;
+        for (x, l) in layer.iter().enumerate() {
+            a[(1 << m) + x] = match l {
+                Some(t) => *t,
+                None => {
+                    let mut n = cap[x];
+                    if cap_tamper_is("tail", o, j) {
+                        n[0] ^= 1;
+                        eprintln!("lvm: LVM_CAP_TAMPER: opening {o} tail node {j} (x = {x}) moved");
+                    }
+                    j += 1;
+                    self.tail.extend_from_slice(&n);
+                    n
+                }
+            };
+        }
+        // one heap layer at a time, `k` descending inside it
+        for lvl in (s..m).rev() {
+            let ks: Vec<usize> = ((1 << lvl)..(2 << lvl)).rev().collect();
+            let mut q = Vec::with_capacity(64 * ks.len());
+            for &k in &ks {
+                let at = q.len();
+                q.extend_from_slice(&a[2 * k]);
+                q.extend_from_slice(&a[2 * k + 1]);
+                if cap_tamper_is("half", o, k) {
+                    q[at] ^= 1;
+                    eprintln!("lvm: LVM_CAP_TAMPER: opening {o} heap query k = {k}: left half moved");
+                }
+            }
+            let mut ans = vec![[0u8; 32]; ks.len()];
+            oracle::hash_items(Class::Node, &q, 64, &mut ans);
+            for (i, &k) in ks.iter().enumerate() {
+                a[k] = ans[i];
+                self.trace.push((q[64 * i..64 * i + 64].to_vec(), ans[i]));
+            }
+        }
+        if cap_tamper().is_none() {
+            assert_eq!(&a[1 << s..2 << s], &self.pruned[o][..], "the heap ends at the commitment's sent nodes");
+        }
+    }
+
+    /// Transmit a scalar into the proof AND bind it into the state (the two are
+    /// inseparable: you cannot send without binding).
+    #[inline]
+    pub fn add_scalar(&mut self, x: F192) {
+        let b = scalar_bytes(x);
+        self.pending.extend_from_slice(&b);
+        self.body.extend_from_slice(&b);
+        self.stream.push(x);
+    }
+
+    pub fn add_scalars(&mut self, xs: &[F192]) {
+        for &x in xs {
+            self.add_scalar(x);
+        }
+    }
+
+    /// Transmit a commitment's cap (`2^c` nodes, `c ≥ 1`); it waits for the next FS query like a scalar.
+    pub fn add_cap(&mut self, cap: &[Hash]) {
+        self.add_cap_from(cap, |s| cap_top(cap, s));
+    }
+
+    /// [`ProverState::add_cap`] with the tree's stored nodes at depth `s` (`top(s)`; CAP: no rehashing of the cap).
+    pub fn add_cap_from(&mut self, cap: &[Hash], top: impl Fn(usize) -> Vec<Hash>) {
+        assert!(cap.len().is_power_of_two() && cap.len() >= 2, "a cap of 2^c nodes, c ≥ 1");
+        // CAP (S2GB): the `2^s` nodes at depth `s` only
+        let sent = if self.prune.is_empty() {
+            cap.to_vec()
+        } else {
+            let i = self.pruned.len();
+            let top = top(self.prune[i]);
+            debug_assert_eq!(top, cap_top(cap, self.prune[i]), "the tree's top nodes are the cap's");
+            self.pruned.push(top.clone());
+            top
+        };
+        for node in &sent {
+            self.pending.extend_from_slice(node);
+            self.body.extend_from_slice(node);
+        }
+    }
+
+    /// No message waits (an opening phase may start).
+    pub fn nothing_pending(&self) -> bool {
+        self.pending.is_empty()
+    }
+
+    /// Send one sumcheck round polynomial, as its COEFFICIENTS, constant first.
+    ///
+    /// The message is every coefficient but one: the running claim fixes the
+    /// remaining one, which the verifier derives, so it is neither sent nor
+    /// bound. Binding it would add nothing, being a function of the claim and the
+    /// coefficients already bound. `eq` says whether the round's eq weight was
+    /// factored out, which is what decides WHICH coefficient the claim fixes: a
+    /// plain round has `h(0) + h(1) = Σ_{i≥1} c_i = claim`, which fixes `c_1`,
+    /// and a round whose `eq` weight `r` was factored out has
+    /// `(1 + r)·h(0) + r·h(1) = c_0 + r·Σ_{i≥1} c_i = claim`, which fixes `c_0`.
+    pub fn add_round_poly(&mut self, coeffs: &[F192], eq: bool) {
+        assert!(coeffs.len() >= 2, "a round polynomial has at least two coefficients");
+        let fixed = usize::from(!eq);
+        for (i, &c) in coeffs.iter().enumerate() {
+            if i != fixed {
+                self.add_scalar(c);
+            }
+        }
+    }
+
+    /// PI-GRIND (`docs/lvm2/stages/PI-GRIND.md`, Gate §2): with `bits = g = 0` nothing is sent or absorbed (the
+    /// v1/S2 schedule). With `g > 0`, right before a level's positions (its cap or final scalars waiting):
+    /// 1. a separating sample `st ‖ pending`, discarded (the positions queries then all ask `st` alone);
+    /// 2. the nonce, one `E` scalar `(counter, 0, 0)`: the smallest `counter ≥ 0` that passes;
+    /// 3. the PoW challenge `c`, the sample `st ‖ nonce` (56 bytes); it passes when `eToNat c < 2^(192 − g)`,
+    ///    i.e. the top `g` bits of lane 2 are zero.
+    ///
+    /// The search asks `st ‖ nonce` for whole rounds of counters over the oracle's connections (class `Grind`,
+    /// not in `V`'s trace); only the accepted query is asked again as the Fiat–Shamir step. The result does not
+    /// depend on the round size or the threads: the smallest passing counter.
+    pub fn grind(&mut self, bits: u32) {
+        if bits == 0 {
+            return;
+        }
+        assert!(bits <= 64, "the PoW bits lie in lane 2 of the challenge (g ≤ 64)");
+        self.sample();
+        let counter = pow_search(&self.st, bits);
+        self.add_scalar(F192::new(counter, 0, 0));
+        let c = self.sample();
+        assert!(pow_ok(c.c2, bits), "the accepted nonce's challenge passes");
+        self.grind_attempts.push(counter + 1);
+    }
+
+    /// The verifier's query count so far.
+    pub fn queries(&self) -> usize {
+        self.trace.len()
+    }
+
+    // ------------------------------------------------------------------ E2F (S2GF): the E2 front's transport
+
+    /// E2F: transmit and bind an E2 scalar, 16 bytes: its `K` words `c0` (re) then `c1` (im), little-endian.
+    #[inline]
+    pub fn add_e2(&mut self, x: F128) {
+        let mut b = [0u8; 16];
+        b[..8].copy_from_slice(&x.c0.to_le_bytes());
+        b[8..].copy_from_slice(&x.c1.to_le_bytes());
+        self.pending.extend_from_slice(&b);
+        let at = self.body.len();
+        self.body.extend_from_slice(&b);
+        self.stream.push(F192::new(x.c0, x.c1, 0));
+        self.e2_scalars += 1;
+        let tm = e2_tamper();
+        if (tm == "e2scalar" && self.e2_scalars == e2_tamper_at(1)) || (tm == "frontsc" && self.e2_scalars == 100) {
+            self.body[at] ^= 1;
+            eprintln!("lvm: LVM_E2F_TAMPER={tm}: E2 scalar {} (proof byte {at}) flipped", self.e2_scalars);
+        }
+    }
+
+    /// E2F (S2GT): the next E2 challenge takes a separator again (the front's first, after S2GT's typed phases).
+    pub fn e2_restart(&mut self) {
+        self.e2_started = false;
+    }
+
+    /// E2F: a front scalar in its field: an `E` scalar (24 bytes) at `W = 3`, an E2 scalar (16 bytes) at `W = 2`.
+    #[inline]
+    pub fn add_ext<F: Ext<W>, const W: usize>(&mut self, xs: &[F]) {
+        for &x in xs {
+            if W == 3 {
+                self.add_scalar(x.to_scalar());
+            } else {
+                let l = x.to_limbs();
+                self.add_e2(F128::new(l[0], l[1]));
+            }
+        }
+    }
+
+    /// E2F: [`Self::add_round_poly`] in the front's field.
+    pub fn add_round_poly_ext<F: Ext<W>, const W: usize>(&mut self, coeffs: &[F], eq: bool) {
+        assert!(coeffs.len() >= 2, "a round polynomial has at least two coefficients");
+        let fixed = usize::from(!eq);
+        for (i, &c) in coeffs.iter().enumerate() {
+            if i != fixed {
+                self.add_ext(&[c]);
+            }
+        }
+    }
+
+    /// E2F: a front challenge in its field: at `W = 3` a plain sample; at `W = 2` the E2 challenge of group `grp`
+    /// ([`Self::sample_e2`]).
+    #[inline]
+    pub fn challenge<F: Ext<W>, const W: usize>(&mut self, grp: Grp) -> F {
+        if W == 3 { F::from_challenge(self.sample()) } else { F::from_challenge(self.sample_e2(grp)) }
+    }
+
+    /// E2F: `n` front challenges of one group.
+    pub fn challenges<F: Ext<W>, const W: usize>(&mut self, grp: Grp, n: usize) -> Vec<F> {
+        (0..n).map(|_| self.challenge::<F, W>(grp)).collect()
+    }
+
+    /// E2F (S2GF, `s2gf.py`): an E2 challenge. A separator first (one sample, its answer discarded) when this is the
+    /// front's first E2 challenge or `grp` is `s`'s; then the nonce, one 8-byte `K` word read after whatever waits, so
+    /// the challenge's query is `st ‖ pending ‖ nonce`; the answer's lanes 0–1 are the challenge, accepted iff its lane
+    /// 2 is below `2^(64 − g)`. The nonce is the smallest that passes; the search asks the candidate queries in
+    /// batches on the calling thread, and the accepted one's answer is the Fiat–Shamir step's (it is not asked
+    /// twice). Returns the whole answer as an `E` value (`Ext::from_challenge` takes lanes 0–1).
+    pub fn sample_e2(&mut self, grp: Grp) -> F192 {
+        // W32-P (dev, `LVM_W32_IDX=1`): where each `s` challenge falls, for the tamper hooks' `LVM_E2F_TAMPER_AT`
+        if grp == Grp::C104 && std::env::var("LVM_W32_IDX").is_ok_and(|v| v == "1") {
+            eprintln!("lvm: W32 s challenge: E2 challenge {} after E2 scalar {}", self.e2_grinds.len() + 1, self.e2_scalars);
+        }
+        if !self.e2_started || grp == Grp::C104 {
+            self.sample();
+        }
+        self.e2_started = true;
+        let g = grp.bits();
+        let mut q = Vec::with_capacity(32 + self.pending.len() + 8);
+        q.extend_from_slice(&self.st);
+        q.extend_from_slice(&self.pending);
+        let head = q.len();
+        q.extend_from_slice(&[0u8; 8]);
+        assert!(q.len() <= crate::format::QUERY_CAP, "a Fiat–Shamir query above queryCap");
+        assert!(!RESERVED.contains(&q.len()) && q.len() != self.seed_len, "the length rule (an E2 challenge)");
+        let t_grind = std::time::Instant::now();
+        // PFAST L2: candidates a request by the measured cost (dev, `rttbench`: a polled request ≈ 19–35 µs plus
+        // ≈ 0.75 µs a candidate, hashed one after another by the service): 2^(g+1) up to g = 2 (4, 8), then 2^g (64 at
+        // g = 6), which minimises (round trip + hashing) / P(some candidate passes). The nonce is the smallest passing
+        // one whatever the batch, so the proof does not depend on it.
+        let batch = if g <= 2 { 2usize << g } else { 1usize << g.min(16) };
+        let mut out = vec![[0u8; 32]; batch];
+        let mut base = 0u64;
+        let (nonce, answer) = loop {
+            let t = std::time::Instant::now();
+            oracle::get().ask_many_fs(&mut out, &|j, buf: &mut Vec<u8>| {
+                buf.extend_from_slice(&q[..head]);
+                buf.extend_from_slice(&(base + j as u64).to_le_bytes());
+            });
+            oracle::note_e2_grind(batch, q.len(), t);
+            self.e2_requests += 1;
+            self.e2_hashed += batch;
+            // (`pow` tamper, dev: the 10th E2 challenge (`LVM_E2F_TAMPER_AT`) takes the first failing nonce)
+            let fail = e2_tamper() == "pow" && self.e2_grinds.len() + 1 == e2_tamper_at(10);
+            if let Some(j) = out.iter().position(|a| pow_ok(u64::from_le_bytes(a[16..24].try_into().unwrap()), g) != fail) {
+                if fail {
+                    eprintln!("lvm: LVM_E2F_TAMPER=pow: E2 challenge {} (g {g}) takes nonce {} (PoW fails)", self.e2_grinds.len() + 1, base + j as u64);
+                }
+                break (base + j as u64, out[j]);
+            }
+            base += batch as u64;
+        };
+        self.e2_grind_s += t_grind.elapsed().as_secs_f64();
+        q[head..].copy_from_slice(&nonce.to_le_bytes());
+        let at = self.body.len();
+        self.body.extend_from_slice(&nonce.to_le_bytes());
+        if e2_tamper() == "nonce" && self.e2_grinds.len() + 1 == e2_tamper_at(1) {
+            self.body[at] ^= 1;
+            eprintln!("lvm: LVM_E2F_TAMPER=nonce: nonce {} (proof byte {at}) flipped", self.e2_grinds.len() + 1);
+        }
+        self.pending.clear();
+        self.st = answer;
+        self.fs_queries += 1;
+        self.trace.push((q, answer));
+        self.e2_grinds.push((g, nonce + 1));
+        let l = lanes(&self.st);
+        assert!(pow_ok(l[2], g) || e2_tamper() == "pow", "the accepted nonce's challenge passes");
+        F192::new(l[0], l[1], l[2])
+    }
+}
+
