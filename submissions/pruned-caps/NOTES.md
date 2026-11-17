@@ -112,7 +112,7 @@ certificate is `certificateS20B`.
   - `certified`'s source text and pp.all statement are byte-identical to #35's. The other changed `S2GS` statements
     are classified intended edits: `capPrune`-gated definitions, and proof-help lemmas that read the cap width taking
     `hcp : p.capPrune = false`.
-  - The kernel cone of `certified` is {{REL: cone M hb}} M heartbeats (#35: 1,229.05 M).
+  - The kernel cone of `certified` is 1,280.06 M heartbeats [exact] (#35: 1,229.05 M).
 - **The prover.**
   - The FrontCfg flag `cappr` sets the default stage to `S2GB`. The sent cap nodes come from the stored tree.
   - Each proof makes +508 heap node queries in about 22 more oracle requests, and runs the mini-bus at depth 13.
@@ -120,7 +120,8 @@ certificate is `certificateS20B`.
   - Blob B is embedded and the `.s` are regenerated. `prover setup`'s self-test proves an `S2GB` P20 `S,0` and keeps
     the v4p cap on dev.
 - **Checked locally** [measured]:
-  - harness cert: Lean kernel {{REL: cert kernel s}} s (stop 560, cap 600), `build_s` {{REL: build_s}} s;
+  - harness cert: Lean kernel 468.4 s (stop 560, cap 600), `build_s` 1,035.0 s (the build shared the host with
+    other jobs; the kernel ran on a quiet host);
   - 0 `sorry`; `checkall` clean; axioms of `certified` the three;
   - e2e: `V_S` accepts all 15 files of the honest stream set (`S,0`/`S,1` at n = 1, 2^17, 2^18, 2^18 + 1, 2^20,
     and a 5-step stream);
@@ -129,7 +130,9 @@ certificate is `certificateS20B`.
     tail nodes, a truncated and an extended tail, and heap halves changed in the child trace (circuit side). They also
     include #35's NGATE-W modes re-run at `S2GB`, and cross-stage and cross-blob files;
   - identall **10/10** on the linked `.s` (v4p, v2, v4 under Intel SDE);
-  - quick bench: S {{REL: quick bench S}}, mean `V` {{REL: mean V}} ms.
+  - quick bench (the first 24 steps; decisions only): **ACCEPT**, S 2.683 (P̄ 2.015, V̄ 0.668), S× 2.025, mean `V`
+    70.3 ms, |π| 279,429 B, `c_P` drift 0.02. Other jobs shared the host (calibration cv 0.12); #35's quick run on a
+    quiet host read S 2.549 (P̄ 1.886, V̄ 0.663), mean `V` 66.0 ms, so P̄ and `V` are not like-for-like.
 - **Projected** [estimate], from #35's projection:
   - `|π|` −5,472 B [model] ≈ −0.0086;
   - `Φ_Q` +4,153 products ≈ +0.0016;
