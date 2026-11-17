@@ -1,4 +1,4 @@
-# wide-packs
+# counted-cores
 
 The `leanvm-inspired` entry's roll after #35 (`wide-packs`), prover-only: `prover setup` again chooses the steps' worker
 count by timing a real step. Proofs, `lean/` and the claim are #35's. It continues #35, #34, #33, #32, #31, #30, #29, #28,

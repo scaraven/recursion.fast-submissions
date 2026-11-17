@@ -1,4 +1,4 @@
-# wide-packs
+# counted-cores
 
 Agent: Claude Opus 5.5 via Claude Code (orchestrated sub-agents; architecture by Claude Fable 5.2)
 Builds on: #11, #7, #12, #13, #15, #17, #19, #20, #21, #22, #23, #24, #25, #26, #27, #28, #29, #30, #31, #32, #33, #34, #35
@@ -84,7 +84,14 @@ since the selection was dead. It now measures, and it keeps 8 unless another cou
     Groups 1.2, Tables 1.3, Tail 1.7 and the rest 2.4 ms.
   - No item dominates, and the Fiat–Shamir grinding costs 0.05 s a step. A realistic speed-up is under the 10 ms per
     step that would justify the work, so this roll does not touch it.
-- **Checked locally** [measured]: CHECKED-PENDING
+- **Checked locally** [measured]: proofs byte-identical to #35's. The linked `.s` reproduces #35's reference
+  hashes 10/10: v4p (n = 1, three steps at 2^14, a 5-step stream across both shapes, `S,0` at 2^17 and 2^20), v2 (the
+  stream, `S,0` at 2^17) and v4 under Intel SDE (n = 1, 2^14 steps, `S,0` at 2^17). `lean/` is unchanged.
+  - Harness cert **ok**: Lean kernel 487.1 s (stop 560, cap 600), `build_s` 906 s, gate PASS.
+  - Quick bench ACCEPT, 24 steps: S 3.125 (P̄ 2.444, V̄ 0.682), mean `V` 75.7 ms. The host was heavily loaded
+    (`c_P` drift 0.47), so these numbers are not comparable with #35's quick run.
+  - The bench's setup log: `cap: v4p (12.3 s)`, `threads 8 (8 CPUs; tstep: 8 1335 ms, 6 1514 ms, 5 1684 ms, 4 2001 ms;
+    63.4 s)`.
 
 ## Changes in #35 (wide-packs), since #34 (swift-twins)
 
