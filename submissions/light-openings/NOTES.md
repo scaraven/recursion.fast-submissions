@@ -72,12 +72,16 @@ the claim and the axioms are #38's.
 - **Checked locally** [measured]:
   - dev `V_S` decision without `Φ_Q`, timing lock, 9 alternations × 31 repetitions on all 15 e2e proofs: small
     shape (11 proofs) paired median −1.63 to −2.21 ms, big shape (4) −0.62 to −0.83 ms;
-  - e2e 15/15 accepted; NGATE-B's tamper sets: 47/47 and {{TAMPS2}} verdicts identical to #37's;
+  - e2e 15/15 accepted; NGATE-B's tamper sets: 47/47 and 217/217 verdicts identical to #37's;
   - identall 10/10 on the dev binaries and on the binary linked from the regenerated `.s` (v4p, v2, v4 under
     Intel SDE), every hash equal to #38's; `prover setup` keeps the v4p cap and times `tstep` at 8/6/5/4 workers;
   - prover A/B, timing lock, 8 alternating rounds of the tape step at 2^17 (v4p): Tail −2.0 ms (faster in 8 of 8),
     Skip −0.9 ms (6 of 8); the untouched passes drifted by −0.8 (`Product`) and −3.8 ms (`Tables`);
-  - {{REL}}
+  - harness cert: Lean kernel 486.1 s on a quiet host (stop 560, cap 600; #38: 472.4 s), `build_s` 1,060 s, 607
+    modules, peak 4.77 GB;
+  - quick bench (the first 24 steps; decisions only): **ACCEPT**, S 2.619 (P̄ 1.975, V̄ 0.644), S× 1.982, mean `V`
+    64.2 ms, |π| 279,420 B, `c_P` drift 0.03. #38's quick run read mean `V` 68.7 ms on a loaded host (drift 0.56),
+    so the two are not comparable; the dev A/B above is the `V` measurement.
 - **Projected** [estimate]: `V` eval about −1.3 ms (0.8× of dev, as #34), ΔS ≈ −0.006; the prover rider is worth
   about −0.001 at most.
 
