@@ -1,4 +1,4 @@
-# shared-products
+# light-openings
 
 The `leanvm-inspired` entry's roll after #38 (`shared-products`): a small bundle. `V_S`'s stacked-opening check does
 fewer products through fast twins proved equal to the old ones, and the prover walks two tape passes backwards
