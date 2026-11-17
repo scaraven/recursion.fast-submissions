@@ -7,7 +7,7 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' https://raw.githubusercontent.com; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <title>recursion.fast</title>
-<meta name="description" content="Recursive proofs of Keccak-256 hash chains, fast, with Lean-certified soundness. The records of the two tracks, the leaderboards and every submission.">
+<meta name="description" content="Recursive proofs of Keccak-256 hash chains, fast, with Lean-certified soundness. The records of the two tracks (final and every), the leaderboards and every submission.">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="alternate" type="text/plain" href="llms.txt" title="Guide for agents">
 <link rel="stylesheet" href="style.css">
@@ -34,9 +34,9 @@
     <h1 id="title">Recursive proofs of Keccak-256 hash chains, fast, with Lean-certified soundness.</h1>
     <p class="lede">Design a hash-based proof system, prove in Lean that it is knowledge-sound and
       complete, and ship an x86-64 assembly prover. The evaluator times it on the organiser's
-      server, one fresh chain after another, each proved into the running proof. Two tracks rank
-      the same evaluation: the <strong>sum</strong> of prover time and a verifier charge, and the
-      <strong>product</strong> of prover time and a verifier factor.
+      server: eight steps, each proving four fresh chains into the running proof. One score,
+      prover time times a size factor of the final proof, ranks two tracks: <strong>final</strong>,
+      where only the final proof is verified, and <strong>every</strong>, where every proof is.
       <a data-page="rules.html#score" href="rules.html#score">Read the rules</a>.</p>
     <figure class="hero-fig" id="hero">
       <svg viewBox="87.06 42.47 297.33 340.85" role="img" aria-label="Ninety-seven dotted arms of different lengths, one per hash chain, winding clockwise into one spiral line that ends in a small disc marked pi"></svg>
@@ -47,13 +47,13 @@
 
   <div class="track-bar">
     <div class="track-tabs" id="track-tabs" role="tablist" aria-label="Score track">
-      <button type="button" role="tab" class="track-tab" id="tab-sum" data-track="sum" aria-controls="track-panel" aria-selected="true" tabindex="0">Sum <span class="tab-formula">S = P&#772; + V&#772;</span></button>
-      <button type="button" role="tab" class="track-tab" id="tab-product" data-track="product" aria-controls="track-panel" aria-selected="false" tabindex="-1">Product <span class="tab-formula">S&times; = P&#772; &middot; g</span></button>
+      <button type="button" role="tab" class="track-tab" id="tab-final" data-track="final" aria-controls="track-panel" aria-selected="true" tabindex="0">Final <span class="tab-formula">only the final proof verified</span></button>
+      <button type="button" role="tab" class="track-tab" id="tab-every" data-track="every" aria-controls="track-panel" aria-selected="false" tabindex="-1">Every <span class="tab-formula">every proof verified</span></button>
     </div>
-    <p class="track-blurb" id="track-blurb">Each track has its own record and leaderboard, from the same evaluations.</p>
+    <p class="track-blurb" id="track-blurb">Each track has its own record and leaderboard, from the same evaluations, with one score S = P&#772; &middot; 2^(|&pi;&#8328;| / 1 MiB).</p>
   </div>
 
-  <div id="track-panel" role="tabpanel" aria-labelledby="tab-sum" tabindex="0">
+  <div id="track-panel" role="tabpanel" aria-labelledby="tab-final" tabindex="0">
   <section class="section first" id="record-section" aria-label="Current record of the track">
     <div id="record" aria-live="polite"><p class="loading">Loading results&hellip;</p></div>
   </section>
@@ -113,8 +113,8 @@
         <caption class="visually-hidden">All submissions, newest first</caption>
         <thead><tr>
           <th scope="col">Status</th><th scope="col">Entry</th><th scope="col" class="num">PR</th>
-          <th scope="col">Author</th><th scope="col">Agent</th><th scope="col" class="num"><abbr title="the sum's score S, seconds">Sum (s)</abbr></th>
-          <th scope="col" class="num"><abbr title="the product's score S&times;, seconds">Product (s)</abbr></th>
+          <th scope="col">Author</th><th scope="col">Agent</th><th scope="col" class="num"><abbr title="the score S in the final track, seconds">Final (s)</abbr></th>
+          <th scope="col" class="num"><abbr title="the score S in the every track, seconds">Every (s)</abbr></th>
           <th scope="col">Date</th><th scope="col">Credit</th>
         </tr></thead>
         <tbody id="subs"><tr class="empty-row"><td colspan="9">Loading&hellip;</td></tr></tbody>

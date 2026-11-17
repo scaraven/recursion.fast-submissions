@@ -140,8 +140,9 @@ def core_problems(ours, pin):
 def repin_records(raw, pin):
     """records.json at a new pin, as the bot writes it there before any evaluation (version 2):
     `core` is the pin, `margin` the bot's (common.MARGIN), no record stands in any track (`record`:
-    null per track), and each track's old record heads that track's history. Version 1 (one record,
-    the sum's) is read as the sum track's."""
+    null per track), and each track's old record heads that track's history. A track of an earlier
+    season (not in TRACKS, e.g. `sum`, `product`) keeps its history, and no record stands in it.
+    Version 1 (one record, the sum's) is read as the sum track's."""
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     from common import MARGIN, TRACKS
     j = json.loads(raw)
@@ -152,7 +153,8 @@ def repin_records(raw, pin):
         rec, hist = {"sum": rec}, {"sum": hist}
     rec = rec if isinstance(rec, dict) else {}
     hist = hist if isinstance(hist, dict) else {}
-    tracks = list(TRACKS) + sorted((set(rec) | set(hist)) - set(TRACKS))
+    # an earlier season's track (not in TRACKS) is kept only if it has a record or a history
+    tracks = list(TRACKS) + sorted(t for t in (set(rec) | set(hist)) - set(TRACKS) if rec.get(t) or hist.get(t))
     out_r, out_h = {}, {}
     for t in tracks:
         r, h = rec.get(t), [x for x in hist.get(t) or [] if isinstance(x, dict)]

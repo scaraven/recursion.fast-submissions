@@ -101,6 +101,15 @@ def decide(result, verification, pin, records, attempts, record_provers=(), marg
         out["organiser_error"] = "attestation"                  # the provenance failed: the organiser's side
     reasons = clean_reasons(result.get("reasons"))
     extra = []
+    # an ACCEPT scored in some tracks only (v6: `final` but not `every`): the core's reason, kept.
+    # `tracks_reason` is {track: why} (the core's form) or one string for every missing track
+    raw_score = result.get("score") if isinstance(result.get("score"), dict) else {}
+    why = raw_score.get("tracks_reason") or result.get("tracks_reason")
+    if verdict == "ACCEPT" and scores:
+        for t in (t for t in TRACKS if t not in scores):
+            w = why.get(t) if isinstance(why, dict) else why
+            if isinstance(w, str) and w.strip():
+                extra.append(f"not scored in {t}: {clean(w, 240)}")
 
     def error(why=None):
         out["organiser_side"] = True                    # not a clean verdict: it joins the error streak
@@ -109,7 +118,7 @@ def decide(result, verification, pin, records, attempts, record_provers=(), marg
             extra.append(why)
         if out["organiser_error"] in PAUSING_ERRORS:    # the organiser's, not the entry's: never uses up the retry
             out["requeue"] = True
-            what = "machine fingerprint" if out["organiser_error"] == "fingerprint" else "the season's chain lengths"
+            what = "machine fingerprint" if out["organiser_error"] == "fingerprint" else "the season's stream shape"
             extra.append(f"organiser ERROR ({what}): queued again; this run does not count as an attempt")
             return "queued"
         if attempts < MAX_ATTEMPTS:

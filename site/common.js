@@ -27,16 +27,19 @@
   };
   const VERDICTS = ['ACCEPT', 'PROVISIONAL', 'REJECT', 'ERROR'];
 
-  // The two tracks, scored from the one evaluation, each with its own records. `field` is the score
-  // field of an older result (one without `score.tracks`, which has the sum alone); a result names
-  // each track's field in `score.tracks`. Components: [field, label, unit, note].
+  // The two tracks, from the one evaluation, each with its own records: one score S, two
+  // eligibilities (`final`: only the final proof is verified; `every`: every proof is). A result
+  // names each track's field in `score.tracks` (`every` is absent when the entry is eligible for
+  // `final` only). A score without `tracks` is an earlier season's (the sum alone) and counts in
+  // neither track (`field: null`); earlier seasons' tracks (sum, product) are not shown as tabs.
+  // Components: [field, label, unit, note].
+  const PARTS = Object.freeze([['P_bar', 'P\u0304', 's'], ['size_factor', 'size factor', ''], ['final_pi_bytes', '|\u03c0\u2088|', 'bytes']]);
+  const FORMULA = 'S = P\u0304 \u00b7 2^(|\u03c0\u2088| / 1 MiB)';
   const TRACKS = Object.freeze([
-    Object.freeze({ id: 'sum', label: 'Sum', sym: 'S', field: 'S', formula: 'S = P\u0304 + V\u0304',
-      blurb: 'Prover time plus a linear charge on verifier time and proof size, in seconds per 2\u00b9\u2078 permutations.',
-      parts: [['P_bar', 'P\u0304', 's'], ['V_bar', 'V\u0304', 's'], ['x_bar', 'x\u0304', '']] }),
-    Object.freeze({ id: 'product', label: 'Product', sym: 'S\u00d7', field: null, formula: 'S\u00d7 = P\u0304 \u00b7 g',
-      blurb: 'Prover time times a verifier factor g = 1 + (mean V / v_ref)\u00b2, in seconds per 2\u00b9\u2078 permutations; proof size is not scored (the 64 MiB file cap bounds it).',
-      parts: [['P_bar', 'P\u0304', 's'], ['V_mean_s', 'mean V', 's'], ['g', 'g', ''], ['pi_mean_bytes', 'mean |\u03c0|', 'bytes', 'not scored']] })
+    Object.freeze({ id: 'final', label: 'Final', sym: 'S', field: null, formula: FORMULA, parts: PARTS,
+      blurb: 'Only the final proof is verified (at most 512 KiB, checked in at most 128 ms); each intermediate output need only fit in 1 MiB. S: the cubic mean of the step times, in seconds per 2\u00b9\u2078 permutations, times the final proof\'s size factor.' }),
+    Object.freeze({ id: 'every', label: 'Every', sym: 'S', field: null, formula: FORMULA, parts: PARTS,
+      blurb: 'Every proof is verified: each intermediate proof too is accepted against its statement (at most 1 MiB, checked in at most 128 ms). The same score S as the final track.' })
   ]);
   const TRACK_IDS = TRACKS.map(t => t.id);
   const trackOf = id => TRACKS.find(t => t.id === id) || TRACKS[0];
@@ -99,7 +102,7 @@
   }
 
   // An entry's score in a track (a positive number), or null: the field `score.tracks` names, or for a
-  // score without `tracks` the sum's `S` alone.
+  // score without `tracks` (an earlier season's sum) a track whose `field` names it (none in v6).
   function scoreIn(e, track) {
     const sc = e && e.score;
     if (!sc) return null;
@@ -394,7 +397,7 @@
   }
 
   // The selected track: `?track=`, else the viewer's last choice (localStorage, which may be
-  // unavailable), else the sum.
+  // unavailable), else the first track (final).
   const TRACK_KEY = 'rf-track';
   function chosenTrack() {
     const q = params.get('track');

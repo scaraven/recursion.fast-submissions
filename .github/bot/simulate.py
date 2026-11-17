@@ -140,19 +140,20 @@ class FakeGitHub:
 
 
 def make_result(run_id, verdict="ACCEPT", S=1.0, comparable=True, harness=PIN, prover="a" * 64, machine_ok=True,
-                organiser_error=None, stream=True, Sx=None, legacy=False):
+                organiser_error=None, stream=True, every=True, legacy=False):
     """A result as the core's aggregate.py writes it (the fields the bot reads). `comparable=False`:
     a truncated stream; `machine_ok=False`: another machine's fingerprint, the organiser's ERROR;
     `stream=False`: no stream recorded (a REJECT at the certificate, so no benchmark part, or inside
-    the stream). `S` is the sum's score and `Sx` the product's (default: `S`); `legacy`: a score
-    without `tracks` (an older core), the sum alone."""
+    the stream). `S` is the score of both tracks; `every=False`: eligible for `final` only (an
+    intermediate output not accepted), with the core's `tracks_reason`; `legacy`: a score without
+    `tracks` (an earlier season's core), the sum alone."""
     fp = "f" * 64
     if not machine_ok:
         verdict, comparable = "ERROR", False
-    r = {"schema": "recursion.fast/v4/result-1", "verdict": verdict, "comparable": comparable,
+    r = {"schema": "recursion.fast/v6/result-1", "verdict": verdict, "comparable": comparable,
          "truncated": not comparable and machine_ok, "harness_commit": harness, "job": f"{REPO}/actions/runs/{run_id}/attempts/1",
          "machine": {"fingerprint": fp if machine_ok else "e" * 64, "expected": fp, "matches": machine_ok and stream},
-         "stream": {"lengths": [], "truncated": not comparable and machine_ok} if stream else None,
+         "stream": {"shape": {"M": 8, "chains": 4, "n": 1 << 20}, "truncated": not comparable and machine_ok} if stream else None,
          "runner": {"name": "rf-bench-1", "environment": "self-hosted", "labels": ["rf-bench"]},
          "reasons": ([] if verdict == "ACCEPT" else ["the entry failed: `boom` @someone"] if machine_ok else
                      [f"organiser ERROR: the machine fingerprint is mismatched (fingerprint {'e' * 64}, the season expects {fp})"]),
@@ -160,16 +161,15 @@ def make_result(run_id, verdict="ACCEPT", S=1.0, comparable=True, harness=PIN, p
     if not machine_ok or organiser_error:
         r["organiser_error"] = organiser_error or "fingerprint"
     if verdict in ("ACCEPT", "PROVISIONAL"):
-        P, Sx = S * 0.8, S if Sx is None else Sx
-        g = Sx / P
-        r["score"] = {"S": S, "P_bar": P, "V_bar": S * 0.2, "M": 96, "c_P": 1.0, "fit": {"a": 1e-6}, "K": 5,
-                      "kappa": 3.2975, "x_bar": S * 0.2 / 3.2975, "V_mean_s": 0.6595 * max(g - 1, 0) ** 0.5, "g": g,
-                      "S_product": Sx, "pi_mean_bytes": 300000}
+        pi = 280000
+        f = 2 ** (pi / 2 ** 20)
         if legacy:
-            for k in ("x_bar", "V_mean_s", "g", "S_product", "pi_mean_bytes"):
-                del r["score"][k]
+            r["score"] = {"S": S, "P_bar": S * 0.8, "V_bar": S * 0.2, "M": 96, "c_P": 1.0}
         else:
-            r["score"]["tracks"] = {"sum": "S", "product": "S_product"}
+            r["score"] = {"S": S, "P_bar": S / f, "size_factor": f, "final_pi_bytes": pi, "M": 8, "c_P": 1.0,
+                          "tracks": {"final": "S", "every": "S"} if every else {"final": "S"}}
+            if not every:
+                r["score"]["tracks_reason"] = {"every": "output 3 rejected by acc"}
     return r
 
 
@@ -291,32 +291,34 @@ def main():
         print("fair order: dave's #11 before carol's #12:", e["id"], "->", p["status"])
         e, p = w.evaluate(lambda e, run: make_result(run, "REJECT"))
         print("then carol's #12:", e["id"], "->", p["status"])
-        # the two tracks: a fat-but-fast verifier takes the product's record only (its sum is worse)
+        # the two tracks: an entry whose intermediate outputs are not all accepted is scored in
+        # `final` only, and takes the final record only (the every record stands)
         g.open_pr(13, "grace", good_root("iota", "13"))
         w.intake(13)
-        e, p = w.evaluate(lambda e, run: make_result(run, S=9.5, Sx=6.0, prover="1" * 64))
-        print("tracks: one track only:", e["id"], "->", p["status"], p["record_in"], "|", p["reasons"][-2], "|", p["reasons"][-1])
+        e, p = w.evaluate(lambda e, run: make_result(run, S=8.0, every=False, prover="1" * 64))
+        print("tracks: final only:", e["id"], "->", p["status"], p["record_in"], "|", p["reasons"][-2], "|", p["reasons"][-1])
         rec = json.loads(w.show("main:records.json"))["record"]
         print("records.json:", {t: r and r["id"] for t, r in rec.items()},
               "main roots:", git(w.bare, "ls-tree", "--name-only", "main", "submissions/").split())
-        # the pin moves: each track's record is ported first and keeps its crown (two ports here,
-        # the sum's and the product's, each a candidate only in its own track)
+        # the pin moves within the season: each track's record is ported first and keeps its crown
+        # (two ports here, the final's and the every's, each a candidate only in its own track)
         g.open_pr(5, "dave", good_root("eps", "5"))
         w.intake(5)
         w.pin = "c" * 40
         provers = {6: "e" * 64, 13: "1" * 64}           # a port runs its record's own prover binary
         for _ in range(2):
-            e, p = w.evaluate(lambda e, run: make_result(run, S=9.0, Sx=5.0, harness=w.pin, prover=provers[e["pr"]]))
+            e, p = w.evaluate(lambda e, run: make_result(run, S=8.0 if e["pr"] == 13 else 9.0, every=e["pr"] != 13,
+                                                         harness=w.pin, prover=provers[e["pr"]]))
             print("pin moved; a record is ported first:", e["id"], "->", p["status"], p["record_in"], "| port of", e.get("port_tracks"))
         # an entry that beats both records takes both
-        e, p = w.evaluate(lambda e, run: make_result(run, S=8.0, Sx=4.0, harness=w.pin, prover="5" * 64))
+        e, p = w.evaluate(lambda e, run: make_result(run, S=7.0, harness=w.pin, prover="5" * 64))
         print("then at the new pin:", e["id"], "->", p["status"], p["record_in"], "|", "; ".join(p["reasons"][-2:]))
-        # the owner retires it in the product track only: it still holds the sum's record
+        # the owner retires it in the every track only: it still holds the final record
         g.open_pr(14, "heidi", good_root("kappa", "14"))
         w.intake(14)
-        e, p = w.evaluate(lambda e, run: make_result(run, S=8.5, Sx=4.5, harness=w.pin, prover="4" * 64),
-                          retire=p["id"], track="product")
-        print("retired in product only:", e["id"], "->", p["status"], p["record_in"], "|", "; ".join(p["reasons"][-2:]))
+        e, p = w.evaluate(lambda e, run: make_result(run, S=7.5, harness=w.pin, prover="4" * 64),
+                          retire=p["id"], track="every")
+        print("retired in every only:", e["id"], "->", p["status"], p["record_in"], "|", "; ".join(p["reasons"][-2:]))
         rec = json.loads(w.show("main:records.json"))
         print("records.json:", rec["core"][:8], {t: r and r["id"] for t, r in rec["record"].items()},
               "history:", {t: [h["id"] + ":" + h["status"] for h in hs] for t, hs in rec["history"].items()})

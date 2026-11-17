@@ -30,8 +30,8 @@ on:
         type: choice
         options:
           - "-"
-          - sum
-          - product
+          - final
+          - every
         default: "-"
       resume: { description: "clear a paused queue first (the owner's, once the cause is fixed)", required: false, type: boolean, default: false }
   schedule:

@@ -23,38 +23,30 @@
    "verdict": "ACCEPT",
    "score": {
     "S": 11.3429,
-    "P_bar": 9.214,
-    "V_bar": 2.1289,
-    "x_bar": 0.6456,
-    "V_mean_s": 0.3,
-    "g": 1.2069,
-    "S_product": 11.1206,
-    "pi_mean_bytes": 400000,
-    "M": 96,
+    "P_bar": 9.3025,
+    "size_factor": 1.2193,
+    "final_pi_bytes": 300000,
+    "M": 8,
     "c_P": 1.031,
-    "K": 5,
-    "kappa": 3.2975,
-    "v_ref_s": 0.6595,
-    "retimed": 2,
     "slowest_step_s": 12.9,
     "tracks": {
-     "sum": "S",
-     "product": "S_product"
+     "final": "S",
+     "every": "S"
     }
    },
    "comparable": true,
    "truncated": false,
    "reasons": [
-    "sum: no record stood in this track at the pin",
-    "product: no record stood in this track at the pin"
+    "final: no record stood in this track at the pin",
+    "every: no record stood in this track at the pin"
    ],
    "run_url": "https://github.com/scaraven/recursion.fast-submissions/actions/runs/101",
    "tag": "rf-source/pr3-5d84396bc69e",
    "notes": "notes/pr3-5d84396bc69e.md",
    "readme": "readme/pr3-5d84396bc69e.md",
    "record_of": {
-    "sum": null,
-    "product": null
+    "final": null,
+    "every": null
    },
    "tree": "daacdde89c04b1428afa5740c766b5f9869b6773",
    "verified": true,
@@ -63,14 +55,14 @@
    "run_attempt": 1,
    "build_manifest": null,
    "against": {
-    "sum": null,
-    "product": null
+    "final": null,
+    "every": null
    },
    "counted_at": "2026-10-21T09:13:17Z",
    "result": "results/pr3-5d84396bc69e.json",
    "record_in": [
-    "sum",
-    "product"
+    "final",
+    "every"
    ]
   },
   {
@@ -93,15 +85,15 @@
    "comparable": false,
    "truncated": false,
    "reasons": [
-    "benchmark: step 2: proof.bin is 71,303,168 bytes, above file_cap (67,108,864)"
+    "benchmark: step 2: proof.bin is 1,153,434 bytes, above the intermediate cap (1,048,576)"
    ],
    "run_url": "https://github.com/scaraven/recursion.fast-submissions/actions/runs/102",
    "tag": "rf-source/pr4-23a4a78cb62e",
    "notes": "notes/pr4-23a4a78cb62e.md",
    "readme": "readme/pr4-23a4a78cb62e.md",
    "record_of": {
-    "sum": null,
-    "product": null
+    "final": null,
+    "every": null
    },
    "tree": "f51fc831dfe0dd2c8487a8f446d2af2cb2a7446a",
    "verified": true,
@@ -110,8 +102,8 @@
    "run_attempt": 1,
    "build_manifest": null,
    "against": {
-    "sum": null,
-    "product": null
+    "final": null,
+    "every": null
    },
    "counted_at": "2026-10-22T14:41:17Z",
    "result": "results/pr4-23a4a78cb62e.json"
@@ -136,37 +128,29 @@
    "verdict": "ACCEPT",
    "score": {
     "S": 5.1021,
-    "P_bar": 3.709,
-    "V_bar": 1.3931,
-    "x_bar": 0.4225,
-    "V_mean_s": 0.2,
-    "g": 1.092,
-    "S_product": 4.0501,
-    "pi_mean_bytes": 250000,
-    "M": 96,
+    "P_bar": 4.2964,
+    "size_factor": 1.1875,
+    "final_pi_bytes": 260000,
+    "M": 8,
     "c_P": 1.031,
-    "K": 5,
-    "kappa": 3.2975,
-    "v_ref_s": 0.6595,
-    "retimed": 2,
     "tracks": {
-     "sum": "S",
-     "product": "S_product"
+     "final": "S",
+     "every": "S"
     }
    },
    "comparable": true,
    "truncated": false,
    "reasons": [
-    "sum: 5.1021 s beats the record pr3-5d84396bc69e-c0dec0de (11.4489 s) by 55.4%",
-    "product: 4.0501 s beats the record pr3-5d84396bc69e-c0dec0de (11.3182 s) by 64.2%"
+    "final: 5.1021 s beats the record pr3-5d84396bc69e-c0dec0de (11.4489 s) by 55.4%",
+    "every: 5.1021 s beats the record pr3-5d84396bc69e-c0dec0de (11.4489 s) by 55.4%"
    ],
    "run_url": "https://github.com/scaraven/recursion.fast-submissions/actions/runs/104",
    "tag": "rf-source/pr5-b08f59d2dfd5",
    "notes": "notes/pr5-b08f59d2dfd5.md",
    "readme": "readme/pr5-b08f59d2dfd5.md",
    "record_of": {
-    "sum": "pr3-5d84396bc69e-c0dec0de",
-    "product": "pr3-5d84396bc69e-c0dec0de"
+    "final": "pr3-5d84396bc69e-c0dec0de",
+    "every": "pr3-5d84396bc69e-c0dec0de"
    },
    "tree": "03ddc2572f37151b1747deac78c712bbc472cdaa",
    "verified": true,
@@ -175,26 +159,26 @@
    "run_attempt": 1,
    "build_manifest": null,
    "against": {
-    "sum": {
+    "final": {
      "record": "pr3-5d84396bc69e-c0dec0de",
      "S": 5.1021,
      "S_record": 11.4489,
      "gain": 0.5543589340460655,
      "beats": true
     },
-    "product": {
+    "every": {
      "record": "pr3-5d84396bc69e-c0dec0de",
-     "S": 4.0501,
-     "S_record": 11.3182,
-     "gain": 0.6421604142001378,
+     "S": 5.1021,
+     "S_record": 11.4489,
+     "gain": 0.5543589340460655,
      "beats": true
     }
    },
    "counted_at": "2026-10-24T09:00:17Z",
    "result": "results/pr5-b08f59d2dfd5.json",
    "record_in": [
-    "sum",
-    "product"
+    "final",
+    "every"
    ]
   },
   {
@@ -220,34 +204,26 @@
    "verdict": "ACCEPT",
    "score": {
     "S": 11.4489,
-    "P_bar": 9.27,
-    "V_bar": 2.1789,
-    "x_bar": 0.6608,
-    "V_mean_s": 0.31,
-    "g": 1.2209,
-    "S_product": 11.3182,
-    "pi_mean_bytes": 400000,
-    "M": 96,
+    "P_bar": 9.3894,
+    "size_factor": 1.2193,
+    "final_pi_bytes": 300000,
+    "M": 8,
     "c_P": 1.031,
-    "K": 5,
-    "kappa": 3.2975,
-    "v_ref_s": 0.6595,
-    "retimed": 2,
     "tracks": {
-     "sum": "S",
-     "product": "S_product"
+     "final": "S",
+     "every": "S"
     }
    },
    "comparable": true,
    "truncated": false,
    "reasons": [
-    "sum: no record stood in this track at the pin",
-    "product: no record stood in this track at the pin"
+    "final: no record stood in this track at the pin",
+    "every: no record stood in this track at the pin"
    ],
    "run_url": "https://github.com/scaraven/recursion.fast-submissions/actions/runs/103",
    "record_of": {
-    "sum": null,
-    "product": null
+    "final": null,
+    "every": null
    },
    "verified": true,
    "harness_commit": "c0dec0dec0dec0dec0dec0dec0dec0dec0dec0de",
@@ -255,15 +231,18 @@
    "run_attempt": 1,
    "build_manifest": null,
    "against": {
-    "sum": null,
-    "product": null
+    "final": null,
+    "every": null
    },
    "counted_at": "2026-10-24T08:03:17Z",
    "result": "results/pr3-5d84396bc69e-c0dec0de.json",
-   "port_tracks": null,
+   "port_tracks": [
+    "final",
+    "every"
+   ],
    "record_in": [
-    "sum",
-    "product"
+    "final",
+    "every"
    ]
   },
   {
@@ -286,22 +265,14 @@
    "verdict": "PROVISIONAL",
    "score": {
     "S": 4.2097,
-    "P_bar": 2.488,
-    "V_bar": 1.7217,
-    "x_bar": 0.5221,
-    "V_mean_s": 0.25,
-    "g": 1.1437,
-    "S_product": 2.8455,
-    "pi_mean_bytes": 300000,
-    "M": 96,
+    "P_bar": 3.4524,
+    "size_factor": 1.2193,
+    "final_pi_bytes": 300000,
+    "M": 8,
     "c_P": 1.031,
-    "K": 5,
-    "kappa": 3.2975,
-    "v_ref_s": 0.6595,
-    "retimed": 2,
     "tracks": {
-     "sum": "S",
-     "product": "S_product"
+     "final": "S",
+     "every": "S"
     }
    },
    "comparable": false,
@@ -314,8 +285,8 @@
    "notes": "notes/pr6-8e6811814270.md",
    "readme": "readme/pr6-8e6811814270.md",
    "record_of": {
-    "sum": null,
-    "product": null
+    "final": null,
+    "every": null
    },
    "tree": "83b987b097030fe56f88c0cd22be13ca545007c7",
    "verified": true,
@@ -324,8 +295,8 @@
    "run_attempt": 1,
    "build_manifest": null,
    "against": {
-    "sum": null,
-    "product": null
+    "final": null,
+    "every": null
    },
    "counted_at": "2026-10-25T19:31:17Z",
    "result": "results/pr6-8e6811814270.json"
@@ -350,38 +321,32 @@
    "status": "record",
    "verdict": "ACCEPT",
    "score": {
-    "S": 13.8945,
-    "P_bar": 3.802,
-    "V_bar": 10.0925,
-    "x_bar": 3.0607,
-    "V_mean_s": 0.04,
-    "g": 1.0037,
-    "S_product": 3.816,
-    "pi_mean_bytes": 6291456,
-    "M": 96,
+    "S": 3.816,
+    "P_bar": 2.706,
+    "size_factor": 1.4102,
+    "final_pi_bytes": 520000,
+    "M": 8,
     "c_P": 1.031,
-    "K": 5,
-    "kappa": 3.2975,
-    "v_ref_s": 0.6595,
-    "retimed": 2,
     "tracks": {
-     "sum": "S",
-     "product": "S_product"
+     "final": "S"
+    },
+    "tracks_reason": {
+     "every": "output 2 rejected by acc"
     }
    },
    "comparable": true,
    "truncated": false,
    "reasons": [
-    "sum: 13.8945 s against the record pr5-b08f59d2dfd5's 5.1021 s (-172.3%; a record needs more than 2%)",
-    "product: 3.8160 s beats the record pr5-b08f59d2dfd5 (4.0501 s) by 5.8%"
+    "not scored in every: output 2 rejected by acc",
+    "final: 3.8160 s beats the record pr5-b08f59d2dfd5 (5.1021 s) by 25.2%"
    ],
    "run_url": "https://github.com/scaraven/recursion.fast-submissions/actions/runs/106",
    "tag": "rf-source/pr7-acd08d0c260f",
    "notes": "notes/pr7-acd08d0c260f.md",
    "readme": "readme/pr7-acd08d0c260f.md",
    "record_of": {
-    "sum": null,
-    "product": "pr5-b08f59d2dfd5"
+    "final": "pr5-b08f59d2dfd5",
+    "every": null
    },
    "tree": "85e7754946d6933c4c52dfdaa7fcf59f6a5f6da9",
    "verified": true,
@@ -390,25 +355,19 @@
    "run_attempt": 1,
    "build_manifest": null,
    "against": {
-    "sum": {
-     "record": "pr5-b08f59d2dfd5",
-     "S": 13.8945,
-     "S_record": 5.1021,
-     "gain": -1.7232904098312463,
-     "beats": false
-    },
-    "product": {
+    "final": {
      "record": "pr5-b08f59d2dfd5",
      "S": 3.816,
-     "S_record": 4.0501,
-     "gain": 0.057801041949581466,
+     "S_record": 5.1021,
+     "gain": 0.2520726759569589,
      "beats": true
-    }
+    },
+    "every": null
    },
    "counted_at": "2026-10-27T11:01:17Z",
    "result": "results/pr7-acd08d0c260f.json",
    "record_in": [
-    "product"
+    "final"
    ]
   },
   {
@@ -432,38 +391,30 @@
    "verdict": "ACCEPT",
    "score": {
     "S": 3.2335,
-    "P_bar": 2.019,
-    "V_bar": 1.2145,
-    "x_bar": 0.3683,
-    "V_mean_s": 0.18,
-    "g": 1.0745,
-    "S_product": 2.1694,
-    "pi_mean_bytes": 200000,
-    "M": 96,
+    "P_bar": 2.6871,
+    "size_factor": 1.2033,
+    "final_pi_bytes": 280000,
+    "M": 8,
     "c_P": 1.031,
-    "K": 5,
-    "kappa": 3.2975,
-    "v_ref_s": 0.6595,
-    "retimed": 2,
     "slowest_step_s": 4.4,
     "tracks": {
-     "sum": "S",
-     "product": "S_product"
+     "final": "S",
+     "every": "S"
     }
    },
    "comparable": true,
    "truncated": false,
    "reasons": [
-    "sum: 3.2335 s beats the record pr5-b08f59d2dfd5 (5.1021 s) by 36.6%",
-    "product: 2.1694 s beats the record pr7-acd08d0c260f (3.8160 s) by 43.1%"
+    "final: 3.2335 s beats the record pr7-acd08d0c260f (3.8160 s) by 15.3%",
+    "every: 3.2335 s beats the record pr5-b08f59d2dfd5 (5.1021 s) by 36.6%"
    ],
    "run_url": "https://github.com/scaraven/recursion.fast-submissions/actions/runs/107",
    "tag": "rf-source/pr8-f87ede97e4c7",
    "notes": "notes/pr8-f87ede97e4c7.md",
    "readme": "readme/pr8-f87ede97e4c7.md",
    "record_of": {
-    "sum": "pr5-b08f59d2dfd5",
-    "product": "pr7-acd08d0c260f"
+    "final": "pr7-acd08d0c260f",
+    "every": "pr5-b08f59d2dfd5"
    },
    "tree": "708b85688714c5052a76892ac589d0c5ae2a18ee",
    "verified": true,
@@ -472,26 +423,26 @@
    "run_attempt": 1,
    "build_manifest": null,
    "against": {
-    "sum": {
+    "final": {
+     "record": "pr7-acd08d0c260f",
+     "S": 3.2335,
+     "S_record": 3.816,
+     "gain": 0.15264675052410903,
+     "beats": true
+    },
+    "every": {
      "record": "pr5-b08f59d2dfd5",
      "S": 3.2335,
      "S_record": 5.1021,
      "gain": 0.36624135160032145,
-     "beats": true
-    },
-    "product": {
-     "record": "pr7-acd08d0c260f",
-     "S": 2.1694,
-     "S_record": 3.816,
-     "gain": 0.4314989517819706,
      "beats": true
     }
    },
    "counted_at": "2026-10-29T07:46:17Z",
    "result": "results/pr8-f87ede97e4c7.json",
    "record_in": [
-    "sum",
-    "product"
+    "final",
+    "every"
    ]
   },
   {
@@ -514,28 +465,20 @@
    "verdict": "ACCEPT",
    "score": {
     "S": 4.2317,
-    "P_bar": 2.66,
-    "V_bar": 1.5717,
-    "x_bar": 0.4766,
-    "V_mean_s": 0.22,
-    "g": 1.1113,
-    "S_product": 2.956,
-    "pi_mean_bytes": 300000,
-    "M": 96,
+    "P_bar": 3.4935,
+    "size_factor": 1.2113,
+    "final_pi_bytes": 290000,
+    "M": 6,
     "c_P": 1.031,
-    "K": 5,
-    "kappa": 3.2975,
-    "v_ref_s": 0.6595,
-    "retimed": 2,
     "tracks": {
-     "sum": "S",
-     "product": "S_product"
+     "final": "S",
+     "every": "S"
     }
    },
    "comparable": false,
    "truncated": true,
    "reasons": [
-    "stream truncated at stream_s (3,000 s) after 81 of 96 steps",
+    "stream truncated at stream_s (3,000 s) after 6 of 8 steps",
     "ACCEPT, not comparable (truncated stream): not ranked"
    ],
    "run_url": "https://github.com/scaraven/recursion.fast-submissions/actions/runs/108",
@@ -543,8 +486,8 @@
    "notes": "notes/pr9-228289b552df.md",
    "readme": "readme/pr9-228289b552df.md",
    "record_of": {
-    "sum": null,
-    "product": null
+    "final": null,
+    "every": null
    },
    "tree": "e9ee65dc055060038add97a8083820b4487ecd6c",
    "verified": true,
@@ -553,8 +496,8 @@
    "run_attempt": 1,
    "build_manifest": null,
    "against": {
-    "sum": null,
-    "product": null
+    "final": null,
+    "every": null
    },
    "counted_at": "2026-10-30T16:21:17Z",
    "result": "results/pr9-228289b552df.json"
@@ -577,22 +520,14 @@
    "verdict": "ACCEPT",
    "score": {
     "S": 4.6227,
-    "P_bar": 2.951,
-    "V_bar": 1.6717,
-    "x_bar": 0.507,
-    "V_mean_s": 0.24,
-    "g": 1.1324,
-    "S_product": 3.3418,
-    "pi_mean_bytes": 300000,
-    "M": 96,
+    "P_bar": 3.7662,
+    "size_factor": 1.2274,
+    "final_pi_bytes": 310000,
+    "M": 8,
     "c_P": 1.031,
-    "K": 5,
-    "kappa": 3.2975,
-    "v_ref_s": 0.6595,
-    "retimed": 2,
     "tracks": {
-     "sum": "S",
-     "product": "S_product"
+     "final": "S",
+     "every": "S"
     }
    },
    "comparable": true,
@@ -605,8 +540,8 @@
    "notes": "notes/pr10-a3e1af975fee.md",
    "readme": "readme/pr10-a3e1af975fee.md",
    "record_of": {
-    "sum": null,
-    "product": null
+    "final": null,
+    "every": null
    },
    "tree": "2cccd61c8e52f8628f167a22320d033fda30b413",
    "verified": false,
@@ -615,8 +550,8 @@
    "run_attempt": 1,
    "build_manifest": null,
    "against": {
-    "sum": null,
-    "product": null
+    "final": null,
+    "every": null
    },
    "generic_errors": 2,
    "counted_at": "2026-10-31T12:31:17Z",
@@ -650,16 +585,16 @@
    "notes": null,
    "readme": null,
    "record_of": {
-    "sum": null,
-    "product": null
+    "final": null,
+    "every": null
    },
    "tree": "251cd859639cda9d698f0362d246e648adacc62b",
    "verified": false,
    "harness_commit": null,
    "prover_sha256": null,
    "against": {
-    "sum": null,
-    "product": null
+    "final": null,
+    "every": null
    }
   },
   {
@@ -683,38 +618,30 @@
    "verdict": "ACCEPT",
    "score": {
     "S": 3.1455,
-    "P_bar": 1.981,
-    "V_bar": 1.1645,
-    "x_bar": 0.3531,
-    "V_mean_s": 0.17,
-    "g": 1.0664,
-    "S_product": 2.1126,
-    "pi_mean_bytes": 200000,
-    "M": 96,
+    "P_bar": 2.6313,
+    "size_factor": 1.1954,
+    "final_pi_bytes": 270000,
+    "M": 8,
     "c_P": 1.031,
-    "K": 5,
-    "kappa": 3.2975,
-    "v_ref_s": 0.6595,
-    "retimed": 2,
     "tracks": {
-     "sum": "S",
-     "product": "S_product"
+     "final": "S",
+     "every": "S"
     }
    },
    "comparable": true,
    "truncated": false,
    "reasons": [
-    "sum: 3.1455 s beats the record pr8-f87ede97e4c7 (3.2335 s) by 2.7%",
-    "product: 2.1126 s beats the record pr8-f87ede97e4c7 (2.1694 s) by 2.6%",
-    "retired by the owner (sum)"
+    "final: 3.1455 s beats the record pr8-f87ede97e4c7 (3.2335 s) by 2.7%",
+    "every: 3.1455 s beats the record pr8-f87ede97e4c7 (3.2335 s) by 2.7%",
+    "retired by the owner (final)"
    ],
    "run_url": "https://github.com/scaraven/recursion.fast-submissions/actions/runs/111",
    "tag": "rf-source/pr15-88ac9a1a0f02",
    "notes": "notes/pr15-88ac9a1a0f02.md",
    "readme": "readme/pr15-88ac9a1a0f02.md",
    "record_of": {
-    "sum": "pr8-f87ede97e4c7",
-    "product": "pr8-f87ede97e4c7"
+    "final": "pr8-f87ede97e4c7",
+    "every": "pr8-f87ede97e4c7"
    },
    "tree": "723c771a101d80f2e2e8f72d6182074ce3bcaac9",
    "verified": true,
@@ -723,29 +650,29 @@
    "run_attempt": 1,
    "build_manifest": null,
    "against": {
-    "sum": {
+    "final": {
      "record": "pr8-f87ede97e4c7",
      "S": 3.1455,
      "S_record": 3.2335,
      "gain": 0.0272150920055666,
      "beats": true
     },
-    "product": {
+    "every": {
      "record": "pr8-f87ede97e4c7",
-     "S": 2.1126,
-     "S_record": 2.1694,
-     "gain": 0.026182354568083377,
+     "S": 3.1455,
+     "S_record": 3.2335,
+     "gain": 0.0272150920055666,
      "beats": true
     }
    },
    "counted_at": "2026-11-01T07:11:17Z",
    "result": "results/pr15-88ac9a1a0f02.json",
    "record_in": [
-    "sum",
-    "product"
+    "final",
+    "every"
    ],
    "retired_in": {
-    "sum": "2026-11-02T20:01:17Z"
+    "final": "2026-11-02T20:01:17Z"
    }
   },
   {
@@ -766,22 +693,14 @@
    "verdict": "ACCEPT",
    "score": {
     "S": 3.0665,
-    "P_bar": 1.902,
-    "V_bar": 1.1645,
-    "x_bar": 0.3531,
-    "V_mean_s": 0.17,
-    "g": 1.0664,
-    "S_product": 2.0284,
-    "pi_mean_bytes": 200000,
-    "M": 96,
+    "P_bar": 2.5653,
+    "size_factor": 1.1954,
+    "final_pi_bytes": 270000,
+    "M": 8,
     "c_P": 1.031,
-    "K": 5,
-    "kappa": 3.2975,
-    "v_ref_s": 0.6595,
-    "retimed": 2,
     "tracks": {
-     "sum": "S",
-     "product": "S_product"
+     "final": "S",
+     "every": "S"
     }
    },
    "comparable": true,
@@ -794,8 +713,8 @@
    "notes": "notes/pr17-7e26a12981d3.md",
    "readme": "readme/pr17-7e26a12981d3.md",
    "record_of": {
-    "sum": null,
-    "product": null
+    "final": null,
+    "every": null
    },
    "tree": "bd48a8e215c63e3c12c3da9f17542a282468be4e",
    "verified": true,
@@ -804,8 +723,8 @@
    "run_attempt": 1,
    "build_manifest": null,
    "against": {
-    "sum": null,
-    "product": null
+    "final": null,
+    "every": null
    },
    "counted_at": "2026-11-01T15:01:17Z",
    "result": "results/pr17-7e26a12981d3.json",
@@ -839,8 +758,8 @@
    "notes": "notes/pr19-c540f4c0e0f0.md",
    "readme": "readme/pr19-c540f4c0e0f0.md",
    "record_of": {
-    "sum": null,
-    "product": null
+    "final": null,
+    "every": null
    },
    "tree": "18f3a08235f287127a190b0b109263c1d18bcd74",
    "verified": true,
@@ -849,8 +768,8 @@
    "run_attempt": 1,
    "build_manifest": null,
    "against": {
-    "sum": null,
-    "product": null
+    "final": null,
+    "every": null
    },
    "counted_at": null,
    "record_cache": false,
@@ -897,16 +816,16 @@
    "notes": "notes/pr12-f222667776a9.md",
    "readme": "readme/pr12-f222667776a9.md",
    "record_of": {
-    "sum": null,
-    "product": null
+    "final": null,
+    "every": null
    },
    "tree": "a713980cdb891ee83287e12ba404eeddc5e69302",
    "verified": false,
    "harness_commit": null,
    "prover_sha256": null,
    "against": {
-    "sum": null,
-    "product": null
+    "final": null,
+    "every": null
    }
   },
   {
@@ -936,16 +855,16 @@
    "notes": "notes/pr14-05a4f2ae3942.md",
    "readme": "readme/pr14-05a4f2ae3942.md",
    "record_of": {
-    "sum": null,
-    "product": null
+    "final": null,
+    "every": null
    },
    "tree": "9ea4d45aea34007a35347402c9b141f82117f0df",
    "verified": false,
    "harness_commit": null,
    "prover_sha256": null,
    "against": {
-    "sum": null,
-    "product": null
+    "final": null,
+    "every": null
    }
   },
   {
@@ -966,37 +885,31 @@
    "verdict": "ACCEPT",
    "score": {
     "S": 3.7997,
-    "P_bar": 1.611,
-    "V_bar": 2.1887,
-    "x_bar": 0.6637,
-    "V_mean_s": 0.4,
-    "g": 1.3679,
-    "S_product": 2.2036,
-    "pi_mean_bytes": 120000,
-    "M": 96,
+    "P_bar": 3.2423,
+    "size_factor": 1.1719,
+    "final_pi_bytes": 240000,
+    "M": 8,
     "c_P": 1.031,
-    "K": 5,
-    "kappa": 3.2975,
-    "v_ref_s": 0.6595,
-    "retimed": 2,
     "tracks": {
-     "sum": "S",
-     "product": "S_product"
+     "final": "S"
+    },
+    "tracks_reason": {
+     "every": "output 2 rejected by acc"
     }
    },
    "comparable": true,
    "truncated": false,
    "reasons": [
-    "sum: no record stood in this track at the pin",
-    "product: 2.2036 s against the record pr15-88ac9a1a0f02's 2.1126 s (-4.3%; a record needs more than 2%)"
+    "not scored in every: output 2 rejected by acc",
+    "final: no record stood in this track at the pin"
    ],
    "run_url": "https://github.com/scaraven/recursion.fast-submissions/actions/runs/114",
    "tag": "rf-source/pr18-ab84b4f3b9cc",
    "notes": "notes/pr18-ab84b4f3b9cc.md",
    "readme": "readme/pr18-ab84b4f3b9cc.md",
    "record_of": {
-    "sum": null,
-    "product": null
+    "final": null,
+    "every": null
    },
    "tree": "7b6f5f3040f5192f93e024f9e5490ce766d81dc7",
    "verified": true,
@@ -1005,19 +918,13 @@
    "run_attempt": 1,
    "build_manifest": null,
    "against": {
-    "sum": null,
-    "product": {
-     "record": "pr15-88ac9a1a0f02",
-     "S": 2.2036,
-     "S_record": 2.1126,
-     "gain": -0.043074884029158156,
-     "beats": false
-    }
+    "final": null,
+    "every": null
    },
    "counted_at": "2026-11-02T20:01:17Z",
    "result": "results/pr18-ab84b4f3b9cc.json",
    "record_in": [
-    "sum"
+    "final"
    ]
   },
   {
@@ -1047,8 +954,8 @@
    "notes": "notes/pr20-54a3bb80a317.md",
    "readme": "readme/pr20-54a3bb80a317.md",
    "record_of": {
-    "sum": null,
-    "product": null
+    "final": null,
+    "every": null
    },
    "tree": "19e7c1455eb3cd5980e5f6e2f59d3ba0e6cb2cef",
    "verified": true,
@@ -1057,8 +964,8 @@
    "run_attempt": 1,
    "build_manifest": null,
    "against": {
-    "sum": null,
-    "product": null
+    "final": null,
+    "every": null
    },
    "counted_at": "2026-11-02T22:01:17Z",
    "result": "results/pr20-54a3bb80a317.json"
@@ -1090,8 +997,8 @@
    "notes": "notes/pr13-96fb0615f715.md",
    "readme": "readme/pr13-96fb0615f715.md",
    "record_of": {
-    "sum": null,
-    "product": null
+    "final": null,
+    "every": null
    },
    "tree": "b88b89f681898a2a6fbd5c06d1a38d7699055fcf",
    "verified": false,
@@ -1099,8 +1006,8 @@
    "prover_sha256": null,
    "run_attempt": 1,
    "against": {
-    "sum": null,
-    "product": null
+    "final": null,
+    "every": null
    }
   },
   {
@@ -1128,22 +1035,22 @@
    "notes": "notes/pr16-670520fbff57.md",
    "readme": "readme/pr16-670520fbff57.md",
    "record_of": {
-    "sum": null,
-    "product": null
+    "final": null,
+    "every": null
    },
    "tree": "e722dac99f68f1d6fdc7cb5687c520f9ebeba827",
    "verified": false,
    "harness_commit": null,
    "prover_sha256": null,
    "against": {
-    "sum": null,
-    "product": null
+    "final": null,
+    "every": null
    }
   }
  ],
  "record": {
-  "sum": "pr18-ab84b4f3b9cc",
-  "product": "pr15-88ac9a1a0f02"
+  "final": "pr18-ab84b4f3b9cc",
+  "every": "pr15-88ac9a1a0f02"
  },
  "error_streak": []
 }

@@ -378,11 +378,15 @@ def port_id(o, pin):
 
 
 def due_ports(st, pin):
-    """{track: the record to port to this pin}, for each track with no record standing at the pin
-    whose newest record is of an earlier pin, was not retired in that track, and has not been ported
-    here yet (a port evaluated once, whatever its verdict, is not repeated)."""
+    """{track: the record to port to this pin}, for each track of TRACKS with no record standing at
+    the pin whose newest record is of an earlier pin, was not retired in that track, and has not been
+    ported here yet (a port evaluated once, whatever its verdict, is not repeated). A track not in
+    TRACKS (an earlier season's) is never ported: its records stay in the history, and the new
+    season starts with no record in it."""
     out = {}
     for t, cur in standing(st, pin).items():
+        if t not in TRACKS:
+            continue
         rs = records(st, t)
         o = rs[0] if rs else None
         if cur is not None or o is None or retired_in(o, t) or o.get("harness_commit") == pin \

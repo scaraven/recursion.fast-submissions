@@ -69,9 +69,8 @@
       return;
     }
     const sc = cur.score;
-    const split = tr.id === 'product'
-      ? [el('span', { class: 'math' }, 'P̄'), fmtS(sc.P_bar), el('span', { class: 'op' }, '\u00d7'), el('span', { class: 'math' }, 'g'), fmtPart(sc.g, '')]
-      : [el('span', { class: 'math' }, 'P̄'), fmtS(sc.P_bar), el('span', { class: 'op' }, '+'), el('span', { class: 'math' }, 'V̄'), fmtS(sc.V_bar)];
+    const split = [el('span', { class: 'math' }, 'P̄'), fmtS(sc.P_bar), el('span', { class: 'op' }, '\u00d7'),
+      el('span', { class: 'math' }, '2^(|π₈|/1 MiB)'), fmtPart(sc.size_factor, ''), el('span', { class: 'muted' }, ` (|π₈| = ${window.RF.fmtBytes(sc.final_pi_bytes)})`)];
     const other = window.RF.TRACKS.filter(t => t.id !== tr.id && data.record[t.id] && data.record[t.id].id === cur.id);
     const left = el('div', null,
       el('h2', null, `Current ${tr.label.toLowerCase()} record`),
@@ -245,7 +244,7 @@
         el('td', null, timeEl(evaluatedAt(e)))));
     }
     if (tr.parts.some(p => p[3])) tb.append(el('tr', { class: 'note-row' }, el('td', { colspan: cols, class: 'muted' },
-      '* ' + tr.parts.filter(p => p[3]).map(p => p[1] + ': ' + p[3]).join('; ') + ' (shown so the trade-off is visible; the sum prices it).')));
+      '* ' + tr.parts.filter(p => p[3]).map(p => p[1] + ': ' + p[3]).join('; ') + ' (shown, not scored).')));
   }
 
   // ---- queue: running first, then a waiting port, then the bot's fair order by author ------------
