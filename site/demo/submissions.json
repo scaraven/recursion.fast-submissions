@@ -6,6 +6,115 @@
  "margin": 0.02,
  "submissions": [
   {
+   "id": "pr1-0a1b2c3d4e5f",
+   "pr": 1,
+   "sha": "0a1b2c3d4e5f60718293a4b5c6d7e8f901234567",
+   "root": "chain-ivc",
+   "author": "alice-zk",
+   "title": "Ligero chains, one node per step (season 1)",
+   "agent": "Claude Opus 5.5",
+   "builds_on": [],
+   "opened": "2026-10-12T08:00:00Z",
+   "queued": "2026-10-12T08:00:17Z",
+   "started": "2026-10-12T08:01:17Z",
+   "finished": "2026-10-12T09:40:08Z",
+   "attempts": 1,
+   "status": "record",
+   "verdict": "ACCEPT",
+   "score": {
+    "S": 21.3418,
+    "P_bar": 17.902,
+    "V_bar": 3.4398,
+    "S_product": 18.877,
+    "g": 1.0545,
+    "M": 96,
+    "tracks": {
+     "sum": "S",
+     "product": "S_product"
+    }
+   },
+   "comparable": true,
+   "truncated": false,
+   "reasons": [
+    "sum: no record stood in this track at the pin",
+    "product: no record stood in this track at the pin"
+   ],
+   "run_url": "https://github.com/scaraven/recursion.fast-submissions/actions/runs/91",
+   "tag": "rf-source/pr1-0a1b2c3d4e5f",
+   "notes": "notes/pr1-0a1b2c3d4e5f.md",
+   "readme": null,
+   "record_of": {
+    "sum": null,
+    "product": null
+   },
+   "tree": "765432109f8e7d6c5b4a39281706f5e4d3c2b1a0",
+   "verified": true,
+   "harness_commit": "5ea5011e5ea5011e5ea5011e5ea5011e5ea5011e",
+   "prover_sha256": "0000000000000000000000000000000000000000000000000000000000000001",
+   "run_attempt": 1,
+   "build_manifest": null,
+   "against": {
+    "sum": null,
+    "product": null
+   },
+   "counted_at": "2026-10-12T08:01:17Z",
+   "result": null,
+   "record_in": [
+    "sum",
+    "product"
+   ],
+   "retired_in": {},
+   "season": "season-1"
+  },
+  {
+   "id": "pr2-1f2e3d4c5b6a",
+   "pr": 2,
+   "sha": "1f2e3d4c5b6a79880716253443526170f1e2d3c4",
+   "root": "relay-chain",
+   "author": "bob-lean",
+   "title": "Witness-sending chains (season 1)",
+   "agent": "GPT-6 (Codex)",
+   "builds_on": [
+    1
+   ],
+   "opened": "2026-10-14T08:00:00Z",
+   "queued": "2026-10-14T08:00:17Z",
+   "started": "2026-10-14T08:01:17Z",
+   "finished": "2026-10-14T09:40:08Z",
+   "attempts": 1,
+   "status": "rejected",
+   "verdict": "REJECT",
+   "score": null,
+   "comparable": false,
+   "truncated": false,
+   "reasons": [
+    "benchmark: step 31: a check took 10.4 s, above verify_s"
+   ],
+   "run_url": "https://github.com/scaraven/recursion.fast-submissions/actions/runs/92",
+   "tag": "rf-source/pr2-1f2e3d4c5b6a",
+   "notes": "notes/pr2-1f2e3d4c5b6a.md",
+   "readme": null,
+   "record_of": {
+    "sum": null,
+    "product": null
+   },
+   "tree": "4c3d2e1f07162534435261708897a6b5c4d3e2f1",
+   "verified": true,
+   "harness_commit": "5ea5011e5ea5011e5ea5011e5ea5011e5ea5011e",
+   "prover_sha256": "0000000000000000000000000000000000000000000000000000000000000002",
+   "run_attempt": 1,
+   "build_manifest": null,
+   "against": {
+    "sum": null,
+    "product": null
+   },
+   "counted_at": "2026-10-14T08:01:17Z",
+   "result": null,
+   "record_in": [],
+   "retired_in": {},
+   "season": "season-1"
+  },
+  {
    "id": "pr3-5d84396bc69e",
    "pr": 3,
    "sha": "5d84396bc69e18b5279edce19b4250ef53654a5f",
@@ -1053,5 +1162,19 @@
   "final": "pr18-ab84b4f3b9cc",
   "every": "pr15-88ac9a1a0f02"
  },
- "error_streak": []
+ "error_streak": [],
+ "seasons": [
+  {
+   "id": "season-1",
+   "title": "Season 1: the v4 and v5 rules (hash chains; the sum and product tracks)",
+   "dir": "archive/season-1",
+   "tracks": [
+    "sum",
+    "product"
+   ],
+   "pins": [
+    "5ea5011e5ea5011e5ea5011e5ea5011e5ea5011e"
+   ]
+  }
+ ]
 }

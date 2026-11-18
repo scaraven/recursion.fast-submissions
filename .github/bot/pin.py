@@ -144,7 +144,7 @@ def repin_records(raw, pin):
     season (not in TRACKS, e.g. `sum`, `product`) keeps its history, and no record stands in it.
     Version 1 (one record, the sum's) is read as the sum track's."""
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-    from common import MARGIN, TRACKS
+    from common import MARGIN, TRACKS, archived_seasons
     j = json.loads(raw)
     if not isinstance(j, dict) or j.get("version") not in (1, 2):
         raise ValueError("records.json is not version 2 (or 1) of the bot's format")
@@ -163,7 +163,8 @@ def repin_records(raw, pin):
             r = None
         out_r[t], out_h[t] = r if isinstance(r, dict) else None, h
     j.pop("record_wins", None)      # not a parameter of the record rule
-    j.update(version=2, core=pin, margin=MARGIN, record=out_r, history=out_h)
+    seasons = [{k: x[k] for k in ("id", "title", "dir", "tracks", "pins")} for x in archived_seasons()]
+    j.update(version=2, core=pin, margin=MARGIN, record=out_r, history=out_h, seasons=seasons)
     return (json.dumps(j, indent=1, ensure_ascii=False) + "\n").encode()
 
 

@@ -77,6 +77,9 @@ pre code { background: none; border: 0; padding: 0; }
 .wrap { max-width: 1080px; margin: 0 auto; padding: 0 16px; }
 .paused-banner { margin: 0 0 16px; padding: 10px 16px; border: 1px solid var(--warn); border-radius: 10px; background: var(--warn-soft); color: var(--ink); }
 .paused-banner[hidden] { display: none; }
+.archived-banner { margin: 0 0 16px; padding: 10px 16px; border: 1px solid var(--line); border-left: 4px solid var(--warn); border-radius: 10px; background: var(--warn-soft); color: var(--ink); }
+.archive-season { margin-top: 28px; }
+.archive-season h2 { margin-bottom: 4px; }
 .demo-banner { margin: 0; padding: 6px 16px; text-align: center; font-size: 14px; background: var(--warn-soft); color: var(--warn); border-bottom: 1px solid var(--line); }
 
 /* header */

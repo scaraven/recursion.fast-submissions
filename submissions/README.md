@@ -4,6 +4,8 @@ Each entry is one directory, `submissions/<root>/`, where `<root>` matches `[a-z
 A pull request creates or changes exactly one root and nothing else. On `main` this directory holds
 the standing record's root, which the bot copies here, and no other entry. Every evaluated root
 stays at its tag `rf-source/<id>`. A root may not take the name of another directory kept here.
+Roots of earlier seasons, evaluated under earlier rules, are kept as reference under
+[`../archive/`](../archive/); they no longer run under the current rules.
 
 | Path | Required | What |
 |---|---|---|

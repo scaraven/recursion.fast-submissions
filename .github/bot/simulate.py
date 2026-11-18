@@ -344,8 +344,33 @@ def main():
         print("records.json:", rec["core"][:8], {t: r and r["id"] for t, r in rec["record"].items()},
               "history:", {t: [h["id"] + ":" + h["status"] for h in hs] for t, hs in rec["history"].items()})
         print("main roots:", git(w.bare, "ls-tree", "--name-only", "main", "submissions/").split())
+        # the season ends: its pins (PIN and c…c) are archived (common.ARCHIVED_SEASONS, the owner's
+        # change with the pin move to the next season's rules). Its entries are listed apart, its
+        # records never stand and none is ported; the first new-season ACCEPT takes both records
+        import common
+        saved = common.ARCHIVED_SEASONS
+        common.ARCHIVED_SEASONS = ({"id": "season-1", "title": "Season 1 (the simulation's first rules)",
+                                    "dir": "archive/season-1", "tracks": ["final", "every"], "pins": [PIN, "c" * 40]},)
+        try:
+            g.open_pr(17, "judy", good_root("newrules", "17"))
+            w.intake(17)
+            w.pin = "d" * 40
+            flows.sync(w.ctx())
+            st = json.loads(w.show("data:submissions.json"))
+            arch = [x["id"] for x in st["submissions"] if x.get("season")]
+            print("new season: archived", len(arch), "of", len(st["submissions"]), "entries; standing:", st["record"])
+            e, p = w.evaluate(lambda e, run: make_result(run, S=20.0, harness=w.pin, prover="8" * 64))
+            print("new season: first ACCEPT:", e["id"], "->", p["status"], p["record_in"], "| port?", bool(e.get("port_of")),
+                  "| season:", p.get("season"))
+            jn, ja = w.show("data:notes.md").decode(), w.show("data:notes-archive.md").decode()
+            print("journals: notes.md has", jn.count("\n## pr"), "entries (the new season's);",
+                  "notes-archive.md has", ja.count("\n### pr"), "under", ja.count("\n## season-"), "season heading(s)")
+            rec = json.loads(w.show("main:records.json"))
+            print("records.json:", {t: r and r["id"] for t, r in rec["record"].items()}, "seasons:", [x["id"] for x in rec["seasons"]])
+        finally:
+            common.ARCHIVED_SEASONS = saved
         print("comments:", len(g.comments), "statuses:", len(g.status_log), "dispatches:", len(g.dispatches))
-        print("queue:", [(x["id"], x["status"]) for x in w.state()["submissions"]])
+        print("queue:", [(x["id"], x["status"]) for x in w.state()["submissions"]][-4:])
     finally:
         w.cleanup()
 

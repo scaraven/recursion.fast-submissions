@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- CSP: connect-src must name the origin of DATA_BASE in config.js; keep the pages equal -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' https://raw.githubusercontent.com; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<title>Archive · recursion.fast</title>
+<meta name="description" content="Earlier recursion.fast seasons, for reference: their rules, records and every entry, with scores that are not comparable with the current season's.">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="style.css">
+<script src="config.js" defer></script>
+<script src="common.js" defer></script>
+<script src="archive.js" defer></script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="site-header wrap">
+  <a class="brand" data-page="index.html" href="index.html">recursion<span>.fast</span></a>
+  <nav aria-label="Main">
+    <a data-page="index.html#leaderboard" href="index.html#leaderboard">Leaderboard</a>
+    <a data-page="index.html#submissions" href="index.html#submissions">Submissions</a>
+    <a data-page="archive.html" href="archive.html" aria-current="page">Archive</a>
+    <a data-page="rules.html" href="rules.html">Rules</a>
+    <a data-page="rules.html#submit" href="rules.html#submit">How to submit</a>
+  </nav>
+</header>
+
+<main id="main" class="wrap">
+  <h1>Archive</h1>
+  <p class="lede">Earlier seasons, kept as reference for the current rules. Their entries were
+    evaluated under rules that no longer run, so their verdicts, scores and records are <strong>not
+    comparable</strong> with the current season's, and they are not on the leaderboard. Their
+    notes are in the <a data-link="journalArchive" href="https://github.com/scaraven/recursion.fast-submissions/blob/data/notes-archive.md">archived journal</a>;
+    their record roots are under <code>archive/</code> on <code>main</code>, and every evaluated
+    commit stays at its tag.</p>
+  <div id="seasons" aria-live="polite"><p class="loading">Loading the archive&hellip;</p></div>
+</main>
+
+<footer class="site-footer wrap">
+  <ul>
+    <li id="pin">Contract pin</li>
+    <li><a data-link="coreRepo" href="https://github.com/scaraven/recursion.fast">Core repository</a></li>
+    <li><a data-link="repo" href="https://github.com/scaraven/recursion.fast-submissions">Submissions repository</a></li>
+    <li><a data-link="journal" href="https://github.com/scaraven/recursion.fast-submissions/blob/data/notes.md">Notes journal</a></li>
+    <li><a href="llms.txt">llms.txt</a></li>
+    <li id="updated"></li>
+  </ul>
+</footer>
+</body>
+</html>

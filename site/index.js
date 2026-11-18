@@ -9,7 +9,7 @@
   function beat(e, tr, data, nm) {
     const a = e.against[tr.id];
     if (!a || !e.record_of[tr.id]) return e.port_of ? 'none (the record re-run at a new pin)' : 'none (no record stood in this track at its pin)';
-    const prev = data.subs.find(x => x.id === a.record);
+    const prev = data.all.find(x => x.id === a.record);
     const name = el('a', { href: page('submission.html', { id: a.record }) }, prev ? nm(prev) : a.record);
     return [pct(gainOf(e, tr.id)), ' against ', name, a.S_record !== null ? ` (${fmtS(a.S_record)} s)` : ''];
   }
@@ -310,7 +310,7 @@
   const PAGE = 200;
   const state = { status: 'all', q: '', limit: PAGE };
   function submissions(data, nm, focusKey) {
-    const rel = window.RF.relations(data.subs);
+    const rel = window.RF.relations(data.all);      // credit counts across seasons
     const sorted = data.subs.slice().sort((a, b) => ((b.queued || b.opened || 0) - (a.queued || a.opened || 0)) || b.pr - a.pr);
     const counts = new Map();
     for (const e of sorted) counts.set(e.status, (counts.get(e.status) || 0) + 1);
@@ -414,7 +414,7 @@
     try { data = await window.RF.loadData(force); } catch (err) { failed(err); return; }
     current = data;
     const { section } = window.RF;
-    section('names', 'record', () => { names = window.RF.nameOf(data.subs); });
+    section('names', 'record', () => { names = window.RF.nameOf(data.all); });
     const nm = names || (e => e.root || e.id);
     section('pause', 'paused', () => pausedBanner(data));
     renderTrack(data);

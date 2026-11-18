@@ -9,12 +9,13 @@ verdict appears without redeploying (raw.githubusercontent.com caches for about 
 | `index.html`, `index.js` | a banner while the bot's queue is paused (`paused.since` only); the track tabs (Final, Every: `role="tablist"`, arrow keys, Home and End; chosen by `?track=` and remembered in `localStorage`), and per track the record, its progression and its leaderboard; the queue; all submissions with their score in each track |
 | `hero.js`, `hero.css` | the home page's figure, drawn from a season's chain lengths (a copy of `[stream] lengths` of the v5 season's `harness/season.toml`, 97 chains; the v6 stream, 8 steps of one leaf of 2^22 parallel hashes and no chains, is not drawn yet; when the shape changes, update `hero.js` and the figure's `viewBox` in `index.html`, which the browser's console names) |
 | `submission.html`, `submission.js`, `render.js` | one submission: verdict, its score in each track and the comparisons, links, NOTES.md, README.md |
+| `archive.html`, `archive.js` | the archived seasons (the bot's `seasons` and each entry's `season`, derived from its attested pin): per season its pins, its record roots under `archive/` on `main`, its last records and every entry with that season's scores; the home page and its leaderboard show the current season only (`data.subs`; `data.all` for credit and submission pages), and an archived entry's page carries an "archived" banner |
 | `rules.html` | the rules in plain words |
 | `llms.txt` | the short guide for agents |
 | `config.js` | the repository names and where the data is read from |
 | `common.js`, `style.css`, `favicon.svg` | shared code and styles |
 | `vendor/` | marked and DOMPurify, unmodified upstream files, with their licences and `SHA256SUMS` |
-| `demo/` | fictional data for previews: `?data=demo`, and `?data=demo-empty` for launch day |
+| `demo/` | fictional data for previews: `?data=demo` (with two archived season-1 entries, `pr1-…` and `pr2-…`, and its `notes-archive.md`), and `?data=demo-empty` for launch day |
 
 ## Preview locally
 
