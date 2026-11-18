@@ -113,7 +113,9 @@
     run: new RegExp('^https://github\\.com/' + reEsc(CFG.REPO) + '/actions/runs/\\d{1,20}(?:/job/\\d{1,20}|/attempts/\\d{1,4})?$'),
     key: /^[A-Za-z_][A-Za-z0-9_]{0,40}$/,
     result: new RegExp('^results/' + ID + '(?:-confirm)?\\.json$'),
-    track: /^[a-z][a-z0-9_]{0,15}$/
+    track: /^[a-z][a-z0-9_]{0,15}$/,
+    season: /^season-[1-9]\d{0,3}$/,
+    dir: /^archive\/[a-z0-9-]{1,40}$/
   };
   const BAD_KEYS = new Set(['__proto__', 'constructor', 'prototype', 'hasOwnProperty', 'toString', 'valueOf']);
 
@@ -268,7 +270,9 @@
       // which run the entry's score object is from (`score_run`: first or confirmation)
       confirmation: cleanConfirmation(r.confirmation),
       // a record candidate waiting for its confirmation run (the bot's `confirm`): first in the queue
-      confirming: !!(r.confirm && typeof r.confirm === 'object') && ['queued', 'running', 'error'].includes(r.status)
+      confirming: !!(r.confirm && typeof r.confirm === 'object') && ['queued', 'running', 'error'].includes(r.status),
+      // the archived season it belongs to (the bot derives it from the attested pin), or null: the current season
+      season: typeof r.season === 'string' && RE.season.test(r.season) ? r.season : null
     };
   }
 
@@ -292,7 +296,7 @@
       let res;
       try { res = await fetchWithTimeout(BASE + 'submissions.json', 15000); } catch (err) {
         // the branch `data` does not exist yet: nothing has been published, which is not an error
-        if (err.status === 404) return { updated: null, core: await mainPin(), margin: 0.02, subs: [], skipped: 0, notShown: 0, record: noRecords(), unpublished: true };
+        if (err.status === 404) return { updated: null, core: await mainPin(), margin: 0.02, subs: [], all: [], archived: [], seasons: [], skipped: 0, notShown: 0, record: noRecords(), unpublished: true };
         throw err;
       }
       const raw = await res.json().catch(() => { throw new Error('submissions.json is not valid JSON'); });
@@ -307,6 +311,15 @@
         if (e && !seen.has(e.id)) { seen.add(e.id); subs.push(e); }
       }
       const margin = num(raw.margin);
+      // the archived seasons (the bot's `seasons`): earlier rules, listed apart (archive.html)
+      const seasons = (Array.isArray(raw.seasons) ? raw.seasons : []).slice(0, 50).map(x => x && typeof x === 'object' && RE.season.test(x.id) ? {
+        id: x.id, title: text(x.title, 200) || x.id,
+        dir: typeof x.dir === 'string' && RE.dir.test(x.dir) ? x.dir : null,
+        tracks: Array.isArray(x.tracks) ? x.tracks.filter(t => typeof t === 'string' && RE.track.test(t)).slice(0, 8) : [],
+        pins: Array.isArray(x.pins) ? x.pins.filter(p => typeof p === 'string' && RE.sha.test(p)).slice(0, 64) : []
+      } : null).filter(Boolean);
+      const known = new Set(seasons.map(x => x.id));
+      for (const e of subs) if (e.season && !known.has(e.season)) { known.add(e.season); seasons.push({ id: e.season, title: e.season, dir: null, tracks: [], pins: [] }); }
       // the standing record of each track is the bot's statement (`record`), never re-derived here
       const named = legacy ? { sum: raw.record } : (raw.record && typeof raw.record === 'object' ? raw.record : {});
       const record = noRecords();
@@ -319,7 +332,12 @@
         updated: date(raw.updated),
         core: typeof raw.core === 'string' && RE.sha.test(raw.core) ? raw.core : null,
         margin: margin !== null && margin >= 0 && margin < 1 ? margin : 0.02,
-        subs,
+        // `subs`: the current season's entries (the home page); `all`: every entry (credit, submission
+        // pages); `archived`: the archived seasons' entries (archive.html), with `seasons`
+        subs: subs.filter(e => !e.season),
+        all: subs,
+        archived: subs.filter(e => e.season),
+        seasons,
         skipped: Math.min(raw.submissions.length, CAP) - subs.length,
         notShown: Math.max(0, raw.submissions.length - CAP),
         record,
@@ -332,7 +350,7 @@
   }
 
   async function loadText(path, maxBytes) {
-    if (!RE.md.test(path) && path !== 'notes.md') throw new Error('bad path');
+    if (!RE.md.test(path) && path !== 'notes.md' && path !== 'notes-archive.md') throw new Error('bad path');
     const res = await fetchWithTimeout(BASE + path, 15000);
     const t = await res.text();
     return t.length > maxBytes ? t.slice(0, maxBytes) + '\n\n*(truncated by the site)*\n' : t;
@@ -391,7 +409,9 @@
     guide: GH + CFG.REPO + '/blob/main/AGENTS.md',
     repo: GH + CFG.REPO,
     coreRepo: GH + CFG.CORE_REPO,
-    journal: () => dataKey ? BASE + 'notes.md' : GH + CFG.REPO + '/blob/data/notes.md'
+    journal: () => dataKey ? BASE + 'notes.md' : GH + CFG.REPO + '/blob/data/notes.md',
+    journalArchive: () => dataKey ? BASE + 'notes-archive.md' : GH + CFG.REPO + '/blob/data/notes-archive.md',
+    mainDir: dir => GH + CFG.REPO + '/tree/main/' + dir
   };
 
   // ---- formatting --------------------------------------------------------------------------

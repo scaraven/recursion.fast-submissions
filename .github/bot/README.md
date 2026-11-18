@@ -18,7 +18,7 @@ Four workflows and a small Python package (standard library only, run as `python
 | `bot.py` | the command line (`intake`, `sync`, `select`, `publish`, `sync-main`, `record-build`) |
 | `flows.py` | examine/admit, intake, sync, select, publish, the sync of `main` |
 | `precheck.py` | the paths rule (files API) and the tree rule (`git ls-tree`/`cat-file`), the core's `[entry]` caps |
-| `rfqueue.py` | `submissions.json` (version 2; version 1 is migrated on load): order (a waiting port or confirmation, then fair by author), supersede, withdraw, reap, duplicates (the root's tree and, across authors, its `prover/` tree), the owner of a prover (`prover_owner`: the earliest-queued wins), records per pin and per track (the standing record: the newest not retired at the pin), retirement per track, ports, compaction |
+| `rfqueue.py` | `submissions.json` (version 2; version 1 is migrated on load; each archived season's entry carries the derived `season`, `seasons` names them): order (a waiting port or confirmation, then fair by author), supersede, withdraw, reap, duplicates (the root's tree and, across authors, its `prover/` tree), the owner of a prover (`prover_owner`: the earliest-queued wins), records per pin and per track (the standing record: the newest not retired at the pin; none at an archived season's pin), retirement per track, ports, compaction |
 | `decide.py` | status and record rule, once per track the result's `score.tracks` names (`S_t < (1 − MARGIN) · S_t,record`; v6: `S` in `final` and `S_every` in `every`, or `S` in `final` alone, with the core's `tracks_reason` copied into the reasons; a result without `tracks`, of an earlier season, has the sum, `S`, alone), record-cache retry (only for a verified REJECT whose `reject_stage` is `certificate` or `check`, or of an earlier core that records none; a `check` REJECT stands if the clean rebuild's badge is identical, and another badge holds the entry in `error` for the owner), the worse run per track in a confirmation (each track's parts from its own run: `score.by_track`), the confirmation of a record candidate (`candidate`, `confirmed`; a confirmation that is not a ranking ACCEPT gives its own status) |
 | `common.py` | constants: `TRACKS` (`final`, `every`: the current season's tracks, the only ones ported; an earlier season's `sum`, `product` stay in the history), `MARGIN` (0.02, one for both tracks; the owner's choice; the measured run-to-run spread of one entry's score is about 1.75 %, so it does not keep noise out), the caps, and how a result's score is priced, read from its own fields (`product_rule`, `unit_text`: this season `S = P_total · |π_16|` and `S_every = P_total · max_i |π_i|`, the proof sizes in bytes, the scores in seconds · bytes, `s·B`; a result with `size_ref`, of an earlier v6 season, has the exponential factor `2^(|π| / size_ref)` and scores in seconds; the comments and statuses state each result's own factor and unit) |
 | `render.py`, `attest.py`, `gitdata.py`, `gh.py`, `pin.py`, `pin-core.sh`, `purge-caches.sh`, `wfcheck.py` | comments/statuses/notes.md/records.json; provenance; git plumbing; REST; the pin, and the purge of caches naming a new pin; the workflow safety check (linear-time patterns, lines above 4 KiB refused; the bot runs it in a subprocess killed after 60 s, `check_git_limited`, a timeout being a failure) |
@@ -259,7 +259,20 @@ start afresh. In order:
    the first comparable, attested ACCEPT of the season is a record candidate in each track it is
    scored in, crowned after its confirmation. Within a season, a pin move ports each track's newest
    record not retired in it. The roots of the last records of the
-   earlier season stay on `main` until a new record replaces them.
+   earlier season stay on `main` until the season is archived (step 4).
+4. **Archive the season** (an organiser PR, with or after the pin move): add it to
+   `common.ARCHIVED_SEASONS` (`id` `season-N`, `title`, `dir` `archive/season-N`, its `tracks` and
+   every pin `.contract` held during it: `git log -- .contract`), `git mv` its last record roots from
+   `submissions/` to that `dir`, and describe it in `archive/README.md`. Nothing on `data` is edited
+   by hand: an entry's season is derived from its attested `harness_commit` (`rfqueue.season_of`;
+   an entry never evaluated, by its closing time against the season's last evaluation), and the
+   next `sync` sees the stored `season`/`seasons` differ, so it rewrites `submissions.json`
+   (`season` per archived entry, `seasons` at the top), `notes.md` (the current season only) and
+   `notes-archive.md`. A record of an archived pin never stands (`current_record`) and is never
+   ported, so merging the archive before the pin move ends the season at once (its records leave
+   the throne; an evaluation at its pin is archived as soon as it is published). `sync_main`
+   copies only standing records' roots into `submissions/` and never touches `archive/`; the root
+   name `archive` is reserved (`common.RESERVED_ROOTS`).
 
 ### Changing the margin
 
