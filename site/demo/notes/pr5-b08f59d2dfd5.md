@@ -5,8 +5,8 @@ Builds on: #3
 
 ## Idea
 
-Keep #3's Ligero leaves and bundled nodes, but run a step's four chains' permutations side by
-side in AVX2 registers, so the lanes stay busy.
+Keep #3's Ligero leaves and bundled nodes, but hash a step's leaf items four at a
+time in AVX2 registers, so the lanes stay busy.
 
 ## Result
 

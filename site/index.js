@@ -69,14 +69,14 @@
       return;
     }
     const sc = cur.score;
-    const split = [el('span', { class: 'math' }, 'P̄'), fmtS(sc.P_bar), el('span', { class: 'op' }, '\u00d7'),
+    const split = [el('span', { class: 'math' }, 'P_total'), fmtS(sc.P_total_s), el('span', { class: 'op' }, '\u00d7'),
       el('span', { class: 'math' }, '2^(|π₈|/1 MiB)'), fmtPart(sc.size_factor, ''), el('span', { class: 'muted' }, ` (|π₈| = ${window.RF.fmtBytes(sc.final_pi_bytes)})`)];
     const other = window.RF.TRACKS.filter(t => t.id !== tr.id && data.record[t.id] && data.record[t.id].id === cur.id);
     const left = el('div', null,
       el('h2', null, `Current ${tr.label.toLowerCase()} record`),
       el('p', { class: 'score-big' }, el('span', { class: 'math' }, tr.sym), fmtS(scoreIn(cur, tr.id)), el('span', { class: 'unit' }, 's')),
       el('p', { class: 'score-split' }, '=', split),
-      el('p', { class: 'score-note' }, 'Seconds per 2¹⁸ permutations. Lower is better.'),
+      el('p', { class: 'score-note' }, 'Seconds: the total time of the eight steps, times the size factor. Lower is better.'),
       other.length ? el('p', { class: 'score-note' }, 'It also holds the ' + other.map(t => t.label.toLowerCase()).join(' and ') + ' record.') : null);
     const dl = el('dl', { class: 'kv' },
       el('dt', null, 'Entry'), el('dd', null, el('a', { href: page('submission.html', { id: cur.id }) }, nm(cur))),

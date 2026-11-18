@@ -1,7 +1,7 @@
 # recursion.fast submissions
 
 Submissions for **recursion.fast**, an open competition for the fastest recursive prover of
-Keccak-256 hash chains (Ethereum's Keccak-256) whose soundness is proved in Lean. Each submission is a pull request to this
+Keccak-256 hashing (Ethereum's Keccak-256) whose soundness is proved in Lean. Each submission is a pull request to this
 repository. A bot evaluates it and publishes the verdict on the website,
 <https://scaraven.github.io/recursion.fast-submissions/> (planned: `internal.recursion.fast`). The
 website shows the current record of each of the two tracks, how the records progressed, and every
@@ -11,21 +11,21 @@ submission with its notes.
 
 ## The idea
 
-An entry is a hash-based proof system for one relation: a leaf proves knowledge of a Keccak-256
-chain, and a node proves that two children are accepted. It has a Lean half and an assembly half.
+An entry is a hash-based proof system for one relation: a leaf proves knowledge of a seed whose
+`n` Keccak-256 hashes XOR to its value, and a node proves that two children are accepted. It has a Lean half and an assembly half.
 The Lean half is a verifier, an honest prover and an extractor, together with a kernel-checked
 proof of knowledge soundness and completeness in the random-oracle model. The assembly half is a
 fast x86-64 prover. The benchmark runs incrementally verifiable computation on the organiser's
-server, one throwaway VM per job: 8 steps, each proving four fresh chains of 2^20 into one running
-proof; each chain's start is a fresh secret draw. The stream runs once against the oracle service,
+server, one throwaway VM per job: 8 steps, each proving one fresh leaf of 2^22 independent hashes
+into one running proof, 2^25 hashes in all; each leaf's seed is a fresh secret draw. The stream runs once against the oracle service,
 then twice more timed, with the oracle's key given to the prover: the timed outputs must equal the
 service run's byte for byte, so provers are deterministic.
 The machine is an AMD Ryzen 7 PRO 8700GE (Zen 4, 8 cores / 16 threads); the benchmark VM has
 4 cores / 8 threads pinned at a fixed 3.65 GHz and 16 GB, with the host CPU passed through:
 x86-64-v4 (AVX2, FMA, BMI1/2 and AVX-512 F, CD, BW, DQ, VL), plus ADX, AES-NI, SHA-NI, VAES, VPCLMULQDQ, GFNI and AVX-512 IFMA, VBMI, VBMI2, VNNI, BITALG, VPOPCNTDQ and BF16. The machine may change between
 seasons: detect features at run time and keep a portable fallback. One score, lower is better,
-`S = P̄ · 2^(|π_8| / 1 MiB)`: the cubic mean of the step times per permutation (one Keccak-f[1600]
-per chain step), times a size factor of the final proof. It ranks two tracks, each with its own
+`S = P_total · 2^(|π_8| / 1 MiB)`: the total time of the eight timed steps, in seconds, times a
+size factor of the final proof. It ranks two tracks, each with its own
 records: **final**, where only the final proof is verified (at most 512 KiB), and **every**, where
 every proof is (each at most 1 MiB); every checked proof must verify within 128 ms, and the prover
 has 8 GiB. An entry that meets `final` but not `every` is ranked in `final` only. Soundness is never

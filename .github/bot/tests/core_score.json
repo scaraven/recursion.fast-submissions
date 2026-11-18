@@ -1,18 +1,18 @@
 {
- "S": 0.14687539646453254,
- "P_bar": 0.12209390513152268,
+ "S": 18.698977317380045,
+ "P_total_s": 15.544,
  "size_factor": 1.202970748673446,
  "final_pi_bytes": 279552,
  "tracks": {
   "final": "S",
   "every": "S"
  },
- "n_ref": 262144,
  "size_ref": 1048576,
  "M": 8,
+ "n": 4194304,
  "sum_n": 33554432,
  "c_P": 1.0031,
  "T_triv_ns": 6594213205,
  "c_P_provisional": false,
- "P_bar_service_run": 0.1318614175420445
+ "P_total_service_run_s": 16.78752
 }

@@ -21,12 +21,12 @@
  "prover_sha256": "0000000000000000000000000000000000000000000000000000000000005ccd",
  "score": {
   "S": 11.3429,
-  "P_bar": 9.3025,
+  "P_total_s": 9.3028,
   "size_factor": 1.2193,
   "final_pi_bytes": 300000,
   "M": 8,
   "c_P": 1.031,
-  "slowest_step_s": 12.9,
+  "slowest_step_s": 1.186,
   "tracks": {
    "final": "S",
    "every": "S"

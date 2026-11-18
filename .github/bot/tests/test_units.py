@@ -28,7 +28,7 @@ def E(i, pr, author, status="queued", queued="2026-01-01T00:00:00Z", started=Non
 def V6(S=1.0, every=True, **kw):
     """A v6 result: one score `S` in both tracks, or (`every=False`) in `final` only, with the core's reason."""
     tr = {"final": "S", "every": "S"} if every else {"final": "S"}
-    sc = {"S": S, "P_bar": S / 1.25, "size_factor": 1.25, "final_pi_bytes": 337500, "tracks": tr}
+    sc = {"S": S, "P_total_s": S / 1.25, "size_factor": 1.25, "final_pi_bytes": 337500, "tracks": tr}
     if not every:
         sc["tracks_reason"] = {"every": "output 2 rejected by acc"}     # the core's form
     return R(S=S, score=sc, **kw)
@@ -36,7 +36,7 @@ def V6(S=1.0, every=True, **kw):
 
 def R(verdict="ACCEPT", S=1.0, comparable=True, harness=PIN, **kw):
     r = {"verdict": verdict, "comparable": comparable, "harness_commit": harness, "truncated": False,
-         "score": {"S": S, "P_bar": S, "size_factor": 1.0, "final_pi_bytes": 0, "tracks": {"final": "S", "every": "S"}},
+         "score": {"S": S, "P_total_s": S, "size_factor": 1.0, "final_pi_bytes": 0, "tracks": {"final": "S", "every": "S"}},
          "reasons": ["r1"]}
     r.update(kw)
     return r
@@ -345,8 +345,9 @@ class Queue(unittest.TestCase):
 
     def test_score_sanitiser_keeps_the_tracks(self):
         """`tracks` and the fields it names survive the sanitiser whatever the number and order of the
-        other keys: 60 filler keys in front, and a v6 score (core_score.json: the fields of the v6
-        core's `rfh.bench.score`, with made-up numbers; replace it with the core's mock smoke)."""
+        other keys: 60 filler keys in front, and a v6 score (core_score.json: S, P_total_s,
+        size_factor, final_pi_bytes, tracks and diagnostics, made-up numbers; replace it with the
+        core's mock smoke once the core computes this score)."""
         from decide import clean_score
         import os
         raw = {f"filler_{k:02d}": float(k) for k in range(60)}
@@ -526,12 +527,12 @@ class Render(unittest.TestCase):
         self.assertIn("- `'](http://evil) @owner`", body)
         self.assertNotIn("``", body)
         e = {"id": "pr2-aaaaaaaaaaaa", "status": "accepted", "verdict": "ACCEPT", "verified": True,
-             "score": {"S": 9.9, "P_bar": 7.92, "size_factor": 1.25, "final_pi_bytes": 337500, "M": 8, "tracks": {"final": "S"}},
+             "score": {"S": 9.9, "P_total_s": 7.92, "size_factor": 1.25, "final_pi_bytes": 337500, "M": 8, "tracks": {"final": "S"}},
              "against": {"final": {"record": "pr1-aaaaaaaaaaaa", "S": 9.9, "S_record": 10.0, "gain": 0.01, "beats": False},
                          "every": None}}
         body = render.publish_comment(e, "https://run")
         self.assertIn("Against the final record `pr1-aaaaaaaaaaaa`: 9.9000 s against 10.0000 s, gain +1.0%", body)
-        self.assertIn("S = 9.9000 s = P̄ 7.9200 s × size factor 1.2500 (2^(|π|/1 MiB), final proof 337500 bytes), M = 8", body)
+        self.assertIn("S = 9.9000 s = P_total 7.9200 s × size factor 1.2500 (2^(|π|/1 MiB), final proof 337500 bytes), M = 8", body)
         self.assertIn("Tracks: final (not every: the reasons below say why)", body)
         self.assertNotIn("duel", body.lower())
 

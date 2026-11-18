@@ -66,8 +66,8 @@
       parts.push(el('h2', { class: 'track-head' }, tr.label, ' ', el('span', { class: 'tab-formula' }, repeat ? `the same S = ${fmtS(v)} s` : tr.formula),
         took ? [' ', el('span', { class: 'badge ' + (retiredIn(e, tr.id) ? 'st-retired' : 'st-record') }, retiredIn(e, tr.id) ? 'record, retired' : 'took the record')] : null));
       if (!repeat) parts.push(el('div', { class: 'metrics m' + (tr.parts.length + 1), role: 'group', 'aria-label': tr.label + ' score' },
-        m('Score ' + tr.sym, v, 's', 'per 2¹⁸ permutations'),
-        tr.parts.map(([k, label, unit, note]) => m(label, sc[k], unit, note || (k === 'P_bar' ? 'cubic mean over the steps'
+        m('Score ' + tr.sym, v, 's', 'lower is better'),
+        tr.parts.map(([k, label, unit, note]) => m(label, sc[k], unit, note || (k === 'P_total_s' ? 'the eight steps\' total time'
           : k === 'size_factor' ? '2^(|π₈| / 1 MiB)' : k === 'final_pi_bytes' ? 'the final proof' : null)))));
       const a = e.against[tr.id];
       if (a) {

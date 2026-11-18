@@ -23,12 +23,12 @@
    "verdict": "ACCEPT",
    "score": {
     "S": 11.3429,
-    "P_bar": 9.3025,
+    "P_total_s": 9.3028,
     "size_factor": 1.2193,
     "final_pi_bytes": 300000,
     "M": 8,
     "c_P": 1.031,
-    "slowest_step_s": 12.9,
+    "slowest_step_s": 1.186,
     "tracks": {
      "final": "S",
      "every": "S"
@@ -128,7 +128,7 @@
    "verdict": "ACCEPT",
    "score": {
     "S": 5.1021,
-    "P_bar": 4.2964,
+    "P_total_s": 4.2965,
     "size_factor": 1.1875,
     "final_pi_bytes": 260000,
     "M": 8,
@@ -204,7 +204,7 @@
    "verdict": "ACCEPT",
    "score": {
     "S": 11.4489,
-    "P_bar": 9.3894,
+    "P_total_s": 9.3897,
     "size_factor": 1.2193,
     "final_pi_bytes": 300000,
     "M": 8,
@@ -265,7 +265,7 @@
    "verdict": "PROVISIONAL",
    "score": {
     "S": 4.2097,
-    "P_bar": 3.4524,
+    "P_total_s": 3.4526,
     "size_factor": 1.2193,
     "final_pi_bytes": 300000,
     "M": 8,
@@ -322,7 +322,7 @@
    "verdict": "ACCEPT",
    "score": {
     "S": 3.816,
-    "P_bar": 2.706,
+    "P_total_s": 2.706,
     "size_factor": 1.4102,
     "final_pi_bytes": 520000,
     "M": 8,
@@ -391,12 +391,12 @@
    "verdict": "ACCEPT",
    "score": {
     "S": 3.2335,
-    "P_bar": 2.6871,
+    "P_total_s": 2.6872,
     "size_factor": 1.2033,
     "final_pi_bytes": 280000,
     "M": 8,
     "c_P": 1.031,
-    "slowest_step_s": 4.4,
+    "slowest_step_s": 0.343,
     "tracks": {
      "final": "S",
      "every": "S"
@@ -465,7 +465,7 @@
    "verdict": "ACCEPT",
    "score": {
     "S": 4.2317,
-    "P_bar": 3.4935,
+    "P_total_s": 3.4935,
     "size_factor": 1.2113,
     "final_pi_bytes": 290000,
     "M": 6,
@@ -520,7 +520,7 @@
    "verdict": "ACCEPT",
    "score": {
     "S": 4.6227,
-    "P_bar": 3.7662,
+    "P_total_s": 3.7663,
     "size_factor": 1.2274,
     "final_pi_bytes": 310000,
     "M": 8,
@@ -618,7 +618,7 @@
    "verdict": "ACCEPT",
    "score": {
     "S": 3.1455,
-    "P_bar": 2.6313,
+    "P_total_s": 2.6313,
     "size_factor": 1.1954,
     "final_pi_bytes": 270000,
     "M": 8,
@@ -693,7 +693,7 @@
    "verdict": "ACCEPT",
    "score": {
     "S": 3.0665,
-    "P_bar": 2.5653,
+    "P_total_s": 2.5653,
     "size_factor": 1.1954,
     "final_pi_bytes": 270000,
     "M": 8,
@@ -787,7 +787,8 @@
    "attempts": 0,
    "status": "superseded",
    "verdict": null,
-   "tree": "b5109396bbb518a4c141c340e734470e736969f6"
+   "tree": "b5109396bbb518a4c141c340e734470e736969f6",
+   "score": null
   },
   {
    "id": "pr12-f222667776a9",
@@ -885,7 +886,7 @@
    "verdict": "ACCEPT",
    "score": {
     "S": 3.7997,
-    "P_bar": 3.2423,
+    "P_total_s": 3.2423,
     "size_factor": 1.1719,
     "final_pi_bytes": 240000,
     "M": 8,

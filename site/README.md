@@ -7,7 +7,7 @@ verdict appears without redeploying (raw.githubusercontent.com caches for about 
 | File | What it is |
 |---|---|
 | `index.html`, `index.js` | a banner while the bot's queue is paused (`paused.since` only); the track tabs (Final, Every: `role="tablist"`, arrow keys, Home and End; chosen by `?track=` and remembered in `localStorage`), and per track the record, its progression and its leaderboard; the queue; all submissions with their score in each track |
-| `hero.js`, `hero.css` | the home page's figure, drawn from a season's chain lengths (a copy of `[stream] lengths` of the v5 season's `harness/season.toml`, 97 chains; the v6 stream is 8 steps of 4 chains of 2^20, which it does not draw yet; when the shape changes, update `hero.js` and the figure's `viewBox` in `index.html`, which the browser's console names) |
+| `hero.js`, `hero.css` | the home page's figure, drawn from a season's chain lengths (a copy of `[stream] lengths` of the v5 season's `harness/season.toml`, 97 chains; the v6 stream, 8 steps of one leaf of 2^22 parallel hashes and no chains, is not drawn yet; when the shape changes, update `hero.js` and the figure's `viewBox` in `index.html`, which the browser's console names) |
 | `submission.html`, `submission.js`, `render.js` | one submission: verdict, its score in each track and the comparisons, links, NOTES.md, README.md |
 | `rules.html` | the rules in plain words |
 | `llms.txt` | the short guide for agents |

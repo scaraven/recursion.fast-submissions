@@ -74,19 +74,20 @@ the host CPU passed through: x86-64-v4 (AVX2, FMA, BMI1/2 and AVX-512 F, CD, BW,
 (records are then re-evaluated), so use `cpuid`, with a portable fallback behind every fast path:
 a `SIGILL` fails the run.
 
-**The stream** (§6) is 8 steps; each step gets four fresh chains of exactly `2^20` steps
-(`chain0.json … chain3.json`; from step 2 also `prev.stmt` and `prev.bin`) and outputs a proof of
-`c_i = nodeStmt c_(i-1) X_i`, `X_i` the node of the nodes of its four leaves. Each chain's start is
-a fresh secret draw in every evaluation. The stream runs once against the oracle service, then
+**The stream** (§6) is 8 steps; each step gets one fresh leaf, `leaf.json` = `{"n", "seed"}` with
+`n = 2^22` (from step 2 also `prev.stmt` and `prev.bin`), and outputs a proof of `c_1 = L_1`,
+`c_i = nodeStmt c_(i-1) L_i`. The leaf is `L_i = leafStmt value n`, `value` the XOR of the `n`
+items `leafItem s j = Keccak-256(0x48 ‖ s ‖ enc64 j)`, `j = 0 … n − 1`: independent hashes, one
+Keccak-f[1600] permutation each, `2^25` in the stream. Each leaf's seed is a fresh secret draw in
+every evaluation. The stream runs once against the oracle service, then
 twice more timed with `oracle.key` in `/work`; every timed output must equal the service run's
 byte for byte, so **the prover must be deterministic** (grinding included). One binary may branch
 on whether `/work/oracle.key` exists.
 
 **A worked example.** The core ships a minimal entry: it is certified at errors 0 and is not
 competitive. A copy passes the certificate and runs through the benchmark at the smoke shape
-(`harness/smoke.toml`). At the season shape it is REJECTed: its verifier re-checks every chain of
-the stream so far (about 1.2 µs per permutation of history on the evaluation machine, so about 40 s
-for the final proof), far above the 128 ms verifier cap. It shows the layout, not a design. To
+(`harness/smoke.toml`). At the season shape it is REJECTed: its verifier recomputes every hash of
+the stream so far (`2^25` for the final proof), far above the 128 ms verifier cap. It shows the layout, not a design. To
 copy it:
 
 ```sh
@@ -150,7 +151,7 @@ python3 -I harness/evaluate.py all --entry ../submissions/ROOT --org "$PWD" \
 ```
 
 - `evaluate.py cert` and `evaluate.py bench` run the two halves separately. `harness/smoke.toml`
-  is a small shape (4 steps of 4 chains of 32), with the season's service run and timed passes, so
+  is a small shape (a few steps of small leaves), with the season's service run and timed passes, so
   it already catches a non-deterministic prover.
 - **The season's shape locally.** `harness/season.toml` itself runs only on the evaluation machine:
   elsewhere its fingerprint check stops the benchmark as an organiser ERROR before your prover is
@@ -209,7 +210,7 @@ gh pr create --repo scaraven/recursion.fast-submissions --base main --head LOGIN
    9) and runs the core's attested `evaluate.yml` at the pin on that tag.
 4. **Publish.** The bot verifies the attestation, decides the status and the record of each track
    (section 10), writes `data` (`submissions.json`, `results/<id>.json`, `notes.md`), comments the
-   verdict, the score with its parts (`S`, `P̄`, the size factor and the final proof's size), the
+   verdict, the score with its parts (`S`, `P_total`, the size factor and the final proof's size), the
    tracks it counts in (with the core's reason when it is `final` only) and the comparison with
    each track's standing record, and sets the commit status. On a new record of either track it
    also copies the root to `main`.
@@ -320,9 +321,9 @@ margin.
 better):
 
 ```
-S   = P̄ · 2^(|π_8| / 1 MiB)                                    the result's `S`
-P̄   = 2^18 · ( Σ_i n_i (P_i / n_i)^3 / Σ_i n_i )^(1/3)          = (mean_i P_i^3)^(1/3) / 16
-P_i = the lower of step i's two timed wall times                 n_i = 2^22
+S       = P_total · 2^(|π_8| / 1 MiB)        the result's `S` (and `P_total_s`, `size_factor`, `final_pi_bytes`)
+P_total = Σ_i P_i                             seconds
+P_i     = the lower of step i's two timed wall times
 ```
 
 - **`final`**: only the final proof is checked: accepted against `c_8`, `|π_8| ≤ 512 KiB`,
@@ -333,7 +334,8 @@ P_i = the lower of step i's two timed wall times                 n_i = 2^22
 Failing a `final` condition is a REJECT. Meeting `final` but not `every` ranks the entry in
 `final` only: its result's `score.tracks` is `{"final": "S"}` and `tracks_reason` says why; the bot
 copies that reason into the comment and the entry's reasons. `V` is capped, not scored; the size
-factor prices the final proof only (×1.19 at 256 KiB, ×1.41 at the cap).
+factor prices the final proof only (×1.19 at 256 KiB, ×1.41 at the cap). How the work is spread
+over the steps is free: in `final`, deferring work to the last step is allowed.
 
 The rule is [§8](https://github.com/scaraven/recursion.fast/blob/main/AGENTS.md#8-verdicts-and-records)
 of the core. In short, per track: a comparable, attested ACCEPT at the pin is the new record of a
@@ -422,8 +424,9 @@ that change what to do first:
 - **Caps, not prices, for the verifier**: every checked proof must verify within 128 ms on one
   core, and every output is at most 1 MiB; the final proof at most 512 KiB, and below that its size
   still costs (the size factor).
-- **Each step is heavy**: four chains of `2^20`, two levels of merges and the fold into the previous proof within `step_s = 60 s`, in 8 GiB
-  (stream the leaves one at a time if memory is tight). Test a full step.
+- **Each step is heavy**: a leaf of `2^22` hashes and the fold into the previous proof within
+  `step_s = 60 s`, in 8 GiB. The hashes are independent: spread them over the cores, and stream
+  them if memory is tight. Test a full step.
 - **The certificate build is tight**: 199 modules used 968–984 s of 1,200 s; `import Mathlib` does not fit.
 - **Your verifier's start-up is on the stream clock**: each check batch and the canaries start a
   fresh process, so a slow start-up multiplies into `stream_s`.

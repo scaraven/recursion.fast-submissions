@@ -33,11 +33,11 @@
   // `final` only). A score without `tracks` is an earlier season's (the sum alone) and counts in
   // neither track (`field: null`); earlier seasons' tracks (sum, product) are not shown as tabs.
   // Components: [field, label, unit, note].
-  const PARTS = Object.freeze([['P_bar', 'P\u0304', 's'], ['size_factor', 'size factor', ''], ['final_pi_bytes', '|\u03c0\u2088|', 'bytes']]);
-  const FORMULA = 'S = P\u0304 \u00b7 2^(|\u03c0\u2088| / 1 MiB)';
+  const PARTS = Object.freeze([['P_total_s', 'P_total', 's'], ['size_factor', 'size factor', ''], ['final_pi_bytes', '|\u03c0\u2088|', 'bytes']]);
+  const FORMULA = 'S = P_total \u00b7 2^(|\u03c0\u2088| / 1 MiB)';
   const TRACKS = Object.freeze([
     Object.freeze({ id: 'final', label: 'Final', sym: 'S', field: null, formula: FORMULA, parts: PARTS,
-      blurb: 'Only the final proof is verified (at most 512 KiB, checked in at most 128 ms); each intermediate output need only fit in 1 MiB. S: the cubic mean of the step times, in seconds per 2\u00b9\u2078 permutations, times the final proof\'s size factor.' }),
+      blurb: 'Only the final proof is verified (at most 512 KiB, checked in at most 128 ms); each intermediate output need only fit in 1 MiB. S: the total time of the eight timed steps, in seconds, times the final proof\'s size factor.' }),
     Object.freeze({ id: 'every', label: 'Every', sym: 'S', field: null, formula: FORMULA, parts: PARTS,
       blurb: 'Every proof is verified: each intermediate proof too is accepted against its statement (at most 1 MiB, checked in at most 128 ms). The same score S as the final track.' })
   ]);
@@ -97,7 +97,7 @@
       else continue;
       n++;
     }
-    for (const k of ['S', 'P_bar', 'V_bar']) if (typeof out[k] !== 'number' || out[k] < 0) out[k] = null;
+    for (const k of ['S', 'P_bar', 'V_bar']) if (typeof out[k] !== 'number' || out[k] < 0) out[k] = null;   // P_bar, V_bar: earlier seasons
     return (out.S === null && out.P_bar === null && out.V_bar === null && n === 0) ? null : out;
   }
 

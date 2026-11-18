@@ -43,7 +43,7 @@ MAX_ATTEMPTS = 2          # an organiser-side ERROR is evaluated once more, then
 # entry process alive, so only a thermal effect could carry over (accepted and documented). These are
 # the organiser's alone: a run that ends in one never counts against the author (it does not move
 # the author back in the fair order). A `fingerprint` error (the machine is not the season's) or a
-# `lengths` error (the stream's shape, M, chains and n, was not the season's: an organiser bug, the
+# `lengths` error (the stream's shape, M and n, was not the season's: an organiser bug, the
 # same at every retry at one pin) does not even use up the entry's retry; the others are retried
 # once (MAX_ATTEMPTS). `attestation`: an unverified result (the bot's).
 UNCOUNTED_ERRORS = ("fingerprint", "lengths", "drift", "setup", "cache", "attestation")

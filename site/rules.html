@@ -36,13 +36,16 @@
 
   <h2 id="build">What you build</h2>
   <p>A proof system for one fixed relation over 32-byte digests. A <em>leaf</em> statement commits
-    to a Keccak-256 hash chain: a secret 32-byte start hashed <span class="math">n</span> times, each
-    step hashing a domain byte (0x43) and the previous digest, with <span class="math">n</span> up
-    to 2<sup>20</sup>. The hash is Ethereum's Keccak-256 (FIPS 202's
-    sponge over Keccak-f[1600] with Keccak's padding byte 0x01, not SHA3-256's 0x06), and each
-    chain step is one Keccak-f[1600] permutation. A <em>node</em> statement commits to two
-    children, each carrying an accepted proof. Proving, step after step, a node over the previous
-    step's node and a tree of fresh leaves is incrementally verifiable computation.</p>
+    to <span class="math">n</span> independent Keccak-256 hashes of a secret 32-byte seed
+    <span class="math">s</span>: the items
+    <span class="math">leafItem s j</span> = Keccak-256(0x48 &#8214; <span class="math">s</span> &#8214; enc64 <span class="math">j</span>)
+    for <span class="math">j</span> = 0 &hellip; <span class="math">n</span> &minus; 1, and the leaf's
+    value is the XOR of all <span class="math">n</span> items. The hash is Ethereum's Keccak-256
+    (FIPS 202's sponge over Keccak-f[1600] with Keccak's padding byte 0x01, not SHA3-256's 0x06),
+    and each item is one Keccak-f[1600] permutation. The items are independent, so they can be
+    hashed in parallel. A <em>node</em> statement commits to two children, each carrying an
+    accepted proof. Proving, step after step, a node over the previous step's node and a fresh leaf
+    is incrementally verifiable computation.</p>
   <p>An entry has two halves:</p>
   <ul>
     <li><strong>Lean.</strong> A verifier <span class="math">V</span> and an honest prover
@@ -58,15 +61,15 @@
   <h2 id="lean">What Lean must prove</h2>
   <p><strong>Knowledge soundness.</strong> Whenever <span class="math">V</span> accepts a statement,
     the prover must have known a witness: an extractor reading the oracle queries the prover made
-    recovers the chain's start and length for a leaf, or the two children and their proofs for a
+    recovers the seed and <span class="math">n</span> for a leaf, or the two children and their proofs for a
     node. For every adversary making <span class="math">Q</span> queries, the chance that
     <span class="math">V</span> accepts while extraction fails is at most
     <span class="math">(Q + q<sub>V</sub>)&thinsp;&middot;&thinsp;&epsilon;</span>, with
     <span class="math">&epsilon;</span> at most 2<sup>&minus;128</sup> per fresh query and
     <span class="math">q<sub>V</sub></span>, the verifier's own queries, at most 2<sup>16</sup>.</p>
   <p class="intuition">Soundness alone would let a proof be true by luck; knowledge soundness says
-    a proof is evidence that someone actually hashed the chain. That is what makes recursion safe:
-    a node's proof can be unwrapped, level by level, back to real chains.</p>
+    a proof is evidence that someone actually computed the hashes. That is what makes recursion
+    safe: a node's proof can be unwrapped, level by level, back to real leaves.</p>
   <p><strong>Completeness.</strong> On every true statement, the honest prover's proof is accepted
     except with probability at most 2<sup>&minus;40</sup>.</p>
   <p class="intuition">Grinding and probabilistic tricks are allowed, as long as honest proofs
@@ -89,14 +92,15 @@
     cannot gain by trusting a signature instead of checking the work.</p>
 
   <h2 id="score">How an evaluation is run and scored</h2>
-  <p>One evaluation is one stream of <span class="math">M</span> = 8 steps. Each step proves four
-    fresh chains of exactly 2<sup>20</sup> permutations (2<sup>22</sup> per step), merges them into
-    one statement by a small tree of nodes, and folds that into the previous step's proof:</p>
-  <div class="formula" role="math" aria-label="X i is the node of the node of L i1 and L i2 and the node of L i3 and L i4; c 1 is X 1, and c i is the node of c i minus 1 and X i">
-    <span class="lhs"><i>X<sub>i</sub></i></span> = node(node(<i>L</i><sub><i>i</i>1</sub>, <i>L</i><sub><i>i</i>2</sub>), node(<i>L</i><sub><i>i</i>3</sub>, <i>L</i><sub><i>i</i>4</sub>))<br>
-    <span class="lhs"><i>c</i><sub>1</sub></span> = <i>X</i><sub>1</sub>, &nbsp; <i>c<sub>i</sub></i> = node(<i>c</i><sub><i>i</i>&minus;1</sub>, <i>X<sub>i</sub></i>) &nbsp;(<i>i</i> = 2 &hellip; 8)
+  <p>One evaluation is one stream of <span class="math">M</span> = 8 steps. Each step proves one
+    fresh leaf of <span class="math">n</span> = 2<sup>22</sup> hashes
+    (<span class="math">L<sub>i</sub></span> = leafStmt(value, <span class="math">n</span>); the
+    prover gets <code>leaf.json</code>, <code>{"n", "seed"}</code>) and folds it into the previous
+    step's proof, 2<sup>25</sup> hashes in all:</p>
+  <div class="formula" role="math" aria-label="c 1 is L 1, and c i is the node of c i minus 1 and L i">
+    <span class="lhs"><i>c</i><sub>1</sub></span> = <i>L</i><sub>1</sub>, &nbsp; <i>c<sub>i</sub></i> = node(<i>c</i><sub><i>i</i>&minus;1</sub>, <i>L<sub>i</sub></i>) &nbsp;(<i>i</i> = 2 &hellip; 8)
   </div>
-  <p>Each chain's start is a fresh secret draw in every evaluation, and each step is a fresh
+  <p>Each leaf's seed is a fresh secret draw in every evaluation, and each step is a fresh
     process, so state between steps lives only inside the proof. The stream runs three times:</p>
   <ol>
     <li><strong>The service run</strong>, against the oracle service, to completion. Every output is
@@ -119,24 +123,22 @@
   </ul>
   <p>An entry that fails a <em>final</em> condition is rejected; one that meets <em>final</em> but
     not <em>every</em> is ranked in <em>final</em> only, and its result says why.</p>
-  <div class="formula" role="math" aria-label="S equals P bar times 2 to the power of the final proof size over one mebibyte">
-    <span class="lhs"><i>S</i></span> = <i>P&#772;</i> &middot; 2<sup>|<i>&pi;</i><sub>8</sub>| / 1&nbsp;MiB</sup><br>
-    <span class="lhs"><i>P&#772;</i></span> = 2<sup>18</sup> &middot;
-      ( &Sigma;<sub><i>i</i></sub> <i>n<sub>i</sub></i> (<i>P<sub>i</sub></i> / <i>n<sub>i</sub></i>)<sup>3</sup> / &Sigma;<sub><i>i</i></sub> <i>n<sub>i</sub></i> )<sup>1/3</sup>
-      = (mean<sub><i>i</i></sub> <i>P<sub>i</sub></i><sup>3</sup>)<sup>1/3</sup> / 16
+  <div class="formula" role="math" aria-label="S equals P total times 2 to the power of the final proof size over one mebibyte; P total is the sum of the step times">
+    <span class="lhs"><i>S</i></span> = <i>P</i><sub>total</sub> &middot; 2<sup>|<i>&pi;</i><sub>8</sub>| / 1&nbsp;MiB</sup><br>
+    <span class="lhs"><i>P</i><sub>total</sub></span> = &Sigma;<sub><i>i</i></sub> <i>P<sub>i</sub></i>
   </div>
   <p><strong>In plain words.</strong></p>
   <ul>
     <li><span class="math">P<sub>i</sub></span> is step <span class="math">i</span>'s wall time, the
-      lower of its two timed passes. <span class="math">P&#772;</span> is the prover's time per
-      permutation, averaged over the steps and scaled to 2<sup>18</sup> permutations, in seconds.
-      The cube makes uneven steps expensive: moving all the work into the last step multiplies
-      <span class="math">P&#772;</span> by 4. A calibration <span class="math">c<sub>P</sub></span>
-      of the machine, measured in the same job, is a health check only: it does not scale the score.</li>
+      lower of its two timed passes, and <span class="math">P</span><sub>total</sub> the plain total
+      of the eight, in seconds. How the work is spread over the steps is yours to choose: in
+      <em>final</em>, an entry may defer work to the last step. A calibration
+      <span class="math">c<sub>P</sub></span> of the machine, measured in the same job, is a health
+      check only: it does not scale the score.</li>
     <li>The size factor prices the final proof only: &times;1.19 at 256&nbsp;KiB, &times;1.41 at the
       512&nbsp;KiB cap. Check time is not scored; it is capped.</li>
   </ul>
-  <p class="intuition">The competition wants a very fast prover for hash chains first, and a
+  <p class="intuition">The competition wants a very fast prover for Keccak-256 hashing first, and a
     recursion step that is good enough second. Lower is better: halve the prover time and the
     score halves; shrink the final proof by 128&nbsp;KiB and it drops by about 8&nbsp;%.</p>
 
@@ -186,7 +188,7 @@
           x86-64-v4 (AVX2, FMA, BMI1/2 and AVX-512 F, CD, BW, DQ, VL), plus ADX, AES-NI, SHA-NI, VAES, VPCLMULQDQ, GFNI and AVX-512 IFMA, VBMI, VBMI2, VNNI, BITALG, VPOPCNTDQ and BF16. The machine may change between
           seasons: detect features at run time and keep a portable fallback</td></tr>
         <tr><td>Queue</td><td>one evaluation at a time, at most about 2&nbsp;hours each with the pin's caches warm (up to about three and a half hours when they must first be built); the next goes to the author whose last evaluation started longest ago; no cap per author</td></tr>
-        <tr><td>Stream</td><td>8 steps of 4 chains of 2<sup>20</sup> permutations; one service run, then two timed passes whose outputs must equal it byte for byte</td></tr>
+        <tr><td>Stream</td><td>8 steps of one leaf of 2<sup>22</sup> hashes; one service run, then two timed passes whose outputs must equal it byte for byte</td></tr>
         <tr><td>One step</td><td>60&nbsp;s from its inputs to the death of its last process; ready within 10&nbsp;s</td></tr>
         <tr><td>Whole stream</td><td>3,000&nbsp;s of wall time, the service run, its checks and both timed passes included; a slower entry is rejected</td></tr>
         <tr><td>Prover memory</td><td>8&nbsp;GiB (the oracle service has its own 2&nbsp;GiB)</td></tr>

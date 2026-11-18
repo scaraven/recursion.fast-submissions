@@ -81,7 +81,7 @@ def publish_comment(e, run_url):
         x = lambda k: num(s.get(k))  # noqa: E731
         m = s.get("M") if is_num(s.get("M")) else "-"
         trunc = ", truncated stream" if e.get("truncated") else ""
-        lines.append(f"S = {x('S')} s = P̄ {x('P_bar')} s × size factor {x('size_factor')} "
+        lines.append(f"S = {x('S')} s = P_total {x('P_total_s')} s × size factor {x('size_factor')} "
                      f"(2^(|π|/1 MiB), final proof {num(s.get('final_pi_bytes'), 0)} bytes), M = {m}{trunc}")
         named = [t for t, _f, _v in score_fields(s)]
         left = [t for t in TRACKS if t not in named]
@@ -156,7 +156,7 @@ def workflow_comment(sha, problems):
 
 PAUSE_TITLE = "recursion.fast: evaluation paused (organiser errors since the last completed benchmark)"
 ERROR_KINDS = {"fingerprint": "the machine fingerprint is not the season's",
-               "lengths": "the stream's shape (M, chains, n) was not the season's",
+               "lengths": "the stream's shape (M, n) was not the season's",
                "drift": "c_P drifted beyond c_P_drift", "setup": "a setup job did not complete",
                "cache": "an organiser cache was missing", "attestation": "the result's provenance did not verify",
                "harness": "the certificate job ended without a certificate", "unnamed": "an unnamed harness ERROR",

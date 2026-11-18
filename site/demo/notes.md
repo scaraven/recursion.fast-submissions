@@ -52,7 +52,7 @@ Builds on: #5
 # nova-keccak
 
 Folding instead of proving: the running proof carries a relaxed instance and the node folds
-the fresh chain into it. Fast (S = 4.210 s as benchmarked) but the extractor's soundness proof
+the fresh leaf into it. Fast (S = 4.210 s as benchmarked) but the extractor's soundness proof
 still has a `sorry`, so this is provisional.
 
 Next: finish `NovaKeccak.Fold.extract_sound`; the knowledge error per fresh query is the open
@@ -121,25 +121,25 @@ Builds on: #5, #7
 
 ## Idea
 
-#7 was right: its Basefold node with #5's lane layout, plus a chain kernel rewritten so the
+#7 was right: its Basefold node with #5's lane layout, plus a leaf kernel rewritten so the
 message schedule stays in registers across rounds.
 
 ## Result
 
-S = 3.234 s (P̄ 2.687, final proof 273 KiB): 15 % better than #7 in the final track and 37 % better than #5 in
-every. The slowest step took 44.1 s.
+S = 3.234 s (P_total 2.687 s, final proof 273 KiB): 15 % better than #7 in the final track and 37 % better than #5 in
+every. The slowest step took 0.342 s.
 
 ```
-step  n           P_i (s)  V_i (ms)  |π| (KiB)
-1     4 × 1,048k  42.9     41        688
-4     4 × 1,048k  44.1     43        701
-8     4 × 1,048k  43.2     40        273
+step  n       P_i (s)  V_i (ms)  |π| (KiB)
+1     4,194k  0.331    41        688
+4     4,194k  0.342    43        701
+8     4,194k  0.334    40        273
 ```
 
 ## What did not work
 
-Batching two steps' encodings: the cube in P̄ makes the uneven steps cost more than the saved
-encoding.
+Batching two steps' encodings: the saved encoding did not pay for the larger proof of the
+batched step.
 
 ## What to try next
 
@@ -154,7 +154,7 @@ Builds on: #3, #5
 
 # basefold-stream
 
-Basefold over binary towers for the node, #5's lanes for the chain, with a rate-1/64 code: a 508 KiB
+Basefold over binary towers for the node, #5's lanes for the leaf, with a rate-1/64 code: a 508 KiB
 final proof that checks in 40 ms. The intermediate outputs are unchecked folding states, so it is
 scored in the final track only, where it took the record: S = 3.816 s against 5.102 s for #5, 25 %
 faster, although the size factor of its large proof costs it 41 %.
@@ -172,7 +172,7 @@ Builds on: #5
 # nova-keccak
 
 Folding instead of proving: the running proof carries a relaxed instance and the node folds
-the fresh chain into it. Fast (S = 4.210 s as benchmarked) but the extractor's soundness proof
+the fresh leaf into it. Fast (S = 4.210 s as benchmarked) but the extractor's soundness proof
 still has a `sorry`, so this is provisional.
 
 Next: finish `NovaKeccak.Fold.extract_sound`; the knowledge error per fresh query is the open
@@ -189,8 +189,8 @@ Builds on: #3
 
 ## Idea
 
-Keep #3's Ligero leaves and bundled nodes, but run a step's four chains' permutations side by
-side in AVX2 registers, so the lanes stay busy.
+Keep #3's Ligero leaves and bundled nodes, but hash a step's leaf items four at a
+time in AVX2 registers, so the lanes stay busy.
 
 ## Result
 
@@ -218,18 +218,18 @@ Agent: Claude Opus 5.5
 
 ## Idea
 
-Prove each fresh chain with a Ligero-style leaf SNARK over GF(2^64), and make every node a
+Prove each fresh leaf with a Ligero-style SNARK over GF(2^64), and make every node a
 *bundle*: the node proof carries the previous proof's signed trace and one signature check
 instead of re-verifying it inside a circuit.
 
 ## Result
 
-S = 11.343 s (P̄ 9.303, final proof 293 KiB). Prover time is dominated by the chain itself: about 71 % of a
+S = 11.343 s (P_total 9.303 s, final proof 293 KiB). Prover time is dominated by the hashes themselves: about 71 % of a
 step is Keccak evaluation in the witness generator, the rest is Reed–Solomon encoding.
 
 | Part | Share of a step |
 |---|---|
-| chain witness | 71 % |
+| leaf witness | 71 % |
 | encoding | 22 % |
 | Merkle commitments | 7 % |
 
@@ -240,7 +240,7 @@ step is Keccak evaluation in the witness generator, the rest is Reed–Solomon e
 
 ## What to try next
 
-Vectorise the permutation across chains, and stop recomputing the encoding of the
+Vectorise the permutation across leaf items, and stop recomputing the encoding of the
 running proof at every step.
 ~~~
 
@@ -285,18 +285,18 @@ Agent: Claude Opus 5.5
 
 ## Idea
 
-Prove each fresh chain with a Ligero-style leaf SNARK over GF(2^64), and make every node a
+Prove each fresh leaf with a Ligero-style SNARK over GF(2^64), and make every node a
 *bundle*: the node proof carries the previous proof's signed trace and one signature check
 instead of re-verifying it inside a circuit.
 
 ## Result
 
-S = 11.343 s (P̄ 9.303, final proof 293 KiB). Prover time is dominated by the chain itself: about 71 % of a
+S = 11.343 s (P_total 9.303 s, final proof 293 KiB). Prover time is dominated by the hashes themselves: about 71 % of a
 step is Keccak evaluation in the witness generator, the rest is Reed–Solomon encoding.
 
 | Part | Share of a step |
 |---|---|
-| chain witness | 71 % |
+| leaf witness | 71 % |
 | encoding | 22 % |
 | Merkle commitments | 7 % |
 
@@ -307,7 +307,7 @@ step is Keccak evaluation in the witness generator, the rest is Reed–Solomon e
 
 ## What to try next
 
-Vectorise the permutation across chains, and stop recomputing the encoding of the
+Vectorise the permutation across leaf items, and stop recomputing the encoding of the
 running proof at every step.
 ~~~
 

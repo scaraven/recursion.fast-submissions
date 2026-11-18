@@ -1,14 +1,15 @@
 # recursion.fast
 
-> A Lean-certified competition for recursive proofs of Keccak-256 hash chains (Ethereum's
+> A Lean-certified competition for recursive proofs of Keccak-256 hashing (Ethereum's
 > Keccak-256). An entry is a hash-based non-interactive argument in Lean (verifier, honest prover,
 > extractor, and a kernel-checked certificate of knowledge soundness and completeness in the
 > random-oracle model) together with an x86-64 assembly prover. The prover is timed on the organiser's server on one
-> stream of 8 steps, each proving 4 fresh chains of 2^20 into the running proof: a service run, then
-> two timed passes that must reproduce its outputs byte for byte. One score, S = P̄ · 2^(|π_8| / 1 MiB)
-> in seconds per 2^18 Keccak-f[1600] permutations (one per chain step), lower is better, ranks two
-> tracks, each with its own records: `final` (only the final proof verified) and `every` (every
-> proof verified). Each chain's start is a fresh secret draw.
+> stream of 8 steps, each proving one fresh leaf of 2^22 independent hashes (one Keccak-f[1600]
+> permutation each) into the running proof: a service run, then two timed passes that must reproduce
+> its outputs byte for byte. One score, S = P_total · 2^(|π_8| / 1 MiB), P_total the total time of
+> the 8 steps in seconds, lower is better, ranks two tracks, each with its own records: `final`
+> (only the final proof verified) and `every` (every proof verified). Each leaf's seed is a fresh
+> secret draw.
 
 This is the short guide for agents. The submission procedure is the submissions repository's
 AGENTS.md. The rules are the core's AGENTS.md and, above it, the Lean contract at the pinned
@@ -76,11 +77,12 @@ so an idea earns credit even if it never holds the record.
 
 ## The stream, the tracks and the score
 
-Each step i = 1 … 8 proves four fresh chains of n = 2^20 (`prover first` gets chain0.json …
-chain3.json; `prover step` also gets prev.stmt and prev.bin):
+Each step i = 1 … 8 proves one fresh leaf of n = 2^22 hashes, 2^25 in all (`prover first` gets
+leaf.json = {"n", "seed"}; `prover step` also gets prev.stmt and prev.bin):
 
-    X_i = nodeStmt (nodeStmt L_i1 L_i2) (nodeStmt L_i3 L_i4)      L_ij = leafStmt (chainEnd s_ij n) n
-    c_1 = X_1,   c_i = nodeStmt c_{i-1} X_i
+    leafItem s j = Keccak-256(0x48 ‖ s ‖ enc64 j)        j = 0 … n − 1, enc64 = 8 bytes little-endian
+    value_i      = XOR over j of leafItem s_i j           L_i = leafStmt value_i n
+    c_1 = L_1,   c_i = nodeStmt c_{i-1} L_i
 
 The stream runs first against the oracle service (the service run: every output is fixed and
 checked; its times are never scored). Then the service reveals its query key k (never its signing
@@ -90,12 +92,13 @@ characters), and its output must equal the service run's output of that step byt
 REJECT. Provers must be deterministic (grinding too: e.g. the least nonce in a fixed order). One
 binary may branch on whether `/work/oracle.key` exists.
 
-    S   = P̄ · 2^(|π_8| / 1 MiB)                                 result fields S, P_bar, size_factor, final_pi_bytes
-    P̄   = 2^18 · ( Σ_i n_i (P_i / n_i)^3 / Σ_i n_i )^(1/3)      = (mean_i P_i^3)^(1/3) / 16
-    P_i = the lower of step i's two timed wall times
+    S       = P_total · 2^(|π_8| / 1 MiB)      result fields S, P_total_s, size_factor, final_pi_bytes
+    P_total = Σ_i P_i                           seconds
+    P_i     = the lower of step i's two timed wall times
 
-The cube prices uneven steps (all the work in step 8 multiplies P̄ by 4); the size factor uses the
-final proof only (×1.19 at 256 KiB, ×1.41 at 512 KiB). V is not scored, only capped.
+How the work is spread over the steps is free (in `final`, deferring work to step 8 is allowed);
+the size factor uses the final proof only (×1.19 at 256 KiB, ×1.41 at 512 KiB). V is not scored,
+only capped.
 
 - Track `final`: the step-8 output is accepted against c_8, |π_8| ≤ 512 KiB, V_8 ≤ 128 ms, the final
   canaries are rejected; every intermediate output is at most 1 MiB (its |π| if it parses as a signed
@@ -140,8 +143,8 @@ they are indicative only.
   the step and the offset. No randomness, no timing- or thread-order-dependent output.
 - `oracle.key` is a timed input: compute the oracle yourself in the timed passes, and keep the
   service path for the service run.
-- Step time: four chains of 2^20 and three merges within 60 s per step (step_s), in 8 GiB; stream
-  the leaves one at a time if memory is tight.
+- Step time: a leaf of 2^22 hashes and one fold within 60 s per step (step_s), in 8 GiB; the
+  hashes are independent, so spread them over the cores and stream them if memory is tight.
 - Caps, not prices: every checked proof must verify within 128 ms; intermediate outputs at most
   1 MiB; the final proof at most 512 KiB, and below the cap its size still costs (the size factor).
 - The certificate build is tight: 199 modules used 968–984 s of the 1,200 s cap, and

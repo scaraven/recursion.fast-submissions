@@ -153,7 +153,7 @@ def make_result(run_id, verdict="ACCEPT", S=1.0, comparable=True, harness=PIN, p
     r = {"schema": "recursion.fast/v6/result-1", "verdict": verdict, "comparable": comparable,
          "truncated": not comparable and machine_ok, "harness_commit": harness, "job": f"{REPO}/actions/runs/{run_id}/attempts/1",
          "machine": {"fingerprint": fp if machine_ok else "e" * 64, "expected": fp, "matches": machine_ok and stream},
-         "stream": {"shape": {"M": 8, "chains": 4, "n": 1 << 20}, "truncated": not comparable and machine_ok} if stream else None,
+         "stream": {"shape": {"M": 8, "n": 1 << 22}, "truncated": not comparable and machine_ok} if stream else None,
          "runner": {"name": "rf-bench-1", "environment": "self-hosted", "labels": ["rf-bench"]},
          "reasons": ([] if verdict == "ACCEPT" else ["the entry failed: `boom` @someone"] if machine_ok else
                      [f"organiser ERROR: the machine fingerprint is mismatched (fingerprint {'e' * 64}, the season expects {fp})"]),
@@ -166,7 +166,7 @@ def make_result(run_id, verdict="ACCEPT", S=1.0, comparable=True, harness=PIN, p
         if legacy:
             r["score"] = {"S": S, "P_bar": S * 0.8, "V_bar": S * 0.2, "M": 96, "c_P": 1.0}
         else:
-            r["score"] = {"S": S, "P_bar": S / f, "size_factor": f, "final_pi_bytes": pi, "M": 8, "c_P": 1.0,
+            r["score"] = {"S": S, "P_total_s": S / f, "size_factor": f, "final_pi_bytes": pi, "M": 8, "c_P": 1.0,
                           "tracks": {"final": "S", "every": "S"} if every else {"final": "S"}}
             if not every:
                 r["score"]["tracks_reason"] = {"every": "output 3 rejected by acc"}
