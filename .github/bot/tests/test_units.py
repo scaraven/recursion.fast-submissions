@@ -1,4 +1,5 @@
 import json
+import os
 import re
 import subprocess
 import unittest
@@ -596,6 +597,85 @@ class Render(unittest.TestCase):
         r = json.loads(render.records_json(st, "c" * 40))       # another pin: no standing record, the history kept
         self.assertEqual((r["record"], [h["pr"] for h in r["history"]["final"]], [h["pr"] for h in r["history"]["every"]]),
                          ({"final": None, "every": None}, [2, 1], [2]))
+
+
+class Seasons(unittest.TestCase):
+    """Archived seasons (common.ARCHIVED_SEASONS): derived from the attested pin of each entry."""
+    OLD = "a" * 40
+
+    def setUp(self):
+        self.saved = common.ARCHIVED_SEASONS
+        common.ARCHIVED_SEASONS = ({"id": "season-1", "title": "Season 1: old rules", "dir": "archive/season-1",
+                                    "tracks": ["sum", "product"], "pins": [self.OLD]},)
+
+    def tearDown(self):
+        common.ARCHIVED_SEASONS = self.saved
+
+    def state(self):
+        st = rfqueue.empty("o/r", PIN)
+        st["submissions"] = [
+            E(1, 1, "a", "record", harness_commit=self.OLD, finished="2026-01-05", tag="rf-source/a", record_in=["sum"],
+              notes="notes/1.md", score={"S": 2.0}),
+            E(2, 2, "b", "record", harness_commit=self.OLD, finished="2026-01-06", tag="rf-source/b", record_in=["final"],
+              notes="notes/2.md"),
+            E(3, 3, "c", "invalid", finished="2026-01-04"),                       # closed in season 1
+            E(4, 4, "d", "superseded", finished="2026-01-07", notes="notes/4.md"),  # closed after its last evaluation
+            E(5, 5, "e", "queued", queued="2026-01-01"),                          # waiting: always current
+            E(6, 6, "f", "record", harness_commit=PIN, finished="2026-01-08", record_in=["final"], notes="notes/6.md",
+              score={"S": 3.0, "tracks": {"final": "S"}})]
+        return st
+
+    def test_season_of_and_dump(self):
+        st = self.state()
+        self.assertEqual([rfqueue.season_of(st, e) for e in st["submissions"]],
+                         ["season-1", "season-1", "season-1", None, None, None])
+        self.assertIsNone(common.season_of_pin(PIN))
+        out = json.loads(rfqueue.dump(st))
+        self.assertEqual([e.get("season") for e in out["submissions"]], ["season-1", "season-1", "season-1", None, None, None])
+        self.assertEqual((out["seasons"][0]["id"], out["seasons"][0]["dir"], out["seasons"][0]["pins"]),
+                         ("season-1", "archive/season-1", [self.OLD]))
+        self.assertFalse(rfqueue.load(rfqueue.dump(st), "o/r", PIN)["_stale"])
+        common.ARCHIVED_SEASONS = ()                                           # a season is archived later: rewritten
+        self.assertTrue(rfqueue.load(json.dumps(out).encode(), "o/r", PIN)["_stale"])
+        self.assertNotIn("season", json.loads(rfqueue.dump(self.state()))["submissions"][0])
+
+    def test_archived_records_never_stand_and_are_not_ported(self):
+        st = self.state()
+        self.assertIsNone(rfqueue.current_record(st, self.OLD, "final"))      # that season is over
+        self.assertIsNone(rfqueue.current_record(st, self.OLD, "sum"))
+        self.assertEqual(rfqueue.current_record(st, PIN, "final")["pr"], 6)
+        st["submissions"].pop()                                               # no current record: none ported either
+        self.assertEqual((rfqueue.standing(st, PIN)["final"], rfqueue.due_ports(st, PIN)), (None, {}))
+        r = json.loads(render.records_json(st, PIN))
+        self.assertEqual(([h["pr"] for h in r["history"]["final"]], r["seasons"][0]["id"]), ([2], "season-1"))
+
+    def test_journals(self):
+        st = self.state()
+        body = {"notes/1.md": b"one", "notes/2.md": b"two", "notes/4.md": b"four", "notes/6.md": b"six"}
+        cur = render.notes_md(st, body.get, "o/r").decode()
+        arc = render.notes_archive_md(st, body.get, "o/r").decode()
+        self.assertIn("six", cur)
+        self.assertNotIn("one", cur)
+        self.assertIn("`notes-archive.md`", cur)
+        self.assertIn("## season-1: Season 1: old rules", arc)
+        self.assertIn("not comparable with the current season's", arc)
+        self.assertIn("### pr1-000000000001 · r · @a · record · S = 2.0000 (sum) · archived: season-1", arc)
+        self.assertLess(arc.index("pr2-"), arc.index("pr1-"))                 # newest first
+        self.assertNotIn("six", arc)
+        common.ARCHIVED_SEASONS = ()
+        self.assertNotIn("notes-archive", render.notes_md(st, body.get, "o/r").decode())
+        self.assertIn("No archived notes.", render.notes_archive_md(st, body.get, "o/r").decode())
+
+    def test_the_repository_season_table(self):
+        common.ARCHIVED_SEASONS = self.saved
+        for x in common.ARCHIVED_SEASONS:
+            self.assertTrue(common.SEASON_RE.match(x["id"]) and all(common.SHA_RE.match(p) for p in x["pins"]))
+            self.assertTrue(x["dir"].startswith("archive/"))
+        top = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+        cur, _ = pin.read(top)
+        self.assertIsNotNone(cur)
+        for x in common.ARCHIVED_SEASONS:
+            self.assertTrue(os.path.isdir(os.path.join(top, x["dir"])), x["dir"])
 
 
 class Pin(unittest.TestCase):

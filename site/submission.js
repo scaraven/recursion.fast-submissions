@@ -31,8 +31,8 @@
   }
 
   function render(e, data) {
-    const rel = RF.relations(data.subs);
-    const nm = RF.nameOf(data.subs);
+    const rel = RF.relations(data.all);
+    const nm = RF.nameOf(data.all);
     const subLink = (x, label) => el('a', { href: page('submission.html', { id: x.id }) }, label || nm(x));
     document.title = (e.root || e.id) + ' · recursion.fast';
     const box = document.getElementById('detail');
@@ -47,6 +47,30 @@
         e.verdict ? el('span', null, 'verdict ' + e.verdict) : null,
         el('span', null, RF.STATUS_INFO[e.status][1])),
       e.title ? el('p', { class: 'title' }, el('span', { class: 'muted' }, 'Pull request title (written by the submitter): '), e.title) : null));
+
+    // an archived season's entry: its numbers are that season's, not the current season's
+    if (e.season) {
+      const sn = (data.seasons || []).find(x => x.id === e.season) || { id: e.season, title: e.season, dir: null, pins: [] };
+      const fields = sc => {
+        if (!sc) return [];
+        const names = sc.tracks || { sum: 'S' };
+        const out = [];
+        for (const [t, f] of Object.entries(names)) {
+          if (typeof sc[f] !== 'number') continue;
+          const g = out.find(x => x[0] === f);
+          if (g) g[2].push(t); else out.push([f, sc[f], [t]]);
+        }
+        return out;
+      };
+      const scores = fields(e.score).map(([f, v, ts]) => `${f} = ${fmtS(v)} s (${ts.join(', ')})`).join(', ');
+      parts.push(el('p', { class: 'archived-banner', role: 'note' },
+        el('strong', null, `Archived: ${sn.id} rules. `),
+        `${sn.title}. This entry was evaluated under that season's rules, which no longer run: its verdict, scores and records are reference only and are not comparable with the current season's. `,
+        scores ? `Its score then: ${scores}. ` : '',
+        e.record_in.length ? `It took the record of ${e.record_in.join(' and ')} in that season. ` : '',
+        el('a', { href: page('archive.html') + '#' + sn.id }, 'The archive'),
+        sn.dir ? [' · ', ext(link.mainDir(sn.dir), 'its record roots on main')] : null));
+    }
 
     // numbers: each track's score, with its components and its comparison with the track's record
     // (v6: one S in both tracks, or in `final` only; the reasons say why not in `every`)
@@ -199,7 +223,7 @@
       return;
     }
     RF.footer(data);
-    const e = data.subs.find(x => x.id === id);
+    const e = data.all.find(x => x.id === id);
     if (!e) {
       message('Not in the published data', ['Submission ', el('code', null, id), ' is not in submissions.json. A pull request opened a moment ago appears after the bot’s next update. ',
         el('a', { href: page('index.html') + '#submissions' }, 'See all submissions'), '.']);

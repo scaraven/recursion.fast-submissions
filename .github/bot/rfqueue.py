@@ -9,7 +9,8 @@ import datetime
 import json
 
 from common import (ENTRY_PROOF_ERRORS, UNCOUNTED_ERRORS, FINAL, MARGIN, MAX_ATTEMPTS, MAX_HEADS_PER_PR,
-                    PAUSE_AFTER, QUEUED, RUNNING, STATUSES, STREAK_CAP, STREAK_WINDOW_S, TRACK_RE, TRACKS, now_iso)
+                    PAUSE_AFTER, QUEUED, RUNNING, STATUSES, STREAK_CAP, STREAK_WINDOW_S, TRACK_RE, TRACKS, archived_seasons,
+                    now_iso, season_of_pin)
 
 EVALUATED = ("record", "retired", "accepted", "unranked", "provisional", "rejected", "error")
 
@@ -54,7 +55,8 @@ def load(raw, repo, pin):
         migrate_v1(st)
     # `stale`: the stored pin, parameters or format are not the current ones (a pin move); the next
     # writer rewrites the file even if no entry changed, so readers see the pin and its records at once
-    stale = (st.get("core"), st.get("margin")) != (pin, MARGIN) or "record_wins" in st or old
+    stale = ((st.get("core"), st.get("margin")) != (pin, MARGIN) or "record_wins" in st or old
+             or st.get("seasons") != seasons_meta() or seasons_stale(st))
     st.pop("record_wins", None)
     st.pop("fingerprint_errors", None)          # an older state's counter: `error_streak` replaces it
     st["core"], st["margin"] = pin, MARGIN
@@ -62,9 +64,53 @@ def load(raw, repo, pin):
     return st
 
 
+def season_of(st, e, _until=None):
+    """The archived season `e` belongs to (common.ARCHIVED_SEASONS), or None (the current season):
+    the season of its `harness_commit`; for an entry never evaluated at a pin (invalid, superseded,
+    withdrawn, an ERROR without a result), the archived season in which it was closed, i.e. no later
+    than that season's last evaluation. Waiting and running entries are always current."""
+    if e.get("harness_commit"):
+        return season_of_pin(e["harness_commit"])
+    if e.get("status") in (QUEUED, RUNNING) or not e.get("finished"):
+        return None
+    until = _until if _until is not None else season_ends(st)
+    return next((x["id"] for x in archived_seasons() if e["finished"] <= until.get(x["id"], "")), None)
+
+
+def seasons_stale(st):
+    """Whether some entry's stored `season` is not the derived one (a season was archived since)."""
+    until = season_ends(st)
+    return any(e.get("season") != season_of(st, e, until) for e in st["submissions"])
+
+
+def season_ends(st):
+    """{season: the newest `finished` of an entry evaluated at its pins}."""
+    out = {}
+    for e in st["submissions"]:
+        sid = season_of_pin(e.get("harness_commit")) if e.get("harness_commit") else None
+        if sid and (e.get("finished") or "") > out.get(sid, ""):
+            out[sid] = e["finished"]
+    return out
+
+
+def seasons_meta():
+    """The archived seasons for readers (the site): id, title, the directory of their record roots
+    on `main`, their tracks and pins."""
+    return [{k: x[k] for k in ("id", "title", "dir", "tracks", "pins")} for x in archived_seasons()]
+
+
 def dump(st, clock=None):
     st.pop("_stale", None)
     st["updated"] = now_iso(clock)
+    # derived on every write, never set by hand: each entry's archived season (or none)
+    until = season_ends(st)
+    for e in st["submissions"]:
+        sid = season_of(st, e, until)
+        if sid:
+            e["season"] = sid
+        else:
+            e.pop("season", None)
+    st["seasons"] = seasons_meta()
     # the standing record of each track at the pin, for readers (the site)
     st["record"] = {t: (r["id"] if r else None) for t, r in standing(st, st.get("core")).items()}
     return (json.dumps(st, indent=1, ensure_ascii=False, sort_keys=False) + "\n").encode()
@@ -322,7 +368,10 @@ def current_record(st, pin, track):
     """The standing record of `track`: the newest record of the track taken at this pin
     (`harness_commit == pin`), unless it was retired in that track (a retired record never stands
     again). A record of an earlier pin stays in the history; with none standing, the first
-    comparable attested ACCEPT at the pin is the track's record."""
+    comparable attested ACCEPT at the pin is the track's record. No record stands at a pin of an
+    archived season (common.ARCHIVED_SEASONS): that season is over."""
+    if season_of_pin(pin):
+        return None
     newest = next((e for e in records(st, track) if e.get("harness_commit") == pin), None)
     return newest if newest is not None and not retired_in(newest, track) else None
 
@@ -389,8 +438,8 @@ def due_ports(st, pin):
     """{track: the record to port to this pin}, for each track of TRACKS with no record standing at
     the pin whose newest record is of an earlier pin, was not retired in that track, and has not been
     ported here yet (a port evaluated once, whatever its verdict, is not repeated). A track not in
-    TRACKS (an earlier season's) is never ported: its records stay in the history, and the new
-    season starts with no record in it."""
+    TRACKS (an earlier season's), or a record of an archived season, is never ported: its records
+    stay in the history, and the new season starts with no record in it."""
     out = {}
     for t, cur in standing(st, pin).items():
         if t not in TRACKS:
@@ -398,6 +447,7 @@ def due_ports(st, pin):
         rs = records(st, t)
         o = rs[0] if rs else None
         if cur is not None or o is None or retired_in(o, t) or o.get("harness_commit") == pin \
+                or season_of_pin(o.get("harness_commit")) \
                 or not o.get("tag") or find(st, port_id(o, pin)) is not None:
             continue
         out[t] = o

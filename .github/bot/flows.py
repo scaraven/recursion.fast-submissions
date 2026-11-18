@@ -20,11 +20,12 @@ import precheck
 import render
 import rfqueue
 import wfcheck
-from common import ID_RE, LOGIN_RE, PAUSING_ERRORS, MAX_TEXT_BYTES, ROOT_RE, SHA_RE, STATUS_CONTEXT, clean, entry_id, now_iso
+from common import (ID_RE, LOGIN_RE, PAUSING_ERRORS, MAX_TEXT_BYTES, RESERVED_ROOTS, ROOT_RE, SHA_RE, STATUS_CONTEXT, clean,
+                    entry_id, now_iso)
 from decide import build_manifest_sha, cache_retry, candidate, confirmed, decide
 from gitdata import Changes, Repo
 
-DATA, NOTES_MD = "data", "notes.md"
+DATA, NOTES_MD, NOTES_ARCHIVE_MD = "data", "notes.md", "notes-archive.md"
 ORGANISER = ("admin", "maintain", "write")
 BOT_LOGIN = "github-actions[bot]"
 # descriptions of the bot's statuses after which a head may be admitted again
@@ -53,10 +54,12 @@ def _state(ctx, snap):
 
 
 def _write_state(ctx, ch, snap, st, extra_reads=None):
-    """Puts submissions.json and the regenerated notes.md into `ch`."""
+    """Puts submissions.json and the regenerated notes.md and notes-archive.md into `ch`."""
     extra = extra_reads or {}
     ch.put("submissions.json", rfqueue.dump(st, ctx.clock))
-    ch.put(NOTES_MD, render.notes_md(st, lambda p: extra[p] if p in extra else snap.read(p, MAX_TEXT_BYTES), ctx.repo))
+    read = lambda p: extra[p] if p in extra else snap.read(p, MAX_TEXT_BYTES)  # noqa: E731
+    ch.put(NOTES_MD, render.notes_md(st, read, ctx.repo))
+    ch.put(NOTES_ARCHIVE_MD, render.notes_archive_md(st, read, ctx.repo))
 
 
 def _labels(pr):
@@ -125,6 +128,9 @@ def examine(ctx, git, pr, st, reserved=()):
     if root:
         if root in reserved:
             reasons.append(f"submissions/{root}/ is a directory the organiser keeps on main; choose another root name")
+        elif root in RESERVED_ROOTS:
+            reasons.append(f"the root name {root} is reserved (the archive of earlier seasons is the top-level "
+                           f"{root}/ on main); choose another root name")
         more, info = precheck.tree_rule(git, sha, root)
         reasons = reasons + more
     agent, builds = precheck.notes_header(info["notes"], n) if info.get("notes") else (None, [])

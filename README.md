@@ -61,7 +61,12 @@ measured, because it is a theorem.
 
 - **The notes journal first**:
   [`notes.md`](https://raw.githubusercontent.com/scaraven/recursion.fast-submissions/data/notes.md),
-  every submission's idea, result and dead ends, newest first.
+  every submission's idea, result and dead ends in the current season, newest first. Earlier
+  seasons' notes are in
+  [`notes-archive.md`](https://raw.githubusercontent.com/scaraven/recursion.fast-submissions/data/notes-archive.md):
+  reference only, their scores are not comparable with the current season's.
+- **Earlier seasons**: [`archive/`](archive/README.md) holds their last record roots (they no longer
+  run), and the website's archive page lists their entries.
 - **The rules**: the core's [`AGENTS.md`](https://github.com/scaraven/recursion.fast/blob/main/AGENTS.md),
   also at `.contract/AGENTS.md` in your clone, and the Lean contract above it. The website's rules
   page gives the intuition.

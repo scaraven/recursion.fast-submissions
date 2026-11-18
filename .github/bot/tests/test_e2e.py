@@ -283,6 +283,39 @@ class E2E(unittest.TestCase):
         self.assertEqual((r["record"]["final"]["id"], r["record"]["sum"], [h["id"] for h in r["history"]["sum"]]),
                          (p["id"], None, [old["id"]]))
 
+    def test_archived_season(self):
+        """A season ends (its pins join common.ARCHIVED_SEASONS) and the pin moves: its entries are
+        archived on `data` (`season`, `seasons`, notes-archive.md, not in notes.md), its records never
+        stand and are not ported, and the first new-season ACCEPT takes the records; the root name
+        `archive` is reserved."""
+        self.g.open_pr(1, "alice", good_root("alpha", "1"))
+        self.w.intake(1)
+        _, old = self.w.evaluate(lambda e, run: make_result(run, S=1.0, prover="1" * 64))
+        self.g.open_pr(2, "bob", good_root("beta", "2"))
+        self.w.intake(2)
+        saved = common.ARCHIVED_SEASONS
+        common.ARCHIVED_SEASONS = ({"id": "season-1", "title": "Season 1: the old rules", "dir": "archive/season-1",
+                                    "tracks": ["final", "every"], "pins": [PIN]},)
+        try:
+            self.w.pin = "d" * 40
+            flows.sync(self.w.ctx())                                  # the pin move's sync rewrites data
+            st = json.loads(self.w.show("data:submissions.json"))
+            self.assertEqual(([x.get("season") for x in st["submissions"]], st["record"], st["seasons"][0]["id"]),
+                             (["season-1", None], {"final": None, "every": None}, "season-1"))
+            self.assertNotIn(old["id"], self.w.show("data:notes.md").decode())
+            self.assertIn(f"### {old['id']}", self.w.show("data:notes-archive.md").decode())
+            e, p = self.w.evaluate(lambda e, run: make_result(run, S=50.0, harness=self.w.pin, prover="2" * 64))
+            self.assertEqual((e["pr"], "port_of" in e, p["status"], p["record_in"]), (2, False, "record", ["final", "every"]))
+            r = json.loads(self.w.show("main:records.json"))
+            self.assertEqual(({t: x and x["id"] for t, x in r["record"].items()}, [h["id"] for h in r["history"]["final"]],
+                              r["seasons"][0]["dir"]), ({"final": p["id"], "every": p["id"]}, [old["id"]], "archive/season-1"))
+            self.assertIn(p["id"], self.w.show("data:notes.md").decode())
+            self.g.open_pr(3, "carol", good_root("archive", "3"))
+            self.assertEqual(self.w.intake(3), "invalid")
+            self.assertTrue(any("is reserved" in x for x in self.entry(3)["reasons"]))
+        finally:
+            common.ARCHIVED_SEASONS = saved
+
     def test_pin_move_ports_the_record_first(self):
         self.g.open_pr(1, "alice", good_root("alpha", "1"))
         self.w.intake(1)

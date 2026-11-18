@@ -38,6 +38,35 @@ MARGIN = 0.02
 TRACKS = ("final", "every")
 LEGACY_TRACKS = {"sum": "S"}
 TRACK_RE = re.compile(r"[a-z][a-z0-9_]{0,15}\Z")
+# Archived seasons (README.md, "A new season"): earlier rules, kept as reference. An entry belongs to
+# an archived season iff its `harness_commit` (the attested pin it was evaluated at) is one of the
+# season's `pins`; an entry never evaluated (invalid, superseded, withdrawn, no result) iff it was
+# closed no later than the season's last evaluation (rfqueue.season_of). A record of an archived
+# season never stands and is never ported; its entries are listed apart (`season` on each entry in
+# submissions.json, `seasons` at the top; `notes-archive.md` on `data`; the site's archive page),
+# and its record roots are on `main` under `dir`. The pins are the core commits `.contract` pinned
+# before the v6 rules (git log -- .contract). The current season is every other pin.
+ARCHIVED_SEASONS = (
+    {"id": "season-1", "title": "Season 1: the v4 and v5 rules (hash chains; the sum and product tracks)",
+     "dir": "archive/season-1", "tracks": ["sum", "product"],
+     "pins": ["77e550b54c23383204164c04e69176fa088a1af6", "15e4ae5eaba6a65211668c6e0f55f9fea1d9050d",
+              "df1f3448f9ec181ce1fcae43964fd11301f653bf", "f3538eb2a198240d864eb773331a88bf16283688",
+              "7ecd179d4eabdda97e7caba492810dfc9c2ce9db"]},
+)
+SEASON_RE = re.compile(r"season-[1-9][0-9]{0,3}\Z")
+# root names no entry may take (besides the roots the organiser keeps under submissions/ on main):
+# `archive` would read as the archive of earlier seasons, which is the top-level archive/
+RESERVED_ROOTS = ("archive",)
+
+
+def archived_seasons():
+    """ARCHIVED_SEASONS (read at call time, so a test or the simulation may replace it)."""
+    return ARCHIVED_SEASONS
+
+
+def season_of_pin(pin):
+    """The id of the archived season whose pins include `pin`, or None (the current season)."""
+    return next((x["id"] for x in archived_seasons() if pin in x["pins"]), None)
 MAX_ATTEMPTS = 2          # an organiser-side ERROR is evaluated once more, then left for the owner
 # Organiser errors the core names in a result (`organiser_error`), and `attestation`, which the bot
 # gives a result whose provenance does not verify (nothing an entry runs can reach the attest job).
