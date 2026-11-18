@@ -19,8 +19,10 @@ STATUS_CONTEXT = "recursion.fast/evaluation"
 # S_record are two independent runs, so two runs of one entry differ by about √2·σ ≈ 2.5 %: a
 # near-copy of the record can beat it by noise alone (at σ = 1.75 %, in roughly one attempt in
 # five). A noise-proof margin would be 3·√2·σ ≈ 7.4 %.
-# The defences are elsewhere: a byte copy of an evaluated root is invalid, a record's prover binary
-# never takes the record again, and the owner retires a record won by noise (`retire`). The owner may
+# The defences are elsewhere: a record candidate is confirmed by a second run of the same commit that
+# must also beat the record, and the record keeps the worse score (decide.confirmed); a byte copy of
+# an evaluated root is invalid, a record's prover binary never takes the record again, and the owner
+# retires a record won by noise (`retire`). The owner may
 # change MARGIN between seasons (a stored state with another margin is rewritten at once,
 # rfqueue.load; README.md, "Changing the margin", lists every place that states it).
 MARGIN = 0.02

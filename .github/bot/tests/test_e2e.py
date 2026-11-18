@@ -397,6 +397,86 @@ class E2E(unittest.TestCase):
         self.w.evaluate(lambda e, run: make_result(run, S=1.0, prover="2" * 64), force=2)
         self.assertIsNone(self.w.state().get("paused"))
 
+    def test_confirmation_crowns_with_the_worse_score(self):
+        """A record candidate is not crowned at once: the same commit runs once more at the pin,
+        before the queue and whatever its pull request does meanwhile; both runs beat the record, so
+        it is the record, with the worse (larger) of the two scores. The confirmation is not a new
+        submission: one entry, its first counted start kept."""
+        rec = self.record_at()
+        self.g.open_pr(2, "bob", good_root("r2", "2"))
+        self.w.intake(2)
+        self.g.open_pr(3, "carol", good_root("r3", "3"))
+        self.w.intake(3)
+        e, p = self.w.evaluate(self.win(S=8.0), confirm=False)
+        self.assertEqual((e["pr"], p["status"], p["record_in"], p["confirm"]["took"], p["attempts"]),
+                         (2, "queued", [], ["final", "every"], 0))
+        self.assertTrue(any("confirmation run" in r for r in p["reasons"]))
+        self.assertIn("record candidate (final, every), confirmation queued", self.head_status(2)["description"])
+        self.assertTrue(any("record candidate, confirmation queued" in c[1] for c in self.g.comments))
+        r = json.loads(self.w.show("main:records.json"))
+        self.assertEqual(r["record"]["final"]["id"], rec["id"])               # not crowned yet
+        counted, sha0 = self.entry(2)["counted_at"], p["sha"]
+        self.g.push(2, good_root("r2", "2b"))                                 # a push does not cancel the confirmation
+        self.w.intake(2)
+        e, p = self.w.evaluate(self.win(S=8.6))                               # the confirmation runs next
+        self.assertEqual((e["pr"], e["sha"], p["status"], p["record_in"]), (2, sha0, "record", ["final", "every"]))
+        self.assertEqual((common.track_scores(p["score"]), p["record_of"]["final"], p["counted_at"]),
+                         ({"final": 8.6, "every": 8.6}, rec["id"], counted))
+        self.assertTrue(any(x.startswith("confirmed:") for x in p["reasons"]))
+        self.assertEqual((p["confirmation"]["status"], p["result"], p["confirmation"]["result"]),
+                         ("record", f"results/{p['id']}.json", f"results/{p['id']}-confirm.json"))
+        self.assertIsNotNone(self.w.show(f"data:results/{p['id']}-confirm.json"))
+        self.assertNotIn("confirm", p)
+        r = json.loads(self.w.show("main:records.json"))
+        self.assertEqual((r["record"]["final"]["id"], r["record"]["final"]["score"]["S"]), (p["id"], 8.6))
+        self.assertEqual([x["status"] for x in self.w.state()["submissions"] if x["pr"] == 2], ["record", "queued"])
+        e, _ = self.w.evaluate(lambda e, run: make_result(run, "REJECT", harness=self.w.pin))
+        self.assertEqual(e["pr"], 3)                                          # then the fair order
+
+    def test_confirmation_that_does_not_beat_is_accepted(self):
+        """A confirmation that does not beat the standing record by the margin (or is not an
+        ACCEPT) leaves the candidate `accepted`, and the comment says why."""
+        rec = self.record_at()
+        self.g.open_pr(2, "bob", good_root("r2", "2"))
+        self.w.intake(2)
+        e, p = self.w.evaluate(self.win(S=9.0), again=self.win(S=9.9))
+        self.assertEqual((e["pr"], p["status"], p["record_in"], p["record_of"]["final"]), (2, "accepted", [], None))
+        self.assertEqual(common.track_scores(p["score"])["final"], 9.9)          # the worse run
+        self.assertTrue(any("did not confirm it: it does not beat the standing record" in x for x in p["reasons"]))
+        self.assertTrue(any("did not confirm it" in c[1] for c in self.g.comments))
+        self.assertEqual(json.loads(self.w.show("main:records.json"))["record"]["final"]["id"], rec["id"])
+        self.g.open_pr(3, "carol", good_root("r3", "3"))
+        self.w.intake(3)
+        e, p = self.w.evaluate(self.win(S=8.0, prover="3" * 64),
+                               again=lambda e, run: make_result(run, "REJECT", harness=self.w.pin))
+        self.assertEqual((e["pr"], p["status"], p["verdict"], p["record_in"]), (3, "accepted", "REJECT", []))
+        self.assertTrue(any("its verdict is REJECT" in x for x in p["reasons"]))
+
+    def test_confirmation_error_is_requeued_like_a_port(self):
+        """A confirmation that ends on the organiser's side stays pending: re-queued in front (a
+        fingerprint ERROR without using up an attempt, another ERROR once), then left in `error`
+        for the owner, whose forced run confirms it."""
+        rec = self.record_at()
+        for n, who in ((2, "bob"), (3, "carol")):
+            self.g.open_pr(n, who, good_root(f"r{n}", str(n)))
+            self.w.intake(n)
+        e, p = self.w.evaluate(self.win(S=8.0), confirm=False)
+        self.assertEqual((e["pr"], p["status"]), (2, "queued"))
+        off = lambda e, run: make_result(run, S=1.0, harness=self.w.pin, prover="2" * 64, machine_ok=False)  # noqa: E731
+        e, p = self.w.evaluate(off)
+        self.assertEqual((e["pr"], p["status"], p["attempts"], p["confirm"]["took"]), (2, "queued", 0, ["final", "every"]))
+        self.assertEqual(self.w.show(f"data:results/{p['id']}.json") is not None, True)
+        self.assertEqual(json.loads(self.w.show(f"data:results/{p['id']}.json"))["verdict"], "ACCEPT")   # the first run's
+        bad = lambda e, run: make_result(run, "ERROR", harness=self.w.pin)  # noqa: E731
+        e, p = self.w.evaluate(bad)
+        self.assertEqual((e["pr"], p["status"], p["attempts"]), (2, "queued", 1))      # retried once, still first
+        e, p = self.w.evaluate(bad, force=3)                                            # first even when another PR is forced
+        self.assertEqual((e["pr"], p["status"]), (2, "error"))
+        self.assertIn("confirmation waiting on the organiser", self.head_status(2)["description"])
+        self.assertEqual(json.loads(self.w.show("main:records.json"))["record"]["final"]["id"], rec["id"])
+        e, p = self.w.evaluate(self.win(S=8.4), force=2)                                # the owner's forced run
+        self.assertEqual((e["pr"], p["status"], common.track_scores(p["score"])["final"]), (2, "record", 8.4))
+
     def test_machine_mismatch_is_an_organiser_error_that_keeps_its_place(self):
         """Another machine's fingerprint is the organiser's ERROR: re-queued in its place
         without using up an attempt, never counted; two in a row pause the queue with one owner

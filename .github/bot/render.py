@@ -58,6 +58,12 @@ def status_for(e):
         d += ", " + scores_text(e.get("score"))
     if st == "queued" and e.get("verdict"):
         d = f"{e['verdict']}, queued again"
+    c = e.get("confirm") if isinstance(e.get("confirm"), dict) else None
+    if c and st in ("queued", "running", "error"):
+        what = {"queued": "confirmation queued", "running": "confirmation running",
+                "error": "confirmation waiting on the organiser"}[st]
+        d = (f"record candidate ({', '.join(c.get('took') or [])}), {what}, "
+             + scores_text(c.get("score")))
     return STATE.get(st, "error"), ascii_line(d, 140)
 
 
@@ -75,7 +81,9 @@ def intake_comment(e, pos, total):
 def publish_comment(e, run_url):
     st = e["status"]
     s = e.get("score") or {}
-    head = f"**recursion.fast: {e.get('verdict') or 'ERROR'}, {WORDS.get(st, st)}** (`{e['id']}`, [run]({run_url}))"
+    c = e.get("confirm") if isinstance(e.get("confirm"), dict) else None
+    word = "record candidate, confirmation queued" if c and c.get("run_url") == run_url and st == "queued" else WORDS.get(st, st)
+    head = f"**recursion.fast: {e.get('verdict') or 'ERROR'}, {word}** (`{e['id']}`, [run]({run_url}))"
     lines = [head, ""]
     if e.get("verdict") in ("ACCEPT", "PROVISIONAL") and s:
         x = lambda k: num(s.get(k))  # noqa: E731

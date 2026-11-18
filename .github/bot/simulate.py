@@ -225,9 +225,13 @@ class World:
             flows.sync(self.ctx())
         return k
 
-    def evaluate(self, result=None, force=None, retire=None, resume=False, track=None):
+    def evaluate(self, result=None, force=None, retire=None, resume=False, track=None, confirm=True, again=None):
         """select → (the core's evaluation, replaced by `result(entry, run_id)`) → publish.
-        `retire`, `track`: the owner retires that record in that track first."""
+        `retire`, `track`: the owner retires that record in that track first. A record candidate
+        (decide.py) is queued for its confirmation run: with `confirm`, that run follows at once,
+        with the result `again` (default: `result` once more), and the confirmation's published
+        entry is returned with the first run's selected entry; without it, the candidate is left
+        queued."""
         self.run += 1
         ctx = self.ctx(self.run)
         e = flows.select(ctx, force, retire, resume, track)
@@ -240,7 +244,10 @@ class World:
                 path = os.path.join(self.dir, f"result-{self.run}.json")
                 with open(path, "w") as f:
                     json.dump(r, f)
-        return e, flows.publish(ctx, e["id"], path)
+        p = flows.publish(ctx, e["id"], path)
+        if confirm and p and p["status"] == "queued" and (p.get("confirm") or {}).get("run_url") == p.get("run_url"):
+            _e2, p = self.evaluate(again or result, confirm=False)
+        return e, p
 
     def cleanup(self):
         shutil.rmtree(self.dir, ignore_errors=True)
@@ -300,14 +307,28 @@ def main():
         rec = json.loads(w.show("main:records.json"))["record"]
         print("records.json:", {t: r and r["id"] for t, r in rec.items()},
               "main roots:", git(w.bare, "ls-tree", "--name-only", "main", "submissions/").split())
+        # the confirmation (decide.py): a lucky first run that beats the final record is a candidate;
+        # its confirmation run (the same commit, next, at the pin) does not beat it, so no record
+        g.open_pr(15, "ivan", good_root("lucky", "15"))
+        w.intake(15)
+        e, p = w.evaluate(lambda e, run: make_result(run, S=7.6, every=False, prover="6" * 64), confirm=False)
+        print("confirmation: candidate:", e["id"], "->", p["status"], "| took", p["confirm"]["took"], "|", p["reasons"][-1][:60])
+        e, p = w.evaluate(lambda e, run: make_result(run, S=7.95, every=False, prover="6" * 64))
+        print("confirmation: second run:", e["id"], "->", p["status"], p["record_in"], "|", p["reasons"][-1][:110])
+        # and one whose confirmation also beats it: the record, with the worse of the two scores
+        g.open_pr(16, "ivan", good_root("steady", "16"))
+        w.intake(16)
+        e, p = w.evaluate(lambda e, run: make_result(run, S=7.5, every=False, prover="7" * 64),
+                          again=lambda e, run: make_result(run, S=7.7, every=False, prover="7" * 64))
+        print("confirmation: confirmed:", e["id"], "->", p["status"], p["record_in"], "S =", p["score"]["S"])
         # the pin moves within the season: each track's record is ported first and keeps its crown
         # (two ports here, the final's and the every's, each a candidate only in its own track)
         g.open_pr(5, "dave", good_root("eps", "5"))
         w.intake(5)
         w.pin = "c" * 40
-        provers = {6: "e" * 64, 13: "1" * 64}           # a port runs its record's own prover binary
-        for _ in range(2):
-            e, p = w.evaluate(lambda e, run: make_result(run, S=8.0 if e["pr"] == 13 else 9.0, every=e["pr"] != 13,
+        provers = {6: "e" * 64, 16: "7" * 64}           # a port runs its record's own prover binary
+        for _ in range(2):                              # (a port is never confirmed: the organiser's)
+            e, p = w.evaluate(lambda e, run: make_result(run, S=7.7 if e["pr"] == 16 else 9.0, every=e["pr"] != 16,
                                                          harness=w.pin, prover=provers[e["pr"]]))
             print("pin moved; a record is ported first:", e["id"], "->", p["status"], p["record_in"], "| port of", e.get("port_tracks"))
         # an entry that beats both records takes both

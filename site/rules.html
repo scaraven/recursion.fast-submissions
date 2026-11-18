@@ -163,13 +163,18 @@
       2.5&nbsp;%, and a near-copy of a record can beat it by noise. Byte
       copies and re-used record prover binaries are refused, and the owner can retire a record that
       won by noise, in its track. The owner may change the margin between seasons;</li>
-    <li>its prover binary is not one an earlier record of either track already had.</li>
+    <li>its prover binary is not one an earlier record of either track already had;</li>
+    <li>it is <strong>confirmed</strong>: such a result is first a <em>record candidate</em>, and the
+      bot runs the same commit once more at the same pin, before any other entry. The record is
+      taken only if that run too is a comparable, attested ACCEPT that beats the standing record by
+      the margin, and it keeps the <em>worse</em> of the two scores; otherwise the entry is
+      <em>accepted</em>. A lucky run is not enough: the margin must hold twice.</li>
   </ul>
   <p>With no standing record in a track (at the start, after the owner retires that track's record,
     or when its port fails), the first comparable, attested ACCEPT is that track's record. When the
     contract pin moves within a season, the bot first re-runs each track's standing record at the
     new pin (its <em>port</em>; one run when one entry holds both), before any other entry; it keeps
-    that track's crown if it passes. A new season (new tracks or rules) starts with no record: the
+    that track's crown if it passes (a port is not confirmed). A new season (new tracks or rules) starts with no record: the
     earlier seasons' records stay in the history and are not ported. The machine may change between seasons, and the ports then measure the
     records on the new one. Everything else is still published, with its notes: an ACCEPT that
     beats neither record shows as <em>accepted</em>, with its gain against each.</p>

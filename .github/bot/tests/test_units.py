@@ -485,6 +485,34 @@ class Decide(unittest.TestCase):
         for k in ("duel", "duel_now", "wins", "record_failed", "retire_record", "confirm_retry", "duel_retry", "cpu"):
             self.assertNotIn(k, d)
 
+    def test_confirmation(self):
+        """A record candidate is confirmed by a second run of the same commit: crowned in the tracks
+        both runs take, with the worse score; else accepted; an organiser-side end leaves it pending."""
+        from decide import candidate, confirmed
+        first = candidate(decide(R(S=9.0), OK, PIN, self.recs, 1), PIN, "https://run/1", "results/x.json")
+        self.assertEqual((first["took"], first["pin"]), (["final", "every"], PIN))
+        c = confirmed(first, decide(R(S=9.5), OK, PIN, self.recs, 1))
+        self.assertEqual((c["status"], c["took"], common.track_scores(c["score"])), ("record", ["final", "every"],
+                                                                                   {"final": 9.5, "every": 9.5}))
+        self.assertEqual((c["record_of"]["final"], c["against"]["final"]["S"]), (self.rec["id"], 9.5))
+        c = confirmed(first, decide(R(S=8.0), OK, PIN, self.recs, 1))     # a better confirmation: the first run's 9.0
+        self.assertEqual((c["status"], common.track_scores(c["score"])["final"], c["against"]["final"]["S"]), ("record", 9.0, 9.0))
+        c = confirmed(first, decide(V6(S=9.0, every=False), OK, PIN, self.recs, 1))      # confirmed in final only
+        self.assertEqual((c["status"], c["took"]), ("record", ["final"]))
+        self.assertIn("not confirmed in every", c["reasons"][0])
+        for d2, why in ((decide(R(S=9.9), OK, PIN, self.recs, 1), "does not beat"),
+                        (decide(R("REJECT"), OK, PIN, self.recs, 1), "verdict is REJECT"),
+                        (decide(R(comparable=False), dict(OK, record_ok=False), PIN, self.recs, 1), "unranked")):
+            c = confirmed(first, d2)
+            self.assertEqual((c["status"], c["took"], c["record_of"]), ("accepted", [], {"final": None, "every": None}))
+            self.assertIn(why, c["reasons"][0])
+        self.assertEqual(common.track_scores(confirmed(first, decide(R(S=9.9), OK, PIN, self.recs, 1))["score"])["final"], 9.9)
+        self.assertEqual(common.track_scores(confirmed(first, decide(R("REJECT"), OK, PIN, self.recs, 1))["score"])["final"], 9.0)
+        self.assertIsNone(confirmed(first, decide(R("ERROR"), OK, PIN, self.recs, 1)))             # retried, still pending
+        self.assertIsNone(confirmed(first, decide(R(), {"attested": False}, PIN, self.recs, 1)))
+        none = candidate(decide(R(S=50.0), OK, PIN, {}, 1), PIN, "u")                     # no record stood: any ACCEPT confirms
+        self.assertEqual(confirmed(none, decide(R(S=60.0), OK, PIN, {}, 1))["status"], "record")
+
     def test_cache_retry(self):
         from decide import cache_retry
         used = {"certificate": {"record_cache": {"restored": ["M"]}}}

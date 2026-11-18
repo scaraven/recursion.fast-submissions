@@ -12,7 +12,14 @@ the result scores (`common.score_fields`; AGENTS.md §10):
   comparability requires).
 
 An entry may take the records of several tracks at once. A prover binary that an earlier record of
-any track already had never takes a record again (a resubmitted copy)."""
+any track already had never takes a record again (a resubmitted copy).
+
+**Confirmation** (AGENTS.md §10). A result that would take a record (`decide` says `record`) is not
+crowned at once, a port of a record to a new pin excepted: the same commit is evaluated once more at
+the same pin (`candidate`, then `confirmed`). It takes the record of a track only if the
+confirmation run too is a comparable, attested ACCEPT that takes that track by the rule above, and
+the score it keeps is the worse (larger) of the two runs'. So one lucky run (a re-rolled NOTES, a
+one-byte `.s` change) is not enough: the margin must hold twice."""
 from common import (LEGACY_TRACKS, MARGIN, MAX_ATTEMPTS, ORGANISER_ERRORS, PAUSING_ERRORS, SHA_RE, TRACK_RE, TRACKS, VERDICTS,
                     clean, clean_reasons, is_num, track_scores)
 
@@ -196,3 +203,43 @@ def build_manifest_sha(result):
         if isinstance(h, str) and len(h) == 64 and all(c in "0123456789abcdef" for c in h):
             return h
     return None
+
+
+def candidate(d, pin, run_url, result_path=None):
+    """The pending confirmation of a first run whose decision `d` takes a record (`d["took"]`): what
+    the confirmation run is compared with (`confirmed`). Stored on the entry as `confirm`."""
+    return {"pin": pin, "run_url": run_url, "result": result_path, "took": list(d["took"]),
+            "score": d["score"], "against": d["against"], "record_of": d["record_of"]}
+
+
+def confirmed(first, d2):
+    """Combines the confirmation run's decision `d2` (`decide` at the same pin, against the same
+    standing records) with the pending `first` run (`candidate`). Returns None if `d2` ends on the
+    organiser's side or is queued again (the confirmation stays pending, retried as any run), else the
+    fields to set: `status` (`record` iff some track is taken by both runs, else `accepted`), `took`,
+    `score` (the worse run's: the larger score in the first track taken), `against`, `record_of`
+    (that run's comparisons) and the `reasons` line that says what the confirmation did."""
+    if d2["requeue"] or d2["status"] in ("queued", "error"):
+        return None
+    took = [t for t in first["took"] if t in d2["took"]]
+    s1, s2 = track_scores(first["score"]), track_scores(d2["score"])
+    lead = first["took"][0]
+    ok2 = d2["status"] in ("record", "accepted") and lead in s2
+    second_worse = ok2 and s2[lead] >= s1.get(lead, 0)
+    w = {"score": d2["score"], "against": d2["against"], "record_of": d2["record_of"]} if second_worse else first
+    both = (f"{lead}: S = {s1.get(lead, 0):.4f} s, then {s2[lead]:.4f} s in the confirmation" if lead in s2
+            else f"{lead}: S = {s1.get(lead, 0):.4f} s; the confirmation has no score in it")
+    if took:
+        why = (f"confirmed: the confirmation run also takes the record of {', '.join(took)} ({both}); "
+               f"the record keeps the worse score")
+        lost = [t for t in first["took"] if t not in took]
+        if lost:
+            why += f"; not confirmed in {', '.join(lost)}"
+        return {"status": "record", "took": took, "score": w["score"], "against": w["against"],
+                "record_of": {t: (w["record_of"] or {}).get(t) for t in (w["record_of"] or {})}, "reasons": [why]}
+    what = (f"its verdict is {d2['verdict']} ({d2['status']})" if d2["status"] not in ("record", "accepted")
+            else "it does not beat the standing record by the margin")
+    return {"status": "accepted", "took": [], "score": w["score"] if ok2 else first["score"],
+            "against": d2["against"] if ok2 else first["against"],
+            "record_of": {t: None for t in (first["record_of"] or {})},
+            "reasons": [f"not a record: the confirmation run of this record candidate did not confirm it: {what} ({both})"]}

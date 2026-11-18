@@ -250,9 +250,11 @@
   // ---- queue: running first, then a waiting port, then the bot's fair order by author ------------
   function queueOrder(subs) {
     const running = subs.filter(e => e.status === 'running').sort((a, b) => (a.started || 0) - (b.started || 0));
-    // a waiting port of the record to a new pin first, oldest first (the bot's order)
-    const front = subs.filter(e => e.status === 'queued' && e.port_of).sort((a, b) => (a.queued || 0) - (b.queued || 0));
-    const queued = subs.filter(e => e.status === 'queued' && !e.port_of).sort((a, b) => (a.queued || 0) - (b.queued || 0));
+    // a waiting port of the record to a new pin, or a record candidate's confirmation run, first,
+    // oldest first (the bot's order)
+    const first = e => !!(e.port_of || e.confirming);
+    const front = subs.filter(e => e.status === 'queued' && first(e)).sort((a, b) => (a.queued || 0) - (b.queued || 0));
+    const queued = subs.filter(e => e.status === 'queued' && !first(e)).sort((a, b) => (a.queued || 0) - (b.queued || 0));
     const lastStart = new Map();
     for (const e of subs) { const t = countedStart(e); if (e.author && t) lastStart.set(e.author, Math.max(lastStart.get(e.author) || -Infinity, t.getTime())); }
     const order = front.slice();
@@ -295,7 +297,8 @@
       el('span', { class: 'pos' }, pos),
       el('span', null, badge(e.status), ' ', el('a', { class: 'entry', href: page('submission.html', { id: e.id }) }, nm(e)),
         ' ', el('span', { class: 'muted' }, 'by '), e.author ? ext(link.author(e), e.author) : '–',
-        ' ', el('span', { class: 'muted' }, '('), ext(link.pr(e), '#' + e.pr), el('span', { class: 'muted' }, ')')),
+        ' ', el('span', { class: 'muted' }, '('), ext(link.pr(e), '#' + e.pr), el('span', { class: 'muted' }, ')'),
+        e.confirming ? [' ', el('span', { class: 'muted' }, 'record candidate: confirmation run')] : null),
       el('span', { class: 'when' }, e.status === 'running' ? (e.started ? 'started ' + ago(e.started) : 'started')
         : (e.queued ? 'queued ' + ago(e.queued) : 'queued')));
     running.forEach(e => ol.append(item(e, '▸')));

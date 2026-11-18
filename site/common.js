@@ -172,7 +172,9 @@
       prover_sha256: typeof r.prover_sha256 === 'string' && /^[0-9a-f]{64}$/.test(r.prover_sha256) ? r.prover_sha256 : null,
       result: typeof r.result === 'string' && RE.result.test(r.result) ? r.result : null,
       retired: date(r.retired),
-      port_of: typeof r.port_of === 'string' && RE.id.test(r.port_of) ? r.port_of : null
+      port_of: typeof r.port_of === 'string' && RE.id.test(r.port_of) ? r.port_of : null,
+      // a record candidate waiting for its confirmation run (the bot's `confirm`): first in the queue
+      confirming: !!(r.confirm && typeof r.confirm === 'object') && ['queued', 'running', 'error'].includes(r.status)
     };
   }
 

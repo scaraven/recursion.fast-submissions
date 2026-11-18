@@ -124,7 +124,11 @@ set by the owner, one margin for both tracks. One entry's score varied by σ ≈
 run under the previous rules (smoke shape, one timed pass; the minimum of two should lower it), so two runs differ by
 about √2·σ ≈ 2.5 % and a near-copy of a record can beat it by noise; byte copies and re-used record
 prover binaries are refused, and the owner can retire a record won by noise. The owner may change
-the margin between seasons). One entry may take one track's record or both. Each entry's `against`
+the margin between seasons). Confirmation: such a result is a record candidate; the bot runs
+the same commit once more at the same pin, before the queue, and the record is taken only if that
+run also beats the standing record by the margin, with the worse of the two scores kept; else the
+entry is `accepted` (an organiser error in the confirmation re-queues it; ports are not
+confirmed). One entry may take one track's record or both. Each entry's `against`
 field records the comparison per track, with its `gain`. With no standing record in a track
 (start, owner retirement in that track, a failed port) the first comparable attested ACCEPT is that
 track's record. After a pin move within a season (or a machine change) the bot re-runs each track's

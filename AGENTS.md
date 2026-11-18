@@ -221,7 +221,7 @@ port, section 10) adds `-<first 8 hex of the pin>`. The commit status has the co
 
 | Status | Commit status | Meaning |
 |---|---|---|
-| `queued` | pending: `queued` | waiting its turn (section 9). `ERROR, queued again`: an organiser-side failure, retried once (a machine-fingerprint or stream-shape failure uses up no attempt) |
+| `queued` | pending: `queued` | waiting its turn (section 9). `ERROR, queued again`: an organiser-side failure, retried once (a machine-fingerprint or stream-shape failure uses up no attempt). `record candidate (final, every), confirmation queued, S = …`: a result that would take a record, waiting for its confirmation run (section 10) |
 | `running` | pending: `evaluating` | the evaluation is running |
 | `record` | success: `ACCEPT: new record (final, every), S = … s (final, every)` | the record of one track or of both, named in the status (section 10), with the tracks it is scored in; it keeps this status after it is beaten |
 | `retired` | (unchanged) | a record the owner removed from the throne of every track it held (a record retired in one track only stays `record`, and the site marks the retired track) |
@@ -273,8 +273,10 @@ them again, and a breach there is a REJECT.
 *Why:* one author opening many pull requests should delay others by at most one evaluation per
 round: the next entry goes to the author who waited longest.
 
-- **First, the bot's own work**: a waiting port of the record after a pin move (even when it is
-  re-run after an organiser error, and before a forced run; section 10).
+- **First, the bot's own work**: a waiting port of the record after a pin move, then a record
+  candidate's confirmation run (section 10), even when it is re-run after an organiser error, and
+  before a forced run. A confirmation is not a new submission: it does not move its author in the
+  fair order, and a push, closing the PR, a draft or `hold` does not cancel it.
 - **Fair order.** The next entry belongs to the author whose most recent evaluation *started*
   earliest. Authors never evaluated go first. Within an author, the oldest queued entry goes first.
   So an author's second entry runs only after every other waiting author's first.
@@ -344,12 +346,26 @@ scored there) and `S_t,record` the standing record's own score in that track, an
 2 %, set by the owner, the same for both tracks. One evaluation is judged in both tracks at once,
 so an entry can take one track's record, or both: an `every` entry slower than a `final`-only
 record can still take the `every` record. A prover binary that took the record of either track
-never takes a record again (its own port excepted). The margin does not keep noise out: the
-run-to-run spread of one entry's score was σ ≈ 1.75 % under the previous rules (ten runs at their
-smoke shape, one timed pass; mostly per-step process overhead; the minimum of two timed passes
-should lower it), so two runs of one entry differ by about √2·σ ≈ 2.5 %, and a near-copy of a
-record can beat it by noise. Byte copies of an evaluated root and re-used record prover binaries
-are refused (section 8), and the owner can retire a record that won by noise. The owner may change
+never takes a record again (its own port excepted).
+
+**Confirmation.** A result that would take a record is not crowned at once: it is a *record
+candidate*, and the bot evaluates the same commit once more at the same pin, before any other
+entry (a port of a record to a new pin excepted; ports are never confirmed). The candidate takes
+the record of a track only if the confirmation run is also a comparable, attested ACCEPT that
+beats that track's standing record by the margin, and the record keeps the **worse** (larger) of
+the two scores. Otherwise the entry is `accepted`, and the comment says why. A confirmation that
+ends on the organiser's side is re-queued in front as a port is (retried once; then `error`, for
+the owner to force); if the pin moves first, the candidate lapses and its next run is a first run
+again. The first run's result stays `results/<id>.json`, the confirmation's is
+`results/<id>-confirm.json`, and the entry's `confirmation` names both runs.
+
+*Why:* the margin is below the noise. The run-to-run spread of one entry's score was σ ≈ 1.75 %
+under the previous rules (ten runs at their smoke shape, one timed pass; mostly per-step process
+overhead; the minimum of two timed passes should lower it), so two runs of one entry differ by about
+√2·σ ≈ 2.5 %, and a resubmission with an edited NOTES, or a one-byte change of a `.s`, re-draws
+the noise. With the confirmation the margin must hold twice, and the kept score is the worse
+draw. Byte copies of an evaluated root and re-used record prover binaries are refused (section
+8), and the owner can still retire a record that won by noise. The owner may change
 the margin between seasons. With no standing record in a track (at the start of a season, after a
 retirement in that track, or after a pin move whose port of that track's record failed), the first
 comparable, attested ACCEPT is that track's record.
