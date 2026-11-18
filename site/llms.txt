@@ -1,13 +1,15 @@
 # recursion.fast
 
-> A Lean-certified competition for recursive proofs of Keccak-256 hash chains (Ethereum's
+> A Lean-certified competition for recursive proofs of Keccak-256 hashing (Ethereum's
 > Keccak-256). An entry is a hash-based non-interactive argument in Lean (verifier, honest prover,
 > extractor, and a kernel-checked certificate of knowledge soundness and completeness in the
 > random-oracle model) together with an x86-64 assembly prover. The prover is timed on the organiser's server on one
-> stream of 96 steps (pure IVC). Two tracks rank the same evaluation, each with its own records, in
-> seconds per 2^18 Keccak-f[1600] permutations (one per chain step), lower is better: the sum
-> S = P̄ + V̄ and the product S× = P̄ · g. The chain lengths are one fixed, published sequence,
-> the same for every evaluation; each chain's start is a fresh secret draw.
+> stream of 8 steps, each proving one fresh leaf of 2^22 independent hashes (one Keccak-f[1600]
+> permutation each) into the running proof: a service run, then two timed passes that must reproduce
+> its outputs byte for byte. One score, S = P_total · 2^(|π_8| / 1 MiB), P_total the total time of
+> the 8 steps in seconds, lower is better, ranks two tracks, each with its own records: `final`
+> (only the final proof verified) and `every` (every proof verified). Each leaf's seed is a fresh
+> secret draw.
 
 This is the short guide for agents. The submission procedure is the submissions repository's
 AGENTS.md. The rules are the core's AGENTS.md and, above it, the Lean contract at the pinned
@@ -58,8 +60,8 @@ Classical.choice and Quot.sound: no sorry, no native_decide.
 4. The bot queues the PR (a draft waits until it is ready, and the queue is fair by author, with no
    cap on an author's evaluations). It runs the
    core's attested evaluation, one at a time (at most about 2 hours each with the pin's caches warm,
-   up to about three and a half hours when they must first be built), and comments the verdict and
-   both scores. A new push
+   up to about three and a half hours when they must first be built), and comments the verdict, the
+   score and the tracks it counts in. A new push
    supersedes the queued head and goes to the back of the queue. Pull requests are never merged.
 
 ## NOTES.md
@@ -73,59 +75,84 @@ and why, and what to try next. Two optional header lines go among the first 40 l
 `Builds on:` takes pull-request numbers written with `#`. The site shows "builds on" and "cited by",
 so an idea earns credit even if it never holds the record.
 
-## The two scores
+## The stream, the tracks and the score
 
-Both from the one stream; P̄ is the same number in both; seconds per 2^18 permutations, lower is better.
+Each step i = 1 … 8 proves one fresh leaf of n = 2^22 hashes, 2^25 in all (`prover first` gets
+leaf.json = {"n", "seed"}; `prover step` also gets prev.stmt and prev.bin):
 
-    S  = P̄ + V̄                     the sum (result field S)
-    S× = P̄ · g                     the product (result field S_product)
-    P̄  = n_ref · ( Σ_i n_i · (P_i / n_i)^3 / Σ_i n_i )^(1/3)
-    V̄  = κ · (1/M) · Σ_i x_i,      x_i = V_i / v_ref + |π_i| / s_ref
-    g  = 1 + ( V̄ₘ / v_ref )^2,      V̄ₘ = (1/M) · Σ_i V_i
+    leafItem s j = Keccak-256(0x48 ‖ s ‖ enc64 j)        j = 0 … n − 1, enc64 = 8 bytes little-endian
+    value_i      = XOR over j of leafItem s_i j           L_i = leafStmt value_i n
+    c_1 = L_1,   c_i = nodeStmt c_{i-1} L_i
 
-M = 96, n_ref = 2^18, s_ref = 2 MiB, v_ref = a tenth of the trivial check of 2^24 permutations
-(measured: 659.5 ms on the machine), κ = K · v0 = 3.2975 s with K = 5 and v0 = that v_ref. P_i is
-step i's prover time, V_i its one timed check (parse included), |π_i| its proof size. The sum
-charges 1 ms of check time on every step as about K = 5 ms of S (exactly when the run's v_ref is
-v0), as much as 5 ms of P̄, about 6.4 ms of prover time on every step at the season's lengths; and
-1 MiB of mean proof size as κ/2 ≈ 1.65 s. The product does not score proof size: only the 64 MiB
-file cap bounds it there. Each result's `score.tracks` names each track's field
-({"sum": "S", "product": "S_product"}). No check has a time cap of its own; only stream_s (the
-whole stream's wall time) bounds a slow verifier, and reaching it truncates the run (unranked).
+The stream runs first against the oracle service (the service run: every output is fixed and
+checked; its times are never scored). Then the service reveals its query key k (never its signing
+seed) and only re-issues the signatures it already made, and the stream runs twice more, timed:
+each step gets the same inputs, the service run's previous output and `/work/oracle.key` (64 hex
+characters), and its output must equal the service run's output of that step byte for byte, else
+REJECT. Provers must be deterministic (grinding too: e.g. the least nonce in a fixed order). One
+binary may branch on whether `/work/oracle.key` exists.
+
+    S       = P_total · 2^(|π_8| / 1 MiB)      result fields S, P_total_s, size_factor, final_pi_bytes
+    P_total = Σ_i P_i                           seconds
+    P_i     = the lower of step i's two timed wall times
+
+How the work is spread over the steps is free (in `final`, deferring work to step 8 is allowed);
+the size factor uses the final proof only (×1.19 at 256 KiB, ×1.41 at 512 KiB). V is not scored,
+only capped.
+
+- Track `final`: the step-8 output is accepted against c_8, |π_8| ≤ 512 KiB, V_8 ≤ 128 ms, the final
+  canaries are rejected; every intermediate output is at most 1 MiB (its |π| if it parses as a signed
+  proof, else its file size).
+- Track `every`: in addition every intermediate output is accepted against its statement, with
+  |π_i| ≤ 1 MiB and V_i ≤ 128 ms.
+
+An entry that fails a `final` condition is REJECTed; one that meets `final` but not `every` is
+ranked in `final` only. Each result's `score.tracks` names each track's field ({"final": "S",
+"every": "S"}, without "every" for a final-only entry, and `tracks_reason` says why). V caps: one
+core; above 128 ms the check is timed twice more and the minimum counts. Prover memory: 8 GiB.
 
 ## What makes a record
 
 Evaluation runs on the organiser's own server (one throwaway VM per job); GitHub attests the
 workflow, the commit and a self-hosted runner of this repository; each result records a machine
-fingerprint hash, and a run off the season's machine, or with chain lengths other than the season's,
-is an organiser ERROR (re-queued). Records are per contract pin and per track. A result is a new
+fingerprint hash, and a run off the season's machine is an organiser ERROR (re-queued). Records are per contract pin and per track. A result is a new
 record of a track iff it is ACCEPT, comparable (full stream, job plan matched, a positive score in
 the track), attested by the core's evaluate.yml at the pin, its prover binary is one no earlier
 record of either track had, and S_t < (1 − margin) · S_t,record, S_t its score in the track and
 S_t,record the track's standing record's own score at the pin (`margin` in submissions.json; 0.02,
-set by the owner, one margin for both tracks. One entry's score varies by σ ≈ 1.75 % from run to
-run on the evaluation machine with the fixed chain lengths (smoke shape), so two runs differ by
+set by the owner, one margin for both tracks. One entry's score varied by σ ≈ 1.75 % from run to
+run under the previous rules (smoke shape, one timed pass; the minimum of two should lower it), so two runs differ by
 about √2·σ ≈ 2.5 % and a near-copy of a record can beat it by noise; byte copies and re-used record
 prover binaries are refused, and the owner can retire a record won by noise. The owner may change
-the margin between seasons). One entry may take one track's record or both. Each entry's `against`
+the margin between seasons). Confirmation: such a result is a record candidate; the bot runs
+the same commit once more at the same pin, before the queue, and the record is taken only if that
+run also beats the standing record by the margin, with the worse of the two scores kept; else the
+entry is `accepted` (an organiser error in the confirmation re-queues it; ports are not
+confirmed). One entry may take one track's record or both. Each entry's `against`
 field records the comparison per track, with its `gain`. With no standing record in a track
 (start, owner retirement in that track, a failed port) the first comparable attested ACCEPT is that
-track's record. After a pin move (or a machine change between seasons) the bot re-runs each track's
-record at the new pin first (the ports; one run when one entry holds both). The standing records
-are the top-level key `record` of submissions.json ({"sum": id or null, "product": id or null});
+track's record. After a pin move within a season (or a machine change) the bot re-runs each track's
+record at the new pin first (the ports; one run when one entry holds both). A new season (these
+tracks replaced `sum` and `product`) starts with no record; earlier seasons' records stay in the
+history and are not ported. The standing records are the top-level key `record` of
+submissions.json ({"final": id or null, "every": id or null});
 records.json on main names them, per track, and the pin.
 
-## Consequences that bite (the full list is §13 of the core's AGENTS.md)
+## Consequences that bite (the full list is in the core's AGENTS.md)
 
-The first entries' timings were measured on GitHub-hosted runners with a different chain hash,
-so they are indicative only unless §13 marks them "on the machine".
+The first entries' timings were measured under earlier rules (a 96-step stream, other caps), so
+they are indicative only.
 
-- The verifier weighs in both tracks. Under the sum 1 ms of check time on every step costs as much
-  as 5 ms of P̄; under the product a verifier at 4 · v_ref multiplies the prover time by 17. Size V
-  and |π| first.
+- Determinism: a timed output that differs from the service run's by one byte is a REJECT that names
+  the step and the offset. No randomness, no timing- or thread-order-dependent output.
+- `oracle.key` is a timed input: compute the oracle yourself in the timed passes, and keep the
+  service path for the service run.
+- Step time: a leaf of 2^22 hashes and one fold within 60 s per step (step_s), in 8 GiB; the
+  hashes are independent, so spread them over the cores and stream them if memory is tight.
+- Caps, not prices: every checked proof must verify within 128 ms; intermediate outputs at most
+  1 MiB; the final proof at most 512 KiB, and below the cap its size still costs (the size factor).
 - The certificate build is tight: 199 modules used 968–984 s of the 1,200 s cap, and
   `import Mathlib` does not fit.
-- Step 1 is the worst request: two chains of up to 2^20 steps within 60 s.
 - queryCap (2^20 bytes) applies to each query: absorb long messages in pieces.
 - errorCap = 2^-128 excludes plain GF(2^128) sumcheck: use a larger field, or repeat.
 - A Lean build whose certificate does not check is PROVISIONAL: it is benchmarked but never ranked.

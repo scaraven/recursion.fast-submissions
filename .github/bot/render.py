@@ -21,13 +21,26 @@ def num(x, nd=4):
     return f"{x:.{nd}f}" if is_num(x) else "-"
 
 
+def score_groups(score):
+    """[(field, value, [tracks])] of a result's `score`: each score field once, with the tracks it
+    scores (v6: one `S` for `final` and `every`)."""
+    out = []
+    for t, f, v in score_fields(score):
+        g = next((x for x in out if x[0] == f), None)
+        if g:
+            g[2].append(t)
+        else:
+            out.append((f, v, [t]))
+    return out
+
+
 def scores_text(score):
-    """Each track's score of a result: `S = 1.2345 s, S_product = 1.5000 s` (the fields it names)."""
-    return ", ".join(f"{f} = {v:.4f} s" for _t, f, v in score_fields(score)) or "no score"
+    """Each score of a result with its tracks: `S = 1.2345 s (final, every)` (the fields `tracks` names)."""
+    return ", ".join(f"{f} = {v:.4f} s ({', '.join(ts)})" for f, v, ts in score_groups(score)) or "no score"
 
 
 def took_text(e):
-    """The tracks whose record the entry took, e.g. ` (sum, product)`."""
+    """The tracks whose record the entry took, e.g. ` (final, every)`."""
     return f" ({', '.join(e['record_in'])})" if e.get("record_in") else ""
 
 
@@ -45,6 +58,12 @@ def status_for(e):
         d += ", " + scores_text(e.get("score"))
     if st == "queued" and e.get("verdict"):
         d = f"{e['verdict']}, queued again"
+    c = e.get("confirm") if isinstance(e.get("confirm"), dict) else None
+    if c and st in ("queued", "running", "error"):
+        what = {"queued": "confirmation queued", "running": "confirmation running",
+                "error": "confirmation waiting on the organiser"}[st]
+        d = (f"record candidate ({', '.join(c.get('took') or [])}), {what}, "
+             + scores_text(c.get("score")))
     return STATE.get(st, "error"), ascii_line(d, 140)
 
 
@@ -62,16 +81,21 @@ def intake_comment(e, pos, total):
 def publish_comment(e, run_url):
     st = e["status"]
     s = e.get("score") or {}
-    head = f"**recursion.fast: {e.get('verdict') or 'ERROR'}, {WORDS.get(st, st)}** (`{e['id']}`, [run]({run_url}))"
+    c = e.get("confirm") if isinstance(e.get("confirm"), dict) else None
+    word = "record candidate, confirmation queued" if c and c.get("run_url") == run_url and st == "queued" else WORDS.get(st, st)
+    head = f"**recursion.fast: {e.get('verdict') or 'ERROR'}, {word}** (`{e['id']}`, [run]({run_url}))"
     lines = [head, ""]
     if e.get("verdict") in ("ACCEPT", "PROVISIONAL") and s:
         x = lambda k: num(s.get(k))  # noqa: E731
         m = s.get("M") if is_num(s.get("M")) else "-"
         trunc = ", truncated stream" if e.get("truncated") else ""
-        lines.append(f"Sum: S = {x('S')} s (P̄ = {x('P_bar')} s, V̄ = {x('V_bar')} s, x̄ = {x('x_bar')}), M = {m}{trunc}")
-        if is_num(s.get("S_product")):
-            lines.append(f"Product: S_product = {x('S_product')} s (P̄ = {x('P_bar')} s, mean V = {x('V_mean_s')} s, "
-                         f"g = {x('g')}; mean proof size {num(s.get('pi_mean_bytes'), 0)} bytes, not scored)")
+        lines.append(f"S = {x('S')} s = P_total {x('P_total_s')} s × size factor {x('size_factor')} "
+                     f"(2^(|π|/1 MiB), final proof {num(s.get('final_pi_bytes'), 0)} bytes), M = {m}{trunc}")
+        named = [t for t, _f, _v in score_fields(s)]
+        left = [t for t in TRACKS if t not in named]
+        if e.get("verdict") == "ACCEPT":
+            lines.append("Tracks: " + (", ".join(named) or "none")
+                         + (f" (not {', '.join(left)}: the reasons below say why)" if named and left else ""))
     order = lambda kv: (TRACKS.index(kv[0]) if kv[0] in TRACKS else len(TRACKS), kv[0])  # noqa: E731
     for t, d in sorted((e.get("against") or {}).items(), key=order):
         if isinstance(d, dict) and d.get("record") and is_num(d.get("gain")):
@@ -103,7 +127,7 @@ def notes_md(st, read, repo, cap=4 << 20):
     es = [e for e in st["submissions"] if e.get("notes") and e["status"] not in ("superseded", "withdrawn", "invalid")]
     es.sort(key=lambda e: (e.get("finished") or e.get("queued") or "", e["id"]), reverse=True)
     for e in es:
-        sc = " · ".join(f"{f} = {num(v)}" for _t, f, v in score_fields(e.get("score"))) or "S = -"
+        sc = " · ".join(f"{f} = {num(v)} ({', '.join(ts)})" for f, v, ts in score_groups(e.get("score"))) or "S = -"
         hdr = (f"## {e['id']} · {e['root']} · @{e['author']} · {e['status']} · {sc}"
                f" · [#{e['pr']}](https://github.com/{repo}/pull/{e['pr']})")
         if e.get("builds_on"):
@@ -140,7 +164,7 @@ def workflow_comment(sha, problems):
 
 PAUSE_TITLE = "recursion.fast: evaluation paused (organiser errors since the last completed benchmark)"
 ERROR_KINDS = {"fingerprint": "the machine fingerprint is not the season's",
-               "lengths": "the stream did not use the season's chain lengths",
+               "lengths": "the stream's shape (M, n) was not the season's",
                "drift": "c_P drifted beyond c_P_drift", "setup": "a setup job did not complete",
                "cache": "an organiser cache was missing", "attestation": "the result's provenance did not verify",
                "harness": "the certificate job ended without a certificate", "unnamed": "an unnamed harness ERROR",

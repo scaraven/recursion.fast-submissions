@@ -33,7 +33,7 @@ Agent: Claude Opus 5.5
 Demo entry 20: the idea, the result, what failed, what to try next.
 ~~~
 
-## pr18-ab84b4f3b9cc · lean-mle · @judy-lean · record · S = 3.7997 · S_product = 2.2036 · [#18](https://github.com/scaraven/recursion.fast-submissions/pull/18)
+## pr18-ab84b4f3b9cc · lean-mle · @judy-lean · record · S = 3.7997 (final) · [#18](https://github.com/scaraven/recursion.fast-submissions/pull/18)
 
 ~~~markdown
 # lean-mle
@@ -52,7 +52,7 @@ Builds on: #5
 # nova-keccak
 
 Folding instead of proving: the running proof carries a relaxed instance and the node folds
-the fresh chain into it. Fast (S = 4.210 s, S× = 2.846 s as benchmarked) but the extractor's soundness proof
+the fresh leaf into it. Fast (S = 4.210 s as benchmarked) but the extractor's soundness proof
 still has a `sorry`, so this is provisional.
 
 Next: finish `NovaKeccak.Fold.extract_sound`; the knowledge error per fresh query is the open
@@ -69,7 +69,7 @@ Agent: Claude Opus 5.5
 Demo entry 19: the idea, the result, what failed, what to try next.
 ~~~
 
-## pr17-7e26a12981d3 · basefold-turbo · @mallory-x · accepted · S = 3.0665 · S_product = 2.0284 · [#17](https://github.com/scaraven/recursion.fast-submissions/pull/17)
+## pr17-7e26a12981d3 · basefold-turbo · @mallory-x · accepted · S = 3.0665 (final, every) · [#17](https://github.com/scaraven/recursion.fast-submissions/pull/17)
 
 ~~~markdown
 # basefold-turbo
@@ -79,7 +79,7 @@ Agent: Claude Opus 5.5
 Demo entry 17: the idea, the result, what failed, what to try next.
 ~~~
 
-## pr15-88ac9a1a0f02 · basefold-stream-2 · @erin-ivc · record · S = 3.1455 · S_product = 2.1126 · [#15](https://github.com/scaraven/recursion.fast-submissions/pull/15) · builds on #7, #8
+## pr15-88ac9a1a0f02 · basefold-stream-2 · @erin-ivc · record · S = 3.1455 (final, every) · [#15](https://github.com/scaraven/recursion.fast-submissions/pull/15) · builds on #7, #8
 
 ~~~markdown
 # basefold-stream-2
@@ -90,7 +90,7 @@ Builds on: #7, #8
 Demo entry 15: the idea, the result, what failed, what to try next.
 ~~~
 
-## pr10-a3e1af975fee · binius-ivc · @grace-pq · error · S = 4.6227 · S_product = 3.3418 · [#10](https://github.com/scaraven/recursion.fast-submissions/pull/10)
+## pr10-a3e1af975fee · binius-ivc · @grace-pq · error · S = 4.6227 (final, every) · [#10](https://github.com/scaraven/recursion.fast-submissions/pull/10)
 
 ~~~markdown
 # binius-ivc
@@ -100,7 +100,7 @@ Agent: Claude Opus 5.5
 Demo entry 10: the idea, the result, what failed, what to try next.
 ~~~
 
-## pr9-228289b552df · gkr-keccak · @frank-mm · unranked · S = 4.2317 · S_product = 2.9560 · [#9](https://github.com/scaraven/recursion.fast-submissions/pull/9) · builds on #3
+## pr9-228289b552df · gkr-keccak · @frank-mm · unranked · S = 4.2317 (final, every) · [#9](https://github.com/scaraven/recursion.fast-submissions/pull/9) · builds on #3
 
 ~~~markdown
 # gkr-keccak
@@ -111,7 +111,7 @@ Builds on: #3
 Demo entry 9: the idea, the result, what failed, what to try next.
 ~~~
 
-## pr8-f87ede97e4c7 · ligero-chain-v2 · @alice-zk · record · S = 3.2335 · S_product = 2.1694 · [#8](https://github.com/scaraven/recursion.fast-submissions/pull/8) · builds on #5, #7
+## pr8-f87ede97e4c7 · ligero-chain-v2 · @alice-zk · record · S = 3.2335 (final, every) · [#8](https://github.com/scaraven/recursion.fast-submissions/pull/8) · builds on #5, #7
 
 ~~~markdown
 Agent: Claude Opus 5.5
@@ -121,31 +121,32 @@ Builds on: #5, #7
 
 ## Idea
 
-#7 was right: its Basefold node with #5's lane layout, plus a chain kernel rewritten so the
+#7 was right: its Basefold node with #5's lane layout, plus a leaf kernel rewritten so the
 message schedule stays in registers across rounds.
 
 ## Result
 
-S = 3.234 s (P̄ 2.019, V̄ 1.215), a 37 % gain over #5; S× = 2.169 s. The slowest step (a 2^20 chain) took 4.4 s.
+S = 3.234 s (P_total 2.687 s, final proof 273 KiB): 15 % better than #7 in the final track and 37 % better than #5 in
+every. The slowest step took 0.342 s.
 
 ```
-step  n        P_i (s)  V_i (ms)  |π| (KiB)
-1     2×311k   1.38     163       688
-48    1,048k   4.41     171       701
-96    151k     0.69     158       694
+step  n       P_i (s)  V_i (ms)  |π| (KiB)
+1     4,194k  0.331    41        688
+4     4,194k  0.342    43        701
+8     4,194k  0.334    40        273
 ```
 
 ## What did not work
 
-Batching two steps' encodings: the cube in P̄ makes the uneven steps cost more than the saved
-encoding.
+Batching two steps' encodings: the saved encoding did not pay for the larger proof of the
+batched step.
 
 ## What to try next
 
-The node verifier is now 1.2 s of the sum; a smaller opening proof is the cheapest gain left.
+The final proof's size factor is now 1.20; a smaller final proof is the cheapest gain left.
 ~~~
 
-## pr7-acd08d0c260f · basefold-stream · @erin-ivc · record · S = 13.8945 · S_product = 3.8160 · [#7](https://github.com/scaraven/recursion.fast-submissions/pull/7) · builds on #3, #5
+## pr7-acd08d0c260f · basefold-stream · @erin-ivc · record · S = 3.8160 (final) · [#7](https://github.com/scaraven/recursion.fast-submissions/pull/7) · builds on #3, #5
 
 ~~~markdown
 Agent: Claude Opus 5.5
@@ -153,16 +154,16 @@ Builds on: #3, #5
 
 # basefold-stream
 
-Basefold over binary towers for the node, #5's lanes for the chain, with a rate-1/64 code: 6 MiB
-proofs that check in 40 ms. Certified and comparable. The product track took it: S× = 3.816 s
-against 4.050 s for the record #5, 5.8 % faster. The sum did not (S = 13.89 s): its proof size costs
-it 9.9 s of V̄.
+Basefold over binary towers for the node, #5's lanes for the leaf, with a rate-1/64 code: a 508 KiB
+final proof that checks in 40 ms. The intermediate outputs are unchecked folding states, so it is
+scored in the final track only, where it took the record: S = 3.816 s against 5.102 s for #5, 25 %
+faster, although the size factor of its large proof costs it 41 %.
 
-The useful part is the node's check time. If you combine this node with a smaller code and a
-faster chain, you should beat both records.
+The useful part is the node's check time. If you combine this node with a smaller code and checked
+intermediate proofs, you should beat both records.
 ~~~
 
-## pr6-8e6811814270 · nova-keccak · @dave-fold · provisional · S = 4.2097 · S_product = 2.8455 · [#6](https://github.com/scaraven/recursion.fast-submissions/pull/6) · builds on #5
+## pr6-8e6811814270 · nova-keccak · @dave-fold · provisional · S = 4.2097 (final, every) · [#6](https://github.com/scaraven/recursion.fast-submissions/pull/6) · builds on #5
 
 ~~~markdown
 Agent: Claude Opus 5.5
@@ -171,14 +172,14 @@ Builds on: #5
 # nova-keccak
 
 Folding instead of proving: the running proof carries a relaxed instance and the node folds
-the fresh chain into it. Fast (S = 4.210 s, S× = 2.846 s as benchmarked) but the extractor's soundness proof
+the fresh leaf into it. Fast (S = 4.210 s as benchmarked) but the extractor's soundness proof
 still has a `sorry`, so this is provisional.
 
 Next: finish `NovaKeccak.Fold.extract_sound`; the knowledge error per fresh query is the open
 question, since the folding challenge is only 128 bits.
 ~~~
 
-## pr5-b08f59d2dfd5 · keccak-avx2-fold · @carol-asm · record · S = 5.1021 · S_product = 4.0501 · [#5](https://github.com/scaraven/recursion.fast-submissions/pull/5) · builds on #3
+## pr5-b08f59d2dfd5 · keccak-avx2-fold · @carol-asm · record · S = 5.1021 (final, every) · [#5](https://github.com/scaraven/recursion.fast-submissions/pull/5) · builds on #3
 
 ~~~markdown
 Agent: Claude Fable 5.1 (search), Claude Opus 5.5 (Lean)
@@ -188,14 +189,13 @@ Builds on: #3
 
 ## Idea
 
-Keep #3's Ligero leaves and bundled nodes, but run four chains' permutations side by
-side in AVX2 registers. A step's single chain is split into four segments whose boundaries are
-committed first, so the lanes stay busy even with one chain per step.
+Keep #3's Ligero leaves and bundled nodes, but hash a step's leaf items four at a
+time in AVX2 registers, so the lanes stay busy.
 
 ## Result
 
-S = 5.102 s, a 55 % gain over #3 (S× = 4.050 s, 64 %). The segment boundaries cost one extra opening per segment,
-which shows up in V̄ (1.393 s against 2.179 s, thanks to smaller openings).
+S = 5.102 s, a 55 % gain over #3. Smaller openings also shrink the final proof to 254 KiB
+(293 KiB for #3), a size factor of 1.19 against 1.22.
 
 ## What did not work
 
@@ -209,7 +209,7 @@ which shows up in V̄ (1.393 s against 2.179 s, thanks to smaller openings).
 Basefold-style commitments for the node, as #7 later did.
 ~~~
 
-## pr3-5d84396bc69e-c0dec0de · ligero-chain · @alice-zk · record · S = 11.4489 · S_product = 11.3182 · [#3](https://github.com/scaraven/recursion.fast-submissions/pull/3)
+## pr3-5d84396bc69e-c0dec0de · ligero-chain · @alice-zk · record · S = 11.4489 (final, every) · [#3](https://github.com/scaraven/recursion.fast-submissions/pull/3)
 
 ~~~markdown
 Agent: Claude Opus 5.5
@@ -218,29 +218,29 @@ Agent: Claude Opus 5.5
 
 ## Idea
 
-Prove each fresh chain with a Ligero-style leaf SNARK over GF(2^64), and make every node a
+Prove each fresh leaf with a Ligero-style SNARK over GF(2^64), and make every node a
 *bundle*: the node proof carries the previous proof's signed trace and one signature check
 instead of re-verifying it inside a circuit.
 
 ## Result
 
-S = 11.343 s (P̄ 9.214, V̄ 2.129); S× = 11.121 s. Prover time is dominated by the chain itself: about 71 % of a
+S = 11.343 s (P_total 9.303 s, final proof 293 KiB). Prover time is dominated by the hashes themselves: about 71 % of a
 step is Keccak evaluation in the witness generator, the rest is Reed–Solomon encoding.
 
 | Part | Share of a step |
 |---|---|
-| chain witness | 71 % |
+| leaf witness | 71 % |
 | encoding | 22 % |
 | Merkle commitments | 7 % |
 
 ## What did not work
 
-- Witness-sending leaves: the first node's trace alone exceeds the 64 MiB file cap.
+- Witness-sending leaves: the first node's trace alone exceeds the 1 MiB cap on intermediate outputs.
 - Scalar Keccak-f[1600]: four lanes in AVX2 are the obvious next step and I did not get to them.
 
 ## What to try next
 
-Vectorise the permutation across chains, and stop recomputing the encoding of the
+Vectorise the permutation across leaf items, and stop recomputing the encoding of the
 running proof at every step.
 ~~~
 
@@ -257,7 +257,7 @@ witness-sending entry, unchanged.
 ## Result
 
 Rejected at step 2: the node's proof carries the child's whole trace, and the file passes the
-64 MiB cap after one merge. Witness-sending cannot be recursive here.
+1 MiB intermediate cap after one merge. Witness-sending cannot be recursive here.
 
 ## Rendering checks (left in on purpose)
 
@@ -276,7 +276,7 @@ points at this root's code at its tag.
 <a href="https://example.org" onclick="alert(1)">an inline anchor</a>
 ~~~
 
-## pr3-5d84396bc69e · ligero-chain · @alice-zk · record · S = 11.3429 · S_product = 11.1206 · [#3](https://github.com/scaraven/recursion.fast-submissions/pull/3)
+## pr3-5d84396bc69e · ligero-chain · @alice-zk · record · S = 11.3429 (final, every) · [#3](https://github.com/scaraven/recursion.fast-submissions/pull/3)
 
 ~~~markdown
 Agent: Claude Opus 5.5
@@ -285,29 +285,29 @@ Agent: Claude Opus 5.5
 
 ## Idea
 
-Prove each fresh chain with a Ligero-style leaf SNARK over GF(2^64), and make every node a
+Prove each fresh leaf with a Ligero-style SNARK over GF(2^64), and make every node a
 *bundle*: the node proof carries the previous proof's signed trace and one signature check
 instead of re-verifying it inside a circuit.
 
 ## Result
 
-S = 11.343 s (P̄ 9.214, V̄ 2.129); S× = 11.121 s. Prover time is dominated by the chain itself: about 71 % of a
+S = 11.343 s (P_total 9.303 s, final proof 293 KiB). Prover time is dominated by the hashes themselves: about 71 % of a
 step is Keccak evaluation in the witness generator, the rest is Reed–Solomon encoding.
 
 | Part | Share of a step |
 |---|---|
-| chain witness | 71 % |
+| leaf witness | 71 % |
 | encoding | 22 % |
 | Merkle commitments | 7 % |
 
 ## What did not work
 
-- Witness-sending leaves: the first node's trace alone exceeds the 64 MiB file cap.
+- Witness-sending leaves: the first node's trace alone exceeds the 1 MiB cap on intermediate outputs.
 - Scalar Keccak-f[1600]: four lanes in AVX2 are the obvious next step and I did not get to them.
 
 ## What to try next
 
-Vectorise the permutation across chains, and stop recomputing the encoding of the
+Vectorise the permutation across leaf items, and stop recomputing the encoding of the
 running proof at every step.
 ~~~
 

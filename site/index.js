@@ -69,15 +69,14 @@
       return;
     }
     const sc = cur.score;
-    const split = tr.id === 'product'
-      ? [el('span', { class: 'math' }, 'P̄'), fmtS(sc.P_bar), el('span', { class: 'op' }, '\u00d7'), el('span', { class: 'math' }, 'g'), fmtPart(sc.g, '')]
-      : [el('span', { class: 'math' }, 'P̄'), fmtS(sc.P_bar), el('span', { class: 'op' }, '+'), el('span', { class: 'math' }, 'V̄'), fmtS(sc.V_bar)];
+    const split = [el('span', { class: 'math' }, 'P_total'), fmtS(sc.P_total_s), el('span', { class: 'op' }, '\u00d7'),
+      el('span', { class: 'math' }, '2^(|π₈|/1 MiB)'), fmtPart(sc.size_factor, ''), el('span', { class: 'muted' }, ` (|π₈| = ${window.RF.fmtBytes(sc.final_pi_bytes)})`)];
     const other = window.RF.TRACKS.filter(t => t.id !== tr.id && data.record[t.id] && data.record[t.id].id === cur.id);
     const left = el('div', null,
       el('h2', null, `Current ${tr.label.toLowerCase()} record`),
       el('p', { class: 'score-big' }, el('span', { class: 'math' }, tr.sym), fmtS(scoreIn(cur, tr.id)), el('span', { class: 'unit' }, 's')),
       el('p', { class: 'score-split' }, '=', split),
-      el('p', { class: 'score-note' }, 'Seconds per 2¹⁸ permutations. Lower is better.'),
+      el('p', { class: 'score-note' }, 'Seconds: the total time of the eight steps, times the size factor. Lower is better.'),
       other.length ? el('p', { class: 'score-note' }, 'It also holds the ' + other.map(t => t.label.toLowerCase()).join(' and ') + ' record.') : null);
     const dl = el('dl', { class: 'kv' },
       el('dt', null, 'Entry'), el('dd', null, el('a', { href: page('submission.html', { id: cur.id }) }, nm(cur))),
@@ -245,15 +244,17 @@
         el('td', null, timeEl(evaluatedAt(e)))));
     }
     if (tr.parts.some(p => p[3])) tb.append(el('tr', { class: 'note-row' }, el('td', { colspan: cols, class: 'muted' },
-      '* ' + tr.parts.filter(p => p[3]).map(p => p[1] + ': ' + p[3]).join('; ') + ' (shown so the trade-off is visible; the sum prices it).')));
+      '* ' + tr.parts.filter(p => p[3]).map(p => p[1] + ': ' + p[3]).join('; ') + ' (shown, not scored).')));
   }
 
   // ---- queue: running first, then a waiting port, then the bot's fair order by author ------------
   function queueOrder(subs) {
     const running = subs.filter(e => e.status === 'running').sort((a, b) => (a.started || 0) - (b.started || 0));
-    // a waiting port of the record to a new pin first, oldest first (the bot's order)
-    const front = subs.filter(e => e.status === 'queued' && e.port_of).sort((a, b) => (a.queued || 0) - (b.queued || 0));
-    const queued = subs.filter(e => e.status === 'queued' && !e.port_of).sort((a, b) => (a.queued || 0) - (b.queued || 0));
+    // a waiting port of the record to a new pin, or a record candidate's confirmation run, first,
+    // oldest first (the bot's order)
+    const first = e => !!(e.port_of || e.confirming);
+    const front = subs.filter(e => e.status === 'queued' && first(e)).sort((a, b) => (a.queued || 0) - (b.queued || 0));
+    const queued = subs.filter(e => e.status === 'queued' && !first(e)).sort((a, b) => (a.queued || 0) - (b.queued || 0));
     const lastStart = new Map();
     for (const e of subs) { const t = countedStart(e); if (e.author && t) lastStart.set(e.author, Math.max(lastStart.get(e.author) || -Infinity, t.getTime())); }
     const order = front.slice();
@@ -296,7 +297,8 @@
       el('span', { class: 'pos' }, pos),
       el('span', null, badge(e.status), ' ', el('a', { class: 'entry', href: page('submission.html', { id: e.id }) }, nm(e)),
         ' ', el('span', { class: 'muted' }, 'by '), e.author ? ext(link.author(e), e.author) : '–',
-        ' ', el('span', { class: 'muted' }, '('), ext(link.pr(e), '#' + e.pr), el('span', { class: 'muted' }, ')')),
+        ' ', el('span', { class: 'muted' }, '('), ext(link.pr(e), '#' + e.pr), el('span', { class: 'muted' }, ')'),
+        e.confirming ? [' ', el('span', { class: 'muted' }, 'record candidate: confirmation run')] : null),
       el('span', { class: 'when' }, e.status === 'running' ? (e.started ? 'started ' + ago(e.started) : 'started')
         : (e.queued ? 'queued ' + ago(e.queued) : 'queued')));
     running.forEach(e => ol.append(item(e, '▸')));

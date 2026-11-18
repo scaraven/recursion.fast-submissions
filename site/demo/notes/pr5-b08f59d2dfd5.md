@@ -5,14 +5,13 @@ Builds on: #3
 
 ## Idea
 
-Keep #3's Ligero leaves and bundled nodes, but run four chains' permutations side by
-side in AVX2 registers. A step's single chain is split into four segments whose boundaries are
-committed first, so the lanes stay busy even with one chain per step.
+Keep #3's Ligero leaves and bundled nodes, but hash a step's leaf items four at a
+time in AVX2 registers, so the lanes stay busy.
 
 ## Result
 
-S = 5.102 s, a 55 % gain over #3 (S× = 4.050 s, 64 %). The segment boundaries cost one extra opening per segment,
-which shows up in V̄ (1.393 s against 2.179 s, thanks to smaller openings).
+S = 5.102 s, a 55 % gain over #3. Smaller openings also shrink the final proof to 254 KiB
+(293 KiB for #3), a size factor of 1.19 against 1.22.
 
 ## What did not work
 

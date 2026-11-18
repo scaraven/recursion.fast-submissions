@@ -89,7 +89,7 @@ def main():
         if a.retire and not ID_RE.match(a.retire):
             sys.exit("bot: --retire must be an entry id")
         if a.retire and not TRACK_RE.match(a.track):
-            sys.exit("bot: --retire needs --track, the track of the record to retire (sum or product)")
+            sys.exit("bot: --retire needs --track, the track of the record to retire (final or every)")
         if a.resume not in ("", "true", "false"):
             sys.exit("bot: --resume must be true or false")
         e = flows.select(ctx, pr, a.retire or None, a.resume == "true", (a.track if a.retire else None))
