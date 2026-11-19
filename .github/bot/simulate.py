@@ -140,35 +140,45 @@ class FakeGitHub:
 
 
 def make_result(run_id, verdict="ACCEPT", S=1.0, comparable=True, harness=PIN, prover="a" * 64, machine_ok=True,
-                organiser_error=None, stream=True, every=True, legacy=False):
+                organiser_error=None, stream=True, every=True, legacy=False, reject_stage=None):
     """A result as the core's aggregate.py writes it (the fields the bot reads). `comparable=False`:
     a truncated stream; `machine_ok=False`: another machine's fingerprint, the organiser's ERROR;
     `stream=False`: no stream recorded (a REJECT at the certificate, so no benchmark part, or inside
-    the stream). `S` is the score of both tracks; `every=False`: eligible for `final` only (an
-    intermediate output not accepted), with the core's `tracks_reason`; `legacy`: a score without
-    `tracks` (an earlier season's core), the sum alone."""
+    the stream). `S` is the score of `final` (P_total · 2^(|π_16| / 512 KiB)); `S_every`, the score of
+    `every`, prices the largest proof (an intermediate one 80,000 bytes larger than the final one),
+    so it is `S` times a fixed factor and the two tracks rank alike; `every=False`: eligible for
+    `final` only (an intermediate output not accepted), with the core's `tracks_reason`; `legacy`: a
+    score without `tracks` (an earlier season's core), the sum alone; `reject_stage`: a REJECT's
+    stage, the core's top-level field (absent by default, as from a core before it)."""
     fp = "f" * 64
     if not machine_ok:
         verdict, comparable = "ERROR", False
     r = {"schema": "recursion.fast/v6/result-1", "verdict": verdict, "comparable": comparable,
          "truncated": not comparable and machine_ok, "harness_commit": harness, "job": f"{REPO}/actions/runs/{run_id}/attempts/1",
          "machine": {"fingerprint": fp if machine_ok else "e" * 64, "expected": fp, "matches": machine_ok and stream},
-         "stream": {"shape": {"M": 8, "n": 1 << 22}, "truncated": not comparable and machine_ok} if stream else None,
+         "stream": {"shape": {"M": 16, "n": 1 << 18}, "truncated": not comparable and machine_ok} if stream else None,
          "runner": {"name": "rf-bench-1", "environment": "self-hosted", "labels": ["rf-bench"]},
          "reasons": ([] if verdict == "ACCEPT" else ["the entry failed: `boom` @someone"] if machine_ok else
                      [f"organiser ERROR: the machine fingerprint is mismatched (fingerprint {'e' * 64}, the season expects {fp})"]),
          "prover_sha256": prover}
     if not machine_ok or organiser_error:
         r["organiser_error"] = organiser_error or "fingerprint"
+    if reject_stage is not None:
+        r["reject_stage"] = reject_stage
     if verdict in ("ACCEPT", "PROVISIONAL"):
-        pi = 280000
-        f = 2 ** (pi / 2 ** 20)
+        pi, pi_max, ref = 280000, 360000, 1 << 19
+        f, fe = 2 ** (pi / ref), 2 ** (pi_max / ref)
+        P = S / f
         if legacy:
             r["score"] = {"S": S, "P_bar": S * 0.8, "V_bar": S * 0.2, "M": 96, "c_P": 1.0}
         else:
-            r["score"] = {"S": S, "P_total_s": S / f, "size_factor": f, "final_pi_bytes": pi, "M": 8, "c_P": 1.0,
-                          "tracks": {"final": "S", "every": "S"} if every else {"final": "S"}}
-            if not every:
+            r["score"] = {"S": S, "P_total_s": P, "size_factor": f, "final_pi_bytes": pi,
+                          "pass_totals_s": [P * 1.004, P, P * 0.998], "median_pass": 2, "size_ref": ref,
+                          "M": 16, "n": 1 << 18, "c_P": 1.0,
+                          "tracks": {"final": "S", "every": "S_every"} if every else {"final": "S"}}
+            if every:
+                r["score"].update(S_every=P * fe, size_factor_every=fe, max_pi_bytes=pi_max)
+            else:
                 r["score"]["tracks_reason"] = {"every": "output 3 rejected by acc"}
     return r
 

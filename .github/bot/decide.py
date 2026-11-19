@@ -125,7 +125,8 @@ def decide(result, verification, pin, records, attempts, record_provers=(), marg
             extra.append(why)
         if out["organiser_error"] in PAUSING_ERRORS:    # the organiser's, not the entry's: never uses up the retry
             out["requeue"] = True
-            what = "machine fingerprint" if out["organiser_error"] == "fingerprint" else "the season's stream shape"
+            what = {"fingerprint": "machine fingerprint", "lengths": "the season's stream shape",
+                    "malformed": "a malformed stream record"}.get(out["organiser_error"], out["organiser_error"])
             extra.append(f"organiser ERROR ({what}): queued again; this run does not count as an attempt")
             return "queued"
         if attempts < MAX_ATTEMPTS:
@@ -177,11 +178,25 @@ def decide(result, verification, pin, records, attempts, record_provers=(), marg
     return out
 
 
+# The stages at which a REJECT can have been caused by the record build cache (the core's top-level
+# `reject_stage`): a restored module can make the certificate fail, and a restored module's `.c` is
+# what the badge is compiled from, so a forged one shows as a failed check. The prover is built from
+# the entry's own `.s`, never from the cache, so a REJECT of the prover's build or setup, a failed
+# request, a timed pass's mismatch or the stream cap is final: a slow prover cannot buy a second draw
+# by failing a timed pass on purpose.
+CACHE_STAGES = ("certificate", "check")
+
+
 def cache_retry(result, entry):
-    """True if a REJECT used the record build cache (its certificate restored modules from it) and this entry was not yet evaluated without it: it is queued once more with
-    `record_cache: false`, so a sabotaged cache cannot fail a candidate. An ERROR's retry runs
-    without the cache anyway (flows.publish)."""
+    """True if a REJECT used the record build cache (its certificate restored modules from it), the
+    cache can have caused it (`reject_stage` is `certificate` or `check`, CACHE_STAGES; a result
+    without `reject_stage`, of an earlier core, is retried whatever its stage, as before), and this
+    entry was not yet evaluated without it: it is queued once more with `record_cache: false`, so a
+    sabotaged cache cannot fail a candidate. An ERROR's retry runs without the cache anyway
+    (flows.publish)."""
     if not isinstance(result, dict) or result.get("verdict") != "REJECT" or entry.get("record_cache") is False:
+        return False
+    if "reject_stage" in result and result.get("reject_stage") not in CACHE_STAGES:
         return False
 
     def restored(r):

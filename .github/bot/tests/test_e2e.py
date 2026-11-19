@@ -420,8 +420,9 @@ class E2E(unittest.TestCase):
         self.w.intake(2)
         e, p = self.w.evaluate(self.win(S=8.6))                               # the confirmation runs next
         self.assertEqual((e["pr"], e["sha"], p["status"], p["record_in"]), (2, sha0, "record", ["final", "every"]))
-        self.assertEqual((common.track_scores(p["score"]), p["record_of"]["final"], p["counted_at"]),
-                         ({"final": 8.6, "every": 8.6}, rec["id"], counted))
+        self.assertEqual((common.track_scores(p["score"])["final"], p["record_of"]["final"], p["counted_at"]),
+                         (8.6, rec["id"], counted))
+        self.assertAlmostEqual(common.track_scores(p["score"])["every"], 8.6 * 2 ** (80000 / 2 ** 19))   # S_every: the largest proof
         self.assertTrue(any(x.startswith("confirmed:") for x in p["reasons"]))
         self.assertEqual((p["confirmation"]["status"], p["result"], p["confirmation"]["result"]),
                          ("record", f"results/{p['id']}.json", f"results/{p['id']}-confirm.json"))
@@ -792,6 +793,32 @@ class E2E(unittest.TestCase):
         self.assertEqual(self.g.cache_keys, ["other"])
         self.assertIsNone(flows.record_build(ctx, {"entry_build": {"manifest_sha256": "0" * 64}}, d, PIN, "pr1-x"))
         self.assertIsNone(flows.record_build(ctx, {}, d, PIN, "pr1-x"))
+
+    def test_record_cache_retry_only_where_the_cache_can_act(self):
+        """v6: a REJECT that restored record modules is evaluated once more without the cache only if
+        the cache can have caused it (`reject_stage` `certificate` or `check`); a REJECT in a timed
+        pass, a request or the prover's setup is final, so a slow prover cannot buy a second draw."""
+        used = {"certificate": {"record_cache": {"restored": ["AlphaX"]}}}
+        for n, stage, want in ((1, "timed-pass", "rejected"), (2, "request", "rejected"), (3, "check", "queued"),
+                               (4, "certificate", "queued")):
+            self.g.open_pr(n, f"a{n}", good_root(f"r{n}", str(n)))
+            self.w.intake(n)
+            e, p = self.w.evaluate(lambda e, run: dict(make_result(run, "REJECT", reject_stage=stage), **used))
+            self.assertEqual((e["pr"], p["status"]), (n, want), stage)
+            if want == "queued":
+                self.assertIs(p["record_cache"], False)
+                e, p = self.w.evaluate(lambda e, run: dict(make_result(run, "REJECT", reject_stage=stage), **used))
+                self.assertEqual((e["pr"], p["status"]), (n, "rejected"), stage)
+
+    def test_malformed_error_pauses_like_a_lengths_error(self):
+        """A stream record the score cannot be computed from (`malformed`, the runner's fault) is
+        the core's named organiser error: re-queued without an attempt, counted in the streak."""
+        self.g.open_pr(1, "alice", good_root("alpha", "1"))
+        self.w.intake(1)
+        e, p = self.w.evaluate(lambda e, run: make_result(run, "ERROR", harness=self.w.pin, organiser_error="malformed"))
+        self.assertEqual((p["status"], p["attempts"]), ("queued", 0))
+        self.assertTrue(any("a malformed stream record" in r for r in p["reasons"]))
+        self.assertEqual([x["kind"] for x in self.w.state()["error_streak"]], ["malformed"])
 
     def test_unreadable_data_fails_closed(self):
         """An oversized or foreign submissions.json stops every step and changes neither `data` nor

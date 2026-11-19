@@ -21,6 +21,16 @@ def num(x, nd=4):
     return f"{x:.{nd}f}" if is_num(x) else "-"
 
 
+def size_ref_text(ref):
+    """The size scale of the score's factors (`score.size_ref`, bytes) as text: `512 KiB` (the v6
+    season's) when the result does not state it."""
+    if not is_num(ref) or ref <= 0:
+        return "512 KiB"
+    if ref % (1 << 20) == 0:
+        return f"{int(ref) >> 20} MiB"
+    return f"{int(ref) >> 10} KiB" if ref % 1024 == 0 else f"{int(ref)} bytes"
+
+
 def score_groups(score):
     """[(field, value, [tracks])] of a result's `score`: each score field once, with the tracks it
     scores (v6: one `S` for `final` and `every`)."""
@@ -89,8 +99,18 @@ def publish_comment(e, run_url):
         x = lambda k: num(s.get(k))  # noqa: E731
         m = s.get("M") if is_num(s.get("M")) else "-"
         trunc = ", truncated stream" if e.get("truncated") else ""
+        ref = size_ref_text(s.get("size_ref"))
         lines.append(f"S = {x('S')} s = P_total {x('P_total_s')} s × size factor {x('size_factor')} "
-                     f"(2^(|π|/1 MiB), final proof {num(s.get('final_pi_bytes'), 0)} bytes), M = {m}{trunc}")
+                     f"(final: 2^(|π_M|/{ref}), final proof {num(s.get('final_pi_bytes'), 0)} bytes), M = {m}{trunc}")
+        if is_num(s.get("S_every")):
+            lines.append(f"S_every = {x('S_every')} s = P_total × size factor {x('size_factor_every')} "
+                         f"(every: 2^(max |π_i|/{ref}), largest proof {num(s.get('max_pi_bytes'), 0)} bytes)")
+        tot = s.get("pass_totals_s")
+        if isinstance(tot, list) and tot and all(is_num(t) for t in tot[:8]):
+            mp = s.get("median_pass")
+            which = f"pass {mp}'s total" if is_num(mp) else "the median pass's total"
+            lines.append(f"P_total: {which}, the median of the timed passes' totals "
+                         + ", ".join(f"{num(t)} s" for t in tot[:8]))
         named = [t for t, _f, _v in score_fields(s)]
         left = [t for t in TRACKS if t not in named]
         if e.get("verdict") == "ACCEPT":
@@ -165,6 +185,7 @@ def workflow_comment(sha, problems):
 PAUSE_TITLE = "recursion.fast: evaluation paused (organiser errors since the last completed benchmark)"
 ERROR_KINDS = {"fingerprint": "the machine fingerprint is not the season's",
                "lengths": "the stream's shape (M, n) was not the season's",
+               "malformed": "a step record did not hold the season's number of timed times (the runner's fault)",
                "drift": "c_P drifted beyond c_P_drift", "setup": "a setup job did not complete",
                "cache": "an organiser cache was missing", "attestation": "the result's provenance did not verify",
                "harness": "the certificate job ended without a certificate", "unnamed": "an unnamed harness ERROR",
@@ -185,7 +206,7 @@ def pause_notice(st, run_url):
     lines += [f"- {code_span(x.get('at') or '', 20)} {code_span(x.get('id'), 60)} ({code_span(x.get('kind'), 40)}, "
               f"{ERROR_KINDS.get(x.get('kind'), 'an organiser-side ERROR')}): {code_span(x.get('reason'), 300)}"
               for x in streak[-10:]]
-    lines += ["", "No entry was charged for these runs (a fingerprint or lengths ERROR uses up no attempt; the "
+    lines += ["", "No entry was charged for these runs (a fingerprint, lengths or malformed ERROR uses up no attempt; the "
               "others use the entry's one retry). Fix the cause: the machine or the image (then the season's "
               "`[machine] fingerprint` in the core, and the pin), the harness at the pin, the setup or a cache. "
               "Then run `evaluate-next` with `pr` = a queued pull request (a port of the record due at the pin runs "

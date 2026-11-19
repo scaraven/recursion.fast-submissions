@@ -1,16 +1,25 @@
 {
- "S": 18.698977317380045,
- "P_total_s": 15.544,
- "size_factor": 1.202970748673446,
+ "S": 22.563785396780332,
+ "P_total_s": 15.592,
+ "size_factor": 1.4471386221639515,
  "final_pi_bytes": 279552,
+ "S_every": 24.17671941286452,
+ "size_factor_every": 1.550584877685,
+ "max_pi_bytes": 331776,
+ "pass_totals_s": [
+  15.611,
+  15.544,
+  15.592
+ ],
+ "median_pass": 3,
  "tracks": {
   "final": "S",
-  "every": "S"
+  "every": "S_every"
  },
- "size_ref": 1048576,
- "M": 8,
- "n": 4194304,
- "sum_n": 33554432,
+ "size_ref": 524288,
+ "M": 16,
+ "n": 262144,
+ "sum_n": 4194304,
  "c_P": 1.0031,
  "T_triv_ns": 6594213205,
  "c_P_provisional": false,

@@ -202,7 +202,7 @@ def counted_start(e):
     """When an entry's evaluation counts as started, for the fair order (AGENTS.md §9):
     `counted_at`, the start of its first run that counted (a retry never refreshes it), or the start
     of the run in progress. A run does not count when it ended in a named organiser error
-    (`UNCOUNTED_ERRORS`: fingerprint, lengths, drift, setup, cache, attestation), nor the first
+    (`UNCOUNTED_ERRORS`: fingerprint, lengths, malformed, drift, setup, cache, attestation), nor the first
     unnamed ERROR of an entry (a catch-all harness error or a reaped run); a later one does
     (`settle_run`). Ports (the organiser's), superseded and withdrawn entries never count."""
     if e.get("port_of") or e.get("status") in ("superseded", "withdrawn", "invalid"):
