@@ -37,7 +37,7 @@
     "median_pass": 2,
     "size_ref": 524288,
     "M": 16,
-    "n": 262144,
+    "sum_n": 4194304,
     "c_P": 1.031,
     "slowest_step_s": 0.593,
     "tracks": {
@@ -153,7 +153,7 @@
     "median_pass": 2,
     "size_ref": 524288,
     "M": 16,
-    "n": 262144,
+    "sum_n": 4194304,
     "c_P": 1.031,
     "tracks": {
      "final": "S",
@@ -240,7 +240,7 @@
     "median_pass": 2,
     "size_ref": 524288,
     "M": 16,
-    "n": 262144,
+    "sum_n": 4194304,
     "c_P": 1.031,
     "tracks": {
      "final": "S",
@@ -312,7 +312,7 @@
     "median_pass": 2,
     "size_ref": 524288,
     "M": 16,
-    "n": 262144,
+    "sum_n": 4194304,
     "c_P": 1.031,
     "tracks": {
      "final": "S",
@@ -377,7 +377,7 @@
     "median_pass": 2,
     "size_ref": 524288,
     "M": 16,
-    "n": 262144,
+    "sum_n": 4194304,
     "c_P": 1.031,
     "tracks_reason": {
      "every": "output 2 rejected by acc"
@@ -457,7 +457,7 @@
     "median_pass": 2,
     "size_ref": 524288,
     "M": 16,
-    "n": 262144,
+    "sum_n": 4194304,
     "c_P": 1.031,
     "slowest_step_s": 0.172,
     "tracks": {
@@ -542,7 +542,7 @@
     "median_pass": 2,
     "size_ref": 524288,
     "M": 16,
-    "n": 262144,
+    "sum_n": 4194304,
     "c_P": 1.031,
     "tracks": {
      "final": "S",
@@ -608,7 +608,7 @@
     "median_pass": 2,
     "size_ref": 524288,
     "M": 16,
-    "n": 262144,
+    "sum_n": 4194304,
     "c_P": 1.031,
     "tracks": {
      "final": "S",
@@ -717,7 +717,7 @@
     "median_pass": 2,
     "size_ref": 524288,
     "M": 16,
-    "n": 262144,
+    "sum_n": 4194304,
     "c_P": 1.031,
     "tracks": {
      "final": "S",
@@ -803,7 +803,7 @@
     "median_pass": 2,
     "size_ref": 524288,
     "M": 16,
-    "n": 262144,
+    "sum_n": 4194304,
     "c_P": 1.031,
     "tracks": {
      "final": "S",
@@ -1005,7 +1005,7 @@
     "median_pass": 2,
     "size_ref": 524288,
     "M": 16,
-    "n": 262144,
+    "sum_n": 4194304,
     "c_P": 1.031,
     "tracks_reason": {
      "every": "output 2 rejected by acc"

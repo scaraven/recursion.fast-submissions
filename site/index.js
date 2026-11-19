@@ -76,7 +76,7 @@
     const other = window.RF.TRACKS.filter(t => t.id !== tr.id && data.record[t.id] && data.record[t.id].id === cur.id);
     const left = el('div', null,
       el('h2', null, `Current ${tr.label.toLowerCase()} record`),
-      el('p', { class: 'score-big' }, el('span', { class: 'math' }, tr.sym), fmtS(scoreIn(cur, tr.id)), el('span', { class: 'unit' }, 's')),
+      el('p', { class: 'score-big' }, el('span', { class: 'math' }, pt.sym), fmtS(scoreIn(cur, tr.id)), el('span', { class: 'unit' }, 's')),
       el('p', { class: 'score-split' }, '=', split),
       el('p', { class: 'score-note' }, pt.note),
       other.length ? el('p', { class: 'score-note' }, 'It also holds the ' + other.map(t => t.label.toLowerCase()).join(' and ') + ' record.') : null);
@@ -210,10 +210,14 @@
     document.getElementById('leaders-caption').textContent = `Every ${tr.label.toLowerCase()} record, newest first, grouped by contract pin`;
     const cols = 6 + tr.parts.length;
     const th = (label, cls, title) => el('th', { scope: 'col', class: cls || null, title: title || null }, label);
+    // the columns follow how the rows are priced (`pricedBy`): this track's own parts, or the final
+    // proof's for rows of the first v6 rules; a board of both kinds names the priced proof per cell
+    const defs = [...new Set(recs.map(e => window.RF.pricedBy(tr, e.score)))];
+    const hd = defs.length === 1 ? defs[0] : tr, mixed = defs.length > 1;
     document.getElementById('leaders-head').replaceChildren(el('tr', null,
-      th('#', 'num'), th('Entry'), th('Author'), th(tr.sym + ' (s)', 'num', 'the score of this track, seconds'),
-      tr.parts.map(([, label, unit, note]) => th(label + (unit === 's' ? ' (s)' : '') + (note ? ' *' : ''), 'num' + (note ? ' unscored' : ''),
-        note ? 'shown, ' + note : null)),
+      th('#', 'num'), th('Entry'), th('Author'), th((mixed ? tr.sym : hd.sym) + ' (s)', 'num', 'the score of this track, seconds'),
+      hd.parts.map(([k, label, unit, note]) => th(mixed && k === hd.size[0] ? 'priced |\u03c0|' : label + (unit === 's' ? ' (s)' : '') + (note ? ' *' : ''),
+        'num' + (note ? ' unscored' : ''), note ? 'shown, ' + note : mixed && k === hd.size[0] ? 'the proof the row\'s size factor prices' : null)),
       th('Gain', 'num'), th('Date')));
     const tb = document.getElementById('leaders');
     tb.replaceChildren();
@@ -240,7 +244,8 @@
           isCur ? [' ', el('span', { class: 'badge st-record' }, 'current')] : retiredIn(e, tr.id) ? [' ', badge('retired')] : null),
         el('td', null, e.author ? ext(link.author(e), e.author) : '–'),
         el('td', { class: 'num' }, el('strong', null, fmtS(scoreIn(e, tr.id)))),
-        window.RF.pricedBy(tr, sc).parts.map(([k, , unit, note]) => el('td', { class: 'num' + (note ? ' unscored' : '') }, fmtPart(sc[k], unit))),
+        window.RF.pricedBy(tr, sc).parts.map(([k, , unit, note]) => el('td', { class: 'num' + (note ? ' unscored' : ''),
+          title: mixed && k === window.RF.pricedBy(tr, sc).size[0] ? window.RF.pricedBy(tr, sc).size[1] : null }, fmtPart(sc[k], unit))),
         el('td', { class: 'num' + (gain !== null && e.record_of[tr.id] ? ' gain' : ''), title: gain !== null && a.S_record !== null ? `Against the ${fmtS(a.S_record)} s of the record it beat` : null },
           gain !== null && e.record_of[tr.id] ? pct(gain) : e.port_of ? 'ported' : 'first at pin'),
         el('td', null, timeEl(evaluatedAt(e)))));

@@ -67,14 +67,14 @@
       parts.push(el('h2', { class: 'track-head' }, tr.label, ' ', el('span', { class: 'tab-formula' }, repeat ? `the same ${field} = ${fmtS(v)} s` : tr.formula),
         took ? [' ', el('span', { class: 'badge ' + (retiredIn(e, tr.id) ? 'st-retired' : 'st-record') }, retiredIn(e, tr.id) ? 'record, retired' : 'took the record')] : null));
       if (!repeat) parts.push(el('div', { class: 'metrics m' + (tr.parts.length + 1), role: 'group', 'aria-label': tr.label + ' score' },
-        m('Score ' + tr.sym, v, 's', 'lower is better'),
+        m('Score ' + (field || tr.sym), v, 's', 'lower is better'),
         tr.parts.map(([k, label, unit, note]) => m(label, sc[k], unit, note || tr.desc[k] || null))));
       const a = e.against[tr.id];
       if (a) {
         const g = gainOf(e, tr.id);
         parts.push(el('p', { class: 'against' },
           el('strong', null, a.beats ? `Beat the standing ${tr.label.toLowerCase()} record.` : `Did not beat the standing ${tr.label.toLowerCase()} record.`), ' ',
-          `${tr.sym} = ${fmtS(a.S !== null ? a.S : v)} s against ${fmtS(a.S_record)} s of the record `, recOf(a.record),
+          `${field || tr.sym} = ${fmtS(a.S !== null ? a.S : v)} s against ${fmtS(a.S_record)} s of the record `, recOf(a.record),
           `, at the same contract pin: gain = ${pct(g)}. A record needs a gain of more than ${marginText(data)}.`));
       } else if (took && !e.record_of[tr.id]) {
         parts.push(el('p', { class: 'against' }, e.port_of ? `The previous pin's ${tr.label.toLowerCase()} record, re-run at a new contract pin before any other entry.`
