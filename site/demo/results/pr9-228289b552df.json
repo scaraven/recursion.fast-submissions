@@ -2,7 +2,7 @@
  "schema": "recursion.fast/v6/result-1",
  "verdict": "ACCEPT",
  "comparable": false,
- "truncated": true,
+ "truncated": false,
  "harness_commit": "c0dec0dec0dec0dec0dec0dec0dec0dec0dec0de",
  "job": "scaraven/recursion.fast-submissions/actions/runs/108/attempts/1",
  "machine": {
@@ -18,19 +18,30 @@
   ]
  },
  "reasons": [
-  "stream truncated at stream_s (1,920 s) after 81 of 96 steps"
+  "the job plan did not match the season's: not comparable"
  ],
  "prover_sha256": "0000000000000000000000000000000000000000000000000000000000011667",
  "score": {
   "S": 4.2317,
-  "P_total_s": 3.4935,
-  "size_factor": 1.2113,
+  "P_total_s": 2.8841,
+  "size_factor": 1.4673,
   "final_pi_bytes": 290000,
-  "M": 6,
+  "S_every": 4.7038,
+  "size_factor_every": 1.631,
+  "max_pi_bytes": 370000,
+  "pass_totals_s": [
+   2.8901,
+   2.8841,
+   2.8803
+  ],
+  "median_pass": 2,
+  "size_ref": 524288,
+  "M": 16,
+  "n": 262144,
   "c_P": 1.031,
   "tracks": {
    "final": "S",
-   "every": "S"
+   "every": "S_every"
   }
  }
 }

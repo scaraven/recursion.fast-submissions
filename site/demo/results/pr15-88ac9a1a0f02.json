@@ -21,14 +21,25 @@
  "prover_sha256": "000000000000000000000000000000000000000000000000000000000001d001",
  "score": {
   "S": 3.1455,
-  "P_total_s": 2.6313,
-  "size_factor": 1.1954,
+  "P_total_s": 2.2012,
+  "size_factor": 1.429,
   "final_pi_bytes": 270000,
-  "M": 8,
+  "S_every": 3.4964,
+  "size_factor_every": 1.5884,
+  "max_pi_bytes": 350000,
+  "pass_totals_s": [
+   2.2058,
+   2.2012,
+   2.1984
+  ],
+  "median_pass": 2,
+  "size_ref": 524288,
+  "M": 16,
+  "n": 262144,
   "c_P": 1.031,
   "tracks": {
    "final": "S",
-   "every": "S"
+   "every": "S_every"
   }
  }
 }

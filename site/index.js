@@ -69,14 +69,16 @@
       return;
     }
     const sc = cur.score;
+    // this track's own size factor and proof size (`final`: the final proof's; `every`: the largest's)
+    const pt = window.RF.pricedBy(tr, sc), [fk] = pt.parts[1], [sk, sl] = pt.size;
     const split = [el('span', { class: 'math' }, 'P_total'), fmtS(sc.P_total_s), el('span', { class: 'op' }, '\u00d7'),
-      el('span', { class: 'math' }, '2^(|π₈|/1 MiB)'), fmtPart(sc.size_factor, ''), el('span', { class: 'muted' }, ` (|π₈| = ${window.RF.fmtBytes(sc.final_pi_bytes)})`)];
+      el('span', { class: 'math' }, pt.factor), fmtPart(sc[fk], ''), el('span', { class: 'muted' }, ` (${sl} = ${window.RF.fmtBytes(sc[sk])})`)];
     const other = window.RF.TRACKS.filter(t => t.id !== tr.id && data.record[t.id] && data.record[t.id].id === cur.id);
     const left = el('div', null,
       el('h2', null, `Current ${tr.label.toLowerCase()} record`),
       el('p', { class: 'score-big' }, el('span', { class: 'math' }, tr.sym), fmtS(scoreIn(cur, tr.id)), el('span', { class: 'unit' }, 's')),
       el('p', { class: 'score-split' }, '=', split),
-      el('p', { class: 'score-note' }, 'Seconds: the total time of the eight steps, times the size factor. Lower is better.'),
+      el('p', { class: 'score-note' }, pt.note),
       other.length ? el('p', { class: 'score-note' }, 'It also holds the ' + other.map(t => t.label.toLowerCase()).join(' and ') + ' record.') : null);
     const dl = el('dl', { class: 'kv' },
       el('dt', null, 'Entry'), el('dd', null, el('a', { href: page('submission.html', { id: cur.id }) }, nm(cur))),
@@ -238,7 +240,7 @@
           isCur ? [' ', el('span', { class: 'badge st-record' }, 'current')] : retiredIn(e, tr.id) ? [' ', badge('retired')] : null),
         el('td', null, e.author ? ext(link.author(e), e.author) : '–'),
         el('td', { class: 'num' }, el('strong', null, fmtS(scoreIn(e, tr.id)))),
-        tr.parts.map(([k, , unit, note]) => el('td', { class: 'num' + (note ? ' unscored' : '') }, fmtPart(sc[k], unit))),
+        window.RF.pricedBy(tr, sc).parts.map(([k, , unit, note]) => el('td', { class: 'num' + (note ? ' unscored' : '') }, fmtPart(sc[k], unit))),
         el('td', { class: 'num' + (gain !== null && e.record_of[tr.id] ? ' gain' : ''), title: gain !== null && a.S_record !== null ? `Against the ${fmtS(a.S_record)} s of the record it beat` : null },
           gain !== null && e.record_of[tr.id] ? pct(gain) : e.port_of ? 'ported' : 'first at pin'),
         el('td', null, timeEl(evaluatedAt(e)))));

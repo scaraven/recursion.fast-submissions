@@ -48,8 +48,9 @@
         el('span', null, RF.STATUS_INFO[e.status][1])),
       e.title ? el('p', { class: 'title' }, el('span', { class: 'muted' }, 'Pull request title (written by the submitter): '), e.title) : null));
 
-    // numbers: each track's score, with its components and its comparison with the track's record
-    // (v6: one S in both tracks, or in `final` only; the reasons say why not in `every`)
+    // numbers: each track's score, with its own components (its own size factor and proof size) and
+    // its comparison with the track's record (v6: S in `final`, S_every in `every`, or `final` only;
+    // the reasons say why not in `every`; a result of the first v6 rules has one S in both)
     const sc = e.score;
     const recOf = id => { const r = rel.byId.get(id); return r ? subLink(r) : el('code', null, id); };
     let shownField = null;    // a track scored by the field the previous track showed gets no second metrics row
@@ -63,12 +64,11 @@
         el('span', { class: 'val' }, fmtPart(val, unit), unit === 's' ? [' ', el('small', null, 's')] : null),
         note ? el('span', { class: 'lbl' }, note) : null);
       const took = e.record_in.includes(tr.id);
-      parts.push(el('h2', { class: 'track-head' }, tr.label, ' ', el('span', { class: 'tab-formula' }, repeat ? `the same S = ${fmtS(v)} s` : tr.formula),
+      parts.push(el('h2', { class: 'track-head' }, tr.label, ' ', el('span', { class: 'tab-formula' }, repeat ? `the same ${field} = ${fmtS(v)} s` : tr.formula),
         took ? [' ', el('span', { class: 'badge ' + (retiredIn(e, tr.id) ? 'st-retired' : 'st-record') }, retiredIn(e, tr.id) ? 'record, retired' : 'took the record')] : null));
       if (!repeat) parts.push(el('div', { class: 'metrics m' + (tr.parts.length + 1), role: 'group', 'aria-label': tr.label + ' score' },
         m('Score ' + tr.sym, v, 's', 'lower is better'),
-        tr.parts.map(([k, label, unit, note]) => m(label, sc[k], unit, note || (k === 'P_total_s' ? 'the eight steps\' total time'
-          : k === 'size_factor' ? '2^(|π₈| / 1 MiB)' : k === 'final_pi_bytes' ? 'the final proof' : null)))));
+        tr.parts.map(([k, label, unit, note]) => m(label, sc[k], unit, note || tr.desc[k] || null))));
       const a = e.against[tr.id];
       if (a) {
         const g = gainOf(e, tr.id);
@@ -158,7 +158,8 @@
       const rest = Object.entries(sc).filter(([k]) => !shown.has(k));
       if (rest.length) {
         const dl = el('dl', { class: 'kv' });
-        for (const [k, v] of rest) dl.append(...dt(el('code', null, k), typeof v === 'number' ? String(+v.toPrecision(6)) : String(v)));
+        const show = x => typeof x === 'number' ? String(+x.toPrecision(6)) : String(x);
+        for (const [k, v] of rest) dl.append(...dt(el('code', null, k), Array.isArray(v) ? v.map(show).join(', ') : show(v)));
         parts.push(el('section', { class: 'panel' }, el('details', { class: 'readme' }, el('summary', null, 'Every measured number'), dl)));
       }
     }

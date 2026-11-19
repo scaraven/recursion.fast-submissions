@@ -74,21 +74,26 @@ the host CPU passed through: x86-64-v4 (AVX2, FMA, BMI1/2 and AVX-512 F, CD, BW,
 (records are then re-evaluated), so use `cpuid`, with a portable fallback behind every fast path:
 a `SIGILL` fails the run.
 
-**The stream** (§6) is 8 steps; each step gets one fresh leaf, `leaf.json` = `{"n", "seed"}` with
-`n = 2^22` (from step 2 also `prev.stmt` and `prev.bin`), and outputs a proof of `c_1 = L_1`,
-`c_i = nodeStmt c_(i-1) L_i`. The leaf is `L_i = leafStmt value n`, `value` the XOR of the `n`
-items `leafItem s j = Keccak-256(0x48 ‖ s ‖ enc64 j)`, `j = 0 … n − 1`: independent hashes, one
-Keccak-f[1600] permutation each, `2^25` in the stream. Each leaf's seed is a fresh secret draw in
-every evaluation. The stream runs once against the oracle service, then
-twice more timed with `oracle.key` in `/work`; every timed output must equal the service run's
-byte for byte, so **the prover must be deterministic** (grinding included). One binary may branch
-on whether `/work/oracle.key` exists.
+**The stream** (§6) is 16 steps; each step gets one fresh leaf, `leaf.json` = `{"n"}` with
+`n = 2^18` and `leaf.bin`, exactly `32·n` bytes, the blocks `x_0 ‖ … ‖ x_(n−1)` (from step 2 also
+`prev.stmt` and `prev.bin`), and outputs a proof of `c_1 = L_1`, `c_i = nodeStmt c_(i-1) L_i`. The
+leaf is `L_i = leafStmt (dataRoot xs_i) n`, the Keccak-256 Merkle root of the step's blocks:
+`leafItem x = Keccak-256(0x48 ‖ x)` per block, adjacent digests paired by
+`dataNode l r = Keccak-256(0x44 ‖ l ‖ r)` level by level (an odd last digest is carried up
+unhashed), one Keccak-f[1600] permutation each, about `2^19` per step. The verifier knows only the
+root, and a step's 8 MiB of data does not fit in a 1 MiB output, so the data must be committed in
+the proof. Completeness is asked for every `n ≤ leafCap = 2^20`, odd sizes included, although the
+benchmark uses one `n` (§3). Each leaf's data is a fresh secret draw in every evaluation (a secret
+seed expanded with SHAKE-256 and published after the run; the prover sees only `leaf.bin`). The
+stream runs once against the oracle service, then three times more timed with `oracle.key` in
+`/work`; every timed output must equal the service run's byte for byte, so **the prover must be
+deterministic** (grinding included). One binary may branch on whether `/work/oracle.key` exists.
 
 **A worked example.** The core ships a minimal entry: it is certified at errors 0 and is not
 competitive. A copy passes the certificate and runs through the benchmark at the smoke shape
-(`harness/smoke.toml`). At the season shape it is REJECTed: its verifier recomputes every hash of
-the stream so far (`2^25` for the final proof), far above the 128 ms verifier cap. It shows the layout, not a design. To
-copy it:
+(`harness/smoke.toml`). At the season shape it is REJECTed at step 1 by the 1 MiB output cap: it
+sends the leaf's data as its proof, `16 + 2^23` bytes, before any verifier is timed. It shows the
+layout, not a design. To copy it:
 
 ```sh
 mkdir -p submissions/my-entry/prover
@@ -152,7 +157,9 @@ python3 -I harness/evaluate.py all --entry ../submissions/ROOT --org "$PWD" \
 
 - `evaluate.py cert` and `evaluate.py bench` run the two halves separately. `harness/smoke.toml`
   is a small shape (a few steps of small leaves), with the season's service run and timed passes, so
-  it already catches a non-deterministic prover.
+  it already catches a non-deterministic prover. It has the season's size caps and size scale, but
+  its own verifier and time caps (a 128 ms verifier cap, for shared CI runners, and its own
+  `step_s` and `stream_s`).
 - **The season's shape locally.** `harness/season.toml` itself runs only on the evaluation machine:
   elsewhere its fingerprint check stops the benchmark as an organiser ERROR before your prover is
   built. Before you submit something you expect to rank, generate a local copy (the season with
@@ -166,7 +173,7 @@ python3 -I harness/evaluate.py all --entry ../submissions/ROOT --org "$PWD" \
   ```
 
   Every shape and every other cap is then the season's, but your machine's speed is not the
-  evaluation machine's: a check near the 128 ms cap, or a step near `step_s`, may pass here and
+  evaluation machine's: a check near the 64 ms cap, or a step near `step_s`, may pass here and
   fail there.
 - Read `verdict` and `reasons` in the result. Set `RF_HARNESS_COMMIT` if `.contract` is not a git
   checkout.
@@ -210,8 +217,9 @@ gh pr create --repo scaraven/recursion.fast-submissions --base main --head LOGIN
    9) and runs the core's attested `evaluate.yml` at the pin on that tag.
 4. **Publish.** The bot verifies the attestation, decides the status and the record of each track
    (section 10), writes `data` (`submissions.json`, `results/<id>.json`, `notes.md`), comments the
-   verdict, the score with its parts (`S`, `P_total`, the size factor and the final proof's size), the
-   tracks it counts in (with the core's reason when it is `final` only) and the comparison with
+   verdict, the score with its parts (`S`, `P_total`, the size factor and the final proof's size;
+   `S_every`, its size factor and the largest proof's size; the three passes' totals and which is the
+   median), the tracks it counts in (with the core's reason when it is `final` only) and the comparison with
    each track's standing record, and sets the commit status. On a new record of either track it
    also copies the root to `main`.
 
@@ -221,11 +229,11 @@ port, section 10) adds `-<first 8 hex of the pin>`. The commit status has the co
 
 | Status | Commit status | Meaning |
 |---|---|---|
-| `queued` | pending: `queued` | waiting its turn (section 9). `ERROR, queued again`: an organiser-side failure, retried once (a machine-fingerprint or stream-shape failure uses up no attempt). `record candidate (final, every), confirmation queued, S = …`: a result that would take a record, waiting for its confirmation run (section 10) |
+| `queued` | pending: `queued` | waiting its turn (section 9). `ERROR, queued again`: an organiser-side failure, retried once (a machine-fingerprint, stream-shape or malformed-record failure uses up no attempt). `record candidate (final, every), confirmation queued, S = …`: a result that would take a record, waiting for its confirmation run (section 10) |
 | `running` | pending: `evaluating` | the evaluation is running |
-| `record` | success: `ACCEPT: new record (final, every), S = … s (final, every)` | the record of one track or of both, named in the status (section 10), with the tracks it is scored in; it keeps this status after it is beaten |
+| `record` | success: `ACCEPT: new record (final, every), S = … s (final), S_every = … s (every)` | the record of one track or of both, named in the status (section 10), with the tracks it is scored in; it keeps this status after it is beaten |
 | `retired` | (unchanged) | a record the owner removed from the throne of every track it held (a record retired in one track only stays `record`, and the site marks the retired track) |
-| `accepted` | success: `ACCEPT: accepted (did not beat the record), S = … s (final, every)` | certified and comparable, but it beat neither track's standing record by the margin (section 10), or it has the same prover binary as an earlier record of either track |
+| `accepted` | success: `ACCEPT: accepted (did not beat the record), S = … s (final), S_every = … s (every)` | certified and comparable, but it beat neither track's standing record by the margin (section 10), or it has the same prover binary as an earlier record of either track |
 | `unranked` | success: `ACCEPT: accepted, not comparable (not ranked), …` | certified, but the job plan did not match, or there is no positive score (a stream that reaches `stream_s` is a REJECT since the v6 rules) |
 | `provisional` | failure: `PROVISIONAL: provisional (never ranked), …` | the Lean build succeeded but the certificate did not check (kernel rejection, `sorryAx`, a theorem other than the rendered one, the kernel cap); benchmarked and published |
 | `rejected` | failure: `REJECT: rejected` | the entry broke a rule or a cap; the comment gives the reason |
@@ -239,7 +247,11 @@ admits it. The verdicts (ACCEPT, PROVISIONAL, REJECT, ERROR) are defined in §8.
 attestation does not verify, whatever its verdict, is an organiser ERROR and is queued again once.
 So is an ACCEPT whose `harness_commit` is not the pin, a comparable ACCEPT that the core's
 `verify-record.sh` refuses, and a run that ended without a verdict. A REJECT that used the record's
-build cache is evaluated once more without it.
+build cache is evaluated once more without it, but only if the cache can have caused it: a REJECT
+at the certificate, or a failed check of an output by the compiled verifier (the result's
+`reject_stage` is `certificate` or `check`). A REJECT of the prover's build or setup, of a request,
+of a timed pass (a byte or replay mismatch) or at `stream_s` is final: the prover is built from
+your `.s`, never from the cache.
 
 ## 8. Intake caps and refusals
 
@@ -283,7 +295,8 @@ round: the next entry goes to the author who waited longest.
 - **No cap.** There is no limit on the number of your evaluations: the fair order only decides who
   goes next, and with nobody else waiting your entries run back to back.
 - **What counts as a start.** A run that ends in a named organiser error (machine fingerprint,
-  stream shape, `c_P` drift, setup, a missing organiser cache, a result whose attestation fails)
+  stream shape, a malformed stream record, `c_P` drift, setup, a missing organiser cache, a result
+  whose attestation fails)
   never counts against you in the fair order, nor does an entry's first unnamed ERROR; a later one
   does. An evaluation counts from its first counted start (a retry never moves it), and superseded
   or withdrawn entries never count. A retried entry keeps its queue time and takes its turn in the
@@ -317,32 +330,40 @@ round: the next entry goes to the author who waited longest.
 repeated runs of one entry still differ a little, so a record must beat the standing one by a
 margin.
 
-**Two tracks** rank every evaluation, with one score, each track with its own records (the core's
+**Two tracks** rank every evaluation, each with its own score and its own records (the core's
 [§6](https://github.com/scaraven/recursion.fast/blob/main/AGENTS.md#6-the-benchmark) and
 [§7](https://github.com/scaraven/recursion.fast/blob/main/AGENTS.md#7-the-score); seconds, lower is
 better):
 
 ```
-S       = P_total · 2^(|π_8| / 1 MiB)        the result's `S` (and `P_total_s`, `size_factor`, `final_pi_bytes`)
-P_total = Σ_i P_i                             seconds
-P_i     = the lower of step i's two timed wall times
+T_t     = Σ_i P_{i,t}                         pass t's total, t = 1, 2, 3; P_{i,t} step i's wall time in pass t
+P_total = the median of T_1, T_2, T_3         the result's `P_total_s` (and `pass_totals_s`, `median_pass`)
+S       = P_total · 2^(|π_16| / 512 KiB)      track final: `S` (and `size_factor`, `final_pi_bytes`)
+S_every = P_total · 2^(max_i |π_i| / 512 KiB) track every: `S_every` (and `size_factor_every`, `max_pi_bytes`)
 ```
 
-- **`final`**: only the final proof is checked: accepted against `c_8`, `|π_8| ≤ 512 KiB`,
-  `V_8 ≤ 128 ms`, its canaries rejected; every intermediate output at most 1 MiB.
+- **`final`**: only the final proof is checked: accepted against `c_16`, `|π_16| ≤ 512 KiB`,
+  `V_16 ≤ 64 ms`, its canaries rejected; every intermediate output at most 1 MiB.
 - **`every`**: in addition, every intermediate output is accepted against its statement, with
-  `|π_i| ≤ 1 MiB` and `V_i ≤ 128 ms`, and the canaries of outputs 1 and 2 are rejected.
+  `|π_i| ≤ 1 MiB` and `V_i ≤ 64 ms`, and the canaries of outputs 1 and 2 are rejected.
+- **`V_i`** is the median of three checks of the proof, each in a fresh verifier process; a proof
+  rejected in any of them is rejected.
 
 Failing a `final` condition is a REJECT. Meeting `final` but not `every` ranks the entry in
-`final` only: its result's `score.tracks` is `{"final": "S"}` and `tracks_reason` says why; the bot
-copies that reason into the comment and the entry's reasons. `V` is capped, not scored; the size
-factor prices the final proof only (×1.19 at 256 KiB, ×1.41 at the cap). How the work is spread
-over the steps is free: in `final`, deferring work to the last step is allowed.
+`final` only: its result's `score.tracks` is `{"final": "S"}` (else `{"final": "S", "every":
+"S_every"}`) and `tracks_reason` says why; the bot copies that reason into the comment and the
+entry's reasons. `V` is capped, not scored. Each track prices its own proofs: `final` the final
+proof (×1.41 at 256 KiB, ×2 at the 512 KiB cap), `every` the largest of the 16 (up to ×4 for an
+intermediate proof at 1 MiB); 1 KiB is about 0.135 % of the score, and 10 % less prover time is
+worth about 78 KiB. A pass that does not finish is a REJECT: there is no median over the passes
+that finished. How the work is spread over the steps is free, but hashing cannot be deferred (a
+step's data exceeds the 1 MiB output cap); recursion can, and in `final` a last compression of the
+final proof pays.
 
 The rule is [§8](https://github.com/scaraven/recursion.fast/blob/main/AGENTS.md#8-verdicts-and-records)
 of the core. In short, per track: a comparable, attested ACCEPT at the pin is the new record of a
-track iff `S_t < (1 − margin) · S_t,record`, where `S_t` is its score in that track (`S`, if it is
-scored there) and `S_t,record` the standing record's own score in that track, and the margin is
+track iff `S_t < (1 − margin) · S_t,record`, where `S_t` is its score in that track (`S` in `final`,
+`S_every` in `every`, if it is scored there) and `S_t,record` the standing record's own score in that track, and the margin is
 2 %, set by the owner, the same for both tracks. One evaluation is judged in both tracks at once,
 so an entry can take one track's record, or both: an `every` entry slower than a `final`-only
 record can still take the `every` record. A prover binary that took the record of either track
@@ -359,11 +380,12 @@ the owner to force); if the pin moves first, the candidate lapses and its next r
 again. The first run's result stays `results/<id>.json`, the confirmation's is
 `results/<id>-confirm.json`, and the entry's `confirmation` names both runs.
 
-*Why:* the margin is below the noise. The run-to-run spread of one entry's score was σ ≈ 1.75 %
-under the previous rules (ten runs at their smoke shape, one timed pass; mostly per-step process
-overhead; the minimum of two timed passes should lower it), so two runs of one entry differ by about
-√2·σ ≈ 2.5 %, and a resubmission with an edited NOTES, or a one-byte change of a `.s`, re-draws
-the noise. With the confirmation the margin must hold twice, and the kept score is the worse
+*Why:* the margin may be below the noise. The run-to-run spread of one entry's score was σ ≈ 1.75 %
+under earlier rules (ten runs at their smoke shape, one timed pass; mostly per-step process
+overhead), so two runs of one entry differed by about √2·σ ≈ 2.5 %, and a resubmission with an
+edited NOTES, or a one-byte change of a `.s`, re-draws the noise. The median of three 16-step pass
+totals should spread far less (one step varies by about 0.9 %; the core estimates σ ≈ 0.2–0.5 % per
+evaluation), but that is not yet measured at the season's shape. With the confirmation the margin must hold twice, and the kept score is the worse
 draw. Byte copies of an evaluated root and re-used record prover binaries are refused (section
 8), and the owner can still retire a record that won by noise. The owner may change
 the margin between seasons. With no standing record in a track (at the start of a season, after a
@@ -371,8 +393,9 @@ retirement in that track, or after a pin move whose port of that track's record 
 comparable, attested ACCEPT is that track's record.
 
 - **Comparable** means the stream ran to the end and the job plan matched. A run whose machine
-  fingerprint is missing or not the season's, or whose stream shape is not the season's, is the
-  organiser's ERROR, re-queued in its place; never yours. With the pin's caches in place, an
+  fingerprint is missing or not the season's, whose stream shape is not the season's, or whose step
+  records the score cannot be computed from (`malformed`), is the organiser's ERROR, re-queued in its
+  place; never yours. With the pin's caches in place, an
   evaluation holds the machine for at most about 2 hours (a certificate job of at most 50 minutes,
   60 when the second kernel checker is on, and a benchmark job of at most 70), one at a time; when
   the caches must first be built, as after a pin move, up to about three and a half hours.
@@ -437,12 +460,14 @@ that change what to do first:
   grinding in a fixed order. The smoke shape already runs the timed passes: test there first.
 - **`oracle.key` is on the clock.** In the timed passes the prover answers its own oracle queries
   from the key; everything it derives from the key is timed.
-- **Caps, not prices, for the verifier**: every checked proof must verify within 128 ms on one
-  core, and every output is at most 1 MiB; the final proof at most 512 KiB, and below that its size
-  still costs (the size factor).
-- **Each step is heavy**: a leaf of `2^22` hashes and the fold into the previous proof within
-  `step_s = 60 s`, in 8 GiB. The hashes are independent: spread them over the cores, and stream
-  them if memory is tight. Test a full step.
+- **Caps, not prices, for the verifier**: every checked proof must verify within 64 ms on one
+  core (the median of three fresh runs), and every output is at most 1 MiB; the final proof at most
+  512 KiB. Below the caps size still costs: the final proof's in `final`, the largest proof's in
+  `every`.
+- **Each step is heavy**: commit to a leaf's `2^18` blocks (8 MiB), prove their Merkle root (about
+  `2^19` permutations) and fold into the previous proof within `step_s = 20 s`, in 8 GiB; the whole
+  stream, the service run, its checks and three timed passes, within `stream_s = 2,000 s` (it binds
+  only when an entry uses nearly every other cap at once). Test a full step.
 - **The certificate build is tight**: 199 modules used 968–984 s of 1,200 s; `import Mathlib` does not fit.
 - **Your verifier's start-up is on the stream clock**: each check batch and the canaries start a
   fresh process, so a slow start-up multiplies into `stream_s`.

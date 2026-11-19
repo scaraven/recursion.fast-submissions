@@ -27,22 +27,36 @@
   };
   const VERDICTS = ['ACCEPT', 'PROVISIONAL', 'REJECT', 'ERROR'];
 
-  // The two tracks, from the one evaluation, each with its own records: one score S, two
-  // eligibilities (`final`: only the final proof is verified; `every`: every proof is). A result
-  // names each track's field in `score.tracks` (`every` is absent when the entry is eligible for
-  // `final` only). A score without `tracks` is an earlier season's (the sum alone) and counts in
-  // neither track (`field: null`); earlier seasons' tracks (sum, product) are not shown as tabs.
-  // Components: [field, label, unit, note].
-  const PARTS = Object.freeze([['P_total_s', 'P_total', 's'], ['size_factor', 'size factor', ''], ['final_pi_bytes', '|\u03c0\u2088|', 'bytes']]);
-  const FORMULA = 'S = P_total \u00b7 2^(|\u03c0\u2088| / 1 MiB)';
+  // The two tracks, from the one evaluation, each with its own records and its own score
+  // (`final`: only the final proof is verified, and S prices its size; `every`: every proof is, and
+  // S_every prices the largest). A result names each track's field in `score.tracks`
+  // ({"final": "S", "every": "S_every"}; `every` is absent when the entry is eligible for `final`
+  // only). A score without `tracks` is an earlier season's (the sum alone) and counts in neither
+  // track (`field: null`); earlier seasons' tracks (sum, product) are not shown as tabs.
+  // Each track's parts: [field, label, unit, note], `note` marking a part shown but not scored (none
+  // now); `desc`: what each part is, under its number; `factor`/`size`: the record card's split.
+  const P_DESC = 'the median of three timed passes\' totals over the 16 steps';
   const TRACKS = Object.freeze([
-    Object.freeze({ id: 'final', label: 'Final', sym: 'S', field: null, formula: FORMULA, parts: PARTS,
-      blurb: 'Only the final proof is verified (at most 512 KiB, checked in at most 128 ms); each intermediate output need only fit in 1 MiB. S: the total time of the eight timed steps, in seconds, times the final proof\'s size factor.' }),
-    Object.freeze({ id: 'every', label: 'Every', sym: 'S', field: null, formula: FORMULA, parts: PARTS,
-      blurb: 'Every proof is verified: each intermediate proof too is accepted against its statement (at most 1 MiB, checked in at most 128 ms). The same score S as the final track.' })
+    Object.freeze({ id: 'final', label: 'Final', sym: 'S', field: null,
+      formula: 'S = P_total \u00b7 2^(|\u03c0\u2081\u2086| / 512 KiB)',
+      parts: Object.freeze([['P_total_s', 'P_total', 's'], ['size_factor', 'size factor', ''], ['final_pi_bytes', '|\u03c0\u2081\u2086|', 'bytes']]),
+      desc: Object.freeze({ P_total_s: P_DESC, size_factor: '2^(|\u03c0\u2081\u2086| / 512 KiB)', final_pi_bytes: 'the final proof' }),
+      factor: '2^(|\u03c0\u2081\u2086|/512 KiB)', size: ['final_pi_bytes', '|\u03c0\u2081\u2086|'],
+      note: 'Seconds: the median of three timed passes\' totals over the 16 steps, times the final proof\'s size factor. Lower is better.',
+      blurb: 'Only the final proof is verified (at most 512 KiB, checked in at most 64 ms); each intermediate output need only fit in 1 MiB. S: the median of three timed passes\' total time over the 16 steps, in seconds, times the final proof\'s size factor.' }),
+    Object.freeze({ id: 'every', label: 'Every', sym: 'S_every', field: null,
+      formula: 'S_every = P_total \u00b7 2^(max |\u03c0\u1d62| / 512 KiB)',
+      parts: Object.freeze([['P_total_s', 'P_total', 's'], ['size_factor_every', 'size factor', ''], ['max_pi_bytes', 'max |\u03c0\u1d62|', 'bytes']]),
+      desc: Object.freeze({ P_total_s: P_DESC, size_factor_every: '2^(max |\u03c0\u1d62| / 512 KiB)', max_pi_bytes: 'the largest proof' }),
+      factor: '2^(max |\u03c0\u1d62|/512 KiB)', size: ['max_pi_bytes', 'max |\u03c0\u1d62|'],
+      note: 'Seconds: the median of three timed passes\' totals over the 16 steps, times the largest proof\'s size factor. Lower is better.',
+      blurb: 'Every proof is verified: each intermediate proof too is accepted against its statement (at most 1 MiB, checked in at most 64 ms). S_every: the same P_total, times the size factor of the largest of the 16 proofs.' })
   ]);
   const TRACK_IDS = TRACKS.map(t => t.id);
   const trackOf = id => TRACKS.find(t => t.id === id) || TRACKS[0];
+  // The track definition whose parts describe a score in track `tr`: the track's own, except for a
+  // result of the first v6 rules (before the leaf data), which scored `every` by the final proof's `S`.
+  const pricedBy = (tr, sc) => (sc && sc.tracks && sc.tracks[tr.id] === 'S' && tr.id !== 'final') ? TRACKS[0] : tr;
 
   // An id is pr<N>-<12 hex of the head sha>, with -<8 hex of the pin> for a record ported to a new pin.
   const ID = 'pr[1-9]\\d{0,8}-[0-9a-f]{12}(?:-[0-9a-f]{8})?';
@@ -94,6 +108,7 @@
       if (typeof v === 'number' && Number.isFinite(v)) out[k] = v;
       else if (typeof v === 'boolean') out[k] = v;
       else if (typeof v === 'string' && text(v, 80)) out[k] = text(v, 80);
+      else if (Array.isArray(v) && v.length > 0 && v.length <= 8 && v.every(x => typeof x === 'number' && Number.isFinite(x))) out[k] = v.slice();   // pass_totals_s
       else continue;
       n++;
     }
@@ -474,7 +489,7 @@
   }
 
   window.RF = {
-    CFG, BASE, dataKey, STATUSES, STATUS_INFO, RE, TRACKS, TRACK_IDS, trackOf, scoreIn, retiredIn, chosenTrack, rememberTrack,
+    CFG, BASE, dataKey, STATUSES, STATUS_INFO, RE, TRACKS, TRACK_IDS, trackOf, pricedBy, scoreIn, retiredIn, chosenTrack, rememberTrack,
     loadData, loadText, el, svg, ext, page, link, fmtS, fmtPart, fmtBytes, fmtDate, fmtDateTime, timeEl, ago, badge,
     shortSha, gainOf, marginText, pct, unverified, evaluatedAt, relations, records, nameOf, section, chrome, footer
   };

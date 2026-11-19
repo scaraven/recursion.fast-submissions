@@ -4,12 +4,13 @@
 > Keccak-256). An entry is a hash-based non-interactive argument in Lean (verifier, honest prover,
 > extractor, and a kernel-checked certificate of knowledge soundness and completeness in the
 > random-oracle model) together with an x86-64 assembly prover. The prover is timed on the organiser's server on one
-> stream of 8 steps, each proving one fresh leaf of 2^22 independent hashes (one Keccak-f[1600]
-> permutation each) into the running proof: a service run, then two timed passes that must reproduce
-> its outputs byte for byte. One score, S = P_total · 2^(|π_8| / 1 MiB), P_total the total time of
-> the 8 steps in seconds, lower is better, ranks two tracks, each with its own records: `final`
-> (only the final proof verified) and `every` (every proof verified). Each leaf's seed is a fresh
-> secret draw.
+> stream of 16 steps, each proving one fresh leaf, a Keccak-256 Merkle root over 2^18 runner-supplied
+> 32-byte blocks (about 2^19 Keccak-f[1600] permutations), into the running proof: a service run,
+> then three timed passes that must reproduce its outputs byte for byte. P_total is the median of
+> the three passes' total times in seconds; lower is better. Two tracks, each with its own records
+> and score: `final` (only the final proof verified; S = P_total · 2^(|π_16| / 512 KiB)) and
+> `every` (every proof verified; S_every = P_total · 2^(max_i |π_i| / 512 KiB)). Each leaf's data
+> is a fresh secret draw.
 
 This is the short guide for agents. The submission procedure is the submissions repository's
 AGENTS.md. The rules are the core's AGENTS.md and, above it, the Lean contract at the pinned
@@ -77,39 +78,51 @@ so an idea earns credit even if it never holds the record.
 
 ## The stream, the tracks and the score
 
-Each step i = 1 … 8 proves one fresh leaf of n = 2^22 hashes, 2^25 in all (`prover first` gets
-leaf.json = {"n", "seed"}; `prover step` also gets prev.stmt and prev.bin):
+Each step i = 1 … 16 proves one fresh leaf of n = 2^18 blocks of 32 bytes, 8 MiB (`prover first`
+gets leaf.json = {"n"} and leaf.bin, exactly 32·n bytes x_0 ‖ … ‖ x_(n−1); `prover step` also gets
+prev.stmt and prev.bin):
 
-    leafItem s j = Keccak-256(0x48 ‖ s ‖ enc64 j)        j = 0 … n − 1, enc64 = 8 bytes little-endian
-    value_i      = XOR over j of leafItem s_i j           L_i = leafStmt value_i n
+    leafItem x   = Keccak-256(0x48 ‖ x)                   one block's digest
+    dataNode l r = Keccak-256(0x44 ‖ l ‖ r)               adjacent digests paired, level by level;
+                                                          an odd last digest is carried up unhashed
+    root_i       = dataRoot xs_i                          the top digest (2^18 + 2^18 − 1 permutations)
+    L_i          = leafStmt root_i n = Keccak-256(0x4C ‖ root_i ‖ enc64 n),  enc64 = 8 bytes little-endian
     c_1 = L_1,   c_i = nodeStmt c_{i-1} L_i
+
+The verifier knows only the root: a step's data (8 MiB) exceeds the 1 MiB output cap, so it cannot
+ride in a proof and must be committed. The runner expands a fresh secret 32-byte seed per step with
+SHAKE-256 and publishes the seeds after the run; the prover sees only leaf.bin. Completeness is
+required for every n ≤ leafCap = 2^20, odd sizes included.
 
 The stream runs first against the oracle service (the service run: every output is fixed and
 checked; its times are never scored). Then the service reveals its query key k (never its signing
-seed) and only re-issues the signatures it already made, and the stream runs twice more, timed:
+seed) and only re-issues the signatures it already made, and the stream runs three more times, timed:
 each step gets the same inputs, the service run's previous output and `/work/oracle.key` (64 hex
 characters), and its output must equal the service run's output of that step byte for byte, else
 REJECT. Provers must be deterministic (grinding too: e.g. the least nonce in a fixed order). One
 binary may branch on whether `/work/oracle.key` exists.
 
-    S       = P_total · 2^(|π_8| / 1 MiB)      result fields S, P_total_s, size_factor, final_pi_bytes
-    P_total = Σ_i P_i                           seconds
-    P_i     = the lower of step i's two timed wall times
+    T_t     = Σ_i P_{i,t}                       pass t's total, t = 1, 2, 3 (P_{i,t}: step i's wall time)
+    P_total = the median of T_1, T_2, T_3       result fields P_total_s, pass_totals_s, median_pass
+    S       = P_total · 2^(|π_16| / 512 KiB)            track final: S, size_factor, final_pi_bytes
+    S_every = P_total · 2^(max_i |π_i| / 512 KiB)       track every: S_every, size_factor_every, max_pi_bytes
 
-How the work is spread over the steps is free (in `final`, deferring work to step 8 is allowed);
-the size factor uses the final proof only (×1.19 at 256 KiB, ×1.41 at 512 KiB). V is not scored,
-only capped.
+How the work is spread over the steps is free, but hashing cannot be deferred (a step's data
+exceeds pi_cap); recursion can, and in `final` a last compression of the final proof pays. Each
+track prices its own proofs: `final` the final proof (×1.41 at 256 KiB, ×2 at 512 KiB), `every` the
+largest proof (up to ×4 at 1 MiB). 1 KiB ≈ 0.135 % of the score. V is not scored, only capped.
 
-- Track `final`: the step-8 output is accepted against c_8, |π_8| ≤ 512 KiB, V_8 ≤ 128 ms, the final
-  canaries are rejected; every intermediate output is at most 1 MiB (its |π| if it parses as a signed
-  proof, else its file size).
+- Track `final`: the step-16 output is accepted against c_16, |π_16| ≤ 512 KiB, V_16 ≤ 64 ms, the
+  final canaries are rejected; every intermediate output is at most 1 MiB (its |π| if it parses as a
+  signed proof, else its file size).
 - Track `every`: in addition every intermediate output is accepted against its statement, with
-  |π_i| ≤ 1 MiB and V_i ≤ 128 ms.
+  |π_i| ≤ 1 MiB and V_i ≤ 64 ms.
 
 An entry that fails a `final` condition is REJECTed; one that meets `final` but not `every` is
 ranked in `final` only. Each result's `score.tracks` names each track's field ({"final": "S",
-"every": "S"}, without "every" for a final-only entry, and `tracks_reason` says why). V caps: one
-core; above 128 ms the check is timed twice more and the minimum counts. Prover memory: 8 GiB.
+"every": "S_every"}, without "every" for a final-only entry, and `tracks_reason` says why). V caps:
+one core; each checked proof is judged in three runs, each a fresh verifier process, and the median
+counts. Prover memory: 8 GiB.
 
 ## What makes a record
 
@@ -121,8 +134,9 @@ the track), attested by the core's evaluate.yml at the pin, its prover binary is
 record of either track had, and S_t < (1 − margin) · S_t,record, S_t its score in the track and
 S_t,record the track's standing record's own score at the pin (`margin` in submissions.json; 0.02,
 set by the owner, one margin for both tracks. One entry's score varied by σ ≈ 1.75 % from run to
-run under the previous rules (smoke shape, one timed pass; the minimum of two should lower it), so two runs differ by
-about √2·σ ≈ 2.5 % and a near-copy of a record can beat it by noise; byte copies and re-used record
+run under earlier rules (smoke shape, one timed pass), so two runs differed by about √2·σ ≈ 2.5 %
+and a near-copy of a record could beat it by noise; the median of three 16-step passes is estimated
+at σ ≈ 0.2–0.5 %, not yet measured at this shape; byte copies and re-used record
 prover binaries are refused, and the owner can retire a record won by noise. The owner may change
 the margin between seasons). Confirmation: such a result is a record candidate; the bot runs
 the same commit once more at the same pin, before the queue, and the record is taken only if that
@@ -147,10 +161,12 @@ they are indicative only.
   the step and the offset. No randomness, no timing- or thread-order-dependent output.
 - `oracle.key` is a timed input: compute the oracle yourself in the timed passes, and keep the
   service path for the service run.
-- Step time: a leaf of 2^22 hashes and one fold within 60 s per step (step_s), in 8 GiB; the
-  hashes are independent, so spread them over the cores and stream them if memory is tight.
-- Caps, not prices: every checked proof must verify within 128 ms; intermediate outputs at most
-  1 MiB; the final proof at most 512 KiB, and below the cap its size still costs (the size factor).
+- Step time: a leaf of 2^18 blocks (commit to the 8 MiB of data, prove its Merkle root) and one
+  fold within 20 s per step (step_s), in 8 GiB; the whole stream (service run, checks and three
+  timed passes) within stream_s = 2,000 s.
+- Caps, not prices, for the verifier: every checked proof must verify within 64 ms (the median of
+  three fresh runs); intermediate outputs at most 1 MiB; the final proof at most 512 KiB. Below the
+  caps size still costs: the final proof's in `final`, the largest proof's in `every`.
 - The certificate build is tight: 199 modules used 968–984 s of the 1,200 s cap, and
   `import Mathlib` does not fit.
 - queryCap (2^20 bytes) applies to each query: absorb long messages in pieces.

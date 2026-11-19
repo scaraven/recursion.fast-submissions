@@ -21,16 +21,24 @@
  "prover_sha256": "0000000000000000000000000000000000000000000000000000000000022cce",
  "score": {
   "S": 3.7997,
-  "P_total_s": 3.2423,
-  "size_factor": 1.1719,
+  "P_total_s": 2.7666,
+  "size_factor": 1.3734,
   "final_pi_bytes": 240000,
-  "M": 8,
+  "pass_totals_s": [
+   2.7724,
+   2.7666,
+   2.763
+  ],
+  "median_pass": 2,
+  "size_ref": 524288,
+  "M": 16,
+  "n": 262144,
   "c_P": 1.031,
-  "tracks": {
-   "final": "S"
-  },
   "tracks_reason": {
    "every": "output 2 rejected by acc"
+  },
+  "tracks": {
+   "final": "S"
   }
  }
 }
