@@ -521,6 +521,14 @@ class Decide(unittest.TestCase):
         self.assertEqual(common.track_scores(confirmed(first, decide(R("REJECT"), OK, PIN, self.recs, 1))["score"])["final"], 9.0)
         self.assertIsNone(confirmed(first, decide(R("ERROR"), OK, PIN, self.recs, 1)))             # retried, still pending
         self.assertIsNone(confirmed(first, decide(R(), {"attested": False}, PIN, self.recs, 1)))
+        # S and S_every order the two runs differently: each track keeps its own worse run
+        first = candidate(decide(V6(S=9.0, S_every=9.4), OK, PIN, self.recs, 1), PIN, "https://run/1")
+        c = confirmed(first, decide(V6(S=9.1, S_every=9.3), OK, PIN, self.recs, 1))
+        self.assertEqual((c["status"], c["took"], common.track_scores(c["score"])),
+                         ("record", ["final", "every"], {"final": 9.1, "every": 9.4}))
+        self.assertEqual((c["against"]["final"]["S"], c["against"]["every"]["S"]), (9.1, 9.4))
+        self.assertEqual(c["score"]["tracks"], {"final": "S", "every": "S_every"})
+        self.assertIn("final: 9.0000 s, then 9.1000 s; every: 9.4000 s, then 9.3000 s", c["reasons"][0])
         none = candidate(decide(R(S=50.0), OK, PIN, {}, 1), PIN, "u")                     # no record stood: any ACCEPT confirms
         self.assertEqual(confirmed(none, decide(R(S=60.0), OK, PIN, {}, 1))["status"], "record")
 
@@ -528,17 +536,38 @@ class Decide(unittest.TestCase):
         """A REJECT that restored record modules is retried without the cache only when the cache can
         have caused it: at the certificate or at a badge check (`reject_stage`); a result without
         `reject_stage` (an earlier core) is retried as before."""
-        from decide import cache_retry
+        from decide import cache_check, cache_check_stands, cache_retry, reject_stage
         used = {"certificate": {"record_cache": {"restored": ["M"]}}}
-        self.assertTrue(cache_retry(dict(R("REJECT"), **used), {}))
-        self.assertFalse(cache_retry(dict(R("REJECT"), **used), {"record_cache": False}))
-        self.assertFalse(cache_retry(dict(R("ACCEPT"), **used), {}))
-        self.assertFalse(cache_retry(R("REJECT"), {}))
+        legacy = lambda **kw: dict(R("REJECT", score=None), **used, **kw)  # noqa: E731  (an earlier core: no stage, no v6 marker)
+        self.assertTrue(cache_retry(legacy(), {}, True))
+        self.assertFalse(cache_retry(legacy(), {}, False))                       # an unverified result: never
+        self.assertFalse(cache_retry(legacy(), {"record_cache": False}, True))
+        self.assertFalse(cache_retry(dict(R("ACCEPT"), **used), {}, True))
+        self.assertFalse(cache_retry(R("REJECT", score=None), {}, True))
         for stage in ("certificate", "check"):
-            self.assertTrue(cache_retry(dict(R("REJECT"), reject_stage=stage, **used), {}), stage)
-            self.assertFalse(cache_retry(dict(R("REJECT"), reject_stage=stage), {}), stage)   # nothing restored
+            self.assertTrue(cache_retry(legacy(reject_stage=stage), {}, True), stage)
+            self.assertFalse(cache_retry(dict(R("REJECT", score=None), reject_stage=stage), {}, True), stage)   # nothing restored
         for stage in ("prover", "request", "timed-pass", "stream-cap", None, "other"):
-            self.assertFalse(cache_retry(dict(R("REJECT"), reject_stage=stage, **used), {}), stage)
+            self.assertFalse(cache_retry(legacy(reject_stage=stage), {}, True), stage)
+        # this rules' core without a stage (a REJECT path it forgot): final, unless the certificate was rejected
+        for marker in ({"stream": {"leaf_data": {"xof": "shake256"}}}, {"score": {"S": 1.0, "pass_totals_s": [1.0]}},
+                       {"score": {"S": 1.0, "S_every": 1.1, "tracks": {"final": "S", "every": "S_every"}}}):
+            self.assertIsNone(reject_stage(dict(R("REJECT"), **marker)))
+            self.assertFalse(cache_retry(legacy(**marker), {}, True), marker)
+            rej = dict(legacy(**marker), certificate={"status": "reject", "record_cache": {"restored": ["M"]}})
+            self.assertEqual(reject_stage(rej), "certificate")
+            self.assertTrue(cache_retry(rej, {}, True))
+        self.assertEqual(reject_stage(legacy()), "legacy")
+        # a `check` REJECT keeps its badge for the retry; an identical badge after the clean rebuild: it stands
+        b = {"verify": "a" * 64}
+        first = dict(legacy(reject_stage="check"), certificate={"record_cache": {"restored": ["M"]}, "badge_sha256": b})
+        pend = cache_check(first, "u1", ["r"])
+        self.assertEqual(pend, {"run_url": "u1", "badge_sha256": b, "reasons": ["r"]})
+        self.assertIsNone(cache_check(legacy(reject_stage="certificate"), "u1", []))
+        self.assertTrue(cache_check_stands(pend, {"certificate": {"badge_sha256": dict(b)}}))
+        self.assertFalse(cache_check_stands(pend, {"certificate": {"badge_sha256": {"verify": "b" * 64}}}))
+        self.assertFalse(cache_check_stands(pend, {"certificate": {}}))
+        self.assertFalse(cache_check_stands({"badge_sha256": None}, {"certificate": {"badge_sha256": b}}))
 
     def test_untrusted_fields_cleaned(self):
         d = decide(R(reasons=["x" * 1000, "\u202eevil\nline"] * 30,

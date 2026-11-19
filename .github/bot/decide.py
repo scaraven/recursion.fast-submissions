@@ -21,7 +21,7 @@ confirmation run too is a comparable, attested ACCEPT that takes that track by t
 the score it keeps is the worse (larger) of the two runs'. So one lucky run (a re-rolled NOTES, a
 one-byte `.s` change) is not enough: the margin must hold twice."""
 from common import (LEGACY_TRACKS, MARGIN, MAX_ATTEMPTS, ORGANISER_ERRORS, PAUSING_ERRORS, SHA_RE, TRACK_RE, TRACKS, VERDICTS,
-                    clean, clean_reasons, is_num, track_scores)
+                    clean, clean_reasons, is_num, score_fields, track_scores)
 
 
 def clean_value(v, depth=0):
@@ -182,21 +182,58 @@ def decide(result, verification, pin, records, attempts, record_provers=(), marg
 # `reject_stage`): a restored module can make the certificate fail, and a restored module's `.c` is
 # what the badge is compiled from, so a forged one shows as a failed check. The prover is built from
 # the entry's own `.s`, never from the cache, so a REJECT of the prover's build or setup, a failed
-# request, a timed pass's mismatch or the stream cap is final: a slow prover cannot buy a second draw
-# by failing a timed pass on purpose.
+# request, a timed pass's mismatch or the stream cap is final. A `check` REJECT is retried, but the
+# retry can overturn it only if the clean rebuild's badge differs from the first run's
+# (`cache_check_stands`): an entry that fails a check on purpose (a bad output, made in the untimed
+# service run when the prover senses a slow machine) gets its own REJECT back, never a second draw.
 CACHE_STAGES = ("certificate", "check")
 
 
-def cache_retry(result, entry):
-    """True if a REJECT used the record build cache (its certificate restored modules from it), the
-    cache can have caused it (`reject_stage` is `certificate` or `check`, CACHE_STAGES; a result
-    without `reject_stage`, of an earlier core, is retried whatever its stage, as before), and this
-    entry was not yet evaluated without it: it is queued once more with `record_cache: false`, so a
-    sabotaged cache cannot fail a candidate. An ERROR's retry runs without the cache anyway
-    (flows.publish)."""
-    if not isinstance(result, dict) or result.get("verdict") != "REJECT" or entry.get("record_cache") is False:
+def is_new_rules(result):
+    """True if a result comes from a core of the committed-leaf rules or later, which records
+    `reject_stage` on every REJECT: its stream record names the leaf data's expansion
+    (`stream.leaf_data`), or its score has the median pass (`pass_totals_s`) or `S_every`."""
+    st, sc = result.get("stream"), result.get("score")
+    if isinstance(st, dict) and "leaf_data" in st:
+        return True
+    return isinstance(sc, dict) and ("pass_totals_s" in sc or "S_every" in sc
+                                     or (isinstance(sc.get("tracks"), dict) and sc["tracks"].get("every") == "S_every"))
+
+
+def reject_stage(result):
+    """Where a REJECT was rejected: the core's `reject_stage` when it names one; else `certificate`
+    if the certificate was rejected; else None (unknown, so final) for a result of a core that
+    records the stage (it is present but empty, or `is_new_rules`); else `legacy` (a result of an
+    earlier core, which records no stage)."""
+    rs = result.get("reject_stage")
+    if isinstance(rs, str) and rs:
+        return rs
+    c = result.get("certificate")
+    if isinstance(c, dict) and c.get("status") == "reject":
+        return "certificate"
+    return None if "reject_stage" in result or is_new_rules(result) else "legacy"
+
+
+def badge_sha(result):
+    """The attested hashes of the badge's files (`certificate.badge_sha256`, {name: sha256}), or None."""
+    c = result.get("certificate") if isinstance(result, dict) else None
+    b = c.get("badge_sha256") if isinstance(c, dict) else None
+    ok = (isinstance(b, dict) and 0 < len(b) <= 8 and all(isinstance(k, str) and isinstance(v, str) and len(v) == 64
+                                                          for k, v in b.items()))
+    return {k[:64]: v for k, v in b.items()} if ok else None
+
+
+def cache_retry(result, entry, verified):
+    """True if a verified REJECT used the record build cache (its certificate restored modules from
+    it), the cache can have caused it (`reject_stage`: `certificate` or `check`, CACHE_STAGES; a
+    result of an earlier core, which records no stage, is retried whatever its stage, as before; a
+    result of this rules' core without a stage is not), and this entry was not yet evaluated without
+    it: it is queued once more with `record_cache: false`, so a sabotaged cache cannot fail a
+    candidate. An ERROR's retry runs without the cache anyway (flows.publish)."""
+    if (not verified or not isinstance(result, dict) or result.get("verdict") != "REJECT"
+            or entry.get("record_cache") is False):
         return False
-    if "reject_stage" in result and result.get("reject_stage") not in CACHE_STAGES:
+    if reject_stage(result) not in CACHE_STAGES + ("legacy",):
         return False
 
     def restored(r):
@@ -205,6 +242,22 @@ def cache_retry(result, entry):
         return isinstance(rc, dict) and bool(rc.get("restored"))
     legacy = result.get("record_cache")
     return restored(result) or (isinstance(legacy, dict) and bool(legacy.get("reused")))
+
+
+def cache_check(result, run_url, reasons):
+    """What a `check` REJECT retried without the record build cache keeps for its retry (`cache_check` on
+    the entry), or None for any other retried stage: the first run, its reasons and its badge."""
+    if reject_stage(result) != "check":
+        return None
+    return {"run_url": run_url, "badge_sha256": badge_sha(result), "reasons": list(reasons)[:20]}
+
+
+def cache_check_stands(pending, result):
+    """True if the first run's `check` REJECT stands after the retry without the cache: the clean
+    rebuild's badge is byte-identical to the first run's, so the cache cannot have caused the failed
+    check (an unknown badge on either side: the retry decides, as before)."""
+    a, b = (pending or {}).get("badge_sha256"), badge_sha(result)
+    return bool(a) and a == b
 
 
 def build_manifest_sha(result):
@@ -232,26 +285,48 @@ def confirmed(first, d2):
     standing records) with the pending `first` run (`candidate`). Returns None if `d2` ends on the
     organiser's side or is queued again (the confirmation stays pending, retried as any run), else the
     fields to set: `status` (`record` iff some track is taken by both runs, else `accepted`), `took`,
-    `score` (the worse run's: the larger score in the first track taken), `against`, `record_of`
-    (that run's comparisons) and the `reasons` line that says what the confirmation did."""
+    `score`, `against`, `record_of` and the `reasons` line that says what the confirmation did.
+
+    The record keeps the worse run **per track**: in each track taken, the score field `tracks` names
+    holds the larger of the two runs' scores, and `against`/`record_of` are that run's comparison in
+    that track (`S` and `S_every` can order the two runs differently). The other fields of `score`
+    are the run that is worse in the first track taken."""
     if d2["requeue"] or d2["status"] in ("queued", "error"):
         return None
     took = [t for t in first["took"] if t in d2["took"]]
     s1, s2 = track_scores(first["score"]), track_scores(d2["score"])
     lead = first["took"][0]
     ok2 = d2["status"] in ("record", "accepted") and lead in s2
-    second_worse = ok2 and s2[lead] >= s1.get(lead, 0)
-    w = {"score": d2["score"], "against": d2["against"], "record_of": d2["record_of"]} if second_worse else first
+    run2 = {"score": d2["score"], "against": d2["against"], "record_of": d2["record_of"]}
+
+    def worse(t):
+        return run2 if t in s2 and s2[t] >= s1.get(t, 0) else first
+    w = worse(lead) if ok2 else first
     both = (f"{lead}: S = {s1.get(lead, 0):.4f} s, then {s2[lead]:.4f} s in the confirmation" if lead in s2
             else f"{lead}: S = {s1.get(lead, 0):.4f} s; the confirmation has no score in it")
     if took:
-        why = (f"confirmed: the confirmation run also takes the record of {', '.join(took)} ({both}); "
-               f"the record keeps the worse score")
+        score = dict(w["score"] or {})
+        names = dict(score.get("tracks") or {}) if isinstance(score.get("tracks"), dict) else None
+        against, record_of = dict(w["against"] or {}), {t: None for t in (w["record_of"] or {})}
+        for t in took:
+            wt = worse(t)
+            f = next((f for tt, f, _v in score_fields(wt["score"]) if tt == t), None)
+            if f is not None:
+                score[f] = track_scores(wt["score"])[t]
+                if names is not None:
+                    names[t] = f
+            against[t] = (wt["against"] or {}).get(t)
+            record_of[t] = (wt["record_of"] or {}).get(t)
+        if names is not None:
+            score["tracks"] = names
+        per = "; ".join(f"{t}: {s1.get(t, 0):.4f} s, then {s2.get(t, 0):.4f} s" for t in took)
+        why = (f"confirmed: the confirmation run also takes the record of {', '.join(took)} ({per}); "
+               f"the record keeps the worse score in each track")
         lost = [t for t in first["took"] if t not in took]
         if lost:
             why += f"; not confirmed in {', '.join(lost)}"
-        return {"status": "record", "took": took, "score": w["score"], "against": w["against"],
-                "record_of": {t: (w["record_of"] or {}).get(t) for t in (w["record_of"] or {})}, "reasons": [why]}
+        return {"status": "record", "took": took, "score": score, "against": against,
+                "record_of": record_of, "reasons": [why]}
     what = (f"its verdict is {d2['verdict']} ({d2['status']})" if d2["status"] not in ("record", "accepted")
             else "it does not beat the standing record by the margin")
     return {"status": "accepted", "took": [], "score": w["score"] if ok2 else first["score"],

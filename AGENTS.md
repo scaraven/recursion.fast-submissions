@@ -251,7 +251,9 @@ build cache is evaluated once more without it, but only if the cache can have ca
 at the certificate, or a failed check of an output by the compiled verifier (the result's
 `reject_stage` is `certificate` or `check`). A REJECT of the prover's build or setup, of a request,
 of a timed pass (a byte or replay mismatch) or at `stream_s` is final: the prover is built from
-your `.s`, never from the cache.
+your `.s`, never from the cache. After a failed check, the run without the cache counts only if its
+badge (the compiled verifier, `certificate.badge_sha256`) differs from the first run's; with an
+identical badge the cache cannot have caused the failure, and the first run's REJECT stands.
 
 ## 8. Intake caps and refusals
 

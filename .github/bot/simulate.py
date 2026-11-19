@@ -149,14 +149,16 @@ def make_result(run_id, verdict="ACCEPT", S=1.0, comparable=True, harness=PIN, p
     so it is `S` times a fixed factor and the two tracks rank alike; `every=False`: eligible for
     `final` only (an intermediate output not accepted), with the core's `tracks_reason`; `legacy`: a
     score without `tracks` (an earlier season's core), the sum alone; `reject_stage`: a REJECT's
-    stage, the core's top-level field (absent by default, as from a core before it)."""
+    stage, the core's top-level field (absent by default; with a stream, the stream's `leaf_data`
+    marks the result as this rules' core's, so a REJECT without a stage is final)."""
     fp = "f" * 64
     if not machine_ok:
         verdict, comparable = "ERROR", False
     r = {"schema": "recursion.fast/v6/result-1", "verdict": verdict, "comparable": comparable,
          "truncated": not comparable and machine_ok, "harness_commit": harness, "job": f"{REPO}/actions/runs/{run_id}/attempts/1",
          "machine": {"fingerprint": fp if machine_ok else "e" * 64, "expected": fp, "matches": machine_ok and stream},
-         "stream": {"shape": {"M": 16, "n": 1 << 18}, "truncated": not comparable and machine_ok} if stream else None,
+         "stream": {"shape": {"M": 16, "n": 1 << 18}, "leaf_data": {"xof": "shake256", "domain": "recursion.fast/leaf-data/v1"},
+                    "truncated": not comparable and machine_ok} if stream else None,
          "runner": {"name": "rf-bench-1", "environment": "self-hosted", "labels": ["rf-bench"]},
          "reasons": ([] if verdict == "ACCEPT" else ["the entry failed: `boom` @someone"] if machine_ok else
                      [f"organiser ERROR: the machine fingerprint is mismatched (fingerprint {'e' * 64}, the season expects {fp})"]),
@@ -174,7 +176,7 @@ def make_result(run_id, verdict="ACCEPT", S=1.0, comparable=True, harness=PIN, p
         else:
             r["score"] = {"S": S, "P_total_s": P, "size_factor": f, "final_pi_bytes": pi,
                           "pass_totals_s": [P * 1.004, P, P * 0.998], "median_pass": 2, "size_ref": ref,
-                          "M": 16, "n": 1 << 18, "c_P": 1.0,
+                          "M": 16, "sum_n": 16 << 18, "c_P": 1.0,
                           "tracks": {"final": "S", "every": "S_every"} if every else {"final": "S"}}
             if every:
                 r["score"].update(S_every=P * fe, size_factor_every=fe, max_pi_bytes=pi_max)

@@ -777,9 +777,9 @@ class E2E(unittest.TestCase):
         self.g.open_pr(1, "alice", good_root("alpha"))
         self.w.intake(1)
         used = {"certificate": {"record_cache": {"restored": ["AlphaX"]}}}
-        e, p = self.w.evaluate(lambda e, run: dict(make_result(run, "REJECT"), **used))
+        e, p = self.w.evaluate(lambda e, run: dict(make_result(run, "REJECT", reject_stage="certificate"), **used))
         self.assertEqual(p["status"], "queued")
-        e, p = self.w.evaluate(lambda e, run: dict(make_result(run, "REJECT"), **used))
+        e, p = self.w.evaluate(lambda e, run: dict(make_result(run, "REJECT", reject_stage="certificate"), **used))
         self.assertEqual((e["record_cache"], p["status"]), (False, "rejected"))
         d = os.path.join(self.w.dir, "build")
         os.makedirs(d)
@@ -799,16 +799,60 @@ class E2E(unittest.TestCase):
         the cache can have caused it (`reject_stage` `certificate` or `check`); a REJECT in a timed
         pass, a request or the prover's setup is final, so a slow prover cannot buy a second draw."""
         used = {"certificate": {"record_cache": {"restored": ["AlphaX"]}}}
-        for n, stage, want in ((1, "timed-pass", "rejected"), (2, "request", "rejected"), (3, "check", "queued"),
-                               (4, "certificate", "queued")):
+        # (reject_stage, a stream recorded, the verdict after the first run); no stage on a result with
+        # a stream of this rules' core (its `leaf_data`) is final; without one (an earlier core's) it is
+        # retried as before
+        cases = (("timed-pass", True, "rejected"), ("request", True, "rejected"), ("prover", True, "rejected"),
+                 ("stream-cap", True, "rejected"), (None, True, "rejected"), ("check", True, "queued"),
+                 ("certificate", False, "queued"), (None, False, "queued"))
+        for n, (stage, stream, want) in enumerate(cases, 1):
             self.g.open_pr(n, f"a{n}", good_root(f"r{n}", str(n)))
             self.w.intake(n)
-            e, p = self.w.evaluate(lambda e, run: dict(make_result(run, "REJECT", reject_stage=stage), **used))
-            self.assertEqual((e["pr"], p["status"]), (n, want), stage)
+            res = lambda e, run: dict(make_result(run, "REJECT", reject_stage=stage, stream=stream), **used)  # noqa: E731
+            e, p = self.w.evaluate(res)
+            self.assertEqual((e["pr"], p["status"]), (n, want), (stage, stream))
             if want == "queued":
                 self.assertIs(p["record_cache"], False)
-                e, p = self.w.evaluate(lambda e, run: dict(make_result(run, "REJECT", reject_stage=stage), **used))
+                e, p = self.w.evaluate(res)
                 self.assertEqual((e["pr"], p["status"]), (n, "rejected"), stage)
+
+    def test_check_reject_stands_with_an_identical_badge(self):
+        """A REJECT at a badge check that used the record build cache is evaluated once more without
+        it; if the clean rebuild's badge is byte-identical, the cache cannot have caused the failed
+        check: the first REJECT stands and the retry's ACCEPT is discarded (an entry that fails a check
+        on purpose gets no second draw). With another badge, the retry's verdict stands."""
+        b1, b2 = {"verify": "1" * 64}, {"verify": "2" * 64}
+        cert = lambda b: {"certificate": {"record_cache": {"restored": ["AlphaX"]}, "badge_sha256": b}}  # noqa: E731
+        for n, again, want in ((1, b1, "rejected"), (2, b2, "record")):
+            self.g.open_pr(n, f"a{n}", good_root(f"r{n}", str(n)))
+            self.w.intake(n)
+            e, p = self.w.evaluate(lambda e, run: dict(make_result(run, "REJECT", reject_stage="check"), **cert(b1)))
+            self.assertEqual((e["pr"], p["status"], p["cache_check"]["badge_sha256"]), (n, "queued", b1))
+            e, p = self.w.evaluate(lambda e, run: dict(make_result(run, S=5.0 + n, harness=self.w.pin, prover=str(n) * 64),
+                                                       certificate={"badge_sha256": again}))
+            self.assertEqual((e["pr"], p["status"]), (n, want))
+            self.assertNotIn("cache_check", p)
+            if want == "rejected":
+                self.assertEqual((p["verdict"], p["score"], p["record_in"], p["result"]),
+                                 ("REJECT", None, [], f"results/{p['id']}.json"))
+                self.assertTrue(any("byte-identical badge" in r for r in p["reasons"]))
+                self.assertIn("REJECT", self.head_status(n)["description"])
+                self.assertIsNotNone(self.w.show(f"data:results/{p['id']}-nocache.json"))
+            else:
+                self.assertTrue(any("another badge" in c[1] for c in self.g.comments))     # the retry's own comment
+
+    def test_confirmation_reject_in_a_timed_pass_is_final(self):
+        """A record candidate's confirmation REJECTed in a timed pass, with the cache used: no retry,
+        the candidate is `accepted`."""
+        self.record_at()
+        self.g.open_pr(2, "bob", good_root("r2", "2"))
+        self.w.intake(2)
+        used = {"certificate": {"record_cache": {"restored": ["AlphaX"]}}}
+        e, p = self.w.evaluate(self.win(S=8.0), again=lambda e, run: dict(
+            make_result(run, "REJECT", harness=self.w.pin, reject_stage="timed-pass"), **used))
+        self.assertEqual((e["pr"], p["status"], p["record_in"]), (2, "accepted", []))
+        self.assertTrue(any("verdict is REJECT" in r for r in p["reasons"]))
+        self.assertFalse(any("without it" in r for r in p["reasons"]))
 
     def test_malformed_error_pauses_like_a_lengths_error(self):
         """A stream record the score cannot be computed from (`malformed`, the runner's fault) is

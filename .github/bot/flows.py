@@ -21,7 +21,7 @@ import render
 import rfqueue
 import wfcheck
 from common import ID_RE, LOGIN_RE, PAUSING_ERRORS, MAX_TEXT_BYTES, ROOT_RE, SHA_RE, STATUS_CONTEXT, clean, entry_id, now_iso
-from decide import build_manifest_sha, cache_retry, candidate, confirmed, decide
+from decide import build_manifest_sha, cache_check, cache_check_stands, cache_retry, candidate, confirmed, decide
 from gitdata import Changes, Repo
 
 DATA, NOTES_MD = "data", "notes.md"
@@ -533,15 +533,35 @@ def publish(ctx, eid, result_path):
         rids = {t: r["id"] if r else None for t, r in recs.items()}
         d = decide(result, ver, ctx.pin, recs, e.get("attempts", 1), provers, tracks=e.get("port_tracks"))
         now = ctx.now()
+        # the retry without the record build cache of a REJECT at a badge check (decide.cache_check):
+        # if the clean rebuild's badge is byte-identical to the first run's, the cache cannot have
+        # caused the failed check, so the first run's REJECT stands and this run's score is discarded
+        pend = e.get("cache_check")
+        stood = False
+        if pend and not d["requeue"] and not d["organiser_side"]:
+            e.pop("cache_check", None)
+            if cache_check_stands(pend, result):
+                stood, every_t = True, list(d["record_of"])
+                d.update(verdict="REJECT", status="rejected", score=None, took=[], requeue=False, comparable=False,
+                         record_of={t: None for t in every_t}, against={t: None for t in every_t},
+                         reasons=(pend.get("reasons") or [])[:18] + [
+                             f"the evaluation without the record build cache ({ctx.run_url}) built a byte-identical "
+                             "badge, so the cache could not have caused the failed check: the first run's REJECT "
+                             f"({pend.get('run_url')}) stands, and this run's verdict and score are discarded"])
+            else:
+                d["reasons"] = d["reasons"][:19] + ["the evaluation without the record build cache built another "
+                                                    "badge than the first run's: this run's verdict stands"]
         # the confirmation (decide.py): a pending candidate of this pin is decided by this run too; one
         # of an earlier pin is void (the pin moved before it ran), and this run is a first run again
         first = e.get("confirm") if (e.get("confirm") or {}).get("pin") == ctx.pin else None
         e.pop("confirm", None)
         conf = confirmed(first, d) if first else None
-        if first and conf and d["status"] == "rejected" and cache_retry(result, e):
+        if first and conf and d["status"] == "rejected" and cache_retry(result, e, d["verified"]):
             conf = None                         # a REJECT that used the record build cache: confirmed again without it
             d.update(requeue=True, status="queued")
             e["record_cache"] = False
+            if cache_check(result, ctx.run_url, d["reasons"]):
+                e["cache_check"] = cache_check(result, ctx.run_url, d["reasons"])
             d["reasons"] = d["reasons"][:19] + ["the record build cache was used: the confirmation runs once more without it"]
         if first and conf is None:
             e["confirm"] = first                # an organiser-side end: the confirmation stays pending
@@ -582,9 +602,11 @@ def publish(ctx, eid, result_path):
             done["resumed"] = True
         ch = Changes()
         keep_raw = raw is not None and len(raw) <= 4 << 20
-        if d["status"] != "queued" and not e.get("confirm") and cache_retry(result, e):
+        if d["status"] != "queued" and not e.get("confirm") and cache_retry(result, e, d["verified"]):
             d["requeue"] = True
             e["reasons"] = e["reasons"][:19] + ["the record build cache was used: evaluated once more without it"]
+            if cache_check(result, ctx.run_url, e["reasons"]):
+                e["cache_check"] = cache_check(result, ctx.run_url, e["reasons"])
         if d["requeue"]:
             if d["verdict"] in ("ERROR", "REJECT") or not d["verified"]:
                 e["record_cache"] = False      # the retry builds clean: a sabotaged cache cannot fail it
@@ -594,7 +616,10 @@ def publish(ctx, eid, result_path):
         else:
             e.update(status=d["status"], finished=now, record_in=d["took"])
         done["record_changed"] = {t: r["id"] if r else None for t, r in rfqueue.standing(st, ctx.pin).items()} != rids
-        if keep_raw and first:
+        if keep_raw and stood:
+            # the retry whose verdict was discarded: kept beside the first run's, which stays the entry's result
+            ch.put(f"results/{eid}{'-confirm' if first else ''}-nocache.json", raw)
+        elif keep_raw and first:
             ch.put(f"results/{eid}-confirm.json", raw)     # the first run's result stays results/<id>.json
         elif keep_raw:
             ch.put(f"results/{eid}.json", raw)

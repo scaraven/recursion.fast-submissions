@@ -33,7 +33,7 @@ def size_ref_text(ref):
 
 def score_groups(score):
     """[(field, value, [tracks])] of a result's `score`: each score field once, with the tracks it
-    scores (v6: one `S` for `final` and `every`)."""
+    scores (v6: `S` for `final`, `S_every` for `every`; the first v6 rules: one `S` for both)."""
     out = []
     for t, f, v in score_fields(score):
         g = next((x for x in out if x[0] == f), None)
