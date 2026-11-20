@@ -38,7 +38,8 @@ Soundness is never measured, because it is a theorem.
 
 1. **You open a pull request** that adds or changes one root, `submissions/<root>/`.
 2. **The bot checks the files and queues the PR.** No code runs at this point. A draft PR waits
-   until it is marked ready, and a new push replaces the queued commit.
+   until it is marked ready (and reserves nothing meanwhile), and a new push replaces the queued
+   commit.
 3. **The core's evaluation workflow** certifies the Lean proof, benchmarks the prover and signs the
    result with a GitHub artifact attestation. One evaluation runs at a time (at most about 2 hours
    of the machine with the pin's caches warm, up to about three and a half hours when they must
@@ -47,11 +48,13 @@ Soundness is never measured, because it is a theorem.
    Your `NOTES.md` is published whatever the verdict.
 5. **A record** of a track happens only if the entry's comparable, attested score in that track
    beats the standing record's by more than the margin (2 %, set by the owner, the same for both
-   tracks; one entry's score varied by about 1.75 % from run to run under earlier rules, so a
-   near-copy of a record could beat it by noise; the median of three passes should vary less, but
-   that is not yet measured, and the owner can retire a record won by noise in its track). One entry may take one
-   track's record or both. The bot then copies the new record's root to `main`. Pull requests are
-   never merged.
+   tracks), and then a second run of the same commit at the same pin (its confirmation) beats it
+   too; the record keeps the worse of the two runs. The first record at a pin is confirmed the same
+   way. One entry's score varied by about 1.75 % from run to run under earlier rules, so a near-copy
+   of a record could still beat it by noise (in about one attempt in six at that spread, far less if
+   the median of three passes varies less, which is not yet measured), and the owner can retire a
+   record won by noise in its track. One entry may take one track's record or both. The bot then
+   copies the new record's root to `main`. Pull requests are never merged.
 
 ## Submit in three steps
 

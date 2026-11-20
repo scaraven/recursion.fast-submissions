@@ -18,13 +18,15 @@ STATUS_CONTEXT = "recursion.fast/evaluation"
 # three timed passes' totals over 16 steps; from one step's measured spread (about 0.9 %) that
 # median varies by about 0.15 % [model], and the core estimates σ ≈ 0.2–0.5 % per evaluation
 # [estimate], unmeasured at the season's shape. S and S_record are two independent runs, so two
-# runs of one entry differ by about √2·σ: at σ = 1.75 % (≈ 2.5 %) a near-copy of the record can beat
-# it by noise alone (in roughly one attempt in five), and a noise-proof margin would be 3·√2·σ ≈
-# 7.4 %; at σ ≈ 0.5 % the 2 % margin is about 3·√2·σ.
+# runs of one entry differ by about √2·σ (≈ 2.5 % at σ = 1.75 %), and a noise-proof single-run margin
+# would be 3·√2·σ ≈ 7.4 % there; at σ ≈ 0.5 % the 2 % margin is about 3·√2·σ.
 # The defences are elsewhere: a record candidate is confirmed by a second run of the same commit that
-# must also beat the record, and the record keeps the worse score (decide.confirmed); a byte copy of
-# an evaluated root is invalid, a record's prover binary never takes the record again, and the owner
-# retires a record won by noise (`retire`). The owner may
+# must also beat the record, and the record keeps the worse run (decide.confirmed); measured by a
+# Monte Carlo of that rule, a near-copy of the record (the same speed) is still crowned in about
+# 15.9 % of attempts at σ = 1.75 %, 4.1 % at σ = 1 % and 0.03 % at σ = 0.5 % (comparing with the mean
+# of the record's two runs would give 5.5 % at σ = 1.75 %: the owner's choice, README.md). A copy of
+# an evaluated root or of its prover/ is invalid, a record's prover binary never takes the record
+# again (rfqueue.prover_owner), and the owner retires a record won by noise (`retire`). The owner may
 # change MARGIN between seasons (a stored state with another margin is rewritten at once,
 # rfqueue.load; README.md, "Changing the margin", lists every place that states it).
 MARGIN = 0.02
@@ -52,7 +54,10 @@ MAX_ATTEMPTS = 2          # an organiser-side ERROR is evaluated once more, then
 # same at every retry at one pin) or a `malformed` error (a step record whose timed times are not
 # the season's `timed_runs` numbers, so the score cannot be computed: the runner's fault, likewise
 # the same at every retry) does not even use up the entry's retry; the others are retried once
-# (MAX_ATTEMPTS). `attestation`: an unverified result (the bot's).
+# (MAX_ATTEMPTS). `attestation`: an unverified result (the bot's). `harness` (the certificate job
+# ended without a certificate) is named but counts in the fair order as an unnamed ERROR does (from
+# the entry's second), and so does a run with no result at all (flows.publish): an entry might
+# provoke either.
 UNCOUNTED_ERRORS = ("fingerprint", "lengths", "malformed", "drift", "setup", "cache", "attestation")
 ORGANISER_ERRORS = UNCOUNTED_ERRORS + ("harness",)
 PAUSING_ERRORS = ("fingerprint", "lengths", "malformed")     # a retry cannot clear them: re-queued in place without an attempt
