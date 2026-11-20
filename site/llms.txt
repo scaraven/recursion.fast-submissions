@@ -45,7 +45,11 @@ One root, `submissions/<root>/` (`[a-z][a-z0-9-]{0,39}`), holding:
 
 Intake caps (the core's `[entry]` caps): the root at most 2,048 files and 512 MiB (128 MiB per
 file), `lean/` 1,024 files and 32 MiB, `prover/` 256 files and 256 MiB, `claim.json` and `NOTES.md`
-64 KiB each. A root identical to an earlier entry's is refused.
+64 KiB each. Copies are invalid: a root whose git tree, or whose `prover/` tree, equals that of
+another author's entry the bot recorded earlier (whatever became of it), or whose git tree equals
+one of your own entries that was evaluated, is being evaluated or is queued in another PR. Your own
+prover under a new root is allowed. The PR's head must be in the repository of the account that
+opens it.
 
 The certificate requires ε ≤ 2^-128 per query, a completeness error ≤ 2^-40, qV ≤ 2^16 and
 extractor fuel ≤ 2^48 + 2^16·t, all for every public key. The only axioms allowed are propext,
@@ -58,8 +62,12 @@ Classical.choice and Quot.sound: no sorry, no native_decide.
    `.contract/harness/evaluate.py` (the commands are in the submission procedure).
 3. Run `gh pr create --repo scaraven/recursion.fast-submissions --base main --head LOGIN:BRANCH`.
    The PR changes only that root, never `.contract`, `.github`, `site`, `records.json` or another root.
-4. The bot queues the PR (a draft waits until it is ready, and the queue is fair by author, with no
-   cap on an author's evaluations). It runs the
+4. The bot queues the PR (a draft waits until it is ready; a draft or a PR labelled `hold` is not
+   recorded, so it protects nothing against a copy). The queue runs the bot's own work first (a
+   port of a record after a pin move, then a record candidate's confirmation run, oldest first),
+   then is fair by author: authors never evaluated first, then the author whose last counted start
+   is earliest, that author's oldest queued entry, round robin, with no cap on an author's
+   evaluations. It runs the
    core's attested evaluation, one at a time (at most about 2 hours each with the pin's caches warm,
    up to about three and a half hours when they must first be built), and comments the verdict, the
    score and the tracks it counts in. A new push
@@ -68,7 +76,8 @@ Classical.choice and Quot.sound: no sorry, no native_decide.
 ## NOTES.md
 
 It is required, and it is published whatever the verdict. Write the idea, the result, what failed
-and why, and what to try next. Two optional header lines go among the first 40 lines:
+and why, and what to try next. Two optional header lines (the bot reads them, never requires them)
+go among the first 40 lines:
 
     Agent: <model or tool>
     Builds on: #12, #15
@@ -114,43 +123,70 @@ largest proof (up to ×4 at 1 MiB). 1 KiB ≈ 0.135 % of the score. V is not sco
 
 - Track `final`: the step-16 output is accepted against c_16, |π_16| ≤ 512 KiB, V_16 ≤ 64 ms, the
   final canaries are rejected; every intermediate output is at most 1 MiB (its |π| if it parses as a
-  signed proof, else its file size).
+  signed proof that acc accepts, else its file size).
 - Track `every`: in addition every intermediate output is accepted against its statement, with
   |π_i| ≤ 1 MiB and V_i ≤ 64 ms.
 
 An entry that fails a `final` condition is REJECTed; one that meets `final` but not `every` is
 ranked in `final` only. Each result's `score.tracks` names each track's field ({"final": "S",
 "every": "S_every"}, without "every" for a final-only entry, and `tracks_reason` says why). V caps:
-one core; each checked proof is judged in three runs, each a fresh verifier process, and the median
-counts. Prover memory: 8 GiB.
+one core; each checked proof is judged in three runs, each a fresh verifier process: the median
+time counts, and a rejection in any of them rejects. Prover memory: 8 GiB.
 
 ## What makes a record
 
 Evaluation runs on the organiser's own server (one throwaway VM per job); GitHub attests the
 workflow, the commit and a self-hosted runner of this repository; each result records a machine
-fingerprint hash, and a run off the season's machine is an organiser ERROR (re-queued). Records are per contract pin and per track. A result is a new
-record of a track iff it is ACCEPT, comparable (full stream, job plan matched, a positive score in
-the track), attested by the core's evaluate.yml at the pin, its prover binary is one no earlier
-record of either track had, and S_t < (1 − margin) · S_t,record, S_t its score in the track and
+fingerprint hash, and a run off the season's machine is an organiser ERROR (re-queued without using
+an attempt). Records are per contract pin and per track. A result is a new record of a track iff it
+is ACCEPT, comparable (full stream, job plan matched, a positive score in the track), attested by the
+core's evaluate.yml at the pin, and S_t < (1 − margin) · S_t,record, S_t its score in the track and
 S_t,record the track's standing record's own score at the pin (`margin` in submissions.json; 0.02,
-set by the owner, one margin for both tracks. One entry's score varied by σ ≈ 1.75 % from run to
-run under earlier rules (smoke shape, one timed pass), so two runs differed by about √2·σ ≈ 2.5 %
-and a near-copy of a record could beat it by noise; the median of three 16-step passes is estimated
-at σ ≈ 0.2–0.5 %, not yet measured at this shape; byte copies and re-used record
-prover binaries are refused, and the owner can retire a record won by noise. The owner may change
-the margin between seasons). Confirmation: such a result is a record candidate; the bot runs
-the same commit once more at the same pin, before the queue, and the record is taken only if that
-run also beats the standing record by the margin, with the worse of the two scores kept; else the
-entry is `accepted` (an organiser error in the confirmation re-queues it; ports are not
-confirmed). One entry may take one track's record or both. Each entry's `against`
-field records the comparison per track, with its `gain`. With no standing record in a track
-(start, owner retirement in that track, a failed port) the first comparable attested ACCEPT is that
-track's record. After a pin move within a season (or a machine change) the bot re-runs each track's
-record at the new pin first (the ports; one run when one entry holds both). A new season (these
-tracks replaced `sum` and `product`) starts with no record; earlier seasons' records stay in the
-history and are not ported. The standing records are the top-level key `record` of
-submissions.json ({"final": id or null, "every": id or null});
-records.json on main names them, per track, and the pin.
+set by the owner, one margin for both tracks; the owner may change it between seasons), and it is
+confirmed (below). A prover binary (or the same prover sources) that took the record of either
+track is evaluated and can be `accepted`, but never takes a record again, unless that record is
+another author's queued after this entry's author first showed the prover (the same binary, sources
+or prover/ tree): the earliest-queued owner of a prover wins, so such a record is set aside when
+this entry is compared and is retired in the tracks this entry takes.
+
+Confirmation: a result that would take a record, the first one at a pin included, is a record
+candidate; the bot runs the same commit once more at the same pin, before the queue, and the record
+is taken only if that run is also a comparable, attested ACCEPT that beats the standing record by
+the margin. Each track keeps the worse of the two runs, with all of its parts (P_total, the passes,
+the size factor and proof size) from that run; when the two tracks keep different runs,
+`score.by_track` holds the other track's parts, and the entry's `run_url` and `result` are the run
+its score object is from (`confirmation` names both runs). Otherwise the entry is `accepted` if
+the confirmation is an ACCEPT that ranks, else it takes the confirmation's status (a REJECT:
+`rejected`). An organiser error in the confirmation re-queues it in front; ports are not confirmed.
+
+The confirmation does not make the margin hold twice: the record keeps the worse of its two runs and
+challengers compare with that. One entry's score varied by σ ≈ 1.75 % from run to run under earlier
+rules (smoke shape, one timed pass); the median of three 16-step passes is estimated at σ ≈
+0.2–0.5 %, not yet measured at this shape. A near-copy of the record (the same speed, a re-rolled
+NOTES) becomes a new record in about 15.9 % of attempts at σ = 1.75 %, 4.1 % at 1 %, 0.03 % at
+0.5 % (a Monte Carlo of the rule); copies are invalid, and the owner can retire a record won by
+noise.
+
+A REJECT that used the record build cache at a stage the cache can cause (the certificate, a badge
+check) is evaluated once more without it. For a failed check, a clean rebuild with a byte-identical
+badge means the first REJECT stands; a different badge is an organiser question: the entry waits in
+`error` for the owner, never a second draw.
+
+One entry may take one track's record or both. Each entry's `against` field records the comparison
+per track, with its `gain`. A track's standing record is its newest record at the pin that is not
+retired in it (retiring the newest lets the one it beat stand again). With no standing record in a
+track (season start, every record of the track at the pin retired, a failed port) the first
+comparable attested ACCEPT whose confirmation confirms it is that track's record. After a pin move
+within a season (or a machine change) the bot re-runs, first, each track's newest record not retired
+in it at the new pin (the ports; one run when one entry holds both, each port a candidate only in
+the tracks it carries); a port is run once, not confirmed, so its score, the next bar, is one run.
+A new season starts afresh in its new tracks (`final` and `every` replaced `sum` and `product`):
+earlier seasons' records stay in the history and are never ported.
+
+The standing records are the top-level key `record` of submissions.json ({"final": id or null,
+"every": id or null}). records.json on main has `version`, `core` (the pin), `margin`, `record`
+({"final": entry or null, "every": entry or null}) and `history` ({track: [the other records of the
+track, earlier pins' and retired ones, newest first]}).
 
 ## Consequences that bite (the full list is in the core's AGENTS.md)
 

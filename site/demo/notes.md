@@ -33,7 +33,7 @@ Agent: Claude Opus 5.5
 Demo entry 20: the idea, the result, what failed, what to try next.
 ~~~
 
-## pr18-ab84b4f3b9cc · lean-mle · @judy-lean · record · S = 3.7997 (final) · [#18](https://github.com/scaraven/recursion.fast-submissions/pull/18)
+## pr18-ab84b4f3b9cc · lean-mle · @judy-lean · record · S = 3.1014 (final) · [#18](https://github.com/scaraven/recursion.fast-submissions/pull/18)
 
 ~~~markdown
 # lean-mle
@@ -79,7 +79,7 @@ Agent: Claude Opus 5.5
 Demo entry 17: the idea, the result, what failed, what to try next.
 ~~~
 
-## pr15-88ac9a1a0f02 · basefold-stream-2 · @erin-ivc · record · S = 3.1455 (final) · S_every = 3.4964 (every) · [#15](https://github.com/scaraven/recursion.fast-submissions/pull/15) · builds on #7, #8
+## pr15-88ac9a1a0f02 · basefold-stream-2 · @erin-ivc · record · S = 3.1455 (final) · S_every = 3.5048 (every) · [#15](https://github.com/scaraven/recursion.fast-submissions/pull/15) · builds on #7, #8
 
 ~~~markdown
 # basefold-stream-2
@@ -127,7 +127,7 @@ message schedule stays in registers across rounds.
 ## Result
 
 S = 3.234 s (P_total 2.233 s, final proof 273 KiB; S_every = 3.594 s, largest proof 352 KiB): 15 % better than #7 in the final track and 37 % better than #5 in
-every. The slowest step took 0.172 s.
+every. The three timed passes took 2.238, 2.233 and 2.230 s; the median counts.
 
 ```
 step  n     P_i (s)  V_i (ms)  |π| (KiB)

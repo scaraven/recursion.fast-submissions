@@ -68,7 +68,7 @@
         took ? [' ', el('span', { class: 'badge ' + (retiredIn(e, tr.id) ? 'st-retired' : 'st-record') }, retiredIn(e, tr.id) ? 'record, retired' : 'took the record')] : null));
       if (!repeat) parts.push(el('div', { class: 'metrics m' + (tr.parts.length + 1), role: 'group', 'aria-label': tr.label + ' score' },
         m('Score ' + (field || tr.sym), v, 's', 'lower is better'),
-        tr.parts.map(([k, label, unit, note]) => m(label, sc[k], unit, note || tr.desc[k] || null))));
+        tr.parts.map(([k, label, unit, note]) => m(label, RF.partsIn(sc, tr.id)[k], unit, note || tr.desc[k] || null))));
       const a = e.against[tr.id];
       if (a) {
         const g = gainOf(e, tr.id);
@@ -117,9 +117,17 @@
       e.port_of ? dt('Port of', rel.byId.get(e.port_of) ? subLink(rel.byId.get(e.port_of)) : el('code', null, e.port_of)) : null);
     const links = el('ul', { class: 'links' },
       el('li', null, ext(link.pr(e), 'Pull request')),
-      e.run_url ? el('li', null, ext(e.run_url, 'Actions run')) : null,
+      e.run_url ? el('li', null, ext(e.run_url, e.confirmation && e.confirmation.score_run ? `Actions run (the ${e.confirmation.score_run === 'first' ? 'first' : 'confirmation'} run)` : 'Actions run')) : null,
       link.code(e) ? el('li', null, ext(link.code(e), 'Code at ' + e.tag)) : null,
-      link.result(e) ? el('li', null, el('a', { href: link.result(e), rel: 'noopener noreferrer' }, 'Result JSON')) : null);
+      link.result(e) ? el('li', null, el('a', { href: link.result(e), rel: 'noopener noreferrer' }, e.confirmation && e.confirmation.score_run ? `Result JSON (the ${e.confirmation.score_run === 'first' ? 'first' : 'confirmation'} run)` : 'Result JSON')) : null,
+      ...(() => {
+        // a record candidate's other run: its Actions run and its result JSON
+        const c = e.confirmation;
+        if (!c) return [];
+        const other = c.score_run === 'first' ? [c.run, c.result, 'confirmation run'] : [c.first_run, c.first_result, 'first run'];
+        return [other[0] && other[0] !== e.run_url ? el('li', null, ext(other[0], `Actions run (the ${other[2]})`)) : null,
+          other[1] && other[1] !== e.result ? el('li', null, el('a', { href: link.resultAt(other[1]), rel: 'noopener noreferrer' }, `Result JSON (the ${other[2]})`)) : null];
+      })());
     parts.push(el('section', { class: 'panel', 'aria-labelledby': 'h-facts' }, el('h2', { id: 'h-facts' }, 'Details'), facts));
     parts.push(el('section', { class: 'panel', 'aria-labelledby': 'h-links' }, el('h2', { id: 'h-links' }, 'Links'), links));
 
@@ -154,12 +162,14 @@
     if (sc) {
       // the fields the track sections show; an earlier season's score (in no current track) shows them all here
       const inTrack = RF.TRACKS.some(t => scoreIn(e, t.id) !== null);
-      const shown = new Set(inTrack ? ['S', 'tracks', ...RF.TRACKS.flatMap(t => t.parts.map(p => p[0])), ...Object.values(sc.tracks || {})] : ['tracks']);
+      const shown = new Set(inTrack ? ['S', 'tracks', 'by_track', ...RF.TRACKS.flatMap(t => t.parts.map(p => p[0])), ...Object.values(sc.tracks || {})] : ['tracks', 'by_track']);
       const rest = Object.entries(sc).filter(([k]) => !shown.has(k));
-      if (rest.length) {
+      // a confirmed record whose tracks keep different runs: the other run's numbers, per track
+      const other = sc.by_track ? Object.entries(sc.by_track).flatMap(([t, o]) => Object.entries(o).map(([k, v]) => [`${k} (${t}: the other run)`, v])) : [];
+      if (rest.length || other.length) {
         const dl = el('dl', { class: 'kv' });
         const show = x => typeof x === 'number' ? String(+x.toPrecision(6)) : String(x);
-        for (const [k, v] of rest) dl.append(...dt(el('code', null, k), Array.isArray(v) ? v.map(show).join(', ') : show(v)));
+        for (const [k, v] of rest.concat(other)) dl.append(...dt(el('code', null, k), Array.isArray(v) ? v.map(show).join(', ') : show(v)));
         parts.push(el('section', { class: 'panel' }, el('details', { class: 'readme' }, el('summary', null, 'Every measured number'), dl)));
       }
     }

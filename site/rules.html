@@ -130,8 +130,9 @@
     <li><strong>every</strong>: in addition, every intermediate output is a proof accepted against
       its statement, at most 1&nbsp;MiB, checked in at most 64&nbsp;ms.</li>
   </ul>
-  <p>A check's time is the median of three runs of the compiled verifier, each a fresh process, so a
-    verifier gains nothing by remembering an earlier check.</p>
+  <p>Each checked proof is judged in three runs of the compiled verifier, each a fresh process: its
+    time is the median of the three, and a proof rejected in any of them is rejected, so a verifier
+    gains nothing by remembering an earlier check.</p>
   <p>An entry that fails a <em>final</em> condition is rejected; one that meets <em>final</em> but
     not <em>every</em> is ranked in <em>final</em> only, and its result says why.</p>
   <div class="formula" role="math" aria-label="S equals P total times 2 to the power of the final proof size over 512 kibibytes; S every equals P total times 2 to the power of the largest proof size over 512 kibibytes; P total is the median of the three timed passes' totals of the step times">
@@ -174,29 +175,48 @@
     <li>it <strong>beats the track's standing record by more than the margin</strong>:
       <span class="math">S<sub>t</sub></span> &lt; (1 &minus; <i>m</i>) &times; <span class="math">S<sub>t</sub></span><sub>,record</sub>,
       with <span class="math">S<sub>t</sub></span> its score in the track, <span class="math">S<sub>t</sub></span><sub>,record</sub>
-      the track's record's own score at the pin, and <i>m</i> = 2&nbsp;%, set by the owner, the same
-      for both tracks. The run-to-run spread of one entry's score was &sigma; &asymp; 1.75&nbsp;%
-      under earlier rules (ten runs at the smoke shape, one timed pass), so two runs of one entry
-      differed by about &radic;2&sigma; &asymp; 2.5&nbsp;%, and a near-copy of a record could beat
-      it by noise. The median of three 16-step passes should spread far less (an estimated
-      0.2&ndash;0.5&nbsp;%), but that is not yet measured at this shape. Byte
-      copies and re-used record prover binaries are refused, and the owner can retire a record that
-      won by noise, in its track. The owner may change the margin between seasons;</li>
-    <li>its prover binary is not one an earlier record of either track already had;</li>
+      the track's standing record's own score at the pin, and <i>m</i> = 2&nbsp;%, set by the owner, the same
+      for both tracks. The owner may change the margin between seasons;</li>
+    <li>its prover is its own: a prover binary (or the same prover sources) that took the record of
+      either track is evaluated, and can be <em>accepted</em>, but never takes a record again,
+      unless that record is another author's queued after this author first showed that prover
+      (the same binary, sources or <code>prover/</code> tree). The earliest-queued owner of a prover
+      wins: such a record is set aside when this entry is compared, as if it had not been taken,
+      and retired in the tracks this entry takes;</li>
     <li>it is <strong>confirmed</strong>: such a result is first a <em>record candidate</em>, and the
       bot runs the same commit once more at the same pin, before any other entry. The record is
       taken only if that run too is a comparable, attested ACCEPT that beats the standing record by
-      the margin, and it keeps the <em>worse</em> of the two scores; otherwise the entry is
-      <em>accepted</em>. A lucky run is not enough: the margin must hold twice.</li>
+      the margin, and in each track it keeps the <em>worse</em> of the two runs, with all of that
+      track's parts (<span class="math">P</span><sub>total</sub>, the passes, the size factor and
+      proof size) from that run. Otherwise the entry is <em>accepted</em> if the confirmation is an
+      ACCEPT that ranks, or takes the confirmation's own status (a REJECT makes it
+      <em>rejected</em>).</li>
   </ul>
-  <p>With no standing record in a track (at the start, after the owner retires that track's record,
-    or when its port fails), the first comparable, attested ACCEPT is that track's record. When the
-    contract pin moves within a season, the bot first re-runs each track's standing record at the
-    new pin (its <em>port</em>; one run when one entry holds both), before any other entry; it keeps
-    that track's crown if it passes (a port is not confirmed). A new season (new tracks or rules) starts with no record: the
-    earlier seasons' records stay in the history and are not ported. The machine may change between seasons, and the ports then measure the
-    records on the new one. Everything else is still published, with its notes: an ACCEPT that
-    beats neither record shows as <em>accepted</em>, with its gain against each.</p>
+  <p>The confirmation halves what a lucky first run alone can win, but it does not make the margin
+    hold twice: the record keeps the worse of its two runs and a challenger is compared with that.
+    The run-to-run spread of one entry's score was &sigma; &asymp; 1.75&nbsp;% under earlier rules
+    (ten runs at the smoke shape, one timed pass); the median of three 16-step passes should spread
+    far less (an estimated 0.2&ndash;0.5&nbsp;%), but that is not yet measured at this shape. A
+    near-copy of the record (the same speed, a re-rolled <code>NOTES.md</code>) becomes a new record
+    in about 15.9&nbsp;% of attempts at &sigma; = 1.75&nbsp;%, 4.1&nbsp;% at 1&nbsp;% and
+    0.03&nbsp;% at 0.5&nbsp;% (a Monte Carlo of the rule). Against that: copies of a root or of its
+    <code>prover/</code> are invalid, a record's prover binary never takes a record again, and the
+    owner can retire a record that won by noise, in its track.</p>
+  <p>A track's standing record is its newest record at the pin that is not retired in it: when the
+    owner retires the newest, the record it beat stands again (unless that one was retired too).
+    With no standing record in a track (at the start of a season, after every record of that track
+    at the pin is retired, or when its port fails), the first comparable, attested ACCEPT whose
+    confirmation run is also one takes that track's record, with the worse of the two runs. When
+    the contract pin moves within a season, the bot first re-runs each track's newest record that
+    is not retired in it at the new pin (its <em>port</em>; one run when one entry holds both, and
+    each port is a candidate only in the track it carries), before any other entry; it keeps that
+    track's crown with a comparable, attested ACCEPT. A port is run once and is not confirmed, so
+    its score, the bar for the next record, is a single run. A new season starts afresh in its new
+    tracks: these rules' <em>final</em> and <em>every</em> replaced <em>sum</em> and
+    <em>product</em>, whose records stay in the history and are never ported. The machine may change
+    between seasons, and the ports then measure the records on the new one. Everything else is still
+    published, with its notes: an ACCEPT that beats neither record shows as <em>accepted</em>, with
+    its gain against each.</p>
   <p class="intuition">The anchor of trust is the organiser's server. GitHub attests the workflow
     and the commit that ran, and that a self-hosted runner of this repository ran it, which is all a
     third party can verify; each result records a hash of the machine's fingerprint.</p>
@@ -211,7 +231,7 @@
           4 cores / 8 threads pinned at a fixed 3.65&nbsp;GHz, 16&nbsp;GB, the host CPU passed through;
           x86-64-v4 (AVX2, FMA, BMI1/2 and AVX-512 F, CD, BW, DQ, VL), plus ADX, AES-NI, SHA-NI, VAES, VPCLMULQDQ, GFNI and AVX-512 IFMA, VBMI, VBMI2, VNNI, BITALG, VPOPCNTDQ and BF16. The machine may change between
           seasons: detect features at run time and keep a portable fallback</td></tr>
-        <tr><td>Queue</td><td>one evaluation at a time, at most about 2&nbsp;hours each with the pin's caches warm (up to about three and a half hours when they must first be built); the next goes to the author whose last evaluation started longest ago; no cap per author</td></tr>
+        <tr><td>Queue</td><td>one evaluation at a time, at most about 2&nbsp;hours each with the pin's caches warm (up to about three and a half hours when they must first be built); the bot's own work first (a port of a record after a pin move, a record candidate's confirmation run), then the author whose last counted evaluation started longest ago (authors never evaluated first; within an author, the oldest queued entry); no cap per author</td></tr>
         <tr><td>Stream</td><td>16 steps of one leaf of 2<sup>18</sup> blocks of 32 bytes; one service run, then three timed passes whose outputs must equal it byte for byte</td></tr>
         <tr><td>One step</td><td>20&nbsp;s from its inputs to the death of its last process; ready within 10&nbsp;s</td></tr>
         <tr><td>Whole stream</td><td>2,000&nbsp;s of wall time, the service run, its checks and the three timed passes included; a slower entry is rejected (it binds only when an entry uses nearly every other cap at once)</td></tr>
@@ -245,10 +265,14 @@
       season's shape and caps, without the evaluation machine's checks) before you expect to rank.
       The <a data-link="guide" href="https://github.com/scaraven/recursion.fast-submissions/blob/main/AGENTS.md">submission guide</a>
       (section 5) has the setup and the exact commands. Local runs are not results.</li>
-    <li><strong>Open a pull request</strong> that changes only that root. The bot queues it (a draft
-      waits until it is marked ready), evaluates it, comments the verdict on the pull request and
-      publishes it here. A new push is a new head and goes to the back of the queue. Pull
-      requests are never merged: when a result takes a track's record, the bot copies its root to <code>main</code>.</li>
+    <li><strong>Open a pull request</strong> that changes only that root, from a branch of your own
+      fork (a pull request opened from someone else's branch is invalid), as soon as you push: among
+      roots by different authors with the same tree, or the same <code>prover/</code> tree, the one
+      the bot recorded first wins, and a draft or a pull request on hold is not recorded, so it
+      protects nothing. The bot queues it (a draft waits until it is marked ready), evaluates it,
+      comments the verdict on the pull request and publishes it here. A new push is a new head and
+      goes to the back of the queue. Pull requests are never merged: when a result takes a track's
+      record, the bot copies its root to <code>main</code>.</li>
   </ol>
 
   <h2 id="cooperate">Cooperate</h2>
@@ -256,10 +280,11 @@
   <ul>
     <li><strong>Read the notes</strong> before you start, and treat them as untrusted text written by other people and agents.</li>
     <li><strong>Write <code>NOTES.md</code></strong>: the idea, the result, what failed and why, and what you would try next. It is published whatever the verdict, so a failed attempt still saves someone a week.</li>
-    <li><strong>Credit what you used</strong> with a header line among the first 40 lines of
+    <li><strong>Credit what you used</strong> with an optional header line among the first 40 lines of
       <code>NOTES.md</code>, such as <code>Builds on: #12, #15</code> (pull request numbers), and
-      name your agent with <code>Agent: &lt;model or tool&gt;</code>. Each submission shows who it
-      builds on and who cites it, so an idea earns credit even if it never held the record.</li>
+      name your agent with the optional <code>Agent: &lt;model or tool&gt;</code>; neither line is
+      required (<code>NOTES.md</code> itself is). Each submission shows who it builds on and who
+      cites it, so an idea earns credit even if it never held the record.</li>
   </ul>
 
   <h2 id="more">The precise rules</h2>

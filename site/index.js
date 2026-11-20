@@ -59,8 +59,8 @@
       const last = recs[recs.length - 1];
       box.append(el('div', { class: 'empty-card' },
         el('h2', null, last ? `No standing ${tr.label.toLowerCase()} record at this contract pin.` : `No ${tr.label.toLowerCase()} record yet. Be the first.`),
-        last ? el('p', null, `The records of this track so far were set at earlier pins or retired (the leaderboard keeps them). The first certified, comparable, attested ACCEPT at pin ${short(data.core)} becomes the record of this track.`)
-          : el('p', null, `The first entry with a certified, comparable, attested ACCEPT becomes the record of each track. After that, a new record of this track needs a score ${tr.sym} more than ${marginText(data)} below the standing record's, at the same contract pin.`),
+        last ? el('p', null, `The records of this track so far were set at earlier pins or retired (the leaderboard keeps them). The first certified, comparable, attested ACCEPT at pin ${short(data.core)} becomes the record of this track once its confirmation run (the same commit, once more at the pin) is one too; the record keeps the worse of the two runs.`)
+          : el('p', null, `The first entry with a certified, comparable, attested ACCEPT becomes the record of each track once its confirmation run (the same commit, once more at the pin) is one too, keeping the worse of the two runs. After that, a new record of this track needs a score ${tr.sym} more than ${marginText(data)} below the standing record's, at the same contract pin, in both runs.`),
         data.unpublished ? el('p', null, 'Nothing has been published yet: the first pull request starts the record book.') : null,
         waiting ? el('p', null, waiting === 1 ? 'One submission is in the queue.' : waiting + ' submissions are in the queue.') : null,
         el('div', { class: 'actions' },
@@ -68,7 +68,7 @@
           el('a', { class: 'button ghost', href: page('rules.html') + '#score' }, 'How the tracks score'))));
       return;
     }
-    const sc = cur.score;
+    const sc = window.RF.partsIn(cur.score, tr.id);     // this track's run's parts (a confirmed record)
     // this track's own size factor and proof size (`final`: the final proof's; `every`: the largest's)
     const pt = window.RF.pricedBy(tr, sc), [fk] = pt.parts[1], [sk, sl] = pt.size;
     const split = [el('span', { class: 'math' }, 'P_total'), fmtS(sc.P_total_s), el('span', { class: 'op' }, '\u00d7'),
@@ -222,7 +222,7 @@
     const tb = document.getElementById('leaders');
     tb.replaceChildren();
     if (!recs.length) {
-      tb.append(el('tr', { class: 'empty-row' }, el('td', { colspan: cols }, `No ${tr.label.toLowerCase()} records yet. The first certified, comparable, attested ACCEPT takes the board.`)));
+      tb.append(el('tr', { class: 'empty-row' }, el('td', { colspan: cols }, `No ${tr.label.toLowerCase()} records yet. The first certified, comparable, attested ACCEPT whose confirmation run is one too takes the board.`)));
       return;
     }
     const numbered = recs.map((e, i) => ({ e, n: i + 1 })).reverse();
@@ -234,7 +234,7 @@
           'Contract pin ', pin ? ext(link.core(pin), short(pin)) : 'unknown',
           pin && pin === data.core ? ' (current)' : ' (earlier pin)')));
       }
-      const sc = e.score;
+      const sc = window.RF.partsIn(e.score, tr.id);
       const gain = gainOf(e, tr.id);
       const a = e.against[tr.id];
       const isCur = data.record[tr.id] && data.record[tr.id].id === e.id;
@@ -283,8 +283,8 @@
   }
   // the fair order's start of an author's evaluation (AGENTS.md §9), as the bot's
   // rfqueue.counted_start: `counted_at`, the start of its first run that counted (none after a named
-  // organiser error, nor after an entry's first unnamed ERROR); superseded and withdrawn entries
-  // never count. There is no cap on an author's evaluations.
+  // organiser error, nor after an entry's first unnamed ERROR or first run with no result at all);
+  // superseded and withdrawn entries never count. There is no cap on an author's evaluations.
   function countedStart(e) {
     if (e.port_of || ['superseded', 'withdrawn', 'invalid'].includes(e.status)) return null;
     if (e.status === 'running') return e.counted_at || e.started || null;

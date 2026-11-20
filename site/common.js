@@ -13,12 +13,12 @@
     'invalid', 'queued', 'running', 'superseded', 'withdrawn'];
   const STATUS_INFO = {
     record: ['record', 'Took the record of a track (or both) when it was evaluated; it keeps this status in the history after it is beaten.'],
-    retired: ['retired', 'A record that stood, then was retired by the owner in every track it held; it never stands again.'],
-    accepted: ['accepted', 'Certified, comparable and attested, but not a new record: it did not beat either track\'s standing record by more than the margin, or its prover binary is an earlier record\'s.'],
+    retired: ['retired', 'A record that stood, then was retired in every track it held (by the owner, or as a copy of an earlier author\'s prover); it never stands again.'],
+    accepted: ['accepted', 'Certified, comparable and attested, but not a new record: it did not beat either track\'s standing record by more than the margin, its confirmation run did not, or its prover is an earlier record\'s.'],
     unranked: ['unranked', 'Certified, but not comparable (a truncated stream, a job plan that did not match, or no positive score).'],
     provisional: ['provisional', 'The Lean builds but the certificate does not check; benchmarked, never ranked.'],
-    rejected: ['rejected', 'The certificate or the benchmark failed. The reasons say why.'],
-    error: ['error', 'Waiting on the organiser: an organiser-side fault, not the entry\'s. Requeued once, then left for the owner.'],
+    rejected: ['rejected', 'The certificate or the benchmark failed (a record candidate whose confirmation run was a REJECT, too). The reasons say why.'],
+    error: ['error', 'Waiting on the organiser: an organiser-side fault, not the entry\'s (retried once; a machine-fingerprint, stream-shape or malformed-record fault is retried without using an attempt), or a question for the owner (a badge check whose clean rebuild differs). Left for the owner, who can force a run.'],
     invalid: ['invalid', 'Failed the intake check; not evaluated.'],
     queued: ['queued', 'Waiting for the evaluator.'],
     running: ['running', 'Being evaluated now.'],
@@ -70,7 +70,7 @@
     tag: new RegExp('^rf-source/' + ID + '$'),
     run: new RegExp('^https://github\\.com/' + reEsc(CFG.REPO) + '/actions/runs/\\d{1,20}(?:/job/\\d{1,20}|/attempts/\\d{1,4})?$'),
     key: /^[A-Za-z_][A-Za-z0-9_]{0,40}$/,
-    result: new RegExp('^results/' + ID + '\\.json$'),
+    result: new RegExp('^results/' + ID + '(?:-confirm)?\\.json$'),
     track: /^[a-z][a-z0-9_]{0,15}$/
   };
   const BAD_KEYS = new Set(['__proto__', 'constructor', 'prototype', 'hasOwnProperty', 'toString', 'valueOf']);
@@ -113,7 +113,33 @@
       n++;
     }
     for (const k of ['S', 'P_bar', 'V_bar']) if (typeof out[k] !== 'number' || out[k] < 0) out[k] = null;   // P_bar, V_bar: earlier seasons
+    // a confirmed record whose tracks keep different runs: {track: that run's parts} (the bot's
+    // decide.confirmed), flat numbers and number lists only
+    const by = raw.by_track;
+    if (by && typeof by === 'object' && !Array.isArray(by)) {
+      const b = Object.create(null);
+      for (const [t, v] of Object.entries(by).slice(0, 8)) {
+        if (!RE.track.test(t) || !v || typeof v !== 'object' || Array.isArray(v)) continue;
+        const o = Object.create(null);
+        for (const [k, x] of Object.entries(v).slice(0, 48)) {
+          if (!RE.key.test(k) || BAD_KEYS.has(k)) continue;
+          if (typeof x === 'number' && Number.isFinite(x)) o[k] = x;
+          else if (Array.isArray(x) && x.length > 0 && x.length <= 8 && x.every(y => typeof y === 'number' && Number.isFinite(y))) o[k] = x.slice();
+        }
+        b[t] = o;
+      }
+      out.by_track = b;
+    }
     return (out.S === null && out.P_bar === null && out.V_bar === null && n === 0) ? null : out;
+  }
+
+  // The parts shown with a score in track `track` (P_total, the size factor, the proof size, the
+  // passes): the score's own, or for a confirmed record whose tracks keep different runs, that
+  // track's run's (`score.by_track[track]`), so a track's parts and its score are of one run.
+  function partsIn(sc, track) {
+    if (!sc) return sc;
+    const b = sc.by_track && sc.by_track[track];
+    return b ? Object.assign(Object.create(null), sc, b) : sc;
   }
 
   // An entry's score in a track (a positive number), or null: the field `score.tracks` names, or for a
@@ -147,6 +173,14 @@
     return out;
   }
   const idOrNull = x => typeof x === 'string' && RE.id.test(x) ? x : null;
+  function cleanConfirmation(c) {
+    if (!c || typeof c !== 'object' || Array.isArray(c)) return null;
+    const run = x => typeof x === 'string' && RE.run.test(x) ? x : null;
+    const res = x => typeof x === 'string' && RE.result.test(x) ? x : null;
+    return { first_run: run(c.first_run), first_result: res(c.first_result), run: run(c.run), result: res(c.result),
+      status: STATUSES.includes(c.status) ? c.status : null,
+      score_run: c.score_run === 'first' || c.score_run === 'confirmation' ? c.score_run : null };
+  }
 
   function cleanEntry(r, legacy) {
     if (!r || typeof r !== 'object') return null;
@@ -188,6 +222,9 @@
       result: typeof r.result === 'string' && RE.result.test(r.result) ? r.result : null,
       retired: date(r.retired),
       port_of: typeof r.port_of === 'string' && RE.id.test(r.port_of) ? r.port_of : null,
+      // a record candidate's two runs (the bot's `confirmation`): their Actions runs and results, and
+      // which run the entry's score object is from (`score_run`: first or confirmation)
+      confirmation: cleanConfirmation(r.confirmation),
       // a record candidate waiting for its confirmation run (the bot's `confirm`): first in the queue
       confirming: !!(r.confirm && typeof r.confirm === 'object') && ['queued', 'running', 'error'].includes(r.status)
     };
@@ -489,7 +526,7 @@
   }
 
   window.RF = {
-    CFG, BASE, dataKey, STATUSES, STATUS_INFO, RE, TRACKS, TRACK_IDS, trackOf, pricedBy, scoreIn, retiredIn, chosenTrack, rememberTrack,
+    CFG, BASE, dataKey, STATUSES, STATUS_INFO, RE, TRACKS, TRACK_IDS, trackOf, pricedBy, partsIn, scoreIn, retiredIn, chosenTrack, rememberTrack,
     loadData, loadText, el, svg, ext, page, link, fmtS, fmtPart, fmtBytes, fmtDate, fmtDateTime, timeEl, ago, badge,
     shortSha, gainOf, marginText, pct, unverified, evaluatedAt, relations, records, nameOf, section, chrome, footer
   };

@@ -7,14 +7,14 @@ verdict appears without redeploying (raw.githubusercontent.com caches for about 
 | File | What it is |
 |---|---|
 | `index.html`, `index.js` | a banner while the bot's queue is paused (`paused.since` only); the track tabs (Final, Every: `role="tablist"`, arrow keys, Home and End; chosen by `?track=` and remembered in `localStorage`), and per track the record, its progression and its leaderboard; the queue; all submissions with their score in each track |
-| `hero.js`, `hero.css` | the home page's figure, drawn from a season's chain lengths (a copy of `[stream] lengths` of the v5 season's `harness/season.toml`, 97 chains; the v6 stream, 16 steps of one leaf, a Merkle root over 2^18 blocks, and no chains, is not drawn yet; when the shape changes, update `hero.js` and the figure's `viewBox` in `index.html`, which the browser's console names) |
+| `hero.js`, `hero.css` | the home page's figure. It is **illustrative of the earlier (v5) rules**: it is drawn from that season's chain lengths (a copy of `[stream] lengths` of the v5 `harness/season.toml`, 97 chains over 96 steps), and its `aria-label` in `index.html` says so. The v6 stream (16 steps, each one fresh leaf: a Merkle root over 2^18 runner-supplied 32-byte blocks, given as `leaf.json` = `{"n"}` and `leaf.bin`; a service run, then three timed passes, `P_total` their median total; `S = P_total · 2^(\|π_16\| / 512 KiB)` in `final`, `S_every = P_total · 2^(max_i \|π_i\| / 512 KiB)` in `every`) has no chains and is described in the text beside the figure. When it is redrawn, update `hero.js`, the figure's `viewBox` in `index.html` (the browser's console names it) and its `aria-label` |
 | `submission.html`, `submission.js`, `render.js` | one submission: verdict, its score in each track and the comparisons, links, NOTES.md, README.md |
 | `rules.html` | the rules in plain words |
 | `llms.txt` | the short guide for agents |
 | `config.js` | the repository names and where the data is read from |
 | `common.js`, `style.css`, `favicon.svg` | shared code and styles |
 | `vendor/` | marked and DOMPurify, unmodified upstream files, with their licences and `SHA256SUMS` |
-| `demo/` | fictional data for previews: `?data=demo`, and `?data=demo-empty` for launch day (scores at the v6 committed-leaf shape: `M = 16`, `size_ref` 512 KiB, `S_every`) |
+| `demo/` | fictional data for previews: `?data=demo`, and `?data=demo-empty` for launch day (scores at the v6 committed-leaf shape: `M = 16`, `size_ref` 512 KiB, `pass_totals_s`, `S_every`; records with their `confirmation`, one of them, `pr15-88ac9a1a0f02`, keeping a different run per track in `score.by_track`; a record retired in `final`, so the one it beat stands again) |
 
 ## Preview locally
 
@@ -87,7 +87,8 @@ a file of version 1, one record and no tracks, is read as the sum's), and each e
 `record_of` and `against` say which tracks it took and how it compared; the site never re-derives them.
 Each track's score is the field the result's `score.tracks` names (`S` in `final`, `S_every` in `every`; `every` absent
 when the entry is eligible for `final` only), shown with that track's own size factor and proof size (`TRACKS[i].parts`:
-`size_factor` and `final_pi_bytes`, or `size_factor_every` and `max_pi_bytes`); a result of the first v6 rules, which
+`size_factor` and `final_pi_bytes`, or `size_factor_every` and `max_pi_bytes`; for a confirmed record whose two tracks
+keep different runs, the track's own run's parts, `score.by_track[track]`, through `partsIn`); a result of the first v6 rules, which
 scored `every` by `S`, is shown with the final proof's (`pricedBy`). The tabs are the current season's tracks (`TRACKS` in `common.js`); records of an
 earlier season's tracks (`sum`, `product`) stay in the data and on each submission's page, not in a tab.
 
