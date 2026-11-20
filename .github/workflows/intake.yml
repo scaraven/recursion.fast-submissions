@@ -27,8 +27,20 @@ defaults:
 jobs:
   intake:
     # the default branch's code only (an event of a pull request into another branch is read,
-    # and ignored, by the same code)
-    if: github.ref == 'refs/heads/main'
+    # and ignored, by the same code); of the events that change nothing the bot reads, none runs
+    # (an `edited` runs only when the base branch changed, a label event only for the label `hold`),
+    # so a flood of edits and labels takes no runner slot
+    if: >-
+      github.ref == 'refs/heads/main' && (github.event_name != 'pull_request_target'
+      || (github.event.action != 'edited' && github.event.action != 'labeled' && github.event.action != 'unlabeled')
+      || (github.event.action == 'edited' && github.event.changes.base != null)
+      || ((github.event.action == 'labeled' || github.event.action == 'unlabeled') && github.event.label.name == 'hold'))
+    # one intake per pull request at a time, the newest event's: an older run still waiting or
+    # running is cancelled (the newest reads the head as it is now; a cancelled intake's head is
+    # admitted by sync, on its schedule or the next dispatch)
+    concurrency:
+      group: intake-${{ github.event.pull_request.number || inputs.pr }}
+      cancel-in-progress: true
     runs-on: rf-light
     timeout-minutes: 15
     permissions:

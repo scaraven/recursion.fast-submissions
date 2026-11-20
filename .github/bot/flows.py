@@ -29,14 +29,20 @@ ORGANISER = ("admin", "maintain", "write")
 BOT_LOGIN = "github-actions[bot]"
 # descriptions of the bot's statuses after which a head may be admitted again
 READMIT = ("withdrawn", "superseded", "intake failed")
+# the time one sync spends examining heads (sync.yml's job has 30 minutes): past it, the sync writes
+# what it has examined and dispatches the next sync, which goes on where it stopped (every head it
+# recorded is skipped), so no number of slow heads can keep `data` from being written
+SYNC_BUDGET_S = 15 * 60
 
 
 class Ctx:
     """Everything a step needs from its environment."""
 
     def __init__(self, gh, repo, git_url, pin, token=None, run_id="0", run_attempt=1, server="https://github.com",
-                 default_branch="main", clock=None, sleep=time.sleep, verify=None, log=print, bot_login=BOT_LOGIN):
+                 default_branch="main", clock=None, sleep=time.sleep, verify=None, log=print, bot_login=BOT_LOGIN,
+                 monotonic=time.monotonic):
         self.gh, self.repo, self.git_url, self.pin, self.token = gh, repo, git_url, pin, token
+        self.monotonic = monotonic
         self.run_id, self.run_attempt, self.server, self.default_branch = str(run_id), int(run_attempt), server, default_branch
         self.run_url = f"{server}/{repo}/actions/runs/{self.run_id}"
         self.clock, self.sleep, self.verify, self.log, self.bot_login = clock, sleep, verify, log, bot_login
@@ -213,7 +219,7 @@ def workflow_problems(ctx, git, pr):
     sha = (pr.get("head") or {}).get("sha") or ""
     if not SHA_RE.match(sha) or git.fetch(f"refs/pull/{n}/head") != sha:
         return []                          # it moved: the next event checks the new head
-    return wfcheck.check_git(git.dir, sha)
+    return wfcheck.check_git_limited(git.dir, sha)
 
 
 def intake_failed(ctx, pr_n):
@@ -240,7 +246,7 @@ def sync(ctx):
     st0 = _state(ctx, git.snapshot(DATA))
     reserved = _reserved(git, st0)
     prs = {p["number"]: p for p in ctx.gh.open_prs()}
-    looks, admitted = {}, {}
+    looks, admitted, t0, more = {}, {}, ctx.monotonic(), []
     for n, pr in sorted(prs.items()):
         if (pr.get("base") or {}).get("ref") != ctx.default_branch or pr.get("draft") or "hold" in _labels(pr):
             continue
@@ -251,6 +257,9 @@ def sync(ctx):
         prior = bot_statuses(ctx, sha)
         if old and old["status"] == "invalid" and not (prior and prior[0].get("description") == "queued"):
             continue                       # an invalid head stays invalid unless re-admitted
+        if ctx.monotonic() - t0 > SYNC_BUDGET_S:
+            more.append(n)                 # the next sync (dispatched below) examines it
+            continue
         try:
             full = ctx.gh.pr(n)            # changed_files is only in the single-PR payload
             x = examine(ctx, git, full, st0, reserved)
@@ -356,6 +365,10 @@ def sync(ctx):
             _try(ctx, "dispatch", ctx.gh.dispatch, "evaluate-next.yml", ctx.default_branch)
         elif kind == "main":
             _try(ctx, "sync main", sync_main, ctx, e)
+    if more:
+        ctx.log(f"sync: the time budget ({SYNC_BUDGET_S} s) ran out before #{more[0]} ({len(more)} heads left): "
+                "the next sync goes on")
+        _try(ctx, "dispatch sync", ctx.gh.dispatch, "sync.yml", ctx.default_branch)
     ctx.log(f"sync: {len(changed)} entries changed")
     return len(changed)
 

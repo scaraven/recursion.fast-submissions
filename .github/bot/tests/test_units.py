@@ -903,6 +903,66 @@ class Workflows(unittest.TestCase):
             self.assertNotEqual(wfcheck.check_text("esc", "on: workflow_dispatch\njobs:\n  a:\n    runs-on: rf-light\n"
                                                            "    steps:\n      - " + esc + "\n"), [], esc)
 
+    def test_no_workflow_text_stalls_the_check(self):
+        """The heavy review's redos.py: KEY_RE was quadratic in a long line without a colon (8 lines of
+        64 KiB took 71 s). Every pattern is linear now, a line above 4 KiB is refused before any
+        pattern reads it, and the bot runs the check in a subprocess with a time limit."""
+        import os
+        import tempfile
+        import time
+        import wfcheck
+        line = "a" + " " * 16000 + "b"
+        t = time.monotonic()
+        self.assertIsNone(wfcheck.KEY_RE.match(line))
+        self.assertIsNotNone(wfcheck.KEY_RE.match("key   : value"))
+        self.assertEqual(wfcheck._scalar(wfcheck.KEY_RE.match("key   : value").group(1)), "key")
+        self.assertEqual(wfcheck._scalar(wfcheck.KEY_RE.match('"k" : v').group(1)), "k")
+        big = "on: workflow_dispatch\njobs:\n" + ("a" + " " * 65000 + "b\n") * 8
+        self.assertIn("more than 4096 bytes", wfcheck.check_text("x.yml", big)[0])
+        head = "on: workflow_dispatch\njobs:\n  a:\n    runs-on: rf-light\n    steps:\n      - run: |\n"
+        worst = ["on: workflow_dispatch\njobs:\n" + ("  a" + " " * 4000 + "b\n") * 100,
+                 head + ("          " + "git " * 1000 + "\n") * 100,
+                 head + ("          " + "${{" * 1300 + "\n") * 100,
+                 head + ("          " + "| " * 2000 + "\n") * 100]
+        for text in worst:
+            wfcheck.check_text("x.yml", text)
+        self.assertLess(time.monotonic() - t, 10)
+        self.assertEqual(wfcheck.expressions("a ${{ x }} b ${{ y }}${{ z"), [" x ", " y "])
+        self.assertTrue(wfcheck.run_makes_code("git fetch x && git \\\ncheckout FETCH_HEAD"))
+        self.assertFalse(wfcheck.run_makes_code("git fetch origin refs/pull/1/head\necho checkout"))
+        # in a subprocess with a time limit: a timeout is a problem, never a pass
+        d = tempfile.mkdtemp(prefix="rf-wf-")
+        self.addCleanup(__import__("shutil").rmtree, d, True)
+        os.makedirs(os.path.join(d, ".github", "workflows"))
+        with open(os.path.join(d, ".github", "workflows", "ok.yml"), "w") as f:
+            f.write(ALLOWED["pull_request on GitHub-hosted"])
+        g = lambda *a: subprocess.run(["git", "-C", d, *a], capture_output=True, check=True,  # noqa: E731
+                                      env={"GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t", "GIT_COMMITTER_NAME": "t",
+                                           "GIT_COMMITTER_EMAIL": "t@t", "PATH": os.environ["PATH"], "HOME": d})
+        g("init", "-q")
+        g("add", "-A")
+        g("commit", "-q", "-m", "x")
+        gd = os.path.join(d, ".git")
+        self.assertEqual(wfcheck.check_git_limited(gd, "HEAD"), wfcheck.check_git(gd, "HEAD"))
+        self.assertEqual(wfcheck.check_git_limited(gd, "HEAD"), [])
+        self.assertIn("did not finish within", wfcheck.check_git_limited(gd, "HEAD", timeout=0.001)[0])
+        self.assertIn("cannot list", wfcheck.check_git_limited(gd, "0" * 40)[0])
+
+    def test_intake_runs_only_for_events_that_matter(self):
+        """intake.yml: an `edited` event runs only when the base changed, a label event only for
+        `hold`, and one intake per pull request runs at a time (the newest event's)."""
+        import os
+        with open(os.path.join(os.path.dirname(__file__), "..", "..", "workflows", "intake.yml")) as f:
+            text = f.read()
+        import wfcheck
+        job = wfcheck.parse(text)["jobs"]["intake"]
+        cond = " ".join(job["if"].split())
+        for part in ("github.event.action == 'edited' && github.event.changes.base != null",
+                     "github.event.label.name == 'hold'", "github.ref == 'refs/heads/main'"):
+            self.assertIn(part, cond)
+        self.assertEqual(job["concurrency"], {"group": "intake-${{ github.event.pull_request.number || inputs.pr }}",
+                                              "cancel-in-progress": "true"})
+
     def test_size_caps(self):
         """Workflows above 64 KiB per file or 512 KiB in all are refused before any parse."""
         import os

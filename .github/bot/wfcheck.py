@@ -12,6 +12,7 @@ an allowlisted GitHub-hosted label) for an event a fork or any GitHub user contr
   python3 -I .github/bot/wfcheck.py [REPO_DIR]          the checkout's .github/workflows
   python3 -I .github/bot/wfcheck.py --git GIT_DIR REV   a commit's workflows, read as data
                                                         (a pull request's head, in pin-check)
+  python3 -I .github/bot/wfcheck.py --json --git GIT_DIR REV   the same, the problems as one JSON list
 
 Rules, for every `*.yml` and `*.yaml` directly under `.github/workflows`:
 
@@ -45,7 +46,9 @@ Rule 4 also scans `runs-on` (no expression at all), `container` and `services` (
 positions (`run:`, a script action's `script:`, those fields) only constants are allowed, never
 `env.`, `steps.` or `needs.` (they launder pull-request data); `actions/checkout` of another
 repository only at a literal 40-hex commit; a double-quoted scalar with a backslash escape is
-refused; files above 64 KiB each or 512 KiB in all are refused before parsing.
+refused; files above 64 KiB each or 512 KiB in all, and lines above 4 KiB, are refused before parsing,
+and every pattern runs in linear time. The bot runs the check in a subprocess with a time limit
+(`check_git_limited`): a check that does not finish in time is a failure.
 
 Threat model: workflows on `main` are written only by the owner, and submissions are never merged.
 This lint guards against the organiser's own mistake and against a pull request that edits
@@ -53,6 +56,7 @@ workflows (pin-check's PR job, and the intake on any head touching `.github/`, `
 not a sandbox against a malicious organiser, and human review of every workflow change stays
 required.
 """
+import json
 import os
 import re
 import subprocess
@@ -81,9 +85,13 @@ LITERAL_RE = re.compile(r"'[^']*'|true|false|null|[0-9]+")
 # a conservative textual check on `run:` (not a decision procedure: human review of every workflow
 # change stays required): no command that makes a working tree of, or runs, fetched code. Fetching
 # `refs/pull/N/head` into a bare repository as data stays allowed (the intake reads pull requests so).
-RUN_CODE_RE = re.compile(r"\bgit\b[^\n;&|]*?\s(?:checkout|switch|clone|worktree|restore|reset|archive|read-tree|"
-                         r"checkout-index|stash|merge|am|apply|submodule|pull|show|cat-file|rebase|cherry-pick|revert)\b"
-                         r"|\bgh\s+(?:pr\s+(?:checkout|diff)|repo\s+clone|api)\b|\|\s*(?:ba|z|k|da)?sh\b|\beval\b"
+# Written to run in linear time (`run_makes_code`: a `git` word, then one of the subcommands after a
+# whitespace in the same command, i.e. on the same line, or at the start of the next, before any `;`, `&`
+# or `|`), so no workflow text can stall the check.
+GIT_WORD_RE = re.compile(r"\bgit\b")
+GIT_SUB_RE = re.compile(r"\s(?:checkout|switch|clone|worktree|restore|reset|archive|read-tree|"
+                        r"checkout-index|stash|merge|am|apply|submodule|pull|show|cat-file|rebase|cherry-pick|revert)\b")
+RUN_CODE_RE = re.compile(r"\bgh\s+(?:pr\s+(?:checkout|diff)|repo\s+clone|api)\b|\|\s*(?:ba|z|k|da)?sh\b|\beval\b"
                          r"|\bsource\b|\bpatch\b|\bbase64\s+-d")
 CHECKOUT_KEYS = {"ref", "repository", "path", "persist-credentials", "sparse-checkout", "fetch-depth"}
 GUARD_RE = re.compile(r"github\.event_name == '([a-z_]+)'")
@@ -201,7 +209,10 @@ def _flow(t, i):
             raise Unparsed(f"an unexpected character in a flow collection: {t[:80]}")
 
 
-KEY_RE = re.compile(r"^((?:\"[^\"]*\"|'[^']*'|[^\s\"'#\-?:\[\]{}][^:#]*?|-[^\s:#][^:#]*?))\s*:(?:\s+(.*)|)$")
+# A `key:` line. Linear: every alternative stops at the first `:` or `#` (a plain key's trailing
+# spaces stay in the group, which `_scalar` strips), so a long line without a colon is read once. A
+# line above MAX_LINE bytes is refused before any pattern sees it (check_text).
+KEY_RE = re.compile(r"^((?:\"[^\"]*\"|'[^']*')[ \t]*|[^\s\"'#\-?:\[\]{}][^:#]*|-[^\s:#][^:#]*):(?:\s+(.*)|)$")
 
 
 def parse(text):
@@ -351,6 +362,35 @@ def expr_ok(expr, atoms):
                                       for t in toks[::2])
 
 
+def expressions(t):
+    """The text inside each `${{ … }}` of `t`, as `EXPR_RE.findall` reads them (the first `}}` after
+    each `${{`), in linear time: with no `}}` left, no later `${{` can close either."""
+    out, i = [], t.find("${{")
+    while i >= 0:
+        j = t.find("}}", i + 3)
+        if j < 0:
+            break
+        out.append(t[i + 3:j])
+        i = t.find("${{", j + 2)
+    return out
+
+
+def run_makes_code(run):
+    """Whether a `run:` script makes a working tree of, or runs, fetched code (RUN_CODE_RE and a
+    `git` subcommand of GIT_SUB_RE in the same command), in linear time per command."""
+    if RUN_CODE_RE.search(run):
+        return True
+    for cmd in re.split(r"[;&|]", run):
+        lines = cmd.split("\n")
+        for i, line in enumerate(lines):
+            m = GIT_WORD_RE.search(line)
+            # the subcommand may follow on the next line (`git \` and a line break: one whitespace)
+            nxt = "\n" + lines[i + 1][:32] if i + 1 < len(lines) else ""
+            if m and (GIT_SUB_RE.search(line, m.end()) or GIT_SUB_RE.match(nxt)):
+                return True
+    return False
+
+
 def bad_exprs(value, atoms):
     """The `${{ … }}` in `value` (a string, or a mapping or list of them) that are not allowed."""
     if isinstance(value, dict):
@@ -358,7 +398,7 @@ def bad_exprs(value, atoms):
     if isinstance(value, list):
         return [x for v in value for x in bad_exprs(v, atoms)]
     t = "" if value is None else str(value)
-    found = EXPR_RE.findall(t)
+    found = expressions(t)
     if t.count("${{") != len(found):
         return [t[:60]]
     return [e.strip()[:80] for e in found if not expr_ok(e, atoms)]
@@ -402,7 +442,7 @@ def rule4(where, j, prt):
                   + bad_exprs({x: st.get(x) for x in ("shell", "working-directory")}, EXPR_CODE)):
             out.append(f"{where}: step {k}: expression `{e}` is not allowed (pass the value through env: and read a "
                        "shell variable)")
-        if isinstance(st.get("run"), str) and RUN_CODE_RE.search(st["run"]):
+        if isinstance(st.get("run"), str) and run_makes_code(st["run"]):
             out.append(f"{where}: step {k}: run: makes a working tree of, or runs, fetched code")
         uses = st.get("uses") if isinstance(st.get("uses"), str) else ""
         if uses.lower().startswith("actions/checkout@"):
@@ -456,8 +496,16 @@ def check_doc(name, doc):
     return problems
 
 
+MAX_LINE = 4 << 10          # bytes of one line: a longer line is refused before any pattern reads it
+
+
 def check_text(name, text):
-    """The problems of one workflow file (a file that does not parse is one)."""
+    """The problems of one workflow file (a file that does not parse is one, and so is a line above
+    MAX_LINE bytes)."""
+    for n, line in enumerate(text.split("\n"), 1):
+        if len(line) > MAX_LINE // 4 and len(line.encode("utf-8", "surrogateescape")) > MAX_LINE:
+            return [f"{name}: not checkable (line {n} has more than {MAX_LINE} bytes): a workflow must be written "
+                    "in the checked subset"]
     try:
         return check_doc(name, parse(text))
     except Unparsed as e:
@@ -523,9 +571,35 @@ def check_git(git_dir, rev):
     return out if n else ["no workflow files found"]
 
 
+CHECK_TIMEOUT_S = 60       # the bot's limit on one head's workflow check (check_git_limited)
+
+
+def check_git_limited(git_dir, rev, timeout=CHECK_TIMEOUT_S):
+    """`check_git` in a subprocess (this file, `python3 -I`) that is killed after `timeout` seconds: a
+    check that does not finish, or fails, is one problem, so no workflow text can stall the intake or
+    the sync (whose run has a time limit of its own)."""
+    try:
+        r = subprocess.run([sys.executable, "-I", os.path.abspath(__file__), "--json", "--git", git_dir, rev],
+                           capture_output=True, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        return [f"the workflow check did not finish within {timeout} s: not checkable"]
+    try:
+        out = json.loads(r.stdout.decode("utf-8", "replace"))
+        if isinstance(out, list) and all(isinstance(p, str) for p in out) and r.returncode in (0, 1):
+            return out
+    except ValueError:
+        pass
+    return [f"the workflow check failed (exit {r.returncode}): not checkable"]
+
+
 def main():
     a = sys.argv[1:]
+    as_json = a[:1] == ["--json"]
+    a = a[1:] if as_json else a
     problems = check_git(a[1], a[2]) if a[:1] == ["--git"] else check_dir(a[0] if a else ".")
+    if as_json:
+        print(json.dumps(problems))
+        return 1 if problems else 0
     for p in problems:
         print(f"wfcheck: {p}")
     if not problems:
