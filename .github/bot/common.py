@@ -53,14 +53,15 @@ MAX_ATTEMPTS = 2          # an organiser-side ERROR is evaluated once more, then
 # `lengths` error (the stream's shape, M and n, was not the season's: an organiser bug, the
 # same at every retry at one pin) or a `malformed` error (a step record whose timed times are not
 # the season's `timed_runs` numbers, so the score cannot be computed: the runner's fault, likewise
-# the same at every retry) does not even use up the entry's retry; the others (`overhead` among
-# them: the runner's own work used up the job's time) are retried once
+# the same at every retry) does not even use up the entry's retry; the others are retried once
 # (MAX_ATTEMPTS). `attestation`: an unverified result (the bot's). `harness` (the certificate job
-# ended without a certificate) is named but counts in the fair order as an unnamed ERROR does (from
-# the entry's second), and so does a run with no result at all (flows.publish): an entry might
-# provoke either.
-UNCOUNTED_ERRORS = ("fingerprint", "lengths", "malformed", "overhead", "drift", "setup", "cache", "attestation")
-ORGANISER_ERRORS = UNCOUNTED_ERRORS + ("harness",)
+# ended without a certificate) and `overhead` (a benchmark part killed at the job's PART_S that the
+# entry's own clock does not explain: the runner's own work past runner_budget_s, which an entry
+# can lengthen) are named but count in the fair order as an unnamed ERROR does (from the entry's
+# second, `rfqueue.settle_run`), and so does a run with no result at all (flows.publish): an entry
+# might provoke any of them. Both are retried once.
+UNCOUNTED_ERRORS = ("fingerprint", "lengths", "malformed", "drift", "setup", "cache", "attestation")
+ORGANISER_ERRORS = UNCOUNTED_ERRORS + ("harness", "overhead")
 PAUSING_ERRORS = ("fingerprint", "lengths", "malformed")     # a retry cannot clear them: re-queued in place without an attempt
 # The pause (AGENTS.md §9): every run that ends on the organiser's side (any ERROR, named or not, a
 # result whose provenance fails, no result at all, a run reaped after it died) joins the error

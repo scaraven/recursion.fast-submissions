@@ -90,7 +90,8 @@ class Queue(unittest.TestCase):
     def test_named_organiser_errors_never_count_against_the_author(self):
         """A run that ended in a named organiser error (fingerprint, lengths, malformed, drift, setup,
         cache, attestation) never counts as the author's start in the fair order, nor uses up the
-        entry's one uncounted unnamed ERROR."""
+        entry's one uncounted unnamed ERROR; `harness` and `overhead`, which an entry might provoke,
+        count as unnamed ERRORs do (from the entry's second)."""
         for kind in common.UNCOUNTED_ERRORS:
             e = E(2, 2, "ann", started="2026-01-02T11:10:00Z")
             self.assertFalse(rfqueue.settle_run(e, kind, error=True), kind)
@@ -98,11 +99,24 @@ class Queue(unittest.TestCase):
             self.assertEqual(e.get("generic_errors", 0), 0, kind)
         self.assertTrue(rfqueue.settle_run(E(3, 3, "ann", started="t"), "harness", error=True) is False)  # the first unnamed one
         self.assertIn("malformed", common.UNCOUNTED_ERRORS)       # the runner's record of the stream (v6), not `harness`
-        # `overhead` (the runner's own work past runner_budget_s): never counted against the author, but an
-        # entry can lengthen the runner's work, so it is not entry-proof and pauses only across two authors
-        self.assertIn("overhead", common.UNCOUNTED_ERRORS)
+        # `overhead` (a part killed at PART_S that the entry's clock does not explain: the runner's own work
+        # past runner_budget_s): an entry can lengthen the runner's work, so it is treated like `harness`:
+        # named, retried once, counted in the fair order from the entry's second, once per author toward a pause
+        self.assertNotIn("overhead", common.UNCOUNTED_ERRORS)
+        self.assertIn("overhead", common.ORGANISER_ERRORS)
         self.assertNotIn("overhead", common.ENTRY_PROOF_ERRORS)
         self.assertNotIn("overhead", common.PAUSING_ERRORS)
+        self.assertEqual(set(common.ORGANISER_ERRORS) - set(common.UNCOUNTED_ERRORS), {"harness", "overhead"})
+        for kind in ("harness", "overhead"):
+            e = E(4, 4, "ann", started="2026-01-02T12:00:00Z", attempts=1)
+            self.assertFalse(rfqueue.settle_run(e, kind, error=True), kind)      # the entry's first: not counted
+            self.assertEqual((e["generic_errors"], e["counted_at"]), (1, None), kind)
+            rfqueue.mark_running(e, "2026-01-02T13:00:00Z", "u")
+            self.assertTrue(rfqueue.settle_run(e, kind, error=True), kind)       # its second (the retry's): counted
+            self.assertEqual(rfqueue.counted_start(dict(e, status="error")), "2026-01-02T13:00:00Z", kind)
+        x = lambda a: {"id": "i", "author": a, "kind": "overhead"}  # noqa: E731
+        self.assertEqual(rfqueue.pause_count([x("ann"), x("ann"), x("ann")]), 1)   # once per author
+        self.assertEqual(rfqueue.pause_count([x("ann"), x("bob")]), 2)
 
     def test_pause_count_needs_two_authors_or_an_entry_proof_error(self):
         """The streak's errors that count toward a pause: every entry-proof one (fingerprint,

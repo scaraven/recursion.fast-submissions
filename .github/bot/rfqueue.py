@@ -213,8 +213,8 @@ def counted_start(e):
     `counted_at`, the start of its first run that counted (a retry never refreshes it), or the start
     of the run in progress. A run does not count when it ended in a named organiser error
     (`UNCOUNTED_ERRORS`: fingerprint, lengths, malformed, drift, setup, cache, attestation), nor the first
-    unnamed ERROR of an entry (a catch-all harness error or a reaped run); a later one does
-    (`settle_run`). Ports (the organiser's), superseded and withdrawn entries never count."""
+    unnamed ERROR of an entry (a catch-all harness error, a reaped run, and the named `harness` and
+    `overhead`, which an entry might provoke); a later one does (`settle_run`). Ports (the organiser's), superseded and withdrawn entries never count."""
     if e.get("port_of") or e.get("status") in ("superseded", "withdrawn", "invalid"):
         return None
     if e.get("status") == RUNNING:
@@ -227,8 +227,9 @@ def counted_start(e):
 
 def settle_run(e, organiser_error=None, error=False):
     """Whether the run that just ended counts as the author's start in the fair order, recorded in
-    `counted_at`: not after a named organiser error, not after the entry's first unnamed ERROR
-    (`generic_errors`), otherwise yes (from the run's start, once)."""
+    `counted_at`: not after a named organiser error of `UNCOUNTED_ERRORS`, not after the entry's
+    first unnamed ERROR (`generic_errors`; `harness` and `overhead`, named but provokable by an
+    entry, count as unnamed), otherwise yes (from the run's start, once)."""
     if organiser_error in UNCOUNTED_ERRORS:
         counts = False
     elif error:

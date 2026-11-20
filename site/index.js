@@ -102,8 +102,15 @@
     const raw = span / n, p = 10 ** Math.floor(Math.log10(raw)), f = raw / p;
     return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * p;
   }
-  // a tick of the score axis, in the track's unit (s\u00b7B: an integer with separators)
-  const tickText = (v, u) => v >= 1 || v === 0 ? fmtS(v, u) : v.toExponential(0);
+  // a tick of the score axis, compact on the axis only (s\u00b7B scores run to 10^9 and beyond:
+  // "1.4G", "650M", so the labels leave the plot its width); the tooltip and labels keep fmtS
+  const SI = ['', 'k', 'M', 'G', 'T', 'P', 'E'];
+  const compact = v => {
+    let k = 0, w = v;
+    while (+w.toPrecision(3) >= 1000 && k < SI.length - 1) { w /= 1000; k++; }
+    return +w.toPrecision(3) >= 1000 ? v.toExponential(1) : String(+w.toPrecision(3)) + SI[k];
+  };
+  const tickText = (v, u) => v >= 1000 ? compact(v) : v >= 1 || v === 0 ? fmtS(v, u) : v.toExponential(0);
   function chart(recs, tr, data, nm) {
     const box = document.getElementById('chart');
     const S = e => scoreIn(e, tr.id);

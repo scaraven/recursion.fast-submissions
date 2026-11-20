@@ -319,16 +319,17 @@ round: the next entry goes to the author who waited longest.
   stream shape, a malformed stream record, `c_P` drift, setup, a missing organiser cache, a result
   whose attestation fails)
   never counts against you in the fair order, nor does an entry's first unnamed ERROR (a `harness`
-  error, the certificate job ending without a certificate, a run that produced no result at all, a
-  run that died); a later one does. Of the named errors, a machine-fingerprint, stream-shape or
+  error, the certificate job ending without a certificate; an `overhead` error, the benchmark part
+  killed at its time bound with the runner's own work past its budget, which an entry can lengthen;
+  a run that produced no result at all, a run that died); a later one does. Of the named errors, a machine-fingerprint, stream-shape or
   malformed-record error also uses up no attempt; the others are retried once. An evaluation counts from its first counted start (a retry never moves it), and superseded
   or withdrawn entries never count. A retried entry keeps its queue time and takes its turn in the
   fair order.
 - **Paused queue.** Organiser errors (of any kind) since the last run that completed its stream
   pause the queue: the bot stops evaluating and tells the owner. Two within 7 days are enough
   (an older one no longer counts), except that the errors of one author's entries
-  that an entry might provoke (a `c_P` drift, a harness or unnamed ERROR, a run that produced no
-  result or died) count once, so no author can pause the queue alone. Only a clean verdict
+  that an entry might provoke (a `c_P` drift, a `harness`, `overhead` or unnamed ERROR, a run that
+  produced no result or died) count once, so no author can pause the queue alone. Only a clean verdict
   (ACCEPT, PROVISIONAL or REJECT) of a run whose stream ran to the end on the evaluation machine
   ends the row and, after the owner's fix, resumes the queue; a REJECT at the certificate or
   inside the stream neither counts nor resumes. Nothing is charged meanwhile, and an entry left in
