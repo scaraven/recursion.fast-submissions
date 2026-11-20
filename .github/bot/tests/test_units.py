@@ -98,6 +98,11 @@ class Queue(unittest.TestCase):
             self.assertEqual(e.get("generic_errors", 0), 0, kind)
         self.assertTrue(rfqueue.settle_run(E(3, 3, "ann", started="t"), "harness", error=True) is False)  # the first unnamed one
         self.assertIn("malformed", common.UNCOUNTED_ERRORS)       # the runner's record of the stream (v6), not `harness`
+        # `overhead` (the runner's own work past runner_budget_s): never counted against the author, but an
+        # entry can lengthen the runner's work, so it is not entry-proof and pauses only across two authors
+        self.assertIn("overhead", common.UNCOUNTED_ERRORS)
+        self.assertNotIn("overhead", common.ENTRY_PROOF_ERRORS)
+        self.assertNotIn("overhead", common.PAUSING_ERRORS)
 
     def test_pause_count_needs_two_authors_or_an_entry_proof_error(self):
         """The streak's errors that count toward a pause: every entry-proof one (fingerprint,
@@ -109,7 +114,7 @@ class Queue(unittest.TestCase):
         for k in common.ENTRY_PROOF_ERRORS:
             self.assertEqual(rfqueue.pause_count([x("ann", k), x("ann", k)]), 2, k)
             self.assertEqual(rfqueue.pause_count([x("ann", "harness"), x("ann", k)]), 2, k)
-        self.assertEqual(set(common.ENTRY_PROOF_ERRORS) | {"drift", "harness"}, set(common.ORGANISER_ERRORS))
+        self.assertEqual(set(common.ENTRY_PROOF_ERRORS) | {"drift", "overhead", "harness"}, set(common.ORGANISER_ERRORS))
         s = self.st(E(1, 1, "ann"))
         e = s["submissions"][0]
         for k in range(common.STREAK_CAP + 5):

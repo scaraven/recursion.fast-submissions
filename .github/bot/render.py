@@ -211,6 +211,7 @@ PAUSE_TITLE = "recursion.fast: evaluation paused (organiser errors since the las
 ERROR_KINDS = {"fingerprint": "the machine fingerprint is not the season's",
                "lengths": "the stream's shape (M, n) was not the season's",
                "malformed": "a step record did not hold the season's number of timed times (the runner's fault)",
+               "overhead": "the runner's own work, not the entry's, used up the job's time (runner_budget_s)",
                "drift": "c_P drifted beyond c_P_drift", "setup": "a setup job did not complete",
                "cache": "an organiser cache was missing", "attestation": "the result's provenance did not verify",
                "harness": "the certificate job ended without a certificate", "unnamed": "an unnamed harness ERROR",

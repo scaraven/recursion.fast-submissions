@@ -53,12 +53,13 @@ MAX_ATTEMPTS = 2          # an organiser-side ERROR is evaluated once more, then
 # `lengths` error (the stream's shape, M and n, was not the season's: an organiser bug, the
 # same at every retry at one pin) or a `malformed` error (a step record whose timed times are not
 # the season's `timed_runs` numbers, so the score cannot be computed: the runner's fault, likewise
-# the same at every retry) does not even use up the entry's retry; the others are retried once
+# the same at every retry) does not even use up the entry's retry; the others (`overhead` among
+# them: the runner's own work used up the job's time) are retried once
 # (MAX_ATTEMPTS). `attestation`: an unverified result (the bot's). `harness` (the certificate job
 # ended without a certificate) is named but counts in the fair order as an unnamed ERROR does (from
 # the entry's second), and so does a run with no result at all (flows.publish): an entry might
 # provoke either.
-UNCOUNTED_ERRORS = ("fingerprint", "lengths", "malformed", "drift", "setup", "cache", "attestation")
+UNCOUNTED_ERRORS = ("fingerprint", "lengths", "malformed", "overhead", "drift", "setup", "cache", "attestation")
 ORGANISER_ERRORS = UNCOUNTED_ERRORS + ("harness",)
 PAUSING_ERRORS = ("fingerprint", "lengths", "malformed")     # a retry cannot clear them: re-queued in place without an attempt
 # The pause (AGENTS.md §9): every run that ends on the organiser's side (any ERROR, named or not, a
@@ -70,7 +71,8 @@ PAUSING_ERRORS = ("fingerprint", "lengths", "malformed")     # a retry cannot cl
 # (decided before any entry code runs, or by jobs that never fetch the entry; `malformed` is the
 # runner's own record of the stream, which no entry writes; `attestation` here is a result that
 # exists but whose provenance fails), so each one counts. The others (drift, measured
-# during the entry's stream; harness, the certificate job, which builds the entry, ended without a
+# during the entry's stream; overhead, the runner's own work past its budget, which an entry can
+# lengthen; harness, the certificate job, which builds the entry, ended without a
 # certificate; no result at all; an unnamed ERROR; a reaped run) might be provoked by an entry, so
 # they count once per author in the streak: no author can pause the queue alone, and an outage still
 # pauses it at the second author's entry. An error more than STREAK_WINDOW_S before the streak's

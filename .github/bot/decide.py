@@ -157,7 +157,8 @@ def decide(result, verification, pin, records, attempts, record_provers=(), marg
         if out["organiser_error"] in PAUSING_ERRORS:    # the organiser's, not the entry's: never uses up the retry
             out["requeue"] = True
             what = {"fingerprint": "machine fingerprint", "lengths": "the season's stream shape",
-                    "malformed": "a malformed stream record"}.get(out["organiser_error"], out["organiser_error"])
+                    "malformed": "a malformed stream record",
+                    "overhead": "the runner's own overhead past its budget"}.get(out["organiser_error"], out["organiser_error"])
             extra.append(f"organiser ERROR ({what}): queued again; this run does not count as an attempt")
             return "queued"
         if attempts < MAX_ATTEMPTS:
