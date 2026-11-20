@@ -25,13 +25,16 @@ def E(i, pr, author, status="queued", queued="2026-01-01T00:00:00Z", started=Non
     return e
 
 
+F6 = 168800                  # the size factor of a 168,800-byte proof: its size in bytes
+
+
 def V6(S=1.0, every=True, S_every=None, **kw):
     """A v6 result: `S` in `final` and `S_every` (default `S`: the final proof is the largest) in
     `every`, or (`every=False`) `final` only, with the core's reason."""
     tr = {"final": "S", "every": "S_every"} if every else {"final": "S"}
-    sc = {"S": S, "P_total_s": S / 1.25, "size_factor": 1.25, "final_pi_bytes": 168800, "tracks": tr}
+    sc = {"S": S, "P_total_s": S / F6, "size_factor": F6, "final_pi_bytes": 168800, "tracks": tr}
     if every:
-        sc.update(S_every=S if S_every is None else S_every, size_factor_every=1.25, max_pi_bytes=168800)
+        sc.update(S_every=S if S_every is None else S_every, size_factor_every=F6, max_pi_bytes=168800)
     else:
         sc["tracks_reason"] = {"every": "output 2 rejected by acc"}     # the core's form
     return R(S=S, score=sc, **kw)
@@ -39,7 +42,8 @@ def V6(S=1.0, every=True, S_every=None, **kw):
 
 def R(verdict="ACCEPT", S=1.0, comparable=True, harness=PIN, **kw):
     r = {"verdict": verdict, "comparable": comparable, "harness_commit": harness, "truncated": False,
-         "score": {"S": S, "P_total_s": S, "size_factor": 1.0, "final_pi_bytes": 0, "tracks": {"final": "S", "every": "S"}},
+         "score": {"S": S, "P_total_s": S, "size_factor": 1.0, "final_pi_bytes": 1,
+                   "tracks": {"final": "S", "every": "S"}},
          "reasons": ["r1"]}
     r.update(kw)
     return r
@@ -419,7 +423,8 @@ class Queue(unittest.TestCase):
         """`tracks` and the fields it names survive the sanitiser whatever the number and order of the
         other keys: 60 filler keys in front, and a v6 score (core_score.json: S, P_total_s,
         size_factor, final_pi_bytes, S_every, size_factor_every, max_pi_bytes, pass_totals_s,
-        median_pass, tracks and diagnostics at M = 16, n = 2^18, size_ref = 512 KiB, made-up numbers;
+        median_pass, tracks and diagnostics at M = 16, n = 2^18, the size factors the proof sizes
+        in bytes, made-up numbers;
         replace it with the core's mock smoke once the core computes this score)."""
         from decide import clean_score
         import os
@@ -607,14 +612,14 @@ class Decide(unittest.TestCase):
         self.assertEqual(c["score"]["tracks"], {"final": "S", "every": "S_every"})
         # every part shown with a track's score is of the run that gave it: the score object is the
         # lead track's (final) worse run, whole; every's fields are the first run's, in by_track
-        self.assertEqual((c["score_run"], c["score"]["P_total_s"], c["score"]["S"]), ("confirmation", 9.1 / 1.25, 9.1))
+        self.assertEqual((c["score_run"], c["score"]["P_total_s"], c["score"]["S"]), ("confirmation", 9.1 / F6, 9.1))
         self.assertEqual(set(c["score"]["by_track"]), {"every"})
         bt = c["score"]["by_track"]["every"]
-        self.assertEqual((bt["S_every"], bt["P_total_s"], c["score"]["S_every"]), (9.4, 9.0 / 1.25, 9.4))
+        self.assertEqual((bt["S_every"], bt["P_total_s"], c["score"]["S_every"]), (9.4, 9.0 / F6, 9.4))
         self.assertNotIn("tracks", bt)
         c2 = confirmed(first, decide(V6(S=9.2, S_every=9.5), OK, PIN, self.recs, 1))     # one run worse in both
         self.assertEqual((c2["score_run"], "by_track" in c2["score"], c2["score"]["S_every"]), ("confirmation", False, 9.5))
-        self.assertIn("final: 9.0000 s, then 9.1000 s; every: 9.4000 s, then 9.3000 s", c["reasons"][0])
+        self.assertIn("final: 9.0000 s*B, then 9.1000 s*B; every: 9.4000 s*B, then 9.3000 s*B", c["reasons"][0])
         none = candidate(decide(R(S=50.0), OK, PIN, {}, 1), PIN, "u")                     # no record stood: any ACCEPT confirms
         self.assertEqual(confirmed(none, decide(R(S=60.0), OK, PIN, {}, 1))["status"], "record")
 
@@ -678,6 +683,13 @@ class Render(unittest.TestCase):
         e = {"status": "record", "verdict": "ACCEPT", "record_in": ["every"],
              "score": {"S": 1.23456, "tracks": {"final": "S", "every": "S"}}}
         self.assertEqual(render.status_for(e), ("success", "ACCEPT: new record (every), S = 1.2346 s (final, every)"))
+        e = {"status": "record", "verdict": "ACCEPT", "record_in": ["final", "every"],      # this season's rule
+             "score": {"S": 4358812.471, "S_every": 5173251.074, "P_total_s": 15.592, "size_factor": 279552,
+                       "final_pi_bytes": 279552, "tracks": {"final": "S", "every": "S_every"}}}
+        self.assertEqual(render.status_for(e), ("success", "ACCEPT: new record (final, every), S = 4358812.4710 s*B "
+                                                "(final), S_every = 5173251.0740 s*B (every)"))
+        e["score"]["size_ref"] = 524288                                     # an earlier v6 season's exponential factor
+        self.assertIn("S = 4358812.4710 s (final)", render.status_for(e)[1])
         e = {"status": "accepted", "verdict": "ACCEPT", "score": {"S": 2.0}}     # an earlier season's result
         self.assertEqual(render.status_for(e)[1], "ACCEPT: accepted (did not beat the record), S = 2.0000 s (sum)")
         self.assertLessEqual(len(render.status_for({"status": "x" * 500})[1]), 140)
@@ -689,23 +701,33 @@ class Render(unittest.TestCase):
         self.assertIn("- `'](http://evil) @owner`", body)
         self.assertNotIn("``", body)
         e = {"id": "pr2-aaaaaaaaaaaa", "status": "accepted", "verdict": "ACCEPT", "verified": True,
-             "score": {"S": 9.9, "P_total_s": 7.92, "size_factor": 1.25, "final_pi_bytes": 168800, "M": 16,
-                       "pass_totals_s": [7.95, 7.92, 7.9], "median_pass": 2, "size_ref": 524288, "tracks": {"final": "S"}},
-             "against": {"final": {"record": "pr1-aaaaaaaaaaaa", "S": 9.9, "S_record": 10.0, "gain": 0.01, "beats": False},
+             "score": {"S": 1345410.0, "P_total_s": 7.92, "size_factor": 169875, "final_pi_bytes": 169875, "M": 16,
+                       "pass_totals_s": [7.95, 7.92, 7.9], "median_pass": 2, "tracks": {"final": "S"}},
+             "against": {"final": {"record": "pr1-aaaaaaaaaaaa", "S": 1345410.0, "S_record": 1359000.0, "gain": 0.01, "beats": False},
                          "every": None}}
+        body = render.publish_comment(e, "https://run")
+        self.assertIn("Against the final record `pr1-aaaaaaaaaaaa`: 1345410.0000 s·B against 1359000.0000 s·B, gain +1.0%", body)
+        self.assertIn("S = 1345410.0000 s·B = P_total 7.9200 s × final proof 169875 bytes (final: P_total · |π_M|), "
+                      "M = 16\n", body)
+        self.assertIn("\nP_total: pass 2's total, the median of the timed passes' totals 7.9500 s, 7.9200 s, 7.9000 s\n", body)
+        self.assertNotIn("S_every", body)                                   # final only
+        self.assertIn("Tracks: final (not every: the reasons below say why)", body)
+        e["score"].update(S_every=1779624.0, size_factor_every=224700, max_pi_bytes=224700, tracks={"final": "S", "every": "S_every"})
+        body = render.publish_comment(e, "https://run")
+        self.assertIn("\nS_every = 1779624.0000 s·B = P_total × largest proof 224700 bytes (every: P_total · max |π_i|)\n", body)
+        self.assertIn("Tracks: final, every\n", body)
+        self.assertNotIn("duel", body.lower())
+        # an earlier v6 season's result (`size_ref`): its exponential factor, in seconds
+        e["score"] = {"S": 9.9, "P_total_s": 7.92, "size_factor": 1.25, "final_pi_bytes": 168800, "M": 16, "S_every": 10.89,
+                      "size_factor_every": 1.375, "max_pi_bytes": 240900, "pass_totals_s": [7.95, 7.92, 7.9], "median_pass": 2,
+                      "size_ref": 524288, "tracks": {"final": "S", "every": "S_every"}}
+        e["against"] = {"final": {"record": "pr1-aaaaaaaaaaaa", "S": 9.9, "S_record": 10.0, "gain": 0.01, "beats": False}}
         body = render.publish_comment(e, "https://run")
         self.assertIn("Against the final record `pr1-aaaaaaaaaaaa`: 9.9000 s against 10.0000 s, gain +1.0%", body)
         self.assertIn("S = 9.9000 s = P_total 7.9200 s × size factor 1.2500 (final: 2^(|π_M|/512 KiB), final proof "
                       "168800 bytes), M = 16\n", body)
-        self.assertIn("\nP_total: pass 2's total, the median of the timed passes' totals 7.9500 s, 7.9200 s, 7.9000 s\n", body)
-        self.assertNotIn("S_every", body)                                   # final only
-        self.assertIn("Tracks: final (not every: the reasons below say why)", body)
-        e["score"].update(S_every=10.89, size_factor_every=1.375, max_pi_bytes=240900, tracks={"final": "S", "every": "S_every"})
-        body = render.publish_comment(e, "https://run")
         self.assertIn("\nS_every = 10.8900 s = P_total × size factor 1.3750 (every: 2^(max |π_i|/512 KiB), largest "
                       "proof 240900 bytes)\n", body)
-        self.assertIn("Tracks: final, every\n", body)
-        self.assertNotIn("duel", body.lower())
 
     def test_notes_md_fence(self):
         st = rfqueue.empty("o/r", PIN)

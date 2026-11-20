@@ -240,7 +240,7 @@ class E2E(unittest.TestCase):
         self.w.intake(2)
         _, b = self.w.evaluate(lambda e, run: make_result(run, S=9.0, every=False, prover="2" * 64))
         self.assertEqual((b["status"], b["record_in"], b["record_of"]), ("record", ["final"], {"final": a["id"], "every": None}))
-        self.assertEqual(self.head_status(2)["description"], "ACCEPT: new record (final), S = 9.0000 s (final)")
+        self.assertEqual(self.head_status(2)["description"], "ACCEPT: new record (final), S = 9.0000 s*B (final)")
         self.assertIn("not scored in every: output 3 rejected by acc", b["reasons"])
         self.assertTrue(any("Tracks: final (not every" in c[1] for c in self.g.comments))
         st = json.loads(self.w.show("data:submissions.json"))
@@ -422,7 +422,7 @@ class E2E(unittest.TestCase):
         self.assertEqual((e["pr"], e["sha"], p["status"], p["record_in"]), (2, sha0, "record", ["final", "every"]))
         self.assertEqual((common.track_scores(p["score"])["final"], p["record_of"]["final"], p["counted_at"]),
                          (8.6, rec["id"], counted))
-        self.assertAlmostEqual(common.track_scores(p["score"])["every"], 8.6 * 2 ** (80000 / 2 ** 19))   # S_every: the largest proof
+        self.assertAlmostEqual(common.track_scores(p["score"])["every"], 8.6 * 360000 / 280000)   # S_every: the largest proof
         self.assertTrue(any(x.startswith("confirmed:") for x in p["reasons"]))
         # the record's score is the confirmation's (the worse run): its run link and result JSON too
         self.assertEqual((p["confirmation"]["status"], p["result"], p["confirmation"]["result"], p["confirmation"]["score_run"]),

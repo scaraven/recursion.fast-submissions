@@ -160,3 +160,24 @@ def score_fields(score):
 def track_scores(score):
     """{track: the positive score in that track} of a result's `score` object (`score_fields`)."""
     return {t: v for t, _f, v in score_fields(score)}
+
+
+# The score's size factor (the core's AGENTS.md §8): this season's is the priced proof's size in
+# bytes itself, S = P_total · |π_M| in `final` and S_every = P_total · max_i |π_i| in `every`
+# (`score.size_factor` = `final_pi_bytes`, `size_factor_every` = `max_pi_bytes`), so a score is in
+# seconds times bytes. An earlier v6 season's was exponential, 2^(|π_M| / size_ref) (the core named
+# `size_ref`), a score in seconds. The record rule compares scores of one pin only, so it never
+# mixes the two.
+def product_rule(score):
+    """Whether a result's size factor is this season's (the proof size in bytes) rather than an
+    earlier v6 season's exponential (`size_ref`): its `size_factor` equals its `final_pi_bytes`."""
+    if not isinstance(score, dict) or "size_ref" in score:
+        return False
+    f, pi = score.get("size_factor"), score.get("final_pi_bytes")
+    return is_num(f) and is_num(pi) and pi > 0 and abs(f - pi) <= 1e-9 * pi
+
+
+def unit_text(score, ascii=False):
+    """The unit of a result's scores: seconds times bytes at this season's rule (`s·B`, `s*B` in
+    ASCII), seconds for an earlier season's (an exponential factor, or none)."""
+    return ("s*B" if ascii else "s·B") if product_rule(score) else "s"

@@ -29,7 +29,7 @@ review's Monte Carlo; comparing with the mean of the record's two runs instead w
 σ = 1.75 %: the owner's choice, .github/bot/README.md). The defences against noise mining are the
 copy rules (rfqueue.duplicate_of, rfqueue.prover_owner) and the owner's `retire`."""
 from common import (LEGACY_TRACKS, MARGIN, MAX_ATTEMPTS, ORGANISER_ERRORS, PAUSING_ERRORS, SHA_RE, TRACK_RE, TRACKS, VERDICTS,
-                    clean, clean_reasons, is_num, score_fields, track_scores)
+                    clean, clean_reasons, is_num, score_fields, track_scores, unit_text)
 
 
 def clean_value(v, depth=0):
@@ -46,10 +46,15 @@ def clean_value(v, depth=0):
     return None
 
 
+SIZE_RULE_FIELDS = ("size_ref", "size_factor", "final_pi_bytes")
+
+
 def clean_score(raw):
     """A result's `score`, cleaned (`clean_value`, which keeps at most 48 keys), with `tracks` and the
     score fields it names (and the sum's `S`) copied from the raw object explicitly, so that no cap on
-    the number of keys, and no order of them, can drop a track."""
+    the number of keys, and no order of them, can drop a track; so are the fields that say how the
+    size factor is computed (this season's is the final proof's size; an earlier v6 season's names
+    `size_ref`), which set the unit and the factor the bot and the site describe (common.product_rule)."""
     if not isinstance(raw, dict):
         return None
     out = clean_value(raw)
@@ -59,7 +64,7 @@ def clean_score(raw):
                  and isinstance(v, str) and v != "tracks" and clean(v, 40) == v}
         out["tracks"] = names
     fields = list(names.values()) if isinstance(names, dict) else []
-    for f in fields + list(LEGACY_TRACKS.values()):
+    for f in fields + list(LEGACY_TRACKS.values()) + list(SIZE_RULE_FIELDS):
         if is_num(raw.get(f)):
             out[f] = raw[f]
     return out
@@ -73,9 +78,10 @@ def against(S, record, track, margin=MARGIN):
     if s_rec is None:
         return False, f"{track}: the record {rid} has no positive score in this track: no comparison", None
     d = {"record": rid, "S": S, "S_record": s_rec, "gain": 1 - S / s_rec, "beats": S < (1 - margin) * s_rec}
+    u = unit_text(record.get("score"), ascii=True)     # the record's, at the pin: the entry's too
     if d["beats"]:
-        return True, f"{track}: {S:.4f} s beats the record {rid} ({s_rec:.4f} s) by {d['gain']:.1%}", d
-    return False, (f"{track}: {S:.4f} s against the record {rid}'s {s_rec:.4f} s ({d['gain']:+.1%}; a record "
+        return True, f"{track}: {S:.4f} {u} beats the record {rid} ({s_rec:.4f} {u}) by {d['gain']:.1%}", d
+    return False, (f"{track}: {S:.4f} {u} against the record {rid}'s {s_rec:.4f} {u} ({d['gain']:+.1%}; a record "
                    f"needs more than {margin:.0%})"), d
 
 
@@ -333,8 +339,9 @@ def confirmed(first, d2):
     def worse(t):
         return run2 if t in s2 and s2[t] >= s1.get(t, 0) else run1
     w = worse(lead) if ok2 else run1
-    both = (f"{lead}: S = {s1.get(lead, 0):.4f} s, then {s2[lead]:.4f} s in the confirmation" if lead in s2
-            else f"{lead}: S = {s1.get(lead, 0):.4f} s; the confirmation has no score in it")
+    u = unit_text(first["score"], ascii=True)
+    both = (f"{lead}: S = {s1.get(lead, 0):.4f} {u}, then {s2[lead]:.4f} {u} in the confirmation" if lead in s2
+            else f"{lead}: S = {s1.get(lead, 0):.4f} {u}; the confirmation has no score in it")
     if took:
         score = {k: v for k, v in (w["score"] or {}).items() if k != "by_track"}
         names = dict(score.get("tracks") or {}) if isinstance(score.get("tracks"), dict) else None
@@ -355,7 +362,7 @@ def confirmed(first, d2):
             score["tracks"] = names
         if by:
             score["by_track"] = by
-        per = "; ".join(f"{t}: {s1.get(t, 0):.4f} s, then {s2.get(t, 0):.4f} s" for t in took)
+        per = "; ".join(f"{t}: {s1.get(t, 0):.4f} {u}, then {s2.get(t, 0):.4f} {u}" for t in took)
         why = (f"confirmed: the confirmation run also takes the record of {', '.join(took)} ({per}); "
                f"the record keeps the worse run in each track")
         lost = [t for t in first["took"] if t not in took]

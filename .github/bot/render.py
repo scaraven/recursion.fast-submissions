@@ -4,7 +4,8 @@ code spans (comments) or inside a fence longer than any it contains (notes.md)."
 import json
 import re
 
-from common import MARGIN, STREAK_WINDOW_S, TRACKS, ascii_line, code_span, is_num, score_fields
+from common import (MARGIN, STREAK_WINDOW_S, TRACKS, ascii_line, code_span, is_num, product_rule,
+                    score_fields, unit_text)
 import rfqueue
 
 STATE = {"record": "success", "accepted": "success", "unranked": "success", "provisional": "failure",
@@ -22,8 +23,8 @@ def num(x, nd=4):
 
 
 def size_ref_text(ref):
-    """The size scale of the score's factors (`score.size_ref`, bytes) as text: `512 KiB` (the v6
-    season's) when the result does not state it."""
+    """The size scale of an earlier v6 season's exponential factor (`score.size_ref`, bytes) as
+    text: `512 KiB` when the result does not state it (this season's factor is the size itself)."""
     if not is_num(ref) or ref <= 0:
         return "512 KiB"
     if ref % (1 << 20) == 0:
@@ -45,8 +46,10 @@ def score_groups(score):
 
 
 def scores_text(score):
-    """Each score of a result with its tracks: `S = 1.2345 s (final, every)` (the fields `tracks` names)."""
-    return ", ".join(f"{f} = {v:.4f} s ({', '.join(ts)})" for f, v, ts in score_groups(score)) or "no score"
+    """Each score of a result with its tracks and unit, in ASCII: `S = 4358812.4710 s*B (final)`,
+    `S = 1.2345 s (final, every)` for an earlier season's (the fields `tracks` names)."""
+    u = unit_text(score, ascii=True)
+    return ", ".join(f"{f} = {v:.4f} {u} ({', '.join(ts)})" for f, v, ts in score_groups(score)) or "no score"
 
 
 def took_text(e):
@@ -103,16 +106,24 @@ def publish_comment(e, run_url):
         se = by.get("every") if isinstance(by.get("every"), dict) else s
         m = s.get("M") if is_num(s.get("M")) else "-"
         trunc = ", truncated stream" if e.get("truncated") else ""
-        ref = size_ref_text(s.get("size_ref"))
+        u = unit_text(s)
         other = " (the other run's)" if by else ""
-        lines.append(f"S = {num(sf.get('S'))} s = P_total {num(sf.get('P_total_s'))} s × size factor "
-                     f"{num(sf.get('size_factor'))} (final: 2^(|π_M|/{ref}), final proof "
-                     f"{num(sf.get('final_pi_bytes'), 0)} bytes), M = {m}{trunc}{other if sf is not s else ''}")
+        if product_rule(s):           # this season: S = P_total · |π_M|, the proof size in bytes
+            lines.append(f"S = {num(sf.get('S'))} {u} = P_total {num(sf.get('P_total_s'))} s × final proof "
+                         f"{num(sf.get('final_pi_bytes'), 0)} bytes (final: P_total · |π_M|), M = {m}{trunc}"
+                         f"{other if sf is not s else ''}")
+        else:                         # an earlier v6 season's exponential factor
+            lines.append(f"S = {num(sf.get('S'))} {u} = P_total {num(sf.get('P_total_s'))} s × size factor "
+                         f"{num(sf.get('size_factor'))} (final: 2^(|π_M|/{size_ref_text(s.get('size_ref'))}), final proof "
+                         f"{num(sf.get('final_pi_bytes'), 0)} bytes), M = {m}{trunc}{other if sf is not s else ''}")
         if is_num(s.get("S_every")):
             p_e = f" {num(se.get('P_total_s'))} s" if se is not s else ""
-            lines.append(f"S_every = {num(s.get('S_every'))} s = P_total{p_e} × size factor {num(se.get('size_factor_every'))} "
-                         f"(every: 2^(max |π_i|/{ref}), largest proof {num(se.get('max_pi_bytes'), 0)} bytes)"
-                         + (other if se is not s else ""))
+            if product_rule(s):
+                what = (f"largest proof {num(se.get('max_pi_bytes'), 0)} bytes (every: P_total · max |π_i|)")
+            else:
+                what = (f"size factor {num(se.get('size_factor_every'))} (every: 2^(max |π_i|/"
+                        f"{size_ref_text(s.get('size_ref'))}), largest proof {num(se.get('max_pi_bytes'), 0)} bytes)")
+            lines.append(f"S_every = {num(s.get('S_every'))} {u} = P_total{p_e} × {what}" + (other if se is not s else ""))
         for what, sx in (("", s),) + tuple((f" ({t})", v) for t, v in sorted(by.items()) if isinstance(v, dict)):
             tot = sx.get("pass_totals_s")
             if isinstance(tot, list) and tot and all(is_num(t) for t in tot[:8]):
@@ -128,7 +139,8 @@ def publish_comment(e, run_url):
     order = lambda kv: (TRACKS.index(kv[0]) if kv[0] in TRACKS else len(TRACKS), kv[0])  # noqa: E731
     for t, d in sorted((e.get("against") or {}).items(), key=order):
         if isinstance(d, dict) and d.get("record") and is_num(d.get("gain")):
-            lines.append(f"Against the {t} record `{d['record']}`: {num(d.get('S'))} s against {num(d.get('S_record'))} s, "
+            u = unit_text(e.get("score"))
+            lines.append(f"Against the {t} record `{d['record']}`: {num(d.get('S'))} {u} against {num(d.get('S_record'))} {u}, "
                          f"gain {d['gain']:+.1%} (a new record needs more than {MARGIN:.0%})")
     if st == "record":
         rof = e.get("record_of") or {}

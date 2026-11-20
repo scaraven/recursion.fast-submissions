@@ -145,9 +145,10 @@ def make_result(run_id, verdict="ACCEPT", S=1.0, comparable=True, harness=PIN, p
     """A result as the core's aggregate.py writes it (the fields the bot reads). `comparable=False`:
     a truncated stream; `machine_ok=False`: another machine's fingerprint, the organiser's ERROR;
     `stream=False`: no stream recorded (a REJECT at the certificate, so no benchmark part, or inside
-    the stream). `S` is the score of `final` (P_total · 2^(|π_16| / 512 KiB)); `S_every`, the score of
-    `every`, prices the largest proof (an intermediate one 80,000 bytes larger than the final one),
-    so it is `S` times a fixed factor and the two tracks rank alike; `every=False`: eligible for
+    the stream). `S` is the score of `final` (P_total · |π_16|, |π_16| in bytes, so in seconds ·
+    bytes); `S_every`, the score of `every`, prices the largest proof (an intermediate one 80,000
+    bytes larger than the final one), so it is `S` times a fixed factor, 360000 / 280000, and the
+    two tracks rank alike; `every=False`: eligible for
     `final` only (an intermediate output not accepted), with the core's `tracks_reason`; `legacy`: a
     score without `tracks` (an earlier season's core), the sum alone; `reject_stage`: a REJECT's
     stage, the core's top-level field (absent by default; with a stream, the stream's `leaf_data`
@@ -169,14 +170,14 @@ def make_result(run_id, verdict="ACCEPT", S=1.0, comparable=True, harness=PIN, p
     if reject_stage is not None:
         r["reject_stage"] = reject_stage
     if verdict in ("ACCEPT", "PROVISIONAL"):
-        pi, pi_max, ref = 280000, 360000, 1 << 19
-        f, fe = 2 ** (pi / ref), 2 ** (pi_max / ref)
+        pi, pi_max = 280000, 360000
+        f, fe = pi, pi_max
         P = S / f
         if legacy:
             r["score"] = {"S": S, "P_bar": S * 0.8, "V_bar": S * 0.2, "M": 96, "c_P": 1.0}
         else:
             r["score"] = {"S": S, "P_total_s": P, "size_factor": f, "final_pi_bytes": pi,
-                          "pass_totals_s": [P * 1.004, P, P * 0.998], "median_pass": 2, "size_ref": ref,
+                          "pass_totals_s": [P * 1.004, P, P * 0.998], "median_pass": 2,
                           "M": 16, "sum_n": 16 << 18, "c_P": 1.0,
                           "tracks": {"final": "S", "every": "S_every"} if every else {"final": "S"}}
             if every:
